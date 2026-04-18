@@ -1,0 +1,9 @@
+[package]
+name = "nv_error"
+version.workspace = true
+edition.workspace = true
+description = "NVIDIA error codes — extracted from nvlddmkm.sys by SigDead-BIB"
+
+[features]
+default = []
+std = []

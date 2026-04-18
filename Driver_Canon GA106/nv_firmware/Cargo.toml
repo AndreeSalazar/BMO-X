@@ -1,0 +1,14 @@
+[package]
+name = "nv_firmware"
+version.workspace = true
+edition.workspace = true
+description = "FALCON/GSP firmware loader — handles the 72MB PAGErGEN blob"
+
+[dependencies]
+nv_error = { path = "../nv_error" }
+nv_regs = { path = "../nv_regs" }
+nv_hal = { path = "../nv_hal" }
+
+[features]
+default = []
+std = []

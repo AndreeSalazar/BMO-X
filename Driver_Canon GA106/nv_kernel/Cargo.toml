@@ -1,0 +1,18 @@
+[package]
+name = "nv_kernel"
+version.workspace = true
+edition.workspace = true
+description = "Kernel-level driver entry — orchestrates full GPU init, teardown, and OS interface"
+
+[dependencies]
+nv_error = { path = "../nv_error" }
+nv_regs = { path = "../nv_regs" }
+nv_hal = { path = "../nv_hal" }
+nv_firmware = { path = "../nv_firmware" }
+nv_gpu = { path = "../nv_gpu" }
+nv_cmd = { path = "../nv_cmd" }
+nv_display = { path = "../nv_display" }
+
+[features]
+default = []
+std = []

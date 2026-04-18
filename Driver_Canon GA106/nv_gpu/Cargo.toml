@@ -1,0 +1,15 @@
+[package]
+name = "nv_gpu"
+version.workspace = true
+edition.workspace = true
+description = "GPU initialization, reset, memory management, power control"
+
+[dependencies]
+nv_error = { path = "../nv_error" }
+nv_regs = { path = "../nv_regs" }
+nv_hal = { path = "../nv_hal" }
+nv_firmware = { path = "../nv_firmware" }
+
+[features]
+default = []
+std = []

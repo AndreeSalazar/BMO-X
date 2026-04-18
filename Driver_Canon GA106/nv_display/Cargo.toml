@@ -1,0 +1,14 @@
+[package]
+name = "nv_display"
+version.workspace = true
+edition.workspace = true
+description = "Display controller — display heads, SOR outputs, EDID, modeset"
+
+[dependencies]
+nv_error = { path = "../nv_error" }
+nv_regs = { path = "../nv_regs" }
+nv_hal = { path = "../nv_hal" }
+
+[features]
+default = []
+std = []
