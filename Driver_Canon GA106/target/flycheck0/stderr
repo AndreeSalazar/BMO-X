@@ -1,0 +1,240 @@
+   0.051878900s  INFO prepare_target{force=false package_id=nv_cmd v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_cmd) target="nv_cmd"}: cargo::core::compiler::fingerprint: fingerprint error for nv_cmd v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_cmd)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_cmd", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_cmd\\src\\lib.rs", Edition2024) }
+   0.053814200s  INFO prepare_target{force=false package_id=nv_cmd v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_cmd) target="nv_cmd"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_cmd-e73111983e8089a7\test-lib-nv_cmd`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.073997100s  INFO prepare_target{force=false package_id=nv_display v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_display) target="nv_display"}: cargo::core::compiler::fingerprint: fingerprint error for nv_display v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_display)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_display", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_display\\src\\lib.rs", Edition2024) }
+   0.074037000s  INFO prepare_target{force=false package_id=nv_display v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_display) target="nv_display"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_display-52c65e9baa5ef75d\test-lib-nv_display`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.075145100s  INFO prepare_target{force=false package_id=nv_error v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_error) target="nv_error"}: cargo::core::compiler::fingerprint: fingerprint error for nv_error v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_error)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_error", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_error\\src\\lib.rs", Edition2024) }
+   0.075175000s  INFO prepare_target{force=false package_id=nv_error v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_error) target="nv_error"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_error-17fca2932cf024de\test-lib-nv_error`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.077272600s  INFO prepare_target{force=false package_id=nv_firmware v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_firmware) target="nv_firmware"}: cargo::core::compiler::fingerprint: fingerprint error for nv_firmware v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_firmware)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_firmware", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_firmware\\src\\lib.rs", Edition2024) }
+   0.077304000s  INFO prepare_target{force=false package_id=nv_firmware v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_firmware) target="nv_firmware"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_firmware-789a808a708ab529\test-lib-nv_firmware`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.078338300s  INFO prepare_target{force=false package_id=nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu) target="nv_gpu"}: cargo::core::compiler::fingerprint: stale: changed "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_gpu\\src\\lib.rs"
+   0.078362900s  INFO prepare_target{force=false package_id=nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu) target="nv_gpu"}: cargo::core::compiler::fingerprint:           (vs) "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\target\\debug\\.fingerprint\\nv_gpu-772fbdbf0262ce86\\dep-lib-nv_gpu"
+   0.078375600s  INFO prepare_target{force=false package_id=nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu) target="nv_gpu"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 13420944151, nanos: 515322400 } < FileTime { seconds: 13420944172, nanos: 138409400 }
+   0.078743200s  INFO prepare_target{force=false package_id=nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu) target="nv_gpu"}: cargo::core::compiler::fingerprint: fingerprint dirty for nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("nv_gpu", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_gpu\\src\\lib.rs", Edition2024) }
+   0.078773500s  INFO prepare_target{force=false package_id=nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu) target="nv_gpu"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\target\\debug\\.fingerprint\\nv_gpu-772fbdbf0262ce86\\dep-lib-nv_gpu", reference_mtime: FileTime { seconds: 13420944151, nanos: 515322400 }, stale: "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_gpu\\src\\lib.rs", stale_mtime: FileTime { seconds: 13420944172, nanos: 138409400 } }))
+   0.080677600s  INFO prepare_target{force=false package_id=nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu) target="nv_gpu"}: cargo::core::compiler::fingerprint: fingerprint error for nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_gpu", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_gpu\\src\\lib.rs", Edition2024) }
+   0.080708000s  INFO prepare_target{force=false package_id=nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu) target="nv_gpu"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_gpu-17aa864023b45c74\test-lib-nv_gpu`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.082079200s  INFO prepare_target{force=false package_id=nv_hal v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_hal) target="nv_hal"}: cargo::core::compiler::fingerprint: fingerprint error for nv_hal v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_hal)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_hal", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_hal\\src\\lib.rs", Edition2024) }
+   0.082111600s  INFO prepare_target{force=false package_id=nv_hal v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_hal) target="nv_hal"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_hal-1a233d5ac8e5d51f\test-lib-nv_hal`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.083235500s  INFO prepare_target{force=false package_id=nv_kernel v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_kernel) target="nv_kernel"}: cargo::core::compiler::fingerprint: fingerprint dirty for nv_kernel v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_kernel)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("nv_kernel", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_kernel\\src\\lib.rs", Edition2024) }
+   0.083265700s  INFO prepare_target{force=false package_id=nv_kernel v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_kernel) target="nv_kernel"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "nv_gpu" })
+   0.084918100s  INFO prepare_target{force=false package_id=nv_kernel v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_kernel) target="nv_kernel"}: cargo::core::compiler::fingerprint: fingerprint error for nv_kernel v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_kernel)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_kernel", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_kernel\\src\\lib.rs", Edition2024) }
+   0.084948700s  INFO prepare_target{force=false package_id=nv_kernel v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_kernel) target="nv_kernel"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_kernel-6cc45bee2108e25a\test-lib-nv_kernel`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.086136700s  INFO prepare_target{force=false package_id=nv_regs v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_regs) target="nv_regs"}: cargo::core::compiler::fingerprint: fingerprint error for nv_regs v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_regs)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("nv_regs", ["lib"], "C:\\Users\\andre\\OneDrive\\Documentos\\FastOS\\Driver_Canon GA106\\nv_regs\\src\\lib.rs", Edition2024) }
+   0.086164700s  INFO prepare_target{force=false package_id=nv_regs v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_regs) target="nv_regs"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\target\debug\.fingerprint\nv_regs-8835819679e4fe3d\test-lib-nv_regs`
+
+Caused by:
+    El sistema no puede encontrar el archivo especificado. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+    Checking nv_regs v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_regs)
+    Checking nv_error v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_error)
+    Checking nv_hal v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_hal)
+    Checking nv_gpu v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_gpu)
+    Checking nv_display v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_display)
+    Checking nv_cmd v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_cmd)
+    Checking nv_firmware v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_firmware)
+    Checking nv_kernel v0.1.0 (C:\Users\andre\OneDrive\Documentos\FastOS\Driver_Canon GA106\nv_kernel)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.67s
