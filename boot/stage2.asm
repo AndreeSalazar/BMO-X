@@ -4,6 +4,7 @@
 ; Loaded at 0x7E00 by Stage 1.
 ; Full transition: 16-bit → 32-bit → 64-bit → Rust kernel.
 ; Target: AMD Ryzen 5 5600X (Zen 3, Vermeer)
+; Board:  MSI MAG B550 TOMAHAWK (MS-7C52) — UEFI CSM quirks handled.
 ; ============================================================================
 
 [BITS 16]
@@ -12,8 +13,6 @@
 ; ── Entry vector ─────────────────────────────────────────────────────────
 ; BYTE 0 of stage2.bin — Stage1 jumps here (0x7E00).
 ; Must be the absolute first instruction. Everything else comes after.
-; Fagging-Scale: from this single jmp we bootstrap 16→32→64 bit with ALL
-; Zen 3 extensions (SSE4.2, AVX2, FMA3, AES-NI, SHA, BMI1/2).
 jmp stage2_start
 
 ; ── Includes (data tables + subroutines, NOT entry points) ──────────────
@@ -81,7 +80,7 @@ stage2_start:
     mov si, msg_a20_ok
     call print_string_16
 
-    ; Detect memory (E820)
+    ; Detect memory (E801h — E820 hangs on MSI B550 CSM)
     mov si, msg_e820_try
     call print_string_16
 
@@ -93,6 +92,7 @@ stage2_start:
     ; Total: 4 × 64 = 256 sectors = 128KB loaded to physical 0x10000.
     ; Chunked loading avoids BIOS limitations with large sector counts
     ; and prevents 64KB segment boundary wrapping issues.
+    ; MSI B550 CSM: AH=42h works despite AH=41h reporting no LBA.
     mov si, msg_loading_kernel
     call print_string_16
 
@@ -133,6 +133,13 @@ stage2_start:
     mov si, msg_entering_pm
     call print_string_16
 
+    ; Save current BIOS cursor row for VGA continuation in PM
+    mov ah, 0x03
+    xor bh, bh
+    int 0x10                        ; DH = cursor row
+    movzx eax, dh
+    mov [vga_row], al               ; Save for PM VGA writes
+
     cli
     lgdt [gdt32_descriptor]
 
@@ -156,14 +163,15 @@ msg_s2_start:       db "[FastOS] Stage2: starting", 13, 10, 0
 msg_cpuid_ok:       db "[FastOS] CPUID: OK", 13, 10, 0
 msg_lm_ok:          db "[FastOS] Long Mode: OK", 13, 10, 0
 msg_a20_ok:         db "[FastOS] A20: enabled", 13, 10, 0
-msg_e820_try:       db "[FastOS] Detecting memory (E820)...", 13, 10, 0
+msg_e820_try:       db "[FastOS] Detecting memory (E801h)...", 13, 10, 0
 msg_mem_ok:         db "[FastOS] Memory map: OK", 13, 10, 0
-msg_loading_kernel: db "[FastOS] Loading kernel...", 13, 10, 0
-msg_kernel_loaded:  db "[FastOS] Kernel loaded OK", 13, 10, 0
-msg_kernel_err:     db "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
+msg_loading_kernel: db "[FastOS] Loading kernel", 0
+msg_kernel_loaded:  db 13, 10, "[FastOS] Kernel loaded OK", 13, 10, 0
+msg_kernel_err:     db 13, 10, "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
 msg_entering_pm:    db "[FastOS] Entering PM -> LM -> Kernel!", 13, 10, 0
 
 stage2_boot_drive: db 0
+vga_row:           db 0
 
 align 4
 dap_kernel:
@@ -189,10 +197,14 @@ protected_mode_entry:
     mov ss, ax
     mov esp, 0x90000
 
-    ; VGA print (BIOS gone, use direct memory at 0xB8000)
-    mov edi, 0xB8000
+    ; VGA print — continue from where BIOS left off (don't overwrite!)
+    ; Read saved row from real mode, compute offset
+    movzx eax, byte [vga_row]
+    imul eax, 160                   ; 80 cols × 2 bytes per char
+    add eax, 0xB8000
+    mov edi, eax
     mov esi, msg_pm_ok
-    mov ah, 0x0A
+    mov ah, 0x0A                    ; light green on black
 .pm_print:
     lodsb
     test al, al
@@ -207,10 +219,26 @@ protected_mode_entry:
     ; Copy kernel: 0x10000 → 0x100000 (1MB), 128KB
     mov esi, 0x10000
     mov edi, 0x100000
-    mov ecx, 32768
+    mov ecx, 32768                  ; 128KB / 4 bytes = 32768 dwords
     rep movsd
 
     ; ── Phase 3: Paging + Long Mode ──────────────────────────────────────
+
+    ; VGA progress — next row
+    movzx eax, byte [vga_row]
+    inc eax
+    imul eax, 160
+    add eax, 0xB8000
+    mov edi, eax
+    mov esi, msg_paging_ok
+    mov ah, 0x0E                    ; yellow on black
+.pg_print:
+    lodsb
+    test al, al
+    jz .pg_print_done
+    stosw
+    jmp .pg_print
+.pg_print_done:
 
     call setup_paging
 
@@ -242,7 +270,8 @@ protected_mode_entry:
     ; Far jump to 64-bit!
     jmp GDT64_CODE_SEG:long_mode_entry
 
-msg_pm_ok: db "[FastOS] Protected Mode OK → Long Mode...", 0
+msg_pm_ok:      db "[FastOS] Protected Mode: OK", 0
+msg_paging_ok:  db "[FastOS] Paging + Long Mode setup...", 0
 
 ; ── 64-bit Long Mode ────────────────────────────────────────────────────
 
@@ -260,10 +289,14 @@ long_mode_entry:
     mov ss, ax
     mov rsp, 0x800000
 
-    ; VGA: Long Mode active (row 1)
-    mov rdi, 0xB8000 + 160
+    ; VGA: Long Mode active — row after paging msg
+    movzx rax, byte [vga_row]
+    add rax, 2                      ; PM row + paging row
+    imul rax, 160
+    add rax, 0xB8000
+    mov rdi, rax
     mov rsi, msg_lm_active
-    mov ah, 0x0E
+    mov ah, 0x0E                    ; yellow on black
 .lm_print:
     lodsb
     test al, al
@@ -276,10 +309,14 @@ long_mode_entry:
     call init_sse_avx
     call avx2_selftest
 
-    ; VGA: AVX2 ready (row 2)
-    mov rdi, 0xB8000 + 320
+    ; VGA: AVX2 ready — next row
+    movzx rax, byte [vga_row]
+    add rax, 3
+    imul rax, 160
+    add rax, 0xB8000
+    mov rdi, rax
     mov rsi, msg_avx2_ok
-    mov ah, 0x0A
+    mov ah, 0x0A                    ; light green
 .avx_print:
     lodsb
     test al, al
@@ -287,6 +324,22 @@ long_mode_entry:
     stosw
     jmp .avx_print
 .avx_print_done:
+
+    ; VGA: jumping to kernel — next row
+    movzx rax, byte [vga_row]
+    add rax, 4
+    imul rax, 160
+    add rax, 0xB8000
+    mov rdi, rax
+    mov rsi, msg_jump_kernel
+    mov ah, 0x0F                    ; white on black
+.jk_print:
+    lodsb
+    test al, al
+    jz .jk_print_done
+    stosw
+    jmp .jk_print
+.jk_print_done:
 
     ; ── Build boot info for Rust kernel ──────────────────────────────────
 
@@ -309,8 +362,9 @@ long_mode_entry:
     cli
     hlt
 
-msg_lm_active: db "[FastOS] 64-bit Long Mode: ACTIVE", 0
-msg_avx2_ok:   db "[FastOS] SSE4.2+AVX2+FMA3: READY (Ryzen 5 5600X)", 0
+msg_lm_active:   db "[FastOS] 64-bit Long Mode: ACTIVE", 0
+msg_avx2_ok:     db "[FastOS] SSE4.2+AVX2+FMA3: READY (Zen 3)", 0
+msg_jump_kernel: db "[FastOS] Jumping to Rust kernel @ 0x100000...", 0
 
 ; Pad stage2 to 16KB (32 sectors)
 times (16384) - ($ - $$) db 0
