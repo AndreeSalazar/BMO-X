@@ -94,12 +94,8 @@ pub fn driver_init(platform: &dyn Platform) -> NvResult<DriverState> {
     // 5. Read current engine state (VBIOS may have already enabled engines)
     let current_enable = bar0.read32(nv_regs::pmc::ENABLE);
 
-    // 6. Detect VRAM
-    let vram_size = {
-        let cfg = bar0.read32(nv_regs::pmem::FB_MEM_SIZE);
-        let mb = cfg & 0xFFFF;
-        (mb as u64) * 1024 * 1024
-    };
+    // 6. Detect VRAM (Ampere-aware: units of 16MB on GA106)
+    let vram_size = nv_gpu::detect_vram(&bar0);
 
     // 7. Map BAR1 (VRAM aperture) — optional
     let bar1_phys = nv_hal::read_bar1(platform, pci);

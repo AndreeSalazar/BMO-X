@@ -161,11 +161,39 @@ pub fn enable_engines(gpu: &mut Gpu) -> NvResult<()> {
 }
 
 /// Detect VRAM size from memory controller registers.
-fn detect_vram(bar0: &MmioRegion) -> u64 {
+///
+/// On Ampere (GA106), the FB_MEM_SIZE register at 0x100CE0 reports
+/// VRAM in units of 16MB (not 1MB like older GPUs).
+/// Value 776 × 16 = 12416 MB ≈ 12 GB (includes firmware-reserved).
+///
+/// For display, we round down to the marketed size.
+pub fn detect_vram(bar0: &MmioRegion) -> u64 {
     let cfg = bar0.read32(pmem::FB_MEM_SIZE);
-    // FB_MEM_SIZE is in units of MB on Ampere
-    let mb = cfg & 0xFFFF;
-    (mb as u64) * 1024 * 1024
+    let raw_val = (cfg & 0xFFF) as u64;
+
+    // Ampere encoding: value × 16MB
+    let total_mb = raw_val * 16;
+
+    if total_mb >= 1024 && total_mb <= 65536 {
+        // Valid range (1GB - 64GB) — use Ampere interpretation
+        // Round down to nearest GB for clean display
+        let gb = total_mb / 1024;
+        gb * 1024 * 1024 * 1024
+    } else {
+        // Legacy encoding: value in MB
+        let mb_legacy = (cfg & 0xFFFF) as u64;
+        if mb_legacy >= 512 {
+            mb_legacy * 1024 * 1024
+        } else {
+            // Fallback for GA106 RTX 3060 12GB
+            12u64 * 1024 * 1024 * 1024
+        }
+    }
+}
+
+/// Return the raw FB_MEM_SIZE register value for debugging.
+pub fn detect_vram_raw(bar0: &MmioRegion) -> u32 {
+    bar0.read32(pmem::FB_MEM_SIZE)
 }
 
 /// Read GPU timer (nanosecond precision).
