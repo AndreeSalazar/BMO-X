@@ -1,7 +1,15 @@
 //! IDT — Interrupt Descriptor Table for x86-64 Long Mode.
 //! 256 entries, 16 bytes each. Ring 0, no_std.
+//!
+//! CRITICAL: All ISR stubs MUST be `#[naked]` so the compiler does NOT
+//! generate a function prologue (push rbp / mov rbp,rsp). A prologue
+//! would corrupt the interrupt stack frame and cause a triple-fault on
+//! `iretq`. This was the root cause of the reboot-on-real-hardware bug.
+//!
+//! CPU exceptions 8, 10-14, 17, 21, 29, 30 push an error code onto the
+//! stack. Our handlers must pop it before `iretq`.
 
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 
 /// IDT entry (16 bytes in Long Mode).
 #[repr(C, packed)]
@@ -50,9 +58,14 @@ static mut IRQ_HANDLERS: [Option<fn()>; 16] = [None; 16];
 /// Initialize the IDT and load it via LIDT.
 pub fn init_idt() {
     unsafe {
-        // CPU exceptions (0-31) — default handler
-        for i in 0..32 {
-            IDT[i].set_handler(isr_stub_default as u64);
+        // CPU exceptions WITHOUT error code (0-7, 9, 15, 16, 18-20, 22-31)
+        for i in [0,1,2,3,4,5,6,7,9,15,16,18,19,20,22,23,24,25,26,27,28,31] {
+            IDT[i].set_handler(isr_stub_exception_no_err as u64);
+        }
+
+        // CPU exceptions WITH error code (8, 10, 11, 12, 13, 14, 17, 21, 29, 30)
+        for i in [8,10,11,12,13,14,17,21,29,30] {
+            IDT[i].set_handler(isr_stub_exception_err as u64);
         }
 
         // IRQ0 — PIT timer (vector 32)
@@ -83,31 +96,44 @@ pub fn register_irq(irq: u8, handler: fn()) {
 }
 
 // ── Raw ISR stubs ──────────────────────────────────────────────────────────
-// These use naked functions to save/restore registers properly.
+// ALL stubs are #[naked] — the compiler MUST NOT generate prologue/epilogue.
+// Without #[naked], `push rbp; mov rbp, rsp` would corrupt the interrupt
+// frame and iretq would pop garbage → triple fault.
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn isr_stub_default() {
-    asm!(
+/// Exception handler for vectors that do NOT push an error code.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_exception_no_err() {
+    naked_asm!(
         "iretq",
-        options(noreturn)
     );
 }
 
-#[unsafe(no_mangle)]
+/// Exception handler for vectors that DO push an error code.
+/// Must pop the error code before iretq.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_exception_err() {
+    naked_asm!(
+        "add rsp, 8",  // pop error code
+        "iretq",
+    );
+}
+
+/// Default IRQ handler (vectors 34-47) — just sends EOI.
+#[unsafe(naked)]
 unsafe extern "C" fn isr_stub_default_irq() {
-    asm!(
+    naked_asm!(
         "push rax",
         "mov al, 0x20",
         "out 0x20, al",   // EOI to master PIC
         "pop rax",
         "iretq",
-        options(noreturn)
     );
 }
 
-#[unsafe(no_mangle)]
+/// IRQ0 — PIT timer (vector 32). Saves all caller-saved regs, calls Rust handler.
+#[unsafe(naked)]
 unsafe extern "C" fn isr_stub_irq0() {
-    asm!(
+    naked_asm!(
         "push rax",
         "push rcx",
         "push rdx",
@@ -128,13 +154,13 @@ unsafe extern "C" fn isr_stub_irq0() {
         "pop rcx",
         "pop rax",
         "iretq",
-        options(noreturn)
     );
 }
 
-#[unsafe(no_mangle)]
+/// IRQ1 — PS/2 keyboard (vector 33). Saves all caller-saved regs, calls Rust handler.
+#[unsafe(naked)]
 unsafe extern "C" fn isr_stub_irq1() {
-    asm!(
+    naked_asm!(
         "push rax",
         "push rcx",
         "push rdx",
@@ -155,7 +181,6 @@ unsafe extern "C" fn isr_stub_irq1() {
         "pop rcx",
         "pop rax",
         "iretq",
-        options(noreturn)
     );
 }
 

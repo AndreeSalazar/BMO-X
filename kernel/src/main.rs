@@ -34,17 +34,49 @@ pub struct BootInfo {
     pub vbe_mode: u64,
 }
 
+/// Write a 2-character diagnostic code directly to VGA text buffer.
+/// This works even if the framebuffer or serial is broken.
+/// Visible at bottom-right corner of screen (row 24, col 76-77).
+#[inline(always)]
+fn vga_diag(c1: u8, c2: u8) {
+    unsafe {
+        let vga = 0xB8000 as *mut u16;
+        // Row 24, col 76 = offset (24*80+76) = 1996
+        vga.add(1996).write_volatile(0x4F00 | c1 as u16); // white on red
+        vga.add(1997).write_volatile(0x4F00 | c2 as u16);
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
+    // ── Diagnostic: "K0" = kernel entry reached ──────────────────────
+    vga_diag(b'K', b'0');
+
+    // ── CRITICAL: Zero BSS before any Rust code runs ─────────────────
+    unsafe {
+        extern "C" {
+            static __bss_start: u8;
+            static __bss_end: u8;
+        }
+        let bss_start = &__bss_start as *const u8 as *mut u8;
+        let bss_end = &__bss_end as *const u8 as *mut u8;
+        let len = bss_end as usize - bss_start as usize;
+        core::ptr::write_bytes(bss_start, 0, len);
+    }
+    vga_diag(b'K', b'1'); // BSS zeroed
+
     let info = unsafe { &*boot_info };
 
     // Validate boot info early
     if info.magic != 0xFA5705 {
+        vga_diag(b'E', b'M'); // Error: bad Magic
+        // Also try VGA text
         let mut vga = VgaWriter::new();
         vga.clear();
         vga.write_str_color("ERROR: Invalid boot magic!", vga::Color::Red);
         halt_loop();
     }
+    vga_diag(b'K', b'2'); // Magic OK
 
     let is_graphics = info.vbe_mode == 1;
 
@@ -53,73 +85,98 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         info.framebuffer_addr, info.fb_pitch, info.vbe_mode,
     );
     vga.clear();
-    vga.write_str_color("FastOS v0.2.0 - Booting...", vga::Color::LightCyan);
+    vga.write_str_color("FastOS v0.4.0 - Booting...", vga::Color::LightCyan);
     vga.newline();
+    vga_diag(b'K', b'3'); // VGA init
 
     // Serial
     drivers::serial::init_serial();
-    drivers::serial::serial_write("[FastOS] Kernel starting\n");
+    drivers::serial::serial_write("[FastOS] Kernel v0.4.0 starting\n");
+    vga_diag(b'K', b'4'); // Serial OK
 
     // CPU
     let _cpu = arch::cpu::detect_cpu();
-    vga.write_str("[CPU] Zen 3 OK  ");
+    vga.write_str("[CPU] OK  ");
+    vga_diag(b'K', b'5'); // CPU detect OK
 
-    // Interrupts: IDT + PIC + PIT
+    // PIC — must be initialized BEFORE IDT to avoid spurious IRQ storms
     arch::pic::init_pic();
+    // Mask ALL IRQs first — we'll unmask after IDT is fully set up
+    arch::pic::set_mask_keyboard_timer();
+    vga_diag(b'K', b'6'); // PIC OK
+
+    // IDT
     arch::idt::init_idt();
+    vga_diag(b'K', b'7'); // IDT OK
+
+    // PIT — configure timer BEFORE enabling interrupts
     arch::pit::init_pit();
     arch::idt::register_irq(0, arch::pit::tick);
-    arch::pic::set_mask_keyboard_timer();
+    vga_diag(b'K', b'8'); // PIT OK
+
+    // NOW enable interrupts — IDT + PIC + PIT all ready
     arch::cpu::sti();
     vga.write_str_color("[IRQ] OK  ", vga::Color::Green);
-    drivers::serial::serial_write("[FastOS] Interrupts enabled (PIC+PIT+KB)\n");
+    drivers::serial::serial_write("[FastOS] Interrupts OK\n");
+    vga_diag(b'K', b'9'); // STI OK — if you see K9, interrupts work!
 
-    // PCI + GPU
+    // PCI scan
     let devices = drivers::pci::scan_pci_bus();
     vga.write_str("[PCI] ");
     vga.write_u64(devices.count as u64);
     vga.write_str(" devs  ");
+    vga_diag(b'P', b'0'); // PCI scan done
 
+    // GPU driver init — wrapped defensively
     let mut gpu_ok = false;
     if let Some(gpu_pci) = devices.find_nvidia_gpu() {
+        vga_diag(b'G', b'0'); // GPU found on PCI
         if gpu_pci.device_id == 0x2504 {
+            vga_diag(b'G', b'1'); // GA106 confirmed
             match drivers::gpu::rtx3060::init_gpu_driver() {
                 Ok(_) => {
                     gpu_ok = true;
                     vga.write_str_color("[GPU] OK  ", vga::Color::Green);
+                    vga_diag(b'G', b'2'); // GPU driver OK
                 }
                 Err(_e) => {
-                    vga.write_str_color("[GPU] FAIL  ", vga::Color::Red);
+                    vga.write_str_color("[GPU] SKIP  ", vga::Color::Yellow);
+                    vga_diag(b'G', b'F'); // GPU driver Failed (non-fatal)
                 }
             }
         }
     }
+    drivers::serial::serial_write("[FastOS] PCI+GPU done\n");
 
     // Keyboard init
     drivers::keyboard::init_keyboard();
     vga.write_str_color("[KB] OK", vga::Color::Green);
     vga.newline();
-
+    vga_diag(b'K', b'A'); // Keyboard OK
     drivers::serial::serial_write("[FastOS] Keyboard ready\n");
 
     // ── Phase 2: Graphics boot screen ───────────────────────────────────
     if is_graphics {
+        vga_diag(b'F', b'B'); // Framebuffer mode
         vga.write_str("[GFX] Boot screen...");
         vga.newline();
 
         let fb = Framebuffer::new(info.framebuffer_addr, info.fb_pitch);
         draw_boot_screen(&fb, gpu_ok);
+        vga_diag(b'B', b'S'); // Boot Screen drawn
 
-        // Wait ~3 seconds (spin loop, no timer needed)
+        // Wait ~3 seconds
         for _ in 0..150_000_000u32 { core::hint::spin_loop(); }
 
         // ── Phase 3: Shell ──────────────────────────────────────────────
+        vga_diag(b'S', b'H'); // Shell starting
         let mut con = Console::new(info.framebuffer_addr, info.fb_pitch);
         con.clear();
         shell::run(&mut con);
     } else {
+        vga_diag(b'T', b'X'); // Text mode
         vga.newline();
-        vga.write_str_color("FastOS initialized! (VGA text, no shell)", vga::Color::LightGreen);
+        vga.write_str_color("FastOS v0.4.0 ready! (VGA text, no shell)", vga::Color::LightGreen);
     }
 
     halt_loop();
