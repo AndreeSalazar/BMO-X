@@ -191,14 +191,99 @@ if ($img[$kernelOffset] -eq 0 -and $img[$kernelOffset+1] -eq 0 -and $img[$kernel
 
 Write-Host "[5/5] Verification passed" -ForegroundColor Green
 
+# ── Step 6: Export USB_boot folder ────────────────────────────────────────────
+Write-Host "[6/6] Exporting to USB_boot folder..." -ForegroundColor Cyan
+
+$usbDir = "$Root\USB_boot"
+if (!(Test-Path $usbDir)) {
+    New-Item -Path $usbDir -ItemType Directory -Force | Out-Null
+}
+
+Copy-Item $imgPath "$usbDir\fastos.img" -Force
+
+# Copy flash script for convenience
+if (Test-Path "$Root\flash_usb.ps1") {
+    Copy-Item "$Root\flash_usb.ps1" "$usbDir\flash_usb.ps1" -Force
+}
+
+# Create README with instructions
+$buildDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+$readme = @"
+======================================================
+  FastOS - USB Boot Image
+======================================================
+
+  Image:   fastos.img ($([math]::Round($imgSize/1024))KB)
+  Built:   $buildDate
+  Target:  Ryzen 5 5600X + RTX 3060 12G
+
+------------------------------------------------------
+  HOW TO FLASH TO USB
+------------------------------------------------------
+
+  Option 1 - PowerShell (included script):
+    .\flash_usb.ps1 -DiskNumber <N> -Partition 3
+
+  Option 2 - dd (Linux/WSL):
+    sudo dd if=fastos.img of=/dev/sdX bs=512
+
+  Option 3 - Rufus:
+    Select fastos.img, write in "DD Image" mode
+
+  IMPORTANT: Use a USB 2.0 port if possible.
+  Some UEFI CSM implementations have issues with
+  legacy boot from USB 3.0 ports.
+
+------------------------------------------------------
+  MEMORY MAP (bare metal)
+------------------------------------------------------
+  0x007C00          MBR (Stage1)
+  0x007E00          Stage2
+  0x010000          Kernel load buffer (128KB)
+  0x100000 (1MB)    Kernel final location
+  0x400000 (4MB)    DMA buffer pool
+  0x800000 (8MB)    Stack (grows down)
+
+------------------------------------------------------
+  TROUBLESHOOTING
+------------------------------------------------------
+  Q: Only see "Stage1: MBR loaded" repeated?
+  A: Stage2 may not be loading. Check:
+     - USB is formatted correctly (raw image, not partition)
+     - Try a different USB port (prefer USB 2.0)
+     - Check BIOS: enable CSM/Legacy Boot
+
+  Q: See "S2" at bottom-left of screen?
+  A: Stage2 code IS reached but crashes before printing.
+     This is a CPU/memory init issue - report the exact
+     screen contents.
+
+  Q: See "NO LBA EXTENSIONS"?
+  A: Your BIOS doesn't support INT 13h extended reads.
+     This is very rare on modern hardware.
+
+  Q: See "STAGE2 DATA INVALID"?
+  A: INT 13h claimed success but loaded wrong data.
+     Try re-flashing the USB drive.
+
+======================================================
+"@
+
+Set-Content "$usbDir\README.txt" -Value $readme -Encoding UTF8
+
+Write-Host "[6/6] USB_boot folder ready!" -ForegroundColor Green
+Write-Host "      Path: $usbDir" -ForegroundColor DarkGray
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host "  BUILD COMPLETE" -ForegroundColor Green
 Write-Host "" -ForegroundColor Green
 Write-Host "  Output: fastos.img ($([math]::Round($imgSize/1024))KB)" -ForegroundColor Green
+Write-Host "  USB:    USB_boot\fastos.img (ready to flash)" -ForegroundColor Green
 Write-Host "" -ForegroundColor Green
 Write-Host "  Flash to USB:" -ForegroundColor Green
+Write-Host "    cd USB_boot" -ForegroundColor Green
 Write-Host "    .\flash_usb.ps1 -DiskNumber <N> -Partition 3" -ForegroundColor Green
 Write-Host "" -ForegroundColor Green
 Write-Host "  Memory map (bare metal):" -ForegroundColor Green

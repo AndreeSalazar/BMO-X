@@ -41,6 +41,16 @@ print_string_16:
     ret
 
 stage2_start:
+    ; ── Ultra-early VGA diagnostic ───────────────────────────────────────
+    ; Write "S2" directly to VGA text buffer at bottom-left (row 24).
+    ; This proves Stage2 code is executing, even if INT 10h or segments
+    ; are broken. If you see "S2" on screen but no Stage2 messages,
+    ; the crash is happening between here and the first print_string_16.
+    mov ax, 0xB800
+    mov es, ax
+    mov word [es:3840], 0x4F53      ; 'S' white-on-red, row 24, col 0
+    mov word [es:3842], 0x4F32      ; '2' white-on-red, row 24, col 1
+
     ; ── Phase 1: 16-bit Real Mode ────────────────────────────────────────
 
     cli
@@ -76,15 +86,41 @@ stage2_start:
     mov si, msg_mem_ok
     call print_string_16
 
-    ; Load kernel to 0x10000 (below 1MB, via BIOS)
+    ; ── Load kernel in chunks (64 sectors / 32KB per INT 13h call) ───────
+    ; Total: 4 × 64 = 256 sectors = 128KB loaded to physical 0x10000.
+    ; Chunked loading avoids BIOS limitations with large sector counts
+    ; and prevents 64KB segment boundary wrapping issues.
     mov si, msg_loading_kernel
     call print_string_16
 
+    ; Initialize DAP for first chunk
+    mov word [dap_k_count], 64
+    mov word [dap_k_offset], 0x0000
+    mov word [dap_k_seg], 0x1000          ; Segment 0x1000 → phys 0x10000
+    mov dword [dap_k_lba], 33             ; LBA 33 (after MBR + Stage2)
+    mov dword [dap_k_lba + 4], 0
+
+    mov cx, 4                              ; 4 chunks
+.load_kernel_loop:
+    push cx
     mov ah, 0x42
     mov dl, [stage2_boot_drive]
     mov si, dap_kernel
     int 0x13
-    jc .kernel_load_err
+    jc .kernel_chunk_err
+
+    ; Progress indicator
+    mov ah, 0x0E
+    mov al, '.'
+    mov bx, 0x0007
+    int 0x10
+
+    ; Advance DAP for next chunk: segment += 0x800 (+32KB), LBA += 64
+    add word [dap_k_seg], 0x800
+    add dword [dap_k_lba], 64
+
+    pop cx
+    loop .load_kernel_loop
 
     mov si, msg_kernel_loaded
     call print_string_16
@@ -103,6 +139,8 @@ stage2_start:
 
     jmp GDT32_CODE_SEG:protected_mode_entry
 
+.kernel_chunk_err:
+    pop cx                                 ; Balance push cx
 .kernel_load_err:
     mov si, msg_kernel_err
     call print_string_16
@@ -127,10 +165,10 @@ align 4
 dap_kernel:
     db 0x10
     db 0
-    dw 256                          ; 128KB
-    dw 0x0000
-    dw 0x1000                       ; Segment 0x1000 → phys 0x10000
-    dq 33                           ; LBA 33 (after MBR+stage2)
+dap_k_count:  dw 64                      ; sectors per chunk (64 × 512 = 32KB)
+dap_k_offset: dw 0x0000
+dap_k_seg:    dw 0x1000                   ; initial segment → phys 0x10000
+dap_k_lba:    dq 33                       ; initial LBA (after MBR + Stage2)
 
 ; ── 32-bit Protected Mode ────────────────────────────────────────────────
 
