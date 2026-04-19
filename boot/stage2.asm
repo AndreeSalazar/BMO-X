@@ -21,6 +21,7 @@ jmp stage2_start
 %include "memory.asm"
 %include "cpucheck.asm"
 %include "vbe.asm"
+%include "payload_loader.asm"
 
 KERNEL_LOAD_ADDR equ 0x100000
 KERNEL_SECTORS   equ 256
@@ -128,6 +129,9 @@ stage2_start:
 
     mov si, msg_kernel_loaded
     call print_string_16
+
+    ; ── Load external modules (GSP Firmware) ─────────────────────────────
+    call load_payloads
 
     ; ── VBE: Set 1920x1080x32bpp mode ────────────────────────────────────
     ; Must be done in real mode (INT 10h VBE requires BIOS).
@@ -388,6 +392,12 @@ long_mode_entry:
     mov qword [0x9138], rax                ; fb_pitch
     movzx eax, byte [vbe_mode_ok]
     mov qword [0x9140], rax                ; vbe_mode (1=graphics, 0=text)
+
+    ; Extended boot info: Payload Modules
+    mov eax, dword [payload_base]
+    mov qword [0x9148], rax                ; gpu_fw_addr
+    mov eax, dword [payload_size]
+    mov qword [0x9150], rax                ; gpu_fw_size
 
     ; ── Jump to Rust! ────────────────────────────────────────────────────
 

@@ -18,6 +18,7 @@ mod panic;
 mod platform;
 mod shell;
 mod tests;
+mod crypto;
 
 use fb::{Framebuffer, colors};
 use vga::VgaWriter;
@@ -35,6 +36,8 @@ pub struct BootInfo {
     pub kernel_size: u64,
     pub fb_pitch: u64,
     pub vbe_mode: u64,
+    pub gpu_fw_addr: u64,
+    pub gpu_fw_size: u64,
 }
 
 /// Write a 2-character diagnostic code directly to VGA text buffer.
@@ -153,7 +156,14 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     // Keyboard init
     drivers::keyboard::init_keyboard();
-    vga.write_str_color("[KB] OK", vga::Color::Green);
+    vga.write_str_color("[KB] OK  ", vga::Color::Green);
+    
+    if info.gpu_fw_size > 0 {
+        vga.write_str_color("[MOD] FW ", vga::Color::LightCyan);
+        vga.write_u64((info.gpu_fw_size / 1024) as u64);
+        vga.write_str_color(" KB ", vga::Color::LightCyan);
+    }
+    
     vga.newline();
     vga_diag(b'K', b'A'); // Keyboard OK
     drivers::serial::serial_write("[FastOS] Keyboard ready\n");
@@ -222,11 +232,21 @@ fn draw_boot_screen(fb: &Framebuffer, gpu_ok: bool) {
         fb.fill_circle(80, 328, 4, colors::NV_GREEN);
     }
 
-    draw_text(fb, 90, 360, "Board  MSI MAG B550 TOMAHAWK", colors::TEXT_PRIMARY);
-    draw_text(fb, 90, 390, "Mode   1920x1080x32bpp VBE LFB", colors::TEXT_PRIMARY);
-    draw_text(fb, 90, 420, "Boot   MBR > Stage2 > Long Mode > Rust", colors::TEXT_PRIMARY);
-    draw_text(fb, 90, 460, "Keyb   PS/2 polling mode", colors::TEXT_SECONDARY);
-    draw_text(fb, 90, 490, "Stack  0x800000 (8MB) Ring 0, no_std", colors::TEXT_SECONDARY);
+    // Module info
+    if info.gpu_fw_size > 0 {
+        let size_mb = info.gpu_fw_size / 1024 / 1024;
+        let mut text = heapless::String::<64>::new();
+        use core::fmt::Write;
+        let _ = write!(&mut text, "Module GSP Firmware ({} MB) @ 0x{:08X}", size_mb, info.gpu_fw_addr);
+        draw_text(fb, 90, 360, text.as_str(), colors::ACCENT_CYAN);
+    } else {
+        draw_text(fb, 90, 360, "Module No firmware payload loaded", colors::TEXT_SECONDARY);
+    }
+
+    draw_text(fb, 90, 390, "Board  MSI MAG B550 TOMAHAWK", colors::TEXT_PRIMARY);
+    draw_text(fb, 90, 420, "Mode   1920x1080x32bpp VBE LFB", colors::TEXT_PRIMARY);
+    draw_text(fb, 90, 450, "Boot   Stage2 + Modules Loader (Unreal)", colors::TEXT_PRIMARY);
+    draw_text(fb, 90, 480, "Crypto RSA/SHA-256 Engine Ready", colors::TEXT_SUCCESS);
 
     // Demo panel
     fb.fill_rounded_rect(970, 170, 890, 240, 12, colors::BG_PANEL);

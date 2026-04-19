@@ -134,16 +134,29 @@ Write-Host "[4/5] Building disk image..." -ForegroundColor Cyan
 # Layout:
 #   LBA 0       : stage1.bin (512B MBR)
 #   LBA 1..32   : stage2.bin (16KB, 32 sectors)
-#   LBA 33..N   : kernel.bin (up to 128KB, 256 sectors)
-#   Pad to 1MB total image
+#   LBA 33..999 : kernel.bin (up to 480KB)
+#   LBA 1000..N : Payload Modules (e.g. gsp_ga10x.bin)
 
 $stage1 = [System.IO.File]::ReadAllBytes("$Root\boot\stage1.bin")
 $stage2 = [System.IO.File]::ReadAllBytes("$Root\boot\stage2.bin")
 $kernel = [System.IO.File]::ReadAllBytes($kernelBin)
 
-# Image size: at least 1MB, or larger if kernel needs it
-$kernelEnd = 33 * 512 + $kernel.Length
-$imgSize = [math]::Max(1MB, (([math]::Ceiling($kernelEnd / 512) + 1) * 512))
+# Check for firmware module
+$fwPath = "$Root\boot\firmware\gsp_ga10x.bin"
+$fwData = $null
+if (Test-Path $fwPath) {
+    Write-Host "      Detected GSP Firmware module at $fwPath" -ForegroundColor DarkGray
+    $fwData = [System.IO.File]::ReadAllBytes($fwPath)
+} else {
+    Write-Host "      Generating dummy 512KB GSP Firmware module..." -ForegroundColor DarkGray
+    $fwData = New-Object byte[] (512 * 1024)
+    # Put a magic signature
+    $fwData[0] = 0x7F; $fwData[1] = 0x45; $fwData[2] = 0x4C; $fwData[3] = 0x46; # ELF
+    $fwData[4] = 0x55; $fwData[5] = 0x41; $fwData[6] = 0x41; # UAA
+}
+
+# Image size: 1000 sectors (offset 512,000) + Firmware size
+$imgSize = 1000 * 512 + $fwData.Length
 # Round up to next 512 boundary
 $imgSize = [math]::Ceiling($imgSize / 512) * 512
 
@@ -159,14 +172,19 @@ $img = New-Object byte[] $imgSize
 $kernelOffset = 33 * 512
 [Array]::Copy($kernel, 0, $img, $kernelOffset, $kernel.Length)
 
+# Module 1 (sector 1000, offset 1000*512 = 512000)
+$fwOffset = 1000 * 512
+[Array]::Copy($fwData, 0, $img, $fwOffset, $fwData.Length)
+
 $imgPath = "$Root\fastos.img"
 [System.IO.File]::WriteAllBytes($imgPath, $img)
 
 Write-Host "      Image layout:" -ForegroundColor DarkGray
 Write-Host "        LBA  0      : MBR         (512B)" -ForegroundColor DarkGray
 Write-Host "        LBA  1-32   : Stage2      ($($stage2.Length)B)" -ForegroundColor DarkGray
-Write-Host "        LBA 33-$([math]::Ceiling($kernel.Length/512)+32)   : Kernel      ($($kernel.Length)B)" -ForegroundColor DarkGray
-Write-Host "        Total image : $([math]::Round($imgSize/1024))KB" -ForegroundColor DarkGray
+Write-Host "        LBA 33-999  : Kernel      ($($kernel.Length)B)" -ForegroundColor DarkGray
+Write-Host "        LBA 1000+   : Mod 1 FW    ($($fwData.Length)B)" -ForegroundColor DarkGray
+Write-Host "        Total image : $([math]::Round($imgSize/1024, 1)) KB" -ForegroundColor DarkGray
 
 Write-Host "[4/5] fastos.img ready" -ForegroundColor Green
 
