@@ -1,5 +1,5 @@
-# ============================================================================
-# FastOS — Flash to USB Partition 3 (Bare Metal)
+﻿# ============================================================================
+# FastOS â€" Flash to USB Partition 3 (Bare Metal)
 # ============================================================================
 # Writes fastos.img raw to partition 3 of a USB disk.
 # MUST RUN AS ADMINISTRATOR.
@@ -21,15 +21,15 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 
-# ── Check admin ──────────────────────────────────────────────────────────────
+# â"€â"€ Check admin â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (!$isAdmin) {
     Write-Host "ERROR: Must run as Administrator" -ForegroundColor Red
-    Write-Host "  Right-click PowerShell → Run as Administrator" -ForegroundColor Yellow
+    Write-Host "  Right-click PowerShell â†’ Run as Administrator" -ForegroundColor Yellow
     exit 1
 }
 
-# ── List disks ───────────────────────────────────────────────────────────────
+# â"€â"€ List disks â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 if ($ListDisks) {
     Write-Host ""
     Write-Host "Available disks:" -ForegroundColor Cyan
@@ -46,7 +46,7 @@ if ($DiskNumber -lt 0) {
     exit 1
 }
 
-# ── Find image ───────────────────────────────────────────────────────────────
+# â"€â"€ Find image â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 if ($ImagePath -eq "") { $ImagePath = "$Root\fastos.img" }
 if (!(Test-Path $ImagePath)) {
     Write-Host "ERROR: $ImagePath not found. Run .\build.ps1 first." -ForegroundColor Red
@@ -62,7 +62,7 @@ if ($sig -ne 0xAA55) {
     exit 1
 }
 
-# ── Validate target ─────────────────────────────────────────────────────────
+# â"€â"€ Validate target â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 $disk = Get-Disk -Number $DiskNumber -ErrorAction SilentlyContinue
 if (!$disk) {
     Write-Host "ERROR: Disk $DiskNumber not found" -ForegroundColor Red
@@ -89,9 +89,9 @@ $partSize = $part.Size
 $partOffset = $part.Offset
 
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  FastOS USB Flash                                            ║" -ForegroundColor Cyan
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "â•"â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—" -ForegroundColor Cyan
+Write-Host "â•‘  FastOS USB Flash                                            â•‘" -ForegroundColor Cyan
+Write-Host "â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Image     : $ImagePath ($([math]::Round($imgSize/1024))KB)" -ForegroundColor White
 Write-Host "  Target    : Disk $DiskNumber, Partition $Partition" -ForegroundColor White
@@ -106,7 +106,7 @@ if ($imgSize -gt $partSize) {
     exit 1
 }
 
-# ── Confirmation ─────────────────────────────────────────────────────────────
+# â"€â"€ Confirmation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 Write-Host "WARNING: This will OVERWRITE partition $Partition on disk $DiskNumber!" -ForegroundColor Red
 Write-Host "         All data on this partition will be DESTROYED." -ForegroundColor Red
 Write-Host ""
@@ -116,7 +116,7 @@ if ($confirm -ne "FLASH") {
     exit 0
 }
 
-# ── Dismount partition ───────────────────────────────────────────────────────
+# â"€â"€ Dismount partition â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 Write-Host ""
 Write-Host "[1/3] Preparing partition..." -ForegroundColor Cyan
 
@@ -135,8 +135,8 @@ remove all dismount
     }
 }
 
-# ── Write image ──────────────────────────────────────────────────────────────
-Write-Host "[2/3] Writing fastos.img → Disk $DiskNumber Partition $Partition..." -ForegroundColor Cyan
+# â"€â"€ Write image â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+Write-Host "[2/3] Writing fastos.img â†’ Disk $DiskNumber Partition $Partition..." -ForegroundColor Cyan
 
 # Open physical disk for raw write
 $diskPath = "\\.\PhysicalDrive$DiskNumber"
@@ -168,7 +168,7 @@ finally {
 
 Write-Host "[2/3] Write OK" -ForegroundColor Green
 
-# ── Verify ───────────────────────────────────────────────────────────────────
+# â"€â"€ Verify â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 if ($Verify) {
     Write-Host "[3/3] Verifying (read-back)..." -ForegroundColor Cyan
 
@@ -205,25 +205,26 @@ if ($Verify) {
     Write-Host "[3/3] Skipped verify (use -Verify to enable)" -ForegroundColor DarkGray
 }
 
-# ── Done ─────────────────────────────────────────────────────────────────────
+# â"€â"€ Done â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║  FLASH COMPLETE                                              ║" -ForegroundColor Green
-Write-Host "║                                                              ║" -ForegroundColor Green
-Write-Host "║  Boot: Set BIOS to boot from USB (Legacy/CSM mode)           ║" -ForegroundColor Green
-Write-Host "║  Expected VGA output:                                        ║" -ForegroundColor Green
-Write-Host "║    [FastOS] Stage1: MBR loaded                               ║" -ForegroundColor Green
-Write-Host "║    [FastOS] Stage2: starting                                 ║" -ForegroundColor Green
-Write-Host "║    [FastOS] CPUID: OK                                        ║" -ForegroundColor Green
-Write-Host "║    [FastOS] Long Mode: OK                                    ║" -ForegroundColor Green
-Write-Host "║    [FastOS] Protected Mode OK                                ║" -ForegroundColor Green
-Write-Host "║    [FastOS] 64-bit Long Mode: ACTIVE                         ║" -ForegroundColor Green
-Write-Host "║    [FastOS] SSE4.2+AVX2+FMA3: READY                          ║" -ForegroundColor Green
-Write-Host "║    FastOS v0.1.0 — Ryzen 5 5600X + RTX 3060 12G              ║" -ForegroundColor Green
-Write-Host "║    [OK] Boot info valid                                      ║" -ForegroundColor Green
-Write-Host "║    [PCI] Scanning bus...                                     ║" -ForegroundColor Green
-Write-Host "║    [GPU] Vendor:Device = 0x10DE:0x2504                       ║" -ForegroundColor Green
-Write-Host "║    [GPU] GA106 confirmed — initializing driver...            ║" -ForegroundColor Green
-Write-Host "║    [GPU] READY  VRAM: 12288 MB  Chip: 0x...                  ║" -ForegroundColor Green
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "â•"â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—" -ForegroundColor Green
+Write-Host "â•‘  FLASH COMPLETE                                              â•‘" -ForegroundColor Green
+Write-Host "â•‘                                                              â•‘" -ForegroundColor Green
+Write-Host "â•‘  Boot: Set BIOS to boot from USB (Legacy/CSM mode)           â•‘" -ForegroundColor Green
+Write-Host "â•‘  Expected VGA output:                                        â•‘" -ForegroundColor Green
+Write-Host "â•‘    [FastOS] Stage1: MBR loaded                               â•‘" -ForegroundColor Green
+Write-Host "â•‘    [FastOS] Stage2: starting                                 â•‘" -ForegroundColor Green
+Write-Host "â•‘    [FastOS] CPUID: OK                                        â•‘" -ForegroundColor Green
+Write-Host "â•‘    [FastOS] Long Mode: OK                                    â•‘" -ForegroundColor Green
+Write-Host "â•‘    [FastOS] Protected Mode OK                                â•‘" -ForegroundColor Green
+Write-Host "â•‘    [FastOS] 64-bit Long Mode: ACTIVE                         â•‘" -ForegroundColor Green
+Write-Host "â•‘    [FastOS] SSE4.2+AVX2+FMA3: READY                          â•‘" -ForegroundColor Green
+Write-Host "â•‘    FastOS v0.1.0 â€" Ryzen 5 5600X + RTX 3060 12G              â•‘" -ForegroundColor Green
+Write-Host "â•‘    [OK] Boot info valid                                      â•‘" -ForegroundColor Green
+Write-Host "â•‘    [PCI] Scanning bus...                                     â•‘" -ForegroundColor Green
+Write-Host "â•‘    [GPU] Vendor:Device = 0x10DE:0x2504                       â•‘" -ForegroundColor Green
+Write-Host "â•‘    [GPU] GA106 confirmed â€" initializing driver...            â•‘" -ForegroundColor Green
+Write-Host "â•‘    [GPU] READY  VRAM: 12288 MB  Chip: 0x...                  â•‘" -ForegroundColor Green
+Write-Host "â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•" -ForegroundColor Green
 Write-Host ""
+

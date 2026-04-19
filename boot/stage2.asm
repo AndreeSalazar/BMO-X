@@ -9,6 +9,14 @@
 [BITS 16]
 [ORG 0x7E00]
 
+; ── Entry vector ─────────────────────────────────────────────────────────
+; BYTE 0 of stage2.bin — Stage1 jumps here (0x7E00).
+; Must be the absolute first instruction. Everything else comes after.
+; Fagging-Scale: from this single jmp we bootstrap 16→32→64 bit with ALL
+; Zen 3 extensions (SSE4.2, AVX2, FMA3, AES-NI, SHA, BMI1/2).
+jmp stage2_start
+
+; ── Includes (data tables + subroutines, NOT entry points) ──────────────
 %include "gdt.asm"
 %include "a20.asm"
 %include "memory.asm"

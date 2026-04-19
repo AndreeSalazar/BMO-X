@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # FastOS — Complete Build Pipeline
 # ============================================================================
 # NASM bootloader → Rust kernel (release) → Raw binary → Disk image
@@ -15,10 +15,10 @@ $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  FastOS Build — NASM + Rust → Bare Metal Image               ║" -ForegroundColor Cyan
-Write-Host "║  Target: Ryzen 5 5600X + RTX 3060 12G | Ring 0               ║" -ForegroundColor Cyan
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
+Write-Host "  FastOS Build - NASM + Rust -> Bare Metal Image" -ForegroundColor Cyan
+Write-Host "  Target: Ryzen 5 5600X + RTX 3060 12G | Ring 0" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # ── Clean ────────────────────────────────────────────────────────────────────
@@ -65,8 +65,12 @@ Write-Host "[2/5] Building Rust kernel ($BuildProfile)..." -ForegroundColor Cyan
 Push-Location "$Root\kernel"
 
 # Ensure nightly toolchain with correct target
+# Temporarily allow stderr output (Rust warnings) without PowerShell treating them as errors
+$savedEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $cargoOutput = & rustup run nightly cargo build $CargoFlag 2>&1
 $cargoExit = $LASTEXITCODE
+$ErrorActionPreference = $savedEAP
 $cargoOutput | ForEach-Object {
     $line = $_.ToString()
     if ($line -match "error\[") {
@@ -189,20 +193,21 @@ Write-Host "[5/5] Verification passed" -ForegroundColor Green
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║  BUILD COMPLETE                                              ║" -ForegroundColor Green
-Write-Host "║                                                              ║" -ForegroundColor Green
-Write-Host "║  Output: fastos.img ($([math]::Round($imgSize/1024))KB)      ║" -ForegroundColor Green
-Write-Host "║                                                              ║" -ForegroundColor Green
-Write-Host "║  Flash to USB:                                               ║" -ForegroundColor Green
-Write-Host "║    .\flash_usb.ps1 -DiskNumber <N> -Partition 3              ║" -ForegroundColor Green
-Write-Host "║                                                              ║" -ForegroundColor Green
-Write-Host "║  Memory map (bare metal):                                    ║" -ForegroundColor Green
-Write-Host "║    0x007C00          MBR (stage1)                            ║" -ForegroundColor Green
-Write-Host "║    0x007E00          Stage2                                  ║" -ForegroundColor Green
-Write-Host "║    0x010000          Kernel load buffer                      ║" -ForegroundColor Green
-Write-Host "║    0x100000 (1MB)    Kernel final location                   ║" -ForegroundColor Green
-Write-Host "║    0x400000 (4MB)    DMA buffer pool                         ║" -ForegroundColor Green
-Write-Host "║    0x800000 (8MB)    Stack (grows down)                      ║" -ForegroundColor Green
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
+Write-Host "  BUILD COMPLETE" -ForegroundColor Green
+Write-Host "" -ForegroundColor Green
+Write-Host "  Output: fastos.img ($([math]::Round($imgSize/1024))KB)" -ForegroundColor Green
+Write-Host "" -ForegroundColor Green
+Write-Host "  Flash to USB:" -ForegroundColor Green
+Write-Host "    .\flash_usb.ps1 -DiskNumber <N> -Partition 3" -ForegroundColor Green
+Write-Host "" -ForegroundColor Green
+Write-Host "  Memory map (bare metal):" -ForegroundColor Green
+Write-Host "    0x007C00          MBR (stage1)" -ForegroundColor Green
+Write-Host "    0x007E00          Stage2" -ForegroundColor Green
+Write-Host "    0x010000          Kernel load buffer" -ForegroundColor Green
+Write-Host "    0x100000 (1MB)    Kernel final location" -ForegroundColor Green
+Write-Host "    0x400000 (4MB)    DMA buffer pool" -ForegroundColor Green
+Write-Host "    0x800000 (8MB)    Stack (grows down)" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
+

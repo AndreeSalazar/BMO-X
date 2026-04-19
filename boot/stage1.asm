@@ -33,7 +33,8 @@ stage1_start:
     mov si, msg_stage2
     call print_string_16
 
-    ; Jump to stage2
+    ; Jump to stage2 (restore DL — some BIOS don't preserve it after INT 13h)
+    mov dl, [boot_drive]
     jmp 0x0000:0x7E00
 
 disk_error:
