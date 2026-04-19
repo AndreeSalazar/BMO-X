@@ -3,3 +3,6 @@
 pub mod cpu;
 pub mod paging;
 pub mod acpi;
+pub mod idt;
+pub mod pic;
+pub mod pit;

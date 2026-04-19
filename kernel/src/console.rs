@@ -1,0 +1,182 @@
+//! Console — text display over framebuffer with scroll and cursor.
+
+use crate::fb::{Framebuffer, colors};
+use crate::vga;
+
+const CHAR_W: usize = 8;
+const CHAR_H: usize = 16;
+const COLS: usize = 1920 / CHAR_W;  // 240
+const ROWS: usize = 1080 / CHAR_H;  // 67
+
+/// Console state.
+pub struct Console {
+    col: usize,
+    row: usize,
+    fg: u32,
+    bg: u32,
+    fb_addr: usize,
+    fb_pitch: usize,
+}
+
+impl Console {
+    pub fn new(fb_addr: u64, fb_pitch: u64) -> Self {
+        Self {
+            col: 0,
+            row: 0,
+            fg: colors::TEXT_PRIMARY,
+            bg: colors::BG_DARK,
+            fb_addr: fb_addr as usize,
+            fb_pitch: fb_pitch as usize,
+        }
+    }
+
+    pub fn set_color(&mut self, fg: u32) {
+        self.fg = fg;
+    }
+
+    pub fn set_colors(&mut self, fg: u32, bg: u32) {
+        self.fg = fg;
+        self.bg = bg;
+    }
+
+    pub fn clear(&mut self) {
+        let fb = self.fb();
+        fb.clear(self.bg);
+
+        // Top accent line
+        fb.gradient_h(0, 0, 1920, 2, colors::NV_GREEN, colors::ACCENT_CYAN);
+
+        self.col = 0;
+        self.row = 1; // Start below accent line
+    }
+
+    pub fn print(&mut self, s: &str) {
+        for b in s.bytes() {
+            self.put_char(b);
+        }
+    }
+
+    pub fn println(&mut self, s: &str) {
+        self.print(s);
+        self.newline();
+    }
+
+    pub fn print_colored(&mut self, s: &str, fg: u32) {
+        let old = self.fg;
+        self.fg = fg;
+        self.print(s);
+        self.fg = old;
+    }
+
+    pub fn put_char(&mut self, ch: u8) {
+        match ch {
+            b'\n' => self.newline(),
+            8 => self.backspace(),
+            b'\t' => {
+                let spaces = 4 - (self.col % 4);
+                for _ in 0..spaces { self.put_char(b' '); }
+            }
+            _ => {
+                if self.row >= ROWS { self.scroll(); }
+                self.draw_char(self.col, self.row, ch, self.fg, self.bg);
+                self.col += 1;
+                if self.col >= COLS { self.newline(); }
+            }
+        }
+    }
+
+    pub fn newline(&mut self) {
+        self.col = 0;
+        self.row += 1;
+        if self.row >= ROWS { self.scroll(); }
+    }
+
+    pub fn backspace(&mut self) {
+        if self.col > 0 {
+            self.col -= 1;
+            self.draw_char(self.col, self.row, b' ', self.fg, self.bg);
+        }
+    }
+
+    /// Print a u64 as decimal.
+    pub fn print_u64(&mut self, mut val: u64) {
+        if val == 0 { self.put_char(b'0'); return; }
+        let mut buf = [0u8; 20];
+        let mut i = 0;
+        while val > 0 { buf[i] = b'0' + (val % 10) as u8; val /= 10; i += 1; }
+        while i > 0 { i -= 1; self.put_char(buf[i]); }
+    }
+
+    /// Print a u32 as hex.
+    pub fn print_hex32(&mut self, val: u32) {
+        const HEX: &[u8] = b"0123456789ABCDEF";
+        self.print("0x");
+        for &shift in &[28u32, 24, 20, 16, 12, 8, 4, 0] {
+            self.put_char(HEX[((val >> shift) & 0xF) as usize]);
+        }
+    }
+
+    // ── Internal ────────────────────────────────────────────────────────
+
+    fn fb(&self) -> Framebuffer {
+        Framebuffer::new(self.fb_addr as u64, self.fb_pitch as u64)
+    }
+
+    fn draw_char(&self, col: usize, row: usize, ch: u8, fg: u32, bg: u32) {
+        let glyph = vga::get_glyph(ch);
+        let base_x = col * CHAR_W;
+        let base_y = row * CHAR_H;
+        let buf = self.fb_addr as *mut u32;
+        let pitch_px = self.fb_pitch / 4;
+
+        for gy in 0..CHAR_H {
+            let bits = glyph[gy];
+            for gx in 0..CHAR_W {
+                let px = if bits & (0x80 >> gx) != 0 { fg } else { bg };
+                let off = (base_y + gy) * pitch_px + (base_x + gx);
+                unsafe { buf.add(off).write_volatile(px); }
+            }
+        }
+    }
+
+    fn scroll(&mut self) {
+        let buf = self.fb_addr as *mut u32;
+        let pitch_px = self.fb_pitch / 4;
+
+        // Copy all rows up by one character height
+        let copy_rows = (ROWS - 1) * CHAR_H;
+        for py in 0..copy_rows {
+            for px in 0..1920usize {
+                unsafe {
+                    let src = buf.add((py + CHAR_H) * pitch_px + px).read_volatile();
+                    buf.add(py * pitch_px + px).write_volatile(src);
+                }
+            }
+        }
+
+        // Clear bottom row
+        let bg = self.bg;
+        let last_y = copy_rows;
+        for py in 0..CHAR_H {
+            for px in 0..1920usize {
+                unsafe { buf.add((last_y + py) * pitch_px + px).write_volatile(bg); }
+            }
+        }
+
+        self.row = ROWS - 1;
+    }
+
+    /// Draw a simple cursor block at current position.
+    pub fn draw_cursor(&self, visible: bool) {
+        let color = if visible { self.fg } else { self.bg };
+        let x = self.col * CHAR_W;
+        let y = self.row * CHAR_H + CHAR_H - 2;
+        let buf = self.fb_addr as *mut u32;
+        let pitch_px = self.fb_pitch / 4;
+        for px in 0..CHAR_W {
+            for py in 0..2usize {
+                unsafe { buf.add((y + py) * pitch_px + x + px).write_volatile(color); }
+            }
+        }
+    }
+}
