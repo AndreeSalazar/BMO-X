@@ -1,4 +1,4 @@
-//! FastOS Kernel - Entry Point
+//! FastOS Kernel v0.2.0 - Entry Point
 //!
 //! Receives control from stage2 in 64-bit long mode, Ring 0.
 //! SSE/AVX2 initialized. RDI = pointer to BootInfo.
@@ -40,7 +40,6 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     // Validate boot info early
     if info.magic != 0xFA5705 {
-        // Fallback VGA text
         let mut vga = VgaWriter::new();
         vga.clear();
         vga.write_str_color("ERROR: Invalid boot magic!", vga::Color::Red);
@@ -62,7 +61,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     drivers::serial::serial_write("[FastOS] Kernel starting\n");
 
     // CPU
-    let cpu = arch::cpu::detect_cpu();
+    let _cpu = arch::cpu::detect_cpu();
     vga.write_str("[CPU] Zen 3 OK  ");
 
     // PCI + GPU
@@ -86,70 +85,39 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         }
     }
 
-    // ── Phase 2: Initialize interrupts ──────────────────────────────────
-    vga.write_str("[IRQ] ");
-
-    // PIC: remap IRQs to vectors 32-47
-    arch::pic::init_pic();
-
-    // PIT: 100 Hz timer
-    arch::pit::init_pit();
-
-    // IDT: interrupt descriptor table
-    arch::idt::init_idt();
-
-    // Register PIT tick handler
-    arch::idt::register_irq(0, arch::pit::tick);
-
-    // Keyboard driver
+    // Keyboard init (polling mode — no interrupts)
     drivers::keyboard::init_keyboard();
-
-    // Enable IRQ0 (timer) + IRQ1 (keyboard)
-    arch::pic::set_mask_keyboard_timer();
-
-    // Enable interrupts
-    unsafe { core::arch::asm!("sti"); }
-
-    vga.write_str_color("OK", vga::Color::Green);
+    vga.write_str_color("[KB] OK", vga::Color::Green);
     vga.newline();
 
-    drivers::serial::serial_write("[FastOS] Interrupts enabled, keyboard ready\n");
+    drivers::serial::serial_write("[FastOS] Keyboard ready (polling)\n");
 
-    // ── Phase 3: Graphics boot screen ───────────────────────────────────
+    // ── Phase 2: Graphics boot screen ───────────────────────────────────
     if is_graphics {
-        vga.write_str("[GFX] Drawing boot screen...");
+        vga.write_str("[GFX] Boot screen...");
         vga.newline();
 
         let fb = Framebuffer::new(info.framebuffer_addr, info.fb_pitch);
-        draw_boot_screen(&fb, &cpu, gpu_ok);
+        draw_boot_screen(&fb, gpu_ok);
 
-        // Show boot screen for 3 seconds
-        let start = arch::pit::ticks();
-        while arch::pit::ticks() - start < 300 {
-            unsafe { core::arch::asm!("hlt"); }
-        }
+        // Wait ~3 seconds (spin loop, no timer needed)
+        for _ in 0..150_000_000u32 { core::hint::spin_loop(); }
 
-        // ── Phase 4: Shell ──────────────────────────────────────────────
+        // ── Phase 3: Shell ──────────────────────────────────────────────
         let mut con = Console::new(info.framebuffer_addr, info.fb_pitch);
         con.clear();
         shell::run(&mut con);
     } else {
         vga.newline();
-        vga.write_str_color("FastOS kernel initialized!", vga::Color::LightGreen);
-        vga.newline();
-        vga.write_str("No VBE. Shell requires graphics mode.");
+        vga.write_str_color("FastOS initialized! (VGA text, no shell)", vga::Color::LightGreen);
     }
 
     halt_loop();
 }
 
-// ── Boot Screen (same as before, simplified) ────────────────────────────────
+// ── Boot Screen Graphics ────────────────────────────────────────────────────
 
-fn draw_boot_screen(
-    fb: &Framebuffer,
-    _cpu: &arch::cpu::CpuFeatures,
-    gpu_ok: bool,
-) {
+fn draw_boot_screen(fb: &Framebuffer, gpu_ok: bool) {
     fb.gradient_v(0, 0, 1920, 1080, 0xFF080C12, 0xFF0D1117);
 
     // Top accent
@@ -159,7 +127,7 @@ fn draw_boot_screen(
     fb.fill_rounded_rect(60, 40, 1800, 100, 12, colors::BG_PANEL);
     fb.draw_rect(60, 40, 1800, 100, colors::BORDER, 1);
 
-    // Logo "F"
+    // Logo
     fb.fill_circle(120, 90, 28, colors::NV_GREEN);
     fb.fill_circle(120, 90, 22, colors::BG_PANEL);
     fb.fill_rect(112, 72, 4, 36, colors::NV_GREEN);
@@ -187,9 +155,8 @@ fn draw_boot_screen(
     draw_text(fb, 90, 360, "Board  MSI MAG B550 TOMAHAWK", colors::TEXT_PRIMARY);
     draw_text(fb, 90, 390, "Mode   1920x1080x32bpp VBE LFB", colors::TEXT_PRIMARY);
     draw_text(fb, 90, 420, "Boot   MBR > Stage2 > Long Mode > Rust", colors::TEXT_PRIMARY);
-    draw_text(fb, 90, 460, "Stack  0x800000 (8MB) Ring 0, no_std", colors::TEXT_SECONDARY);
-    draw_text(fb, 90, 490, "IRQ    PIC 8259A + PIT 100Hz + PS/2 Keyboard", colors::TEXT_SECONDARY);
-    draw_text(fb, 90, 520, "Shell  Interactive console ready", colors::TEXT_SECONDARY);
+    draw_text(fb, 90, 460, "Keyb   PS/2 polling mode", colors::TEXT_SECONDARY);
+    draw_text(fb, 90, 490, "Stack  0x800000 (8MB) Ring 0, no_std", colors::TEXT_SECONDARY);
 
     // Demo panel
     fb.fill_rounded_rect(970, 170, 890, 240, 12, colors::BG_PANEL);
@@ -220,8 +187,6 @@ fn draw_boot_screen(
 
     fb.gradient_h(0, 1077, 1920, 3, colors::ACCENT_CYAN, colors::NV_GREEN);
 }
-
-// ── Text helpers ────────────────────────────────────────────────────────────
 
 fn draw_text(fb: &Framebuffer, x: usize, y: usize, text: &str, color: u32) {
     let mut cx = x;

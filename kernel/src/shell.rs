@@ -4,7 +4,7 @@
 use crate::console::Console;
 use crate::drivers::keyboard;
 use crate::fb::colors;
-use crate::arch::{cpu, pit};
+use crate::arch::cpu;
 
 const MAX_LINE: usize = 512;
 const VERSION: &str = "FastOS v0.2.0";
@@ -264,13 +264,14 @@ fn cmd_meminfo(con: &mut Console) {
 }
 
 fn cmd_uptime(con: &mut Console) {
-    let secs = pit::uptime_secs();
-    let ticks = pit::ticks();
-    con.print("Uptime: ");
-    con.print_u64(secs);
-    con.print(" seconds (");
-    con.print_u64(ticks);
-    con.println(" ticks @ 100 Hz)");
+    let tsc = cpu::rdtsc();
+    // Ryzen 5 5600X base clock ~3.7 GHz, estimate seconds
+    let approx_secs = tsc / 3_700_000_000;
+    con.print("Uptime: ~");
+    con.print_u64(approx_secs);
+    con.print(" seconds (TSC: ");
+    con.print_u64(tsc);
+    con.println(")");
 }
 
 fn cmd_reboot() {

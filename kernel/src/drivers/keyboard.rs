@@ -1,117 +1,59 @@
-//! PS/2 Keyboard Driver — IRQ1, scan code set 1.
+//! PS/2 Keyboard Driver — Polling mode (no IRQ).
 //! Ring 0, direct port I/O to 0x60/0x64.
+//! No interrupts required — reads by polling status register.
 
 use core::arch::asm;
-use core::sync::atomic::{AtomicUsize, Ordering};
 
 const KB_DATA: u16 = 0x60;
 const KB_STATUS: u16 = 0x64;
 
-/// Circular key buffer.
-const BUF_SIZE: usize = 256;
-static mut KEY_BUF: [u8; BUF_SIZE] = [0; BUF_SIZE];
-static BUF_HEAD: AtomicUsize = AtomicUsize::new(0);
-static BUF_TAIL: AtomicUsize = AtomicUsize::new(0);
-
 /// Shift key state.
 static mut SHIFT_HELD: bool = false;
 
-/// Initialize PS/2 keyboard.
+/// Initialize PS/2 keyboard (polling mode — no IRQ needed).
 pub fn init_keyboard() {
-    // Register IRQ1 handler
-    super::super::arch::idt::register_irq(1, keyboard_irq_handler);
-
-    // Flush any pending data
+    // Flush any pending data in the PS/2 buffer
     while inb(KB_STATUS) & 0x01 != 0 {
         inb(KB_DATA);
     }
 }
 
-/// IRQ1 handler — called from IDT.
-fn keyboard_irq_handler() {
+/// Try to read a key (non-blocking). Returns 0 if no key available.
+pub fn try_read_key() -> u8 {
+    // Check if data is available in the PS/2 output buffer
+    if inb(KB_STATUS) & 0x01 == 0 {
+        return 0;
+    }
+
     let scancode = inb(KB_DATA);
 
     // Track shift state
     unsafe {
         match scancode {
-            0x2A | 0x36 => { SHIFT_HELD = true; return; }   // Shift pressed
-            0xAA | 0xB6 => { SHIFT_HELD = false; return; }  // Shift released
+            0x2A | 0x36 => { SHIFT_HELD = true; return 0; }
+            0xAA | 0xB6 => { SHIFT_HELD = false; return 0; }
             _ => {}
         }
     }
 
     // Ignore key releases (bit 7 set)
     if scancode & 0x80 != 0 {
-        return;
+        return 0;
     }
 
-    // Convert scan code to ASCII
-    let ascii = scancode_to_ascii(scancode);
-    if ascii != 0 {
-        buf_push(ascii);
-    }
-}
-
-/// Try to read a key (non-blocking). Returns 0 if no key available.
-pub fn try_read_key() -> u8 {
-    buf_pop().unwrap_or(0)
+    scancode_to_ascii(scancode)
 }
 
 /// Read a key (blocking — waits with HLT until key arrives).
 pub fn read_key() -> u8 {
     loop {
-        if let Some(key) = buf_pop() {
+        let key = try_read_key();
+        if key != 0 {
             return key;
         }
-        unsafe { asm!("hlt"); }
+        // Brief pause to avoid hammering the port
+        for _ in 0..10000u32 { core::hint::spin_loop(); }
     }
-}
-
-/// Read a full line (blocking). Returns when Enter is pressed.
-/// Writes into the provided buffer, returns length.
-pub fn read_line(buf: &mut [u8]) -> usize {
-    let mut len = 0;
-    loop {
-        let key = read_key();
-        match key {
-            b'\n' => return len,
-            8 => {
-                // Backspace
-                if len > 0 {
-                    len -= 1;
-                    // Signal backspace to caller
-                    buf[len] = 0;
-                }
-            }
-            _ => {
-                if len < buf.len() - 1 {
-                    buf[len] = key;
-                    len += 1;
-                }
-            }
-        }
-    }
-}
-
-// ── Buffer operations ──────────────────────────────────────────────────────
-
-fn buf_push(key: u8) {
-    let head = BUF_HEAD.load(Ordering::Relaxed);
-    let next = (head + 1) % BUF_SIZE;
-    if next != BUF_TAIL.load(Ordering::Relaxed) {
-        unsafe { KEY_BUF[head] = key; }
-        BUF_HEAD.store(next, Ordering::Release);
-    }
-}
-
-fn buf_pop() -> Option<u8> {
-    let tail = BUF_TAIL.load(Ordering::Relaxed);
-    if tail == BUF_HEAD.load(Ordering::Acquire) {
-        return None;
-    }
-    let key = unsafe { KEY_BUF[tail] };
-    BUF_TAIL.store((tail + 1) % BUF_SIZE, Ordering::Release);
-    Some(key)
 }
 
 // ── Scan code set 1 → ASCII ────────────────────────────────────────────────
