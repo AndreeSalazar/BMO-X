@@ -23,9 +23,9 @@ stage1_start:
     mov si, msg_boot
     call print_string_16
 
-    ; ── Verify INT 13h LBA extensions (AH=41h) ──────────────────────────
-    ; Some BIOS/UEFI CSM implementations don't support AH=42h for USB.
-    ; Check first so we get a clear error instead of silent failure.
+    ; ── Check INT 13h LBA extensions (AH=41h) — non-fatal ──────────────
+    ; Many UEFI CSM implementations fail AH=41h but still support AH=42h.
+    ; So this is just a diagnostic warning, not a hard stop.
     mov ah, 0x41
     mov bx, 0x55AA
     mov dl, [boot_drive]
@@ -37,8 +37,7 @@ stage1_start:
 .no_lba:
     mov si, msg_no_lba
     call print_string_16
-    cli
-    hlt
+    ; Continue anyway — AH=42h often works even when AH=41h reports no support
 
 .lba_ok:
     ; ── Load Stage 2 via INT 13h AH=42h (LBA) ───────────────────────────
