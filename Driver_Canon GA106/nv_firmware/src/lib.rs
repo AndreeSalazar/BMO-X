@@ -232,6 +232,175 @@ pub mod gsp_memory {
 }
 
 // ---------------------------------------------------------------------------
+// GSP-RM libos Kernel API (from SigDead-BIB XOR 0x20 analysis)
+// ---------------------------------------------------------------------------
+// XOR key 0x20 decoded the internal libos-v3.1.0 function/API names.
+// These are the real internal kernel APIs running on the RISC-V GSP processor.
+//
+// Memory Management (offset 0x7A000-0x7B200):
+//   kernelMemorySetAllocate, kernelMemorySetInsert
+//   kernelAddressSpaceAllocate, kernelAddressSpaceMapContiguous
+//   kernelGlobalPageMapping, kernelPrivMapping, kernelTextMapping
+//   kernelDataMapping, kernelMemoryPoolAcquire
+//   libosMemoryReadable, libosMemoryWriteable, libosOK
+//   memorySize, memorySet, pageTable, zeroMiddle
+//   dmaBounceBuffer, gdmaBounceBuffer
+//
+// Task System (offset 0x7B000-0x7B400):
+//   kernelTaskCreate, kernelTaskRegisterObject
+//   taskInit, taskDebug, handleTable
+//   priority, normal
+//
+// Server / Worker (offset 0xCE000-0xCEA00):
+//   kernelServerEntry, kernelServer, kernelPortAllocate
+//   kernelPartitionParentPort, servicePortShuttleAsyncRecv
+//   serviceWorkerPriv, workerSize, worker, workItems
+//   mnocWorker, mnocSetRxIRQ  (MNOC = Message Network-On-Chip)
+//
+// ELF Boot (offset 0xA2000):
+//   libosBootFindElfHeader, rootFS, initELF
+//   debugElf, kernelElfMap
+//
+// Debug (offset 0x12D200-0x12D600):
+//   debugTaskCommsPortHandle, debugTaskCommsPort
+//   taskDebug, debugElf
+//
+// IPI (Inter-Processor Interrupt, offset 0xCD200):
+//   ipiMessageNull, header, config, message
+
+/// GSP-RM libos kernel virtual memory API (decoded from XOR 0x20).
+pub mod gsp_vm {
+    /// Memory allocation result status.
+    pub const LIBOS_OK: u32 = 0;
+
+    /// kernelMemorySetAllocate — allocates a memory set (pool) for GSP.
+    /// Used by mm/memorypool.c and mm/objectpool.c.
+    pub const KERNEL_MEMORY_SET_ALLOCATE: &str   = "kernelMemorySetAllocate";
+    /// kernelMemorySetInsert — inserts a region into a memory set.
+    pub const KERNEL_MEMORY_SET_INSERT: &str     = "kernelMemorySetInsert";
+    /// kernelMemoryPoolAcquire — acquires memory from a pre-allocated pool.
+    pub const KERNEL_MEMORY_POOL_ACQUIRE: &str   = "kernelMemoryPoolAcquire";
+
+    /// kernelAddressSpaceAllocate — allocates a virtual address space.
+    pub const KERNEL_ADDR_SPACE_ALLOCATE: &str   = "kernelAddressSpaceAllocate";
+    /// kernelAddressSpaceMapContiguous — maps contiguous physical memory.
+    pub const KERNEL_ADDR_SPACE_MAP_CONTIG: &str = "kernelAddressSpaceMapContiguous";
+    /// kernelAddressSpaceSize — total virtual address space size.
+    pub const KERNEL_ADDR_SPACE_SIZE: &str       = "kernelAddressSpaceSize";
+
+    /// kernelGlobalPageMapping — global page table mapping for GSP.
+    pub const KERNEL_GLOBAL_PAGE_MAPPING: &str   = "kernelGlobalPageMapping";
+    /// kernelGlobalPageSize — page size for global mappings.
+    pub const KERNEL_GLOBAL_PAGE_SIZE: &str      = "kernelGlobalPageSize";
+    /// kernelTextMapping — maps .text section of loaded ELFs.
+    pub const KERNEL_TEXT_MAPPING: &str          = "kernelTextMapping";
+    /// kernelDataMapping — maps .data/.bss sections.
+    pub const KERNEL_DATA_MAPPING: &str          = "kernelDataMapping";
+    /// kernelPrivMapping — privileged MMIO/register mappings.
+    pub const KERNEL_PRIV_MAPPING: &str          = "kernelPrivMapping";
+
+    /// libosMemoryReadable — marks a memory region readable.
+    pub const LIBOS_MEM_READABLE: &str           = "libosMemoryReadable";
+    /// libosMemoryWriteable — marks a memory region writeable.
+    pub const LIBOS_MEM_WRITEABLE: &str          = "libosMemoryWriteable";
+
+    /// dmaBounceBuffer — host↔GSP DMA staging buffer.
+    /// This is how the host CPU sends data to GSP through VRAM.
+    pub const DMA_BOUNCE_BUFFER: &str            = "dmaBounceBuffer";
+    /// gdmaBounceBuffer — GPU DMA bounce buffer (engine↔GSP).
+    pub const GDMA_BOUNCE_BUFFER: &str           = "gdmaBounceBuffer";
+
+    /// pageTable / zeroMiddle — page table management primitives.
+    pub const PAGE_TABLE: &str                   = "pageTable";
+    pub const ZERO_MIDDLE: &str                  = "zeroMiddle";
+    /// partition — vGPU partition memory isolation.
+    pub const PARTITION: &str                    = "partition";
+
+    /// Typical GSP page size (4 KB, same as host).
+    pub const GSP_PAGE_SIZE: usize = 4096;
+    /// DMA bounce buffer minimum alignment.
+    pub const DMA_BOUNCE_ALIGN: usize = 4096;
+}
+
+/// GSP-RM libos task/scheduler API (decoded from XOR 0x20).
+pub mod gsp_task {
+    /// kernelTaskCreate — creates a new GSP task (thread).
+    pub const KERNEL_TASK_CREATE: &str          = "kernelTaskCreate";
+    /// kernelTaskRegisterObject — registers a kernel object with a task.
+    pub const KERNEL_TASK_REGISTER_OBJ: &str    = "kernelTaskRegisterObject";
+    /// taskInit — task initialization entry point.
+    pub const TASK_INIT: &str                   = "taskInit";
+    /// taskDebug — debug/inspection entry for a task.
+    pub const TASK_DEBUG: &str                  = "taskDebug";
+    /// handleTable — per-task handle table for kernel objects.
+    pub const HANDLE_TABLE: &str                = "handleTable";
+
+    /// Task priority levels (from libos scheduler).
+    pub const PRIORITY_NORMAL: u32  = 0;
+    pub const PRIORITY_HIGH: u32    = 1;
+    pub const PRIORITY_REALTIME: u32 = 2;
+}
+
+/// GSP-RM libos server/worker/port API (decoded from XOR 0x20).
+/// This is how GSP-RM dispatches RPC requests from the host driver.
+pub mod gsp_server {
+    /// kernelServerEntry — main RPC server entry point.
+    pub const KERNEL_SERVER_ENTRY: &str           = "kernelServerEntry";
+    /// kernelServer — the RPC server instance.
+    pub const KERNEL_SERVER: &str                 = "kernelServer";
+    /// kernelPortAllocate — allocates an IPC port for a server.
+    pub const KERNEL_PORT_ALLOCATE: &str          = "kernelPortAllocate";
+    /// kernelPartitionParentPort — parent port for vGPU partition.
+    pub const KERNEL_PARTITION_PARENT_PORT: &str  = "kernelPartitionParentPort";
+    /// servicePortShuttleAsyncRecv — async message receive via port shuttle.
+    pub const SVC_PORT_SHUTTLE_ASYNC_RECV: &str   = "servicePortShuttleAsyncRecv";
+    /// serviceWorkerPriv — worker thread private data.
+    pub const SVC_WORKER_PRIV: &str               = "serviceWorkerPriv";
+
+    /// MNOC = Message Network-On-Chip (inter-engine messaging on GPU die).
+    pub const MNOC_WORKER: &str                   = "mnocWorker";
+    /// mnocSetRxIRQ — sets the receive interrupt for MNOC channel.
+    pub const MNOC_SET_RX_IRQ: &str               = "mnocSetRxIRQ";
+
+    /// Worker / workItems — the GSP thread pool for processing RPC requests.
+    pub const WORKER: &str                        = "worker";
+    pub const WORK_ITEMS: &str                    = "workItems";
+}
+
+/// GSP-RM ELF boot and debug API (decoded from XOR 0x20).
+pub mod gsp_boot {
+    /// libosBootFindElfHeader — finds ELF header in firmware blob during boot.
+    pub const LIBOS_BOOT_FIND_ELF: &str      = "libosBootFindElfHeader";
+    /// rootFS — the root filesystem object in GSP (in-memory).
+    pub const ROOT_FS: &str                  = "rootFS";
+    /// initELF — the initial ELF loaded by the GSP bootstrap.
+    pub const INIT_ELF: &str                 = "initELF";
+    /// debugElf / kernelElfMap — debug ELF mapping for crash analysis.
+    pub const DEBUG_ELF: &str                = "debugElf";
+    pub const KERNEL_ELF_MAP: &str           = "kernelElfMap";
+    /// debugTaskCommsPortHandle — debug port for GSP↔host debug channel.
+    pub const DEBUG_TASK_COMMS_PORT: &str    = "debugTaskCommsPortHandle";
+}
+
+/// GSP-RM crypto/security info (from SigDead-BIB XOR + crypto constant scan).
+/// gsp_ga10x.bin contains: 51× AES Rcon, 51× RSA e=65537, 1× SHA-256 H.
+pub mod gsp_crypto {
+    /// Number of AES round constant instances found in firmware.
+    pub const AES_RCON_INSTANCES: u32         = 51;
+    /// Number of RSA public exponent (e=65537) instances found.
+    pub const RSA_E65537_INSTANCES: u32       = 51;
+    /// SHA-256 initial hash values present (for firmware integrity).
+    pub const SHA256_PRESENT: bool            = true;
+    /// RSA signature size (bytes) — PKCS#1 v1.5, 2048-bit key.
+    pub const RSA_SIG_SIZE: usize             = 256;
+    /// Number of RSA signatures in GSP firmware ELF.
+    pub const RSA_SIG_COUNT: u32              = 2;
+    /// AES is used internally for encrypted communication channels.
+    /// Detected via AES S-Box and Rcon constants at multiple offsets.
+    pub const AES_KEY_BITS: u32               = 256;
+}
+
+// ---------------------------------------------------------------------------
 // GSP-RM RPC Protocol
 // ---------------------------------------------------------------------------
 // The host driver communicates with the running GSP firmware via

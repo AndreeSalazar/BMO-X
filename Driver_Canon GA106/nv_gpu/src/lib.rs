@@ -344,6 +344,125 @@ pub struct GpuInfo {
     pub pbdma_count: u32,
     pub gpu_time_ns: u64,
     pub state: GpuState,
+    /// GSP-RM communication state (from SigDead-BIB XOR 0x20 analysis).
+    pub gsp_rm: GspRmState,
+}
+
+// ---------------------------------------------------------------------------
+// GSP-RM Communication State (from SigDead-BIB XOR 0x20 decoded API)
+// ---------------------------------------------------------------------------
+// The XOR analysis of gsp_ga10x.bin revealed the complete libos-v3.1.0
+// internal architecture:
+//   - Virtual memory: kernelAddressSpace, kernelMemorySet, dmaBounceBuffer
+//   - Task system:    kernelTaskCreate, handleTable, priority scheduling
+//   - Server/RPC:     kernelServerEntry, kernelPortAllocate, serviceWorker
+//   - Boot:           libosBootFindElfHeader, rootFS, initELF
+//   - Debug:          debugTaskCommsPort, debugElf
+//   - MNOC:           mnocWorker, mnocSetRxIRQ (Message Network-On-Chip)
+//   - Crypto:         51× AES Rcon, 51× RSA e=65537, SHA-256 (firmware signing)
+//
+// For FastOS to fully communicate with the RTX 3060's GSP-RM, we need:
+//   1. DMA bounce buffer (host→GSP shared memory) — allocated in VRAM
+//   2. Command ring buffer (RPC message queue)
+//   3. GSP boot via SEC2→GSP FALCON handoff
+//   4. RPC handshake (MSG_INIT → GSP responds with capabilities)
+//   5. Ongoing RPC for engine control, display, power management
+
+/// GSP-RM communication state — tracks host↔GSP protocol status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GspRmState {
+    /// GSP firmware loaded into VRAM WPR.
+    pub fw_loaded: bool,
+    /// FALCON bootstrap completed (SEC2 → GSP handoff).
+    pub falcon_booted: bool,
+    /// DMA bounce buffer allocated for host↔GSP data transfer.
+    pub dma_bounce_ready: bool,
+    /// Command ring buffer initialized.
+    pub cmd_ring_ready: bool,
+    /// RPC handshake completed (MSG_INIT sent and acknowledged).
+    pub rpc_handshake: bool,
+    /// GSP-RM server running (kernelServerEntry reached).
+    pub server_running: bool,
+    /// Number of RPC messages sent to GSP.
+    pub rpc_msg_sent: u32,
+    /// Number of RPC responses received from GSP.
+    pub rpc_msg_recv: u32,
+    /// Last RPC status code from GSP (0 = LIBOS_OK).
+    pub last_rpc_status: u32,
+    /// GSP libos version detected.
+    pub libos_version: GspLibosVersion,
+    /// Crypto capabilities detected in firmware.
+    pub crypto: GspCrypto,
+}
+
+/// GSP libos version info.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GspLibosVersion {
+    pub major: u8,
+    pub minor: u8,
+    pub patch: u8,
+}
+
+/// Crypto info found in GSP firmware by SigDead-BIB.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GspCrypto {
+    /// AES-256 used for internal encrypted channels.
+    pub aes_present: bool,
+    /// AES round constant instances found.
+    pub aes_rcon_count: u32,
+    /// RSA PKCS#1 v1.5 signatures in firmware.
+    pub rsa_sig_count: u32,
+    /// SHA-256 used for firmware integrity verification.
+    pub sha256_present: bool,
+}
+
+impl GspRmState {
+    /// Initial state — nothing initialized yet.
+    pub const fn uninit() -> Self {
+        Self {
+            fw_loaded: false,
+            falcon_booted: false,
+            dma_bounce_ready: false,
+            cmd_ring_ready: false,
+            rpc_handshake: false,
+            server_running: false,
+            rpc_msg_sent: 0,
+            rpc_msg_recv: 0,
+            last_rpc_status: 0,
+            libos_version: GspLibosVersion { major: 3, minor: 1, patch: 0 },
+            crypto: GspCrypto {
+                aes_present: true,
+                aes_rcon_count: 51,
+                rsa_sig_count: 2,
+                sha256_present: true,
+            },
+        }
+    }
+
+    /// Check if GSP-RM is fully operational (all init stages complete).
+    pub fn is_operational(&self) -> bool {
+        self.fw_loaded && self.falcon_booted && self.dma_bounce_ready
+            && self.cmd_ring_ready && self.rpc_handshake && self.server_running
+    }
+
+    /// Human-readable status string.
+    pub fn status_str(&self) -> &'static str {
+        if self.is_operational() {
+            "OPERATIONAL"
+        } else if self.rpc_handshake {
+            "RPC_READY"
+        } else if self.cmd_ring_ready {
+            "CMD_RING_READY"
+        } else if self.dma_bounce_ready {
+            "DMA_READY"
+        } else if self.falcon_booted {
+            "FALCON_BOOTED"
+        } else if self.fw_loaded {
+            "FW_LOADED"
+        } else {
+            "UNINITIALIZED"
+        }
+    }
 }
 
 /// Gather GPU info from live registers.
@@ -367,6 +486,7 @@ pub fn gpu_info(gpu: &Gpu) -> GpuInfo {
         pbdma_count: pbdma::COUNT,
         gpu_time_ns: time,
         state: gpu.state,
+        gsp_rm: GspRmState::uninit(),
     }
 }
 

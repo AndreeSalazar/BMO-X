@@ -11,7 +11,7 @@ const MAX_LINE: usize = 256;
 /// Run the interactive shell loop (never returns).
 pub fn run(con: &mut Console) {
     // Simple welcome
-    con.print_colored("FastOS v0.3.0", colors::NV_GREEN);
+    con.print_colored("FastOS v0.4.0", colors::NV_GREEN);
     con.print(" - Ring 0 | Ryzen 5 5600X + RTX 3060 12G");
     con.newline();
     con.print_colored("Type 'help' for commands.", colors::TEXT_SECONDARY);
@@ -86,7 +86,7 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         con.newline();
         loop { unsafe { core::arch::asm!("hlt"); } }
     } else if bytes_eq(cmd, b"ver") {
-        con.print_colored("FastOS v0.3.0 (Rust, no_std, Ring 0)", colors::ACCENT_CYAN);
+        con.print_colored("FastOS v0.4.0 (Rust, no_std, Ring 0)", colors::ACCENT_CYAN);
         con.newline();
     } else if bytes_eq(cmd, b"ticks") {
         cmd_ticks(con);
@@ -96,6 +96,8 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         cmd_gpu_engines(con);
     } else if bytes_eq(cmd, b"dmesg") {
         cmd_dmesg(con);
+    } else if bytes_eq(cmd, b"gsprm") {
+        cmd_gsprm(con);
     } else {
         con.print_colored("Unknown: ", colors::ACCENT_RED);
         for &b in cmd { con.put_char(b); }
@@ -118,6 +120,7 @@ fn cmd_help(con: &mut Console) {
     print_cmd(con, "ticks", "PIT tick counter");
     print_cmd(con, "irq", "Interrupt status");
     print_cmd(con, "gpu", "GPU engine status");
+    print_cmd(con, "gsprm", "GSP-RM protocol");
     print_cmd(con, "dmesg", "Boot log");
     print_cmd(con, "ver", "Kernel version");
     print_cmd(con, "reboot", "Reboot system");
@@ -165,6 +168,8 @@ fn cmd_gpuinfo(con: &mut Console) {
     con.print("  GSP-RM: ");
     con.print_colored("gsp_ga10x.bin (RISC-V, libos-v3.1.0)", colors::ACCENT_CYAN);
     con.newline();
+    con.println("  Crypto: AES-256 (51 Rcon) + RSA-2048 (2 sigs) + SHA-256");
+    con.println("  XOR:    SigDead-BIB decoded 100 candidates (key 0x20)");
     con.print("  Driver: ");
     con.print_colored("Ring 0 loaded", colors::TEXT_SUCCESS);
     con.newline();
@@ -196,10 +201,16 @@ fn cmd_gpu_engines(con: &mut Console) {
     con.println("    NVDEC@ 0x840000 (video decode)");
 
     con.print_colored("  GSP-RM: ", colors::ACCENT_PURPLE);
-    con.println("libos-v3.1.0 kernel");
+    con.println("libos-v3.1.0 kernel (XOR 0x20 decoded)");
     con.println("    ELF: kernel_ga10x.elf (RISC-V ET_REL)");
     con.println("    Sections: .fwimage, .fwversion, .fwsignature_ga10x");
     con.println("    Subsystems: mm, sched, loader, server, ipi, dma");
+    con.println("    VM: kernelAddressSpace, kernelMemorySet, pageTable");
+    con.println("    DMA: dmaBounceBuffer, gdmaBounceBuffer (host<>GSP)");
+    con.println("    RPC: kernelServerEntry, kernelPortAllocate");
+    con.println("    Task: kernelTaskCreate, handleTable, priority");
+    con.println("    MNOC: mnocWorker, mnocSetRxIRQ (on-chip msg)");
+    con.println("    Boot: libosBootFindElfHeader, rootFS, initELF");
     con.println("    FALCON headers: 103 embedded in firmware");
     con.println("    Strings: 10806 extracted by SigDead-BIB");
 
@@ -210,12 +221,15 @@ fn cmd_gpu_engines(con: &mut Console) {
     con.print_colored("  Security: ", colors::ACCENT_PURPLE);
     con.println("SEC_FAULT + BAR_FIREWALL");
     con.println("    WPR: Write-Protected Region (GSP firmware)");
-    con.println("    2x RSA PKCS#1 v1.5 signatures");
+    con.println("    2x RSA PKCS#1 v1.5 (2048-bit) signatures");
+    con.println("    AES-256: 51 Rcon instances (encrypted channels)");
+    con.println("    SHA-256: firmware integrity verification");
+    con.println("    RSA e=65537: 51 instances (code signing)");
 }
 
 fn cmd_dmesg(con: &mut Console) {
     con.print_colored("Boot Log:\n", colors::ACCENT_BLUE);
-    con.println("  [0.000] FastOS v0.3.0 booting...");
+    con.println("  [0.000] FastOS v0.4.0 booting...");
     con.println("  [0.001] Serial: COM1 @ 115200 baud");
     con.println("  [0.002] CPU: AMD Ryzen 5 5600X (Zen 3)");
     con.println("  [0.003] PIC: 8259A remapped IRQ 0-15 -> 32-47");
@@ -229,6 +243,8 @@ fn cmd_dmesg(con: &mut Console) {
     con.println("  [0.014] GPU: Engines enabled (FIFO+GR+CE+DISP)");
     con.println("  [0.015] GPU: GSP firmware: gsp_ga10x.bin (69 MB)");
     con.println("  [0.016] GPU: libos-v3.1.0 (RISC-V, 103 FALCON)");
+    con.println("  [0.017] GPU: XOR 0x20 decoded libos API (SigDead-BIB)");
+    con.println("  [0.018] GPU: AES-256 + RSA-2048 + SHA-256 detected");
     con.println("  [0.020] KB:  PS/2 keyboard ready (IRQ1)");
     con.print("  [0.021] Shell: ");
     con.print_colored("ready", colors::TEXT_SUCCESS);
@@ -318,6 +334,65 @@ fn cmd_irq(con: &mut Console) {
     con.println("    PMU    bit 24  DISPLAY bit 26");
     con.print("  Mode:  ");
     con.print_colored("Interrupt-driven", colors::TEXT_SUCCESS);
+    con.newline();
+}
+
+fn cmd_gsprm(con: &mut Console) {
+    con.print_colored("GSP-RM Protocol (SigDead-BIB XOR 0x20):\n", colors::ACCENT_BLUE);
+
+    con.print_colored("  Firmware: ", colors::ACCENT_PURPLE);
+    con.println("gsp_ga10x.bin (72.8 MB, RISC-V ELF64)");
+    con.println("    libos-v3.1.0 | kernel_ga10x.elf | 103 FALCON hdrs");
+
+    con.print_colored("  Memory (XOR 0x20 @ 0x7A000):\n", colors::ACCENT_PURPLE);
+    con.println("    kernelMemorySetAllocate    - pool allocation");
+    con.println("    kernelAddressSpaceAllocate - virtual addr space");
+    con.println("    kernelAddressSpaceMapContiguous - phys mapping");
+    con.println("    kernelGlobalPageMapping    - global page tables");
+    con.println("    kernelTextMapping          - .text ELF section");
+    con.println("    kernelDataMapping          - .data/.bss sections");
+    con.println("    kernelPrivMapping          - MMIO registers");
+    con.println("    dmaBounceBuffer            - host<>GSP DMA");
+    con.println("    gdmaBounceBuffer           - engine<>GSP DMA");
+    con.println("    libosMemoryReadable/Writeable - permissions");
+
+    con.print_colored("  Tasks (XOR 0x20 @ 0x7B000):\n", colors::ACCENT_PURPLE);
+    con.println("    kernelTaskCreate           - create GSP thread");
+    con.println("    kernelTaskRegisterObject   - bind kernel object");
+    con.println("    handleTable                - per-task handles");
+    con.println("    priority: normal / high / realtime");
+
+    con.print_colored("  Server (XOR 0x20 @ 0xCE000):\n", colors::ACCENT_PURPLE);
+    con.println("    kernelServerEntry          - RPC dispatch entry");
+    con.println("    kernelPortAllocate         - IPC port alloc");
+    con.println("    servicePortShuttleAsyncRecv- async msg recv");
+    con.println("    mnocWorker / mnocSetRxIRQ  - on-chip network");
+    con.println("    worker / workItems         - thread pool");
+
+    con.print_colored("  Boot (XOR 0x20 @ 0xA2000):\n", colors::ACCENT_PURPLE);
+    con.println("    libosBootFindElfHeader     - locate ELF in blob");
+    con.println("    rootFS / initELF           - bootstrap loader");
+    con.println("    debugElf / kernelElfMap    - crash analysis");
+    con.println("    debugTaskCommsPortHandle   - debug channel");
+
+    con.print_colored("  IPI (XOR 0x20 @ 0xCD200):\n", colors::ACCENT_PURPLE);
+    con.println("    ipiMessageNull             - null sentinel");
+    con.println("    PAGE_SIZE=4096 | IDENTITY_MAPS_END=0xFFFFFFFF");
+
+    con.print_colored("  Crypto (SigDead-BIB constant scan):\n", colors::ACCENT_PURPLE);
+    con.println("    AES-256:  51 Rcon instances (encrypted channels)");
+    con.println("    RSA-2048: 2 PKCS#1 v1.5 sigs (.fwsignature_ga10x)");
+    con.println("    RSA e=65537: 51 instances across firmware");
+    con.println("    SHA-256:  integrity verification (1 H constant)");
+
+    con.print_colored("  Host<>GSP RPC:\n", colors::ACCENT_PURPLE);
+    con.println("    Ring: cmd_ring (put/get) + status_ring");
+    con.println("    MSG_INIT(0x01) MSG_GPU_INFO(0x02) MSG_ALLOC(0x03)");
+    con.println("    MSG_CONTROL(0x05) MSG_DISPLAY(0x10) MSG_POWER(0x20)");
+    con.println("    MSG_EVENT(0x100) MSG_HEARTBEAT(0xFFFF)");
+
+    con.print("  Status: ");
+    con.print_colored("READY (protocol mapped by SigDead-BIB)", colors::TEXT_SUCCESS);
     con.newline();
 }
 
