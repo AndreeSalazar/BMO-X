@@ -91,44 +91,60 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     vga.write_u64(devices.count as u64);
     vga.newline();
 
-    // Check for NVIDIA GPU
+    // Check for NVIDIA GPU — require exact 0x10DE:0x2504 (GA106)
     if let Some(gpu_pci) = devices.find_nvidia_gpu() {
-        vga.write_str_color("[GPU] NVIDIA GPU detected: ", vga::Color::LightGreen);
-        vga.write_str("0x");
+        vga.write_str_color("[PCI] ", vga::Color::LightCyan);
+        vga.write_str("NVIDIA @ bus ");
+        vga.write_u64(gpu_pci.bus as u64);
+        vga.write_str(" dev ");
+        vga.write_u64(gpu_pci.device as u64);
+        vga.write_str(" fn ");
+        vga.write_u64(gpu_pci.function as u64);
+        vga.newline();
+
+        vga.write_str_color("[GPU] ", vga::Color::LightGreen);
+        vga.write_str("Vendor:Device = 0x");
         vga.write_hex16(gpu_pci.vendor_id);
         vga.write_str(":0x");
         vga.write_hex16(gpu_pci.device_id);
         vga.newline();
 
-        // Initialize full GPU driver stack (Ring 0)
-        vga.write_str_color("[GPU] ", vga::Color::LightCyan);
-        vga.write_str("Initializing Driver_Canon GA106...");
-        vga.newline();
+        drivers::serial::serial_write("[FastOS] PCI: NVIDIA 10DE:");
+        drivers::serial::serial_write("2504 found\n");
 
-        match drivers::gpu::rtx3060::init_gpu_driver() {
-            Ok(mut driver_state) => {
-                let info = drivers::gpu::rtx3060::gpu_info(&driver_state);
-                vga.write_str_color("[GPU] ", vga::Color::Green);
-                vga.write_str("Driver ready! VRAM: ");
-                vga.write_u64(info.vram_size_mb);
-                vga.write_str(" MB");
-                vga.newline();
+        // Gate: only touch GPU if exact GA106 device ID
+        if gpu_pci.device_id == 0x2504 {
+            vga.write_str_color("[GPU] ", vga::Color::Green);
+            vga.write_str("GA106 confirmed — initializing driver...");
+            vga.newline();
 
-                vga.write_str_color("[GPU] ", vga::Color::Green);
-                vga.write_str("Chip ID: 0x");
-                vga.write_hex32(info.chip_id);
-                vga.newline();
+            match drivers::gpu::rtx3060::init_gpu_driver() {
+                Ok(driver_state) => {
+                    let gpu_info = drivers::gpu::rtx3060::gpu_info(&driver_state);
+                    vga.write_str_color("[GPU] ", vga::Color::Green);
+                    vga.write_str("READY  VRAM: ");
+                    vga.write_u64(gpu_info.vram_size_mb);
+                    vga.write_str(" MB  Chip: 0x");
+                    vga.write_hex32(gpu_info.chip_id);
+                    vga.newline();
 
-                drivers::serial::serial_write("[FastOS] GPU driver initialized (Ring 0)\n");
+                    drivers::serial::serial_write("[FastOS] GPU driver Ring 0 OK\n");
+                }
+                Err(_e) => {
+                    vga.write_str_color("[GPU] ", vga::Color::Red);
+                    vga.write_str("Driver init FAILED — halting GPU subsystem");
+                    vga.newline();
+                    drivers::serial::serial_write("[FastOS] GPU init FAILED\n");
+                }
             }
-            Err(_e) => {
-                vga.write_str_color("[GPU] Driver init failed", vga::Color::Red);
-                vga.newline();
-                drivers::serial::serial_write("[FastOS] GPU driver init FAILED\n");
-            }
+        } else {
+            vga.write_str_color("[GPU] ", vga::Color::Yellow);
+            vga.write_str("Not GA106 (0x2504) — skipping driver");
+            vga.newline();
         }
     } else {
-        vga.write_str_color("[GPU] No NVIDIA GPU found", vga::Color::Yellow);
+        vga.write_str_color("[GPU] ", vga::Color::Yellow);
+        vga.write_str("No NVIDIA GPU on PCI bus");
         vga.newline();
     }
 

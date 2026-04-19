@@ -51,13 +51,13 @@ impl Platform for FastOsPlatform {
     fn alloc_dma(&self, size: usize) -> Option<DmaBuffer> {
         // Simple bump allocator from a fixed region above kernel.
         // Kernel ends at ~1MB + 128KB = 0x120000.
-        // Use 2MB-4MB range for DMA buffers (identity mapped).
-        static mut DMA_NEXT: u64 = 0x0020_0000; // 2MB
+        // Use 4MB-8MB range for DMA buffers (identity mapped).
+        static mut DMA_NEXT: u64 = 0x0040_0000; // 4MB
 
         unsafe {
             let aligned = (DMA_NEXT + 0xFFF) & !0xFFF; // 4KB align
             let end = aligned + size as u64;
-            if end > 0x0040_0000 { // 4MB limit
+            if end > 0x0080_0000 { // 8MB limit
                 return None;
             }
             DMA_NEXT = end;

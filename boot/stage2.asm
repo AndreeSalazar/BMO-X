@@ -17,6 +17,21 @@
 KERNEL_LOAD_ADDR equ 0x100000
 KERNEL_SECTORS   equ 256
 
+; --- Print null-terminated string (SI) — local copy for stage2 ---
+print_string_16:
+    pusha
+.ps16_loop:
+    lodsb
+    or al, al
+    jz .ps16_done
+    mov ah, 0x0E
+    mov bx, 0x0007
+    int 0x10
+    jmp .ps16_loop
+.ps16_done:
+    popa
+    ret
+
 stage2_start:
     ; ── Phase 1: 16-bit Real Mode ────────────────────────────────────────
 
@@ -27,6 +42,9 @@ stage2_start:
     mov ss, ax
     mov sp, 0x7C00
     sti
+
+    ; Save boot drive from stage1 (DL preserved across jmp)
+    mov [stage2_boot_drive], dl
 
     mov si, msg_s2_start
     call print_string_16
@@ -55,7 +73,7 @@ stage2_start:
     call print_string_16
 
     mov ah, 0x42
-    mov dl, 0x80
+    mov dl, [stage2_boot_drive]
     mov si, dap_kernel
     int 0x13
     jc .kernel_load_err
@@ -94,6 +112,8 @@ msg_loading_kernel: db "[FastOS] Loading kernel...", 13, 10, 0
 msg_kernel_loaded:  db "[FastOS] Kernel at 0x10000", 13, 10, 0
 msg_kernel_err:     db "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
 msg_entering_pm:    db "[FastOS] Entering Protected Mode...", 13, 10, 0
+
+stage2_boot_drive: db 0
 
 align 4
 dap_kernel:
@@ -177,6 +197,7 @@ msg_pm_ok: db "[FastOS] Protected Mode OK → Long Mode...", 0
 ; ── 64-bit Long Mode ────────────────────────────────────────────────────
 
 [BITS 64]
+DEFAULT ABS
 
 %include "sse_avx.asm"
 
@@ -187,7 +208,7 @@ long_mode_entry:
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov rsp, 0x200000
+    mov rsp, 0x800000
 
     ; VGA: Long Mode active (row 1)
     mov rdi, 0xB8000 + 160
