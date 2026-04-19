@@ -307,7 +307,7 @@ impl Color {
 // Minimal CP437-compatible font covering ASCII 32..126.
 // Each glyph is 16 bytes (one byte per row, MSB = leftmost pixel).
 
-fn get_glyph(ch: u8) -> [u8; 16] {
+pub fn get_glyph(ch: u8) -> [u8; 16] {
     if ch < 32 || ch > 126 {
         return FONT_FALLBACK;
     }
