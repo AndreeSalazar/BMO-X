@@ -5,6 +5,11 @@
 
 use core::marker::PhantomData;
 
+/// NVIDIA Hardware Root of Trust
+/// This is the pure 256-byte Modulus (N) that SigDead carved from the Windows Driver.
+/// We inject it securely at compile-time to bypass the SEC2 FALCON validation.
+pub static NVIDIA_GA106_RSA_PUB: &[u8] = include_bytes!("ga106_rsa_pub_key_1.bin");
+
 /// Computes the SHA-256 hash of a given data buffer.
 /// Used to verify firmware payloads before sending them to the GPU.
 pub struct Sha256 {
@@ -60,7 +65,8 @@ pub mod falcon_secboot {
         let _hash = hasher.finish();
 
         // 2. Validate with RSA
-        let _validator = RsaValidator::new(_rsa_modulus, 65537); // Standard exponent E=65537
+        // Inject the genuine driver key discovered by SigDead
+        let _validator = RsaValidator::new(crate::crypto::NVIDIA_GA106_RSA_PUB, 65537); // Standard exponent E=65537
         
         // Return true if valid (mocked to false right now for security)
         false
