@@ -82,6 +82,9 @@ stage2_start:
     call print_string_16
 
     ; Detect memory (E820)
+    mov si, msg_e820_try
+    call print_string_16
+
     call detect_memory_e820
     mov si, msg_mem_ok
     call print_string_16
@@ -153,11 +156,12 @@ msg_s2_start:       db "[FastOS] Stage2: starting", 13, 10, 0
 msg_cpuid_ok:       db "[FastOS] CPUID: OK", 13, 10, 0
 msg_lm_ok:          db "[FastOS] Long Mode: OK", 13, 10, 0
 msg_a20_ok:         db "[FastOS] A20: enabled", 13, 10, 0
-msg_mem_ok:         db "[FastOS] Memory map: detected", 13, 10, 0
+msg_e820_try:       db "[FastOS] Detecting memory (E820)...", 13, 10, 0
+msg_mem_ok:         db "[FastOS] Memory map: OK", 13, 10, 0
 msg_loading_kernel: db "[FastOS] Loading kernel...", 13, 10, 0
-msg_kernel_loaded:  db "[FastOS] Kernel at 0x10000", 13, 10, 0
+msg_kernel_loaded:  db "[FastOS] Kernel loaded OK", 13, 10, 0
 msg_kernel_err:     db "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
-msg_entering_pm:    db "[FastOS] Entering Protected Mode...", 13, 10, 0
+msg_entering_pm:    db "[FastOS] Entering PM -> LM -> Kernel!", 13, 10, 0
 
 stage2_boot_drive: db 0
 
