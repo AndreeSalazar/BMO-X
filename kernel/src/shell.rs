@@ -1,34 +1,22 @@
 //! FastOS Shell — Interactive command interpreter.
-//! Ring 0, no_std. Runs in kernel space.
+//! Ring 0, no_std. Simple and reliable.
 
 use crate::console::Console;
 use crate::drivers::keyboard;
 use crate::fb::colors;
 use crate::arch::cpu;
 
-const MAX_LINE: usize = 512;
-const VERSION: &str = "FastOS v0.2.0";
+const MAX_LINE: usize = 256;
 
 /// Run the interactive shell loop (never returns).
 pub fn run(con: &mut Console) {
-    // Welcome banner
-    con.set_color(colors::NV_GREEN);
-    con.println("  _____          _    ___  ____  ");
-    con.println(" |  ___|_ _ ___|| |_ / _ \\/ ___| ");
-    con.println(" | |_ / _` / __|| __| | | \\___ \\ ");
-    con.println(" |  _| (_| \\__ \\| |_| |_| |___) |");
-    con.println(" |_|  \\__,_|___/ \\__|\\___/|____/ ");
-    con.set_color(colors::TEXT_PRIMARY);
-    con.println("");
-    con.print_colored(VERSION, colors::ACCENT_CYAN);
-    con.print(" - Bare Metal OS | Ring 0 | ");
-    con.print_colored("Ryzen 5 5600X", colors::ACCENT_PURPLE);
-    con.print(" + ");
-    con.print_colored("RTX 3060 12G", colors::NV_GREEN);
-    con.println("");
+    // Simple welcome
+    con.print_colored("FastOS v0.2.0", colors::NV_GREEN);
+    con.print(" - Ring 0 | Ryzen 5 5600X + RTX 3060 12G");
+    con.newline();
     con.print_colored("Type 'help' for commands.", colors::TEXT_SECONDARY);
-    con.println("");
-    con.println("");
+    con.newline();
+    con.newline();
 
     let mut line_buf = [0u8; MAX_LINE];
 
@@ -38,277 +26,211 @@ pub fn run(con: &mut Console) {
         con.print_colored("> ", colors::ACCENT_CYAN);
         con.draw_cursor(true);
 
-        // Read line
+        // Read line interactively
         let len = read_line_interactive(con, &mut line_buf);
+        con.draw_cursor(false);
+        con.newline();
 
-        // Parse and execute
-        let cmd = &line_buf[..len];
-        execute_command(con, cmd);
-    }
-}
-
-/// Interactive line reading with echo and backspace.
-fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
-    let mut len = 0;
-
-    loop {
-        let key = keyboard::read_key();
-
-        match key {
-            b'\n' => {
-                con.draw_cursor(false);
-                con.newline();
-                return len;
-            }
-            8 => {
-                // Backspace
-                if len > 0 {
-                    len -= 1;
-                    con.draw_cursor(false);
-                    con.backspace();
-                    con.draw_cursor(true);
-                }
-            }
-            32..=126 => {
-                // Printable character
-                if len < buf.len() - 1 {
-                    buf[len] = key;
-                    len += 1;
-                    con.draw_cursor(false);
-                    con.put_char(key);
-                    con.draw_cursor(true);
-                }
-            }
-            _ => {} // Ignore non-printable
+        // Execute
+        if len > 0 {
+            execute(con, &line_buf[..len]);
         }
     }
 }
 
-/// Execute a command.
-fn execute_command(con: &mut Console, cmd: &[u8]) {
-    // Skip empty
-    let trimmed = trim(cmd);
-    if trimmed.is_empty() { return; }
-
-    // Match commands
-    if eq(trimmed, b"help") {
-        cmd_help(con);
-    } else if eq(trimmed, b"clear") {
-        con.clear();
-    } else if eq(trimmed, b"cpuinfo") {
-        cmd_cpuinfo(con);
-    } else if eq(trimmed, b"gpuinfo") {
-        cmd_gpuinfo(con);
-    } else if eq(trimmed, b"pci") {
-        cmd_pci(con);
-    } else if eq(trimmed, b"meminfo") {
-        cmd_meminfo(con);
-    } else if eq(trimmed, b"uptime") {
-        cmd_uptime(con);
-    } else if eq(trimmed, b"reboot") {
-        cmd_reboot();
-    } else if eq(trimmed, b"halt") {
-        cmd_halt(con);
-    } else if eq(trimmed, b"ver") || eq(trimmed, b"version") {
-        con.print_colored(VERSION, colors::ACCENT_CYAN);
-        con.println("");
-    } else {
-        con.print_colored("Unknown command: ", colors::ACCENT_RED);
-        print_bytes(con, trimmed);
-        con.println("");
-        con.print_colored("Type 'help' for commands.", colors::TEXT_SECONDARY);
-        con.println("");
+fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
+    let mut len: usize = 0;
+    loop {
+        let key = keyboard::read_key();
+        if key == b'\n' {
+            return len;
+        } else if key == 8 {
+            // Backspace
+            if len > 0 {
+                len -= 1;
+                con.draw_cursor(false);
+                con.backspace();
+                con.draw_cursor(true);
+            }
+        } else if key >= 32 && key <= 126 {
+            if len < buf.len() - 1 {
+                buf[len] = key;
+                len += 1;
+                con.draw_cursor(false);
+                con.put_char(key);
+                con.draw_cursor(true);
+            }
+        }
     }
 }
 
-// ── Commands ────────────────────────────────────────────────────────────────
+fn execute(con: &mut Console, cmd: &[u8]) {
+    if bytes_eq(cmd, b"help") {
+        cmd_help(con);
+    } else if bytes_eq(cmd, b"clear") {
+        con.clear();
+    } else if bytes_eq(cmd, b"cpuinfo") {
+        cmd_cpuinfo(con);
+    } else if bytes_eq(cmd, b"gpuinfo") {
+        cmd_gpuinfo(con);
+    } else if bytes_eq(cmd, b"pci") {
+        cmd_pci(con);
+    } else if bytes_eq(cmd, b"meminfo") {
+        cmd_meminfo(con);
+    } else if bytes_eq(cmd, b"uptime") {
+        cmd_uptime(con);
+    } else if bytes_eq(cmd, b"reboot") {
+        cmd_reboot();
+    } else if bytes_eq(cmd, b"halt") {
+        con.print_colored("System halted.", colors::ACCENT_ORANGE);
+        con.newline();
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    } else if bytes_eq(cmd, b"ver") {
+        con.print_colored("FastOS v0.2.0 (Rust, no_std, Ring 0)", colors::ACCENT_CYAN);
+        con.newline();
+    } else {
+        con.print_colored("Unknown: ", colors::ACCENT_RED);
+        for &b in cmd { con.put_char(b); }
+        con.newline();
+    }
+}
+
+// ── Commands (all use simple println, no arrays) ────────────────────────────
 
 fn cmd_help(con: &mut Console) {
-    con.print_colored("FastOS Commands:\n", colors::ACCENT_BLUE);
-    let cmds: &[(&str, &str)] = &[
-        ("help",    "Show this help"),
-        ("clear",   "Clear screen"),
-        ("cpuinfo", "CPU features (CPUID)"),
-        ("gpuinfo", "GPU info (NVIDIA GA106)"),
-        ("pci",     "List PCI devices"),
-        ("meminfo", "Memory information"),
-        ("uptime",  "System uptime"),
-        ("ver",     "Kernel version"),
-        ("reboot",  "Reboot system"),
-        ("halt",    "Halt CPU"),
-    ];
-    for &(name, desc) in cmds {
-        con.print("  ");
-        con.print_colored(name, colors::NV_GREEN);
-        // Pad to 12 chars
-        for _ in 0..(12 - name.len().min(12)) { con.put_char(b' '); }
-        con.print_colored(desc, colors::TEXT_SECONDARY);
-        con.println("");
-    }
+    con.print_colored("Commands:", colors::ACCENT_BLUE);
+    con.newline();
+    print_cmd(con, "help", "Show this help");
+    print_cmd(con, "cpuinfo", "CPU features");
+    print_cmd(con, "gpuinfo", "GPU information");
+    print_cmd(con, "pci", "List PCI devices");
+    print_cmd(con, "meminfo", "Memory layout");
+    print_cmd(con, "uptime", "System uptime");
+    print_cmd(con, "clear", "Clear screen");
+    print_cmd(con, "ver", "Kernel version");
+    print_cmd(con, "reboot", "Reboot system");
+    print_cmd(con, "halt", "Halt CPU");
+}
+
+fn print_cmd(con: &mut Console, name: &str, desc: &str) {
+    con.print("  ");
+    con.print_colored(name, colors::NV_GREEN);
+    // Manual padding
+    let mut pad = 12usize.saturating_sub(name.len());
+    while pad > 0 { con.put_char(b' '); pad -= 1; }
+    con.print(desc);
+    con.newline();
 }
 
 fn cmd_cpuinfo(con: &mut Console) {
+    let f = cpu::detect_cpu();
     con.print_colored("CPU: ", colors::ACCENT_PURPLE);
-    con.println("AMD Ryzen 5 5600X (Zen 3, Vermeer)");
-
-    let cpu = cpu::detect_cpu();
-    let features: &[(&str, bool)] = &[
-        ("SSE4.2", cpu.has_sse42),
-        ("AVX2",   cpu.has_avx2),
-        ("FMA3",   cpu.has_fma3),
-        ("AES-NI", cpu.has_aes),
-        ("SHA",    cpu.has_sha),
-        ("BMI2",   cpu.has_bmi2),
-        ("RDRAND", cpu.has_rdrand),
-        ("RDSEED", cpu.has_rdseed),
-        ("NX",     cpu.has_nx),
-    ];
-
-    con.print("Features: ");
-    for &(name, has) in features {
-        if has {
-            con.print_colored(name, colors::TEXT_SUCCESS);
-        } else {
-            con.print_colored(name, colors::ACCENT_RED);
-        }
-        con.print(" ");
-    }
-    con.println("");
-
-    con.print("Cores: ");
-    con.print_colored("6C/12T", colors::TEXT_PRIMARY);
-    con.print("  Base: ");
-    con.print_colored("3.7 GHz", colors::TEXT_PRIMARY);
-    con.print("  Boost: ");
-    con.print_colored("4.6 GHz", colors::TEXT_PRIMARY);
-    con.println("");
+    con.println("AMD Ryzen 5 5600X (Zen 3)");
+    con.print("  SSE4.2: "); print_yn(con, f.has_sse42);
+    con.print("  AVX2:   "); print_yn(con, f.has_avx2);
+    con.print("  FMA3:   "); print_yn(con, f.has_fma3);
+    con.print("  AES-NI: "); print_yn(con, f.has_aes);
+    con.print("  SHA:    "); print_yn(con, f.has_sha);
+    con.print("  BMI2:   "); print_yn(con, f.has_bmi2);
+    con.print("  RDRAND: "); print_yn(con, f.has_rdrand);
+    con.print("  NX:     "); print_yn(con, f.has_nx);
 }
 
 fn cmd_gpuinfo(con: &mut Console) {
     con.print_colored("GPU: ", colors::ACCENT_PURPLE);
     con.println("NVIDIA GeForce RTX 3060 12GB");
-
-    con.print("  Chip:     ");
-    con.print_colored("GA106 (Ampere)", colors::TEXT_PRIMARY);
-    con.println("");
-
-    con.print("  VRAM:     ");
-    con.print_colored("12288 MB GDDR6", colors::NV_GREEN);
-    con.println("");
-
-    con.print("  Bus:      ");
-    con.println("PCIe 4.0 x16 @ bus 41");
-
-    con.print("  VID:DID:  ");
-    con.println("0x10DE:0x2504");
-
-    con.print("  BAR0:     ");
-    con.println("MMIO register space (16 MB)");
-
-    con.print("  Display:  ");
-    con.print_colored("VBE 1920x1080x32bpp @ 0xD0000000", colors::ACCENT_CYAN);
-    con.println("");
-
-    con.print("  Driver:   ");
-    con.print_colored("Ring 0 loaded (SigDead-BIB nv_kernel)", colors::TEXT_SUCCESS);
-    con.println("");
+    con.println("  Chip:   GA106 (Ampere A1)");
+    con.println("  VRAM:   12288 MB GDDR6");
+    con.println("  Bus:    PCIe 4.0 x16, bus 41");
+    con.println("  VID:    0x10DE:0x2504");
+    con.println("  BAR0:   MMIO 16 MB (registers)");
+    con.print("  FB:     ");
+    con.print_colored("VBE 1920x1080x32 @ 0xD0000000", colors::ACCENT_CYAN);
+    con.newline();
+    con.print("  Driver: ");
+    con.print_colored("Ring 0 loaded", colors::TEXT_SUCCESS);
+    con.newline();
 }
 
 fn cmd_pci(con: &mut Console) {
-    let devices = crate::drivers::pci::scan_pci_bus();
-    con.print_colored("PCI Devices: ", colors::ACCENT_BLUE);
-    con.print_u64(devices.count as u64);
-    con.println("");
-
-    // Show first devices with details
-    for i in 0..devices.count.min(20) {
-        let d = &devices.devices[i];
+    let devs = crate::drivers::pci::scan_pci_bus();
+    con.print_colored("PCI: ", colors::ACCENT_BLUE);
+    con.print_u64(devs.count as u64);
+    con.println(" devices");
+    let max = if devs.count > 15 { 15 } else { devs.count };
+    let mut i = 0;
+    while i < max {
+        let d = &devs.devices[i];
         con.print("  ");
         con.print_u64(d.bus as u64);
-        con.print(":");
+        con.put_char(b':');
         con.print_u64(d.device as u64);
-        con.print(".");
+        con.put_char(b'.');
         con.print_u64(d.function as u64);
         con.print("  ");
         con.print_hex32(((d.vendor_id as u32) << 16) | d.device_id as u32);
-
-        // Identify known vendors
-        match d.vendor_id {
-            0x10DE => con.print_colored("  NVIDIA", colors::NV_GREEN),
-            0x1022 => con.print_colored("  AMD", colors::ACCENT_RED),
-            0x1002 => con.print_colored("  AMD/ATI", colors::ACCENT_RED),
-            0x8086 => con.print_colored("  Intel", colors::ACCENT_BLUE),
-            0x1B21 => con.print_colored("  ASMedia", colors::TEXT_SECONDARY),
-            0x1987 => con.print_colored("  Phison", colors::TEXT_SECONDARY),
-            _ => {}
+        if d.vendor_id == 0x10DE {
+            con.print_colored(" NVIDIA", colors::NV_GREEN);
+        } else if d.vendor_id == 0x1022 {
+            con.print_colored(" AMD", colors::ACCENT_RED);
         }
-        con.println("");
+        con.newline();
+        i += 1;
     }
-    if devices.count > 20 {
-        con.print_colored("  ... and more\n", colors::TEXT_SECONDARY);
+    if devs.count > 15 {
+        con.println("  ...");
     }
 }
 
 fn cmd_meminfo(con: &mut Console) {
-    con.print_colored("Memory Layout:\n", colors::ACCENT_BLUE);
-    con.println("  0x000000 - 0x007BFF  Reserved (IVT, BDA)");
-    con.println("  0x007C00 - 0x007DFF  MBR (Stage1)");
-    con.println("  0x007E00 - 0x00BDFF  Stage2 bootloader");
-    con.println("  0x010000 - 0x0FFFFF  Kernel load buffer");
-    con.println("  0x100000 - 0x3FFFFF  Kernel (1 MB - 4 MB)");
-    con.println("  0x400000 - 0x7FFFFF  DMA buffer pool");
-    con.println("  0x800000             Stack top (grows down)");
-    con.print("  0xD0000000           ");
-    con.print_colored("GPU Framebuffer (VBE LFB)", colors::ACCENT_CYAN);
-    con.println("");
+    con.print_colored("Memory:\n", colors::ACCENT_BLUE);
+    con.println("  0x007C00  MBR (Stage1)");
+    con.println("  0x007E00  Stage2 bootloader");
+    con.println("  0x100000  Kernel (1 MB)");
+    con.println("  0x400000  DMA buffer pool");
+    con.println("  0x800000  Stack top");
+    con.print("  0xD0000000  ");
+    con.print_colored("GPU Framebuffer", colors::ACCENT_CYAN);
+    con.newline();
 }
 
 fn cmd_uptime(con: &mut Console) {
     let tsc = cpu::rdtsc();
-    // Ryzen 5 5600X base clock ~3.7 GHz, estimate seconds
-    let approx_secs = tsc / 3_700_000_000;
+    let secs = tsc / 3_700_000_000;
     con.print("Uptime: ~");
-    con.print_u64(approx_secs);
-    con.print(" seconds (TSC: ");
-    con.print_u64(tsc);
-    con.println(")");
+    con.print_u64(secs);
+    con.println(" seconds");
 }
 
 fn cmd_reboot() {
-    // Triple fault or keyboard controller reset
     unsafe {
-        // Method 1: keyboard controller reset
         core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8);
-        // Method 2: triple fault (fallback)
-        core::arch::asm!("lidt [{}]", in(reg) &0u64, options(nostack));
-        core::arch::asm!("int3");
     }
 }
 
-fn cmd_halt(con: &mut Console) {
-    con.print_colored("System halted.", colors::ACCENT_ORANGE);
-    con.println("");
-    loop { unsafe { core::arch::asm!("hlt"); } }
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+fn print_yn(con: &mut Console, val: bool) {
+    if val {
+        con.print_colored("YES", colors::TEXT_SUCCESS);
+    } else {
+        con.print_colored("NO", colors::ACCENT_RED);
+    }
+    con.newline();
 }
 
-// ── Utilities ──────────────────────────────────────────────────────────────
-
-fn trim(s: &[u8]) -> &[u8] {
+fn bytes_eq(a: &[u8], b: &[u8]) -> bool {
+    // Trim spaces from a
     let mut start = 0;
-    let mut end = s.len();
-    while start < end && s[start] == b' ' { start += 1; }
-    while end > start && s[end - 1] == b' ' { end -= 1; }
-    &s[start..end]
-}
-
-fn eq(a: &[u8], b: &[u8]) -> bool {
+    let mut end = a.len();
+    while start < end && a[start] == b' ' { start += 1; }
+    while end > start && a[end - 1] == b' ' { end -= 1; }
+    let a = &a[start..end];
     if a.len() != b.len() { return false; }
-    for i in 0..a.len() {
+    let mut i = 0;
+    while i < a.len() {
         if a[i] != b[i] { return false; }
+        i += 1;
     }
     true
-}
-
-fn print_bytes(con: &mut Console, s: &[u8]) {
-    for &b in s { con.put_char(b); }
 }

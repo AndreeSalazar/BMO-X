@@ -109,11 +109,20 @@ impl Console {
 
     /// Print a u32 as hex.
     pub fn print_hex32(&mut self, val: u32) {
-        const HEX: &[u8] = b"0123456789ABCDEF";
         self.print("0x");
-        for &shift in &[28u32, 24, 20, 16, 12, 8, 4, 0] {
-            self.put_char(HEX[((val >> shift) & 0xF) as usize]);
-        }
+        self.put_hex_nibble((val >> 28) & 0xF);
+        self.put_hex_nibble((val >> 24) & 0xF);
+        self.put_hex_nibble((val >> 20) & 0xF);
+        self.put_hex_nibble((val >> 16) & 0xF);
+        self.put_hex_nibble((val >> 12) & 0xF);
+        self.put_hex_nibble((val >> 8) & 0xF);
+        self.put_hex_nibble((val >> 4) & 0xF);
+        self.put_hex_nibble(val & 0xF);
+    }
+
+    fn put_hex_nibble(&mut self, n: u32) {
+        let ch = if n < 10 { b'0' + n as u8 } else { b'A' + (n as u8 - 10) };
+        self.put_char(ch);
     }
 
     // ── Internal ────────────────────────────────────────────────────────
