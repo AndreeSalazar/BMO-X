@@ -71,6 +71,10 @@ impl ChipInfo {
 /// 5. Load firmware (GSP/PMU)
 /// 6. Enable interrupts
 pub fn gpu_init(platform: &dyn Platform, pci: PciAddress) -> NvResult<Gpu> {
+    // 0. Set GPU to D0 power state (required on cold boot / USB boot)
+    // MSI B550 CSM may leave GPU in D3hot
+    nv_hal::set_power_d0(platform, pci);
+
     // 1. Enable bus mastering for DMA
     nv_hal::enable_bus_master(platform, pci);
 
@@ -116,6 +120,8 @@ pub fn gpu_init(platform: &dyn Platform, pci: PciAddress) -> NvResult<Gpu> {
 }
 
 /// Enable GPU engines via PMC.ENABLE register.
+/// On cold boot from USB, not all engines may be ready immediately.
+/// We retry with a delay and only require critical engines.
 pub fn enable_engines(gpu: &mut Gpu) -> NvResult<()> {
     let mask = pmc::ENABLE_PFIFO
              | pmc::ENABLE_PGRAPH
@@ -123,12 +129,31 @@ pub fn enable_engines(gpu: &mut Gpu) -> NvResult<()> {
              | pmc::ENABLE_PCOPY1
              | pmc::ENABLE_PDISPLAY;
 
+    // First attempt: enable all engines
     gpu.bar0.set_bits(pmc::ENABLE, mask);
 
-    // Verify engines are enabled
+    // Brief delay for engines to come up
+    // (rdtsc-based busy wait, ~1ms)
+    for _ in 0..1000000u32 {
+        core::hint::spin_loop();
+    }
+
+    // Check which engines are enabled
     let enabled = gpu.bar0.read32(pmc::ENABLE);
-    if enabled & mask != mask {
-        return Err(NvError::GpuNotFullPower);
+
+    // Critical engines: at least PFIFO must be up
+    let critical = pmc::ENABLE_PFIFO;
+    if enabled & critical != critical {
+        // Try once more after a longer delay
+        gpu.bar0.write32(pmc::ENABLE, 0); // Reset all
+        for _ in 0..5000000u32 { core::hint::spin_loop(); }
+        gpu.bar0.set_bits(pmc::ENABLE, mask);
+        for _ in 0..5000000u32 { core::hint::spin_loop(); }
+
+        let enabled2 = gpu.bar0.read32(pmc::ENABLE);
+        if enabled2 & critical != critical {
+            return Err(NvError::GpuNotFullPower);
+        }
     }
 
     gpu.state = GpuState::EnginesReset;

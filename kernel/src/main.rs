@@ -1,4 +1,4 @@
-//! FastOS Kernel — Entry Point
+//! FastOS Kernel - Entry Point
 //!
 //! Receives control from stage2 in 64-bit long mode, Ring 0.
 //! SSE/AVX2 initialized. RDI = pointer to BootInfo.
@@ -18,33 +18,59 @@ use vga::VgaWriter;
 /// Boot info from stage2.asm (at 0x9100).
 #[repr(C)]
 pub struct BootInfo {
-    pub magic: u64,
-    pub memory_map_addr: u64,
-    pub memory_map_count: u64,
-    pub cpu_features_addr: u64,
-    pub framebuffer_addr: u64,
-    pub kernel_start: u64,
-    pub kernel_size: u64,
+    pub magic: u64,              // 0x9100: 0xFA5705
+    pub memory_map_addr: u64,    // 0x9108
+    pub memory_map_count: u64,   // 0x9110
+    pub cpu_features_addr: u64,  // 0x9118
+    pub framebuffer_addr: u64,   // 0x9120: VBE LFB or 0xB8000
+    pub kernel_start: u64,       // 0x9128
+    pub kernel_size: u64,        // 0x9130
+    pub fb_pitch: u64,           // 0x9138: bytes per scanline
+    pub vbe_mode: u64,           // 0x9140: 1=graphics, 0=text
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
-    let mut vga = VgaWriter::new();
+    let info = unsafe { &*boot_info };
+
+    // Create writer based on VBE mode
+    let mut vga = VgaWriter::from_boot_info(
+        info.framebuffer_addr,
+        info.fb_pitch,
+        info.vbe_mode,
+    );
     vga.clear();
 
-    vga.write_str_color("FastOS v0.1.0 — Ryzen 5 5600X + RTX 3060 12G", vga::Color::LightCyan);
+    // Header
+    vga.write_str_color("FastOS v0.1.0 - Ryzen 5 5600X + RTX 3060 12G", vga::Color::LightCyan);
     vga.newline();
-    vga.write_str("================================================");
+    vga.write_separator();
+
+    // Mode indicator
+    if vga.is_graphics_mode() {
+        vga.write_str_color("[OK] ", vga::Color::Green);
+        vga.write_str("VBE Framebuffer: 1920x1080x32bpp");
+    } else {
+        vga.write_str_color("[OK] ", vga::Color::Yellow);
+        vga.write_str("VGA Text Mode: 80x25");
+    }
     vga.newline();
 
     // Validate boot info
-    let info = unsafe { &*boot_info };
     if info.magic != 0xFA5705 {
         vga.write_str_color("ERROR: Invalid boot magic!", vga::Color::Red);
         halt_loop();
     }
     vga.write_str_color("[OK] ", vga::Color::Green);
     vga.write_str("Boot info valid");
+    vga.newline();
+
+    // Framebuffer address
+    vga.write_str_color("[FB] ", vga::Color::LightCyan);
+    vga.write_str("Address: 0x");
+    vga.write_hex32(info.framebuffer_addr as u32);
+    vga.write_str("  Pitch: ");
+    vga.write_u64(info.fb_pitch);
     vga.newline();
 
     // Memory
@@ -91,7 +117,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     vga.write_u64(devices.count as u64);
     vga.newline();
 
-    // Check for NVIDIA GPU — require exact 0x10DE:0x2504 (GA106)
+    // Check for NVIDIA GPU
     if let Some(gpu_pci) = devices.find_nvidia_gpu() {
         vga.write_str_color("[PCI] ", vga::Color::LightCyan);
         vga.write_str("NVIDIA @ bus ");
@@ -109,13 +135,10 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         vga.write_hex16(gpu_pci.device_id);
         vga.newline();
 
-        drivers::serial::serial_write("[FastOS] PCI: NVIDIA 10DE:");
-        drivers::serial::serial_write("2504 found\n");
-
         // Gate: only touch GPU if exact GA106 device ID
         if gpu_pci.device_id == 0x2504 {
             vga.write_str_color("[GPU] ", vga::Color::Green);
-            vga.write_str("GA106 confirmed — initializing driver...");
+            vga.write_str("GA106 confirmed - initializing driver...");
             vga.newline();
 
             match drivers::gpu::rtx3060::init_gpu_driver() {
@@ -128,18 +151,28 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
                     vga.write_hex32(gpu_info.chip_id);
                     vga.newline();
 
+                    vga.write_str_color("[GPU] ", vga::Color::Green);
+                    vga.write_str("Ring 0 driver loaded OK");
+                    vga.newline();
+
                     drivers::serial::serial_write("[FastOS] GPU driver Ring 0 OK\n");
                 }
-                Err(_e) => {
+                Err(e) => {
                     vga.write_str_color("[GPU] ", vga::Color::Red);
-                    vga.write_str("Driver init FAILED — halting GPU subsystem");
+                    vga.write_str("Driver init FAILED: ");
+                    vga.write_str(e.description());
                     vga.newline();
+
+                    vga.write_str_color("[GPU] ", vga::Color::Yellow);
+                    vga.write_str("Check BIOS: Disable Resizable BAR, disable Above 4G");
+                    vga.newline();
+
                     drivers::serial::serial_write("[FastOS] GPU init FAILED\n");
                 }
             }
         } else {
             vga.write_str_color("[GPU] ", vga::Color::Yellow);
-            vga.write_str("Not GA106 (0x2504) — skipping driver");
+            vga.write_str("Not GA106 (0x2504) - skipping driver");
             vga.newline();
         }
     } else {
@@ -149,9 +182,10 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     vga.newline();
+    vga.write_separator();
     vga.write_str_color("FastOS kernel initialized!", vga::Color::LightGreen);
     vga.newline();
-    vga.write_str("System halted.");
+    vga.write_str("System ready. Halted.");
 
     halt_loop();
 }

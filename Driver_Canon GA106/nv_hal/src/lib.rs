@@ -224,6 +224,51 @@ pub fn read_bar1(platform: &dyn Platform, addr: PciAddress) -> u64 {
     }
 }
 
+/// Set GPU to D0 power state (full power).
+/// Required before accessing GPU registers on cold boot.
+/// Walks PCI capability list to find PM capability (ID=0x01).
+pub fn set_power_d0(platform: &dyn Platform, addr: PciAddress) {
+    // Check if device has capabilities (bit 4 of status register)
+    let status = platform.pci_config_read32(addr, 0x04) >> 16;
+    if status & (1 << 4) == 0 {
+        return; // No capabilities list
+    }
+
+    // Read capabilities pointer (offset 0x34, bottom byte)
+    let cap_ptr = (platform.pci_config_read32(addr, 0x34) & 0xFF) as u8;
+    let mut offset = cap_ptr;
+
+    // Walk capability list to find PM capability (ID = 0x01)
+    let mut iterations = 0;
+    while offset != 0 && iterations < 48 {
+        let cap_header = platform.pci_config_read32(addr, offset);
+        let cap_id = (cap_header & 0xFF) as u8;
+
+        if cap_id == 0x01 {
+            // Found Power Management capability
+            // PM Control/Status register is at offset + 4
+            let pmcsr_off = offset + 4;
+            let pmcsr = platform.pci_config_read32(addr, pmcsr_off);
+
+            // Current power state is bits [1:0]
+            let current_state = pmcsr & 0x03;
+            if current_state != 0 {
+                // Not in D0 — transition to D0
+                let new_pmcsr = (pmcsr & !0x03) | 0x00; // Clear power state bits = D0
+                platform.pci_config_write32(addr, pmcsr_off, new_pmcsr);
+
+                // Wait for power transition (PCI spec: 10ms from D3→D0)
+                platform.stall_us(20_000); // 20ms to be safe
+            }
+            return;
+        }
+
+        // Next capability (upper byte of cap_header bits [15:8])
+        offset = ((cap_header >> 8) & 0xFF) as u8;
+        iterations += 1;
+    }
+}
+
 /// Enable bus mastering (required for DMA).
 pub fn enable_bus_master(platform: &dyn Platform, addr: PciAddress) {
     let cmd = platform.pci_config_read32(addr, 0x04);

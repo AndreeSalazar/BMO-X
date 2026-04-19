@@ -20,6 +20,7 @@ jmp stage2_start
 %include "a20.asm"
 %include "memory.asm"
 %include "cpucheck.asm"
+%include "vbe.asm"
 
 KERNEL_LOAD_ADDR equ 0x100000
 KERNEL_SECTORS   equ 256
@@ -128,10 +129,33 @@ stage2_start:
     mov si, msg_kernel_loaded
     call print_string_16
 
+    ; ── VBE: Set 1920x1080x32bpp mode ────────────────────────────────────
+    ; Must be done in real mode (INT 10h VBE requires BIOS).
+    ; If VBE fails, kernel falls back to VGA text mode.
+    mov si, msg_vbe_try
+    call print_string_16
+
+    call setup_vbe
+
+    cmp byte [vbe_mode_ok], 1
+    jne .vbe_skip
+    mov si, msg_vbe_ok
+    call print_string_16
+    jmp .vbe_done
+.vbe_skip:
+    mov si, msg_vbe_fail
+    call print_string_16
+.vbe_done:
+
     ; ── Phase 2: Enter 32-bit Protected Mode ─────────────────────────────
 
+    ; If VBE succeeded, we're in graphics mode — no more INT 10h
+    ; If VBE failed, we're still in text mode
+    cmp byte [vbe_mode_ok], 0
+    jne .skip_cursor_save
     mov si, msg_entering_pm
     call print_string_16
+.skip_cursor_save:
 
     ; Save current BIOS cursor row for VGA continuation in PM
     mov ah, 0x03
@@ -168,6 +192,9 @@ msg_mem_ok:         db "[FastOS] Memory map: OK", 13, 10, 0
 msg_loading_kernel: db "[FastOS] Loading kernel", 0
 msg_kernel_loaded:  db 13, 10, "[FastOS] Kernel loaded OK", 13, 10, 0
 msg_kernel_err:     db 13, 10, "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
+msg_vbe_try:        db "[FastOS] Setting 1920x1080x32...", 13, 10, 0
+msg_vbe_ok:         db "[FastOS] VBE: 1920x1080x32bpp OK!", 13, 10, 0
+msg_vbe_fail:       db "[FastOS] VBE: Failed, using VGA text", 13, 10, 0
 msg_entering_pm:    db "[FastOS] Entering PM -> LM -> Kernel!", 13, 10, 0
 
 stage2_boot_drive: db 0
@@ -349,9 +376,18 @@ long_mode_entry:
     mov eax, [0x8000]
     mov qword [0x9110], rax                ; memory_map_count
     mov qword [0x9118], 0x9000             ; cpu_features_addr
-    mov qword [0x9120], 0xB8000            ; framebuffer (VGA)
+
+    ; Framebuffer: use VBE address if set, otherwise VGA 0xB8000
+    mov eax, [vbe_fb_addr]
+    mov qword [0x9120], rax                ; framebuffer_addr
     mov qword [0x9128], 0x100000           ; kernel_start
     mov qword [0x9130], 128 * 1024         ; kernel_size
+
+    ; Extended boot info: VBE data
+    movzx eax, word [vbe_pitch]
+    mov qword [0x9138], rax                ; fb_pitch
+    movzx eax, byte [vbe_mode_ok]
+    mov qword [0x9140], rax                ; vbe_mode (1=graphics, 0=text)
 
     ; ── Jump to Rust! ────────────────────────────────────────────────────
 

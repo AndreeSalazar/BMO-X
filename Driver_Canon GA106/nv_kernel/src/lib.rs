@@ -61,33 +61,87 @@ impl Default for DriverInfo {
 
 /// Initialize the full driver stack.
 ///
-/// Sequence mirrors nvlddmkm.sys INIT section (39KB, discarded after boot):
-/// 1. PCI enumeration → find GPU
-/// 2. Map BARs, read chip ID, detect VRAM
-/// 3. Enable engines (PGRAPH, PFIFO, PCOPY, PDISPLAY)
-/// 4. Init FIFO command engine
-/// 5. Init display engine
-/// 6. Enable top-level interrupts
+/// On bare metal with UEFI CSM, the VBIOS has already initialized the GPU
+/// (proven by VBE 1920x1080 working). We must NOT reset engines that are
+/// already running — this would kill the display.
+///
+/// Strategy: probe GPU state, attach to existing config, only enable
+/// missing engines.
 pub fn driver_init(platform: &dyn Platform) -> NvResult<DriverState> {
     // 1. Find the GPU on the PCI bus
     let pci = nv_hal::find_gpu(platform).ok_or(NvError::CardNotPresent)?;
 
-    // 2. Full GPU init (BARs, chip ID, VRAM, firmware)
-    let mut gpu = nv_gpu::gpu_init(platform, pci)?;
+    // 2. Set D0 power + bus mastering (harmless if already done)
+    nv_hal::set_power_d0(platform, pci);
+    nv_hal::enable_bus_master(platform, pci);
 
-    // 3. Enable engines via PMC
-    nv_gpu::enable_engines(&mut gpu)?;
+    // 3. Map BAR0 (register MMIO space)
+    let bar0_phys = nv_hal::read_bar0(platform, pci);
+    let bar0_size = nv_regs::BAR0_SIZE;
+    let bar0_ptr = platform.map_mmio(bar0_phys, bar0_size);
+    if bar0_ptr.is_null() {
+        return Err(NvError::InvalidAddress);
+    }
+    let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, bar0_size) };
 
-    // 4. Init FIFO command submission
-    nv_cmd::fifo_init(&gpu.bar0)?;
+    // 4. Read chip ID — verify GPU is responding
+    let boot0 = bar0.read32(nv_regs::pmc::BOOT_0);
+    if boot0 == 0 || boot0 == 0xFFFF_FFFF {
+        return Err(NvError::CardNotPresent);
+    }
+    let chip = nv_gpu::ChipInfo::from_boot0(boot0);
 
-    // 5. Init display engine
+    // 5. Read current engine state (VBIOS may have already enabled engines)
+    let current_enable = bar0.read32(nv_regs::pmc::ENABLE);
+
+    // 6. Detect VRAM
+    let vram_size = {
+        let cfg = bar0.read32(nv_regs::pmem::FB_MEM_SIZE);
+        let mb = cfg & 0xFFFF;
+        (mb as u64) * 1024 * 1024
+    };
+
+    // 7. Map BAR1 (VRAM aperture) — optional
+    let bar1_phys = nv_hal::read_bar1(platform, pci);
+    let bar1 = if bar1_phys != 0 {
+        let ptr = platform.map_mmio(bar1_phys, nv_regs::BAR1_SIZE);
+        if !ptr.is_null() {
+            Some(unsafe { nv_hal::MmioRegion::new(ptr, nv_regs::BAR1_SIZE) })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // 8. Determine GPU state based on what VBIOS left us
+    let state = if current_enable != 0 {
+        // VBIOS has engines running — attach to existing state
+        GpuState::EnginesReset
+    } else {
+        GpuState::BarsMapping
+    };
+
+    let mut gpu = Gpu {
+        bar0,
+        bar1,
+        pci,
+        chip_id: chip.chip_id,
+        vram_size,
+        state,
+    };
+
+    // 9. If no engines are enabled, try to enable them
+    //    Otherwise, VBIOS already did this — don't touch!
+    if current_enable == 0 {
+        // Cold init path — VBIOS didn't init (unlikely if VBE works)
+        nv_gpu::enable_engines(&mut gpu)?;
+    }
+
+    // 10. Init display config (read current state, don't reconfigure)
     let display = nv_display::display_init(&gpu.bar0);
 
-    // 6. Enable top-level interrupts
-    nv_gpu::enable_interrupts(&gpu);
-
-    // 7. Mark GPU ready
+    // 11. Mark ready
     gpu.state = GpuState::Ready;
 
     Ok(DriverState {
