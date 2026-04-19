@@ -1,34 +1,39 @@
-//! RTX 3060 12G (GA106) — register offsets from SigDead-BIB nv_regs.
+//! RTX 3060 12G (GA106) — Full driver integration via Driver_Canon GA106 crates.
+//!
+//! This module bridges the nv_kernel driver stack into FastOS.
+//! All operations are Ring 0 — no userspace, no syscalls.
 
-pub const NVIDIA_VENDOR_ID: u16 = 0x10DE;
-pub const GA106_DEVICE_ID: u16  = 0x2504;
-pub const BAR0_SIZE: usize = 16 * 1024 * 1024;
+pub use nv_error::{NvError, NvResult};
+pub use nv_regs;
+pub use nv_gpu::GpuState;
+pub use nv_kernel::{DriverState, DriverInfo};
 
-pub mod regs {
-    pub const BOOT_0: u32        = 0x0000_0000;
-    pub const PMC_ENABLE: u32    = 0x0000_0200;
-    pub const PMC_INTR_0: u32    = 0x0000_0100;
-    pub const PTIMER_LO: u32     = 0x0000_9400;
-    pub const PTIMER_HI: u32     = 0x0000_9410;
+use crate::platform::FastOsPlatform;
+
+static PLATFORM: FastOsPlatform = FastOsPlatform::new();
+
+pub fn init_gpu_driver() -> NvResult<DriverState> {
+    nv_kernel::driver_init(&PLATFORM)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GpuState {
-    Uninitialized,
-    Detected,
-    BarsMapped,
-    Ready,
-    Error,
+pub fn gpu_info(state: &DriverState) -> DriverInfo {
+    nv_kernel::driver_info(state)
 }
 
-pub struct Rtx3060 {
-    pub bar0_phys: u64,
-    pub state: GpuState,
-    pub chip_id: u32,
+pub fn handle_gpu_irq(state: &mut DriverState) -> u32 {
+    nv_kernel::driver_handle_irq(state)
 }
 
-impl Rtx3060 {
-    pub fn new(bar0_phys: u64) -> Self {
-        Self { bar0_phys, state: GpuState::Detected, chip_id: 0 }
-    }
+pub fn setup_display(
+    state: &mut DriverState,
+    head: u32,
+    width: u32,
+    height: u32,
+    fb_phys: u64,
+) -> NvResult<()> {
+    nv_kernel::driver_setup_display(state, head, width, height, fb_phys, &PLATFORM)
+}
+
+pub fn teardown(state: &mut DriverState) {
+    nv_kernel::driver_teardown(state, &PLATFORM)
 }

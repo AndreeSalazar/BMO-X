@@ -91,4 +91,11 @@ impl VgaWriter {
             self.write_byte(HEX[((val >> shift) & 0xF) as usize]);
         }
     }
+
+    pub fn write_hex32(&mut self, val: u32) {
+        const HEX: &[u8] = b"0123456789ABCDEF";
+        for shift in (0..32).rev().step_by(4) {
+            self.write_byte(HEX[((val >> shift) & 0xF) as usize]);
+        }
+    }
 }

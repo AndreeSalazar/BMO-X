@@ -11,6 +11,7 @@ mod drivers;
 mod fs;
 mod vga;
 mod panic;
+mod platform;
 
 use vga::VgaWriter;
 
@@ -91,13 +92,41 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     vga.newline();
 
     // Check for NVIDIA GPU
-    if let Some(gpu) = devices.find_nvidia_gpu() {
-        vga.write_str_color("[GPU] NVIDIA GPU detected! ", vga::Color::LightGreen);
+    if let Some(gpu_pci) = devices.find_nvidia_gpu() {
+        vga.write_str_color("[GPU] NVIDIA GPU detected: ", vga::Color::LightGreen);
         vga.write_str("0x");
-        vga.write_hex16(gpu.vendor_id);
+        vga.write_hex16(gpu_pci.vendor_id);
         vga.write_str(":0x");
-        vga.write_hex16(gpu.device_id);
+        vga.write_hex16(gpu_pci.device_id);
         vga.newline();
+
+        // Initialize full GPU driver stack (Ring 0)
+        vga.write_str_color("[GPU] ", vga::Color::LightCyan);
+        vga.write_str("Initializing Driver_Canon GA106...");
+        vga.newline();
+
+        match drivers::gpu::rtx3060::init_gpu_driver() {
+            Ok(mut driver_state) => {
+                let info = drivers::gpu::rtx3060::gpu_info(&driver_state);
+                vga.write_str_color("[GPU] ", vga::Color::Green);
+                vga.write_str("Driver ready! VRAM: ");
+                vga.write_u64(info.vram_size_mb);
+                vga.write_str(" MB");
+                vga.newline();
+
+                vga.write_str_color("[GPU] ", vga::Color::Green);
+                vga.write_str("Chip ID: 0x");
+                vga.write_hex32(info.chip_id);
+                vga.newline();
+
+                drivers::serial::serial_write("[FastOS] GPU driver initialized (Ring 0)\n");
+            }
+            Err(_e) => {
+                vga.write_str_color("[GPU] Driver init failed", vga::Color::Red);
+                vga.newline();
+                drivers::serial::serial_write("[FastOS] GPU driver init FAILED\n");
+            }
+        }
     } else {
         vga.write_str_color("[GPU] No NVIDIA GPU found", vga::Color::Yellow);
         vga.newline();

@@ -1,7 +1,8 @@
 # FastOS — Top-Level Build
-# Three pillars: NASM boot → Rust kernel → C upper layers
+# Two pillars: NASM boot (Ring 0) → Rust kernel + drivers (Ring 0)
+# Fagging-Scale architecture: everything Ring 0, no userspace.
 
-.PHONY: all boot kernel adead clean test
+.PHONY: all boot kernel driver clean test
 
 all: boot kernel
 
@@ -13,14 +14,14 @@ kernel:
 	@echo "=== Building Rust kernel ==="
 	cd kernel && cargo build
 
-adead:
-	@echo "=== Building ADead-BIB (C) ==="
-	$(MAKE) -C adead
+driver:
+	@echo "=== Building GPU driver (Driver_Canon GA106) ==="
+	cd "Driver_Canon GA106" && cargo build
 
 clean:
 	$(MAKE) -C boot clean
 	cd kernel && cargo clean
-	$(MAKE) -C adead clean
+	cd "Driver_Canon GA106" && cargo clean
 
 # Test with QEMU
 test: all
@@ -30,5 +31,4 @@ test: all
 image: boot kernel
 	@echo "=== Creating full FastOS image ==="
 	cat boot/stage1.bin boot/stage2.bin > fastos.img
-	# Append kernel binary (future: use objcopy to extract raw binary)
 	truncate -s 1M fastos.img

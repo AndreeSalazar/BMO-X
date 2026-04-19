@@ -6,6 +6,16 @@ authors = ["FastOS Project"]
 description = "FastOS kernel — Ryzen 5 5600X + RTX 3060 12G"
 license = "MIT"
 
+[dependencies]
+nv_error = { path = "../Driver_Canon GA106/nv_error" }
+nv_regs = { path = "../Driver_Canon GA106/nv_regs" }
+nv_hal = { path = "../Driver_Canon GA106/nv_hal" }
+nv_firmware = { path = "../Driver_Canon GA106/nv_firmware" }
+nv_gpu = { path = "../Driver_Canon GA106/nv_gpu" }
+nv_cmd = { path = "../Driver_Canon GA106/nv_cmd" }
+nv_display = { path = "../Driver_Canon GA106/nv_display" }
+nv_kernel = { path = "../Driver_Canon GA106/nv_kernel" }
+
 [profile.dev]
 panic = "abort"
 
