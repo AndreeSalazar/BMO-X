@@ -98,6 +98,14 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         cmd_dmesg(con);
     } else if bytes_eq(cmd, b"gsprm") {
         cmd_gsprm(con);
+    } else if bytes_eq(cmd, b"gputest") {
+        crate::tests::gpu_test::run_all_tests(con);
+    } else if bytes_eq(cmd, b"gpucmd") {
+        let fb_base = con.fb_addr() as u64;
+        let fb_pitch = con.fb_pitch() as u32;
+        crate::gpu::engine::cmd_gpucmd(con, fb_base, fb_pitch, 1920, 1080);
+    } else if bytes_eq(cmd, b"cube") {
+        cmd_cube(con);
     } else {
         con.print_colored("Unknown: ", colors::ACCENT_RED);
         for &b in cmd { con.put_char(b); }
@@ -121,6 +129,9 @@ fn cmd_help(con: &mut Console) {
     print_cmd(con, "irq", "Interrupt status");
     print_cmd(con, "gpu", "GPU engine status");
     print_cmd(con, "gsprm", "GSP-RM protocol");
+    print_cmd(con, "gputest", "GPU HW test suite");
+    print_cmd(con, "gpucmd", "GPU command engine (Level 2)");
+    print_cmd(con, "cube", "3D rotating cube (Ring 0)");
     print_cmd(con, "dmesg", "Boot log");
     print_cmd(con, "ver", "Kernel version");
     print_cmd(con, "reboot", "Reboot system");
@@ -394,6 +405,60 @@ fn cmd_gsprm(con: &mut Console) {
     con.print("  Status: ");
     con.print_colored("READY (protocol mapped by SigDead-BIB)", colors::TEXT_SUCCESS);
     con.newline();
+}
+
+fn cmd_cube(con: &mut Console) {
+    con.print_colored("=== 3D Rotating Cube ===", colors::ACCENT_CYAN);
+    con.newline();
+    con.println("  Software 3D renderer — Ring 0, f32 math");
+    con.println("  640x480 viewport, flat shading + backface cull");
+    con.println("  Rendered by CPU, displayed via RTX 3060 framebuffer");
+    con.newline();
+
+    crate::render3d::init_backbuffer();
+
+    con.print("  Initializing... ");
+    con.print_colored("OK", colors::NV_GREEN);
+    con.newline();
+    con.println("  Press any key to stop.");
+    con.newline();
+
+    let fb_base = con.fb_addr() as u64;
+    let fb_pitch = con.fb_pitch() as u32;
+
+    // Clear the full screen to dark background first
+    let fb = fb_base as *mut u32;
+    let pitch_px = fb_pitch as usize / 4;
+    for y in 0..1080usize {
+        for x in 0..1920usize {
+            unsafe { fb.add(y * pitch_px + x).write_volatile(0xFF0D1117); }
+        }
+    }
+
+    let mut tick: u64 = 0;
+    loop {
+        crate::render3d::render_cube(fb_base, fb_pitch, tick);
+        tick += 1;
+
+        // Check for keypress to exit
+        let key = crate::drivers::keyboard::try_read_key();
+        if key != 0 {
+            break;
+        }
+
+        // Small delay — ~30 FPS target via spin
+        for _ in 0..3_000_000u32 {
+            core::hint::spin_loop();
+        }
+    }
+
+    // Restore console
+    con.clear();
+    con.print_colored("3D demo stopped.", colors::ACCENT_CYAN);
+    con.newline();
+    con.print("  Rendered ");
+    con.print_u64(tick);
+    con.println(" frames.");
 }
 
 fn cmd_reboot() {

@@ -11,10 +11,13 @@ mod console;
 mod drivers;
 mod fb;
 mod fs;
+mod gpu;
+mod render3d;
 mod vga;
 mod panic;
 mod platform;
 mod shell;
+mod tests;
 
 use fb::{Framebuffer, colors};
 use vga::VgaWriter;

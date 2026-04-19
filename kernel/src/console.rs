@@ -125,6 +125,12 @@ impl Console {
         self.put_char(ch);
     }
 
+    /// Framebuffer base address.
+    pub fn fb_addr(&self) -> usize { self.fb_addr }
+
+    /// Framebuffer pitch (bytes per scanline).
+    pub fn fb_pitch(&self) -> usize { self.fb_pitch }
+
     // ── Internal ────────────────────────────────────────────────────────
 
     fn fb(&self) -> Framebuffer {
