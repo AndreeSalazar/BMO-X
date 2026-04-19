@@ -3,7 +3,7 @@
 //! Bridges the kernel's hardware access to the GPU driver stack.
 //! All operations run in Ring 0, identity-mapped first 4GB.
 
-use nv_hal::{Platform, PciAddress, DmaBuffer, MmioRegion};
+use nv_hal::{Platform, PciAddress, DmaBuffer};
 
 pub struct FastOsPlatform;
 
