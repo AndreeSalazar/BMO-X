@@ -12,7 +12,7 @@
 #![no_std]
 
 use nv_error::{NvError, NvResult};
-use nv_regs::{self, pmc, pfifo, pgraph, pcopy, pdisplay, pmem, ptimer, BAR0_SIZE, BAR1_SIZE};
+use nv_regs::{self, pmc, pfifo, pgraph, pcopy, pdisplay, pmem, ptimer, pbdma, BAR0_SIZE, BAR1_SIZE};
 use nv_hal::{MmioRegion, PciAddress, Platform, DmaBuffer};
 use nv_firmware::{self, FalconEngine};
 
@@ -249,6 +249,125 @@ pub fn gpu_reset(gpu: &mut Gpu, platform: &dyn Platform) -> NvResult<()> {
 
     gpu.state = GpuState::EnginesReset;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// FIFO / Channel Management (from SigDead-BIB IOCTL + string analysis)
+// ---------------------------------------------------------------------------
+// nvlddmkm.sys uses a runlist-based channel scheduler on Ampere.
+// Channels are submitted via PBDMA engines ("_PBDMA0", "_PBDMA1").
+// SigDead-BIB found: NV_ERR_FIFO_BAD_ACCESS, NV_ERR_INVALID_CHANNEL,
+// and 525 IOCTLs including command submission paths.
+
+/// FIFO channel descriptor.
+#[derive(Debug, Clone, Copy)]
+pub struct FifoChannel {
+    /// Channel ID (0..511).
+    pub id: u32,
+    /// Whether this channel is active.
+    pub active: bool,
+    /// Push buffer physical address.
+    pub pb_phys: u64,
+    /// Push buffer size in bytes.
+    pub pb_size: u32,
+}
+
+/// Initialize FIFO subsystem — enable PFIFO and clear runlists.
+pub fn fifo_init(gpu: &Gpu) -> NvResult<()> {
+    // Verify PFIFO is enabled
+    let enabled = gpu.bar0.read32(pmc::ENABLE);
+    if enabled & pmc::ENABLE_PFIFO == 0 {
+        return Err(NvError::FifoBadAccess);
+    }
+
+    // Clear FIFO interrupts
+    gpu.bar0.write32(pfifo::INTR_0, 0xFFFF_FFFF);
+    // Enable FIFO error interrupts
+    gpu.bar0.write32(pfifo::INTR_EN_0, 0x0000_0001);
+
+    Ok(())
+}
+
+/// Read PBDMA engine status (from SigDead-BIB GSP firmware: _PBDMA0, _PBDMA1).
+pub fn pbdma_status(gpu: &Gpu, engine: u32) -> u32 {
+    if engine >= pbdma::COUNT {
+        return 0;
+    }
+    gpu.bar0.read32(pbdma::STATUS(engine))
+}
+
+// ---------------------------------------------------------------------------
+// Copy Engine Management (from SigDead-BIB GSP firmware HUB clients)
+// ---------------------------------------------------------------------------
+// SigDead-BIB found: HUBCLIENT_CE0..CE3, HUBCLIENT_HSCE0..HSCE8,
+// HUBCLIENT_CE_SHIM. GA106 has 5 copy engines (CE0-CE4).
+// Copy engines handle DMA transfers between system memory and VRAM.
+
+/// Initialize a specific Copy Engine.
+pub fn ce_init(gpu: &Gpu, ce_id: u32) -> NvResult<()> {
+    if ce_id >= pcopy::CE_COUNT {
+        return Err(NvError::InvalidIndex);
+    }
+
+    // Clear CE interrupt
+    gpu.bar0.write32(pcopy::CE_INTR(ce_id), 0xFFFF_FFFF);
+
+    Ok(())
+}
+
+/// Initialize all Copy Engines.
+pub fn ce_init_all(gpu: &Gpu) -> NvResult<()> {
+    for i in 0..pcopy::CE_COUNT {
+        ce_init(gpu, i)?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// GPU Info Summary (for shell `gpu` command)
+// ---------------------------------------------------------------------------
+
+/// Comprehensive GPU info collected from registers.
+#[derive(Debug, Clone, Copy)]
+pub struct GpuInfo {
+    pub chip_id: u32,
+    pub chip: ChipInfo,
+    pub vram_bytes: u64,
+    pub vram_mb: u32,
+    pub engines_enabled: u32,
+    pub fifo_enabled: bool,
+    pub graph_enabled: bool,
+    pub display_enabled: bool,
+    pub ce_count: u32,
+    pub gpc_count: u32,
+    pub sm_count: u32,
+    pub pbdma_count: u32,
+    pub gpu_time_ns: u64,
+    pub state: GpuState,
+}
+
+/// Gather GPU info from live registers.
+pub fn gpu_info(gpu: &Gpu) -> GpuInfo {
+    let enabled = gpu.bar0.read32(pmc::ENABLE);
+    let time = gpu_time_ns(gpu);
+    let chip = ChipInfo::from_boot0(gpu.chip_id);
+
+    GpuInfo {
+        chip_id: gpu.chip_id,
+        chip,
+        vram_bytes: gpu.vram_size,
+        vram_mb: (gpu.vram_size / (1024 * 1024)) as u32,
+        engines_enabled: enabled,
+        fifo_enabled: enabled & pmc::ENABLE_PFIFO != 0,
+        graph_enabled: enabled & pmc::ENABLE_PGRAPH != 0,
+        display_enabled: enabled & pmc::ENABLE_PDISPLAY != 0,
+        ce_count: pcopy::CE_COUNT,
+        gpc_count: pgraph::GPC_COUNT,
+        sm_count: pgraph::SM_COUNT,
+        pbdma_count: pbdma::COUNT,
+        gpu_time_ns: time,
+        state: gpu.state,
+    }
 }
 
 #[cfg(test)]

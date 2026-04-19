@@ -64,6 +64,16 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     let _cpu = arch::cpu::detect_cpu();
     vga.write_str("[CPU] Zen 3 OK  ");
 
+    // Interrupts: IDT + PIC + PIT
+    arch::pic::init_pic();
+    arch::idt::init_idt();
+    arch::pit::init_pit();
+    arch::idt::register_irq(0, arch::pit::tick);
+    arch::pic::set_mask_keyboard_timer();
+    arch::cpu::sti();
+    vga.write_str_color("[IRQ] OK  ", vga::Color::Green);
+    drivers::serial::serial_write("[FastOS] Interrupts enabled (PIC+PIT+KB)\n");
+
     // PCI + GPU
     let devices = drivers::pci::scan_pci_bus();
     vga.write_str("[PCI] ");
@@ -85,12 +95,12 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         }
     }
 
-    // Keyboard init (polling mode — no interrupts)
+    // Keyboard init
     drivers::keyboard::init_keyboard();
     vga.write_str_color("[KB] OK", vga::Color::Green);
     vga.newline();
 
-    drivers::serial::serial_write("[FastOS] Keyboard ready (polling)\n");
+    drivers::serial::serial_write("[FastOS] Keyboard ready\n");
 
     // ── Phase 2: Graphics boot screen ───────────────────────────────────
     if is_graphics {

@@ -219,6 +219,76 @@ pub mod pramin {
     pub const SIZE:         u32 = 0x0010_0000; // 1 MB window
 }
 
+// ── PBDMA — Push Buffer DMA Engines ─────────────────────────────────────────
+// SigDead-BIB GSP firmware strings: "_PBDMA0", "_PBDMA1"
+// PBDMA engines feed command buffers from host memory into GPU engines.
+
+pub mod pbdma {
+    pub const COUNT: u32 = 2;  // GA106: PBDMA0 + PBDMA1
+    pub const fn BASE(n: u32) -> u32 { 0x0004_0000 + n * 0x2000 }
+    pub const fn GP_PUT(n: u32) -> u32 { BASE(n) + 0x0000 }
+    pub const fn GP_GET(n: u32) -> u32 { BASE(n) + 0x0004 }
+    pub const fn PB_PUT(n: u32) -> u32 { BASE(n) + 0x005C }
+    pub const fn PB_GET(n: u32) -> u32 { BASE(n) + 0x0060 }
+    pub const fn INTR(n: u32) -> u32   { BASE(n) + 0x0110 }
+    pub const fn STATUS(n: u32) -> u32 { BASE(n) + 0x0118 }
+}
+
+// ── HUB Client IDs ──────────────────────────────────────────────────────────
+// SigDead-BIB GSP firmware strings: HUBCLIENT_CE0..CE3, HUBCLIENT_HSCE0..HSCE8,
+// HUBCLIENT_CE_SHIM. These are the internal hub routing IDs.
+
+pub mod hub {
+    // Copy Engine hub clients
+    pub const CLIENT_CE0: u32       = 0;
+    pub const CLIENT_CE1: u32       = 1;
+    pub const CLIENT_CE2: u32       = 2;
+    pub const CLIENT_CE3: u32       = 3;
+    pub const CLIENT_CE_SHIM: u32   = 4;
+    // High-Speed Copy Engine hub clients
+    pub const CLIENT_HSCE0: u32     = 16;
+    pub const CLIENT_HSCE1: u32     = 17;
+    pub const CLIENT_HSCE2: u32     = 18;
+    pub const CLIENT_HSCE3: u32     = 19;
+    pub const CLIENT_HSCE4: u32     = 20;
+    pub const CLIENT_HSCE5: u32     = 21;
+    pub const CLIENT_HSCE6: u32     = 22;
+    pub const CLIENT_HSCE7: u32     = 23;
+    pub const CLIENT_HSCE8: u32     = 24;
+    pub const CLIENT_HSCE15: u32    = 31;
+}
+
+// ── SEC_FAULT — Security Engine Fault Registers ─────────────────────────────
+// SigDead-BIB GSP firmware: "SEC_FAULT: _BAR_FIREWALL_ENGAGE"
+
+pub mod sec_fault {
+    pub const INTR:             u32 = 0x000B_C100;
+    pub const INTR_EN:          u32 = 0x000B_C140;
+    pub const BAR_FIREWALL:     u32 = 0x000B_C200;
+}
+
+// ── Graphics Exception Codes ────────────────────────────────────────────────
+// SigDead-BIB GSP firmware: "Graphics Exception: DMA_DRAM_ACCESS_OUT_OF_BOUNDS",
+// "Graphics Exception: DMA_READ_FIFOED_FROM_PB", etc.
+
+pub mod gr_exception {
+    pub const DMA_DRAM_ACCESS_OUT_OF_BOUNDS: u32 = 0x01;
+    pub const DMA_READ_FIFOED_FROM_PB: u32       = 0x02;
+    pub const DMA_ILLEGAL_FIFO_CONFIG: u32       = 0x03;
+    pub const DMA_READ_FIFOED_OVERFLOW: u32      = 0x04;
+    pub const TMA_BARRIER_MISALIGNED_ADDR: u32   = 0x10;
+    pub const TMA_BARRIER_OOR_ADDR: u32          = 0x11;
+}
+
+// ── XBAR — Crossbar Clock Domains ───────────────────────────────────────────
+// SigDead-BIB GSP firmware: XBARCLK, PERF_CF_CONTROLLER_XBAR_MAX,
+// CLIENT_LOW_STRICT_XBAR_MAX, THERM_POLICY_XBAR, PWR_POLICY_XBAR, etc.
+
+pub mod xbar {
+    pub const CLK_BASE:         u32 = 0x000B_0000;
+    pub const CLK_CTRL:         u32 = 0x000B_0004;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,5 +322,18 @@ mod tests {
         assert_eq!(pgraph::SM_COUNT, 28);
         assert_eq!(pcopy::CE_COUNT, 5);
         assert_eq!(pmem::FBPA_COUNT, 6);
+    }
+
+    #[test]
+    fn pbdma_engines() {
+        assert_eq!(pbdma::COUNT, 2);
+        assert!(pbdma::BASE(1) > pbdma::BASE(0));
+        assert_eq!(pbdma::BASE(1) - pbdma::BASE(0), 0x2000);
+    }
+
+    #[test]
+    fn hub_clients() {
+        assert_eq!(hub::CLIENT_CE0, 0);
+        assert_eq!(hub::CLIENT_HSCE0, 16);
     }
 }
