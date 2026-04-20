@@ -1,0 +1,15 @@
+[package]
+name = "fastos-bootloader"
+version = "0.1.0"
+edition = "2021"
+authors = ["FastOS Project"]
+description = "FastOS UEFI bootloader — loads kernel directly in 64-bit mode"
+
+[dependencies]
+uefi = { version = "0.26", features = ["alloc"] }
+log = "0.4"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+lto = true

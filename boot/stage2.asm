@@ -81,11 +81,8 @@ stage2_start:
     mov si, msg_a20_ok
     call print_string_16
 
-    ; Detect memory (E820 hangs on A320M CSM — skipped, hardcoded below)
-    ; call detect_memory_e820  ; DISABLED: E820 hangs on MSI A320M-A PRO MAX
-    nop                        ; 3 NOPs = same size as call instruction
-    nop
-    nop
+    ; Detect memory (E820)
+    call detect_memory_e820
     mov si, msg_mem_ok
     call print_string_16
 
