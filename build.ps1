@@ -116,14 +116,14 @@ if ($LASTEXITCODE -ne 0) { throw "objcopy failed" }
 $binSize = (Get-Item $kernelBin).Length
 Write-Host "      kernel.bin: $([math]::Round($binSize/1024, 1))KB ($binSize bytes)" -ForegroundColor DarkGray
 
-# Verify kernel isn't too large for the 128KB load window
-$maxKernel = 128 * 1024 # 256 sectors × 512 bytes
+# Verify kernel isn't too large for the 131KB load window
+$maxKernel = 131 * 1024 # 257 sectors × 512 bytes
 if ($binSize -gt $maxKernel) {
-    Write-Host "      WARNING: kernel ($binSize B) exceeds 128KB load window!" -ForegroundColor Red
+    Write-Host "      WARNING: kernel ($binSize B) exceeds 131KB load window!" -ForegroundColor Red
     Write-Host "      Update dap_kernel sectors in stage2.asm" -ForegroundColor Red
     # Calculate needed sectors
     $neededSectors = [math]::Ceiling($binSize / 512)
-    Write-Host "      Need $neededSectors sectors (currently 256)" -ForegroundColor Yellow
+    Write-Host "      Need $neededSectors sectors (currently 257)" -ForegroundColor Yellow
 }
 
 Write-Host "[3/5] Binary extracted OK" -ForegroundColor Green
@@ -255,9 +255,9 @@ $readme = @"
 ------------------------------------------------------
   MEMORY MAP (bare metal)
 ------------------------------------------------------
-  0x007C00          MBR (Stage1)
+  0x007C00          MBR (stage1)
   0x007E00          Stage2
-  0x010000          Kernel load buffer (128KB)
+  0x020000          Kernel load buffer (256KB)
   0x100000 (1MB)    Kernel final location
   0x400000 (4MB)    DMA buffer pool
   0x800000 (8MB)    Stack (grows down)

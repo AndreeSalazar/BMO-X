@@ -24,7 +24,7 @@ jmp stage2_start
 %include "payload_loader.asm"
 
 KERNEL_LOAD_ADDR equ 0x100000
-KERNEL_SECTORS   equ 256
+KERNEL_SECTORS   equ 257
 
 ; --- Print null-terminated string (SI) — local copy for stage2 ---
 print_string_16:
@@ -91,9 +91,9 @@ stage2_start:
     call print_string_16
 
     ; ── Load kernel in chunks (64 sectors / 32KB per INT 13h call) ───────
-    ; Total: 4 × 64 = 256 sectors = 128KB loaded to physical 0x10000.
-    ; Chunked loading avoids BIOS limitations with large sector counts
-    ; and prevents 64KB segment boundary wrapping issues.
+    ; Total: 257 sectors = 131KB loaded to 0x20000 buffer, then copied to 0x100000.
+    ; 32KB chunks avoid 64KB segment boundary issues in real mode.
+    ; Buffer at 0x20000 provides 256KB of space (more than enough for 131KB kernel).
     ; MSI B550 CSM: AH=42h works despite AH=41h reporting no LBA.
     mov si, msg_loading_kernel
     call print_string_16
@@ -101,11 +101,11 @@ stage2_start:
     ; Initialize DAP for first chunk
     mov word [dap_k_count], 64
     mov word [dap_k_offset], 0x0000
-    mov word [dap_k_seg], 0x1000          ; Segment 0x1000 → phys 0x10000
+    mov word [dap_k_seg], 0x2000          ; Segment 0x2000 → phys 0x20000 (128KB)
     mov dword [dap_k_lba], 33             ; LBA 33 (after MBR + Stage2)
     mov dword [dap_k_lba + 4], 0
 
-    mov cx, 4                              ; 4 chunks
+    mov cx, 4                              ; 4 full chunks of 64
 .load_kernel_loop:
     push cx
     mov ah, 0x42
@@ -126,6 +126,20 @@ stage2_start:
 
     pop cx
     loop .load_kernel_loop
+
+    ; Load final partial chunk (1 sector = 257 - 256)
+    mov word [dap_k_count], 1
+    mov ah, 0x42
+    mov dl, [stage2_boot_drive]
+    mov si, dap_kernel
+    int 0x13
+    jc .kernel_chunk_err
+
+    ; Progress indicator
+    mov ah, 0x0E
+    mov al, '.'
+    mov bx, 0x0007
+    int 0x10
 
     mov si, msg_kernel_loaded
     call print_string_16
@@ -247,10 +261,10 @@ protected_mode_entry:
     ; Detect CPU features for kernel
     call detect_cpu_features_32
 
-    ; Copy kernel: 0x10000 → 0x100000 (1MB), 128KB
-    mov esi, 0x10000
+    ; Copy kernel: 0x20000 → 0x100000 (1MB), 131KB
+    mov esi, 0x20000
     mov edi, 0x100000
-    mov ecx, 32768                  ; 128KB / 4 bytes = 32768 dwords
+    mov ecx, 32770                  ; 131KB / 4 bytes = 32770 dwords
     rep movsd
 
     ; ── Phase 3: Paging + Long Mode ──────────────────────────────────────
@@ -385,7 +399,7 @@ long_mode_entry:
     mov eax, [vbe_fb_addr]
     mov qword [0x9120], rax                ; framebuffer_addr
     mov qword [0x9128], 0x100000           ; kernel_start
-    mov qword [0x9130], 128 * 1024         ; kernel_size
+    mov qword [0x9130], 131 * 1024         ; kernel_size (131KB)
 
     ; Extended boot info: VBE data
     movzx eax, word [vbe_pitch]
