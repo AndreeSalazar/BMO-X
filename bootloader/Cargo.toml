@@ -13,3 +13,6 @@ log = "0.4"
 panic = "abort"
 opt-level = 2
 lto = true
+
+[package.metadata.bootloader]
+target = "x86_64-unknown-uefi"

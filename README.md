@@ -1,8 +1,9 @@
 # FastOS
 
 > **Minimal custom OS for AMD Ryzen 5 5600X + NVIDIA RTX 3060 12G**
-> Two-language architecture: NASM (boot) → Rust (kernel + drivers)
+> Pure Rust architecture: UEFI Bootloader → Rust (kernel + drivers)
 > **Fagging-Scale: Everything Ring 0 — no userspace, no abstractions.**
+> **UEFI Native — No CSM/Legacy BIOS**
 
 ---
 
@@ -30,18 +31,18 @@
 │  ├── vga.rs        │ VGA text-mode 80×25 at 0xB8000              │
 │  └── main.rs       │ Kernel entry point (_start)                 │
 ├──────────────────────────────────────────────────────────────────┤
-│  NASM Bootloader (Ring 0)                                        │
-│  ├── stage1.asm    │ 512-byte MBR boot sector                    │
-│  ├── stage2.asm    │ 16-bit → 32-bit → 64-bit transition         │
-│  ├── gdt.asm       │ GDT for protected + long mode               │
-│  ├── paging.asm    │ 4-level page tables, 4GB identity map       │
-│  ├── cpucheck.asm  │ CPUID verification (Long Mode, etc.)        │
-│  └── sse_avx.asm   │ SSE4.2 + AVX2 + FMA3 initialization         │
+│  UEFI Bootloader (Rust, uefi-rs 0.26)                            │
+│  ├── main.rs       │ UEFI entry point, loads kernel from ESP     │
+│  ├── File I/O      │ Reads kernel.bin from EFI System Partition  │
+│  ├── Memory Map    │ Gets memory map from UEFI firmware          │
+│  ├── Exit BS       │ Exits boot services before kernel jump      │
+│  └── Kernel Jump   │ Transfers control to kernel at 0x100000     │
 ├──────────────────────────────────────────────────────────────────┤
 │  Hardware                                                        │
 │  CPU: AMD Ryzen 5 5600X (Zen 3, 6C/12T, AVX2, AES-NI)            │
 │  GPU: NVIDIA RTX 3060 12GB (GA106, Ampere)                       │
 │  RAM: DDR4                                                       │
+│  Firmware: UEFI Native (CSM Disabled)                            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,21 +59,16 @@ The kernel IS the application. Direct hardware access everywhere:
 
 ## Boot Sequence
 
-1. **BIOS** loads Stage 1 (MBR) at `0x7C00`
-2. **Stage 1** loads Stage 2 from disk to `0x7E00`
-3. **Stage 2** performs:
-   - CPU capability checks (CPUID, Long Mode)
-   - A20 line enable
-   - E820 memory detection
-   - Loads Rust kernel to `0x10000`, copies to `0x100000` (1MB)
-   - Enters 32-bit Protected Mode (GDT)
-   - Sets up 4-level paging (identity maps 4GB with 2MB pages)
-   - Enters 64-bit Long Mode
-   - Initializes SSE + AVX + AVX2
-   - Jumps to Rust kernel with boot info in RDI
-4. **Rust kernel** initializes:
-   - VGA text output
-   - CPU feature detection
+1. **UEFI Firmware** loads BOOTX64.EFI from EFI System Partition (ESP)
+2. **UEFI Bootloader** (Rust, uefi-rs 0.26) performs:
+   - Initializes UEFI services (console, file I/O)
+   - Reads kernel.bin from ESP
+   - Gets memory map from UEFI firmware
+   - Allocates memory for kernel at 0x100000 (1MB)
+   - Exits boot services (point of no return)
+   - Jumps to kernel entry point
+3. **Rust kernel** initializes:
+   - CPU feature detection (already in 64-bit Long Mode)
    - Serial port (COM1)
    - PCI bus scan
    - **Full GPU driver stack** (Driver_Canon GA106 → nv_kernel)
@@ -100,21 +96,34 @@ FastOS kernel (_start)
 ## Building
 
 ### Prerequisites
-- **NASM** — Netwide Assembler
 - **Rust nightly** — with `rust-src` component
-- **QEMU** — for testing (optional)
+- **UEFI target** — `x86_64-unknown-uefi` (add with `rustup target add`)
+- **QEMU with OVMF** — for testing UEFI (optional)
 
-### Boot only (NASM)
+### Complete Build (UEFI Bootloader + Kernel)
 ```bash
-cd boot
 # Windows:
-powershell -File build.ps1
+powershell -File build_uefi.ps1
+
+# Or with clean:
+powershell -File build_uefi.ps1 -Clean
 ```
 
-### Kernel (Rust)
+This produces:
+- `BOOTX64.EFI` — UEFI bootloader
+- `kernel.bin` — Raw kernel binary
+- `USB_boot/` — Folder with files ready to copy to ESP
+
+### Kernel only (Rust)
 ```bash
 cd kernel
-cargo build
+cargo build --release
+```
+
+### UEFI Bootloader only (Rust)
+```bash
+cd bootloader
+cargo build --release
 ```
 
 ### GPU Driver (standalone build)
@@ -123,18 +132,23 @@ cd "Driver_Canon GA106"
 cargo build
 ```
 
-### Test with QEMU
+### Test with QEMU (UEFI)
 ```bash
-qemu-system-x86_64 -drive format=raw,file=boot/fastos.img -serial stdio -m 512M
+# Requires OVMF firmware for UEFI
+qemu-system-x86_64 \
+  -bios /usr/share/OVMF/OVMF_CODE.fd \
+  -drive format=raw,file=fat:rw:USB_boot \
+  -serial stdio -m 512M
 ```
 
 ## Project Status
 
 | Component | Status |
 |-----------|--------|
-| Stage 1 (MBR) | ✅ Complete |
-| Stage 2 (16→32→64) | ✅ Complete |
-| GDT/Paging/AVX2 | ✅ Complete |
+| UEFI Bootloader (Rust) | ✅ Minimal version compiles |
+| UEFI File I/O | 🔲 To implement (kernel.bin loading) |
+| UEFI Memory Map | 🔲 To implement |
+| UEFI Exit Boot Services | 🔲 To implement |
 | Rust kernel entry | ✅ Complete |
 | VGA text output | ✅ Complete |
 | CPU detection | ✅ Complete |
