@@ -2,8 +2,8 @@
   FastOS - USB Boot Image
 ======================================================
 
-  Image:   fastos.img (1012KB)
-  Built:   2026-04-19 21:25:47
+  Image:   fastos.img (71638KB)
+  Built:   2026-04-19 22:05:40
   Target:  Ryzen 5 5600X + RTX 3060 12G
 
 ------------------------------------------------------
@@ -26,9 +26,9 @@
 ------------------------------------------------------
   MEMORY MAP (bare metal)
 ------------------------------------------------------
-  0x007C00          MBR (Stage1)
+  0x007C00          MBR (stage1)
   0x007E00          Stage2
-  0x010000          Kernel load buffer (128KB)
+  0x020000          Kernel load buffer (256KB)
   0x100000 (1MB)    Kernel final location
   0x400000 (4MB)    DMA buffer pool
   0x800000 (8MB)    Stack (grows down)

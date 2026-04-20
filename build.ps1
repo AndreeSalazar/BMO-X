@@ -116,14 +116,14 @@ if ($LASTEXITCODE -ne 0) { throw "objcopy failed" }
 $binSize = (Get-Item $kernelBin).Length
 Write-Host "      kernel.bin: $([math]::Round($binSize/1024, 1))KB ($binSize bytes)" -ForegroundColor DarkGray
 
-# Verify kernel isn't too large for the 131KB load window
-$maxKernel = 131 * 1024 # 257 sectors × 512 bytes
+# Verify kernel isn't too large for the 136KB load window
+$maxKernel = 136 * 1024 # 265 sectors × 512 bytes
 if ($binSize -gt $maxKernel) {
-    Write-Host "      WARNING: kernel ($binSize B) exceeds 131KB load window!" -ForegroundColor Red
+    Write-Host "      WARNING: kernel ($binSize B) exceeds 136KB load window!" -ForegroundColor Red
     Write-Host "      Update dap_kernel sectors in stage2.asm" -ForegroundColor Red
     # Calculate needed sectors
     $neededSectors = [math]::Ceiling($binSize / 512)
-    Write-Host "      Need $neededSectors sectors (currently 257)" -ForegroundColor Yellow
+    Write-Host "      Need $neededSectors sectors (currently 265)" -ForegroundColor Yellow
 }
 
 Write-Host "[3/5] Binary extracted OK" -ForegroundColor Green
@@ -147,6 +147,7 @@ $fwData = $null
 if (Test-Path $fwPath) {
     Write-Host "      Detected GSP Firmware module at $fwPath" -ForegroundColor DarkGray
     $fwData = [System.IO.File]::ReadAllBytes($fwPath)
+    Write-Host "      Firmware size: $($fwData.Length) bytes (~$([math]::Round($fwData.Length/1MB, 2))MB)" -ForegroundColor DarkGray
 } else {
     Write-Host "      Generating dummy 512KB GSP Firmware module..." -ForegroundColor DarkGray
     $fwData = New-Object byte[] (512 * 1024)

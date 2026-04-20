@@ -24,7 +24,8 @@ jmp stage2_start
 %include "payload_loader.asm"
 
 KERNEL_LOAD_ADDR equ 0x100000
-KERNEL_SECTORS   equ 257
+KERNEL_SECTORS   equ 265
+GSP_FW_LOAD_ADDR equ 0x1000000    ; 16MB — espacio para el firmware GSP
 
 ; --- Print null-terminated string (SI) — local copy for stage2 ---
 print_string_16:
@@ -127,8 +128,8 @@ stage2_start:
     pop cx
     loop .load_kernel_loop
 
-    ; Load final partial chunk (1 sector = 257 - 256)
-    mov word [dap_k_count], 1
+    ; Load final partial chunk (9 sectors = 265 - 256)
+    mov word [dap_k_count], 9
     mov ah, 0x42
     mov dl, [stage2_boot_drive]
     mov si, dap_kernel
@@ -399,7 +400,7 @@ long_mode_entry:
     mov eax, [vbe_fb_addr]
     mov qword [0x9120], rax                ; framebuffer_addr
     mov qword [0x9128], 0x100000           ; kernel_start
-    mov qword [0x9130], 131 * 1024         ; kernel_size (131KB)
+    mov qword [0x9130], 132 * 1024         ; kernel_size (132KB)
 
     ; Extended boot info: VBE data
     movzx eax, word [vbe_pitch]
@@ -407,7 +408,7 @@ long_mode_entry:
     movzx eax, byte [vbe_mode_ok]
     mov qword [0x9140], rax                ; vbe_mode (1=graphics, 0=text)
 
-    ; Extended boot info: Payload Modules
+    ; Extended boot info: GSP Firmware (loaded by payload_loader.asm)
     mov eax, dword [payload_base]
     mov qword [0x9148], rax                ; gpu_fw_addr
     mov eax, dword [payload_size]

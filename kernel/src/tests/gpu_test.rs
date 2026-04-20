@@ -29,7 +29,7 @@ impl TestResult {
 }
 
 /// Run all GPU hardware tests. Returns (passed, total).
-pub fn run_all_tests(con: &mut Console) {
+pub fn run_all_tests(con: &mut Console, boot_info: *const crate::boot_info::BootInfo) {
     use nv_hal::{self, MmioRegion};
     use nv_regs::*;
 
@@ -208,18 +208,93 @@ pub fn run_all_tests(con: &mut Console) {
         print_result_hex(con, "T09 Display Head 0", false, head0_ctrl);
     }
 
-    // ── Test 10: GSP FALCON Scratch Register — Falcon Bootstrap Fix ───────
+    // ── Test 10: GSP FALCON Scratch Register — Firmware Loader ─────────────
     // The GSP FALCON has scratch registers at its base.
-    // Writing and reading back proves FALCON register access works.
-    // NEW: Enable GSP in PMC, reset FALCON, then verify scratch W/R.
+    // Try to load GSP firmware first, then verify scratch W/R.
     total += 1;
+    use crate::drivers::gsp::loader::{GspLoader, GspLoadError};
     use crate::drivers::gsp::scratch::GspScratchTest;
-    let gsp_test = GspScratchTest::new(&bar0);
-    gsp_test.report_result(con);
-    // Check if passed by reading the scratch register again
-    let final_val = bar0.read32(0x0011_0800);
-    if final_val == 0xFA57_0505 {
-        passed += 1;
+
+    // Obtener firmware desde BootInfo
+    let fw_result = unsafe {
+        if boot_info.is_null() {
+            None
+        } else {
+            let bi = &*boot_info;
+            if bi.gpu_fw_addr != 0 && bi.gpu_fw_size != 0 {
+                let ptr = bi.gpu_fw_addr as *const u8;
+                let len = bi.gpu_fw_size as usize;
+                Some(core::slice::from_raw_parts(ptr, len))
+            } else {
+                None
+            }
+        }
+    };
+
+    match fw_result {
+        Some(fw_blob) => {
+            let loader = GspLoader::new(&bar0);
+            match loader.load(fw_blob, con) {
+                Ok(()) => {
+                    // Firmware cargado — ahora verificar scratch
+                    let scratch = GspScratchTest::new(&bar0);
+                    match scratch.verify_scratch(con) {
+                        Ok(()) => {
+                            let val = bar0.read32(0x0011_0800);
+                            con.print("  T10 GSP Scratch W/R  ");
+                            con.print_colored("[PASS]", 0xFF00FF00);
+                            con.print(" write=readback=0x");
+                            con.print_hex32(val);
+                            con.println("");
+                            passed += 1;
+                        }
+                        Err(_) => {
+                            con.print("  T10 GSP Scratch W/R  ");
+                            con.print_colored("[FAIL]", 0xFFFF0000);
+                            con.println(" scratch failed post-load");
+                        }
+                    }
+                }
+                Err(GspLoadError::NullFirmware) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" null firmware");
+                }
+                Err(GspLoadError::FirmwareTooLarge) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" firmware too large");
+                }
+                Err(GspLoadError::DmaTimeout) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" DMA timeout");
+                }
+                Err(GspLoadError::FalconBootTimeout) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" Falcon boot timeout");
+                }
+                Err(GspLoadError::HandshakeTimeout) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" GSP handshake timeout");
+                }
+            }
+        }
+        None => {
+            // Sin firmware — diagnóstico directo de registros
+            let pmc_en  = bar0.read32(0x0000_0200);
+            let pmc_en2 = bar0.read32(0x0000_0204);
+            con.print("  NO FW: PMC_ENABLE=0x");
+            con.print_hex32(pmc_en);
+            con.print(" PMC_ENABLE_2=0x");
+            con.print_hex32(pmc_en2);
+            con.println("");
+            con.print("  T10 GSP Scratch W/R  ");
+            con.print_colored("[FAIL]", 0xFFFF0000);
+            con.println(" no firmware blob in BootInfo");
+        }
     }
 
     // ── Test 11: PMC Interrupt Status ────────────────────────────────────

@@ -4,3 +4,4 @@
 //! and GSP-RM communication.
 
 pub mod scratch;
+pub mod loader;

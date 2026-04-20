@@ -99,7 +99,9 @@ fn execute(con: &mut Console, cmd: &[u8]) {
     } else if bytes_eq(cmd, b"gsprm") {
         cmd_gsprm(con);
     } else if bytes_eq(cmd, b"gputest") {
-        crate::tests::gpu_test::run_all_tests(con);
+        unsafe {
+            crate::tests::gpu_test::run_all_tests(con, crate::boot_info::BOOT_INFO_PTR);
+        }
     } else if bytes_eq(cmd, b"gpucmd") {
         let fb_base = con.fb_addr() as u64;
         let fb_pitch = con.fb_pitch() as u32;

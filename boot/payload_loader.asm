@@ -82,17 +82,17 @@ load_payloads:
     pop ds
     sti
 
-    ; Step 2: Read Módulo 1 (GSP Firmware dummy)
+    ; Step 2: Read Módulo 1 (GSP Firmware - 69.5MB)
     ; In build.ps1, the firmware is written at LBA 1000.
-    ; For now, we will read 1024 sectors (512 KB) just to prove architecture.
-    ; In the future we read a header from disk.
+    ; GSP firmware size: 72845296 bytes = 142196 sectors
     
     mov dword [dap_lba], 1000     ; Start reading at LBA 1000
     mov dword [dap_lba+4], 0
     
-    mov ecx, 16                   ; Loop 16 times * 64 sectors = 1024 sectors (512 KB)
-    mov edi, 0x02000000           ; Physical destination (32 MB mark)
-    
+    mov ecx, 2221                ; Loop 2221 times * 64 sectors = 142144 sectors (~69.5MB)
+    mov edi, GSP_FW_LOAD_ADDR     ; Physical destination (16MB = 0x1000000)
+    mov ebx, ecx                 ; Save total count for progress
+
 .read_loop:
     push cx
     
@@ -131,35 +131,161 @@ load_payloads:
     add eax, 64
     mov dword [dap_lba], eax
 
+    ; Progress indicator every 500 blocks (32MB)
+    push cx
+    mov eax, ebx
+    sub eax, ecx
+    mov dx, 0
+    mov cx, 500
+    div cx
+    cmp dx, 0
+    jne .no_progress
+    mov al, '.'
+    mov ah, 0x0E
+    mov bx, 0x000F
+    int 0x10
+.no_progress:
     pop cx
+
     dec cx
     jnz .read_loop
 
     ; Save variables for the kernel
-    ; Base: 0x02000000
-    ; Size: 512 * 1024 = 524288
-    mov dword [payload_base], 0x02000000
+    ; Base: GSP_FW_LOAD_ADDR (0x1000000 = 16MB)
+    ; Size: 72845296 bytes (69.5MB)
+    mov dword [payload_base], GSP_FW_LOAD_ADDR
     mov dword [payload_base+4], 0
-    mov dword [payload_size], 524288
+    mov dword [payload_size], 72845296
     mov dword [payload_size+4], 0
 
+    ; Verify firmware was actually loaded (check first 4 bytes)
+    ; GSP firmware should start with valid data, not zeros
+    mov si, msg_verify
+    call print_string_16
+    
+    ; We need to access high memory to verify
+    ; Use Unreal Mode to read from 0x1000000
+    cli
+    push ds
+    push es
+    
+    ; Load Unreal GDT again for verification
+    lgdt [unreal_gdt_desc]
+    mov eax, cr0
+    or al, 1
+    mov cr0, eax
+    mov bx, 0x08
+    mov ds, bx
+    mov es, bx
+    and al, 0xFE
+    mov cr0, eax
+    pop es
+    pop ds
+    sti
+    
+    ; Check if first dword is non-zero
+    ; Use 32-bit addressing to access high memory
+    mov eax, GSP_FW_LOAD_ADDR
+    db 0x67  ; Address size prefix for 32-bit addressing
+    mov eax, [eax]
+    cmp eax, 0
+    je .verify_fail
+    
     mov si, msg_payloads_ok
+    call print_string_16
+    jmp .done
+
+.verify_fail:
+    mov si, msg_verify_fail
     call print_string_16
     jmp .done
 
 .read_error:
     mov si, msg_payload_err
     call print_string_16
+    
+    ; Print AH register (error code from Int 13h)
+    mov al, ah
+    call print_hex_byte
+    
+    mov si, msg_at_lba
+    call print_string_16
+    
+    ; Print current LBA (lower 32 bits)
+    mov eax, dword [dap_lba]
+    call print_hex_dword
+    
+    call print_newline
+    
     ; Ignore error and continue to boot kernel anyway
     
 .done:
     popa
     ret
 
+; ── Helper Functions ──────────────────────────────────────────────────────────
+print_hex_byte:
+    pusha
+    mov ah, al
+    shr al, 4
+    call print_hex_nibble
+    mov al, ah
+    and al, 0x0F
+    call print_hex_nibble
+    popa
+    ret
+
+print_hex_nibble:
+    add al, '0'
+    cmp al, '9'
+    jbe .digit
+    add al, 7  ; 'A' - '9' - 1
+.digit:
+    mov ah, 0x0E
+    mov bx, 0x000F
+    int 0x10
+    ret
+
+print_hex_dword:
+    pusha
+    push eax
+    shr eax, 24
+    mov al, ah
+    call print_hex_byte
+    pop eax
+    push eax
+    shr eax, 16
+    mov al, ah
+    call print_hex_byte
+    pop eax
+    push eax
+    shr eax, 8
+    mov al, ah
+    call print_hex_byte
+    pop eax
+    mov al, ah
+    call print_hex_byte
+    popa
+    ret
+
+print_newline:
+    pusha
+    mov ah, 0x0E
+    mov al, 13
+    mov bx, 0x000F
+    int 0x10
+    mov al, 10
+    int 0x10
+    popa
+    ret
+
 ; ── Variables ──────────────────────────────────────────────────────────────
 msg_loading_payloads db "[S2] Loading Payload Modules (Unreal Mode)... ", 0
 msg_payloads_ok      db "OK", 13, 10, 0
-msg_payload_err      db "FAIL (Int 13h code)", 13, 10, 0
+msg_payload_err      db "FAIL (Int 13h code=", 0
+msg_at_lba           db " at LBA=", 0
+msg_verify          db "[S2] Verifying firmware load... ", 0
+msg_verify_fail      db "FAIL (firmware is zero)", 13, 10, 0
 
 payload_base dq 0
 payload_size dq 0

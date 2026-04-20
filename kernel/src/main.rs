@@ -7,6 +7,7 @@
 #![no_main]
 
 mod arch;
+mod boot_info;
 mod console;
 mod drivers;
 mod fb;
@@ -24,22 +25,6 @@ use fb::{Framebuffer, colors};
 use vga::VgaWriter;
 use console::Console;
 
-/// Boot info from stage2.asm (at 0x9100).
-#[repr(C)]
-pub struct BootInfo {
-    pub magic: u64,
-    pub memory_map_addr: u64,
-    pub memory_map_count: u64,
-    pub cpu_features_addr: u64,
-    pub framebuffer_addr: u64,
-    pub kernel_start: u64,
-    pub kernel_size: u64,
-    pub fb_pitch: u64,
-    pub vbe_mode: u64,
-    pub gpu_fw_addr: u64,
-    pub gpu_fw_size: u64,
-}
-
 /// Write a 2-character diagnostic code directly to VGA text buffer.
 /// This works even if the framebuffer or serial is broken.
 /// Visible at bottom-right corner of screen (row 24, col 76-77).
@@ -54,9 +39,14 @@ fn vga_diag(c1: u8, c2: u8) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
+pub extern "C" fn _start(boot_info: *const boot_info::BootInfo) -> ! {
     // ── Diagnostic: "K0" = kernel entry reached ──────────────────────
     vga_diag(b'K', b'0');
+
+    // Save BootInfo pointer globally for tests
+    unsafe {
+        boot_info::BOOT_INFO_PTR = boot_info;
+    }
 
     // ── CRITICAL: Zero BSS before any Rust code runs ─────────────────
     unsafe {
@@ -71,7 +61,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     }
     vga_diag(b'K', b'1'); // BSS zeroed
 
-    let info = unsafe { &*boot_info };
+    let info: &boot_info::BootInfo = unsafe { &*boot_info };
 
     // Validate boot info early
     if info.magic != 0xFA5705 {
@@ -202,7 +192,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
 // ── Boot Screen Graphics ────────────────────────────────────────────────────
 
-fn draw_boot_screen(fb: &Framebuffer, gpu_ok: bool, info: &BootInfo) {
+fn draw_boot_screen(fb: &Framebuffer, gpu_ok: bool, info: &boot_info::BootInfo) {
     fb.gradient_v(0, 0, 1920, 1080, 0xFF080C12, 0xFF0D1117);
 
     // Top accent
