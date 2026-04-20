@@ -1,8 +1,15 @@
 ; ============================================================================
-; FastOS Memory Detection (INT 15h, E820)
+; FastOS Memory Detection — E801h + Fallback
 ; ============================================================================
-; Stores memory map at MEMORY_MAP_ADDR for the kernel.
-; Each entry: base(u64) + length(u64) + type(u32) + attrs(u32) = 24 bytes
+; E820 hangs on this UEFI CSM (Ryzen 5 5600X motherboard, USB boot).
+; Use INT 15h AX=E801h instead — simpler, more compatible.
+;
+; If E801h also fails, hardcode a conservative memory map.
+; The kernel can refine this later via ACPI tables.
+;
+; Output: memory map at 0x8000 in same format kernel expects:
+;   [0x8000]      = u32 count
+;   [0x8004+n*24] = { base_u64, length_u64, type_u32, attrs_u32 }
 ; ============================================================================
 
 [BITS 16]
@@ -12,26 +19,88 @@ MEMORY_MAP_COUNT equ 0x8000    ; First 4 bytes = count
 
 detect_memory_e820:
     pushad
+
+    ; ── Try INT 15h AX=E801h ───────────────────────────────────────────
+    mov ax, 0xE801
+    int 0x15
+    jc .e801_fail
+    cmp ax, 0
+    je .try_cx
+    jmp .e801_build
+
+.try_cx:
+    mov ax, cx
+    mov bx, dx
+    cmp ax, 0
+    je .e801_fail
+
+.e801_build:
     mov dword [MEMORY_MAP_ADDR], 0
-    xor ebx, ebx
     mov di, MEMORY_MAP_ADDR + 4
 
-.e820_loop:
-    mov eax, 0x0000E820
-    mov edx, 0x534D4150         ; 'SMAP'
-    mov ecx, 24
-    int 0x15
-    jc .e820_done
-    cmp eax, 0x534D4150
-    jne .e820_done
-
+    ; Entry 0: Conventional memory 0 - 639KB
+    mov dword [di +  0], 0x00000000
+    mov dword [di +  4], 0x00000000
+    mov dword [di +  8], 0x0009FC00
+    mov dword [di + 12], 0x00000000
+    mov dword [di + 16], 1
+    mov dword [di + 20], 0
     add di, 24
     inc dword [MEMORY_MAP_ADDR]
 
-    test ebx, ebx
-    jz .e820_done
-    jmp .e820_loop
+    ; Entry 1: Extended memory 1MB to 1MB+AX*1024
+    movzx eax, ax
+    shl eax, 10
+    mov dword [di +  0], 0x00100000
+    mov dword [di +  4], 0x00000000
+    mov dword [di +  8], eax
+    mov dword [di + 12], 0x00000000
+    mov dword [di + 16], 1
+    mov dword [di + 20], 0
+    add di, 24
+    inc dword [MEMORY_MAP_ADDR]
 
-.e820_done:
+    ; Entry 2: Memory above 16MB (if BX > 0)
+    cmp bx, 0
+    je .e801_done
+
+    movzx ebx, bx
+    shl ebx, 16
+    mov dword [di +  0], 0x01000000
+    mov dword [di +  4], 0x00000000
+    mov dword [di +  8], ebx
+    mov dword [di + 12], 0x00000000
+    mov dword [di + 16], 1
+    mov dword [di + 20], 0
+    add di, 24
+    inc dword [MEMORY_MAP_ADDR]
+
+.e801_done:
+    popad
+    ret
+
+.e801_fail:
+    ; Fallback: hardcode conservative map (256MB)
+    mov dword [MEMORY_MAP_ADDR], 0
+    mov di, MEMORY_MAP_ADDR + 4
+
+    mov dword [di +  0], 0x00000000
+    mov dword [di +  4], 0x00000000
+    mov dword [di +  8], 0x000A0000
+    mov dword [di + 12], 0x00000000
+    mov dword [di + 16], 1
+    mov dword [di + 20], 0
+    add di, 24
+    inc dword [MEMORY_MAP_ADDR]
+
+    mov dword [di +  0], 0x00100000
+    mov dword [di +  4], 0x00000000
+    mov dword [di +  8], 0x0FF00000
+    mov dword [di + 12], 0x00000000
+    mov dword [di + 16], 1
+    mov dword [di + 20], 0
+    add di, 24
+    inc dword [MEMORY_MAP_ADDR]
+
     popad
     ret
