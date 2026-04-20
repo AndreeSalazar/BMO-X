@@ -1,24 +1,8 @@
-//! BootInfo structure passed from bootloader to kernel
+//! Boot info globals — stores the BootInfo pointer from the bootloader.
 
-/// Boot info from stage2.asm (at 0x9100).
-#[repr(C)]
-pub struct BootInfo {
-    pub magic: u64,
-    pub memory_map_addr: u64,
-    pub memory_map_count: u64,
-    pub cpu_features_addr: u64,
-    pub framebuffer_addr: u64,
-    pub kernel_start: u64,
-    pub kernel_size: u64,
-    pub fb_pitch: u64,
-    pub vbe_mode: u64,
-    pub gpu_fw_addr: u64,
-    pub gpu_fw_size: u64,
-}
+/// Global pointer to the BootInfo structure passed by the bootloader.
+pub static mut BOOT_INFO: *const fastos_boot_protocol::BootInfo = core::ptr::null();
 
-// Global BootInfo pointer for access from tests
-pub static mut BOOT_INFO_PTR: *const BootInfo = core::ptr::null();
-
-// Global GSP firmware info (passed via registers from bootloader)
+/// Global GSP firmware info (populated from BootInfo for backward compat).
 pub static mut GSP_FW_ADDR: u64 = 0;
 pub static mut GSP_FW_SIZE: u64 = 0;

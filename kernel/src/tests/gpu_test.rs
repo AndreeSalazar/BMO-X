@@ -29,7 +29,7 @@ impl TestResult {
 }
 
 /// Run all GPU hardware tests. Returns (passed, total).
-pub fn run_all_tests(con: &mut Console, boot_info: *const crate::boot_info::BootInfo) {
+pub fn run_all_tests(con: &mut Console, boot_info: *const fastos_boot_protocol::BootInfo) {
     use nv_hal::{self, MmioRegion};
     use nv_regs::*;
 
@@ -221,9 +221,9 @@ pub fn run_all_tests(con: &mut Console, boot_info: *const crate::boot_info::Boot
             None
         } else {
             let bi = &*boot_info;
-            if bi.gpu_fw_addr != 0 && bi.gpu_fw_size != 0 {
-                let ptr = bi.gpu_fw_addr as *const u8;
-                let len = bi.gpu_fw_size as usize;
+            if bi.gsp_addr != 0 && bi.gsp_size != 0 {
+                let ptr = bi.gsp_addr as *const u8;
+                let len = bi.gsp_size as usize;
                 Some(core::slice::from_raw_parts(ptr, len))
             } else {
                 None

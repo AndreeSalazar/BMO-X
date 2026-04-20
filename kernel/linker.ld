@@ -1,4 +1,4 @@
-/* FastOS Kernel Linker Script — loaded at 1MB by stage2 */
+/* FastOS Kernel Linker Script — ELF loaded at 1MB by UEFI bootloader */
 ENTRY(_start)
 
 SECTIONS

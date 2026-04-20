@@ -1,0 +1,7 @@
+[package]
+name = "fastos-boot-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "Shared boot protocol between FastOS UEFI bootloader and kernel"
+
+[dependencies]

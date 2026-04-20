@@ -1,10 +1,11 @@
-//! FastOS Kernel v0.2.0 - Entry Point
+//! FastOS Kernel v0.5.0 — Entry Point
 //!
-//! Receives control from stage2 in 64-bit long mode, Ring 0.
-//! System V AMD64 ABI: RDI=gsp_addr, RSI=gsp_size, RDX=mem_map
+//! Receives control from UEFI bootloader in 64-bit long mode, Ring 0.
+//! RDI = *const fastos_boot_protocol::BootInfo
 
 #![no_std]
 #![no_main]
+#![feature(naked_functions)]
 
 mod arch;
 mod boot_info;
@@ -21,33 +22,61 @@ mod shell;
 mod tests;
 mod crypto;
 
-use core::arch::asm;
+use core::arch::naked_asm;
 
-/// Write a 2-character diagnostic code directly to VGA text buffer.
-/// This works even if the framebuffer or serial is broken.
-/// Visible at bottom-right corner of screen (row 24, col 76-77).
-#[inline(always)]
-fn vga_diag(c1: u8, c2: u8) {
-    unsafe {
-        let vga = 0xB8000 as *mut u16;
-        // Row 24, col 76 = offset (24*80+76) = 1996
-        vga.add(1996).write_volatile(0x4F00 | c1 as u16); // white on red
-        vga.add(1997).write_volatile(0x4F00 | c2 as u16);
+/// Print a u64 as 16-digit hex to serial.
+fn serial_hex(val: u64) {
+    let hex = b"0123456789ABCDEF";
+    drivers::serial::serial_write("0x");
+    for i in (0..16).rev() {
+        drivers::serial::serial_write_byte(hex[((val >> (i * 4)) & 0xF) as usize]);
     }
 }
 
+/// ELF entry point. Bootloader passes BootInfo pointer in RDI.
 #[unsafe(no_mangle)]
-pub extern "C" fn kernel_main(gsp_addr: u64, gsp_size: u64, mem_map: u64) -> ! {
-    // ── Diagnostic: "K0" = kernel entry reached ──────────────────────
-    vga_diag(b'K', b'0');
+#[link_section = ".text._start"]
+#[unsafe(naked)]
+unsafe extern "C" fn _start() -> ! {
+    naked_asm!(
+        "call kernel_main",
+        "2: hlt",
+        "jmp 2b",
+    );
+}
 
-    // Save GSP firmware info globally
-    unsafe {
-        boot_info::GSP_FW_ADDR = gsp_addr;
-        boot_info::GSP_FW_SIZE = gsp_size;
+#[unsafe(no_mangle)]
+extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
+    // ── Initialize serial first for debug output ─────────────────────
+    drivers::serial::init_serial();
+    drivers::serial::serial_write("[FastOS] Kernel v0.5.0 starting\n");
+
+    // ── Validate BootInfo magic ──────────────────────────────────────
+    let bi = unsafe { &*boot_info_ptr };
+    if bi.magic != fastos_boot_protocol::BOOT_MAGIC {
+        drivers::serial::serial_write("[FastOS] FATAL: Invalid BootInfo magic: ");
+        serial_hex(bi.magic);
+        drivers::serial::serial_write("\n");
+        loop { unsafe { core::arch::asm!("hlt"); } }
     }
+    drivers::serial::serial_write("[FastOS] BootInfo valid\n");
 
-    // ── CRITICAL: Zero BSS before any Rust code runs ─────────────────
+    // ── Print boot info ──────────────────────────────────────────────
+    drivers::serial::serial_write("[FastOS] FB addr: ");
+    serial_hex(bi.fb_addr);
+    drivers::serial::serial_write("\n");
+
+    drivers::serial::serial_write("[FastOS] FB resolution: ");
+    serial_hex(bi.fb_width as u64);
+    drivers::serial::serial_write("x");
+    serial_hex(bi.fb_height as u64);
+    drivers::serial::serial_write("\n");
+
+    drivers::serial::serial_write("[FastOS] Memory map entries: ");
+    serial_hex(bi.memory_map_count);
+    drivers::serial::serial_write("\n");
+
+    // ── Zero BSS section ─────────────────────────────────────────────
     unsafe {
         extern "C" {
             static __bss_start: u8;
@@ -58,31 +87,49 @@ pub extern "C" fn kernel_main(gsp_addr: u64, gsp_size: u64, mem_map: u64) -> ! {
         let len = bss_end as usize - bss_start as usize;
         core::ptr::write_bytes(bss_start, 0, len);
     }
-    vga_diag(b'K', b'1'); // BSS zeroed
+    drivers::serial::serial_write("[FastOS] BSS zeroed\n");
 
-    // ── Set up stack at high address ───────────────────────────────────────
+    // ── Store boot info globally ─────────────────────────────────────
     unsafe {
-        asm!("mov rsp, 0x200000", options(nomem, nostack));
+        boot_info::BOOT_INFO = boot_info_ptr;
+        boot_info::GSP_FW_ADDR = bi.gsp_addr;
+        boot_info::GSP_FW_SIZE = bi.gsp_size;
     }
 
-    // ── Initialize serial port for debug output ───────────────────────────
-    drivers::serial::init_serial();
-    drivers::serial::serial_write("[FastOS] Kernel v0.5.0 starting\n");
-    vga_diag(b'K', b'2'); // Serial OK
+    // ── Initialize arch subsystems ───────────────────────────────────
+    arch::pic::init_pic();
+    arch::pic::set_mask_keyboard_timer();
+    drivers::serial::serial_write("[FastOS] PIC initialized\n");
 
-    // ── Print GSP firmware info ──────────────────────────────────────────────
-    drivers::serial::serial_write("[FastOS] GSP firmware loaded\n");
-    vga_diag(b'K', b'3'); // GSP info OK
+    arch::idt::init_idt();
+    drivers::serial::serial_write("[FastOS] IDT loaded\n");
 
-    // ── PCI scan for RTX 3060 (10DE:2504) ────────────────────────────────
-    drivers::serial::serial_write("[FastOS] Scanning PCI for RTX 3060...\n");
-    // TODO: Implement PCI scan
-    drivers::serial::serial_write("[FastOS] PCI scan not yet implemented\n");
-    vga_diag(b'K', b'4'); // PCI scan
+    arch::pit::init_pit();
+    arch::idt::register_irq(0, arch::pit::tick);
+    drivers::serial::serial_write("[FastOS] PIT @ 100Hz\n");
 
-    // ── Halt loop ──────────────────────────────────────────────────────────
-    drivers::serial::serial_write("[FastOS] Halting...\n");
-    loop {
-        unsafe { core::arch::asm!("hlt") };
+    // ── Enable interrupts ────────────────────────────────────────────
+    unsafe { core::arch::asm!("sti"); }
+    drivers::serial::serial_write("[FastOS] Interrupts enabled\n");
+
+    // ── Initialize PS/2 keyboard ─────────────────────────────────────
+    drivers::keyboard::init_keyboard();
+    drivers::serial::serial_write("[FastOS] PS/2 keyboard ready\n");
+
+    // ── PCI scan ─────────────────────────────────────────────────────
+    drivers::serial::serial_write("[FastOS] Scanning PCI bus...\n");
+    let _pci = drivers::pci::scan_pci_bus();
+    drivers::serial::serial_write("[FastOS] PCI scan complete\n");
+
+    // ── Console / Shell ──────────────────────────────────────────────
+    if bi.fb_addr != 0 {
+        drivers::serial::serial_write("[FastOS] Framebuffer detected, launching shell\n");
+        let mut con = console::Console::new(bi.fb_addr, bi.fb_pitch());
+        con.clear();
+        shell::run(&mut con);
     }
+
+    drivers::serial::serial_write("[FastOS] No framebuffer — serial-only mode\n");
+    drivers::serial::serial_write("[FastOS] Halting.\n");
+    loop { unsafe { core::arch::asm!("hlt"); } }
 }

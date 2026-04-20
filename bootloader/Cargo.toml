@@ -8,6 +8,7 @@ description = "FastOS UEFI bootloader — loads kernel directly in 64-bit mode"
 [dependencies]
 uefi = { version = "0.37", features = ["alloc", "global_allocator", "logger", "panic_handler", "unstable"] }
 log = "0.4"
+fastos-boot-protocol = { path = "../boot_protocol" }
 
 [profile.release]
 panic = "abort"

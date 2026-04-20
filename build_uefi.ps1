@@ -1,9 +1,9 @@
 # ============================================================================
 # FastOS — UEFI Native Build Pipeline
 # ============================================================================
-# UEFI Bootloader (Rust) → Rust kernel (release) → EFI Application
+# UEFI Bootloader (Rust) → Rust kernel ELF (release) → EFI Application
 # Target: bare metal, Ryzen 5 5600X + RTX 3060 12G
-# Output: BOOTX64.EFI + kernel.bin (ready to flash to ESP)
+# Output: BOOTX64.EFI + kernel.elf (ready to flash to ESP)
 # ============================================================================
 
 param(
@@ -25,7 +25,7 @@ if ($Clean) {
     Write-Host "[CLEAN] Removing build artifacts..." -ForegroundColor Yellow
     Remove-Item "$Root\bootloader\target" -Recurse -ErrorAction SilentlyContinue
     Remove-Item "$Root\kernel\target" -Recurse -ErrorAction SilentlyContinue
-    Remove-Item "$Root\kernel.bin" -ErrorAction SilentlyContinue
+    Remove-Item "$Root\kernel.elf" -ErrorAction SilentlyContinue
     Remove-Item "$Root\BOOTX64.EFI" -ErrorAction SilentlyContinue
     Remove-Item "$Root\USB_boot" -Recurse -ErrorAction SilentlyContinue
     Write-Host "[CLEAN] Done." -ForegroundColor Green
@@ -75,8 +75,8 @@ Copy-Item $efiPath "$Root\BOOTX64.EFI" -Force
 Pop-Location
 Write-Host "[1/3] UEFI Bootloader OK" -ForegroundColor Green
 
-# ── Step 2: Build Rust Kernel ──────────────────────────────────────────────
-Write-Host "[2/3] Building Rust Kernel..." -ForegroundColor Cyan
+# ── Step 2: Build Rust Kernel (ELF) ──────────────────────────────────────────
+Write-Host "[2/3] Building Rust Kernel (ELF)..." -ForegroundColor Cyan
 
 Push-Location "$Root\kernel"
 
@@ -101,26 +101,21 @@ if ($cargoExit -ne 0) {
     throw "Kernel build failed"
 }
 
-# Extract kernel binary
-$sysroot = (& rustup run nightly rustc --print sysroot).Trim()
-$objcopy = "$sysroot\lib\rustlib\x86_64-pc-windows-msvc\bin\rust-objcopy.exe"
-if (!(Test-Path $objcopy)) {
-    $objcopy = "$sysroot\lib\rustlib\x86_64-pc-windows-msvc\bin\llvm-objcopy.exe"
-}
-
+# Copy the ELF directly (no objcopy needed — bootloader loads ELF natively)
 $elfPath = "$Root\kernel\target\x86_64-unknown-none\release\fastos-kernel"
 if (!(Test-Path $elfPath)) {
     $elfPath = Get-ChildItem "$Root\kernel\target\x86_64-unknown-none\release\fastos-kernel*" -File | Where-Object { $_.Extension -eq "" -or $_.Extension -eq ".exe" } | Select-Object -First 1 -ExpandProperty FullName
 }
 
-& $objcopy $elfPath --output-target binary -O binary "$Root\kernel.bin"
-if ($LASTEXITCODE -ne 0) {
+if (!$elfPath -or !(Test-Path $elfPath)) {
     Pop-Location
-    throw "objcopy failed"
+    throw "Cannot find kernel ELF at target\x86_64-unknown-none\release\"
 }
 
-$kernelSize = (Get-Item "$Root\kernel.bin").Length
-Write-Host "      kernel.bin: $([math]::Round($kernelSize/1024, 1))KB" -ForegroundColor DarkGray
+Copy-Item $elfPath "$Root\kernel.elf" -Force
+
+$kernelSize = (Get-Item "$Root\kernel.elf").Length
+Write-Host "      kernel.elf: $([math]::Round($kernelSize/1024, 1))KB" -ForegroundColor DarkGray
 
 Pop-Location
 Write-Host "[2/3] Kernel OK" -ForegroundColor Green
@@ -134,7 +129,7 @@ if (!(Test-Path $usbDir)) {
 }
 
 Copy-Item "$Root\BOOTX64.EFI" "$usbDir\BOOTX64.EFI" -Force
-Copy-Item "$Root\kernel.bin" "$usbDir\kernel.bin" -Force
+Copy-Item "$Root\kernel.elf" "$usbDir\kernel.elf" -Force
 Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_uefi.ps1" -Force
 Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_direct.ps1" -Force
 
@@ -146,7 +141,7 @@ $readme = @"
 ======================================================
 
   Bootloader: BOOTX64.EFI ($([math]::Round($efiSize/1024))KB)
-  Kernel:    kernel.bin ($([math]::Round($kernelSize/1024))KB)
+  Kernel:    kernel.elf ($([math]::Round($kernelSize/1024))KB)
   Built:     $buildDate
   Target:    Ryzen 5 5600X + RTX 3060 12G
   Mode:      UEFI Native (No CSM/Legacy)
@@ -166,42 +161,39 @@ $readme = @"
     # Or: .\flash_direct.ps1 -DiskNumber 3
 
   Both scripts will:
-    - Format USB as GPT + FAT32 (ESP)
+    - Format USB as GPT + FAT32 (full size ESP)
     - Create EFI\BOOT\ directory
     - Copy BOOTX64.EFI to EFI\BOOT\BOOTX64.EFI
-    - Copy kernel.bin to root
+    - Copy kernel.elf to root
     - Make USB bootable
 
   Option 3 - Manual:
-    1. Format USB as GPT + FAT32 (ESP)
-       - Disk Management → Delete partitions → New → GPT → FAT32
+    1. Format USB as GPT + FAT32 (full size)
+       - Disk Management -> Delete partitions -> New -> GPT -> FAT32
     2. Copy EFI files to ESP
        - Create: EFI\BOOT\ on USB
-       - Copy: BOOTX64.EFI → EFI\BOOT\BOOTX64.EFI
-       - Copy: kernel.bin → root of ESP
+       - Copy: BOOTX64.EFI -> EFI\BOOT\BOOTX64.EFI
+       - Copy: kernel.elf -> root of ESP
 
-  Step 4: Boot from USB
-    - Disable CSM/Legacy Boot in BIOS (set to UEFI Only)
+  BIOS Setup:
+    - Disable CSM/Legacy Boot (set to UEFI Only)
+    - Disable Secure Boot
     - Add USB to boot order
     - Select USB from UEFI boot menu
 
 ------------------------------------------------------
-  MEMORY MAP (UEFI Native)
+  BOOT SEQUENCE
 ------------------------------------------------------
-  Bootloader: Loaded by UEFI firmware
-  Kernel:     Loaded at 0x100000 (1MB) by bootloader
-  DMA:        0x400000 (4MB) buffer pool
-  Stack:      0x800000 (8MB) grows down
-
-------------------------------------------------------
-  ADVANTAGES OF UEFI NATIVE
-------------------------------------------------------
-  - No legacy BIOS limitations (INT 15h, MBR, etc.)
-  - GPT partition support (> 2TB)
-  - Secure Boot support
-  - Faster boot times
-  - Modern firmware interface
-  - Better driver support
+  1. UEFI firmware loads BOOTX64.EFI
+  2. Bootloader queries GOP (framebuffer)
+  3. Bootloader loads kernel.elf (ELF64)
+  4. Bootloader finds RSDP (ACPI)
+  5. Bootloader builds BootInfo struct
+  6. Bootloader exits boot services
+  7. Bootloader jumps to kernel _start
+  8. Kernel validates BootInfo, inits serial
+  9. Kernel inits PIC/IDT/PIT, enables IRQs
+  10. Kernel runs interactive shell on GOP FB
 
 ======================================================
 "@
@@ -214,11 +206,11 @@ Write-Host "      Path: $usbDir" -ForegroundColor DarkGray
 # ── Summary ──────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Green
-Write-Host "  BUILD COMPLETE - UEFI NATIVE" -ForegroundColor Green
+Write-Host "  BUILD COMPLETE - UEFI NATIVE (ELF)" -ForegroundColor Green
 Write-Host "" -ForegroundColor Green
 Write-Host "  Output:" -ForegroundColor Green
 Write-Host "    BOOTX64.EFI ($([math]::Round($efiSize/1024))KB)" -ForegroundColor Green
-Write-Host "    kernel.bin ($([math]::Round($kernelSize/1024))KB)" -ForegroundColor Green
+Write-Host "    kernel.elf ($([math]::Round($kernelSize/1024))KB)" -ForegroundColor Green
 Write-Host "" -ForegroundColor Green
 Write-Host "  Location: USB_boot\" -ForegroundColor Green
 Write-Host ""
@@ -228,14 +220,11 @@ Write-Host "    .\flash_uefi.ps1 -DiskNumber <N>" -ForegroundColor Green
 Write-Host "    # Or (auto-detect USB):" -ForegroundColor Green
 Write-Host "    .\flash_direct.ps1" -ForegroundColor Green
 Write-Host ""
+Write-Host "  IMPORTANT BIOS settings:" -ForegroundColor Yellow
+Write-Host "    - CSM: DISABLED (UEFI Only)" -ForegroundColor Yellow
+Write-Host "    - Secure Boot: DISABLED" -ForegroundColor Yellow
+Write-Host ""
 Write-Host "  Example (if USB is Disk 3):" -ForegroundColor Green
 Write-Host "    .\flash_uefi.ps1 -DiskNumber 3" -ForegroundColor Green
-Write-Host "    # Or:" -ForegroundColor Green
-Write-Host "    .\flash_direct.ps1 -DiskNumber 3" -ForegroundColor Green
-Write-Host ""
-Write-Host "  Then boot:" -ForegroundColor Green
-Write-Host "    1. Disable CSM in BIOS (set to UEFI Only)" -ForegroundColor Green
-Write-Host "    2. Add USB to boot order" -ForegroundColor Green
-Write-Host "    3. Boot from USB in UEFI mode" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
