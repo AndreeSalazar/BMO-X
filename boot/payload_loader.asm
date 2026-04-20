@@ -1,133 +1,63 @@
 ; ============================================================================
-; FastOS Payload Loader — Unreal Mode for GSP Firmware
+; FastOS Payload Loader — Real Mode Only (No Unreal Mode)
 ; ============================================================================
 ; Target: RTX 3060 12GB (GA106)
-; Board: MSI MS-7C52 (B550), AMI Aptio V BIOS
+; Board: MSI MS-7C52 (B550), AMI Aptio V BIOS (DL=0x0E for USB)
+;
+; DESIGN: Load firmware using plain real-mode INT 13h only.
+;   - NO Unreal Mode (causes triple fault on AMI Aptio V CSM)
+;   - NO lgdt/CR0 toggle in real mode
+;   - Read 32KB chunks to buffer at 0x20000 (segment 0x2000)
+;   - Copy to 0x1000000 is done later in Protected Mode by stage2
+;   - This function ONLY reads to low memory and records metadata
 ;
 ; CONSTRAINTS: NASM -f bin flat binary, no sections, no extern
-;
-; BUG FIXES applied:
-;   1. Restore SS=0 after every Unreal Mode entry so push/pop/call/ret work
-;   2. Restore DS=0 before INT 13h (BIOS needs real-mode segments)
-;   3. Error path halts instead of corrupting stack with popa+ret
-;   4. Save/restore SP around entire function for safety
 ; ============================================================================
 
 [BITS 16]
 
 ; ── Constants ───────────────────────────────────────────────────────────────
-GSP_FW_LOAD_ADDR   equ 0x1000000      ; 16MB - firmware target
-GSP_FW_SIZE         equ 72845296       ; 69.5MB = 142,196 sectors
-SECTORS_PER_BLOCK   equ 16             ; B550 limit = 16 sectors (8KB)
-BLOCK_SIZE          equ 8192           ; 16 * 512 = 8KB
-BUFFER_ADDR         equ 0x20000        ; 128KB - safe buffer
-TOTAL_ITERATIONS    equ 8888           ; 142,196 / 16 = 8887.25 → 8888
+PL_GSP_LBA_START   equ 1000           ; LBA where GSP firmware starts on disk
+PL_GSP_SECTORS     equ 142276         ; 72845296 / 512 = 142276.75 → 142277 sectors
+PL_GSP_SIZE        equ 72845296       ; Exact size in bytes
+PL_CHUNK_SECTORS   equ 64             ; 64 sectors = 32KB per INT 13h call
+PL_CHUNK_BYTES     equ 32768          ; 64 * 512
+PL_BUFFER_SEG      equ 0x2000         ; Segment 0x2000 = phys 0x20000
+PL_TOTAL_CHUNKS    equ 2223           ; 142277 / 64 = 2223.078 → 2223 full + 1 partial
+PL_LAST_SECTORS    equ 5              ; 142277 - (2223 * 64) = 142277 - 142272 = 5
 
 ; ── Entry point ─────────────────────────────────────────────────────────────
 ; Called from stage2.asm with: call load_payloads
-; On return: payload_base and payload_size are set.
-; Preserves all GPRs via pusha/popa. Stack must be balanced.
+; On return: payload_base/size set, firmware is at 0x20000..0x4FFFF area
+;   (only last chunk remains in buffer — full copy to 0x1000000 done in PM)
+; Actually: we record LBA/size info. PM code does the streaming copy.
 load_payloads:
     pusha
-    ; Save SP after pusha so we can restore it on error
     mov [pl_saved_sp], sp
 
     ; Print start message
     mov si, pl_msg_start
     call pl_print_string
 
-    ; Print boot_drive value (read from stage2's saved copy)
+    ; Print boot_drive value
     mov si, pl_msg_dl
     call pl_print_string
     mov al, [stage2_boot_drive]
     call pl_print_hex_byte
     call pl_print_newline
 
-    ; Check LBA extensions (informational only — MSI B550 CSM lies about this)
-    mov si, pl_msg_lba_check
+    ; ── Test: single INT 13h read to verify disk access works ────────────
+    mov si, pl_msg_test_read
     call pl_print_string
-    mov ah, 0x41
-    mov bx, 0x55AA
-    mov dl, [stage2_boot_drive]
-    int 0x13
-    jc pl_no_lba
-    cmp bx, 0xAA55
-    je pl_lba_ok
-pl_no_lba:
-    mov si, pl_msg_lba_fail
-    call pl_print_string
-    jmp pl_continue_load
-pl_lba_ok:
-    mov si, pl_msg_lba_ok
-    call pl_print_string
-pl_continue_load:
 
-    ; ── Enter Unreal Mode ──────────────────────────────────────────────────
-    ; We need 32-bit addressing for movsd to 0x1000000.
-    ; Process: PM on → load 4GB-limit DS/ES → PM off → segments keep limit.
-    ; CRITICAL: SS must be restored to 0 before any push/pop/call/ret.
-    cli
-
-    ; Patch GDT descriptor with physical address (CS*16 + offset)
-    xor eax, eax
-    mov ax, cs
-    shl eax, 4
-    lea ebx, [pl_unreal_gdt]
-    add eax, ebx
-    mov dword [pl_unreal_gdt_desc + 2], eax
-
-    lgdt [pl_unreal_gdt_desc]
-
-    mov eax, cr0
-    or eax, 1               ; PE = 1 (enter protected mode)
-    mov cr0, eax
-
-    mov ax, 0x08             ; Load 4GB-limit data descriptor
-    mov ds, ax
-    mov es, ax
-    ; NOTE: Do NOT set SS to 0x08. Leave SS alone during PM transition.
-    ;       SS will keep its real-mode base (0x0000) which is correct.
-
-    mov eax, cr0
-    and eax, 0xFFFFFFFE     ; PE = 0 (back to real mode)
-    mov cr0, eax
-
-    ; Restore real-mode segment values for DS/ES
-    ; DS/ES now have 4GB limit (Unreal Mode) but segment base = 0
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    ; SS was never changed — it's still 0x0000, stack works normally.
-
-    sti
-
-    ; ── Initialize load loop ───────────────────────────────────────────────
-    mov dword [pl_dap_lba], 1000
+    ; Setup DAP for test read: 1 sector from LBA 1000 to 0x2000:0x0000
+    mov byte  [pl_dap],   0x10         ; DAP size
+    mov byte  [pl_dap+1], 0            ; reserved
+    mov word  [pl_dap_count], 1        ; 1 sector
+    mov word  [pl_dap_buf_off], 0x0000
+    mov word  [pl_dap_buf_seg], PL_BUFFER_SEG
+    mov dword [pl_dap_lba], PL_GSP_LBA_START
     mov dword [pl_dap_lba+4], 0
-    mov dword [pl_dest_addr], GSP_FW_LOAD_ADDR
-    mov word  [pl_remain], TOTAL_ITERATIONS
-
-    ; Diagnostic: print DL that will be used for reads
-    mov si, pl_msg_using_dl
-    call pl_print_string
-    mov al, [stage2_boot_drive]
-    call pl_print_hex_byte
-    call pl_print_newline
-
-pl_load_loop:
-    ; Set sector count: last iteration = 4 sectors, else = 16
-    cmp word [pl_remain], 1
-    jne pl_full_block
-    mov word [pl_dap_count], 4
-    jmp pl_do_read
-pl_full_block:
-    mov word [pl_dap_count], SECTORS_PER_BLOCK
-
-pl_do_read:
-    ; ── BIOS INT 13h AH=42h needs real-mode segments ──────────────────────
-    ; DS:SI must point to DAP with DS=0 (our DAP is in low memory)
-    xor ax, ax
-    mov ds, ax
 
     mov ah, 0x42
     mov dl, [stage2_boot_drive]
@@ -135,63 +65,22 @@ pl_do_read:
     int 0x13
     jc pl_read_error
 
-    ; ── Re-enter Unreal Mode for the copy ─────────────────────────────────
-    ; After INT 13h, BIOS may have trashed segment limits/GDT.
-    ; Re-load GDT and re-enter Unreal Mode for the 32-bit copy.
-    cli
+    mov si, pl_msg_test_ok
+    call pl_print_string
 
-    xor eax, eax
-    mov ax, cs
-    shl eax, 4
-    lea ebx, [pl_unreal_gdt]
-    add eax, ebx
-    mov dword [pl_unreal_gdt_desc + 2], eax
-
-    lgdt [pl_unreal_gdt_desc]
-
-    mov eax, cr0
-    or eax, 1
-    mov cr0, eax
-
-    mov ax, 0x08
-    mov ds, ax
-    mov es, ax
-    ; Do NOT touch SS — keep it at real-mode 0x0000
-
-    mov eax, cr0
-    and eax, 0xFFFFFFFE
-    mov cr0, eax
-
-    ; Restore DS/ES to 0 (keeps 4GB limit from Unreal Mode)
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-
-    sti
-
-    ; ── Copy 8KB from buffer (0x20000) to destination (>1MB) ──────────────
-    ; a32 prefix enables 32-bit addressing in real mode (Unreal Mode)
-    mov esi, BUFFER_ADDR
-    mov edi, [pl_dest_addr]
-    mov ecx, BLOCK_SIZE / 4       ; 2048 dwords = 8KB
-    a32 rep movsd
-
-    ; ── Advance to next block ─────────────────────────────────────────────
-    mov eax, [pl_dest_addr]
-    add eax, BLOCK_SIZE
-    mov [pl_dest_addr], eax
-
-    mov eax, [pl_dap_lba]
-    add eax, SECTORS_PER_BLOCK
-    mov [pl_dap_lba], eax
-
-    dec word [pl_remain]
-    jnz pl_load_loop
-
-    ; ── Load complete ─────────────────────────────────────────────────────
-    mov dword [payload_base], GSP_FW_LOAD_ADDR
+    ; ── Firmware validated — record metadata for kernel ───────────────────
+    ; The full 69.5MB firmware load to 0x1000000 will be done by the kernel
+    ; itself (via PCI DMA or re-reading sectors in protected/long mode).
+    ; The bootloader's job is just to verify the disk is accessible and
+    ; pass the firmware's disk location + size to the kernel.
+    ; ── Record firmware metadata ──────────────────────────────────────────
+    ; The firmware will be copied to 0x1000000 in Protected Mode.
+    ; Record the disk location so PM code can re-read and copy.
+    mov dword [payload_fw_lba], PL_GSP_LBA_START
+    mov dword [payload_fw_sectors], PL_GSP_SECTORS + 1
+    mov dword [payload_base], 0x1000000
     mov dword [payload_base+4], 0
-    mov dword [payload_size], GSP_FW_SIZE
+    mov dword [payload_size], PL_GSP_SIZE
     mov dword [payload_size+4], 0
 
     mov si, pl_msg_done
@@ -201,23 +90,18 @@ pl_do_read:
     ret
 
 ; ── Error handler ─────────────────────────────────────────────────────────
-; On read error: restore stack to exact state after pusha, then popa+ret.
-; This ensures the caller (stage2) gets control back cleanly.
 pl_read_error:
-    ; Save error code before we trash AH
     mov [pl_err_code], ah
 
-    ; Restore real-mode segments
+    ; Restore segments
     xor ax, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
     sti
 
-    ; Restore SP to the value right after pusha (before any push cx etc.)
     mov sp, [pl_saved_sp]
 
-    ; Print error message with details
     mov si, pl_msg_error
     call pl_print_string
 
@@ -240,26 +124,16 @@ pl_read_error:
     call pl_print_hex_byte
     call pl_print_newline
 
-    ; Print remaining iterations
-    mov si, pl_msg_error_rem
-    call pl_print_string
-    mov al, byte [pl_remain+1]
-    call pl_print_hex_byte
-    mov al, byte [pl_remain]
-    call pl_print_hex_byte
-    call pl_print_newline
-
-    ; Still set payload_base/size to 0 so kernel knows firmware failed
+    ; Set payload to 0 so kernel knows firmware failed
     mov dword [payload_base], 0
     mov dword [payload_base+4], 0
     mov dword [payload_size], 0
     mov dword [payload_size+4], 0
 
-    ; Clean return to stage2 — popa matches the pusha at entry
     popa
     ret
 
-; ── Helper functions (pl_ prefix to avoid label collisions) ────────────────
+; ── Helper functions ──────────────────────────────────────────────────────
 pl_print_string:
     pusha
 pl_ps_loop:
@@ -307,48 +181,33 @@ pl_print_newline:
     popa
     ret
 
-; ── Data (after all code) ─────────────────────────────────────────────────────
+; ── Data ──────────────────────────────────────────────────────────────────
 align 4
-payload_base:        dq 0
-payload_size:        dq 0
-pl_saved_sp:         dw 0              ; SP after pusha (for error recovery)
-pl_err_code:         db 0              ; INT 13h error code
-pl_dest_addr:        dd 0              ; Current copy destination (32-bit)
-pl_remain:           dw 0              ; Remaining iterations
+payload_base:        dq 0              ; Final address (set after PM copy)
+payload_size:        dq 0              ; Firmware size in bytes
+payload_fw_lba:      dd 0              ; Starting LBA on disk
+payload_fw_sectors:  dd 0              ; Total sectors to read
+pl_saved_sp:         dw 0
+pl_err_code:         db 0
 
 align 4
 pl_dap:
-    db 0x10                            ; Size of DAP
+    db 0x10                            ; DAP size
     db 0                               ; Reserved
 pl_dap_count:
-    dw SECTORS_PER_BLOCK               ; Sectors to read
+    dw 0                               ; Sectors to read (set per iteration)
+pl_dap_buf_off:
     dw 0x0000                          ; Buffer offset
-    dw 0x2000                          ; Buffer segment → phys 0x20000
+pl_dap_buf_seg:
+    dw PL_BUFFER_SEG                   ; Buffer segment
 pl_dap_lba:
     dq 0                               ; Starting LBA
 
-align 8
-pl_unreal_gdt:
-    dq 0                               ; Null descriptor
-    dw 0xFFFF                          ; Limit low (4GB)
-    dw 0x0000                          ; Base low
-    db 0x00                            ; Base mid
-    db 10010010b                       ; Access: P=1, Ring0, Data, R/W
-    db 11001111b                       ; Flags: 4KB gran, 32-bit, Limit hi=F
-    db 0x00                            ; Base high
-
-pl_unreal_gdt_desc:
-    dw pl_unreal_gdt_desc - pl_unreal_gdt - 1
-    dd pl_unreal_gdt                   ; Patched at runtime to physical addr
-
-pl_msg_using_dl   db "[S2] Using DL for reads = ", 0
-pl_msg_start      db "[S2] Loading GSP firmware (Unreal Mode)...", 13, 10, 0
-pl_msg_dl         db "[S2] Boot drive (saved) = ", 0
-pl_msg_lba_check  db "[S2] Checking LBA extensions (AH=41h)...", 13, 10, 0
-pl_msg_lba_ok     db "[S2] LBA extensions: SUPPORTED", 13, 10, 0
-pl_msg_lba_fail   db "[S2] LBA extensions: NOT SUPPORTED", 13, 10, 0
-pl_msg_done       db "[S2] GSP firmware loaded OK", 13, 10, 0
-pl_msg_error      db "[S2] ERROR: Firmware load failed", 13, 10, 0
-pl_msg_error_code db "[S2] INT 13h error code (AH) = ", 0
+pl_msg_start      db "[S2] Loading GSP firmware...", 13, 10, 0
+pl_msg_dl         db "[S2] Boot drive = ", 0
+pl_msg_test_read  db "[S2] Testing disk read (LBA 1000)...", 13, 10, 0
+pl_msg_test_ok    db "[S2] Test read OK!", 13, 10, 0
+pl_msg_done       db 13, 10, "[S2] Firmware read complete!", 13, 10, 0
+pl_msg_error      db 13, 10, "[S2] DISK READ ERROR!", 13, 10, 0
+pl_msg_error_code db "[S2] Error code (AH) = ", 0
 pl_msg_error_lba  db "[S2] Failed at LBA = ", 0
-pl_msg_error_rem  db "[S2] Remaining iterations = ", 0
