@@ -13,8 +13,8 @@
 
 [BITS 16]
 
-MEMORY_MAP_ADDR  equ 0x8000
-MEMORY_MAP_COUNT equ 0x8000
+MEMORY_MAP_ADDR  equ 0x6000
+MEMORY_MAP_COUNT equ 0x6000
 
 detect_memory_e820:
     pusha

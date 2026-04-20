@@ -81,39 +81,39 @@ stage2_start:
     mov si, msg_a20_ok
     call print_string_16
 
-    ; ── Hardcoded memory map (inline, no function call) ───────────────
-    ; Write directly to 0x8000. No INT 15h, no call, no push/pop.
-    ; DS is already 0, so [0x8000] works directly.
-    mov word [0x8000], 2        ; count = 2 entries
-    mov word [0x8002], 0
+    ; ── Hardcoded memory map at 0x6000 (inline) ────────────────────────
+    ; CRITICAL: Stage2 occupies 0x7E00-0xBE00 (16KB). Writing to 0x8000
+    ; would overwrite our own code! Use 0x6000 instead (safe zone below stack).
+    mov word [0x6000], 2        ; count = 2 entries
+    mov word [0x6002], 0
 
-    ; Entry 0 at 0x8004: base=0, len=640KB, type=1, attrs=0
-    mov word [0x8004], 0        ; base low
-    mov word [0x8006], 0
-    mov word [0x8008], 0
-    mov word [0x800A], 0
-    mov word [0x800C], 0x0000   ; len low  = 0xA0000
-    mov word [0x800E], 0x000A   ; len high
-    mov word [0x8010], 0
-    mov word [0x8012], 0
-    mov word [0x8014], 1        ; type = usable
-    mov word [0x8016], 0
-    mov word [0x8018], 0        ; attrs
-    mov word [0x801A], 0
+    ; Entry 0 at 0x6004: base=0, len=640KB, type=1, attrs=0
+    mov word [0x6004], 0
+    mov word [0x6006], 0
+    mov word [0x6008], 0
+    mov word [0x600A], 0
+    mov word [0x600C], 0x0000   ; len = 0xA0000
+    mov word [0x600E], 0x000A
+    mov word [0x6010], 0
+    mov word [0x6012], 0
+    mov word [0x6014], 1        ; type = usable
+    mov word [0x6016], 0
+    mov word [0x6018], 0        ; attrs
+    mov word [0x601A], 0
 
-    ; Entry 1 at 0x801C: base=1MB, len=255MB, type=1, attrs=0
-    mov word [0x801C], 0x0000   ; base = 0x00100000
-    mov word [0x801E], 0x0010
-    mov word [0x8020], 0
-    mov word [0x8022], 0
-    mov word [0x8024], 0x0000   ; len = 0x0FF00000
-    mov word [0x8026], 0x0FF0
-    mov word [0x8028], 0
-    mov word [0x802A], 0
-    mov word [0x802C], 1        ; type = usable
-    mov word [0x802E], 0
-    mov word [0x8030], 0        ; attrs
-    mov word [0x8032], 0
+    ; Entry 1 at 0x601C: base=1MB, len=255MB, type=1, attrs=0
+    mov word [0x601C], 0x0000   ; base = 0x00100000
+    mov word [0x601E], 0x0010
+    mov word [0x6020], 0
+    mov word [0x6022], 0
+    mov word [0x6024], 0x0000   ; len = 0x0FF00000
+    mov word [0x6026], 0x0FF0
+    mov word [0x6028], 0
+    mov word [0x602A], 0
+    mov word [0x602C], 1        ; type = usable
+    mov word [0x602E], 0
+    mov word [0x6030], 0        ; attrs
+    mov word [0x6032], 0
 
     mov si, msg_mem_ok
     call print_string_16
@@ -320,8 +320,8 @@ long_mode_entry:
 
     ; Boot info at 0x9100 (passed in RDI to Rust)
     mov qword [0x9100], 0xFA5705           ; magic
-    mov qword [0x9108], 0x8000             ; memory_map_addr
-    mov eax, [0x8000]
+    mov qword [0x9108], 0x6000             ; memory_map_addr
+    mov eax, [0x6000]
     mov qword [0x9110], rax                ; memory_map_count
     mov qword [0x9118], 0x9000             ; cpu_features_addr
     mov qword [0x9120], 0xB8000            ; framebuffer (VGA)
