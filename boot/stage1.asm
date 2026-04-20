@@ -70,14 +70,7 @@ stage1_start:
     jmp 0x0000:0x7E00
 
 disk_error:
-    ; Print error message + AH error code
-    mov [err_code], ah
     mov si, msg_disk_err
-    call print_string_16
-    ; Print hex byte of error code
-    mov al, [err_code]
-    call print_hex_al
-    mov si, msg_crlf
     call print_string_16
     cli
     hlt
@@ -97,38 +90,14 @@ print_string_16:
     popa
     ret
 
-; --- Print AL as 2-digit hex ---
-print_hex_al:
-    pusha
-    mov cl, al
-    shr al, 4
-    call .nibble
-    mov al, cl
-    and al, 0x0F
-    call .nibble
-    popa
-    ret
-.nibble:
-    add al, '0'
-    cmp al, '9'
-    jbe .digit
-    add al, 7
-.digit:
-    mov ah, 0x0E
-    mov bx, 0x0007
-    int 0x10
-    ret
-
 ; --- Data ---
 boot_drive:   db 0
-err_code:     db 0
 msg_boot:     db "[FastOS] Stage1: MBR loaded", 13, 10, 0
 msg_loading:  db "[FastOS] Loading Stage2...", 13, 10, 0
 msg_jumping:  db "[FastOS] Stage2 verified OK!", 13, 10, 0
-msg_disk_err: db "[FastOS] DISK ERR: 0x", 0
+msg_disk_err: db "[FastOS] DISK READ ERROR!", 13, 10, 0
 msg_no_lba:   db "[FastOS] NO LBA EXTENSIONS!", 13, 10, 0
 msg_bad_data: db "[FastOS] STAGE2 DATA INVALID!", 13, 10, 0
-msg_crlf:     db 13, 10, 0
 
 ; Disk Address Packet (INT 13h AH=42h)
 align 4
