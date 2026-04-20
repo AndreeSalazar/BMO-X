@@ -135,6 +135,8 @@ if (!(Test-Path $usbDir)) {
 
 Copy-Item "$Root\BOOTX64.EFI" "$usbDir\BOOTX64.EFI" -Force
 Copy-Item "$Root\kernel.bin" "$usbDir\kernel.bin" -Force
+Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_uefi.ps1" -Force
+Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_direct.ps1" -Force
 
 # Create README with UEFI instructions
 $buildDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -150,26 +152,38 @@ $readme = @"
   Mode:      UEFI Native (No CSM/Legacy)
 
 ------------------------------------------------------
-  HOW TO FLASH TO USB (UEFI)
+  HOW TO FLASH TO USB (UEFI) - AUTOMATED
 ------------------------------------------------------
 
-  Step 1: Format USB as GPT + FAT32 (ESP)
-    - In Windows: Disk Management → Delete partitions → New → GPT → FAT32
-    - Or: diskpart → clean → convert gpt → create partition efi → format fs=fat32 quick
+  Option 1 - flash_uefi.ps1 (RECOMMENDED, simple):
+    .\flash_uefi.ps1 -DiskNumber <N>
+    
+    Example: If your USB is Disk 3:
+    .\flash_uefi.ps1 -DiskNumber 3
 
-  Step 2: Copy EFI files to ESP
-    - Create folder: EFI\BOOT\ on the USB
-    - Copy BOOTX64.EFI to: EFI\BOOT\BOOTX64.EFI
-    - Copy kernel.bin to: kernel.bin (root of ESP)
+  Option 2 - flash_direct.ps1 (auto-detect USB):
+    .\flash_direct.ps1
+    # Or: .\flash_direct.ps1 -DiskNumber 3
 
-  Step 3: Enable UEFI boot in BIOS
-    - Disable CSM/Legacy Boot in BIOS
-    - Set boot mode to UEFI Only
-    - Add USB to boot order
+  Both scripts will:
+    - Format USB as GPT + FAT32 (ESP)
+    - Create EFI\BOOT\ directory
+    - Copy BOOTX64.EFI to EFI\BOOT\BOOTX64.EFI
+    - Copy kernel.bin to root
+    - Make USB bootable
+
+  Option 3 - Manual:
+    1. Format USB as GPT + FAT32 (ESP)
+       - Disk Management → Delete partitions → New → GPT → FAT32
+    2. Copy EFI files to ESP
+       - Create: EFI\BOOT\ on USB
+       - Copy: BOOTX64.EFI → EFI\BOOT\BOOTX64.EFI
+       - Copy: kernel.bin → root of ESP
 
   Step 4: Boot from USB
+    - Disable CSM/Legacy Boot in BIOS (set to UEFI Only)
+    - Add USB to boot order
     - Select USB from UEFI boot menu
-    - FastOS bootloader will load
 
 ------------------------------------------------------
   MEMORY MAP (UEFI Native)
@@ -207,12 +221,21 @@ Write-Host "    BOOTX64.EFI ($([math]::Round($efiSize/1024))KB)" -ForegroundColo
 Write-Host "    kernel.bin ($([math]::Round($kernelSize/1024))KB)" -ForegroundColor Green
 Write-Host "" -ForegroundColor Green
 Write-Host "  Location: USB_boot\" -ForegroundColor Green
-Write-Host "" -ForegroundColor Green
-Write-Host "  To boot:" -ForegroundColor Green
-Write-Host "    1. Format USB as GPT + FAT32 (ESP)" -ForegroundColor Green
-Write-Host "    2. Copy BOOTX64.EFI to EFI\BOOT\BOOTX64.EFI" -ForegroundColor Green
-Write-Host "    3. Copy kernel.bin to root of ESP" -ForegroundColor Green
-Write-Host "    4. Boot from USB in UEFI mode" -ForegroundColor Green
-Write-Host "    5. Disable CSM in BIOS for best results" -ForegroundColor Green
+Write-Host ""
+Write-Host "  To flash USB:" -ForegroundColor Green
+Write-Host "    cd USB_boot" -ForegroundColor Green
+Write-Host "    .\flash_uefi.ps1 -DiskNumber <N>" -ForegroundColor Green
+Write-Host "    # Or (auto-detect USB):" -ForegroundColor Green
+Write-Host "    .\flash_direct.ps1" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Example (if USB is Disk 3):" -ForegroundColor Green
+Write-Host "    .\flash_uefi.ps1 -DiskNumber 3" -ForegroundColor Green
+Write-Host "    # Or:" -ForegroundColor Green
+Write-Host "    .\flash_direct.ps1 -DiskNumber 3" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Then boot:" -ForegroundColor Green
+Write-Host "    1. Disable CSM in BIOS (set to UEFI Only)" -ForegroundColor Green
+Write-Host "    2. Add USB to boot order" -ForegroundColor Green
+Write-Host "    3. Boot from USB in UEFI mode" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
