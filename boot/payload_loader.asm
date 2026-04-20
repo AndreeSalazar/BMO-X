@@ -65,6 +65,76 @@ load_payloads:
     mov si, msg_start
     call print_string_16
 
+    ; ── DIAGNOSTIC 1: Print DL value (boot drive) ───────────────────────
+    mov si, msg_dl
+    call print_string_16
+    mov al, dl
+    call print_hex_byte
+    call print_newline
+
+    ; ── DIAGNOSTIC 2: Check LBA extensions (AH=41h) ───────────────────────
+    mov si, msg_lba_check
+    call print_string_16
+    mov ah, 0x41
+    mov bx, 0x55AA
+    mov dl, [stage2_boot_drive]
+    int 0x13
+    jc .no_lba
+    cmp bx, 0xAA55
+    je .lba_ok
+.no_lba:
+    mov si, msg_lba_fail
+    call print_string_16
+    jmp .continue_diag
+.lba_ok:
+    mov si, msg_lba_ok
+    call print_string_16
+.continue_diag:
+
+    ; ── DIAGNOSTIC 3: Drive parameters (AH=08h) ───────────────────────────
+    mov si, msg_drive_check
+    call print_string_16
+    mov ah, 0x08
+    mov dl, [stage2_boot_drive]
+    int 0x13
+    jc .drive_fail
+    mov si, msg_drive_ok
+    call print_string_16
+    jmp .continue_diag2
+.drive_fail:
+    mov si, msg_drive_fail
+    call print_string_16
+.continue_diag2:
+
+    ; ── DIAGNOSTIC 4: Dump first DAP bytes ────────────────────────────────
+    mov si, msg_dap_dump
+    call print_string_16
+    mov si, dap
+    call print_hex_byte
+    mov al, [si+1]
+    call print_hex_byte
+    mov al, [si+2]
+    call print_hex_byte
+    mov al, [si+3]
+    call print_hex_byte
+    mov al, ' '
+    mov ah, 0x0E
+    mov bx, 0x000F
+    int 0x10
+    mov al, [si+4]
+    call print_hex_byte
+    mov al, [si+5]
+    call print_hex_byte
+    mov al, ' '
+    mov ah, 0x0E
+    mov bx, 0x000F
+    int 0x10
+    mov al, [si+6]
+    call print_hex_byte
+    mov al, [si+7]
+    call print_hex_byte
+    call print_newline
+
     ; ── STEP 1: Enter Unreal Mode ONCE before loop ───────────────────────
     cli                     ; Disable interrupts for Unreal Mode transition
 
@@ -181,7 +251,7 @@ load_payloads:
     ret
 
 .read_error:
-    ; Handle read error (should not happen with proper DAP)
+    ; Handle read error - print error code
     ; Restore segments before printing
     xor ax, ax
     mov ds, ax
@@ -192,14 +262,64 @@ load_payloads:
     mov si, msg_error
     call print_string_16
 
+    ; Print AH (error code)
+    mov si, msg_error_code
+    call print_string_16
+    mov al, ah
+    call print_hex_byte
+    call print_newline
+
     ; Continue anyway (kernel will handle missing firmware)
     popa
     ret
 
+; ── Helper Functions ──────────────────────────────────────────────────────────
+print_hex_byte:
+    pusha
+    mov ah, al
+    shr al, 4
+    call print_hex_nibble
+    mov al, ah
+    and al, 0x0F
+    call print_hex_nibble
+    popa
+    ret
+
+print_hex_nibble:
+    add al, '0'
+    cmp al, '9'
+    jbe .digit
+    add al, 7  ; 'A' - '9' - 1
+.digit:
+    mov ah, 0x0E
+    mov bx, 0x000F
+    int 0x10
+    ret
+
+print_newline:
+    pusha
+    mov ah, 0x0E
+    mov al, 13
+    mov bx, 0x000F
+    int 0x10
+    mov al, 10
+    int 0x10
+    popa
+    ret
+
 ; ── Variables ──────────────────────────────────────────────────────────────
-msg_start  db "[S2] Loading GSP firmware (Unreal Mode)...", 13, 10, 0
-msg_done   db "[S2] GSP firmware loaded OK", 13, 10, 0
-msg_error  db "[S2] ERROR: Firmware load failed", 13, 10, 0
+msg_start      db "[S2] Loading GSP firmware (Unreal Mode)...", 13, 10, 0
+msg_dl         db "[S2] Boot drive (DL) = ", 0
+msg_lba_check  db "[S2] Checking LBA extensions (AH=41h)...", 13, 10, 0
+msg_lba_ok     db "[S2] LBA extensions: SUPPORTED", 13, 10, 0
+msg_lba_fail   db "[S2] LBA extensions: NOT SUPPORTED", 13, 10, 0
+msg_drive_check db "[S2] Checking drive parameters (AH=08h)...", 13, 10, 0
+msg_drive_ok   db "[S2] Drive: OK", 13, 10, 0
+msg_drive_fail db "[S2] Drive: FAIL", 13, 10, 0
+msg_dap_dump   db "[S2] DAP bytes: ", 0
+msg_done       db "[S2] GSP firmware loaded OK", 13, 10, 0
+msg_error      db "[S2] ERROR: Firmware load failed", 13, 10, 0
+msg_error_code db "[S2] INT 13h error code (AH) = ", 0
 
 payload_base dq 0
 payload_size dq 0
