@@ -68,12 +68,7 @@ load_payloads:
     or al, 1
     mov cr0, eax
 
-    ; FAR JUMP to flush pipeline - MANDATORY after enabling PM
-    jmp 0x08:.pm_entry
-.pm_entry:
-    ; Now in Protected Mode with 4GB data segment
-
-    ; Load DS and ES with 4GB limit selector (0x08)
+    ; Load DS and ES with 4GB limit selector (0x08) while in PM
     mov bx, 0x08
     mov ds, bx
     mov es, bx
@@ -82,8 +77,11 @@ load_payloads:
     and al, 0xFE
     mov cr0, eax
 
-    ; FAR JUMP to flush pipeline - MANDATORY after disabling PM
-    jmp 0x00:.rm_entry
+    ; Use retf to return to Real Mode - safer than far jump for relocatable code
+    push word 0x0000      ; Segment = 0
+    push word .rm_entry   ; Offset
+    retf                  ; Far return to Real Mode
+
 .rm_entry:
     ; Now back in Real Mode but segments keep 4GB hidden limit (Unreal Mode)
 
@@ -204,10 +202,7 @@ load_payloads:
     or al, 1
     mov cr0, eax
     
-    ; FAR JUMP to flush pipeline - MANDATORY
-    jmp 0x08:.pm_entry_verify
-.pm_entry_verify:
-    ; Load DS with 4GB limit selector (0x08)
+    ; Load DS with 4GB limit selector (0x08) while in PM
     mov bx, 0x08
     mov ds, bx
     
@@ -215,8 +210,11 @@ load_payloads:
     and al, 0xFE
     mov cr0, eax
     
-    ; FAR JUMP to flush pipeline - MANDATORY
-    jmp 0x00:.rm_entry_verify
+    ; Use retf to return to Real Mode
+    push word 0x0000          ; Segment = 0
+    push word .rm_entry_verify ; Offset
+    retf                      ; Far return
+
 .rm_entry_verify:
     ; Restore DS to 0
     xor ax, ax
