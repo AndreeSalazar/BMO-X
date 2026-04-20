@@ -149,35 +149,25 @@ stage2_start:
 
     ; ── Load external modules (GSP Firmware) ─────────────────────────────
     ; Save boot drive (DL) to payload_loader's local variable
-    mov al, dl
+    mov al, [stage2_boot_drive]
     mov [payload_boot_drive], al
     call load_payloads
 
-    ; ── Payload loaded, jump directly to Protected Mode transition ───────
-    ; Diagnostic: print message before jump
+    ; ── CRITICAL: Restore stack to known good state after load_payloads ──
+    ; load_payloads does pusha/popa so SP should be intact, but Unreal Mode
+    ; may have trashed segment caches. Reset everything to be safe.
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
+    sti
+
+    ; Diagnostic: confirm we returned from load_payloads
     mov si, msg_entering_pm
     call print_string_16
 
-    jmp .enter_protected_mode
-
-    ; ── VBE: Set 1920x1080x32bpp mode ────────────────────────────────────
-    ; This is only executed if we fall through from earlier code
-    mov si, msg_vbe_try
-    call print_string_16
-
-    call setup_vbe
-
-    cmp byte [vbe_mode_ok], 1
-    jne .vbe_skip
-    mov si, msg_vbe_ok
-    call print_string_16
-    jmp .vbe_done
-.vbe_skip:
-    mov si, msg_vbe_fail
-    call print_string_16
-.vbe_done:
-
-.enter_protected_mode:
     ; ── Phase 2: Enter 32-bit Protected Mode ─────────────────────────────
 
     ; Save current BIOS cursor row for VGA continuation in PM
@@ -188,6 +178,17 @@ stage2_start:
     mov [vga_row], al
 
     cli
+
+    ; Patch GDT32 descriptor with physical address (CS*16 + offset)
+    ; In flat binary, gdt32_start is an offset from ORG 0x7E00.
+    ; With CS=0 and DS=0, the label value IS the physical address.
+    ; But after Unreal Mode, segment limits may be wrong — re-patch to be safe.
+    xor eax, eax
+    mov ax, cs
+    shl eax, 4
+    add eax, gdt32_start
+    mov dword [gdt32_descriptor + 2], eax
+
     lgdt [gdt32_descriptor]
 
     mov eax, cr0
@@ -314,7 +315,8 @@ protected_mode_entry:
     or eax, (1 << 16)              ; WP
     mov cr0, eax
 
-    ; Load 64-bit GDT
+    ; Patch GDT64 descriptor base address (already linear in PM, but be explicit)
+    mov dword [gdt64_descriptor + 2], gdt64_start
     lgdt [gdt64_descriptor]
 
     ; Far jump to 64-bit!
