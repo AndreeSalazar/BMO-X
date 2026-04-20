@@ -184,10 +184,11 @@ load_payloads:
     add eax, ecx
     mov dword [dap_lba], eax
 
-    ; Progress indicator every 512 blocks (~4MB with 16-sector blocks)
+    ; Progress indicator every 2048 blocks (~16MB with 16-sector blocks)
+    ; Reduced frequency to avoid stack overflow from int 0x10 calls
     inc word [progress_counter]
     mov ax, [progress_counter]
-    and ax, 0x01FF              ; Every 512 (0x200)
+    and ax, 0x07FF              ; Every 2048 (0x800)
     jnz .no_progress
     mov al, '.'
     mov ah, 0x0E
