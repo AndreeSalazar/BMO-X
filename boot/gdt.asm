@@ -59,8 +59,7 @@ gdt64_end:
 
 gdt64_descriptor:
     dw gdt64_end - gdt64_start - 1
-    dd gdt64_start                     ; Patched at runtime in 32-bit PM
-    dd 0                               ; High 32 bits (zero for identity map)
+    dq gdt64_start
 
 GDT64_CODE_SEG equ gdt64_code - gdt64_start   ; 0x08
 GDT64_DATA_SEG equ gdt64_data - gdt64_start   ; 0x10
