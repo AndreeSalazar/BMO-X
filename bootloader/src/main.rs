@@ -120,10 +120,15 @@ fn read_file(filename: &str) -> Option<Vec<u8>> {
 }
 
 /// Jump to kernel entry point
-unsafe fn jump_to_kernel(kernel_addr: u64, gsp_addr: u64, gsp_size: u64, mem_map: u64) -> ! {
-    type KernelMain = extern "C" fn(u64, u64, u64) -> !;
-    let kernel_main: KernelMain = core::mem::transmute(kernel_addr);
-    kernel_main(gsp_addr, gsp_size, mem_map);
+unsafe fn jump_to_kernel(kernel_addr: u64, _gsp_addr: u64, _gsp_size: u64, _mem_map: u64) -> ! {
+    // Direct jump to kernel address (not a function call)
+    // This works for raw binary kernels
+    let kernel_ptr = kernel_addr as *const ();
+    core::arch::asm!(
+        "jmp {0}",
+        in(reg) kernel_ptr,
+        options(noreturn)
+    );
 }
 
 #[entry]
@@ -157,18 +162,22 @@ fn main() -> Status {
     }
     
     // Copy kernel to allocated memory
-    info!("Copying kernel to 0x{:x}", KERNEL_LOAD_ADDR);
+    info!("STEP 1: About to copy kernel to 0x{:x}", KERNEL_LOAD_ADDR);
     unsafe {
         let kernel_ptr = KERNEL_LOAD_ADDR as *mut u8;
         core::ptr::copy_nonoverlapping(kernel_data.as_ptr(), kernel_ptr, kernel_data.len());
     }
+    info!("STEP 2: Kernel copied successfully");
     
-    // Exit boot services
-    info!("Exiting boot services...");
-    let _memory_map = unsafe { uefi::boot::exit_boot_services(Some(uefi::boot::MemoryType::LOADER_DATA)) };
+    // Print final message before exiting boot services (logger will be invalidated)
+    info!("STEP 3: About to exit boot services and jump to kernel at 0x{:x}", KERNEL_LOAD_ADDR);
+    
+    // Exit boot services - this invalidates all boot services including stdout/stderr
+    info!("STEP 4: Calling exit_boot_services...");
+    let _memory_map = unsafe { uefi::boot::exit_boot_services(None) };
+    // Logger is now invalid - no more info!() calls
     
     // Jump to kernel (gsp_addr=0, gsp_size=0, mem_map=0 for now)
-    info!("Jumping to kernel at 0x{:x}", KERNEL_LOAD_ADDR);
     unsafe {
         jump_to_kernel(KERNEL_LOAD_ADDR, 0, 0, 0);
     }
