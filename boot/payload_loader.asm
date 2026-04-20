@@ -57,11 +57,23 @@ load_payloads:
     mov si, msg_loading_payloads
     call print_string_16
 
+    ; CHK1 - Before Unreal Mode
+    mov si, msg_chk1
+    call print_string_16
+
     ; Step 1: Enter Unreal Mode
     cli
 
+    ; CHK2 - Before lgdt
+    mov si, msg_chk2
+    call print_string_16
+
     ; Load Unreal GDT
     lgdt [unreal_gdt_desc]
+
+    ; CHK3 - Before CR0
+    mov si, msg_chk3
+    call print_string_16
 
     ; Enable PM bit in CR0 briefly
     mov eax, cr0
@@ -83,6 +95,10 @@ load_payloads:
     retf                  ; Far return to Real Mode
 
 .rm_entry:
+    ; CHK4 - After retf (Unreal Mode active)
+    mov si, msg_chk4
+    call print_string_16
+
     ; Now back in Real Mode but segments keep 4GB hidden limit (Unreal Mode)
 
     ; Restore DS and ES to 0 (pusha will restore original values later)
@@ -90,6 +106,10 @@ load_payloads:
     mov ds, ax
     mov es, ax
     sti
+
+    ; CHK5 - Before INT 13h
+    mov si, msg_chk5
+    call print_string_16
 
     ; Step 2: Read Módulo 1 (GSP Firmware - 69.5MB)
     ; In build.ps1, the firmware is written at LBA 1000.
@@ -318,6 +338,11 @@ print_newline:
 
 ; ── Variables ──────────────────────────────────────────────────────────────
 msg_loading_payloads db "[S2] Loading Payload Modules (Unreal Mode)... ", 0
+msg_chk1             db "CHK1 ", 0
+msg_chk2             db "CHK2 ", 0
+msg_chk3             db "CHK3 ", 0
+msg_chk4             db "CHK4 ", 0
+msg_chk5             db "CHK5 ", 0
 msg_payloads_ok      db "OK", 13, 10, 0
 msg_payload_err      db "FAIL (Int 13h code=", 0
 msg_at_lba           db " at LBA=", 0
