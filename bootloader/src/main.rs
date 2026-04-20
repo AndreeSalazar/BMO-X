@@ -11,7 +11,6 @@ extern crate alloc;
 use uefi::prelude::*;
 use uefi::proto::media::fs::SimpleFileSystem;
 use uefi::Identify;
-use log::info;
 use alloc::vec::Vec;
 use alloc::vec;
 
@@ -38,18 +37,12 @@ fn read_file(boot_services: &BootServices, filename: &str) -> Option<Vec<u8>> {
         SearchType::ByProtocol(&SimpleFileSystem::GUID)
     ) {
         Ok(h) => h,
-        Err(_) => {
-            info!("[FastOS] ERROR: Failed to locate SimpleFileSystem");
-            return None;
-        }
+        Err(_) => return None,
     };
     
     let fs_handle = match handles.get(0) {
         Some(h) => h,
-        None => {
-            info!("[FastOS] ERROR: No filesystem handle found");
-            return None;
-        }
+        None => return None,
     };
     
     // Open the protocol using the correct uefi-rs 0.26 API
@@ -64,46 +57,31 @@ fn read_file(boot_services: &BootServices, filename: &str) -> Option<Vec<u8>> {
         )
     } {
         Ok(f) => f,
-        Err(_) => {
-            info!("[FastOS] ERROR: Failed to open SimpleFileSystem protocol");
-            return None;
-        }
+        Err(_) => return None,
     };
     
     let mut root = match fs.open_volume() {
         Ok(r) => r,
-        Err(_) => {
-            info!("[FastOS] ERROR: Failed to open volume");
-            return None;
-        }
+        Err(_) => return None,
     };
     
     // Convert filename to UCS-2
     let mut ucs2_buf = [0u16; 256];
     let ucs2_filename = match uefi::CStr16::from_str_with_buf(filename, &mut ucs2_buf) {
         Ok(s) => s,
-        Err(_) => {
-            info!("[FastOS] ERROR: Failed to convert filename to UCS-2");
-            return None;
-        }
+        Err(_) => return None,
     };
     
     let mut file = match root.open(ucs2_filename, FileMode::Read, FileAttribute::empty()) {
         Ok(f) => f.into_regular_file().expect("Not a regular file"),
-        Err(_) => {
-            info!("[FastOS] ERROR: Failed to open file");
-            return None;
-        }
+        Err(_) => return None,
     };
     
     // Get file size
     let mut info_buf = [0u8; 128];
     let info = match file.get_info::<FileInfo>(&mut info_buf) {
         Ok(i) => i,
-        Err(_) => {
-            info!("[FastOS] ERROR: Failed to get file info");
-            return None;
-        }
+        Err(_) => return None,
     };
     let file_size = info.file_size() as usize;
     
@@ -111,10 +89,7 @@ fn read_file(boot_services: &BootServices, filename: &str) -> Option<Vec<u8>> {
     let mut buffer = vec![0u8; file_size];
     match file.read(&mut buffer) {
         Ok(_) => {},
-        Err(_) => {
-            info!("[FastOS] ERROR: Failed to read file");
-            return None;
-        }
+        Err(_) => return None,
     }
     
     Some(buffer)
@@ -128,31 +103,18 @@ unsafe fn jump_to_kernel(kernel_addr: u64, gsp_addr: u64, gsp_size: u64, mem_map
 }
 
 #[entry]
-fn main(image: Handle, mut st: SystemTable<Boot>) -> Status {
-    st.stdout().clear().unwrap();
-    
-    info!("[FastOS] UEFI Bootloader v1.0");
-    info!("[FastOS] Board: MSI A320M-A PRO MAX (MS-7C52)");
-    info!("[FastOS] CPU: Ryzen 5 5600X (Zen 3)");
-    info!("[FastOS] Mode: 64-bit Long Mode (native UEFI)");
-    
+fn main(image: Handle, st: SystemTable<Boot>) -> Status {
     let boot_services = st.boot_services();
     
     // Read kernel.bin from ESP
-    info!("[FastOS] Reading kernel.bin from ESP...");
     let kernel_data = match read_file(boot_services, r"kernel.bin") {
-        Some(data) => {
-            info!("[FastOS] kernel.bin: {} bytes", data.len());
-            data
-        }
+        Some(data) => data,
         None => {
-            info!("[FastOS] ERROR: Failed to read kernel.bin");
             return Status::DEVICE_ERROR;
         }
     };
     
     // Allocate memory for kernel at 1MB
-    info!("[FastOS] Allocating memory for kernel at 0x{:X}", KERNEL_LOAD_ADDR);
     let kernel_pages = (kernel_data.len() + 4095) / 4096;
     let kernel_mem = boot_services.allocate_pages(
         uefi::table::boot::AllocateType::Address(KERNEL_LOAD_ADDR),
@@ -161,23 +123,17 @@ fn main(image: Handle, mut st: SystemTable<Boot>) -> Status {
     );
     
     if kernel_mem.is_err() {
-        info!("[FastOS] ERROR: Failed to allocate memory");
         return Status::DEVICE_ERROR;
     }
     
     // Copy kernel to allocated memory
-    info!("[FastOS] Copying kernel to memory...");
     unsafe {
         let kernel_ptr = KERNEL_LOAD_ADDR as *mut u8;
         core::ptr::copy_nonoverlapping(kernel_data.as_ptr(), kernel_ptr, kernel_data.len());
     }
     
     // Exit boot services
-    info!("[FastOS] Exiting boot services...");
     let _memory_map = st.exit_boot_services(uefi::table::boot::MemoryType::LOADER_DATA);
-    
-    info!("[FastOS] Boot services exited");
-    info!("[FastOS] Jumping to kernel at 0x{:X}", KERNEL_LOAD_ADDR);
     
     // Jump to kernel (gsp_addr=0, gsp_size=0, mem_map=0 for now)
     unsafe {

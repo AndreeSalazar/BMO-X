@@ -10,7 +10,8 @@
 # ============================================================================
 
 param(
-    [int]$DiskNumber = -1
+    [int]$DiskNumber = -1,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,6 +23,7 @@ if (!$isAdmin) {
     Write-Host "Elevating to Administrator..." -ForegroundColor Yellow
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     if ($DiskNumber -ge 0) { $argList += " -DiskNumber $DiskNumber" }
+    if ($Force) { $argList += " -Force" }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait
     exit 0
 }
@@ -109,11 +111,16 @@ Write-Host "  Modo   : GPT + FAT32 (EFI System Partition)" -ForegroundColor Whit
 Write-Host ""
 Write-Host "  ESTO VA A FORMATEAR EL DISCO $DiskNumber" -ForegroundColor Red
 Write-Host ""
-$confirm = Read-Host "  Escribe FLASH para continuar"
-if ($confirm -ne "FLASH") {
-    Write-Host "  Cancelado." -ForegroundColor Yellow
-    Read-Host "  Presiona Enter para salir"
-    exit 0
+
+if (-not $Force) {
+    $confirm = Read-Host "  Escribe FLASH para continuar"
+    if ($confirm -ne "FLASH") {
+        Write-Host "  Cancelado." -ForegroundColor Yellow
+        Read-Host "  Presiona Enter para salir"
+        exit 0
+    }
+} else {
+    Write-Host "  Modo forzado: Saltando confirmacion" -ForegroundColor Yellow
 }
 
 # ── Clear disk and create GPT + ESP ────────────────────────────────────────
@@ -202,4 +209,7 @@ Write-Host "    3. Deshabilita CSM (configura UEFI Only)" -ForegroundColor White
 Write-Host "    4. Boot -> UEFI -> USB" -ForegroundColor White
 Write-Host "    5. Guardar y reiniciar" -ForegroundColor White
 Write-Host ""
-Read-Host "  Presiona Enter para cerrar"
+
+if (-not $Force) {
+    Read-Host "  Presiona Enter para cerrar"
+}

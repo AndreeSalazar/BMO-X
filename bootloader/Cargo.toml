@@ -6,7 +6,7 @@ authors = ["FastOS Project"]
 description = "FastOS UEFI bootloader — loads kernel directly in 64-bit mode"
 
 [dependencies]
-uefi = { version = "0.26", features = ["alloc"] }
+uefi = { version = "0.26", features = ["alloc", "logger"] }
 log = "0.4"
 
 [profile.release]
