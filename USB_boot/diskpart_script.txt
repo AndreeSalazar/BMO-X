@@ -1,0 +1,6 @@
+select disk 3
+clean
+convert gpt
+create partition efi size=100
+format fs=fat32 quick label=FastOS-ESP
+assign letter=E

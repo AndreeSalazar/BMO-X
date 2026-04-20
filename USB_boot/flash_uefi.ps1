@@ -7,7 +7,8 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [int]$DiskNumber
+    [int]$DiskNumber,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,11 +55,15 @@ Write-Host "      Partitions: $($disk.NumberOfPartitions)" -ForegroundColor Dark
 
 Write-Host ""
 Write-Host "      WARNING: This will ERASE ALL DATA on Disk $DiskNumber!" -ForegroundColor Red
-$confirm = Read-Host "      Continue? (yes/no)"
 
-if ($confirm -ne "yes") {
-    Write-Host "      Aborted." -ForegroundColor Yellow
-    exit 0
+if (-not $Force) {
+    $confirm = Read-Host "      Continue? (yes/no)"
+    if ($confirm -ne "yes") {
+        Write-Host "      Aborted." -ForegroundColor Yellow
+        exit 0
+    }
+} else {
+    Write-Host "      Force mode: Skipping confirmation" -ForegroundColor Yellow
 }
 
 # ── Clear disk and create GPT ───────────────────────────────────────────────
