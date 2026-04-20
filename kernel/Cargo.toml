@@ -24,3 +24,9 @@ panic = "abort"
 panic = "abort"
 opt-level = 2
 lto = true
+
+[[bin]]
+name = "fastos-kernel"
+path = "src/main.rs"
+
+# Linker configuration for x86_64-unknown-none target
