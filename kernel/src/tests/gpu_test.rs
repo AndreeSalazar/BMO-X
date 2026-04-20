@@ -208,30 +208,18 @@ pub fn run_all_tests(con: &mut Console) {
         print_result_hex(con, "T09 Display Head 0", false, head0_ctrl);
     }
 
-    // ── Test 10: GSP FALCON Scratch Register ─────────────────────────────
+    // ── Test 10: GSP FALCON Scratch Register — Falcon Bootstrap Fix ───────
     // The GSP FALCON has scratch registers at its base.
     // Writing and reading back proves FALCON register access works.
+    // NEW: Enable GSP in PMC, reset FALCON, then verify scratch W/R.
     total += 1;
-    let gsp_base = falcon::GSP;
-    let scratch_off = gsp_base + falcon::SCRATCH0;
-    let old_scratch = bar0.read32(scratch_off);
-    let test_val = 0xFA57_0505u32;
-    bar0.write32(scratch_off, test_val);
-    let readback = bar0.read32(scratch_off);
-    // Restore original value
-    bar0.write32(scratch_off, old_scratch);
-    let scratch_ok = readback == test_val;
-    if scratch_ok {
-        con.print("  T10 GSP Scratch W/R  ");
-        con.print_colored("[PASS]", 0xFF00FF00);
-        con.println(" write=readback OK");
+    use crate::drivers::gsp::scratch::GspScratchTest;
+    let gsp_test = GspScratchTest::new(&bar0);
+    gsp_test.report_result(con);
+    // Check if passed by reading the scratch register again
+    let final_val = bar0.read32(0x0011_0800);
+    if final_val == 0xFA57_0505 {
         passed += 1;
-    } else {
-        con.print("  T10 GSP Scratch W/R  ");
-        con.print_colored("[FAIL]", 0xFFFF0000);
-        con.print(" wrote=0xFA570505 read=");
-        con.print_hex32(readback);
-        con.println("");
     }
 
     // ── Test 11: PMC Interrupt Status ────────────────────────────────────
