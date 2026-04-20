@@ -23,24 +23,18 @@ stage1_start:
     mov si, msg_boot
     call print_string_16
 
-    ; ── Check INT 13h LBA extensions (AH=41h) — non-fatal ──────────────
-    ; Many UEFI CSM implementations fail AH=41h but still support AH=42h.
-    ; So this is just a diagnostic warning, not a hard stop.
+    ; ── Test LBA extensions (AH=41h) ─────────────────────────────────────
     mov ah, 0x41
     mov bx, 0x55AA
     mov dl, [boot_drive]
     int 0x13
-    jc .no_lba
+    jc .use_chs             ; CF=1 → no LBA → use CHS
     cmp bx, 0xAA55
-    je .lba_ok
+    jne .use_chs            ; bad signature → use CHS
 
-.no_lba:
-    mov si, msg_no_lba
+    ; ── LBA path: load Stage2 via AH=42h ─────────────────────────────────
+    mov si, msg_lba
     call print_string_16
-    ; Continue anyway — AH=42h often works even when AH=41h reports no support
-
-.lba_ok:
-    ; ── Load Stage 2 via INT 13h AH=42h (LBA) ───────────────────────────
     mov si, msg_loading
     call print_string_16
 
@@ -49,10 +43,33 @@ stage1_start:
     mov si, dap
     int 0x13
     jc disk_error
+    jmp .verify
 
+.use_chs:
+    ; ── CHS path: load Stage2 via AH=02h ─────────────────────────────────
+    mov si, msg_chs
+    call print_string_16
+    mov si, msg_loading
+    call print_string_16
+
+    ; Reset disk controller first
+    xor ax, ax
+    mov dl, [boot_drive]
+    int 0x13
+
+    ; Read 32 sectors: CHS(0,0,2) = LBA 1, destination 0x0000:0x7E00
+    mov ah, 0x02
+    mov al, 32             ; 32 sectors = 16KB = Stage2
+    mov ch, 0              ; Cylinder 0
+    mov cl, 2              ; Sector 2 (CHS is 1-based, LBA 1 = sector 2)
+    mov dh, 0              ; Head 0
+    mov dl, [boot_drive]
+    mov bx, 0x7E00         ; ES:BX = 0x0000:0x7E00
+    int 0x13
+    jc disk_error
+
+.verify:
     ; ── Verify Stage2 loaded correctly ───────────────────────────────────
-    ; First byte of stage2.bin must be 0xE9 (near JMP opcode).
-    ; If INT 13h returned success but loaded zeros/garbage, catch it here.
     cmp byte [0x7E00], 0xE9
     je .stage2_ok
 
@@ -65,7 +82,7 @@ stage1_start:
     mov si, msg_jumping
     call print_string_16
 
-    ; Jump to stage2 (restore DL — some BIOS don't preserve it after INT 13h)
+    ; Jump to stage2 (restore DL)
     mov dl, [boot_drive]
     jmp 0x0000:0x7E00
 
@@ -93,10 +110,11 @@ print_string_16:
 ; --- Data ---
 boot_drive:   db 0
 msg_boot:     db "[FastOS] Stage1: MBR loaded", 13, 10, 0
+msg_lba:      db "[FastOS] LBA mode", 13, 10, 0
+msg_chs:      db "[FastOS] CHS mode", 13, 10, 0
 msg_loading:  db "[FastOS] Loading Stage2...", 13, 10, 0
 msg_jumping:  db "[FastOS] Stage2 verified OK!", 13, 10, 0
 msg_disk_err: db "[FastOS] DISK READ ERROR!", 13, 10, 0
-msg_no_lba:   db "[FastOS] NO LBA EXTENSIONS!", 13, 10, 0
 msg_bad_data: db "[FastOS] STAGE2 DATA INVALID!", 13, 10, 0
 
 ; Disk Address Packet (INT 13h AH=42h)
