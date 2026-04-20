@@ -81,16 +81,39 @@ stage2_start:
     mov si, msg_a20_ok
     call print_string_16
 
-    ; Bisect: before memory
-    mov si, msg_b1
-    call print_string_16
+    ; ── Hardcoded memory map (inline, no function call) ───────────────
+    ; Write directly to 0x8000. No INT 15h, no call, no push/pop.
+    ; DS is already 0, so [0x8000] works directly.
+    mov word [0x8000], 2        ; count = 2 entries
+    mov word [0x8002], 0
 
-    ; Detect memory (E820)
-    call detect_memory_e820
+    ; Entry 0 at 0x8004: base=0, len=640KB, type=1, attrs=0
+    mov word [0x8004], 0        ; base low
+    mov word [0x8006], 0
+    mov word [0x8008], 0
+    mov word [0x800A], 0
+    mov word [0x800C], 0x0000   ; len low  = 0xA0000
+    mov word [0x800E], 0x000A   ; len high
+    mov word [0x8010], 0
+    mov word [0x8012], 0
+    mov word [0x8014], 1        ; type = usable
+    mov word [0x8016], 0
+    mov word [0x8018], 0        ; attrs
+    mov word [0x801A], 0
 
-    ; Bisect: after memory
-    mov si, msg_b2
-    call print_string_16
+    ; Entry 1 at 0x801C: base=1MB, len=255MB, type=1, attrs=0
+    mov word [0x801C], 0x0000   ; base = 0x00100000
+    mov word [0x801E], 0x0010
+    mov word [0x8020], 0
+    mov word [0x8022], 0
+    mov word [0x8024], 0x0000   ; len = 0x0FF00000
+    mov word [0x8026], 0x0FF0
+    mov word [0x8028], 0
+    mov word [0x802A], 0
+    mov word [0x802C], 1        ; type = usable
+    mov word [0x802E], 0
+    mov word [0x8030], 0        ; attrs
+    mov word [0x8032], 0
 
     mov si, msg_mem_ok
     call print_string_16
@@ -167,8 +190,6 @@ msg_loading_kernel: db "[FastOS] Loading kernel...", 13, 10, 0
 msg_kernel_loaded:  db "[FastOS] Kernel at 0x10000", 13, 10, 0
 msg_kernel_err:     db "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
 msg_entering_pm:    db "[FastOS] Entering Protected Mode...", 13, 10, 0
-msg_b1:             db "[B1] pre-mem", 13, 10, 0
-msg_b2:             db "[B2] post-mem", 13, 10, 0
 
 stage2_boot_drive: db 0
 
