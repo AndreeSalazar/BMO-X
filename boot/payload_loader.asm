@@ -152,6 +152,12 @@ pl_do_read:
     ret
 
 pl_read_error:
+    ; CRITICAL: Must pop cx before returning if we're in the loop
+    ; Check if we're in loop by checking if we pushed cx
+    ; We can detect this by checking if CX was pushed
+    ; For safety, always restore stack to known state
+    mov sp, 0x7C00    ; Reset stack to known location
+
     xor ax, ax
     mov ds, ax
     mov es, ax

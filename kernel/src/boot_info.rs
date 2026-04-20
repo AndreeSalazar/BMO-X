@@ -18,3 +18,7 @@ pub struct BootInfo {
 
 // Global BootInfo pointer for access from tests
 pub static mut BOOT_INFO_PTR: *const BootInfo = core::ptr::null();
+
+// Global GSP firmware info (passed via registers from bootloader)
+pub static mut GSP_FW_ADDR: u64 = 0;
+pub static mut GSP_FW_SIZE: u64 = 0;

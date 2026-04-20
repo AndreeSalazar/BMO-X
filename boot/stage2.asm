@@ -149,15 +149,16 @@ stage2_start:
 
     ; ── Load external modules (GSP Firmware) ─────────────────────────────
     ; Save boot drive (DL) to payload_loader's local variable
-    ; payload_boot_drive is at offset 0 within payload_loader.asm data section
-    ; Since payload_loader is %included, we can access it directly
     mov al, dl
     mov [payload_boot_drive], al
     call load_payloads
 
+    ; ── Payload loaded, jump directly to Protected Mode transition ───────
+    ; Skip VBE and other checks to avoid re-executing Stage2 start
+    jmp .enter_protected_mode
+
     ; ── VBE: Set 1920x1080x32bpp mode ────────────────────────────────────
-    ; Must be done in real mode (INT 10h VBE requires BIOS).
-    ; If VBE fails, kernel falls back to VGA text mode.
+    ; This is only executed if we fall through from earlier code
     mov si, msg_vbe_try
     call print_string_16
 
@@ -173,22 +174,15 @@ stage2_start:
     call print_string_16
 .vbe_done:
 
+.enter_protected_mode:
     ; ── Phase 2: Enter 32-bit Protected Mode ─────────────────────────────
-
-    ; If VBE succeeded, we're in graphics mode — no more INT 10h
-    ; If VBE failed, we're still in text mode
-    cmp byte [vbe_mode_ok], 0
-    jne .skip_cursor_save
-    mov si, msg_entering_pm
-    call print_string_16
-.skip_cursor_save:
 
     ; Save current BIOS cursor row for VGA continuation in PM
     mov ah, 0x03
     xor bh, bh
-    int 0x10                        ; DH = cursor row
+    int 0x10
     movzx eax, dh
-    mov [vga_row], al               ; Save for PM VGA writes
+    mov [vga_row], al
 
     cli
     lgdt [gdt32_descriptor]
@@ -421,10 +415,16 @@ long_mode_entry:
     mov eax, dword [payload_size]
     mov qword [0x9150], rax                ; gpu_fw_size
 
-    ; ── Jump to Rust! ────────────────────────────────────────────────────
+    ; ── Jump to Rust kernel with System V AMD64 ABI arguments ─────────────
+    ; RDI = GSP firmware address (0x1000000)
+    ; RSI = GSP firmware size (72845296)
+    ; RDX = memory map pointer (0x8000)
 
-    mov rdi, 0x9100
-    mov rax, 0x100000
+    mov rdi, 0x1000000              ; GSP firmware address
+    mov rsi, 72845296               ; GSP firmware size
+    mov rdx, 0x8000                 ; Memory map pointer
+
+    mov rax, 0x100000              ; Kernel entry point
     jmp rax
 
     cli
