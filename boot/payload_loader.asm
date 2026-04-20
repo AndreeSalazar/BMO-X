@@ -13,16 +13,18 @@
 [BITS 16]
 
 ; DAP (Disk Address Packet) for Int 13h AH=42h
+; Use safe buffer at 0x80000 (512KB) - after kernel load area
 align 4
 dap:
     db 0x10               ; Size of DAP (16 bytes)
     db 0                  ; Unused
 dap_count:
-    dw 64                 ; Number of sectors to read (32KB blocks)
+    dw 16                 ; Number of sectors to read (8KB blocks for B550)
 dap_buffer_offset:
     dw 0x0000             ; Offset
 dap_buffer_segment:
-    dw 0x1000             ; Segment (0x1000:0x0000 = 0x10000 physical)
+    dw 0x8000             ; Segment (0x8000:0x0000 = 0x80000 physical = 512KB)
+                            ; Safe area - after kernel (loaded at 0x10000-0x20000)
 dap_lba:
     dq 0                  ; LBA to read from (Set dynamically)
 
@@ -57,8 +59,6 @@ load_payloads:
 
     ; Step 1: Enter Unreal Mode
     cli
-    push ds
-    push es
 
     ; Load Unreal GDT
     lgdt [unreal_gdt_desc]
@@ -67,6 +67,11 @@ load_payloads:
     mov eax, cr0
     or al, 1
     mov cr0, eax
+
+    ; FAR JUMP to flush pipeline - MANDATORY after enabling PM
+    jmp 0x08:.pm_entry
+.pm_entry:
+    ; Now in Protected Mode with 4GB data segment
 
     ; Load DS and ES with 4GB limit selector (0x08)
     mov bx, 0x08
@@ -77,9 +82,15 @@ load_payloads:
     and al, 0xFE
     mov cr0, eax
 
-    ; Restore DS and ES to 0, but they keep the 4GB hidden limit!
-    pop es
-    pop ds
+    ; FAR JUMP to flush pipeline - MANDATORY after disabling PM
+    jmp 0x00:.rm_entry
+.rm_entry:
+    ; Now back in Real Mode but segments keep 4GB hidden limit (Unreal Mode)
+
+    ; Restore DS and ES to 0 (pusha will restore original values later)
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
     sti
 
     ; Step 2: Read Módulo 1 (GSP Firmware - 69.5MB)
@@ -89,66 +100,83 @@ load_payloads:
     mov dword [dap_lba], 1000     ; Start reading at LBA 1000
     mov dword [dap_lba+4], 0
     
-    mov ecx, 2221                ; Loop 2221 times * 64 sectors = 142144 sectors (~69.5MB)
     mov edi, GSP_FW_LOAD_ADDR     ; Physical destination (16MB = 0x1000000)
-    mov ebx, ecx                 ; Save total count for progress
+    
+    ; Total: 142196 sectors
+    ; With 16 sectors per block: 142196 / 16 = 8887.25
+    ; Use 8888 iterations (last one will be partial)
+    mov cx, 8888                ; Loop counter
 
 .read_loop:
     push cx
     
-    ; Setup DAP to read 64 sectors (32KB) - safe value for all BIOS
-    mov word [dap_count], 64
+    ; Check if this is the last iteration (cx = 1)
+    ; If so, only read 4 sectors (partial block)
+    cmp cx, 1
+    jne .full_block
+    mov word [dap_count], 4      ; Last block: 4 sectors = 2KB
+    jmp .do_read
+    
+.full_block:
+    ; Setup DAP to read 16 sectors (8KB) - AMI Aptio V B550 limit
+    mov word [dap_count], 16
 
+.do_read:
     ; Call BIOS Int 13h AH=42h
+    ; Reads to safe buffer at 0x80000
     mov ah, 0x42
     mov dl, [stage2_boot_drive]
     mov si, dap
     int 0x13
     jc .read_error
 
-    ; Copy 32KB from buffer (0x10000) to high memory (EDI)
+    ; Copy from buffer (0x80000) to high memory (EDI)
     ; Since we are in Unreal Mode, we can use 32-bit registers for address!
     push edi
     push esi
     
-    ; Source is physical 0x10000
-    mov esi, 0x10000
-    ; Count = 32768 bytes / 4 = 8192 dwords
-    mov ecx, 8192
+    ; Source is physical 0x80000
+    mov esi, 0x80000
+    
+    ; Calculate copy size based on dap_count
+    mov ax, [dap_count]
+    shl ax, 9                 ; Multiply by 512 (sector size)
+    mov cx, ax
+    shr cx, 2                 ; Divide by 4 for dwords
     
     ; rep movsd (32-bit copy in Real Mode thanks to Unreal Mode limits)
-    ; We must use a segment prefix if not using DS, but DS=0 so ESI=0x10000 is linear.
     a32 rep movsd
 
     pop esi
     pop edi
 
-    ; Increment destination by 32KB (64 * 512)
-    add edi, 32768
+    ; Increment destination by (dap_count * 512)
+    mov ax, [dap_count]
+    shl ax, 9                 ; Multiply by 512
+    movzx eax, ax
+    add edi, eax
     
-    ; Increment LBA by 64
+    ; Increment LBA by dap_count
     mov eax, dword [dap_lba]
-    add eax, 64
+    movzx ecx, word [dap_count]
+    add eax, ecx
     mov dword [dap_lba], eax
 
-    ; Progress indicator every 100 blocks (~3.2MB)
-    push cx
-    mov eax, ebx
-    sub eax, ecx
-    mov dx, 0
-    mov cx, 100
-    div cx
-    cmp dx, 0
-    jne .no_progress
+    ; Progress indicator every 512 blocks (~4MB with 16-sector blocks)
+    inc word [progress_counter]
+    mov ax, [progress_counter]
+    and ax, 0x01FF              ; Every 512 (0x200)
+    jnz .no_progress
     mov al, '.'
     mov ah, 0x0E
     mov bx, 0x000F
     int 0x10
 .no_progress:
-    pop cx
 
     dec cx
     jnz .read_loop
+
+.load_done:
 
     ; Save variables for the kernel
     ; Base: GSP_FW_LOAD_ADDR (0x1000000 = 16MB)
@@ -163,28 +191,39 @@ load_payloads:
     mov si, msg_verify
     call print_string_16
     
-    ; We need to access high memory to verify
-    ; Use Unreal Mode to read from 0x1000000
+    ; Check if first dword is non-zero
+    ; Use 32-bit addressing to access high memory
+    ; Need to enter Unreal Mode again to access 0x1000000
     cli
-    push ds
-    push es
     
-    ; Load Unreal GDT again for verification
+    ; Load Unreal GDT
     lgdt [unreal_gdt_desc]
+    
+    ; Enable PM bit in CR0 briefly
     mov eax, cr0
     or al, 1
     mov cr0, eax
+    
+    ; FAR JUMP to flush pipeline - MANDATORY
+    jmp 0x08:.pm_entry_verify
+.pm_entry_verify:
+    ; Load DS with 4GB limit selector (0x08)
     mov bx, 0x08
     mov ds, bx
-    mov es, bx
+    
+    ; Disable PM bit in CR0 (back to Real Mode)
     and al, 0xFE
     mov cr0, eax
-    pop es
-    pop ds
+    
+    ; FAR JUMP to flush pipeline - MANDATORY
+    jmp 0x00:.rm_entry_verify
+.rm_entry_verify:
+    ; Restore DS to 0
+    xor ax, ax
+    mov ds, ax
     sti
     
-    ; Check if first dword is non-zero
-    ; Use 32-bit addressing to access high memory
+    ; Now access high memory
     mov eax, GSP_FW_LOAD_ADDR
     db 0x67  ; Address size prefix for 32-bit addressing
     mov eax, [eax]
@@ -287,5 +326,6 @@ msg_at_lba           db " at LBA=", 0
 msg_verify          db "[S2] Verifying firmware load... ", 0
 msg_verify_fail      db "FAIL (firmware is zero)", 13, 10, 0
 
+progress_counter dw 0
 payload_base dq 0
 payload_size dq 0
