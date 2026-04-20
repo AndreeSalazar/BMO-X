@@ -148,6 +148,9 @@ stage2_start:
     call print_string_16
 
     ; ── Load external modules (GSP Firmware) ─────────────────────────────
+    ; Save boot drive (DL) to payload_loader's local variable
+    mov al, dl
+    mov [payload_boot_drive], al
     call load_payloads
 
     ; ── VBE: Set 1920x1080x32bpp mode ────────────────────────────────────
