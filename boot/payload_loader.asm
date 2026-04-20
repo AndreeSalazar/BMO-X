@@ -18,43 +18,50 @@ BUFFER_ADDR         equ 0x20000        ; 128KB - safe buffer
 TOTAL_ITERATIONS    equ 8888           ; 142,196 / 16 = 8887.25 → 8888
 
 ; ── Entry point ─────────────────────────────────────────────────────────────
-global load_payloads
-global payload_boot_drive
 load_payloads:
     pusha
 
     ; Print start message
     mov si, msg_start
-    call .print_string_16
+    call pl_print_string
 
     ; Print boot_drive value
     mov si, msg_dl
-    call .print_string_16
+    call pl_print_string
     mov al, [payload_boot_drive]
-    call .print_hex_byte
-    call .print_newline
+    call pl_print_hex_byte
+    call pl_print_newline
 
     ; Check LBA extensions
     mov si, msg_lba_check
-    call .print_string_16
+    call pl_print_string
     mov ah, 0x41
     mov bx, 0x55AA
     mov dl, [payload_boot_drive]
     int 0x13
-    jc .no_lba
+    jc pl_no_lba
     cmp bx, 0xAA55
-    je .lba_ok
-.no_lba:
+    je pl_lba_ok
+pl_no_lba:
     mov si, msg_lba_fail
-    call .print_string_16
-    jmp .continue_diag
-.lba_ok:
+    call pl_print_string
+    jmp pl_continue_diag
+pl_lba_ok:
     mov si, msg_lba_ok
-    call .print_string_16
-.continue_diag:
+    call pl_print_string
+pl_continue_diag:
 
-    ; Enter Unreal Mode
+    ; Enter Unreal Mode - Calculate GDT physical address first
     cli
+
+    ; Calculate physical address of GDT: CS * 16 + offset(unreal_gdt)
+    xor eax, eax
+    mov ax, cs
+    shl eax, 4
+    lea ebx, [unreal_gdt]
+    add eax, ebx
+    mov dword [unreal_gdt_desc + 2], eax   ; Patch descriptor with physical address
+
     lgdt [unreal_gdt_desc]
     mov eax, cr0
     or eax, 1
@@ -72,24 +79,31 @@ load_payloads:
     mov edi, GSP_FW_LOAD_ADDR
     mov cx, TOTAL_ITERATIONS
 
-.load_loop:
+pl_load_loop:
     push cx
     cmp cx, 1
-    jne .full_block
+    jne pl_full_block
     mov word [dap_count], 4
-    jmp .do_read
+    jmp pl_do_read
 
-.full_block:
+pl_full_block:
     mov word [dap_count], SECTORS_PER_BLOCK
 
-.do_read:
+pl_do_read:
     mov ah, 0x42
     mov dl, [payload_boot_drive]
     mov si, dap
     int 0x13
-    jc .read_error
+    jc pl_read_error
 
-    ; Re-enter Unreal Mode
+    ; Re-enter Unreal Mode - Calculate GDT physical address again
+    xor eax, eax
+    mov ax, cs
+    shl eax, 4
+    lea ebx, [unreal_gdt]
+    add eax, ebx
+    mov dword [unreal_gdt_desc + 2], eax
+
     lgdt [unreal_gdt_desc]
     mov eax, cr0
     or eax, 1
@@ -117,7 +131,7 @@ load_payloads:
 
     pop cx
     dec cx
-    jnz .load_loop
+    jnz pl_load_loop
 
     ; Complete
     xor ax, ax
@@ -132,12 +146,12 @@ load_payloads:
     mov dword [payload_size+4], 0
 
     mov si, msg_done
-    call .print_string_16
+    call pl_print_string
 
     popa
     ret
 
-.read_error:
+pl_read_error:
     xor ax, ax
     mov ds, ax
     mov es, ax
@@ -145,54 +159,54 @@ load_payloads:
     sti
 
     mov si, msg_error
-    call .print_string_16
+    call pl_print_string
     mov si, msg_error_code
-    call .print_string_16
+    call pl_print_string
     mov al, ah
-    call .print_hex_byte
-    call .print_newline
+    call pl_print_hex_byte
+    call pl_print_newline
 
     popa
     ret
 
-; ── Helper functions ─────────────────────────────────────────────────────────
-.print_string_16:
+; ── Helper functions (unique names to avoid collisions) ────────────────────
+pl_print_string:
     pusha
-.loop:
+pl_ps_loop:
     lodsb
     or al, al
-    jz .done
+    jz pl_ps_done
     mov ah, 0x0E
     mov bx, 0x0007
     int 0x10
-    jmp .loop
-.done:
+    jmp pl_ps_loop
+pl_ps_done:
     popa
     ret
 
-.print_hex_byte:
+pl_print_hex_byte:
     pusha
     mov ah, al
     shr al, 4
-    call .print_hex_nibble
+    call pl_print_hex_nibble
     mov al, ah
     and al, 0x0F
-    call .print_hex_nibble
+    call pl_print_hex_nibble
     popa
     ret
 
-.print_hex_nibble:
+pl_print_hex_nibble:
     add al, '0'
     cmp al, '9'
-    jbe .digit
+    jbe pl_phn_digit
     add al, 7
-.digit:
+pl_phn_digit:
     mov ah, 0x0E
     mov bx, 0x000F
     int 0x10
     ret
 
-.print_newline:
+pl_print_newline:
     pusha
     mov ah, 0x0E
     mov al, 13

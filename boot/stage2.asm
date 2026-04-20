@@ -149,6 +149,8 @@ stage2_start:
 
     ; ── Load external modules (GSP Firmware) ─────────────────────────────
     ; Save boot drive (DL) to payload_loader's local variable
+    ; payload_boot_drive is at offset 0 within payload_loader.asm data section
+    ; Since payload_loader is %included, we can access it directly
     mov al, dl
     mov [payload_boot_drive], al
     call load_payloads
