@@ -48,6 +48,10 @@ stage2_start:
     ; any code execution to prevent corruption.
     mov [stage2_boot_drive], dl
 
+    ; ── Absolute first sign of life (uses BIOS INT 10h, no segments needed) ──
+    mov si, msg_s2_alive
+    call print_string_16
+
     ; ── Ultra-early VGA diagnostic ───────────────────────────────────────
     ; Write "S2" directly to VGA text buffer at bottom-left (row 24).
     ; This proves Stage2 code is executing, even if INT 10h or segments
@@ -205,6 +209,7 @@ stage2_start:
 
 ; ── 16-bit Data ──────────────────────────────────────────────────────────
 
+msg_s2_alive:       db "[FastOS] Stage2 alive!", 13, 10, 0
 msg_s2_start:       db "[FastOS] Stage2: starting", 13, 10, 0
 msg_cpuid_ok:       db "[FastOS] CPUID: OK", 13, 10, 0
 msg_lm_ok:          db "[FastOS] Long Mode: OK", 13, 10, 0
