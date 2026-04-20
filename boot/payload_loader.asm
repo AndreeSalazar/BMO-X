@@ -103,18 +103,21 @@ load_payloads:
     mov sp, 0x7C00 ; Stack at known safe location (same as MBR load address)
     
     ; CHK4 - After retf (Unreal Mode active)
+    push ds
+    xor ax, ax
+    mov ds, ax
     mov si, msg_chk4
     call print_string_16
+    pop ds
 
     ; CHK5 - Before INT 13h
+    push ds
+    xor ax, ax
+    mov ds, ax
     mov si, msg_chk5
     call print_string_16
+    pop ds
     
-    ; Reset stack to known safe location before INT 13h
-    xor ax, ax
-    mov ss, ax
-    mov sp, 0x7C00
-
     ; Step 2: Read Módulo 1 (GSP Firmware - 69.5MB)
     ; In build.ps1, the firmware is written at LBA 1000.
     ; GSP firmware size: 72845296 bytes = 142196 sectors
@@ -128,6 +131,12 @@ load_payloads:
     ; With 16 sectors per block: 142196 / 16 = 8887.25
     ; Use 8888 iterations (last one will be partial)
     mov cx, 8888                ; Loop counter
+    
+    ; Keep DS/ES in Unreal Mode (4GB limit) for entire loop
+    ; Don't restore to 0 - this prevents entering/exiting PM repeatedly
+    mov bx, 0x08
+    mov ds, bx
+    mov es, bx
 
 .read_loop:
     push cx
@@ -151,6 +160,18 @@ load_payloads:
     mov si, dap
     int 0x13
     jc .read_error
+    
+    ; CHK6 - After first INT 13h success
+    ; Only print on first iteration
+    cmp word [progress_counter], 0
+    jne .skip_chk6
+    push ds
+    xor ax, ax
+    mov ds, ax
+    mov si, msg_chk6
+    call print_string_16
+    pop ds
+.skip_chk6:
 
     ; Copy from buffer (0x20000) to high memory (EDI)
     ; Since we are in Unreal Mode, we can use 32-bit registers for address!
@@ -190,16 +211,24 @@ load_payloads:
     mov ax, [progress_counter]
     and ax, 0x07FF              ; Every 2048 (0x800)
     jnz .no_progress
+    push ds
+    xor ax, ax
+    mov ds, ax
     mov al, '.'
     mov ah, 0x0E
     mov bx, 0x000F
     int 0x10
+    pop ds
 .no_progress:
 
     dec cx
     jnz .read_loop
 
 .load_done:
+    ; Restore DS/ES to 0 after loop
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
 
     ; Save variables for the kernel
     ; Base: GSP_FW_LOAD_ADDR (0x1000000 = 16MB)
@@ -348,6 +377,7 @@ msg_chk2             db "CHK2 ", 0
 msg_chk3             db "CHK3 ", 0
 msg_chk4             db "CHK4 ", 0
 msg_chk5             db "CHK5 ", 0
+msg_chk6             db "CHK6 ", 0
 msg_payloads_ok      db "OK", 13, 10, 0
 msg_payload_err      db "FAIL (Int 13h code=", 0
 msg_at_lba           db " at LBA=", 0
