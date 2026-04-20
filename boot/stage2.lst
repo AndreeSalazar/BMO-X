@@ -4,20 +4,19 @@
      4                                  ; Loaded at 0x7E00 by Stage 1.
      5                                  ; Full transition: 16-bit → 32-bit → 64-bit → Rust kernel.
      6                                  ; Target: AMD Ryzen 5 5600X (Zen 3, Vermeer)
-     7                                  ; ============================================================================
-     8                                  
-     9                                  [BITS 16]
-    10                                  [ORG 0x7E00]
-    11                                  
-    12                                  ; ── Entry vector ─────────────────────────────────────────────────────────
-    13                                  ; BYTE 0 of stage2.bin — Stage1 jumps here (0x7E00).
-    14                                  ; Must be the absolute first instruction. Everything else comes after.
-    15                                  ; Fagging-Scale: from this single jmp we bootstrap 16→32→64 bit with ALL
-    16                                  ; Zen 3 extensions (SSE4.2, AVX2, FMA3, AES-NI, SHA, BMI1/2).
-    17 00000000 E99E01                  jmp stage2_start
-    18                                  
-    19                                  ; ── Includes (data tables + subroutines, NOT entry points) ──────────────
-    20                                  %include "gdt.asm"
+     7                                  ; Board:  MSI MAG B550 TOMAHAWK (MS-7C52) — UEFI CSM quirks handled.
+     8                                  ; ============================================================================
+     9                                  
+    10                                  [BITS 16]
+    11                                  [ORG 0x7E00]
+    12                                  
+    13                                  ; ── Entry vector ─────────────────────────────────────────────────────────
+    14                                  ; BYTE 0 of stage2.bin — Stage1 jumps here (0x7E00).
+    15                                  ; Must be the absolute first instruction. Everything else comes after.
+    16 00000000 E9AE06                  jmp stage2_start
+    17                                  
+    18                                  ; ── Includes (data tables + subroutines, NOT entry points) ──────────────
+    19                                  %include "gdt.asm"
      1                              <1> ; ============================================================================
      2                              <1> ; FastOS GDT — Global Descriptor Table (32-bit + 64-bit)
      3                              <1> ; ============================================================================
@@ -79,11 +78,12 @@
     59                              <1> 
     60                              <1> gdt64_descriptor:
     61 00000039 1700                <1>     dw gdt64_end - gdt64_start - 1
-    62 0000003B [2100000000000000]  <1>     dq gdt64_start
-    63                              <1> 
-    64                              <1> GDT64_CODE_SEG equ gdt64_code - gdt64_start   ; 0x08
-    65                              <1> GDT64_DATA_SEG equ gdt64_data - gdt64_start   ; 0x10
-    21                                  %include "a20.asm"
+    62 0000003B [21000000]          <1>     dd gdt64_start                     ; Patched at runtime in 32-bit PM
+    63 0000003F 00000000            <1>     dd 0                               ; High 32 bits (zero for identity map)
+    64                              <1> 
+    65                              <1> GDT64_CODE_SEG equ gdt64_code - gdt64_start   ; 0x08
+    66                              <1> GDT64_DATA_SEG equ gdt64_data - gdt64_start   ; 0x10
+    20                                  %include "a20.asm"
      1                              <1> ; ============================================================================
      2                              <1> ; FastOS A20 Line Enable
      3                              <1> ; ============================================================================
@@ -141,45 +141,130 @@
     55 00000089 A801                <1>     test al, 0x01
     56 0000008B 74FA                <1>     jz .a20_wait_output
     57 0000008D C3                  <1>     ret
-    22                                  %include "memory.asm"
+    21                                  %include "memory.asm"
      1                              <1> ; ============================================================================
-     2                              <1> ; FastOS Memory Detection (INT 15h, E820)
+     2                              <1> ; FastOS Memory Detection — E801h + Fallback
      3                              <1> ; ============================================================================
-     4                              <1> ; Stores memory map at MEMORY_MAP_ADDR for the kernel.
-     5                              <1> ; Each entry: base(u64) + length(u64) + type(u32) + attrs(u32) = 24 bytes
-     6                              <1> ; ============================================================================
-     7                              <1> 
-     8                              <1> [BITS 16]
-     9                              <1> 
-    10                              <1> MEMORY_MAP_ADDR  equ 0x8000
-    11                              <1> MEMORY_MAP_COUNT equ 0x8000    ; First 4 bytes = count
-    12                              <1> 
-    13                              <1> detect_memory_e820:
-    14 0000008E 6660                <1>     pushad
-    15 00000090 66C706008000000000  <1>     mov dword [MEMORY_MAP_ADDR], 0
-    16 00000099 6631DB              <1>     xor ebx, ebx
-    17 0000009C BF0480              <1>     mov di, MEMORY_MAP_ADDR + 4
-    18                              <1> 
-    19                              <1> .e820_loop:
-    20 0000009F 66B820E80000        <1>     mov eax, 0x0000E820
-    21 000000A5 66BA50414D53        <1>     mov edx, 0x534D4150         ; 'SMAP'
-    22 000000AB 66B918000000        <1>     mov ecx, 24
-    23 000000B1 CD15                <1>     int 0x15
-    24 000000B3 7217                <1>     jc .e820_done
-    25 000000B5 663D50414D53        <1>     cmp eax, 0x534D4150
-    26 000000BB 750F                <1>     jne .e820_done
-    27                              <1> 
-    28 000000BD 83C718              <1>     add di, 24
-    29 000000C0 66FF060080          <1>     inc dword [MEMORY_MAP_ADDR]
-    30                              <1> 
-    31 000000C5 6685DB              <1>     test ebx, ebx
-    32 000000C8 7402                <1>     jz .e820_done
-    33 000000CA EBD3                <1>     jmp .e820_loop
+     4                              <1> ; E820 hangs on this UEFI CSM (Ryzen 5 5600X motherboard, USB boot).
+     5                              <1> ; Use INT 15h AX=E801h instead — simpler, more compatible.
+     6                              <1> ;
+     7                              <1> ; If E801h also fails, hardcode a conservative memory map.
+     8                              <1> ; The kernel can refine this later via ACPI tables.
+     9                              <1> ;
+    10                              <1> ; Output: memory map at 0x8000 in same format kernel expects:
+    11                              <1> ;   [0x8000]      = u32 count
+    12                              <1> ;   [0x8004+n*24] = { base_u64, length_u64, type_u32, attrs_u32 }
+    13                              <1> ; ============================================================================
+    14                              <1> 
+    15                              <1> [BITS 16]
+    16                              <1> 
+    17                              <1> MEMORY_MAP_ADDR  equ 0x8000
+    18                              <1> MEMORY_MAP_COUNT equ 0x8000    ; First 4 bytes = count
+    19                              <1> 
+    20                              <1> detect_memory_e820:
+    21 0000008E 6660                <1>     pushad
+    22                              <1> 
+    23                              <1>     ; ── Try INT 15h AX=E801h ────────────────────────────────────────────
+    24                              <1>     ; Returns extended memory in two ranges:
+    25                              <1>     ;   AX/CX = memory between 1MB-16MB in 1KB blocks
+    26                              <1>     ;   BX/DX = memory above 16MB in 64KB blocks
+    27                              <1>     ; More compatible than E820 on UEFI CSM.
+    28                              <1> 
+    29 00000090 B801E8              <1>     mov ax, 0xE801
+    30 00000093 CD15                <1>     int 0x15
+    31 00000095 0F82D300            <1>     jc .e801_fail               ; CF = not supported
+    32 00000099 83F800              <1>     cmp ax, 0                   ; Some BIOS return 0 in AX
+    33 0000009C 7402                <1>     je .try_cx                  ; Try CX instead
     34                              <1> 
-    35                              <1> .e820_done:
-    36 000000CC 6661                <1>     popad
-    37 000000CE C3                  <1>     ret
-    23                                  %include "cpucheck.asm"
+    35                              <1>     ; AX = 1KB blocks between 1MB-16MB
+    36                              <1>     ; BX = 64KB blocks above 16MB
+    37 0000009E EB0B                <1>     jmp .e801_build
+    38                              <1> 
+    39                              <1> .try_cx:
+    40                              <1>     ; Some BIOS put the result in CX/DX instead of AX/BX
+    41 000000A0 89C8                <1>     mov ax, cx
+    42 000000A2 89D3                <1>     mov bx, dx
+    43 000000A4 83F800              <1>     cmp ax, 0
+    44 000000A7 0F84C100            <1>     je .e801_fail               ; Both AX and CX are 0 — fail
+    45                              <1> 
+    46                              <1> .e801_build:
+    47                              <1>     ; AX = KB between 1MB-16MB, BX = 64KB blocks above 16MB
+    48                              <1>     ; Build a memory map the kernel understands
+    49                              <1> 
+    50 000000AB 66C706008000000000  <1>     mov dword [MEMORY_MAP_ADDR], 0  ; Reset count
+    51 000000B4 BF0480              <1>     mov di, MEMORY_MAP_ADDR + 4
+    52                              <1> 
+    53                              <1>     ; ── Entry 0: Conventional memory 0x00000 - 0x9FC00 (639KB) ────────
+    54 000000B7 66C70500000000      <1>     mov dword [di +  0], 0x00000000  ; base low
+    55 000000BE 66C7450400000000    <1>     mov dword [di +  4], 0x00000000  ; base high
+    56 000000C6 66C7450800FC0900    <1>     mov dword [di +  8], 0x0009FC00  ; length low (639KB)
+    57 000000CE 66C7450C00000000    <1>     mov dword [di + 12], 0x00000000  ; length high
+    58 000000D6 66C7451001000000    <1>     mov dword [di + 16], 1           ; type = usable
+    59 000000DE 66C7451400000000    <1>     mov dword [di + 20], 0           ; attrs
+    60 000000E6 83C718              <1>     add di, 24
+    61 000000E9 66FF060080          <1>     inc dword [MEMORY_MAP_ADDR]
+    62                              <1> 
+    63                              <1>     ; ── Entry 1: Extended memory 1MB to 1MB+AX*1024 ──────────────────
+    64                              <1>     ; AX still holds KB between 1MB-16MB
+    65 000000EE 660FB7C0            <1>     movzx eax, ax
+    66 000000F2 66C1E00A            <1>     shl eax, 10                      ; AX * 1024 = bytes
+    67 000000F6 66C70500001000      <1>     mov dword [di +  0], 0x00100000  ; base = 1MB
+    68 000000FD 66C7450400000000    <1>     mov dword [di +  4], 0x00000000
+    69 00000105 66894508            <1>     mov dword [di +  8], eax         ; length = AX KB
+    70 00000109 66C7450C00000000    <1>     mov dword [di + 12], 0x00000000
+    71 00000111 66C7451001000000    <1>     mov dword [di + 16], 1           ; type = usable
+    72 00000119 66C7451400000000    <1>     mov dword [di + 20], 0
+    73 00000121 83C718              <1>     add di, 24
+    74 00000124 66FF060080          <1>     inc dword [MEMORY_MAP_ADDR]
+    75                              <1> 
+    76                              <1>     ; ── Entry 2: Memory above 16MB (if BX > 0) ──────────────────────
+    77 00000129 83FB00              <1>     cmp bx, 0
+    78 0000012C 743B                <1>     je .e801_done
+    79                              <1> 
+    80 0000012E 660FB7DB            <1>     movzx ebx, bx
+    81 00000132 66C1E310            <1>     shl ebx, 16                      ; BX * 64KB = bytes
+    82 00000136 66C70500000001      <1>     mov dword [di +  0], 0x01000000  ; base = 16MB
+    83 0000013D 66C7450400000000    <1>     mov dword [di +  4], 0x00000000
+    84 00000145 66895D08            <1>     mov dword [di +  8], ebx         ; length low
+    85 00000149 66C7450C00000000    <1>     mov dword [di + 12], 0x00000000
+    86 00000151 66C7451001000000    <1>     mov dword [di + 16], 1           ; type = usable
+    87 00000159 66C7451400000000    <1>     mov dword [di + 20], 0
+    88 00000161 83C718              <1>     add di, 24
+    89 00000164 66FF060080          <1>     inc dword [MEMORY_MAP_ADDR]
+    90                              <1> 
+    91                              <1> .e801_done:
+    92 00000169 6661                <1>     popad
+    93 0000016B C3                  <1>     ret
+    94                              <1> 
+    95                              <1>     ; ── Fallback: hardcoded conservative map ────────────────────────────
+    96                              <1>     ; If E801h fails, assume at least 256MB (safe for Ryzen 5 5600X).
+    97                              <1> .e801_fail:
+    98 0000016C 66C706008000000000  <1>     mov dword [MEMORY_MAP_ADDR], 0
+    99 00000175 BF0480              <1>     mov di, MEMORY_MAP_ADDR + 4
+   100                              <1> 
+   101                              <1>     ; Entry 0: Conventional 0 - 640KB
+   102 00000178 66C70500000000      <1>     mov dword [di +  0], 0x00000000
+   103 0000017F 66C7450400000000    <1>     mov dword [di +  4], 0x00000000
+   104 00000187 66C7450800000A00    <1>     mov dword [di +  8], 0x000A0000  ; 640KB
+   105 0000018F 66C7450C00000000    <1>     mov dword [di + 12], 0x00000000
+   106 00000197 66C7451001000000    <1>     mov dword [di + 16], 1
+   107 0000019F 66C7451400000000    <1>     mov dword [di + 20], 0
+   108 000001A7 83C718              <1>     add di, 24
+   109 000001AA 66FF060080          <1>     inc dword [MEMORY_MAP_ADDR]
+   110                              <1> 
+   111                              <1>     ; Entry 1: Extended 1MB - 256MB (conservative for 16GB+ system)
+   112 000001AF 66C70500001000      <1>     mov dword [di +  0], 0x00100000
+   113 000001B6 66C7450400000000    <1>     mov dword [di +  4], 0x00000000
+   114 000001BE 66C745080000F00F    <1>     mov dword [di +  8], 0x0FF00000  ; 255MB
+   115 000001C6 66C7450C00000000    <1>     mov dword [di + 12], 0x00000000
+   116 000001CE 66C7451001000000    <1>     mov dword [di + 16], 1
+   117 000001D6 66C7451400000000    <1>     mov dword [di + 20], 0
+   118 000001DE 83C718              <1>     add di, 24
+   119 000001E1 66FF060080          <1>     inc dword [MEMORY_MAP_ADDR]
+   120                              <1> 
+   121 000001E6 6661                <1>     popad
+   122 000001E8 C3                  <1>     ret
+    22                                  %include "cpucheck.asm"
      1                              <1> ; ============================================================================
      2                              <1> ; FastOS CPU Check — Verify Ryzen 5 5600X capabilities
      3                              <1> ; ============================================================================
@@ -189,40 +274,40 @@
      7                              <1> [BITS 16]
      8                              <1> 
      9                              <1> check_cpuid:
-    10 000000CF 669C                <1>     pushfd
-    11 000000D1 6658                <1>     pop eax
-    12 000000D3 6689C1              <1>     mov ecx, eax
-    13 000000D6 663500002000        <1>     xor eax, 1 << 21
-    14 000000DC 6650                <1>     push eax
-    15 000000DE 669D                <1>     popfd
-    16 000000E0 669C                <1>     pushfd
-    17 000000E2 6658                <1>     pop eax
-    18 000000E4 6651                <1>     push ecx
-    19 000000E6 669D                <1>     popfd
-    20 000000E8 6639C8              <1>     cmp eax, ecx
-    21 000000EB 7401                <1>     je .no_cpuid
-    22 000000ED C3                  <1>     ret
+    10 000001E9 669C                <1>     pushfd
+    11 000001EB 6658                <1>     pop eax
+    12 000001ED 6689C1              <1>     mov ecx, eax
+    13 000001F0 663500002000        <1>     xor eax, 1 << 21
+    14 000001F6 6650                <1>     push eax
+    15 000001F8 669D                <1>     popfd
+    16 000001FA 669C                <1>     pushfd
+    17 000001FC 6658                <1>     pop eax
+    18 000001FE 6651                <1>     push ecx
+    19 00000200 669D                <1>     popfd
+    20 00000202 6639C8              <1>     cmp eax, ecx
+    21 00000205 7401                <1>     je .no_cpuid
+    22 00000207 C3                  <1>     ret
     23                              <1> .no_cpuid:
-    24 000000EE BE[5601]            <1>     mov si, msg_no_cpuid
-    25 000000F1 E89C00              <1>     call print_string_16
-    26 000000F4 FA                  <1>     cli
-    27 000000F5 F4                  <1>     hlt
+    24 00000208 BE[7002]            <1>     mov si, msg_no_cpuid
+    25 0000020B E89204              <1>     call print_string_16
+    26 0000020E FA                  <1>     cli
+    27 0000020F F4                  <1>     hlt
     28                              <1> 
     29                              <1> check_long_mode:
-    30 000000F6 66B800000080        <1>     mov eax, 0x80000000
-    31 000000FC 0FA2                <1>     cpuid
-    32 000000FE 663D01000080        <1>     cmp eax, 0x80000001
-    33 00000104 7212                <1>     jb .no_long_mode
-    34 00000106 66B801000080        <1>     mov eax, 0x80000001
-    35 0000010C 0FA2                <1>     cpuid
-    36 0000010E 66F7C200000020      <1>     test edx, 1 << 29
-    37 00000115 7401                <1>     jz .no_long_mode
-    38 00000117 C3                  <1>     ret
+    30 00000210 66B800000080        <1>     mov eax, 0x80000000
+    31 00000216 0FA2                <1>     cpuid
+    32 00000218 663D01000080        <1>     cmp eax, 0x80000001
+    33 0000021E 7212                <1>     jb .no_long_mode
+    34 00000220 66B801000080        <1>     mov eax, 0x80000001
+    35 00000226 0FA2                <1>     cpuid
+    36 00000228 66F7C200000020      <1>     test edx, 1 << 29
+    37 0000022F 7401                <1>     jz .no_long_mode
+    38 00000231 C3                  <1>     ret
     39                              <1> .no_long_mode:
-    40 00000118 BE[7101]            <1>     mov si, msg_no_lm
-    41 0000011B E87200              <1>     call print_string_16
-    42 0000011E FA                  <1>     cli
-    43 0000011F F4                  <1>     hlt
+    40 00000232 BE[8B02]            <1>     mov si, msg_no_lm
+    41 00000235 E86804              <1>     call print_string_16
+    42 00000238 FA                  <1>     cli
+    43 00000239 F4                  <1>     hlt
     44                              <1> 
     45                              <1> ; ── 32-bit: store CPU features for kernel ────────────────────────────────
     46                              <1> 
@@ -238,173 +323,748 @@
     56                              <1> ;   +16 : CPUID(0x80000001) EDX — Long Mode(29), NX(20)
     57                              <1> 
     58                              <1> detect_cpu_features_32:
-    59 00000120 B801000000          <1>     mov eax, 1
-    60 00000125 0FA2                <1>     cpuid
-    61 00000127 891500900000        <1>     mov [CPU_FEATURES_ADDR + 0], edx
-    62 0000012D 890D04900000        <1>     mov [CPU_FEATURES_ADDR + 4], ecx
+    59 0000023A B801000000          <1>     mov eax, 1
+    60 0000023F 0FA2                <1>     cpuid
+    61 00000241 891500900000        <1>     mov [CPU_FEATURES_ADDR + 0], edx
+    62 00000247 890D04900000        <1>     mov [CPU_FEATURES_ADDR + 4], ecx
     63                              <1> 
-    64 00000133 B807000000          <1>     mov eax, 7
-    65 00000138 31C9                <1>     xor ecx, ecx
-    66 0000013A 0FA2                <1>     cpuid
-    67 0000013C 891D08900000        <1>     mov [CPU_FEATURES_ADDR + 8], ebx
-    68 00000142 890D0C900000        <1>     mov [CPU_FEATURES_ADDR + 12], ecx
+    64 0000024D B807000000          <1>     mov eax, 7
+    65 00000252 31C9                <1>     xor ecx, ecx
+    66 00000254 0FA2                <1>     cpuid
+    67 00000256 891D08900000        <1>     mov [CPU_FEATURES_ADDR + 8], ebx
+    68 0000025C 890D0C900000        <1>     mov [CPU_FEATURES_ADDR + 12], ecx
     69                              <1> 
-    70 00000148 B801000080          <1>     mov eax, 0x80000001
-    71 0000014D 0FA2                <1>     cpuid
-    72 0000014F 891510900000        <1>     mov [CPU_FEATURES_ADDR + 16], edx
-    73 00000155 C3                  <1>     ret
+    70 00000262 B801000080          <1>     mov eax, 0x80000001
+    71 00000267 0FA2                <1>     cpuid
+    72 00000269 891510900000        <1>     mov [CPU_FEATURES_ADDR + 16], edx
+    73 0000026F C3                  <1>     ret
     74                              <1> 
     75                              <1> ; ── Messages ─────────────────────────────────────────────────────────────
     76                              <1> 
     77                              <1> [BITS 16]
-    78 00000156 5B466173744F535D20- <1> msg_no_cpuid: db "[FastOS] ERROR: No CPUID", 13, 10, 0
-    78 0000015F 4552524F523A204E6F- <1>
-    78 00000168 2043505549440D0A00  <1>
-    79 00000171 5B466173744F535D20- <1> msg_no_lm:    db "[FastOS] ERROR: No Long Mode", 13, 10, 0
-    79 0000017A 4552524F523A204E6F- <1>
-    79 00000183 204C6F6E67204D6F64- <1>
-    79 0000018C 650D0A00            <1>
-    24                                  
-    25                                  KERNEL_LOAD_ADDR equ 0x100000
-    26                                  KERNEL_SECTORS   equ 256
-    27                                  
-    28                                  ; --- Print null-terminated string (SI) — local copy for stage2 ---
-    29                                  print_string_16:
-    30 00000190 60                          pusha
-    31                                  .ps16_loop:
-    32 00000191 AC                          lodsb
-    33 00000192 08C0                        or al, al
-    34 00000194 7409                        jz .ps16_done
-    35 00000196 B40E                        mov ah, 0x0E
-    36 00000198 BB0700                      mov bx, 0x0007
-    37 0000019B CD10                        int 0x10
-    38 0000019D EBF2                        jmp .ps16_loop
-    39                                  .ps16_done:
-    40 0000019F 61                          popa
-    41 000001A0 C3                          ret
-    42                                  
-    43                                  stage2_start:
-    44                                      ; ── Phase 1: 16-bit Real Mode ────────────────────────────────────────
-    45                                  
-    46 000001A1 FA                          cli
-    47 000001A2 31C0                        xor ax, ax
-    48 000001A4 8ED8                        mov ds, ax
-    49 000001A6 8EC0                        mov es, ax
-    50 000001A8 8ED0                        mov ss, ax
-    51 000001AA BC007C                      mov sp, 0x7C00
-    52 000001AD FB                          sti
-    53                                  
-    54                                      ; Save boot drive from stage1 (DL preserved across jmp)
-    55 000001AE 8816[1803]                  mov [stage2_boot_drive], dl
-    56                                  
-    57 000001B2 BE[1802]                    mov si, msg_s2_start
-    58 000001B5 E8D8FF                      call print_string_16
-    59                                  
-    60                                      ; CPU checks
-    61 000001B8 E814FF                      call check_cpuid
-    62 000001BB BE[3402]                    mov si, msg_cpuid_ok
-    63 000001BE E8CFFF                      call print_string_16
-    64                                  
-    65 000001C1 E832FF                      call check_long_mode
-    66 000001C4 BE[4902]                    mov si, msg_lm_ok
-    67 000001C7 E8C6FF                      call print_string_16
-    68                                  
-    69                                      ; Enable A20
-    70 000001CA E876FE                      call enable_a20
-    71 000001CD BE[6202]                    mov si, msg_a20_ok
-    72 000001D0 E8BDFF                      call print_string_16
+    78 00000270 5B466173744F535D20- <1> msg_no_cpuid: db "[FastOS] ERROR: No CPUID", 13, 10, 0
+    78 00000279 4552524F523A204E6F- <1>
+    78 00000282 2043505549440D0A00  <1>
+    79 0000028B 5B466173744F535D20- <1> msg_no_lm:    db "[FastOS] ERROR: No Long Mode", 13, 10, 0
+    79 00000294 4552524F523A204E6F- <1>
+    79 0000029D 204C6F6E67204D6F64- <1>
+    79 000002A6 650D0A00            <1>
+    23                                  %include "vbe.asm"
+     1                              <1> ; ============================================================================
+     2                              <1> ; FastOS VBE — VESA BIOS Extensions for 1920×1080 framebuffer
+     3                              <1> ; ============================================================================
+     4                              <1> ; Sets 1920×1080×32bpp mode using INT 10h AX=4F02h (VBE 2.0+).
+     5                              <1> ; The GPU's VBIOS (loaded by MSI B550 CSM) provides VBE support.
+     6                              <1> ;
+     7                              <1> ; Output:
+     8                              <1> ;   [vbe_fb_addr]   = u32 physical address of linear framebuffer
+     9                              <1> ;   [vbe_mode_ok]   = 1 if mode set succeeded, 0 if fallback to VGA text
+    10                              <1> ; ============================================================================
+    11                              <1> 
+    12                              <1> [BITS 16]
+    13                              <1> 
+    14                              <1> VBE_INFO_BLOCK  equ 0x7000     ; Temporary buffer for VBE info (512 bytes)
+    15                              <1> VBE_MODE_INFO   equ 0x7200     ; Temporary buffer for mode info (256 bytes)
+    16                              <1> 
+    17                              <1> ; Desired mode parameters
+    18                              <1> VBE_WANT_WIDTH  equ 1920
+    19                              <1> VBE_WANT_HEIGHT equ 1080
+    20                              <1> VBE_WANT_BPP    equ 32
+    21                              <1> 
+    22                              <1> setup_vbe:
+    23                              <1>     ; ── Step 1: Get VBE controller info ──────────────────────────────
+    24 000002AA B8004F              <1>     mov ax, 0x4F00
+    25 000002AD BF0070              <1>     mov di, VBE_INFO_BLOCK
+    26 000002B0 66C70556424532      <1>     mov dword [di], 'VBE2'     ; Request VBE 2.0+ info
+    27 000002B7 CD10                <1>     int 0x10
+    28 000002B9 83F84F              <1>     cmp ax, 0x004F
+    29 000002BC 756E                <1>     jne .vbe_fail               ; VBE not supported
+    30                              <1> 
+    31                              <1>     ; ── Step 2: Walk mode list to find 1920×1080×32bpp ──────────────
+    32                              <1>     ; Mode list pointer is at VBE_INFO_BLOCK + 14 (far pointer seg:off)
+    33 000002BE 8B360E70            <1>     mov si, [VBE_INFO_BLOCK + 14]    ; offset
+    34 000002C2 A11070              <1>     mov ax, [VBE_INFO_BLOCK + 16]    ; segment
+    35 000002C5 8EE0                <1>     mov fs, ax                        ; FS:SI = mode list
+    36                              <1> 
+    37                              <1> .scan_modes:
+    38 000002C7 648B0C              <1>     mov cx, [fs:si]
+    39 000002CA 83F9FF              <1>     cmp cx, 0xFFFF                    ; End of mode list
+    40 000002CD 745D                <1>     je .vbe_fail
+    41 000002CF 83C602              <1>     add si, 2
+    42                              <1> 
+    43                              <1>     ; Get info for this mode
+    44 000002D2 56                  <1>     push si
+    45 000002D3 51                  <1>     push cx
+    46 000002D4 B8014F              <1>     mov ax, 0x4F01
+    47 000002D7 BF0072              <1>     mov di, VBE_MODE_INFO
+    48 000002DA CD10                <1>     int 0x10
+    49 000002DC 59                  <1>     pop cx
+    50 000002DD 5E                  <1>     pop si
+    51                              <1> 
+    52 000002DE 83F84F              <1>     cmp ax, 0x004F
+    53 000002E1 75E4                <1>     jne .scan_modes                   ; Skip if query failed
+    54                              <1> 
+    55                              <1>     ; Check mode attributes (bit 0 = supported, bit 7 = LFB available)
+    56 000002E3 A10072              <1>     mov ax, [VBE_MODE_INFO + 0]
+    57 000002E6 A98100              <1>     test ax, 0x0081                    ; Supported + LFB
+    58 000002E9 74DC                <1>     jz .scan_modes
+    59                              <1> 
+    60                              <1>     ; Check resolution
+    61 000002EB 813E12728007        <1>     cmp word [VBE_MODE_INFO + 18], VBE_WANT_WIDTH
+    62 000002F1 75D4                <1>     jne .scan_modes
+    63 000002F3 813E14723804        <1>     cmp word [VBE_MODE_INFO + 20], VBE_WANT_HEIGHT
+    64 000002F9 75CC                <1>     jne .scan_modes
+    65                              <1> 
+    66                              <1>     ; Check bits per pixel
+    67 000002FB 803E197220          <1>     cmp byte [VBE_MODE_INFO + 25], VBE_WANT_BPP
+    68 00000300 75C5                <1>     jne .scan_modes
+    69                              <1> 
+    70                              <1>     ; Found our mode! CX = mode number
+    71                              <1>     ; ── Step 3: Set the mode ────────────────────────────────────────
+    72 00000302 89CB                <1>     mov bx, cx
+    73 00000304 81CB0040            <1>     or bx, 0x4000                     ; Bit 14 = use linear framebuffer
+    74 00000308 B8024F              <1>     mov ax, 0x4F02
+    75 0000030B CD10                <1>     int 0x10
+    76 0000030D 83F84F              <1>     cmp ax, 0x004F
+    77 00000310 751A                <1>     jne .vbe_fail
+    78                              <1> 
+    79                              <1>     ; ── Step 4: Save framebuffer address ────────────────────────────
+    80 00000312 66A12872            <1>     mov eax, [VBE_MODE_INFO + 40]     ; PhysBasePtr
+    81 00000316 66A3[4103]          <1>     mov [vbe_fb_addr], eax
+    82 0000031A C706[4503]0000      <1>     mov word [vbe_pitch], 0
+    83 00000320 A11072              <1>     mov ax, [VBE_MODE_INFO + 16]      ; BytesPerScanLine
+    84 00000323 A3[4503]            <1>     mov [vbe_pitch], ax
+    85 00000326 C606[4703]01        <1>     mov byte [vbe_mode_ok], 1
+    86                              <1> 
+    87 0000032B C3                  <1>     ret
+    88                              <1> 
+    89                              <1> .vbe_fail:
+    90                              <1>     ; VBE failed — stay in VGA text mode (80×25)
+    91 0000032C C606[4703]00        <1>     mov byte [vbe_mode_ok], 0
+    92 00000331 66C706[4103]00800B- <1>     mov dword [vbe_fb_addr], 0xB8000
+    92 00000339 00                  <1>
+    93 0000033A C706[4503]A000      <1>     mov word [vbe_pitch], 160         ; 80 * 2 for VGA text
+    94 00000340 C3                  <1>     ret
+    95                              <1> 
+    96                              <1> ; ── VBE Data ────────────────────────────────────────────────────────────
+    97 00000341 00000000            <1> vbe_fb_addr:  dd 0
+    98 00000345 0000                <1> vbe_pitch:    dw 0
+    99 00000347 00                  <1> vbe_mode_ok:  db 0
+    24                                  %include "payload_loader.asm"
+     1                              <1> ; ============================================================================
+     2                              <1> ; FastOS Payload Loader — Unreal Mode for GSP Firmware
+     3                              <1> ; ============================================================================
+     4                              <1> ; Target: RTX 3060 12GB (GA106)
+     5                              <1> ; Board: MSI MS-7C52 (B550), AMI Aptio V BIOS
+     6                              <1> ;
+     7                              <1> ; CONSTRAINTS: NASM -f bin flat binary, no sections, no extern
+     8                              <1> ;
+     9                              <1> ; BUG FIXES applied:
+    10                              <1> ;   1. Restore SS=0 after every Unreal Mode entry so push/pop/call/ret work
+    11                              <1> ;   2. Restore DS=0 before INT 13h (BIOS needs real-mode segments)
+    12                              <1> ;   3. Error path halts instead of corrupting stack with popa+ret
+    13                              <1> ;   4. Save/restore SP around entire function for safety
+    14                              <1> ; ============================================================================
+    15                              <1> 
+    16                              <1> [BITS 16]
+    17                              <1> 
+    18                              <1> ; ── Constants ───────────────────────────────────────────────────────────────
+    19                              <1> GSP_FW_LOAD_ADDR   equ 0x1000000      ; 16MB - firmware target
+    20                              <1> GSP_FW_SIZE         equ 72845296       ; 69.5MB = 142,196 sectors
+    21                              <1> SECTORS_PER_BLOCK   equ 16             ; B550 limit = 16 sectors (8KB)
+    22                              <1> BLOCK_SIZE          equ 8192           ; 16 * 512 = 8KB
+    23                              <1> BUFFER_ADDR         equ 0x20000        ; 128KB - safe buffer
+    24                              <1> TOTAL_ITERATIONS    equ 8888           ; 142,196 / 16 = 8887.25 → 8888
+    25                              <1> 
+    26                              <1> ; ── Entry point ─────────────────────────────────────────────────────────────
+    27                              <1> ; Called from stage2.asm with: call load_payloads
+    28                              <1> ; On return: payload_base and payload_size are set.
+    29                              <1> ; Preserves all GPRs via pusha/popa. Stack must be balanced.
+    30                              <1> load_payloads:
+    31 00000348 60                  <1>     pusha
+    32                              <1>     ; Save SP after pusha so we can restore it on error
+    33 00000349 8926[5105]          <1>     mov [pl_saved_sp], sp
+    34                              <1> 
+    35                              <1>     ; Print start message
+    36 0000034D BE[8605]            <1>     mov si, pl_msg_start
+    37 00000350 E8A801              <1>     call pl_print_string
+    38                              <1> 
+    39                              <1>     ; Print boot_drive value
+    40 00000353 BE[B305]            <1>     mov si, pl_msg_dl
+    41 00000356 E8A201              <1>     call pl_print_string
+    42 00000359 A0[4005]            <1>     mov al, [payload_boot_drive]
+    43 0000035C E8AD01              <1>     call pl_print_hex_byte
+    44 0000035F E8CC01              <1>     call pl_print_newline
+    45                              <1> 
+    46                              <1>     ; Check LBA extensions (informational only — MSI B550 CSM lies about this)
+    47 00000362 BE[CE05]            <1>     mov si, pl_msg_lba_check
+    48 00000365 E89301              <1>     call pl_print_string
+    49 00000368 B441                <1>     mov ah, 0x41
+    50 0000036A BBAA55              <1>     mov bx, 0x55AA
+    51 0000036D 8A16[4005]          <1>     mov dl, [payload_boot_drive]
+    52 00000371 CD13                <1>     int 0x13
+    53 00000373 7206                <1>     jc pl_no_lba
+    54 00000375 81FB55AA            <1>     cmp bx, 0xAA55
+    55 00000379 7408                <1>     je pl_lba_ok
+    56                              <1> pl_no_lba:
+    57 0000037B BE[1A06]            <1>     mov si, pl_msg_lba_fail
+    58 0000037E E87A01              <1>     call pl_print_string
+    59 00000381 EB06                <1>     jmp pl_continue_load
+    60                              <1> pl_lba_ok:
+    61 00000383 BE[F905]            <1>     mov si, pl_msg_lba_ok
+    62 00000386 E87201              <1>     call pl_print_string
+    63                              <1> pl_continue_load:
+    64                              <1> 
+    65                              <1>     ; ── Enter Unreal Mode ──────────────────────────────────────────────────
+    66                              <1>     ; We need 32-bit addressing for movsd to 0x1000000.
+    67                              <1>     ; Process: PM on → load 4GB-limit DS/ES → PM off → segments keep limit.
+    68                              <1>     ; CRITICAL: SS must be restored to 0 before any push/pop/call/ret.
+    69 00000389 FA                  <1>     cli
+    70                              <1> 
+    71                              <1>     ; Patch GDT descriptor with physical address (CS*16 + offset)
+    72 0000038A 6631C0              <1>     xor eax, eax
+    73 0000038D 8CC8                <1>     mov ax, cs
+    74 0000038F 66C1E004            <1>     shl eax, 4
+    75 00000393 668D1E[7005]        <1>     lea ebx, [pl_unreal_gdt]
+    76 00000398 6601D8              <1>     add eax, ebx
+    77 0000039B 66A3[8205]          <1>     mov dword [pl_unreal_gdt_desc + 2], eax
+    78                              <1> 
+    79 0000039F 0F0116[8005]        <1>     lgdt [pl_unreal_gdt_desc]
+    80                              <1> 
+    81 000003A4 0F20C0              <1>     mov eax, cr0
+    82 000003A7 6683C801            <1>     or eax, 1               ; PE = 1 (enter protected mode)
+    83 000003AB 0F22C0              <1>     mov cr0, eax
+    84                              <1> 
+    85 000003AE B80800              <1>     mov ax, 0x08             ; Load 4GB-limit data descriptor
+    86 000003B1 8ED8                <1>     mov ds, ax
+    87 000003B3 8EC0                <1>     mov es, ax
+    88                              <1>     ; NOTE: Do NOT set SS to 0x08. Leave SS alone during PM transition.
+    89                              <1>     ;       SS will keep its real-mode base (0x0000) which is correct.
+    90                              <1> 
+    91 000003B5 0F20C0              <1>     mov eax, cr0
+    92 000003B8 6683E0FE            <1>     and eax, 0xFFFFFFFE     ; PE = 0 (back to real mode)
+    93 000003BC 0F22C0              <1>     mov cr0, eax
+    94                              <1> 
+    95                              <1>     ; Restore real-mode segment values for DS/ES
+    96                              <1>     ; DS/ES now have 4GB limit (Unreal Mode) but segment base = 0
+    97 000003BF 31C0                <1>     xor ax, ax
+    98 000003C1 8ED8                <1>     mov ds, ax
+    99 000003C3 8EC0                <1>     mov es, ax
+   100                              <1>     ; SS was never changed — it's still 0x0000, stack works normally.
+   101                              <1> 
+   102 000003C5 FB                  <1>     sti
+   103                              <1> 
+   104                              <1>     ; ── Initialize load loop ───────────────────────────────────────────────
+   105 000003C6 66C706[6405]E80300- <1>     mov dword [pl_dap_lba], 1000
+   105 000003CE 00                  <1>
+   106 000003CF 66C706[6805]000000- <1>     mov dword [pl_dap_lba+4], 0
+   106 000003D7 00                  <1>
+   107 000003D8 66C706[5405]000000- <1>     mov dword [pl_dest_addr], GSP_FW_LOAD_ADDR
+   107 000003E0 01                  <1>
+   108 000003E1 C706[5805]B822      <1>     mov word  [pl_remain], TOTAL_ITERATIONS
+   109                              <1> 
+   110                              <1> pl_load_loop:
+   111                              <1>     ; Set sector count: last iteration = 4 sectors, else = 16
+   112 000003E7 833E[5805]01        <1>     cmp word [pl_remain], 1
+   113 000003EC 7508                <1>     jne pl_full_block
+   114 000003EE C706[5E05]0400      <1>     mov word [pl_dap_count], 4
+   115 000003F4 EB06                <1>     jmp pl_do_read
+   116                              <1> pl_full_block:
+   117 000003F6 C706[5E05]1000      <1>     mov word [pl_dap_count], SECTORS_PER_BLOCK
+   118                              <1> 
+   119                              <1> pl_do_read:
+   120                              <1>     ; ── BIOS INT 13h AH=42h needs real-mode segments ──────────────────────
+   121                              <1>     ; DS:SI must point to DAP with DS=0 (our DAP is in low memory)
+   122 000003FC 31C0                <1>     xor ax, ax
+   123 000003FE 8ED8                <1>     mov ds, ax
+   124                              <1> 
+   125 00000400 B442                <1>     mov ah, 0x42
+   126 00000402 8A16[4005]          <1>     mov dl, [payload_boot_drive]
+   127 00000406 BE[5C05]            <1>     mov si, pl_dap
+   128 00000409 CD13                <1>     int 0x13
+   129 0000040B 0F82A000            <1>     jc pl_read_error
+   130                              <1> 
+   131                              <1>     ; ── Re-enter Unreal Mode for the copy ─────────────────────────────────
+   132                              <1>     ; After INT 13h, BIOS may have trashed segment limits/GDT.
+   133                              <1>     ; Re-load GDT and re-enter Unreal Mode for the 32-bit copy.
+   134 0000040F FA                  <1>     cli
+   135                              <1> 
+   136 00000410 6631C0              <1>     xor eax, eax
+   137 00000413 8CC8                <1>     mov ax, cs
+   138 00000415 66C1E004            <1>     shl eax, 4
+   139 00000419 668D1E[7005]        <1>     lea ebx, [pl_unreal_gdt]
+   140 0000041E 6601D8              <1>     add eax, ebx
+   141 00000421 66A3[8205]          <1>     mov dword [pl_unreal_gdt_desc + 2], eax
+   142                              <1> 
+   143 00000425 0F0116[8005]        <1>     lgdt [pl_unreal_gdt_desc]
+   144                              <1> 
+   145 0000042A 0F20C0              <1>     mov eax, cr0
+   146 0000042D 6683C801            <1>     or eax, 1
+   147 00000431 0F22C0              <1>     mov cr0, eax
+   148                              <1> 
+   149 00000434 B80800              <1>     mov ax, 0x08
+   150 00000437 8ED8                <1>     mov ds, ax
+   151 00000439 8EC0                <1>     mov es, ax
+   152                              <1>     ; Do NOT touch SS — keep it at real-mode 0x0000
+   153                              <1> 
+   154 0000043B 0F20C0              <1>     mov eax, cr0
+   155 0000043E 6683E0FE            <1>     and eax, 0xFFFFFFFE
+   156 00000442 0F22C0              <1>     mov cr0, eax
+   157                              <1> 
+   158                              <1>     ; Restore DS/ES to 0 (keeps 4GB limit from Unreal Mode)
+   159 00000445 31C0                <1>     xor ax, ax
+   160 00000447 8ED8                <1>     mov ds, ax
+   161 00000449 8EC0                <1>     mov es, ax
+   162                              <1> 
+   163 0000044B FB                  <1>     sti
+   164                              <1> 
+   165                              <1>     ; ── Copy 8KB from buffer (0x20000) to destination (>1MB) ──────────────
+   166                              <1>     ; a32 prefix enables 32-bit addressing in real mode (Unreal Mode)
+   167 0000044C 66BE00000200        <1>     mov esi, BUFFER_ADDR
+   168 00000452 668B3E[5405]        <1>     mov edi, [pl_dest_addr]
+   169 00000457 66B900080000        <1>     mov ecx, BLOCK_SIZE / 4       ; 2048 dwords = 8KB
+   170 0000045D 6766F3A5            <1>     a32 rep movsd
+   171                              <1> 
+   172                              <1>     ; ── Advance to next block ─────────────────────────────────────────────
+   173 00000461 66A1[5405]          <1>     mov eax, [pl_dest_addr]
+   174 00000465 660500200000        <1>     add eax, BLOCK_SIZE
+   175 0000046B 66A3[5405]          <1>     mov [pl_dest_addr], eax
+   176                              <1> 
+   177 0000046F 66A1[6405]          <1>     mov eax, [pl_dap_lba]
+   178 00000473 6683C010            <1>     add eax, SECTORS_PER_BLOCK
+   179 00000477 66A3[6405]          <1>     mov [pl_dap_lba], eax
+   180                              <1> 
+   181 0000047B FF0E[5805]          <1>     dec word [pl_remain]
+   182 0000047F 0F8564FF            <1>     jnz pl_load_loop
+   183                              <1> 
+   184                              <1>     ; ── Load complete ─────────────────────────────────────────────────────
+   185 00000483 66C706[4105]000000- <1>     mov dword [payload_base], GSP_FW_LOAD_ADDR
+   185 0000048B 01                  <1>
+   186 0000048C 66C706[4505]000000- <1>     mov dword [payload_base+4], 0
+   186 00000494 00                  <1>
+   187 00000495 66C706[4905]F08757- <1>     mov dword [payload_size], GSP_FW_SIZE
+   187 0000049D 04                  <1>
+   188 0000049E 66C706[4D05]000000- <1>     mov dword [payload_size+4], 0
+   188 000004A6 00                  <1>
+   189                              <1> 
+   190 000004A7 BE[3F06]            <1>     mov si, pl_msg_done
+   191 000004AA E84E00              <1>     call pl_print_string
+   192                              <1> 
+   193 000004AD 61                  <1>     popa
+   194 000004AE C3                  <1>     ret
+   195                              <1> 
+   196                              <1> ; ── Error handler ─────────────────────────────────────────────────────────
+   197                              <1> ; On read error: restore stack to exact state after pusha, then popa+ret.
+   198                              <1> ; This ensures the caller (stage2) gets control back cleanly.
+   199                              <1> pl_read_error:
+   200                              <1>     ; Save error code before we trash AH
+   201 000004AF 8826[5305]          <1>     mov [pl_err_code], ah
+   202                              <1> 
+   203                              <1>     ; Restore real-mode segments
+   204 000004B3 31C0                <1>     xor ax, ax
+   205 000004B5 8ED8                <1>     mov ds, ax
+   206 000004B7 8EC0                <1>     mov es, ax
+   207 000004B9 8ED0                <1>     mov ss, ax
+   208 000004BB FB                  <1>     sti
+   209                              <1> 
+   210                              <1>     ; Restore SP to the value right after pusha (before any push cx etc.)
+   211 000004BC 8B26[5105]          <1>     mov sp, [pl_saved_sp]
+   212                              <1> 
+   213                              <1>     ; Print error message
+   214 000004C0 BE[5D06]            <1>     mov si, pl_msg_error
+   215 000004C3 E83500              <1>     call pl_print_string
+   216 000004C6 BE[8006]            <1>     mov si, pl_msg_error_code
+   217 000004C9 E82F00              <1>     call pl_print_string
+   218 000004CC A0[5305]            <1>     mov al, [pl_err_code]
+   219 000004CF E83A00              <1>     call pl_print_hex_byte
+   220 000004D2 E85900              <1>     call pl_print_newline
+   221                              <1> 
+   222                              <1>     ; Still set payload_base/size to 0 so kernel knows firmware failed
+   223 000004D5 66C706[4105]000000- <1>     mov dword [payload_base], 0
+   223 000004DD 00                  <1>
+   224 000004DE 66C706[4505]000000- <1>     mov dword [payload_base+4], 0
+   224 000004E6 00                  <1>
+   225 000004E7 66C706[4905]000000- <1>     mov dword [payload_size], 0
+   225 000004EF 00                  <1>
+   226 000004F0 66C706[4D05]000000- <1>     mov dword [payload_size+4], 0
+   226 000004F8 00                  <1>
+   227                              <1> 
+   228                              <1>     ; Clean return to stage2 — popa matches the pusha at entry
+   229 000004F9 61                  <1>     popa
+   230 000004FA C3                  <1>     ret
+   231                              <1> 
+   232                              <1> ; ── Helper functions (pl_ prefix to avoid label collisions) ────────────────
+   233                              <1> pl_print_string:
+   234 000004FB 60                  <1>     pusha
+   235                              <1> pl_ps_loop:
+   236 000004FC AC                  <1>     lodsb
+   237 000004FD 08C0                <1>     or al, al
+   238 000004FF 7409                <1>     jz pl_ps_done
+   239 00000501 B40E                <1>     mov ah, 0x0E
+   240 00000503 BB0700              <1>     mov bx, 0x0007
+   241 00000506 CD10                <1>     int 0x10
+   242 00000508 EBF2                <1>     jmp pl_ps_loop
+   243                              <1> pl_ps_done:
+   244 0000050A 61                  <1>     popa
+   245 0000050B C3                  <1>     ret
+   246                              <1> 
+   247                              <1> pl_print_hex_byte:
+   248 0000050C 60                  <1>     pusha
+   249 0000050D 88C4                <1>     mov ah, al
+   250 0000050F C0E804              <1>     shr al, 4
+   251 00000512 E80900              <1>     call pl_print_hex_nibble
+   252 00000515 88E0                <1>     mov al, ah
+   253 00000517 240F                <1>     and al, 0x0F
+   254 00000519 E80200              <1>     call pl_print_hex_nibble
+   255 0000051C 61                  <1>     popa
+   256 0000051D C3                  <1>     ret
+   257                              <1> 
+   258                              <1> pl_print_hex_nibble:
+   259 0000051E 0430                <1>     add al, '0'
+   260 00000520 3C39                <1>     cmp al, '9'
+   261 00000522 7602                <1>     jbe pl_phn_digit
+   262 00000524 0407                <1>     add al, 7
+   263                              <1> pl_phn_digit:
+   264 00000526 B40E                <1>     mov ah, 0x0E
+   265 00000528 BB0F00              <1>     mov bx, 0x000F
+   266 0000052B CD10                <1>     int 0x10
+   267 0000052D C3                  <1>     ret
+   268                              <1> 
+   269                              <1> pl_print_newline:
+   270 0000052E 60                  <1>     pusha
+   271 0000052F B40E                <1>     mov ah, 0x0E
+   272 00000531 B00D                <1>     mov al, 13
+   273 00000533 BB0F00              <1>     mov bx, 0x000F
+   274 00000536 CD10                <1>     int 0x10
+   275 00000538 B00A                <1>     mov al, 10
+   276 0000053A CD10                <1>     int 0x10
+   277 0000053C 61                  <1>     popa
+   278 0000053D C3                  <1>     ret
+   279                              <1> 
+   280                              <1> ; ── Data (after all code) ─────────────────────────────────────────────────────
+   281 0000053E 90<rep 2h>          <1> align 4
+   282 00000540 00                  <1> payload_boot_drive:  db 0
+   283 00000541 0000000000000000    <1> payload_base:        dq 0
+   284 00000549 0000000000000000    <1> payload_size:        dq 0
+   285 00000551 0000                <1> pl_saved_sp:         dw 0              ; SP after pusha (for error recovery)
+   286 00000553 00                  <1> pl_err_code:         db 0              ; INT 13h error code
+   287 00000554 00000000            <1> pl_dest_addr:        dd 0              ; Current copy destination (32-bit)
+   288 00000558 0000                <1> pl_remain:           dw 0              ; Remaining iterations
+   289                              <1> 
+   290 0000055A 90<rep 2h>          <1> align 4
+   291                              <1> pl_dap:
+   292 0000055C 10                  <1>     db 0x10                            ; Size of DAP
+   293 0000055D 00                  <1>     db 0                               ; Reserved
+   294                              <1> pl_dap_count:
+   295 0000055E 1000                <1>     dw SECTORS_PER_BLOCK               ; Sectors to read
+   296 00000560 0000                <1>     dw 0x0000                          ; Buffer offset
+   297 00000562 0020                <1>     dw 0x2000                          ; Buffer segment → phys 0x20000
+   298                              <1> pl_dap_lba:
+   299 00000564 0000000000000000    <1>     dq 0                               ; Starting LBA
+   300                              <1> 
+   301 0000056C 90<rep 4h>          <1> align 8
+   302                              <1> pl_unreal_gdt:
+   303 00000570 0000000000000000    <1>     dq 0                               ; Null descriptor
+   304 00000578 FFFF                <1>     dw 0xFFFF                          ; Limit low (4GB)
+   305 0000057A 0000                <1>     dw 0x0000                          ; Base low
+   306 0000057C 00                  <1>     db 0x00                            ; Base mid
+   307 0000057D 92                  <1>     db 10010010b                       ; Access: P=1, Ring0, Data, R/W
+   308 0000057E CF                  <1>     db 11001111b                       ; Flags: 4KB gran, 32-bit, Limit hi=F
+   309 0000057F 00                  <1>     db 0x00                            ; Base high
+   310                              <1> 
+   311                              <1> pl_unreal_gdt_desc:
+   312 00000580 0F00                <1>     dw pl_unreal_gdt_desc - pl_unreal_gdt - 1
+   313 00000582 [70050000]          <1>     dd pl_unreal_gdt                   ; Patched at runtime to physical addr
+   314                              <1> 
+   315 00000586 5B53325D204C6F6164- <1> pl_msg_start      db "[S2] Loading GSP firmware (Unreal Mode)...", 13, 10, 0
+   315 0000058F 696E67204753502066- <1>
+   315 00000598 69726D776172652028- <1>
+   315 000005A1 556E7265616C204D6F- <1>
+   315 000005AA 6465292E2E2E0D0A00  <1>
+   316 000005B3 5B53325D20426F6F74- <1> pl_msg_dl         db "[S2] Boot drive (saved) = ", 0
+   316 000005BC 206472697665202873- <1>
+   316 000005C5 6176656429203D2000  <1>
+   317 000005CE 5B53325D2043686563- <1> pl_msg_lba_check  db "[S2] Checking LBA extensions (AH=41h)...", 13, 10, 0
+   317 000005D7 6B696E67204C424120- <1>
+   317 000005E0 657874656E73696F6E- <1>
+   317 000005E9 73202841483D343168- <1>
+   317 000005F2 292E2E2E0D0A00      <1>
+   318 000005F9 5B53325D204C424120- <1> pl_msg_lba_ok     db "[S2] LBA extensions: SUPPORTED", 13, 10, 0
+   318 00000602 657874656E73696F6E- <1>
+   318 0000060B 733A20535550504F52- <1>
+   318 00000614 5445440D0A00        <1>
+   319 0000061A 5B53325D204C424120- <1> pl_msg_lba_fail   db "[S2] LBA extensions: NOT SUPPORTED", 13, 10, 0
+   319 00000623 657874656E73696F6E- <1>
+   319 0000062C 733A204E4F54205355- <1>
+   319 00000635 50504F525445440D0A- <1>
+   319 0000063E 00                  <1>
+   320 0000063F 5B53325D2047535020- <1> pl_msg_done       db "[S2] GSP firmware loaded OK", 13, 10, 0
+   320 00000648 6669726D7761726520- <1>
+   320 00000651 6C6F61646564204F4B- <1>
+   320 0000065A 0D0A00              <1>
+   321 0000065D 5B53325D204552524F- <1> pl_msg_error      db "[S2] ERROR: Firmware load failed", 13, 10, 0
+   321 00000666 523A204669726D7761- <1>
+   321 0000066F 7265206C6F61642066- <1>
+   321 00000678 61696C65640D0A00    <1>
+   322 00000680 5B53325D20494E5420- <1> pl_msg_error_code db "[S2] INT 13h error code (AH) = ", 0
+   322 00000689 313368206572726F72- <1>
+   322 00000692 20636F646520284148- <1>
+   322 0000069B 29203D2000          <1>
+    25                                  
+    26                                  KERNEL_LOAD_ADDR equ 0x100000
+    27                                  KERNEL_SECTORS   equ 265
+    28                                  GSP_FW_LOAD_ADDR equ 0x1000000    ; 16MB — espacio para el firmware GSP
+    29                                  
+    30                                  ; --- Print null-terminated string (SI) — local copy for stage2 ---
+    31                                  print_string_16:
+    32 000006A0 60                          pusha
+    33                                  .ps16_loop:
+    34 000006A1 AC                          lodsb
+    35 000006A2 08C0                        or al, al
+    36 000006A4 7409                        jz .ps16_done
+    37 000006A6 B40E                        mov ah, 0x0E
+    38 000006A8 BB0700                      mov bx, 0x0007
+    39 000006AB CD10                        int 0x10
+    40 000006AD EBF2                        jmp .ps16_loop
+    41                                  .ps16_done:
+    42 000006AF 61                          popa
+    43 000006B0 C3                          ret
+    44                                  
+    45                                  stage2_start:
+    46                                      ; ── CRITICAL: Save boot drive (DL) IMMEDIATELY ───────────────────────
+    47                                      ; BIOS sets DL=0x80 (first hard drive) on boot. Save it NOW before
+    48                                      ; any code execution to prevent corruption.
+    49 000006B1 8816[6509]                  mov [stage2_boot_drive], dl
+    50                                  
+    51                                      ; ── Ultra-early VGA diagnostic ───────────────────────────────────────
+    52                                      ; Write "S2" directly to VGA text buffer at bottom-left (row 24).
+    53                                      ; This proves Stage2 code is executing, even if INT 10h or segments
+    54                                      ; are broken. If you see "S2" on screen but no Stage2 messages,
+    55                                      ; the crash is happening between here and the first print_string_16.
+    56 000006B5 B800B8                      mov ax, 0xB800
+    57 000006B8 8EC0                        mov es, ax
+    58 000006BA 26C706000F534F              mov word [es:3840], 0x4F53      ; 'S' white-on-red, row 24, col 0
+    59 000006C1 26C706020F324F              mov word [es:3842], 0x4F32      ; '2' white-on-red, row 24, col 1
+    60                                  
+    61                                      ; ── Phase 1: 16-bit Real Mode ────────────────────────────────────────
+    62                                  
+    63 000006C8 FA                          cli
+    64 000006C9 31C0                        xor ax, ax
+    65 000006CB 8ED8                        mov ds, ax
+    66 000006CD 8EC0                        mov es, ax
+    67 000006CF 8ED0                        mov ss, ax
+    68 000006D1 BC007C                      mov sp, 0x7C00
+    69 000006D4 FB                          sti
+    70                                  
+    71 000006D5 BE[D607]                    mov si, msg_s2_start
+    72 000006D8 E8C5FF                      call print_string_16
     73                                  
-    74                                      ; Detect memory (E820)
-    75 000001D3 E8B8FE                      call detect_memory_e820
-    76 000001D6 BE[7A02]                    mov si, msg_mem_ok
-    77 000001D9 E8B4FF                      call print_string_16
+    74                                      ; CPU checks
+    75 000006DB E80BFB                      call check_cpuid
+    76 000006DE BE[F207]                    mov si, msg_cpuid_ok
+    77 000006E1 E8BCFF                      call print_string_16
     78                                  
-    79                                      ; Load kernel to 0x10000 (below 1MB, via BIOS)
-    80 000001DC BE[9A02]                    mov si, msg_loading_kernel
-    81 000001DF E8AEFF                      call print_string_16
+    79 000006E4 E829FB                      call check_long_mode
+    80 000006E7 BE[0708]                    mov si, msg_lm_ok
+    81 000006EA E8B3FF                      call print_string_16
     82                                  
-    83 000001E2 B442                        mov ah, 0x42
-    84 000001E4 8A16[1803]                  mov dl, [stage2_boot_drive]
-    85 000001E8 BE[1C03]                    mov si, dap_kernel
-    86 000001EB CD13                        int 0x13
-    87 000001ED 7221                        jc .kernel_load_err
-    88                                  
-    89 000001EF BE[B702]                    mov si, msg_kernel_loaded
-    90 000001F2 E89BFF                      call print_string_16
+    83                                      ; Enable A20
+    84 000006ED E853F9                      call enable_a20
+    85 000006F0 BE[2008]                    mov si, msg_a20_ok
+    86 000006F3 E8AAFF                      call print_string_16
+    87                                  
+    88                                      ; Detect memory (E801h — E820 hangs on MSI B550 CSM)
+    89 000006F6 BE[3808]                    mov si, msg_e820_try
+    90 000006F9 E8A4FF                      call print_string_16
     91                                  
-    92                                      ; ── Phase 2: Enter 32-bit Protected Mode ─────────────────────────────
-    93                                  
-    94 000001F5 BE[F202]                    mov si, msg_entering_pm
-    95 000001F8 E895FF                      call print_string_16
-    96                                  
-    97 000001FB FA                          cli
-    98 000001FC 0F0116[1B00]                lgdt [gdt32_descriptor]
-    99                                  
-   100 00000201 0F20C0                      mov eax, cr0
-   101 00000204 6683C801                    or eax, 1
-   102 00000208 0F22C0                      mov cr0, eax
+    92 000006FC E88FF9                      call detect_memory_e820
+    93 000006FF BE[5F08]                    mov si, msg_mem_ok
+    94 00000702 E89BFF                      call print_string_16
+    95                                  
+    96                                      ; ── Load kernel in chunks (64 sectors / 32KB per INT 13h call) ───────
+    97                                      ; Total: 257 sectors = 131KB loaded to 0x20000 buffer, then copied to 0x100000.
+    98                                      ; 32KB chunks avoid 64KB segment boundary issues in real mode.
+    99                                      ; Buffer at 0x20000 provides 256KB of space (more than enough for 131KB kernel).
+   100                                      ; MSI B550 CSM: AH=42h works despite AH=41h reporting no LBA.
+   101 00000705 BE[7908]                    mov si, msg_loading_kernel
+   102 00000708 E895FF                      call print_string_16
    103                                  
-   104 0000020B EA[D903]0800                jmp GDT32_CODE_SEG:protected_mode_entry
-   105                                  
-   106                                  .kernel_load_err:
-   107 00000210 BE[D402]                    mov si, msg_kernel_err
-   108 00000213 E87AFF                      call print_string_16
-   109 00000216 FA                          cli
-   110 00000217 F4                          hlt
-   111                                  
-   112                                  ; ── 16-bit Data ──────────────────────────────────────────────────────────
-   113                                  
-   114 00000218 5B466173744F535D20-     msg_s2_start:       db "[FastOS] Stage2: starting", 13, 10, 0
-   114 00000221 5374616765323A2073-
-   114 0000022A 74617274696E670D0A-
-   114 00000233 00                 
-   115 00000234 5B466173744F535D20-     msg_cpuid_ok:       db "[FastOS] CPUID: OK", 13, 10, 0
-   115 0000023D 43505549443A204F4B-
-   115 00000246 0D0A00             
-   116 00000249 5B466173744F535D20-     msg_lm_ok:          db "[FastOS] Long Mode: OK", 13, 10, 0
-   116 00000252 4C6F6E67204D6F6465-
-   116 0000025B 3A204F4B0D0A00     
-   117 00000262 5B466173744F535D20-     msg_a20_ok:         db "[FastOS] A20: enabled", 13, 10, 0
-   117 0000026B 4132303A20656E6162-
-   117 00000274 6C65640D0A00       
-   118 0000027A 5B466173744F535D20-     msg_mem_ok:         db "[FastOS] Memory map: detected", 13, 10, 0
-   118 00000283 4D656D6F7279206D61-
-   118 0000028C 703A20646574656374-
-   118 00000295 65640D0A00         
-   119 0000029A 5B466173744F535D20-     msg_loading_kernel: db "[FastOS] Loading kernel...", 13, 10, 0
-   119 000002A3 4C6F6164696E67206B-
-   119 000002AC 65726E656C2E2E2E0D-
-   119 000002B5 0A00               
-   120 000002B7 5B466173744F535D20-     msg_kernel_loaded:  db "[FastOS] Kernel at 0x10000", 13, 10, 0
-   120 000002C0 4B65726E656C206174-
-   120 000002C9 20307831303030300D-
-   120 000002D2 0A00               
-   121 000002D4 5B466173744F535D20-     msg_kernel_err:     db "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
-   121 000002DD 4B45524E454C204C4F-
-   121 000002E6 4144204552524F5221-
-   121 000002EF 0D0A00             
-   122 000002F2 5B466173744F535D20-     msg_entering_pm:    db "[FastOS] Entering Protected Mode...", 13, 10, 0
-   122 000002FB 456E746572696E6720-
-   122 00000304 50726F746563746564-
-   122 0000030D 204D6F64652E2E2E0D-
-   122 00000316 0A00               
-   123                                  
-   124 00000318 00                      stage2_boot_drive: db 0
+   104                                      ; Initialize DAP for first chunk
+   105 0000070B C706[6A09]4000              mov word [dap_k_count], 64
+   106 00000711 C706[6C09]0000              mov word [dap_k_offset], 0x0000
+   107 00000717 C706[6E09]0020              mov word [dap_k_seg], 0x2000          ; Segment 0x2000 → phys 0x20000 (128KB)
+   108 0000071D 66C706[7009]210000-         mov dword [dap_k_lba], 33             ; LBA 33 (after MBR + Stage2)
+   108 00000725 00                 
+   109 00000726 66C706[7409]000000-         mov dword [dap_k_lba + 4], 0
+   109 0000072E 00                 
+   110                                  
+   111 0000072F B90400                      mov cx, 4                              ; 4 full chunks of 64
+   112                                  .load_kernel_loop:
+   113 00000732 51                          push cx
+   114 00000733 B442                        mov ah, 0x42
+   115 00000735 8A16[6509]                  mov dl, [stage2_boot_drive]
+   116 00000739 BE[6809]                    mov si, dap_kernel
+   117 0000073C CD13                        int 0x13
+   118 0000073E 0F828B00                    jc .kernel_chunk_err
+   119                                  
+   120                                      ; Progress indicator
+   121 00000742 B40E                        mov ah, 0x0E
+   122 00000744 B02E                        mov al, '.'
+   123 00000746 BB0700                      mov bx, 0x0007
+   124 00000749 CD10                        int 0x10
    125                                  
-   126 00000319 90<rep 3h>              align 4
-   127                                  dap_kernel:
-   128 0000031C 10                          db 0x10
-   129 0000031D 00                          db 0
-   130 0000031E 0001                        dw 256                          ; 128KB
-   131 00000320 0000                        dw 0x0000
-   132 00000322 0010                        dw 0x1000                       ; Segment 0x1000 → phys 0x10000
-   133 00000324 2100000000000000            dq 33                           ; LBA 33 (after MBR+stage2)
-   134                                  
-   135                                  ; ── 32-bit Protected Mode ────────────────────────────────────────────────
-   136                                  
-   137                                  [BITS 32]
-   138                                  
-   139                                  %include "paging.asm"
+   126                                      ; Advance DAP for next chunk: segment += 0x800 (+32KB), LBA += 64
+   127 0000074B 8106[6E09]0008              add word [dap_k_seg], 0x800
+   128 00000751 668306[7009]40              add dword [dap_k_lba], 64
+   129                                  
+   130 00000757 59                          pop cx
+   131 00000758 E2D8                        loop .load_kernel_loop
+   132                                  
+   133                                      ; Load final partial chunk (9 sectors = 265 - 256)
+   134 0000075A C706[6A09]0900              mov word [dap_k_count], 9
+   135 00000760 B442                        mov ah, 0x42
+   136 00000762 8A16[6509]                  mov dl, [stage2_boot_drive]
+   137 00000766 BE[6809]                    mov si, dap_kernel
+   138 00000769 CD13                        int 0x13
+   139 0000076B 7260                        jc .kernel_chunk_err
+   140                                  
+   141                                      ; Progress indicator
+   142 0000076D B40E                        mov ah, 0x0E
+   143 0000076F B02E                        mov al, '.'
+   144 00000771 BB0700                      mov bx, 0x0007
+   145 00000774 CD10                        int 0x10
+   146                                  
+   147 00000776 BE[9108]                    mov si, msg_kernel_loaded
+   148 00000779 E824FF                      call print_string_16
+   149                                  
+   150                                      ; ── Load external modules (GSP Firmware) ─────────────────────────────
+   151                                      ; Save boot drive (DL) to payload_loader's local variable
+   152 0000077C A0[6509]                    mov al, [stage2_boot_drive]
+   153 0000077F A2[4005]                    mov [payload_boot_drive], al
+   154 00000782 E8C3FB                      call load_payloads
+   155                                  
+   156                                      ; ── CRITICAL: Restore stack to known good state after load_payloads ──
+   157                                      ; load_payloads does pusha/popa so SP should be intact, but Unreal Mode
+   158                                      ; may have trashed segment caches. Reset everything to be safe.
+   159 00000785 FA                          cli
+   160 00000786 31C0                        xor ax, ax
+   161 00000788 8ED8                        mov ds, ax
+   162 0000078A 8EC0                        mov es, ax
+   163 0000078C 8ED0                        mov ss, ax
+   164 0000078E BC007C                      mov sp, 0x7C00
+   165 00000791 FB                          sti
+   166                                  
+   167                                      ; Diagnostic: confirm we returned from load_payloads
+   168 00000792 BE[3D09]                    mov si, msg_entering_pm
+   169 00000795 E808FF                      call print_string_16
+   170                                  
+   171                                      ; ── Phase 2: Enter 32-bit Protected Mode ─────────────────────────────
+   172                                  
+   173                                      ; Save current BIOS cursor row for VGA continuation in PM
+   174 00000798 B403                        mov ah, 0x03
+   175 0000079A 30FF                        xor bh, bh
+   176 0000079C CD10                        int 0x10
+   177 0000079E 660FB6C6                    movzx eax, dh
+   178 000007A2 A2[6609]                    mov [vga_row], al
+   179                                  
+   180 000007A5 FA                          cli
+   181                                  
+   182                                      ; Patch GDT32 descriptor with physical address (CS*16 + offset)
+   183                                      ; In flat binary, gdt32_start is an offset from ORG 0x7E00.
+   184                                      ; With CS=0 and DS=0, the label value IS the physical address.
+   185                                      ; But after Unreal Mode, segment limits may be wrong — re-patch to be safe.
+   186 000007A6 6631C0                      xor eax, eax
+   187 000007A9 8CC8                        mov ax, cs
+   188 000007AB 66C1E004                    shl eax, 4
+   189 000007AF 6605[03000000]              add eax, gdt32_start
+   190 000007B5 66A3[1D00]                  mov dword [gdt32_descriptor + 2], eax
+   191                                  
+   192 000007B9 0F0116[1B00]                lgdt [gdt32_descriptor]
+   193                                  
+   194 000007BE 0F20C0                      mov eax, cr0
+   195 000007C1 6683C801                    or eax, 1
+   196 000007C5 0F22C0                      mov cr0, eax
+   197                                  
+   198 000007C8 EA[250A]0800                jmp GDT32_CODE_SEG:protected_mode_entry
+   199                                  
+   200                                  .kernel_chunk_err:
+   201 000007CD 59                          pop cx                                 ; Balance push cx
+   202                                  .kernel_load_err:
+   203 000007CE BE[AF08]                    mov si, msg_kernel_err
+   204 000007D1 E8CCFE                      call print_string_16
+   205 000007D4 FA                          cli
+   206 000007D5 F4                          hlt
+   207                                  
+   208                                  ; ── 16-bit Data ──────────────────────────────────────────────────────────
+   209                                  
+   210 000007D6 5B466173744F535D20-     msg_s2_start:       db "[FastOS] Stage2: starting", 13, 10, 0
+   210 000007DF 5374616765323A2073-
+   210 000007E8 74617274696E670D0A-
+   210 000007F1 00                 
+   211 000007F2 5B466173744F535D20-     msg_cpuid_ok:       db "[FastOS] CPUID: OK", 13, 10, 0
+   211 000007FB 43505549443A204F4B-
+   211 00000804 0D0A00             
+   212 00000807 5B466173744F535D20-     msg_lm_ok:          db "[FastOS] Long Mode: OK", 13, 10, 0
+   212 00000810 4C6F6E67204D6F6465-
+   212 00000819 3A204F4B0D0A00     
+   213 00000820 5B466173744F535D20-     msg_a20_ok:         db "[FastOS] A20: enabled", 13, 10, 0
+   213 00000829 4132303A20656E6162-
+   213 00000832 6C65640D0A00       
+   214 00000838 5B466173744F535D20-     msg_e820_try:       db "[FastOS] Detecting memory (E801h)...", 13, 10, 0
+   214 00000841 446574656374696E67-
+   214 0000084A 206D656D6F72792028-
+   214 00000853 4538303168292E2E2E-
+   214 0000085C 0D0A00             
+   215 0000085F 5B466173744F535D20-     msg_mem_ok:         db "[FastOS] Memory map: OK", 13, 10, 0
+   215 00000868 4D656D6F7279206D61-
+   215 00000871 703A204F4B0D0A00   
+   216 00000879 5B466173744F535D20-     msg_loading_kernel: db "[FastOS] Loading kernel", 0
+   216 00000882 4C6F6164696E67206B-
+   216 0000088B 65726E656C00       
+   217 00000891 0D0A5B466173744F53-     msg_kernel_loaded:  db 13, 10, "[FastOS] Kernel loaded OK", 13, 10, 0
+   217 0000089A 5D204B65726E656C20-
+   217 000008A3 6C6F61646564204F4B-
+   217 000008AC 0D0A00             
+   218 000008AF 0D0A5B466173744F53-     msg_kernel_err:     db 13, 10, "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
+   218 000008B8 5D204B45524E454C20-
+   218 000008C1 4C4F4144204552524F-
+   218 000008CA 52210D0A00         
+   219 000008CF 5B466173744F535D20-     msg_vbe_try:        db "[FastOS] Setting 1920x1080x32...", 13, 10, 0
+   219 000008D8 53657474696E672031-
+   219 000008E1 393230783130383078-
+   219 000008EA 33322E2E2E0D0A00   
+   220 000008F2 5B466173744F535D20-     msg_vbe_ok:         db "[FastOS] VBE: 1920x1080x32bpp OK!", 13, 10, 0
+   220 000008FB 5642453A2031393230-
+   220 00000904 783130383078333262-
+   220 0000090D 7070204F4B210D0A00 
+   221 00000916 5B466173744F535D20-     msg_vbe_fail:       db "[FastOS] VBE: Failed, using VGA text", 13, 10, 0
+   221 0000091F 5642453A204661696C-
+   221 00000928 65642C207573696E67-
+   221 00000931 205647412074657874-
+   221 0000093A 0D0A00             
+   222 0000093D 5B466173744F535D20-     msg_entering_pm:    db "[FastOS] Entering PM -> LM -> Kernel!", 13, 10, 0
+   222 00000946 456E746572696E6720-
+   222 0000094F 504D202D3E204C4D20-
+   222 00000958 2D3E204B65726E656C-
+   222 00000961 210D0A00           
+   223                                  
+   224 00000965 00                      stage2_boot_drive: db 0
+   225 00000966 00                      vga_row:           db 0
+   226                                  
+   227 00000967 90                      align 4
+   228                                  dap_kernel:
+   229 00000968 10                          db 0x10
+   230 00000969 00                          db 0
+   231 0000096A 4000                    dap_k_count:  dw 64                      ; sectors per chunk (64 × 512 = 32KB)
+   232 0000096C 0000                    dap_k_offset: dw 0x0000
+   233 0000096E 0010                    dap_k_seg:    dw 0x1000                   ; initial segment → phys 0x10000
+   234 00000970 2100000000000000        dap_k_lba:    dq 33                       ; initial LBA (after MBR + Stage2)
+   235                                  
+   236                                  ; ── 32-bit Protected Mode ────────────────────────────────────────────────
+   237                                  
+   238                                  [BITS 32]
+   239                                  
+   240                                  %include "paging.asm"
      1                              <1> ; ============================================================================
      2                              <1> ; FastOS Paging — 4-level page tables for Long Mode (x86-64)
      3                              <1> ; ============================================================================
@@ -429,141 +1089,167 @@
     22                              <1> 
     23                              <1> setup_paging:
     24                              <1>     ; Clear 6 pages of page tables (24KB)
-    25 0000032C BF00100000          <1>     mov edi, PML4_ADDR
-    26 00000331 31C0                <1>     xor eax, eax
-    27 00000333 B900180000          <1>     mov ecx, 6 * 1024
-    28 00000338 F3AB                <1>     rep stosd
+    25 00000978 BF00100000          <1>     mov edi, PML4_ADDR
+    26 0000097D 31C0                <1>     xor eax, eax
+    27 0000097F B900180000          <1>     mov ecx, 6 * 1024
+    28 00000984 F3AB                <1>     rep stosd
     29                              <1> 
     30                              <1>     ; PML4[0] → PDPT
-    31 0000033A C70500100000032000- <1>     mov dword [PML4_ADDR], PDPT_ADDR | PAGE_FLAGS
-    31 00000343 00                  <1>
+    31 00000986 C70500100000032000- <1>     mov dword [PML4_ADDR], PDPT_ADDR | PAGE_FLAGS
+    31 0000098F 00                  <1>
     32                              <1> 
     33                              <1>     ; PDPT[0..3] → PD0..PD3
-    34 00000344 C70500200000033000- <1>     mov dword [PDPT_ADDR + 0*8], PD0_ADDR | PAGE_FLAGS
-    34 0000034D 00                  <1>
-    35 0000034E C70508200000034000- <1>     mov dword [PDPT_ADDR + 1*8], PD1_ADDR | PAGE_FLAGS
-    35 00000357 00                  <1>
-    36 00000358 C70510200000035000- <1>     mov dword [PDPT_ADDR + 2*8], PD2_ADDR | PAGE_FLAGS
-    36 00000361 00                  <1>
-    37 00000362 C70518200000036000- <1>     mov dword [PDPT_ADDR + 3*8], PD3_ADDR | PAGE_FLAGS
-    37 0000036B 00                  <1>
+    34 00000990 C70500200000033000- <1>     mov dword [PDPT_ADDR + 0*8], PD0_ADDR | PAGE_FLAGS
+    34 00000999 00                  <1>
+    35 0000099A C70508200000034000- <1>     mov dword [PDPT_ADDR + 1*8], PD1_ADDR | PAGE_FLAGS
+    35 000009A3 00                  <1>
+    36 000009A4 C70510200000035000- <1>     mov dword [PDPT_ADDR + 2*8], PD2_ADDR | PAGE_FLAGS
+    36 000009AD 00                  <1>
+    37 000009AE C70518200000036000- <1>     mov dword [PDPT_ADDR + 3*8], PD3_ADDR | PAGE_FLAGS
+    37 000009B7 00                  <1>
     38                              <1> 
     39                              <1>     ; PD0: 0x00000000 - 0x3FFFFFFF (512 × 2MB pages)
-    40 0000036C BF00300000          <1>     mov edi, PD0_ADDR
-    41 00000371 B883000000          <1>     mov eax, PAGE_HUGE_FLAGS
-    42 00000376 B900020000          <1>     mov ecx, 512
+    40 000009B8 BF00300000          <1>     mov edi, PD0_ADDR
+    41 000009BD B883000000          <1>     mov eax, PAGE_HUGE_FLAGS
+    42 000009C2 B900020000          <1>     mov ecx, 512
     43                              <1> .fill_pd0:
-    44 0000037B 8907                <1>     mov [edi], eax
-    45 0000037D 0500002000          <1>     add eax, 0x200000
-    46 00000382 83C708              <1>     add edi, 8
-    47 00000385 E2F4                <1>     loop .fill_pd0
+    44 000009C7 8907                <1>     mov [edi], eax
+    45 000009C9 0500002000          <1>     add eax, 0x200000
+    46 000009CE 83C708              <1>     add edi, 8
+    47 000009D1 E2F4                <1>     loop .fill_pd0
     48                              <1> 
     49                              <1>     ; PD1: 0x40000000 - 0x7FFFFFFF
-    50 00000387 BF00400000          <1>     mov edi, PD1_ADDR
-    51 0000038C B883000040          <1>     mov eax, 0x40000000 | PAGE_HUGE_FLAGS
-    52 00000391 B900020000          <1>     mov ecx, 512
+    50 000009D3 BF00400000          <1>     mov edi, PD1_ADDR
+    51 000009D8 B883000040          <1>     mov eax, 0x40000000 | PAGE_HUGE_FLAGS
+    52 000009DD B900020000          <1>     mov ecx, 512
     53                              <1> .fill_pd1:
-    54 00000396 8907                <1>     mov [edi], eax
-    55 00000398 0500002000          <1>     add eax, 0x200000
-    56 0000039D 83C708              <1>     add edi, 8
-    57 000003A0 E2F4                <1>     loop .fill_pd1
+    54 000009E2 8907                <1>     mov [edi], eax
+    55 000009E4 0500002000          <1>     add eax, 0x200000
+    56 000009E9 83C708              <1>     add edi, 8
+    57 000009EC E2F4                <1>     loop .fill_pd1
     58                              <1> 
     59                              <1>     ; PD2: 0x80000000 - 0xBFFFFFFF
-    60 000003A2 BF00500000          <1>     mov edi, PD2_ADDR
-    61 000003A7 B883000080          <1>     mov eax, 0x80000000 | PAGE_HUGE_FLAGS
-    62 000003AC B900020000          <1>     mov ecx, 512
+    60 000009EE BF00500000          <1>     mov edi, PD2_ADDR
+    61 000009F3 B883000080          <1>     mov eax, 0x80000000 | PAGE_HUGE_FLAGS
+    62 000009F8 B900020000          <1>     mov ecx, 512
     63                              <1> .fill_pd2:
-    64 000003B1 8907                <1>     mov [edi], eax
-    65 000003B3 0500002000          <1>     add eax, 0x200000
-    66 000003B8 83C708              <1>     add edi, 8
-    67 000003BB E2F4                <1>     loop .fill_pd2
+    64 000009FD 8907                <1>     mov [edi], eax
+    65 000009FF 0500002000          <1>     add eax, 0x200000
+    66 00000A04 83C708              <1>     add edi, 8
+    67 00000A07 E2F4                <1>     loop .fill_pd2
     68                              <1> 
     69                              <1>     ; PD3: 0xC0000000 - 0xFFFFFFFF
-    70 000003BD BF00600000          <1>     mov edi, PD3_ADDR
-    71 000003C2 B8830000C0          <1>     mov eax, 0xC0000000 | PAGE_HUGE_FLAGS
-    72 000003C7 B900020000          <1>     mov ecx, 512
+    70 00000A09 BF00600000          <1>     mov edi, PD3_ADDR
+    71 00000A0E B8830000C0          <1>     mov eax, 0xC0000000 | PAGE_HUGE_FLAGS
+    72 00000A13 B900020000          <1>     mov ecx, 512
     73                              <1> .fill_pd3:
-    74 000003CC 8907                <1>     mov [edi], eax
-    75 000003CE 0500002000          <1>     add eax, 0x200000
-    76 000003D3 83C708              <1>     add edi, 8
-    77 000003D6 E2F4                <1>     loop .fill_pd3
+    74 00000A18 8907                <1>     mov [edi], eax
+    75 00000A1A 0500002000          <1>     add eax, 0x200000
+    76 00000A1F 83C708              <1>     add edi, 8
+    77 00000A22 E2F4                <1>     loop .fill_pd3
     78                              <1> 
-    79 000003D8 C3                  <1>     ret
-   140                                  
-   141                                  protected_mode_entry:
-   142 000003D9 66B81000                    mov ax, GDT32_DATA_SEG
-   143 000003DD 8ED8                        mov ds, ax
-   144 000003DF 8EC0                        mov es, ax
-   145 000003E1 8EE0                        mov fs, ax
-   146 000003E3 8EE8                        mov gs, ax
-   147 000003E5 8ED0                        mov ss, ax
-   148 000003E7 BC00000900                  mov esp, 0x90000
-   149                                  
-   150                                      ; VGA print (BIOS gone, use direct memory at 0xB8000)
-   151 000003EC BF00800B00                  mov edi, 0xB8000
-   152 000003F1 BE[5E040000]                mov esi, msg_pm_ok
-   153 000003F6 B40A                        mov ah, 0x0A
-   154                                  .pm_print:
-   155 000003F8 AC                          lodsb
-   156 000003F9 84C0                        test al, al
-   157 000003FB 7404                        jz .pm_print_done
-   158 000003FD 66AB                        stosw
-   159 000003FF EBF7                        jmp .pm_print
-   160                                  .pm_print_done:
-   161                                  
-   162                                      ; Detect CPU features for kernel
-   163 00000401 E81AFDFFFF                  call detect_cpu_features_32
-   164                                  
-   165                                      ; Copy kernel: 0x10000 → 0x100000 (1MB), 128KB
-   166 00000406 BE00000100                  mov esi, 0x10000
-   167 0000040B BF00001000                  mov edi, 0x100000
-   168 00000410 B900800000                  mov ecx, 32768
-   169 00000415 F3A5                        rep movsd
-   170                                  
-   171                                      ; ── Phase 3: Paging + Long Mode ──────────────────────────────────────
-   172                                  
-   173 00000417 E810FFFFFF                  call setup_paging
-   174                                  
-   175                                      ; Load PML4 into CR3
-   176 0000041C B800100000                  mov eax, PML4_ADDR
-   177 00000421 0F22D8                      mov cr3, eax
-   178                                  
-   179                                      ; Enable PAE
-   180 00000424 0F20E0                      mov eax, cr4
-   181 00000427 83C820                      or eax, (1 << 5)
-   182 0000042A 0F22E0                      mov cr4, eax
-   183                                  
-   184                                      ; Enable Long Mode (EFER.LME) + NX (EFER.NXE)
-   185 0000042D B9800000C0                  mov ecx, 0xC0000080
-   186 00000432 0F32                        rdmsr
-   187 00000434 0D00010000                  or eax, (1 << 8)               ; LME
-   188 00000439 0D00080000                  or eax, (1 << 11)              ; NXE
-   189 0000043E 0F30                        wrmsr
-   190                                  
-   191                                      ; Enable paging + write protect
-   192 00000440 0F20C0                      mov eax, cr0
-   193 00000443 0D00000080                  or eax, (1 << 31)              ; PG
-   194 00000448 0D00000100                  or eax, (1 << 16)              ; WP
-   195 0000044D 0F22C0                      mov cr0, eax
-   196                                  
-   197                                      ; Load 64-bit GDT
-   198 00000450 0F0115[39000000]            lgdt [gdt64_descriptor]
-   199                                  
-   200                                      ; Far jump to 64-bit!
-   201 00000457 EA[C9040000]0800            jmp GDT64_CODE_SEG:long_mode_entry
-   202                                  
-   203 0000045E 5B466173744F535D20-     msg_pm_ok: db "[FastOS] Protected Mode OK → Long Mode...", 0
-   203 00000467 50726F746563746564-
-   203 00000470 204D6F6465204F4B20-
-   203 00000479 E28692204C6F6E6720-
-   203 00000482 4D6F64652E2E2E00   
-   204                                  
-   205                                  ; ── 64-bit Long Mode ────────────────────────────────────────────────────
-   206                                  
-   207                                  [BITS 64]
-   208                                  DEFAULT ABS
-   209                                  
-   210                                  %include "sse_avx.asm"
+    79 00000A24 C3                  <1>     ret
+   241                                  
+   242                                  protected_mode_entry:
+   243 00000A25 66B81000                    mov ax, GDT32_DATA_SEG
+   244 00000A29 8ED8                        mov ds, ax
+   245 00000A2B 8EC0                        mov es, ax
+   246 00000A2D 8EE0                        mov fs, ax
+   247 00000A2F 8EE8                        mov gs, ax
+   248 00000A31 8ED0                        mov ss, ax
+   249 00000A33 BC00000900                  mov esp, 0x90000
+   250                                  
+   251                                      ; VGA print — continue from where BIOS left off (don't overwrite!)
+   252                                      ; Read saved row from real mode, compute offset
+   253 00000A38 0FB605[66090000]            movzx eax, byte [vga_row]
+   254 00000A3F 69C0A0000000                imul eax, 160                   ; 80 cols × 2 bytes per char
+   255 00000A45 0500800B00                  add eax, 0xB8000
+   256 00000A4A 89C7                        mov edi, eax
+   257 00000A4C BE[E80A0000]                mov esi, msg_pm_ok
+   258 00000A51 B40A                        mov ah, 0x0A                    ; light green on black
+   259                                  .pm_print:
+   260 00000A53 AC                          lodsb
+   261 00000A54 84C0                        test al, al
+   262 00000A56 7404                        jz .pm_print_done
+   263 00000A58 66AB                        stosw
+   264 00000A5A EBF7                        jmp .pm_print
+   265                                  .pm_print_done:
+   266                                  
+   267                                      ; Detect CPU features for kernel
+   268 00000A5C E8D9F7FFFF                  call detect_cpu_features_32
+   269                                  
+   270                                      ; Copy kernel: 0x20000 → 0x100000 (1MB), 131KB
+   271 00000A61 BE00000200                  mov esi, 0x20000
+   272 00000A66 BF00001000                  mov edi, 0x100000
+   273 00000A6B B902800000                  mov ecx, 32770                  ; 131KB / 4 bytes = 32770 dwords
+   274 00000A70 F3A5                        rep movsd
+   275                                  
+   276                                      ; ── Phase 3: Paging + Long Mode ──────────────────────────────────────
+   277                                  
+   278                                      ; VGA progress — next row
+   279 00000A72 0FB605[66090000]            movzx eax, byte [vga_row]
+   280 00000A79 40                          inc eax
+   281 00000A7A 69C0A0000000                imul eax, 160
+   282 00000A80 0500800B00                  add eax, 0xB8000
+   283 00000A85 89C7                        mov edi, eax
+   284 00000A87 BE[040B0000]                mov esi, msg_paging_ok
+   285 00000A8C B40E                        mov ah, 0x0E                    ; yellow on black
+   286                                  .pg_print:
+   287 00000A8E AC                          lodsb
+   288 00000A8F 84C0                        test al, al
+   289 00000A91 7404                        jz .pg_print_done
+   290 00000A93 66AB                        stosw
+   291 00000A95 EBF7                        jmp .pg_print
+   292                                  .pg_print_done:
+   293                                  
+   294 00000A97 E8DCFEFFFF                  call setup_paging
+   295                                  
+   296                                      ; Load PML4 into CR3
+   297 00000A9C B800100000                  mov eax, PML4_ADDR
+   298 00000AA1 0F22D8                      mov cr3, eax
+   299                                  
+   300                                      ; Enable PAE
+   301 00000AA4 0F20E0                      mov eax, cr4
+   302 00000AA7 83C820                      or eax, (1 << 5)
+   303 00000AAA 0F22E0                      mov cr4, eax
+   304                                  
+   305                                      ; Enable Long Mode (EFER.LME) + NX (EFER.NXE)
+   306 00000AAD B9800000C0                  mov ecx, 0xC0000080
+   307 00000AB2 0F32                        rdmsr
+   308 00000AB4 0D00010000                  or eax, (1 << 8)               ; LME
+   309 00000AB9 0D00080000                  or eax, (1 << 11)              ; NXE
+   310 00000ABE 0F30                        wrmsr
+   311                                  
+   312                                      ; Enable paging + write protect
+   313 00000AC0 0F20C0                      mov eax, cr0
+   314 00000AC3 0D00000080                  or eax, (1 << 31)              ; PG
+   315 00000AC8 0D00000100                  or eax, (1 << 16)              ; WP
+   316 00000ACD 0F22C0                      mov cr0, eax
+   317                                  
+   318                                      ; Patch GDT64 descriptor base address (already linear in PM, but be explicit)
+   319 00000AD0 C705[3B000000]-             mov dword [gdt64_descriptor + 2], gdt64_start
+   319 00000AD6 [21000000]         
+   320 00000ADA 0F0115[39000000]            lgdt [gdt64_descriptor]
+   321                                  
+   322                                      ; Far jump to 64-bit!
+   323 00000AE1 EA[680B0000]0800            jmp GDT64_CODE_SEG:long_mode_entry
+   324                                  
+   325 00000AE8 5B466173744F535D20-     msg_pm_ok:      db "[FastOS] Protected Mode: OK", 0
+   325 00000AF1 50726F746563746564-
+   325 00000AFA 204D6F64653A204F4B-
+   325 00000B03 00                 
+   326 00000B04 5B466173744F535D20-     msg_paging_ok:  db "[FastOS] Paging + Long Mode setup...", 0
+   326 00000B0D 506167696E67202B20-
+   326 00000B16 4C6F6E67204D6F6465-
+   326 00000B1F 2073657475702E2E2E-
+   326 00000B28 00                 
+   327                                  
+   328                                  ; ── 64-bit Long Mode ────────────────────────────────────────────────────
+   329                                  
+   330                                  [BITS 64]
+   331                                  DEFAULT ABS
+   332                                  
+   333                                  %include "sse_avx.asm"
      1                              <1> ; ============================================================================
      2                              <1> ; FastOS SSE + AVX + AVX2 Initialization (64-bit)
      3                              <1> ; ============================================================================
@@ -579,111 +1265,164 @@
     13                              <1> 
     14                              <1> init_sse_avx:
     15                              <1>     ; Enable SSE
-    16 0000048A 0F20C0              <1>     mov rax, cr0
-    17 0000048D 6683E0FB            <1>     and ax, 0xFFFB              ; Clear CR0.EM (bit 2)
-    18 00000491 6683C802            <1>     or ax, 0x0002               ; Set CR0.MP (bit 1)
-    19 00000495 0F22C0              <1>     mov cr0, rax
+    16 00000B29 0F20C0              <1>     mov rax, cr0
+    17 00000B2C 6683E0FB            <1>     and ax, 0xFFFB              ; Clear CR0.EM (bit 2)
+    18 00000B30 6683C802            <1>     or ax, 0x0002               ; Set CR0.MP (bit 1)
+    19 00000B34 0F22C0              <1>     mov cr0, rax
     20                              <1> 
-    21 00000498 0F20E0              <1>     mov rax, cr4
-    22 0000049B 660D0002            <1>     or ax, (1 << 9)             ; CR4.OSFXSR
-    23 0000049F 660D0004            <1>     or ax, (1 << 10)            ; CR4.OSXMMEXCPT
-    24 000004A3 0F22E0              <1>     mov cr4, rax
+    21 00000B37 0F20E0              <1>     mov rax, cr4
+    22 00000B3A 660D0002            <1>     or ax, (1 << 9)             ; CR4.OSFXSR
+    23 00000B3E 660D0004            <1>     or ax, (1 << 10)            ; CR4.OSXMMEXCPT
+    24 00000B42 0F22E0              <1>     mov cr4, rax
     25                              <1> 
     26                              <1>     ; Enable XSAVE
-    27 000004A6 0F20E0              <1>     mov rax, cr4
-    28 000004A9 480D00000400        <1>     or rax, (1 << 18)           ; CR4.OSXSAVE
-    29 000004AF 0F22E0              <1>     mov cr4, rax
+    27 00000B45 0F20E0              <1>     mov rax, cr4
+    28 00000B48 480D00000400        <1>     or rax, (1 << 18)           ; CR4.OSXSAVE
+    29 00000B4E 0F22E0              <1>     mov cr4, rax
     30                              <1> 
     31                              <1>     ; Enable AVX via XCR0
-    32 000004B2 4831C9              <1>     xor rcx, rcx
-    33 000004B5 0F01D0              <1>     xgetbv
-    34 000004B8 83C807              <1>     or eax, 0x07                ; x87 + SSE + AVX
-    35 000004BB 0F01D1              <1>     xsetbv
+    32 00000B51 4831C9              <1>     xor rcx, rcx
+    33 00000B54 0F01D0              <1>     xgetbv
+    34 00000B57 83C807              <1>     or eax, 0x07                ; x87 + SSE + AVX
+    35 00000B5A 0F01D1              <1>     xsetbv
     36                              <1> 
-    37 000004BE C3                  <1>     ret
+    37 00000B5D C3                  <1>     ret
     38                              <1> 
     39                              <1> ; AVX2 self-test
     40                              <1> avx2_selftest:
-    41 000004BF C5FD76C0            <1>     db 0xC5, 0xFD, 0x76, 0xC0      ; vpcmpeqd ymm0, ymm0, ymm0
-    42 000004C3 C4E27D17C0          <1>     db 0xC4, 0xE2, 0x7D, 0x17, 0xC0 ; vptest ymm0, ymm0
-    43 000004C8 C3                  <1>     ret
-   211                                  
-   212                                  long_mode_entry:
-   213 000004C9 66B81000                    mov ax, GDT64_DATA_SEG
-   214 000004CD 8ED8                        mov ds, ax
-   215 000004CF 8EC0                        mov es, ax
-   216 000004D1 8EE0                        mov fs, ax
-   217 000004D3 8EE8                        mov gs, ax
-   218 000004D5 8ED0                        mov ss, ax
-   219 000004D7 BC00008000                  mov rsp, 0x800000
-   220                                  
-   221                                      ; VGA: Long Mode active (row 1)
-   222 000004DC BFA0800B00                  mov rdi, 0xB8000 + 160
-   223 000004E1 48BE-                       mov rsi, msg_lm_active
-   223 000004E3 [7F05000000000000] 
-   224 000004EB B40E                        mov ah, 0x0E
-   225                                  .lm_print:
-   226 000004ED AC                          lodsb
-   227 000004EE 84C0                        test al, al
-   228 000004F0 7404                        jz .lm_print_done
-   229 000004F2 66AB                        stosw
-   230 000004F4 EBF7                        jmp .lm_print
-   231                                  .lm_print_done:
-   232                                  
-   233                                      ; Init SSE + AVX + AVX2
-   234 000004F6 E88FFFFFFF                  call init_sse_avx
-   235 000004FB E8BFFFFFFF                  call avx2_selftest
-   236                                  
-   237                                      ; VGA: AVX2 ready (row 2)
-   238 00000500 BF40810B00                  mov rdi, 0xB8000 + 320
-   239 00000505 48BE-                       mov rsi, msg_avx2_ok
-   239 00000507 [A105000000000000] 
-   240 0000050F B40A                        mov ah, 0x0A
-   241                                  .avx_print:
-   242 00000511 AC                          lodsb
-   243 00000512 84C0                        test al, al
-   244 00000514 7404                        jz .avx_print_done
-   245 00000516 66AB                        stosw
-   246 00000518 EBF7                        jmp .avx_print
-   247                                  .avx_print_done:
-   248                                  
-   249                                      ; ── Build boot info for Rust kernel ──────────────────────────────────
-   250                                  
-   251                                      ; Boot info at 0x9100 (passed in RDI to Rust)
-   252 0000051A 48C704250091000005-         mov qword [0x9100], 0xFA5705           ; magic
-   252 00000523 57FA00             
-   253 00000526 48C704250891000000-         mov qword [0x9108], 0x8000             ; memory_map_addr
-   253 0000052F 800000             
-   254 00000532 8B042500800000              mov eax, [0x8000]
-   255 00000539 4889042510910000            mov qword [0x9110], rax                ; memory_map_count
-   256 00000541 48C704251891000000-         mov qword [0x9118], 0x9000             ; cpu_features_addr
-   256 0000054A 900000             
-   257 0000054D 48C704252091000000-         mov qword [0x9120], 0xB8000            ; framebuffer (VGA)
-   257 00000556 800B00             
-   258 00000559 48C704252891000000-         mov qword [0x9128], 0x100000           ; kernel_start
-   258 00000562 001000             
-   259 00000565 48C704253091000000-         mov qword [0x9130], 128 * 1024         ; kernel_size
-   259 0000056E 000200             
-   260                                  
-   261                                      ; ── Jump to Rust! ────────────────────────────────────────────────────
-   262                                  
-   263 00000571 BF00910000                  mov rdi, 0x9100
-   264 00000576 B800001000                  mov rax, 0x100000
-   265 0000057B FFE0                        jmp rax
-   266                                  
-   267 0000057D FA                          cli
-   268 0000057E F4                          hlt
-   269                                  
-   270 0000057F 5B466173744F535D20-     msg_lm_active: db "[FastOS] 64-bit Long Mode: ACTIVE", 0
-   270 00000588 36342D626974204C6F-
-   270 00000591 6E67204D6F64653A20-
-   270 0000059A 41435449564500     
-   271 000005A1 5B466173744F535D20-     msg_avx2_ok:   db "[FastOS] SSE4.2+AVX2+FMA3: READY (Ryzen 5 5600X)", 0
-   271 000005AA 535345342E322B4156-
-   271 000005B3 58322B464D41333A20-
-   271 000005BC 524541445920285279-
-   271 000005C5 7A656E203520353630-
-   271 000005CE 30582900           
-   272                                  
-   273                                  ; Pad stage2 to 16KB (32 sectors)
-   274 000005D2 00<rep 3A2Eh>           times (16384) - ($ - $$) db 0
+    41 00000B5E C5FD76C0            <1>     db 0xC5, 0xFD, 0x76, 0xC0      ; vpcmpeqd ymm0, ymm0, ymm0
+    42 00000B62 C4E27D17C0          <1>     db 0xC4, 0xE2, 0x7D, 0x17, 0xC0 ; vptest ymm0, ymm0
+    43 00000B67 C3                  <1>     ret
+   334                                  
+   335                                  long_mode_entry:
+   336 00000B68 66B81000                    mov ax, GDT64_DATA_SEG
+   337 00000B6C 8ED8                        mov ds, ax
+   338 00000B6E 8EC0                        mov es, ax
+   339 00000B70 8EE0                        mov fs, ax
+   340 00000B72 8EE8                        mov gs, ax
+   341 00000B74 8ED0                        mov ss, ax
+   342 00000B76 BC00008000                  mov rsp, 0x800000
+   343                                  
+   344                                      ; VGA: Long Mode active — row after paging msg
+   345 00000B7B 480FB60425-                 movzx rax, byte [vga_row]
+   345 00000B80 [66090000]         
+   346 00000B84 4883C002                    add rax, 2                      ; PM row + paging row
+   347 00000B88 4869C0A0000000              imul rax, 160
+   348 00000B8F 480500800B00                add rax, 0xB8000
+   349 00000B95 4889C7                      mov rdi, rax
+   350 00000B98 48BE-                       mov rsi, msg_lm_active
+   350 00000B9A [CB0C000000000000] 
+   351 00000BA2 B40E                        mov ah, 0x0E                    ; yellow on black
+   352                                  .lm_print:
+   353 00000BA4 AC                          lodsb
+   354 00000BA5 84C0                        test al, al
+   355 00000BA7 7404                        jz .lm_print_done
+   356 00000BA9 66AB                        stosw
+   357 00000BAB EBF7                        jmp .lm_print
+   358                                  .lm_print_done:
+   359                                  
+   360                                      ; Init SSE + AVX + AVX2
+   361 00000BAD E877FFFFFF                  call init_sse_avx
+   362 00000BB2 E8A7FFFFFF                  call avx2_selftest
+   363                                  
+   364                                      ; VGA: AVX2 ready — next row
+   365 00000BB7 480FB60425-                 movzx rax, byte [vga_row]
+   365 00000BBC [66090000]         
+   366 00000BC0 4883C003                    add rax, 3
+   367 00000BC4 4869C0A0000000              imul rax, 160
+   368 00000BCB 480500800B00                add rax, 0xB8000
+   369 00000BD1 4889C7                      mov rdi, rax
+   370 00000BD4 48BE-                       mov rsi, msg_avx2_ok
+   370 00000BD6 [ED0C000000000000] 
+   371 00000BDE B40A                        mov ah, 0x0A                    ; light green
+   372                                  .avx_print:
+   373 00000BE0 AC                          lodsb
+   374 00000BE1 84C0                        test al, al
+   375 00000BE3 7404                        jz .avx_print_done
+   376 00000BE5 66AB                        stosw
+   377 00000BE7 EBF7                        jmp .avx_print
+   378                                  .avx_print_done:
+   379                                  
+   380                                      ; VGA: jumping to kernel — next row
+   381 00000BE9 480FB60425-                 movzx rax, byte [vga_row]
+   381 00000BEE [66090000]         
+   382 00000BF2 4883C004                    add rax, 4
+   383 00000BF6 4869C0A0000000              imul rax, 160
+   384 00000BFD 480500800B00                add rax, 0xB8000
+   385 00000C03 4889C7                      mov rdi, rax
+   386 00000C06 48BE-                       mov rsi, msg_jump_kernel
+   386 00000C08 [160D000000000000] 
+   387 00000C10 B40F                        mov ah, 0x0F                    ; white on black
+   388                                  .jk_print:
+   389 00000C12 AC                          lodsb
+   390 00000C13 84C0                        test al, al
+   391 00000C15 7404                        jz .jk_print_done
+   392 00000C17 66AB                        stosw
+   393 00000C19 EBF7                        jmp .jk_print
+   394                                  .jk_print_done:
+   395                                  
+   396                                      ; ── Build boot info for Rust kernel ──────────────────────────────────
+   397                                  
+   398                                      ; Boot info at 0x9100 (passed in RDI to Rust)
+   399 00000C1B 48C704250091000005-         mov qword [0x9100], 0xFA5705           ; magic
+   399 00000C24 57FA00             
+   400 00000C27 48C704250891000000-         mov qword [0x9108], 0x8000             ; memory_map_addr
+   400 00000C30 800000             
+   401 00000C33 8B042500800000              mov eax, [0x8000]
+   402 00000C3A 4889042510910000            mov qword [0x9110], rax                ; memory_map_count
+   403 00000C42 48C704251891000000-         mov qword [0x9118], 0x9000             ; cpu_features_addr
+   403 00000C4B 900000             
+   404                                  
+   405                                      ; Framebuffer: use VBE address if set, otherwise VGA 0xB8000
+   406 00000C4E 8B0425[41030000]            mov eax, [vbe_fb_addr]
+   407 00000C55 4889042520910000            mov qword [0x9120], rax                ; framebuffer_addr
+   408 00000C5D 48C704252891000000-         mov qword [0x9128], 0x100000           ; kernel_start
+   408 00000C66 001000             
+   409 00000C69 48C704253091000000-         mov qword [0x9130], 132 * 1024         ; kernel_size (132KB)
+   409 00000C72 100200             
+   410                                  
+   411                                      ; Extended boot info: VBE data
+   412 00000C75 0FB70425[45030000]          movzx eax, word [vbe_pitch]
+   413 00000C7D 4889042538910000            mov qword [0x9138], rax                ; fb_pitch
+   414 00000C85 0FB60425[47030000]          movzx eax, byte [vbe_mode_ok]
+   415 00000C8D 4889042540910000            mov qword [0x9140], rax                ; vbe_mode (1=graphics, 0=text)
+   416                                  
+   417                                      ; Extended boot info: GSP Firmware (loaded by payload_loader.asm)
+   418 00000C95 8B0425[41050000]            mov eax, dword [payload_base]
+   419 00000C9C 4889042548910000            mov qword [0x9148], rax                ; gpu_fw_addr
+   420 00000CA4 8B0425[49050000]            mov eax, dword [payload_size]
+   421 00000CAB 4889042550910000            mov qword [0x9150], rax                ; gpu_fw_size
+   422                                  
+   423                                      ; ── Jump to Rust kernel with System V AMD64 ABI arguments ─────────────
+   424                                      ; RDI = GSP firmware address (0x1000000)
+   425                                      ; RSI = GSP firmware size (72845296)
+   426                                      ; RDX = memory map pointer (0x8000)
+   427                                  
+   428 00000CB3 BF00000001                  mov rdi, 0x1000000              ; GSP firmware address
+   429 00000CB8 BEF0875704                  mov rsi, 72845296               ; GSP firmware size
+   430 00000CBD BA00800000                  mov rdx, 0x8000                 ; Memory map pointer
+   431                                  
+   432 00000CC2 B800001000                  mov rax, 0x100000              ; Kernel entry point
+   433 00000CC7 FFE0                        jmp rax
+   434                                  
+   435 00000CC9 FA                          cli
+   436 00000CCA F4                          hlt
+   437                                  
+   438 00000CCB 5B466173744F535D20-     msg_lm_active:   db "[FastOS] 64-bit Long Mode: ACTIVE", 0
+   438 00000CD4 36342D626974204C6F-
+   438 00000CDD 6E67204D6F64653A20-
+   438 00000CE6 41435449564500     
+   439 00000CED 5B466173744F535D20-     msg_avx2_ok:     db "[FastOS] SSE4.2+AVX2+FMA3: READY (Zen 3)", 0
+   439 00000CF6 535345342E322B4156-
+   439 00000CFF 58322B464D41333A20-
+   439 00000D08 524541445920285A65-
+   439 00000D11 6E20332900         
+   440 00000D16 5B466173744F535D20-     msg_jump_kernel: db "[FastOS] Jumping to Rust kernel @ 0x100000...", 0
+   440 00000D1F 4A756D70696E672074-
+   440 00000D28 6F2052757374206B65-
+   440 00000D31 726E656C2040203078-
+   440 00000D3A 3130303030302E2E2E-
+   440 00000D43 00                 
+   441                                  
+   442                                  ; Pad stage2 to 16KB (32 sectors)
+   443 00000D44 00<rep 32BCh>           times (16384) - ($ - $$) db 0

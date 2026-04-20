@@ -148,9 +148,7 @@ stage2_start:
     call print_string_16
 
     ; ── Load external modules (GSP Firmware) ─────────────────────────────
-    ; Save boot drive (DL) to payload_loader's local variable
-    mov al, [stage2_boot_drive]
-    mov [payload_boot_drive], al
+    ; Pass boot drive address in BX so payload_loader reads from stage2's copy
     call load_payloads
 
     ; ── CRITICAL: Restore stack to known good state after load_payloads ──

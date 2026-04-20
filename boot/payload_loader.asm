@@ -36,10 +36,10 @@ load_payloads:
     mov si, pl_msg_start
     call pl_print_string
 
-    ; Print boot_drive value
+    ; Print boot_drive value (read from stage2's saved copy)
     mov si, pl_msg_dl
     call pl_print_string
-    mov al, [payload_boot_drive]
+    mov al, [stage2_boot_drive]
     call pl_print_hex_byte
     call pl_print_newline
 
@@ -48,7 +48,7 @@ load_payloads:
     call pl_print_string
     mov ah, 0x41
     mov bx, 0x55AA
-    mov dl, [payload_boot_drive]
+    mov dl, [stage2_boot_drive]
     int 0x13
     jc pl_no_lba
     cmp bx, 0xAA55
@@ -107,6 +107,13 @@ pl_continue_load:
     mov dword [pl_dest_addr], GSP_FW_LOAD_ADDR
     mov word  [pl_remain], TOTAL_ITERATIONS
 
+    ; Diagnostic: print DL that will be used for reads
+    mov si, pl_msg_using_dl
+    call pl_print_string
+    mov al, [stage2_boot_drive]
+    call pl_print_hex_byte
+    call pl_print_newline
+
 pl_load_loop:
     ; Set sector count: last iteration = 4 sectors, else = 16
     cmp word [pl_remain], 1
@@ -123,7 +130,7 @@ pl_do_read:
     mov ds, ax
 
     mov ah, 0x42
-    mov dl, [payload_boot_drive]
+    mov dl, [stage2_boot_drive]
     mov si, pl_dap
     int 0x13
     jc pl_read_error
@@ -210,12 +217,35 @@ pl_read_error:
     ; Restore SP to the value right after pusha (before any push cx etc.)
     mov sp, [pl_saved_sp]
 
-    ; Print error message
+    ; Print error message with details
     mov si, pl_msg_error
     call pl_print_string
+
     mov si, pl_msg_error_code
     call pl_print_string
     mov al, [pl_err_code]
+    call pl_print_hex_byte
+    call pl_print_newline
+
+    ; Print which LBA failed
+    mov si, pl_msg_error_lba
+    call pl_print_string
+    mov al, byte [pl_dap_lba+3]
+    call pl_print_hex_byte
+    mov al, byte [pl_dap_lba+2]
+    call pl_print_hex_byte
+    mov al, byte [pl_dap_lba+1]
+    call pl_print_hex_byte
+    mov al, byte [pl_dap_lba]
+    call pl_print_hex_byte
+    call pl_print_newline
+
+    ; Print remaining iterations
+    mov si, pl_msg_error_rem
+    call pl_print_string
+    mov al, byte [pl_remain+1]
+    call pl_print_hex_byte
+    mov al, byte [pl_remain]
     call pl_print_hex_byte
     call pl_print_newline
 
@@ -279,7 +309,6 @@ pl_print_newline:
 
 ; ── Data (after all code) ─────────────────────────────────────────────────────
 align 4
-payload_boot_drive:  db 0
 payload_base:        dq 0
 payload_size:        dq 0
 pl_saved_sp:         dw 0              ; SP after pusha (for error recovery)
@@ -312,6 +341,7 @@ pl_unreal_gdt_desc:
     dw pl_unreal_gdt_desc - pl_unreal_gdt - 1
     dd pl_unreal_gdt                   ; Patched at runtime to physical addr
 
+pl_msg_using_dl   db "[S2] Using DL for reads = ", 0
 pl_msg_start      db "[S2] Loading GSP firmware (Unreal Mode)...", 13, 10, 0
 pl_msg_dl         db "[S2] Boot drive (saved) = ", 0
 pl_msg_lba_check  db "[S2] Checking LBA extensions (AH=41h)...", 13, 10, 0
@@ -320,3 +350,5 @@ pl_msg_lba_fail   db "[S2] LBA extensions: NOT SUPPORTED", 13, 10, 0
 pl_msg_done       db "[S2] GSP firmware loaded OK", 13, 10, 0
 pl_msg_error      db "[S2] ERROR: Firmware load failed", 13, 10, 0
 pl_msg_error_code db "[S2] INT 13h error code (AH) = ", 0
+pl_msg_error_lba  db "[S2] Failed at LBA = ", 0
+pl_msg_error_rem  db "[S2] Remaining iterations = ", 0
