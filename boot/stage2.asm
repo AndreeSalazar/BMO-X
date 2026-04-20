@@ -81,8 +81,17 @@ stage2_start:
     mov si, msg_a20_ok
     call print_string_16
 
+    ; Bisect: before memory
+    mov si, msg_b1
+    call print_string_16
+
     ; Detect memory (E820)
     call detect_memory_e820
+
+    ; Bisect: after memory
+    mov si, msg_b2
+    call print_string_16
+
     mov si, msg_mem_ok
     call print_string_16
 
@@ -158,6 +167,8 @@ msg_loading_kernel: db "[FastOS] Loading kernel...", 13, 10, 0
 msg_kernel_loaded:  db "[FastOS] Kernel at 0x10000", 13, 10, 0
 msg_kernel_err:     db "[FastOS] KERNEL LOAD ERROR!", 13, 10, 0
 msg_entering_pm:    db "[FastOS] Entering Protected Mode...", 13, 10, 0
+msg_b1:             db "[B1] pre-mem", 13, 10, 0
+msg_b2:             db "[B2] post-mem", 13, 10, 0
 
 stage2_boot_drive: db 0
 
