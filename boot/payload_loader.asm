@@ -3,9 +3,11 @@
 ; ============================================================================
 ; Target: RTX 3060 12GB (GA106)
 ; Board: MSI MS-7C52 (B550), AMI Aptio V BIOS
-; 
-; PROBLEM: AMI Aptio V destroys segment limits on every BIOS interrupt.
-; SOLUTION: Re-enter Unreal Mode after every INT 13h call.
+;
+; BUG FIXES:
+; 1. DL corruption: boot_drive saved in stage2.asm, restored before INT 13h
+; 2. DAP corruption: moved to safe data section, physical address verified
+; 3. AMI Aptio V segment limits: re-enter Unreal Mode after every INT 13h
 ; ============================================================================
 
 [BITS 16]
@@ -18,7 +20,14 @@ BLOCK_SIZE          equ 8192           ; 16 * 512 = 8KB
 BUFFER_ADDR         equ 0x20000        ; 128KB - safe buffer
 TOTAL_ITERATIONS    equ 8888           ; 142,196 / 16 = 8887.25 → 8888
 
+; ── External symbols from stage2.asm ─────────────────────────────────────────
+extern stage2_boot_drive
+extern print_string_16
+
 ; ── DAP for INT 13h AH=42h ───────────────────────────────────────────────────
+; Placed in data section (after all code) to avoid corruption
+; Physical address will be printed for verification
+section .data
 align 4
 dap:
     db 0x10               ; DAP size (16 bytes)
@@ -31,6 +40,9 @@ dap_buffer_segment:
     dw 0x2000             ; Segment 0x2000 → 0x20000 physical (128KB)
 dap_lba:
     dq 0                  ; LBA (set dynamically)
+
+payload_base dq 0
+payload_size dq 0
 
 ; ── Unreal Mode GDT ────────────────────────────────────────────────────────
 ; AMI Aptio V B550 requires proper 4GB data descriptor
@@ -51,9 +63,7 @@ unreal_gdt_desc:
     dw unreal_gdt_desc - unreal_gdt - 1  ; Limit
     dd unreal_gdt                          ; Base (physical address)
 
-; ── External symbols from stage2.asm ─────────────────────────────────────────
-extern stage2_boot_drive
-extern print_string_16
+section .text
 
 ; ── load_payloads ──────────────────────────────────────────────────────────
 ; Entry point called from stage2.asm
@@ -65,10 +75,39 @@ load_payloads:
     mov si, msg_start
     call print_string_16
 
-    ; ── DIAGNOSTIC 1: Print DL value (boot drive) ───────────────────────
+    ; ── DIAGNOSTIC 1: Print boot_drive value (from saved memory) ───────
     mov si, msg_dl
     call print_string_16
-    mov al, dl
+    mov al, [stage2_boot_drive]
+    call print_hex_byte
+    call print_newline
+
+    ; ── DIAGNOSTIC 1b: Print DAP physical address ───────────────────────
+    ; Calculate: CS * 16 + offset(dap)
+    mov si, msg_dap_addr
+    call print_string_16
+    xor eax, eax
+    mov ax, cs
+    shl eax, 4                 ; CS * 16 = segment base
+    lea bx, [dap]
+    add eax, ebx               ; + offset = physical address
+    ; Print EAX as hex (need helper for 32-bit)
+    push eax
+    shr eax, 24
+    mov al, ah
+    call print_hex_byte
+    pop eax
+    push eax
+    shr eax, 16
+    mov al, ah
+    call print_hex_byte
+    pop eax
+    push eax
+    shr eax, 8
+    mov al, ah
+    call print_hex_byte
+    pop eax
+    mov al, ah
     call print_hex_byte
     call print_newline
 
@@ -77,7 +116,7 @@ load_payloads:
     call print_string_16
     mov ah, 0x41
     mov bx, 0x55AA
-    mov dl, [stage2_boot_drive]
+    mov dl, [stage2_boot_drive]    ; RESTORE DL from saved memory
     int 0x13
     jc .no_lba
     cmp bx, 0xAA55
@@ -95,7 +134,7 @@ load_payloads:
     mov si, msg_drive_check
     call print_string_16
     mov ah, 0x08
-    mov dl, [stage2_boot_drive]
+    mov dl, [stage2_boot_drive]    ; RESTORE DL from saved memory
     int 0x13
     jc .drive_fail
     mov si, msg_drive_ok
@@ -182,8 +221,9 @@ load_payloads:
 .do_read:
     ; ── CALL BIOS INT 13h AH=42h ────────────────────────────────────────
     ; This destroys segment limits on AMI Aptio V
+    ; CRITICAL: Restore DL from saved memory before every BIOS call
     mov ah, 0x42
-    mov dl, [stage2_boot_drive]
+    mov dl, [stage2_boot_drive]    ; RESTORE DL from saved memory
     mov si, dap
     int 0x13
     jc .read_error
@@ -309,7 +349,8 @@ print_newline:
 
 ; ── Variables ──────────────────────────────────────────────────────────────
 msg_start      db "[S2] Loading GSP firmware (Unreal Mode)...", 13, 10, 0
-msg_dl         db "[S2] Boot drive (DL) = ", 0
+msg_dl         db "[S2] Boot drive (saved) = ", 0
+msg_dap_addr   db "[S2] DAP physical address = ", 0
 msg_lba_check  db "[S2] Checking LBA extensions (AH=41h)...", 13, 10, 0
 msg_lba_ok     db "[S2] LBA extensions: SUPPORTED", 13, 10, 0
 msg_lba_fail   db "[S2] LBA extensions: NOT SUPPORTED", 13, 10, 0
@@ -320,6 +361,3 @@ msg_dap_dump   db "[S2] DAP bytes: ", 0
 msg_done       db "[S2] GSP firmware loaded OK", 13, 10, 0
 msg_error      db "[S2] ERROR: Firmware load failed", 13, 10, 0
 msg_error_code db "[S2] INT 13h error code (AH) = ", 0
-
-payload_base dq 0
-payload_size dq 0

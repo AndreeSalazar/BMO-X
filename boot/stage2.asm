@@ -43,6 +43,11 @@ print_string_16:
     ret
 
 stage2_start:
+    ; ── CRITICAL: Save boot drive (DL) IMMEDIATELY ───────────────────────
+    ; BIOS sets DL=0x80 (first hard drive) on boot. Save it NOW before
+    ; any code execution to prevent corruption.
+    mov [stage2_boot_drive], dl
+
     ; ── Ultra-early VGA diagnostic ───────────────────────────────────────
     ; Write "S2" directly to VGA text buffer at bottom-left (row 24).
     ; This proves Stage2 code is executing, even if INT 10h or segments
@@ -62,9 +67,6 @@ stage2_start:
     mov ss, ax
     mov sp, 0x7C00
     sti
-
-    ; Save boot drive from stage1 (DL preserved across jmp)
-    mov [stage2_boot_drive], dl
 
     mov si, msg_s2_start
     call print_string_16
