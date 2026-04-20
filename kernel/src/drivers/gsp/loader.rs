@@ -152,9 +152,36 @@ impl<'a> GspLoader<'a> {
 
     /// Secuencia completa de carga GSP
     pub fn load(&self, fw_blob: &[u8], con: &mut Console) -> Result<(), GspLoadError> {
+        // Verificar tamaño mínimo
+        if fw_blob.len() < 4 {
+            return Err(GspLoadError::NullFirmware);
+        }
+
+        // Verificar magic ELF — debe ser 7F 45 4C 46
+        let magic = &fw_blob[0..4];
+        if magic != &[0x7F, 0x45, 0x4C, 0x46] {
+            con.print("  GSP: BAD MAGIC = ");
+            con.print_hex32((magic[0] as u32) << 24 | (magic[1] as u32) << 16 | (magic[2] as u32) << 8 | magic[3] as u32);
+            con.println("");
+            return Err(GspLoadError::NullFirmware);
+        }
+
+        con.println("  GSP: ELF magic OK");
         con.print("  GSP: loading firmware (");
         con.print_hex32(fw_blob.len() as u32);
         con.println(" bytes)...");
+
+        // Verificar integridad: mid y end bytes
+        let mid = fw_blob[fw_blob.len() / 2];
+        let last = fw_blob[fw_blob.len() - 1];
+        con.print("  GSP: FW[0]   = 0x7F454C46 (ELF)");
+        con.println("");
+        con.print("  GSP: FW[mid] = 0x");
+        con.print_hex32(mid as u32);
+        con.println("");
+        con.print("  GSP: FW[end] = 0x");
+        con.print_hex32(last as u32);
+        con.println("");
 
         // 1. Cargar firmware via DMA
         self.load_firmware_dma(fw_blob)?;

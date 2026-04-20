@@ -89,15 +89,15 @@ load_payloads:
     mov dword [dap_lba], 1000     ; Start reading at LBA 1000
     mov dword [dap_lba+4], 0
     
-    mov ecx, 2221                ; Loop 2221 times * 64 sectors = 142144 sectors (~69.5MB)
+    mov ecx, 1119                ; Loop 1119 times * 127 sectors = 142113 sectors (~69.5MB)
     mov edi, GSP_FW_LOAD_ADDR     ; Physical destination (16MB = 0x1000000)
     mov ebx, ecx                 ; Save total count for progress
 
 .read_loop:
     push cx
     
-    ; Setup DAP to read 64 sectors (32 KB)
-    mov word [dap_count], 64
+    ; Setup DAP to read 127 sectors (65KB) - max safe size for Int 13h
+    mov word [dap_count], 127
 
     ; Call BIOS Int 13h AH=42h
     mov ah, 0x42
@@ -106,15 +106,15 @@ load_payloads:
     int 0x13
     jc .read_error
 
-    ; Copy 32KB from buffer (0x10000) to high memory (EDI)
+    ; Copy 65KB from buffer (0x10000) to high memory (EDI)
     ; Since we are in Unreal Mode, we can use 32-bit registers for address!
     push edi
     push esi
     
     ; Source is physical 0x10000
     mov esi, 0x10000
-    ; Count = 32768 bytes / 4 = 8192 dwords
-    mov ecx, 8192
+    ; Count = 65024 bytes / 4 = 16256 dwords
+    mov ecx, 16256
     
     ; rep movsd (32-bit copy in Real Mode thanks to Unreal Mode limits)
     ; We must use a segment prefix if not using DS, but DS=0 so ESI=0x10000 is linear.
@@ -123,20 +123,20 @@ load_payloads:
     pop esi
     pop edi
 
-    ; Increment destination by 32KB
-    add edi, 32768
+    ; Increment destination by 65KB (127 * 512)
+    add edi, 65024
     
-    ; Increment LBA by 64
+    ; Increment LBA by 127
     mov eax, dword [dap_lba]
-    add eax, 64
+    add eax, 127
     mov dword [dap_lba], eax
 
-    ; Progress indicator every 500 blocks (32MB)
+    ; Progress indicator every 10 blocks (~640KB)
     push cx
     mov eax, ebx
     sub eax, ecx
     mov dx, 0
-    mov cx, 500
+    mov cx, 10
     div cx
     cmp dx, 0
     jne .no_progress
