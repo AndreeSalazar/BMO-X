@@ -154,7 +154,10 @@ stage2_start:
     call load_payloads
 
     ; ── Payload loaded, jump directly to Protected Mode transition ───────
-    ; Skip VBE and other checks to avoid re-executing Stage2 start
+    ; Diagnostic: print message before jump
+    mov si, msg_entering_pm
+    call print_string_16
+
     jmp .enter_protected_mode
 
     ; ── VBE: Set 1920x1080x32bpp mode ────────────────────────────────────
