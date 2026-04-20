@@ -13,7 +13,7 @@
 [BITS 16]
 
 ; DAP (Disk Address Packet) for Int 13h AH=42h
-; Use safe buffer at 0x80000 (512KB) - after kernel load area
+; Use safe buffer at 0x20000 (128KB) - after BIOS data area
 align 4
 dap:
     db 0x10               ; Size of DAP (16 bytes)
@@ -23,8 +23,8 @@ dap_count:
 dap_buffer_offset:
     dw 0x0000             ; Offset
 dap_buffer_segment:
-    dw 0x8000             ; Segment (0x8000:0x0000 = 0x80000 physical = 512KB)
-                            ; Safe area - after kernel (loaded at 0x10000-0x20000)
+    dw 0x2000             ; Segment (0x2000:0x0000 = 0x20000 physical = 128KB)
+                            ; Safe area - after BIOS data, before kernel at 1MB
 dap_lba:
     dq 0                  ; LBA to read from (Set dynamically)
 
@@ -95,21 +95,25 @@ load_payloads:
     retf                  ; Far return to Real Mode
 
 .rm_entry:
+    ; CRITICAL: Restore segment registers immediately after retf
+    xor ax, ax
+    mov ds, ax    ; DS = 0
+    mov es, ax    ; ES = 0
+    mov ss, ax    ; SS = 0 (critical for stack)
+    mov sp, 0x7C00 ; Stack at known safe location (same as MBR load address)
+    
     ; CHK4 - After retf (Unreal Mode active)
     mov si, msg_chk4
     call print_string_16
 
-    ; Now back in Real Mode but segments keep 4GB hidden limit (Unreal Mode)
-
-    ; Restore DS and ES to 0 (pusha will restore original values later)
-    xor ax, ax
-    mov ds, ax
-    mov es, ax
-    sti
-
     ; CHK5 - Before INT 13h
     mov si, msg_chk5
     call print_string_16
+    
+    ; Reset stack to known safe location before INT 13h
+    xor ax, ax
+    mov ss, ax
+    mov sp, 0x7C00
 
     ; Step 2: Read Módulo 1 (GSP Firmware - 69.5MB)
     ; In build.ps1, the firmware is written at LBA 1000.
@@ -141,20 +145,20 @@ load_payloads:
 
 .do_read:
     ; Call BIOS Int 13h AH=42h
-    ; Reads to safe buffer at 0x80000
+    ; Reads to safe buffer at 0x20000
     mov ah, 0x42
     mov dl, [stage2_boot_drive]
     mov si, dap
     int 0x13
     jc .read_error
 
-    ; Copy from buffer (0x80000) to high memory (EDI)
+    ; Copy from buffer (0x20000) to high memory (EDI)
     ; Since we are in Unreal Mode, we can use 32-bit registers for address!
     push edi
     push esi
     
-    ; Source is physical 0x80000
-    mov esi, 0x80000
+    ; Source is physical 0x20000
+    mov esi, 0x20000
     
     ; Calculate copy size based on dap_count
     mov ax, [dap_count]
