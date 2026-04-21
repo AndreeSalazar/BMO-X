@@ -2,9 +2,9 @@
   FastOS - UEFI Native Boot Image
 ======================================================
 
-  Bootloader: BOOTX64.EFI (39KB)
+  Bootloader: BOOTX64.EFI (40KB)
   Kernel:    kernel.elf (251KB)
-  Built:     2026-04-20 21:27:29
+  Built:     2026-04-20 21:38:23
   Target:    Ryzen 5 5600X + RTX 3060 12G
   Mode:      UEFI Native (No CSM/Legacy)
 

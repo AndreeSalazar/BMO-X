@@ -280,14 +280,24 @@ fn main() -> Status {
     info!("Kernel entry point: 0x{:x}", entry_point);
 
     // ── 4. Load PT_LOAD segments into memory ────────────────────────────────
+    //
+    // Strategy: first compute total kernel span, allocate ALL pages in one
+    // call covering [kernel_base_page .. kernel_end_page), then copy each
+    // segment.  A single large allocation is far more likely to succeed than
+    // multiple small ones that may conflict with firmware reservations.
+    //
+    // We try AllocateType::Address first (exact placement).  If the firmware
+    // has the region reserved we fall back to AnyPages and relocate after
+    // exit_boot_services.
+
     let mut kernel_base: u64 = u64::MAX;
     let mut kernel_end: u64 = 0;
 
+    // First pass — compute the full virtual address span
     for phdr in &elf.phdrs {
         if phdr.p_type != PT_LOAD || phdr.p_memsz == 0 {
             continue;
         }
-
         let seg_start = phdr.p_vaddr;
         let seg_end = seg_start + phdr.p_memsz;
         if seg_start < kernel_base {
@@ -296,27 +306,74 @@ fn main() -> Status {
         if seg_end > kernel_end {
             kernel_end = seg_end;
         }
+    }
 
-        // Page-align the segment base and compute number of pages
+    let kernel_page_base = kernel_base & !0xFFF;
+    let total_pages = ((kernel_end - kernel_page_base + 0xFFF) / 0x1000) as usize;
+
+    info!(
+        "Kernel span: base=0x{:x} end=0x{:x} total_pages={}",
+        kernel_page_base, kernel_end, total_pages
+    );
+
+    // Try to allocate at the exact address the linker script specifies.
+    // Many UEFI firmwares reserve the low 1 MB region, so we handle failure
+    // gracefully by falling back to AnyPages.
+    let mut needs_relocation = false;
+    let mut temp_buf_addr: u64 = 0;
+
+    match boot::allocate_pages(
+        boot::AllocateType::Address(kernel_page_base),
+        MemoryType::LOADER_DATA,
+        total_pages,
+    ) {
+        Ok(_) => {
+            info!("Allocated kernel pages at 0x{:x}", kernel_page_base);
+        }
+        Err(_) => {
+            info!(
+                "Address 0x{:x} unavailable, using temporary buffer",
+                kernel_page_base
+            );
+            let ptr = boot::allocate_pages(
+                boot::AllocateType::AnyPages,
+                MemoryType::LOADER_DATA,
+                total_pages,
+            )
+            .expect("Failed to allocate pages for kernel (fallback)");
+            temp_buf_addr = ptr.as_ptr() as u64;
+            needs_relocation = true;
+            info!("Temp kernel buffer at 0x{:x}", temp_buf_addr);
+        }
+    }
+
+    // Second pass — copy each segment into the (possibly temporary) buffer
+    for phdr in &elf.phdrs {
+        if phdr.p_type != PT_LOAD || phdr.p_memsz == 0 {
+            continue;
+        }
+
+        let seg_start = phdr.p_vaddr;
+        let seg_end = seg_start + phdr.p_memsz;
+        let offset_in_image = seg_start - kernel_page_base;
+
+        let dst_base = if needs_relocation {
+            temp_buf_addr + offset_in_image
+        } else {
+            seg_start
+        };
+
         let page_base = seg_start & !0xFFF;
         let pages = ((seg_end - page_base + 0xFFF) / 0x1000) as usize;
 
         info!(
-            "PT_LOAD: vaddr=0x{:x} filesz=0x{:x} memsz=0x{:x} pages={}",
-            seg_start, phdr.p_filesz, phdr.p_memsz, pages
+            "PT_LOAD: vaddr=0x{:x} filesz=0x{:x} memsz=0x{:x} pages={} dst=0x{:x}",
+            seg_start, phdr.p_filesz, phdr.p_memsz, pages, dst_base
         );
-
-        // Allocate pages at the requested physical address
-        boot::allocate_pages(
-            boot::AllocateType::Address(page_base),
-            MemoryType::LOADER_DATA,
-            pages,
-        )
-        .expect("Failed to allocate pages for PT_LOAD segment");
 
         unsafe {
             // Copy file data
-            let dst = seg_start as *mut u8;
+            let dst = dst_base as *mut u8;
             let src = elf_data.as_ptr().add(phdr.p_offset as usize);
             core::ptr::copy_nonoverlapping(src, dst, phdr.p_filesz as usize);
 
@@ -458,6 +515,21 @@ fn main() -> Status {
         count += 1;
     }
     bi.memory_map_count = count as u64;
+
+    // ── 10b. Relocate kernel if we used a temporary buffer ────────────────
+    //
+    // After exit_boot_services the firmware's memory reservations are gone,
+    // so we can safely write to the target address (e.g. 0x100000).
+    if needs_relocation {
+        let total_bytes = total_pages * 0x1000;
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                temp_buf_addr as *const u8,
+                kernel_page_base as *mut u8,
+                total_bytes,
+            );
+        }
+    }
 
     // ── 11. Jump to kernel ──────────────────────────────────────────────────
     unsafe {
