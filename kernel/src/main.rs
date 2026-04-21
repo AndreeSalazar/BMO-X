@@ -73,11 +73,24 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
         core::ptr::write_bytes(bss_start, 0, len);
     }
 
+    // CHECKPOINT 1 - AZUL: Después de BSS zero (antes de serial init)
+    // Necesitamos leer fb_addr pero sin serial init todavía
+    if !boot_info_ptr.is_null() {
+        let bi = unsafe { &*boot_info_ptr };
+        if bi.fb_addr != 0 {
+            unsafe {
+                let fb = bi.fb_addr as *mut u32;
+                // Franja azul (0x00FF0000) en la parte superior
+                for i in 0..(bi.fb_width as usize * 10) {
+                    *fb.add(i) = 0x00FF0000;
+                }
+            }
+        }
+    }
+
     // ── Initialize serial first for debug output ─────────────────────
     drivers::serial::init_serial();
     drivers::serial::serial_write("[FastOS] Kernel v0.5.0 starting\n");
-
-    // CHECKPOINT 1 - AZUL: Después de serial init
     // Verificar que boot_info_ptr no es null antes de desrefenciar
     if boot_info_ptr.is_null() {
         drivers::serial::serial_write("[FastOS] FATAL: boot_info_ptr is NULL!\n");
@@ -85,18 +98,8 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
     }
 
     let bi = unsafe { &*boot_info_ptr };
-    if bi.fb_addr != 0 {
-        unsafe {
-            let fb = bi.fb_addr as *mut u32;
-            // Franja azul (0x00FF0000) en la parte superior
-            for i in 0..(bi.fb_width as usize * 10) {
-                *fb.add(i) = 0x00FF0000;
-            }
-        }
-    }
 
     // ── Validate BootInfo magic ──────────────────────────────────────
-    let bi = unsafe { &*boot_info_ptr };
     if bi.magic != fastos_boot_protocol::BOOT_MAGIC {
         drivers::serial::serial_write("[FastOS] FATAL: Invalid BootInfo magic: ");
         serial_hex(bi.magic);
