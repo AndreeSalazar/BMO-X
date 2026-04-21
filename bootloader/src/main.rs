@@ -370,7 +370,10 @@ fn main() -> Status {
     let mut gsp_size: u64 = 0;
 
     info!("Attempting to load GSP firmware (gsp_ga10x.bin)...");
-    match read_file_from_device(device_handle, "gsp_ga10x.bin") {
+    // Try root first, then EFI\BOOT\
+    let gsp_data_opt = read_file_from_device(device_handle, "\\gsp_ga10x.bin")
+        .or_else(|| read_file_from_device(device_handle, "\\EFI\\BOOT\\gsp_ga10x.bin"));
+    match gsp_data_opt {
         Some(gsp_data) => {
             let fw_size = gsp_data.len();
             let fw_pages = (fw_size + 0xFFF) / 0x1000;
