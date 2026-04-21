@@ -333,6 +333,48 @@ fn main() -> Status {
         kernel_base, kernel_size
     );
 
+    // ── 4b. Load GSP firmware (optional) ────────────────────────────────────
+    let mut gsp_addr: u64 = 0;
+    let mut gsp_size: u64 = 0;
+
+    info!("Attempting to load GSP firmware (gsp_ga10x.bin)...");
+    match read_file_from_device(device_handle, "gsp_ga10x.bin") {
+        Some(gsp_data) => {
+            let fw_size = gsp_data.len();
+            let fw_pages = (fw_size + 0xFFF) / 0x1000;
+            info!(
+                "GSP firmware loaded: {} bytes ({} pages)",
+                fw_size, fw_pages
+            );
+
+            let fw_ptr = boot::allocate_pages(
+                boot::AllocateType::AnyPages,
+                MemoryType::LOADER_DATA,
+                fw_pages,
+            )
+            .expect("Failed to allocate pages for GSP firmware")
+            .as_ptr() as *mut u8;
+
+            unsafe {
+                // Zero the entire allocation (page-aligned buffer for DMA)
+                core::ptr::write_bytes(fw_ptr, 0, fw_pages * 0x1000);
+                // Copy firmware data into the allocated pages
+                core::ptr::copy_nonoverlapping(gsp_data.as_ptr(), fw_ptr, fw_size);
+            }
+
+            gsp_addr = fw_ptr as u64;
+            gsp_size = fw_size as u64;
+            info!(
+                "GSP firmware at 0x{:x} size=0x{:x}",
+                gsp_addr, gsp_size
+            );
+        }
+        None => {
+            info!("WARNING: gsp_ga10x.bin not found on ESP — GSP firmware will not be available");
+        }
+    }
+
+
     // ── 5. Query GOP ────────────────────────────────────────────────────────
     let gop = query_gop().expect("Failed to query GOP");
 
@@ -387,9 +429,9 @@ fn main() -> Status {
         bi.stack_top = stack_top;
         bi.stack_size = KERNEL_STACK_SIZE as u64;
 
-        // GSP not loaded by bootloader
-        bi.gsp_addr = 0;
-        bi.gsp_size = 0;
+        // GSP firmware (loaded in step 4b, or 0 if not found)
+        bi.gsp_addr = gsp_addr;
+        bi.gsp_size = gsp_size;
     }
 
     info!("BootInfo at 0x{:x}", boot_info_ptr as u64);

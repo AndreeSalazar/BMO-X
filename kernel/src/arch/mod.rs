@@ -6,3 +6,4 @@ pub mod acpi;
 pub mod idt;
 pub mod pic;
 pub mod pit;
+pub mod page_alloc;

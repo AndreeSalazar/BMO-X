@@ -5,3 +5,4 @@
 
 pub mod scratch;
 pub mod loader;
+pub mod priv_ring;
