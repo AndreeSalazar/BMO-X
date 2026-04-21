@@ -270,7 +270,7 @@ fn main() -> Status {
 
     // -- 2. Read kernel.elf from ESP -----------------------------------------
     info!("Loading kernel.elf...");
-    let elf_data = read_file_from_device(device_handle, "kernel.elf")
+    let elf_data = read_file_from_device(device_handle, "\\EFI\\BOOT\\kernel.elf")
         .expect("Failed to read kernel.elf");
     info!("kernel.elf loaded: {} bytes", elf_data.len());
 
