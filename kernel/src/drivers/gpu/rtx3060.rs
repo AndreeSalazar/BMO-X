@@ -15,7 +15,7 @@ static PLATFORM: FastOsPlatform = FastOsPlatform::new();
 pub fn init_gpu_driver(gpu_pci_bar0: u64) -> NvResult<DriverState> {
     // [!] FASE 4: Inyectamos voltajes directamente al BAR0 del Hardware (MMIO SEC2)
     // El escáner SigDead descubrió esto: "Offset: 0x00A899B1 -> Register: 0x0010A43C (SEC2 (Secure Boot))"
-    unsafe {
+    {
         let sec2_mmio_base = gpu_pci_bar0 + 0x10A43C;
         // Sólo preparamos el log. NO escribimos de verdad porque hacerlo
         // desde un entorno no controlado podría colapsar el bus PCIe en el host (Pantallazo Azul).

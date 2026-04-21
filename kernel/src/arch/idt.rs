@@ -60,28 +60,28 @@ pub fn init_idt() {
     unsafe {
         // CPU exceptions WITHOUT error code (0-7, 9, 15, 16, 18-20, 22-31)
         for i in [0,1,2,3,4,5,6,7,9,15,16,18,19,20,22,23,24,25,26,27,28,31] {
-            IDT[i].set_handler(isr_stub_exception_no_err as u64);
+            IDT[i].set_handler(isr_stub_exception_no_err as *const () as u64);
         }
 
         // CPU exceptions WITH error code (8, 10, 11, 12, 13, 14, 17, 21, 29, 30)
         for i in [8,10,11,12,13,14,17,21,29,30] {
-            IDT[i].set_handler(isr_stub_exception_err as u64);
+            IDT[i].set_handler(isr_stub_exception_err as *const () as u64);
         }
 
         // IRQ0 — PIT timer (vector 32)
-        IDT[32].set_handler(isr_stub_irq0 as u64);
+        IDT[32].set_handler(isr_stub_irq0 as *const () as u64);
 
         // IRQ1 — PS/2 keyboard (vector 33)
-        IDT[33].set_handler(isr_stub_irq1 as u64);
+        IDT[33].set_handler(isr_stub_irq1 as *const () as u64);
 
         // Remaining IRQs (34-47) — default
         for i in 34..48 {
-            IDT[i].set_handler(isr_stub_default_irq as u64);
+            IDT[i].set_handler(isr_stub_default_irq as *const () as u64);
         }
 
         let idtr = Idtr {
             limit: (core::mem::size_of::<[IdtEntry; 256]>() - 1) as u16,
-            base: IDT.as_ptr() as u64,
+            base: core::ptr::addr_of!(IDT) as u64,
         };
 
         asm!("lidt [{}]", in(reg) &idtr, options(nostack));

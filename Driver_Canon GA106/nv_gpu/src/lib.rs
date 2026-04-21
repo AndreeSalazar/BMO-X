@@ -10,6 +10,7 @@
 //! `#![no_std]` compatible.
 
 #![no_std]
+#![allow(unused_imports)]
 
 use nv_error::{NvError, NvResult};
 use nv_regs::{self, pmc, pfifo, pgraph, pcopy, pdisplay, pmem, ptimer, pbdma, BAR0_SIZE, BAR1_SIZE};

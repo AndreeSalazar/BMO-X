@@ -15,7 +15,7 @@ const NV_PMC_GSP_BIT_2: u32 = 1 << 7;       // bit 7 en ENABLE_2
 
 const NV_FALCON_CPUCTL: u32 = 0x0010_8100;
 const NV_FALCON_CPUCTL_SRESET: u32 = 1 << 0;
-const NV_PGSP_SCRATCH_BASE: u32 = 0x0011_0800;
+const NV_PGSP_SCRATCH_BASE: u32 = 0x0011_0080; // FALCON_SCRATCH0 (base+0x80)
 const NV_PGSP_FALCON_MAILBOX0: u32 = 0x0011_0040;
 
 #[derive(Debug)]

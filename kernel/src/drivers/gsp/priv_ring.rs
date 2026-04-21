@@ -46,7 +46,8 @@ const NV_PGSP_FALCON_ENGINE: u32 = 0x0011_03C0;
 const NV_PGSP_FALCON_RESET: u32 = 0x0011_0094;
 
 /// Scratch register 0 — used as a quick "is GSP alive?" probe.
-const NV_PGSP_FALCON_SCRATCH0: u32 = 0x0011_0040;
+/// Note: 0x0040 is MAILBOX0; SCRATCH0 is at falcon_base + 0x0080.
+const NV_PGSP_FALCON_SCRATCH0: u32 = 0x0011_0080;
 
 // ---------------------------------------------------------------------------
 // Timing helpers (busy-loop; no timer driver yet)

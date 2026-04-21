@@ -5,7 +5,7 @@
 
 #![no_std]
 #![no_main]
-#![feature(naked_functions)]
+#![allow(dead_code, unused_imports, unused_variables)]
 
 mod arch;
 mod boot_info;

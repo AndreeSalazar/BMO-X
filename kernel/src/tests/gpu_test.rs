@@ -240,7 +240,7 @@ pub fn run_all_tests(con: &mut Console, boot_info: *const fastos_boot_protocol::
                     let scratch = GspScratchTest::new(&bar0);
                     match scratch.verify_scratch(con) {
                         Ok(()) => {
-                            let val = bar0.read32(0x0011_0800);
+                            let val = bar0.read32(0x0011_0080);
                             con.print("  T10 GSP Scratch W/R  ");
                             con.print_colored("[PASS]", 0xFF00FF00);
                             con.print(" write=readback=0x");

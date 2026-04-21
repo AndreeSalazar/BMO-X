@@ -7,11 +7,9 @@ fn panic(_info: &PanicInfo) -> ! {
     // Output to serial COM1 (0x3F8) — works regardless of display mode
     let msg = b"\r\n!!! KERNEL PANIC !!!\r\n";
     for &b in msg {
-        unsafe {
-            // Wait for transmit ready
-            while (port_read(0x3FD) & 0x20) == 0 {}
-            port_write(0x3F8, b);
-        }
+        // Wait for transmit ready
+        while (port_read(0x3FD) & 0x20) == 0 {}
+        port_write(0x3F8, b);
     }
     loop { unsafe { core::arch::asm!("cli"); core::arch::asm!("hlt"); } }
 }

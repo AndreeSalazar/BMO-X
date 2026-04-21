@@ -16,6 +16,7 @@
 //! Zero dependencies. `#![no_std]` compatible.
 
 #![no_std]
+#![allow(non_snake_case)]
 
 // ── PCI Identification ──────────────────────────────────────────────────────
 
