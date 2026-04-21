@@ -51,7 +51,8 @@ unsafe extern "C" fn _start() -> ! {
         "mov edx, 0x0000FF00",
         "0: mov [rax], edx",
         "add rax, 4",
-        "loop 0b",
+        "dec rcx",
+        "jnz 0b",
         // Recargar fb_addr para cyan
         "mov rax, [rbx + 8]",
         "test rax, rax",
@@ -61,47 +62,45 @@ unsafe extern "C" fn _start() -> ! {
         "mov edx, 0x0000FFFF",
         "4: mov [rax], edx",
         "add rax, 4",
-        "loop 4b",
+        "dec rcx",
+        "jnz 4b",
         "1:",
         "mov rdi, rbx",      // restaurar RDI limpio para kernel_main
-        "call kernel_main",
+        "call kernel_main",  // kernel_main es naked, llamará a kernel_main_real
         "2: hlt",
         "jmp 2b",
     );
 }
 
 #[unsafe(no_mangle)]
-#[inline(never)]
+#[unsafe(naked)]
 extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
-    // ── Zero BSS section FIRST (before any static variable access) ─────
-    // TEMPORARILY DISABLED - causing crash
-    /*
-    unsafe {
-        extern "C" {
-            static __bss_start: u8;
-            static __bss_end: u8;
-        }
-        let bss_start = &__bss_start as *const u8 as *mut u8;
-        let bss_end = &__bss_end as *const u8 as *mut u8;
-        let len = bss_end as usize - bss_start as usize;
-        core::ptr::write_bytes(bss_start, 0, len);
-    }
-    */
+    naked_asm!(
+        // CHECKPOINT 1 - AZUL: Primera línea de kernel_main (sin prólogo)
+        "test rdi, rdi",
+        "jz 1f",
+        "mov rbx, rdi",
+        "mov rax, [rbx + 8]",  // fb_addr
+        "test rax, rax",
+        "jz 1f",
+        "mov rcx, [rbx + 24]",  // fb_width
+        "imul rcx, rcx, 10",
+        "mov edx, 0x00FF0000",
+        "2: mov [rax], edx",
+        "add rax, 4",
+        "dec rcx",
+        "jnz 2b",
+        "1:",
+        // Llamar a la función real de kernel (no naked)
+        "call kernel_main_real",
+        "3: hlt",
+        "jmp 3b"
+    );
+}
 
-    // CHECKPOINT 1 - AZUL: Primera línea de kernel_main (sin dependencias)
-    // Solo pintamos si boot_info_ptr es válido
-    if !boot_info_ptr.is_null() {
-        let bi = unsafe { &*boot_info_ptr };
-        if bi.fb_addr != 0 {
-            unsafe {
-                let fb = bi.fb_addr as *mut u32;
-                // Franja azul (0x00FF0000) en la parte superior
-                for i in 0..(bi.fb_width as usize * 10) {
-                    *fb.add(i) = 0x00FF0000;
-                }
-            }
-        }
-    }
+#[unsafe(no_mangle)]
+#[inline(never)]
+extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
 
     // ── Initialize serial first for debug output ─────────────────────
     drivers::serial::init_serial();
