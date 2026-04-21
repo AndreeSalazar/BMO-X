@@ -39,18 +39,18 @@ fn serial_hex(val: u64) {
 #[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
+        "mov rbx, rdi",      // guardar boot_info antes de todo
         "and rsp, -16",
-        // RDI = boot_info_ptr, bi.fb_addr está al offset 8
-        // Pintar pantalla de ROJO = sabes que llegaste aquí
-        "mov rax, [rdi + 8]",    // fb_addr
+        "mov rax, [rbx + 8]",  // fb_addr desde rbx, no rdi
         "test rax, rax",
         "jz 1f",
-        "mov rcx, 1920*1080",    // pixels
-        "mov edx, 0x00FF0000",   // ROJO (BGR)
+        "mov rcx, 2073600",
+        "mov edx, 0x0000FF00",
         "0: mov [rax], edx",
         "add rax, 4",
         "loop 0b",
         "1:",
+        "mov rdi, rbx",      // restaurar RDI limpio para kernel_main
         "call kernel_main",
         "2: hlt",
         "jmp 2b",
