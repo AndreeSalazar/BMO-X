@@ -46,11 +46,22 @@ unsafe extern "C" fn _start() -> ! {
         "mov rax, [rbx + 8]",  // fb_addr desde rbx, no rdi
         "test rax, rax",
         "jz 1f",
+        // CHECKPOINT 1 - VERDE: Pantalla completa
         "mov rcx, 2073600",
         "mov edx, 0x0000FF00",
         "0: mov [rax], edx",
         "add rax, 4",
         "loop 0b",
+        // Recargar fb_addr para cyan
+        "mov rax, [rbx + 8]",
+        "test rax, rax",
+        "jz 1f",
+        // CHECKPOINT 2 - CYAN: Pantalla completa antes del call
+        "mov rcx, 2073600",
+        "mov edx, 0x0000FFFF",
+        "4: mov [rax], edx",
+        "add rax, 4",
+        "loop 4b",
         "1:",
         "mov rdi, rbx",      // restaurar RDI limpio para kernel_main
         "call kernel_main",
@@ -60,8 +71,11 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 #[unsafe(no_mangle)]
+#[inline(never)]
 extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     // ── Zero BSS section FIRST (before any static variable access) ─────
+    // TEMPORARILY DISABLED - causing crash
+    /*
     unsafe {
         extern "C" {
             static __bss_start: u8;
@@ -72,9 +86,10 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
         let len = bss_end as usize - bss_start as usize;
         core::ptr::write_bytes(bss_start, 0, len);
     }
+    */
 
-    // CHECKPOINT 1 - AZUL: Después de BSS zero (antes de serial init)
-    // Necesitamos leer fb_addr pero sin serial init todavía
+    // CHECKPOINT 1 - AZUL: Primera línea de kernel_main (sin dependencias)
+    // Solo pintamos si boot_info_ptr es válido
     if !boot_info_ptr.is_null() {
         let bi = unsafe { &*boot_info_ptr };
         if bi.fb_addr != 0 {
@@ -134,18 +149,6 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
     drivers::serial::serial_write("[FastOS] Memory map entries: ");
     serial_hex(bi.memory_map_count);
     drivers::serial::serial_write("\n");
-
-    // CHECKPOINT 3 - CYAN: Después de BootInfo validation
-    if bi.fb_addr != 0 {
-        unsafe {
-            let fb = bi.fb_addr as *mut u32;
-            let offset = bi.fb_width as usize * 20;
-            // Franja cyan (0x0000FFFF) debajo del amarillo
-            for i in 0..(bi.fb_width as usize * 10) {
-                *fb.add(offset + i) = 0x0000FFFF;
-            }
-        }
-    }
 
     // ── Store boot info globally ─────────────────────────────────────
     unsafe {
