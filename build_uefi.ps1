@@ -132,6 +132,13 @@ if (!(Test-Path $usbDir)) {
 Copy-Item "$Root\BOOTX64.EFI" "$usbDir\BOOTX64.EFI" -Force
 Copy-Item "$Root\kernel.elf" "$usbDir\kernel.elf" -Force
 
+# Create proper UEFI directory structure (ready to copy to FAT32 USB)
+$efiBootDir = "$usbDir\EFI\BOOT"
+if (!(Test-Path $efiBootDir)) {
+    New-Item -Path $efiBootDir -ItemType Directory -Force | Out-Null
+}
+Copy-Item "$Root\BOOTX64.EFI" "$efiBootDir\BOOTX64.EFI" -Force
+
 # Copy GSP firmware if available
 $gspPath = "$Root\gsp_ga10x.bin"
 if (Test-Path $gspPath) {

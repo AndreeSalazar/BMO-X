@@ -280,6 +280,21 @@ pub fn run_all_tests(con: &mut Console, boot_info: *const fastos_boot_protocol::
                     con.print_colored("[FAIL]", 0xFFFF0000);
                     con.println(" GSP handshake timeout");
                 }
+                Err(GspLoadError::BadElfMagic) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" bad ELF magic");
+                }
+                Err(GspLoadError::PageAllocFailed) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" page alloc failed");
+                }
+                Err(GspLoadError::PrivRingFailed) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" PRIV ring failed");
+                }
             }
         }
         None => {
