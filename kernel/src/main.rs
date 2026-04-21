@@ -39,6 +39,8 @@ fn serial_hex(val: u64) {
 #[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
+        "test rdi, rdi",      // verificar que RDI no es null
+        "jz 2f",             // si es null, saltar a halt
         "mov rbx, rdi",      // guardar boot_info antes de todo
         "and rsp, -16",
         "mov rax, [rbx + 8]",  // fb_addr desde rbx, no rdi
@@ -59,9 +61,39 @@ unsafe extern "C" fn _start() -> ! {
 
 #[unsafe(no_mangle)]
 extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
+    // ── Zero BSS section FIRST (before any static variable access) ─────
+    unsafe {
+        extern "C" {
+            static __bss_start: u8;
+            static __bss_end: u8;
+        }
+        let bss_start = &__bss_start as *const u8 as *mut u8;
+        let bss_end = &__bss_end as *const u8 as *mut u8;
+        let len = bss_end as usize - bss_start as usize;
+        core::ptr::write_bytes(bss_start, 0, len);
+    }
+
     // ── Initialize serial first for debug output ─────────────────────
     drivers::serial::init_serial();
     drivers::serial::serial_write("[FastOS] Kernel v0.5.0 starting\n");
+
+    // CHECKPOINT 1 - AZUL: Después de serial init
+    // Verificar que boot_info_ptr no es null antes de desrefenciar
+    if boot_info_ptr.is_null() {
+        drivers::serial::serial_write("[FastOS] FATAL: boot_info_ptr is NULL!\n");
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+
+    let bi = unsafe { &*boot_info_ptr };
+    if bi.fb_addr != 0 {
+        unsafe {
+            let fb = bi.fb_addr as *mut u32;
+            // Franja azul (0x00FF0000) en la parte superior
+            for i in 0..(bi.fb_width as usize * 10) {
+                *fb.add(i) = 0x00FF0000;
+            }
+        }
+    }
 
     // ── Validate BootInfo magic ──────────────────────────────────────
     let bi = unsafe { &*boot_info_ptr };
@@ -72,6 +104,18 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
         loop { unsafe { core::arch::asm!("hlt"); } }
     }
     drivers::serial::serial_write("[FastOS] BootInfo valid\n");
+
+    // CHECKPOINT 2 - AMARILLO: Después de BootInfo validation
+    if bi.fb_addr != 0 {
+        unsafe {
+            let fb = bi.fb_addr as *mut u32;
+            let offset = bi.fb_width as usize * 10;
+            // Franja amarilla (0x00FFFF00) debajo del azul
+            for i in 0..(bi.fb_width as usize * 10) {
+                *fb.add(offset + i) = 0x00FFFF00;
+            }
+        }
+    }
 
     // ── Print boot info ──────────────────────────────────────────────
     drivers::serial::serial_write("[FastOS] FB addr: ");
@@ -88,18 +132,17 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
     serial_hex(bi.memory_map_count);
     drivers::serial::serial_write("\n");
 
-    // ── Zero BSS section ─────────────────────────────────────────────
-    unsafe {
-        extern "C" {
-            static __bss_start: u8;
-            static __bss_end: u8;
+    // CHECKPOINT 3 - CYAN: Después de BootInfo validation
+    if bi.fb_addr != 0 {
+        unsafe {
+            let fb = bi.fb_addr as *mut u32;
+            let offset = bi.fb_width as usize * 20;
+            // Franja cyan (0x0000FFFF) debajo del amarillo
+            for i in 0..(bi.fb_width as usize * 10) {
+                *fb.add(offset + i) = 0x0000FFFF;
+            }
         }
-        let bss_start = &__bss_start as *const u8 as *mut u8;
-        let bss_end = &__bss_end as *const u8 as *mut u8;
-        let len = bss_end as usize - bss_start as usize;
-        core::ptr::write_bytes(bss_start, 0, len);
     }
-    drivers::serial::serial_write("[FastOS] BSS zeroed\n");
 
     // ── Store boot info globally ─────────────────────────────────────
     unsafe {
@@ -124,6 +167,18 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
     unsafe { core::arch::asm!("sti"); }
     drivers::serial::serial_write("[FastOS] Interrupts enabled\n");
 
+    // CHECKPOINT 4 - MAGENTA: Después de arch subsystems init
+    if bi.fb_addr != 0 {
+        unsafe {
+            let fb = bi.fb_addr as *mut u32;
+            let offset = bi.fb_width as usize * 30;
+            // Franja magenta (0x00FF00FF) debajo del cyan
+            for i in 0..(bi.fb_width as usize * 10) {
+                *fb.add(offset + i) = 0x00FF00FF;
+            }
+        }
+    }
+
     // ── Initialize PS/2 keyboard ─────────────────────────────────────
     drivers::keyboard::init_keyboard();
     drivers::serial::serial_write("[FastOS] PS/2 keyboard ready\n");
@@ -140,6 +195,18 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
     drivers::serial::serial_write("[FastOS] Page allocator initialized (");
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
+
+    // CHECKPOINT 5 - ROJO: Antes de GPU init
+    if bi.fb_addr != 0 {
+        unsafe {
+            let fb = bi.fb_addr as *mut u32;
+            let offset = bi.fb_width as usize * 40;
+            // Franja roja (0x00FF0000) debajo del magenta
+            for i in 0..(bi.fb_width as usize * 10) {
+                *fb.add(offset + i) = 0x00FF0000;
+            }
+        }
+    }
 
     // ── GPU: Find NVIDIA GA106, map BAR0, load GSP firmware ───────────────
     drivers::serial::serial_write("[FastOS] Looking for NVIDIA GPU...\n");
