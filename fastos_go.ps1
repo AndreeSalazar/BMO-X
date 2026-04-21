@@ -60,7 +60,7 @@ try {
     
     # Copiar archivos críticos
     Copy-Item "$Root\BOOTX64.EFI" -Destination "$USBPath\EFI\BOOT\BOOTX64.EFI"
-    Copy-Item "$Root\kernel.elf" -Destination "$USBPath\kernel.elf"
+    Copy-Item "$Root\kernel.elf" -Destination "$USBPath\EFI\BOOT\kernel.elf"
     Copy-Item "$Root\gsp_ga10x.bin" -Destination "$USBPath\gsp_ga10x.bin"
 
     Write-Host "`n[+++] ¡ÉXITO! FastOS está listo en $USBPath" -ForegroundColor Green

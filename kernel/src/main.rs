@@ -39,6 +39,18 @@ fn serial_hex(val: u64) {
 #[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
+        "and rsp, -16",
+        // RDI = boot_info_ptr, bi.fb_addr está al offset 8
+        // Pintar pantalla de ROJO = sabes que llegaste aquí
+        "mov rax, [rdi + 8]",    // fb_addr
+        "test rax, rax",
+        "jz 1f",
+        "mov rcx, 1920*1080",    // pixels
+        "mov edx, 0x00FF0000",   // ROJO (BGR)
+        "0: mov [rax], edx",
+        "add rax, 4",
+        "loop 0b",
+        "1:",
         "call kernel_main",
         "2: hlt",
         "jmp 2b",
