@@ -138,6 +138,7 @@ if (!(Test-Path $efiBootDir)) {
     New-Item -Path $efiBootDir -ItemType Directory -Force | Out-Null
 }
 Copy-Item "$Root\BOOTX64.EFI" "$efiBootDir\BOOTX64.EFI" -Force
+Copy-Item "$Root\kernel.elf" "$efiBootDir\kernel.elf" -Force
 
 # Copy GSP firmware if available
 $gspPath = "$Root\gsp_ga10x.bin"

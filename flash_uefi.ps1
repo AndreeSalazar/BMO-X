@@ -154,9 +154,10 @@ if (!(Test-Path $efiBootPath)) {
 Write-Host "      Copiando BOOTX64.EFI a EFI\BOOT\BOOTX64.EFI..." -ForegroundColor DarkGray
 Copy-Item $efiPath "$efiBootPath\BOOTX64.EFI" -Force
 
-# Copy kernel.elf
-Write-Host "      Copiando kernel.elf al root..." -ForegroundColor DarkGray
+# Copy kernel.elf to root AND to EFI\BOOT (bootloader loads from \EFI\BOOT\kernel.elf)
+Write-Host "      Copiando kernel.elf al root y a EFI\BOOT\..." -ForegroundColor DarkGray
 Copy-Item $kernelPath "${driveLetter}:\kernel.elf" -Force
+Copy-Item $kernelPath "$efiBootPath\kernel.elf" -Force
 
 # Copy GSP firmware if available
 $gspPath = "$Root\gsp_ga10x.bin"
