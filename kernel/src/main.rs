@@ -53,6 +53,11 @@ unsafe extern "C" fn _start() -> ! {
         "add rax, 4",
         "dec rcx",
         "jnz 0b",
+        // DELAY 1.5s (~450M nops @ 3GHz)
+        "mov rcx, 450000000",
+        "5: nop",
+        "dec rcx",
+        "jnz 5b",
         // Recargar fb_addr para cyan
         "mov rax, [rbx + 8]",
         "test rax, rax",
@@ -64,6 +69,11 @@ unsafe extern "C" fn _start() -> ! {
         "add rax, 4",
         "dec rcx",
         "jnz 4b",
+        // DELAY 1.5s
+        "mov rcx, 450000000",
+        "6: nop",
+        "dec rcx",
+        "jnz 6b",
         "1:",
         "mov rdi, rbx",      // restaurar RDI limpio para kernel_main
         "call kernel_main",  // kernel_main es naked, llamará a kernel_main_real
@@ -90,6 +100,11 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
         "add rax, 4",
         "dec rcx",
         "jnz 2b",
+        // DELAY 1.5s
+        "mov rcx, 450000000",
+        "7: nop",
+        "dec rcx",
+        "jnz 7b",
         "1:",
         // Llamar a la función real de kernel (no naked)
         "call kernel_main_real",
@@ -132,6 +147,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 *fb.add(offset + i) = 0x00FFFF00;
             }
         }
+    }
+
+    // DELAY 1.5s
+    for _ in 0..450_000_000 {
+        unsafe { core::arch::asm!("nop"); }
     }
 
     // ── Print boot info ──────────────────────────────────────────────
@@ -184,6 +204,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
+    // DELAY 1.5s
+    for _ in 0..450_000_000 {
+        unsafe { core::arch::asm!("nop"); }
+    }
+
     // ── Initialize PS/2 keyboard ─────────────────────────────────────
     drivers::keyboard::init_keyboard();
     drivers::serial::serial_write("[FastOS] PS/2 keyboard ready\n");
@@ -213,7 +238,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    // ── GPU: Find NVIDIA GA106, map BAR0, load GSP firmware ───────────────
+    // DELAY 1.5s
+    for _ in 0..450_000_000 {
+        unsafe { core::arch::asm!("nop"); }
+    }
+
+    // ── GPU init TEMPORARILY DISABLED ───────────────────────────────────
+    /*
     drivers::serial::serial_write("[FastOS] Looking for NVIDIA GPU...\n");
     let gpu_pci = nv_hal::find_gpu(&platform::FastOsPlatform::new());
     if let Some(gpu_addr) = gpu_pci {
@@ -269,16 +300,18 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     } else {
         drivers::serial::serial_write("[FastOS] NVIDIA GPU not found on PCI bus\n");
     }
+    */
 
-    // ── Fallback Console / Shell (no GPU or no FB) ───────────────────────
+    // ── Run shell directly (GPU init disabled) ───────────────────────────
+    drivers::serial::serial_write("[FastOS] Starting shell...\n");
     if bi.fb_addr != 0 {
-        drivers::serial::serial_write("[FastOS] Framebuffer detected, launching shell\n");
         let mut con = console::Console::new(bi.fb_addr, bi.fb_pitch());
         con.clear();
         shell::run(&mut con);
+    } else {
+        drivers::serial::serial_write("[FastOS] No framebuffer — serial-only mode\n");
+        loop { unsafe { core::arch::asm!("hlt"); } }
     }
-
-    drivers::serial::serial_write("[FastOS] No framebuffer — serial-only mode\n");
     drivers::serial::serial_write("[FastOS] Halting.\n");
     loop { unsafe { core::arch::asm!("hlt"); } }
 }
