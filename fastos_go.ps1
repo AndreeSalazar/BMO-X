@@ -47,9 +47,9 @@ if ($Confirm -ne "S") { exit }
 # --- 3. PREPARACIÓN UEFI (Limpieza y Formateo) ---
 Write-Host "`n[3/3] Flasheando FastOS al USB..." -ForegroundColor White
 try {
-    # Limpiar disco y crear partición FAT32 (Requisito UEFI)
-    Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
-    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
+    # Limpiar disco completamente (incluyendo OEM) y crear partición FAT32 (Requisito UEFI)
+    Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
+    Set-Disk -Number $DiskNumber -PartitionStyle GPT
     $Part = New-Partition -DiskNumber $DiskNumber -UseMaximumSize -AssignDriveLetter
     Format-Volume -DriveLetter $Part.DriveLetter -FileSystem FAT32 -NewFileSystemLabel "FASTOS_BOOT" -Confirm:$false
 
