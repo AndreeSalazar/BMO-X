@@ -1,15 +1,29 @@
-//! Panic handler for #![no_std].
+//! Panic handler — serial output (no VGA text mode).
 
 use core::panic::PanicInfo;
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    // Write PANIC to VGA last row
-    let buf = 0xB8000 as *mut u16;
-    let msg = b"KERNEL PANIC";
-    let row_offset = 24 * 80; // last row
-    for (i, &byte) in msg.iter().enumerate() {
-        unsafe { buf.add(row_offset + i).write_volatile(0x4F00 | byte as u16); } // white on red
+    // Output to serial COM1 (0x3F8) — works regardless of display mode
+    let msg = b"\r\n!!! KERNEL PANIC !!!\r\n";
+    for &b in msg {
+        unsafe {
+            // Wait for transmit ready
+            while (port_read(0x3FD) & 0x20) == 0 {}
+            port_write(0x3F8, b);
+        }
     }
-    loop { unsafe { core::arch::asm!("hlt"); } }
+    loop { unsafe { core::arch::asm!("cli"); core::arch::asm!("hlt"); } }
+}
+
+#[inline]
+fn port_write(port: u16, val: u8) {
+    unsafe { core::arch::asm!("out dx, al", in("dx") port, in("al") val); }
+}
+
+#[inline]
+fn port_read(port: u16) -> u8 {
+    let v: u8;
+    unsafe { core::arch::asm!("in al, dx", out("al") v, in("dx") port); }
+    v
 }

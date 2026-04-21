@@ -11,7 +11,7 @@ const MAX_LINE: usize = 256;
 /// Run the interactive shell loop (never returns).
 pub fn run(con: &mut Console) {
     // Simple welcome
-    con.print_colored("FastOS v0.4.0", colors::NV_GREEN);
+    con.print_colored("FastOS v0.5.0", colors::NV_GREEN);
     con.print(" - Ring 0 | Ryzen 5 5600X + RTX 3060 12G");
     con.newline();
     con.print_colored("Type 'help' for commands.", colors::TEXT_SECONDARY);
@@ -86,7 +86,7 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         con.newline();
         loop { unsafe { core::arch::asm!("hlt"); } }
     } else if bytes_eq(cmd, b"ver") {
-        con.print_colored("FastOS v0.4.0 (Rust, no_std, Ring 0)", colors::ACCENT_CYAN);
+        con.print_colored("FastOS v0.5.0 (Rust, no_std, Ring 0)", colors::ACCENT_CYAN);
         con.newline();
     } else if bytes_eq(cmd, b"ticks") {
         cmd_ticks(con);
@@ -242,7 +242,7 @@ fn cmd_gpu_engines(con: &mut Console) {
 
 fn cmd_dmesg(con: &mut Console) {
     con.print_colored("Boot Log:\n", colors::ACCENT_BLUE);
-    con.println("  [0.000] FastOS v0.4.0 booting...");
+    con.println("  [0.000] FastOS v0.5.0 booting...");
     con.println("  [0.001] Serial: COM1 @ 115200 baud");
     con.println("  [0.002] CPU: AMD Ryzen 5 5600X (Zen 3)");
     con.println("  [0.003] PIC: 8259A remapped IRQ 0-15 -> 32-47");

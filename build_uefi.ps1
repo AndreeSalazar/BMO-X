@@ -26,6 +26,7 @@ if ($Clean) {
     Remove-Item "$Root\bootloader\target" -Recurse -ErrorAction SilentlyContinue
     Remove-Item "$Root\kernel\target" -Recurse -ErrorAction SilentlyContinue
     Remove-Item "$Root\kernel.elf" -ErrorAction SilentlyContinue
+    Remove-Item "$Root\kernel.bin" -ErrorAction SilentlyContinue
     Remove-Item "$Root\BOOTX64.EFI" -ErrorAction SilentlyContinue
     Remove-Item "$Root\USB_boot" -Recurse -ErrorAction SilentlyContinue
     Write-Host "[CLEAN] Done." -ForegroundColor Green

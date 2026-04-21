@@ -268,11 +268,11 @@ fn main() -> Status {
         .expect("LoadedImage has no device handle");
     drop(loaded_image); // release protocol before opening FS on same device
 
-    // ── 2. Read kernel.bin from ESP ─────────────────────────────────────────
-    info!("Loading kernel.bin...");
-    let elf_data = read_file_from_device(device_handle, "kernel.bin")
-        .expect("Failed to read kernel.bin");
-    info!("kernel.bin loaded: {} bytes", elf_data.len());
+    // -- 2. Read kernel.elf from ESP -----------------------------------------
+    info!("Loading kernel.elf...");
+    let elf_data = read_file_from_device(device_handle, "kernel.elf")
+        .expect("Failed to read kernel.elf");
+    info!("kernel.elf loaded: {} bytes", elf_data.len());
 
     // ── 3. Parse ELF64 ─────────────────────────────────────────────────────
     let elf = parse_elf64(&elf_data).expect("Failed to parse ELF64");
