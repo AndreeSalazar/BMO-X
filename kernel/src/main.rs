@@ -157,6 +157,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     }
 
     // ── Initialize arch subsystems ───────────────────────────────────
+    /*
     arch::pic::init_pic();
     arch::pic::set_mask_keyboard_timer();
     drivers::serial::serial_write("[FastOS] PIC initialized\n");
@@ -171,6 +172,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // ── Enable interrupts ────────────────────────────────────────────
     unsafe { core::arch::asm!("sti"); }
     drivers::serial::serial_write("[FastOS] Interrupts enabled\n");
+    */
 
     // CHECKPOINT 4 - MAGENTA: Después de arch subsystems init
     if bi.fb_addr != 0 {
@@ -185,8 +187,10 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     }
 
     // ── Initialize PS/2 keyboard ─────────────────────────────────────
+    /*
     drivers::keyboard::init_keyboard();
     drivers::serial::serial_write("[FastOS] PS/2 keyboard ready\n");
+    */
 
     // ── PCI scan ─────────────────────────────────────────────────────
     drivers::serial::serial_write("[FastOS] Scanning PCI bus...\n");
@@ -194,12 +198,14 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     drivers::serial::serial_write("[FastOS] PCI scan complete\n");
 
     // ── Initialize page frame allocator ───────────────────────────────────
+    /*
     unsafe {
         arch::page_alloc::init(&bi.memory_map, bi.memory_map_count as usize);
     }
     drivers::serial::serial_write("[FastOS] Page allocator initialized (");
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
+    */
 
     // CHECKPOINT 5 - ROJO: Antes de GPU init
     if bi.fb_addr != 0 {
@@ -213,18 +219,16 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    // ── Disable PIT and mask interrupts before white test ───────────────
-    unsafe { core::arch::asm!("cli"); }  // Disable interrupts
-    // PIT already initialized, but interrupts are now masked
-
-    // ── Paint framebuffer WHITE, then run shell ───────────────────────────
+    // ── Paint framebuffer WHITE, then halt ───────────────────────────────
     match bi.fb_addr {
         0 => loop { unsafe { core::arch::asm!("hlt"); } },
         fb_addr => {
             unsafe {
                 let fb = fb_addr as *mut u32;
-                // Solo un pixel blanco para test
+                // Solo 3 pixels blancos para test
                 *fb = 0x00FFFFFF;
+                *fb.add(1) = 0x00FFFFFF;
+                *fb.add(2) = 0x00FFFFFF;
             }
 
             loop { unsafe { core::arch::asm!("hlt"); } }
