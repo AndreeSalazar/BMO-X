@@ -1,4 +1,4 @@
-//! FastOS Kernel v0.5.0 — Entry Point
+//! FastOS Kernel v0.5.0 — Entry Point (checkpoint debug)
 //!
 //! Receives control from UEFI bootloader in 64-bit long mode, Ring 0.
 //! RDI = *const fastos_boot_protocol::BootInfo
