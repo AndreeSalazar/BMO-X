@@ -131,6 +131,17 @@ if (!(Test-Path $usbDir)) {
 
 Copy-Item "$Root\BOOTX64.EFI" "$usbDir\BOOTX64.EFI" -Force
 Copy-Item "$Root\kernel.elf" "$usbDir\kernel.elf" -Force
+
+# Copy GSP firmware if available
+$gspPath = "$Root\gsp_ga10x.bin"
+if (Test-Path $gspPath) {
+    Copy-Item $gspPath "$usbDir\gsp_ga10x.bin" -Force
+    $gspSize = (Get-Item $gspPath).Length
+    Write-Host "      gsp_ga10x.bin: $([math]::Round($gspSize/1MB, 1))MB (GPU firmware)" -ForegroundColor DarkGray
+} else {
+    Write-Host "      WARNING: gsp_ga10x.bin not found - GPU GSP will not be available" -ForegroundColor Yellow
+}
+
 Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_uefi.ps1" -Force
 Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_direct.ps1" -Force
 
@@ -212,6 +223,9 @@ Write-Host "" -ForegroundColor Green
 Write-Host "  Output:" -ForegroundColor Green
 Write-Host "    BOOTX64.EFI ($([math]::Round($efiSize/1024))KB)" -ForegroundColor Green
 Write-Host "    kernel.elf ($([math]::Round($kernelSize/1024))KB)" -ForegroundColor Green
+if (Test-Path "$Root\gsp_ga10x.bin") {
+    Write-Host "    gsp_ga10x.bin ($([math]::Round((Get-Item "$Root\gsp_ga10x.bin").Length/1MB, 1))MB) (GPU firmware)" -ForegroundColor Green
+}
 Write-Host "" -ForegroundColor Green
 Write-Host "  Location: USB_boot\" -ForegroundColor Green
 Write-Host ""

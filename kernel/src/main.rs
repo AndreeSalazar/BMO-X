@@ -121,7 +121,72 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
     let _pci = drivers::pci::scan_pci_bus();
     drivers::serial::serial_write("[FastOS] PCI scan complete\n");
 
-    // ── Console / Shell ──────────────────────────────────────────────
+    // ── Initialize page frame allocator ───────────────────────────────────
+    unsafe {
+        arch::page_alloc::init(&bi.memory_map, bi.memory_map_count as usize);
+    }
+    drivers::serial::serial_write("[FastOS] Page allocator initialized (");
+    serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
+    drivers::serial::serial_write(" free pages)\n");
+
+    // ── GPU: Find NVIDIA GA106, map BAR0, load GSP firmware ───────────────
+    drivers::serial::serial_write("[FastOS] Looking for NVIDIA GPU...\n");
+    let gpu_pci = nv_hal::find_gpu(&platform::FastOsPlatform::new());
+    if let Some(gpu_addr) = gpu_pci {
+        drivers::serial::serial_write("[FastOS] GPU found on PCI bus\n");
+
+        // Power on + enable bus mastering
+        nv_hal::set_power_d0(&platform::FastOsPlatform::new(), gpu_addr);
+        nv_hal::enable_bus_master(&platform::FastOsPlatform::new(), gpu_addr);
+
+        // Read BAR0 physical address
+        let bar0_phys = nv_hal::read_bar0(&platform::FastOsPlatform::new(), gpu_addr);
+        drivers::serial::serial_write("[FastOS] GPU BAR0: ");
+        serial_hex(bar0_phys);
+        drivers::serial::serial_write("\n");
+
+        // Map BAR0 (16 MB register space, identity-mapped)
+        let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_phys as *mut u8, 16 * 1024 * 1024) };
+
+        // Load GSP firmware if bootloader provided it
+        if bi.gsp_addr != 0 && bi.gsp_size != 0 {
+            drivers::serial::serial_write("[FastOS] GSP firmware available: ");
+            serial_hex(bi.gsp_size);
+            drivers::serial::serial_write(" bytes at ");
+            serial_hex(bi.gsp_addr);
+            drivers::serial::serial_write("\n");
+
+            // Create firmware slice from bootloader-loaded data
+            let fw_blob = unsafe {
+                core::slice::from_raw_parts(bi.gsp_addr as *const u8, bi.gsp_size as usize)
+            };
+
+            // Initialize console early for GSP diagnostics (if FB available)
+            if bi.fb_addr != 0 {
+                let mut con = console::Console::new(bi.fb_addr, bi.fb_pitch());
+                con.clear();
+
+                // Run GSP init sequence (PRIV Ring → DMA → Falcon boot → handshake)
+                match drivers::gsp::gsp_init(&bar0, fw_blob, &mut con) {
+                    Ok(()) => {
+                        drivers::serial::serial_write("[FastOS] GSP firmware loaded OK!\n");
+                    }
+                    Err(_) => {
+                        drivers::serial::serial_write("[FastOS] GSP load failed (non-fatal)\n");
+                    }
+                }
+
+                // Continue to shell
+                shell::run(&mut con);
+            }
+        } else {
+            drivers::serial::serial_write("[FastOS] No GSP firmware (gsp_ga10x.bin not on ESP)\n");
+        }
+    } else {
+        drivers::serial::serial_write("[FastOS] NVIDIA GPU not found on PCI bus\n");
+    }
+
+    // ── Fallback Console / Shell (no GPU or no FB) ───────────────────────
     if bi.fb_addr != 0 {
         drivers::serial::serial_write("[FastOS] Framebuffer detected, launching shell\n");
         let mut con = console::Console::new(bi.fb_addr, bi.fb_pitch());

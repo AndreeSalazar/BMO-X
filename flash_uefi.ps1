@@ -158,6 +158,13 @@ Copy-Item $efiPath "$efiBootPath\BOOTX64.EFI" -Force
 Write-Host "      Copiando kernel.elf al root..." -ForegroundColor DarkGray
 Copy-Item $kernelPath "${driveLetter}:\kernel.elf" -Force
 
+# Copy GSP firmware if available
+$gspPath = "$Root\gsp_ga10x.bin"
+if (Test-Path $gspPath) {
+    Write-Host "      Copiando gsp_ga10x.bin al root (GPU firmware)..." -ForegroundColor DarkGray
+    Copy-Item $gspPath "${driveLetter}:\gsp_ga10x.bin" -Force
+}
+
 Write-Host "[2/3] Archivos copiados" -ForegroundColor Green
 
 # ── Verify ──────────────────────────────────────────────────────────────────
@@ -180,6 +187,13 @@ $copiedKernelSize = (Get-Item "${driveLetter}:\kernel.elf").Length
 
 Write-Host "      BOOTX64.EFI: $copiedEfiSize bytes" -ForegroundColor DarkGray
 Write-Host "      kernel.elf: $copiedKernelSize bytes" -ForegroundColor DarkGray
+
+# Verify GSP firmware if it was copied
+if (Test-Path "${driveLetter}:\gsp_ga10x.bin") {
+    $copiedGspSize = (Get-Item "${driveLetter}:\gsp_ga10x.bin").Length
+    $gspOrigSize = (Get-Item "$Root\gsp_ga10x.bin").Length
+    Write-Host "      gsp_ga10x.bin: $copiedGspSize bytes" -ForegroundColor DarkGray
+}
 
 if ($copiedEfiSize -eq $efiSize -and $copiedKernelSize -eq $kernelSize) {
     Write-Host "      VERIFICADO OK: Archivos copiados correctamente" -ForegroundColor Green
