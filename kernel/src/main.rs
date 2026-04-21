@@ -53,11 +53,6 @@ unsafe extern "C" fn _start() -> ! {
         "add rax, 4",
         "dec rcx",
         "jnz 0b",
-        // DELAY 1.5s (~450M nops @ 3GHz)
-        "mov rcx, 450000000",
-        "5: nop",
-        "dec rcx",
-        "jnz 5b",
         // Recargar fb_addr para cyan
         "mov rax, [rbx + 8]",
         "test rax, rax",
@@ -69,11 +64,6 @@ unsafe extern "C" fn _start() -> ! {
         "add rax, 4",
         "dec rcx",
         "jnz 4b",
-        // DELAY 1.5s
-        "mov rcx, 450000000",
-        "6: nop",
-        "dec rcx",
-        "jnz 6b",
         "1:",
         "mov rdi, rbx",      // restaurar RDI limpio para kernel_main
         "call kernel_main",  // kernel_main es naked, llamará a kernel_main_real
@@ -100,11 +90,6 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
         "add rax, 4",
         "dec rcx",
         "jnz 2b",
-        // DELAY 1.5s
-        "mov rcx, 450000000",
-        "7: nop",
-        "dec rcx",
-        "jnz 7b",
         "1:",
         // Llamar a la función real de kernel (no naked)
         "call kernel_main_real",
@@ -147,11 +132,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 *fb.add(offset + i) = 0x00FFFF00;
             }
         }
-    }
-
-    // DELAY 1.5s
-    for _ in 0..450_000_000 {
-        unsafe { core::arch::asm!("nop"); }
     }
 
     // ── Print boot info ──────────────────────────────────────────────
@@ -204,11 +184,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    // DELAY 1.5s
-    for _ in 0..450_000_000 {
-        unsafe { core::arch::asm!("nop"); }
-    }
-
     // ── Initialize PS/2 keyboard ─────────────────────────────────────
     drivers::keyboard::init_keyboard();
     drivers::serial::serial_write("[FastOS] PS/2 keyboard ready\n");
@@ -238,10 +213,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    // DELAY 1.5s
-    for _ in 0..450_000_000 {
-        unsafe { core::arch::asm!("nop"); }
-    }
+    // ── Disable PIT and mask interrupts before white test ───────────────
+    unsafe { core::arch::asm!("cli"); }  // Disable interrupts
+    // PIT already initialized, but interrupts are now masked
 
     // ── Paint framebuffer WHITE, then run shell ───────────────────────────
     match bi.fb_addr {
@@ -249,14 +223,10 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         fb_addr => {
             unsafe {
                 let fb = fb_addr as *mut u32;
-                // Pantalla blanca completa
-                for i in 0..(bi.fb_width as usize * bi.fb_height as usize) {
-                    *fb.add(i) = 0x00FFFFFF;
-                }
+                // Solo un pixel blanco para test
+                *fb = 0x00FFFFFF;
             }
 
-            let mut con = console::Console::new(fb_addr, bi.fb_pitch());
-            shell::run(&mut con);
             loop { unsafe { core::arch::asm!("hlt"); } }
         }
     }
