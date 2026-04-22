@@ -1,9 +1,18 @@
-//! PCI bus scanning via I/O ports 0xCF8/0xCFC.
-
-const PCI_CONFIG_ADDR: u16 = 0x0CF8;
-const PCI_CONFIG_DATA: u16 = 0x0CFC;
+//! PCI bus scanning via ECAM (Enhanced Configuration Access Mechanism).
 
 const NVIDIA_VENDOR: u16 = 0x10DE;
+
+/// ECAM base address (set by init_ecam before scanning).
+static mut ECAM_BASE: u64 = 0;
+static mut ECAM_END_BUS: u8 = 0;
+
+/// Initialize ECAM — must be called before any PCI access.
+pub fn init_ecam(base: u64, end_bus: u8) {
+    unsafe {
+        ECAM_BASE = base;
+        ECAM_END_BUS = end_bus;
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct PciDevice {
@@ -40,30 +49,35 @@ impl PciScanResult {
     }
 }
 
-fn outl(port: u16, val: u32) {
-    unsafe { core::arch::asm!("out dx, eax", in("dx") port, in("eax") val); }
+/// Read 32 bits from PCI config space via ECAM MMIO.
+pub fn pci_read32(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
+    let base = unsafe { ECAM_BASE };
+    if base == 0 { return 0xFFFF_FFFF; }
+    let offset = ((bus as u64) << 20)
+        | ((dev as u64) << 15)
+        | ((func as u64) << 12)
+        | ((off as u64) & 0xFFC);
+    let addr = base + offset;
+    unsafe { core::ptr::read_volatile(addr as *const u32) }
 }
 
-fn inl(port: u16) -> u32 {
-    let v: u32;
-    unsafe { core::arch::asm!("in eax, dx", in("dx") port, out("eax") v); }
-    v
-}
-
-pub fn pci_read32(bus: u8, dev: u8, func: u8, off: u8) -> u32 {
-    let addr = 0x8000_0000u32
-        | ((bus as u32) << 16)
-        | ((dev as u32) << 11)
-        | ((func as u32) << 8)
-        | ((off as u32) & 0xFC);
-    outl(PCI_CONFIG_ADDR, addr);
-    inl(PCI_CONFIG_DATA)
+/// Write 32 bits to PCI config space via ECAM MMIO.
+pub fn pci_write32(bus: u8, dev: u8, func: u8, off: u16, val: u32) {
+    let base = unsafe { ECAM_BASE };
+    if base == 0 { return; }
+    let offset = ((bus as u64) << 20)
+        | ((dev as u64) << 15)
+        | ((func as u64) << 12)
+        | ((off as u64) & 0xFFC);
+    let addr = base + offset;
+    unsafe { core::ptr::write_volatile(addr as *mut u32, val); }
 }
 
 pub fn scan_pci_bus() -> PciScanResult {
     let mut r = PciScanResult::new();
+    let end_bus = unsafe { ECAM_END_BUS };
 
-    for bus in 0..=255u8 {
+    for bus in 0..=end_bus {
         for dev in 0..32u8 {
             let vd = pci_read32(bus, dev, 0, 0x00);
             let vendor = (vd & 0xFFFF) as u16;
@@ -71,6 +85,8 @@ pub fn scan_pci_bus() -> PciScanResult {
 
             let device_id = ((vd >> 16) & 0xFFFF) as u16;
             let cr = pci_read32(bus, dev, 0, 0x08);
+            let hdr = pci_read32(bus, dev, 0, 0x0C);
+            let multi = (hdr >> 16) & 0x80 != 0;
 
             if r.count < 64 {
                 r.devices[r.count] = PciDevice {
@@ -82,20 +98,22 @@ pub fn scan_pci_bus() -> PciScanResult {
                 r.count += 1;
             }
 
-            for func in 1..8u8 {
-                let vd2 = pci_read32(bus, dev, func, 0x00);
-                let v2 = (vd2 & 0xFFFF) as u16;
-                if v2 == 0xFFFF { continue; }
-                let cr2 = pci_read32(bus, dev, func, 0x08);
-                if r.count < 64 {
-                    r.devices[r.count] = PciDevice {
-                        bus, device: dev, function: func,
-                        vendor_id: v2,
-                        device_id: ((vd2 >> 16) & 0xFFFF) as u16,
-                        class_code: ((cr2 >> 24) & 0xFF) as u8,
-                        subclass: ((cr2 >> 16) & 0xFF) as u8,
-                    };
-                    r.count += 1;
+            if multi {
+                for func in 1..8u8 {
+                    let vd2 = pci_read32(bus, dev, func, 0x00);
+                    let v2 = (vd2 & 0xFFFF) as u16;
+                    if v2 == 0xFFFF { continue; }
+                    let cr2 = pci_read32(bus, dev, func, 0x08);
+                    if r.count < 64 {
+                        r.devices[r.count] = PciDevice {
+                            bus, device: dev, function: func,
+                            vendor_id: v2,
+                            device_id: ((vd2 >> 16) & 0xFFFF) as u16,
+                            class_code: ((cr2 >> 24) & 0xFF) as u8,
+                            subclass: ((cr2 >> 16) & 0xFF) as u8,
+                        };
+                        r.count += 1;
+                    }
                 }
             }
         }

@@ -87,8 +87,8 @@ impl BootInfo {
         self.magic == BOOT_MAGIC
     }
 
-    /// Framebuffer pitch in bytes (stride * 4 for 32bpp).
+    /// Framebuffer pitch in bytes (UEFI GOP stride is already in bytes per scanline).
     pub fn fb_pitch(&self) -> u64 {
-        self.fb_stride as u64 * 4
+        self.fb_stride as u64
     }
 }

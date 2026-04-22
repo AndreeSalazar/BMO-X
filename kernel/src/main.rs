@@ -157,19 +157,21 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     }
 
     // ── Initialize arch subsystems ───────────────────────────────────
+    // IDT is critical even without interrupts enabled — without it,
+    // any CPU exception (page fault, GPF, etc.) causes a triple fault.
+    arch::idt::init_idt();
+    drivers::serial::serial_write("[FastOS] IDT loaded (exceptions will halt instead of triple-fault)\n");
+
+    // PIC/PIT/STI disabled for now — not needed until we want interrupts
     /*
     arch::pic::init_pic();
     arch::pic::set_mask_keyboard_timer();
     drivers::serial::serial_write("[FastOS] PIC initialized\n");
 
-    arch::idt::init_idt();
-    drivers::serial::serial_write("[FastOS] IDT loaded\n");
-
     arch::pit::init_pit();
     arch::idt::register_irq(0, arch::pit::tick);
     drivers::serial::serial_write("[FastOS] PIT @ 100Hz\n");
 
-    // ── Enable interrupts ────────────────────────────────────────────
     unsafe { core::arch::asm!("sti"); }
     drivers::serial::serial_write("[FastOS] Interrupts enabled\n");
     */
@@ -192,10 +194,28 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     drivers::serial::serial_write("[FastOS] PS/2 keyboard ready\n");
     */
 
-    // ── PCI scan ─────────────────────────────────────────────────────
-    drivers::serial::serial_write("[FastOS] Scanning PCI bus...\n");
-    let _pci = drivers::pci::scan_pci_bus();
-    drivers::serial::serial_write("[FastOS] PCI scan complete\n");
+    // ── PCI via ECAM (UEFI-native, no legacy I/O ports) ─────────────
+    drivers::serial::serial_write("[FastOS] Parsing ACPI MCFG for ECAM...\n");
+    match arch::acpi::parse_mcfg(bi.rsdp_addr) {
+        Some(ecam) => {
+            drivers::serial::serial_write("[FastOS] ECAM base: ");
+            serial_hex(ecam.base_addr);
+            drivers::serial::serial_write(" buses 0..");
+            serial_hex(ecam.end_bus as u64);
+            drivers::serial::serial_write("\n");
+
+            drivers::pci::init_ecam(ecam.base_addr, ecam.end_bus);
+
+            drivers::serial::serial_write("[FastOS] Scanning PCI bus via ECAM...\n");
+            let pci = drivers::pci::scan_pci_bus();
+            drivers::serial::serial_write("[FastOS] PCI scan complete: ");
+            serial_hex(pci.count as u64);
+            drivers::serial::serial_write(" devices\n");
+        }
+        None => {
+            drivers::serial::serial_write("[FastOS] WARNING: MCFG not found — PCI unavailable\n");
+        }
+    }
 
     // ── Initialize page frame allocator ───────────────────────────────────
     /*
@@ -219,18 +239,24 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    // ── Paint framebuffer WHITE, then halt ───────────────────────────────
+    // ── Run shell ─────────────────────────────────────────────────────────
     match bi.fb_addr {
         0 => loop { unsafe { core::arch::asm!("hlt"); } },
         fb_addr => {
-            unsafe {
-                let fb = fb_addr as *mut u32;
-                // Solo 3 pixels blancos para test
-                *fb = 0x00FFFFFF;
-                *fb.add(1) = 0x00FFFFFF;
-                *fb.add(2) = 0x00FFFFFF;
+            // Debug: Paint color based on fb_stride value
+            if bi.fb_addr != 0 {
+                unsafe {
+                    let fb = bi.fb_addr as *mut u32;
+                    let offset = bi.fb_width as usize * 50;
+                    let color = if bi.fb_stride > 2000 { 0x00FF00FF } else { 0x00FFFF00 }; // PURPLE if >2000, YELLOW if <=2000
+                    for i in 0..(bi.fb_width as usize * 10) {
+                        *fb.add(offset + i) = color;
+                    }
+                }
             }
 
+            let mut con = console::Console::new(fb_addr, bi.fb_pitch());
+            shell::run(&mut con);
             loop { unsafe { core::arch::asm!("hlt"); } }
         }
     }

@@ -2,11 +2,23 @@
 //! Ring 0, no_std. Simple and reliable.
 
 use crate::console::Console;
-use crate::drivers::keyboard;
 use crate::fb::colors;
 use crate::arch::cpu;
 
 const MAX_LINE: usize = 256;
+
+/// Read PS/2 keyboard by polling port 0x60 (no interrupts).
+fn read_key_polling() -> u8 {
+    loop {
+        let status: u8;
+        unsafe { core::arch::asm!("in al, 0x64", out("al") status, options(nostack, preserves_flags)) };
+        if status & 1 != 0 {
+            let key: u8;
+            unsafe { core::arch::asm!("in al, 0x60", out("al") key, options(nostack, preserves_flags)) };
+            return key;
+        }
+    }
+}
 
 /// Run the interactive shell loop (never returns).
 pub fn run(con: &mut Console) {
@@ -41,7 +53,7 @@ pub fn run(con: &mut Console) {
 fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
     let mut len: usize = 0;
     loop {
-        let key = keyboard::read_key();
+        let key = read_key_polling();
         if key == b'\n' {
             return len;
         } else if key == 8 {

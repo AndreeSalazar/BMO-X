@@ -1,7 +1,8 @@
 //! FastOS Platform — nv_hal::Platform implementation for Ring 0.
 //!
 //! Bridges the kernel's hardware access to the GPU driver stack.
-//! All operations run in Ring 0, identity-mapped first 4GB.
+//! All operations run in Ring 0, identity-mapped by UEFI page tables.
+//! PCI config space access uses ECAM MMIO (no legacy I/O ports).
 
 use nv_hal::{Platform, PciAddress, DmaBuffer};
 
@@ -13,34 +14,21 @@ impl FastOsPlatform {
     }
 }
 
-#[inline]
-fn outl(port: u16, val: u32) {
-    unsafe { core::arch::asm!("out dx, eax", in("dx") port, in("eax") val); }
-}
-
-#[inline]
-fn inl(port: u16) -> u32 {
-    let v: u32;
-    unsafe { core::arch::asm!("in eax, dx", in("dx") port, out("eax") v); }
-    v
-}
-
 impl Platform for FastOsPlatform {
     fn pci_config_read32(&self, addr: PciAddress, offset: u8) -> u32 {
-        let cfg = addr.config_addr(offset);
-        outl(0x0CF8, cfg);
-        inl(0x0CFC)
+        crate::drivers::pci::pci_read32(
+            addr.bus, addr.device, addr.function, offset as u16,
+        )
     }
 
     fn pci_config_write32(&self, addr: PciAddress, offset: u8, value: u32) {
-        let cfg = addr.config_addr(offset);
-        outl(0x0CF8, cfg);
-        outl(0x0CFC, value);
+        crate::drivers::pci::pci_write32(
+            addr.bus, addr.device, addr.function, offset as u16, value,
+        )
     }
 
     fn map_mmio(&self, phys_addr: u64, _size: usize) -> *mut u8 {
-        // Identity-mapped by bootloader (first 4GB via 2MB pages).
-        // Physical address = virtual address.
+        // Identity-mapped by UEFI page tables (firmware leaves them active).
         phys_addr as *mut u8
     }
 
@@ -49,9 +37,9 @@ impl Platform for FastOsPlatform {
     }
 
     fn alloc_dma(&self, size: usize) -> Option<DmaBuffer> {
-        // Simple bump allocator from a fixed region above kernel.
-        // Kernel ends at ~1MB + 128KB = 0x120000.
-        // Use 4MB-8MB range for DMA buffers (identity mapped).
+        // Use the UEFI memory map to find usable regions.
+        // For now: bump allocator from a safe region above kernel.
+        // TODO: Use page_alloc with the UEFI memory map.
         static mut DMA_NEXT: u64 = 0x0040_0000; // 4MB
 
         unsafe {
@@ -78,9 +66,8 @@ impl Platform for FastOsPlatform {
     }
 
     fn stall_us(&self, us: u32) {
-        // Use rdtsc-based busy wait.
-        // Ryzen 5 5600X base: 3.7GHz, TSC ticks ~= CPU cycles.
-        // ~3700 ticks per microsecond.
+        // rdtsc-based busy wait.
+        // Ryzen 5 5600X base: 3.7GHz, TSC ticks ≈ CPU cycles.
         let ticks_per_us: u64 = 3700;
         let target = ticks_per_us * us as u64;
         let start = rdtsc();
