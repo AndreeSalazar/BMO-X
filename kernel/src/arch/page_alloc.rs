@@ -25,9 +25,7 @@ const BITMAP_SIZE: usize = MAX_PAGES / 8; // ~128 KB
 const KERNEL_START: u64 = 0x0010_0000;
 const KERNEL_END: u64 = 0x0080_0000;
 
-/// Legacy DMA region 4 MB – 8 MB (reserved for existing small-buffer DMA).
-const DMA_LEGACY_START: u64 = 0x0040_0000;
-const DMA_LEGACY_END: u64 = 0x0080_0000;
+
 
 // ---------------------------------------------------------------------------
 // Static state (single-core, no preemption during init — safe with `unsafe`)
@@ -107,7 +105,7 @@ pub unsafe fn init(memory_map: &[MemoryEntry], count: usize) {
 
     // Bitmap is already all-ones (every page marked used).
     // Walk the memory map and free pages that belong to Usable regions,
-    // *except* those that overlap the kernel or legacy-DMA reservation.
+    // *except* those that overlap the kernel reservation.
 
     let entries = &memory_map[..count];
 
@@ -146,9 +144,8 @@ pub unsafe fn init(memory_map: &[MemoryEntry], count: usize) {
 
         let mut addr = first_page;
         while addr < last_page_end {
-            // Skip pages that fall inside the kernel or legacy-DMA region.
+            // Skip pages that fall inside the kernel region.
             if ranges_overlap(addr, addr + PAGE_SIZE as u64, KERNEL_START, KERNEL_END)
-                || ranges_overlap(addr, addr + PAGE_SIZE as u64, DMA_LEGACY_START, DMA_LEGACY_END)
             {
                 addr += PAGE_SIZE as u64;
                 continue;

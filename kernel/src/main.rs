@@ -15,7 +15,7 @@ mod fb;
 mod fs;
 mod gpu;
 mod render3d;
-mod vga;
+mod font;
 mod panic;
 mod platform;
 mod shell;
@@ -162,19 +162,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     arch::idt::init_idt();
     drivers::serial::serial_write("[FastOS] IDT loaded (exceptions will halt instead of triple-fault)\n");
 
-    // PIC/PIT/STI disabled for now — not needed until we want interrupts
-    /*
-    arch::pic::init_pic();
-    arch::pic::set_mask_keyboard_timer();
-    drivers::serial::serial_write("[FastOS] PIC initialized\n");
 
-    arch::pit::init_pit();
-    arch::idt::register_irq(0, arch::pit::tick);
-    drivers::serial::serial_write("[FastOS] PIT @ 100Hz\n");
-
-    unsafe { core::arch::asm!("sti"); }
-    drivers::serial::serial_write("[FastOS] Interrupts enabled\n");
-    */
 
     // CHECKPOINT 4 - MAGENTA: Después de arch subsystems init
     if bi.fb_addr != 0 {
@@ -188,11 +176,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    // ── Initialize PS/2 keyboard ─────────────────────────────────────
-    /*
-    drivers::keyboard::init_keyboard();
-    drivers::serial::serial_write("[FastOS] PS/2 keyboard ready\n");
-    */
+
 
     // ── PCI via ECAM (UEFI-native, no legacy I/O ports) ─────────────
     drivers::serial::serial_write("[FastOS] Parsing ACPI MCFG for ECAM...\n");
@@ -218,14 +202,12 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     }
 
     // ── Initialize page frame allocator ───────────────────────────────────
-    /*
     unsafe {
         arch::page_alloc::init(&bi.memory_map, bi.memory_map_count as usize);
     }
     drivers::serial::serial_write("[FastOS] Page allocator initialized (");
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
-    */
 
     // CHECKPOINT 5 - ROJO: Antes de GPU init
     if bi.fb_addr != 0 {
@@ -256,6 +238,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
             }
 
             let mut con = console::Console::new(fb_addr, bi.fb_pitch());
+            con.clear(); // Limpiar la pantalla de las franjas de debug antes de iniciar el shell
             shell::run(&mut con);
             loop { unsafe { core::arch::asm!("hlt"); } }
         }

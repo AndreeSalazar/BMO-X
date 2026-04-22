@@ -7,16 +7,15 @@ use crate::arch::cpu;
 
 const MAX_LINE: usize = 256;
 
-/// Read PS/2 keyboard by polling port 0x60 (no interrupts).
-fn read_key_polling() -> u8 {
+/// Read key via Serial COM1 polling (UEFI safe, no PS/2).
+fn read_serial_key() -> u8 {
     loop {
-        let status: u8;
-        unsafe { core::arch::asm!("in al, 0x64", out("al") status, options(nostack, preserves_flags)) };
-        if status & 1 != 0 {
-            let key: u8;
-            unsafe { core::arch::asm!("in al, 0x60", out("al") key, options(nostack, preserves_flags)) };
-            return key;
+        if let Some(b) = crate::drivers::serial::serial_read_byte() {
+            // Echo back to serial so the user sees what they type via terminal too
+            crate::drivers::serial::serial_write_byte(b);
+            return b;
         }
+        for _ in 0..1000u32 { core::hint::spin_loop(); }
     }
 }
 
@@ -53,8 +52,8 @@ pub fn run(con: &mut Console) {
 fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
     let mut len: usize = 0;
     loop {
-        let key = read_key_polling();
-        if key == b'\n' {
+        let key = read_serial_key();
+        if key == b'\r' || key == b'\n' {
             return len;
         } else if key == 8 {
             // Backspace
@@ -275,7 +274,7 @@ fn cmd_dmesg(con: &mut Console) {
     con.print_colored("ready", colors::TEXT_SUCCESS);
     con.newline();
     con.print("  Uptime: ");
-    con.print_u64(crate::arch::pit::uptime_secs());
+    con.print_u64(0); // TODO: APIC Timer
     con.println("s");
 }
 
@@ -322,24 +321,24 @@ fn cmd_meminfo(con: &mut Console) {
 }
 
 fn cmd_uptime(con: &mut Console) {
-    let pit_secs = crate::arch::pit::uptime_secs();
-    let pit_ticks = crate::arch::pit::ticks();
+    let pit_secs = 0; // TODO: APIC Timer
+    let pit_ticks = 0;
     con.print("Uptime: ");
     con.print_u64(pit_secs);
     con.print("s (");
     con.print_u64(pit_ticks);
-    con.println(" PIT ticks @ 100Hz)");
+    con.println(" ticks)");
 }
 
 fn cmd_ticks(con: &mut Console) {
     con.print_colored("Timer: ", colors::ACCENT_BLUE);
-    con.print("PIT Ch0 @ 100Hz, IRQ0 via PIC");
+    con.print("APIC Timer (TODO)");
     con.newline();
     con.print("  Ticks: ");
-    con.print_u64(crate::arch::pit::ticks());
+    con.print_u64(0);
     con.newline();
     con.print("  Secs:  ");
-    con.print_u64(crate::arch::pit::uptime_secs());
+    con.print_u64(0);
     con.newline();
     let tsc = cpu::rdtsc();
     con.print("  TSC:   ");
@@ -454,8 +453,8 @@ fn cmd_cube(con: &mut Console) {
         crate::render3d::render_cube(fb_base, fb_pitch, tick);
         tick += 1;
 
-        // Check for keypress to exit
-        let key = crate::drivers::keyboard::try_read_key();
+        // Check for serial input to exit
+        let key = crate::drivers::serial::serial_read_byte().unwrap_or(0);
         if key != 0 {
             break;
         }

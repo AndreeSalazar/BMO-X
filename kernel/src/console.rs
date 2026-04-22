@@ -1,7 +1,7 @@
 //! Console — text display over framebuffer with scroll and cursor.
 
 use crate::fb::{Framebuffer, colors};
-use crate::vga;
+use crate::font;
 
 const CHAR_W: usize = 8;
 const CHAR_H: usize = 16;
@@ -138,7 +138,7 @@ impl Console {
     }
 
     fn draw_char(&self, col: usize, row: usize, ch: u8, fg: u32, bg: u32) {
-        let glyph = vga::get_glyph(ch);
+        let glyph = font::get_glyph(ch);
         let base_x = col * CHAR_W;
         let base_y = row * CHAR_H;
         let buf = self.fb_addr as *mut u32;

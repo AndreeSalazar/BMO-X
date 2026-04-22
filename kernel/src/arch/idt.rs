@@ -118,14 +118,10 @@ unsafe extern "C" fn isr_stub_exception_err() {
     );
 }
 
-/// Default IRQ handler (vectors 34-47) — just sends EOI.
+/// Default IRQ handler (vectors 34-47) — just iretq since PIC is removed.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_default_irq() {
     naked_asm!(
-        "push rax",
-        "mov al, 0x20",
-        "out 0x20, al",   // EOI to master PIC
-        "pop rax",
         "iretq",
     );
 }
@@ -174,7 +170,6 @@ extern "C" fn irq0_handler_rust() {
             handler();
         }
     }
-    super::pic::send_eoi(0);
 }
 
 #[unsafe(no_mangle)]
@@ -184,5 +179,4 @@ extern "C" fn irq1_handler_rust() {
             handler();
         }
     }
-    super::pic::send_eoi(1);
 }

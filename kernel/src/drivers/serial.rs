@@ -35,3 +35,11 @@ pub fn serial_write(s: &str) {
         serial_write_byte(b);
     }
 }
+
+pub fn serial_read_byte() -> Option<u8> {
+    if inb(COM1 + 5) & 1 != 0 {
+        Some(inb(COM1))
+    } else {
+        None
+    }
+}
