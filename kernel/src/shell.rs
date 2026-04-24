@@ -1,5 +1,5 @@
 //! FastOS Shell — Interactive command interpreter.
-//! Ring 0, no_std. Simple and reliable.
+//! Ring 0, no_std. Only commands backed by real hardware state.
 
 use crate::console::Console;
 use crate::fb::colors;
@@ -11,7 +11,6 @@ const MAX_LINE: usize = 256;
 fn read_serial_key() -> u8 {
     loop {
         if let Some(b) = crate::drivers::serial::serial_read_byte() {
-            // Echo back to serial so the user sees what they type via terminal too
             crate::drivers::serial::serial_write_byte(b);
             return b;
         }
@@ -21,9 +20,8 @@ fn read_serial_key() -> u8 {
 
 /// Run the interactive shell loop (never returns).
 pub fn run(con: &mut Console) {
-    // Simple welcome
-    con.print_colored("FastOS v0.5.0", colors::NV_GREEN);
-    con.print(" - Ring 0 | Ryzen 5 5600X + RTX 3060 12G");
+    con.print_colored("FastOS v0.6.0", colors::NV_GREEN);
+    con.print(" - Ring 0 | UEFI Native");
     con.newline();
     con.print_colored("Type 'help' for commands.", colors::TEXT_SECONDARY);
     con.newline();
@@ -32,17 +30,14 @@ pub fn run(con: &mut Console) {
     let mut line_buf = [0u8; MAX_LINE];
 
     loop {
-        // Prompt
         con.print_colored("fastos", colors::NV_GREEN);
         con.print_colored("> ", colors::ACCENT_CYAN);
         con.draw_cursor(true);
 
-        // Read line interactively
         let len = read_line_interactive(con, &mut line_buf);
         con.draw_cursor(false);
         con.newline();
 
-        // Execute
         if len > 0 {
             execute(con, &line_buf[..len]);
         }
@@ -56,7 +51,6 @@ fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
         if key == b'\r' || key == b'\n' {
             return len;
         } else if key == 8 {
-            // Backspace
             if len > 0 {
                 len -= 1;
                 con.draw_cursor(false);
@@ -88,27 +82,6 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         cmd_pci(con);
     } else if bytes_eq(cmd, b"meminfo") {
         cmd_meminfo(con);
-    } else if bytes_eq(cmd, b"uptime") {
-        cmd_uptime(con);
-    } else if bytes_eq(cmd, b"reboot") {
-        cmd_reboot();
-    } else if bytes_eq(cmd, b"halt") {
-        con.print_colored("System halted.", colors::ACCENT_ORANGE);
-        con.newline();
-        loop { unsafe { core::arch::asm!("hlt"); } }
-    } else if bytes_eq(cmd, b"ver") {
-        con.print_colored("FastOS v0.5.0 (Rust, no_std, Ring 0)", colors::ACCENT_CYAN);
-        con.newline();
-    } else if bytes_eq(cmd, b"ticks") {
-        cmd_ticks(con);
-    } else if bytes_eq(cmd, b"irq") {
-        cmd_irq(con);
-    } else if bytes_eq(cmd, b"gpu") {
-        cmd_gpu_engines(con);
-    } else if bytes_eq(cmd, b"dmesg") {
-        cmd_dmesg(con);
-    } else if bytes_eq(cmd, b"gsprm") {
-        cmd_gsprm(con);
     } else if bytes_eq(cmd, b"gputest") {
         unsafe {
             crate::tests::gpu_test::run_all_tests(con, crate::boot_info::BOOT_INFO);
@@ -119,6 +92,20 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         crate::gpu::engine::cmd_gpucmd(con, fb_base, fb_pitch, 1920, 1080);
     } else if bytes_eq(cmd, b"cube") {
         cmd_cube(con);
+    } else if bytes_eq(cmd, b"ver") {
+        con.print_colored("FastOS v0.6.0 (Rust, no_std, Ring 0, UEFI Native)", colors::ACCENT_CYAN);
+        con.newline();
+    } else if bytes_eq(cmd, b"reboot") {
+        cmd_reboot();
+    } else if bytes_eq(cmd, b"halt") {
+        con.print_colored("System halted.", colors::ACCENT_ORANGE);
+        con.newline();
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    } else if bytes_eq(cmd, b"tsc") {
+        let tsc = cpu::rdtsc();
+        con.print("TSC: ");
+        con.print_u64(tsc);
+        con.newline();
     } else {
         con.print_colored("Unknown: ", colors::ACCENT_RED);
         for &b in cmd { con.put_char(b); }
@@ -126,26 +113,19 @@ fn execute(con: &mut Console, cmd: &[u8]) {
     }
 }
 
-// ── Commands (all use simple println, no arrays) ────────────────────────────
-
 fn cmd_help(con: &mut Console) {
     con.print_colored("Commands:", colors::ACCENT_BLUE);
     con.newline();
     print_cmd(con, "help", "Show this help");
-    print_cmd(con, "cpuinfo", "CPU features");
-    print_cmd(con, "gpuinfo", "GPU information");
-    print_cmd(con, "pci", "List PCI devices");
-    print_cmd(con, "meminfo", "Memory layout");
-    print_cmd(con, "uptime", "System uptime");
+    print_cmd(con, "cpuinfo", "CPU features (live CPUID)");
+    print_cmd(con, "gpuinfo", "GPU info (live PCI + BAR0)");
+    print_cmd(con, "pci", "PCI devices (live ECAM scan)");
+    print_cmd(con, "meminfo", "UEFI memory map");
+    print_cmd(con, "gputest", "GPU HW register test suite");
+    print_cmd(con, "gpucmd", "GPU command engine (pushbuffer)");
+    print_cmd(con, "cube", "3D rotating cube (software)");
+    print_cmd(con, "tsc", "Read TSC counter");
     print_cmd(con, "clear", "Clear screen");
-    print_cmd(con, "ticks", "PIT tick counter");
-    print_cmd(con, "irq", "Interrupt status");
-    print_cmd(con, "gpu", "GPU engine status");
-    print_cmd(con, "gsprm", "GSP-RM protocol");
-    print_cmd(con, "gputest", "GPU HW test suite");
-    print_cmd(con, "gpucmd", "GPU command engine (Level 2)");
-    print_cmd(con, "cube", "3D rotating cube (Ring 0)");
-    print_cmd(con, "dmesg", "Boot log");
     print_cmd(con, "ver", "Kernel version");
     print_cmd(con, "reboot", "Reboot system");
     print_cmd(con, "halt", "Halt CPU");
@@ -154,7 +134,6 @@ fn cmd_help(con: &mut Console) {
 fn print_cmd(con: &mut Console, name: &str, desc: &str) {
     con.print("  ");
     con.print_colored(name, colors::NV_GREEN);
-    // Manual padding
     let mut pad = 12usize.saturating_sub(name.len());
     while pad > 0 { con.put_char(b' '); pad -= 1; }
     con.print(desc);
@@ -176,106 +155,77 @@ fn cmd_cpuinfo(con: &mut Console) {
 }
 
 fn cmd_gpuinfo(con: &mut Console) {
-    con.print_colored("GPU: ", colors::ACCENT_PURPLE);
-    con.println("NVIDIA GeForce RTX 3060 12GB");
-    con.println("  Chip:   GA106 (Ampere A1)");
-    con.println("  VRAM:   12288 MB GDDR6");
-    con.println("  Bus:    PCIe 4.0 x16, bus 41");
-    con.println("  VID:    0x10DE:0x2504");
-    con.println("  BAR0:   MMIO 16 MB (registers)");
-    con.print("  FB:     ");
-    con.print_colored("VBE 1920x1080x32 @ 0xD0000000", colors::ACCENT_CYAN);
-    con.newline();
-    con.println("  GPC:    3 (4 TPC/GPC, 28 SM total)");
-    con.println("  CE:     5 copy engines (CE0-CE4)");
-    con.println("  PBDMA:  2 engines (PBDMA0, PBDMA1)");
-    con.print("  GSP-RM: ");
-    con.print_colored("gsp_ga10x.bin (RISC-V, libos-v3.1.0)", colors::ACCENT_CYAN);
-    con.newline();
-    con.println("  Crypto: AES-256 (51 Rcon) + RSA-2048 (2 sigs) + SHA-256");
-    con.println("  XOR:    SigDead-BIB decoded 100 candidates (key 0x20)");
-    con.print("  Driver: ");
-    con.print_colored("Ring 0 loaded", colors::TEXT_SUCCESS);
-    con.newline();
-}
+    let platform = crate::platform::FastOsPlatform::new();
+    use nv_hal::Platform;
 
-fn cmd_gpu_engines(con: &mut Console) {
-    con.print_colored("GPU Engines (SigDead-BIB):\n", colors::ACCENT_BLUE);
+    let gpu_pci = nv_hal::find_gpu(&platform);
+    match gpu_pci {
+        Some(pci) => {
+            let vd = platform.pci_config_read32(pci, 0x00);
+            let vendor = (vd & 0xFFFF) as u16;
+            let dev_id = ((vd >> 16) & 0xFFFF) as u16;
 
-    con.print_colored("  FIFO: ", colors::ACCENT_PURPLE);
-    con.println("Runlist-based scheduler, 512 channels");
-    con.println("    PBDMA0: Push Buffer DMA engine 0");
-    con.println("    PBDMA1: Push Buffer DMA engine 1");
+            con.print_colored("GPU: ", colors::ACCENT_PURPLE);
+            con.print("NVIDIA ");
+            con.print_hex32(((vendor as u32) << 16) | dev_id as u32);
+            con.newline();
 
-    con.print_colored("  PGRAPH: ", colors::ACCENT_PURPLE);
-    con.println("3 GPC x 4 TPC = 28 SM");
-    con.println("    FECS: Frontend Context Switch");
-    con.println("    GPCCS: GPC Context Switch");
+            con.print("  PCI: bus=");
+            con.print_u64(pci.bus as u64);
+            con.print(" dev=");
+            con.print_u64(pci.device as u64);
+            con.print(" fn=");
+            con.print_u64(pci.function as u64);
+            con.newline();
 
-    con.print_colored("  Copy Engines: ", colors::ACCENT_PURPLE);
-    con.println("5 total");
-    con.println("    HUB: CE0-CE3, CE_SHIM");
-    con.println("    HUB: HSCE0-HSCE8 (high-speed)");
+            let bar0 = nv_hal::read_bar0(&platform, pci);
+            con.print("  BAR0: ");
+            con.print_hex32(bar0 as u32);
+            con.newline();
 
-    con.print_colored("  FALCON: ", colors::ACCENT_PURPLE);
-    con.println("4 microcontrollers");
-    con.println("    GSP  @ 0x110000 (RISC-V, RM firmware)");
-    con.println("    PMU  @ 0x10A000 (power management)");
-    con.println("    SEC2 @ 0x101000 (secure boot)");
-    con.println("    NVDEC@ 0x840000 (video decode)");
+            let bar1 = nv_hal::read_bar1(&platform, pci);
+            con.print("  BAR1: ");
+            con.print_hex32(bar1 as u32);
+            con.newline();
 
-    con.print_colored("  GSP-RM: ", colors::ACCENT_PURPLE);
-    con.println("libos-v3.1.0 kernel (XOR 0x20 decoded)");
-    con.println("    ELF: kernel_ga10x.elf (RISC-V ET_REL)");
-    con.println("    Sections: .fwimage, .fwversion, .fwsignature_ga10x");
-    con.println("    Subsystems: mm, sched, loader, server, ipi, dma");
-    con.println("    VM: kernelAddressSpace, kernelMemorySet, pageTable");
-    con.println("    DMA: dmaBounceBuffer, gdmaBounceBuffer (host<>GSP)");
-    con.println("    RPC: kernelServerEntry, kernelPortAllocate");
-    con.println("    Task: kernelTaskCreate, handleTable, priority");
-    con.println("    MNOC: mnocWorker, mnocSetRxIRQ (on-chip msg)");
-    con.println("    Boot: libosBootFindElfHeader, rootFS, initELF");
-    con.println("    FALCON headers: 103 embedded in firmware");
-    con.println("    Strings: 10806 extracted by SigDead-BIB");
+            // Read BOOT_0 chip ID
+            let bar0_ptr = platform.map_mmio(bar0, nv_regs::BAR0_SIZE);
+            if !bar0_ptr.is_null() {
+                let mmio = unsafe { nv_hal::MmioRegion::new(bar0_ptr, nv_regs::BAR0_SIZE) };
+                let boot0 = mmio.read32(nv_regs::pmc::BOOT_0);
+                con.print("  BOOT_0: ");
+                con.print_hex32(boot0);
+                con.newline();
 
-    con.print_colored("  Display: ", colors::ACCENT_PURPLE);
-    con.println("4 heads, 4 SOR (DP/HDMI)");
-    con.println("    I2C: 6 ports (EDID)");
+                let vram = nv_gpu::detect_vram(&mmio);
+                con.print("  VRAM: ");
+                con.print_u64(vram / (1024 * 1024));
+                con.println(" MB");
 
-    con.print_colored("  Security: ", colors::ACCENT_PURPLE);
-    con.println("SEC_FAULT + BAR_FIREWALL");
-    con.println("    WPR: Write-Protected Region (GSP firmware)");
-    con.println("    2x RSA PKCS#1 v1.5 (2048-bit) signatures");
-    con.println("    AES-256: 51 Rcon instances (encrypted channels)");
-    con.println("    SHA-256: firmware integrity verification");
-    con.println("    RSA e=65537: 51 instances (code signing)");
-}
+                let engines = mmio.read32(nv_regs::pmc::ENABLE);
+                con.print("  Engines: ");
+                con.print_hex32(engines);
+                con.newline();
+            }
 
-fn cmd_dmesg(con: &mut Console) {
-    con.print_colored("Boot Log:\n", colors::ACCENT_BLUE);
-    con.println("  [0.000] FastOS v0.5.0 booting...");
-    con.println("  [0.001] Serial: COM1 @ 115200 baud");
-    con.println("  [0.002] CPU: AMD Ryzen 5 5600X (Zen 3)");
-    con.println("  [0.003] PIC: 8259A remapped IRQ 0-15 -> 32-47");
-    con.println("  [0.004] IDT: 256 entries loaded");
-    con.println("  [0.005] PIT: Channel 0 @ 100Hz");
-    con.println("  [0.006] IRQ: Interrupts enabled (PIC+PIT+KB)");
-    con.println("  [0.010] PCI: Bus scan complete");
-    con.println("  [0.011] GPU: NVIDIA GA106 (0x10DE:0x2504)");
-    con.println("  [0.012] GPU: BAR0 mapped (16 MB registers)");
-    con.println("  [0.013] GPU: VRAM 12288 MB GDDR6 detected");
-    con.println("  [0.014] GPU: Engines enabled (FIFO+GR+CE+DISP)");
-    con.println("  [0.015] GPU: GSP firmware: gsp_ga10x.bin (69 MB)");
-    con.println("  [0.016] GPU: libos-v3.1.0 (RISC-V, 103 FALCON)");
-    con.println("  [0.017] GPU: XOR 0x20 decoded libos API (SigDead-BIB)");
-    con.println("  [0.018] GPU: AES-256 + RSA-2048 + SHA-256 detected");
-    con.println("  [0.020] KB:  PS/2 keyboard ready (IRQ1)");
-    con.print("  [0.021] Shell: ");
-    con.print_colored("ready", colors::TEXT_SUCCESS);
-    con.newline();
-    con.print("  Uptime: ");
-    con.print_u64(0); // TODO: APIC Timer
-    con.println("s");
+            // GSP firmware status
+            let gsp_addr = unsafe { crate::boot_info::GSP_FW_ADDR };
+            let gsp_size = unsafe { crate::boot_info::GSP_FW_SIZE };
+            con.print("  GSP FW: ");
+            if gsp_addr != 0 {
+                con.print_u64(gsp_size / (1024 * 1024));
+                con.print_colored(" MB loaded", colors::TEXT_SUCCESS);
+            } else {
+                con.print_colored("not loaded", colors::ACCENT_RED);
+            }
+            con.newline();
+        }
+        None => {
+            con.print_colored("GPU: ", colors::ACCENT_PURPLE);
+            con.print_colored("not found on PCI bus", colors::ACCENT_RED);
+            con.newline();
+        }
+    }
 }
 
 fn cmd_pci(con: &mut Console) {
@@ -309,137 +259,69 @@ fn cmd_pci(con: &mut Console) {
 }
 
 fn cmd_meminfo(con: &mut Console) {
-    con.print_colored("Memory:\n", colors::ACCENT_BLUE);
-    con.println("  0x007C00  MBR (Stage1)");
-    con.println("  0x007E00  Stage2 bootloader");
-    con.println("  0x100000  Kernel (1 MB)");
-    con.println("  0x400000  DMA buffer pool");
-    con.println("  0x800000  Stack top");
-    con.print("  0xD0000000  ");
-    con.print_colored("GPU Framebuffer", colors::ACCENT_CYAN);
+    let bi = unsafe { crate::boot_info::BOOT_INFO };
+    if bi.is_null() {
+        con.println("BootInfo not available");
+        return;
+    }
+    let bi = unsafe { &*bi };
+
+    con.print_colored("Memory (UEFI):\n", colors::ACCENT_BLUE);
+    con.print("  Kernel base: ");
+    con.print_hex32(bi.kernel_base as u32);
+    con.print(" size: ");
+    con.print_u64(bi.kernel_size / 1024);
+    con.println(" KB");
+
+    con.print("  Stack top:   ");
+    con.print_hex32(bi.stack_top as u32);
+    con.print(" size: ");
+    con.print_u64(bi.stack_size / 1024);
+    con.println(" KB");
+
+    con.print("  Framebuffer: ");
+    con.print_hex32(bi.fb_addr as u32);
+    con.print(" ");
+    con.print_u64(bi.fb_width as u64);
+    con.print("x");
+    con.print_u64(bi.fb_height as u64);
     con.newline();
-}
 
-fn cmd_uptime(con: &mut Console) {
-    let pit_secs = 0; // TODO: APIC Timer
-    let pit_ticks = 0;
-    con.print("Uptime: ");
-    con.print_u64(pit_secs);
-    con.print("s (");
-    con.print_u64(pit_ticks);
-    con.println(" ticks)");
-}
+    con.print("  Memory map:  ");
+    con.print_u64(bi.memory_map_count);
+    con.println(" entries");
 
-fn cmd_ticks(con: &mut Console) {
-    con.print_colored("Timer: ", colors::ACCENT_BLUE);
-    con.print("APIC Timer (TODO)");
-    con.newline();
-    con.print("  Ticks: ");
-    con.print_u64(0);
-    con.newline();
-    con.print("  Secs:  ");
-    con.print_u64(0);
-    con.newline();
-    let tsc = cpu::rdtsc();
-    con.print("  TSC:   ");
-    con.print_u64(tsc);
-    con.newline();
-}
+    // Count usable RAM
+    let mut usable_pages: u64 = 0;
+    let count = bi.memory_map_count as usize;
+    for i in 0..count {
+        if i >= 256 { break; }
+        if bi.memory_map[i].mem_type == fastos_boot_protocol::MemoryType::Usable {
+            usable_pages += bi.memory_map[i].size / 4096;
+        }
+    }
+    con.print("  Usable RAM:  ");
+    con.print_u64(usable_pages * 4 / 1024);
+    con.println(" MB");
 
-fn cmd_irq(con: &mut Console) {
-    con.print_colored("Interrupts:\n", colors::ACCENT_BLUE);
-    con.println("  PIC 8259A: Master + Slave");
-    con.println("  IRQ0:  PIT timer (100Hz)");
-    con.println("  IRQ1:  PS/2 keyboard");
-    con.println("  IDT:   256 entries loaded");
-    con.println("  GPU:   MSI capable (PMC INTR_0)");
-    con.println("    PFIFO  bit 8   PGRAPH  bit 12");
-    con.println("    PCOPY0 bit 17  PCOPY1  bit 18");
-    con.println("    PMU    bit 24  DISPLAY bit 26");
-    con.print("  Mode:  ");
-    con.print_colored("Interrupt-driven", colors::TEXT_SUCCESS);
-    con.newline();
-}
-
-fn cmd_gsprm(con: &mut Console) {
-    con.print_colored("GSP-RM Protocol (SigDead-BIB XOR 0x20):\n", colors::ACCENT_BLUE);
-
-    con.print_colored("  Firmware: ", colors::ACCENT_PURPLE);
-    con.println("gsp_ga10x.bin (72.8 MB, RISC-V ELF64)");
-    con.println("    libos-v3.1.0 | kernel_ga10x.elf | 103 FALCON hdrs");
-
-    con.print_colored("  Memory (XOR 0x20 @ 0x7A000):\n", colors::ACCENT_PURPLE);
-    con.println("    kernelMemorySetAllocate    - pool allocation");
-    con.println("    kernelAddressSpaceAllocate - virtual addr space");
-    con.println("    kernelAddressSpaceMapContiguous - phys mapping");
-    con.println("    kernelGlobalPageMapping    - global page tables");
-    con.println("    kernelTextMapping          - .text ELF section");
-    con.println("    kernelDataMapping          - .data/.bss sections");
-    con.println("    kernelPrivMapping          - MMIO registers");
-    con.println("    dmaBounceBuffer            - host<>GSP DMA");
-    con.println("    gdmaBounceBuffer           - engine<>GSP DMA");
-    con.println("    libosMemoryReadable/Writeable - permissions");
-
-    con.print_colored("  Tasks (XOR 0x20 @ 0x7B000):\n", colors::ACCENT_PURPLE);
-    con.println("    kernelTaskCreate           - create GSP thread");
-    con.println("    kernelTaskRegisterObject   - bind kernel object");
-    con.println("    handleTable                - per-task handles");
-    con.println("    priority: normal / high / realtime");
-
-    con.print_colored("  Server (XOR 0x20 @ 0xCE000):\n", colors::ACCENT_PURPLE);
-    con.println("    kernelServerEntry          - RPC dispatch entry");
-    con.println("    kernelPortAllocate         - IPC port alloc");
-    con.println("    servicePortShuttleAsyncRecv- async msg recv");
-    con.println("    mnocWorker / mnocSetRxIRQ  - on-chip network");
-    con.println("    worker / workItems         - thread pool");
-
-    con.print_colored("  Boot (XOR 0x20 @ 0xA2000):\n", colors::ACCENT_PURPLE);
-    con.println("    libosBootFindElfHeader     - locate ELF in blob");
-    con.println("    rootFS / initELF           - bootstrap loader");
-    con.println("    debugElf / kernelElfMap    - crash analysis");
-    con.println("    debugTaskCommsPortHandle   - debug channel");
-
-    con.print_colored("  IPI (XOR 0x20 @ 0xCD200):\n", colors::ACCENT_PURPLE);
-    con.println("    ipiMessageNull             - null sentinel");
-    con.println("    PAGE_SIZE=4096 | IDENTITY_MAPS_END=0xFFFFFFFF");
-
-    con.print_colored("  Crypto (SigDead-BIB constant scan):\n", colors::ACCENT_PURPLE);
-    con.println("    AES-256:  51 Rcon instances (encrypted channels)");
-    con.println("    RSA-2048: 2 PKCS#1 v1.5 sigs (.fwsignature_ga10x)");
-    con.println("    RSA e=65537: 51 instances across firmware");
-    con.println("    SHA-256:  integrity verification (1 H constant)");
-
-    con.print_colored("  Host<>GSP RPC:\n", colors::ACCENT_PURPLE);
-    con.println("    Ring: cmd_ring (put/get) + status_ring");
-    con.println("    MSG_INIT(0x01) MSG_GPU_INFO(0x02) MSG_ALLOC(0x03)");
-    con.println("    MSG_CONTROL(0x05) MSG_DISPLAY(0x10) MSG_POWER(0x20)");
-    con.println("    MSG_EVENT(0x100) MSG_HEARTBEAT(0xFFFF)");
-
-    con.print("  Status: ");
-    con.print_colored("READY (protocol mapped by SigDead-BIB)", colors::TEXT_SUCCESS);
-    con.newline();
+    con.print("  Page alloc:  ");
+    con.print_u64(unsafe { crate::arch::page_alloc::free_count() } as u64);
+    con.println(" free pages");
 }
 
 fn cmd_cube(con: &mut Console) {
     con.print_colored("=== 3D Rotating Cube ===", colors::ACCENT_CYAN);
     con.newline();
-    con.println("  Software 3D renderer — Ring 0, f32 math");
-    con.println("  640x480 viewport, flat shading + backface cull");
-    con.println("  Rendered by CPU, displayed via RTX 3060 framebuffer");
+    con.println("  Software renderer, Ring 0, f32 math");
+    con.println("  Press any key to stop.");
     con.newline();
 
     crate::render3d::init_backbuffer();
 
-    con.print("  Initializing... ");
-    con.print_colored("OK", colors::NV_GREEN);
-    con.newline();
-    con.println("  Press any key to stop.");
-    con.newline();
-
     let fb_base = con.fb_addr() as u64;
     let fb_pitch = con.fb_pitch() as u32;
 
-    // Clear the full screen to dark background first
+    // Clear screen
     let fb = fb_base as *mut u32;
     let pitch_px = fb_pitch as usize / 4;
     for y in 0..1080usize {
@@ -453,19 +335,12 @@ fn cmd_cube(con: &mut Console) {
         crate::render3d::render_cube(fb_base, fb_pitch, tick);
         tick += 1;
 
-        // Check for serial input to exit
         let key = crate::drivers::serial::serial_read_byte().unwrap_or(0);
-        if key != 0 {
-            break;
-        }
+        if key != 0 { break; }
 
-        // Small delay — ~30 FPS target via spin
-        for _ in 0..3_000_000u32 {
-            core::hint::spin_loop();
-        }
+        for _ in 0..3_000_000u32 { core::hint::spin_loop(); }
     }
 
-    // Restore console
     con.clear();
     con.print_colored("3D demo stopped.", colors::ACCENT_CYAN);
     con.newline();
@@ -492,7 +367,6 @@ fn print_yn(con: &mut Console, val: bool) {
 }
 
 fn bytes_eq(a: &[u8], b: &[u8]) -> bool {
-    // Trim spaces from a
     let mut start = 0;
     let mut end = a.len();
     while start < end && a[start] == b' ' { start += 1; }

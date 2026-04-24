@@ -151,7 +151,6 @@ if (Test-Path $gspPath) {
 }
 
 Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_uefi.ps1" -Force
-Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_direct.ps1" -Force
 
 # Create README with UEFI instructions
 $buildDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -207,13 +206,15 @@ $readme = @"
   1. UEFI firmware loads BOOTX64.EFI
   2. Bootloader queries GOP (framebuffer)
   3. Bootloader loads kernel.elf (ELF64)
-  4. Bootloader finds RSDP (ACPI)
-  5. Bootloader builds BootInfo struct
-  6. Bootloader exits boot services
-  7. Bootloader jumps to kernel _start
-  8. Kernel validates BootInfo, inits serial
-  9. Kernel inits PIC/IDT/PIT, enables IRQs
-  10. Kernel runs interactive shell on GOP FB
+  4. Bootloader loads gsp_ga10x.bin (optional)
+  5. Bootloader finds RSDP (ACPI)
+  6. Bootloader builds BootInfo struct
+  7. Bootloader exits boot services
+  8. Bootloader jumps to kernel _start
+  9. Kernel validates BootInfo, inits serial
+  10. Kernel loads IDT, parses ACPI MCFG
+  11. Kernel scans PCI via ECAM, inits page alloc
+  12. Kernel runs interactive shell on GOP FB
 
 ======================================================
 "@

@@ -1,18 +1,16 @@
-//! FastOS Kernel v0.5.0 — Entry Point (checkpoint debug)
+//! FastOS Kernel v0.6.0 — Entry Point
 //!
 //! Receives control from UEFI bootloader in 64-bit long mode, Ring 0.
 //! RDI = *const fastos_boot_protocol::BootInfo
 
 #![no_std]
 #![no_main]
-#![allow(dead_code, unused_imports, unused_variables)]
 
 mod arch;
 mod boot_info;
 mod console;
 mod drivers;
 mod fb;
-mod fs;
 mod gpu;
 mod render3d;
 mod font;
@@ -20,7 +18,6 @@ mod panic;
 mod platform;
 mod shell;
 mod tests;
-mod crypto;
 
 use core::arch::naked_asm;
 
@@ -104,7 +101,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
 
     // ── Initialize serial first for debug output ─────────────────────
     drivers::serial::init_serial();
-    drivers::serial::serial_write("[FastOS] Kernel v0.5.0 starting\n");
+    drivers::serial::serial_write("[FastOS] Kernel v0.6.0 starting\n");
     // Verificar que boot_info_ptr no es null antes de desrefenciar
     if boot_info_ptr.is_null() {
         drivers::serial::serial_write("[FastOS] FATAL: boot_info_ptr is NULL!\n");

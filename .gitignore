@@ -4,11 +4,13 @@
 *.iso
 *.o
 *.elf
+*.EFI
+
+# ── Build output folders ────────────────────────────────────────
+/USB_boot/
 
 # ── Rust ─────────────────────────────────────────────────────────
-/kernel/target/
-/bootloader/target/
-/Driver_Canon GA106/target/
+**/target/
 **/*.rs.bk
 
 # ── IDE / Editor ─────────────────────────────────────────────────
