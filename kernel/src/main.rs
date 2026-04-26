@@ -234,8 +234,41 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 }
             }
 
-            let mut con = console::Console::new(fb_addr, bi.fb_pitch());
+            let mut con = console::Console::new(fb_addr, bi.fb_pitch(), bi.fb_width, bi.fb_height);
             con.clear(); // Limpiar la pantalla de las franjas de debug antes de iniciar el shell
+            
+            // ── Iniciar GSP ──────────────────────────────────────────────────
+            con.println("[FastOS] Buscando GPU para cargar GSP...");
+            let platform = platform::FastOsPlatform::new();
+            if let Some(pci) = nv_hal::find_gpu(&platform) {
+                use nv_hal::Platform;
+                let bar0_phys = nv_hal::read_bar0(&platform, pci);
+                if bar0_phys != 0 && bar0_phys != 0xFFFF_FFFF_FFFF_FFF0 {
+                    // BAR0 es típicamente de 16MB
+                    let bar0_ptr = platform.map_mmio(bar0_phys, 16 * 1024 * 1024);
+                    if !bar0_ptr.is_null() {
+                        let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
+                        if bi.gsp_addr != 0 && bi.gsp_size > 0 {
+                            let fw_blob = unsafe { core::slice::from_raw_parts(bi.gsp_addr as *const u8, bi.gsp_size as usize) };
+                            if let Err(_e) = crate::drivers::gsp::gsp_init(&bar0, fw_blob, &mut con) {
+                                con.print_colored("[FastOS] ERROR: No se pudo arrancar el GSP.\n", 0xFFFF0000);
+                            } else {
+                                con.print_colored("[FastOS] EXITO: GSP Bootloader handshake OK.\n", 0xFF00FF00);
+                            }
+                        } else {
+                            con.print_colored("[FastOS] ERROR: Firmware gsp_ga10x.bin no cargado por bootloader.\n", 0xFFFF0000);
+                        }
+                    } else {
+                        con.println("[FastOS] ERROR: Mapeo MMIO BAR0 fallido.");
+                    }
+                } else {
+                    con.println("[FastOS] ERROR: BAR0 Invalido.");
+                }
+            } else {
+                con.println("[FastOS] ERROR: GPU no encontrada.");
+            }
+            con.println("");
+
             shell::run(&mut con);
             loop { unsafe { core::arch::asm!("hlt"); } }
         }

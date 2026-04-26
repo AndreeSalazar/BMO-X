@@ -3,27 +3,28 @@
 //! 1920×1080×32bpp at 0xD0000000, pitch 7680 bytes.
 //! All writes are volatile (MMIO). Ring 0, no_std.
 
-const FB_WIDTH: usize = 1920;
-const FB_HEIGHT: usize = 1080;
-
 /// Framebuffer handle — raw pixel access.
 pub struct Framebuffer {
     addr: usize,
     pitch: usize, // bytes per scanline
+    pub width: usize,
+    pub height: usize,
 }
 
 impl Framebuffer {
-    pub fn new(addr: u64, pitch: u64) -> Self {
+    pub fn new(addr: u64, pitch: u64, width: u32, height: u32) -> Self {
         Self {
             addr: addr as usize,
             pitch: pitch as usize,
+            width: width as usize,
+            height: height as usize,
         }
     }
 
     /// Write a single pixel. No bounds check for speed.
     #[inline(always)]
     pub fn put_pixel(&self, x: usize, y: usize, color: u32) {
-        if x >= FB_WIDTH || y >= FB_HEIGHT { return; }
+        if x >= self.width || y >= self.height { return; }
         let off = y * (self.pitch / 4) + x;
         unsafe {
             (self.addr as *mut u32).add(off).write_volatile(color);
@@ -34,8 +35,8 @@ impl Framebuffer {
     pub fn clear(&self, color: u32) {
         let buf = self.addr as *mut u32;
         let pitch_px = self.pitch / 4;
-        for y in 0..FB_HEIGHT {
-            for x in 0..FB_WIDTH {
+        for y in 0..self.height {
+            for x in 0..self.width {
                 unsafe { buf.add(y * pitch_px + x).write_volatile(color); }
             }
         }
@@ -43,8 +44,8 @@ impl Framebuffer {
 
     /// Filled rectangle.
     pub fn fill_rect(&self, x: usize, y: usize, w: usize, h: usize, color: u32) {
-        for row in y..(y + h).min(FB_HEIGHT) {
-            for col in x..(x + w).min(FB_WIDTH) {
+        for row in y..(y + h).min(self.height) {
+            for col in x..(x + w).min(self.width) {
                 self.put_pixel(col, row, color);
             }
         }
@@ -68,7 +69,7 @@ impl Framebuffer {
             let t = col as u32;
             let inv = (w - 1) as u32;
             let color = lerp_color(left, right, t, inv);
-            for row in y..(y + h).min(FB_HEIGHT) {
+            for row in y..(y + h).min(self.height) {
                 self.put_pixel(x + col, row, color);
             }
         }
@@ -80,7 +81,7 @@ impl Framebuffer {
             let t = row as u32;
             let inv = (h - 1).max(1) as u32;
             let color = lerp_color(top, bottom, t, inv);
-            for col in x..(x + w).min(FB_WIDTH) {
+            for col in x..(x + w).min(self.width) {
                 self.put_pixel(col, y + row, color);
             }
         }
@@ -105,7 +106,7 @@ impl Framebuffer {
 
     /// Horizontal line.
     pub fn hline(&self, x: usize, y: usize, w: usize, color: u32) {
-        for col in x..(x + w).min(FB_WIDTH) {
+        for col in x..(x + w).min(self.width) {
             self.put_pixel(col, y, color);
         }
     }

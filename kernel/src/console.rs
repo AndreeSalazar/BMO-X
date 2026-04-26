@@ -5,28 +5,34 @@ use crate::font;
 
 const CHAR_W: usize = 8;
 const CHAR_H: usize = 16;
-const COLS: usize = 1920 / CHAR_W;  // 240
-const ROWS: usize = 1080 / CHAR_H;  // 67
 
 /// Console state.
 pub struct Console {
     col: usize,
     row: usize,
+    max_cols: usize,
+    max_rows: usize,
     fg: u32,
     bg: u32,
     fb_addr: usize,
     fb_pitch: usize,
+    fb_width: usize,
+    fb_height: usize,
 }
 
 impl Console {
-    pub fn new(fb_addr: u64, fb_pitch: u64) -> Self {
+    pub fn new(fb_addr: u64, fb_pitch: u64, fb_width: u32, fb_height: u32) -> Self {
         Self {
             col: 0,
             row: 0,
+            max_cols: fb_width as usize / CHAR_W,
+            max_rows: fb_height as usize / CHAR_H,
             fg: colors::TEXT_PRIMARY,
             bg: colors::BG_DARK,
             fb_addr: fb_addr as usize,
             fb_pitch: fb_pitch as usize,
+            fb_width: fb_width as usize,
+            fb_height: fb_height as usize,
         }
     }
 
@@ -44,7 +50,7 @@ impl Console {
         fb.clear(self.bg);
 
         // Top accent line
-        fb.gradient_h(0, 0, 1920, 2, colors::NV_GREEN, colors::ACCENT_CYAN);
+        fb.gradient_h(0, 0, self.fb_width, 2, colors::NV_GREEN, colors::ACCENT_CYAN);
 
         self.col = 0;
         self.row = 1; // Start below accent line
@@ -77,10 +83,10 @@ impl Console {
                 for _ in 0..spaces { self.put_char(b' '); }
             }
             _ => {
-                if self.row >= ROWS { self.scroll(); }
+                if self.row >= self.max_rows { self.scroll(); }
                 self.draw_char(self.col, self.row, ch, self.fg, self.bg);
                 self.col += 1;
-                if self.col >= COLS { self.newline(); }
+                if self.col >= self.max_cols { self.newline(); }
             }
         }
     }
@@ -88,7 +94,7 @@ impl Console {
     pub fn newline(&mut self) {
         self.col = 0;
         self.row += 1;
-        if self.row >= ROWS { self.scroll(); }
+        if self.row >= self.max_rows { self.scroll(); }
     }
 
     pub fn backspace(&mut self) {
@@ -134,7 +140,7 @@ impl Console {
     // ── Internal ────────────────────────────────────────────────────────
 
     fn fb(&self) -> Framebuffer {
-        Framebuffer::new(self.fb_addr as u64, self.fb_pitch as u64)
+        Framebuffer::new(self.fb_addr as u64, self.fb_pitch as u64, self.fb_width as u32, self.fb_height as u32)
     }
 
     fn draw_char(&self, col: usize, row: usize, ch: u8, fg: u32, bg: u32) {
@@ -159,9 +165,9 @@ impl Console {
         let pitch_px = self.fb_pitch / 4;
 
         // Copy all rows up by one character height
-        let copy_rows = (ROWS - 1) * CHAR_H;
+        let copy_rows = (self.max_rows - 1) * CHAR_H;
         for py in 0..copy_rows {
-            for px in 0..1920usize {
+            for px in 0..self.fb_width {
                 unsafe {
                     let src = buf.add((py + CHAR_H) * pitch_px + px).read_volatile();
                     buf.add(py * pitch_px + px).write_volatile(src);
@@ -173,12 +179,12 @@ impl Console {
         let bg = self.bg;
         let last_y = copy_rows;
         for py in 0..CHAR_H {
-            for px in 0..1920usize {
+            for px in 0..self.fb_width {
                 unsafe { buf.add((last_y + py) * pitch_px + px).write_volatile(bg); }
             }
         }
 
-        self.row = ROWS - 1;
+        self.row = self.max_rows - 1;
     }
 
     /// Draw a simple cursor block at current position.
