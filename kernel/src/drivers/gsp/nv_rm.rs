@@ -1,7 +1,7 @@
-//! NVIDIA Resource Manager (NV_RM) via GSP RPC — Datos Reales
+//! NVIDIA Resource Manager (NV_RM) via GSP RPC
 //!
-//! Gestor de Recursos usando las clases de Ampere GA10x confirmadas
-//! por SigDead Hunter. Tabla de dispatch principal: 59 handlers (0xD07DA8).
+//! Usa RPC_ALLOC_RESOURCE (0x04) con Class IDs en el payload.
+//! Los Class IDs NO son function IDs — van dentro del mensaje.
 
 use crate::console::Console;
 use super::rpc::*;
@@ -15,49 +15,57 @@ impl<'a, 'b> NvResourceManager<'a, 'b> {
         Self { rpc }
     }
 
-    /// Solicitar memoria VRAM a través del VA Space (Class 0xC6FA)
-    pub fn allocate_vram(&mut self, size_mb: u32, con: &mut Console) -> Result<u64, &'static str> {
-        con.print_colored("=== Fase 2: NV_RM Resource Manager (GA10x) ===\n",
-            crate::fb::colors::ACCENT_CYAN);
-
-        // 1. Abrir Virtual Address Space (Class 0xC6FA)
-        con.print("  [NV_RM] Abriendo VA Space (Class 0xC6FA)... ");
-        con.print_hex32(size_mb);
-        con.println(" MB solicitados.");
-        let _ = self.rpc.send_rpc(NV_CLASS_VA_SPACE_GA10X, 8, con);
-
-        // 2. Crear canal DMA (Class 0xC66F)
-        con.println("  [NV_RM] Creando Canal DMA (Class 0xC66F)...");
-        let _ = self.rpc.send_rpc(NV_CLASS_CHANNEL_GA10X, 16, con);
-
-        Ok(0x0000_0000)
+    /// Paso 1: Inicializar GSP-RM
+    pub fn gsp_init(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.print_colored("=== NV_RM: GSP Init (func=0x01) ===\n", crate::fb::colors::ACCENT_CYAN);
+        self.rpc.send_rpc(RPC_GSP_INIT, 0, con)
     }
 
-    /// Transferir control del display al GSP (Class 0xC670)
-    pub fn init_display_engine(&mut self, con: &mut Console) -> Result<(), &'static str> {
-        con.println("  [NV_RM] Solicitando Display Engine (Class 0xC670)...");
-        let _ = self.rpc.send_rpc(NV_CLASS_DISPLAY_GA10X, 0, con);
-        Ok(())
+    /// Paso 2: Enviar info del sistema
+    pub fn set_system_info(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] Set System Info (func=0x02)...");
+        self.rpc.send_rpc(RPC_SET_SYSTEM_INFO, 0, con)
     }
 
-    /// Activar motor 3D (Class 0xC697)
-    pub fn init_3d_engine(&mut self, con: &mut Console) -> Result<(), &'static str> {
-        con.println("  [NV_RM] Activando Motor 3D/Graphics (Class 0xC697)...");
-        let _ = self.rpc.send_rpc(NV_CLASS_3D_GA10X, 0, con);
-        Ok(())
+    /// Paso 3: Asignar VA Space (Class 0xC6FA)
+    pub fn alloc_va_space(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] Alloc VA Space (func=0x04, class=0xC6FA)...");
+        self.rpc.send_rpc(RPC_ALLOC_RESOURCE, NV_CLASS_VA_SPACE_GA10X, con)
     }
 
-    /// Activar motor Compute (Class 0xC6C0)
-    pub fn init_compute_engine(&mut self, con: &mut Console) -> Result<(), &'static str> {
-        con.println("  [NV_RM] Activando Motor Compute (Class 0xC6C0)...");
-        let _ = self.rpc.send_rpc(NV_CLASS_COMPUTE_GA10X, 0, con);
-        Ok(())
+    /// Paso 4: Crear canal DMA (Class 0xC66F)
+    pub fn alloc_channel(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] Alloc Channel DMA (func=0x04, class=0xC66F)...");
+        self.rpc.send_rpc(RPC_ALLOC_RESOURCE, NV_CLASS_CHANNEL_GA10X, con)
     }
 
-    /// Activar DMA Copy engines (Class 0xC6B5, 10 instancias)
-    pub fn init_dma_copy(&mut self, con: &mut Console) -> Result<(), &'static str> {
-        con.println("  [NV_RM] Activando DMA Copy (Class 0xC6B5, 10 instancias)...");
-        let _ = self.rpc.send_rpc(NV_CLASS_DMA_COPY_GA10X, 4, con);
-        Ok(())
+    /// Paso 5: Asignar Display Engine (Class 0xC670)
+    pub fn alloc_display(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] Alloc Display (func=0x04, class=0xC670)...");
+        self.rpc.send_rpc(RPC_ALLOC_RESOURCE, NV_CLASS_DISPLAY_GA10X, con)
+    }
+
+    /// Paso 6: Asignar motor 3D (Class 0xC697)
+    pub fn alloc_3d(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] Alloc 3D/Graphics (func=0x04, class=0xC697)...");
+        self.rpc.send_rpc(RPC_ALLOC_RESOURCE, NV_CLASS_3D_GA10X, con)
+    }
+
+    /// Paso 7: Asignar Compute (Class 0xC6C0)
+    pub fn alloc_compute(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] Alloc Compute (func=0x04, class=0xC6C0)...");
+        self.rpc.send_rpc(RPC_ALLOC_RESOURCE, NV_CLASS_COMPUTE_GA10X, con)
+    }
+
+    /// Paso 8: Asignar DMA Copy (Class 0xC6B5)
+    pub fn alloc_dma_copy(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] Alloc DMA Copy (func=0x04, class=0xC6B5)...");
+        self.rpc.send_rpc(RPC_ALLOC_RESOURCE, NV_CLASS_DMA_COPY_GA10X, con)
+    }
+
+    /// Paso 9: Post-Init
+    pub fn gsp_init_post(&mut self, con: &mut Console) -> Result<(), &'static str> {
+        con.println("  [NV_RM] GSP Init Post (func=0x10)...");
+        self.rpc.send_rpc(RPC_GSP_INIT_POST, 0, con)
     }
 }

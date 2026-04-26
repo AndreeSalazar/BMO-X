@@ -28,9 +28,9 @@ impl<'a> DisplayEngine<'a> {
         con.print_colored("=== Fase 3: Display Engine GA10x (Class 0xC670) ===\n",
             crate::fb::colors::ACCENT_CYAN);
 
-        // 1. Solicitar al GSP que abra la clase de Display
-        con.println("  [DISP] Solicitando Display Class 0xC670 al GSP...");
-        let _ = rpc.send_rpc(NV_CLASS_DISPLAY_GA10X, 0, con);
+        // 1. Solicitar al GSP que abra la clase de Display via ALLOC_RESOURCE
+        con.println("  [DISP] Alloc Display Class 0xC670 (func=0x04)...");
+        let _ = rpc.send_rpc(super::rpc::RPC_ALLOC_RESOURCE, NV_CLASS_DISPLAY_GA10X, con);
 
         // 2. Programar registros PDISP para 1920x1080
         con.println("  [DISP] Programando registros PDISP (Head 0)...");

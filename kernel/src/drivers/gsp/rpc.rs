@@ -23,39 +23,41 @@ pub struct NvfwGspRpc {
     pub spare: u32,                // +28: Reservado / cpuRmGfid
 }
 
-// Firma del protocolo RPC (confirmada — NO encontrada como dato literal
-// porque es verificada en código, pero definida en nouveau)
 pub const RPC_SIGNATURE: u32 = 0x564B4E56; // "VNKV" en little-endian
 
 // ═══════════════════════════════════════════════════════════════
-// Clases de Objetos NVIDIA Ampere GA10x (RTX 3060)
-// Confirmados por SigDead Hunter — offsets 0xD04A00-0xD05600
+// NV_VGPU_MSG_FUNCTION — IDs de función RPC (de nouveau r535.c)
+// ESTOS van en el campo 'function' del header — NO los class IDs
 // ═══════════════════════════════════════════════════════════════
-pub const NV_CLASS_DISPLAY_GA10X: u32  = 0xC670; // 3 hits: 0xD053F8, 0xD055C0, 0xF56670
-pub const NV_CLASS_3D_GA10X: u32       = 0xC697; // 3 hits: 0xD05068, 0xE55480, 0xF579E8
-pub const NV_CLASS_COMPUTE_GA10X: u32  = 0xC6C0; // 10 hits en tabla maestra
-pub const NV_CLASS_DMA_COPY_GA10X: u32 = 0xC6B5; // 11 hits (instancias 0-9)
-pub const NV_CLASS_CHANNEL_GA10X: u32  = 0xC66F; // Canal DMA Ampere
-pub const NV_CLASS_VA_SPACE_GA10X: u32 = 0xC6FA; // 2 hits: 0xD05230, 0xF57630
+pub const RPC_GSP_INIT:          u32 = 0x01; // Inicializar GSP-RM
+pub const RPC_SET_SYSTEM_INFO:   u32 = 0x02; // Info del sistema host
+pub const RPC_ALLOC_RESOURCE:    u32 = 0x04; // Asignar recurso (class ID va en payload)
+pub const RPC_FREE_RESOURCE:     u32 = 0x05; // Liberar recurso
+pub const RPC_CONTROL:           u32 = 0x0A; // Control de subsistema
+pub const RPC_DMA_SETUP:         u32 = 0x0D; // Configurar canal DMA
+pub const RPC_GSP_INIT_POST:     u32 = 0x10; // Post-init GSP
 
 // ═══════════════════════════════════════════════════════════════
-// Registros MMIO reales del GSP/Falcon (RTX 3060 BAR0)
-// Confirmado: 0x110044 en firmware offset 0xE9AEF4
+// Clases de Objetos Ampere GA10x — van en el PAYLOAD del RPC
+// Confirmados por SigDead Hunter — offsets 0xD04A00-0xD05600
+// ═══════════════════════════════════════════════════════════════
+pub const NV_CLASS_DISPLAY_GA10X: u32  = 0xC670;
+pub const NV_CLASS_3D_GA10X: u32       = 0xC697;
+pub const NV_CLASS_COMPUTE_GA10X: u32  = 0xC6C0;
+pub const NV_CLASS_DMA_COPY_GA10X: u32 = 0xC6B5;
+pub const NV_CLASS_CHANNEL_GA10X: u32  = 0xC66F;
+pub const NV_CLASS_VA_SPACE_GA10X: u32 = 0xC6FA;
+
+// ═══════════════════════════════════════════════════════════════
+// Registros MMIO reales (confirmados por SigDead en 0xE9AEF4)
 // ═══════════════════════════════════════════════════════════════
 pub const NV_PGSP_MAILBOX0: u32       = 0x00110044;
 pub const NV_PGSP_MAILBOX1: u32       = 0x00110048;
-pub const NV_PGSP_MAILBOX2: u32       = 0x0011004C;
-pub const NV_PGSP_MAILBOX3: u32       = 0x00110050;
-pub const NV_PGSP_FALCON_MBOX0: u32   = 0x00110080;
-pub const NV_PGSP_FALCON_MBOX1: u32   = 0x00110084;
 pub const NV_PGSP_QUEUE_HEAD0: u32    = 0x00110A00;
 pub const NV_PGSP_QUEUE_TAIL0: u32    = 0x00110A04;
 
-// Registros del Display Engine (PDISP)
 pub const NV_PDISP_BASE: u32          = 0x00610000;
 pub const NV_PDISP_HEAD_BASE: u32     = 0x00640000;
-
-// Registros del motor gráfico (PGRAPH)
 pub const NV_PGRAPH_BASE: u32         = 0x00800000;
 
 // Registros del FIFO (canales DMA)
@@ -81,60 +83,60 @@ impl<'a> GspRpcRing<'a> {
         }
     }
 
-    /// Registra el buffer de mensajes con el GSP via MAILBOX
+    /// Registra el buffer y escribe dirección en QUEUE_HEAD
     pub fn init(&mut self, con: &mut Console) {
-        con.print_colored("=== GSP RPC Init (Datos Reales del Firmware) ===\n",
-            crate::fb::colors::ACCENT_CYAN);
-
-        // Limpiar buffer
+        con.print_colored("=== GSP RPC Init ===\n", crate::fb::colors::ACCENT_CYAN);
         unsafe { core::ptr::write_bytes(self.msg_buf_virt, 0, 4096); }
-        con.println("  [RPC] Buffer de mensajes limpio (4KB).");
 
-        // Escribir dirección física del buffer en PGSP_MAILBOX0
-        // Esto le dice al RISC-V del GSP dónde están nuestros mensajes
-        con.print("  [RPC] Escribiendo buffer phys en MAILBOX0 (0x110044): 0x");
-        con.print_hex32((self.msg_buf_phys >> 32) as u32);
-        con.print_hex32(self.msg_buf_phys as u32);
-        con.newline();
+        // Registrar dirección del buffer en QUEUE_HEAD para que GSP lo lea
+        self.bar0.write32(NV_PGSP_QUEUE_HEAD0, self.msg_buf_phys as u32);
+        self.bar0.write32(NV_PGSP_QUEUE_TAIL0, self.msg_buf_phys as u32);
 
-        self.bar0.write32(NV_PGSP_MAILBOX0, (self.msg_buf_phys >> 8) as u32);
-
-        // Leer confirmación del MAILBOX1
-        let mbox1 = self.bar0.read32(NV_PGSP_MAILBOX1);
-        con.print("  [RPC] MAILBOX1 responde: 0x");
-        con.print_hex32(mbox1);
+        let qh = self.bar0.read32(NV_PGSP_QUEUE_HEAD0);
+        con.print("  [RPC] QUEUE_HEAD0 = 0x");
+        con.print_hex32(qh);
         con.newline();
 
         con.print_colored("=== GSP RPC Ring ACTIVO ===\n", crate::fb::colors::TEXT_SUCCESS);
     }
 
-    /// Envía un mensaje RPC al GSP con la estructura nvfw_gsp_rpc real
-    pub fn send_rpc(&mut self, function: u32, payload_size: u32,
+    /// Envía un mensaje RPC con function ID y opcionalmente un class_id en el payload
+    pub fn send_rpc(&mut self, function: u32, class_id: u32,
                     con: &mut Console) -> Result<(), &'static str> {
         let seq = self.sequence;
         self.sequence += 1;
 
-        let total_len = 32 + payload_size; // Header (32B) + payload
+        // Payload = 4 bytes si hay class_id, 0 si no
+        let payload_size: u32 = if class_id != 0 { 4 } else { 0 };
+        let total_len = 32 + payload_size;
 
-        con.print("  [RPC] Enviando func=0x");
+        con.print("  [RPC] func=0x");
         con.print_hex32(function);
+        if class_id != 0 {
+            con.print(" class=0x");
+            con.print_hex32(class_id);
+        }
         con.print(" seq=");
         con.print_hex32(seq);
-        con.print(" len=");
-        con.print_hex32(total_len);
         con.newline();
 
-        // Escribir header nvfw_gsp_rpc en el buffer
+        // Escribir header nvfw_gsp_rpc
         let hdr = self.msg_buf_virt as *mut NvfwGspRpc;
         unsafe {
             (*hdr).header_version = 0x03;
-            (*hdr).signature = RPC_SIGNATURE;    // 0x564B4E56 = "VNKV"
+            (*hdr).signature = RPC_SIGNATURE;
             (*hdr).length = total_len;
             (*hdr).function = function;
-            (*hdr).rpc_result = 0xFFFF_FFFF;     // Pendiente
+            (*hdr).rpc_result = 0xFFFF_FFFF;
             (*hdr).rpc_result_private = 0;
             (*hdr).sequence = seq;
             (*hdr).spare = 0;
+
+            // Si hay class_id, ponerlo en el payload (offset +32)
+            if class_id != 0 {
+                let payload = self.msg_buf_virt.add(32) as *mut u32;
+                core::ptr::write_volatile(payload, class_id);
+            }
         }
 
         // Notificar al GSP escribiendo en QUEUE_HEAD
