@@ -7,13 +7,57 @@ use crate::arch::cpu;
 
 const MAX_LINE: usize = 256;
 
-/// Read key via Serial COM1 polling (UEFI safe, no PS/2).
-fn read_serial_key() -> u8 {
+/// Basic PS/2 Set 1 Scancode to ASCII map (US QWERTY, lowercase only)
+fn scancode_to_ascii(scancode: u8) -> Option<u8> {
+    match scancode {
+        0x02 => Some(b'1'), 0x03 => Some(b'2'), 0x04 => Some(b'3'), 0x05 => Some(b'4'),
+        0x06 => Some(b'5'), 0x07 => Some(b'6'), 0x08 => Some(b'7'), 0x09 => Some(b'8'),
+        0x0A => Some(b'9'), 0x0B => Some(b'0'),
+        
+        0x10 => Some(b'q'), 0x11 => Some(b'w'), 0x12 => Some(b'e'), 0x13 => Some(b'r'),
+        0x14 => Some(b't'), 0x15 => Some(b'y'), 0x16 => Some(b'u'), 0x17 => Some(b'i'),
+        0x18 => Some(b'o'), 0x19 => Some(b'p'),
+        
+        0x1E => Some(b'a'), 0x1F => Some(b's'), 0x20 => Some(b'd'), 0x21 => Some(b'f'),
+        0x22 => Some(b'g'), 0x23 => Some(b'h'), 0x24 => Some(b'j'), 0x25 => Some(b'k'),
+        0x26 => Some(b'l'), 
+        
+        0x2C => Some(b'z'), 0x2D => Some(b'x'), 0x2E => Some(b'c'), 0x2F => Some(b'v'),
+        0x30 => Some(b'b'), 0x31 => Some(b'n'), 0x32 => Some(b'm'), 
+        
+        0x39 => Some(b' '), // Space
+        0x1C => Some(b'\n'), // Enter
+        0x0E => Some(8),     // Backspace
+        _ => None,
+    }
+}
+
+/// Read key via PS/2 polling (requires BIOS Legacy USB emulation) or Serial COM1.
+fn read_any_key() -> u8 {
     loop {
+        // 1. Poll PS/2 Keyboard Status Register (Port 0x64)
+        let status: u8;
+        unsafe { core::arch::asm!("in al, dx", out("al") status, in("dx") 0x64u16); }
+        
+        // If Output Buffer Status bit (bit 0) is 1, data is available
+        if (status & 1) != 0 {
+            let scancode: u8;
+            unsafe { core::arch::asm!("in al, dx", out("al") scancode, in("dx") 0x60u16); }
+            
+            // Only handle "press" events (scancode < 0x80)
+            if scancode < 0x80 {
+                if let Some(c) = scancode_to_ascii(scancode) {
+                    return c;
+                }
+            }
+        }
+
+        // 2. Poll Serial Port
         if let Some(b) = crate::drivers::serial::serial_read_byte() {
-            crate::drivers::serial::serial_write_byte(b);
+            crate::drivers::serial::serial_write_byte(b); // local echo
             return b;
         }
+
         for _ in 0..1000u32 { core::hint::spin_loop(); }
     }
 }
@@ -47,7 +91,7 @@ pub fn run(con: &mut Console) {
 fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
     let mut len: usize = 0;
     loop {
-        let key = read_serial_key();
+        let key = read_any_key();
         if key == b'\r' || key == b'\n' {
             return len;
         } else if key == 8 {
@@ -92,6 +136,8 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         crate::gpu::engine::cmd_gpucmd(con, fb_base, fb_pitch, 1920, 1080);
     } else if bytes_eq(cmd, b"cube") {
         cmd_cube(con);
+    } else if bytes_eq(cmd, b"gspinit") {
+        cmd_gsp_init(con);
     } else if bytes_eq(cmd, b"ver") {
         con.print_colored("FastOS v0.6.0 (Rust, no_std, Ring 0, UEFI Native)", colors::ACCENT_CYAN);
         con.newline();
@@ -123,6 +169,7 @@ fn cmd_help(con: &mut Console) {
     print_cmd(con, "meminfo", "UEFI memory map");
     print_cmd(con, "gputest", "GPU HW register test suite");
     print_cmd(con, "gpucmd", "GPU command engine (pushbuffer)");
+    print_cmd(con, "gspinit", "Wake up GPU System Processor");
     print_cmd(con, "cube", "3D rotating cube (software)");
     print_cmd(con, "tsc", "Read TSC counter");
     print_cmd(con, "clear", "Clear screen");
@@ -352,6 +399,45 @@ fn cmd_cube(con: &mut Console) {
 fn cmd_reboot() {
     unsafe {
         core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8);
+    }
+}
+
+fn cmd_gsp_init(con: &mut Console) {
+    con.print_colored("[FastOS] Intentando despertar procesador GSP...\n", colors::ACCENT_PURPLE);
+    let platform = crate::platform::FastOsPlatform::new();
+    if let Some(pci) = nv_hal::find_gpu(&platform) {
+        use nv_hal::Platform;
+        let bar0_phys = nv_hal::read_bar0(&platform, pci);
+        if bar0_phys != 0 && bar0_phys != 0xFFFF_FFFF_FFFF_FFF0 {
+            let bar0_ptr = platform.map_mmio(bar0_phys, 16 * 1024 * 1024);
+            if !bar0_ptr.is_null() {
+                let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
+                let bi = unsafe { crate::boot_info::BOOT_INFO };
+                if !bi.is_null() {
+                    let gsp_addr = unsafe { (*bi).gsp_addr };
+                    let gsp_size = unsafe { (*bi).gsp_size };
+                    if gsp_addr != 0 && gsp_size > 0 {
+                        let fw_blob = unsafe { core::slice::from_raw_parts(gsp_addr as *const u8, gsp_size as usize) };
+                        con.println("[FastOS] Firmware GSP en memoria. Ejecutando handshake...");
+                        if let Err(_e) = crate::drivers::gsp::gsp_init(&bar0, fw_blob, con) {
+                            con.print_colored("[FastOS] ERROR: GSP fallo.\n", colors::ACCENT_RED);
+                        } else {
+                            con.print_colored("[FastOS] EXITO: GSP Despierto y listo.\n", colors::TEXT_SUCCESS);
+                        }
+                    } else {
+                        con.print_colored("ERROR: Firmware gsp_ga10x.bin no cargado.\n", colors::ACCENT_RED);
+                    }
+                } else {
+                    con.println("ERROR: BootInfo nulo.");
+                }
+            } else {
+                con.println("ERROR: Mapeo MMIO BAR0 fallido.");
+            }
+        } else {
+            con.println("ERROR: BAR0 Invalido.");
+        }
+    } else {
+        con.println("ERROR: GPU no encontrada.");
     }
 }
 
