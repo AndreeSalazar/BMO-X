@@ -482,7 +482,7 @@ fn cmd_gsprpc(con: &mut Console) {
         }
 
         // === PASO 2: RPC Ring + Resource Manager ===
-        let rpc_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1).unwrap() };
+        let rpc_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(2).unwrap() };
         let mut rpc_ring = crate::drivers::gsp::rpc::GspRpcRing::new(&bar0, rpc_phys);
         rpc_ring.init(con);
 
@@ -512,7 +512,7 @@ fn cmd_gsprpc(con: &mut Console) {
         pushbuffer.execute(&bar0, con);
 
         unsafe { 
-            crate::arch::page_alloc::free_pages(rpc_phys, 1);
+            crate::arch::page_alloc::free_pages(rpc_phys, 2);
             crate::arch::page_alloc::free_pages(pb_phys, 1);
         }
 

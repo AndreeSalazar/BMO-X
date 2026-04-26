@@ -256,11 +256,17 @@ impl<'a> GspLoader<'a> {
         con.println(" MB)");
 
         // ── 1. Activar Energía GSP (PMC / Falcon Reset) ──
-        con.println("  GSP: [1/6] Activando energia PMC y Falcon Reset...");
+        con.println("  GSP: [1/7] Activando energia PMC y Falcon Reset...");
         self.init_priv_ring(con)?;
 
-        // ── 2 y 3. Usar el buffer UEFI original como DMA ──
-        con.println("  GSP: [2/6] Usando buffer UEFI original para DMA...");
+        // ── 2. Preparar boot args con colas de mensajes ──
+        // CRÍTICO: Las colas se configuran ANTES de arrancar el Falcon
+        // para que el booter las incluya al chain-loadear GSP-RM
+        con.println("  GSP: [2/7] Preparando boot args (colas de mensajes)...");
+        let (cmdq_phys, msgq_phys) = self.prepare_boot_args(fw_blob, con)?;
+
+        // ── 3. Configurar puntero al firmware en MAILBOX ──
+        con.println("  GSP: [3/7] Escribiendo boot args en MAILBOX...");
         let dma_phys = fw_blob.as_ptr() as u64;
 
         let check = unsafe { core::ptr::read_volatile(dma_phys as *const u32) };
@@ -268,19 +274,119 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(check);
         con.println(" (expect 0x464C457F = ELF)");
 
-        // ── 4. Set WPR address ──
-        con.println("  GSP: [4/6] Configurando puntero a firmware...");
-        self.setup_wpr(dma_phys, con)?;
+        // MAILBOX0 = dirección del firmware (lo/hi split)
+        self.bar0.write32(NV_PGSP_MAILBOX0, (dma_phys & 0xFFFF_FFFF) as u32);
+        self.bar0.write32(NV_PGSP_MAILBOX1, ((dma_phys >> 32) & 0xFFFF_FFFF) as u32);
+
+        // Verificar que MAILBOX aceptó los valores
+        let mb0 = self.bar0.read32(NV_PGSP_MAILBOX0);
+        let mb1 = self.bar0.read32(NV_PGSP_MAILBOX1);
+        con.print("  GSP: MAILBOX0=0x");
+        con.print_hex32(mb0);
+        con.print(" MAILBOX1=0x");
+        con.print_hex32(mb1);
+        con.newline();
+
+        // ── 4. Escribir dirección de boot_args en scratch register ──
+        // El booter también puede leer de registros scratch del Falcon
+        con.println("  GSP: [4/7] Boot args en Falcon scratch registers...");
+        // NV_PGSP_FALCON_SCRATCH0-3 (offsets 0x110040-0x11004C)
+        // Usamos offsets alternativos para pasar info adicional
+        const NV_PGSP_SCRATCH0: u32 = 0x0011_0040;
+        const NV_PGSP_SCRATCH1: u32 = 0x0011_0044;
+        const NV_PGSP_SCRATCH2: u32 = 0x0011_0048;
+        const NV_PGSP_SCRATCH3: u32 = 0x0011_004C;
+
+        self.bar0.write32(NV_PGSP_SCRATCH0, cmdq_phys as u32);
+        self.bar0.write32(NV_PGSP_SCRATCH1, (cmdq_phys >> 32) as u32);
+        self.bar0.write32(NV_PGSP_SCRATCH2, msgq_phys as u32);
+        self.bar0.write32(NV_PGSP_SCRATCH3, (msgq_phys >> 32) as u32);
+
+        // Verificar scratch
+        let s0 = self.bar0.read32(NV_PGSP_SCRATCH0);
+        let s1 = self.bar0.read32(NV_PGSP_SCRATCH1);
+        con.print("  GSP: SCRATCH0/1=0x");
+        con.print_hex32(s1);
+        con.print_hex32(s0);
+        con.println(" (cmdq addr)");
 
         // ── 5. Boot Falcon ──
-        con.println("  GSP: [5/6] Booting Falcon...");
+        con.println("  GSP: [5/7] Booting Falcon...");
         self.boot_falcon(con)?;
 
-        // ── 6. Handshake ──
-        con.println("  GSP: [6/6] Waiting for handshake...");
+        // ── 6. Esperar al booter (Stage 1) ──
+        con.println("  GSP: [6/7] Waiting for booter...");
         self.wait_handshake(con)?;
 
+        // ── 7. Verificar estado del GSP-RM ──
+        con.println("  GSP: [7/7] Verificando estado GSP-RM...");
+        self.verify_gsp_rm(con)?;
+
         con.print_colored("=== GSP Load COMPLETE ===\n", 0x00FF00);
+
+        Ok(())
+    }
+
+    /// Estructura de boot args mínima
+    fn prepare_boot_args(&self, _fw: &[u8], con: &mut Console) -> Result<(u64, u64), GspLoadError> {
+        // Asignar 2 páginas contiguas para cmdq + msgq
+        let cmdq_phys = unsafe {
+            crate::arch::page_alloc::alloc_pages_contiguous(2)
+        }.ok_or(GspLoadError::PageAllocFailed)?;
+
+        let msgq_phys = cmdq_phys + PAGE_SIZE as u64;
+
+        // Limpiar
+        unsafe {
+            core::ptr::write_bytes(cmdq_phys as *mut u8, 0, PAGE_SIZE * 2);
+        }
+
+        con.print("  GSP: CmdQ=0x");
+        con.print_hex32(cmdq_phys as u32);
+        con.print(" MsgQ=0x");
+        con.print_hex32(msgq_phys as u32);
+        con.newline();
+
+        Ok((cmdq_phys, msgq_phys))
+    }
+
+    /// Después del booter, verifica si GSP-RM está vivo
+    fn verify_gsp_rm(&self, con: &mut Console) -> Result<(), GspLoadError> {
+        // Leer estado actual del Falcon
+        let cpuctl = self.bar0.read32(NV_PGSP_FALCON_CPUCTL);
+        let idle = self.bar0.read32(NV_PGSP_FALCON_IDLESTATE);
+        let mb0 = self.bar0.read32(NV_PGSP_MAILBOX0);
+        let mb1 = self.bar0.read32(NV_PGSP_MAILBOX1);
+
+        con.print("  GSP: CPUCTL=0x");
+        con.print_hex32(cpuctl);
+        con.print(" IDLE=0x");
+        con.print_hex32(idle);
+        con.newline();
+        con.print("  GSP: MB0=0x");
+        con.print_hex32(mb0);
+        con.print(" MB1=0x");
+        con.print_hex32(mb1);
+        con.newline();
+
+        // Leer EMEM/scratch para más info
+        // Los registros 0x110800-0x110FFF son EMEM del Falcon
+        const NV_PGSP_EMEMC0: u32 = 0x0011_0AC0;
+        const NV_PGSP_EMEMD0: u32 = 0x0011_0AC4;
+
+        let emem0 = self.bar0.read32(NV_PGSP_EMEMC0);
+        let emem1 = self.bar0.read32(NV_PGSP_EMEMD0);
+        con.print("  GSP: EMEMC0=0x");
+        con.print_hex32(emem0);
+        con.print(" EMEMD0=0x");
+        con.print_hex32(emem1);
+        con.newline();
+
+        if cpuctl & 0x10 != 0 {
+            con.print_colored("  GSP: Falcon HALTED — booter completed, GSP-RM needs WPR chain-load\n", 0xFFFF00);
+        } else {
+            con.print_colored("  GSP: Falcon RUNNING — GSP-RM may be active!\n", 0x00FF00);
+        }
 
         Ok(())
     }
