@@ -19,6 +19,7 @@
 pub mod scratch;
 pub mod loader;
 pub mod priv_ring;
+pub mod boot_args;
 pub mod rpc;
 pub mod gmmu;
 pub mod nv_rm;

@@ -263,10 +263,10 @@ impl<'a> GspLoader<'a> {
         // CRÍTICO: Las colas se configuran ANTES de arrancar el Falcon
         // para que el booter las incluya al chain-loadear GSP-RM
         con.println("  GSP: [2/7] Preparando boot args (colas de mensajes)...");
-        let (cmdq_phys, msgq_phys) = self.prepare_boot_args(fw_blob, con)?;
+        let (boot_args_phys, shared_mem_phys) = self.prepare_boot_args(fw_blob, con)?;
 
-        // ── 3. Configurar puntero al firmware en MAILBOX ──
-        con.println("  GSP: [3/7] Escribiendo boot args en MAILBOX...");
+        // ── 3. Configurar direcciones en registros ──
+        con.println("  GSP: [3/7] Configurando MAILBOX y DMA...");
         let dma_phys = fw_blob.as_ptr() as u64;
 
         let check = unsafe { core::ptr::read_volatile(dma_phys as *const u32) };
@@ -274,41 +274,24 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(check);
         con.println(" (expect 0x464C457F = ELF)");
 
-        // MAILBOX0 = dirección del firmware (lo/hi split)
-        self.bar0.write32(NV_PGSP_MAILBOX0, (dma_phys & 0xFFFF_FFFF) as u32);
-        self.bar0.write32(NV_PGSP_MAILBOX1, ((dma_phys >> 32) & 0xFFFF_FFFF) as u32);
+        // Firmware address va en el DMA transfer base register
+        self.bar0.write32(NV_PGSP_DMATRFBASE, (dma_phys >> 8) as u32);
 
-        // Verificar que MAILBOX aceptó los valores
+        // MAILBOX0 = dirección de GSP_ARGUMENTS_CACHED (boot args)
+        // MAILBOX1 = tamaño del firmware
+        self.bar0.write32(NV_PGSP_MAILBOX0, boot_args_phys as u32);
+        self.bar0.write32(NV_PGSP_MAILBOX1, fw_blob.len() as u32);
+
         let mb0 = self.bar0.read32(NV_PGSP_MAILBOX0);
         let mb1 = self.bar0.read32(NV_PGSP_MAILBOX1);
         con.print("  GSP: MAILBOX0=0x");
         con.print_hex32(mb0);
-        con.print(" MAILBOX1=0x");
+        con.print(" (boot_args) MAILBOX1=0x");
         con.print_hex32(mb1);
-        con.newline();
+        con.println(" (fw_size)");
 
-        // ── 4. Escribir dirección de boot_args en scratch register ──
-        // El booter también puede leer de registros scratch del Falcon
-        con.println("  GSP: [4/7] Boot args en Falcon scratch registers...");
-        // NV_PGSP_FALCON_SCRATCH0-3 (offsets 0x110040-0x11004C)
-        // Usamos offsets alternativos para pasar info adicional
-        const NV_PGSP_SCRATCH0: u32 = 0x0011_0040;
-        const NV_PGSP_SCRATCH1: u32 = 0x0011_0044;
-        const NV_PGSP_SCRATCH2: u32 = 0x0011_0048;
-        const NV_PGSP_SCRATCH3: u32 = 0x0011_004C;
-
-        self.bar0.write32(NV_PGSP_SCRATCH0, cmdq_phys as u32);
-        self.bar0.write32(NV_PGSP_SCRATCH1, (cmdq_phys >> 32) as u32);
-        self.bar0.write32(NV_PGSP_SCRATCH2, msgq_phys as u32);
-        self.bar0.write32(NV_PGSP_SCRATCH3, (msgq_phys >> 32) as u32);
-
-        // Verificar scratch
-        let s0 = self.bar0.read32(NV_PGSP_SCRATCH0);
-        let s1 = self.bar0.read32(NV_PGSP_SCRATCH1);
-        con.print("  GSP: SCRATCH0/1=0x");
-        con.print_hex32(s1);
-        con.print_hex32(s0);
-        con.println(" (cmdq addr)");
+        // ── 4. No usamos scratch — boot args están en MAILBOX ──
+        con.println("  GSP: [4/7] Boot args en RAM, apuntados por MAILBOX0.");
 
         // ── 5. Boot Falcon ──
         con.println("  GSP: [5/7] Booting Falcon...");
@@ -327,27 +310,49 @@ impl<'a> GspLoader<'a> {
         Ok(())
     }
 
-    /// Estructura de boot args mínima
+    /// Prepara shared memory + GSP_ARGUMENTS_CACHED en RAM
+    /// Retorna (boot_args_phys, shared_mem_phys) para que MAILBOX pueda apuntar aquí
     fn prepare_boot_args(&self, _fw: &[u8], con: &mut Console) -> Result<(u64, u64), GspLoadError> {
-        // Asignar 2 páginas contiguas para cmdq + msgq
-        let cmdq_phys = unsafe {
-            crate::arch::page_alloc::alloc_pages_contiguous(2)
+        // Asignar 4 páginas contiguas:
+        //   Página 0: GSP_ARGUMENTS_CACHED (boot args)
+        //   Página 1: Shared Memory header (para queue metadata)
+        //   Página 2: Command Queue (CPU → GSP)
+        //   Página 3: Status Queue (GSP → CPU)
+        let base_phys = unsafe {
+            crate::arch::page_alloc::alloc_pages_contiguous(4)
         }.ok_or(GspLoadError::PageAllocFailed)?;
 
-        let msgq_phys = cmdq_phys + PAGE_SIZE as u64;
+        let boot_args_phys = base_phys;            // Página 0
+        let shared_mem_phys = base_phys + 0x1000;   // Página 1
+        let cmdq_phys = base_phys + 0x2000;         // Página 2
+        let statq_phys = base_phys + 0x3000;        // Página 3
 
-        // Limpiar
+        // Limpiar toda la memoria
         unsafe {
-            core::ptr::write_bytes(cmdq_phys as *mut u8, 0, PAGE_SIZE * 2);
+            core::ptr::write_bytes(base_phys as *mut u8, 0, PAGE_SIZE * 4);
         }
 
-        con.print("  GSP: CmdQ=0x");
+        // Construir GSP_ARGUMENTS_CACHED en página 0
+        let args = crate::drivers::gsp::boot_args::GspArgumentsCached::new(
+            shared_mem_phys, // Dirección de shared memory
+            3,               // 3 páginas (shared + cmdq + statq)
+        );
+
+        // Copiar la estructura a la memoria física
+        unsafe {
+            let dst = boot_args_phys as *mut crate::drivers::gsp::boot_args::GspArgumentsCached;
+            core::ptr::write(dst, args);
+        }
+
+        con.print("  GSP: BootArgs=0x");
+        con.print_hex32(boot_args_phys as u32);
+        con.print(" SharedMem=0x");
+        con.print_hex32(shared_mem_phys as u32);
+        con.print(" CmdQ=0x");
         con.print_hex32(cmdq_phys as u32);
-        con.print(" MsgQ=0x");
-        con.print_hex32(msgq_phys as u32);
         con.newline();
 
-        Ok((cmdq_phys, msgq_phys))
+        Ok((boot_args_phys, shared_mem_phys))
     }
 
     /// Después del booter, verifica si GSP-RM está vivo
