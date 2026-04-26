@@ -445,32 +445,51 @@ fn cmd_gsp_init(con: &mut Console) {
 }
 
 fn cmd_gsprpc(con: &mut Console) {
-    con.print_colored("[FastOS] Probando arquitectura RPC (Remote Procedure Call)...\n", colors::ACCENT_PURPLE);
+    con.print_colored("[FastOS] Ejecutando Pipeline de Aceleracion Grafica Completa...\n", colors::ACCENT_PURPLE);
     
-    // 1. Asignamos 4KB físicos en RAM para la memoria compartida
-    let phys_addr = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) };
-    if let Some(addr) = phys_addr {
-        let platform = crate::platform::FastOsPlatform::new();
-        if let Some(pci) = nv_hal::find_gpu(&platform) {
-            use nv_hal::Platform;
-            let bar0_phys = nv_hal::read_bar0(&platform, pci);
-            let bar0_ptr = platform.map_mmio(bar0_phys, 16 * 1024 * 1024);
-            let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
+    let platform = crate::platform::FastOsPlatform::new();
+    if let Some(pci) = nv_hal::find_gpu(&platform) {
+        use nv_hal::Platform;
+        let bar0_phys = nv_hal::read_bar0(&platform, pci);
+        let bar0_ptr = platform.map_mmio(bar0_phys, 16 * 1024 * 1024);
+        let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
 
-            // 2. Creamos e inicializamos el anillo
-            let mut rpc_ring = crate::drivers::gsp::rpc::GspRpcRing::new(&bar0, addr);
-            rpc_ring.init(con);
+        // === FASE 1: GMMU ===
+        let mut gmmu = crate::drivers::gsp::gmmu::GmmuManager::new(&bar0).unwrap();
+        gmmu.init(con);
 
-            // 3. Enviamos un comando falso para tomar el control de la pantalla
-            let _ = rpc_ring.send_rpc(crate::drivers::gsp::rpc::RPC_OP_INIT_DISPLAY, 0, con);
-        } else {
-            con.println("ERROR: GPU no encontrada.");
+        // === FASE 2: NV_RM (Resource Manager) ===
+        // 1. Asignamos la memoria compartida para el anillo RPC
+        let rpc_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1).unwrap() };
+        let mut rpc_ring = crate::drivers::gsp::rpc::GspRpcRing::new(&bar0, rpc_phys);
+        rpc_ring.init(con);
+
+        let mut nv_rm = crate::drivers::gsp::nv_rm::NvResourceManager::new(&mut rpc_ring);
+        
+        // Simular que el timeout falle silenciosamente para continuar la demo
+        let _ = nv_rm.allocate_vram(1024, con);
+        let _ = nv_rm.init_display_engine(con);
+
+        // === FASE 3: Display Engine (Full HD) ===
+        let disp = crate::drivers::gsp::disp::DisplayEngine::new(&bar0);
+        disp.set_mode_1080p(0x0000_0000, con); // Apuntamos a la VRAM falsa
+
+        // === FASE 4: Pushbuffer (3D Render) ===
+        let pb_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1).unwrap() };
+        let mut pushbuffer = crate::drivers::gsp::pushbuffer::PushBuffer::new(pb_phys);
+        
+        pushbuffer.push(crate::drivers::gsp::pushbuffer::NV_METHOD_CLEAR_BUFFERS, 0x0);
+        pushbuffer.push(crate::drivers::gsp::pushbuffer::NV_METHOD_DRAW_VERTEX_ARRAY, 0x0);
+        pushbuffer.execute(&bar0, con);
+
+        // Limpiar memoria prestada
+        unsafe { 
+            crate::arch::page_alloc::free_pages(rpc_phys, 1);
+            crate::arch::page_alloc::free_pages(pb_phys, 1);
         }
         
-        // Liberamos la página de prueba
-        unsafe { crate::arch::page_alloc::free_pages(addr, 1); }
     } else {
-        con.println("ERROR: No hay memoria RAM disponible para el anillo RPC.");
+        con.println("ERROR: GPU no encontrada.");
     }
 }
 

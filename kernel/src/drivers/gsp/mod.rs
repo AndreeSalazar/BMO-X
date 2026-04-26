@@ -20,6 +20,10 @@ pub mod scratch;
 pub mod loader;
 pub mod priv_ring;
 pub mod rpc;
+pub mod gmmu;
+pub mod nv_rm;
+pub mod disp;
+pub mod pushbuffer;
 
 use crate::console::Console;
 pub use loader::{GspLoader, GspLoadError};
