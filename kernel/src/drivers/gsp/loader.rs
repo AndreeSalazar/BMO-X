@@ -125,50 +125,11 @@ impl<'a> GspLoader<'a> {
         con.println(" (expect 0x464C457F = ELF)");
     }
 
-    // ── Step 4: DMA transfer from system RAM to Falcon DMEM ──
-    fn dma_transfer(&self, dma_phys: u64, fw_size: usize, con: &mut Console)
-        -> Result<(), GspLoadError>
-    {
-        con.println("  GSP: Starting DMA transfer to Falcon...");
-
-        // Set DMA base address (physical address >> 8, as per Falcon DMA spec)
-        let base_shifted = ((dma_phys >> 8) & 0xFFFF_FFFF) as u32;
-        self.bar0.write32(NV_PGSP_DMATRFBASE, base_shifted);
-
-        // Transfer in 256-byte blocks
-        let blocks = (fw_size + 255) / 256;
-        let mut last_pct: u32 = 0;
-
-        for i in 0..blocks {
-            let offset = (i * 256) as u32;
-
-            // Source offset in host memory (relative to DMATRFBASE)
-            self.bar0.write32(NV_PGSP_DMATRFFBOFFS, offset);
-
-            // Destination offset in Falcon DMEM
-            self.bar0.write32(NV_PGSP_DMATRFMOFFS, offset);
-
-            // Issue DMA command: write to DMEM, 256 bytes
-            self.bar0.write32(NV_PGSP_DMATRFCMD,
-                DMA_CMD_WRITE | DMA_CMD_SIZE_256
-            );
-
-            // Wait for transfer to complete (busy bit clears)
-            self.wait_reg(NV_PGSP_DMATRFCMD, 1 << 1, 0, 200_000)?;
-
-            // Progress indicator every 10%
-            let pct = ((i as u64 * 100) / blocks as u64) as u32;
-            if pct >= last_pct + 10 {
-                con.print("  GSP: DMA ");
-                con.print_hex32(pct);
-                con.println("% ...");
-                last_pct = pct;
-            }
-        }
-
-        con.print("  GSP: DMA complete - ");
-        con.print_hex32(blocks as u32);
-        con.println(" blocks transferred");
+    // ── Step 4: Configurar puntero de memoria en Mailboxes ──
+    fn setup_wpr(&self, dma_phys: u64, con: &mut Console) -> Result<(), GspLoadError> {
+        con.println("  GSP: Configurando WPR en MAILBOX0/1...");
+        self.bar0.write32(NV_PGSP_MAILBOX0, (dma_phys & 0xFFFF_FFFF) as u32);
+        self.bar0.write32(NV_PGSP_MAILBOX1, ((dma_phys >> 32) & 0xFFFF_FFFF) as u32);
         Ok(())
     }
 
@@ -294,21 +255,22 @@ impl<'a> GspLoader<'a> {
         con.print_hex32((fw_blob.len() / (1024 * 1024)) as u32);
         con.println(" MB)");
 
-        // ── 1. PRIV Ring ──
-        con.println("  GSP: [1/6] Initializing PRIV Ring...");
+        // ── 1. Activar Energía GSP (PMC / Falcon Reset) ──
+        con.println("  GSP: [1/6] Activando energia PMC y Falcon Reset...");
         self.init_priv_ring(con)?;
 
-        // ── 2. Allocate DMA buffer ──
-        con.println("  GSP: [2/6] Allocating DMA buffer...");
-        let dma_phys = self.alloc_dma_buffer(fw_blob.len(), con)?;
+        // ── 2 y 3. Usar el buffer UEFI original como DMA ──
+        con.println("  GSP: [2/6] Usando buffer UEFI original para DMA...");
+        let dma_phys = fw_blob.as_ptr() as u64;
 
-        // ── 3. Copy firmware to DMA buffer ──
-        con.println("  GSP: [3/6] Copying firmware to DMA buffer...");
-        self.copy_fw_to_dma(fw_blob, dma_phys, con);
+        let check = unsafe { core::ptr::read_volatile(dma_phys as *const u32) };
+        con.print("  GSP: DMA buf[0..4] = 0x");
+        con.print_hex32(check);
+        con.println(" (expect 0x464C457F = ELF)");
 
-        // ── 4. DMA to Falcon ──
-        con.println("  GSP: [4/6] DMA transfer to Falcon...");
-        self.dma_transfer(dma_phys, fw_blob.len(), con)?;
+        // ── 4. Set WPR address ──
+        con.println("  GSP: [4/6] Configurando puntero a firmware...");
+        self.setup_wpr(dma_phys, con)?;
 
         // ── 5. Boot Falcon ──
         con.println("  GSP: [5/6] Booting Falcon...");
@@ -319,13 +281,6 @@ impl<'a> GspLoader<'a> {
         self.wait_handshake(con)?;
 
         con.print_colored("=== GSP Load COMPLETE ===\n", 0x00FF00);
-
-        // Free DMA buffer (firmware is now in Falcon DMEM, buffer no longer needed)
-        let pages_used = (fw_blob.len() + PAGE_SIZE - 1) / PAGE_SIZE;
-        unsafe {
-            crate::arch::page_alloc::free_pages(dma_phys, pages_used);
-        }
-        con.println("  GSP: DMA buffer freed");
 
         Ok(())
     }

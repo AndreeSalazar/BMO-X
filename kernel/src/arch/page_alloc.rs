@@ -98,7 +98,7 @@ fn ranges_overlap(start: u64, end: u64, region_start: u64, region_end: u64) -> b
 ///
 /// # Safety
 /// Must be called exactly once, early in kernel init, before any allocation.
-pub unsafe fn init(memory_map: &[MemoryEntry], count: usize) {
+pub unsafe fn init(memory_map: &[MemoryEntry], count: usize, gsp_addr: u64, gsp_size: u64) {
     if INITIALIZED {
         return;
     }
@@ -145,8 +145,13 @@ pub unsafe fn init(memory_map: &[MemoryEntry], count: usize) {
         let mut addr = first_page;
         while addr < last_page_end {
             // Skip pages that fall inside the kernel region.
-            if ranges_overlap(addr, addr + PAGE_SIZE as u64, KERNEL_START, KERNEL_END)
-            {
+            if ranges_overlap(addr, addr + PAGE_SIZE as u64, KERNEL_START, KERNEL_END) {
+                addr += PAGE_SIZE as u64;
+                continue;
+            }
+
+            // Skip pages that belong to the pre-loaded GSP firmware.
+            if gsp_size > 0 && ranges_overlap(addr, addr + PAGE_SIZE as u64, gsp_addr, gsp_addr + gsp_size) {
                 addr += PAGE_SIZE as u64;
                 continue;
             }

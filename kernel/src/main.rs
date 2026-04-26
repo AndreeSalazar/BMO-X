@@ -199,8 +199,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     }
 
     // ── Initialize page frame allocator ───────────────────────────────────
+    // Inicializar asignador de páginas (necesita el mapa de memoria UEFI)
     unsafe {
-        arch::page_alloc::init(&bi.memory_map, bi.memory_map_count as usize);
+        crate::arch::page_alloc::init(&bi.memory_map, bi.memory_map_count as usize, bi.gsp_addr, bi.gsp_size);
     }
     drivers::serial::serial_write("[FastOS] Page allocator initialized (");
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);

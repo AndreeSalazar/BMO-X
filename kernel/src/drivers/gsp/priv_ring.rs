@@ -262,27 +262,15 @@ impl<'a> PrivRingInit<'a> {
     ///
     /// Call this **before** any other GSP register access.
     pub fn init(&self, con: &mut Console) -> Result<(), PrivRingError> {
-        con.print_colored("=== PRIV Ring Init (GA106 Ampere) ===\n", 0x00FFFF);
+        con.print_colored("=== Power Init (GA106 Ampere) ===\n", 0x00FFFF);
 
-        // 1. Start the PRIV ring.
-        self.start_ring(con);
-
-        // 2. Wait for the ring to come up.
-        self.wait_ring_ready(con)?;
-
-        // 3. Clear pending interrupts.
-        self.clear_ring_interrupts(con)?;
-
-        // 4. Enable GSP in PMC.
+        // 0. Enable GSP in PMC FIRST (si el engine no tiene energía, el anillo de comunicación muere)
         self.enable_gsp_pmc(con);
 
-        // 5. Reset GSP Falcon.
+        // 1. Reset GSP Falcon.
         self.reset_gsp_falcon(con);
 
-        // 6. Verify GSP is reachable.
-        self.verify_gsp_accessible(con)?;
-
-        con.print_colored("=== PRIV Ring Init COMPLETE ===\n", 0x00FF00);
+        con.print_colored("=== Power Init COMPLETE ===\n", 0x00FF00);
         Ok(())
     }
 }
