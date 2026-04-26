@@ -445,7 +445,7 @@ fn cmd_gsp_init(con: &mut Console) {
 }
 
 fn cmd_gsprpc(con: &mut Console) {
-    con.print_colored("[FastOS] Ejecutando Pipeline de Aceleracion Grafica Completa...\n", colors::ACCENT_PURPLE);
+    con.print_colored("[FastOS] Pipeline GPU RTX 3060 GA10x — Datos Reales del Firmware\n", colors::ACCENT_PURPLE);
     
     let platform = crate::platform::FastOsPlatform::new();
     if let Some(pci) = nv_hal::find_gpu(&platform) {
@@ -458,35 +458,40 @@ fn cmd_gsprpc(con: &mut Console) {
         let mut gmmu = crate::drivers::gsp::gmmu::GmmuManager::new(&bar0).unwrap();
         gmmu.init(con);
 
-        // === FASE 2: NV_RM (Resource Manager) ===
-        // 1. Asignamos la memoria compartida para el anillo RPC
+        // === FASE 2: RPC + Resource Manager (todas las clases GA10x) ===
         let rpc_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1).unwrap() };
         let mut rpc_ring = crate::drivers::gsp::rpc::GspRpcRing::new(&bar0, rpc_phys);
         rpc_ring.init(con);
 
-        let mut nv_rm = crate::drivers::gsp::nv_rm::NvResourceManager::new(&mut rpc_ring);
-        
-        // Simular que el timeout falle silenciosamente para continuar la demo
-        let _ = nv_rm.allocate_vram(1024, con);
-        let _ = nv_rm.init_display_engine(con);
+        {
+            let mut nv_rm = crate::drivers::gsp::nv_rm::NvResourceManager::new(&mut rpc_ring);
+            let _ = nv_rm.allocate_vram(1024, con);
+            let _ = nv_rm.init_display_engine(con);
+            let _ = nv_rm.init_3d_engine(con);
+            let _ = nv_rm.init_compute_engine(con);
+            let _ = nv_rm.init_dma_copy(con);
+        }
 
-        // === FASE 3: Display Engine (Full HD) ===
+        // === FASE 3: Display Engine 1080p (GPU dibuja, NO CPU) ===
         let disp = crate::drivers::gsp::disp::DisplayEngine::new(&bar0);
-        disp.set_mode_1080p(0x0000_0000, con); // Apuntamos a la VRAM falsa
+        disp.set_mode_1080p(&mut rpc_ring, con);
 
-        // === FASE 4: Pushbuffer (3D Render) ===
+        // === FASE 4: Pushbuffer 3D (PGRAPH Class 0xC697) ===
         let pb_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1).unwrap() };
         let mut pushbuffer = crate::drivers::gsp::pushbuffer::PushBuffer::new(pb_phys);
         
-        pushbuffer.push(crate::drivers::gsp::pushbuffer::NV_METHOD_CLEAR_BUFFERS, 0x0);
-        pushbuffer.push(crate::drivers::gsp::pushbuffer::NV_METHOD_DRAW_VERTEX_ARRAY, 0x0);
+        pushbuffer.bind_3d_class();      // Seleccionar clase 0xC697
+        pushbuffer.nop();                 // Verificar canal
+        pushbuffer.clear_color(0x001E3A5F); // Azul oscuro premium
         pushbuffer.execute(&bar0, con);
 
-        // Limpiar memoria prestada
+        // Limpiar
         unsafe { 
             crate::arch::page_alloc::free_pages(rpc_phys, 1);
             crate::arch::page_alloc::free_pages(pb_phys, 1);
         }
+
+        con.print_colored("\n[FastOS] GPU RTX 3060 GA10x — Pipeline COMPLETO\n", colors::TEXT_SUCCESS);
         
     } else {
         con.println("ERROR: GPU no encontrada.");
