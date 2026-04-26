@@ -138,6 +138,8 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         cmd_cube(con);
     } else if bytes_eq(cmd, b"gspinit") {
         cmd_gsp_init(con);
+    } else if bytes_eq(cmd, b"gsprpc") {
+        cmd_gsprpc(con);
     } else if bytes_eq(cmd, b"ver") {
         con.print_colored("FastOS v0.6.0 (Rust, no_std, Ring 0, UEFI Native)", colors::ACCENT_CYAN);
         con.newline();
@@ -170,6 +172,7 @@ fn cmd_help(con: &mut Console) {
     print_cmd(con, "gputest", "GPU HW register test suite");
     print_cmd(con, "gpucmd", "GPU command engine (pushbuffer)");
     print_cmd(con, "gspinit", "Wake up GPU System Processor");
+    print_cmd(con, "gsprpc", "Send Test RPC Command to GSP");
     print_cmd(con, "cube", "3D rotating cube (software)");
     print_cmd(con, "tsc", "Read TSC counter");
     print_cmd(con, "clear", "Clear screen");
@@ -438,6 +441,36 @@ fn cmd_gsp_init(con: &mut Console) {
         }
     } else {
         con.println("ERROR: GPU no encontrada.");
+    }
+}
+
+fn cmd_gsprpc(con: &mut Console) {
+    con.print_colored("[FastOS] Probando arquitectura RPC (Remote Procedure Call)...\n", colors::ACCENT_PURPLE);
+    
+    // 1. Asignamos 4KB físicos en RAM para la memoria compartida
+    let phys_addr = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) };
+    if let Some(addr) = phys_addr {
+        let platform = crate::platform::FastOsPlatform::new();
+        if let Some(pci) = nv_hal::find_gpu(&platform) {
+            use nv_hal::Platform;
+            let bar0_phys = nv_hal::read_bar0(&platform, pci);
+            let bar0_ptr = platform.map_mmio(bar0_phys, 16 * 1024 * 1024);
+            let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
+
+            // 2. Creamos e inicializamos el anillo
+            let mut rpc_ring = crate::drivers::gsp::rpc::GspRpcRing::new(&bar0, addr);
+            rpc_ring.init(con);
+
+            // 3. Enviamos un comando falso para tomar el control de la pantalla
+            let _ = rpc_ring.send_rpc(crate::drivers::gsp::rpc::RPC_OP_INIT_DISPLAY, 0, con);
+        } else {
+            con.println("ERROR: GPU no encontrada.");
+        }
+        
+        // Liberamos la página de prueba
+        unsafe { crate::arch::page_alloc::free_pages(addr, 1); }
+    } else {
+        con.println("ERROR: No hay memoria RAM disponible para el anillo RPC.");
     }
 }
 

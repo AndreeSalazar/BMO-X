@@ -19,6 +19,7 @@
 pub mod scratch;
 pub mod loader;
 pub mod priv_ring;
+pub mod rpc;
 
 use crate::console::Console;
 pub use loader::{GspLoader, GspLoadError};
