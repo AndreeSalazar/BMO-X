@@ -80,7 +80,7 @@ extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) 
         "mov rax, [rbx + 8]",  // fb_addr
         "test rax, rax",
         "jz 1f",
-        "mov rcx, [rbx + 24]",  // fb_width
+        "mov ecx, dword ptr [rbx + 24]",  // fb_width (4 bytes)
         "imul rcx, rcx, 10",
         "mov edx, 0x00FF0000",
         "2: mov [rax], edx",
@@ -237,7 +237,8 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
             let mut con = console::Console::new(fb_addr, bi.fb_pitch(), bi.fb_width, bi.fb_height);
             con.clear(); // Limpiar la pantalla de las franjas de debug antes de iniciar el shell
             
-            // ── Iniciar GSP ──────────────────────────────────────────────────
+            // ── Iniciar GSP (TEMPORALMENTE DESACTIVADO) ─────────────────────
+            /*
             con.println("[FastOS] Buscando GPU para cargar GSP...");
             let platform = platform::FastOsPlatform::new();
             if let Some(pci) = nv_hal::find_gpu(&platform) {
@@ -268,6 +269,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 con.println("[FastOS] ERROR: GPU no encontrada.");
             }
             con.println("");
+            */
 
             shell::run(&mut con);
             loop { unsafe { core::arch::asm!("hlt"); } }
