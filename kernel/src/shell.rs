@@ -454,23 +454,38 @@ fn cmd_gsprpc(con: &mut Console) {
         let bar0_ptr = platform.map_mmio(bar0_phys, 16 * 1024 * 1024);
         let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
 
-        // === PASO 0: Bootear el GSP Firmware (PRIV Ring + Falcon) ===
+        // === PASO 0: Bootear el GSP Firmware ===
         con.print_colored("=== Paso 0: GSP Boot Handshake ===\n", colors::ACCENT_CYAN);
         let fw_ptr = unsafe { &*crate::boot_info::BOOT_INFO };
-        if fw_ptr.gsp_addr != 0 && fw_ptr.gsp_size > 0 {
-            let fw_blob = unsafe {
-                core::slice::from_raw_parts(
-                    fw_ptr.gsp_addr as *const u8,
-                    fw_ptr.gsp_size as usize,
-                )
-            };
-            con.print("  [BOOT] Firmware GSP en RAM: 0x");
-            con.print_hex32((fw_ptr.gsp_addr >> 32) as u32);
-            con.print_hex32(fw_ptr.gsp_addr as u32);
-            con.print(" (");
-            con.print_hex32((fw_ptr.gsp_size / (1024*1024)) as u32);
-            con.println(" MB)");
 
+        // Check if we have all 3 firmware blobs (proper GA10x boot)
+        let has_3blobs = fw_ptr.gsp_addr != 0 && fw_ptr.gsp_size > 0
+            && fw_ptr.gsp_bootloader_addr != 0 && fw_ptr.gsp_bootloader_size > 0
+            && fw_ptr.gsp_booter_load_addr != 0 && fw_ptr.gsp_booter_load_size > 0;
+
+        if has_3blobs {
+            con.println("  [BOOT] 3-blob boot: GSP-RM + bootloader + booter_load");
+            let gsp_rm = unsafe {
+                core::slice::from_raw_parts(fw_ptr.gsp_addr as *const u8, fw_ptr.gsp_size as usize)
+            };
+            let bootloader = unsafe {
+                core::slice::from_raw_parts(fw_ptr.gsp_bootloader_addr as *const u8, fw_ptr.gsp_bootloader_size as usize)
+            };
+            let booter_load = unsafe {
+                core::slice::from_raw_parts(fw_ptr.gsp_booter_load_addr as *const u8, fw_ptr.gsp_booter_load_size as usize)
+            };
+            let blobs = crate::drivers::gsp::GspFirmwareBlobs {
+                gsp_rm,
+                bootloader,
+                booter_load,
+            };
+            let _ = crate::drivers::gsp::gsp_init_full(&bar0, &blobs, con);
+        } else if fw_ptr.gsp_addr != 0 && fw_ptr.gsp_size > 0 {
+            con.println("  [BOOT] WARN: Only gsp_ga10x.bin found, missing bootloader/booter");
+            con.println("  [BOOT] Falling back to single-blob boot (will likely fail)");
+            let fw_blob = unsafe {
+                core::slice::from_raw_parts(fw_ptr.gsp_addr as *const u8, fw_ptr.gsp_size as usize)
+            };
             let _ = crate::drivers::gsp::gsp_init(&bar0, fw_blob, con);
         } else {
             con.println("  [BOOT] WARN: No hay firmware GSP en memoria, saltando boot.");

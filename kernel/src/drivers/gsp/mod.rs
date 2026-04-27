@@ -32,10 +32,22 @@ use crate::console::Console;
 pub use loader::{GspLoader, GspLoadError};
 pub use priv_ring::{PrivRingInit, PrivRingError};
 
+/// GSP firmware blobs needed for GA10x boot.
+///
+/// For Ampere (GA10x), the boot requires 3 separate firmware files:
+/// - `gsp_rm`: The full GSP-RM ELF (~69MB) loaded via Radix3 into VRAM
+/// - `bootloader`: RISC-V bootloader (~20KB) with nvfw_bin_hdr magic=0x10de
+/// - `booter_load`: Falcon HS booter (~60KB) that sets up WPR2/ACR
+pub struct GspFirmwareBlobs<'a> {
+    pub gsp_rm: &'a [u8],
+    pub bootloader: &'a [u8],
+    pub booter_load: &'a [u8],
+}
+
 /// One-call GSP initialization: PRIV Ring + firmware load + boot.
 ///
 /// This is the top-level entry point that kernel `main.rs` should call.
-/// It creates a `GspLoader` and runs the full 6-step sequence.
+/// It creates a `GspLoader` and runs the full boot sequence.
 ///
 /// # Arguments
 /// * `bar0` - Mapped BAR0 MMIO region for the GPU.
@@ -51,4 +63,14 @@ pub fn gsp_init(
 ) -> Result<(), GspLoadError> {
     let loader = GspLoader::new(bar0);
     loader.load(fw_blob, con)
+}
+
+/// Full GSP initialization with all 3 firmware blobs (proper GA10x boot).
+pub fn gsp_init_full(
+    bar0: &nv_hal::MmioRegion,
+    blobs: &GspFirmwareBlobs,
+    con: &mut Console,
+) -> Result<(), GspLoadError> {
+    let loader = GspLoader::new(bar0);
+    loader.load_full(blobs, con)
 }

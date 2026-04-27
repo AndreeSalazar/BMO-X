@@ -438,6 +438,197 @@ impl<'a> GspLoader<'a> {
         Ok(())
     }
 
+    // ── Public: Full GA10x boot with 3 separate firmware blobs ──
+    pub fn load_full(&self, blobs: &super::GspFirmwareBlobs, con: &mut Console) -> Result<(), GspLoadError> {
+        con.print_colored("=== GSP Firmware Load (GA106 - 3 Blob Boot) ===\n", 0x00FFFF);
+
+        let gsp_rm = blobs.gsp_rm;
+        let bootloader = blobs.bootloader;
+        let booter = blobs.booter_load;
+
+        // ── Validate blobs ──
+        con.print("  GSP-RM:     ");
+        con.print_hex32(gsp_rm.len() as u32);
+        con.print(" bytes (");
+        con.print_hex32((gsp_rm.len() / (1024 * 1024)) as u32);
+        con.println(" MB)");
+
+        con.print("  Bootloader: ");
+        con.print_hex32(bootloader.len() as u32);
+        con.println(" bytes");
+
+        con.print("  Booter:     ");
+        con.print_hex32(booter.len() as u32);
+        con.println(" bytes");
+
+        if gsp_rm.len() < 64 {
+            con.println("  GSP: ERROR - GSP-RM blob too small");
+            return Err(GspLoadError::NullFirmware);
+        }
+        if bootloader.len() < 24 {
+            con.println("  GSP: ERROR - bootloader blob too small");
+            return Err(GspLoadError::NoBooterFound);
+        }
+
+        // ── Validate nvfw_bin_hdr in bootloader ──
+        let bl_magic = u32::from_le_bytes([bootloader[0], bootloader[1], bootloader[2], bootloader[3]]);
+        if bl_magic != 0x10de {
+            con.print("  GSP: ERROR - bootloader magic=0x");
+            con.print_hex32(bl_magic);
+            con.println(" (expected 0x10de)");
+            return Err(GspLoadError::BadElfMagic);
+        }
+
+        // Parse nvfw_bin_hdr from bootloader blob
+        let bl_hdr_off = u32::from_le_bytes([bootloader[12], bootloader[13], bootloader[14], bootloader[15]]) as usize;
+        let bl_data_off = u32::from_le_bytes([bootloader[16], bootloader[17], bootloader[18], bootloader[19]]) as usize;
+        let bl_data_sz = u32::from_le_bytes([bootloader[20], bootloader[21], bootloader[22], bootloader[23]]) as usize;
+
+        con.print("  BL: hdr_off=");
+        con.print_hex32(bl_hdr_off as u32);
+        con.print(" data_off=");
+        con.print_hex32(bl_data_off as u32);
+        con.print(" data_sz=");
+        con.print_hex32(bl_data_sz as u32);
+        con.newline();
+
+        if bl_data_off + bl_data_sz > bootloader.len() {
+            con.println("  GSP: ERROR - bootloader data extends past blob");
+            return Err(GspLoadError::NoBooterFound);
+        }
+
+        // Parse nvfw_bin_hdr from booter_load blob
+        let btr_magic = u32::from_le_bytes([booter[0], booter[1], booter[2], booter[3]]);
+        let btr_hdr_off = u32::from_le_bytes([booter[12], booter[13], booter[14], booter[15]]) as usize;
+        let btr_data_off = u32::from_le_bytes([booter[16], booter[17], booter[18], booter[19]]) as usize;
+        let btr_data_sz = u32::from_le_bytes([booter[20], booter[21], booter[22], booter[23]]) as usize;
+
+        con.print("  Booter: magic=0x");
+        con.print_hex32(btr_magic);
+        con.print(" data_off=");
+        con.print_hex32(btr_data_off as u32);
+        con.print(" data_sz=");
+        con.print_hex32(btr_data_sz as u32);
+        con.newline();
+
+        if btr_data_off + btr_data_sz > booter.len() {
+            con.println("  GSP: ERROR - booter data extends past blob");
+            return Err(GspLoadError::NoBooterFound);
+        }
+
+        // ── 1. PRIV Ring init ──
+        con.println("  GSP: [1/9] PRIV Ring + Falcon Reset...");
+        self.init_priv_ring(con)?;
+
+        // ── 2. Build Radix3 page table for GSP-RM ELF ──
+        con.println("  GSP: [2/9] Building Radix3 page table for GSP-RM ELF...");
+        let gsp_phys = gsp_rm.as_ptr() as u64;
+        let radix3 = super::radix3::Radix3PageTable::build(gsp_phys, gsp_rm.len(), con)
+            .ok_or(GspLoadError::Radix3Failed)?;
+        con.print("  GSP: Radix3 root=0x");
+        con.print_hex32(radix3.root_phys() as u32);
+        con.newline();
+
+        // ── 3. Build GspFwWprMeta (VRAM layout) ──
+        con.println("  GSP: [3/9] Building GspFwWprMeta...");
+        let bootloader_phys = bootloader.as_ptr() as u64;
+        let wpr_meta = self.build_wpr_meta(
+            radix3.root_phys(),
+            gsp_rm.len() as u64,
+            bootloader_phys,
+            bootloader.len() as u64,
+            bl_data_off as u64,
+            0,
+            con,
+        );
+
+        // ── 4. Prepare boot args + message queues ──
+        con.println("  GSP: [4/9] Preparing boot args + message queues...");
+        let boot_args_phys = self.prepare_boot_args(&wpr_meta, con)?;
+
+        // ── 5. Write libos args to MAILBOX0/1 ──
+        con.println("  GSP: [5/9] Writing MAILBOX0/1...");
+        self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, (boot_args_phys & 0xFFFF_FFFF) as u32);
+        self.bar0.write32(NV_PGSP_FALCON_MAILBOX1, ((boot_args_phys >> 32) & 0xFFFF_FFFF) as u32);
+
+        let mb0 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX0);
+        let mb1 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX1);
+        con.print("  GSP: MB0=0x");
+        con.print_hex32(mb0);
+        con.print(" MB1=0x");
+        con.print_hex32(mb1);
+        con.newline();
+
+        // ── 6. DMA booter_load code to Falcon IMEM ──
+        // The booter_load is the Falcon HS code that sets up WPR2/ACR.
+        // It contains its own nvfw_bin_hdr; the actual code is at btr_data_off.
+        con.println("  GSP: [6/9] DMA booter_load to Falcon IMEM...");
+        self.dma_load_booter(booter, btr_data_off, btr_data_sz, con)?;
+
+        // ── 7. Boot Falcon (runs booter_load) ──
+        con.println("  GSP: [7/9] Booting Falcon (booter_load)...");
+        self.bar0.write32(NV_PGSP_FALCON_BOOTVEC, 0x0000_0000);
+        self.bar0.write32(NV_PGSP_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
+
+        con.print("  GSP: Waiting for booter...");
+        let mut booted = false;
+        for i in 0..10_000_000u32 {
+            let cpuctl = self.bar0.read32(NV_PGSP_FALCON_CPUCTL);
+            let halted = cpuctl & 0x10 != 0;
+
+            if halted && i > 100 {
+                con.newline();
+                con.print("  GSP: Falcon HALTED (cpuctl=0x");
+                con.print_hex32(cpuctl);
+                con.print(" after ");
+                con.print_hex32(i);
+                con.println(" loops)");
+
+                let mb0 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX0);
+                let mb1 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX1);
+                con.print("  GSP: Post-boot MB0=0x");
+                con.print_hex32(mb0);
+                con.print(" MB1=0x");
+                con.print_hex32(mb1);
+                con.newline();
+
+                if mb0 == 0 && i > 1000 {
+                    con.print_colored("  GSP: Booter completed OK!\n", 0x00FF00);
+                    booted = true;
+                } else if mb0 == 0 {
+                    con.print_colored("  GSP: Falcon halted quickly\n", 0xFFFF00);
+                } else {
+                    con.print("  GSP: Booter error code: 0x");
+                    con.print_hex32(mb0);
+                    con.newline();
+                }
+                break;
+            }
+
+            if i % 2_000_000 == 0 && i > 0 { con.print("."); }
+            core::hint::spin_loop();
+        }
+
+        // ── 8. (Booter sets up WPR2, loads bootloader -> RISC-V starts) ──
+        con.println("  GSP: [8/9] Booter should have set up WPR2 + started RISC-V...");
+
+        // ── 9. Verify GSP state ──
+        con.println("  GSP: [9/9] Verifying GSP state...");
+        self.verify_gsp_state(con);
+
+        if booted {
+            con.print_colored("=== GSP Boot COMPLETE - GSP-RM should be starting ===\n", 0x00FF00);
+            con.println("  GSP: Next: poll message queue for GSP_INIT_DONE (0x1001)");
+        } else {
+            con.print_colored("=== GSP Boot DID NOT COMPLETE ===\n", 0xFF4444);
+            con.println("  GSP: The booter_load did not run successfully.");
+            con.println("  GSP: Check: Are the firmware versions matching?");
+            con.println("  GSP: Check: Does the booter need SEC2 auth?");
+        }
+
+        Ok(())
+    }
+
     /// Verify GSP registers after boot attempt
     fn verify_gsp_state(&self, con: &mut Console) {
         let cpuctl = self.bar0.read32(NV_PGSP_FALCON_CPUCTL);

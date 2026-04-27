@@ -365,48 +365,72 @@ fn main() -> Status {
         kernel_base, kernel_size
     );
 
-    // ── 4b. Load GSP firmware (optional) ────────────────────────────────────
+    // ── 4b. Load GSP firmware blobs (optional) ─────────────────────────────
     let mut gsp_addr: u64 = 0;
     let mut gsp_size: u64 = 0;
+    let mut gsp_bootloader_addr: u64 = 0;
+    let mut gsp_bootloader_size: u64 = 0;
+    let mut gsp_booter_load_addr: u64 = 0;
+    let mut gsp_booter_load_size: u64 = 0;
 
-    info!("Attempting to load GSP firmware (gsp_ga10x.bin)...");
-    // Try root first, then EFI\BOOT\
-    let gsp_data_opt = read_file_from_device(device_handle, "\\gsp_ga10x.bin")
-        .or_else(|| read_file_from_device(device_handle, "\\EFI\\BOOT\\gsp_ga10x.bin"));
-    match gsp_data_opt {
-        Some(gsp_data) => {
-            let fw_size = gsp_data.len();
-            let fw_pages = (fw_size + 0xFFF) / 0x1000;
-            info!(
-                "GSP firmware loaded: {} bytes ({} pages)",
-                fw_size, fw_pages
-            );
+    info!("Loading GSP firmware blobs...");
 
-            let fw_ptr = boot::allocate_pages(
-                boot::AllocateType::AnyPages,
-                MemoryType::LOADER_DATA,
-                fw_pages,
-            )
-            .expect("Failed to allocate pages for GSP firmware")
-            .as_ptr() as *mut u8;
+    // Helper: load a firmware file into page-aligned memory
+    // Try each path in order, return (addr, size) or (0, 0)
+    let mut load_fw = |paths: &[&str]| -> (u64, u64) {
+        for path in paths {
+            if let Some(data) = read_file_from_device(device_handle, path) {
+                let size = data.len();
+                let pages = (size + 0xFFF) / 0x1000;
+                let ptr = boot::allocate_pages(
+                    boot::AllocateType::AnyPages,
+                    MemoryType::LOADER_DATA,
+                    pages,
+                )
+                .expect("Failed to allocate pages for firmware blob")
+                .as_ptr() as *mut u8;
 
-            unsafe {
-                // Zero the entire allocation (page-aligned buffer for DMA)
-                core::ptr::write_bytes(fw_ptr, 0, fw_pages * 0x1000);
-                // Copy firmware data into the allocated pages
-                core::ptr::copy_nonoverlapping(gsp_data.as_ptr(), fw_ptr, fw_size);
+                unsafe {
+                    core::ptr::write_bytes(ptr, 0, pages * 0x1000);
+                    core::ptr::copy_nonoverlapping(data.as_ptr(), ptr, size);
+                }
+
+                info!("  Loaded {} -> 0x{:x} ({} bytes)", path, ptr as u64, size);
+                return (ptr as u64, size as u64);
             }
+        }
+        (0, 0)
+    };
 
-            gsp_addr = fw_ptr as u64;
-            gsp_size = fw_size as u64;
-            info!(
-                "GSP firmware at 0x{:x} size=0x{:x}",
-                gsp_addr, gsp_size
-            );
-        }
-        None => {
-            info!("WARNING: gsp_ga10x.bin not found on ESP — GSP firmware will not be available");
-        }
+    // 1. GSP-RM payload (gsp_ga10x.bin) - 69MB
+    let (a, s) = load_fw(&["\\gsp_ga10x.bin", "\\EFI\\BOOT\\gsp_ga10x.bin"]);
+    gsp_addr = a;
+    gsp_size = s;
+
+    // 2. RISC-V bootloader (bootloader-535.113.01.bin) - ~20KB
+    let (a, s) = load_fw(&[
+        "\\firmware\\bootloader-535.113.01.bin",
+        "\\bootloader-535.113.01.bin",
+    ]);
+    gsp_bootloader_addr = a;
+    gsp_bootloader_size = s;
+
+    // 3. Falcon HS booter (booter_load-535.113.01.bin) - ~60KB
+    let (a, s) = load_fw(&[
+        "\\firmware\\booter_load-535.113.01.bin",
+        "\\booter_load-535.113.01.bin",
+    ]);
+    gsp_booter_load_addr = a;
+    gsp_booter_load_size = s;
+
+    if gsp_addr == 0 {
+        info!("WARNING: gsp_ga10x.bin not found — GSP will not be available");
+    }
+    if gsp_bootloader_addr == 0 {
+        info!("WARNING: bootloader-535.113.01.bin not found");
+    }
+    if gsp_booter_load_addr == 0 {
+        info!("WARNING: booter_load-535.113.01.bin not found");
     }
 
 
@@ -467,6 +491,10 @@ fn main() -> Status {
         // GSP firmware (loaded in step 4b, or 0 if not found)
         bi.gsp_addr = gsp_addr;
         bi.gsp_size = gsp_size;
+        bi.gsp_bootloader_addr = gsp_bootloader_addr;
+        bi.gsp_bootloader_size = gsp_bootloader_size;
+        bi.gsp_booter_load_addr = gsp_booter_load_addr;
+        bi.gsp_booter_load_size = gsp_booter_load_size;
     }
 
     info!("BootInfo at 0x{:x}", boot_info_ptr as u64);

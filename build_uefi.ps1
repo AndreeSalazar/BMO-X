@@ -145,9 +145,31 @@ $gspPath = "$Root\gsp_ga10x.bin"
 if (Test-Path $gspPath) {
     Copy-Item $gspPath "$usbDir\gsp_ga10x.bin" -Force
     $gspSize = (Get-Item $gspPath).Length
-    Write-Host "      gsp_ga10x.bin: $([math]::Round($gspSize/1MB, 1))MB (GPU firmware)" -ForegroundColor DarkGray
+    Write-Host "      gsp_ga10x.bin: $([math]::Round($gspSize/1MB, 1))MB (GSP-RM payload)" -ForegroundColor DarkGray
 } else {
     Write-Host "      WARNING: gsp_ga10x.bin not found - GPU GSP will not be available" -ForegroundColor Yellow
+}
+
+# Copy GSP bootloader + booter firmware blobs
+$fwDir = "$Root\firmware"
+$fwUsbDir = "$usbDir\firmware"
+if (Test-Path $fwDir) {
+    if (!(Test-Path $fwUsbDir)) {
+        New-Item -Path $fwUsbDir -ItemType Directory -Force | Out-Null
+    }
+    $fwFiles = @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin")
+    foreach ($f in $fwFiles) {
+        $src = Join-Path $fwDir $f
+        if (Test-Path $src) {
+            Copy-Item $src (Join-Path $fwUsbDir $f) -Force
+            $sz = (Get-Item $src).Length
+            Write-Host "      $f : $sz bytes" -ForegroundColor DarkGray
+        } else {
+            Write-Host "      WARNING: $f not found in firmware/" -ForegroundColor Yellow
+        }
+    }
+} else {
+    Write-Host "      WARNING: firmware/ dir not found - run download_gsp_firmware.ps1 first" -ForegroundColor Yellow
 }
 
 Copy-Item "$Root\flash_uefi.ps1" "$usbDir\flash_uefi.ps1" -Force

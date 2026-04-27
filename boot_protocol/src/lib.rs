@@ -79,6 +79,14 @@ pub struct BootInfo {
     // ── GPU firmware (optional, 0 if not loaded) ──
     pub gsp_addr: u64,
     pub gsp_size: u64,
+
+    // ── GSP bootloader blob (bootloader-535.113.01.bin) ──
+    pub gsp_bootloader_addr: u64,
+    pub gsp_bootloader_size: u64,
+
+    // ── GSP booter_load blob (booter_load-535.113.01.bin) ──
+    pub gsp_booter_load_addr: u64,
+    pub gsp_booter_load_size: u64,
 }
 
 impl BootInfo {
