@@ -270,15 +270,15 @@ pub fn run_all_tests(con: &mut Console, boot_info: *const fastos_boot_protocol::
                     con.print_colored("[FAIL]", 0xFFFF0000);
                     con.println(" DMA timeout");
                 }
-                Err(GspLoadError::FalconBootTimeout) => {
+                Err(GspLoadError::NoBooterFound) => {
                     con.print("  T10 GSP Scratch W/R  ");
                     con.print_colored("[FAIL]", 0xFFFF0000);
-                    con.println(" Falcon boot timeout");
+                    con.println(" no booter found in ELF");
                 }
-                Err(GspLoadError::HandshakeTimeout) => {
+                Err(GspLoadError::Radix3Failed) => {
                     con.print("  T10 GSP Scratch W/R  ");
                     con.print_colored("[FAIL]", 0xFFFF0000);
-                    con.println(" GSP handshake timeout");
+                    con.println(" Radix3 page table build failed");
                 }
                 Err(GspLoadError::BadElfMagic) => {
                     con.print("  T10 GSP Scratch W/R  ");
