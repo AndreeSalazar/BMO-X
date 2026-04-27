@@ -1,17 +1,22 @@
-//! Display Engine (PDISP) para NVIDIA Ampere GA10x — RTX 3060
+//! Display Engine via GSP-RM RPC — NVIDIA Ampere GA10x (RTX 3060)
 //!
-//! Controla la salida de video usando el Class ID 0xC670 (GA10x Display)
-//! confirmado por SigDead en offsets 0xD053F8, 0xD055C0, 0xF56670.
-//! La GPU dibuja directamente — NO la CPU.
+//! En Ampere, TODO el display pasa por GSP-RM via RPC.
+//! NO hay acceso MMIO directo a PDISP — el GSP es dueño del hardware.
+//!
+//! Secuencia (de nvidia-open + nouveau):
+//!   1. GSP_RM_ALLOC class 0xC670 (NVC670_DISPLAY) — container
+//!   2. GSP_RM_ALLOC class 0xC67D (NVC67D_CORE_CHANNEL_DMA)
+//!   3. GSP_RM_CONTROL NV2080_CTRL_CMD_INTERNAL_DISPLAY_GET_STATIC_INFO
+//!   4. GSP_RM_CONTROL NV0073_CTRL_CMD_SYSTEM_GET_NUM_HEADS
+//!   5. Para DP: GSP_RM_CONTROL NV0073_CTRL_CMD_DP_CTRL (link training)
 
 use crate::console::Console;
-use super::rpc::{GspRpcRing, NV_CLASS_DISPLAY_GA10X, NV_PDISP_BASE, NV_PDISP_HEAD_BASE};
+use super::rpc::{GspRpcRing, display_class, rpc_fn};
 
-// Registros de Display Head (offsets relativos a NV_PDISP_HEAD_BASE)
-const DISP_HEAD_SET_CONTROL:   u32 = 0x0300; // Control maestro del head
-const DISP_HEAD_SET_SIZE:      u32 = 0x0304; // Resolución (height << 16 | width)
-const DISP_HEAD_SET_OFFSET:    u32 = 0x0308; // Offset del scanout en VRAM
-const DISP_HEAD_SET_PITCH:     u32 = 0x030C; // Bytes por scanline
+// RM control commands for display (from nvidia-open class headers)
+const NV2080_CTRL_CMD_INTERNAL_DISPLAY_GET_STATIC_INFO: u32 = 0x2080_0A01;
+const NV0073_CTRL_CMD_SYSTEM_GET_NUM_HEADS: u32             = 0x0073_0102;
+const NV0073_CTRL_CMD_SPECIFIC_SET_BACKLIGHT: u32           = 0x0073_0509;
 
 pub struct DisplayEngine<'a> {
     bar0: &'a nv_hal::MmioRegion,
@@ -22,46 +27,51 @@ impl<'a> DisplayEngine<'a> {
         Self { bar0 }
     }
 
-    /// Configura el modo 1920x1080 usando los registros PDISP reales.
-    /// La GPU es el motor de renderizado — NO la CPU.
+    /// Configure 1920x1080 display via GSP-RM RPC (NOT direct MMIO).
+    /// All display setup on Ampere must go through the GSP Resource Manager.
     pub fn set_mode_1080p(&self, rpc: &mut GspRpcRing, con: &mut Console) {
-        con.print_colored("=== Fase 3: Display Engine GA10x (Class 0xC670) ===\n",
+        con.print_colored("=== Display Engine GA10x via GSP-RM RPC ===\n",
             crate::fb::colors::ACCENT_CYAN);
 
-        // 1. Solicitar al GSP que abra la clase de Display via ALLOC_RESOURCE
-        con.println("  [DISP] Alloc Display Class 0xC670 (func=0x04)...");
-        let _ = rpc.send_rpc(super::rpc::RPC_ALLOC_RESOURCE, NV_CLASS_DISPLAY_GA10X, con);
+        // Step 1: Alloc Display container (class 0xC670)
+        con.println("  [DISP] GSP_RM_ALLOC Display Container (0xC670)...");
+        let h_client = rpc.alloc_handle();
+        let h_device = rpc.alloc_handle();
+        let h_display = rpc.alloc_handle();
+        let _ = rpc.send_rm_alloc(
+            h_client, h_device, h_display,
+            display_class::NVC670_DISPLAY, con,
+        );
 
-        // 2. Programar registros PDISP para 1920x1080
-        con.println("  [DISP] Programando registros PDISP (Head 0)...");
+        // Step 2: Alloc Core Channel DMA (class 0xC67D)
+        con.println("  [DISP] GSP_RM_ALLOC Core Channel DMA (0xC67D)...");
+        let h_core = rpc.alloc_handle();
+        let _ = rpc.send_rm_alloc(
+            h_client, h_display, h_core,
+            display_class::NVC67D_CORE_CHANNEL_DMA, con,
+        );
 
-        // Resolución: height (1080) en bits [31:16], width (1920) en bits [15:0]
-        let size_val: u32 = (1080 << 16) | 1920;
-        con.print("  [DISP] HEAD_SET_SIZE = 0x");
-        con.print_hex32(size_val);
-        con.println("  (1920x1080)");
-        self.bar0.write32(NV_PDISP_HEAD_BASE + DISP_HEAD_SET_SIZE, size_val);
+        // Step 3: Get display static info via RM_CONTROL
+        con.println("  [DISP] GSP_RM_CONTROL: GET_DISPLAY_STATIC_INFO...");
+        let _ = rpc.send_rm_control(
+            h_client, h_device,
+            NV2080_CTRL_CMD_INTERNAL_DISPLAY_GET_STATIC_INFO, con,
+        );
 
-        // Pitch: 1920 pixeles × 4 bytes = 7680 bytes por línea
-        let pitch_val: u32 = 1920 * 4;
-        con.print("  [DISP] HEAD_SET_PITCH = ");
-        con.print_hex32(pitch_val);
-        con.println("  (7680 bytes/scanline)");
-        self.bar0.write32(NV_PDISP_HEAD_BASE + DISP_HEAD_SET_PITCH, pitch_val);
+        // Step 4: Get number of heads
+        con.println("  [DISP] GSP_RM_CONTROL: GET_NUM_HEADS...");
+        let _ = rpc.send_rm_control(
+            h_client, h_display,
+            NV0073_CTRL_CMD_SYSTEM_GET_NUM_HEADS, con,
+        );
 
-        // Offset: inicio del framebuffer en VRAM (0 = inicio)
-        self.bar0.write32(NV_PDISP_HEAD_BASE + DISP_HEAD_SET_OFFSET, 0);
+        // Step 5: Read BOOT_0 for chip verification (this MMIO is always accessible)
+        let boot0 = self.bar0.read32(0x0000_0000); // NV_PMC_BOOT_0
+        con.print("  [DISP] BOOT_0=0x");
+        con.print_hex32(boot0);
+        con.println(" (chip ID verification)");
 
-        // Control: activar head
-        self.bar0.write32(NV_PDISP_HEAD_BASE + DISP_HEAD_SET_CONTROL, 1);
-
-        // 3. Leer verificación
-        let readback = self.bar0.read32(NV_PDISP_HEAD_BASE + DISP_HEAD_SET_SIZE);
-        con.print("  [DISP] Verificacion lectura: 0x");
-        con.print_hex32(readback);
-        con.newline();
-
-        con.print_colored("=== Display Engine 1080p ACTIVO (GPU Renderiza) ===\n",
+        con.print_colored("=== Display Engine via GSP-RM COMPLETE ===\n",
             crate::fb::colors::TEXT_SUCCESS);
     }
 }

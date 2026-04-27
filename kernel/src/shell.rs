@@ -476,34 +476,34 @@ fn cmd_gsprpc(con: &mut Console) {
             con.println("  [BOOT] WARN: No hay firmware GSP en memoria, saltando boot.");
         }
 
-        // === PASO 1: GMMU ===
+        // === PASO 1: GMMU (page directory for GPU virtual addressing) ===
         if let Some(mut gmmu) = crate::drivers::gsp::gmmu::GmmuManager::new(&bar0) {
             gmmu.init(con);
         }
 
-        // === PASO 2: RPC Ring + Resource Manager ===
-        let rpc_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(2).unwrap() };
+        // === PASO 2: RPC Ring (256KB cmdq + 256KB msgq = 128 pages) ===
+        let rpc_pages = 128; // 512KB total for both queues
+        let rpc_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(rpc_pages).unwrap() };
         let mut rpc_ring = crate::drivers::gsp::rpc::GspRpcRing::new(&bar0, rpc_phys);
         rpc_ring.init(con);
 
+        // === PASO 3: Wait for GSP_INIT_DONE (0x1001) event ===
+        let _ = rpc_ring.wait_gsp_init_done(con);
+
+        // === PASO 4: NV_RM Full Init Sequence (nvidia-open protocol) ===
+        //   fn=72 GSP_SET_SYSTEM_INFO → fn=73 SET_REGISTRY → fn=65 GET_STATIC_INFO
+        //   fn=103 GSP_RM_ALLOC (display, channel, 3D, compute, DMA copy)
+        //   fn=76 GSP_RM_CONTROL (display info, num heads)
         {
             let mut nv_rm = crate::drivers::gsp::nv_rm::NvResourceManager::new(&mut rpc_ring);
-            let _ = nv_rm.gsp_init(con);          // func=0x01
-            let _ = nv_rm.set_system_info(con);    // func=0x02
-            let _ = nv_rm.alloc_va_space(con);     // func=0x04, class=0xC6FA
-            let _ = nv_rm.alloc_channel(con);      // func=0x04, class=0xC66F
-            let _ = nv_rm.alloc_display(con);      // func=0x04, class=0xC670
-            let _ = nv_rm.alloc_3d(con);           // func=0x04, class=0xC697
-            let _ = nv_rm.alloc_compute(con);      // func=0x04, class=0xC6C0
-            let _ = nv_rm.alloc_dma_copy(con);     // func=0x04, class=0xC6B5
-            let _ = nv_rm.gsp_init_post(con);      // func=0x10
+            let _ = nv_rm.full_init_sequence(con);
         }
 
-        // === PASO 3: Display Engine 1080p ===
+        // === PASO 5: Display Engine via GSP-RM RPC ===
         let disp = crate::drivers::gsp::disp::DisplayEngine::new(&bar0);
         disp.set_mode_1080p(&mut rpc_ring, con);
 
-        // === PASO 4: Pushbuffer 3D ===
+        // === PASO 6: Pushbuffer 3D (via FIFO channel created by GSP) ===
         let pb_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1).unwrap() };
         let mut pushbuffer = crate::drivers::gsp::pushbuffer::PushBuffer::new(pb_phys);
         pushbuffer.bind_3d_class();
@@ -511,12 +511,12 @@ fn cmd_gsprpc(con: &mut Console) {
         pushbuffer.clear_color(0x001E3A5F);
         pushbuffer.execute(&bar0, con);
 
-        unsafe { 
-            crate::arch::page_alloc::free_pages(rpc_phys, 2);
+        unsafe {
+            crate::arch::page_alloc::free_pages(rpc_phys, rpc_pages);
             crate::arch::page_alloc::free_pages(pb_phys, 1);
         }
 
-        con.print_colored("\n[FastOS] GPU RTX 3060 GA10x — Pipeline COMPLETO\n", colors::TEXT_SUCCESS);
+        con.print_colored("\n[FastOS] GPU RTX 3060 GA10x — GSP-RM Pipeline COMPLETO\n", colors::TEXT_SUCCESS);
     } else {
         con.println("ERROR: GPU no encontrada.");
     }

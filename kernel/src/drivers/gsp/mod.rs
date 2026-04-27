@@ -26,6 +26,7 @@ pub mod gmmu;
 pub mod nv_rm;
 pub mod disp;
 pub mod pushbuffer;
+pub mod radix3;
 
 use crate::console::Console;
 pub use loader::{GspLoader, GspLoadError};

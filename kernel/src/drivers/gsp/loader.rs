@@ -436,7 +436,7 @@ impl<'a> GspLoader<'a> {
             core::ptr::write_bytes(base_phys as *mut u8, 0, PAGE_SIZE * 4);
         }
 
-        let args = crate::drivers::gsp::boot_args::GspArgumentsCached::new(
+        let args = crate::drivers::gsp::boot_args::GspArgumentsCached::new_simple(
             shared_mem_phys, 3,
         );
 
