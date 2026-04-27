@@ -20,6 +20,7 @@ pub mod scratch;
 pub mod loader;
 pub mod priv_ring;
 pub mod boot_args;
+pub mod elf_parser;
 pub mod rpc;
 pub mod gmmu;
 pub mod nv_rm;
