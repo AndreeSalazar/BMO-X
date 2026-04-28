@@ -150,10 +150,24 @@ if (!$FlashOnly) {
                 Write-Host "      AVISO: $f no encontrado" -ForegroundColor Yellow
             }
         }
+
+        # -- FWSEC: pasar ROM completo al kernel (NVGI flat blob GA106) --------
+        $vbiosPath = Join-Path $fwDir "vbios_rtx3060.rom"
+        if (!(Test-Path $vbiosPath)) {
+            $vbiosPath = Join-Path $usbDir "firmware\vbios_rtx3060.rom"
+        }
+        if (Test-Path $vbiosPath) {
+            $romSize = (Get-Item $vbiosPath).Length
+            Write-Host "      vbios_rtx3060.rom: $romSize bytes (FWSEC blob listo)" -ForegroundColor Green
+            $offBytes = [BitConverter]::GetBytes([uint64]0)
+            [System.IO.File]::WriteAllBytes((Join-Path $fwUsbDir "fwsec_offset.bin"), $offBytes)
+            Write-Host "      fwsec_offset.bin: offset=0 (ROM completo)" -ForegroundColor Green
+        } else {
+            Write-Host "      AVISO: vbios_rtx3060.rom no encontrado -- FWSEC saltado" -ForegroundColor Yellow
+        }
     }
 
     Write-Host "[3/4] USB_boot/ listo" -ForegroundColor Green
-
 } else {
     if (!(Test-Path "$Root\BOOTX64.EFI") -or !(Test-Path "$Root\kernel.elf")) {
         throw "No se encontraron BOOTX64.EFI o kernel.elf -- ejecuta sin -FlashOnly primero"
@@ -298,8 +312,12 @@ $fwDir = "$Root\firmware"
 if (Test-Path $fwDir) {
     $fwUsbDir = "${dl}:\firmware"
     New-Item -Path $fwUsbDir -ItemType Directory -Force | Out-Null
-    foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin", "vbios_rtx3060.rom")) {
+    foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin", "vbios_rtx3060.rom",
+                     "fwsec_ucode.bin", "fwsec_offset.bin")) {
         $src = Join-Path $fwDir $f
+        if (!(Test-Path $src)) {
+            $src = Join-Path "$Root\USB_boot\firmware" $f
+        }
         if (Test-Path $src) {
             Copy-Item $src (Join-Path $fwUsbDir $f) -Force
             Write-Host "      firmware\$f" -ForegroundColor DarkGray
@@ -344,6 +362,14 @@ if (Test-Path "${dl}:\gsp_ga10x.bin") {
     }
 }
 
+# Verificar FWSEC
+if (Test-Path "${dl}:\firmware\fwsec_ucode.bin") {
+    $fwsecSize = (Get-Item "${dl}:\firmware\fwsec_ucode.bin").Length
+    Write-Host "      fwsec_ucode.bin: $fwsecSize bytes OK" -ForegroundColor Green
+} else {
+    Write-Host "      AVISO: fwsec_ucode.bin no presente (FWSEC no extraido)" -ForegroundColor Yellow
+}
+
 if ($ok) {
     Write-Host "  [FLASH 3/3] Verificado OK" -ForegroundColor Green
 } else {
@@ -367,7 +393,7 @@ if (Test-Path "${dl}:\gsp_ga10x.bin") {
     Write-Host "    ${dl}:\gsp_ga10x.bin           (GSP-RM firmware)" -ForegroundColor White
 }
 if (Test-Path "${dl}:\firmware") {
-    Write-Host "    ${dl}:\firmware\               (bootloader + booter_load)" -ForegroundColor White
+    Write-Host "    ${dl}:\firmware\               (bootloader + booter_load + FWSEC)" -ForegroundColor White
 }
 Write-Host ""
 Write-Host "  Pasos:" -ForegroundColor Yellow
