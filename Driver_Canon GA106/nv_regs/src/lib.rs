@@ -201,6 +201,47 @@ pub mod falcon {
     pub const DMA_CMD_LOAD_DMEM: u32 = 0x01;
 }
 
+// ── PGSP — GSP-specific registers (BAR0 + 0x110000) ────────────────────────
+// Registers needed for GSP RISC-V boot on Ampere
+
+pub mod pgsp {
+    pub const FALCON_MAILBOX0: u32  = 0x0011_0040; // Lo32 of libos args PA
+    pub const FALCON_MAILBOX1: u32  = 0x0011_0044; // Hi32 of libos args PA
+    pub const FALCON_SCRATCH0: u32  = 0x0011_0080;
+    pub const QUEUE_HEAD_BASE: u32  = 0x0011_0C00; // Doorbell base
+
+    pub const fn QUEUE_HEAD(q: u32) -> u32 { QUEUE_HEAD_BASE + q * 8 }
+    pub const fn QUEUE_TAIL(q: u32) -> u32 { QUEUE_HEAD_BASE + q * 8 + 4 }
+
+    // RISC-V boot control
+    pub const RISCV_CPUCTL: u32     = 0x0011_0388;
+    pub const RISCV_BR_ADDR: u32    = 0x0011_0390;
+    pub const RISCV_MODE: u32       = 0x0011_1668;
+    pub const RISCV_MODE_MASK: u32  = 0x0000_0111;
+}
+
+// ── PSEC2 — Security Engine 2 (BAR0 + 0x840000) ────────────────────────────
+// SEC2 runs booter_load HS firmware for authenticated GSP boot on Ampere
+
+pub mod psec2 {
+    pub const FALCON_MAILBOX0: u32  = 0x0084_0040;
+    pub const FALCON_MAILBOX1: u32  = 0x0084_0044;
+    pub const FALCON_SCRATCH0: u32  = 0x0084_0080;
+    pub const FALCON_CPUCTL: u32    = 0x0084_0100;
+    pub const FALCON_BOOTVEC: u32   = 0x0084_0104;
+    pub const FALCON_RESET: u32     = 0x0084_0094;
+    pub const DMATRFBASE: u32       = 0x0084_0110;
+    pub const DMATRFMOFFS: u32      = 0x0084_0114;
+    pub const DMATRFCMD: u32        = 0x0084_0118;
+    pub const DMATRFFBOFFS: u32     = 0x0084_011C;
+}
+
+// ── WPR2 — Write Protected Region status ────────────────────────────────────
+
+pub mod wpr2 {
+    pub const HI: u32 = 0x001F_A828; // Nonzero after FWSEC/FRTS sets up WPR
+}
+
 // ── PMEM — GPU Memory Interface (BAR0 + 0x022000) ──────────────────────────
 // NV_ERR_MEMORY_TRAINING_FAILED, NV_ERR_BROKEN_FB
 

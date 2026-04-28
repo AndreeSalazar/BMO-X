@@ -163,6 +163,28 @@ pub const NV_PGSP_STATQ_TAIL: u32 = 0x0011_0C0C; // Queue 1 TAIL (msgq)
 pub const NV_PGSP_RISCV_CPUCTL:   u32 = 0x0011_0388;
 pub const NV_PGSP_RISCV_BR_ADDR:  u32 = 0x0011_0390; // Branch address
 
+// GSP RISC-V mode switch (Ampere — from nouveau ga102_gsp_reset)
+pub const NV_PGSP_RISCV_MODE:      u32 = 0x0011_1668;
+pub const NV_PGSP_RISCV_MODE_MASK: u32 = 0x0000_0111;
+
+// WPR2 status register — nonzero after FWSEC/FRTS sets up write-protected region
+pub const NV_WPR2_HI: u32 = 0x001F_A828;
+
+// ── SEC2 Falcon registers (BAR0 offsets) ──
+// SEC2 runs booter_load HS firmware on Ampere (NOT PGSP directly)
+pub const NV_PSEC2_FALCON_MAILBOX0: u32 = 0x0084_0040;
+pub const NV_PSEC2_FALCON_MAILBOX1: u32 = 0x0084_0044;
+pub const NV_PSEC2_FALCON_SCRATCH0: u32 = 0x0084_0080;
+pub const NV_PSEC2_FALCON_CPUCTL:   u32 = 0x0084_0100;
+pub const NV_PSEC2_FALCON_BOOTVEC:  u32 = 0x0084_0104;
+pub const NV_PSEC2_FALCON_IDLESTATE: u32 = 0x0084_0004;
+pub const NV_PSEC2_FALCON_RESET:    u32 = 0x0084_0094;
+pub const NV_PSEC2_FALCON_ENGINE:   u32 = 0x0084_03C0;
+pub const NV_PSEC2_DMATRFBASE:      u32 = 0x0084_0110;
+pub const NV_PSEC2_DMATRFMOFFS:     u32 = 0x0084_0114;
+pub const NV_PSEC2_DMATRFCMD:       u32 = 0x0084_0118;
+pub const NV_PSEC2_DMATRFFBOFFS:    u32 = 0x0084_011C;
+
 // Display / Graph / FIFO base addresses
 pub const NV_PDISP_BASE: u32      = 0x0061_0000;
 pub const NV_PDISP_HEAD_BASE: u32 = 0x0064_0000;

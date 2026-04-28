@@ -407,56 +407,57 @@ pub mod gsp_crypto {
 // shared-memory RPC (Ring Producer/Consumer). Messages follow a
 // header + payload format.
 
-/// GSP RPC message header — sent via shared memory to/from GSP.
+/// GSP RPC message header — rpc_message_header_v03_00 (32 bytes)
+/// Fuente: nvidia-open/generated/g_rpc-message-header.h
+/// NOTA: signature = "VRPC" = 0x43505256, NOT "VNKV"
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct GspRpcHeader {
-    /// Message type / command ID.
-    pub msg_type: u32,
-    /// Payload size in bytes (follows this header).
-    pub payload_size: u32,
-    /// Sequence number for request/response matching.
+    pub header_version: u32,        // 0x03000000
+    pub signature: u32,             // 0x43505256 ("VRPC" in LE)
+    pub length: u32,                // sizeof(header) + payload
+    pub function: u32,              // NV_VGPU_MSG_FUNCTION_*
+    pub rpc_result: u32,            // 0 = success
+    pub rpc_result_private: u32,
     pub sequence: u32,
-    /// Status / return code (set by GSP in responses).
-    pub status: u32,
+    pub spare: u32,                 // cpuRmGfid
 }
 
-/// Known GSP RPC message types (from open-gpu-kernel-modules).
+pub const RPC_SIGNATURE: u32 = 0x43505256;       // "VRPC"
+pub const RPC_HEADER_VERSION: u32 = 0x0300_0000;  // v03.00
+
+/// REAL GSP RPC function IDs (from nvidia-open rpc_global_enums.h).
 pub mod gsp_rpc {
-    /// Initialize the Resource Manager on GSP.
-    pub const MSG_INIT: u32 = 0x0001;
-    /// GPU engine information query.
-    pub const MSG_GPU_INFO: u32 = 0x0002;
-    /// Allocate a GPU object (channel, memory, etc.).
-    pub const MSG_ALLOC: u32 = 0x0003;
-    /// Free a GPU object.
-    pub const MSG_FREE: u32 = 0x0004;
-    /// Control call (IOCTL-like) to a GPU object.
-    pub const MSG_CONTROL: u32 = 0x0005;
-    /// Display mode set.
-    pub const MSG_DISPLAY: u32 = 0x0010;
-    /// Power state change.
-    pub const MSG_POWER: u32 = 0x0020;
-    /// Event notification from GSP to host.
-    pub const MSG_EVENT: u32 = 0x0100;
-    /// Heartbeat / keepalive.
-    pub const MSG_HEARTBEAT: u32 = 0xFFFF;
+    pub const FREE: u32                     = 10;
+    pub const UNLOADING_GUEST_DRIVER: u32   = 47;
+    pub const GET_GSP_STATIC_INFO: u32      = 65;
+    pub const CONTINUATION_RECORD: u32      = 71;
+    pub const GSP_SET_SYSTEM_INFO: u32      = 72;
+    pub const SET_REGISTRY: u32             = 73;
+    pub const GSP_RM_CONTROL: u32           = 76;   // Wraps any NVxxxx_CTRL_CMD_*
+    pub const GSP_RM_ALLOC: u32             = 103;  // Allocates any RM object
+
+    // Events (GSP → CPU, on message queue)
+    pub const EVENT_GSP_INIT_DONE: u32      = 0x1001;
+    pub const EVENT_POST_EVENT: u32         = 0x1003;
+    pub const EVENT_RC_TRIGGERED: u32       = 0x1004;
+    pub const EVENT_MMU_FAULT: u32          = 0x1005;
+    pub const EVENT_RUN_CPU_SEQ: u32        = 0x1006;
+    pub const EVENT_OS_ERROR_LOG: u32       = 0x1007;
 }
 
-/// GSP shared memory layout for command ring.
+/// GSP_MSG_QUEUE_ELEMENT — Transport wrapper (48 bytes)
+/// Fuente: nvidia-open/inc/kernel/gpu/gsp/message_queue_priv.h
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct GspCmdRing {
-    /// Physical address of the ring buffer.
-    pub ring_phys: u64,
-    /// Size of ring buffer in bytes.
-    pub ring_size: u32,
-    /// Producer index (written by host).
-    pub put: u32,
-    /// Consumer index (written by GSP).
-    pub get: u32,
-    /// Reserved / alignment.
-    pub _pad: u32,
+pub struct GspMsgQueueElement {
+    pub auth_tag_buffer: [u8; 16],  // AES-GCM auth tag (zeros for now)
+    pub aad_buffer: [u8; 16],       // Additional auth data (zeros)
+    pub checksum: u32,              // XOR of all u32 words == 0
+    pub sequence: u32,              // Monotonic per queue
+    pub elem_count: u32,            // Pages (4KB) this element occupies (1-16)
+    pub pad: u32,
+    // RpcMessageHeader follows at +48, aligned to 8 bytes
 }
 
 /// Which FALCON engine to load firmware into.
@@ -580,34 +581,45 @@ pub fn falcon_is_running(bar0: &MmioRegion, engine: FalconEngine) -> bool {
 // 6. Send MSG_INIT RPC to initialize Resource Manager
 // 7. GSP responds with GPU capabilities and engine info
 
-/// Boot parameters passed to GSP firmware via shared memory.
+/// GspFwWprMeta — 256-byte VRAM layout descriptor (the REAL boot parameter struct)
+/// Fuente: nvidia-open/arch/nvalloc/common/inc/gsp/gsp_fw_wpr_meta.h
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct GspBootParams {
-    /// Magic value for validation ("GSPB" = 0x42505347).
-    pub magic: u32,
-    /// Boot param structure version.
-    pub version: u32,
-    /// Physical address of GSP-RM ELF image in VRAM.
-    pub fw_phys: u64,
-    /// Size of GSP-RM ELF image.
-    pub fw_size: u32,
-    /// Physical address of command ring buffer.
-    pub cmd_ring_phys: u64,
-    /// Physical address of status/response ring.
-    pub status_ring_phys: u64,
-    /// Physical address of shared scratch region.
-    pub scratch_phys: u64,
-    /// GPU chip ID (0x2504 for GA106).
-    pub chip_id: u32,
-    /// VRAM size in bytes.
-    pub vram_size: u64,
+pub struct GspFwWprMeta {
+    pub magic: u64,                    // 0xdc3aae21371a60b3
+    pub revision: u64,                 // = 1
+    pub sysmem_addr_of_radix3_elf: u64,
+    pub size_of_radix3_elf: u64,
+    pub sysmem_addr_of_bootloader: u64,
+    pub size_of_bootloader: u64,
+    pub bootloader_code_offset: u64,
+    pub bootloader_data_offset: u64,
+    pub bootloader_manifest_offset: u64,
+    pub sysmem_addr_of_signature: u64,
+    pub size_of_signature: u64,
+    // FB (VRAM) layout — calculated top-down from fb_size:
+    pub gsp_fw_rsvd_start: u64,
+    pub non_wpr_heap_offset: u64,
+    pub non_wpr_heap_size: u64,
+    pub gsp_fw_wpr_start: u64,         // 128KB aligned
+    pub gsp_fw_heap_offset: u64,       // 1MB aligned
+    pub gsp_fw_heap_size: u64,
+    pub gsp_fw_offset: u64,            // 64KB aligned, ELF in VRAM
+    pub boot_bin_offset: u64,          // 4KB aligned
+    pub frts_offset: u64,
+    pub frts_size: u64,
+    pub gsp_fw_wpr_end: u64,
+    pub fb_size: u64,
+    pub vga_workspace_offset: u64,
+    pub vga_workspace_size: u64,
+    pub boot_count: u64,
+    pub verified: u64,                 // 0xa0a0a0a0a0a0a0a0 when verified
+    pub flags: u8,
+    pub _pad: [u8; 7],
 }
 
-impl GspBootParams {
-    /// Magic value: "GSPB" in little-endian.
-    pub const MAGIC: u32 = 0x4250_5347;
-}
+pub const WPR_META_MAGIC: u64 = 0xdc3a_ae21_371a_60b3;
+pub const WPR_META_REVISION: u64 = 1;
 
 #[cfg(test)]
 mod tests {
@@ -638,7 +650,8 @@ mod tests {
     }
 
     #[test]
-    fn gsp_boot_params_magic() {
-        assert_eq!(GspBootParams::MAGIC, 0x4250_5347);
+    fn gsp_wpr_meta_magic() {
+        assert_eq!(WPR_META_MAGIC, 0xdc3a_ae21_371a_60b3);
+        assert_eq!(WPR_META_REVISION, 1);
     }
 }

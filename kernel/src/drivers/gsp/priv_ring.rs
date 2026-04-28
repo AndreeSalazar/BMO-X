@@ -175,7 +175,7 @@ impl<'a> PrivRingInit<'a> {
         Ok(())
     }
 
-    /// Step 4 — Enable GSP in PMC using the Ampere device-enable register.
+    /// Step 4 — Enable GSP + SEC2 in PMC using the Ampere device-enable register.
     fn enable_gsp_pmc(&self, con: &mut Console) {
         con.print("  [PRIV] PMC ENABLE  = 0x");
         con.print_hex32(self.read(NV_PMC_ENABLE));
@@ -186,20 +186,21 @@ impl<'a> PrivRingInit<'a> {
         con.newline();
 
         // On Ampere the per-device enable register at 0x600 controls
-        // individual engines.  Bit 4 is GSP/PGSP.
+        // individual engines.  Bit 4 is GSP/PGSP, Bit 3 is SEC2.
         let dev_en = self.read(NV_PMC_DEVICE_ENABLE);
         con.print("  [PRIV] PMC DEV_EN  = 0x");
         con.print_hex32(dev_en);
         con.newline();
 
-        // Set GSP enable bit (bit 4).
-        let new_dev_en = dev_en | (1 << 4);
+        // Set GSP enable bit (bit 4) AND SEC2 enable bit (bit 3).
+        // SEC2 is required for the authenticated booter_load path.
+        let new_dev_en = dev_en | (1 << 4) | (1 << 3);
         self.write(NV_PMC_DEVICE_ENABLE, new_dev_en);
         delay_us(500);
 
-        // Also ensure the legacy PMC_ENABLE bits are set for PGSP.
+        // Also ensure the legacy PMC_ENABLE bits are set for PGSP + SEC2.
         let pmc = self.read(NV_PMC_ENABLE);
-        self.write(NV_PMC_ENABLE, pmc | (1 << 4));
+        self.write(NV_PMC_ENABLE, pmc | (1 << 4) | (1 << 3));
         delay_us(200);
 
         con.print("  [PRIV] PMC DEV_EN after = 0x");
