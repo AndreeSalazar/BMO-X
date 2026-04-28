@@ -141,7 +141,7 @@ if (!$FlashOnly) {
     if (Test-Path $fwDir) {
         $fwUsbDir = "$usbDir\firmware"
         New-Item -Path $fwUsbDir -ItemType Directory -Force | Out-Null
-        foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin")) {
+        foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin", "vbios_rtx3060.rom")) {
             $src = Join-Path $fwDir $f
             if (Test-Path $src) {
                 Copy-Item $src (Join-Path $fwUsbDir $f) -Force
@@ -298,7 +298,7 @@ $fwDir = "$Root\firmware"
 if (Test-Path $fwDir) {
     $fwUsbDir = "${dl}:\firmware"
     New-Item -Path $fwUsbDir -ItemType Directory -Force | Out-Null
-    foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin")) {
+    foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin", "vbios_rtx3060.rom")) {
         $src = Join-Path $fwDir $f
         if (Test-Path $src) {
             Copy-Item $src (Join-Path $fwUsbDir $f) -Force

@@ -87,6 +87,10 @@ pub struct BootInfo {
     // ── GSP booter_load blob (booter_load-535.113.01.bin) ──
     pub gsp_booter_load_addr: u64,
     pub gsp_booter_load_size: u64,
+
+    // ── VBIOS ROM (vbios_rtx3060.rom — needed for FWSEC-FRTS) ──
+    pub vbios_addr: u64,
+    pub vbios_size: u64,
 }
 
 impl BootInfo {

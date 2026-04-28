@@ -372,6 +372,8 @@ fn main() -> Status {
     let mut gsp_bootloader_size: u64 = 0;
     let mut gsp_booter_load_addr: u64 = 0;
     let mut gsp_booter_load_size: u64 = 0;
+    let mut vbios_addr: u64 = 0;
+    let mut vbios_size: u64 = 0;
 
     info!("Loading GSP firmware blobs...");
 
@@ -423,6 +425,14 @@ fn main() -> Status {
     gsp_booter_load_addr = a;
     gsp_booter_load_size = s;
 
+    // 4. VBIOS ROM (vbios_rtx3060.rom) - needed for FWSEC-FRTS
+    let (a, s) = load_fw(&[
+        "\\firmware\\vbios_rtx3060.rom",
+        "\\vbios_rtx3060.rom",
+    ]);
+    vbios_addr = a;
+    vbios_size = s;
+
     if gsp_addr == 0 {
         info!("WARNING: gsp_ga10x.bin not found — GSP will not be available");
     }
@@ -431,6 +441,9 @@ fn main() -> Status {
     }
     if gsp_booter_load_addr == 0 {
         info!("WARNING: booter_load-535.113.01.bin not found");
+    }
+    if vbios_addr == 0 {
+        info!("WARNING: vbios_rtx3060.rom not found — FWSEC-FRTS will not run");
     }
 
 
@@ -495,6 +508,8 @@ fn main() -> Status {
         bi.gsp_bootloader_size = gsp_bootloader_size;
         bi.gsp_booter_load_addr = gsp_booter_load_addr;
         bi.gsp_booter_load_size = gsp_booter_load_size;
+        bi.vbios_addr = vbios_addr;
+        bi.vbios_size = vbios_size;
     }
 
     info!("BootInfo at 0x{:x}", boot_info_ptr as u64);
