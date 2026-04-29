@@ -478,6 +478,7 @@ fn cmd_gsprpc(con: &mut Console) {
                 gsp_rm,
                 bootloader,
                 booter_load,
+                vbios_rom: None,
             };
             let _ = crate::drivers::gsp::gsp_init_full(&bar0, &blobs, con);
         } else if fw_ptr.gsp_addr != 0 && fw_ptr.gsp_size > 0 {

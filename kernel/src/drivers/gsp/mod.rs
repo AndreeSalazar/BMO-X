@@ -42,6 +42,8 @@ pub struct GspFirmwareBlobs<'a> {
     pub gsp_rm: &'a [u8],
     pub bootloader: &'a [u8],
     pub booter_load: &'a [u8],
+    /// Optional VBIOS / FWSEC blob for pre-boot WPR2 setup via SEC2
+    pub vbios_rom: Option<&'a [u8]>,
 }
 
 /// One-call GSP initialization: PRIV Ring + firmware load + boot.

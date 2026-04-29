@@ -458,6 +458,47 @@ impl<'a> GspLoader<'a> {
         if completed { Ok(()) } else { Err(GspLoadError::Sec2BootFailed) }
     }
 
+    /// Run FWSEC-FRTS on SEC2 to set up WPR2 before booter_load
+    fn fwsec_frts(&self, vbios: &[u8], con: &mut Console) -> Result<(), GspLoadError> {
+        con.print("  GSP: FWSEC blob size=0x");
+        con.print_hex32(vbios.len() as u32);
+        con.newline();
+
+        // Reset SEC2 limpio para FWSEC
+        self.reset_sec2_falcon(con);
+
+        // DMA del blob completo a SEC2 IMEM (cap a 256KB como Falcon IMEM limit)
+        let max_sz = vbios.len().min(0x4_0000);
+        let chunks = (max_sz + 255) / 256;
+        let src_base = vbios.as_ptr() as u64;
+        for i in 0..chunks {
+            self.sec2_dma_xfer_256(src_base + (i * 256) as u64, (i * 256) as u32, true)?;
+        }
+        con.println("  GSP: FWSEC DMA to SEC2 IMEM OK");
+
+        // Boot SEC2 con FWSEC
+        self.bar0.write32(NV_PSEC2_FALCON_BOOTVEC, 0x0);
+        self.bar0.write32(NV_PSEC2_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
+
+        // Esperar que FWSEC seetee WPR2
+        for _ in 0..5_000_000u32 {
+            let wpr2 = self.bar0.read32(NV_WPR2_HI);
+            if wpr2 != 0 && wpr2 != 0xBADF_5720 {
+                con.print("  GSP: FWSEC WPR2_HI=0x");
+                con.print_hex32(wpr2);
+                con.print_colored(" (WPR2 SET — FWSEC OK)\n", 0x00FF00);
+                return Ok(());
+            }
+            core::hint::spin_loop();
+        }
+
+        let wpr2 = self.bar0.read32(NV_WPR2_HI);
+        con.print("  GSP: FWSEC timeout WPR2_HI=0x");
+        con.print_hex32(wpr2);
+        con.println(" — continuando igual");
+        Ok(()) // no fatal, booter_load intentará igual
+    }
+
     /// Verify GSP registers after boot attempt
     fn verify_gsp_state(&self, con: &mut Console) {
         let cpuctl = self.bar0.read32(NV_PGSP_FALCON_CPUCTL);
@@ -827,6 +868,12 @@ impl<'a> GspLoader<'a> {
         con.print(" MB1=0x");
         con.print_hex32(sec2_mb1);
         con.newline();
+
+        // ── FWSEC-FRTS: run before booter_load to set WPR2 ──
+        con.println("  GSP: [FWSEC] Running FWSEC-FRTS on SEC2...");
+        if let Some(vbios) = blobs.vbios_rom {
+            self.fwsec_frts(vbios, con)?;
+        }
 
         // ── 8. DMA booter_load to SEC2 IMEM ──
         con.println("  GSP: [8/11] DMA booter_load to SEC2 IMEM...");
