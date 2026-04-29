@@ -403,18 +403,20 @@ Write-Host "    3. Boot desde USB (UEFI)" -ForegroundColor White
 Write-Host ""
 Write-Host "  GSP SEC2 Boot -- que esperar en pantalla:" -ForegroundColor Cyan
 Write-Host "    ANTES (roto):" -ForegroundColor Red
-Write-Host "      Falcon HALTED cpuctl=0x10 after 0x65 loops" -ForegroundColor DarkGray
-Write-Host "      RISCV_CPUCTL = 0xBADF5720  <- no inicializado" -ForegroundColor DarkGray
+Write-Host "      WPR2_HI = 0x0  <- faltaba HS manifest parsing" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "    AHORA (SEC2 boot):" -ForegroundColor Green
-Write-Host "      [7/11]  RISCV_MODE: 0x... -> 0x...111" -ForegroundColor DarkGray
-Write-Host "      [9/11]  SEC2 MB0=0x... MB1=0x..." -ForegroundColor DarkGray
-Write-Host "      [10/11] DMA booter_load to SEC2 IMEM OK" -ForegroundColor DarkGray
-Write-Host "      [10/11] SEC2 Falcon HALTED after N loops" -ForegroundColor DarkGray
+Write-Host "    AHORA (HS manifest boot):" -ForegroundColor Green
+Write-Host "      [7/11]  FWSEC-FRTS on SEC2 OK" -ForegroundColor DarkGray
+Write-Host "      [8/11]  HS booter_load on SEC2..." -ForegroundColor DarkGray
+Write-Host "        [HS] bin_hdr: magic=0x10de ..." -ForegroundColor DarkGray
+Write-Host "        [HS] load_hdr: os_code/os_data parsed" -ForegroundColor DarkGray
+Write-Host "        [HS-BOOT] IMEM loaded OK" -ForegroundColor DarkGray
+Write-Host "        [HS-BOOT] Patched DMEM+0x... = WPR meta PA" -ForegroundColor DarkGray
+Write-Host "        [HS-BOOT] DMEM loaded OK" -ForegroundColor DarkGray
+Write-Host "        [HS-BOOT] SEC2 HS regs: dmem_sign, engine_id, ucode_id" -ForegroundColor DarkGray
 Write-Host "      [11/11] WPR2_HI=0x... (WPR2 SET -- good!)  <- EXITO" -ForegroundColor DarkGray
-Write-Host "              RISCV_CPUCTL != 0xBADF5720           <- EXITO" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  Si WPR2 sigue en 0x0: FWSEC-FRTS es el siguiente paso" -ForegroundColor Yellow
+Write-Host "  Si WPR2 sigue en 0x0: revisar patch_loc/patch_sig" -ForegroundColor Yellow
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 Read-Host "  Presiona Enter para cerrar"

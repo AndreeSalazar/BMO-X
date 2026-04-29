@@ -185,6 +185,17 @@ pub const NV_PSEC2_DMATRFMOFFS:     u32 = 0x0084_0114;
 pub const NV_PSEC2_DMATRFCMD:       u32 = 0x0084_0118;
 pub const NV_PSEC2_DMATRFFBOFFS:    u32 = 0x0084_011C;
 
+// ── SEC2 Falcon extended registers (addr2 = +0x1000 from SEC2 base 0x840000) ──
+// These are needed for GA102+ HS authenticated boot (booter_load)
+pub const NV_PSEC2_FALCON_EMEM_ACCESS: u32 = 0x0084_1180;
+pub const NV_PSEC2_FALCON_UCODE_ID:   u32 = 0x0084_1198;
+pub const NV_PSEC2_FALCON_ENGINE_ID:  u32 = 0x0084_119C;
+pub const NV_PSEC2_FALCON_DMEM_SIGN:  u32 = 0x0084_1210;
+// DMA/cache control (from ga102_flcn_fw_load)
+pub const NV_PSEC2_FALCON_DMACTL:     u32 = 0x0084_0600;
+pub const NV_PSEC2_FALCON_IRQMSET:    u32 = 0x0084_0624;
+pub const NV_PSEC2_FALCON_ENGCTL:     u32 = 0x0084_010C;
+
 // Display / Graph / FIFO base addresses
 pub const NV_PDISP_BASE: u32      = 0x0061_0000;
 pub const NV_PDISP_HEAD_BASE: u32 = 0x0064_0000;

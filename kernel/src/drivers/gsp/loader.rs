@@ -32,6 +32,10 @@ use crate::drivers::gsp::rpc::{
     NV_PSEC2_FALCON_ENGINE,
     NV_PSEC2_DMATRFBASE, NV_PSEC2_DMATRFMOFFS,
     NV_PSEC2_DMATRFCMD, NV_PSEC2_DMATRFFBOFFS,
+    NV_PSEC2_FALCON_EMEM_ACCESS, NV_PSEC2_FALCON_UCODE_ID,
+    NV_PSEC2_FALCON_ENGINE_ID, NV_PSEC2_FALCON_DMEM_SIGN,
+    NV_PSEC2_FALCON_DMACTL, NV_PSEC2_FALCON_IRQMSET,
+    NV_PSEC2_FALCON_ENGCTL,
     CMDQ_SIZE, MSGQ_SIZE,
 };
 
@@ -76,6 +80,7 @@ pub enum GspLoadError {
     Sec2BootFailed,
     RiscvStartFailed,
     SignatureNotFound,
+    HsManifestParseError,
 }
 
 /// Both physical addresses needed for the two-mailbox boot handoff
@@ -83,6 +88,37 @@ struct BootMem {
     boot_args_phys: u64,  // GspArgumentsCached → PGSP MAILBOX
     wpr_meta_phys: u64,   // GspFwWprMeta copy → SEC2 MAILBOX
     shared_mem_phys: u64,
+}
+
+/// Parsed HS manifest from booter_load-535.113.01.bin
+/// Layout (from nouveau extract-firmware-nouveau.py + nvfw/hs.h):
+///   nvfw_bin_hdr (24 bytes) → nvfw_hs_header_v2 (36 bytes) → signatures
+///   → patch_loc(u32) + patch_sig(u32) + meta(12 bytes) + num_sigs(u32)
+///   → nvfw_hs_load_header_v2 (20+ bytes)
+struct HsManifest {
+    // From nvfw_bin_hdr
+    data_offset: u32,
+    data_size: u32,
+    // From nvfw_hs_header_v2
+    sig_prod_offset: u32,
+    sig_prod_size: u32,
+    // Values read via patch_loc/patch_sig offsets
+    patch_loc_value: u32,   // offset within data where WPR meta PA goes
+    patch_sig_value: u32,   // offset within data where sig index goes
+    // From meta_data
+    fuse_ver: u32,
+    engine_id: u32,
+    ucode_id: u32,
+    num_sigs: u32,
+    // From nvfw_hs_load_header_v2
+    os_code_offset: u32,
+    os_code_size: u32,
+    os_data_offset: u32,
+    os_data_size: u32,
+    app0_offset: u32,
+    app0_size: u32,
+    // Computed
+    dmem_sign: u32,         // = patch_loc_value - os_data_offset
 }
 
 pub struct GspLoader<'a> {
@@ -115,7 +151,7 @@ impl<'a> GspLoader<'a> {
             if val & DMA_CMD_WRITE == 0 { return Ok(()); }
             core::hint::spin_loop();
         }
-        Ok(())
+        Err(GspLoadError::DmaTimeout)
     }
 
     // ── DMA load booter_load HS code to SEC2 Falcon IMEM ──
@@ -148,6 +184,348 @@ impl<'a> GspLoader<'a> {
 
         con.print_colored("  GSP: Booter DMA to SEC2 IMEM OK\n", 0x00FF00);
         Ok(())
+    }
+
+    // ── Parse nvfw_bin_hdr + nvfw_hs_header_v2 + nvfw_hs_load_header_v2 from booter .bin ──
+    fn parse_hs_manifest(blob: &[u8], con: &mut Console) -> Result<HsManifest, GspLoadError> {
+        fn r32(d: &[u8], o: usize) -> u32 {
+            if o + 4 > d.len() { return 0; }
+            u32::from_le_bytes([d[o], d[o+1], d[o+2], d[o+3]])
+        }
+
+        if blob.len() < 24 {
+            con.println("  GSP: [HS] blob too small for nvfw_bin_hdr");
+            return Err(GspLoadError::HsManifestParseError);
+        }
+
+        // ── nvfw_bin_hdr (24 bytes) ──
+        let bin_magic = r32(blob, 0);
+        let bin_ver   = r32(blob, 4);
+        let bin_size  = r32(blob, 8);
+        let hdr_off   = r32(blob, 12) as usize;  // offset to nvfw_hs_header_v2
+        let data_off  = r32(blob, 16) as usize;  // offset to actual firmware code/data
+        let data_sz   = r32(blob, 20) as usize;
+
+        con.print("  GSP: [HS] bin_hdr: magic=0x");
+        con.print_hex32(bin_magic);
+        con.print(" ver=");
+        con.print_hex32(bin_ver);
+        con.print(" size=0x");
+        con.print_hex32(bin_size);
+        con.newline();
+        con.print("  GSP: [HS]   hdr_off=0x");
+        con.print_hex32(hdr_off as u32);
+        con.print(" data_off=0x");
+        con.print_hex32(data_off as u32);
+        con.print(" data_sz=0x");
+        con.print_hex32(data_sz as u32);
+        con.newline();
+
+        if bin_magic != 0x10de {
+            con.println("  GSP: [HS] ERROR — bad bin_magic");
+            return Err(GspLoadError::HsManifestParseError);
+        }
+
+        // ── nvfw_hs_header_v2 (36 bytes = 9 × u32) at hdr_off ──
+        if hdr_off + 36 > blob.len() {
+            con.println("  GSP: [HS] ERROR — hs_header_v2 extends past blob");
+            return Err(GspLoadError::HsManifestParseError);
+        }
+        let sig_prod_offset    = r32(blob, hdr_off + 0);
+        let sig_prod_size      = r32(blob, hdr_off + 4);
+        let patch_loc_offset   = r32(blob, hdr_off + 8) as usize;
+        let patch_sig_offset   = r32(blob, hdr_off + 12) as usize;
+        let meta_data_offset   = r32(blob, hdr_off + 16) as usize;
+        let _meta_data_size    = r32(blob, hdr_off + 20);
+        let num_sig_offset     = r32(blob, hdr_off + 24) as usize;
+        let load_hdr_offset    = r32(blob, hdr_off + 28) as usize;
+        let load_hdr_size      = r32(blob, hdr_off + 32);
+
+        con.print("  GSP: [HS] hs_hdr_v2: sig_off=0x");
+        con.print_hex32(sig_prod_offset);
+        con.print(" sig_sz=0x");
+        con.print_hex32(sig_prod_size);
+        con.newline();
+        con.print("  GSP: [HS]   patch_loc@0x");
+        con.print_hex32(patch_loc_offset as u32);
+        con.print(" patch_sig@0x");
+        con.print_hex32(patch_sig_offset as u32);
+        con.print(" meta@0x");
+        con.print_hex32(meta_data_offset as u32);
+        con.newline();
+        con.print("  GSP: [HS]   num_sig@0x");
+        con.print_hex32(num_sig_offset as u32);
+        con.print(" load_hdr@0x");
+        con.print_hex32(load_hdr_offset as u32);
+        con.print(" load_hdr_sz=0x");
+        con.print_hex32(load_hdr_size);
+        con.newline();
+
+        // Read values at patch_loc and patch_sig offsets
+        if patch_loc_offset + 4 > blob.len() || patch_sig_offset + 4 > blob.len() {
+            con.println("  GSP: [HS] ERROR — patch offsets out of bounds");
+            return Err(GspLoadError::HsManifestParseError);
+        }
+        let patch_loc_value = r32(blob, patch_loc_offset);
+        let patch_sig_value = r32(blob, patch_sig_offset);
+
+        con.print("  GSP: [HS]   patch_loc_value=0x");
+        con.print_hex32(patch_loc_value);
+        con.print(" patch_sig_value=0x");
+        con.print_hex32(patch_sig_value);
+        con.newline();
+
+        // Read meta_data: fuse_ver, engine_id, ucode_id
+        if meta_data_offset + 12 > blob.len() {
+            con.println("  GSP: [HS] ERROR — meta_data out of bounds");
+            return Err(GspLoadError::HsManifestParseError);
+        }
+        let fuse_ver  = r32(blob, meta_data_offset);
+        let engine_id = r32(blob, meta_data_offset + 4);
+        let ucode_id  = r32(blob, meta_data_offset + 8);
+
+        // Read num_sigs
+        if num_sig_offset + 4 > blob.len() {
+            con.println("  GSP: [HS] ERROR — num_sig out of bounds");
+            return Err(GspLoadError::HsManifestParseError);
+        }
+        let num_sigs = r32(blob, num_sig_offset);
+
+        con.print("  GSP: [HS]   fuse_ver=0x");
+        con.print_hex32(fuse_ver);
+        con.print(" engine_id=0x");
+        con.print_hex32(engine_id);
+        con.print(" ucode_id=0x");
+        con.print_hex32(ucode_id);
+        con.print(" num_sigs=");
+        con.print_hex32(num_sigs);
+        con.newline();
+
+        // ── nvfw_hs_load_header_v2 at load_hdr_offset ──
+        // struct: os_code_offset(4), os_code_size(4), os_data_offset(4),
+        //         os_data_size(4), num_apps(4), app[num_apps] × {offset,size,data_off,data_sz}
+        if load_hdr_offset + 20 > blob.len() {
+            con.println("  GSP: [HS] ERROR — load_hdr out of bounds");
+            return Err(GspLoadError::HsManifestParseError);
+        }
+        let os_code_offset = r32(blob, load_hdr_offset);
+        let os_code_size   = r32(blob, load_hdr_offset + 4);
+        let os_data_offset = r32(blob, load_hdr_offset + 8);
+        let os_data_size   = r32(blob, load_hdr_offset + 12);
+        let num_apps       = r32(blob, load_hdr_offset + 16);
+
+        con.print("  GSP: [HS] load_hdr: os_code_off=0x");
+        con.print_hex32(os_code_offset);
+        con.print(" os_code_sz=0x");
+        con.print_hex32(os_code_size);
+        con.newline();
+        con.print("  GSP: [HS]   os_data_off=0x");
+        con.print_hex32(os_data_offset);
+        con.print(" os_data_sz=0x");
+        con.print_hex32(os_data_size);
+        con.print(" num_apps=");
+        con.print_hex32(num_apps);
+        con.newline();
+
+        // Read app[0] if available
+        let (app0_offset, app0_size) = if num_apps > 0 && load_hdr_offset + 20 + 16 <= blob.len() {
+            let app_base = load_hdr_offset + 20;
+            let off = r32(blob, app_base);
+            let sz  = r32(blob, app_base + 4);
+            con.print("  GSP: [HS]   app[0] off=0x");
+            con.print_hex32(off);
+            con.print(" sz=0x");
+            con.print_hex32(sz);
+            con.newline();
+            (off, sz)
+        } else {
+            (os_code_offset, os_code_size)
+        };
+
+        // Compute dmem_sign: offset of WPR meta PA within DMEM
+        let dmem_sign = patch_loc_value.checked_sub(os_data_offset).unwrap_or(0);
+        con.print("  GSP: [HS]   dmem_sign=0x");
+        con.print_hex32(dmem_sign);
+        con.println(" (patch_loc - os_data_offset)");
+
+        Ok(HsManifest {
+            data_offset: data_off as u32,
+            data_size: data_sz as u32,
+            sig_prod_offset,
+            sig_prod_size,
+            patch_loc_value,
+            patch_sig_value,
+            fuse_ver,
+            engine_id,
+            ucode_id,
+            num_sigs,
+            os_code_offset,
+            os_code_size,
+            os_data_offset,
+            os_data_size,
+            app0_offset,
+            app0_size,
+            dmem_sign,
+        })
+    }
+
+    /// HS-authenticated boot of booter_load on SEC2 (GA102+ path).
+    ///
+    /// 1. Parse HS manifest from booter blob
+    /// 2. Configure SEC2 DMA/cache registers (ga102_flcn_fw_load style)
+    /// 3. DMA IMEM (os_code) and DMEM (os_data) separately
+    /// 4. Patch DMEM at patch_loc with WPR meta PA
+    /// 5. Program HS registers (dmem_sign, engine_id, ucode_id)
+    /// 6. Boot SEC2 and wait
+    fn sec2_hs_boot_booter(
+        &self,
+        booter: &[u8],
+        wpr_meta_phys: u64,
+        con: &mut Console,
+    ) -> Result<(), GspLoadError> {
+        con.println("  GSP: [HS-BOOT] Parsing booter_load HS manifest...");
+        let hs = Self::parse_hs_manifest(booter, con)?;
+
+        let data_base = hs.data_offset as usize;
+        if data_base + hs.data_size as usize > booter.len() {
+            con.println("  GSP: [HS-BOOT] ERROR — data section extends past booter blob");
+            return Err(GspLoadError::NoBooterFound);
+        }
+
+        // ── Reset SEC2 ──
+        self.reset_sec2_falcon(con);
+
+        // ── Configure SEC2 Falcon DMA/cache (ga102_flcn_fw_load) ──
+        con.println("  GSP: [HS-BOOT] Configuring SEC2 DMA/cache...");
+        let irqmset = self.bar0.read32(NV_PSEC2_FALCON_IRQMSET);
+        self.bar0.write32(NV_PSEC2_FALCON_IRQMSET, irqmset | 0x80);
+        self.bar0.write32(NV_PSEC2_FALCON_ENGCTL, 0x0);
+        self.bar0.write32(NV_PSEC2_FALCON_DMACTL, (1 << 2) | 1);
+
+        // ── DMA IMEM: os_code from data section → SEC2 IMEM ──
+        let imem_src_off = data_base + hs.os_code_offset as usize;
+        let imem_size = hs.os_code_size as usize;
+        if imem_src_off + imem_size > booter.len() || imem_size == 0 {
+            con.println("  GSP: [HS-BOOT] ERROR — IMEM region invalid");
+            return Err(GspLoadError::NoBooterFound);
+        }
+        let imem_chunks = (imem_size + 255) / 256;
+        con.print("  GSP: [HS-BOOT] DMA IMEM: off=0x");
+        con.print_hex32(imem_src_off as u32);
+        con.print(" sz=0x");
+        con.print_hex32(imem_size as u32);
+        con.print(" (");
+        con.print_hex32(imem_chunks as u32);
+        con.println(" chunks)");
+
+        let imem_phys = booter.as_ptr() as u64 + imem_src_off as u64;
+        for i in 0..imem_chunks {
+            self.sec2_dma_xfer_256(
+                imem_phys + (i * 256) as u64,
+                (i * 256) as u32,
+                true, // IMEM
+            )?;
+        }
+        con.print_colored("  GSP: [HS-BOOT] IMEM loaded OK\n", 0x00FF00);
+
+        // ── Prepare DMEM bounce buffer with patching ──
+        let dmem_src_off = data_base + hs.os_data_offset as usize;
+        let dmem_size = hs.os_data_size as usize;
+        if dmem_src_off + dmem_size > booter.len() || dmem_size == 0 {
+            con.println("  GSP: [HS-BOOT] ERROR — DMEM region invalid");
+            return Err(GspLoadError::NoBooterFound);
+        }
+
+        // Allocate bounce buffer (page-aligned) for DMEM patching
+        let dmem_pages = (dmem_size + PAGE_SIZE - 1) / PAGE_SIZE;
+        let dmem_buf_phys = unsafe {
+            crate::arch::page_alloc::alloc_pages_contiguous(dmem_pages)
+        }.ok_or(GspLoadError::PageAllocFailed)?;
+
+        unsafe {
+            core::ptr::write_bytes(dmem_buf_phys as *mut u8, 0, dmem_pages * PAGE_SIZE);
+            core::ptr::copy_nonoverlapping(
+                booter.as_ptr().add(dmem_src_off),
+                dmem_buf_phys as *mut u8,
+                dmem_size,
+            );
+        }
+
+        // Patch WPR meta PA at patch_loc (within DMEM)
+        let patch_off = hs.dmem_sign as usize;
+        if patch_off + 4 <= dmem_size {
+            let wpr_lo = (wpr_meta_phys & 0xFFFF_FFFF) as u32;
+            unsafe {
+                let dst = (dmem_buf_phys as *mut u8).add(patch_off) as *mut u32;
+                core::ptr::write(dst, wpr_lo);
+            }
+            con.print("  GSP: [HS-BOOT] Patched DMEM+0x");
+            con.print_hex32(patch_off as u32);
+            con.print(" = WPR meta PA lo 0x");
+            con.print_hex32(wpr_lo);
+            con.newline();
+        } else {
+            con.print_colored("  GSP: [HS-BOOT] WARNING — patch_loc outside DMEM!\n", 0xFFFF00);
+        }
+
+        // Patch signature index at patch_sig (within DMEM)
+        let sig_patch_off = hs.patch_sig_value.checked_sub(hs.os_data_offset);
+        if let Some(sig_off) = sig_patch_off {
+            let sig_off = sig_off as usize;
+            if sig_off + 4 <= dmem_size {
+                unsafe {
+                    let dst = (dmem_buf_phys as *mut u8).add(sig_off) as *mut u32;
+                    core::ptr::write(dst, 0); // signature index 0 (prod)
+                }
+                con.print("  GSP: [HS-BOOT] Patched DMEM+0x");
+                con.print_hex32(sig_off as u32);
+                con.println(" = sig_idx 0");
+            }
+        }
+
+        // ── DMA DMEM → SEC2 DMEM ──
+        let dmem_chunks = (dmem_size + 255) / 256;
+        con.print("  GSP: [HS-BOOT] DMA DMEM: sz=0x");
+        con.print_hex32(dmem_size as u32);
+        con.print(" (");
+        con.print_hex32(dmem_chunks as u32);
+        con.println(" chunks)");
+
+        for i in 0..dmem_chunks {
+            self.sec2_dma_xfer_256(
+                dmem_buf_phys + (i * 256) as u64,
+                (i * 256) as u32,
+                false, // DMEM
+            )?;
+        }
+        con.print_colored("  GSP: [HS-BOOT] DMEM loaded OK\n", 0x00FF00);
+
+        // ── Program HS registers (ga102_flcn_fw_boot style) ──
+        con.println("  GSP: [HS-BOOT] Programming SEC2 HS registers...");
+        self.bar0.write32(NV_PSEC2_FALCON_DMEM_SIGN, hs.dmem_sign);
+        self.bar0.write32(NV_PSEC2_FALCON_ENGINE_ID, hs.engine_id);
+        self.bar0.write32(NV_PSEC2_FALCON_UCODE_ID, hs.ucode_id);
+        self.bar0.write32(NV_PSEC2_FALCON_EMEM_ACCESS, 0x1);
+
+        con.print("  GSP: [HS-BOOT] dmem_sign=0x");
+        con.print_hex32(hs.dmem_sign);
+        con.print(" engine_id=0x");
+        con.print_hex32(hs.engine_id);
+        con.print(" ucode_id=0x");
+        con.print_hex32(hs.ucode_id);
+        con.newline();
+
+        // ── Write SEC2 MAILBOX with WPR meta PA ──
+        self.bar0.write32(NV_PSEC2_FALCON_MAILBOX0, (wpr_meta_phys & 0xFFFF_FFFF) as u32);
+        self.bar0.write32(NV_PSEC2_FALCON_MAILBOX1, ((wpr_meta_phys >> 32) & 0xFFFF_FFFF) as u32);
+
+        // ── Boot SEC2 Falcon ──
+        con.println("  GSP: [HS-BOOT] Starting SEC2 Falcon (booter_load HS)...");
+        self.bar0.write32(NV_PSEC2_FALCON_BOOTVEC, 0x0);
+        self.bar0.write32(NV_PSEC2_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
+
+        // ── Wait for completion ──
+        self.sec2_boot_and_wait(con)
     }
 
     // ── Reset SEC2 Falcon to a known state ──
@@ -458,33 +836,121 @@ impl<'a> GspLoader<'a> {
         if completed { Ok(()) } else { Err(GspLoadError::Sec2BootFailed) }
     }
 
-    /// Run FWSEC-FRTS on SEC2 to set up WPR2 before booter_load
+    /// Run FWSEC-FRTS on SEC2 to set up WPR2 before booter_load.
+    ///
+    /// GA106 RTX 3060 LHR VBIOS offsets (extracted from vbios_rtx3060.rom):
+    ///   - Descriptor:      SPI 0x4A410
+    ///   - IMEM (code):     57,856 bytes @ SPI 0x4A8BC
+    ///   - DMEM (data):      2,048 bytes @ SPI 0x58ABC
+    ///   - InterfaceOffset:  0x1C  (within DMEM)
+    ///   - EngineIdMask:   0x400 (GSP Falcon)
+    ///   - UcodeId:        9
+    ///
+    /// The old code loaded the *entire* 2 MiB VBIOS into SEC2 IMEM which
+    /// overflowed Falcon IMEM and left DMEM untouched.  This version loads
+    /// only the exact IMEM/DMEM slices and patches the runtime interface.
     fn fwsec_frts(&self, vbios: &[u8], con: &mut Console) -> Result<(), GspLoadError> {
-        con.print("  GSP: FWSEC blob size=0x");
-        con.print_hex32(vbios.len() as u32);
-        con.newline();
+        const FWSEC_IMEM_OFF: usize = 0x4A8BC;
+        const FWSEC_IMEM_SIZE: usize = 57856;
+        const FWSEC_DMEM_OFF: usize = 0x58ABC;
+        const FWSEC_DMEM_SIZE: usize = 2048;
+        const FWSEC_INTERFACE_OFF: usize = 0x1C;
+        const FWSEC_ENGINE_ID_MASK: u32 = 0x400;
+        const FWSEC_UCODE_ID: u32 = 9;
 
-        // Reset SEC2 limpio para FWSEC
+        if FWSEC_IMEM_OFF + FWSEC_IMEM_SIZE > vbios.len() {
+            con.println("  GSP: [FWSEC] ERROR — IMEM extends past VBIOS");
+            return Err(GspLoadError::NoBooterFound);
+        }
+        if FWSEC_DMEM_OFF + FWSEC_DMEM_SIZE > vbios.len() {
+            con.println("  GSP: [FWSEC] ERROR — DMEM extends past VBIOS");
+            return Err(GspLoadError::NoBooterFound);
+        }
+
+        con.println("  GSP: [FWSEC] Loading FWSEC-FRTS from VBIOS...");
+        con.print("  GSP: [FWSEC] VBIOS=0x");
+        con.print_hex32(vbios.len() as u32);
+        con.print(" IMEM@0x");
+        con.print_hex32(FWSEC_IMEM_OFF as u32);
+        con.print("(+0x");
+        con.print_hex32(FWSEC_IMEM_SIZE as u32);
+        con.print(") DMEM@0x");
+        con.print_hex32(FWSEC_DMEM_OFF as u32);
+        con.print("(+0x");
+        con.print_hex32(FWSEC_DMEM_SIZE as u32);
+        con.println(")");
+
+        // ── Reset SEC2 clean ──
         self.reset_sec2_falcon(con);
 
-        // DMA del blob completo a SEC2 IMEM (cap a 256KB como Falcon IMEM limit)
-        let max_sz = vbios.len().min(0x4_0000);
-        let chunks = (max_sz + 255) / 256;
-        let src_base = vbios.as_ptr() as u64;
-        for i in 0..chunks {
-            self.sec2_dma_xfer_256(src_base + (i * 256) as u64, (i * 256) as u32, true)?;
+        // ── 1. DMA IMEM → SEC2 Falcon IMEM ──
+        let imem_src = vbios.as_ptr() as u64 + FWSEC_IMEM_OFF as u64;
+        let imem_chunks = FWSEC_IMEM_SIZE / 256; // 57856 / 256 = 226 exactly
+        con.print("  GSP: [FWSEC] DMA IMEM → SEC2 IMEM (");
+        con.print_hex32(imem_chunks as u32);
+        con.println(" chunks)");
+        for i in 0..imem_chunks {
+            let offset = i * 256;
+            self.sec2_dma_xfer_256(imem_src + offset as u64, offset as u32, true)?;
         }
-        con.println("  GSP: FWSEC DMA to SEC2 IMEM OK");
+        con.println("  GSP: [FWSEC] IMEM loaded OK");
 
-        // Boot SEC2 con FWSEC
+        // ── 2. Copy DMEM to stack buffer + patch runtime interface ──
+        // The DMEM blob contains the Application Interface Table template.
+        // We patch engine_id_mask and ucode_id at the interface offset (0x1C)
+        // so the FWSEC ucode knows which engine it is configuring (GSP Falcon).
+        let mut dmem_buf = [0u8; FWSEC_DMEM_SIZE];
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                vbios.as_ptr().add(FWSEC_DMEM_OFF),
+                dmem_buf.as_mut_ptr(),
+                FWSEC_DMEM_SIZE,
+            );
+        }
+
+        let iface_base = FWSEC_INTERFACE_OFF;
+        if iface_base + 8 <= FWSEC_DMEM_SIZE {
+            dmem_buf[iface_base + 0] = (FWSEC_ENGINE_ID_MASK & 0xFF) as u8;
+            dmem_buf[iface_base + 1] = ((FWSEC_ENGINE_ID_MASK >> 8) & 0xFF) as u8;
+            dmem_buf[iface_base + 2] = ((FWSEC_ENGINE_ID_MASK >> 16) & 0xFF) as u8;
+            dmem_buf[iface_base + 3] = ((FWSEC_ENGINE_ID_MASK >> 24) & 0xFF) as u8;
+            dmem_buf[iface_base + 4] = (FWSEC_UCODE_ID & 0xFF) as u8;
+            dmem_buf[iface_base + 5] = ((FWSEC_UCODE_ID >> 8) & 0xFF) as u8;
+            dmem_buf[iface_base + 6] = ((FWSEC_UCODE_ID >> 16) & 0xFF) as u8;
+            dmem_buf[iface_base + 7] = ((FWSEC_UCODE_ID >> 24) & 0xFF) as u8;
+        }
+
+        con.print("  GSP: [FWSEC] Interface patched @ DMEM+0x");
+        con.print_hex32(FWSEC_INTERFACE_OFF as u32);
+        con.print(" engine_id_mask=0x");
+        con.print_hex32(FWSEC_ENGINE_ID_MASK);
+        con.print(" ucode_id=");
+        con.print_hex32(FWSEC_UCODE_ID);
+        con.newline();
+
+        // ── 3. DMA patched DMEM → SEC2 Falcon DMEM ──
+        let dmem_src = dmem_buf.as_ptr() as u64;
+        let dmem_chunks = FWSEC_DMEM_SIZE / 256; // 2048 / 256 = 8 exactly
+        con.print("  GSP: [FWSEC] DMA DMEM → SEC2 DMEM (");
+        con.print_hex32(dmem_chunks as u32);
+        con.println(" chunks)");
+        for i in 0..dmem_chunks {
+            let offset = i * 256;
+            self.sec2_dma_xfer_256(dmem_src + offset as u64, offset as u32, false)?;
+        }
+        con.println("  GSP: [FWSEC] DMEM loaded OK");
+
+        // ── 4. Boot SEC2 Falcon with FWSEC ucode ──
+        con.println("  GSP: [FWSEC] Booting SEC2 (FWSEC-FRTS)...");
         self.bar0.write32(NV_PSEC2_FALCON_BOOTVEC, 0x0);
         self.bar0.write32(NV_PSEC2_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
 
-        // Esperar que FWSEC seetee WPR2
+        // ── 5. Wait for WPR2 to be set by FWSEC ──
+        con.println("  GSP: [FWSEC] Waiting for WPR2_HI != 0...");
         for _ in 0..5_000_000u32 {
             let wpr2 = self.bar0.read32(NV_WPR2_HI);
             if wpr2 != 0 && wpr2 != 0xBADF_5720 {
-                con.print("  GSP: FWSEC WPR2_HI=0x");
+                con.print("  GSP: [FWSEC] WPR2_HI=0x");
                 con.print_hex32(wpr2);
                 con.print_colored(" (WPR2 SET — FWSEC OK)\n", 0x00FF00);
                 return Ok(());
@@ -493,10 +959,10 @@ impl<'a> GspLoader<'a> {
         }
 
         let wpr2 = self.bar0.read32(NV_WPR2_HI);
-        con.print("  GSP: FWSEC timeout WPR2_HI=0x");
+        con.print("  GSP: [FWSEC] timeout WPR2_HI=0x");
         con.print_hex32(wpr2);
-        con.println(" — continuando igual");
-        Ok(()) // no fatal, booter_load intentará igual
+        con.println(" — continuing anyway");
+        Ok(()) // non-fatal: booter_load will retry
     }
 
     /// Verify GSP registers after boot attempt
@@ -856,38 +1322,26 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(mb1);
         con.newline();
 
-        // ── 7. Reset SEC2 + write WPR meta to SEC2 MAILBOX ──
-        con.println("  GSP: [7/11] Resetting SEC2 + writing SEC2 MAILBOX...");
-        self.reset_sec2_falcon(con);
-        self.bar0.write32(NV_PSEC2_FALCON_MAILBOX0, (boot_mem.wpr_meta_phys & 0xFFFF_FFFF) as u32);
-        self.bar0.write32(NV_PSEC2_FALCON_MAILBOX1, ((boot_mem.wpr_meta_phys >> 32) & 0xFFFF_FFFF) as u32);
-        let sec2_mb0 = self.bar0.read32(NV_PSEC2_FALCON_MAILBOX0);
-        let sec2_mb1 = self.bar0.read32(NV_PSEC2_FALCON_MAILBOX1);
-        con.print("  GSP: SEC2 MB0=0x");
-        con.print_hex32(sec2_mb0);
-        con.print(" MB1=0x");
-        con.print_hex32(sec2_mb1);
-        con.newline();
-
-        // ── FWSEC-FRTS: run before booter_load to set WPR2 ──
-        con.println("  GSP: [FWSEC] Running FWSEC-FRTS on SEC2...");
+        // ── 7. Run FWSEC-FRTS on SEC2 to set up WPR2 ──
+        //    MUST run before writing WPR meta, because fwsec_frts()
+        //    resets SEC2 (which would clobber the mailbox).
+        con.println("  GSP: [7/11] Running FWSEC-FRTS on SEC2...");
         if let Some(vbios) = blobs.vbios_rom {
             self.fwsec_frts(vbios, con)?;
         }
 
-        // ── 8. DMA booter_load to SEC2 IMEM ──
-        con.println("  GSP: [8/11] DMA booter_load to SEC2 IMEM...");
-        self.sec2_dma_load_booter(booter, btr_data_off, btr_data_sz, con)?;
+        // ── 8–10. HS-authenticated boot of booter_load on SEC2 ──
+        //    Parses nvfw_hs_header_v2 + nvfw_hs_load_header_v2,
+        //    splits IMEM/DMEM DMA, patches WPR meta PA at patch_loc,
+        //    programs HS registers (dmem_sign, engine_id, ucode_id)
+        con.println("  GSP: [8/11] HS booter_load on SEC2...");
+        let sec2_ok = self.sec2_hs_boot_booter(booter, boot_mem.wpr_meta_phys, con);
 
-        // ── 9. Boot SEC2 (runs booter_load → WPR2 → bootloader → RISC-V) ──
-        con.println("  GSP: [9/11] Booting SEC2 (booter_load)...");
-        let sec2_ok = self.sec2_boot_and_wait(con);
-
-        // ── 10. Verify GSP state ──
-        con.println("  GSP: [10/11] Verifying GSP state...");
+        // ── 11. Verify GSP state ──
+        con.println("  GSP: [11/11] Verifying GSP state...");
         self.verify_gsp_state(con);
 
-        // ── 11. Report result ──
+        // ── Report result ──
         match sec2_ok {
             Ok(()) => {
                 con.print_colored("=== GSP Boot via SEC2 COMPLETE ===\n", 0x00FF00);
@@ -895,9 +1349,10 @@ impl<'a> GspLoader<'a> {
             }
             Err(_) => {
                 con.print_colored("=== GSP SEC2 Boot DID NOT COMPLETE ===\n", 0xFF4444);
-                con.println("  GSP: Check: FWSEC-FRTS may need to run first");
-                con.println("  GSP: Check: booter_load may need HS manifest parsing");
-                con.println("  GSP: Check: firmware version mismatch?");
+                con.println("  GSP: Check WPR2_HI above — if still 0x0:");
+                con.println("    1. FWSEC-FRTS may not have set WPR2 correctly");
+                con.println("    2. HS manifest patch_loc/patch_sig values may be wrong");
+                con.println("    3. Firmware version mismatch (booter vs bootloader)");
             }
         }
 
