@@ -569,8 +569,8 @@ impl<'a> GspLoader<'a> {
         for _ in 0..200_000u32 { core::hint::spin_loop(); }
     }
 
-    // ── Reset GSP into RISC-V mode (from nouveau ga102_gsp_reset) ──
-    fn reset_gsp_riscv_mode(&self, con: &mut Console) {
+    // ── Reset GSP into RISC-V mode and write LibosArgs (from nouveau ga102_gsp_reset) ──
+    fn reset_gsp_riscv_mode(&self, boot_args_phys: u64, con: &mut Console) {
         con.println("  GSP: Resetting GSP Falcon + switching to RISC-V mode...");
 
         // Reset GSP engine
@@ -579,9 +579,22 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PGSP_FALCON_RESET, 0x0);
         for _ in 0..200_000u32 { core::hint::spin_loop(); }
 
+        // Write MAILBOX0/1 BEFORE switching to RISC-V mode!
+        // En el modo RISC-V, los registros de MAILBOX de Falcon pueden ser de solo lectura para el host
+        // o mapearse a otro lado. ¡Nouveau los escribe antes de arrancar!
+        con.println("  GSP: Writing PGSP MAILBOX0/1 (libos args)...");
+        self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, (boot_args_phys & 0xFFFF_FFFF) as u32);
+        self.bar0.write32(NV_PGSP_FALCON_MAILBOX1, ((boot_args_phys >> 32) & 0xFFFF_FFFF) as u32);
+        
+        let mb0 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX0);
+        let mb1 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX1);
+        con.print("  GSP: PGSP MB0=0x");
+        con.print_hex32(mb0);
+        con.print(" MB1=0x");
+        con.print_hex32(mb1);
+        con.newline();
+
         // Switch GSP to RISC-V execution mode (register 0x00111668)
-        // This tells the hardware that the GSP core should run RISC-V code
-        // instead of classic Falcon microcode
         let mode_before = self.bar0.read32(NV_PGSP_RISCV_MODE);
         let new_mode = (mode_before & !NV_PGSP_RISCV_MODE_MASK) | NV_PGSP_RISCV_MODE_MASK;
         self.bar0.write32(NV_PGSP_RISCV_MODE, new_mode);
@@ -703,9 +716,27 @@ impl<'a> GspLoader<'a> {
         }
     }
 
-    // ── Prepare shared memory + boot args in RAM ──
+    // ── Create a DMA-mapped log buffer with self-referential PTEs ──
+    fn create_log_buffer(pages: u32) -> Option<u64> {
+        let phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(pages as usize) }?;
+        unsafe {
+            // Zero out the buffer
+            core::ptr::write_bytes(phys as *mut u8, 0, (pages * PAGE_SIZE as u32) as usize);
+            
+            // The physical address map (PTEs) for the log buffer is stored in the buffer
+            // itself, starting with offset 1 (size_of::<u64>(), which is 8).
+            // Offset 0 contains the "put" pointer (pp), initially 0.
+            let ptes = (phys as *mut u8).add(8) as *mut u64;
+            for i in 0..pages {
+                *ptes.add(i as usize) = phys + (i as u64) * (PAGE_SIZE as u64);
+            }
+        }
+        Some(phys)
+    }
+
+    // ── Prepare shared memory + libos boot args in RAM ──
     // Returns BOTH physical addresses for the two-mailbox handoff:
-    //   - boot_args_phys → PGSP MAILBOX (for GSP libos after RISC-V boots)
+    //   - boot_args_phys → PGSP MAILBOX (libos array containing LOGINIT, LOGINTR, LOGRM)
     //   - wpr_meta_phys  → SEC2 MAILBOX (for booter_load)
     fn prepare_boot_mem(
         &self,
@@ -714,45 +745,44 @@ impl<'a> GspLoader<'a> {
     ) -> Result<BootMem, GspLoadError> {
         let cmdq_pages = CMDQ_SIZE / PAGE_SIZE;
         let msgq_pages = MSGQ_SIZE / PAGE_SIZE;
-        let total_pages = 2 + cmdq_pages + msgq_pages; // args + wpr_meta + queues
+        let shared_pages = (cmdq_pages + msgq_pages) as u32;
 
-        let base_phys = unsafe {
-            crate::arch::page_alloc::alloc_pages_contiguous(total_pages)
-        }.ok_or(GspLoadError::PageAllocFailed)?;
+        // Allocate pages
+        let libos_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
+        let loginit_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
+        let logintr_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
+        let logrm_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
+        
+        let wpr_meta_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
+        let shared_mem_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(shared_pages as usize) }.ok_or(GspLoadError::PageAllocFailed)?;
 
         unsafe {
-            core::ptr::write_bytes(base_phys as *mut u8, 0, total_pages * PAGE_SIZE);
-        }
+            core::ptr::write_bytes(libos_phys as *mut u8, 0, PAGE_SIZE);
+            core::ptr::write_bytes(wpr_meta_phys as *mut u8, 0, PAGE_SIZE);
+            core::ptr::write_bytes(shared_mem_phys as *mut u8, 0, shared_pages as usize * PAGE_SIZE);
 
-        let boot_args_phys = base_phys;
-        let wpr_meta_phys = base_phys + PAGE_SIZE as u64;
-        let shared_mem_phys = base_phys + 2 * PAGE_SIZE as u64;
-        let shared_mem_pages = (cmdq_pages + msgq_pages) as u32;
-
-        // Write WPR meta at page 1
-        unsafe {
+            // Write WPR meta at page
             let dst = wpr_meta_phys as *mut GspFwWprMeta;
             core::ptr::write(dst, core::ptr::read(wpr_meta as *const GspFwWprMeta));
+
+            // Write LibosMemoryRegionInitArgument array to libos page
+            use crate::drivers::gsp::boot_args::LibosMemoryRegionInitArgument;
+            let libos = libos_phys as *mut LibosMemoryRegionInitArgument;
+            let size_16_pages = 16 * PAGE_SIZE as u64;
+            *libos.add(0) = LibosMemoryRegionInitArgument::new("LOGINIT", loginit_phys, size_16_pages);
+            *libos.add(1) = LibosMemoryRegionInitArgument::new("LOGINTR", logintr_phys, size_16_pages);
+            *libos.add(2) = LibosMemoryRegionInitArgument::new("LOGRM", logrm_phys, size_16_pages);
         }
 
-        // Write boot args (GspArgumentsCached) at page 0
-        let args = crate::drivers::gsp::boot_args::GspArgumentsCached::new_simple(
-            shared_mem_phys, shared_mem_pages,
-        );
-        unsafe {
-            let dst = boot_args_phys as *mut crate::drivers::gsp::boot_args::GspArgumentsCached;
-            core::ptr::write(dst, args);
-        }
-
-        con.print("  GSP: BootArgs=0x");
-        con.print_hex32(boot_args_phys as u32);
+        con.print("  GSP: LibosArgs=0x");
+        con.print_hex32(libos_phys as u32);
         con.print(" WprMeta=0x");
         con.print_hex32(wpr_meta_phys as u32);
         con.print(" SharedMem=0x");
         con.print_hex32(shared_mem_phys as u32);
         con.newline();
 
-        Ok(BootMem { boot_args_phys, wpr_meta_phys, shared_mem_phys })
+        Ok(BootMem { boot_args_phys: libos_phys, wpr_meta_phys, shared_mem_phys })
     }
 
     // ── Find ELF section by name (returns offset+size) ──
@@ -955,7 +985,7 @@ impl<'a> GspLoader<'a> {
         dmem_mut[cmd_off + 24..cmd_off + 28].copy_from_slice(&1u32.to_le_bytes()); // version = 1
         dmem_mut[cmd_off + 28..cmd_off + 32].copy_from_slice(&20u32.to_le_bytes()); // size = 20
         dmem_mut[cmd_off + 32..cmd_off + 36].copy_from_slice(&frts_4k.to_le_bytes()); // frtsRegionOffset4K
-        dmem_mut[cmd_off + 36..cmd_off + 40].copy_from_slice(&0x100u32.to_le_bytes()); // frtsRegionSize = 0x100 (1MB)
+        dmem_mut[cmd_off + 36..cmd_off + 40].copy_from_slice(&1u32.to_le_bytes()); // frtsRegionSize = 1 (1MB)
         dmem_mut[cmd_off + 40..cmd_off + 44].copy_from_slice(&2u32.to_le_bytes()); // frtsRegionMediaType = 2 (FB)
 
         // ── 2b. Extract correct RSA signature and copy to DMEM ──
@@ -1213,22 +1243,9 @@ impl<'a> GspLoader<'a> {
         con.println("  GSP: [6/11] Preparing boot memory...");
         let boot_mem = self.prepare_boot_mem(&wpr_meta, con)?;
 
-        // ── 7. Reset GSP into RISC-V mode ──
-        con.println("  GSP: [7/11] Resetting GSP into RISC-V mode...");
-        self.reset_gsp_riscv_mode(con);
-
-        // ── 8. Write GspArgumentsCached PA to PGSP MAILBOX0/1 ──
-        // (GSP libos reads this AFTER RISC-V boots)
-        con.println("  GSP: [8/11] Writing PGSP MAILBOX0/1 (libos args)...");
-        self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, (boot_mem.boot_args_phys & 0xFFFF_FFFF) as u32);
-        self.bar0.write32(NV_PGSP_FALCON_MAILBOX1, ((boot_mem.boot_args_phys >> 32) & 0xFFFF_FFFF) as u32);
-        let mb0 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX0);
-        let mb1 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX1);
-        con.print("  GSP: PGSP MB0=0x");
-        con.print_hex32(mb0);
-        con.print(" MB1=0x");
-        con.print_hex32(mb1);
-        con.newline();
+        // ── 7 & 8. Reset GSP into RISC-V mode AND Write libos args ──
+        con.println("  GSP: [7-8/11] Resetting GSP into RISC-V mode & Writing Mailbox...");
+        self.reset_gsp_riscv_mode(boot_mem.boot_args_phys, con);
 
         // ── 9. Reset SEC2 + Write WPR meta PA to SEC2 MAILBOX0/1 ──
         con.println("  GSP: [9/11] Resetting SEC2 + writing SEC2 MAILBOX...");
@@ -1427,21 +1444,9 @@ impl<'a> GspLoader<'a> {
             con.print_colored("  GSP: WARNING — WPR2 not set by FWSEC!\n", 0xFFFF00);
         }
 
-        // ── 7. Reset GSP into RISC-V mode ──
-        con.println("  GSP: [7/11] Resetting GSP into RISC-V mode...");
-        self.reset_gsp_riscv_mode(con);
-
-        // ── 8. Write libos args to PGSP MAILBOX0/1 ──
-        con.println("  GSP: [8/11] Writing PGSP MAILBOX0/1 (libos args)...");
-        self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, (boot_mem.boot_args_phys & 0xFFFF_FFFF) as u32);
-        self.bar0.write32(NV_PGSP_FALCON_MAILBOX1, ((boot_mem.boot_args_phys >> 32) & 0xFFFF_FFFF) as u32);
-        let mb0 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX0);
-        let mb1 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX1);
-        con.print("  GSP: PGSP MB0=0x");
-        con.print_hex32(mb0);
-        con.print(" MB1=0x");
-        con.print_hex32(mb1);
-        con.newline();
+        // ── 7 & 8. Reset GSP into RISC-V mode AND Write libos args ──
+        con.println("  GSP: [7-8/11] Resetting GSP into RISC-V mode & Writing Mailbox...");
+        self.reset_gsp_riscv_mode(boot_mem.boot_args_phys, con);
 
         // ── 9-10. HS-authenticated boot of booter_load on SEC2 ──
         //    Parses nvfw_hs_header_v2 + nvfw_hs_load_header_v2,

@@ -158,3 +158,35 @@ impl GspArgumentsCached {
         )
     }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// LibosMemoryRegionInitArgument (Nova-core style)
+// Utilizado para inicializar GSP-RM pasándolo directamente a MBOX
+// ═══════════════════════════════════════════════════════════════
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct LibosMemoryRegionInitArgument {
+    pub id8: u64,
+    pub pa: u64,
+    pub size: u64,
+    pub kind: u8,
+    pub loc: u8,
+    pub _pad: [u8; 6],
+}
+
+impl LibosMemoryRegionInitArgument {
+    pub fn new(name: &str, pa: u64, size: u64) -> Self {
+        let mut bytes = [0u8; 8];
+        for (c, b) in name.bytes().rev().zip(&mut bytes) {
+            *b = c;
+        }
+        Self {
+            id8: u64::from_ne_bytes(bytes),
+            pa,
+            size,
+            kind: 1, // LIBOS_MEMORY_REGION_CONTIGUOUS
+            loc: 1,  // LIBOS_MEMORY_REGION_LOC_SYSMEM
+            _pad: [0; 6],
+        }
+    }
+}
