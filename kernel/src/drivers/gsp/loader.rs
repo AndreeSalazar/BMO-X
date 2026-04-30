@@ -146,13 +146,13 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PSEC2_DMATRFMOFFS, falcon_offset);
         self.bar0.write32(NV_PSEC2_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
 
-        let mut cmd = DMA_CMD_WRITE | DMA_CMD_SIZE_256;
+        let mut cmd = DMA_CMD_SIZE_256;
         if to_imem { cmd |= DMA_CMD_IMEM; }
         self.bar0.write32(NV_PSEC2_DMATRFCMD, cmd);
 
-        for _ in 0..100_000 {
+        for _ in 0..1_000_000 {
             let val = self.bar0.read32(NV_PSEC2_DMATRFCMD);
-            if val & DMA_CMD_WRITE == 0 { return Ok(()); }
+            if (val & (1 << 1)) != 0 { return Ok(()); }
             core::hint::spin_loop();
         }
         Err(GspLoadError::DmaTimeout)
@@ -164,13 +164,14 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PGSP_DMATRFMOFFS, falcon_offset);
         self.bar0.write32(NV_PGSP_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
 
-        let mut cmd = DMA_CMD_WRITE | DMA_CMD_SIZE_256;
+        const DMA_CMD_SEC: u32 = 1 << 2;
+        let mut cmd = DMA_CMD_SIZE_256 | DMA_CMD_SEC;
         if to_imem { cmd |= DMA_CMD_IMEM; }
         self.bar0.write32(NV_PGSP_DMATRFCMD, cmd);
 
-        for _ in 0..100_000 {
+        for _ in 0..1_000_000 {
             let val = self.bar0.read32(NV_PGSP_DMATRFCMD);
-            if val & DMA_CMD_WRITE == 0 { return Ok(()); }
+            if (val & (1 << 1)) != 0 { return Ok(()); }
             core::hint::spin_loop();
         }
         Err(GspLoadError::DmaTimeout)
@@ -904,6 +905,14 @@ impl<'a> GspLoader<'a> {
 
         // ── Reset PGSP clean ──
         self.reset_pgsp_falcon(con);
+
+        // Configure PGSP FBIF_TRANSCFG(0) for physical sysmem DMA (TARGET=SYSMEM, MEM_TYPE=PHYSICAL)
+        const NV_PGSP_FBIF_TRANSCFG_0: u32 = 0x0011_0600;
+        self.bar0.write32(NV_PGSP_FBIF_TRANSCFG_0, 0x0000_0005);
+
+        // Clear PGSP DMACTL
+        const NV_PGSP_FALCON_DMACTL: u32 = 0x0011_010C;
+        self.bar0.write32(NV_PGSP_FALCON_DMACTL, 0x0);
 
         // ── 1. DMA IMEM → PGSP Falcon IMEM ──
         let imem_src = vbios.as_ptr() as u64 + FWSEC_IMEM_OFF as u64;
