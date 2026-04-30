@@ -164,9 +164,13 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PGSP_DMATRFMOFFS, falcon_offset);
         self.bar0.write32(NV_PGSP_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
 
-        const DMA_CMD_SEC: u32 = 1 << 2;
-        let mut cmd = DMA_CMD_SIZE_256 | DMA_CMD_SEC;
-        if to_imem { cmd |= DMA_CMD_IMEM; }
+        let mut cmd = DMA_CMD_SIZE_256;
+        if to_imem { 
+            cmd |= DMA_CMD_IMEM; 
+            cmd |= 1 << 2; // SEC
+        } else {
+            cmd |= 1 << 16; // SET_DMTAG
+        }
         self.bar0.write32(NV_PGSP_DMATRFCMD, cmd);
 
         for _ in 0..1_000_000 {
@@ -926,41 +930,66 @@ impl<'a> GspLoader<'a> {
         }
         con.println("  GSP: [FWSEC] IMEM loaded OK");
 
-        // ── 2. Copy DMEM to stack buffer + patch runtime interface ──
-        // Patch FWSEC DMEM to execute FRTS initialization (like nouveau's s_prepareForFwsec_TU102)
-        // Set init_cmd = 0x15 (FALCON_APPLICATION_INTERFACE_DMEM_MAPPER_V3_CMD_FRTS)
-        // in DMEM_MAPPER_V3 at 0x560 + 0x2C
-        let mut dmem_buf = [0u8; FWSEC_DMEM_SIZE];
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                vbios.as_ptr().add(FWSEC_DMEM_OFF),
-                dmem_buf.as_mut_ptr(),
-                FWSEC_DMEM_SIZE,
-            );
-        }
+        // ── 2. Patch DMEM in-place (VBIOS memory is RAM and writable here) ──
+        let dmem_mut_ptr = (vbios.as_ptr() as u64 + FWSEC_DMEM_OFF as u64) as *mut u8;
+        let dmem_mut = unsafe { core::slice::from_raw_parts_mut(dmem_mut_ptr, FWSEC_DMEM_SIZE) };
 
-        dmem_buf[0x58C] = 0x15;
-        dmem_buf[0x58D] = 0x00;
-        dmem_buf[0x58E] = 0x00;
-        dmem_buf[0x58F] = 0x00;
+        dmem_mut[0x58C] = 0x15;
+        dmem_mut[0x58D] = 0x00;
+        dmem_mut[0x58E] = 0x00;
+        dmem_mut[0x58F] = 0x00;
 
         // Write FWSECLIC_FRTS_CMD struct at cmd_in_buffer_offset (0x7C0)
-        let cmd_off = 0x7C0;
+        let desc_off = 0x4A410;
+        let cmd_off = 0x7C0; // Known command in buffer offset for this VBIOS
         let frts_4k = (frts_offset >> 12) as u32;
 
         // FWSECLIC_READ_VBIOS_DESC
-        dmem_buf[cmd_off + 0..cmd_off + 4].copy_from_slice(&1u32.to_le_bytes()); // version = 1
-        dmem_buf[cmd_off + 4..cmd_off + 8].copy_from_slice(&24u32.to_le_bytes()); // size = 24
-        dmem_buf[cmd_off + 8..cmd_off + 16].copy_from_slice(&0u64.to_le_bytes()); // gfwImageOffset = 0
-        dmem_buf[cmd_off + 16..cmd_off + 20].copy_from_slice(&0u32.to_le_bytes()); // gfwImageSize = 0
-        dmem_buf[cmd_off + 20..cmd_off + 24].copy_from_slice(&2u32.to_le_bytes()); // flags = 2
+        dmem_mut[cmd_off + 0..cmd_off + 4].copy_from_slice(&1u32.to_le_bytes()); // version = 1
+        dmem_mut[cmd_off + 4..cmd_off + 8].copy_from_slice(&24u32.to_le_bytes()); // size = 24
+        dmem_mut[cmd_off + 8..cmd_off + 16].copy_from_slice(&0u64.to_le_bytes()); // gfwImageOffset = 0
+        dmem_mut[cmd_off + 16..cmd_off + 20].copy_from_slice(&0u32.to_le_bytes()); // gfwImageSize = 0
+        dmem_mut[cmd_off + 20..cmd_off + 24].copy_from_slice(&2u32.to_le_bytes()); // flags = 2
 
         // FWSECLIC_FRTS_REGION_DESC
-        dmem_buf[cmd_off + 24..cmd_off + 28].copy_from_slice(&1u32.to_le_bytes()); // version = 1
-        dmem_buf[cmd_off + 28..cmd_off + 32].copy_from_slice(&20u32.to_le_bytes()); // size = 20
-        dmem_buf[cmd_off + 32..cmd_off + 36].copy_from_slice(&frts_4k.to_le_bytes()); // frtsRegionOffset4K
-        dmem_buf[cmd_off + 36..cmd_off + 40].copy_from_slice(&0x100u32.to_le_bytes()); // frtsRegionSize = 0x100 (1MB)
-        dmem_buf[cmd_off + 40..cmd_off + 44].copy_from_slice(&2u32.to_le_bytes()); // frtsRegionMediaType = 2 (FB)
+        dmem_mut[cmd_off + 24..cmd_off + 28].copy_from_slice(&1u32.to_le_bytes()); // version = 1
+        dmem_mut[cmd_off + 28..cmd_off + 32].copy_from_slice(&20u32.to_le_bytes()); // size = 20
+        dmem_mut[cmd_off + 32..cmd_off + 36].copy_from_slice(&frts_4k.to_le_bytes()); // frtsRegionOffset4K
+        dmem_mut[cmd_off + 36..cmd_off + 40].copy_from_slice(&0x100u32.to_le_bytes()); // frtsRegionSize = 0x100 (1MB)
+        dmem_mut[cmd_off + 40..cmd_off + 44].copy_from_slice(&2u32.to_le_bytes()); // frtsRegionMediaType = 2 (FB)
+
+        // ── 2b. Extract correct RSA signature and copy to DMEM ──
+        let fuse_val = self.bar0.read32(0x008241E0); // NV_FUSE_OPT_FPF_GSP_UCODE9_VERSION (ucodeId = 9)
+        let mut ucode_version_val = 0;
+        if fuse_val != 0 {
+            ucode_version_val = 31 - fuse_val.leading_zeros();
+            ucode_version_val += 1;
+        }
+        ucode_version_val = 1 << ucode_version_val;
+
+        let mut hs_sig_versions = vbios[desc_off + 40] as u32 | ((vbios[desc_off + 41] as u32) << 8);
+        let mut sig_offset = 0;
+        while hs_sig_versions != 0 {
+            let trailing = hs_sig_versions.trailing_zeros();
+            let sig_version_val = 1 << trailing;
+            if sig_version_val == ucode_version_val {
+                break;
+            }
+            hs_sig_versions &= !sig_version_val;
+            sig_offset += 384;
+        }
+
+        let imem_load_size = u32::from_le_bytes(vbios[desc_off + 20 .. desc_off + 24].try_into().unwrap());
+        let pkc_data_offset = u32::from_le_bytes(vbios[desc_off + 8 .. desc_off + 12].try_into().unwrap());
+        let sig_base_offset = desc_off as u32 + imem_load_size + pkc_data_offset; // 0x58BB4 in VBIOS
+        let sig_src_ptr = (vbios.as_ptr() as u64 + sig_base_offset as u64 + sig_offset as u64) as *const u8;
+        
+        unsafe {
+            core::ptr::copy_nonoverlapping(sig_src_ptr, dmem_mut_ptr.add(pkc_data_offset as usize), 384);
+        }
+
+        con.print("  GSP: [FWSEC] Copied signature (fuse=0x"); con.print_hex32(fuse_val);
+        con.print(" sig_offset=0x"); con.print_hex32(sig_offset); con.println(")");
 
         con.print("  GSP: [FWSEC] FRTS interface patched (frts_offset=0x");
         con.print_hex32((frts_offset >> 32) as u32);
@@ -968,7 +997,7 @@ impl<'a> GspLoader<'a> {
         con.println(")");
 
         // ── 3. DMA patched DMEM → PGSP Falcon DMEM ──
-        let dmem_src = dmem_buf.as_ptr() as u64;
+        let dmem_src = dmem_mut_ptr as u64;
         let dmem_chunks = FWSEC_DMEM_SIZE / 256; // 2048 / 256 = 8 exactly
         con.print("  GSP: [FWSEC] DMA DMEM → PGSP DMEM (");
         con.print_hex32(dmem_chunks as u32);
@@ -989,6 +1018,11 @@ impl<'a> GspLoader<'a> {
         let engine_id_mask = u16::from_le_bytes(vbios[desc_off + 36 .. desc_off + 38].try_into().unwrap()) as u32;
         let ucode_id = vbios[desc_off + 38] as u32;
 
+        con.print("  GSP: [FWSEC] PKC_OFFSET=0x"); con.print_hex32(pkc_data_offset);
+        con.print(" ENGINE_MASK=0x"); con.print_hex32(engine_id_mask);
+        con.print(" UCODE_ID=0x"); con.print_hex32(ucode_id);
+        con.newline();
+
         self.bar0.write32(NV_PGSP_RISCV_BASE + 0x210, pkc_data_offset); // BROM_PARAADDR(0)
         self.bar0.write32(NV_PGSP_RISCV_BASE + 0x19C, engine_id_mask);  // BROM_ENGIDMASK
         self.bar0.write32(NV_PGSP_RISCV_BASE + 0x198, ucode_id);        // BROM_CURR_UCODE_ID
@@ -999,7 +1033,7 @@ impl<'a> GspLoader<'a> {
 
         // ── 5. Wait for WPR2 to be set by FWSEC ──
         con.println("  GSP: [FWSEC] Waiting for WPR2_HI != 0...");
-        for _ in 0..5_000_000u32 {
+        for i in 0..5_000_000u32 {
             let wpr2 = self.bar0.read32(NV_WPR2_HI);
             if wpr2 != 0 && wpr2 != 0xBADF_5720 {
                 con.print("  GSP: [FWSEC] WPR2_HI=0x");
@@ -1007,12 +1041,22 @@ impl<'a> GspLoader<'a> {
                 con.print_colored(" (WPR2 SET — FWSEC OK)\n", 0x00FF00);
                 return Ok(());
             }
+            if i % 1_000_000 == 0 && i > 0 {
+                let mb0 = self.bar0.read32(0x0011_0040); // NV_PGSP_FALCON_MAILBOX0
+                if mb0 != 0 {
+                    con.print("  GSP: [FWSEC] mb0=0x"); con.print_hex32(mb0); con.newline();
+                }
+            }
             core::hint::spin_loop();
         }
 
         let wpr2 = self.bar0.read32(NV_WPR2_HI);
+        let mb0 = self.bar0.read32(0x0011_0040); // NV_PGSP_FALCON_MAILBOX0
+        let cpuctl = self.bar0.read32(NV_PGSP_FALCON_CPUCTL);
         con.print("  GSP: [FWSEC] timeout WPR2_HI=0x");
         con.print_hex32(wpr2);
+        con.print(" MB0=0x"); con.print_hex32(mb0);
+        con.print(" CPUCTL=0x"); con.print_hex32(cpuctl);
         con.println(" — continuing anyway");
         Ok(()) // non-fatal: booter_load will retry
     }
