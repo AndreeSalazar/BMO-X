@@ -981,6 +981,19 @@ impl<'a> GspLoader<'a> {
 
         // ── 4. Boot PGSP Falcon with FWSEC ucode ──
         con.println("  GSP: [FWSEC] Booting PGSP (FWSEC-FRTS)...");
+
+        // Setup PKC signature validation parameters in BROM registers
+        const NV_PGSP_RISCV_BASE: u32 = 0x0011_1000;
+        let desc_off = 0x4A410;
+        let pkc_data_offset = u32::from_le_bytes(vbios[desc_off + 8 .. desc_off + 12].try_into().unwrap());
+        let engine_id_mask = u16::from_le_bytes(vbios[desc_off + 36 .. desc_off + 38].try_into().unwrap()) as u32;
+        let ucode_id = vbios[desc_off + 38] as u32;
+
+        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x210, pkc_data_offset); // BROM_PARAADDR(0)
+        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x19C, engine_id_mask);  // BROM_ENGIDMASK
+        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x198, ucode_id);        // BROM_CURR_UCODE_ID
+        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x180, 0x1);             // MOD_SEL = ALGO_RSA3K
+
         self.bar0.write32(NV_PGSP_FALCON_BOOTVEC, 0x0);
         self.bar0.write32(NV_PGSP_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
 
