@@ -315,6 +315,11 @@ pub fn run_all_tests(con: &mut Console, boot_info: *const fastos_boot_protocol::
                     con.print_colored("[FAIL]", 0xFFFF0000);
                     con.println(" HS manifest parse error");
                 }
+                Err(GspLoadError::FwsecFailed) => {
+                    con.print("  T10 GSP Scratch W/R  ");
+                    con.print_colored("[FAIL]", 0xFFFF0000);
+                    con.println(" FWSEC failed (WPR2 not set)");
+                }
             }
         }
         None => {

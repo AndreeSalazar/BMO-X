@@ -85,6 +85,7 @@ pub enum GspLoadError {
     RiscvStartFailed,
     SignatureNotFound,
     HsManifestParseError,
+    FwsecFailed,
 }
 
 /// Both physical addresses needed for the two-mailbox boot handoff
@@ -595,9 +596,9 @@ impl<'a> GspLoader<'a> {
         con.newline();
 
         // Switch GSP to RISC-V execution mode (register 0x00111668)
+        // Only set bit 0 — preserve all other bits (nouveau ga102_gsp_reset)
         let mode_before = self.bar0.read32(NV_PGSP_RISCV_MODE);
-        let new_mode = (mode_before & !NV_PGSP_RISCV_MODE_MASK) | NV_PGSP_RISCV_MODE_MASK;
-        self.bar0.write32(NV_PGSP_RISCV_MODE, new_mode);
+        self.bar0.write32(NV_PGSP_RISCV_MODE, mode_before | NV_PGSP_RISCV_MODE_MASK);
         for _ in 0..50_000u32 { core::hint::spin_loop(); }
 
         let mode_after = self.bar0.read32(NV_PGSP_RISCV_MODE);
@@ -748,41 +749,49 @@ impl<'a> GspLoader<'a> {
         let shared_pages = (cmdq_pages + msgq_pages) as u32;
 
         // Allocate pages
-        let libos_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
         let loginit_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
         let logintr_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
         let logrm_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
+        let rmargs_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
         
         let wpr_meta_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
         let shared_mem_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(shared_pages as usize) }.ok_or(GspLoadError::PageAllocFailed)?;
 
+        // Allocate page for GspArgumentsCached (must be page-aligned, which alloc guarantees)
+        let boot_args_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
+
         unsafe {
-            core::ptr::write_bytes(libos_phys as *mut u8, 0, PAGE_SIZE);
+            core::ptr::write_bytes(rmargs_phys as *mut u8, 0, PAGE_SIZE);
             core::ptr::write_bytes(wpr_meta_phys as *mut u8, 0, PAGE_SIZE);
             core::ptr::write_bytes(shared_mem_phys as *mut u8, 0, shared_pages as usize * PAGE_SIZE);
+            core::ptr::write_bytes(boot_args_phys as *mut u8, 0, PAGE_SIZE);
 
             // Write WPR meta at page
             let dst = wpr_meta_phys as *mut GspFwWprMeta;
             core::ptr::write(dst, core::ptr::read(wpr_meta as *const GspFwWprMeta));
 
-            // Write LibosMemoryRegionInitArgument array to libos page
-            use crate::drivers::gsp::boot_args::LibosMemoryRegionInitArgument;
-            let libos = libos_phys as *mut LibosMemoryRegionInitArgument;
-            let size_16_pages = 16 * PAGE_SIZE as u64;
-            *libos.add(0) = LibosMemoryRegionInitArgument::new("LOGINIT", loginit_phys, size_16_pages);
-            *libos.add(1) = LibosMemoryRegionInitArgument::new("LOGINTR", logintr_phys, size_16_pages);
-            *libos.add(2) = LibosMemoryRegionInitArgument::new("LOGRM", logrm_phys, size_16_pages);
+            // Build proper GspArgumentsCached with message queues + LibOS regions
+            use crate::drivers::gsp::boot_args::GspArgumentsCached;
+            let args = GspArgumentsCached::new(
+                shared_mem_phys,
+                shared_pages,
+                loginit_phys,
+                logintr_phys,
+                logrm_phys,
+                rmargs_phys,
+            );
+            core::ptr::write(boot_args_phys as *mut GspArgumentsCached, args);
         }
 
-        con.print("  GSP: LibosArgs=0x");
-        con.print_hex32(libos_phys as u32);
+        con.print("  GSP: BootArgs=0x");
+        con.print_hex32(boot_args_phys as u32);
         con.print(" WprMeta=0x");
         con.print_hex32(wpr_meta_phys as u32);
         con.print(" SharedMem=0x");
         con.print_hex32(shared_mem_phys as u32);
         con.newline();
 
-        Ok(BootMem { boot_args_phys: libos_phys, wpr_meta_phys, shared_mem_phys })
+        Ok(BootMem { boot_args_phys, wpr_meta_phys, shared_mem_phys })
     }
 
     // ── Find ELF section by name (returns offset+size) ──
@@ -1434,14 +1443,17 @@ impl<'a> GspLoader<'a> {
             con.newline();
         }
 
-        // ── 6. Verify WPR2_HI != 0 ──
+        // ── 6. Verify WPR2_HI != 0 (FATAL if not set) ──
         con.println("  GSP: [6/11] Checking WPR2_HI...");
         const NV_WPR2_HI: u32 = 0x001FA828;
         let wpr2 = self.bar0.read32(NV_WPR2_HI);
         if wpr2 != 0 && wpr2 != 0xBADF_5720 {
             con.print_colored("  GSP: WPR2 SET OK!\n", 0x00FF00);
         } else {
-            con.print_colored("  GSP: WARNING — WPR2 not set by FWSEC!\n", 0xFFFF00);
+            con.print_colored("  GSP: FATAL — WPR2 not set by FWSEC! Cannot continue boot.\n", 0xFF4444);
+            con.println("  GSP: FWSEC-FRTS must successfully set WPR2 before booter_load can run.");
+            con.println("  GSP: Check: VBIOS blob, FWSEC offsets, FRTS descriptor, signature match.");
+            return Err(GspLoadError::FwsecFailed);
         }
 
         // ── 7 & 8. Reset GSP into RISC-V mode AND Write libos args ──
