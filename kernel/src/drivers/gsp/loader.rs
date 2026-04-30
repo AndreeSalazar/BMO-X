@@ -44,6 +44,10 @@ const NV_PGSP_FALCON_CPUCTL:     u32 = 0x0011_0100;
 const NV_PGSP_FALCON_BOOTVEC:    u32 = 0x0011_0104;
 const NV_PGSP_FALCON_IDLESTATE:  u32 = 0x0011_0004;
 const NV_PGSP_FALCON_RESET:      u32 = 0x0011_0094;
+const NV_PGSP_DMATRFBASE:        u32 = 0x0011_0110;
+const NV_PGSP_DMATRFMOFFS:       u32 = 0x0011_0114;
+const NV_PGSP_DMATRFCMD:         u32 = 0x0011_0118;
+const NV_PGSP_DMATRFFBOFFS:      u32 = 0x0011_011C;
 
 // DMA command bits (same for both PGSP and SEC2 Falcon)
 const DMA_CMD_WRITE:    u32 = 1 << 1;
@@ -148,6 +152,24 @@ impl<'a> GspLoader<'a> {
 
         for _ in 0..100_000 {
             let val = self.bar0.read32(NV_PSEC2_DMATRFCMD);
+            if val & DMA_CMD_WRITE == 0 { return Ok(()); }
+            core::hint::spin_loop();
+        }
+        Err(GspLoadError::DmaTimeout)
+    }
+
+    // ── PGSP DMA transfer: copy 256 bytes from sysmem to PGSP Falcon IMEM/DMEM ──
+    fn pgsp_dma_xfer_256(&self, src_phys: u64, falcon_offset: u32, to_imem: bool) -> Result<(), GspLoadError> {
+        self.bar0.write32(NV_PGSP_DMATRFBASE, (src_phys >> 8) as u32);
+        self.bar0.write32(NV_PGSP_DMATRFMOFFS, falcon_offset);
+        self.bar0.write32(NV_PGSP_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
+
+        let mut cmd = DMA_CMD_WRITE | DMA_CMD_SIZE_256;
+        if to_imem { cmd |= DMA_CMD_IMEM; }
+        self.bar0.write32(NV_PGSP_DMATRFCMD, cmd);
+
+        for _ in 0..100_000 {
+            let val = self.bar0.read32(NV_PGSP_DMATRFCMD);
             if val & DMA_CMD_WRITE == 0 { return Ok(()); }
             core::hint::spin_loop();
         }
@@ -469,19 +491,8 @@ impl<'a> GspLoader<'a> {
         }
 
         // Patch signature index at patch_sig (within DMEM)
-        let sig_patch_off = hs.patch_sig_value.checked_sub(hs.os_data_offset);
-        if let Some(sig_off) = sig_patch_off {
-            let sig_off = sig_off as usize;
-            if sig_off + 4 <= dmem_size {
-                unsafe {
-                    let dst = (dmem_buf_phys as *mut u8).add(sig_off) as *mut u32;
-                    core::ptr::write(dst, 0); // signature index 0 (prod)
-                }
-                con.print("  GSP: [HS-BOOT] Patched DMEM+0x");
-                con.print_hex32(sig_off as u32);
-                con.println(" = sig_idx 0");
-            }
-        }
+        // patch_sig_value is a signature index (e.g., 0 for prod), NOT a DMEM offset.
+        // No patching needed in DMEM for signature index.
 
         // ── DMA DMEM → SEC2 DMEM ──
         let dmem_chunks = (dmem_size + 255) / 256;
@@ -541,6 +552,16 @@ impl<'a> GspLoader<'a> {
         con.print("  GSP: SEC2 FALCON_ENGINE=0x");
         con.print_hex32(engine);
         con.newline();
+    }
+
+    // ── Reset PGSP Falcon to a known state ──
+    fn reset_pgsp_falcon(&self, con: &mut Console) {
+        con.println("  GSP: Resetting PGSP Falcon...");
+
+        self.bar0.write32(NV_PGSP_FALCON_RESET, 0x1);
+        for _ in 0..100_000u32 { core::hint::spin_loop(); }
+        self.bar0.write32(NV_PGSP_FALCON_RESET, 0x0);
+        for _ in 0..200_000u32 { core::hint::spin_loop(); }
     }
 
     // ── Reset GSP into RISC-V mode (from nouveau ga102_gsp_reset) ──
@@ -637,6 +658,9 @@ impl<'a> GspLoader<'a> {
         con.print("    FRTS: 0x");
         con.print_hex32((frts_offset >> 32) as u32);
         con.print_hex32(frts_offset as u32);
+        // For Ampere (GA106), WPR2 is at 0x1FA824/0x1FA828
+        const NV_WPR2_LO: u32 = 0x001FA824;
+        const NV_WPR2_HI: u32 = 0x001FA828;
         con.print(" size=0x");
         con.print_hex32(frts_size as u32);
         con.println(" (1MB)");
@@ -836,7 +860,7 @@ impl<'a> GspLoader<'a> {
         if completed { Ok(()) } else { Err(GspLoadError::Sec2BootFailed) }
     }
 
-    /// Run FWSEC-FRTS on SEC2 to set up WPR2 before booter_load.
+    /// Run FWSEC-FRTS on PGSP to set up WPR2 before booter_load.
     ///
     /// GA106 RTX 3060 LHR VBIOS offsets (extracted from vbios_rtx3060.rom):
     ///   - Descriptor:      SPI 0x4A410
@@ -848,15 +872,13 @@ impl<'a> GspLoader<'a> {
     ///
     /// The old code loaded the *entire* 2 MiB VBIOS into SEC2 IMEM which
     /// overflowed Falcon IMEM and left DMEM untouched.  This version loads
-    /// only the exact IMEM/DMEM slices and patches the runtime interface.
-    fn fwsec_frts(&self, vbios: &[u8], con: &mut Console) -> Result<(), GspLoadError> {
+    /// only the exact IMEM/DMEM slices and patches the runtime interface
+    /// and correctly runs it on PGSP Falcon.
+    fn fwsec_frts(&self, vbios: &[u8], frts_offset: u64, con: &mut Console) -> Result<(), GspLoadError> {
         const FWSEC_IMEM_OFF: usize = 0x4A8BC;
         const FWSEC_IMEM_SIZE: usize = 57856;
         const FWSEC_DMEM_OFF: usize = 0x58ABC;
         const FWSEC_DMEM_SIZE: usize = 2048;
-        const FWSEC_INTERFACE_OFF: usize = 0x1C;
-        const FWSEC_ENGINE_ID_MASK: u32 = 0x400;
-        const FWSEC_UCODE_ID: u32 = 9;
 
         if FWSEC_IMEM_OFF + FWSEC_IMEM_SIZE > vbios.len() {
             con.println("  GSP: [FWSEC] ERROR — IMEM extends past VBIOS");
@@ -880,25 +902,25 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(FWSEC_DMEM_SIZE as u32);
         con.println(")");
 
-        // ── Reset SEC2 clean ──
-        self.reset_sec2_falcon(con);
+        // ── Reset PGSP clean ──
+        self.reset_pgsp_falcon(con);
 
-        // ── 1. DMA IMEM → SEC2 Falcon IMEM ──
+        // ── 1. DMA IMEM → PGSP Falcon IMEM ──
         let imem_src = vbios.as_ptr() as u64 + FWSEC_IMEM_OFF as u64;
         let imem_chunks = FWSEC_IMEM_SIZE / 256; // 57856 / 256 = 226 exactly
-        con.print("  GSP: [FWSEC] DMA IMEM → SEC2 IMEM (");
+        con.print("  GSP: [FWSEC] DMA IMEM → PGSP IMEM (");
         con.print_hex32(imem_chunks as u32);
         con.println(" chunks)");
         for i in 0..imem_chunks {
             let offset = i * 256;
-            self.sec2_dma_xfer_256(imem_src + offset as u64, offset as u32, true)?;
+            self.pgsp_dma_xfer_256(imem_src + offset as u64, offset as u32, true)?;
         }
         con.println("  GSP: [FWSEC] IMEM loaded OK");
 
         // ── 2. Copy DMEM to stack buffer + patch runtime interface ──
-        // The DMEM blob contains the Application Interface Table template.
-        // We patch engine_id_mask and ucode_id at the interface offset (0x1C)
-        // so the FWSEC ucode knows which engine it is configuring (GSP Falcon).
+        // Patch FWSEC DMEM to execute FRTS initialization (like nouveau's s_prepareForFwsec_TU102)
+        // Set init_cmd = 0x15 (FALCON_APPLICATION_INTERFACE_DMEM_MAPPER_V3_CMD_FRTS)
+        // in DMEM_MAPPER_V3 at 0x560 + 0x2C
         let mut dmem_buf = [0u8; FWSEC_DMEM_SIZE];
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -908,42 +930,50 @@ impl<'a> GspLoader<'a> {
             );
         }
 
-        let iface_base = FWSEC_INTERFACE_OFF;
-        if iface_base + 8 <= FWSEC_DMEM_SIZE {
-            dmem_buf[iface_base + 0] = (FWSEC_ENGINE_ID_MASK & 0xFF) as u8;
-            dmem_buf[iface_base + 1] = ((FWSEC_ENGINE_ID_MASK >> 8) & 0xFF) as u8;
-            dmem_buf[iface_base + 2] = ((FWSEC_ENGINE_ID_MASK >> 16) & 0xFF) as u8;
-            dmem_buf[iface_base + 3] = ((FWSEC_ENGINE_ID_MASK >> 24) & 0xFF) as u8;
-            dmem_buf[iface_base + 4] = (FWSEC_UCODE_ID & 0xFF) as u8;
-            dmem_buf[iface_base + 5] = ((FWSEC_UCODE_ID >> 8) & 0xFF) as u8;
-            dmem_buf[iface_base + 6] = ((FWSEC_UCODE_ID >> 16) & 0xFF) as u8;
-            dmem_buf[iface_base + 7] = ((FWSEC_UCODE_ID >> 24) & 0xFF) as u8;
-        }
+        dmem_buf[0x58C] = 0x15;
+        dmem_buf[0x58D] = 0x00;
+        dmem_buf[0x58E] = 0x00;
+        dmem_buf[0x58F] = 0x00;
 
-        con.print("  GSP: [FWSEC] Interface patched @ DMEM+0x");
-        con.print_hex32(FWSEC_INTERFACE_OFF as u32);
-        con.print(" engine_id_mask=0x");
-        con.print_hex32(FWSEC_ENGINE_ID_MASK);
-        con.print(" ucode_id=");
-        con.print_hex32(FWSEC_UCODE_ID);
-        con.newline();
+        // Write FWSECLIC_FRTS_CMD struct at cmd_in_buffer_offset (0x7C0)
+        let cmd_off = 0x7C0;
+        let frts_4k = (frts_offset >> 12) as u32;
 
-        // ── 3. DMA patched DMEM → SEC2 Falcon DMEM ──
+        // FWSECLIC_READ_VBIOS_DESC
+        dmem_buf[cmd_off + 0..cmd_off + 4].copy_from_slice(&1u32.to_le_bytes()); // version = 1
+        dmem_buf[cmd_off + 4..cmd_off + 8].copy_from_slice(&24u32.to_le_bytes()); // size = 24
+        dmem_buf[cmd_off + 8..cmd_off + 16].copy_from_slice(&0u64.to_le_bytes()); // gfwImageOffset = 0
+        dmem_buf[cmd_off + 16..cmd_off + 20].copy_from_slice(&0u32.to_le_bytes()); // gfwImageSize = 0
+        dmem_buf[cmd_off + 20..cmd_off + 24].copy_from_slice(&2u32.to_le_bytes()); // flags = 2
+
+        // FWSECLIC_FRTS_REGION_DESC
+        dmem_buf[cmd_off + 24..cmd_off + 28].copy_from_slice(&1u32.to_le_bytes()); // version = 1
+        dmem_buf[cmd_off + 28..cmd_off + 32].copy_from_slice(&20u32.to_le_bytes()); // size = 20
+        dmem_buf[cmd_off + 32..cmd_off + 36].copy_from_slice(&frts_4k.to_le_bytes()); // frtsRegionOffset4K
+        dmem_buf[cmd_off + 36..cmd_off + 40].copy_from_slice(&0x100u32.to_le_bytes()); // frtsRegionSize = 0x100 (1MB)
+        dmem_buf[cmd_off + 40..cmd_off + 44].copy_from_slice(&2u32.to_le_bytes()); // frtsRegionMediaType = 2 (FB)
+
+        con.print("  GSP: [FWSEC] FRTS interface patched (frts_offset=0x");
+        con.print_hex32((frts_offset >> 32) as u32);
+        con.print_hex32(frts_offset as u32);
+        con.println(")");
+
+        // ── 3. DMA patched DMEM → PGSP Falcon DMEM ──
         let dmem_src = dmem_buf.as_ptr() as u64;
         let dmem_chunks = FWSEC_DMEM_SIZE / 256; // 2048 / 256 = 8 exactly
-        con.print("  GSP: [FWSEC] DMA DMEM → SEC2 DMEM (");
+        con.print("  GSP: [FWSEC] DMA DMEM → PGSP DMEM (");
         con.print_hex32(dmem_chunks as u32);
         con.println(" chunks)");
         for i in 0..dmem_chunks {
             let offset = i * 256;
-            self.sec2_dma_xfer_256(dmem_src + offset as u64, offset as u32, false)?;
+            self.pgsp_dma_xfer_256(dmem_src + offset as u64, offset as u32, false)?;
         }
         con.println("  GSP: [FWSEC] DMEM loaded OK");
 
-        // ── 4. Boot SEC2 Falcon with FWSEC ucode ──
-        con.println("  GSP: [FWSEC] Booting SEC2 (FWSEC-FRTS)...");
-        self.bar0.write32(NV_PSEC2_FALCON_BOOTVEC, 0x0);
-        self.bar0.write32(NV_PSEC2_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
+        // ── 4. Boot PGSP Falcon with FWSEC ucode ──
+        con.println("  GSP: [FWSEC] Booting PGSP (FWSEC-FRTS)...");
+        self.bar0.write32(NV_PGSP_FALCON_BOOTVEC, 0x0);
+        self.bar0.write32(NV_PGSP_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
 
         // ── 5. Wait for WPR2 to be set by FWSEC ──
         con.println("  GSP: [FWSEC] Waiting for WPR2_HI != 0...");
@@ -1143,7 +1173,7 @@ impl<'a> GspLoader<'a> {
         let sec2_mb1 = self.bar0.read32(NV_PSEC2_FALCON_MAILBOX1);
         con.print("  GSP: SEC2 MB0=0x");
         con.print_hex32(sec2_mb0);
-        con.print(" MB1=0x");
+        con.print(" SEC2 MB1=0x");
         con.print_hex32(sec2_mb1);
         con.newline();
 
@@ -1306,12 +1336,37 @@ impl<'a> GspLoader<'a> {
         con.println("  GSP: [4/11] Preparing boot memory...");
         let boot_mem = self.prepare_boot_mem(&wpr_meta, con)?;
 
-        // ── 5. Reset GSP into RISC-V mode ──
-        con.println("  GSP: [5/11] Resetting GSP into RISC-V mode...");
+        // ── 5. Run FWSEC-FRTS on PGSP to set up WPR2 ──
+        con.println("  GSP: [5/11] Running FWSEC-FRTS on PGSP...");
+        if let Some(vbios) = blobs.vbios_rom {
+            self.fwsec_frts(vbios, wpr_meta.frts_offset, con)?;
+        }
+
+        // Read FWSEC FRTS Error Code from Scratch 14 (0x1438)
+        let scratch_14 = self.bar0.read32(0x00001438);
+        let frts_err_code = (scratch_14 >> 16) & 0xFFFF;
+        if frts_err_code != 0 {
+            con.print("  GSP: [FWSEC ERROR] FRTS error code = 0x");
+            con.print_hex32(frts_err_code);
+            con.newline();
+        }
+
+        // ── 6. Verify WPR2_HI != 0 ──
+        con.println("  GSP: [6/11] Checking WPR2_HI...");
+        const NV_WPR2_HI: u32 = 0x001FA828;
+        let wpr2 = self.bar0.read32(NV_WPR2_HI);
+        if wpr2 != 0 && wpr2 != 0xBADF_5720 {
+            con.print_colored("  GSP: WPR2 SET OK!\n", 0x00FF00);
+        } else {
+            con.print_colored("  GSP: WARNING — WPR2 not set by FWSEC!\n", 0xFFFF00);
+        }
+
+        // ── 7. Reset GSP into RISC-V mode ──
+        con.println("  GSP: [7/11] Resetting GSP into RISC-V mode...");
         self.reset_gsp_riscv_mode(con);
 
-        // ── 6. Write libos args to PGSP MAILBOX0/1 ──
-        con.println("  GSP: [6/11] Writing PGSP MAILBOX0/1 (libos args)...");
+        // ── 8. Write libos args to PGSP MAILBOX0/1 ──
+        con.println("  GSP: [8/11] Writing PGSP MAILBOX0/1 (libos args)...");
         self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, (boot_mem.boot_args_phys & 0xFFFF_FFFF) as u32);
         self.bar0.write32(NV_PGSP_FALCON_MAILBOX1, ((boot_mem.boot_args_phys >> 32) & 0xFFFF_FFFF) as u32);
         let mb0 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX0);
@@ -1322,19 +1377,11 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(mb1);
         con.newline();
 
-        // ── 7. Run FWSEC-FRTS on SEC2 to set up WPR2 ──
-        //    MUST run before writing WPR meta, because fwsec_frts()
-        //    resets SEC2 (which would clobber the mailbox).
-        con.println("  GSP: [7/11] Running FWSEC-FRTS on SEC2...");
-        if let Some(vbios) = blobs.vbios_rom {
-            self.fwsec_frts(vbios, con)?;
-        }
-
-        // ── 8–10. HS-authenticated boot of booter_load on SEC2 ──
+        // ── 9-10. HS-authenticated boot of booter_load on SEC2 ──
         //    Parses nvfw_hs_header_v2 + nvfw_hs_load_header_v2,
         //    splits IMEM/DMEM DMA, patches WPR meta PA at patch_loc,
         //    programs HS registers (dmem_sign, engine_id, ucode_id)
-        con.println("  GSP: [8/11] HS booter_load on SEC2...");
+        con.println("  GSP: [9-10/11] HS booter_load on SEC2...");
         let sec2_ok = self.sec2_hs_boot_booter(booter, boot_mem.wpr_meta_phys, con);
 
         // ── 11. Verify GSP state ──

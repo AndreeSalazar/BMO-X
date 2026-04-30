@@ -474,11 +474,18 @@ fn cmd_gsprpc(con: &mut Console) {
             let booter_load = unsafe {
                 core::slice::from_raw_parts(fw_ptr.gsp_booter_load_addr as *const u8, fw_ptr.gsp_booter_load_size as usize)
             };
+            let vbios_rom = if fw_ptr.vbios_addr != 0 && fw_ptr.vbios_size > 0 {
+                Some(unsafe {
+                    core::slice::from_raw_parts(fw_ptr.vbios_addr as *const u8, fw_ptr.vbios_size as usize)
+                })
+            } else {
+                None
+            };
             let blobs = crate::drivers::gsp::GspFirmwareBlobs {
                 gsp_rm,
                 bootloader,
                 booter_load,
-                vbios_rom: None,
+                vbios_rom,
             };
             let _ = crate::drivers::gsp::gsp_init_full(&bar0, &blobs, con);
         } else if fw_ptr.gsp_addr != 0 && fw_ptr.gsp_size > 0 {
