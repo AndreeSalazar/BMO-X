@@ -44,15 +44,25 @@ const NV_PGSP_FALCON_CPUCTL:     u32 = 0x0011_0100;
 const NV_PGSP_FALCON_BOOTVEC:    u32 = 0x0011_0104;
 const NV_PGSP_FALCON_IDLESTATE:  u32 = 0x0011_0004;
 const NV_PGSP_FALCON_RESET:      u32 = 0x0011_0094;
+
+// GA10x PGSP Falcon DMA registers (from nouveau ga102_flcn_dma / ga102.c):
+//   0x110 = DMATRFBASE   — sysmem phys address >> 8
+//   0x114 = DMATRFFBOFFS — destination address in Falcon IMEM/DMEM
+//   0x118 = DMATRFCMD    — write to start DMA; poll bit 1 for completion
+//   0x11C = DMATRFSOFFS  — source offset from DMATRFBASE
+//   0x128 = DMATRFMOFFS  — upper address bits (set to 0)
 const NV_PGSP_DMATRFBASE:        u32 = 0x0011_0110;
-const NV_PGSP_DMATRFMOFFS:       u32 = 0x0011_0114;
+const NV_PGSP_DMATRFFBOFFS:      u32 = 0x0011_0114;
 const NV_PGSP_DMATRFCMD:         u32 = 0x0011_0118;
-const NV_PGSP_DMATRFFBOFFS:      u32 = 0x0011_011C;
+const NV_PGSP_DMATRFSOFFS:       u32 = 0x0011_011C;
+const NV_PGSP_DMATRFMOFFS:       u32 = 0x0011_0128;
 
 // DMA command bits (same for both PGSP and SEC2 Falcon)
 const DMA_CMD_WRITE:    u32 = 1 << 1;
 const DMA_CMD_IMEM:     u32 = 1 << 4;
+const DMA_CMD_SEC:      u32 = 1 << 2;
 const DMA_CMD_SIZE_256: u32 = 6 << 8;
+const DMA_CMD_IDLE:     u32 = 1 << 1;
 
 // Boot constants
 const FALCON_CPUCTL_STARTCPU: u32 = 0x2;
@@ -160,23 +170,21 @@ impl<'a> GspLoader<'a> {
     }
 
     // ── PGSP DMA transfer: copy 256 bytes from sysmem to PGSP Falcon IMEM/DMEM ──
-    fn pgsp_dma_xfer_256(&self, src_phys: u64, falcon_offset: u32, to_imem: bool) -> Result<(), GspLoadError> {
-        self.bar0.write32(NV_PGSP_DMATRFBASE, (src_phys >> 8) as u32);
-        self.bar0.write32(NV_PGSP_DMATRFMOFFS, falcon_offset);
-        self.bar0.write32(NV_PGSP_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
-
-        let mut cmd = DMA_CMD_SIZE_256;
-        if to_imem { 
-            cmd |= DMA_CMD_IMEM; 
-            cmd |= 1 << 2; // SEC
-        } else {
-            cmd |= 1 << 16; // SET_DMTAG
-        }
+    // GA10x register layout (nouveau ga102_flcn_dma):
+    //   DMATRFBASE  [0x110] = sysmem phys >> 8 (base address, set once)
+    //   DMATRFMOFFS [0x128] = 0 (upper address bits)
+    //   DMATRFFBOFFS[0x114] = destination in Falcon IMEM/DMEM
+    //   DMATRFSOFFS [0x11C] = source offset from DMATRFBASE
+    //   DMATRFCMD   [0x118] = command (write to start; poll bit 1 for done)
+    fn pgsp_dma_xfer_256(&self, src_base_phys: u64, src_offset: u32, falcon_dst: u32,
+                         cmd: u32) -> Result<(), GspLoadError> {
+        self.bar0.write32(NV_PGSP_DMATRFFBOFFS, falcon_dst);
+        self.bar0.write32(NV_PGSP_DMATRFSOFFS, src_offset);
         self.bar0.write32(NV_PGSP_DMATRFCMD, cmd);
 
         for _ in 0..1_000_000 {
             let val = self.bar0.read32(NV_PGSP_DMATRFCMD);
-            if (val & (1 << 1)) != 0 { return Ok(()); }
+            if (val & DMA_CMD_IDLE) != 0 { return Ok(()); }
             core::hint::spin_loop();
         }
         Err(GspLoadError::DmaTimeout)
@@ -904,200 +912,351 @@ impl<'a> GspLoader<'a> {
         if completed { Ok(()) } else { Err(GspLoadError::Sec2BootFailed) }
     }
 
-    /// Run FWSEC-FRTS on PGSP to set up WPR2 before booter_load.
+    /// Run FWSEC-FRTS on PGSP Falcon to set up WPR2 before booter_load.
     ///
-    /// GA106 RTX 3060 LHR VBIOS offsets (extracted from vbios_rtx3060.rom):
-    ///   - Descriptor:      SPI 0x4A410
-    ///   - IMEM (code):     57,856 bytes @ SPI 0x4A8BC
-    ///   - DMEM (data):      2,048 bytes @ SPI 0x58ABC
-    ///   - InterfaceOffset:  0x1C  (within DMEM)
-    ///   - EngineIdMask:   0x400 (GSP Falcon)
-    ///   - UcodeId:        9
+    /// Follows nouveau's GA10x path: fwsec.c → ga102.c → ga102_flcn_dma
     ///
-    /// The old code loaded the *entire* 2 MiB VBIOS into SEC2 IMEM which
-    /// overflowed Falcon IMEM and left DMEM untouched.  This version loads
-    /// only the exact IMEM/DMEM slices and patches the runtime interface
-    /// and correctly runs it on PGSP Falcon.
+    /// GA106 RTX 3060 LHR VBIOS (type=0x85) descriptor at SPI 0x4A410:
+    ///   hdr_size=0x4AC, ver=3, StoredSize=0xEA00
+    ///   IMEM: 57,856 bytes @ desc+hdr_size (SPI 0x4A8BC)
+    ///   DMEM:  2,048 bytes @ IMEM end (SPI 0x58ABC)
+    ///   InterfaceOffset=0x1C, PKCDataOffset=0x5A4
+    ///   EngineIdMask=0x400, UcodeId=9, SigCount=3, SigVersions=0x7
+    ///   Sigs at desc+0x2C (SPI 0x4A43C), 384 bytes each
     fn fwsec_frts(&self, vbios: &[u8], frts_offset: u64, con: &mut Console) -> Result<(), GspLoadError> {
-        const FWSEC_IMEM_OFF: usize = 0x4A8BC;
-        const FWSEC_IMEM_SIZE: usize = 57856;
-        const FWSEC_DMEM_OFF: usize = 0x58ABC;
-        const FWSEC_DMEM_SIZE: usize = 2048;
+        // ── Parse FWSEC v3 descriptor from VBIOS ──
+        const DESC_OFF: usize = 0x4A410;
 
-        if FWSEC_IMEM_OFF + FWSEC_IMEM_SIZE > vbios.len() {
-            con.println("  GSP: [FWSEC] ERROR — IMEM extends past VBIOS");
-            return Err(GspLoadError::NoBooterFound);
+        if DESC_OFF + 44 > vbios.len() {
+            con.println("  GSP: [FWSEC] ERROR — descriptor past VBIOS");
+            return Err(GspLoadError::FwsecFailed);
         }
-        if FWSEC_DMEM_OFF + FWSEC_DMEM_SIZE > vbios.len() {
-            con.println("  GSP: [FWSEC] ERROR — DMEM extends past VBIOS");
-            return Err(GspLoadError::NoBooterFound);
+
+        let hdr = u32::from_le_bytes(vbios[DESC_OFF..DESC_OFF+4].try_into().unwrap());
+        let hdr_size = ((hdr >> 16) & 0xFFFF) as usize;
+        let stored_size = u32::from_le_bytes(vbios[DESC_OFF+4..DESC_OFF+8].try_into().unwrap()) as usize;
+        let pkc_data_offset = u32::from_le_bytes(vbios[DESC_OFF+8..DESC_OFF+12].try_into().unwrap());
+        let iface_offset = u32::from_le_bytes(vbios[DESC_OFF+12..DESC_OFF+16].try_into().unwrap()) as usize;
+        let imem_phys_base = u32::from_le_bytes(vbios[DESC_OFF+16..DESC_OFF+20].try_into().unwrap());
+        let imem_load_size = u32::from_le_bytes(vbios[DESC_OFF+20..DESC_OFF+24].try_into().unwrap()) as usize;
+        let dmem_phys_base = u32::from_le_bytes(vbios[DESC_OFF+28..DESC_OFF+32].try_into().unwrap());
+        let dmem_load_size = u32::from_le_bytes(vbios[DESC_OFF+32..DESC_OFF+36].try_into().unwrap()) as usize;
+        let engine_id_mask = u16::from_le_bytes(vbios[DESC_OFF+36..DESC_OFF+38].try_into().unwrap()) as u32;
+        let ucode_id = vbios[DESC_OFF + 38] as u32;
+        let sig_count = vbios[DESC_OFF + 39] as usize;
+        let sig_versions = u16::from_le_bytes(vbios[DESC_OFF+40..DESC_OFF+42].try_into().unwrap()) as u32;
+
+        // DMEM must be 256-byte aligned for DMA
+        let dmem_size_aligned = (dmem_load_size + 255) & !255;
+
+        // Flat image: IMEM+DMEM starts at desc + hdr_size
+        let img_start = DESC_OFF + hdr_size;
+        let img_total = imem_load_size + dmem_size_aligned;
+
+        if img_start + imem_load_size + dmem_load_size > vbios.len() {
+            con.println("  GSP: [FWSEC] ERROR — ucode extends past VBIOS");
+            return Err(GspLoadError::FwsecFailed);
         }
 
         con.println("  GSP: [FWSEC] Loading FWSEC-FRTS from VBIOS...");
-        con.print("  GSP: [FWSEC] VBIOS=0x");
-        con.print_hex32(vbios.len() as u32);
-        con.print(" IMEM@0x");
-        con.print_hex32(FWSEC_IMEM_OFF as u32);
-        con.print("(+0x");
-        con.print_hex32(FWSEC_IMEM_SIZE as u32);
-        con.print(") DMEM@0x");
-        con.print_hex32(FWSEC_DMEM_OFF as u32);
-        con.print("(+0x");
-        con.print_hex32(FWSEC_DMEM_SIZE as u32);
-        con.println(")");
-
-        // ── Reset PGSP clean ──
-        self.reset_pgsp_falcon(con);
-
-        // Configure PGSP FBIF_TRANSCFG(0) for physical sysmem DMA (TARGET=SYSMEM, MEM_TYPE=PHYSICAL)
-        const NV_PGSP_FBIF_TRANSCFG_0: u32 = 0x0011_0600;
-        self.bar0.write32(NV_PGSP_FBIF_TRANSCFG_0, 0x0000_0005);
-
-        // Clear PGSP DMACTL
-        const NV_PGSP_FALCON_DMACTL: u32 = 0x0011_010C;
-        self.bar0.write32(NV_PGSP_FALCON_DMACTL, 0x0);
-
-        // ── 1. DMA IMEM → PGSP Falcon IMEM ──
-        let imem_src = vbios.as_ptr() as u64 + FWSEC_IMEM_OFF as u64;
-        let imem_chunks = FWSEC_IMEM_SIZE / 256; // 57856 / 256 = 226 exactly
-        con.print("  GSP: [FWSEC] DMA IMEM → PGSP IMEM (");
-        con.print_hex32(imem_chunks as u32);
-        con.println(" chunks)");
-        for i in 0..imem_chunks {
-            let offset = i * 256;
-            self.pgsp_dma_xfer_256(imem_src + offset as u64, offset as u32, true)?;
-        }
-        con.println("  GSP: [FWSEC] IMEM loaded OK");
-
-        // ── 2. Patch DMEM in-place (VBIOS memory is RAM and writable here) ──
-        let dmem_mut_ptr = (vbios.as_ptr() as u64 + FWSEC_DMEM_OFF as u64) as *mut u8;
-        let dmem_mut = unsafe { core::slice::from_raw_parts_mut(dmem_mut_ptr, FWSEC_DMEM_SIZE) };
-
-        dmem_mut[0x58C] = 0x15;
-        dmem_mut[0x58D] = 0x00;
-        dmem_mut[0x58E] = 0x00;
-        dmem_mut[0x58F] = 0x00;
-
-        // Write FWSECLIC_FRTS_CMD struct at cmd_in_buffer_offset (0x7C0)
-        let desc_off = 0x4A410;
-        let cmd_off = 0x7C0; // Known command in buffer offset for this VBIOS
-        let frts_4k = (frts_offset >> 12) as u32;
-
-        // FWSECLIC_READ_VBIOS_DESC
-        dmem_mut[cmd_off + 0..cmd_off + 4].copy_from_slice(&1u32.to_le_bytes()); // version = 1
-        dmem_mut[cmd_off + 4..cmd_off + 8].copy_from_slice(&24u32.to_le_bytes()); // size = 24
-        dmem_mut[cmd_off + 8..cmd_off + 16].copy_from_slice(&0u64.to_le_bytes()); // gfwImageOffset = 0
-        dmem_mut[cmd_off + 16..cmd_off + 20].copy_from_slice(&0u32.to_le_bytes()); // gfwImageSize = 0
-        dmem_mut[cmd_off + 20..cmd_off + 24].copy_from_slice(&2u32.to_le_bytes()); // flags = 2
-
-        // FWSECLIC_FRTS_REGION_DESC
-        dmem_mut[cmd_off + 24..cmd_off + 28].copy_from_slice(&1u32.to_le_bytes()); // version = 1
-        dmem_mut[cmd_off + 28..cmd_off + 32].copy_from_slice(&20u32.to_le_bytes()); // size = 20
-        dmem_mut[cmd_off + 32..cmd_off + 36].copy_from_slice(&frts_4k.to_le_bytes()); // frtsRegionOffset4K
-        dmem_mut[cmd_off + 36..cmd_off + 40].copy_from_slice(&1u32.to_le_bytes()); // frtsRegionSize = 1 (1MB)
-        dmem_mut[cmd_off + 40..cmd_off + 44].copy_from_slice(&2u32.to_le_bytes()); // frtsRegionMediaType = 2 (FB)
-
-        // ── 2b. Extract correct RSA signature and copy to DMEM ──
-        let fuse_val = self.bar0.read32(0x008241E0); // NV_FUSE_OPT_FPF_GSP_UCODE9_VERSION (ucodeId = 9)
-        let mut ucode_version_val = 0;
-        if fuse_val != 0 {
-            ucode_version_val = 31 - fuse_val.leading_zeros();
-            ucode_version_val += 1;
-        }
-        ucode_version_val = 1 << ucode_version_val;
-
-        let mut hs_sig_versions = vbios[desc_off + 40] as u32 | ((vbios[desc_off + 41] as u32) << 8);
-        let mut sig_offset = 0;
-        while hs_sig_versions != 0 {
-            let trailing = hs_sig_versions.trailing_zeros();
-            let sig_version_val = 1 << trailing;
-            if sig_version_val == ucode_version_val {
-                break;
-            }
-            hs_sig_versions &= !sig_version_val;
-            sig_offset += 384;
-        }
-
-        let imem_load_size = u32::from_le_bytes(vbios[desc_off + 20 .. desc_off + 24].try_into().unwrap());
-        let pkc_data_offset = u32::from_le_bytes(vbios[desc_off + 8 .. desc_off + 12].try_into().unwrap());
-        let sig_base_offset = desc_off as u32 + imem_load_size + pkc_data_offset; // 0x58BB4 in VBIOS
-        let sig_src_ptr = (vbios.as_ptr() as u64 + sig_base_offset as u64 + sig_offset as u64) as *const u8;
-        
-        unsafe {
-            core::ptr::copy_nonoverlapping(sig_src_ptr, dmem_mut_ptr.add(pkc_data_offset as usize), 384);
-        }
-
-        con.print("  GSP: [FWSEC] Copied signature (fuse=0x"); con.print_hex32(fuse_val);
-        con.print(" sig_offset=0x"); con.print_hex32(sig_offset); con.println(")");
-
-        con.print("  GSP: [FWSEC] FRTS interface patched (frts_offset=0x");
-        con.print_hex32((frts_offset >> 32) as u32);
-        con.print_hex32(frts_offset as u32);
-        con.println(")");
-
-        // ── 3. DMA patched DMEM → PGSP Falcon DMEM ──
-        let dmem_src = dmem_mut_ptr as u64;
-        let dmem_chunks = FWSEC_DMEM_SIZE / 256; // 2048 / 256 = 8 exactly
-        con.print("  GSP: [FWSEC] DMA DMEM → PGSP DMEM (");
-        con.print_hex32(dmem_chunks as u32);
-        con.println(" chunks)");
-        for i in 0..dmem_chunks {
-            let offset = i * 256;
-            self.pgsp_dma_xfer_256(dmem_src + offset as u64, offset as u32, false)?;
-        }
-        con.println("  GSP: [FWSEC] DMEM loaded OK");
-
-        // ── 4. Boot PGSP Falcon with FWSEC ucode ──
-        con.println("  GSP: [FWSEC] Booting PGSP (FWSEC-FRTS)...");
-
-        // Setup PKC signature validation parameters in BROM registers
-        const NV_PGSP_RISCV_BASE: u32 = 0x0011_1000;
-        let desc_off = 0x4A410;
-        let pkc_data_offset = u32::from_le_bytes(vbios[desc_off + 8 .. desc_off + 12].try_into().unwrap());
-        let engine_id_mask = u16::from_le_bytes(vbios[desc_off + 36 .. desc_off + 38].try_into().unwrap()) as u32;
-        let ucode_id = vbios[desc_off + 38] as u32;
-
-        con.print("  GSP: [FWSEC] PKC_OFFSET=0x"); con.print_hex32(pkc_data_offset);
-        con.print(" ENGINE_MASK=0x"); con.print_hex32(engine_id_mask);
-        con.print(" UCODE_ID=0x"); con.print_hex32(ucode_id);
+        con.print("  GSP: [FWSEC] IMEM=0x");
+        con.print_hex32(imem_load_size as u32);
+        con.print(" DMEM=0x");
+        con.print_hex32(dmem_load_size as u32);
+        con.print(" PKC=0x");
+        con.print_hex32(pkc_data_offset);
+        con.print(" iface=0x");
+        con.print_hex32(iface_offset as u32);
         con.newline();
 
-        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x210, pkc_data_offset); // BROM_PARAADDR(0)
-        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x19C, engine_id_mask);  // BROM_ENGIDMASK
-        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x198, ucode_id);        // BROM_CURR_UCODE_ID
-        self.bar0.write32(NV_PGSP_RISCV_BASE + 0x180, 0x1);             // MOD_SEL = ALGO_RSA3K
+        // ── Allocate DMA bounce buffer for the flat image (IMEM+DMEM) ──
+        let img_pages = (img_total + PAGE_SIZE - 1) / PAGE_SIZE;
+        let img_phys = unsafe {
+            crate::arch::page_alloc::alloc_pages_contiguous(img_pages)
+        }.ok_or(GspLoadError::PageAllocFailed)?;
 
-        self.bar0.write32(NV_PGSP_FALCON_BOOTVEC, 0x0);
-        self.bar0.write32(NV_PGSP_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
+        unsafe {
+            core::ptr::write_bytes(img_phys as *mut u8, 0, img_pages * PAGE_SIZE);
+            // Copy IMEM
+            core::ptr::copy_nonoverlapping(
+                vbios.as_ptr().add(img_start),
+                img_phys as *mut u8,
+                imem_load_size,
+            );
+            // Copy DMEM (right after IMEM in flat buffer)
+            core::ptr::copy_nonoverlapping(
+                vbios.as_ptr().add(img_start + imem_load_size),
+                (img_phys as *mut u8).add(imem_load_size),
+                dmem_load_size,
+            );
+        }
 
-        // ── 5. Wait for WPR2 to be set by FWSEC ──
-        con.println("  GSP: [FWSEC] Waiting for WPR2_HI != 0...");
-        for i in 0..5_000_000u32 {
-            let wpr2 = self.bar0.read32(NV_WPR2_HI);
-            if wpr2 != 0 && wpr2 != 0xBADF_5720 {
-                con.print("  GSP: [FWSEC] WPR2_HI=0x");
-                con.print_hex32(wpr2);
-                con.print_colored(" (WPR2 SET — FWSEC OK)\n", 0x00FF00);
-                return Ok(());
-            }
-            if i % 1_000_000 == 0 && i > 0 {
-                let mb0 = self.bar0.read32(0x0011_0040); // NV_PGSP_FALCON_MAILBOX0
-                if mb0 != 0 {
-                    con.print("  GSP: [FWSEC] mb0=0x"); con.print_hex32(mb0); con.newline();
+        let img_buf = unsafe { core::slice::from_raw_parts_mut(img_phys as *mut u8, img_total) };
+
+        // ── Patch DMEM: find DMEMMAPPER interface and set FRTS command ──
+        // InterfaceOffset is DMEM-relative; in the flat image it's at imem_load_size + iface_offset
+        let dmem_base_img = imem_load_size;
+        let hdr_off = dmem_base_img + iface_offset;
+
+        if hdr_off + 8 <= img_total {
+            // Parse appif_hdr_v1: { version(u16), hdr(u16), len(u16), count(u16) }
+            let appif_hdr_size = u16::from_le_bytes([img_buf[hdr_off + 2], img_buf[hdr_off + 3]]) as usize;
+            let appif_len = u16::from_le_bytes([img_buf[hdr_off + 4], img_buf[hdr_off + 5]]) as usize;
+            let appif_count = u16::from_le_bytes([img_buf[hdr_off + 6], img_buf[hdr_off + 7]]) as usize;
+
+            con.print("  GSP: [FWSEC] AppIf: hdr=");
+            con.print_hex32(appif_hdr_size as u32);
+            con.print(" len=");
+            con.print_hex32(appif_len as u32);
+            con.print(" count=");
+            con.print_hex32(appif_count as u32);
+            con.newline();
+
+            // Walk app interface entries looking for DMEMMAPPER (id=0x4)
+            for i in 0..appif_count {
+                let entry_off = hdr_off + appif_hdr_size + i * appif_len;
+                if entry_off + 8 > img_total { break; }
+
+                let app_id = u16::from_le_bytes([img_buf[entry_off], img_buf[entry_off + 1]]);
+                let dmem_base_entry = u32::from_le_bytes(
+                    img_buf[entry_off + 4..entry_off + 8].try_into().unwrap()
+                ) as usize;
+
+                if app_id == 0x4 {
+                    // Found DMEMMAPPER — patch init_cmd and write FRTS descriptor
+                    let mapper_off = dmem_base_img + dmem_base_entry;
+                    con.print("  GSP: [FWSEC] DMEMMAPPER at flat_img+0x");
+                    con.print_hex32(mapper_off as u32);
+                    con.newline();
+
+                    if mapper_off + 16 <= img_total {
+                        // v3 DMEMMAPPER: { ..., init_cmd(u32)@+8, cmd_in_buffer_offset(u32)@+12 }
+                        // Set init_cmd = FRTS (0x15)
+                        img_buf[mapper_off + 8..mapper_off + 12].copy_from_slice(&0x15u32.to_le_bytes());
+
+                        let cmd_buf_off = u32::from_le_bytes(
+                            img_buf[mapper_off + 12..mapper_off + 16].try_into().unwrap()
+                        ) as usize;
+                        let cmd_abs = dmem_base_img + cmd_buf_off;
+
+                        con.print("  GSP: [FWSEC] cmd_in_buffer=0x");
+                        con.print_hex32(cmd_buf_off as u32);
+                        con.print(" (flat+0x");
+                        con.print_hex32(cmd_abs as u32);
+                        con.println(")");
+
+                        if cmd_abs + 44 <= img_total {
+                            let frts_addr_4k = (frts_offset >> 12) as u32;
+                            let frts_size_4k = (0x10_0000u64 >> 12) as u32; // 1MB in 4K pages = 0x100
+
+                            // FWSECLIC_READ_VBIOS_DESC (24 bytes)
+                            img_buf[cmd_abs..cmd_abs+4].copy_from_slice(&1u32.to_le_bytes());    // version
+                            img_buf[cmd_abs+4..cmd_abs+8].copy_from_slice(&24u32.to_le_bytes()); // size
+                            img_buf[cmd_abs+8..cmd_abs+16].copy_from_slice(&0u64.to_le_bytes()); // gfwImageOffset
+                            img_buf[cmd_abs+16..cmd_abs+20].copy_from_slice(&0u32.to_le_bytes()); // gfwImageSize
+                            img_buf[cmd_abs+20..cmd_abs+24].copy_from_slice(&2u32.to_le_bytes()); // flags=2
+
+                            // FWSECLIC_FRTS_REGION_DESC (20 bytes)
+                            img_buf[cmd_abs+24..cmd_abs+28].copy_from_slice(&1u32.to_le_bytes());            // version
+                            img_buf[cmd_abs+28..cmd_abs+32].copy_from_slice(&20u32.to_le_bytes());           // size
+                            img_buf[cmd_abs+32..cmd_abs+36].copy_from_slice(&frts_addr_4k.to_le_bytes());    // frtsRegionOffset4K
+                            img_buf[cmd_abs+36..cmd_abs+40].copy_from_slice(&frts_size_4k.to_le_bytes());    // frtsRegionSize4K
+                            img_buf[cmd_abs+40..cmd_abs+44].copy_from_slice(&2u32.to_le_bytes());            // type=FB
+
+                            con.print("  GSP: [FWSEC] FRTS addr=0x");
+                            con.print_hex32(frts_addr_4k);
+                            con.print(" size=0x");
+                            con.print_hex32(frts_size_4k);
+                            con.println(" (4K pages)");
+                        }
+                    }
+                    break;
                 }
             }
+        } else {
+            con.println("  GSP: [FWSEC] WARNING — interface offset out of bounds, skipping patch");
+        }
+
+        // ── Select correct PKC signature and copy into flat image ──
+        // Signature index selection (nouveau ga102_gsp_fwsec_signature):
+        //   fuse_reg = NV_FUSE base + (ucode_id - 1) * 4
+        //   For engine_id & 0x400 (PGSP): base = 0x8241C0
+        let fuse_reg = 0x008241C0 + (ucode_id - 1) * 4;
+        let fuse_val = self.bar0.read32(fuse_reg);
+
+        // Convert fuse to power-of-2 ceiling: BIT(fls(fuse_val))
+        let reg_fuse_version = if fuse_val != 0 {
+            1u32 << (32 - fuse_val.leading_zeros()) // = BIT(fls(fuse_val))
+        } else {
+            1u32 // fuse=0 → version=1 (first sig)
+        };
+
+        // Match sig index (nouveau algorithm: walk sig_versions bits)
+        let mut sig_fuse = sig_versions;
+        let mut reg_fuse = reg_fuse_version;
+        let mut sig_idx: usize = 0;
+        while (reg_fuse & sig_fuse & 1) == 0 {
+            sig_idx += (sig_fuse & 1) as usize;
+            reg_fuse >>= 1;
+            sig_fuse >>= 1;
+            if reg_fuse == 0 || sig_fuse == 0 { break; }
+        }
+
+        // Signatures are at desc + 0x2C in VBIOS, 384 bytes each
+        let sig_src_off = DESC_OFF + 0x2C + sig_idx * 384;
+        // Destination in flat image: dmem_base_img + PKCDataOffset
+        let sig_dst_off = dmem_base_img + pkc_data_offset as usize;
+
+        if sig_src_off + 384 <= vbios.len() && sig_dst_off + 384 <= img_total {
+            img_buf[sig_dst_off..sig_dst_off + 384].copy_from_slice(&vbios[sig_src_off..sig_src_off + 384]);
+        }
+
+        con.print("  GSP: [FWSEC] Sig idx=");
+        con.print_hex32(sig_idx as u32);
+        con.print(" fuse=0x");
+        con.print_hex32(fuse_val);
+        con.print(" reg_fuse=0x");
+        con.print_hex32(reg_fuse_version);
+        con.newline();
+
+        // ── Reset PGSP Falcon (engine-level) ──
+        // GA10x reset: toggle 0x3C0 bit 0, then wait for mem scrub (0x0F4 bit 12)
+        const NV_PGSP_FALCON_ENGINE_RESET: u32 = 0x0011_03C0;
+        const NV_PGSP_FALCON_HWCFG2: u32 = 0x0011_00F4;
+        const NV_PGSP_FALCON_ADDR2: u32 = 0x0011_1000;
+
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, 0x1);
+        for _ in 0..10_000u32 { core::hint::spin_loop(); }
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, 0x0);
+
+        // Wait for memory scrubbing to complete (bit 12 of 0x0F4 goes low)
+        for _ in 0..2_000_000u32 {
+            let hwcfg = self.bar0.read32(NV_PGSP_FALCON_HWCFG2);
+            if (hwcfg & (1 << 12)) == 0 { break; }
             core::hint::spin_loop();
         }
 
-        let wpr2 = self.bar0.read32(NV_WPR2_HI);
-        let mb0 = self.bar0.read32(0x0011_0040); // NV_PGSP_FALCON_MAILBOX0
-        let cpuctl = self.bar0.read32(NV_PGSP_FALCON_CPUCTL);
-        con.print("  GSP: [FWSEC] timeout WPR2_HI=0x");
-        con.print_hex32(wpr2);
-        con.print(" MB0=0x"); con.print_hex32(mb0);
-        con.print(" CPUCTL=0x"); con.print_hex32(cpuctl);
-        con.println(" — continuing anyway");
-        Ok(()) // non-fatal: booter_load will retry
+        // Ensure Falcon mode (NOT RISC-V): clear RISCV select if set
+        // Register addr2 + 0x668 = 0x111668 (same as NV_PGSP_RISCV_MODE)
+        let riscv_sel = self.bar0.read32(NV_PGSP_FALCON_ADDR2 + 0x668);
+        if (riscv_sel & 0x10) != 0 {
+            self.bar0.write32(NV_PGSP_FALCON_ADDR2 + 0x668, 0x0);
+            for _ in 0..100_000u32 {
+                let v = self.bar0.read32(NV_PGSP_FALCON_ADDR2 + 0x668);
+                if (v & 0x1) != 0 { break; }
+                core::hint::spin_loop();
+            }
+            con.println("  GSP: [FWSEC] Switched PGSP from RISC-V to Falcon mode");
+        }
+
+        // ── Enable DMA engine (nouveau: mask set bit 7 in 0x624) ──
+        const NV_PGSP_FALCON_IRQMSET: u32 = 0x0011_0624;
+        let irqmset = self.bar0.read32(NV_PGSP_FALCON_IRQMSET);
+        self.bar0.write32(NV_PGSP_FALCON_IRQMSET, irqmset | 0x80);
+
+        // Configure DMA: DMACTL=0, TRANSCFG=(TARGET=COHERENT_SYSMEM, MEM_TYPE=PHYSICAL)
+        const NV_PGSP_FALCON_DMACTL: u32 = 0x0011_010C;
+        const NV_PGSP_FBIF_TRANSCFG_0: u32 = 0x0011_0600;
+        self.bar0.write32(NV_PGSP_FALCON_DMACTL, 0x0);
+        self.bar0.write32(NV_PGSP_FBIF_TRANSCFG_0, (0 << 16) | (1 << 2) | 1);
+
+        // ── DMA IMEM → PGSP Falcon IMEM (secure) ──
+        let imem_chunks = imem_load_size / 256;
+        con.print("  GSP: [FWSEC] DMA IMEM → PGSP (");
+        con.print_hex32(imem_chunks as u32);
+        con.println(" chunks)");
+
+        // Set base address once (phys addr >> 8)
+        self.bar0.write32(NV_PGSP_DMATRFBASE, (img_phys >> 8) as u32);
+        self.bar0.write32(NV_PGSP_DMATRFMOFFS, 0x0); // upper addr bits = 0
+
+        let imem_cmd = DMA_CMD_SIZE_256 | DMA_CMD_IMEM | DMA_CMD_SEC;
+        for i in 0..imem_chunks {
+            let offset = (i * 256) as u32;
+            self.pgsp_dma_xfer_256(img_phys, offset, imem_phys_base + offset, imem_cmd)?;
+        }
+        con.println("  GSP: [FWSEC] IMEM loaded OK");
+
+        // ── DMA DMEM → PGSP Falcon DMEM ──
+        let dmem_chunks = dmem_size_aligned / 256;
+        con.print("  GSP: [FWSEC] DMA DMEM → PGSP (");
+        con.print_hex32(dmem_chunks as u32);
+        con.println(" chunks)");
+
+        let dmem_cmd = DMA_CMD_SIZE_256; // no IMEM bit, no SEC bit for DMEM
+        for i in 0..dmem_chunks {
+            let src_off = (dmem_base_img + i * 256) as u32;
+            let dst_off = dmem_phys_base + (i * 256) as u32;
+            self.pgsp_dma_xfer_256(img_phys, src_off, dst_off, dmem_cmd)?;
+        }
+        con.println("  GSP: [FWSEC] DMEM loaded OK");
+
+        // ── BROM registers: PKC authentication parameters ──
+        con.println("  GSP: [FWSEC] Programming BROM registers...");
+        self.bar0.write32(NV_PGSP_FALCON_ADDR2 + 0x210, pkc_data_offset); // sig offset in DMEM
+        self.bar0.write32(NV_PGSP_FALCON_ADDR2 + 0x19C, engine_id_mask);  // engine ID
+        self.bar0.write32(NV_PGSP_FALCON_ADDR2 + 0x198, ucode_id);        // ucode ID
+        self.bar0.write32(NV_PGSP_FALCON_ADDR2 + 0x180, 0x1);             // trigger BROM auth
+
+        con.print("  GSP: [FWSEC] PKC=0x");
+        con.print_hex32(pkc_data_offset);
+        con.print(" EngId=0x");
+        con.print_hex32(engine_id_mask);
+        con.print(" UcId=0x");
+        con.print_hex32(ucode_id);
+        con.newline();
+
+        // ── Boot Falcon CPU ──
+        self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, 0xcafe_beef); // input (nouveau convention)
+        self.bar0.write32(NV_PGSP_FALCON_BOOTVEC, 0x0);
+        self.bar0.write32(NV_PGSP_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
+
+        // ── Wait for Falcon to halt (CPUCTL bit 4), then check WPR2 ──
+        con.println("  GSP: [FWSEC] Waiting for Falcon halt + WPR2...");
+        let mut falcon_halted = false;
+        for i in 0..20_000_000u32 {
+            let cpuctl = self.bar0.read32(NV_PGSP_FALCON_CPUCTL);
+            if (cpuctl & FALCON_CPUCTL_HALTED) != 0 {
+                falcon_halted = true;
+                break;
+            }
+            if i % 4_000_000 == 0 && i > 0 { con.print("."); }
+            core::hint::spin_loop();
+        }
+
+        // Read FWSEC error code: scratch register 0xE (0x001400 + 0xE*4 = 0x001438)
+        let scratch_e = self.bar0.read32(0x0000_1400 + 0xE * 4);
+        let fwsec_err = (scratch_e >> 16) & 0xFFFF;
+
+        let wpr2_hi = self.bar0.read32(NV_WPR2_HI);
+        let wpr2_lo = self.bar0.read32(0x001F_A824);
+        let mb0 = self.bar0.read32(NV_PGSP_FALCON_MAILBOX0);
+
+        con.print("  GSP: [FWSEC] halted=");
+        con.print_hex32(falcon_halted as u32);
+        con.print(" err=0x");
+        con.print_hex32(fwsec_err);
+        con.print(" WPR2=0x");
+        con.print_hex32(wpr2_lo);
+        con.print("-0x");
+        con.print_hex32(wpr2_hi);
+        con.print(" MB0=0x");
+        con.print_hex32(mb0);
+        con.newline();
+
+        if wpr2_hi != 0 && wpr2_hi != 0xBADF_5720 {
+            con.print_colored("  GSP: [FWSEC] WPR2 SET — FWSEC OK!\n", 0x00FF00);
+            Ok(())
+        } else if fwsec_err != 0 {
+            con.print_colored("  GSP: [FWSEC] FWSEC returned error!\n", 0xFF4444);
+            Err(GspLoadError::FwsecFailed)
+        } else if !falcon_halted {
+            con.print_colored("  GSP: [FWSEC] Falcon did not halt (timeout)\n", 0xFF4444);
+            Err(GspLoadError::FwsecFailed)
+        } else {
+            con.print_colored("  GSP: [FWSEC] Falcon halted but WPR2 not set\n", 0xFFFF00);
+            Err(GspLoadError::FwsecFailed)
+        }
     }
 
     /// Verify GSP registers after boot attempt
