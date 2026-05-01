@@ -947,6 +947,12 @@ impl<'a> GspLoader<'a> {
         let sig_versions = u16::from_le_bytes(vbios[DESC_OFF+40..DESC_OFF+42].try_into().unwrap()) as u32;
 
         // DMEM must be 256-byte aligned for DMA
+        // Fallback: if descriptor says dmem=0, compute from stored_size
+        let dmem_load_size = if dmem_load_size == 0 && stored_size > imem_load_size {
+            stored_size - imem_load_size
+        } else {
+            dmem_load_size
+        };
         let dmem_size_aligned = (dmem_load_size + 255) & !255;
 
         // Flat image: IMEM+DMEM starts at desc + hdr_size
@@ -998,13 +1004,16 @@ impl<'a> GspLoader<'a> {
         let dmem_base_img = imem_load_size;
         let hdr_off = dmem_base_img + iface_offset;
 
-        if hdr_off + 8 <= img_total {
-            // Parse appif_hdr_v1: { version(u16), hdr(u16), len(u16), count(u16) }
-            let appif_hdr_size = u16::from_le_bytes([img_buf[hdr_off + 2], img_buf[hdr_off + 3]]) as usize;
-            let appif_len = u16::from_le_bytes([img_buf[hdr_off + 4], img_buf[hdr_off + 5]]) as usize;
-            let appif_count = u16::from_le_bytes([img_buf[hdr_off + 6], img_buf[hdr_off + 7]]) as usize;
+        if hdr_off + 4 <= img_total {
+            // AppIf header uses u8 fields: { version(u8), hdr_size(u8), entry_size(u8), count(u8) }
+            let appif_ver = img_buf[hdr_off] as usize;
+            let appif_hdr_size = img_buf[hdr_off + 1] as usize;
+            let appif_len = img_buf[hdr_off + 2] as usize;
+            let appif_count = img_buf[hdr_off + 3] as usize;
 
-            con.print("  GSP: [FWSEC] AppIf: hdr=");
+            con.print("  GSP: [FWSEC] AppIf: ver=");
+            con.print_hex32(appif_ver as u32);
+            con.print(" hdr=");
             con.print_hex32(appif_hdr_size as u32);
             con.print(" len=");
             con.print_hex32(appif_len as u32);
@@ -1023,27 +1032,31 @@ impl<'a> GspLoader<'a> {
                 ) as usize;
 
                 if app_id == 0x4 {
-                    // Found DMEMMAPPER — patch init_cmd and write FRTS descriptor
+                    // Found DMEMMAPPER — it starts with "DMAP" magic at dmem_base_entry
                     let mapper_off = dmem_base_img + dmem_base_entry;
-                    con.print("  GSP: [FWSEC] DMEMMAPPER at flat_img+0x");
-                    con.print_hex32(mapper_off as u32);
+                    con.print("  GSP: [FWSEC] DMEMMAPPER at DMEM+0x");
+                    con.print_hex32(dmem_base_entry as u32);
                     con.newline();
 
-                    if mapper_off + 16 <= img_total {
-                        // v3 DMEMMAPPER: { ..., init_cmd(u32)@+8, cmd_in_buffer_offset(u32)@+12 }
-                        // Set init_cmd = FRTS (0x15)
-                        img_buf[mapper_off + 8..mapper_off + 12].copy_from_slice(&0x15u32.to_le_bytes());
-
+                    // DMEMMAPPER v3 layout (from VBIOS analysis):
+                    //   +0x00: "DMAP" magic (4 bytes)
+                    //   +0x04: version(u16) + hdr_size(u16)
+                    //   +0x08: cmd_in_buffer_offset (u32) — DMEM-relative offset of FRTS cmd buffer
+                    //   +0x2C: init_cmd (u32) — set to 0x15 for FRTS
+                    if mapper_off + 0x30 <= img_total {
+                        // Read cmd_in_buffer_offset from +0x08
                         let cmd_buf_off = u32::from_le_bytes(
-                            img_buf[mapper_off + 12..mapper_off + 16].try_into().unwrap()
+                            img_buf[mapper_off + 0x08..mapper_off + 0x0C].try_into().unwrap()
                         ) as usize;
                         let cmd_abs = dmem_base_img + cmd_buf_off;
 
-                        con.print("  GSP: [FWSEC] cmd_in_buffer=0x");
+                        // Write init_cmd = FRTS (0x15) at +0x2C
+                        img_buf[mapper_off + 0x2C..mapper_off + 0x30].copy_from_slice(&0x15u32.to_le_bytes());
+
+                        con.print("  GSP: [FWSEC] cmd_in_buf=0x");
                         con.print_hex32(cmd_buf_off as u32);
-                        con.print(" (flat+0x");
-                        con.print_hex32(cmd_abs as u32);
-                        con.println(")");
+                        con.print(" init_cmd@+0x2C=0x15");
+                        con.newline();
 
                         if cmd_abs + 44 <= img_total {
                             let frts_addr_4k = (frts_offset >> 12) as u32;
