@@ -165,7 +165,9 @@ pub const NV_PGSP_RISCV_BR_ADDR:  u32 = 0x0011_0390; // Branch address
 
 // GSP RISC-V mode switch (Ampere — from nouveau ga102_gsp_reset)
 pub const NV_PGSP_RISCV_MODE:      u32 = 0x0011_1668;
-pub const NV_PGSP_RISCV_MODE_MASK: u32 = 0x0000_0001;
+// Bit 4 (0x10) = REQUEST RISC-V mode; Bit 0 (0x01) = RISC-V mode ACTIVE (read-only status)
+pub const NV_PGSP_RISCV_MODE_REQUEST: u32 = 0x0000_0010;
+pub const NV_PGSP_RISCV_MODE_ACTIVE:  u32 = 0x0000_0001;
 
 // WPR2 status register — nonzero after FWSEC/FRTS sets up write-protected region
 pub const NV_WPR2_HI: u32 = 0x001F_A828;

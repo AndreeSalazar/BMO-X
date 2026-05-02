@@ -487,7 +487,11 @@ fn cmd_gsprpc(con: &mut Console) {
                 booter_load,
                 vbios_rom,
             };
-            let _ = crate::drivers::gsp::gsp_init_full(&bar0, &blobs, con);
+            let gsp_ok = crate::drivers::gsp::gsp_init_full(&bar0, &blobs, con);
+            if gsp_ok.is_err() {
+                con.print_colored("  [BOOT] GSP init failed — skipping RPC/NV_RM\n", 0xFF4444);
+                return;
+            }
         } else if fw_ptr.gsp_addr != 0 && fw_ptr.gsp_size > 0 {
             con.println("  [BOOT] WARN: Only gsp_ga10x.bin found, missing bootloader/booter");
             con.println("  [BOOT] Falling back to single-blob boot (will likely fail)");

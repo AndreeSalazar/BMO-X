@@ -24,7 +24,8 @@ use crate::drivers::gsp::priv_ring::PrivRingInit;
 use crate::drivers::gsp::rpc::{
     GspFwWprMeta, WPR_META_MAGIC, WPR_META_REVISION,
     NV_PGSP_FALCON_MAILBOX0, NV_PGSP_FALCON_MAILBOX1,
-    NV_PGSP_RISCV_MODE, NV_PGSP_RISCV_MODE_MASK,
+    NV_PGSP_RISCV_MODE,
+    NV_PGSP_RISCV_MODE_REQUEST, NV_PGSP_RISCV_MODE_ACTIVE,
     NV_WPR2_HI,
     NV_PSEC2_FALCON_MAILBOX0, NV_PSEC2_FALCON_MAILBOX1,
     NV_PSEC2_FALCON_CPUCTL, NV_PSEC2_FALCON_BOOTVEC,
@@ -544,12 +545,8 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PSEC2_FALCON_MAILBOX0, (wpr_meta_phys & 0xFFFF_FFFF) as u32);
         self.bar0.write32(NV_PSEC2_FALCON_MAILBOX1, ((wpr_meta_phys >> 32) & 0xFFFF_FFFF) as u32);
 
-        // ── Boot SEC2 Falcon ──
-        con.println("  GSP: [HS-BOOT] Starting SEC2 Falcon (booter_load HS)...");
-        self.bar0.write32(NV_PSEC2_FALCON_BOOTVEC, 0x0);
-        self.bar0.write32(NV_PSEC2_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
-
-        // ── Wait for completion ──
+        // ── Boot SEC2 Falcon + wait for completion ──
+        // (sec2_boot_and_wait handles BOOTVEC + CPUCTL + halt polling)
         self.sec2_boot_and_wait(con)
     }
 
@@ -582,15 +579,21 @@ impl<'a> GspLoader<'a> {
     fn reset_gsp_riscv_mode(&self, boot_args_phys: u64, con: &mut Console) {
         con.println("  GSP: Resetting GSP Falcon + switching to RISC-V mode...");
 
-        // Reset GSP engine
-        self.bar0.write32(NV_PGSP_FALCON_RESET, 0x1);
-        for _ in 0..100_000u32 { core::hint::spin_loop(); }
-        self.bar0.write32(NV_PGSP_FALCON_RESET, 0x0);
-        for _ in 0..200_000u32 { core::hint::spin_loop(); }
+        // Engine-level reset (nouveau gp102_flcn_reset_eng → 0x3C0)
+        const NV_PGSP_FALCON_ENGINE_RESET: u32 = 0x0011_03C0;
+        const NV_PGSP_FALCON_HWCFG2: u32 = 0x0011_00F4;
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, 0x1);
+        for _ in 0..10_000u32 { core::hint::spin_loop(); }
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, 0x0);
 
-        // Write MAILBOX0/1 BEFORE switching to RISC-V mode!
-        // En el modo RISC-V, los registros de MAILBOX de Falcon pueden ser de solo lectura para el host
-        // o mapearse a otro lado. ¡Nouveau los escribe antes de arrancar!
+        // Wait for memory scrubbing to complete (bit 12 of 0x0F4)
+        for _ in 0..2_000_000u32 {
+            let hwcfg = self.bar0.read32(NV_PGSP_FALCON_HWCFG2);
+            if (hwcfg & (1 << 12)) == 0 { break; }
+            core::hint::spin_loop();
+        }
+
+        // Write MAILBOX0/1 BEFORE switching to RISC-V mode
         con.println("  GSP: Writing PGSP MAILBOX0/1 (libos args)...");
         self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, (boot_args_phys & 0xFFFF_FFFF) as u32);
         self.bar0.write32(NV_PGSP_FALCON_MAILBOX1, ((boot_args_phys >> 32) & 0xFFFF_FFFF) as u32);
@@ -603,18 +606,32 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(mb1);
         con.newline();
 
-        // Switch GSP to RISC-V execution mode (register 0x00111668)
-        // Only set bit 0 — preserve all other bits (nouveau ga102_gsp_reset)
+        // Switch GSP to RISC-V mode: write bit 4 (0x10) to REQUEST,
+        // then poll bit 0 (0x01) for ACTIVE confirmation (nouveau ga102_gsp_reset)
         let mode_before = self.bar0.read32(NV_PGSP_RISCV_MODE);
-        self.bar0.write32(NV_PGSP_RISCV_MODE, mode_before | NV_PGSP_RISCV_MODE_MASK);
-        for _ in 0..50_000u32 { core::hint::spin_loop(); }
+        self.bar0.write32(NV_PGSP_RISCV_MODE, NV_PGSP_RISCV_MODE_REQUEST);
+
+        // Poll for RISC-V mode active (bit 0)
+        let mut riscv_ok = false;
+        for _ in 0..2_000_000u32 {
+            let mode = self.bar0.read32(NV_PGSP_RISCV_MODE);
+            if (mode & NV_PGSP_RISCV_MODE_ACTIVE) != 0 {
+                riscv_ok = true;
+                break;
+            }
+            core::hint::spin_loop();
+        }
 
         let mode_after = self.bar0.read32(NV_PGSP_RISCV_MODE);
         con.print("  GSP: RISCV_MODE: 0x");
         con.print_hex32(mode_before);
         con.print(" → 0x");
         con.print_hex32(mode_after);
-        con.newline();
+        if riscv_ok {
+            con.print_colored(" (RISC-V ACTIVE)\n", 0x00FF00);
+        } else {
+            con.print_colored(" (RISC-V NOT confirmed!)\n", 0xFF4444);
+        }
     }
 
     // ── Populate GspFwWprMeta with VRAM layout (top-down from 12GB) ──
@@ -760,25 +777,28 @@ impl<'a> GspLoader<'a> {
         let loginit_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
         let logintr_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
         let logrm_phys = Self::create_log_buffer(16).ok_or(GspLoadError::PageAllocFailed)?;
-        let rmargs_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
         
         let wpr_meta_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
         let shared_mem_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(shared_pages as usize) }.ok_or(GspLoadError::PageAllocFailed)?;
 
-        // Allocate page for GspArgumentsCached (must be page-aligned, which alloc guarantees)
-        let boot_args_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
+        // Page for GspArgumentsCached (the RMARGS content)
+        let rmargs_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
+
+        // Page for libos array (4 × LibosMemoryRegionInitArgument = 4 × 32 = 128 bytes)
+        // THIS is what MAILBOX0/1 points to (nouveau r535_gsp_libos_init)
+        let libos_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(1) }.ok_or(GspLoadError::PageAllocFailed)?;
 
         unsafe {
             core::ptr::write_bytes(rmargs_phys as *mut u8, 0, PAGE_SIZE);
             core::ptr::write_bytes(wpr_meta_phys as *mut u8, 0, PAGE_SIZE);
             core::ptr::write_bytes(shared_mem_phys as *mut u8, 0, shared_pages as usize * PAGE_SIZE);
-            core::ptr::write_bytes(boot_args_phys as *mut u8, 0, PAGE_SIZE);
+            core::ptr::write_bytes(libos_phys as *mut u8, 0, PAGE_SIZE);
 
             // Write WPR meta at page
             let dst = wpr_meta_phys as *mut GspFwWprMeta;
             core::ptr::write(dst, core::ptr::read(wpr_meta as *const GspFwWprMeta));
 
-            // Build proper GspArgumentsCached with message queues + LibOS regions
+            // Build GspArgumentsCached at rmargs_phys (message queues + regions)
             use crate::drivers::gsp::boot_args::GspArgumentsCached;
             let args = GspArgumentsCached::new(
                 shared_mem_phys,
@@ -786,20 +806,34 @@ impl<'a> GspLoader<'a> {
                 loginit_phys,
                 logintr_phys,
                 logrm_phys,
-                rmargs_phys,
+                rmargs_phys, // self-referential: GSP reads RMARGS to find this struct
             );
-            core::ptr::write(boot_args_phys as *mut GspArgumentsCached, args);
+            core::ptr::write(rmargs_phys as *mut GspArgumentsCached, args);
+
+            // Build libos memory region array (nouveau format):
+            //   [0] = LOGINIT, [1] = LOGINTR, [2] = LOGRM, [3] = RMARGS
+            // MAILBOX0/1 → address of this array
+            use crate::drivers::gsp::boot_args::LibosMemoryRegionInitArgument;
+            let libos = libos_phys as *mut LibosMemoryRegionInitArgument;
+            let size_16_pages = 16 * PAGE_SIZE as u64;
+            *libos.add(0) = LibosMemoryRegionInitArgument::new("LOGINIT", loginit_phys, size_16_pages);
+            *libos.add(1) = LibosMemoryRegionInitArgument::new("LOGINTR", logintr_phys, size_16_pages);
+            *libos.add(2) = LibosMemoryRegionInitArgument::new("LOGRM",   logrm_phys,   size_16_pages);
+            *libos.add(3) = LibosMemoryRegionInitArgument::new("RMARGS",  rmargs_phys,  PAGE_SIZE as u64);
         }
 
-        con.print("  GSP: BootArgs=0x");
-        con.print_hex32(boot_args_phys as u32);
+        con.print("  GSP: Libos=0x");
+        con.print_hex32(libos_phys as u32);
+        con.print(" RMARGS=0x");
+        con.print_hex32(rmargs_phys as u32);
         con.print(" WprMeta=0x");
         con.print_hex32(wpr_meta_phys as u32);
         con.print(" SharedMem=0x");
         con.print_hex32(shared_mem_phys as u32);
         con.newline();
 
-        Ok(BootMem { boot_args_phys, wpr_meta_phys, shared_mem_phys })
+        // boot_args_phys = libos array address (goes into PGSP MAILBOX0/1)
+        Ok(BootMem { boot_args_phys: libos_phys, wpr_meta_phys, shared_mem_phys })
     }
 
     // ── Find ELF section by name (returns offset+size) ──
@@ -969,10 +1003,22 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(imem_load_size as u32);
         con.print(" DMEM=0x");
         con.print_hex32(dmem_load_size as u32);
+        con.print(" stored=0x");
+        con.print_hex32(stored_size as u32);
         con.print(" PKC=0x");
         con.print_hex32(pkc_data_offset);
         con.print(" iface=0x");
         con.print_hex32(iface_offset as u32);
+        con.newline();
+
+        // Dump raw descriptor first 44 bytes for debugging
+        con.print("  GSP: [FWSEC] desc_raw: ");
+        for i in 0..11 {
+            con.print_hex32(u32::from_le_bytes(
+                vbios[DESC_OFF + i*4..DESC_OFF + i*4 + 4].try_into().unwrap()
+            ));
+            con.print(" ");
+        }
         con.newline();
 
         // ── Allocate DMA bounce buffer for the flat image (IMEM+DMEM) ──
@@ -1003,6 +1049,29 @@ impl<'a> GspLoader<'a> {
         // InterfaceOffset is DMEM-relative; in the flat image it's at imem_load_size + iface_offset
         let dmem_base_img = imem_load_size;
         let hdr_off = dmem_base_img + iface_offset;
+
+        // Dump first 8 u32 of DMEM section in bounce buffer to verify copy
+        if dmem_load_size > 0 && dmem_base_img + 32 <= img_total {
+            con.print("  GSP: [FWSEC] DMEM[0..32]=");
+            for i in 0..8 {
+                con.print_hex32(u32::from_le_bytes(
+                    img_buf[dmem_base_img + i*4..dmem_base_img + i*4 + 4].try_into().unwrap()
+                ));
+                con.print(" ");
+            }
+            con.newline();
+            // Dump at iface_offset
+            if hdr_off + 16 <= img_total {
+                con.print("  GSP: [FWSEC] DMEM[iface+0..16]=");
+                for i in 0..4 {
+                    con.print_hex32(u32::from_le_bytes(
+                        img_buf[hdr_off + i*4..hdr_off + i*4 + 4].try_into().unwrap()
+                    ));
+                    con.print(" ");
+                }
+                con.newline();
+            }
+        }
 
         if hdr_off + 4 <= img_total {
             // AppIf header uses u8 fields: { version(u8), hdr_size(u8), entry_size(u8), count(u8) }
