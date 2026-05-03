@@ -946,39 +946,262 @@ impl<'a> GspLoader<'a> {
         if completed { Ok(()) } else { Err(GspLoadError::Sec2BootFailed) }
     }
 
+    /// Scan VBIOS BIT table for PMU entry with type=0x85 (FWSEC descriptor).
+    /// Nouveau: bit_entry(bios,'p') → nvbios_pmuTe → nvbios_pmuEp → type==0x85
+    fn find_fwsec_desc(vbios: &[u8], con: &mut Console) -> Option<usize> {
+        fn r8(d: &[u8], o: usize) -> u8 { if o < d.len() { d[o] } else { 0 } }
+        fn r16(d: &[u8], o: usize) -> u16 {
+            if o + 2 <= d.len() { u16::from_le_bytes([d[o], d[o+1]]) } else { 0 }
+        }
+        fn r32(d: &[u8], o: usize) -> u32 {
+            if o + 4 <= d.len() { u32::from_le_bytes([d[o], d[o+1], d[o+2], d[o+3]]) } else { 0 }
+        }
+
+        // 1. Scan for "BIT\0" signature
+        let mut bit_off: Option<usize> = None;
+        let scan_end = vbios.len().min(0x10_0000);
+        for i in 0..scan_end.saturating_sub(16) {
+            if vbios[i] == b'B' && vbios[i+1] == b'I' && vbios[i+2] == b'T' && vbios[i+3] == 0 {
+                bit_off = Some(i);
+                break;
+            }
+        }
+        let bit_off = bit_off?;
+
+        // ── Dump BIT header raw bytes (16 bytes) for diagnosis ──
+        con.print("  GSP: [FWSEC] BIT at 0x");
+        con.print_hex32(bit_off as u32);
+        con.print(" raw: ");
+        for i in 0..16 {
+            let b = r8(vbios, bit_off + i);
+            con.print_hex32(b as u32);
+            con.print(" ");
+        }
+        con.newline();
+
+        // BIT header layout (from nouveau bit.c):
+        //   +0: "BIT\0" (4 bytes)
+        //   +4: BCD version (2 bytes)
+        //   +6: header_size (1 byte)  ← NOT always 12!
+        //   +7: token_size (1 byte)
+        //   +8: token_count (1 byte)
+        //   +9: checksum (1 byte)
+        // Nouveau: hdr_size = byte[+9], token_size = byte[+9], entries = byte[+10]
+        // Wait - nouveau bit.c: entries=rd08(+10), entry starts at +12, token_size=rd08(+9)
+        // Let's read both possible layouts and pick the right one
+
+        // Layout A (nouveau bit.c): token_size=byte[9], entries=byte[10], first_entry=bit_off+12
+        let tok_size_a = r8(vbios, bit_off + 9) as usize;
+        let tok_cnt_a = r8(vbios, bit_off + 10) as usize;
+
+        // Layout B (standard BIT): hdr_size=byte[6], token_size=byte[7], token_count=byte[8]
+        let hdr_size_b = r8(vbios, bit_off + 6) as usize;
+        let tok_size_b = r8(vbios, bit_off + 7) as usize;
+        let tok_cnt_b = r8(vbios, bit_off + 8) as usize;
+
+        con.print("  GSP: [FWSEC] BIT layoutA: tok_sz=");
+        con.print_hex32(tok_size_a as u32);
+        con.print(" cnt=");
+        con.print_hex32(tok_cnt_a as u32);
+        con.print("  layoutB: hdr=");
+        con.print_hex32(hdr_size_b as u32);
+        con.print(" tok_sz=");
+        con.print_hex32(tok_size_b as u32);
+        con.print(" cnt=");
+        con.print_hex32(tok_cnt_b as u32);
+        con.newline();
+
+        // Pick whichever layout looks valid (token_size must be >= 6, count > 0)
+        let (token_size, entries, first_entry) = if tok_size_a >= 6 && tok_cnt_a > 0 && tok_cnt_a < 64 {
+            (tok_size_a, tok_cnt_a, bit_off + 12)
+        } else if tok_size_b >= 6 && tok_cnt_b > 0 && tok_cnt_b < 64 {
+            (tok_size_b, tok_cnt_b, bit_off + hdr_size_b)
+        } else {
+            con.println("  GSP: [FWSEC] ERROR — no valid BIT layout found");
+            return None;
+        };
+
+        con.print("  GSP: [FWSEC] Using: tok_sz=");
+        con.print_hex32(token_size as u32);
+        con.print(" entries=");
+        con.print_hex32(entries as u32);
+        con.print(" first@0x");
+        con.print_hex32(first_entry as u32);
+        con.newline();
+
+        // ── Dump ALL BIT token entries ──
+        con.println("  GSP: [FWSEC] BIT tokens:");
+        let mut pmu_table_off: Option<usize> = None;
+        for i in 0..entries {
+            let entry = first_entry + i * token_size;
+            if entry + 6 > vbios.len() { break; }
+            let id = r8(vbios, entry);
+            let version = r8(vbios, entry + 1);
+            let length = r16(vbios, entry + 2);
+            let offset = r16(vbios, entry + 4);
+
+            // Print: "    [XX] 'c' v=X len=XXXX off=XXXX"
+            con.print("    [");
+            con.print_hex32(i as u32);
+            con.print("] '");
+            if id >= 0x20 && id < 0x7F {
+                // printable ASCII
+                let ch = [id];
+                if let Ok(s) = core::str::from_utf8(&ch) { con.print(s); } else { con.print("?"); }
+            } else {
+                con.print_hex32(id as u32);
+            }
+            con.print("' v=");
+            con.print_hex32(version as u32);
+            con.print(" len=");
+            con.print_hex32(length as u32);
+            con.print(" off=");
+            con.print_hex32(offset as u32);
+            con.newline();
+
+            // Check for 'p' token (PMU table)
+            if id == b'p' && pmu_table_off.is_none() {
+                if length >= 4 {
+                    let data = r32(vbios, offset as usize) as usize;
+                    if data != 0 {
+                        pmu_table_off = Some(data);
+                        con.print("  GSP: [FWSEC]   → PMU table at 0x");
+                        con.print_hex32(data as u32);
+                        con.newline();
+                    }
+                }
+            }
+        }
+
+        // If no 'p' token found, try scanning for falcon ucode table via BIT 'F' token
+        // (some VBIOS use 'F' for falcon data instead of 'p' for PMU)
+        if pmu_table_off.is_none() {
+            con.println("  GSP: [FWSEC] No 'p' token — trying direct scan for desc type=0x85...");
+
+            // Fallback: brute-force scan VBIOS for v3 descriptor signature
+            // v3 desc: Hdr has bit 0 set, version byte = 3 (bits 8-15)
+            let scan_limit = vbios.len().saturating_sub(44);
+            for i in (0..scan_limit).step_by(4) {
+                let w = r32(vbios, i);
+                let ver = (w >> 8) & 0xFF;
+                let valid = w & 1;
+                let hdr_sz = (w >> 16) & 0xFFFF;
+                if valid == 1 && ver == 3 && hdr_sz > 0x20 && hdr_sz < 0x1000 {
+                    // Check if IMEMLoadSize looks reasonable (> 0x1000, < 0x20000)
+                    let imem_sz = r32(vbios, i + 20) as usize;
+                    let iface = r32(vbios, i + 12);
+                    let pkc = r32(vbios, i + 8);
+                    if imem_sz > 0x1000 && imem_sz < 0x20000 && iface < 0x1000 && pkc < 0x10000 {
+                        // Check EngineIdMask at +36 contains 0x400 (PGSP)
+                        let eng = r16(vbios, i + 36) as u32;
+                        if eng & 0x400 != 0 {
+                            con.print("  GSP: [FWSEC] Brute-force found v3 desc at 0x");
+                            con.print_hex32(i as u32);
+                            con.print(" IMEM=0x");
+                            con.print_hex32(imem_sz as u32);
+                            con.print(" eng=0x");
+                            con.print_hex32(eng);
+                            con.newline();
+                            return Some(i);
+                        }
+                    }
+                }
+            }
+        }
+
+        let pmu_off = match pmu_table_off {
+            Some(off) => off,
+            None => {
+                con.println("  GSP: [FWSEC] ERROR — no PMU table found");
+                return None;
+            }
+        };
+
+        // 3. PMU table: ver(1) + hdr_size(1) + entry_size(1) + entry_count(1)
+        let pmu_ver = r8(vbios, pmu_off) as usize;
+        let pmu_hdr = r8(vbios, pmu_off + 1) as usize;
+        let pmu_len = r8(vbios, pmu_off + 2) as usize;
+        let pmu_cnt = r8(vbios, pmu_off + 3) as usize;
+
+        con.print("  GSP: [FWSEC] PMU table: ver=");
+        con.print_hex32(pmu_ver as u32);
+        con.print(" hdr=");
+        con.print_hex32(pmu_hdr as u32);
+        con.print(" len=");
+        con.print_hex32(pmu_len as u32);
+        con.print(" cnt=");
+        con.print_hex32(pmu_cnt as u32);
+        con.newline();
+
+        // Dump raw PMU header bytes
+        con.print("  GSP: [FWSEC] PMU raw: ");
+        for i in 0..16.min(vbios.len() - pmu_off) {
+            con.print_hex32(r8(vbios, pmu_off + i) as u32);
+            con.print(" ");
+        }
+        con.newline();
+
+        if pmu_len < 3 {
+            con.println("  GSP: [FWSEC] ERROR — PMU entry_size too small");
+            return None;
+        }
+
+        // 4. Walk ALL PMU entries and dump them
+        con.println("  GSP: [FWSEC] PMU entries:");
+        for i in 0..pmu_cnt {
+            let e = pmu_off + pmu_hdr + i * pmu_len;
+            if e + pmu_len > vbios.len() { break; }
+            let etype = r8(vbios, e);
+            let edata = r32(vbios, e + 2) as usize;
+            con.print("    [");
+            con.print_hex32(i as u32);
+            con.print("] type=0x");
+            con.print_hex32(etype as u32);
+            con.print(" data=0x");
+            con.print_hex32(edata as u32);
+            con.newline();
+
+            if etype == 0x85 && edata != 0 {
+                con.print("  GSP: [FWSEC] ★ Found type=0x85 desc at 0x");
+                con.print_hex32(edata as u32);
+                con.newline();
+                return Some(edata);
+            }
+        }
+
+        con.println("  GSP: [FWSEC] ERROR — type=0x85 not found in PMU table");
+        None
+    }
+
     /// Run FWSEC-FRTS on PGSP Falcon to set up WPR2 before booter_load.
     ///
     /// Follows nouveau's GA10x path: fwsec.c → ga102.c → ga102_flcn_dma
-    ///
-    /// GA106 RTX 3060 LHR VBIOS (type=0x85) descriptor at SPI 0x4A410:
-    ///   hdr_size=0x4AC, ver=3, StoredSize=0xEA00
-    ///   IMEM: 57,856 bytes @ desc+hdr_size (SPI 0x4A8BC)
-    ///   DMEM:  2,048 bytes @ IMEM end (SPI 0x58ABC)
-    ///   InterfaceOffset=0x1C, PKCDataOffset=0x5A4
-    ///   EngineIdMask=0x400, UcodeId=9, SigCount=3, SigVersions=0x7
-    ///   Sigs at desc+0x2C (SPI 0x4A43C), 384 bytes each
+    /// Descriptor is found dynamically via BIT → PMU table → type=0x85
     fn fwsec_frts(&self, vbios: &[u8], frts_offset: u64, con: &mut Console) -> Result<(), GspLoadError> {
-        // ── Parse FWSEC v3 descriptor from VBIOS ──
-        const DESC_OFF: usize = 0x4A410;
+        // ── Find FWSEC v3 descriptor dynamically from VBIOS BIT table ──
+        let desc_off = Self::find_fwsec_desc(vbios, con).ok_or_else(|| {
+            con.println("  GSP: [FWSEC] ERROR — cannot find FWSEC descriptor in VBIOS");
+            GspLoadError::FwsecFailed
+        })?;
 
-        if DESC_OFF + 44 > vbios.len() {
+        if desc_off + 44 > vbios.len() {
             con.println("  GSP: [FWSEC] ERROR — descriptor past VBIOS");
             return Err(GspLoadError::FwsecFailed);
         }
 
-        let hdr = u32::from_le_bytes(vbios[DESC_OFF..DESC_OFF+4].try_into().unwrap());
+        let hdr = u32::from_le_bytes(vbios[desc_off..desc_off+4].try_into().unwrap());
         let hdr_size = ((hdr >> 16) & 0xFFFF) as usize;
-        let stored_size = u32::from_le_bytes(vbios[DESC_OFF+4..DESC_OFF+8].try_into().unwrap()) as usize;
-        let pkc_data_offset = u32::from_le_bytes(vbios[DESC_OFF+8..DESC_OFF+12].try_into().unwrap());
-        let iface_offset = u32::from_le_bytes(vbios[DESC_OFF+12..DESC_OFF+16].try_into().unwrap()) as usize;
-        let imem_phys_base = u32::from_le_bytes(vbios[DESC_OFF+16..DESC_OFF+20].try_into().unwrap());
-        let imem_load_size = u32::from_le_bytes(vbios[DESC_OFF+20..DESC_OFF+24].try_into().unwrap()) as usize;
-        let dmem_phys_base = u32::from_le_bytes(vbios[DESC_OFF+28..DESC_OFF+32].try_into().unwrap());
-        let dmem_load_size = u32::from_le_bytes(vbios[DESC_OFF+32..DESC_OFF+36].try_into().unwrap()) as usize;
-        let engine_id_mask = u16::from_le_bytes(vbios[DESC_OFF+36..DESC_OFF+38].try_into().unwrap()) as u32;
-        let ucode_id = vbios[DESC_OFF + 38] as u32;
-        let sig_count = vbios[DESC_OFF + 39] as usize;
-        let sig_versions = u16::from_le_bytes(vbios[DESC_OFF+40..DESC_OFF+42].try_into().unwrap()) as u32;
+        let stored_size = u32::from_le_bytes(vbios[desc_off+4..desc_off+8].try_into().unwrap()) as usize;
+        let pkc_data_offset = u32::from_le_bytes(vbios[desc_off+8..desc_off+12].try_into().unwrap());
+        let iface_offset = u32::from_le_bytes(vbios[desc_off+12..desc_off+16].try_into().unwrap()) as usize;
+        let imem_phys_base = u32::from_le_bytes(vbios[desc_off+16..desc_off+20].try_into().unwrap());
+        let imem_load_size = u32::from_le_bytes(vbios[desc_off+20..desc_off+24].try_into().unwrap()) as usize;
+        let dmem_phys_base = u32::from_le_bytes(vbios[desc_off+28..desc_off+32].try_into().unwrap());
+        let dmem_load_size = u32::from_le_bytes(vbios[desc_off+32..desc_off+36].try_into().unwrap()) as usize;
+        let engine_id_mask = u16::from_le_bytes(vbios[desc_off+36..desc_off+38].try_into().unwrap()) as u32;
+        let ucode_id = vbios[desc_off + 38] as u32;
+        let sig_count = vbios[desc_off + 39] as usize;
+        let sig_versions = u16::from_le_bytes(vbios[desc_off+40..desc_off+42].try_into().unwrap()) as u32;
 
         // DMEM must be 256-byte aligned for DMA
         // Fallback: if descriptor says dmem=0, compute from stored_size
@@ -990,7 +1213,7 @@ impl<'a> GspLoader<'a> {
         let dmem_size_aligned = (dmem_load_size + 255) & !255;
 
         // Flat image: IMEM+DMEM starts at desc + hdr_size
-        let img_start = DESC_OFF + hdr_size;
+        let img_start = desc_off + hdr_size;
         let img_total = imem_load_size + dmem_size_aligned;
 
         if img_start + imem_load_size + dmem_load_size > vbios.len() {
@@ -999,27 +1222,33 @@ impl<'a> GspLoader<'a> {
         }
 
         con.println("  GSP: [FWSEC] Loading FWSEC-FRTS from VBIOS...");
-        con.print("  GSP: [FWSEC] IMEM=0x");
+        con.print("  GSP: [FWSEC] desc_off=0x");
+        con.print_hex32(desc_off as u32);
+        con.print(" IMEM=0x");
         con.print_hex32(imem_load_size as u32);
         con.print(" DMEM=0x");
         con.print_hex32(dmem_load_size as u32);
         con.print(" stored=0x");
         con.print_hex32(stored_size as u32);
-        con.print(" PKC=0x");
+        con.newline();
+        con.print("  GSP: [FWSEC] PKC=0x");
         con.print_hex32(pkc_data_offset);
         con.print(" iface=0x");
         con.print_hex32(iface_offset as u32);
+        con.print(" hdr_size=0x");
+        con.print_hex32(hdr_size as u32);
         con.newline();
 
         // Dump raw descriptor first 44 bytes for debugging
         con.print("  GSP: [FWSEC] desc_raw: ");
         for i in 0..11 {
             con.print_hex32(u32::from_le_bytes(
-                vbios[DESC_OFF + i*4..DESC_OFF + i*4 + 4].try_into().unwrap()
+                vbios[desc_off + i*4..desc_off + i*4 + 4].try_into().unwrap()
             ));
             con.print(" ");
         }
         con.newline();
+
 
         // ── Allocate DMA bounce buffer for the flat image (IMEM+DMEM) ──
         let img_pages = (img_total + PAGE_SIZE - 1) / PAGE_SIZE;
@@ -1185,7 +1414,7 @@ impl<'a> GspLoader<'a> {
         }
 
         // Signatures are at desc + 0x2C in VBIOS, 384 bytes each
-        let sig_src_off = DESC_OFF + 0x2C + sig_idx * 384;
+        let sig_src_off = desc_off + 0x2C + sig_idx * 384;
         // Destination in flat image: dmem_base_img + PKCDataOffset
         let sig_dst_off = dmem_base_img + pkc_data_offset as usize;
 
