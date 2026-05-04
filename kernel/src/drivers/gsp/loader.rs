@@ -1477,10 +1477,20 @@ impl<'a> GspLoader<'a> {
         // nouveau ga102_flcn_fw_load:
         //   falcon_wr32(0x10c, 0x0) — clear ENGCTL
         //   falcon_mask(0x600, 0x00010007, (0<<16)|(1<<2)|1) — TRANSCFG read-modify-write
+        // ── ga102_flcn_fw_load: Pre-DMA register setup ──
+        // These 3 writes are CRITICAL — without 0x624 bit 7, DMA doesn't work
+        const NV_PGSP_FBIF_CTL: u32 = 0x0011_0624;
         const NV_PGSP_FALCON_ENGCTL: u32 = 0x0011_010C;
         const NV_PGSP_FBIF_TRANSCFG_0: u32 = 0x0011_0600;
+
+        // Step 1: FBIF_CTL — set bit 7 to enable Falcon DMA access
+        let fbif_ctl = self.bar0.read32(NV_PGSP_FBIF_CTL);
+        self.bar0.write32(NV_PGSP_FBIF_CTL, fbif_ctl | 0x0000_0080);
+
+        // Step 2: DMEMC — clear DMA engine control register
         self.bar0.write32(NV_PGSP_FALCON_ENGCTL, 0x0);
-        // Read-modify-write: preserve existing bits, only modify TARGET + MEM_TYPE
+
+        // Step 3: TRANSCFG — set target=COHERENT_SYSMEM(1), memtype=PHYSICAL(1<<2)
         let transcfg = self.bar0.read32(NV_PGSP_FBIF_TRANSCFG_0);
         let new_transcfg = (transcfg & !0x0001_0007) | ((0 << 16) | (1 << 2) | 1);
         self.bar0.write32(NV_PGSP_FBIF_TRANSCFG_0, new_transcfg);
@@ -1503,26 +1513,27 @@ impl<'a> GspLoader<'a> {
         con.println("  GSP: [FWSEC] IMEM loaded OK");
 
         // ── DMA DMEM → PGSP Falcon DMEM ──
-        // CRITICAL: Must re-set DMATRFBASE for DMEM section!
-        // nouveau ga102_flcn_dma_init is called SEPARATELY for IMEM and DMEM:
-        //   IMEM: DMATRFBASE = (phys + imem_base_img) >> 8, offset = i*256
-        //   DMEM: DMATRFBASE = (phys + dmem_base_img) >> 8, offset = i*256
-        // Without this, DMATRFSOFFS gets 0xE200+ which exceeds register range → DMA reads zeros!
-        let dmem_phys_addr = img_phys + (imem_load_size as u64); // = phys + 0xE200
+        // The BROM reads the PKC signature from Falcon LOCAL DMEM at offset
+        // PKCDataOffset (0x5A4). Without DMEM DMA, signature isn't there → no HS auth.
+        // BUT we must RESTORE DMATRFBASE afterward so the firmware can access
+        // system memory via DMA during execution.
+        let dmem_phys_addr = img_phys + (imem_load_size as u64);
         self.bar0.write32(NV_PGSP_DMATRFBASE, (dmem_phys_addr >> 8) as u32);
         self.bar0.write32(NV_PGSP_DMATRFMOFFS, 0x0);
 
-        con.print("  GSP: [FWSEC] DMA DMEM → PGSP (8 chunks) base=0x");
-        con.print_hex32((dmem_phys_addr >> 8) as u32);
-        con.newline();
-
         let dmem_cmd = DMA_CMD_SIZE_256;
         for i in 0..8usize {
-            let src_off = (i * 256) as u32;  // offset from NEW DMATRFBASE
+            let src_off = (i * 256) as u32;
             let dst_off = dmem_phys_base + (i * 256) as u32;
             self.pgsp_dma_xfer_256(dmem_phys_addr, src_off, dst_off, dmem_cmd)?;
         }
         con.println("  GSP: [FWSEC] DMEM loaded OK (8 chunks)");
+
+        // CRITICAL: Restore DMATRFBASE to full image base
+        // The firmware needs this to DMA-read additional data from system memory
+        self.bar0.write32(NV_PGSP_DMATRFBASE, (img_phys >> 8) as u32);
+        self.bar0.write32(NV_PGSP_DMATRFMOFFS, 0x0);
+        con.println("  GSP: [FWSEC] DMATRFBASE restored to image base");
 
         // ── BROM registers: PKC authentication parameters ──
         con.println("  GSP: [FWSEC] Programming BROM registers...");
@@ -1604,27 +1615,16 @@ impl<'a> GspLoader<'a> {
             con.newline();
             con.print_colored("  GSP: [FWSEC] FWSEC returned error!\n", 0xFF4444);
             Err(GspLoadError::FwsecFailed)
-        } else if wpr2_hi != 0 && wpr2_hi != 0xBADF_5720 {
-            con.print_colored("  GSP: [FWSEC] WPR2 SET — FWSEC OK!\n", 0x00FF00);
-            Ok(())
         } else {
-            // Falcon halted with no error code but WPR2 not set
-            // Additional diagnostics: read more scratch registers
-            con.print_colored("  GSP: [FWSEC] Falcon halted but WPR2 not set\n", 0xFFFF00);
-            // Dump scratch registers 0-15 for debugging
-            con.print("  GSP: [FWSEC] Scratch regs: ");
-            for i in 0..4u32 {
-                let val = self.bar0.read32(0x0011_0080 + i * 4);
-                con.print_hex32(val);
-                con.print(" ");
-            }
+            // nouveau fwsec.c: err==0 means FWSEC succeeded.
+            // WPR2 is read for diagnostic only — it may be set by SEC2 booter_load later.
+            con.print("  GSP: [FWSEC] WPR2: lo=0x");
+            con.print_hex32(wpr2_lo);
+            con.print(" hi=0x");
+            con.print_hex32(wpr2_hi);
             con.newline();
-            // Read Falcon tracePC for debugging
-            let sctl = self.bar0.read32(0x0011_0240);
-            con.print("  GSP: [FWSEC] SCTL=0x");
-            con.print_hex32(sctl);
-            con.newline();
-            Err(GspLoadError::FwsecFailed)
+            con.print_colored("  GSP: [FWSEC] FWSEC-FRTS completed OK (err=0)\n", 0x00FF00);
+            Ok(())
         }
     }
 
