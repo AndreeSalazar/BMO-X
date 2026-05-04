@@ -1096,13 +1096,13 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(dmem_load_size as u32);
         con.newline();
 
-        let dmem_size_aligned = (dmem_load_size + 255) & !255;
+        let dmem_size_aligned = 0x800usize; // HARDCODE: matches dmem_load_size
 
         // Flat image: IMEM+DMEM starts at desc + hdr_size
         let img_start = desc_off + hdr_size;
-        let img_total = imem_load_size + dmem_size_aligned;
+        let img_total = imem_load_size + 0x800usize; // HARDCODE: 0xE200 + 0x800 = 0xEA00
 
-        if img_start + imem_load_size + dmem_load_size > vbios.len() {
+        if img_start + imem_load_size + 0x800 > vbios.len() {
             con.println("  GSP: [FWSEC] ERROR — ucode extends past VBIOS");
             return Err(GspLoadError::FwsecFailed);
         }
@@ -1145,6 +1145,20 @@ impl<'a> GspLoader<'a> {
             crate::arch::page_alloc::alloc_pages_contiguous(img_pages)
         }.ok_or(GspLoadError::PageAllocFailed)?;
 
+        // Verify VBIOS source has DMEM data BEFORE copy
+        let dmem_vbios_off = img_start + imem_load_size;
+        con.print("  GSP: [FWSEC] VBIOS DMEM src[0..16]@0x");
+        con.print_hex32(dmem_vbios_off as u32);
+        con.print(": ");
+        for i in 0..4 {
+            let b = u32::from_le_bytes(
+                vbios[dmem_vbios_off + i*4..dmem_vbios_off + i*4 + 4].try_into().unwrap()
+            );
+            con.print_hex32(b);
+            con.print(" ");
+        }
+        con.newline();
+
         unsafe {
             core::ptr::write_bytes(img_phys as *mut u8, 0, img_pages * PAGE_SIZE);
             // Copy IMEM
@@ -1153,13 +1167,30 @@ impl<'a> GspLoader<'a> {
                 img_phys as *mut u8,
                 imem_load_size,
             );
-            // Copy DMEM (right after IMEM in flat buffer)
-            core::ptr::copy_nonoverlapping(
-                vbios.as_ptr().add(img_start + imem_load_size),
-                (img_phys as *mut u8).add(imem_load_size),
-                dmem_load_size,
-            );
+            // Copy DMEM byte-by-byte to defeat optimizer
+            let dst = img_phys as *mut u8;
+            let src = vbios.as_ptr().add(dmem_vbios_off);
+            for i in 0..0x800usize {
+                core::ptr::write_volatile(dst.add(imem_load_size + i), *src.add(i));
+            }
         }
+
+        // Verify bounce buffer after copy
+        con.print("  GSP: [FWSEC] Bounce DMEM[0..16]: ");
+        let check_ptr = (img_phys + imem_load_size as u64) as *const u8;
+        for i in 0..4 {
+            let val = unsafe {
+                u32::from_le_bytes([
+                    core::ptr::read_volatile(check_ptr.add(i*4)),
+                    core::ptr::read_volatile(check_ptr.add(i*4+1)),
+                    core::ptr::read_volatile(check_ptr.add(i*4+2)),
+                    core::ptr::read_volatile(check_ptr.add(i*4+3)),
+                ])
+            };
+            con.print_hex32(val);
+            con.print(" ");
+        }
+        con.newline();
 
         let img_buf = unsafe { core::slice::from_raw_parts_mut(img_phys as *mut u8, img_total) };
 
@@ -1209,16 +1240,21 @@ impl<'a> GspLoader<'a> {
             con.newline();
 
             // Walk app interface entries looking for DMEMMAPPER (id=0x4)
+            // nouveau: nvfw_falcon_appif { u32 id; u32 dmem_base; }
+            // Entry stride = hdr->v1.len (if 0, default to 8 for the v1 struct)
+            let entry_stride = if appif_len > 0 { appif_len } else { 8 };
             for i in 0..appif_count {
-                let entry_off = hdr_off + appif_hdr_size + i * appif_len;
+                let entry_off = hdr_off + appif_hdr_size + i * entry_stride;
                 if entry_off + 8 > img_total { break; }
 
-                let app_id = u16::from_le_bytes([img_buf[entry_off], img_buf[entry_off + 1]]);
+                let app_id = u32::from_le_bytes(
+                    img_buf[entry_off..entry_off + 4].try_into().unwrap()
+                );
                 let dmem_base_entry = u32::from_le_bytes(
                     img_buf[entry_off + 4..entry_off + 8].try_into().unwrap()
                 ) as usize;
 
-                if app_id == 0x4 {
+                if app_id == 0x00000004u32 {
                     // Found DMEMMAPPER — it starts with "DMAP" magic at dmem_base_entry
                     let mapper_off = dmem_base_img + dmem_base_entry;
                     con.print("  GSP: [FWSEC] DMEMMAPPER at DMEM+0x");
@@ -1467,22 +1503,24 @@ impl<'a> GspLoader<'a> {
         con.println("  GSP: [FWSEC] IMEM loaded OK");
 
         // ── DMA DMEM → PGSP Falcon DMEM ──
-        // HARDCODED: 0x800 bytes / 256 = 8 chunks
-        // All intermediate variable computations were producing 0 due to optimizer.
-        // Using literals directly.
-        con.print("  GSP: [FWSEC] DMA DMEM → PGSP (8 chunks, 0x800 bytes)");
-        con.print(" dmem_base_img=0x");
-        con.print_hex32(dmem_base_img as u32);
+        // CRITICAL: Must re-set DMATRFBASE for DMEM section!
+        // nouveau ga102_flcn_dma_init is called SEPARATELY for IMEM and DMEM:
+        //   IMEM: DMATRFBASE = (phys + imem_base_img) >> 8, offset = i*256
+        //   DMEM: DMATRFBASE = (phys + dmem_base_img) >> 8, offset = i*256
+        // Without this, DMATRFSOFFS gets 0xE200+ which exceeds register range → DMA reads zeros!
+        let dmem_phys_addr = img_phys + (imem_load_size as u64); // = phys + 0xE200
+        self.bar0.write32(NV_PGSP_DMATRFBASE, (dmem_phys_addr >> 8) as u32);
+        self.bar0.write32(NV_PGSP_DMATRFMOFFS, 0x0);
+
+        con.print("  GSP: [FWSEC] DMA DMEM → PGSP (8 chunks) base=0x");
+        con.print_hex32((dmem_phys_addr >> 8) as u32);
         con.newline();
 
         let dmem_cmd = DMA_CMD_SIZE_256;
-        // dmem_base_img = imem_load_size = 0xE200 (where DMEM starts in flat image)
-        // dmem_phys_base = 0 (destination in Falcon DMEM)
-        let i_dmem_base = imem_load_size; // should be 0xE200
         for i in 0..8usize {
-            let src_off = (i_dmem_base + i * 256) as u32;
+            let src_off = (i * 256) as u32;  // offset from NEW DMATRFBASE
             let dst_off = dmem_phys_base + (i * 256) as u32;
-            self.pgsp_dma_xfer_256(img_phys, src_off, dst_off, dmem_cmd)?;
+            self.pgsp_dma_xfer_256(dmem_phys_addr, src_off, dst_off, dmem_cmd)?;
         }
         con.println("  GSP: [FWSEC] DMEM loaded OK (8 chunks)");
 
