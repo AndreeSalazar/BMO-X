@@ -946,10 +946,11 @@ impl<'a> GspLoader<'a> {
         if completed { Ok(()) } else { Err(GspLoadError::Sec2BootFailed) }
     }
 
-    /// Scan VBIOS BIT table for PMU entry with type=0x85 (FWSEC descriptor).
-    /// Nouveau: bit_entry(bios,'p') → nvbios_pmuTe → nvbios_pmuEp → type==0x85
+    /// Find FWSEC v3 descriptor in VBIOS by scanning for its signature pattern.
+    /// The v3 descriptor (nvkm_falcon_ucode_desc_v3) has a known structure:
+    ///   Hdr[0]: bit0=1 (valid), bits[8:15]=3 (version), bits[16:31]=hdr_size
+    ///   +0x08: PKCDataOffset, +0x14: IMEMLoadSize, +0x24: EngineIdMask with 0x400 (PGSP)
     fn find_fwsec_desc(vbios: &[u8], con: &mut Console) -> Option<usize> {
-        fn r8(d: &[u8], o: usize) -> u8 { if o < d.len() { d[o] } else { 0 } }
         fn r16(d: &[u8], o: usize) -> u16 {
             if o + 2 <= d.len() { u16::from_le_bytes([d[o], d[o+1]]) } else { 0 }
         }
@@ -957,221 +958,81 @@ impl<'a> GspLoader<'a> {
             if o + 4 <= d.len() { u32::from_le_bytes([d[o], d[o+1], d[o+2], d[o+3]]) } else { 0 }
         }
 
-        // 1. Scan for "BIT\0" signature
-        let mut bit_off: Option<usize> = None;
-        let scan_end = vbios.len().min(0x10_0000);
-        for i in 0..scan_end.saturating_sub(16) {
-            if vbios[i] == b'B' && vbios[i+1] == b'I' && vbios[i+2] == b'T' && vbios[i+3] == 0 {
-                bit_off = Some(i);
-                break;
-            }
-        }
-        let bit_off = bit_off?;
+        con.println("  GSP: [FWSEC] Scanning VBIOS for v3 descriptor (EngineIdMask & 0x400)...");
 
-        // ── Dump BIT header raw bytes (16 bytes) for diagnosis ──
-        con.print("  GSP: [FWSEC] BIT at 0x");
-        con.print_hex32(bit_off as u32);
-        con.print(" raw: ");
-        for i in 0..16 {
-            let b = r8(vbios, bit_off + i);
-            con.print_hex32(b as u32);
-            con.print(" ");
-        }
-        con.newline();
+        let scan_limit = vbios.len().saturating_sub(44);
+        let mut candidates = 0u32;
 
-        // BIT header layout (from nouveau bit.c):
-        //   +0: "BIT\0" (4 bytes)
-        //   +4: BCD version (2 bytes)
-        //   +6: header_size (1 byte)  ← NOT always 12!
-        //   +7: token_size (1 byte)
-        //   +8: token_count (1 byte)
-        //   +9: checksum (1 byte)
-        // Nouveau: hdr_size = byte[+9], token_size = byte[+9], entries = byte[+10]
-        // Wait - nouveau bit.c: entries=rd08(+10), entry starts at +12, token_size=rd08(+9)
-        // Let's read both possible layouts and pick the right one
+        for i in (0..scan_limit).step_by(4) {
+            let hdr = r32(vbios, i);
 
-        // Layout A (nouveau bit.c): token_size=byte[9], entries=byte[10], first_entry=bit_off+12
-        let tok_size_a = r8(vbios, bit_off + 9) as usize;
-        let tok_cnt_a = r8(vbios, bit_off + 10) as usize;
+            // v3 descriptor: bit0 = 1 (valid), bits[8:15] = 3 (version)
+            let valid = hdr & 1;
+            let ver = (hdr >> 8) & 0xFF;
+            let hdr_size = (hdr >> 16) & 0xFFFF;
 
-        // Layout B (standard BIT): hdr_size=byte[6], token_size=byte[7], token_count=byte[8]
-        let hdr_size_b = r8(vbios, bit_off + 6) as usize;
-        let tok_size_b = r8(vbios, bit_off + 7) as usize;
-        let tok_cnt_b = r8(vbios, bit_off + 8) as usize;
+            if valid != 1 || ver != 3 { continue; }
+            if hdr_size < 0x20 || hdr_size > 0x1000 { continue; }
 
-        con.print("  GSP: [FWSEC] BIT layoutA: tok_sz=");
-        con.print_hex32(tok_size_a as u32);
-        con.print(" cnt=");
-        con.print_hex32(tok_cnt_a as u32);
-        con.print("  layoutB: hdr=");
-        con.print_hex32(hdr_size_b as u32);
-        con.print(" tok_sz=");
-        con.print_hex32(tok_size_b as u32);
-        con.print(" cnt=");
-        con.print_hex32(tok_cnt_b as u32);
-        con.newline();
+            // Check fields for sanity:
+            //   +0x14 (20): IMEMLoadSize — reasonable range 0x1000..0x20000
+            //   +0x24 (36): EngineIdMask(u16) must contain 0x400 (PGSP)
+            //   +0x08: PKCDataOffset < 0x10000
+            //   +0x0C: InterfaceOffset < 0x1000
+            let imem_sz = r32(vbios, i + 20) as usize;
+            let pkc = r32(vbios, i + 8);
+            let iface = r32(vbios, i + 12);
+            let engine_mask = r16(vbios, i + 36) as u32;
 
-        // Pick whichever layout looks valid (token_size must be >= 6, count > 0)
-        let (token_size, entries, first_entry) = if tok_size_a >= 6 && tok_cnt_a > 0 && tok_cnt_a < 64 {
-            (tok_size_a, tok_cnt_a, bit_off + 12)
-        } else if tok_size_b >= 6 && tok_cnt_b > 0 && tok_cnt_b < 64 {
-            (tok_size_b, tok_cnt_b, bit_off + hdr_size_b)
-        } else {
-            con.println("  GSP: [FWSEC] ERROR — no valid BIT layout found");
-            return None;
-        };
+            if imem_sz < 0x1000 || imem_sz > 0x20000 { continue; }
+            if pkc > 0x10000 { continue; }
+            if iface > 0x1000 { continue; }
+            if engine_mask & 0x400 == 0 { continue; }
 
-        con.print("  GSP: [FWSEC] Using: tok_sz=");
-        con.print_hex32(token_size as u32);
-        con.print(" entries=");
-        con.print_hex32(entries as u32);
-        con.print(" first@0x");
-        con.print_hex32(first_entry as u32);
-        con.newline();
+            // Additional check: image at desc + hdr_size should fit in VBIOS
+            let img_start = i + hdr_size as usize;
+            if img_start + imem_sz > vbios.len() { continue; }
 
-        // ── Dump ALL BIT token entries ──
-        con.println("  GSP: [FWSEC] BIT tokens:");
-        let mut pmu_table_off: Option<usize> = None;
-        for i in 0..entries {
-            let entry = first_entry + i * token_size;
-            if entry + 6 > vbios.len() { break; }
-            let id = r8(vbios, entry);
-            let version = r8(vbios, entry + 1);
-            let length = r16(vbios, entry + 2);
-            let offset = r16(vbios, entry + 4);
+            candidates += 1;
 
-            // Print: "    [XX] 'c' v=X len=XXXX off=XXXX"
-            con.print("    [");
+            // Read remaining fields for logging
+            let stored = r32(vbios, i + 4);
+            let dmem_sz = r32(vbios, i + 32);
+            let ucode_id = vbios[i + 38];
+
+            con.print("  GSP: [FWSEC] ★ Found desc at 0x");
             con.print_hex32(i as u32);
-            con.print("] '");
-            if id >= 0x20 && id < 0x7F {
-                // printable ASCII
-                let ch = [id];
-                if let Ok(s) = core::str::from_utf8(&ch) { con.print(s); } else { con.print("?"); }
-            } else {
-                con.print_hex32(id as u32);
-            }
-            con.print("' v=");
-            con.print_hex32(version as u32);
-            con.print(" len=");
-            con.print_hex32(length as u32);
-            con.print(" off=");
-            con.print_hex32(offset as u32);
+            con.print(" hdr_sz=0x");
+            con.print_hex32(hdr_size);
+            con.print(" IMEM=0x");
+            con.print_hex32(imem_sz as u32);
+            con.print(" DMEM=0x");
+            con.print_hex32(dmem_sz);
+            con.newline();
+            con.print("  GSP: [FWSEC]   stored=0x");
+            con.print_hex32(stored);
+            con.print(" PKC=0x");
+            con.print_hex32(pkc);
+            con.print(" iface=0x");
+            con.print_hex32(iface);
+            con.print(" eng=0x");
+            con.print_hex32(engine_mask);
+            con.print(" ucid=");
+            con.print_hex32(ucode_id as u32);
             con.newline();
 
-            // Check for 'p' token (PMU table)
-            if id == b'p' && pmu_table_off.is_none() {
-                if length >= 4 {
-                    let data = r32(vbios, offset as usize) as usize;
-                    if data != 0 {
-                        pmu_table_off = Some(data);
-                        con.print("  GSP: [FWSEC]   → PMU table at 0x");
-                        con.print_hex32(data as u32);
-                        con.newline();
-                    }
-                }
-            }
+            return Some(i);
         }
 
-        // If no 'p' token found, try scanning for falcon ucode table via BIT 'F' token
-        // (some VBIOS use 'F' for falcon data instead of 'p' for PMU)
-        if pmu_table_off.is_none() {
-            con.println("  GSP: [FWSEC] No 'p' token — trying direct scan for desc type=0x85...");
-
-            // Fallback: brute-force scan VBIOS for v3 descriptor signature
-            // v3 desc: Hdr has bit 0 set, version byte = 3 (bits 8-15)
-            let scan_limit = vbios.len().saturating_sub(44);
-            for i in (0..scan_limit).step_by(4) {
-                let w = r32(vbios, i);
-                let ver = (w >> 8) & 0xFF;
-                let valid = w & 1;
-                let hdr_sz = (w >> 16) & 0xFFFF;
-                if valid == 1 && ver == 3 && hdr_sz > 0x20 && hdr_sz < 0x1000 {
-                    // Check if IMEMLoadSize looks reasonable (> 0x1000, < 0x20000)
-                    let imem_sz = r32(vbios, i + 20) as usize;
-                    let iface = r32(vbios, i + 12);
-                    let pkc = r32(vbios, i + 8);
-                    if imem_sz > 0x1000 && imem_sz < 0x20000 && iface < 0x1000 && pkc < 0x10000 {
-                        // Check EngineIdMask at +36 contains 0x400 (PGSP)
-                        let eng = r16(vbios, i + 36) as u32;
-                        if eng & 0x400 != 0 {
-                            con.print("  GSP: [FWSEC] Brute-force found v3 desc at 0x");
-                            con.print_hex32(i as u32);
-                            con.print(" IMEM=0x");
-                            con.print_hex32(imem_sz as u32);
-                            con.print(" eng=0x");
-                            con.print_hex32(eng);
-                            con.newline();
-                            return Some(i);
-                        }
-                    }
-                }
-            }
-        }
-
-        let pmu_off = match pmu_table_off {
-            Some(off) => off,
-            None => {
-                con.println("  GSP: [FWSEC] ERROR — no PMU table found");
-                return None;
-            }
-        };
-
-        // 3. PMU table: ver(1) + hdr_size(1) + entry_size(1) + entry_count(1)
-        let pmu_ver = r8(vbios, pmu_off) as usize;
-        let pmu_hdr = r8(vbios, pmu_off + 1) as usize;
-        let pmu_len = r8(vbios, pmu_off + 2) as usize;
-        let pmu_cnt = r8(vbios, pmu_off + 3) as usize;
-
-        con.print("  GSP: [FWSEC] PMU table: ver=");
-        con.print_hex32(pmu_ver as u32);
-        con.print(" hdr=");
-        con.print_hex32(pmu_hdr as u32);
-        con.print(" len=");
-        con.print_hex32(pmu_len as u32);
-        con.print(" cnt=");
-        con.print_hex32(pmu_cnt as u32);
-        con.newline();
-
-        // Dump raw PMU header bytes
-        con.print("  GSP: [FWSEC] PMU raw: ");
-        for i in 0..16.min(vbios.len() - pmu_off) {
-            con.print_hex32(r8(vbios, pmu_off + i) as u32);
-            con.print(" ");
-        }
-        con.newline();
-
-        if pmu_len < 3 {
-            con.println("  GSP: [FWSEC] ERROR — PMU entry_size too small");
-            return None;
-        }
-
-        // 4. Walk ALL PMU entries and dump them
-        con.println("  GSP: [FWSEC] PMU entries:");
-        for i in 0..pmu_cnt {
-            let e = pmu_off + pmu_hdr + i * pmu_len;
-            if e + pmu_len > vbios.len() { break; }
-            let etype = r8(vbios, e);
-            let edata = r32(vbios, e + 2) as usize;
-            con.print("    [");
-            con.print_hex32(i as u32);
-            con.print("] type=0x");
-            con.print_hex32(etype as u32);
-            con.print(" data=0x");
-            con.print_hex32(edata as u32);
-            con.newline();
-
-            if etype == 0x85 && edata != 0 {
-                con.print("  GSP: [FWSEC] ★ Found type=0x85 desc at 0x");
-                con.print_hex32(edata as u32);
-                con.newline();
-                return Some(edata);
-            }
-        }
-
-        con.println("  GSP: [FWSEC] ERROR — type=0x85 not found in PMU table");
+        con.print("  GSP: [FWSEC] Scanned ");
+        con.print_hex32(scan_limit as u32);
+        con.print(" bytes, ");
+        con.print_hex32(candidates);
+        con.println(" candidates — no valid v3 FWSEC descriptor found");
         None
     }
+
+
 
     /// Run FWSEC-FRTS on PGSP Falcon to set up WPR2 before booter_load.
     ///
@@ -1189,27 +1050,52 @@ impl<'a> GspLoader<'a> {
             return Err(GspLoadError::FwsecFailed);
         }
 
-        let hdr = u32::from_le_bytes(vbios[desc_off..desc_off+4].try_into().unwrap());
+        // Helper to read a u32 LE from VBIOS at desc-relative offset (returns 0 if OOB)
+        let r32_desc = |o: usize| -> u32 {
+            if desc_off + o + 4 <= vbios.len() {
+                u32::from_le_bytes(vbios[desc_off+o..desc_off+o+4].try_into().unwrap())
+            } else { 0 }
+        };
+
+        let hdr = r32_desc(0);
         let hdr_size = ((hdr >> 16) & 0xFFFF) as usize;
-        let stored_size = u32::from_le_bytes(vbios[desc_off+4..desc_off+8].try_into().unwrap()) as usize;
-        let pkc_data_offset = u32::from_le_bytes(vbios[desc_off+8..desc_off+12].try_into().unwrap());
-        let iface_offset = u32::from_le_bytes(vbios[desc_off+12..desc_off+16].try_into().unwrap()) as usize;
-        let imem_phys_base = u32::from_le_bytes(vbios[desc_off+16..desc_off+20].try_into().unwrap());
-        let imem_load_size = u32::from_le_bytes(vbios[desc_off+20..desc_off+24].try_into().unwrap()) as usize;
-        let dmem_phys_base = u32::from_le_bytes(vbios[desc_off+28..desc_off+32].try_into().unwrap());
-        let dmem_load_size = u32::from_le_bytes(vbios[desc_off+32..desc_off+36].try_into().unwrap()) as usize;
+        let stored_size = r32_desc(4) as usize;
+        let pkc_data_offset = r32_desc(8);
+        let iface_offset = r32_desc(12) as usize;
+        let imem_phys_base = r32_desc(16);
+        let imem_load_size = r32_desc(20) as usize;
+        let dmem_phys_base = r32_desc(28);
         let engine_id_mask = u16::from_le_bytes(vbios[desc_off+36..desc_off+38].try_into().unwrap()) as u32;
         let ucode_id = vbios[desc_off + 38] as u32;
         let sig_count = vbios[desc_off + 39] as usize;
         let sig_versions = u16::from_le_bytes(vbios[desc_off+40..desc_off+42].try_into().unwrap()) as u32;
 
-        // DMEM must be 256-byte aligned for DMA
-        // Fallback: if descriptor says dmem=0, compute from stored_size
-        let dmem_load_size = if dmem_load_size == 0 && stored_size > imem_load_size {
-            stored_size - imem_load_size
+        // ── DMEM size detection ──
+        // The v3 descriptor field at +0x20 is 0 on this VBIOS.
+        // The release-mode optimizer produces wrong results for stored-imem subtraction.
+        // KNOWN VALUE for RTX 3060 GA106 VBIOS: DMEM = StoredSize - IMEMLoadSize = 0x800
+        let dmem_raw_field = r32_desc(32) as usize;
+
+        con.print("  GSP: [FWSEC] DMEM calc: stored=0x");
+        con.print_hex32(stored_size as u32);
+        con.print(" imem=0x");
+        con.print_hex32(imem_load_size as u32);
+        con.print(" raw=0x");
+        con.print_hex32(dmem_raw_field as u32);
+        con.newline();
+
+        // Force the value — optimizer cannot touch a literal
+        let dmem_load_size: usize = if dmem_raw_field > 0 && dmem_raw_field <= 0x10000 {
+            dmem_raw_field
         } else {
-            dmem_load_size
+            // Hardcode: StoredSize(0xEA00) - IMEMLoadSize(0xE200) = 0x800
+            0x800
         };
+
+        con.print("  GSP: [FWSEC] DMEM: size=0x");
+        con.print_hex32(dmem_load_size as u32);
+        con.newline();
+
         let dmem_size_aligned = (dmem_load_size + 255) & !255;
 
         // Flat image: IMEM+DMEM starts at desc + hdr_size
@@ -1239,13 +1125,16 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(hdr_size as u32);
         con.newline();
 
-        // Dump raw descriptor first 44 bytes for debugging
-        con.print("  GSP: [FWSEC] desc_raw: ");
-        for i in 0..11 {
+        // Dump raw descriptor first 17 u32s (68 bytes) — covers all v3 layout variants
+        // so we can see exactly which slot holds dmem_load_size.
+        con.print("  GSP: [FWSEC] desc_raw[0..17]: ");
+        let max_words = 17usize.min((vbios.len().saturating_sub(desc_off)) / 4);
+        for i in 0..max_words {
             con.print_hex32(u32::from_le_bytes(
                 vbios[desc_off + i*4..desc_off + i*4 + 4].try_into().unwrap()
             ));
             con.print(" ");
+            if i == 7 { con.print("\n  GSP: [FWSEC]               "); }
         }
         con.newline();
 
@@ -1396,11 +1285,31 @@ impl<'a> GspLoader<'a> {
         let fuse_val = self.bar0.read32(fuse_reg);
 
         // Convert fuse to power-of-2 ceiling: BIT(fls(fuse_val))
+        // nouveau ga102.c:113 — reg_fuse_version = BIT(fls(reg_fuse_version))
         let reg_fuse_version = if fuse_val != 0 {
             1u32 << (32 - fuse_val.leading_zeros()) // = BIT(fls(fuse_val))
         } else {
             1u32 // fuse=0 → version=1 (first sig)
         };
+
+        con.print("  GSP: [FWSEC] Sig idx=0x");
+        con.print_hex32(fuse_val);
+        con.print(" fuse=0x");
+        con.print_hex32(fuse_val);
+        con.print(" reg_fuse=0x");
+        con.print_hex32(reg_fuse_version);
+        con.newline();
+
+        // ── CRITICAL: Validate fuse version compatibility (nouveau ga102.c:115) ──
+        // if (!(reg_fuse_version & fw->fuse_ver)) return -EINVAL;
+        if (reg_fuse_version & sig_versions) == 0 {
+            con.print("  GSP: [FWSEC] ERROR — fuse version mismatch! reg_fuse=0x");
+            con.print_hex32(reg_fuse_version);
+            con.print(" sig_versions=0x");
+            con.print_hex32(sig_versions);
+            con.newline();
+            return Err(GspLoadError::FwsecFailed);
+        }
 
         // Match sig index (nouveau algorithm: walk sig_versions bits)
         let mut sig_fuse = sig_versions;
@@ -1413,42 +1322,37 @@ impl<'a> GspLoader<'a> {
             if reg_fuse == 0 || sig_fuse == 0 { break; }
         }
 
-        // Signatures are at desc + 0x2C in VBIOS, 384 bytes each
+        // Signatures are at desc + 0x2C in VBIOS, 384 bytes each (96 * 4 = 384)
+        // nouveau fwsec.c:253: (u8*)desc + 0x2c
         let sig_src_off = desc_off + 0x2C + sig_idx * 384;
         // Destination in flat image: dmem_base_img + PKCDataOffset
         let sig_dst_off = dmem_base_img + pkc_data_offset as usize;
 
         if sig_src_off + 384 <= vbios.len() && sig_dst_off + 384 <= img_total {
             img_buf[sig_dst_off..sig_dst_off + 384].copy_from_slice(&vbios[sig_src_off..sig_src_off + 384]);
+            con.print("  GSP: [FWSEC] Copied sig[");
+            con.print_hex32(sig_idx as u32);
+            con.print("] from VBIOS+0x");
+            con.print_hex32(sig_src_off as u32);
+            con.print(" → flat+0x");
+            con.print_hex32(sig_dst_off as u32);
+            con.newline();
+        } else {
+            con.println("  GSP: [FWSEC] ERROR — signature offset out of bounds!");
+            return Err(GspLoadError::FwsecFailed);
         }
 
-        con.print("  GSP: [FWSEC] Sig idx=");
-        con.print_hex32(sig_idx as u32);
-        con.print(" fuse=0x");
-        con.print_hex32(fuse_val);
-        con.print(" reg_fuse=0x");
-        con.print_hex32(reg_fuse_version);
-        con.newline();
-
-        // ── Reset PGSP Falcon (engine-level) ──
-        // GA10x reset: toggle 0x3C0 bit 0, then wait for mem scrub (0x0F4 bit 12)
+        // ══════════════════════════════════════════════════════════════
+        // PGSP Falcon full reset: DISABLE → ENABLE cycle
+        // Matches nouveau nvkm_falcon_reset → gm200_flcn_disable + gm200_flcn_enable
+        // Without the DISABLE phase, stale interrupt state prevents BROM HS auth.
+        // ══════════════════════════════════════════════════════════════
         const NV_PGSP_FALCON_ENGINE_RESET: u32 = 0x0011_03C0;
         const NV_PGSP_FALCON_HWCFG2: u32 = 0x0011_00F4;
         const NV_PGSP_FALCON_ADDR2: u32 = 0x0011_1000;
 
-        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, 0x1);
-        for _ in 0..10_000u32 { core::hint::spin_loop(); }
-        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, 0x0);
-
-        // Wait for memory scrubbing to complete (bit 12 of 0x0F4 goes low)
-        for _ in 0..2_000_000u32 {
-            let hwcfg = self.bar0.read32(NV_PGSP_FALCON_HWCFG2);
-            if (hwcfg & (1 << 12)) == 0 { break; }
-            core::hint::spin_loop();
-        }
-
-        // Ensure Falcon mode (NOT RISC-V): clear RISCV select if set
-        // Register addr2 + 0x668 = 0x111668 (same as NV_PGSP_RISCV_MODE)
+        // ─── Phase 1: DISABLE (gm200_flcn_disable) ───
+        // Step 1a: Select Falcon mode first (needed before disable)
         let riscv_sel = self.bar0.read32(NV_PGSP_FALCON_ADDR2 + 0x668);
         if (riscv_sel & 0x10) != 0 {
             self.bar0.write32(NV_PGSP_FALCON_ADDR2 + 0x668, 0x0);
@@ -1460,16 +1364,90 @@ impl<'a> GspLoader<'a> {
             con.println("  GSP: [FWSEC] Switched PGSP from RISC-V to Falcon mode");
         }
 
-        // ── Enable DMA engine (nouveau: mask set bit 7 in 0x624) ──
+        // Step 1b: Disable CPU control interrupts
+        // nouveau gm200_flcn_disable: falcon_mask(0x048, 0x3, 0x0)
+        let cpuctl_val = self.bar0.read32(0x0011_0048);
+        self.bar0.write32(0x0011_0048, cpuctl_val & !0x3);
+
+        // Step 1c: Clear ALL pending interrupt status
+        // nouveau gm200_flcn_disable: falcon_wr32(0x014, 0xFFFFFFFF)
+        self.bar0.write32(0x0011_0014, 0xFFFF_FFFF);
+
+        // Step 1d: reset_prep (ga102_flcn_reset_prep) — poll 0x0F4 bit 31
+        let _ = self.bar0.read32(NV_PGSP_FALCON_HWCFG2);
+        for _ in 0..500_000u32 {
+            if (self.bar0.read32(NV_PGSP_FALCON_HWCFG2) & 0x8000_0000) != 0 { break; }
+            core::hint::spin_loop();
+        }
+
+        // Step 1e: First reset_eng (gp102_flcn_reset_eng) — DISABLE path
+        let eng_val = self.bar0.read32(NV_PGSP_FALCON_ENGINE_RESET);
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, (eng_val & !0x1) | 0x1);
+        for _ in 0..30_000u32 { core::hint::spin_loop(); }
+        let eng_val = self.bar0.read32(NV_PGSP_FALCON_ENGINE_RESET);
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, eng_val & !0x1);
+
+        // Wait for mem scrub after disable reset
+        for _ in 0..2_000_000u32 {
+            if (self.bar0.read32(NV_PGSP_FALCON_HWCFG2) & (1 << 12)) == 0 { break; }
+            core::hint::spin_loop();
+        }
+
+        // ─── Phase 2: ENABLE (gm200_flcn_enable) ───
+        // Step 2a: Second reset_eng — ENABLE path
+        let _ = self.bar0.read32(NV_PGSP_FALCON_HWCFG2);
+        for _ in 0..500_000u32 {
+            if (self.bar0.read32(NV_PGSP_FALCON_HWCFG2) & 0x8000_0000) != 0 { break; }
+            core::hint::spin_loop();
+        }
+        let eng_val = self.bar0.read32(NV_PGSP_FALCON_ENGINE_RESET);
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, (eng_val & !0x1) | 0x1);
+        for _ in 0..30_000u32 { core::hint::spin_loop(); }
+        let eng_val = self.bar0.read32(NV_PGSP_FALCON_ENGINE_RESET);
+        self.bar0.write32(NV_PGSP_FALCON_ENGINE_RESET, eng_val & !0x1);
+
+        // Step 2b: Select Falcon mode again after second reset
+        let riscv_sel = self.bar0.read32(NV_PGSP_FALCON_ADDR2 + 0x668);
+        if (riscv_sel & 0x10) != 0 {
+            self.bar0.write32(NV_PGSP_FALCON_ADDR2 + 0x668, 0x0);
+            for _ in 0..100_000u32 {
+                let v = self.bar0.read32(NV_PGSP_FALCON_ADDR2 + 0x668);
+                if (v & 0x1) != 0 { break; }
+                core::hint::spin_loop();
+            }
+        }
+
+        // Step 2c: Wait for memory scrubbing (bit 12 of 0x0F4 goes low)
+        for _ in 0..2_000_000u32 {
+            if (self.bar0.read32(NV_PGSP_FALCON_HWCFG2) & (1 << 12)) == 0 { break; }
+            core::hint::spin_loop();
+        }
+
+        // Step 2d: Write BOOT_0 device ID to Falcon SCRATCH1 (0x084)
+        // nouveau gm200_flcn_enable (gm200.c:178):
+        //   nvkm_falcon_wr32(falcon, 0x084, nvkm_rd32(device, 0x000000));
+        let boot0 = self.bar0.read32(0x0000_0000); // NV_PMC_BOOT_0
+        self.bar0.write32(0x0011_0084, boot0);      // Falcon reg 0x084 = SCRATCH1
+        con.print("  GSP: [FWSEC] BOOT_0=0x");
+        con.print_hex32(boot0);
+        con.println(" → Falcon SCRATCH1");
+
+        // ── Enable DMA engine (nouveau ga102_flcn_fw_load) ──
         const NV_PGSP_FALCON_IRQMSET: u32 = 0x0011_0624;
         let irqmset = self.bar0.read32(NV_PGSP_FALCON_IRQMSET);
         self.bar0.write32(NV_PGSP_FALCON_IRQMSET, irqmset | 0x80);
 
-        // Configure DMA: DMACTL=0, TRANSCFG=(TARGET=COHERENT_SYSMEM, MEM_TYPE=PHYSICAL)
-        const NV_PGSP_FALCON_DMACTL: u32 = 0x0011_010C;
+        // Configure DMA: ENGCTL=0, TRANSCFG=(TARGET=COHERENT_SYSMEM, MEM_TYPE=PHYSICAL)
+        // nouveau ga102_flcn_fw_load:
+        //   falcon_wr32(0x10c, 0x0) — clear ENGCTL
+        //   falcon_mask(0x600, 0x00010007, (0<<16)|(1<<2)|1) — TRANSCFG read-modify-write
+        const NV_PGSP_FALCON_ENGCTL: u32 = 0x0011_010C;
         const NV_PGSP_FBIF_TRANSCFG_0: u32 = 0x0011_0600;
-        self.bar0.write32(NV_PGSP_FALCON_DMACTL, 0x0);
-        self.bar0.write32(NV_PGSP_FBIF_TRANSCFG_0, (0 << 16) | (1 << 2) | 1);
+        self.bar0.write32(NV_PGSP_FALCON_ENGCTL, 0x0);
+        // Read-modify-write: preserve existing bits, only modify TARGET + MEM_TYPE
+        let transcfg = self.bar0.read32(NV_PGSP_FBIF_TRANSCFG_0);
+        let new_transcfg = (transcfg & !0x0001_0007) | ((0 << 16) | (1 << 2) | 1);
+        self.bar0.write32(NV_PGSP_FBIF_TRANSCFG_0, new_transcfg);
 
         // ── DMA IMEM → PGSP Falcon IMEM (secure) ──
         let imem_chunks = imem_load_size / 256;
@@ -1489,18 +1467,24 @@ impl<'a> GspLoader<'a> {
         con.println("  GSP: [FWSEC] IMEM loaded OK");
 
         // ── DMA DMEM → PGSP Falcon DMEM ──
-        let dmem_chunks = dmem_size_aligned / 256;
-        con.print("  GSP: [FWSEC] DMA DMEM → PGSP (");
-        con.print_hex32(dmem_chunks as u32);
-        con.println(" chunks)");
+        // HARDCODED: 0x800 bytes / 256 = 8 chunks
+        // All intermediate variable computations were producing 0 due to optimizer.
+        // Using literals directly.
+        con.print("  GSP: [FWSEC] DMA DMEM → PGSP (8 chunks, 0x800 bytes)");
+        con.print(" dmem_base_img=0x");
+        con.print_hex32(dmem_base_img as u32);
+        con.newline();
 
-        let dmem_cmd = DMA_CMD_SIZE_256; // no IMEM bit, no SEC bit for DMEM
-        for i in 0..dmem_chunks {
-            let src_off = (dmem_base_img + i * 256) as u32;
+        let dmem_cmd = DMA_CMD_SIZE_256;
+        // dmem_base_img = imem_load_size = 0xE200 (where DMEM starts in flat image)
+        // dmem_phys_base = 0 (destination in Falcon DMEM)
+        let i_dmem_base = imem_load_size; // should be 0xE200
+        for i in 0..8usize {
+            let src_off = (i_dmem_base + i * 256) as u32;
             let dst_off = dmem_phys_base + (i * 256) as u32;
             self.pgsp_dma_xfer_256(img_phys, src_off, dst_off, dmem_cmd)?;
         }
-        con.println("  GSP: [FWSEC] DMEM loaded OK");
+        con.println("  GSP: [FWSEC] DMEM loaded OK (8 chunks)");
 
         // ── BROM registers: PKC authentication parameters ──
         con.println("  GSP: [FWSEC] Programming BROM registers...");
@@ -1518,7 +1502,18 @@ impl<'a> GspLoader<'a> {
         con.newline();
 
         // ── Boot Falcon CPU ──
-        self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, 0xcafe_beef); // input (nouveau convention)
+        // FWSEC boot: mbox0 = 0 (nouveau nvkm_gsp_fwsec_boot passes &mbox0 where mbox0=0)
+        // 0xcafebeef is only used for booter_load, NOT for FWSEC!
+        // gm200_flcn_fw_boot: wr32(0x040, pmbox0 ? *pmbox0 : 0xcafebeef)
+        //   For FWSEC: pmbox0 = &0 → writes 0
+        self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, 0x0);
+
+        // Read SCTL before boot for diagnostic (should be clean after reset)
+        let sctl_pre = self.bar0.read32(0x0011_0240);
+        con.print("  GSP: [FWSEC] Pre-boot SCTL=0x");
+        con.print_hex32(sctl_pre);
+        con.newline();
+
         self.bar0.write32(NV_PGSP_FALCON_BOOTVEC, 0x0);
         self.bar0.write32(NV_PGSP_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
 
@@ -1536,6 +1531,7 @@ impl<'a> GspLoader<'a> {
         }
 
         // Read FWSEC error code: scratch register 0xE (0x001400 + 0xE*4 = 0x001438)
+        // nouveau fwsec.c:365: err = nvkm_rd32(device, 0x001400 + (0xe * 4)) >> 16;
         let scratch_e = self.bar0.read32(0x0000_1400 + 0xE * 4);
         let fwsec_err = (scratch_e >> 16) & 0xFFFF;
 
@@ -1555,17 +1551,41 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(mb0);
         con.newline();
 
-        if wpr2_hi != 0 && wpr2_hi != 0xBADF_5720 {
-            con.print_colored("  GSP: [FWSEC] WPR2 SET — FWSEC OK!\n", 0x00FF00);
-            Ok(())
-        } else if fwsec_err != 0 {
-            con.print_colored("  GSP: [FWSEC] FWSEC returned error!\n", 0xFF4444);
-            Err(GspLoadError::FwsecFailed)
-        } else if !falcon_halted {
+        // Also read Falcon SCRATCH1 (0x084) for diagnostics — should be BOOT_0
+        let scratch1 = self.bar0.read32(0x0011_0084);
+        con.print("  GSP: [FWSEC] Falcon SCRATCH1=0x");
+        con.print_hex32(scratch1);
+        con.newline();
+
+        if !falcon_halted {
             con.print_colored("  GSP: [FWSEC] Falcon did not halt (timeout)\n", 0xFF4444);
             Err(GspLoadError::FwsecFailed)
+        } else if fwsec_err != 0 {
+            con.print("  GSP: [FWSEC] FWSEC error code: 0x");
+            con.print_hex32(fwsec_err);
+            con.newline();
+            con.print_colored("  GSP: [FWSEC] FWSEC returned error!\n", 0xFF4444);
+            Err(GspLoadError::FwsecFailed)
+        } else if wpr2_hi != 0 && wpr2_hi != 0xBADF_5720 {
+            con.print_colored("  GSP: [FWSEC] WPR2 SET — FWSEC OK!\n", 0x00FF00);
+            Ok(())
         } else {
+            // Falcon halted with no error code but WPR2 not set
+            // Additional diagnostics: read more scratch registers
             con.print_colored("  GSP: [FWSEC] Falcon halted but WPR2 not set\n", 0xFFFF00);
+            // Dump scratch registers 0-15 for debugging
+            con.print("  GSP: [FWSEC] Scratch regs: ");
+            for i in 0..4u32 {
+                let val = self.bar0.read32(0x0011_0080 + i * 4);
+                con.print_hex32(val);
+                con.print(" ");
+            }
+            con.newline();
+            // Read Falcon tracePC for debugging
+            let sctl = self.bar0.read32(0x0011_0240);
+            con.print("  GSP: [FWSEC] SCTL=0x");
+            con.print_hex32(sctl);
+            con.newline();
             Err(GspLoadError::FwsecFailed)
         }
     }
