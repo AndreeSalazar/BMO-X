@@ -31,7 +31,7 @@ use crate::drivers::gsp::rpc::{
     NV_PSEC2_FALCON_CPUCTL, NV_PSEC2_FALCON_BOOTVEC,
     NV_PSEC2_FALCON_IDLESTATE, NV_PSEC2_FALCON_RESET,
     NV_PSEC2_FALCON_ENGINE,
-    NV_PSEC2_DMATRFBASE, NV_PSEC2_DMATRFMOFFS,
+    NV_PSEC2_DMATRFBASE, NV_PSEC2_DMATRFBASE1, NV_PSEC2_DMATRFMOFFS,
     NV_PSEC2_DMATRFCMD, NV_PSEC2_DMATRFFBOFFS,
     NV_PSEC2_FALCON_EMEM_ACCESS, NV_PSEC2_FALCON_UCODE_ID,
     NV_PSEC2_FALCON_ENGINE_ID, NV_PSEC2_FALCON_DMEM_SIGN,
@@ -53,10 +53,10 @@ const NV_PGSP_FALCON_RESET:      u32 = 0x0011_0094;
 //   0x11C = DMATRFSOFFS  — source offset from DMATRFBASE
 //   0x128 = DMATRFMOFFS  — upper address bits (set to 0)
 const NV_PGSP_DMATRFBASE:        u32 = 0x0011_0110;
-const NV_PGSP_DMATRFFBOFFS:      u32 = 0x0011_0114;
+const NV_PGSP_DMATRFMOFFS:       u32 = 0x0011_0114;
 const NV_PGSP_DMATRFCMD:         u32 = 0x0011_0118;
-const NV_PGSP_DMATRFSOFFS:       u32 = 0x0011_011C;
-const NV_PGSP_DMATRFMOFFS:       u32 = 0x0011_0128;
+const NV_PGSP_DMATRFFBOFFS:      u32 = 0x0011_011C;
+const NV_PGSP_DMATRFBASE1:       u32 = 0x0011_0128;
 
 // DMA command bits (same for both PGSP and SEC2 Falcon)
 const DMA_CMD_WRITE:    u32 = 1 << 1;
@@ -155,6 +155,7 @@ impl<'a> GspLoader<'a> {
     // ── SEC2 DMA transfer: copy 256 bytes from sysmem to SEC2 Falcon IMEM ──
     fn sec2_dma_xfer_256(&self, src_phys: u64, falcon_offset: u32, to_imem: bool) -> Result<(), GspLoadError> {
         self.bar0.write32(NV_PSEC2_DMATRFBASE, (src_phys >> 8) as u32);
+        self.bar0.write32(NV_PSEC2_DMATRFBASE1, ((src_phys >> 40) & 0x1FF) as u32);
         self.bar0.write32(NV_PSEC2_DMATRFMOFFS, falcon_offset);
         self.bar0.write32(NV_PSEC2_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
 
@@ -177,10 +178,10 @@ impl<'a> GspLoader<'a> {
     //   DMATRFFBOFFS[0x114] = destination in Falcon IMEM/DMEM
     //   DMATRFSOFFS [0x11C] = source offset from DMATRFBASE
     //   DMATRFCMD   [0x118] = command (write to start; poll bit 1 for done)
-    fn pgsp_dma_xfer_256(&self, src_base_phys: u64, src_offset: u32, falcon_dst: u32,
+    fn pgsp_dma_xfer_256(&self, _src_base_phys: u64, src_offset: u32, falcon_dst: u32,
                          cmd: u32) -> Result<(), GspLoadError> {
-        self.bar0.write32(NV_PGSP_DMATRFFBOFFS, falcon_dst);
-        self.bar0.write32(NV_PGSP_DMATRFSOFFS, src_offset);
+        self.bar0.write32(NV_PGSP_DMATRFMOFFS, falcon_dst);
+        self.bar0.write32(NV_PGSP_DMATRFFBOFFS, src_offset);
         self.bar0.write32(NV_PGSP_DMATRFCMD, cmd);
 
         for _ in 0..1_000_000 {
@@ -926,11 +927,9 @@ impl<'a> GspLoader<'a> {
                 con.print_hex32(wpr2_hi);
                 con.newline();
 
-                if i > 10_000 {
+                if mb0 == 0 {
                     con.print_colored("  GSP: SEC2 booter_load completed!\n", 0x00FF00);
                     completed = true;
-                } else if mb0 == 0 {
-                    con.print_colored("  GSP: SEC2 halted quickly — may need FWSEC first\n", 0xFFFF00);
                 } else {
                     con.print("  GSP: SEC2 booter error code: 0x");
                     con.print_hex32(mb0);
@@ -1503,7 +1502,7 @@ impl<'a> GspLoader<'a> {
 
         // Set base address once (phys addr >> 8)
         self.bar0.write32(NV_PGSP_DMATRFBASE, (img_phys >> 8) as u32);
-        self.bar0.write32(NV_PGSP_DMATRFMOFFS, 0x0); // upper addr bits = 0
+        self.bar0.write32(NV_PGSP_DMATRFBASE1, ((img_phys >> 40) & 0x1FF) as u32);
 
         let imem_cmd = DMA_CMD_SIZE_256 | DMA_CMD_IMEM | DMA_CMD_SEC;
         for i in 0..imem_chunks {
@@ -1519,7 +1518,7 @@ impl<'a> GspLoader<'a> {
         // system memory via DMA during execution.
         let dmem_phys_addr = img_phys + (imem_load_size as u64);
         self.bar0.write32(NV_PGSP_DMATRFBASE, (dmem_phys_addr >> 8) as u32);
-        self.bar0.write32(NV_PGSP_DMATRFMOFFS, 0x0);
+        self.bar0.write32(NV_PGSP_DMATRFBASE1, ((dmem_phys_addr >> 40) & 0x1FF) as u32);
 
         let dmem_cmd = DMA_CMD_SIZE_256;
         for i in 0..8usize {
@@ -1532,7 +1531,7 @@ impl<'a> GspLoader<'a> {
         // CRITICAL: Restore DMATRFBASE to full image base
         // The firmware needs this to DMA-read additional data from system memory
         self.bar0.write32(NV_PGSP_DMATRFBASE, (img_phys >> 8) as u32);
-        self.bar0.write32(NV_PGSP_DMATRFMOFFS, 0x0);
+        self.bar0.write32(NV_PGSP_DMATRFBASE1, ((img_phys >> 40) & 0x1FF) as u32);
         con.println("  GSP: [FWSEC] DMATRFBASE restored to image base");
 
         // ── BROM registers: PKC authentication parameters ──
@@ -1971,17 +1970,31 @@ impl<'a> GspLoader<'a> {
             con.newline();
         }
 
-        // ── 6. Verify WPR2_HI != 0 (FATAL if not set) ──
-        con.println("  GSP: [6/11] Checking WPR2_HI...");
-        const NV_WPR2_HI: u32 = 0x001FA828;
-        let wpr2 = self.bar0.read32(NV_WPR2_HI);
-        if wpr2 != 0 && wpr2 != 0xBADF_5720 {
+        // Check WPR2 after FWSEC-FRTS. If it is still zero, continue into
+        // booter_load so the next stage can expose its real mailbox status.
+        con.println("  GSP: [6/11] Checking WPR2 after FWSEC...");
+        const NV_WPR2_LO: u32 = 0x001FA824;
+        let wpr2_lo = self.bar0.read32(NV_WPR2_LO);
+        let wpr2_hi = self.bar0.read32(NV_WPR2_HI);
+        let expected_lo = (wpr_meta.frts_offset >> 12) as u32;
+        let wpr2_lo_val = (wpr2_lo >> 4) & 0x0FFF_FFFF;
+        let wpr2_hi_val = (wpr2_hi >> 4) & 0x0FFF_FFFF;
+        con.print("  GSP: WPR2 raw lo=0x");
+        con.print_hex32(wpr2_lo);
+        con.print(" hi=0x");
+        con.print_hex32(wpr2_hi);
+        con.print(" decoded lo=0x");
+        con.print_hex32(wpr2_lo_val);
+        con.print(" hi=0x");
+        con.print_hex32(wpr2_hi_val);
+        con.print(" expected_lo=0x");
+        con.print_hex32(expected_lo);
+        con.newline();
+        if wpr2_hi_val != 0 && wpr2_lo_val == expected_lo {
             con.print_colored("  GSP: WPR2 SET OK!\n", 0x00FF00);
         } else {
-            con.print_colored("  GSP: FATAL — WPR2 not set by FWSEC! Cannot continue boot.\n", 0xFF4444);
-            con.println("  GSP: FWSEC-FRTS must successfully set WPR2 before booter_load can run.");
-            con.println("  GSP: Check: VBIOS blob, FWSEC offsets, FRTS descriptor, signature match.");
-            return Err(GspLoadError::FwsecFailed);
+            con.print_colored("  GSP: WARNING - WPR2 not confirmed after FWSEC; trying SEC2 booter_load anyway\n", 0xFFFF00);
+            con.println("  GSP: If booter_load returns a mailbox error, fix FWSEC/FRTS before RPC.");
         }
 
         // ── 7 & 8. Reset GSP into RISC-V mode AND Write libos args ──

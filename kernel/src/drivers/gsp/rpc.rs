@@ -186,6 +186,7 @@ pub const NV_PSEC2_DMATRFBASE:      u32 = 0x0084_0110;
 pub const NV_PSEC2_DMATRFMOFFS:     u32 = 0x0084_0114;
 pub const NV_PSEC2_DMATRFCMD:       u32 = 0x0084_0118;
 pub const NV_PSEC2_DMATRFFBOFFS:    u32 = 0x0084_011C;
+pub const NV_PSEC2_DMATRFBASE1:     u32 = 0x0084_0128;
 
 // ── SEC2 Falcon extended registers (addr2 = +0x1000 from SEC2 base 0x840000) ──
 // These are needed for GA102+ HS authenticated boot (booter_load)
