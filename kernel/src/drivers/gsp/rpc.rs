@@ -251,11 +251,14 @@ pub struct GspFwWprMeta {
     pub vga_workspace_offset: u64,
     pub vga_workspace_size: u64,
     pub boot_count: u64,
-    pub verified: u64,                     // 0xa0a0a0a0a0a0a0a0 when verified
-    pub flags: u8,
+    // r535 overlays this 32-byte block with partition RPC / ELF resume fields.
+    // Cold boot leaves it zeroed; verified must remain after this block.
+    pub partition_resume: [u8; 32],
+    pub gsp_fw_heap_vf_partition_count: u8,
     pub _pad: [u8; 7],
+    pub verified: u64,                     // 0xa0a0a0a0a0a0a0a0 when verified
 }
-// static_assert: size == 256 bytes (32 u64 fields = 256)
+const _: [(); 256] = [(); core::mem::size_of::<GspFwWprMeta>()];
 
 // ═══════════════════════════════════════════════════════════════
 // FIFO Channel class (Ampere)

@@ -737,9 +737,10 @@ impl<'a> GspLoader<'a> {
             vga_workspace_offset,
             vga_workspace_size,
             boot_count: 0,
-            verified: 0,
-            flags: 0,
+            partition_resume: [0u8; 32],
+            gsp_fw_heap_vf_partition_count: 0,
             _pad: [0u8; 7],
+            verified: 0,
         }
     }
 
