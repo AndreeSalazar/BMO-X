@@ -119,8 +119,8 @@ struct HsManifest {
     sig_prod_offset: u32,
     sig_prod_size: u32,
     // Values read via patch_loc/patch_sig offsets
-    patch_loc_value: u32,   // offset within data where WPR meta PA goes
-    patch_sig_value: u32,   // offset within data where sig index goes
+    patch_loc_value: u32,   // offset within image where the selected PKC signature is copied
+    patch_sig_value: u32,   // selected signature index in extracted Nouveau blobs
     // From meta_data
     fuse_ver: u32,
     engine_id: u32,
@@ -133,8 +133,10 @@ struct HsManifest {
     os_data_size: u32,
     app0_offset: u32,
     app0_size: u32,
-    // Computed
-    dmem_sign: u32,         // = patch_loc_value - os_data_offset
+    app0_data_offset: u32,
+    app0_data_size: u32,
+    sig_size: u32,
+    dmem_sign: u32,         // signature offset within DMEM = patch_loc_value - os_data_offset
 }
 
 pub struct GspLoader<'a> {
@@ -365,19 +367,34 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(num_apps);
         con.newline();
 
-        // Read app[0] if available
-        let (app0_offset, app0_size) = if num_apps > 0 && load_hdr_offset + 20 + 16 <= blob.len() {
+        let expected_load_hdr_size = 20usize + (num_apps as usize * 16);
+        if load_hdr_size as usize != expected_load_hdr_size {
+            con.print("  GSP: [HS] WARNING — load_hdr size mismatch, expected 0x");
+            con.print_hex32(expected_load_hdr_size as u32);
+            con.newline();
+        }
+
+        // Read app[0] if available. For boot-from-HS, NVIDIA uses appCode as
+        // the secure IMEM region and osData as DMEM.
+        let (app0_offset, app0_size, app0_data_offset, app0_data_size) =
+            if num_apps > 0 && load_hdr_offset + 20 + 16 <= blob.len() {
             let app_base = load_hdr_offset + 20;
             let off = r32(blob, app_base);
             let sz  = r32(blob, app_base + 4);
+            let data_off = r32(blob, app_base + 8);
+            let data_sz  = r32(blob, app_base + 12);
             con.print("  GSP: [HS]   app[0] off=0x");
             con.print_hex32(off);
             con.print(" sz=0x");
             con.print_hex32(sz);
+            con.print(" data_off=0x");
+            con.print_hex32(data_off);
+            con.print(" data_sz=0x");
+            con.print_hex32(data_sz);
             con.newline();
-            (off, sz)
+            (off, sz, data_off, data_sz)
         } else {
-            (os_code_offset, os_code_size)
+            (os_code_offset, os_code_size, os_data_offset, os_data_size)
         };
 
         // Compute dmem_sign: offset of WPR meta PA within DMEM
@@ -403,6 +420,9 @@ impl<'a> GspLoader<'a> {
             os_data_size,
             app0_offset,
             app0_size,
+            app0_data_offset,
+            app0_data_size,
+            sig_size: if num_sigs != 0 { sig_prod_size / num_sigs } else { 0 },
             dmem_sign,
         })
     }
@@ -439,6 +459,121 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PSEC2_FALCON_IRQMSET, irqmset | 0x80);
         self.bar0.write32(NV_PSEC2_FALCON_ENGCTL, 0x0);
         self.bar0.write32(NV_PSEC2_FALCON_DMACTL, (1 << 2) | 1);
+
+        let image_size = hs.data_size as usize;
+        let image_pages = (image_size + PAGE_SIZE - 1) / PAGE_SIZE;
+        let image_buf_phys = unsafe {
+            crate::arch::page_alloc::alloc_pages_contiguous(image_pages)
+        }.ok_or(GspLoadError::PageAllocFailed)?;
+
+        unsafe {
+            core::ptr::write_bytes(image_buf_phys as *mut u8, 0, image_pages * PAGE_SIZE);
+            core::ptr::copy_nonoverlapping(
+                booter.as_ptr().add(data_base),
+                image_buf_phys as *mut u8,
+                image_size,
+            );
+        }
+
+        let sig_size = hs.sig_size as usize;
+        let sig_index = if hs.patch_sig_value < hs.num_sigs {
+            hs.patch_sig_value
+        } else if hs.fuse_ver < hs.num_sigs {
+            hs.num_sigs - 1 - hs.fuse_ver
+        } else {
+            0
+        } as usize;
+        let sig_src_off = hs.sig_prod_offset as usize + sig_index * sig_size;
+        let sig_dst_off = hs.patch_loc_value as usize;
+        if sig_size == 0 || sig_src_off + sig_size > booter.len() || sig_dst_off + sig_size > image_size {
+            con.println("  GSP: [HS-BOOT] ERROR - signature patch region invalid");
+            return Err(GspLoadError::NoBooterFound);
+        }
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                booter.as_ptr().add(sig_src_off),
+                (image_buf_phys as *mut u8).add(sig_dst_off),
+                sig_size,
+            );
+        }
+        con.print("  GSP: [HS-BOOT] Patched PKC signature: sig[");
+        con.print_hex32(sig_index as u32);
+        con.print("] sz=0x");
+        con.print_hex32(sig_size as u32);
+        con.print(" -> image+0x");
+        con.print_hex32(sig_dst_off as u32);
+        con.newline();
+
+        let imem_src_off = hs.app0_offset as usize;
+        let imem_size = hs.app0_size as usize;
+        if imem_src_off + imem_size > image_size || imem_size == 0 {
+            con.println("  GSP: [HS-BOOT] ERROR - app IMEM region invalid");
+            return Err(GspLoadError::NoBooterFound);
+        }
+        let imem_chunks = (imem_size + 255) / 256;
+        con.print("  GSP: [HS-BOOT] DMA IMEM: off=0x");
+        con.print_hex32(imem_src_off as u32);
+        con.print(" sz=0x");
+        con.print_hex32(imem_size as u32);
+        con.print(" (");
+        con.print_hex32(imem_chunks as u32);
+        con.println(" chunks)");
+
+        for i in 0..imem_chunks {
+            self.sec2_dma_xfer_256(
+                image_buf_phys + imem_src_off as u64 + (i * 256) as u64,
+                (i * 256) as u32,
+                true,
+            )?;
+        }
+        con.print_colored("  GSP: [HS-BOOT] IMEM loaded OK\n", 0x00FF00);
+
+        let dmem_src_off = hs.os_data_offset as usize;
+        let dmem_size = hs.os_data_size as usize;
+        if dmem_src_off + dmem_size > image_size || dmem_size == 0 {
+            con.println("  GSP: [HS-BOOT] ERROR - DMEM region invalid");
+            return Err(GspLoadError::NoBooterFound);
+        }
+        let dmem_chunks = (dmem_size + 255) / 256;
+        con.print("  GSP: [HS-BOOT] DMA DMEM: off=0x");
+        con.print_hex32(dmem_src_off as u32);
+        con.print(" sz=0x");
+        con.print_hex32(dmem_size as u32);
+        con.print(" (");
+        con.print_hex32(dmem_chunks as u32);
+        con.println(" chunks)");
+
+        for i in 0..dmem_chunks {
+            self.sec2_dma_xfer_256(
+                image_buf_phys + dmem_src_off as u64 + (i * 256) as u64,
+                (i * 256) as u32,
+                false,
+            )?;
+        }
+        con.print_colored("  GSP: [HS-BOOT] DMEM loaded OK\n", 0x00FF00);
+
+        con.println("  GSP: [HS-BOOT] Programming SEC2 HS registers...");
+        self.bar0.write32(NV_PSEC2_FALCON_DMEM_SIGN, hs.dmem_sign);
+        self.bar0.write32(NV_PSEC2_FALCON_ENGINE_ID, hs.engine_id);
+        self.bar0.write32(NV_PSEC2_FALCON_UCODE_ID, hs.ucode_id);
+        self.bar0.write32(NV_PSEC2_FALCON_EMEM_ACCESS, 0x1);
+
+        con.print("  GSP: [HS-BOOT] dmem_sign=0x");
+        con.print_hex32(hs.dmem_sign);
+        con.print(" engine_id=0x");
+        con.print_hex32(hs.engine_id);
+        con.print(" ucode_id=0x");
+        con.print_hex32(hs.ucode_id);
+        con.newline();
+
+        self.bar0.write32(NV_PSEC2_FALCON_MAILBOX0, (wpr_meta_phys & 0xFFFF_FFFF) as u32);
+        self.bar0.write32(NV_PSEC2_FALCON_MAILBOX1, ((wpr_meta_phys >> 32) & 0xFFFF_FFFF) as u32);
+
+        return self.sec2_boot_and_wait(con);
+
+        #[cfg(any())]
+        {
 
         // ── DMA IMEM: os_code from data section → SEC2 IMEM ──
         let imem_src_off = data_base + hs.os_code_offset as usize;
@@ -549,6 +684,7 @@ impl<'a> GspLoader<'a> {
         // ── Boot SEC2 Falcon + wait for completion ──
         // (sec2_boot_and_wait handles BOOTVEC + CPUCTL + halt polling)
         self.sec2_boot_and_wait(con)
+        }
     }
 
     // ── Reset SEC2 Falcon to a known state ──
