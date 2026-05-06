@@ -13,6 +13,21 @@ pub fn cmd_nop(ch: &mut GpuChannel) {
     ch.push_method(0, NV_NOP, 0);
 }
 
+/// Bind a GPU object class to a subchannel.
+pub fn cmd_bind_object(ch: &mut GpuChannel, subchannel: u32, class_id: u32) {
+    ch.push_method(subchannel, NV_SET_OBJECT, class_id);
+}
+
+/// Bind the Ampere 2D engine object to the 2D subchannel.
+pub fn cmd_bind_2d(ch: &mut GpuChannel) {
+    cmd_bind_object(ch, SUBCHAN_2D, AMPERE_2D_A);
+}
+
+/// Bind the Ampere copy engine object to the CE subchannel.
+pub fn cmd_bind_ce(ch: &mut GpuChannel) {
+    cmd_bind_object(ch, SUBCHAN_CE, AMPERE_DMA_COPY_A);
+}
+
 /// Build a CE DMA copy command in the pushbuffer.
 /// Copies `byte_count` bytes from src_phys to dst_phys.
 pub fn cmd_ce_copy(ch: &mut GpuChannel, src_phys: u64, dst_phys: u64, byte_count: u32) {
@@ -25,14 +40,27 @@ pub fn cmd_ce_copy(ch: &mut GpuChannel, src_phys: u64, dst_phys: u64, byte_count
     ch.push_method(sc, CE_DST_PITCH, byte_count);
     ch.push_method(sc, CE_X_COUNT, byte_count);
     ch.push_method(sc, CE_Y_COUNT, 1);
-    ch.push_method(sc, CE_LAUNCH_DMA, CE_LAUNCH_NON_PIPELINED | CE_SRC_TYPE_PHYS | CE_DST_TYPE_PHYS);
+    ch.push_method(
+        sc,
+        CE_LAUNCH_DMA,
+        CE_LAUNCH_NON_PIPELINED | CE_SRC_TYPE_PHYS | CE_DST_TYPE_PHYS,
+    );
 }
 
 /// Build a 2D solid fill command in the pushbuffer.
 /// Fills a rectangle on the framebuffer with a solid color.
-pub fn cmd_2d_fill(ch: &mut GpuChannel, fb_phys: u64, pitch: u32,
-                   width: u32, height: u32,
-                   x: u32, y: u32, w: u32, h: u32, color: u32) {
+pub fn cmd_2d_fill(
+    ch: &mut GpuChannel,
+    fb_phys: u64,
+    pitch: u32,
+    width: u32,
+    height: u32,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    color: u32,
+) {
     let sc = SUBCHAN_2D;
     ch.push_method(sc, M2D_DST_FORMAT, M2D_FORMAT_A8R8G8B8);
     ch.push_method(sc, M2D_DST_PITCH, pitch);
@@ -61,8 +89,7 @@ pub fn cmd_semaphore_release(ch: &mut GpuChannel, sem_phys: u64, payload: u32) {
 ///
 /// `fb_base`: Physical/virtual base of framebuffer (e.g. 0xD0000000).
 /// `pitch`: Bytes per scanline (e.g. 1920*4 = 7680).
-pub fn cpu_fb_fill_rect(fb_base: u64, pitch: u32,
-                        x: u32, y: u32, w: u32, h: u32, color: u32) {
+pub fn cpu_fb_fill_rect(fb_base: u64, pitch: u32, x: u32, y: u32, w: u32, h: u32, color: u32) {
     let fb = fb_base as *mut u32;
     let stride = pitch / 4; // pixels per row
     for row in y..(y + h) {
@@ -75,15 +102,60 @@ pub fn cpu_fb_fill_rect(fb_base: u64, pitch: u32,
     }
 }
 
+/// CPU-side clipped fill for visible fallback paths.
+pub fn cpu_fb_fill_rect_clipped(
+    fb_base: u64,
+    pitch: u32,
+    fb_w: u32,
+    fb_h: u32,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    color: u32,
+) {
+    if fb_base == 0 || pitch == 0 || fb_w == 0 || fb_h == 0 {
+        return;
+    }
+
+    let x0 = core::cmp::min(x, fb_w);
+    let y0 = core::cmp::min(y, fb_h);
+    let x1 = core::cmp::min(x.saturating_add(w), fb_w);
+    let y1 = core::cmp::min(y.saturating_add(h), fb_h);
+
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+
+    cpu_fb_fill_rect(fb_base, pitch, x0, y0, x1 - x0, y1 - y0, color);
+}
+
 /// CPU-side gradient fill — draws a visible gradient to prove GPU framebuffer access.
-pub fn cpu_fb_gradient(fb_base: u64, pitch: u32, width: u32, height: u32,
-                       x: u32, y: u32, w: u32, h: u32) {
+pub fn cpu_fb_gradient(
+    fb_base: u64,
+    pitch: u32,
+    width: u32,
+    height: u32,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) {
+    if fb_base == 0 || pitch == 0 || width == 0 || height == 0 || w == 0 || h == 0 {
+        return;
+    }
+
     let fb = fb_base as *mut u32;
     let stride = pitch / 4;
-    for row in y..(y + h) {
-        for col in x..(x + w) {
-            let r = ((col - x) * 255 / w) as u32;
-            let g = ((row - y) * 255 / h) as u32;
+    let x0 = core::cmp::min(x, width);
+    let y0 = core::cmp::min(y, height);
+    let x1 = core::cmp::min(x.saturating_add(w), width);
+    let y1 = core::cmp::min(y.saturating_add(h), height);
+
+    for row in y0..y1 {
+        for col in x0..x1 {
+            let r = ((col.saturating_sub(x)) * 255 / w) as u32;
+            let g = ((row.saturating_sub(y)) * 255 / h) as u32;
             let b = 128u32;
             let color = 0xFF000000 | (r << 16) | (g << 8) | b;
             let offset = (row * stride + col) as isize;
@@ -95,8 +167,7 @@ pub fn cpu_fb_gradient(fb_base: u64, pitch: u32, width: u32, height: u32,
 }
 
 /// CPU-side draw the NVIDIA-green FastOS logo pattern.
-pub fn cpu_fb_logo(fb_base: u64, pitch: u32,
-                   center_x: u32, center_y: u32) {
+pub fn cpu_fb_logo(fb_base: u64, pitch: u32, center_x: u32, center_y: u32) {
     // Green rectangles forming "F" letter
     let green = 0xFF76B900u32; // NVIDIA green
     let dark = 0xFF1A1A2Eu32;

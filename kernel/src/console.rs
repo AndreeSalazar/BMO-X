@@ -1,6 +1,6 @@
 //! Console — text display over framebuffer with scroll and cursor.
 
-use crate::fb::{Framebuffer, colors};
+use crate::fb::{colors, Framebuffer};
 use crate::font;
 
 const CHAR_W: usize = 8;
@@ -29,13 +29,14 @@ impl Console {
         let fb_height = fb_height as usize;
         let shadow_size = fb_pitch.saturating_mul(fb_height);
         let shadow_pages = (shadow_size + 0xFFF) / 0x1000;
-        let shadow_addr = unsafe {
-            crate::arch::page_alloc::alloc_pages_contiguous(shadow_pages)
-                .unwrap_or(0)
-        } as usize;
+        let shadow_addr =
+            unsafe { crate::arch::page_alloc::alloc_pages_contiguous(shadow_pages).unwrap_or(0) }
+                as usize;
 
         if shadow_addr != 0 {
-            unsafe { core::ptr::write_bytes(shadow_addr as *mut u8, 0, shadow_pages * 0x1000); }
+            unsafe {
+                core::ptr::write_bytes(shadow_addr as *mut u8, 0, shadow_pages * 0x1000);
+            }
         }
 
         Self {
@@ -70,14 +71,28 @@ impl Console {
     pub fn clear(&mut self) {
         if self.shadow_addr != 0 {
             self.clear_shadow(self.bg);
-            self.gradient_h_shadow(0, 0, self.fb_width, 2, colors::NV_GREEN, colors::ACCENT_CYAN);
+            self.gradient_h_shadow(
+                0,
+                0,
+                self.fb_width,
+                2,
+                colors::NV_GREEN,
+                colors::ACCENT_CYAN,
+            );
             self.flush_all();
         } else {
             let fb = self.fb();
             fb.clear(self.bg);
 
             // Top accent line
-            fb.gradient_h(0, 0, self.fb_width, 2, colors::NV_GREEN, colors::ACCENT_CYAN);
+            fb.gradient_h(
+                0,
+                0,
+                self.fb_width,
+                2,
+                colors::NV_GREEN,
+                colors::ACCENT_CYAN,
+            );
         }
 
         self.col = 0;
@@ -108,14 +123,20 @@ impl Console {
             8 => self.backspace(),
             b'\t' => {
                 let spaces = 4 - (self.col % 4);
-                for _ in 0..spaces { self.put_char(b' '); }
+                for _ in 0..spaces {
+                    self.put_char(b' ');
+                }
             }
             _ => {
-                if self.row >= self.max_rows { self.scroll(); }
+                if self.row >= self.max_rows {
+                    self.scroll();
+                }
                 self.draw_char(self.col, self.row, ch, self.fg, self.bg);
                 self.flush_cell(self.col, self.row);
                 self.col += 1;
-                if self.col >= self.max_cols { self.newline(); }
+                if self.col >= self.max_cols {
+                    self.newline();
+                }
             }
         }
     }
@@ -123,7 +144,9 @@ impl Console {
     pub fn newline(&mut self) {
         self.col = 0;
         self.row += 1;
-        if self.row >= self.max_rows { self.scroll(); }
+        if self.row >= self.max_rows {
+            self.scroll();
+        }
     }
 
     pub fn backspace(&mut self) {
@@ -136,11 +159,21 @@ impl Console {
 
     /// Print a u64 as decimal.
     pub fn print_u64(&mut self, mut val: u64) {
-        if val == 0 { self.put_char(b'0'); return; }
+        if val == 0 {
+            self.put_char(b'0');
+            return;
+        }
         let mut buf = [0u8; 20];
         let mut i = 0;
-        while val > 0 { buf[i] = b'0' + (val % 10) as u8; val /= 10; i += 1; }
-        while i > 0 { i -= 1; self.put_char(buf[i]); }
+        while val > 0 {
+            buf[i] = b'0' + (val % 10) as u8;
+            val /= 10;
+            i += 1;
+        }
+        while i > 0 {
+            i -= 1;
+            self.put_char(buf[i]);
+        }
     }
 
     /// Print a u32 as hex.
@@ -157,20 +190,43 @@ impl Console {
     }
 
     fn put_hex_nibble(&mut self, n: u32) {
-        let ch = if n < 10 { b'0' + n as u8 } else { b'A' + (n as u8 - 10) };
+        let ch = if n < 10 {
+            b'0' + n as u8
+        } else {
+            b'A' + (n as u8 - 10)
+        };
         self.put_char(ch);
     }
 
     /// Framebuffer base address.
-    pub fn fb_addr(&self) -> usize { self.fb_addr }
+    pub fn fb_addr(&self) -> usize {
+        self.fb_addr
+    }
 
     /// Framebuffer pitch (bytes per scanline).
-    pub fn fb_pitch(&self) -> usize { self.fb_pitch }
+    pub fn fb_pitch(&self) -> usize {
+        self.fb_pitch
+    }
 
     // ── Internal ────────────────────────────────────────────────────────
 
+    /// Framebuffer width in pixels.
+    pub fn fb_width(&self) -> usize {
+        self.fb_width
+    }
+
+    /// Framebuffer height in pixels.
+    pub fn fb_height(&self) -> usize {
+        self.fb_height
+    }
+
     fn fb(&self) -> Framebuffer {
-        Framebuffer::new(self.fb_addr as u64, self.fb_pitch as u64, self.fb_width as u32, self.fb_height as u32)
+        Framebuffer::new(
+            self.fb_addr as u64,
+            self.fb_pitch as u64,
+            self.fb_width as u32,
+            self.fb_height as u32,
+        )
     }
 
     fn draw_target(&self) -> (*mut u32, usize, bool) {
@@ -209,18 +265,16 @@ impl Console {
             let pitch_px = self.shadow_pitch / 4;
             let copy_rows = (self.max_rows - 1) * CHAR_H;
             unsafe {
-                core::ptr::copy(
-                    buf.add(CHAR_H * pitch_px),
-                    buf,
-                    copy_rows * pitch_px,
-                );
+                core::ptr::copy(buf.add(CHAR_H * pitch_px), buf, copy_rows * pitch_px);
             }
 
             let bg = self.bg;
             let last_y = copy_rows;
             for py in 0..CHAR_H {
                 for px in 0..self.fb_width {
-                    unsafe { buf.add((last_y + py) * pitch_px + px).write(bg); }
+                    unsafe {
+                        buf.add((last_y + py) * pitch_px + px).write(bg);
+                    }
                 }
             }
 
@@ -244,7 +298,9 @@ impl Console {
         let last_y = copy_rows;
         for py in 0..CHAR_H {
             for px in 0..self.fb_width {
-                unsafe { buf.add((last_y + py) * pitch_px + px).write_volatile(bg); }
+                unsafe {
+                    buf.add((last_y + py) * pitch_px + px).write_volatile(bg);
+                }
             }
         }
 
@@ -256,7 +312,9 @@ impl Console {
         let pitch_px = self.shadow_pitch / 4;
         for y in 0..self.fb_height {
             for x in 0..self.fb_width {
-                unsafe { buf.add(y * pitch_px + x).write(color); }
+                unsafe {
+                    buf.add(y * pitch_px + x).write(color);
+                }
             }
         }
     }
@@ -270,7 +328,9 @@ impl Console {
             let color = Self::lerp_color(left, right, t, inv);
             for row in y..(y + h).min(self.fb_height) {
                 if x + col < self.fb_width {
-                    unsafe { buf.add(row * pitch_px + x + col).write(color); }
+                    unsafe {
+                        buf.add(row * pitch_px + x + col).write(color);
+                    }
                 }
             }
         }
@@ -296,7 +356,9 @@ impl Console {
     }
 
     fn flush_rect(&self, x: usize, y: usize, w: usize, h: usize) {
-        if self.shadow_addr == 0 { return; }
+        if self.shadow_addr == 0 {
+            return;
+        }
 
         let copy_w = w.min(self.fb_width.saturating_sub(x));
         let copy_h = h.min(self.fb_height.saturating_sub(y));
@@ -306,18 +368,20 @@ impl Console {
         let dst = self.fb_addr as *mut u32;
 
         for row in 0..copy_h {
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    src.add((y + row) * src_pitch_px + x),
-                    dst.add((y + row) * dst_pitch_px + x),
-                    copy_w,
-                );
+            for col in 0..copy_w {
+                unsafe {
+                    let px = src.add((y + row) * src_pitch_px + x + col).read();
+                    dst.add((y + row) * dst_pitch_px + x + col)
+                        .write_volatile(px);
+                }
             }
         }
     }
 
     pub fn flush_all(&self) {
-        if self.shadow_addr == 0 { return; }
+        if self.shadow_addr == 0 {
+            return;
+        }
 
         let src_pitch_px = self.shadow_pitch / 4;
         let dst_pitch_px = self.fb_pitch / 4;
@@ -325,12 +389,11 @@ impl Console {
         let dst = self.fb_addr as *mut u32;
 
         for y in 0..self.fb_height {
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    src.add(y * src_pitch_px),
-                    dst.add(y * dst_pitch_px),
-                    self.fb_width,
-                );
+            for x in 0..self.fb_width {
+                unsafe {
+                    let px = src.add(y * src_pitch_px + x).read();
+                    dst.add(y * dst_pitch_px + x).write_volatile(px);
+                }
             }
         }
     }

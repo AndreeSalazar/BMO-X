@@ -169,6 +169,15 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
             }
             
             // ── Iniciar GSP (TEMPORALMENTE DESACTIVADO) ─────────────────────
+            con.println("[FastOS] GSP auto-init: disabled (use 'gspinit' or 'gsprpc').");
+            if bi.gsp_addr != 0 && bi.gsp_size > 0 {
+                con.print("[FastOS] GSP firmware loaded: ");
+                con.print_u64(bi.gsp_size / (1024 * 1024));
+                con.println(" MB");
+            } else {
+                con.print_colored("[FastOS] GSP firmware not loaded.\n", 0xFFFF0000);
+            }
+            if false {
             con.println("[FastOS] Buscando GPU para cargar GSP...");
             let platform = platform::FastOsPlatform::new();
             if let Some(pci) = nv_hal::find_gpu(&platform) {
@@ -234,6 +243,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 }
             } else {
                 con.println("[FastOS] ERROR: GPU no encontrada.");
+            }
             }
             con.println("");
 

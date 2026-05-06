@@ -20,7 +20,7 @@ pub const AMPERE_CHANNEL_GPFIFO_A: u32 = 0xC46F;
 // ── Common Methods (all classes) ─────────────────────────────────────────────
 
 /// NOP — does nothing, useful for padding/sync.
-pub const NV_NOP: u32 = 0x0000;
+pub const NV_NOP: u32 = 0x0100;
 /// Set object class on subchannel.
 pub const NV_SET_OBJECT: u32 = 0x0000;
 /// Semaphore address high.

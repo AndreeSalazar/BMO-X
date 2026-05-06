@@ -1,31 +1,56 @@
 //! FastOS Shell — Interactive command interpreter.
 //! Ring 0, no_std. Only commands backed by real hardware state.
 
+use crate::arch::cpu;
 use crate::console::Console;
 use crate::fb::colors;
-use crate::arch::cpu;
 
 const MAX_LINE: usize = 256;
 
 /// Basic PS/2 Set 1 Scancode to ASCII map (US QWERTY, lowercase only)
 fn scancode_to_ascii(scancode: u8) -> Option<u8> {
     match scancode {
-        0x02 => Some(b'1'), 0x03 => Some(b'2'), 0x04 => Some(b'3'), 0x05 => Some(b'4'),
-        0x06 => Some(b'5'), 0x07 => Some(b'6'), 0x08 => Some(b'7'), 0x09 => Some(b'8'),
-        0x0A => Some(b'9'), 0x0B => Some(b'0'),
-        
-        0x10 => Some(b'q'), 0x11 => Some(b'w'), 0x12 => Some(b'e'), 0x13 => Some(b'r'),
-        0x14 => Some(b't'), 0x15 => Some(b'y'), 0x16 => Some(b'u'), 0x17 => Some(b'i'),
-        0x18 => Some(b'o'), 0x19 => Some(b'p'),
-        
-        0x1E => Some(b'a'), 0x1F => Some(b's'), 0x20 => Some(b'd'), 0x21 => Some(b'f'),
-        0x22 => Some(b'g'), 0x23 => Some(b'h'), 0x24 => Some(b'j'), 0x25 => Some(b'k'),
-        0x26 => Some(b'l'), 
-        
-        0x2C => Some(b'z'), 0x2D => Some(b'x'), 0x2E => Some(b'c'), 0x2F => Some(b'v'),
-        0x30 => Some(b'b'), 0x31 => Some(b'n'), 0x32 => Some(b'm'), 
-        
-        0x39 => Some(b' '), // Space
+        0x02 => Some(b'1'),
+        0x03 => Some(b'2'),
+        0x04 => Some(b'3'),
+        0x05 => Some(b'4'),
+        0x06 => Some(b'5'),
+        0x07 => Some(b'6'),
+        0x08 => Some(b'7'),
+        0x09 => Some(b'8'),
+        0x0A => Some(b'9'),
+        0x0B => Some(b'0'),
+
+        0x10 => Some(b'q'),
+        0x11 => Some(b'w'),
+        0x12 => Some(b'e'),
+        0x13 => Some(b'r'),
+        0x14 => Some(b't'),
+        0x15 => Some(b'y'),
+        0x16 => Some(b'u'),
+        0x17 => Some(b'i'),
+        0x18 => Some(b'o'),
+        0x19 => Some(b'p'),
+
+        0x1E => Some(b'a'),
+        0x1F => Some(b's'),
+        0x20 => Some(b'd'),
+        0x21 => Some(b'f'),
+        0x22 => Some(b'g'),
+        0x23 => Some(b'h'),
+        0x24 => Some(b'j'),
+        0x25 => Some(b'k'),
+        0x26 => Some(b'l'),
+
+        0x2C => Some(b'z'),
+        0x2D => Some(b'x'),
+        0x2E => Some(b'c'),
+        0x2F => Some(b'v'),
+        0x30 => Some(b'b'),
+        0x31 => Some(b'n'),
+        0x32 => Some(b'm'),
+
+        0x39 => Some(b' '),  // Space
         0x1C => Some(b'\n'), // Enter
         0x0E => Some(8),     // Backspace
         _ => None,
@@ -37,13 +62,17 @@ fn read_any_key() -> u8 {
     loop {
         // 1. Poll PS/2 Keyboard Status Register (Port 0x64)
         let status: u8;
-        unsafe { core::arch::asm!("in al, dx", out("al") status, in("dx") 0x64u16); }
-        
+        unsafe {
+            core::arch::asm!("in al, dx", out("al") status, in("dx") 0x64u16);
+        }
+
         // If Output Buffer Status bit (bit 0) is 1, data is available
         if (status & 1) != 0 {
             let scancode: u8;
-            unsafe { core::arch::asm!("in al, dx", out("al") scancode, in("dx") 0x60u16); }
-            
+            unsafe {
+                core::arch::asm!("in al, dx", out("al") scancode, in("dx") 0x60u16);
+            }
+
             // Only handle "press" events (scancode < 0x80)
             if scancode < 0x80 {
                 if let Some(c) = scancode_to_ascii(scancode) {
@@ -58,7 +87,9 @@ fn read_any_key() -> u8 {
             return b;
         }
 
-        for _ in 0..1000u32 { core::hint::spin_loop(); }
+        for _ in 0..1000u32 {
+            core::hint::spin_loop();
+        }
     }
 }
 
@@ -133,7 +164,15 @@ fn execute(con: &mut Console, cmd: &[u8]) {
     } else if bytes_eq(cmd, b"gpucmd") {
         let fb_base = con.fb_addr() as u64;
         let fb_pitch = con.fb_pitch() as u32;
-        crate::gpu::engine::cmd_gpucmd(con, fb_base, fb_pitch, 1920, 1080);
+        let fb_w = con.fb_width() as u32;
+        let fb_h = con.fb_height() as u32;
+        crate::gpu::engine::cmd_gpucmd(con, fb_base, fb_pitch, fb_w, fb_h);
+    } else if bytes_eq(cmd, b"gpu2d") {
+        let fb_base = con.fb_addr() as u64;
+        let fb_pitch = con.fb_pitch() as u32;
+        let fb_w = con.fb_width() as u32;
+        let fb_h = con.fb_height() as u32;
+        crate::gpu::engine::cmd_gpu2d(con, fb_base, fb_pitch, fb_w, fb_h);
     } else if bytes_eq(cmd, b"cube") {
         cmd_cube(con);
     } else if bytes_eq(cmd, b"gspinit") {
@@ -141,14 +180,21 @@ fn execute(con: &mut Console, cmd: &[u8]) {
     } else if bytes_eq(cmd, b"gsprpc") {
         cmd_gsprpc(con);
     } else if bytes_eq(cmd, b"ver") {
-        con.print_colored("FastOS v0.6.0 (Rust, no_std, Ring 0, UEFI Native)", colors::ACCENT_CYAN);
+        con.print_colored(
+            "FastOS v0.6.0 (Rust, no_std, Ring 0, UEFI Native)",
+            colors::ACCENT_CYAN,
+        );
         con.newline();
     } else if bytes_eq(cmd, b"reboot") {
         cmd_reboot();
     } else if bytes_eq(cmd, b"halt") {
         con.print_colored("System halted.", colors::ACCENT_ORANGE);
         con.newline();
-        loop { unsafe { core::arch::asm!("hlt"); } }
+        loop {
+            unsafe {
+                core::arch::asm!("hlt");
+            }
+        }
     } else if bytes_eq(cmd, b"tsc") {
         let tsc = cpu::rdtsc();
         con.print("TSC: ");
@@ -156,7 +202,9 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         con.newline();
     } else {
         con.print_colored("Unknown: ", colors::ACCENT_RED);
-        for &b in cmd { con.put_char(b); }
+        for &b in cmd {
+            con.put_char(b);
+        }
         con.newline();
     }
 }
@@ -171,6 +219,7 @@ fn cmd_help(con: &mut Console) {
     print_cmd(con, "meminfo", "UEFI memory map");
     print_cmd(con, "gputest", "GPU HW register test suite");
     print_cmd(con, "gpucmd", "GPU command engine (pushbuffer)");
+    print_cmd(con, "gpu2d", "2D GPU workload stream + visible fallback");
     print_cmd(con, "gspinit", "Wake up GPU System Processor");
     print_cmd(con, "gsprpc", "Send Test RPC Command to GSP");
     print_cmd(con, "cube", "3D rotating cube (software)");
@@ -185,7 +234,10 @@ fn print_cmd(con: &mut Console, name: &str, desc: &str) {
     con.print("  ");
     con.print_colored(name, colors::NV_GREEN);
     let mut pad = 12usize.saturating_sub(name.len());
-    while pad > 0 { con.put_char(b' '); pad -= 1; }
+    while pad > 0 {
+        con.put_char(b' ');
+        pad -= 1;
+    }
     con.print(desc);
     con.newline();
 }
@@ -194,14 +246,22 @@ fn cmd_cpuinfo(con: &mut Console) {
     let f = cpu::detect_cpu();
     con.print_colored("CPU: ", colors::ACCENT_PURPLE);
     con.println("AMD Ryzen 5 5600X (Zen 3)");
-    con.print("  SSE4.2: "); print_yn(con, f.has_sse42);
-    con.print("  AVX2:   "); print_yn(con, f.has_avx2);
-    con.print("  FMA3:   "); print_yn(con, f.has_fma3);
-    con.print("  AES-NI: "); print_yn(con, f.has_aes);
-    con.print("  SHA:    "); print_yn(con, f.has_sha);
-    con.print("  BMI2:   "); print_yn(con, f.has_bmi2);
-    con.print("  RDRAND: "); print_yn(con, f.has_rdrand);
-    con.print("  NX:     "); print_yn(con, f.has_nx);
+    con.print("  SSE4.2: ");
+    print_yn(con, f.has_sse42);
+    con.print("  AVX2:   ");
+    print_yn(con, f.has_avx2);
+    con.print("  FMA3:   ");
+    print_yn(con, f.has_fma3);
+    con.print("  AES-NI: ");
+    print_yn(con, f.has_aes);
+    con.print("  SHA:    ");
+    print_yn(con, f.has_sha);
+    con.print("  BMI2:   ");
+    print_yn(con, f.has_bmi2);
+    con.print("  RDRAND: ");
+    print_yn(con, f.has_rdrand);
+    con.print("  NX:     ");
+    print_yn(con, f.has_nx);
 }
 
 fn cmd_gpuinfo(con: &mut Console) {
@@ -345,7 +405,9 @@ fn cmd_meminfo(con: &mut Console) {
     let mut usable_pages: u64 = 0;
     let count = bi.memory_map_count as usize;
     for i in 0..count {
-        if i >= 256 { break; }
+        if i >= 256 {
+            break;
+        }
         if bi.memory_map[i].mem_type == fastos_boot_protocol::MemoryType::Usable {
             usable_pages += bi.memory_map[i].size / 4096;
         }
@@ -376,7 +438,9 @@ fn cmd_cube(con: &mut Console) {
     let pitch_px = fb_pitch as usize / 4;
     for y in 0..1080usize {
         for x in 0..1920usize {
-            unsafe { fb.add(y * pitch_px + x).write_volatile(0xFF0D1117); }
+            unsafe {
+                fb.add(y * pitch_px + x).write_volatile(0xFF0D1117);
+            }
         }
     }
 
@@ -386,9 +450,13 @@ fn cmd_cube(con: &mut Console) {
         tick += 1;
 
         let key = crate::drivers::serial::serial_read_byte().unwrap_or(0);
-        if key != 0 { break; }
+        if key != 0 {
+            break;
+        }
 
-        for _ in 0..3_000_000u32 { core::hint::spin_loop(); }
+        for _ in 0..3_000_000u32 {
+            core::hint::spin_loop();
+        }
     }
 
     con.clear();
@@ -406,7 +474,10 @@ fn cmd_reboot() {
 }
 
 fn cmd_gsp_init(con: &mut Console) {
-    con.print_colored("[FastOS] Intentando despertar procesador GSP...\n", colors::ACCENT_PURPLE);
+    con.print_colored(
+        "[FastOS] Intentando despertar procesador GSP...\n",
+        colors::ACCENT_PURPLE,
+    );
     let platform = crate::platform::FastOsPlatform::new();
     if let Some(pci) = nv_hal::find_gpu(&platform) {
         use nv_hal::Platform;
@@ -420,15 +491,23 @@ fn cmd_gsp_init(con: &mut Console) {
                     let gsp_addr = unsafe { (*bi).gsp_addr };
                     let gsp_size = unsafe { (*bi).gsp_size };
                     if gsp_addr != 0 && gsp_size > 0 {
-                        let fw_blob = unsafe { core::slice::from_raw_parts(gsp_addr as *const u8, gsp_size as usize) };
+                        let fw_blob = unsafe {
+                            core::slice::from_raw_parts(gsp_addr as *const u8, gsp_size as usize)
+                        };
                         con.println("[FastOS] Firmware GSP en memoria. Ejecutando handshake...");
                         if let Err(_e) = crate::drivers::gsp::gsp_init(&bar0, fw_blob, con) {
                             con.print_colored("[FastOS] ERROR: GSP fallo.\n", colors::ACCENT_RED);
                         } else {
-                            con.print_colored("[FastOS] EXITO: GSP Despierto y listo.\n", colors::TEXT_SUCCESS);
+                            con.print_colored(
+                                "[FastOS] EXITO: GSP Despierto y listo.\n",
+                                colors::TEXT_SUCCESS,
+                            );
                         }
                     } else {
-                        con.print_colored("ERROR: Firmware gsp_ga10x.bin no cargado.\n", colors::ACCENT_RED);
+                        con.print_colored(
+                            "ERROR: Firmware gsp_ga10x.bin no cargado.\n",
+                            colors::ACCENT_RED,
+                        );
                     }
                 } else {
                     con.println("ERROR: BootInfo nulo.");
@@ -445,8 +524,11 @@ fn cmd_gsp_init(con: &mut Console) {
 }
 
 fn cmd_gsprpc(con: &mut Console) {
-    con.print_colored("[FastOS] GPU RTX 3060 GA10x — Pipeline Completo\n", colors::ACCENT_PURPLE);
-    
+    con.print_colored(
+        "[FastOS] GPU RTX 3060 GA10x — Pipeline Completo\n",
+        colors::ACCENT_PURPLE,
+    );
+
     let platform = crate::platform::FastOsPlatform::new();
     if let Some(pci) = nv_hal::find_gpu(&platform) {
         use nv_hal::Platform;
@@ -459,9 +541,12 @@ fn cmd_gsprpc(con: &mut Console) {
         let fw_ptr = unsafe { &*crate::boot_info::BOOT_INFO };
 
         // Check if we have all 3 firmware blobs (proper GA10x boot)
-        let has_3blobs = fw_ptr.gsp_addr != 0 && fw_ptr.gsp_size > 0
-            && fw_ptr.gsp_bootloader_addr != 0 && fw_ptr.gsp_bootloader_size > 0
-            && fw_ptr.gsp_booter_load_addr != 0 && fw_ptr.gsp_booter_load_size > 0;
+        let has_3blobs = fw_ptr.gsp_addr != 0
+            && fw_ptr.gsp_size > 0
+            && fw_ptr.gsp_bootloader_addr != 0
+            && fw_ptr.gsp_bootloader_size > 0
+            && fw_ptr.gsp_booter_load_addr != 0
+            && fw_ptr.gsp_booter_load_size > 0;
 
         if has_3blobs {
             con.println("  [BOOT] 3-blob boot: GSP-RM + bootloader + booter_load");
@@ -469,14 +554,23 @@ fn cmd_gsprpc(con: &mut Console) {
                 core::slice::from_raw_parts(fw_ptr.gsp_addr as *const u8, fw_ptr.gsp_size as usize)
             };
             let bootloader = unsafe {
-                core::slice::from_raw_parts(fw_ptr.gsp_bootloader_addr as *const u8, fw_ptr.gsp_bootloader_size as usize)
+                core::slice::from_raw_parts(
+                    fw_ptr.gsp_bootloader_addr as *const u8,
+                    fw_ptr.gsp_bootloader_size as usize,
+                )
             };
             let booter_load = unsafe {
-                core::slice::from_raw_parts(fw_ptr.gsp_booter_load_addr as *const u8, fw_ptr.gsp_booter_load_size as usize)
+                core::slice::from_raw_parts(
+                    fw_ptr.gsp_booter_load_addr as *const u8,
+                    fw_ptr.gsp_booter_load_size as usize,
+                )
             };
             let vbios_rom = if fw_ptr.vbios_addr != 0 && fw_ptr.vbios_size > 0 {
                 Some(unsafe {
-                    core::slice::from_raw_parts(fw_ptr.vbios_addr as *const u8, fw_ptr.vbios_size as usize)
+                    core::slice::from_raw_parts(
+                        fw_ptr.vbios_addr as *const u8,
+                        fw_ptr.vbios_size as usize,
+                    )
                 })
             } else {
                 None
@@ -510,7 +604,8 @@ fn cmd_gsprpc(con: &mut Console) {
 
         // === PASO 2: RPC Ring (256KB cmdq + 256KB msgq = 128 pages) ===
         let rpc_pages = 128; // 512KB total for both queues
-        let rpc_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(rpc_pages).unwrap() };
+        let rpc_phys =
+            unsafe { crate::arch::page_alloc::alloc_pages_contiguous(rpc_pages).unwrap() };
         let mut rpc_ring = crate::drivers::gsp::rpc::GspRpcRing::new(&bar0, rpc_phys);
         rpc_ring.init(con);
 
@@ -543,7 +638,10 @@ fn cmd_gsprpc(con: &mut Console) {
             crate::arch::page_alloc::free_pages(pb_phys, 1);
         }
 
-        con.print_colored("\n[FastOS] GPU RTX 3060 GA10x — GSP-RM Pipeline COMPLETO\n", colors::TEXT_SUCCESS);
+        con.print_colored(
+            "\n[FastOS] GPU RTX 3060 GA10x — GSP-RM Pipeline COMPLETO\n",
+            colors::TEXT_SUCCESS,
+        );
     } else {
         con.println("ERROR: GPU no encontrada.");
     }
@@ -563,13 +661,21 @@ fn print_yn(con: &mut Console, val: bool) {
 fn bytes_eq(a: &[u8], b: &[u8]) -> bool {
     let mut start = 0;
     let mut end = a.len();
-    while start < end && a[start] == b' ' { start += 1; }
-    while end > start && a[end - 1] == b' ' { end -= 1; }
+    while start < end && a[start] == b' ' {
+        start += 1;
+    }
+    while end > start && a[end - 1] == b' ' {
+        end -= 1;
+    }
     let a = &a[start..end];
-    if a.len() != b.len() { return false; }
+    if a.len() != b.len() {
+        return false;
+    }
     let mut i = 0;
     while i < a.len() {
-        if a[i] != b[i] { return false; }
+        if a[i] != b[i] {
+            return false;
+        }
         i += 1;
     }
     true
