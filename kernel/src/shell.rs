@@ -10,6 +10,8 @@ const KEY_PAGE_UP: u8 = 0xF1;
 const KEY_PAGE_DOWN: u8 = 0xF2;
 const KEY_HOME: u8 = 0xF3;
 const KEY_END: u8 = 0xF4;
+const KEY_ARROW_UP: u8 = 0xF5;
+const KEY_ARROW_DOWN: u8 = 0xF6;
 
 /// Basic PS/2 Set 1 Scancode to ASCII map (US QWERTY, lowercase only)
 fn scancode_to_ascii(scancode: u8) -> Option<u8> {
@@ -84,12 +86,23 @@ fn read_any_key() -> u8 {
                     0x51 => return KEY_PAGE_DOWN,
                     0x47 => return KEY_HOME,
                     0x4F => return KEY_END,
+                    0x48 => return KEY_ARROW_UP,
+                    0x50 => return KEY_ARROW_DOWN,
                     _ => {}
                 }
             }
 
             // Only handle "press" events (scancode < 0x80)
             if scancode < 0x80 {
+                match scancode {
+                    0x49 => return KEY_PAGE_UP,
+                    0x51 => return KEY_PAGE_DOWN,
+                    0x47 => return KEY_HOME,
+                    0x4F => return KEY_END,
+                    0x48 => return KEY_ARROW_UP,
+                    0x50 => return KEY_ARROW_DOWN,
+                    _ => {}
+                }
                 if let Some(c) = scancode_to_ascii(scancode) {
                     return c;
                 }
@@ -156,25 +169,47 @@ fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
     loop {
         let key = read_any_key();
         if key == b'\r' || key == b'\n' {
+            con.scroll_to_bottom();
             return len;
         } else if key == KEY_PAGE_UP {
             con.draw_cursor(false);
             con.scroll_page_up();
-            con.draw_cursor(true);
+            if !con.is_viewing_history() {
+                con.draw_cursor(true);
+            }
         } else if key == KEY_PAGE_DOWN {
             con.draw_cursor(false);
             con.scroll_page_down();
-            con.draw_cursor(true);
+            if !con.is_viewing_history() {
+                con.draw_cursor(true);
+            }
+        } else if key == KEY_ARROW_UP {
+            con.draw_cursor(false);
+            con.scroll_back_lines(1);
+            if !con.is_viewing_history() {
+                con.draw_cursor(true);
+            }
+        } else if key == KEY_ARROW_DOWN {
+            con.draw_cursor(false);
+            con.scroll_forward_lines(1);
+            if !con.is_viewing_history() {
+                con.draw_cursor(true);
+            }
         } else if key == KEY_HOME {
             con.draw_cursor(false);
             con.scroll_to_top();
-            con.draw_cursor(true);
+            if !con.is_viewing_history() {
+                con.draw_cursor(true);
+            }
         } else if key == KEY_END {
             con.draw_cursor(false);
             con.scroll_to_bottom();
             con.draw_cursor(true);
         } else if key == 8 {
             if len > 0 {
+                if con.is_viewing_history() {
+                    con.scroll_to_bottom();
+                }
                 len -= 1;
                 con.draw_cursor(false);
                 con.backspace();
@@ -182,6 +217,9 @@ fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
             }
         } else if key >= 32 && key <= 126 {
             if len < buf.len() - 1 {
+                if con.is_viewing_history() {
+                    con.scroll_to_bottom();
+                }
                 buf[len] = key;
                 len += 1;
                 con.draw_cursor(false);

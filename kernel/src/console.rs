@@ -5,7 +5,7 @@ use crate::font;
 
 const CHAR_W: usize = 8;
 const CHAR_H: usize = 16;
-const SCROLLBACK_ROWS: usize = 2048;
+const SCROLLBACK_ROWS: usize = 8192;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -298,6 +298,10 @@ impl Console {
     pub fn scroll_to_bottom(&mut self) {
         self.view_offset = 0;
         self.render_history_view();
+    }
+
+    pub fn is_viewing_history(&self) -> bool {
+        self.view_offset != 0
     }
 
     fn fb(&self) -> Framebuffer {
