@@ -645,10 +645,10 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(sig_dst_off as u32);
         con.newline();
 
-        let imem_src_off = hs.app0_offset as usize;
-        let imem_size = hs.app0_size as usize;
+        let imem_src_off = hs.os_code_offset as usize;
+        let imem_size = hs.os_code_size as usize;
         if imem_src_off + imem_size > image_size || imem_size == 0 {
-            con.println("  GSP: [HS-BOOT] ERROR - app IMEM region invalid");
+            con.println("  GSP: [HS-BOOT] ERROR - OS code IMEM region invalid");
             return Err(GspLoadError::NoBooterFound);
         }
         let imem_chunks = (imem_size + 255) / 256;
@@ -687,8 +687,8 @@ impl<'a> GspLoader<'a> {
 
         for i in 0..dmem_chunks {
             self.sec2_dma_xfer_256_tagged(
-                image_buf_phys + dmem_src_off as u64,
-                (i * 256) as u32,
+                image_buf_phys,
+                dmem_src_off as u32 + (i * 256) as u32,
                 (i * 256) as u32,
                 false,
             )?;
@@ -1843,10 +1843,14 @@ impl<'a> GspLoader<'a> {
         con.newline();
 
         // Read WPR2 to see if it was programmed
+        const NV_WPR2_LO: u32 = 0x001F_A824;
+        let wpr2_lo = self.bar0.read32(NV_WPR2_LO);
         let wpr2_hi = self.bar0.read32(NV_WPR2_HI);
-        con.print("  GSP: WPR2_HI=0x");
+        con.print("  GSP: WPR2_LO=0x");
+        con.print_hex32(wpr2_lo);
+        con.print(" HI=0x");
         con.print_hex32(wpr2_hi);
-        if wpr2_hi != 0 && wpr2_hi != 0xBADF_5720 {
+        if (wpr2_lo != 0 || wpr2_hi != 0) && wpr2_hi != 0xBADF_5720 {
             con.print_colored(" (WPR2 SET — good!)\n", 0x00FF00);
         } else {
             con.print_colored(" (WPR2 not set)\n", 0xFFFF00);
