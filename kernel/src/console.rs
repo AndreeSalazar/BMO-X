@@ -5,6 +5,16 @@ use crate::font;
 
 const CHAR_W: usize = 8;
 const CHAR_H: usize = 16;
+const SCROLLBACK_ROWS: usize = 2048;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct HistoryCell {
+    ch: u8,
+    _pad: [u8; 3],
+    fg: u32,
+    bg: u32,
+}
 
 /// Console state.
 pub struct Console {
@@ -20,6 +30,11 @@ pub struct Console {
     fb_height: usize,
     shadow_addr: usize,
     shadow_pitch: usize,
+    history_addr: usize,
+    history_cols: usize,
+    history_rows: usize,
+    history_line: usize,
+    view_offset: usize,
 }
 
 impl Console {
@@ -39,11 +54,27 @@ impl Console {
             }
         }
 
+        let max_cols = fb_width / CHAR_W;
+        let max_rows = fb_height / CHAR_H;
+        let history_cols = max_cols;
+        let history_size = core::mem::size_of::<HistoryCell>()
+            .saturating_mul(history_cols)
+            .saturating_mul(SCROLLBACK_ROWS);
+        let history_pages = (history_size + 0xFFF) / 0x1000;
+        let history_addr = if history_cols != 0 && history_pages != 0 {
+            (unsafe { crate::arch::page_alloc::alloc_pages_contiguous(history_pages).unwrap_or(0) }) as usize
+        } else {
+            0
+        };
+        if history_addr != 0 {
+            unsafe { core::ptr::write_bytes(history_addr as *mut u8, 0, history_pages * 0x1000); }
+        }
+
         Self {
             col: 0,
             row: 0,
-            max_cols: fb_width / CHAR_W,
-            max_rows: fb_height / CHAR_H,
+            max_cols,
+            max_rows,
             fg: colors::TEXT_PRIMARY,
             bg: colors::BG_DARK,
             fb_addr: fb_addr as usize,
@@ -52,6 +83,11 @@ impl Console {
             fb_height,
             shadow_addr,
             shadow_pitch: fb_pitch,
+            history_addr,
+            history_cols,
+            history_rows: SCROLLBACK_ROWS,
+            history_line: 0,
+            view_offset: 0,
         }
     }
 
@@ -97,6 +133,10 @@ impl Console {
 
         self.col = 0;
         self.row = 1; // Start below accent line
+        self.history_line = 1;
+        self.view_offset = 0;
+        self.clear_history();
+        self.clear_history_line(self.history_line);
     }
 
     pub fn print(&mut self, s: &str) {
@@ -131,6 +171,8 @@ impl Console {
                 if self.row >= self.max_rows {
                     self.scroll();
                 }
+                self.view_offset = 0;
+                self.store_history_cell(self.history_line, self.col, ch, self.fg, self.bg);
                 self.draw_char(self.col, self.row, ch, self.fg, self.bg);
                 self.flush_cell(self.col, self.row);
                 self.col += 1;
@@ -143,6 +185,8 @@ impl Console {
 
     pub fn newline(&mut self) {
         self.col = 0;
+        self.history_line = self.history_line.saturating_add(1);
+        self.clear_history_line(self.history_line);
         self.row += 1;
         if self.row >= self.max_rows {
             self.scroll();
@@ -152,6 +196,7 @@ impl Console {
     pub fn backspace(&mut self) {
         if self.col > 0 {
             self.col -= 1;
+            self.store_history_cell(self.history_line, self.col, b' ', self.fg, self.bg);
             self.draw_char(self.col, self.row, b' ', self.fg, self.bg);
             self.flush_cell(self.col, self.row);
         }
@@ -220,6 +265,41 @@ impl Console {
         self.fb_height
     }
 
+    /// Scroll back through saved console output.
+    pub fn scroll_back_lines(&mut self, lines: usize) {
+        let live_top = self.live_top_history_line();
+        let earliest = self.earliest_history_line();
+        let max_offset = live_top.saturating_sub(earliest);
+        self.view_offset = core::cmp::min(self.view_offset.saturating_add(lines), max_offset);
+        self.render_history_view();
+    }
+
+    /// Scroll forward toward the live prompt.
+    pub fn scroll_forward_lines(&mut self, lines: usize) {
+        self.view_offset = self.view_offset.saturating_sub(lines);
+        self.render_history_view();
+    }
+
+    pub fn scroll_page_up(&mut self) {
+        self.scroll_back_lines(self.max_rows.saturating_sub(2).max(1));
+    }
+
+    pub fn scroll_page_down(&mut self) {
+        self.scroll_forward_lines(self.max_rows.saturating_sub(2).max(1));
+    }
+
+    pub fn scroll_to_top(&mut self) {
+        let live_top = self.live_top_history_line();
+        let earliest = self.earliest_history_line();
+        self.view_offset = live_top.saturating_sub(earliest);
+        self.render_history_view();
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        self.view_offset = 0;
+        self.render_history_view();
+    }
+
     fn fb(&self) -> Framebuffer {
         Framebuffer::new(
             self.fb_addr as u64,
@@ -256,6 +336,101 @@ impl Console {
                     }
                 }
             }
+        }
+    }
+
+    fn history_enabled(&self) -> bool {
+        self.history_addr != 0 && self.history_cols != 0
+    }
+
+    fn history_ptr(&self, abs_row: usize, col: usize) -> *mut HistoryCell {
+        let row = abs_row % self.history_rows;
+        (self.history_addr as *mut HistoryCell).wrapping_add(row * self.history_cols + col)
+    }
+
+    fn store_history_cell(&self, abs_row: usize, col: usize, ch: u8, fg: u32, bg: u32) {
+        if !self.history_enabled() || col >= self.history_cols {
+            return;
+        }
+        unsafe {
+            self.history_ptr(abs_row, col).write(HistoryCell { ch, _pad: [0; 3], fg, bg });
+        }
+    }
+
+    fn read_history_cell(&self, abs_row: usize, col: usize) -> HistoryCell {
+        if !self.history_enabled() || col >= self.history_cols {
+            return HistoryCell { ch: b' ', _pad: [0; 3], fg: self.fg, bg: self.bg };
+        }
+        unsafe {
+            let cell = self.history_ptr(abs_row, col).read();
+            if cell.ch == 0 {
+                HistoryCell { ch: b' ', _pad: [0; 3], fg: self.fg, bg: self.bg }
+            } else {
+                cell
+            }
+        }
+    }
+
+    fn clear_history(&self) {
+        if self.history_addr == 0 {
+            return;
+        }
+        let bytes = core::mem::size_of::<HistoryCell>()
+            .saturating_mul(self.history_cols)
+            .saturating_mul(self.history_rows);
+        unsafe { core::ptr::write_bytes(self.history_addr as *mut u8, 0, bytes); }
+    }
+
+    fn clear_history_line(&self, abs_row: usize) {
+        if !self.history_enabled() {
+            return;
+        }
+        let row = abs_row % self.history_rows;
+        unsafe {
+            core::ptr::write_bytes(
+                (self.history_addr as *mut HistoryCell).add(row * self.history_cols) as *mut u8,
+                0,
+                core::mem::size_of::<HistoryCell>() * self.history_cols,
+            );
+        }
+    }
+
+    fn live_top_history_line(&self) -> usize {
+        self.history_line.saturating_add(1).saturating_sub(self.max_rows)
+    }
+
+    fn earliest_history_line(&self) -> usize {
+        self.history_line.saturating_add(1).saturating_sub(self.history_rows)
+    }
+
+    fn render_history_view(&self) {
+        if !self.history_enabled() {
+            return;
+        }
+
+        if self.shadow_addr != 0 {
+            self.clear_shadow(self.bg);
+            self.gradient_h_shadow(0, 0, self.fb_width, 2, colors::NV_GREEN, colors::ACCENT_CYAN);
+        } else {
+            let fb = self.fb();
+            fb.clear(self.bg);
+            fb.gradient_h(0, 0, self.fb_width, 2, colors::NV_GREEN, colors::ACCENT_CYAN);
+        }
+
+        let top = self.live_top_history_line().saturating_sub(self.view_offset);
+        let rows = self.max_rows;
+        let cols = core::cmp::min(self.max_cols, self.history_cols);
+        for screen_row in 0..rows {
+            let abs_row = top.saturating_add(screen_row);
+            for col in 0..cols {
+                let cell = self.read_history_cell(abs_row, col);
+                if cell.ch != b' ' || cell.bg != self.bg {
+                    self.draw_char(col, screen_row, cell.ch, cell.fg, cell.bg);
+                }
+            }
+        }
+        if self.shadow_addr != 0 {
+            self.flush_all();
         }
     }
 

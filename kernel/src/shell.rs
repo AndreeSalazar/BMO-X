@@ -6,6 +6,10 @@ use crate::console::Console;
 use crate::fb::colors;
 
 const MAX_LINE: usize = 256;
+const KEY_PAGE_UP: u8 = 0xF1;
+const KEY_PAGE_DOWN: u8 = 0xF2;
+const KEY_HOME: u8 = 0xF3;
+const KEY_END: u8 = 0xF4;
 
 /// Basic PS/2 Set 1 Scancode to ASCII map (US QWERTY, lowercase only)
 fn scancode_to_ascii(scancode: u8) -> Option<u8> {
@@ -73,6 +77,17 @@ fn read_any_key() -> u8 {
                 core::arch::asm!("in al, dx", out("al") scancode, in("dx") 0x60u16);
             }
 
+            if scancode == 0xE0 {
+                let ext = read_ps2_extended_scancode();
+                match ext {
+                    0x49 => return KEY_PAGE_UP,
+                    0x51 => return KEY_PAGE_DOWN,
+                    0x47 => return KEY_HOME,
+                    0x4F => return KEY_END,
+                    _ => {}
+                }
+            }
+
             // Only handle "press" events (scancode < 0x80)
             if scancode < 0x80 {
                 if let Some(c) = scancode_to_ascii(scancode) {
@@ -90,6 +105,23 @@ fn read_any_key() -> u8 {
         for _ in 0..1000u32 {
             core::hint::spin_loop();
         }
+    }
+}
+
+fn read_ps2_extended_scancode() -> u8 {
+    loop {
+        let status: u8;
+        unsafe {
+            core::arch::asm!("in al, dx", out("al") status, in("dx") 0x64u16);
+        }
+        if (status & 1) != 0 {
+            let scancode: u8;
+            unsafe {
+                core::arch::asm!("in al, dx", out("al") scancode, in("dx") 0x60u16);
+            }
+            return scancode;
+        }
+        core::hint::spin_loop();
     }
 }
 
@@ -125,6 +157,22 @@ fn read_line_interactive(con: &mut Console, buf: &mut [u8]) -> usize {
         let key = read_any_key();
         if key == b'\r' || key == b'\n' {
             return len;
+        } else if key == KEY_PAGE_UP {
+            con.draw_cursor(false);
+            con.scroll_page_up();
+            con.draw_cursor(true);
+        } else if key == KEY_PAGE_DOWN {
+            con.draw_cursor(false);
+            con.scroll_page_down();
+            con.draw_cursor(true);
+        } else if key == KEY_HOME {
+            con.draw_cursor(false);
+            con.scroll_to_top();
+            con.draw_cursor(true);
+        } else if key == KEY_END {
+            con.draw_cursor(false);
+            con.scroll_to_bottom();
+            con.draw_cursor(true);
         } else if key == 8 {
             if len > 0 {
                 len -= 1;
@@ -488,20 +536,61 @@ fn cmd_gsp_init(con: &mut Console) {
                 let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
                 let bi = unsafe { crate::boot_info::BOOT_INFO };
                 if !bi.is_null() {
-                    let gsp_addr = unsafe { (*bi).gsp_addr };
-                    let gsp_size = unsafe { (*bi).gsp_size };
-                    if gsp_addr != 0 && gsp_size > 0 {
-                        let fw_blob = unsafe {
-                            core::slice::from_raw_parts(gsp_addr as *const u8, gsp_size as usize)
+                    let bi = unsafe { &*bi };
+                    let has_3blobs = bi.gsp_addr != 0
+                        && bi.gsp_size > 0
+                        && bi.gsp_bootloader_addr != 0
+                        && bi.gsp_bootloader_size > 0
+                        && bi.gsp_booter_load_addr != 0
+                        && bi.gsp_booter_load_size > 0;
+
+                    if has_3blobs {
+                        con.println("[FastOS] 3 blobs GSP en memoria. Ejecutando handshake completo...");
+                        let gsp_rm = unsafe {
+                            core::slice::from_raw_parts(bi.gsp_addr as *const u8, bi.gsp_size as usize)
                         };
-                        con.println("[FastOS] Firmware GSP en memoria. Ejecutando handshake...");
+                        let bootloader = unsafe {
+                            core::slice::from_raw_parts(
+                                bi.gsp_bootloader_addr as *const u8,
+                                bi.gsp_bootloader_size as usize,
+                            )
+                        };
+                        let booter_load = unsafe {
+                            core::slice::from_raw_parts(
+                                bi.gsp_booter_load_addr as *const u8,
+                                bi.gsp_booter_load_size as usize,
+                            )
+                        };
+                        let vbios_rom = if bi.vbios_addr != 0 && bi.vbios_size > 0 {
+                            Some(unsafe {
+                                core::slice::from_raw_parts(
+                                    bi.vbios_addr as *const u8,
+                                    bi.vbios_size as usize,
+                                )
+                            })
+                        } else {
+                            None
+                        };
+                        let blobs = crate::drivers::gsp::GspFirmwareBlobs {
+                            gsp_rm,
+                            bootloader,
+                            booter_load,
+                            vbios_rom,
+                        };
+                        if let Err(_e) = crate::drivers::gsp::gsp_init_full(&bar0, &blobs, con) {
+                            con.print_colored("[FastOS] ERROR: GSP fallo.\n", colors::ACCENT_RED);
+                        } else {
+                            con.print_colored("[FastOS] EXITO: GSP Despierto y listo.\n", colors::TEXT_SUCCESS);
+                        }
+                    } else if bi.gsp_addr != 0 && bi.gsp_size > 0 {
+                        let fw_blob = unsafe {
+                            core::slice::from_raw_parts(bi.gsp_addr as *const u8, bi.gsp_size as usize)
+                        };
+                        con.println("[FastOS] AVISO: faltan bootloader/booter_load; usando modo legacy.");
                         if let Err(_e) = crate::drivers::gsp::gsp_init(&bar0, fw_blob, con) {
                             con.print_colored("[FastOS] ERROR: GSP fallo.\n", colors::ACCENT_RED);
                         } else {
-                            con.print_colored(
-                                "[FastOS] EXITO: GSP Despierto y listo.\n",
-                                colors::TEXT_SUCCESS,
-                            );
+                            con.print_colored("[FastOS] EXITO: GSP Despierto y listo.\n", colors::TEXT_SUCCESS);
                         }
                     } else {
                         con.print_colored(
