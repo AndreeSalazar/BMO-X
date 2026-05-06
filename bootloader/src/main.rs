@@ -26,6 +26,9 @@ use uefi::proto::unsafe_protocol;
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const KERNEL_STACK_SIZE: usize = 256 * 1024; // 256 KiB
+const TARGET_FB_WIDTH: usize = 1920;
+const TARGET_FB_HEIGHT: usize = 1080;
+const TARGET_REFRESH_HZ: u32 = 74;
 
 // ELF64 constants
 const ELF_MAGIC: [u8; 4] = [0x7F, b'E', b'L', b'F'];
@@ -333,6 +336,63 @@ struct GopInfo {
     pixel_format: PixelFormat,
 }
 
+fn prefer_full_hd_gop_mode(gop: &mut GraphicsOutput) {
+    use uefi::proto::console::gop::PixelFormat as GopPixelFormat;
+
+    info!(
+        "Selecting GOP mode: prefer {}x{}; target refresh {} Hz is handled by firmware/monitor",
+        TARGET_FB_WIDTH, TARGET_FB_HEIGHT, TARGET_REFRESH_HZ
+    );
+
+    let current = gop.current_mode_info();
+    let (cur_w, cur_h) = current.resolution();
+    if cur_w == TARGET_FB_WIDTH && cur_h == TARGET_FB_HEIGHT {
+        info!("GOP already at preferred mode: {}x{}", cur_w, cur_h);
+        return;
+    }
+
+    let mut best_exact = None;
+    let mut best_any = None;
+
+    for mode in gop.modes() {
+        let info = mode.info();
+        let (w, h) = info.resolution();
+        if w != TARGET_FB_WIDTH || h != TARGET_FB_HEIGHT {
+            continue;
+        }
+
+        match info.pixel_format() {
+            GopPixelFormat::Bgr | GopPixelFormat::Rgb => {
+                best_exact = Some(mode);
+                break;
+            }
+            _ => {
+                if best_any.is_none() {
+                    best_any = Some(mode);
+                }
+            }
+        }
+    }
+
+    let Some(mode) = best_exact.or(best_any) else {
+        info!(
+            "WARNING: GOP mode {}x{} not exposed; keeping firmware mode {}x{}",
+            TARGET_FB_WIDTH, TARGET_FB_HEIGHT, cur_w, cur_h
+        );
+        return;
+    };
+
+    let info = *mode.info();
+    let (w, h) = info.resolution();
+    let stride = info.stride();
+    let fmt = info.pixel_format();
+
+    match gop.set_mode(&mode) {
+        Ok(()) => info!("GOP mode set: {}x{} stride={} fmt={:?}", w, h, stride, fmt),
+        Err(e) => info!("WARNING: failed to set GOP {}x{}: {:?}", w, h, e.status()),
+    }
+}
+
 fn query_gop() -> Option<GopInfo> {
     use uefi::proto::console::gop::PixelFormat as GopPixelFormat;
 
@@ -352,6 +412,8 @@ fn query_gop() -> Option<GopInfo> {
             boot::open_protocol_exclusive::<GraphicsOutput>(h).ok()?
         }
     };
+
+    prefer_full_hd_gop_mode(&mut gop);
 
     let mode_info = gop.current_mode_info();
     let (width, height) = mode_info.resolution();

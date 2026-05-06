@@ -237,6 +237,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
 
             let mut con = console::Console::new(fb_addr, bi.fb_pitch(), bi.fb_width, bi.fb_height);
             con.clear(); // Limpiar la pantalla de las franjas de debug antes de iniciar el shell
+            con.print("[FastOS] Framebuffer GOP: ");
+            con.print_u64(bi.fb_width as u64);
+            con.print("x");
+            con.print_u64(bi.fb_height as u64);
+            con.print(" stride=");
+            con.print_u64(bi.fb_stride as u64);
+            con.println(" target=74Hz");
             
             // ── Iniciar GSP (TEMPORALMENTE DESACTIVADO) ─────────────────────
             con.println("[FastOS] Buscando GPU para cargar GSP...");
