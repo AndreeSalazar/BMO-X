@@ -40,28 +40,6 @@ unsafe extern "C" fn _start() -> ! {
         "jz 2f",             // si es null, saltar a halt
         "mov rbx, rdi",      // guardar boot_info antes de todo
         "and rsp, -16",
-        "mov rax, [rbx + 8]",  // fb_addr desde rbx, no rdi
-        "test rax, rax",
-        "jz 1f",
-        // CHECKPOINT 1 - VERDE: Pantalla completa
-        "mov rcx, 2073600",
-        "mov edx, 0x0000FF00",
-        "0: mov [rax], edx",
-        "add rax, 4",
-        "dec rcx",
-        "jnz 0b",
-        // Recargar fb_addr para cyan
-        "mov rax, [rbx + 8]",
-        "test rax, rax",
-        "jz 1f",
-        // CHECKPOINT 2 - CYAN: Pantalla completa antes del call
-        "mov rcx, 2073600",
-        "mov edx, 0x0000FFFF",
-        "4: mov [rax], edx",
-        "add rax, 4",
-        "dec rcx",
-        "jnz 4b",
-        "1:",
         "mov rdi, rbx",      // restaurar RDI limpio para kernel_main
         "call kernel_main",  // kernel_main es naked, llamará a kernel_main_real
         "2: hlt",
@@ -73,20 +51,9 @@ unsafe extern "C" fn _start() -> ! {
 #[unsafe(naked)]
 extern "C" fn kernel_main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     naked_asm!(
-        // CHECKPOINT 1 - AZUL: Primera línea de kernel_main (sin prólogo)
         "test rdi, rdi",
         "jz 1f",
         "mov rbx, rdi",
-        "mov rax, [rbx + 8]",  // fb_addr
-        "test rax, rax",
-        "jz 1f",
-        "mov ecx, dword ptr [rbx + 24]",  // fb_width (4 bytes)
-        "imul rcx, rcx, 10",
-        "mov edx, 0x00FF0000",
-        "2: mov [rax], edx",
-        "add rax, 4",
-        "dec rcx",
-        "jnz 2b",
         "1:",
         // Llamar a la función real de kernel (no naked)
         "call kernel_main_real",
@@ -119,18 +86,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     }
     drivers::serial::serial_write("[FastOS] BootInfo valid\n");
 
-    // CHECKPOINT 2 - AMARILLO: Después de BootInfo validation
-    if bi.fb_addr != 0 {
-        unsafe {
-            let fb = bi.fb_addr as *mut u32;
-            let offset = bi.fb_width as usize * 10;
-            // Franja amarilla (0x00FFFF00) debajo del azul
-            for i in 0..(bi.fb_width as usize * 10) {
-                *fb.add(offset + i) = 0x00FFFF00;
-            }
-        }
-    }
-
     // ── Print boot info ──────────────────────────────────────────────
     drivers::serial::serial_write("[FastOS] FB addr: ");
     serial_hex(bi.fb_addr);
@@ -158,20 +113,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // any CPU exception (page fault, GPF, etc.) causes a triple fault.
     arch::idt::init_idt();
     drivers::serial::serial_write("[FastOS] IDT loaded (exceptions will halt instead of triple-fault)\n");
-
-
-
-    // CHECKPOINT 4 - MAGENTA: Después de arch subsystems init
-    if bi.fb_addr != 0 {
-        unsafe {
-            let fb = bi.fb_addr as *mut u32;
-            let offset = bi.fb_width as usize * 30;
-            // Franja magenta (0x00FF00FF) debajo del cyan
-            for i in 0..(bi.fb_width as usize * 10) {
-                *fb.add(offset + i) = 0x00FF00FF;
-            }
-        }
-    }
 
 
 
@@ -207,36 +148,12 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
 
-    // CHECKPOINT 5 - ROJO: Antes de GPU init
-    if bi.fb_addr != 0 {
-        unsafe {
-            let fb = bi.fb_addr as *mut u32;
-            let offset = bi.fb_width as usize * 40;
-            // Franja roja (0x00FF0000) debajo del magenta
-            for i in 0..(bi.fb_width as usize * 10) {
-                *fb.add(offset + i) = 0x00FF0000;
-            }
-        }
-    }
-
     // ── Run shell ─────────────────────────────────────────────────────────
     match bi.fb_addr {
         0 => loop { unsafe { core::arch::asm!("hlt"); } },
         fb_addr => {
-            // Debug: Paint color based on fb_stride value
-            if bi.fb_addr != 0 {
-                unsafe {
-                    let fb = bi.fb_addr as *mut u32;
-                    let offset = bi.fb_width as usize * 50;
-                    let color = if bi.fb_stride > 2000 { 0x00FF00FF } else { 0x00FFFF00 }; // PURPLE if >2000, YELLOW if <=2000
-                    for i in 0..(bi.fb_width as usize * 10) {
-                        *fb.add(offset + i) = color;
-                    }
-                }
-            }
-
             let mut con = console::Console::new(fb_addr, bi.fb_pitch(), bi.fb_width, bi.fb_height);
-            con.clear(); // Limpiar la pantalla de las franjas de debug antes de iniciar el shell
+            con.clear();
             con.print("[FastOS] Framebuffer GOP: ");
             con.print_u64(bi.fb_width as u64);
             con.print("x");

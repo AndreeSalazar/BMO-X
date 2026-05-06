@@ -23,6 +23,29 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 
+function Invoke-CargoBuildWithRetry {
+    param(
+        [string]$TargetDir,
+        [int]$MaxAttempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $cargoOutput = & rustup run nightly cargo build --release --target-dir "$TargetDir" 2>&1
+        $cargoExit = $LASTEXITCODE
+
+        $accessDenied = ($cargoOutput | ForEach-Object { $_.ToString() }) -match "Acceso denegado|Access is denied|os error 5"
+        if ($cargoExit -eq 0 -or !$accessDenied -or $attempt -eq $MaxAttempts) {
+            return @{
+                ExitCode = $cargoExit
+                Output = $cargoOutput
+            }
+        }
+
+        Write-Host "      Cargo: archivo bloqueado, reintentando ($attempt/$MaxAttempts)..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+    }
+}
+
 # -- Banner ------------------------------------------------------------------
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
@@ -60,8 +83,9 @@ if (!$FlashOnly) {
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     $bootloaderTarget = "$Root\target_build\bootloader"
     New-Item -Path $bootloaderTarget -ItemType Directory -Force | Out-Null
-    $cargoOutput = & rustup run nightly cargo build --release --target-dir "$bootloaderTarget" 2>&1
-    $cargoExit = $LASTEXITCODE
+    $cargoResult = Invoke-CargoBuildWithRetry -TargetDir $bootloaderTarget
+    $cargoOutput = $cargoResult.Output
+    $cargoExit = $cargoResult.ExitCode
     $ErrorActionPreference = $savedEAP
 
     $cargoOutput | ForEach-Object {
@@ -92,8 +116,9 @@ if (!$FlashOnly) {
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     $kernelTarget = "$Root\target_build\kernel"
     New-Item -Path $kernelTarget -ItemType Directory -Force | Out-Null
-    $cargoOutput = & rustup run nightly cargo build --release --target-dir "$kernelTarget" 2>&1
-    $cargoExit = $LASTEXITCODE
+    $cargoResult = Invoke-CargoBuildWithRetry -TargetDir $kernelTarget
+    $cargoOutput = $cargoResult.Output
+    $cargoExit = $cargoResult.ExitCode
     $ErrorActionPreference = $savedEAP
 
     $cargoOutput | ForEach-Object {
