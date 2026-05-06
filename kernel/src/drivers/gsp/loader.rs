@@ -173,6 +173,61 @@ impl<'a> GspLoader<'a> {
         Err(GspLoadError::DmaTimeout)
     }
 
+    // GA102 secure IMEM DMA needs the Falcon memory offset/tag separated from
+    // the sysmem physical base. For boot-from-HS, mem_off is appCodeOffset.
+    fn sec2_dma_xfer_256_tagged(
+        &self,
+        src_base_phys: u64,
+        src_mem_off: u32,
+        falcon_dest: u32,
+        to_imem: bool,
+    ) -> Result<(), GspLoadError> {
+        self.bar0.write32(NV_PSEC2_DMATRFBASE, (src_base_phys >> 8) as u32);
+        self.bar0.write32(NV_PSEC2_DMATRFBASE1, ((src_base_phys >> 40) & 0x1FF) as u32);
+        self.bar0.write32(NV_PSEC2_DMATRFMOFFS, falcon_dest);
+        self.bar0.write32(NV_PSEC2_DMATRFFBOFFS, src_mem_off);
+
+        let mut cmd = DMA_CMD_SIZE_256;
+        if to_imem {
+            cmd |= DMA_CMD_IMEM | DMA_CMD_SEC;
+        }
+        self.bar0.write32(NV_PSEC2_DMATRFCMD, cmd);
+
+        for _ in 0..1_000_000 {
+            let val = self.bar0.read32(NV_PSEC2_DMATRFCMD);
+            if (val & DMA_CMD_IDLE) != 0 { return Ok(()); }
+            core::hint::spin_loop();
+        }
+        Err(GspLoadError::DmaTimeout)
+    }
+
+    fn force_program_wpr2_frts(&self, frts_offset: u64, frts_size: u64, con: &mut Console) {
+        const NV_WPR2_LO: u32 = 0x001F_A824;
+        const NV_WPR2_HI: u32 = 0x001F_A828;
+
+        let lo_val = (frts_offset >> 12) as u32;
+        let hi_val = ((frts_offset + frts_size - 1) >> 12) as u32;
+        let lo_raw = lo_val << 4;
+        let hi_raw = hi_val << 4;
+
+        con.print("  GSP: [FWSEC] Forcing WPR2 FRTS: lo_val=0x");
+        con.print_hex32(lo_val);
+        con.print(" hi_val=0x");
+        con.print_hex32(hi_val);
+        con.newline();
+
+        self.bar0.write32(NV_WPR2_LO, lo_raw);
+        self.bar0.write32(NV_WPR2_HI, hi_raw);
+
+        let rb_lo = self.bar0.read32(NV_WPR2_LO);
+        let rb_hi = self.bar0.read32(NV_WPR2_HI);
+        con.print("  GSP: [FWSEC] WPR2 forced raw lo=0x");
+        con.print_hex32(rb_lo);
+        con.print(" hi=0x");
+        con.print_hex32(rb_hi);
+        con.newline();
+    }
+
     // ── PGSP DMA transfer: copy 256 bytes from sysmem to PGSP Falcon IMEM/DMEM ──
     // GA10x register layout (nouveau ga102_flcn_dma):
     //   DMATRFBASE  [0x110] = sysmem phys >> 8 (base address, set once)
@@ -521,8 +576,9 @@ impl<'a> GspLoader<'a> {
         con.println(" chunks)");
 
         for i in 0..imem_chunks {
-            self.sec2_dma_xfer_256(
-                image_buf_phys + imem_src_off as u64 + (i * 256) as u64,
+            self.sec2_dma_xfer_256_tagged(
+                image_buf_phys,
+                imem_src_off as u32 + (i * 256) as u32,
                 (i * 256) as u32,
                 true,
             )?;
@@ -545,8 +601,9 @@ impl<'a> GspLoader<'a> {
         con.println(" chunks)");
 
         for i in 0..dmem_chunks {
-            self.sec2_dma_xfer_256(
-                image_buf_phys + dmem_src_off as u64 + (i * 256) as u64,
+            self.sec2_dma_xfer_256_tagged(
+                image_buf_phys + dmem_src_off as u64,
+                (i * 256) as u32,
                 (i * 256) as u32,
                 false,
             )?;
@@ -570,7 +627,7 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PSEC2_FALCON_MAILBOX0, (wpr_meta_phys & 0xFFFF_FFFF) as u32);
         self.bar0.write32(NV_PSEC2_FALCON_MAILBOX1, ((wpr_meta_phys >> 32) & 0xFFFF_FFFF) as u32);
 
-        return self.sec2_boot_and_wait(con);
+        return self.sec2_boot_and_wait_at(hs.app0_offset, con);
 
         #[cfg(any())]
         {
@@ -1030,10 +1087,13 @@ impl<'a> GspLoader<'a> {
 
     // ── Boot SEC2 Falcon with booter_load and wait ──
     fn sec2_boot_and_wait(&self, con: &mut Console) -> Result<(), GspLoadError> {
+        self.sec2_boot_and_wait_at(0, con)
+    }
+
+    fn sec2_boot_and_wait_at(&self, bootvec: u32, con: &mut Console) -> Result<(), GspLoadError> {
         con.println("  GSP: Booting SEC2 Falcon (booter_load)...");
 
-        // Set boot vector = 0 (booter code starts at beginning of IMEM)
-        self.bar0.write32(NV_PSEC2_FALCON_BOOTVEC, 0x0000_0000);
+        self.bar0.write32(NV_PSEC2_FALCON_BOOTVEC, bootvec);
         self.bar0.write32(NV_PSEC2_FALCON_CPUCTL, FALCON_CPUCTL_STARTCPU);
 
         con.print("  GSP: Waiting for SEC2 booter...");
@@ -1692,6 +1752,7 @@ impl<'a> GspLoader<'a> {
         // gm200_flcn_fw_boot: wr32(0x040, pmbox0 ? *pmbox0 : 0xcafebeef)
         //   For FWSEC: pmbox0 = &0 → writes 0
         self.bar0.write32(NV_PGSP_FALCON_MAILBOX0, 0x0);
+        self.force_program_wpr2_frts(frts_offset, 0x10_0000, con);
 
         // Read SCTL before boot for diagnostic (should be clean after reset)
         let sctl_pre = self.bar0.read32(0x0011_0240);
@@ -2130,8 +2191,19 @@ impl<'a> GspLoader<'a> {
         if wpr2_hi_val != 0 && wpr2_lo_val == expected_lo {
             con.print_colored("  GSP: WPR2 SET OK!\n", 0x00FF00);
         } else {
-            con.print_colored("  GSP: WARNING - WPR2 not confirmed after FWSEC; trying SEC2 booter_load anyway\n", 0xFFFF00);
-            con.println("  GSP: If booter_load returns a mailbox error, fix FWSEC/FRTS before RPC.");
+            con.print_colored("  GSP: WARNING - WPR2 not confirmed after FWSEC; forcing WPR2 before SEC2\n", 0xFFFF00);
+            self.force_program_wpr2_frts(wpr_meta.frts_offset, 0x10_0000, con);
+
+            let forced_lo = self.bar0.read32(NV_WPR2_LO);
+            let forced_hi = self.bar0.read32(NV_WPR2_HI);
+            let forced_lo_val = (forced_lo >> 4) & 0x0FFF_FFFF;
+            let forced_hi_val = (forced_hi >> 4) & 0x0FFF_FFFF;
+            if forced_hi_val != 0 && forced_lo_val == expected_lo {
+                con.print_colored("  GSP: WPR2 forced OK; continuing to SEC2 booter_load\n", 0x00FF00);
+            } else {
+                con.print_colored("  GSP: WARNING - WPR2 force did not stick; trying SEC2 booter_load anyway\n", 0xFFFF00);
+                con.println("  GSP: If booter_load returns a mailbox error, BAR0 WPR2 writes may be ignored/blocked.");
+            }
         }
 
         // ── 7 & 8. Reset GSP into RISC-V mode AND Write libos args ──
