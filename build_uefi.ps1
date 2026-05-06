@@ -36,6 +36,7 @@ if ($Clean) {
     Write-Host "[CLEAN] Eliminando artefactos..." -ForegroundColor Yellow
     Remove-Item "$Root\bootloader\target" -Recurse -ErrorAction SilentlyContinue
     Remove-Item "$Root\kernel\target" -Recurse -ErrorAction SilentlyContinue
+    Remove-Item "$Root\target_build" -Recurse -ErrorAction SilentlyContinue
     Remove-Item "$Root\kernel.elf" -ErrorAction SilentlyContinue
     Remove-Item "$Root\BOOTX64.EFI" -ErrorAction SilentlyContinue
     Remove-Item "$Root\USB_boot" -Recurse -ErrorAction SilentlyContinue
@@ -57,7 +58,9 @@ if (!$FlashOnly) {
 
     Push-Location "$Root\bootloader"
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $cargoOutput = & rustup run nightly cargo build --release 2>&1
+    $bootloaderTarget = "$Root\target_build\bootloader"
+    New-Item -Path $bootloaderTarget -ItemType Directory -Force | Out-Null
+    $cargoOutput = & rustup run nightly cargo build --release --target-dir "$bootloaderTarget" 2>&1
     $cargoExit = $LASTEXITCODE
     $ErrorActionPreference = $savedEAP
 
@@ -72,7 +75,7 @@ if (!$FlashOnly) {
         Pop-Location; throw "Bootloader: fallo la compilacion"
     }
 
-    $efiPath = Get-ChildItem "$Root\bootloader\target\x86_64-unknown-uefi\release\fastos-bootloader*.efi" -File |
+    $efiPath = Get-ChildItem "$bootloaderTarget\x86_64-unknown-uefi\release\fastos-bootloader*.efi" -File |
                Select-Object -First 1 -ExpandProperty FullName
     if (!$efiPath) { Pop-Location; throw "No se encontro BOOTX64.EFI" }
 
@@ -87,7 +90,9 @@ if (!$FlashOnly) {
 
     Push-Location "$Root\kernel"
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $cargoOutput = & rustup run nightly cargo build --release 2>&1
+    $kernelTarget = "$Root\target_build\kernel"
+    New-Item -Path $kernelTarget -ItemType Directory -Force | Out-Null
+    $cargoOutput = & rustup run nightly cargo build --release --target-dir "$kernelTarget" 2>&1
     $cargoExit = $LASTEXITCODE
     $ErrorActionPreference = $savedEAP
 
@@ -102,9 +107,9 @@ if (!$FlashOnly) {
         Pop-Location; throw "Kernel: fallo la compilacion"
     }
 
-    $elfPath = "$Root\kernel\target\x86_64-unknown-none\release\fastos-kernel"
+    $elfPath = "$kernelTarget\x86_64-unknown-none\release\fastos-kernel"
     if (!(Test-Path $elfPath)) {
-        $elfPath = Get-ChildItem "$Root\kernel\target\x86_64-unknown-none\release\fastos-kernel*" -File |
+        $elfPath = Get-ChildItem "$kernelTarget\x86_64-unknown-none\release\fastos-kernel*" -File |
                    Where-Object { $_.Extension -eq "" -or $_.Extension -eq ".exe" } |
                    Select-Object -First 1 -ExpandProperty FullName
     }
@@ -143,9 +148,12 @@ if (!$FlashOnly) {
         New-Item -Path $fwUsbDir -ItemType Directory -Force | Out-Null
         foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin", "vbios_rtx3060.rom")) {
             $src = Join-Path $fwDir $f
+            $dst = Join-Path $fwUsbDir $f
             if (Test-Path $src) {
-                Copy-Item $src (Join-Path $fwUsbDir $f) -Force
+                Copy-Item $src $dst -Force
                 Write-Host "      $f : $((Get-Item $src).Length) bytes" -ForegroundColor DarkGray
+            } elseif (Test-Path $dst) {
+                Write-Host "      $f : $((Get-Item $dst).Length) bytes (conservado en USB_boot)" -ForegroundColor DarkGray
             } else {
                 Write-Host "      AVISO: $f no encontrado" -ForegroundColor Yellow
             }

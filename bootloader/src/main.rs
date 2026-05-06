@@ -122,6 +122,47 @@ fn pci_rom_is_nvidia(rom: &[u8]) -> bool {
     false
 }
 
+fn vbios_has_fwsec_v3_pgsp(rom: &[u8]) -> bool {
+    if rom.len() < 44 {
+        return false;
+    }
+
+    let mut off = 0usize;
+    while off + 44 <= rom.len() {
+        let hdr = read_u32(rom, off);
+        let valid = hdr & 1;
+        let version = (hdr >> 8) & 0xff;
+        let hdr_size = ((hdr >> 16) & 0xffff) as usize;
+
+        if valid == 1 && version == 3 && hdr_size >= 0x20 && hdr_size <= 0x1000 {
+            let pkc_data_offset = read_u32(rom, off + 8);
+            let iface_offset = read_u32(rom, off + 12);
+            let imem_load_size = read_u32(rom, off + 20) as usize;
+            let dmem_load_size = read_u32(rom, off + 32) as usize;
+            let engine_id_mask = read_u16(rom, off + 36) as u32;
+
+            let sane = pkc_data_offset <= 0x10000
+                && iface_offset <= 0x1000
+                && imem_load_size >= 0x1000
+                && imem_load_size <= 0x20000
+                && dmem_load_size <= 0x10000
+                && (engine_id_mask & 0x400) != 0;
+
+            if sane {
+                let image_start = off + hdr_size;
+                let image_end = image_start + imem_load_size + dmem_load_size;
+                if image_end <= rom.len() {
+                    return true;
+                }
+            }
+        }
+
+        off += 4;
+    }
+
+    false
+}
+
 fn copy_blob_to_loader_pages(data: &[u8], label: &str) -> (u64, u64) {
     let size = data.len();
     let pages = (size + 0xFFF) / 0x1000;
@@ -140,6 +181,20 @@ fn copy_blob_to_loader_pages(data: &[u8], label: &str) -> (u64, u64) {
 
     info!("  Loaded {} -> 0x{:x} ({} bytes)", label, ptr as u64, size);
     (ptr as u64, size as u64)
+}
+
+fn load_vbios_file_with_fwsec(device_handle: uefi::Handle) -> Option<(u64, u64)> {
+    for path in ["\\firmware\\vbios_rtx3060.rom", "\\vbios_rtx3060.rom"] {
+        if let Some(data) = read_file_from_device(device_handle, path) {
+            if vbios_has_fwsec_v3_pgsp(&data) {
+                info!("  {} contains FWSEC v3 for PGSP", path);
+                return Some(copy_blob_to_loader_pages(&data, path));
+            }
+            info!("  {} found, but no FWSEC v3 PGSP descriptor", path);
+        }
+    }
+
+    None
 }
 
 fn load_nvidia_vbios_from_uefi_rom() -> Option<(u64, u64)> {
@@ -529,10 +584,12 @@ fn main() -> Status {
     gsp_booter_load_size = s;
 
     // 4. VBIOS ROM - needed for FWSEC-FRTS.
-    // Prefer the actual PCI Option ROM exposed by UEFI, because FWSEC is signed
-    // against board-specific VBIOS data. A file from a different RTX 3060 can
-    // authenticate but still fail to program WPR2.
-    if let Some((a, s)) = load_nvidia_vbios_from_uefi_rom() {
+    // Prefer the full saved ROM file when it contains FWSEC. The UEFI-exposed
+    // Option ROM can be only the small boot image and miss the SPI FWSEC blocks.
+    if let Some((a, s)) = load_vbios_file_with_fwsec(device_handle) {
+        vbios_addr = a;
+        vbios_size = s;
+    } else if let Some((a, s)) = load_nvidia_vbios_from_uefi_rom() {
         vbios_addr = a;
         vbios_size = s;
     } else {

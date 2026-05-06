@@ -239,7 +239,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
             con.clear(); // Limpiar la pantalla de las franjas de debug antes de iniciar el shell
             
             // ── Iniciar GSP (TEMPORALMENTE DESACTIVADO) ─────────────────────
-            /*
             con.println("[FastOS] Buscando GPU para cargar GSP...");
             let platform = platform::FastOsPlatform::new();
             if let Some(pci) = nv_hal::find_gpu(&platform) {
@@ -252,7 +251,44 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                         let bar0 = unsafe { nv_hal::MmioRegion::new(bar0_ptr, 16 * 1024 * 1024) };
                         if bi.gsp_addr != 0 && bi.gsp_size > 0 {
                             let fw_blob = unsafe { core::slice::from_raw_parts(bi.gsp_addr as *const u8, bi.gsp_size as usize) };
-                            if let Err(_e) = crate::drivers::gsp::gsp_init(&bar0, fw_blob, &mut con) {
+                            let gsp_result =
+                                if bi.gsp_bootloader_addr != 0 && bi.gsp_bootloader_size > 0 &&
+                                   bi.gsp_booter_load_addr != 0 && bi.gsp_booter_load_size > 0 {
+                                    let bootloader = unsafe {
+                                        core::slice::from_raw_parts(
+                                            bi.gsp_bootloader_addr as *const u8,
+                                            bi.gsp_bootloader_size as usize,
+                                        )
+                                    };
+                                    let booter_load = unsafe {
+                                        core::slice::from_raw_parts(
+                                            bi.gsp_booter_load_addr as *const u8,
+                                            bi.gsp_booter_load_size as usize,
+                                        )
+                                    };
+                                    let vbios_rom = if bi.vbios_addr != 0 && bi.vbios_size > 0 {
+                                        Some(unsafe {
+                                            core::slice::from_raw_parts(
+                                                bi.vbios_addr as *const u8,
+                                                bi.vbios_size as usize,
+                                            )
+                                        })
+                                    } else {
+                                        None
+                                    };
+                                    let blobs = crate::drivers::gsp::GspFirmwareBlobs {
+                                        gsp_rm: fw_blob,
+                                        bootloader,
+                                        booter_load,
+                                        vbios_rom,
+                                    };
+                                    crate::drivers::gsp::gsp_init_full(&bar0, &blobs, &mut con)
+                                } else {
+                                    con.print_colored("[FastOS] AVISO: blobs GSP separados incompletos; usando modo ELF unico.\n", 0xFFFFFF00);
+                                    crate::drivers::gsp::gsp_init(&bar0, fw_blob, &mut con)
+                                };
+
+                            if let Err(_e) = gsp_result {
                                 con.print_colored("[FastOS] ERROR: No se pudo arrancar el GSP.\n", 0xFFFF0000);
                             } else {
                                 con.print_colored("[FastOS] EXITO: GSP Bootloader handshake OK.\n", 0xFF00FF00);
@@ -270,7 +306,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 con.println("[FastOS] ERROR: GPU no encontrada.");
             }
             con.println("");
-            */
 
             shell::run(&mut con);
             loop { unsafe { core::arch::asm!("hlt"); } }
