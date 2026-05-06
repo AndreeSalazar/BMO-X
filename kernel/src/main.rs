@@ -244,6 +244,12 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
             con.print(" stride=");
             con.print_u64(bi.fb_stride as u64);
             con.println(" target=74Hz");
+            con.print("[FastOS] Console buffer: ");
+            if con.is_double_buffered() {
+                con.println("RAM shadow + memcpy flush");
+            } else {
+                con.println("direct framebuffer writes");
+            }
             
             // ── Iniciar GSP (TEMPORALMENTE DESACTIVADO) ─────────────────────
             con.println("[FastOS] Buscando GPU para cargar GSP...");
