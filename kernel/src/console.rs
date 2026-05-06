@@ -11,7 +11,8 @@ const SCROLLBACK_ROWS: usize = 8192;
 #[derive(Clone, Copy)]
 struct HistoryCell {
     ch: u8,
-    _pad: [u8; 3],
+    guard: u8,
+    _pad: [u8; 2],
     fg: u32,
     bg: u32,
 }
@@ -184,6 +185,7 @@ impl Console {
     }
 
     pub fn newline(&mut self) {
+        self.clear_line_tail(self.history_line, self.col, self.row);
         self.col = 0;
         self.history_line = self.history_line.saturating_add(1);
         self.clear_history_line(self.history_line);
@@ -343,6 +345,28 @@ impl Console {
         }
     }
 
+    fn fill_rect_pixels(&self, x: usize, y: usize, w: usize, h: usize, color: u32) {
+        let copy_w = w.min(self.fb_width.saturating_sub(x));
+        let copy_h = h.min(self.fb_height.saturating_sub(y));
+        if copy_w == 0 || copy_h == 0 {
+            return;
+        }
+
+        let (buf, pitch_px, volatile) = self.draw_target();
+        for row in 0..copy_h {
+            for col in 0..copy_w {
+                unsafe {
+                    if volatile {
+                        buf.add((y + row) * pitch_px + x + col).write_volatile(color);
+                    } else {
+                        buf.add((y + row) * pitch_px + x + col).write(color);
+                    }
+                }
+            }
+        }
+        self.flush_rect(x, y, copy_w, copy_h);
+    }
+
     fn history_enabled(&self) -> bool {
         self.history_addr != 0 && self.history_cols != 0
     }
@@ -357,22 +381,69 @@ impl Console {
             return;
         }
         unsafe {
-            self.history_ptr(abs_row, col).write(HistoryCell { ch, _pad: [0; 3], fg, bg });
+            self.history_ptr(abs_row, col).write(HistoryCell {
+                ch,
+                guard: Self::history_guard(ch, fg, bg),
+                _pad: [0; 2],
+                fg,
+                bg,
+            });
         }
     }
 
     fn read_history_cell(&self, abs_row: usize, col: usize) -> HistoryCell {
+        let blank = self.blank_history_cell();
         if !self.history_enabled() || col >= self.history_cols {
-            return HistoryCell { ch: b' ', _pad: [0; 3], fg: self.fg, bg: self.bg };
+            return blank;
         }
         unsafe {
             let cell = self.history_ptr(abs_row, col).read();
             if cell.ch == 0 {
-                HistoryCell { ch: b' ', _pad: [0; 3], fg: self.fg, bg: self.bg }
-            } else {
-                cell
+                return blank;
             }
+            if cell.guard != Self::history_guard(cell.ch, cell.fg, cell.bg) {
+                return blank;
+            }
+            if cell.ch < b' ' || cell.ch > b'~' {
+                return blank;
+            }
+            cell
         }
+    }
+
+    fn blank_history_cell(&self) -> HistoryCell {
+        let ch = b' ';
+        HistoryCell {
+            ch,
+            guard: Self::history_guard(ch, self.fg, self.bg),
+            _pad: [0; 2],
+            fg: self.fg,
+            bg: self.bg,
+        }
+    }
+
+    fn history_guard(ch: u8, fg: u32, bg: u32) -> u8 {
+        ch ^ (fg as u8) ^ ((fg >> 16) as u8) ^ ((bg >> 8) as u8) ^ 0xA5
+    }
+
+    fn clear_line_tail(&self, abs_row: usize, col: usize, screen_row: usize) {
+        if col >= self.max_cols || screen_row >= self.max_rows {
+            return;
+        }
+
+        let mut c = col;
+        while c < self.history_cols {
+            self.store_history_cell(abs_row, c, b' ', self.fg, self.bg);
+            c += 1;
+        }
+
+        self.fill_rect_pixels(
+            col * CHAR_W,
+            screen_row * CHAR_H,
+            self.fb_width.saturating_sub(col * CHAR_W),
+            CHAR_H,
+            self.bg,
+        );
     }
 
     fn clear_history(&self) {
