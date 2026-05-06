@@ -11,16 +11,18 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
+use core::ffi::c_void;
 use fastos_boot_protocol::{
     BootInfo, MemoryEntry, MemoryType as BootMemType, PixelFormat, BOOT_MAGIC, MAX_MEMORY_ENTRIES,
 };
 use log::info;
-use uefi::boot;
+use uefi::boot::{self, OpenProtocolAttributes, OpenProtocolParams, SearchType};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 use uefi::prelude::*;
 use uefi::proto::console::gop::GraphicsOutput;
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::fs::SimpleFileSystem;
+use uefi::proto::unsafe_protocol;
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const KERNEL_STACK_SIZE: usize = 256 * 1024; // 256 KiB
@@ -28,6 +30,31 @@ const KERNEL_STACK_SIZE: usize = 256 * 1024; // 256 KiB
 // ELF64 constants
 const ELF_MAGIC: [u8; 4] = [0x7F, b'E', b'L', b'F'];
 const PT_LOAD: u32 = 1;
+
+#[repr(C)]
+#[unsafe_protocol("4cf5b200-68b8-4ca5-9eec-b23e3f50029a")]
+struct PciIoRaw {
+    poll_mem: usize,
+    poll_io: usize,
+    mem_read: usize,
+    mem_write: usize,
+    io_read: usize,
+    io_write: usize,
+    pci_read: usize,
+    pci_write: usize,
+    copy_mem: usize,
+    map: usize,
+    unmap: usize,
+    allocate_buffer: usize,
+    free_buffer: usize,
+    flush: usize,
+    get_location: usize,
+    attributes: usize,
+    get_bar_attributes: usize,
+    set_bar_attributes: usize,
+    rom_size: u64,
+    rom_image: *mut c_void,
+}
 
 // ── ELF64 header helpers (manual parsing, no external crate) ────────────────
 
@@ -53,6 +80,98 @@ fn read_u64(data: &[u8], off: usize) -> u64 {
         data[off + 6],
         data[off + 7],
     ])
+}
+
+fn read_u16_checked(data: &[u8], off: usize) -> Option<u16> {
+    if off + 2 <= data.len() {
+        Some(u16::from_le_bytes([data[off], data[off + 1]]))
+    } else {
+        None
+    }
+}
+
+fn pci_rom_is_nvidia(rom: &[u8]) -> bool {
+    let mut image_off = 0usize;
+
+    while image_off + 0x1c <= rom.len() {
+        if rom[image_off] != 0x55 || rom[image_off + 1] != 0xaa {
+            return false;
+        }
+
+        let image_size = (rom[image_off + 2] as usize).saturating_mul(512);
+        let pcir_ptr = match read_u16_checked(rom, image_off + 0x18) {
+            Some(v) => image_off + v as usize,
+            None => return false,
+        };
+
+        if pcir_ptr + 0x16 > rom.len() || &rom[pcir_ptr..pcir_ptr + 4] != b"PCIR" {
+            return false;
+        }
+
+        if read_u16_checked(rom, pcir_ptr + 4) == Some(0x10de) {
+            return true;
+        }
+
+        let last = (rom[pcir_ptr + 0x15] & 0x80) != 0;
+        if last || image_size == 0 {
+            break;
+        }
+        image_off += image_size;
+    }
+
+    false
+}
+
+fn copy_blob_to_loader_pages(data: &[u8], label: &str) -> (u64, u64) {
+    let size = data.len();
+    let pages = (size + 0xFFF) / 0x1000;
+    let ptr = boot::allocate_pages(
+        boot::AllocateType::AnyPages,
+        MemoryType::LOADER_DATA,
+        pages,
+    )
+    .expect("Failed to allocate pages for firmware blob")
+    .as_ptr() as *mut u8;
+
+    unsafe {
+        core::ptr::write_bytes(ptr, 0, pages * 0x1000);
+        core::ptr::copy_nonoverlapping(data.as_ptr(), ptr, size);
+    }
+
+    info!("  Loaded {} -> 0x{:x} ({} bytes)", label, ptr as u64, size);
+    (ptr as u64, size as u64)
+}
+
+fn load_nvidia_vbios_from_uefi_rom() -> Option<(u64, u64)> {
+    let handles = boot::locate_handle_buffer(SearchType::from_proto::<PciIoRaw>()).ok()?;
+
+    for handle in handles.iter().copied() {
+        let params = OpenProtocolParams {
+            handle,
+            agent: boot::image_handle(),
+            controller: None,
+        };
+        let pci = unsafe {
+            boot::open_protocol::<PciIoRaw>(params, OpenProtocolAttributes::GetProtocol)
+        };
+        let pci = match pci {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        if pci.rom_image.is_null() || pci.rom_size < 0x40 || pci.rom_size > 2 * 1024 * 1024 {
+            continue;
+        }
+
+        let rom = unsafe {
+            core::slice::from_raw_parts(pci.rom_image as *const u8, pci.rom_size as usize)
+        };
+        if pci_rom_is_nvidia(rom) {
+            return Some(copy_blob_to_loader_pages(rom, "UEFI NVIDIA Option ROM"));
+        }
+    }
+
+    None
 }
 
 /// Parsed ELF64 program header (only the fields we need).
@@ -382,23 +501,7 @@ fn main() -> Status {
     let mut load_fw = |paths: &[&str]| -> (u64, u64) {
         for path in paths {
             if let Some(data) = read_file_from_device(device_handle, path) {
-                let size = data.len();
-                let pages = (size + 0xFFF) / 0x1000;
-                let ptr = boot::allocate_pages(
-                    boot::AllocateType::AnyPages,
-                    MemoryType::LOADER_DATA,
-                    pages,
-                )
-                .expect("Failed to allocate pages for firmware blob")
-                .as_ptr() as *mut u8;
-
-                unsafe {
-                    core::ptr::write_bytes(ptr, 0, pages * 0x1000);
-                    core::ptr::copy_nonoverlapping(data.as_ptr(), ptr, size);
-                }
-
-                info!("  Loaded {} -> 0x{:x} ({} bytes)", path, ptr as u64, size);
-                return (ptr as u64, size as u64);
+                return copy_blob_to_loader_pages(&data, path);
             }
         }
         (0, 0)
@@ -425,13 +528,22 @@ fn main() -> Status {
     gsp_booter_load_addr = a;
     gsp_booter_load_size = s;
 
-    // 4. VBIOS ROM (vbios_rtx3060.rom) - needed for FWSEC-FRTS
-    let (a, s) = load_fw(&[
-        "\\firmware\\vbios_rtx3060.rom",
-        "\\vbios_rtx3060.rom",
-    ]);
-    vbios_addr = a;
-    vbios_size = s;
+    // 4. VBIOS ROM - needed for FWSEC-FRTS.
+    // Prefer the actual PCI Option ROM exposed by UEFI, because FWSEC is signed
+    // against board-specific VBIOS data. A file from a different RTX 3060 can
+    // authenticate but still fail to program WPR2.
+    if let Some((a, s)) = load_nvidia_vbios_from_uefi_rom() {
+        vbios_addr = a;
+        vbios_size = s;
+    } else {
+        info!("  UEFI NVIDIA Option ROM not available; trying vbios_rtx3060.rom");
+        let (a, s) = load_fw(&[
+            "\\firmware\\vbios_rtx3060.rom",
+            "\\vbios_rtx3060.rom",
+        ]);
+        vbios_addr = a;
+        vbios_size = s;
+    }
 
     if gsp_addr == 0 {
         info!("WARNING: gsp_ga10x.bin not found — GSP will not be available");
