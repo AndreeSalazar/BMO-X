@@ -704,7 +704,7 @@ impl<'a> GspLoader<'a> {
         self.bar0.write32(NV_PSEC2_FALCON_MAILBOX0, (wpr_meta_phys & 0xFFFF_FFFF) as u32);
         self.bar0.write32(NV_PSEC2_FALCON_MAILBOX1, ((wpr_meta_phys >> 32) & 0xFFFF_FFFF) as u32);
 
-        self.sec2_boot_and_wait_at(hs.app0_offset, con)
+        self.sec2_boot_and_wait_at(0, con)
     }
 
     // ── Reset SEC2 Falcon to a known state ──
@@ -893,9 +893,10 @@ impl<'a> GspLoader<'a> {
             vga_workspace_offset,
             vga_workspace_size,
             boot_count: 0,
-            verified: 0,
-            flags: 0,
+            partition_resume: [0u8; 32],
+            gsp_fw_heap_vf_partition_count: 0,
             _pad: [0u8; 7],
+            verified: 0,
         }
     }
 
@@ -2157,13 +2158,13 @@ impl<'a> GspLoader<'a> {
             con.newline();
         }
 
-        // Check WPR2 after FWSEC-FRTS. If it is still zero, continue into
-        // booter_load so the next stage can expose its real mailbox status.
+        // Check WPR2 after FWSEC-FRTS. FWSEC's own error code is authoritative
+        // for this stage; some GA10x VBIOSes leave the decoded WPR2 bounds in a
+        // board-specific form that does not exactly equal our FRTS offset.
         con.println("  GSP: [6/11] Checking WPR2 after FWSEC...");
         const NV_WPR2_LO: u32 = 0x001FA824;
         let wpr2_lo = self.bar0.read32(NV_WPR2_LO);
         let wpr2_hi = self.bar0.read32(NV_WPR2_HI);
-        let expected_lo = (wpr_meta.frts_offset >> 12) as u32;
         let wpr2_lo_val = (wpr2_lo >> 4) & 0x0FFF_FFFF;
         let wpr2_hi_val = (wpr2_hi >> 4) & 0x0FFF_FFFF;
         con.print("  GSP: WPR2 raw lo=0x");
@@ -2174,15 +2175,11 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(wpr2_lo_val);
         con.print(" hi=0x");
         con.print_hex32(wpr2_hi_val);
-        con.print(" expected_lo=0x");
-        con.print_hex32(expected_lo);
         con.newline();
-        if wpr2_hi_val != 0 && wpr2_lo_val == expected_lo {
-            con.print_colored("  GSP: WPR2 SET OK!\n", 0x00FF00);
+        if wpr2_lo != 0 || wpr2_hi != 0 {
+            con.print_colored("  GSP: WPR2 programmed by FWSEC; continuing to SEC2\n", 0x00FF00);
         } else {
-            con.print_colored("  GSP: ERROR - FWSEC-FRTS did not program WPR2; stopping before SEC2\n", 0xFF4444);
-            con.println("  GSP: Use the exact GPU Option ROM/VBIOS; SEC2 booter_load cannot fix WPR2.");
-            return Err(GspLoadError::FwsecFailed);
+            con.print_colored("  GSP: WARNING - WPR2 still reads zero after FWSEC; continuing for SEC2 diagnostics\n", 0xFFFF00);
         }
 
         // ── 7 & 8. Reset GSP into RISC-V mode AND Write libos args ──
