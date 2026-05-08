@@ -16,6 +16,7 @@ nv_gpu = { path = "../Driver_Canon GA106/nv_gpu" }
 nv_cmd = { path = "../Driver_Canon GA106/nv_cmd" }
 nv_display = { path = "../Driver_Canon GA106/nv_display" }
 nv_kernel = { path = "../Driver_Canon GA106/nv_kernel" }
+fastgpu = { path = "../fastgpu" }
 
 [profile.dev]
 panic = "abort"

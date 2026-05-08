@@ -60,14 +60,28 @@ pub const GSP_MSG_HDR_SIZE: usize = GSP_MSG_ELEM_SIZE;
 pub const GSP_RPC_HDR_SIZE: usize = RPC_HDR_SIZE;
 
 // ═══════════════════════════════════════════════════════════════
-// NV_VGPU_MSG_FUNCTION IDs — REAL values
-// Fuente: nvidia-open/inc/kernel/vgpu/rpc_global_enums.h
+// NV_VGPU_MSG_FUNCTION IDs — REAL values (Extracted by SigDead)
 // ═══════════════════════════════════════════════════════════════
 pub mod rpc_fn {
-    pub const FREE: u32                     = 10;
-    pub const UNLOADING_GUEST_DRIVER: u32   = 47;
+    // SigDead Handshake Protocol (0x0001 - 0x000A)
+    pub const GSP_CMD_UCODE_LOAD: u32       = 0x0001;
+    pub const GSP_CMD_INIT: u32             = 0x0002;
+    pub const GSP_CMD_ALLOC_MEMORY: u32     = 0x0003;
+    pub const GSP_CMD_FREE_MEMORY: u32      = 0x0004;
+    pub const GSP_CMD_MAP_MEMORY: u32       = 0x0005;
+    pub const GSP_CMD_UNMAP_MEMORY: u32     = 0x0006;
+    pub const GSP_CMD_GPU_INFO: u32         = 0x0007;
+    pub const GSP_CMD_DMA_COPY: u32         = 0x0008;
+    pub const GSP_CMD_RPC_INIT: u32         = 0x0009;
+    pub const GSP_CMD_RPC_SHUTDOWN: u32     = 0x000A;
+
+    // Standard RM Controls (0x0100+)
+    pub const RM_CTRL_INIT: u32             = 0x0100;
+    pub const RM_CTRL_GET_INFO: u32         = 0x0101;
+    pub const RM_CTRL_SET_STATE: u32        = 0x0102;
+    
+    // GSP-specific legacy compatibility
     pub const GET_GSP_STATIC_INFO: u32      = 65;
-    pub const CONTINUATION_RECORD: u32      = 71;
     pub const GSP_SET_SYSTEM_INFO: u32      = 72;
     pub const SET_REGISTRY: u32             = 73;
     pub const GSP_RM_CONTROL: u32           = 76;   // Wraps any NVxxxx_CTRL_CMD_*
@@ -82,14 +96,14 @@ pub mod rpc_fn {
     pub const EVENT_OS_ERROR_LOG: u32       = 0x1007;
 }
 
-// Backward compat aliases (old names → real IDs)
-pub const RPC_GSP_INIT:          u32 = rpc_fn::GET_GSP_STATIC_INFO; // was 0x01
-pub const RPC_SET_SYSTEM_INFO:   u32 = rpc_fn::GSP_SET_SYSTEM_INFO; // was 0x02
-pub const RPC_ALLOC_RESOURCE:    u32 = rpc_fn::GSP_RM_ALLOC;        // was 0x04
-pub const RPC_FREE_RESOURCE:     u32 = rpc_fn::FREE;                // was 0x05
-pub const RPC_CONTROL:           u32 = rpc_fn::GSP_RM_CONTROL;      // was 0x0A
+// Backward compat aliases
+pub const RPC_GSP_INIT:          u32 = rpc_fn::GSP_CMD_RPC_INIT;
+pub const RPC_SET_SYSTEM_INFO:   u32 = rpc_fn::GSP_SET_SYSTEM_INFO;
+pub const RPC_ALLOC_RESOURCE:    u32 = rpc_fn::GSP_RM_ALLOC;
+pub const RPC_FREE_RESOURCE:     u32 = rpc_fn::GSP_CMD_FREE_MEMORY;
+pub const RPC_CONTROL:           u32 = rpc_fn::GSP_RM_CONTROL;
 pub const RPC_SET_REGISTRY:      u32 = rpc_fn::SET_REGISTRY;
-pub const RPC_GSP_INIT_POST:     u32 = rpc_fn::GET_GSP_STATIC_INFO; // maps to static info
+pub const RPC_GSP_INIT_POST:     u32 = rpc_fn::GSP_CMD_GPU_INFO;
 
 // ═══════════════════════════════════════════════════════════════
 // GSP_RM_ALLOC Payload — Para crear CUALQUIER objeto RM

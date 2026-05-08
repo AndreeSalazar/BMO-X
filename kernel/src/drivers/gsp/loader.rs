@@ -154,49 +154,67 @@ impl<'a> GspLoader<'a> {
     }
 
     // ── SEC2 DMA transfer: copy 256 bytes from sysmem to SEC2 Falcon IMEM ──
-    fn sec2_dma_xfer_256(&self, src_phys: u64, falcon_offset: u32, to_imem: bool) -> Result<(), GspLoadError> {
-        self.bar0.write32(NV_PSEC2_DMATRFBASE, (src_phys >> 8) as u32);
-        self.bar0.write32(NV_PSEC2_DMATRFBASE1, ((src_phys >> 40) & 0x1FF) as u32);
-        self.bar0.write32(NV_PSEC2_DMATRFMOFFS, falcon_offset);
-        self.bar0.write32(NV_PSEC2_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
+    fn sec2_dma_xfer_256(&self, src_phys: u64, falcon_offset: u32, to_imem: bool, con: &mut Console) -> Result<(), GspLoadError> {
+        // EXPERIMENTAL MATRIX: TEST A (false) / TEST B (true)
+        const USE_SEC_FLAG: bool = false;
 
         let mut cmd = DMA_CMD_SIZE_256;
         if to_imem { cmd |= DMA_CMD_IMEM; }
+        if USE_SEC_FLAG { cmd |= 0x40; /* DMA_CMD_SEC */ }
+
+        self.sec2_dma_xfer_256_cmd(src_phys, falcon_offset, cmd, con)
+    }
+
+    fn sec2_dma_xfer_256_cmd(&self, src_phys: u64, falcon_offset: u32, cmd: u32, con: &mut Console) -> Result<(), GspLoadError> {
+        self.bar0.write32(NV_PSEC2_DMATRFBASE, (src_phys >> 8) as u32);
+        self.bar0.write32(NV_PSEC2_DMATRFMOFFS, falcon_offset);
+        self.bar0.write32(NV_PSEC2_DMATRFFBOFFS, (src_phys & 0xFF) as u32);
+
+        // Pre-DMA Dump to catch state exactly before kick
+        let pre_engctl = self.bar0.read32(NV_PSEC2_FALCON_ENGCTL);
+        let pre_dmactl = self.bar0.read32(NV_PSEC2_FALCON_DMACTL);
+
         self.bar0.write32(NV_PSEC2_DMATRFCMD, cmd);
+
+        let mut trace = [0u32; 5];
+        let mut trace_idx = 0;
 
         for _ in 0..1_000_000 {
             let val = self.bar0.read32(NV_PSEC2_DMATRFCMD);
+            trace[trace_idx % 5] = val;
+            trace_idx += 1;
             if (val & (1 << 1)) != 0 { return Ok(()); }
             core::hint::spin_loop();
         }
+
+        con.print_colored("\n  [HW-STALL] SEC2 DMA Timeout! MMIO Dump:\n", 0xFF0000);
+        con.print("    PRE-DMA ENGCTL: 0x"); con.print_hex32(pre_engctl);
+        con.print(" DMACTL: 0x"); con.print_hex32(pre_dmactl); con.newline();
+        
+        con.print("    TRACE DMATRFCMD: ");
+        let limit = if trace_idx < 5 { trace_idx } else { 5 };
+        for i in 0..limit {
+            let idx = if trace_idx < 5 { i } else { (trace_idx - 5 + i) % 5 };
+            con.print_hex32(trace[idx]);
+            if i < limit - 1 { con.print(" -> "); }
+        }
+        con.newline();
+
+        let mbox0 = self.bar0.read32(NV_PSEC2_FALCON_MAILBOX0);
+        let mbox1 = self.bar0.read32(NV_PSEC2_FALCON_MAILBOX1);
+        let engctl = self.bar0.read32(NV_PSEC2_FALCON_ENGCTL);
+        let dmactl = self.bar0.read32(NV_PSEC2_FALCON_DMACTL);
+        let cpuctl = self.bar0.read32(NV_PSEC2_FALCON_CPUCTL);
+
+        con.print("    MAILBOX0: 0x"); con.print_hex32(mbox0);
+        con.print(" MAILBOX1: 0x"); con.print_hex32(mbox1); con.newline();
+        con.print("    ENGCTL:   0x"); con.print_hex32(engctl);
+        con.print(" DMACTL:   0x"); con.print_hex32(dmactl); con.newline();
+        con.print("    CPUCTL:   0x"); con.print_hex32(cpuctl); con.newline();
+
         Err(GspLoadError::DmaTimeout)
     }
 
-    fn sec2_dma_xfer_256_tagged(
-        &self,
-        src_base_phys: u64,
-        src_mem_off: u32,
-        falcon_dest: u32,
-        to_imem: bool,
-    ) -> Result<(), GspLoadError> {
-        self.bar0.write32(NV_PSEC2_DMATRFBASE, (src_base_phys >> 8) as u32);
-        self.bar0.write32(NV_PSEC2_DMATRFBASE1, ((src_base_phys >> 40) & 0x1FF) as u32);
-        self.bar0.write32(NV_PSEC2_DMATRFMOFFS, falcon_dest);
-        self.bar0.write32(NV_PSEC2_DMATRFFBOFFS, src_mem_off);
-
-        let mut cmd = DMA_CMD_SIZE_256;
-        if to_imem {
-            cmd |= DMA_CMD_IMEM | DMA_CMD_SEC;
-        }
-        self.bar0.write32(NV_PSEC2_DMATRFCMD, cmd);
-
-        for _ in 0..1_000_000 {
-            let val = self.bar0.read32(NV_PSEC2_DMATRFCMD);
-            if (val & DMA_CMD_IDLE) != 0 { return Ok(()); }
-            core::hint::spin_loop();
-        }
-        Err(GspLoadError::DmaTimeout)
-    }
 
     // ── PGSP DMA transfer: copy 256 bytes from sysmem to PGSP Falcon IMEM/DMEM ──
     // GA10x register layout (nouveau ga102_flcn_dma):
@@ -244,6 +262,7 @@ impl<'a> GspLoader<'a> {
                 src_base + (i * 256) as u64,
                 (i * 256) as u32,
                 true, // IMEM
+                con,
             )?;
         }
 
@@ -495,6 +514,7 @@ impl<'a> GspLoader<'a> {
                 imem_phys + (i * 256) as u64,
                 (i * 256) as u32,
                 true, // IMEM
+                con,
             )?;
         }
         con.print_colored("  GSP: [HS-BOOT] IMEM loaded OK\n", 0x00FF00);
@@ -556,6 +576,7 @@ impl<'a> GspLoader<'a> {
                 dmem_buf_phys + (i * 256) as u64,
                 (i * 256) as u32,
                 false, // DMEM
+                con,
             )?;
         }
         con.print_colored("  GSP: [HS-BOOT] DMEM loaded OK\n", 0x00FF00);
@@ -593,18 +614,27 @@ impl<'a> GspLoader<'a> {
         con: &mut Console,
     ) -> Result<(), GspLoadError> {
         self.reset_sec2_falcon(con);
-
         con.println("  GSP: [HS-BOOT] Configuring SEC2 DMA/cache...");
         let irqmset = self.bar0.read32(NV_PSEC2_FALCON_IRQMSET);
         self.bar0.write32(NV_PSEC2_FALCON_IRQMSET, irqmset | 0x80);
         self.bar0.write32(NV_PSEC2_FALCON_ENGCTL, 0x0);
-        self.bar0.write32(NV_PSEC2_FALCON_DMACTL, (1 << 2) | 1);
+        let dmactl = self.bar0.read32(NV_PSEC2_FALCON_DMACTL);
+        let new_dmactl = (dmactl & !0x0001_0007) | ((0 << 16) | (1 << 2) | 1);
+        self.bar0.write32(NV_PSEC2_FALCON_DMACTL, new_dmactl);
 
+        // CRITICAL FIX: The SEC2 DMA engine REQUIRES the physical address to be 256-byte aligned.
+        // `data_base` is 0x378, which is NOT aligned. We MUST allocate a new page-aligned buffer
+        // and copy the data section there, so `image_buf_phys` is aligned to 4096 (which is a multiple of 256).
         let image_size = hs.data_size as usize;
         let image_pages = (image_size + PAGE_SIZE - 1) / PAGE_SIZE;
         let image_buf_phys = unsafe {
             crate::arch::page_alloc::alloc_pages_contiguous(image_pages)
         }.ok_or(GspLoadError::PageAllocFailed)?;
+
+        if image_buf_phys >= (1u64 << 40) {
+            con.println("  GSP: [HS-BOOT] FATAL: image_buf_phys exceeds 40-bit limit!");
+            return Err(GspLoadError::PageAllocFailed);
+        }
 
         unsafe {
             core::ptr::write_bytes(image_buf_phys as *mut u8, 0, image_pages * PAGE_SIZE);
@@ -630,6 +660,7 @@ impl<'a> GspLoader<'a> {
             return Err(GspLoadError::NoBooterFound);
         }
 
+        // Patch the signature directly in the aligned buffer
         unsafe {
             core::ptr::copy_nonoverlapping(
                 booter.as_ptr().add(sig_src_off),
@@ -644,6 +675,17 @@ impl<'a> GspLoader<'a> {
         con.print(" -> image+0x");
         con.print_hex32(sig_dst_off as u32);
         con.newline();
+
+        // PHASE 0: Memory Forensics (Cache Coherency)
+        // Flush CPU cache lines so SEC2 DMA (physical memory read) sees the fresh data.
+        unsafe {
+            let buf_ptr = image_buf_phys as *const u8;
+            for i in (0..image_size).step_by(64) {
+                core::arch::x86_64::_mm_clflush(buf_ptr.add(i));
+            }
+        }
+        // Memory barrier to ensure flushes complete before MMIO kick
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
 
         let imem_src_off = hs.os_code_offset as usize;
         let imem_size = hs.os_code_size as usize;
@@ -660,12 +702,13 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(imem_chunks as u32);
         con.println(" chunks)");
 
+        let imem_cmd = DMA_CMD_SIZE_256 | DMA_CMD_IMEM;
         for i in 0..imem_chunks {
-            self.sec2_dma_xfer_256_tagged(
-                image_buf_phys,
-                imem_src_off as u32 + (i * 256) as u32,
+            self.sec2_dma_xfer_256_cmd(
+                image_buf_phys + imem_src_off as u64 + (i * 256) as u64,
                 (i * 256) as u32,
-                true,
+                imem_cmd,
+                con,
             )?;
         }
         con.print_colored("  GSP: [HS-BOOT] IMEM loaded OK\n", 0x00FF00);
@@ -685,12 +728,13 @@ impl<'a> GspLoader<'a> {
         con.print_hex32(dmem_chunks as u32);
         con.println(" chunks)");
 
+        let dmem_cmd = DMA_CMD_SIZE_256;
         for i in 0..dmem_chunks {
-            self.sec2_dma_xfer_256_tagged(
-                image_buf_phys,
-                dmem_src_off as u32 + (i * 256) as u32,
+            self.sec2_dma_xfer_256_cmd(
+                image_buf_phys + dmem_src_off as u64 + (i * 256) as u64,
                 (i * 256) as u32,
-                false,
+                dmem_cmd,
+                con,
             )?;
         }
         con.print_colored("  GSP: [HS-BOOT] DMEM loaded OK\n", 0x00FF00);
@@ -2186,16 +2230,18 @@ impl<'a> GspLoader<'a> {
             con.print_colored("  GSP: WARNING - WPR2 still reads zero after FWSEC; continuing for SEC2 diagnostics\n", 0xFFFF00);
         }
 
-        // ── 7 & 8. Reset GSP into RISC-V mode AND Write libos args ──
-        con.println("  GSP: [7-8/11] Resetting GSP into RISC-V mode & Writing Mailbox...");
-        self.reset_gsp_riscv_mode(boot_mem.boot_args_phys, con);
-
-        // ── 9-10. HS-authenticated boot of booter_load on SEC2 ──
+        // ── 7. HS-authenticated boot of booter_load on SEC2 ──
         //    Parses nvfw_hs_header_v2 + nvfw_hs_load_header_v2,
         //    splits IMEM/DMEM DMA, patches WPR meta PA at patch_loc,
         //    programs HS registers (dmem_sign, engine_id, ucode_id)
-        con.println("  GSP: [9-10/11] HS booter_load on SEC2...");
+        con.println("  GSP: [7/11] HS booter_load on SEC2...");
         let sec2_ok = self.sec2_hs_boot_booter(booter, boot_mem.wpr_meta_phys, con);
+
+        // ── 8 & 9. Reset GSP into RISC-V mode AND Write libos args ──
+        // CRITICAL BOOT ORDER FIX: RISC-V mode must be activated AFTER SEC2 DMA is done.
+        // If activated before, the hardware locks down the SEC2 MMIO space, causing 0xBADF5620.
+        con.println("  GSP: [8-9/11] Resetting GSP into RISC-V mode & Writing Mailbox...");
+        self.reset_gsp_riscv_mode(boot_mem.boot_args_phys, con);
 
         // ── 11. Verify GSP state ──
         con.println("  GSP: [11/11] Verifying GSP state...");
@@ -2206,16 +2252,16 @@ impl<'a> GspLoader<'a> {
             Ok(()) => {
                 con.print_colored("=== GSP Boot via SEC2 COMPLETE ===\n", 0x00FF00);
                 con.println("  GSP: Next: poll message queue for GSP_INIT_DONE (0x1001)");
+                Ok(())
             }
-            Err(_) => {
+            Err(e) => {
                 con.print_colored("=== GSP SEC2 Boot DID NOT COMPLETE ===\n", 0xFF4444);
                 con.println("  GSP: Check WPR2_HI above — if still 0x0:");
                 con.println("    1. FWSEC-FRTS may not have set WPR2 correctly");
                 con.println("    2. HS manifest patch_loc/patch_sig values may be wrong");
                 con.println("    3. Firmware version mismatch (booter vs bootloader)");
+                Err(e)
             }
         }
-
-        Ok(())
     }
 }

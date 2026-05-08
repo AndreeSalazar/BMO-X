@@ -1,0 +1,9 @@
+[package]
+name = "fastgpu"
+version = "0.1.0"
+edition = "2021"
+authors = ["FastOS Project"]
+description = "FastGPU ABI and Scheduler for NVIDIA GA106"
+
+[dependencies]
+# Agrega dependencias si las necesitas en el futuro, por ahora #![no_std] no requiere nada

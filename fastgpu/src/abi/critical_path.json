@@ -1,0 +1,49 @@
+{
+    "1_Phase_Boot": {
+        "DDIs": [
+            "DxgkDdiAddDevice",
+            "DxgkDdiQueryAdapterInfo",
+            "DxgkDdiStartDevice"
+        ],
+        "Structs": [
+            "DXGKARG_ADD_DEVICE",
+            "DXGKARG_START_DEVICE",
+            "DXGKARG_QUERYADAPTERINFO",
+            "DXGK_QUERYSEGMENTOUT",
+            "DXGK_SEGMENTDESCRIPTOR",
+            "DXGK_DRIVERCAPS",
+            "DXGK_GPUMMUCAPS"
+        ],
+        "UM_IOCTLs": []
+    },
+    "2_Phase_Memory_MMU": {
+        "DDIs": [
+            "DxgkDdiCreateAllocation",
+            "DxgkDdiBuildPagingBuffer",
+            "DxgkDdiMapToAllocation"
+        ],
+        "Structs": [
+            "DXGKARG_CREATEALLOCATION",
+            "DXGK_ALLOCATIONINFO",
+            "DXGKARG_BUILDPAGINGBUFFER",
+            "DXGK_PAGE_TABLE_LEVEL_DESC",
+            "DXGKARG_MAPTOALLOCATION"
+        ],
+        "UM_IOCTLs": []
+    },
+    "3_Phase_Scheduler_Cmds": {
+        "DDIs": [
+            "DxgkDdiCreateContext",
+            "DxgkDdiSubmitCommand",
+            "DxgkDdiPreemptCommand"
+        ],
+        "Structs": [
+            "DXGKARG_CREATECONTEXT",
+            "DXGKARG_SUBMITCOMMAND",
+            "DXGKARG_PATCH",
+            "DXGKARG_PREEMPTCOMMAND",
+            "DXGKARG_SIGNALMONITOREDFENCE"
+        ],
+        "UM_IOCTLs": []
+    }
+}
