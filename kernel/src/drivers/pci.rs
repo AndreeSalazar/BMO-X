@@ -23,6 +23,8 @@ pub struct PciDevice {
     pub device_id: u16,
     pub class_code: u8,
     pub subclass: u8,
+    pub bar0: u32,
+    pub bar1: u32,
 }
 
 pub struct PciScanResult {
@@ -37,6 +39,7 @@ impl PciScanResult {
                 bus: 0, device: 0, function: 0,
                 vendor_id: 0, device_id: 0,
                 class_code: 0, subclass: 0,
+                bar0: 0, bar1: 0,
             }; 64],
             count: 0,
         }
@@ -45,6 +48,12 @@ impl PciScanResult {
     pub fn find_nvidia_gpu(&self) -> Option<&PciDevice> {
         self.devices[..self.count].iter().find(|d| {
             d.vendor_id == NVIDIA_VENDOR && d.class_code == 0x03
+        })
+    }
+
+    pub fn find_device(&self, vendor: u16, device: u16) -> Option<&PciDevice> {
+        self.devices[..self.count].iter().find(|d| {
+            d.vendor_id == vendor && d.device_id == device
         })
     }
 }
@@ -88,12 +97,16 @@ pub fn scan_pci_bus() -> PciScanResult {
             let hdr = pci_read32(bus, dev, 0, 0x0C);
             let multi = (hdr >> 16) & 0x80 != 0;
 
+            let bar0 = pci_read32(bus, dev, 0, 0x10);
+            let bar1 = pci_read32(bus, dev, 0, 0x14);
+
             if r.count < 64 {
                 r.devices[r.count] = PciDevice {
                     bus, device: dev, function: 0,
                     vendor_id: vendor, device_id,
                     class_code: ((cr >> 24) & 0xFF) as u8,
                     subclass: ((cr >> 16) & 0xFF) as u8,
+                    bar0, bar1,
                 };
                 r.count += 1;
             }
@@ -104,6 +117,8 @@ pub fn scan_pci_bus() -> PciScanResult {
                     let v2 = (vd2 & 0xFFFF) as u16;
                     if v2 == 0xFFFF { continue; }
                     let cr2 = pci_read32(bus, dev, func, 0x08);
+                    let b0 = pci_read32(bus, dev, func, 0x10);
+                    let b1 = pci_read32(bus, dev, func, 0x14);
                     if r.count < 64 {
                         r.devices[r.count] = PciDevice {
                             bus, device: dev, function: func,
@@ -111,6 +126,7 @@ pub fn scan_pci_bus() -> PciScanResult {
                             device_id: ((vd2 >> 16) & 0xFFFF) as u16,
                             class_code: ((cr2 >> 24) & 0xFF) as u8,
                             subclass: ((cr2 >> 16) & 0xFF) as u8,
+                            bar0: b0, bar1: b1,
                         };
                         r.count += 1;
                     }

@@ -10,12 +10,12 @@ pub const STATUS_NOT_IMPLEMENTED: i32 = 0xC0000002u32 as i32;
 
 // Stubs DDI
 #[no_mangle]
-pub unsafe extern "C" fn DxgkDdiAddDevice(_device_object: *mut c_void, arg: *mut DXGKARG_ADD_DEVICE) -> i32 {
+pub unsafe extern "C" fn DxgkDdiAddDevice(_device_object: *mut c_void, _miniport_context: *mut *mut c_void) -> i32 {
     STATUS_SUCCESS
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn DxgkDdiStartDevice(_device_context: *mut c_void, _arg: *mut DXGKARG_START_DEVICE) -> i32 {
+pub unsafe extern "C" fn DxgkDdiStartDevice(_device_context: *mut c_void, _start_info: *mut DXGK_START_INFO, _ddi_event: *mut c_void, _num_segments: *mut u32, _segments: *mut *mut c_void) -> i32 {
     STATUS_SUCCESS
 }
 
@@ -45,9 +45,9 @@ pub unsafe fn DxgkInitialize(
     // Aquí inyectamos nuestros stubs y trampolines (Solo rellenamos los críticos de Fase 1)
     
     (*init_data).Version = 0x3000; // WDDM 3.0 (Windows 11)
-    (*init_data).DxgkDdiAddDevice = Some(core::mem::transmute(DxgkDdiAddDevice as *const ()));
-    (*init_data).DxgkDdiStartDevice = Some(core::mem::transmute(DxgkDdiStartDevice as *const ()));
-    (*init_data).DxgkDdiQueryAdapterInfo = Some(core::mem::transmute(DxgkDdiQueryAdapterInfo as *const ()));
+    (*init_data).DxgkDdiAddDevice = DxgkDdiAddDevice as usize;
+    (*init_data).DxgkDdiStartDevice = DxgkDdiStartDevice as usize;
+    (*init_data).DxgkDdiQueryAdapterInfo = DxgkDdiQueryAdapterInfo as usize;
     
     // (Resto de las 188 se dejan como None/NULL por ahora, el driver solo llamará a AddDevice al inicio)
 

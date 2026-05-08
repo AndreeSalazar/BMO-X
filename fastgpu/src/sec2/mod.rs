@@ -64,11 +64,11 @@ pub unsafe fn bootstrap_sec2_falcon() -> bool {
     // la memoria protegida. Si WPR2 no está habilitado, hace lockdown.
     // =========================================================================
     
-    // WPR2 se ubica justo al final de la VRAM (12GB)
-    let wpr2_physical_base = GA106_VRAM_SIZE;
+    // WPR2 se ubica al final de la VRAM accesible
+    let wpr2_physical_base = GA106_VRAM_SIZE - GA106_WPR2_SIZE;
     
     mmio_write32(bar0, FB_WPR2_BASE_LO, (wpr2_physical_base & 0xFFFFFFFF) as u32);
-    mmio_write32(bar0, FB_WPR2_BASE_HI, (wpr2_physical_base >> 32) as u32);
+    mmio_write32(bar0, FB_WPR2_BASE_HI, (wpr2_physical_base >> 32) as u32); // Para 12GB esto suele ser 0x2
     mmio_write32(bar0, FB_WPR2_SIZE, (GA106_WPR2_SIZE >> 12) as u32); // Usualmente en páginas de 4K
     
     // Habilitar la región WPR2 (Bit 0)
