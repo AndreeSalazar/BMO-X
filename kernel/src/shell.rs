@@ -7,6 +7,10 @@ use crate::fb::colors;
 use crate::drivers::nvme::NvmeDriver;
 use crate::fs::ntfs::NtfsWrapper;
 use crate::fs::walker::FileWalker;
+use crate::agent::targets;
+use ntfs::NtfsReadSeek;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 const MAX_LINE: usize = 256;
 const KEY_PAGE_UP: u8 = 0xF1;
@@ -215,7 +219,7 @@ fn cmd_ntfs(con: &mut Console, mut parts: core::str::SplitWhitespace) {
     let sub = parts.next().unwrap_or("");
     
     // Detect NVMe
-    let mut nvme = match unsafe { NvmeDriver::detect() } {
+    let nvme = match unsafe { NvmeDriver::detect() } {
         Some(d) => d,
         None => {
             con.print_colored("Error: No NVMe controller found.\n", colors::ACCENT_RED);
@@ -248,6 +252,69 @@ fn cmd_ntfs(con: &mut Console, mut parts: core::str::SplitWhitespace) {
         },
         _ => con.println("Usage: ntfs ls"),
     }
+}
+
+fn cmd_extract(con: &mut Console) {
+    con.print_colored("--- STARTING FORENSIC EXTRACTION ---\n", colors::ACCENT_ORANGE);
+    
+    // 1. Detect NVMe
+    let nvme = match unsafe { NvmeDriver::detect() } {
+        Some(d) => d,
+        None => {
+            con.print_colored("Error: No NVMe controller found.\n", colors::ACCENT_RED);
+            return;
+        }
+    };
+
+    // 2. Mount NTFS
+    let mut wrapper = NtfsWrapper::new(nvme);
+    let ntfs = match wrapper.mount() {
+        Ok(n) => n,
+        Err(_) => {
+            con.print_colored("Error: Failed to mount NTFS.\n", colors::ACCENT_RED);
+            return;
+        }
+    };
+
+    con.println("NTFS Mounted. Searching for targets...");
+
+    // 3. Walk and Extract
+    let mut walker = FileWalker::new(&ntfs, &mut wrapper);
+    walker.walk(|path, file, disk| {
+        for target in targets::ALL_TARGETS {
+            // Check if path matches target (case insensitive or exact)
+            if path.eq_ignore_ascii_case(target.path) || (target.path.ends_with("*") && path.starts_with(&target.path[..target.path.len()-1])) {
+                con.print("  Found: ");
+                con.print_colored(path, colors::NV_GREEN);
+                con.print(" (");
+                con.print(target.description);
+                con.println(")");
+
+                // Read file content
+                let mut data_vec = Vec::new();
+                let data_attr = file.data(disk, "");
+                if let Some(Ok(attr)) = data_attr {
+                    let attribute = attr.to_attribute().unwrap();
+                    let mut reader = attribute.value(disk).unwrap();
+                    let size = reader.len();
+                    data_vec.resize(size as usize, 0);
+                    let _ = reader.read(disk, &mut data_vec);
+                    
+                    con.print("    Size: ");
+                    con.print_u64(size);
+                    con.println(" bytes. Exporting...");
+                    
+                    // Here we would use UsbWriter. Since we don't have a real FAT32 driver yet,
+                    // we log to serial as a proof of concept.
+                    crate::drivers::serial::serial_write("[AGENT] Exported: ");
+                    crate::drivers::serial::serial_write(path);
+                    crate::drivers::serial::serial_write("\n");
+                }
+            }
+        }
+    });
+
+    con.print_colored("--- EXTRACTION COMPLETE ---\n", colors::ACCENT_CYAN);
 }
 
 fn cmd_cpuinfo(con: &mut Console) {
