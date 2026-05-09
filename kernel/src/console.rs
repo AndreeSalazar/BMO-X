@@ -26,11 +26,15 @@ pub struct Console {
     fg: u32,
     bg: u32,
     fb_addr: usize,
-    fb_pitch: usize,
+    fb_pitch: usize,  // bytes per scanline
+    fb_stride: usize, // pixels per scanline (GOP stride)
     fb_width: usize,
     fb_height: usize,
+    
+    // Shadow buffer for double buffering (optional)
     shadow_addr: usize,
     shadow_pitch: usize,
+    shadow_stride: usize,
     history_addr: usize,
     history_cols: usize,
     history_rows: usize,
@@ -39,16 +43,19 @@ pub struct Console {
 }
 
 impl Console {
-    pub fn new(fb_addr: u64, fb_pitch: u64, fb_width: u32, fb_height: u32) -> Self {
+    pub fn new(fb_addr: u64, fb_pitch: u64, fb_stride: u32, fb_width: u32, fb_height: u32) -> Self {
         let fb_pitch = fb_pitch as usize;
+        let fb_stride = fb_stride as usize;
         let fb_width = fb_width as usize;
         let fb_height = fb_height as usize;
+        
+        // Try to allocate shadow buffer (double buffering)
         let shadow_size = fb_pitch.saturating_mul(fb_height);
         let shadow_pages = (shadow_size + 0xFFF) / 0x1000;
         let shadow_addr =
             unsafe { crate::arch::page_alloc::alloc_pages_contiguous(shadow_pages).unwrap_or(0) }
                 as usize;
-
+        // Zero the shadow buffer to prevent garbage pixels
         if shadow_addr != 0 {
             unsafe {
                 core::ptr::write_bytes(shadow_addr as *mut u8, 0, shadow_pages * 0x1000);
@@ -57,18 +64,21 @@ impl Console {
 
         let max_cols = fb_width / CHAR_W;
         let max_rows = fb_height / CHAR_H;
+
         let history_cols = max_cols;
+        let history_rows = SCROLLBACK_ROWS;
         let history_size = core::mem::size_of::<HistoryCell>()
             .saturating_mul(history_cols)
-            .saturating_mul(SCROLLBACK_ROWS);
+            .saturating_mul(history_rows);
         let history_pages = (history_size + 0xFFF) / 0x1000;
-        let history_addr = if history_cols != 0 && history_pages != 0 {
-            (unsafe { crate::arch::page_alloc::alloc_pages_contiguous(history_pages).unwrap_or(0) }) as usize
-        } else {
-            0
-        };
+        let history_addr =
+            unsafe { crate::arch::page_alloc::alloc_pages_contiguous(history_pages).unwrap_or(0) }
+                as usize;
+        // Zero the history buffer
         if history_addr != 0 {
-            unsafe { core::ptr::write_bytes(history_addr as *mut u8, 0, history_pages * 0x1000); }
+            unsafe {
+                core::ptr::write_bytes(history_addr as *mut u8, 0, history_pages * 0x1000);
+            }
         }
 
         Self {
@@ -80,14 +90,16 @@ impl Console {
             bg: colors::BG_DARK,
             fb_addr: fb_addr as usize,
             fb_pitch,
+            fb_stride,
             fb_width,
             fb_height,
             shadow_addr,
             shadow_pitch: fb_pitch,
+            shadow_stride: fb_stride,
             history_addr,
             history_cols,
-            history_rows: SCROLLBACK_ROWS,
-            history_line: 0,
+            history_rows,
+            history_line: 1,
             view_offset: 0,
         }
     }
@@ -98,6 +110,19 @@ impl Console {
 
     pub fn set_color(&mut self, fg: u32) {
         self.fg = fg;
+    }
+
+    pub fn col_pos(&self) -> usize {
+        self.col
+    }
+
+    pub fn row_pos(&self) -> usize {
+        self.row
+    }
+
+    pub fn set_pos(&mut self, col: usize, row: usize) {
+        self.col = col.min(self.max_cols.saturating_sub(1));
+        self.row = row.min(self.max_rows.saturating_sub(1));
     }
 
     pub fn set_colors(&mut self, fg: u32, bg: u32) {
@@ -317,9 +342,9 @@ impl Console {
 
     fn draw_target(&self) -> (*mut u32, usize, bool) {
         if self.shadow_addr != 0 {
-            (self.shadow_addr as *mut u32, self.shadow_pitch / 4, false)
+            (self.shadow_addr as *mut u32, self.shadow_stride, false)
         } else {
-            (self.fb_addr as *mut u32, self.fb_pitch / 4, true)
+            (self.fb_addr as *mut u32, self.fb_stride, true)
         }
     }
 
@@ -512,10 +537,10 @@ impl Console {
     fn scroll(&mut self) {
         if self.shadow_addr != 0 {
             let buf = self.shadow_addr as *mut u32;
-            let pitch_px = self.shadow_pitch / 4;
+            let stride = self.shadow_stride;
             let copy_rows = (self.max_rows - 1) * CHAR_H;
             unsafe {
-                core::ptr::copy(buf.add(CHAR_H * pitch_px), buf, copy_rows * pitch_px);
+                core::ptr::copy(buf.add(CHAR_H * stride), buf, copy_rows * stride);
             }
 
             let bg = self.bg;
@@ -523,7 +548,7 @@ impl Console {
             for py in 0..CHAR_H {
                 for px in 0..self.fb_width {
                     unsafe {
-                        buf.add((last_y + py) * pitch_px + px).write(bg);
+                        buf.add((last_y + py) * stride + px).write(bg);
                     }
                 }
             }
@@ -534,13 +559,13 @@ impl Console {
         }
 
         let buf = self.fb_addr as *mut u32;
-        let pitch_px = self.fb_pitch / 4;
+        let stride = self.fb_stride;
         let copy_rows = (self.max_rows - 1) * CHAR_H;
         for py in 0..copy_rows {
             for px in 0..self.fb_width {
                 unsafe {
-                    let src = buf.add((py + CHAR_H) * pitch_px + px).read_volatile();
-                    buf.add(py * pitch_px + px).write_volatile(src);
+                    let src = buf.add((py + CHAR_H) * stride + px).read_volatile();
+                    buf.add(py * stride + px).write_volatile(src);
                 }
             }
         }
@@ -549,7 +574,7 @@ impl Console {
         for py in 0..CHAR_H {
             for px in 0..self.fb_width {
                 unsafe {
-                    buf.add((last_y + py) * pitch_px + px).write_volatile(bg);
+                    buf.add((last_y + py) * stride + px).write_volatile(bg);
                 }
             }
         }
@@ -559,11 +584,11 @@ impl Console {
 
     fn clear_shadow(&self, color: u32) {
         let buf = self.shadow_addr as *mut u32;
-        let pitch_px = self.shadow_pitch / 4;
+        let stride = self.shadow_stride;
         for y in 0..self.fb_height {
             for x in 0..self.fb_width {
                 unsafe {
-                    buf.add(y * pitch_px + x).write(color);
+                    buf.add(y * stride + x).write(color);
                 }
             }
         }
@@ -571,7 +596,7 @@ impl Console {
 
     fn gradient_h_shadow(&self, x: usize, y: usize, w: usize, h: usize, left: u32, right: u32) {
         let buf = self.shadow_addr as *mut u32;
-        let pitch_px = self.shadow_pitch / 4;
+        let stride = self.shadow_stride;
         for col in 0..w {
             let t = col as u32;
             let inv = (w - 1).max(1) as u32;
@@ -579,7 +604,7 @@ impl Console {
             for row in y..(y + h).min(self.fb_height) {
                 if x + col < self.fb_width {
                     unsafe {
-                        buf.add(row * pitch_px + x + col).write(color);
+                        buf.add(row * stride + x + col).write(color);
                     }
                 }
             }
@@ -612,16 +637,16 @@ impl Console {
 
         let copy_w = w.min(self.fb_width.saturating_sub(x));
         let copy_h = h.min(self.fb_height.saturating_sub(y));
-        let src_pitch_px = self.shadow_pitch / 4;
-        let dst_pitch_px = self.fb_pitch / 4;
+        let src_stride = self.shadow_stride;
+        let dst_stride = self.fb_stride;
         let src = self.shadow_addr as *const u32;
         let dst = self.fb_addr as *mut u32;
 
         for row in 0..copy_h {
             for col in 0..copy_w {
                 unsafe {
-                    let px = src.add((y + row) * src_pitch_px + x + col).read();
-                    dst.add((y + row) * dst_pitch_px + x + col)
+                    let px = src.add((y + row) * src_stride + x + col).read();
+                    dst.add((y + row) * dst_stride + x + col)
                         .write_volatile(px);
                 }
             }
@@ -633,16 +658,16 @@ impl Console {
             return;
         }
 
-        let src_pitch_px = self.shadow_pitch / 4;
-        let dst_pitch_px = self.fb_pitch / 4;
+        let src_stride = self.shadow_stride;
+        let dst_stride = self.fb_stride;
         let src = self.shadow_addr as *const u32;
         let dst = self.fb_addr as *mut u32;
 
         for y in 0..self.fb_height {
             for x in 0..self.fb_width {
                 unsafe {
-                    let px = src.add(y * src_pitch_px + x).read();
-                    dst.add(y * dst_pitch_px + x).write_volatile(px);
+                    let px = src.add(y * src_stride + x).read();
+                    dst.add(y * dst_stride + x).write_volatile(px);
                 }
             }
         }

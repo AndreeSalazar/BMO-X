@@ -152,7 +152,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     match bi.fb_addr {
         0 => loop { unsafe { core::arch::asm!("hlt"); } },
         fb_addr => {
-            let mut con = console::Console::new(fb_addr, bi.fb_pitch(), bi.fb_width, bi.fb_height);
+            let mut con = console::Console::new(fb_addr, bi.fb_pitch(), bi.fb_stride, bi.fb_width, bi.fb_height);
             con.clear();
             con.print("[FastOS] Framebuffer GOP: ");
             con.print_u64(bi.fb_width as u64);

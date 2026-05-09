@@ -2,6 +2,7 @@
 
 pub mod ntfs;
 pub mod walker;
+pub mod gpt;
 
 /// Abstract block access to a disk device.
 pub trait DiskReader {

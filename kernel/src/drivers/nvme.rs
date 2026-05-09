@@ -60,8 +60,12 @@ pub struct NvmeDriver {
     io_sq: *mut NvmeCmd,
     io_cq: *mut NvmeCqe,
     db_stride: usize,
-    sq_tail: u16,
-    cq_head: u16,
+    admin_sq_tail: u16,
+    admin_cq_head: u16,
+    admin_phase: u16,
+    io_sq_tail: u16,
+    io_cq_head: u16,
+    io_phase: u16,
 }
 
 impl NvmeDriver {
@@ -116,8 +120,12 @@ impl NvmeDriver {
             io_sq: io_sq_phys as *mut NvmeCmd,
             io_cq: io_cq_phys as *mut NvmeCqe,
             db_stride: 1 << (2 + dstrd),
-            sq_tail: 0,
-            cq_head: 0,
+            admin_sq_tail: 0,
+            admin_cq_head: 0,
+            admin_phase: 1,
+            io_sq_tail: 0,
+            io_cq_head: 0,
+            io_phase: 1,
         };
 
         driver.create_io_queues(io_sq_phys, io_cq_phys);
@@ -143,16 +151,20 @@ impl NvmeDriver {
     }
 
     unsafe fn submit_admin(&mut self, cmd: &NvmeCmd) {
-        let tail = self.sq_tail as usize;
+        let tail = self.admin_sq_tail as usize;
         self.asq.add(tail).write_volatile(*cmd);
-        self.sq_tail = (self.sq_tail + 1) % 64;
+        self.admin_sq_tail = (self.admin_sq_tail + 1) % 64;
+        
         let db = (self.regs as usize + 0x1000) as *mut u32;
-        write_volatile(db, self.sq_tail as u32);
+        write_volatile(db, self.admin_sq_tail as u32);
         loop {
-            let cqe = self.acq.add(self.cq_head as usize).read_volatile();
-            if cqe.status != 0 { break; }
+            let cqe = self.acq.add(self.admin_cq_head as usize).read_volatile();
+            if (cqe.status & 1) == self.admin_phase { break; }
         }
-        self.cq_head = (self.cq_head + 1) % 64;
+        self.admin_cq_head = (self.admin_cq_head + 1) % 64;
+        if self.admin_cq_head == 0 {
+            self.admin_phase ^= 1;
+        }
     }
 
     pub fn read_sectors_raw(&mut self, lba: u64, count: u32, buf_phys: u64) -> Result<(), DiskError> {
@@ -165,20 +177,25 @@ impl NvmeDriver {
             cmd.cdw11 = (lba >> 32) as u32;
             cmd.cdw12 = (count - 1) & 0xFFFF; // NLB (0-based)
 
-            let tail = self.sq_tail as usize;
+            let tail = self.io_sq_tail as usize;
             self.io_sq.add(tail).write_volatile(cmd);
-            self.sq_tail = (self.sq_tail + 1) % 64;
+            self.io_sq_tail = (self.io_sq_tail + 1) % 64;
             
             let db = (self.regs as usize + 0x1000 + (2 * self.db_stride)) as *mut u32;
-            write_volatile(db, self.sq_tail as u32);
+            write_volatile(db, self.io_sq_tail as u32);
 
             let mut status;
             loop {
-                let cqe = self.io_cq.add(self.cq_head as usize).read_volatile();
-                status = cqe.status >> 1;
-                if status != 0 { break; }
+                let cqe = self.io_cq.add(self.io_cq_head as usize).read_volatile();
+                if (cqe.status & 1) == self.io_phase {
+                    status = cqe.status >> 1;
+                    break;
+                }
             }
-            self.cq_head = (self.cq_head + 1) % 64;
+            self.io_cq_head = (self.io_cq_head + 1) % 64;
+            if self.io_cq_head == 0 {
+                self.io_phase ^= 1;
+            }
             
             if status == 0 { Ok(()) } else { Err(DiskError::IOError) }
         }

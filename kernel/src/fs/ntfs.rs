@@ -1,4 +1,8 @@
 //! NTFS filesystem support via the `ntfs` crate.
+//!
+//! The wrapper translates byte-level Read/Seek operations into
+//! sector-level reads through the DiskReader trait, applying
+//! a partition offset so NTFS sees the partition as a standalone volume.
 
 use crate::fs::{DiskReader, DiskError};
 use ntfs::Ntfs;
@@ -8,13 +12,19 @@ use binrw::io::{Read, Seek, SeekFrom, Error, ErrorKind};
 pub struct NtfsWrapper<D: DiskReader> {
     disk: D,
     position: u64,
+    /// Byte offset to the start of the NTFS partition on disk.
+    /// All reads are translated: disk_byte = partition_offset + position.
+    partition_offset: u64,
 }
 
 impl<D: DiskReader> NtfsWrapper<D> {
-    pub fn new(disk: D) -> Self {
+    /// Create a wrapper that reads from a specific partition.
+    /// `partition_start_lba` is the starting LBA of the NTFS partition from GPT.
+    pub fn new(disk: D, partition_start_lba: u64) -> Self {
         Self {
             disk,
             position: 0,
+            partition_offset: partition_start_lba * 512,
         }
     }
 
@@ -25,8 +35,9 @@ impl<D: DiskReader> NtfsWrapper<D> {
 
 impl<D: DiskReader> Read for NtfsWrapper<D> {
     fn read(&mut self, buf: &mut [u8]) -> binrw::io::Result<usize> {
-        let lba = self.position / 512;
-        let offset_in_lba = (self.position % 512) as usize;
+        let abs_position = self.partition_offset + self.position;
+        let lba = abs_position / 512;
+        let offset_in_lba = (abs_position % 512) as usize;
         let bytes_to_read = buf.len();
         
         let count = (bytes_to_read + offset_in_lba + 511) / 512;
