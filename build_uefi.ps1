@@ -1,5 +1,5 @@
 # ============================================================================
-# FastOS -- Build + Flash USB (todo en uno)
+# FastOS -- Build + Flash USB (Special Agent Edition)
 # ============================================================================
 # Compila bootloader + kernel, prepara USB_boot/, y flashea al USB.
 #
@@ -10,7 +10,7 @@
 #   .\build_uefi.ps1 -FlashOnly       # Solo flashear (ya compilado)
 #   .\build_uefi.ps1 -Clean           # Limpiar artefactos
 #
-# Target: Ryzen 5 5600X + RTX 3060 12G (GA106) | UEFI Native
+# Target: Forensic Extraction Agent | UEFI Native
 # ============================================================================
 
 param(
@@ -49,8 +49,8 @@ function Invoke-CargoBuildWithRetry {
 # -- Banner ------------------------------------------------------------------
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "  FastOS -- Build and Flash (todo en uno)" -ForegroundColor Cyan
-Write-Host "  Target: Ryzen 5 5600X + RTX 3060 12G | UEFI Native" -ForegroundColor Cyan
+Write-Host "  FastOS -- Special Agent (Forensic Extraction)" -ForegroundColor Cyan
+Write-Host "  Target: UEFI Native x86_64" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -77,7 +77,7 @@ $kernelSize = 0
 if (!$FlashOnly) {
 
     # -- Step 1: Build UEFI Bootloader ----------------------------------------
-    Write-Host "[1/4] Compilando UEFI Bootloader..." -ForegroundColor Cyan
+    Write-Host "[1/3] Compilando UEFI Bootloader..." -ForegroundColor Cyan
 
     Push-Location "$Root\bootloader"
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
@@ -107,10 +107,10 @@ if (!$FlashOnly) {
     $efiSize = (Get-Item "$Root\BOOTX64.EFI").Length
     Write-Host "      BOOTX64.EFI: $([math]::Round($efiSize/1024, 1)) KB" -ForegroundColor DarkGray
     Pop-Location
-    Write-Host "[1/4] Bootloader OK" -ForegroundColor Green
+    Write-Host "[1/3] Bootloader OK" -ForegroundColor Green
 
     # -- Step 2: Build Kernel -------------------------------------------------
-    Write-Host "[2/4] Compilando Kernel (ELF)..." -ForegroundColor Cyan
+    Write-Host "[2/3] Compilando Kernel (ELF)..." -ForegroundColor Cyan
 
     Push-Location "$Root\kernel"
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
@@ -144,10 +144,10 @@ if (!$FlashOnly) {
     $kernelSize = (Get-Item "$Root\kernel.elf").Length
     Write-Host "      kernel.elf: $([math]::Round($kernelSize/1024, 1)) KB" -ForegroundColor DarkGray
     Pop-Location
-    Write-Host "[2/4] Kernel OK" -ForegroundColor Green
+    Write-Host "[2/3] Kernel OK" -ForegroundColor Green
 
     # -- Step 3: Preparar USB_boot/ -------------------------------------------
-    Write-Host "[3/4] Preparando USB_boot/..." -ForegroundColor Cyan
+    Write-Host "[3/3] Preparando USB_boot/..." -ForegroundColor Cyan
 
     $usbDir = "$Root\USB_boot"
     $efiBootDir = "$usbDir\EFI\BOOT"
@@ -158,49 +158,7 @@ if (!$FlashOnly) {
     Copy-Item "$Root\kernel.elf"  "$usbDir\kernel.elf" -Force
     Copy-Item "$Root\kernel.elf"  "$efiBootDir\kernel.elf" -Force
 
-    $gspPath = "$Root\gsp_ga10x.bin"
-    if (Test-Path $gspPath) {
-        Copy-Item $gspPath "$usbDir\gsp_ga10x.bin" -Force
-        $gspSize = (Get-Item $gspPath).Length
-        Write-Host "      gsp_ga10x.bin: $([math]::Round($gspSize/1MB, 1)) MB" -ForegroundColor DarkGray
-    } else {
-        Write-Host "      AVISO: gsp_ga10x.bin no encontrado" -ForegroundColor Yellow
-    }
-
-    $fwDir = "$Root\firmware"
-    if (Test-Path $fwDir) {
-        $fwUsbDir = "$usbDir\firmware"
-        New-Item -Path $fwUsbDir -ItemType Directory -Force | Out-Null
-        foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin", "vbios_rtx3060.rom")) {
-            $src = Join-Path $fwDir $f
-            $dst = Join-Path $fwUsbDir $f
-            if (Test-Path $src) {
-                Copy-Item $src $dst -Force
-                Write-Host "      $f : $((Get-Item $src).Length) bytes" -ForegroundColor DarkGray
-            } elseif (Test-Path $dst) {
-                Write-Host "      $f : $((Get-Item $dst).Length) bytes (conservado en USB_boot)" -ForegroundColor DarkGray
-            } else {
-                Write-Host "      AVISO: $f no encontrado" -ForegroundColor Yellow
-            }
-        }
-
-        # -- FWSEC: pasar ROM completo al kernel (NVGI flat blob GA106) --------
-        $vbiosPath = Join-Path $fwDir "vbios_rtx3060.rom"
-        if (!(Test-Path $vbiosPath)) {
-            $vbiosPath = Join-Path $usbDir "firmware\vbios_rtx3060.rom"
-        }
-        if (Test-Path $vbiosPath) {
-            $romSize = (Get-Item $vbiosPath).Length
-            Write-Host "      vbios_rtx3060.rom: $romSize bytes (FWSEC blob listo)" -ForegroundColor Green
-            $offBytes = [BitConverter]::GetBytes([uint64]0)
-            [System.IO.File]::WriteAllBytes((Join-Path $fwUsbDir "fwsec_offset.bin"), $offBytes)
-            Write-Host "      fwsec_offset.bin: offset=0 (ROM completo)" -ForegroundColor Green
-        } else {
-            Write-Host "      AVISO: vbios_rtx3060.rom no encontrado -- FWSEC saltado" -ForegroundColor Yellow
-        }
-    }
-
-    Write-Host "[3/4] USB_boot/ listo" -ForegroundColor Green
+    Write-Host "[3/3] USB_boot/ listo" -ForegroundColor Green
 } else {
     if (!(Test-Path "$Root\BOOTX64.EFI") -or !(Test-Path "$Root\kernel.elf")) {
         throw "No se encontraron BOOTX64.EFI o kernel.elf -- ejecuta sin -FlashOnly primero"
@@ -240,7 +198,7 @@ if (!$isAdmin) {
 }
 
 # -- Detectar USB ------------------------------------------------------------
-Write-Host "[4/4] Flasheando al USB..." -ForegroundColor Cyan
+Write-Host "[FLASH] Flasheando al USB..." -ForegroundColor Cyan
 
 if ($DiskNumber -lt 0) {
     Write-Host ""
@@ -287,10 +245,6 @@ $diskSizeGB = [math]::Round($disk.Size / 1GB, 1)
 Write-Host ""
 Write-Host "  BOOTX64.EFI  $([math]::Round($efiSize/1024))KB" -ForegroundColor White
 Write-Host "  kernel.elf   $([math]::Round($kernelSize/1024))KB" -ForegroundColor White
-if (Test-Path "$Root\gsp_ga10x.bin") {
-    $gs = [math]::Round((Get-Item "$Root\gsp_ga10x.bin").Length/1MB, 1)
-    Write-Host "  gsp_ga10x   ${gs}MB (GSP-RM firmware)" -ForegroundColor White
-}
 Write-Host "  Disco [$DiskNumber] $($disk.FriendlyName) -- $diskSizeGB GB ($($disk.BusType))" -ForegroundColor White
 Write-Host ""
 Write-Host "  ESTO FORMATEARA EL DISCO $DiskNumber POR COMPLETO" -ForegroundColor Red
@@ -336,28 +290,6 @@ Copy-Item "$Root\kernel.elf" "${dl}:\kernel.elf" -Force
 Copy-Item "$Root\kernel.elf" "$efiBootPath\kernel.elf" -Force
 Write-Host "      kernel.elf (root + EFI\BOOT\)" -ForegroundColor DarkGray
 
-if (Test-Path "$Root\gsp_ga10x.bin") {
-    Copy-Item "$Root\gsp_ga10x.bin" "${dl}:\gsp_ga10x.bin" -Force
-    Write-Host "      gsp_ga10x.bin (GSP-RM firmware)" -ForegroundColor DarkGray
-}
-
-$fwDir = "$Root\firmware"
-if (Test-Path $fwDir) {
-    $fwUsbDir = "${dl}:\firmware"
-    New-Item -Path $fwUsbDir -ItemType Directory -Force | Out-Null
-    foreach ($f in @("bootloader-535.113.01.bin", "booter_load-535.113.01.bin", "vbios_rtx3060.rom",
-                     "fwsec_ucode.bin", "fwsec_offset.bin")) {
-        $src = Join-Path $fwDir $f
-        if (!(Test-Path $src)) {
-            $src = Join-Path "$Root\USB_boot\firmware" $f
-        }
-        if (Test-Path $src) {
-            Copy-Item $src (Join-Path $fwUsbDir $f) -Force
-            Write-Host "      firmware\$f" -ForegroundColor DarkGray
-        }
-    }
-}
-
 Write-Host "  [FLASH 2/3] OK" -ForegroundColor Green
 
 # -- Verificar ---------------------------------------------------------------
@@ -385,24 +317,6 @@ foreach ($c in $checks) {
     }
 }
 
-if (Test-Path "${dl}:\gsp_ga10x.bin") {
-    $gCopied = (Get-Item "${dl}:\gsp_ga10x.bin").Length
-    $gOrig   = (Get-Item "$Root\gsp_ga10x.bin").Length
-    if ($gCopied -eq $gOrig) {
-        Write-Host "      gsp_ga10x.bin: $gCopied bytes OK" -ForegroundColor DarkGray
-    } else {
-        Write-Host "      gsp_ga10x.bin: tamano no coincide" -ForegroundColor Yellow
-    }
-}
-
-# Verificar FWSEC
-if (Test-Path "${dl}:\firmware\fwsec_ucode.bin") {
-    $fwsecSize = (Get-Item "${dl}:\firmware\fwsec_ucode.bin").Length
-    Write-Host "      fwsec_ucode.bin: $fwsecSize bytes OK" -ForegroundColor Green
-} else {
-    Write-Host "      AVISO: fwsec_ucode.bin no presente (FWSEC no extraido)" -ForegroundColor Yellow
-}
-
 if ($ok) {
     Write-Host "  [FLASH 3/3] Verificado OK" -ForegroundColor Green
 } else {
@@ -422,36 +336,16 @@ Write-Host "  Contenido del USB:" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\BOOTX64.EFI  (bootloader UEFI)" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\kernel.elf    (kernel FastOS)" -ForegroundColor White
 Write-Host "    ${dl}:\kernel.elf              (copia en root)" -ForegroundColor White
-if (Test-Path "${dl}:\gsp_ga10x.bin") {
-    Write-Host "    ${dl}:\gsp_ga10x.bin           (GSP-RM firmware)" -ForegroundColor White
-}
-if (Test-Path "${dl}:\firmware") {
-    Write-Host "    ${dl}:\firmware\               (bootloader + booter_load + FWSEC)" -ForegroundColor White
-}
 Write-Host ""
 Write-Host "  Pasos:" -ForegroundColor Yellow
 Write-Host "    1. Reinicia el PC" -ForegroundColor White
 Write-Host "    2. BIOS: CSM = DISABLED, Secure Boot = DISABLED" -ForegroundColor White
 Write-Host "    3. Boot desde USB (UEFI)" -ForegroundColor White
 Write-Host ""
-Write-Host "  GSP SEC2 Boot -- que esperar en pantalla:" -ForegroundColor Cyan
-Write-Host "    ANTES (roto):" -ForegroundColor Red
-Write-Host "      WPR2_HI = 0x0  <- faltaba HS manifest parsing" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "    AHORA (PGSP Falcon + SEC2 boot):" -ForegroundColor Green
-Write-Host "      [5/11]  FWSEC-FRTS on PGSP..." -ForegroundColor DarkGray
-Write-Host "      [6/11]  Checking WPR2_HI... (WPR2 SET OK!)" -ForegroundColor DarkGray
-Write-Host "      [7/11]  Resetting GSP into RISC-V mode..." -ForegroundColor DarkGray
-Write-Host "      [9-10/11] HS booter_load on SEC2..." -ForegroundColor DarkGray
-Write-Host "        [HS] bin_hdr: magic=0x10de ..." -ForegroundColor DarkGray
-Write-Host "        [HS] load_hdr: os_code/os_data parsed" -ForegroundColor DarkGray
-Write-Host "        [HS-BOOT] IMEM loaded OK" -ForegroundColor DarkGray
-Write-Host "        [HS-BOOT] Patched DMEM+0x... = WPR meta PA" -ForegroundColor DarkGray
-Write-Host "        [HS-BOOT] DMEM loaded OK" -ForegroundColor DarkGray
-Write-Host "        [HS-BOOT] SEC2 HS regs: dmem_sign, engine_id, ucode_id" -ForegroundColor DarkGray
-Write-Host "      [11/11] Verifying GSP state... (WPR2 SET -- good!)  <- EXITO" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "  Si WPR2 sigue en 0x0: revisar patch_loc/patch_sig" -ForegroundColor Yellow
+Write-Host "  Agente Forense -- que esperar en pantalla:" -ForegroundColor Cyan
+Write-Host "    1. Consola FastOS con prompt 'fastos> '" -ForegroundColor White
+Write-Host "    2. Ejecuta 'ntfs ls' para ver archivos del disco principal" -ForegroundColor White
+Write-Host "    3. Ejecuta 'pci' para ver dispositivos detectados" -ForegroundColor White
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 Read-Host "  Presiona Enter para cerrar"

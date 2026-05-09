@@ -1,9 +1,0 @@
-[package]
-name = "nv_regs"
-version.workspace = true
-edition.workspace = true
-description = "GA106 (RTX 3060 12G) register definitions — from envytools + SigDead-BIB section analysis"
-
-[features]
-default = []
-std = []

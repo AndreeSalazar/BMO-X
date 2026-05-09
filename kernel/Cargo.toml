@@ -8,15 +8,9 @@ license = "MIT"
 
 [dependencies]
 fastos-boot-protocol = { path = "../boot_protocol" }
-nv_error = { path = "../Driver_Canon GA106/nv_error" }
-nv_regs = { path = "../Driver_Canon GA106/nv_regs" }
-nv_hal = { path = "../Driver_Canon GA106/nv_hal" }
-nv_firmware = { path = "../Driver_Canon GA106/nv_firmware" }
-nv_gpu = { path = "../Driver_Canon GA106/nv_gpu" }
-nv_cmd = { path = "../Driver_Canon GA106/nv_cmd" }
-nv_display = { path = "../Driver_Canon GA106/nv_display" }
-nv_kernel = { path = "../Driver_Canon GA106/nv_kernel" }
-fastgpu = { path = "../fastgpu" }
+ntfs = { version = "0.4", default-features = false }
+nt-hive = { version = "0.3.0", default-features = false }
+binrw = { version = "0.11", default-features = false }
 
 [profile.dev]
 panic = "abort"

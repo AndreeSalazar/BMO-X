@@ -6,18 +6,20 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+mod agent;
+mod allocator;
 mod arch;
+mod export;
 mod boot_info;
 mod console;
 mod drivers;
 mod fb;
-mod gpu;
-mod render3d;
+mod fs;
 mod font;
 mod panic;
-mod platform;
 mod shell;
-mod tests;
 
 use core::arch::naked_asm;
 
@@ -166,37 +168,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 con.println("direct framebuffer writes");
             }
             
-            // ── Iniciar GSP (TEMPORALMENTE DESACTIVADO) ─────────────────────
-            con.println("[FastOS] GSP auto-init: disabled (use 'gspinit' or 'gsprpc').");
-            if bi.gsp_addr != 0 && bi.gsp_size > 0 {
-                con.print("[FastOS] GSP firmware loaded: ");
-                con.print_u64(bi.gsp_size / (1024 * 1024));
-                con.println(" MB");
-            } else {
-                con.print_colored("[FastOS] GSP firmware not loaded.\n", 0xFFFF0000);
-            }
-            
-            // ── Iniciar FastGPU ABI ──────────────────────────────────────────
-            con.println("[FastOS] Arrancando FastGPU ABI...");
-            let pci = drivers::pci::scan_pci_bus();
-            if let Some(gpu_dev) = pci.find_device(0x10DE, 0x2504) {
-                // Mapear BAR1 (VRAM) para que el driver pueda cargar el firmware
-                let bar1_phys = (gpu_dev.bar1 & !0xF) as u64;
-                
-                unsafe {
-                    fastgpu::pci::GA106_DEVICE.vram_ptr = bar1_phys;
-                }
-
-                let dummy_header: *const fastgpu::pci::PciDeviceHeader = core::ptr::null(); 
-                match unsafe { fastgpu::loader::bootstrap_fastgpu(gpu_dev.bus, gpu_dev.device, gpu_dev.function, dummy_header, bi.gsp_addr, bi.gsp_size) } {
-                    Ok(_) => con.print_colored("[FastOS] EXITO: FastGPU ABI y Dxgkrnl WDDM listos.\n", 0xFF00FF00),
-                    Err(e) => {
-                        con.print_colored("[FastOS] ERROR FATAL en FastGPU Boot Chain:\n", 0xFFFF0000);
-                        con.println(e);
-                    }
-                }
-            } else {
-                con.println("[FastOS] ERROR: NVIDIA RTX 3060 (GA106) no detectada en el bus PCI.");
+            con.println("[FastOS] Special Agent mode: active.");
+            if let Some(ecam) = arch::acpi::parse_mcfg(bi.rsdp_addr) {
+                con.print("[FastOS] ECAM at ");
+                con.print_hex32(ecam.base_addr as u32);
+                con.println("");
             }
             
             con.println("");
