@@ -62,6 +62,20 @@ impl GptPartition {
     }
 }
 
+/// Returns the total capacity of the disk in LBAs, calculated from the GPT backup LBA.
+pub fn get_disk_capacity_lba<D: DiskReader>(disk: &mut D) -> Result<u64, DiskError> {
+    let mut header = alloc::vec::Vec::with_capacity(512);
+    header.resize(512, 0);
+    disk.read_sectors(1, 1, &mut header)?;
+
+    if &header[0..8] != b"EFI PART" {
+        return Err(DiskError::ControllerError);
+    }
+
+    let backup_lba = read_u64(&header, 32);
+    Ok(backup_lba + 1)
+}
+
 /// Scan the GPT partition table and find the first NTFS (Microsoft Basic Data) partition.
 /// Returns the starting LBA of the Windows partition.
 pub fn find_ntfs_partition<D: DiskReader>(disk: &mut D) -> Result<u64, DiskError> {

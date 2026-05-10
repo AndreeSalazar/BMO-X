@@ -226,6 +226,43 @@ impl NvmeDriver {
         if status == 0 { Ok(()) } else { Err(DiskError::IOError) }
     }
 
+    /// Write sectors via bounce buffer (max 8 sectors = 4096 bytes per command)
+    unsafe fn submit_io_write(&mut self, lba: u64, count: u32) -> Result<(), DiskError> {
+        let mut cmd = core::mem::zeroed::<NvmeCmd>();
+        cmd.opcode = 0x01; // Write
+        cmd.nsid = 1;
+        cmd.dptr[0] = self.dma_buf;
+        cmd.cdw10 = lba as u32;
+        cmd.cdw11 = (lba >> 32) as u32;
+        cmd.cdw12 = (count - 1) & 0xFFFF;
+
+        let tail = self.io_sq_tail as usize;
+        self.io_sq.add(tail).write_volatile(cmd);
+        self.io_sq_tail = (self.io_sq_tail + 1) % 64;
+
+        let db = (self.regs as usize + 0x1000 + (2 * self.db_stride)) as *mut u32;
+        write_volatile(db, self.io_sq_tail as u32);
+
+        let status;
+        loop {
+            let cqe = self.io_cq.add(self.io_cq_head as usize).read_volatile();
+            if (cqe.status & 1) == self.io_phase {
+                status = cqe.status >> 1;
+                break;
+            }
+            core::hint::spin_loop();
+        }
+        self.io_cq_head = (self.io_cq_head + 1) % 64;
+        if self.io_cq_head == 0 {
+            self.io_phase ^= 1;
+        }
+
+        let cq_db = (self.regs as usize + 0x1000 + (3 * self.db_stride)) as *mut u32;
+        write_volatile(cq_db, self.io_cq_head as u32);
+
+        if status == 0 { Ok(()) } else { Err(DiskError::IOError) }
+    }
+
     pub fn read_sectors_raw(&mut self, lba: u64, count: u32, buf_phys: u64) -> Result<(), DiskError> {
         unsafe {
             let mut current_lba = lba;
@@ -261,6 +298,27 @@ impl DiskReader for NvmeDriver {
                 let bytes = (chunk as usize) * 512;
                 let src = core::slice::from_raw_parts(self.dma_buf as *const u8, bytes);
                 buf[offset..offset + bytes].copy_from_slice(src);
+            }
+            current_lba += chunk as u64;
+            remaining -= chunk;
+            offset += (chunk as usize) * 512;
+        }
+        Ok(())
+    }
+}
+
+impl crate::fs::DiskWriter for NvmeDriver {
+    fn write_sectors(&mut self, lba: u64, count: u32, buf: &[u8]) -> Result<(), DiskError> {
+        let mut current_lba = lba;
+        let mut remaining = count;
+        let mut offset: usize = 0;
+        while remaining > 0 {
+            let chunk = core::cmp::min(remaining, 8);
+            unsafe {
+                let bytes = (chunk as usize) * 512;
+                let dst = core::slice::from_raw_parts_mut(self.dma_buf as *mut u8, bytes);
+                dst.copy_from_slice(&buf[offset..offset + bytes]);
+                self.submit_io_write(current_lba, chunk)?;
             }
             current_lba += chunk as u64;
             remaining -= chunk;

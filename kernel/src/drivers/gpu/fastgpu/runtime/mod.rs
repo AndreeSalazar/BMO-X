@@ -1,6 +1,8 @@
 //! Runtime Orchestration
 //! Manages boot ordering, dependency validation, and capability staging.
 
+pub mod payload_loader;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuCapabilityStage {
     PciDetected,

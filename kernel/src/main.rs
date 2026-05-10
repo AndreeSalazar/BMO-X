@@ -201,6 +201,97 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 con.print_u64(pci.count as u64);
                 con.println("");
 
+                // ── Detect Disks for Export ──
+                let mut nvme_opt = unsafe { drivers::nvme::NvmeDriver::detect() };
+                if nvme_opt.is_some() {
+                    con.println("[STORAGE] NVMe Primary Disk detected & initialized");
+                } else {
+                    con.println("[STORAGE] No NVMe detected");
+                }
+
+                let mut ahci_opt = unsafe { drivers::ahci::AhciDriver::detect() };
+                if let Some(ref mut ahci) = ahci_opt {
+                    con.println("[STORAGE] AHCI/SATA Secondary Disk detected & initialized");
+                    
+                    // Dump full HBA diagnostic registers before attempting any I/O
+                    unsafe { ahci.diagnose(&mut con); }
+                    
+                    // Print disk capacity in GB
+                    match fs::gpt::get_disk_capacity_lba(ahci) {
+                        Ok(lbas) => {
+                            let gb = (lbas * 512) / (1024 * 1024 * 1024);
+                            con.print("  -> AHCI Disk Size: "); con.print_u64(gb); con.println(" GB");
+                        },
+                        Err(e) => {
+                            con.print("  -> [ERROR] Failed to read GPT header via AHCI: ");
+                            match e {
+                                fs::DiskError::Timeout => con.println("TIMEOUT (DMA transfer never completed)"),
+                                fs::DiskError::IOError => {
+                                    con.println("IO_ERROR (ATA error or Task File Error)");
+                                    // Dump registers again after failure for post-mortem
+                                    unsafe { ahci.diagnose(&mut con); }
+                                },
+                                _ => con.println("UNKNOWN"),
+                            }
+                        },
+                    }
+
+                    // Scan GPT for export partition
+                    match fs::gpt::scan_all_partitions(ahci) {
+                        Ok(parts) => {
+                            let mut found = false;
+                            for p in parts {
+                                if p.first_lba == 32768 {
+                                    con.print("  -> Found Export Partition! LBA: "); con.print_u64(p.first_lba);
+                                    con.print(" to "); con.print_u64(p.last_lba); con.println("");
+                                    
+                                    // Lock bounds
+                                    ahci.export_bounds = Some((p.first_lba, p.last_lba));
+                                    con.println("  -> AHCI Strict Bounds LOCKED.");
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if !found {
+                                con.println("  -> [ERROR] Export Partition (LBA 32768) not found on SATA disk");
+                            }
+                        },
+                        Err(_) => con.println("  -> [ERROR] Failed to scan GPT partitions via AHCI"),
+                    }
+
+                    // ── Benchmark ──
+                    if let Some(ref mut nvme) = nvme_opt {
+                        if ahci.export_bounds.is_some() {
+                            con.println("\n[BENCHMARK] NVMe Read vs AHCI Write (DryRun)...");
+                            
+                            use fs::{DiskReader, DiskWriter};
+                            let mut buf = alloc::vec::Vec::with_capacity(1024 * 1024);
+                            buf.resize(1024 * 1024, 0); // 1MB chunk
+
+                            let t_start_nvme = unsafe { core::arch::x86_64::_rdtsc() };
+                            // Read 16MB from NVMe
+                            for i in 0..16 {
+                                let lba = 34816 + (i * 2048);
+                                let _ = nvme.read_sectors(lba, 2048, &mut buf);
+                            }
+                            let t_end_nvme = unsafe { core::arch::x86_64::_rdtsc() };
+                            
+                            let t_start_ahci = unsafe { core::arch::x86_64::_rdtsc() };
+                            // Write 16MB to AHCI (DryRun mode defaults in AhciDriver)
+                            for i in 0..16 {
+                                let lba = 32768 + 2048 + (i * 2048); // 1MB offset + i*1MB
+                                let _ = ahci.write_sectors(lba, 2048, &buf);
+                            }
+                            let t_end_ahci = unsafe { core::arch::x86_64::_rdtsc() };
+
+                            con.print("  NVMe 16MB Read : "); con.print_u64(t_end_nvme - t_start_nvme); con.println(" cycles");
+                            con.print("  AHCI 16MB Write: "); con.print_u64(t_end_ahci - t_start_ahci); con.println(" cycles (DryRun)");
+                        }
+                    }
+                } else {
+                    con.println("[STORAGE] No AHCI/SATA detected");
+                }
+
                 if let Some(gpu) = pci.find_nvidia_gpu() {
                     con.println("[PCI] NVIDIA GPU detected!");
                     con.print("  Vendor: 0x");
@@ -233,66 +324,71 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                     } else {
                         con.println("[GPU] BAR0 valid.");
                         
-                        // Create ObserveOnly MMIO (Reads from hardware, simulated writes)
+                        // Create Active MMIO (Real reads and real writes)
                         use drivers::gpu::fastgpu::runtime::*;
-                        let mut gpu_rt = GpuRuntime::new(GpuRuntimeMode::ObserveOnly);
+                        let mut gpu_rt = GpuRuntime::new(GpuRuntimeMode::Active);
                         gpu_rt.advance_to(GpuCapabilityStage::BarMapped);
 
                         let mut mmio = unsafe {
-                            drivers::gpu::fastgpu::hw::mmio::Mmio::new(bar0_full, GpuRuntimeMode::ObserveOnly)
+                            drivers::gpu::fastgpu::hw::mmio::Mmio::new(bar0_full, GpuRuntimeMode::Active)
                         };
 
-                        // Real MMIO reads — hardware state observation
+                        // Step 1: PMC Enable (Active)
                         use drivers::gpu::fastgpu::intelligence::mmio_map::registers as regs;
+                        con.println("[SEC2] Step 1: PMC Enable (Active)");
+                        let pmc_val = mmio.read32(regs::PMC_ENABLE);
+                        mmio.write32(regs::PMC_ENABLE, pmc_val | (1 << 13));
+
+                        // Real MMIO reads — hardware state observation AFTER PMC enable
                         con.println("[MMIO] Observing real SEC2 hardware registers...");
                         let cpuctl = mmio.read32(regs::CPUCTL);
                         let bootvec = mmio.read32(regs::BOOTVEC);
                         let irqstat = mmio.read32(regs::IRQSTAT);
+                        
+                        con.print("  -> CPUCTL:  0x"); con.print_hex32(cpuctl); con.println("");
+                        con.print("  -> BOOTVEC: 0x"); con.print_hex32(bootvec); con.println("");
+                        con.print("  -> IRQSTAT: 0x"); con.print_hex32(irqstat); con.println("");
+                        
                         gpu_rt.advance_to(GpuCapabilityStage::MmioAlive);
                         con.println("[MMIO] CPUCTL/BOOTVEC/IRQSTAT read OK");
 
-                        // Execute SEC2 sequence trace
+                        // Detach from hardcoded sequences, load dynamic payload from NTFS!
                         con.println("");
-                        con.println("[SEC2] Executing bring-up sequence (ObserveOnly)...");
-                        let seq = drivers::gpu::fastgpu::intelligence::sequences::SEC2_BRINGUP_STEPS;
-                        drivers::gpu::fastgpu::sequences::execute_sequence("SEC2 Bring-Up", seq, &mut mmio);
-
-                        // Orchestrate SEC2 engine
-                        use drivers::gpu::fastgpu::falcon::FalconEngine;
-                        let mut sec2 = drivers::gpu::fastgpu::engines::sec2::Sec2Engine::new(&mut mmio);
+                        con.println("[SEC2] Loading dynamic payload from SATA...");
                         
-                        con.println("[SEC2] Step 1: PMC Enable (ObserveOnly)");
-                        sec2.enable_pmc();
-                        
-                        con.println("[SEC2] Step 2: Reset release (ObserveOnly)");
-                        let _ = sec2.reset();
-                        gpu_rt.advance_to(GpuCapabilityStage::FalconResetReleased);
-                        
-                        con.println("[SEC2] Step 3: IMEM upload (ObserveOnly)");
-                        let dummy_fw: [u8; 16] = [0; 16];
-                        let _ = sec2.load_imem(&dummy_fw);
-                        gpu_rt.advance_to(GpuCapabilityStage::ImemUploaded);
+                        let mut loaded = false;
+                        if let Some(mut ahci) = ahci_opt.take() {
+                            if let Some(bounds) = ahci.export_bounds {
+                                con.println("  -> Mounting SATA NTFS to read fastos_boot.bin...");
+                                let mut wrapper = fs::ntfs::NtfsWrapper::new(ahci, bounds.0);
+                                if let Ok(ntfs) = wrapper.mount() {
+                                    drivers::gpu::fastgpu::runtime::payload_loader::execute_payload(&mut con, &ntfs, &mut wrapper, &mut mmio);
+                                    loaded = true;
+                                } else {
+                                    con.println("  -> [ERROR] Failed to mount NTFS on SATA.");
+                                }
+                            } else {
+                                con.println("  -> [ERROR] No export partition found on SATA.");
+                            }
+                        } else {
+                            con.println("  -> [ERROR] SATA drive not found or not initialized.");
+                        }
 
-                        con.println("[SEC2] Step 4: DMEM upload (ObserveOnly)");
-                        let _ = sec2.load_dmem(&dummy_fw);
-                        gpu_rt.advance_to(GpuCapabilityStage::DmemUploaded);
+                        if !loaded {
+                            con.println("[SEC2] Aborting SEC2 bring-up due to missing payload.");
+                        }
 
-                        con.println("[SEC2] Step 5: BOOTVEC = 0x0 (ObserveOnly)");
-                        let _ = sec2.set_bootvec(0);
-                        gpu_rt.advance_to(GpuCapabilityStage::BootvecConfigured);
-
-                        con.println("[SEC2] Step 6: CPUCTL start (ObserveOnly)");
-                        let _ = sec2.start_cpu();
-                        gpu_rt.advance_to(GpuCapabilityStage::CpuStarted);
-
-                        con.println("[SEC2] Step 7: HS mode poll (ObserveOnly)");
-                        let _ = sec2.validate_hs_mode();
+                        // We don't need to manually orchestrate sec2_engine here anymore.
+                        // The payload completely handled the boot process and GSP_INIT_DONE polling.
+                        if loaded {
+                            gpu_rt.advance_to(GpuCapabilityStage::GspReady);
+                        }
 
                         con.println("");
                         con.println("========================================");
-                        con.println("[GPU] ObserveOnly COMPLETE - HW Reads OK");
-                        con.println("  Mode: ObserveOnly (real reads, fake writes)");
-                        con.println("  Result: Hardware state validated");
+                        con.println("[GPU] Active COMPLETE - HW Initialization Attempted");
+                        con.println("  Mode: Active (real reads, real writes)");
+                        con.println("  Result: Hardware state manipulated");
                         con.println("========================================");
                     }
                 } else {

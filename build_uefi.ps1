@@ -1,5 +1,5 @@
 # ============================================================================
-# FastOS -- Build + Flash USB (Special Agent Edition)
+# FastOS -- Build + Flash USB (Native Environment)
 # ============================================================================
 # Compila bootloader + kernel, prepara USB_boot/, y flashea al USB.
 #
@@ -10,7 +10,7 @@
 #   .\build_uefi.ps1 -FlashOnly       # Solo flashear (ya compilado)
 #   .\build_uefi.ps1 -Clean           # Limpiar artefactos
 #
-# Target: Forensic Extraction Agent | UEFI Native
+# Target: Hardware Authority & Bootloader | UEFI Native
 # ============================================================================
 
 param(
@@ -49,7 +49,7 @@ function Invoke-CargoBuildWithRetry {
 # -- Banner ------------------------------------------------------------------
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "  FastOS -- Special Agent (Forensic Extraction)" -ForegroundColor Cyan
+Write-Host "  FastOS -- Native Hardware Controller" -ForegroundColor Cyan
 Write-Host "  Target: UEFI Native x86_64" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -300,7 +300,7 @@ $ok = $true
 $checks = @(
     @{ Path = "$efiBootPath\BOOTX64.EFI"; Name = "BOOTX64.EFI"; Orig = "$Root\BOOTX64.EFI" },
     @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf" },
-    @{ Path = "${dl}:\gsp_ga10x.bin";     Name = "gsp_ga10x.bin"; Orig = "$Root\USB_boot\gsp_ga10x.bin" }
+    @{ Path = "${dl}:\fastos_boot.bin";   Name = "fastos_boot.bin"; Orig = "$Root\USB_boot\fastos_boot.bin" }
 )
 
 foreach ($c in $checks) {
@@ -338,7 +338,7 @@ Write-Host "  Contenido del USB:" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\BOOTX64.EFI  (bootloader UEFI)" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\kernel.elf    (kernel FastOS)" -ForegroundColor White
 Write-Host "    ${dl}:\kernel.elf              (copia en root)" -ForegroundColor White
-Write-Host "    ${dl}:\gsp_ga10x.bin           (NVIDIA GSP Firmware)" -ForegroundColor White
+Write-Host "    ${dl}:\fastos_boot.bin         (Payload FOSB para GPU NVIDIA)" -ForegroundColor White
 Write-Host "    ${dl}:\firmware\               (Binarios extras de hardware)" -ForegroundColor White
 Write-Host ""
 Write-Host "  Pasos:" -ForegroundColor Yellow
@@ -346,10 +346,11 @@ Write-Host "    1. Reinicia el PC" -ForegroundColor White
 Write-Host "    2. BIOS: CSM = DISABLED, Secure Boot = DISABLED" -ForegroundColor White
 Write-Host "    3. Boot desde USB (UEFI)" -ForegroundColor White
 Write-Host ""
-Write-Host "  Agente Forense -- que esperar en pantalla:" -ForegroundColor Cyan
-Write-Host "    1. Consola FastOS con prompt 'fastos> '" -ForegroundColor White
-Write-Host "    2. Ejecuta 'ntfs ls' para ver archivos del disco principal" -ForegroundColor White
-Write-Host "    3. Ejecuta 'pci' para ver dispositivos detectados" -ForegroundColor White
+Write-Host "  FastOS GPU Hardware Manager -- que esperar en pantalla:" -ForegroundColor Cyan
+Write-Host "    1. El Bootloader lanzara FastOS de inmediato." -ForegroundColor White
+Write-Host "    2. Payload Loader interpretara fastos_boot.bin." -ForegroundColor White
+Write-Host "    3. El SEC2 de la GPU se inicializara y validara la firma PKC." -ForegroundColor White
+Write-Host "    4. Hardware de NVIDIA reportara GSP_INIT_DONE (0x1001)." -ForegroundColor White
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 Read-Host "  Presiona Enter para cerrar"

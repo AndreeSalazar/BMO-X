@@ -11,6 +11,9 @@ fastos-boot-protocol = { path = "../boot_protocol" }
 ntfs = { version = "0.4", default-features = false }
 nt-hive = { version = "0.3.0", default-features = false }
 binrw = { version = "0.11", default-features = false }
+volatile = "0.4"
+bitflags = "2"
+byteorder = { version = "1", default-features = false }
 
 [profile.dev]
 panic = "abort"
