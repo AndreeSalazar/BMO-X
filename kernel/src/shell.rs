@@ -6,6 +6,7 @@ use crate::console::Console;
 use crate::fb::colors;
 use crate::drivers::nvme::NvmeDriver;
 use crate::fs::gpt;
+use crate::fs::DiskReader;
 use crate::fs::ntfs::NtfsWrapper;
 use crate::fs::walker::FileWalker;
 use crate::agent::targets::{self, TargetCategory};
@@ -272,8 +273,44 @@ fn cmd_spy(con: &mut Console) {
         }
     };
 
-    // 3. Mount NTFS at partition offset
+    // 3. Validate partition boot sector, then mount NTFS
     con.print("[3/6] Mounting NTFS filesystem... ");
+
+    // Pre-mount diagnostic: read the boot sector and verify NTFS signature
+    {
+        let mut boot_sector = alloc::vec![0u8; 512];
+        match nvme.read_sectors(ntfs_lba, 1, &mut boot_sector) {
+            Ok(()) => {
+                // NTFS boot sector has "NTFS    " at offset 3 (OEM ID)
+                let oem = &boot_sector[3..11];
+                con.print("(OEM: ");
+                for &b in oem {
+                    if b >= 0x20 && b <= 0x7E {
+                        con.put_char(b);
+                    } else {
+                        con.put_char(b'.');
+                    }
+                }
+                con.print(") ");
+
+                if oem != b"NTFS    " {
+                    con.print_colored("WARN", colors::ACCENT_ORANGE);
+                    con.print(" bytes: ");
+                    for i in 0..8 {
+                        con.print_hex32(boot_sector[i] as u32);
+                        con.print(" ");
+                    }
+                    con.newline();
+                }
+            }
+            Err(_) => {
+                con.print_colored("FAIL\n", colors::ACCENT_RED);
+                con.println("Abort: Cannot read partition boot sector.");
+                return;
+            }
+        }
+    }
+
     let mut wrapper = NtfsWrapper::new(nvme, ntfs_lba);
     let ntfs = match wrapper.mount() {
         Ok(n) => {

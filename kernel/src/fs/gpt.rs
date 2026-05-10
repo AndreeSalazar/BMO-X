@@ -88,42 +88,42 @@ pub fn find_ntfs_partition<D: DiskReader>(disk: &mut D) -> Result<u64, DiskError
     let entries_per_sector = 512 / entry_size;
     let sectors_needed = (num_entries + entries_per_sector - 1) / entries_per_sector;
 
-    let mut sector_buf = alloc::vec::Vec::with_capacity(512);
-    sector_buf.resize(512, 0);
+    let mut sector_buf = alloc::vec::Vec::with_capacity(sectors_needed * 512);
+    sector_buf.resize(sectors_needed * 512, 0);
+    
+    // READ ALL SECTORS AT ONCE! Maximum power!
+    disk.read_sectors(partition_entry_lba, sectors_needed as u32, &mut sector_buf)?;
+
     let mut best_ntfs_lba: Option<u64> = None;
     let mut best_size: u64 = 0;
 
-    for sec in 0..sectors_needed {
-        disk.read_sectors(partition_entry_lba + sec as u64, 1, &mut sector_buf)?;
+    for idx in 0..num_entries {
+        let entry_offset = idx * entry_size;
+        if entry_offset + 128 > sector_buf.len() {
+            break;
+        }
 
-        for idx in 0..entries_per_sector {
-            let entry_offset = idx * entry_size;
-            if entry_offset + 128 > 512 {
-                break;
-            }
+        let entry = &sector_buf[entry_offset..entry_offset + entry_size];
 
-            let entry = &sector_buf[entry_offset..entry_offset + entry_size.min(512 - entry_offset)];
+        // Parse type GUID (bytes 0-15)
+        let mut type_guid = [0u8; 16];
+        type_guid.copy_from_slice(&entry[0..16]);
 
-            // Parse type GUID (bytes 0-15)
-            let mut type_guid = [0u8; 16];
-            type_guid.copy_from_slice(&entry[0..16]);
+        // Skip empty entries
+        if type_guid == [0u8; 16] {
+            continue;
+        }
 
-            // Skip empty entries
-            if type_guid == [0u8; 16] {
-                continue;
-            }
+        let first_lba = read_u64(entry, 32);
+        let last_lba = read_u64(entry, 40);
 
-            let first_lba = read_u64(entry, 32);
-            let last_lba = read_u64(entry, 40);
-
-            // Check if this is a Microsoft Basic Data partition
-            if type_guid == MS_BASIC_DATA_GUID {
-                let size = last_lba - first_lba + 1;
-                // Pick the largest NTFS partition (usually the main Windows partition)
-                if size > best_size {
-                    best_size = size;
-                    best_ntfs_lba = Some(first_lba);
-                }
+        // Check if this is a Microsoft Basic Data partition
+        if type_guid == MS_BASIC_DATA_GUID {
+            let size = last_lba - first_lba + 1;
+            // Pick the largest NTFS partition (usually the main Windows partition)
+            if size > best_size {
+                best_size = size;
+                best_ntfs_lba = Some(first_lba);
             }
         }
     }
@@ -154,40 +154,38 @@ pub fn scan_all_partitions<D: DiskReader>(disk: &mut D) -> Result<alloc::vec::Ve
     let entries_per_sector = 512 / entry_size;
     let sectors_needed = (num_entries + entries_per_sector - 1) / entries_per_sector;
 
-    let mut sector_buf = alloc::vec::Vec::with_capacity(512);
-    sector_buf.resize(512, 0);
+    let mut sector_buf = alloc::vec::Vec::with_capacity(sectors_needed * 512);
+    sector_buf.resize(sectors_needed * 512, 0);
 
-    for sec in 0..sectors_needed {
-        disk.read_sectors(partition_entry_lba + sec as u64, 1, &mut sector_buf)?;
+    disk.read_sectors(partition_entry_lba, sectors_needed as u32, &mut sector_buf)?;
 
-        for idx in 0..entries_per_sector {
-            let off = idx * entry_size;
-            if off + 128 > 512 { break; }
-            let entry = &sector_buf[off..];
+    for idx in 0..num_entries {
+        let off = idx * entry_size;
+        if off + 128 > sector_buf.len() { break; }
+        let entry = &sector_buf[off..off + entry_size];
 
-            let mut type_guid = [0u8; 16];
-            type_guid.copy_from_slice(&entry[0..16]);
+        let mut type_guid = [0u8; 16];
+        type_guid.copy_from_slice(&entry[0..16]);
 
-            if type_guid == [0u8; 16] { continue; }
+        if type_guid == [0u8; 16] { continue; }
 
-            let first_lba = read_u64(entry, 32);
-            let last_lba = read_u64(entry, 40);
+        let first_lba = read_u64(entry, 32);
+        let last_lba = read_u64(entry, 40);
 
-            let mut name = [0u16; 36];
-            for i in 0..36 {
-                let o = 56 + i * 2;
-                if o + 1 < entry_size.min(512 - off) {
-                    name[i] = u16::from_le_bytes([entry[o], entry[o + 1]]);
-                }
+        let mut name = [0u16; 36];
+        for i in 0..36 {
+            let o = 56 + i * 2;
+            if o + 1 < entry_size {
+                name[i] = u16::from_le_bytes([entry[o], entry[o + 1]]);
             }
-
-            parts.push(GptPartition {
-                type_guid,
-                first_lba,
-                last_lba,
-                name,
-            });
         }
+
+        parts.push(GptPartition {
+            type_guid,
+            first_lba,
+            last_lba,
+            name,
+        });
     }
 
     Ok(parts)
