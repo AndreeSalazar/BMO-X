@@ -32,7 +32,7 @@ impl Mmio {
     #[inline(always)]
     pub fn read32(&self, offset: u32) -> u32 {
         match self.mode {
-            GpuRuntimeMode::Active => {
+            GpuRuntimeMode::Active | GpuRuntimeMode::ObserveOnly => {
                 let val = unsafe { read_volatile((self.bar0_base + offset as u64) as *const u32) };
                 evidence_println!("[MMIO] READ  0x{:08X} -> 0x{:08X}", offset, val);
                 val
@@ -62,7 +62,7 @@ impl Mmio {
     /// Polls a register until (val & mask) == expected or timeout.
     /// In DryRun, always succeeds immediately.
     pub fn poll32(&self, offset: u32, mask: u32, expected: u32, timeout_iters: usize) -> Result<(), &'static str> {
-        if self.mode != GpuRuntimeMode::Active {
+        if self.mode == GpuRuntimeMode::DryRun {
             evidence_println!("[MMIO-DRYRUN] POLL  0x{:08X} mask=0x{:08X} expected=0x{:08X} (simulated OK)", offset, mask, expected);
             return Ok(());
         }

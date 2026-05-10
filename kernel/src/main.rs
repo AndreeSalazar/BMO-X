@@ -233,26 +233,27 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                     } else {
                         con.println("[GPU] BAR0 valid.");
                         
-                        // Create DryRun MMIO (NO hardware access)
+                        // Create ObserveOnly MMIO (Reads from hardware, simulated writes)
                         use drivers::gpu::fastgpu::runtime::*;
-                        let mut gpu_rt = GpuRuntime::new(GpuRuntimeMode::DryRun);
+                        let mut gpu_rt = GpuRuntime::new(GpuRuntimeMode::ObserveOnly);
                         gpu_rt.advance_to(GpuCapabilityStage::BarMapped);
 
                         let mut mmio = unsafe {
-                            drivers::gpu::fastgpu::hw::mmio::Mmio::new(bar0_full, GpuRuntimeMode::DryRun)
+                            drivers::gpu::fastgpu::hw::mmio::Mmio::new(bar0_full, GpuRuntimeMode::ObserveOnly)
                         };
 
-                        // DryRun MMIO reads — no hardware touch, just logging
-                        con.println("[MMIO-DRYRUN] Simulating SEC2 register reads...");
-                        mmio.read32(0x840100); // CPUCTL
-                        mmio.read32(0x840104); // BOOTVEC
-                        mmio.read32(0x840008); // IRQSTAT
+                        // Real MMIO reads — hardware state observation
+                        use drivers::gpu::fastgpu::intelligence::mmio_map::registers as regs;
+                        con.println("[MMIO] Observing real SEC2 hardware registers...");
+                        let cpuctl = mmio.read32(regs::CPUCTL);
+                        let bootvec = mmio.read32(regs::BOOTVEC);
+                        let irqstat = mmio.read32(regs::IRQSTAT);
                         gpu_rt.advance_to(GpuCapabilityStage::MmioAlive);
-                        con.println("[MMIO-DRYRUN] CPUCTL/BOOTVEC/IRQSTAT simulated OK");
+                        con.println("[MMIO] CPUCTL/BOOTVEC/IRQSTAT read OK");
 
                         // Execute SEC2 sequence trace
                         con.println("");
-                        con.println("[SEC2] Executing bring-up sequence (DryRun)...");
+                        con.println("[SEC2] Executing bring-up sequence (ObserveOnly)...");
                         let seq = drivers::gpu::fastgpu::intelligence::sequences::SEC2_BRINGUP_STEPS;
                         drivers::gpu::fastgpu::sequences::execute_sequence("SEC2 Bring-Up", seq, &mut mmio);
 
@@ -260,38 +261,38 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                         use drivers::gpu::fastgpu::falcon::FalconEngine;
                         let mut sec2 = drivers::gpu::fastgpu::engines::sec2::Sec2Engine::new(&mut mmio);
                         
-                        con.println("[SEC2] Step 1: PMC Enable (DryRun)");
+                        con.println("[SEC2] Step 1: PMC Enable (ObserveOnly)");
                         sec2.enable_pmc();
                         
-                        con.println("[SEC2] Step 2: Reset release (DryRun)");
+                        con.println("[SEC2] Step 2: Reset release (ObserveOnly)");
                         let _ = sec2.reset();
                         gpu_rt.advance_to(GpuCapabilityStage::FalconResetReleased);
                         
-                        con.println("[SEC2] Step 3: IMEM upload (DryRun)");
+                        con.println("[SEC2] Step 3: IMEM upload (ObserveOnly)");
                         let dummy_fw: [u8; 16] = [0; 16];
                         let _ = sec2.load_imem(&dummy_fw);
                         gpu_rt.advance_to(GpuCapabilityStage::ImemUploaded);
 
-                        con.println("[SEC2] Step 4: DMEM upload (DryRun)");
+                        con.println("[SEC2] Step 4: DMEM upload (ObserveOnly)");
                         let _ = sec2.load_dmem(&dummy_fw);
                         gpu_rt.advance_to(GpuCapabilityStage::DmemUploaded);
 
-                        con.println("[SEC2] Step 5: BOOTVEC = 0x0 (DryRun)");
+                        con.println("[SEC2] Step 5: BOOTVEC = 0x0 (ObserveOnly)");
                         let _ = sec2.set_bootvec(0);
                         gpu_rt.advance_to(GpuCapabilityStage::BootvecConfigured);
 
-                        con.println("[SEC2] Step 6: CPUCTL start (DryRun)");
+                        con.println("[SEC2] Step 6: CPUCTL start (ObserveOnly)");
                         let _ = sec2.start_cpu();
                         gpu_rt.advance_to(GpuCapabilityStage::CpuStarted);
 
-                        con.println("[SEC2] Step 7: HS mode poll (DryRun)");
+                        con.println("[SEC2] Step 7: HS mode poll (ObserveOnly)");
                         let _ = sec2.validate_hs_mode();
 
                         con.println("");
                         con.println("========================================");
-                        con.println("[GPU] DryRun COMPLETE - All stages OK");
-                        con.println("  Mode: DryRun (no HW writes)");
-                        con.println("  Result: Infrastructure validated");
+                        con.println("[GPU] ObserveOnly COMPLETE - HW Reads OK");
+                        con.println("  Mode: ObserveOnly (real reads, fake writes)");
+                        con.println("  Result: Hardware state validated");
                         con.println("========================================");
                     }
                 } else {

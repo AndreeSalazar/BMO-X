@@ -278,17 +278,18 @@ Write-Host "      Unidad asignada: ${dl}:\" -ForegroundColor DarkGray
 Write-Host "  [FLASH 1/3] OK" -ForegroundColor Green
 
 # -- Copiar archivos ---------------------------------------------------------
-Write-Host "  [FLASH 2/3] Copiando archivos..." -ForegroundColor Cyan
+Write-Host "  [FLASH 2/3] Copiando archivos desde USB_boot..." -ForegroundColor Cyan
 
 $efiBootPath = "${dl}:\EFI\BOOT"
-New-Item -Path $efiBootPath -ItemType Directory -Force | Out-Null
 
-Copy-Item "$Root\BOOTX64.EFI" "$efiBootPath\BOOTX64.EFI" -Force
-Write-Host "      EFI\BOOT\BOOTX64.EFI" -ForegroundColor DarkGray
+# Ensure we have the latest kernel and bootloader in the root USB_boot folder before copying
+Copy-Item "$Root\BOOTX64.EFI" "$Root\USB_boot\EFI\BOOT\BOOTX64.EFI" -Force
+Copy-Item "$Root\kernel.elf" "$Root\USB_boot\EFI\BOOT\kernel.elf" -Force
+Copy-Item "$Root\kernel.elf" "$Root\USB_boot\kernel.elf" -Force
 
-Copy-Item "$Root\kernel.elf" "${dl}:\kernel.elf" -Force
-Copy-Item "$Root\kernel.elf" "$efiBootPath\kernel.elf" -Force
-Write-Host "      kernel.elf (root + EFI\BOOT\)" -ForegroundColor DarkGray
+# Copy the entire USB_boot directory to the USB flash drive
+Copy-Item -Path "$Root\USB_boot\*" -Destination "${dl}:\" -Recurse -Force
+Write-Host "      Copiado todo el contenido de USB_boot (BOOTX64.EFI, kernel.elf, firmware, etc.)" -ForegroundColor DarkGray
 
 Write-Host "  [FLASH 2/3] OK" -ForegroundColor Green
 
@@ -298,7 +299,8 @@ Write-Host "  [FLASH 3/3] Verificando..." -ForegroundColor Cyan
 $ok = $true
 $checks = @(
     @{ Path = "$efiBootPath\BOOTX64.EFI"; Name = "BOOTX64.EFI"; Orig = "$Root\BOOTX64.EFI" },
-    @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf" }
+    @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf" },
+    @{ Path = "${dl}:\gsp_ga10x.bin";     Name = "gsp_ga10x.bin"; Orig = "$Root\USB_boot\gsp_ga10x.bin" }
 )
 
 foreach ($c in $checks) {
@@ -336,6 +338,8 @@ Write-Host "  Contenido del USB:" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\BOOTX64.EFI  (bootloader UEFI)" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\kernel.elf    (kernel FastOS)" -ForegroundColor White
 Write-Host "    ${dl}:\kernel.elf              (copia en root)" -ForegroundColor White
+Write-Host "    ${dl}:\gsp_ga10x.bin           (NVIDIA GSP Firmware)" -ForegroundColor White
+Write-Host "    ${dl}:\firmware\               (Binarios extras de hardware)" -ForegroundColor White
 Write-Host ""
 Write-Host "  Pasos:" -ForegroundColor Yellow
 Write-Host "    1. Reinicia el PC" -ForegroundColor White
