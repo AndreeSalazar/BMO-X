@@ -79,28 +79,49 @@ impl NvmeDriver {
             let subclass = (class_rev >> 16) as u8;
 
             if class == NVME_CLASS && subclass == NVME_SUBCLASS {
-                return Some(Self::init(dev));
+                return Self::init(dev);
             }
         }
         None
     }
 
-    unsafe fn init(dev: PciDevice) -> Self {
+    /// 2-second timeout in TSC cycles (~3.7GHz Ryzen 5 5600X)
+    const TIMEOUT_CYCLES: u64 = 7_400_000_000;
+
+    unsafe fn init(dev: PciDevice) -> Option<Self> {
         // Enable PCI Bus Mastering + Memory Space (required for DMA)
         let cmd_reg = pci::pci_read32(dev.bus, dev.device, dev.function, 0x04);
         pci::pci_write32(dev.bus, dev.device, dev.function, 0x04,
             (cmd_reg & 0xFFFF) | 0x06);
 
+        // Disable ASPM (Active State Power Management) — prevents controller sleep
+        // Walk PCI capability list to find PCIe capability (ID = 0x10)
+        let mut cap_ptr = (pci::pci_read32(dev.bus, dev.device, dev.function, 0x34) & 0xFF) as u16;
+        while cap_ptr != 0 {
+            let cap_hdr = pci::pci_read32(dev.bus, dev.device, dev.function, cap_ptr);
+            let cap_id = (cap_hdr & 0xFF) as u8;
+            if cap_id == 0x10 { // PCIe capability
+                let link_ctrl = pci::pci_read32(dev.bus, dev.device, dev.function, cap_ptr + 0x10);
+                pci::pci_write32(dev.bus, dev.device, dev.function, cap_ptr + 0x10,
+                    link_ctrl & !0x03); // Clear ASPM L0s + L1
+                break;
+            }
+            cap_ptr = ((cap_hdr >> 8) & 0xFF) as u16;
+        }
+
         let bar0 = pci::pci_read32(dev.bus, dev.device, dev.function, 0x10) as u64 & !0xF;
         let regs = bar0 as *mut NvmeRegs;
 
-        // 1. Disable controller
+        // 1. Disable controller (with rdtsc timeout)
         let mut cc = read_volatile(&(*regs).cc);
         cc &= !1;
         write_volatile(&mut (*regs).cc, cc);
-        let mut timeout = 5_000_000u32;
-        while (read_volatile(&(*regs).csts) & 1) != 0 && timeout > 0 {
-            timeout -= 1;
+        let t0 = core::arch::x86_64::_rdtsc();
+        loop {
+            let csts = read_volatile(&(*regs).csts);
+            if (csts & 1) == 0 { break; }
+            if csts & 0x2 != 0 { return None; } // CFS = fatal
+            if core::arch::x86_64::_rdtsc().wrapping_sub(t0) > Self::TIMEOUT_CYCLES { return None; }
         }
 
         // 2. Allocate and zero Admin Queues
@@ -113,14 +134,17 @@ impl NvmeDriver {
         write_volatile(&mut (*regs).asq, asq_phys);
         write_volatile(&mut (*regs).acq, acq_phys);
 
-        // 3. Enable controller
+        // 3. Enable controller (with rdtsc timeout)
         let cap = read_volatile(&(*regs).cap);
         let dstrd = ((cap >> 32) & 0xF) as usize;
-        cc |= 1 | (0 << 7) | (6 << 16) | (4 << 20);
+        cc = 1 | (0 << 7) | (6 << 16) | (4 << 20);
         write_volatile(&mut (*regs).cc, cc);
-        timeout = 5_000_000;
-        while (read_volatile(&(*regs).csts) & 1) == 0 && timeout > 0 {
-            timeout -= 1;
+        let t0 = core::arch::x86_64::_rdtsc();
+        loop {
+            let csts = read_volatile(&(*regs).csts);
+            if (csts & 1) != 0 { break; } // RDY
+            if csts & 0x2 != 0 { return None; } // CFS = fatal
+            if core::arch::x86_64::_rdtsc().wrapping_sub(t0) > Self::TIMEOUT_CYCLES { return None; }
         }
 
         // 4. Allocate I/O Queues + DMA bounce buffer
@@ -147,18 +171,20 @@ impl NvmeDriver {
             dma_buf,
         };
 
-        driver.create_io_queues(io_sq_phys, io_cq_phys);
-        driver
+        if driver.create_io_queues(io_sq_phys, io_cq_phys).is_err() {
+            return None;
+        }
+        Some(driver)
     }
 
-    unsafe fn create_io_queues(&mut self, sq_phys: u64, cq_phys: u64) {
+    unsafe fn create_io_queues(&mut self, sq_phys: u64, cq_phys: u64) -> Result<(), DiskError> {
         // Create CQ first
         let mut cmd = core::mem::zeroed::<NvmeCmd>();
         cmd.opcode = 0x05;
         cmd.dptr[0] = cq_phys;
         cmd.cdw10 = (63 << 16) | 1;
         cmd.cdw11 = 1;
-        self.submit_admin(&cmd);
+        self.submit_admin(&cmd)?;
 
         // Create SQ
         let mut cmd = core::mem::zeroed::<NvmeCmd>();
@@ -166,19 +192,29 @@ impl NvmeDriver {
         cmd.dptr[0] = sq_phys;
         cmd.cdw10 = (63 << 16) | 1;
         cmd.cdw11 = (1 << 16) | 1;
-        self.submit_admin(&cmd);
+        self.submit_admin(&cmd)?;
+        Ok(())
     }
 
-    unsafe fn submit_admin(&mut self, cmd: &NvmeCmd) {
+    unsafe fn submit_admin(&mut self, cmd: &NvmeCmd) -> Result<(), DiskError> {
         let tail = self.admin_sq_tail as usize;
         self.asq.add(tail).write_volatile(*cmd);
         self.admin_sq_tail = (self.admin_sq_tail + 1) % 64;
 
         let db = (self.regs as usize + 0x1000) as *mut u32;
         write_volatile(db, self.admin_sq_tail as u32);
+
+        let t0 = core::arch::x86_64::_rdtsc();
         loop {
+            core::arch::asm!("mfence", options(nostack, preserves_flags));
             let cqe = self.acq.add(self.admin_cq_head as usize).read_volatile();
             if (cqe.status & 1) == self.admin_phase { break; }
+            // Check controller fatal status
+            let csts = read_volatile(&(*self.regs).csts);
+            if csts & 0x2 != 0 { return Err(DiskError::IOError); }
+            if core::arch::x86_64::_rdtsc().wrapping_sub(t0) > Self::TIMEOUT_CYCLES {
+                return Err(DiskError::Timeout);
+            }
             core::hint::spin_loop();
         }
         self.admin_cq_head = (self.admin_cq_head + 1) % 64;
@@ -187,6 +223,34 @@ impl NvmeDriver {
         }
         let cq_db = (self.regs as usize + 0x1000 + self.db_stride) as *mut u32;
         write_volatile(cq_db, self.admin_cq_head as u32);
+        Ok(())
+    }
+
+    /// Submit I/O command and poll CQ with timeout + mfence + CSTS check
+    unsafe fn poll_io_cq(&mut self) -> Result<(), DiskError> {
+        let t0 = core::arch::x86_64::_rdtsc();
+        let status;
+        loop {
+            core::arch::asm!("mfence", options(nostack, preserves_flags));
+            let cqe = self.io_cq.add(self.io_cq_head as usize).read_volatile();
+            if (cqe.status & 1) == self.io_phase {
+                status = cqe.status >> 1;
+                break;
+            }
+            let csts = read_volatile(&(*self.regs).csts);
+            if csts & 0x2 != 0 { return Err(DiskError::IOError); }
+            if core::arch::x86_64::_rdtsc().wrapping_sub(t0) > Self::TIMEOUT_CYCLES {
+                return Err(DiskError::Timeout);
+            }
+            core::hint::spin_loop();
+        }
+        self.io_cq_head = (self.io_cq_head + 1) % 64;
+        if self.io_cq_head == 0 {
+            self.io_phase ^= 1;
+        }
+        let cq_db = (self.regs as usize + 0x1000 + (3 * self.db_stride)) as *mut u32;
+        write_volatile(cq_db, self.io_cq_head as u32);
+        if status == 0 { Ok(()) } else { Err(DiskError::IOError) }
     }
 
     /// Read sectors via bounce buffer (max 8 sectors = 4096 bytes per command)
@@ -206,24 +270,7 @@ impl NvmeDriver {
         let db = (self.regs as usize + 0x1000 + (2 * self.db_stride)) as *mut u32;
         write_volatile(db, self.io_sq_tail as u32);
 
-        let status;
-        loop {
-            let cqe = self.io_cq.add(self.io_cq_head as usize).read_volatile();
-            if (cqe.status & 1) == self.io_phase {
-                status = cqe.status >> 1;
-                break;
-            }
-            core::hint::spin_loop();
-        }
-        self.io_cq_head = (self.io_cq_head + 1) % 64;
-        if self.io_cq_head == 0 {
-            self.io_phase ^= 1;
-        }
-
-        let cq_db = (self.regs as usize + 0x1000 + (3 * self.db_stride)) as *mut u32;
-        write_volatile(cq_db, self.io_cq_head as u32);
-
-        if status == 0 { Ok(()) } else { Err(DiskError::IOError) }
+        self.poll_io_cq()
     }
 
     /// Write sectors via bounce buffer (max 8 sectors = 4096 bytes per command)
@@ -243,24 +290,7 @@ impl NvmeDriver {
         let db = (self.regs as usize + 0x1000 + (2 * self.db_stride)) as *mut u32;
         write_volatile(db, self.io_sq_tail as u32);
 
-        let status;
-        loop {
-            let cqe = self.io_cq.add(self.io_cq_head as usize).read_volatile();
-            if (cqe.status & 1) == self.io_phase {
-                status = cqe.status >> 1;
-                break;
-            }
-            core::hint::spin_loop();
-        }
-        self.io_cq_head = (self.io_cq_head + 1) % 64;
-        if self.io_cq_head == 0 {
-            self.io_phase ^= 1;
-        }
-
-        let cq_db = (self.regs as usize + 0x1000 + (3 * self.db_stride)) as *mut u32;
-        write_volatile(cq_db, self.io_cq_head as u32);
-
-        if status == 0 { Ok(()) } else { Err(DiskError::IOError) }
+        self.poll_io_cq()
     }
 
     pub fn read_sectors_raw(&mut self, lba: u64, count: u32, buf_phys: u64) -> Result<(), DiskError> {

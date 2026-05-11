@@ -311,7 +311,7 @@ fn cmd_spy(con: &mut Console) {
         }
     }
 
-    let mut wrapper = NtfsWrapper::new(nvme, ntfs_lba);
+    let mut wrapper = NtfsWrapper::new(nvme, ntfs_lba, u64::MAX / 512);
     let ntfs = match wrapper.mount() {
         Ok(n) => {
             con.print_colored("OK\n", colors::TEXT_SUCCESS);
@@ -559,7 +559,7 @@ fn cmd_extract(con: &mut Console) {
         }
     };
 
-    let mut wrapper = NtfsWrapper::new(nvme, ntfs_lba);
+    let mut wrapper = NtfsWrapper::new(nvme, ntfs_lba, u64::MAX / 512);
     let ntfs = match wrapper.mount() {
         Ok(n) => n,
         Err(_) => {
@@ -674,7 +674,7 @@ fn cmd_ntfs(con: &mut Console, mut parts: core::str::SplitWhitespace) {
         }
     };
 
-    let mut wrapper = NtfsWrapper::new(nvme, ntfs_lba);
+    let mut wrapper = NtfsWrapper::new(nvme, ntfs_lba, u64::MAX / 512);
     let ntfs = match wrapper.mount() {
         Ok(n) => n,
         Err(_) => {

@@ -1,70 +1,38 @@
 use crate::console::Console;
-use crate::fs::ntfs::NtfsWrapper;
-use crate::drivers::ahci::AhciDriver;
 use crate::drivers::gpu::fastgpu::hw::mmio::Mmio;
-use crate::fs::walker::FileWalker;
-use ntfs::{Ntfs, NtfsReadSeek};
 use alloc::vec::Vec;
-use core::sync::atomic::{self, Ordering};
 
 const OP_WRITE32: u8 = 0x01;
 const OP_POLL32: u8 = 0x02;
 const OP_WRITE_BLOCK: u8 = 0x03;
 const OP_SETUP_WPR2: u8 = 0x04;
+const OP_READ32: u8 = 0x05;
+const OP_FALCON_DMA: u8 = 0x06;
 
-pub fn execute_payload(
+/// Execute a FOSB payload from raw bytes (no NTFS, no filesystem).
+/// `payload_data` must contain the full fastos_boot.bin content.
+pub fn execute_from_bytes(
     con: &mut Console,
-    ntfs: &Ntfs,
-    wrapper: &mut NtfsWrapper<AhciDriver>,
+    payload_data: &[u8],
     mmio: &mut Mmio,
 ) {
-    con.println("[PAYLOAD] Searching for fastos_boot.bin on SATA NTFS...");
-
-    let mut found = false;
-    let mut payload_data = Vec::new();
-
-    let mut walker = FileWalker::new(ntfs, wrapper);
-    walker.walk(|path, file, disk| {
-        if path.eq_ignore_ascii_case("fastos_boot.bin") {
-            found = true;
-            let data_attr = file.data(disk, "");
-            if let Some(Ok(attr)) = data_attr {
-                let attribute = attr.to_attribute().unwrap();
-                let mut reader = attribute.value(disk).unwrap();
-                let size = reader.len() as usize;
-
-                con.print("  -> Found fastos_boot.bin (");
-                con.print_u64(size as u64);
-                con.println(" bytes)");
-
-                payload_data.resize(size, 0);
-                atomic::fence(Ordering::SeqCst);
-                let _ = reader.read(disk, &mut payload_data);
-                atomic::fence(Ordering::SeqCst);
-            }
-        }
-    });
-
-    if !found || payload_data.is_empty() {
-        con.println("[PAYLOAD] ERROR: fastos_boot.bin not found or empty!");
-        return;
-    }
-
     if payload_data.len() < 12 {
-        con.println("[PAYLOAD] ERROR: File too small for FOSB header.");
+        con.println("[PAYLOAD] ERROR: Data too small for FOSB header.");
         return;
     }
 
     // Validate Header: "FOSB"
     if &payload_data[0..4] != b"FOSB" {
-        con.println("[PAYLOAD] ERROR: Invalid FOSB magic signature!");
+        con.print("[PAYLOAD] ERROR: Invalid magic: ");
+        for i in 0..4 { con.print_hex32(payload_data[i] as u32); con.print(" "); }
+        con.println("");
         return;
     }
 
     let version = u32::from_le_bytes(payload_data[4..8].try_into().unwrap());
     let num_entries = u32::from_le_bytes(payload_data[8..12].try_into().unwrap());
 
-    con.print("  -> Valid FOSB Header (v");
+    con.print("  -> Valid FOSB (v");
     con.print_u64(version as u64);
     con.print(", ");
     con.print_u64(num_entries as u64);
@@ -73,7 +41,7 @@ pub fn execute_payload(
     let mut offset = 12;
     for i in 0..num_entries {
         if offset >= payload_data.len() {
-            con.println("[PAYLOAD] ERROR: Unexpected EOF in payload!");
+            con.println("[PAYLOAD] ERROR: Unexpected EOF!");
             break;
         }
 
@@ -91,7 +59,7 @@ pub fn execute_payload(
         offset += 4;
 
         if offset + size as usize > payload_data.len() {
-            con.println("[PAYLOAD] ERROR: Truncated payload data!");
+            con.println("[PAYLOAD] ERROR: Truncated data!");
             break;
         }
 
@@ -121,25 +89,31 @@ pub fn execute_payload(
                 con.print(" == 0x"); con.print_hex32(expected); con.println("");
                 
                 let mut success = false;
-                // Timeout logic: 5 seconds timeout. 
-                // Since we don't have a reliable timer in `no_std`, we'll do an iteration limit.
-                // Assuming ~10M iterations per second.
-                let max_iters = 50_000_000;
-                for iter in 0..max_iters {
+                // 5 second rdtsc timeout (~3.7GHz Ryzen 5 5600X)
+                let timeout_cycles: u64 = 18_500_000_000;
+                let t0 = unsafe { core::arch::x86_64::_rdtsc() };
+                let mut last_print = t0;
+                loop {
                     let current_val = mmio.read32(reg);
                     if (current_val & mask) == expected {
                         success = true;
                         con.print("      -> SUCCESS (read: 0x"); con.print_hex32(current_val); con.println(")");
                         break;
                     }
-                    if iter % 10_000_000 == 0 && iter > 0 {
-                        con.print("      -> waiting (read: 0x"); con.print_hex32(current_val); con.println(")...");
+                    let now = unsafe { core::arch::x86_64::_rdtsc() };
+                    if now.wrapping_sub(t0) > timeout_cycles {
+                        let final_val = mmio.read32(reg);
+                        con.print("      -> TIMEOUT 5s (last: 0x"); con.print_hex32(final_val); con.println(")");
+                        break;
                     }
+                    if now.wrapping_sub(last_print) > 3_700_000_000 {
+                        con.print("      -> waiting (read: 0x"); con.print_hex32(current_val); con.println(")...");
+                        last_print = now;
+                    }
+                    core::hint::spin_loop();
                 }
                 if !success {
-                    let final_val = mmio.read32(reg);
-                    con.print("      -> TIMEOUT (last read: 0x"); con.print_hex32(final_val); con.println(")");
-                    con.println("[PAYLOAD] Aborting payload sequence due to POLL timeout.");
+                    con.println("[PAYLOAD] Aborting — POLL32 timeout (PKC auth may have failed).");
                     break;
                 }
             }
@@ -150,38 +124,146 @@ pub fn execute_payload(
                 let mut data_offset = offset;
                 let end_offset = offset + size as usize;
                 
-                // Write block in chunks of 4 bytes
                 while data_offset + 4 <= end_offset {
                     let val = u32::from_le_bytes(payload_data[data_offset..data_offset+4].try_into().unwrap());
                     mmio.write32(reg, val);
                     data_offset += 4;
                 }
-                // Handle remaining bytes if size is not multiple of 4 (rare for hardware)
                 if data_offset < end_offset {
-                    con.println("      -> Warning: block not perfectly aligned to 4 bytes");
+                    con.println("      -> Warning: block not aligned to 4 bytes");
                 }
             }
             OP_SETUP_WPR2 => {
                 con.println("SETUP_WPR2 Macro");
                 
-                // 1. Read VRAM size from 0x100800 (usually in MB)
                 let vram_mb = mmio.read32(0x100800);
-                con.print("  -> VRAM Size from 0x100800: "); con.print_u64(vram_mb as u64); con.println(" MB");
+                con.print("  -> VRAM Size: "); con.print_u64(vram_mb as u64); con.println(" MB");
                 
-                // 2. Calculate WPR2 (reserve last 128MB)
                 let wpr2_size_mb = 128;
                 let wpr2_start_mb = vram_mb.saturating_sub(wpr2_size_mb);
-                
-                // PGC6 WPR2 registers expect addresses shifted by 16 (64KB pages)
-                let wpr2_start_64k = wpr2_start_mb << 4; // MB * 1024 * 1024 / 65536 = MB * 16 = MB << 4
+                let wpr2_start_64k = wpr2_start_mb << 4;
                 let wpr2_end_64k = vram_mb << 4;
                 
-                con.print("  -> WPR2 Start (64K pages): 0x"); con.print_hex32(wpr2_start_64k); con.println("");
-                con.print("  -> WPR2 End (64K pages):   0x"); con.print_hex32(wpr2_end_64k); con.println("");
+                con.print("  -> WPR2 Start: 0x"); con.print_hex32(wpr2_start_64k); con.println("");
+                con.print("  -> WPR2 End:   0x"); con.print_hex32(wpr2_end_64k); con.println("");
                 
-                // 3. Write PGC6 limits
                 mmio.write32(0x100cd4, wpr2_start_64k);
                 mmio.write32(0x100cd8, wpr2_end_64k);
+            }
+            OP_READ32 => {
+                let val = mmio.read32(reg);
+                con.print("READ32  0x"); con.print_hex32(reg);
+                con.print(" => 0x"); con.print_hex32(val); con.println("");
+            }
+            OP_FALCON_DMA => {
+                // DMA transfer firmware to Falcon IMEM or DMEM
+                // Data format: [engine_base:u32] [target:u32 (0=IMEM,1=DMEM)] [firmware_bytes...]
+                if (size as usize) < 8 {
+                    con.println("ERROR: FALCON_DMA too small");
+                    break;
+                }
+                let engine_base = u32::from_le_bytes(
+                    payload_data[offset..offset+4].try_into().unwrap());
+                let target = u32::from_le_bytes(
+                    payload_data[offset+4..offset+8].try_into().unwrap());
+                let fw_data = &payload_data[offset+8..offset+(size as usize)];
+                let fw_len = fw_data.len();
+
+                let target_name = if target == 0 { "IMEM" } else { "DMEM" };
+                con.print("FLC_DMA 0x"); con.print_hex32(engine_base);
+                con.print(" "); con.print(target_name);
+                con.print(" <- "); con.print_u64(fw_len as u64); con.println(" bytes");
+
+                // Allocate page-aligned DMA buffer (256-byte aligned minimum)
+                // Use a Vec with enough capacity, aligned to 4096 bytes
+                let page_size = 4096usize;
+                let buf_size = (fw_len + page_size - 1) & !(page_size - 1);
+                let layout = core::alloc::Layout::from_size_align(buf_size, page_size)
+                    .expect("DMA layout");
+                let dma_ptr = unsafe { alloc::alloc::alloc_zeroed(layout) };
+                if dma_ptr.is_null() {
+                    con.println("  -> ERROR: DMA alloc failed!");
+                    break;
+                }
+
+                // Copy firmware to DMA buffer
+                unsafe {
+                    core::ptr::copy_nonoverlapping(fw_data.as_ptr(), dma_ptr, fw_len);
+                }
+
+                let phys_addr = dma_ptr as u64; // Identity-mapped in UEFI
+                con.print("  -> DMA buf: 0x"); con.print_hex32((phys_addr >> 32) as u32);
+                con.print_hex32(phys_addr as u32);
+                con.print(" ("); con.print_u64(buf_size as u64); con.println(" bytes)");
+
+                // Falcon DMA register offsets (relative to engine base)
+                let dmatrfbase = engine_base + 0x110;  // Base address >> 8
+                let dmatrfmoffs = engine_base + 0x114; // Falcon mem offset
+                let dmatrfcmd = engine_base + 0x11C;   // DMA command
+
+                // Set DMA base address (physical addr >> 8)
+                mmio.write32(dmatrfbase, (phys_addr >> 8) as u32);
+
+                // Transfer in 256-byte chunks
+                let num_chunks = (fw_len + 255) / 256;
+                con.print("  -> Transferring "); con.print_u64(num_chunks as u64);
+                con.println(" chunks (256B each)...");
+
+                let mut dma_ok = true;
+                let timeout_cycles: u64 = 3_700_000_000; // 1 second per chunk
+
+                for chunk_idx in 0..num_chunks {
+                    let falcon_offset = (chunk_idx * 256) as u32;
+                    // Update base for this chunk's system memory offset
+                    let chunk_phys = phys_addr + (chunk_idx * 256) as u64;
+                    mmio.write32(dmatrfbase, (chunk_phys >> 8) as u32);
+
+                    // Set falcon memory offset
+                    mmio.write32(dmatrfmoffs, falcon_offset);
+
+                    // Issue DMA command:
+                    // Bit 1 = target (0=IMEM, 1=DMEM)
+                    // Bit 2 = size 256B
+                    // Bit 4 = FULL/IDLE
+                    let cmd = 0x00000005 | ((target & 1) << 1);
+                    // bit0=1 (write to falcon), bit2=1 (size=256)
+                    // bit1 = target memory (0=IMEM, 1=DMEM)
+                    mmio.write32(dmatrfcmd, cmd);
+
+                    // Wait for IDLE (bit 4)
+                    let t0 = unsafe { core::arch::x86_64::_rdtsc() };
+                    loop {
+                        let status = mmio.read32(dmatrfcmd);
+                        if (status & 0x10) != 0 {
+                            break; // Transfer complete
+                        }
+                        let now = unsafe { core::arch::x86_64::_rdtsc() };
+                        if now.wrapping_sub(t0) > timeout_cycles {
+                            con.print("  -> DMA TIMEOUT at chunk ");
+                            con.print_u64(chunk_idx as u64);
+                            con.print(" (DMATRFCMD=0x"); con.print_hex32(status);
+                            con.println(")");
+                            dma_ok = false;
+                            break;
+                        }
+                        core::hint::spin_loop();
+                    }
+                    if !dma_ok { break; }
+
+                    // Progress every 32 chunks (~8KB)
+                    if chunk_idx % 32 == 0 && chunk_idx > 0 {
+                        con.print("  -> "); con.print_u64(chunk_idx as u64);
+                        con.print("/"); con.print_u64(num_chunks as u64); con.println("");
+                    }
+                }
+
+                if dma_ok {
+                    con.print("  -> DMA complete: "); con.print_u64(fw_len as u64);
+                    con.print(" bytes -> "); con.print(target_name); con.println("");
+                }
+
+                // Free DMA buffer
+                unsafe { alloc::alloc::dealloc(dma_ptr, layout); }
             }
             _ => {
                 con.print("UNKNOWN OPCODE: 0x"); con.print_hex32(opcode as u32); con.println("");

@@ -15,16 +15,19 @@ pub struct NtfsWrapper<D: DiskReader> {
     /// Byte offset to the start of the NTFS partition on disk.
     /// All reads are translated: disk_byte = partition_offset + position.
     partition_offset: u64,
+    /// Total size of the partition in bytes (needed for SeekFrom::End).
+    volume_size: u64,
 }
 
 impl<D: DiskReader> NtfsWrapper<D> {
     /// Create a wrapper that reads from a specific partition.
-    /// `partition_start_lba` is the starting LBA of the NTFS partition from GPT.
-    pub fn new(disk: D, partition_start_lba: u64) -> Self {
+    /// `partition_start_lba` and `partition_end_lba` are from GPT.
+    pub fn new(disk: D, partition_start_lba: u64, partition_end_lba: u64) -> Self {
         Self {
             disk,
             position: 0,
             partition_offset: partition_start_lba * 512,
+            volume_size: (partition_end_lba - partition_start_lba + 1) * 512,
         }
     }
 
@@ -61,7 +64,7 @@ impl<D: DiskReader> Seek for NtfsWrapper<D> {
         match pos {
             SeekFrom::Start(p) => self.position = p,
             SeekFrom::Current(p) => self.position = (self.position as i64 + p) as u64,
-            SeekFrom::End(_) => return Err(Error::new(ErrorKind::Other, "Seek from end not supported")),
+            SeekFrom::End(p) => self.position = (self.volume_size as i64 + p) as u64,
         }
         Ok(self.position)
     }

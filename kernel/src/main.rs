@@ -202,6 +202,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 con.println("");
 
                 // ── Detect Disks for Export ──
+                con.println("[STORAGE] Detecting NVMe...");
                 let mut nvme_opt = unsafe { drivers::nvme::NvmeDriver::detect() };
                 if nvme_opt.is_some() {
                     con.println("[STORAGE] NVMe Primary Disk detected & initialized");
@@ -209,12 +210,45 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                     con.println("[STORAGE] No NVMe detected");
                 }
 
+                con.println("[STORAGE] Detecting AHCI/SATA...");
                 let mut ahci_opt = unsafe { drivers::ahci::AhciDriver::detect() };
                 if let Some(ref mut ahci) = ahci_opt {
                     con.println("[STORAGE] AHCI/SATA Secondary Disk detected & initialized");
                     
                     // Dump full HBA diagnostic registers before attempting any I/O
                     unsafe { ahci.diagnose(&mut con); }
+
+                    // Diagnostic: test read sector 1 and dump first 16 bytes
+                    {
+                        use crate::fs::DiskReader;
+                        let mut test_buf = [0u8; 512];
+                        con.println("[AHCI-DIAG] Test read LBA 1 (GPT header)...");
+                        match ahci.read_sectors(1, 1, &mut test_buf) {
+                            Ok(()) => {
+                                con.print("  -> Bytes[0..8]:  ");
+                                for i in 0..8 {
+                                    con.print_hex32(test_buf[i] as u32);
+                                    con.print(" ");
+                                }
+                                con.println("");
+                                con.print("  -> Bytes[8..16]: ");
+                                for i in 8..16 {
+                                    con.print_hex32(test_buf[i] as u32);
+                                    con.print(" ");
+                                }
+                                con.println("");
+                                if &test_buf[0..8] == b"EFI PART" {
+                                    con.println("  -> GPT signature VALID!");
+                                } else {
+                                    con.println("  -> GPT signature NOT FOUND in buffer");
+                                }
+                            },
+                            Err(_) => {
+                                con.println("  -> Test read FAILED!");
+                                unsafe { ahci.diagnose(&mut con); }
+                            }
+                        }
+                    }
                     
                     // Print disk capacity in GB
                     match fs::gpt::get_disk_capacity_lba(ahci) {
@@ -236,56 +270,121 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                         },
                     }
 
-                    // Scan GPT for export partition
+                    // Scan GPT — find NTFS partition by reading boot sector signatures
+                    {
+                    use crate::fs::DiskReader;
                     match fs::gpt::scan_all_partitions(ahci) {
                         Ok(parts) => {
+                            con.print("  -> GPT: "); con.print_u64(parts.len() as u64); con.println(" partitions found");
+                            
                             let mut found = false;
-                            for p in parts {
-                                if p.first_lba == 32768 {
-                                    con.print("  -> Found Export Partition! LBA: "); con.print_u64(p.first_lba);
-                                    con.print(" to "); con.print_u64(p.last_lba); con.println("");
-                                    
-                                    // Lock bounds
+                            for (idx, p) in parts.iter().enumerate() {
+                                // Show each partition
+                                con.print("     ["); con.print_u64(idx as u64); con.print("] LBA ");
+                                con.print_u64(p.first_lba); con.print(" - ");
+                                con.print_u64(p.last_lba);
+                                
+                                // Try to read boot sector to detect filesystem
+                                let mut boot_sec = [0u8; 512];
+                                let fs_type = match ahci.read_sectors(p.first_lba, 1, &mut boot_sec) {
+                                    Ok(()) => {
+                                        if &boot_sec[3..7] == b"NTFS" {
+                                            "NTFS"
+                                        } else if boot_sec[0..4] == [0, 0, 0, 0] {
+                                            "RAW"
+                                        } else {
+                                            "other"
+                                        }
+                                    },
+                                    Err(_) => "err",
+                                };
+                                con.print(" ("); con.print(fs_type); con.println(")");
+                                
+                                // Select first NTFS partition as export target
+                                if !found && fs_type == "NTFS" {
                                     ahci.export_bounds = Some((p.first_lba, p.last_lba));
-                                    con.println("  -> AHCI Strict Bounds LOCKED.");
+                                    con.println("  -> NTFS Export Partition LOCKED.");
                                     found = true;
-                                    break;
                                 }
                             }
+                            
                             if !found {
-                                con.println("  -> [ERROR] Export Partition (LBA 32768) not found on SATA disk");
+                                con.println("  -> [ERROR] No NTFS partition found on SATA disk!");
+                                con.println("  -> Hint: Format a partition as NTFS and place fastos_boot.bin on it.");
                             }
                         },
                         Err(_) => con.println("  -> [ERROR] Failed to scan GPT partitions via AHCI"),
                     }
+                    } // end DiskReader scope
 
-                    // ── Benchmark ──
+                    // ── Benchmark (with 5s timeout per operation) ──
                     if let Some(ref mut nvme) = nvme_opt {
                         if ahci.export_bounds.is_some() {
                             con.println("\n[BENCHMARK] NVMe Read vs AHCI Write (DryRun)...");
                             
                             use fs::{DiskReader, DiskWriter};
-                            let mut buf = alloc::vec::Vec::with_capacity(1024 * 1024);
-                            buf.resize(1024 * 1024, 0); // 1MB chunk
-
+                            
+                            // Estimate TSC frequency: ~3.7GHz for Ryzen 5 5600X
+                            // 5 seconds timeout = 5 * 3_700_000_000 ≈ 18_500_000_000 cycles
+                            let timeout_cycles: u64 = 18_500_000_000;
+                            
+                            // NVMe Read benchmark: read 1MB chunks, up to 16MB
+                            let mut nvme_buf = alloc::vec![0u8; 512 * 8]; // 4KB per read (8 sectors)
                             let t_start_nvme = unsafe { core::arch::x86_64::_rdtsc() };
-                            // Read 16MB from NVMe
-                            for i in 0..16 {
-                                let lba = 34816 + (i * 2048);
-                                let _ = nvme.read_sectors(lba, 2048, &mut buf);
+                            let mut nvme_bytes: u64 = 0;
+                            let mut nvme_ok = true;
+                            
+                            'nvme_bench: for i in 0..4096u64 { // 4096 * 8 sectors = 16MB
+                                let now = unsafe { core::arch::x86_64::_rdtsc() };
+                                if now.wrapping_sub(t_start_nvme) > timeout_cycles {
+                                    con.println("  [NVMe] Timeout after 5s — showing partial result");
+                                    nvme_ok = false;
+                                    break 'nvme_bench;
+                                }
+                                let lba = 34816 + (i * 8);
+                                match nvme.read_sectors(lba, 8, &mut nvme_buf) {
+                                    Ok(()) => { nvme_bytes += 4096; },
+                                    Err(_) => {
+                                        con.print("  [NVMe] Read error at LBA "); con.print_u64(lba); con.println("");
+                                        nvme_ok = false;
+                                        break 'nvme_bench;
+                                    }
+                                }
                             }
                             let t_end_nvme = unsafe { core::arch::x86_64::_rdtsc() };
+                            let nvme_cycles = t_end_nvme.wrapping_sub(t_start_nvme);
                             
+                            con.print("  NVMe Read: "); con.print_u64(nvme_bytes / 1024); con.print(" KB in ");
+                            con.print_u64(nvme_cycles / 1_000_000); con.print("M cycles");
+                            if nvme_ok { con.println(" (complete)"); } else { con.println(" (partial)"); }
+                            
+                            // AHCI Write benchmark (DryRun — no actual writes)
                             let t_start_ahci = unsafe { core::arch::x86_64::_rdtsc() };
-                            // Write 16MB to AHCI (DryRun mode defaults in AhciDriver)
-                            for i in 0..16 {
-                                let lba = 32768 + 2048 + (i * 2048); // 1MB offset + i*1MB
-                                let _ = ahci.write_sectors(lba, 2048, &buf);
+                            let mut ahci_bytes: u64 = 0;
+                            let mut ahci_ok = true;
+                            
+                            'ahci_bench: for i in 0..4096u64 {
+                                let now = unsafe { core::arch::x86_64::_rdtsc() };
+                                if now.wrapping_sub(t_start_ahci) > timeout_cycles {
+                                    con.println("  [AHCI] Timeout after 5s — showing partial result");
+                                    ahci_ok = false;
+                                    break 'ahci_bench;
+                                }
+                                let lba = 32768 + 2048 + (i * 8);
+                                match ahci.write_sectors(lba, 8, &nvme_buf) {
+                                    Ok(()) => { ahci_bytes += 4096; },
+                                    Err(_) => {
+                                        ahci_ok = false;
+                                        break 'ahci_bench;
+                                    }
+                                }
                             }
                             let t_end_ahci = unsafe { core::arch::x86_64::_rdtsc() };
-
-                            con.print("  NVMe 16MB Read : "); con.print_u64(t_end_nvme - t_start_nvme); con.println(" cycles");
-                            con.print("  AHCI 16MB Write: "); con.print_u64(t_end_ahci - t_start_ahci); con.println(" cycles (DryRun)");
+                            let ahci_cycles = t_end_ahci.wrapping_sub(t_start_ahci);
+                            
+                            con.print("  AHCI Write: "); con.print_u64(ahci_bytes / 1024); con.print(" KB in ");
+                            con.print_u64(ahci_cycles / 1_000_000); con.print("M cycles");
+                            if ahci_ok { con.println(" (DryRun complete)"); } else { con.println(" (DryRun partial)"); }
                         }
                     }
                 } else {
@@ -352,30 +451,62 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                         gpu_rt.advance_to(GpuCapabilityStage::MmioAlive);
                         con.println("[MMIO] CPUCTL/BOOTVEC/IRQSTAT read OK");
 
-                        // Detach from hardcoded sequences, load dynamic payload from NTFS!
+                        // ── Raw LBA Payload Loader ──
+                        // fastos_boot.bin is written to SATA at absolute LBA 2048
+                        // (within the RAW partition [0] LBA 34-32767)
+                        // Format: [8 bytes "FASTPAY\0"] [4 bytes payload_size LE] [padding to 512] [raw FOSB data...]
                         con.println("");
-                        con.println("[SEC2] Loading dynamic payload from SATA...");
+                        con.println("[SEC2] Loading payload from SATA raw LBA 2048...");
                         
                         let mut loaded = false;
                         if let Some(mut ahci) = ahci_opt.take() {
-                            if let Some(bounds) = ahci.export_bounds {
-                                con.println("  -> Mounting SATA NTFS to read fastos_boot.bin...");
-                                let mut wrapper = fs::ntfs::NtfsWrapper::new(ahci, bounds.0);
-                                if let Ok(ntfs) = wrapper.mount() {
-                                    drivers::gpu::fastgpu::runtime::payload_loader::execute_payload(&mut con, &ntfs, &mut wrapper, &mut mmio);
-                                    loaded = true;
-                                } else {
-                                    con.println("  -> [ERROR] Failed to mount NTFS on SATA.");
-                                }
-                            } else {
-                                con.println("  -> [ERROR] No export partition found on SATA.");
+                            use crate::fs::DiskReader;
+                            
+                            // Read first sector at LBA 2048 to get header
+                            let mut header = [0u8; 512];
+                            match ahci.read_sectors(2048, 1, &mut header) {
+                                Ok(()) => {
+                                    // Check magic "FASTPAY\0"
+                                    if &header[0..8] == b"FASTPAY\0" {
+                                        let payload_size = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;
+                                        con.print("  -> Header valid. Payload size: ");
+                                        con.print_u64(payload_size as u64);
+                                        con.println(" bytes");
+                                        
+                                        if payload_size > 0 && payload_size < 1024 * 1024 {
+                                            // Read payload from LBA 2049 onwards
+                                            let sectors_needed = ((payload_size + 511) / 512) as u32;
+                                            con.print("  -> Reading "); con.print_u64(sectors_needed as u64);
+                                            con.println(" sectors from LBA 2049...");
+                                            
+                                            let mut payload_buf = alloc::vec![0u8; (sectors_needed as usize) * 512];
+                                            match ahci.read_sectors(2049, sectors_needed, &mut payload_buf) {
+                                                Ok(()) => {
+                                                    con.println("  -> Read OK!");
+                                                    payload_buf.truncate(payload_size);
+                                                    drivers::gpu::fastgpu::runtime::payload_loader::execute_from_bytes(
+                                                        &mut con, &payload_buf, &mut mmio
+                                                    );
+                                                    loaded = true;
+                                                },
+                                                Err(_) => con.println("  -> [ERROR] Failed to read payload sectors!"),
+                                            }
+                                        } else {
+                                            con.print("  -> [ERROR] Invalid payload size: ");
+                                            con.print_u64(payload_size as u64);
+                                            con.println("");
+                                        }
+                                    } else {
+                                        con.print("  -> No payload at LBA 2048 (magic: ");
+                                        for i in 0..8 { con.print_hex32(header[i] as u32); con.print(" "); }
+                                        con.println(")");
+                                        con.println("  -> Run write_payload.ps1 from Windows to write fastos_boot.bin");
+                                    }
+                                },
+                                Err(_) => con.println("  -> [ERROR] AHCI read failed at LBA 2048!"),
                             }
                         } else {
-                            con.println("  -> [ERROR] SATA drive not found or not initialized.");
-                        }
-
-                        if !loaded {
-                            con.println("[SEC2] Aborting SEC2 bring-up due to missing payload.");
+                            con.println("  -> [ERROR] SATA drive not available.");
                         }
 
                         // We don't need to manually orchestrate sec2_engine here anymore.

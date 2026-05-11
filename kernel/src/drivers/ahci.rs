@@ -331,28 +331,31 @@ impl AhciDriver {
         hdr.prdbc = 0;
         write_volatile(self.cmd_list, hdr);
 
-        // Prepare Command Table (FIS)
-        core::ptr::write_bytes((*self.cmd_table).cfis.as_mut_ptr(), 0, 64);
-        (*self.cmd_table).cfis[0] = 0x27; // Register H2D FIS
-        (*self.cmd_table).cfis[1] = 0x80; // Command bit
-        (*self.cmd_table).cfis[2] = if is_write { 0x35 } else { 0x25 }; // Write DMA Ext / Read DMA Ext
+        // Prepare Command Table (FIS) — all writes via write_volatile
+        let cfis = core::ptr::addr_of_mut!((*self.cmd_table).cfis) as *mut u8;
+        core::ptr::write_bytes(cfis, 0, 64);
+        core::ptr::write_volatile(cfis.add(0), 0x27u8);  // Register H2D FIS
+        core::ptr::write_volatile(cfis.add(1), 0x80u8);  // Command bit
+        core::ptr::write_volatile(cfis.add(2), if is_write { 0x35u8 } else { 0x25u8 });
         
-        (*self.cmd_table).cfis[4] = (lba & 0xFF) as u8;
-        (*self.cmd_table).cfis[5] = ((lba >> 8) & 0xFF) as u8;
-        (*self.cmd_table).cfis[6] = ((lba >> 16) & 0xFF) as u8;
-        (*self.cmd_table).cfis[7] = 0x40; // LBA mode
+        core::ptr::write_volatile(cfis.add(4), (lba & 0xFF) as u8);
+        core::ptr::write_volatile(cfis.add(5), ((lba >> 8) & 0xFF) as u8);
+        core::ptr::write_volatile(cfis.add(6), ((lba >> 16) & 0xFF) as u8);
+        core::ptr::write_volatile(cfis.add(7), 0x40u8);  // LBA mode
         
-        (*self.cmd_table).cfis[8] = ((lba >> 24) & 0xFF) as u8;
-        (*self.cmd_table).cfis[9] = ((lba >> 32) & 0xFF) as u8;
-        (*self.cmd_table).cfis[10] = ((lba >> 40) & 0xFF) as u8;
+        core::ptr::write_volatile(cfis.add(8), ((lba >> 24) & 0xFF) as u8);
+        core::ptr::write_volatile(cfis.add(9), ((lba >> 32) & 0xFF) as u8);
+        core::ptr::write_volatile(cfis.add(10), ((lba >> 40) & 0xFF) as u8);
 
-        (*self.cmd_table).cfis[12] = (count & 0xFF) as u8;
-        (*self.cmd_table).cfis[13] = ((count >> 8) & 0xFF) as u8;
+        core::ptr::write_volatile(cfis.add(12), (count & 0xFF) as u8);
+        core::ptr::write_volatile(cfis.add(13), ((count >> 8) & 0xFF) as u8);
 
-        // Prepare PRDT
-        (*self.cmd_table).prdt[0].dba = self.dma_buf as u32;
-        (*self.cmd_table).prdt[0].dbau = (self.dma_buf >> 32) as u32;
-        (*self.cmd_table).prdt[0].dbc = (count * 512) - 1; // 0-based byte count
+        // Prepare PRDT — all writes via write_volatile
+        let prdt = core::ptr::addr_of_mut!((*self.cmd_table).prdt[0]) as *mut u32;
+        core::ptr::write_volatile(prdt.add(0), self.dma_buf as u32);       // dba
+        core::ptr::write_volatile(prdt.add(1), (self.dma_buf >> 32) as u32); // dbau
+        core::ptr::write_volatile(prdt.add(2), 0u32);                       // rsv0
+        core::ptr::write_volatile(prdt.add(3), (count * 512) - 1);          // dbc
 
         // Issue command (Slot 0)
         write_volatile(&mut (*self.port).ci, 1);
@@ -362,6 +365,9 @@ impl AhciDriver {
         loop {
             let ci = read_volatile(&(*self.port).ci);
             if (ci & 1) == 0 {
+                // Memory fence — ensure DMA writes to RAM are visible to CPU
+                core::arch::asm!("mfence", options(nostack, preserves_flags));
+
                 // Check TFD for errors even on "completion"
                 let tfd = read_volatile(&(*self.port).tfd);
                 if tfd & 0x01 != 0 {
@@ -393,8 +399,11 @@ impl DiskReader for AhciDriver {
             unsafe {
                 self.submit_io_cmd(current_lba, chunk, false)?;
                 let bytes = (chunk as usize) * 512;
-                let src = core::slice::from_raw_parts(self.dma_buf as *const u8, bytes);
-                buf[offset..offset + bytes].copy_from_slice(src);
+                // Read DMA buffer via read_volatile — prevent stale cache reads
+                let src_ptr = self.dma_buf as *const u8;
+                for i in 0..bytes {
+                    buf[offset + i] = core::ptr::read_volatile(src_ptr.add(i));
+                }
             }
             current_lba += chunk as u64;
             remaining -= chunk;
