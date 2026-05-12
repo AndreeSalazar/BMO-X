@@ -1,0 +1,21 @@
+<duixml>
+<ocmframe resid="ocmmain" id="atom(frame)" sheet="frame" layout="borderlayout()">
+<element id="atom(contentpane)" sheet="contentpane" layoutpos="client" layout="borderlayout()"> 
+<element layoutpos="top" layout="borderlayout()">
+<element layoutpos="right" layout="flowlayout()">
+<button id="atom(help)" layoutpos="right" class="cp_help_glyph" content="icon(263,sysmetric(49),sysmetric(49),library(shell32.dll))" accessible="true" accRole="43" accname="resstr(83)" cursor="hand" padding="rect(2rp,2rp,2rp,2rp)" />
+</element> 
+<element id="atom(introheader)" layoutpos="left" contentalign="wrapleft" accessible="true" accRole="41" accName="resstr(188)" content="resstr(188)" />
+</element>
+<element id="atom(intro)" layoutpos="top" contentalign="wrapleft" accessible="true" accRole="41" accName="resstr(189)" content="resstr(189)" />
+<element id="atom(waittext)" layoutpos="client" accessible="true" accRole="41" accName="resstr(89)" content="resstr(89)" ContentAlign="topcenter" sheet="treeview"/>
+<OCMTreeView id="atom(treeview)" layoutpos="none" sheet="treeview" accessible="true" accname="resstr(186)" />
+<element sheet="closepane" layoutpos="bottom" layout="borderlayout()" margin="rect(0rp,8rp,0rp,0rp)">
+<element layoutpos="right" layout="gridlayout(1,-1)" >
+<ccpushbutton id="atom(ok)" layoutpos="right" accessible="true" content="resstr(96)" margin="rect(8rp,0rp,8rp,0rp)" />
+<ccpushbutton id="atom(cancel)" layoutpos="right" accessible="true" content="resstr(97)" margin="rect(8rp,0rp,8rp,0rp)" />
+</element>
+</element> 
+</element> 
+</ocmframe>
+</duixml>

@@ -1,0 +1,297 @@
+<duixml>
+<element resid="PageCFEPin"
+id="atom(PageCFEPin)"
+layout="flowlayout()"
+sheet="ModernStyle"
+active="pointer"
+accessible="true"
+width="265rp"
+behaviors="PVL::AnimationTrap()">
+<RichText
+id="atom(PagePasswordPin_ProfileMismatchWarning)"
+class="WarningText"
+layoutpos="none"
+visible="false"
+margin="rect(0rp,0rp,0rp,7rp)"
+content="resstr(817)"
+contentalign="wrapleft"
+accrole="statictext"
+accessible="true">
+</RichText>
+<RichText
+id="atom(PagePasswordPin_Help)"
+class="WarningText"
+layoutpos="none"
+visible="false"
+contentalign="wrapleft"
+margin="rect(0rp,0rp,0rp,7rp)"
+accrole="statictext"
+accessible="true"/>
+<element
+layout="Borderlayout()"
+layoutpos="top"
+active="pointer"
+accessible="true">
+<element
+id="atom(PagePasswordPin_PinIcon)"
+layoutpos="right"
+contentalign="topcenter"
+background="argb(0,0,0,0)"
+margin="rect(8rp,0rp,0rp,0rp)"
+accessible="true"
+accrole="graphic"
+/>
+<element
+layout="Borderlayout()"
+layoutpos="bottom"
+active="pointer"
+accessible="true">
+<touchedit2
+id="atom(PagePasswordPin_EditPinBox)"
+layoutpos="top"
+accname="resstr(802)"
+margin="rect(0rp,0rp,5rp,0rp)"
+behaviors="Windows.UI.Popups::TouchEditContextMenu()"/>
+</element>
+</element>
+<touchhyperlink
+id="atom(JustConnect)"
+layoutpos="bottom"
+content="resstr(801)"
+margin="rect(0rp,24rp,0rp,0rp)"
+accdefaction="click"
+shortcut="auto"
+accessible="true">
+</touchhyperlink>
+</element>
+<element resid="PageCFETransfer"
+id="atom(PageCFETransfer)"
+layout="flowlayout()"
+sheet="ModernStyle"
+active="pointer"
+accessible="true"
+width="265rp">
+<element
+id="atom(PageCFETransferContent)"
+class="PageContentPadding"
+layout="Borderlayout()"
+layoutpos="top"
+active="pointer"
+accessible="true">
+<ModernProgressRing
+id="atom(ProgessRing)"
+class="ProgressRing"
+layoutpos="left"/>
+<RichText
+id="atom(ConnectionStatus)"
+layoutpos="client"
+content="resstr(10812)"
+contentalign="bottomleft|wrapleft"
+padding="rect(10rp,0rp,0rp,0rp)"
+accessible="true">
+</RichText>
+</element>
+</element>
+<element resid="PageCFETransferFailed"
+id="atom(PageCFETransferFailed)"
+layout="flowlayout()"
+sheet="ModernStyle"
+active="pointer"
+accessible="true"
+width="265rp"
+padding="rect(0rp, 20rp, 0rp, 0rp)">
+<RichText
+id="atom(PageTransferFailed_ErrorMessage)"
+class="WarningText"
+layoutpos="top"
+contentalign="wrapleft"
+accrole="statictext"
+accessible="true"/>
+<touchhyperlink
+id="atom(JustConnect)"
+layoutpos="top"
+content="resstr(801)"
+contentalign="wrapleft"
+margin="rect(0rp,20rp,0rp,0rp)"
+accdefaction="click"
+shortcut="auto"
+accessible="true"
+/>
+</element>
+<element resid="PageWlanPbcCombo"
+id="atom(PageWlanPbcCombo)"
+layout="flowlayout()"
+sheet="ModernStyle"
+active="pointer"
+accessible="true"
+width="265rp"
+behaviors="PVL::AnimationTrap()">
+<RichText
+id="atom(PageWlanPbcCombo_ProfileMismatchWarning)"
+class="WarningText"
+layoutpos="none"
+visible="false"
+margin="rect(0rp,0rp,0rp,7rp)"
+content="resstr(817)"
+contentalign="wrapleft"
+accrole="statictext"
+accessible="true">
+</RichText>
+<element
+layout="Borderlayout()"
+layoutpos="top"
+active="pointer"
+accessible="true">
+<RichText
+id="atom(PageWlanPbcCombo_ErrorMessage)"
+class="WarningText"
+layoutpos="none"
+visible="false"
+margin="rect(0rp,0rp,0rp,7rp)"
+contentalign="wrapleft"
+accrole="statictext"
+accessible="true">
+</RichText>
+<element
+id="atom(PageWlanPbcCombo_EditKey_Padding)"
+layout="flowlayout()"
+class="InputPaddingWithoutText"
+layoutPos="top">
+<touchedit2
+id="atom(PageWlanPbcCombo_EditKey)"
+layoutpos="top"
+passwordcharacter="9679"
+accname="resstr(803)"
+behaviors="Windows.UI.Popups::TouchEditContextMenu()"/>
+</element>
+</element>
+<element
+layout="Borderlayout()"
+layoutpos="top"
+active="pointer"
+margin="rect(15rp,9rp,0rp,0rp)"
+accessible="true">
+<element
+id="atom(PageWlanPbcCombo_Icon)"
+layoutpos="left"
+visible="true"
+contentalign="topcenter"
+background="argb(0,0,0,0)"
+padding="rect(0rp,0rp,0rp,4rp)"
+accessible="true"
+accrole="graphic"
+/>
+<ModernProgressRing
+id="atom(PageWlanPbcCombo_Ring)"
+class="ProgressRing"
+layoutpos="none"
+visible="false"
+/>
+<element
+layout="Borderlayout()"
+layoutpos="client"
+active="pointer"
+margin="rect(8rp,0rp,0rp,0rp)"
+accessible="true">
+<RichText
+id="atom(PageWlanPbcCombo_Text)"
+layoutpos="top"
+visible="true"
+contentalign="wrapleft|middleleft"
+accrole="statictext"
+accessible="true"/>
+</element>
+</element>
+</element>
+<element resid="PageProgressSmall"
+id="atom(PageProgressSmall)"
+layout="flowlayout()"
+active="pointer"
+sheet="ModernStyle"
+accessible="true"
+width="265rp">
+<element
+layout="Borderlayout()"
+id="atom(ConnectionProgess)"
+class="PageContentPadding"
+visible="false"
+layoutpos="none"
+active="pointer"
+accessible="true">
+<ModernProgressRing
+id="atom(ProgessRing)"
+class="ProgressRing"
+layoutpos="left"/>
+<RichText
+id="atom(ConnectionStatus)"
+layoutpos="client"
+content="resstr(3990)"
+contentalign="bottomleft|wrapleft"
+padding="rect(10rp,0rp,0rp,0rp)"
+accessible="true">
+</RichText>
+</element>
+</element>
+<stylesheets>
+<style resid="ModernStyle" base="ressheet(ImmersiveStyles, library(dui70.dll), Dark)">
+<touchhyperlink constrainlayout="narrow"/>
+<RichText constrainlayout="narrow"/>
+<if class="WarningText">
+<RichText
+foreground="ImmersiveSaturatedInlineErrorText"
+/>
+</if>
+<if class="ProgressRing">
+<ModernProgressRing
+foreground="ImmersiveSaturatedPrimaryText"
+height="20rp"
+width="20rp"
+/>
+</if>
+<if class="InputPaddingWithoutText">
+<element
+padding="rect(0rp, 4rp, 0rp, 4rp)"/>
+</if>
+<if class="InputPaddingWithText">
+<element
+padding="rect(0rp, 0rp, 0rp, 4rp)"/>
+</if>
+<if class="PageContentPadding">
+<element padding="rect(0rp,31rp,0rp,0rp)"/>
+</if>
+<if class="PageContentPaddingManaged">
+<element padding="rect(0rp,0rp,0rp,0rp)"/>
+</if>
+</style>
+<style resid="ModernStyleLight" base="ressheet(ImmersiveStyles, library(dui70.dll), Light)">
+<touchhyperlink constrainlayout="narrow"/>
+<RichText constrainlayout="narrow"/>
+<if class="WarningText">
+<RichText
+foreground="ImmersiveLightInlineErrorText"
+/>
+</if>
+<if class="ProgressRing">
+<ModernProgressRing
+foreground="ImmersiveLightPrimaryText"
+height="20rp"
+width="20rp"
+/>
+</if>
+<if class="InputPaddingWithoutText">
+<element
+padding="rect(0rp, 4rp, 0rp, 4rp)"/>
+</if>
+<if class="InputPaddingWithText">
+<element
+padding="rect(0rp, 0rp, 0rp, 4rp)"/>
+</if>
+<if class="PageContentPadding">
+<element padding="rect(0rp,31rp,0rp,0rp)"/>
+</if>
+<if class="PageContentPaddingManaged">
+<element padding="rect(0rp,0rp,0rp,0rp)"/>
+</if>
+</style>
+</stylesheets>
+</duixml>

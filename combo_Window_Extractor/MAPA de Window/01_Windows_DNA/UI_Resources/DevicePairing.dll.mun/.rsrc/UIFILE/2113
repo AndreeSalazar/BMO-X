@@ -1,0 +1,151 @@
+<duixml>
+<stylesheets>
+<style resid="bluewirestyle" base="ressheet(ImmersiveStyles, library(dui70.dll), Light)">
+<if class="discovery_header">
+<RichText font="resstr(7104, library(devicepairing.dll))" foreground="ImmersiveLightSecondaryText" contentalign="topleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="discovery_text">
+<button cursor="hand" foreground="hotlight" accessible="true" accRole="link"/>
+<if mousefocused="true">
+<button font="resstr(7102, library(devicepairing.dll))"/>
+</if>
+<if KeyFocused="true">
+<button contentalign="FocusRect"/>
+</if>
+<if Pressed="true">
+<TouchHyperLink foreground="ImmersiveControlLightLinkHover"/>
+</if>
+<TouchHyperLink contentalign="wrapcenter" accessible="true" accRole="link" padding="rect(2rp,2rp,2rp,2rp)"/>
+<if showkeyfocus="true">
+<TouchHyperLink contentalign="wrapcenter|focusrect"/>
+</if>
+<button contentalign="wrapleft" accessible="true" accRole="link"/>
+</if>
+<if class="ceremony_pin">
+<Element font="resstr(7108, library(devicepairing.dll))" foreground="ImmersiveSaturatedSecondaryText" contentalign="topleft" accessible="true" accRole="statictext"/>
+<RichText font="resstr(7108, library(devicepairing.dll))" foreground="ImmersiveSaturatedSecondaryText" contentalign="topleft" accessible="true" accRole="statictext" overhang="false"/>
+</if>
+<if class="ceremony_classicpin">
+<Element font="resstr(7106, library(devicepairing.dll))" contentalign="topleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="ceremony_retrytext">
+<Element font="resstr(7104, library(devicepairing.dll))" foreground="ImmersiveSaturatedInlineErrorText" accessible="true" accRole="statictext"/>
+<RichText font="resstr(7104, library(devicepairing.dll))" foreground="ImmersiveSaturatedInlineErrorText" accessible="true" accRole="statictext"/>
+</if>
+<if class="devicetile">
+<BluewireDeviceTile accessible="true" accrole="pushbutton" contentAlign="middleleft"/>
+<if showkeyfocus="true">
+<BluewireDeviceTile EdgeHighlightThickness="rect(2rp,2rp,2rp,2rp)" EdgeHighlightColor="ImmersiveControlLightFocusRect"/>
+</if>
+<if selected="true">
+<BluewireDeviceTile background="ImmersiveLightSelectionBackground"/>
+</if>
+<if selected="false" mousefocused="true">
+<BluewireDeviceTile background="ImmersiveLightHoverBackground"/>
+</if>
+</if>
+<if class="devicetile_classic">
+<BluewireDeviceTile background="ARGB(0,0,0,0)" accessible="true" accrole="pushbutton" contentAlign="middleleft"/>
+<if selected="true">
+<BluewireDeviceTile background="themeable(dtb(explorer::listview,1,2), Highlight)"/>
+</if>
+<if mousefocused="true">
+<BluewireDeviceTile background="themeable(dtb(explorer::listview,1,2), Highlight)"/>
+</if>
+<if KeyFocused="true">
+<BluewireDeviceTile background="themeable(dtb(explorer::listview,1,3), Highlight)"/>
+</if>
+</if>
+<if class="devicetile_iconbox">
+<Element EdgeHighlightThickness="rect(1rp,1rp,1rp,1rp)" EdgeHighlightColor="argb(61,153,153,153)" background="ImmersiveStartSystemTilesBackground"/>
+</if>
+<if class="devicetile_name">
+<RichText font="resstr(7103, library(devicepairing.dll))" foreground="ImmersiveLightPrimaryText" contentalign="topleft" accessible="true" accRole="statictext"/>
+<if selected="true">
+<RichText foreground="ImmersiveLightSelectionPrimaryText"/>
+</if>
+<if selected="false" mousefocused="true">
+<RichText foreground="ImmersiveLightHoverPrimaryText"/>
+</if>
+</if>
+<if class="devicetile_name_classic">
+<RichText font="resstr(7101, library(devicepairing.dll))" foreground="argb(255,42,42,42)" accessible="true" accRole="statictext"/>
+</if>
+<if class="devicetile_category">
+<RichText font="resstr(7103, library(devicepairing.dll))" foreground="ImmersiveLightSecondaryText" contentalign="topleft" accessible="true" accRole="statictext"/>
+<if selected="true">
+<RichText foreground="ImmersiveLightSelectionSecondaryText"/>
+</if>
+<if selected="false" mousefocused="true">
+<RichText foreground="ImmersiveLightHoverSecondaryText"/>
+</if>
+</if>
+<if class="devicetile_connecting">
+<RichText font="resstr(7103, library(devicepairing.dll))" foreground="ImmersiveLightSelectionSecondaryText" contentalign="topleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="devicetile_category_classic">
+<RichText font="resstr(7101, library(devicepairing.dll))" foreground="argb(255,102,102,102)" accessible="true" accRole="statictext"/>
+</if>
+<if class="ceremony_frame">
+<Element background="ImmersiveSaturatedBackground"/>
+</if>
+<if class="ceremony_title">
+<Element font="resstr(7107, library(devicepairing.dll))" foreground="ImmersiveSaturatedPrimaryText" contentalign="topleft" accessible="true" accRole="statictext"/>
+<RichText font="resstr(7107, library(devicepairing.dll))" foreground="ImmersiveSaturatedPrimaryText" contentalign="topleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="ceremony_text">
+<Element font="resstr(7103, library(devicepairing.dll))" foreground="ImmersiveSaturatedPrimaryText" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<RichText font="resstr(7103, library(devicepairing.dll))" foreground="ImmersiveSaturatedPrimaryText" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<TouchHyperLink foreground="ImmersiveControlDarkLinkRest" contentalign="wrapleft" accessible="true" accRole="link" padding="rect(2rp,2rp,2rp,2rp)"/>
+<if showkeyfocus="true">
+<TouchHyperLink contentalign="wrapleft|focusrect"/>
+</if>
+<if mousewithin="true">
+<TouchHyperLink foreground="ImmersiveControlDarkLinkHover"/>
+</if>
+<if pressed="true">
+<TouchHyperLink foreground="ImmersiveControlDarkLinkPressed"/>
+</if>
+</if>
+<if class="ceremony_error_details_text">
+<RichText font="resstr(7103, library(devicepairing.dll))" foreground="ImmersiveSaturatedSecondaryText" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="ceremony_error_details_classictext">
+<RichText font="resstr(7101, library(devicepairing.dll))" foreground="windowtext" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="ceremony_icon">
+<Element background="ImmersiveStartSystemTilesBackground" height="120" width="120" contentalign="topleft" padding="rect(20,20,20,20)"/>
+</if>
+<if class="ceremony_classicicon">
+<Element height="116" width="116" bordercolor="graytext" contentalign="middlecenter" padding="rect(10,10,10,10)"/>
+</if>
+<if class="ceremony_retryicon">
+<Element height="16" width="16" contentalign="topleft"/>
+</if>
+<if class="default">
+<TouchButton font="resstr(7105, library(devicepairing.dll))" foreground="argb(255,255,255,255)" contentalign="middlecenter" accessible="true" accRole="pushbutton"/>
+</if>
+<if class="ceremony_classictitle">
+<Element font="resstr(7105, library(devicepairing.dll))" foreground="argb(255,0,51,153)" contentalign="topleft" width="250rp" accessible="true" accRole="statictext"/>
+</if>
+<if class="ceremony_classictext">
+<Element font="resstr(7101, library(devicepairing.dll))" foreground="windowtext" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<RichText font="resstr(7101, library(devicepairing.dll))" foreground="windowtext" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<CCCheckBox foreground="windowtext" background="window"/>
+<button cursor="hand" foreground="hotlight" contentalign="wrapleft" accessible="true" accRole="link"/>
+<if mousefocused="true">
+<button font="resstr(7102, library(devicepairing.dll))"/>
+</if>
+<if KeyFocused="true">
+<button contentalign="FocusRect|wrapleft"/>
+</if> 
+</if>
+<if class="ceremony_classicgraytext">
+<Element font="resstr(7100, library(devicepairing.dll))" foreground="argb(255,110,110,110)" contentalign="topleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="ceremony_classicretrytext">
+<Element font="resstr(7101, library(devicepairing.dll))" foreground="red" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+</style>
+</stylesheets>
+</duixml>

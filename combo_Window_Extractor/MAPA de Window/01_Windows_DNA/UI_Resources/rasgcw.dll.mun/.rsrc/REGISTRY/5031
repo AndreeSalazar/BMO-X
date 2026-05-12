@@ -1,0 +1,26 @@
+HKCR
+{
+    RAS.DialupCTIHookPage.1 = s 'RAS Dialup CTI Hook Page (non-UI)'
+    {
+        CLSID = s '{C03E8511-781E-49A1-8190-CE902D0B2CE7}'
+    }
+    RAS.DialupCTIHookPage = s 'RAS Dialup CTI Hook Page (non-UI)'
+    {
+        CLSID = s '{C03E8511-781E-49A1-8190-CE902D0B2CE7}'
+        CurVer = s 'RAS.DialupCTIHookPage.1'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {C03E8511-781E-49A1-8190-CE902D0B2CE7} = 
+                     s 'RAS Dialup CTI Hook Page (non-UI)'
+        {
+            ProgID = s 'RAS.DialupCTIHookPage.1'
+            VersionIndependentProgID = s 'RAS.DialupCTIHookPage'
+            ForceRemove 'Programmable'
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+} 

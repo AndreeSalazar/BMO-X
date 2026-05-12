@@ -1,0 +1,46 @@
+[Version]
+Signature="$CHICAGO$"
+[RegDll]
+RequiredEngine=SETUPAPI,%ERR_NOSETUPAPI%
+AddReg=RegCpl
+[UnregDll]
+RequiredEngine=SETUPAPI,%ERR_NOSETUPAPI%
+DelReg=UnRegCpl
+[RegCpl]
+HKLM,"%PATH_SHELLEXT%","%CLSID_NamespaceInitStub%",,""
+HKLM,"%PATH_EXPLORER%\ControlPanel\NameSpace\%CLSID_NamespaceInitStub%",,,"Set User Defaults"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",,,"Set User Defaults"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",System.ControlPanel.Category,,"8"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",InfoTip,%REGEXSZ%,"@%_SYS_MOD_PATH%,-2"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",LocalizedString,%REGEXSZ%,"@%_SYS_MOD_PATH%,-1"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\DefaultIcon",,%REGEXSZ%,"%_SYS_MOD_PATH%,-1"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\%IPS%",,%REGEXSZ%,"%SystemRoot%\system32\shdocvw.dll"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\%IPS%",ThreadingModel,,"Apartment"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\ShellFolder",Attributes,%REGDW%,0xa00001a0
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\ShellFolder",WantsParseDisplayName
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance",CLSID,,%CLSID_LayoutFldr%
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance\InitPropertyBag",ResourceDLL,%REGEXSZ%,"%_SYS_MOD_PATH%"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance\InitPropertyBag",ResourceID,%REGDW%,100
+HKCR,"CLSID\%CLSID_SUDCplElementProvider%",,,"SUD Cpl Element Provider"
+HKCR,"CLSID\%CLSID_SUDCplElementProvider%\%IPS%",,%REGEXSZ%,"%_SYS_MOD_PATH%"
+HKCR,"CLSID\%CLSID_SUDCplElementProvider%\%IPS%",ThreadingModel,,"Apartment"
+HKCR,"CLSID\%CLSID_ApplicationAssociationRegistrationUI%",,,"SUD Application Association Registration UI"
+HKCR,"CLSID\%CLSID_ApplicationAssociationRegistrationUI%\%IPS%",,%REGEXSZ%,"%_SYS_MOD_PATH%"
+HKCR,"CLSID\%CLSID_ApplicationAssociationRegistrationUI%\%IPS%",ThreadingModel,,"Apartment"
+[UnRegCpl]
+HKLM,"%PATH_SHELLEXT%","%CLSID_NamespaceInitStub%"
+HKLM,"%PATH_EXPLORER%\ControlPanel\NameSpace\%CLSID_NamespaceInitStub%"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%"
+HKCR,"CLSID\%CLSID_SUDCplElementProvider%"
+HKCR,"CLSID\%CLSID_ApplicationAssociationRegistrationUI%"
+[Strings]
+PATH_SHELLEXT="Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved"
+PATH_EXPLORER="Software\Microsoft\Windows\CurrentVersion\Explorer"
+IPS="InProcServer32"
+REGEXSZ=0x00020000
+REGDW=0x00010001
+CLSID_NamespaceInitStub="{17cd9488-1228-4b2f-88ce-4298e93e0966}"
+CLSID_SUDCplElementProvider="{D4EFF9CD-16DE-446e-83C5-9537543CF4A1}"
+CLSID_ApplicationAssociationRegistrationUI="{1968106d-f3b5-44cf-890e-116fcb9ecef1}"
+CLSID_LayoutFldr="{328B0346-7EAF-4BBE-A479-7CB88A095F5B}"
+ERR_NOSETUPAPI="Can not register SUD.DLL because SETUPAPI.DLL is missing."

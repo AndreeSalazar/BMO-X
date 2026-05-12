@@ -1,0 +1,49 @@
+
+[Version]
+Signature="$CHICAGO$"
+
+[RegDll]
+RequiredEngine=SETUPAPI,%ERR_NOSETUPAPI%
+AddReg=RegAll
+
+[UnregDll]
+RequiredEngine=SETUPAPI,%ERR_NOSETUPAPI%
+
+[RegAll]
+HKLM,%PATH_EXPLORER%\ControlPanel\NameSpace\%CLSID_NamespaceInitStub%,,,"New User Accounts"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",,,"New User Accounts"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%","{305CA226-D286-468e-B848-2B2E8E697B74} 2",%REGDW%,0x7
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",InfoTip,%REGEXSZ%,"@%_SYS_MOD_PATH%,-2"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",LocalizedString,%REGEXSZ%,"@%_SYS_MOD_PATH%,-1"
+
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\DefaultIcon",,%REGEXSZ%,"@%_SYS_MOD_PATH%,-1"
+
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\%IPS%",,%REGEXSZ%,"%SystemRoot%\system32\shdocvw.dll"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\%IPS%",ThreadingModel,,"Apartment"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\ShellFolder",Attributes,%REGDW%,0xa00001a0
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\ShellFolder",WantsParseDisplayName
+HKLM,"%SMWCVSEA%","%CLSID_NamespaceInitStub%",,""
+
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance",CLSID,,%CLSID_LayoutFldr%
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance\InitPropertyBag",ResourceDLL,%REGEXSZ%,"%_SYS_MOD_PATH%"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance\InitPropertyBag",ResourceID,%REGDW%,100
+
+HKCR,"CLSID\%CLSID_UserCplElementProvider%",,,""
+HKCR,"CLSID\%CLSID_UserCplElementProvider%\%IPS%",,%REGEXSZ%,"%_SYS_MOD_PATH%"
+HKCR,"CLSID\%CLSID_UserCplElementProvider%\%IPS%",ThreadingModel,,"Apartment"
+
+[Strings]
+SMWCVSEA="Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved"
+PATH_EXPLORER="Software\Microsoft\Windows\CurrentVersion\Explorer"
+IPS="InProcServer32"
+REGEXSZ=0x00020000
+REGDW=0x00010001
+
+CLSID_NamespaceInitStub="{D555645E-D4F8-4c29-A827-D93C859C4F2A}"
+
+CLSID_LayoutFldr="{328B0346-7EAF-4BBE-A479-7CB88A095F5B}"
+
+CLSID_UserCplElementProvider="{93CB110F-9189-4349-BD9F-392D9A4D0096}"
+
+
+ERR_NOSETUPAPI="Can not register USERCPL.DLL because SETUPAPI.DLL is missing."

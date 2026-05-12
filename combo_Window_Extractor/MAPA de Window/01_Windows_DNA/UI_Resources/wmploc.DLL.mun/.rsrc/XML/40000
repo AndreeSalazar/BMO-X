@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:df="http://schemas.microsoft.com/windows/2008/09/devicefoundation" %s>
+    <specVersion>
+        <major>1</major>
+        <minor>0</minor>
+    </specVersion>
+    <device>
+        <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+        <friendlyName>%s</friendlyName>
+        <modelNumber>%s</modelNumber>
+        <modelName>Windows Media Player</modelName>
+        <modelDescription>Windows Media Player Renderer</modelDescription>
+        <manufacturer>Microsoft Corporation</manufacturer>
+        <manufacturerURL>https://www.microsoft.com</manufacturerURL>
+        <modelURL>https://go.microsoft.com/fwlink/?LinkId=105927</modelURL>
+        <serialNumber>%s</serialNumber>
+        <UDN>uuid:ea2e2afc-d1a2-4193-89cf-a9457aa5f489</UDN>
+        <df:X_containerId>%s</df:X_containerId>
+        <df:X_deviceCategory>Multimedia.DMP</df:X_deviceCategory>
+        <microsoft:magicPacketSendSupported>1</microsoft:magicPacketSendSupported>
+        %s%s    <iconList>
+            <icon>
+                <mimetype>image/png</mimetype>
+                <width>48</width>
+                <height>48</height>
+                <depth>24</depth>
+                <url>Media Renderer\DMR_48.png</url>
+            </icon>
+            <icon>
+                <mimetype>image/png</mimetype>
+                <width>120</width>
+                <height>120</height>
+                <depth>24</depth>
+                <url>Media Renderer\DMR_120.png</url>
+            </icon>
+            <icon>
+                <mimetype>image/jpeg</mimetype>
+                <width>48</width>
+                <height>48</height>
+                <depth>24</depth>
+                <url>Media Renderer\DMR_48.jpg</url>
+            </icon>
+            <icon>
+                <mimetype>image/jpeg</mimetype>
+                <width>120</width>
+                <height>120</height>
+                <depth>24</depth>
+                <url>Media Renderer\DMR_120.jpg</url>
+            </icon>
+        </iconList>
+        <serviceList>
+            <service>
+                <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+                <serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>
+                <controlURL></controlURL>
+                <eventSubURL></eventSubURL>
+                <SCPDURL>Media Renderer\RenderingControl_DMP.xml</SCPDURL>
+            </service>
+        </serviceList>
+    </device>
+</root>

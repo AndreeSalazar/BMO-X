@@ -1,0 +1,13 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {C2DAE44D-C850-425c-B466-D8CBC1469F5D}
+		{
+			InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Free'
+            }
+		}
+	}
+}

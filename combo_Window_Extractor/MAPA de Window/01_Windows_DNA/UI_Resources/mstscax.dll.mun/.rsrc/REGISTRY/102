@@ -1,0 +1,13 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {A1230401-67a5-4df6-a730-dce8822c80c4} = s 'PNP Terminal Services Client Control'
+        {
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Free'
+            }
+        }
+    }
+}

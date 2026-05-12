@@ -1,0 +1,395 @@
+<duixml>
+<stylesheets>
+<style resid="frame">
+<arpframe
+accessible = "true"
+accRole = "16"
+accName = "resstr(130)"
+font = "IconFont"
+background = "window"
+foreground = "windowtext"
+/>
+</style>
+<style resid="closepane">
+<if id="atom(closepane)">
+<element
+background = "buttonface"
+padding = "rect(10rp,10rp,10rp,10rp)"
+/>
+</if>
+<button
+background = "themeable(dtb(Button, 1, 1), dfc(4, 0x0010))"
+foreground = "buttontext"
+contentalign = "middlecenter"
+padding = "rect(20rp,6rp,20rp,6rp)"
+/>
+<if mousefocused="true">
+<button 
+background = "dtb(Button, 1, 2)"
+/>
+</if>
+<if pressed="true">
+<button
+background = "themeable(dtb(Button, 1, 3), dfc(4, 0x0010 | 0x0200))"
+padding = "rect(21rp,7rp,19rp,5rp)"
+/>
+</if>
+<if keyfocused="true">
+<button
+contentalign = "middlecenter | focusrect"
+/>
+</if>
+<if enabled="false">
+<button
+background = "themeable(dtb(Button, 1, 4), dfc(4, 0x0010 | 0x0100))"
+foreground = "graytext"
+font = "IconFont;100%;Normal;shadow"
+/>
+</if>
+<progress
+borderthickness = "rect(2rp,2rp,2rp,2rp)"
+bordercolor = "buttonface"
+borderstyle = "sunken"
+padding = "rect(1rp,1rp,1rp,1rp)"
+margin = "rect(0rp, 4rp, 0rp, 2rp)"
+/>
+</style>
+<style resid="contentpane">
+<if id="atom(contentpane)">
+<element
+padding = "rect(10rp,10rp,10rp,10rp)"
+/>
+</if>
+<if id="atom(installedlistcontainer)">
+<element
+borderthickness = "rect(1rp,1rp,1rp,1rp)"
+bordercolor = "buttonshadow"
+padding = "rect(0,0,0,0)"
+/>
+</if>
+<if id="atom(publishedlistcontainer)">
+<element
+borderthickness = "rect(1rp,1rp,1rp,1rp)"
+bordercolor = "buttonshadow"
+padding = "rect(0,0,0,0)"
+/>
+</if>
+<if id="atom(ocsetuplistcontainer)">
+<element
+borderthickness = "rect(1rp,1rp,1rp,1rp)"
+bordercolor = "buttonshadow"
+padding = "rect(0,0,0,0)"
+/>
+</if>
+<if id="atom(label)">
+<element
+padding = "rect(0rp,4rp,5rp,2rp)"
+/>
+</if>
+<if id="atom(sort)">
+<element
+padding = "rect(2rp,4rp,2rp,2rp)"
+/>
+</if>
+<if id="atom(changecontentheader)">
+<element
+padding = "rect(0,0,0,4rp)"
+/>
+</if>
+<button
+background = "themeable(dtb(Button, 1, 1), dfc(4, 0x0010))"
+foreground = "buttontext"
+padding = "rect(8rp,6rp,8rp,6rp)"
+margin = "rect(5rp,5rp,5rp,5rp)"
+/>
+<if mousefocused="true">
+<button
+background = "dtb(Button, 1, 2)"
+/>
+</if>
+<if pressed="true">
+<button
+background = "themeable(dtb(Button, 1, 3), dfc(4, 0x0010 | 0x0200))"
+padding = "rect(9rp,7rp,7rp,5rp)"
+/>
+</if>
+<if keyfocused="true">
+<button
+contentalign = "focusrect"
+/>
+</if>
+<if keyfocused="true">
+<arpautobutton
+contentalign = "focusrect"
+/>
+</if>
+<if class="padded">
+<arpautobutton
+padding = "rect(8rp,4rp,8rp,2rp)"
+/>
+</if>
+<if id="atom(checkbutton)">
+<element
+width= "sysmetric(71)"
+height= "sysmetric(72)"
+margin= "rect(0,6rp,8rp,6rp)"
+layoutpos= "left"
+background = "themeable(dtb(Button, 3, 1), dfc(4, 0x0000))"
+/>
+<if selected="true">
+<element
+background = "themeable(dtb(Button, 3, 5), dfc(4, 0x0000 | 0x0400))"
+/>
+</if>
+<if enabled="false">
+<element
+background = "themeable(dtb(Button, 3, 4), dfc(4, 0x0000 | 0x0100))"
+/>
+</if>
+<if selected="true" enabled="false">
+<element
+background = "themeable(dtb(Button, 3, 8), dfc(4, 0x0000 | 0x0400 | 0x0100))"
+/>
+</if>
+<if mousefocused="true">
+<element
+background = "dtb(Button, 3, 2)"
+/>
+</if>
+<if selected="true" mousefocused="true">
+<element
+background = "dtb(Button, 3, 6)"
+/>
+</if>
+</if>
+<if id="atom(checktext)">
+<element
+layoutpos= "client"
+contentalign= "wrapleft"
+/>
+<if enabled="false">
+<element
+foreground= "graytext"
+/>
+</if>
+</if>
+</style>
+<style resid="pickapppane">
+<if class="clientcaption">
+<element
+padding = "rect(0,4rp,8rp,0)"
+/>
+</if>
+<if class="clientcaption" id="atom(rowheader)">
+<element
+font        = "gtf(TEXTSTYLE, 3, 0)"
+foreground  = "gtc(TEXTSTYLE, 3, 0, 3803)"
+/>
+</if>
+<if class="clientstatic">
+<element
+padding = "rect(3rp,4rp,0,0)"
+/>
+</if>
+<if class="interrowspacer">
+<element
+height = "6rp"
+/>
+</if>
+<if class="blurbtext">
+<element
+padding = "rect(0,8rp,8rp,8rp)"
+/>
+</if>
+<if id="atom(clipped)">
+<element
+padding = "rect(0,0,0,4rp)"
+/>
+</if>
+<if id="atom(radiobutton)">
+<element
+width = "sysmetric(71)"
+height = "sysmetric(72)"
+margin = "rect(0,6rp,8rp,6rp)"
+layoutpos = "left"
+background = "themeable(dtb(Button, 2, 1), dfc(4, 0x0004))"
+/>
+<if selected="true">
+<element
+background = "themeable(dtb(Button, 2, 5), dfc(4, 0x0004 | 0x0400))"
+/>
+</if>
+<if mousefocused="true">
+<element
+background = "dtb(Button, 2, 2)"
+/>
+</if>
+<if selected="true" mousefocused="true">
+<element
+background = "dtb(Button, 2, 6)"
+/>
+</if>
+</if>
+<if id="atom(radiotext)">
+<element
+layoutpos = "left"
+contentalign = "middleleft"
+/>
+</if>
+<if class="radioindent">
+<element
+layoutpos = "left"
+padding = "rect(8rp,0,0,0)"
+/>
+</if>
+<if id="atom(checkbutton)">
+<element
+width= "sysmetric(71)"
+height= "sysmetric(72)"
+margin= "rect(0,6rp,8rp,6rp)"
+layoutpos= "left"
+background = "themeable(dtb(Button, 3, 1), dfc(4, 0x0000))"
+/>
+<if selected="true">
+<element
+background = "themeable(dtb(Button, 3, 5), dfc(4, 0x0000 | 0x0400))"
+/>
+</if>
+<if enabled="false">
+<element
+background = "themeable(dtb(Button, 3, 4), dfc(4, 0x0000 | 0x0100))"
+/>
+</if>
+<if selected="true" enabled="false">
+<element
+background = "themeable(dtb(Button, 3, 8), dfc(4, 0x0000 | 0x0400 | 0x0100))"
+/>
+</if>
+<if mousefocused="true">
+<element
+background = "dtb(Button, 3, 2)"
+/>
+</if>
+<if selected="true" mousefocused="true">
+<element
+background = "dtb(Button, 3, 6)"
+/>
+</if>
+</if>
+<if id="atom(checktext)">
+<element
+layoutpos= "client"
+contentalign= "wrapleft"
+/>
+<if enabled="false">
+<element
+foreground= "graytext"
+/>
+</if>
+</if>
+<if id="atom(arrow)">
+<arpautobutton
+layoutpos = "right"
+content = "graphic(201,3,-1,0,0,0,0)"
+/>
+<if selected="true">
+<arpautobutton
+content = "graphic(200,3,-1,0,0,0,0)"
+/>
+</if>
+<if mousefocused="true">
+<arpautobutton
+content = "graphic(203,3,-1,0,0,0,0)"
+/>
+</if>
+<if selected="true" mousefocused="true">
+<arpautobutton
+content = "graphic(202,3,-1,0,0,0,0)"
+/>
+</if>
+</if>
+<if class="padded">
+<arpautobutton
+padding = "rect(8rp,2rp,8rp,2rp)"
+/>
+</if>
+<if keyfocused="true">
+<button
+contentalign = "focusrect"
+/>
+<arpautobutton
+contentalign = "focusrect"
+/>
+</if>
+<arpexpando
+animation = "rectanglev | s | fast"
+/>
+<if selected="true">
+<arpexpando
+background = "buttonface"
+foreground = "buttontext"
+/>
+</if>
+<arpclipper
+alpha = "0"
+animation = "alpha | s | fast"
+/>
+<if expanded="true">
+<arpclipper
+alpha = "255"
+/>
+</if>
+<if class="customclientitem">
+<element
+padding = "rect(20rp,6rp,8rp,6rp)"
+/>
+</if>
+<gradientline
+animation = "rectanglev | s | fast"
+height = "1rp"
+/>
+<if class="intercategory">
+<gradientline
+foreground = "highlight"
+/>
+</if>
+<if class="interheader">
+<gradientline
+foreground = "buttonface"
+margin = "rect(0,1rp,0,1rp)"
+/>
+</if>
+<if class="innerheader">
+<gradientline
+foreground = "buttonface"
+/>
+<if selected="true">
+<gradientline
+foreground = "window"
+/>
+</if>
+</if>
+</style>
+<style resid="listscroller">
+<cchscrollbar
+layoutpos = "ninebottom"
+accessible = "true"
+/>
+<ccvscrollbar
+layoutpos = "nineright"
+accessible = "true"
+/>
+<viewer
+layoutpos = "nineclient"
+/>
+<if id="atom(clientscroller)">
+<scrollviewer
+borderstyle = "solid"
+borderthickness = "rect(1rp,1rp,1rp,1rp)"
+bordercolor = "buttonshadow"
+margin = "rect(0,10rp,0,0)"
+/>
+</if> 
+</style>
+</stylesheets>
+</duixml>

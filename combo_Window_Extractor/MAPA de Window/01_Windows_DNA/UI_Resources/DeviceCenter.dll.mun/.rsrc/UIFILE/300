@@ -1,0 +1,24 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()" sheet="genericlayoutstyle">
+<TemplateBackground id="atom(PreviewContainer)" height="53rp" layoutpos="bottom" layout="filllayout()">
+<TemplateBackground id="atom(PreviewShineLayer)"/>
+<PreviewBackground id="atom(BackgroundClear)" background="ARGB(0, 0, 0, 0)" layout="borderlayout()">
+<PreviewThumbnail ModuleID="PreviewThumbnailModule" MaxThumbSize="256" layoutpos="Left"/>
+<Element layoutpos="Client" layout="filllayout()">
+<PreviewMetadata ModuleID="PreviewMetadataModule" NullSelectPropertyString="prop:*System.OfflineStatus;*System.OfflineAvailability" layoutpos="Client"/>
+</Element>
+</PreviewBackground>
+<Sizer id="atom(PreviewPaneSizer)" sizingtarget="atom(PreviewContainer)" InitialSize="72" FramePersistType="3" SlidesUpAndDown="true" layoutpos="top" DownOrRightGrowsTarget="false"/>
+</TemplateBackground>
+<Element layoutpos="Top" layout="filllayout()" sheet="folderbandstyle" animation="rectanglev|s|fast">
+<TemplateBackground id="atom(BackLayer)"/>
+<TemplateBackground id="atom(FolderBandShineLayer)"/>
+<FolderBandModule ModuleID="FolderBandModule"/>
+</Element>
+<InfoBarHostModule ModuleID="InfoBarHostModule" sheet="infobarstyle" layoutpos="top" layout="filllayout()" animation="rectanglev|s|fast"/> 
+<Element id="atom(ViewHostContainer)" layoutpos="Client" sheet="genericlayoutstyle" layout="filllayout()">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+</Element>
+</duixml>

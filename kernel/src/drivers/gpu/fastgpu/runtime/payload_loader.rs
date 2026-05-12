@@ -157,25 +157,33 @@ pub fn execute_from_bytes(
             }
             OP_FALCON_DMA => {
                 // DMA transfer firmware to Falcon IMEM or DMEM
-                // Data format: [engine_base:u32] [target:u32 (0=IMEM,1=DMEM)] [firmware_bytes...]
+                // GA102 correct bit encoding from dev_falcon_v4.h:
+                //   FULL = bit 0 (read-only, queue full)
+                //   IDLE = bit 1 (read-only, engine idle)
+                //   SEC  = bits 3:2 (security mode)
+                //   IMEM = bit 4 (1=IMEM, 0=DMEM)
+                //   WRITE = bit 5 (0=to falcon, 1=from falcon)
+                //   SIZE  = bits 10:8 (0x6 = 256 bytes)
+                //   CTXDMA = bits 14:12
+                //   DMATRFCMD at offset 0x118 (not 0x11C!)
                 if (size as usize) < 8 {
                     con.println("ERROR: FALCON_DMA too small");
                     break;
                 }
                 let engine_base = u32::from_le_bytes(
                     payload_data[offset..offset+4].try_into().unwrap());
-                let target = u32::from_le_bytes(
+                let dma_cmd = u32::from_le_bytes(
                     payload_data[offset+4..offset+8].try_into().unwrap());
                 let fw_data = &payload_data[offset+8..offset+(size as usize)];
                 let fw_len = fw_data.len();
 
-                let target_name = if target == 0 { "IMEM" } else { "DMEM" };
+                let target_name = if (dma_cmd & 0x10) != 0 { "IMEM" } else { "DMEM" };
                 con.print("FLC_DMA 0x"); con.print_hex32(engine_base);
                 con.print(" "); con.print(target_name);
+                con.print(" cmd=0x"); con.print_hex32(dma_cmd);
                 con.print(" <- "); con.print_u64(fw_len as u64); con.println(" bytes");
 
-                // Allocate page-aligned DMA buffer (256-byte aligned minimum)
-                // Use a Vec with enough capacity, aligned to 4096 bytes
+                // Allocate page-aligned DMA buffer
                 let page_size = 4096usize;
                 let buf_size = (fw_len + page_size - 1) & !(page_size - 1);
                 let layout = core::alloc::Layout::from_size_align(buf_size, page_size)
@@ -186,63 +194,60 @@ pub fn execute_from_bytes(
                     break;
                 }
 
-                // Copy firmware to DMA buffer
                 unsafe {
                     core::ptr::copy_nonoverlapping(fw_data.as_ptr(), dma_ptr, fw_len);
                 }
 
-                let phys_addr = dma_ptr as u64; // Identity-mapped in UEFI
-                con.print("  -> DMA buf: 0x"); con.print_hex32((phys_addr >> 32) as u32);
+                let phys_addr = dma_ptr as u64;
+                con.print("  -> buf: 0x"); con.print_hex32((phys_addr >> 32) as u32);
                 con.print_hex32(phys_addr as u32);
                 con.print(" ("); con.print_u64(buf_size as u64); con.println(" bytes)");
 
-                // Falcon DMA register offsets (relative to engine base)
-                let dmatrfbase = engine_base + 0x110;  // Base address >> 8
-                let dmatrfmoffs = engine_base + 0x114; // Falcon mem offset
-                let dmatrfcmd = engine_base + 0x11C;   // DMA command
-
-                // Set DMA base address (physical addr >> 8)
-                mmio.write32(dmatrfbase, (phys_addr >> 8) as u32);
-
-                // Transfer in 256-byte chunks
-                let num_chunks = (fw_len + 255) / 256;
-                con.print("  -> Transferring "); con.print_u64(num_chunks as u64);
-                con.println(" chunks (256B each)...");
+                // GA102 register layout (dev_falcon_v4.h):
+                let dmatrfbase   = engine_base + 0x110; // DMATRFBASE (phys addr >> 8)
+                let dmatrfbase1  = engine_base + 0x128; // DMATRFBASE1 (high bits)
+                let dmatrfmoffs  = engine_base + 0x114; // DMATRFMOFFS (falcon dest offset)
+                let dmatrfcmd    = engine_base + 0x118; // DMATRFCMD (command, triggers DMA)
+                let dmatrffboffs = engine_base + 0x11C; // DMATRFFBOFFS (source offset)
 
                 let mut dma_ok = true;
-                let timeout_cycles: u64 = 3_700_000_000; // 1 second per chunk
+                let timeout_cycles: u64 = 3_700_000_000;
+
+                // Set DMA base address (physical_addr >> 8)
+                mmio.write32(dmatrfbase, (phys_addr >> 8) as u32);
+                mmio.write32(dmatrfbase1, ((phys_addr >> 40) & 0x1FF) as u32);
+
+                // Initial poll: ensure request queue has space before first write
+                let t0 = unsafe { core::arch::x86_64::_rdtsc() };
+                loop {
+                    let s = mmio.read32(dmatrfcmd);
+                    if (s & 0x01) == 0 { break; } // FULL bit clear
+                    if unsafe { core::arch::x86_64::_rdtsc() }.wrapping_sub(t0) > timeout_cycles {
+                        con.print("  -> INITIAL FULL TIMEOUT cmd=0x"); con.print_hex32(s); con.println("");
+                        dma_ok = false;
+                        break;
+                    }
+                    core::hint::spin_loop();
+                }
+
+                let num_chunks = (fw_len + 255) / 256;
+                con.print("  -> "); con.print_u64(num_chunks as u64);
+                con.println(" chunks...");
 
                 for chunk_idx in 0..num_chunks {
+                    if !dma_ok { break; }
                     let falcon_offset = (chunk_idx * 256) as u32;
-                    // Update base for this chunk's system memory offset
-                    let chunk_phys = phys_addr + (chunk_idx * 256) as u64;
-                    mmio.write32(dmatrfbase, (chunk_phys >> 8) as u32);
 
-                    // Set falcon memory offset
-                    mmio.write32(dmatrfmoffs, falcon_offset);
-
-                    // Issue DMA command:
-                    // Bit 1 = target (0=IMEM, 1=DMEM)
-                    // Bit 2 = size 256B
-                    // Bit 4 = FULL/IDLE
-                    let cmd = 0x00000005 | ((target & 1) << 1);
-                    // bit0=1 (write to falcon), bit2=1 (size=256)
-                    // bit1 = target memory (0=IMEM, 1=DMEM)
-                    mmio.write32(dmatrfcmd, cmd);
-
-                    // Wait for IDLE (bit 4)
+                    // Poll FULL=FALSE before each chunk (nvidia-open s_dmaTransfer_GA102)
                     let t0 = unsafe { core::arch::x86_64::_rdtsc() };
                     loop {
                         let status = mmio.read32(dmatrfcmd);
-                        if (status & 0x10) != 0 {
-                            break; // Transfer complete
-                        }
+                        if (status & 0x01) == 0 { break; } // NOT_FULL
                         let now = unsafe { core::arch::x86_64::_rdtsc() };
                         if now.wrapping_sub(t0) > timeout_cycles {
-                            con.print("  -> DMA TIMEOUT at chunk ");
+                            con.print("  -> FULL TIMEOUT chunk ");
                             con.print_u64(chunk_idx as u64);
-                            con.print(" (DMATRFCMD=0x"); con.print_hex32(status);
-                            con.println(")");
+                            con.print(" cmd=0x"); con.print_hex32(status); con.println("");
                             dma_ok = false;
                             break;
                         }
@@ -250,19 +255,41 @@ pub fn execute_from_bytes(
                     }
                     if !dma_ok { break; }
 
-                    // Progress every 32 chunks (~8KB)
-                    if chunk_idx % 32 == 0 && chunk_idx > 0 {
+                    // Write MOFFS (falcon dest), FBOFFS (source), CMD (trigger)
+                    // Exact order from nvidia-open s_dmaTransfer_GA102
+                    mmio.write32(dmatrfmoffs, falcon_offset);
+                    mmio.write32(dmatrffboffs, falcon_offset);
+                    mmio.write32(dmatrfcmd, dma_cmd);
+
+                    // Progress every 64 chunks
+                    if chunk_idx > 0 && chunk_idx % 64 == 0 {
                         con.print("  -> "); con.print_u64(chunk_idx as u64);
                         con.print("/"); con.print_u64(num_chunks as u64); con.println("");
                     }
                 }
 
+                // Poll IDLE (bit 1) after all chunks (nvidia-open requirement)
                 if dma_ok {
-                    con.print("  -> DMA complete: "); con.print_u64(fw_len as u64);
+                    let t0 = unsafe { core::arch::x86_64::_rdtsc() };
+                    loop {
+                        let status = mmio.read32(dmatrfcmd);
+                        if (status & 0x02) != 0 { break; } // IDLE = true
+                        let now = unsafe { core::arch::x86_64::_rdtsc() };
+                        if now.wrapping_sub(t0) > timeout_cycles {
+                            con.print("  -> IDLE TIMEOUT cmd=0x");
+                            con.print_hex32(status); con.println("");
+                            dma_ok = false;
+                            break;
+                        }
+                        core::hint::spin_loop();
+                    }
+                }
+
+                if dma_ok {
+                    con.print("  -> DMA OK: "); con.print_u64(fw_len as u64);
                     con.print(" bytes -> "); con.print(target_name); con.println("");
                 }
 
-                // Free DMA buffer
                 unsafe { alloc::alloc::dealloc(dma_ptr, layout); }
             }
             _ => {

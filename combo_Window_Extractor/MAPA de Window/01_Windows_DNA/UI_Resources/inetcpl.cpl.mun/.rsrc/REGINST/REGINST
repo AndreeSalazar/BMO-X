@@ -1,0 +1,84 @@
+[Version]
+Signature="$CHICAGO$"
+[RegDll.HKCUHard]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Harden.RegCU
+[RegDll.HKCUSoft]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Soften.RegCU
+AddReg=Soften.RegCU.CertificateRevocation
+[RegDll.HKCUSoftWinXP]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Soften.RegCU
+AddReg=Soften.RegCUWinXP.CertificateRevocation
+[RegDll.HKCUSoft.NoClobber]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Soften.RegCU.NoClobber
+AddReg=Soften.RegCU.CertificateRevocation
+[RegDll.HKCUSoftWinXP.NoClobber]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Soften.RegCU.NoClobber
+AddReg=Soften.RegCUWinXP.CertificateRevocation.NoClobber
+[RegDll.HKLMHard]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Harden.RegLM
+[RegDll.HKLMSoft]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Soften.RegLM
+AddReg=Soften.RegLM.SSLREV
+[RegDll.HKLMSoftWinXP]
+RequiredEngine=SETUPAPI, %ERR_NOSETUPAPI%
+AddReg=Soften.RegLM
+AddReg=Soften.RegLMWinXP.SSLREV
+[Harden.RegLM]
+HKLM,%SMIEAO%\BROWSE\USEBHO,"%D%",,"no"
+HKLM,%SMIEAO%\MULTIMEDIA\SOUNDS,"%D%",,"no"
+HKLM,%SMIEAO%\MULTIMEDIA\ANIMAT,"%D%",,"no"
+HKLM,%SMIEAO%\CRYPTO\SSLREV,"%D%",65537,0x00000001
+HKLM,%SMIEAO%\CRYPTO\CACHE_PAGES,"%D%",65537,0x00000001
+HKLM,%SMIEAO%\CRYPTO\CACHE_FLUSH,"%D%",65537,0x00000000
+HKLM,%SMIEAO%\CRYPTO\SECURE,"%D%",65537,0x00000001
+[Soften.RegLM]
+HKLM,%SMIEAO%\BROWSE\USEBHO,"%D%",,"yes"
+HKLM,%SMIEAO%\MULTIMEDIA\SOUNDS,"%D%",,"yes"
+HKLM,%SMIEAO%\MULTIMEDIA\ANIMAT,"%D%",,"yes"
+HKLM,%SMIEAO%\CRYPTO\CACHE_PAGES,"%D%",65537,0
+HKLM,%SMIEAO%\CRYPTO\CACHE_FLUSH,"%D%",65537,0x00000001
+HKLM,%SMIEAO%\CRYPTO\SECURE,"%D%",65537,0x00000000
+[Soften.RegLM.SSLREV]
+HKLM,%SMIEAO%\CRYPTO\SSLREV,"%D%",65537,1
+[Soften.RegLMWinXP.SSLREV]
+HKLM,%SMIEAO%\CRYPTO\SSLREV,"%D%",65537,0
+[Harden.RegCU]
+HKCU,%SMIEM%,"Enable Browser Extensions",,no
+HKCU,%SMIEM%,"Play_Background_Sounds",,no
+HKCU,%SMIEM%,"Play_Animations",,no
+HKCU,%SMWCVIS%,"CertificateRevocation",0x10001,1
+HKCU,%SMWCVIS%,"DisableCachingOfSSLPages",0x10001,1
+HKCU,%SMWCVIS%\Cache,"Persistent",0x10001,0
+HKCU,%SMWCVIS%,"WarnonZoneCrossing",0x10001,1
+HKCU,"Software\Microsoft\Internet Explorer\Main","RunOnceComplete",0x10001,0x1  ; Dont show runonce on server skus
+HKCU,"Software\Microsoft\Internet Explorer\Main","RunOnceHasShown",0x10001,0x1
+[Soften.RegCU]
+HKCU,%SMIEM%,"Enable Browser Extensions",,yes
+HKCU,%SMIEM%,"Play_Background_Sounds",,yes
+HKCU,%SMIEM%,"Play_Animations",,yes
+HKCU,%SMWCVIS%,"DisableCachingOfSSLPages",0x10001,0
+HKCU,%SMWCVIS%\CACHE,"Persistent",0x10001,1
+HKCU,%SMWCVIS%,"WarnonZoneCrossing",0x10001,0
+[Soften.RegCU.NoClobber]
+HKCU,%SMIEM%,"Enable Browser Extensions",0x2,yes
+HKCU,%SMIEM%,"Play_Background_Sounds",0x2,yes
+HKCU,%SMIEM%,"Play_Animations",0x2,yes
+HKCU,%SMWCVIS%,"DisableCachingOfSSLPages",0x10003,0
+HKCU,%SMWCVIS%\CACHE,"Persistent",0x10003,1
+HKCU,%SMWCVIS%,"WarnonZoneCrossing",0x10003,0
+[Soften.RegCU.CertificateRevocation]
+HKCU,%SMWCVIS%,"CertificateRevocation",0x10001,1
+[Soften.RegCUWinXP.CertificateRevocation]
+HKCU,%SMWCVIS%,"CertificateRevocation",0x10001,0
+[Strings]
+SMWCVIS="SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings"
+SMIEAO="SOFTWARE\Microsoft\Internet Explorer\AdvancedOptions"
+SMIEM="SOFTWARE\Microsoft\Internet Explorer\Main"
+D="DefaultValue"

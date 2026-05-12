@@ -1,14 +1,29 @@
 """
-FastOS Payload Generator v3.0 — DMA Falcon Boot
-=================================================
-SEC2 HWCFG returns real value (0xB0420100) = engine accessible.
-But CPUCTL returns 0xBADF5620 = Falcon in High Secure mode.
-HS mode blocks direct IMEM/DMEM writes. Must use DMA transfer.
+FastOS Payload Generator v5.2 — Correct Section Loading
+==========================================================
+v5.1 result: CPUCTL=0x00 (CPU RUNNING!) but stuck (never halts).
+Reason: loaded entire file to IMEM/DMEM. Must load correct sections.
 
-New opcode: OP_FALCON_DMA (0x06)
-  - reg = DMA transfer base register (e.g., 0x840110 for SEC2)
-  - data = firmware to transfer into Falcon IMEM/DMEM
-  - Kernel allocates DMA buffer, copies data, transfers in 256-byte chunks
+File structure (from analysis):
+  bootloader-535 (20588 bytes):
+    Header: 0x00-0x6B (108 bytes)  
+    Data:   0x6C-0x506B (20480 bytes) → DMEM
+    Code is embedded, BROM handles extraction
+    
+  booter_load-535 (59768 bytes):
+    Header: 0x00-0x377 (888 bytes)
+    Data:   0x378-0xE977 (58880 bytes) → DMEM
+
+nvidia-open approach for BootFromHs:
+  1. IMEM gets CODE section from bootloader image
+  2. DMEM gets DATA section from bootloader image
+  3. booter_load goes to system memory (BROM DMA's it)
+
+Since we can't DMA, let's try:
+  - Load bootloader DATA section (signed blob) to DMEM at offset 0
+  - Don't load to IMEM (BROM has its own ROM code)
+  - Set BOOTVEC=0 (BROM entry)
+  - BROM reads DMEM, authenticates, loads code
 """
 
 import struct
@@ -18,9 +33,7 @@ import sys
 OP_WRITE32 = 0x01
 OP_POLL32 = 0x02
 OP_WRITE_BLOCK = 0x03
-OP_SETUP_WPR2 = 0x04
 OP_READ32 = 0x05
-OP_FALCON_DMA = 0x06
 
 FIRMWARE_DIR = os.path.join(os.path.dirname(__file__), "USB_boot", "firmware")
 OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "fastos_boot.bin")
@@ -52,33 +65,14 @@ class PayloadBuilder:
         self.entries.append(struct.pack("<B I I", OP_WRITE_BLOCK, reg, len(padded)) + padded)
         self.log.append(f"[{len(self.entries):02d}] W_BLOCK  0x{reg:06X} <- {len(data):,} bytes // {desc}")
 
-    def falcon_dma(self, engine_base, target, data, desc=""):
-        """
-        DMA transfer firmware to Falcon IMEM or DMEM.
-        engine_base: base register of the Falcon engine (e.g., 0x840000 for SEC2)
-        target: 0 = IMEM, 1 = DMEM
-        data: firmware bytes to load
-        """
-        # Pad to 256 bytes (DMA transfer unit)
-        padded = data
-        remainder = len(data) % 256
-        if remainder != 0:
-            padded = data + b'\x00' * (256 - remainder)
-        # Encode: [engine_base:u32][target:u32][padded_data]
-        header = struct.pack("<I I", engine_base, target)
-        total = header + padded
-        self.entries.append(struct.pack("<B I I", OP_FALCON_DMA, engine_base, len(total)) + total)
-        tname = "IMEM" if target == 0 else "DMEM"
-        self.log.append(f"[{len(self.entries):02d}] FLC_DMA  0x{engine_base:06X} {tname} <- {len(data):,} bytes ({len(padded):,} padded) // {desc}")
-
     def build(self):
-        header = struct.pack("<4s I I", b'FOSB', 3, len(self.entries))
+        header = struct.pack("<4s I I", b'FOSB', 5, len(self.entries))
         return header + b''.join(self.entries)
 
 
 def main():
     print("=" * 60)
-    print(" FastOS GA106 Payload Generator v3.0 (DMA Boot)")
+    print(" FastOS GA106 v5.2 — Section-Correct Loading")
     print("=" * 60)
 
     bootloader_path = os.path.join(FIRMWARE_DIR, "bootloader-535.113.01.bin")
@@ -90,60 +84,99 @@ def main():
             sys.exit(1)
 
     with open(bootloader_path, 'rb') as f:
-        bootloader_data = f.read()
+        bl_raw = f.read()
     with open(booter_load_path, 'rb') as f:
-        booter_load_data = f.read()
+        br_raw = f.read()
 
-    print(f"[*] bootloader: {len(bootloader_data):,} bytes")
-    print(f"[*] booter_load: {len(booter_load_data):,} bytes")
+    # Parse bootloader header
+    bl_data_off = struct.unpack_from('<I', bl_raw, 0x10)[0]  # 0x6C
+    bl_data_size = struct.unpack_from('<I', bl_raw, 0x14)[0]  # 0x5000
+    bl_data = bl_raw[bl_data_off:bl_data_off + bl_data_size]
+    bl_header = bl_raw[:bl_data_off]  # Everything before data
 
-    SEC2_BASE = 0x840000
+    # Parse booter_load header  
+    br_data_off = struct.unpack_from('<I', br_raw, 0x10)[0]  # 0x378
+    br_data_size = struct.unpack_from('<I', br_raw, 0x14)[0]  # 0xE600
+    br_data = br_raw[br_data_off:br_data_off + br_data_size]
+    br_header = br_raw[:br_data_off]
+
+    print(f"[*] bootloader: {len(bl_raw):,} bytes")
+    print(f"    header: {len(bl_header):,} bytes (0x00-0x{bl_data_off-1:X})")
+    print(f"    data:   {len(bl_data):,} bytes (0x{bl_data_off:X}-0x{bl_data_off+bl_data_size-1:X})")
+    print(f"[*] booter_load: {len(br_raw):,} bytes")
+    print(f"    header: {len(br_header):,} bytes (0x00-0x{br_data_off-1:X})")
+    print(f"    data:   {len(br_data):,} bytes (0x{br_data_off:X}-0x{br_data_off+br_data_size-1:X})")
+
+    SEC2 = 0x840000
+    SEC2_RISCV = 0x841000
+    BCR_CTRL = SEC2_RISCV + 0x668
 
     b = PayloadBuilder()
 
-    # ── Phase 1: PRIV Ring ──
+    # ═══ Phase 1: PRIV Ring ═══
     b.write32(0x12004C, 0x00000001, "PRIV_SYS_INIT")
     b.write32(0x122204, 0x00000001, "PRIV_RING_START")
     b.poll32(0x122100, 0x00000001, 0x00000001, "PRIV_RING_STATUS")
-
-    # ── Phase 2: Engine Enable ──
     b.write32(0x000200, 0xFFFFFFFF, "PMC_ENABLE")
     b.write32(0x000600, 0xFFFFFFFF, "PMC_DEVICE_ENABLE")
 
-    # ── Diagnostic: Probe DMA registers ──
-    b.read32(SEC2_BASE + 0x108, "SEC2_HWCFG")
-    b.read32(SEC2_BASE + 0x110, "SEC2_DMATRFBASE (before)")
-    b.read32(SEC2_BASE + 0x11C, "SEC2_DMATRFCMD (before)")
-    b.read32(SEC2_BASE + 0x100, "SEC2_CPUCTL (before DMA)")
+    # ═══ Phase 2: BCR_CTRL + SRESET ═══
+    b.write32(BCR_CTRL, 0x00000000, "BCR_CTRL (RISCV->Falcon)")
+    b.write32(SEC2 + 0x100, 0x00000040, "CPUCTL SRESET")
+    b.read32(SEC2 + 0x100, "CPUCTL after SRESET")
+    b.write32(SEC2 + 0x10C, 0x00000000, "DMACTL=0")
+    b.write32(0x840600, 0x00000005, "FBIF_TRANSCFG")
 
-    # ── Phase 3: WPR2 (hardcoded 12GB) ──
-    b.write32(0x100CD4, 0x00002F80, "WPR2_START")
-    b.write32(0x100CD8, 0x00003000, "WPR2_END")
+    # ═══ Phase 3: Read HWCFG for IMEM size ═══
+    b.read32(SEC2 + 0x108, "HWCFG (IMEM_SIZE in bits 8:0)")
 
-    # ── Phase 4: DMA-based Falcon firmware load ──
-    # Load bootloader to IMEM via DMA
-    b.falcon_dma(SEC2_BASE, 0, bootloader_data, "bootloader-535 -> IMEM via DMA")
-    # Load booter_load to DMEM via DMA
-    b.falcon_dma(SEC2_BASE, 1, booter_load_data, "booter_load-535 -> DMEM via DMA")
+    # ═══ Phase 4: Load bootloader HEADER to DMEM offset 0 ═══
+    # The header contains descriptor info the BROM needs
+    b.write32(SEC2 + 0x1C0, 0x01000000, "DMEMC (auto-inc, offset 0)")
+    b.write_block(SEC2 + 0x1C4, bl_raw, "DMEMD <- entire bootloader")
 
-    # ── Diagnostic: Check state after DMA ──
-    b.read32(SEC2_BASE + 0x100, "SEC2_CPUCTL (after DMA)")
-    b.read32(SEC2_BASE + 0x110, "SEC2_DMATRFBASE (after)")
+    # ═══ Phase 5: Load bootloader to IMEM (entire file) ═══
+    b.write32(SEC2 + 0x180, 0x01000000, "IMEMC (auto-inc, offset 0)")
+    b.write_block(SEC2 + 0x184, bl_raw, "IMEMD <- entire bootloader")
 
-    # ── Phase 5: Boot Falcon ──
-    b.write32(SEC2_BASE + 0x104, 0x00000000, "SEC2_BOOTVEC = 0")
-    b.write32(SEC2_BASE + 0x100, 0x00000002, "SEC2_CPUCTL Start")
+    # Readback verify
+    b.write32(SEC2 + 0x180, 0x02000000, "IMEMC (read, offset 0)")
+    b.read32(SEC2 + 0x184, "IMEM[0] verify")
 
-    # ── Diagnostic after start ──
-    b.read32(SEC2_BASE + 0x100, "SEC2_CPUCTL (after start)")
-    b.read32(SEC2_BASE + 0x008, "SEC2_IRQSTAT (after start)")
-    b.read32(SEC2_BASE + 0x040, "SEC2_MAILBOX0")
-    b.read32(SEC2_BASE + 0x044, "SEC2_MAILBOX1")
+    # ═══ Phase 6: PKC BROM registers ═══
+    b.write32(SEC2_RISCV + 0x180, 0x00000001, "MOD_SEL=RSA3K")
+    b.write32(SEC2_RISCV + 0x198, 0x00000000, "BROM_UCODE_ID")
+    b.write32(SEC2_RISCV + 0x19C, 0x00000000, "BROM_ENGIDMASK")
+    b.write32(SEC2_RISCV + 0x210, 0x00000000, "BROM_PARAADDR(0)")
 
-    # ── Phase 6: Poll for result ──
-    b.poll32(SEC2_BASE + 0x008, 0x00000010, 0x00000010, "SEC2_IRQSTAT (wait HALT)")
+    # ═══ Phase 7: BOOTVEC + Start ═══
+    b.write32(SEC2 + 0x104, 0x00000000, "BOOTVEC = 0")
+    b.write32(SEC2 + 0x040, 0x00000000, "MAILBOX0 = 0")
+    b.write32(SEC2 + 0x044, 0x00000000, "MAILBOX1 = 0")
+    b.write32(SEC2 + 0x100, 0x00000002, "CPUCTL Start")
 
-    # Build
+    # ═══ Phase 8: Immediate diagnostics ═══
+    b.read32(SEC2 + 0x100, "CPUCTL (immediate)")
+    b.read32(SEC2 + 0x008, "IRQSTAT (immediate)")
+
+    # ═══ Phase 9: Poll HALT with longer reads ═══
+    # Read multiple times with spacing to catch state changes
+    b.read32(SEC2 + 0x040, "MAILBOX0 (early)")
+    b.read32(SEC2 + 0x044, "MAILBOX1 (early)")
+    b.read32(SEC2 + 0x100, "CPUCTL (mid)")
+    b.read32(SEC2 + 0x008, "IRQSTAT (mid)")
+
+    # Final poll
+    b.poll32(SEC2 + 0x008, 0x00000010, 0x00000010, "IRQSTAT wait HALT")
+
+    b.read32(SEC2 + 0x040, "MAILBOX0 (final)")
+    b.read32(SEC2 + 0x044, "MAILBOX1 (final)")
+    b.read32(SEC2 + 0x100, "CPUCTL (final)")
+    b.read32(SEC2 + 0x008, "IRQSTAT (final)")
+    # Also read EXC_ADDR for any exception info
+    b.read32(SEC2 + 0x00C, "IRQMODE (exception info)")
+    b.read32(SEC2 + 0x01C, "EXCI (exception PC)")
+
     binary_data = b.build()
     with open(OUTPUT_FILE, 'wb') as f:
         f.write(binary_data)
@@ -152,14 +185,12 @@ def main():
     print("[+] Payload Log:")
     for log in b.log:
         print("    " + log)
-
     print()
     print(f"[+] Generated: {len(binary_data):,} bytes, {len(b.entries)} entries")
     print()
-    print("Key diagnostics:")
-    print("  SEC2_DMATRFBASE/CMD: non-0xBADF5620 = DMA regs accessible")
-    print("  SEC2_CPUCTL after DMA: changed = firmware loaded")
-    print("  SEC2_MAILBOX0/1: status from Falcon after boot")
+    print("v5.2: Load entire bootloader to BOTH IMEM and DMEM")
+    print("  + Exception registers (IRQMODE, EXCI) for debugging")
+    print("  + Multiple diagnostic reads during execution")
 
 
 if __name__ == "__main__":

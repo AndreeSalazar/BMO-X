@@ -1,0 +1,25 @@
+HKCR
+{
+	ARClient.AppRep.1 = s 'AppRep Class'
+	{
+		CLSID = s '{3BC4EE9F-1FC1-44DB-81FA-AD94DEC7AF30}'
+	}
+	ARClient.AppRep = s 'AppRep Class'
+	{
+		CLSID = s '{3BC4EE9F-1FC1-44DB-81FA-AD94DEC7AF30}'
+		CurVer = s 'ARClient.AppRep.1'
+	}
+	NoRemove CLSID
+	{
+		ForceRemove {3BC4EE9F-1FC1-44DB-81FA-AD94DEC7AF30} = s 'AppRep Class'
+		{
+			ProgID = s 'ARClient.AppRep.1'
+			VersionIndependentProgID = s 'ARClient.AppRep'
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Free'
+			}
+			'TypeLib' = s '{D1294C15-A19E-46B8-B4CD-5B3194B751D3}'
+		}
+	}
+}

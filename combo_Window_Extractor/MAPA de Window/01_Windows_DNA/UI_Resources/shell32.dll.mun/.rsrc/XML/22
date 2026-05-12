@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:cf="http://schemas.microsoft.com/rss/2005"
+  xmlns:win="http://schemas.microsoft.com/rss/2005/windows"
+  >
+  <channel>
+    <cf:treatAs>list</cf:treatAs>
+    <title>New List</title>
+  </channel>
+</rss>

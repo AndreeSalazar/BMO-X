@@ -1,0 +1,79 @@
+<duixml>
+<stylesheets>
+</stylesheets>
+<element resid="bulletpoint" layout="flowlayout(0,0,0,0)">
+<RichText id="atom(bulletsymbol)" class="content_text" content="resstr(3258)" accessible="false"/>
+<RichText id="atom(bullettext)" margin="rect(5rp,0,0,0)" class="content_text" accessible="false"/>
+</element>
+<element resid="TaskFlow_Edit" width="640rp" margin="rect(0, 0, 0, 28rp)" layout="flowlayout(0, 0, 0, 0)" active="pointer">
+<RichText id="atom(idTFEditLabel)" class="content_text" padding="rect(0, 6rp, 0, 0)" shortcut="auto" width="146rp"/>
+<TouchEdit2 id="atom(idTFEditBox)" class="modernedit" behaviors="Windows.UI.Popups::TouchEditContextMenu()"/>
+<element id="atom(idTFEditStatus)" width="223rp" visible="false" layout="flowlayout()" active="pointer">
+<element id="atom(idStatusRequired)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusRequiredText)" class="error_text" padding="rect(0, 6rp, 0, 0)" width="200rp" content="resstr(3202)"/>
+</element>
+<element id="atom(idStatusError)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusErrorText)" class="error_text" padding="rect(0, 6rp, 0, 0)"/>
+</element>
+</element>
+</element>
+<element resid="TaskFlowPassword_Edit" width="640rp" margin="rect(0, 0, 0, 28rp)" layout="flowlayout(0, 0, 0, 0)" active="pointer">
+<RichText id="atom(idTFEditLabel)" class="content_text" padding="rect(0, 6rp, 0, 0)" shortcut="auto" width="146rp"/>
+<TouchEdit2 id="atom(idTFEditBox)" class="modernedit" behaviors="Windows.UI.Popups::TouchEditContextMenu()" passwordcharacter="9679"/>
+<element id="atom(idTFEditStatus)" width="223rp" visible="false" layout="flowlayout()" active="pointer">
+<element id="atom(idStatusRequired)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusRequiredText)" class="error_text" padding="rect(0, 6rp, 0, 0)" width="200rp" content="resstr(3202)"/>
+</element>
+<element id="atom(idStatusError)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusErrorText)" class="error_text" padding="rect(0, 6rp, 0, 0)"/>
+</element>
+</element>
+</element>
+<stylesheets>
+<style resid="taskflow_style" base="ressheet(ImmersiveStyles, library(dui70.dll), Dark)">
+<RichText constrainlayout="narrow"/>
+<if class="header_text">
+<RichText font="resstr(3271)" contentalign="middleleft|endellipsis" accessible="true" accrole="statictext"/>
+</if>
+<if class="content_text">
+<RichText font="resstr(3201)" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+</if>
+<if class="error_text">
+<RichText font="resstr(3201)" foreground="ImmersiveSaturatedInlineErrorText" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+</if>
+<if class="policy_text">
+<RichText font="resstr(3201)" foreground="ImmersiveSaturatedInlineErrorText" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+</if>
+<if class="username_text">
+<RichText font="resstr(3200)" contentalign="topleft | endellipsis" accessible="true" accrole="statictext"/>
+</if>
+<if class="modernlink">
+<TouchHyperlink font="resstr(3201)" cursor="hand" contentalign="middleleft|endellipsis" accessible="true" accrole="link" shortcut="auto"/>
+<if keyfocused="true"> 
+<TouchHyperlink contentalign="middleleft|endellipsis|focusrect"/>
+</if>
+<if enabled="false">
+<TouchHyperlink cursor="arrow" accrole="statictext"/>
+</if>
+</if>
+<if class="modernedit">
+<TouchEdit2 font="resstr(3201)" contentalign="middleleft" width="261rp" margin="rect(0,3rp,10rp,0)" accessible="true"/>
+</if>
+<if class="pagecolumn">
+<element margin="rect(30rp,0,0,0)"/>
+</if>
+<if class="page_metadata">
+<element layoutpos="none"/>
+</if>
+</style>
+</stylesheets>
+<element resid="taskflowmain" id="atom(taskflowroot)" layout="filllayout()" sheet="taskflow_style" active="pointer">
+<element layoutpos="client" id="atom(middlecolumn)" class="taskflowframe" layout="shellborderlayout()" height="534rp" active="pointer">
+<touchscrollviewer layoutpos="client" id="atom(contentscrollviewer)" xscrollable="false" yscrollable="true" ybarvisibility="always" active="mouse|pointer" accessible="true" accrole="pane">
+<element layout="shellborderlayout()" active="pointer">
+<element layoutpos="client" layout="filllayout()" id="atom(panes)" active="pointer"/>
+</element>
+</touchscrollviewer>
+</element>
+</element>
+</duixml>

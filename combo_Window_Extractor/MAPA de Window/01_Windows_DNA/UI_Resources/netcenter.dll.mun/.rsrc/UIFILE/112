@@ -1,0 +1,151 @@
+<duixml>
+<stylesheets>
+<style resid="cp_style">
+<Button accessible="true" contentalign="wrapleft"/>
+<Element overhang="false" background="argb(0,0,0,0)"/>
+<NavigateButton overhang="false" background="argb(0,0,0,0)"/>
+<CCPushButton transparent="true" accessible="true" minsize="size(76rp,23rp)" font="gtf(CONTROLPANELSTYLE,14,0)" margin="rect(6rp,0rp,0rp,0rp)"/>
+<CCCheckBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<ComboBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,14,0)"/>
+<CCRadioButton transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<CCSysLink transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0), window)"/>
+<Edit transparent="true" themedborder="true" width="120rp" accessible="true" accrole="text" height="20rp" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)"/>
+<if class="cp_topbox">
+<Element accessible="true" accrole="client" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_hub_frame">
+<Element padding="rect(13rp,1rp,1rp,10rp)"/>
+</if>
+<if class="cp_spoke_frame">
+<Element padding="rect(0rp,19rp,0rp,10rp)"/>
+</if>
+<if class="cp_help_glyph">
+<Button height="18rp" width="18rp" content="icon(99,sysmetric(49),sysmetric(50),library(imageres.dll))" padding="rect(1rp,1rp,1rp,1rp)" cursor="hand" accRole="link" accdefaction="click" accState="0x00100000" tooltip="true"/>
+<if keyfocused="true">
+<Button contentalign="focusrect"/>
+</if>
+</if>
+<if class="cp_content_pane">
+<Element width="600rp" padding="rect(10rp,0rp,10rp,0rp)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_content_instruction">
+<Element contentalign="wrapleft" foreground="gtc(CONTROLPANELSTYLE,5,0,3803)" font="gtf(CONTROLPANELSTYLE, 5, 0)" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_v_spacer">
+<Element height="7rp"/>
+</if>
+<if class="cp_content_text">
+<Element font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<PText font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_title_text">
+<Element font="gtf(CONTROLPANELSTYLE, 19, 0)" foreground="gtc(CONTROLPANELSTYLE,19,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_help_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+</if>
+</if>
+<if class="cp_content_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+</if>
+</if>
+<if class="cp_content_divider_header">
+<Element background="themeable(dtb(CONTROLPANEL,2,0),window)" foreground="gtc(CONTROLPANELSTYLE,9,0,3803)" font="gtf(CONTROLPANELSTYLE, 9, 0)" padding="rect(0rp,0rp,2rp,0rp)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_divider_line">
+<Element height="1rp" width="565rp" background="themeable(dtb(CONTROLPANEL,17,0),buttonshadow)"/>
+</if>
+<if class="cp_content_banner_box">
+<Element padding="rect(7rp,7rp,7rp,7rp)" background="themeable(dtb(CONTROLPANEL,18,0),window)" borderthickness="rect(1rp,1rp,1rp,1rp)" bordercolor="gtc(CONTROLPANELSTYLE,17,0,3821)"/>
+</if>
+<if class="cp_command_sink">
+<Element layoutpos="bottom" background="themeable(dtb(CONTROLPANEL,12,0),window)"/>
+</if>
+<if class="cp_command_float">
+<Element layoutpos="top" background="themeable(dtb(CONTROLPANEL,13,0),window)"/>
+</if>
+<if class="cp_command_button_box">
+<Element padding="rect(0rp,10rp,10rp,10rp)" width="600rp"/> 
+</if>
+</style>
+</stylesheets>
+<element resid="main" class="container" layoutpos="top" layout="gridlayout(1,2)" padding="rect(20rp,0rp,0rp,19rp)">
+<element layout="borderlayout()">
+<element layoutpos="right" width="10rp"/>
+<element layoutpos="client" layout="verticalflowlayout(0,0,0,2)" margin="rect(10rp,0rp,0rp,0rp)">
+<element class="profname2" id="atom(profilename)" margin="rect(0rp,3rp,0rp,0rp)" tooltip="true" active="mouse" accname="resstr(1112)"/>
+<element id="atom(networkcategoryNonDomain)" content="resstr(1113)" layoutpos="none" accessible="true" accrole="statictext" contentalign="wrapleft" margin="rect(0rp,3rp,0rp,0rp)" accname="resstr(1114)"/>
+<element id="atom(networkcategoryDomain)" content="resstr(1115)" layoutpos="none" accessible="true" accrole="statictext" contentalign="wrapleft" margin="rect(0rp,3rp,0rp,0rp)" accname="resstr(1116)"/>
+<element id="atom(networkcategoryUnidentifiedPublic)" content="resstr(1117)" layoutpos="none" accessible="true" accrole="statictext" contentalign="wrapleft" margin="rect(0rp,3rp,0rp,0rp)" accname="resstr(1118)"/>
+</element>
+</element>
+<element layout="borderlayout()">
+<element layoutpos="left" layout="verticalflowlayout(0,2,2,2)">
+<macro expand="cplVerticalDividerLine"/>
+</element>
+<element layoutpos="client" layout="verticalflowlayout(0,0,0,2)" margin="rect(10rp,0rp,0rp,0rp)">
+<element layout="rowlayout(2)" margin="rect(0rp,3rp,0rp,0rp)">
+<element content="resstr(1119)" padding="rect(0rp,0rp,6rp,0rp)"/>
+<element layout="rowlayout(3,0,2,2)">
+<element id="atom(optionalIcon)" class="image16by16"/>
+<element id="atom(accessTypeValue)" contentalign="wrapleft" accessible="true" accrole="statictext" accname="resstr(1120)"/>
+</element>
+</element>
+<element id="atom(HomeGroupRow)" layoutpos="none" layout="rowlayout(2)" margin="rect(0rp,3rp,0rp,0rp)">
+<element content="resstr(1121)" padding="rect(0rp,0rp,6rp,0rp)"/>
+<element layout="rowlayout(3,0,2,2)">
+<element id="atom(optionalIcon)" class="image16by16"/>
+<NavigateButton sheet="cp_style" layout="borderlayout()" navigationtargetroot="Microsoft.HomeGroup">
+<button id="atom(HomeGroupStatus)" sheet="cp_style" class="cp_content_link" accname="HomeGroup status"/>
+</NavigateButton>
+</element>
+</element>
+<element id="atom(ConnectionsContainer)" layout="rowlayout(2)" margin="rect(0rp,3rp,0rp,0rp)">
+<element content="resstr(1122)" accessible="true" accrole="statictext" padding="rect(0rp,0rp,6rp,0rp)"/>
+<element class="container" id="atom(connectnames)" layout="borderlayout()">
+<element id="atom(connlist)" layout="verticalflowlayout(0)" layoutpos="top"/>
+</element>
+</element>
+</element>
+</element>
+</element>
+<element resid="cplVerticalDividerLine" sheet="cp_style" layout="filllayout()">
+<element layout="borderlayout()">
+<element height="64rp" width="1rp" background="themeable(dtb(CONTROLPANEL,17,0),buttonshadow)"/>
+</element>
+</element>
+<stylesheets>
+<style resid="netprofile">
+<if class="navbutton">
+<button contentalign="middlecenter" font="gtf(CONTROLPANELSTYLE,4,0)" foreground="gtc(CONTROLPANELSTYLE, 4, 0, 3803)" accessible="true" accrole="graphic" cursor="hand"/>
+<if keyfocused="true">
+<button contentalign="middlecenter|focusrect"/>
+</if>
+</if>
+</style>
+</stylesheets>
+</duixml>

@@ -1,0 +1,46 @@
+<duixml>
+<element resid="xwtpdui.main" ID="atom(xwtpdui.dialogroot)" sheet="ModernStyle" Layout="borderlayout()">
+<element id="atom(xwtpdui.content)" class="NormalText" layout="filllayout()" layoutPos="client" active="pointer">
+<browser id="atom(xwtpdui.contentarea)" layout="filllayout()" active="pointer">
+<pages id="atom(Panes)" layout="filllayout()" layoutPos="client" active="pointer"/>
+</browser>
+</element>
+<element id="atom(xwtpdui.commandarea)" class="NormalText" layout="borderlayout()" layoutPos="bottom" padding="rect(40rp,0rp,40rp,0rp)" active="pointer">
+<element id="atom(xwtpdui.commandareapadding)" layout="borderlayout()" layoutPos="top" active="pointer">
+<element layout="flowlayout()" padding="rect(0rp, 29rp, 0rp, 12rp)" layoutPos="right" active="pointer">
+<touchbutton id="atom(xwtpdui.backbutton)" margin="rect(20rp, 0rp, 0rp, 15rp)" contentalign="middlecenter|endellipsis" shortcut="auto" active="inactive" accrole="pushbutton" accessible="true"/>
+<touchbutton id="atom(xwtpdui.nextbutton)" class="default" margin="rect(20rp, 0rp, 0rp, 15rp)" contentalign="middlecenter|endellipsis" shortcut="auto" active="keyboard|mouse|pointer" accrole="pushbutton" accessible="true"/>
+<touchbutton id="atom(xwtpdui.finishbutton)" margin="rect(20rp, 0rp, 0rp, 15rp)" contentalign="middlecenter|endellipsis" shortcut="auto" active="keyboard|mouse|pointer" accrole="pushbutton" accessible="true"/>
+<touchbutton id="atom(xwtpdui.cancelbutton)" margin="rect(20rp, 0rp, 0rp, 15rp)" contentalign="middlecenter|endellipsis" shortcut="none" active="keyboard|mouse|pointer" accrole="pushbutton" accessible="true"/>
+</element>
+</element>
+</element>
+</element>
+<stylesheets>
+<style resid="ModernStyle" base="ressheet(ImmersiveStyles, library(dui70.dll), Dark)">
+<element background="ImmersiveSaturatedBackground" foreground="ImmersiveSaturatedPrimaryText"/>
+<RichText foreground="ImmersiveSaturatedPrimaryText"/>
+<touchbutton margin="rect(10rp, 0rp, 10rp, 0rp)" constrainlayout="narrow"/>
+<if id="atom(xwtpdui.dialogroot)">
+<element background="ImmersiveSaturatedBackground"/>
+</if>
+<if id="atom(xwtpdui.header)">
+<if selected="true">
+<element padding="rect(10rp, 10rp, 10rp, 10rp)"/>
+</if>
+</if>
+<if id="atom(xwtpdui.content)">
+<if selected="true">
+<element padding="rect(0rp, 0rp, 0rp, 0rp)"/>
+</if>
+</if>
+<if selected="true">
+<TouchButton contentalign="focusrect"/>
+</if>
+<if class="NormalText">
+<element font="QUOTEDUI(resstr(IDS_FONT_NORMAL, library(RESOURCE_DLL)))"/>
+<RichText font="QUOTEDUI(resstr(IDS_FONT_NORMAL, library(RESOURCE_DLL)))"/>
+</if>
+</style>
+</stylesheets>
+</duixml>

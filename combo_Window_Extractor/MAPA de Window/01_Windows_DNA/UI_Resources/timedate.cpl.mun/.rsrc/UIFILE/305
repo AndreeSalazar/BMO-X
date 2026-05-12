@@ -1,0 +1,116 @@
+<duixml>
+<element resid="main" layout="Borderlayout()"  sheet="FlyoutSheet" visible="true" Accessible='true' AccName="resstr(320)" AccRole='pane'>
+<element Layout='VerticalFlowLayout(0,2)' layoutpos='top' padding="rect(0,14rp,0,10rp)">
+<button class="LinkClass" content="Today" id="atom(TodayStr)" tooltip="true"
+AccDesc="resstr(321)"
+Accessible='true'
+AccDefAction="resstr(330)"
+AccRole='link'
+/>
+</element>
+<element layout="flowlayout()" layoutpos="top" padding="rect(14rp,0,14rp,10rp)">
+<element layout="borderlayout()">
+<CCMonthCal active="keyboard|mouse" enabled="true" id="atom(MonthCalendar)" layoutpos="top" padding="rect(0,0,0,10rp)"  
+AccName="resstr(303)"
+Accessible='true'
+/>
+</element>
+<element layout="verticalflowlayout()" id="atom(MainClockPanel)" layoutpos="right" margin="rect(10rp,0,0,10rp)" padding="rect(0,4rp,0,0)">
+<CCAnalogClock  id="atom(MainClock)" layoutpos="top" contentalign="middlecenter" accessible="true" AccRole='clock' enabled='true' />
+<CCDigitalClock  id="atom(MainDigitalClock)" class="DigitalClass" layoutpos="bottom" contentalign="wrapcenter" margin="rect(0,4rp,0,4rp)" accessible="true" AccRole='clock' enabled='true'/>
+<element id="atom(MainClockDayName)" class="ClockName" layoutpos="none" contentalign="wrapcenter"  accessible="true" accrole="statictext" enabled='true'/>                
+</element>
+<element layout="borderlayout()" id="atom(ExtraClocksPanel)" layoutpos="none" margin="rect(10rp,0,0,10rp)" padding="rect(0,8rp,0,0)">
+<element layout="verticalflowlayout()" id="atom(ExtraClock1)" layoutpos="left" >               
+<element id="atom(ExtraClockName1)" class="ClockName" content="Friendly Name" layoutpos="bottom" contentalign="wrapcenter" margin="rect(0,0,0,4rp)" accessible="true" accrole="statictext" enabled='true'/>	
+<CCAnalogClock id="atom(FirstClock)" layoutpos="bottom" contentalign="middlecenter" accessible="true" AccRole='clock' enabled='true'/>
+<CCDigitalClock id="atom(ExtraDigitalClock1)" class="DigitalClass" layoutpos="bottom" margin="rect(0,4rp,0,4rp)"
+contentalign="wrapcenter"
+accessible="true" 
+AccRole='clock' 
+enabled='true'/>
+<element id="atom(ExtraClockDay1)" class="ClockName" layoutpos="bottom" contentalign="wrapcenter"  accessible="true" accrole="statictext" enabled='true'/>
+</element>
+<element layout="verticalflowlayout()" id="atom(ExtraClock2)" layoutpos="none" >
+<element id="atom(ExtraClockName2)" content="Friendly Name" class="ClockName" layoutpos="bottom" contentalign="wrapcenter" margin="rect(0,0,0,4rp)" accessible="true" accrole="statictext" enabled='true'/>
+<CCAnalogClock id="atom(SecondClock)"  layoutpos="bottom" contentalign="middlecenter" accessible="true" AccRole='clock' enabled='true'/>
+<CCDigitalClock id="atom(ExtraDigitalClock2)" class="DigitalClass" layoutpos="bottom" margin="rect(0,4rp,0,4rp)"
+contentalign="wrapcenter" 
+accessible="true" 
+AccRole='clock' 
+enabled='true'/>
+<element id="atom(ExtraClockDay2)" class="ClockName" layoutpos="bottom" contentalign="wrapcenter"  accessible="true" accrole="statictext" enabled='true'/>
+</element>
+</element>
+</element>
+<element layout="borderlayout()" id="atom(NotificationPanel)" layoutpos="top" margin="rect(10rp,0,10rp,0)">
+</element>
+<element Layout='VerticalFlowLayout(0,2)' layoutpos='top' background="themeable(dtb(TrayNotifyFlyout, 2, 0), ButtonFace)" padding="rect(0,14rp,0,14rp)">
+s
+<button class="LinkClass" content="resstr(302)" id="atom(SettingsLink)" enabled="true"
+AccDesc="resstr(322)"
+AccDefAction="resstr(330)"
+Accessible="true"
+AccRole="link"
+background='argb(0,0,0,0)'
+/>
+</element>
+</element>
+<element resid="Notification" layoutpos="top" layout="borderlayout()"  sheet="FlyoutSheet" Padding='rect(0,0,0,8rp)'>
+<element layoutpos="top" layout="borderlayout()">
+<element height="2rp" layoutpos="top" background="themeable(dtb(Flyout, 5, 0), Window)"/>
+</element>
+<element content="icon(104, 16rp, 16rp, library(user32.dll))" padding='rect(8rp,8rp,8rp,8rp)' background  = 'argb(0,0,0,0)' layoutpos="left"/>
+<element layoutpos="client" layout="flowlayout()"  >
+<element id="atom(NotificationText)" class="Notification" contentalign="wrapleft" padding='rect(0,5rp,8rp,0)' accessible="true" accrole="statictext"/>
+</element>
+</element>
+<stylesheets>
+<style resid="FlyoutSheet">
+<element
+background="themeable(dtb(Flyout, 6, 0),Window)"
+font="gtf(FlyoutStyle, 2 ,0)"
+foreground="themeable(gtc(Flyout, 2, 0, 3803),WindowText)"
+/>
+<if class="LinkClass">
+<button
+font="gtf(FlyoutStyle, 4, 1)"
+foreground="themeable(gtc(Flyout, 4, 1, 3803),HotLight)"
+/>
+<if mousefocused='true'>
+<button 
+font="gtf(FlyoutStyle, 4, 2)"
+foreground="themeable(gtc(Flyout, 4, 2, 3803),HotLight)"
+cursor="hand"
+/>
+</if>
+<if keyfocused='true'>
+<button 
+font="gtf(FlyoutStyle, 4, 2)"
+foreground="themeable(gtc(Flyout, 4, 2, 3803),HotLight)"
+contentalign="middlecenter | focusrect"
+cursor="hand"
+/>
+</if>
+</if>
+<if class="DigitalClass">
+<element
+font="gtf(FlyoutStyle, 2, 0)"
+foreground="themeable(gtc(Flyout, 2, 0, 3803),WindowText)"
+/>
+</if>
+<if class="ClockName">
+<element
+font="gtf(FlyoutStyle, 2, 0)"
+foreground="themeable(gtc(Flyout, 2, 0, 3803),WindowText)"
+/>
+</if>
+<if class="Notification">
+<element
+font="gtf(FlyoutStyle, 2, 0)"
+foreground="themeable(gtc(Flyout, 2, 0, 3803),WindowText)"
+/>
+</if>
+</style>
+</stylesheets>
+</duixml>

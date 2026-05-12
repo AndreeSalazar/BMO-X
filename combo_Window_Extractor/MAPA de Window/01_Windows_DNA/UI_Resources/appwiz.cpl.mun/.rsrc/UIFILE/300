@@ -1,0 +1,186 @@
+<duixml>
+<arpframe resid="main" id="atom(frame)" sheet="frame" layout="borderlayout()">
+<element id="atom(contentpane)" sheet="contentpane" layoutpos="client" layout="borderlayout()">    
+<element id="atom(pickapppane)" sheet="pickapppane" layoutpos="client" layout="filllayout()">
+<element id="atom(pickappadmin)" layout="borderlayout()">
+<element layoutpos="top" contentalign="wrapleft" accessible="true" accRole="41" accName="resstr(95)" content="resstr(95)" />
+<scrollviewer id="atom(clientscroller)" sheet="listscroller" layoutpos="client" xscrollable="false">
+<ARPSelector id="atom(clienttypelist)" sheet="pickapppane" layoutpos="client" layout="borderlayout()">
+<arpexpando id="atom(oemclients)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(header)" class="padded" accessible="true" accRole="45" accName="resstr(102)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(arrow)" accessible="true" accRole="64" accName="resstr(102)" />
+<element id="atom(radiobutton)" />
+<element id="atom(radiotext)" content="resstr(102)" />
+</ARPAutoButton>
+<arpclipper layoutpos="top">
+<element id="atom(clipped)" layout="borderlayout()">
+<gradientline class="innerheader" layoutpos="top" />
+<element class="blurbtext" layoutpos="top" layout="borderlayout()">
+<element id="atom(radiobutton)" visible="false" />
+<element class="radioindent" />
+<element contentalign="wrapleft" accessible="true" accRole="41" accName="resstr(103)" content="resstr(103)" layoutpos="client" />
+</element>
+</element>
+</arpclipper>
+</arpexpando>
+<gradientline class="interheader" layoutpos="top" />
+<arpexpando id="atom(msclients)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(header)" class="padded" accessible="true" accRole="45" accName="resstr(104)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(arrow)" accessible="true" accRole="64" accName="resstr(104)" />
+<element id="atom(radiobutton)" />
+<element id="atom(radiotext)" content="resstr(104)" />
+</ARPAutoButton>
+<arpclipper layoutpos="top">
+<element id="atom(clipped)" layout="borderlayout()">
+<gradientline class="innerheader" layoutpos="top" />
+<element class="blurbtext" layoutpos="top" layout="borderlayout()">
+<element id="atom(radiobutton)" visible="false" />
+<element class="radioindent" />
+<element contentalign="wrapleft" accessible="true" accRole="41" accName="resstr(105)" content="resstr(105)" layoutpos="top" />
+</element>
+</element>
+</arpclipper>
+</arpexpando>
+<gradientline class="interheader" layoutpos="top" />
+<arpexpando id="atom(nonmsclients)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(header)" class="padded" accessible="true" accRole="45" accName="resstr(106)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(arrow)" accessible="true" accRole="64" accName="resstr(106)" />
+<element id="atom(radiobutton)" />
+<element id="atom(radiotext)" content="resstr(106)" />
+</ARPAutoButton>
+<arpclipper layoutpos="top">
+<element id="atom(clipped)" layout="borderlayout()">
+<gradientline class="innerheader" layoutpos="top" />
+<element class="blurbtext" layoutpos="top" layout="borderlayout()">
+<element id="atom(radiobutton)" visible="false" />
+<element class="radioindent" />
+<element contentalign="wrapleft" accessible="true" accRole="41" accName="resstr(107)" content="resstr(107)" layoutpos="top" />
+</element>
+</element>
+</arpclipper>
+</arpexpando>
+<gradientline class="interheader" layoutpos="top" />
+<arpexpando id="atom(customclients)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(header)" class="padded" accessible="true" accRole="45" accName="resstr(108)" layoutpos="top" layout="borderlayout()">
+<ARPAutoButton id="atom(arrow)" accessible="true" accRole="64" accName="resstr(108)" />
+<element id="atom(radiobutton)" />
+<element id="atom(radiotext)" content="resstr(108)" />
+</ARPAutoButton>
+<arpclipper layoutpos="top">
+<element id="atom(clipped)" layout="borderlayout()" >
+<gradientline class="innerheader" layoutpos="top" />
+<element id="atom(radiobutton)" visible="false" />
+<element class="radioindent" />
+<element class="clientcaption" id="atom(rowheader)" layoutpos="top" accessible="true" accRole="41" accName="resstr(132)" content="resstr(132)" />
+<clientblock layoutpos="top" layout="borderlayout()"
+clienttype="StartMenuInternet"
+windowsclient="IEXPLORE.EXE"
+othermsclients="MSN Explorer"
+keeptext="resstr(111)"
+picktext="resstr(112)" />
+<gradientline class="intercategory" layoutpos="top" />
+<element class="clientcaption" id="atom(rowheader)" layoutpos="top" accessible="true" accRole="41" accName="resstr(133)" content="resstr(133)" />
+<clientblock layoutpos="top" layout="borderlayout()"
+clienttype="Mail"
+windowsclient="Windows Mail"
+othermsclients="Hotmail;MSN Explorer;Microsoft Outlook"
+keeptext="resstr(114)"
+keepmstext="resstr(137)"
+picktext="resstr(115)" />
+<gradientline class="intercategory" layoutpos="top" />
+<element class="clientcaption" id="atom(rowheader)" layoutpos="top" accessible="true" accRole="41" accName="resstr(134)" content="resstr(134)" />
+<clientblock layoutpos="top" layout="borderlayout()"
+clienttype="Media"
+windowsclient="Windows Media Player"
+othermsclients="Windows Media Center"
+keeptext="resstr(117)"
+picktext="resstr(118)" />
+<gradientline class="intercategory" layoutpos="top" />
+<element class="clientcaption" id="atom(rowheader)" layoutpos="top" accessible="true" accRole="41" accName="resstr(135)" content="resstr(135)" />
+<clientblock layoutpos="top" layout="borderlayout()"
+clienttype="IM"
+windowsclient="Windows Messenger"
+keeptext="resstr(120)"
+picktext="resstr(121)" />
+<gradientline class="intercategory" layoutpos="top" />
+<element class="clientcaption" id="atom(rowheader)" layoutpos="top" accessible="true" accRole="41" accName="resstr(136)" content="resstr(136)" />
+<clientblock layoutpos="top" layout="borderlayout()"
+clienttype="JavaVM"
+windowsclient="MSJavaVM"
+keeptext="resstr(123)"
+picktext="resstr(124)" />
+<element class="blurbtext" layoutpos="bottom" layout="filllayout()">
+<element contentalign="wrapleft" layoutpos="top" accessible="true" accRole="41" accName="resstr(109)" content="resstr(109)"/>
+</element>
+</element>
+</arpclipper>
+</arpexpando>
+<gradientline class="interheader" layoutpos="top" />
+</ARPSelector>
+</scrollviewer>
+<element sheet="closepane" layoutpos="bottom" layout="borderlayout()"
+margin="rect(0rp,8rp,0rp,0rp)" >
+<element layoutpos="right" layout="gridlayout(1,-1)" >
+<button id="atom(ok)" layoutpos="right" accessible="true" accRole="43" accName="resstr(96)" content="resstr(96)" margin="rect(8rp,0rp,8rp,0rp)" />
+<button id="atom(cancel)" layoutpos="right" accessible="true" accRole="43" accName="resstr(97)" content="resstr(97)" margin="rect(8rp,0rp,8rp,0rp)" />
+<button id="atom(help)" layoutpos="right" accessible="true" accRole="43" accName="resstr(83)" content="resstr(83)" margin="rect(8rp,0rp,8rp,0rp)" />
+</element>
+</element>
+</element>
+<element id="atom(pickappnonadmin)" visible="false" layout="borderlayout()">
+<element layoutpos="top" contentalign="wrapleft" accessible="true" accRole="41" accName="resstr(129)" content="resstr(129)" />
+</element>
+</element>
+</element>
+</arpframe>
+<element resid="oemclientshowhide" layoutpos="top" layout="borderlayout()" >
+<element class="clientrow" id="atom(show)" Layout="rowlayout(24,3,3)" contentalign="topleft" layoutpos="top">
+<element class="clientcaption" contentalign="wrapright" accessible="true" accRole="41" accName="resstr(126)" content="resstr(126)" />
+<element class="clientstatic" id="atom(list)" accessible="true" accRole="41" contentalign="wrapleft" />
+</element>
+<element class="clientrow" id="atom(hide)" Layout="rowlayout(24,3,3)" contentalign="topleft" layoutpos="top">
+<element class="clientcaption" contentalign="wrapright" accessible="true" accRole="41" accName="resstr(127)" content="resstr(127)" />
+<element class="clientstatic" id="atom(list)" accessible="true" accRole="41" contentalign="wrapleft" />
+</element>
+</element>
+<element resid="clientcategoryblock" id="atom(clipped)" layoutpos="top" layout="borderlayout()" >
+<element layout="verticalflowlayout(0)" layoutpos="top" padding="rect(8rp,0,0,0)" >
+<element class="clientrow" Layout="rowlayout(24,3,3)" contentalign="topleft" layoutpos="top">
+<element class="clientcaption" id="atom(rowheader)" contentalign="wrapright" accessible="true" accRole="41" accName="resstr(110)" content="resstr(110)" />
+<clientpicker layout="filllayout()" clienttype="StartMenuInternet" />
+</element>
+<element class="interrowspacer" layoutpos="top" />
+<element class="clientrow" Layout="rowlayout(24,3,3)" contentalign="topleft" layoutpos="top">
+<element class="clientcaption" id="atom(rowheader)" contentalign="wrapright" accessible="true" accRole="41" accName="resstr(113)" content="resstr(113)" />
+<clientpicker layout="filllayout()" clienttype="Mail" />
+</element>
+<element class="interrowspacer" layoutpos="top" />
+<element class="clientrow" Layout="rowlayout(24,3,3)" contentalign="topleft" layoutpos="top">
+<element class="clientcaption" id="atom(rowheader)" contentalign="wrapright" accessible="true" accRole="41" accName="resstr(116)" content="resstr(116)" />
+<clientpicker layout="filllayout()" clienttype="Media" />
+</element>
+<element class="interrowspacer" layoutpos="top" />
+<element class="clientrow" Layout="rowlayout(24,3,3)" contentalign="topleft" layoutpos="top">
+<element class="clientcaption" id="atom(rowheader)" contentalign="wrapright" accessible="true" accRole="41" accName="resstr(119)" content="resstr(119)" />
+<clientpicker layout="filllayout()" clienttype="IM" />
+</element>
+<element class="interrowspacer" layoutpos="top" />
+<element class="clientrow" Layout="rowlayout(24,3,3)" contentalign="topleft" layoutpos="top">
+<element class="clientcaption" id="atom(rowheader)" contentalign="wrapright" accessible="true" accRole="41" accName="resstr(122)" content="resstr(122)" />
+<clientpicker layout="filllayout()" clienttype="JavaVM" />
+</element>
+</element>
+</element>
+<ARPSelector resid="clientblockselector" layoutpos="client" layout="borderlayout()" padding="rect(0,6rp,0,6rp)" selected="false" />
+<element resid="clientitem" class="customclientitem" layout="rowlayout(23)" layoutpos="top" contentalign="topleft" selected="false">
+<ARPAutoButton id="atom(setdefault)" class="padded" accessible="true" accRole="45" layout="borderlayout()">
+<element id="atom(radiobutton)" />
+<element id="atom(radiotext)" contentalign="wrapleft" />
+</ARPAutoButton>
+<element width="20rp" />
+<ARPAutoButton id="atom(show)" class="padded" accessible="true" accRole="44" accName="resstr(125)" layout="borderlayout()" selected="false">
+<element id="atom(checkbutton)" />
+<element id="atom(checktext)" content="resstr(125)" layoutpos="left" />
+</ARPAutoButton>
+</element>
+</duixml>

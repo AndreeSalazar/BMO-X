@@ -1,0 +1,51 @@
+<duixml>
+<element resid="ModernBody" id="atom(eModernBody)" sheet="bluewirestyle" class="ceremony_frame" layout="filllayout()" accessible="true" accrole="pane">
+<element id="atom(ePageBody)" width="616rp" layout="borderlayout()" margin="rect(0rp, 13rp, 0rp, 0rp)"/>
+</element>
+<element resid="ModernContent" id="atom(eModernContent)" layoutpos="client" layout="borderlayout()" sheet="bluewirestyle">
+<element layoutpos="left" layout="borderlayout()">
+<element id="atom(eIcon)" layoutpos="top" class="ceremony_icon"/>
+</element>
+<element layoutpos="top" padding="rect(16rp,0rp,0rp,0rp)" layout="borderLayout()">
+<richtext id="atom(eBodyText)" class="ceremony_text" layoutpos="top" contentalign="wrapleft"/>
+<element layoutPos="top" layout="flowlayout(0, 0, 0, 2)">
+<richtext id="atom(ePinText)" class="ceremony_pin"/>
+<richtext id="atom(eRetryText)" layoutpos="none" class="ceremony_retrytext" contentalign="wrapleft" margin="rect(20rp,0rp,0rp,0rp)"/>
+</element>
+<element layoutpos="top" layout="verticalflowlayout(0, 0, 0, 0)">
+<touchhyperlink id="atom(eSecondOption)" layoutpos="none" class="ceremony_text" margin="rect(0rp,0rp,0rp,5rp)"/>
+</element>
+<element id="atom(eProgressArea)" layoutpos="bottom" visible="false" layout="borderLayout()" padding="rect(0rp, 5rp, 0rp, 0rp)">
+<ModernProgressRing id="atom(eProgressRing)" layoutpos="left" width="20rp" height="20rp" foreground="window" class="progressring" AddLayeredRef="true"/>
+<richtext id="atom(eProgressText)" content="resstr(1603)" class="ceremony_text" layoutpos="client" padding="rect(8rp,0rp,0rp,0rp)"/>
+</element>
+</element>
+</element>
+<element resid="ClassicContent" id="atom(eClassicContent)" layoutpos="client" layout="borderlayout()" padding="rect(0rp,0rp,20rp,0rp)" width="574rp" sheet="bluewirestyle">
+<element id="atom(eTitleText)" layoutpos="top" class="ceremony_classictitle" padding="rect(0rp,0rp,0rp,25rp)"/>
+<element id="atom(eProgressArea)" layoutpos="bottom" visible="false" layout="borderlayout()">
+<AnimationStrip layoutpos="left" content="graphic(5003,2,-1,0,0,0,0,library(imageres.dll))" contentalign="middlecenter" alpha="150" frameduration="60" framewidth="25" width="21rp" height="21rp"/>
+<element id="atom(eProgressText)" content="resstr(1603)" class="ceremony_classictext" layoutpos="client" contentalign="middleleft" padding="rect(8rp,0rp,0rp,0rp)"/>
+</element>
+<element layoutpos="left" layout="borderlayout()">
+<element id="atom(eIcon)" layoutpos="top" class="ceremony_classicicon"/>
+</element>
+<element layoutpos="top" padding="rect(15rp,0rp,0rp,0rp)" layout="borderlayout()">
+<element id="atom(eBodyText)" layoutpos="top" class="ceremony_classictext" padding="rect(0rp,10rp,0rp,0rp)"/>
+<element id="atom(ePinText)" layoutpos="top" class="ceremony_classicpin" padding="rect(0rp,5rp,0rp,5rp)"/>
+<element layoutpos="top" layout="borderlayout()">
+<element id="atom(eRetryArea)" layoutpos="bottom" visible="false" layout="borderLayout()">
+<element id="atom(eRetryIcon)" layoutpos="left" class="ceremony_retryicon"/>
+<element id="atom(eRetryText)" layoutpos="client" class="ceremony_classicretrytext"/>
+</element>
+</element>
+<element layoutpos="top" layout="verticalflowlayout(0, 0, 0, 0)">
+<button id="atom(eSecondOption)" layoutpos="none" class="ceremony_classictext" active="mouse|keyboard|pointer" padding="rect(0rp,5rp,0rp,5rp)"/>
+</element>
+</element>
+</element>
+<stylesheets>
+<style resid="bluewirestyle" base="ressheet(2113, library(devicepairing.dll), bluewirestyle)">
+</style>
+</stylesheets>
+</duixml>

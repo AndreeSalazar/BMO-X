@@ -1,0 +1,66 @@
+﻿<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles_ltr.css" />
+
+    <script src="jquery-1.11.3.min.js" type="text/javascript"></script>
+    <script src="script.js" type="text/javascript"></script>
+
+    <title>Internet Explorer 11</title>
+</head>
+<body>
+
+    <div class="header">
+        <div class="ie-logo"></div>
+        <div class="heading"><p>홈 페이지 및 검색 설정 선택</p></div>
+    </div>
+
+    <div class="intro-row">
+        <div>
+            <p>이제부터 웹 사이트에서 이 Internet Explorer 설정을 사용자의 동의 없이 변경하지 못하도록 합니다. 유지하고자 하는 설정을 선택하세요.</p>
+            <div><a href="#" class="intro-learnmore">자세히 알아보려면 여기를 클릭하세요.</a></div>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="setting-item">
+            <div class="setting-item-radio">
+                <input type="radio" class="setting-radio" name="setting-radio" id="radio-default" checked />
+            </div>
+            <div class="setting-item-content">
+                <p><label for="radio-default">Microsoft 설정</label>:</p>
+                <p>홈 페이지: <span dir="ltr" class="settingValue defaultDHP"></span></p>
+                <p>기본 검색 엔진: <span dir="ltr" class="settingValue defaultDSP"></span></p>
+            </div>
+        </div>
+        <div class="setting-item">
+            <div class="setting-item-radio">
+                <input type="radio" class="setting-radio" name="setting-radio" id="radio-current" />
+            </div>
+            <div class="setting-item-content">
+                <p><label for="radio-current">현재 설정</label>:</p>
+                <p>홈 페이지: <span dir="ltr" class="settingValue currentDHP"></span></p>
+                <p>기본 검색 엔진: <span dir="ltr" class="settingValue currentDSP"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="cta-row">
+        <div class="cta-button cta-return-selected">
+            <div class="cta-button-text">
+                <p>완료</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>이 설정은 나중에 Internet Explorer의 <strong>도구</strong> 메뉴에서 언제든지 변경할 수 있습니다.</p>
+    </div>
+
+</body>
+</html>

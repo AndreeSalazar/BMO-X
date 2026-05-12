@@ -1,0 +1,92 @@
+<duixml>
+<stylesheets>
+</stylesheets>
+<element resid="bulletpoint" layout="flowlayout(0,0,0,0)">
+<RichText id="atom(bulletsymbol)" class="content_text" content="resstr(3258)" accessible="false"/>
+<RichText id="atom(bullettext)" margin="rect(5rp,0,0,0)" class="content_text" accessible="false"/>
+</element>
+<element resid="TaskFlow_Edit" width="640rp" margin="rect(0, 0, 0, 28rp)" layout="flowlayout(0, 0, 0, 0)" active="pointer">
+<RichText id="atom(idTFEditLabel)" class="content_text" padding="rect(0, 6rp, 0, 0)" shortcut="auto" width="146rp"/>
+<TouchEdit2 id="atom(idTFEditBox)" class="modernedit" behaviors="Windows.UI.Popups::TouchEditContextMenu()"/>
+<element id="atom(idTFEditStatus)" width="223rp" visible="false" layout="flowlayout()" active="pointer">
+<element id="atom(idStatusRequired)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusRequiredText)" class="error_text" padding="rect(0, 6rp, 0, 0)" width="200rp" content="resstr(3202)"/>
+</element>
+<element id="atom(idStatusError)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusErrorText)" class="error_text" padding="rect(0, 6rp, 0, 0)"/>
+</element>
+</element>
+</element>
+<element resid="TaskFlowPassword_Edit" width="640rp" margin="rect(0, 0, 0, 28rp)" layout="flowlayout(0, 0, 0, 0)" active="pointer">
+<RichText id="atom(idTFEditLabel)" class="content_text" padding="rect(0, 6rp, 0, 0)" shortcut="auto" width="146rp"/>
+<TouchEdit2 id="atom(idTFEditBox)" class="modernedit" behaviors="Windows.UI.Popups::TouchEditContextMenu()" passwordcharacter="9679"/>
+<element id="atom(idTFEditStatus)" width="223rp" visible="false" layout="flowlayout()" active="pointer">
+<element id="atom(idStatusRequired)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusRequiredText)" class="error_text" padding="rect(0, 6rp, 0, 0)" width="200rp" content="resstr(3202)"/>
+</element>
+<element id="atom(idStatusError)" layoutpos="none" layout="flowlayout()" active="pointer">
+<RichText id="atom(idStatusErrorText)" class="error_text" padding="rect(0, 6rp, 0, 0)"/>
+</element>
+</element>
+</element>
+<stylesheets>
+<style resid="taskflow_style" base="ressheet(ImmersiveStyles, library(dui70.dll), Dark)">
+<RichText constrainlayout="narrow"/>
+<if class="header_text">
+<RichText font="resstr(3271)" contentalign="middleleft|endellipsis" accessible="true" accrole="statictext"/>
+</if>
+<if class="content_text">
+<RichText font="resstr(3201)" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+</if>
+<if class="error_text">
+<RichText font="resstr(3201)" foreground="ImmersiveSaturatedInlineErrorText" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+</if>
+<if class="policy_text">
+<RichText font="resstr(3201)" foreground="ImmersiveSaturatedInlineErrorText" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+</if>
+<if class="username_text">
+<RichText font="resstr(3200)" contentalign="topleft | endellipsis" accessible="true" accrole="statictext"/>
+</if>
+<if class="modernlink">
+<TouchHyperlink font="resstr(3201)" cursor="hand" contentalign="middleleft|endellipsis" accessible="true" accrole="link" shortcut="auto"/>
+<if keyfocused="true"> 
+<TouchHyperlink contentalign="middleleft|endellipsis|focusrect"/>
+</if>
+<if enabled="false">
+<TouchHyperlink cursor="arrow" accrole="statictext"/>
+</if>
+</if>
+<if class="modernedit">
+<TouchEdit2 font="resstr(3201)" contentalign="middleleft" width="261rp" margin="rect(0,3rp,10rp,0)" accessible="true"/>
+</if>
+<if class="pagecolumn">
+<element margin="rect(30rp,0,0,0)"/>
+</if>
+<if class="page_metadata">
+<element layoutpos="none"/>
+</if>
+</style>
+</stylesheets>
+<element resid="FinishPage" id="atom(taskflowpage)" layout="shellborderlayout()" active="pointer">
+<RichText id="atom(idFinishPageText)" class="content_text" layoutpos="top" margin="rect(0, 0, 0, 32rp)"/>
+<element layoutpos="top" layout="shellborderlayout()" active="pointer">
+<element layoutpos="left" layout="verticalflowlayout(0,0,0,0)" margin="rect(0, 0, 23rp, 0)" active="pointer">
+<UserTile id="atom(idUserTile)" height="114rp" width="104rp" padding="rect(0, 10rp, 0, 0)" active="pointer"/>
+</element>
+<RichText id="atom(idUsername)" class="username_text" layoutpos="top"/>
+<RichText id="atom(idEmailAddress)" class="content_text" layoutpos="top"/>
+<element id="atom(idErrorMessage)" layoutpos="none" layout="verticalflowlayout(0, 0, 0, 0)" margin="rect(0, 23rp, 0, 0)" active="pointer">
+<RichText id="atom(idErrorMessageText)" class="error_text" content="resstr(3227)"/>
+<TouchHyperLink class="modernlink" id="atom(idErrorLink)" content="resstr(3263)" layoutpos="none"/>
+</element>
+<element id="atom(idCommitProgress)" layoutpos="top" layout="flowlayout(0, 0, 0, 2)" active="pointer">
+<ModernProgressRing height="20rp" width="20rp" foreground="ImmersiveSaturatedPrimaryText" margin="rect(0rp,0rp,5rp,0rp)"/>
+<RichText id="atom(idCommitProgressText)" class="content_text" foreground="ImmersiveSaturatedPrimaryText" content="resstr(3272)"/>
+</element>
+</element>
+<element id="atom(idParentalControlsGroup)" layoutpos="none" layout="shellborderlayout()" active="pointer" padding="rect(0, 20rp, 0, 0)" visible="false">
+<TouchCheckBox id="atom(idEnableParentalControls)" layoutpos="top"/>
+</element>
+<RichText id="atom(idFamilySafetyText)" class="content_text" layoutpos="none" margin="rect(0, 20rp, 0, 0)" content="resstr(IDS_FINISHPAGE_ADDCHILD_TEXT)" visible="false"/>
+</element>
+</duixml>

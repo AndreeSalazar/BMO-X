@@ -1,0 +1,14 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {c9ea5d14-cef7-4e37-851a-8043f0fb74e9} =
+                     s 'PIN Retry Page'
+        {
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+}

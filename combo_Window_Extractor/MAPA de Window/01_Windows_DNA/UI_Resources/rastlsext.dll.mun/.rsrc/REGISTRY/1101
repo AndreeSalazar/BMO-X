@@ -1,0 +1,14 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {a31c0e24-c249-4e36-a1a3-9dfdceda9bbc} =
+                     s 'Certificate Selection Page'
+        {
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+}

@@ -1,0 +1,77 @@
+[Version]
+Signature="$CHICAGO$"
+[RegDll]
+RequiredEngine=SETUPAPI,%ERR_NOSETUPAPI%
+AddReg=RegAll
+[UnregDll]
+RequiredEngine=SETUPAPI,%ERR_NOSETUPAPI%
+[RegAll]
+HKLM,%PATH_EXPLORER%\ControlPanel\NameSpace\%CLSID_NamespaceInitStub%,,,"Network Center"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",,,"Network Center"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%","{305CA226-D286-468e-B848-2B2E8E697B74} 2",%REGDW%,0x3
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",InfoTip,%REGEXSZ%,"@%_SYS_MOD_PATH%,-2"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",LocalizedString,%REGEXSZ%,"@%_SYS_MOD_PATH%,-1"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",System.ControlPanel.EnableInSafeMode,%REGDW%,2
+HKCR,"CLSID\%CLSID_NamespaceInitStub%",System.ApplicationName,,"Microsoft.NetworkAndSharingCenter"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\DefaultIcon",,%REGEXSZ%,"%_SYS_MOD_PATH%,-1"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\%IPS%",,%REGEXSZ%,"%SystemRoot%\system32\shdocvw.dll"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\%IPS%",ThreadingModel,,"Apartment"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\ShellFolder",Attributes,%REGDW%,0xa0000000
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\ShellFolder",WantsParseDisplayName
+HKLM,"%SMWCVSEA%","%CLSID_NamespaceInitStub%",,""
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance",CLSID,,%CLSID_LayoutFldr%
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance\InitPropertyBag",ResourceDLL,%REGEXSZ%,"%_SYS_MOD_PATH%"
+HKCR,"CLSID\%CLSID_NamespaceInitStub%\Instance\InitPropertyBag",ResourceID,%REGDW%,100
+HKCR,"CLSID\%CLSID_SNOCplElementProvider%",,,""
+HKCR,"CLSID\%CLSID_SNOCplElementProvider%\%IPS%",,%REGEXSZ%,"%_SYS_MOD_PATH%"
+HKCR,"CLSID\%CLSID_SNOCplElementProvider%\%IPS%",ThreadingModel,,"Apartment"
+HKCR,"AppID\%APPID_NCLUA%",,,"NCLUA"
+HKCR,"AppID\%APPID_NCLUA%",DllSurrogate,,""
+HKCR,"AppID\%APPID_NCLUA%",AccessPermission,"%REGBINARY%",01,00,04,80,60,00,00,00,70,00,00,00,00,00,00,00,14,00,00,00,02,00,4c,00,03,00,00,00,00,00,14,00,03,00,00,00,01,01,00,00,00,00,00,05,12,00,00,00,00,00,14,00,07,00,00,00,01,01,00,00,00,00,00,05,0a,00,00,00,00,00,14,00,03,00,00,00,01,01,00,00,00,00,00,05,04,00,00,00,cd,cd,cd,cd,cd,cd,cd,cd,01,02,00,00,00,00,00,05,20,00,00,00,20,02,00,00,01,02,00,00,00,00,00,05,20,00,00,00,20,02,00,00
+HKCR,"AppID\netcenter.dll",,,""
+HKCR,"AppID\netcenter.dll",AppId,,"%APPID_NCLUA%"
+HKCR,"CLSID\%CLSID_NetCenterLUA%",,,"Network Center LUA"
+HKCR,"CLSID\%CLSID_NetCenterLUA%",AppID,,"%APPID_NCLUA%"
+HKCR,"CLSID\%CLSID_NetCenterLUA%",LocalizedString,%REGEXSZ%,"@%SystemRoot%\System32\netcenter.dll,-1"
+HKCR,"CLSID\%CLSID_NetCenterLUA%\ProgID",,,"%netcenter_NCLUA_1%"
+HKCR,"CLSID\%CLSID_NetCenterLUA%\VersionIndependentProgID",,,"%netcenter_NCLUA%"
+HKCR,"CLSID\%CLSID_NetCenterLUA%\Programmable",,,""
+HKCR,"CLSID\%CLSID_NetCenterLUA%\Elevation",Enabled,%REGDW%,0x00000001
+HKCR,"CLSID\%CLSID_NetCenterLUA%\Elevation",IconReference,%REGEXSZ%,"@%SystemRoot%\System32\netcenter.dll,-1"
+HKCR,"CLSID\%CLSID_NetCenterLUA%\InprocServer32",,%REGEXSZ%,"%SystemRoot%\system32\netcenter.dll"
+HKCR,"CLSID\%CLSID_NetCenterLUA%\InprocServer32",ThreadingModel,,"Apartment"
+HKCR,"CLSID\%CLSID_NetCenterLUA%\TypeLib",,,"%TYPELIB_NetCenterLUA%"
+HKCR,"Interface\%INTERFACE_NetCenterLUA%",,,"INetCenterLUA"
+HKCR,"Interface\%INTERFACE_NetCenterLUA%\ProxyStubClsid",,,"{00020424-0000-0000-C000-000000000046}"
+HKCR,"Interface\%INTERFACE_NetCenterLUA%\ProxyStubClsid32",,,"{00020424-0000-0000-C000-000000000046}"
+HKCR,"Interface\%INTERFACE_NetCenterLUA%\TypeLib",,,"%TYPELIB_NetCenterLUA%"
+HKCR,"Interface\%INTERFACE_NetCenterLUA%\TypeLib",Version,,"1.0"
+HKCR,"%netcenter_NCLUA%",,,"Network Center LUA"
+HKCR,"%netcenter_NCLUA%\CLSID",,,"%CLSID_NetCenterLUA%"
+HKCR,"%netcenter_NCLUA%\CurVer",,,"%netcenter_NCLUA_1%"
+HKCR,"%netcenter_NCLUA_1%",,,"Network Center LUA"
+HKCR,"%netcenter_NCLUA_1%\CLSID",,,"%CLSID_NetCenterLUA%"
+HKCR,"TypeLib\%TYPELIB_NetCenterLUA%",,,""
+HKCR,"TypeLib\%TYPELIB_NetCenterLUA%\1.0",,,"netcenter LUA 1.0 Type Library"
+HKCR,"TypeLib\%TYPELIB_NetCenterLUA%\1.0\0",,,""
+HKCR,"TypeLib\%TYPELIB_NetCenterLUA%\1.0\0\win64",,%REGEXSZ%,"%SystemRoot%\system32\netcenter.dll"
+HKCR,"TypeLib\%TYPELIB_NetCenterLUA%\1.0\0\win32",,%REGEXSZ%,"%SystemRoot%\system32\netcenter.dll"
+HKCR,"TypeLib\%TYPELIB_NetCenterLUA%\1.0\FLAGS",,,"0"
+HKCR,"TypeLib\%TYPELIB_NetCenterLUA%\1.0\HELPDIR",,%REGEXSZ%,"%SystemRoot%\system32\"
+[Strings]
+SMWCVSEA="Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved"
+PATH_EXPLORER="Software\Microsoft\Windows\CurrentVersion\Explorer"
+IPS="InProcServer32"
+REGEXSZ=0x00020000
+REGDW=0x00010001
+REGBINARY=0x00000001
+CLSID_NamespaceInitStub="{8E908FC9-BECC-40f6-915B-F4CA0E70D03D}"
+CLSID_LayoutFldr="{328B0346-7EAF-4BBE-A479-7CB88A095F5B}"
+CLSID_SNOCplElementProvider="{90954C68-4D60-4023-A1F8-C6AF6F62E1C8}"
+ERR_NOSETUPAPI="Can not register NETCENTER.DLL because SETUPAPI.DLL is missing."
+APPID_NCLUA="{FA1456D3-4B97-4f9c-8511-2786161DC333}"
+CLSID_NetCenterLUA="{C0DCC3A6-BE26-4bad-9833-61DFACE1A8DB}"
+TYPELIB_NetCenterLUA="{122F1BB4-2723-4ac2-A36A-16BB9E8B99A6}"
+INTERFACE_NetCenterLUA="{3727c4e2-8efa-4382-8d81-d7ad506a7fbe}"
+netcenter_NCLUA="netcenter.NCLUA"
+netcenter_NCLUA_1="netcenter.NCLUA.1"

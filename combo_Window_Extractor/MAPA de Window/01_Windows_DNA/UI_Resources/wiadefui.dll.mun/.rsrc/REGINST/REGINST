@@ -1,0 +1,40 @@
+[Version]
+Signature="$CHICAGO$"
+
+[RegDllCommon]
+AddReg=AddReg.Common,AddReg.ScannerPropPage,AddReg.CameraPropPage
+
+[UnregDllCommon]
+DelReg=DelReg.Common,DelReg.ScannerPropPage,DelReg.CameraPropPage
+
+[AddReg.Common]
+HKCR,"CLSID\%CLSID_WiaDefaultUi%",,,"%WIADefaultUi%"
+HKCR,"CLSID\%CLSID_WiaDefaultUi%\InProcServer32",,0x00020000,"%SystemRoot%\System32\wiadefui.dll"
+HKCR,"CLSID\%CLSID_WiaDefaultUi%\InProcServer32","ThreadingModel",,"apartment"
+
+[AddReg.ScannerPropPage]
+HKCR,"CLSID\%CLSID_WiaShellExtension%\Scanner\shellex\PropertySheetHandlers\%CLSID_WiaDefaultUi%",,,
+
+[DelReg.ScannerPropPage]
+HKCR,"CLSID\%CLSID_WiaShellExtension%\Scanner\shellex\PropertySheetHandlers\%CLSID_WiaDefaultUi%"
+
+
+[AddReg.CameraPropPage]
+HKCR,"CLSID\%CLSID_WiaShellExtension%\Camera\shellex\PropertySheetHandlers\%CLSID_WiaDefaultUi%",,,
+
+[DelReg.CameraPropPage]
+HKCR,"CLSID\%CLSID_WiaShellExtension%\Camera\shellex\PropertySheetHandlers\%CLSID_WiaDefaultUi%"
+
+[DelReg.Common]
+HKCR,"CLSID\%CLSID_WiaDefaultUi%\InProcServer32"
+HKCR,"CLSID\%CLSID_WiaDefaultUi%"
+
+
+[Strings]
+; Don't localize
+CLSID_WiaDefaultUi="{D1621129-45C4-41AD-A1D1-AF7EAFABEEDC}"
+CLSID_WiaShellExtension={E211B736-43FD-11D1-9EFB-0000F8757FCD}
+
+; Do localize
+WIADefaultUi="WIA Default UI"
+

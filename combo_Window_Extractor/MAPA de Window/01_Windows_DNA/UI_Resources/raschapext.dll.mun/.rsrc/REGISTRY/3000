@@ -1,0 +1,14 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {5d8d315e-8adc-48e5-80ed-7ccf370c971f} =
+                     s 'EAP MSCHAPv2 Identity UI Page'
+        {
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+}

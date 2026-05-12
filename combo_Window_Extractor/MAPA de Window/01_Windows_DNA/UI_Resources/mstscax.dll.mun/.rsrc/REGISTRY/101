@@ -1,0 +1,567 @@
+HKCR
+{
+    MsTscAx.MsTscAx.1 = s 'MsTscAx Class v1'
+    {
+        CLSID = s '{a41a4187-5a86-4e26-b40a-856f9035d9cb}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {a41a4187-5a86-4e26-b40a-856f9035d9cb} = s 'Microsoft Terminal Services Client Control - version 1'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.1'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.2 = s 'MsTscAx Class v2'
+    {
+        CLSID = s '{7cacbd7b-0d99-468f-ac33-22e495c0afe5}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {7cacbd7b-0d99-468f-ac33-22e495c0afe5} = s 'Microsoft RDP Client Control - version 2'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.2'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.3 = s 'MsTscAx Class v3'
+    {
+        CLSID = s '{3523c2fb-4031-44e4-9a3b-f1e94986ee7f}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {3523c2fb-4031-44e4-9a3b-f1e94986ee7f} = s 'Microsoft RDP Client Control - version 3'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.3'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.4 = s 'MsTscAx Class v4'
+    {
+        CLSID = s '{ace575fd-1fcf-4074-9401-ebab990fa9de}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {ace575fd-1fcf-4074-9401-ebab990fa9de} = s 'Microsoft RDP Client Control - version 4'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.4'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.5 = s 'MsTscAx Class v5'
+    {
+        CLSID = s '{6AE29350-321B-42be-BBE5-12FB5270C0DE}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {6AE29350-321B-42be-BBE5-12FB5270C0DE} = s 'Microsoft RDP Client Control - version 5'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.5'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.6 = s 'MsTscAx Class v6'
+    {
+        CLSID = s '{4eb2f086-c818-447e-b32c-c51ce2b30d31}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {4eb2f086-c818-447e-b32c-c51ce2b30d31} = s 'Microsoft RDP Client Control - version 6'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.6'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.7 = s 'MsTscAx Class v7'
+    {
+        CLSID = s '{d2ea46a7-c2bf-426b-af24-e19c44456399}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {d2ea46a7-c2bf-426b-af24-e19c44456399} = s 'Microsoft RDP Client Control - version 7'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.7'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.8 = s 'MsTscAx Class v8'
+    {
+        CLSID = s '{54d38bf7-b1ef-4479-9674-1bd6ea465258}'
+    }
+    MsTscAx.MsTscAx = s 'MsTscAx Class v8'
+    {
+        CurVer = s 'MsTscAx.MsTscAx.8'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {54d38bf7-b1ef-4479-9674-1bd6ea465258} = s 'Microsoft RDP Client Control - version 8'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.8'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsTscAx.MsTscAx.9 = s 'MsTscAx Class v9'
+    {
+        CLSID = s '{A3BC03A0-041D-42E3-AD22-882B7865C9C5}'
+    }
+    MsTscAx.MsTscAx = s 'MsTscAx Class v9'
+    {
+        CurVer = s 'MsTscAx.MsTscAx.9'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {A3BC03A0-041D-42E3-AD22-882B7865C9C5} = s 'Microsoft RDP Client Control - version 9'
+        {
+            ProgID = s 'MsTscAx.MsTscAx.9'
+            VersionIndependentProgID = s 'MsTscAx.MsTscAx'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.2 = s 'MsRDP Class v3'
+    {
+        CLSID = s '{971127BB-259F-48c2-BD75-5F97A3331551}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {9059f30f-4eb1-4bd2-9fdc-36f43a218f4a} = s 'Microsoft RDP Client Control (redistributable) - version 3'
+        {
+            ProgID = s 'MsRDP.MsRDP.2'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.2.a = s 'MsRDP Class v3'
+    {
+        CLSID = s '{971127BB-259F-48c2-BD75-5F97A3331551}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {971127BB-259F-48c2-BD75-5F97A3331551} = s 'Microsoft RDP Client Control (redistributable) - version 3a'
+        {
+            ProgID = s 'MsRDP.MsRDP.2.a'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.3 = s 'MsRDP Class v4'
+    {
+        CLSID = s '{6A6F4B83-45C5-4ca9-BDD9-0D81C12295E4}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {7584c670-2274-4efb-b00b-d6aaba6d3850} = s 'Microsoft RDP Client Control (redistributable) - version 4'
+        {
+            ProgID = s 'MsRDP.MsRDP.3'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.3.a = s 'MsRDP Class v4'
+    {
+        CLSID = s '{6A6F4B83-45C5-4ca9-BDD9-0D81C12295E4}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {6A6F4B83-45C5-4ca9-BDD9-0D81C12295E4} = s 'Microsoft RDP Client Control (redistributable) - version 4a'
+        {
+            ProgID = s 'MsRDP.MsRDP.3.a'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.4 = s 'MsRDP Class v5'
+    {
+        CLSID = s '{54CE37E0-9834-41ae-9896-4DAB69DC022B}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {4EDCB26C-D24C-4e72-AF07-B576699AC0DE} = s 'Microsoft RDP Client Control (redistributable) - version 5'
+        {
+            ProgID = s 'MsRDP.MsRDP.4'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.4.a = s 'MsRDP Class v5'
+    {
+        CLSID = s '{54CE37E0-9834-41ae-9896-4DAB69DC022B}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {54CE37E0-9834-41ae-9896-4DAB69DC022B} = s 'Microsoft RDP Client Control (redistributable) - version 5a'
+        {
+            ProgID = s 'MsRDP.MsRDP.4.a'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.5 = s 'MsRDP Class v6'
+    {
+        CLSID = s '{4eb89ff4-7f78-4a0f-8b8d-2bf02e94e4b2}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {4eb89ff4-7f78-4a0f-8b8d-2bf02e94e4b2} = s 'Microsoft RDP Client Control (redistributable) - version 6'
+        {
+            ProgID = s 'MsRDP.MsRDP.5'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.6 = s 'MsRDP Class v7'
+    {
+        CLSID = s '{7390f3d8-0439-4c05-91e3-cf5cb290c3d0}'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {7390f3d8-0439-4c05-91e3-cf5cb290c3d0} = s 'Microsoft RDP Client Control (redistributable) - version 7'
+        {
+            ProgID = s 'MsRDP.MsRDP.6'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.7 = s 'MsRDP Class v8'
+    {
+        CLSID = s '{a9d7038d-b5ed-472e-9c47-94bea90a5910}'
+    }
+    MsRDP.MsRDP = s 'MsRDP Class v8'
+    {
+        CurVer = s 'MsRDP.MsRDP.7'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {a9d7038d-b5ed-472e-9c47-94bea90a5910} = s 'Microsoft RDP Client Control (redistributable) - version 8'
+        {
+            ProgID = s 'MsRDP.MsRDP.7'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+
+HKCR
+{
+    MsRDP.MsRDP.8 = s 'MsRDP Class v9'
+    {
+        CLSID = s '{5F681803-2900-4C43-A1CC-CF405404A676}'
+    }
+    MsRDP.MsRDP = s 'MsRDP Class v9'
+    {
+        CurVer = s 'MsRDP.MsRDP.8'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {5F681803-2900-4C43-A1CC-CF405404A676} = s 'Microsoft RDP Client Control (redistributable) - version 9'
+        {
+            ProgID = s 'MsRDP.MsRDP.8'
+            VersionIndependentProgID = s 'MsRDP.MsRDP'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+            ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}
+

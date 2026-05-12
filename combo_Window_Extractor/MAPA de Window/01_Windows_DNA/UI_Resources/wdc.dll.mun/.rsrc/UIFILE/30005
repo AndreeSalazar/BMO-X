@@ -1,0 +1,333 @@
+<duixml>
+<stylesheets>
+#pragma once
+<style resid="tab">
+<WdcTab background="buttonface" borderthickness="themeable(rect(0rp,0rp,0rp,0rp),rect(0rp,2rp,0rp,0rp))" bordercolor="themeable(gtc(Button,1,4,3803), buttonshadow)" borderstyle="raised" height="themeable(30rp,31rp)" padding="themeable(rect(1rp,2rp,0rp,0rp),rect(1rp,1rp,0rp,0rp))" accessible="true"/>
+</style>
+<style resid="list">
+<CCListView font="MessageFont;89%;Normal;None" height="185rp" accessible="true" accrole="list"/>
+</style>
+<style resid="page">
+<element background="window" font="MessageFont;111%;Normal;None" foreground="windowtext" padding="rect(0rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)"/>
+</style>
+<style resid="drop">
+<element layoutpos="top" contentalign="middlecenter" padding="rect(0rp,4rp,0rp,4rp)" bordercolor="themeable(gtc(Button,1,4,3803), buttonshadow)" borderstyle="sunken" borderthickness="rect(1rp,0rp,1rp,1rp)" width="200rp"/>
+</style>
+<style resid="portal">
+<expando layoutpos="top" margin="rect(0rp,0rp,0rp,0rp)" padding="rect(0rp,0rp,0rp,0rp)" bordercolor="themeable(gtc(Button,1,4,3803),buttonshadow)" borderstyle="sunken" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accrole="grouping"/>
+<element layoutpos="top" margin="rect(0rp,0rp,0rp,0rp)" padding="rect(0rp,0rp,0rp,0rp)" bordercolor="themeable(gtc(Button,1,4,3803),buttonshadow)" borderstyle="sunken" borderthickness="rect(0rp,0rp,0rp,0rp)"/>
+<clipper animation="alpha | s | fast"/>
+<if class="clipped">
+<element borderthickness="rect(1rp,0rp,1rp,1rp)"/>
+</if>
+<if class="hintbar">
+<element layoutpos="none" background="themeable(gradient(buttonhighlight, RGB(255, 132, 8), 1), RGB(255, 132, 8))" margin="rect(0rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,1rp)" animation="alpha|s|fast"/>
+<if selected="true">
+<element background="themeable(gradient(buttonhighlight, RGB(247, 194, 29), 1), RGB(247, 194, 29))"/>
+</if>
+</if>
+<if class="hintlabel">
+<element layoutpos="top" contentalign="topleft|endellipsis" font="MessageFont;100%;Normal;None" foreground="black" background="argb(0,0,0,0)" padding="rect(4rp,4rp,0rp,4rp)" tooltip="true" accessible="true" accname="resstr(34211)" accrole="statictext" accstate="0x00000040"/>
+</if>
+</style>
+<style resid="bar">
+<element layoutpos="top" background="themeable(gradient(buttonhighlight, threedshadow, 1), buttonface)" foreground="themeable(captiontext, buttontext)" fontface="Segoe UI Bold" margin="rect(10rp,0rp,0rp,0rp)" padding="rect(4rp,0rp,10rp,0rp)" bordercolor="themeable(gtc(Button,1,4,3803), buttonshadow)" borderstyle="sunken" borderthickness="rect(1rp,1rp,1rp,1rp)" height="30rp"/>
+</style>
+<style resid="tabletitle">
+<element background="argb(0,0,0,0)" contentalign="middleleft|endellipsis" layoutpos="left" padding="rect(0rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accrole="statictext" accstate="0x00000040"/>
+</style>
+<style resid="icon">
+<element layoutpos="left" background="argb(0,0,0,0)" contentalign="middleleft" padding="rect(0rp,0rp,0rp,0rp)" margin="rect(0rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accrole="chart"/>
+</style>
+<style resid="label">
+<element layoutpos="left" font="MessageFont;89%;Normal;None" background="argb(0,0,0,0)" contentalign="middleleft|endellipsis" padding="rect(0rp,0rp,0rp,0rp)" margin="rect(2rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accrole="statictext" accstate="0x00000040"/>
+</style>
+<style resid="titlebutton">
+<accessiblebutton layoutpos="right" background="argb(0,0,0,0)" contentalign="middleright" padding="rect(0rp,0rp,0rp,0rp)" margin="rect(0rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accrole="pushbutton"/>
+<if selected="true">
+<accessiblebutton content="themeable(sgraphic(31001),sgraphic(31005))" accname="resstr(34225)"/>
+</if>
+<if selected="false">
+<accessiblebutton content="themeable(sgraphic(31000),sgraphic(31004))" accname="resstr(34218)"/>
+</if>
+<if keyfocused="true">
+<accessiblebutton contentalign="middleright|focusrect"/>
+</if>
+</style>
+<style resid="graphtitlebutton">
+<accessiblebutton layoutpos="left" content="themeable(sgraphic(31007),sgraphic(31009))" background="argb(0,0,0,0)" contentalign="middleleft" padding="rect(6rp,0rp,0rp,0rp)" margin="rect(0rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accname="resstr(34219)" accrole="pushbutton"/>
+<if keyfocused="true">
+<accessiblebutton contentalign="middleleft|focusrect"/>
+</if>
+<if direction="rtl">
+<accessiblebutton content="themeable(sgraphic(31011),sgraphic(31008))"/>
+</if>
+</style>
+<style resid="graphdropdown">
+<CCPushButton layoutpos="right" font="MessageFont;100%;Normal;None" content="resstr(33872)" width="90rp" padding="rect(0rp,1rp,2rp,1rp)" margin="rect(0rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accname="resstr(33872)" accrole="splitbutton"/>
+</style>
+<style resid="vbar">
+<if class="outer">
+<element borderthickness="rect(1rp,0rp,0rp,0rp)" bordercolor="themeable(gtc(Button,1,4,3803),window)" borderstyle="sunken"/>
+</if>
+<if class="inner">
+<element background="themeable(gradient(buttonhighlight, threedshadow, 0), buttonface)" bordercolor="themeable(gtc(Button,1,4,3803), buttonshadow)" borderstyle="sunken" borderthickness="rect(1rp,1rp,1rp,1rp)"/>
+<if direction="rtl">
+<element background="themeable(gradient(threedshadow, buttonhighlight, 0), buttonface)"/>
+</if>
+</if>
+<if id="atom(expandGraphsButton)">
+<accessiblebutton content="themeable(sgraphic(31006),sgraphic(31008))" contentalign="topcenter" borderthickness="rect(0rp,0rp,0rp,0rp)"/>
+<if keyfocused="true">
+<accessiblebutton contentalign="topcenter|focusrect"/>
+</if>
+<if direction="rtl">
+<accessiblebutton content="themeable(sgraphic(31010),sgraphic(31009))"/>
+</if>
+</if>
+</style>
+<style resid="splitter">
+<splitter width="6rp" cursor="sizewe" borderthickness="rect(1rp,0rp,0rp,0rp)" bordercolor="themeable(gtc(Button,1,4,3803),window)" borderstyle="sunken" accessible="true" accrole="separator" accname="resstr(34216)"/>
+</style>
+<style resid="hsplitter">
+<splitter layoutpos="top" height="6rp" cursor="sizens" enabled="false" borderthickness="rect(0rp,0rp,0rp,0rp)" accessible="true" accrole="separator" accname="resstr(34217)"/>
+</style>
+<style resid="searchbox">
+<if id="atom(searchbox)">
+<element background="themeable(white, window)" bordercolor="buttonface" borderstyle="sunken" borderthickness="rect(1rp,1rp,1rp,1rp)"/>
+</if>
+<if id="atom(edit)">
+<WdcEdit contentalign="middleleft" font="MessageFont;100%;Normal;None" background="argb(0,0,0,0)" borderthickness="rect(0rp,0rp,0rp,0rp)" themedborder="false"/>
+</if>
+<if id="atom(searchclear)">
+<element background="argb(0,0,0,0)" borderthickness="rect(0rp,0rp,0rp,0rp)"/>
+</if>
+<if id="atom(clear)">
+<accessiblebutton content="themeable(sgraphic(31028),sgraphic(31031))"/>
+<if mousefocused="true">
+<accessiblebutton content="themeable(sgraphic(31030),sgraphic(31033))"/>
+</if>
+<if keyfocused="true">
+<accessiblebutton content="themeable(sgraphic(31030),sgraphic(31033))"/>
+</if>
+<if pressed="true">
+<accessiblebutton content="themeable(sgraphic(31029),sgraphic(31032))"/>
+</if>
+</if>
+<if id="atom(search)">
+<accessiblebutton content="themeable(sgraphic(31016),sgraphic(31019))"/>
+<if mousefocused="true">
+<accessiblebutton content="themeable(sgraphic(31018),sgraphic(31021))"/>
+</if>
+<if keyfocused="true">
+<accessiblebutton content="themeable(sgraphic(31018),sgraphic(31021))"/>
+</if>
+<if pressed="true">
+<accessiblebutton content="themeable(sgraphic(31017),sgraphic(31020))"/>
+</if>
+</if>
+<if id="atom(refresh)">
+<accessiblebutton content="themeable(sgraphic(31022),sgraphic(31025))"/>
+<if mousefocused="true">
+<accessiblebutton content="themeable(sgraphic(31024),sgraphic(31027))"/>
+</if>
+<if keyfocused="true">
+<accessiblebutton content="themeable(sgraphic(31024),sgraphic(31027))"/>
+</if>
+<if pressed="true">
+<accessiblebutton content="themeable(sgraphic(31023),sgraphic(31026))"/>
+</if>
+</if>
+<if class="tablebutton">
+<accessiblebutton contentalign="middlecenter" background="themeable(white, window)" padding="rect(0rp,0rp,0rp,0rp)"/>
+</if>
+</style>
+<style resid="barchart">
+<if class="label">
+<element contentalign="wrapleft|endellipsis" font="MessageFont;89%;Normal;None" tooltip="true" accessible="true" accrole="statictext" accstate="0x00000040"/>
+</if>
+<if class="free">
+<element tooltip="true" background="themeable(gradient(RGB(198,217,241),RGB(151,186,229),1),RGB(151,186,229))" accessible="true" accname="resstr(33849)" accdesc="resstr(33603)" accrole="graphic"/>
+</if>
+<if class="standby">
+<element tooltip="true" background="themeable(gradient(RGB(85,142,213),RGB(49,116,197),1),RGB(49,116,197))" accessible="true" accname="resstr(33868)" accdesc="resstr(33604)" accrole="graphic"/>
+</if>
+<if class="modified">
+<element tooltip="true" background="themeable(gradient(RGB(255,153,0),RGB(204,121,0),1),RGB(204,121,0))" accessible="true" accname="resstr(33857)" accdesc="resstr(33605)" accrole="graphic"/>
+</if>
+<if class="inuse">
+<element tooltip="true" background="themeable(gradient(RGB(143,184,12),RGB(126,162,10),1), RGB(126,162,10))" accessible="true" accname="resstr(33852)" accdesc="resstr(33606)" accrole="graphic"/>
+</if>
+<if class="reserved">
+<element tooltip="true" background="themeable(gradient(RGB(203,203,203),RGB(166,166,166),1), RGB(166,166,166))" accessible="true" accname="resstr(33877)" accdesc="resstr(33609)" accrole="graphic"/>
+</if>
+</style>
+<style resid="graphbox">
+<if class="rmargin">
+<element layoutpos="right" width="16rp" padding="rect(1rp,7rp,0rp,7rp)" margin="rect(0rp,0rp,0rp,0rp)"/>
+</if>
+<if class="rsquare">
+<element layoutpos="left" width="6rp" borderthickness="rect(0rp,1rp,1rp,1rp)" bordercolor="themeable(captiontext, buttontext)"/>
+<if enabled="false">
+<element bordercolor="graytext"/>
+</if>
+</if>
+<if class="header">
+<element layoutpos="top" margin="rect(0rp,0rp,0rp,0rp)" padding="rect(0rp,0rp,0rp,2rp)"/>
+</if>
+<if class="lheader">
+<element layoutpos="client" contentalign="topleft|endellipsis" margin="rect(0rp,0rp,0rp,0rp)" padding="rect(0rp,0rp,0rp,0rp)" accessible="true" accrole="statictext" accstate="0x00000040"/>
+</if>
+<if class="rheader">
+<element layoutpos="right" contentalign="topright|endellipsis" margin="rect(0rp,0rp,0rp,0rp)" padding="rect(0rp,0rp,2rp,0rp)" accessible="true" accname="resstr(34220)" accrole="statictext" accstate="0x00000040"/>
+</if>
+<element layoutpos="top" background="argb(0,0,0,0)" font="MessageFont" margin="rect(10rp,0rp,10rp,0rp)" padding="rect(10rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" contentalign="topleft"/>
+<macro layoutpos="top" background="argb(0,0,0,0)" font="MessageFont" margin="rect(10rp,0rp,10rp,0rp)" padding="rect(10rp,0rp,0rp,0rp)" borderthickness="rect(0rp,0rp,0rp,0rp)" contentalign="topleft"/>
+<if enabled="false">
+<macro foreground="graytext"/>
+</if>
+</style>
+<style resid="graph">
+<graph layoutpos="top" background="rgb(0,0,0)" margin="rect(0rp,0rp,0rp,0rp)" padding="rect(0rp,0rp,0rp,0rp)" height="104rp" accessible="true" accrole="chart"/>
+</style>
+<style resid="scrollviewer">
+<CCHScrollBar layoutpos="ninebottom" accessible="true"/>
+<CCVScrollBar layoutpos="nineright" accessible="true"/>
+<viewer layoutpos="nineclient" padding="rect(0rp,0rp,1rp,0rp)"/>
+</style>
+</stylesheets>
+<element resid="nettab_graphs" layout="borderlayout()" padding="rect(0rp,0rp,0rp,0rp)">
+<scrollviewer layoutpos="client" sheet="scrollviewer" xbarvisibility="asneeded" ybarvisibility="always">
+<element layout="borderlayout()" sheet="portal" padding="rect(0rp,2rp,0rp,0rp)">
+<element id="atom(graphTitleBar)" layout="borderlayout()" active="mouse" sheet="bar">
+<accessiblebutton sheet="graphtitlebutton" id="atom(collapseGraphsButton_nettab)"/>
+<CCPushButton sheet="graphdropdown" id="atom(switchGraphView_nettab)"/>
+</element>
+<clipper id="atom(expandedGraphs_nettab)" layoutpos="top">
+<element sheet="drop" id="atom(clipGraphs_nettab)" layout="borderlayout()">
+<element layout="borderlayout()" sheet="graphbox">
+<element id="atom(netGraph_nettab_right)" class="rmargin" layout="borderlayout()">
+<element class="rsquare"/>
+</element>
+<element class="header" layout="borderlayout()">
+<element class="lheader" content="resstr(33859)" accname="resstr(33859)"/>
+<element id="atom(netTitle_nettab)" class="rheader" content="resstr(33830)" accname="resstr(33830)"/>
+</element>
+<graph id="atom(netGraph_nettab)" sheet="graph" accname="resstr(33859)"/>
+<element id="atom(netGraph_nettab_bottom)" class="header" layout="borderlayout()">
+<element class="lheader" content="resstr(33839)" accname="resstr(33839)"/>
+<element class="rheader" content="resstr(33819)" accname="resstr(33819)"/>
+</element>
+</element>
+<element layout="borderlayout()" sheet="graphbox">
+<element id="atom(connectionsGraph_nettab_right)" class="rmargin" layout="borderlayout()">
+<element class="rsquare"/>
+</element>
+<element class="header" layout="borderlayout()">
+<element class="lheader" content="resstr(33842)" accname="resstr(33842)"/>
+<element id="atom(connectionsTitle_nettab)" class="rheader" content="resstr(33831)" accname="resstr(33831)"/>
+</element>
+<graph id="atom(connectionsGraph_nettab)" sheet="graph" accname="resstr(33842)"/>
+<element id="atom(connectionsGraph_nettab_bottom)" class="header" layout="borderlayout()">
+<element class="lheader" content="" accessible="false"/>
+<element class="rheader" content="resstr(33814)" accname="resstr(33814)"/>
+</element>
+</element>
+<repeater id="atom(netGraphRepeater_nettab)" expand="netentry" layout="borderlayout()" layoutpos="top"/>
+</element>
+</clipper>
+</element>
+</scrollviewer>
+</element>
+<element resid="nettab_tables" layout="borderlayout()">
+<scrollviewer layoutpos="client" sheet="scrollviewer" xscrollable="false" ybarvisibility="always">
+<element layout="borderlayout()" layoutpos="client">
+<expando id="atom(expandoProcNet_nettab)" layout="borderlayout()" sheet="portal" padding="rect(0rp,2rp,0rp,0rp)" accname="resstr(33865)">
+<element id="atom(titlebar)" layout="borderlayout()" active="mouse" sheet="bar">
+<accessiblebutton sheet="titlebutton" id="atom(arrow)"/>
+<element sheet="tabletitle" content="resstr(33865)" accname="resstr(33865)"/>
+</element>
+<clipper id="atom(clipperp)" layoutpos="top">
+<element class="clipped" layout="borderlayout()">
+<WdcListView id="atom(procNetList_nettab)" sheet="list" accname="resstr(33865)"/>
+</element>
+</clipper>
+<splitter id="atom(procNetSplitter_nettab)" sheet="hsplitter"/>
+</expando>
+<expando id="atom(expandoNet_nettab)" layout="borderlayout()" sheet="portal" accname="resstr(33860)">
+<element id="atom(titlebar)" layout="tablelayout(
+0,0,
+0,2,-28,
+0,2,-36,
+0,2,-36,
+1,2,20rp
+)" active="mouse" sheet="bar">
+<element sheet="tabletitle" content="resstr(33860)" accname="resstr(33860)"/>
+<element layout="borderlayout()" borderthickness="rect(0rp,0rp,0rp,0rp)">
+<element id="atom(netBar_nettab)" content="resbmp(31100)" sheet="icon" accname="resstr(34204)"/>
+<element id="atom(netValue_nettab)" content="resstr(33812)" sheet="label" accname="resstr(34204)"/>
+</element>
+<element layout="borderlayout()" borderthickness="rect(0rp,0rp,0rp,0rp)">
+<element id="atom(netUsageBar_nettab)" content="resbmp(31200)" sheet="icon" accname="resstr(34205)"/>
+<element id="atom(netUsageValue_nettab)" content="resstr(33822)" sheet="label" accname="resstr(34205)"/>
+</element>
+<accessiblebutton sheet="titlebutton" id="atom(arrow)"/>
+</element>
+<clipper id="atom(clipperp)" layoutpos="top">
+<element class="clipped" layout="borderlayout()">
+<element id="atom(netHintBar_nettab)" class="hintbar" layout="borderlayout()">
+<element id="atom(netHintLabel_nettab)" class="hintlabel" active="mouse"/>
+</element>
+<WdcListView id="atom(netList_nettab)" sheet="list" accname="resstr(33860)"/>
+</element>
+</clipper>
+<splitter id="atom(netSplitter_nettab)" sheet="hsplitter"/>
+</expando>
+<expando id="atom(expandoConnections_nettab)" layout="borderlayout()" sheet="portal" accname="resstr(33843)">
+<element id="atom(titlebar)" layout="borderlayout()" active="mouse" sheet="bar">
+<accessiblebutton sheet="titlebutton" id="atom(arrow)"/>
+<element sheet="tabletitle" content="resstr(33843)" accname="resstr(33843)"/>
+</element>
+<clipper id="atom(clipperp)" layoutpos="top">
+<element class="clipped" layout="borderlayout()">
+<element id="atom(connectionsHintBar_nettab)" class="hintbar" layout="borderlayout()">
+<element id="atom(connectionsHintLabel_nettab)" class="hintlabel" active="mouse"/>
+</element>
+<WdcListView id="atom(connectionsList_nettab)" sheet="list" accname="resstr(33843)"/>
+</element>
+</clipper>
+<splitter id="atom(connectionsSplitter_nettab)" sheet="hsplitter"/>
+</expando>
+<expando id="atom(expandoPorts_nettab)" layout="borderlayout()" sheet="portal" accname="resstr(33863)">
+<element id="atom(titlebar)" layout="borderlayout()" active="mouse" sheet="bar">
+<accessiblebutton sheet="titlebutton" id="atom(arrow)"/>
+<element sheet="tabletitle" content="resstr(33863)" accname="resstr(33863)"/>
+</element>
+<clipper id="atom(clipperp)" layoutpos="top">
+<element class="clipped" layout="borderlayout()">
+<element id="atom(portsHintBar_nettab)" class="hintbar" layout="borderlayout()">
+<element id="atom(portsHintLabel_nettab)" class="hintlabel" active="mouse"/>
+</element>
+<WdcListView id="atom(portsList_nettab)" sheet="list" accname="resstr(33863)"/>
+</element>
+</clipper>
+<splitter id="atom(portsSplitter_nettab)" sheet="hsplitter"/>
+</expando>
+</element>
+</scrollviewer>
+</element>
+<element resid="netentry" layout="borderlayout()" sheet="graphbox">
+<element id="atom(netEntryGraph_nettab_right)" class="rmargin" layout="borderlayout()">
+<element class="rsquare"/>
+</element>
+<element class="header" layout="borderlayout()">
+<element id="atom(netEntryTitle_nettab)" class="lheader" content="resstr(33853)" accname="resstr(33853)"/>
+<element id="atom(netEntryScale_nettab)" class="rheader" content="resstr(33835)" accname="resstr(33835)"/>
+</element>
+<graph id="atom(netEntryGraph_nettab)" sheet="graph" accname="resstr(33853)"/>
+<element id="atom(netEntryGraph_nettab_bottom)" class="header" layout="borderlayout()">
+<element class="lheader" content="" accessible="false"/>
+<element class="rheader" content="resstr(33813)" accname="resstr(33813)"/>
+</element>
+</element>
+</duixml>

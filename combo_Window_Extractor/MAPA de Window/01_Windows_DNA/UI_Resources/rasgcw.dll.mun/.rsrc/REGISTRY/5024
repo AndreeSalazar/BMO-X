@@ -1,0 +1,26 @@
+HKCR
+{
+    RAS.VPNUserInfoPage.1 = s 'RAS VPN User Info Page'
+    {
+        CLSID = s '{C03E8534-781E-49A1-8190-CE902D0B2CE7}'
+    }
+    RAS.VPNUserInfoPage = s 'RAS VPN User Info Page'
+    {
+        CLSID = s '{C03E8534-781E-49A1-8190-CE902D0B2CE7}'
+        CurVer = s 'RAS.VPNUserInfoPage.1'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {C03E8534-781E-49A1-8190-CE902D0B2CE7} = 
+                     s 'RAS VPN User Info Page'
+        {
+            ProgID = s 'RAS.VPNUserInfoPage.1'
+            VersionIndependentProgID = s 'RAS.VPNUserInfoPage'
+            ForceRemove 'Programmable'
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+} 

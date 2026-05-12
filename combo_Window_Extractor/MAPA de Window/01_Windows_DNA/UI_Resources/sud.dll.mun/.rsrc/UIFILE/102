@@ -1,0 +1,171 @@
+<duixml>
+<stylesheets>
+<style resid="cp_style">
+<Button accessible="true" contentalign="wrapleft"/>
+<Element overhang="false" background="argb(0,0,0,0)"/>
+<NavigateButton overhang="false" background="argb(0,0,0,0)"/>
+<CCPushButton transparent="true" accessible="true" minsize="size(76rp,23rp)" font="gtf(CONTROLPANELSTYLE,14,0)" margin="rect(6rp,0rp,0rp,0rp)"/>
+<CCCheckBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<ComboBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,14,0)"/>
+<CCRadioButton transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<CCSysLink transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0), window)"/>
+<Edit transparent="true" themedborder="true" width="120rp" accessible="true" accrole="text" height="20rp" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)"/>
+<if class="cp_topbox">
+<Element accessible="true" accrole="client" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_hub_frame">
+<Element padding="rect(13rp,1rp,1rp,10rp)"/>
+</if>
+<if class="cp_spoke_frame">
+<Element padding="rect(0rp,19rp,0rp,10rp)"/>
+</if>
+<if class="cp_help_glyph">
+<Button height="18rp" width="18rp" content="icon(99,sysmetric(49),sysmetric(50),library(imageres.dll))" padding="rect(1rp,1rp,1rp,1rp)" cursor="hand" accRole="link" accdefaction="click" accState="0x00100000" tooltip="true"/>
+<if keyfocused="true">
+<Button contentalign="focusrect"/>
+</if>
+</if>
+<if class="cp_content_pane">
+<Element width="600rp" padding="rect(10rp,0rp,10rp,0rp)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_content_instruction">
+<Element contentalign="wrapleft" foreground="gtc(CONTROLPANELSTYLE,5,0,3803)" font="gtf(CONTROLPANELSTYLE, 5, 0)" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_v_spacer">
+<Element height="7rp"/>
+</if>
+<if class="cp_content_text">
+<Element font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<PText font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_title_text">
+<Element font="gtf(CONTROLPANELSTYLE, 19, 0)" foreground="gtc(CONTROLPANELSTYLE,19,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_help_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+</if>
+</if>
+<if class="cp_content_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+</if>
+</if>
+<if class="cp_content_divider_header">
+<Element background="themeable(dtb(CONTROLPANEL,2,0),window)" foreground="gtc(CONTROLPANELSTYLE,9,0,3803)" font="gtf(CONTROLPANELSTYLE, 9, 0)" padding="rect(0rp,0rp,2rp,0rp)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_divider_line">
+<Element height="1rp" width="565rp" background="themeable(dtb(CONTROLPANEL,17,0),buttonshadow)"/>
+</if>
+<if class="cp_content_banner_box">
+<Element padding="rect(7rp,7rp,7rp,7rp)" background="themeable(dtb(CONTROLPANEL,18,0),window)" borderthickness="rect(1rp,1rp,1rp,1rp)" bordercolor="gtc(CONTROLPANELSTYLE,17,0,3821)"/>
+</if>
+<if class="cp_command_sink">
+<Element layoutpos="bottom" background="themeable(dtb(CONTROLPANEL,12,0),window)"/>
+</if>
+<if class="cp_command_float">
+<Element layoutpos="top" background="themeable(dtb(CONTROLPANEL,13,0),window)"/>
+</if>
+<if class="cp_command_button_box">
+<Element padding="rect(0rp,10rp,10rp,10rp)" width="600rp"/> 
+</if>
+</style>
+<style resid="CPLTaskHubStyle">
+<if class="TaskLinkIcon">
+<button layoutpos="left" margin="rect(0rp,0rp,0rp,0rp)" accrole="pushbutton" cursor="hand" accessible="true" accdefaction="press"/>
+</if>
+</style>
+</stylesheets>
+<SudCplHubPage sheet="cp_style" resid="main" layout="borderlayout()" accessible="true" accrole="client" accname="resstr(1213)">
+<element class="cp_topbox" layout="borderlayout()" layoutpos="client" accessible="true" accrole="client" accname="resstr(1214)">
+<scrollviewer sheet="common" layoutpos="client" xscrollable="false" xbarvisibility="never">
+<element layout="borderlayout()" sheet="cp_style" class="cp_hub_frame">
+<element layoutpos="top" layout="borderlayout()">
+<viewer layoutpos="right">
+<button class="cp_help_glyph" id="atom(Link_DefaultProgramsHelp)" accname="resstr(1224)"/>
+</viewer>
+</element>
+<element class="cp_content_pane" id="atom(ContentPane)" layoutpos="top" layout="borderlayout()">
+<element layoutpos="top" class="cp_content_instruction" id="atom(TaskHubTitle)" content="resstr(1169)" contentalign="wrapleft"/>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element id="atom(TaskLink_SetDefaultProgram)" layoutpos="top" layout="borderlayout()" padding="rect(0rp,0rp,0rp,0rp)">
+<Button id="atom(Link_SetDefaultProgram_Icon)" sheet="CPLTaskHubStyle" class="TaskLinkIcon" content="icon(4,24rp,24rp)" active="mouse" layoutpos="left" accname="resstr(1209)"/>
+<element layoutpos="top" layout="borderlayout()" padding="rect(10rp,0rp,0rp,0rp)">
+<element layoutpos="top" layout="flowlayout()">
+<Button class="cp_content_link" id="atom(Link_SetDefaultProgram)" content="resstr(1170)" shortcut="auto"/>
+</element>
+<element layoutpos="top" layout="flowlayout()" padding="rect(0rp,5rp,0rp,0rp)">
+<element class="cp_content_text" content="resstr(1171)"/>
+</element>
+</element>
+</element>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element id="atom(TaskLink_SetFileAssoc)" layoutpos="top" layout="borderlayout()" padding="rect(0rp,0rp,0rp,0rp)">
+<Button id="atom(Link_SetFileAssoc_Icon)" sheet="CPLTaskHubStyle" class="TaskLinkIcon" content="icon(2,24rp,24rp)" active="mouse" layoutpos="left" accname="resstr(1210)"/>
+<element layoutpos="top" layout="borderlayout()" padding="rect(10rp,0rp,0rp,0rp)">
+<element layoutpos="top" layout="flowlayout()">
+<Button class="cp_content_link" id="atom(Link_SetFileAssoc)" content="resstr(1172)" shortcut="auto"/>
+</element>
+<element layoutpos="top" layout="flowlayout()" padding="rect(0rp,5rp,0rp,0rp)">
+<element id="atom(TaskLink_SetDefaultProgram_Description_Id)" class="cp_content_text" content="resstr(1173)"/>
+</element>
+</element>
+</element>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element id="atom(TaskLink_AutoPlay)" layoutpos="top" layout="borderlayout()" padding="rect(0rp,0rp,0rp,0rp)">
+<Button id="atom(Link_AutoPlay_Icon)" sheet="CPLTaskHubStyle" class="TaskLinkIcon" content="icon(5,24rp,24rp)" active="mouse" layoutpos="left" accname="resstr(1211)"/>
+<element layoutpos="top" layout="borderlayout()" padding="rect(10rp,0rp,0rp,0rp)">
+<element layoutpos="top" layout="flowlayout()">
+<Button class="cp_content_link" id="atom(Link_AutoPlay)" content="resstr(1174)" shortcut="auto"/>
+</element>
+<element layoutpos="top" layout="flowlayout()" padding="rect(0rp,5rp,0rp,0rp)">
+<element class="cp_content_text" content="resstr(1175)"/>
+</element>
+</element>
+</element>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element id="atom(TaskLink_Spad)" layoutpos="top" layout="borderlayout()" padding="rect(0rp,0rp,0rp,0rp)">
+<Button id="atom(Link_Spad_Icon)" sheet="CPLTaskHubStyle" class="TaskLinkIcon" content="icon(6,24rp,24rp)" active="mouse" layoutpos="left" accname="resstr(1212)"/>
+<element layoutpos="top" layout="borderlayout()" padding="rect(10rp,0rp,0rp,0rp)">
+<element layoutpos="top" layout="flowlayout()">
+<Button class="cp_content_link" id="atom(Link_Spad)" content="resstr(1176)" shortcut="auto"/>
+</element>
+<element layoutpos="top" layout="flowlayout()" padding="rect(0rp,5rp,0rp,0rp)">
+<element class="cp_content_text" content="resstr(1177)"/>
+</element>
+</element>
+</element>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+<element layoutpos="top" class="cp_content_v_spacer"/>
+</element>
+</element>
+</scrollviewer>
+</element>
+</SudCplHubPage>
+</duixml>

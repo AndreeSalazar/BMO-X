@@ -1,0 +1,26 @@
+HKCR
+{
+    RAS.IncomingConnectionHookPage.1 = s 'RAS Incoming Connection Hook Page (non-UI)'
+    {
+        CLSID = s '{C03E8552-781E-49A1-8190-CE902D0B2CE7}'
+    }
+    RAS.IncomingConnectionHookPage = s 'RAS Incoming Connection Hook Page (non-UI)'
+    {
+        CLSID = s '{C03E8552-781E-49A1-8190-CE902D0B2CE7}'
+        CurVer = s 'RAS.IncomingConnectionHookPage.1'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {C03E8552-781E-49A1-8190-CE902D0B2CE7} = 
+                     s 'RAS Incoming Connection Hook Page (non-UI)'
+        {
+            ProgID = s 'RAS.IncomingConnectionHookPage.1'
+            VersionIndependentProgID = s 'RAS.IncomingConnectionHookPage'
+            ForceRemove 'Programmable'
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+} 

@@ -1,0 +1,66 @@
+﻿<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles_ltr.css" />
+
+    <script src="jquery-1.11.3.min.js" type="text/javascript"></script>
+    <script src="script.js" type="text/javascript"></script>
+
+    <title>Internet Explorer 11</title>
+</head>
+<body>
+
+    <div class="header">
+        <div class="ie-logo"></div>
+        <div class="heading"><p>Selecione sua home page e configurações de pesquisa</p></div>
+    </div>
+
+    <div class="intro-row">
+        <div>
+            <p>A partir de agora, o Internet Explorer impedirá que sites da web alterem essas configurações de forma silenciosa. Escolha as configurações que você deseja manter.</p>
+            <div><a href="#" class="intro-learnmore">Clique aqui para saber mais.</a></div>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="setting-item">
+            <div class="setting-item-radio">
+                <input type="radio" class="setting-radio" name="setting-radio" id="radio-default" checked />
+            </div>
+            <div class="setting-item-content">
+                <p><label for="radio-default">Configurações da Microsoft</label>:</p>
+                <p>Home page: <span dir="ltr" class="settingValue defaultDHP"></span></p>
+                <p>Mecanismo de pesquisa padrão: <span dir="ltr" class="settingValue defaultDSP"></span></p>
+            </div>
+        </div>
+        <div class="setting-item">
+            <div class="setting-item-radio">
+                <input type="radio" class="setting-radio" name="setting-radio" id="radio-current" />
+            </div>
+            <div class="setting-item-content">
+                <p><label for="radio-current">Suas configurações atuais </label>:</p>
+                <p>Home page: <span dir="ltr" class="settingValue currentDHP"></span></p>
+                <p>Mecanismo de pesquisa padrão: <span dir="ltr" class="settingValue currentDSP"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="cta-row">
+        <div class="cta-button cta-return-selected">
+            <div class="cta-button-text">
+                <p>Concluído</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Você poderá alterar essas configurações mais tarde no menu <strong>Ferramentas</strong> no Internet Explorer.</p>
+    </div>
+
+</body>
+</html>

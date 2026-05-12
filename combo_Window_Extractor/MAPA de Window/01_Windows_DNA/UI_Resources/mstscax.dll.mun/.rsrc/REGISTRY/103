@@ -1,0 +1,32 @@
+HKCR
+{
+    RemoteDesktopClient.RemoteDesktopClient.1 = s 'RemoteDesktopClient Class'
+    {
+        CLSID = s '{EAB16C5D-EED1-4E95-868B-0FBA1B42C092}'
+    }
+    RemoteDesktopClient.RemoteDesktopClient = s 'RemoteDesktopClient Class'
+    {
+        CurVer = s 'RemoteDesktopClient.RemoteDesktopClient.1'
+    }
+    NoRemove CLSID
+    {
+        ForceRemove {EAB16C5D-EED1-4E95-868B-0FBA1B42C092} = s 'RemoteDesktopClient Class'
+        {
+            ProgID = s 'RemoteDesktopClient.RemoteDesktopClient.1'
+            VersionIndependentProgID = s 'RemoteDesktopClient.RemoteDesktopClient'
+            ForceRemove 'Programmable'
+            InprocServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+	    ForceRemove 'Control'
+            ForceRemove 'ToolboxBitmap32' = s '%MODULE%, 1'
+            'MiscStatus' = s '0'
+            {
+                '1' = s '131473'
+            }
+            'TypeLib' = s '{8C11EFA1-92C3-11D1-BC1E-00C04FA31489}'
+            'Version' = s '1.0'
+        }
+    }
+}

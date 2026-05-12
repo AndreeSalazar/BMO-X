@@ -1,0 +1,193 @@
+<pagedefinition>
+<properties elementprovider="{9b4e5207-9539-4258-b4a0-4e70e9e565ec}" initializer="{15fc1bac-8d83-4e87-8cc2-a70c9f66f943}" layout="105" icon="usercpl.dll,-1" displayname="@usercpl.dll,-45" canonicalname="pageChangeMyChoices" navpane="true" helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"/>
+<childpages>
+<pagedefinition>
+<!-- localonly means that this can't be jumped to from outside this cpl and won't show up in the breadcrumb bar.
+alternatetargetrelative is the alternate if you try to jump to it with the cmd line - it's the canonical path
+relative to the root of this cpl.  "" is how you specify the root page (in this case pageChangeMyChoices).  localonly currently
+will only redirect to a page within your cpl.  You can use LocalOnlyOS="OS_DOMAINMEMBER" to override the
+localonly based on domain membership. If you don't specify a LocalOnlyOS, it is always localonly for all OS's -->
+<localonly alternatetargetrelative="" LocalOnlyOS="OS_DOMAINMEMBER" />
+<properties
+layout="111"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-55"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageRenameMyAccount"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="" />
+<properties
+layout="116"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-60"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageChangeMyPassword"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="" />
+<properties
+layout="119"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-63"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageCreateMyPassword"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="" />
+<properties
+layout="121"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-65"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageRemoveMyPassword"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="" />
+<properties
+layout="122"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-66"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageChangeMyAccountType"
+/>
+</pagedefinition>
+<pagedefinition>
+<properties
+layout="128"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-82"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageRoamingSettings"
+/>
+</pagedefinition>
+<pagedefinition>
+<properties
+layout="136"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-186"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageNavigateToConnectLocalAccount"
+/>
+</pagedefinition>
+<pagedefinition>
+<properties
+layout="137"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-130"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageNavigateToAddDomainAccount"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="" LocalOnlyOS="OS_DOMAINMEMBER"/>
+<properties
+layout="110"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-54"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageAdminTasks"
+/>
+<childpages>
+<pagedefinition>
+<localonly alternatetargetrelative="" />
+<properties
+layout="102"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-49"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageChangeChoices"
+/>
+<childpages>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks"/>
+<properties
+layout="108"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-51"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageRenameAccount"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks"/>
+<properties
+layout="114"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-58"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageChangePassword"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks"/>
+<properties
+layout="115"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-59"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageChangeAccountType"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks"/>
+<properties
+layout="118"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-62"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageCreatePassword"
+/>
+</pagedefinition>
+</childpages>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks" />
+<properties
+layout="109"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-52"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageTurnOnGuestAccount"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks" />
+<properties
+layout="103"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-53"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageChangeGuestChoices"
+/>
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks"/>
+<properties
+layout="112"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-56"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageDeleteAccount"
+/>
+<childpages>
+<pagedefinition>
+<localonly alternatetargetrelative="pageAdminTasks"/>
+<properties
+layout="113"
+icon="usercpl.dll,-1"
+displayname="@usercpl.dll,-57"
+helptopic="mshelp://windows/?id=94331d67-0f0e-478a-99f0-114e8451d06b"
+canonicalname="pageConfirmDeleteAccount"
+/>
+</pagedefinition>
+</childpages>
+</pagedefinition>
+</childpages>
+</pagedefinition>
+</childpages>
+</pagedefinition>

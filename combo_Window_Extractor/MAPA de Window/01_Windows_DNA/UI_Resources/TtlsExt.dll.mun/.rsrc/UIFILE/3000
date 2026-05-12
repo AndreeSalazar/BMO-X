@@ -1,0 +1,50 @@
+<duixml>
+<element resid="TtlsIdentityUIPage" visible="false"/>
+<element resid="TtlsInteractiveUIPage" visible="false"/>
+<element resid="TtlsNonEapInteractiveUIPage" id="atom(TtlsNonEapInteractiveUIPage)" layout="flowlayout()" sheet="modernstyle" accessible="true" accrole="pane">
+<element id="atom(ExpiredPasswordNode)" layout="flowlayout()" layoutpos="none">
+<element id="atom(PasswordMessage)" layoutpos="top" layout="flowlayout()">
+<RichText id="atom(PasswordExpiredMessage)" contentalign="wrapleft" content="resstr(4001)" accessible="true" accrole="statictext"/>
+</element>
+<element id="atom(PasswordError)" layoutpos="none" layout="flowlayout()">
+<RichText id="atom(PasswordMismatch)" contentalign="wrapleft" content="resstr(4000)" accessible="true" accrole="statictext" foreground="ImmersiveSaturatedInlineErrorText"/>
+</element>
+<element layoutpos="top" layout="flowlayout()" width="265rp" background="argb(0,0,0,0)" padding="rect(0rp,7rp,0rp,0rp)">
+<touchedit2 id="atom(OldPassword)" accessible="true" PromptText="resstr(2211)" PromptWithCaret="true" accname="oldpassword" shortcut="111" passwordcharacter="9679" ContentAlign="middleleft" behaviors="Windows.UI.Popups::TouchEditContextMenu()"/>
+</element>
+<element layoutpos="top" layout="flowlayout()" width="265rp" background="argb(0,0,0,0)" padding="rect(0rp,28rp,0rp,0rp)">
+<touchedit2 id="atom(NewPassword)" accessible="true" PromptText="resstr(2210)" PromptWithCaret="true" accname="newpassword" shortcut="110" passwordcharacter="9679" ContentAlign="middleleft" behaviors="Windows.UI.Popups::TouchEditContextMenu()"/>
+</element>
+<element layoutpos="top" layout="flowlayout()" width="265rp" background="argb(0,0,0,0)" padding="rect(0rp,28rp,0rp,4rp)">
+<touchedit2 id="atom(ConfirmPassword)" accessible="true" PromptText="resstr(2209)" PromptWithCaret="true" accname="confirmpassword" shortcut="99" passwordcharacter="9679" ContentAlign="middleleft" behaviors="Windows.UI.Popups::TouchEditContextMenu()"/>
+</element>
+</element>
+</element>
+<element resid="AuthenticateServerPage" id="atom(AuthenticateServerPage)" layout="Borderlayout()" accessible="true" accrole="pane" sheet="modernstyle">
+<element layoutpos="top" layout="flowlayout()" padding="rect(0rp,20rp,0rp,20rp)">
+<RichText id="atom(ServerWarningMessage)" contentalign="wrapleft" foreground="ImmersiveSaturatedPrimaryText" accessible="true" accrole="statictext"/>
+</element>
+<element layout="flowlayout()" layoutpos="top">
+<touchhyperlink id="atom(ServerDetailsLink)" layoutpos="top" content="resstr(2212)" accdefaction="click" accrole="link" accessible="true"/>
+</element>
+<element id="atom(ServerDetailsNode)" layoutpos="none" layout="flowlayout()" class="certdetails" padding="rect(0rp,10rp,0rp,0rp)">
+<RichText id="atom(ServerDetailsMessage)" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+</element>
+</element>
+<stylesheets> 
+<style resid="modernstyle" base="ressheet(ImmersiveStyles, library(dui70.dll), Dark)">
+<RichText constrainlayout="narrow"/>
+<touchhyperlink constrainlayout="narrow"/>
+<if class="certdetails">
+<element foreground="ImmersiveSaturatedSecondaryText"/>
+</if>
+</style>
+<style resid="modernstylelight" base="ressheet(ImmersiveStyles, library(dui70.dll), Light)">
+<RichText constrainlayout="narrow"/>
+<touchhyperlink constrainlayout="narrow"/>
+<if class="certdetails">
+<element foreground="ImmersiveLightSecondaryText"/>
+</if>
+</style>
+</stylesheets>
+</duixml>

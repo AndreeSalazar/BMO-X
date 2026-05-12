@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library">
+  <!-- IDS_SAVEDPICTURESLIBRARY -->
+  <name>@windows.storage.dll,-34583</name>
+  <isLibraryPinned>false</isLibraryPinned>
+  <!-- SHIDI_LIBRARYPICTURES -->
+  <iconReference>imageres.dll,-1003</iconReference>
+  <propertyStore>
+    <property name="RepresentAsSingleFolder" type="bool"><![CDATA[true]]></property>
+  </propertyStore>
+  <templateInfo>
+    <!-- FOLDERTYPEID_Pictures -->
+    <folderType>{b3690e58-e961-423b-b687-386ebfd83239}</folderType>
+  </templateInfo>
+  <searchConnectorDescriptionList>
+    <searchConnectorDescription publisher="Microsoft" product="Windows">
+      <isDefaultSaveLocation>true</isDefaultSaveLocation>
+      <simpleLocation>
+        <!-- FOLDERID_SavedPictures -->
+        <url>knownfolder:{3B193882-D3AD-4eab-965A-69829D1FB59F}</url>
+      </simpleLocation>
+    </searchConnectorDescription>
+  </searchConnectorDescriptionList>
+</libraryDescription>

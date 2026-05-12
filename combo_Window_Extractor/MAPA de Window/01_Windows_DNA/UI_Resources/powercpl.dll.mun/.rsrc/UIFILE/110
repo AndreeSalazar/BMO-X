@@ -1,0 +1,226 @@
+<duixml>
+<stylesheets>
+<style resid="cp_style">
+<Button accessible="true" contentalign="wrapleft"/>
+<Element overhang="false" background="argb(0,0,0,0)"/>
+<NavigateButton overhang="false" background="argb(0,0,0,0)"/>
+<CCPushButton transparent="true" accessible="true" minsize="size(76rp,23rp)" font="gtf(CONTROLPANELSTYLE,14,0)" margin="rect(6rp,0rp,0rp,0rp)"/>
+<CCCheckBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<ComboBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,14,0)"/>
+<CCRadioButton transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<CCSysLink transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0), window)"/>
+<Edit transparent="true" themedborder="true" width="120rp" accessible="true" accrole="text" height="20rp" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)"/>
+<if class="cp_topbox">
+<Element accessible="true" accrole="client" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_hub_frame">
+<Element padding="rect(13rp,1rp,1rp,10rp)"/>
+</if>
+<if class="cp_spoke_frame">
+<Element padding="rect(0rp,19rp,0rp,10rp)"/>
+</if>
+<if class="cp_help_glyph">
+<Button height="18rp" width="18rp" content="icon(99,sysmetric(49),sysmetric(50),library(imageres.dll))" padding="rect(1rp,1rp,1rp,1rp)" cursor="hand" accRole="link" accdefaction="click" accState="0x00100000" tooltip="true"/>
+<if keyfocused="true">
+<Button contentalign="focusrect"/>
+</if>
+</if>
+<if class="cp_content_pane">
+<Element width="600rp" padding="rect(10rp,0rp,10rp,0rp)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_content_instruction">
+<Element contentalign="wrapleft" foreground="gtc(CONTROLPANELSTYLE,5,0,3803)" font="gtf(CONTROLPANELSTYLE, 5, 0)" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_v_spacer">
+<Element height="7rp"/>
+</if>
+<if class="cp_content_text">
+<Element font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<PText font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_title_text">
+<Element font="gtf(CONTROLPANELSTYLE, 19, 0)" foreground="gtc(CONTROLPANELSTYLE,19,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_help_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+</if>
+</if>
+<if class="cp_content_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+</if>
+</if>
+<if class="cp_content_divider_header">
+<Element background="themeable(dtb(CONTROLPANEL,2,0),window)" foreground="gtc(CONTROLPANELSTYLE,9,0,3803)" font="gtf(CONTROLPANELSTYLE, 9, 0)" padding="rect(0rp,0rp,2rp,0rp)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_divider_line">
+<Element height="1rp" width="565rp" background="themeable(dtb(CONTROLPANEL,17,0),buttonshadow)"/>
+</if>
+<if class="cp_content_banner_box">
+<Element padding="rect(7rp,7rp,7rp,7rp)" background="themeable(dtb(CONTROLPANEL,18,0),window)" borderthickness="rect(1rp,1rp,1rp,1rp)" bordercolor="gtc(CONTROLPANELSTYLE,17,0,3821)"/>
+</if>
+<if class="cp_command_sink">
+<Element layoutpos="bottom" background="themeable(dtb(CONTROLPANEL,12,0),window)"/>
+</if>
+<if class="cp_command_float">
+<Element layoutpos="top" background="themeable(dtb(CONTROLPANEL,13,0),window)"/>
+</if>
+<if class="cp_command_button_box">
+<Element padding="rect(0rp,10rp,10rp,10rp)" width="600rp"/> 
+</if>
+</style>
+<style resid="powercp_style">
+<Edit font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE, 6, 0, 3803)" transparent="true" themedborder="true" width="120rp" accessible="true" accrole="text" height="20rp"/>
+<Combobox background="themeable(dtb(CONTROLPANEL,2,0), window)" font="gtf(CONTROLPANELSTYLE, 6, 0)" accessible="true" accrole="combobox" padding="rect(0rp,5rp,0rp,5rp)"/>
+<if class="cp_content_text">
+<CCSysLink font="gtf(CONTROLPANELSTYLE,6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0), window)" transparent="true" accessible="true" accrole="link"/>
+</if>
+<if class="cp_content_help_text">
+<CCSysLink font="gtf(CONTROLPANELSTYLE,6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" transparent="true" accessible="true" accrole="link"/>
+</if>
+</style>
+<style resid="ExpandoButton">
+<element foreground="gtc(CONTROLPANELSTYLE,9, 0, 3803)"/>
+<button cursor="hand"/>
+<clipper visible="false"/>
+<if expanded="true">
+<clipper visible="true"/>
+</if>
+<if id="atom(ExpandedContentArea)">
+<element animation="rectanglev | s | fast"/>
+</if>
+<if id="atom(ExpandoTextExpanded)">
+<element font="gtf(CONTROLPANELSTYLE, 9, 0)" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+<if selected="false">
+<element layoutpos="none" enabled="false"/>
+</if>
+</if>
+<if id="atom(ExpandoTextCollapsed)">
+<element font="gtf(CONTROLPANELSTYLE, 9, 0)" contentalign="wrapleft" accessible="true" accrole="statictext"/>
+<if selected="true">
+<element layoutpos="none" enabled="false"/>
+</if>
+</if>
+<if id="atom(divider)">
+<element height="1rp" width="5000rp" background="themeable(dtb(CONTROLPANEL,17,0),buttonshadow)"/>
+</if>
+<if id="atom(ExpandoButtonImageExpanded)">
+<button height="themeable(gtmet(TaskDialog, 13, 0, 2417), '21rp')" width="themeable(gtmet(TaskDialog, 13, 0, 2416), '19rp')" background="themeable(dtb(TaskDialog, 13, 1), dfc(3, 0x0001))" accessible="true" accrole="PushButton" accdefaction="press" accname="resstr(153)"/>
+<if mousefocused="true">
+<button background="themeable(dtb(TaskDialog, 13, 2), dfc(3, 0x0001 | 0x1000))"/>
+</if>
+<if keyfocused="true">
+<button contentalign="focusrect"/>
+</if>
+<if pressed="true">
+<button background="themeable(dtb(TaskDialog, 13, 3), dfc(3, 0x0001 | 0x0200))"/>
+</if>
+<if selected="true">
+<button background="themeable(dtb(TaskDialog, 13, 4), dfc(3, 0x0000))"/>
+<if mousefocused="true">
+<button background="themeable(dtb(TaskDialog, 13, 5), dfc(3, 0x0000 | 0x1000))"/>
+</if>
+<if pressed="true">
+<button background="themeable(dtb(TaskDialog, 13, 6), dfc(3, 0x0000| 0x0200))"/>
+</if>
+</if>
+<if selected="false">
+<button layoutpos="none" enabled="false"/>
+</if>
+</if>
+<if id="atom(ExpandoButtonImageCollapsed)">
+<button height="themeable(gtmet(TaskDialog, 13, 0, 2417), '21rp')" width="themeable(gtmet(TaskDialog, 13, 0, 2416), '19rp')" background="themeable(dtb(TaskDialog, 13, 1), dfc(3, 0x0001))" accessible="true" accrole="PushButton" accdefaction="press" accname="resstr(152)"/>
+<if mousefocused="true">
+<button background="themeable(dtb(TaskDialog, 13, 2), dfc(3, 0x0001 | 0x1000))"/>
+</if>
+<if keyfocused="true">
+<button contentalign="focusrect"/>
+</if>
+<if pressed="true">
+<button background="themeable(dtb(TaskDialog, 13, 3), dfc(3, 0x0001 | 0x0200))"/>
+</if>
+<if selected="true">
+<button layoutpos="none" enabled="false"/>
+</if>
+</if>
+</style>
+<style resid="RadioBtnSS">
+<CCRadioButton font="gtf(CONTROLPANELSTYLE,6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)" accessible="true"/>
+<if id="atom(PowerSchemeRawText)">
+<element font="gtf(CONTROLPANELSTYLE,6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)" accessible="true"/>
+</if>
+<if id="atom(RadioDescription)">
+<element font="gtf(CONTROLPANELSTYLE,6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="WrapLeft"/>
+</if>
+</style>
+</stylesheets>
+<Element resid="PowerTableEmptyHeader" padding="rect(0rp,7rp,0rp,0rp)"/>
+<SettingElement resid="PowerTableHeader" layout="TableLayout(0, 0, 0, 2, -100, 2, 2, 166rp, 2, 2, 166rp)" padding="rect(0rp,7rp,0rp,0rp)" active="inactive">
+<element id="atom(ControlDescription)"/>
+<element id="atom(DC_Header)" Layout="NineGridLayout()" padding="rect(16rp,0rp,0rp,0rp)">
+<element layout="FlowLayout(0, 2)" layoutpos="nineleft">
+<element id="atom(OnBatteryImage)" content="icon(506, sysmetric(11),sysmetric(12), library(powercpl.dll))"/>
+</element>
+<element layout="FlowLayout(0, 2)" layoutpos="nineclient">
+<element id="atom(OnBatteryText)" class="cp_content_text" padding="rect(6rp,0rp,0rp,0rp)" contentalign="wrapleft" content="resstr(3)" accname="resstr(3)"/>
+</element>
+</element>
+<element id="atom(AC_Header)" Layout="NineGridLayout()" padding="rect(16rp,0rp,8rp,0rp)">
+<element layout="FlowLayout(0, 2)" layoutpos="nineleft">
+<element id="atom(PluggedInImage)" content="icon(507, sysmetric(11),sysmetric(12), library(powercpl.dll))"/>
+</element>
+<element layout="FlowLayout(0, 2)" layoutpos="nineclient">
+<element id="atom(PluggedInText)" class="cp_content_text" padding="rect(6rp,0rp,0rp,0rp)" contentalign="wrapleft" content="resstr(4)" accname="resstr(4)"/>
+</element>
+</element>
+</SettingElement>
+<SettingElement resid="SettingControl" layout="TableLayout(0, 0, 0, 2, -100, 2, 2, 166rp, 2, 2, 166rp)" padding="rect(0rp,10rp,0rp,0rp)" active="inactive">
+<element id="atom(ControlDescription)" Layout="NineGridLayout()">
+<element layout="FlowLayout(0, 2)" layoutpos="nineleft">
+<element id="atom(ControlIcon)" accessible="false"/>
+</element>
+<element layout="FlowLayout(0, 2)" layoutpos="nineclient">
+<element id="atom(ControlLabel)" contentalign="wrapleft" class="cp_content_text" padding="rect(8rp,0rp,0rp,0rp)"/>
+</element>
+</element>
+<element id="atom(DC_Control)" layout="FillLayout()" padding="rect(16rp,0rp,0rp,0rp)">
+<Combobox id="atom(Control)" sheet="powercp_style" width="150rp"/>
+</element>
+<element id="atom(AC_Control)" layout="FillLayout()" padding="rect(16rp,0rp,0rp,0rp)">
+<Combobox id="atom(Control)" sheet="powercp_style" width="150rp"/>
+</element>
+</SettingElement>
+<PlanRadioButton resid="SchemeRadioButton" layout="BorderLayout()" LayoutPos="top" padding="rect(16rp,10rp,22rp,8rp)" active="inactive">
+<element Layout="BorderLayout()" LayoutPos="client" sheet="RadioBtnSS">
+<CCRadioButton id="atom(PowerSchemeRadioButton)" layoutpos="client" accessible="true" winstyle="0x00000400" transparent="true"/>
+<element id="atom(PowerSchemeRawText)" layoutpos="none" accessible="true"/>
+<element id="atom(SettingLinkPanel)" layoutpos="right" layout="FlowLayout(0, 0, 1)" padding="rect(sysmetric(71),0,0,0)" sheet="cp_style">
+<button id="atom(Link_EditPlan)" class="cp_content_link" active="mouse | keyboard" accname="resstr(165)" content="resstr(165)" shortcut="auto" padding="rect(0rp,0rp,0rp,0rp)"/>
+</element>
+</element>
+<element id="atom(RadioDescription)" layoutpos="bottom" sheet="RadioBtnSS" accessible="true" accrole="statictext" padding="rect(sysmetric(71),2rp,0,0)" contentalign="wrapleft"/>
+</PlanRadioButton>
+</duixml>

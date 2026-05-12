@@ -1,0 +1,14 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {94d86820-3128-41cd-be63-5e7bbd96a958} =
+                     s 'TTLS non EAP interactive task page'
+        {
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Apartment'
+            }
+        }
+    }
+}

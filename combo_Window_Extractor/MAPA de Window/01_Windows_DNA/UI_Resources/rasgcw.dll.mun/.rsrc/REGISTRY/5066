@@ -1,0 +1,13 @@
+HKCR
+{
+    NoRemove CLSID
+    {
+        ForceRemove {4A6B8BAD-9872-4525-A812-71A52367DC17} = s 'RASGcw LUA'
+        {
+            InProcServer32 = s '%MODULE%'
+            {
+                val ThreadingModel = s 'Free'
+            }
+        }
+    }
+} 

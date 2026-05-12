@@ -1,0 +1,30 @@
+IF not EXISTS (SELECT name FROM sysobjects
+        WHERE name = 'AzGenerateAudit' and type = 'X')
+    exec sp_addextendedproc 'AzGenerateAudit',                  'AzSqlExt.dll'
+GO
+
+IF not EXISTS (SELECT name FROM sysobjects
+        WHERE name = 'xp_AzManAddUserToRole' and type = 'X')
+    exec sp_addextendedproc 'xp_AzManAddUserToRole',            'AzSqlExt.dll'
+GO
+
+IF not EXISTS (SELECT name FROM sysobjects
+        WHERE name = 'xp_AzManRemoveUserFromRole' and type = 'X')
+    exec sp_addextendedproc 'xp_AzManRemoveUserFromRole',       'AzSqlExt.dll'
+GO
+
+IF not EXISTS (SELECT name FROM sysobjects
+        WHERE name = 'xp_AzManDeleteRole' and type = 'X')
+    exec sp_addextendedproc 'xp_AzManDeleteRole',               'AzSqlExt.dll'
+GO
+
+IF not EXISTS (SELECT name FROM sysobjects
+        WHERE name = 'xp_AzManAddRole' and type = 'X')
+    exec sp_addextendedproc 'xp_AzManAddRole',                  'AzSqlExt.dll'
+GO
+
+grant execute on AzGenerateAudit                to  public
+grant execute on xp_AzManAddUserToRole          to  public
+grant execute on xp_AzManRemoveUserFromRole     to  public
+grant execute on xp_AzManDeleteRole             to  public
+grant execute on xp_AzManAddRole                to  public

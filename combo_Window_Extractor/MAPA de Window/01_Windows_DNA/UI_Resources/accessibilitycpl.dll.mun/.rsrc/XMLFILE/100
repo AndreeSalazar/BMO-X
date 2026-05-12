@@ -1,0 +1,68 @@
+<pagedefinition>
+<properties elementprovider="{93CB110F-9189-4349-BD9F-392D9A4D0096}" layout="120" displayname="@AccessibilityCpl.dll,-45" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" navpane="true" canonicalname="pageHub"/>
+<childpages>
+<pagedefinition>
+<properties layout="104" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-46" canonicalname="pageQuestionsEyesight" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageQuestionsEyesight"/>
+<properties layout="105" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-47" canonicalname="pageQuestionsDexterity" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageQuestionsEyesight"/>
+<properties layout="106" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-48" canonicalname="pageQuestionsHearing" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageQuestionsEyesight"/>
+<properties layout="107" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-49" canonicalname="pageQuestionsSpeech" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative="pageQuestionsEyesight"/>
+<properties layout="108" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-50" canonicalname="pageQuestionsCognitive" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<properties layout="101" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-56" canonicalname="pageNoVisual" helptopic="mshelp://windows/?id=264947c8-5ca2-4c69-8a36-3d121894daa3"/>
+</pagedefinition>
+<pagedefinition>
+<properties layout="102" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-57" canonicalname="pageEasierToSee" helptopic="mshelp://windows/?id=84f056d1-0872-49d1-babc-773c3c3d4c7b"/>
+</pagedefinition>
+<pagedefinition>
+<properties layout="109" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-58" canonicalname="pageEasierToClick" helptopic="mshelp://windows/?id=960041f2-b7d5-47f9-b818-e0a9a480d29e"/>
+</pagedefinition>
+<pagedefinition>
+<properties layout="110" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-59" canonicalname="pageKeyboardEasierToUse" helptopic="mshelp://windows/?id=0e143ef9-10c6-44b5-89fb-a78c0f726afd"/>
+</pagedefinition>
+<pagedefinition>
+<properties layout="111" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-60" canonicalname="pageNoMouseOrKeyboard" helptopic="mshelp://windows/?id=c986c70c-75d3-4043-ac22-776757abdb4c"/>
+</pagedefinition>
+<pagedefinition>
+<properties layout="112" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-61" canonicalname="pageEasierWithSounds" helptopic="mshelp://windows/?id=684cff27-445a-4921-bc9b-60e3bcf99a0b"/>
+</pagedefinition>
+<pagedefinition>
+<properties layout="113" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-62" canonicalname="pageEasierToReadAndWrite" helptopic="mshelp://windows/?id=ea5a58e4-a1d4-44e2-a254-0d8bf78286e1"/>
+</pagedefinition>
+<pagedefinition>
+<properties layout= "114" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-63" canonicalname="pageMouseKeysSettings" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<properties layout="115" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-64" canonicalname="pageFilterKeysSettings" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<properties layout="116" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-65" canonicalname="pageRepeatRateSlowKeysSettings" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative=""/>
+<properties layout="117" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-66" canonicalname="pageRecommendations" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<localonly alternatetargetrelative=""/>
+<properties layout="118" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-67" canonicalname="pageAdminSettings" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<properties layout="119" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-68" canonicalname="pageStickyKeysSettings" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a" />
+</pagedefinition>
+<pagedefinition>
+<properties layout="121" icon="AccessibilityCpl.dll,-1" displayname="@AccessibilityCpl.dll,-82" canonicalname="pageEasierToTouch" helptopic="mshelp://windows/?id=106e6689-2545-4d29-8821-f0c22259a63a"/>
+</pagedefinition>
+</childpages>
+</pagedefinition>

@@ -1,0 +1,66 @@
+﻿<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles_ltr.css" />
+
+    <script src="jquery-1.11.3.min.js" type="text/javascript"></script>
+    <script src="script.js" type="text/javascript"></script>
+
+    <title>Internet Explorer 11</title>
+</head>
+<body>
+
+    <div class="header">
+        <div class="ie-logo"></div>
+        <div class="heading"><p>Sélectionner votre page d’accueil et vos paramètres de recherche</p></div>
+    </div>
+
+    <div class="intro-row">
+        <div>
+            <p>À présent, Internet Explorer empêchera les sites web de modifier ces paramètres de manière silencieuse. Sélectionnez les paramètres que vous souhaitez conserver.</p>
+            <div><a href="#" class="intro-learnmore">Cliquez ici pour en savoir plus.</a></div>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="setting-item">
+            <div class="setting-item-radio">
+                <input type="radio" class="setting-radio" name="setting-radio" id="radio-default" checked />
+            </div>
+            <div class="setting-item-content">
+                <p><label for="radio-default">Paramètres Microsoft </label>:</p>
+                <p>Page d’accueil : <span dir="ltr" class="settingValue defaultDHP"></span></p>
+                <p>Moteur de recherche par défaut : <span dir="ltr" class="settingValue defaultDSP"></span></p>
+            </div>
+        </div>
+        <div class="setting-item">
+            <div class="setting-item-radio">
+                <input type="radio" class="setting-radio" name="setting-radio" id="radio-current" />
+            </div>
+            <div class="setting-item-content">
+                <p><label for="radio-current">Vos paramètres actuels </label>:</p>
+                <p>Page d’accueil : <span dir="ltr" class="settingValue currentDHP"></span></p>
+                <p>Moteur de recherche par défaut : <span dir="ltr" class="settingValue currentDSP"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="cta-row">
+        <div class="cta-button cta-return-selected">
+            <div class="cta-button-text">
+                <p>OK</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Vous pouvez toujours modifier ces paramètres ultérieurement dans le menu <strong>Outils </strong> d’Internet Explorer.</p>
+    </div>
+
+</body>
+</html>

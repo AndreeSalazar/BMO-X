@@ -1,0 +1,222 @@
+<duixml>
+<stylesheets>
+<style resid="cp_style">
+<Button accessible="true" contentalign="wrapleft"/>
+<Element overhang="false" background="argb(0,0,0,0)"/>
+<NavigateButton overhang="false" background="argb(0,0,0,0)"/>
+<CCPushButton transparent="true" accessible="true" minsize="size(76rp,23rp)" font="gtf(CONTROLPANELSTYLE,14,0)" margin="rect(6rp,0rp,0rp,0rp)"/>
+<CCCheckBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<ComboBox transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,14,0)"/>
+<CCRadioButton transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+<CCSysLink transparent="true" accessible="true" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" background="themeable(dtb(CONTROLPANEL,2,0), window)"/>
+<Edit transparent="true" themedborder="true" width="120rp" accessible="true" accrole="text" height="20rp" font="gtf(CONTROLPANELSTYLE,6,0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)"/>
+<if class="cp_topbox">
+<Element accessible="true" accrole="client" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_hub_frame">
+<Element padding="rect(13rp,1rp,1rp,10rp)"/>
+</if>
+<if class="cp_spoke_frame">
+<Element padding="rect(0rp,19rp,0rp,10rp)"/>
+</if>
+<if class="cp_help_glyph">
+<Button height="18rp" width="18rp" content="icon(99,sysmetric(49),sysmetric(50),library(imageres.dll))" padding="rect(1rp,1rp,1rp,1rp)" cursor="hand" accRole="link" accdefaction="click" accState="0x00100000" tooltip="true"/>
+<if keyfocused="true">
+<Button contentalign="focusrect"/>
+</if>
+</if>
+<if class="cp_content_pane">
+<Element width="600rp" padding="rect(10rp,0rp,10rp,0rp)" background="themeable(dtb(CONTROLPANEL,2,0),window)"/>
+</if>
+<if class="cp_content_instruction">
+<Element contentalign="wrapleft" foreground="gtc(CONTROLPANELSTYLE,5,0,3803)" font="gtf(CONTROLPANELSTYLE, 5, 0)" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_v_spacer">
+<Element height="7rp"/>
+</if>
+<if class="cp_content_text">
+<Element font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+<PText font="gtf(CONTROLPANELSTYLE, 6, 0)" foreground="gtc(CONTROLPANELSTYLE,6,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_title_text">
+<Element font="gtf(CONTROLPANELSTYLE, 19, 0)" foreground="gtc(CONTROLPANELSTYLE,19,0,3803)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_help_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,7,1,3803)" font="gtf(CONTROLPANELSTYLE,7,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,7,4,3803)" font="gtf(CONTROLPANELSTYLE,7,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,7,2,3803)" font="gtf(CONTROLPANELSTYLE,7,2)"/>
+</if>
+</if>
+<if class="cp_content_link">
+<Button accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<Element accessible="true" accRole="link" accdefaction="click" foreground="gtc(CONTROLPANELSTYLE,10,1,3803)" font="gtf(CONTROLPANELSTYLE,10,1)" overhang="false"/>
+<if keyfocused="true">
+<Button contentalign="wrapleft | focusrect"/>
+<Element contentalign="wrapleft | focusrect"/>
+</if>
+<if enabled="false">
+<Button foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+<Element foreground="gtc(CONTROLPANELSTYLE,10,4,3803)" font="gtf(CONTROLPANELSTYLE,10,4)"/>
+</if>
+<if mousefocused="true">
+<Button cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+<Element cursor="hand" foreground="gtc(CONTROLPANELSTYLE,10,2,3803)" font="gtf(CONTROLPANELSTYLE,10,2)"/>
+</if>
+</if>
+<if class="cp_content_divider_header">
+<Element background="themeable(dtb(CONTROLPANEL,2,0),window)" foreground="gtc(CONTROLPANELSTYLE,9,0,3803)" font="gtf(CONTROLPANELSTYLE, 9, 0)" padding="rect(0rp,0rp,2rp,0rp)" contentalign="wrapleft" accessible="true" accRole="statictext"/>
+</if>
+<if class="cp_content_divider_line">
+<Element height="1rp" width="565rp" background="themeable(dtb(CONTROLPANEL,17,0),buttonshadow)"/>
+</if>
+<if class="cp_content_banner_box">
+<Element padding="rect(7rp,7rp,7rp,7rp)" background="themeable(dtb(CONTROLPANEL,18,0),window)" borderthickness="rect(1rp,1rp,1rp,1rp)" bordercolor="gtc(CONTROLPANELSTYLE,17,0,3821)"/>
+</if>
+<if class="cp_command_sink">
+<Element layoutpos="bottom" background="themeable(dtb(CONTROLPANEL,12,0),window)"/>
+</if>
+<if class="cp_command_float">
+<Element layoutpos="top" background="themeable(dtb(CONTROLPANEL,13,0),window)"/>
+</if>
+<if class="cp_command_button_box">
+<Element padding="rect(0rp,10rp,10rp,10rp)" width="600rp"/> 
+</if>
+</style>
+</stylesheets>
+<DeviceSyncPage resid="main" sheet="common" id="atom(pageSyncError)" layout="borderlayout()" background="themeable(dtb(CONTROLPANEL, 2, 0), window)">
+<macro id="atom(ErrorPageHeader)" expand="macroPageHeader" padding="rect(20rp, 15rp, 20rp, 0rp)">
+<bind connect="TitleHeader" content="resstr(2091)"/>
+<bind connect="TextHeaderInfo" content="resstr(2092)"/>
+</macro>
+<element sheet="cp_style" layoutpos="client" layout="borderlayout()">
+<element sheet="cp_style" class="cp_content_divider_line" layoutpos="top"/>
+<CCListViewError id="atom(ListViewError)" sheet="cp_style" layoutpos="client" accessible="true" accrole="list" accname="Sync error list"/>
+<element id="atom(ContainerQueryErrors)" layoutpos="bottom" layout="flowlayout(0, 0, 0)" padding="rect(10rp, 15rp, 10rp, 15rp)" borderstyle="solid" borderthickness="rect(0rp, 1rp, 0rp, 0rp)" bordercolor="gtc(CONTROLPANELSTYLE, 17, 0, 3821)">
+<element id="atom(TextQueryErrors)" class="cp_content_text" content="resstr(2093)" margin="rect(0rp, 0rp, 5rp, 0rp)"/>
+<CCProgressbar id="atom(ProgressBarQueryErrors)" width="250rp" height="themeable(gtmet(TaskDialog, 19, 0, 2417), '15rp')" accessible="true" accname="Query sync errors"/>
+</element>
+</element>
+<macro id="atom(CommitButtons)" expand="macroCommitButtons">
+<bind connect="ButtonOk" content="resstr(2094)"/>
+</macro>
+</DeviceSyncPage>
+<stylesheets>
+<style resid="dxpsync_style">
+<if class="warning_box">
+<element borderstyle="solid" borderthickness="rect(1rp, 1rp, 1rp, 1rp)" bordercolor="gtc(CONTROLPANELSTYLE,17,0,3821)" background="gtc(CONTROLPANELSTYLE, 18, 0, 3821)" padding="rect(10rp, 10rp, 10rp, 10rp)"/>
+</if>
+<if class="error_box">
+<element borderstyle="solid" borderthickness="rect(1rp, 1rp, 1rp, 1rp)" bordercolor="gtc(CONTROLPANELSTYLE,17,0,3821)" background="gtc(CONTROLPANELSTYLE, 18, 0, 3821)" padding="rect(10rp, 10rp, 10rp, 10rp)"/>
+</if>
+</style>
+</stylesheets>
+<element resid="macroCommitButtons" sheet="cp_style" layoutpos="bottom" layout="borderlayout()">
+<element class="cp_command_sink" layout="flowlayout(0, 0, 1)">
+<viewer>
+<element layout="flowlayout()" padding="rect(0rp, 10rp, 20rp, 10rp)">
+<CCPushButton id="atom(ButtonOk)" content="resstr(2015)" shortcut="auto"/>
+<CCPushButton id="atom(ButtonCancel)" content="resstr(2009)" shortcut="auto"/>
+</element>
+</viewer>
+</element>
+</element>
+<element resid="macroCommitButtonsCenter" sheet="cp_style" layoutpos="bottom" layout="borderlayout()">
+<element class="cp_command_sink" layout="flowlayout(0, 0, 2)">
+<element class="cp_command_button_box" layout="flowlayout(0, 0, 1)">
+<viewer>
+<element layout="flowlayout()" padding="rect(0rp, 0rp, 5rp, 0rp)">
+<CCPushButton id="atom(ButtonOk)" content="resstr(2015)" shortcut="auto"/>
+<CCPushButton id="atom(ButtonCancel)" content="resstr(2009)" shortcut="auto"/>
+</element>
+</viewer>
+</element>
+</element>
+</element>
+<element resid="macroPageHeader" sheet="cp_style" layoutpos="top" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 15rp)">
+<element id="atom(TitleHeader)" class="cp_content_instruction" layoutpos="top"/>
+<element sheet="dxpsync_style" id="atom(ContainerHeaderInfo)" layoutpos="top" layout="flowlayout(0, 2, 0)" margin="rect(0rp, 10rp, 0rp, 0rp)">
+<element id="atom(IconHeaderInfo)" sheet="cp_style" layoutpos="none" accessible="true" accrole="graphic" margin="rect(0rp, 0rp, 10rp, 0rp)"/>
+<element id="atom(TextHeaderInfo)" sheet="cp_style" class="cp_content_text" width="600rp"/>
+</element>
+</element>
+<element resid="macroPIMProviderSetting" sheet="cp_style" class="cp_content_text" layoutpos="top" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 15rp)">
+<element layoutpos="top" sheet="cp_style" layout="borderlayout()">
+<element id="atom(TextProviderSetting)" class="cp_content_text" layoutpos="top"/>
+<button id="atom(LinkProviderSetting)" class="cp_content_link" layoutpos="none" margin="rect(0rp, 10rp, 0rp, 0rp)" content="resstr(2016)" active="mouse|keyboard"/>
+</element>
+</element>
+<element resid="macroPIMConflictResolution" sheet="cp_style" class="cp_content_text" layoutpos="top" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 20rp)">
+<element id="atom(TitleConflictResolution)" class="cp_content_text" layoutpos="top"/>
+<element class="cp_content_v_spacer" layoutpos="top"/>
+<SelectorNoDefaultEx id="atom(SelectorConflictResolution)" layoutpos="top" layout="borderlayout()" padding="rect(sysmetric(71), 0rp, 0rp,  0rp)">
+<CCRadioButton id="atom(RadioConflictComputer)" layoutpos="top" shortcut="auto"/>
+<CCRadioButton id="atom(RadioConflictDevice)" layoutpos="top" shortcut="auto"/>
+</SelectorNoDefaultEx>
+</element>
+<element resid="macroPIMDeletePropagation" sheet="cp_style" class="cp_content_text" layoutpos="top" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 20rp)">
+<element id="atom(TitleDeletePropagation)" class="cp_content_text" layoutpos="top"/>
+<element class="cp_content_v_spacer" layoutpos="top"/>
+<SelectorNoDefaultEx id="atom(SelectorDeletePropagation)" layoutpos="top" layout="borderlayout()" padding="rect(sysmetric(71), 0rp, 0rp,  0rp)">
+<CCRadioButton id="atom(RadioDeleteFromComputer)" layoutpos="top" shortcut="auto"/>
+<CCRadioButton id="atom(RadioLeaveOnComputer)" layoutpos="top" shortcut="auto"/>
+</SelectorNoDefaultEx>
+</element>
+<element resid="macroMediaSyncType" sheet="cp_style" class="cp_content_text" layoutpos="client" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 15rp)">
+<element layoutpos="client" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 13rp)">
+<element id="atom(TextMediaSyncType)" class="cp_content_text" layoutpos="top" margin="rect(0rp, 0rp, 0rp, 8rp)"/>
+<SelectorNoDefaultEx id="atom(SelectorMediaSyncType)" layoutpos="top" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 5rp)">
+<CCRadioButton id="atom(RadioSyncAll)" layoutpos="top" shortcut="auto" margin="rect(0rp, 0rp, 0rp, 5rp)"/>
+<CCRadioButton id="atom(RadioSyncExternal)" layoutpos="none" shortcut="auto" margin="rect(0rp, 0rp, 0rp, 5rp)" tooltip="true" accdesc="resstr(2017)"/>
+<CCRadioButton id="atom(RadioSyncChoice)" layoutpos="top" shortcut="auto" margin="rect(0rp, 0rp, 0rp, 5rp)"/>
+</SelectorNoDefaultEx>
+<element layoutpos="client" layout="borderlayout()" padding="rect(sysmetric(71), 0rp, 0rp,  0rp)" margin="rect(0rp, 0rp, 10rp, 0rp)">
+<CExplorerBrowserElement id="atom(ListViewMediaChoice)" layoutpos="none" accessible="true" accrole="list" accname="resstr(2018)" active="mouse|keyboard" tooltip="true" accdesc="resstr(2019)"/>
+<element id="atom(BoxMediaChoice)" layoutpos="none" layout="verticalflowlayout(0, 2, 2, 2)" padding="rect(10rp, 10rp, 10rp, 10rp)" borderstyle="solid" borderthickness="rect(1rp, 1rp, 1rp, 1rp)" bordercolor="buttonshadow" background="buttonFace">
+<element id="atom(TextPopulateMediaChoice)" class="cp_content_text" visible="false" content="resstr(2097)" margin="rect(0rp, 0rp, 0rp, 5rp)"/>
+<CCProgressbar id="atom(ProgressBarPopulateMediaChoice)" width="250rp" visible="false" height="themeable(gtmet(TaskDialog, 19, 0, 2417), '15rp')" accessible="true" accname="resstr(2096)"/>
+</element>
+</element>
+<element layoutpos="right" layout="borderlayout()">
+<CCPushButton id="atom(ButtonAddMediaFolder)" layoutpos="top" shortcut="auto" margin="rect(0rp, 0rp, 0rp, 5rp)"/>
+<CCPushButton id="atom(ButtonAddMediaFile)" layoutpos="top" shortcut="auto" margin="rect(0rp, 0rp, 0rp, 5rp)"/>
+<CCPushButton id="atom(ButtonRemoveMedia)" layoutpos="top" shortcut="auto"/>
+</element> 
+</element>
+<element layoutpos="bottom" layout="flowlayout(0, 1, 0)">
+<button id="atom(LinkResetDeletion)" class="cp_content_link" layoutpos="none" active="mouse|keyboard" tooltip="true" accdesc="resstr(2020)"/>
+</element>
+</element>
+<element resid="macroMediaStorageInfo" sheet="cp_style" class="cp_content_text" layoutpos="top" layout="borderlayout()" margin="rect(0rp, 0rp, 0rp, 15rp)">
+<element id="atom(TextUseStorage)" class="cp_content_text" layoutpos="top" content="resstr(2021)" margin="rect(0rp, 0rp, 0rp, 5rp)"/>
+<element id="atom(ContainerStorageInfo)" layoutpos="top" layout="flowlayout(1, 0, 0, 0)">
+<CComboboxEx id="atom(ComboboxStorages)" width="300rp" height="25rp" margin="rect(0rp, 0rp, 15rp, 5rp)" active="mouse|keyboard" tooltip="true" accdesc="resstr(2023)" transparent="true" accessible="true" accrole="combobox" accname="resstr(2022)"/>
+<element id="atom(ContainerSpaceMeter)" layout="borderlayout()">
+<CSpaceMeterElement id="atom(SpaceMeter)" layoutpos="top" height="13rp" width="355rp" margin="rect(0rp, 0rp, 0rp, 5rp)"/>
+<element layoutpos="top" layout="borderlayout()">
+<element layoutpos="left" layout="flowlayout(0, 0, 0, 0)" margin="rect(0rp, 0rp, 15rp, 0rp)">
+<CSpaceMeterElement id="atom(UsedSpace)" width="13rp" height="13rp" margin="rect(0rp, 0rp, 3rp, 0rp)"/>
+<element id="atom(TextUsedSpace)" class="cp_content_text" active="mouse" tooltip="true" accdesc="resstr(2098)"/>
+</element>
+<element layoutpos="left" layout="flowlayout(0, 0, 0, 0)" margin="rect(0rp, 0rp, 15rp, 0rp)">
+<CSpaceMeterElement id="atom(RequiredSpace)" width="13rp" height="13rp" margin="rect(0rp, 0rp, 3rp, 0rp)"/>
+<element id="atom(TextRequiredSpace)" class="cp_content_text" active="mouse" tooltip="true" accdesc="resstr(2099)"/>
+</element>
+<element layoutpos="left" layout="flowlayout(0, 0, 0, 0)">
+<CSpaceMeterElement id="atom(FreeSpace)" active="mouse" width="13rp" height="13rp" margin="rect(0rp, 0rp, 3rp, 0rp)"/>
+<element id="atom(TextFreeSpace)" class="cp_content_text"/>
+</element>
+</element>
+</element>
+</element>
+</element>
+</duixml>

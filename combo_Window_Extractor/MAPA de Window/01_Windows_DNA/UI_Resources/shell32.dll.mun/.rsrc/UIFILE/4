@@ -1,0 +1,15 @@
+<duixml>
+<Element resid="FolderLayout" layout="shellborderlayout()" sheet="musiclayoutstyle">
+<StatusBarModule ModuleID="StatusBarModule" layoutpos="bottom" layout="filllayout()"/>
+<ProperTreeModule id="atom(ProperTree)" ModuleID="ProperTreeModule" sheet="musiclayoutstyle" layoutpos="Left"/>
+<Element layoutpos="Client" layout="shellborderlayout()">
+<BannerContainer ModuleID="BannerModule" layoutpos="top"/>
+<Element id="atom(ViewHostContainer)" layoutpos="Client" sheet="documentslayoutstyle" layout="filllayout()">
+<ViewHost id="atom(clientviewhost)" layout="borderlayout()">
+</ViewHost>
+</Element>
+<DetailsContainer layoutpos="right"/>
+<SyncProviderRecycleBinsContainer ModuleID="RecyleBinModule" layoutpos="bottom"/>
+</Element>
+</Element>
+</duixml>

@@ -1,0 +1,62 @@
+<duixml>
+<element resid="xwtpdui.main" ID="atom(xwtpdui.dialogroot)" Layout="borderlayout()">
+<element ID="atom(xwtpdui.header)" Layout="flowlayout()" Sheet="xwtpdui.header">
+<element ID="atom(xwtpdui.headertitle)"/>
+</element>
+<element ID="atom(xwtpdui.content)" Layout="filllayout()" Sheet="xwtpdui.content">
+<browser ID="atom(xwtpdui.contentarea)" Layout="filllayout()">
+<pages ID="atom(Panes)" Layout="filllayout()" LayoutPos="client"/>
+</browser>
+</element>
+<element ID="atom(xwtpdui.commandarea)" Layout="borderlayout()" Sheet="xwtpdui.commandarea">
+<element ID="atom(xwtpdui.commandareapadding)" Layout="borderlayout()">
+<element Layout="flowlayout()" LayoutPos="right">
+<TouchButton ID="atom(eBackButton)" sheet="ModernStyle" Content="&amp;Back"/>
+<TouchButton ID="atom(eNextButton)" sheet="ModernStyle" Content="&amp;Next"/>
+<CCPushButton ID="atom(xwtpdui.backbutton)" Content="&amp;Back"/>
+<CCPushButton ID="atom(xwtpdui.nextbutton)" Content="&amp;Next" Selected="true"/>
+<CCPushButton ID="atom(xwtpdui.finishbutton)" Content="&amp;Finish"/>
+<CCPushButton ID="atom(xwtpdui.cancelbutton)" Content="Cancel" Shortcut="none"/>
+</element>
+</element>
+</element>
+</element>
+<stylesheets>
+<style resid="ModernStyle" base="ressheet(ImmersiveStyles, library(dui70.dll), Dark)">
+</style>
+<style resid="xwtpdui.header">
+<if id="atom(xwtpdui.header)">
+<element Background="themeable(dtb(AeroWizard, 2, 0), threedface)" BorderColor="themeable(gtc(CONTROLPANEL,17,0,3821),buttonshadow)" BorderThickness="themeable(rect(0rp, 0rp, 0rp, 0rp), rect(1rp, 0rp, 1rp, 0rp))" LayoutPos="top" Padding="themeable(rect(10rp, 15rp, 10rp, 15rp), rect(10rp, 15rp, 10rp, 15rp))"/>
+<if selected="true">
+<element Padding="themeable(rect(10rp, 10rp, 10rp, 10rp), rect(10rp, 10rp, 10rp, 10rp))"/>
+</if>
+</if>
+<if id="atom(xwtpdui.headertitle)">
+<element Background="argb(0, 0, 0, 0)" ContentAlign="WrapLeft" Font="gtf(AeroWizardStyle, 2, 0)" Foreground="gtc(AeroWizardStyle, 2, 0, 3803)" LayoutPos="top" Overhang="false" Padding="rect(0rp, 0rp, 0rp, 0rp)"/>
+</if>
+</style>
+<style resid="xwtpdui.content">
+<if id="atom(xwtpdui.content)">
+<element Background="themeable(dtb(AeroWizard, 3, 0), threedface)" BorderColor="threedshadow" BorderThickness="themeable(rect(0rp, 0rp, 0rp, 0rp), rect(1rp, 0rp, 1rp, 1rp))" LayoutPos="client" Padding="themeable(rect(0rp, 0rp, 0rp, 0rp), rect(0rp, 0rp, 0rp, 0rp))"/>
+<if selected="true">
+<element Padding="themeable(rect(0rp, 0rp, 0rp, 0rp), rect(0rp, 0rp, 0rp, 0rp))"/>
+</if>
+</if>
+</style>
+<style resid="xwtpdui.commandarea">
+<if id="atom(xwtpdui.commandarea)">
+<element Background="themeable(dtb(AeroWizard, 4, 0), threedface)" LayoutPos="bottom" Padding="themeable(gtmar(AeroWizard, 4, 0, 3602), rect(5rp, 4rp, 5rp, 4rp))"/>
+</if>
+<CCPushButton Font="gtf(AeroWizardStyle, 5, 0)" Height="themeable(gtmet(AeroWizard, 5, 0, 2417), 23rp)" Margin="rect(5rp, 0rp, 0rp, 0rp)"/>
+<if mousefocused="true">
+<TouchButton background="themeable(dtb(explorer::listview,1,2), Highlight)"/>
+</if>
+<if KeyFocused="true">
+<TouchButton background="themeable(dtb(explorer::listview,1,2), Highlight)"/>
+</if>
+<if id="atom(xwtpdui.commandareapadding)">
+<element Background="argb(0, 0, 0, 0)" LayoutPos="top"/>
+</if>
+</style>
+</stylesheets>
+</duixml>

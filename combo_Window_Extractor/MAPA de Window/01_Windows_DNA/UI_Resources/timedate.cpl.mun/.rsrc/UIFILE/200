@@ -1,0 +1,146 @@
+<duixml>
+<element 
+layout   = "borderlayout()"
+resid    = "main"
+sheet    = "TooltipSheet" 
+AccName  = "resstr(201)"
+accrole  = "ToolTip"
+Accessible = "true">
+<element 
+id        = "atom(TooltipElement)" 
+layout    = "borderlayout()"
+layoutpos = "top"
+borderthickness = "themeable(rect(0,0,0,0), rect(1rp, 1rp, 1rp, 1rp))" 
+bordercolor = "themeable(argb(0,0,0,0), infotext)"
+padding   = "rect(4rp,2rp,4rp,4rp)">
+<element     
+layout    = "borderlayout()" 
+layoutpos = "top"
+padding   = "rect(0rp,0rp,0rp,0rp)">
+<element  
+id           = "atom(TodayStr)" 
+layoutpos    = "top" 
+contentalign = "middleleft"/>
+<element  
+id           = "atom(TodaysDayName)" 
+layoutpos    = "none" 
+contentalign = "middleleft"/>
+</element>
+<element
+layout      = "borderlayout()"
+id          = "atom(MainClock)"
+layoutpos   = "none"
+padding     = "rect(0rp,4rp,0rp,0rp)">
+<element 
+id        = "atom(MainClockName)" 
+class     = "ClockName" 
+content   = "resstr(202)"
+layoutpos = "left"
+margin    = "rect(0,0,10rp,0)"/>
+<element 
+layout     = "borderlayout()"
+layoutpos  = "right">
+<element 
+id        = "atom(MainClockLocalDayName)" 
+class     = "Time" 
+layoutpos = "left" />
+<element 
+id         = "atom(MainDigitalClock)" 
+class      = "Time" 
+layoutpos  = "left"  />
+</element>
+</element>
+<element 
+layout     = "borderlayout()" 
+id         = "atom(ExtraClock1)" 
+layoutpos  = "none" 
+padding    = "rect(0rp,2rp,0rp,0rp)">
+<element 
+id        = "atom(ExtraClockName1)" 
+class     = "ClockName" 
+layoutpos = "left" 
+margin    = "rect(0,0,10rp,0)"/>
+<element 
+layout     = "borderlayout()"
+layoutpos  = "right">
+<element 
+id        = "atom(ExtraClockDay1)" 
+class     = "Time" 
+layoutpos = "left" />
+<element 
+id         = "atom(FirstClock)"                     
+class      = "Time" 
+layoutpos  = "left" />
+</element>
+</element>
+<element 
+layout     = "borderlayout()" 
+id         = "atom(ExtraClock2)" 
+layoutpos  = "none"  
+padding    = "rect(0rp,2rp,0rp,0rp)">
+<element 
+id        = "atom(ExtraClockName2)" 
+class     = "ClockName" 
+layoutpos = "left" 
+margin    = "rect(0,0,10rp,0)"/>
+<element 
+layout     = "borderlayout()"
+layoutpos  = "right">
+<element 
+id        = "atom(ExtraClockDay2)" 
+class     = "Time" 
+layoutpos = "left" />
+<element 
+id        = "atom(SecondClock)" 
+class     = "Time" 
+layoutpos = "left" />
+</element>
+</element>
+</element>
+</element>
+<stylesheets>
+<style resid="TooltipSheet">
+<element
+background = "themeable(argb(0,0,0,0), infobackground)"
+/>
+<if id          = "atom(TooltipElement)">
+<element 
+background  = "themeable(dtb(Tooltip, 1, 0), infobackground)"
+font        = "gtf(TooltipStyle, 1, 0)" />
+</if>
+<if class    = "atom(Separator)">
+<element
+padding    = "rect(1rp,1rp,1rp,1rp)"
+background = "themeable(dtb(Flyout, 5, 0), infobackground)" />
+</if>
+<if id = "atom(TodayStr)">
+<element
+foreground   = "themeable(gtc(Tooltip, 2, 1, 3803), infotext)"
+accessible   = "true"
+accrole      = "statictext"
+/>
+</if>
+<if id = "atom(TodaysDayName)">
+<element
+foreground   = "themeable(gtc(Tooltip, 2, 1, 3803), infotext)" 
+accessible   = "true"
+accrole      = "statictext"
+/>
+</if>
+<if class = "ClockName">
+<element
+foreground   = "themeable(gtc(Tooltip, 1, 1, 3803), infotext)"
+accessible   = "true"
+accrole      = "statictext"
+/>
+</if>
+<if class = "Time">
+<element
+foreground   = "themeable(gtc(Flyout, 2, 2, 3803), infotext)"
+accessible   = "true"
+accrole      = "statictext"
+/>
+</if>
+</style>
+</stylesheets>
+</duixml> 
