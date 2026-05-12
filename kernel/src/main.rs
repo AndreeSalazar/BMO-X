@@ -21,6 +21,15 @@ mod font;
 mod panic;
 mod shell;
 
+// — Subsistemas BareX y bases del MAPA (esqueletos, no enganchados a init).
+//   Implementan `combo_Window_Extractor/MAPA de Window/02_BEF_Format/*` +
+//   `03_Kernel_Specs/*`. NO tocan `drivers/gpu/fastgpu` (bridge BMO/GSP en obra).
+mod barex;
+mod bef;
+mod sched;
+mod syscall;
+mod sandbox;
+
 use core::arch::naked_asm;
 
 /// Print a u64 as 16-digit hex to serial.
