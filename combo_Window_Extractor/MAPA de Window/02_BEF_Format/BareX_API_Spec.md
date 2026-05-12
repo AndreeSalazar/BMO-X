@@ -39,7 +39,16 @@
 
 ---
 
-## 3. ABI dual: Rust nativo + C estable
+## 3. ABI dual: Rust nativo + **BMO ABI** (sustituye al C ABI)
+
+> **El BMO ABI reemplaza al C ABI clásico** (cdecl/stdcall/Win64/SysV AMD64).
+> Está optimizado para el Ryzen 5 5600X (Zen 3) y para llamadas BareX:
+> 7 GPRs para args int (vs 4–6), 8 XMM para floats, **stack alignment 64 B**
+> (cache line completa), **shadow space 0 B** (vs 32 en MS x64), strings UTF-8
+> con longitud explícita (sin `\0`), errores `BxResult<T>` por valor en
+> `RAX:RDX` (sin `HRESULT` ni `errno` global), handles `u64` opacos con tag,
+> kind, generación e índice (detecta UAF automáticamente). Versión: BMO ABI 1.0.
+> Detalles completos en `kernel/src/barex/abi.rs`.
 
 ### 3.1 Rust idiomático (uso interno y apps Rust)
 
@@ -71,20 +80,30 @@ queue.submit(&[&cl]);
 swapchain.present(VSync::On)?;
 ```
 
-### 3.2 C ABI plana (FFI, lenguajes no-Rust, compat shim)
+### 3.2 BMO ABI plana (FFI, lenguajes no-Rust, compat shim L4)
 
 ```c
-typedef struct bx_device bx_device;
-typedef uint64_t bx_handle;
+/* Pseudo-C: el BMO ABI no es C cdecl. La calling convention real está en
+ * kernel/src/barex/abi.rs. Las firmas siguen el mismo *layout textual* que C
+ * por familiaridad, pero el compilador debe emitir BMO ABI calling sequence. */
 
-bx_result bx_device_primary(bx_device** out);
-bx_result bx_device_create_queue(bx_device*, bx_queue_type, bx_handle* out);
-bx_result bx_cmdlist_draw(bx_handle cl, uint32_t vtx, uint32_t inst,
+typedef uint64_t bx_handle;        /* tag(1) | kind(7) | gen(16) | idx(40) */
+
+typedef struct {                   /* devuelto por valor en RAX:RDX */
+    uint32_t code;                 /* 0 = OK; >0 = BxError */
+    uint32_t flags;
+    uint64_t value;                /* handle o contador útil */
+} bx_status;
+
+bx_status bx_device_primary(void);
+bx_status bx_device_create_queue(bx_handle dev, uint32_t kind);
+bx_status bx_cmdlist_draw(bx_handle cl, uint32_t vtx, uint32_t inst,
                           uint32_t vtx_off, uint32_t inst_off);
-/* ... ~180 funciones totales ... */
+/* ... ~168 funciones totales ... */
 ```
 
-**Garantía:** ABI C congelada en v1.0. Rompimientos solo en versiones mayores.
+**Garantía:** BMO ABI **1.0** congelada. Rompimientos solo en versiones mayores
+(2.0, 3.0). La transición C ABI → BMO ABI obsoletó toda la herencia de Win32.
 
 ---
 
@@ -183,7 +202,7 @@ bx_query_*         :  4 funciones
 bx_video_*         : 12 funciones (encode/decode)
 bx_dlss_*          :  6 funciones (DirectSR wrapper)
 ─────────────────────────────────────────
-TOTAL              : ~168 funciones C ABI
+TOTAL              : ~168 funciones BMO ABI
 ```
 Comparado con DX12 + DXGI + D3DX (~600 funciones COM), BareX es ~3.5x más pequeña en superficie.
 

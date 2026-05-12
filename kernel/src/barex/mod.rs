@@ -21,6 +21,9 @@
 
 #![allow(dead_code)]
 
+// El BMO ABI es el cimiento. Todos los demás módulos lo usan.
+pub mod abi;
+
 pub mod graphics;
 pub mod audio;
 pub mod input;
@@ -34,17 +37,37 @@ pub const BAREX_VERSION: (u16, u16, u16) = (1, 0, 0);
 /// Identificador de hardware target congelado (RTX 3060 GA106 + Ryzen 5 5600X).
 pub const HW_TARGET: &str = "GA106+Zen3";
 
+/// Re-export de la versión del BMO ABI.
+pub const BMO_ABI_VERSION: (u8, u8) = abi::BMO_ABI_VERSION;
+
 /// Resultado canónico para toda la superficie BareX (sin `HRESULT`).
+///
+/// En el BMO ABI viaja como `BmoStatus { code, flags, value }` empacado en
+/// `RAX:RDX` (16 bytes), sin tocar memoria.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
 pub enum BxError {
-    OutOfMemory,
-    InvalidArgument,
-    NotInitialized,
-    DeviceLost,
-    NotImplemented,
-    Unsupported,
-    Timeout,
-    IoError,
+    OutOfMemory     = 1,
+    InvalidArgument = 2,
+    NotInitialized  = 3,
+    DeviceLost      = 4,
+    NotImplemented  = 5,
+    Unsupported     = 6,
+    Timeout         = 7,
+    IoError         = 8,
+    PermissionDenied = 9,
+    AlreadyExists   = 10,
+    NotFound        = 11,
+    BadHandle       = 12,
+    BufferTooSmall  = 13,
 }
 
 pub type BxResult<T> = core::result::Result<T, BxError>;
+
+impl BxError {
+    /// Convierte a `BmoStatus` para retorno via BMO ABI (RAX:RDX).
+    #[inline(always)]
+    pub const fn to_status(self) -> abi::BmoStatus {
+        abi::BmoStatus::err(self as u32)
+    }
+}

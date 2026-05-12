@@ -19,7 +19,8 @@ Este es el directorio principal del conocimiento y especificaciones arquitectón
 - ✅ `Win32_Minimum_Surface.md`
 *(También incluye carpetas de datos crudos: `DDK_Reference_DNA`, `WINE_Reference_DNA`, `Driver_Forensics`, `Ring 0`, `Ring 3`, `UI_Resources`)*
 
-### `02_BEF_Format/` (Formato Ejecutable BMO + API Gráfica BareX)
+### `02_BEF_Format/` (Formato Ejecutable BMO + API Gráfica BareX + BMO ABI)
+- ✅ `BMO_ABI_Spec.md` (⭐ **Cimiento** — convención de llamada nativa, reemplaza al C ABI: 7 GPRs args, 0 B shadow, 64 B stack align, handles con generación, SQ/CQ async)
 - ✅ `BEF_Executable_Format_Spec.md` (v1.1 con integración de shaders nativos)
 - ✅ `BMO_Graphics_Layer_Spec.md` (L1 — Mapeo directo a NVIDIA GSP)
 - ✅ `NVK_Shader_Pipeline_Analysis.md` (Transpilación SPIR-V a SASS con NAK)
