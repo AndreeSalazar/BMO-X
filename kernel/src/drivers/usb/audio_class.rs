@@ -13,7 +13,7 @@
 
 #![allow(dead_code)]
 
-use super::UsbDeviceInfo;
+use super::{UsbDeviceInfo, UsbDeviceId};
 
 /// Subclases del Audio Class 0x01.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
