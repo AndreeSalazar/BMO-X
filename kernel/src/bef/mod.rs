@@ -1,41 +1,47 @@
-//! BEF — formato ejecutable nativo de FastOS.
+//! BEF — formato ejecutable universal de FastOS.
 //!
-//! Spec: `BEF_Executable_Format_Spec.md` (v1.1 con shaders nativos).
-//! Reemplaza ELF y PE para apps FastOS. Transporta:
-//!   - Código x86-64 nativo
-//!   - Shaders SASS GA106 pre-compilados (sección `.shaders`)
-//!   - Manifiesto TOML con capabilities (network, gpu, fs, input)
-//!   - Recursos (texturas BC7/ASTC, audio Opus, fonts, etc.)
+//! ## Filosofía
+//!
+//! BEF es el ÚNICO formato ejecutable nativo de FastOS. Pero también
+//! **devora** PE (Windows .exe/.dll) y ELF (Linux/Unix), traduciéndolos
+//! transparentemente a representación BEF interna en tiempo de carga.
+//!
+//! Una vez parseados, todos viven bajo la misma representación
+//! ([`Image`]), todos respetan el modelo de capabilities BEF y el BMO ABI.
+//!
+//! Spec maestra: `MAPA de Window/02_BEF_Format/BEF_Executable_Format_Spec.md`.
+//! Mapa de carpetas y devour-strategy: `_README.md` en este folder.
+//!
+//! ## Lo que ningún otro formato tiene
+//!
+//! - Shaders SASS GA106 **pre-compilados** integrados en `.shaders` (cero stutter).
+//! - Manifest TOML con **capabilities declarativas** (sandbox por construcción).
+//! - **Hash BLAKE3** por sección (verificación al cargar, ~1 GB/s).
+//! - **TLS layout BMO** (sin `.tdata`/`.tbss` separados como ELF; un solo blob).
+//! - **Imports/exports** referenciados por `BmoHandle` con generación.
+//! - **Cero secciones legacy** (sin `.eh_frame`, sin `.note.*`, sin `.comment`...).
 
 #![allow(dead_code)]
 
-pub const BEF_MAGIC: &[u8; 4] = b"BEF1";
+pub mod header;
+pub mod sections;
+pub mod imports;
+pub mod exports;
+pub mod relocations;
+pub mod symbols;
+pub mod manifest;
+pub mod signing;
+pub mod tls;
+pub mod loader;
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub struct BefHeader {
-    pub magic: [u8; 4],
-    pub version_major: u16,
-    pub version_minor: u16,
-    pub flags: u32,
-    pub entry_offset: u64,
-    pub section_table_offset: u64,
-    pub section_count: u32,
-    pub _reserved: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SectionKind {
-    Code,
-    Data,
-    Shaders,
-    Manifest,
-    Resources,
-    Debug,
-}
-
-/// Esqueleto de loader. La implementación completa parsea, valida hashes
-/// y monta el ejecutable en un nuevo address space.
-pub fn load(_bytes: &[u8]) -> Result<(), &'static str> {
-    Err("bef::load no implementado todavía")
-}
+// Re-exports planos para uso ergonómico.
+pub use header::{BefHeader, BefMagic, BefFlags, BefArch, BEF_MAGIC};
+pub use sections::{SectionKind, SectionEntry, SectionTable};
+pub use imports::ImportTable;
+pub use exports::ExportTable;
+pub use relocations::{Relocation, RelocationKind};
+pub use symbols::{Symbol, SymbolBinding, SymbolKind};
+pub use manifest::Manifest;
+pub use signing::SectionHash;
+pub use tls::TlsTemplate;
+pub use loader::{load, BinaryFormat, Image, LoadError};
