@@ -48,23 +48,10 @@ pub struct SignatureHeader {
     pub sig_algo: bx_u32,
 }
 
-/// Stub de hash BLAKE3 (placeholder hasta integrar crate `blake3`).
-///
-/// FNV-1a expandido a 32 bytes — suficiente como interfaz; reemplazar por
-/// blake3-rs cuando se permita una dep extra.
+/// Hash BLAKE3 256-bit del buffer indicado. Implementación nativa en
+/// `crate::bef::blake3` (no_std, sin dependencias externas).
 pub fn blake3_256(bytes: &[u8]) -> [u8; 32] {
-    let mut h: u64 = 0xCBF2_9CE4_8422_2325;
-    let mut digest = [0u8; 32];
-    for (i, chunk) in bytes.chunks(8).enumerate() {
-        let mut block = [0u8; 8];
-        block[..chunk.len()].copy_from_slice(chunk);
-        let v = u64::from_le_bytes(block);
-        h ^= v;
-        h = h.wrapping_mul(0x0000_0100_0000_01B3);
-        let pos = (i * 5) & 0x1F;
-        digest[pos] ^= (h & 0xFF) as u8;
-    }
-    digest
+    crate::bef::blake3::hash(bytes)
 }
 
 /// Verifica que un hash precomputado coincida con los bytes provistos.

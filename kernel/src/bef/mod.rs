@@ -32,6 +32,7 @@ pub mod symbols;
 pub mod manifest;
 pub mod signing;
 pub mod tls;
+pub mod blake3;
 pub mod loader;
 
 // Re-exports planos para uso ergonómico.
