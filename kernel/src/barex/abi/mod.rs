@@ -29,6 +29,9 @@ pub mod calling;
 pub mod async_io;
 pub mod time;
 pub mod compat;
+pub mod sync;
+pub mod option;
+pub mod result;
 
 // ─── Re-exports planos para uso ergonómico ────────────────────────────
 //   Apps Rust pueden hacer `use crate::barex::abi::*;` y obtener todo lo
@@ -41,6 +44,9 @@ pub use handle::{BmoHandle, HandleKind};
 pub use status::{BmoStatus, StatusFlags};
 pub use calling::{STACK_ALIGNMENT, SHADOW_SPACE, RED_ZONE_SIZE, ARG_GPRS, ARG_XMMS};
 pub use time::{BmoInstant, BmoDuration};
+pub use sync::{BmoAtomicU32, BmoAtomicU64, BmoAtomicBool, BmoMutex, BmoFutex, MemOrder};
+pub use option::BmoOption;
+pub use result::BmoResult;
 
 /// Versión del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);

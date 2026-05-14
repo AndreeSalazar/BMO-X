@@ -39,6 +39,33 @@ Sirve para no perder hilo entre sesiones y para que cualquier agente nuevo entie
   | `compat/` | thunks Win64 / SysV ↔ BMO ABI |
 - 22 archivos `.rs` nuevos + `_README.md` + este `_WORK_LOG.md`.
 
+### Sesión 5 — BEF devour PE/ELF + BMO ABI cleanup
+- `kernel/src/bef/` expandido a **9 archivos** + carpeta `loader/` con 4 archivos:
+  | Archivo | Rol |
+  |---|---|
+  | `header.rs` | BefHeader 48 B + BefMagic detector + BefFlags + BefArch |
+  | `sections.rs` | SectionKind (15 tipos) + SectionTable parser |
+  | `imports.rs` | ImportTable + ImportFlags (lazy/eager/weak) |
+  | `exports.rs` | ExportTable con búsqueda por hash BLAKE3-32 |
+  | `relocations.rs` | RelocationKind (3 tipos vs 38 ELF / 16 PE) + apply() |
+  | `symbols.rs` | Symbol + binding + visibility |
+  | `manifest.rs` | Manifest TOML + Provenance (Native/PeDevoured/ElfDevoured) |
+  | `signing.rs` | SectionHash BLAKE3 256-bit + verify |
+  | `tls.rs` | TlsTemplate (un solo blob) |
+  | `loader/mod.rs` | Image + LoadError + dispatcher universal |
+  | `loader/native.rs` | BEF nativo |
+  | `loader/pe.rs` | ⭐ **DEVOUR PE** (DOS + COFF + Optional64 + section headers + fake-DLL map) |
+  | `loader/elf.rs` | ⭐ **DEVOUR ELF** (Ehdr + Phdr + reloc translation x86_64 → BEF) |
+
+- BMO ABI extendido con **3 carpetas más** (total 12):
+  | Carpeta | Reemplaza |
+  |---|---|
+  | `sync/` | `<stdatomic.h>`, `<threads.h>`, Interlocked*, pthread_mutex |
+  | `option/` | layout C-FFI estable para `Option<T>` |
+  | `result/` | layout C-FFI estable para `Result<T,E>` |
+
+- `sync/` contiene: `atomic.rs` (BmoAtomicU32/U64/Bool + MemOrder), `futex.rs` (BmoFutex wait/wake), `mutex.rs` (BmoMutex futex-backed lock-free fast path).
+
 ---
 
 ## 🔜 Por hacer (prioridad)
@@ -46,11 +73,14 @@ Sirve para no perder hilo entre sesiones y para que cualquier agente nuevo entie
 1. **Bridge BMO/GSP** (lo lleva el usuario en `drivers/gpu/fastgpu/`).
 2. Conectar `barex::graphics::BxDevice::primary()` al bridge cuando esté listo.
 3. Implementar `arch::x86_64::tsc::read_ns()` para dar vida a `BmoInstant::now()`.
-4. Parser real de header BEF en `bef::load`.
-5. `xhci::probe()` real para detectar el host controller del chipset 500-series.
-6. Loop de poll HID que rellene la cola de `barex::input`.
-7. Stream isoch OUT al headset Redragon vía `usb::audio_class::submit_pcm`.
-8. Dispatcher real en `syscall::dispatch` con BMO ABI.
+4. Pipeline completo del loader BEF nativo (relocs + imports + tls + sandbox).
+5. Devour PE: parsear `IMAGE_DIRECTORY_ENTRY_IMPORT` + IAT real.
+6. Devour ELF: iterar Phdr, procesar `PT_DYNAMIC` + `DT_NEEDED`.
+7. Implementar BLAKE3 real (vs FNV-1a placeholder en `bef::signing`).
+8. `xhci::probe()` real para detectar el host controller del chipset 500-series.
+9. Loop de poll HID que rellene la cola de `barex::input`.
+10. Stream isoch OUT al headset Redragon vía `usb::audio_class::submit_pcm`.
+11. Dispatcher real en `syscall::dispatch` con BMO ABI extendido.
 
 ---
 
