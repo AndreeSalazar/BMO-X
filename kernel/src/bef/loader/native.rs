@@ -16,6 +16,7 @@
 use crate::bef::header::{BefHeader, BEF_MAGIC};
 use crate::bef::sections::SectionTable;
 use super::{Image, LoadError, fake_provenance_image};
+use super::meta_sections::{parse_meta_sections, meta_stats, MetaSectionStats};
 use crate::bef::manifest::Provenance;
 
 pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
@@ -38,11 +39,20 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         return Err(LoadError::UnsupportedAbi);
     }
 
-    let _table = SectionTable::parse(bytes, hdr.section_table_offset, hdr.section_count)
+    let table = SectionTable::parse(bytes, hdr.section_table_offset, hdr.section_count)
         .map_err(|_| LoadError::SectionOutOfRange)?;
 
-    // TODO: resto del pipeline. Por ahora devolvemos un Image vacío con
-    // provenance Native para que el kernel tenga algo bien-formado.
+    // Sesión 9: localizar y validar las 5 secciones meta-genéricas
+    // (TypeMap, VTables, LangBridge, Reflect, Closures) + Unwind.
+    // No fallamos si están ausentes: un BEF puramente de código sigue siendo válido.
+    let meta = parse_meta_sections(bytes, &table)?;
+    let _stats: MetaSectionStats = meta_stats(&meta);
+    // TODO sesión futura: pasar `meta` + `_stats` al constructor del proceso
+    // para que materialice un `BmoRuntime` real con TypeRegistry/LangRegistry.
+
+    // TODO: resto del pipeline (relocs, imports, TLS, sandbox).
+    // Por ahora devolvemos un Image vacío con provenance Native
+    // para que el kernel tenga algo bien-formado.
     let mut img = fake_provenance_image(Provenance::Native);
     img.entry_point = hdr.entry_offset;
     Ok(img)

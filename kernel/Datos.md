@@ -99,7 +99,8 @@ c:/Users/andre/OneDrive/Documentos/FastOS/
 │       │       ├── pe_thunks.rs  (75 funciones Win32 fake-DLL → BMO)
 │       │       ├── elf.rs        ⭐ DEVOUR ELF completo (Phdr iter)
 │       │       ├── elf_dynamic.rs (30 DT_*, parse PT_DYNAMIC)
-│       │       └── elf_thunks.rs (60 funciones libc/libm/libpthread → BMO)
+│       │       ├── elf_thunks.rs (60 funciones libc/libm/libpthread → BMO)
+│       │       └── meta_sections.rs ⭐ (parser TypeMap/VTables/LangBridge/Reflect/Closures + build_runtime)
 │       │
 │       ├── sched/                ✅ Scheduler stub (Priority, CoreAffinity 5600X)
 │       ├── syscall/              ✅ Syscall table stub (28 syscalls iniciales)
@@ -212,6 +213,23 @@ Conectado el cimiento de la sesión 7 al formato ejecutable y al kernel:
   `BmoClosure`, `BmoPanic`, `LangDescriptor`, `Marshaller`, etc. directo.
 
 `cargo build` Finished ✅.
+
+### Sesión 9 — Parser meta-secciones BEF + materialización ⭐
+Cierra el ciclo: las 5 nuevas `SectionKind` ahora se leen del archivo:
+
+- **`bef/loader/meta_sections.rs`** ⭐ (~180 líneas): localiza las 5
+  secciones (`TypeMap`/`VTables`/`LangBridge`/`Reflect`/`Closures`) +
+  `Unwind` en una `SectionTable`, valida offsets, expone `MetaSectionViews`
+  zero-copy. Provee `type_descriptors_from()` y `lang_descriptors_from()`
+  (reinterpretación segura `&[u8]` → `&[TypeDescriptor]`/`&[LangDescriptor]`
+  con chequeo de tamaño y alineación). `build_runtime()` construye un
+  `BmoRuntime` real desde un `MetaSectionViews`. `meta_stats()` para shell/debug.
+- **`bef/loader/native.rs`**: pipeline de carga BEF nativo ahora invoca
+  `parse_meta_sections()` después del section table. Si las secciones
+  meta están ausentes, sigue funcionando (BEF "puramente código" válido);
+  si están malformadas, devuelve `LoadError::InvalidHeader`.
+
+`cargo build` Finished ✅. **Total módulos `bef/loader/`: 9 archivos.**
 
 ---
 
@@ -374,8 +392,9 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 | 6 | 5 archivos BEF avanzados (blake3, pe_imports, pe_thunks, elf_dynamic, elf_thunks) + actualización pe.rs/elf.rs |
 | 7 | 26 archivos en 7 nuevas sub-carpetas BMO ABI (type_system/5, vtable/4, closure/3, exception/4, reflect/2, lang_bridge/4, marshal/4) |
 | 8 | `runtime.rs` (BmoRuntime agregador) + `_README.md` abi/ + extensión SectionKind 15→20 + re-exports planos |
+| 9 | `bef/loader/meta_sections.rs` (parser 5 secciones meta + builder BmoRuntime) + wiring en `native.rs` |
 
-**Total acumulado:** ~102 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~103 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -432,5 +451,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 8 (Wiring BEF↔BMO — `BmoRuntime`, 5 nuevos `SectionKind`, re-exports planos).
+**Última actualización:** Sesión 9 (Parser `meta_sections` BEF + wiring en `native::load`).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.

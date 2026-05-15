@@ -20,6 +20,7 @@ pub mod pe_imports;
 pub mod pe_thunks;
 pub mod elf_dynamic;
 pub mod elf_thunks;
+pub mod meta_sections;
 
 use crate::bef::header::BefMagic;
 use crate::bef::manifest::{Manifest, Provenance};
