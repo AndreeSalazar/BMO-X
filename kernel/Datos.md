@@ -193,6 +193,26 @@ Haskell, Erlang, Lua, futuros) se integre nativamente sin C ABI:
 `cargo build` Finished ✅ (solo warnings de unused imports — todos los
 módulos son stubs aún sin consumidor llamándolos).
 
+### Sesión 8 — Wiring BEF ↔ BMO ABI genérico ⭐
+Conectado el cimiento de la sesión 7 al formato ejecutable y al kernel:
+
+- **`bef/sections.rs`**: `SectionKind` extendido de 15 → **20 variantes**.
+  Nuevas: `TypeMap` (0x10), `VTables` (0x11), `LangBridge` (0x12),
+  `Reflect` (0x13), `Closures` (0x14). Cualquier compilador BEF puede ya
+  emitir metadatos para los módulos de sesión 7.
+- **`barex/abi/runtime.rs`** ⭐: nuevo `BmoRuntime` que agrega
+  `TypeRegistry`, `LangRegistry`, slice de `BmoVTable` y `UnwindTable`
+  en una sola estructura `repr(C)`. Reemplaza el patrón C de "globals
+  dispersos" (`__cxa_*`, `__libc_*`, `KeServiceDescriptorTable`).
+  Provee `stats()`, `type_of()`, `lang_of()`, `reflect()`.
+- **`barex/abi/_README.md`** ⭐: documentación maestra de las 19
+  sub-carpetas con mapa visual y guía "cómo añadir un nuevo lenguaje".
+- **Re-exports planos en `barex/abi/mod.rs`**: ahora `use crate::barex::abi::*;`
+  trae `BmoRuntime`, `TypeDescriptor`, `BmoVTable`, `BmoFatPtr`,
+  `BmoClosure`, `BmoPanic`, `LangDescriptor`, `Marshaller`, etc. directo.
+
+`cargo build` Finished ✅.
+
 ---
 
 ## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
@@ -281,8 +301,10 @@ bef::loader::load(bytes) → BefMagic::detect() →
 ```
 Todos producen el mismo `Image { format, manifest, entry_point, base_address, sections }`.
 
-### 15 SectionKind BEF
-Code, RoData, Data, Bss, Imports, Exports, Relocs, Symbols, Manifest, Shaders, Resources, Tls, Unwind, Debug, Signature.
+### 20 SectionKind BEF (15 cimiento + 5 metadatos sesión 8)
+Code, RoData, Data, Bss, Imports, Exports, Relocs, Symbols, Manifest,
+Shaders, Resources, Tls, Unwind, Debug, Signature,
+**TypeMap, VTables, LangBridge, Reflect, Closures**.
 
 ### 3 Relocation types BEF (vs 38 ELF / 16 PE)
 `Abs64`, `Rel32`, `Got64`. La función `bef::relocations::apply()` ya las aplica.
@@ -351,8 +373,9 @@ Code, RoData, Data, Bss, Imports, Exports, Relocs, Symbols, Manifest, Shaders, R
 | 5 | 13 archivos BEF (9 + loader/4) + 7 archivos BMO ABI extension (sync/option/result) |
 | 6 | 5 archivos BEF avanzados (blake3, pe_imports, pe_thunks, elf_dynamic, elf_thunks) + actualización pe.rs/elf.rs |
 | 7 | 26 archivos en 7 nuevas sub-carpetas BMO ABI (type_system/5, vtable/4, closure/3, exception/4, reflect/2, lang_bridge/4, marshal/4) |
+| 8 | `runtime.rs` (BmoRuntime agregador) + `_README.md` abi/ + extensión SectionKind 15→20 + re-exports planos |
 
-**Total acumulado:** ~101 archivos `.rs` nuevos + 4 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~102 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -409,5 +432,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 7 (BMO ABI genérico multi-lenguaje — 7 nuevas sub-carpetas, 26 archivos).
+**Última actualización:** Sesión 8 (Wiring BEF↔BMO — `BmoRuntime`, 5 nuevos `SectionKind`, re-exports planos).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.

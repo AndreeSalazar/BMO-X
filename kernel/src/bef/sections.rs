@@ -41,6 +41,18 @@ pub enum SectionKind {
     Debug     = 0x0E,
     /// Hashes BLAKE3 + firma Ed25519 opcional.
     Signature = 0x0F,
+
+    // ─── Sesión 8: secciones de metadatos genéricos multi-lenguaje ────
+    /// Tabla de `TypeDescriptor` (consumida por `barex::abi::type_system::TypeRegistry`).
+    TypeMap   = 0x10,
+    /// VTables `BmoVTable` empacadas (`barex::abi::vtable`).
+    VTables   = 0x11,
+    /// Bridges de lenguaje origen (`barex::abi::lang_bridge::LangDescriptor`).
+    LangBridge = 0x12,
+    /// Datos de reflection (mirrors, nombres mangled extra).
+    Reflect   = 0x13,
+    /// Tabla de cierres `BmoClosure` con `ClosureSig`.
+    Closures  = 0x14,
 }
 
 impl SectionKind {
@@ -61,6 +73,11 @@ impl SectionKind {
             0x0D => Some(Self::Unwind),
             0x0E => Some(Self::Debug),
             0x0F => Some(Self::Signature),
+            0x10 => Some(Self::TypeMap),
+            0x11 => Some(Self::VTables),
+            0x12 => Some(Self::LangBridge),
+            0x13 => Some(Self::Reflect),
+            0x14 => Some(Self::Closures),
             _ => None,
         }
     }

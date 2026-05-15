@@ -52,6 +52,9 @@ pub mod reflect;
 pub mod lang_bridge;
 pub mod marshal;
 
+// ─── Sesión 8: agregador único ────────────────────────────────────────
+pub mod runtime;
+
 // ─── Re-exports planos para uso ergonómico ────────────────────────────
 //   Apps Rust pueden hacer `use crate::barex::abi::*;` y obtener todo lo
 //   esencial sin navegar sub-módulos.
@@ -66,6 +69,16 @@ pub use time::{BmoInstant, BmoDuration};
 pub use sync::{BmoAtomicU32, BmoAtomicU64, BmoAtomicBool, BmoMutex, BmoFutex, MemOrder};
 pub use option::BmoOption;
 pub use result::BmoResult;
+
+// Re-exports de la capa genérica (Sesión 7-8).
+pub use type_system::{TypeDescriptor, TypeId, TypeKind, TypeLayout, TypeRegistry};
+pub use vtable::{BmoVTable, BmoFatPtr, VTableEntry};
+pub use closure::{BmoClosure, ClosureEnv, ClosureSig, ClosureKind};
+pub use exception::{BmoPanic, PanicKind, UnwindTable, UnwindEntry, ResumeToken};
+pub use reflect::{Mirror, ReflectQuery};
+pub use lang_bridge::{LangDescriptor, LangRegistry, LangFeatures, LangVersion};
+pub use marshal::{Marshaller, MarshalError};
+pub use runtime::{BmoRuntime, RuntimeStats};
 
 /// Versión del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);
