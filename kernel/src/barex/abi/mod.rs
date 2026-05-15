@@ -17,6 +17,16 @@
 //! - [`async_io`]   — Submission/Completion Queues (sustituye `OVERLAPPED`/IOCP/callbacks).
 //! - [`time`]       — `BmoInstant`, `BmoDuration` (sustituye `time_t`/`timespec`/`GetTickCount`).
 //! - [`compat`]     — thunks Win64 / SysV → BMO ABI para FFI con código C heredado.
+//!
+//! ### Sub-módulos genéricos multi-lenguaje (Sesión 7)
+//!
+//! - [`type_system`]  — descriptores universales (sustituye RTTI / `Type` / `class`).
+//! - [`vtable`]       — despacho dinámico (sustituye vtables C++ / COM / dyn Trait).
+//! - [`closure`]      — closures de primera clase (C ABI no los tiene).
+//! - [`exception`]    — modelo unificado de unwinding (sustituye Itanium EH / SEH).
+//! - [`reflect`]      — reflection runtime sobre cualquier BEF cargado.
+//! - [`lang_bridge`]  — registro de lenguajes (Rust, C++, Java, Swift, Python, etc).
+//! - [`marshal`]      — conversiones Lang ↔ BMO ↔ Lang.
 
 #![allow(dead_code)]
 
@@ -32,6 +42,15 @@ pub mod compat;
 pub mod sync;
 pub mod option;
 pub mod result;
+
+// ─── Sesión 7: arquitectura genérica multi-lenguaje ───────────────────
+pub mod type_system;
+pub mod vtable;
+pub mod closure;
+pub mod exception;
+pub mod reflect;
+pub mod lang_bridge;
+pub mod marshal;
 
 // ─── Re-exports planos para uso ergonómico ────────────────────────────
 //   Apps Rust pueden hacer `use crate::barex::abi::*;` y obtener todo lo

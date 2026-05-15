@@ -70,7 +70,7 @@ c:/Users/andre/OneDrive/Documentos/FastOS/
 │       │   ├── mod.rs            (BxError, BxResult, BAREX_VERSION, HW_TARGET)
 │       │   ├── _LAYERS.md        (mapa de capas)
 │       │   ├── _WORK_LOG.md      (tracker de sesiones)
-│       │   ├── abi/              ⭐ BMO ABI (12 sub-carpetas, ver §5)
+│       │   ├── abi/              ⭐ BMO ABI (19 sub-carpetas, ver §5)
 │       │   ├── graphics/         (12 objetos núcleo BareX)
 │       │   ├── audio/            (BxAudioEngine, USB AC2 + HDMI vía GSP)
 │       │   ├── input/            (Key, MouseReading, HeadsetButton, BxInputSystem)
@@ -162,10 +162,42 @@ Creadas carpetas `barex/{graphics,audio,input,net,shader,compat}` + `bef/`, `sch
 - 75 funciones Win32 fake-DLL en `pe_thunks.rs` → BMO
 - 60 funciones POSIX/glibc en `elf_thunks.rs` → BMO
 
+### Sesión 7 — BMO ABI genérico multi-lenguaje ⭐
+Añadidas **7 nuevas sub-carpetas** a `barex/abi/` (ahora **19 total**) para
+que cualquier lenguaje (Rust, C++, Java, Swift, Python, Go, JS, OCaml,
+Haskell, Erlang, Lua, futuros) se integre nativamente sin C ABI:
+
+- `type_system/` (5 archivos): `TypeDescriptor`, `TypeKind` (21 variantes),
+  `TypeLayout` + `LayoutFlags` (8 flags POD/SEND/SYNC/REPR_C/...),
+  `TypeRegistry`, `TypeId` (BLAKE3 truncado 64-bit). Reemplaza RTTI / `Type` / `class`.
+- `vtable/` (4 archivos): `BmoVTable` con magic `b"BVT1"`, `VTableEntry`
+  (5 kinds), `BmoFatPtr` (16 B en RAX:RDX), `query_interface`. Reemplaza
+  vtables C++ / COM / `dyn Trait` / Java iface / Go itab.
+- `closure/` (3 archivos): `BmoClosure` 32 B, `ClosureEnv`, `ClosureSig`
+  (Pure/Mut/Once). Algo que C ABI **no tiene**.
+- `exception/` (4 archivos): `BmoPanic` + `PanicKind` (6), `UnwindContext` +
+  `UnwindReason` (5), `UnwindAction` (4), `ResumeToken` (resumable
+  exceptions, estilo Common Lisp / OCaml 5), `UnwindTable` compacta.
+  Reemplaza Itanium EH / SEH / managed exceptions.
+- `reflect/` (2 archivos): `Mirror` / `MirrorOf` estilo Strongtalk,
+  `ReflectQuery`. Reemplaza Java reflection / .NET / Go reflect / `inspect`.
+- `lang_bridge/` (4 archivos): `LangDescriptor` con versión y features,
+  `LangRegistry`, **26 IDs de lenguaje** (Rust, C, C++, Zig, Swift, JVM,
+  CLR, Python, JS, Go, OCaml, Lua, Haskell, BEAM, Nim, Crystal, Dart,
+  Kotlin, Ruby, PHP, Fortran, Ada, Racket, Scheme, Clojure + slot
+  `LANG_FUTURE_*`), `LangFeatures` (14 flags: GC, exceptions, closures,
+  effects, ownership, lazy, ...).
+- `marshal/` (4 archivos): `Marshaller` trait, `MarshalError`, helpers de
+  boxing/unboxing, estimadores UTF-8↔UTF-16, bool-marshal Win32↔BMO.
+
+`cargo build` Finished ✅ (solo warnings de unused imports — todos los
+módulos son stubs aún sin consumidor llamándolos).
+
 ---
 
-## 🧠 BMO ABI — referencia rápida (12 sub-carpetas en `barex/abi/`)
+## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
 
+### Capa cimiento (sesiones 3-5)
 | Carpeta | Reemplaza C ABI |
 |---|---|
 | `primitives/` | `<stdint.h>`, `<stddef.h>`, `<stdbool.h>` |
@@ -180,6 +212,17 @@ Creadas carpetas `barex/{graphics,audio,input,net,shader,compat}` + `bef/`, `sch
 | `sync/` | `<stdatomic.h>`, `<threads.h>`, Interlocked*, pthread_mutex |
 | `option/` | layout C-FFI estable para `Option<T>` |
 | `result/` | layout C-FFI estable para `Result<T,E>` |
+
+### Capa genérica multi-lenguaje (sesión 7) ⭐
+| Carpeta | Reemplaza |
+|---|---|
+| `type_system/` | RTTI C++, `Type` .NET, `Class` Java, `reflect.Type` Go, `PyTypeObject` |
+| `vtable/` | vtable Itanium/MSVC, COM `IUnknown`, fat-ptr `dyn Trait`, Java iface, Go itab |
+| `closure/` | (C ABI no tiene closures) — `Box<dyn FnMut>`, `std::function`, JS closures |
+| `exception/` | DWARF `.eh_frame` C++, Win64 SEH, JVM/CLR exceptions, Python `raise` |
+| `reflect/` | `java.lang.reflect`, `System.Reflection`, Go `reflect`, Python `inspect` |
+| `lang_bridge/` | (no existía) — registro de 26 lenguajes + `LANG_FUTURE_*` |
+| `marshal/` | manuales `WideCharToMultiByte`, JNI marshal, P/Invoke conversions |
 
 ### Características distintivas vs C ABI
 - **7 GPRs** para args int (vs 4 MS x64 / 6 SysV): RDI RSI RDX R10 R8 R9 RAX_extra
@@ -307,8 +350,9 @@ Code, RoData, Data, Bss, Imports, Exports, Relocs, Symbols, Manifest, Shaders, R
 | 4 | 24 archivos en `barex/abi/` (9 sub-carpetas) + READMEs |
 | 5 | 13 archivos BEF (9 + loader/4) + 7 archivos BMO ABI extension (sync/option/result) |
 | 6 | 5 archivos BEF avanzados (blake3, pe_imports, pe_thunks, elf_dynamic, elf_thunks) + actualización pe.rs/elf.rs |
+| 7 | 26 archivos en 7 nuevas sub-carpetas BMO ABI (type_system/5, vtable/4, closure/3, exception/4, reflect/2, lang_bridge/4, marshal/4) |
 
-**Total acumulado:** ~75 archivos `.rs` nuevos + 4 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~101 archivos `.rs` nuevos + 4 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -365,5 +409,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 6 (BLAKE3 real + thunks completos PE/ELF).
+**Última actualización:** Sesión 7 (BMO ABI genérico multi-lenguaje — 7 nuevas sub-carpetas, 26 archivos).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
