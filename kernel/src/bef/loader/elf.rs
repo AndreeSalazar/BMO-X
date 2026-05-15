@@ -105,12 +105,88 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         return Err(LoadError::UnsupportedArch);
     }
 
-    // TODO: iterar program headers, mapear PT_LOAD a secciones BEF,
-    // procesar PT_DYNAMIC para encontrar DT_NEEDED, DT_RELA, DT_SYMTAB,
-    // DT_STRTAB, DT_PLTGOT, etc., aplicar relocs x86_64 → BEF (3 tipos).
+    // ─── Iterar program headers ────────────────────────────────────────
+    let phoff = ehdr.e_phoff as usize;
+    let phnum = ehdr.e_phnum as usize;
+    let phent = ehdr.e_phentsize as usize;
+    if phent < core::mem::size_of::<Elf64Phdr>() {
+        return Err(LoadError::InvalidHeader);
+    }
+    if phoff + phnum * phent > bytes.len() {
+        return Err(LoadError::Truncated);
+    }
+
     let mut img = fake_provenance_image(Provenance::ElfDevoured);
     img.entry_point = ehdr.e_entry;
+
+    let mut pt_dynamic_offset: Option<(u64, u64)> = None;
+
+    for i in 0..phnum {
+        let off = phoff + i * phent;
+        let phdr = unsafe { &*(bytes.as_ptr().add(off) as *const Elf64Phdr) };
+        let p_type = phdr.p_type;
+        let p_flags = phdr.p_flags;
+        let p_offset = phdr.p_offset;
+        let p_vaddr = phdr.p_vaddr;
+        let p_filesz = phdr.p_filesz;
+        let p_memsz = phdr.p_memsz;
+
+        match p_type {
+            PT_LOAD => {
+                let mut flags = 0u32;
+                if p_flags & 4 != 0 { flags |= 0x1; }   // R
+                if p_flags & 2 != 0 { flags |= 0x2; }   // W
+                if p_flags & 1 != 0 { flags |= 0x4; }   // X
+                let kind = pick_kind_from_flags(p_flags);
+                img.sections.push(super::MappedSection {
+                    kind,
+                    virt_addr: p_vaddr,
+                    size: p_memsz,
+                    flags,
+                });
+            }
+            PT_DYNAMIC => {
+                pt_dynamic_offset = Some((p_offset, p_filesz));
+            }
+            PT_TLS => {
+                use crate::bef::sections::SectionKind;
+                img.sections.push(super::MappedSection {
+                    kind: SectionKind::Tls as u8,
+                    virt_addr: p_vaddr,
+                    size: p_memsz,
+                    flags: 0x1,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    // ─── Procesar PT_DYNAMIC si existe ─────────────────────────────────
+    if let Some((dyn_off, dyn_size)) = pt_dynamic_offset {
+        let start = dyn_off as usize;
+        let end = start + dyn_size as usize;
+        if end <= bytes.len() {
+            let dyn_bytes = &bytes[start..end];
+            let _info = super::elf_dynamic::parse(dyn_bytes);
+            // TODO: usar `_info.needed_offsets[0..needed_count]` para resolver
+            // libs vía `elf_thunks::resolve`. Requiere también localizar
+            // la STRTAB en el archivo (rva_to_file_offset estilo PE).
+        }
+    }
+
     Ok(img)
+}
+
+/// Elige `SectionKind` BEF a partir de los flags de un PT_LOAD ELF.
+fn pick_kind_from_flags(p_flags: u32) -> u8 {
+    use crate::bef::sections::SectionKind;
+    let x = p_flags & 1 != 0;
+    let w = p_flags & 2 != 0;
+    match (x, w) {
+        (true, _)      => SectionKind::Code as u8,
+        (false, true)  => SectionKind::Data as u8,
+        (false, false) => SectionKind::RoData as u8,
+    }
 }
 
 /// Convierte una reloc x86_64 ELF al equivalente BEF.

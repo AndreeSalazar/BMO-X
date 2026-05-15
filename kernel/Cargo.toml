@@ -1,10 +1,10 @@
 [package]
 name = "fastos-kernel"
-version = "0.1.0"
+version = "0.9.0"
 edition = "2021"
 authors = ["FastOS Project"]
 description = "FastOS kernel — Ryzen 5 5600X + RTX 3060 12G"
-license = "MIT"
+license = "Techne"
 
 [dependencies]
 fastos-boot-protocol = { path = "../boot_protocol" }

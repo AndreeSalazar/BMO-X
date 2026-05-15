@@ -16,6 +16,10 @@ extern crate alloc;
 pub mod native;
 pub mod pe;
 pub mod elf;
+pub mod pe_imports;
+pub mod pe_thunks;
+pub mod elf_dynamic;
+pub mod elf_thunks;
 
 use crate::bef::header::BefMagic;
 use crate::bef::manifest::{Manifest, Provenance};

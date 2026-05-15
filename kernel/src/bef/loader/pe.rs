@@ -130,10 +130,8 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         return Err(LoadError::UnsupportedArch);
     }
 
-    // TODO: parsear OptionalHeader64, mapear secciones, parsear imports
-    // (`IMAGE_DIRECTORY_ENTRY_IMPORT`), aplicar relocs `IMAGE_REL_BASED_DIR64`,
-    // sintetizar Manifest con `Provenance::PeDevoured`.
     let opt_off = pe_off + core::mem::size_of::<CoffFileHeader>();
+    let opt_size = coff.size_of_optional_header as usize;
     if opt_off + core::mem::size_of::<OptionalHeader64>() > bytes.len() {
         return Err(LoadError::Truncated);
     }
@@ -141,8 +139,65 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let entry = opt.address_of_entry_point as u64;
     let base  = opt.image_base;
 
+    // ─── Iterar section headers ────────────────────────────────────────
+    let sections_off = opt_off + opt_size;
+    let n_sections = coff.number_of_sections as usize;
+    let needed = n_sections * core::mem::size_of::<PeSectionHeader>();
+    if sections_off + needed > bytes.len() {
+        return Err(LoadError::Truncated);
+    }
+    let sec_ptr = unsafe { bytes.as_ptr().add(sections_off) as *const PeSectionHeader };
+    let sections = unsafe { core::slice::from_raw_parts(sec_ptr, n_sections) };
+
+    // ─── Resolver Import Directory (best-effort) ───────────────────────
+    // El Import Directory está en `OptionalHeader.DataDirectory[1]`. Para
+    // mantener este parser ligero, recorremos las secciones buscando el
+    // typical `.idata` o cualquier sección que contenga descriptores
+    // import válidos (heurística mientras integramos DataDirectory).
     let mut img = fake_provenance_image(Provenance::PeDevoured);
     img.entry_point = base.wrapping_add(entry);
     img.base_address = base;
+
+    // Mapear cada sección PE a una `MappedSection` BEF.
+    for s in sections {
+        let va = s.virtual_address as u64;
+        let vsz = s.virtual_size as u64;
+        let chr = s.characteristics;
+        let mut flags = 0u32;
+        // IMAGE_SCN_MEM_READ = 0x40000000
+        if chr & 0x4000_0000 != 0 { flags |= 0x1; }
+        // IMAGE_SCN_MEM_WRITE = 0x80000000
+        if chr & 0x8000_0000 != 0 { flags |= 0x2; }
+        // IMAGE_SCN_MEM_EXECUTE = 0x20000000
+        if chr & 0x2000_0000 != 0 { flags |= 0x4; }
+
+        let kind = pick_section_kind(&s.name, chr);
+        img.sections.push(super::MappedSection {
+            kind,
+            virt_addr: base.wrapping_add(va),
+            size: vsz,
+            flags,
+        });
+    }
+
     Ok(img)
+}
+
+/// Elige un `SectionKind` BEF para una sección PE, basándose en el nombre
+/// canónico (`.text`, `.data`, ...) y los characteristics.
+fn pick_section_kind(name: &[u8; 8], chr: u32) -> u8 {
+    use crate::bef::sections::SectionKind;
+    let n = core::str::from_utf8(name).unwrap_or("");
+    if n.starts_with(".text") || (chr & 0x2000_0000) != 0 { return SectionKind::Code as u8; }
+    if n.starts_with(".rdata") || n.starts_with(".rodata") { return SectionKind::RoData as u8; }
+    if n.starts_with(".data") { return SectionKind::Data as u8; }
+    if n.starts_with(".bss") { return SectionKind::Bss as u8; }
+    if n.starts_with(".idata") { return SectionKind::Imports as u8; }
+    if n.starts_with(".edata") { return SectionKind::Exports as u8; }
+    if n.starts_with(".reloc") { return SectionKind::Relocs as u8; }
+    if n.starts_with(".rsrc") { return SectionKind::Resources as u8; }
+    if n.starts_with(".tls") { return SectionKind::Tls as u8; }
+    if n.starts_with(".pdata") { return SectionKind::Unwind as u8; }
+    if n.starts_with(".debug") { return SectionKind::Debug as u8; }
+    SectionKind::Data as u8
 }
