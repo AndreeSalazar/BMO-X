@@ -231,6 +231,41 @@ Cierra el ciclo: las 5 nuevas `SectionKind` ahora se leen del archivo:
 
 `cargo build` Finished ✅. **Total módulos `bef/loader/`: 9 archivos.**
 
+### Sesión 10 — `barex/net` modularizado zero-bloat ⭐
+`net/` pasó de **1 archivo (56 líneas)** → **9 sub-carpetas + 32 archivos**
+con stack agresivo, eliminando todo el bloat típico de Windows/Linux:
+
+- `mod.rs` — re-exports + `BxNetService` + `Protocol` (TCP/UDP/QUIC/TLS13/HTTP2/HTTP3/WS/WT/Raw).
+- `capabilities.rs` — `NetCapabilities` con 8 flags (OUTBOUND, INBOUND,
+  RAW_KERNEL_BYPASS, QUIC, MULTICAST, RAW_SOCKETS, PRIVILEGED_PORTS,
+  CUSTOM_DNS).
+- `types/` (5 archivos): `IpAddr`/`IpV4`/`IpV6`, `Endpoint` (24 B vs 128 B
+  de `sockaddr_storage`), `MacAddr`, `Cidr`, `Port` (typed con constantes
+  HTTP/HTTPS/DNS/DOH/DOT/QUIC).
+- `socket/` (3 archivos): `BxTcpSocket`, `BxUdpSocket`, `SocketState`
+  (FSM TCP completa + Bound UDP).
+- `quic/` (2 archivos): `BxQuicEndpoint` (0-RTT/1-RTT), `BxQuicStream` +
+  `QuicStreamId` (62-bit).
+- `tls/` (2 archivos): `TlsContext` cliente/servidor, `TlsCipherSuite`
+  con las **únicas 5** del RFC 8446 (TLS 1.3 only — sin SSLv3/1.0/1.1/1.2).
+- `http/` (3 archivos): `Http3Client`, `Http3Server`, `HttpVersion` con
+  `alpn()`. HTTP/1.x **prohibido** por design.
+- `dns/` (2 archivos): `DnsResolver` (DoH **o** DoT), `DnsAnswer`.
+  Sin `getaddrinfo`, sin /etc/hosts, sin UDP/53 plano.
+- `ring/` (3 archivos): `NetSqe` 64 B (10 ops), `NetCqe` 32 B,
+  `NetSubmissionQueue`/`NetCompletionQueue` SPSC lock-free.
+  Reemplaza IOCP / epoll / kqueue / `WSAOVERLAPPED`.
+- `driver/` (2 archivos): `NicDriver` trait, `NicCapabilities` con
+  `NicOffloads` (12 flags: TX_CKSUM_*, TSO_V4/V6, LRO, RSS, SR_IOV,
+  ZERO_COPY, QUIC_OFFLOAD).
+- `bypass/` (1 archivo): `BypassRing` DPDK/AF_XDP-style para HFT/gaming.
+
+**Bloat eliminado:** Winsock + WSAStartup + `sockaddr_in/in6` zoo + `int fd` +
+`errno`/`WSAGetLastError` + OpenSSL + SChannel + NetBIOS + WPAD + SMB +
+`getaddrinfo` + epoll + kqueue + IOCP + NDIS + AF_PACKET + libcurl + WinHTTP.
+
+`cargo build` Finished ✅.
+
 ---
 
 ## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
@@ -393,8 +428,9 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 | 7 | 26 archivos en 7 nuevas sub-carpetas BMO ABI (type_system/5, vtable/4, closure/3, exception/4, reflect/2, lang_bridge/4, marshal/4) |
 | 8 | `runtime.rs` (BmoRuntime agregador) + `_README.md` abi/ + extensión SectionKind 15→20 + re-exports planos |
 | 9 | `bef/loader/meta_sections.rs` (parser 5 secciones meta + builder BmoRuntime) + wiring en `native.rs` |
+| 10 | `barex/net` modularizado: 9 sub-carpetas / 32 archivos (types, socket, quic, tls, http, dns, ring, driver, bypass) |
 
-**Total acumulado:** ~103 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~135 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -451,5 +487,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 9 (Parser `meta_sections` BEF + wiring en `native::load`).
+**Última actualización:** Sesión 10 (`barex/net` modularizado: 9 sub-carpetas, 32 archivos, zero-bloat).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
