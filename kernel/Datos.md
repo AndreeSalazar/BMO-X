@@ -73,7 +73,7 @@ c:/Users/andre/OneDrive/Documentos/FastOS/
 │       │   ├── abi/              ⭐ BMO ABI (19 sub-carpetas, ver §5)
 │       │   ├── graphics/         (12 objetos núcleo BareX)
 │       │   ├── audio/            (modularizado S11: 10 sub-carpetas / 39 archivos — format, engine, voice, mixer, codec, spatial, effects, route, backend, ring)
-│       │   ├── input/            (Key, MouseReading, HeadsetButton, BxInputSystem)
+│       │   ├── input/            (modularizado S12: 10 sub-carpetas / 39 archivos — device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring)
 │       │   ├── net/              (BxTcpSocket, BxUdpSocket, BxQuicEndpoint)
 │       │   ├── shader/           (ShaderBlob loader: SASS/SPIR-V/DXIL/DXBC)
 │       │   └── compat/           (PE detection, FAKE_DLLS list)
@@ -296,6 +296,37 @@ DirectShow filters + GStreamer plugins.
 
 `cargo build` Finished ✅.
 
+### Sesión 12 — `barex/input` modularizado zero-bloat ⭐
+`input/` pasó de **1 archivo (203 líneas)** → **10 sub-carpetas + 39 archivos**.
+
+- `mod.rs` + `capabilities.rs` (9 flags) + `system.rs` (BxInputSystem singleton).
+- `device/` (2): `DeviceKind` (14 tipos), `DeviceInfo` (VID/PID/poll_rate/bus).
+- `keyboard/` (3): `Key` (USB HID Usage Page 0x07, ~80 keycodes), `Modifiers`
+  con helpers `any_ctrl/shift/alt/gui`, `KeyboardReading` (6-key rollover).
+- `mouse/` (3): `MouseButtons` (8 botones), `MouseReading` raw deltas
+  (sin aceleración del SO), `CursorMode` (Visible/Hidden/Captured/Confined).
+- `headset/` (2): `HeadsetButton` (7 botones del Redragon), `HeadsetButtonEvent`.
+- `gamepad/` (6): `GamepadFamily`, `GamepadButtons` (18 bits canónicos
+  S/E/W/N/...), `GamepadReading` con accel+gyro, mapeos `xbox` (Microsoft VID
+  0x045E), `playstation` (Sony 0x054C: DS4/DualSense/Edge), `switch` (Nintendo
+  0x057E: Pro/Joy-Con L/R).
+- `wheel/` (1): `WheelReading` con steer/throttle/brake/clutch/handbrake/
+  rudder/throttle_lever para HOTAS y volantes.
+- `hid_raw/` (2): `HidUsagePage` (12 páginas IANA), `HidReportItem` parser.
+- `keymap/` (2): `Layout` (9 layouts: US/ES/UK/DE/FR/JP/Dvorak/Colemak),
+  `KeymapEntry` con plain/shift/altgr.
+- `event/` (2): `InputReading` snapshot por frame, `InputEvent`+`InputEventKind`
+  (12 tipos discretos: KeyDown/Up, MouseMove, GamepadAxis, DevicePlugged...).
+- `ring/` (3): `InputSqe` 64B con 5 ops (Subscribe/Unsubscribe/Inject/Rumble/
+  SetCursorMode), `InputCqe` 32B, queues SPSC.
+
+**Bloat eliminado:** RawInput `WM_INPUT` + DirectInput 8 COM + XInput
+4-gamepad cap + Windows.Gaming.Input WinRT + `LoadKeyboardLayout` HKL +
+`GetAsyncKeyState` + WndProc message loop + aceleración mouse del kernel +
+Win32 IME/TSF + GLFW callbacks + SDL2 polling + X11/Wayland event queues.
+
+`cargo build` Finished ✅.
+
 ---
 
 ## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
@@ -460,8 +491,9 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 | 9 | `bef/loader/meta_sections.rs` (parser 5 secciones meta + builder BmoRuntime) + wiring en `native.rs` |
 | 10 | `barex/net` modularizado: 9 sub-carpetas / 32 archivos (types, socket, quic, tls, http, dns, ring, driver, bypass) |
 | 11 | `barex/audio` modularizado: 10 sub-carpetas / 39 archivos (format, engine, voice, mixer, codec, spatial, effects, route, backend, ring) |
+| 12 | `barex/input` modularizado: 10 sub-carpetas / 39 archivos (device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring) |
 
-**Total acumulado:** ~174 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~213 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -518,5 +550,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 11 (`barex/audio` modularizado: 10 sub-carpetas, 39 archivos, no monolitos).
+**Última actualización:** Sesión 12 (`barex/input` modularizado: 10 sub-carpetas, 39 archivos, no monolitos).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
