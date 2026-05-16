@@ -72,7 +72,7 @@ c:/Users/andre/OneDrive/Documentos/FastOS/
 │       │   ├── _WORK_LOG.md      (tracker de sesiones)
 │       │   ├── abi/              ⭐ BMO ABI (19 sub-carpetas, ver §5)
 │       │   ├── graphics/         (12 objetos núcleo BareX)
-│       │   ├── audio/            (BxAudioEngine, USB AC2 + HDMI vía GSP)
+│       │   ├── audio/            (modularizado S11: 10 sub-carpetas / 39 archivos — format, engine, voice, mixer, codec, spatial, effects, route, backend, ring)
 │       │   ├── input/            (Key, MouseReading, HeadsetButton, BxInputSystem)
 │       │   ├── net/              (BxTcpSocket, BxUdpSocket, BxQuicEndpoint)
 │       │   ├── shader/           (ShaderBlob loader: SASS/SPIR-V/DXIL/DXBC)
@@ -266,6 +266,36 @@ con stack agresivo, eliminando todo el bloat típico de Windows/Linux:
 
 `cargo build` Finished ✅.
 
+### Sesión 11 — `barex/audio` modularizado zero-bloat ⭐
+`audio/` pasó de **1 archivo (158 líneas)** → **10 sub-carpetas + 39 archivos**.
+Cada concern en su carpeta dedicada — **sin monolitos**.
+
+- `mod.rs` — re-exports + versión + `REDRAGON_DEFAULT_SR`.
+- `capabilities.rs` — `AudioCapabilities` (8 flags: PLAYBACK, CAPTURE,
+  EXCLUSIVE_MODE, SPATIAL, HEAVY_DSP, REALTIME, MIDI, LOOPBACK).
+- `format/` (3 archivos): `SampleFormat` (I16/I24/I32/F32/F64),
+  `ChannelLayout` (Mono..Surround916), `LatencyTier` (Realtime 0.7ms..Power 10.7ms).
+- `engine/` (3 archivos): `BxAudioEngine`, `EngineMode` (ExclusiveOrShared/Shared/Exclusive),
+  `AudioBackend` (None/UsbAc2/HdmiGsp/RealtekHda).
+- `voice/` (1 archivo): `BxVoice` (volume/pitch/pan/loop, play/stop/pause/resume).
+- `mixer/` (1 archivo): `BxMixer` software (master_volume, active_voices).
+- `codec/` (4 archivos): `CodecKind`, `PcmDecoder`, `OpusDecoder`, `VorbisDecoder`.
+- `spatial/` (2 archivos): `BxSpatializer` HRTF, `ListenerPose` (pos/forward/up).
+- `effects/` (5 archivos): `EffectKind` (8 tipos), `BxEq` 10 bandas, `BxReverb`,
+  `BxCompressor`, `BxLimiter` brick-wall.
+- `route/` (2 archivos): `Endpoint` + `EndpointKind` (7), `Router` enumeración.
+- `backend/` (4 archivos): `Backend` trait, `UsbAc2Backend`, `HdmiGspBackend`
+  (depende de bridge BMO/GSP), `RealtekHdaBackend`.
+- `ring/` (3 archivos): `AudioSqe` 64 B (6 ops), `AudioCqe` 32 B,
+  `AudioSubmissionQueue`/`AudioCompletionQueue` SPSC.
+
+**Bloat eliminado:** WASAPI + IAudioClient COM + DirectSound + XAudio2 + ASIO
+driver-by-driver + CoreAudio HAL + ALSA + PulseAudio + JACK + MMDevice COM +
+KMixer + APO chain + `WAVEFORMATEX` zoo + Media Foundation Transforms +
+DirectShow filters + GStreamer plugins.
+
+`cargo build` Finished ✅.
+
 ---
 
 ## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
@@ -429,8 +459,9 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 | 8 | `runtime.rs` (BmoRuntime agregador) + `_README.md` abi/ + extensión SectionKind 15→20 + re-exports planos |
 | 9 | `bef/loader/meta_sections.rs` (parser 5 secciones meta + builder BmoRuntime) + wiring en `native.rs` |
 | 10 | `barex/net` modularizado: 9 sub-carpetas / 32 archivos (types, socket, quic, tls, http, dns, ring, driver, bypass) |
+| 11 | `barex/audio` modularizado: 10 sub-carpetas / 39 archivos (format, engine, voice, mixer, codec, spatial, effects, route, backend, ring) |
 
-**Total acumulado:** ~135 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~174 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -487,5 +518,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 10 (`barex/net` modularizado: 9 sub-carpetas, 32 archivos, zero-bloat).
+**Última actualización:** Sesión 11 (`barex/audio` modularizado: 10 sub-carpetas, 39 archivos, no monolitos).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
