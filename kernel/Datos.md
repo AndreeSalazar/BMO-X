@@ -71,7 +71,7 @@ c:/Users/andre/OneDrive/Documentos/FastOS/
 │       │   ├── _LAYERS.md        (mapa de capas)
 │       │   ├── _WORK_LOG.md      (tracker de sesiones)
 │       │   ├── abi/              ⭐ BMO ABI (19 sub-carpetas, ver §5)
-│       │   ├── graphics/         (12 objetos núcleo BareX)
+│       │   ├── graphics/         (modularizado S13: 13 sub-carpetas, 1 por objeto núcleo — types, device, queue, cmdlist, pso, rootsig, heap, fence, swapchain, buffer, texture, sampler, queryheap)
 │       │   ├── audio/            (modularizado S11: 10 sub-carpetas / 39 archivos — format, engine, voice, mixer, codec, spatial, effects, route, backend, ring)
 │       │   ├── input/            (modularizado S12: 10 sub-carpetas / 39 archivos — device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring)
 │       │   ├── net/              (BxTcpSocket, BxUdpSocket, BxQuicEndpoint)
@@ -327,6 +327,31 @@ Win32 IME/TSF + GLFW callbacks + SDL2 polling + X11/Wayland event queues.
 
 `cargo build` Finished ✅.
 
+### Sesión 13 — `barex/graphics` modularizado (una carpeta por objeto) ⭐
+`graphics/` pasó de **1 archivo (183 líneas)** → **13 sub-carpetas + 17 archivos**.
+Solo firmas BMO ABI — NO duplica trabajo de NAGA / fastgpu. Minimalista.
+
+- `mod.rs` — re-exports.
+- `types/` (3): `Format`, `MemoryHint`, `BxBarrier`+`Sync`+`Access`+`Layout`.
+- `device/` — (1) `BxDevice::primary()` (sin DXGI adapter enum).
+- `queue/` — (2) `BxQueue` + `QueueKind` (Graphics/Compute/Copy/Video×2).
+- `cmdlist/` — (3) `BxCmdList` (allocator interno, sin `ID3D12CommandAllocator`).
+- `pso/` — (4) `BxPso` unificado (graphics/compute/RT/mesh/work-graph).
+- `rootsig/` — (5) `BxRootSig` (default via reflexión SPIR-V/DXIL).
+- `heap/` — (6) `BxGlobalHeap` bindless (SM 6.6 `ResourceDescriptorHeap`).
+- `fence/` — (7) `BxFence` timeline-style.
+- `swapchain/` — (8) `BxSwapchain` (compositor FastOS, sin DXGI).
+- `buffer/` — (9) `BxBuffer`.
+- `texture/` — (10) `BxTexture`.
+- `sampler/` — (11) `BxSampler`.
+- `queryheap/` — (12) `BxQueryHeap`.
+
+Cada objeto en su carpeta para que cuando llegue la integración real con
+`drivers::gpu::fastgpu` (cuando el usuario termine el bridge BMO/GSP),
+se modifique sólo la carpeta del objeto correspondiente sin afectar al resto.
+
+`cargo build` Finished ✅.
+
 ---
 
 ## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
@@ -492,8 +517,9 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 | 10 | `barex/net` modularizado: 9 sub-carpetas / 32 archivos (types, socket, quic, tls, http, dns, ring, driver, bypass) |
 | 11 | `barex/audio` modularizado: 10 sub-carpetas / 39 archivos (format, engine, voice, mixer, codec, spatial, effects, route, backend, ring) |
 | 12 | `barex/input` modularizado: 10 sub-carpetas / 39 archivos (device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring) |
+| 13 | `barex/graphics` modularizado: 13 sub-carpetas (una por objeto núcleo) / 17 archivos — solo firmas BMO ABI (no duplica NAGA/fastgpu) |
 
-**Total acumulado:** ~213 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~230 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -550,5 +576,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 12 (`barex/input` modularizado: 10 sub-carpetas, 39 archivos, no monolitos).
+**Última actualización:** Sesión 13 (`barex/graphics` modularizado: 13 carpetas, una por objeto núcleo, minimalista).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
