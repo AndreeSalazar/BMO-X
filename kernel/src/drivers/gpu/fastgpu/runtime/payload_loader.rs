@@ -2,12 +2,14 @@ use crate::console::Console;
 use crate::drivers::gpu::fastgpu::hw::mmio::Mmio;
 use alloc::vec::Vec;
 
-const OP_WRITE32: u8 = 0x01;
-const OP_POLL32: u8 = 0x02;
-const OP_WRITE_BLOCK: u8 = 0x03;
-const OP_SETUP_WPR2: u8 = 0x04;
-const OP_READ32: u8 = 0x05;
-const OP_FALCON_DMA: u8 = 0x06;
+const OP_WRITE32: u8      = 0x01;
+const OP_POLL32: u8       = 0x02;
+const OP_WRITE_BLOCK: u8  = 0x03;
+const OP_SETUP_WPR2: u8   = 0x04;
+const OP_READ32: u8       = 0x05;
+const OP_FALCON_DMA: u8   = 0x06;
+const OP_RESET_FALCON: u8 = 0x07; // Explicit Falcon engine reset/enable cycle
+const OP_DELAY_US: u8     = 0x08; // Spin delay in microseconds
 
 /// Execute a FOSB payload from raw bytes (no NTFS, no filesystem).
 /// `payload_data` must contain the full fastos_boot.bin content.
@@ -118,20 +120,38 @@ pub fn execute_from_bytes(
                 }
             }
             OP_WRITE_BLOCK => {
+                // CRITICAL FIX: Falcon IMEM/DMEM is a FIFO port pair, NOT a linear buffer.
+                // The `reg` field is the CONTROL register (e.g. IMEMC = 0x840180 for SEC2).
+                // The DATA register is always at reg + 4 (e.g. IMEMD = 0x840184).
+                // Writing to CTRL sets the auto-increment start address.
+                // All firmware words must stream through the DATA register at offset+4.
+                //
+                // IMEMC layout (dev_falcon_v4.h):
+                //   bits 31:24 = tag (IMEM page, for tagged transfers)
+                //   bit  8     = AINCW (auto-increment on write)
+                //   bits 7:0   = byte offset within 256-byte page (must be 0 for page start)
+                // Falcon IMEM/DMEM FIFO: the payload's `reg` is ALREADY the DATA register
+                // (IMEMD or DMEMD). The CTRL register (IMEMC/DMEMC) is set up by the
+                // preceding WRITE32 step in the FOSB payload with auto-increment (AINCW).
+                // We just stream all words to the same DATA address — hardware auto-increments.
                 con.print("WRITE_BLOCK 0x"); con.print_hex32(reg);
                 con.print(" <- "); con.print_u64(size as u64); con.println(" bytes");
-                
+
                 let mut data_offset = offset;
                 let end_offset = offset + size as usize;
-                
+                let mut words_written = 0u32;
+
                 while data_offset + 4 <= end_offset {
                     let val = u32::from_le_bytes(payload_data[data_offset..data_offset+4].try_into().unwrap());
                     mmio.write32(reg, val);
                     data_offset += 4;
+                    words_written += 1;
                 }
                 if data_offset < end_offset {
-                    con.println("      -> Warning: block not aligned to 4 bytes");
+                    con.println("      -> Warning: trailing bytes ignored (not 4-byte aligned)");
                 }
+                con.print("      -> "); con.print_u64(words_written as u64);
+                con.println(" words streamed to FIFO");
             }
             OP_SETUP_WPR2 => {
                 con.println("SETUP_WPR2 Macro");
@@ -291,6 +311,49 @@ pub fn execute_from_bytes(
                 }
 
                 unsafe { alloc::alloc::dealloc(dma_ptr, layout); }
+            }
+            OP_RESET_FALCON => {
+                // Explicit Falcon engine reset/enable cycle.
+                // `reg`  = engine base (e.g. 0x840000 for SEC2)
+                // `size` = 4, `val` = 0 (not used, engine base is enough)
+                //
+                // Sequence mirrors gp102_flcn_reset_eng (nouveau):
+                //   1. Assert ENGINE bit (write 0x1 to ENGINE register = base+0x3C0)
+                //   2. Spin 30k cycles
+                //   3. De-assert ENGINE bit
+                //   4. Poll HWCFG2 (base+0x0F4) bit 12 == 0 (mem scrub done)
+                let engine_reg  = reg + 0x3C0; // FALCON_ENGINE
+                let hwcfg2_reg  = reg + 0x0F4; // FALCON_HWCFG2
+                con.print("RESET_FALCON base=0x"); con.print_hex32(reg); con.println("");
+
+                // Assert reset
+                let eng_val = mmio.read32(engine_reg);
+                mmio.write32(engine_reg, (eng_val & !0x1) | 0x1);
+                for _ in 0..30_000u32 { unsafe { core::arch::asm!("pause") }; }
+                let eng_val = mmio.read32(engine_reg);
+                mmio.write32(engine_reg, eng_val & !0x1);
+
+                // Poll mem scrub complete (bit 12 must be 0)
+                let t0 = unsafe { core::arch::x86_64::_rdtsc() };
+                loop {
+                    let hwcfg2 = mmio.read32(hwcfg2_reg);
+                    if (hwcfg2 & (1 << 12)) == 0 { break; }
+                    if unsafe { core::arch::x86_64::_rdtsc() }.wrapping_sub(t0) > 3_700_000_000 {
+                        con.println("      -> RESET_FALCON mem scrub timeout");
+                        break;
+                    }
+                    core::hint::spin_loop();
+                }
+                con.println("      -> Falcon reset complete");
+            }
+            OP_DELAY_US => {
+                // Spin delay: reg field = microseconds (repurposed as u32 delay)
+                // size = 0, no data bytes
+                let us = reg;
+                for _ in 0..(us as u64 * 3_000) {
+                    unsafe { core::arch::asm!("nop", options(nomem, nostack)) };
+                }
+                con.print("DELAY_US "); con.print_u64(us as u64); con.println(" us");
             }
             _ => {
                 con.print("UNKNOWN OPCODE: 0x"); con.print_hex32(opcode as u32); con.println("");

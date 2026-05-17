@@ -408,6 +408,23 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                     con.print_hex32(gpu.device_id as u32);
                     con.println("");
 
+                    // Enable PCI Bus Mastering + Memory Space (CRITICAL for DMA!)
+                    let pci_cmd = drivers::pci::pci_read32(gpu.bus, gpu.device, gpu.function, 0x04);
+                    con.print("  PCI CMD before: 0x");
+                    con.print_hex32(pci_cmd);
+                    con.println("");
+                    // Bit 1 = Memory Space, Bit 2 = Bus Master
+                    let pci_cmd_new = pci_cmd | 0x06; // Set bits 1 and 2
+                    drivers::pci::pci_write32(gpu.bus, gpu.device, gpu.function, 0x04, pci_cmd_new);
+                    let pci_cmd_verify = drivers::pci::pci_read32(gpu.bus, gpu.device, gpu.function, 0x04);
+                    con.print("  PCI CMD after:  0x");
+                    con.print_hex32(pci_cmd_verify);
+                    if (pci_cmd_verify & 0x04) != 0 {
+                        con.println(" (Bus Master ENABLED)");
+                    } else {
+                        con.println(" (Bus Master FAILED!)");
+                    }
+
                     // Mask BAR0 lower bits (type bits)
                     let bar0_raw = gpu.bar0;
                     let bar0_phys = (bar0_raw & 0xFFFFFFF0) as u64;
