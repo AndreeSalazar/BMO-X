@@ -176,40 +176,74 @@ pub fn prepare_gsp_firmware(
     con.print_u64(n_data_pages);
     con.println(" pages");
 
-    // ── Step 3: Build WPR Metadata ──
-    con.println("  Building WPR metadata...");
-    let fb_size = fb_size_mb * 1024 * 1024; // e.g., 6GB for RTX 3060
+    // ── Step 3: Load GSP-RM Boot binary from SATA ──
+    // Boot binary is written right after GSP firmware at LBA 78436
+    // (4096 + 74340 sectors of GSP = 78436)
+    // Size: 24576 bytes = 48 sectors
+    const BOOT_BIN_LBA: u64 = 78436;
+    const BOOT_BIN_SIZE: usize = 24576;
+    let boot_sectors = ((BOOT_BIN_SIZE + 511) / 512) as u32;
     
-    // Layout computation (simplified from nvidia-open kgspPopulateWprMeta_TU102)
+    con.println("  Loading GSP-RM boot binary...");
+    let boot_buf = unsafe {
+        core::ptr::write_bytes(BOOT_BIN_BASE as *mut u8, 0, BOOT_BIN_SIZE);
+        core::slice::from_raw_parts_mut(BOOT_BIN_BASE as *mut u8, boot_sectors as usize * 512)
+    };
+    match ahci.read_sectors(BOOT_BIN_LBA, boot_sectors, boot_buf) {
+        Ok(()) => {
+            con.print("  Boot binary: ");
+            con.print_u64(BOOT_BIN_SIZE as u64);
+            con.println("B OK");
+        },
+        Err(_) => {
+            con.println("  [WARN] Boot binary not at SATA LBA 78436");
+            con.println("  Continuing without boot binary...");
+        }
+    }
+
+    // ── Step 4: Build WPR Metadata ──
+    con.println("  Building WPR metadata...");
+    let fb_size = fb_size_mb * 1024 * 1024; // 6GB for RTX 3060
+    
+    // Layout computation (from nvidia-open kgspPopulateWprMeta_TU102)
     let vga_workspace_size: u64 = 0x20000; // 128KB
     let vga_workspace_offset = fb_size - vga_workspace_size;
     let wpr_alignment: u64 = 0x20000; // 128KB
     let gsp_fw_wpr_end = (vga_workspace_offset) & !(wpr_alignment - 1);
-    let frts_size: u64 = 0x100000; // 1MB (typical for GA10x)
+    let frts_size: u64 = 0x100000; // 1MB
     let frts_offset = gsp_fw_wpr_end - frts_size;
-    let boot_bin_offset = (frts_offset - 0x10000) & !0xFFF; // 4K aligned, 64KB boot bin
+    let boot_bin_offset = (frts_offset - 0x10000) & !0xFFF; // 4K aligned
     let gsp_fw_offset = (boot_bin_offset - GSP_FW_SIZE as u64) & !0xFFFF; // 64K aligned
     let heap_size: u64 = 64 * 1024 * 1024; // 64MB heap
-    let gsp_fw_heap_offset = (gsp_fw_offset - heap_size) & !(0x100000 - 1); // 1MB aligned
+    let gsp_fw_heap_offset = (gsp_fw_offset - heap_size) & !(0x100000 - 1);
     let gsp_fw_heap_size = (gsp_fw_offset - gsp_fw_heap_offset) & !(0x100000 - 1);
-    let wpr_meta_size: u64 = 0x100000; // 1MB aligned
+    let wpr_meta_size: u64 = 0x100000;
     let gsp_fw_wpr_start = gsp_fw_heap_offset - wpr_meta_size;
-    let non_wpr_heap_size: u64 = 0x100000; // 1MB
+    let non_wpr_heap_size: u64 = 0x100000;
     let non_wpr_heap_offset = gsp_fw_wpr_start - non_wpr_heap_size;
     let gsp_fw_rsvd_start = non_wpr_heap_offset;
 
     let meta = unsafe {
         let ptr = WPR_META_BASE as *mut GspFwWprMeta;
-        core::ptr::write_bytes(ptr as *mut u8, 0, 256);
+        core::ptr::write_bytes(ptr as *mut u8, 0, core::mem::size_of::<GspFwWprMeta>());
         &mut *ptr
     };
     
     meta.magic = GSP_FW_WPR_META_MAGIC;
     meta.revision = GSP_FW_WPR_META_REVISION;
+    
+    // SYSMEM pointers (where booter_load DMA's from)
     meta.sysmem_addr_of_radix3_elf = RADIX3_BASE;
     meta.size_of_radix3_elf = GSP_FW_SIZE as u64;
     meta.sysmem_addr_of_bootloader = BOOT_BIN_BASE;
-    meta.size_of_bootloader = 0; // We'll need the GspRmBoot binary too
+    meta.size_of_bootloader = BOOT_BIN_SIZE as u64;
+    
+    // Boot binary offsets (from DESC_PROD extraction)
+    meta.bootloader_code_offset = 0x00000000;   // monitorCodeOffset
+    meta.bootloader_data_offset = 0x00000000;   // monitorDataOffset  
+    meta.bootloader_manifest_offset = 0x00000005; // manifestOffset
+
+    // FB layout
     meta.fb_size = fb_size;
     meta.vga_workspace_offset = vga_workspace_offset;
     meta.vga_workspace_size = vga_workspace_size;
@@ -227,20 +261,16 @@ pub fn prepare_gsp_firmware(
     meta.boot_count = 0;
     meta.verified = 0;
 
-    con.print("  WPR meta at phys 0x");
-    con.print_hex32(WPR_META_BASE as u32);
-    con.println("");
-    con.print("  FB size: ");
-    con.print_u64(fb_size / 1024 / 1024);
-    con.println(" MB");
-    con.print("  WPR region: 0x");
-    con.print_hex32(gsp_fw_wpr_start as u32);
-    con.print(" - 0x");
-    con.print_hex32(gsp_fw_wpr_end as u32);
-    con.println("");
+    con.print("  WPR meta @0x"); con.print_hex32(WPR_META_BASE as u32);
+    con.print(" FB="); con.print_u64(fb_size / 1024 / 1024); con.println("MB");
+    con.print("  BootBin @0x"); con.print_hex32(BOOT_BIN_BASE as u32);
+    con.print(" size="); con.print_u64(BOOT_BIN_SIZE as u64); con.println("B");
+    con.print("  WPR: 0x"); con.print_hex32(gsp_fw_wpr_start as u32);
+    con.print("-0x"); con.print_hex32(gsp_fw_wpr_end as u32); con.println("");
 
     Some(GspPrepared {
         wpr_meta_phys: WPR_META_BASE,
         gsp_fw_loaded: true,
     })
 }
+

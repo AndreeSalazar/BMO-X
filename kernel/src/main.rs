@@ -400,6 +400,59 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                     con.println("[STORAGE] No AHCI/SATA detected");
                 }
 
+                // ── Disable AMD-Vi IOMMU for GPU DMA ──
+                // AMD IOMMU blocks GPU DMA to system memory.
+                // We must disable it or set passthrough before GPU can DMA.
+                // AMD IOMMU is typically at PCI Bus 0, Device 0, Function 2 (or similar)
+                // with Capability ID 0x0F in PCI config space.
+                con.println("[IOMMU] Scanning for AMD-Vi...");
+                let mut iommu_found = false;
+                'iommu_scan: for dev in 0u8..32 {
+                    for func in 0u8..8 {
+                        let vendor = drivers::pci::pci_read32(0, dev, func, 0x00);
+                        if vendor == 0xFFFFFFFF { continue; }
+                        let class_rev = drivers::pci::pci_read32(0, dev, func, 0x08);
+                        let class_code = (class_rev >> 16) & 0xFFFF;
+                        // IOMMU class: 0x0806 (System peripheral / IOMMU)
+                        if class_code == 0x0806 {
+                            con.print("  Found IOMMU at 0:"); con.print_u64(dev as u64);
+                            con.print("."); con.print_u64(func as u64); con.println("");
+                            
+                            // Read IOMMU Capability Base (offset 0x40 on AMD)
+                            let cap_hdr = drivers::pci::pci_read32(0, dev, func, 0x40);
+                            let cap_base_lo = drivers::pci::pci_read32(0, dev, func, 0x44);
+                            let cap_base_hi = drivers::pci::pci_read32(0, dev, func, 0x48);
+                            let iommu_base = ((cap_base_hi as u64) << 32) | ((cap_base_lo as u64) & 0xFFFFC000);
+                            
+                            if iommu_base != 0 && iommu_base < 0x1_0000_0000_0000 {
+                                con.print("  IOMMU MMIO base: 0x"); con.print_hex32(iommu_base as u32); con.println("");
+                                
+                                // Read IOMMU Control Register (offset 0x18 in MMIO)
+                                let ctrl_ptr = (iommu_base + 0x18) as *mut u32;
+                                let ctrl = unsafe { core::ptr::read_volatile(ctrl_ptr) };
+                                con.print("  IOMMU CTRL before: 0x"); con.print_hex32(ctrl); con.println("");
+                                
+                                // Clear bit 0 (IommuEn) to disable translation
+                                let ctrl_new = ctrl & !0x01;
+                                unsafe { core::ptr::write_volatile(ctrl_ptr, ctrl_new); }
+                                
+                                let ctrl_verify = unsafe { core::ptr::read_volatile(ctrl_ptr) };
+                                con.print("  IOMMU CTRL after:  0x"); con.print_hex32(ctrl_verify);
+                                if (ctrl_verify & 0x01) == 0 {
+                                    con.println(" (DISABLED)");
+                                } else {
+                                    con.println(" (still enabled!)");
+                                }
+                                iommu_found = true;
+                            }
+                            break 'iommu_scan;
+                        }
+                    }
+                }
+                if !iommu_found {
+                    con.println("  No IOMMU found (DMA should work directly)");
+                }
+
                 if let Some(gpu) = pci.find_nvidia_gpu() {
                     con.println("[PCI] NVIDIA GPU detected!");
                     con.print("  Vendor: 0x");
