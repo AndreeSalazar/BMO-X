@@ -75,7 +75,7 @@ c:/Users/andre/OneDrive/Documentos/FastOS/
 │       │   ├── audio/            (modularizado S11: 10 sub-carpetas / 39 archivos — format, engine, voice, mixer, codec, spatial, effects, route, backend, ring)
 │       │   ├── input/            (modularizado S12: 10 sub-carpetas / 39 archivos — device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring)
 │       │   ├── net/              (BxTcpSocket, BxUdpSocket, BxQuicEndpoint)
-│       │   ├── shader/           (ShaderBlob loader: SASS/SPIR-V/DXIL/DXBC)
+│       │   ├── shader/           (modularizado S14: 9 sub-carpetas — stage, ir, sass, spirv, dxil, dxbc, loader, cache; delega a naga / vkd3d-shader-rs / dxvk-spirv-rs)
 │       │   └── compat/           (PE detection, FAKE_DLLS list)
 │       │
 │       ├── bef/                  ✅ Formato ejecutable (sesiones 5-6)
@@ -352,6 +352,31 @@ se modifique sólo la carpeta del objeto correspondiente sin afectar al resto.
 
 `cargo build` Finished ✅.
 
+### Sesión 14 — `barex/shader` modularizado (delega a NAGA / vkd3d) ⭐
+`shader/` pasó de **1 archivo (51 líneas)** → **9 sub-carpetas + 9 archivos**.
+Pura **fachada BMO** — toda traducción real se delega a crates Rust existentes
+(naga, vkd3d-shader-rs, dxvk-spirv-rs). Cero re-implementación.
+
+- `mod.rs` — re-exports.
+- `stage/` — `ShaderStage` (12: Vertex/Pixel/Compute/Mesh/Amp/RT×6/WorkGraph).
+- `ir/` — `ShaderIr` (SassGa106/SpirV16/Dxil/Dxbc) + `ShaderBlob`.
+- `sass/` — upload directo al GSP (sin traducción; bridge BMO/GSP del usuario).
+- `spirv/` — `translate_to_sass()` delega a **naga + NAK**.
+- `dxil/` — `translate_to_spirv()` delega a **vkd3d-shader-rs**.
+- `dxbc/` — `translate_to_spirv()` delega a **dxvk-spirv-rs**.
+- `loader/` — `load()` dispatcher: match por IR → llama al sub-módulo.
+- `cache/` — `ShaderCache` LRU con key BLAKE3 (evita re-traducir mismo blob).
+
+Pipeline:
+```
+SassGa106 → sass::upload
+SpirV16   → spirv::translate_to_sass(naga) → sass::upload
+Dxil      → dxil::translate_to_spirv(vkd3d) → spirv → sass
+Dxbc      → dxbc::translate_to_spirv(dxvk) → spirv → sass
+```
+
+`cargo build` Finished ✅.
+
 ---
 
 ## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
@@ -518,8 +543,9 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 | 11 | `barex/audio` modularizado: 10 sub-carpetas / 39 archivos (format, engine, voice, mixer, codec, spatial, effects, route, backend, ring) |
 | 12 | `barex/input` modularizado: 10 sub-carpetas / 39 archivos (device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring) |
 | 13 | `barex/graphics` modularizado: 13 sub-carpetas (una por objeto núcleo) / 17 archivos — solo firmas BMO ABI (no duplica NAGA/fastgpu) |
+| 14 | `barex/shader` modularizado: 9 sub-carpetas (stage, ir, sass, spirv, dxil, dxbc, loader, cache) — fachada que delega a naga + vkd3d + dxvk |
 
-**Total acumulado:** ~230 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~239 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -576,5 +602,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 13 (`barex/graphics` modularizado: 13 carpetas, una por objeto núcleo, minimalista).
+**Última actualización:** Sesión 14 (`barex/shader` modularizado: 9 sub-carpetas — fachada que delega a naga / vkd3d / dxvk).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
