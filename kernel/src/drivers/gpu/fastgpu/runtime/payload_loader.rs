@@ -7,16 +7,30 @@ const OP_POLL32: u8       = 0x02;
 const OP_WRITE_BLOCK: u8  = 0x03;
 const OP_SETUP_WPR2: u8   = 0x04;
 const OP_READ32: u8       = 0x05;
-const OP_FALCON_DMA: u8   = 0x06;
-const OP_RESET_FALCON: u8 = 0x07; // Explicit Falcon engine reset/enable cycle
-const OP_DELAY_US: u8     = 0x08; // Spin delay in microseconds
+const OP_FALCON_DMA: u8     = 0x06;
+const OP_RESET_FALCON: u8   = 0x07;
+const OP_DELAY_US: u8       = 0x08;
+const OP_WRITE_CONTEXT: u8  = 0x09; // Write kernel-provided value to register
+
+/// Runtime context values injected by the kernel before payload execution.
+/// Used to pass dynamically-computed addresses (e.g., WPR metadata phys addr).
+#[derive(Default)]
+pub struct PayloadContext {
+    /// Context slots: payload references these by index.
+    /// Slot 0 = WPR meta phys addr LO (u32)
+    /// Slot 1 = WPR meta phys addr HI (u32)
+    pub slots: [u32; 8],
+}
 
 /// Execute a FOSB payload from raw bytes (no NTFS, no filesystem).
 /// `payload_data` must contain the full fastos_boot.bin content.
+/// `ctx` provides runtime values (e.g., WPR metadata address) that
+/// the payload can reference via OP_WRITE_CONTEXT.
 pub fn execute_from_bytes(
     con: &mut Console,
     payload_data: &[u8],
     mmio: &mut Mmio,
+    ctx: &PayloadContext,
 ) {
     if payload_data.len() < 12 {
         con.println("[PAYLOAD] ERROR: Data too small for FOSB header.");
@@ -354,6 +368,29 @@ pub fn execute_from_bytes(
                     unsafe { core::arch::asm!("nop", options(nomem, nostack)) };
                 }
                 con.print("DELAY_US "); con.print_u64(us as u64); con.println(" us");
+            }
+            OP_WRITE_CONTEXT => {
+                // Write a kernel-provided context value to a register.
+                // `reg` = target MMIO register
+                // `size` = 4, data contains the slot index (u32)
+                if size != 4 {
+                    con.println("ERROR: WRITE_CONTEXT requires size=4");
+                    break;
+                }
+                let slot_idx = u32::from_le_bytes(
+                    payload_data[offset..offset+4].try_into().unwrap()
+                ) as usize;
+                if slot_idx < ctx.slots.len() {
+                    let val = ctx.slots[slot_idx];
+                    con.print("WRITE_CTX slot["); con.print_u64(slot_idx as u64);
+                    con.print("] => 0x"); con.print_hex32(reg);
+                    con.print(" <- 0x"); con.print_hex32(val); con.println("");
+                    mmio.write32(reg, val);
+                } else {
+                    con.print("ERROR: context slot "); con.print_u64(slot_idx as u64);
+                    con.println(" out of range");
+                    break;
+                }
             }
             _ => {
                 con.print("UNKNOWN OPCODE: 0x"); con.print_hex32(opcode as u32); con.println("");

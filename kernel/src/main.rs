@@ -510,8 +510,30 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                                                 Ok(()) => {
                                                     con.println("  -> Read OK!");
                                                     payload_buf.truncate(payload_size);
+                                                    
+                                                    // Build payload context with WPR metadata address
+                                                    use drivers::gpu::fastgpu::runtime::payload_loader::PayloadContext;
+                                                    let mut ctx = PayloadContext::default();
+                                                    
+                                                    // Try to load GSP firmware and prepare WPR metadata
+                                                    // GSP firmware must be pre-written to SATA at LBA 4096
+                                                    // by running write_gsp.ps1 from Windows
+                                                    if let Some(gsp) = drivers::gpu::fastgpu::gsp::prepare_gsp_firmware(
+                                                        &mut con, &mut ahci, 6144 // 6GB VRAM
+                                                    ) {
+                                                        ctx.slots[0] = gsp.wpr_meta_phys as u32;
+                                                        ctx.slots[1] = (gsp.wpr_meta_phys >> 32) as u32;
+                                                        con.print("  [GSP] WPR meta MBOX: 0x");
+                                                        con.print_hex32(ctx.slots[1]);
+                                                        con.print_hex32(ctx.slots[0]);
+                                                        con.println("");
+                                                    } else {
+                                                        con.println("  [GSP] Not loaded (no firmware at LBA 4096)");
+                                                        con.println("  [GSP] Running SEC2 only (MBOX=0)");
+                                                    }
+                                                    
                                                     drivers::gpu::fastgpu::runtime::payload_loader::execute_from_bytes(
-                                                        &mut con, &payload_buf, &mut mmio
+                                                        &mut con, &payload_buf, &mut mmio, &ctx
                                                     );
                                                     loaded = true;
                                                 },
