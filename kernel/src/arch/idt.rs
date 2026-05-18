@@ -79,6 +79,12 @@ pub fn init_idt() {
             IDT[i].set_handler(isr_stub_default_irq as *const () as u64);
         }
 
+        // APIC Timer (vector 48) — preemptive scheduling
+        IDT[48].set_handler(isr_stub_apic_timer as *const () as u64);
+
+        // Spurious APIC (vector 255)
+        IDT[255].set_handler(isr_stub_default_irq as *const () as u64);
+
         let idtr = Idtr {
             limit: (core::mem::size_of::<[IdtEntry; 256]>() - 1) as u16,
             base: core::ptr::addr_of!(IDT) as u64,
@@ -122,6 +128,33 @@ unsafe extern "C" fn isr_stub_exception_err() {
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_default_irq() {
     naked_asm!(
+        "iretq",
+    );
+}
+
+/// APIC Timer (vector 48) — saves full context, calls scheduler tick, sends EOI.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_apic_timer() {
+    naked_asm!(
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+        "call apic_timer_handler_rust",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
+        "pop rax",
         "iretq",
     );
 }
@@ -179,4 +212,11 @@ extern "C" fn irq1_handler_rust() {
             handler();
         }
     }
+}
+
+/// APIC timer interrupt handler — tick scheduler + send EOI.
+#[unsafe(no_mangle)]
+extern "C" fn apic_timer_handler_rust() {
+    crate::sched::timer_tick();
+    crate::arch::apic::apic_eoi();
 }

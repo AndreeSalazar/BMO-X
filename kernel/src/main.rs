@@ -148,6 +148,16 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
 
+    // ── GOP Display ─────────────────────────────────────────────────
+    if bi.fb_addr != 0 {
+        drivers::gop::init_gop(bi.fb_addr, bi.fb_width, bi.fb_height, bi.fb_stride);
+        drivers::serial::serial_write("[FastOS] GOP display initialized\n");
+    }
+
+    // ── APIC Timer (100 Hz = 10ms ticks for scheduling) ────────────
+    arch::apic::init_apic(100);
+    drivers::serial::serial_write("[FastOS] APIC timer started (100 Hz)\n");
+
     // ── Console + shell ─────────────────────────────────────────────
     if bi.fb_addr == 0 {
         drivers::serial::serial_write("[FastOS] no framebuffer — halt\n");
@@ -157,10 +167,27 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         bi.fb_addr, bi.fb_pitch(), bi.fb_stride, bi.fb_width, bi.fb_height,
     );
     con.clear();
-    con.print("[FastOS] BMO v0.9.0 — Ring 0/3 + Compositor Ring 3 listos.\n");
-    con.print("[FastOS] FB ");
-    con.print_u64(bi.fb_width as u64); con.print("x"); con.print_u64(bi.fb_height as u64);
-    con.print(" stride="); con.print_u64(bi.fb_stride as u64); con.println("");
+
+    // ── Startup banner ──────────────────────────────────────────────
+    con.println("================================================================");
+    con.println("  FastOS v0.9.0 — Bare Metal Orchestrator");
+    con.println("  Ring 0/3 | GDT+TSS | Syscall/Sysret | APIC Timer | GOP");
+    con.println("================================================================");
+    con.print("  CPU: Ryzen 5 5600X (Zen 3) | ");
+    con.print("FB: "); con.print_u64(bi.fb_width as u64);
+    con.print("x"); con.print_u64(bi.fb_height as u64); con.println("");
+    con.print("  Free pages: "); con.print_u64(unsafe { arch::page_alloc::free_count() } as u64);
+    con.print(" | Processes: "); con.print_u64(sched::process::process_count() as u64);
+    con.print(" | Threads: "); con.print_u64(sched::thread::ready_count() as u64);
+    con.println("");
+    con.println("================================================================");
+    con.println("");
+
+    // ── Enable interrupts ───────────────────────────────────────────
+    arch::cpu::sti();
+    drivers::serial::serial_write("[FastOS] Interrupts enabled (STI)\n");
+
+    // ── Shell ────────────────────────────────────────────────────────
     shell::run(&mut con);
     loop { unsafe { core::arch::asm!("hlt"); } }
 }

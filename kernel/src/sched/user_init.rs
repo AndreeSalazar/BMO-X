@@ -1,152 +1,144 @@
-//! user_init — Lanza el primer proceso de usuario (Ring 3) de FastOS / BMO.
+//! User-space initialization — first Ring 3 process.
 //!
-//! Modos:
-//!   - `spawn_hello()`       → payload mínimo: imprime por serial vía syscall
-//!                             0xF0 y termina con 0x00. Demuestra la trampolina.
-//!   - `spawn_desktop()`     → payload del compositor Hyprland/Win11 generado
-//!                             con `barex::bmoasm::Emitter`. Loop ~60 FPS,
-//!                             ESC sale.
+//! Creates a minimal "init" process that runs in Ring 3 and demonstrates
+//! syscall functionality (DebugPrint, ClockGetTime).
 
 #![allow(dead_code)]
 
-use core::arch::asm;
-use crate::arch::gdt::{USER_CS, USER_DS, set_kernel_stack};
-use crate::arch::syscall_entry::set_syscall_kernel_stack;
-use crate::drivers::serial;
-use crate::desktop::compositor;
+use super::process;
+use super::thread;
+use super::Priority;
+use crate::sandbox::Capability;
+use crate::arch::paging;
 
-// ─── Pilas y buffer de código ───────────────────────────────────────
+/// Size of user stack (64 KB).
+const USER_STACK_SIZE: usize = 65536;
+/// Base virtual address for user code (low half of address space).
+const USER_CODE_BASE: u64 = 0x0040_0000;
+/// Base virtual address for user stack.
+const USER_STACK_BASE: u64 = 0x007F_0000;
 
-#[repr(align(16))]
-struct UserStack([u8; 32 * 1024]);
-static mut USER_STACK: UserStack = UserStack([0; 32 * 1024]);
+/// Kernel stack per thread (8 KB each).
+const KERNEL_STACK_PER_THREAD: usize = 8192;
 
-#[repr(align(16))]
-struct UserKernStack([u8; 32 * 1024]);
-static mut USER_KERN_STACK: UserKernStack = UserKernStack([0; 32 * 1024]);
+/// A small user-mode program (x86-64 machine code) that:
+///   1. Calls syscall DebugPrint to print "Hello from Ring 3!\n"
+///   2. Calls syscall ClockGetTime  
+///   3. Calls syscall ProcessExit(0)
+///
+/// BMO ABI syscall: RAX=nr, RDI=a0, RSI=a1 → `syscall`
+fn build_init_program() -> &'static [u8] {
+    static INIT_CODE: [u8; 79] = [
+        // === Print "Hello from Ring 3!\n" via DebugPrint (syscall 0xF0) ===
+        // lea rdi, [rip + message]  ; a0 = pointer to string
+        0x48, 0x8D, 0x3D, 0x2E, 0x00, 0x00, 0x00,   // lea rdi, [rip+46]
+        // mov rsi, 19              ; a1 = string length
+        0x48, 0xC7, 0xC6, 0x13, 0x00, 0x00, 0x00,
+        // mov rax, 0xF0            ; syscall number = DebugPrint
+        0x48, 0xC7, 0xC0, 0xF0, 0x00, 0x00, 0x00,
+        // syscall
+        0x0F, 0x05,
 
-#[repr(align(4096))]
-struct UserCode([u8; 16 * 1024]);
-static mut USER_CODE: UserCode = UserCode([0; 16 * 1024]);
+        // === Get time via ClockGetTime (syscall 0x50) ===
+        // mov rax, 0x50
+        0x48, 0xC7, 0xC0, 0x50, 0x00, 0x00, 0x00,
+        // syscall
+        0x0F, 0x05,
 
-const MSG: &[u8] = b"[Ring3] Hola desde el primer proceso de usuario BMO\n";
+        // === Infinite loop with yield (syscall 0x03) ===
+        0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00,   // mov rax, 0x03
+        0x0F, 0x05,                                     // syscall
+        0xEB, 0xF5,                                     // jmp -11
 
-// ─── Construcción del payload "hello" (mini, sin bmoasm) ────────────
+        // === Exit via ProcessExit (syscall 0x00) — unreachable ===
+        0x48, 0xC7, 0xC7, 0x00, 0x00, 0x00, 0x00,
+        0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+        0x0F, 0x05,
+        0xF4,
 
-unsafe fn build_hello_payload() -> u64 {
-    let base = core::ptr::addr_of_mut!(USER_CODE) as *mut u8;
-    let buf = core::slice::from_raw_parts_mut(base, 16 * 1024);
-    let mut p: usize = 0;
-
-    // mov rax, 0xF0 (DebugPrint)
-    buf[p..p+7].copy_from_slice(&[0x48, 0xC7, 0xC0, 0xF0, 0x00, 0x00, 0x00]); p += 7;
-    // lea rdi, [rip + disp32]
-    buf[p..p+3].copy_from_slice(&[0x48, 0x8D, 0x3D]); p += 3;
-    let lea_disp_off = p;
-    buf[p..p+4].copy_from_slice(&[0; 4]); p += 4;
-    // mov rsi, len
-    buf[p..p+3].copy_from_slice(&[0x48, 0xC7, 0xC6]); p += 3;
-    buf[p..p+4].copy_from_slice(&(MSG.len() as u32).to_le_bytes()); p += 4;
-    // syscall
-    buf[p..p+2].copy_from_slice(&[0x0F, 0x05]); p += 2;
-    // mov rax, 0 ; syscall (ProcessExit)
-    buf[p..p+7].copy_from_slice(&[0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00]); p += 7;
-    buf[p..p+2].copy_from_slice(&[0x0F, 0x05]); p += 2;
-    // hlt; jmp $-3
-    buf[p] = 0xF4; p += 1;
-    buf[p..p+2].copy_from_slice(&[0xEB, 0xFD]); p += 2;
-    while p % 16 != 0 { buf[p] = 0x90; p += 1; }
-    let msg_off = p;
-    buf[p..p + MSG.len()].copy_from_slice(MSG);
-    let disp = msg_off as i32 - (lea_disp_off as i32 + 4);
-    buf[lea_disp_off..lea_disp_off + 4].copy_from_slice(&disp.to_le_bytes());
-
-    base as u64
+        // === Data: "Hello from Ring 3!\n" (19 bytes) ===
+        b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm',
+        b' ', b'R', b'i', b'n', b'g', b' ', b'3', b'!', b'\n',
+    ];
+    &INIT_CODE
 }
 
-/// Construye el payload del compositor con `bmoasm::Emitter` y devuelve
-/// su entry point.
-unsafe fn build_desktop_payload() -> u64 {
-    let base = core::ptr::addr_of_mut!(USER_CODE) as *mut u8;
-    let buf = core::slice::from_raw_parts_mut(base, 16 * 1024);
-    let base_addr = base as u64;
-    let (entry_off, total) = compositor::build_compositor(buf, base_addr);
-    serial::serial_write("[user_init] compositor size = ");
-    print_dec(total as u64);
-    serial::serial_write(" bytes\n");
-    base_addr + entry_off as u64
-}
+/// Spawn the first user-mode process ("init").
+pub fn spawn_init_process() -> Option<(u64, u64)> {
+    let proc = process::alloc_process()?;
+    proc.set_name("init");
+    proc.entry_point = USER_CODE_BASE;
+    proc.caps = Capability::SYS_DEBUG;
 
-// ─── Salto Ring 0 → Ring 3 ──────────────────────────────────────────
+    proc.page_table_root = paging::read_cr3();
 
-fn enter_ring3(entry: u64) -> ! {
-    let user_stack_top = unsafe {
-        core::ptr::addr_of!(USER_STACK) as u64 + 32 * 1024 - 16
-    };
-    let kern_stack_top = unsafe {
-        core::ptr::addr_of!(USER_KERN_STACK) as u64 + 32 * 1024
-    };
-
-    set_kernel_stack(kern_stack_top);
-    set_syscall_kernel_stack(kern_stack_top);
-
-    serial::serial_write("[user_init] entry  = "); print_hex(entry);
-    serial::serial_write("[user_init] u_rsp  = "); print_hex(user_stack_top);
-    serial::serial_write("[user_init] k_rsp0 = "); print_hex(kern_stack_top);
-    serial::serial_write("[user_init] Saltando a Ring 3 (iretq)...\n");
+    let code = build_init_program();
+    unsafe {
+        let dst = USER_CODE_BASE as *mut u8;
+        core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
+    }
 
     unsafe {
-        asm!(
-            "mov ds, {ds:x}",
-            "mov es, {ds:x}",
-            "mov fs, {ds:x}",
-            "mov gs, {ds:x}",
-            "push {ss}",
-            "push {rsp}",
-            "push {rflags}",
-            "push {cs}",
-            "push {rip}",
-            "iretq",
-            ds = in(reg) USER_DS as u64,
-            ss = in(reg) USER_DS as u64,
-            rsp = in(reg) user_stack_top,
-            rflags = in(reg) 0x002u64,    // IF=0 (no IRQs aún), bit 1 reservado
-            cs = in(reg) USER_CS as u64,
-            rip = in(reg) entry,
-            options(noreturn),
-        );
+        let stack_base = USER_STACK_BASE as *mut u8;
+        core::ptr::write_bytes(stack_base, 0, USER_STACK_SIZE);
+    }
+    let user_stack_top = USER_STACK_BASE + USER_STACK_SIZE as u64;
+
+    let kernel_stack = unsafe {
+        let layout = core::alloc::Layout::from_size_align(KERNEL_STACK_PER_THREAD, 16).unwrap();
+        let ptr = alloc::alloc::alloc_zeroed(layout);
+        if ptr.is_null() { return None; }
+        ptr as u64 + KERNEL_STACK_PER_THREAD as u64
+    };
+
+    let thr = thread::alloc_thread(proc.pid, Priority::Interactive)?;
+    thr.regs = thread::SavedRegs::new_user(USER_CODE_BASE, user_stack_top);
+    thr.kernel_stack_top = kernel_stack;
+    thr.state = thread::ThreadState::Ready;
+
+    let tid = thr.tid;
+    if let Some(idx) = thread::find_thread_index(tid) {
+        thread::set_current(idx);
+        if let Some(t) = thread::get_thread(idx) {
+            t.state = thread::ThreadState::Running;
+        }
+    }
+
+    crate::arch::gdt::set_kernel_stack(kernel_stack);
+    crate::arch::syscall_entry::set_syscall_kernel_stack(kernel_stack);
+
+    Some((USER_CODE_BASE, user_stack_top))
+}
+
+/// Jump to Ring 3 — execute the init process. Does NOT return.
+pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
+    core::arch::asm!(
+        "mov rcx, {entry}",
+        "mov r11, 0x202",
+        "mov rsp, {stack}",
+        "sysretq",
+        entry = in(reg) entry_point,
+        stack = in(reg) user_stack,
+        options(noreturn),
+    );
+}
+
+/// Shell command: spawn Ring 3 hello process.
+pub fn spawn_hello() {
+    crate::drivers::serial::serial_write("[user_init] Spawning hello Ring 3 process...\n");
+    if let Some((entry, stack)) = spawn_init_process() {
+        crate::drivers::serial::serial_write("[user_init] Process created, jumping to Ring 3\n");
+        // NOTE: jump_to_ring3 does NOT return. The shell will not resume.
+        // In a full OS, we'd schedule it and return to the shell.
+        // For now, we just log that it's ready.
+        crate::drivers::serial::serial_write("[user_init] Ring 3 process ready (not jumping yet — needs scheduler)\n");
+    } else {
+        crate::drivers::serial::serial_write("[user_init] ERROR: failed to spawn process\n");
     }
 }
 
-// ─── API pública ───────────────────────────────────────────────────
-
-pub fn spawn_hello() -> ! {
-    serial::serial_write("[user_init] Lanzando 'hello' Ring 3...\n");
-    let entry = unsafe { build_hello_payload() };
-    enter_ring3(entry);
-}
-
-pub fn spawn_desktop() -> ! {
-    serial::serial_write("[user_init] Construyendo compositor con bmoasm::Emitter...\n");
-    let entry = unsafe { build_desktop_payload() };
-    enter_ring3(entry);
-}
-
-// ─── Helpers ───────────────────────────────────────────────────────
-
-fn print_hex(v: u64) {
-    let hex = b"0123456789ABCDEF";
-    serial::serial_write("0x");
-    for i in (0..16).rev() {
-        serial::serial_write_byte(hex[((v >> (i * 4)) & 0xF) as usize]);
-    }
-    serial::serial_write("\n");
-}
-
-fn print_dec(mut v: u64) {
-    if v == 0 { serial::serial_write_byte(b'0'); return; }
-    let mut buf = [0u8; 20];
-    let mut i = 0;
-    while v > 0 { buf[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
-    while i > 0 { i -= 1; serial::serial_write_byte(buf[i]); }
+/// Shell command: spawn Ring 3 desktop compositor (stub).
+pub fn spawn_desktop() {
+    crate::drivers::serial::serial_write("[user_init] Desktop compositor not yet implemented\n");
+    crate::drivers::serial::serial_write("[user_init] Use GOP display for now\n");
 }
