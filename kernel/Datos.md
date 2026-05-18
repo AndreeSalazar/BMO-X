@@ -863,8 +863,101 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 17 (Ring 0 ↔ Ring 3 operativo — GDT/TSS + IDT + syscall MSRs + primer proceso Ring 3 con DebugPrint/ExitProcess).
+**Última actualización:** Sesión 18 (Kernel slim + Compositor Ring 3 con bmoasm + 5 syscalls nuevos).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
+
+---
+
+## Sesión 18 — Slim + Compositor Ring 3 (Hyprland / Win11)
+
+### 1. Adelgazamiento del kernel
+
+- **`main.rs`** pasó de **~700 líneas** (boot + GPU/SEC2/AHCI/NVMe/GSP/payload-loader monolítico) a **~145 líneas**. El boot path queda:
+  `serial → BootInfo → globals → GDT → IDT → syscall MSR → ACPI/PCI → page alloc → console → shell`.
+  La lógica GPU/AHCI/NVMe sigue viviendo dentro de `drivers/gpu/fastgpu/*` (intacto) pero ya no se ejecuta en cada boot.
+- **Cargo.toml** — eliminadas las deps `ntfs 0.4`, `nt-hive 0.3`, `binrw 0.11`, `byteorder 1` (sólo las consumía el extractor "Spy Agent" abandonado). Quedan únicamente `fastos-boot-protocol`, `volatile 0.4`, `bitflags 2`.
+- **`src/fs/`** colapsado a un único archivo `fs/mod.rs` con sólo los traits `DiskReader`/`DiskWriter`/`DiskError` (que aún implementan los drivers NVMe/AHCI/fastgpu-gsp). Se borraron `gpt.rs`, `ntfs.rs`, `walker.rs`.
+- **`shell.rs`** reescrito sin las dependencias muertas (`crate::agent::*`, `crate::export::*`). Tamaño binario release: **380 KB** (kernel slim final).
+
+### 2. Nuevos syscalls BMO para compositor Ring 3
+
+Añadidos en `arch/syscall_entry.rs::syscall_handler_rust`:
+
+| Nº     | Nombre       | Args (BMO ABI)                       | Retorno                                     |
+|--------|--------------|--------------------------------------|---------------------------------------------|
+| `0x60` | `FbInfo`     | —                                    | `w | (h<<32) | (stride<<48)` en RAX        |
+| `0x61` | `FbFill`     | a0=x · a1=y · a2=w · a3=h · a4=color | 0                                           |
+| `0x62` | `FbText`     | a0=x · a1=y · a2=ptr · a3=len · a4=color | 0                                       |
+| `0x63` | `FbPresent`  | —                                    | 0 (write directo, reservado para flip)      |
+| `0x70` | `KeyPoll`    | —                                    | scancode PS/2 o 0                           |
+
+Los handlers viven en el nuevo módulo **`src/desktop/mod.rs`** (`fb_fill`, `fb_text`, `poll_key`) y consumen `boot_info::FB_*` (populados en boot).
+
+### 3. Compositor Ring 3 (`desktop/compositor.rs`)
+
+Genera el payload x86-64 nativo del escritorio usando **`barex::bmoasm::Emitter`**:
+
+```
+xor ebx, ebx               ; frame counter
+.frame:
+    fbfill(0,0,1920,1080, 0xFF0078D4)    ; wallpaper Win11 blue
+    fbfill(0,0,1920,32,   0xFF1A1B26)    ; status bar Hyprland (tokyonight)
+    fbfill(8,40,948,996,  0xFF21262D)    ; tile izq (panel)
+    fbfill(8,40,948,28,   0xFF0078D4)    ; titlebar L
+    fbfill(964,40,948,996,0xFF21262D)    ; tile der (panel)
+    fbfill(964,40,948,28, 0xFF76B900)    ; titlebar R verde BMO
+    fbfill(0,1040,1920,40,0xFF161B22)    ; taskbar Win11
+    fbfill(8,1044,80,32,  0xFF76B900)    ; Start button
+    fbfill(1820,1044,92,32,0xFF30363D)   ; tray
+    fbtext(...) x 10                      ; etiquetas (workspaces, prompt, datos.md, START, clock)
+    nano_sleep(16_000_000)                ; ~60 FPS
+    keypoll → cmp ESC → jne .frame; exit
+```
+
+**Cuánto sale de bmoasm vs raw**:
+- `Emitter::mov_reg_imm64` / `Emitter::syscall` / `Emitter::ret` / `Emitter::nop` → todas las llamadas a syscall (`sys0`/`sys1`/`sys5`) usan estos métodos directamente.
+- `bytes_for(IntrinsicId::Nop)` → padding de alineación.
+- `Emitter::emit_raw` → 5 instrucciones que el lexer/emit S15 aún no expone: `xor ebx,ebx`, `cmp rax,imm32`, `jne rel8`, `jmp rel32`, `mov rdx, imm64` con back-patch para string pointers.
+
+Total payload del compositor ≈ **520 bytes** ensamblados a runtime, con 10 strings al final del buffer y back-patches de punteros absolutos para los `fbtext`.
+
+### 4. `sched/user_init.rs` — dos modos
+
+- `spawn_hello()` → payload mínimo de 60 bytes (DebugPrint + ExitProcess) para validar la trampolina.
+- `spawn_desktop()` → payload del compositor vía `compositor::build_compositor(buf, base_addr)`.
+
+Ambos comparten `USER_STACK` (32 KB), `USER_KERN_STACK` (32 KB) y `USER_CODE` (16 KB alineado a 4 KB) estáticos.
+
+### 5. Comandos shell nuevos
+
+```
+fastos> ring0     # estado GDT/IDT/MSR/TSS
+fastos> user      # 'hello' Ring 3 (60 B payload)
+fastos> desktop   # compositor Hyprland/Win11 (520 B payload bmoasm)
+```
+
+### Estructura post-S18
+
+```
+kernel/src/
+├── main.rs              (145 líneas — boot delgado)
+├── boot_info.rs         (+ FB_ADDR/WIDTH/HEIGHT/STRIDE globals)
+├── desktop/             ⭐ NUEVO
+│   ├── mod.rs           (fb_fill, fb_text, poll_key)
+│   └── compositor.rs    (payload Ring 3 vía bmoasm::Emitter)
+├── fs/mod.rs            (sólo traits — fs/gpt/ntfs/walker eliminados)
+├── sched/user_init.rs   (spawn_hello + spawn_desktop)
+├── shell.rs             (slim; +cmd_desktop)
+├── arch/syscall_entry.rs (+5 syscalls 0x60-0x63, 0x70)
+└── (resto sin cambios — fastgpu intacto)
+```
+
+### Pendientes lógicos (no hechos en S18)
+
+- Habilitar `sti` tras `init_idt` para que el compositor reciba IRQ1 (teclado) sin polling.
+- Mapear el código Ring 3 con NX off + bit User en una tabla CR3 propia (hoy comparte la del kernel).
+- Bandear el frame: contar FPS y mostrarlo en la status bar.
+- Mover la generación del compositor a un `.bmo` de verdad (parser S17) y compilarlo a runtime.
 
 ---
 
