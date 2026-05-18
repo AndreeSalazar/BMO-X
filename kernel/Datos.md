@@ -863,5 +863,64 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 16 (BMO Simple v2 — Lexer DFA real + 95 keywords semánticos + 12 intrínsecos bytes exactos).
+**Última actualización:** Sesión 17 (Ring 0 ↔ Ring 3 operativo — GDT/TSS + IDT + syscall MSRs + primer proceso Ring 3 con DebugPrint/ExitProcess).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
+
+---
+
+## Sesión 17 — Ring 0 / Ring 3 funcionando
+
+### Lo que se hizo
+
+1. **`main.rs`** — Añadidas las dos llamadas que faltaban en el boot:
+   - `arch::gdt::init_gdt()` antes que `idt` → carga GDT con Kernel CS/DS (0x08/0x10), User CS/DS (0x23/0x1B) y TSS (0x28), con `RSP0` apuntando al stack del kernel.
+   - `arch::syscall_entry::init_syscall()` después de `idt` → programa `IA32_LSTAR` (entry naked), `IA32_STAR` (selectores Ring 0/3), `IA32_FMASK` (mask IF+DF) y enciende `EFER.SCE`.
+
+2. **`sched/user_init.rs`** ⭐ (nuevo, 130 líneas) — Lanza el primer proceso Ring 3:
+   - `USER_CODE` (4 KB alineado) — buffer donde se ensambla a runtime un payload x86-64 nativo.
+   - `USER_STACK` (16 KB) — pila de usuario.
+   - `USER_KERN_STACK` (16 KB) — pila de kernel para la trampolina de `syscall` desde ese hilo.
+   - `build_user_payload()` — emite a mano los bytes:
+     `mov rax,0xF0` `lea rdi,[rip+msg]` `mov rsi,len` `syscall` `mov rax,0x00` `syscall` `hlt; jmp $-3` + string `"[Ring3] Hola desde el primer proceso de usuario BMO\n"`.
+     Resuelve el `disp32` del `lea rdi,[rip+disp]` correctamente según la posición del string.
+   - `spawn_first_user_process()` — actualiza `TSS.RSP0` y `SYSCALL_KERNEL_RSP`, hace `push SS/RSP/RFLAGS/CS/RIP; iretq` para entrar a Ring 3.
+
+3. **`shell.rs`** — Reescrito (quitadas dependencias muertas a `agent::*` y `export::*` que ya no existen). Comandos:
+   - `ring0` — muestra estado de GDT/IDT/MSR/TSS.
+   - `user` — invoca `sched::user_init::spawn_first_user_process()` y demuestra el round-trip Ring 0 → Ring 3 → (syscall) → Ring 0 → impresión por serial → Ring 3 → ExitProcess.
+   - Conservados `cpuinfo`, `pci`, `meminfo`, `ver`, `clear`, `reboot`.
+
+### Flujo de la trampolina BMO syscall (ya estaba implementado, ahora activado)
+
+```
+Ring 3 ejecuta `syscall`
+   ├─ CPU guarda RIP→RCX, RFLAGS→R11, carga CS=0x08, RIP=LSTAR
+   ├─ syscall_entry_naked: cambia a kernel stack, construye frame
+   ├─ Reordena registros BMO ABI (RAX,RDI,RSI,RDX,R10,R8,R9)
+   │  a C ABI (RDI=nr, RSI=a0, RDX=a1, RCX=a2, R8=a3, R9=a4) y llama
+   │  syscall_handler_rust
+   ├─ Despacha:
+   │     0x00 ProcessExit  → hlt loop
+   │     0x03 ThreadYield  → spin_loop
+   │     0x50 ClockGetTime → rdtsc
+   │     0x51 NanoSleep    → busy-wait
+   │     0xF0 DebugPrint   → serial_write
+   └─ Restaura R11/RCX/RSP de usuario y `sysretq` → vuelve a Ring 3
+```
+
+### ⛔ No tocado
+
+- `drivers/gpu/fastgpu/` — intacto (bridge BMO/GSP del usuario, declarado abandonado pero conservado).
+
+### Estado tras S17
+
+- `cargo build` → `Finished` ✅ (216 warnings de `static_mut_refs` y `dead_code` — son cosméticos del Rust 2024 edition guide).
+- Ring 0 operativo desde el primer instante de `kernel_main_real` (GDT propio, no el de UEFI).
+- Ring 3 demostrado funcionalmente: el usuario teclea `user` en el shell → kernel arma payload → `iretq` → Ring 3 imprime vía `syscall 0xF0` → kernel intercepta → serial muestra `[Ring3] Hola...` → Ring 3 hace `syscall 0x00` → kernel hace `hlt`.
+
+### Siguientes pasos lógicos (no hechos en S17)
+
+- Cargar payloads Ring 3 desde un BEF real (`bef::loader::load` ya existe).
+- Switch real de CR3 por proceso (`process.page_table_root` ya está reservado).
+- APIC timer → `sched::timer_tick()` → preempción multi-hilo Ring 3.
+- Habilitar interrupciones (`sti`) tras `init_idt` para que IRQ1 (PS/2) funcione vía la trampolina y no por polling I/O.

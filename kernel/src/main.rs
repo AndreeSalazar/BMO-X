@@ -8,10 +8,8 @@
 
 extern crate alloc;
 
-mod agent;
 mod allocator;
 mod arch;
-mod export;
 mod boot_info;
 mod console;
 mod drivers;
@@ -120,10 +118,18 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     }
 
     // ── Initialize arch subsystems ───────────────────────────────────
-    // IDT is critical even without interrupts enabled — without it,
-    // any CPU exception (page fault, GPF, etc.) causes a triple fault.
+    // Ring 0 protected mode setup:
+    //   1) GDT + TSS  -> kernel/user segments, RSP0 for Ring3->Ring0 transitions
+    //   2) IDT        -> exception handlers (no triple-fault on page fault, GPF...)
+    //   3) syscall    -> IA32_LSTAR/STAR/FMASK + EFER.SCE for BMO syscall ABI
+    arch::gdt::init_gdt();
+    drivers::serial::serial_write("[FastOS] GDT+TSS loaded (Ring0/Ring3 segments active)\n");
+
     arch::idt::init_idt();
     drivers::serial::serial_write("[FastOS] IDT loaded (exceptions will halt instead of triple-fault)\n");
+
+    arch::syscall_entry::init_syscall();
+    drivers::serial::serial_write("[FastOS] syscall MSRs programmed (BMO ABI ready)\n");
 
     // ── PCI via ECAM (UEFI-native, no legacy I/O ports) ─────────────
     drivers::serial::serial_write("[FastOS] Parsing ACPI MCFG for ECAM...\n");
