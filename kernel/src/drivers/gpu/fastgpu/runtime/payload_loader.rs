@@ -217,25 +217,30 @@ pub fn execute_from_bytes(
                 con.print(" cmd=0x"); con.print_hex32(dma_cmd);
                 con.print(" <- "); con.print_u64(fw_len as u64); con.println(" bytes");
 
-                // Allocate page-aligned DMA buffer
-                let page_size = 4096usize;
-                let buf_size = (fw_len + page_size - 1) & !(page_size - 1);
-                let layout = core::alloc::Layout::from_size_align(buf_size, page_size)
-                    .expect("DMA layout");
-                let dma_ptr = unsafe { alloc::alloc::alloc_zeroed(layout) };
-                if dma_ptr.is_null() {
-                    con.println("  -> ERROR: DMA alloc failed!");
-                    break;
-                }
+                // Use fixed physical address for DMA staging buffer
+                // (heap allocator gives low addresses ~0x26A000 which GPU DMA can't reach)
+                // Use 0x50000000 for IMEM, 0x51000000 for DMEM
+                let phys_addr: u64 = if (dma_cmd & 0x10) != 0 { 0x50000000 } else { 0x51000000 };
+                let dma_ptr = phys_addr as *mut u8;
 
                 unsafe {
+                    // Write firmware data to fixed physical address
                     core::ptr::copy_nonoverlapping(fw_data.as_ptr(), dma_ptr, fw_len);
+                    // Zero remaining bytes to 256B alignment
+                    let aligned_len = (fw_len + 255) & !255;
+                    if aligned_len > fw_len {
+                        core::ptr::write_bytes(dma_ptr.add(fw_len), 0, aligned_len - fw_len);
+                    }
+                    // Cache flush: ensure GPU sees the data
+                    for addr in (phys_addr..phys_addr + aligned_len as u64).step_by(64) {
+                        core::arch::asm!("clflush [{}]", in(reg) addr as usize);
+                    }
+                    core::arch::asm!("mfence");
                 }
 
-                let phys_addr = dma_ptr as u64;
                 con.print("  -> buf: 0x"); con.print_hex32((phys_addr >> 32) as u32);
                 con.print_hex32(phys_addr as u32);
-                con.print(" ("); con.print_u64(buf_size as u64); con.println(" bytes)");
+                con.print(" ("); con.print_u64(fw_len as u64); con.println(" bytes, CLFLUSH'd)");
 
                 // GA102 register layout (dev_falcon_v4.h):
                 let dmatrfbase   = engine_base + 0x110; // DMATRFBASE (phys addr >> 8)
@@ -324,7 +329,7 @@ pub fn execute_from_bytes(
                     con.print(" bytes -> "); con.print(target_name); con.println("");
                 }
 
-                unsafe { alloc::alloc::dealloc(dma_ptr, layout); }
+                // Fixed physical address - no dealloc needed
             }
             OP_RESET_FALCON => {
                 // Explicit Falcon engine reset/enable cycle.

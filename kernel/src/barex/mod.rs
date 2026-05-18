@@ -30,6 +30,7 @@ pub mod input;
 pub mod net;
 pub mod shader;
 pub mod compat;
+pub mod bmoasm;
 
 /// Versión mayor.menor.patch de la API BareX expuesta a Ring 3.
 pub const BAREX_VERSION: (u16, u16, u16) = (1, 0, 0);

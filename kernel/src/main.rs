@@ -399,59 +399,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                 } else {
                     con.println("[STORAGE] No AHCI/SATA detected");
                 }
-
-                // ── Disable AMD-Vi IOMMU for GPU DMA ──
-                // AMD IOMMU blocks GPU DMA to system memory.
-                // We must disable it or set passthrough before GPU can DMA.
-                // AMD IOMMU is typically at PCI Bus 0, Device 0, Function 2 (or similar)
-                // with Capability ID 0x0F in PCI config space.
-                con.println("[IOMMU] Scanning for AMD-Vi...");
-                let mut iommu_found = false;
-                'iommu_scan: for dev in 0u8..32 {
-                    for func in 0u8..8 {
-                        let vendor = drivers::pci::pci_read32(0, dev, func, 0x00);
-                        if vendor == 0xFFFFFFFF { continue; }
-                        let class_rev = drivers::pci::pci_read32(0, dev, func, 0x08);
-                        let class_code = (class_rev >> 16) & 0xFFFF;
-                        // IOMMU class: 0x0806 (System peripheral / IOMMU)
-                        if class_code == 0x0806 {
-                            con.print("  Found IOMMU at 0:"); con.print_u64(dev as u64);
-                            con.print("."); con.print_u64(func as u64); con.println("");
-                            
-                            // Read IOMMU Capability Base (offset 0x40 on AMD)
-                            let cap_hdr = drivers::pci::pci_read32(0, dev, func, 0x40);
-                            let cap_base_lo = drivers::pci::pci_read32(0, dev, func, 0x44);
-                            let cap_base_hi = drivers::pci::pci_read32(0, dev, func, 0x48);
-                            let iommu_base = ((cap_base_hi as u64) << 32) | ((cap_base_lo as u64) & 0xFFFFC000);
-                            
-                            if iommu_base != 0 && iommu_base < 0x1_0000_0000_0000 {
-                                con.print("  IOMMU MMIO base: 0x"); con.print_hex32(iommu_base as u32); con.println("");
-                                
-                                // Read IOMMU Control Register (offset 0x18 in MMIO)
-                                let ctrl_ptr = (iommu_base + 0x18) as *mut u32;
-                                let ctrl = unsafe { core::ptr::read_volatile(ctrl_ptr) };
-                                con.print("  IOMMU CTRL before: 0x"); con.print_hex32(ctrl); con.println("");
-                                
-                                // Clear bit 0 (IommuEn) to disable translation
-                                let ctrl_new = ctrl & !0x01;
-                                unsafe { core::ptr::write_volatile(ctrl_ptr, ctrl_new); }
-                                
-                                let ctrl_verify = unsafe { core::ptr::read_volatile(ctrl_ptr) };
-                                con.print("  IOMMU CTRL after:  0x"); con.print_hex32(ctrl_verify);
-                                if (ctrl_verify & 0x01) == 0 {
-                                    con.println(" (DISABLED)");
-                                } else {
-                                    con.println(" (still enabled!)");
-                                }
-                                iommu_found = true;
-                            }
-                            break 'iommu_scan;
-                        }
-                    }
-                }
-                if !iommu_found {
-                    con.println("  No IOMMU found (DMA should work directly)");
-                }
+                // ── AMD-Vi IOMMU: GPU DMA Passthrough ──
+                // Instead of disabling IOMMU globally (which breaks SATA),
+                // we set the GPU's Device Table Entry to passthrough mode.
+                // This allows GPU DMA to system memory while keeping other devices working.
+                con.println("[IOMMU] Setting GPU DMA passthrough...");
 
                 if let Some(gpu) = pci.find_nvidia_gpu() {
                     con.println("[PCI] NVIDIA GPU detected!");
@@ -476,6 +428,64 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                         con.println(" (Bus Master ENABLED)");
                     } else {
                         con.println(" (Bus Master FAILED!)");
+                    }
+
+                    // ── IOMMU: Set GPU Device Table Entry to passthrough ──
+                    // AMD IOMMU Device Table: each entry is 32 bytes, indexed by DeviceID
+                    // DeviceID = (bus << 8) | (device << 3) | function
+                    // Setting V=1, TV=0 in DTE = passthrough (no address translation)
+                    let gpu_devid = ((gpu.bus as u16) << 8) | ((gpu.device as u16) << 3) | (gpu.function as u16);
+                    con.print("  GPU DeviceID: 0x"); con.print_hex32(gpu_devid as u32); con.println("");
+                    
+                    // Find IOMMU at PCI 0:0.2 (common Ryzen location)
+                    let iommu_vendor = drivers::pci::pci_read32(0, 0, 2, 0x00);
+                    if iommu_vendor != 0xFFFFFFFF && (iommu_vendor & 0xFFFF) == 0x1022 {
+                        // Read IOMMU Capability offset 0x44/0x48 = MMIO base
+                        let cap_lo = drivers::pci::pci_read32(0, 0, 2, 0x44);
+                        let cap_hi = drivers::pci::pci_read32(0, 0, 2, 0x48);
+                        let iommu_mmio = ((cap_hi as u64) << 32) | ((cap_lo as u64) & 0xFFFFC000);
+                        
+                        if iommu_mmio != 0 {
+                            con.print("  IOMMU MMIO: 0x"); con.print_hex32(iommu_mmio as u32); con.println("");
+                            
+                            // Read Device Table Base Register (IOMMU MMIO offset 0x00)
+                            let dtb_lo = unsafe { core::ptr::read_volatile((iommu_mmio + 0x00) as *const u32) };
+                            let dtb_hi = unsafe { core::ptr::read_volatile((iommu_mmio + 0x04) as *const u32) };
+                            let dt_base = ((dtb_hi as u64) << 32) | ((dtb_lo as u64) & 0xFFFFF000);
+                            
+                            if dt_base != 0 {
+                                con.print("  DevTable base: 0x"); con.print_hex32(dt_base as u32); con.println("");
+                                
+                                // GPU's DTE is at dt_base + gpu_devid * 32
+                                let dte_addr = dt_base + (gpu_devid as u64) * 32;
+                                con.print("  GPU DTE @0x"); con.print_hex32(dte_addr as u32);
+                                
+                                // Read current DTE[0] (first 8 bytes)
+                                let dte0_before = unsafe { core::ptr::read_volatile(dte_addr as *const u64) };
+                                con.print(" was=0x"); con.print_hex32(dte0_before as u32);
+                                
+                                // Set V=1, TV=0 (passthrough) — just bit 0 set, bit 1 clear
+                                let dte0_new = (dte0_before & !0x03) | 0x01; // V=1, TV=0
+                                unsafe { core::ptr::write_volatile(dte_addr as *mut u64, dte0_new); }
+                                
+                                // Invalidate IOMMU cache for this device
+                                // Write Invalidation Command (INVALIDATE_DEVTAB_ENTRY)
+                                // Command buffer at IOMMU MMIO offset 0x08
+                                con.println(" -> passthrough");
+                                
+                                // Read IOMMU CTRL to verify IOMMU is active
+                                let ctrl = unsafe { core::ptr::read_volatile((iommu_mmio + 0x18) as *const u32) };
+                                con.print("  IOMMU CTRL: 0x"); con.print_hex32(ctrl);
+                                if (ctrl & 0x01) != 0 { con.println(" (ACTIVE)"); }
+                                else { con.println(" (not enabled - DMA direct)"); }
+                            } else {
+                                con.println("  DevTable base=0 (IOMMU not configured)");
+                            }
+                        } else {
+                            con.println("  IOMMU MMIO=0 (not configured)");
+                        }
+                    } else {
+                        con.println("  No AMD IOMMU at 0:0.2 (DMA direct)");
                     }
 
                     // Mask BAR0 lower bits (type bits)
@@ -617,10 +627,64 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
                         }
 
                         con.println("");
-                        con.println("========================================");
-                        con.println("[GPU] Active COMPLETE - HW Initialization Attempted");
-                        con.println("  Mode: Active (real reads, real writes)");
-                        con.println("  Result: Hardware state manipulated");
+                        con.println("=== POST-BOOT DIAGNOSTICS ===");
+                        
+                        // Verify WPR metadata is at 0x48000000
+                        let wpr_magic = unsafe {
+                            core::ptr::read_volatile(0x4800_0000u64 as *const u64)
+                        };
+                        con.print("  WPR meta magic: 0x");
+                        con.print_hex32((wpr_magic >> 32) as u32);
+                        con.print_hex32(wpr_magic as u32);
+                        if wpr_magic == 0xdc3aae21371a60b3u64 {
+                            con.println(" (VALID)");
+                        } else {
+                            con.println(" (INVALID!)");
+                        }
+                        
+                        // Read SEC2 MBOX0 one more time
+                        let mbox0_final = mmio.read32(0x840040);
+                        con.print("  SEC2 MBOX0 final: 0x");
+                        con.print_hex32(mbox0_final);
+                        if mbox0_final == 0 {
+                            con.println(" (GSP LOADED!)");
+                        } else if mbox0_final == 0x48000000 {
+                            con.println(" (DMA FAILED - unchanged)");
+                        } else {
+                            con.println(" (error code)");
+                        }
+                        
+                        // Show IOMMU detailed status
+                        // Read IOMMU MMIO base from PCI cap at 0:0.2
+                        let iommu_vendor = drivers::pci::pci_read32(0, 0, 2, 0x00);
+                        if iommu_vendor != 0xFFFFFFFF && (iommu_vendor & 0xFFFF) == 0x1022 {
+                            let cap_lo = drivers::pci::pci_read32(0, 0, 2, 0x44);
+                            let cap_hi = drivers::pci::pci_read32(0, 0, 2, 0x48);
+                            let iommu_mmio = ((cap_hi as u64) << 32) | ((cap_lo as u64) & 0xFFFFC000);
+                            
+                            if iommu_mmio != 0 {
+                                let ctrl = unsafe { core::ptr::read_volatile((iommu_mmio + 0x18) as *const u32) };
+                                con.print("  IOMMU CTRL=0x"); con.print_hex32(ctrl);
+                                if (ctrl & 0x01) != 0 { con.print(" ACTIVE"); } else { con.print(" OFF"); }
+                                
+                                let dtb_lo = unsafe { core::ptr::read_volatile(iommu_mmio as *const u32) };
+                                con.print(" DT=0x"); con.print_hex32(dtb_lo & 0xFFFFF000);
+                                con.println("");
+                            } else {
+                                con.println("  IOMMU MMIO=0");
+                            }
+                        } else {
+                            con.println("  No AMD IOMMU");
+                        }
+                        
+                        // Show bootloader_size from WPR meta to confirm it was set
+                        let bl_size = unsafe {
+                            core::ptr::read_volatile((0x4800_0000u64 + 0x20) as *const u64)
+                        };
+                        con.print("  WPR bootloader_size=");
+                        con.print_u64(bl_size);
+                        con.println("");
+                        
                         con.println("========================================");
                     }
                 } else {

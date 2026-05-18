@@ -76,7 +76,8 @@ c:/Users/andre/OneDrive/Documentos/FastOS/
 │       │   ├── input/            (modularizado S12: 10 sub-carpetas / 39 archivos — device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring)
 │       │   ├── net/              (BxTcpSocket, BxUdpSocket, BxQuicEndpoint)
 │       │   ├── shader/           (modularizado S14: 9 sub-carpetas — stage, ir, sass, spirv, dxil, dxbc, loader, cache; delega a naga / vkd3d-shader-rs / dxvk-spirv-rs)
-│       │   └── compat/           (PE detection, FAKE_DLLS list)
+│       │   ├── compat/           (PE detection, FAKE_DLLS list)
+│       │   └── bmoasm/           ⭐ S15+S16: lenguaje propio (lexer DFA real + parser + sema + emit + runtime + builtin + sample) — 95 keywords semánticos, 12 intrínsecos con bytes exactos
 │       │
 │       ├── bef/                  ✅ Formato ejecutable (sesiones 5-6)
 │       │   ├── mod.rs            (re-exports)
@@ -377,6 +378,87 @@ Dxbc      → dxbc::translate_to_spirv(dxvk) → spirv → sass
 
 `cargo build` Finished ✅.
 
+### Sesión 15 — **BMO Simple** (lenguaje propio, sintaxis español, emite bytes) ⭐
+Nueva carpeta `barex/bmoasm/` — un mini-lenguaje semántico-puro con keywords
+en español que **emite bytes precisos x86-64** sin depender de gcc/clang/LLVM.
+Vive en kernel `no_std`. **Sí se puede.**
+
+**Pipeline:**
+```
+fuente .bmo → lexer → [Token] → parser → Ast → sema → emit → bytes x86-64
+```
+
+**6 sub-carpetas / 15 archivos:**
+- `mod.rs` + `_README.md` — versión, gramática, mapeo a BMO ABI.
+- `lexer/` (2): `token.rs` con `TokenKind` (50+ variantes incluyendo todos los
+  keywords solicitados); `scanner.rs` con tabla `KEYWORDS` greedy y `Scanner`
+  esqueleto que ya reconoce delimitadores estructurales.
+- `parser/` (2): `ast.rs` con `Stmt` (Def/Let/Retorna/Si/Mientras/Emit/RegAssign/
+  Libre/Rompe/Continua/ExprStmt) + `Expr` (LitInt/LitByte/LitNulo/Ident/Bin/
+  No/Reg/Aloc) + `BinOp` (9 ops) + `Type` (Byte/Num/Ptr/Arr/Ref/Void);
+  `parse.rs` con `Parser` esqueleto.
+- `sema/` (2): `Scope` con `ScopeEntry` (name/ty/frame_offset),
+  `Sema` + `SemaError` (7 errores tipados).
+- `emit/` (2): `Reg64` (16 regs x86-64) + `BMO_ARG_REGS` (7 GPR del BMO ABI:
+  RDI RSI RDX R10 R8 R9 RAX_extra); `Emitter` con encoders ya operativos
+  (`mov_reg_imm64` con REX.W/REX.B, `ret`, `syscall`, `nop`, `emit_raw`).
+- `runtime/` (1): `aloc`/`libre` delegan a `barex::abi::memory`.
+
+**Keywords implementados** (fase 1 base):
+`def let si sino mientras retorna reg emit aloc libre byte num ptr arr ref
+suma resta mult div y o no igual mayor menor rompe continua match nulo
+tipo impl nuevo ventana evento dibuja`
+
+**Reservados para fases siguientes:**
+- Fase 2 OOP: `tipo`/`impl`/`nuevo` (tokens listos, AST por extender).
+- Fase 3 UI: `ventana`/`evento`/`dibuja` (delegará a BareX graphics/input).
+
+`cargo build` Finished ✅.
+
+### Sesión 16 — BMO Simple: Lexer DFA real + 60+ keywords semánticos ⭐
+Expansión masiva de BMO Simple para **diferenciarlo de ASM clásico**:
+no es un mnemonic-mapper, es **semántica viviente** que emite bytes precisos.
+
+**Cambios:**
+- `lexer/token.rs` — `TokenKind` ampliado de 50 → **~95 variantes**.
+  Nuevos: `OpMod/OpXor/OpShl/OpShr/OpRol/OpRor`, `KwCaso/KwDefecto/KwPara/
+  KwBucle/KwDesde/KwHasta/KwPaso/KwSalto/KwEtiqueta/KwCuando/KwTabla`,
+  `KwMio/KwPrest/KwMut/KwConst/KwPuro`, `KwNop/KwPausa/KwInt3/KwHlt/KwCli/
+  KwSti/KwRdtsc/KwCpuid/KwLfence/KwMfence/KwSfence/KwSyscall`,
+  `KwAtomico/KwVolatil/KwAcquire/KwRelease/KwRelax/KwBarr/KwCerca/KwMovnt`,
+  `KwParalelo/KwSincro/KwIntrinseco`, `KwSeccion/KwAlign/KwRepetir/
+  KwIncluye/KwComen/KwFin`, `FlagCf/FlagZf/FlagSf/FlagOf/FlagPf/FlagDf`,
+  `LitHex/LitBin/Comment/Semicolon/Dot`.
+- `lexer/scanner.rs` — **DFA real operativo** (~250 líneas): identifiers,
+  decimal/hex/binary literals (con `_` separators), comments `// ... \n`,
+  delimitadores estructurales, lookahead 2-char (`->`). Tabla `KEYWORDS`
+  con **89 entries** ordenadas greedy.
+- `builtin/` ⭐ NUEVA (3 archivos): `IntrinsicId` (12 intrínsecos
+  mapeables), `bytes_for(id)` con **bytes exactos x86-64** (pausa→`F3 90`,
+  cpuid→`0F A2`, mfence→`0F AE F0`, syscall→`0F 05`, etc), `emit_intrinsic()`
+  operativo, `LOCK_PREFIX`/`REP_PREFIX`, `align_nops(N)` con multi-byte NOPs
+  recomendados Intel (1-9 bytes optimizados), `CpuFlag` + `jcc_short_opcode()`.
+- `sample/` ⭐ NUEVA: 5 programas BMO de muestra (`EXIT_ZERO`, `SPIN_LOCK`,
+  `MEDIR_CICLOS`, `TABLA_SALTO`, `ALIGN_FUNCION`) que demuestran toda la
+  sintaxis nueva.
+
+**Diferencia clave vs ASM clásico:**
+| ASM clásico (NASM/MASM)         | BMO Simple                          |
+|---------------------------------|-------------------------------------|
+| Recordar ~1500 mnemonics x86    | 95 keywords semánticos cross-CPU    |
+| Cambiar de ISA = reescribir     | Misma sintaxis, distinto backend    |
+| Sin tipos                       | `byte`/`num`/`ptr` + `mut`/`const`  |
+| Sin ownership                   | `mio`/`prest` (move/borrow)         |
+| Sin patrón match                | `match` + `caso` + `defecto`        |
+| `lock` prefix manual            | `atomico { ... }`                   |
+| `pause` opcode recordable       | `pausa` keyword → F3 90 garantizado |
+| `align` con directiva del asm   | `align 64` portable                 |
+| Inline asm en C requiere `__asm__` | `emit 0xF3 0x90` igual ergonomía |
+| Sin conditional-flag exec       | `cuando cf { ... }` semántico       |
+| Macros de assembler (M4)        | `repetir N { ... }` keyword         |
+
+`cargo build` Finished ✅.
+
 ---
 
 ## 🧠 BMO ABI — referencia rápida (19 sub-carpetas en `barex/abi/`)
@@ -544,8 +626,10 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 | 12 | `barex/input` modularizado: 10 sub-carpetas / 39 archivos (device, keyboard, mouse, headset, gamepad, wheel, hid_raw, keymap, event, ring) |
 | 13 | `barex/graphics` modularizado: 13 sub-carpetas (una por objeto núcleo) / 17 archivos — solo firmas BMO ABI (no duplica NAGA/fastgpu) |
 | 14 | `barex/shader` modularizado: 9 sub-carpetas (stage, ir, sass, spirv, dxil, dxbc, loader, cache) — fachada que delega a naga + vkd3d + dxvk |
+| 15 | `barex/bmoasm` ⭐ **BMO Simple** — lenguaje propio (lexer + parser + sema + emit + runtime), keywords en español, emite bytes x86-64 nativos sin LLVM |
+| 16 | BMO Simple v2 — Lexer DFA real (250 líneas op) + 95 keywords semánticos + `builtin/` (12 intrínsecos con bytes exactos: pausa/cpuid/rdtsc/mfence/...) + `sample/` (5 programas .bmo) |
 
-**Total acumulado:** ~239 archivos `.rs` nuevos + 5 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
+**Total acumulado:** ~259 archivos `.rs` nuevos + 6 `_README.md` + 1 `_WORK_LOG.md` + 11 specs en MAPA.
 
 ---
 
@@ -602,5 +686,5 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 14 (`barex/shader` modularizado: 9 sub-carpetas — fachada que delega a naga / vkd3d / dxvk).
+**Última actualización:** Sesión 16 (BMO Simple v2 — Lexer DFA real + 95 keywords semánticos + 12 intrínsecos bytes exactos).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
