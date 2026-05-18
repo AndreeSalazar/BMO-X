@@ -154,6 +154,7 @@ fn execute(con: &mut Console, cmd: &[u8]) {
         "ver"      => con.println("FastOS v0.9.0 — BMO (Bare Metal Orchestrator)"),
         "ring0"    => cmd_ring0_status(con),
         "user"     => cmd_user(con),
+        "desktop"  => cmd_desktop(con),
         "reboot"   => cmd_reboot(),
         _ => {
             con.print_colored("Unknown: ", colors::ACCENT_RED);
@@ -165,8 +166,9 @@ fn execute(con: &mut Console, cmd: &[u8]) {
 fn cmd_help(con: &mut Console) {
     con.print_colored("Commands:", colors::ACCENT_BLUE);
     con.newline();
+    print_cmd(con, "desktop", "Launch the Ring 3 compositor (Hyprland/Win11-style)");
     print_cmd(con, "ring0",   "Show Ring 0 protected mode status (GDT/IDT/MSR)");
-    print_cmd(con, "user",    "Spawn the first Ring 3 user process (BMO syscall demo)");
+    print_cmd(con, "user",    "Spawn a minimal Ring 3 'hello' user process");
     print_cmd(con, "cpuinfo", "CPU features");
     print_cmd(con, "pci",     "PCI devices");
     print_cmd(con, "meminfo", "Free page count");
@@ -196,10 +198,16 @@ fn cmd_ring0_status(con: &mut Console) {
 }
 
 fn cmd_user(con: &mut Console) {
-    con.print_colored("[user] Spawning first Ring 3 process...\n", colors::ACCENT_ORANGE);
-    con.println("[user] You will see Ring 3 output on serial (DebugPrint syscall 0xF0).");
-    con.println("[user] The user task ExitProcess (0x00) will halt the CPU.");
-    crate::sched::user_init::spawn_first_user_process();
+    con.print_colored("[user] Spawning 'hello' Ring 3 process...\n", colors::ACCENT_ORANGE);
+    con.println("[user] You will see Ring 3 output on serial (DebugPrint 0xF0).");
+    crate::sched::user_init::spawn_hello();
+}
+
+fn cmd_desktop(con: &mut Console) {
+    con.print_colored("[desktop] Launching Ring 3 compositor (Hyprland/Win11 style)\n", colors::NV_GREEN);
+    con.println("[desktop] Payload built via barex::bmoasm::Emitter (BMO Simple bytes).");
+    con.println("[desktop] Press ESC inside the desktop to exit.");
+    crate::sched::user_init::spawn_desktop();
 }
 
 // ═════════════════════════════════════════════════════════════════════

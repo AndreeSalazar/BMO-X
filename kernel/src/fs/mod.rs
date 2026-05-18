@@ -1,20 +1,17 @@
-//! File System abstractions for FastOS.
+//! `fs` — sólo los traits/error que necesitan los drivers de disco.
+//!
+//! El antiguo árbol completo (ntfs/walker/gpt + crate `ntfs`/`nt-hive`/`binrw`)
+//! salió del kernel cuando el modo "Spy Agent" se abandonó. Estos shims
+//! existen porque `drivers/nvme.rs`, `drivers/ahci.rs` y
+//! `drivers/gpu/fastgpu/gsp` aún implementan estos traits.
 
-pub mod ntfs;
-pub mod walker;
-pub mod gpt;
+#![allow(dead_code)]
 
-/// Abstract block access to a disk device.
 pub trait DiskReader {
-    /// Read `count` sectors starting at `lba` into `buf`.
-    /// `buf` must be at least `count * 512` bytes.
     fn read_sectors(&mut self, lba: u64, count: u32, buf: &mut [u8]) -> Result<(), DiskError>;
 }
 
-/// Abstract block write to a disk device.
 pub trait DiskWriter {
-    /// Write `count` sectors starting at `lba` from `buf`.
-    /// `buf` must be at least `count * 512` bytes.
     fn write_sectors(&mut self, lba: u64, count: u32, buf: &[u8]) -> Result<(), DiskError>;
 }
 

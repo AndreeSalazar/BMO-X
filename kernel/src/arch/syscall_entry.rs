@@ -190,13 +190,66 @@ extern "C" fn syscall_handler_rust(
     a4: u64,
 ) -> u64 {
     match nr {
-        // ProcessExit (0x00)
-        0x00 => {
-            // For now, halt the CPU
-            loop { unsafe { core::arch::asm!("hlt"); } }
+        // ─── Procesos ─────────────────────────────────────────────
+        // ProcessExit (0x00) — halt CPU
+        0x00 => loop { unsafe { core::arch::asm!("hlt"); } },
+
+        // ThreadYield (0x03)
+        0x03 => { core::hint::spin_loop(); 0 }
+
+        // ─── Tiempo ───────────────────────────────────────────────
+        // ClockGetTime (0x50): returns rdtsc value
+        0x50 => crate::arch::cpu::rdtsc(),
+
+        // NanoSleep (0x51): a0 = nanoseconds (busy-wait)
+        0x51 => {
+            let target_ns = a0;
+            let target_cycles = (target_ns as u128 * 37) / 10; // ~3.7 GHz
+            let start = crate::arch::cpu::rdtsc();
+            while (crate::arch::cpu::rdtsc() - start) < target_cycles as u64 {
+                core::hint::spin_loop();
+            }
+            0
         }
 
-        // DebugPrint (0xF0): a0 = ptr to UTF-8 string, a1 = length
+        // ─── Framebuffer (compositor Ring 3) ──────────────────────
+        // FbInfo (0x60): no args, returns packed:
+        //   bits  0..31 = width  | bits 32..47 = height | bits 48..63 = stride/4
+        0x60 => {
+            unsafe {
+                let w = crate::boot_info::FB_WIDTH as u64;
+                let h = crate::boot_info::FB_HEIGHT as u64;
+                let s = (crate::boot_info::FB_STRIDE / 1) as u64;
+                w | (h << 32) | ((s & 0xFFFF) << 48)
+            }
+        }
+
+        // FbFill (0x61): a0=x, a1=y, a2=w, a3=h, a4=color (0xAARRGGBB)
+        0x61 => {
+            crate::desktop::fb_fill(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4 as u32);
+            0
+        }
+
+        // FbText (0x62): a0=x, a1=y, a2=ptr_utf8, a3=len, a4=color
+        0x62 => {
+            if a3 > 0 && a3 < 256 {
+                let slice = unsafe {
+                    core::slice::from_raw_parts(a2 as *const u8, a3 as usize)
+                };
+                crate::desktop::fb_text(a0 as u32, a1 as u32, slice, a4 as u32);
+            }
+            0
+        }
+
+        // FbPresent (0x63): no-op (direct framebuffer writes); reserved for future double-buffer flip.
+        0x63 => 0,
+
+        // ─── Input ────────────────────────────────────────────────
+        // KeyPoll (0x70): returns PS/2 scancode or 0 if no key
+        0x70 => crate::desktop::poll_key() as u64,
+
+        // ─── Debug ────────────────────────────────────────────────
+        // DebugPrint (0xF0): a0=ptr_utf8, a1=length → serial out
         0xF0 => {
             if a1 > 0 && a1 < 4096 {
                 let slice = unsafe {
@@ -206,35 +259,10 @@ extern "C" fn syscall_handler_rust(
                     crate::drivers::serial::serial_write(s);
                 }
             }
-            0 // success
-        }
-
-        // ClockGetTime (0x50): returns rdtsc value
-        0x50 => {
-            crate::arch::cpu::rdtsc()
-        }
-
-        // NanoSleep (0x51): a0 = nanoseconds (busy-wait for now)
-        0x51 => {
-            let target_ns = a0;
-            // ~3.7 GHz Ryzen 5 → ~3.7 cycles/ns
-            let target_cycles = (target_ns as u128 * 37) / 10;
-            let start = crate::arch::cpu::rdtsc();
-            while (crate::arch::cpu::rdtsc() - start) < target_cycles as u64 {
-                core::hint::spin_loop();
-            }
-            0
-        }
-
-        // ThreadYield (0x03)
-        0x03 => {
-            core::hint::spin_loop();
             0
         }
 
         // Unknown syscall
-        _ => {
-            u64::MAX // -1 = ENOSYS
-        }
+        _ => u64::MAX,
     }
 }
