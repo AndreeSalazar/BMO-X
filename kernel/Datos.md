@@ -22,6 +22,163 @@
 
 ---
 
+## 📌 SNAPSHOT EJECUTIVO (post-Sesión 16) — léeme antes que nada
+
+### Estado en una línea
+`cargo build` **Finished ✅** · fastgpu intacto · 16 sesiones cerradas · ~259 archivos `.rs` nuevos · 17 sub-sistemas modularizados.
+
+### Sub-sistemas del kernel — estado actual de cada uno
+
+| Carpeta `src/` | Sub-carpetas | Archivos `.rs` | Estado | Sesión |
+|---|---|---|---|---|
+| `barex/abi/` | **19** | ~50 | ⭐ BMO ABI completo + 7 multi-lenguaje | 3,4,5,7 |
+| `barex/abi/runtime.rs` | (top) | 1 | ⭐ BmoRuntime agregador | 8 |
+| `barex/graphics/` | **13** | 17 | Modularizado, 1 carpeta por objeto | 13 |
+| `barex/audio/` | **10** | 39 | Modularizado zero-bloat | 11 |
+| `barex/input/` | **10** | 39 | Modularizado zero-bloat | 12 |
+| `barex/net/` | **9** | 32 | Modularizado zero-bloat | 10 |
+| `barex/shader/` | **9** | 9 | Fachada (delega a naga/vkd3d/dxvk) | 14 |
+| `barex/compat/` | 1 | 1 | ⏳ pendiente modularización | — |
+| `barex/bmoasm/` ⭐ | **7** | 15 | BMO Simple v2 — lexer DFA real | 15,16 |
+| `bef/` | 1 + `loader/9` | 18 | BEF format + 5 loaders + BLAKE3 | 5,6,9 |
+| `drivers/usb/` | 1 | 5 | xHCI + HID + Audio Class | 3 |
+| `drivers/gpu/fastgpu/` | **10** | — | ⛔ INTOCABLE (bridge BMO/GSP usuario) | — |
+
+### Estructura completa actual del kernel/src
+
+```
+kernel/src/
+├── main.rs · boot_info.rs · console.rs · fb.rs · font.rs · panic.rs · shell.rs · allocator.rs
+├── arch/ · agent/ · export/ · fs/
+├── sched/ · syscall/ · sandbox/        ← stubs activos
+│
+├── drivers/
+│   ├── mod.rs · pci.rs · serial.rs · nvme.rs · ahci.rs
+│   ├── gpu/fastgpu/                    ⛔ NO TOCAR (bridge BMO/GSP del usuario)
+│   └── usb/                            ✅ {mod, descriptors, xhci, hid, audio_class}
+│
+├── barex/                              ✅ API moderna
+│   ├── mod.rs · _LAYERS.md · _WORK_LOG.md
+│   ├── abi/                            ⭐ BMO ABI (19 sub-carpetas, runtime.rs + _README.md)
+│   │   ├── primitives/  memory/  string/  handle/  status/  calling/
+│   │   ├── async_io/    time/    compat/  sync/    option/   result/
+│   │   ├── type_system/ vtable/  closure/ exception/ reflect/
+│   │   ├── lang_bridge/ marshal/
+│   │   └── runtime.rs                  ← BmoRuntime (agregador único)
+│   │
+│   ├── graphics/                       (13 sub: types, device, queue, cmdlist, pso, rootsig,
+│   │                                    heap, fence, swapchain, buffer, texture, sampler, queryheap)
+│   ├── audio/                          (10 sub: capabilities, format, engine, voice, mixer,
+│   │                                    codec, spatial, effects, route, backend, ring)
+│   ├── input/                          (10 sub: capabilities, system, device, keyboard, mouse,
+│   │                                    headset, gamepad, wheel, hid_raw, keymap, event, ring)
+│   ├── net/                            (9 sub: capabilities, types, socket, quic, tls, http,
+│   │                                    dns, ring, driver, bypass)
+│   ├── shader/                         (9 sub: stage, ir, sass, spirv, dxil, dxbc, loader, cache)
+│   ├── compat/                         (PE detection — pendiente modularización)
+│   └── bmoasm/                         ⭐ BMO Simple v2 (lexer, parser, sema, emit,
+│                                        runtime, builtin, sample)
+│
+└── bef/                                ✅ Formato ejecutable BEF
+    ├── header.rs · sections.rs (20 SectionKind) · imports.rs · exports.rs
+    ├── relocations.rs (3 tipos) · symbols.rs · manifest.rs · signing.rs · tls.rs
+    ├── blake3.rs                       ⭐ BLAKE3 256 nativo no_std
+    └── loader/                         (native, pe, pe_imports, pe_thunks 75 funcs,
+                                         elf, elf_dynamic, elf_thunks 60 funcs,
+                                         meta_sections ← parser 5 secciones meta-genéricas)
+```
+
+### Cómo pensar en cada sub-sistema (mapa mental rápido)
+
+```
+                          ╭───────────────────╮
+                          │   BMO ABI (abi/)  │ ←─ cimiento absoluto
+                          │   BmoRuntime      │    cualquier código nuevo
+                          ╰─────────┬─────────╯    consume estos tipos
+                                    │
+       ┌──────────────┬─────────────┼─────────────┬──────────────┐
+       ▼              ▼             ▼             ▼              ▼
+   graphics/      audio/        input/         net/         shader/
+   (12 obj)      (engine+      (HID +        (TCP/UDP/    (delegate
+   →fastgpu      mixer→        keymap→       QUIC/TLS13/  naga, vkd3d,
+                 USB AC2)      device)       HTTP3, ring) dxvk)
+                                                              │
+                                                              ▼
+                                                          drivers/gpu/fastgpu ⛔
+
+                          ╭───────────────────╮
+                          │   bef/  (formato) │ ←─ unifica BEF nativo,
+                          │   loader/         │    PE Windows, ELF Linux
+                          ╰─────────┬─────────╯
+                                    │
+                                    ▼
+                          ╭───────────────────╮
+                          │  bmoasm/ (BMO     │ ←─ lenguaje propio,
+                          │  Simple)          │    keywords español,
+                          ╰───────────────────╯    bytes precisos x86-64
+```
+
+### BMO ABI — 19 sub-carpetas en `barex/abi/`
+
+**Cimiento (12):** `primitives memory string handle status calling async_io
+time compat sync option result`.
+
+**Multi-lenguaje genérico (7):** `type_system vtable closure exception reflect
+lang_bridge marshal`. Permite que cualquier lenguaje futuro (Rust, C++, Java,
+Swift, Python, Go, OCaml, Lua, Haskell, BEAM, Mojo, Carbon, Vale…) se integre
+nativamente sin C ABI: registra `LangDescriptor` + opcional marshaller → corre.
+
+**Agregador:** `runtime.rs` con `BmoRuntime` (reemplaza el patrón C de globals
+dispersos `__cxa_*`/`__libc_*`/`KeServiceDescriptorTable`).
+
+### BEF — 20 `SectionKind` (15 base + 5 meta-genéricas Sesión 8)
+
+`Code RoData Data Bss Imports Exports Relocs Symbols Manifest Shaders
+Resources Tls Unwind Debug Signature` **`TypeMap VTables LangBridge Reflect
+Closures`**. El parser `bef/loader/meta_sections.rs` ya los materializa en un
+`BmoRuntime` real.
+
+### BMO Simple (`bmoasm/`) — estado actual
+
+- **Lexer DFA real** (sesión 16): reconoce identifiers, decimal/hex/binary
+  literals con `_` separators, comentarios `// ... \n`, lookahead 2-char `->`,
+  delimitadores. Tabla `KEYWORDS` con **89 entries** greedy.
+- **95 keywords** en `TokenKind`. Categorías: base (10), tipos (5), ops (16),
+  control de flujo (15), OOP fase 2 (8), UI fase 3 (3), intrínsecos CPU (12),
+  memoria/consistencia (8), vectorización (3), directivas (6), CPU flags (6),
+  léxico (13).
+- **12 intrínsecos** con **bytes exactos** (`pausa`→`F3 90`, `cpuid`→`0F A2`,
+  `mfence`→`0F AE F0`, `syscall`→`0F 05`, etc). `align_nops(N)` con multi-byte
+  NOPs recomendados Intel.
+- **5 programas `.bmo`** de muestra en `sample/`: EXIT_ZERO, SPIN_LOCK
+  (atomico+pausa+cuando zf), MEDIR_CICLOS (rdtsc), TABLA_SALTO (match+caso),
+  ALIGN_FUNCION (paralelo+para+cerca).
+- **Emit encoder operativo**: `mov_reg_imm64` (REX.W/REX.B), `ret`, `syscall`,
+  `nop`, `emit_raw`. Calling convention BMO: 7 GPR (`RDI RSI RDX R10 R8 R9
+  RAX_extra`) en `BMO_ARG_REGS`.
+- **Pendiente**: parser real (S17, ~300 líneas), sema real (S18), codegen
+  full AST→x86 (S19), OOP (`tipo`/`impl`/`nuevo`) (S20), UI (`ventana`/
+  `evento`/`dibuja`) (S21).
+
+### Reglas críticas (recordatorio rápido)
+
+1. ⛔ **NO TOCAR `drivers/gpu/fastgpu/`** (bridge BMO/GSP del usuario).
+2. ✅ `cargo build` debe terminar `Finished`.
+3. ✅ Funciones no impl → `Err(BxError::NotImplemented)` (nunca panic).
+4. ✅ Cada módulo nuevo: `#![allow(dead_code)]` mientras esté en stub.
+5. ✅ Nuevo código → **BMO ABI**, nunca C ABI.
+6. ✅ Specs en `combo_Window_Extractor/MAPA de Window/` sincronizadas en FastOS y SigDead.
+
+### Top-5 pendientes prioritarios (post-S16)
+
+1. **BMO Simple S17** — Parser recursive-descent operativo (~300 líneas).
+2. **`barex/compat/`** — única carpeta `barex/*` aún monolítica.
+3. **`arch::x86_64::tsc::read_ns()`** — hace vivir a `BmoInstant::now()`.
+4. **Pipeline loader BEF nativo** — wirear relocs+imports+TLS+sandbox tras meta_sections.
+5. **`xhci::probe()`** real — para que poll HID rellene `barex::input::ring`.
+
+---
+
 ## 🛡️ REGLAS INMUTABLES (no romper nunca)
 
 1. **NO TOCAR `kernel/src/drivers/gpu/fastgpu/`** — el usuario está construyendo el bridge **BMO/GSP** ahí. Cualquier modificación rompe su trabajo. La integración con BareX se hará cuando él lo indique.
@@ -590,21 +747,41 @@ Shaders, Resources, Tls, Unwind, Debug, Signature,
 
 ## 🔜 Pendientes priorizados
 
+### Núcleo (legacy del roadmap original)
 1. **Bridge BMO/GSP** — lo lleva el usuario en `drivers/gpu/fastgpu/`. NO TOCAR.
 2. Conectar `barex::graphics::BxDevice::primary()` al bridge cuando esté listo.
 3. Implementar `arch::x86_64::tsc::read_ns()` para que `BmoInstant::now()` cobre vida.
-4. **Pipeline completo del loader BEF nativo** (relocs + imports + tls + sandbox).
+4. **Pipeline completo del loader BEF nativo** (relocs + imports + tls + sandbox tras `meta_sections`).
 5. **Wirear thunks PE al IAT real** — escribir direcciones de `pe_thunks::THUNK_TABLE` en runtime.
 6. **Wirear thunks ELF al GOT real** — usar `elf_dynamic::DynamicInfo` para mapear DT_NEEDED → resolver.
 7. Localizar `IMAGE_DIRECTORY_ENTRY_IMPORT` real en PE (actualmente usa heurística).
 8. `xhci::probe()` real — detectar host controller del chipset 500-series.
-9. Loop de poll HID que rellene la cola de `barex::input`.
+9. Loop de poll HID que rellene la cola de `barex::input::ring`.
 10. Stream isoch OUT al headset Redragon vía `usb::audio_class::submit_pcm`.
 11. Dispatcher real en `syscall::dispatch` con BMO ABI extendido.
 12. Implementar `tls::setup_for_thread()` con `WRMSR IA32_FS_BASE`.
 13. Parser TOML real para `bef::manifest::Manifest`.
 14. Ed25519 signature verification en `bef::signing` (BLAKE3 ya hecho).
 15. Test del BLAKE3 contra el vector oficial: `blake3("abc")` debe dar `6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85`.
+
+### BMO Simple (lenguaje propio — sesiones 17+)
+16. **S17 Parser recursive-descent** operativo (~300 líneas) → parsea los 5 `sample/*` a `Ast` real.
+17. **S18 Sema** completo (scopes, type-check, resolución de identificadores).
+18. **S19 Codegen** AST→x86-64 (extender `Emitter` con jumps + call + ALU completas).
+19. **S20 OOP** — implementar `tipo`/`impl`/`nuevo` (tokens listos, AST por extender).
+20. **S21 UI** — `ventana`/`evento`/`dibuja` delegando a BareX graphics/input.
+21. **S22+ Self-hosting** — traducir el lexer + emit Rust a BMO Simple y autohospedar.
+
+### Modularizaciones restantes
+22. **`barex/compat/`** — única carpeta `barex/*` aún monolítica. Modularizar como
+    `detect/`, `fake_dll/`, `thunks/`, `lookup/` siguiendo el patrón fachada.
+
+### Conexiones BMO Runtime ↔ Kernel
+23. Llamar `meta_sections::build_runtime()` desde `native::load` y guardar el
+    `BmoRuntime` resultante en la tabla de procesos (cuando exista).
+24. Exponer `BmoRuntime::stats()` vía syscall para que el shell lo imprima.
+25. Wirear `lang_bridge::LangRegistry::EMPTY` → registro real al boot con al menos
+    `LANG_RUST` registrado por defecto.
 
 ---
 
