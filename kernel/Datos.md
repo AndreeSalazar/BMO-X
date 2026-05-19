@@ -863,8 +863,125 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 19 (Mouse + Beep + Blit + RAMdisk + ROADMAP_GAMES.md).
+**Última actualización:** Sesión 20 (Escritorio Win/Mac/Linux real — render Ring 0 + Ring 3 trivial).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
+
+---
+
+## Sesión 20 — Escritorio típico Win/Mac/Linux completo
+
+### Cambio arquitectónico clave
+
+Antes (S18-19): Ring 3 ensamblaba ~520 bytes con `bmoasm::Emitter` y hacía cada `fbfill`/`fbtext` por separado. Difícil de iterar y limitado a primitivas planas.
+
+Después (S20): **el render entero vive en Ring 0** (Rust completo, fácil de mejorar). Ring 3 es un loop minúsculo (~50 bytes) que sólo orquesta:
+
+```bmo (pseudo, generado por bmoasm)
+beep 660 80                       ; bienvenida
+mientras 1 {
+    syscall DesktopFrame 0x65     ; Ring 0 pinta todo
+    syscall NanoSleep   0x51 16ms ; ~60 FPS
+    syscall KeyPoll     0x70
+    si rax == ESC: salir
+}
+```
+
+### Nuevo syscall
+
+| Nº     | Nombre          | Args | Retorno                          |
+|--------|-----------------|------|----------------------------------|
+| `0x65` | `DesktopFrame`  | —    | frame counter (u64)              |
+
+### Módulos nuevos en `desktop/`
+
+- **`state.rs`** — `DesktopState` global: `frame`, `clock_start_tsc`, `last_tsc`, `fps_avg` (EMA suave), `mouse_x/y/buttons`, `dock_hover`, `dock_active`. Función `tick()` polea ratón, calcula FPS instantáneo desde `rdtsc`. `clock_hms()` deriva HH:MM:SS desde TSC + offset 09:00:00.
+
+- **`render.rs`** — Renderer Ring 0 completo (~330 líneas) que pinta cada frame:
+  - **Wallpaper**: gradiente vertical azul → púrpura (estilo macOS Sequoia) + 60 "estrellas" pseudoaleatorias en la mitad superior basadas en el frame counter.
+  - **Status bar** (top, 28 px estilo macOS): "BMO · Archivo Editar Ver Ventana Ayuda" a la izquierda; "fps N | frame K" + reloj "HH:MM:SS" a la derecha.
+  - **3 ventanas** con: `fill_rounded_rect` (radio 14), sombra offset (+6,+8), borde 1px, titlebar 32 px de color azul Win11 (activa) o gris (inactiva), 3 "traffic lights" macOS (rojo/amarillo/verde), título centrado:
+    - *BMO Terminal* (activa) — listado de comandos del shell.
+    - *Datos.md viewer* — snapshot del estado de FastOS.
+    - *Compositor Info* — muestra FPS + Frame en vivo + descripción del renderer.
+  - **Dock** (bottom, centrado): 7 iconos cuadrados redondeados con paleta diferenciada (Files/Chat/Games/Web/Settings/Search/Trash). Hover dibuja halo `DOCK_HOVER` detrás del icono. Click izquierdo fija `dock_active` → punto blanco bajo el icono. Tooltip en español al pasar el cursor.
+  - **Cursor**: flecha 12×17 estilo Windows clásico con sombra negra + relleno blanco, dibujada desde un bitmap ASCII inline en el código.
+
+### `desktop/mod.rs`
+
+- Re-organizado: re-exports + `pub mod state; pub mod render; pub mod compositor;`.
+- Helpers `fb_fill`/`fb_text`/`fb_blit`/`poll_key`/`poll_mouse`/`beep` siguen siendo utilidades públicas — `render::render_frame()` y los syscalls 0x60-0x64 los reutilizan.
+
+### `desktop/compositor.rs` — colapsado a 100 líneas
+
+Ahora sólo emite ~50 bytes Ring 3 vía `bmoasm::Emitter`:
+- `sys2(SYS_BEEP, 660, 80)` — bienvenida sonora
+- loop: `sys0(DesktopFrame)` · `sys1(NanoSleep, 16M)` · `sys0(KeyPoll)` · `cmp + jne loop` · `sys0(ProcessExit)` · `jmp rel32 frame_start`
+
+El payload final es prácticamente el más pequeño posible para un loop ESC-aware.
+
+### Comandos shell
+
+`fastos> desktop` lanza el escritorio real. ESC sale.
+
+### Estructura post-S20
+
+```
+kernel/src/
+├── desktop/
+│   ├── mod.rs           (fb_fill/text/blit, poll_key/mouse, beep)
+│   ├── state.rs         ⭐ NUEVO  (DesktopState, FPS, clock, mouse)
+│   ├── render.rs        ⭐ NUEVO  (render_frame: wallpaper, status, 3 windows, dock, cursor)
+│   └── compositor.rs    (~100 líneas — Ring 3 loop trivial vía bmoasm)
+├── fs/ramdisk.rs        (S19 — assets para juegos)
+├── arch/syscall_entry.rs (13 syscalls: + 0x65 DesktopFrame)
+└── (resto intacto)
+```
+
+### Verificación
+
+`cargo build` → Finished ✅ debug y release. Binario release sigue rondando los **380 KB**.
+
+### Diagrama del flujo final
+
+```
+╭──── Ring 3 (50 bytes) ────╮      ╭──── Ring 0 ──────────────╮
+│ beep 660 80               │      │                          │
+│ loop {                    │ sys  │  desktop::state::tick()  │
+│   sys DesktopFrame 0x65 ──┼──────┤   → mouse poll           │
+│   sys NanoSleep 16ms      │      │   → FPS EMA              │
+│   sys KeyPoll → ESC?      │      │   → clock_hms            │
+│   ESC: ProcessExit        │      │                          │
+│ }                         │      │  desktop::render::frame  │
+╰───────────────────────────╯      │   ├─ wallpaper gradient  │
+                                   │   ├─ status bar macOS    │
+                                   │   ├─ 3 ventanas (rounded │
+                                   │   │   + sombra + traffic │
+                                   │   │   lights + título)   │
+                                   │   ├─ dock 7 iconos       │
+                                   │   │   (hover/click/tip)  │
+                                   │   └─ cursor flecha 12×17 │
+                                   ╰──────────────────────────╯
+```
+
+### Lo que YA hace este escritorio (esencial Win/Mac/Linux)
+
+- ✅ Wallpaper bonito (no solo color plano)
+- ✅ Status bar superior con reloj **en vivo** + FPS + nombre del SO + menús
+- ✅ Múltiples ventanas con chrome moderno (rounded + shadow + traffic lights)
+- ✅ Dock inferior centrado con iconos
+- ✅ Hover state (halo detrás del icono apuntado)
+- ✅ Click state (icono activo marcado con punto)
+- ✅ Tooltips al pasar el cursor
+- ✅ Cursor de ratón estilo Windows clásico
+- ✅ ~60 FPS real medido en vivo
+
+### Pendientes lógicos (no esenciales — para próximas sesiones)
+
+- Window dragging (necesita estado de drag en `DesktopState` + detección de mouse-down en titlebar).
+- Click en traffic light rojo → cerrar ventana (necesita lista dinámica de ventanas en lugar de hardcode).
+- Start menu/launcher al clickear el primer icono del dock.
+- Conectar dock icons al `sched::user_init::spawn_*` para lanzar apps Ring 3 reales.
+- IRQ-driven mouse/keyboard (hoy es polling; conlleva habilitar `sti` y APIC).
 
 ---
 

@@ -250,6 +250,14 @@ extern "C" fn syscall_handler_rust(
             0
         }
 
+        // DesktopFrame (0x65): renderiza un frame completo del escritorio
+        //   (wallpaper + status bar + ventanas + dock + cursor) en Ring 0.
+        //   Sin args. Devuelve frame counter.
+        0x65 => {
+            crate::desktop::render::render_frame();
+            unsafe { crate::desktop::state::STATE.frame }
+        }
+
         // ─── Input ────────────────────────────────────────────────
         // KeyPoll (0x70): returns PS/2 scancode or 0 if no key
         0x70 => crate::desktop::poll_key() as u64,
