@@ -244,9 +244,35 @@ extern "C" fn syscall_handler_rust(
         // FbPresent (0x63): no-op (direct framebuffer writes); reserved for future double-buffer flip.
         0x63 => 0,
 
+        // FbBlit (0x64): a0=x, a1=y, a2=w, a3=h, a4=src_ptr (XRGB-8888 raster)
+        0x64 => {
+            crate::desktop::fb_blit(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4);
+            0
+        }
+
         // ─── Input ────────────────────────────────────────────────
         // KeyPoll (0x70): returns PS/2 scancode or 0 if no key
         0x70 => crate::desktop::poll_key() as u64,
+
+        // MousePoll (0x71): returns x:i16 | y:i16<<16 | buttons<<32
+        0x71 => crate::desktop::poll_mouse(),
+
+        // ─── Sonido ───────────────────────────────────────────────
+        // Beep (0x80): a0=freq_hz, a1=duration_ms
+        0x80 => {
+            crate::desktop::beep(a0 as u32, a1 as u32);
+            0
+        }
+
+        // ─── Filesystem (RAMdisk) ─────────────────────────────────
+        // FileOpen (0x20): a0=name_ptr, a1=name_len → fd or u64::MAX
+        0x20 => crate::fs::ramdisk::open(a0, a1),
+        // FileRead (0x21): a0=fd, a1=ptr, a2=len → bytes read
+        0x21 => crate::fs::ramdisk::read(a0, a1, a2),
+        // FileClose (0x23): a0=fd → 0 or u64::MAX
+        0x23 => crate::fs::ramdisk::close(a0),
+        // FileSize (0x25): a0=fd → bytes total
+        0x25 => crate::fs::ramdisk::size(a0),
 
         // ─── Debug ────────────────────────────────────────────────
         // DebugPrint (0xF0): a0=ptr_utf8, a1=length → serial out

@@ -863,8 +863,64 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 18 (Kernel slim + Compositor Ring 3 con bmoasm + 5 syscalls nuevos).
+**Última actualización:** Sesión 19 (Mouse + Beep + Blit + RAMdisk + ROADMAP_GAMES.md).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
+
+---
+
+## Sesión 19 — Mouse, sonido, blit, RAMdisk, file I/O (camino a juegos)
+
+### Nuevos syscalls BMO
+
+| Nº     | Nombre        | Args (BMO ABI)                            | Retorno                          |
+|--------|---------------|-------------------------------------------|----------------------------------|
+| `0x64` | `FbBlit`      | a0=x · a1=y · a2=w · a3=h · a4=src_ptr    | 0 (raster XRGB-8888)             |
+| `0x71` | `MousePoll`   | —                                         | `x | (y<<16) | (buttons<<32)`    |
+| `0x80` | `Beep`        | a0=freq_hz · a1=duration_ms               | 0 (PC speaker PIT canal 2)       |
+| `0x20` | `FileOpen`    | a0=name_ptr · a1=name_len                 | `fd` o `u64::MAX`                |
+| `0x21` | `FileRead`    | a0=fd · a1=ptr · a2=len                   | bytes leídos                     |
+| `0x23` | `FileClose`   | a0=fd                                     | 0 o `u64::MAX`                   |
+| `0x25` | `FileSize`    | a0=fd                                     | bytes totales                    |
+
+### Módulos nuevos
+
+- **`src/fs/ramdisk.rs`** — tabla `RAMDISK_FILES` con archivos embebidos via `include_bytes!`. Hospeda assets de juegos (WADs, sprites, mapas). Hoy contiene un `bmo:readme` de autotest.
+- **`src/desktop/mod.rs`** — extendido con `fb_blit`, `poll_mouse` (driver PS/2 completo con secuencia de inicialización 0xA8/0x60/0xF4 + parsing de paquetes 3-byte + acumulador X/Y clamped a pantalla), `beep` (PIT canal 2 + puerto 0x61 + busy-wait via rdtsc).
+
+### Compositor mejorado
+
+- Beep de bienvenida (440 Hz, 60 ms) al lanzar el escritorio.
+- Cursor de ratón blanco 12×12 dibujado en cada frame consultando `MousePoll`. La aritmética de desempaquetado (and/shr en rdi/rsi/r12) se emite con `Emitter::emit_raw` porque BMO Simple S15 aún no expone esos opcodes.
+
+### `ROADMAP_GAMES.md` (nuevo, raíz del kernel)
+
+Documento honesto con el camino a DOOM y StarCraft:
+
+- 🟢 **YA tenemos**: framebuffer + teclado + ratón + sonido + filesystem + reloj → suficiente para juegos nativos BMO (Snake, Tetris, Pong, Pacman) en 1-2 sesiones cada uno.
+- 🟡 **DOOM (4-6 sesiones)**: portar Chocolate Doom Rust + crt0 BMO (malloc/free/fopen/printf) + completar `bef::loader::native` + WAD en RAMdisk.
+- 🔴 **StarCraft (30+ sesiones)**: PE32 loader completo + DirectDraw/DirectSound/DirectInput → BareX bridges + 400+ funciones Win32 + driver SCSI CD-ROM. Alternativa realista: portar la lógica (estilo OpenRA) en vez de devorar el .exe.
+- Sesión 20 sugerida: cerrar el ciclo "compilar BEF → RAMdisk → spawn Ring 3 → Snake nativo BMO".
+
+### Estructura post-S19
+
+```
+kernel/
+├── Cargo.toml            (3 deps: fastos-boot-protocol + volatile + bitflags)
+├── ROADMAP_GAMES.md      ⭐ nuevo
+├── Datos.md
+└── src/
+    ├── main.rs           (145 líneas, boot slim)
+    ├── boot_info.rs      (FB globals)
+    ├── desktop/          ⭐ mod.rs + compositor.rs (+ mouse/blit/beep)
+    ├── fs/               (mod.rs traits + ⭐ ramdisk.rs)
+    ├── sched/user_init.rs (spawn_hello + spawn_desktop)
+    ├── arch/syscall_entry.rs (12 syscalls activos)
+    └── (resto intacto — fastgpu, barex, bef, drivers)
+```
+
+### Verificación
+
+`cargo build` → Finished. Binario release **~380 KB**. Sin warnings nuevos respecto a S18.
 
 ---
 

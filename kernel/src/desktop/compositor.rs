@@ -55,12 +55,15 @@ pub const C_ACCENT_CYAN: u32 = 0xFF56D4DD;
 const SC_ESC: u8 = 0x01;
 
 // ── BMO syscall numbers (must match arch/syscall_entry.rs) ─────────
-const SYS_EXIT:     u64 = 0x00;
-const SYS_NSLEEP:   u64 = 0x51;
-const SYS_FBFILL:   u64 = 0x61;
-const SYS_FBTEXT:   u64 = 0x62;
-const SYS_FBPRES:   u64 = 0x63;
-const SYS_KEYPOLL:  u64 = 0x70;
+const SYS_EXIT:      u64 = 0x00;
+const SYS_NSLEEP:    u64 = 0x51;
+const SYS_FBFILL:    u64 = 0x61;
+const SYS_FBTEXT:    u64 = 0x62;
+const SYS_FBPRES:    u64 = 0x63;
+const SYS_FBBLIT:    u64 = 0x64;
+const SYS_KEYPOLL:   u64 = 0x70;
+const SYS_MOUSEPOLL: u64 = 0x71;
+const SYS_BEEP:      u64 = 0x80;
 
 // ────────────────────────────────────────────────────────────────────
 // Helpers de codificación x86-64 que el `Emitter` aún no tiene
@@ -103,6 +106,13 @@ fn sys0(e: &mut Emitter, nr: u64) {
 fn sys1(e: &mut Emitter, nr: u64, a0: u64) {
     e.mov_reg_imm64(Reg64::Rax, nr);
     e.mov_reg_imm64(Reg64::Rdi, a0);
+    e.syscall();
+}
+
+fn sys2(e: &mut Emitter, nr: u64, a0: u64, a1: u64) {
+    e.mov_reg_imm64(Reg64::Rax, nr);
+    e.mov_reg_imm64(Reg64::Rdi, a0);
+    e.mov_reg_imm64(Reg64::Rsi, a1);
     e.syscall();
 }
 
@@ -157,6 +167,9 @@ const LABELS: &[&[u8]] = &[
 /// (las strings van al final).
 pub fn build_compositor(code_buf: &mut [u8], base_addr: u64) -> (usize, usize) {
     let mut e = Emitter::new();
+
+    // ── Beep de bienvenida (440 Hz, 60 ms) ──────────────────────────
+    sys2(&mut e, SYS_BEEP, 440, 60);
 
     // ── Cabecera de programa: limpia rbx (frame counter) ────────────
     // xor ebx, ebx   31 DB
@@ -236,7 +249,34 @@ pub fn build_compositor(code_buf: &mut [u8], base_addr: u64) -> (usize, usize) {
     // 7) Sleep ~16 ms (60 FPS)
     sys1(&mut e, SYS_NSLEEP, 16_000_000);
 
-    // 8) Poll key
+    // 8) Poll mouse → dibujar cursor en la posición devuelta.
+    //    RAX = x | (y<<16) | (buttons<<32). Extraemos x (low16) e y (mid16)
+    //    con shifts y ands, los movemos a rdi/rsi y llamamos a FbFill 12x12.
+    sys0(&mut e, SYS_MOUSEPOLL);
+    // mov r12, rax            ; preserve packed mouse state
+    e.emit_raw(&[0x49, 0x89, 0xC4]);
+    // mov rdi, r12            ; rdi = packed
+    e.emit_raw(&[0x4C, 0x89, 0xE7]);
+    // and rdi, 0xFFFF         ; rdi = x
+    e.emit_raw(&[0x48, 0x81, 0xE7, 0xFF, 0xFF, 0x00, 0x00]);
+    // mov rsi, r12
+    e.emit_raw(&[0x4C, 0x89, 0xE6]);
+    // shr rsi, 16
+    e.emit_raw(&[0x48, 0xC1, 0xEE, 0x10]);
+    // and rsi, 0xFFFF         ; rsi = y
+    e.emit_raw(&[0x48, 0x81, 0xE6, 0xFF, 0xFF, 0x00, 0x00]);
+    // mov rdx, 12             ; w
+    e.emit_raw(&[0x48, 0xC7, 0xC2, 0x0C, 0x00, 0x00, 0x00]);
+    // mov r10, 12             ; h
+    e.emit_raw(&[0x49, 0xC7, 0xC2, 0x0C, 0x00, 0x00, 0x00]);
+    // mov r8, 0xFFFFFFFF      ; color blanco
+    e.emit_raw(&[0x49, 0xC7, 0xC0, 0xFF, 0xFF, 0xFF, 0xFF]);
+    // mov rax, SYS_FBFILL
+    e.emit_raw(&[0x48, 0xC7, 0xC0, SYS_FBFILL as u8, 0x00, 0x00, 0x00]);
+    // syscall
+    e.syscall();
+
+    // 9) Poll key
     sys0(&mut e, SYS_KEYPOLL);
     cmp_rax_imm32(&mut e, SC_ESC as i32);
     // Si NO es ESC → saltar a `loop_back`.

@@ -1,4 +1,5 @@
-//! `fs` — sólo los traits/error que necesitan los drivers de disco.
+//! `fs` — sólo los traits/error que necesitan los drivers de disco
+//! **y** el RAMdisk con archivos embebidos (assets para juegos Ring 3).
 //!
 //! El antiguo árbol completo (ntfs/walker/gpt + crate `ntfs`/`nt-hive`/`binrw`)
 //! salió del kernel cuando el modo "Spy Agent" se abandonó. Estos shims
@@ -6,6 +7,8 @@
 //! `drivers/gpu/fastgpu/gsp` aún implementan estos traits.
 
 #![allow(dead_code)]
+
+pub mod ramdisk;
 
 pub trait DiskReader {
     fn read_sectors(&mut self, lba: u64, count: u32, buf: &mut [u8]) -> Result<(), DiskError>;
