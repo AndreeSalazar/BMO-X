@@ -15,6 +15,7 @@ use crate::font;
 pub mod compositor;
 pub mod state;
 pub mod render;
+pub mod welcome;
 
 // ────────────────────────────────────────────────────────────────────
 // Framebuffer primitives

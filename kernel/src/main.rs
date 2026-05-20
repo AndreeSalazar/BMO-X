@@ -187,7 +187,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     arch::cpu::sti();
     drivers::serial::serial_write("[FastOS] Interrupts enabled (STI)\n");
 
-    // ── Shell ────────────────────────────────────────────────────────
-    shell::run(&mut con);
-    loop { unsafe { core::arch::asm!("hlt"); } }
+    // ── Welcome screen Ring 0 → escribe (Run) → escritorio ──────────
+    // (El banner de arriba queda 1 frame antes de que welcome pinte
+    // su tarjeta encima; eso da feedback de progreso durante el boot.)
+    drivers::serial::serial_write("[FastOS] launching welcome screen — type 'Run' on the keyboard\n");
+    desktop::welcome::run();
 }

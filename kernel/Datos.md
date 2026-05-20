@@ -863,8 +863,169 @@ Cuando termines una sesión:
 
 ---
 
-**Última actualización:** Sesión 20 (Escritorio Win/Mac/Linux real — render Ring 0 + Ring 3 trivial).
+**Última actualización:** Sesión 21 (Welcome screen "Escribe (Run)" + ventanas drag-and-drop + dock launcher + close button).
 **Estado del kernel:** `cargo build` Finished ✅ — fastgpu intacto.
+
+---
+
+## Sesión 21 — Pantalla de bienvenida + escritorio interactivo
+
+### 1. Welcome screen profesional (`desktop/welcome.rs`)
+
+Nueva pantalla de boot **dibujada directamente en framebuffer** (sin pasar por el console de texto). Layout:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│                    FastOS / BMO  (3× scale)                      │
+│                  Bare Metal Orchestrator (2×)                    │
+│                      v0.9.0 :: Ring 0 + Ring 3                   │
+│  ───────────────────────────────────────────────────              │
+│  [OK]  Ring 0 + Ring 3 activos                                   │
+│  [OK]  13 syscalls BMO operativos                                │
+│  [OK]  Compositor Ring 0 cargado                                 │
+│  [OK]  Mouse PS/2 + Beep PC speaker                              │
+│  [OK]  RAMdisk + FileOpen/Read/Close                             │
+│                                                                  │
+│   Escribe (Run) y pulsa Enter para entrar al escritorio:         │
+│   ┌─────────────────────────────────────────────────┐ ┌────────┐ │
+│   │ > _                                              │ │  RUN   │ │
+│   └─────────────────────────────────────────────────┘ └────────┘ │
+│                                                                  │
+│   FastOS / BMO  ::  Ryzen 5 5600X  ::  RTX 3060  ::  UEFI       │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Características**:
+- Card centrado 980×620 con sombra + esquinas redondeadas (radio 24).
+- Título "FastOS / BMO" en 3× escala (24×48 píxeles por glifo).
+- Subtítulo "Bare Metal Orchestrator" en 2×.
+- 5 items con marca `[OK]` en verde.
+- Prompt box azul cyan con caret parpadeante (toggle cada ~50 ms vía rdtsc).
+- Botón "RUN" a la derecha del prompt — cambia de color cuando el input ya es "run".
+- Beep de 3 notas (C5–E5–G5) al arrancar.
+
+**Comandos aceptados** (case-insensitive):
+- `Run` → beep 880+1320 Hz + `spawn_desktop()`
+- `Hello` → `spawn_hello()`
+- `Reboot` → reset por teclado port 0x64
+- otro → hint amarillo abajo del prompt por ~2 s
+
+**Loop interno**: render → drenar todas las teclas durante 32 ms → decrementar timer hint. Sin perder pulsaciones (drena en bucle).
+
+### 2. Ventanas dinámicas + drag-and-drop + close (`desktop/state.rs`, `desktop/render.rs`)
+
+- `DesktopState` ahora contiene:
+  - `windows: [WinInfo; 8]` con `open`, `x`, `y`, `w`, `h`, `title_id`.
+  - `focus: i32` — índice de la ventana top (se dibuja al final).
+  - `drag_idx`, `drag_dx`, `drag_dy` — estado del arrastre.
+  - `prev_buttons: u8` — edge detection (`mouse_left_pressed/released/held`).
+
+- `state::open_window(title_id)` — si ya existe abierta le da foco; si no la crea en slot libre con cascade +40 px.
+
+- `state::close_window(idx)` — `open=false` + reasigna `focus` a la siguiente ventana abierta.
+
+- `handle_input()` en `render.rs`:
+  1. Si `drag_idx ≥ 0` y botón izquierdo sigue presionado → mueve ventana clamped a pantalla (titlebar nunca sale arriba de y=28).
+  2. Calcula `dock_hover` cada frame.
+  3. Si **click edge** sobre dock → `open_window(DOCK_TO_TITLE[i])`.
+  4. Si **click** sobre traffic light rojo (radio 9 píxeles desde su centro) → `close_window(i)`.
+  5. Si **click** sobre titlebar (sin tocar los 3 traffic lights) → setea foco + inicia drag.
+  6. Si **click** sobre cuerpo de la ventana → sólo cambia foco.
+
+- `z_order_top_first()` → hit-testing va de focus → resto en orden ascendente.
+
+- Render: ventanas no-focus primero, focus encima.
+
+### 3. Catálogo de 7 ventanas predefinidas (`render.rs::TITLES`)
+
+| title_id | Título            | Contenido |
+|----------|-------------------|-----------|
+| 0        | BMO Terminal      | listado de comandos `bmo > help` |
+| 1        | Datos.md viewer   | snapshot del estado FastOS |
+| 2        | Juegos            | Snake/Tetris/Pong/DOOM (pendientes) |
+| 3        | Web               | barex::net listo (TCP/UDP/QUIC/TLS13) |
+| 4        | Ajustes           | hardware specs |
+| 5        | Compositor Info   | FPS + Frame en vivo |
+| 6        | Papelera          | (vacía) |
+
+Dock-slot i abre title_id i. Si la ventana ya está abierta, el dock le da foco. Punto blanco bajo el icono indica "abierta".
+
+### 4. Cambio en `main.rs`
+
+Sin tocar el código añadido por el agente concurrente (GOP, APIC, banner), sólo reemplacé la última línea:
+
+```rust
+- shell::run(&mut con);
+- loop { hlt }
++ desktop::welcome::run();           // noreturn
+```
+
+### 5. Verificación
+
+`cargo build` → Finished ✅ debug y release.
+
+### Flujo del usuario post-S21
+
+```
+Boot UEFI
+   ↓
+kernel_main_real
+   ├─ serial · GDT · IDT · syscall · ACPI · PCI · page_alloc · GOP · APIC · STI · banner
+   ↓
+desktop::welcome::run()
+   ├─ beep arpegio C5-E5-G5
+   ├─ pinta card profesional centrada
+   ├─ caret parpadeante, espera "Run"
+   ↓ usuario escribe Run + Enter
+   ├─ beep confirmación 880+1320 Hz
+   ↓
+sched::user_init::spawn_desktop()
+   ├─ compositor Ring 3 (~50 bytes vía bmoasm)
+   ↓ iretq
+Ring 3 loop:
+   syscall DesktopFrame 0x65
+      ├─ tick: poll mouse, FPS, edge detect
+      ├─ handle_input: drag/close/dock-launch
+      ├─ wallpaper · status bar · ventanas (focus on top) · dock · cursor
+   syscall NanoSleep 16ms
+   syscall KeyPoll → ESC?
+   ├─ no → loop
+   └─ sí → ProcessExit (halt)
+```
+
+### Estructura post-S21
+
+```
+kernel/src/desktop/
+├── mod.rs           (fb_fill/text/blit, poll_key/mouse, beep)
+├── state.rs         (DesktopState + WinInfo + open/close_window + edge detect)
+├── render.rs        (handle_input + render_frame + 7 ventanas catálogo)
+├── welcome.rs       ⭐ NUEVO  (card "Escribe (Run)" + loop input)
+└── compositor.rs    (~100 líneas — Ring 3 loop trivial)
+```
+
+### Lo que ahora hace el escritorio (Win/Mac/Linux esencial completo)
+
+- ✅ Wallpaper en gradiente
+- ✅ Status bar superior + reloj en vivo + FPS + menús
+- ✅ Múltiples ventanas con chrome moderno (rounded + shadow + traffic lights)
+- ✅ Dock estilo macOS centrado abajo, 7 iconos + hover + tooltip
+- ✅ **Click en dock → abre/da foco a la ventana correspondiente** ⭐
+- ✅ **Click en traffic light rojo → cierra la ventana** ⭐
+- ✅ **Click+drag en titlebar → mueve la ventana** ⭐
+- ✅ **Focus management** — la ventana clickeada va arriba ⭐
+- ✅ Cursor flecha 12×17
+- ✅ ~60 FPS reales
+- ✅ **Welcome screen profesional con prompt "Escribe (Run)"** ⭐
+
+### Pendientes lógicos (próximas sesiones, no esenciales)
+
+- Detectar Shift/Caps para letras mayúsculas en el welcome (hoy todo en minúsculas).
+- Bytes-to-arrow para teclas dir en welcome (hoy sólo letras/Enter/Backspace).
+- Resize de ventanas (esquina inferior derecha).
+- Doble-click en titlebar → maximizar/restaurar.
+- Conectar dock icon "Juegos" al loader BEF cuando Snake/Tetris estén listos.
 
 ---
 
