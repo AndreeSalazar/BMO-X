@@ -207,14 +207,10 @@ fn fmt_hms(buf: &mut [u8; 8], h: u8, m: u8, s: u8) -> &str {
 // ── Wallpaper ──────────────────────────────────────────────────────
 
 fn draw_wallpaper(fb: &Framebuffer) {
+    // Wallpaper liso: gradiente vertical sólido. Antes había un loop "ghost"
+    // que pintaba 60 pseudo-estrellas redibujadas en posiciones distintas
+    // cada 60 frames — provocaba parpadeo aleatorio sin sentido.
     fb.gradient_v(0, 0, fb.width, fb.height, palette::WALL_TOP, palette::WALL_BOT);
-    let frame = unsafe { state::STATE.frame };
-    for i in 0..60usize {
-        let pseudo = (i.wrapping_mul(73) ^ (frame as usize / 60).wrapping_mul(17)) as u32;
-        let x = (pseudo as usize) % fb.width;
-        let y = ((pseudo >> 8) as usize) % (fb.height / 2);
-        fb.put_pixel(x, y, 0xFFCCDDFF);
-    }
 }
 
 // ── Status bar ─────────────────────────────────────────────────────
@@ -234,7 +230,9 @@ fn draw_status_bar(fb: &Framebuffer) {
     let mut fbuf = [0u8; 48];
     fbuf[0..4].copy_from_slice(b"fps ");
     let mut p = 4;
-    p += fmt_u64_into(&mut fbuf[p..], st.fps_avg as u64);
+    // Usamos `fps_display` (snapshotted cada 30 frames) en vez de `fps_avg`
+    // para que el número no parpadee letra a letra cada frame.
+    p += fmt_u64_into(&mut fbuf[p..], st.fps_display as u64);
     fbuf[p] = b' '; p += 1; fbuf[p] = b'|'; p += 1; fbuf[p] = b' '; p += 1;
     p += fmt_u64_into(&mut fbuf[p..], st.frame);
     let fps_str = &fbuf[..p];
@@ -274,7 +272,7 @@ fn draw_window(fb: &Framebuffer, w: &WinInfo, active: bool) {
     let st = unsafe { &state::STATE };
     let mut buf1 = [0u8; 48];
     let mut buf2 = [0u8; 48];
-    let lines = content_for(w.title_id, st.fps_avg, st.frame, &mut buf1, &mut buf2);
+    let lines = content_for(w.title_id, st.fps_display, st.frame, &mut buf1, &mut buf2);
     let mut cy = y + 48;
     for (line, color) in lines.iter() {
         if cy + 16 > y + wh { break; }

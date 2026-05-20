@@ -19,6 +19,10 @@ pub const DOCK_SLOTS: usize = 7;
 /// Capacidad de la tabla de ventanas.
 pub const MAX_WIN: usize = 8;
 
+/// Cada cuántos frames refrescamos el FPS mostrado. A ~60 fps son ~0.5 s.
+/// Evita el parpadeo del número en la status bar.
+pub const FPS_DISPLAY_PERIOD: u64 = 30;
+
 /// Una ventana dinámica.
 #[derive(Clone, Copy)]
 pub struct WinInfo {
@@ -42,7 +46,11 @@ pub struct DesktopState {
     pub frame: u64,
     pub clock_start_tsc: u64,
     pub last_tsc: u64,
+    /// EMA interno (alto detalle) — se actualiza cada frame.
     pub fps_avg: u32,
+    /// Valor estable que muestra la status bar — se "engancha" cada
+    /// `FPS_DISPLAY_PERIOD` frames a `fps_avg` para evitar parpadeo.
+    pub fps_display: u32,
 
     pub mouse_x: i32,
     pub mouse_y: i32,
@@ -74,6 +82,7 @@ impl DesktopState {
             clock_start_tsc: 0,
             last_tsc: 0,
             fps_avg: 60,
+            fps_display: 60,
             mouse_x: 0,
             mouse_y: 0,
             mouse_buttons: 0,
@@ -179,8 +188,18 @@ pub fn tick() {
         let now = cpu::rdtsc();
         let dt = now.saturating_sub(STATE.last_tsc).max(1);
         STATE.last_tsc = now;
-        let instant_fps = (CYCLES_PER_SEC / dt) as u32;
-        STATE.fps_avg = (STATE.fps_avg as u64 * 9 / 10 + instant_fps as u64 / 10) as u32;
+        // Clamp del FPS instantáneo a [1, 240] para que un dt anómalo (p.e.
+        // primer frame, o jitter del scheduler) no envenene el EMA.
+        let instant_fps = ((CYCLES_PER_SEC / dt) as u32).clamp(1, 240);
+        // EMA muy suave (32 frames de inercia): nuevo = old*31/32 + inst*1/32.
+        STATE.fps_avg =
+            ((STATE.fps_avg as u64 * 31 + instant_fps as u64) / 32) as u32;
+
+        // El número mostrado sólo se "engancha" cada FPS_DISPLAY_PERIOD frames,
+        // así no parpadea en pantalla.
+        if STATE.frame % FPS_DISPLAY_PERIOD == 0 {
+            STATE.fps_display = STATE.fps_avg;
+        }
     }
 }
 

@@ -67,29 +67,106 @@ static mut INPUT_LEN: usize = 0;
 static mut HINT_TIMER: u32 = 0;        // frames mostrando hint
 static mut HINT_MSG: &[u8] = b"";
 
-// ── Mapa scancode → ASCII (PS/2 Set 1, minúsculas) ─────────────────
+// ── Modificadores de teclado ───────────────────────────────────────
+static mut KBD_LSHIFT: bool = false;
+static mut KBD_RSHIFT: bool = false;
+static mut KBD_CAPS:   bool = false;
 
-fn scancode_to_ascii(sc: u8) -> Option<u8> {
+#[inline]
+fn shift_held() -> bool { unsafe { KBD_LSHIFT || KBD_RSHIFT } }
+
+#[inline]
+fn caps_on() -> bool { unsafe { KBD_CAPS } }
+
+/// Letras: si `shift XOR caps`, mayúscula. Otros símbolos: shift selecciona el
+/// glifo superior. Devuelve `None` para teclas sin texto.
+fn translate_scancode(sc: u8) -> Option<u8> {
+    // Base (sin shift) — PS/2 Set 1 US-ASCII estándar.
+    let (base, shifted): (u8, u8) = match sc {
+        0x29 => (b'`',  b'~'),
+        0x02 => (b'1',  b'!'),
+        0x03 => (b'2',  b'@'),
+        0x04 => (b'3',  b'#'),
+        0x05 => (b'4',  b'$'),
+        0x06 => (b'5',  b'%'),
+        0x07 => (b'6',  b'^'),
+        0x08 => (b'7',  b'&'),
+        0x09 => (b'8',  b'*'),
+        0x0A => (b'9',  b'('),
+        0x0B => (b'0',  b')'),
+        0x0C => (b'-',  b'_'),
+        0x0D => (b'=',  b'+'),
+        0x0F => (b'\t', b'\t'),
+        0x10 => (b'q',  b'Q'),
+        0x11 => (b'w',  b'W'),
+        0x12 => (b'e',  b'E'),
+        0x13 => (b'r',  b'R'),
+        0x14 => (b't',  b'T'),
+        0x15 => (b'y',  b'Y'),
+        0x16 => (b'u',  b'U'),
+        0x17 => (b'i',  b'I'),
+        0x18 => (b'o',  b'O'),
+        0x19 => (b'p',  b'P'),
+        0x1A => (b'[',  b'{'),
+        0x1B => (b']',  b'}'),
+        0x1E => (b'a',  b'A'),
+        0x1F => (b's',  b'S'),
+        0x20 => (b'd',  b'D'),
+        0x21 => (b'f',  b'F'),
+        0x22 => (b'g',  b'G'),
+        0x23 => (b'h',  b'H'),
+        0x24 => (b'j',  b'J'),
+        0x25 => (b'k',  b'K'),
+        0x26 => (b'l',  b'L'),
+        0x27 => (b';',  b':'),
+        0x28 => (b'\'', b'"'),
+        0x2B => (b'\\', b'|'),
+        0x2C => (b'z',  b'Z'),
+        0x2D => (b'x',  b'X'),
+        0x2E => (b'c',  b'C'),
+        0x2F => (b'v',  b'V'),
+        0x30 => (b'b',  b'B'),
+        0x31 => (b'n',  b'N'),
+        0x32 => (b'm',  b'M'),
+        0x33 => (b',',  b'<'),
+        0x34 => (b'.',  b'>'),
+        0x35 => (b'/',  b'?'),
+        0x39 => (b' ',  b' '),
+        0x1C => (b'\n', b'\n'),
+        0x0E => (8,     8),
+        _ => return None,
+    };
+
+    let is_letter = base.is_ascii_lowercase();
+    let upper = if is_letter {
+        // Letras: shift XOR caps → mayúscula.
+        shift_held() ^ caps_on()
+    } else {
+        shift_held()
+    };
+    Some(if upper { shifted } else { base })
+}
+
+/// Procesa un scancode crudo y, si es modifier, actualiza el estado;
+/// si es tecla normal pulsada, devuelve el carácter a insertar.
+fn process_scancode(raw: u8) -> Option<u8> {
+    let released = (raw & 0x80) != 0;
+    let sc = raw & 0x7F;
+
+    // Modificadores
     match sc {
-        0x02 => Some(b'1'), 0x03 => Some(b'2'), 0x04 => Some(b'3'),
-        0x05 => Some(b'4'), 0x06 => Some(b'5'), 0x07 => Some(b'6'),
-        0x08 => Some(b'7'), 0x09 => Some(b'8'), 0x0A => Some(b'9'),
-        0x0B => Some(b'0'),
-        0x10 => Some(b'q'), 0x11 => Some(b'w'), 0x12 => Some(b'e'),
-        0x13 => Some(b'r'), 0x14 => Some(b't'), 0x15 => Some(b'y'),
-        0x16 => Some(b'u'), 0x17 => Some(b'i'), 0x18 => Some(b'o'),
-        0x19 => Some(b'p'),
-        0x1E => Some(b'a'), 0x1F => Some(b's'), 0x20 => Some(b'd'),
-        0x21 => Some(b'f'), 0x22 => Some(b'g'), 0x23 => Some(b'h'),
-        0x24 => Some(b'j'), 0x25 => Some(b'k'), 0x26 => Some(b'l'),
-        0x2C => Some(b'z'), 0x2D => Some(b'x'), 0x2E => Some(b'c'),
-        0x2F => Some(b'v'), 0x30 => Some(b'b'), 0x31 => Some(b'n'),
-        0x32 => Some(b'm'),
-        0x39 => Some(b' '),
-        0x1C => Some(b'\n'),
-        0x0E => Some(8),
-        _ => None,
+        0x2A => { unsafe { KBD_LSHIFT = !released; } return None; }
+        0x36 => { unsafe { KBD_RSHIFT = !released; } return None; }
+        0x3A => {
+            if !released { unsafe { KBD_CAPS = !KBD_CAPS; } }
+            return None;
+        }
+        0x1D | 0x38 => return None, // Ctrl / Alt — ignorados aquí
+        _ => {}
     }
+
+    if released { return None; }
+    translate_scancode(sc)
 }
 
 // ── Drawing helpers ────────────────────────────────────────────────
@@ -206,7 +283,8 @@ fn render(fb: &Framebuffer) {
     // prompt "> " + input + caret blinking
     draw_text_scaled(fb, (px + 16) as u32, (py + 18) as u32, b"> ", pal::ACCENT, 2);
 
-    let (len, frame_blink) = unsafe { (INPUT_LEN, (crate::arch::cpu::rdtsc() / 200_000_000) as u32 & 1) };
+    // Caret a ~1.5 Hz (parpadeo agradable, no epiléptico).
+    let (len, frame_blink) = unsafe { (INPUT_LEN, (crate::arch::cpu::rdtsc() / 1_250_000_000) as u32 & 1) };
     if len > 0 {
         let txt = unsafe { &INPUT_BUF[..len] };
         draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, txt, pal::PROMPT_FG, 2);
@@ -315,9 +393,11 @@ pub fn run() -> ! {
         let start = crate::arch::cpu::rdtsc();
         while (crate::arch::cpu::rdtsc() - start) < cycles {
             // Drenar todas las teclas disponibles (no perder pulsaciones).
+            // Pasamos el scancode tal cual al procesador: él se encarga de
+            // distinguir press/release y de actualizar Shift/Caps/Ctrl/Alt.
             let sc = desktop::poll_key();
-            if sc != 0 && (sc & 0x80) == 0 {
-                if let Some(ch) = scancode_to_ascii(sc) {
+            if sc != 0 {
+                if let Some(ch) = process_scancode(sc) {
                     handle_char(ch);
                 }
             }
