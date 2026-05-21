@@ -32,6 +32,7 @@ use crate::boot_info;
 use crate::fb::Framebuffer;
 use crate::font;
 use crate::desktop;
+#[allow(unused_imports)]
 use crate::sched::user_init;
 
 // ── Paleta del welcome ─────────────────────────────────────────────
@@ -212,6 +213,37 @@ fn draw_text(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32) {
 
 // ── Render del welcome ─────────────────────────────────────────────
 
+/// Geometría fija del prompt — usada tanto por el render principal como
+/// por el repaint local del caret. Devuelve `(prompt_x, prompt_y, w, h)`.
+fn prompt_rect(fb: &Framebuffer) -> (usize, usize, usize, usize) {
+    let cw = 980usize;
+    let ch = 620usize;
+    let cx = (fb.width - cw) / 2;
+    let cy = (fb.height - ch) / 2;
+    let pw = 720usize;
+    let ph = 60usize;
+    let px = cx + (cw - pw) / 2;
+    let py = cy + ch - ph - 110;
+    (px, py, pw, ph)
+}
+
+/// Posición del caret en píxeles, dado `len` (caracteres ya escritos).
+fn caret_pos(fb: &Framebuffer) -> (usize, usize) {
+    let (px, py, _, _) = prompt_rect(fb);
+    let len = unsafe { INPUT_LEN };
+    let cx = px + 16 + 8 * 2 * 2 + len * 16;
+    let cy = py + 20;
+    (cx, cy)
+}
+
+/// Pinta o borra el caret en su posición actual. No toca el resto del
+/// frame: usado tanto por el render full como por el blink local.
+fn paint_caret(fb: &Framebuffer, on: bool) {
+    let (cx, cy) = caret_pos(fb);
+    let color = if on { pal::PROMPT_FG } else { pal::PROMPT_BG };
+    fb.fill_rect(cx, cy, 12, 24, color);
+}
+
 fn render(fb: &Framebuffer) {
     // 1) Wallpaper gradient
     fb.gradient_v(0, 0, fb.width, fb.height, pal::BG_TOP, pal::BG_BOT);
@@ -266,10 +298,7 @@ fn render(fb: &Framebuffer) {
     }
 
     // 8) Prompt box
-    let pw = 720usize;
-    let ph = 60usize;
-    let px = cx + (cw - pw) / 2;
-    let py = cy + ch - ph - 110;
+    let (px, py, pw, ph) = prompt_rect(fb);
 
     // hint sobre el prompt
     let hint = b"Escribe (Run) y pulsa Enter para entrar al escritorio:";
@@ -280,18 +309,12 @@ fn render(fb: &Framebuffer) {
     fb.fill_rounded_rect(px, py, pw, ph, 10, pal::PROMPT_BG);
     fb.draw_rect(px, py, pw, ph, pal::PROMPT_BD, 2);
 
-    // prompt "> " + input + caret blinking
+    // prompt "> " + input (sin caret: el caret se pinta aparte)
     draw_text_scaled(fb, (px + 16) as u32, (py + 18) as u32, b"> ", pal::ACCENT, 2);
-
-    // Caret a ~1.5 Hz (parpadeo agradable, no epiléptico).
-    let (len, frame_blink) = unsafe { (INPUT_LEN, (crate::arch::cpu::rdtsc() / 1_250_000_000) as u32 & 1) };
+    let len = unsafe { INPUT_LEN };
     if len > 0 {
         let txt = unsafe { &INPUT_BUF[..len] };
         draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, txt, pal::PROMPT_FG, 2);
-    }
-    if frame_blink != 0 {
-        let cx_caret = px + 16 + 8 * 2 * 2 + len * 16;
-        fb.fill_rect(cx_caret, py + 20, 12, 24, pal::PROMPT_FG);
     }
 
     // 9) Hint (si hay)
@@ -335,11 +358,27 @@ fn eq_ci(a: &[u8], b: &[u8]) -> bool {
     true
 }
 
+// ── State global del welcome ───────────────────────────────────────
+//
+// `DIRTY` se pone a true cada vez que algo del frame cambia (input,
+// hint, etc). El loop principal sólo re-renderiza el frame entero
+// cuando `DIRTY = true`; el blink del caret se gestiona aparte
+// repintando sólo la zona del caret. Esto elimina el ghost flicker
+// que se veía cuando hacíamos full repaint cada 32 ms.
+
+static mut DIRTY: bool = true;
+static mut LAST_BLINK_ON: bool = false;
+static mut LAST_HINT_TIMER: u32 = 0;
+
+#[inline]
+fn mark_dirty() { unsafe { DIRTY = true; } }
+
 fn show_hint(msg: &'static [u8]) {
     unsafe {
         HINT_MSG = msg;
         HINT_TIMER = 120; // ~2 seg a 60 FPS
     }
+    mark_dirty();
 }
 
 fn process_enter() {
@@ -349,11 +388,12 @@ fn process_enter() {
     if trimmed.is_empty() {
         show_hint(b"Escribe (Run) y Enter.");
     } else if eq_ci(trimmed, b"run") {
-        // Beep de confirmación y arrancar el escritorio
+        // Beep de confirmación y arrancar el escritorio Ring 0.
+        // (spawn_desktop() del scheduler todavía es stub — no entra a
+        //  Ring 3. Llamamos directo al loop Ring 0 que sí pinta.)
         desktop::beep(880, 80);
         desktop::beep(1320, 80);
-        // No vuelve (spawn_desktop es noreturn)
-        user_init::spawn_desktop();
+        desktop::run_ring0();
     } else if eq_ci(trimmed, b"hello") {
         desktop::beep(440, 80);
         user_init::spawn_hello();
@@ -363,6 +403,7 @@ fn process_enter() {
         show_hint(b"Comando desconocido. Usa: Run, Hello, Reboot.");
     }
     unsafe { INPUT_LEN = 0; }
+    mark_dirty();
 }
 
 fn trim(s: &[u8]) -> &[u8] {
@@ -384,38 +425,80 @@ pub fn run() -> ! {
     desktop::beep(784, 80);
 
     loop {
-        if let Some(fb) = fb() {
-            render(&fb);
+        // 1) Full repaint solo si algo cambió.
+        if unsafe { DIRTY } {
+            if let Some(fb) = fb() {
+                render(&fb);
+                // Pintar el caret en el estado actual del blink para que
+                // no aparezca/desaparezca en el siguiente sub-loop.
+                let on = blink_on();
+                paint_caret(&fb, on);
+                unsafe { LAST_BLINK_ON = on; }
+            }
+            unsafe { DIRTY = false; }
         }
 
-        // Dormir ~32 ms (≈30 FPS — suficiente para input)
+        // 2) Sub-loop de ~32 ms: drena input y gestiona blink local.
         let cycles = 32u64 * 3_700_000;
         let start = crate::arch::cpu::rdtsc();
         while (crate::arch::cpu::rdtsc() - start) < cycles {
-            // Drenar todas las teclas disponibles (no perder pulsaciones).
-            // Pasamos el scancode tal cual al procesador: él se encarga de
-            // distinguir press/release y de actualizar Shift/Caps/Ctrl/Alt.
             let sc = desktop::poll_key();
             if sc != 0 {
                 if let Some(ch) = process_scancode(sc) {
                     handle_char(ch);
                 }
             }
+
+            // Blink local: si el estado cambia, repintar SOLO el caret.
+            // Cero ghost porque no tocamos el resto del frame.
+            let cur = blink_on();
+            if cur != unsafe { LAST_BLINK_ON } {
+                if let Some(fb) = fb() {
+                    paint_caret(&fb, cur);
+                }
+                unsafe { LAST_BLINK_ON = cur; }
+            }
+
             core::hint::spin_loop();
         }
 
-        unsafe { if HINT_TIMER > 0 { HINT_TIMER -= 1; } }
+        // 3) Decrementar hint timer — si llega a 0, marcar dirty para
+        //    borrarlo del frame.
+        unsafe {
+            let prev = HINT_TIMER;
+            if HINT_TIMER > 0 { HINT_TIMER -= 1; }
+            if (prev > 0 && HINT_TIMER == 0) || (prev != LAST_HINT_TIMER && HINT_TIMER == 0) {
+                DIRTY = true;
+            }
+            LAST_HINT_TIMER = HINT_TIMER;
+        }
     }
+}
+
+/// Estado del caret blink basado en TSC (~1.5 Hz). Centralizado para
+/// que el render full y el blink local lean exactamente el mismo bit.
+fn blink_on() -> bool {
+    (crate::arch::cpu::rdtsc() / 1_250_000_000) & 1 != 0
 }
 
 fn handle_char(ch: u8) {
     match ch {
         b'\n' => process_enter(),
-        8 => unsafe { if INPUT_LEN > 0 { INPUT_LEN -= 1; } },
+        8 => unsafe {
+            if INPUT_LEN > 0 {
+                // Antes de mover el caret, borrarlo de la posición vieja
+                // para evitar ghost de la barra del caret previo.
+                if let Some(fb) = fb() { paint_caret(&fb, false); }
+                INPUT_LEN -= 1;
+                mark_dirty();
+            }
+        },
         c if c >= 32 && c <= 126 => unsafe {
             if INPUT_LEN < MAX_INPUT - 1 {
+                if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_BUF[INPUT_LEN] = c;
                 INPUT_LEN += 1;
+                mark_dirty();
             }
         },
         _ => {}
