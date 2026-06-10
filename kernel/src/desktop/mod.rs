@@ -138,7 +138,13 @@ pub fn poll_key() -> u8 {
     let status: u8;
     unsafe { core::arch::asm!("in al, dx", out("al") status, in("dx") 0x64u16); }
     // bit 0 = output buffer full, bit 5 = mouse data (lo descartamos en poll_key)
-    if (status & 0x21) != 0x01 { return 0; }
+    if (status & 0x01) == 0 { return 0; }
+    if (status & 0x20) != 0 {
+        let discard: u8;
+        unsafe { core::arch::asm!("in al, dx", out("al") discard, in("dx") 0x60u16); }
+        let _ = discard;
+        return 0;
+    }
     let sc: u8;
     unsafe { core::arch::asm!("in al, dx", out("al") sc, in("dx") 0x60u16); }
     sc

@@ -74,7 +74,7 @@ pub fn init_syscall() {
         wrmsr(IA32_STAR, star);
 
         // IA32_LSTAR = address of syscall entry point
-        wrmsr(IA32_LSTAR, syscall_entry_naked as u64);
+        wrmsr(IA32_LSTAR, syscall_entry_naked as *const () as u64);
 
         // IA32_FMASK = RFLAGS bits to clear on syscall
         // Clear IF (bit 9) to disable interrupts during syscall entry,

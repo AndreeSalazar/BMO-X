@@ -126,7 +126,7 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
 /// Shell command: spawn Ring 3 hello process.
 pub fn spawn_hello() {
     crate::drivers::serial::serial_write("[user_init] Spawning hello Ring 3 process...\n");
-    if let Some((entry, stack)) = spawn_init_process() {
+    if let Some((_entry, _stack)) = spawn_init_process() {
         crate::drivers::serial::serial_write("[user_init] Process created, jumping to Ring 3\n");
         // NOTE: jump_to_ring3 does NOT return. The shell will not resume.
         // In a full OS, we'd schedule it and return to the shell.
@@ -137,8 +137,8 @@ pub fn spawn_hello() {
     }
 }
 
-/// Shell command: spawn Ring 3 desktop compositor (stub).
+/// Shell command: launch the desktop path that is stable today.
 pub fn spawn_desktop() {
-    crate::drivers::serial::serial_write("[user_init] Desktop compositor not yet implemented\n");
-    crate::drivers::serial::serial_write("[user_init] Use GOP display for now\n");
+    crate::drivers::serial::serial_write("[user_init] Launching Ring 0 desktop via GOP\n");
+    crate::desktop::run_ring0();
 }

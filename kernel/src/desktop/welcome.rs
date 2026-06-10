@@ -23,7 +23,7 @@
 //! ```
 //!
 //! Comandos aceptados (case-insensitive):
-//!   - `Run`   → lanza el escritorio Ring 3 (`spawn_desktop`)
+//!   - `Run`   → lanza el escritorio Ring 0 funcional (`run_ring0`)
 //!   - `Hello` → lanza el payload mínimo (`spawn_hello`)
 //!   - `Reboot` → reinicia
 //!   - cualquier otra cosa → muestra hint
@@ -498,6 +498,10 @@ fn handle_char(ch: u8) {
                 if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_BUF[INPUT_LEN] = c;
                 INPUT_LEN += 1;
+                if eq_ci(trim(&INPUT_BUF[..INPUT_LEN]), b"run") {
+                    process_enter();
+                    return;
+                }
                 mark_dirty();
             }
         },

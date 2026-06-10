@@ -204,8 +204,8 @@ fn cmd_user(con: &mut Console) {
 }
 
 fn cmd_desktop(con: &mut Console) {
-    con.print_colored("[desktop] Launching Ring 3 compositor (Hyprland/Win11 style)\n", colors::NV_GREEN);
-    con.println("[desktop] Payload built via barex::bmoasm::Emitter (BMO Simple bytes).");
+    con.print_colored("[desktop] Launching stable Ring 0 desktop\n", colors::NV_GREEN);
+    con.println("[desktop] Ring 3 compositor is not enabled yet; using GOP/Ring 0 path.");
     con.println("[desktop] Press ESC inside the desktop to exit.");
     crate::sched::user_init::spawn_desktop();
 }
