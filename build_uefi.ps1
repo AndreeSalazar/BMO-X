@@ -338,7 +338,7 @@ Write-Host "  Contenido del USB:" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\BOOTX64.EFI  (bootloader UEFI)" -ForegroundColor White
 Write-Host "    ${dl}:\EFI\BOOT\kernel.elf    (kernel FastOS)" -ForegroundColor White
 Write-Host "    ${dl}:\kernel.elf              (copia en root)" -ForegroundColor White
-Write-Host "    ${dl}:\fastos_boot.bin         (Payload FOSB para GPU NVIDIA)" -ForegroundColor White
+Write-Host "    ${dl}:\fastos_boot.bin         (payload legacy opcional; no requerido para GOP)" -ForegroundColor White
 Write-Host "    ${dl}:\firmware\               (Binarios extras de hardware)" -ForegroundColor White
 Write-Host ""
 Write-Host "  Pasos:" -ForegroundColor Yellow
@@ -346,11 +346,11 @@ Write-Host "    1. Reinicia el PC" -ForegroundColor White
 Write-Host "    2. BIOS: CSM = DISABLED, Secure Boot = DISABLED" -ForegroundColor White
 Write-Host "    3. Boot desde USB (UEFI)" -ForegroundColor White
 Write-Host ""
-Write-Host "  FastOS GPU Hardware Manager -- que esperar en pantalla:" -ForegroundColor Cyan
+Write-Host "  FastOS GOP boot -- que esperar en pantalla:" -ForegroundColor Cyan
 Write-Host "    1. El Bootloader lanzara FastOS de inmediato." -ForegroundColor White
-Write-Host "    2. Payload Loader interpretara fastos_boot.bin." -ForegroundColor White
-Write-Host "    3. El SEC2 de la GPU se inicializara y validara la firma PKC." -ForegroundColor White
-Write-Host "    4. Hardware de NVIDIA reportara GSP_INIT_DONE (0x1001)." -ForegroundColor White
+Write-Host "    2. El kernel usara UEFI GOP framebuffer." -ForegroundColor White
+Write-Host "    3. Veras la pantalla de bienvenida BMO." -ForegroundColor White
+Write-Host "    4. Escribe Run para entrar al escritorio Ring 0." -ForegroundColor White
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 Read-Host "  Presiona Enter para cerrar"

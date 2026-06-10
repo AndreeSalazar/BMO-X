@@ -1,163 +1,235 @@
-# FastOS
+# FastOS / BMO
 
-> **Minimal custom OS for AMD Ryzen 5 5600X + NVIDIA RTX 3060 12G**
-> Pure Rust · UEFI Native · Ring 0 · No userspace
+FastOS es un sistema operativo propio en Rust para bare metal. BMO significa
+**Bare Metal Orchestrator**: el núcleo que organiza hardware, memoria, entrada,
+gráficos, procesos y las futuras APIs de compatibilidad.
+
+El objetivo actual es simple y honesto: **arrancar bien, pintar bien y responder
+bien usando UEFI GOP/framebuffer**. No hay driver oficial de fabricante, no hay
+firmware de GPU funcional en el camino de arranque y no se debe depender de una
+GPU concreta para que el OS funcione.
 
 ---
 
-## Architecture
+## Estado real del proyecto
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    FastOS Stack — ALL RING 0                     │
-├──────────────────────────────────────────────────────────────────┤
-│  Driver_Canon GA106 (Rust, #![no_std])                           │
-│  ├── nv_kernel/    │ Driver entry: init → enable → teardown      │
-│  ├── nv_gpu/       │ GPU core: BARs, engines, VRAM, interrupts   │
-│  ├── nv_cmd/       │ FIFO: channels, pushbuffers, fences         │
-│  ├── nv_display/   │ Display: heads, SOR, EDID, modeset          │
-│  ├── nv_firmware/  │ FALCON loader: GSP, PMU, SEC2               │
-│  ├── nv_hal/       │ HAL: MMIO, PCI config, DMA, Platform trait  │
-│  ├── nv_regs/      │ GA106 register map                          │
-│  └── nv_error/     │ NV_ERR_* codes                              │
-├──────────────────────────────────────────────────────────────────┤
-│  Rust Kernel (#![no_std], Ring 0)                                │
-│  ├── platform.rs   │ FastOsPlatform → implements nv_hal::Platform│
-│  ├── arch/         │ CPUID, IDT, ACPI/MCFG, page allocator       │
-│  ├── drivers/      │ PCI ECAM, serial COM1, GPU, GSP loader      │
-│  ├── gpu/          │ FIFO pushbuffer, DMA, command submission    │
-│  ├── fb.rs         │ Framebuffer drawing (GOP linear FB)         │
-│  ├── console.rs    │ Text console over framebuffer               │
-│  ├── render3d.rs   │ Software 3D cube renderer                   │
-│  ├── shell.rs      │ Interactive command interpreter             │
-│  └── main.rs       │ Kernel entry point (_start)                 │
-├──────────────────────────────────────────────────────────────────┤
-│  UEFI Bootloader (Rust, uefi-rs 0.37)                            │
-│  ├── main.rs       │ UEFI entry point                            │
-│  ├── ELF64 parser  │ Manual ELF loading (no external crate)      │
-│  ├── GOP query     │ Framebuffer from UEFI GOP                   │
-│  ├── RSDP lookup   │ ACPI tables from UEFI config table          │
-│  ├── GSP loader    │ Loads gsp_ga10x.bin into DMA-safe pages     │
-│  ├── Exit BS       │ Exits UEFI boot services                    │
-│  └── Kernel jump   │ Sets RSP, passes BootInfo in RDI            │
-├──────────────────────────────────────────────────────────────────┤
-│  Hardware                                                        │
-│  CPU: AMD Ryzen 5 5600X (Zen 3, 6C/12T)                          │
-│  GPU: NVIDIA RTX 3060 12GB (GA106, Ampere)                       │
-│  Firmware: UEFI Native (CSM Disabled)                            │
-└──────────────────────────────────────────────────────────────────┘
+### Funciona / es el camino principal
+
+- Boot UEFI propio.
+- Kernel `no_std` en Rust, Ring 0.
+- BootInfo compartido entre bootloader y kernel.
+- Framebuffer por UEFI GOP.
+- Consola/framebuffer inicial.
+- Pantalla de bienvenida.
+- Escritorio Ring 0 por GOP.
+- Entrada PS/2 básica para teclado y ratón.
+- GDT, IDT, TSS y MSR de syscalls inicializados.
+- Page allocator inicial.
+- Enumeración PCI por ACPI MCFG/ECAM.
+- Estructura base de BMO ABI, BEF, scheduler, syscall y BareX.
+
+### No es objetivo activo ahora
+
+- Driver propietario/oficial de GPU.
+- Driver acelerado real para una GPU concreta.
+- Firmware de GPU como requisito de arranque.
+- Aceleración 3D por GPU.
+- WDDM real.
+- CUDA, Vulkan o DirectX nativo sobre hardware real.
+
+La carpeta `kernel/src/drivers/gpu/fastgpu/` queda como experimento/legado de
+investigación. No forma parte del camino estable de arranque. El camino gráfico
+oficial de FastOS por ahora es:
+
+```text
+UEFI GOP -> framebuffer -> desktop Ring 0 -> futura capa BareX software/GOP
 ```
 
-## Boot Sequence
+---
 
-1. UEFI firmware loads `BOOTX64.EFI` from ESP
-2. Bootloader queries GOP framebuffer
-3. Bootloader loads `kernel.elf` (ELF64, manual parser)
-4. Bootloader loads `gsp_ga10x.bin` (optional GPU firmware)
-5. Bootloader finds RSDP via UEFI config tables
-6. Bootloader builds BootInfo struct
-7. Bootloader exits boot services (point of no return)
-8. Bootloader jumps to kernel `_start` with BootInfo in RDI
-9. Kernel validates BootInfo, inits serial COM1
-10. Kernel loads IDT (exception handlers)
-11. Kernel parses ACPI MCFG → PCI ECAM base
-12. Kernel scans PCI bus via ECAM MMIO
-13. Kernel initializes page frame allocator from UEFI memory map
-14. Kernel starts interactive shell on GOP framebuffer
+## Arquitectura objetivo
 
-## Building
+```text
+Bootloader UEFI
+  -> carga kernel ELF
+  -> entrega BootInfo + framebuffer GOP
 
-### Prerequisites
-- **Rust nightly** with `rust-src` component
-- **UEFI target**: `x86_64-unknown-uefi`
-- **Kernel target**: `x86_64-unknown-none`
+Kernel Ring 0
+  -> serial, GDT/TSS, IDT, syscalls
+  -> memoria, ACPI/PCI, timers
+  -> framebuffer GOP
+  -> welcome + desktop Ring 0
 
-### Complete Build
+BMO ABI
+  -> contrato estable para servicios del OS
+  -> base para syscalls, handles, memoria, strings, tiempo y sincronización
+
+BareX
+  -> API gráfica/audio/input/net propia
+  -> descendiente conceptual de DirectX, pero diseñada para FastOS
+  -> primero backend GOP/software; después backends acelerados si existen
+
+Compatibilidad futura
+  -> ideas de Windows: Win32/PE/thunks cuando sean útiles
+  -> ideas de Linux: syscalls simples, VFS, drivers pequeños
+  -> ideas de macOS: compositor pulido, experiencia visual consistente
+```
+
+---
+
+## Decisión de GPU
+
+FastOS debe funcionar aunque no exista ningún driver de GPU dedicado. Por eso la
+decisión técnica actual es:
+
+1. **GOP primero**: todo lo visual debe poder dibujarse en framebuffer.
+2. **BareX no depende de un fabricante**: BareX debe tener backend software/GOP antes de
+   cualquier backend acelerado.
+3. **GPU real después**: si algún día se implementa un driver acelerado, será un
+   backend opcional, no el cimiento del sistema.
+4. **Sin firmware obligatorio**: el arranque no debe requerir blobs privados ni
+   payloads de GPU.
+
+Esto hace que BMO/FastOS sea más fácil de probar, depurar y mantener.
+
+---
+
+## BareX: API descendiente de DirectX
+
+BareX es la API moderna de FastOS. La idea es tomar lo mejor de DirectX, pero sin
+copiar su dependencia de Windows ni de WDDM.
+
+Capas deseadas:
+
+- `barex::graphics`: device, queue, swapchain, buffers, textures, fences,
+  root-signature/PSO y comandos.
+- `barex::audio`: mixer, voces, formatos, latencia, backends.
+- `barex::input`: teclado, ratón, HID, gamepad, eventos.
+- `barex::net`: sockets, DNS, HTTP, QUIC/TLS a futuro.
+- `barex::shader`: IR propia y traducción futura.
+- `barex::compat`: thunks para Win32/PE/DirectX cuando el núcleo ya sea estable.
+
+Orden correcto para BareX graphics:
+
+1. Backend GOP/software: rectángulos, blit, texto, cursor, ventanas.
+2. Swapchain simple sobre framebuffer.
+3. Compositor estable con input.
+4. API pública limpia de `barex::graphics`.
+5. Compatibilidad tipo DirectDraw/DXGI/D3D12 encima de BareX.
+6. Backend acelerado opcional sólo cuando haya un driver real.
+
+---
+
+## Limpieza y enfoque
+
+Para que el proyecto avance, hay que separar tres grupos:
+
+### Núcleo estable
+
+Debe compilar y arrancar siempre:
+
+- `bootloader/`
+- `boot_protocol/`
+- `kernel/src/main.rs`
+- `kernel/src/arch/`
+- `kernel/src/desktop/`
+- `kernel/src/fb.rs`
+- `kernel/src/console.rs`
+- `kernel/src/drivers/gop.rs`
+- `kernel/src/drivers/serial.rs`
+- `kernel/src/drivers/pci.rs`
+- `kernel/src/fs/ramdisk.rs` cuando se use de verdad
+
+### API en construcción
+
+Se conserva, pero no debe bloquear el arranque:
+
+- `kernel/src/barex/`
+- `kernel/src/bef/`
+- `kernel/src/sched/`
+- `kernel/src/syscall/`
+- `kernel/src/sandbox/`
+
+### Investigación / legado
+
+No debe ser requisito del boot path:
+
+- `kernel/src/drivers/gpu/fastgpu/`
+- scripts de firmware/payload GPU
+- material extraído de Windows en `combo_Window_Extractor/`
+- documentos antiguos que prometen drivers GPU como si ya fueran funcionales
+
+---
+
+## Próximos ataques recomendados
+
+### 1. Estabilizar boot + escritorio GOP
+
+- Mantener `Run -> Desktop` sin depender de Ring 3.
+- Quitar mensajes falsos de driver GPU en UI y scripts.
+- Hacer que el desktop tenga una ruta clara de salida/reinicio.
+- Reducir parpadeos, bloqueos de input y dependencias de hardware específico.
+
+### 2. Convertir el escritorio actual en backend BareX GOP
+
+- Extraer primitivas actuales de framebuffer como backend `BareXGopBackend`.
+- Mantener API pequeña: fill, blit, text, present, poll input.
+- No crear abstracciones grandes hasta que se usen.
+
+### 3. Completar syscalls mínimas útiles
+
+- `DebugPrint`
+- `ClockGetTime`
+- `NanoSleep`
+- `FbInfo`
+- `FbFill`
+- `FbBlit`
+- `KeyPoll`
+- `MousePoll`
+
+### 4. Ring 3 sólo cuando el scheduler pueda sostenerlo
+
+El compositor Ring 3 no debe prometerse hasta que existan:
+
+- stacks seguros por thread,
+- transición syscall/sysret validada,
+- dispatcher real,
+- scheduler que pueda volver al kernel sin congelar la UI.
+
+### 5. Compatibilidad Windows/Linux/macOS por capas, no mezclada en el kernel
+
+- Win32/PE/DirectX: capa `barex::compat`, no boot path.
+- Linux-like: syscalls simples y VFS limpio.
+- macOS-like: compositor visual y UX pulida.
+
+---
+
+## Build
+
+El flujo esperado es usar el script UEFI del repo:
+
 ```powershell
-.\build_uefi.ps1        # Build bootloader + kernel
-.\build_uefi.ps1 -Clean # Clean all build artifacts
+.\build_uefi.ps1
 ```
 
-Output:
-- `BOOTX64.EFI` — UEFI bootloader
-- `kernel.elf` — Kernel binary
-- `USB_boot/` — Ready to copy to FAT32 USB
+Requisitos habituales:
 
-### Flash to USB
-```powershell
-.\flash_uefi.ps1 -DiskNumber <N>
-```
+- Rust nightly según `rust-toolchain.toml`.
+- Target bare metal configurado por `.cargo/config.toml`.
+- Firmware UEFI con Secure Boot desactivado durante pruebas.
+- GOP disponible en firmware.
 
-### GPU Firmware (Optional)
-Place `gsp_ga10x.bin` in the repo root. The bootloader loads it from the ESP
-and passes its address to the kernel via BootInfo. This is the NVIDIA GSP-RM
-firmware required for full GPU initialization on Ampere GPUs.
+---
 
-## Verified on Hardware
+## Principio del proyecto
 
-| Feature | Status |
-|---------|--------|
-| UEFI boot from USB | ✅ Works |
-| GOP framebuffer (1920×1080) | ✅ Works |
-| Serial COM1 debug output | ✅ Works |
-| ACPI MCFG → PCI ECAM | ✅ Works |
-| PCI bus scan | ✅ Works |
-| GPU PCI discovery (10DE:2504) | ✅ Works |
-| GPU BAR0 MMIO register access | ✅ Works |
-| GPU BOOT_0 chip ID read | ✅ Works |
-| GPU PTIMER liveness | ✅ Works |
-| GPU VRAM detection (12 GB) | ✅ Works |
-| GPU engine enable mask | ✅ Works |
-| GPU PFIFO/PGRAPH/PBDMA/CE/Display regs | ✅ Works |
-| IDT (exceptions → halt, not triple-fault) | ✅ Works |
-| Page frame allocator | ✅ Works |
-| Text console with scroll | ✅ Works |
-| Interactive shell (serial input) | ✅ Works |
-| 3D rotating cube (software renderer) | ✅ Works |
-| GSP PRIV Ring init | ✅ Works |
-| GSP Falcon scratch register W/R | ✅ Works |
+FastOS no debe intentar ser Windows, Linux o macOS completos desde el primer día.
+Debe tomar ideas buenas de los tres y convertirlas en un OS propio:
 
-## Shell Commands
-
-All commands operate on live hardware state:
-
-| Command | Description |
-|---------|-------------|
-| `cpuinfo` | CPU features via CPUID |
-| `gpuinfo` | GPU PCI/BAR0/VRAM (live reads) |
-| `pci` | PCI device list (ECAM scan) |
-| `meminfo` | UEFI memory map summary |
-| `gputest` | 15-test GPU register probe suite |
-| `gpucmd` | GPU pushbuffer command engine |
-| `cube` | 3D rotating cube (software) |
-| `tsc` | TSC counter value |
-
-## Project Structure
-
-```
-FastOS/
-├── bootloader/           # UEFI bootloader (Rust, uefi-rs 0.37)
-├── boot_protocol/        # Shared BootInfo types
-├── kernel/               # Rust kernel (x86_64-unknown-none)
-│   └── src/
-│       ├── arch/          # CPU, IDT, ACPI, page allocator, paging
-│       ├── drivers/       # PCI, serial, GPU, GSP loader
-│       ├── gpu/           # FIFO, DMA, pushbuffer, commands
-│       ├── tests/         # Live GPU register test suite
-│       └── *.rs           # Core kernel modules
-├── Driver_Canon GA106/   # 8-crate GPU driver workspace
-│   ├── nv_error/         # Error codes
-│   ├── nv_regs/          # GA106 register definitions
-│   ├── nv_hal/           # Hardware abstraction layer
-│   ├── nv_gpu/           # GPU core (init, VRAM, engines)
-│   ├── nv_cmd/           # Command submission (FIFO)
-│   ├── nv_display/       # Display engine
-│   ├── nv_firmware/      # Falcon firmware loader
-│   └── nv_kernel/        # Top-level driver orchestration
-├── build_uefi.ps1        # Build pipeline
-└── flash_uefi.ps1        # USB flash tool
-```
-
-## License
-
-MIT
+- pequeño,
+- arrancable,
+- depurable,
+- gráfico por GOP,
+- con BMO ABI estable,
+- con BareX como API moderna,
+- y con compatibilidad futura encima, no dentro del núcleo crítico.

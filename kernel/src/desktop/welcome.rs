@@ -340,7 +340,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, lx as u32, (by + 12) as u32, lbl, pal::TITLE, 3);
 
     // 11) Pie
-    let foot = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  RTX 3060 12G  ::  UEFI";
+    let foot = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  GOP framebuffer  ::  UEFI";
     let fw = foot.len() * 8;
     let fx = cx + (cw - fw) / 2;
     draw_text(fb, fx as u32, (cy + ch - 36) as u32, foot, pal::SUBTITLE);

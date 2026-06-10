@@ -3,16 +3,14 @@ name = "fastos-kernel"
 version = "0.9.0"
 edition = "2021"
 authors = ["FastOS Project"]
-description = "FastOS kernel — Ryzen 5 5600X + RTX 3060 12G"
+description = "FastOS kernel - UEFI GOP framebuffer + BMO/BareX"
 license = "Techne"
 
 [dependencies]
 fastos-boot-protocol = { path = "../boot_protocol" }
-# El kernel queda slim: sólo deps que el código usa hoy.
-#  - volatile  → escrituras MMIO (fb / mmio fastgpu)
-#  - bitflags  → Capability flags del sandbox
-# Las antiguas dependencias NTFS/hive/binrw/byteorder se removieron
-# junto con el módulo `fs/` (no se usa fuera del extractor abandonado).
+# Kernel slim: sólo dependencias usadas hoy.
+#  - volatile -> escrituras MMIO/framebuffer
+#  - bitflags -> capability flags del sandbox
 volatile = "0.4"
 bitflags = "2"
 
@@ -28,4 +26,4 @@ lto = true
 name = "fastos-kernel"
 path = "src/main.rs"
 
-# Linker configuration for x86_64-unknown-none target
+# Linker configuration for x86_64-unknown-none target.

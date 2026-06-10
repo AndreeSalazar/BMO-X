@@ -111,7 +111,7 @@ fn content_for(title_id: u8, fps: u32, frame: u64, buf1: &mut [u8; 48], buf2: &m
         4 => [
             (b"== Ajustes ==", palette::TEXT_INFO),
             (b"CPU: AMD Ryzen 5 5600X", palette::TEXT_PRIMARY),
-            (b"GPU: NVIDIA RTX 3060 12G", palette::TEXT_PRIMARY),
+            (b"GPU: UEFI GOP framebuffer", palette::TEXT_PRIMARY),
             (b"RAM: BootInfo memory map", palette::TEXT_PRIMARY),
             (b"USB: keyboard + mouse + Redragon", palette::TEXT_PRIMARY),
             (b"Boot: UEFI puro (sin legacy)", palette::TEXT_PRIMARY),
