@@ -22,7 +22,8 @@ param(
     [int]$DiskNumber = -1,
     [switch]$BuildOnly,
     [switch]$FlashOnly,
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -198,6 +199,7 @@ if (!$isAdmin) {
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     if ($DiskNumber -ge 0) { $argList += " -DiskNumber $DiskNumber" }
     if ($FlashOnly) { $argList += " -FlashOnly" }
+    if ($Force) { $argList += " -Force" }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait
     exit 0
 }
@@ -212,7 +214,7 @@ if ($DiskNumber -lt 0) {
 
     if ($usbDisks.Count -eq 0) {
         Write-Host "  ERROR: No hay USB conectado." -ForegroundColor Red
-        Read-Host "  Presiona Enter para salir"
+        if (!$Force) { Read-Host "  Presiona Enter para salir" }
         exit 1
     }
 
@@ -241,7 +243,7 @@ if (!$disk) { throw "Disco $DiskNumber no encontrado" }
 $sysDisk = (Get-Partition -DriveLetter C -ErrorAction SilentlyContinue).DiskNumber
 if ($DiskNumber -eq $sysDisk) {
     Write-Host "  ERROR: El disco $DiskNumber es el DISCO DEL SISTEMA. Cancelado." -ForegroundColor Red
-    Read-Host "  Presiona Enter para salir"
+    if (!$Force) { Read-Host "  Presiona Enter para salir" }
     exit 1
 }
 
@@ -254,31 +256,91 @@ Write-Host "  Disco [$DiskNumber] $($disk.FriendlyName) -- $diskSizeGB GB ($($di
 Write-Host ""
 Write-Host "  ESTO FORMATEARA EL DISCO $DiskNumber POR COMPLETO" -ForegroundColor Red
 Write-Host ""
-$confirm = Read-Host "  Escribe FLASH para continuar"
-if ($confirm -ne "FLASH") {
-    Write-Host "  Cancelado." -ForegroundColor Yellow
-    Read-Host "  Presiona Enter para salir"
-    exit 0
+if (!$Force) {
+    $confirm = Read-Host "  Escribe FLASH para continuar"
+    if ($confirm -ne "FLASH") {
+        Write-Host "  Cancelado." -ForegroundColor Yellow
+        Read-Host "  Presiona Enter para salir"
+        exit 0
+    }
+} else {
+    Write-Host "  [FORCE] Saltando confirmacion interactiva..." -ForegroundColor Yellow
 }
 
 # -- Formatear USB: GPT + FAT32 ----------------------------------------------
 Write-Host ""
 Write-Host "  [FLASH 1/3] Formateando GPT + FAT32..." -ForegroundColor Cyan
 
-Write-Host "      Limpiando disco..." -ForegroundColor DarkGray
-$disk | Clear-Disk -RemoveData -RemoveOEM -Confirm:$false
+$dl = $null
+try {
+    Write-Host "      Limpiando disco (PowerShell)..." -ForegroundColor DarkGray
+    $disk | Clear-Disk -RemoveData -RemoveOEM -Confirm:$false
 
-Write-Host "      Aplicando GPT..." -ForegroundColor DarkGray
-$disk | Set-Disk -PartitionStyle GPT
+    Write-Host "      Aplicando GPT..." -ForegroundColor DarkGray
+    $disk | Set-Disk -PartitionStyle GPT
 
-Write-Host "      Creando ESP..." -ForegroundColor DarkGray
-$partition = $disk | New-Partition -UseMaximumSize `
-    -GptType '{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}' -AssignDriveLetter
+    Write-Host "      Creando ESP..." -ForegroundColor DarkGray
+    $partition = $disk | New-Partition -UseMaximumSize `
+        -GptType '{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}' -AssignDriveLetter
 
-Write-Host "      Formateando FAT32..." -ForegroundColor DarkGray
-$partition | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "FastOS" -Confirm:$false
+    Write-Host "      Formateando FAT32..." -ForegroundColor DarkGray
+    $partition | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "FastOS" -Confirm:$false
+    Start-Sleep -Seconds 2
+    # Obtener el objeto particion actualizado para leer la letra asignada
+    $updatedPartition = Get-Partition -DiskNumber $DiskNumber | Where-Object { $_.DriveLetter } | Select-Object -First 1
+    if ($updatedPartition) {
+        $dl = $updatedPartition.DriveLetter
+    } else {
+        $dl = $partition.DriveLetter
+    }
+} catch {
+    Write-Host "      [!] Error formateando con PowerShell: $_" -ForegroundColor Yellow
+    Write-Host "      [!] Intentando con Diskpart (metodo alternativo ultra-robusto)..." -ForegroundColor Cyan
 
-$dl = $partition.DriveLetter
+    $dpScriptPath = Join-Path $Root "diskpart_temp.txt"
+    $dpScript = @"
+select disk $DiskNumber
+clean
+convert gpt
+create partition efi
+format fs=fat32 quick label="FastOS"
+assign
+"@
+    Set-Content -Path $dpScriptPath -Value $dpScript -Encoding ASCII
+
+    Write-Host "      Ejecutando diskpart..." -ForegroundColor DarkGray
+    $process = Start-Process diskpart.exe -ArgumentList "/s `"$dpScriptPath`"" -NoNewWindow -PassThru -Wait
+    
+    # Limpiar script temporal
+    Remove-Item $dpScriptPath -Force -ErrorAction SilentlyContinue
+
+    if ($process.ExitCode -ne 0) {
+        throw "Diskpart fallo con codigo de salida $($process.ExitCode)"
+    }
+
+    Write-Host "      Buscando nueva letra de unidad..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 3 # Dar tiempo a que Windows monte la particion
+    
+    # Buscar la letra de la partición formateada en ese disco
+    $disk = Get-Disk -Number $DiskNumber
+    $partition = Get-Partition -DiskNumber $DiskNumber | Where-Object { $_.DriveLetter } | Select-Object -First 1
+    if (!$partition) {
+        # Intentar buscar volumen por etiqueta
+        $vol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "FastOS" } | Select-Object -First 1
+        if ($vol -and $vol.DriveLetter) {
+            $dl = $vol.DriveLetter
+        } else {
+            throw "No se encontro la letra de unidad asignada tras Diskpart"
+        }
+    } else {
+        $dl = $partition.DriveLetter
+    }
+}
+
+if (!$dl) {
+    throw "No se pudo obtener la letra de unidad del USB"
+}
+
 Write-Host "      Unidad asignada: ${dl}:\" -ForegroundColor DarkGray
 Write-Host "  [FLASH 1/3] OK" -ForegroundColor Green
 
@@ -372,4 +434,6 @@ Write-Host "    3. Veras la pantalla de bienvenida BMO." -ForegroundColor White
 Write-Host "    4. Escribe Run para entrar al escritorio Ring 0." -ForegroundColor White
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
-Read-Host "  Presiona Enter para cerrar"
+if (!$Force) {
+    Read-Host "  Presiona Enter para cerrar"
+}
