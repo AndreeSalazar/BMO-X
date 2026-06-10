@@ -1,7 +1,9 @@
 # ============================================================================
-# FastOS -- Build + Flash USB (Native Environment)
+# FastOS -- Build + Flash USB (UEFI GOP path)
 # ============================================================================
 # Compila bootloader + kernel, prepara USB_boot/, y flashea al USB.
+# El camino estable de arranque usa UEFI GOP/framebuffer. Payloads/firmware GPU
+# quedan como legado/investigacion fuera del boot path.
 #
 # Uso:
 #   .\build_uefi.ps1                  # Build + flash (auto-detecta USB)
@@ -10,7 +12,10 @@
 #   .\build_uefi.ps1 -FlashOnly       # Solo flashear (ya compilado)
 #   .\build_uefi.ps1 -Clean           # Limpiar artefactos
 #
-# Target: Hardware Authority & Bootloader | UEFI Native
+# Si Windows bloquea scripts PowerShell por ExecutionPolicy, usa:
+#   .\build_uefi.cmd                  # Wrapper con Bypass solo para esta ejecucion
+#
+# Target: Bootloader UEFI + kernel GOP/framebuffer
 # ============================================================================
 
 param(
@@ -49,8 +54,8 @@ function Invoke-CargoBuildWithRetry {
 # -- Banner ------------------------------------------------------------------
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "  FastOS -- Native Hardware Controller" -ForegroundColor Cyan
-Write-Host "  Target: UEFI Native x86_64" -ForegroundColor Cyan
+Write-Host "  FastOS -- UEFI GOP Builder" -ForegroundColor Cyan
+Write-Host "  Target: bootloader UEFI + kernel GOP/framebuffer" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -178,7 +183,7 @@ if ($BuildOnly) {
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Green
     Write-Host "  BUILD COMPLETO (sin flash)" -ForegroundColor Green
-    Write-Host "  Para flashear: .\build_uefi.ps1 -FlashOnly" -ForegroundColor Green
+    Write-Host "  Para flashear: .\build_uefi.cmd -FlashOnly" -ForegroundColor Green
     Write-Host "================================================================" -ForegroundColor Green
     return
 }
@@ -298,15 +303,29 @@ Write-Host "  [FLASH 3/3] Verificando..." -ForegroundColor Cyan
 
 $ok = $true
 $checks = @(
-    @{ Path = "$efiBootPath\BOOTX64.EFI"; Name = "BOOTX64.EFI"; Orig = "$Root\BOOTX64.EFI" },
-    @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf" },
-    @{ Path = "${dl}:\fastos_boot.bin";   Name = "fastos_boot.bin"; Orig = "$Root\USB_boot\fastos_boot.bin" }
+    @{ Path = "$efiBootPath\BOOTX64.EFI"; Name = "BOOTX64.EFI"; Orig = "$Root\BOOTX64.EFI"; Required = $true },
+    @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf"; Required = $true },
+    @{ Path = "${dl}:\fastos_boot.bin";   Name = "fastos_boot.bin"; Orig = "$Root\USB_boot\fastos_boot.bin"; Required = $false }
 )
 
 foreach ($c in $checks) {
+    if (!(Test-Path $c.Orig)) {
+        if ($c.Required) {
+            Write-Host "      FALLO: origen $($c.Name) no existe" -ForegroundColor Red
+            $ok = $false
+        } else {
+            Write-Host "      $($c.Name): omitido (legacy opcional)" -ForegroundColor DarkGray
+        }
+        continue
+    }
+
     if (!(Test-Path $c.Path)) {
-        Write-Host "      FALLO: $($c.Name) no se copio" -ForegroundColor Red
-        $ok = $false
+        if ($c.Required) {
+            Write-Host "      FALLO: $($c.Name) no se copio" -ForegroundColor Red
+            $ok = $false
+        } else {
+            Write-Host "      $($c.Name): no presente (legacy opcional)" -ForegroundColor DarkGray
+        }
     } else {
         $copied = (Get-Item $c.Path).Length
         $orig   = (Get-Item $c.Orig).Length
