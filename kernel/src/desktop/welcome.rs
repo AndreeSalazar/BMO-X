@@ -381,19 +381,29 @@ fn show_hint(msg: &'static [u8]) {
     mark_dirty();
 }
 
+fn should_enter_desktop(cmd: &[u8]) -> bool {
+    eq_ci(cmd, b"run") || eq_ci(cmd, b"desktop") || eq_ci(cmd, b"start") || eq_ci(cmd, b"go")
+}
+
+fn enter_desktop() -> ! {
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0.\n");
+    unsafe { crate::desktop::state::DIRTY = true; }
+    desktop::beep(880, 80);
+    desktop::beep(1320, 80);
+    desktop::run_ring0();
+}
+
 fn process_enter() {
     let cmd = unsafe { &INPUT_BUF[..INPUT_LEN] };
     let trimmed = trim(cmd);
 
     if trimmed.is_empty() {
         show_hint(b"Escribe (Run) y Enter.");
-    } else if eq_ci(trimmed, b"run") {
+    } else if should_enter_desktop(trimmed) {
         // Beep de confirmación y arrancar el escritorio Ring 0.
         // (spawn_desktop() del scheduler todavía es stub — no entra a
         //  Ring 3. Llamamos directo al loop Ring 0 que sí pinta.)
-        desktop::beep(880, 80);
-        desktop::beep(1320, 80);
-        desktop::run_ring0();
+        enter_desktop();
     } else if eq_ci(trimmed, b"hello") {
         desktop::beep(440, 80);
         user_init::spawn_hello();
@@ -444,9 +454,16 @@ pub fn run() -> ! {
         while (crate::arch::cpu::rdtsc() - start) < cycles {
             let sc = desktop::poll_key();
             if sc != 0 {
-                if let Some(ch) = process_scancode(sc) {
+                if sc == 0x1C {
+                    process_enter();
+                } else if let Some(ch) = process_scancode(sc) {
                     handle_char(ch);
                 }
+            }
+
+            if let Some(mut ch) = crate::drivers::serial::serial_read_byte() {
+                if ch == b'\r' { ch = b'\n'; }
+                handle_char(ch);
             }
 
             // Blink local: si el estado cambia, repintar SOLO el caret.
@@ -498,10 +515,8 @@ fn handle_char(ch: u8) {
                 if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_BUF[INPUT_LEN] = c;
                 INPUT_LEN += 1;
-                if eq_ci(trim(&INPUT_BUF[..INPUT_LEN]), b"run") {
-                    process_enter();
-                    return;
-                }
+                let trimmed = trim(&INPUT_BUF[..INPUT_LEN]);
+                if should_enter_desktop(trimmed) { enter_desktop(); }
                 mark_dirty();
             }
         },
