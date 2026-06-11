@@ -209,8 +209,11 @@ El compositor Ring 3 no debe prometerse hasta que existan:
 El flujo esperado es usar el script UEFI del repo:
 
 ```powershell
-.\build_uefi.ps1
+.\build_uefi.cmd
 ```
+
+`build_uefi.cmd` llama a `build_uefi.ps1` con `ExecutionPolicy Bypass` sólo para
+esa ejecución, así no necesitas cambiar la política global de Windows.
 
 Requisitos habituales:
 

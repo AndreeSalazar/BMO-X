@@ -137,12 +137,15 @@ pub fn fb_text(x: u32, y: u32, text: &[u8], fg: u32) {
 pub fn poll_key() -> u8 {
     let status: u8;
     unsafe { core::arch::asm!("in al, dx", out("al") status, in("dx") 0x64u16); }
-    // bit 0 = output buffer full, bit 5 = mouse data (lo descartamos en poll_key)
+    if status == 0xFF { return 0; } // Puerto flotante / no hay controlador
+    // bit 0 = output buffer full, bit 5 = mouse data
     if (status & 0x01) == 0 { return 0; }
     if (status & 0x20) != 0 {
-        let discard: u8;
-        unsafe { core::arch::asm!("in al, dx", out("al") discard, in("dx") 0x60u16); }
-        let _ = discard;
+        let b: u8;
+        unsafe {
+            core::arch::asm!("in al, dx", out("al") b, in("dx") 0x60u16);
+            process_mouse_byte(b);
+        }
         return 0;
     }
     let sc: u8;
@@ -151,15 +154,7 @@ pub fn poll_key() -> u8 {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Input — ratón PS/2 (poll no-bloqueante)
-//
-// El controlador PS/2 entrega paquetes de 3 bytes:
-//   B0:  Y_OVF X_OVF Y_SIGN X_SIGN 1 MB RB LB
-//   B1:  delta-X (signed, modulado por X_SIGN)
-//   B2:  delta-Y (signed, modulado por Y_SIGN)
-//
-// Mantenemos posición acumulada en estática y devolvemos un u64
-// empaquetado: x:i16 | y:i16<<16 | buttons:u8<<32.
+// Input — ratón PS/2 (poll no-bloqueante y acumulador)
 // ────────────────────────────────────────────────────────────────────
 
 static mut MOUSE_X: i32 = 960;     // centro de 1920×1080
@@ -174,6 +169,7 @@ unsafe fn ps2_wait_input() {
     for _ in 0..100_000 {
         let s: u8;
         core::arch::asm!("in al, dx", out("al") s, in("dx") 0x64u16);
+        if s == 0xFF { return; } // Puerto flotante / no hay controlador
         if (s & 0x02) == 0 { return; }
     }
 }
@@ -183,6 +179,7 @@ unsafe fn ps2_wait_output() {
     for _ in 0..100_000 {
         let s: u8;
         core::arch::asm!("in al, dx", out("al") s, in("dx") 0x64u16);
+        if s == 0xFF { return; } // Puerto flotante / no hay controlador
         if (s & 0x01) != 0 { return; }
     }
 }
@@ -231,38 +228,45 @@ fn mouse_init() {
     }
 }
 
+unsafe fn process_mouse_byte(b: u8) {
+    MOUSE_PKT[MOUSE_PKT_IDX] = b;
+    MOUSE_PKT_IDX += 1;
+    if MOUSE_PKT_IDX < 3 { return; }
+    MOUSE_PKT_IDX = 0;
+
+    let b0 = MOUSE_PKT[0];
+    // bit 3 del primer byte debe ser 1 (sync). Si no, descartar.
+    if (b0 & 0x08) == 0 { return; }
+    // descartar overflow
+    if (b0 & 0xC0) != 0 { return; }
+
+    let dx_raw = MOUSE_PKT[1] as i32;
+    let dy_raw = MOUSE_PKT[2] as i32;
+    let dx = if (b0 & 0x10) != 0 { dx_raw - 0x100 } else { dx_raw };
+    let dy = if (b0 & 0x20) != 0 { dy_raw - 0x100 } else { dy_raw };
+
+    MOUSE_X = (MOUSE_X + dx).clamp(0, boot_info::FB_WIDTH as i32 - 1);
+    MOUSE_Y = (MOUSE_Y - dy).clamp(0, boot_info::FB_HEIGHT as i32 - 1);
+    MOUSE_BUTTONS = b0 & 0x07;
+}
+
 /// Devuelve `(x:i16) | (y:i16 << 16) | (buttons:u8 << 32)`.
 pub fn poll_mouse() -> u64 {
     mouse_init();
 
     unsafe {
         // Drenar todos los paquetes disponibles en una sola llamada.
+        let mut limit = 0;
         loop {
             let status: u8;
             core::arch::asm!("in al, dx", out("al") status, in("dx") 0x64u16);
+            if status == 0xFF { break; } // Puerto flotante / no hay controlador
             if (status & 0x21) != 0x21 { break; }  // necesita bit 5 (mouse data) Y bit 0 (output full)
             let b: u8;
             core::arch::asm!("in al, dx", out("al") b, in("dx") 0x60u16);
-
-            MOUSE_PKT[MOUSE_PKT_IDX] = b;
-            MOUSE_PKT_IDX += 1;
-            if MOUSE_PKT_IDX < 3 { continue; }
-            MOUSE_PKT_IDX = 0;
-
-            let b0 = MOUSE_PKT[0];
-            // bit 3 del primer byte debe ser 1 (sync). Si no, descartar.
-            if (b0 & 0x08) == 0 { continue; }
-            // descartar overflow
-            if (b0 & 0xC0) != 0 { continue; }
-
-            let dx_raw = MOUSE_PKT[1] as i32;
-            let dy_raw = MOUSE_PKT[2] as i32;
-            let dx = if (b0 & 0x10) != 0 { dx_raw - 0x100 } else { dx_raw };
-            let dy = if (b0 & 0x20) != 0 { dy_raw - 0x100 } else { dy_raw };
-
-            MOUSE_X = (MOUSE_X + dx).clamp(0, boot_info::FB_WIDTH as i32 - 1);
-            MOUSE_Y = (MOUSE_Y - dy).clamp(0, boot_info::FB_HEIGHT as i32 - 1);
-            MOUSE_BUTTONS = b0 & 0x07;
+            process_mouse_byte(b);
+            limit += 1;
+            if limit > 64 { break; } // Evitar bucles infinitos
         }
 
         let x = (MOUSE_X as i16) as u16 as u64;

@@ -390,16 +390,22 @@ fn handle_input(fb: &Framebuffer) {
         if state::mouse_left_held() {
             let idx = st.drag_idx as usize;
             if idx < MAX_WIN && st.windows[idx].open {
-                st.windows[idx].x = mx - st.drag_dx;
-                st.windows[idx].y = my - st.drag_dy;
+                let new_x = mx - st.drag_dx;
+                let new_y = my - st.drag_dy;
                 // Clamp dentro de la pantalla
                 let maxx = (fb.width as i32) - st.windows[idx].w;
                 let maxy = (fb.height as i32) - st.windows[idx].h;
-                st.windows[idx].x = st.windows[idx].x.clamp(0, maxx.max(0));
-                st.windows[idx].y = st.windows[idx].y.clamp(28, maxy.max(28));
+                let clamped_x = new_x.clamp(0, maxx.max(0));
+                let clamped_y = new_y.clamp(28, maxy.max(28));
+                if clamped_x != st.windows[idx].x || clamped_y != st.windows[idx].y {
+                    st.windows[idx].x = clamped_x;
+                    st.windows[idx].y = clamped_y;
+                    unsafe { state::DIRTY = true; }
+                }
             }
         } else {
             st.drag_idx = -1;
+            unsafe { state::DIRTY = true; }
         }
         return;
     }
@@ -413,7 +419,10 @@ fn handle_input(fb: &Framebuffer) {
             hover = i as i32;
         }
     }
-    st.dock_hover = hover;
+    if st.dock_hover != hover {
+        st.dock_hover = hover;
+        unsafe { state::DIRTY = true; }
+    }
 
     // 2) ¿click left edge? buscar target
     if !state::mouse_left_pressed() { return; }
@@ -421,7 +430,10 @@ fn handle_input(fb: &Framebuffer) {
     // 2a) Dock icon → abrir ventana
     if hover >= 0 {
         state::open_window(DOCK_TO_TITLE[hover as usize]);
-        st.dock_active = hover;
+        if st.dock_active != hover {
+            st.dock_active = hover;
+            unsafe { state::DIRTY = true; }
+        }
         return;
     }
 
@@ -443,16 +455,23 @@ fn handle_input(fb: &Framebuffer) {
            point_in_rect(mx, my, w.x, w.y, w.w, 32) && !point_in_circle(mx, my, w.x + 18, w.y + 16, 9)
                                                     && !point_in_circle(mx, my, w.x + 38, w.y + 16, 9)
                                                     && !point_in_circle(mx, my, w.x + 58, w.y + 16, 9) {
-            st.focus = idx as i32;
+            if st.focus != idx as i32 {
+                st.focus = idx as i32;
+                unsafe { state::DIRTY = true; }
+            }
             st.drag_idx = idx as i32;
             st.drag_dx = mx - w.x;
             st.drag_dy = my - w.y;
+            unsafe { state::DIRTY = true; }
             return;
         }
 
         // Body → sólo focus
         if point_in_rect(mx, my, w.x, w.y, w.w, w.h) {
-            st.focus = idx as i32;
+            if st.focus != idx as i32 {
+                st.focus = idx as i32;
+                unsafe { state::DIRTY = true; }
+            }
             return;
         }
     }
@@ -476,10 +495,26 @@ fn z_order_top_first() -> [usize; MAX_WIN] {
 
 static mut BACKBUFFER: Option<alloc::vec::Vec<u32>> = None;
 
+/// Sincroniza con el V-Blank del monitor usando el registro de estado VGA 0x3DA (si está disponible).
+/// Sincroniza con el V-Blank del monitor.
+/// Desactivado en hardware UEFI real ya que el acceso al puerto VGA legacy 0x3DA
+/// puede provocar congelamientos del bus PCI-Express o excepciones graves.
+/// La doble bufferización y el renderizado bajo demanda (dirty tracking) ya
+/// eliminan los parpadeos de forma segura.
+fn wait_for_vsync() {
+    // No-op para evitar fallos de hardware en UEFI puro.
+}
+
 // ── Frame ──────────────────────────────────────────────────────────
 
 pub fn render_frame() {
     state::tick();
+    
+    // Si nada ha cambiado en este tick, evitamos re-dibujar y re-copiar (flicker-free y ahorro CPU)
+    if !unsafe { state::DIRTY } {
+        return;
+    }
+    unsafe { state::DIRTY = false; }
     
     let (addr, w, h, s) = unsafe {
         (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
@@ -518,6 +553,9 @@ pub fn render_frame() {
 
     draw_dock(&backbuffer_fb);
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
+
+    // Sincronizar copia con V-Sync para evitar tearing y flicker
+    wait_for_vsync();
 
     // Copiar el backbuffer al framebuffer de la pantalla real
     let screen_fb = Framebuffer::new(addr, (s as u64) * 4, w, h);

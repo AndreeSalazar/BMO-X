@@ -101,6 +101,9 @@ impl DesktopState {
 
 pub static mut STATE: DesktopState = DesktopState::new();
 
+pub static mut DIRTY: bool = true;
+static mut LAST_TICK_SEC: u64 = 0;
+
 /// Inicializa el reloj de referencia + ventanas por defecto.
 pub fn init() {
     unsafe {
@@ -134,7 +137,10 @@ pub fn open_window(title_id: u8) {
         // ¿existe ya abierta?
         for i in 0..MAX_WIN {
             if STATE.windows[i].open && STATE.windows[i].title_id == title_id {
-                STATE.focus = i as i32;
+                if STATE.focus != i as i32 {
+                    STATE.focus = i as i32;
+                    DIRTY = true;
+                }
                 return;
             }
         }
@@ -151,6 +157,7 @@ pub fn open_window(title_id: u8) {
                     title_id,
                 };
                 STATE.focus = i as i32;
+                DIRTY = true;
                 return;
             }
         }
@@ -161,12 +168,15 @@ pub fn open_window(title_id: u8) {
 pub fn close_window(idx: usize) {
     unsafe {
         if idx < MAX_WIN {
-            STATE.windows[idx].open = false;
-            if STATE.focus == idx as i32 {
-                // Buscar nuevo focus
-                STATE.focus = -1;
-                for j in 0..MAX_WIN {
-                    if STATE.windows[j].open { STATE.focus = j as i32; break; }
+            if STATE.windows[idx].open {
+                STATE.windows[idx].open = false;
+                DIRTY = true;
+                if STATE.focus == idx as i32 {
+                    // Buscar nuevo focus
+                    STATE.focus = -1;
+                    for j in 0..MAX_WIN {
+                        if STATE.windows[j].open { STATE.focus = j as i32; break; }
+                    }
                 }
             }
         }
@@ -181,9 +191,16 @@ pub fn tick() {
         STATE.frame = STATE.frame.wrapping_add(1);
 
         STATE.prev_buttons = STATE.mouse_buttons;
-        STATE.mouse_x = ((packed & 0xFFFF) as i16) as i32;
-        STATE.mouse_y = (((packed >> 16) & 0xFFFF) as i16) as i32;
-        STATE.mouse_buttons = ((packed >> 32) & 0xFF) as u8;
+        let new_x = ((packed & 0xFFFF) as i16) as i32;
+        let new_y = (((packed >> 16) & 0xFFFF) as i16) as i32;
+        let new_buttons = ((packed >> 32) & 0xFF) as u8;
+
+        if new_x != STATE.mouse_x || new_y != STATE.mouse_y || new_buttons != STATE.mouse_buttons {
+            STATE.mouse_x = new_x;
+            STATE.mouse_y = new_y;
+            STATE.mouse_buttons = new_buttons;
+            DIRTY = true;
+        }
 
         let now = cpu::rdtsc();
         let dt = now.saturating_sub(STATE.last_tsc).max(1);
@@ -198,7 +215,16 @@ pub fn tick() {
         // El número mostrado sólo se "engancha" cada FPS_DISPLAY_PERIOD frames,
         // así no parpadea en pantalla.
         if STATE.frame % FPS_DISPLAY_PERIOD == 0 {
-            STATE.fps_display = STATE.fps_avg;
+            if STATE.fps_display != STATE.fps_avg {
+                STATE.fps_display = STATE.fps_avg;
+                DIRTY = true;
+            }
+        }
+
+        let sec = uptime_sec();
+        if sec != LAST_TICK_SEC {
+            LAST_TICK_SEC = sec;
+            DIRTY = true;
         }
     }
 }

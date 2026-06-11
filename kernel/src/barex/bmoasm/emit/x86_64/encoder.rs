@@ -80,6 +80,20 @@ impl Emitter {
     /// Devuelve el offset actual (para back-patching de jumps en futuro).
     #[inline(always)]
     pub fn here(&self) -> usize { self.bytes.len() }
+
+    /// Parchea el displacement de la instrucción `lea reg, [rip + disp32]`
+    pub fn patch_string_ref(&mut self, disp_offset: usize, rodata_offset: usize, final_code_len: usize) {
+        let next_pc = disp_offset + 4; // Disp32 es de 4 bytes
+        let target_addr = final_code_len + rodata_offset;
+        let disp = (target_addr as isize) - (next_pc as isize);
+        let disp32 = (disp as i32) as u32;
+
+        let le_bytes = disp32.to_le_bytes();
+        self.bytes[disp_offset] = le_bytes[0];
+        self.bytes[disp_offset + 1] = le_bytes[1];
+        self.bytes[disp_offset + 2] = le_bytes[2];
+        self.bytes[disp_offset + 3] = le_bytes[3];
+    }
 }
 
 impl Default for Emitter {
