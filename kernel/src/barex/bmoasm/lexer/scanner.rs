@@ -133,6 +133,10 @@ impl<'a> Scanner<'a> {
         let start = self.pos as u32;
         let b = self.src[self.pos];
 
+        // Literal de cadena: "hola"
+        if b == b'"' {
+            return self.scan_string(start);
+        }
         // Identificador / keyword.
         if is_ident_start(b) {
             return self.scan_ident_or_kw(start);
@@ -143,6 +147,26 @@ impl<'a> Scanner<'a> {
         }
         // Operadores/delimitadores 1-char + lookahead para `->`.
         self.scan_punct(start)
+    }
+
+    fn scan_string(&mut self, start: u32) -> Token {
+        let begin = self.pos;
+        self.pos += 1; // saltar el primer '"'
+        let mut closed = false;
+        while self.pos < self.src.len() {
+            let c = self.src[self.pos];
+            self.pos += 1;
+            if c == b'"' {
+                closed = true;
+                break;
+            }
+        }
+        let kind = if closed { TokenKind::LitStr } else { TokenKind::Unknown };
+        Token {
+            kind, _pad: [0; 3],
+            start, len: (self.pos - begin) as u32,
+            value: 0,
+        }
     }
 
     // ── helpers ──────────────────────────────────────────────────────

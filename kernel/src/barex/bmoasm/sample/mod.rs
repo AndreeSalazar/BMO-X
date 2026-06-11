@@ -68,7 +68,17 @@ def critical_path() {
 }
 "#;
 
+/// `saludo.bmo` — escribe "hola" usando syscalls directos y cadenas semanticas.
+pub const SALUDO: &str = r#"
+def principal() {
+    reg rax = 0xF0     // syscall debug print
+    reg rdi = "hola"   // puntero semantico a string "hola"
+    reg rsi = 4        // longitud de "hola"
+    syscall
+}
+"#;
+
 /// Devuelve todas las muestras como slice (útil para tests de iteración).
 pub const ALL_SAMPLES: &[&str] = &[
-    EXIT_ZERO, SPIN_LOCK, MEDIR_CICLOS, TABLA_SALTO, ALIGN_FUNCION,
+    EXIT_ZERO, SPIN_LOCK, MEDIR_CICLOS, TABLA_SALTO, ALIGN_FUNCION, SALUDO,
 ];

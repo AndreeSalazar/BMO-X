@@ -27,6 +27,7 @@ pub enum Expr {
     LitInt(u64),
     LitByte(u8),
     LitNulo,
+    LitStr(String),
     Ident(String),
     Bin(BinOp, Box<Expr>, Box<Expr>),
     /// `no x` (unario).

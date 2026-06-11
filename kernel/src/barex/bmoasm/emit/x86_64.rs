@@ -46,6 +46,30 @@ impl Emitter {
         self.bytes.extend_from_slice(&imm.to_le_bytes());
     }
 
+    /// `mov dst, src` — REX.W + 0x89 + ModRM(11 | src << 3 | dst).
+    pub fn mov_reg_reg(&mut self, dst: Reg64, src: Reg64) {
+        let mut rex = 0x48; // REX.W
+        if src.needs_rex() { rex |= 0x04; } // REX.R
+        if dst.needs_rex() { rex |= 0x01; } // REX.B
+        self.bytes.push(rex);
+        self.bytes.push(0x89);
+        let modrm = 0xC0 | ((src.code() & 0x07) << 3) | (dst.code() & 0x07);
+        self.bytes.push(modrm);
+    }
+
+    /// Escribe un placeholder `lea reg, [rip + 0]` y devuelve el offset del disp32.
+    pub fn lea_reg_rip_placeholder(&mut self, reg: Reg64) -> usize {
+        let mut rex = 0x48; // REX.W
+        if reg.needs_rex() { rex |= 0x04; } // REX.R
+        self.bytes.push(rex);
+        self.bytes.push(0x8D); // LEA
+        let modrm = 0x05 | ((reg.code() & 0x07) << 3); // ModRM: [rip + disp32]
+        self.bytes.push(modrm);
+        let disp_offset = self.bytes.len();
+        self.bytes.extend_from_slice(&[0, 0, 0, 0]); // Placeholder
+        disp_offset
+    }
+
     /// `ret` — 0xC3.
     #[inline(always)]
     pub fn ret(&mut self) { self.bytes.push(0xC3); }
