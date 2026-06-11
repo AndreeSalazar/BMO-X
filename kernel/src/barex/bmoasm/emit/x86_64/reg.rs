@@ -36,9 +36,8 @@ impl Reg64 {
 /// Registros de argumento según BMO ABI (7 GPR int).
 ///
 /// Orden: `RDI RSI RDX R10 R8 R9 RAX_extra`.
-/// Difiere de Win64 (RCX RDX R8 R9) y SysV (RDI RSI RDX RCX R8 R9).
 pub const BMO_ARG_REGS: [Reg64; 7] = [
     Reg64::Rdi, Reg64::Rsi, Reg64::Rdx,
     Reg64::R10, Reg64::R8,  Reg64::R9,
-    Reg64::Rax, // arg #7 — extra exclusivo BMO
+    Reg64::Rax,
 ];

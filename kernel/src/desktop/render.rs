@@ -474,30 +474,52 @@ fn z_order_top_first() -> [usize; MAX_WIN] {
     out
 }
 
+static mut BACKBUFFER: Option<alloc::vec::Vec<u32>> = None;
+
 // ── Frame ──────────────────────────────────────────────────────────
 
 pub fn render_frame() {
     state::tick();
-    let Some(fb) = fb() else { return; };
+    
+    let (addr, w, h, s) = unsafe {
+        (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
+    };
+    if addr == 0 || w == 0 { return; }
 
-    handle_input(&fb);
+    let size_needed = (s as usize) * (h as usize);
+    unsafe {
+        if BACKBUFFER.is_none() || BACKBUFFER.as_ref().unwrap().len() < size_needed {
+            let mut v = alloc::vec::Vec::with_capacity(size_needed);
+            v.resize(size_needed, 0);
+            BACKBUFFER = Some(v);
+        }
+    }
 
-    draw_wallpaper(&fb);
-    draw_status_bar(&fb);
+    let backbuffer_ptr = unsafe { BACKBUFFER.as_mut().unwrap().as_mut_ptr() as u64 };
+    let backbuffer_fb = Framebuffer::new(backbuffer_ptr, (s as u64) * 4, w, h);
+
+    handle_input(&backbuffer_fb);
+
+    draw_wallpaper(&backbuffer_fb);
+    draw_status_bar(&backbuffer_fb);
 
     // Ventanas: focus al final (encima)
     let st = unsafe { &state::STATE };
     for i in 0..MAX_WIN {
         if i as i32 == st.focus { continue; }
         if st.windows[i].open {
-            draw_window(&fb, &st.windows[i], false);
+            draw_window(&backbuffer_fb, &st.windows[i], false);
         }
     }
     if st.focus >= 0 && (st.focus as usize) < MAX_WIN {
         let w = st.windows[st.focus as usize];
-        if w.open { draw_window(&fb, &w, true); }
+        if w.open { draw_window(&backbuffer_fb, &w, true); }
     }
 
-    draw_dock(&fb);
-    draw_cursor(&fb, st.mouse_x, st.mouse_y);
+    draw_dock(&backbuffer_fb);
+    draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
+
+    // Copiar el backbuffer al framebuffer de la pantalla real
+    let screen_fb = Framebuffer::new(addr, (s as u64) * 4, w, h);
+    backbuffer_fb.blit_to(&screen_fb);
 }

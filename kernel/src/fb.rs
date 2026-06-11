@@ -141,6 +141,28 @@ impl Framebuffer {
             }
         }
     }
+
+    /// Fast blit (copy) of this framebuffer to a destination framebuffer.
+    pub fn blit_to(&self, dest: &Self) {
+        let src_ptr = self.addr as *const u32;
+        let dst_ptr = dest.addr as *mut u32;
+        if self.pitch == dest.pitch && self.width == dest.width && self.height == dest.height {
+            let total_pixels = self.height * (self.pitch / 4);
+            unsafe {
+                core::ptr::copy_nonoverlapping(src_ptr, dst_ptr, total_pixels);
+            }
+        } else {
+            let copy_width = self.width.min(dest.width);
+            let copy_height = self.height.min(dest.height);
+            for y in 0..copy_height {
+                unsafe {
+                    let src_line = (self.addr + y * self.pitch) as *const u32;
+                    let dst_line = (dest.addr + y * dest.pitch) as *mut u32;
+                    core::ptr::copy_nonoverlapping(src_line, dst_line, copy_width);
+                }
+            }
+        }
+    }
 }
 
 /// Linear interpolation between two ARGB colors. t/total = blend factor.

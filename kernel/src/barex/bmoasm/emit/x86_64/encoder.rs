@@ -1,17 +1,10 @@
 //! Encoder x86-64 mínimo. Sólo lo necesario para BMO simple.
-//!
-//! Tres operaciones esenciales en sesión 15:
-//!   - `mov reg64, imm64`    → REX.W + B8+r + imm64
-//!   - `ret`                 → 0xC3
-//!   - `emit bytes`          → bytes literales
-//!
-//! Aritmética, jumps y call lo agregará una sesión dedicada al codegen.
 
 extern crate alloc;
 use alloc::vec::Vec;
 
 use crate::barex::{BxError, BxResult};
-use super::super::parser::ast::Ast;
+use super::super::super::parser::ast::Ast;
 use super::reg::Reg64;
 
 #[repr(u32)]
@@ -34,8 +27,6 @@ impl Emitter {
     pub fn emit_ast(&mut self, _ast: &Ast) -> BxResult<()> {
         Err(BxError::NotImplemented)
     }
-
-    // ── Encoders básicos ya operativos (útiles para tests del scaffold)
 
     /// `mov reg, imm64` — REX.W (+ REX.B si r8..r15) + 0xB8+r + imm64.
     pub fn mov_reg_imm64(&mut self, reg: Reg64, imm: u64) {
