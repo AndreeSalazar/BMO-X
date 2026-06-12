@@ -1,6 +1,6 @@
 //! Page Frame Allocator — bitmap-based, supports contiguous allocation.
 //!
-//! Used for GSP firmware DMA buffers (30-70 MB contiguous) on GA106.
+//! Used by the kernel for physical pages and optional boot-reserved payloads.
 //!
 //! Design:
 //!   - Tracks physical pages from 16 MB (`BASE_ADDR`) to 4 GB (`MAX_ADDR`).
@@ -98,7 +98,7 @@ fn ranges_overlap(start: u64, end: u64, region_start: u64, region_end: u64) -> b
 ///
 /// # Safety
 /// Must be called exactly once, early in kernel init, before any allocation.
-pub unsafe fn init(memory_map: &[MemoryEntry], count: usize, gsp_addr: u64, gsp_size: u64) {
+pub unsafe fn init(memory_map: &[MemoryEntry], count: usize, reserved_addr: u64, reserved_size: u64) {
     if INITIALIZED {
         return;
     }
@@ -150,8 +150,8 @@ pub unsafe fn init(memory_map: &[MemoryEntry], count: usize, gsp_addr: u64, gsp_
                 continue;
             }
 
-            // Skip pages that belong to the pre-loaded GSP firmware.
-            if gsp_size > 0 && ranges_overlap(addr, addr + PAGE_SIZE as u64, gsp_addr, gsp_addr + gsp_size) {
+            // Skip pages that belong to an optional boot-reserved payload.
+            if reserved_size > 0 && ranges_overlap(addr, addr + PAGE_SIZE as u64, reserved_addr, reserved_addr + reserved_size) {
                 addr += PAGE_SIZE as u64;
                 continue;
             }

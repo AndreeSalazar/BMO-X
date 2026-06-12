@@ -7,14 +7,14 @@
 //!
 //!   1. serial init
 //!   2. validate BootInfo magic
-//!   3. globals (FB, GSP)
+//!   3. globals (FB + optional reserved payload)
 //!   4. arch: GDT+TSS → IDT → syscall MSRs
 //!   5. ACPI MCFG → PCI ECAM
 //!   6. page allocator
 //!   7. console + shell
 //!
-//! El driver `drivers/gpu/fastgpu/` (BMO/GSP bridge) está intacto pero
-//! ya no se invoca en el boot path. Se puede llamar desde el shell.
+//! El backend gráfico funcional es UEFI GOP/framebuffer. Los prototipos de GPU
+//! acelerada quedan fuera del build activo hasta que exista un driver real.
 
 #![no_std]
 #![no_main]
@@ -99,15 +99,15 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         loop { unsafe { core::arch::asm!("hlt"); } }
     }
 
-    // ── Globals que consumen módulos cliente (desktop syscalls, GSP) ─
+    // ── Globals que consumen módulos cliente (desktop/syscalls) ──────
     unsafe {
-        boot_info::BOOT_INFO   = boot_info_ptr;
-        boot_info::GSP_FW_ADDR = bi.gsp_addr;
-        boot_info::GSP_FW_SIZE = bi.gsp_size;
-        boot_info::FB_ADDR     = bi.fb_addr;
-        boot_info::FB_WIDTH    = bi.fb_width;
-        boot_info::FB_HEIGHT   = bi.fb_height;
-        boot_info::FB_STRIDE   = bi.fb_stride;
+        boot_info::BOOT_INFO = boot_info_ptr;
+        boot_info::RESERVED_PAYLOAD_ADDR = bi.gsp_addr;
+        boot_info::RESERVED_PAYLOAD_SIZE = bi.gsp_size;
+        boot_info::FB_ADDR = bi.fb_addr;
+        boot_info::FB_WIDTH = bi.fb_width;
+        boot_info::FB_HEIGHT = bi.fb_height;
+        boot_info::FB_STRIDE = bi.fb_stride;
     }
     drivers::serial::serial_write("[FastOS] FB "); serial_hex(bi.fb_addr);
     drivers::serial::serial_write(" "); serial_hex(bi.fb_width as u64);
@@ -124,7 +124,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     arch::syscall_entry::init_syscall();
     drivers::serial::serial_write("[FastOS] syscall MSRs programmed (BMO ABI)\n");
 
-    // ── ACPI / PCI (sólo enumeración, sin tocar fastgpu) ───────────
+    // ── ACPI / PCI (sólo enumeración; sin driver GPU dedicado) ──────
     if let Some(ecam) = arch::acpi::parse_mcfg(bi.rsdp_addr) {
         drivers::pci::init_ecam(ecam.base_addr, ecam.end_bus);
         let pci = drivers::pci::scan_pci_bus();

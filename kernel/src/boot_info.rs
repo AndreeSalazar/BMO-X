@@ -4,9 +4,13 @@
 /// Global pointer to the BootInfo structure passed by the bootloader.
 pub static mut BOOT_INFO: *const fastos_boot_protocol::BootInfo = core::ptr::null();
 
-/// Global GSP firmware info (populated from BootInfo for backward compat).
-pub static mut GSP_FW_ADDR: u64 = 0;
-pub static mut GSP_FW_SIZE: u64 = 0;
+/// Optional boot-reserved payload info.
+///
+/// The boot protocol still exposes the legacy `gsp_*` fields for compatibility,
+/// but the functional GOP boot path treats them as a generic reserved range,
+/// not as GPU firmware.
+pub static mut RESERVED_PAYLOAD_ADDR: u64 = 0;
+pub static mut RESERVED_PAYLOAD_SIZE: u64 = 0;
 
 // ─── Framebuffer globals (used by syscalls 0x60-0x63) ───────────────
 /// Linear framebuffer base address (XRGB-8888, 4 bytes per pixel).

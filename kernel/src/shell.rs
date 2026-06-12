@@ -235,7 +235,7 @@ fn cmd_pci(con: &mut Console) {
         con.print("  ");
         con.print_hex32(((d.vendor_id as u32) << 16) | d.device_id as u32);
         con.print(" ");
-        if d.vendor_id == 0x10DE { con.print_colored("NVIDIA", colors::NV_GREEN); }
+        if d.class_code == 0x03 { con.print_colored("DISPLAY", colors::NV_GREEN); }
         else if d.vendor_id == 0x0106 { con.print_colored("SATA", colors::ACCENT_PURPLE); }
         con.newline();
     }

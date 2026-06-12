@@ -3,8 +3,8 @@
 //!
 //! El antiguo árbol completo (ntfs/walker/gpt + crate `ntfs`/`nt-hive`/`binrw`)
 //! salió del kernel cuando el modo "Spy Agent" se abandonó. Estos shims
-//! existen porque `drivers/nvme.rs`, `drivers/ahci.rs` y
-//! `drivers/gpu/fastgpu/gsp` aún implementan estos traits.
+//! existen porque `drivers/nvme.rs`, `drivers/ahci.rs` y el RAMdisk necesitan
+//! una interfaz mínima común.
 
 #![allow(dead_code)]
 

@@ -191,7 +191,7 @@ pub mod colors {
     pub const BG_CARD: u32       = 0xFF21262D;  // Card bg
     pub const BORDER: u32        = 0xFF30363D;  // Subtle border
 
-    // NVIDIA green branding
+    // Success/active green accent
     pub const NV_GREEN: u32      = 0xFF76B900;
     pub const NV_GREEN_DARK: u32 = 0xFF5A8F00;
 

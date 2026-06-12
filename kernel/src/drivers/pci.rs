@@ -1,7 +1,5 @@
 //! PCI bus scanning via ECAM (Enhanced Configuration Access Mechanism).
 
-const NVIDIA_VENDOR: u16 = 0x10DE;
-
 /// ECAM base address (set by init_ecam before scanning).
 static mut ECAM_BASE: u64 = 0;
 static mut ECAM_END_BUS: u8 = 0;
@@ -43,12 +41,6 @@ impl PciScanResult {
             }; 64],
             count: 0,
         }
-    }
-
-    pub fn find_nvidia_gpu(&self) -> Option<&PciDevice> {
-        self.devices[..self.count].iter().find(|d| {
-            d.vendor_id == NVIDIA_VENDOR && d.class_code == 0x03
-        })
     }
 
     pub fn find_device(&self, vendor: u16, device: u16) -> Option<&PciDevice> {
