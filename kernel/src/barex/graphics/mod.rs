@@ -5,10 +5,10 @@
 //!
 //! ## Filosofía
 //!
-//! Estos módulos **NO implementan** un driver gráfico — eso lo hace
-//! `drivers::gpu::fastgpu` (bridge BMO/GSP del usuario, intocable) y
-//! futuras integraciones con NAGA. Aquí sólo viven las **firmas BMO ABI**
-//! de los 12 objetos núcleo, para que apps Ring 3 sepan a qué llamar.
+//! Estos módulos **NO implementan** un driver gráfico dedicado. Primero deben
+//! mapearse al backend GOP/software estable; backends acelerados reales se
+//! agregarán después como capa opcional. Aquí sólo viven las **firmas BMO ABI**
+//! de los objetos núcleo, para que apps Ring 3 sepan a qué llamar.
 //!
 //! ## Estructura modular (Sesión 13) — una carpeta por objeto, sin monolitos
 //!

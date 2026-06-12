@@ -11,18 +11,16 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use core::ffi::c_void;
 use fastos_boot_protocol::{
     BootInfo, MemoryEntry, MemoryType as BootMemType, PixelFormat, BOOT_MAGIC, MAX_MEMORY_ENTRIES,
 };
 use log::info;
-use uefi::boot::{self, OpenProtocolAttributes, OpenProtocolParams, SearchType};
+use uefi::boot;
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 use uefi::prelude::*;
 use uefi::proto::console::gop::GraphicsOutput;
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::proto::unsafe_protocol;
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const KERNEL_STACK_SIZE: usize = 256 * 1024; // 256 KiB
@@ -33,31 +31,6 @@ const TARGET_REFRESH_HZ: u32 = 74;
 // ELF64 constants
 const ELF_MAGIC: [u8; 4] = [0x7F, b'E', b'L', b'F'];
 const PT_LOAD: u32 = 1;
-
-#[repr(C)]
-#[unsafe_protocol("4cf5b200-68b8-4ca5-9eec-b23e3f50029a")]
-struct PciIoRaw {
-    poll_mem: usize,
-    poll_io: usize,
-    mem_read: usize,
-    mem_write: usize,
-    io_read: usize,
-    io_write: usize,
-    pci_read: usize,
-    pci_write: usize,
-    copy_mem: usize,
-    map: usize,
-    unmap: usize,
-    allocate_buffer: usize,
-    free_buffer: usize,
-    flush: usize,
-    get_location: usize,
-    attributes: usize,
-    get_bar_attributes: usize,
-    set_bar_attributes: usize,
-    rom_size: u64,
-    rom_image: *mut c_void,
-}
 
 // ── ELF64 header helpers (manual parsing, no external crate) ────────────────
 
@@ -83,153 +56,6 @@ fn read_u64(data: &[u8], off: usize) -> u64 {
         data[off + 6],
         data[off + 7],
     ])
-}
-
-fn read_u16_checked(data: &[u8], off: usize) -> Option<u16> {
-    if off + 2 <= data.len() {
-        Some(u16::from_le_bytes([data[off], data[off + 1]]))
-    } else {
-        None
-    }
-}
-
-fn pci_rom_is_nvidia(rom: &[u8]) -> bool {
-    let mut image_off = 0usize;
-
-    while image_off + 0x1c <= rom.len() {
-        if rom[image_off] != 0x55 || rom[image_off + 1] != 0xaa {
-            return false;
-        }
-
-        let image_size = (rom[image_off + 2] as usize).saturating_mul(512);
-        let pcir_ptr = match read_u16_checked(rom, image_off + 0x18) {
-            Some(v) => image_off + v as usize,
-            None => return false,
-        };
-
-        if pcir_ptr + 0x16 > rom.len() || &rom[pcir_ptr..pcir_ptr + 4] != b"PCIR" {
-            return false;
-        }
-
-        if read_u16_checked(rom, pcir_ptr + 4) == Some(0x10de) {
-            return true;
-        }
-
-        let last = (rom[pcir_ptr + 0x15] & 0x80) != 0;
-        if last || image_size == 0 {
-            break;
-        }
-        image_off += image_size;
-    }
-
-    false
-}
-
-fn vbios_has_fwsec_v3_pgsp(rom: &[u8]) -> bool {
-    if rom.len() < 44 {
-        return false;
-    }
-
-    let mut off = 0usize;
-    while off + 44 <= rom.len() {
-        let hdr = read_u32(rom, off);
-        let valid = hdr & 1;
-        let version = (hdr >> 8) & 0xff;
-        let hdr_size = ((hdr >> 16) & 0xffff) as usize;
-
-        if valid == 1 && version == 3 && hdr_size >= 0x20 && hdr_size <= 0x1000 {
-            let pkc_data_offset = read_u32(rom, off + 8);
-            let iface_offset = read_u32(rom, off + 12);
-            let imem_load_size = read_u32(rom, off + 20) as usize;
-            let dmem_load_size = read_u32(rom, off + 32) as usize;
-            let engine_id_mask = read_u16(rom, off + 36) as u32;
-
-            let sane = pkc_data_offset <= 0x10000
-                && iface_offset <= 0x1000
-                && imem_load_size >= 0x1000
-                && imem_load_size <= 0x20000
-                && dmem_load_size <= 0x10000
-                && (engine_id_mask & 0x400) != 0;
-
-            if sane {
-                let image_start = off + hdr_size;
-                let image_end = image_start + imem_load_size + dmem_load_size;
-                if image_end <= rom.len() {
-                    return true;
-                }
-            }
-        }
-
-        off += 4;
-    }
-
-    false
-}
-
-fn copy_blob_to_loader_pages(data: &[u8], label: &str) -> (u64, u64) {
-    let size = data.len();
-    let pages = (size + 0xFFF) / 0x1000;
-    let ptr = boot::allocate_pages(
-        boot::AllocateType::AnyPages,
-        MemoryType::LOADER_DATA,
-        pages,
-    )
-    .expect("Failed to allocate pages for firmware blob")
-    .as_ptr() as *mut u8;
-
-    unsafe {
-        core::ptr::write_bytes(ptr, 0, pages * 0x1000);
-        core::ptr::copy_nonoverlapping(data.as_ptr(), ptr, size);
-    }
-
-    info!("  Loaded {} -> 0x{:x} ({} bytes)", label, ptr as u64, size);
-    (ptr as u64, size as u64)
-}
-
-fn load_vbios_file_with_fwsec(device_handle: uefi::Handle) -> Option<(u64, u64)> {
-    for path in ["\\firmware\\vbios_rtx3060.rom", "\\vbios_rtx3060.rom"] {
-        if let Some(data) = read_file_from_device(device_handle, path) {
-            if vbios_has_fwsec_v3_pgsp(&data) {
-                info!("  {} contains FWSEC v3 for PGSP", path);
-                return Some(copy_blob_to_loader_pages(&data, path));
-            }
-            info!("  {} found, but no FWSEC v3 PGSP descriptor", path);
-        }
-    }
-
-    None
-}
-
-fn load_nvidia_vbios_from_uefi_rom() -> Option<(u64, u64)> {
-    let handles = boot::locate_handle_buffer(SearchType::from_proto::<PciIoRaw>()).ok()?;
-
-    for handle in handles.iter().copied() {
-        let params = OpenProtocolParams {
-            handle,
-            agent: boot::image_handle(),
-            controller: None,
-        };
-        let pci = unsafe {
-            boot::open_protocol::<PciIoRaw>(params, OpenProtocolAttributes::GetProtocol)
-        };
-        let pci = match pci {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-
-        if pci.rom_image.is_null() || pci.rom_size < 0x40 || pci.rom_size > 2 * 1024 * 1024 {
-            continue;
-        }
-
-        let rom = unsafe {
-            core::slice::from_raw_parts(pci.rom_image as *const u8, pci.rom_size as usize)
-        };
-        if pci_rom_is_nvidia(rom) {
-            return Some(copy_blob_to_loader_pages(rom, "UEFI NVIDIA Option ROM"));
-        }
-    }
-
-    None
 }
 
 /// Parsed ELF64 program header (only the fields we need).
@@ -601,81 +427,11 @@ fn main() -> Status {
         kernel_base, kernel_size
     );
 
-    // ── 4b. Load GSP firmware blobs (optional) ─────────────────────────────
-    let mut gsp_addr: u64 = 0;
-    let mut gsp_size: u64 = 0;
-    let mut gsp_bootloader_addr: u64 = 0;
-    let mut gsp_bootloader_size: u64 = 0;
-    let mut gsp_booter_load_addr: u64 = 0;
-    let mut gsp_booter_load_size: u64 = 0;
-    let mut vbios_addr: u64 = 0;
-    let mut vbios_size: u64 = 0;
-
-    info!("Loading GSP firmware blobs...");
-
-    // Helper: load a firmware file into page-aligned memory
-    // Try each path in order, return (addr, size) or (0, 0)
-    let mut load_fw = |paths: &[&str]| -> (u64, u64) {
-        for path in paths {
-            if let Some(data) = read_file_from_device(device_handle, path) {
-                return copy_blob_to_loader_pages(&data, path);
-            }
-        }
-        (0, 0)
-    };
-
-    // 1. GSP-RM payload (gsp_ga10x.bin) - 69MB
-    let (a, s) = load_fw(&["\\gsp_ga10x.bin", "\\EFI\\BOOT\\gsp_ga10x.bin"]);
-    gsp_addr = a;
-    gsp_size = s;
-
-    // 2. RISC-V bootloader (bootloader-535.113.01.bin) - ~20KB
-    let (a, s) = load_fw(&[
-        "\\firmware\\bootloader-535.113.01.bin",
-        "\\bootloader-535.113.01.bin",
-    ]);
-    gsp_bootloader_addr = a;
-    gsp_bootloader_size = s;
-
-    // 3. Falcon HS booter (booter_load-535.113.01.bin) - ~60KB
-    let (a, s) = load_fw(&[
-        "\\firmware\\booter_load-535.113.01.bin",
-        "\\booter_load-535.113.01.bin",
-    ]);
-    gsp_booter_load_addr = a;
-    gsp_booter_load_size = s;
-
-    // 4. VBIOS ROM - needed for FWSEC-FRTS.
-    // Prefer the full saved ROM file when it contains FWSEC. The UEFI-exposed
-    // Option ROM can be only the small boot image and miss the SPI FWSEC blocks.
-    if let Some((a, s)) = load_vbios_file_with_fwsec(device_handle) {
-        vbios_addr = a;
-        vbios_size = s;
-    } else if let Some((a, s)) = load_nvidia_vbios_from_uefi_rom() {
-        vbios_addr = a;
-        vbios_size = s;
-    } else {
-        info!("  UEFI NVIDIA Option ROM not available; trying vbios_rtx3060.rom");
-        let (a, s) = load_fw(&[
-            "\\firmware\\vbios_rtx3060.rom",
-            "\\vbios_rtx3060.rom",
-        ]);
-        vbios_addr = a;
-        vbios_size = s;
-    }
-
-    if gsp_addr == 0 {
-        info!("WARNING: gsp_ga10x.bin not found — GSP will not be available");
-    }
-    if gsp_bootloader_addr == 0 {
-        info!("WARNING: bootloader-535.113.01.bin not found");
-    }
-    if gsp_booter_load_addr == 0 {
-        info!("WARNING: booter_load-535.113.01.bin not found");
-    }
-    if vbios_addr == 0 {
-        info!("WARNING: vbios_rtx3060.rom not found — FWSEC-FRTS will not run");
-    }
+    // ── 4b. GPU firmware path disabled ─────────────────────────────────────
+    // FastOS debe arrancar con UEFI GOP/framebuffer sin blobs privados ni
+    // archivos de una GPU concreta. Los campos legacy del BootInfo se dejan en
+    // cero por compatibilidad con el layout del protocolo.
+    info!("GPU firmware loading disabled; using UEFI GOP framebuffer only");
 
 
     // ── 5. Query GOP ────────────────────────────────────────────────────────
@@ -732,15 +488,15 @@ fn main() -> Status {
         bi.stack_top = stack_top;
         bi.stack_size = KERNEL_STACK_SIZE as u64;
 
-        // GSP firmware (loaded in step 4b, or 0 if not found)
-        bi.gsp_addr = gsp_addr;
-        bi.gsp_size = gsp_size;
-        bi.gsp_bootloader_addr = gsp_bootloader_addr;
-        bi.gsp_bootloader_size = gsp_bootloader_size;
-        bi.gsp_booter_load_addr = gsp_booter_load_addr;
-        bi.gsp_booter_load_size = gsp_booter_load_size;
-        bi.vbios_addr = vbios_addr;
-        bi.vbios_size = vbios_size;
+        // Legacy GPU/payload fields: intentionally zero in the functional GOP path.
+        bi.gsp_addr = 0;
+        bi.gsp_size = 0;
+        bi.gsp_bootloader_addr = 0;
+        bi.gsp_bootloader_size = 0;
+        bi.gsp_booter_load_addr = 0;
+        bi.gsp_booter_load_size = 0;
+        bi.vbios_addr = 0;
+        bi.vbios_size = 0;
     }
 
     info!("BootInfo at 0x{:x}", boot_info_ptr as u64);

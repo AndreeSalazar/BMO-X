@@ -10,7 +10,7 @@
 //! | DirectSound / XAudio2      | `mixer::BxMixer` + `voice::BxVoice`    |
 //! | ASIO (driver-by-driver)    | `backend::Backend` trait único         |
 //! | CoreAudio HAL              | `route::Router`                        |
-//! | ALSA + PulseAudio + JACK   | `backend::usb_ac2`, `backend::hdmi_gsp`|
+//! | ALSA + PulseAudio + JACK   | `backend::usb_ac2`, backend HDMI genérico|
 //! | MMDevice / Endpoint COM    | `route::Endpoint`                      |
 //! | KMixer / APO chain         | `effects::*`                           |
 //! | `WAVEFORMATEX` zoo         | `format::Sample` + `format::Channels`  |
@@ -30,7 +30,7 @@
 //!   ├── spatial/          ← BxSpatializer + ListenerPose (HRTF/Atmos)
 //!   ├── effects/          ← EQ, reverb, compressor, limiter
 //!   ├── route/            ← Endpoint routing (USB/HDMI/Realtek)
-//!   ├── backend/          ← Backend trait + usb_ac2 + hdmi_gsp + realtek_hda
+//!   ├── backend/          ← Backend trait + usb_ac2 + HDMI genérico + realtek_hda
 //!   └── ring/             ← SQ/CQ submit PCM low-latency
 //! ```
 //!

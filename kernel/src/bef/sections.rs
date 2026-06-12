@@ -29,7 +29,7 @@ pub enum SectionKind {
     Symbols   = 0x08,
     /// Manifest TOML (capabilities, version, dependencies).
     Manifest  = 0x09,
-    /// Shaders SASS GA106 pre-compilados.
+    /// Shaders/IR pre-compilados.
     Shaders   = 0x0A,
     /// Recursos arbitrarios (texturas BC7, audio Opus, fonts, etc.).
     Resources = 0x0B,

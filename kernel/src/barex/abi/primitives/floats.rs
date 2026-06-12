@@ -4,8 +4,8 @@
 //! - `bx_f64` — IEEE 754 binary64 (`double` C). 64 bits.
 //! - `bx_f16` — IEEE 754 binary16 (half precision). 16 bits.
 //!   Soportado nativamente por:
-//!     • RTX 3060 (operaciones gráficas/ML)
-//!     • Zen 3 vía instrucciones AVX2 + VEX (con conversión a/desde f32)
+//!     • backends gráficos modernos cuando existan
+//!     • CPU vía conversión software o instrucciones disponibles
 //!   El kernel lo expone como struct opaco; las apps lo usan en shaders.
 
 #![allow(non_camel_case_types)]

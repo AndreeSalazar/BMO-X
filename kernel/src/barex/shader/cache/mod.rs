@@ -1,6 +1,6 @@
 //! Cache LRU de shaders ya traducidos. Key = BLAKE3 del blob origen.
 //!
-//! Evita re-traducir DXIL/SPIR-V a SASS cada vez que la misma app abre
+//! Evita re-traducir DXIL/SPIR-V a IR/backend nativo cada vez que la misma app abre
 //! el mismo PSO. Análogo al D3D12 PSO cache pero por shader individual.
 
 use crate::barex::{BxError, BxResult};
@@ -13,8 +13,8 @@ pub struct CacheEntry {
     pub key: bx_u64,
     /// Handle del shader ya cargado en el device.
     pub handle: bx_u32,
-    /// Bytes del SASS resultante (para reconstruir si se descarga).
-    pub sass_size: bx_u32,
+    /// Bytes del blob traducido resultante (para reconstruir si se descarga).
+    pub native_size: bx_u32,
 }
 
 pub struct ShaderCache<'a> {

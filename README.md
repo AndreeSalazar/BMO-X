@@ -120,6 +120,72 @@ Orden correcto para BareX graphics:
 
 ---
 
+## BMOasm: lenguaje tipo Python en español
+
+BMOasm será el lenguaje propio para crear servicios, pruebas, herramientas y
+apps pequeñas de FastOS sin escribir todo en Rust o ensamblador. Aunque se llame
+`asm`, la dirección correcta no es hacerlo como ensamblador crudo, sino como un
+lenguaje **alto nivel, indentado, UTF-8 y compilable a BMO IR/BEF**.
+
+Objetivo de sintaxis:
+
+- Parecida a Python: bloques por indentación, lectura simple y poco ruido.
+- En español: palabras clave claras para aprender y escribir más natural.
+- UTF-8 real: identificadores con `ñ`, acentos y nombres humanos.
+- Determinista: sin magia pesada en Ring 0; lo crítico se valida antes de correr.
+- Compilación futura a BEF/BMO ABI, no ejecución directa dentro del boot path.
+
+Ejemplo deseado:
+
+```python
+función saludar(nombre):
+    si nombre == nulo:
+        devolver "Hola desde FastOS"
+
+    devolver "Hola, " + nombre
+
+función principal():
+    año = 2026
+    dueño = "André"
+
+    para intento en rango(0, 3):
+        imprimir(saludar(dueño))
+
+    si año >= 2026:
+        imprimir("BMO está vivo")
+```
+
+Palabras clave candidatas:
+
+- `función`, `devolver`, `si`, `sino`, `mientras`, `para`, `en`
+- `intentar`, `capturar`, `finalmente`
+- `usar`, `desde`, `como`
+- `verdadero`, `falso`, `nulo`
+- `romper`, `continuar`, `pasar`
+
+Reglas iniciales recomendadas:
+
+1. Lexer UTF-8 con identificadores Unicode: `año`, `niño`, `señal`, `tamaño`.
+2. Parser por indentación, estilo Python, sin llaves obligatorias.
+3. Tipos opcionales al principio; inferencia simple después.
+4. Runtime pequeño encima de BMO ABI: `imprimir`, tiempo, memoria, archivos BEF.
+5. Modo kernel restringido: nada de memoria arbitraria sin permiso explícito.
+6. Modo usuario primero: BMOasm debe servir para probar syscalls y BareX sin
+   arriesgar el arranque.
+
+Ruta práctica:
+
+```text
+BMOasm fuente UTF-8
+  -> lexer/parser español
+  -> AST
+  -> BMO IR simple
+  -> BEF ejecutable o bytecode verificado
+  -> syscalls/BareX por BMO ABI
+```
+
+---
+
 ## Limpieza y enfoque
 
 Para que el proyecto avance, hay que separar tres grupos:
@@ -154,7 +220,7 @@ Se conserva, pero no debe bloquear el arranque:
 
 No debe ser requisito del boot path:
 
-- `kernel/src/drivers/gpu/fastgpu/`
+- `kernel/src/drivers/gpu/fastgpu/` queda fuera del build activo
 - scripts de firmware/payload GPU
 - material extraído de Windows en `combo_Window_Extractor/`
 - documentos antiguos que prometen drivers GPU como si ya fueran funcionales

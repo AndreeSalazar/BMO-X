@@ -49,7 +49,7 @@ bitflags::bitflags! {
         const SHARED_LIBRARY     = 1 << 1;
         /// Tiene sección de manifest TOML válida.
         const HAS_MANIFEST       = 1 << 2;
-        /// Tiene sección de shaders SASS pre-compilados.
+        /// Tiene sección de shaders/IR pre-compilados.
         const HAS_SHADERS        = 1 << 3;
         /// Tiene secciones comprimidas con GDeflate.
         const COMPRESSED         = 1 << 4;

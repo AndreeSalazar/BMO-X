@@ -18,7 +18,7 @@ pub struct BxAudioEngine {
 }
 
 impl BxAudioEngine {
-    /// Abre engine: USB AC2 → HDMI/GSP → Realtek HDA en ese orden.
+    /// Abre engine: USB AC2 → HDMI genérico → Realtek HDA en ese orden.
     pub fn open(_mode: EngineMode) -> BxResult<Self> {
         Err(BxError::NotImplemented)
     }

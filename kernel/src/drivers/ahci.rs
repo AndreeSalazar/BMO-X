@@ -5,7 +5,6 @@ use crate::drivers::pci::{self, PciDevice};
 use crate::fs::{DiskReader, DiskWriter, DiskError};
 use crate::arch::page_alloc;
 use core::ptr::{read_volatile, write_volatile};
-use crate::evidence_println;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AhciRuntimeMode {
@@ -302,7 +301,6 @@ impl AhciDriver {
 
     unsafe fn submit_io_cmd(&mut self, lba: u64, count: u32, is_write: bool) -> Result<(), DiskError> {
         if is_write && self.mode == AhciRuntimeMode::DryRun {
-            evidence_println!("[AHCI] DRY-RUN: Simulated write to LBA 0x{:X}, count {}", lba, count);
             return Ok(());
         }
 
@@ -417,7 +415,6 @@ impl DiskWriter for AhciDriver {
     fn write_sectors(&mut self, lba: u64, count: u32, buf: &[u8]) -> Result<(), DiskError> {
         if let Some((start, end)) = self.export_bounds {
             if lba < start || lba + (count as u64) > end {
-                evidence_println!("[AHCI] FATAL: Bounds check failed! LBA 0x{:X}", lba);
                 return Err(DiskError::InvalidLba);
             }
         }

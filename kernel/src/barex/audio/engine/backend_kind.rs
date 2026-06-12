@@ -6,7 +6,7 @@ use crate::barex::abi::primitives::bx_u8;
 pub enum AudioBackend {
     None            = 0,
     UsbAudioClass2  = 1,
-    HdmiViaGsp      = 2,
+    HdmiFramebuffer = 2,
     RealtekHda      = 3,
 }
 
@@ -14,9 +14,9 @@ impl AudioBackend {
     #[inline(always)]
     pub const fn raw(self) -> bx_u8 { self as bx_u8 }
 
-    /// True si el backend está disponible sin GSP (no bloquea por bridge).
+    /// True si el backend no depende de firmware/driver GPU dedicado.
     #[inline(always)]
     pub const fn is_independent(self) -> bool {
-        matches!(self, Self::UsbAudioClass2 | Self::RealtekHda)
+        matches!(self, Self::UsbAudioClass2 | Self::HdmiFramebuffer | Self::RealtekHda)
     }
 }

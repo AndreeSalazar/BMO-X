@@ -6,8 +6,8 @@ use super::stage::ShaderStage;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShaderIr {
-    /// SASS GA106 nativo, listo para cargar al GSP.
-    SassGa106 = 0,
+    /// Blob nativo opcional de un backend acelerado futuro.
+    NativeGpuBinary = 0,
     /// SPIR-V 1.6 — IR canónico interno (delegado a NAGA).
     SpirV16   = 1,
     /// DXIL precompilado (delegado a `vkd3d-shader-rs`).
@@ -20,10 +20,10 @@ impl ShaderIr {
     #[inline(always)]
     pub const fn raw(self) -> bx_u8 { self as bx_u8 }
 
-    /// True si requiere traducción a SASS antes del upload.
+    /// True si requiere traducción antes del upload/validación.
     #[inline(always)]
     pub const fn needs_translation(self) -> bool {
-        !matches!(self, Self::SassGa106)
+        !matches!(self, Self::NativeGpuBinary)
     }
 }
 

@@ -14,7 +14,7 @@
 //!
 //! ## Lo que ningún otro formato tiene
 //!
-//! - Shaders SASS GA106 **pre-compilados** integrados en `.shaders` (cero stutter).
+//! - Shaders/IR **pre-compilados** integrados en `.shaders` (cero stutter).
 //! - Manifest TOML con **capabilities declarativas** (sandbox por construcción).
 //! - **Hash BLAKE3** por sección (verificación al cargar, ~1 GB/s).
 //! - **TLS layout BMO** (sin `.tdata`/`.tbss` separados como ELF; un solo blob).

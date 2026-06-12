@@ -9,8 +9,7 @@ pub struct BxDevice {
 
 impl BxDevice {
     /// Único punto de entrada — equivalente a `D3D12CreateDevice` sin
-    /// adapter enum (target hardware fijo: GA106).
-    /// Conecta a `drivers::gpu::fastgpu` cuando el bridge BMO/GSP esté listo.
+    /// dependencia de una GPU concreta. El backend inicial es GOP/software.
     pub fn primary() -> BxResult<Self> {
         Err(BxError::NotImplemented)
     }

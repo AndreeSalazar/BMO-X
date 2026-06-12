@@ -11,13 +11,13 @@
 //!   L3  audio       (BareX_Audio_Spec.md — bx_audio)
 //!   L3  input       (BareX_Input_Spec.md — bx_input)
 //!   L3  net         (BareX_Network_Spec.md — bx_net)
-//!   L2  shader      (BareX_Shader_Pipeline.md — DXIL/DXBC/SPIR-V → SASS)
-//!   L1  fastgpu     ←── NO se toca aquí. Vive en `drivers::gpu::fastgpu`.
+//!   L2  shader      (BareX_Shader_Pipeline.md — DXIL/DXBC/SPIR-V → IR nativa)
+//!   L1  backend     ←── ahora GOP/software; GPU real será opcional.
 //! ```
 //!
-//! `barex::graphics` consumirá eventualmente la L1 vía `crate::drivers::gpu::fastgpu`,
-//! pero los módulos están desacoplados para que el bridge BMO/GSP en construcción
-//! pueda evolucionar sin coordinación.
+//! `barex::graphics` debe funcionar primero sobre framebuffer GOP/software. Los
+//! backends acelerados se conectarán después como plugins/driver opcional, sin
+//! contaminar el boot path.
 
 #![allow(dead_code)]
 
@@ -35,8 +35,8 @@ pub mod bmoasm;
 /// Versión mayor.menor.patch de la API BareX expuesta a Ring 3.
 pub const BAREX_VERSION: (u16, u16, u16) = (1, 0, 0);
 
-/// Identificador de hardware target congelado (RTX 3060 GA106 + Ryzen 5 5600X).
-pub const HW_TARGET: &str = "GA106+Zen3";
+/// Identificador de plataforma objetivo funcional: UEFI GOP + CPU x86_64.
+pub const HW_TARGET: &str = "UEFI-GOP+x86_64";
 
 /// Re-export de la versión del BMO ABI.
 pub const BMO_ABI_VERSION: (u8, u8) = abi::BMO_ABI_VERSION;
