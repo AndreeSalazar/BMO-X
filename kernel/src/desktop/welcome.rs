@@ -388,8 +388,7 @@ fn should_enter_desktop(cmd: &[u8]) -> bool {
 fn enter_desktop() -> ! {
     crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0.\n");
     unsafe { crate::desktop::state::DIRTY = true; }
-    desktop::beep(880, 80);
-    desktop::beep(1320, 80);
+    // No hacemos beep aquí: run_ring0() ya tiene sus propios beeps.
     desktop::run_ring0();
 }
 
@@ -515,8 +514,8 @@ fn handle_char(ch: u8) {
                 if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_BUF[INPUT_LEN] = c;
                 INPUT_LEN += 1;
-                let trimmed = trim(&INPUT_BUF[..INPUT_LEN]);
-                if should_enter_desktop(trimmed) { enter_desktop(); }
+                // Ya NO auto-disparamos al escribir "run": el usuario
+                // debe pulsar Enter para evitar congelamientos.
                 mark_dirty();
             }
         },

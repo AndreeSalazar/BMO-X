@@ -2,7 +2,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::ptr::null_mut;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-const HEAP_SIZE: usize = 8 * 1024 * 1024; // 8 MB heap
+const HEAP_SIZE: usize = 32 * 1024 * 1024; // 32 MB heap
 static mut HEAP_SPACE: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 static HEAP_NEXT: AtomicUsize = AtomicUsize::new(0);
 
