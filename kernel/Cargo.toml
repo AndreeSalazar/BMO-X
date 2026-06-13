@@ -8,6 +8,8 @@ license = "Techne"
 
 [dependencies]
 fastos-boot-protocol = { path = "../boot_protocol" }
+bmo_usb = { path = "../bmo_usb" }
+bmofs = { path = "../bmofs" }
 # Kernel slim: sólo dependencias usadas hoy.
 #  - volatile -> escrituras MMIO/framebuffer
 #  - bitflags -> capability flags del sandbox

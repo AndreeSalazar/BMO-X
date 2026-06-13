@@ -148,6 +148,10 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
 
+    // ── USB & Filesystem Initialization ─────────────────────────────
+    let _ = drivers::usb::init();
+    fs::init();
+
     // ── GOP Display ─────────────────────────────────────────────────
     if bi.fb_addr != 0 {
         drivers::gop::init_gop(bi.fb_addr, bi.fb_width, bi.fb_height, bi.fb_stride);

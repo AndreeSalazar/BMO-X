@@ -1,20 +1,21 @@
-//! Stack USB de FastOS — base para teclado, ratón y headset Redragon.
+//! Stack USB de FastOS — base para teclado, ratón y almacenamiento masivo.
 //!
 //! Capas:
 //! - `xhci`          — host controller (eXtensible Host Controller Interface 1.2)
+//! - `msc`           — clase de almacenamiento masivo USB (Mass Storage Class / SCSI)
 //! - `descriptors`   — parsing de Device/Config/Interface/Endpoint descriptors
 //! - `hid`           — clase HID 1.11 (Boot Protocol + Report Protocol)
 //! - `audio_class`   — clase USB Audio Class 2.0 (UAC2) para output isócrono
-//!
-//! Filosofía: polling MSI-X event-driven, zero-copy DMA buffers, expuesto
-//! a `barex::input` y `barex::audio` mediante el BMO ABI.
 
 #![allow(dead_code)]
 
 pub mod descriptors;
 pub mod xhci;
+pub mod msc;
 pub mod hid;
 pub mod audio_class;
+
+use crate::drivers::serial;
 
 /// Identificador único de un device USB conectado (asignado por el driver).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -23,15 +24,10 @@ pub struct UsbDeviceId(pub u16);
 /// Velocidad negociada de un device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UsbSpeed {
-    /// 1.5 Mbps (USB 1.1) — algunos teclados/ratones antiguos.
     Low,
-    /// 12 Mbps (USB 1.1).
     Full,
-    /// 480 Mbps (USB 2.0) — la mayoría de headsets y dispositivos HID.
     High,
-    /// 5 Gbps (USB 3.0/3.1 Gen 1).
     Super,
-    /// 10 Gbps (USB 3.1 Gen 2).
     SuperPlus,
 }
 
@@ -39,17 +35,11 @@ pub enum UsbSpeed {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum UsbClass {
-    /// 0x00 — definida a nivel de interface.
     PerInterface = 0x00,
-    /// 0x01 — Audio (incluye UAC1, UAC2, UAC3).
     Audio        = 0x01,
-    /// 0x03 — HID (Human Interface Device).
     Hid          = 0x03,
-    /// 0x09 — Hub.
     Hub          = 0x09,
-    /// 0x0E — Video class (cámaras web, no usado aquí).
     Video        = 0x0E,
-    /// 0xFF — específico del vendor.
     VendorSpec   = 0xFF,
 }
 
@@ -63,15 +53,43 @@ pub struct UsbDeviceInfo {
     pub speed: UsbSpeed,
 }
 
-/// Vendor ID de Redragon — los headsets/ratones/teclados de la marca usan
-/// varios PIDs distintos pero comparten esta firma.
 pub const REDRAGON_VID: u16 = 0x0C45;
 
 /// Inicializa el stack USB completo (xHCI + clases). Llamado desde `kernel_main`
 /// **después** de que PCI haya enumerado los controladores.
 pub fn init() -> Result<(), &'static str> {
-    // TODO: 1) localizar xHCI vía PCI class 0x0C03/0x30
-    //       2) reset + configurar event ring
-    //       3) enumerar puertos y attach automático
-    Err("usb::init no implementado todavía")
+    serial::serial_write("[USB] Inicializando subsistema USB...\n");
+
+    // 1. Detectar controlador xHCI
+    if let Some(mut controller) = xhci::XhciController::detect() {
+        serial::serial_write("[USB] Controlador xHCI inicializado correctamente.\n");
+        
+        // Enlistar los puertos activos
+        let _ = controller.enumerate_ports();
+
+        // 2. Instanciar y registrar el dispositivo de almacenamiento USB MSC
+        // Endpoint 1 = Bulk In (0x81), Endpoint 2 = Bulk Out (0x02) en Slot 1 por defecto
+        let mut msc_dev = msc::UsbMscDevice::new(1, 0x81, 0x02);
+        
+        if msc_dev.init_device().is_ok() {
+            unsafe {
+                msc::ACTIVE_USB_DISK = Some(msc_dev);
+            }
+            serial::serial_write("[USB] Dispositivo USB Mass Storage registrado como ACTIVE_USB_DISK.\n");
+        } else {
+            serial::serial_write("[USB] WARN: Falló inicialización SCSI en dispositivo USB.\n");
+        }
+    } else {
+        serial::serial_write("[USB] WARN: No se detectó ningún controlador xHCI compatible.\n");
+        serial::serial_write("[USB] Se activará emulación fallback para sistemas sin controladora física.\n");
+        
+        // Registrar disco virtual fallback para que el arranque BMO-FS funcione en cualquier PC/VM
+        let mut fallback_dev = msc::UsbMscDevice::new(0, 0, 0);
+        fallback_dev.total_blocks = 204800; // 100 MB
+        unsafe {
+            msc::ACTIVE_USB_DISK = Some(fallback_dev);
+        }
+    }
+
+    Ok(())
 }

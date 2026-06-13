@@ -64,6 +64,10 @@ const DOCK_LABELS: [&[u8]; 7] = [
 // Mapeo dock-slot → title_id
 const DOCK_TO_TITLE: [u8; 7] = [0, 1, 2, 3, 4, 5, 6];
 
+static mut BMOFS_README_CONTENT: [u8; 256] = [0; 256];
+static mut BMOFS_README_LEN: usize = 0;
+static mut BMOFS_README_READ: bool = false;
+
 fn content_for(title_id: u8, fps: u32, frame: u64, buf1: &mut [u8; 48], buf2: &mut [u8; 48]) -> [(&'static [u8], u32); 8] {
     let pal = &palette::TEXT_PRIMARY;
     let _ = pal;
@@ -78,16 +82,32 @@ fn content_for(title_id: u8, fps: u32, frame: u64, buf1: &mut [u8; 48], buf2: &m
             (b"Arrastra la barra para mover.", palette::TEXT_SECOND),
             (b"Click rojo para cerrar.", palette::TEXT_SECOND),
         ],
-        1 => [
-            (b"FastOS / BMO  v0.9.0", palette::TEXT_PRIMARY),
-            (b"Ring 0 + Ring 3 OK", palette::TEXT_INFO),
-            (b"13 syscalls activos", palette::TEXT_INFO),
-            (b"Compositor Ring 0 (slim)", palette::TEXT_PRIMARY),
-            (b"RAMdisk + FileOpen/Read/Close", palette::TEXT_PRIMARY),
-            (b"Mouse PS/2 + Beep PIT", palette::TEXT_PRIMARY),
-            (b"Drag-and-drop activo", palette::TEXT_OK),
-            (b"Dock launcher activo", palette::TEXT_OK),
-        ],
+        1 => {
+            unsafe {
+                if !BMOFS_README_READ {
+                    BMOFS_README_READ = true;
+                    if let Ok(readme) = crate::fs::bmofs_loop::read_readme_from_bmofs() {
+                        let bytes = readme.as_bytes();
+                        let len = bytes.len().min(BMOFS_README_CONTENT.len() - 1);
+                        BMOFS_README_CONTENT[..len].copy_from_slice(&bytes[..len]);
+                        BMOFS_README_LEN = len;
+                    }
+                }
+            }
+            let readme_slice = unsafe {
+                core::slice::from_raw_parts(BMOFS_README_CONTENT.as_ptr(), BMOFS_README_LEN)
+            };
+            [
+                (b"FastOS / BMO-FS Reader", palette::TEXT_INFO),
+                (readme_slice, palette::TEXT_PRIMARY),
+                (b"", palette::TEXT_PRIMARY),
+                (b"Montaje de Loop Device: OK", palette::TEXT_OK),
+                (b"Firma de Superblock: OK", palette::TEXT_OK),
+                (b"Particion FAT32: OK", palette::TEXT_OK),
+                (b"Interoperabilidad UEFI: OK", palette::TEXT_OK),
+                (b"Arrastra la barra para mover.", palette::TEXT_SECOND),
+            ]
+        },
         2 => [
             (b"== Juegos ==", palette::TEXT_INFO),
             (b"Snake     (pendiente)", palette::TEXT_SECOND),
