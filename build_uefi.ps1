@@ -152,8 +152,47 @@ if (!$FlashOnly) {
     Pop-Location
     Write-Host "[2/3] Kernel OK" -ForegroundColor Green
 
+    # -- Step 2b: Build BMO-FS CLI --------------------------------------------
+    Write-Host "[2b/3] Compilando BMO-FS CLI..." -ForegroundColor Cyan
+    Push-Location "$Root\bmofs"
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    $bmofsTarget = "$Root\target_build\bmofs"
+    New-Item -Path $bmofsTarget -ItemType Directory -Force | Out-Null
+    $cargoResult = Invoke-CargoBuildWithRetry -TargetDir $bmofsTarget
+    $cargoOutput = $cargoResult.Output
+    $cargoExit = $cargoResult.ExitCode
+    $ErrorActionPreference = $savedEAP
+
+    $cargoOutput | ForEach-Object {
+        $line = $_.ToString()
+        if ($line -match "error\[") { Write-Host "      $line" -ForegroundColor Red }
+        elseif ($line -match "Compiling|Finished") { Write-Host "      $line" -ForegroundColor DarkGray }
+    }
+
+    if ($cargoExit -ne 0) {
+        $cargoOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
+        Pop-Location; throw "BMO-FS CLI: fallo la compilacion"
+    }
+    $bmofsExe = "$bmofsTarget\release\bmofs.exe"
+    if (!(Test-Path $bmofsExe)) {
+        $bmofsExe = Get-ChildItem "$bmofsTarget\release\bmofs*.exe" -File | Select-Object -First 1 -ExpandProperty FullName
+    }
+    Pop-Location
+    Write-Host "[2b/3] BMO-FS CLI OK" -ForegroundColor Green
+
     # -- Step 3: Preparar USB_boot/ -------------------------------------------
     Write-Host "[3/3] Preparando USB_boot/..." -ForegroundColor Cyan
+
+    # Generar imagen de disco BMO-FS inicial
+    Write-Host "      Creando imagen de disco BMO-FS (bmofs.img)..." -ForegroundColor DarkGray
+    $bmofsImgPath = "$Root\bmofs.img"
+    # Formatear imagen de 50MB (12800 bloques de 4KB)
+    & $bmofsExe format $bmofsImgPath 12800 | Out-Null
+    # Añadir un archivo de bienvenida a BMO-FS
+    $readmeTemp = Join-Path $Root "readme_bmofs.txt"
+    Set-Content -Path $readmeTemp -Value "¡Bienvenido a BMO-FS! Este archivo vive dentro de la imagen nativa en tu USB." -Encoding UTF8
+    & $bmofsExe add $bmofsImgPath $readmeTemp "readme.txt" | Out-Null
+    Remove-Item $readmeTemp -Force -ErrorAction SilentlyContinue
 
     $usbDir = "$Root\USB_boot"
     $efiBootDir = "$usbDir\EFI\BOOT"
@@ -163,6 +202,7 @@ if (!$FlashOnly) {
     Copy-Item "$Root\BOOTX64.EFI" "$efiBootDir\BOOTX64.EFI" -Force
     Copy-Item "$Root\kernel.elf"  "$usbDir\kernel.elf" -Force
     Copy-Item "$Root\kernel.elf"  "$efiBootDir\kernel.elf" -Force
+    Copy-Item "$bmofsImgPath"     "$usbDir\bmofs.img" -Force
 
     Write-Host "[3/3] USB_boot/ listo" -ForegroundColor Green
 } else {
@@ -354,10 +394,11 @@ $efiBootPath = "${dl}:\EFI\BOOT"
 Copy-Item "$Root\BOOTX64.EFI" "$Root\USB_boot\EFI\BOOT\BOOTX64.EFI" -Force
 Copy-Item "$Root\kernel.elf" "$Root\USB_boot\EFI\BOOT\kernel.elf" -Force
 Copy-Item "$Root\kernel.elf" "$Root\USB_boot\kernel.elf" -Force
+Copy-Item "$Root\bmofs.img"  "$Root\USB_boot\bmofs.img" -Force
 
 # Copy the entire USB_boot directory to the USB flash drive
 Copy-Item -Path "$Root\USB_boot\*" -Destination "${dl}:\" -Recurse -Force
-Write-Host "      Copiado todo el contenido de USB_boot (BOOTX64.EFI, kernel.elf, firmware, etc.)" -ForegroundColor DarkGray
+Write-Host "      Copiado todo el contenido de USB_boot (BOOTX64.EFI, kernel.elf, bmofs.img, firmware, etc.)" -ForegroundColor DarkGray
 
 Write-Host "  [FLASH 2/3] OK" -ForegroundColor Green
 
@@ -368,6 +409,7 @@ $ok = $true
 $checks = @(
     @{ Path = "$efiBootPath\BOOTX64.EFI"; Name = "BOOTX64.EFI"; Orig = "$Root\BOOTX64.EFI"; Required = $true },
     @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf"; Required = $true },
+    @{ Path = "${dl}:\bmofs.img";         Name = "bmofs.img";    Orig = "$Root\bmofs.img";  Required = $true },
     @{ Path = "${dl}:\fastos_boot.bin";   Name = "fastos_boot.bin"; Orig = "$Root\USB_boot\fastos_boot.bin"; Required = $false }
 )
 
