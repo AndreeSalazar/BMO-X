@@ -513,7 +513,8 @@ fn z_order_top_first() -> [usize; MAX_WIN] {
     out
 }
 
-static mut BACKBUFFER: Option<alloc::vec::Vec<u32>> = None;
+static mut BACKBUFFER_ADDR: u64 = 0;
+static mut BACKBUFFER_PAGES: usize = 0;
 
 /// Sincroniza con el V-Blank del monitor usando el registro de estado VGA 0x3DA (si está disponible).
 /// Sincroniza con el V-Blank del monitor.
@@ -541,16 +542,35 @@ pub fn render_frame() {
     };
     if addr == 0 || w == 0 { return; }
 
-    let size_needed = (s as usize) * (h as usize);
+    let size_needed_bytes = (s as usize) * (h as usize) * 4;
+    let pages_needed = (size_needed_bytes + 4095) / 4096;
     unsafe {
-        if BACKBUFFER.is_none() || BACKBUFFER.as_ref().unwrap().len() < size_needed {
-            let mut v = alloc::vec::Vec::with_capacity(size_needed);
-            v.resize(size_needed, 0);
-            BACKBUFFER = Some(v);
+        if BACKBUFFER_ADDR == 0 || BACKBUFFER_PAGES < pages_needed {
+            crate::drivers::serial::serial_write("[render] Solicitando paginas para el backbuffer...\n");
+            
+            // Liberar anterior si existe
+            if BACKBUFFER_ADDR != 0 {
+                crate::arch::page_alloc::free_pages(BACKBUFFER_ADDR, BACKBUFFER_PAGES);
+                BACKBUFFER_ADDR = 0;
+                BACKBUFFER_PAGES = 0;
+            }
+            
+            // Asignar nuevas páginas físicas contiguas de forma dinámica
+            if let Some(phys_addr) = crate::arch::page_alloc::alloc_pages_contiguous(pages_needed) {
+                BACKBUFFER_ADDR = phys_addr;
+                BACKBUFFER_PAGES = pages_needed;
+                
+                // Limpiar (zero-out) el nuevo buffer
+                core::ptr::write_bytes(phys_addr as *mut u8, 0, pages_needed * 4096);
+                crate::drivers::serial::serial_write("[render] Backbuffer asignado correctamente desde page_alloc.\n");
+            } else {
+                crate::drivers::serial::serial_write("[render] ERROR: No hay suficiente memoria fisica continua para el backbuffer!\n");
+                return;
+            }
         }
     }
 
-    let backbuffer_ptr = unsafe { BACKBUFFER.as_mut().unwrap().as_mut_ptr() as u64 };
+    let backbuffer_ptr = unsafe { BACKBUFFER_ADDR };
     let backbuffer_fb = Framebuffer::new(backbuffer_ptr, (s as u64) * 4, w, h);
 
     handle_input(&backbuffer_fb);

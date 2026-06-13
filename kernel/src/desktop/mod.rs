@@ -166,7 +166,7 @@ static mut MOUSE_INIT_DONE: bool = false;
 
 #[inline(always)]
 unsafe fn ps2_wait_input() {
-    for _ in 0..100_000 {
+    for _ in 0..1_000 {
         let s: u8;
         core::arch::asm!("in al, dx", out("al") s, in("dx") 0x64u16);
         if s == 0xFF { return; } // Puerto flotante / no hay controlador
@@ -176,7 +176,7 @@ unsafe fn ps2_wait_input() {
 
 #[inline(always)]
 unsafe fn ps2_wait_output() {
-    for _ in 0..100_000 {
+    for _ in 0..1_000 {
         let s: u8;
         core::arch::asm!("in al, dx", out("al") s, in("dx") 0x64u16);
         if s == 0xFF { return; } // Puerto flotante / no hay controlador
@@ -210,21 +210,7 @@ fn mouse_init() {
     unsafe {
         if MOUSE_INIT_DONE { return; }
         MOUSE_INIT_DONE = true;
-
-        // Habilitar puerto del ratón
-        ps2_write_cmd(0xA8);
-
-        // Leer compaq status byte, set bit 1 (enable IRQ12), clear bit 5 (disable mouse clock)
-        ps2_write_cmd(0x20);
-        let mut status = ps2_read_data();
-        status |= 0x02;
-        status &= !0x20;
-        ps2_write_cmd(0x60);
-        ps2_write_data(status);
-
-        // Defaults + enable streaming
-        ps2_write_mouse(0xF6); let _ = ps2_read_data(); // ACK
-        ps2_write_mouse(0xF4); let _ = ps2_read_data(); // ACK
+        crate::drivers::serial::serial_write("[desktop] Bypassing legacy PS/2 mouse setup for pure UEFI.\n");
     }
 }
 

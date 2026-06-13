@@ -124,6 +124,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     arch::syscall_entry::init_syscall();
     drivers::serial::serial_write("[FastOS] syscall MSRs programmed (BMO ABI)\n");
 
+    // AMD Ryzen 5 5600X CPU optimizations (SSE, AVX, AVX2, XSAVE)
+    arch::cpu_amd::init();
+
     // ── ACPI / PCI (sólo enumeración; sin driver GPU dedicado) ──────
     if let Some(ecam) = arch::acpi::parse_mcfg(bi.rsdp_addr) {
         drivers::pci::init_ecam(ecam.base_addr, ecam.end_bus);
