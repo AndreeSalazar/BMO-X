@@ -166,7 +166,7 @@ fn execute(con: &mut Console, cmd: &[u8]) {
 fn cmd_help(con: &mut Console) {
     con.print_colored("Commands:", colors::ACCENT_BLUE);
     con.newline();
-    print_cmd(con, "desktop", "Launch the Ring 3 compositor (Hyprland/Win11-style)");
+    print_cmd(con, "desktop", "Launch stable GOP desktop (Ring 0 supervisor + Ring 3 prepared)");
     print_cmd(con, "ring0",   "Show Ring 0 protected mode status (GDT/IDT/MSR)");
     print_cmd(con, "user",    "Spawn a minimal Ring 3 'hello' user process");
     print_cmd(con, "cpuinfo", "CPU features");
@@ -204,8 +204,8 @@ fn cmd_user(con: &mut Console) {
 }
 
 fn cmd_desktop(con: &mut Console) {
-    con.print_colored("[desktop] Launching stable Ring 0 desktop\n", colors::NV_GREEN);
-    con.println("[desktop] Ring 3 compositor is not enabled yet; using GOP/Ring 0 path.");
+    con.print_colored("[desktop] Launching stable GOP desktop\n", colors::NV_GREEN);
+    con.println("[desktop] Ring 0 owns GOP/input; Ring 3 compositor is prepared, not jumped yet.");
     con.println("[desktop] Press ESC inside the desktop to exit.");
     crate::sched::user_init::spawn_desktop();
 }

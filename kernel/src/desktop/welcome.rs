@@ -23,7 +23,7 @@
 //! ```
 //!
 //! Comandos aceptados (case-insensitive):
-//!   - `Run`   → lanza el escritorio Ring 0 funcional (`run_ring0`)
+//!   - `Run`   → lanza el escritorio estable: Ring 0 supervisor + Ring 3 preparado
 //!   - `Hello` → lanza el payload mínimo (`spawn_hello`)
 //!   - `Reboot` → reinicia
 //!   - cualquier otra cosa → muestra hint
@@ -386,10 +386,10 @@ fn should_enter_desktop(cmd: &[u8]) -> bool {
 }
 
 fn enter_desktop() -> ! {
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0.\n");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0 + contrato Ring 3.\n");
     unsafe { crate::desktop::state::DIRTY = true; }
-    // No hacemos beep aquí: run_ring0() ya tiene sus propios beeps.
-    desktop::run_ring0();
+    // No hacemos beep aquí: spawn_desktop()/run_ring0() ya tiene sus propios beeps.
+    user_init::spawn_desktop();
 }
 
 fn process_enter() {
@@ -399,9 +399,8 @@ fn process_enter() {
     if trimmed.is_empty() {
         show_hint(b"Escribe (Run) y Enter.");
     } else if should_enter_desktop(trimmed) {
-        // Beep de confirmación y arrancar el escritorio Ring 0.
-        // (spawn_desktop() del scheduler todavía es stub — no entra a
-        //  Ring 3. Llamamos directo al loop Ring 0 que sí pinta.)
+        // Arranca el escritorio funcional: Ring 0 pinta y prepara el
+        // contrato del compositor Ring 3 sin saltar todavía a user mode.
         enter_desktop();
     } else if eq_ci(trimmed, b"hello") {
         desktop::beep(440, 80);

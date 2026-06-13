@@ -63,16 +63,14 @@ fn build_init_program() -> &'static [u8] {
     &INIT_CODE
 }
 
-/// Spawn the first user-mode process ("init").
-pub fn spawn_init_process() -> Option<(u64, u64)> {
+fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u64, u64)> {
     let proc = process::alloc_process()?;
-    proc.set_name("init");
+    proc.set_name(name);
     proc.entry_point = USER_CODE_BASE;
-    proc.caps = Capability::SYS_DEBUG;
+    proc.caps = caps;
 
     proc.page_table_root = paging::read_cr3();
 
-    let code = build_init_program();
     unsafe {
         let dst = USER_CODE_BASE as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
@@ -110,6 +108,30 @@ pub fn spawn_init_process() -> Option<(u64, u64)> {
     Some((USER_CODE_BASE, user_stack_top))
 }
 
+/// Spawn the first user-mode process ("init").
+pub fn spawn_init_process() -> Option<(u64, u64)> {
+    allocate_user_process("init", build_init_program(), Capability::SYS_DEBUG)
+}
+
+/// Prepare the future Ring 3 compositor contract without jumping to it yet.
+///
+/// Today the reliable desktop path stays in Ring 0/GOP. This function validates
+/// that the compositor payload can be generated against the syscall ABI, but it
+/// intentionally does not copy code into user memory or create a runnable
+/// process from the `Run` path. That keeps desktop boot stable until paging and
+/// scheduler return paths are complete.
+pub fn prepare_desktop_compositor() -> bool {
+    let mut code_buf = [0u8; 256];
+    let (_entry_off, total) = crate::desktop::compositor::build_compositor(&mut code_buf, USER_CODE_BASE);
+    if total == 0 || total > code_buf.len() {
+        crate::drivers::serial::serial_write("[user_init] Ring 3 compositor build failed.\n");
+        return false;
+    }
+
+    crate::drivers::serial::serial_write("[user_init] Ring 3 compositor ABI validated; Ring 0 remains supervisor.\n");
+    true
+}
+
 /// Jump to Ring 3 — execute the init process. Does NOT return.
 pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
     core::arch::asm!(
@@ -138,7 +160,8 @@ pub fn spawn_hello() {
 }
 
 /// Shell command: launch the desktop path that is stable today.
-pub fn spawn_desktop() {
-    crate::drivers::serial::serial_write("[user_init] Launching Ring 0 desktop via GOP\n");
+pub fn spawn_desktop() -> ! {
+    crate::drivers::serial::serial_write("[user_init] Launching Ring 0 desktop via GOP; preparing Ring 3 contract.\n");
+    prepare_desktop_compositor();
     crate::desktop::run_ring0();
 }

@@ -58,7 +58,12 @@ Kernel Ring 0
   -> serial, GDT/TSS, IDT, syscalls
   -> memoria, ACPI/PCI, timers
   -> framebuffer GOP
-  -> welcome + desktop Ring 0
+  -> welcome + escritorio GOP estable
+
+Ring 3 futuro
+  -> apps, servicios y compositor cliente
+  -> usa BMO ABI/syscalls para pedir dibujo, input, audio y tiempo
+  -> no toca hardware ni framebuffer directo
 
 BMO ABI
   -> contrato estable para servicios del OS
@@ -201,7 +206,7 @@ Debe compilar y arrancar siempre:
 - `kernel/src/desktop/`
 - `kernel/src/fb.rs`
 - `kernel/src/console.rs`
-- `kernel/src/drivers/gop.rs`
+- `kernel/src/drivers/gop/mod.rs`
 - `kernel/src/drivers/serial.rs`
 - `kernel/src/drivers/pci.rs`
 - `kernel/src/fs/ramdisk.rs` cuando se use de verdad
@@ -255,7 +260,24 @@ No debe ser requisito del boot path:
 
 ### 4. Ring 3 sólo cuando el scheduler pueda sostenerlo
 
-El compositor Ring 3 no debe prometerse hasta que existan:
+La regla práctica para FastOS/BMO es **Ring 0 + Ring 3 primero**. Rings 1 y 2
+no se usan en el camino estable porque en x86-64 moderno casi todos los OS los
+evitan: complican la ABI, las tablas y el cambio de contexto sin aportar mucho
+mientras el kernel todavía está arrancando. Se pueden reservar para investigación
+futura, pero no deben bloquear el escritorio.
+
+Modelo recomendado ahora:
+
+- **Ring 0/BMO supervisor**: HAL, memoria, scheduler, drivers, GOP framebuffer,
+  input bajo nivel, syscalls y render seguro.
+- **Ring 3/apps**: compositor cliente, apps BEF/BMOasm, servicios no críticos y
+  pruebas de BareX.
+- **Ring 1/2**: reservado/experimental; no mezclarlo todavía con boot, desktop ni
+  drivers esenciales.
+
+El comando `Run` debe llevar al escritorio funcional: Ring 0 pinta y mantiene el
+hardware, mientras prepara el contrato del compositor Ring 3. El compositor Ring
+3 no debe tomar el control hasta que existan:
 
 - stacks seguros por thread,
 - transición syscall/sysret validada,

@@ -18,12 +18,12 @@ pub mod render;
 pub mod welcome;
 
 // ────────────────────────────────────────────────────────────────────
-// Ring 0 desktop loop — alternativa funcional al compositor Ring 3.
+// Ring 0 desktop loop — supervisor funcional para el compositor Ring 3.
 //
-// Mientras `spawn_desktop()` siga siendo un stub, ofrecemos un loop
-// Ring 0 que pinta el escritorio real (`render::render_frame()`) a
-// ~60 FPS y sale con ESC. Lo lanza `welcome::run()` cuando el usuario
-// teclea "Run".
+// Ring 0 conserva hardware, GOP/framebuffer, input y syscalls. El compositor
+// Ring 3 se prepara desde `sched::user_init::spawn_desktop()`, pero todavía no
+// toma el control hasta que el scheduler/context switch de user mode pueda
+// volver con seguridad. Esto mantiene `Run` como camino estable.
 // ────────────────────────────────────────────────────────────────────
 
 const SC_ESC: u8 = 0x01;
@@ -32,7 +32,7 @@ const CYCLES_PER_MS: u64 = 3_700_000;
 /// Loop principal del escritorio en Ring 0. No retorna — termina con
 /// `hlt` infinito (idéntico a `welcome::run()`).
 pub fn run_ring0() -> ! {
-    crate::drivers::serial::serial_write("[desktop] Entrando en escritorio Ring 0.\n");
+    crate::drivers::serial::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
 
     // Beep "entré al escritorio".
     beep(880, 60);
