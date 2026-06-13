@@ -1,15 +1,10 @@
 //! USB Audio Class 2.0 (UAC2) — output isócrono para el headset Redragon.
 //!
-//! El headset USB Redragon (modelos H510 Zeus, H320, H120, etc.) se enumera
-//! como **un solo device USB con dos interfaces**:
-//!   - Interface 0: AudioControl (clase 0x01, subclass 0x01)
-//!   - Interface 1: AudioStreaming OUT (clase 0x01, subclass 0x02) — playback
-//!   - Interface 2: AudioStreaming IN  (subclass 0x02) — micrófono (algunos)
-//!   - Interface 3: HID (clase 0x03) — botones de volumen/mute
-//!
-//! El stream OUT usa endpoint isócrono (transfer type Isoch) con frame size
-//! variable según sample rate. La spec de FastOS objetivo: **48 kHz / 16-bit
-//! stereo / 1 ms isoch period** = 192 bytes/frame.
+//! El headset USB Redragon se enumera como un solo device con multiples interfaces:
+//!   - Interface 0: AudioControl
+//!   - Interface 1: AudioStreaming OUT (playback)
+//!   - Interface 2: AudioStreaming IN  (micrófono)
+//!   - Interface 3: HID (botones multimedia)
 
 #![allow(dead_code)]
 
@@ -25,7 +20,7 @@ pub enum AudioSubclass {
     MidiStreaming    = 0x03,
 }
 
-/// Protocolo (1 = UAC1 legacy, 0x20 = UAC2, 0x30 = UAC3).
+/// Protocolo (1 = UAC1, 0x20 = UAC2, 0x30 = UAC3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AudioProtocol {
@@ -55,8 +50,8 @@ pub struct FormatType1 {
     pub b_descriptor_type: u8,    // 0x24
     pub b_descriptor_subtype: u8, // 0x02 (FORMAT_TYPE)
     pub b_format_type: u8,        // 0x01
-    pub b_subslot_size: u8,       // 2 = 16-bit, 3 = 24-bit, 4 = 32-bit
-    pub b_bit_resolution: u8,     // 16, 24, 32
+    pub b_subslot_size: u8,       // 2 = 16-bit
+    pub b_bit_resolution: u8,     // 16
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -64,8 +59,6 @@ pub struct StreamFormat {
     pub sample_rate: u32,         // 48000 típico
     pub channels: u8,             // 2 stereo
     pub bits_per_sample: u8,      // 16 típico
-    /// Tamaño de frame del isoch endpoint en bytes:
-    /// `bytes_per_sample * channels * (rate / 1000)` para HighSpeed @ 1 ms.
     pub frame_bytes: u32,
 }
 
@@ -81,7 +74,7 @@ impl StreamFormat {
         sample_rate: 96_000,
         channels: 2,
         bits_per_sample: 24,
-        frame_bytes: 576, // 2 ch · 3 B · 96 samples/ms
+        frame_bytes: 576,
     };
 }
 
@@ -90,23 +83,22 @@ pub struct IsochOutEndpoint {
     pub device: UsbDeviceId,
     pub ep_address: u8,
     pub max_packet_size: u16,
-    pub interval_us: u32,    // 125 µs (HighSpeed micro-frame) o 1000 µs (Full-Speed)
+    pub interval_us: u32,
     pub format: StreamFormat,
 }
 
-/// Llamado por `xhci::enumerate_ports` al detectar class 0x01.
+/// Llamado por xhci al detectar class 0x01 (Audio).
 pub fn attach(_info: UsbDeviceInfo) -> Result<(), &'static str> {
-    // TODO: parsear AC + AS interfaces, encontrar Format Type I 48 kHz stereo,
-    //       configurar Iso TRBs en anillo, exponer a `barex::audio`.
-    Err("audio_class::attach no implementado todavía")
+    crate::drivers::serial::serial_write("[USB-Audio] Conectando dispositivo de audio...\n");
+    Err("audio::attach no implementado todavía")
 }
 
-/// Empuja un buffer PCM al endpoint isócrono OUT (latencia < 2 ms en realtime).
+/// Empuja un buffer PCM al endpoint isócrono OUT
 pub fn submit_pcm(_ep: &IsochOutEndpoint, _samples: &[i16]) -> Result<(), &'static str> {
-    Err("audio_class::submit_pcm no implementado todavía")
+    Err("audio::submit_pcm no implementado todavía")
 }
 
-/// Detección heurística de un headset Redragon por VID/PID.
+/// Detección del headset Redragon por VID/PID.
 pub fn is_redragon_headset(info: &UsbDeviceInfo) -> bool {
     use super::REDRAGON_VID;
     info.vendor_id == REDRAGON_VID

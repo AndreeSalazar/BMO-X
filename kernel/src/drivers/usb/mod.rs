@@ -11,9 +11,11 @@
 
 pub mod descriptors;
 pub mod xhci;
-pub mod msc;
 pub mod hid;
-pub mod audio_class;
+pub mod storage;
+pub mod audio;
+pub mod keyboard;
+pub mod mouse;
 
 use crate::drivers::serial;
 
@@ -58,7 +60,7 @@ pub const REDRAGON_VID: u16 = 0x0C45;
 /// Inicializa el stack USB completo (xHCI + clases). Llamado desde `kernel_main`
 /// **después** de que PCI haya enumerado los controladores.
 pub fn init() -> Result<(), &'static str> {
-    serial::serial_write("[USB] Inicializando subsistema USB...\n");
+    serial::serial_write("[USB] Inicializando subsistema USB modular...\n");
 
     // 1. Detectar controlador xHCI
     if let Some(mut controller) = xhci::XhciController::detect() {
@@ -68,12 +70,11 @@ pub fn init() -> Result<(), &'static str> {
         let _ = controller.enumerate_ports();
 
         // 2. Instanciar y registrar el dispositivo de almacenamiento USB MSC
-        // Endpoint 1 = Bulk In (0x81), Endpoint 2 = Bulk Out (0x02) en Slot 1 por defecto
-        let mut msc_dev = msc::UsbMscDevice::new(1, 0x81, 0x02);
+        let mut msc_dev = storage::UsbMscDevice::new(1, 0x81, 0x02);
         
         if msc_dev.init_device().is_ok() {
             unsafe {
-                msc::ACTIVE_USB_DISK = Some(msc_dev);
+                storage::ACTIVE_USB_DISK = Some(msc_dev);
             }
             serial::serial_write("[USB] Dispositivo USB Mass Storage registrado como ACTIVE_USB_DISK.\n");
         } else {
@@ -84,10 +85,10 @@ pub fn init() -> Result<(), &'static str> {
         serial::serial_write("[USB] Se activará emulación fallback para sistemas sin controladora física.\n");
         
         // Registrar disco virtual fallback para que el arranque BMO-FS funcione en cualquier PC/VM
-        let mut fallback_dev = msc::UsbMscDevice::new(0, 0, 0);
+        let mut fallback_dev = storage::UsbMscDevice::new(0, 0, 0);
         fallback_dev.total_blocks = 204800; // 100 MB
         unsafe {
-            msc::ACTIVE_USB_DISK = Some(fallback_dev);
+            storage::ACTIVE_USB_DISK = Some(fallback_dev);
         }
     }
 

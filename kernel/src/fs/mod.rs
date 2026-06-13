@@ -13,7 +13,7 @@ pub mod fat32;
 pub mod bmofs_loop;
 
 use crate::drivers::serial;
-use crate::drivers::usb::msc::ACTIVE_USB_DISK;
+use crate::drivers::usb::storage::ACTIVE_USB_DISK;
 
 pub trait DiskReader {
     fn read_sectors(&mut self, lba: u64, count: u32, buf: &mut [u8]) -> Result<(), DiskError>;

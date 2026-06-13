@@ -36,7 +36,7 @@ impl BlockDevice for BmoBlockDevice {
         let fat = self.fat_volume.as_ref().ok_or("No se ha inicializado la tabla FAT32 para BMO-FS")?;
         
         unsafe {
-            if let Some(ref mut disk) = crate::drivers::usb::msc::ACTIVE_USB_DISK {
+            if let Some(ref mut disk) = crate::drivers::usb::storage::ACTIVE_USB_DISK {
                 let physical_sector = fat.get_physical_sector_for_block(disk, self.start_cluster, block_idx)?;
                 
                 // Un bloque BMO-FS = 4096 bytes = 8 sectores de 512 bytes
