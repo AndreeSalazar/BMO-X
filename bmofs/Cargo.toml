@@ -1,0 +1,7 @@
+[package]
+name = "bmofs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Standard library features are used in the CLI bin, but the lib is designed to be no_std compatible.
