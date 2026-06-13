@@ -145,6 +145,8 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
             bi.memory_map_count as usize,
             bi.gsp_addr,
             bi.gsp_size,
+            bi.kernel_base,
+            bi.kernel_size,
         );
     }
     drivers::serial::serial_write("[FastOS] Page allocator ready (");

@@ -21,9 +21,7 @@ const MAX_ADDR: u64 = 0x1_0000_0000; // 4 GB
 const MAX_PAGES: usize = ((MAX_ADDR - BASE_ADDR) / PAGE_SIZE as u64) as usize; // ~1 M
 const BITMAP_SIZE: usize = MAX_PAGES / 8; // ~128 KB
 
-/// Kernel text/data occupies 1 MB – 8 MB (conservative).
-const KERNEL_START: u64 = 0x0010_0000;
-const KERNEL_END: u64 = 0x0080_0000;
+
 
 
 
@@ -98,7 +96,14 @@ fn ranges_overlap(start: u64, end: u64, region_start: u64, region_end: u64) -> b
 ///
 /// # Safety
 /// Must be called exactly once, early in kernel init, before any allocation.
-pub unsafe fn init(memory_map: &[MemoryEntry], count: usize, reserved_addr: u64, reserved_size: u64) {
+pub unsafe fn init(
+    memory_map: &[MemoryEntry],
+    count: usize,
+    reserved_addr: u64,
+    reserved_size: u64,
+    kernel_base: u64,
+    kernel_size: u64,
+) {
     if INITIALIZED {
         return;
     }
@@ -145,7 +150,7 @@ pub unsafe fn init(memory_map: &[MemoryEntry], count: usize, reserved_addr: u64,
         let mut addr = first_page;
         while addr < last_page_end {
             // Skip pages that fall inside the kernel region.
-            if ranges_overlap(addr, addr + PAGE_SIZE as u64, KERNEL_START, KERNEL_END) {
+            if ranges_overlap(addr, addr + PAGE_SIZE as u64, kernel_base, kernel_base + kernel_size) {
                 addr += PAGE_SIZE as u64;
                 continue;
             }
