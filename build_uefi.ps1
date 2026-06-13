@@ -307,21 +307,20 @@ if (!$Force) {
     Write-Host "  [FORCE] Saltando confirmacion interactiva..." -ForegroundColor Yellow
 }
 
-# -- Formatear USB: MBR + FAT32 (Activa) --------------------------------------
+# -- Formatear USB: GPT + FAT32 (Estándar UEFI) --------------------------------
 Write-Host ""
-Write-Host "  [FLASH 1/3] Formateando MBR + FAT32..." -ForegroundColor Cyan
+Write-Host "  [FLASH 1/3] Formateando GPT + FAT32 (UEFI)..." -ForegroundColor Cyan
 
 $dl = $null
 try {
     Write-Host "      Limpiando disco (PowerShell)..." -ForegroundColor DarkGray
     $disk | Clear-Disk -RemoveData -RemoveOEM -Confirm:$false
 
-    Write-Host "      Aplicando MBR..." -ForegroundColor DarkGray
-    $disk | Set-Disk -PartitionStyle MBR
+    Write-Host "      Aplicando GPT (GUID Partition Table)..." -ForegroundColor DarkGray
+    $disk | Set-Disk -PartitionStyle GPT
 
-    Write-Host "      Creando particion primaria activa..." -ForegroundColor DarkGray
-    $partition = $disk | New-Partition -UseMaximumSize -AssignDriveLetter
-    $partition | Set-Partition -IsActive $true -Confirm:$false
+    Write-Host "      Creando particion EFI (ESP)..." -ForegroundColor DarkGray
+    $partition = $disk | New-Partition -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' -UseMaximumSize -AssignDriveLetter
 
     Write-Host "      Formateando FAT32..." -ForegroundColor DarkGray
     $partition | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "FastOS" -Confirm:$false
@@ -341,9 +340,8 @@ try {
     $dpScript = @"
 select disk $DiskNumber
 clean
-convert mbr
-create partition primary
-active
+convert gpt
+create partition efi
 format fs=fat32 quick label="FastOS"
 assign
 "@
