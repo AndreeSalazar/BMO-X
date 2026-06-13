@@ -378,18 +378,36 @@ fn main() -> Status {
         kernel_page_base, kernel_end, total_pages
     );
 
-    // Allocate at the exact address the linker script specifies.
-    // Kernel is linked at 0x200000 which is above the UEFI-reserved 1 MB region.
-    // Allocate as LOADER_CODE so pages are executable on NX-enabled firmware.
-    boot::allocate_pages(
+    // ── 4. Load PT_LOAD segments into memory ────────────────────────────────
+    let mut kernel_buffer_ptr: *mut u8 = core::ptr::null_mut();
+    let mut needs_relocation = false;
+
+    // Try allocating at the exact fixed address first. If the firmware has this
+    // region reserved (firmware conflict), allocate temporary pages and copy after exit_boot_services.
+    match boot::allocate_pages(
         boot::AllocateType::Address(kernel_page_base),
         MemoryType::LOADER_CODE,
         total_pages,
-    )
-    .expect("Failed to allocate kernel pages at fixed address");
-    info!("Allocated kernel pages at 0x{:x}", kernel_page_base);
+    ) {
+        Ok(addr) => {
+            info!("Allocated kernel pages at fixed address 0x{:x}", kernel_page_base);
+            kernel_buffer_ptr = addr.as_ptr() as *mut u8;
+        }
+        Err(_) => {
+            info!("WARN: Fixed address 0x{:x} occupied. Allocating fallback temporary pages...", kernel_page_base);
+            let temp_addr = boot::allocate_pages(
+                boot::AllocateType::AnyPages,
+                MemoryType::LOADER_DATA,
+                total_pages,
+            )
+            .expect("Failed to allocate temporary pages for kernel fallback");
+            kernel_buffer_ptr = temp_addr.as_ptr() as *mut u8;
+            needs_relocation = true;
+            info!("Temporary buffer allocated at 0x{:x}", kernel_buffer_ptr as u64);
+        }
+    }
 
-    // Second pass — copy each segment into the allocated pages
+    // Second pass — copy each segment into the selected buffer
     for phdr in &elf.phdrs {
         if phdr.p_type != PT_LOAD || phdr.p_memsz == 0 {
             continue;
@@ -398,19 +416,20 @@ fn main() -> Status {
         let seg_start = phdr.p_vaddr;
         let seg_end = seg_start + phdr.p_memsz;
 
-        let dst_base = seg_start;
+        // Calculate destination relative to the allocated buffer
+        let dst_offset = seg_start - kernel_page_base;
+        let dst = unsafe { kernel_buffer_ptr.add(dst_offset as usize) };
 
         let page_base = seg_start & !0xFFF;
         let pages = ((seg_end - page_base + 0xFFF) / 0x1000) as usize;
 
         info!(
             "PT_LOAD: vaddr=0x{:x} filesz=0x{:x} memsz=0x{:x} pages={} dst=0x{:x}",
-            seg_start, phdr.p_filesz, phdr.p_memsz, pages, dst_base
+            seg_start, phdr.p_filesz, phdr.p_memsz, pages, dst as u64
         );
 
         unsafe {
             // Copy file data
-            let dst = dst_base as *mut u8;
             let src = elf_data.as_ptr().add(phdr.p_offset as usize);
             core::ptr::copy_nonoverlapping(src, dst, phdr.p_filesz as usize);
 
@@ -506,6 +525,17 @@ fn main() -> Status {
 
     // We can no longer log after this point.
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
+
+    // Relocate kernel to its fixed link address if we used a fallback buffer
+    if needs_relocation {
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                kernel_buffer_ptr,
+                kernel_page_base as *mut u8,
+                total_pages * 4096,
+            );
+        }
+    }
 
     // ── 10. Build memory map from UEFI map ──────────────────────────────────
     let bi = unsafe { &mut *boot_info_ptr };
