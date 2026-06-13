@@ -119,7 +119,7 @@ fn translate_scancode(sc: u8) -> Option<u8> {
         0x24 => (b'j',  b'J'),
         0x25 => (b'k',  b'K'),
         0x26 => (b'l',  b'L'),
-        0x27 => (b';',  b':'),
+        0x27 => (164,  165), // ñ y Ñ (distribución española)
         0x28 => (b'\'', b'"'),
         0x2B => (b'\\', b'|'),
         0x2C => (b'z',  b'Z'),
@@ -509,7 +509,7 @@ fn handle_char(ch: u8) {
                 mark_dirty();
             }
         },
-        c if c >= 32 && c <= 126 => unsafe {
+        c if (c >= 32 && c <= 126) || c == 164 || c == 165 => unsafe {
             if INPUT_LEN < MAX_INPUT - 1 {
                 if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_BUF[INPUT_LEN] = c;
