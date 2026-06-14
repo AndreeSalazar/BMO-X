@@ -94,8 +94,14 @@ Estado actual:
 - Salida inmediata por serial COM1.
 - Overlay visual directo sobre framebuffer GOP.
 - Caja negra circular en RAM con los últimos eventos.
+- Arquitectura modular en `kernel/src/diag/`:
+  - `event.rs`: tipos `Severity`/`Event`.
+  - `buffer.rs`: ring-buffer RAM para post-mortem temprano.
+  - `serial_sink.rs`: salida COM1.
+  - `overlay.rs`: panel visual GOP.
 - Integrado en boot, arch, syscall, PCI, memoria, GOP, welcome, scheduler,
   desktop y panic.
+- USB/BMO-FS queda diferido fuera del boot crítico hasta que storage sea seguro.
 
 Ruta segura para persistencia:
 
@@ -111,6 +117,16 @@ Regla importante: `diag/` no debe escribir automáticamente al USB durante el
 arranque temprano. Primero debe observar; después, cuando BMO-FS esté montado y
 validado, podrá crear una carpeta/log persistente en el USB para análisis
 post-mortem.
+
+El panic observado después de `memory/free pages` indica que el fallo ocurre en
+la zona USB/BMO-FS previa a GOP. Por eso el boot estable actual prioriza:
+
+```text
+memory -> storage deferred -> GOP -> APIC -> welcome -> Run -> desktop
+```
+
+La persistencia en USB debe volver como comando/servicio explícito cuando el
+driver de almacenamiento no pueda bloquear el arranque visual.
 
 ---
 

@@ -162,9 +162,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
 
-    // ── USB & Filesystem Initialization ─────────────────────────────
-    let _ = drivers::usb::init();
-    fs::init();
+    // ── Storage deferred ────────────────────────────────────────────
+    // El último panic reportado por diag/ cae justo después de `memory`,
+    // antes de GOP/APIC/welcome; por lo tanto el sospechoso inmediato es
+    // USB/BMO-FS. No debe bloquear `Run -> Desktop`, así que lo sacamos
+    // del boot crítico hasta tener persistencia segura en diag/.
+    diag::warn("storage", "USB/BMO-FS init deferred; desktop boot has priority");
+    drivers::serial::serial_write("[FastOS] Storage deferred: USB/BMO-FS not initialized in boot path\n");
 
     // ── GOP Display ─────────────────────────────────────────────────
     if bi.fb_addr != 0 {
