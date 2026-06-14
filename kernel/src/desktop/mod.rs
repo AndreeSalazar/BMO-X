@@ -32,6 +32,7 @@ const CYCLES_PER_MS: u64 = 3_700_000;
 /// Loop principal del escritorio en Ring 0. No retorna — termina con
 /// `hlt` infinito (idéntico a `welcome::run()`).
 pub fn run_ring0() -> ! {
+    crate::diag::info("desktop", "entering Ring 0 GOP desktop supervisor");
     crate::drivers::serial::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
 
     // Beep "entré al escritorio".
@@ -41,6 +42,7 @@ pub fn run_ring0() -> ! {
     loop {
         // 1) Pintar un frame completo.
         render::render_frame();
+        crate::diag::paint_overlay();
 
         // 2) Dormir ~16 ms drenando teclado para no perder ESC.
         let target = (crate::arch::cpu::rdtsc()).wrapping_add(16 * CYCLES_PER_MS);

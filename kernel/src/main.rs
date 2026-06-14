@@ -25,6 +25,7 @@ mod allocator;
 mod arch;
 mod boot_info;
 mod console;
+mod diag;
 mod desktop;
 mod drivers;
 mod fb;
@@ -109,6 +110,8 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         boot_info::FB_HEIGHT = bi.fb_height;
         boot_info::FB_STRIDE = bi.fb_stride;
     }
+    diag::init();
+    diag::info_u64("boot", "framebuffer base", bi.fb_addr);
     drivers::serial::serial_write("[FastOS] FB "); serial_hex(bi.fb_addr);
     drivers::serial::serial_write(" "); serial_hex(bi.fb_width as u64);
     drivers::serial::serial_write("x"); serial_hex(bi.fb_height as u64);
@@ -116,12 +119,15 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
 
     // ── Ring 0 protected mode ───────────────────────────────────────
     arch::gdt::init_gdt();
+    diag::info("arch", "GDT+TSS loaded; Ring0/Ring3 descriptors ready");
     drivers::serial::serial_write("[FastOS] GDT+TSS loaded (Ring0/Ring3 active)\n");
 
     arch::idt::init_idt();
+    diag::info("arch", "IDT loaded");
     drivers::serial::serial_write("[FastOS] IDT loaded\n");
 
     arch::syscall_entry::init_syscall();
+    diag::info("syscall", "BMO ABI syscall MSRs programmed");
     drivers::serial::serial_write("[FastOS] syscall MSRs programmed (BMO ABI)\n");
 
     // AMD Ryzen 5 5600X CPU optimizations (SSE, AVX, AVX2, XSAVE)
@@ -131,10 +137,12 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     if let Some(ecam) = arch::acpi::parse_mcfg(bi.rsdp_addr) {
         drivers::pci::init_ecam(ecam.base_addr, ecam.end_bus);
         let pci = drivers::pci::scan_pci_bus();
+        diag::info_u64("pci", "devices discovered", pci.count as u64);
         drivers::serial::serial_write("[FastOS] PCI devices: ");
         serial_hex(pci.count as u64);
         drivers::serial::serial_write("\n");
     } else {
+        diag::warn("acpi", "MCFG not found; PCI ECAM unavailable");
         drivers::serial::serial_write("[FastOS] WARN: MCFG not found\n");
     }
 
@@ -149,6 +157,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
             bi.kernel_size,
         );
     }
+    diag::info_u64("memory", "free pages", unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write("[FastOS] Page allocator ready (");
     serial_hex(unsafe { arch::page_alloc::free_count() } as u64);
     drivers::serial::serial_write(" free pages)\n");
@@ -160,15 +169,18 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // ── GOP Display ─────────────────────────────────────────────────
     if bi.fb_addr != 0 {
         drivers::gop::init_gop(bi.fb_addr, bi.fb_width, bi.fb_height, bi.fb_stride);
+        diag::info("gop", "GOP display initialized");
         drivers::serial::serial_write("[FastOS] GOP display initialized\n");
     }
 
     // ── APIC Timer (100 Hz = 10ms ticks for scheduling) ────────────
     arch::apic::init_apic(100);
+    diag::info("apic", "APIC timer started at 100 Hz");
     drivers::serial::serial_write("[FastOS] APIC timer started (100 Hz)\n");
 
     // ── Console + shell ─────────────────────────────────────────────
     if bi.fb_addr == 0 {
+        diag::fault("boot", "no framebuffer; cannot start visual desktop");
         drivers::serial::serial_write("[FastOS] no framebuffer — halt\n");
         loop { unsafe { core::arch::asm!("hlt"); } }
     }
@@ -194,11 +206,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
 
     // ── Enable interrupts ───────────────────────────────────────────
     arch::cpu::sti();
+    diag::info("boot", "interrupts enabled; launching welcome");
     drivers::serial::serial_write("[FastOS] Interrupts enabled (STI)\n");
 
     // ── Welcome screen Ring 0 → escribe (Run) → escritorio ──────────
     // (El banner de arriba queda 1 frame antes de que welcome pinte
     // su tarjeta encima; eso da feedback de progreso durante el boot.)
     drivers::serial::serial_write("[FastOS] launching welcome screen — type 'Run' on the keyboard\n");
+    diag::info("welcome", "type Run + Enter to launch desktop");
     desktop::welcome::run();
 }

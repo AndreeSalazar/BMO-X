@@ -386,6 +386,7 @@ fn should_enter_desktop(cmd: &[u8]) -> bool {
 }
 
 fn enter_desktop() -> ! {
+    crate::diag::info("welcome", "Run accepted; starting desktop supervisor");
     crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0 + contrato Ring 3.\n");
     unsafe { crate::desktop::state::DIRTY = true; }
     // No hacemos beep aquí: spawn_desktop()/run_ring0() ya tiene sus propios beeps.
@@ -403,11 +404,14 @@ fn process_enter() {
         // contrato del compositor Ring 3 sin saltar todavía a user mode.
         enter_desktop();
     } else if eq_ci(trimmed, b"hello") {
+        crate::diag::info("welcome", "Hello command accepted; preparing Ring 3 test");
         desktop::beep(440, 80);
         user_init::spawn_hello();
     } else if eq_ci(trimmed, b"reboot") {
+        crate::diag::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
     } else {
+        crate::diag::warn("welcome", "Unknown command at welcome prompt");
         show_hint(b"Comando desconocido. Usa: Run, Hello, Reboot.");
     }
     unsafe { INPUT_LEN = 0; }
@@ -437,6 +441,7 @@ pub fn run() -> ! {
         if unsafe { DIRTY } {
             if let Some(fb) = fb() {
                 render(&fb);
+                crate::diag::paint_overlay();
                 // Pintar el caret en el estado actual del blink para que
                 // no aparezca/desaparezca en el siguiente sub-loop.
                 let on = blink_on();
