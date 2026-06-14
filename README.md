@@ -58,6 +58,7 @@ Kernel Ring 0
   -> serial, GDT/TSS, IDT, syscalls
   -> memoria, ACPI/PCI, timers
   -> framebuffer GOP
+  -> diag/ visual + serial + caja negra en RAM
   -> welcome + escritorio GOP estable
 
 Ring 3 futuro
@@ -79,6 +80,37 @@ Compatibilidad futura
   -> ideas de Linux: syscalls simples, VFS, drivers pequeños
   -> ideas de macOS: compositor pulido, experiencia visual consistente
 ```
+
+---
+
+## diag/: diagnóstico visual integrado
+
+`diag/` es la capa de diagnóstico nativa de FastOS. No reemplaza al depurador
+externo; evita depender de uno para saber dónde se rompió el boot path.
+
+Estado actual:
+
+- Eventos `[INFO] [WARN] [FAULT] [PANIC]` por módulo.
+- Salida inmediata por serial COM1.
+- Overlay visual directo sobre framebuffer GOP.
+- Caja negra circular en RAM con los últimos eventos.
+- Integrado en boot, arch, syscall, PCI, memoria, GOP, welcome, scheduler,
+  desktop y panic.
+
+Ruta segura para persistencia:
+
+```text
+diag event
+  -> RAM blackbox
+  -> serial COM1
+  -> GOP overlay
+  -> futuro diag::persist() cuando BMO-FS/USB sea estable
+```
+
+Regla importante: `diag/` no debe escribir automáticamente al USB durante el
+arranque temprano. Primero debe observar; después, cuando BMO-FS esté montado y
+validado, podrá crear una carpeta/log persistente en el USB para análisis
+post-mortem.
 
 ---
 
@@ -203,6 +235,7 @@ Debe compilar y arrancar siempre:
 - `boot_protocol/`
 - `kernel/src/main.rs`
 - `kernel/src/arch/`
+- `kernel/src/diag/`
 - `kernel/src/desktop/`
 - `kernel/src/fb.rs`
 - `kernel/src/console.rs`

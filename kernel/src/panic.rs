@@ -4,6 +4,9 @@ use core::panic::PanicInfo;
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
+    crate::diag::panic_event("panic", "kernel panic; halting CPU");
+    crate::diag::paint_overlay();
+
     // Output to serial COM1 (0x3F8) — works regardless of display mode
     let msg = b"\r\n!!! KERNEL PANIC !!!\r\n";
     for &b in msg {

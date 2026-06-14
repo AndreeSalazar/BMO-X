@@ -110,6 +110,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
 
 /// Spawn the first user-mode process ("init").
 pub fn spawn_init_process() -> Option<(u64, u64)> {
+    crate::diag::info("sched", "allocating init Ring 3 test process");
     allocate_user_process("init", build_init_program(), Capability::SYS_DEBUG)
 }
 
@@ -121,13 +122,16 @@ pub fn spawn_init_process() -> Option<(u64, u64)> {
 /// process from the `Run` path. That keeps desktop boot stable until paging and
 /// scheduler return paths are complete.
 pub fn prepare_desktop_compositor() -> bool {
+    crate::diag::info("sched", "validating Ring 3 compositor payload ABI");
     let mut code_buf = [0u8; 256];
     let (_entry_off, total) = crate::desktop::compositor::build_compositor(&mut code_buf, USER_CODE_BASE);
     if total == 0 || total > code_buf.len() {
+        crate::diag::fault("sched", "Ring 3 compositor build failed");
         crate::drivers::serial::serial_write("[user_init] Ring 3 compositor build failed.\n");
         return false;
     }
 
+    crate::diag::info_u64("sched", "Ring 3 compositor payload bytes", total as u64);
     crate::drivers::serial::serial_write("[user_init] Ring 3 compositor ABI validated; Ring 0 remains supervisor.\n");
     true
 }
@@ -147,20 +151,24 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
 
 /// Shell command: spawn Ring 3 hello process.
 pub fn spawn_hello() {
+    crate::diag::info("sched", "spawn_hello requested");
     crate::drivers::serial::serial_write("[user_init] Spawning hello Ring 3 process...\n");
     if let Some((_entry, _stack)) = spawn_init_process() {
+        crate::diag::info("sched", "Ring 3 hello process ready; not jumping yet");
         crate::drivers::serial::serial_write("[user_init] Process created, jumping to Ring 3\n");
         // NOTE: jump_to_ring3 does NOT return. The shell will not resume.
         // In a full OS, we'd schedule it and return to the shell.
         // For now, we just log that it's ready.
         crate::drivers::serial::serial_write("[user_init] Ring 3 process ready (not jumping yet — needs scheduler)\n");
     } else {
+        crate::diag::fault("sched", "failed to spawn Ring 3 hello process");
         crate::drivers::serial::serial_write("[user_init] ERROR: failed to spawn process\n");
     }
 }
 
 /// Shell command: launch the desktop path that is stable today.
 pub fn spawn_desktop() -> ! {
+    crate::diag::info("sched", "spawn_desktop: Ring 0 GOP + Ring 3 contract");
     crate::drivers::serial::serial_write("[user_init] Launching Ring 0 desktop via GOP; preparing Ring 3 contract.\n");
     prepare_desktop_compositor();
     crate::desktop::run_ring0();
