@@ -190,6 +190,30 @@ pub fn ready_count() -> usize {
     }
 }
 
+/// Free a thread: release kernel stack, mark slot free.
+pub fn free_thread(thread: &mut Thread) {
+    if thread.state == ThreadState::Free {
+        return;
+    }
+
+    // Free kernel stack
+    if thread.kernel_stack_top != 0 {
+        let kernel_stack_size = 8192; // KERNEL_STACK_PER_THREAD
+        unsafe {
+            let layout = core::alloc::Layout::from_size_align(kernel_stack_size, 16).unwrap();
+            let ptr = (thread.kernel_stack_top - kernel_stack_size as u64) as *mut u8;
+            alloc::alloc::dealloc(ptr, layout);
+        }
+        thread.kernel_stack_top = 0;
+    }
+
+    thread.state = ThreadState::Dead;
+    thread.tid = Tid(0);
+    thread.pid = super::process::Pid(0);
+    thread.regs = SavedRegs::zero();
+    thread.time_slice = 0;
+}
+
 /// Pick next ready thread (round-robin from current).
 pub fn pick_next() -> Option<usize> {
     unsafe {

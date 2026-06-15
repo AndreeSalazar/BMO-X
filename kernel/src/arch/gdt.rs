@@ -38,6 +38,11 @@ pub struct Tss {
     pub iomap_base: u16,
 }
 
+/// IST1 stack for #PF/#GP exceptions (4 KB, 16-byte aligned).
+#[repr(align(16))]
+struct Ist1Stack([u8; 4096]);
+static mut IST1_STACK: Ist1Stack = Ist1Stack([0; 4096]);
+
 impl Tss {
     pub const fn new() -> Self {
         Self {
@@ -134,6 +139,10 @@ pub fn init_gdt() {
         // Set RSP0 to top of kernel stack
         let stack_top = core::ptr::addr_of!(KERNEL_STACK) as u64 + 16384;
         TSS.rsp[0] = stack_top;
+
+        // Set IST1 for #PF/#GP exception handling (dedicated stack)
+        let ist1_top = core::ptr::addr_of!(IST1_STACK) as u64 + 4096;
+        TSS.ist[0] = ist1_top;
 
         // Build GDT entries
         GDT.entries[0] = 0;                              // 0x00: Null

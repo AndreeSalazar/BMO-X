@@ -6,9 +6,9 @@
 //!   - Loads RIP from IA32_LSTAR
 //!   - Masks RFLAGS with IA32_FMASK
 //!
-//! x86-64 `sysret` instruction:
-//!   - Restores RIP from RCX, RFLAGS from R11
-//!   - Loads CS from STAR[63:48]+16, SS from STAR[63:48]+8
+//! Return to Ring 3 uses `iretq` (not `sysretq`) for safety:
+//!   - Pops RIP, CS, RFLAGS, RSP, SS from kernel stack
+//!   - Handles exceptions properly (sysretq cannot return to faulting state)
 //!
 //! BMO ABI syscall convention:
 //!   RAX = syscall number
@@ -83,6 +83,40 @@ pub fn init_syscall() {
     }
 }
 
+/// Saved user context for iretq return.
+/// Layout must match the push order in syscall_entry_naked.
+#[repr(C, packed)]
+#[derive(Clone, Copy, Debug)]
+pub struct InterruptFrame {
+    pub rax: u64,    // syscall number (saved for dispatch)
+    pub rdi: u64,    // arg 0
+    pub rsi: u64,    // arg 1
+    pub rdx: u64,    // arg 2
+    pub r10: u64,    // arg 3
+    pub r8: u64,     // arg 4
+    pub r9: u64,     // arg 5
+    pub rbx: u64,
+    pub rbp: u64,
+    pub r12: u64,
+    pub r13: u64,
+    pub r14: u64,
+    pub r15: u64,
+    pub rip: u64,    // user return address
+    pub cs: u64,     // user code segment
+    pub rflags: u64, // user flags
+    pub rsp: u64,    // user stack pointer
+    pub ss: u64,     // user data segment
+}
+
+/// Kernel stack for syscall entry. Updated by set_syscall_kernel_stack().
+#[unsafe(no_mangle)]
+static mut SYSCALL_KERNEL_RSP: u64 = 0;
+
+/// Set the kernel stack pointer used by the syscall entry trampoline.
+pub fn set_syscall_kernel_stack(rsp: u64) {
+    unsafe { SYSCALL_KERNEL_RSP = rsp; }
+}
+
 /// Naked syscall entry point — called by hardware via IA32_LSTAR.
 ///
 /// On entry from `syscall`:
@@ -91,26 +125,46 @@ pub fn init_syscall() {
 ///   RAX = syscall number
 ///   RDI, RSI, RDX, R10, R8, R9 = arguments
 ///   RSP = still user RSP! We must switch to kernel stack.
+///
+/// Stack layout after saving (for iretq return):
+///   [rsp+0]  ss
+///   [rsp+8]  rsp (user)
+///   [rsp+16] rflags
+///   [rsp+24] cs
+///   [rsp+32] rip
+///   [rsp+40] r9
+///   [rsp+48] r8
+///   [rsp+56] r10
+///   [rsp+64] rdx
+///   [rsp+72] rsi
+///   [rsp+80] rdi
+///   [rsp+88] rax
+///   [rsp+96] rbx
+///   [rsp+104] rbp
+///   [rsp+112] r12
+///   [rsp+120] r13
+///   [rsp+128] r14
+///   [rsp+136] r15
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry_naked() {
     naked_asm!(
-        // Swap to kernel stack: save user RSP in scratch register,
-        // load kernel RSP from TSS.rsp[0] via swapgs + gs:offset.
-        // Simpler approach: use a known kernel stack location.
-        //
-        // Save user RSP, load kernel RSP
-        "mov r15, rsp",              // save user RSP in r15 (callee-saved, we'll restore)
+        // Save user context to kernel stack for iretq return
+        "push qword ptr [{ss_seg}]",   // SS (user data segment)
+        "push r11",                     // RFLAGS (saved by syscall)
+        "push rcx",                     // RIP (saved by syscall)
+        "push qword ptr [{cs_seg}]",   // CS (user code segment)
 
-        // Load kernel RSP from a fixed location (set by set_kernel_stack)
-        // We use swapgs to access per-CPU data, but for single-CPU we use a global.
-        "mov rsp, [rip + {kstack}]",
+        // Save user stack pointer
+        "push rsp",                     // save user RSP (will be overwritten by push below)
 
-        // Build SyscallFrame on kernel stack
-        "push r15",                   // user RSP
-        "push r11",                   // user RFLAGS
-        "push rcx",                   // user RIP
-
-        // Save callee-saved registers we use
+        // Save all general-purpose registers
+        "push rax",
+        "push rdi",
+        "push rsi",
+        "push rdx",
+        "push r10",
+        "push r8",
+        "push r9",
         "push rbx",
         "push rbp",
         "push r12",
@@ -118,195 +172,245 @@ unsafe extern "C" fn syscall_entry_naked() {
         "push r14",
         "push r15",
 
-        // Call Rust handler: syscall_handler(nr, arg0-5, user_rsp, user_rip)
-        // Syscall ABI: RAX=nr, RDI=a0, RSI=a1, RDX=a2, R10=a3, R8=a4, R9=a5
-        // C ABI: RDI=a0, RSI=a1, RDX=a2, RCX=a3, R8=a4, R9=a5
-        // We need: fn handler(nr: u64, a0-a5: u64) -> u64
-        // Rearrange args for C calling convention:
-        "mov rcx, r10",              // 4th arg: R10 → RCX (C ABI)
-        // RDI, RSI, RDX already correct
-        // R8, R9 already correct
-        // Push syscall number as 1st arg, shift others
-        "push r9",                    // save r9 (will be 7th arg on stack)
-        "push r8",                    // save r8
-        "push rcx",                   // save original r10 (now in rcx)
-        "push rdx",                   // save rdx
-        "push rsi",                   // save rsi
-        "push rdi",                   // save rdi
-        "mov rdi, rax",              // 1st arg = syscall number
-        "pop rsi",                    // 2nd arg = original rdi (user a0)
-        "pop rdx",                    // 3rd arg = original rsi (user a1)
-        "pop rcx",                    // 4th arg = original rdx (user a2)
-        "pop r8",                     // 5th arg = original r10 (user a3)
-        "pop r9",                     // 6th arg = original r8  (user a4)
-        // 7th arg (original r9) is on stack — we'll ignore for now (6 args max)
-        "pop r10",                    // clean stack (was r9)
+        // Load kernel stack
+        "mov r15, rsp",                 // save pointer to saved context
+        "mov rsp, [rip + {kstack}]",    // load kernel stack
 
+        // Call Rust handler with pointer to saved context
+        "mov rdi, r15",                 // arg 0: pointer to InterruptFrame
         "call {handler}",
 
-        // RAX now has return value
+        // Restore kernel stack pointer
+        "mov rsp, r15",
 
-        // Restore callee-saved regs
+        // Restore all general-purpose registers
         "pop r15",
         "pop r14",
         "pop r13",
         "pop r12",
         "pop rbp",
         "pop rbx",
+        "pop r9",
+        "pop r8",
+        "pop r10",
+        "pop rdx",
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
 
-        // Restore user RIP → RCX, user RFLAGS → R11, user RSP
-        "pop rcx",                    // user RIP
-        "pop r11",                    // user RFLAGS
-        "pop rsp",                    // user RSP (directly restore)
+        // Restore user stack pointer
+        "pop rsp",
 
-        // Return to Ring 3
-        "sysretq",
+        // Restore CS, RIP, RFLAGS, SS for iretq
+        "add rsp, 8",                   // skip CS (already in segment registers)
+        "pop rcx",                      // RIP
+        "pop r11",                      // RFLAGS
+        "add rsp, 8",                   // skip SS (already in segment registers)
+
+        // Return to Ring 3 via iretq
+        "iretq",
 
         kstack = sym SYSCALL_KERNEL_RSP,
         handler = sym syscall_handler_rust,
+        ss_seg = const 0x1B_u64,        // USER_DS | RPL=3
+        cs_seg = const 0x23_u64,        // USER_CS | RPL=3
     );
 }
 
-/// Kernel RSP for syscall entry. Updated by set_syscall_kernel_stack().
-#[unsafe(no_mangle)]
-static mut SYSCALL_KERNEL_RSP: u64 = 0;
-
 static mut RING3_SYSCALL_SEEN: bool = false;
-
-/// Set the kernel stack pointer used by the syscall entry trampoline.
-pub fn set_syscall_kernel_stack(rsp: u64) {
-    unsafe { SYSCALL_KERNEL_RSP = rsp; }
-}
 
 /// Rust syscall handler — dispatches by syscall number.
 ///
-/// Args follow BMO ABI: nr in RAX, then RDI, RSI, RDX, R10, R8, R9.
-/// After register shuffling: nr=rdi, a0=rsi, a1=rdx, a2=rcx, a3=r8, a4=r9.
+/// `frame` points to the saved user context on the kernel stack.
+/// On return, the frame will be restored and iretq will return to Ring 3.
 #[unsafe(no_mangle)]
-extern "C" fn syscall_handler_rust(
-    nr: u64,
-    a0: u64,
-    a1: u64,
-    a2: u64,
-    a3: u64,
-    a4: u64,
-) -> u64 {
+extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
     unsafe {
         if !RING3_SYSCALL_SEEN {
             RING3_SYSCALL_SEEN = true;
             crate::diag::info("ring3", "first syscall received; Ring 3 is alive");
         }
-    }
 
-    match nr {
-        // ─── Procesos ─────────────────────────────────────────────
-        // ProcessExit (0x00) — halt CPU
-        0x00 => loop { unsafe { core::arch::asm!("hlt"); } },
+        let f = &mut *frame;
+        let nr = f.rax;
+        let a0 = f.rdi;
+        let a1 = f.rsi;
+        let a2 = f.rdx;
+        let a3 = f.r10;
+        let a4 = f.r8;
+        let _a5 = f.r9; // 7th arg (BMO ABI) — reserved for future use
 
-        // ThreadYield (0x03)
-        0x03 => { core::hint::spin_loop(); 0 }
+        crate::diag::trace_u64("syscall", "dispatch nr", nr);
 
-        // ─── Tiempo ───────────────────────────────────────────────
-        // ClockGetTime (0x50): returns rdtsc value
-        0x50 => crate::arch::cpu::rdtsc(),
-
-        // NanoSleep (0x51): a0 = nanoseconds (busy-wait)
-        0x51 => {
-            let target_ns = a0;
-            let target_cycles = (target_ns as u128 * 37) / 10; // ~3.7 GHz
-            let start = crate::arch::cpu::rdtsc();
-            while (crate::arch::cpu::rdtsc() - start) < target_cycles as u64 {
-                core::hint::spin_loop();
+        let result = match nr {
+            // ─── Procesos ─────────────────────────────────────────────
+            // ProcessExit (0x00) — kill current process and return to scheduler
+            0x00 => {
+                crate::diag::trace("syscall", "ProcessExit");
+                // Kill current process — never returns
+                crate::sched::process::kill_current_process(0, a0, 0);
             }
-            0
-        }
 
-        // ─── Framebuffer (compositor Ring 3) ──────────────────────
-        // FbInfo (0x60): no args, returns packed:
-        //   bits  0..31 = width  | bits 32..47 = height | bits 48..63 = stride/4
-        0x60 => {
-            unsafe {
+            // ThreadCreate (0x01) — not implemented yet
+            0x01 => u64::MAX,
+
+            // ThreadExit (0x02) — not implemented yet
+            0x02 => u64::MAX,
+
+            // ThreadYield (0x03)
+            0x03 => {
+                crate::sched::yield_now();
+                0
+            }
+
+            // FutexWait (0x04) — not implemented yet
+            0x04 => u64::MAX,
+
+            // FutexWake (0x05) — not implemented yet
+            0x05 => u64::MAX,
+
+            // ─── Memoria ──────────────────────────────────────────────
+            // Mmap (0x10) — not implemented yet
+            0x10 => u64::MAX,
+
+            // Munmap (0x11) — not implemented yet
+            0x11 => u64::MAX,
+
+            // Mprotect (0x12) — not implemented yet
+            0x12 => u64::MAX,
+
+            // ─── VFS ──────────────────────────────────────────────────
+            // FileOpen (0x20): a0=name_ptr, a1=name_len → fd or u64::MAX
+            0x20 => crate::fs::ramdisk::open(a0, a1),
+
+            // FileRead (0x21): a0=fd, a1=ptr, a2=len → bytes read
+            0x21 => crate::fs::ramdisk::read(a0, a1, a2),
+
+            // FileWrite (0x22) — not implemented yet
+            0x22 => u64::MAX,
+
+            // FileClose (0x23): a0=fd → 0 or u64::MAX
+            0x23 => crate::fs::ramdisk::close(a0),
+
+            // FileSeek (0x24) — not implemented yet
+            0x24 => u64::MAX,
+
+            // FileStat (0x25): a0=fd → bytes total
+            0x25 => crate::fs::ramdisk::size(a0),
+
+            // ─── IPC ──────────────────────────────────────────────────
+            // PortCreate (0x30) — not implemented yet
+            0x30 => u64::MAX,
+
+            // PortSend (0x31) — not implemented yet
+            0x31 => u64::MAX,
+
+            // PortRecv (0x32) — not implemented yet
+            0x32 => u64::MAX,
+
+            // ─── BareX bridges ────────────────────────────────────────
+            // BarexGfxSubmit (0x40) — not implemented yet
+            0x40 => u64::MAX,
+
+            // BarexAudioSubmit (0x41) — not implemented yet
+            0x41 => u64::MAX,
+
+            // BarexInputPoll (0x42) — not implemented yet
+            0x42 => u64::MAX,
+
+            // BarexNetSubmit (0x43) — not implemented yet
+            0x43 => u64::MAX,
+
+            // ─── Tiempo ───────────────────────────────────────────────
+            // ClockGetTime (0x50): returns rdtsc value
+            0x50 => crate::arch::cpu::rdtsc(),
+
+            // NanoSleep (0x51): a0 = nanoseconds (busy-wait)
+            0x51 => {
+                let target_ns = a0;
+                let target_cycles = (target_ns as u128 * 37) / 10; // ~3.7 GHz
+                let start = crate::arch::cpu::rdtsc();
+                while (crate::arch::cpu::rdtsc() - start) < target_cycles as u64 {
+                    core::hint::spin_loop();
+                }
+                0
+            }
+
+            // ─── Framebuffer (compositor Ring 3) ──────────────────────
+            // FbInfo (0x60): no args, returns packed:
+            //   bits  0..31 = width  | bits 32..47 = height | bits 48..63 = stride/4
+            0x60 => {
                 let w = crate::boot_info::FB_WIDTH as u64;
                 let h = crate::boot_info::FB_HEIGHT as u64;
                 let s = (crate::boot_info::FB_STRIDE / 1) as u64;
                 w | (h << 32) | ((s & 0xFFFF) << 48)
             }
-        }
 
-        // FbFill (0x61): a0=x, a1=y, a2=w, a3=h, a4=color (0xAARRGGBB)
-        0x61 => {
-            crate::desktop::fb_fill(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4 as u32);
-            0
-        }
-
-        // FbText (0x62): a0=x, a1=y, a2=ptr_utf8, a3=len, a4=color
-        0x62 => {
-            if a3 > 0 && a3 < 256 {
-                let slice = unsafe {
-                    core::slice::from_raw_parts(a2 as *const u8, a3 as usize)
-                };
-                crate::desktop::fb_text(a0 as u32, a1 as u32, slice, a4 as u32);
+            // FbFill (0x61): a0=x, a1=y, a2=w, a3=h, a4=color (0xAARRGGBB)
+            0x61 => {
+                crate::desktop::fb_fill(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4 as u32);
+                0
             }
-            0
-        }
 
-        // FbPresent (0x63): no-op (direct framebuffer writes); reserved for future double-buffer flip.
-        0x63 => 0,
-
-        // FbBlit (0x64): a0=x, a1=y, a2=w, a3=h, a4=src_ptr (XRGB-8888 raster)
-        0x64 => {
-            crate::desktop::fb_blit(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4);
-            0
-        }
-
-        // DesktopFrame (0x65): renderiza un frame completo del escritorio
-        //   (wallpaper + status bar + ventanas + dock + cursor) en Ring 0.
-        //   Sin args. Devuelve frame counter.
-        0x65 => {
-            crate::desktop::render::render_frame();
-            crate::diag::paint_overlay();
-            unsafe { crate::desktop::state::STATE.frame }
-        }
-
-        // ─── Input ────────────────────────────────────────────────
-        // KeyPoll (0x70): returns PS/2 scancode or 0 if no key
-        0x70 => crate::desktop::poll_key() as u64,
-
-        // MousePoll (0x71): returns x:i16 | y:i16<<16 | buttons<<32
-        0x71 => crate::desktop::poll_mouse(),
-
-        // ─── Sonido ───────────────────────────────────────────────
-        // Beep (0x80): a0=freq_hz, a1=duration_ms
-        0x80 => {
-            crate::desktop::beep(a0 as u32, a1 as u32);
-            0
-        }
-
-        // ─── Filesystem (RAMdisk) ─────────────────────────────────
-        // FileOpen (0x20): a0=name_ptr, a1=name_len → fd or u64::MAX
-        0x20 => crate::fs::ramdisk::open(a0, a1),
-        // FileRead (0x21): a0=fd, a1=ptr, a2=len → bytes read
-        0x21 => crate::fs::ramdisk::read(a0, a1, a2),
-        // FileClose (0x23): a0=fd → 0 or u64::MAX
-        0x23 => crate::fs::ramdisk::close(a0),
-        // FileSize (0x25): a0=fd → bytes total
-        0x25 => crate::fs::ramdisk::size(a0),
-
-        // ─── Debug ────────────────────────────────────────────────
-        // DebugPrint (0xF0): a0=ptr_utf8, a1=length → serial out
-        0xF0 => {
-            if a1 > 0 && a1 < 4096 {
-                let slice = unsafe {
-                    core::slice::from_raw_parts(a0 as *const u8, a1 as usize)
-                };
-                if let Ok(s) = core::str::from_utf8(slice) {
-                    crate::drivers::serial::serial_write(s);
+            // FbText (0x62): a0=x, a1=y, a2=ptr_utf8, a3=len, a4=color
+            0x62 => {
+                if a3 > 0 && a3 < 256 {
+                    let slice = core::slice::from_raw_parts(a2 as *const u8, a3 as usize);
+                    crate::desktop::fb_text(a0 as u32, a1 as u32, slice, a4 as u32);
                 }
+                0
             }
-            0
-        }
 
-        // Unknown syscall
-        _ => u64::MAX,
+            // FbPresent (0x63): no-op (direct framebuffer writes)
+            0x63 => 0,
+
+            // FbBlit (0x64): a0=x, a1=y, a2=w, a3=h, a4=src_ptr (XRGB-8888 raster)
+            0x64 => {
+                crate::desktop::fb_blit(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4);
+                0
+            }
+
+            // DesktopFrame (0x65): renderiza un frame completo del escritorio
+            0x65 => {
+                crate::desktop::render::render_frame();
+                crate::diag::paint_overlay();
+                crate::desktop::state::STATE.frame
+            }
+
+            // ─── Input ────────────────────────────────────────────────
+            // KeyPoll (0x70): returns PS/2 scancode or 0 if no key
+            0x70 => crate::desktop::poll_key() as u64,
+
+            // MousePoll (0x71): returns x:i16 | y:i16<<16 | buttons<<32
+            0x71 => crate::desktop::poll_mouse(),
+
+            // ─── Sonido ───────────────────────────────────────────────
+            // Beep (0x80): a0=freq_hz, a1=duration_ms
+            0x80 => {
+                crate::desktop::beep(a0 as u32, a1 as u32);
+                0
+            }
+
+            // ─── Debug ────────────────────────────────────────────────
+            // DebugPrint (0xF0): a0=ptr_utf8, a1=length → serial out
+            0xF0 => {
+                if a1 > 0 && a1 < 4096 {
+                    let slice = core::slice::from_raw_parts(a0 as *const u8, a1 as usize);
+                    if let Ok(s) = core::str::from_utf8(slice) {
+                        crate::drivers::serial::serial_write(s);
+                    }
+                }
+                0
+            }
+
+            // Unknown syscall
+            _ => {
+                crate::diag::warn_u64("syscall", "unknown syscall", nr);
+                u64::MAX
+            }
+        };
+
+        // Store result in RAX for return to Ring 3
+        f.rax = result;
     }
 }

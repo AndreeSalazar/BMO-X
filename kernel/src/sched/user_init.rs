@@ -16,6 +16,13 @@ const USER_STACK_SIZE: usize = 65536;
 /// Kernel stack per thread (8 KB each).
 const KERNEL_STACK_PER_THREAD: usize = 8192;
 
+/// User virtual address space layout:
+/// Code: 0x0000_0000_0040_0000 (4 MB)
+/// Stack: 0x0000_0000_0080_0000 (8 MB) - grows down
+const USER_CODE_VBASE: u64 = 0x0000_0000_0040_0000;
+const USER_STACK_VBASE: u64 = 0x0000_0000_0080_0000;
+const USER_STACK_VTOP: u64 = USER_STACK_VBASE + USER_STACK_SIZE as u64;
+
 /// A small user-mode program (x86-64 machine code) that:
 ///   1. Calls syscall DebugPrint to print "Hello from Ring 3!\n"
 ///   2. Calls syscall ClockGetTime  
@@ -63,40 +70,56 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
     proc.set_name(name);
     proc.caps = caps;
 
-    proc.page_table_root = paging::read_cr3();
+    // Create dedicated user page table (clones kernel mappings)
+    let kernel_cr3 = paging::read_cr3();
+    let user_cr3 = unsafe { paging::create_user_page_table(kernel_cr3)? };
+    proc.page_table_root = user_cr3;
 
     let code_pages = (code.len() + crate::arch::page_alloc::page_size() - 1) / crate::arch::page_alloc::page_size();
     let stack_pages = USER_STACK_SIZE / crate::arch::page_alloc::page_size();
 
-    let code_base = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(code_pages.max(1))? };
-    let stack_base = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(stack_pages)? };
-    let user_stack_top = stack_base + USER_STACK_SIZE as u64;
+    // Allocate physical pages for code and stack
+    let code_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(code_pages.max(1))? };
+    let stack_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(stack_pages)? };
 
-    proc.entry_point = code_base;
-
+    // Map into user virtual address space
+    // Code: RX, USER, !NX
+    let code_flags = paging::flags::PRESENT | paging::flags::USER | paging::flags::WRITABLE; // writable for copy, then make RX
     unsafe {
-        let dst = code_base as *mut u8;
+        paging::map_user_range(user_cr3, USER_CODE_VBASE, code_phys, code_pages, code_flags).ok()?;
+    }
+
+    // Stack: RW, USER, NX
+    let stack_flags = paging::flags::PRESENT | paging::flags::USER | paging::flags::WRITABLE | paging::flags::NO_EXECUTE;
+    unsafe {
+        paging::map_user_range(user_cr3, USER_STACK_VBASE, stack_phys, stack_pages, stack_flags).ok()?;
+    }
+
+    // Copy code to physical pages
+    unsafe {
+        let dst = code_phys as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
         if code_pages * crate::arch::page_alloc::page_size() > code.len() {
             core::ptr::write_bytes(
                 dst.add(code.len()),
-                0x90,
+                0x90, // NOP padding
                 code_pages * crate::arch::page_alloc::page_size() - code.len(),
             );
         }
+        // Zero stack
+        core::ptr::write_bytes(stack_phys as *mut u8, 0, USER_STACK_SIZE);
     }
 
-    unsafe {
-        core::ptr::write_bytes(stack_base as *mut u8, 0, USER_STACK_SIZE);
-        if let Err(err) = paging::mark_current_identity_user_range(code_base, code_pages.max(1) * crate::arch::page_alloc::page_size()) {
-            crate::diag::fault("paging", err);
-            return None;
-        }
-        if let Err(err) = paging::mark_current_identity_user_range(stack_base, USER_STACK_SIZE) {
-            crate::diag::fault("paging", err);
-            return None;
-        }
-    }
+    // After copy, code pages are mapped RW+USER for simplicity.
+    // A production kernel would re-walk PTEs here and clear WRITABLE to enforce RX-only.
+
+    proc.entry_point = USER_CODE_VBASE;
+    proc.user_code_base = code_phys;
+    proc.user_code_size = code_pages * crate::arch::page_alloc::page_size();
+    proc.user_stack_base = stack_phys;
+    proc.user_stack_size = USER_STACK_SIZE;
+
+    let user_stack_top = USER_STACK_VTOP;
 
     let kernel_stack = unsafe {
         let layout = core::alloc::Layout::from_size_align(KERNEL_STACK_PER_THREAD, 16).unwrap();
@@ -106,7 +129,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
     };
 
     let thr = thread::alloc_thread(proc.pid, Priority::Interactive)?;
-    thr.regs = thread::SavedRegs::new_user(code_base, user_stack_top);
+    thr.regs = thread::SavedRegs::new_user(USER_CODE_VBASE, user_stack_top);
     thr.kernel_stack_top = kernel_stack;
     thr.state = thread::ThreadState::Ready;
 
@@ -121,9 +144,10 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
     crate::arch::gdt::set_kernel_stack(kernel_stack);
     crate::arch::syscall_entry::set_syscall_kernel_stack(kernel_stack);
 
-    crate::diag::info_u64("ring3", "user code entry", code_base);
+    crate::diag::info_u64("ring3", "user code entry", USER_CODE_VBASE);
     crate::diag::info_u64("ring3", "user stack top", user_stack_top);
-    Some((code_base, user_stack_top))
+    crate::diag::info_u64("ring3", "user CR3", user_cr3);
+    Some((USER_CODE_VBASE, user_stack_top))
 }
 
 /// Spawn the first user-mode process ("init").
@@ -155,16 +179,24 @@ pub fn prepare_desktop_compositor() -> bool {
 }
 
 /// Jump to Ring 3 — execute the init process. Does NOT return.
+/// Uses iretq for safe return from Ring 0 to Ring 3.
 pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
+    // Build interrupt frame for iretq return to Ring 3
+    // Layout (from low to high):
+    //   SS, RSP, RFLAGS, CS, RIP
     core::arch::asm!(
-        "mov ax, {user_ds}",
-        "mov ds, ax",
-        "mov es, ax",
-        "mov rcx, {entry}",
-        "mov r11, 0x202",
-        "mov rsp, {stack}",
-        "sysretq",
-        user_ds = const crate::arch::gdt::USER_DS,
+        // Build iretq frame on kernel stack
+        "push qword ptr {user_ss}",     // SS (user data segment)
+        "push {stack}",                  // RSP (user stack pointer)
+        "push qword ptr 0x202",         // RFLAGS (IF=1, reserved bit 1)
+        "push qword ptr {user_cs}",     // CS (user code segment)
+        "push {entry}",                  // RIP (user entry point)
+
+        // Return to Ring 3 via iretq
+        "iretq",
+
+        user_cs = const 0x23_u64,        // USER_CS | RPL=3
+        user_ss = const 0x1B_u64,        // USER_DS | RPL=3
         entry = in(reg) entry_point,
         stack = in(reg) user_stack,
         options(noreturn),

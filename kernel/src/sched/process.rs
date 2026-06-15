@@ -38,6 +38,14 @@ pub struct Process {
     pub entry_point: u64,
     /// Exit code (set when state = Zombie).
     pub exit_code: i32,
+    /// User code virtual base address.
+    pub user_code_base: u64,
+    /// User code size in bytes.
+    pub user_code_size: usize,
+    /// User stack virtual base address.
+    pub user_stack_base: u64,
+    /// User stack size in bytes.
+    pub user_stack_size: usize,
 }
 
 impl Process {
@@ -51,6 +59,10 @@ impl Process {
             name_len: 0,
             entry_point: 0,
             exit_code: 0,
+            user_code_base: 0,
+            user_code_size: 0,
+            user_stack_base: 0,
+            user_stack_size: 0,
         }
     }
 
@@ -102,4 +114,91 @@ pub fn process_count() -> usize {
     unsafe {
         PROCESS_TABLE.iter().filter(|p| p.state != ProcessState::Free).count()
     }
+}
+
+/// Free a process: release user pages, page tables, mark slot free.
+pub fn free_process(proc: &mut Process) {
+    if proc.state == ProcessState::Free {
+        return;
+    }
+
+    // Free user code pages
+    if proc.user_code_size > 0 {
+        let code_pages = (proc.user_code_size + crate::arch::page_alloc::page_size() - 1) / crate::arch::page_alloc::page_size();
+        unsafe {
+            crate::arch::page_alloc::free_pages(proc.user_code_base, code_pages);
+        }
+    }
+
+    // Free user stack pages
+    if proc.user_stack_size > 0 {
+        let stack_pages = (proc.user_stack_size + crate::arch::page_alloc::page_size() - 1) / crate::arch::page_alloc::page_size();
+        unsafe {
+            crate::arch::page_alloc::free_pages(proc.user_stack_base, stack_pages);
+        }
+    }
+
+    // Free user page tables (PDPTs, PDs, PTs)
+    if proc.page_table_root != 0 {
+        unsafe {
+            crate::arch::paging::free_user_page_tables(proc.page_table_root);
+            // Free the PML4 itself
+            crate::arch::page_alloc::free_pages(proc.page_table_root, 1);
+        }
+        proc.page_table_root = 0;
+    }
+
+    // Mark process as free
+    proc.state = ProcessState::Free;
+    proc.pid = Pid(0);
+    proc.caps = Capability::NONE;
+    proc.name = [0u8; 32];
+    proc.name_len = 0;
+    proc.entry_point = 0;
+    proc.exit_code = 0;
+    proc.user_code_base = 0;
+    proc.user_code_size = 0;
+    proc.user_stack_base = 0;
+    proc.user_stack_size = 0;
+}
+
+/// Kill the current process (called from syscall or exception handler).
+/// Switches back to kernel page table, frees resources, marks as Zombie,
+/// and calls schedule() to switch to next thread.
+pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
+    crate::diag::fault_u64("process", "killing current process", vector);
+
+    // Get current thread
+    let current_idx = super::thread::current_index();
+    if let Some(thread) = super::thread::get_thread(current_idx) {
+        let pid = thread.pid;
+
+        // Free the thread first
+        super::thread::free_thread(thread);
+
+        // Free the process
+        if let Some(proc) = get_process(pid) {
+            proc.exit_code = -1;
+            proc.state = ProcessState::Zombie;
+
+            // Switch back to kernel page table before freeing user pages
+            let kernel_cr3 = crate::arch::paging::read_cr3();
+            if proc.page_table_root != 0 && proc.page_table_root != kernel_cr3 {
+                unsafe { crate::arch::paging::write_cr3(kernel_cr3); }
+            }
+
+            // Free process resources
+            free_process(proc);
+        }
+
+        // Reset current thread index
+        super::thread::set_current(usize::MAX);
+    }
+
+    // Switch to next available thread
+    crate::diag::trace("process", "scheduling after kill");
+    super::schedule();
+
+    // schedule() never returns, but the compiler needs this
+    unreachable!()
 }

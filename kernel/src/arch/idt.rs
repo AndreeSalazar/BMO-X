@@ -70,8 +70,11 @@ pub fn init_idt() {
 
         // Diagnóstico real para las dos fallas más probables al entrar a Ring 3:
         // #GP por selector/sysret inválido y #PF por páginas sin bit USER.
+        // Usan IST1 para stack dedicado y evitar corrupción del stack de usuario.
         IDT[13].set_handler(isr_stub_general_protection as *const () as u64);
+        IDT[13].ist = 1;  // IST1
         IDT[14].set_handler(isr_stub_page_fault as *const () as u64);
+        IDT[14].ist = 1;  // IST1
 
         // IRQ0 — PIT timer (vector 32)
         IDT[32].set_handler(isr_stub_irq0 as *const () as u64);
@@ -129,26 +132,54 @@ unsafe extern "C" fn isr_stub_exception_err() {
     );
 }
 
-/// #GP — no intentamos volver: si ocurre durante Ring 3 bootstrap, repetiría
-/// infinitamente. Lo convertimos en diag visible + halt estable.
+/// #GP — kill current process instead of halting CPU.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_general_protection() {
     naked_asm!(
-        "mov rdi, 13",
-        "mov rsi, [rsp]",
-        "xor rdx, rdx",
-        "call exception_halt_handler_rust",
+        // Save minimal context for kill_current_process
+        "push rax",
+        "push rdi",
+        "push rsi",
+
+        // Get error code from stack (pushed by CPU before this handler)
+        "mov rdi, 13",                 // vector = #GP (13)
+        "mov rsi, [rsp + 24]",         // error code (after 3 pushes)
+
+        // Call Rust handler
+        "call exception_kill_handler_rust",
+
+        // Should never return, but just in case
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
+        "iretq",
     );
 }
 
-/// #PF — captura CR2 para saber exactamente qué dirección rompió Ring 3.
+/// #PF — kill current process, capturing CR2 for diagnostics.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_page_fault() {
     naked_asm!(
-        "mov rdi, 14",
-        "mov rsi, [rsp]",
-        "mov rdx, cr2",
-        "call exception_halt_handler_rust",
+        // Save minimal context for kill_current_process
+        "push rax",
+        "push rdi",
+        "push rsi",
+        "push rdx",
+
+        // Get error code and CR2
+        "mov rdi, 14",                 // vector = #PF (14)
+        "mov rsi, [rsp + 32]",         // error code (after 4 pushes)
+        "mov rdx, cr2",                // faulting address
+
+        // Call Rust handler
+        "call exception_kill_handler_rust",
+
+        // Should never return, but just in case
+        "pop rdx",
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
+        "iretq",
     );
 }
 
@@ -249,22 +280,23 @@ extern "C" fn apic_timer_handler_rust() {
     crate::arch::apic::apic_eoi();
 }
 
+/// Exception handler that kills the current process and returns to scheduler.
+/// Called from #GP and #PF ISR stubs.
 #[unsafe(no_mangle)]
-extern "C" fn exception_halt_handler_rust(vector: u64, error: u64, cr2: u64) -> ! {
+extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> ! {
     match vector {
         13 => {
             crate::diag::fault_u64("#GP", "general protection fault", error);
-            crate::drivers::serial::serial_write("[EXCEPTION] #GP general protection fault\n");
         }
         14 => {
             crate::diag::fault_u64("#PF", "page fault at CR2", cr2);
             crate::diag::fault_u64("#PF", "page fault error code", error);
-            crate::drivers::serial::serial_write("[EXCEPTION] #PF page fault\n");
         }
         _ => {
             crate::diag::fault_u64("trap", "fatal CPU exception", vector);
         }
     }
 
-    loop { unsafe { core::arch::asm!("cli; hlt"); } }
+    // Kill current process and switch to scheduler
+    crate::sched::process::kill_current_process(vector, error, cr2)
 }

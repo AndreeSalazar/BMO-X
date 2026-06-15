@@ -33,6 +33,14 @@ pub fn fault(module: &'static str, message: &'static str) {
     emit(Event::new(Severity::Fault, module, message));
 }
 
+pub fn trace(module: &'static str, message: &'static str) {
+    emit(Event::new(Severity::Trace, module, message));
+}
+
+pub fn trace_u64(module: &'static str, message: &'static str, value: u64) {
+    emit(Event::new_u64(Severity::Trace, module, message, value));
+}
+
 pub fn panic_event(module: &'static str, message: &'static str) {
     emit(Event::new(Severity::Panic, module, message));
 }

@@ -94,10 +94,18 @@ pub fn schedule() {
             crate::arch::gdt::set_kernel_stack(next.kernel_stack_top);
             crate::arch::syscall_entry::set_syscall_kernel_stack(next.kernel_stack_top);
 
-            thread::set_current(next_idx);
+            // Switch CR3 if process has different page table
+            if let Some(proc) = process::get_process(next.pid) {
+                if proc.page_table_root != 0 {
+                    let current_cr3 = crate::arch::paging::read_cr3();
+                    if proc.page_table_root != current_cr3 {
+                        crate::diag::trace_u64("sched", "CR3 switch", proc.page_table_root);
+                        unsafe { crate::arch::paging::write_cr3(proc.page_table_root); }
+                    }
+                }
+            }
 
-            // If the process has a different page table, switch CR3
-            // (For now all user processes share kernel page table, so skip)
+            thread::set_current(next_idx);
         }
     }
 }

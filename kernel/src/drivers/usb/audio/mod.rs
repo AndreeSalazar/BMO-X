@@ -112,7 +112,7 @@ pub fn attach(info: UsbDeviceInfo) -> Result<(), &'static str> {
 
 /// Empuja muestras PCM de audio al auricular USB utilizando el endpoint isócrono.
 /// Aplica control de volumen maestro y mute a nivel de kernel antes de enviar.
-pub fn submit_pcm(ep: &AudioOutEndpoint, samples: &mut [i16]) -> Result<(), &'static str> {
+pub fn submit_pcm(_ep: &AudioOutEndpoint, samples: &mut [i16]) -> Result<(), &'static str> {
     unsafe {
         if GLOBAL_AUDIO_CONFIG.mute {
             for sample in samples.iter_mut() {

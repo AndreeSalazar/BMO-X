@@ -6,6 +6,7 @@ pub enum Severity {
     Warn,
     Fault,
     Panic,
+    Trace,
 }
 
 #[derive(Clone, Copy)]
@@ -68,6 +69,7 @@ pub fn severity_name(severity: Severity) -> &'static str {
         Severity::Warn => "WARN",
         Severity::Fault => "FAULT",
         Severity::Panic => "PANIC",
+        Severity::Trace => "TRACE",
     }
 }
 
@@ -77,6 +79,7 @@ pub(crate) fn severity_tag(severity: Severity) -> &'static [u8] {
         Severity::Warn => b"WARN ",
         Severity::Fault => b"FAULT",
         Severity::Panic => b"PANIC",
+        Severity::Trace => b"TRACE",
     }
 }
 
@@ -86,5 +89,6 @@ pub(crate) fn severity_color(severity: Severity) -> u32 {
         Severity::Warn => 0xFFFFBD2E,
         Severity::Fault => 0xFFFF7B72,
         Severity::Panic => 0xFFFF2A2A,
+        Severity::Trace => 0xFF76B900,
     }
 }
