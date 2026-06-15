@@ -84,13 +84,9 @@ impl<'a> ExportTable<'a> {
     }
 }
 
-/// Hash BLAKE3 truncado a 32 bits — placeholder; la implementación real vive
-/// en `signing::blake3_32`. Por ahora un FNV-1a estable como semilla.
+/// Hash BLAKE3 truncado a 32 bits — usa la implementación nativa completa
+/// de `crate::bef::blake3` y trunca a los primeros 32 bits.
 pub(crate) fn blake3_hash32(bytes: &[u8]) -> u32 {
-    let mut h: u32 = 0x811C_9DC5;
-    for &b in bytes {
-        h ^= b as u32;
-        h = h.wrapping_mul(0x0100_0193);
-    }
-    h
+    let full = crate::bef::blake3::hash(bytes);
+    u32::from_le_bytes([full[0], full[1], full[2], full[3]])
 }

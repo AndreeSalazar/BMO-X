@@ -81,6 +81,116 @@ impl Emitter {
     #[inline(always)]
     pub fn here(&self) -> usize { self.bytes.len() }
 
+    /// `test rax, rax` — 0x48 0x85 0xC0.
+    pub fn test_rax_rax(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x85, 0xC0]);
+    }
+
+    /// `cmp rax, rcx` — REX.W + 0x39 + ModRM(11, rcx, rax).
+    pub fn cmp_reg_reg(&mut self, dst: Reg64, src: Reg64) {
+        let mut rex = 0x48;
+        if src.needs_rex() { rex |= 0x04; }
+        if dst.needs_rex() { rex |= 0x01; }
+        self.bytes.push(rex);
+        self.bytes.push(0x39);
+        let modrm = 0xC0 | ((src.code() & 0x07) << 3) | (dst.code() & 0x07);
+        self.bytes.push(modrm);
+    }
+
+    /// `cmp rax, imm32` — REX.W + 0x3D + imm32.
+    pub fn cmp_rax_imm32(&mut self, imm: i32) {
+        self.bytes.extend_from_slice(&[0x48, 0x3D]);
+        self.bytes.extend_from_slice(&imm.to_le_bytes());
+    }
+
+    /// `je rel32` — 0x0F 0x84 + rel32. Returns offset for back-patching.
+    pub fn je_rel32(&mut self) -> usize {
+        self.bytes.extend_from_slice(&[0x0F, 0x84]);
+        let off = self.bytes.len();
+        self.bytes.extend_from_slice(&[0, 0, 0, 0]);
+        off
+    }
+
+    /// `jne rel32` — 0x0F 0x85 + rel32. Returns offset for back-patching.
+    pub fn jne_rel32(&mut self) -> usize {
+        self.bytes.extend_from_slice(&[0x0F, 0x85]);
+        let off = self.bytes.len();
+        self.bytes.extend_from_slice(&[0, 0, 0, 0]);
+        off
+    }
+
+    /// `jmp rel32` — 0xE9 + rel32. Returns offset for back-patching.
+    pub fn jmp_rel32(&mut self) -> usize {
+        self.bytes.push(0xE9);
+        let off = self.bytes.len();
+        self.bytes.extend_from_slice(&[0, 0, 0, 0]);
+        off
+    }
+
+    /// `xor rax, rax` — REX.W + 0x31 + ModRM(11, rax, rax).
+    pub fn xor_rax_rax(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x31, 0xC0]);
+    }
+
+    /// `sete al` — 0x0F 0x94 0xC0.
+    pub fn sete_al(&mut self) {
+        self.bytes.extend_from_slice(&[0x0F, 0x94, 0xC0]);
+    }
+
+    /// `movzx rax, al` — REX.W + 0x0F 0xB6 0xC0.
+    pub fn movzx_rax_al(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]);
+    }
+
+    /// `add rax, rcx` — REX.W + 0x01 + ModRM(11, rcx, rax).
+    pub fn add_rax_rcx(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x01, 0xC8]);
+    }
+
+    /// `sub rax, rcx` — REX.W + 0x29 + ModRM(11, rcx, rax).
+    pub fn sub_rax_rcx(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x29, 0xC8]);
+    }
+
+    /// `and rax, rcx` — REX.W + 0x21 + ModRM(11, rcx, rax).
+    pub fn and_rax_rcx(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x21, 0xC8]);
+    }
+
+    /// `or rax, rcx` — REX.W + 0x09 + ModRM(11, rcx, rax).
+    pub fn or_rax_rcx(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x09, 0xC8]);
+    }
+
+    /// `imul rax, rcx` — REX.W + 0x0F 0xAF 0xC1.
+    pub fn imul_rax_rcx(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]);
+    }
+
+    /// `cqo; idiv rcx` — sign-extend RAX into RDX:RAX, then divide by RCX.
+    /// Result: quotient in RAX, remainder in RDX.
+    pub fn idiv_rcx(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x99]); // cqo
+        self.bytes.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+    }
+
+    /// `push rax` — 0x50.
+    pub fn push_rax(&mut self) { self.bytes.push(0x50); }
+
+    /// `pop rax` — 0x58.
+    pub fn pop_rax(&mut self) { self.bytes.push(0x58); }
+
+    /// Parchea un rel32 en la posición indicada.
+    pub fn patch_rel32(&mut self, offset: usize, from: usize, to: usize) {
+        let disp = (to as isize) - (from as isize);
+        let disp32 = (disp as i32) as u32;
+        let le_bytes = disp32.to_le_bytes();
+        self.bytes[offset] = le_bytes[0];
+        self.bytes[offset + 1] = le_bytes[1];
+        self.bytes[offset + 2] = le_bytes[2];
+        self.bytes[offset + 3] = le_bytes[3];
+    }
+
     /// Parchea el displacement de la instrucción `lea reg, [rip + disp32]`
     pub fn patch_string_ref(&mut self, disp_offset: usize, rodata_offset: usize, final_code_len: usize) {
         let next_pc = disp_offset + 4; // Disp32 es de 4 bytes

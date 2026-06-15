@@ -109,7 +109,11 @@ impl<'a> SymbolTable<'a> {
         if section_bytes.len() < needed {
             return Err("symbol table demasiado pequeña");
         }
-        let ptr = section_bytes.as_ptr() as *const Symbol;
+        let raw_ptr = section_bytes.as_ptr();
+        if (raw_ptr as usize) % core::mem::align_of::<Symbol>() != 0 {
+            return Err("symbol table pointer mal alineado");
+        }
+        let ptr = raw_ptr as *const Symbol;
         let entries = unsafe { core::slice::from_raw_parts(ptr, entry_count as usize) };
         let strings = &section_bytes[needed..];
         Ok(Self { entries, strings })

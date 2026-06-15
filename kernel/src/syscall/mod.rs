@@ -65,3 +65,52 @@ pub struct SyscallFrame {
 pub fn dispatch(_frame: &mut SyscallFrame) {
     // TODO: enrutar por número de syscall.
 }
+
+// ── Futex kernel-side implementation ─────────────────────────────────
+
+use alloc::collections::VecDeque;
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+
+/// Wait queue entry: a thread waiting on a specific futex address.
+struct FutexWaiter {
+    addr: *const u32,
+    woken: bool,
+}
+
+/// Global futex wait queue (single-core, no lock needed).
+static mut FUTEX_QUEUE: VecDeque<FutexWaiter> = VecDeque::new();
+
+/// Kernel-side futex_wait: if *addr == expected, suspend current thread.
+/// Returns true if woken (possibly spuriously), false if value changed.
+pub fn futex_wait(addr: *const u32, expected: u32, _timeout_ns: u64) -> bool {
+    unsafe {
+        // Fast check: if value already changed, don't sleep.
+        if core::ptr::read_volatile(addr) != expected {
+            return false;
+        }
+        // Add to wait queue.
+        FUTEX_QUEUE.push_back(FutexWaiter { addr, woken: false });
+        // Yield to let other threads run (scheduler will pick next ready thread).
+        crate::sched::yield_now();
+        true
+    }
+}
+
+/// Kernel-side futex_wake: wake up to `count` threads waiting on `addr`.
+/// Returns number of threads actually woken.
+pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
+    unsafe {
+        let mut woken = 0u32;
+        let mut i = 0;
+        while i < FUTEX_QUEUE.len() && woken < count {
+            if FUTEX_QUEUE[i].addr == addr && !FUTEX_QUEUE[i].woken {
+                FUTEX_QUEUE[i].woken = true;
+                woken += 1;
+            }
+            i += 1;
+        }
+        // Remove woken entries from queue.
+        FUTEX_QUEUE.retain(|w| !w.woken);
+        woken
+    }
+}

@@ -30,18 +30,18 @@ impl BmoFutex {
 
     /// Suspende si el valor actual es `expected` (carrera resuelta por el kernel).
     /// Devuelve `false` si el valor cambió antes de dormir.
-    pub fn wait(&self, _expected: u32, _timeout_ns: u64) -> bool {
-        // TODO: syscall::FutexWait
-        false
+    pub fn wait(&self, expected: u32, timeout_ns: u64) -> bool {
+        let addr = &self.0 .0 as *const core::sync::atomic::AtomicU32 as *const u32;
+        crate::syscall::futex_wait(addr, expected, timeout_ns)
     }
 
     pub fn wake_one(&self) -> u32 {
-        // TODO: syscall::FutexWake con count=1
-        0
+        let addr = &self.0 .0 as *const core::sync::atomic::AtomicU32 as *const u32;
+        crate::syscall::futex_wake(addr, 1)
     }
 
     pub fn wake_all(&self) -> u32 {
-        // TODO: syscall::FutexWake con count=u32::MAX
-        0
+        let addr = &self.0 .0 as *const core::sync::atomic::AtomicU32 as *const u32;
+        crate::syscall::futex_wake(addr, u32::MAX)
     }
 }

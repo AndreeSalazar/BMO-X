@@ -166,8 +166,11 @@ impl<'a> SectionTable<'a> {
         if off + needed > bytes.len() {
             return Err("section table fuera de rango");
         }
-        // SAFETY: SectionEntry es repr(C, align(8)) y POD.
-        let ptr = unsafe { bytes.as_ptr().add(off) as *const SectionEntry };
+        let raw_ptr = unsafe { bytes.as_ptr().add(off) };
+        if (raw_ptr as usize) % core::mem::align_of::<SectionEntry>() != 0 {
+            return Err("section table pointer mal alineado");
+        }
+        let ptr = raw_ptr as *const SectionEntry;
         let entries = unsafe { core::slice::from_raw_parts(ptr, count as usize) };
         Ok(Self { entries })
     }

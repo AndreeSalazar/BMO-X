@@ -55,7 +55,11 @@ impl<'a> ImportTable<'a> {
         if section_bytes.len() < needed {
             return Err("import table demasiado pequeña");
         }
-        let ptr = section_bytes.as_ptr() as *const ImportEntry;
+        let raw_ptr = section_bytes.as_ptr();
+        if (raw_ptr as usize) % core::mem::align_of::<ImportEntry>() != 0 {
+            return Err("import table pointer mal alineado");
+        }
+        let ptr = raw_ptr as *const ImportEntry;
         let entries = unsafe { core::slice::from_raw_parts(ptr, entry_count as usize) };
         let strings = &section_bytes[needed..];
         Ok(Self { entries, strings })

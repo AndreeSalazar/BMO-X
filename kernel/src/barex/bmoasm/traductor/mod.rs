@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use crate::barex::{BxError, BxResult};
-use super::parser::{Parser, Ast, Stmt, Expr};
+use super::parser::{Parser, Ast, Stmt, Expr, BinOp};
 use super::sema::Sema;
 use super::emit::{TargetArch, TargetEmitter, TargetRegister, Reg64};
 use super::builtin::{IntrinsicId, emit_intrinsic};
@@ -16,11 +16,17 @@ struct StringRef {
     rodata_offset: usize, // Offset del string en el bloque de datos rodata
 }
 
+struct LoopContext {
+    break_patches: Vec<usize>,   // Offsets of jmp rel32 to back-patch to loop end
+    continue_patches: Vec<usize>, // Offsets of jmp rel32 to back-patch to loop start
+}
+
 pub struct Traductor {
     target: TargetArch,
     emitter: TargetEmitter,
     rodata: Vec<u8>,
     string_refs: Vec<StringRef>,
+    loop_stack: Vec<LoopContext>,
 }
 
 impl Traductor {
@@ -34,6 +40,7 @@ impl Traductor {
             emitter: TargetEmitter::new(target),
             rodata: Vec::new(),
             string_refs: Vec::new(),
+            loop_stack: Vec::new(),
         }
     }
 
@@ -213,6 +220,18 @@ impl Traductor {
                         return Err(BxError::InvalidArgument);
                     }
                 }
+                Stmt::Si { cond, then_body, else_body } => {
+                    self.compilar_si(cond, then_body, else_body.as_deref())?;
+                }
+                Stmt::Mientras { cond, body } => {
+                    self.compilar_mientras(cond, body)?;
+                }
+                Stmt::Rompe => {
+                    self.compilar_rompe()?;
+                }
+                Stmt::Continua => {
+                    self.compilar_continua()?;
+                }
                 _ => return Err(BxError::Unsupported),
             }
         }
@@ -233,6 +252,288 @@ impl Traductor {
             "sfence" => Some(IntrinsicId::Sfence),
             _ => None,
         }
+    }
+
+    // ── Control flow codegen (x86-64) ───────────────────────────────
+
+    fn compilar_si(
+        &mut self,
+        cond: &Expr,
+        then_body: &[Stmt],
+        else_body: Option<&[Stmt]>,
+    ) -> BxResult<()> {
+        // codegen cond -> RAX
+        self.codegen_expr_x86(cond)?;
+        // Emit test + conditional jump
+        let (jelse, jend) = {
+            match &mut self.emitter {
+                TargetEmitter::X86_64(e) => {
+                    e.test_rax_rax();
+                    if else_body.is_some() {
+                        let jelse = e.je_rel32();
+                        (Some(jelse), None)
+                    } else {
+                        (None, Some(e.je_rel32()))
+                    }
+                }
+                _ => return Err(BxError::Unsupported),
+            }
+        };
+        // Emit then body (borrow dropped)
+        self.compilar_body(then_body)?;
+        if let Some(eb) = else_body {
+            // Emit jmp past else
+            let jend = {
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => e.jmp_rel32(),
+                    _ => return Err(BxError::Unsupported),
+                }
+            };
+            // Patch je to else start
+            {
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => {
+                        let else_start = e.here();
+                        e.patch_rel32(jelse.unwrap(), jelse.unwrap() + 4, else_start);
+                    }
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+            // Emit else body
+            self.compilar_body(eb)?;
+            // Patch jmp past else
+            {
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => {
+                        let end = e.here();
+                        e.patch_rel32(jend, jend + 4, end);
+                    }
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+        } else {
+            // Patch je to end
+            match &mut self.emitter {
+                TargetEmitter::X86_64(e) => {
+                    let end = e.here();
+                    e.patch_rel32(jend.unwrap(), jend.unwrap() + 4, end);
+                }
+                _ => return Err(BxError::Unsupported),
+            }
+        }
+        Ok(())
+    }
+
+    fn compilar_mientras(&mut self, cond: &Expr, body: &[Stmt]) -> BxResult<()> {
+        let loop_start = {
+            match &mut self.emitter {
+                TargetEmitter::X86_64(e) => e.here(),
+                _ => return Err(BxError::Unsupported),
+            }
+        };
+        // codegen cond -> RAX
+        self.codegen_expr_x86(cond)?;
+        let jend = {
+            match &mut self.emitter {
+                TargetEmitter::X86_64(e) => {
+                    e.test_rax_rax();
+                    e.je_rel32()
+                }
+                _ => return Err(BxError::Unsupported),
+            }
+        };
+        self.loop_stack.push(LoopContext {
+            break_patches: Vec::new(),
+            continue_patches: Vec::new(),
+        });
+        self.compilar_body(body)?;
+        let ctx = self.loop_stack.pop().unwrap();
+        // continue -> jump to loop_start
+        {
+            match &mut self.emitter {
+                TargetEmitter::X86_64(e) => {
+                    for patch in &ctx.continue_patches {
+                        e.patch_rel32(*patch, *patch + 4, loop_start);
+                    }
+                    let jback = e.jmp_rel32();
+                    e.patch_rel32(jback, jback + 4, loop_start);
+                    let loop_end = e.here();
+                    e.patch_rel32(jend, jend + 4, loop_end);
+                    for patch in &ctx.break_patches {
+                        e.patch_rel32(*patch, *patch + 4, loop_end);
+                    }
+                }
+                _ => return Err(BxError::Unsupported),
+            }
+        }
+        Ok(())
+    }
+
+    fn compilar_rompe(&mut self) -> BxResult<()> {
+        let jmp = {
+            match &mut self.emitter {
+                TargetEmitter::X86_64(e) => e.jmp_rel32(),
+                _ => return Err(BxError::Unsupported),
+            }
+        };
+        let ctx = self.loop_stack.last_mut().ok_or(BxError::InvalidArgument)?;
+        ctx.break_patches.push(jmp);
+        Ok(())
+    }
+
+    fn compilar_continua(&mut self) -> BxResult<()> {
+        let jmp = {
+            match &mut self.emitter {
+                TargetEmitter::X86_64(e) => e.jmp_rel32(),
+                _ => return Err(BxError::Unsupported),
+            }
+        };
+        let ctx = self.loop_stack.last_mut().ok_or(BxError::InvalidArgument)?;
+        ctx.continue_patches.push(jmp);
+        Ok(())
+    }
+
+    /// Codegen de una expresión x86-64. Resultado en RAX.
+    fn codegen_expr_x86(&mut self, expr: &Expr) -> BxResult<()> {
+        match expr {
+            Expr::LitInt(imm) => {
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => e.mov_reg_imm64(Reg64::Rax, *imm),
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+            Expr::LitByte(b) => {
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => {
+                        e.xor_rax_rax();
+                        e.bytes.extend_from_slice(&[0xB0, *b]); // mov al, imm8
+                    }
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+            Expr::Reg(r_name) => {
+                if let Some(r) = Reg64::from_name(r_name) {
+                    if r != Reg64::Rax {
+                        match &mut self.emitter {
+                            TargetEmitter::X86_64(e) => e.mov_reg_reg(Reg64::Rax, r),
+                            _ => return Err(BxError::Unsupported),
+                        }
+                    }
+                } else {
+                    return Err(BxError::InvalidArgument);
+                }
+            }
+            Expr::Ident(_name) => {
+                // Variable reference: load from stack frame.
+                // For now, stub — requires scope frame_offset tracking.
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => e.xor_rax_rax(),
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+            Expr::Bin(op, left, right) => {
+                // codegen left -> RAX
+                self.codegen_expr_x86(left)?;
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => e.push_rax(),
+                    _ => return Err(BxError::Unsupported),
+                }
+                // codegen right -> RAX
+                self.codegen_expr_x86(right)?;
+                // Move right to RCX
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => {
+                        if Reg64::Rax != Reg64::Rcx {
+                            e.mov_reg_reg(Reg64::Rcx, Reg64::Rax);
+                        }
+                        e.pop_rax();
+                    }
+                    _ => return Err(BxError::Unsupported),
+                }
+                match op {
+                    BinOp::Suma => {
+                        match &mut self.emitter { TargetEmitter::X86_64(e) => e.add_rax_rcx(), _ => return Err(BxError::Unsupported) }
+                    }
+                    BinOp::Resta => {
+                        match &mut self.emitter { TargetEmitter::X86_64(e) => e.sub_rax_rcx(), _ => return Err(BxError::Unsupported) }
+                    }
+                    BinOp::Mult => {
+                        match &mut self.emitter { TargetEmitter::X86_64(e) => e.imul_rax_rcx(), _ => return Err(BxError::Unsupported) }
+                    }
+                    BinOp::Div => {
+                        match &mut self.emitter { TargetEmitter::X86_64(e) => e.idiv_rcx(), _ => return Err(BxError::Unsupported) }
+                    }
+                    BinOp::Igual => {
+                        match &mut self.emitter {
+                            TargetEmitter::X86_64(e) => {
+                                e.cmp_reg_reg(Reg64::Rax, Reg64::Rcx);
+                                e.xor_rax_rax();
+                                e.sete_al();
+                                e.movzx_rax_al();
+                            }
+                            _ => return Err(BxError::Unsupported),
+                        }
+                    }
+                    BinOp::Mayor => {
+                        match &mut self.emitter {
+                            TargetEmitter::X86_64(e) => {
+                                e.cmp_reg_reg(Reg64::Rcx, Reg64::Rax);
+                                e.xor_rax_rax();
+                                e.bytes.extend_from_slice(&[0x0F, 0x9F, 0xC0]); // setg al
+                                e.movzx_rax_al();
+                            }
+                            _ => return Err(BxError::Unsupported),
+                        }
+                    }
+                    BinOp::Menor => {
+                        match &mut self.emitter {
+                            TargetEmitter::X86_64(e) => {
+                                e.cmp_reg_reg(Reg64::Rcx, Reg64::Rax);
+                                e.xor_rax_rax();
+                                e.bytes.extend_from_slice(&[0x0F, 0x9C, 0xC0]); // setl al
+                                e.movzx_rax_al();
+                            }
+                            _ => return Err(BxError::Unsupported),
+                        }
+                    }
+                    BinOp::Y => {
+                        match &mut self.emitter { TargetEmitter::X86_64(e) => e.and_rax_rcx(), _ => return Err(BxError::Unsupported) }
+                    }
+                    BinOp::O => {
+                        match &mut self.emitter { TargetEmitter::X86_64(e) => e.or_rax_rcx(), _ => return Err(BxError::Unsupported) }
+                    }
+                }
+            }
+            Expr::No(inner) => {
+                self.codegen_expr_x86(inner)?;
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => {
+                        e.test_rax_rax();
+                        e.xor_rax_rax();
+                        e.sete_al();
+                        e.movzx_rax_al();
+                    }
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+            Expr::Aloc(size_expr) => {
+                self.codegen_expr_x86(size_expr)?;
+                // For now, just leave size in RAX (actual alloc needs syscall).
+            }
+            Expr::LitNulo => {
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => e.xor_rax_rax(),
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+            Expr::LitStr(_) => {
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => e.xor_rax_rax(),
+                    _ => return Err(BxError::Unsupported),
+                }
+            }
+        }
+        Ok(())
     }
 }
 

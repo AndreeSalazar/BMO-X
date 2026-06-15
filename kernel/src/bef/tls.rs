@@ -10,6 +10,7 @@
 
 #![allow(dead_code)]
 
+use core::alloc::Layout;
 use crate::barex::abi::primitives::{bx_u32, bx_u64};
 
 /// Cabecera del template TLS.
@@ -47,7 +48,47 @@ impl TlsTemplate {
 ///
 /// Aloca un buffer de `template.total_size()`, copia los bytes inicializados
 /// y deja el resto a cero. Devuelve la dirección que debe ir en `FSBASE`.
-pub fn setup_for_thread(_template: &TlsTemplate, _data: &[u8]) -> Result<u64, &'static str> {
-    // TODO: requiere allocator del kernel + WRMSR a IA32_FS_BASE.
-    Err("tls::setup_for_thread no implementado todavía")
+pub fn setup_for_thread(template: &TlsTemplate, data: &[u8]) -> Result<u64, &'static str> {
+    let total = template.total_size() as usize;
+    let align = (template.alignment as usize).max(8);
+
+    if total == 0 {
+        return Ok(0);
+    }
+
+    // Allocate aligned buffer from kernel heap.
+    let layout = Layout::from_size_align(total, align)
+        .map_err(|_| "tls: invalid layout")?;
+    let raw = unsafe { alloc::alloc::alloc(layout) };
+    if raw.is_null() {
+        return Err("tls: allocation failed");
+    }
+
+    // Copy initialized data (.tdata equivalent).
+    let init_len = (template.initialized_size as usize).min(data.len());
+    unsafe {
+        core::ptr::copy_nonoverlapping(data.as_ptr(), raw, init_len);
+        // Zero-fill .tbss portion.
+        let zero_start = raw.add(init_len);
+        let zero_len = total.saturating_sub(init_len);
+        core::ptr::write_bytes(zero_start, 0, zero_len);
+    }
+
+    // FS base points to the start of the TLS block.
+    // The compiler emits variable offsets relative to FS:0.
+    let fs_base = raw as u64;
+
+    // Write IA32_FS_BASE MSR (x86-64) for the current thread.
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!(
+            "wrmsr",
+            in("ecx") 0xC000_0100u32, // IA32_FS_BASE
+            in("eax") (fs_base as u32),
+            in("edx") ((fs_base >> 32) as u32),
+            options(nostack),
+        );
+    }
+
+    Ok(fs_base)
 }

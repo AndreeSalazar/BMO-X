@@ -151,14 +151,21 @@ impl<'a> Scanner<'a> {
 
     fn scan_string(&mut self, start: u32) -> Token {
         let begin = self.pos;
-        self.pos += 1; // saltar el primer '"'
+        self.pos += 1; // skip opening '"'
         let mut closed = false;
         while self.pos < self.src.len() {
             let c = self.src[self.pos];
             self.pos += 1;
-            if c == b'"' {
-                closed = true;
-                break;
+            match c {
+                b'"' => {
+                    closed = true;
+                    break;
+                }
+                b'\\' if self.pos < self.src.len() => {
+                    // Skip escaped character so \" doesn't terminate the string
+                    self.pos += 1;
+                }
+                _ => {}
             }
         }
         let kind = if closed { TokenKind::LitStr } else { TokenKind::Unknown };

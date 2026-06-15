@@ -44,19 +44,52 @@ impl BmoMutex {
 
     fn lock_slow(&self) {
         loop {
-            // Marcar que hay waiters.
-            let prev = self.state.0.swap(STATE_LOCKED_WAITERS, MemOrder::Acquire);
-            if prev == STATE_FREE { return; }
-            // Dormir hasta que alguien haga unlock.
-            self.state.wait(STATE_LOCKED_WAITERS, u64::MAX);
+            // Try to transition LOCKED -> LOCKED_WAITERS (mark that waiters exist).
+            let prev = self.state.0.compare_exchange(
+                STATE_LOCKED,
+                STATE_LOCKED_WAITERS,
+                MemOrder::Acquire,
+                MemOrder::Acquire,
+            );
+            match prev {
+                Ok(_) => {
+                    // Successfully marked waiters. Now sleep.
+                    self.state.wait(STATE_LOCKED_WAITERS, u64::MAX);
+                    // Spurious wakeup: loop back and retry.
+                }
+                Err(STATE_FREE) => {
+                    // Lock became free. Try to grab it.
+                    if self.state.0.compare_exchange(
+                        STATE_FREE,
+                        STATE_LOCKED,
+                        MemOrder::Acquire,
+                        MemOrder::Relaxed,
+                    ).is_ok() {
+                        return;
+                    }
+                }
+                Err(STATE_LOCKED_WAITERS) => {
+                    // Someone else already set waiters flag. Just sleep.
+                    self.state.wait(STATE_LOCKED_WAITERS, u64::MAX);
+                }
+                Err(_) => unreachable!(),
+            }
         }
     }
 
     pub fn unlock(&self) {
-        let prev = self.state.0.swap(STATE_FREE, MemOrder::Release);
-        if prev == STATE_LOCKED_WAITERS {
-            self.state.wake_one();
+        // Try LOCKED -> FREE (no waiters case).
+        if self.state.0.compare_exchange(
+            STATE_LOCKED,
+            STATE_FREE,
+            MemOrder::Release,
+            MemOrder::Relaxed,
+        ).is_ok() {
+            return;
         }
+        // LOCKED_WAITERS -> FREE + wake one.
+        self.state.0.store(STATE_FREE, MemOrder::Release);
+        self.state.wake_one();
     }
 
     /// Try-lock no bloqueante.
