@@ -68,19 +68,25 @@ static mut BMOFS_README_CONTENT: [u8; 256] = [0; 256];
 static mut BMOFS_README_LEN: usize = 0;
 static mut BMOFS_README_READ: bool = false;
 
-fn content_for(title_id: u8, fps: u32, frame: u64, buf1: &mut [u8; 48], buf2: &mut [u8; 48]) -> [(&'static [u8], u32); 8] {
+fn content_for<'a>(
+    title_id: u8,
+    fps: u32,
+    frame: u64,
+    buf1: &'a mut [u8; 48],
+    buf2: &'a mut [u8; 48],
+) -> [(&'a [u8], u32); 8] {
     let pal = &palette::TEXT_PRIMARY;
     let _ = pal;
     match title_id {
         0 => [
-            (b"$ bmo > help", palette::TEXT_OK),
-            (b"  desktop   -- compositor Win/Mac/Linux", palette::TEXT_PRIMARY),
-            (b"  ring0     -- estado GDT/IDT/MSR", palette::TEXT_PRIMARY),
-            (b"  user      -- spawn 'hello' Ring 3", palette::TEXT_PRIMARY),
-            (b"$ bmo > _", palette::TEXT_OK),
-            (b"", palette::TEXT_PRIMARY),
-            (b"Arrastra la barra para mover.", palette::TEXT_SECOND),
-            (b"Click rojo para cerrar.", palette::TEXT_SECOND),
+            (b"$ bmo > help" as &[u8], palette::TEXT_OK),
+            (b"  desktop   -- compositor Win/Mac/Linux" as &[u8], palette::TEXT_PRIMARY),
+            (b"  ring0     -- estado GDT/IDT/MSR" as &[u8], palette::TEXT_PRIMARY),
+            (b"  user      -- spawn 'hello' Ring 3" as &[u8], palette::TEXT_PRIMARY),
+            (b"$ bmo > _" as &[u8], palette::TEXT_OK),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"Arrastra la barra para mover." as &[u8], palette::TEXT_SECOND),
+            (b"Click rojo para cerrar." as &[u8], palette::TEXT_SECOND),
         ],
         1 => {
             unsafe {
@@ -98,45 +104,45 @@ fn content_for(title_id: u8, fps: u32, frame: u64, buf1: &mut [u8; 48], buf2: &m
                 core::slice::from_raw_parts(BMOFS_README_CONTENT.as_ptr(), BMOFS_README_LEN)
             };
             [
-                (b"FastOS / BMO-FS Reader", palette::TEXT_INFO),
-                (readme_slice, palette::TEXT_PRIMARY),
-                (b"", palette::TEXT_PRIMARY),
-                (b"Montaje de Loop Device: OK", palette::TEXT_OK),
-                (b"Firma de Superblock: OK", palette::TEXT_OK),
-                (b"Particion FAT32: OK", palette::TEXT_OK),
-                (b"Interoperabilidad UEFI: OK", palette::TEXT_OK),
-                (b"Arrastra la barra para mover.", palette::TEXT_SECOND),
+                (b"FastOS / BMO-FS Reader" as &[u8], palette::TEXT_INFO),
+                (readme_slice as &[u8], palette::TEXT_PRIMARY),
+                (b"" as &[u8], palette::TEXT_PRIMARY),
+                (b"Montaje de Loop Device: OK" as &[u8], palette::TEXT_OK),
+                (b"Firma de Superblock: OK" as &[u8], palette::TEXT_OK),
+                (b"Particion FAT32: OK" as &[u8], palette::TEXT_OK),
+                (b"Interoperabilidad UEFI: OK" as &[u8], palette::TEXT_OK),
+                (b"Arrastra la barra para mover." as &[u8], palette::TEXT_SECOND),
             ]
         },
         2 => [
-            (b"== Juegos ==", palette::TEXT_INFO),
-            (b"Snake     (pendiente)", palette::TEXT_SECOND),
-            (b"Tetris    (pendiente)", palette::TEXT_SECOND),
-            (b"Pong      (pendiente)", palette::TEXT_SECOND),
-            (b"DOOM      (4-6 sesiones)", palette::TEXT_SECOND),
-            (b"", palette::TEXT_PRIMARY),
-            (b"Ver ROADMAP_GAMES.md", palette::TEXT_OK),
-            (b"", palette::TEXT_PRIMARY),
+            (b"== Juegos ==" as &[u8], palette::TEXT_INFO),
+            (b"Snake     (pendiente)" as &[u8], palette::TEXT_SECOND),
+            (b"Tetris    (pendiente)" as &[u8], palette::TEXT_SECOND),
+            (b"Pong      (pendiente)" as &[u8], palette::TEXT_SECOND),
+            (b"DOOM      (4-6 sesiones)" as &[u8], palette::TEXT_SECOND),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"Ver ROADMAP_GAMES.md" as &[u8], palette::TEXT_OK),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
         ],
         3 => [
-            (b"== Web ==", palette::TEXT_INFO),
-            (b"barex::net listo:", palette::TEXT_PRIMARY),
-            (b"  TCP/UDP/QUIC/TLS13", palette::TEXT_SECOND),
-            (b"  HTTP3 + DNS", palette::TEXT_SECOND),
-            (b"  ring buffers io_uring-style", palette::TEXT_SECOND),
-            (b"", palette::TEXT_PRIMARY),
-            (b"Falta: driver NIC real.", palette::TEXT_SECOND),
-            (b"", palette::TEXT_PRIMARY),
+            (b"== Web ==" as &[u8], palette::TEXT_INFO),
+            (b"barex::net listo:" as &[u8], palette::TEXT_PRIMARY),
+            (b"  TCP/UDP/QUIC/TLS13" as &[u8], palette::TEXT_SECOND),
+            (b"  HTTP3 + DNS" as &[u8], palette::TEXT_SECOND),
+            (b"  ring buffers io_uring-style" as &[u8], palette::TEXT_SECOND),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"Falta: driver NIC real." as &[u8], palette::TEXT_SECOND),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
         ],
         4 => [
-            (b"== Ajustes ==", palette::TEXT_INFO),
-            (b"CPU: AMD Ryzen 5 5600X", palette::TEXT_PRIMARY),
-            (b"GPU: UEFI GOP framebuffer", palette::TEXT_PRIMARY),
-            (b"RAM: BootInfo memory map", palette::TEXT_PRIMARY),
-            (b"USB: keyboard + mouse + Redragon", palette::TEXT_PRIMARY),
-            (b"Boot: UEFI puro (sin legacy)", palette::TEXT_PRIMARY),
-            (b"BMO ABI: 7-GPR, 64B align", palette::TEXT_OK),
-            (b"", palette::TEXT_PRIMARY),
+            (b"== Ajustes ==" as &[u8], palette::TEXT_INFO),
+            (b"CPU: AMD Ryzen 5 5600X" as &[u8], palette::TEXT_PRIMARY),
+            (b"GPU: UEFI GOP framebuffer" as &[u8], palette::TEXT_PRIMARY),
+            (b"RAM: BootInfo memory map" as &[u8], palette::TEXT_PRIMARY),
+            (b"USB: keyboard + mouse + Redragon" as &[u8], palette::TEXT_PRIMARY),
+            (b"Boot: UEFI puro (sin legacy)" as &[u8], palette::TEXT_PRIMARY),
+            (b"BMO ABI: 7-GPR, 64B align" as &[u8], palette::TEXT_OK),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
         ],
         5 => {
             let mut p = 0;
@@ -147,34 +153,32 @@ fn content_for(title_id: u8, fps: u32, frame: u64, buf1: &mut [u8; 48], buf2: &m
             buf2[q..q+8].copy_from_slice(b"Frame:  "); q += 8;
             let s2 = fmt_u64_into(&mut buf2[q..], frame); q += s2;
             let p2 = q;
-            // SAFETY: we only return the slices that we filled in this turn.
-            // The lifetimes are tied to the buffers (caller controls them).
-            let l1: &'static [u8] = unsafe { core::mem::transmute(&buf1[..p1]) };
-            let l2: &'static [u8] = unsafe { core::mem::transmute(&buf2[..p2]) };
+            let l1: &[u8] = &buf1[..p1];
+            let l2: &[u8] = &buf2[..p2];
             [
                 (l1, palette::TEXT_INFO),
                 (l2, palette::TEXT_INFO),
-                (b"Renderer: Ring 0 / Rust",      palette::TEXT_PRIMARY),
-                (b"Wallpaper: gradiente azul -> purpura", palette::TEXT_SECOND),
-                (b"Ventanas: rounded + shadow + traffic", palette::TEXT_SECOND),
-                (b"Dock: macOS-style + click launch", palette::TEXT_SECOND),
-                (b"Drag-and-drop sobre titlebar", palette::TEXT_OK),
-                (b"ESC para salir.", palette::TEXT_OK),
+                (b"Renderer: Ring 0 / Rust" as &[u8],      palette::TEXT_PRIMARY),
+                (b"Wallpaper: gradiente azul -> purpura" as &[u8], palette::TEXT_SECOND),
+                (b"Ventanas: rounded + shadow + traffic" as &[u8], palette::TEXT_SECOND),
+                (b"Dock: macOS-style + click launch" as &[u8], palette::TEXT_SECOND),
+                (b"Drag-and-drop sobre titlebar" as &[u8], palette::TEXT_OK),
+                (b"ESC para salir." as &[u8], palette::TEXT_OK),
             ]
         }
         6 => [
-            (b"Papelera vacia.", palette::TEXT_SECOND),
-            (b"", palette::TEXT_PRIMARY), (b"", palette::TEXT_PRIMARY),
-            (b"", palette::TEXT_PRIMARY), (b"", palette::TEXT_PRIMARY),
-            (b"", palette::TEXT_PRIMARY), (b"", palette::TEXT_PRIMARY),
-            (b"", palette::TEXT_PRIMARY),
+            (b"Papelera vacia." as &[u8], palette::TEXT_SECOND),
+            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
         ],
         _ => [
-            (b"(ventana sin contenido)", palette::TEXT_SECOND),
-            (b"", palette::TEXT_PRIMARY), (b"", palette::TEXT_PRIMARY),
-            (b"", palette::TEXT_PRIMARY), (b"", palette::TEXT_PRIMARY),
-            (b"", palette::TEXT_PRIMARY), (b"", palette::TEXT_PRIMARY),
-            (b"", palette::TEXT_PRIMARY),
+            (b"(ventana sin contenido)" as &[u8], palette::TEXT_SECOND),
+            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"" as &[u8], palette::TEXT_PRIMARY),
         ],
     }
 }
@@ -526,6 +530,7 @@ fn wait_for_vsync() {
 // ── Frame ──────────────────────────────────────────────────────────
 
 pub fn render_frame() {
+    crate::diag::info("desktop", "render_frame: calling state::tick");
     state::tick();
     
     // Si nada ha cambiado en este tick, evitamos re-dibujar y re-copiar (flicker-free y ahorro CPU)
@@ -537,16 +542,25 @@ pub fn render_frame() {
     let (addr, w, h, s) = unsafe {
         (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
     };
-    if addr == 0 || w == 0 { return; }
+    if addr == 0 || w == 0 { 
+        crate::diag::fault("desktop", "render_frame: FB_ADDR or width is zero");
+        return; 
+    }
 
+    crate::diag::info("desktop", "render_frame: acquiring static backbuffer");
     let backbuffer_fb = crate::drivers::gop::get_backbuffer_fb();
 
+    crate::diag::info("desktop", "render_frame: handling mouse input");
     handle_input(&backbuffer_fb);
 
+    crate::diag::info("desktop", "render_frame: drawing wallpaper");
     draw_wallpaper(&backbuffer_fb);
+
+    crate::diag::info("desktop", "render_frame: drawing status bar");
     draw_status_bar(&backbuffer_fb);
 
     // Ventanas: focus al final (encima)
+    crate::diag::info("desktop", "render_frame: drawing windows");
     let st = unsafe { &state::STATE };
     for i in 0..MAX_WIN {
         if i as i32 == st.focus { continue; }
@@ -559,13 +573,18 @@ pub fn render_frame() {
         if w.open { draw_window(&backbuffer_fb, &w, true); }
     }
 
+    crate::diag::info("desktop", "render_frame: drawing dock");
     draw_dock(&backbuffer_fb);
+
+    crate::diag::info("desktop", "render_frame: drawing cursor");
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
     // Sincronizar copia con V-Sync para evitar tearing y flicker
     wait_for_vsync();
 
     // Copiar el backbuffer al framebuffer de la pantalla real
+    crate::diag::info("desktop", "render_frame: blitting backbuffer to physical screen");
     let screen_fb = Framebuffer::new(addr, (s as u64) * 4, w, h);
     backbuffer_fb.blit_to(&screen_fb);
+    crate::diag::info("desktop", "render_frame: frame copy complete");
 }

@@ -37,5 +37,9 @@ unsafe impl GlobalAlloc for SimpleAllocator {
 #[global_allocator]
 static ALLOCATOR: SimpleAllocator = SimpleAllocator;
 
+pub fn heap_used() -> usize {
+    HEAP_NEXT.load(Ordering::Relaxed)
+}
+
 #[no_mangle]
 pub extern "C" fn __rust_no_alloc_shim_is_unstable() {}
