@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Page Frame Allocator — bitmap-based, supports contiguous allocation.
 //!
 //! Used by the kernel for physical pages and optional boot-reserved payloads.

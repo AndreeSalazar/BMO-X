@@ -191,6 +191,45 @@ impl Emitter {
         self.bytes[offset + 3] = le_bytes[3];
     }
 
+    /// `push rbp` — 0x55.
+    pub fn push_rbp(&mut self) { self.bytes.push(0x55); }
+
+    /// `mov rbp, rsp` — REX.W + 0x89 + ModRM(11, rsp, rbp).
+    pub fn mov_rbp_rsp(&mut self) {
+        self.bytes.extend_from_slice(&[0x48, 0x89, 0xE5]);
+    }
+
+    /// `leave` — 0xC9 (mov rsp, rbp; pop rbp).
+    pub fn leave(&mut self) { self.bytes.push(0xC9); }
+
+    /// `sub rsp, imm32` — REX.W + 0x81 /5 + imm32.
+    pub fn sub_rsp_imm32(&mut self, imm: i32) {
+        self.bytes.extend_from_slice(&[0x48, 0x81, 0xEC]);
+        self.bytes.extend_from_slice(&imm.to_le_bytes());
+    }
+
+    /// `mov rax, [rbp + disp8]` — REX.W + 0x8B + ModRM(01, 000, 101) + disp8.
+    pub fn mov_rax_rbp_disp8(&mut self, disp: i8) {
+        self.bytes.extend_from_slice(&[0x48, 0x8B, 0x45, disp as u8]);
+    }
+
+    /// `mov rax, [rbp + disp32]` — REX.W + 0x8B + ModRM(10, 000, 101) + disp32.
+    pub fn mov_rax_rbp_disp32(&mut self, disp: i32) {
+        self.bytes.extend_from_slice(&[0x48, 0x8B, 0x85]);
+        self.bytes.extend_from_slice(&disp.to_le_bytes());
+    }
+
+    /// `mov [rbp + disp8], rax` — REX.W + 0x89 + ModRM(01, 000, 101) + disp8.
+    pub fn mov_rbp_disp8_rax(&mut self, disp: i8) {
+        self.bytes.extend_from_slice(&[0x48, 0x89, 0x45, disp as u8]);
+    }
+
+    /// `mov [rbp + disp32], rax` — REX.W + 0x89 + ModRM(10, 000, 101) + disp32.
+    pub fn mov_rbp_disp32_rax(&mut self, disp: i32) {
+        self.bytes.extend_from_slice(&[0x48, 0x89, 0x85]);
+        self.bytes.extend_from_slice(&disp.to_le_bytes());
+    }
+
     /// Parchea el displacement de la instrucción `lea reg, [rip + disp32]`
     pub fn patch_string_ref(&mut self, disp_offset: usize, rodata_offset: usize, final_code_len: usize) {
         let next_pc = disp_offset + 4; // Disp32 es de 4 bytes

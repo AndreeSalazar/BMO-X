@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! ACPI table parsing for UEFI-booted systems.
 //!
 //! The RSDP address is provided by the bootloader (via UEFI system table),

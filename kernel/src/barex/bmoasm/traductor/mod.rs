@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 use crate::barex::{BxError, BxResult};
 use super::parser::{Parser, Ast, Stmt, Expr, BinOp};
 use super::sema::Sema;
+use super::sema::scope::{Scope, ScopeEntry};
 use super::emit::{TargetArch, TargetEmitter, TargetRegister, Reg64};
 use super::builtin::{IntrinsicId, emit_intrinsic};
 
@@ -27,6 +28,8 @@ pub struct Traductor {
     rodata: Vec<u8>,
     string_refs: Vec<StringRef>,
     loop_stack: Vec<LoopContext>,
+    scope: Scope,
+    frame_size: u32,
 }
 
 impl Traductor {
@@ -41,6 +44,8 @@ impl Traductor {
             rodata: Vec::new(),
             string_refs: Vec::new(),
             loop_stack: Vec::new(),
+            scope: Scope::default(),
+            frame_size: 0,
         }
     }
 
@@ -84,8 +89,40 @@ impl Traductor {
     fn compilar_ast(&mut self, ast: &Ast) -> BxResult<()> {
         for item in &ast.items {
             match item {
-                Stmt::Def { name: _, params: _, ret: _, body } => {
+                Stmt::Def { name: _, params, ret: _, body } => {
+                    self.scope = Scope::default();
+                    self.frame_size = 0;
+                    // Reserve parameter slots on stack (caller pushes args right-to-left)
+                    for (_pname, _pty) in params {
+                        self.scope.frame_size += 8;
+                    }
+                    // Emit prologue: push rbp; mov rbp, rsp; sub rsp, imm32 (placeholder)
+                    let sub_rsp_offset = match &mut self.emitter {
+                        TargetEmitter::X86_64(e) => {
+                            e.push_rbp();
+                            e.mov_rbp_rsp();
+                            let off = e.here();
+                            e.sub_rsp_imm32(0); // placeholder
+                            off
+                        }
+                        _ => 0,
+                    };
                     self.compilar_body(body)?;
+                    // Back-patch sub rsp, N with actual frame size
+                    let aligned = (self.frame_size + 15) & !15; // 16-byte align
+                    match &mut self.emitter {
+                        TargetEmitter::X86_64(e) => {
+                            let imm_bytes = (aligned as i32).to_le_bytes();
+                            e.bytes[sub_rsp_offset + 3] = imm_bytes[0];
+                            e.bytes[sub_rsp_offset + 4] = imm_bytes[1];
+                            e.bytes[sub_rsp_offset + 5] = imm_bytes[2];
+                            e.bytes[sub_rsp_offset + 6] = imm_bytes[3];
+                            // Emit epilogue: leave; ret
+                            e.leave();
+                            e.ret();
+                        }
+                        _ => {}
+                    }
                 }
                 _ => return Err(BxError::InvalidArgument),
             }
@@ -98,6 +135,7 @@ impl Traductor {
             match stmt {
                 Stmt::RegAssign { reg, value } => {
                     let dst_reg = TargetRegister::from_name(self.target, reg).ok_or(BxError::InvalidArgument)?;
+                    // General codegen: result goes into RAX via codegen_expr_x86
                     match value {
                         Expr::LitInt(imm) => {
                             match (&mut self.emitter, dst_reg) {
@@ -134,58 +172,79 @@ impl Traductor {
                                 _ => return Err(BxError::InvalidArgument),
                             }
                         }
-                        _ => return Err(BxError::Unsupported),
+                        // Ident and other expressions: codegen to RAX, then move to dst_reg
+                        _ => {
+                            self.codegen_expr_x86(value)?;
+                            if dst_reg != TargetRegister::X86_64(Reg64::Rax) {
+                                match (&mut self.emitter, dst_reg) {
+                                    (TargetEmitter::X86_64(e), TargetRegister::X86_64(r)) => {
+                                        e.mov_reg_reg(r, Reg64::Rax);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                     }
                 }
-                Stmt::Let { name: _, ty: _, value } => {
-                    // let simple mapeado a registro por defecto
-                    match value {
-                        Expr::LitInt(imm) => {
-                            match &mut self.emitter {
-                                TargetEmitter::X86_64(e) => e.mov_reg_imm64(Reg64::Rax, *imm),
-                                TargetEmitter::Aarch64(e) => e.mov_reg_imm64(super::emit::aarch64::RegArm::X0, *imm),
-                                TargetEmitter::Riscv64(e) => e.mov_reg_imm64(super::emit::riscv::RegRiscv::A0, *imm),
+                Stmt::Let { name, ty: _, value } => {
+                    // codegen value -> RAX
+                    self.codegen_expr_x86(value)?;
+                    // Allocate 8 bytes on stack for this variable
+                    let offset = -(self.frame_size as i32) - 8;
+                    self.frame_size += 8;
+                    // Store RAX to [rbp + offset]
+                    match &mut self.emitter {
+                        TargetEmitter::X86_64(e) => {
+                            if offset >= -128 && offset <= 127 {
+                                e.mov_rbp_disp8_rax(offset as i8);
+                            } else {
+                                e.mov_rbp_disp32_rax(offset);
                             }
                         }
                         _ => return Err(BxError::Unsupported),
                     }
+                    // Push to scope for future lookups
+                    self.scope.push(ScopeEntry {
+                        name: name.clone(),
+                        ty: super::parser::ast::Type::Num,
+                        frame_offset: offset,
+                    });
                 }
                 Stmt::Retorna(expr_opt) => {
                     if let Some(expr) = expr_opt {
-                        match expr {
-                            Expr::LitInt(imm) => {
-                                match &mut self.emitter {
-                                    TargetEmitter::X86_64(e) => e.mov_reg_imm64(Reg64::Rax, *imm),
-                                    TargetEmitter::Aarch64(e) => e.mov_reg_imm64(super::emit::aarch64::RegArm::X0, *imm),
-                                    TargetEmitter::Riscv64(e) => e.mov_reg_imm64(super::emit::riscv::RegRiscv::A0, *imm),
+                        self.codegen_expr_x86(expr)?;
+                        // Ensure result is in RAX for return value
+                        match (&mut self.emitter, &expr) {
+                            (TargetEmitter::X86_64(e), Expr::Reg(r_name)) => {
+                                if let Some(r) = Reg64::from_name(r_name) {
+                                    if r != Reg64::Rax {
+                                        e.mov_reg_reg(Reg64::Rax, r);
+                                    }
                                 }
                             }
-                            Expr::Reg(r_name) => {
-                                let r = TargetRegister::from_name(self.target, r_name).ok_or(BxError::InvalidArgument)?;
-                                match (&mut self.emitter, r) {
-                                    (TargetEmitter::X86_64(e), TargetRegister::X86_64(rs)) => {
-                                        if rs != Reg64::Rax {
-                                            e.mov_reg_reg(Reg64::Rax, rs);
+                            (TargetEmitter::Aarch64(e), Expr::Reg(r_name)) => {
+                                if let Some(r) = TargetRegister::from_name(self.target, r_name) {
+                                    if let TargetRegister::Aarch64(a) = r {
+                                        if a != super::emit::aarch64::RegArm::X0 {
+                                            e.mov_reg_reg(super::emit::aarch64::RegArm::X0, a);
                                         }
                                     }
-                                    (TargetEmitter::Aarch64(e), TargetRegister::Aarch64(rs)) => {
-                                        if rs != super::emit::aarch64::RegArm::X0 {
-                                            e.mov_reg_reg(super::emit::aarch64::RegArm::X0, rs);
-                                        }
-                                    }
-                                    (TargetEmitter::Riscv64(e), TargetRegister::Riscv64(rs)) => {
-                                        if rs != super::emit::riscv::RegRiscv::A0 {
-                                            e.mov_reg_reg(super::emit::riscv::RegRiscv::A0, rs);
-                                        }
-                                    }
-                                    _ => return Err(BxError::InvalidArgument),
                                 }
                             }
-                            _ => return Err(BxError::Unsupported),
+                            (TargetEmitter::Riscv64(e), Expr::Reg(r_name)) => {
+                                if let Some(r) = TargetRegister::from_name(self.target, r_name) {
+                                    if let TargetRegister::Riscv64(rv) = r {
+                                        if rv != super::emit::riscv::RegRiscv::A0 {
+                                            e.mov_reg_reg(super::emit::riscv::RegRiscv::A0, rv);
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     match &mut self.emitter {
-                        TargetEmitter::X86_64(e) => e.ret(),
+                        TargetEmitter::X86_64(e) => e.leave(),
                         TargetEmitter::Aarch64(e) => e.ret(),
                         TargetEmitter::Riscv64(e) => e.ret(),
                     }
@@ -423,11 +482,18 @@ impl Traductor {
                     return Err(BxError::InvalidArgument);
                 }
             }
-            Expr::Ident(_name) => {
+            Expr::Ident(name) => {
                 // Variable reference: load from stack frame.
-                // For now, stub — requires scope frame_offset tracking.
+                let entry = self.scope.lookup(name).ok_or(BxError::InvalidArgument)?;
+                let offset = entry.frame_offset;
                 match &mut self.emitter {
-                    TargetEmitter::X86_64(e) => e.xor_rax_rax(),
+                    TargetEmitter::X86_64(e) => {
+                        if offset >= -128 && offset <= 127 {
+                            e.mov_rax_rbp_disp8(offset as i8);
+                        } else {
+                            e.mov_rax_rbp_disp32(offset);
+                        }
+                    }
                     _ => return Err(BxError::Unsupported),
                 }
             }

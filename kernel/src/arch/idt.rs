@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! IDT — Interrupt Descriptor Table for x86-64 Long Mode.
 //! 256 entries, 16 bytes each. Ring 0, no_std.
 //!
@@ -68,13 +70,23 @@ pub fn init_idt() {
             IDT[i].set_handler(isr_stub_exception_err as *const () as u64);
         }
 
-        // Diagnóstico real para las dos fallas más probables al entrar a Ring 3:
-        // #GP por selector/sysret inválido y #PF por páginas sin bit USER.
+        // Diagnóstico real para las excepciones más probables en Ring 3:
+        // #GP, #PF, #UD, #NM, #MF, #XM, #DE — matan el proceso en vez de loops infinitos.
         // Usan IST1 para stack dedicado y evitar corrupción del stack de usuario.
         IDT[13].set_handler(isr_stub_general_protection as *const () as u64);
         IDT[13].ist = 1;  // IST1
         IDT[14].set_handler(isr_stub_page_fault as *const () as u64);
         IDT[14].ist = 1;  // IST1
+        IDT[6].set_handler(isr_stub_invalid_opcode as *const () as u64);
+        IDT[6].ist = 1;   // IST1 — #UD (ud2 / undefined instruction)
+        IDT[7].set_handler(isr_stub_device_not_avail as *const () as u64);
+        IDT[7].ist = 1;   // IST1 — #NM (FPU not available)
+        IDT[16].set_handler(isr_stub_x87_fp as *const () as u64);
+        IDT[16].ist = 1;  // IST1 — #MF (x87 FP exception)
+        IDT[19].set_handler(isr_stub_simd_fp as *const () as u64);
+        IDT[19].ist = 1;  // IST1 — #XM (SSE/AVX exception)
+        IDT[0].set_handler(isr_stub_divide_error as *const () as u64);
+        IDT[0].ist = 1;   // IST1 — #DE (divide error)
 
         // IRQ0 — PIT timer (vector 32)
         IDT[32].set_handler(isr_stub_irq0 as *const () as u64);
@@ -187,6 +199,91 @@ unsafe extern "C" fn isr_stub_page_fault() {
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_default_irq() {
     naked_asm!(
+        "iretq",
+    );
+}
+
+/// #UD — Invalid Opcode (ud2, undefined instruction). Kill current process.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_invalid_opcode() {
+    naked_asm!(
+        "push rax",
+        "push rdi",
+        "push rsi",
+        "mov rdi, 6",          // vector = #UD (6)
+        "xor rsi, rsi",        // error code = 0
+        "call exception_kill_handler_rust",
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
+        "iretq",
+    );
+}
+
+/// #NM — Device Not Available (FPU/SSE). Kill current process.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_device_not_avail() {
+    naked_asm!(
+        "push rax",
+        "push rdi",
+        "push rsi",
+        "mov rdi, 7",          // vector = #NM (7)
+        "xor rsi, rsi",        // error code = 0
+        "call exception_kill_handler_rust",
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
+        "iretq",
+    );
+}
+
+/// #MF — x87 FP Exception. Kill current process.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_x87_fp() {
+    naked_asm!(
+        "push rax",
+        "push rdi",
+        "push rsi",
+        "mov rdi, 16",         // vector = #MF (16)
+        "xor rsi, rsi",        // error code = 0
+        "call exception_kill_handler_rust",
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
+        "iretq",
+    );
+}
+
+/// #XM — SIMD/AVX Exception. Kill current process.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_simd_fp() {
+    naked_asm!(
+        "push rax",
+        "push rdi",
+        "push rsi",
+        "mov rdi, 19",         // vector = #XM (19)
+        "xor rsi, rsi",        // error code = 0
+        "call exception_kill_handler_rust",
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
+        "iretq",
+    );
+}
+
+/// #DE — Divide Error. Kill current process.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_divide_error() {
+    naked_asm!(
+        "push rax",
+        "push rdi",
+        "push rsi",
+        "mov rdi, 0",          // vector = #DE (0)
+        "xor rsi, rsi",        // error code = 0
+        "call exception_kill_handler_rust",
+        "pop rsi",
+        "pop rdi",
+        "pop rax",
         "iretq",
     );
 }

@@ -30,10 +30,22 @@ const USER_STACK_VTOP: u64 = USER_STACK_VBASE + USER_STACK_SIZE as u64;
 ///
 /// BMO ABI syscall: RAX=nr, RDI=a0, RSI=a1 → `syscall`
 fn build_init_program() -> &'static [u8] {
-    static INIT_CODE: [u8; 79] = [
+    // Machine code layout (x86-64):
+    // [0..7)   lea rdi, [rip+disp32] → points to data at offset 45
+    // [7..14)  mov rsi, 19
+    // [14..21) mov rax, 0xF0
+    // [21..23) syscall
+    // [23..30) mov rax, 0x50
+    // [30..32) syscall
+    // [32..35) xor rdi, rdi
+    // [35..42) mov rax, 0x00
+    // [42..44) syscall
+    // [44..45) hlt
+    // [45..64) "Hello from Ring 3!\n" (19 bytes)
+    static INIT_CODE: [u8; 64] = [
         // === Print "Hello from Ring 3!\n" via DebugPrint (syscall 0xF0) ===
-        // lea rdi, [rip + message]  ; a0 = pointer to string
-        0x48, 0x8D, 0x3D, 0x2E, 0x00, 0x00, 0x00,   // lea rdi, [rip+46]
+        // lea rdi, [rip + 38]  ; a0 = pointer to string (45 - 7 = 38)
+        0x48, 0x8D, 0x3D, 0x26, 0x00, 0x00, 0x00,
         // mov rsi, 19              ; a1 = string length
         0x48, 0xC7, 0xC6, 0x13, 0x00, 0x00, 0x00,
         // mov rax, 0xF0            ; syscall number = DebugPrint
@@ -47,15 +59,14 @@ fn build_init_program() -> &'static [u8] {
         // syscall
         0x0F, 0x05,
 
-        // === Infinite loop with yield (syscall 0x03) ===
-        0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00,   // mov rax, 0x03
-        0x0F, 0x05,                                     // syscall
-        0xEB, 0xF5,                                     // jmp -11
-
-        // === Exit via ProcessExit (syscall 0x00) — unreachable ===
-        0x48, 0xC7, 0xC7, 0x00, 0x00, 0x00, 0x00,
+        // === Exit via ProcessExit(0) — syscall 0x00 ===
+        // xor rdi, rdi  ; exit_code = 0
+        0x48, 0x31, 0xFF,
+        // mov rax, 0x00
         0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+        // syscall
         0x0F, 0x05,
+        // hlt (should never reach here)
         0xF4,
 
         // === Data: "Hello from Ring 3!\n" (19 bytes) ===
@@ -250,4 +261,35 @@ pub fn spawn_desktop() -> ! {
 
     crate::diag::warn("sched", "Ring 3 desktop unavailable; falling back to Ring 0");
     crate::desktop::run_ring0();
+}
+
+/// Build a minimal Ring 3 program that executes `ud2` (undefined opcode).
+/// This triggers #UD → exception_kill_handler → kill_current_process → schedule.
+/// Used to verify crash recovery: after the process dies, the scheduler
+/// should return to the welcome/shell screen.
+fn build_crash_program() -> &'static [u8] {
+    static CRASH_CODE: [u8; 15] = [
+        // ud2 — triggers #UD exception (vector 6)
+        0x0F, 0x0B,
+        // Should never reach here
+        0xF4, // hlt
+        // Padding to 16 bytes for alignment
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+    ];
+    &CRASH_CODE
+}
+
+/// Shell command: spawn a Ring 3 process that crashes with ud2.
+/// Verifies exception → kill → scheduler → welcome returns.
+pub fn spawn_crash() {
+    crate::diag::info("sched", "spawn_crash: testing Ring 3 crash recovery");
+    crate::drivers::serial::serial_write("[user_init] Spawning crash test process (ud2)...\n");
+    if let Some((entry, stack)) = allocate_user_process("crash_test", build_crash_program(), Capability::SYS_DEBUG) {
+        crate::diag::info_u64("sched", "Ring 3 crash test entry", entry);
+        crate::drivers::serial::serial_write("[user_init] Process created, jumping to Ring 3 (expect #UD)\n");
+        unsafe { jump_to_ring3(entry, stack); }
+    } else {
+        crate::diag::fault("sched", "failed to spawn crash test process");
+        crate::drivers::serial::serial_write("[user_init] ERROR: failed to spawn crash test process\n");
+    }
 }

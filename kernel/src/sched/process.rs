@@ -103,6 +103,7 @@ pub fn alloc_process() -> Option<&'static mut Process> {
 }
 
 /// Get a process by PID.
+#[allow(static_mut_refs)]
 pub fn get_process(pid: Pid) -> Option<&'static mut Process> {
     unsafe {
         PROCESS_TABLE.iter_mut().find(|p| p.pid == pid && p.state != ProcessState::Free)
@@ -110,6 +111,7 @@ pub fn get_process(pid: Pid) -> Option<&'static mut Process> {
 }
 
 /// Get process count (active + zombie).
+#[allow(static_mut_refs)]
 pub fn process_count() -> usize {
     unsafe {
         PROCESS_TABLE.iter().filter(|p| p.state != ProcessState::Free).count()
@@ -165,18 +167,24 @@ pub fn free_process(proc: &mut Process) {
 /// Kill the current process (called from syscall or exception handler).
 /// Switches back to kernel page table, frees resources, marks as Zombie,
 /// and calls schedule() to switch to next thread.
+///
+/// Safety: Does NOT free the current thread's kernel stack (we're executing on it).
+/// After schedule(), loops with HLT — the next timer/interrupt will switch to
+/// another thread using TSS.RSP0 (already updated by schedule).
 pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
     crate::diag::fault_u64("process", "killing current process", vector);
 
-    // Get current thread
     let current_idx = super::thread::current_index();
     if let Some(thread) = super::thread::get_thread(current_idx) {
         let pid = thread.pid;
 
-        // Free the thread first
-        super::thread::free_thread(thread);
+        // Mark thread as Dead but DO NOT free kernel stack — we're executing on it.
+        thread.state = super::thread::ThreadState::Dead;
+        thread.tid = super::thread::Tid(0);
+        thread.pid = super::process::Pid(0);
+        thread.time_slice = 0;
 
-        // Free the process
+        // Free user-space resources (code pages, stack pages, page tables)
         if let Some(proc) = get_process(pid) {
             proc.exit_code = -1;
             proc.state = ProcessState::Zombie;
@@ -187,18 +195,22 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
                 unsafe { crate::arch::paging::write_cr3(kernel_cr3); }
             }
 
-            // Free process resources
+            // Free process resources (NOT kernel stack)
             free_process(proc);
         }
 
-        // Reset current thread index
+        // Clear current thread — no thread is "running" now
         super::thread::set_current(usize::MAX);
     }
 
-    // Switch to next available thread
+    // Schedule next thread (updates TSS.RSP0 for next interrupt)
     crate::diag::trace("process", "scheduling after kill");
     super::schedule();
 
-    // schedule() never returns, but the compiler needs this
-    unreachable!()
+    // We're on the dead thread's kernel stack — can't do anything useful.
+    // Loop until next timer/interrupt fires and switches to another thread
+    // via TSS.RSP0 (already updated by schedule).
+    loop {
+        unsafe { core::arch::asm!("sti; hlt"); }
+    }
 }

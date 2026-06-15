@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! CPU feature detection via CPUID — Ryzen 5 5600X (Zen 3).
 
 #[derive(Debug, Clone, Copy)]

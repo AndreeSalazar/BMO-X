@@ -69,7 +69,6 @@ pub fn dispatch(_frame: &mut SyscallFrame) {
 // ── Futex kernel-side implementation ─────────────────────────────────
 
 use alloc::collections::VecDeque;
-use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 /// Wait queue entry: a thread waiting on a specific futex address.
 struct FutexWaiter {
@@ -82,6 +81,7 @@ static mut FUTEX_QUEUE: VecDeque<FutexWaiter> = VecDeque::new();
 
 /// Kernel-side futex_wait: if *addr == expected, suspend current thread.
 /// Returns true if woken (possibly spuriously), false if value changed.
+#[allow(static_mut_refs)]
 pub fn futex_wait(addr: *const u32, expected: u32, _timeout_ns: u64) -> bool {
     unsafe {
         // Fast check: if value already changed, don't sleep.
@@ -98,6 +98,7 @@ pub fn futex_wait(addr: *const u32, expected: u32, _timeout_ns: u64) -> bool {
 
 /// Kernel-side futex_wake: wake up to `count` threads waiting on `addr`.
 /// Returns number of threads actually woken.
+#[allow(static_mut_refs)]
 pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
     unsafe {
         let mut woken = 0u32;

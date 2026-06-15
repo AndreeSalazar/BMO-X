@@ -8,6 +8,7 @@
 pub mod process;
 pub mod thread;
 pub mod user_init;
+pub mod gate_test;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {

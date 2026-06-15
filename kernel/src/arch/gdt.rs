@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! GDT + TSS for x86-64 Long Mode — Ring 0 / Ring 3 support.
 //!
 //! Layout:

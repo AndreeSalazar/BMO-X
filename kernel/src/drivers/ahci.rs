@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Bare-metal AHCI/SATA Driver for FastOS.
 //! Implements basic port initialization and Write DMA Ext for data export.
 

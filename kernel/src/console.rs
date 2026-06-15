@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Console — text display over framebuffer with scroll and cursor.
 
 use crate::fb::{colors, Framebuffer};

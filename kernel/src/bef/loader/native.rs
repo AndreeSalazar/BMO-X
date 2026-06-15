@@ -16,17 +16,14 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::bef::header::{BefHeader, BEF_MAGIC, BefFlags};
+use crate::bef::header::{BefHeader, BEF_MAGIC};
 use crate::bef::sections::{SectionTable, SectionKind, SectionEntry};
 use crate::bef::signing::{SignatureHeader, SectionHash};
-use crate::bef::relocations::{Relocation, RelocationKind};
-use crate::bef::imports::{ImportTable, ImportEntry};
-use crate::bef::exports::ExportTable;
-use crate::bef::symbols::SymbolTable;
+use crate::bef::relocations::Relocation;
 use crate::bef::tls::TlsTemplate;
 use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use super::meta_sections::{parse_meta_sections, meta_stats, MetaSectionStats};
-use crate::bef::manifest::{Manifest, Provenance};
+use crate::bef::manifest::Provenance;
 
 /// Virtual base address for user-space loading (Ring 3).
 const USER_BASE: u64 = 0x0040_0000;
@@ -210,7 +207,7 @@ fn section_flags(entry: &SectionEntry) -> u32 {
 /// Step 6: Apply relocations from the Relocs section.
 fn apply_relocations(
     bytes: &[u8],
-    table: &SectionTable,
+    _table: &SectionTable,
     mapped: &[MappedSection],
     reloc_entry: &SectionEntry,
 ) -> Result<(), LoadError> {
@@ -228,7 +225,7 @@ fn apply_relocations(
             &*(bytes.as_ptr().add(offset) as *const Relocation)
         };
 
-        let kind = reloc.kind().ok_or(LoadError::InvalidHeader)?;
+        let _kind = reloc.kind().ok_or(LoadError::InvalidHeader)?;
 
         // Find the target section in mapped memory.
         let target_idx = reloc.target_section as usize;

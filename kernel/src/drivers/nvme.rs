@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Minimal Read-Only NVMe Driver for FastOS.
 //! Bare-metal with DMA bounce buffer, phase-tag polling, bus mastering.
 

@@ -11,4 +11,4 @@ pub mod code;
 pub mod error;
 
 pub use code::BmoStatus;
-pub use error::ErrorCode;
+pub use error::error_code as ErrorCode;

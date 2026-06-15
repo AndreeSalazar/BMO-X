@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! PCI bus scanning via ECAM (Enhanced Configuration Access Mechanism).
 
 /// ECAM base address (set by init_ecam before scanning).
@@ -132,6 +134,7 @@ pub fn scan_pci_bus() -> PciScanResult {
 }
 
 /// Returns true if an NVMe controller (class 0x01, subclass 0x08) was found during PCI scan.
+#[allow(static_mut_refs)]
 pub fn has_nvme() -> bool {
     let r = unsafe { SCAN_RESULT.as_ref() };
     match r {
@@ -141,6 +144,7 @@ pub fn has_nvme() -> bool {
 }
 
 /// Returns true if an AHCI/SATA controller (class 0x01, subclass 0x06) was found during PCI scan.
+#[allow(static_mut_refs)]
 pub fn has_ahci() -> bool {
     let r = unsafe { SCAN_RESULT.as_ref() };
     match r {
@@ -150,6 +154,7 @@ pub fn has_ahci() -> bool {
 }
 
 /// Returns true if a USB xHCI controller (class 0x0C, subclass 0x03) was found during PCI scan.
+#[allow(static_mut_refs)]
 pub fn has_xhci() -> bool {
     let r = unsafe { SCAN_RESULT.as_ref() };
     match r {
@@ -159,6 +164,7 @@ pub fn has_xhci() -> bool {
 }
 
 /// Returns the total number of discovered PCI devices.
+#[allow(static_mut_refs)]
 pub fn device_count() -> usize {
     let r = unsafe { SCAN_RESULT.as_ref() };
     match r {

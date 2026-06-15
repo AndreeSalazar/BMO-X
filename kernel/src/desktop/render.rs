@@ -68,6 +68,7 @@ static mut BMOFS_README_CONTENT: [u8; 256] = [0; 256];
 static mut BMOFS_README_LEN: usize = 0;
 static mut BMOFS_README_READ: bool = false;
 
+#[allow(static_mut_refs)]
 fn content_for<'a>(
     title_id: u8,
     fps: u32,
@@ -239,6 +240,7 @@ fn draw_wallpaper(fb: &Framebuffer) {
 
 // ── Status bar ─────────────────────────────────────────────────────
 
+#[allow(static_mut_refs)]
 fn draw_status_bar(fb: &Framebuffer) {
     fb.fill_rect(0, 0, fb.width, 28, palette::STATUS_BG);
     fb.fill_rect(0, 28, fb.width, 1, palette::WIN_BORDER);
@@ -270,6 +272,7 @@ fn draw_status_bar(fb: &Framebuffer) {
 
 // ── Ventana ────────────────────────────────────────────────────────
 
+#[allow(static_mut_refs)]
 fn draw_window(fb: &Framebuffer, w: &WinInfo, active: bool) {
     let (x, y, ww, wh) = (w.x.max(0) as usize, w.y.max(0) as usize, w.w.max(0) as usize, w.h.max(0) as usize);
     if ww == 0 || wh == 0 { return; }
@@ -327,6 +330,7 @@ fn icon_rect(fb: &Framebuffer, idx: usize) -> (usize, usize) {
     (ix, iy)
 }
 
+#[allow(static_mut_refs)]
 fn draw_dock(fb: &Framebuffer) {
     let (dx, dy, dw, dh) = dock_geometry(fb);
     fb.fill_rounded_rect(dx + 4, dy + 6, dw, dh, 22, palette::WIN_SHADOW);
@@ -405,6 +409,7 @@ fn point_in_circle(px: i32, py: i32, cx: i32, cy: i32, r: i32) -> bool {
     dx * dx + dy * dy <= r * r
 }
 
+#[allow(static_mut_refs)]
 fn handle_input(fb: &Framebuffer) {
     let st: &mut DesktopState = unsafe { &mut state::STATE };
     let mx = st.mouse_x; let my = st.mouse_y;
@@ -503,6 +508,7 @@ fn handle_input(fb: &Framebuffer) {
 
 /// Orden de top→bottom para hit-testing. Focus arriba, luego el resto en
 /// orden de índice ascendente. Como `MAX_WIN = 8` cabe en stack.
+#[allow(static_mut_refs)]
 fn z_order_top_first() -> [usize; MAX_WIN] {
     let st = unsafe { &state::STATE };
     let mut out = [0usize; MAX_WIN];
@@ -529,6 +535,7 @@ fn wait_for_vsync() {
 
 // ── Frame ──────────────────────────────────────────────────────────
 
+#[allow(static_mut_refs)]
 pub fn render_frame() {
     state::tick();
     

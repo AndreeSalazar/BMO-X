@@ -58,6 +58,7 @@ impl BlockDevice for BmoBlockDevice {
 pub static mut MOUNTED_BMO_DEVICE: Option<BmoBlockDevice> = None;
 
 /// Inicializa el volumen BMO-FS y retorna el contenido de "readme.txt" para validar
+#[allow(static_mut_refs)]
 pub fn read_readme_from_bmofs() -> Result<alloc::string::String, &'static str> {
     unsafe {
         let dev = MOUNTED_BMO_DEVICE.as_mut().ok_or("No hay volumen BMO-FS montado")?;

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Page table management for x86-64.
 
 pub mod flags {

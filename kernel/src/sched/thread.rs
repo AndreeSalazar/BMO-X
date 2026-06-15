@@ -164,6 +164,7 @@ pub fn current_index() -> usize {
 }
 
 /// Find thread table index by TID.
+#[allow(static_mut_refs)]
 pub fn find_thread_index(tid: Tid) -> Option<usize> {
     unsafe {
         THREAD_TABLE.iter().position(|t| t.tid == tid && t.state != ThreadState::Free)
@@ -182,6 +183,7 @@ pub fn get_thread(idx: usize) -> Option<&'static mut Thread> {
 }
 
 /// Count of ready/running threads.
+#[allow(static_mut_refs)]
 pub fn ready_count() -> usize {
     unsafe {
         THREAD_TABLE.iter().filter(|t| {

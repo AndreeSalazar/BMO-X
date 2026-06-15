@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Local APIC timer — preemptive scheduling tick.
 //!
 //! Uses the Local APIC's periodic timer for context switch interrupts.

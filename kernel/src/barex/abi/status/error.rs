@@ -5,8 +5,7 @@
 
 use crate::barex::abi::primitives::bx_u32;
 
-#[allow(non_upper_case_globals)]
-pub mod ErrorCode {
+pub mod error_code {
     use super::bx_u32;
 
     pub const OK:                bx_u32 = 0;

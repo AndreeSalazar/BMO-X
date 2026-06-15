@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! GOP Display and Backbuffer Driver — UEFI GOP and static backbuffer management.
 
 use crate::fb::Framebuffer;
@@ -54,6 +56,7 @@ pub fn init_gop(fb_base: u64, width: u32, height: u32, stride: u32) {
 }
 
 /// Get a reference to the global GOP display.
+#[allow(static_mut_refs)]
 pub fn display() -> Option<&'static GopDisplay> {
     unsafe { GOP_DISPLAY.as_ref() }
 }
@@ -66,6 +69,7 @@ const BACKBUFFER_SIZE: usize = 1920 * 1080;
 static mut BACKBUFFER_MEM: [u32; BACKBUFFER_SIZE] = [0; BACKBUFFER_SIZE];
 
 /// Get a Framebuffer representing the static backbuffer.
+#[allow(static_mut_refs)]
 pub fn get_backbuffer_fb() -> Framebuffer {
     unsafe {
         let addr = BACKBUFFER_MEM.as_mut_ptr() as u64;

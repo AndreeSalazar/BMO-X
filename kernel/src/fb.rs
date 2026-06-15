@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Framebuffer drawing — direct pixel access to VBE linear framebuffer.
 //!
 //! 1920×1080×32bpp at 0xD0000000, pitch 7680 bytes.
