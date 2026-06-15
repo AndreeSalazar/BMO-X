@@ -29,8 +29,8 @@
 //!   - cualquier otra cosa → muestra hint
 
 use crate::boot_info;
-use crate::fb::Framebuffer;
-use crate::font;
+use crate::ui::fb::Framebuffer;
+use crate::ui::font;
 use crate::desktop;
 #[allow(unused_imports)]
 use crate::sched::user_init;

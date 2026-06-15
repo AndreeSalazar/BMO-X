@@ -612,7 +612,7 @@ impl Default for Traductor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::barex::bmoasm::sample::SALUDO;
+    use crate::lang::bmoasm::sample::SALUDO;
 
     #[test]
     fn test_traductor_saludo() {

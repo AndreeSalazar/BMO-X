@@ -18,7 +18,7 @@
 
 extern crate alloc;
 
-use crate::barex::bmoasm::emit::{Emitter, Reg64};
+use crate::lang::bmoasm::emit::{Emitter, Reg64};
 
 const SC_ESC: u8 = 0x01;
 

@@ -2,7 +2,7 @@
 
 //! GOP Display and Backbuffer Driver — UEFI GOP and static backbuffer management.
 
-use crate::fb::Framebuffer;
+use crate::ui::fb::Framebuffer;
 
 /// ARGB color (32-bit: 0xAARRGGBB).
 #[derive(Debug, Clone, Copy)]

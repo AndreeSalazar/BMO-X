@@ -7,7 +7,7 @@
 use super::buffer;
 use super::event::{severity_color, severity_tag, Event};
 use crate::boot_info;
-use crate::font;
+use crate::ui::font;
 
 const OVERLAY_LINES: usize = 7;
 const MIN_W: usize = 360;

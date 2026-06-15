@@ -24,12 +24,10 @@ extern crate alloc;
 mod allocator;
 mod arch;
 mod boot_info;
-mod console;
+mod ui;           // console, fb, font (servicios UI)
 mod diag;
 mod desktop;
 mod drivers;
-mod fb;
-mod font;
 mod fs;          // sólo traits DiskReader/DiskWriter para los drivers
 mod panic;
 
@@ -39,6 +37,9 @@ mod bef;
 mod sched;
 mod syscall;
 mod sandbox;
+
+// Herramientas de lenguaje.
+mod lang;         // bmoasm + nexo
 
 use core::arch::naked_asm;
 
@@ -190,7 +191,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         drivers::serial::serial_write("[FastOS] no framebuffer — halt\n");
         loop { unsafe { core::arch::asm!("hlt"); } }
     }
-    let mut con = console::Console::new(
+    let mut con = ui::console::Console::new(
         bi.fb_addr, bi.fb_pitch(), bi.fb_stride, bi.fb_width, bi.fb_height,
     );
     con.clear();

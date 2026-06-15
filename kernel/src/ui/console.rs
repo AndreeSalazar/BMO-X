@@ -2,8 +2,8 @@
 
 //! Console — text display over framebuffer with scroll and cursor.
 
-use crate::fb::{colors, Framebuffer};
-use crate::font;
+use crate::ui::fb::{colors, Framebuffer};
+use crate::ui::font;
 
 const CHAR_W: usize = 8;
 const CHAR_H: usize = 16;

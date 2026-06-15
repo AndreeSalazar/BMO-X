@@ -6,8 +6,8 @@
 #![allow(dead_code)]
 
 use crate::boot_info;
-use crate::fb::Framebuffer;
-use crate::font;
+use crate::ui::fb::Framebuffer;
+use crate::ui::font;
 use super::state::{self, DesktopState, DOCK_SLOTS, MAX_WIN, WinInfo};
 
 // ── Paleta ─────────────────────────────────────────────────────────

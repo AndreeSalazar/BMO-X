@@ -10,7 +10,7 @@
 #![allow(dead_code)]
 
 use crate::boot_info;
-use crate::font;
+use crate::ui::font;
 
 pub mod compositor;
 pub mod state;

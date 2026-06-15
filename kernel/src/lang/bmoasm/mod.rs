@@ -1,4 +1,4 @@
-//! `barex::bmoasm` — **BMO simple**: lenguaje semántico-puro con sintaxis en
+//! `lang::bmoasm` — **BMO simple**: lenguaje semántico-puro con sintaxis en
 //! español que **emite bytes precisos** al CPU sin depender de compilador externo.
 //!
 //! ## Filosofía

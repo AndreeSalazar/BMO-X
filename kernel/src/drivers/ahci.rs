@@ -115,7 +115,7 @@ impl AhciDriver {
     }
 
     /// Dump diagnostic registers to Console for debugging DMA failures.
-    pub unsafe fn diagnose(&self, con: &mut crate::console::Console) {
+    pub unsafe fn diagnose(&self, con: &mut crate::ui::console::Console) {
         con.println("[AHCI-DIAG] === HBA Register Dump ===");
 
         let cap  = read_volatile(&(*self.hba).cap);
