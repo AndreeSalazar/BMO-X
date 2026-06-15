@@ -8,4 +8,3 @@
 
 pub mod thunks;
 
-pub use thunks::{wrap_msx64, wrap_sysv};

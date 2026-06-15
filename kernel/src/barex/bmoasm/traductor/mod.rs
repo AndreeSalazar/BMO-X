@@ -4,7 +4,6 @@
 
 extern crate alloc;
 use alloc::vec::Vec;
-use alloc::string::String;
 
 use crate::barex::{BxError, BxResult};
 use super::parser::{Parser, Ast, Stmt, Expr};

@@ -10,6 +10,3 @@ pub mod sqe;
 pub mod cqe;
 pub mod queue;
 
-pub use sqe::InputSqe;
-pub use cqe::InputCqe;
-pub use queue::{InputSubmissionQueue, InputCompletionQueue};

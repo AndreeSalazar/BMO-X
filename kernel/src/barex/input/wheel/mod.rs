@@ -2,4 +2,3 @@
 //! handbrake, pedals, throttle, rudder).
 
 pub mod reading;
-pub use reading::WheelReading;

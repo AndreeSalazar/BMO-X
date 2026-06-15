@@ -5,6 +5,3 @@ pub mod sqe;
 pub mod cqe;
 pub mod queue;
 
-pub use sqe::AudioSqe;
-pub use cqe::AudioCqe;
-pub use queue::{AudioSubmissionQueue, AudioCompletionQueue};

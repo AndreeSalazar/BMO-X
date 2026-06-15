@@ -11,7 +11,7 @@
 //!   4. arch: GDT+TSS → IDT → syscall MSRs
 //!   5. ACPI MCFG → PCI ECAM
 //!   6. page allocator
-//!   7. console + shell
+//!   7. welcome screen (desktop)
 //!
 //! El backend gráfico funcional es UEFI GOP/framebuffer. Los prototipos de GPU
 //! acelerada quedan fuera del build activo hasta que exista un driver real.
@@ -32,7 +32,6 @@ mod fb;
 mod font;
 mod fs;          // sólo traits DiskReader/DiskWriter para los drivers
 mod panic;
-mod shell;
 
 // BareX + BEF + scheduler + syscall + sandbox (Ring 0/Ring 3).
 mod barex;

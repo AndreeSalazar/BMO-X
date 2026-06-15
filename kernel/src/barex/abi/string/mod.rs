@@ -11,4 +11,4 @@
 pub mod bx_str;
 pub mod ascii;
 
-pub use bx_str::{BmoStr, BmoString};
+pub use bx_str::BmoStr;

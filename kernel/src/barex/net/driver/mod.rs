@@ -5,5 +5,3 @@
 pub mod nic;
 pub mod caps;
 
-pub use nic::NicDriver;
-pub use caps::NicCapabilities;

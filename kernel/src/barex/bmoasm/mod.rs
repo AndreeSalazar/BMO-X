@@ -63,12 +63,6 @@ pub mod sample;
 pub mod traductor;
 
 // ─── Re-exports ──────────────────────────────────────────────────────
-pub use lexer::{Token, TokenKind, Scanner};
-pub use parser::{Ast, Stmt, Expr, Parser};
-pub use sema::{Sema, SemaError};
-pub use emit::{Emitter, EmitError, Reg64};
-pub use builtin::{IntrinsicId, CpuFlag, emit_intrinsic, bytes_for};
-pub use traductor::Traductor;
 
 /// Versión del lenguaje BMO simple.
 pub const BMOASM_VERSION: (u8, u8, u8) = (0, 1, 0);

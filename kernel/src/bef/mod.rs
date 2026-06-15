@@ -36,13 +36,3 @@ pub mod blake3;
 pub mod loader;
 
 // Re-exports planos para uso ergonómico.
-pub use header::{BefHeader, BefMagic, BefFlags, BefArch, BEF_MAGIC};
-pub use sections::{SectionKind, SectionEntry, SectionTable};
-pub use imports::ImportTable;
-pub use exports::ExportTable;
-pub use relocations::{Relocation, RelocationKind};
-pub use symbols::{Symbol, SymbolBinding, SymbolKind};
-pub use manifest::Manifest;
-pub use signing::SectionHash;
-pub use tls::TlsTemplate;
-pub use loader::{load, BinaryFormat, Image, LoadError};

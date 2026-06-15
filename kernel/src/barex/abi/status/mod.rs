@@ -10,5 +10,5 @@
 pub mod code;
 pub mod error;
 
-pub use code::{BmoStatus, StatusFlags};
+pub use code::BmoStatus;
 pub use error::ErrorCode;

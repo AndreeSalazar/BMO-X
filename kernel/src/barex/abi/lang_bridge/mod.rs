@@ -29,7 +29,5 @@ pub mod registry;
 pub mod ids;
 pub mod features;
 
-pub use descriptor::{LangDescriptor, LangVersion};
+pub use descriptor::LangDescriptor;
 pub use registry::LangRegistry;
-pub use ids::*;
-pub use features::LangFeatures;

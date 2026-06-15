@@ -12,6 +12,3 @@ pub mod boxed;
 pub mod env;
 pub mod signature;
 
-pub use boxed::BmoClosure;
-pub use env::ClosureEnv;
-pub use signature::{ClosureSig, ClosureKind};

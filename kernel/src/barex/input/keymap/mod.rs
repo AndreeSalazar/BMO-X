@@ -6,5 +6,3 @@
 pub mod layout;
 pub mod entry;
 
-pub use layout::Layout;
-pub use entry::KeymapEntry;

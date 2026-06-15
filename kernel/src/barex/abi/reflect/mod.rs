@@ -17,5 +17,4 @@
 pub mod mirror;
 pub mod query_api;
 
-pub use mirror::{Mirror, MirrorOf};
-pub use query_api::{ReflectError, ReflectQuery};
+pub use query_api::ReflectQuery;

@@ -10,4 +10,3 @@
 
 pub mod ring;
 
-pub use ring::{Sqe, Cqe, SqRing, CqRing, OpCode};

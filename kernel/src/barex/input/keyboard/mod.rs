@@ -5,5 +5,4 @@ pub mod modifiers;
 pub mod reading;
 
 pub use key::Key;
-pub use modifiers::Modifiers;
 pub use reading::KeyboardReading;

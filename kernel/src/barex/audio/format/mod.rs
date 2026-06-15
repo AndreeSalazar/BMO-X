@@ -7,4 +7,3 @@ pub mod latency;
 
 pub use sample::SampleFormat;
 pub use channels::ChannelLayout;
-pub use latency::LatencyTier;

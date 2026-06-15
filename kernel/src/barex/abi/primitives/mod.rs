@@ -11,5 +11,4 @@ pub mod bool;
 
 // Re-exports — `use crate::barex::abi::primitives::*;`
 pub use ints::*;
-pub use floats::*;
 pub use self::bool::*;

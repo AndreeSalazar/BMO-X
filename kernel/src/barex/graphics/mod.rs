@@ -47,16 +47,3 @@ pub mod sampler;
 pub mod queryheap;
 
 // ─── Re-exports planos ───────────────────────────────────────────────
-pub use types::{Format, MemoryHint, BxBarrier, Sync, Access, Layout};
-pub use device::BxDevice;
-pub use queue::{BxQueue, QueueKind};
-pub use cmdlist::BxCmdList;
-pub use pso::BxPso;
-pub use rootsig::BxRootSig;
-pub use heap::BxGlobalHeap;
-pub use fence::BxFence;
-pub use swapchain::BxSwapchain;
-pub use buffer::BxBuffer;
-pub use texture::BxTexture;
-pub use sampler::BxSampler;
-pub use queryheap::BxQueryHeap;

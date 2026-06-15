@@ -8,7 +8,6 @@
 
 use crate::barex::abi::primitives::bx_u64;
 use super::env::ClosureEnv;
-use super::signature::ClosureSig;
 
 /// Puntero a función "thunk" que recibe `env_ptr` como primer arg implícito.
 pub type ClosureThunk = unsafe extern "C" fn(env_ptr: *mut u8 /*, args... */);

@@ -8,6 +8,3 @@ pub mod atomic;
 pub mod futex;
 pub mod mutex;
 
-pub use atomic::{BmoAtomicU32, BmoAtomicU64, BmoAtomicBool, MemOrder};
-pub use futex::{BmoFutex, FutexOp};
-pub use mutex::BmoMutex;

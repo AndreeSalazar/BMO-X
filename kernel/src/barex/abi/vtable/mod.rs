@@ -18,7 +18,4 @@ pub mod entry;
 pub mod fat_ptr;
 pub mod query;
 
-pub use table::{BmoVTable, VTableHeader};
-pub use entry::{VTableEntry, EntryKind};
-pub use fat_ptr::BmoFatPtr;
-pub use query::{query_interface, InterfaceId};
+pub use table::BmoVTable;

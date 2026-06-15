@@ -3,5 +3,4 @@
 pub mod scope;
 pub mod typeck;
 
-pub use scope::{Scope, ScopeEntry};
-pub use typeck::{Sema, SemaError};
+pub use typeck::Sema;

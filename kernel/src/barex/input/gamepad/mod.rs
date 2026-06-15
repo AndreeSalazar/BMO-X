@@ -7,6 +7,3 @@ pub mod xbox;
 pub mod playstation;
 pub mod switch;
 
-pub use family::GamepadFamily;
-pub use buttons::GamepadButtons;
-pub use reading::GamepadReading;

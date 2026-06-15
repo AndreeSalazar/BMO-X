@@ -4,5 +4,3 @@
 pub mod resolver;
 pub mod answer;
 
-pub use resolver::DnsResolver;
-pub use answer::DnsAnswer;

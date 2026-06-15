@@ -1,6 +1,6 @@
 //! Contexto de unwinding y razones.
 
-use crate::barex::abi::primitives::{bx_u32, bx_u64};
+use crate::barex::abi::primitives::bx_u64;
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

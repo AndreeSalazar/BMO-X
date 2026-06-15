@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use super::atomic::{BmoAtomicU32, MemOrder};
+use super::atomic::MemOrder;
 use super::futex::BmoFutex;
 
 /// Estado del lock empacado en 32 bits:

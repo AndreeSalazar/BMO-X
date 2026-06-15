@@ -47,7 +47,3 @@ pub mod loader;
 pub mod cache;
 
 // ─── Re-exports planos ───────────────────────────────────────────────
-pub use stage::ShaderStage;
-pub use ir::{ShaderIr, ShaderBlob};
-pub use loader::load;
-pub use cache::ShaderCache;

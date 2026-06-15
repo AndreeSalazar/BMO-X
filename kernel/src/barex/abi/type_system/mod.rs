@@ -27,11 +27,8 @@ pub mod layout;
 pub mod registry;
 pub mod hash;
 
-pub use descriptor::{TypeDescriptor, TypeId, FieldDescriptor, VariantDescriptor};
-pub use kind::TypeKind;
-pub use layout::TypeLayout;
+pub use descriptor::{TypeDescriptor, TypeId};
 pub use registry::TypeRegistry;
-pub use hash::type_hash;
 
 /// Versión del sistema de tipos BMO.
 pub const TYPE_SYSTEM_VERSION: (u8, u8) = (1, 0);

@@ -5,5 +5,3 @@
 pub mod context;
 pub mod cipher;
 
-pub use context::TlsContext;
-pub use cipher::TlsCipherSuite;

@@ -7,8 +7,8 @@ pub mod riscv;
 
 // Re-exportar la arquitectura activa en tiempo de compilación para el OS.
 // Dado que FastOS corre actualmente sobre x86-64, este es el backend activo por defecto.
-pub use x86_64::reg::{Reg64, BMO_ARG_REGS};
-pub use x86_64::encoder::{Emitter, EmitError};
+pub use x86_64::reg::Reg64;
+pub use x86_64::encoder::Emitter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetArch {

@@ -5,4 +5,3 @@ pub mod spatializer;
 pub mod listener;
 
 pub use spatializer::BxSpatializer;
-pub use listener::ListenerPose;

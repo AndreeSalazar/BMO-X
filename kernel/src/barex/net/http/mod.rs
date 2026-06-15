@@ -5,6 +5,3 @@ pub mod client;
 pub mod server;
 pub mod version;
 
-pub use client::Http3Client;
-pub use server::Http3Server;
-pub use version::HttpVersion;

@@ -23,7 +23,4 @@ pub mod panic;
 pub mod resume;
 pub mod table;
 
-pub use unwind::{UnwindContext, UnwindReason, UnwindAction};
-pub use panic::{BmoPanic, PanicKind};
-pub use resume::{ResumeToken, resume};
-pub use table::{UnwindTable, UnwindEntry};
+pub use table::UnwindTable;

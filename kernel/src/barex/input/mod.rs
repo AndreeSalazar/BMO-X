@@ -51,18 +51,6 @@ pub mod event;
 pub mod ring;
 
 // ─── Re-exports planos ───────────────────────────────────────────────
-pub use capabilities::InputCapabilities;
-pub use system::BxInputSystem;
-pub use device::{DeviceKind, DeviceInfo};
-pub use keyboard::{Key, Modifiers, KeyboardReading};
-pub use mouse::{MouseButtons, MouseReading, CursorMode};
-pub use headset::{HeadsetButton, HeadsetButtonEvent};
-pub use gamepad::{GamepadButtons, GamepadReading, GamepadFamily};
-pub use wheel::WheelReading;
-pub use hid_raw::{HidUsagePage, HidReportItem};
-pub use keymap::{Layout, KeymapEntry};
-pub use event::{InputReading, InputEvent, InputEventKind};
-pub use ring::{InputSqe, InputCqe, InputSubmissionQueue, InputCompletionQueue};
 
 /// Versión del subsistema `bx_input` (ABI estable a Ring 3).
 pub const BX_INPUT_VERSION: (u8, u8, u8) = (1, 0, 0);

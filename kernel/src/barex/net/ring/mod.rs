@@ -12,6 +12,3 @@ pub mod sqe;
 pub mod cqe;
 pub mod queue;
 
-pub use sqe::NetSqe;
-pub use cqe::NetCqe;
-pub use queue::{NetSubmissionQueue, NetCompletionQueue};

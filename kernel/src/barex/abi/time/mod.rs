@@ -6,5 +6,3 @@
 pub mod instant;
 pub mod duration;
 
-pub use instant::BmoInstant;
-pub use duration::BmoDuration;

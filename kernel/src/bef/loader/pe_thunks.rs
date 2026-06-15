@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use crate::barex::abi::primitives::{bx_u32, bx_u64};
+use crate::barex::abi::primitives::bx_u64;
 
 /// A qué backend del kernel se redirige la función importada.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

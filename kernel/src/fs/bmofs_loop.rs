@@ -5,7 +5,6 @@
 
 #![allow(dead_code)]
 
-use crate::drivers::serial;
 use crate::fs::fat32::Fat32Volume;
 use crate::fs::DiskReader;
 use bmofs::BlockDevice;

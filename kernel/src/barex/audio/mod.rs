@@ -53,17 +53,6 @@ pub mod backend;
 pub mod ring;
 
 // ─── Re-exports planos ───────────────────────────────────────────────
-pub use capabilities::AudioCapabilities;
-pub use format::{SampleFormat, ChannelLayout, LatencyTier};
-pub use engine::{BxAudioEngine, EngineMode, AudioBackend};
-pub use voice::BxVoice;
-pub use mixer::BxMixer;
-pub use codec::{PcmDecoder, OpusDecoder, VorbisDecoder, CodecKind};
-pub use spatial::{BxSpatializer, ListenerPose};
-pub use effects::{BxEq, BxReverb, BxCompressor, BxLimiter, EffectKind};
-pub use route::{Router, Endpoint, EndpointKind};
-pub use backend::Backend;
-pub use ring::{AudioSqe, AudioCqe, AudioSubmissionQueue, AudioCompletionQueue};
 
 /// Versión ABI estable expuesta a apps Ring 3.
 pub const BX_AUDIO_VERSION: (u8, u8, u8) = (1, 0, 0);

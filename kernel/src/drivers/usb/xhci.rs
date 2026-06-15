@@ -9,7 +9,7 @@
 use crate::drivers::pci::{self, PciDevice};
 use crate::drivers::serial;
 use core::ptr::{read_volatile, write_volatile};
-use bmo_usb::{CapRegisters, OpRegisters, Trb};
+use bmo_usb::{CapRegisters, OpRegisters};
 
 const USB_CLASS: u8 = 0x0C;
 const USB_SUBCLASS: u8 = 0x03;

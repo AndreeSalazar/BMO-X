@@ -8,8 +8,8 @@
 use crate::drivers::serial;
 use crate::fs::{DiskReader, DiskWriter, DiskError};
 use bmo_usb::{
-    CommandBlockWrapper, CommandStatusWrapper, ScsiRead10,
-    CBW_SIGNATURE, CSW_SIGNATURE, SCSI_CMD_READ_CAPACITY, SCSI_CMD_INQUIRY
+    CommandBlockWrapper, ScsiRead10,
+    CBW_SIGNATURE, SCSI_CMD_READ_CAPACITY, SCSI_CMD_INQUIRY
 };
 
 pub struct UsbMscDevice {

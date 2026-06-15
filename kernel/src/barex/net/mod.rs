@@ -50,16 +50,6 @@ pub mod driver;
 pub mod bypass;
 
 // ─── Re-exports planos ───────────────────────────────────────────────
-pub use capabilities::NetCapabilities;
-pub use types::{IpAddr, IpV4, IpV6, Endpoint, MacAddr, Cidr, Port};
-pub use socket::{BxTcpSocket, BxUdpSocket, SocketState};
-pub use quic::{BxQuicEndpoint, BxQuicStream, QuicStreamId};
-pub use tls::{TlsContext, TlsCipherSuite};
-pub use http::{Http3Client, Http3Server, HttpVersion};
-pub use dns::{DnsResolver, DnsAnswer};
-pub use ring::{NetSubmissionQueue, NetCompletionQueue, NetSqe, NetCqe};
-pub use driver::{NicDriver, NicCapabilities};
-pub use bypass::BypassRing;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {

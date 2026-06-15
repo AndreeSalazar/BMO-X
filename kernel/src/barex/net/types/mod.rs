@@ -8,8 +8,6 @@ pub mod mac;
 pub mod cidr;
 pub mod port;
 
-pub use ip::{IpAddr, IpV4, IpV6};
+pub use ip::IpAddr;
 pub use endpoint::Endpoint;
 pub use mac::MacAddr;
-pub use cidr::Cidr;
-pub use port::Port;

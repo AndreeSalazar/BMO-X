@@ -8,4 +8,3 @@ pub mod opaque;
 pub mod kind;
 
 pub use opaque::BmoHandle;
-pub use kind::HandleKind;

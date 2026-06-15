@@ -10,5 +10,4 @@
 pub mod intrinsics;
 pub mod flags;
 
-pub use intrinsics::{IntrinsicId, emit_intrinsic, bytes_for};
-pub use flags::CpuFlag;
+pub use intrinsics::{IntrinsicId, emit_intrinsic};

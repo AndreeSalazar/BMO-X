@@ -3,5 +3,3 @@
 pub mod endpoint;
 pub mod stream;
 
-pub use endpoint::BxQuicEndpoint;
-pub use stream::{BxQuicStream, QuicStreamId};

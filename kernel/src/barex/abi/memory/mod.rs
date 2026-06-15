@@ -7,6 +7,3 @@ pub mod slice;
 pub mod range;
 pub mod align;
 
-pub use slice::{BmoSlice, BmoMutSlice};
-pub use range::BmoRange;
-pub use align::{align_up, align_down, BmoAligned};

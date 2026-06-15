@@ -8,7 +8,3 @@ pub mod pcm;
 pub mod opus;
 pub mod vorbis;
 
-pub use kind::CodecKind;
-pub use pcm::PcmDecoder;
-pub use opus::OpusDecoder;
-pub use vorbis::VorbisDecoder;

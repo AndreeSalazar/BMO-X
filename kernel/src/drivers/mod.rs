@@ -5,9 +5,7 @@ pub mod serial;
 pub mod nvme;
 pub mod ahci;
 pub mod gop;
-// GPU acelerada experimental queda fuera del kernel funcional.
-// FastOS usa UEFI GOP/framebuffer como backend estable; los prototipos en
-// `drivers/gpu/fastgpu/` permanecen como investigación, pero no se compilan
-// ni forman parte del boot path.
+// GPU acelerada experimental archivada en kernel/src/legacy/gpu/.
+// FastOS usa UEFI GOP/framebuffer como backend estable.
 // Stack USB para teclado, ratón y headset Redragon (xHCI + HID + UAC2).
 pub mod usb;

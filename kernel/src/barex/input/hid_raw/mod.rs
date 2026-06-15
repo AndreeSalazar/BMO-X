@@ -4,5 +4,3 @@
 pub mod usage_page;
 pub mod report_item;
 
-pub use usage_page::HidUsagePage;
-pub use report_item::HidReportItem;
