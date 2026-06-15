@@ -171,6 +171,8 @@ unsafe extern "C" fn syscall_entry_naked() {
 #[unsafe(no_mangle)]
 static mut SYSCALL_KERNEL_RSP: u64 = 0;
 
+static mut RING3_SYSCALL_SEEN: bool = false;
+
 /// Set the kernel stack pointer used by the syscall entry trampoline.
 pub fn set_syscall_kernel_stack(rsp: u64) {
     unsafe { SYSCALL_KERNEL_RSP = rsp; }
@@ -189,6 +191,13 @@ extern "C" fn syscall_handler_rust(
     a3: u64,
     a4: u64,
 ) -> u64 {
+    unsafe {
+        if !RING3_SYSCALL_SEEN {
+            RING3_SYSCALL_SEEN = true;
+            crate::diag::info("ring3", "first syscall received; Ring 3 is alive");
+        }
+    }
+
     match nr {
         // ─── Procesos ─────────────────────────────────────────────
         // ProcessExit (0x00) — halt CPU
@@ -255,6 +264,7 @@ extern "C" fn syscall_handler_rust(
         //   Sin args. Devuelve frame counter.
         0x65 => {
             crate::desktop::render::render_frame();
+            crate::diag::paint_overlay();
             unsafe { crate::desktop::state::STATE.frame }
         }
 

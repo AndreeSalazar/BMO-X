@@ -68,6 +68,11 @@ pub fn init_idt() {
             IDT[i].set_handler(isr_stub_exception_err as *const () as u64);
         }
 
+        // Diagnóstico real para las dos fallas más probables al entrar a Ring 3:
+        // #GP por selector/sysret inválido y #PF por páginas sin bit USER.
+        IDT[13].set_handler(isr_stub_general_protection as *const () as u64);
+        IDT[14].set_handler(isr_stub_page_fault as *const () as u64);
+
         // IRQ0 — PIT timer (vector 32)
         IDT[32].set_handler(isr_stub_irq0 as *const () as u64);
 
@@ -121,6 +126,29 @@ unsafe extern "C" fn isr_stub_exception_err() {
     naked_asm!(
         "add rsp, 8",  // pop error code
         "iretq",
+    );
+}
+
+/// #GP — no intentamos volver: si ocurre durante Ring 3 bootstrap, repetiría
+/// infinitamente. Lo convertimos en diag visible + halt estable.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_general_protection() {
+    naked_asm!(
+        "mov rdi, 13",
+        "mov rsi, [rsp]",
+        "xor rdx, rdx",
+        "call exception_halt_handler_rust",
+    );
+}
+
+/// #PF — captura CR2 para saber exactamente qué dirección rompió Ring 3.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_page_fault() {
+    naked_asm!(
+        "mov rdi, 14",
+        "mov rsi, [rsp]",
+        "mov rdx, cr2",
+        "call exception_halt_handler_rust",
     );
 }
 
@@ -219,4 +247,24 @@ extern "C" fn irq1_handler_rust() {
 extern "C" fn apic_timer_handler_rust() {
     crate::sched::timer_tick();
     crate::arch::apic::apic_eoi();
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn exception_halt_handler_rust(vector: u64, error: u64, cr2: u64) -> ! {
+    match vector {
+        13 => {
+            crate::diag::fault_u64("#GP", "general protection fault", error);
+            crate::drivers::serial::serial_write("[EXCEPTION] #GP general protection fault\n");
+        }
+        14 => {
+            crate::diag::fault_u64("#PF", "page fault at CR2", cr2);
+            crate::diag::fault_u64("#PF", "page fault error code", error);
+            crate::drivers::serial::serial_write("[EXCEPTION] #PF page fault\n");
+        }
+        _ => {
+            crate::diag::fault_u64("trap", "fatal CPU exception", vector);
+        }
+    }
+
+    loop { unsafe { core::arch::asm!("cli; hlt"); } }
 }
