@@ -29,6 +29,11 @@ pub mod welcome;
 const SC_ESC: u8 = 0x01;
 const CYCLES_PER_MS: u64 = 3_700_000;
 
+// ── Modifier key tracking for HUD toggle (Alt + Control) ──────────
+static mut CTRL_HELD: bool = false;
+static mut ALT_HELD: bool = false;
+static mut HOTKEY_TOGGLED: bool = false;
+
 /// Loop principal del escritorio en Ring 0. No retorna — termina con
 /// `hlt` infinito (idéntico a `welcome::run()`).
 pub fn run_ring0() -> ! {
@@ -152,6 +157,28 @@ pub fn poll_key() -> u8 {
     }
     let sc: u8;
     unsafe { core::arch::asm!("in al, dx", out("al") sc, in("dx") 0x60u16); }
+
+    // ── Track modifier keys for Alt+Ctrl HUD toggle ──────────────
+    unsafe {
+        match sc {
+            0x1D => { CTRL_HELD = true; }   // Left Ctrl press
+            0x9D => { CTRL_HELD = false; HOTKEY_TOGGLED = false; }  // Left Ctrl release
+            0x38 => { ALT_HELD = true; }    // Left Alt press
+            0xB8 => { ALT_HELD = false; HOTKEY_TOGGLED = false; }   // Left Alt release
+            _ => {}
+        }
+
+        // Toggle HUD when both Ctrl+Alt are held (once per press combo)
+        if CTRL_HELD && ALT_HELD && !HOTKEY_TOGGLED {
+            HOTKEY_TOGGLED = true;
+            let currently_on = crate::diag::is_overlay_enabled();
+            crate::diag::set_overlay_enabled(!currently_on);
+            // Beep de confirmación sutil
+            beep(660, 30);
+            crate::desktop::state::mark_dirty();
+        }
+    }
+
     sc
 }
 

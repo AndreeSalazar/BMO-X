@@ -258,3 +258,8 @@ pub fn mouse_left_released() -> bool {
 pub fn mouse_left_held() -> bool {
     unsafe { (STATE.mouse_buttons & 1) != 0 }
 }
+
+/// Force a repaint on the next frame (used by hotkey toggle, etc.).
+pub fn mark_dirty() {
+    unsafe { DIRTY = true; }
+}

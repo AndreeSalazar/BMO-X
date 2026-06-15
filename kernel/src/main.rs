@@ -137,6 +137,8 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     if let Some(ecam) = arch::acpi::parse_mcfg(bi.rsdp_addr) {
         drivers::pci::init_ecam(ecam.base_addr, ecam.end_bus);
         let pci = drivers::pci::scan_pci_bus();
+        unsafe { drivers::pci::SCAN_RESULT = Some(pci); }
+        let pci = unsafe { drivers::pci::SCAN_RESULT.as_ref().unwrap() };
         diag::info_u64("pci", "devices discovered", pci.count as u64);
         drivers::serial::serial_write("[FastOS] PCI devices: ");
         serial_hex(pci.count as u64);

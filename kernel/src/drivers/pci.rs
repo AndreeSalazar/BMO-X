@@ -50,6 +50,8 @@ impl PciScanResult {
     }
 }
 
+pub static mut SCAN_RESULT: Option<PciScanResult> = None;
+
 /// Read 32 bits from PCI config space via ECAM MMIO.
 pub fn pci_read32(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
     let base = unsafe { ECAM_BASE };
@@ -127,4 +129,40 @@ pub fn scan_pci_bus() -> PciScanResult {
         }
     }
     r
+}
+
+/// Returns true if an NVMe controller (class 0x01, subclass 0x08) was found during PCI scan.
+pub fn has_nvme() -> bool {
+    let r = unsafe { SCAN_RESULT.as_ref() };
+    match r {
+        Some(scan) => scan.devices[..scan.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x08),
+        None => false,
+    }
+}
+
+/// Returns true if an AHCI/SATA controller (class 0x01, subclass 0x06) was found during PCI scan.
+pub fn has_ahci() -> bool {
+    let r = unsafe { SCAN_RESULT.as_ref() };
+    match r {
+        Some(scan) => scan.devices[..scan.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x06),
+        None => false,
+    }
+}
+
+/// Returns true if a USB xHCI controller (class 0x0C, subclass 0x03) was found during PCI scan.
+pub fn has_xhci() -> bool {
+    let r = unsafe { SCAN_RESULT.as_ref() };
+    match r {
+        Some(scan) => scan.devices[..scan.count].iter().any(|d| d.class_code == 0x0C && d.subclass == 0x03),
+        None => false,
+    }
+}
+
+/// Returns the total number of discovered PCI devices.
+pub fn device_count() -> usize {
+    let r = unsafe { SCAN_RESULT.as_ref() };
+    match r {
+        Some(scan) => scan.count,
+        None => 0,
+    }
 }

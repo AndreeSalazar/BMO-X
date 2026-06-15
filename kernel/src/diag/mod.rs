@@ -61,6 +61,10 @@ pub fn set_overlay_enabled(enabled: bool) {
     overlay::set_enabled(enabled);
 }
 
+pub fn is_overlay_enabled() -> bool {
+    overlay::is_enabled()
+}
+
 pub fn paint_overlay() {
     overlay::paint();
 }
