@@ -530,7 +530,6 @@ fn wait_for_vsync() {
 // ── Frame ──────────────────────────────────────────────────────────
 
 pub fn render_frame() {
-    crate::diag::info("desktop", "render_frame: calling state::tick");
     state::tick();
     
     // Si nada ha cambiado en este tick, evitamos re-dibujar y re-copiar (flicker-free y ahorro CPU)
@@ -547,20 +546,15 @@ pub fn render_frame() {
         return; 
     }
 
-    crate::diag::info("desktop", "render_frame: acquiring static backbuffer");
     let backbuffer_fb = crate::drivers::gop::get_backbuffer_fb();
 
-    crate::diag::info("desktop", "render_frame: handling mouse input");
     handle_input(&backbuffer_fb);
 
-    crate::diag::info("desktop", "render_frame: drawing wallpaper");
     draw_wallpaper(&backbuffer_fb);
 
-    crate::diag::info("desktop", "render_frame: drawing status bar");
     draw_status_bar(&backbuffer_fb);
 
     // Ventanas: focus al final (encima)
-    crate::diag::info("desktop", "render_frame: drawing windows");
     let st = unsafe { &state::STATE };
     for i in 0..MAX_WIN {
         if i as i32 == st.focus { continue; }
@@ -573,18 +567,14 @@ pub fn render_frame() {
         if w.open { draw_window(&backbuffer_fb, &w, true); }
     }
 
-    crate::diag::info("desktop", "render_frame: drawing dock");
     draw_dock(&backbuffer_fb);
 
-    crate::diag::info("desktop", "render_frame: drawing cursor");
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
     // Sincronizar copia con V-Sync para evitar tearing y flicker
     wait_for_vsync();
 
     // Copiar el backbuffer al framebuffer de la pantalla real
-    crate::diag::info("desktop", "render_frame: blitting backbuffer to physical screen");
     let screen_fb = Framebuffer::new(addr, (s as u64) * 4, w, h);
     backbuffer_fb.blit_to(&screen_fb);
-    crate::diag::info("desktop", "render_frame: frame copy complete");
 }

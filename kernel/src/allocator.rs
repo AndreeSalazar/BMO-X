@@ -41,5 +41,9 @@ pub fn heap_used() -> usize {
     HEAP_NEXT.load(Ordering::Relaxed)
 }
 
+pub const fn heap_total() -> usize {
+    HEAP_SIZE
+}
+
 #[no_mangle]
 pub extern "C" fn __rust_no_alloc_shim_is_unstable() {}
