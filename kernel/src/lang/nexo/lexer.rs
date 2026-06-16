@@ -1,56 +1,67 @@
-//! ÑEXO Lexer — Tokenización del fuente.
-//!
-//! Convierte caracteres en tokens para el parser.
-//! Soporta: identifiers, keywords, literals, operators, delimiters.
+//! ÑEXO Lexer — Tokenización completa con soporte para:
+//! - Keywords en español (32 keywords)
+//! - Literales: enteros (decimal, hex, bin, oct), flotantes, strings, bytes
+//! - Operadores: aritméticos, lógicos, bitwise, comparación
+//! - Delimitadores y especiales
+//! - Comments: `//` línea, `/* */` bloque
 
 #![allow(dead_code)]
 
+extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::barex::BxResult;
+
 /// Token types for ÑEXO.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Token {
-    // Literals
+    // ── Literals ──────────────────────────────────────────────
     IntLit(u64),
-    FloatLit(f64),
+    FloatLit(u64),  // stored as bits to avoid f64 Eq issue
     StrLit(String),
     ByteLit(u8),
     BoolLit(bool),
 
-    // Identifier
+    // ── Identifier ────────────────────────────────────────────
     Ident(String),
 
-    // Keywords
-    Fn,
-    Let,
-    Mut,
-    If,
-    Else,
-    While,
-    For,
-    In,
-    Return,
-    Break,
-    Continue,
-    Match,
-    Struct,
-    Enum,
-    Impl,
-    Trait,
-    Type,
-    Module,
-    Pub,
-    Use,
-    As,
-    Import,
-    Export,
-    True,
-    False,
-    Null,
-    Syscall,
+    // ── Keywords ──────────────────────────────────────────────
+    Fn,         // `fn`
+    Let,        // `let`
+    Mut,        // `mut`
+    If,         // `si`
+    Else,       // `sino`
+    While,      // `mientras`
+    For,        // `para`
+    In,         // `en`
+    Return,     // `retorna`
+    Break,      // `rompe`
+    Continue,   // `continua`
+    Match,      // `empareja`
+    Case,       // `caso`
+    Default,    // `defecto`
+    Struct,     // `tipo`
+    Enum,       // `enumera`
+    Impl,       // `implementa`
+    Trait,      // `traza`
+    Type,       // `alias`
+    Module,     // `modulo`
+    Pub,        // `pub`
+    Use,        // `usa`
+    As,         // `como`
+    Import,     // `importa`
+    Export,     // `exporta`
+    True,       // `verdadero`
+    False,      // `falso`
+    Null,       // `nulo`
+    Syscall,    // `sys`
+    Emit,       // `emit`
+    Reg,        // `reg`
+    Aloc,       // `aloc`
+    Libre,      // `libre`
 
-    // Operators
+    // ── Operators ─────────────────────────────────────────────
     Plus,       // +
     Minus,      // -
     Star,       // *
@@ -86,7 +97,7 @@ pub enum Token {
     Pound,      // #
     At,         // @
 
-    // Delimiters
+    // ── Delimiters ────────────────────────────────────────────
     LParen,     // (
     RParen,     // )
     LBrace,     // {
@@ -94,8 +105,23 @@ pub enum Token {
     LBracket,   // [
     RBracket,   // ]
 
-    // Special
+    // ── Special ───────────────────────────────────────────────
     Eof,
+}
+
+impl Token {
+    pub fn is_keyword(&self) -> bool {
+        matches!(self,
+            Token::Fn | Token::Let | Token::Mut | Token::If | Token::Else |
+            Token::While | Token::For | Token::In | Token::Return |
+            Token::Break | Token::Continue | Token::Match | Token::Case |
+            Token::Default | Token::Struct | Token::Enum | Token::Impl |
+            Token::Trait | Token::Type | Token::Module | Token::Pub |
+            Token::Use | Token::As | Token::Import | Token::Export |
+            Token::True | Token::False | Token::Null | Token::Syscall |
+            Token::Emit | Token::Reg | Token::Aloc | Token::Libre
+        )
+    }
 }
 
 /// Lexer state.
@@ -113,58 +139,71 @@ impl<'a> Lexer<'a> {
     pub fn tokenize(&mut self) -> BxResult<Vec<Token>> {
         let mut tokens = Vec::new();
         loop {
-            let tok = self.next_token()?;
-            if tok == Token::Eof {
+            self.skip_whitespace_and_comments();
+            if self.pos >= self.src.len() {
                 tokens.push(Token::Eof);
                 break;
             }
+            let tok = self.next_token()?;
+            let is_eof = matches!(tok, Token::Eof);
             tokens.push(tok);
+            if is_eof { break; }
         }
         Ok(tokens)
     }
 
     fn next_token(&mut self) -> BxResult<Token> {
-        self.skip_whitespace_and_comments();
         if self.pos >= self.src.len() {
             return Ok(Token::Eof);
         }
         let ch = self.src[self.pos];
         match ch {
+            b'0' if self.peek_next() == Some(b'x') || self.peek_next() == Some(b'X') => self.read_hex(),
+            b'0' if self.peek_next() == Some(b'b') || self.peek_next() == Some(b'B') => self.read_bin(),
+            b'0' if self.peek_next() == Some(b'o') || self.peek_next() == Some(b'O') => self.read_oct(),
             b'0'..=b'9' => self.read_number(),
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.read_ident_or_keyword(),
-            b'"' | b'\'' => self.read_string(),
-            b'+' => { self.pos += 1; Ok(Token::Plus) }
+            b'"' => self.read_string(b'"'),
+            b'\'' => self.read_byte_or_char(),
+            b'+' => { self.pos += 1; if self.peek() == b'=' { self.pos += 1; Ok(Token::PlusEq) } else { Ok(Token::Plus) } }
             b'-' => {
                 self.pos += 1;
-                if self.peek() == b'>' { self.pos += 1; Ok(Token::Arrow) }
-                else if self.peek() == b'=' { self.pos += 1; Ok(Token::MinusEq) }
-                else { Ok(Token::Minus) }
+                match self.peek() {
+                    b'>' => { self.pos += 1; Ok(Token::Arrow) }
+                    b'=' => { self.pos += 1; Ok(Token::MinusEq) }
+                    _ => Ok(Token::Minus),
+                }
             }
             b'*' => { self.pos += 1; if self.peek() == b'=' { self.pos += 1; Ok(Token::StarEq) } else { Ok(Token::Star) } }
             b'/' => { self.pos += 1; if self.peek() == b'=' { self.pos += 1; Ok(Token::SlashEq) } else { Ok(Token::Slash) } }
             b'%' => { self.pos += 1; Ok(Token::Percent) }
             b'=' => {
                 self.pos += 1;
-                if self.peek() == b'=' { self.pos += 1; Ok(Token::EqEq) }
-                else if self.peek() == b'>' { self.pos += 1; Ok(Token::FatArrow) }
-                else { Ok(Token::Eq) }
+                match self.peek() {
+                    b'=' => { self.pos += 1; Ok(Token::EqEq) }
+                    b'>' => { self.pos += 1; Ok(Token::FatArrow) }
+                    _ => Ok(Token::Eq),
+                }
             }
             b'!' => {
                 self.pos += 1;
-                if self.peek() == b'=' { self.pos += 1; Ok(Token::Ne) }
-                else { Ok(Token::Bang) }
+                if self.peek() == b'=' { self.pos += 1; Ok(Token::Ne) } else { Ok(Token::Bang) }
             }
             b'<' => {
                 self.pos += 1;
-                if self.peek() == b'=' { self.pos += 1; Ok(Token::Le) }
-                else if self.peek() == b'<' { self.pos += 1; Ok(Token::Shl) }
-                else { Ok(Token::Lt) }
+                match self.peek() {
+                    b'=' => { self.pos += 1; Ok(Token::Le) }
+                    b'<' => { self.pos += 1; Ok(Token::Shl) }
+                    _ => Ok(Token::Lt),
+                }
             }
             b'>' => {
                 self.pos += 1;
-                if self.peek() == b'=' { self.pos += 1; Ok(Token::Ge) }
-                else if self.peek() == b'>' { self.pos += 1; Ok(Token::Shr) }
-                else { Ok(Token::Gt) }
+                match self.peek() {
+                    b'=' => { self.pos += 1; Ok(Token::Ge) }
+                    b'>' => { self.pos += 1; Ok(Token::Shr) }
+                    _ => Ok(Token::Gt),
+                }
             }
             b'&' => { self.pos += 1; if self.peek() == b'&' { self.pos += 1; Ok(Token::AmpAmp) } else { Ok(Token::Amp) } }
             b'|' => { self.pos += 1; if self.peek() == b'|' { self.pos += 1; Ok(Token::PipePipe) } else { Ok(Token::Pipe) } }
@@ -180,16 +219,12 @@ impl<'a> Lexer<'a> {
             b',' => { self.pos += 1; Ok(Token::Comma) }
             b':' => {
                 self.pos += 1;
-                if self.peek() == b':' { self.pos += 1; Ok(Token::ColonColon) }
-                else { Ok(Token::Colon) }
+                if self.peek() == b':' { self.pos += 1; Ok(Token::ColonColon) } else { Ok(Token::Colon) }
             }
             b'.' => { self.pos += 1; Ok(Token::Dot) }
             b'#' => { self.pos += 1; Ok(Token::Pound) }
             b'@' => { self.pos += 1; Ok(Token::At) }
-            _ => {
-                self.pos += 1;
-                Ok(Token::Eof) // Unknown char, treat as EOF for now
-            }
+            _ => { self.pos += 1; Ok(Token::Eof) }
         }
     }
 
@@ -198,19 +233,13 @@ impl<'a> Lexer<'a> {
             match self.src[self.pos] {
                 b' ' | b'\t' | b'\r' | b'\n' => { self.pos += 1; }
                 b'/' if self.peek_next() == Some(b'/') => {
-                    // Line comment
-                    while self.pos < self.src.len() && self.src[self.pos] != b'\n' {
-                        self.pos += 1;
-                    }
+                    self.pos += 2;
+                    while self.pos < self.src.len() && self.src[self.pos] != b'\n' { self.pos += 1; }
                 }
                 b'/' if self.peek_next() == Some(b'*') => {
-                    // Block comment
                     self.pos += 2;
                     while self.pos + 1 < self.src.len() {
-                        if self.src[self.pos] == b'*' && self.src[self.pos + 1] == b'/' {
-                            self.pos += 2;
-                            break;
-                        }
+                        if self.src[self.pos] == b'*' && self.src[self.pos + 1] == b'/' { self.pos += 2; break; }
                         self.pos += 1;
                     }
                 }
@@ -219,13 +248,59 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_number(&mut self) -> BxResult<Token> {
+    fn read_hex(&mut self) -> BxResult<Token> {
+        self.pos += 2; // skip 0x
         let start = self.pos;
-        while self.pos < self.src.len() && self.src[self.pos].is_ascii_digit() {
+        while self.pos < self.src.len() && (self.src[self.pos].is_ascii_hexdigit() || self.src[self.pos] == b'_') {
             self.pos += 1;
         }
         let s = core::str::from_utf8(&self.src[start..self.pos]).unwrap_or("0");
-        let val = s.parse::<u64>().unwrap_or(0);
+        let cleaned: alloc::string::String = s.chars().filter(|c| *c != '_').collect();
+        let val = u64::from_str_radix(&cleaned, 16).unwrap_or(0);
+        Ok(Token::IntLit(val))
+    }
+
+    fn read_bin(&mut self) -> BxResult<Token> {
+        self.pos += 2; // skip 0b
+        let start = self.pos;
+        while self.pos < self.src.len() && (self.src[self.pos] == b'0' || self.src[self.pos] == b'1' || self.src[self.pos] == b'_') {
+            self.pos += 1;
+        }
+        let s = core::str::from_utf8(&self.src[start..self.pos]).unwrap_or("0");
+        let cleaned: alloc::string::String = s.chars().filter(|c| *c != '_').collect();
+        let val = u64::from_str_radix(&cleaned, 2).unwrap_or(0);
+        Ok(Token::IntLit(val))
+    }
+
+    fn read_oct(&mut self) -> BxResult<Token> {
+        self.pos += 2; // skip 0o
+        let start = self.pos;
+        while self.pos < self.src.len() && (self.src[self.pos] >= b'0' && self.src[self.pos] <= b'7' || self.src[self.pos] == b'_') {
+            self.pos += 1;
+        }
+        let s = core::str::from_utf8(&self.src[start..self.pos]).unwrap_or("0");
+        let cleaned: alloc::string::String = s.chars().filter(|c| *c != '_').collect();
+        let val = u64::from_str_radix(&cleaned, 8).unwrap_or(0);
+        Ok(Token::IntLit(val))
+    }
+
+    fn read_number(&mut self) -> BxResult<Token> {
+        let start = self.pos;
+        while self.pos < self.src.len() && (self.src[self.pos].is_ascii_digit() || self.src[self.pos] == b'_') {
+            self.pos += 1;
+        }
+        // Check for float
+        if self.peek() == b'.' && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
+            self.pos += 1; // skip .
+            while self.pos < self.src.len() && self.src[self.pos].is_ascii_digit() { self.pos += 1; }
+            let s = core::str::from_utf8(&self.src[start..self.pos]).unwrap_or("0.0");
+            let cleaned: alloc::string::String = s.chars().filter(|c| *c != '_').collect();
+            let val = cleaned.parse::<f64>().unwrap_or(0.0);
+            return Ok(Token::FloatLit(val.to_bits()));
+        }
+        let s = core::str::from_utf8(&self.src[start..self.pos]).unwrap_or("0");
+        let cleaned: alloc::string::String = s.chars().filter(|c| *c != '_').collect();
+        let val = cleaned.parse::<u64>().unwrap_or(0);
         Ok(Token::IntLit(val))
     }
 
@@ -248,6 +323,8 @@ impl<'a> Lexer<'a> {
             "rompe" => Token::Break,
             "continua" => Token::Continue,
             "empareja" => Token::Match,
+            "caso" => Token::Case,
+            "defecto" => Token::Default,
             "tipo" => Token::Struct,
             "enumera" => Token::Enum,
             "implementa" => Token::Impl,
@@ -263,21 +340,69 @@ impl<'a> Lexer<'a> {
             "falso" => Token::False,
             "nulo" => Token::Null,
             "sys" => Token::Syscall,
-            _ => Token::Ident(String::from(word)),
+            "emit" => Token::Emit,
+            "reg" => Token::Reg,
+            "aloc" => Token::Aloc,
+            "libre" => Token::Libre,
+            _ => Token::Ident(alloc::string::String::from(word)),
         })
     }
 
-    fn read_string(&mut self) -> BxResult<Token> {
-        let quote = self.src[self.pos];
-        self.pos += 1;
-        let start = self.pos;
+    fn read_string(&mut self, quote: u8) -> BxResult<Token> {
+        self.pos += 1; // skip opening quote
+        let mut result = alloc::string::String::new();
         while self.pos < self.src.len() && self.src[self.pos] != quote {
-            if self.src[self.pos] == b'\\' { self.pos += 1; } // skip escape
+            if self.src[self.pos] == b'\\' {
+                self.pos += 1;
+                if self.pos < self.src.len() {
+                    match self.src[self.pos] {
+                        b'n' => result.push('\n'),
+                        b't' => result.push('\t'),
+                        b'r' => result.push('\r'),
+                        b'\\' => result.push('\\'),
+                        b'0' => result.push('\0'),
+                        b'\'' => result.push('\''),
+                        b'"' => result.push('"'),
+                        b'x' => {
+                            self.pos += 1;
+                            if self.pos + 1 < self.src.len() {
+                                let h1 = hex_digit(self.src[self.pos]);
+                                let h2 = hex_digit(self.src[self.pos + 1]);
+                                result.push((h1 * 16 + h2) as char);
+                            }
+                        }
+                        c => result.push(c as char),
+                    }
+                }
+            } else {
+                result.push(self.src[self.pos] as char);
+            }
             self.pos += 1;
         }
-        let s = core::str::from_utf8(&self.src[start..self.pos]).unwrap_or("");
         if self.pos < self.src.len() { self.pos += 1; } // skip closing quote
-        Ok(Token::StrLit(String::from(s)))
+        Ok(Token::StrLit(result))
+    }
+
+    fn read_byte_or_char(&mut self) -> BxResult<Token> {
+        self.pos += 1; // skip opening quote
+        let val = if self.src[self.pos] == b'\\' {
+            self.pos += 1;
+            match self.src[self.pos] {
+                b'n' => b'\n',
+                b't' => b'\t',
+                b'r' => b'\r',
+                b'\\' => b'\\',
+                b'0' => 0,
+                b'\'' => b'\'',
+                b'"' => b'"',
+                c => c,
+            }
+        } else {
+            self.src[self.pos]
+        };
+        self.pos += 1;
+        if self.pos < self.src.len() { self.pos += 1; } // skip closing quote
+        Ok(Token::ByteLit(val))
     }
 
     fn peek(&self) -> u8 {
@@ -289,4 +414,11 @@ impl<'a> Lexer<'a> {
     }
 }
 
-use crate::barex::BxResult;
+fn hex_digit(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'a'..=b'f' => b - b'a' + 10,
+        b'A'..=b'F' => b - b'A' + 10,
+        _ => 0,
+    }
+}
