@@ -176,7 +176,7 @@ fn fb() -> Option<Framebuffer> {
         (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
     };
     if addr == 0 || w == 0 { return None; }
-    Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
+    Some(Framebuffer::new(addr, s as u64, w, h))
 }
 
 /// Dibuja texto. Soporta escala 1×, 2× y 3× (replicando píxeles).

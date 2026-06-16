@@ -191,7 +191,7 @@ fn fb() -> Option<Framebuffer> {
         (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
     };
     if addr == 0 || w == 0 { return None; }
-    Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
+    Some(Framebuffer::new(addr, s as u64, w, h))
 }
 
 pub(super) fn draw_text(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32) {
