@@ -233,6 +233,13 @@ fn serialize_expr(expr: &crate::lang::bmoasm::parser::ast::Expr, out: &mut alloc
             }
             out.push(')');
         }
+        E::Flag(flag) => {
+            out.push_str(&alloc::format!("{:?}", flag));
+        }
+        E::MemOrder(mo, inner) => {
+            out.push_str(&alloc::format!("{:?} ", mo));
+            serialize_expr(inner, out);
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 //! Constant folding — optimización en compile-time de expresiones constantes.
+//! v0.3.0 — maneja todos los nodos del AST.
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -53,7 +54,7 @@ impl Folder {
                 }
                 for s in body { Self::fold_stmt(s); }
             }
-            Stmt::Bucle(body) => {
+            Stmt::Bucle(body) | Stmt::Atomico(body) => {
                 for s in body { Self::fold_stmt(s); }
             }
             Stmt::ExprStmt(e) => {
@@ -62,8 +63,17 @@ impl Folder {
             Stmt::RegAssign { value, .. } => {
                 *value = Self::fold_expr(core::mem::take(value));
             }
-            Stmt::Libre(e) => {
+            Stmt::Libre(e) | Stmt::Volatil(e) => {
                 *e = Self::fold_expr(core::mem::take(e));
+            }
+            Stmt::Cuando { body, .. } => {
+                for s in body { Self::fold_stmt(s); }
+            }
+            Stmt::CuandoSino { then_body, else_body, .. } => {
+                for s in then_body { Self::fold_stmt(s); }
+                if let Some(eb) = else_body {
+                    for s in eb { Self::fold_stmt(s); }
+                }
             }
             _ => {}
         }
@@ -84,9 +94,8 @@ impl Folder {
                     other => Expr::No(Box::new(other)),
                 }
             }
-            Expr::Aloc(inner) => {
-                Expr::Aloc(Box::new(Self::fold_expr(*inner)))
-            }
+            Expr::Aloc(inner) => Expr::Aloc(Box::new(Self::fold_expr(*inner))),
+            Expr::MemOrder(mo, inner) => Expr::MemOrder(mo, Box::new(Self::fold_expr(*inner))),
             Expr::Call { name, args } => {
                 let folded = args.into_iter().map(|a| Self::fold_expr(a)).collect();
                 Expr::Call { name, args: folded }
@@ -139,13 +148,8 @@ impl Folder {
                 };
                 Expr::LitByte(result)
             }
-            (Expr::LitInt(l), Expr::LitByte(r)) => {
-                Self::fold_bin(op, Expr::LitInt(*l), Expr::LitInt(*r as u64))
-            }
-            (Expr::LitByte(l), Expr::LitInt(r)) => {
-                Self::fold_bin(op, Expr::LitInt(*l as u64), Expr::LitInt(*r))
-            }
-            // Strength reduction: x * 2^n → x << n
+            (Expr::LitInt(l), Expr::LitByte(r)) => Self::fold_bin(op, Expr::LitInt(*l), Expr::LitInt(*r as u64)),
+            (Expr::LitByte(l), Expr::LitInt(r)) => Self::fold_bin(op, Expr::LitInt(*l as u64), Expr::LitInt(*r)),
             (other, Expr::LitInt(1)) => match op {
                 BinOp::Mult => other.clone(),
                 BinOp::Div  => other.clone(),

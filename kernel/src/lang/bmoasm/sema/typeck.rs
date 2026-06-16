@@ -1,4 +1,4 @@
-//! Análisis Semántico (Sema) para BMO Simple.
+//! Análisis Semántico (Sema) para BMO Simple v0.3.0.
 //! Valida el AST y comprueba reglas de tipo, scopes, y asignaciones de registros.
 
 use alloc::collections::BTreeMap;
@@ -23,18 +23,14 @@ pub enum SemaError {
 }
 
 pub struct Sema {
-    /// Tabla de funciones definidas (name → param_count).
     fn_table: BTreeMap<String, usize>,
 }
 
 impl Sema {
     pub fn new() -> Self {
-        Self {
-            fn_table: BTreeMap::new(),
-        }
+        Self { fn_table: BTreeMap::new() }
     }
 
-    /// Realiza el chequeo semántico del AST.
     pub fn check(&self, ast: &Ast) -> BxResult<()> {
         for item in &ast.items {
             match item {
@@ -49,9 +45,8 @@ impl Sema {
                     }
                     self.check_body(body, &mut scope, *ret, true, false)?;
                 }
-                Stmt::FnForward { .. } => {
-                    // Forward declarations are metadata only
-                }
+                Stmt::FnForward { .. } => {}
+                Stmt::Incluye(_) => {} // Multi-file handled at traductor level
                 _ => return Err(BxError::InvalidArgument),
             }
         }
@@ -68,36 +63,28 @@ impl Sema {
     ) -> BxResult<()> {
         for stmt in body {
             match stmt {
-                Stmt::Rompe => {
+                Stmt::Rompe | Stmt::Continua => {
                     if !in_loop {
-                        return Err(BxError::InvalidArgument); // BreakOutsideLoop
-                    }
-                }
-                Stmt::Continua => {
-                    if !in_loop {
-                        return Err(BxError::InvalidArgument); // BreakOutsideLoop (reused)
+                        return Err(BxError::InvalidArgument);
                     }
                 }
                 Stmt::Retorna(Some(expr)) => {
                     if !in_fn {
-                        return Err(BxError::InvalidArgument); // ReturnOutsideFn
+                        return Err(BxError::InvalidArgument);
                     }
                     let expr_ty = self.infer_type(expr, scope)?;
                     if ret_ty != Type::Void && expr_ty != ret_ty {
-                        return Err(BxError::InvalidArgument); // TypeMismatch
+                        return Err(BxError::InvalidArgument);
                     }
                 }
                 Stmt::Retorna(None) => {
-                    if !in_fn {
-                        return Err(BxError::InvalidArgument);
-                    }
-                    if ret_ty != Type::Void {
+                    if !in_fn || ret_ty != Type::Void {
                         return Err(BxError::InvalidArgument);
                     }
                 }
                 Stmt::RegAssign { reg, value } => {
                     if Reg64::from_name(reg).is_none() {
-                        return Err(BxError::InvalidArgument); // InvalidRegName
+                        return Err(BxError::InvalidArgument);
                     }
                     self.check_expr(value, scope)?;
                 }
@@ -105,11 +92,11 @@ impl Sema {
                     let val_ty = self.infer_type(value, scope)?;
                     if let Some(declared) = ty {
                         if *declared != val_ty && *declared != Type::Void {
-                            return Err(BxError::InvalidArgument); // TypeMismatch
+                            return Err(BxError::InvalidArgument);
                         }
                     }
                     if scope.lookup(name).is_some() {
-                        return Err(BxError::InvalidArgument); // DuplicateDef
+                        return Err(BxError::InvalidArgument);
                     }
                     let offset = -(scope.frame_size as i32) - 8;
                     scope.frame_size += 8;
@@ -120,10 +107,7 @@ impl Sema {
                     });
                 }
                 Stmt::Si { cond, then_body, else_body } => {
-                    let cond_ty = self.infer_type(cond, scope)?;
-                    if cond_ty != Type::Num && cond_ty != Type::Byte {
-                        // Condition should be boolean-compatible (Num or Byte).
-                    }
+                    self.check_expr(cond, scope)?;
                     let mut then_scope = scope.clone();
                     self.check_body(then_body, &mut then_scope, ret_ty, in_fn, in_loop)?;
                     if let Some(eb) = else_body {
@@ -132,10 +116,7 @@ impl Sema {
                     }
                 }
                 Stmt::Mientras { cond, body } => {
-                    let cond_ty = self.infer_type(cond, scope)?;
-                    if cond_ty != Type::Num && cond_ty != Type::Byte {
-                        // Condition should be boolean-compatible.
-                    }
+                    self.check_expr(cond, scope)?;
                     let mut loop_scope = scope.clone();
                     self.check_body(body, &mut loop_scope, ret_ty, in_fn, true)?;
                 }
@@ -146,11 +127,12 @@ impl Sema {
                 Stmt::Libre(expr) => {
                     self.check_expr(expr, scope)?;
                 }
+                Stmt::Barr => {}
                 Stmt::Def { .. } => {
-                    // Nested function definitions not supported.
                     return Err(BxError::InvalidArgument);
                 }
                 Stmt::FnForward { .. } => {}
+                Stmt::Incluye(_) => {}
                 Stmt::Match { expr, arms, default } => {
                     self.check_expr(expr, scope)?;
                     for (pattern, body) in arms {
@@ -178,8 +160,24 @@ impl Sema {
                 Stmt::Bucle(body) => {
                     self.check_body(body, scope, ret_ty, in_fn, true)?;
                 }
-                Stmt::Etiqueta(_) => {}
-                Stmt::Salto(_) => {}
+                Stmt::Etiqueta(_) | Stmt::Salto(_) => {}
+                Stmt::Cuando { flag: _, body } => {
+                    self.check_body(body, scope, ret_ty, in_fn, in_loop)?;
+                }
+                Stmt::CuandoSino { flag: _, then_body, else_body } => {
+                    let mut then_scope = scope.clone();
+                    self.check_body(then_body, &mut then_scope, ret_ty, in_fn, in_loop)?;
+                    if let Some(eb) = else_body {
+                        let mut else_scope = scope.clone();
+                        self.check_body(eb, &mut else_scope, ret_ty, in_fn, in_loop)?;
+                    }
+                }
+                Stmt::Atomico(body) => {
+                    self.check_body(body, scope, ret_ty, in_fn, in_loop)?;
+                }
+                Stmt::Volatil(expr) => {
+                    self.check_expr(expr, scope)?;
+                }
             }
         }
         Ok(())
@@ -191,41 +189,30 @@ impl Sema {
                 self.check_expr(left, scope)?;
                 self.check_expr(right, scope)?;
             }
-            Expr::No(e) => {
+            Expr::No(e) | Expr::Aloc(e) | Expr::MemOrder(_, e) => {
                 self.check_expr(e, scope)?;
             }
-            Expr::Aloc(e) => {
-                self.check_expr(e, scope)?;
-            }
-            Expr::Call { name: _, args } => {
-                // Validate function exists (or allow forward references)
+            Expr::Call { args, .. } => {
                 for arg in args {
                     self.check_expr(arg, scope)?;
                 }
             }
             Expr::Reg(r_name) => {
-                if r_name != "syscall"
-                   && r_name != "nop"
-                   && r_name != "pausa"
-                   && r_name != "int3"
-                   && r_name != "hlt"
-                   && r_name != "cli"
-                   && r_name != "sti"
-                   && r_name != "rdtsc"
-                   && r_name != "cpuid"
-                   && r_name != "lfence"
-                   && r_name != "mfence"
-                   && r_name != "sfence"
-                   && Reg64::from_name(r_name).is_none()
+                if r_name != "syscall" && r_name != "nop" && r_name != "pausa"
+                    && r_name != "int3" && r_name != "hlt" && r_name != "cli"
+                    && r_name != "sti" && r_name != "rdtsc" && r_name != "cpuid"
+                    && r_name != "lfence" && r_name != "mfence" && r_name != "sfence"
+                    && Reg64::from_name(r_name).is_none()
                 {
                     return Err(BxError::InvalidArgument);
                 }
             }
             Expr::Ident(name) => {
                 if scope.lookup(name).is_none() {
-                    return Err(BxError::InvalidArgument); // UndefinedIdent
+                    return Err(BxError::InvalidArgument);
                 }
             }
+            Expr::Flag(_) => {} // CPU flags always valid
             Expr::LitInt(_) | Expr::LitByte(_) | Expr::LitNulo | Expr::LitStr(_) => {}
         }
         Ok(())
@@ -235,24 +222,23 @@ impl Sema {
         match expr {
             Expr::LitInt(_) => Ok(Type::Num),
             Expr::LitByte(_) => Ok(Type::Byte),
-            Expr::LitStr(_) => Ok(Type::Ptr),
-            Expr::LitNulo => Ok(Type::Ptr),
+            Expr::LitStr(_) | Expr::LitNulo => Ok(Type::Ptr),
             Expr::Ident(name) => {
-                scope.lookup(name)
-                    .map(|e| e.ty)
-                    .ok_or(BxError::InvalidArgument) // UndefinedIdent
+                scope.lookup(name).map(|e| e.ty).ok_or(BxError::InvalidArgument)
             }
-            Expr::Reg(_) => Ok(Type::Num),
-            Expr::Call { .. } => Ok(Type::Num), // Default return type
-            Expr::Bin(op, left, _right) => {
+            Expr::Reg(_) | Expr::Flag(_) | Expr::Call { .. } => Ok(Type::Num),
+            Expr::Bin(op, left, _) => {
                 let lt = self.infer_type(left, scope)?;
                 match op {
-                    BinOp::Igual | BinOp::Mayor | BinOp::Menor | BinOp::Y | BinOp::O => Ok(Type::Num),
-                    _ => Ok(lt), // Arithmetic preserves left operand type
+                    BinOp::Igual | BinOp::Mayor | BinOp::Menor
+                    | BinOp::MayIg | BinOp::MenIg | BinOp::Difer
+                    | BinOp::Y | BinOp::O => Ok(Type::Num),
+                    _ => Ok(lt),
                 }
             }
             Expr::No(_) => Ok(Type::Num),
             Expr::Aloc(_) => Ok(Type::Ptr),
+            Expr::MemOrder(_, e) => self.infer_type(e, scope),
         }
     }
 }

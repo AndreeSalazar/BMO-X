@@ -71,6 +71,7 @@ pub enum TokenKind {
     KwEtiqueta  = 0x3C,   // `etiqueta nombre:` — label decl
     KwCuando    = 0x3D,   // `cuando cf { }` — condicional por CPU flag
     KwTabla     = 0x3E,   // `tabla salto[N]` — jump table
+    KwFnForward = 0x3F,   // `fn nombre(...)` — forward declaration
 
     // ── OOP (fase 2) ─────────────────────────────────────────────────
     KwTipo      = 0x40,

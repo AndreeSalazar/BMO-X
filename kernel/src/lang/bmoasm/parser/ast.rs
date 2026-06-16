@@ -1,4 +1,5 @@
-//! AST mínimo. Owned (no zero-copy) para simplicidad inicial.
+//! AST — v0.3.0 completo.
+//! Soporta: incluye, cuando, atomico/volatil/acquire/release, toda la gama BMOasm.
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -22,6 +23,22 @@ pub enum BinOp {
     Igual, Mayor, Menor, MayIg, MenIg, Difer,
 }
 
+/// CPU flags — used with `cuando`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CpuFlag {
+    Cf, Zf, Sf, Of, Pf, Df,
+}
+
+/// Memory ordering semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemOrder {
+    Volatil,
+    Acquire,
+    Release,
+    Relaxed,
+    Fence,
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     LitInt(u64),
@@ -38,6 +55,10 @@ pub enum Expr {
     Aloc(Box<Expr>),
     /// Llamada a función: `nombre(arg1, arg2, ...)`.
     Call { name: String, args: Vec<Expr> },
+    /// CPU flag access — `zf`, `cf`, etc.
+    Flag(CpuFlag),
+    /// Volatile/acquire/release memory access: `volatil expr`
+    MemOrder(MemOrder, Box<Expr>),
 }
 
 impl Default for Expr {
@@ -84,6 +105,18 @@ pub enum Stmt {
     Etiqueta(String),
     /// `salto name` — goto.
     Salto(String),
+    /// `incluye "file.bmo"` — multi-file.
+    Incluye(String),
+    /// `cuando zf { body }` — execute block when CPU flag is set.
+    Cuando { flag: CpuFlag, body: Vec<Stmt> },
+    /// `cuando zf sino { body }` — execute block when CPU flag is NOT set.
+    CuandoSino { flag: CpuFlag, then_body: Vec<Stmt>, else_body: Option<Vec<Stmt>> },
+    /// `atomico { body }` — LOCK prefix block.
+    Atomico(Vec<Stmt>),
+    /// `volatil expr` — volatile memory access.
+    Volatil(Expr),
+    /// `barr` — full memory barrier.
+    Barr,
 }
 
 #[derive(Debug, Clone, Default)]

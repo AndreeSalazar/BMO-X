@@ -1,12 +1,13 @@
-//! Parser recursive-descent para BMO Simple.
-//! Retorna `ParseError` con línea/columna para debugging fácil.
+//! Parser recursive-descent para BMO Simple v0.3.0.
+//! Soporta: incluye, cuando, atomico, volatil, acquire, release, barr.
+//! Retorna `ParseError` con línea/columna.
 
 extern crate alloc;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use super::ast::{Ast, Stmt, Expr, Type, BinOp};
+use super::ast::{Ast, Stmt, Expr, Type, BinOp, CpuFlag, MemOrder};
 use super::error::{ParseError, ParseResult};
 use super::super::lexer::{Token, TokenKind, Scanner};
 
@@ -43,7 +44,10 @@ impl<'a> Parser<'a> {
             TokenKind::KwDesde => "'desde'", TokenKind::KwHasta => "'hasta'",
             TokenKind::KwPaso => "'paso'", TokenKind::KwBucle => "'bucle'",
             TokenKind::KwEtiqueta => "'etiqueta'", TokenKind::KwSalto => "'salto'",
-            TokenKind::KwSyscall => "'syscall'",
+            TokenKind::KwSyscall => "'syscall'", TokenKind::KwIncluye => "'incluye'",
+            TokenKind::KwCuando => "'cuando'", TokenKind::KwAtomico => "'atomico'",
+            TokenKind::KwVolatil => "'volatil'", TokenKind::KwAcquire => "'acquire'",
+            TokenKind::KwRelease => "'release'", TokenKind::KwBarr => "'barr'",
             TokenKind::LBrace => "'{'", TokenKind::RBrace => "'}'",
             TokenKind::LParen => "'('", TokenKind::RParen => "')'",
             TokenKind::LBracket => "'['", TokenKind::RBracket => "']'",
@@ -64,6 +68,9 @@ impl<'a> Parser<'a> {
             TokenKind::OpShl => "'shl'", TokenKind::OpShr => "'shr'",
             TokenKind::OpIgual => "'igual'", TokenKind::OpMayor => "'mayor'",
             TokenKind::OpMenor => "'menor'", TokenKind::OpNo => "'no'",
+            TokenKind::FlagCf => "'cf'", TokenKind::FlagZf => "'zf'",
+            TokenKind::FlagSf => "'sf'", TokenKind::FlagOf => "'of'",
+            TokenKind::FlagPf => "'pf'", TokenKind::FlagDf => "'df'",
             _ => "token",
         }
     }
@@ -108,19 +115,67 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn expect_string(&mut self) -> ParseResult<String> {
+        let lex = self.lexeme(self.current)?;
+        let s = if lex.len() >= 2 && lex[0] == b'"' && lex[lex.len() - 1] == b'"' {
+            String::from_utf8(lex[1..lex.len() - 1].to_vec()).unwrap_or_default()
+        } else {
+            String::from_utf8(lex.to_vec()).unwrap_or_default()
+        };
+        self.advance();
+        Ok(s)
+    }
+
+    fn parse_flag(&mut self) -> ParseResult<CpuFlag> {
+        let flag = match self.current.kind {
+            TokenKind::FlagCf => CpuFlag::Cf,
+            TokenKind::FlagZf => CpuFlag::Zf,
+            TokenKind::FlagSf => CpuFlag::Sf,
+            TokenKind::FlagOf => CpuFlag::Of,
+            TokenKind::FlagPf => CpuFlag::Pf,
+            TokenKind::FlagDf => CpuFlag::Df,
+            _ => return Err(self.error("expected CPU flag (cf, zf, sf, of, pf, df)")),
+        };
+        self.advance();
+        Ok(flag)
+    }
+
+    fn parse_block_body(&mut self) -> ParseResult<Vec<Stmt>> {
+        self.expect(TokenKind::LBrace)?;
+        let mut body = Vec::new();
+        while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
+            body.push(self.parse_stmt()?);
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(body)
+    }
+
     /// Parsea el código fuente completo en un AST.
     pub fn parse(&mut self) -> ParseResult<Ast> {
         let mut items = Vec::new();
         while self.current.kind != TokenKind::Eof {
-            if self.current.kind == TokenKind::KwAlign {
-                self.advance();
-                self.expect(TokenKind::LitInt)?;
-            } else if self.current.kind == TokenKind::KwDef {
-                items.push(self.parse_def()?);
-            } else if self.current.kind == TokenKind::Comment {
-                self.advance();
-            } else {
-                self.advance();
+            match self.current.kind {
+                TokenKind::KwAlign => {
+                    self.advance();
+                    self.expect(TokenKind::LitInt)?;
+                }
+                TokenKind::KwDef => {
+                    items.push(self.parse_def()?);
+                }
+                TokenKind::KwIncluye => {
+                    self.advance();
+                    let path = self.expect_string()?;
+                    items.push(Stmt::Incluye(path));
+                }
+                TokenKind::KwFnForward => {
+                    items.push(self.parse_fn_forward()?);
+                }
+                TokenKind::Comment => {
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
             }
         }
         Ok(Ast { items })
@@ -151,14 +206,34 @@ impl<'a> Parser<'a> {
             ret = self.parse_type()?;
         }
 
-        self.expect(TokenKind::LBrace)?;
-        let mut body = Vec::new();
-        while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-            body.push(self.parse_stmt()?);
-        }
-        self.expect(TokenKind::RBrace)?;
+        let body = self.parse_block_body()?;
 
         Ok(Stmt::Def { name, params, ret, body })
+    }
+
+    fn parse_fn_forward(&mut self) -> ParseResult<Stmt> {
+        self.advance(); // consume KwFnForward (or use 'fn' keyword)
+        let name = self.expect_ident()?;
+        self.expect(TokenKind::LParen)?;
+        let mut params = Vec::new();
+        while self.current.kind != TokenKind::RParen && self.current.kind != TokenKind::Eof {
+            let p_name = self.expect_ident()?;
+            self.expect(TokenKind::Colon)?;
+            let p_ty = self.parse_type()?;
+            params.push((p_name, p_ty));
+            if self.current.kind == TokenKind::Comma {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        let mut ret = Type::Void;
+        if self.current.kind == TokenKind::Arrow {
+            self.advance();
+            ret = self.parse_type()?;
+        }
+        Ok(Stmt::FnForward { name, params, ret })
     }
 
     fn parse_type(&mut self) -> ParseResult<Type> {
@@ -209,35 +284,18 @@ impl<'a> Parser<'a> {
             TokenKind::KwSi => {
                 self.advance();
                 let cond = self.parse_expr(0)?;
-                self.expect(TokenKind::LBrace)?;
-                let mut then_body = Vec::new();
-                while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-                    then_body.push(self.parse_stmt()?);
-                }
-                self.expect(TokenKind::RBrace)?;
-
+                let then_body = self.parse_block_body()?;
                 let mut else_body = None;
                 if self.current.kind == TokenKind::KwSino {
                     self.advance();
-                    self.expect(TokenKind::LBrace)?;
-                    let mut e_body = Vec::new();
-                    while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-                        e_body.push(self.parse_stmt()?);
-                    }
-                    self.expect(TokenKind::RBrace)?;
-                    else_body = Some(e_body);
+                    else_body = Some(self.parse_block_body()?);
                 }
                 Ok(Stmt::Si { cond, then_body, else_body })
             }
             TokenKind::KwMientras => {
                 self.advance();
                 let cond = self.parse_expr(0)?;
-                self.expect(TokenKind::LBrace)?;
-                let mut body = Vec::new();
-                while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-                    body.push(self.parse_stmt()?);
-                }
-                self.expect(TokenKind::RBrace)?;
+                let body = self.parse_block_body()?;
                 Ok(Stmt::Mientras { cond, body })
             }
             TokenKind::KwEmit => {
@@ -254,13 +312,34 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_expr(0)?;
                 Ok(Stmt::Libre(expr))
             }
-            TokenKind::KwRompe => {
+            TokenKind::KwRompe => { self.advance(); Ok(Stmt::Rompe) }
+            TokenKind::KwContinua => { self.advance(); Ok(Stmt::Continua) }
+            TokenKind::KwBarr => { self.advance(); Ok(Stmt::Barr) }
+            TokenKind::KwIncluye => {
                 self.advance();
-                Ok(Stmt::Rompe)
+                let path = self.expect_string()?;
+                Ok(Stmt::Incluye(path))
             }
-            TokenKind::KwContinua => {
+            TokenKind::KwCuando => {
                 self.advance();
-                Ok(Stmt::Continua)
+                let flag = self.parse_flag()?;
+                let then_body = self.parse_block_body()?;
+                let mut else_body = None;
+                if self.current.kind == TokenKind::KwSino {
+                    self.advance();
+                    else_body = Some(self.parse_block_body()?);
+                }
+                Ok(Stmt::CuandoSino { flag, then_body, else_body })
+            }
+            TokenKind::KwAtomico => {
+                self.advance();
+                let body = self.parse_block_body()?;
+                Ok(Stmt::Atomico(body))
+            }
+            TokenKind::KwVolatil => {
+                self.advance();
+                let expr = self.parse_expr(4)?;
+                Ok(Stmt::Volatil(expr))
             }
             TokenKind::KwMatch => {
                 self.advance();
@@ -272,23 +351,13 @@ impl<'a> Parser<'a> {
                     if self.current.kind == TokenKind::KwDefecto {
                         self.advance();
                         self.expect(TokenKind::Arrow)?;
-                        self.expect(TokenKind::LBrace)?;
-                        let mut body = Vec::new();
-                        while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-                            body.push(self.parse_stmt()?);
-                        }
-                        self.expect(TokenKind::RBrace)?;
+                        let body = self.parse_block_body()?;
                         default = Some(body);
                     } else if self.current.kind == TokenKind::KwCaso {
                         self.advance();
                         let pattern = self.parse_expr(0)?;
                         self.expect(TokenKind::Arrow)?;
-                        self.expect(TokenKind::LBrace)?;
-                        let mut body = Vec::new();
-                        while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-                            body.push(self.parse_stmt()?);
-                        }
-                        self.expect(TokenKind::RBrace)?;
+                        let body = self.parse_block_body()?;
                         arms.push((pattern, body));
                     } else {
                         self.advance();
@@ -309,22 +378,12 @@ impl<'a> Parser<'a> {
                     self.advance();
                     paso = Some(self.parse_expr(0)?);
                 }
-                self.expect(TokenKind::LBrace)?;
-                let mut body = Vec::new();
-                while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-                    body.push(self.parse_stmt()?);
-                }
-                self.expect(TokenKind::RBrace)?;
+                let body = self.parse_block_body()?;
                 Ok(Stmt::Para { var, desde, hasta, paso, body })
             }
             TokenKind::KwBucle => {
                 self.advance();
-                self.expect(TokenKind::LBrace)?;
-                let mut body = Vec::new();
-                while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
-                    body.push(self.parse_stmt()?);
-                }
-                self.expect(TokenKind::RBrace)?;
+                let body = self.parse_block_body()?;
                 Ok(Stmt::Bucle(body))
             }
             TokenKind::KwEtiqueta => {
@@ -406,6 +465,26 @@ impl<'a> Parser<'a> {
                 self.advance();
                 let r_name = self.expect_ident()?;
                 Ok(Expr::Reg(r_name))
+            }
+            TokenKind::FlagCf | TokenKind::FlagZf | TokenKind::FlagSf
+            | TokenKind::FlagOf | TokenKind::FlagPf | TokenKind::FlagDf => {
+                let flag = self.parse_flag()?;
+                Ok(Expr::Flag(flag))
+            }
+            TokenKind::KwVolatil => {
+                self.advance();
+                let expr = self.parse_expr(4)?;
+                Ok(Expr::MemOrder(MemOrder::Volatil, Box::new(expr)))
+            }
+            TokenKind::KwAcquire => {
+                self.advance();
+                let expr = self.parse_expr(4)?;
+                Ok(Expr::MemOrder(MemOrder::Acquire, Box::new(expr)))
+            }
+            TokenKind::KwRelease => {
+                self.advance();
+                let expr = self.parse_expr(4)?;
+                Ok(Expr::MemOrder(MemOrder::Release, Box::new(expr)))
             }
             TokenKind::Ident => {
                 let name = self.expect_ident()?;

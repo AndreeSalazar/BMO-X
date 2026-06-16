@@ -66,7 +66,7 @@ pub mod tests;
 // ─── Re-exports ──────────────────────────────────────────────────────
 
 /// Versión del lenguaje BMO simple.
-pub const BMOASM_VERSION: (u8, u8, u8) = (0, 1, 0);
+pub const BMOASM_VERSION: (u8, u8, u8) = (0, 3, 0);
 
 /// Magic identificador del bytecode generado (puede ir en `SectionKind::Code`).
 pub const BMOASM_MAGIC: u32 = u32::from_le_bytes(*b"BMOA");
