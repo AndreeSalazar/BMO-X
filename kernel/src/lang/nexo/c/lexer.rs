@@ -19,17 +19,20 @@ pub enum CToken {
     Ident(String),
     // Keywords
     Int, Unsigned, Long, Char, Void, Short, Float, Double,
-    Struct, Enum, Typedef, Static, Extern, Const, Volatile,
+    Struct, Union, Enum, Typedef, Static, Extern, Const, Volatile,
     If, Else, While, For, Do, Switch, Case, Default, Break, Continue, Return,
-    Sizeof, StructOp, // ->
+    Sizeof, StructOp, // -> 
+    Goto, Label,      // goto, label
     // Operators
     Plus, Minus, Star, Slash, Percent,
     Amp, Pipe, Caret, Tilde, Bang,
     Eq, EqEq, BangEq, Lt, Gt, Le, Ge,
     AmpAmp, PipePipe,
     PlusEq, MinusEq, StarEq, SlashEq,
+    AmpEq, PipeEq, CaretEq, ShlEq, ShrEq,
     PlusPlus, MinusMinus,
     Arrow, Dot,
+    Question,          // ? for ternary
     // Delimiters
     LParen, RParen, LBrace, RBrace, LBracket, RBracket,
     Semi, Comma, Colon,
@@ -179,6 +182,7 @@ impl CLexer {
                         "float" => CToken::Float,
                         "double" => CToken::Double,
                         "struct" => CToken::Struct,
+                        "union" => CToken::Union,
                         "enum" => CToken::Enum,
                         "typedef" => CToken::Typedef,
                         "static" => CToken::Static,
@@ -197,6 +201,7 @@ impl CLexer {
                         "continue" => CToken::Continue,
                         "return" => CToken::Return,
                         "sizeof" => CToken::Sizeof,
+                        "goto" => CToken::Goto,
                         _ => CToken::Ident(ident),
                     }
                 }
@@ -222,6 +227,7 @@ impl CLexer {
                 b';' => { self.advance(); CToken::Semi }
                 b',' => { self.advance(); CToken::Comma }
                 b':' => { self.advance(); CToken::Colon }
+                b'?' => { self.advance(); CToken::Question }
                 b'.' => { self.advance(); CToken::Dot }
                 _ => { self.advance(); continue; } // skip unknown
             };

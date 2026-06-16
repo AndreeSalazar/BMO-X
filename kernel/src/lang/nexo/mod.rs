@@ -29,6 +29,7 @@ pub mod runtime;
 pub mod c;
 pub mod stdlib;
 pub mod pm;
+pub mod plugins;
 
 use crate::barex::BxResult;
 

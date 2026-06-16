@@ -22,7 +22,30 @@ pub enum CType {
     Ptr(Box<CType>),
     Array(Box<CType>, u64),
     Struct(String),
+    Union(String),
+    Enum(String),
     Named(String),
+}
+
+impl CType {
+    /// Get size in bytes (for x86_64)
+    pub fn size_bytes(&self) -> u64 {
+        match self {
+            CType::Char => 1,
+            CType::Short => 2,
+            CType::Int | CType::UnsignedInt => 4,
+            CType::Long | CType::UnsignedLong => 8,
+            CType::Float => 4,
+            CType::Double => 8,
+            CType::Void => 0,
+            CType::Ptr(_) => 8,        // 64-bit pointer
+            CType::Array(inner, len) => inner.size_bytes() * len,
+            CType::Struct(_) => 0,     // Would need struct table
+            CType::Union(_) => 0,      // Would need union table
+            CType::Enum(_) => 4,       // Enums are int-sized
+            CType::Named(_) => 8,      // Assume 8 bytes for unknown
+        }
+    }
 }
 
 /// C expression.
@@ -39,8 +62,11 @@ pub enum CExpr {
     Member(Box<CExpr>, String),
     ArrowMember(Box<CExpr>, String),
     Sizeof(CType),
+    SizeofExpr(Box<CExpr>),    // sizeof(expr)
     ArrayIndex(Box<CExpr>, Box<CExpr>),
     Cast(CType, Box<CExpr>),
+    Ternary(Box<CExpr>, Box<CExpr>, Box<CExpr>),  // ? :
+    Comma(Vec<CExpr>),         // a, b, c
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +77,8 @@ pub enum CBinOp {
     BitAnd, BitOr, BitXor,
     Shl, Shr,
     Assign, AddAssign, SubAssign, MulAssign, DivAssign,
+    BitAndAssign, BitOrAssign, BitXorAssign,
+    ShlAssign, ShrAssign,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,10 +96,20 @@ pub enum CStmt {
     While { cond: CExpr, body: Box<CStmt> },
     For { init: Option<Box<CStmt>>, cond: Option<CExpr>, update: Option<CExpr>, body: Box<CStmt> },
     Do { cond: CExpr, body: Box<CStmt> },
+    Switch { expr: CExpr, cases: Vec<CCase>, default: Option<Vec<CStmt>> },
     Block(Vec<CStmt>),
     Return(Option<CExpr>),
     Break,
     Continue,
+    Label(String),
+    Goto(String),
+}
+
+/// C case in switch statement
+#[derive(Debug, Clone)]
+pub struct CCase {
+    pub value: CExpr,
+    pub stmts: Vec<CStmt>,
 }
 
 /// C function parameter.
@@ -96,6 +134,14 @@ pub enum CItem {
         name: String,
         fields: Vec<(CType, String)>,
     },
+    Union {
+        name: String,
+        fields: Vec<(CType, String)>,
+    },
+    Enum {
+        name: String,
+        variants: Vec<(String, Option<i64>)>,
+    },
     Typedef {
         name: String,
         ty: CType,
@@ -107,6 +153,12 @@ pub enum CItem {
         is_static: bool,
         is_extern: bool,
     },
+    Macro {
+        name: String,
+        params: Option<Vec<String>>,
+        body: String,
+    },
+    Include(String),
 }
 
 /// C program AST.

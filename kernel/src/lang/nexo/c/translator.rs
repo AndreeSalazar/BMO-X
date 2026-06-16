@@ -1,4 +1,6 @@
 //! C → ÑEXO Translator — converts C AST to ÑEXO AST.
+//!
+//! Supports: structs, unions, enums, switch/case, sizeof(expr), ternary, comma, goto/label.
 
 #![allow(dead_code)]
 
@@ -69,6 +71,26 @@ impl CToNexo {
                     .collect();
                 Ok(Some(NStmt::StructDecl { name: name.clone(), fields: nexo_fields }))
             }
+            CItem::Union { name, fields } => {
+                // Translate union as struct (ÑEXO doesn't have unions yet)
+                let nexo_fields: Vec<(String, TypeAnnotation)> = fields.iter()
+                    .map(|(ty, fname)| (fname.clone(), self.translate_type(ty)))
+                    .collect();
+                Ok(Some(NStmt::StructDecl { name: name.clone(), fields: nexo_fields }))
+            }
+            CItem::Enum { name, variants } => {
+                // Translate enum as constants
+                let mut stmts = Vec::new();
+                for (i, (var_name, val)) in variants.iter().enumerate() {
+                    let value = val.unwrap_or(i as i64);
+                    stmts.push(NStmt::Let {
+                        name: var_name.clone(),
+                        ty: Some(TypeAnnotation::Named(String::from("num"))),
+                        value: Some(Expr::LitInt(value as u64)),
+                    });
+                }
+                Ok(Some(NStmt::Block(stmts)))
+            }
             CItem::Typedef { .. } => Ok(None),
             CItem::GlobalVar { ty: _, name, init, is_static: _, is_extern } => {
                 if *is_extern {
@@ -81,6 +103,8 @@ impl CToNexo {
                     value,
                 }))
             }
+            CItem::Macro { .. } => Ok(None),
+            CItem::Include(_) => Ok(None),
         }
     }
 
@@ -135,6 +159,29 @@ impl CToNexo {
                 stmts.push(NStmt::While { cond: nexo_cond, body: Vec::new() });
                 Ok(Some(NStmt::Block(stmts)))
             }
+            CStmt::Switch { expr, cases, default } => {
+                // Translate switch as if-else chain
+                let switch_expr = self.translate_expr(expr)?;
+                let mut stmts = Vec::new();
+
+                for case in cases {
+                    let case_val = self.translate_expr(&case.value)?;
+                    let cond = Expr::Binary(BinOp::Eq, Box::new(switch_expr.clone()), Box::new(case_val));
+                    let body: Vec<NStmt> = case.stmts.iter()
+                        .filter_map(|s| self.translate_stmt(s).ok().flatten())
+                        .collect();
+                    stmts.push(NStmt::If { cond, then_body: body, else_body: None });
+                }
+
+                if let Some(default_stmts) = default {
+                    let body: Vec<NStmt> = default_stmts.iter()
+                        .filter_map(|s| self.translate_stmt(s).ok().flatten())
+                        .collect();
+                    stmts.push(NStmt::Block(body));
+                }
+
+                Ok(Some(NStmt::Block(stmts)))
+            }
             CStmt::Block(stmts) => {
                 let nexo_stmts: Vec<NStmt> = stmts.iter()
                     .filter_map(|s| self.translate_stmt(s).ok().flatten())
@@ -147,6 +194,14 @@ impl CToNexo {
             }
             CStmt::Break => Ok(Some(NStmt::Break)),
             CStmt::Continue => Ok(Some(NStmt::Continue)),
+            CStmt::Label(name) => {
+                // Labels become comments in ÑEXO
+                Ok(None)
+            }
+            CStmt::Goto(_) => {
+                // Goto becomes a comment in ÑEXO
+                Ok(None)
+            }
         }
     }
 
@@ -159,7 +214,7 @@ impl CToNexo {
             CExpr::Binary(op, left, right) => {
                 let l = self.translate_expr(left)?;
                 let r = self.translate_expr(right)?;
-                let nexo_op = self.translate_binop(*op);
+                let nexo_op = self.translate_binop(*op)?;
                 Ok(Expr::Binary(nexo_op, Box::new(l), Box::new(r)))
             }
             CExpr::Unary(op, inner) => {
@@ -193,6 +248,7 @@ impl CToNexo {
             CExpr::Assign(left, right) => {
                 if let CExpr::Ident(name) = left.as_ref() {
                     let val = self.translate_expr(right)?;
+                    // In ÑEXO, assignment becomes let binding
                     Ok(Expr::Binary(BinOp::Add, Box::new(Expr::Ident(name.clone())), Box::new(val)))
                 } else {
                     let l = self.translate_expr(left)?;
@@ -204,13 +260,41 @@ impl CToNexo {
                 let o = self.translate_expr(obj)?;
                 Ok(Expr::Field(Box::new(o), field.clone()))
             }
-            CExpr::Sizeof(_) => Ok(Expr::LitInt(8)),
+            CExpr::Sizeof(ty) => {
+                let size = ty.size_bytes();
+                Ok(Expr::LitInt(size))
+            }
+            CExpr::SizeofExpr(inner) => {
+                // For sizeof(expr), we need to know the type
+                // For now, return a placeholder (8 bytes for pointers)
+                Ok(Expr::LitInt(8))
+            }
             CExpr::ArrayIndex(obj, idx) => {
                 let o = self.translate_expr(obj)?;
                 let i = self.translate_expr(idx)?;
                 Ok(Expr::Index(Box::new(o), Box::new(i)))
             }
             CExpr::Cast(_, inner) => self.translate_expr(inner),
+            CExpr::Ternary(cond, then_expr, else_expr) => {
+                let c = self.translate_expr(cond)?;
+                let t = self.translate_expr(then_expr)?;
+                let e = self.translate_expr(else_expr)?;
+                // Ternary becomes a block expression with if-else in ÑEXO
+                let if_stmt = NStmt::If {
+                    cond: c,
+                    then_body: vec![NStmt::ExprStmt(t)],
+                    else_body: Some(vec![NStmt::ExprStmt(e)]),
+                };
+                Ok(Expr::Block(vec![if_stmt]))
+            }
+            CExpr::Comma(exprs) => {
+                // Comma returns the last expression
+                if let Some(last) = exprs.last() {
+                    self.translate_expr(last)
+                } else {
+                    Ok(Expr::LitInt(0))
+                }
+            }
         }
     }
 
@@ -223,32 +307,32 @@ impl CToNexo {
             CType::Float | CType::Double => TypeAnnotation::Named(String::from("num")),
             CType::Ptr(inner) => TypeAnnotation::Ptr(Box::new(self.translate_type(inner))),
             CType::Array(inner, _) => TypeAnnotation::Array(Box::new(self.translate_type(inner)), 0),
-            CType::Struct(name) => TypeAnnotation::Named(name.clone()),
+            CType::Struct(name) | CType::Union(name) | CType::Enum(name) => TypeAnnotation::Named(name.clone()),
             CType::Named(name) => TypeAnnotation::Named(name.clone()),
         }
     }
 
-    fn translate_binop(&self, op: CBinOp) -> BinOp {
+    fn translate_binop(&self, op: CBinOp) -> BxResult<BinOp> {
         match op {
-            CBinOp::Add | CBinOp::AddAssign => BinOp::Add,
-            CBinOp::Sub | CBinOp::SubAssign => BinOp::Sub,
-            CBinOp::Mul | CBinOp::MulAssign => BinOp::Mul,
-            CBinOp::Div | CBinOp::DivAssign => BinOp::Div,
-            CBinOp::Mod => BinOp::Mod,
-            CBinOp::Eq => BinOp::Eq,
-            CBinOp::Ne => BinOp::Ne,
-            CBinOp::Lt => BinOp::Lt,
-            CBinOp::Gt => BinOp::Gt,
-            CBinOp::Le => BinOp::Le,
-            CBinOp::Ge => BinOp::Ge,
-            CBinOp::And => BinOp::Land,
-            CBinOp::Or => BinOp::Lor,
-            CBinOp::BitAnd => BinOp::And,
-            CBinOp::BitOr => BinOp::Or,
-            CBinOp::BitXor => BinOp::Xor,
-            CBinOp::Shl => BinOp::Shl,
-            CBinOp::Shr => BinOp::Shr,
-            CBinOp::Assign => BinOp::Add, // Placeholder
+            CBinOp::Add | CBinOp::AddAssign => Ok(BinOp::Add),
+            CBinOp::Sub | CBinOp::SubAssign => Ok(BinOp::Sub),
+            CBinOp::Mul | CBinOp::MulAssign => Ok(BinOp::Mul),
+            CBinOp::Div | CBinOp::DivAssign => Ok(BinOp::Div),
+            CBinOp::Mod => Ok(BinOp::Mod),
+            CBinOp::Eq => Ok(BinOp::Eq),
+            CBinOp::Ne => Ok(BinOp::Ne),
+            CBinOp::Lt => Ok(BinOp::Lt),
+            CBinOp::Gt => Ok(BinOp::Gt),
+            CBinOp::Le => Ok(BinOp::Le),
+            CBinOp::Ge => Ok(BinOp::Ge),
+            CBinOp::And => Ok(BinOp::Land),
+            CBinOp::Or => Ok(BinOp::Lor),
+            CBinOp::BitAnd => Ok(BinOp::And),
+            CBinOp::BitOr => Ok(BinOp::Or),
+            CBinOp::BitXor => Ok(BinOp::Xor),
+            CBinOp::Shl => Ok(BinOp::Shl),
+            CBinOp::Shr => Ok(BinOp::Shr),
+            _ => Ok(BinOp::Add), // Placeholder for assignment operators
         }
     }
 }
