@@ -25,6 +25,7 @@ mod desktop;
 mod drivers;
 mod fs;
 mod panic;
+mod memory;
 
 mod barex;
 mod bef;

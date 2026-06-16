@@ -2,6 +2,13 @@
 //!
 //! Diseñado para Ryzen 5 5600X (1 CCD × 6 cores × 2 threads).
 //! Integra con APIC timer para preemptive scheduling.
+//!
+//! Modular:
+//!   - process: Process management
+//!   - thread: Thread management + context switching
+//!   - rt: Real-time scheduler (EDF)
+//!   - user_init: Ring 3 process loading
+//!   - gate_test: Gate test utilities
 
 #![allow(dead_code)]
 
@@ -9,6 +16,7 @@ pub mod process;
 pub mod thread;
 pub mod user_init;
 pub mod gate_test;
+pub mod rt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {
