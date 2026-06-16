@@ -16,6 +16,7 @@ pub mod compositor;
 pub mod state;
 pub mod render;
 pub mod welcome;
+pub mod commands;
 
 // ────────────────────────────────────────────────────────────────────
 // Ring 0 desktop loop — supervisor funcional para el compositor Ring 3.

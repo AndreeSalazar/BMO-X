@@ -26,7 +26,7 @@ pub mod sema;
 pub mod codegen;
 pub mod modules;
 pub mod runtime;
-pub mod c_frontend;
+pub mod c;
 pub mod stdlib;
 pub mod pm;
 
@@ -70,7 +70,7 @@ pub fn compile(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
 /// Pipeline: C source → C lexer → C parser → C AST → ÑEXO AST → BMOasm → native
 pub fn compile_c(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     // 1. C Frontend: C source → ÑEXO AST
-    let ast = c_frontend::compile_c(source)?;
+    let ast = c::compile_c(source)?;
 
     // 2. Semantic analysis
     let sema = sema::Sema::new();
