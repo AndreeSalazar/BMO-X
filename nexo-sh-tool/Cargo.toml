@@ -1,0 +1,20 @@
+[package]
+name = "nexo-sh-tool"
+version = "0.1.0"
+edition = "2021"
+description = "Naga en Ring 3 — compilador de shaders HLSL/GLSL/WGSL → BSF"
+
+[[bin]]
+name = "nexo-sh"
+path = "src/main.rs"
+
+[dependencies]
+naga = { version = "29", default-features = false, features = [
+    "wgsl-in",
+    "glsl-in",
+    "spv-in",
+    "spv-out",
+    "hlsl-out",
+    "glsl-out",
+    "msl-out",
+] }
