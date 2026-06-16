@@ -97,6 +97,37 @@ fn ranges_overlap(start: u64, end: u64, region_start: u64, region_end: u64) -> b
 /// `count`      — number of entries in the array.
 ///
 /// # Safety
+/// Write a u64 in decimal to serial.
+fn ser_u64(mut val: u64) {
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    if val == 0 {
+        i -= 1;
+        buf[i] = b'0';
+    } else {
+        while val > 0 {
+            i -= 1;
+            buf[i] = b'0' + (val % 10) as u8;
+            val /= 10;
+        }
+    }
+    crate::drivers::serial::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
+}
+
+/// Write a usize in decimal to serial.
+fn ser_usize(val: usize) {
+    ser_u64(val as u64);
+}
+
+/// Write a u64 in hex to serial.
+fn ser_hex(val: u64) {
+    let hex = b"0123456789ABCDEF";
+    crate::drivers::serial::serial_write("0x");
+    for i in (0..16).rev() {
+        crate::drivers::serial::serial_write_byte(hex[((val >> (i * 4)) & 0xF) as usize]);
+    }
+}
+
 /// Must be called exactly once, early in kernel init, before any allocation.
 pub unsafe fn init(
     memory_map: &[MemoryEntry],
@@ -115,6 +146,45 @@ pub unsafe fn init(
     // *except* those that overlap the kernel reservation.
 
     let entries = &memory_map[..count];
+
+    // Debug: dump memory map summary to serial
+    crate::drivers::serial::serial_write("[page_alloc] Memory map entries: ");
+    ser_usize(count);
+    crate::drivers::serial::serial_write("\n");
+
+    let mut usable_count: u64 = 0;
+    let mut usable_total_bytes: u64 = 0;
+    let mut reserved_count: u64 = 0;
+    let mut other_count: u64 = 0;
+
+    for entry in entries {
+        match entry.mem_type {
+            MemoryType::Usable => {
+                usable_count += 1;
+                usable_total_bytes += entry.size;
+                // Only dump first 10 Usable entries to avoid serial spam
+                if usable_count <= 10 {
+                    crate::drivers::serial::serial_write("  [Usable] base=");
+                    ser_hex(entry.base);
+                    crate::drivers::serial::serial_write(" size=");
+                    ser_u64(entry.size / 1024);
+                    crate::drivers::serial::serial_write(" KB\n");
+                }
+            }
+            MemoryType::Reserved => { reserved_count += 1; }
+            _ => { other_count += 1; }
+        }
+    }
+
+    crate::drivers::serial::serial_write("[page_alloc] Usable=");
+    ser_u64(usable_count);
+    crate::drivers::serial::serial_write(" (");
+    ser_u64(usable_total_bytes / (1024 * 1024));
+    crate::drivers::serial::serial_write(" MB) Reserved=");
+    ser_u64(reserved_count);
+    crate::drivers::serial::serial_write(" Other=");
+    ser_u64(other_count);
+    crate::drivers::serial::serial_write("\n");
 
     for entry in entries {
         // Only consider usable RAM.
@@ -174,6 +244,13 @@ pub unsafe fn init(
     }
 
     INITIALIZED = true;
+
+    crate::drivers::serial::serial_write("[page_alloc] Init complete: free_pages=");
+    ser_usize(FREE_PAGES_COUNT);
+    crate::drivers::serial::serial_write(" (");
+    let mb = (FREE_PAGES_COUNT * 4096) / (1024 * 1024);
+    ser_usize(mb);
+    crate::drivers::serial::serial_write(" MB)\n");
 }
 
 /// Allocate `count` physically-contiguous pages.

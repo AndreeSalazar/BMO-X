@@ -117,6 +117,7 @@ fn pit_wait_10ms() {
     // PIT frequency = 1,193,182 Hz
     // 10ms = 11,932 counts
     const PIT_10MS: u16 = 11932;
+    const MAX_RETRIES: u32 = 100;
 
     unsafe {
         // PIT channel 2 mode 0 (interrupt on terminal count)
@@ -131,10 +132,22 @@ fn pit_wait_10ms() {
         asm!("out 0x61, al", in("al") val & 0xFC, options(nostack)); // gate low
         asm!("out 0x61, al", in("al") (val & 0xFC) | 1, options(nostack)); // gate high (start)
 
-        // Wait for PIT output (bit 5 of port 0x61)
+        // Wait for PIT output (bit 5 of port 0x61) — with timeout
+        let mut retries = 0u32;
         loop {
             asm!("in al, 0x61", out("al") val, options(nostack));
             if val & 0x20 != 0 { break; }
+            retries += 1;
+            if retries >= MAX_RETRIES {
+                // PIT channel 2 not responding — use RDTSC fallback
+                crate::drivers::serial::serial_write("[APIC] PIT ch2 timeout, using RDTSC fallback\n");
+                // RDTSC fallback: spin for ~10ms at ~3.7GHz = ~37M ticks
+                let start = crate::arch::cpu::rdtsc();
+                while crate::arch::cpu::rdtsc().wrapping_sub(start) < 37_000_000 {
+                    asm!("pause", options(nostack));
+                }
+                return;
+            }
         }
     }
 }

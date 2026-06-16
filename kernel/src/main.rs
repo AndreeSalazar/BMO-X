@@ -312,8 +312,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     let boot_total = boot_end - boot_start;
 
     // Calculate boot time in microseconds (TSC ticks / (freq_MHz))
-    // TSC is typically 3.7 GHz on Ryzen 5 5600X
-    let boot_us = if tsc_freq > 0 {
+    let boot_us = if tsc_freq >= 1_000_000 {
         boot_total / (tsc_freq / 1_000_000)
     } else {
         boot_total / 3700 // fallback: ~3.7 GHz
