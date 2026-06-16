@@ -160,25 +160,14 @@ pub fn paint_overlay() {
 /// Refresh rate for the overlay (Hz).
 pub const OVERLAY_REFRESH_HZ: u64 = 4; // 4 Hz = 250ms between repaints
 
-/// Call this from the APIC timer tick handler.
+/// Called every timer tick. Only updates telemetry counters.
+/// The overlay is repainted on diag events and explicit paint_overlay() calls.
 pub fn tick_refresh() {
-    use core::sync::atomic::{AtomicU64, Ordering};
-    static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
-
-    let count = TICK_COUNT.fetch_add(1, Ordering::Relaxed);
-
-    // Refresh overlay every (100 / OVERLAY_REFRESH_HZ) ticks = ~250ms at 100 Hz
-    let interval = 100 / OVERLAY_REFRESH_HZ;
-    if interval == 0 || count % interval == 0 {
-        // Update telemetry snapshots
-        telemetry::t().mem.update_free_pages(
-            unsafe { crate::arch::page_alloc::free_count() } as u64
-        );
-        telemetry::t().mem.update_heap(crate::allocator::heap_used() as u64);
-
-        // Repaint overlay
-        overlay::paint();
-    }
+    // Update telemetry snapshots (lightweight — no framebuffer access from IRQ)
+    telemetry::t().mem.update_free_pages(
+        unsafe { crate::arch::page_alloc::free_count() } as u64
+    );
+    telemetry::t().mem.update_heap(crate::allocator::heap_used() as u64);
 }
 
 // ── Private ────────────────────────────────────────────────────────
@@ -186,6 +175,7 @@ pub fn tick_refresh() {
 fn emit(event: Event) {
     let event = buffer::push(event);
     serial_sink::write_event(event);
+    overlay::paint();
 }
 
 // ── Macros ─────────────────────────────────────────────────────────
