@@ -117,11 +117,33 @@ pub const KEYWORDS: &[(&[u8], TokenKind)] = &[
 pub struct Scanner<'a> {
     pub src: &'a [u8],
     pub pos: usize,
+    pub line: usize,
+    pub col: usize,
 }
 
 impl<'a> Scanner<'a> {
     pub const fn new(src: &'a [u8]) -> Self {
-        Self { src, pos: 0 }
+        Self { src, pos: 0, line: 1, col: 1 }
+    }
+
+    /// Converts a byte offset to (line, col).
+    pub fn offset_to_line_col(&self, offset: usize) -> (usize, usize) {
+        let mut line = 1;
+        let mut col = 1;
+        for i in 0..offset.min(self.src.len()) {
+            if self.src[i] == b'\n' {
+                line += 1;
+                col = 1;
+            } else {
+                col += 1;
+            }
+        }
+        (line, col)
+    }
+
+    /// Returns (line, col) for the current scanner position.
+    pub fn current_loc(&self) -> (usize, usize) {
+        (self.line, self.col)
     }
 
     /// Avanza un token. DFA real — no es stub.
@@ -151,19 +173,21 @@ impl<'a> Scanner<'a> {
 
     fn scan_string(&mut self, start: u32) -> Token {
         let begin = self.pos;
-        self.pos += 1; // skip opening '"'
+        self.pos += 1;
+        self.col += 1;
         let mut closed = false;
         while self.pos < self.src.len() {
             let c = self.src[self.pos];
             self.pos += 1;
+            self.col += 1;
             match c {
                 b'"' => {
                     closed = true;
                     break;
                 }
                 b'\\' if self.pos < self.src.len() => {
-                    // Skip escaped character so \" doesn't terminate the string
                     self.pos += 1;
+                    self.col += 1;
                 }
                 _ => {}
             }
@@ -181,6 +205,12 @@ impl<'a> Scanner<'a> {
     fn skip_ws_and_comments(&mut self) {
         loop {
             while self.pos < self.src.len() && is_ws(self.src[self.pos]) {
+                if self.src[self.pos] == b'\n' {
+                    self.line += 1;
+                    self.col = 1;
+                } else {
+                    self.col += 1;
+                }
                 self.pos += 1;
             }
             // `// comentario hasta \n`
@@ -188,6 +218,7 @@ impl<'a> Scanner<'a> {
                 && self.src[self.pos] == b'/' && self.src[self.pos + 1] == b'/'
             {
                 while self.pos < self.src.len() && self.src[self.pos] != b'\n' {
+                    self.col += 1;
                     self.pos += 1;
                 }
                 continue;
@@ -200,9 +231,9 @@ impl<'a> Scanner<'a> {
         let begin = self.pos;
         while self.pos < self.src.len() && is_ident_cont(self.src[self.pos]) {
             self.pos += 1;
+            self.col += 1;
         }
         let lex = &self.src[begin..self.pos];
-        // Greedy match contra tabla.
         let kind = lookup_keyword(lex).unwrap_or(TokenKind::Ident);
         Token {
             kind, _pad: [0; 3],
@@ -216,8 +247,8 @@ impl<'a> Scanner<'a> {
         let (kind, value) = if begin + 1 < self.src.len() && self.src[begin] == b'0'
             && (self.src[begin + 1] == b'x' || self.src[begin + 1] == b'X')
         {
-            // Hex literal.
             self.pos += 2;
+            self.col += 2;
             let mut v: u64 = 0;
             while self.pos < self.src.len() {
                 let c = self.src[self.pos];
@@ -225,39 +256,41 @@ impl<'a> Scanner<'a> {
                     b'0'..=b'9' => (c - b'0') as u64,
                     b'a'..=b'f' => (c - b'a' + 10) as u64,
                     b'A'..=b'F' => (c - b'A' + 10) as u64,
-                    b'_' => { self.pos += 1; continue; }
+                    b'_' => { self.pos += 1; self.col += 1; continue; }
                     _ => break,
                 };
                 v = v.wrapping_shl(4) | d;
                 self.pos += 1;
+                self.col += 1;
             }
             (TokenKind::LitHex, v)
         } else if begin + 1 < self.src.len() && self.src[begin] == b'0'
             && (self.src[begin + 1] == b'b' || self.src[begin + 1] == b'B')
         {
-            // Binary literal.
             self.pos += 2;
+            self.col += 2;
             let mut v: u64 = 0;
             while self.pos < self.src.len() {
                 let c = self.src[self.pos];
                 let d = match c {
                     b'0' => 0, b'1' => 1,
-                    b'_' => { self.pos += 1; continue; }
+                    b'_' => { self.pos += 1; self.col += 1; continue; }
                     _ => break,
                 };
                 v = (v << 1) | d;
                 self.pos += 1;
+                self.col += 1;
             }
             (TokenKind::LitBin, v)
         } else {
-            // Decimal.
             let mut v: u64 = 0;
             while self.pos < self.src.len() {
                 let c = self.src[self.pos];
-                if c == b'_' { self.pos += 1; continue; }
+                if c == b'_' { self.pos += 1; self.col += 1; continue; }
                 if !c.is_ascii_digit() { break; }
                 v = v.wrapping_mul(10) + (c - b'0') as u64;
                 self.pos += 1;
+                self.col += 1;
             }
             (TokenKind::LitInt, v)
         };
@@ -283,6 +316,7 @@ impl<'a> Scanner<'a> {
             b'=' => TokenKind::Assign,
             b'-' if self.pos + 1 < self.src.len() && self.src[self.pos + 1] == b'>' => {
                 self.pos += 2;
+                self.col += 2;
                 return Token {
                     kind: TokenKind::Arrow, _pad: [0; 3],
                     start, len: 2, value: 0,
@@ -291,6 +325,7 @@ impl<'a> Scanner<'a> {
             _ => TokenKind::Unknown,
         };
         self.pos += 1;
+        self.col += 1;
         Token { kind, _pad: [0; 3], start, len: 1, value: 0 }
     }
 }

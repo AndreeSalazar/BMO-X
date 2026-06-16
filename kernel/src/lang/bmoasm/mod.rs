@@ -61,6 +61,7 @@ pub mod runtime;
 pub mod builtin;
 pub mod sample;
 pub mod traductor;
+pub mod tests;
 
 // ─── Re-exports ──────────────────────────────────────────────────────
 

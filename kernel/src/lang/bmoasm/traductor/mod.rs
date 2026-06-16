@@ -36,6 +36,11 @@ struct CallPatch {
     fn_name: String,
 }
 
+struct LabelPatch {
+    jmp_offset: usize,
+    label_name: String,
+}
+
 pub struct Traductor {
     target: TargetArch,
     backend: Box<dyn CodegenBackend>,
@@ -48,6 +53,8 @@ pub struct Traductor {
     frame_size: u32,
     fn_table: BTreeMap<String, FunctionEntry>,
     call_patches: Vec<CallPatch>,
+    label_table: BTreeMap<String, usize>,
+    label_patches: Vec<LabelPatch>,
 }
 
 impl Traductor {
@@ -72,12 +79,19 @@ impl Traductor {
             frame_size: 0,
             fn_table: BTreeMap::new(),
             call_patches: Vec::new(),
+            label_table: BTreeMap::new(),
+            label_patches: Vec::new(),
         }
     }
 
     pub fn traducir(&mut self, src: &[u8]) -> BxResult<Vec<u8>> {
         let mut parser = Parser::new(src);
-        let ast = parser.parse()?;
+        let mut ast = parser.parse().map_err(|_e| {
+            crate::barex::BxError::InvalidArgument
+        })?;
+
+        // Constant folding
+        super::sema::fold::Folder::fold(&mut ast);
 
         let sema = Sema::new();
         sema.check(&ast)?;
@@ -95,6 +109,15 @@ impl Traductor {
             if let Some(entry) = self.fn_table.get(&patch.fn_name) {
                 let code_offset = entry.code_offset;
                 self.backend.patch_rel32(patch.call_offset, patch.call_offset + 4, code_offset);
+            } else {
+                return Err(BxError::InvalidArgument);
+            }
+        }
+
+        // Back-patching de labels forward
+        for patch in &self.label_patches {
+            if let Some(&target) = self.label_table.get(&patch.label_name) {
+                self.backend.patch_rel32(patch.jmp_offset, patch.jmp_offset + 4, target);
             } else {
                 return Err(BxError::InvalidArgument);
             }
@@ -271,11 +294,28 @@ impl Traductor {
                     self.compilar_salto(name)?;
                 }
                 Stmt::Libre(expr) => {
-                    // libre(ptr) — free memory
-                    // Evaluate pointer → RAX
+                    // libre(ptr) → free memory allocated by aloc
+                    // ptr points to user data (base + 8), metadata is at ptr - 8
                     self.codegen_expr(expr)?;
-                    // TODO: Store allocation size metadata for proper page freeing
-                    // For now this is a no-op (bump allocator can't free)
+                    let bytes = self.backend.bytes_mut();
+                    // sub rax, 8 (point to metadata/size)
+                    bytes.extend_from_slice(&[0x48, 0x83, 0xE8, 0x08]); // sub rax, 8
+                    // mov rdi, rax (first arg: base address)
+                    bytes.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+                    // mov rsi, [rax] (second arg: size in bytes)
+                    bytes.extend_from_slice(&[0x48, 0x8B, 0x30]); // mov rsi, [rax]
+                    // Round size to pages: add rsi, 4095; shr rsi, 12
+                    bytes.extend_from_slice(&[0x48, 0x81, 0xC6, 0xFF, 0x0F, 0x00, 0x00]); // add rsi, 4095
+                    bytes.extend_from_slice(&[0x48, 0xC1, 0xEE, 0x0C]); // shr rsi, 12
+                    // call [rip+disp32] → free_pages
+                    bytes.push(0xFF);
+                    bytes.push(0x15);
+                    let func_ptr_offset = self.rodata.len();
+                    let func_addr = crate::arch::page_alloc::free_pages as *const () as usize as u64;
+                    self.rodata.extend_from_slice(&func_addr.to_le_bytes());
+                    let disp_offset = bytes.len();
+                    bytes.extend_from_slice(&[0, 0, 0, 0]);
+                    self.string_refs.push(StringRef { disp_offset, rodata_offset: func_ptr_offset });
                 }
                 _ => return Err(BxError::Unsupported),
             }
@@ -503,14 +543,24 @@ impl Traductor {
 
     // ── etiqueta/salto (labels/gotos) ─────────────────────────────
 
-    fn compilar_etiqueta(&mut self, _name: &str) -> BxResult<()> {
-        // TODO: proper label table with forward-patching
+    fn compilar_etiqueta(&mut self, name: &str) -> BxResult<()> {
+        let offset = self.backend.here();
+        self.label_table.insert(alloc::string::ToString::to_string(name), offset);
         Ok(())
     }
 
-    fn compilar_salto(&mut self, _name: &str) -> BxResult<()> {
-        // TODO: proper label resolution with forward-patching
-        let _jmp = self.backend.jmp_rel32();
+    fn compilar_salto(&mut self, name: &str) -> BxResult<()> {
+        let jmp_offset = self.backend.jmp_rel32();
+        if let Some(&target) = self.label_table.get(name) {
+            // Backward reference: patch immediately
+            self.backend.patch_rel32(jmp_offset, jmp_offset + 4, target);
+        } else {
+            // Forward reference: add to patch list
+            self.label_patches.push(LabelPatch {
+                jmp_offset,
+                label_name: alloc::string::ToString::to_string(name),
+            });
+        }
         Ok(())
     }
 
@@ -585,35 +635,37 @@ impl Traductor {
                 self.backend.sete_acc();
             }
             Expr::Aloc(size_expr) => {
-                // aloc(N) → allocate N bytes of page-aligned memory
-                // Evaluate size → RAX
+                // aloc(N) → allocate N bytes with size metadata
+                // Layout: [u64 size][user data...]
+                // Returns pointer to user data (base + 8)
                 self.codegen_expr(size_expr)?;
-                // Round up to pages: RAX = (RAX + 4095) >> 12
                 let bytes = self.backend.bytes_mut();
-                // add rax, 4095
-                bytes.extend_from_slice(&[0x48, 0x05]); // REX.W + 05 = add rax, imm32
-                bytes.extend_from_slice(&[0xFF, 0x0F, 0x00, 0x00]); // 4095 = 0x0FFF
-                // shr rax, 12
-                bytes.extend_from_slice(&[0x48, 0xC1, 0xE8, 0x0C]); // REX.W + SHR rax, 12
+                // Save original size for metadata: push rax
+                bytes.push(0x50); // push rax
+                // Round up to pages: add rax, 4095; shr rax, 12
+                bytes.extend_from_slice(&[0x48, 0x05, 0xFF, 0x0F, 0x00, 0x00]); // add rax, 4095
+                bytes.extend_from_slice(&[0x48, 0xC1, 0xE8, 0x0C]); // shr rax, 12
+                // Add 1 page for metadata header
+                bytes.extend_from_slice(&[0x48, 0xFF, 0xC0]); // inc rax
                 // mov rdi, rax (page count → first arg)
                 bytes.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
-                // Store function pointer in rodata, LEA to call it
-                // call [rip+0] → we'll patch this
-                bytes.push(0xFF); // opcode for call r/m64
-                bytes.push(0x15); // ModRM: mod=00, reg=010(call), rm=101(rip+disp32)
+                // call [rip+disp32] → alloc_pages_contiguous
+                bytes.push(0xFF);
+                bytes.push(0x15);
                 let func_ptr_offset = self.rodata.len();
-                // Store the address of alloc_pages_contiguous in rodata
                 let func_addr = crate::arch::page_alloc::alloc_pages_contiguous as *const () as usize as u64;
                 self.rodata.extend_from_slice(&func_addr.to_le_bytes());
                 let disp_offset = bytes.len();
-                bytes.extend_from_slice(&[0, 0, 0, 0]); // placeholder disp32
-                // Patch: disp32 = func_ptr_offset - (disp_offset + 4)
-                // We'll patch this in the back-patching phase
-                self.string_refs.push(StringRef {
-                    disp_offset,
-                    rodata_offset: func_ptr_offset,
-                });
-                // Result in RAX (physical address, identity-mapped = virtual address)
+                bytes.extend_from_slice(&[0, 0, 0, 0]);
+                self.string_refs.push(StringRef { disp_offset, rodata_offset: func_ptr_offset });
+                // RAX = base address. Now store metadata and return base + 8.
+                // mov [rax], rax_value (but we need original size from stack)
+                // pop rcx (original size)
+                bytes.extend_from_slice(&[0x59]); // pop rcx
+                // mov [rax], rcx (store size metadata at base)
+                bytes.extend_from_slice(&[0x48, 0x89, 0x08]); // mov [rax], rcx
+                // add rax, 8 (skip metadata, return user pointer)
+                bytes.extend_from_slice(&[0x48, 0x83, 0xC0, 0x08]); // add rax, 8
             }
             Expr::Call { name, args } => {
                 for (i, arg) in args.iter().enumerate() {

@@ -1,13 +1,13 @@
 //! Parser recursive-descent para BMO Simple.
-//! Parsea declaraciones de funciones, let, si/sino, mientras, reg, emit, match, etc.
+//! Retorna `ParseError` con línea/columna para debugging fácil.
 
 extern crate alloc;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::barex::{BxError, BxResult};
 use super::ast::{Ast, Stmt, Expr, Type, BinOp};
+use super::error::{ParseError, ParseResult};
 use super::super::lexer::{Token, TokenKind, Scanner};
 
 pub struct Parser<'a> {
@@ -30,39 +30,87 @@ impl<'a> Parser<'a> {
         self.peek = self.scanner.next_token();
     }
 
-    fn expect(&mut self, kind: TokenKind) -> BxResult<()> {
+    fn tok_name(kind: TokenKind) -> &'static str {
+        match kind {
+            TokenKind::KwDef => "'def'", TokenKind::KwLet => "'let'",
+            TokenKind::KwSi => "'si'", TokenKind::KwSino => "'sino'",
+            TokenKind::KwMientras => "'mientras'", TokenKind::KwRetorna => "'retorna'",
+            TokenKind::KwReg => "'reg'", TokenKind::KwEmit => "'emit'",
+            TokenKind::KwAloc => "'aloc'", TokenKind::KwLibre => "'libre'",
+            TokenKind::KwRompe => "'rompe'", TokenKind::KwContinua => "'continua'",
+            TokenKind::KwMatch => "'match'", TokenKind::KwCaso => "'caso'",
+            TokenKind::KwDefecto => "'defecto'", TokenKind::KwPara => "'para'",
+            TokenKind::KwDesde => "'desde'", TokenKind::KwHasta => "'hasta'",
+            TokenKind::KwPaso => "'paso'", TokenKind::KwBucle => "'bucle'",
+            TokenKind::KwEtiqueta => "'etiqueta'", TokenKind::KwSalto => "'salto'",
+            TokenKind::KwSyscall => "'syscall'",
+            TokenKind::LBrace => "'{'", TokenKind::RBrace => "'}'",
+            TokenKind::LParen => "'('", TokenKind::RParen => "')'",
+            TokenKind::LBracket => "'['", TokenKind::RBracket => "']'",
+            TokenKind::Comma => "','", TokenKind::Colon => "':'",
+            TokenKind::Semicolon => "';'", TokenKind::Arrow => "'->'",
+            TokenKind::Assign => "'='", TokenKind::Dot => "'.'",
+            TokenKind::Ident => "identifier", TokenKind::LitInt => "integer",
+            TokenKind::LitHex => "hex literal", TokenKind::LitBin => "binary literal",
+            TokenKind::LitStr => "string literal", TokenKind::LitByte => "byte literal",
+            TokenKind::LitNulo => "'nulo'", TokenKind::Eof => "end of file",
+            TokenKind::TyByte => "'byte'", TokenKind::TyNum => "'num'",
+            TokenKind::TyPtr => "'ptr'", TokenKind::TyArr => "'arr'",
+            TokenKind::TyRef => "'ref'",
+            TokenKind::OpSuma => "'suma'", TokenKind::OpResta => "'resta'",
+            TokenKind::OpMult => "'mult'", TokenKind::OpDiv => "'div'",
+            TokenKind::OpMod => "'mod'", TokenKind::OpY => "'y'",
+            TokenKind::OpO => "'o'", TokenKind::OpXor => "'xor'",
+            TokenKind::OpShl => "'shl'", TokenKind::OpShr => "'shr'",
+            TokenKind::OpIgual => "'igual'", TokenKind::OpMayor => "'mayor'",
+            TokenKind::OpMenor => "'menor'", TokenKind::OpNo => "'no'",
+            _ => "token",
+        }
+    }
+
+    fn error(&self, msg: &'static str) -> ParseError {
+        let (line, col) = self.scanner.current_loc();
+        ParseError::new(line, col, msg)
+            .with_found(Self::tok_name(self.current.kind))
+    }
+
+    fn expect(&mut self, kind: TokenKind) -> ParseResult<()> {
         if self.current.kind == kind {
             self.advance();
             Ok(())
         } else {
-            Err(BxError::InvalidArgument)
+            let (line, col) = self.scanner.current_loc();
+            Err(ParseError::new(line, col, "unexpected token")
+                .with_expected(Self::tok_name(kind))
+                .with_found(Self::tok_name(self.current.kind)))
         }
     }
 
-    fn expect_ident(&mut self) -> BxResult<String> {
+    fn expect_ident(&mut self) -> ParseResult<String> {
         if self.current.kind == TokenKind::Ident {
             let lexeme = self.lexeme(self.current)?;
             let name = String::from_utf8(lexeme.to_vec()).unwrap_or_default();
             self.advance();
             Ok(name)
         } else {
-            Err(BxError::InvalidArgument)
+            let (line, col) = self.scanner.current_loc();
+            Err(ParseError::new(line, col, "expected identifier")
+                .with_found(Self::tok_name(self.current.kind)))
         }
     }
 
-    fn lexeme(&self, tok: Token) -> BxResult<&'a [u8]> {
+    fn lexeme(&self, tok: Token) -> ParseResult<&'a [u8]> {
         let end = tok.start as usize + tok.len as usize;
         if end <= self.src.len() {
             Ok(&self.src[tok.start as usize..end])
         } else {
-            Err(BxError::InvalidArgument)
+            Err(self.error("unexpected end of file"))
         }
     }
 
     /// Parsea el código fuente completo en un AST.
-    pub fn parse(&mut self) -> BxResult<Ast> {
+    pub fn parse(&mut self) -> ParseResult<Ast> {
         let mut items = Vec::new();
-        // Omitir directivas iniciales o comments si los hay
         while self.current.kind != TokenKind::Eof {
             if self.current.kind == TokenKind::KwAlign {
                 self.advance();
@@ -72,19 +120,17 @@ impl<'a> Parser<'a> {
             } else if self.current.kind == TokenKind::Comment {
                 self.advance();
             } else {
-                // Si hay cosas no reconocidas a nivel top-level, avanzamos para no congelar
                 self.advance();
             }
         }
         Ok(Ast { items })
     }
 
-    // def nombre(p1: tipo, p2: tipo) -> tipo { body }
-    fn parse_def(&mut self) -> BxResult<Stmt> {
+    fn parse_def(&mut self) -> ParseResult<Stmt> {
         self.expect(TokenKind::KwDef)?;
         let name = self.expect_ident()?;
         self.expect(TokenKind::LParen)?;
-        
+
         let mut params = Vec::new();
         while self.current.kind != TokenKind::RParen && self.current.kind != TokenKind::Eof {
             let p_name = self.expect_ident()?;
@@ -115,20 +161,20 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Def { name, params, ret, body })
     }
 
-    fn parse_type(&mut self) -> BxResult<Type> {
+    fn parse_type(&mut self) -> ParseResult<Type> {
         let ty = match self.current.kind {
             TokenKind::TyByte => Type::Byte,
             TokenKind::TyNum => Type::Num,
             TokenKind::TyPtr => Type::Ptr,
             TokenKind::TyArr => Type::Arr,
             TokenKind::TyRef => Type::Ref,
-            _ => return Err(BxError::InvalidArgument),
+            _ => return Err(self.error("expected type (byte, num, ptr, arr, ref)")),
         };
         self.advance();
         Ok(ty)
     }
 
-    fn parse_stmt(&mut self) -> BxResult<Stmt> {
+    fn parse_stmt(&mut self) -> ParseResult<Stmt> {
         match self.current.kind {
             TokenKind::KwLet => {
                 self.advance();
@@ -143,7 +189,6 @@ impl<'a> Parser<'a> {
                 Ok(Stmt::Let { name, ty, value })
             }
             TokenKind::KwReg => {
-                // reg rdi = expr o reg rdi = "hola"
                 self.advance();
                 let reg_name = self.expect_ident()?;
                 self.expect(TokenKind::Assign)?;
@@ -153,8 +198,10 @@ impl<'a> Parser<'a> {
             TokenKind::KwRetorna => {
                 self.advance();
                 let mut expr = None;
-                // Si no hay cierre de bloque, intenta parsear expresión de retorno
-                if self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Semicolon && self.current.kind != TokenKind::Eof {
+                if self.current.kind != TokenKind::RBrace
+                    && self.current.kind != TokenKind::Semicolon
+                    && self.current.kind != TokenKind::Eof
+                {
                     expr = Some(self.parse_expr(0)?);
                 }
                 Ok(Stmt::Retorna(expr))
@@ -168,7 +215,7 @@ impl<'a> Parser<'a> {
                     then_body.push(self.parse_stmt()?);
                 }
                 self.expect(TokenKind::RBrace)?;
-                
+
                 let mut else_body = None;
                 if self.current.kind == TokenKind::KwSino {
                     self.advance();
@@ -244,7 +291,7 @@ impl<'a> Parser<'a> {
                         self.expect(TokenKind::RBrace)?;
                         arms.push((pattern, body));
                     } else {
-                        self.advance(); // skip unrecognized token
+                        self.advance();
                     }
                 }
                 self.expect(TokenKind::RBrace)?;
@@ -294,7 +341,11 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Stmt::ExprStmt(Expr::Reg(String::from("syscall"))))
             }
-            TokenKind::KwNop | TokenKind::KwPausa | TokenKind::KwInt3 | TokenKind::KwHlt | TokenKind::KwCli | TokenKind::KwSti | TokenKind::KwRdtsc | TokenKind::KwCpuid | TokenKind::KwLfence | TokenKind::KwMfence | TokenKind::KwSfence => {
+            TokenKind::KwNop | TokenKind::KwPausa | TokenKind::KwInt3
+            | TokenKind::KwHlt | TokenKind::KwCli | TokenKind::KwSti
+            | TokenKind::KwRdtsc | TokenKind::KwCpuid
+            | TokenKind::KwLfence | TokenKind::KwMfence | TokenKind::KwSfence =>
+            {
                 let name = String::from_utf8(self.lexeme(self.current)?.to_vec()).unwrap_or_default();
                 self.advance();
                 Ok(Stmt::ExprStmt(Expr::Reg(name)))
@@ -310,7 +361,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_expr(&mut self, min_prec: i32) -> BxResult<Expr> {
+    fn parse_expr(&mut self, min_prec: i32) -> ParseResult<Expr> {
         let mut left = self.parse_primary()?;
         loop {
             let prec = get_precedence(self.current.kind);
@@ -325,7 +376,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_primary(&mut self) -> BxResult<Expr> {
+    fn parse_primary(&mut self) -> ParseResult<Expr> {
         match self.current.kind {
             TokenKind::LitInt | TokenKind::LitHex | TokenKind::LitBin => {
                 let val = self.current.value;
@@ -343,7 +394,6 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LitStr => {
                 let lex = self.lexeme(self.current)?;
-                // Remover comillas
                 let s = if lex.len() >= 2 && lex[0] == b'"' && lex[lex.len() - 1] == b'"' {
                     String::from_utf8(lex[1..lex.len() - 1].to_vec()).unwrap_or_default()
                 } else {
@@ -359,9 +409,8 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Ident => {
                 let name = self.expect_ident()?;
-                // Check for function call: name(args...)
                 if self.current.kind == TokenKind::LParen {
-                    self.advance(); // skip '('
+                    self.advance();
                     let mut args = Vec::new();
                     if self.current.kind != TokenKind::RParen {
                         loop {
@@ -395,7 +444,7 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_expr(4)?;
                 Ok(Expr::Aloc(Box::new(expr)))
             }
-            _ => Err(BxError::InvalidArgument),
+            _ => Err(self.error("expected expression")),
         }
     }
 }
@@ -404,14 +453,15 @@ fn get_precedence(kind: TokenKind) -> i32 {
     match kind {
         TokenKind::OpY | TokenKind::OpO => 1,
         TokenKind::OpIgual | TokenKind::OpMayor | TokenKind::OpMenor => 2,
-        TokenKind::OpXor | TokenKind::OpShl | TokenKind::OpShr | TokenKind::OpRol | TokenKind::OpRor => 3,
+        TokenKind::OpXor | TokenKind::OpShl | TokenKind::OpShr
+        | TokenKind::OpRol | TokenKind::OpRor => 3,
         TokenKind::OpSuma | TokenKind::OpResta => 4,
         TokenKind::OpMult | TokenKind::OpDiv | TokenKind::OpMod => 5,
         _ => -1,
     }
 }
 
-fn to_bin_op(kind: TokenKind) -> BxResult<BinOp> {
+fn to_bin_op(kind: TokenKind) -> ParseResult<BinOp> {
     Ok(match kind {
         TokenKind::OpSuma => BinOp::Suma,
         TokenKind::OpResta => BinOp::Resta,
@@ -426,6 +476,6 @@ fn to_bin_op(kind: TokenKind) -> BxResult<BinOp> {
         TokenKind::OpIgual => BinOp::Igual,
         TokenKind::OpMayor => BinOp::Mayor,
         TokenKind::OpMenor => BinOp::Menor,
-        _ => return Err(BxError::InvalidArgument),
+        _ => return Err(ParseError::new(0, 0, "unknown operator")),
     })
 }

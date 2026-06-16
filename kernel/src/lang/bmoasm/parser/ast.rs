@@ -40,6 +40,10 @@ pub enum Expr {
     Call { name: String, args: Vec<Expr> },
 }
 
+impl Default for Expr {
+    fn default() -> Self { Expr::LitNulo }
+}
+
 #[derive(Debug, Clone)]
 pub enum Stmt {
     /// `def nombre(params) -> ret { body }`.
