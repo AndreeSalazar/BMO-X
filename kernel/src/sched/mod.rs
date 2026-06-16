@@ -107,6 +107,9 @@ pub fn schedule() {
             }
 
             thread::set_current(next_idx);
+
+            // Telemetry: context switch
+            crate::diag::telemetry::t().sched.record_context_switch();
         }
     }
 }

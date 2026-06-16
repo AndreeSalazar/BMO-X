@@ -370,6 +370,7 @@ extern "C" fn irq0_handler_rust() {
 
 #[unsafe(no_mangle)]
 extern "C" fn irq1_handler_rust() {
+    crate::diag::telemetry::t().cpu.interrupts.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     unsafe {
         if let Some(handler) = IRQ_HANDLERS[1] {
             handler();
@@ -377,10 +378,12 @@ extern "C" fn irq1_handler_rust() {
     }
 }
 
-/// APIC timer interrupt handler — tick scheduler + send EOI.
+/// APIC timer interrupt handler — tick scheduler + telemetry refresh + EOI.
 #[unsafe(no_mangle)]
 extern "C" fn apic_timer_handler_rust() {
+    crate::diag::telemetry::t().cpu.timer_ticks.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     crate::sched::timer_tick();
+    crate::diag::tick_refresh();
     crate::arch::apic::apic_eoi();
 }
 
@@ -388,15 +391,36 @@ extern "C" fn apic_timer_handler_rust() {
 /// Called from #GP and #PF ISR stubs.
 #[unsafe(no_mangle)]
 extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> ! {
+    use core::sync::atomic::Ordering;
+    let t = crate::diag::telemetry::t();
     match vector {
         13 => {
+            t.cpu.gp_faults.fetch_add(1, Ordering::Relaxed);
             crate::diag::fault_u64("#GP", "general protection fault", error);
         }
         14 => {
+            t.cpu.page_faults.fetch_add(1, Ordering::Relaxed);
             crate::diag::fault_u64("#PF", "page fault at CR2", cr2);
             crate::diag::fault_u64("#PF", "page fault error code", error);
         }
+        7 => {
+            t.cpu.nm_faults.fetch_add(1, Ordering::Relaxed);
+            crate::diag::fault_u64("#NM", "device not available", error);
+        }
+        8 => {
+            t.cpu.df_faults.fetch_add(1, Ordering::Relaxed);
+            crate::diag::fault_u64("#DF", "double fault", error);
+        }
+        6 => {
+            t.cpu.ud_faults.fetch_add(1, Ordering::Relaxed);
+            crate::diag::fault_u64("#UD", "invalid opcode", error);
+        }
+        18 => {
+            t.cpu.mc_faults.fetch_add(1, Ordering::Relaxed);
+            crate::diag::fault_u64("#MC", "machine check", error);
+        }
         _ => {
+            t.cpu.other_faults.fetch_add(1, Ordering::Relaxed);
             crate::diag::fault_u64("trap", "fatal CPU exception", vector);
         }
     }

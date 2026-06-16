@@ -2,7 +2,7 @@
 
 use super::event::Event;
 
-pub const MAX_EVENTS: usize = 64;
+pub const MAX_EVENTS: usize = 256;
 
 static mut EVENTS: [Event; MAX_EVENTS] = [Event::empty(); MAX_EVENTS];
 static mut NEXT_SEQ: u64 = 1;
