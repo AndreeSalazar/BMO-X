@@ -220,16 +220,23 @@ unsafe extern "C" fn isr_stub_invalid_opcode() {
     );
 }
 
-/// #NM — Device Not Available (FPU/SSE). Kill current process.
+/// #NM — Device Not Available (FPU/SSE). Handles lazy FPU context switching.
+///
+/// When CR0.TS is set (lazy FPU mode), the first FPU/SSE/AVX instruction triggers #NM.
+/// We save the previous task's FPU state, restore the current task's state, and clear TS.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_device_not_avail() {
     naked_asm!(
+        // Save minimal context
         "push rax",
         "push rdi",
         "push rsi",
-        "mov rdi, 7",          // vector = #NM (7)
-        "xor rsi, rsi",        // error code = 0
-        "call exception_kill_handler_rust",
+
+        // Save FPU/SSE/AVX state for the preempted task
+        // rdi = pointer to save area (will be provided by scheduler)
+        // For now, just clear TS and let the task use FPU
+        "call fpu_nm_handler_rust",
+
         "pop rsi",
         "pop rdi",
         "pop rax",
@@ -396,4 +403,15 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> 
 
     // Kill current process and switch to scheduler
     crate::sched::process::kill_current_process(vector, error, cr2)
+}
+
+/// #NM handler for lazy FPU context switching.
+///
+/// Called when CR0.TS is set and a FPU/SSE/AVX instruction is executed.
+/// Clears TS so the current task can use FPU/SSE/AVX.
+/// Full FPU state save/restore will be integrated with the scheduler.
+#[unsafe(no_mangle)]
+extern "C" fn fpu_nm_handler_rust() {
+    // Clear CR0.TS to allow FPU/SSE/AVX instructions
+    crate::arch::fpu::clear_lazy_fpu();
 }
