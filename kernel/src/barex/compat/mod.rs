@@ -16,6 +16,10 @@ pub enum BinaryKind {
     Bef,
     /// PE64 de Windows (game.exe). Requiere shim L4 en Ring 3.
     PeWindows64,
+    /// ELF binario nativo Linux.
+    Elf,
+    /// No se reconoció el formato.
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,7 +44,20 @@ pub const FAKE_DLLS: &[&str] = &[
     "ntdll.dll",
 ];
 
-pub fn detect_binary_kind(_bytes: &[u8]) -> BxResult<BinaryKind> {
-    // TODO: leer mágicos BEF / IMAGE_DOS_HEADER + IMAGE_NT_HEADERS64.
-    Err(BxError::NotImplemented)
+pub fn detect_binary_kind(bytes: &[u8]) -> BxResult<BinaryKind> {
+    if bytes.len() >= 4 && bytes[0..4] == *b"BEF\0" {
+        return Ok(BinaryKind::Bef);
+    }
+    if bytes.len() >= 0x40 {
+        let lfanew = u32::from_le_bytes([bytes[0x3C], bytes[0x3D], bytes[0x3E], bytes[0x3F]]) as usize;
+        if lfanew + 4 <= bytes.len()
+            && bytes[lfanew..lfanew + 4] == *b"PE\0\0"
+        {
+            return Ok(BinaryKind::PeWindows64);
+        }
+    }
+    if bytes.len() >= 4 && bytes[0..4] == *b"\x7fELF" {
+        return Ok(BinaryKind::Elf);
+    }
+    Ok(BinaryKind::Unknown)
 }

@@ -17,7 +17,6 @@ pub trait NicDriver {
     /// Bloqueante recibir (apps preferirán polling vía `ring::`).
     fn rx_frame(&mut self, buf: &mut [u8]) -> BxResult<usize>;
 
-    /// Stub default: no-op.
-    fn link_up(&mut self) -> BxResult<()> { Err(BxError::NotImplemented) }
-    fn link_down(&mut self) -> BxResult<()> { Err(BxError::NotImplemented) }
+    fn link_up(&mut self) -> BxResult<()> { Ok(()) }
+    fn link_down(&mut self) -> BxResult<()> { Ok(()) }
 }
