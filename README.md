@@ -1,375 +1,267 @@
-# FastOS / BMO
+# FastOS / BMO — Bare Metal Orchestrator
 
-FastOS es un sistema operativo propio en Rust para bare metal. BMO significa
-**Bare Metal Orchestrator**: el núcleo que organiza hardware, memoria, entrada,
-gráficos, procesos y las futuras APIs de compatibilidad.
-
-El objetivo actual es simple y honesto: **arrancar bien, pintar bien y responder
-bien usando UEFI GOP/framebuffer**. No hay driver oficial de fabricante, no hay
-firmware de GPU funcional en el camino de arranque y no se debe depender de una
-GPU concreta para que el OS funcione.
+Sistema operativo bare metal escrito en Rust para AMD Ryzen 5 5600X. GPU por UEFI GOP (framebuffer). Sin dependencias de drivers propietarios.
 
 ---
 
-## Estado real del proyecto
+## Arquitectura
 
-### Funciona / es el camino principal
-
-- Boot UEFI propio.
-- Kernel `no_std` en Rust, Ring 0.
-- BootInfo compartido entre bootloader y kernel.
-- Framebuffer por UEFI GOP.
-- Consola/framebuffer inicial.
-- Pantalla de bienvenida.
-- Escritorio Ring 0 por GOP.
-- Entrada PS/2 básica para teclado y ratón.
-- GDT, IDT, TSS y MSR de syscalls inicializados.
-- Page allocator inicial.
-- Enumeración PCI por ACPI MCFG/ECAM.
-- Estructura base de BMO ABI, BEF, scheduler, syscall y BareX.
-
-### No es objetivo activo ahora
-
-- Driver propietario/oficial de GPU.
-- Driver acelerado real para una GPU concreta.
-- Firmware de GPU como requisito de arranque.
-- Aceleración 3D por GPU.
-- WDDM real.
-- CUDA, Vulkan o DirectX nativo sobre hardware real.
-
-La carpeta `kernel/src/drivers/gpu/fastgpu/` queda como experimento/legado de
-investigación. No forma parte del camino estable de arranque. El camino gráfico
-oficial de FastOS por ahora es:
-
-```text
-UEFI GOP -> framebuffer -> desktop Ring 0 -> futura capa BareX software/GOP
+```
+┌────────────────────────────────────────────────────────────┐
+│                    Ring 3 — Apps / ÑEXO                    │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ ÑEXO CLI │ │ ByteDef  │ │ Restaur  │ │ BareX    │       │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────┬────┘       │
+│       │            │            │             │            │
+│       └────────────┴───────┬────┴─────────────┘            │
+│                            │ SYSCALL/SYSRET                │
+├────────────────────────────┼───────────────────────────────┤
+│                    Ring 0 — Kernel                         │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ ByteDef  │ │ Restaur  │ │ Scheduler│ │ Memory   │       │
+│  │ Antivirus│ │ Snapshots│ │ EDF+RR   │ │ DemandPg │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ BareX    │ │ Filesys  │ │ Network  │ │ Diag     │       │
+│  │ Graphics │ │ FAT32+BMO│ │ RTL8168  │ │ Overlay  │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ APIC     │ │ SMP      │ │ ACPI/PCI │ │ USB/xHCI │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+├────────────────────────────────────────────────────────────┤
+│                    Hardware                                │
+│  AMD Ryzen 5 5600X (Zen 3) │ UEFI GOP │ RTL8168 │ USB      │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Arquitectura objetivo
+## Lo que funciona
 
-```text
-Bootloader UEFI
-  -> carga kernel ELF
-  -> entrega BootInfo + framebuffer GOP
+### Core del kernel
+- Boot UEFI → Kernel ELF → GOP framebuffer
+- GDT + TSS con Ring 0 / Ring 3
+- IDT con IST1 para #PF/#GP/#UD/#NM
+- SYSCALL/SYSRET (IA32_LSTAR/STAR/FMASK)
+- Page allocator con demand paging
+- APIC timer (100 Hz) + I/O APIC
+- SMP: INIT-SIPI-SIPI para Application Processors
+- FPU lazy switching (CR0.TS → #NM → clear)
+- MTRR + PAT para framebuffer Write-Combining
+- Performance counters (instructions, cycles, branches, cache)
+- CPUID completo para Zen 3 (SSE/AVX/AES-NI/SHA/etc)
 
-Kernel Ring 0
-  -> serial, GDT/TSS, IDT, syscalls
-  -> memoria, ACPI/PCI, timers
-  -> framebuffer GOP
-  -> diag/ visual + serial + caja negra en RAM
-  -> welcome + escritorio GOP estable
+### Drivers
+- **GOP**: Framebuffer 1920x1080 con backbuffer
+- **Serial**: COM1 115200 baud
+- **PCI**: Enumeración por ACPI MCFG/ECAM
+- **NVMe**: Detección + read (write deshabilitado)
+- **AHCI**: Detección + read (write deshabilitado)
+- **RTL8168**: NIC con TX/RX ring buffers, DHCP, ARP, IP, ICMP, UDP
+- **USB/xHCI**: Detección + HID + Audio Class 2.0
 
-Ring 3 futuro
-  -> apps, servicios y compositor cliente
-  -> usa BMO ABI/syscalls para pedir dibujo, input, audio y tiempo
-  -> no toca hardware ni framebuffer directo
+### Archivos de sistema
+- **BMO-FS**: Filesystem nativo con CLI (`bmofs`)
+- **FAT32**: Read-only BPB parser
+- **Ramdisk**: Archivos embebidos
 
-BMO ABI
-  -> contrato estable para servicios del OS
-  -> base para syscalls, handles, memoria, strings, tiempo y sincronización
+### Diagnóstico
+- Eventos `[INFO] [WARN] [FAULT] [PANIC]` por módulo
+- Salida COM1 inmediata
+- Overlay visual GOP con 6 pestañas (Overview, CPU, Memory, I/O, Scheduler, Log)
+- Caja negra circular en RAM (256 eventos)
+- Telemetría atómica (30+ contadores)
 
-BareX
-  -> API gráfica/audio/input/net propia
-  -> descendiente conceptual de DirectX, pero diseñada para FastOS
-  -> primero backend GOP/software; después backends acelerados si existen
+### Seguridad
+- **ByteDefender**: Antivirus Ring 0 con pre-execution scanning
+  - Análisis heurístico (shellcode, packing, ROP, heap spray)
+  - Firma de amenazas conocidas (EICAR, ransomware, Metasploit)
+  - Caché de 64 escaneos
+  - Hooks de ejecución
+- **Restaurer**: Snapshots del kernel en tiempo real
+  - Guarda estado completo (page tables, processes, LAPIC, FPU, network)
+  - Rollback con verificación checksum
+  - Auto-snapshot cada 60 segundos
+  - Diff entre snapshots
 
-Compatibilidad futura
-  -> ideas de Windows: Win32/PE/thunks cuando sean útiles
-  -> ideas de Linux: syscalls simples, VFS, drivers pequeños
-  -> ideas de macOS: compositor pulido, experiencia visual consistente
+### Gráficos (BareX)
+- GOP software backend
+- fill_rect, draw_line (Bresenham), draw_circle
+- fill_gradient_h/v, fill_rounded_rect
+- draw_line_aa (anti-aliased Wu's algorithm)
+- fill_polygon (scanline)
+- Double buffering con present()
+- Color blending y lerp
+
+### Audio (BareX)
+- USB Audio Class 2.0 backend
+- 96K PCM buffer por voz
+- Mixer con equal-power pan law
+- Efectos: compressor, limiter, EQ 10-band, reverb
+- Spatial audio (distance + horizontal angle)
+- DSP math (sin, cos, sqrt, etc) sin librerías
+
+### Input (BareX)
+- BxInputSystem con bitmap de 256 teclas
+- Mouse state con cursor modes
+- Event polling
+
+### Red (BareX)
+- TCP/UDP sockets
+- SPSC ring buffers para SQE/CQE
+- NIC link up/down
+
+### Lenguajes
+- **ÑEXO**: CLI + runtime para Ring 3
+- **BMOasm v0.3.0**: Parser + codegen (x86_64, AArch64, RISC-V)
+- **nexo-sh**: Compilador de shaders (WGSL/GLSL → SPIR-V → BSF)
+
+---
+
+## Estructura del proyecto
+
+```
+FastOS/
+├── bootloader/           # UEFI bootloader (Rust, x86_64-unknown-uefi)
+├── boot_protocol/        # BootInfo struct compartido
+├── kernel/               # Kernel principal (Rust, no_std)
+│   └── src/
+│       ├── arch/         # CPU, GDT, IDT, TSS, paging, SMP, APIC, FPU
+│       ├── drivers/      # GOP, serial, PCI, NVMe, AHCI, RTL8168, USB
+│       ├── fs/           # FAT32, BMO-FS, ramdisk, VFS
+│       ├── memory/       # Page allocator, VMM, demand paging
+│       ├── sched/        # Round-robin, EDF, process, thread
+│       ├── diag/         # Eventos, buffer, overlay, telemetría
+│       ├── desktop/      # Welcome screen, compositor, render
+│       ├── barex/        # Graphics, audio, input, net, shader
+│       ├── bef/          # BEF loader (PE/ELF/native)
+│       ├── lang/         # ÑEXO, BMOasm
+│       ├── security/     # ByteDefender, Restaurer
+│       ├── syscall/      # Syscall dispatch
+│       └── ui/           # Console, font, framebuffer
+├── bmofs/                # BMO-FS CLI tool
+├── nexo/                 # ÑEXO runtime (no_std)
+├── nexo-sh-tool/         # Shader compiler (Naga + BLAKE3)
+├── USB_boot/             # Archivos para USB boot
+├── build_uefi.ps1        # Build + flash script
+├── build_uefi.cmd        # Wrapper para PowerShell
+├── BOOTX64.EFI           # Bootloader compilado
+├── kernel.elf            # Kernel compilado
+└── bmofs.img             # Imagen BMO-FS
 ```
 
 ---
 
-## diag/: diagnóstico visual integrado
-
-`diag/` es la capa de diagnóstico nativa de FastOS. No reemplaza al depurador
-externo; evita depender de uno para saber dónde se rompió el boot path.
-
-Estado actual:
-
-- Eventos `[INFO] [WARN] [FAULT] [PANIC]` por módulo.
-- Salida inmediata por serial COM1.
-- Overlay visual directo sobre framebuffer GOP.
-- Caja negra circular en RAM con los últimos eventos.
-- Arquitectura modular en `kernel/src/diag/`:
-  - `event.rs`: tipos `Severity`/`Event`.
-  - `buffer.rs`: ring-buffer RAM para post-mortem temprano.
-  - `serial_sink.rs`: salida COM1.
-  - `overlay.rs`: panel visual GOP.
-- Integrado en boot, arch, syscall, PCI, memoria, GOP, welcome, scheduler,
-  desktop y panic.
-- USB/BMO-FS queda diferido fuera del boot crítico hasta que storage sea seguro.
-
-Ruta segura para persistencia:
-
-```text
-diag event
-  -> RAM blackbox
-  -> serial COM1
-  -> GOP overlay
-  -> futuro diag::persist() cuando BMO-FS/USB sea estable
-```
-
-Regla importante: `diag/` no debe escribir automáticamente al USB durante el
-arranque temprano. Primero debe observar; después, cuando BMO-FS esté montado y
-validado, podrá crear una carpeta/log persistente en el USB para análisis
-post-mortem.
-
-El panic observado después de `memory/free pages` indica que el fallo ocurre en
-la zona USB/BMO-FS previa a GOP. Por eso el boot estable actual prioriza:
-
-```text
-memory -> storage deferred -> GOP -> APIC -> welcome -> Run -> desktop
-```
-
-La persistencia en USB debe volver como comando/servicio explícito cuando el
-driver de almacenamiento no pueda bloquear el arranque visual.
-
----
-
-## Decisión de GPU
-
-FastOS debe funcionar aunque no exista ningún driver de GPU dedicado. Por eso la
-decisión técnica actual es:
-
-1. **GOP primero**: todo lo visual debe poder dibujarse en framebuffer.
-2. **BareX no depende de un fabricante**: BareX debe tener backend software/GOP antes de
-   cualquier backend acelerado.
-3. **GPU real después**: si algún día se implementa un driver acelerado, será un
-   backend opcional, no el cimiento del sistema.
-4. **Sin firmware obligatorio**: el arranque no debe requerir blobs privados ni
-   payloads de GPU.
-
-Esto hace que BMO/FastOS sea más fácil de probar, depurar y mantener.
-
----
-
-## BareX: API descendiente de DirectX
-
-BareX es la API moderna de FastOS. La idea es tomar lo mejor de DirectX, pero sin
-copiar su dependencia de Windows ni de WDDM.
-
-Capas deseadas:
-
-- `barex::graphics`: device, queue, swapchain, buffers, textures, fences,
-  root-signature/PSO y comandos.
-- `barex::audio`: mixer, voces, formatos, latencia, backends.
-- `barex::input`: teclado, ratón, HID, gamepad, eventos.
-- `barex::net`: sockets, DNS, HTTP, QUIC/TLS a futuro.
-- `barex::shader`: IR propia y traducción futura.
-- `barex::compat`: thunks para Win32/PE/DirectX cuando el núcleo ya sea estable.
-
-Orden correcto para BareX graphics:
-
-1. Backend GOP/software: rectángulos, blit, texto, cursor, ventanas.
-2. Swapchain simple sobre framebuffer.
-3. Compositor estable con input.
-4. API pública limpia de `barex::graphics`.
-5. Compatibilidad tipo DirectDraw/DXGI/D3D12 encima de BareX.
-6. Backend acelerado opcional sólo cuando haya un driver real.
-
----
-
-## BMOasm: lenguaje tipo Python en español
-
-BMOasm será el lenguaje propio para crear servicios, pruebas, herramientas y
-apps pequeñas de FastOS sin escribir todo en Rust o ensamblador. Aunque se llame
-`asm`, la dirección correcta no es hacerlo como ensamblador crudo, sino como un
-lenguaje **alto nivel, indentado, UTF-8 y compilable a BMO IR/BEF**.
-
-Objetivo de sintaxis:
-
-- Parecida a Python: bloques por indentación, lectura simple y poco ruido.
-- En español: palabras clave claras para aprender y escribir más natural.
-- UTF-8 real: identificadores con `ñ`, acentos y nombres humanos.
-- Determinista: sin magia pesada en Ring 0; lo crítico se valida antes de correr.
-- Compilación futura a BEF/BMO ABI, no ejecución directa dentro del boot path.
-
-Ejemplo deseado:
-
-```python
-función saludar(nombre):
-    si nombre == nulo:
-        devolver "Hola desde FastOS"
-
-    devolver "Hola, " + nombre
-
-función principal():
-    año = 2026
-    dueño = "André"
-
-    para intento en rango(0, 3):
-        imprimir(saludar(dueño))
-
-    si año >= 2026:
-        imprimir("BMO está vivo")
-```
-
-Palabras clave candidatas:
-
-- `función`, `devolver`, `si`, `sino`, `mientras`, `para`, `en`
-- `intentar`, `capturar`, `finalmente`
-- `usar`, `desde`, `como`
-- `verdadero`, `falso`, `nulo`
-- `romper`, `continuar`, `pasar`
-
-Reglas iniciales recomendadas:
-
-1. Lexer UTF-8 con identificadores Unicode: `año`, `niño`, `señal`, `tamaño`.
-2. Parser por indentación, estilo Python, sin llaves obligatorias.
-3. Tipos opcionales al principio; inferencia simple después.
-4. Runtime pequeño encima de BMO ABI: `imprimir`, tiempo, memoria, archivos BEF.
-5. Modo kernel restringido: nada de memoria arbitraria sin permiso explícito.
-6. Modo usuario primero: BMOasm debe servir para probar syscalls y BareX sin
-   arriesgar el arranque.
-
-Ruta práctica:
-
-```text
-BMOasm fuente UTF-8
-  -> lexer/parser español
-  -> AST
-  -> BMO IR simple
-  -> BEF ejecutable o bytecode verificado
-  -> syscalls/BareX por BMO ABI
-```
-
----
-
-## Limpieza y enfoque
-
-Para que el proyecto avance, hay que separar tres grupos:
-
-### Núcleo estable
-
-Debe compilar y arrancar siempre:
-
-- `bootloader/`
-- `boot_protocol/`
-- `kernel/src/main.rs`
-- `kernel/src/arch/`
-- `kernel/src/diag/`
-- `kernel/src/desktop/`
-- `kernel/src/fb.rs`
-- `kernel/src/console.rs`
-- `kernel/src/drivers/gop/mod.rs`
-- `kernel/src/drivers/serial.rs`
-- `kernel/src/drivers/pci.rs`
-- `kernel/src/fs/ramdisk.rs` cuando se use de verdad
-
-### API en construcción
-
-Se conserva, pero no debe bloquear el arranque:
-
-- `kernel/src/barex/`
-- `kernel/src/bef/`
-- `kernel/src/sched/`
-- `kernel/src/syscall/`
-- `kernel/src/sandbox/`
-
-### Investigación / legado
-
-No debe ser requisito del boot path:
-
-- `kernel/src/drivers/gpu/fastgpu/` queda fuera del build activo
-- scripts de firmware/payload GPU
-- material extraído de Windows en `combo_Window_Extractor/`
-- documentos antiguos que prometen drivers GPU como si ya fueran funcionales
-
----
-
-## Próximos ataques recomendados
-
-### 1. Estabilizar boot + escritorio GOP
-
-- Mantener `Run -> Desktop` sin depender de Ring 3.
-- Quitar mensajes falsos de driver GPU en UI y scripts.
-- Hacer que el desktop tenga una ruta clara de salida/reinicio.
-- Reducir parpadeos, bloqueos de input y dependencias de hardware específico.
-
-### 2. Convertir el escritorio actual en backend BareX GOP
-
-- Extraer primitivas actuales de framebuffer como backend `BareXGopBackend`.
-- Mantener API pequeña: fill, blit, text, present, poll input.
-- No crear abstracciones grandes hasta que se usen.
-
-### 3. Completar syscalls mínimas útiles
-
-- `DebugPrint`
-- `ClockGetTime`
-- `NanoSleep`
-- `FbInfo`
-- `FbFill`
-- `FbBlit`
-- `KeyPoll`
-- `MousePoll`
-
-### 4. Ring 3 sólo cuando el scheduler pueda sostenerlo
-
-La regla práctica para FastOS/BMO es **Ring 0 + Ring 3 primero**. Rings 1 y 2
-no se usan en el camino estable porque en x86-64 moderno casi todos los OS los
-evitan: complican la ABI, las tablas y el cambio de contexto sin aportar mucho
-mientras el kernel todavía está arrancando. Se pueden reservar para investigación
-futura, pero no deben bloquear el escritorio.
-
-Modelo recomendado ahora:
-
-- **Ring 0/BMO supervisor**: HAL, memoria, scheduler, drivers, GOP framebuffer,
-  input bajo nivel, syscalls y render seguro.
-- **Ring 3/apps**: compositor cliente, apps BEF/BMOasm, servicios no críticos y
-  pruebas de BareX.
-- **Ring 1/2**: reservado/experimental; no mezclarlo todavía con boot, desktop ni
-  drivers esenciales.
-
-El comando `Run` debe llevar al escritorio funcional: Ring 0 pinta y mantiene el
-hardware, mientras prepara el contrato del compositor Ring 3. El compositor Ring
-3 no debe tomar el control hasta que existan:
-
-- stacks seguros por thread,
-- transición syscall/sysret validada,
-- dispatcher real,
-- scheduler que pueda volver al kernel sin congelar la UI.
-
-### 5. Compatibilidad Windows/Linux/macOS por capas, no mezclada en el kernel
-
-- Win32/PE/DirectX: capa `barex::compat`, no boot path.
-- Linux-like: syscalls simples y VFS limpio.
-- macOS-like: compositor visual y UX pulida.
+## Archivos legacy (no son parte del kernel)
+
+Estos archivos quedan como referencia pero no son necesarios para el boot:
+
+| Archivo | Propósito | Estado |
+|---------|-----------|--------|
+| `generate_payload_v2.py` | Generador de payload GPU NVIDIA | Legacy (NVIDIA) |
+| `write_gsp.ps1` | Writer de firmware GSP a SATA | Legacy (NVIDIA) |
+| `write_payload.ps1` | Writer de payload a SATA | Legacy (GPU) |
+| `combo_Window_Extractor/` | Reverse engineering de drivers Windows | Investigación |
+| `fastos_framebuffer_epic_animation.html` | Demo visual HTML | Demo |
+| `target_build/` | Artefactos de build | .gitignore |
 
 ---
 
 ## Build
 
-El flujo esperado es usar el script UEFI del repo:
-
 ```powershell
-.\build_uefi.cmd
+# Build completo + flash USB
+.\build_uefi.ps1
+
+# Solo compilar (sin flash)
+.\build_uefi.ps1 -BuildOnly
+
+# Solo flashear (ya compilado)
+.\build_uefi.ps1 -FlashOnly
+
+# Limpiar artefactos
+.\build_uefi.ps1 -Clean
 ```
 
-`build_uefi.cmd` llama a `build_uefi.ps1` con `ExecutionPolicy Bypass` sólo para
-esa ejecución, así no necesitas cambiar la política global de Windows.
-
-Requisitos habituales:
-
-- Rust nightly según `rust-toolchain.toml`.
-- Target bare metal configurado por `.cargo/config.toml`.
-- Firmware UEFI con Secure Boot desactivado durante pruebas.
-- GOP disponible en firmware.
+Requisitos:
+- Rust nightly
+- Target bare metal (`.cargo/config.toml`)
+- UEFI con Secure Boot desactivado
+- USB conectado
 
 ---
 
-## Principio del proyecto
+## Boot path
 
-FastOS no debe intentar ser Windows, Linux o macOS completos desde el primer día.
-Debe tomar ideas buenas de los tres y convertirlas en un OS propio:
+```
+UEFI → BOOTX64.EFI → kernel.elf
+  → Phase 0: CPU init (FPU/SSE/AVX/MTRR/PAT/perf)
+  → Phase 1: Memory (page allocator, heap)
+  → Phase 2: Devices (ACPI/PCI/NVMe/AHCI/RTL8168)
+  → Phase 3: Display (GOP framebuffer)
+  → Phase 4: Scheduler (APIC timer, SMP, Security)
+  → Phase 5: Desktop (welcome → "Run" → desktop Ring 0)
+```
 
-- pequeño,
-- arrancable,
-- depurable,
-- gráfico por GOP,
-- con BMO ABI estable,
-- con BareX como API moderna,
-- y con compatibilidad futura encima, no dentro del núcleo crítico.
+---
+
+## Syscalls disponibles
+
+| Número | Nombre | Descripción |
+|--------|--------|-------------|
+| 0x00 | ProcessExit | Matar proceso actual |
+| 0x03 | ThreadYield | Yield al scheduler |
+| 0x20 | FileOpen | Abrir archivo |
+| 0x21 | FileRead | Leer archivo |
+| 0x23 | FileClose | Cerrar archivo |
+| 0x25 | FileStat | Tamaño de archivo |
+| 0x50 | ClockGetTime | Leer TSC |
+| 0x51 | NanoSleep | Dormir nanosegundos |
+| 0x60 | FbInfo | Info del framebuffer |
+| 0x61 | FbFill | Rellenar rectángulo |
+| 0x62 | FbText | Dibujar texto |
+| 0x63 | FbPresent | Present (noop) |
+| 0x64 | FbBlit | Blit de imagen |
+| 0x65 | DesktopFrame | Render frame completo |
+| 0x70 | KeyPoll | Poll teclado PS/2 |
+| 0x71 | MousePoll | Poll ratón PS/2 |
+| 0x80 | Beep | Beep por frecuencia |
+| 0xA0 | BD_Scan | Escanear archivo (ByteDefender) |
+| 0xA1 | BD_Status | Estado de ByteDefender |
+| 0xA2 | SnapshotCreate | Crear snapshot del kernel |
+| 0xA3 | SnapshotRollback | Retroceder a snapshot |
+| 0xA4 | SnapshotList | Listar snapshots |
+| 0xF0 | DebugPrint | Imprimir por serial |
+
+---
+
+## Hardware soportado
+
+- **CPU**: AMD Ryzen 5 5600X (Zen 3, Family 19h)
+- **RAM**: Cualquier tamaño detectado por UEFI memory map
+- **GPU**: UEFI GOP framebuffer (cualquier GPU con UEFI)
+- **NIC**: Realtek RTL8168/8111
+- **Storage**: NVMe, AHCI (SATA)
+- **USB**: xHCI (AMD Ryzen)
+- **Audio**: USB Audio Class 2.0
+
+---
+
+## Próximos pasos
+
+1. **AHCI write**: Habilitar escritura a disco
+2. **Proceso Ring 3**: Lanzar "Hello World" desde Ring 3
+3. **NIC link up**: Cable ethernet funcional
+4. **Welcome screen**: Verificar pitch fix en hardware real
+5. **SMP per-CPU scheduler**: Multi-core real
+6. **ÑEXO commands**: Snapshot/Rollback desde CLI
+
+---
+
+## Principios
+
+- **GOP primero**: Todo visual por framebuffer, sin drivers GPU
+- **Ring 0 + Ring 3**: No Rings 1/2 (x86-64 moderno)
+- **Sin firmware obligatorio**: Boot sin blobs privados
+- **Modular**: Cada subsistema es independiente
+- **Depurable**: Diag integrado desde el primer byte

@@ -1,8 +1,0 @@
-<pagedefinition><properties elementprovider="{525C410E-B007-4F15-81DD-49DF9B17139B}" initializer="{2968B3C3-CC07-40BE-B78F-094B7C310479}" helptopic="mshelp://windows/?id=9a065073-a0c6-4cc8-acf7-39cd5e3a364a" layout="201" icon="Vault.dll,-1" displayname="@Vault.dll,-1" canonicalname="HubPage" navpane="true" /><childpages>
-<pagedefinition><localonly alternatetargetrelative="" /><properties  helptopic="mshelp://windows/?id=9a065073-a0c6-4cc8-acf7-39cd5e3a364a" layout="208"  icon="Vault.dll,-1" displayname="@Vault.dll,-310" canonicalname="NewWindowsCredentialPage"/></pagedefinition> 
-<pagedefinition><localonly alternatetargetrelative="" /><properties  helptopic="mshelp://windows/?id=9a065073-a0c6-4cc8-acf7-39cd5e3a364a" layout="208"  icon="Vault.dll,-1" displayname="@Vault.dll,-311" canonicalname="EditWindowsCredentialPage"/></pagedefinition> 
-
-<pagedefinition><localonly alternatetargetrelative="" /><properties  helptopic="mshelp://windows/?id=9a065073-a0c6-4cc8-acf7-39cd5e3a364a" layout="212"  icon="Vault.dll,-1" displayname="@Vault.dll,-315" canonicalname="NewGenericCredentialPage"/></pagedefinition> 
-<pagedefinition><localonly alternatetargetrelative="" /><properties  helptopic="mshelp://windows/?id=9a065073-a0c6-4cc8-acf7-39cd5e3a364a" layout="212"  icon="Vault.dll,-1" displayname="@Vault.dll,-316" canonicalname="EditGenericCredentialPage"/></pagedefinition> 
-<pagedefinition><localonly alternatetargetrelative="" /><properties  helptopic="mshelp://windows/?id=9a065073-a0c6-4cc8-acf7-39cd5e3a364a" layout="209"  icon="Vault.dll,-1" displayname="@Vault.dll,-312" canonicalname="NewCertificatePage"/></pagedefinition> </childpages> 
-</pagedefinition> 

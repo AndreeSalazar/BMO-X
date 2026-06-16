@@ -1,9 +1,0 @@
-HKCR
-{
-    Delete Network.ConnectionFolderContextMenu.1
-    Delete Network.ConnectionFolderContextMenu
-    Delete Network.ConnectionFolderContextMenuBack.1
-    Delete Network.ConnectionFolderContextMenuBack
-}
-
-
