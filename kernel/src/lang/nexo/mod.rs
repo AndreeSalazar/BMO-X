@@ -25,6 +25,9 @@ pub mod parser;
 pub mod sema;
 pub mod codegen;
 pub mod modules;
+pub mod runtime;
+pub mod c_frontend;
+pub mod stdlib;
 
 use crate::barex::BxResult;
 
@@ -57,6 +60,27 @@ pub fn compile(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     // 5. BMOasm → native code
     let mut traductor = crate::lang::bmoasm::traductor::Traductor::new();
     // Serialize BMOasm AST back to BMOasm source for the traductor
+    let bmo_source = serialize_bmoasm(&bmo_ast);
+    traductor.traducir(bmo_source.as_bytes())
+}
+
+/// Compile C source code to native code via ÑEXO.
+///
+/// Pipeline: C source → C lexer → C parser → C AST → ÑEXO AST → BMOasm → native
+pub fn compile_c(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
+    // 1. C Frontend: C source → ÑEXO AST
+    let ast = c_frontend::compile_c(source)?;
+
+    // 2. Semantic analysis
+    let sema = sema::Sema::new();
+    sema.check(&ast)?;
+
+    // 3. Codegen → BMOasm AST
+    let mut codegen = codegen::Codegen::new();
+    let bmo_ast = codegen.emit(&ast)?;
+
+    // 4. BMOasm → native code
+    let mut traductor = crate::lang::bmoasm::traductor::Traductor::new();
     let bmo_source = serialize_bmoasm(&bmo_ast);
     traductor.traducir(bmo_source.as_bytes())
 }
