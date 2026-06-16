@@ -249,8 +249,42 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         boot_warn("phase2", "MCFG not found; PCI ECAM unavailable");
     }
 
-    // Storage (deferred — USB/BMO-FS blocks boot)
-    boot_warn("phase2", "Storage init deferred (USB/BMO-FS not in boot path)");
+    // Storage: detect NVMe or AHCI
+    if unsafe { drivers::pci::SCAN_RESULT.is_some() } {
+        // Try NVMe first (faster)
+        match unsafe { drivers::nvme::NvmeDriver::detect() } {
+            Some(_nvme) => {
+                boot_log("phase2", "NVMe controller detected and initialized");
+                // Store driver globally for fs module
+                unsafe { drivers::nvme::NVME_DRIVER = Some(_nvme); }
+            }
+            None => {
+                // Try AHCI/SATA
+                match unsafe { drivers::ahci::AhciDriver::detect() } {
+                    Some(_ahci) => {
+                        boot_log("phase2", "AHCI/SATA controller detected and initialized");
+                        unsafe { drivers::ahci::AHCI_DRIVER = Some(_ahci); }
+                    }
+                    None => {
+                        boot_warn("phase2", "No NVMe or AHCI storage found");
+                    }
+                }
+            }
+        }
+    } else {
+        boot_warn("phase2", "PCI not scanned; storage detection skipped");
+    }
+
+    // Network: detect RTL8168 NIC
+    match unsafe { drivers::net::rtl8168::Rtl8168Driver::detect() } {
+        Some(_rtl) => {
+            boot_log("phase2", "RTL8168 NIC detected");
+            unsafe { drivers::net::rtl8168::RTL_DRIVER = Some(_rtl); }
+        }
+        None => {
+            boot_warn("phase2", "No RTL8168 NIC found");
+        }
+    }
 
     let phase2_end = arch::cpu::rdtsc();
     boot_log_u64("phase2", "Phase 2 time (TSC ticks)", phase2_end - phase1_end);
@@ -297,6 +331,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // APIC timer for preemptive scheduling
     arch::apic::init_apic(100);
     boot_log("phase4", "APIC timer started (100 Hz, 10ms ticks)");
+
+    // SMP: bring up Application Processors (before STI)
+    unsafe { arch::smp::smp_init(); }
 
     // Enable interrupts
     arch::cpu::sti();

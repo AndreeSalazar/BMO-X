@@ -8,6 +8,8 @@ use crate::fs::{DiskReader, DiskError};
 use crate::arch::page_alloc;
 use core::ptr::{read_volatile, write_volatile};
 
+pub static mut NVME_DRIVER: Option<NvmeDriver> = None;
+
 const NVME_CLASS: u8 = 0x01;
 const NVME_SUBCLASS: u8 = 0x08;
 

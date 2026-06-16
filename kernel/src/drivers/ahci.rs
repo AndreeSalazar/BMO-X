@@ -8,6 +8,8 @@ use crate::fs::{DiskReader, DiskWriter, DiskError};
 use crate::arch::page_alloc;
 use core::ptr::{read_volatile, write_volatile};
 
+pub static mut AHCI_DRIVER: Option<AhciDriver> = None;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AhciRuntimeMode {
     DryRun,

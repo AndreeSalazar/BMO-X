@@ -11,13 +11,13 @@ use core::arch::asm;
 pub const APIC_TIMER_VECTOR: u8 = 48;
 
 // Local APIC register offsets (from APIC base, memory-mapped)
-const APIC_ID:           u32 = 0x020;
+pub const APIC_ID:           u32 = 0x020;
 const APIC_VERSION:      u32 = 0x030;
 const APIC_TPR:          u32 = 0x080;
 const APIC_EOI:          u32 = 0x0B0;
 const APIC_SPURIOUS:     u32 = 0x0F0;
-const APIC_ICR_LO:      u32 = 0x300;
-const APIC_ICR_HI:      u32 = 0x310;
+pub const APIC_ICR_LO:      u32 = 0x300;
+pub const APIC_ICR_HI:      u32 = 0x310;
 const APIC_TIMER_LVT:   u32 = 0x320;
 const APIC_TIMER_INIT:  u32 = 0x380;
 const APIC_TIMER_CUR:   u32 = 0x390;
@@ -41,16 +41,21 @@ fn read_apic_base() -> u64 {
 
 /// Write to APIC register.
 #[inline]
-unsafe fn apic_write(offset: u32, val: u32) {
+pub unsafe fn apic_write(offset: u32, val: u32) {
     let ptr = (APIC_BASE + offset as u64) as *mut u32;
     core::ptr::write_volatile(ptr, val);
 }
 
 /// Read from APIC register.
 #[inline]
-unsafe fn apic_read(offset: u32) -> u32 {
+pub unsafe fn apic_read(offset: u32) -> u32 {
     let ptr = (APIC_BASE + offset as u64) as *const u32;
     core::ptr::read_volatile(ptr)
+}
+
+/// Read the LAPIC ID of the current core.
+pub fn read_lapic_id() -> u32 {
+    unsafe { apic_read(APIC_ID) >> 24 }
 }
 
 /// Send End-Of-Interrupt to APIC. Must be called at the end of every APIC interrupt handler.

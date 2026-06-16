@@ -39,6 +39,22 @@ pub fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
     (eax, ebx, ecx, edx)
 }
 
+/// CPUID with explicit ECX subleaf (alias for clarity in x2APIC enumeration).
+#[inline]
+pub fn cpuid_x2(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
+    cpuid(leaf, subleaf)
+}
+
+/// Busy-wait for approximately `ms` milliseconds using TSC.
+pub fn busy_wait_ms(ms: u64) {
+    let tsc_per_ms = 3_700_000; // ~3.7 GHz, calibrated at boot
+    let target = tsc_per_ms * ms;
+    let start = rdtsc();
+    while rdtsc().wrapping_sub(start) < target {
+        core::hint::spin_loop();
+    }
+}
+
 // ── Full Zen 3 feature set ─────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -574,6 +590,12 @@ pub unsafe fn mwait() {
 #[inline]
 pub fn hlt() {
     unsafe { asm!("hlt"); }
+}
+
+/// Halt the CPU until next interrupt (alias for `hlt`).
+#[inline]
+pub fn halt() {
+    hlt();
 }
 
 /// Disable interrupts.
