@@ -290,3 +290,330 @@ pub unsafe fn free_user_page_tables(pml4_phys: u64) {
         pml4e.0 = 0;
     }
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// Demand Paging + Virtual Memory Area (VMA) tracking
+// ══════════════════════════════════════════════════════════════════════
+
+/// Software flag (bit 9) — page is demand-allocated (not yet present).
+/// Set in PTE when a VMA is marked Demand; cleared when the page is faulted in.
+pub const DEMAND: u64 = 1 << 9;
+
+/// Software flag (bit 10) — Copy-on-Write page.
+/// Write-triggered #PF on a CoW page allocates a fresh copy.
+pub const COW: u64 = 1 << 10;
+
+/// A single Virtual Memory Area.
+#[derive(Clone, Copy, Debug)]
+pub struct Vma {
+    pub virt_start: u64,
+    pub virt_end: u64,   // exclusive
+    pub flags: u64,       // PTE flags (USER | WRITABLE | NO_EXECUTE, etc.)
+    pub kind: VmaKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VmaKind {
+    /// Pages allocated upfront (old behavior).
+    Fixed,
+    /// Pages allocated on first access (#PF handler resolves).
+    Demand,
+    /// Copy-on-Write: shares physical pages with another address space.
+    /// The u64 is the "backing" PML4 where the original pages live.
+    Cow(u64),
+}
+
+impl Vma {
+    pub const fn empty() -> Self {
+        Self { virt_start: 0, virt_end: 0, flags: 0, kind: VmaKind::Fixed }
+    }
+
+    pub fn contains(&self, addr: u64) -> bool {
+        addr >= self.virt_start && addr < self.virt_end
+    }
+
+    pub fn is_demand(&self) -> bool {
+        self.kind == VmaKind::Demand
+    }
+}
+
+/// Per-process address space tracker.
+#[derive(Debug)]
+pub struct AddressSpace {
+    pub pml4_phys: u64,
+    pub vmas: [Vma; 32],
+    pub vma_count: usize,
+}
+
+impl AddressSpace {
+    pub const fn empty() -> Self {
+        Self {
+            pml4_phys: 0,
+            vmas: [Vma::empty(); 32],
+            vma_count: 0,
+        }
+    }
+
+    /// Add a VMA to this address space. Returns false if full.
+    pub fn add_vma(&mut self, vma: Vma) -> bool {
+        if self.vma_count >= self.vmas.len() {
+            return false;
+        }
+        self.vmas[self.vma_count] = vma;
+        self.vma_count += true as usize;
+        true
+    }
+
+    /// Find the VMA that contains `addr`, if any.
+    pub fn find_vma(&self, addr: u64) -> Option<&Vma> {
+        for i in 0..self.vma_count {
+            if self.vmas[i].contains(addr) {
+                return Some(&self.vmas[i]);
+            }
+        }
+        None
+    }
+
+    /// Find the VMA containing `addr` (mutable).
+    pub fn find_vma_mut(&mut self, addr: u64) -> Option<&mut Vma> {
+        for i in 0..self.vma_count {
+            if self.vmas[i].contains(addr) {
+                return Some(&mut self.vmas[i]);
+            }
+        }
+        None
+    }
+}
+
+/// Map a user virtual address range as DEMAND pages (lazily allocated on #PF).
+///
+/// Creates PML4→PDPT→PD→PT entries with PRESENT=0 and DEMAND flag set.
+/// The #PF handler will allocate physical pages on first access.
+pub unsafe fn map_user_demand(
+    pml4_phys: u64,
+    virt_start: u64,
+    pages: usize,
+    flags: u64,
+) -> Result<(), &'static str> {
+    if pages == 0 {
+        return Ok(());
+    }
+    let pml4 = pml4_phys as *mut PageTable;
+    let mut va = virt_start;
+
+    for _ in 0..pages {
+        let pml4_i = ((va >> 39) & 0x1FF) as usize;
+        let pdpt_i = ((va >> 30) & 0x1FF) as usize;
+        let pd_i = ((va >> 21) & 0x1FF) as usize;
+        let pt_i = ((va >> 12) & 0x1FF) as usize;
+
+        // PML4 entry
+        let pml4e = &mut (*pml4).entries[pml4_i];
+        let pdpt_phys: u64;
+        if !pml4e.is_present() {
+            pdpt_phys = alloc_page_table().ok_or("OOM allocating PDPT")?;
+            core::ptr::write_bytes(pdpt_phys as *mut u8, 0, PAGE_SIZE as usize);
+            pml4e.0 = PageTableEntry::new(pdpt_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
+        } else {
+            pdpt_phys = pml4e.phys_addr();
+        }
+
+        // PDPT entry
+        let pdpt = pdpt_phys as *mut PageTable;
+        let pdpte = &mut (*pdpt).entries[pdpt_i];
+        let pd_phys: u64;
+        if !pdpte.is_present() {
+            pd_phys = alloc_page_table().ok_or("OOM allocating PD")?;
+            core::ptr::write_bytes(pd_phys as *mut u8, 0, PAGE_SIZE as usize);
+            pdpte.0 = PageTableEntry::new(pd_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
+        } else {
+            pd_phys = pdpte.phys_addr();
+        }
+
+        // PD entry
+        let pd = pd_phys as *mut PageTable;
+        let pde = &mut (*pd).entries[pd_i];
+        let pt_phys: u64;
+        if !pde.is_present() {
+            pt_phys = alloc_page_table().ok_or("OOM allocating PT")?;
+            core::ptr::write_bytes(pt_phys as *mut u8, 0, PAGE_SIZE as usize);
+            pde.0 = PageTableEntry::new(pt_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
+        } else {
+            pt_phys = pde.phys_addr();
+        }
+
+        // PT entry — NOT present, but with DEMAND flag
+        let pt = pt_phys as *mut PageTable;
+        let pte = &mut (*pt).entries[pt_i];
+        if pte.is_present() {
+            return Err("Page already mapped");
+        }
+        // PRESENT=0, DEMAND=1 — page will be allocated on first #PF
+        pte.0 = (flags | DEMAND) & !flags::PRESENT;
+
+        va += PAGE_SIZE;
+    }
+
+    Ok(())
+}
+
+/// Resolve a demand page fault: allocate a physical page and map it.
+///
+/// Called from the #PF handler when the fault address is in a demand VMA.
+/// Returns Ok(true) if the fault was resolved, Ok(false) if not a demand fault,
+/// Err if the fault is fatal.
+pub unsafe fn resolve_demand_page(
+    fault_addr: u64,
+    pml4_phys: u64,
+    vma: &Vma,
+) -> Result<bool, &'static str> {
+    let page_addr = fault_addr & !(PAGE_SIZE - 1);
+    let pml4 = pml4_phys as *mut PageTable;
+
+    let pml4_i = ((page_addr >> 39) & 0x1FF) as usize;
+    let pdpt_i = ((page_addr >> 30) & 0x1FF) as usize;
+    let pd_i = ((page_addr >> 21) & 0x1FF) as usize;
+    let pt_i = ((page_addr >> 12) & 0x1FF) as usize;
+
+    // Walk to the PT entry
+    let pml4e = &mut (*pml4).entries[pml4_i];
+    if !pml4e.is_present() { return Ok(false); }
+
+    let pdpt = pml4e.phys_addr() as *mut PageTable;
+    let pdpte = &mut (*pdpt).entries[pdpt_i];
+    if !pdpte.is_present() { return Ok(false); }
+
+    let pd = pdpte.phys_addr() as *mut PageTable;
+    let pde = &mut (*pd).entries[pd_i];
+    if !pde.is_present() { return Ok(false); }
+
+    let pt = pde.phys_addr() as *mut PageTable;
+    let pte = &mut (*pt).entries[pt_i];
+
+    // Check if this is a demand page
+    if pte.0 & DEMAND == 0 {
+        return Ok(false); // Not a demand page
+    }
+
+    // Allocate a physical page
+    let phys = crate::arch::page_alloc::alloc_pages_contiguous(1)
+        .ok_or("OOM resolving demand page")?;
+
+    // Zero the page
+    core::ptr::write_bytes(phys as *mut u8, 0, PAGE_SIZE as usize);
+
+    // Map it: PRESENT=1, DEMAND=0, keep other flags
+    let final_flags = (vma.flags | flags::PRESENT) & !DEMAND;
+    pte.0 = PageTableEntry::new(phys, final_flags).0;
+
+    // Invalidate TLB for this page
+    invlpg(page_addr);
+
+    crate::diag::trace_u64("vm", "demand page resolved", page_addr);
+    Ok(true)
+}
+
+/// Resolve a Copy-on-Write page fault: allocate a fresh copy and map it.
+///
+/// Called from the #PF handler when a write hits a CoW page.
+pub unsafe fn resolve_cow_page(
+    fault_addr: u64,
+    pml4_phys: u64,
+    vma: &Vma,
+) -> Result<bool, &'static str> {
+    let page_addr = fault_addr & !(PAGE_SIZE - 1);
+    let pml4 = pml4_phys as *mut PageTable;
+
+    let pml4_i = ((page_addr >> 39) & 0x1FF) as usize;
+    let pdpt_i = ((page_addr >> 30) & 0x1FF) as usize;
+    let pd_i = ((page_addr >> 21) & 0x1FF) as usize;
+    let pt_i = ((page_addr >> 12) & 0x1FF) as usize;
+
+    // Walk to the PT entry
+    let pml4e = &mut (*pml4).entries[pml4_i];
+    if !pml4e.is_present() { return Ok(false); }
+
+    let pdpt = pml4e.phys_addr() as *mut PageTable;
+    let pdpte = &mut (*pdpt).entries[pdpt_i];
+    if !pdpte.is_present() { return Ok(false); }
+
+    let pd = pdpte.phys_addr() as *mut PageTable;
+    let pde = &mut (*pd).entries[pd_i];
+    if !pde.is_present() { return Ok(false); }
+
+    let pt = pde.phys_addr() as *mut PageTable;
+    let pte = &mut (*pt).entries[pt_i];
+
+    // Check if this is a CoW page
+    if pte.0 & COW == 0 {
+        return Ok(false); // Not a CoW page
+    }
+
+    // Read the old physical page content
+    let old_phys = pte.phys_addr();
+
+    // Allocate a fresh page
+    let new_phys = crate::arch::page_alloc::alloc_pages_contiguous(1)
+        .ok_or("OOM resolving CoW page")?;
+
+    // Copy old content to new page
+    core::ptr::copy_nonoverlapping(
+        old_phys as *const u8,
+        new_phys as *mut u8,
+        PAGE_SIZE as usize,
+    );
+
+    // Map new page: PRESENT=1, COW=0, WRITABLE=1
+    let final_flags = (vma.flags | flags::PRESENT | flags::WRITABLE) & !(COW | DEMAND);
+    pte.0 = PageTableEntry::new(new_phys, final_flags).0;
+
+    invlpg(page_addr);
+
+    crate::diag::trace_u64("vm", "CoW page resolved", page_addr);
+    Ok(true)
+}
+
+/// Generic page fault resolver: tries demand, then CoW.
+///
+/// Returns Ok(true) if resolved, Ok(false) if not our fault (pass to kill handler).
+pub unsafe fn handle_page_fault(
+    fault_addr: u64,
+    error_code: u64,
+    pml4_phys: u64,
+    vmas: &[Vma],
+) -> bool {
+    // Kernel-mode faults are always fatal (should not happen in normal operation)
+    // Bit 0 of error code: 0 = fault in supervisor mode → fatal
+    if error_code & 1 == 0 {
+        return false; // Not a user-mode fault → kill
+    }
+
+    // Find the VMA for this fault address
+    for vma in vmas {
+        if !vma.contains(fault_addr) {
+            continue;
+        }
+
+        // Demand page: first access allocates
+        if vma.kind == VmaKind::Demand {
+            if let Ok(true) = resolve_demand_page(fault_addr, pml4_phys, vma) {
+                return true;
+            }
+        }
+
+        // CoW: write access triggers copy
+        let is_write = error_code & (1 << 1) != 0;
+        if is_write && matches!(vma.kind, VmaKind::Cow(_)) {
+            if let Ok(true) = resolve_cow_page(fault_addr, pml4_phys, vma) {
+                return true;
+            }
+        }
+
+        // Present page but permission violation (e.g., write to read-only)
+        // This is a real fault
+        break;
+    }
+
+    false // Not resolved → caller should kill process
+}
+

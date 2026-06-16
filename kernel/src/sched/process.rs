@@ -46,6 +46,8 @@ pub struct Process {
     pub user_stack_base: u64,
     /// User stack size in bytes.
     pub user_stack_size: usize,
+    /// Virtual memory areas for demand paging / CoW.
+    pub addr_space: crate::arch::paging::AddressSpace,
 }
 
 impl Process {
@@ -63,6 +65,7 @@ impl Process {
             user_code_size: 0,
             user_stack_base: 0,
             user_stack_size: 0,
+            addr_space: crate::arch::paging::AddressSpace::empty(),
         }
     }
 

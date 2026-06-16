@@ -172,21 +172,35 @@ unsafe extern "C" fn isr_stub_general_protection() {
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_page_fault() {
     naked_asm!(
-        // Save minimal context for kill_current_process
+        // Save minimal context
         "push rax",
         "push rdi",
         "push rsi",
         "push rdx",
+        "push rcx",
+        "push r8",
+        "push r9",
 
         // Get error code and CR2
         "mov rdi, 14",                 // vector = #PF (14)
-        "mov rsi, [rsp + 32]",         // error code (after 4 pushes)
+        "mov rsi, [rsp + 56]",         // error code (after 7 pushes)
         "mov rdx, cr2",                // faulting address
 
-        // Call Rust handler
+        // Call Rust handler — returns bool (true = resolved, false = kill)
+        "call page_fault_handler_rust",
+        "test al, al",
+        "jnz 2f",                      // if resolved, skip to iretq
+
+        // Not resolved — call kill handler (never returns)
+        "mov rdi, 14",
+        "mov rsi, [rsp + 56]",
+        "mov rdx, cr2",
         "call exception_kill_handler_rust",
 
-        // Should never return, but just in case
+        "2:", // Fault resolved — pop context and return
+        "pop r9",
+        "pop r8",
+        "pop rcx",
         "pop rdx",
         "pop rsi",
         "pop rdi",
@@ -387,21 +401,42 @@ extern "C" fn apic_timer_handler_rust() {
     crate::arch::apic::apic_eoi();
 }
 
-/// Exception handler that kills the current process and returns to scheduler.
+/// Exception handler that tries demand paging before killing the process.
 /// Called from #GP and #PF ISR stubs.
 #[unsafe(no_mangle)]
 extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> ! {
     use core::sync::atomic::Ordering;
     let t = crate::diag::telemetry::t();
+
     match vector {
+        14 => {
+            t.cpu.page_faults.fetch_add(1, Ordering::Relaxed);
+
+            // Try to resolve as a demand page or CoW fault
+            if let Some(thr) = crate::sched::thread::current_thread() {
+                if let Some(proc) = crate::sched::process::get_process(thr.pid) {
+                    if proc.page_table_root != 0 && proc.addr_space.vma_count > 0 {
+                    let resolved = unsafe {
+                        crate::arch::paging::handle_page_fault(
+                            cr2,
+                            error,
+                            proc.page_table_root,
+                            &proc.addr_space.vmas[..proc.addr_space.vma_count],
+                        )
+                    };
+                        if resolved {
+                            crate::diag::trace_u64("vm", "demand page resolved", cr2);
+                        }
+                    }
+                }
+            }
+
+            crate::diag::fault_u64("#PF", "page fault at CR2", cr2);
+            crate::diag::fault_u64("#PF", "page fault error code", error);
+        }
         13 => {
             t.cpu.gp_faults.fetch_add(1, Ordering::Relaxed);
             crate::diag::fault_u64("#GP", "general protection fault", error);
-        }
-        14 => {
-            t.cpu.page_faults.fetch_add(1, Ordering::Relaxed);
-            crate::diag::fault_u64("#PF", "page fault at CR2", cr2);
-            crate::diag::fault_u64("#PF", "page fault error code", error);
         }
         7 => {
             t.cpu.nm_faults.fetch_add(1, Ordering::Relaxed);
@@ -438,4 +473,46 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> 
 extern "C" fn fpu_nm_handler_rust() {
     // Clear CR0.TS to allow FPU/SSE/AVX instructions
     crate::arch::fpu::clear_lazy_fpu();
+}
+
+/// Page fault handler — returns true if fault was resolved (demand page / CoW).
+/// Returns false if the fault is fatal and the process should be killed.
+///
+/// Called from isr_stub_page_fault before the kill handler.
+#[unsafe(no_mangle)]
+extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> bool {
+    use core::sync::atomic::Ordering;
+    crate::diag::telemetry::t().cpu.page_faults.fetch_add(1, Ordering::Relaxed);
+
+    // Only try to resolve user-mode faults (bit 0 of error code = 1 means user mode)
+    if error & 1 == 0 {
+        return false; // Kernel-mode fault → kill
+    }
+
+    // Get current process and its VMAs
+    let (pml4_phys, vma_count, vmas_ptr) = if let Some(thr) = crate::sched::thread::current_thread() {
+        if let Some(proc) = crate::sched::process::get_process(thr.pid) {
+            if proc.page_table_root != 0 && proc.addr_space.vma_count > 0 {
+                (
+                    proc.page_table_root,
+                    proc.addr_space.vma_count,
+                    proc.addr_space.vmas.as_ptr(),
+                )
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    };
+
+    // Build a slice of VMAs (safe because we're in interrupt context, single-core)
+    let vmas = unsafe { core::slice::from_raw_parts(vmas_ptr, vma_count) };
+
+    // Try to resolve
+    unsafe {
+        crate::arch::paging::handle_page_fault(cr2, error, pml4_phys, vmas)
+    }
 }
