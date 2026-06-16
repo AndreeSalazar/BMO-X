@@ -10,4 +10,5 @@
 pub mod intrinsics;
 pub mod flags;
 
+#[allow(unused_imports)]
 pub use intrinsics::{IntrinsicId, emit_intrinsic};

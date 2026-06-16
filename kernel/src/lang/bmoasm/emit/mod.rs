@@ -4,9 +4,8 @@
 pub mod x86_64;
 pub mod aarch64;
 pub mod riscv;
+pub mod backend;
 
-// Re-exportar la arquitectura activa en tiempo de compilación para el OS.
-// Dado que FastOS corre actualmente sobre x86-64, este es el backend activo por defecto.
 pub use x86_64::reg::Reg64;
 pub use x86_64::encoder::Emitter;
 

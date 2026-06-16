@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod backend_impl;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegRiscv {
     Zero = 0, Ra = 1, Sp = 2, Gp = 3,

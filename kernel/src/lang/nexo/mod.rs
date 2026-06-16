@@ -196,11 +196,18 @@ fn serialize_expr(expr: &crate::lang::bmoasm::parser::ast::Expr, out: &mut alloc
                 B::Resta => "resta",
                 B::Mult => "mult",
                 B::Div => "div",
+                B::Mod => "mod",
                 B::Y => "y",
                 B::O => "o",
+                B::Xor => "xor",
+                B::Shl => "shl",
+                B::Shr => "shr",
                 B::Igual => "igual",
                 B::Mayor => "mayor",
                 B::Menor => "menor",
+                B::MayIg => "mayor_igual",
+                B::MenIg => "menor_igual",
+                B::Difer => "diferente",
             });
             out.push(' ');
             serialize_expr(right, out);

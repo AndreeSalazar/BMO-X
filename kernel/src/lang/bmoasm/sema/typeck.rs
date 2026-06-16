@@ -151,6 +151,35 @@ impl Sema {
                     return Err(BxError::InvalidArgument);
                 }
                 Stmt::FnForward { .. } => {}
+                Stmt::Match { expr, arms, default } => {
+                    self.check_expr(expr, scope)?;
+                    for (pattern, body) in arms {
+                        self.check_expr(pattern, scope)?;
+                        let mut arm_scope = scope.clone();
+                        self.check_body(body, &mut arm_scope, ret_ty, in_fn, in_loop)?;
+                    }
+                    if let Some(def) = default {
+                        let mut def_scope = scope.clone();
+                        self.check_body(def, &mut def_scope, ret_ty, in_fn, in_loop)?;
+                    }
+                }
+                Stmt::Para { var, desde, hasta, paso, body } => {
+                    self.check_expr(desde, scope)?;
+                    self.check_expr(hasta, scope)?;
+                    if let Some(p) = paso { self.check_expr(p, scope)?; }
+                    let mut loop_scope = scope.clone();
+                    loop_scope.push(ScopeEntry {
+                        name: var.clone(),
+                        ty: Type::Num,
+                        frame_offset: 0,
+                    });
+                    self.check_body(body, &mut loop_scope, ret_ty, in_fn, true)?;
+                }
+                Stmt::Bucle(body) => {
+                    self.check_body(body, scope, ret_ty, in_fn, true)?;
+                }
+                Stmt::Etiqueta(_) => {}
+                Stmt::Salto(_) => {}
             }
         }
         Ok(())

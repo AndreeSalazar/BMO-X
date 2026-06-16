@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod backend_impl;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegArm {
     X0 = 0, X1 = 1, X2 = 2, X3 = 3,

@@ -215,6 +215,81 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Stmt::Continua)
             }
+            TokenKind::KwMatch => {
+                self.advance();
+                let expr = self.parse_expr(0)?;
+                self.expect(TokenKind::LBrace)?;
+                let mut arms = Vec::new();
+                let mut default = None;
+                while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
+                    if self.current.kind == TokenKind::KwDefecto {
+                        self.advance();
+                        self.expect(TokenKind::Arrow)?;
+                        self.expect(TokenKind::LBrace)?;
+                        let mut body = Vec::new();
+                        while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
+                            body.push(self.parse_stmt()?);
+                        }
+                        self.expect(TokenKind::RBrace)?;
+                        default = Some(body);
+                    } else if self.current.kind == TokenKind::KwCaso {
+                        self.advance();
+                        let pattern = self.parse_expr(0)?;
+                        self.expect(TokenKind::Arrow)?;
+                        self.expect(TokenKind::LBrace)?;
+                        let mut body = Vec::new();
+                        while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
+                            body.push(self.parse_stmt()?);
+                        }
+                        self.expect(TokenKind::RBrace)?;
+                        arms.push((pattern, body));
+                    } else {
+                        self.advance(); // skip unrecognized token
+                    }
+                }
+                self.expect(TokenKind::RBrace)?;
+                Ok(Stmt::Match { expr, arms, default })
+            }
+            TokenKind::KwPara => {
+                self.advance();
+                let var = self.expect_ident()?;
+                self.expect(TokenKind::KwDesde)?;
+                let desde = self.parse_expr(0)?;
+                self.expect(TokenKind::KwHasta)?;
+                let hasta = self.parse_expr(0)?;
+                let mut paso = None;
+                if self.current.kind == TokenKind::KwPaso {
+                    self.advance();
+                    paso = Some(self.parse_expr(0)?);
+                }
+                self.expect(TokenKind::LBrace)?;
+                let mut body = Vec::new();
+                while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
+                    body.push(self.parse_stmt()?);
+                }
+                self.expect(TokenKind::RBrace)?;
+                Ok(Stmt::Para { var, desde, hasta, paso, body })
+            }
+            TokenKind::KwBucle => {
+                self.advance();
+                self.expect(TokenKind::LBrace)?;
+                let mut body = Vec::new();
+                while self.current.kind != TokenKind::RBrace && self.current.kind != TokenKind::Eof {
+                    body.push(self.parse_stmt()?);
+                }
+                self.expect(TokenKind::RBrace)?;
+                Ok(Stmt::Bucle(body))
+            }
+            TokenKind::KwEtiqueta => {
+                self.advance();
+                let name = self.expect_ident()?;
+                Ok(Stmt::Etiqueta(name))
+            }
+            TokenKind::KwSalto => {
+                self.advance();
+                let name = self.expect_ident()?;
+                Ok(Stmt::Salto(name))
+            }
             TokenKind::KwSyscall => {
                 self.advance();
                 Ok(Stmt::ExprStmt(Expr::Reg(String::from("syscall"))))
@@ -342,8 +417,12 @@ fn to_bin_op(kind: TokenKind) -> BxResult<BinOp> {
         TokenKind::OpResta => BinOp::Resta,
         TokenKind::OpMult => BinOp::Mult,
         TokenKind::OpDiv => BinOp::Div,
+        TokenKind::OpMod => BinOp::Mod,
         TokenKind::OpY => BinOp::Y,
         TokenKind::OpO => BinOp::O,
+        TokenKind::OpXor => BinOp::Xor,
+        TokenKind::OpShl => BinOp::Shl,
+        TokenKind::OpShr => BinOp::Shr,
         TokenKind::OpIgual => BinOp::Igual,
         TokenKind::OpMayor => BinOp::Mayor,
         TokenKind::OpMenor => BinOp::Menor,

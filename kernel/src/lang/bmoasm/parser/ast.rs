@@ -17,9 +17,9 @@ pub enum Type {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
-    Suma, Resta, Mult, Div,
-    Y, O,
-    Igual, Mayor, Menor,
+    Suma, Resta, Mult, Div, Mod,
+    Y, O, Xor, Shl, Shr,
+    Igual, Mayor, Menor, MayIg, MenIg, Difer,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +70,16 @@ pub enum Stmt {
     ExprStmt(Expr),
     /// Declaración forward de función (para calls forward).
     FnForward { name: String, params: Vec<(String, Type)>, ret: Type },
+    /// `match expr { caso pat => body, ... defecto => body }`.
+    Match { expr: Expr, arms: Vec<(Expr, Vec<Stmt>)>, default: Option<Vec<Stmt>> },
+    /// `para var desde expr hasta expr [paso expr] { body }`.
+    Para { var: String, desde: Expr, hasta: Expr, paso: Option<Expr>, body: Vec<Stmt> },
+    /// `bucle { body }` — infinite loop.
+    Bucle(Vec<Stmt>),
+    /// `etiqueta name` — label declaration.
+    Etiqueta(String),
+    /// `salto name` — goto.
+    Salto(String),
 }
 
 #[derive(Debug, Clone, Default)]
