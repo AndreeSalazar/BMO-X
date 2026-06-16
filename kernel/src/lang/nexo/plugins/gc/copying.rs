@@ -202,8 +202,9 @@ impl GcPlugin for CopyingGc {
         let start_us = self.get_time_us();
         let freed = self.from_offset;
 
-        // Copy all live objects
-        for &root in &self.roots {
+        // Copy all live objects (clone roots to avoid borrow issue)
+        let roots_clone = self.roots.clone();
+        for &root in &roots_clone {
             self.copy_object(root);
         }
 

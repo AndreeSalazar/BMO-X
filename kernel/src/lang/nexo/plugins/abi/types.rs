@@ -37,8 +37,8 @@ impl AbiType {
             AbiType::I32 | AbiType::U32 | AbiType::F32 => 4,
             AbiType::I64 | AbiType::U64 | AbiType::F64 => 8,
             AbiType::Pointer => 8, // 64-bit
-            AbiType::Struct(id) => 0, // Would need struct table
-            AbiType::Array(elem, count) => elem.size_bytes() * count as usize,
+            AbiType::Struct(_id) => 0, // Would need struct table
+            AbiType::Array(_elem, count) => 8 * *count as usize, // Assume 8 bytes per element
         }
     }
 

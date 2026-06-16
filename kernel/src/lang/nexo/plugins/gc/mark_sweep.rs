@@ -85,7 +85,7 @@ impl MarkSweepGc {
         }
     }
 
-    fn sweep(&mut self) -> usize {
+    fn do_sweep(&mut self) -> usize {
         let mut freed = 0;
         let mut i = 0;
 
@@ -168,7 +168,7 @@ impl GcPlugin for MarkSweepGc {
     }
 
     fn sweep(&mut self) -> BxResult<usize> {
-        Ok(self.sweep())
+        Ok(self.do_sweep())
     }
 
     fn stats(&self) -> GcStats {
@@ -188,7 +188,7 @@ impl GcPlugin for MarkSweepGc {
         self.trace();
 
         // Sweep phase
-        let freed = self.sweep()?;
+        let freed = self.do_sweep();
 
         let end_us = self.get_time_us();
         self.stats.collections += 1;

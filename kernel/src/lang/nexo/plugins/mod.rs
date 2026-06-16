@@ -15,7 +15,6 @@
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::vec;
 use alloc::vec::Vec;
 
 pub mod traits;
@@ -27,14 +26,11 @@ pub mod abi;
 
 // Re-exports for convenience
 pub use traits::{
-    Language, LanguagePlugin, MemoryModel, RuntimeConfig,
-    GcType, GcPlugin, GilPlugin, AbiBridge,
-    LanguageFeatures, CompileResult,
+    Language, LanguagePlugin,
+    GcPlugin, GilPlugin, AbiBridge,
 };
 pub use registry::LanguageRegistry;
 pub use languages::{CPlugin, RustPlugin, GoPlugin, PythonPlugin};
-
-use crate::barex::BxResult;
 
 /// Initialize the plugin system with all built-in plugins
 pub fn init_plugins() -> LanguageRegistry {
@@ -51,7 +47,7 @@ pub fn init_plugins() -> LanguageRegistry {
 
 /// Get list of supported languages
 pub fn supported_languages() -> Vec<Language> {
-    vec![
+    alloc::vec![
         Language::C,
         Language::Rust,
         Language::Go,

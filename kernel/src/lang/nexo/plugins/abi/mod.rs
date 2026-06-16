@@ -5,8 +5,8 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use alloc::boxed::Box;
 use alloc::string::String;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 pub mod ffi;
@@ -14,10 +14,9 @@ pub mod types;
 
 // Re-exports
 pub use ffi::FfiBridge;
-pub use types::{AbiType, AbiSignature, AbiParam};
 
 use crate::barex::BxResult;
-use super::traits::{AbiBridge, AbiType as TraitAbiType};
+use super::traits::{AbiBridge, AbiSignature, AbiType, AbiParam};
 
 /// ABI bridge implementation
 pub struct NexoAbiBridge {

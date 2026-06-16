@@ -16,7 +16,7 @@ pub mod sync;
 pub use implementations::{TraditionalGil, FineGrainedGil, ReadWriteGil, LockFreeGil};
 
 use crate::barex::BxResult;
-use super::traits::{GilType, GilPlugin, GilStats};
+use super::traits::{GilType, GilPlugin};
 
 /// Create GIL plugin based on type
 pub fn create_gil(gil_type: GilType) -> BxResult<Box<dyn GilPlugin>> {

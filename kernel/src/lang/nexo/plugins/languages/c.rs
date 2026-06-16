@@ -2,14 +2,9 @@
 
 #![allow(dead_code)]
 
-extern crate alloc;
-use alloc::string::String;
-use alloc::vec::Vec;
-
 use crate::barex::BxResult;
 use super::super::traits::{
     Language, LanguagePlugin, RuntimeConfig, LanguageFeatures, CompileResult,
-    CompileError, CompileWarning,
 };
 
 /// C language plugin
@@ -36,12 +31,12 @@ impl LanguagePlugin for CPlugin {
 
     fn compile(&self, source: &[u8]) -> BxResult<CompileResult> {
         // Use existing C frontend
-        let result = crate::lang::nexo::c::compile_c(source)?;
+        let _result = crate::lang::nexo::c::compile_c(source)?;
 
         Ok(CompileResult {
             success: true,
-            errors: Vec::new(),
-            warnings: Vec::new(),
+            errors: alloc::vec::Vec::new(),
+            warnings: alloc::vec::Vec::new(),
             generated_code: None,
         })
     }

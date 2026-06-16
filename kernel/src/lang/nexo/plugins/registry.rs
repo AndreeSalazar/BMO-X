@@ -43,8 +43,8 @@ impl LanguageRegistry {
     }
 
     /// Get mutable plugin for language
-    pub fn get_mut(&mut self, lang: Language) -> Option<&mut dyn LanguagePlugin> {
-        self.plugins.iter_mut().find(|p| p.language() == lang).map(|p| p.as_mut())
+    pub fn get_mut(&mut self, lang: Language) -> Option<&mut Box<dyn LanguagePlugin>> {
+        self.plugins.iter_mut().find(|p| p.language() == lang)
     }
 
     /// Compile source with appropriate plugin

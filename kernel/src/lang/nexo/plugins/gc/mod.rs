@@ -12,7 +12,6 @@
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 
 pub mod mark_sweep;
 pub mod copying;
@@ -30,7 +29,7 @@ pub use concurrent::ConcurrentGc;
 pub use region::RegionGc;
 
 use crate::barex::BxResult;
-use super::traits::{GcType, GcPlugin, GcStats};
+use super::traits::{GcType, GcPlugin};
 
 /// Create GC plugin based on type
 pub fn create_gc(gc_type: GcType, heap_size: usize) -> BxResult<Box<dyn GcPlugin>> {
@@ -66,7 +65,6 @@ pub fn create_gc(gc_type: GcType, heap_size: usize) -> BxResult<Box<dyn GcPlugin
             Ok(Box::new(gc))
         }
         GcType::Incremental => {
-            // Use generational with incremental collection
             let mut gc = GenerationalGc::new(heap_size);
             gc.init(heap_size)?;
             Ok(Box::new(gc))
