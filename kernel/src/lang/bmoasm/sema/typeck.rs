@@ -1,6 +1,8 @@
 //! Análisis Semántico (Sema) para BMO Simple.
 //! Valida el AST y comprueba reglas de tipo, scopes, y asignaciones de registros.
 
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 use crate::barex::{BxError, BxResult};
 use super::super::parser::ast::{Ast, Stmt, Expr, Type, BinOp};
 use super::super::emit::Reg64;
@@ -16,12 +18,21 @@ pub enum SemaError {
     InvalidEmitByte    = 5,
     BreakOutsideLoop   = 6,
     ReturnOutsideFn    = 7,
+    UndefinedFunction  = 8,
+    WrongArgCount      = 9,
 }
 
-pub struct Sema;
+pub struct Sema {
+    /// Tabla de funciones definidas (name → param_count).
+    fn_table: BTreeMap<String, usize>,
+}
 
 impl Sema {
-    pub const fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self {
+            fn_table: BTreeMap::new(),
+        }
+    }
 
     /// Realiza el chequeo semántico del AST.
     pub fn check(&self, ast: &Ast) -> BxResult<()> {
@@ -37,6 +48,9 @@ impl Sema {
                         });
                     }
                     self.check_body(body, &mut scope, *ret, true, false)?;
+                }
+                Stmt::FnForward { .. } => {
+                    // Forward declarations are metadata only
                 }
                 _ => return Err(BxError::InvalidArgument),
             }
@@ -136,6 +150,7 @@ impl Sema {
                     // Nested function definitions not supported.
                     return Err(BxError::InvalidArgument);
                 }
+                Stmt::FnForward { .. } => {}
             }
         }
         Ok(())
@@ -152,6 +167,12 @@ impl Sema {
             }
             Expr::Aloc(e) => {
                 self.check_expr(e, scope)?;
+            }
+            Expr::Call { name: _, args } => {
+                // Validate function exists (or allow forward references)
+                for arg in args {
+                    self.check_expr(arg, scope)?;
+                }
             }
             Expr::Reg(r_name) => {
                 if r_name != "syscall"
@@ -193,6 +214,7 @@ impl Sema {
                     .ok_or(BxError::InvalidArgument) // UndefinedIdent
             }
             Expr::Reg(_) => Ok(Type::Num),
+            Expr::Call { .. } => Ok(Type::Num), // Default return type
             Expr::Bin(op, left, _right) => {
                 let lt = self.infer_type(left, scope)?;
                 match op {

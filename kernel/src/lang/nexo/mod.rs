@@ -217,6 +217,15 @@ fn serialize_expr(expr: &crate::lang::bmoasm::parser::ast::Expr, out: &mut alloc
             out.push_str("aloc ");
             serialize_expr(size, out);
         }
+        E::Call { name, args } => {
+            out.push_str(name);
+            out.push('(');
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 { out.push_str(", "); }
+                serialize_expr(arg, out);
+            }
+            out.push(')');
+        }
     }
 }
 

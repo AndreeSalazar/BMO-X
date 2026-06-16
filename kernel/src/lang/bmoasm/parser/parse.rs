@@ -284,7 +284,25 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Ident => {
                 let name = self.expect_ident()?;
-                Ok(Expr::Ident(name))
+                // Check for function call: name(args...)
+                if self.current.kind == TokenKind::LParen {
+                    self.advance(); // skip '('
+                    let mut args = Vec::new();
+                    if self.current.kind != TokenKind::RParen {
+                        loop {
+                            args.push(self.parse_expr(0)?);
+                            if self.current.kind == TokenKind::Comma {
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    Ok(Expr::Call { name, args })
+                } else {
+                    Ok(Expr::Ident(name))
+                }
             }
             TokenKind::LParen => {
                 self.advance();

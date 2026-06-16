@@ -1,26 +1,53 @@
 //! Traductor central de BMO Simple.
 //! Coordina el Lexer, Parser, Sema y Emitter para producir bytes nativos del target.
-//! Implementa la resolución semántica de cadenas literales.
+//! Implementa la resolución semántica de cadenas literales y llamadas a funciones
+//! con la BMO ABI (7 GPR args + 64B align + RAX status).
 
 extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::barex::{BxError, BxResult};
-use super::parser::{Parser, Ast, Stmt, Expr, BinOp};
+use super::parser::{Parser, Ast, Stmt, Expr, BinOp, Type};
 use super::sema::Sema;
 use super::sema::scope::{Scope, ScopeEntry};
 use super::emit::{TargetArch, TargetEmitter, TargetRegister, Reg64};
 use super::builtin::{IntrinsicId, emit_intrinsic};
 
 struct StringRef {
-    disp_offset: usize, // Offset en el código donde va el displacement del LEA/ADR
-    rodata_offset: usize, // Offset del string en el bloque de datos rodata
+    disp_offset: usize,
+    rodata_offset: usize,
 }
 
 struct LoopContext {
-    break_patches: Vec<usize>,   // Offsets of jmp rel32 to back-patch to loop end
-    continue_patches: Vec<usize>, // Offsets of jmp rel32 to back-patch to loop start
+    break_patches: Vec<usize>,
+    continue_patches: Vec<usize>,
 }
+
+/// Información de una función compilada (para back-patching de calls).
+struct FunctionEntry {
+    name: String,
+    /// Offset de inicio del código de la función (después del prologue).
+    code_offset: usize,
+    /// Número de parámetros.
+    param_count: usize,
+}
+
+/// Instrucciones pendientes de parchear (calls forward).
+struct CallPatch {
+    /// Offset del displacement32 en la instrucción call.
+    call_offset: usize,
+    /// Nombre de la función a llamar.
+    fn_name: String,
+}
+
+/// BMO ABI register argument order.
+const BMO_ARG_REGS_X86: [Reg64; 7] = [
+    Reg64::Rdi, Reg64::Rsi, Reg64::Rdx,
+    Reg64::R10, Reg64::R8,  Reg64::R9,
+    Reg64::Rax,
+];
 
 pub struct Traductor {
     target: TargetArch,
@@ -30,6 +57,10 @@ pub struct Traductor {
     loop_stack: Vec<LoopContext>,
     scope: Scope,
     frame_size: u32,
+    /// Tabla de funciones compiladas (name → offset).
+    fn_table: BTreeMap<String, FunctionEntry>,
+    /// Patches pendientes para calls forward.
+    call_patches: Vec<CallPatch>,
 }
 
 impl Traductor {
@@ -46,6 +77,8 @@ impl Traductor {
             loop_stack: Vec::new(),
             scope: Scope::default(),
             frame_size: 0,
+            fn_table: BTreeMap::new(),
+            call_patches: Vec::new(),
         }
     }
 
@@ -59,10 +92,10 @@ impl Traductor {
         let sema = Sema::new();
         sema.check(&ast)?;
 
-        // 3. Generación de Código
+        // 3. Generación de Código (dos pasadas)
         self.compilar_ast(&ast)?;
 
-        // 4. Back-patching de Cadenas Literales (PC-relative/RIP-relative)
+        // 4. Back-patching de strings
         let final_code_len = self.emitter.bytes().len();
         for s_ref in &self.string_refs {
             match &mut self.emitter {
@@ -78,7 +111,22 @@ impl Traductor {
             }
         }
 
-        // Concatena el código generado con el bloque de datos de lectura (RoData)
+        // 5. Back-patching de calls forward
+        for patch in &self.call_patches {
+            if let Some(entry) = self.fn_table.get(&patch.fn_name) {
+                let code_offset = entry.code_offset;
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => {
+                        e.patch_rel32(patch.call_offset, patch.call_offset + 4, code_offset);
+                    }
+                    _ => {}
+                }
+            } else {
+                return Err(BxError::InvalidArgument); // Undefined function
+            }
+        }
+
+        // 6. Concatena código + rodata
         let mut final_bytes = Vec::new();
         final_bytes.extend_from_slice(self.emitter.bytes());
         final_bytes.extend_from_slice(&self.rodata);
@@ -87,46 +135,97 @@ impl Traductor {
     }
 
     fn compilar_ast(&mut self, ast: &Ast) -> BxResult<()> {
+        // Primera pasada: compilar todas las funciones y registrar offsets
         for item in &ast.items {
             match item {
-                Stmt::Def { name: _, params, ret: _, body } => {
-                    self.scope = Scope::default();
-                    self.frame_size = 0;
-                    // Reserve parameter slots on stack (caller pushes args right-to-left)
-                    for (_pname, _pty) in params {
-                        self.scope.frame_size += 8;
-                    }
-                    // Emit prologue: push rbp; mov rbp, rsp; sub rsp, imm32 (placeholder)
-                    let sub_rsp_offset = match &mut self.emitter {
-                        TargetEmitter::X86_64(e) => {
-                            e.push_rbp();
-                            e.mov_rbp_rsp();
-                            let off = e.here();
-                            e.sub_rsp_imm32(0); // placeholder
-                            off
-                        }
+                Stmt::Def { name, params, ret, body } => {
+                    let code_offset = match &self.emitter {
+                        TargetEmitter::X86_64(e) => e.here(),
                         _ => 0,
                     };
-                    self.compilar_body(body)?;
-                    // Back-patch sub rsp, N with actual frame size
-                    let aligned = (self.frame_size + 15) & !15; // 16-byte align
-                    match &mut self.emitter {
-                        TargetEmitter::X86_64(e) => {
-                            let imm_bytes = (aligned as i32).to_le_bytes();
-                            e.bytes[sub_rsp_offset + 3] = imm_bytes[0];
-                            e.bytes[sub_rsp_offset + 4] = imm_bytes[1];
-                            e.bytes[sub_rsp_offset + 5] = imm_bytes[2];
-                            e.bytes[sub_rsp_offset + 6] = imm_bytes[3];
-                            // Emit epilogue: leave; ret
-                            e.leave();
-                            e.ret();
-                        }
-                        _ => {}
-                    }
+                    self.fn_table.insert(name.clone(), FunctionEntry {
+                        name: name.clone(),
+                        code_offset,
+                        param_count: params.len(),
+                    });
+                    self.compilar_funcion(params, *ret, body)?;
                 }
                 _ => return Err(BxError::InvalidArgument),
             }
         }
+        Ok(())
+    }
+
+    fn compilar_funcion(
+        &mut self,
+        params: &[(String, Type)],
+        _ret: Type,
+        body: &[Stmt],
+    ) -> BxResult<()> {
+        self.scope = Scope::default();
+        self.frame_size = 0;
+
+        // Reserve space for parameters on stack (BMO ABI: args arrive in regs)
+        let param_space = (params.len() * 8) as u32;
+        self.frame_size = param_space;
+
+        // Prologue: push rbp; mov rbp, rsp; sub rsp, imm32 (placeholder)
+        let sub_rsp_offset = match &mut self.emitter {
+            TargetEmitter::X86_64(e) => {
+                e.push_rbp();
+                e.mov_rbp_rsp();
+                let off = e.here();
+                e.sub_rsp_imm32(0); // placeholder
+                off
+            }
+            _ => 0,
+        };
+
+        // Save BMO ABI argument registers into stack frame slots
+        for (i, _param) in params.iter().enumerate() {
+            if i < BMO_ARG_REGS_X86.len() {
+                // Stack layout: [rbp-8] = param0, [rbp-16] = param1, ...
+                let offset = -((i as i32 + 1) * 8);
+                match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => {
+                        // Move arg reg → RAX → stack slot
+                        e.mov_reg_reg(Reg64::Rax, BMO_ARG_REGS_X86[i]);
+                        if offset >= -128 && offset <= 127 {
+                            e.mov_rbp_disp8_rax(offset as i8);
+                        } else {
+                            e.mov_rbp_disp32_rax(offset);
+                        }
+                    }
+                    _ => {}
+                }
+                // Register the param in the scope for ident lookup
+                self.scope.push(ScopeEntry {
+                    name: _param.0.clone(),
+                    ty: _param.1,
+                    frame_offset: -((i as i32 + 1) * 8),
+                });
+            }
+        }
+
+        // Emit the body
+        self.compilar_body(body)?;
+
+        // Back-patch sub rsp, N with the real frame size
+        let aligned = (self.frame_size + 15) & !15; // 16-byte align
+        match &mut self.emitter {
+            TargetEmitter::X86_64(e) => {
+                let imm_bytes = (aligned as i32).to_le_bytes();
+                e.bytes[sub_rsp_offset + 3] = imm_bytes[0];
+                e.bytes[sub_rsp_offset + 4] = imm_bytes[1];
+                e.bytes[sub_rsp_offset + 5] = imm_bytes[2];
+                e.bytes[sub_rsp_offset + 6] = imm_bytes[3];
+                // Epilogue
+                e.leave();
+                e.ret();
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 
@@ -290,6 +389,13 @@ impl Traductor {
                 }
                 Stmt::Continua => {
                     self.compilar_continua()?;
+                }
+                Stmt::ExprStmt(expr) => {
+                    // General expression statement (function calls, etc.)
+                    self.codegen_expr_x86(expr)?;
+                }
+                Stmt::FnForward { .. } => {
+                    // Forward declarations are processed during AST compilation
                 }
                 _ => return Err(BxError::Unsupported),
             }
@@ -585,6 +691,50 @@ impl Traductor {
             Expr::Aloc(size_expr) => {
                 self.codegen_expr_x86(size_expr)?;
                 // For now, just leave size in RAX (actual alloc needs syscall).
+            }
+            Expr::Call { name, args } => {
+                // BMO ABI: arguments in RDI, RSI, RDX, R10, R8, R9, RAX (7 max).
+                // Evaluate arguments and place them in the correct registers.
+                for (i, arg) in args.iter().enumerate() {
+                    if i >= 7 {
+                        return Err(BxError::InvalidArgument); // Too many arguments
+                    }
+                    // Evaluate argument into RAX
+                    self.codegen_expr_x86(arg)?;
+                    // Move to the correct BMO ABI register
+                    let dst_reg = BMO_ARG_REGS_X86[i];
+                    if dst_reg != Reg64::Rax {
+                        match &mut self.emitter {
+                            TargetEmitter::X86_64(e) => {
+                                e.mov_reg_reg(dst_reg, Reg64::Rax);
+                            }
+                            _ => return Err(BxError::Unsupported),
+                        }
+                    }
+                }
+                // Emit call instruction (with back-patching for forward references)
+                let call_offset = match &mut self.emitter {
+                    TargetEmitter::X86_64(e) => e.call_rel32(),
+                    _ => return Err(BxError::Unsupported),
+                };
+                // Check if function is already compiled (backward call) or forward
+                if let Some(entry) = self.fn_table.get(name) {
+                    // Backward call: patch immediately
+                    let code_offset = entry.code_offset;
+                    match &mut self.emitter {
+                        TargetEmitter::X86_64(e) => {
+                            e.patch_rel32(call_offset, call_offset + 4, code_offset);
+                        }
+                        _ => {}
+                    }
+                } else {
+                    // Forward call: add to patch list
+                    self.call_patches.push(CallPatch {
+                        call_offset,
+                        fn_name: name.clone(),
+                    });
+                }
+                // Result is already in RAX (return value per BMO ABI)
             }
             Expr::LitNulo => {
                 match &mut self.emitter {

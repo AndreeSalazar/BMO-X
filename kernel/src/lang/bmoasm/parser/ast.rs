@@ -36,6 +36,8 @@ pub enum Expr {
     Reg(String),
     /// `aloc N`.
     Aloc(Box<Expr>),
+    /// Llamada a función: `nombre(arg1, arg2, ...)`.
+    Call { name: String, args: Vec<Expr> },
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +68,8 @@ pub enum Stmt {
     Continua,
     /// Expression statement (descarta resultado).
     ExprStmt(Expr),
+    /// Declaración forward de función (para calls forward).
+    FnForward { name: String, params: Vec<(String, Type)>, ret: Type },
 }
 
 #[derive(Debug, Clone, Default)]

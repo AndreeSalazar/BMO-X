@@ -127,6 +127,14 @@ impl Emitter {
         off
     }
 
+    /// `call rel32` — 0xE8 + rel32. Returns offset for back-patching.
+    pub fn call_rel32(&mut self) -> usize {
+        self.bytes.push(0xE8);
+        let off = self.bytes.len();
+        self.bytes.extend_from_slice(&[0, 0, 0, 0]);
+        off
+    }
+
     /// `xor rax, rax` — REX.W + 0x31 + ModRM(11, rax, rax).
     pub fn xor_rax_rax(&mut self) {
         self.bytes.extend_from_slice(&[0x48, 0x31, 0xC0]);
