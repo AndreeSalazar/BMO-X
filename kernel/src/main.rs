@@ -34,6 +34,7 @@ mod syscall;
 mod sandbox;
 
 mod lang;
+mod security;
 
 use core::arch::naked_asm;
 
@@ -336,6 +337,10 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // SMP: bring up Application Processors (before STI)
     unsafe { arch::smp::smp_init(); }
 
+    // Initialize security subsystem (ByteDefender + Restaurer)
+    security::init();
+    boot_log("phase4", "Security subsystem initialized (ByteDefender + Restaurer)");
+
     // Enable interrupts
     arch::cpu::sti();
     boot_log("phase4", "Interrupts enabled (STI)");
@@ -419,6 +424,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     if cpu_features.has_smep { con.print("OK"); } else { con.print("--"); }
     con.print(" | SMAP: ");
     if cpu_features.has_smap { con.print("OK"); } else { con.print("--"); }
+    con.println("");
+
+    con.print("  Security: ByteDefender (Ring 0) | Restaurer (Snapshots)");
     con.println("");
 
     con.println("================================================================");

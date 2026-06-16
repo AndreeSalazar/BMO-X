@@ -761,6 +761,262 @@ pub unsafe fn deep_idle() {
 
 // ── CPU info display ──────────────────────────────────────────────
 
+// ── Zen 3 Specific Optimizations ───────────────────────────────────
+
+/// Zen 3 cache hierarchy:
+/// - L1D: 32KB, 8-way, 64B lines, 4-cycle latency
+/// - L1I: 32KB, 8-way, 64B lines, 4-cycle latency
+/// - L2: 512KB, 8-way, 64B lines, 12-cycle latency
+/// - L3: 32MB, 16-way, 64B lines, ~40-cycle latency (shared per CCD)
+
+pub const L1D_CACHE_SIZE: usize = 32 * 1024;      // 32 KB
+pub const L1I_CACHE_SIZE: usize = 32 * 1024;      // 32 KB
+pub const L2_CACHE_SIZE: usize = 512 * 1024;      // 512 KB
+pub const L3_CACHE_SIZE: usize = 32 * 1024 * 1024; // 32 MB
+pub const CACHE_LINE_SIZE: usize = 64;             // 64 bytes
+
+/// Prefetch data into L1 cache (PREFETCHT0).
+///
+/// Reduces cache misses for frequently accessed data.
+#[inline]
+pub fn prefetch(addr: *const u8) {
+    unsafe {
+        asm!("prefetcht0 [{}]", in(reg) addr, options(nostack));
+    }
+}
+
+/// Prefetch data into L2 cache only (PREFETCHT1).
+#[inline]
+pub fn prefetch_l2(addr: *const u8) {
+    unsafe {
+        asm!("prefetcht1 [{}]", in(reg) addr, options(nostack));
+    }
+}
+
+/// Prefetch data into L3 cache (PREFETCHT2).
+#[inline]
+pub fn prefetch_l3(addr: *const u8) {
+    unsafe {
+        asm!("prefetcht2 [{}]", in(reg) addr, options(nostack));
+    }
+}
+
+/// Non-temporal prefetch (PREFETCHNTA) — data unlikely to be reused.
+#[inline]
+pub fn prefetch_nta(addr: *const u8) {
+    unsafe {
+        asm!("prefetchnta [{}]", in(reg) addr, options(nostack));
+    }
+}
+
+/// Software prefetch for read — prefetch multiple cache lines ahead.
+pub fn prefetch_read_ahead(base: *const u8, stride: usize, lines: usize) {
+    for i in 0..lines {
+        unsafe {
+            let addr = base.add(i * stride);
+            asm!("prefetcht0 [{}]", in(reg) addr, options(nostack));
+        }
+    }
+}
+
+/// Non-temporal store — write directly to memory, bypassing cache.
+///
+/// Useful for large memory operations (e.g., framebuffer clears).
+#[inline]
+pub fn streaming_store(addr: *mut u64, value: u64) {
+    unsafe {
+        asm!("movnti [{addr}], {val}", addr = in(reg) addr, val = in(reg) value);
+    }
+}
+
+/// Non-temporal store for 128-bit values (SSE).
+///
+/// # Safety
+/// CPU must support SSE2.
+#[inline]
+pub unsafe fn streaming_store_128(addr: *mut u8, value: u64) {
+    // Write 128 bits in two 64-bit streaming stores
+    streaming_store(addr as *mut u64, value);
+    streaming_store(addr.add(8) as *mut u64, value);
+}
+
+/// Read cycle counter with serialization (more accurate than RDTSC).
+#[inline]
+pub fn read_tsc_serialized() -> u64 {
+    unsafe {
+        let lo: u32;
+        let hi: u32;
+        // LFENCE serializes before RDTSC
+        asm!("lfence; rdtsc", out("eax") lo, out("edx") hi);
+        ((hi as u64) << 32) | lo as u64
+    }
+}
+
+/// Calibrate busy-wait using actual TSC frequency.
+/// Returns TSC ticks per millisecond.
+pub fn calibrate_tsc() -> u64 {
+    // Use PIT channel 2 for calibration (14.31818 MHz / 12 = 1.193182 MHz)
+    // Count 10ms worth of ticks
+    unsafe {
+        // Save PIT state
+        let pit_reload = 1193182 / 100; // 10ms at 1.193 MHz
+
+        // Program PIT channel 2 for one-shot
+        asm!(
+            "outb dx, al",  // Channel 2, lobyte/hibyte, one-shot
+            in("dx") 0x61u16,
+            in("al") 0xB0u8,
+        );
+
+        // Set reload value
+        asm!(
+            "outb dx, al",  // Low byte
+            in("dx") 0x42u16,
+            in("al") (pit_reload & 0xFF) as u8,
+        );
+        asm!(
+            "outb dx, al",  // High byte
+            in("dx") 0x42u16,
+            in("al") ((pit_reload >> 8) & 0xFF) as u8,
+        );
+
+        // Start counting
+        let mut port_61 = inb(0x61);
+        port_61 |= 1;  // Enable counter
+        port_61 &= !2; // No gate
+        outb(0x61, port_61);
+        port_61 |= 1;  // Gate high
+        outb(0x61, port_61);
+
+        // Read TSC
+        let tsc_start = rdtsc();
+
+        // Wait for PIT to count
+        while (inb(0x61) & 0x20) == 0 {
+            core::hint::spin_loop();
+        }
+
+        let tsc_end = rdtsc();
+        let ticks_per_10ms = tsc_end - tsc_start;
+        ticks_per_10ms * 100 // TSC per millisecond
+    }
+}
+
+/// Simple port I/O
+#[inline]
+unsafe fn inb(port: u16) -> u8 {
+    let val: u8;
+    asm!("in al, dx", in("dx") port, out("al") val);
+    val
+}
+
+#[inline]
+unsafe fn outb(port: u16, val: u8) {
+    asm!("out dx, al", in("dx") port, in("al") val);
+}
+
+// ── Performance Counter Utilities ──────────────────────────────────
+
+/// Performance counter events for Zen 3
+pub mod perf_events {
+    pub const INST_RETIRED: u32 = 0xC0;         // Instructions retired
+    pub const CPU_CYCLES: u32 = 0x3C;           // Core cycles
+    pub const BRANCH_INST_RETIRED: u32 = 0xC2;  // Branch instructions retired
+    pub const BRANCH_MISP_RETIRED: u32 = 0xC3;  // Mispredicted branches retired
+    pub const DTLB_LOAD_MISSES: u32 = 0x08;     // DTLB load misses
+    pub const DTLB_STORE_MISSES: u32 = 0x49;    // DTLB store misses
+    pub const ITLB_MISSES: u32 = 0x68;          // ITLB misses
+    pub const ICACHE_MISSES: u32 = 0x80;        // L1I cache misses
+    pub const DCLM: u32 = 0x01;                 // Data cache loads missed (L2)
+    pub const L2_CACHE_MISSES: u32 = 0x2E;      // L2 cache misses
+    pub const L3_CACHE_MISSES: u32 = 0xA8;      // L3 cache misses (sampled)
+    pub const BUS_ACCESS: u32 = 0x60;           // Bus access
+    pub const MAB_REQUESTS: u32 = 0xE8;         // Miss address buffer requests
+    pub const PREFETCH_INSTRUCTIONS: u32 = 0x50;// Software prefetch instructions
+    pub const RETIRE_STALL_CYCLES: u32 = 0xD1;  // Retire stall cycles
+}
+
+/// Configure performance counter with specific event
+pub fn config_perf_counter(counter: u32, event: u32, umask: u32) {
+    unsafe {
+        // IA32_PERFEVTSEL0 = 0x186 + counter
+        let sel = 0x186 + counter;
+        let mut val = rdmsr(sel);
+        val &= 0xFFFFFFFF00000000; // Clear low 32 bits
+        val |= (event & 0xFF) as u64;
+        val |= ((umask & 0xFF) as u64) << 8;
+        val |= 1 << 22; // USR mode
+        val |= 1 << 16; // OS mode
+        val |= 1 << 20; // Enable
+        wrmsr(sel, val);
+    }
+}
+
+/// Read performance counter
+pub fn read_perf_counter(counter: u32) -> u64 {
+    unsafe { rdmsr(0xC1 + counter) }
+}
+
+/// Reset and start all performance counters
+pub fn start_perf_counters() {
+    unsafe {
+        // Clear counters
+        wrmsr(0xC1, 0);
+        wrmsr(0xC2, 0);
+        wrmsr(IA32_FIXED_CTR0, 0);
+
+        // Enable fixed counters (INST_RETIRED, CPU_CYCLES, REF_CYCLES)
+        let mut ctrl = rdmsr(IA32_PERF_GLOBAL_CTRL);
+        ctrl |= 1 << 32; // Fixed counter 0
+        ctrl |= 1 << 33; // Fixed counter 1
+        ctrl |= 1 << 34; // Fixed counter 2
+        ctrl |= 1 << 0;  // Programmable counter 0
+        ctrl |= 1 << 1;  // Programmable counter 1
+        wrmsr(IA32_PERF_GLOBAL_CTRL, ctrl);
+    }
+}
+
+/// Snapshot of performance counters
+pub struct PerfSnapshot {
+    pub instructions: u64,
+    pub cycles: u64,
+    pub branch_misses: u64,
+    pub cache_misses: u64,
+    pub ipc: f64,           // Instructions per cycle
+    pub branch_miss_rate: f64,
+}
+
+/// Take a performance counter snapshot
+pub fn perf_snapshot() -> PerfSnapshot {
+    let instructions = read_perf_counter(0);
+    let cycles = read_perf_counter(1);
+    let branch_misses = read_perf_counter(2);
+    let cache_misses = read_perf_counter(3);
+
+    let ipc = if cycles > 0 {
+        instructions as f64 / cycles as f64
+    } else {
+        0.0
+    };
+
+    let branch_miss_rate = if instructions > 0 {
+        branch_misses as f64 / instructions as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    PerfSnapshot {
+        instructions,
+        cycles,
+        branch_misses,
+        cache_misses,
+        ipc,
+        branch_miss_rate,
+    }
+}
+
+// ── CPU info display ──────────────────────────────────────────────
+
 /// Print CPU information to serial.
 pub fn print_cpu_info(features: &CpuFeatures) {
     use crate::drivers::serial::serial_write;

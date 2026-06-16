@@ -391,6 +391,44 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 0
             }
 
+            // ─── Security ───────────────────────────────────────────────
+            // BD_Scan (0xA0): a0=ptr, a1=len → threat level (0=clean, 1-4=threat)
+            0xA0 => {
+                if a1 > 0 && a1 < 1024 * 1024 {
+                    let data = core::slice::from_raw_parts(a0 as *const u8, a1 as usize);
+                    let result = crate::security::bytedefender::scanner::scan_memory(data);
+                    result.level as u64
+                } else {
+                    0
+                }
+            }
+
+            // BD_Status (0xA1): no args → files_scanned | threats_blocked << 32
+            0xA1 => {
+                let state = crate::security::bytedefender::state();
+                state.files_scanned | (state.threats_blocked << 32)
+            }
+
+            // SnapshotCreate (0xA2): a0=label_ptr, a1=label_len → snapshot id
+            0xA2 => {
+                let label = if a1 > 0 && a1 < 64 {
+                    core::slice::from_raw_parts(a0 as *const u8, a1 as usize)
+                } else {
+                    b"manual"
+                };
+                crate::security::restaurer::create_snapshot(label, b"User snapshot")
+            }
+
+            // SnapshotRollback (0xA3): a0=snapshot_id → 0=ok, 1=error
+            0xA3 => {
+                if crate::security::restaurer::rollback(a0) { 0 } else { 1 }
+            }
+
+            // SnapshotList (0xA4): no args → count of snapshots
+            0xA4 => {
+                crate::security::restaurer::state().snapshot_count
+            }
+
             // ─── Debug ────────────────────────────────────────────────
             // DebugPrint (0xF0): a0=ptr_utf8, a1=length → serial out
             0xF0 => {
