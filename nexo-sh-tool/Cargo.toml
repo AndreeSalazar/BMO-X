@@ -9,6 +9,7 @@ name = "nexo-sh"
 path = "src/main.rs"
 
 [dependencies]
+blake3 = "1"
 naga = { version = "29", default-features = false, features = [
     "wgsl-in",
     "glsl-in",

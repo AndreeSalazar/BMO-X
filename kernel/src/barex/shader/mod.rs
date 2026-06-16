@@ -45,5 +45,8 @@ pub mod dxil;
 pub mod dxbc;
 pub mod loader;
 pub mod cache;
+pub mod bsf;
 
 // ─── Re-exports planos ───────────────────────────────────────────────
+
+pub use bsf::{BsfShader, BsfError, BsfArch, BsfStage};
