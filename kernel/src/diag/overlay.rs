@@ -190,6 +190,10 @@ fn draw_overview(
         ry += 18;
         draw_text(base, stride, width, height, rx, ry, b"Page Flts: ", 0xFFE6EDF3);
         draw_dec(base, stride, width, height, rx + 96, ry, t.cpu.page_faults.load(core::sync::atomic::Ordering::Relaxed), 0xFFFFBD2E);
+        ry += 18;
+        draw_text(base, stride, width, height, rx, ry, b"USB Log : ", 0xFFE6EDF3);
+        draw_dec(base, stride, width, height, rx + 96, ry, super::persistent_pending_bytes() as u64, 0xFF76B900);
+        draw_text(base, stride, width, height, rx + 152, ry, b" B pending", 0xFF8B949E);
     }
 }
 

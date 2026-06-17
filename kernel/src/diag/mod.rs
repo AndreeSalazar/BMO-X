@@ -12,6 +12,7 @@
 mod buffer;
 mod event;
 mod overlay;
+mod persistent;
 mod serial_sink;
 pub mod telemetry;
 
@@ -89,6 +90,7 @@ pub fn current_tab() -> OverlayTab {
 // ── Init ───────────────────────────────────────────────────────────
 
 pub fn init() {
+    persistent::init();
     info("diag", "diag online: serial + GOP overlay + RAM blackbox");
 }
 
@@ -152,6 +154,37 @@ pub fn paint_overlay() {
     overlay::paint();
 }
 
+// ── Persistent USB-ready spool ────────────────────────────────────
+
+/// Ruta objetivo futura para el log persistente en el USB.
+///
+/// Hoy el writer de archivos USB/BMO-FS aún no está cableado para append
+/// seguro, así que diag/ conserva el contenido listo en RAM. Cuando storage
+/// exponga `append_file`, este path será el destino: `/Datos/FASTOS-DIAG.LOG`.
+pub fn persistent_target_path() -> &'static str {
+    persistent::TARGET_PATH
+}
+
+pub fn persistent_pending_bytes() -> usize {
+    persistent::pending_bytes()
+}
+
+pub fn persistent_dropped_bytes() -> u64 {
+    persistent::dropped_bytes()
+}
+
+/// Copia los bytes pendientes del spool persistente a `out`.
+/// Retorna cuántos bytes se copiaron.
+pub fn copy_persistent_pending(out: &mut [u8]) -> usize {
+    persistent::copy_pending(out)
+}
+
+/// Marca como escritos `bytes` bytes del spool persistente.
+/// Debe llamarlo el futuro sink USB sólo después de confirmar escritura.
+pub fn ack_persistent_bytes(bytes: usize) {
+    persistent::ack(bytes);
+}
+
 // ── Periodic refresh (called from APIC timer tick) ─────────────────
 //
 // Called every timer tick.  The overlay only repaints at REFRESH_HZ
@@ -175,6 +208,7 @@ pub fn tick_refresh() {
 fn emit(event: Event) {
     let event = buffer::push(event);
     serial_sink::write_event(event);
+    persistent::write_event(event);
     overlay::paint();
 }
 

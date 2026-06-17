@@ -41,6 +41,17 @@ pub fn run_ring0() -> ! {
     crate::diag::info("desktop", "entering Ring 0 GOP desktop supervisor");
     crate::drivers::serial::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
 
+    // `Run` debe mostrar primero el escritorio funcional. El HUD sigue vivo,
+    // pero entra oculto para no parecer que el sistema se quedó sólo en diag/.
+    // Ctrl+Alt lo vuelve a mostrar cuando quieras inspeccionar Ring 0/Ring 3.
+    crate::diag::set_overlay_enabled(false);
+
+    // Asegura que el primer frame del desktop se pinte aunque vengamos de una
+    // ruta donde el dirty tracking quedó limpio por el welcome/HUD.
+    state::init();
+    state::mark_dirty();
+    render::render_frame();
+
     // Beep "entré al escritorio".
     beep(880, 60);
     beep(1320, 80);
