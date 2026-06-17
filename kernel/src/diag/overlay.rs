@@ -120,7 +120,14 @@ fn draw_overview(
     cy += 18;
     draw_text(base, stride, width, height, x, cy, b"Exts   : SSE | AVX | AVX2 | FMA3 | AES", 0xFF56D4DD);
     cy += 18;
-    draw_text(base, stride, width, height, x, cy, b"Ring   : 0 Supervisor | Ring3 ready", 0xFFE6EDF3);
+
+    // Ring 3 status — dynamically check if any syscall has been received
+    let ring3_active = crate::arch::syscall_entry::ring3_alive();
+    if ring3_active {
+        draw_text(base, stride, width, height, x, cy, b"Ring   : 0 Supervisor | Ring3 active", 0xFF76B900);
+    } else {
+        draw_text(base, stride, width, height, x, cy, b"Ring   : 0 Supervisor | Ring3 pending", 0xFFE6EDF3);
+    }
     cy += 18;
 
     // Uptime

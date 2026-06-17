@@ -54,16 +54,7 @@ pub fn init_syscall() {
         //
         // With our GDT layout:
         //   Kernel CS = 0x08, Kernel SS = 0x10
-        //   User CS   = 0x20 (0x18 + 16 = 0x28... no)
-        //
-        // sysret loads CS = STAR[63:48]+16, SS = STAR[63:48]+8
-        // We want CS = 0x23 (User Code, RPL=3), SS = 0x1B (User Data, RPL=3)
-        // So STAR[63:48] = 0x18 → CS = 0x18+16 = 0x28... but User Code is at 0x20!
-        //
-        // Actually sysret adds 16 to get CS for 64-bit mode.
-        // STAR[63:48] should be 0x10:
-        //   SS = 0x10 + 8 = 0x18 (User Data selector) → plus RPL=3 from CPU = 0x1B ✓
-        //   CS = 0x10 + 16 = 0x20 (User Code selector) → plus RPL=3 from CPU = 0x23 ✓
+        //   User CS   = 0x23 (RPL=3), User SS = 0x1B (RPL=3)
         //
         // For syscall: STAR[47:32] = 0x08:
         //   CS = 0x08 (Kernel Code) ✓
@@ -84,28 +75,54 @@ pub fn init_syscall() {
 }
 
 /// Saved user context for iretq return.
-/// Layout must match the push order in syscall_entry_naked.
+/// Layout must match the REVERSED push order in syscall_entry_naked.
+///
+/// Push order (last pushed = lowest address):
+///   r15, r14, r13, r12, rbp, rbx, r9, r8, r10, rdx, rsi, rdi, rax,
+///   saved_RSP, CS, RIP, RFLAGS, SS
+///
+/// Stack layout (low to high address after all pushes):
+///   [rsp+0]   = r15
+///   [rsp+8]   = r14
+///   [rsp+16]  = r13
+///   [rsp+24]  = r12
+///   [rsp+32]  = rbp
+///   [rsp+40]  = rbx
+///   [rsp+48]  = r9
+///   [rsp+56]  = r8
+///   [rsp+64]  = r10
+///   [rsp+72]  = rdx
+///   [rsp+80]  = rsi
+///   [rsp+88]  = rdi
+///   [rsp+96]  = rax (syscall number)
+///   [rsp+104] = saved user RSP
+///   [rsp+112] = CS (0x23)
+///   [rsp+120] = RIP (user return address)
+///   [rsp+128] = RFLAGS
+///   [rsp+136] = SS (0x1B)
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
 pub struct InterruptFrame {
-    pub rax: u64,    // syscall number (saved for dispatch)
-    pub rdi: u64,    // arg 0
-    pub rsi: u64,    // arg 1
-    pub rdx: u64,    // arg 2
-    pub r10: u64,    // arg 3
-    pub r8: u64,     // arg 4
-    pub r9: u64,     // arg 5
-    pub rbx: u64,
-    pub rbp: u64,
-    pub r12: u64,
-    pub r13: u64,
-    pub r14: u64,
+    // General-purpose registers (pushed in reverse order)
     pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub rbp: u64,
+    pub rbx: u64,
+    pub r9: u64,
+    pub r8: u64,
+    pub r10: u64,
+    pub rdx: u64,
+    pub rsi: u64,
+    pub rdi: u64,
+    pub rax: u64,    // syscall number
+    // CPU-saved context for iretq
+    pub rsp: u64,    // saved user RSP
+    pub cs: u64,     // user code segment (0x23)
     pub rip: u64,    // user return address
-    pub cs: u64,     // user code segment
     pub rflags: u64, // user flags
-    pub rsp: u64,    // user stack pointer
-    pub ss: u64,     // user data segment
+    pub ss: u64,     // user data segment (0x1B)
 }
 
 /// Kernel stack for syscall entry. Updated by set_syscall_kernel_stack().
@@ -117,6 +134,11 @@ pub fn set_syscall_kernel_stack(rsp: u64) {
     unsafe { SYSCALL_KERNEL_RSP = rsp; }
 }
 
+/// Check if any Ring 3 syscall has been seen.
+pub fn ring3_alive() -> bool {
+    unsafe { RING3_SYSCALL_SEEN }
+}
+
 /// Naked syscall entry point — called by hardware via IA32_LSTAR.
 ///
 /// On entry from `syscall`:
@@ -125,46 +147,30 @@ pub fn set_syscall_kernel_stack(rsp: u64) {
 ///   RAX = syscall number
 ///   RDI, RSI, RDX, R10, R8, R9 = arguments
 ///   RSP = still user RSP! We must switch to kernel stack.
-///
-/// Stack layout after saving (for iretq return):
-///   [rsp+0]  ss
-///   [rsp+8]  rsp (user)
-///   [rsp+16] rflags
-///   [rsp+24] cs
-///   [rsp+32] rip
-///   [rsp+40] r9
-///   [rsp+48] r8
-///   [rsp+56] r10
-///   [rsp+64] rdx
-///   [rsp+72] rsi
-///   [rsp+80] rdi
-///   [rsp+88] rax
-///   [rsp+96] rbx
-///   [rsp+104] rbp
-///   [rsp+112] r12
-///   [rsp+120] r13
-///   [rsp+128] r14
-///   [rsp+136] r15
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry_naked() {
     naked_asm!(
-        // Save user context to kernel stack for iretq return
-        "push qword ptr [{ss_seg}]",   // SS (user data segment)
-        "push r11",                     // RFLAGS (saved by syscall)
-        "push rcx",                     // RIP (saved by syscall)
-        "push qword ptr [{cs_seg}]",   // CS (user code segment)
+        // ── Save user context for iretq return ──
+        // CPU automatically saves: RCX (RIP), R11 (RFLAGS)
+        // We need to save: SS, RSP, CS (for iretq frame)
 
-        // Save user stack pointer
-        "push rsp",                     // save user RSP (will be overwritten by push below)
+        // Build iretq frame first (pushed first = highest address)
+        "push qword ptr [{ss_val}]",   // [rsp+0]  = SS (0x1B)
+        "push rsp",                     // [rsp+8]  = placeholder for user RSP (will fix below)
+        "add qword ptr [rsp], 8",      //           adjust to point past this push
+        "push qword ptr [rsp]",        //           duplicate RSP value
+        "push qword ptr [{cs_val}]",   // [rsp+16] = CS (0x23)
+        "push rcx",                     // [rsp+24] = RIP (saved by syscall)
+        "push r11",                     // [rsp+32] = RFLAGS (saved by syscall)
 
-        // Save all general-purpose registers
-        "push rax",
-        "push rdi",
-        "push rsi",
-        "push rdx",
-        "push r10",
-        "push r8",
-        "push r9",
+        // Now save all general-purpose registers (pushed in reverse order)
+        "push rax",                     // syscall number
+        "push rdi",                     // arg 0
+        "push rsi",                     // arg 1
+        "push rdx",                     // arg 2
+        "push r10",                     // arg 3
+        "push r8",                      // arg 4
+        "push r9",                      // arg 5
         "push rbx",
         "push rbp",
         "push r12",
@@ -198,22 +204,27 @@ unsafe extern "C" fn syscall_entry_naked() {
         "pop rdi",
         "pop rax",
 
-        // Restore user stack pointer
-        "pop rsp",
-
-        // Restore CS, RIP, RFLAGS, SS for iretq
-        "add rsp, 8",                   // skip CS (already in segment registers)
-        "pop rcx",                      // RIP
+        // Restore iretq frame (RFLAGS, RIP, CS, RSP, SS)
         "pop r11",                      // RFLAGS
-        "add rsp, 8",                   // skip SS (already in segment registers)
+        "pop rcx",                      // RIP
+        "add rsp, 8",                   // skip CS (loaded by iretq from stack)
+        "pop r11",                      // user RSP (will be loaded into RSP by iretq)
+        "pop r10",                      // SS (loaded by iretq from stack)
+
+        // Build proper iretq frame: SS, RSP, RFLAGS, CS, RIP (low to high)
+        "push r10",                     // SS
+        "push r11",                     // user RSP
+        "push r11",                     // RFLAGS (use saved value)
+        "push qword ptr [{cs_val}]",   // CS
+        "push rcx",                     // RIP
 
         // Return to Ring 3 via iretq
         "iretq",
 
         kstack = sym SYSCALL_KERNEL_RSP,
         handler = sym syscall_handler_rust,
-        ss_seg = const 0x1B_u64,        // USER_DS | RPL=3
-        cs_seg = const 0x23_u64,        // USER_CS | RPL=3
+        ss_val = const 0x1B_u64,        // USER_DS | RPL=3
+        cs_val = const 0x23_u64,        // USER_CS | RPL=3
     );
 }
 
