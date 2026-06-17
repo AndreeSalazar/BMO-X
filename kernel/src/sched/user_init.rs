@@ -253,13 +253,9 @@ pub fn spawn_hello() {
 
 /// Shell command: launch the desktop path that is stable today.
 pub fn spawn_desktop() -> ! {
-    crate::diag::info("sched", "spawn_desktop: Ring 3 compositor + Ring 0 services");
-    crate::drivers::serial::serial_write("[user_init] Launching Ring 3 desktop compositor over Ring 0 GOP services.\n");
-    if launch_desktop_compositor_ring3() {
-        loop { unsafe { core::arch::asm!("hlt"); } }
-    }
-
-    crate::diag::warn("sched", "Ring 3 desktop unavailable; falling back to Ring 0");
+    crate::diag::info("sched", "spawn_desktop: Ring 0 GOP desktop stable path");
+    crate::drivers::serial::serial_write("[user_init] Launching stable Ring 0 GOP desktop; Ring 3 remains test-only.\n");
+    prepare_desktop_compositor();
     crate::desktop::run_ring0();
 }
 
