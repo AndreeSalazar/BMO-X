@@ -389,10 +389,23 @@ Write-Host "  [FLASH 2/3] Copiando archivos desde USB_boot..." -ForegroundColor 
 $efiBootPath = "${dl}:\EFI\BOOT"
 
 # Ensure we have the latest kernel and bootloader in the root USB_boot folder before copying
+Copy-Item "$Root\BOOTX64.EFI" "$Root\USB_boot\BOOTX64.EFI" -Force
 Copy-Item "$Root\BOOTX64.EFI" "$Root\USB_boot\EFI\BOOT\BOOTX64.EFI" -Force
 Copy-Item "$Root\kernel.elf" "$Root\USB_boot\EFI\BOOT\kernel.elf" -Force
 Copy-Item "$Root\kernel.elf" "$Root\USB_boot\kernel.elf" -Force
 Copy-Item "$Root\bmofs.img"  "$Root\USB_boot\bmofs.img" -Force
+
+$markerPath = "$Root\USB_boot\FASTOS_BUILD_MARKER.txt"
+$efiHash = (Get-FileHash "$Root\BOOTX64.EFI" -Algorithm SHA256).Hash
+$kernelHash = (Get-FileHash "$Root\kernel.elf" -Algorithm SHA256).Hash
+Set-Content -Path $markerPath -Encoding ASCII -Value @(
+    "FastOS USB build marker",
+    "Date=$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))",
+    "BOOTX64.EFI.Size=$((Get-Item "$Root\BOOTX64.EFI").Length)",
+    "BOOTX64.EFI.SHA256=$efiHash",
+    "kernel.elf.Size=$((Get-Item "$Root\kernel.elf").Length)",
+    "kernel.elf.SHA256=$kernelHash"
+)
 
 # Copy the entire USB_boot directory to the USB flash drive
 Copy-Item -Path "$Root\USB_boot\*" -Destination "${dl}:\" -Recurse -Force
@@ -406,8 +419,11 @@ Write-Host "  [FLASH 3/3] Verificando..." -ForegroundColor Cyan
 $ok = $true
 $checks = @(
     @{ Path = "$efiBootPath\BOOTX64.EFI"; Name = "BOOTX64.EFI"; Orig = "$Root\BOOTX64.EFI"; Required = $true },
+    @{ Path = "${dl}:\BOOTX64.EFI";       Name = "BOOTX64.EFI root"; Orig = "$Root\BOOTX64.EFI"; Required = $true },
+    @{ Path = "$efiBootPath\kernel.elf";  Name = "kernel.elf EFI"; Orig = "$Root\kernel.elf"; Required = $true },
     @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf"; Required = $true },
     @{ Path = "${dl}:\bmofs.img";         Name = "bmofs.img";    Orig = "$Root\bmofs.img";  Required = $true },
+    @{ Path = "${dl}:\FASTOS_BUILD_MARKER.txt"; Name = "FASTOS_BUILD_MARKER.txt"; Orig = "$Root\USB_boot\FASTOS_BUILD_MARKER.txt"; Required = $true },
     @{ Path = "${dl}:\fastos_boot.bin";   Name = "fastos_boot.bin"; Orig = "$Root\USB_boot\fastos_boot.bin"; Required = $false }
 )
 
@@ -432,10 +448,16 @@ foreach ($c in $checks) {
     } else {
         $copied = (Get-Item $c.Path).Length
         $orig   = (Get-Item $c.Orig).Length
-        if ($copied -eq $orig) {
-            Write-Host "      $($c.Name): $copied bytes OK" -ForegroundColor DarkGray
+        $hashOk = $true
+        if ($c.Required) {
+            $copiedHash = (Get-FileHash $c.Path -Algorithm SHA256).Hash
+            $origHash = (Get-FileHash $c.Orig -Algorithm SHA256).Hash
+            $hashOk = ($copiedHash -eq $origHash)
+        }
+        if ($copied -eq $orig -and $hashOk) {
+            Write-Host "      $($c.Name): $copied bytes SHA256 OK" -ForegroundColor DarkGray
         } else {
-            Write-Host "      $($c.Name): tamano no coincide ($copied vs $orig bytes)" -ForegroundColor Yellow
+            Write-Host "      $($c.Name): no coincide con origen ($copied vs $orig bytes / hashOk=$hashOk)" -ForegroundColor Yellow
             $ok = $false
         }
     }

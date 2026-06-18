@@ -46,6 +46,7 @@ fn boot_log(phase: &'static str, msg: &'static str) {
     drivers::serial::serial_write("[FastOS] ");
     drivers::serial::serial_write(msg);
     drivers::serial::serial_write("\n");
+    early_visual_log(phase, msg, 0xFF76B900);
 }
 
 fn boot_log_u64(phase: &'static str, msg: &'static str, val: u64) {
@@ -62,6 +63,7 @@ fn boot_warn(phase: &'static str, msg: &'static str) {
     drivers::serial::serial_write("[FastOS] WARN: ");
     drivers::serial::serial_write(msg);
     drivers::serial::serial_write("\n");
+    early_visual_log(phase, msg, 0xFFFFBD2E);
 }
 
 fn boot_fault(phase: &'static str, msg: &'static str) -> ! {
@@ -69,7 +71,72 @@ fn boot_fault(phase: &'static str, msg: &'static str) -> ! {
     drivers::serial::serial_write("[FastOS] FATAL: ");
     drivers::serial::serial_write(msg);
     drivers::serial::serial_write("\n");
+    early_visual_log(phase, msg, 0xFFFF2A2A);
     loop { unsafe { core::arch::asm!("hlt"); } }
+}
+
+static mut EARLY_VISUAL_ROW: usize = 0;
+
+fn early_visual_clear() {
+    let (addr, w, h, s) = unsafe {
+        (
+            boot_info::FB_ADDR,
+            boot_info::FB_WIDTH as usize,
+            boot_info::FB_HEIGHT as usize,
+            boot_info::FB_STRIDE as usize,
+        )
+    };
+    if addr == 0 || w == 0 || h == 0 || s == 0 { return; }
+
+    let buf = addr as *mut u32;
+    let max_h = h.min(360);
+    for y in 0..max_h {
+        for x in 0..w {
+            unsafe { buf.add(y * s + x).write_volatile(0xFF050A12); }
+        }
+    }
+    unsafe { EARLY_VISUAL_ROW = 0; }
+}
+
+fn early_visual_log(phase: &'static str, msg: &'static str, color: u32) {
+    let row = unsafe {
+        let r = EARLY_VISUAL_ROW;
+        EARLY_VISUAL_ROW = (EARLY_VISUAL_ROW + 1) % 18;
+        r
+    };
+    let y = 12 + row * 18;
+    early_visual_text(12, y, b"FastOS KERNEL NEW :: ", 0xFF58A6FF);
+    early_visual_text(188, y, phase.as_bytes(), color);
+    early_visual_text(188 + phase.len() * 8 + 16, y, msg.as_bytes(), 0xFFE6EDF3);
+}
+
+fn early_visual_text(x: usize, y: usize, text: &[u8], color: u32) {
+    let (addr, w, h, s) = unsafe {
+        (
+            boot_info::FB_ADDR,
+            boot_info::FB_WIDTH as usize,
+            boot_info::FB_HEIGHT as usize,
+            boot_info::FB_STRIDE as usize,
+        )
+    };
+    if addr == 0 || w == 0 || h == 0 || s == 0 { return; }
+
+    let mut cx = x;
+    let cy = y;
+    let buf = addr as *mut u32;
+    for &ch in text {
+        if cx + 8 >= w || cy + 16 >= h { break; }
+        let glyph = ui::font::get_glyph(ch);
+        for py in 0..16 {
+            let bits = glyph[py];
+            for px in 0..8 {
+                if (bits & (0x80 >> px)) != 0 {
+                    unsafe { buf.add((cy + py) * s + cx + px).write_volatile(color); }
+                }
+            }
+        }
+        cx += 8;
+    }
 }
 
 fn serial_hex(val: u64) {
@@ -142,6 +209,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         boot_info::FB_HEIGHT = bi.fb_height;
         boot_info::FB_STRIDE = bi.fb_stride;
     }
+
+    // First visible kernel checkpoint. This runs before diag init, CPU phases,
+    // PCI probing, GOP driver init, APIC, security, welcome and desktop. If
+    // this does not appear, either the USB still boots old files or control is
+    // not reaching this kernel image.
+    early_visual_clear();
+    early_visual_log("boot", "K0 BootInfo received; framebuffer direct writer online", 0xFF76B900);
 
     diag::init();
 

@@ -269,6 +269,25 @@ fn query_gop() -> Option<GopInfo> {
     })
 }
 
+fn paint_bootloader_marker(gop: &GopInfo, stage: u32) {
+    if gop.fb_addr == 0 || gop.width == 0 || gop.height == 0 || gop.stride == 0 {
+        return;
+    }
+
+    let fb = gop.fb_addr as *mut u32;
+    let width = gop.width as usize;
+    let stride = gop.stride as usize;
+    let y0 = 44usize + (stage as usize * 10);
+    let colors = [0xFF00FF00u32, 0xFF00FFFFu32, 0xFFFFFF00u32, 0xFFFF00FFu32];
+    let color = colors[(stage as usize).min(colors.len() - 1)];
+
+    for y in y0..(y0 + 8).min(gop.height as usize) {
+        for x in 0..width.min(640) {
+            unsafe { fb.add(y * stride + x).write_volatile(color); }
+        }
+    }
+}
+
 // ── RSDP lookup ─────────────────────────────────────────────────────────────
 
 fn find_rsdp() -> u64 {
@@ -455,6 +474,7 @@ fn main() -> Status {
 
     // ── 5. Query GOP ────────────────────────────────────────────────────────
     let gop = query_gop().expect("Failed to query GOP");
+    paint_bootloader_marker(&gop, 0);
 
     // ── 6. Find RSDP ────────────────────────────────────────────────────────
     let rsdp_addr = find_rsdp();
@@ -519,6 +539,7 @@ fn main() -> Status {
     }
 
     info!("BootInfo at 0x{:x}", boot_info_ptr as u64);
+    paint_bootloader_marker(&gop, 1);
 
     // ── 9. Exit boot services (with retry) ──────────────────────────────────
     info!("Exiting boot services...");
@@ -553,6 +574,7 @@ fn main() -> Status {
         count += 1;
     }
     bi.memory_map_count = count as u64;
+    paint_bootloader_marker(&gop, 2);
 
     // ── 11. Jump to kernel ──────────────────────────────────────────────────
     unsafe {
