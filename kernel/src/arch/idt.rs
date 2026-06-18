@@ -434,23 +434,18 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
         crate::arch::context_switch::save_context_from_stack(saved_state);
     }
 
+    // Snapshot current thread index before tick (schedule() inside timer_tick()
+    // may change it when the time slice expires).
+    let cur_idx = crate::sched::thread::current_index();
+
     // Tick the scheduler (decrements time slice, may trigger schedule())
     crate::sched::timer_tick();
     crate::diag::tick_refresh();
 
     // Check if we need to switch threads.
-    let cur_idx = crate::sched::thread::current_index();
-    // schedule() may have been called by timer_tick → pick next
-    // We need to detect if schedule() changed the current thread.
-    // But schedule() runs inline in timer_tick and may have changed CURRENT_THREAD.
-    // Let's re-check: if timer_tick called schedule(), it already changed the current.
-    // We just need to check if the current is different from what we saved.
-
-    // Actually, we need to invoke the scheduler ourselves since timer_tick only
-    // decrements the time slice and calls schedule() when it hits 0.
-    // Let's call schedule() now to give the scheduler a chance to pick next.
-    crate::sched::schedule();
-
+    // timer_tick() already calls schedule() when the time slice expires,
+    // which sets CURRENT_THREAD to the next thread. No need to call
+    // schedule() again here — doing so would cause a double context switch.
     let new_idx = crate::sched::thread::current_index();
 
     if new_idx != cur_idx && new_idx < crate::sched::thread::MAX_THREADS {

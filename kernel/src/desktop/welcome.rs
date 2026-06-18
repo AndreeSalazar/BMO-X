@@ -443,8 +443,7 @@ pub fn run() -> ! {
         // 1) Full repaint solo si algo cambió.
         if unsafe { DIRTY } {
             if let Some(fb) = fb() {
-                render_safe(&fb);
-                crate::diag::paint_overlay();
+                render(&fb);
                 // Pintar el caret en el estado actual del blink para que
                 // no aparezca/desaparezca en el siguiente sub-loop.
                 let on = blink_on();
@@ -454,17 +453,20 @@ pub fn run() -> ! {
             unsafe { DIRTY = false; }
         }
 
-        // 2) Sub-loop de ~32 ms: drena input y gestiona blink local.
-        let cycles = 32u64 * 3_700_000;
+        // 2) SIEMPRE pintar el HUD overlay si está habilitado.
+        //    Antes el overlay sólo se pintaba en DIRTY, así que nunca se
+        //    veía después del primer frame. Ahora se pinta cada sub-frame.
+        if crate::diag::is_overlay_enabled() {
+            crate::diag::paint_overlay();
+        }
+
+        // 3) Sub-loop de ~16 ms: drena input y gestiona blink local.
+        let cycles = 16u64 * 3_700_000;
         let start = crate::arch::cpu::rdtsc();
         while (crate::arch::cpu::rdtsc() - start) < cycles {
             let overlay_was_enabled = crate::diag::is_overlay_enabled();
             let sc = desktop::poll_key();
             if crate::diag::is_overlay_enabled() != overlay_was_enabled {
-                // `desktop::poll_key()` maneja Ctrl+Alt globalmente, pero su
-                // dirty flag pertenece al escritorio. En el welcome debemos
-                // marcar nuestro propio repaint para que el HUD aparezca/oculte
-                // inmediatamente al usar el hotkey.
                 mark_dirty();
             }
             if sc != 0 {
@@ -481,7 +483,6 @@ pub fn run() -> ! {
             }
 
             // Blink local: si el estado cambia, repintar SOLO el caret.
-            // Cero ghost porque no tocamos el resto del frame.
             let cur = blink_on();
             if cur != unsafe { LAST_BLINK_ON } {
                 if let Some(fb) = fb() {
