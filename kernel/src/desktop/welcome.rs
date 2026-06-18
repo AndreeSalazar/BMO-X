@@ -415,6 +415,11 @@ fn process_enter() {
         crate::diag::info("welcome", "Hello command accepted; preparing Ring 3 test");
         sound::beep(440, 80);
         crate::sched::user_init::spawn_hello();
+    } else if eq_ci(trimmed_cmd, b"ring3") {
+        // Alias for "hello" — explicit Ring 3 transition test.
+        crate::diag::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
+        sound::beep(440, 80);
+        crate::sched::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"reboot") {
         crate::diag::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
@@ -423,7 +428,7 @@ fn process_enter() {
         nexo_test_compile();
     } else {
         crate::diag::warn("welcome", "Unknown command at welcome prompt");
-        show_hint(b"Comando desconocido. Usa: Run, Hello, Nexo, Reboot.");
+        show_hint(b"Comandos: Run, Hello, Ring3, Nexo, Reboot.");
     }
     unsafe { INPUT_LEN = 0; }
     mark_dirty();

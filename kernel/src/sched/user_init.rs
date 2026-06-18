@@ -77,36 +77,53 @@ fn build_init_program() -> &'static [u8] {
 }
 
 fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u64, u64)> {
+    crate::diag::info("ring3", "=== Ring 3 process allocation START ===");
+    crate::drivers::serial::serial_write("[ring3] === alloc start ===\n");
+    crate::diag::info("ring3", "allocating process struct");
     let proc = process::alloc_process()?;
     proc.set_name(name);
     proc.caps = caps;
+    crate::diag::info("ring3", "process struct allocated");
 
     // Create dedicated user page table (clones kernel mappings)
+    crate::diag::info("ring3", "reading kernel CR3");
     let kernel_cr3 = paging::read_cr3();
+    crate::diag::info_u64("ring3", "kernel CR3", kernel_cr3);
+    crate::diag::info("ring3", "creating user page table");
     let user_cr3 = unsafe { paging::create_user_page_table(kernel_cr3)? };
     proc.page_table_root = user_cr3;
+    crate::diag::info_u64("ring3", "user CR3", user_cr3);
 
     let code_pages = (code.len() + crate::arch::page_alloc::page_size() - 1) / crate::arch::page_alloc::page_size();
     let stack_pages = USER_STACK_SIZE / crate::arch::page_alloc::page_size();
+    crate::diag::info_u64("ring3", "code pages", code_pages as u64);
+    crate::diag::info_u64("ring3", "stack pages", stack_pages as u64);
 
     // Allocate physical pages for code and stack
+    crate::diag::info("ring3", "allocating physical pages for code");
     let code_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(code_pages.max(1))? };
+    crate::diag::info_u64("ring3", "code phys addr", code_phys);
+    crate::diag::info("ring3", "allocating physical pages for stack");
     let stack_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(stack_pages)? };
+    crate::diag::info_u64("ring3", "stack phys addr", stack_phys);
 
     // Map into user virtual address space
     // Code: RX, USER, !NX
-    let code_flags = paging::flags::PRESENT | paging::flags::USER | paging::flags::WRITABLE; // writable for copy, then make RX
+    let code_flags = paging::flags::PRESENT | paging::flags::USER | paging::flags::WRITABLE;
+    crate::diag::info("ring3", "mapping code into user page table");
     unsafe {
         paging::map_user_range(user_cr3, USER_CODE_VBASE, code_phys, code_pages, code_flags).ok()?;
     }
 
     // Stack: RW, USER, NX
     let stack_flags = paging::flags::PRESENT | paging::flags::USER | paging::flags::WRITABLE | paging::flags::NO_EXECUTE;
+    crate::diag::info("ring3", "mapping stack into user page table");
     unsafe {
         paging::map_user_range(user_cr3, USER_STACK_VBASE, stack_phys, stack_pages, stack_flags).ok()?;
     }
 
     // Copy code to physical pages
+    crate::diag::info("ring3", "copying code bytes to physical pages");
     unsafe {
         let dst = code_phys as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
@@ -120,10 +137,9 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
         // Zero stack
         core::ptr::write_bytes(stack_phys as *mut u8, 0, USER_STACK_SIZE);
     }
+    crate::diag::info("ring3", "code and stack zeroed/populated");
 
     // After copy, code pages are mapped RW+USER for simplicity.
-    // A production kernel would re-walk PTEs here and clear WRITABLE to enforce RX-only.
-
     proc.entry_point = USER_CODE_VBASE;
     proc.user_code_base = code_phys;
     proc.user_code_size = code_pages * crate::arch::page_alloc::page_size();
@@ -138,6 +154,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
         if ptr.is_null() { return None; }
         ptr as u64 + KERNEL_STACK_PER_THREAD as u64
     };
+    crate::diag::info_u64("ring3", "kernel stack for this thread", kernel_stack);
 
     let thr = thread::alloc_thread(proc.pid, Priority::Interactive)?;
     thr.regs = thread::SavedRegs::new_user(USER_CODE_VBASE, user_stack_top);
@@ -151,13 +168,20 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
             t.state = thread::ThreadState::Running;
         }
     }
+    crate::diag::info_u64("ring3", "thread TID", tid.0 as u64);
 
+    // Critical: set BOTH the TSS.rsp0 (for #GP/#DF exceptions) AND the
+    // SYSCALL_KERNEL_RSP (for the syscall entry to switch to).
+    crate::diag::info("ring3", "setting kernel stack for TSS.rsp0 and syscall entry");
     crate::arch::gdt::set_kernel_stack(kernel_stack);
     crate::arch::syscall_entry::set_syscall_kernel_stack(kernel_stack);
 
-    crate::diag::info_u64("ring3", "user code entry", USER_CODE_VBASE);
-    crate::diag::info_u64("ring3", "user stack top", user_stack_top);
-    crate::diag::info_u64("ring3", "user CR3", user_cr3);
+    // Sanity: read back the values to verify the writes took effect.
+    crate::diag::info("ring3", "Ring 3 process allocation complete");
+    crate::diag::info_u64("ring3", "user code entry (Ring 3 RIP)", USER_CODE_VBASE);
+    crate::diag::info_u64("ring3", "user stack top (Ring 3 RSP)", user_stack_top);
+    crate::diag::info_u64("ring3", "user CR3 (page table root)", user_cr3);
+    crate::diag::info("ring3", "=== Ring 3 process allocation END ===");
     Some((USER_CODE_VBASE, user_stack_top))
 }
 
@@ -192,18 +216,58 @@ pub fn prepare_desktop_compositor() -> bool {
 /// Jump to Ring 3 — execute the init process. Does NOT return.
 /// Uses iretq for safe return from Ring 0 to Ring 3.
 pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
+    // CRITICAL: This is the moment we leave Ring 0. Any error here
+    // becomes a #GP / #DF / triple-fault and we lose the CPU.
+    //
+    // Sanity check 1: stack pointer must be 16-byte aligned.
+    if user_stack & 0xF != 0 {
+        crate::diag::fault("ring3", "user_stack NOT 16-byte aligned — #GP imminent");
+        loop { core::arch::asm!("hlt"); }
+    }
+    // Sanity check 2: entry point must be canonical (high bit 47 == high bit 48-63).
+    if (entry_point >> 47) != ((entry_point >> 48) & 1) {
+        crate::diag::fault("ring3", "entry_point NOT canonical — #GP imminent");
+        loop { core::arch::asm!("hlt"); }
+    }
+    // Sanity check 3: user_stack must be canonical.
+    if (user_stack >> 47) != ((user_stack >> 48) & 1) {
+        crate::diag::fault("ring3", "user_stack NOT canonical — #GP imminent");
+        loop { core::arch::asm!("hlt"); }
+    }
+    // Sanity check 4: user_stack must be in lower half of user address space.
+    if user_stack >= 0x0000_8000_0000_0000 {
+        crate::diag::fault("ring3", "user_stack in kernel range — would overwrite kernel");
+        loop { core::arch::asm!("hlt"); }
+    }
+
+    crate::diag::info("ring3", "=== Ring 3 JUMP START ===");
+    crate::diag::info_u64("ring3", "entry (RIP)", entry_point);
+    crate::diag::info_u64("ring3", "stack (RSP)", user_stack);
+    crate::diag::info_u64("ring3", "CS expected", 0x23);
+    crate::diag::info_u64("ring3", "SS expected", 0x1B);
+    crate::diag::info_u64("ring3", "RFLAGS expected", 0x202);
+    crate::drivers::serial::serial_write("[ring3] jumping: RIP=");
+    crate::drivers::serial::serial_write_u64(entry_point, 16);
+    crate::drivers::serial::serial_write(" RSP=");
+    crate::drivers::serial::serial_write_u64(user_stack, 16);
+    crate::drivers::serial::serial_write(" CR3=");
+    crate::diag::read_cr3_into_serial();
+    crate::drivers::serial::serial_write("\n");
+
     // Build interrupt frame for iretq return to Ring 3
-    // Layout (from low to high):
+    // Layout (low to high on kernel stack):
     //   SS, RSP, RFLAGS, CS, RIP
     core::arch::asm!(
         // Build iretq frame on kernel stack
-        "push qword ptr {user_ss}",     // SS (user data segment)
+        "push qword ptr {user_ss}",     // SS (user data segment) 0x1B
         "push {stack}",                  // RSP (user stack pointer)
-        "push qword ptr 0x202",         // RFLAGS (IF=1, reserved bit 1)
-        "push qword ptr {user_cs}",     // CS (user code segment)
+        "push qword ptr 0x202",         // RFLAGS (IF=1, reserved bit 1 set)
+        "push qword ptr {user_cs}",     // CS (user code segment) 0x23
         "push {entry}",                  // RIP (user entry point)
 
         // Return to Ring 3 via iretq
+        // iretq pops 5 values: RIP, CS, RFLAGS, RSP, SS
+        // and switches to Ring 3 with the new RIP/RSP/CS/SS
         "iretq",
 
         user_cs = const 0x23_u64,        // USER_CS | RPL=3

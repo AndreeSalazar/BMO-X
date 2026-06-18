@@ -186,6 +186,15 @@ pub fn ack_persistent_bytes(bytes: usize) {
     persistent::ack(bytes);
 }
 
+/// Read the current CR3 and dump it to serial as hex.
+/// Used in Ring 3 transition tracing.
+pub fn read_cr3_into_serial() {
+    let cr3: u64;
+    unsafe { core::arch::asm!("mov {}, cr3", out(reg) cr3); }
+    crate::drivers::serial::serial_write("0x");
+    crate::drivers::serial::serial_write_u64(cr3, 16);
+}
+
 // ── Periodic refresh (called from APIC timer tick) ─────────────────
 //
 // Called every timer tick.  The overlay only repaints at REFRESH_HZ

@@ -43,3 +43,33 @@ pub fn serial_read_byte() -> Option<u8> {
         None
     }
 }
+
+/// Write a u64 to serial as hex (without 0x prefix).
+pub fn serial_write_u64(value: u64, min_width: usize) {
+    if value == 0 {
+        for _ in 0..min_width.min(1) {
+            serial_write_byte(b'0');
+        }
+        if min_width == 0 {
+            serial_write_byte(b'0');
+        }
+        return;
+    }
+    let mut buf = [0u8; 16];
+    let mut i = 0;
+    let mut v = value;
+    while v > 0 {
+        let digit = (v & 0xF) as u8;
+        buf[i] = if digit < 10 { b'0' + digit } else { b'a' + digit - 10 };
+        v >>= 4;
+        i += 1;
+    }
+    while i < min_width && i < buf.len() {
+        buf[i] = b'0';
+        i += 1;
+    }
+    while i > 0 {
+        i -= 1;
+        serial_write_byte(buf[i]);
+    }
+}
