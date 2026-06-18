@@ -93,9 +93,9 @@ pub struct AudioOutEndpoint {
 pub fn attach(info: UsbDeviceInfo) -> Result<(), &'static str> {
     crate::drivers::serial::serial_write("[USB-Audio] Conectando dispositivo de Audio...\n");
     crate::drivers::serial::serial_write("[USB-Audio] Detectado VID: ");
-    crate::serial_hex(info.vendor_id as u64);
+    crate::boot::serial_hex(info.vendor_id as u64);
     crate::drivers::serial::serial_write(" PID: ");
-    crate::serial_hex(info.product_id as u64);
+    crate::boot::serial_hex(info.product_id as u64);
     crate::drivers::serial::serial_write("\n");
 
     // Configurar por defecto de acuerdo al hardware conectado
@@ -141,7 +141,7 @@ pub fn set_volume(volume: u8) {
     unsafe {
         GLOBAL_AUDIO_CONFIG.volume_master = volume.min(100);
         crate::drivers::serial::serial_write("[USB-Audio] Volumen maestro establecido a: ");
-        crate::serial_hex(GLOBAL_AUDIO_CONFIG.volume_master as u64);
+        crate::boot::serial_hex(GLOBAL_AUDIO_CONFIG.volume_master as u64);
         crate::drivers::serial::serial_write("%\n");
     }
 }

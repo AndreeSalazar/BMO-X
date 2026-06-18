@@ -82,7 +82,7 @@ impl XhciController {
         }
 
         serial::serial_write("[xHCI] MMIO BAR base: ");
-        crate::serial_hex(base_addr);
+        crate::boot::serial_hex(base_addr);
         serial::serial_write("\n");
 
         let cap_regs = base_addr as *mut CapRegisters;
@@ -98,7 +98,7 @@ impl XhciController {
         // Leer versión de xHCI
         let hci_version = unsafe { read_volatile(&(*cap_regs).hci_version) };
         serial::serial_write("[xHCI] HCI Versión: ");
-        crate::serial_hex(hci_version as u64);
+        crate::boot::serial_hex(hci_version as u64);
         serial::serial_write("\n");
 
         // Leer parámetros estructurales
@@ -107,9 +107,9 @@ impl XhciController {
         let max_ports = ((hcs1 >> 24) & 0xFF) as u8;
 
         serial::serial_write("[xHCI] Max Slots: ");
-        crate::serial_hex(max_slots as u64);
+        crate::boot::serial_hex(max_slots as u64);
         serial::serial_write(" | Max Ports: ");
-        crate::serial_hex(max_ports as u64);
+        crate::boot::serial_hex(max_ports as u64);
         serial::serial_write("\n");
 
         // 1. Resetear el controlador
@@ -177,7 +177,7 @@ impl XhciController {
             if ccs {
                 connected_count += 1;
                 serial::serial_write("[xHCI] Puerto ");
-                crate::serial_hex(port as u64);
+                crate::boot::serial_hex(port as u64);
                 serial::serial_write(" conectado: PED=");
                 serial::serial_write(if ped { "1\n" } else { "0\n" });
             }

@@ -54,9 +54,9 @@ impl UsbMscDevice {
         }
 
         serial::serial_write("[USB-Storage] Capacidad detectada: ");
-        crate::serial_hex(self.total_blocks);
+        crate::boot::serial_hex(self.total_blocks);
         serial::serial_write(" bloques de ");
-        crate::serial_hex(self.block_size as u64);
+        crate::boot::serial_hex(self.block_size as u64);
         serial::serial_write(" bytes.\n");
 
         Ok(())

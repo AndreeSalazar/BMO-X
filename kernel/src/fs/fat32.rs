@@ -81,9 +81,9 @@ impl Fat32Volume {
         let data_start_sector = reserved_sectors + (num_fats * sectors_per_fat);
 
         serial::serial_write("[FAT32] Volume parsed. Sectors per cluster: ");
-        crate::serial_hex(sectors_per_cluster as u64);
+        crate::boot::serial_hex(sectors_per_cluster as u64);
         serial::serial_write(" | Data start sector: ");
-        crate::serial_hex(data_start_sector as u64);
+        crate::boot::serial_hex(data_start_sector as u64);
         serial::serial_write("\n");
 
         Ok(Self {
@@ -196,9 +196,9 @@ impl Fat32Volume {
                     serial::serial_write("[FAT32] Archivo encontrado: ");
                     serial::serial_write(filename);
                     serial::serial_write(" | Cluster Inicial: ");
-                    crate::serial_hex(start_cluster as u64);
+                    crate::boot::serial_hex(start_cluster as u64);
                     serial::serial_write(" | Tamaño: ");
-                    crate::serial_hex(file_size as u64);
+                    crate::boot::serial_hex(file_size as u64);
                     serial::serial_write(" bytes\n");
 
                     return Ok((start_cluster, file_size));
