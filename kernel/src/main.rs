@@ -230,16 +230,21 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // Detect all CPU features via CPUID
     let cpu_features = arch::cpu::detect_cpu();
     boot_log("phase0", "CPU detected");
+    early_visual_log("phase0", "CPU detected OK", 0xFF76B900);
     drivers::serial::serial_write("  Brand: ");
     drivers::serial::serial_write(cpu_features.brand_string_str());
     drivers::serial::serial_write("\n");
 
     // Initialize Ryzen 5 5600X (CR0/CR4/XCR0/FPU/MTRR/PAT/perf)
+    early_visual_log("phase0", "Ryzen init...", 0xFFFFBD2E);
     arch::cpu_amd::ryzen_5_5600x::init(&cpu_features);
+    early_visual_log("phase0", "Ryzen init DONE", 0xFF76B900);
 
     // Calibrate TSC frequency using APIC timer reference
+    early_visual_log("phase0", "TSC calibrating...", 0xFFFFBD2E);
     let tsc_freq = calibrate_tsc();
     boot_log_u64("phase0", "TSC frequency (Hz)", tsc_freq);
+    early_visual_log("phase0", "TSC calibrate DONE", 0xFF76B900);
 
     let phase0_end = arch::cpu::rdtsc();
     boot_log_u64("phase0", "Phase 0 time (TSC ticks)", phase0_end - boot_start);
@@ -247,6 +252,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // ════════════════════════════════════════════════════════════════
     // PHASE 1: MEMORY
     // ════════════════════════════════════════════════════════════════
+    early_visual_log("phase1", "=== Phase 1: Memory ===", 0xFF58A6FF);
     boot_log("phase1", "=== Phase 1: Memory ===");
 
     // Validate memory map
@@ -281,6 +287,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // ════════════════════════════════════════════════════════════════
     // PHASE 2: DEVICES
     // ════════════════════════════════════════════════════════════════
+    early_visual_log("phase2", "=== Phase 2: Devices ===", 0xFF58A6FF);
     boot_log("phase2", "=== Phase 2: Devices ===");
 
     // GDT + TSS
@@ -339,6 +346,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // ════════════════════════════════════════════════════════════════
     // PHASE 3: DISPLAY
     // ════════════════════════════════════════════════════════════════
+    early_visual_log("phase3", "=== Phase 3: Display ===", 0xFF58A6FF);
     boot_log("phase3", "=== Phase 3: Display ===");
 
     if bi.fb_addr == 0 {
@@ -375,6 +383,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // ════════════════════════════════════════════════════════════════
     // PHASE 4: SCHEDULER
     // ════════════════════════════════════════════════════════════════
+    early_visual_log("phase4", "=== Phase 4: Scheduler ===", 0xFF58A6FF);
     boot_log("phase4", "=== Phase 4: Scheduler ===");
 
     // APIC timer for preemptive scheduling
@@ -398,6 +407,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // ════════════════════════════════════════════════════════════════
     // PHASE 5: DESKTOP
     // ════════════════════════════════════════════════════════════════
+    early_visual_log("phase5", "=== Phase 5: Desktop ===", 0xFF58A6FF);
     let boot_end = arch::cpu::rdtsc();
     let boot_total = boot_end - boot_start;
 
