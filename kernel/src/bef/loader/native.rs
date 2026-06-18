@@ -26,7 +26,17 @@ use super::meta_sections::{parse_meta_sections, meta_stats, MetaSectionStats};
 use crate::bef::manifest::Provenance;
 
 /// Virtual base address for user-space loading (Ring 3).
+/// ASLR: offset by 2 MB random amount in lower 4 bits (16-aligned).
 const USER_BASE: u64 = 0x0040_0000;
+
+/// Get ASLR-randomized base address.
+fn aslr_base() -> u64 {
+    // Use TSC as entropy source — not cryptographically secure but
+    // sufficient for basic ASLR in a bare-metal OS.
+    let tsc = crate::arch::cpu::rdtsc();
+    let offset = (tsc & 0x00FF_F000) as u64; // Random 4KB-aligned offset up to 16 MB
+    USER_BASE + offset
+}
 
 pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     if bytes.len() < BefHeader::SIZE {
@@ -47,6 +57,9 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         return Err(LoadError::UnsupportedAbi);
     }
 
+    // ASLR randomization.
+    let base = aslr_base();
+
     // Step 2: Parse section table.
     let table = SectionTable::parse(bytes, hdr.section_table_offset, hdr.section_count)
         .map_err(|_| LoadError::SectionOutOfRange)?;
@@ -59,28 +72,52 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let _stats: MetaSectionStats = meta_stats(&meta);
 
     // Step 5: Map sections into virtual memory.
-    let mapped = map_sections(bytes, &table)?;
+    let mapped = map_sections(bytes, &table, base)?;
 
     // Step 6: Apply relocations.
     if let Some(reloc_entry) = table.find(SectionKind::Relocs) {
-        apply_relocations(bytes, &table, &mapped, reloc_entry)?;
+        apply_relocations(bytes, &table, &mapped, reloc_entry, base)?;
     }
 
-    // Step 7: Resolve imports (stub — marks binding offsets for future resolution).
-    // TODO: Full import resolution requires a runtime symbol table.
-    // For now, we zero out binding offsets so they don't point to garbage.
+    // Step 7: Resolve imports via runtime symbol table.
+    let mut resolved_count = 0u32;
+    if let Some(imports_entry) = table.find(SectionKind::Imports) {
+        let import_start = imports_entry.file_offset as usize;
+        let import_size = imports_entry.file_size as usize;
+        if import_start + import_size <= bytes.len() && import_size >= 4 {
+            let section_bytes = &bytes[import_start..import_start + import_size];
+            // First 4 bytes = entry count.
+            let count = u32::from_le_bytes([
+                section_bytes[0], section_bytes[1], section_bytes[2], section_bytes[3],
+            ]);
+            let entry_data = &section_bytes[4..];
+            if let Ok(import_table) = crate::bef::imports::ImportTable::parse(entry_data, count) {
+                resolved_count = super::runtime::resolve_imports(&import_table, &mapped)
+                    .unwrap_or(0);
+            }
+        }
+    }
+    let _ = resolved_count; // Used for diagnostics below.
 
     // Step 8: Parse TLS template if present.
+    let mut tls_off = 0u64;
+    let mut tls_sz = 0u64;
     if let Some(tls_entry) = table.find(SectionKind::Tls) {
-        let _tls = parse_tls_template(bytes, tls_entry)?;
-        // TODO: Store TLS template in Image for thread creation.
+        let tls = parse_tls_template(bytes, tls_entry)?;
+        tls_off = tls.data_offset;
+        tls_sz = tls.total_size();
     }
 
     // Build the final image.
     let mut img = fake_provenance_image(Provenance::Native);
-    img.entry_point = hdr.entry_offset;
-    img.base_address = USER_BASE;
+    img.entry_point = base + hdr.entry_offset;
+    img.base_address = base;
     img.sections = mapped;
+    img.tls_offset = tls_off;
+    img.tls_size = tls_sz;
+
+    crate::diag::info_u64("bef", "native load complete, entry", img.entry_point);
+    crate::diag::info_u64("bef", "resolved imports", resolved_count as u64);
 
     Ok(img)
 }
@@ -140,10 +177,10 @@ fn verify_section_hashes(bytes: &[u8], table: &SectionTable) -> Result<(), LoadE
     Ok(())
 }
 
-/// Step 5: Map sections into virtual memory (allocate and copy).
-fn map_sections(bytes: &[u8], table: &SectionTable) -> Result<Vec<MappedSection>, LoadError> {
+/// Step 5: Map sections into virtual memory (allocate and copy data).
+fn map_sections(bytes: &[u8], table: &SectionTable, base: u64) -> Result<Vec<MappedSection>, LoadError> {
     let mut mapped = Vec::new();
-    let mut current_va = USER_BASE;
+    let mut current_va = base;
 
     for entry in table.entries {
         if entry.file_size == 0 && entry.mem_size == 0 {
@@ -180,6 +217,7 @@ fn map_sections(bytes: &[u8], table: &SectionTable) -> Result<Vec<MappedSection>
             virt_addr: current_va,
             size: aligned_size as u64,
             flags,
+            data_ptr: ptr as u64,
         });
 
         current_va += aligned_size as u64;
@@ -210,6 +248,7 @@ fn apply_relocations(
     _table: &SectionTable,
     mapped: &[MappedSection],
     reloc_entry: &SectionEntry,
+    base: u64,
 ) -> Result<(), LoadError> {
     let reloc_start = reloc_entry.file_offset as usize;
     let reloc_size = reloc_entry.file_size as usize;
@@ -234,26 +273,48 @@ fn apply_relocations(
         }
         let target = &mapped[target_idx];
 
-        // For now, symbol resolution is a TODO.
-        // We write placeholder addresses that will be fixed by the runtime.
-        let symbol_addr = 0u64; // TODO: resolve symbol address.
+        // Resolve symbol address via runtime table.
+        // For BEF native, symbol_idx refers to the Symbols section.
+        let symbol_addr = resolve_symbol_for_reloc(reloc, mapped, base);
 
-        // Apply the relocation.
-        let target_slice = unsafe {
-            core::slice::from_raw_parts_mut(
-                target.virt_addr as *mut u8,
-                target.size as usize,
-            )
-        };
-        let _ = crate::bef::relocations::apply(
-            reloc,
-            target_slice,
-            target.virt_addr + reloc.offset,
-            symbol_addr,
-        );
+        // Apply the relocation using the actual section data pointer.
+        if target.data_ptr != 0 {
+            let target_slice = unsafe {
+                core::slice::from_raw_parts_mut(
+                    target.data_ptr as *mut u8,
+                    target.size as usize,
+                )
+            };
+            let _ = crate::bef::relocations::apply(
+                reloc,
+                target_slice,
+                target.virt_addr + reloc.offset,
+                symbol_addr,
+            );
+        }
     }
 
     Ok(())
+}
+
+/// Resolve a symbol address for a relocation entry.
+fn resolve_symbol_for_reloc(reloc: &Relocation, mapped: &[MappedSection], base: u64) -> u64 {
+    // Try runtime symbol table first.
+    if reloc.symbol_idx != 0 {
+        // Look up by symbol index in the runtime table.
+        let addr = super::runtime::lookup_by_hash(reloc.symbol_idx, "");
+        if addr != 0 {
+            return addr;
+        }
+    }
+
+    // For Abs64 with no symbol, use base + addend (position-independent).
+    if reloc.symbol_idx == 0 {
+        return base.wrapping_add(reloc.addend as u64);
+    }
+
+    // Fallback: return 0 (will cause a fault if called).
+    0
 }
 
 /// Step 8: Parse TLS template from the TLS section.

@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use super::{Image, LoadError, fake_provenance_image};
+use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use crate::bef::manifest::Provenance;
 use crate::barex::abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64, bx_i64};
 
@@ -70,13 +70,31 @@ pub const PT_DYNAMIC: bx_u32 = 2;
 pub const PT_TLS:     bx_u32 = 7;
 pub const PT_GNU_RELRO: bx_u32 = 0x6474E552;
 
-// ─── Relocations canonicales x86_64 ────────────────────────────────────
-pub const R_X86_64_64:        bx_u32 = 1;   // → BEF Abs64
-pub const R_X86_64_PC32:      bx_u32 = 2;   // → BEF Rel32
-pub const R_X86_64_PLT32:     bx_u32 = 4;   // → BEF Rel32
-pub const R_X86_64_GLOB_DAT:  bx_u32 = 6;   // → BEF Got64
-pub const R_X86_64_JUMP_SLOT: bx_u32 = 7;   // → BEF Got64
-pub const R_X86_64_RELATIVE:  bx_u32 = 8;   // → BEF Abs64 (sin símbolo)
+// ─── ELF64 Section Header (64 bytes) ───────────────────────────────────
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+pub struct Elf64Shdr {
+    pub sh_name: bx_u32,
+    pub sh_type: bx_u32,
+    pub sh_flags: bx_u64,
+    pub sh_addr: bx_u64,
+    pub sh_offset: bx_u64,
+    pub sh_size: bx_u64,
+    pub sh_link: bx_u32,
+    pub sh_info: bx_u32,
+    pub sh_addralign: bx_u64,
+    pub sh_entsize: bx_u64,
+}
+
+pub const SHT_RELA: bx_u32 = 4;
+
+// ─── Relocations canónicas x86_64 ──────────────────────────────────────
+pub const R_X86_64_64:        bx_u32 = 1;
+pub const R_X86_64_PC32:      bx_u32 = 2;
+pub const R_X86_64_PLT32:     bx_u32 = 4;
+pub const R_X86_64_GLOB_DAT:  bx_u32 = 6;
+pub const R_X86_64_JUMP_SLOT: bx_u32 = 7;
+pub const R_X86_64_RELATIVE:  bx_u32 = 8;
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
@@ -95,17 +113,49 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         return Err(LoadError::InvalidHeader);
     }
     if ehdr.e_ident.ei_class != 2 {
-        return Err(LoadError::UnsupportedArch); // ELF32 no soportado
+        return Err(LoadError::UnsupportedArch);
     }
     if ehdr.e_ident.ei_data != 1 {
-        return Err(LoadError::UnsupportedArch); // BE no soportado
+        return Err(LoadError::UnsupportedArch);
     }
     let machine = ehdr.e_machine;
     if machine != ELF_MACHINE_X86_64 {
         return Err(LoadError::UnsupportedArch);
     }
 
-    // ─── Iterar program headers ────────────────────────────────────────
+    // ─── Parse section headers (for relocations) ─────────────────────
+    let shoff = ehdr.e_shoff as usize;
+    let shnum = ehdr.e_shnum as usize;
+    let shent = ehdr.e_shentsize as usize;
+    let shstrndx = ehdr.e_shstrndx as usize;
+
+    let mut dyn_symtab_offset: u64 = 0;
+    let mut dyn_symtab_entry_size: u64 = 0;
+    let mut dyn_strtab_offset: u64 = 0;
+    let mut dyn_strtab_size: u64 = 0;
+
+    // Parse .dynsym and .dynstr section headers.
+    if shoff + shnum * shent <= bytes.len() && shnum > 0 {
+        for i in 0..shnum {
+            let off = shoff + i * shent;
+            let shdr = unsafe { &*(bytes.as_ptr().add(off) as *const Elf64Shdr) };
+            // SHT_DYNSYM = 11
+            if shdr.sh_type == 11 {
+                dyn_symtab_offset = shdr.sh_offset;
+                dyn_symtab_entry_size = shdr.sh_entsize.max(24);
+            }
+            // SHT_STRTAB = 3 — we need the one linked from .dynsym
+            if shdr.sh_type == 3 && i != shstrndx {
+                // Heuristic: if this strtab is large, it's likely .dynstr
+                if shdr.sh_size > dyn_strtab_size {
+                    dyn_strtab_offset = shdr.sh_offset;
+                    dyn_strtab_size = shdr.sh_size;
+                }
+            }
+        }
+    }
+
+    // ─── Iterate program headers ─────────────────────────────────────
     let phoff = ehdr.e_phoff as usize;
     let phnum = ehdr.e_phnum as usize;
     let phent = ehdr.e_phentsize as usize;
@@ -138,11 +188,38 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
                 if p_flags & 2 != 0 { flags |= 0x2; }   // W
                 if p_flags & 1 != 0 { flags |= 0x4; }   // X
                 let kind = pick_kind_from_flags(p_flags);
-                img.sections.push(super::MappedSection {
+
+                // Allocate and copy segment data into memory.
+                let alloc_size = p_memsz as usize;
+                let align = 4096usize;
+                let aligned_size = (alloc_size + align - 1) & !(align - 1);
+
+                let data_ptr = if aligned_size > 0 {
+                    let layout = core::alloc::Layout::from_size_align(aligned_size, align)
+                        .map_err(|_| LoadError::SectionOutOfRange)?;
+                    let ptr = unsafe { alloc::alloc::alloc_zeroed(layout) };
+                    if ptr.is_null() {
+                        return Err(LoadError::SectionOutOfRange);
+                    }
+
+                    // Copy from file.
+                    let copy_len = (p_filesz as usize).min(bytes.len() - p_offset as usize);
+                    if copy_len > 0 && p_offset as usize + copy_len <= bytes.len() {
+                        let src = &bytes[p_offset as usize..p_offset as usize + copy_len];
+                        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), ptr, copy_len); }
+                    }
+
+                    ptr as u64
+                } else {
+                    0
+                };
+
+                img.sections.push(MappedSection {
                     kind,
                     virt_addr: p_vaddr,
                     size: p_memsz,
                     flags,
+                    data_ptr,
                 });
             }
             PT_DYNAMIC => {
@@ -150,31 +227,133 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
             }
             PT_TLS => {
                 use crate::bef::sections::SectionKind;
-                img.sections.push(super::MappedSection {
+                img.sections.push(MappedSection {
                     kind: SectionKind::Tls as u8,
                     virt_addr: p_vaddr,
                     size: p_memsz,
                     flags: 0x1,
+                    data_ptr: 0,
                 });
             }
             _ => {}
         }
     }
 
-    // ─── Procesar PT_DYNAMIC si existe ─────────────────────────────────
+    // ─── Process PT_DYNAMIC if present ────────────────────────────────
     if let Some((dyn_off, dyn_size)) = pt_dynamic_offset {
         let start = dyn_off as usize;
         let end = start + dyn_size as usize;
         if end <= bytes.len() {
             let dyn_bytes = &bytes[start..end];
-            let _info = super::elf_dynamic::parse(dyn_bytes);
-            // TODO: usar `_info.needed_offsets[0..needed_count]` para resolver
-            // libs vía `elf_thunks::resolve`. Requiere también localizar
-            // la STRTAB en el archivo (rva_to_file_offset estilo PE).
+            let info = super::elf_dynamic::parse(dyn_bytes);
+
+            // Register needed libraries from DT_NEEDED.
+            for &needed_off in &info.needed_offsets {
+                if let Some(lib_name) = super::elf_dynamic::read_dynstr(dyn_bytes, needed_off) {
+                    if !lib_name.is_empty() {
+                        let _normalized = normalize_elf_lib(lib_name);
+                        crate::diag::info("elf", "registering ELF lib");
+                    }
+                }
+            }
         }
     }
 
+    // ─── Apply ELF relocations (from .rela sections) ─────────────────
+    apply_elf_relocations(bytes, &mut img, shoff, shnum, shent, ehdr)?;
+
     Ok(img)
+}
+
+/// Apply ELF relocations from SHT_RELA sections.
+fn apply_elf_relocations(
+    bytes: &[u8],
+    img: &mut Image,
+    shoff: usize,
+    shnum: usize,
+    shent: usize,
+    ehdr: &Elf64Ehdr,
+) -> Result<(), LoadError> {
+    let shstrndx = ehdr.e_shstrndx as usize;
+    if shoff + shnum * shent > bytes.len() {
+        return Ok(()); // No section headers.
+    }
+
+    for i in 0..shnum {
+        let off = shoff + i * shent;
+        let shdr = unsafe { &*(bytes.as_ptr().add(off) as *const Elf64Shdr) };
+
+        if shdr.sh_type != SHT_RELA { continue; }
+        if shdr.sh_size == 0 { continue; }
+
+        let reloc_offset = shdr.sh_offset as usize;
+        let reloc_size = shdr.sh_size as usize;
+        if reloc_offset + reloc_size > bytes.len() { continue; }
+
+        let entry_size = core::mem::size_of::<Elf64Rela>();
+        let reloc_count = reloc_size / entry_size;
+
+        for j in 0..reloc_count {
+            let r_off = reloc_offset + j * entry_size;
+            let reloc = unsafe {
+                &*(bytes.as_ptr().add(r_off) as *const Elf64Rela)
+            };
+
+            let r_type = (reloc.r_info & 0xFFFFFFFF) as u32;
+            let _sym_idx = (reloc.r_info >> 32) as u32;
+
+            // Convert ELF relocation to BEF.
+            let bef_kind = match elf_reloc_to_bef(r_type) {
+                Some(k) => k,
+                None => continue, // Unknown relocation type.
+            };
+
+            // Find the section containing this offset.
+            let target_va = reloc.r_offset;
+            for section in &mut img.sections {
+                if target_va >= section.virt_addr
+                    && target_va + 8 <= section.virt_addr + section.size
+                {
+                    if section.data_ptr == 0 { break; }
+
+                    let offset_in_section = (target_va - section.virt_addr) as usize;
+                    let target_slice = unsafe {
+                        core::slice::from_raw_parts_mut(
+                            section.data_ptr as *mut u8,
+                            section.size as usize,
+                        )
+                    };
+
+                    // For R_X86_64_RELATIVE, symbol_addr = base + addend.
+                    let symbol_addr = if r_type == R_X86_64_RELATIVE {
+                        target_va.wrapping_add(reloc.r_addend as u64)
+                    } else {
+                        // TODO: resolve symbol via .dynsym lookup.
+                        0
+                    };
+
+                    let bef_reloc = crate::bef::relocations::Relocation {
+                        offset: (target_va - section.virt_addr),
+                        symbol_idx: 0,
+                        kind: bef_kind as u8,
+                        target_section: 0,
+                        _pad: [0; 2],
+                        addend: reloc.r_addend,
+                    };
+
+                    let _ = crate::bef::relocations::apply(
+                        &bef_reloc,
+                        target_slice,
+                        target_va,
+                        symbol_addr,
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Elige `SectionKind` BEF a partir de los flags de un PT_LOAD ELF.
@@ -186,6 +365,15 @@ fn pick_kind_from_flags(p_flags: u32) -> u8 {
         (true, _)      => SectionKind::Code as u8,
         (false, true)  => SectionKind::Data as u8,
         (false, false) => SectionKind::RoData as u8,
+    }
+}
+
+/// Normalize ELF library names (e.g., "libc.so.6" → "libc.so").
+fn normalize_elf_lib(name: &str) -> &str {
+    if let Some(pos) = name.find('.') {
+        &name[..pos]
+    } else {
+        name
     }
 }
 

@@ -92,3 +92,21 @@ pub fn setup_for_thread(template: &TlsTemplate, data: &[u8]) -> Result<u64, &'st
 
     Ok(fs_base)
 }
+
+/// Teardown TLS for a thread — deallocates the TLS buffer.
+///
+/// SAFETY: `fs_base` must be a valid TLS buffer previously allocated
+/// by `setup_for_thread`, and no other thread must reference it.
+pub unsafe fn teardown_for_thread(fs_base: u64, template: &TlsTemplate) {
+    if fs_base == 0 || template.total_size() == 0 {
+        return;
+    }
+
+    let total = template.total_size() as usize;
+    let align = (template.alignment as usize).max(8);
+    let ptr = fs_base as *mut u8;
+    let layout = core::alloc::Layout::from_size_align(total, align);
+    if let Ok(layout) = layout {
+        alloc::alloc::dealloc(ptr, layout);
+    }
+}

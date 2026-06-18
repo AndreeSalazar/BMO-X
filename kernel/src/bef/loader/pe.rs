@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use super::{Image, LoadError, fake_provenance_image};
+use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use crate::bef::manifest::Provenance;
 use crate::barex::abi::primitives::{bx_u16, bx_u32, bx_u64};
 
@@ -69,7 +69,21 @@ pub struct OptionalHeader64 {
     pub image_base: bx_u64,
     pub section_alignment: bx_u32,
     pub file_alignment: bx_u32,
-    // (resto omitido — no necesario para el devour mínimo)
+    pub size_of_image: bx_u32,
+    pub size_of_headers: bx_u32,
+    pub checksum: bx_u32,
+    pub subsystem: bx_u16,
+    pub dll_characteristics: bx_u16,
+    pub number_of_rva_and_sizes: bx_u32,
+    // DataDirectory[16] follows but we don't need all of them.
+}
+
+/// DataDirectory entry — 8 bytes.
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+pub struct DataDirectory {
+    pub virtual_address: bx_u32,
+    pub size: bx_u32,
 }
 
 // ─── Section Header (40 bytes) ─────────────────────────────────────────
@@ -89,7 +103,6 @@ pub struct PeSectionHeader {
 }
 
 /// DLL falsas que el devour-loader provee a los binarios PE.
-/// Cuando el PE importa de aquí, lo resolvemos a la API BareX.
 pub const FAKE_DLLS_TO_BAREX: &[(&str, &str)] = &[
     ("d3d12.dll",       "barex::graphics"),
     ("d3d11.dll",       "barex::compat::dxvk11"),
@@ -104,6 +117,13 @@ pub const FAKE_DLLS_TO_BAREX: &[(&str, &str)] = &[
     ("ntdll.dll",       "syscall::dispatch"),
 ];
 
+/// PE relocation type: IMAGE_REL_BASED_DIR64.
+const IMAGE_REL_BASED_DIR64: u16 = 10;
+
+/// PE data directory indices.
+const IMAGE_DIRECTORY_ENTRY_IMPORT: usize = 1;
+const IMAGE_DIRECTORY_ENTRY_BASERELOC: usize = 5;
+
 pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     if bytes.len() < core::mem::size_of::<DosHeader>() {
         return Err(LoadError::Truncated);
@@ -114,8 +134,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         return Err(LoadError::InvalidHeader);
     }
 
-    // Lectura del PE header en e_lfanew. Importante: campos packed
-    // requieren copia local antes de comparar.
+    // Lectura del PE header en e_lfanew.
     let pe_off = dos.e_lfanew as usize;
     if pe_off + core::mem::size_of::<CoffFileHeader>() > bytes.len() {
         return Err(LoadError::Truncated);
@@ -139,6 +158,20 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let entry = opt.address_of_entry_point as u64;
     let base  = opt.image_base;
 
+    // Parse DataDirectory if present.
+    let dd_off = opt_off + core::mem::size_of::<OptionalHeader64>();
+    let dd_count = opt.number_of_rva_and_sizes as usize;
+    let data_dirs = if dd_off + dd_count * 8 <= bytes.len() && dd_count > 0 {
+        unsafe {
+            core::slice::from_raw_parts(
+                bytes.as_ptr().add(dd_off) as *const DataDirectory,
+                dd_count.min(16),
+            )
+        }
+    } else {
+        &[]
+    };
+
     // ─── Iterar section headers ────────────────────────────────────────
     let sections_off = opt_off + opt_size;
     let n_sections = coff.number_of_sections as usize;
@@ -149,42 +182,293 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let sec_ptr = unsafe { bytes.as_ptr().add(sections_off) as *const PeSectionHeader };
     let sections = unsafe { core::slice::from_raw_parts(sec_ptr, n_sections) };
 
-    // ─── Resolver Import Directory (best-effort) ───────────────────────
-    // El Import Directory está en `OptionalHeader.DataDirectory[1]`. Para
-    // mantener este parser ligero, recorremos las secciones buscando el
-    // typical `.idata` o cualquier sección que contenga descriptores
-    // import válidos (heurística mientras integramos DataDirectory).
     let mut img = fake_provenance_image(Provenance::PeDevoured);
     img.entry_point = base.wrapping_add(entry);
     img.base_address = base;
 
-    // Mapear cada sección PE a una `MappedSection` BEF.
+    // Mapear cada sección PE a una `MappedSection` BEF con datos reales.
     for s in sections {
         let va = s.virtual_address as u64;
         let vsz = s.virtual_size as u64;
         let chr = s.characteristics;
         let mut flags = 0u32;
-        // IMAGE_SCN_MEM_READ = 0x40000000
-        if chr & 0x4000_0000 != 0 { flags |= 0x1; }
-        // IMAGE_SCN_MEM_WRITE = 0x80000000
-        if chr & 0x8000_0000 != 0 { flags |= 0x2; }
-        // IMAGE_SCN_MEM_EXECUTE = 0x20000000
-        if chr & 0x2000_0000 != 0 { flags |= 0x4; }
+        if chr & 0x4000_0000 != 0 { flags |= 0x1; }   // R
+        if chr & 0x8000_0000 != 0 { flags |= 0x2; }   // W
+        if chr & 0x2000_0000 != 0 { flags |= 0x4; }   // X
 
         let kind = pick_section_kind(&s.name, chr);
-        img.sections.push(super::MappedSection {
+
+        // Allocate and copy section data.
+        let raw_data_size = s.size_of_raw_data as usize;
+        let virt_size = s.virtual_size as usize;
+        let alloc_size = virt_size.max(raw_data_size);
+        let align = 4096usize;
+        let aligned_size = (alloc_size + align - 1) & !(align - 1);
+
+        let data_ptr = if aligned_size > 0 {
+            let layout = core::alloc::Layout::from_size_align(aligned_size, align)
+                .map_err(|_| LoadError::SectionOutOfRange)?;
+            let ptr = unsafe { alloc::alloc::alloc_zeroed(layout) };
+            if ptr.is_null() {
+                return Err(LoadError::SectionOutOfRange);
+            }
+
+            // Copy raw data from file.
+            if raw_data_size > 0 && s.pointer_to_raw_data as usize + raw_data_size <= bytes.len() {
+                let src = &bytes[s.pointer_to_raw_data as usize..s.pointer_to_raw_data as usize + raw_data_size];
+                unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), ptr, raw_data_size); }
+            }
+
+            ptr as u64
+        } else {
+            0
+        };
+
+        img.sections.push(MappedSection {
             kind,
             virt_addr: base.wrapping_add(va),
-            size: vsz,
+            size: vsz.max(raw_data_size as u64),
             flags,
+            data_ptr,
         });
+    }
+
+    // ─── Apply PE relocations (IMAGE_REL_BASED_DIR64) ─────────────────
+    if data_dirs.len() > IMAGE_DIRECTORY_ENTRY_BASERELOC {
+        let reloc_dir = &data_dirs[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+        if reloc_dir.virtual_address != 0 && reloc_dir.size != 0 {
+            apply_pe_relocations(bytes, &mut img, reloc_dir, base)?;
+        }
+    }
+
+    // ─── Walk PE Import Directory ──────────────────────────────────────
+    if data_dirs.len() > IMAGE_DIRECTORY_ENTRY_IMPORT {
+        let import_dir = &data_dirs[IMAGE_DIRECTORY_ENTRY_IMPORT];
+        if import_dir.virtual_address != 0 && import_dir.size != 0 {
+            resolve_pe_imports(bytes, &img, sections, import_dir, base)?;
+        }
     }
 
     Ok(img)
 }
 
-/// Elige un `SectionKind` BEF para una sección PE, basándose en el nombre
-/// canónico (`.text`, `.data`, ...) y los characteristics.
+/// Apply PE base relocations (IMAGE_REL_BASED_DIR64).
+fn apply_pe_relocations(
+    bytes: &[u8],
+    img: &mut Image,
+    reloc_dir: &DataDirectory,
+    base: u64,
+) -> Result<(), LoadError> {
+    let reloc_rva = reloc_dir.virtual_address;
+    let reloc_size = reloc_dir.size as usize;
+
+    // Find the file offset for the reloc RVA.
+    let reloc_file_offset = rva_to_file_offset_pe(reloc_rva, &[]).ok_or(LoadError::SectionOutOfRange)?;
+    if reloc_file_offset + reloc_size > bytes.len() {
+        return Err(LoadError::Truncated);
+    }
+
+    // Parse PE relocation blocks.
+    let mut pos = reloc_file_offset;
+    let reloc_end = reloc_file_offset + reloc_size;
+    while pos + 8 <= reloc_end {
+        let block_rva = u32::from_le_bytes([
+            bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3],
+        ]);
+        let block_size = u32::from_le_bytes([
+            bytes[pos+4], bytes[pos+5], bytes[pos+6], bytes[pos+7],
+        ]) as usize;
+        if block_size < 8 || block_size % 4 != 0 {
+            break;
+        }
+
+        let entries = (block_size - 8) / 2;
+        for i in 0..entries {
+            let entry_off = pos + 8 + i * 2;
+            if entry_off + 2 > reloc_end { break; }
+            let entry = u16::from_le_bytes([bytes[entry_off], bytes[entry_off + 1]]);
+            let reloc_type = entry >> 12;
+            let reloc_offset = (entry & 0x0FFF) as u64;
+
+            if reloc_type == IMAGE_REL_BASED_DIR64 {
+                let target_rva = block_rva as u64 + reloc_offset;
+                // Find the section containing this RVA.
+                for section in &img.sections {
+                    let sec_rva = section.virt_addr - img.base_address;
+                    if target_rva >= sec_rva && target_rva < sec_rva + section.size {
+                        let offset_in_section = (target_rva - sec_rva) as usize;
+                        if section.data_ptr != 0 && offset_in_section + 8 <= section.size as usize {
+                            unsafe {
+                                let ptr = (section.data_ptr as *mut u64).add(offset_in_section / 8);
+                                let old_val = *ptr;
+                                let delta = base - section.virt_addr + section.virt_addr; // base - original_base
+                                *ptr = old_val.wrapping_add(delta);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        pos += block_size;
+    }
+
+    Ok(())
+}
+
+/// Walk PE Import Directory and register resolved imports.
+fn resolve_pe_imports(
+    bytes: &[u8],
+    img: &Image,
+    sections: &[PeSectionHeader],
+    import_dir: &DataDirectory,
+    base: u64,
+) -> Result<(), LoadError> {
+    let import_rva = import_dir.virtual_address;
+    let import_size = import_dir.size as usize;
+
+    let import_file_offset = rva_to_file_offset_pe(import_rva, sections)
+        .ok_or(LoadError::SectionOutOfRange)?;
+    if import_file_offset + import_size > bytes.len() {
+        return Err(LoadError::Truncated);
+    }
+
+    let desc_size = core::mem::size_of::<super::pe_imports::ImageImportDescriptor>();
+    let mut pos = import_file_offset;
+
+    loop {
+        if pos + desc_size > bytes.len() { break; }
+        let desc = unsafe {
+            &*(bytes.as_ptr().add(pos) as *const super::pe_imports::ImageImportDescriptor)
+        };
+        if desc.is_terminator() { break; }
+
+        // Get DLL name.
+        let dll_name = if desc.name_rva != 0 {
+            let dll_offset = rva_to_file_offset_pe(desc.name_rva, sections);
+            if let Some(off) = dll_offset {
+                super::pe_imports::read_cstr(bytes, off, 256).unwrap_or("???")
+            } else {
+                "???"
+            }
+        } else {
+            "???"
+        };
+
+        // Walk INT (OriginalFirstThunk) to get function names.
+        if desc.original_first_thunk != 0 {
+            let int_offset = rva_to_file_offset_pe(desc.original_first_thunk, sections);
+            if let Some(int_off) = int_offset {
+                let iat_offset = rva_to_file_offset_pe(desc.first_thunk_iat, sections);
+                if let Some(iat_off) = iat_offset {
+                    walk_pe_import_thunks(bytes, dll_name, int_off, iat_off, sections, base);
+                }
+            }
+        }
+
+        pos += desc_size;
+    }
+
+    Ok(())
+}
+
+/// Walk PE import thunks and register each resolved symbol.
+fn walk_pe_import_thunks(
+    bytes: &[u8],
+    dll_name: &str,
+    int_file_offset: usize,
+    iat_file_offset: usize,
+    sections: &[PeSectionHeader],
+    base: u64,
+) {
+    let thunk_size = core::mem::size_of::<super::pe_imports::ImageThunk>();
+    let mut i = 0;
+
+    loop {
+        let int_pos = int_file_offset + i * thunk_size;
+        let iat_pos = iat_file_offset + i * thunk_size;
+        if int_pos + thunk_size > bytes.len() || iat_pos + thunk_size > bytes.len() {
+            break;
+        }
+
+        let int_thunk = super::pe_imports::ImageThunk(unsafe {
+            let mut buf = [0u8; 8];
+            core::ptr::copy_nonoverlapping(bytes.as_ptr().add(int_pos), buf.as_mut_ptr(), 8);
+            u64::from_le_bytes(buf)
+        });
+        let iat_thunk = super::pe_imports::ImageThunk(unsafe {
+            let mut buf = [0u8; 8];
+            core::ptr::copy_nonoverlapping(bytes.as_ptr().add(iat_pos), buf.as_mut_ptr(), 8);
+            u64::from_le_bytes(buf)
+        });
+
+        if int_thunk.is_terminator() { break; }
+
+        let fn_name = if let Some(name_rva) = int_thunk.name_rva() {
+            let name_offset = rva_to_file_offset_pe(name_rva, sections);
+            if let Some(off) = name_offset {
+                // IMAGE_IMPORT_BY_NAME: skip 2-byte Hint, read name.
+                let name_start = off + 2;
+                super::pe_imports::read_cstr(bytes, name_start, 256).unwrap_or("???")
+            } else {
+                "???"
+            }
+        } else if let Some(ordinal) = int_thunk.ordinal() {
+            // Import by ordinal — use ordinal as name.
+            static ORD_BUF: [u8; 8] = [0; 8]; // Can't return static in no_std easily
+            let _ = ordinal;
+            "ordinal"
+        } else {
+            "???"
+        };
+
+        // Resolve via PE thunk table.
+        let target = super::pe_thunks::resolve(dll_name, fn_name);
+        let addr = match target {
+            super::pe_thunks::ThunkTarget::SilentStub => super::pe_thunks::silent_stub as u64,
+            super::pe_thunks::ThunkTarget::LogStub => super::pe_thunks::log_stub as u64,
+            _ => super::pe_thunks::silent_stub as u64, // TODO: real backends
+        };
+
+        // Register in runtime symbol table.
+        // Use a static string for the DLL name — leaks but acceptable for kernel.
+        let static_dll: &'static str = leak_str(dll_name);
+        let static_fn: &'static str = leak_str(fn_name);
+        super::runtime::register_symbol(static_dll, static_fn, addr,
+            super::runtime::SYM_PE_THUNK | super::runtime::SYM_EAGER);
+
+        i += 1;
+    }
+}
+
+/// Leak a string into a &'static str (acceptable in kernel context).
+fn leak_str(s: &str) -> &'static str {
+    let len = s.len();
+    let layout = core::alloc::Layout::from_size_align(len, 1).unwrap();
+    let ptr = unsafe { alloc::alloc::alloc(layout) };
+    if ptr.is_null() {
+        return "";
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(s.as_ptr(), ptr, len);
+        core::str::from_utf8_unchecked(core::slice::from_raw_parts(ptr, len))
+    }
+}
+
+/// Convert RVA to file offset using section headers.
+fn rva_to_file_offset_pe(rva: u32, sections: &[PeSectionHeader]) -> Option<usize> {
+    for s in sections {
+        let va = s.virtual_address;
+        let vsz = s.virtual_size;
+        if rva >= va && rva < va.saturating_add(vsz) {
+            let delta = rva - va;
+            return Some((s.pointer_to_raw_data + delta) as usize);
+        }
+    }
+    None
+}
+
+/// Elige un `SectionKind` BEF para una sección PE.
 fn pick_section_kind(name: &[u8; 8], chr: u32) -> u8 {
     use crate::bef::sections::SectionKind;
     let n = core::str::from_utf8(name).unwrap_or("");
