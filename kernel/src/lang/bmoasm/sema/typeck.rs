@@ -39,14 +39,15 @@ impl Sema {
                     for (pname, pty) in params {
                         scope.push(ScopeEntry {
                             name: pname.clone(),
-                            ty: *pty,
+                            ty: pty.clone(),
                             frame_offset: 0,
                         });
                     }
-                    self.check_body(body, &mut scope, *ret, true, false)?;
+                    self.check_body(body, &mut scope, ret, true, false)?;
                 }
                 Stmt::FnForward { .. } => {}
                 Stmt::Incluye(_) => {} // Multi-file handled at traductor level
+                Stmt::TypeDecl { .. } => {} // type metadata, not codegen target
                 _ => return Err(BxError::InvalidArgument),
             }
         }
@@ -57,12 +58,13 @@ impl Sema {
         &self,
         body: &[Stmt],
         scope: &mut Scope,
-        ret_ty: Type,
+        ret_ty: &Type,
         in_fn: bool,
         in_loop: bool,
     ) -> BxResult<()> {
         for stmt in body {
             match stmt {
+                Stmt::TypeDecl { .. } => {} // type metadata, not codegen target
                 Stmt::Rompe | Stmt::Continua => {
                     if !in_loop {
                         return Err(BxError::InvalidArgument);
@@ -73,12 +75,12 @@ impl Sema {
                         return Err(BxError::InvalidArgument);
                     }
                     let expr_ty = self.infer_type(expr, scope)?;
-                    if ret_ty != Type::Void && expr_ty != ret_ty {
+                    if *ret_ty != Type::Void && expr_ty != *ret_ty {
                         return Err(BxError::InvalidArgument);
                     }
                 }
                 Stmt::Retorna(None) => {
-                    if !in_fn || ret_ty != Type::Void {
+                    if !in_fn || *ret_ty != Type::Void {
                         return Err(BxError::InvalidArgument);
                     }
                 }
@@ -178,6 +180,21 @@ impl Sema {
                 Stmt::Volatil(expr) => {
                     self.check_expr(expr, scope)?;
                 }
+                Stmt::Store { value, .. } => {
+                    self.check_expr(value, scope)?;
+                }
+                Stmt::CallStmt { args, .. } => {
+                    for arg in args { self.check_expr(arg, scope)?; }
+                }
+                Stmt::FieldAssign { obj, value, .. } => {
+                    self.check_expr(obj, scope)?;
+                    self.check_expr(value, scope)?;
+                }
+                Stmt::IndexAssign { obj, idx, value } => {
+                    self.check_expr(obj, scope)?;
+                    self.check_expr(idx, scope)?;
+                    self.check_expr(value, scope)?;
+                }
             }
         }
         Ok(())
@@ -189,13 +206,19 @@ impl Sema {
                 self.check_expr(left, scope)?;
                 self.check_expr(right, scope)?;
             }
-            Expr::No(e) | Expr::Aloc(e) | Expr::MemOrder(_, e) => {
+            Expr::No(e) | Expr::Aloc(e) | Expr::MemOrder(_, e)
+            | Expr::AddrOf(e) | Expr::Deref(e) | Expr::Cast(e, _) => {
                 self.check_expr(e, scope)?;
             }
             Expr::Call { args, .. } => {
                 for arg in args {
                     self.check_expr(arg, scope)?;
                 }
+            }
+            Expr::Field { obj, .. } => self.check_expr(obj, scope)?,
+            Expr::Index { obj, idx } => {
+                self.check_expr(obj, scope)?;
+                self.check_expr(idx, scope)?;
             }
             Expr::Reg(r_name) => {
                 if r_name != "syscall" && r_name != "nop" && r_name != "pausa"
@@ -224,7 +247,7 @@ impl Sema {
             Expr::LitByte(_) => Ok(Type::Byte),
             Expr::LitStr(_) | Expr::LitNulo => Ok(Type::Ptr),
             Expr::Ident(name) => {
-                scope.lookup(name).map(|e| e.ty).ok_or(BxError::InvalidArgument)
+                scope.lookup(name).map(|e| e.ty.clone()).ok_or(BxError::InvalidArgument)
             }
             Expr::Reg(_) | Expr::Flag(_) | Expr::Call { .. } => Ok(Type::Num),
             Expr::Bin(op, left, _) => {
@@ -239,6 +262,11 @@ impl Sema {
             Expr::No(_) => Ok(Type::Num),
             Expr::Aloc(_) => Ok(Type::Ptr),
             Expr::MemOrder(_, e) => self.infer_type(e, scope),
+            Expr::AddrOf(_) => Ok(Type::Ptr),
+            Expr::Deref(inner) => self.infer_type(inner, scope),
+            Expr::Cast(_, t) => Ok(t.clone()),
+            Expr::Field { obj, .. } => self.infer_type(obj, scope),
+            Expr::Index { obj, .. } => self.infer_type(obj, scope),
         }
     }
 }

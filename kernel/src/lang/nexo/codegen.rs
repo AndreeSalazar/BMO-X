@@ -1,4 +1,4 @@
-//! ÑEXO Codegen — Generación de código vía BMOasm.
+//! ÑEXO Codegen — Generación de código vía BMOasm (v0.4.0).
 //!
 //! El codegen de ÑEXO produce AST de BMOasm como IR intermedio.
 //! Luego el traductor de BMOasm lo compila a código nativo.
@@ -14,7 +14,10 @@ use alloc::string::ToString;
 
 use crate::barex::BxResult;
 use super::parser::{Ast, Stmt, Expr, BinOp, UnaryOp, TypeAnnotation};
-use crate::lang::bmoasm::parser::ast::{Ast as BmoAst, Stmt as BmoStmt, Expr as BmoExpr, BinOp as BmoBinOp, Type as BmoType};
+use crate::lang::bmoasm::parser::ast::{
+    Ast as BmoAst, Stmt as BmoStmt, Expr as BmoExpr,
+    BinOp as BmoBinOp, Type as BmoType, TypeDeclKind,
+};
 
 /// Code generator: ÑEXO AST → BMOasm AST.
 pub struct Codegen {
@@ -26,7 +29,6 @@ impl Codegen {
         Self { current_module: Vec::new() }
     }
 
-    /// Qualified name: joins module path with local name.
     fn qualified_name(&self, local_name: &str) -> String {
         if self.current_module.is_empty() {
             local_name.to_string()
@@ -37,7 +39,6 @@ impl Codegen {
         }
     }
 
-    /// Generate BMOasm AST from ÑEXO AST.
     pub fn emit(&mut self, ast: &Ast) -> BxResult<BmoAst> {
         let mut bmo_items = Vec::new();
         for item in &ast.items {
@@ -58,9 +59,7 @@ impl Codegen {
                 let bmo_ret = ret.as_ref().map(|t| self.map_type(t)).unwrap_or(BmoType::Void);
                 let mut bmo_body = Vec::new();
                 for s in body {
-                    if let Some(bs) = self.emit_stmt(s)? {
-                        bmo_body.push(bs);
-                    }
+                    self.emit_into(s, &mut bmo_body)?;
                 }
                 Ok(Some(BmoStmt::Def {
                     name: qualified,
@@ -69,92 +68,174 @@ impl Codegen {
                     body: bmo_body,
                 }))
             }
-            Stmt::Let { name, ty: _, value } => {
+
+            Stmt::Let { name, ty, value } => {
                 let bmo_val = value.as_ref()
                     .map(|v| self.emit_expr(v))
                     .unwrap_or(Ok(BmoExpr::LitInt(0)))?;
+                let bmo_ty = ty.as_ref().map(|t| self.map_type(t));
                 Ok(Some(BmoStmt::Let {
                     name: name.clone(),
-                    ty: None, // BMOasm infers from value
+                    ty: bmo_ty,
                     value: bmo_val,
                 }))
             }
-            Stmt::Mut { name, ty: _, value } => {
+            Stmt::Mut { name, ty, value } => {
                 let bmo_val = self.emit_expr(value)?;
+                let bmo_ty = ty.as_ref().map(|t| self.map_type(t));
                 Ok(Some(BmoStmt::Let {
+                    name: name.clone(),
+                    ty: bmo_ty,
+                    value: bmo_val,
+                }))
+            }
+
+            Stmt::Assign(name, value) => {
+                let bmo_val = self.emit_expr(value)?;
+                Ok(Some(BmoStmt::Store {
                     name: name.clone(),
                     ty: None,
                     value: bmo_val,
                 }))
             }
+
             Stmt::Return(Some(expr)) => {
                 let bmo_val = self.emit_expr(expr)?;
                 Ok(Some(BmoStmt::Retorna(Some(bmo_val))))
             }
-            Stmt::Return(None) => {
-                Ok(Some(BmoStmt::Retorna(None)))
-            }
+            Stmt::Return(None) => Ok(Some(BmoStmt::Retorna(None))),
+
             Stmt::If { cond, then_body, else_body } => {
                 let bmo_cond = self.emit_expr(cond)?;
                 let mut bmo_then = Vec::new();
-                for s in then_body {
-                    if let Some(bs) = self.emit_stmt(s)? { bmo_then.push(bs); }
-                }
+                for s in then_body { self.emit_into(s, &mut bmo_then)?; }
                 let bmo_else = if let Some(eb) = else_body {
                     let mut else_stmts = Vec::new();
-                    for s in eb {
-                        if let Some(bs) = self.emit_stmt(s)? { else_stmts.push(bs); }
-                    }
+                    for s in eb { self.emit_into(s, &mut else_stmts)?; }
                     Some(else_stmts)
                 } else { None };
                 Ok(Some(BmoStmt::Si { cond: bmo_cond, then_body: bmo_then, else_body: bmo_else }))
             }
+
             Stmt::While { cond, body } => {
                 let bmo_cond = self.emit_expr(cond)?;
                 let mut bmo_body = Vec::new();
-                for s in body {
-                    if let Some(bs) = self.emit_stmt(s)? { bmo_body.push(bs); }
-                }
+                for s in body { self.emit_into(s, &mut bmo_body)?; }
                 Ok(Some(BmoStmt::Mientras { cond: bmo_cond, body: bmo_body }))
             }
+
+            Stmt::For { var, start, end, body } => {
+                let mut stmts = Vec::new();
+                let bmo_start = self.emit_expr(start)?;
+                stmts.push(BmoStmt::Let {
+                    name: var.clone(), ty: None, value: bmo_start,
+                });
+                let mut while_body = Vec::new();
+                for s in body { self.emit_into(s, &mut while_body)?; }
+                while_body.push(BmoStmt::Store {
+                    name: var.clone(), ty: None,
+                    value: BmoExpr::Bin(
+                        BmoBinOp::Suma,
+                        Box::new(BmoExpr::Ident(var.clone())),
+                        Box::new(BmoExpr::LitInt(1)),
+                    ),
+                });
+                let bmo_end = self.emit_expr(end)?;
+                let cond = BmoExpr::Bin(
+                    BmoBinOp::Menor,
+                    Box::new(BmoExpr::Ident(var.clone())),
+                    Box::new(bmo_end),
+                );
+                stmts.push(BmoStmt::Mientras { cond, body: while_body });
+                Ok(Some(BmoStmt::Def {
+                    name: self.qualified_name("_for"),
+                    params: Vec::new(),
+                    ret: BmoType::Void,
+                    body: stmts,
+                }))
+            }
+
             Stmt::Break => Ok(Some(BmoStmt::Rompe)),
             Stmt::Continue => Ok(Some(BmoStmt::Continua)),
-            Stmt::Assign(name, value) => {
-                let bmo_val = self.emit_expr(value)?;
-                // In BMOasm, assignment is: reg rax = value; then store to variable
-                // For now, use Let to rebind (BMOasm doesn't have reassignment yet)
-                Ok(Some(BmoStmt::RegAssign { reg: name.clone(), value: bmo_val }))
-            }
+
             Stmt::Block(stmts) => {
                 let mut bmo_stmts = Vec::new();
-                for s in stmts {
-                    if let Some(bs) = self.emit_stmt(s)? { bmo_stmts.push(bs); }
-                }
-                // Wrap in a Def with anonymous name
+                for s in stmts { self.emit_into(s, &mut bmo_stmts)?; }
                 Ok(Some(BmoStmt::Def {
-                    name: "_block".to_string(),
+                    name: self.qualified_name("_block"),
                     params: Vec::new(),
                     ret: BmoType::Void,
                     body: bmo_stmts,
                 }))
             }
+
+            Stmt::StructDecl { name, fields } => {
+                let bmo_fields: Vec<(String, BmoType)> = fields.iter()
+                    .map(|(n, t)| (n.clone(), self.map_type(t)))
+                    .collect();
+                Ok(Some(BmoStmt::TypeDecl {
+                    name: name.clone(),
+                    kind: TypeDeclKind::Struct,
+                    fields: bmo_fields,
+                }))
+            }
+
+            Stmt::EnumDecl { name, variants } => {
+                let bmo_variants: Vec<(String, BmoType)> = variants.iter()
+                    .map(|v| (v.clone(), BmoType::Num))
+                    .collect();
+                Ok(Some(BmoStmt::TypeDecl {
+                    name: name.clone(),
+                    kind: TypeDeclKind::Enum,
+                    fields: bmo_variants,
+                }))
+            }
+
+            Stmt::ImplDecl { type_name, methods } => {
+                // Emit each method as a top-level Def with qualified name
+                let mut results = Vec::new();
+                for m in methods {
+                    if let Some(bs) = self.emit_stmt(m)? {
+                        results.push(bs);
+                    }
+                }
+                if results.is_empty() {
+                    Ok(None)
+                } else if results.len() == 1 {
+                    Ok(results.into_iter().next())
+                } else {
+                    let mut qname = self.qualified_name("impl");
+                    qname.push('_');
+                    qname.push_str(type_name);
+                    Ok(Some(BmoStmt::Def {
+                        name: qname,
+                        params: Vec::new(),
+                        ret: BmoType::Void,
+                        body: results,
+                    }))
+                }
+            }
+
             Stmt::Syscall { nr, args } => {
-                // Emit syscall as: reg rax = nr; [args in regs]; emit 0x0F 0x05
                 let mut stmts = Vec::new();
-                stmts.push(BmoStmt::RegAssign { reg: "rax".to_string(), value: BmoExpr::LitInt(*nr) });
-                // Load args into registers (BMO ABI: rdi, rsi, rdx, r10, r8, r9)
+                stmts.push(BmoStmt::RegAssign {
+                    reg: "rax".to_string(),
+                    value: BmoExpr::LitInt(*nr),
+                });
                 let reg_names = ["rdi", "rsi", "rdx", "r10", "r8", "r9"];
                 for (i, arg) in args.iter().enumerate() {
                     if i < reg_names.len() {
                         let bmo_arg = self.emit_expr(arg)?;
-                        stmts.push(BmoStmt::RegAssign { reg: reg_names[i].to_string(), value: bmo_arg });
+                        stmts.push(BmoStmt::RegAssign {
+                            reg: reg_names[i].to_string(),
+                            value: bmo_arg,
+                        });
                     }
                 }
-                // emit syscall instruction
                 stmts.push(BmoStmt::Emit(vec![0x0F, 0x05]));
-                // Return last stmt
                 Ok(stmts.last().cloned())
             }
+
             Stmt::Emit(bytes) => Ok(Some(BmoStmt::Emit(bytes.clone()))),
             Stmt::Aloc { size } => {
                 let bmo_size = self.emit_expr(size)?;
@@ -168,12 +249,7 @@ impl Codegen {
                 let bmo_expr = self.emit_expr(expr)?;
                 Ok(Some(BmoStmt::ExprStmt(bmo_expr)))
             }
-            Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } | Stmt::ImplDecl { .. } => {
-                // Types are metadata, not codegen targets yet
-                Ok(None)
-            }
             Stmt::Module { name, items } => {
-                // Push module path, emit items, pop
                 self.current_module.push(name.clone());
                 let mut results = Vec::new();
                 for item in items {
@@ -182,7 +258,6 @@ impl Codegen {
                     }
                 }
                 self.current_module.pop();
-                // Return first result if only one, otherwise wrap in block
                 if results.len() == 1 {
                     Ok(results.into_iter().next())
                 } else if results.is_empty() {
@@ -196,51 +271,24 @@ impl Codegen {
                     }))
                 }
             }
-            Stmt::Use { .. } | Stmt::UseGlob { .. } | Stmt::Extern { .. } => {
-                // Module system declarations — resolved in module resolver, not codegen
+            Stmt::Use { .. } | Stmt::UseGlob { .. } => {
+                // Module system: resolved in module resolver, not codegen
                 Ok(None)
             }
-            Stmt::Pub { inner } => {
-                // Pub is visibility metadata — codegen the inner statement
-                self.emit_stmt(inner)
+            Stmt::Extern { .. } => {
+                // FFI declarations: emitted as forward decls in sema
+                Ok(None)
             }
-            Stmt::For { var, start, end, body } => {
-                // Desugar: let var = start; mientras var < end { ...; var = var + 1 }
-                let mut stmts = Vec::new();
-                let bmo_start = self.emit_expr(start)?;
-                stmts.push(BmoStmt::Let { name: var.clone(), ty: None, value: bmo_start });
-
-                let bmo_end = self.emit_expr(end)?;
-                let mut while_body = Vec::new();
-                for s in body {
-                    if let Some(bs) = self.emit_stmt(s)? { while_body.push(bs); }
-                }
-                // var = var + 1
-                while_body.push(BmoStmt::RegAssign {
-                    reg: var.clone(),
-                    value: BmoExpr::Bin(
-                        BmoBinOp::Suma,
-                        Box::new(BmoExpr::Ident(var.clone())),
-                        Box::new(BmoExpr::LitInt(1)),
-                    ),
-                });
-
-                let cond = BmoExpr::Bin(
-                    BmoBinOp::Menor,
-                    Box::new(BmoExpr::Ident(var.clone())),
-                    Box::new(bmo_end),
-                );
-                stmts.push(BmoStmt::Mientras { cond, body: while_body });
-
-                // Wrap in a Def
-                Ok(Some(BmoStmt::Def {
-                    name: "_for".to_string(),
-                    params: Vec::new(),
-                    ret: BmoType::Void,
-                    body: stmts,
-                }))
-            }
+            Stmt::Pub { inner } => self.emit_stmt(inner),
         }
+    }
+
+    /// Emit a stmt into an existing body vec (helper to avoid `if let Some`)
+    fn emit_into(&mut self, stmt: &Stmt, body: &mut Vec<BmoStmt>) -> BxResult<()> {
+        if let Some(bs) = self.emit_stmt(stmt)? {
+            body.push(bs);
+        }
+        Ok(())
     }
 
     fn emit_expr(&self, expr: &Expr) -> BxResult<BmoExpr> {
@@ -253,12 +301,14 @@ impl Codegen {
             Expr::LitBool(false) => Ok(BmoExpr::LitInt(0)),
             Expr::LitNull => Ok(BmoExpr::LitNulo),
             Expr::Ident(name) => Ok(BmoExpr::Ident(name.clone())),
+
             Expr::Binary(op, left, right) => {
                 let bmo_left = self.emit_expr(left)?;
                 let bmo_right = self.emit_expr(right)?;
                 let bmo_op = self.map_binop(*op);
                 Ok(BmoExpr::Bin(bmo_op, Box::new(bmo_left), Box::new(bmo_right)))
             }
+
             Expr::Unary(op, inner) => {
                 let bmo_inner = self.emit_expr(inner)?;
                 match op {
@@ -268,106 +318,118 @@ impl Codegen {
                         Box::new(bmo_inner),
                     )),
                     UnaryOp::Not => Ok(BmoExpr::No(Box::new(bmo_inner))),
-                    _ => Ok(bmo_inner),
+                    UnaryOp::Ref => Ok(BmoExpr::AddrOf(Box::new(bmo_inner))),
+                    UnaryOp::Deref => Ok(BmoExpr::Deref(Box::new(bmo_inner))),
                 }
             }
+
             Expr::Call(name, args) => {
-                // Emit as: reg rax = name(args)
                 let mut bmo_args = Vec::new();
-                for a in args {
-                    bmo_args.push(self.emit_expr(a)?);
-                }
-                // In BMOasm, function calls are via reg assignments
-                // For now, emit as expression statement
-                Ok(BmoExpr::Ident(name.clone()))
+                for a in args { bmo_args.push(self.emit_expr(a)?); }
+                Ok(BmoExpr::Call { name: name.clone(), args: bmo_args })
             }
-            Expr::Syscall(nr, args) => {
-                // Emit syscall as raw bytes
-                let mut bytes = Vec::new();
-                // mov rax, nr
-                bytes.extend_from_slice(&[0x48, 0xB8]);
-                bytes.extend_from_slice(&nr.to_le_bytes());
-                // Load first arg into rdi if present
-                if !args.is_empty() {
-                    // For now, just emit the syscall number
-                }
-                bytes.extend_from_slice(&[0x0F, 0x05]); // syscall
-                Ok(BmoExpr::LitInt(*nr)) // Placeholder
-            }
-            Expr::Emit(_bytes) => Ok(BmoExpr::LitInt(0)), // Emit bytes are statements, not expressions
-            Expr::Aloc(size) => Ok(BmoExpr::Aloc(Box::new(self.emit_expr(size)?))),
-            Expr::Libre(_ptr) => Ok(BmoExpr::LitNulo), // Libre is a statement
-            Expr::Reg(name) => Ok(BmoExpr::Reg(name.clone())),
-            Expr::Block(_stmts) => {
-                // Emit block as a sequence
-                Ok(BmoExpr::LitInt(0)) // Placeholder
-            }
-            Expr::MethodCall(_, method, _args) => {
-                // Method calls become function calls
-                Ok(BmoExpr::Ident(method.clone()))
-            }
-            Expr::Field(_obj, field) => {
-                // Field access becomes offset calculation
-                Ok(BmoExpr::Ident(field.clone()))
-            }
-            Expr::Index(_obj, _idx) => {
-                // Index becomes offset calculation
-                Ok(BmoExpr::LitInt(0)) // Placeholder
-            }
+
             Expr::QualifiedPath(path) => {
-                // Qualified path like `io::MAX_BUF` — flatten to single ident
-                Ok(BmoExpr::Ident(path.join("::")))
+                Ok(BmoExpr::Ident(path.join("_")))
             }
+
             Expr::QualifiedCall(path, args) => {
-                // Qualified call like `io::print("hola")` — flatten path, emit first arg
-                let _name = path.join("_");
-                if let Some(first) = args.first() {
-                    self.emit_expr(first)
-                } else {
-                    Ok(BmoExpr::LitInt(0))
-                }
+                let mut bmo_args = Vec::new();
+                for a in args { bmo_args.push(self.emit_expr(a)?); }
+                Ok(BmoExpr::Call {
+                    name: path.join("_"),
+                    args: bmo_args,
+                })
             }
+
+            Expr::MethodCall(obj, method, args) => {
+                // Method dispatch: emit as call to Type_method
+                let mut bmo_args = Vec::new();
+                bmo_args.push(self.emit_expr(obj)?);
+                for a in args { bmo_args.push(self.emit_expr(a)?); }
+                Ok(BmoExpr::Call {
+                    name: method.clone(),
+                    args: bmo_args,
+                })
+            }
+
+            Expr::Field(obj, field) => {
+                let bmo_obj = self.emit_expr(obj)?;
+                Ok(BmoExpr::Field {
+                    obj: Box::new(bmo_obj),
+                    name: field.clone(),
+                })
+            }
+
+            Expr::Index(obj, idx) => {
+                let bmo_obj = self.emit_expr(obj)?;
+                let bmo_idx = self.emit_expr(idx)?;
+                Ok(BmoExpr::Index {
+                    obj: Box::new(bmo_obj),
+                    idx: Box::new(bmo_idx),
+                })
+            }
+
+            Expr::Syscall(nr, args) => {
+                // As expression, just produce the syscall nr as a value
+                let mut bmo_args = Vec::new();
+                for a in args { bmo_args.push(self.emit_expr(a)?); }
+                // Real codegen happens as Stmt::Syscall; this is expression
+                // fallback that registers args in order via a sequence.
+                // Caller should normally use Stmt::Syscall for side-effects.
+                let _ = bmo_args;
+                Ok(BmoExpr::LitInt(*nr))
+            }
+
+            Expr::Emit(_bytes) => Ok(BmoExpr::LitInt(0)),
+            Expr::Aloc(size) => Ok(BmoExpr::Aloc(Box::new(self.emit_expr(size)?))),
+            Expr::Libre(_ptr) => Ok(BmoExpr::LitNulo),
+            Expr::Reg(name) => Ok(BmoExpr::Reg(name.clone())),
+            Expr::Block(_stmts) => Ok(BmoExpr::LitInt(0)),
         }
     }
 
     fn map_type(&self, ty: &TypeAnnotation) -> BmoType {
         match ty {
             TypeAnnotation::Named(name) => match name.as_str() {
-                "num" | "i64" | "u64" | "i32" | "u32" | "i16" | "u16" | "i8" => BmoType::Num,
+                "num" | "i64" | "u64" | "i32" | "u32" | "i16" | "u16" | "i8" | "usize" | "isize" => BmoType::Num,
                 "byte" | "u8" => BmoType::Byte,
-                "bool" => BmoType::Num,
+                "bool" => BmoType::Bool,
                 "ptr" | "direccion" => BmoType::Ptr,
                 "nulo" | "void" => BmoType::Void,
-                _ => BmoType::Num, // Default to num for unknown types
+                // User-defined types: assume struct/enum, defer to resolution
+                other => BmoType::Struct(other.to_string()),
             },
             TypeAnnotation::Ptr(_) => BmoType::Ptr,
-            TypeAnnotation::Ref(_) => BmoType::Ptr,
+            TypeAnnotation::Ref(_) => BmoType::Ref,
             TypeAnnotation::Array(_, _) => BmoType::Arr,
             TypeAnnotation::Optional(_) => BmoType::Ptr,
-            TypeAnnotation::QualifiedType(_) => BmoType::Num, // Resolved type — treat as num for now
+            TypeAnnotation::QualifiedType(path) => {
+                BmoType::Struct(path.join("_"))
+            }
         }
     }
 
     fn map_binop(&self, op: BinOp) -> BmoBinOp {
         match op {
-            BinOp::Add => BmoBinOp::Suma,
-            BinOp::Sub => BmoBinOp::Resta,
-            BinOp::Mul => BmoBinOp::Mult,
-            BinOp::Div => BmoBinOp::Div,
-            BinOp::Mod => BmoBinOp::Div, // Placeholder
-            BinOp::And => BmoBinOp::Y,
-            BinOp::Or => BmoBinOp::O,
-            BinOp::Eq => BmoBinOp::Igual,
-            BinOp::Lt => BmoBinOp::Menor,
-            BinOp::Gt => BmoBinOp::Mayor,
-            BinOp::Le => BmoBinOp::Menor, // Placeholder
-            BinOp::Ge => BmoBinOp::Mayor, // Placeholder
-            BinOp::Ne => BmoBinOp::Igual, // Placeholder
-            BinOp::Xor => BmoBinOp::Y, // Placeholder
-            BinOp::Shl => BmoBinOp::Mult, // Placeholder
-            BinOp::Shr => BmoBinOp::Div, // Placeholder
+            BinOp::Add  => BmoBinOp::Suma,
+            BinOp::Sub  => BmoBinOp::Resta,
+            BinOp::Mul  => BmoBinOp::Mult,
+            BinOp::Div  => BmoBinOp::Div,
+            BinOp::Mod  => BmoBinOp::Mod,
+            BinOp::And  => BmoBinOp::Y,
+            BinOp::Or   => BmoBinOp::O,
+            BinOp::Xor  => BmoBinOp::Xor,
+            BinOp::Shl  => BmoBinOp::Shl,
+            BinOp::Shr  => BmoBinOp::Shr,
+            BinOp::Eq   => BmoBinOp::Igual,
+            BinOp::Ne   => BmoBinOp::Difer,
+            BinOp::Lt   => BmoBinOp::Menor,
+            BinOp::Gt   => BmoBinOp::Mayor,
+            BinOp::Le   => BmoBinOp::MenIg,
+            BinOp::Ge   => BmoBinOp::MayIg,
             BinOp::Land => BmoBinOp::Y,
-            BinOp::Lor => BmoBinOp::O,
+            BinOp::Lor  => BmoBinOp::O,
         }
     }
 }

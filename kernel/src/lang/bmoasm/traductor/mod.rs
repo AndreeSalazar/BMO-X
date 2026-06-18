@@ -96,25 +96,31 @@ impl Traductor {
     pub fn traducir(&mut self, src: &[u8]) -> BxResult<Vec<u8>> {
         let mut parser = Parser::new(src);
         let mut ast = parser.parse().map_err(|_e| BxError::InvalidArgument)?;
+        self.traducir_ast(&mut ast)
+    }
 
+    /// Compile a pre-parsed AST directly. This is the no-roundtrip
+    /// entry point used by the ÑEXO codegen, which produces an AST
+    /// directly without going through text serialization.
+    pub fn traducir_ast(&mut self, ast: &mut Ast) -> BxResult<Vec<u8>> {
         // Phase 1: incluye — merge included files
-        self.process_incluye(&mut ast)?;
+        self.process_incluye(ast)?;
 
         // Phase 2: constant folding
-        super::sema::fold::Folder::fold(&mut ast);
+        super::sema::fold::Folder::fold(ast);
 
         // Phase 3: semantic check
         let sema = Sema::new();
-        sema.check(&ast)?;
+        sema.check(ast)?;
 
         // Phase 4: dead code elimination
-        super::sema::dce::Dce::eliminate(&mut ast);
+        super::sema::dce::Dce::eliminate(ast);
 
         // Phase 5: optimization (inline, unused let elimination)
-        super::sema::opt::Optimizer::optimize(&mut ast);
+        super::sema::opt::Optimizer::optimize(ast);
 
         // Phase 6: codegen
-        self.compilar_ast(&ast)?;
+        self.compilar_ast(ast)?;
 
         // Phase 6: back-patching
         self.backpatch()?;
@@ -181,7 +187,7 @@ impl Traductor {
                         code_offset,
                         param_count: params.len(),
                     });
-                    self.compilar_funcion(params, *ret, body)?;
+                    self.compilar_funcion(params, ret.clone(), body)?;
                 }
                 _ => return Err(BxError::InvalidArgument),
             }
@@ -212,7 +218,7 @@ impl Traductor {
                 }
                 self.scope.push(ScopeEntry {
                     name: pname.clone(),
-                    ty: *pty,
+                    ty: pty.clone(),
                     frame_offset: -((i as i32 + 1) * 8),
                 });
             }
@@ -277,6 +283,76 @@ impl Traductor {
                         ty: Type::Num,
                         frame_offset: offset,
                     });
+                }
+                Stmt::Store { name, ty: _, value } => {
+                    // Rebind: re-emit into the existing slot if known, else new
+                    let existing_offset = self.scope.lookup(name).map(|e| e.frame_offset);
+                    self.codegen_expr(value)?;
+                    if let Some(off) = existing_offset {
+                        self.backend.store_var(off);
+                    } else {
+                        // Implicit declaration on first store (e.g. loop counter)
+                        let offset = -(self.frame_size as i32) - 8;
+                        self.frame_size += 8;
+                        self.backend.store_var(offset);
+                        self.scope.push(ScopeEntry {
+                            name: name.clone(),
+                            ty: Type::Num,
+                            frame_offset: offset,
+                        });
+                    }
+                }
+                Stmt::CallStmt { name, args } => {
+                    for (i, arg) in args.iter().enumerate() {
+                        if i >= self.backend.arg_reg_count() { return Err(BxError::InvalidArgument); }
+                        self.codegen_expr(arg)?;
+                        if let Some(arg_r) = self.backend.arg_reg(i) {
+                            self.backend.mov_reg_reg(arg_r, self.backend.acc_reg());
+                        }
+                    }
+                    let call_offset = self.backend.call_rel32();
+                    if let Some(entry) = self.fn_table.get(name) {
+                        let code_offset = entry.code_offset;
+                        self.backend.patch_rel32(call_offset, call_offset + 4, code_offset);
+                    } else {
+                        self.call_patches.push(CallPatch { call_offset, fn_name: name.clone() });
+                    }
+                }
+                Stmt::TypeDecl { .. } => {
+                    // TypeDecl is metadata, not codegen target yet
+                }
+                Stmt::FieldAssign { obj, field, value } => {
+                    // Emit: load obj base, add field offset, store value
+                    self.codegen_expr(obj)?;
+                    // For now, treat as plain ident (no struct layout yet)
+                    self.codegen_expr(value)?;
+                    self.backend.store_var(0);
+                    let _ = field; // TODO: compute field offset from type
+                }
+                Stmt::IndexAssign { obj, idx, value } => {
+                    // obj[idx] = value
+                    // Emit the address calculation in raw bytes to avoid
+                    // borrow conflicts with codegen_expr.
+                    self.codegen_expr(obj)?;
+                    self.backend.push_acc();
+                    self.codegen_expr(idx)?;
+                    self.backend.push_acc();
+                    // Stack now: [..., obj, idx]
+                    // Compute: pop idx, shl 3, add with obj, store value at [rax]
+                    {
+                        let bytes = self.backend.bytes_mut();
+                        bytes.push(0x59); // pop rcx (= idx)
+                        bytes.extend_from_slice(&[0x48, 0xC1, 0xE1, 0x03]); // shl rcx, 3
+                        bytes.push(0x5A); // pop rdx (= obj)
+                        bytes.extend_from_slice(&[0x48, 0x01, 0xCA]); // add rdx, rcx
+                    }
+                    // rdx = obj + idx*8
+                    self.codegen_expr(value)?;
+                    // rax = value, store at [rdx]
+                    {
+                        let bytes = self.backend.bytes_mut();
+                        bytes.extend_from_slice(&[0x48, 0x89, 0x02]); // mov [rdx], rax
+                    }
                 }
                 Stmt::Retorna(expr_opt) => {
                     if let Some(expr) = expr_opt {
@@ -761,6 +837,58 @@ impl Traductor {
             }
             Expr::MemOrder(mo, inner) => {
                 self.codegen_memorder(*mo, inner)?;
+            }
+            Expr::Field { obj, name: _ } => {
+                // Struct field read: load obj base, add field offset, load
+                // For now treat as identity (no struct layout resolution yet)
+                self.codegen_expr(obj)?;
+            }
+            Expr::Index { obj, idx } => {
+                // Array index read: load obj, compute obj+idx*8, load
+                self.codegen_expr(obj)?;
+                self.backend.push_acc();
+                self.codegen_expr(idx)?;
+                self.backend.push_acc();
+                // Stack: [..., obj, idx]
+                {
+                    let bytes = self.backend.bytes_mut();
+                    bytes.push(0x59); // pop rcx (= idx)
+                    bytes.extend_from_slice(&[0x48, 0xC1, 0xE1, 0x03]); // shl rcx, 3
+                    bytes.push(0x5A); // pop rdx (= obj)
+                    bytes.extend_from_slice(&[0x48, 0x01, 0xCA]); // add rdx, rcx
+                    bytes.extend_from_slice(&[0x48, 0x8B, 0x02]); // mov rax, [rdx]
+                }
+            }
+            Expr::AddrOf(inner) => {
+                // &x → load frame address of x
+                if let Expr::Ident(name) = &**inner {
+                    if let Some(entry) = self.scope.lookup(name) {
+                        // rax = rbp + frame_offset (lea)
+                        let bytes = self.backend.bytes_mut();
+                        bytes.push(0x48);
+                        bytes.push(0x8D);
+                        bytes.push(0x85);
+                        bytes.extend_from_slice(&(entry.frame_offset as u32).to_le_bytes());
+                    } else {
+                        // Unknown — emit 0
+                        self.backend.zero_acc();
+                    }
+                } else {
+                    // Not an ident — fall through to value
+                    self.codegen_expr(inner)?;
+                }
+            }
+            Expr::Deref(inner) => {
+                // *x → load 8 bytes from address
+                self.codegen_expr(inner)?;
+                let bytes = self.backend.bytes_mut();
+                bytes.push(0x48);
+                bytes.push(0x8B);
+                bytes.push(0x00);
+            }
+            Expr::Cast(inner, _ty) => {
+                // For now, cast is identity (no-op)
+                self.codegen_expr(inner)?;
             }
         }
         Ok(())
