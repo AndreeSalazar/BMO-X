@@ -317,7 +317,31 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
 
         unsafe { drivers::pci::SCAN_RESULT = Some(pci); }
     } else {
-        boot_warn("phase2", "MCFG not found; PCI ECAM unavailable");
+        boot_warn("phase2", "MCFG not found; trying legacy IO port PCI scan");
+        // Fallback: scan PCI via legacy IO ports (0xCF8/0xCFC) — works on all x86
+        // End bus 32 is typical for most systems; IO port scan is slower than ECAM
+        drivers::pci::init_ecam(0, 32); // non-ECAM mode: IO ports, bus 0..32
+        let pci = drivers::pci::scan_pci_bus();
+        boot_log_u64("phase2", "PCI devices discovered (IO port)", pci.count as u64);
+
+        for i in 0..pci.count {
+            let dev = &pci.devices[i];
+            drivers::serial::serial_write("  PCI ");
+            serial_u32(dev.bus as u32);
+            drivers::serial::serial_write(":");
+            serial_u32(dev.device as u32);
+            drivers::serial::serial_write(".");
+            serial_u32(dev.function as u32);
+            drivers::serial::serial_write(" [");
+            serial_hex(dev.vendor_id as u64);
+            drivers::serial::serial_write(":");
+            serial_hex(dev.device_id as u64);
+            drivers::serial::serial_write("] class=");
+            serial_hex(dev.class_code as u64);
+            drivers::serial::serial_write("\n");
+        }
+
+        unsafe { drivers::pci::SCAN_RESULT = Some(pci); }
     }
 
     // Storage/network real driver init is deliberately deferred. On hardware

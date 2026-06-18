@@ -514,6 +514,11 @@ pub fn get_backbuffer_fb() -> Framebuffer {
     }
 }
 
+/// Get raw pointer to the backbuffer memory.
+pub fn backbuffer_ptr() -> *mut u32 {
+    unsafe { BACKBUFFER_MEM.as_mut_ptr() }
+}
+
 /// Copy backbuffer to screen (double buffering)
 pub fn present() {
     if let Some(disp) = display() {

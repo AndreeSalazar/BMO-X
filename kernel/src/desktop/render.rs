@@ -578,6 +578,16 @@ pub fn render_frame() {
 
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
+    // Paint the diag overlay onto the backbuffer (not the screen directly).
+    // This eliminates the flicker caused by overlay drawing on top of the
+    // freshly-blitted frame.
+    if crate::diag::is_overlay_enabled() {
+        let bb_addr = crate::drivers::gop::backbuffer_ptr() as *mut u32;
+        crate::diag::overlay::set_target_override(Some((bb_addr, w as usize, h as usize, s as usize)));
+        crate::diag::paint_overlay();
+        crate::diag::overlay::set_target_override(None);
+    }
+
     // Sincronizar copia con V-Sync para evitar tearing y flicker
     wait_for_vsync();
 

@@ -11,7 +11,7 @@
 
 mod buffer;
 mod event;
-mod overlay;
+pub mod overlay;
 mod persistent;
 mod serial_sink;
 pub mod telemetry;

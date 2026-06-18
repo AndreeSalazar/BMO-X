@@ -1,18 +1,111 @@
 #![allow(dead_code)]
 
-//! PCI bus scanning via ECAM (Enhanced Configuration Access Mechanism).
+//! PCI bus scanning — dual backend: IO ports (0xCF8/0xCFC) + ECAM MMIO.
+//!
+//! When ECAM (via ACPI MCFG) is available, uses memory-mapped access.
+//! Otherwise falls back to legacy IO port access (works on all x86-64).
 
-/// ECAM base address (set by init_ecam before scanning).
+use core::arch::asm;
+
+/// ECAM base address (set by init_ecam if MCFG found).
 static mut ECAM_BASE: u64 = 0;
 static mut ECAM_END_BUS: u8 = 0;
+static mut USE_ECAM: bool = false;
 
-/// Initialize ECAM — must be called before any PCI access.
+/// Initialize ECAM — called when ACPI MCFG provides the base address.
 pub fn init_ecam(base: u64, end_bus: u8) {
     unsafe {
         ECAM_BASE = base;
         ECAM_END_BUS = end_bus;
+        USE_ECAM = base != 0;
+    }
+    crate::drivers::serial::serial_write("[pci] ECAM initialized, base=");
+    print_hex(base);
+    crate::drivers::serial::serial_write("\n");
+}
+
+/// Check if ECAM is available.
+pub fn is_ecam() -> bool {
+    unsafe { USE_ECAM }
+}
+
+// ── Low-level read/write ──────────────────────────────────────────
+
+/// Read 32 bits from PCI config space (auto-selects ECAM or IO port).
+pub fn pci_read32(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
+    if unsafe { USE_ECAM } {
+        pci_read32_ecam(bus, dev, func, off)
+    } else {
+        pci_read32_io(bus, dev, func, off)
     }
 }
+
+/// Write 32 bits to PCI config space (auto-selects ECAM or IO port).
+pub fn pci_write32(bus: u8, dev: u8, func: u8, off: u16, val: u32) {
+    if unsafe { USE_ECAM } {
+        pci_write32_ecam(bus, dev, func, off, val)
+    } else {
+        pci_write32_io(bus, dev, func, off, val)
+    }
+}
+
+/// ECAM MMIO read.
+fn pci_read32_ecam(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
+    let base = unsafe { ECAM_BASE };
+    let addr = base
+        + ((bus as u64) << 20)
+        + ((dev as u64) << 15)
+        + ((func as u64) << 12)
+        + ((off as u64) & 0xFFC);
+    unsafe { core::ptr::read_volatile(addr as *const u32) }
+}
+
+/// ECAM MMIO write.
+fn pci_write32_ecam(bus: u8, dev: u8, func: u8, off: u16, val: u32) {
+    let base = unsafe { ECAM_BASE };
+    let addr = base
+        + ((bus as u64) << 20)
+        + ((dev as u64) << 15)
+        + ((func as u64) << 12)
+        + ((off as u64) & 0xFFC);
+    unsafe { core::ptr::write_volatile(addr as *mut u32, val); }
+}
+
+/// Legacy IO port read (0xCF8 config address, 0xCFC data).
+fn pci_read32_io(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
+    let addr: u32 = (1 << 31)
+        | ((bus as u32) << 16)
+        | ((dev as u32) << 11)
+        | ((func as u32) << 8)
+        | ((off as u32) & 0xFC);
+    unsafe {
+        asm!("out dx, al", in("dx") 0xCF8u16, in("al") (addr & 0xFF) as u8);
+        asm!("out dx, al", in("dx") 0xCF9u16, in("al") ((addr >> 8) & 0xFF) as u8);
+        asm!("out dx, al", in("dx") 0xCFAu16, in("al") ((addr >> 16) & 0xFF) as u8);
+        asm!("out dx, al", in("dx") 0xCFBu16, in("al") ((addr >> 24) & 0xFF) as u8);
+        let val: u32;
+        asm!("in eax, dx", in("dx") 0xCFCu16, out("eax") val);
+        val
+    }
+}
+
+/// Legacy IO port write.
+fn pci_write32_io(bus: u8, dev: u8, func: u8, off: u16, val: u32) {
+    let addr: u32 = (1 << 31)
+        | ((bus as u32) << 16)
+        | ((dev as u32) << 11)
+        | ((func as u32) << 8)
+        | ((off as u32) & 0xFC);
+    unsafe {
+        asm!("out dx, al", in("dx") 0xCF8u16, in("al") (addr & 0xFF) as u8);
+        asm!("out dx, al", in("dx") 0xCF9u16, in("al") ((addr >> 8) & 0xFF) as u8);
+        asm!("out dx, al", in("dx") 0xCFAu16, in("al") ((addr >> 16) & 0xFF) as u8);
+        asm!("out dx, al", in("dx") 0xCFBu16, in("al") ((addr >> 24) & 0xFF) as u8);
+        asm!("out dx, eax", in("dx") 0xCFCu16, in("eax") val);
+    }
+}
+
+// ── Device structure ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy)]
 pub struct PciDevice {
@@ -54,29 +147,7 @@ impl PciScanResult {
 
 pub static mut SCAN_RESULT: Option<PciScanResult> = None;
 
-/// Read 32 bits from PCI config space via ECAM MMIO.
-pub fn pci_read32(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
-    let base = unsafe { ECAM_BASE };
-    if base == 0 { return 0xFFFF_FFFF; }
-    let offset = ((bus as u64) << 20)
-        | ((dev as u64) << 15)
-        | ((func as u64) << 12)
-        | ((off as u64) & 0xFFC);
-    let addr = base + offset;
-    unsafe { core::ptr::read_volatile(addr as *const u32) }
-}
-
-/// Write 32 bits to PCI config space via ECAM MMIO.
-pub fn pci_write32(bus: u8, dev: u8, func: u8, off: u16, val: u32) {
-    let base = unsafe { ECAM_BASE };
-    if base == 0 { return; }
-    let offset = ((bus as u64) << 20)
-        | ((dev as u64) << 15)
-        | ((func as u64) << 12)
-        | ((off as u64) & 0xFFC);
-    let addr = base + offset;
-    unsafe { core::ptr::write_volatile(addr as *mut u32, val); }
-}
+// ── Scan ──────────────────────────────────────────────────────────
 
 pub fn scan_pci_bus() -> PciScanResult {
     let mut r = PciScanResult::new();
@@ -92,7 +163,6 @@ pub fn scan_pci_bus() -> PciScanResult {
             let cr = pci_read32(bus, dev, 0, 0x08);
             let hdr = pci_read32(bus, dev, 0, 0x0C);
             let multi = (hdr >> 16) & 0x80 != 0;
-
             let bar0 = pci_read32(bus, dev, 0, 0x10);
             let bar1 = pci_read32(bus, dev, 0, 0x14);
 
@@ -133,42 +203,108 @@ pub fn scan_pci_bus() -> PciScanResult {
     r
 }
 
-/// Returns true if an NVMe controller (class 0x01, subclass 0x08) was found during PCI scan.
-#[allow(static_mut_refs)]
-pub fn has_nvme() -> bool {
-    let r = unsafe { SCAN_RESULT.as_ref() };
-    match r {
-        Some(scan) => scan.devices[..scan.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x08),
-        None => false,
+/// Scan PCI bus using legacy IO ports (0xCF8/0xCFC) — 256 buses max.
+fn scan_pci_bus_io() -> PciScanResult {
+    let mut r = PciScanResult::new();
+    for bus in 0..=255u16 {
+        for dev in 0..32u8 {
+            let vd = pci_read32_io(bus as u8, dev, 0, 0x00);
+            let vendor = (vd & 0xFFFF) as u16;
+            if vendor == 0xFFFF { continue; }
+            let device_id = ((vd >> 16) & 0xFFFF) as u16;
+            let cr = pci_read32_io(bus as u8, dev, 0, 0x08);
+            let hdr = pci_read32_io(bus as u8, dev, 0, 0x0C);
+            let multi = (hdr >> 16) & 0x80 != 0;
+            let bar0 = pci_read32_io(bus as u8, dev, 0, 0x10);
+            let bar1 = pci_read32_io(bus as u8, dev, 0, 0x14);
+            if r.count < 64 {
+                r.devices[r.count] = PciDevice {
+                    bus: bus as u8, device: dev, function: 0,
+                    vendor_id: vendor, device_id,
+                    class_code: ((cr >> 24) & 0xFF) as u8,
+                    subclass: ((cr >> 16) & 0xFF) as u8,
+                    bar0, bar1,
+                };
+                r.count += 1;
+            }
+            if multi {
+                for func in 1..8u8 {
+                    let vd2 = pci_read32_io(bus as u8, dev, func, 0x00);
+                    let v2 = (vd2 & 0xFFFF) as u16;
+                    if v2 == 0xFFFF { continue; }
+                    let cr2 = pci_read32_io(bus as u8, dev, func, 0x08);
+                    let b0 = pci_read32_io(bus as u8, dev, func, 0x10);
+                    let b1 = pci_read32_io(bus as u8, dev, func, 0x14);
+                    if r.count < 64 {
+                        r.devices[r.count] = PciDevice {
+                            bus: bus as u8, device: dev, function: func,
+                            vendor_id: v2,
+                            device_id: ((vd2 >> 16) & 0xFFFF) as u16,
+                            class_code: ((cr2 >> 24) & 0xFF) as u8,
+                            subclass: ((cr2 >> 16) & 0xFF) as u8,
+                            bar0: b0, bar1: b1,
+                        };
+                        r.count += 1;
+                    }
+                }
+            }
+            if bus > 0 && dev == 0 && r.count == 0 { break; }
+        }
+        if bus > 0 && r.count == 0 {
+            let found_on_0 = scan_any_on_bus(0);
+            if found_on_0 && bus > 4 { break; }
+        }
     }
+    r
 }
 
-/// Returns true if an AHCI/SATA controller (class 0x01, subclass 0x06) was found during PCI scan.
-#[allow(static_mut_refs)]
-pub fn has_ahci() -> bool {
-    let r = unsafe { SCAN_RESULT.as_ref() };
-    match r {
-        Some(scan) => scan.devices[..scan.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x06),
-        None => false,
+fn scan_any_on_bus(bus: u8) -> bool {
+    for dev in 0..32u8 {
+        let vd = pci_read32_io(bus, dev, 0, 0x00);
+        if (vd & 0xFFFF) as u16 != 0xFFFF { return true; }
     }
+    false
 }
 
-/// Returns true if a USB xHCI controller (class 0x0C, subclass 0x03) was found during PCI scan.
-#[allow(static_mut_refs)]
-pub fn has_xhci() -> bool {
-    let r = unsafe { SCAN_RESULT.as_ref() };
-    match r {
-        Some(scan) => scan.devices[..scan.count].iter().any(|d| d.class_code == 0x0C && d.subclass == 0x03),
-        None => false,
-    }
-}
-
-/// Returns the total number of discovered PCI devices.
-#[allow(static_mut_refs)]
+/// Count of discovered PCI devices.
 pub fn device_count() -> usize {
-    let r = unsafe { SCAN_RESULT.as_ref() };
-    match r {
-        Some(scan) => scan.count,
-        None => 0,
+    unsafe { SCAN_RESULT.as_ref().map(|r| r.count).unwrap_or(0) }
+}
+
+/// Check if any PCI device is NVMe (class 0x01, subclass 0x08).
+pub fn has_nvme() -> bool {
+    unsafe {
+        SCAN_RESULT.as_ref().map(|r| {
+            r.devices[..r.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x08)
+        }).unwrap_or(false)
     }
+}
+
+/// Check if any PCI device is AHCI/SATA (class 0x01, subclass 0x06).
+pub fn has_ahci() -> bool {
+    unsafe {
+        SCAN_RESULT.as_ref().map(|r| {
+            r.devices[..r.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x06)
+        }).unwrap_or(false)
+    }
+}
+
+/// Check if any PCI device is xHCI USB (class 0x0C, subclass 0x03).
+pub fn has_xhci() -> bool {
+    unsafe {
+        SCAN_RESULT.as_ref().map(|r| {
+            r.devices[..r.count].iter().any(|d| d.class_code == 0x0C && d.subclass == 0x03)
+        }).unwrap_or(false)
+    }
+}
+
+fn print_hex(val: u64) {
+    let hex = b"0123456789ABCDEF";
+    let mut buf = [0u8; 18];
+    buf[0] = b'0';
+    buf[1] = b'x';
+    for i in 0..16usize {
+        buf[2 + i] = hex[((val >> (60 - i * 4)) & 0xF) as usize];
+    }
+    crate::drivers::serial::serial_write(core::str::from_utf8(&buf).unwrap_or("0x???"));
 }

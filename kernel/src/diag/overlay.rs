@@ -21,6 +21,17 @@ const CHAR_W: usize = 8;
 // demanda con Ctrl+Alt, o explícitamente desde un handler de panic/fault.
 static mut ENABLED: bool = false;
 
+/// Optional override: when set, the overlay draws to this framebuffer
+/// instead of `boot_info::FB_ADDR`. Used by the desktop render loop
+/// to paint the overlay onto the backbuffer (eliminates flicker).
+static mut TARGET_OVERRIDE: Option<(*mut u32, usize, usize, usize)> = None;
+
+/// Set a temporary render target for the overlay. Pass `None` to revert
+/// to the default screen framebuffer.
+pub fn set_target_override(target: Option<(*mut u32, usize, usize, usize)>) {
+    unsafe { TARGET_OVERRIDE = target; }
+}
+
 pub fn set_enabled(enabled: bool) {
     unsafe { ENABLED = enabled; }
 }
@@ -465,6 +476,10 @@ fn draw_event_line(
 // ── Drawing primitives ─────────────────────────────────────────────
 
 fn fb() -> Option<(*mut u32, usize, usize, usize)> {
+    // Use the override target if set (for backbuffer rendering)
+    if let Some(target) = unsafe { TARGET_OVERRIDE } {
+        return Some(target);
+    }
     let (addr, w, h, s) = unsafe {
         (
             boot_info::FB_ADDR,

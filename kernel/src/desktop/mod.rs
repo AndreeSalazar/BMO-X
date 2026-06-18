@@ -58,9 +58,9 @@ pub fn run_ring0() -> ! {
     beep(1320, 80);
 
     loop {
-        // 1) Pintar un frame completo.
+        // 1) Pintar un frame completo (render_frame ya incluye el overlay
+        //    en el backbuffer antes del blit → cero parpadeo).
         render::render_frame();
-        crate::diag::paint_overlay();
 
         // 2) Dormir ~16 ms drenando teclado para no perder ESC.
         let target = (crate::arch::cpu::rdtsc()).wrapping_add(16 * CYCLES_PER_MS);
