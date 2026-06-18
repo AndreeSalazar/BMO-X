@@ -294,6 +294,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     let phase1_end = arch::cpu::rdtsc();
     boot_log_u64("phase1", "Phase 1 time (TSC ticks)", phase1_end - phase0_end);
 
+    // Run heap-dependent BMOasm codegen tests (heap is now live).
+    boot_log("ring3-codegen", "Running BMOasm codegen tests (heap live)");
+    let n = arch::ring3_test::run_codegen_tests();
+    boot_log_u64("ring3-codegen", "codegen tests passed", n as u64);
+
     // ════════════════════════════════════════════════════════════════
     // PHASE 2: DEVICES
     // ════════════════════════════════════════════════════════════════
