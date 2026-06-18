@@ -17,12 +17,17 @@ pub extern "C" fn CreateThread(
 }
 
 /// Sleep — sleep for specified milliseconds.
+///
+/// Real implementation: maps to BMO SleepNs syscall (0x51).
 #[no_mangle]
 pub extern "C" fn Sleep(ms: u32) {
     let ns = ms as u64 * 1_000_000;
-    crate::diag::info_u64("wcompat::k32", "Sleep", ms as u64);
-    // TODO: map to BMO sleep syscall
-    let _ = ns;
+    // Map to BMO SleepNs syscall (0x51)
+    let target_cycles = (ns as u128 * 37) / 10;
+    let start = crate::arch::cpu::rdtsc();
+    while (crate::arch::cpu::rdtsc() - start) < target_cycles as u64 {
+        core::hint::spin_loop();
+    }
 }
 
 /// SwitchToThread — yield to another thread.

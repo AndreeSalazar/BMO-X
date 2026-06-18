@@ -422,12 +422,12 @@ fn walk_pe_import_thunks(
             "???"
         };
 
-        // Resolve via PE thunk table.
-        let target = super::pe_thunks::resolve(dll_name, fn_name);
+        // Resolve via PE thunk table — now returns real function pointers.
+        let (target, fn_ptr) = super::pe_thunks::resolve_fn(dll_name, fn_name);
         let addr = match target {
             super::pe_thunks::ThunkTarget::SilentStub => super::pe_thunks::silent_stub as u64,
             super::pe_thunks::ThunkTarget::LogStub => super::pe_thunks::log_stub as u64,
-            _ => super::pe_thunks::silent_stub as u64, // TODO: real backends
+            _ => fn_ptr, // Real windows_compat function pointer
         };
 
         // Register in runtime symbol table.

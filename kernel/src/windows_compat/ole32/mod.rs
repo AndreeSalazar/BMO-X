@@ -20,7 +20,7 @@ pub extern "C" fn CoCreateInstance(
     _clsid: u64, _outer: u64, _ctx: u32, _iid: u64, _ppv: u64,
 ) -> i32 {
     crate::diag::info("wcompat::com", "CoCreateInstance stub");
-    0x80004002 // E_NOINTERFACE
+    -2147467262 // E_NOINTERFACE (0x80004002 as i32)
 }
 
 /// CoTaskMemAlloc — allocate COM task memory.

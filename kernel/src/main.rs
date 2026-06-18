@@ -35,6 +35,7 @@ mod sandbox;
 
 mod lang;
 mod security;
+mod windows_compat;
 
 use core::arch::naked_asm;
 

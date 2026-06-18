@@ -20,6 +20,7 @@
 
 pub mod api_map;
 
+pub mod ntdll;
 pub mod kernel32;
 pub mod user32;
 pub mod gdi32;
@@ -32,6 +33,7 @@ pub mod seh;
 
 /// Initialize the Windows compatibility layer.
 pub fn init() {
+    ntdll::init();
     crate::diag::info("wcompat", "Windows compatibility layer initialized");
     crate::diag::info_u64("wcompat", "total APIs mapped", api_map::TOTAL_MAPPED as u64);
 }
