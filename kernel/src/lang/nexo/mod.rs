@@ -26,10 +26,11 @@ pub mod sema;
 pub mod codegen;
 pub mod modules;
 pub mod runtime;
-pub mod c;
 pub mod stdlib;
 pub mod pm;
 pub mod plugins;
+
+// C, C++, Python, Java frontends live in plugins::languages.
 
 #[cfg(test)]
 pub mod tests;
@@ -71,21 +72,9 @@ pub fn compile(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
 /// Compile C source code to native code via ÑEXO.
 ///
 /// Pipeline: C source → C lexer → C parser → C AST → ÑEXO AST → BMOasm → native
+#[deprecated(since = "0.9.0", note = "Use crate::lang::nexo::plugins::languages::c::translator::compile_c_to_native instead")]
 pub fn compile_c(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
-    // 1. C Frontend: C source → ÑEXO AST
-    let ast = c::compile_c(source)?;
-
-    // 2. Semantic analysis
-    let sema = sema::Sema::new();
-    sema.check(&ast)?;
-
-    // 3. Codegen → BMOasm AST (no text serialization)
-    let mut codegen = codegen::Codegen::new();
-    let mut bmo_ast = codegen.emit(&ast)?;
-
-    // 4. BMOasm AST → native code (direct, no round-trip)
-    let mut traductor = crate::lang::bmoasm::traductor::Traductor::new();
-    traductor.traducir_ast(&mut bmo_ast)
+    crate::lang::nexo::plugins::languages::c::translator::compile_c_to_native(source)
 }
 
 /// Serialize BMOasm AST back to BMOasm source text (for tests only).

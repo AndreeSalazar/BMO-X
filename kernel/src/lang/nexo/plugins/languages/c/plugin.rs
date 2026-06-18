@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use crate::barex::BxResult;
-use super::super::traits::{
+use super::super::super::traits::{
     Language, LanguagePlugin, RuntimeConfig, LanguageFeatures, CompileResult,
 };
 
@@ -30,8 +30,8 @@ impl LanguagePlugin for CPlugin {
     }
 
     fn compile(&self, source: &[u8]) -> BxResult<CompileResult> {
-        // Use existing C frontend
-        let _result = crate::lang::nexo::c::compile_c(source)?;
+        // Use C frontend (translator) to produce ÑEXO AST.
+        let _result = super::translator::compile_c(source)?;
 
         Ok(CompileResult {
             success: true,

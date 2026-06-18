@@ -342,3 +342,40 @@ impl CToNexo {
         }
     }
 }
+
+/// Top-level C → ÑEXO AST compilation entry point.
+///
+/// Pipeline: C source bytes → C lexer → C parser → CAst → CToNexo → ÑEXO Ast.
+pub fn compile_c(source: &[u8]) -> BxResult<crate::lang::nexo::parser::Ast> {
+    use super::lexer::CLexer;
+    use super::parser::CParser;
+
+    let mut lex = CLexer::new(source);
+    let tokens = lex.tokenize()?;
+    let mut parser = CParser::new(tokens);
+    let cast = parser.parse()?;
+    let translator = CToNexo::new();
+    translator.translate(&cast)
+}
+
+/// Top-level C → native code entry point (full pipeline).
+///
+/// Pipeline: C → ÑEXO AST → sema → codegen → BMOasm AST → traductor → bytes.
+pub fn compile_c_to_native(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
+    use crate::lang::nexo::{sema, codegen};
+
+    // 1. C source → ÑEXO AST
+    let ast = compile_c(source)?;
+
+    // 2. Semantic analysis
+    let sema_check = sema::Sema::new();
+    sema_check.check(&ast)?;
+
+    // 3. ÑEXO AST → BMOasm AST
+    let mut cg = codegen::Codegen::new();
+    let mut bmo_ast = cg.emit(&ast)?;
+
+    // 4. BMOasm AST → native bytes
+    let mut traductor = crate::lang::bmoasm::traductor::Traductor::new();
+    traductor.traducir_ast(&mut bmo_ast)
+}

@@ -61,7 +61,7 @@ impl BuildSystem {
 
     /// Build a single C source file.
     pub fn build_c_file(&self, source: &[u8]) -> BxResult<Vec<u8>> {
-        crate::lang::nexo::compile_c(source)
+        crate::lang::nexo::plugins::languages::c::translator::compile_c_to_native(source)
     }
 }
 

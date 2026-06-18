@@ -16,6 +16,7 @@ use crate::barex::BxResult;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Language {
     C,
+    Cpp,
     Rust,
     Go,
     Python,
@@ -31,6 +32,7 @@ impl Language {
     pub fn name(&self) -> &'static str {
         match self {
             Language::C => "C",
+            Language::Cpp => "C++",
             Language::Rust => "Rust",
             Language::Go => "Go",
             Language::Python => "Python",
@@ -46,6 +48,7 @@ impl Language {
     pub fn file_extension(&self) -> &'static str {
         match self {
             Language::C => "c",
+            Language::Cpp => "cpp",
             Language::Rust => "rs",
             Language::Go => "go",
             Language::Python => "py",
@@ -59,7 +62,7 @@ impl Language {
     }
 
     pub fn is_system_language(&self) -> bool {
-        matches!(self, Language::C | Language::Rust)
+        matches!(self, Language::C | Language::Cpp | Language::Rust)
     }
 
     pub fn is_scripting_language(&self) -> bool {
