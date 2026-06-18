@@ -463,6 +463,10 @@ fn process_enter() {
         show_hint(b"Escribe (Run) y Enter.");
     } else if should_enter_desktop(trimmed_cmd) {
         enter_desktop();
+        // If we get here, the desktop returned (shouldn't happen but
+        // the watchdog can cause this). Just redraw the welcome.
+        crate::diag::info("welcome", "Desktop returned; re-entering welcome");
+        show_hint(b"Desktop returned unexpectedly. Type test for diagnostics.");
     } else if eq_ci(trimmed_cmd, b"hello") {
         crate::diag::info("welcome", "Hello command accepted; preparing Ring 3 test");
         sound::beep(440, 80);
@@ -478,6 +482,13 @@ fn process_enter() {
     } else if eq_ci(trimmed_cmd, b"nexo") {
         crate::diag::info("welcome", "NEXO compiler test — compiling hello program");
         nexo_test_compile();
+    } else if eq_ci(trimmed_cmd, b"test desktop") {
+        // Isolated desktop test: render one frame and report.
+        crate::diag::info("welcome", "test desktop: rendering single frame");
+        crate::drivers::serial::serial_write("[welcome] test desktop: calling render_frame()\n");
+        crate::desktop::render::render_frame();
+        crate::drivers::serial::serial_write("[welcome] test desktop: render_frame() returned OK\n");
+        crate::diag::info("welcome", "test desktop: render_frame OK");
     } else if eq_ci(trimmed_cmd, b"test") {
         run_test_all_phases();
     } else if eq_ci(trimmed_cmd, b"test phase 0") {

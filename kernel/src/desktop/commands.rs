@@ -28,12 +28,19 @@ pub fn trim(s: &[u8]) -> &[u8] {
 }
 
 /// Enter the desktop environment (calls into sched::user_init).
-pub fn enter_desktop() -> ! {
+///
+/// BUG WORKAROUND: instead of `-> !`, we return from this function so
+/// the welcome screen can recover if the desktop hangs. The desktop
+/// itself is `-> !` so it will never return normally — but the watchdog
+/// in `run_ring0` will eventually force a return.
+pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
     crate::diag::info("welcome", "Run accepted; starting desktop supervisor");
     crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0 + contrato Ring 3.\n");
     unsafe { crate::desktop::state::DIRTY = true; }
     crate::sched::user_init::spawn_desktop();
+    // If spawn_desktop ever returns (it shouldn't), we end up here.
+    crate::drivers::serial::serial_write("[welcome] desktop returned (unexpected)\n");
 }
 
 /// Test compile a ÑEXO program.
