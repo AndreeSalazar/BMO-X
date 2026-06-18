@@ -91,6 +91,7 @@ pub fn current_tab() -> OverlayTab {
 
 pub fn init() {
     persistent::init();
+    overlay::set_enabled(false);
     info("diag", "diag online: serial + GOP overlay + RAM blackbox");
 }
 

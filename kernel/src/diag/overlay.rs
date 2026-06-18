@@ -17,7 +17,9 @@ const MAX_W: usize = 1040;
 const OVERLAY_H: usize = 268;
 const CHAR_W: usize = 8;
 
-static mut ENABLED: bool = true;
+// El HUD no debe tapar el welcome ni el primer escritorio. Se activa bajo
+// demanda con Ctrl+Alt, o explícitamente desde un handler de panic/fault.
+static mut ENABLED: bool = false;
 
 pub fn set_enabled(enabled: bool) {
     unsafe { ENABLED = enabled; }

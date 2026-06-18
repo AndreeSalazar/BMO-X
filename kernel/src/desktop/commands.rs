@@ -29,6 +29,7 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 pub fn enter_desktop() -> ! {
+    crate::diag::set_overlay_enabled(false);
     crate::diag::info("welcome", "Run accepted; starting desktop supervisor");
     crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0 + contrato Ring 3.\n");
     unsafe { crate::desktop::state::DIRTY = true; }
