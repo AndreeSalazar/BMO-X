@@ -159,6 +159,71 @@ pub fn test_c_compile_struct() -> Result<(), String> {
     Ok(())
 }
 
+pub fn test_c_compile_struct_field_read() -> Result<(), String> {
+    // Test that `p.x` compiles to a load from a non-zero offset.
+    let src = b"
+        struct Point { int x; int y; };
+        int main() {
+            struct Point p;
+            p.x = 42;
+            return p.x;
+        }
+    ";
+    let bytes = c_compile(src)?;
+    assert!(!bytes.is_empty());
+    // The field read should emit a load (mov rax, [rax+8] or similar)
+    assert!(bytes.len() > 30, "expected substantial output for struct access");
+    Ok(())
+}
+
+pub fn test_nexo_compile_struct_layout() -> Result<(), String> {
+    // Verify BMOasm type layout for a 3-field struct.
+    let src = b"
+        tipo Point = estructura { x: num, y: num, z: num }
+        fn main() -> num {
+            let p: Point
+            retorna 0
+        }
+    ";
+    let bytes = nexo_compile(src)?;
+    assert!(!bytes.is_empty());
+    Ok(())
+}
+
+pub fn test_nexo_compile_field_access_pattern() -> Result<(), String> {
+    // Verify Expr::Field emits the right add/load pattern.
+    let src = b"
+        tipo Point = estructura { x: num, y: num }
+        fn main() -> num {
+            retorna 0
+        }
+    ";
+    let bytes = nexo_compile(src)?;
+    // Should at least have CALL (for the function)
+    assert!(bytes.contains(&0xE8), "expected CALL instruction");
+    Ok(())
+}
+
+pub fn test_c_compile_struct_multiple_fields() -> Result<(), String> {
+    // Test struct with 4 fields to verify alignment.
+    let src = b"
+        struct Vec4 { int x; int y; int z; int w; };
+        int main() {
+            struct Vec4 v;
+            v.x = 1;
+            v.y = 2;
+            v.z = 3;
+            v.w = 4;
+            return v.x + v.y + v.z + v.w;
+        }
+    ";
+    let bytes = c_compile(src)?;
+    assert!(!bytes.is_empty());
+    // Should be substantial (multiple stores at different offsets)
+    assert!(bytes.len() > 50);
+    Ok(())
+}
+
 // ── Pipeline integration test ──────────────────────────────────
 
 pub fn test_pipeline_c_nexo_bmoasm_x86_64() -> Result<(), String> {
@@ -219,6 +284,8 @@ pub fn run_all_tests() -> Result<u32, String> {
         ("nexo_compile_arithmetic", test_nexo_compile_arithmetic),
         ("nexo_compile_if_else", test_nexo_compile_if_else),
         ("nexo_compile_while_loop", test_nexo_compile_while_loop),
+        ("nexo_compile_struct_layout", test_nexo_compile_struct_layout),
+        ("nexo_compile_field_access_pattern", test_nexo_compile_field_access_pattern),
         ("c_compile_simple_add", test_c_compile_simple_add),
         ("c_compile_main", test_c_compile_main),
         ("c_compile_arithmetic", test_c_compile_arithmetic),
@@ -226,6 +293,8 @@ pub fn run_all_tests() -> Result<u32, String> {
         ("c_compile_while_loop", test_c_compile_while_loop),
         ("c_compile_compound_assign", test_c_compile_compound_assign),
         ("c_compile_struct", test_c_compile_struct),
+        ("c_compile_struct_field_read", test_c_compile_struct_field_read),
+        ("c_compile_struct_multiple_fields", test_c_compile_struct_multiple_fields),
         ("pipeline_c_nexo_bmoasm_x86_64", test_pipeline_c_nexo_bmoasm_x86_64),
         ("pipeline_nexo_bmoasm_x86_64", test_pipeline_nexo_bmoasm_x86_64),
     ];

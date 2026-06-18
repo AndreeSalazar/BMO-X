@@ -92,8 +92,13 @@ impl Sema {
                 }
                 Stmt::Let { name, ty, value } => {
                     let val_ty = self.infer_type(value, scope)?;
-                    if let Some(declared) = ty {
-                        if *declared != val_ty && *declared != Type::Void {
+                    // Prefer the declared type (e.g. `let p: Point`)
+                    // over the inferred one — this is what carries
+                    // user-defined struct names into the scope so that
+                    // field access can resolve offsets.
+                    let effective_ty = ty.clone().unwrap_or(val_ty);
+                    if let Some(ref declared) = ty {
+                        if *declared != effective_ty && *declared != Type::Void {
                             return Err(BxError::InvalidArgument);
                         }
                     }
@@ -104,7 +109,7 @@ impl Sema {
                     scope.frame_size += 8;
                     scope.push(ScopeEntry {
                         name: name.clone(),
-                        ty: val_ty,
+                        ty: effective_ty,
                         frame_offset: offset,
                     });
                 }

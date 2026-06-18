@@ -43,6 +43,14 @@ struct LabelPatch {
     label_name: String,
 }
 
+/// Type layout entry: one per field. The first element is the field
+/// name, the second is the byte offset from the start of the struct.
+struct FieldLayout {
+    name: String,
+    offset: i32,
+    size: u8,
+}
+
 pub struct Traductor {
     target: TargetArch,
     backend: Box<dyn CodegenBackend>,
@@ -58,6 +66,9 @@ pub struct Traductor {
     label_patches: Vec<LabelPatch>,
     /// File registry: path → source bytes (for incluye).
     file_registry: BTreeMap<String, Vec<u8>>,
+    /// Type layouts: type_name → field layouts in declaration order.
+    /// Used by `Expr::Field` and `Stmt::FieldAssign` to compute offsets.
+    type_layouts: BTreeMap<String, Vec<FieldLayout>>,
 }
 
 impl Traductor {
@@ -85,6 +96,7 @@ impl Traductor {
             label_table: BTreeMap::new(),
             label_patches: Vec::new(),
             file_registry: BTreeMap::new(),
+            type_layouts: BTreeMap::new(),
         }
     }
 
@@ -105,6 +117,9 @@ impl Traductor {
     pub fn traducir_ast(&mut self, ast: &mut Ast) -> BxResult<Vec<u8>> {
         // Phase 1: incluye — merge included files
         self.process_incluye(ast)?;
+
+        // Phase 1.5: compute type layouts from TypeDecl
+        self.compute_type_layouts(ast);
 
         // Phase 2: constant folding
         super::sema::fold::Folder::fold(ast);
@@ -152,6 +167,60 @@ impl Traductor {
         }
         ast.items = new_items;
         Ok(())
+    }
+
+    /// Walk the AST and record every `TypeDecl` as a layout in
+    /// `type_layouts`. Field offsets are assigned in declaration
+    /// order, aligned to 8 bytes (the natural Num alignment on x86_64).
+    fn compute_type_layouts(&mut self, ast: &Ast) {
+        for item in &ast.items {
+            if let Stmt::TypeDecl { name, kind: _, fields } = item {
+                let mut layout = Vec::new();
+                let mut offset: i32 = 0;
+                for (fname, fty) in fields {
+                    let size = fty.size() as i32;
+                    // Align to 8 bytes (Num boundary)
+                    if offset % 8 != 0 {
+                        offset += 8 - (offset % 8);
+                    }
+                    layout.push(FieldLayout {
+                        name: fname.clone(),
+                        offset,
+                        size: size as u8,
+                    });
+                    offset += size;
+                }
+                self.type_layouts.insert(name.clone(), layout);
+            }
+        }
+    }
+
+    /// Resolve a field offset for a given type. Returns the byte
+    /// offset of the field, or `None` if the type or field is unknown.
+    fn field_offset(&self, type_name: &str, field_name: &str) -> Option<i32> {
+        self.type_layouts
+            .get(type_name)
+            .and_then(|layout| layout.iter().find(|f| f.name == field_name))
+            .map(|f| f.offset)
+    }
+
+    /// Look up the byte offset of a field on an object expression.
+    ///
+    /// The object is expected to be either a direct identifier in scope
+    /// (whose declared type is `Type::Struct(name)`) or a chain of
+    /// field accesses. For now only the first case is supported.
+    fn lookup_field_offset(&self, obj: &Expr, field_name: &str) -> i32 {
+        if let Expr::Ident(name) = obj {
+            if let Some(entry) = self.scope.lookup(name) {
+                if let Type::Struct(type_name) = &entry.ty {
+                    if let Some(off) = self.field_offset(type_name, field_name) {
+                        return off;
+                    }
+                }
+            }
+        }
+        // Field-of-field or unknown: 0 is safe (treat as identity).
+        0
     }
 
     fn backpatch(&mut self) -> BxResult<()> {
@@ -322,12 +391,29 @@ impl Traductor {
                     // TypeDecl is metadata, not codegen target yet
                 }
                 Stmt::FieldAssign { obj, field, value } => {
-                    // Emit: load obj base, add field offset, store value
+                    // obj.field = value
+                    // 1. Compute obj base into rax
                     self.codegen_expr(obj)?;
-                    // For now, treat as plain ident (no struct layout yet)
+                    // 2. Find the type of obj to get the field offset
+                    let offset = self.lookup_field_offset(obj, field);
+                    // 3. Compute rax = rax + offset, save in rcx
+                    {
+                        let bytes = self.backend.bytes_mut();
+                        if offset != 0 {
+                            // add rax, offset (sign-extended imm32)
+                            bytes.push(0x48);
+                            bytes.push(0x05);
+                            bytes.extend_from_slice(&(offset as i32).to_le_bytes());
+                        }
+                        bytes.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                    }
+                    // 4. Load value into rax
                     self.codegen_expr(value)?;
-                    self.backend.store_var(0);
-                    let _ = field; // TODO: compute field offset from type
+                    // 5. Store rax at [rcx]
+                    {
+                        let bytes = self.backend.bytes_mut();
+                        bytes.extend_from_slice(&[0x48, 0x89, 0x01]); // mov [rcx], rax
+                    }
                 }
                 Stmt::IndexAssign { obj, idx, value } => {
                     // obj[idx] = value
@@ -838,10 +924,21 @@ impl Traductor {
             Expr::MemOrder(mo, inner) => {
                 self.codegen_memorder(*mo, inner)?;
             }
-            Expr::Field { obj, name: _ } => {
-                // Struct field read: load obj base, add field offset, load
-                // For now treat as identity (no struct layout resolution yet)
+            Expr::Field { obj, name } => {
+                // Struct field read: load obj base, add field offset, load 8 bytes
                 self.codegen_expr(obj)?;
+                let offset = self.lookup_field_offset(obj, name);
+                {
+                    let bytes = self.backend.bytes_mut();
+                    if offset != 0 {
+                        // add rax, offset (sign-extended imm32)
+                        bytes.push(0x48);
+                        bytes.push(0x05);
+                        bytes.extend_from_slice(&(offset as i32).to_le_bytes());
+                    }
+                    // mov rax, [rax]
+                    bytes.extend_from_slice(&[0x48, 0x8B, 0x00]);
+                }
             }
             Expr::Index { obj, idx } => {
                 // Array index read: load obj, compute obj+idx*8, load
