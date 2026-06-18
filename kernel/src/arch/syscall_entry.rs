@@ -214,8 +214,26 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 crate::sched::yield_now();
                 0
             }
-            0x04 => u64::MAX,
-            0x05 => u64::MAX,
+            0x04 => {
+                // ThreadCreate(entry, stack, priority) → tid
+                crate::diag::trace("syscall", "ThreadCreate");
+                match crate::sched::thread::alloc_thread(
+                    crate::sched::process::Pid(1),
+                    crate::sched::Priority::Interactive,
+                ) {
+                    Some(thr) => {
+                        thr.regs = crate::sched::thread::SavedRegs::new_user(a0, a1);
+                        thr.state = crate::sched::thread::ThreadState::Ready;
+                        thr.tid.0 as u64
+                    }
+                    None => u64::MAX,
+                }
+            }
+            0x05 => {
+                // ThreadExit(code) — kill current thread, reschedule
+                crate::diag::trace("syscall", "ThreadExit");
+                crate::sched::process::kill_current_process(0, a0, 0);
+            }
 
             // ─── Memoria ──────────────────────────────────────────────
             0x10 => u64::MAX,
@@ -225,9 +243,9 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             // ─── VFS ──────────────────────────────────────────────────
             0x20 => crate::fs::ramdisk::open(a0, a1),
             0x21 => crate::fs::ramdisk::read(a0, a1, a2),
-            0x22 => u64::MAX,
+            0x22 => crate::fs::ramdisk::write(a0, a1, a2),
             0x23 => crate::fs::ramdisk::close(a0),
-            0x24 => u64::MAX,
+            0x24 => crate::fs::ramdisk::seek(a0, a1, a2),
             0x25 => crate::fs::ramdisk::size(a0),
 
             // ─── IPC ──────────────────────────────────────────────────

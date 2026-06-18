@@ -503,6 +503,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     con.println("  Type 'Run' + Enter to launch desktop.");
     con.println("");
 
+    // Initialize desktop subsystem (state, input, display)
+    desktop::init();
+
     // Launch welcome screen
     boot_log("phase5", "Launching welcome screen — type 'Run'");
     desktop::welcome::run();

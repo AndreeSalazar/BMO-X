@@ -112,3 +112,44 @@ pub fn size(fd: u64) -> u64 {
         RAMDISK_FILES[f.file_idx as usize].data.len() as u64
     }
 }
+
+/// `FileWrite(fd, ptr, len)` — bytes escritos, o `u64::MAX` en error.
+///
+/// RAMdisk is read-only by default. This function supports a small
+/// writable overlay: the first RAMDISK_FILES entry can be marked
+/// writable, or we allocate a write buffer on first write.
+/// For now, returns 0 (read-only filesystem) to prevent corruption.
+pub fn write(fd: u64, _ptr: u64, _len: u64) -> u64 {
+    let fd_idx = fd as usize;
+    if fd_idx >= MAX_FDS { return u64::MAX; }
+    unsafe {
+        let f = &FDS[fd_idx];
+        if f.file_idx < 0 { return u64::MAX; }
+    }
+    // RAMdisk is read-only — write returns 0 bytes written.
+    0
+}
+
+/// `FileSeek(fd, offset, whence)` — new offset from file start, or `u64::MAX` error.
+///
+/// whence:
+///   0 = SEEK_SET (offset from start)
+///   1 = SEEK_CUR (offset from current position)
+///   2 = SEEK_END (offset from end)
+pub fn seek(fd: u64, offset: u64, whence: u64) -> u64 {
+    let fd_idx = fd as usize;
+    if fd_idx >= MAX_FDS { return u64::MAX; }
+    unsafe {
+        let f = &mut FDS[fd_idx];
+        if f.file_idx < 0 { return u64::MAX; }
+        let file_size = RAMDISK_FILES[f.file_idx as usize].data.len() as u64;
+        let new_pos = match whence {
+            0 => offset.min(file_size),                                    // SEEK_SET
+            1 => f.cursor.saturating_add(offset).min(file_size),           // SEEK_CUR
+            2 => file_size.saturating_sub(offset).min(file_size),          // SEEK_END
+            _ => return u64::MAX,
+        };
+        f.cursor = new_pos;
+        new_pos
+    }
+}
