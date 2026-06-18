@@ -251,42 +251,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         boot_warn("phase2", "MCFG not found; PCI ECAM unavailable");
     }
 
-    // Storage: detect NVMe or AHCI
-    if unsafe { drivers::pci::SCAN_RESULT.is_some() } {
-        // Try NVMe first (faster)
-        match unsafe { drivers::nvme::NvmeDriver::detect() } {
-            Some(_nvme) => {
-                boot_log("phase2", "NVMe controller detected and initialized");
-                // Store driver globally for fs module
-                unsafe { drivers::nvme::NVME_DRIVER = Some(_nvme); }
-            }
-            None => {
-                // Try AHCI/SATA
-                match unsafe { drivers::ahci::AhciDriver::detect() } {
-                    Some(_ahci) => {
-                        boot_log("phase2", "AHCI/SATA controller detected and initialized");
-                        unsafe { drivers::ahci::AHCI_DRIVER = Some(_ahci); }
-                    }
-                    None => {
-                        boot_warn("phase2", "No NVMe or AHCI storage found");
-                    }
-                }
-            }
-        }
-    } else {
-        boot_warn("phase2", "PCI not scanned; storage detection skipped");
-    }
-
-    // Network: detect RTL8168 NIC
-    match unsafe { drivers::net::rtl8168::Rtl8168Driver::detect() } {
-        Some(_rtl) => {
-            boot_log("phase2", "RTL8168 NIC detected");
-            unsafe { drivers::net::rtl8168::RTL_DRIVER = Some(_rtl); }
-        }
-        None => {
-            boot_warn("phase2", "No RTL8168 NIC found");
-        }
-    }
+    // Storage/network real driver init is deliberately deferred. On hardware
+    // real, early NVMe/AHCI/NIC MMIO probing can freeze before the welcome
+    // screen and before diag hotkeys are alive. The boot-critical path only
+    // needs GOP + keyboard + Ring 0 desktop; storage/NIC will be mounted from
+    // a controlled desktop/service phase later.
+    boot_warn("phase2", "Storage init deferred until desktop/service phase");
+    boot_warn("phase2", "Network init deferred until desktop/service phase");
 
     let phase2_end = arch::cpu::rdtsc();
     boot_log_u64("phase2", "Phase 2 time (TSC ticks)", phase2_end - phase1_end);
@@ -321,6 +292,8 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
 
     drivers::gop::init_gop(bi.fb_addr, bi.fb_width, bi.fb_height, bi.fb_stride);
     boot_log("phase3", "GOP display initialized");
+    desktop::fb_fill(0, 0, bi.fb_width, 34, 0xFF101820);
+    desktop::fb_text(12, 9, b"FastOS boot: GOP online, storage/net deferred, entering safe welcome...", 0xFF76B900);
 
     let phase3_end = arch::cpu::rdtsc();
     boot_log_u64("phase3", "Phase 3 time (TSC ticks)", phase3_end - phase2_end);

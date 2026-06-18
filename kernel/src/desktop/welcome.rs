@@ -349,6 +349,37 @@ fn render(fb: &Framebuffer) {
     draw_text(fb, fx as u32, (cy + ch - 36) as u32, foot, pal::SUBTITLE);
 }
 
+/// Render mínimo y robusto para hardware real.
+///
+/// Usa sólo `clear/fill_rect/text` y evita gradientes/rounded-corners en el
+/// boot path. Así el prompt y el hotkey diag funcionan aunque el renderer
+/// avanzado tenga un problema de GOP/pitch específico de la máquina.
+fn render_safe(fb: &Framebuffer) {
+    fb.clear(0xFF07111F);
+    fb.fill_rect(0, 0, fb.width, 42, 0xFF101820);
+    draw_text(fb, 14, 13, b"FastOS / BMO - SAFE WELCOME", 0xFFE6EDF3);
+    draw_text(fb, 14, 58, b"GOP framebuffer OK. Storage/NIC deferred for stable boot.", 0xFF76B900);
+    draw_text(fb, 14, 82, b"F9: diag HUD   Ctrl+Alt: diag HUD   Run + Enter: desktop Ring 0", 0xFF8B949E);
+
+    let y = (fb.height / 2).saturating_sub(32);
+    fb.fill_rect(14, y, fb.width.saturating_sub(28), 72, 0xFF0D1117);
+    fb.fill_rect(14, y, fb.width.saturating_sub(28), 2, 0xFF58A6FF);
+    draw_text(fb, 30, (y + 16) as u32, b"> ", 0xFF58A6FF);
+
+    let len = unsafe { INPUT_LEN };
+    if len > 0 {
+        let txt = unsafe { &INPUT_BUF[..len] };
+        draw_text(fb, 54, (y + 16) as u32, txt, 0xFFE6EDF3);
+    } else {
+        draw_text(fb, 54, (y + 16) as u32, b"type Run", 0xFF30363D);
+    }
+
+    let (timer, msg) = unsafe { (HINT_TIMER, HINT_MSG) };
+    if timer > 0 && !msg.is_empty() {
+        draw_text(fb, 30, (y + 50) as u32, msg, 0xFFFFBD2E);
+    }
+}
+
 // ── State global del welcome ───────────────────────────────────────
 //
 // `DIRTY` se pone a true cada vez que algo del frame cambia (input,
@@ -412,7 +443,7 @@ pub fn run() -> ! {
         // 1) Full repaint solo si algo cambió.
         if unsafe { DIRTY } {
             if let Some(fb) = fb() {
-                render(&fb);
+                render_safe(&fb);
                 crate::diag::paint_overlay();
                 // Pintar el caret en el estado actual del blink para que
                 // no aparezca/desaparezca en el siguiente sub-loop.
