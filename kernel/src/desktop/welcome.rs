@@ -15,7 +15,7 @@
 //!   ║   ✓  Mouse PS/2 + Beep PC speaker                        ║
 //!   ║   ✓  RAMdisk con file I/O                                ║
 //!   ║                                                          ║
-//!   ║   Escribe (Run) y pulsa Enter para entrar al escritorio:║
+//!   ║   Escribe (Run) y pulsa Enter para entrar al escritorio: ║
 //!   ║                                                          ║
 //!   ║       > _                                                ║
 //!   ║                                                          ║
@@ -31,8 +31,8 @@
 use crate::boot_info;
 use crate::ui::fb::Framebuffer;
 use crate::ui::font;
-use crate::desktop;
 use super::commands::{eq_ci, trim, should_enter_desktop, enter_desktop, nexo_test_compile};
+use super::sound;
 
 // ── Paleta del welcome ─────────────────────────────────────────────
 mod pal {
@@ -413,7 +413,7 @@ fn process_enter() {
         enter_desktop();
     } else if eq_ci(trimmed_cmd, b"hello") {
         crate::diag::info("welcome", "Hello command accepted; preparing Ring 3 test");
-        desktop::beep(440, 80);
+        sound::beep(440, 80);
         crate::sched::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"reboot") {
         crate::diag::warn("welcome", "Reboot command accepted");
@@ -435,9 +435,9 @@ pub fn run() -> ! {
     crate::drivers::serial::serial_write("[welcome] Pantalla de bienvenida activa.\n");
 
     // Beep suave de arranque
-    desktop::beep(523, 40);
-    desktop::beep(659, 40);
-    desktop::beep(784, 80);
+    sound::beep(523, 40);
+    sound::beep(659, 40);
+    sound::beep(784, 80);
 
     loop {
         // 1) Full repaint solo si algo cambió.
@@ -453,19 +453,16 @@ pub fn run() -> ! {
             unsafe { DIRTY = false; }
         }
 
-        // 2) SIEMPRE pintar el HUD overlay si está habilitado.
-        //    Antes el overlay sólo se pintaba en DIRTY, así que nunca se
-        //    veía después del primer frame. Ahora se pinta cada sub-frame.
-        if crate::diag::is_overlay_enabled() {
-            crate::diag::paint_overlay();
-        }
+            if crate::diag::is_overlay_enabled() {
+                crate::diag::paint_overlay();
+            }
 
         // 3) Sub-loop de ~16 ms: drena input y gestiona blink local.
         let cycles = 16u64 * 3_700_000;
         let start = crate::arch::cpu::rdtsc();
         while (crate::arch::cpu::rdtsc() - start) < cycles {
             let overlay_was_enabled = crate::diag::is_overlay_enabled();
-            let sc = desktop::poll_key();
+            let sc = super::input::poll_key();
             if crate::diag::is_overlay_enabled() != overlay_was_enabled {
                 mark_dirty();
             }

@@ -186,7 +186,7 @@ pub fn close_window(idx: usize) {
 /// Avanza el estado un frame: ratón, FPS, frame counter.
 pub fn tick() {
     init();
-    let packed = super::poll_mouse();
+    let packed = super::input::poll_mouse();
     unsafe {
         STATE.frame = STATE.frame.wrapping_add(1);
 
