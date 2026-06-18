@@ -314,10 +314,10 @@ impl CToNexo {
 
     fn translate_binop(&self, op: CBinOp) -> BxResult<BinOp> {
         match op {
-            CBinOp::Add | CBinOp::AddAssign => Ok(BinOp::Add),
-            CBinOp::Sub | CBinOp::SubAssign => Ok(BinOp::Sub),
-            CBinOp::Mul | CBinOp::MulAssign => Ok(BinOp::Mul),
-            CBinOp::Div | CBinOp::DivAssign => Ok(BinOp::Div),
+            CBinOp::Add => Ok(BinOp::Add),
+            CBinOp::Sub => Ok(BinOp::Sub),
+            CBinOp::Mul => Ok(BinOp::Mul),
+            CBinOp::Div => Ok(BinOp::Div),
             CBinOp::Mod => Ok(BinOp::Mod),
             CBinOp::Eq => Ok(BinOp::Eq),
             CBinOp::Ne => Ok(BinOp::Ne),
@@ -332,7 +332,13 @@ impl CToNexo {
             CBinOp::BitXor => Ok(BinOp::Xor),
             CBinOp::Shl => Ok(BinOp::Shl),
             CBinOp::Shr => Ok(BinOp::Shr),
-            _ => Ok(BinOp::Add), // Placeholder for assignment operators
+            // Compound assignment operators (handled by translator as
+            // `lhs = lhs <op> rhs`, so we map to the plain operator)
+            CBinOp::AddAssign => Ok(BinOp::Add),
+            CBinOp::SubAssign => Ok(BinOp::Sub),
+            CBinOp::MulAssign => Ok(BinOp::Mul),
+            CBinOp::DivAssign => Ok(BinOp::Div),
+            _ => Ok(BinOp::Add),
         }
     }
 }

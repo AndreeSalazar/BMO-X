@@ -229,8 +229,18 @@ impl CodegenBackend for EmitterArm {
 
     fn intrinsic_bytes(&self, name: &str) -> Option<&'static [u8]> {
         match name {
-            "syscall" => Some(&[0x01, 0x00, 0x00, 0xD4]),
-            "nop"     => Some(&[0x1F, 0x20, 0x03, 0xD5]),
+            "syscall" => Some(&[0x01, 0x00, 0x00, 0xD4]),    // svc #0
+            "nop"     => Some(&[0x1F, 0x20, 0x03, 0xD5]),    // nop
+            "pausa"   => Some(&[0x7F, 0x20, 0x03, 0xD5]),    // yield (hint spin-loop)
+            "int3"    => Some(&[0x00, 0x00, 0x20, 0xD4]),    // brk #0 (debug)
+            "hlt"     => Some(&[0x00, 0x00, 0x40, 0xD4]),    // hvc #0
+            "cli"     => Some(&[0x7F, 0x47, 0x03, 0xD5]),    // msr daifset, #2
+            "sti"     => Some(&[0xDF, 0x43, 0x03, 0xD5]),    // msr daifclr, #2
+            "rdtsc"   => Some(&[0x40, 0xE0, 0x3B, 0xD5]),    // mrs x0, cntvct_el0
+            "cpuid"   => Some(&[0x00, 0x00, 0x38, 0xD5]),    // mrs x0, midr_el1
+            "lfence"  => Some(&[0x5F, 0x3F, 0x03, 0xD5]),    // dmb ld
+            "mfence"  => Some(&[0xBF, 0x3B, 0x03, 0xD5]),    // dmb ish
+            "sfence"  => Some(&[0x9F, 0x3B, 0x03, 0xD5]),    // dmb st
             _ => None,
         }
     }

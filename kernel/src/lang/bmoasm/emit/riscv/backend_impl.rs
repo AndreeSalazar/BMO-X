@@ -286,6 +286,13 @@ impl CodegenBackend for EmitterRiscv {
         match name {
             "syscall" | "ecall" => Some(&[0x73, 0x00, 0x00, 0x00]),
             "nop" => Some(&[0x13, 0x00, 0x00, 0x00]),
+            "pausa" => Some(&[0x0F, 0x00, 0x00, 0x00]),  // fence
+            "int3"  => Some(&[0x73, 0x00, 0x10, 0x00]),  // ebreak
+            "hlt"   => Some(&[0x73, 0x00, 0x00, 0x00]),  // ecall (similar)
+            "rdtsc" => Some(&[0x73, 0x00, 0x00, 0x00]),  // time csr read (placeholder)
+            "lfence" => Some(&[0x0F, 0x00, 0xF0, 0x0F]), // fence i, iorw
+            "mfence" => Some(&[0x0F, 0x00, 0xF0, 0xFF]), // fence iorw, iorw
+            "sfence" => Some(&[0x0F, 0x00, 0x0F, 0xF0]), // fence w, w
             _ => None,
         }
     }

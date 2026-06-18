@@ -31,6 +31,9 @@ pub mod stdlib;
 pub mod pm;
 pub mod plugins;
 
+#[cfg(test)]
+pub mod tests;
+
 use crate::barex::BxResult;
 
 /// Versión del lenguaje ÑEXO.
@@ -85,6 +88,12 @@ pub fn compile_c(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     let mut traductor = crate::lang::bmoasm::traductor::Traductor::new();
     let bmo_source = serialize_bmoasm(&bmo_ast);
     traductor.traducir(bmo_source.as_bytes())
+}
+
+/// Serialize BMOasm AST back to BMOasm source text (for tests).
+#[cfg(test)]
+pub fn serialize_bmoasm_for_test(ast: &crate::lang::bmoasm::parser::ast::Ast) -> alloc::string::String {
+    serialize_bmoasm(ast)
 }
 
 /// Serialize BMOasm AST back to BMOasm source text.

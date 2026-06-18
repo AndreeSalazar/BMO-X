@@ -10,6 +10,7 @@ use alloc::vec::Vec;
 use super::traductor::Traductor;
 use super::emit::TargetArch;
 use super::parser::Parser;
+use super::parser::ast::{Ast, Stmt, Expr};
 
 fn run_bmoasm_test(name: &str, src: &[u8]) -> Result<Vec<u8>, String> {
     let mut trad = Traductor::new();
@@ -305,6 +306,170 @@ pub fn test_codegen_multi_arch() -> Result<(), String> {
     Ok(())
 }
 
+// ── Optimizer tests (v0.4.0) ──────────────────────────────────────
+
+fn parse_to_ast(src: &[u8]) -> Result<Ast, String> {
+    let mut parser = Parser::new(src);
+    parser.parse().map_err(|e| e.format())
+}
+
+pub fn test_opt_constant_folding() -> Result<(), String> {
+    use crate::lang::bmoasm::sema::fold::Folder;
+    let mut ast = parse_to_ast(b"def main() { let x = 2 suma 3 }")?;
+    Folder::fold(&mut ast);
+    // The let binding should now have LitInt(5) instead of Bin(...)
+    if let Stmt::Def { body, .. } = &ast.items[0] {
+        if let Stmt::Let { value, .. } = &body[0] {
+            if let Expr::LitInt(v) = value {
+                assert_eq!(*v, 5, "expected 5 after folding 2+3");
+                return Ok(());
+            }
+        }
+    }
+    Err("constant folding did not produce LitInt".into())
+}
+
+pub fn test_opt_unused_let() -> Result<(), String> {
+    use crate::lang::bmoasm::sema::opt::Optimizer;
+    let mut ast = parse_to_ast(b"def main() { let x = 42 let y = 10 retorna 0 }")?;
+    Optimizer::optimize(&mut ast);
+    if let Stmt::Def { body, .. } = &ast.items[0] {
+        // Both x and y are unused, so only the return should remain
+        let count = body.iter().filter(|s| matches!(s, Stmt::Let { .. })).count();
+        assert_eq!(count, 0, "expected 0 lets, got {}", count);
+    }
+    Ok(())
+}
+
+pub fn test_opt_algebraic() -> Result<(), String> {
+    use crate::lang::bmoasm::sema::opt::Optimizer;
+    let mut ast = parse_to_ast(b"def main() { let x = 5 mult 1 }")?;
+    Optimizer::optimize(&mut ast);
+    if let Stmt::Def { body, .. } = &ast.items[0] {
+        if let Stmt::Let { value, .. } = &body[0] {
+            if let Expr::Ident(name) = value {
+                assert_eq!(name, "x", "expected x * 1 → x simplification");
+                return Ok(());
+            }
+        }
+    }
+    Err("x * 1 should simplify to x".into())
+}
+
+pub fn test_opt_dead_branch() -> Result<(), String> {
+    use crate::lang::bmoasm::sema::opt::Optimizer;
+    let mut ast = parse_to_ast(b"def main() { si 0 { let a = 1 } sino { let b = 2 } }")?;
+    Optimizer::optimize(&mut ast);
+    if let Stmt::Def { body, .. } = &ast.items[0] {
+        if let Stmt::Si { then_body, else_body, .. } = &body[0] {
+            // si 0 { a } sino { b } → sino { b } with cond=1
+            // then_body should now contain the else content
+            let has_let_b = then_body.iter().any(|s| {
+                if let Stmt::Let { name, .. } = s { name == "b" } else { false }
+            });
+            assert!(has_let_b, "expected `let b = 2` after si 0 .. sino optimization");
+            assert!(else_body.is_none(), "expected no else_body after optimization");
+            return Ok(());
+        }
+    }
+    Err("dead branch optimization failed".into())
+}
+
+pub fn test_opt_strength_reduction() -> Result<(), String> {
+    use crate::lang::bmoasm::sema::opt::Optimizer;
+    let mut ast = parse_to_ast(b"def main() { let x = 5 mult 4 }")?;
+    Optimizer::optimize(&mut ast);
+    if let Stmt::Def { body, .. } = &ast.items[0] {
+        if let Stmt::Let { value, .. } = &body[0] {
+            if let Expr::Bin(op, _, right) = value {
+                use crate::lang::bmoasm::parser::ast::BinOp;
+                if matches!(op, BinOp::Shl) {
+                    if let Expr::LitInt(shift) = right.as_ref() {
+                        assert_eq!(*shift, 2, "expected 5 * 4 → 5 << 2 (shift=2)");
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+    Err("strength reduction did not convert 5*4 to 5<<2".into())
+}
+
+// ── DCE tests ─────────────────────────────────────────────────────
+
+pub fn test_dce_unused_function() -> Result<(), String> {
+    use crate::lang::bmoasm::sema::dce::Dce;
+    let mut ast = parse_to_ast(b"def unused() -> num { retorna 1 } def main() { retorna 0 }")?;
+    let before = ast.items.len();
+    Dce::eliminate(&mut ast);
+    let after = ast.items.len();
+    assert!(after < before, "DCE should remove unused function (before={}, after={})", before, after);
+    Ok(())
+}
+
+pub fn test_dce_unreachable_code() -> Result<(), String> {
+    use crate::lang::bmoasm::sema::dce::Dce;
+    let mut ast = parse_to_ast(b"def main() { retorna 0 let x = 42 let y = 100 }")?;
+    Dce::eliminate(&mut ast);
+    if let Stmt::Def { body, .. } = &ast.items[0] {
+        // After DCE, only the return should remain
+        assert_eq!(body.len(), 1, "expected 1 stmt after DCE, got {}", body.len());
+    }
+    Ok(())
+}
+
+// ── e2e pipeline test ────────────────────────────────────────────
+
+pub fn test_e2e_hello_function() -> Result<(), String> {
+    // Simulates compiling a complete BMOasm program
+    let src = b"
+        def add(a: num, b: num) -> num {
+            retorna a suma b
+        }
+        def main() -> num {
+            reg rax = 0
+            reg rdi = 3
+            reg rsi = 4
+            call add
+            retorna rax
+        }
+    ";
+    let mut trad = Traductor::new();
+    let bytes = trad.traducir(src).map_err(|e| alloc::format!("compile failed: {:?}", e))?;
+    // The output should be non-empty
+    assert!(!bytes.is_empty(), "expected non-empty output");
+    // Should contain a CALL instruction (0xE8)
+    assert!(bytes.contains(&0xE8), "expected CALL instruction in output");
+    // Should contain a RET instruction (0xC3)
+    assert!(bytes.contains(&0xC3), "expected RET instruction in output");
+    Ok(())
+}
+
+pub fn test_e2e_arithmetic() -> Result<(), String> {
+    let src = b"def main() -> num {
+        reg rax = 10
+        reg rcx = 20
+        reg rax = rax suma rcx
+        retorna rax
+    }";
+    let mut trad = Traductor::new();
+    let bytes = trad.traducir(src).map_err(|e| alloc::format!("{:?}", e))?;
+    // Should contain ADD (0x01 with REX.W prefix 0x48)
+    let has_add = bytes.windows(3).any(|w| w == [0x48, 0x01, 0xC8] || w == [0x48, 0x03, 0xC1]);
+    assert!(has_add || bytes.windows(2).any(|w| w == [0x01, 0xC8]), "expected ADD instruction");
+    Ok(())
+}
+
+pub fn test_e2e_function_codegen_all_archs() -> Result<(), String> {
+    for arch in &[TargetArch::X86_64, TargetArch::Aarch64, TargetArch::Riscv64] {
+        let mut trad = Traductor::with_target(*arch);
+        let bytes = trad.traducir(b"def add(a: num, b: num) -> num { retorna a suma b } def main() -> num { retorna add(1, 2) }")
+            .map_err(|e| alloc::format!("arch {:?}: {:?}", arch, e))?;
+        assert!(bytes.len() > 4, "arch {:?}: expected non-trivial output, got {} bytes", arch, bytes.len());
+    }
+    Ok(())
+}
+
 // ── Run all tests ─────────────────────────────────────────────────
 
 pub fn run_all_tests() -> Result<u32, String> {
@@ -349,6 +514,19 @@ pub fn run_all_tests() -> Result<u32, String> {
         ("codegen_syscall", test_codegen_syscall),
         ("codegen_nop", test_codegen_nop),
         ("codegen_multi_arch", test_codegen_multi_arch),
+        // v0.4.0 optimizer tests
+        ("opt_constant_folding", test_opt_constant_folding),
+        ("opt_unused_let", test_opt_unused_let),
+        ("opt_algebraic", test_opt_algebraic),
+        ("opt_dead_branch", test_opt_dead_branch),
+        ("opt_strength_reduction", test_opt_strength_reduction),
+        // DCE tests
+        ("dce_unused_function", test_dce_unused_function),
+        ("dce_unreachable_code", test_dce_unreachable_code),
+        // e2e pipeline tests
+        ("e2e_hello_function", test_e2e_hello_function),
+        ("e2e_arithmetic", test_e2e_arithmetic),
+        ("e2e_function_codegen_all_archs", test_e2e_function_codegen_all_archs),
     ];
 
     let mut passed = 0u32;
