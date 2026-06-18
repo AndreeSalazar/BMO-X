@@ -37,10 +37,10 @@ pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, u64
             bi.kernel_size,
         );
     }
-    let free_pages = unsafe { arch::page_alloc::free_count() };
+    let free_pages = unsafe { arch::page_alloc::free_count() } as u64;
     let free_mb = (free_pages * 4096) / (1024 * 1024);
-    log::info_u64("phase1", "Free pages", free_pages as u64);
-    log::info_u64("phase1", "Free memory (MB)", free_mb as u64);
+    log::info_u64("phase1", "Free pages", free_pages);
+    log::info_u64("phase1", "Free memory (MB)", free_mb);
 
     let heap_total = allocator::heap_total() as u64;
     let heap_used = allocator::heap_used() as u64;

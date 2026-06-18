@@ -25,7 +25,7 @@ fn log_pci_device(dev: &pci::PciDevice) {
     crate::drivers::serial::serial_write("\n");
 }
 
-fn store_and_log(bus_count_msg: &str, pci: pci::PciScanResult) {
+fn store_and_log(bus_count_msg: &'static str, pci: pci::PciScanResult) {
     log::info_u64("phase2", bus_count_msg, pci.count as u64);
     for i in 0..pci.count {
         log_pci_device(&pci.devices[i]);
