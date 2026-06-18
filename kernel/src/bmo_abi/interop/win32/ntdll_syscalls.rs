@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-use super::NtStatus;
+use crate::bmo_abi::interop::win32::ntdll::NtStatus;
 use crate::bmo_abi::primitives::bx_u64;
 
 /// NT syscall number → BMO syscall number mapping.
@@ -200,9 +200,9 @@ pub extern "C" fn NtProtectVirtualMemory(
 pub extern "C" fn NtCreateFile(
     file_handle: *mut bx_u64,
     desired_access: u32,
-    object_attributes: *const super::ObjectAttributes,
-    io_status_block: *mut super::IoStatusBlock,
-    allocation_size: *const super::LargeInteger,
+    object_attributes: *const crate::bmo_abi::interop::win32::ntdll::ObjectAttributes,
+    io_status_block: *mut crate::bmo_abi::interop::win32::ntdll::IoStatusBlock,
+    allocation_size: *const crate::bmo_abi::interop::win32::ntdll::LargeInteger,
     file_attributes: u32,
     share_access: u32,
     create_disposition: u32,
@@ -252,10 +252,10 @@ pub extern "C" fn NtReadFile(
     event: bx_u64,
     apc_routine: bx_u64,
     apc_context: bx_u64,
-    io_status_block: *mut super::IoStatusBlock,
+    io_status_block: *mut crate::bmo_abi::interop::win32::ntdll::IoStatusBlock,
     buffer: bx_u64,
     length: u32,
-    byte_offset: *const super::LargeInteger,
+    byte_offset: *const crate::bmo_abi::interop::win32::ntdll::LargeInteger,
     key: *mut u32,
 ) -> i32 {
     let _ = (event, apc_routine, apc_context, byte_offset, key);
@@ -290,10 +290,10 @@ pub extern "C" fn NtWriteFile(
     event: bx_u64,
     apc_routine: bx_u64,
     apc_context: bx_u64,
-    io_status_block: *mut super::IoStatusBlock,
+    io_status_block: *mut crate::bmo_abi::interop::win32::ntdll::IoStatusBlock,
     buffer: bx_u64,
     length: u32,
-    byte_offset: *const super::LargeInteger,
+    byte_offset: *const crate::bmo_abi::interop::win32::ntdll::LargeInteger,
     key: *mut u32,
 ) -> i32 {
     let _ = (event, apc_routine, apc_context, byte_offset, key);
@@ -435,3 +435,4 @@ pub extern "C" fn NtQueryPerformanceCounter(
 
     NtStatus::Success as i32
 }
+

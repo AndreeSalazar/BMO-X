@@ -427,7 +427,7 @@ fn walk_pe_import_thunks(
         let addr = match target {
             super::pe_thunks::ThunkTarget::SilentStub => super::pe_thunks::silent_stub as u64,
             super::pe_thunks::ThunkTarget::LogStub => super::pe_thunks::log_stub as u64,
-            _ => fn_ptr, // Real windows_compat function pointer
+            _ => fn_ptr, // Real bmo_abi::interop::win32 function pointer
         };
 
         // Register in runtime symbol table.

@@ -2,16 +2,17 @@
 
 #![allow(dead_code)]
 
-pub use super::syscalls::{NtCreateFile, NtReadFile, NtWriteFile, NtClose};
+pub use crate::bmo_abi::interop::win32::ntdll_syscalls::{NtCreateFile, NtReadFile, NtWriteFile, NtClose};
+use crate::bmo_abi::interop::win32::ntdll::{ObjectAttributes, IoStatusBlock, LargeInteger};
 
 /// ZwCreateFile alias.
 #[no_mangle]
 pub extern "C" fn ZwCreateFile(
     file_handle: *mut u64,
     desired_access: u32,
-    object_attributes: *const super::ObjectAttributes,
-    io_status_block: *mut super::IoStatusBlock,
-    allocation_size: *const super::LargeInteger,
+    object_attributes: *const ObjectAttributes,
+    io_status_block: *mut IoStatusBlock,
+    allocation_size: *const LargeInteger,
     file_attributes: u32,
     share_access: u32,
     create_disposition: u32,
@@ -28,8 +29,8 @@ pub extern "C" fn ZwCreateFile(
 #[no_mangle]
 pub extern "C" fn ZwReadFile(
     file_handle: u64, event: u64, apc_routine: u64, apc_context: u64,
-    io_status_block: *mut super::IoStatusBlock, buffer: u64, length: u32,
-    byte_offset: *const super::LargeInteger, key: *mut u32,
+    io_status_block: *mut IoStatusBlock, buffer: u64, length: u32,
+    byte_offset: *const LargeInteger, key: *mut u32,
 ) -> i32 {
     NtReadFile(file_handle, event, apc_routine, apc_context, io_status_block,
                buffer, length, byte_offset, key)
@@ -39,8 +40,8 @@ pub extern "C" fn ZwReadFile(
 #[no_mangle]
 pub extern "C" fn ZwWriteFile(
     file_handle: u64, event: u64, apc_routine: u64, apc_context: u64,
-    io_status_block: *mut super::IoStatusBlock, buffer: u64, length: u32,
-    byte_offset: *const super::LargeInteger, key: *mut u32,
+    io_status_block: *mut IoStatusBlock, buffer: u64, length: u32,
+    byte_offset: *const LargeInteger, key: *mut u32,
 ) -> i32 {
     NtWriteFile(file_handle, event, apc_routine, apc_context, io_status_block,
                 buffer, length, byte_offset, key)

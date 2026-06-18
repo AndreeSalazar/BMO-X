@@ -1,32 +1,26 @@
-//! ntdll.dll — Gateway layer (like Wine's ntdll.dll).
+//! ntdll.dll — NT gateway layer (analogous to Wine's ntdll.dll).
 //!
-//! This is the LOWEST level of Windows compatibility. All Windows apps
-//! eventually call ntdll.dll functions (NtCreateFile, NtReadFile, etc.).
-//!
-//! In Wine, ntdll.dll contains a syscall dispatcher that bridges the
-//! PE/Windows world to the Unix/native world. In FastOS, we bridge
-//! NT syscalls to BMO syscalls.
+//! The gateway: every Windows API eventually routes through ntdll.
+//! In BMO, the ntdll gateway translates NT syscalls to BMO syscalls.
 //!
 //! Architecture:
+//! ```text
 //!   PE app → ntdll.dll (this module) → BMO syscall → kernel
+//! ```
 //!
-//! Key insight from Wine: ntdll.dll is the GATEWAY. Every Windows API
-//! eventually routes through it. By implementing ntdll properly, we
-//! get compatibility with thousands of Windows apps for free.
+//! Sub-files in this directory:
+//!   - `ntdll_syscalls.rs` — the actual NT function implementations
+//!   - `ntdll_memory.rs`   — Nt* memory syscalls (Zw* variants too)
+//!   - `ntdll_file.rs`     — Nt* file syscalls
+//!
+//! (No more rtl, objects, thread, process: those are covered by the
+//! kernel32 wrapper sub-files. Eliminated as legacy.)
 
 #![allow(dead_code)]
 
-pub mod syscalls;
-pub mod rtl;
-pub mod memory;
-pub mod file;
-pub mod thread;
-pub mod process;
-pub mod objects;
-
-/// Initialize ntdll compatibility layer.
+/// Initialize the ntdll gateway.
 pub fn init() {
-    crate::diag::info("wcompat::ntdll", "NT gateway layer initialized");
+    crate::diag::info("bmo_abi::interop::win32::ntdll", "NT gateway layer initialized");
 }
 
 /// NT status codes (like Windows NTSTATUS).
@@ -40,7 +34,7 @@ pub enum NtStatus {
     Timeout = 0x00000102,
     Pending = 0x00000103,
     MoreEntries = 0x00000105,
-    NotAllAssigned = 0x0000010A,
+    NotAllAssigned = 0x00000010A,
     SomeNotMapped = 0x0000010B,
     Unsuccessful = -1,           // 0xC0000001
     NotImplemented = -2,         // 0xC0000002
@@ -60,12 +54,8 @@ pub enum NtStatus {
 }
 
 impl NtStatus {
-    pub fn is_success(self) -> bool {
-        (self as i32) >= 0
-    }
-    pub fn is_error(self) -> bool {
-        (self as i32) < 0
-    }
+    pub fn is_success(self) -> bool { (self as i32) >= 0 }
+    pub fn is_error(self) -> bool { (self as i32) < 0 }
 }
 
 /// NT object attributes (simplified).

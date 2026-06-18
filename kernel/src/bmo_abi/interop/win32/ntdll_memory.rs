@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-pub use super::syscalls::{NtAllocateVirtualMemory, NtFreeVirtualMemory, NtProtectVirtualMemory};
+pub use crate::bmo_abi::interop::win32::ntdll_syscalls::{NtAllocateVirtualMemory, NtFreeVirtualMemory, NtProtectVirtualMemory};
 
 /// NtAllocateVirtualMemory with MEM_COMMIT semantics.
 #[no_mangle]

@@ -1,63 +1,52 @@
-//! `barex::compat` — L4 capa de compatibilidad para binarios Windows.
+//! `barex::compat` — compatibility layer hooks (L4).
 //!
-//! Spec: `BareX_Compat_Shim_Spec.md`. PE loader + COM thunks para
-//! `d3d9/10/11/12.dll`, `dxgi.dll`, `xinput`, `xaudio2`, `winsock`, etc.
-//! Vive en Ring 3 dentro de un sandbox BEF — este módulo del kernel sólo
-//! provee los *hooks* de carga PE y la tabla de syscalls NT mapeadas.
+//! Per the BareX spec, the heavy lifting of Win32 compatibility lives
+//! in Ring 3 BEF shims. The kernel (Ring 0) only needs to know how to
+//! detect binary formats and route them to the right loader.
 //!
-//! ⚠️ Nada del shim Win32 entra en Ring 0. Aquí sólo declaramos los tipos
-//! que el loader BEF necesita para reconocer un binario Windows.
+//! This module is now a **thin re-export** of the format registry in
+//! `bmo_abi::interop::format`. The legacy `BinaryKind` enum and the
+//! `FAKE_DLLS` list have been consolidated there.
+//!
+//! Kept here for backwards compatibility with any code that still
+//! imports `crate::barex::compat::BinaryKind` etc.
 
-use crate::barex::{BxError, BxResult};
+#![allow(deprecated)]
+#![allow(dead_code)]
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinaryKind {
-    /// BEF nativo de FastOS.
-    Bef,
-    /// PE64 de Windows (game.exe). Requiere shim L4 en Ring 3.
-    PeWindows64,
-    /// ELF binario nativo Linux.
-    Elf,
-    /// No se reconoció el formato.
-    Unknown,
-}
+pub use crate::bmo_abi::interop::format::{
+    BinaryKind,
+    detect_binary_kind,
+};
 
-#[derive(Debug, Clone, Copy)]
-pub struct PeImport {
-    pub dll_name_hash: u32,
-    pub function_name_hash: u32,
-}
-
-/// Tabla de DLLs falsas que el loader Ring 3 debe proveer cuando carga PE.
+/// DLLs that a Win32 PE binary may import and that the Ring 3 shim
+/// (a BEF binary) must provide. This is the *contract* between the
+/// BMO PE loader and the userland shim — it is **not** something the
+/// kernel implements.
 pub const FAKE_DLLS: &[&str] = &[
+    // DirectX
     "d3d9.dll",
     "d3d10.dll",
     "d3d11.dll",
     "d3d12.dll",
     "dxgi.dll",
+    // XInput / XAudio (game input + audio)
     "xinput1_4.dll",
     "xaudio2_9.dll",
+    // Winsock
     "ws2_32.dll",
     "winhttp.dll",
+    // Win32 core (handled natively by `bmo_abi::interop::win32`)
     "kernel32.dll",
-    "user32.dll",
     "ntdll.dll",
+    // Win32 GUI (NOT handled by BMO; shim may provide or stub)
+    "user32.dll",
+    "gdi32.dll",
 ];
 
-pub fn detect_binary_kind(bytes: &[u8]) -> BxResult<BinaryKind> {
-    if bytes.len() >= 4 && bytes[0..4] == *b"BEF\0" {
-        return Ok(BinaryKind::Bef);
-    }
-    if bytes.len() >= 0x40 {
-        let lfanew = u32::from_le_bytes([bytes[0x3C], bytes[0x3D], bytes[0x3E], bytes[0x3F]]) as usize;
-        if lfanew + 4 <= bytes.len()
-            && bytes[lfanew..lfanew + 4] == *b"PE\0\0"
-        {
-            return Ok(BinaryKind::PeWindows64);
-        }
-    }
-    if bytes.len() >= 4 && bytes[0..4] == *b"\x7fELF" {
-        return Ok(BinaryKind::Elf);
-    }
-    Ok(BinaryKind::Unknown)
+/// A Win32 PE import entry (used by the BMO PE loader in Ring 3).
+#[derive(Debug, Clone, Copy)]
+pub struct PeImport {
+    pub dll_name_hash: u32,
+    pub function_name_hash: u32,
 }

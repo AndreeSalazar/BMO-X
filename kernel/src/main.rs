@@ -35,7 +35,6 @@ mod sandbox;
 
 mod lang;
 mod security;
-mod windows_compat;
 
 mod boot;
 
