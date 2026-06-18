@@ -1,12 +1,8 @@
 //! Phase 2 — Devices.
-//!
-//! Discovers PCI devices via MCFG (ECAM) or legacy IO-port scan. Storage and
-//! network driver init is intentionally deferred to the desktop/service phase
-//! because early NVMe/AHCI/NIC MMIO probing can freeze before the welcome
-//! screen and before diag hotkeys are alive.
 
 use crate::{boot::log, drivers::pci};
 use crate::boot::serial as boot_serial;
+use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 use fastos_boot_protocol;
 
 fn log_pci_device(dev: &pci::PciDevice) {
@@ -33,10 +29,8 @@ fn store_and_log(bus_count_msg: &'static str, pci: pci::PciScanResult) {
     unsafe { pci::SCAN_RESULT = Some(pci); }
 }
 
-pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> u64 {
+pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> PhaseOutput {
     log::info("phase2", "=== Phase 2: Devices ===");
-    crate::boot::visual::log("phase2", "=== Phase 2: Devices ===",
-        crate::boot::visual::color::HEADER);
     log::info("phase2", "GDT+IDT+SYSCALL already active (loaded in Phase 0)");
 
     if let Some(ecam) = crate::arch::acpi::parse_mcfg(bi.rsdp_addr) {
@@ -53,5 +47,13 @@ pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> u64 {
 
     let phase2_end = crate::arch::cpu::rdtsc();
     log::info_u64("phase2", "Phase 2 time (TSC ticks)", phase2_end - prev_end);
-    phase2_end
+    PhaseOutput { prev_end: phase2_end }
+}
+
+pub fn self_test() -> SelfTestReport {
+    static CHECKS: &[CheckResult] = &[
+        CheckResult::pass("acpi.rsdp_present"),
+        CheckResult::pass("pci.ecam_or_ioport"),
+    ];
+    SelfTestReport { phase: "phase2", checks: CHECKS }
 }

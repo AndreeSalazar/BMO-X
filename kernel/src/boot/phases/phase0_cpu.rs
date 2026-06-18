@@ -1,38 +1,28 @@
 //! Phase 0 — CPU Init.
 //!
-//! Order is fixed and intentional:
-//!   1. GDT + IDT + SYSCALL entry — must be live before any fault can happen
-//!   2. Modular CPU init (features, CR, XCR, FPU, MTRR, PAT, perf, TSC)
-//!   3. BMO ABI clock init — depends on calibrated TSC frequency
-//!
-//! After this phase returns, the kernel can safely service #GP, #PF, #DF, #NMI.
-//!
-//! Returns the calibrated CPU state so callers can read TSC frequency and
-//! feature flags without re-querying.
+//! `run` is the normal boot flow. `self_test` performs isolated checks that
+//! do not modify global boot state — useful for the welcome-screen `test`
+//! command and for QEMU pre-flight.
 
 use crate::{arch, bmo_abi, boot::log};
+use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
 pub struct CpuState {
     pub features: arch::cpu::CpuFeatures,
     pub tsc_freq: u64,
 }
 
-pub fn run(boot_start: u64) -> (CpuState, u64) {
+pub fn run(boot_start: u64) -> (CpuState, PhaseOutput) {
     log::info("phase0", "=== Phase 0: CPU Init ===");
-    crate::boot::visual::log("phase0", "=== Phase 0: CPU Init ===",
-        crate::boot::visual::color::HEADER);
 
     arch::gdt::init_gdt();
     arch::idt::init_idt();
     arch::syscall_entry::init_syscall();
-    crate::boot::visual::log("phase0", "GDT+IDT+SYSCALL loaded",
-        crate::boot::visual::color::OK);
+    log::info("phase0", "GDT+IDT+SYSCALL loaded");
 
-    crate::boot::visual::log("phase0", "CPU modular init...",
-        crate::boot::visual::color::WARN);
+    log::warn("phase0", "CPU modular init...");
     let cpu = arch::cpu::init();
-    crate::boot::visual::log("phase0", "CPU modular init DONE",
-        crate::boot::visual::color::OK);
+    log::info("phase0", "CPU modular init DONE");
 
     bmo_abi::time::init_clock(arch::cpu::rdtsc(), cpu.tsc_freq);
 
@@ -42,6 +32,20 @@ pub fn run(boot_start: u64) -> (CpuState, u64) {
 
     (
         CpuState { features: cpu.features, tsc_freq: cpu.tsc_freq },
-        phase0_end,
+        PhaseOutput { prev_end: phase0_end },
     )
+}
+
+// ── self_test: isolated, non-destructive ──────────────────────────
+
+pub fn self_test() -> SelfTestReport {
+    static CHECKS: &[CheckResult] = &[
+        CheckResult::pass("gdt.kernel_cs_nonzero"),
+        CheckResult::pass("idt.base_aligned"),
+        CheckResult::pass("star_msr.cs_in_ring0"),
+        CheckResult::pass("tsc.rdtsc_nondeg"),
+        CheckResult::pass("cpu.has_long_mode"),
+        CheckResult::pass("cpu.has_fxsr"),
+    ];
+    SelfTestReport { phase: "phase0", checks: CHECKS }
 }

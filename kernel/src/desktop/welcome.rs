@@ -403,6 +403,58 @@ fn show_hint(msg: &'static [u8]) {
     mark_dirty();
 }
 
+// ── Self-test commands ─────────────────────────────────────────────
+
+fn run_phase_self_test(n: u8) {
+    use crate::boot::phases::report_self_test;
+    let report = match n {
+        0 => crate::boot::phases::phase0_cpu::self_test(),
+        1 => crate::boot::phases::phase1_memory::self_test(),
+        2 => crate::boot::phases::phase2_devices::self_test(),
+        3 => crate::boot::phases::phase3_display::self_test(),
+        4 => crate::boot::phases::phase4_scheduler::self_test(),
+        5 => crate::boot::phases::phase5_desktop::self_test(),
+        _ => {
+            crate::diag::warn("welcome", "Unknown phase index");
+            return;
+        }
+    };
+    crate::diag::info("welcome", "Phase self-test");
+    report_self_test(&report);
+}
+
+fn run_phase_self_test_ring3() {
+    use crate::boot::phases::report_self_test;
+    let report = crate::boot::phases::ring3_tests::self_test();
+    crate::diag::info("welcome", "Ring 3 self-test");
+    report_self_test(&report);
+}
+
+fn run_test_all_phases() {
+    use crate::boot::phases::report_self_test;
+    let reports = [
+        crate::boot::phases::phase0_cpu::self_test(),
+        crate::boot::phases::ring3_tests::self_test(),
+        crate::boot::phases::phase1_memory::self_test(),
+        crate::boot::phases::phase2_devices::self_test(),
+        crate::boot::phases::phase3_display::self_test(),
+        crate::boot::phases::phase4_scheduler::self_test(),
+        crate::boot::phases::phase5_desktop::self_test(),
+    ];
+    crate::diag::info("welcome", "All-phase self-test");
+    for r in &reports {
+        report_self_test(r);
+    }
+    let total_failed: usize = reports.iter().map(|r| r.failed_count()).sum();
+    if total_failed == 0 {
+        sound::beep(880, 60);
+        sound::beep(1175, 60);
+        show_hint(b"All phase self-tests PASSED.");
+    } else {
+        show_hint(b"Self-test failures - see serial log.");
+    }
+}
+
 fn process_enter() {
     let cmd = unsafe { &INPUT_BUF[..INPUT_LEN] };
     let trimmed_cmd = trim(cmd);
@@ -424,11 +476,27 @@ fn process_enter() {
         crate::diag::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
     } else if eq_ci(trimmed_cmd, b"nexo") {
-        crate::diag::info("welcome", "ÑEXO compiler test — compiling hello program");
+        crate::diag::info("welcome", "NEXO compiler test — compiling hello program");
         nexo_test_compile();
+    } else if eq_ci(trimmed_cmd, b"test") {
+        run_test_all_phases();
+    } else if eq_ci(trimmed_cmd, b"test phase 0") {
+        run_phase_self_test(0);
+    } else if eq_ci(trimmed_cmd, b"test phase 1") {
+        run_phase_self_test(1);
+    } else if eq_ci(trimmed_cmd, b"test phase 2") {
+        run_phase_self_test(2);
+    } else if eq_ci(trimmed_cmd, b"test phase 3") {
+        run_phase_self_test(3);
+    } else if eq_ci(trimmed_cmd, b"test phase 4") {
+        run_phase_self_test(4);
+    } else if eq_ci(trimmed_cmd, b"test phase 5") {
+        run_phase_self_test(5);
+    } else if eq_ci(trimmed_cmd, b"test ring3") {
+        run_phase_self_test_ring3();
     } else {
         crate::diag::warn("welcome", "Unknown command at welcome prompt");
-        show_hint(b"Comandos: Run, Hello, Ring3, Nexo, Reboot.");
+        show_hint(b"Comandos: Run, Hello, Ring3, Nexo, Test, Reboot.");
     }
     unsafe { INPUT_LEN = 0; }
     mark_dirty();

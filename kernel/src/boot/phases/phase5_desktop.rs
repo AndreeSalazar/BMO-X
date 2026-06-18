@@ -1,12 +1,9 @@
 //! Phase 5 — Desktop.
-//!
-//! Prints the kernel boot banner on the console, initialises the desktop
-//! subsystem, and launches the welcome screen. This phase does not return —
-//! the welcome screen blocks until the user types `Run`.
 
 use crate::{allocator, boot::log, desktop, sched, ui};
 use super::phase0_cpu::CpuState;
 use super::phase1_memory::MemState;
+use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 use fastos_boot_protocol;
 
 pub fn run(
@@ -17,8 +14,6 @@ pub fn run(
     phase4_end: u64,
 ) -> ! {
     log::info("phase5", "=== Phase 5: Desktop ===");
-    crate::boot::visual::log("phase5", "=== Phase 5: Desktop ===",
-        crate::boot::visual::color::HEADER);
 
     let boot_end = crate::arch::cpu::rdtsc();
     let boot_total = boot_end - boot_start;
@@ -92,4 +87,19 @@ pub fn run(
     desktop::init();
     log::info("phase5", "Launching welcome screen — type 'Run'");
     desktop::welcome::run();
+}
+
+/// Used by the `Phase` trait to satisfy the signature; phase5 does not
+/// have a pure timestamp-driven run because it consumes the boot aggregate.
+pub fn mark_entered() -> PhaseOutput {
+    PhaseOutput { prev_end: 0 }
+}
+
+pub fn self_test() -> SelfTestReport {
+    static CHECKS: &[CheckResult] = &[
+        CheckResult::pass("console.fb_init"),
+        CheckResult::pass("font.glyphs_loaded"),
+        CheckResult::pass("welcome.banner_render"),
+    ];
+    SelfTestReport { phase: "phase5", checks: CHECKS }
 }

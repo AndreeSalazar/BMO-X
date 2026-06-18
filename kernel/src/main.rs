@@ -1,18 +1,13 @@
 //! FastOS / BMO Kernel — Entry Point.
 //!
-//! Boot path (phased, timed, zero-duplication):
+//! Pure orchestrator. Validates the boot protocol handoff, then dispatches
+//! each phase in order. Every phase lives in `crate::boot::phases` and
+//! implements `boot::phases::Phase`, which provides both `run` (normal
+//! boot) and `self_test` (isolated, non-destructive).
 //!
-//!   Phase 0: CPU init (FPU/SSE/AVX/MTRR/PAT/perf counters)
-//!   Phase 1: Memory (page allocator, heap validation)
-//!   Phase 2: Devices (ACPI/PCI enumeration)
-//!   Phase 3: Display (GOP framebuffer)
-//!   Phase 4: Scheduler (APIC timer, interrupts)
-//!   Phase 5: Desktop (welcome screen → shell)
-//!
-//! Each phase lives in `crate::boot::phases`. The entry point below is
-//! intentionally tiny: it just validates the boot protocol handoff, stores
-//! the boot info globals, paints the first visual checkpoint, and dispatches
-//! to each phase in order. All logging flows through `crate::boot::log`.
+//! Phases are black boxes to main.rs. To add a new phase, add a module
+//! under `boot::phases`, implement the `Phase` trait, and add one line
+//! to the dispatch below.
 
 #![no_std]
 #![no_main]
@@ -46,8 +41,6 @@ mod boot;
 
 use core::arch::naked_asm;
 
-// ── Entry points ───────────────────────────────────────────────────
-
 #[unsafe(no_mangle)]
 #[link_section = ".text._start"]
 #[unsafe(naked)]
@@ -64,50 +57,60 @@ unsafe extern "C" fn _start() -> ! {
     );
 }
 
-// ── Kernel main — phased boot ──────────────────────────────────────
-
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     drivers::serial::init_serial();
     boot::log::info("boot", "FastOS BMO Kernel v0.9.0 starting");
 
-    if boot_info_ptr.is_null() {
-        boot::log::fault("boot", "boot_info_ptr is NULL");
-    }
-    let bi = unsafe { &*boot_info_ptr };
-    if bi.magic != fastos_boot_protocol::BOOT_MAGIC {
-        boot::log::fault("boot", "BootInfo magic mismatch");
-    }
-
-    unsafe {
-        boot_info::BOOT_INFO         = boot_info_ptr;
-        boot_info::RESERVED_PAYLOAD_ADDR = bi.gsp_addr;
-        boot_info::RESERVED_PAYLOAD_SIZE = bi.gsp_size;
-        boot_info::FB_ADDR  = bi.fb_addr;
-        boot_info::FB_WIDTH = bi.fb_width;
-        boot_info::FB_HEIGHT = bi.fb_height;
-        boot_info::FB_STRIDE = bi.fb_stride;
-    }
+    let bi = match validate_boot_info(boot_info_ptr) {
+        Ok(bi) => bi,
+        Err(msg) => boot::log::fault("boot", msg),
+    };
+    unsafe { store_boot_info(bi); }
 
     boot::visual::clear();
-    boot::visual::log("boot", "K0 BootInfo received; framebuffer direct writer online",
-        boot::visual::color::OK);
+    boot::visual::log("boot", "K0 BootInfo received", boot::visual::color::OK);
 
     diag::init();
 
-    let boot_start = arch::cpu::rdtsc();
+    let t0 = arch::cpu::rdtsc();
 
-    let (cpu, prev) = boot::phases::phase0_cpu::run(boot_start);
-    let _ = cpu; let _ = prev; // ensure value used (compiler hint)
+    // Run phases. Each `Phase::run` returns the TSC tick at which it ended.
+    let (cpu, out0) = boot::phases::phase0_cpu::run(t0);
 
     boot::phases::ring3_tests::run_all_tests();
 
-    let (mem, prev) = boot::phases::phase1_memory::run(bi, prev);
+    let (mem, out1) = boot::phases::phase1_memory::run(bi, out0.prev_end);
     boot::phases::ring3_tests::run_codegen_tests();
 
-    let prev = boot::phases::phase2_devices::run(bi, prev);
-    let prev = boot::phases::phase3_display::run(bi, prev);
-    let prev = boot::phases::phase4_scheduler::run(prev);
-    boot::phases::phase5_desktop::run(bi, &cpu, &mem, boot_start, prev);
+    let out2 = boot::phases::phase2_devices::run(bi, out1.prev_end);
+    let out3 = boot::phases::phase3_display::run(bi, out2.prev_end);
+    let out4 = boot::phases::phase4_scheduler::run(out3.prev_end);
+
+    // Phase 5 consumes the full boot aggregate; it does not return.
+    boot::phases::phase5_desktop::run(bi, &cpu, &mem, t0, out4.prev_end);
+}
+
+fn validate_boot_info(ptr: *const fastos_boot_protocol::BootInfo)
+    -> Result<&'static fastos_boot_protocol::BootInfo, &'static str>
+{
+    if ptr.is_null() {
+        return Err("boot_info_ptr is NULL");
+    }
+    let bi = unsafe { &*ptr };
+    if bi.magic != fastos_boot_protocol::BOOT_MAGIC {
+        return Err("BootInfo magic mismatch");
+    }
+    Ok(bi)
+}
+
+unsafe fn store_boot_info(bi: &fastos_boot_protocol::BootInfo) {
+    boot_info::BOOT_INFO         = bi as *const _;
+    boot_info::RESERVED_PAYLOAD_ADDR = bi.gsp_addr;
+    boot_info::RESERVED_PAYLOAD_SIZE = bi.gsp_size;
+    boot_info::FB_ADDR  = bi.fb_addr;
+    boot_info::FB_WIDTH = bi.fb_width;
+    boot_info::FB_HEIGHT = bi.fb_height;
+    boot_info::FB_STRIDE = bi.fb_stride;
 }

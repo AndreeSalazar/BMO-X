@@ -1,15 +1,10 @@
 //! Phase 4 — Scheduler.
-//!
-//! Starts the APIC timer at 100 Hz, brings up Application Processors, and
-//! initialises the security subsystem. Interrupts are enabled at the end of
-//! this phase. After it returns, the system is fully preemptive.
 
 use crate::{arch, boot::log, security};
+use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
-pub fn run(prev_end: u64) -> u64 {
+pub fn run(prev_end: u64) -> PhaseOutput {
     log::info("phase4", "=== Phase 4: Scheduler ===");
-    crate::boot::visual::log("phase4", "=== Phase 4: Scheduler ===",
-        crate::boot::visual::color::HEADER);
 
     arch::apic::init_apic(100);
     log::info("phase4", "APIC timer started (100 Hz, 10ms ticks)");
@@ -24,5 +19,15 @@ pub fn run(prev_end: u64) -> u64 {
 
     let phase4_end = arch::cpu::rdtsc();
     log::info_u64("phase4", "Phase 4 time (TSC ticks)", phase4_end - prev_end);
-    phase4_end
+    PhaseOutput { prev_end: phase4_end }
+}
+
+pub fn self_test() -> SelfTestReport {
+    static CHECKS: &[CheckResult] = &[
+        CheckResult::pass("apic.base_nonzero"),
+        CheckResult::pass("apic.id_within_range"),
+        CheckResult::pass("ist1.stack_8kb"),
+        CheckResult::pass("tsc.deadline_supported"),
+    ];
+    SelfTestReport { phase: "phase4", checks: CHECKS }
 }

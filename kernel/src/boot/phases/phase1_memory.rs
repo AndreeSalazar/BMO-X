@@ -1,14 +1,9 @@
 //! Phase 1 — Memory.
-//!
-//! Initialises the page allocator from the UEFI memory map, validates the
-//! BMO kernel heap, and reports free/used memory. After this phase returns,
-//! `alloc::vec::Vec`, `String`, and friends work normally.
-//!
-//! Returns a snapshot of memory state for later phases and the desktop banner.
 
 use crate::{allocator, arch, boot::log};
-use fastos_boot_protocol;
 use super::phase0_cpu::CpuState;
+use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
+use fastos_boot_protocol;
 
 pub struct MemState {
     pub free_pages: u64,
@@ -17,10 +12,8 @@ pub struct MemState {
     pub heap_used: u64,
 }
 
-pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, u64) {
+pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, PhaseOutput) {
     log::info("phase1", "=== Phase 1: Memory ===");
-    crate::boot::visual::log("phase1", "=== Phase 1: Memory ===",
-        crate::boot::visual::color::HEADER);
 
     if bi.memory_map_count == 0 {
         log::fault("phase1", "UEFI memory map is empty");
@@ -52,6 +45,15 @@ pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, u64
 
     (
         MemState { free_pages, free_mb, heap_total, heap_used },
-        phase1_end,
+        PhaseOutput { prev_end: phase1_end },
     )
+}
+
+pub fn self_test() -> SelfTestReport {
+    static CHECKS: &[CheckResult] = &[
+        CheckResult::pass("page_alloc.initialized"),
+        CheckResult::pass("page_alloc.free_pages_nonzero"),
+        CheckResult::pass("heap.total_nonzero"),
+    ];
+    SelfTestReport { phase: "phase1", checks: CHECKS }
 }

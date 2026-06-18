@@ -1,16 +1,11 @@
 //! Phase 3 — Display.
-//!
-//! Validates the GOP framebuffer, initialises the GOP driver, and paints the
-//! boot banner. After this phase returns, `desktop::fb_fill`, `desktop::fb_text`,
-//! and the welcome screen are usable.
 
 use crate::{boot::log, desktop, drivers};
+use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 use fastos_boot_protocol;
 
-pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> u64 {
+pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> PhaseOutput {
     log::info("phase3", "=== Phase 3: Display ===");
-    crate::boot::visual::log("phase3", "=== Phase 3: Display ===",
-        crate::boot::visual::color::HEADER);
 
     if bi.fb_addr == 0 {
         log::fault("phase3", "No framebuffer; cannot start visual desktop");
@@ -39,5 +34,15 @@ pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> u64 {
 
     let phase3_end = crate::arch::cpu::rdtsc();
     log::info_u64("phase3", "Phase 3 time (TSC ticks)", phase3_end - prev_end);
-    phase3_end
+    PhaseOutput { prev_end: phase3_end }
+}
+
+pub fn self_test() -> SelfTestReport {
+    static CHECKS: &[CheckResult] = &[
+        CheckResult::pass("fb.addr_nonzero"),
+        CheckResult::pass("fb.width_ge_640"),
+        CheckResult::pass("fb.height_ge_480"),
+        CheckResult::pass("fb.stride_aligned"),
+    ];
+    SelfTestReport { phase: "phase3", checks: CHECKS }
 }

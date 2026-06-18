@@ -14,3 +14,8 @@ pub mod phase3_display;
 pub mod phase4_scheduler;
 pub mod phase5_desktop;
 pub mod ring3_tests;
+
+pub mod trait_def;
+pub use trait_def::{
+    PhaseOutput, SelfTestReport, CheckResult, Timestamp, report as report_self_test,
+};
