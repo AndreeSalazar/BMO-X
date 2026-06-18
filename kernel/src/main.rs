@@ -223,28 +223,25 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     let boot_start = arch::cpu::rdtsc();
 
     // ════════════════════════════════════════════════════════════════
-    // PHASE 0: CPU INIT
+    // PHASE 0: CPU INIT (modular)
     // ════════════════════════════════════════════════════════════════
-    boot_log("phase0", "=== Phase 0: CPU Init ===");
+    early_visual_log("phase0", "=== Phase 0: CPU Init ===", 0xFF58A6FF);
+    boot_log("phase0", "=== Phase 0: CPU Init (modular) ===");
 
-    // Detect all CPU features via CPUID
-    let cpu_features = arch::cpu::detect_cpu();
-    boot_log("phase0", "CPU detected");
-    early_visual_log("phase0", "CPU detected OK", 0xFF76B900);
-    drivers::serial::serial_write("  Brand: ");
-    drivers::serial::serial_write(cpu_features.brand_string_str());
-    drivers::serial::serial_write("\n");
+    // GDT + IDT loaded FIRST so any fault during CPU init is caught
+    arch::gdt::init_gdt();
+    arch::idt::init_idt();
+    arch::syscall_entry::init_syscall();
+    early_visual_log("phase0", "GDT+IDT+SYSCALL loaded", 0xFF76B900);
 
-    // Initialize Ryzen 5 5600X (CR0/CR4/XCR0/FPU/MTRR/PAT/perf)
-    early_visual_log("phase0", "Ryzen init...", 0xFFFFBD2E);
-    arch::cpu_amd::ryzen_5_5600x::init(&cpu_features);
-    early_visual_log("phase0", "Ryzen init DONE", 0xFF76B900);
+    // Modular CPU init: features → CR → XCR → FPU → MTRR → PAT → perf → TSC
+    early_visual_log("phase0", "CPU modular init...", 0xFFFFBD2E);
+    let cpu = arch::cpu::init();
+    early_visual_log("phase0", "CPU modular init DONE", 0xFF76B900);
 
-    // Calibrate TSC frequency using APIC timer reference
-    early_visual_log("phase0", "TSC calibrating...", 0xFFFFBD2E);
-    let tsc_freq = calibrate_tsc();
+    let cpu_features = cpu.features;
+    let tsc_freq = cpu.tsc_freq;
     boot_log_u64("phase0", "TSC frequency (Hz)", tsc_freq);
-    early_visual_log("phase0", "TSC calibrate DONE", 0xFF76B900);
 
     let phase0_end = arch::cpu::rdtsc();
     boot_log_u64("phase0", "Phase 0 time (TSC ticks)", phase0_end - boot_start);
@@ -290,17 +287,8 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     early_visual_log("phase2", "=== Phase 2: Devices ===", 0xFF58A6FF);
     boot_log("phase2", "=== Phase 2: Devices ===");
 
-    // GDT + TSS
-    arch::gdt::init_gdt();
-    boot_log("phase2", "GDT+TSS loaded (Ring0/Ring3)");
-
-    // IDT
-    arch::idt::init_idt();
-    boot_log("phase2", "IDT loaded (256 entries)");
-
-    // Syscall MSRs
-    arch::syscall_entry::init_syscall();
-    boot_log("phase2", "SYSCALL/SYSRET MSRs programmed (BMO ABI)");
+    // GDT + IDT + SYSCALL are already active (loaded in Phase 0 for safety)
+    boot_log("phase2", "GDT+IDT+SYSCALL already active (loaded in Phase 0)");
 
     // ACPI → PCI
     if let Some(ecam) = arch::acpi::parse_mcfg(bi.rsdp_addr) {
@@ -494,58 +482,4 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // Launch welcome screen
     boot_log("phase5", "Launching welcome screen — type 'Run'");
     desktop::welcome::run();
-}
-
-// ── TSC calibration ────────────────────────────────────────────────
-
-/// Calibrate TSC frequency by counting TSC ticks over a known time period.
-///
-/// Uses the APIC timer in one-shot mode as reference:
-/// 1. Program APIC timer for a short delay (10ms)
-/// 2. Read TSC before and after
-/// 3. Compute frequency = ticks / time
-fn calibrate_tsc() -> u64 {
-    use arch::cpu::{rdtsc, cpuid};
-
-    // Check if invariant TSC is available (Zen 3 always has it)
-    let (_, _, _, edx_ext) = cpuid(0x80000007, 0);
-    let _has_invariant_tsc = edx_ext & (1 << 8) != 0;
-
-    // Calibration: count TSC ticks in a busy loop
-    // Use LFENCE + RDTSC for serializing read
-    unsafe {
-        core::arch::asm!("lfence");
-    }
-    let start = rdtsc();
-
-    // Busy loop — calibrated for ~10ms
-    let mut count = 0u64;
-    let target_iterations = 50_000_000;
-
-    while count < target_iterations {
-        count += 1;
-        unsafe { core::arch::asm!("pause"); }
-    }
-
-    unsafe {
-        core::arch::asm!("lfence");
-    }
-    let end = rdtsc();
-
-    let elapsed = end - start;
-    // elapsed ticks for target_iterations loops
-    // Estimate: each PAUSE loop ~1 tick on Zen 3 @ 3.7GHz
-    // Scale to 1 second: elapsed * (1_000_000_000 / elapsed_ns)
-    // Simpler: assume loop ran for roughly elapsed / freq seconds
-    // freq = elapsed_ticks / time_seconds => extrapolate
-    // We calibrated ~50M iterations. On Zen 3, this is ~10-15ms.
-    // So freq ≈ elapsed / 0.0125 (approx 12.5ms)
-    let freq = if elapsed > 0 {
-        // Multiply elapsed by 80 (= 1_000_000_000 / 12_500_000) for Hz
-        elapsed * 80
-    } else {
-        3_700_000_000 // fallback: 3.7 GHz base clock
-    };
-
-    freq
 }

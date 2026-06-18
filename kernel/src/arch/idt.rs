@@ -476,10 +476,112 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     }
 }
 
+/// Display fault info directly on framebuffer for early-boot crashes
+/// (before diag/scheduler are initialized). Halts CPU afterwards.
+unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
+    use crate::boot_info;
+    use crate::ui::font::get_glyph;
+    let fb_addr = boot_info::FB_ADDR;
+    let w = boot_info::FB_WIDTH as usize;
+    let h = boot_info::FB_HEIGHT as usize;
+    let s = boot_info::FB_STRIDE as usize;
+
+    if fb_addr != 0 && w > 0 && h > 0 {
+        let buf = fb_addr as *mut u32;
+        // Fill screen red
+        for y in 0..h {
+            for x in 0..w {
+                buf.add(y * s + x).write_volatile(0xFFFF0000);
+            }
+        }
+
+        // Draw text helper: renders an ASCII string using the 8x16 bitmap font
+        let draw_str = |text: &[u8], px: usize, py: usize, color: u32| {
+            let mut cx = px;
+            for &ch in text {
+                if cx + 8 > w { break; }
+                let glyph = get_glyph(ch);
+                for gy in 0..16usize {
+                    let row = glyph[gy];
+                    for gx in 0..8usize {
+                        if (row & (0x80 >> gx)) != 0 {
+                            buf.add((py + gy) * s + cx + gx).write_volatile(color);
+                        }
+                    }
+                }
+                cx += 8;
+            }
+        };
+
+        // Draw fault vector name
+        let name: &[u8] = match vector {
+            0  => b"#DE Divide Error",
+            1  => b"#DB Debug Exception",
+            3  => b"#BP Breakpoint",
+            6  => b"#UD Invalid Opcode",
+            7  => b"#NM Device Not Available",
+            8  => b"#DF Double Fault",
+            9  => b"Coprocessor Segment",
+            10 => b"#TS Invalid TSS",
+            11 => b"#NP Segment Not Present",
+            12 => b"#SS Stack-Segment Fault",
+            13 => b"#GP General Protection",
+            14 => b"#PF Page Fault",
+            16 => b"#MF x87 FP Exception",
+            17 => b"#AC Alignment Check",
+            18 => b"#MC Machine Check",
+            19 => b"#XM SIMD Exception",
+            _  => b"Unknown Exception",
+        };
+
+        // Title
+        draw_str(b"FastOS KERNEL FAULT", 20, 20, 0xFFFFFFFF);
+
+        // Fault name
+        draw_str(b"Vector: ", 20, 60, 0xFFFFFF00);
+        draw_str(name, 84, 60, 0xFFFFFFFF);
+
+        // Error code in hex
+        draw_str(b"Error:  ", 20, 90, 0xFFFFFF00);
+        let hex_chars = b"0123456789ABCDEF";
+        let mut hex_buf = [0u8; 18];
+        hex_buf[0] = b'0';
+        hex_buf[1] = b'x';
+        for i in 0..16usize {
+            let nib = ((error >> (60 - i * 4)) & 0xF) as usize;
+            hex_buf[2 + i] = hex_chars[nib];
+        }
+        draw_str(&hex_buf, 84, 90, 0xFFFFFFFF);
+
+        // CR2 for page faults
+        if vector == 14 {
+            draw_str(b"CR2:    ", 20, 120, 0xFFFFFF00);
+            let mut cr2_buf = [0u8; 18];
+            cr2_buf[0] = b'0';
+            cr2_buf[1] = b'x';
+            for i in 0..16usize {
+                let nib = ((cr2 >> (60 - i * 4)) & 0xF) as usize;
+                cr2_buf[2 + i] = hex_chars[nib];
+            }
+            draw_str(&cr2_buf, 84, 120, 0xFF00FFFF);
+        }
+
+        // Instruction hint
+        draw_str(b"CPU halted. Fix the fault and re-flash.", 20, 170, 0xFF8B949E);
+    }
+    loop { core::arch::asm!("cli; hlt"); }
+}
+
 /// Exception handler that tries demand paging before killing the process.
 /// Called from #GP and #PF ISR stubs.
 #[unsafe(no_mangle)]
 extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> ! {
+    // Early boot safety: if no thread exists yet (Phase 0-1), display on
+    // framebuffer and halt. The scheduler/diag may not be initialized.
+    if crate::sched::thread::current_thread().is_none() {
+        unsafe { early_boot_fault_display(vector, error, cr2); }
+    }
+
     use core::sync::atomic::Ordering;
     let t = crate::diag::telemetry::t();
 
