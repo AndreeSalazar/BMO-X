@@ -28,6 +28,7 @@ pub mod commands;
 // ────────────────────────────────────────────────────────────────────
 
 const SC_ESC: u8 = 0x01;
+const SC_F9: u8 = 0x43;
 const CYCLES_PER_MS: u64 = 3_700_000;
 
 // ── Modifier key tracking for HUD toggle (Alt + Control) ──────────
@@ -173,6 +174,12 @@ pub fn poll_key() -> u8 {
     // ── Track modifier keys for Alt+Ctrl HUD toggle ──────────────
     unsafe {
         match sc {
+            SC_F9 => {
+                let currently_on = crate::diag::is_overlay_enabled();
+                crate::diag::set_overlay_enabled(!currently_on);
+                beep(660, 30);
+                crate::desktop::state::mark_dirty();
+            }
             0x1D => { CTRL_HELD = true; }   // Left Ctrl press
             0x9D => { CTRL_HELD = false; HOTKEY_TOGGLED = false; }  // Left Ctrl release
             0x38 => { ALT_HELD = true; }    // Left Alt press

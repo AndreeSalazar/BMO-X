@@ -176,7 +176,11 @@ fn fb() -> Option<Framebuffer> {
         (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
     };
     if addr == 0 || w == 0 { return None; }
-    Some(Framebuffer::new(addr, s as u64, w, h))
+    // FB_STRIDE llega desde GOP en píxeles por línea. `Framebuffer::new`
+    // espera pitch en bytes, igual que el escritorio Ring 0. Si pasamos el
+    // stride crudo, el welcome sólo pinta bien el fondo y el texto/tarjetas
+    // quedan corruptos o fuera de sitio en hardware real.
+    Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
 }
 
 /// Dibuja texto. Soporta escala 1×, 2× y 3× (replicando píxeles).
@@ -423,7 +427,15 @@ pub fn run() -> ! {
         let cycles = 32u64 * 3_700_000;
         let start = crate::arch::cpu::rdtsc();
         while (crate::arch::cpu::rdtsc() - start) < cycles {
+            let overlay_was_enabled = crate::diag::is_overlay_enabled();
             let sc = desktop::poll_key();
+            if crate::diag::is_overlay_enabled() != overlay_was_enabled {
+                // `desktop::poll_key()` maneja Ctrl+Alt globalmente, pero su
+                // dirty flag pertenece al escritorio. En el welcome debemos
+                // marcar nuestro propio repaint para que el HUD aparezca/oculte
+                // inmediatamente al usar el hotkey.
+                mark_dirty();
+            }
             if sc != 0 {
                 if sc == 0x1C {
                     process_enter();
