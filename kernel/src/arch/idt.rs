@@ -309,28 +309,53 @@ unsafe extern "C" fn isr_stub_divide_error() {
     );
 }
 
-/// APIC Timer (vector 48) — saves full context, calls scheduler tick, sends EOI.
+/// APIC Timer (vector 48) — saves full context, calls context switch, sends EOI.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_apic_timer() {
     naked_asm!(
+        // Save all 15 GPRs (must match context_switch.rs GPR_COUNT)
         "push rax",
+        "push rbx",
         "push rcx",
         "push rdx",
         "push rsi",
         "push rdi",
+        "push rbp",
         "push r8",
         "push r9",
         "push r10",
         "push r11",
-        "call apic_timer_handler_rust",
+        "push r12",
+        "push r13",
+        "push r14",
+        "push r15",
+
+        // RSP points to the saved GPR frame (rax at [rsp+0])
+        "mov rdi, rsp",
+        "call apic_timer_full_handler",
+
+        // RAX = 0 → same thread, just restore and iretq
+        // RAX = new RSP → switch to new thread's kernel stack
+        "test rax, rax",
+        "jz 1f",
+        "mov rsp, rax",
+        "1:",
+
+        // Restore GPRs and return
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
         "pop r11",
         "pop r10",
         "pop r9",
         "pop r8",
+        "pop rbp",
         "pop rdi",
         "pop rsi",
         "pop rdx",
         "pop rcx",
+        "pop rbx",
         "pop rax",
         "iretq",
     );
@@ -375,6 +400,7 @@ unsafe extern "C" fn isr_stub_irq1() {
 
 #[unsafe(no_mangle)]
 extern "C" fn irq0_handler_rust() {
+    crate::diag::telemetry::t().cpu.interrupts.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     unsafe {
         if let Some(handler) = IRQ_HANDLERS[0] {
             handler();
@@ -392,13 +418,62 @@ extern "C" fn irq1_handler_rust() {
     }
 }
 
-/// APIC timer interrupt handler — tick scheduler + telemetry refresh + EOI.
+/// APIC timer interrupt handler — full context save/restore + scheduler tick.
+///
+/// Called from `isr_stub_apic_timer` with RSP pointing to the saved GPR frame.
+/// Returns: 0 = no switch (restore same thread), non-zero = new RSP for switched thread.
 #[unsafe(no_mangle)]
-extern "C" fn apic_timer_handler_rust() {
-    crate::diag::telemetry::t().cpu.timer_ticks.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
+    use core::sync::atomic::Ordering;
+    let t = crate::diag::telemetry::t();
+    t.cpu.timer_ticks.fetch_add(1, Ordering::Relaxed);
+    t.cpu.interrupts.fetch_add(1, Ordering::Relaxed);
+
+    // Save full register context from the kernel stack into the current thread.
+    unsafe {
+        crate::arch::context_switch::save_context_from_stack(saved_state);
+    }
+
+    // Tick the scheduler (decrements time slice, may trigger schedule())
     crate::sched::timer_tick();
     crate::diag::tick_refresh();
-    crate::arch::apic::apic_eoi();
+
+    // Check if we need to switch threads.
+    let cur_idx = crate::sched::thread::current_index();
+    // schedule() may have been called by timer_tick → pick next
+    // We need to detect if schedule() changed the current thread.
+    // But schedule() runs inline in timer_tick and may have changed CURRENT_THREAD.
+    // Let's re-check: if timer_tick called schedule(), it already changed the current.
+    // We just need to check if the current is different from what we saved.
+
+    // Actually, we need to invoke the scheduler ourselves since timer_tick only
+    // decrements the time slice and calls schedule() when it hits 0.
+    // Let's call schedule() now to give the scheduler a chance to pick next.
+    crate::sched::schedule();
+
+    let new_idx = crate::sched::thread::current_index();
+
+    if new_idx != cur_idx && new_idx < crate::sched::thread::MAX_THREADS {
+        // Context switch! Build the new thread's frame on its kernel stack.
+        let new_thread = match crate::sched::thread::get_thread(new_idx) {
+            Some(t) => t,
+            None => {
+                crate::arch::apic::apic_eoi();
+                return 0;
+            }
+        };
+        let kernel_stack_top = new_thread.kernel_stack_top;
+        let regs_ptr = core::ptr::addr_of!(new_thread.regs) as *const crate::sched::thread::SavedRegs;
+
+        unsafe {
+            let new_rsp = crate::arch::context_switch::build_context_on_stack(regs_ptr, kernel_stack_top);
+            crate::arch::apic::apic_eoi();
+            new_rsp
+        }
+    } else {
+        crate::arch::apic::apic_eoi();
+        0
+    }
 }
 
 /// Exception handler that tries demand paging before killing the process.

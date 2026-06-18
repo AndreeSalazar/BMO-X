@@ -153,6 +153,18 @@ pub fn current_thread() -> Option<&'static mut Thread> {
     }
 }
 
+/// Raw pointer to the current thread (for use in interrupt/asm context where
+/// we cannot hold &mut references safely).
+pub fn current_thread_ptr() -> *mut Thread {
+    unsafe {
+        if CURRENT_THREAD < MAX_THREADS {
+            core::ptr::addr_of_mut!(THREAD_TABLE[CURRENT_THREAD])
+        } else {
+            core::ptr::null_mut()
+        }
+    }
+}
+
 /// Set the current thread index.
 pub fn set_current(idx: usize) {
     unsafe { CURRENT_THREAD = idx; }

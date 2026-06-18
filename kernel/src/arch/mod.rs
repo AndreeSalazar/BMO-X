@@ -10,4 +10,5 @@ pub mod page_alloc;
 pub mod paging;
 pub mod syscall_entry;
 pub mod cpu_amd;
+pub mod context_switch;
 pub mod smp;
