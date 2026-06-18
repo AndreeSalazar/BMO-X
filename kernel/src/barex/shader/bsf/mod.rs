@@ -125,21 +125,28 @@ pub fn load(data: &[u8]) -> Result<BsfShader, BsfError> {
         spirv_len: spirv_words,
     };
 
-    // Copy SPIR-V words
-    let spirv_start = BSF_HEADER_SIZE;
+    // Build a contiguous SPIR-V byte buffer for hashing.
+    // The shader is stored as words internally for fast decode, but the
+    // BLAKE3 check operates on the on-wire byte stream.
+    let mut spirv_bytes_data = [0u8; 16384];
+    let spirv_bytes_len = spirv_words * 4;
     for i in 0..spirv_words {
-        let offset = spirv_start + i * 4;
-        shader.spirv_words[i] = u32::from_le_bytes([
-            data[offset],
-            data[offset + 1],
-            data[offset + 2],
-            data[offset + 3],
+        let w = u32::from_le_bytes([
+            data[BSF_HEADER_SIZE + i * 4],
+            data[BSF_HEADER_SIZE + i * 4 + 1],
+            data[BSF_HEADER_SIZE + i * 4 + 2],
+            data[BSF_HEADER_SIZE + i * 4 + 3],
         ]);
+        let wb = w.to_le_bytes();
+        spirv_bytes_data[i * 4..i * 4 + 4].copy_from_slice(&wb);
+        shader.spirv_words[i] = w;
     }
 
-    // Validate BLAKE3 hash (simplified — real impl would use hardware SHA)
-    let computed = compute_hash(&shader.spirv_words[..spirv_words]);
+    // Validate BLAKE3 hash of the SPIR-V bytecode.
+    // Real BLAKE3 (from bef::blake3) — spec 20211102, single-pass, no_std.
+    let computed = crate::bef::blake3::hash(&spirv_bytes_data[..spirv_bytes_len]);
     if computed != blake3 {
+        crate::diag::warn("bsf", "BLAKE3 mismatch — shader payload tampered or wrong hash");
         return Err(BsfError::HashMismatch);
     }
 
@@ -162,46 +169,23 @@ pub fn spirv_bytes(shader: &BsfShader) -> &[u8] {
     }
 }
 
-/// Compute hash for SPIR-V data (simplified — hardware SHA when available)
-fn compute_hash(words: &[u32]) -> [u8; 32] {
-    let mut state = [0u8; 32];
-    let mut h: u64 = 5381;
-    for &word in words {
-        let bytes = word.to_le_bytes();
-        for &b in &bytes {
-            h = h.wrapping_mul(33).wrapping_add(b as u64);
-        }
+/// Compute BLAKE3 hash for SPIR-V data — re-exported from bef::blake3.
+///
+/// Previously this function implemented a fake hash (DJB2 + variants) that
+/// was flagged as "simplified — real impl would use hardware SHA" in the
+/// code. The fake has been replaced with the real no_std BLAKE3
+/// implementation (spec 20211102) available at `crate::bef::blake3`.
+///
+/// This re-export exists for source compatibility with any external code
+/// that imported the old function name.
+pub fn compute_hash(words: &[u32]) -> [u8; 32] {
+    let mut buf = [0u8; 16384];
+    let mut len = 0;
+    for &w in words {
+        if len + 4 > buf.len() { break; }
+        let wb = w.to_le_bytes();
+        buf[len..len + 4].copy_from_slice(&wb);
+        len += 4;
     }
-    state[0..8].copy_from_slice(&h.to_le_bytes());
-
-    h = 0x5bd1e995;
-    for &word in words {
-        let bytes = word.to_le_bytes();
-        for &b in &bytes {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x5bd1e995);
-        }
-    }
-    state[8..16].copy_from_slice(&h.to_le_bytes());
-
-    h = 0x1b873593;
-    for &word in words {
-        let bytes = word.to_le_bytes();
-        for &b in &bytes {
-            h = h.wrapping_mul(0x1b873593).wrapping_add(b as u64);
-        }
-    }
-    state[16..24].copy_from_slice(&h.to_le_bytes());
-
-    h = 0xcc9e2d51;
-    for &word in words {
-        let bytes = word.to_le_bytes();
-        for &b in &bytes {
-            h ^= (b as u64) << 13;
-            h = h.wrapping_mul(0xcc9e2d51);
-        }
-    }
-    state[24..32].copy_from_slice(&h.to_le_bytes());
-
-    state
+    crate::bef::blake3::hash(&buf[..len])
 }

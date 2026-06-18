@@ -252,6 +252,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     let phase0_end = arch::cpu::rdtsc();
     boot_log_u64("phase0", "Phase 0 time (TSC ticks)", phase0_end - boot_start);
 
+    // Run Ring 3 transition tests in isolation (no real Ring 3 jump yet)
+    boot_log("ring3-test", "Running Ring 3 transition tests");
+    match arch::ring3_test::run_all_tests() {
+        Ok(n) => boot_log_u64("ring3-test", "tests passed", n as u64),
+        Err(_) => boot_fault("ring3-test", "Ring 3 transition tests failed"),
+    }
+
     // ════════════════════════════════════════════════════════════════
     // PHASE 1: MEMORY
     // ════════════════════════════════════════════════════════════════

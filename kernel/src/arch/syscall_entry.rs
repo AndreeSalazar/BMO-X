@@ -16,13 +16,44 @@
 //!   RAX = syscall number
 //!   RDI, RSI, RDX, R10, R8, R9 = arguments
 //!   Return: RAX = result (negative = error)
+//!
+//! ## MSR setup details
+//!
+//! - **IA32_STAR[47:32]** = CS for Ring 0 (kernel code) — what the CPU
+//!   loads into CS on `syscall`. STAR[63:48] = STAR[47:32] + 8 = the
+//!   value of SS the CPU loads. For BMO ABI: kernel CS = 0x08, kernel
+//!   DS = 0x10. We set STAR[63:48] = 0x10 (kernel DS) so `syscall`
+//!   leaves SS = 0x10, and we set STAR[47:32] = 0x08 (kernel CS).
+//! - **IA32_KERNEL_GS_BASE**: GS.base the kernel uses (the per-CPU
+//!   data area). We set it explicitly so that after `swapgs` the GS
+//!   register points to the kernel's per-CPU area.
+//! - **IA32_GS_BASE**: GS.base the user process sees. We set it to 0
+//!   (no per-CPU area in Ring 3).
+//!
+//! ## Entry/return protocol
+//!
+//! On `syscall` (Ring 3 → Ring 0):
+//!   1. `swapgs` — exchange IA32_GS_BASE and IA32_KERNEL_GS_BASE
+//!   2. `mov r15, rsp` — save user RSP
+//!   3. Switch to kernel stack (from TSS.rsp0)
+//!   4. Build iretq frame + push GPRs
+//!   5. Call C handler
+//!   6. Pop GPRs
+//!   7. `swapgs` — restore user GS
+//!   8. `iretq` — back to Ring 3
 
 use core::arch::{asm, naked_asm};
 
-const IA32_STAR: u32  = 0xC000_0081;
-const IA32_LSTAR: u32 = 0xC000_0082;
-const IA32_FMASK: u32 = 0xC000_0084;
-const IA32_EFER: u32  = 0xC000_0080;
+const IA32_STAR: u32             = 0xC000_0081;
+const IA32_LSTAR: u32            = 0xC000_0082;
+const IA32_FMASK: u32            = 0xC000_0084;
+const IA32_EFER: u32             = 0xC000_0080;
+const IA32_GS_BASE: u32          = 0xC000_0101;
+const IA32_KERNEL_GS_BASE: u32   = 0xC000_0102;
+
+/// Segment selectors matching `arch::gdt`.
+const KERNEL_CS_SELECTOR: u64 = 0x08;
+const KERNEL_DS_SELECTOR: u64 = 0x10;
 
 #[inline]
 unsafe fn wrmsr(msr: u32, val: u64) {
@@ -38,20 +69,73 @@ unsafe fn rdmsr(msr: u32) -> u64 {
     ((hi as u64) << 32) | (lo as u64)
 }
 
+/// Read the current IA32_GS_BASE (per-CPU area pointer for current ring).
+#[inline(always)]
+pub unsafe fn read_gs_base() -> u64 { rdmsr(IA32_GS_BASE) }
+
+/// Set the kernel's IA32_KERNEL_GS_BASE (the per-CPU area for Ring 0).
+#[inline(always)]
+pub unsafe fn write_kernel_gs_base(v: u64) { wrmsr(IA32_KERNEL_GS_BASE, v); }
+
+/// Set the user's IA32_GS_BASE (per-CPU area visible to Ring 3 — usually 0).
+#[inline(always)]
+pub unsafe fn write_user_gs_base(v: u64) { wrmsr(IA32_GS_BASE, v); }
+
+/// Switch from user GS to kernel GS. MUST be paired with `swapgs` on return.
+#[inline(always)]
+pub unsafe fn swapgs() {
+    asm!("swapgs", options(nostack, preserves_flags));
+}
+
 pub fn init_syscall() {
     unsafe {
+        // Enable SCE (System Call Extensions) in EFER.
         let efer = rdmsr(IA32_EFER);
         wrmsr(IA32_EFER, efer | 1);
 
-        let kernel_base: u64 = 0x08;
-        let user_base: u64   = 0x10;
-        let star = (user_base << 48) | (kernel_base << 32);
+        // STAR layout:
+        //   [63:48] = user CS base — actually, the CPU loads SS from
+        //             [63:48] + 8 on `syscall`, and CS from [47:32] - 8
+        //             on `sysret`. So we want [47:32] = kernel CS (0x08)
+        //             and [63:48] = (kernel CS - 8) = 0 (so that sysret
+        //             loads CS = 0+8 = 0x08 which we don't actually use
+        //             since we return via iretq).
+        //   For iretq-based return (our path), we only care about [47:32]
+        //   because the CPU loads CS = [47:32] on syscall.
+        //   SS is loaded from [63:48] (i.e., 0 on syscall, which is a
+        //   NULL selector that would #GP — so we want SS = kernel DS).
+        //
+        // The actual Intel-recommended layout for `syscall`:
+        //   [47:32] = kernel CS = 0x08
+        //   [63:48] = kernel SS = 0x10 (since CPU loads SS = [47:32] + 8 = 0x10)
+        //
+        // So the correct encoding is:
+        //   [47:32] = 0x08 (kernel CS)
+        //   [63:48] = 0x10 (kernel DS, since +8 of 0x08 is 0x10)
+        let star = (KERNEL_DS_SELECTOR << 48) | (KERNEL_CS_SELECTOR << 32);
         wrmsr(IA32_STAR, star);
 
+        // LSTAR = entry point of the syscall handler.
         wrmsr(IA32_LSTAR, syscall_entry_naked as *const () as u64);
 
-        // Clear IF (bit 9) and DF (bit 10) on syscall entry
+        // FMASK: clear IF (bit 9, mask interrupts) and DF (bit 10) on entry.
+        // Bit 1 (always 1) is set automatically by syscall so we don't mask it.
         wrmsr(IA32_FMASK, (1 << 9) | (1 << 10));
+
+        // Kernel GS base: point at the per-CPU data area (we set to 0 —
+        // the kernel uses its own segment registers, not GS-relative
+        // addressing for the moment).
+        wrmsr(IA32_KERNEL_GS_BASE, 0);
+
+        // User GS base: 0 (no per-CPU data in Ring 3).
+        wrmsr(IA32_GS_BASE, 0);
+
+        // Initialize the syscall kernel stack to the global KERNEL_STACK.
+        // This is the fallback stack used by the entry naked if no thread
+        // has called set_syscall_kernel_stack() yet. It MUST be 16-byte
+        // aligned and within a valid mapped region.
+        let stack_top = crate::arch::gdt::kernel_stack_top();
+        SYSCALL_KERNEL_RSP = stack_top;
     }
 }
 
@@ -94,6 +178,8 @@ pub struct InterruptFrame {
 
 static mut SYSCALL_KERNEL_RSP: u64 = 0;
 
+/// Set the kernel stack pointer used by the syscall entry.
+/// Must be 16-byte aligned and within a valid mapped region.
 pub fn set_syscall_kernel_stack(rsp: u64) {
     unsafe { SYSCALL_KERNEL_RSP = rsp; }
 }
@@ -105,19 +191,26 @@ pub fn ring3_alive() -> bool {
 /// Naked syscall entry point — called by hardware via IA32_LSTAR.
 ///
 /// Correct flow:
-///   1. Save user RSP, switch to kernel stack
-///   2. Build iretq frame (rip, cs, rflags, rsp, ss) — pushed FIRST = lowest addr
-///   3. Push GPRs on top — pushed AFTER = higher addr
-///   4. Call Rust handler with pointer to the full InterruptFrame
-///   5. On return: pop GPRs, then `iretq` directly (frame is already correct)
+///   1. `swapgs` — exchange IA32_GS_BASE / IA32_KERNEL_GS_BASE so the
+///      kernel per-CPU data area is visible.
+///   2. Save user RSP, switch to kernel stack (from TSS.rsp0).
+///   3. Build iretq frame (rip, cs, rflags, rsp, ss) — pushed FIRST = lowest addr.
+///   4. Push GPRs on top — pushed AFTER = higher addr.
+///   5. Call Rust handler with pointer to the full InterruptFrame.
+///   6. Pop GPRs.
+///   7. `swapgs` — restore user GS.
+///   8. `iretq` — back to Ring 3.
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry_naked() {
     naked_asm!(
-        // ── Step 1: Save user RSP, switch to kernel stack ──
+        // ── Step 1: swapgs so kernel per-CPU area is visible ──
+        "swapgs",
+
+        // ── Step 2: Save user RSP, switch to kernel stack ──
         "mov r15, rsp",                         // r15 = user RSP
         "mov rsp, [rip + {kstack}]",            // switch to kernel stack
 
-        // ── Step 2: Build iretq frame FIRST (lowest addresses) ──
+        // ── Step 3: Build iretq frame FIRST (lowest addresses) ──
         // Push order: ss, user_rsp, rflags, cs, rip
         // After these 5 pushes, [rsp+0]=rip [rsp+8]=cs [rsp+16]=rflags [rsp+24]=rsp [rsp+32]=ss
         "push qword ptr 0x1B",                  // ss (USER_DS | RPL=3)
@@ -126,7 +219,7 @@ unsafe extern "C" fn syscall_entry_naked() {
         "push qword ptr 0x23",                  // cs (USER_CS | RPL=3)
         "push rcx",                              // rip (saved by CPU)
 
-        // ── Step 3: Push GPRs (higher addresses) ──
+        // ── Step 4: Push GPRs (higher addresses) ──
         // Push order: rax, rdi, rsi, rdx, r10, r8, r9, rbx, rbp, r12, r13, r14, r15
         // This matches the InterruptFrame struct layout (r15 at lowest addr).
         "push rax",
@@ -143,11 +236,11 @@ unsafe extern "C" fn syscall_entry_naked() {
         "push r14",
         "push r15",
 
-        // ── Step 4: Call Rust handler ──
+        // ── Step 5: Call Rust handler ──
         "mov rdi, rsp",                         // arg 0: pointer to InterruptFrame
         "call {handler}",                       // call syscall_handler_rust
 
-        // ── Step 5: Pop GPRs ──
+        // ── Step 6: Pop GPRs ──
         "pop r15",
         "pop r14",
         "pop r13",
@@ -162,7 +255,10 @@ unsafe extern "C" fn syscall_entry_naked() {
         "pop rdi",
         "pop rax",
 
-        // ── Step 6: Return to Ring 3 ──
+        // ── Step 7: Restore user GS ──
+        "swapgs",
+
+        // ── Step 8: Return to Ring 3 ──
         // After popping GPRs, rsp points to the iretq frame:
         //   [rsp+0]  = rip
         //   [rsp+8]  = cs (0x23)

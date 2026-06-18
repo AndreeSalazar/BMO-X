@@ -40,10 +40,15 @@ pub struct Tss {
     pub iomap_base: u16,
 }
 
-/// IST1 stack for #PF/#GP exceptions (4 KB, 16-byte aligned).
+/// IST1 stack for #PF/#GP/#DF exceptions (8 KB, 16-byte aligned).
+///
+/// AMD Zen 3 may push up to 6 exception frames onto this stack before
+/// invoking the handler (e.g., a #DF that occurs while handling a
+/// #GP). 4 KB is the minimum, but 8 KB gives margin to avoid a
+/// triple-fault if the chain is long.
 #[repr(align(16))]
-struct Ist1Stack([u8; 4096]);
-static mut IST1_STACK: Ist1Stack = Ist1Stack([0; 4096]);
+struct Ist1Stack([u8; 8192]);
+static mut IST1_STACK: Ist1Stack = Ist1Stack([0; 8192]);
 
 impl Tss {
     pub const fn new() -> Self {
@@ -135,6 +140,16 @@ pub fn set_kernel_stack(rsp0: u64) {
     unsafe { TSS.rsp[0] = rsp0; }
 }
 
+/// Return the top of the global kernel stack (16-byte aligned).
+///
+/// Used as a fallback stack for the syscall entry if no per-thread kernel
+/// stack has been configured yet (i.e., before the first Ring 3 process
+/// is spawned).
+#[inline(always)]
+pub fn kernel_stack_top() -> u64 {
+    unsafe { core::ptr::addr_of!(KERNEL_STACK) as u64 + 16384 }
+}
+
 /// Initialize GDT with Ring 0/3 segments and TSS, then load via LGDT.
 pub fn init_gdt() {
     unsafe {
@@ -142,8 +157,9 @@ pub fn init_gdt() {
         let stack_top = core::ptr::addr_of!(KERNEL_STACK) as u64 + 16384;
         TSS.rsp[0] = stack_top;
 
-        // Set IST1 for #PF/#GP exception handling (dedicated stack)
-        let ist1_top = core::ptr::addr_of!(IST1_STACK) as u64 + 4096;
+        // Set IST1 for #PF/#GP/#DF exception handling (dedicated stack).
+        // Size matches Ist1Stack::[u8; 8192] above.
+        let ist1_top = core::ptr::addr_of!(IST1_STACK) as u64 + 8192;
         TSS.ist[0] = ist1_top;
 
         // Build GDT entries

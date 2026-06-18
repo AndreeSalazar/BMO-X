@@ -11,3 +11,4 @@ pub mod paging;
 pub mod syscall_entry;
 pub mod context_switch;
 pub mod smp;
+pub mod ring3_test;
