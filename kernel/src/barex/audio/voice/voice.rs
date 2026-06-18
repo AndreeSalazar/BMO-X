@@ -1,6 +1,6 @@
 use crate::barex::BxResult;
-use crate::barex::abi::handle::BmoHandle;
-use crate::barex::abi::handle::kind::HandleKind;
+use crate::bmo_abi::handle::BmoHandle;
+use crate::bmo_abi::handle::kind::HandleKind;
 use crate::barex::audio::effects::dsp_math::{dsp_cos, dsp_sin};
 
 /// Maximum PCM frames a single voice can hold (2 seconds at 48kHz).

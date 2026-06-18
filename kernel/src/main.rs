@@ -27,6 +27,8 @@ mod fs;
 mod panic;
 mod memory;
 
+mod bmo_abi;
+
 mod barex;
 mod bef;
 mod sched;
@@ -239,6 +241,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     early_visual_log("phase0", "CPU modular init...", 0xFFFFBD2E);
     let cpu = arch::cpu::init();
     early_visual_log("phase0", "CPU modular init DONE", 0xFF76B900);
+
+    // Init BMO ABI time backend with the calibrated TSC.
+    bmo_abi::time::init_clock(arch::cpu::rdtsc(), cpu.tsc_freq);
 
     let cpu_features = cpu.features;
     let tsc_freq = cpu.tsc_freq;

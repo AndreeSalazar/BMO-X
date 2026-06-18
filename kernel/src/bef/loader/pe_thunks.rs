@@ -14,7 +14,7 @@
 
 #![allow(dead_code)]
 
-use crate::barex::abi::primitives::bx_u64;
+use crate::bmo_abi::primitives::bx_u64;
 use crate::windows_compat;
 
 /// A qué backend del kernel se redirige la función importada.

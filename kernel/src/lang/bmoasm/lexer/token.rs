@@ -13,7 +13,7 @@
 //! Total: 90+ keywords. Comparado: NASM ~25 directivas + ~1500 mnemonics
 //! que dependen del CPU. BMO simple: 90 keywords **cross-CPU portables**.
 
-use crate::barex::abi::primitives::{bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

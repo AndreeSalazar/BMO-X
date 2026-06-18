@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-use crate::barex::abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64};
 
 /// Magic constant — `b"BEF1"` (4 bytes LE).
 pub const BEF_MAGIC: bx_u32 = u32::from_le_bytes(*b"BEF1");

@@ -1,7 +1,7 @@
 //! `Http3Server` — servidor HTTP/3.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::handle::BmoHandle;
+use crate::bmo_abi::handle::BmoHandle;
 use super::super::types::Endpoint;
 
 pub struct Http3Server {

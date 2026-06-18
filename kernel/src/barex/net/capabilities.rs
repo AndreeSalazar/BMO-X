@@ -3,7 +3,7 @@
 //! Se chequean al cargar el BEF; el sandbox los aplica vía `barex::abi::handle`
 //! en cada syscall de `bx_net`.
 
-use crate::barex::abi::primitives::bx_u32;
+use crate::bmo_abi::primitives::bx_u32;
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

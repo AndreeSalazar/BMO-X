@@ -1,4 +1,4 @@
-use crate::barex::abi::primitives::{bx_u8, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u8, bx_u32, bx_u64};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

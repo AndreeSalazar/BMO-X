@@ -1,6 +1,6 @@
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::handle::BmoHandle;
-use crate::barex::abi::handle::kind::HandleKind;
+use crate::bmo_abi::handle::BmoHandle;
+use crate::bmo_abi::handle::kind::HandleKind;
 use crate::barex::audio::effects::dsp_math::{dsp_cos, dsp_sin};
 
 pub struct BxMixer {

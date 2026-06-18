@@ -18,11 +18,33 @@
 //! `barex::graphics` debe funcionar primero sobre framebuffer GOP/software. Los
 //! backends acelerados se conectarán después como plugins/driver opcional, sin
 //! contaminar el boot path.
+//!
+//! ## BMO ABI
+//!
+//! El **BMO ABI** (tipos primitivos, calling convention, handle, status,
+//! string, time, type system, vtable, etc.) **ya no vive aquí**. Ahora está
+//! en `crate::bmo_abi` como módulo top-level. Este `barex` lo usa como
+//! fundación. Por compatibilidad, `crate::barex::abi` re-exporta todo.
+
+//! ## Migración
+//!
+//! | Antes                          | Ahora                              |
+//! |--------------------------------|------------------------------------|
+//! | `crate::barex::abi::*`         | `crate::bmo_abi::*` (recomendado) |
+//! | `crate::barex::abi::primitives`| `crate::bmo_abi::primitives`      |
+//! | `crate::barex::abi::status`    | `crate::bmo_abi::status`          |
+//! | `crate::barex::abi::handle`    | `crate::bmo_abi::handle`          |
+//! | `crate::barex::abi::runtime`   | `crate::bmo_abi::runtime`         |
+//!
+//! El re-export `crate::barex::abi` se mantiene por 1 release, marcado deprecated.
 
 #![allow(dead_code)]
 
-// El BMO ABI es el cimiento. Todos los demás módulos lo usan.
-pub mod abi;
+// El BMO ABI vive en top-level. Re-exportamos por compatibilidad.
+#[deprecated(since = "0.9.0", note = "Use crate::bmo_abi instead")]
+pub mod abi {
+    pub use crate::bmo_abi::*;
+}
 
 pub mod graphics;
 pub mod audio;
@@ -30,7 +52,6 @@ pub mod input;
 pub mod net;
 pub mod shader;
 pub mod compat;
-// bmoasm se movió a lang::bmoasm
 
 /// Versión mayor.menor.patch de la API BareX expuesta a Ring 3.
 pub const BAREX_VERSION: (u16, u16, u16) = (1, 0, 0);
@@ -39,7 +60,7 @@ pub const BAREX_VERSION: (u16, u16, u16) = (1, 0, 0);
 pub const HW_TARGET: &str = "UEFI-GOP+x86_64";
 
 /// Re-export de la versión del BMO ABI.
-pub const BMO_ABI_VERSION: (u8, u8) = abi::BMO_ABI_VERSION;
+pub const BMO_ABI_VERSION: (u8, u8) = crate::bmo_abi::BMO_ABI_VERSION;
 
 /// Resultado canónico para toda la superficie BareX (sin `HRESULT`).
 ///
@@ -68,7 +89,7 @@ pub type BxResult<T> = core::result::Result<T, BxError>;
 impl BxError {
     /// Convierte a `BmoStatus` para retorno via BMO ABI (RAX:RDX).
     #[inline(always)]
-    pub const fn to_status(self) -> abi::BmoStatus {
-        abi::BmoStatus::err(self as u32)
+    pub const fn to_status(self) -> crate::bmo_abi::status::BmoStatus {
+        crate::bmo_abi::status::BmoStatus::err(self as u32)
     }
 }

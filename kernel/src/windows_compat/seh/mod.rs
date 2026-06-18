@@ -22,10 +22,8 @@ pub extern "C" fn AddVectoredExceptionHandler(_first: u32, handler: u64) -> u64 
 #[no_mangle]
 pub extern "C" fn RemoveVectoredExceptionHandler(_handle: u64) -> u32 { 1 }
 
-/// RtlAddFunctionTable — register function table for unwind.
-#[no_mangle]
-pub extern "C" fn RtlAddFunctionTable(_table: u64, _count: u32, _base: u64) -> u64 { 1 }
+/// RtlAddFunctionTable — re-export from ntdll/rtl (single source of truth).
+pub use crate::windows_compat::ntdll::rtl::RtlAddFunctionTable;
 
-/// RtlDeleteFunctionTable — unregister function table.
-#[no_mangle]
-pub extern "C" fn RtlDeleteFunctionTable(_table: u64) -> u64 { 1 }
+/// RtlDeleteFunctionTable — re-export from ntdll/rtl.
+pub use crate::windows_compat::ntdll::rtl::RtlDeleteFunctionTable;

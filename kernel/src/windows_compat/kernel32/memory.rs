@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use crate::barex::abi::primitives::bx_u64;
+use crate::bmo_abi::primitives::bx_u64;
 
 const MEM_COMMIT: u32 = 0x00001000;
 const MEM_RESERVE: u32 = 0x00002000;

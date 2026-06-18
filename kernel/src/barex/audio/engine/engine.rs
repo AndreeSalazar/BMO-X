@@ -6,8 +6,8 @@
 //! Mixes voices into a master bus and pushes PCM blocks to the backend.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::handle::BmoHandle;
-use crate::barex::abi::handle::kind::HandleKind;
+use crate::bmo_abi::handle::BmoHandle;
+use crate::bmo_abi::handle::kind::HandleKind;
 use super::super::format::{SampleFormat, ChannelLayout};
 use super::super::voice::BxVoice;
 use super::super::mixer::BxMixer;

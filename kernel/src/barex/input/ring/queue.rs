@@ -1,5 +1,5 @@
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::primitives::bx_u32;
+use crate::bmo_abi::primitives::bx_u32;
 use super::sqe::InputSqe;
 use super::cqe::InputCqe;
 

@@ -1,6 +1,6 @@
 //! IR y blob de entrada. Reemplaza `D3D12_SHADER_BYTECODE` / `VkShaderModuleCreateInfo`.
 
-use crate::barex::abi::primitives::bx_u8;
+use crate::bmo_abi::primitives::bx_u8;
 use super::stage::ShaderStage;
 
 #[repr(u8)]

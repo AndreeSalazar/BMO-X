@@ -1,4 +1,4 @@
-use crate::barex::abi::primitives::bx_u8;
+use crate::bmo_abi::primitives::bx_u8;
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

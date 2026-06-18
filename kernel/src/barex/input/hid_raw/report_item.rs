@@ -1,6 +1,6 @@
 //! Item del Report Descriptor (1 byte tag + N bytes payload).
 
-use crate::barex::abi::primitives::{bx_u8, bx_u32};
+use crate::bmo_abi::primitives::{bx_u8, bx_u32};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

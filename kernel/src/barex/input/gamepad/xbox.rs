@@ -1,6 +1,6 @@
 //! Mapeo Xbox One/Series → `GamepadButtons` canónico BMO.
 
-use crate::barex::abi::primitives::bx_u16;
+use crate::bmo_abi::primitives::bx_u16;
 
 /// VID Microsoft Xbox controller.
 pub const VID_MICROSOFT: bx_u16 = 0x045E;

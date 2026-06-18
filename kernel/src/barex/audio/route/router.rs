@@ -2,7 +2,7 @@
 //! y `pa_context_get_sink_info_*` (PulseAudio).
 
 use crate::barex::BxResult;
-use crate::barex::abi::handle::BmoHandle;
+use crate::bmo_abi::handle::BmoHandle;
 use super::endpoint::{Endpoint, EndpointKind};
 
 pub struct Router {

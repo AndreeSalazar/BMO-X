@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use crate::barex::abi::primitives::{bx_u8, bx_u32, bx_u64, bx_i64};
+use crate::bmo_abi::primitives::{bx_u8, bx_u32, bx_u64, bx_i64};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

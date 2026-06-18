@@ -1,6 +1,6 @@
 //! CPU flags como identificadores fuertes (para `cuando cf { ... }`).
 
-use crate::barex::abi::primitives::bx_u8;
+use crate::bmo_abi::primitives::bx_u8;
 use super::super::lexer::TokenKind;
 
 #[repr(u8)]

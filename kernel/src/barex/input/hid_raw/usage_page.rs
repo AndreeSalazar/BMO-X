@@ -1,6 +1,6 @@
 //! HID Usage Pages — registro IANA `usb.org/sites/default/files/hut1_4.pdf`.
 
-use crate::barex::abi::primitives::bx_u16;
+use crate::bmo_abi::primitives::bx_u16;
 
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

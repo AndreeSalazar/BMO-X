@@ -1,4 +1,4 @@
-use crate::barex::abi::primitives::bx_u32;
+use crate::bmo_abi::primitives::bx_u32;
 use super::super::types::IpAddr;
 
 #[repr(C)]

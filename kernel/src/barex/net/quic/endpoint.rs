@@ -1,7 +1,7 @@
 //! `BxQuicEndpoint` — endpoint QUIC (cliente o servidor).
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::handle::BmoHandle;
+use crate::bmo_abi::handle::BmoHandle;
 use super::super::types::Endpoint;
 use super::stream::BxQuicStream;
 

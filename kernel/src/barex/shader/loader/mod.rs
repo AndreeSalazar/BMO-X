@@ -1,7 +1,7 @@
 //! Dispatcher de carga de shaders — elige el crate según `ShaderIr`.
 
 use crate::barex::BxResult;
-use crate::barex::abi::primitives::bx_u32;
+use crate::bmo_abi::primitives::bx_u32;
 use super::ir::{ShaderBlob, ShaderIr};
 use super::{native, spirv, dxil, dxbc};
 

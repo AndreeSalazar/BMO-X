@@ -1,6 +1,6 @@
 //! Capabilities de audio declaradas en `manifest.bef.toml`.
 
-use crate::barex::abi::primitives::bx_u32;
+use crate::bmo_abi::primitives::bx_u32;
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -2,7 +2,7 @@
 //! y kernel (consumidor SQ / productor CQ). Tamaño potencia de 2.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::primitives::bx_u32;
+use crate::bmo_abi::primitives::bx_u32;
 use super::sqe::NetSqe;
 use super::cqe::NetCqe;
 

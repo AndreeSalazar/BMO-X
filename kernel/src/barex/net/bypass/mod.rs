@@ -10,7 +10,7 @@
 #![allow(dead_code)]
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::primitives::{bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 /// Anillo zero-copy mapeado al address space del usuario.
 #[repr(C, align(64))]

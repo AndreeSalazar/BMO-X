@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use crate::barex::abi::primitives::bx_u64;
+use crate::bmo_abi::primitives::bx_u64;
 
 const GENERIC_READ: u32 = 0x80000000;
 const GENERIC_WRITE: u32 = 0x40000000;

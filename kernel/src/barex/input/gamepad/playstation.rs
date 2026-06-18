@@ -1,6 +1,6 @@
 //! Mapeo DualSense / DualShock 4 → `GamepadButtons` canónico BMO.
 
-use crate::barex::abi::primitives::bx_u16;
+use crate::bmo_abi::primitives::bx_u16;
 
 pub const VID_SONY: bx_u16 = 0x054C;
 

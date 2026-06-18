@@ -1,7 +1,7 @@
 //! Helpers runtime. `aloc`/`libre` delegan al BMO ABI memory.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::primitives::bx_u64;
+use crate::bmo_abi::primitives::bx_u64;
 
 /// Reserva memoria. Stub — futuro: `barex::abi::memory::alloc_pages`.
 pub fn aloc(_size: usize) -> BxResult<bx_u64> {

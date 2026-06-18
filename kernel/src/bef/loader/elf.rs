@@ -10,7 +10,7 @@
 
 use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use crate::bef::manifest::Provenance;
-use crate::barex::abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64, bx_i64};
+use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64, bx_i64};
 
 pub const ELF_MAGIC: [bx_u8; 4] = [0x7F, b'E', b'L', b'F'];
 

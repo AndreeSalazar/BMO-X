@@ -1,4 +1,4 @@
-use crate::barex::abi::primitives::bx_u32;
+use crate::bmo_abi::primitives::bx_u32;
 
 bitflags::bitflags! {
     /// Mapeo canónico BMO (independiente del fabricante). Cada `xbox`/`ps`/

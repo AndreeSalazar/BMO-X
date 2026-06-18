@@ -1,7 +1,7 @@
 //! `BxQuicStream` — stream individual dentro de un `BxQuicEndpoint`.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::primitives::bx_u64;
+use crate::bmo_abi::primitives::bx_u64;
 
 /// Stream ID QUIC (62-bit, encajado en u64).
 #[repr(transparent)]

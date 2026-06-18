@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use crate::barex::abi::primitives::{bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 /// Una entrada del export table — 32 bytes.
 #[repr(C, align(8))]

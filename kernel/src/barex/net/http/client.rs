@@ -1,7 +1,7 @@
 //! `Http3Client` — cliente HTTP/3 sobre QUIC.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::handle::BmoHandle;
+use crate::bmo_abi::handle::BmoHandle;
 
 pub struct Http3Client {
     handle: BmoHandle,

@@ -1,6 +1,6 @@
 //! Puerto TCP/UDP. Reemplaza `uint16_t htons(port)` con tipo fuerte.
 
-use crate::barex::abi::primitives::bx_u16;
+use crate::bmo_abi::primitives::bx_u16;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]

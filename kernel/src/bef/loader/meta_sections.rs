@@ -28,11 +28,11 @@
 #![allow(dead_code)]
 
 use crate::bef::sections::{SectionKind, SectionTable, SectionEntry};
-use crate::barex::abi::primitives::bx_u32;
-use crate::barex::abi::type_system::{TypeDescriptor, TypeRegistry};
-use crate::barex::abi::lang_bridge::{LangDescriptor, LangRegistry};
-use crate::barex::abi::exception::UnwindTable;
-use crate::barex::abi::runtime::BmoRuntime;
+use crate::bmo_abi::primitives::bx_u32;
+use crate::bmo_abi::type_system::{TypeDescriptor, TypeRegistry};
+use crate::bmo_abi::lang_bridge::{LangDescriptor, LangRegistry};
+use crate::bmo_abi::exception::UnwindTable;
+use crate::bmo_abi::runtime::BmoRuntime;
 use super::LoadError;
 
 /// Vista zero-copy de las 5 secciones meta. Cada campo es `None` si la
@@ -176,7 +176,7 @@ pub fn build_runtime<'a>(
     };
     // VTables y Closures necesitan parsing más estructurado (header + entries
     // de tamaño variable) — sesión futura. Por ahora slice vacío.
-    let vtables: &[crate::barex::abi::vtable::BmoVTable<'a>] = &[];
+    let vtables: &[crate::bmo_abi::vtable::BmoVTable<'a>] = &[];
     let unwind = UnwindTable::from_slice(module_base, &[]);
     let _ = views.vtables;
     let _ = views.reflect;

@@ -1,6 +1,6 @@
 //! `IpAddr` — IPv4/IPv6 unificado, `repr(C)` 18 bytes total (1 tag + 16 dato + pad).
 
-use crate::barex::abi::primitives::bx_u8;
+use crate::bmo_abi::primitives::bx_u8;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

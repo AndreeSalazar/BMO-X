@@ -1,4 +1,4 @@
-use crate::barex::abi::primitives::bx_u8;
+use crate::bmo_abi::primitives::bx_u8;
 
 /// Backend físico activo del engine.
 #[repr(u8)]

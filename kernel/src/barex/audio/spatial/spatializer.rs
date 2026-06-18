@@ -1,5 +1,5 @@
 use crate::barex::BxResult;
-use crate::barex::abi::handle::BmoHandle;
+use crate::bmo_abi::handle::BmoHandle;
 use crate::barex::audio::effects::dsp_math::{dsp_sqrt, dsp_acos};
 use super::listener::ListenerPose;
 

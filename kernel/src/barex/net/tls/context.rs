@@ -1,7 +1,7 @@
 //! `TlsContext` — contexto TLS 1.3 (handshake state + keys).
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::handle::BmoHandle;
+use crate::bmo_abi::handle::BmoHandle;
 use super::cipher::TlsCipherSuite;
 
 pub struct TlsContext {

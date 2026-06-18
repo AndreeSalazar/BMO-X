@@ -9,7 +9,7 @@
 
 use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use crate::bef::manifest::Provenance;
-use crate::barex::abi::primitives::{bx_u16, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64};
 
 // ─── DOS Header (64 bytes) ─────────────────────────────────────────────
 #[repr(C, packed)]

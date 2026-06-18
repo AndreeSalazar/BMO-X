@@ -1,7 +1,7 @@
 //! Resolver DoH/DoT con cache LRU. Sin `getaddrinfo`, sin /etc/hosts.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::handle::BmoHandle;
+use crate::bmo_abi::handle::BmoHandle;
 use super::answer::DnsAnswer;
 
 pub struct DnsResolver {

@@ -1,6 +1,6 @@
 //! Suites TLS 1.3 permitidas. Las **únicas** 5 que reconoce el RFC 8446.
 
-use crate::barex::abi::primitives::bx_u16;
+use crate::bmo_abi::primitives::bx_u16;
 
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

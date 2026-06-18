@@ -4,7 +4,7 @@
 //! el mismo PSO. Análogo al D3D12 PSO cache pero por shader individual.
 
 use crate::barex::{BxError, BxResult};
-use crate::barex::abi::primitives::{bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

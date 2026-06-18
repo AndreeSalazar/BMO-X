@@ -4,7 +4,7 @@
 //! derecha. El traductor compensa para que el usuario siga viendo "south
 //! es el botón confirmar" sin importar familia.
 
-use crate::barex::abi::primitives::bx_u16;
+use crate::bmo_abi::primitives::bx_u16;
 
 pub const VID_NINTENDO: bx_u16 = 0x057E;
 

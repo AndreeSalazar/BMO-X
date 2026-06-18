@@ -1,6 +1,6 @@
 //! MAC Ethernet (6 bytes). Reemplaza `BYTE[6]` y `ether_addr`.
 
-use crate::barex::abi::primitives::bx_u8;
+use crate::bmo_abi::primitives::bx_u8;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

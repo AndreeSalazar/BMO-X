@@ -1,5 +1,5 @@
-use crate::barex::abi::handle::BmoHandle;
-use crate::barex::abi::primitives::{bx_u16, bx_u32};
+use crate::bmo_abi::handle::BmoHandle;
+use crate::bmo_abi::primitives::{bx_u16, bx_u32};
 use super::kind::DeviceKind;
 
 #[repr(C)]
