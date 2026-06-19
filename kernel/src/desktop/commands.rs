@@ -29,18 +29,35 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 ///
-/// BUG WORKAROUND: instead of `-> !`, we return from this function so
-/// the welcome screen can recover if the desktop hangs. The desktop
-/// itself is `-> !` so it will never return normally — but the watchdog
-/// in `run_ring0` will eventually force a return.
+/// v1.5.3: DESKTOP STUBBED — instead of running the desktop loop
+/// (which can hang in paint_overlay or poll_key), we just show a
+/// red bar "DESKTOP STUBBED" and return to welcome.
 pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
-    crate::diag::info("welcome", "Run accepted; starting desktop supervisor");
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: abriendo escritorio Ring 0 + contrato Ring 3.\n");
-    unsafe { crate::desktop::state::DIRTY = true; }
-    crate::sched::user_init::spawn_desktop();
-    // If spawn_desktop ever returns (it shouldn't), we end up here.
-    crate::drivers::serial::serial_write("[welcome] desktop returned (unexpected)\n");
+    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.5.3 (use ESC/welcome to recover)");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED en v1.5.3.\n");
+
+    // Show a big red bar to indicate "stubbed mode"
+    let fb = crate::drivers::gop::get_backbuffer_fb();
+    {
+        let w = 1920u32;
+        let h = 1080u32;
+        // Big red rectangle in the middle
+        crate::desktop::display::fb_fill(50, h / 4, w - 100, 80, 0x00FF2A2A);
+        // Text overlay
+        crate::desktop::display::fb_text(
+            100,
+            (h / 4 + 20),
+            b"[DESKTOP STUBBED] v1.5.3: ring0 desktop loop is disabled. Return to welcome.",
+            0xFFFFFFFF,
+        );
+        let _ = fb; // silence unused
+    }
+
+    // Simulate a 500ms delay so user sees the message
+    crate::arch::cpu::busy_wait_ms(500);
+
+    // Return to welcome (no re-paint needed; welcome::run re-paints)
 }
 
 /// Test compile a ÑEXO program.
