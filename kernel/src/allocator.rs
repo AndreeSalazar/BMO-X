@@ -204,7 +204,48 @@ pub const fn heap_total() -> usize {
 pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
     let layout = core::alloc::Layout::from_size_align(size, align)
         .expect("heap_alloc: invalid layout");
-    ALLOCATOR.alloc(layout)
+    let ptr = ALLOCATOR.alloc(layout);
+    if !ptr.is_null() {
+        // v1.6.5: one-shot diagnostic — confirm heap base + returned ptr are sane.
+        static mut PRINTED: bool = false;
+        if !PRINTED {
+            PRINTED = true;
+            let base = HEAP_SPACE.as_ptr() as u64;
+            crate::drivers::serial::serial_write("[heap] HEAP_SPACE base=0x");
+            print_u64_hex(base);
+            crate::drivers::serial::serial_write(" ret=0x");
+            print_u64_hex(ptr as u64);
+            crate::drivers::serial::serial_write(" size=");
+            print_u64_dec(HEAP_SIZE as u64);
+            crate::drivers::serial::serial_write("\n");
+        }
+    }
+    ptr
+}
+
+fn print_u64_hex(val: u64) {
+    let hex = b"0123456789ABCDEF";
+    for i in (0..16).rev() {
+        let nib = ((val >> (i * 4)) & 0xF) as usize;
+        crate::drivers::serial::serial_write_byte(hex[nib]);
+    }
+}
+
+fn print_u64_dec(mut val: u64) {
+    if val == 0 {
+        crate::drivers::serial::serial_write("0");
+        return;
+    }
+    let mut buf = [0u8; 20];
+    let mut i = 20;
+    while val > 0 {
+        i -= 1;
+        buf[i] = b'0' + (val % 10) as u8;
+        val /= 10;
+    }
+    for j in i..20 {
+        crate::drivers::serial::serial_write_byte(buf[j]);
+    }
 }
 
 #[no_mangle]

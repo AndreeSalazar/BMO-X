@@ -270,13 +270,13 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title, pal::TITLE, 3);
 
     // 4) SubtÃ­tulo
-    let sub = b"Bare Metal Orchestrator v1.6.4";
+    let sub = b"Bare Metal Orchestrator v1.6.5";
     let sw = sub.len() * 8 * 2;
     let sx = cx + (cw - sw) / 2;
     draw_text_scaled(fb, sx as u32, (cy + 120) as u32, sub, pal::SUBTITLE, 2);
 
-    // 5) VersiÃ³n â€” v1.6.4: #PF fix in map_kernel_mmio_huge
-    let ver = b"v1.6.4  ::  FastOS-BMO  Ring 0 + Ring 3  [heap-as-PT|ECAM ready]";
+    // 5) VersiÃ³n â€” v1.6.5: heap-allocator diagnostics to find #PF source
+    let ver = b"v1.6.5  ::  FastOS-BMO  Ring 0 + Ring 3  [heap-pt-diagnose]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);

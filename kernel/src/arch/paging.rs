@@ -177,23 +177,42 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
 /// inside map_kernel_mmio_huge). The kernel heap lives in a region we
 /// know is R/W because we just zeroed it during init_heap().
 unsafe fn alloc_page_table() -> Option<u64> {
-    // Over-allocate (8 KB) so we can return a 4 KB-aligned slice even
-    // though our free-list only honors 8-byte alignment.
+    // v1.6.5: Diagnose heap allocation path. Print raw + aligned addresses
+    // so we can see if the heap is returning something sane.
     let raw = crate::allocator::heap_alloc(8192, 8);
+    crate::drivers::serial::serial_write("[alloc_pt] raw=");
+    crate::drivers::serial::serial_write("0x");
+    print_alloc_hex(raw as u64);
+    crate::drivers::serial::serial_write(" null=");
+    crate::drivers::serial::serial_write(if raw.is_null() { "yes" } else { "no" });
+    crate::drivers::serial::serial_write("\n");
     if raw.is_null() {
         return None;
     }
     let raw_addr = raw as usize;
-    // Round up to next 4 KB boundary.
     let aligned_addr = (raw_addr + 4095) & !4095;
+    crate::drivers::serial::serial_write("[alloc_pt] aligned=0x");
+    print_alloc_hex(aligned_addr as u64);
+    crate::drivers::serial::serial_write(" pad=");
+    crate::drivers::serial::serial_write(if aligned_addr - raw_addr >= 8 { "ok" } else { "no" });
+    crate::drivers::serial::serial_write("\n");
     let aligned = aligned_addr as *mut u8;
-    let pad = aligned_addr - raw_addr;
-    if pad >= 8 {
+    if aligned_addr - raw_addr >= 8 {
         let stash = (aligned_addr - 8) as *mut usize;
         core::ptr::write_unaligned(stash, raw_addr);
     }
+    crate::drivers::serial::serial_write("[alloc_pt] about to write_bytes(aligned, 0, 4096)\n");
     core::ptr::write_bytes(aligned, 0, 4096);
+    crate::drivers::serial::serial_write("[alloc_pt] write_bytes OK\n");
     Some(aligned as u64)
+}
+
+fn print_alloc_hex(val: u64) {
+    let hex = b"0123456789ABCDEF";
+    for i in (0..16).rev() {
+        let nib = ((val >> (i * 4)) & 0xF) as usize;
+        crate::drivers::serial::serial_write_byte(hex[nib]);
+    }
 }
 
 /// Clone kernel PML4 into a new user PML4, sharing kernel mappings (above 0xFFFF_8000_0000_0000).
