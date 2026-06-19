@@ -29,35 +29,51 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 ///
-/// v1.5.3: DESKTOP STUBBED — instead of running the desktop loop
-/// (which can hang in paint_overlay or poll_key), we just show a
-/// red bar "DESKTOP STUBBED" and return to welcome.
+/// v1.5.4: DESKTOP STUBBED — shows red bar then EXITS the welcome loop
+/// with a clear message. The user can power-cycle to re-enter.
+/// (v1.5.3 had a bug: re-entered welcome::run which re-painted on top
+/// of the red bar, looking like a hang.)
 pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
-    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.5.3 (use ESC/welcome to recover)");
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED en v1.5.3.\n");
+    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.5.4 (REBOOT to return to welcome)");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED en v1.5.4. Reboot to recover.\n");
 
-    // Show a big red bar to indicate "stubbed mode"
+    // Show a big red bar with clear instructions
     let fb = crate::drivers::gop::get_backbuffer_fb();
     {
         let w = 1920u32;
         let h = 1080u32;
+        // Clear screen first
+        crate::desktop::display::fb_fill(0, 0, w, h, 0x00000000);
         // Big red rectangle in the middle
-        crate::desktop::display::fb_fill(50, h / 4, w - 100, 80, 0x00FF2A2A);
+        crate::desktop::display::fb_fill(50, h / 4, w - 100, 100, 0x00FF2A2A);
         // Text overlay
         crate::desktop::display::fb_text(
             100,
             (h / 4 + 20),
-            b"[DESKTOP STUBBED] v1.5.3: ring0 desktop loop is disabled. Return to welcome.",
+            b"[DESKTOP STUBBED] v1.5.4",
+            0xFFFFFFFF,
+        );
+        crate::desktop::display::fb_text(
+            100,
+            (h / 4 + 50),
+            b"The ring0 desktop loop is disabled in v1.5.x for stability.",
+            0xFFFFFFFF,
+        );
+        crate::desktop::display::fb_text(
+            100,
+            (h / 4 + 70),
+            b"REBOOT the PC to return to the welcome screen.",
             0xFFFFFFFF,
         );
         let _ = fb; // silence unused
     }
 
-    // Simulate a 500ms delay so user sees the message
-    crate::arch::cpu::busy_wait_ms(500);
-
-    // Return to welcome (no re-paint needed; welcome::run re-paints)
+    // Spin forever (with interrupts enabled) so user can reboot.
+    // This is intentional: we don't trust the welcome loop re-entry.
+    loop {
+        unsafe { core::arch::asm!("hlt"); }
+    }
 }
 
 /// Test compile a ÑEXO program.
