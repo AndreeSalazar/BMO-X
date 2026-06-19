@@ -12,9 +12,9 @@ use crate::boot_info;
 use crate::ui::font;
 
 const MIN_W: usize = 360;
-const MIN_H: usize = 220;
+const MIN_H: usize = 200;
 const MAX_W: usize = 1040;
-const OVERLAY_H: usize = 268;
+const OVERLAY_H: usize = 240;
 const CHAR_W: usize = 8;
 
 // El HUD no debe tapar el welcome ni el primer escritorio. Se activa bajo

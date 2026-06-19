@@ -36,27 +36,38 @@ use super::sound;
 
 // â”€â”€ Paleta del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 mod pal {
-    pub const BG_TOP:    u32 = 0xFF0E1729;
-    pub const BG_BOT:    u32 = 0xFF1F1145;
+    // v1.6.7 palette: modern dark cyan/teal with warm orange accents.
+    // Wallpaper is a dark teal->indigo gradient. Card body is a slightly
+    // raised dark slate with a teal border. Accents use FastOS green for
+    // OK badges and warm orange for hints and the Run button hover.
+    pub const BG_TOP:    u32 = 0xFF050B12;     // near-black with cool tint
+    pub const BG_BOT:    u32 = 0xFF0E1B2E;     // dark indigo
 
-    pub const CARD_BG:   u32 = 0xFF1A2238;
-    pub const CARD_BD:   u32 = 0xFF3A4878;
-    pub const CARD_SHADOW: u32 = 0xFF040611;
+    pub const CARD_BG:   u32 = 0xFF0F1827;     // raised slate
+    pub const CARD_BD:   u32 = 0xFF1F4D5C;     // teal border
+    pub const CARD_SHADOW: u32 = 0xFF020610;   // deep shadow
 
-    pub const TITLE:     u32 = 0xFFE6EDF3;
-    pub const ACCENT:    u32 = 0xFF76B900;     // BMO green
-    pub const SUBTITLE:  u32 = 0xFF8B949E;
-    pub const VERSION:   u32 = 0xFF56D4DD;
+    pub const TITLE:     u32 = 0xFFE6F1F5;     // near-white with cool tint
+    pub const ACCENT:    u32 = 0xFF4ECCA3;     // BMO mint/teal-green
+    pub const SUBTITLE:  u32 = 0xFF7B8FA1;     // cool gray
+    pub const VERSION:   u32 = 0xFFE2C044;     // warm gold (draws eye)
 
-    pub const OK_FG:     u32 = 0xFF27C93F;
-    pub const ITEM:      u32 = 0xFFCBD2DB;
-    pub const PROMPT_BG: u32 = 0xFF0B1224;
-    pub const PROMPT_BD: u32 = 0xFF56D4DD;
-    pub const PROMPT_FG: u32 = 0xFFE6EDF3;
-    pub const HINT:      u32 = 0xFFFFBD2E;
+    pub const OK_FG:     u32 = 0xFF4ECCA3;     // mint
+    pub const OK_BG:     u32 = 0xFF0E2820;     // dark mint pill
+    pub const ITEM:      u32 = 0xFFCBD7E0;     // soft white
+    pub const PROMPT_BG: u32 = 0xFF070D17;     // deeper than card
+    pub const PROMPT_BD: u32 = 0xFF4ECCA3;     // mint border
+    pub const PROMPT_FG: u32 = 0xFFE6F1F5;
+    pub const HINT:      u32 = 0xFFFFAA3D;     // warm orange
 
-    pub const RUN_BTN:   u32 = 0xFF0078D4;
-    pub const RUN_BTN_HI:u32 = 0xFF1A8BE0;
+    pub const RUN_BTN:   u32 = 0xFFE07832;     // warm orange
+    pub const RUN_BTN_HI:u32 = 0xFFFFA056;     // bright orange
+
+    // Phase progress colors (used by the new phase progress bar)
+    pub const PHASE_DONE:  u32 = 0xFF4ECCA3;
+    pub const PHASE_CURR:  u32 = 0xFFE2C044;
+    pub const PHASE_PEND:  u32 = 0xFF243140;
+    pub const PHASE_BG:    u32 = 0xFF0A1018;
 }
 
 // â”€â”€ State del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -248,10 +259,10 @@ fn paint_caret(fb: &Framebuffer, on: bool) {
 }
 
 fn render(fb: &Framebuffer) {
-    // 1) Wallpaper gradient
+    // 1) Wallpaper gradient (darker, more cinematic)
     fb.gradient_v(0, 0, fb.width, fb.height, pal::BG_TOP, pal::BG_BOT);
 
-    // 2) Card centrado
+    // 2) Card centrado — 980×620, raised shadow + teal border.
     let cw = 980usize;
     let ch = 620usize;
     let cx = (fb.width - cw) / 2;
@@ -263,70 +274,124 @@ fn render(fb: &Framebuffer) {
     fb.fill_rounded_rect(cx, cy, cw, ch, 24, pal::CARD_BG);
     fb.draw_rect(cx, cy, cw, ch, pal::CARD_BD, 2);
 
-    // 3) Header â€” "FastOS / BMO" en grande
-    let title = b"FastOS-BMO";
-    let tw = title.len() * 8 * 3;
-    let tx = cx + (cw - tw) / 2;
-    draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title, pal::TITLE, 3);
+    // 3) Header bar inside the card — thin mint accent strip at the top
+    fb.fill_rect(cx + 24, cy + 28, cw - 48, 2, pal::ACCENT);
 
-    // 4) SubtÃ­tulo
-    let sub = b"Bare Metal Orchestrator v1.6.6";
+    // 4) Title — "FastOS-BMO" big, mint accent on the dash
+    let title_left  = b"FastOS";
+    let title_dash  = b"-";
+    let title_right = b"BMO";
+    let scale_t = 3u32;
+    let lw_l = title_left.len()  * 8 * scale_t as usize;
+    let lw_d = title_dash.len()  * 8 * scale_t as usize;
+    let lw_r = title_right.len() * 8 * scale_t as usize;
+    let total = lw_l + lw_d + lw_r + 16; // 16 px gap around dash
+    let mut tx = cx + (cw - total) / 2;
+    draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title_left,  pal::TITLE, scale_t);
+    tx += lw_l + 8;
+    draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title_dash,  pal::ACCENT, scale_t);
+    tx += lw_d + 8;
+    draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title_right, pal::TITLE, scale_t);
+
+    // 5) Subtitle
+    let sub = b"Bare Metal Orchestrator";
     let sw = sub.len() * 8 * 2;
     let sx = cx + (cw - sw) / 2;
-    draw_text_scaled(fb, sx as u32, (cy + 120) as u32, sub, pal::SUBTITLE, 2);
+    draw_text_scaled(fb, sx as u32, (cy + 130) as u32, sub, pal::SUBTITLE, 2);
 
-    // 5) VersiÃ³n â€” v1.6.6: ECAM disabled, force IO-port PCI
-    let ver = b"v1.6.6  ::  FastOS-BMO  Ring 0 + Ring 3  [ECAM-off|IO-port]";
+    // 6) Version line (gold for visibility)
+    let ver = b"v1.6.7  ::  Ring 0 + Ring 3  ::  [ECAM-off | IO-port | heap-PT]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
 
-    // 6) Linea divisoria
-    fb.fill_rect(cx + 60, cy + 200, cw - 120, 1, pal::CARD_BD);
-
-    // 7) Lista de status
-    let items: [&[u8]; 5] = [
-        b"  [OK]  Ring 0 + Ring 3 activos",
-        b"  [OK]  13 syscalls BMO operativos",
-        b"  [OK]  Compositor Ring 0 cargado",
-        b"  [OK]  Mouse PS/2 + Beep PC speaker",
-        b"  [OK]  RAMdisk + FileOpen/Read/Close",
-    ];
-    let mut iy = cy + 220;
-    for it in items {
-        draw_text(fb, (cx + 80) as u32, iy as u32, it, pal::ITEM);
-        // marker verde en la palabra [OK]
-        draw_text(fb, (cx + 80) as u32, iy as u32, b"  [OK]", pal::OK_FG);
-        iy += 24;
+    // 7) Phase progress bar (5 phases) — replaces the boring 5-item list
+    let pb_x = cx + 80;
+    let pb_y = cy + 210;
+    let pb_w = cw - 160;
+    let pb_h = 8;
+    // Track
+    fb.fill_rounded_rect(pb_x, pb_y, pb_w, pb_h, 4, pal::PHASE_BG);
+    // 5 phase segments: P0..P4 all done, P5 (desktop) is current.
+    // We render a per-segment fill colored DONE for finished, CURR for the
+    // current phase, PEND for upcoming. We have 5 phases: cpu, memory,
+    // devices, display, scheduler. Phase 5 (desktop) is the one we're in.
+    let phases_total = 5usize;
+    let seg_w = pb_w / phases_total;
+    let seg_gap = 4usize;
+    let current_phase = 4usize; // we're at "scheduler / desktop" stage
+    for i in 0..phases_total {
+        let sx = pb_x + i * seg_w + seg_gap / 2;
+        let sw = seg_w - seg_gap;
+        let color = if i < current_phase { pal::PHASE_DONE }
+                    else if i == current_phase { pal::PHASE_CURR }
+                    else { pal::PHASE_PEND };
+        fb.fill_rounded_rect(sx, pb_y, sw, pb_h, 3, color);
+    }
+    // Phase labels under the bar
+    let labels: [&[u8]; 5] = [b"CPU", b"Mem", b"Dev", b"Disp", b"Desk"];
+    let mut lx = pb_x;
+    for (i, lab) in labels.iter().enumerate() {
+        let color = if i < current_phase { pal::OK_FG }
+                    else if i == current_phase { pal::VERSION }
+                    else { pal::SUBTITLE };
+        let lw = lab.len() * 8;
+        let lxoff = seg_w.saturating_sub(lw) / 2;
+        draw_text(fb, (lx + lxoff) as u32, (pb_y + 16) as u32, lab, color);
+        lx += seg_w;
     }
 
-    // 8) Prompt box
+    // 8) Subsystem status badges (5) — replaces the boring [OK] list.
+    //    Each badge: a small rounded pill with a mint label and a value.
+    let badges: [(&[u8], &[u8]); 5] = [
+        (b"Ring0+3", b"active"),
+        (b"Syscalls", b"13 ops"),
+        (b"Compositor", b"loaded"),
+        (b"PS/2+Beep", b"ready"),
+        (b"RAMdisk+FS", b"open/rd/cls"),
+    ];
+    let by0 = cy + 260;
+    let bw = (cw - 160 - 4 * 8) / 5;  // 5 badges, 8 px gap
+    let bh = 36;
+    for (i, (label, value)) in badges.iter().enumerate() {
+        let bx = cx + 80 + i * (bw + 8);
+        fb.fill_rounded_rect(bx, by0, bw, bh, 8, pal::OK_BG);
+        fb.draw_rect(bx, by0, bw, bh, pal::OK_FG, 1);
+        draw_text(fb, (bx + 8) as u32, (by0 + 6) as u32, label, pal::OK_FG);
+        // value in dimmer mint
+        draw_text(fb, (bx + 8) as u32, (by0 + 22) as u32, value, pal::SUBTITLE);
+    }
+
+    // 9) Prompt box
     let (px, py, pw, ph) = prompt_rect(fb);
 
     // hint sobre el prompt
     let hint = b"Escribe (Run) y pulsa Enter -> Ring 0 desktop (stub):";
     let hx = px;
-    draw_text(fb, hx as u32, (py - 28) as u32, hint, pal::TITLE);
+    draw_text(fb, hx as u32, (py - 28) as u32, hint, pal::SUBTITLE);
 
     // caja
     fb.fill_rounded_rect(px, py, pw, ph, 10, pal::PROMPT_BG);
     fb.draw_rect(px, py, pw, ph, pal::PROMPT_BD, 2);
 
-    // prompt "> " + input (sin caret: el caret se pinta aparte)
+    // prompt "> " + input
     draw_text_scaled(fb, (px + 16) as u32, (py + 18) as u32, b"> ", pal::ACCENT, 2);
     let len = unsafe { INPUT_LEN };
     if len > 0 {
         let txt = unsafe { &INPUT_BUF[..len] };
         draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, txt, pal::PROMPT_FG, 2);
+    } else {
+        // v1.6.7: show ghosted placeholder when input is empty
+        draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, b"Run", 0xFF3D4F5F, 2);
     }
 
-    // 9) Hint (si hay)
+    // 10) Hint (si hay)
     let (timer, msg) = unsafe { (HINT_TIMER, HINT_MSG) };
     if timer > 0 && !msg.is_empty() {
         draw_text(fb, hx as u32, (py + ph + 16) as u32, msg, pal::HINT);
     }
 
-    // 10) BotÃ³n "RUN" visual a la derecha del prompt
+    // 11) BotÃ³n "RUN" a la derecha del prompt
     let btn_w = 120usize;
     let btn_h = 60usize;
     let bx = px + pw - btn_w;
@@ -342,7 +407,7 @@ fn render(fb: &Framebuffer) {
     let lx = bx + (btn_w - lw) / 2;
     draw_text_scaled(fb, lx as u32, (by + 12) as u32, lbl, pal::TITLE, 3);
 
-    // 11) Pie
+    // 12) Pie — show some quick stats
     let foot = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  GOP framebuffer  ::  UEFI";
     let fw = foot.len() * 8;
     let fx = cx + (cw - fw) / 2;

@@ -29,48 +29,82 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 ///
-/// v1.5.4: DESKTOP STUBBED — shows red bar then EXITS the welcome loop
-/// with a clear message. The user can power-cycle to re-enter.
-/// (v1.5.3 had a bug: re-entered welcome::run which re-painted on top
-/// of the red bar, looking like a hang.)
+/// v1.6.7: DESKTOP STUBBED — shows a friendly v1.6.7 stub screen with
+/// version banner, a 10-second countdown, and a hint to REBOOT to return
+/// to the welcome screen. (v1.5.4 used a flat red bar that lacked version
+/// context and a graceful way back.)
 pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
-    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.5.4 (REBOOT to return to welcome)");
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED en v1.5.4. Reboot to recover.\n");
+    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.7 (REBOOT to return to welcome)");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.7. Reboot to recover.\n");
 
-    // Show a big red bar with clear instructions
-    let fb = crate::drivers::gop::get_backbuffer_fb();
-    {
-        let w = 1920u32;
-        let h = 1080u32;
-        // Clear screen first
-        crate::desktop::display::fb_fill(0, 0, w, h, 0x00000000);
-        // Big red rectangle in the middle
-        crate::desktop::display::fb_fill(50, h / 4, w - 100, 100, 0x00FF2A2A);
-        // Text overlay
-        crate::desktop::display::fb_text(
-            100,
-            (h / 4 + 20),
-            b"[DESKTOP STUBBED] v1.5.4",
-            0xFFFFFFFF,
-        );
-        crate::desktop::display::fb_text(
-            100,
-            (h / 4 + 50),
-            b"The ring0 desktop loop is disabled in v1.5.x for stability.",
-            0xFFFFFFFF,
-        );
-        crate::desktop::display::fb_text(
-            100,
-            (h / 4 + 70),
-            b"REBOOT the PC to return to the welcome screen.",
-            0xFFFFFFFF,
-        );
-        let _ = fb; // silence unused
+    // Render a friendly stub screen
+    let w = 1920u32;
+    let h = 1080u32;
+
+    // 1) Background — dark gradient (top to bottom)
+    crate::desktop::display::fb_fill(0, 0, w, h, 0xFF050B12);
+
+    // 2) Big card in the middle (warm orange border)
+    let cw = 1500u32;
+    let ch = 360u32;
+    let cx = (w - cw) / 2;
+    let cy = (h - ch) / 2;
+    crate::desktop::display::fb_fill(cx - 4, cy - 4, cw + 8, ch + 8, 0xFFE07832);
+    crate::desktop::display::fb_fill(cx, cy, cw, ch, 0xFF0F1827);
+
+    // 3) Title
+    crate::desktop::display::fb_text(
+        cx + 60,
+        cy + 60,
+        b"FastOS-BMO  ::  Desktop STUB  ::  v1.6.7",
+        0xFFE2C044,
+    );
+
+    // 4) Subtitle explanation
+    crate::desktop::display::fb_text(
+        cx + 60,
+        cy + 130,
+        b"The Ring 0 desktop loop is disabled in v1.6.x for stability while we",
+        0xFFCBD7E0,
+    );
+    crate::desktop::display::fb_text(
+        cx + 60,
+        cy + 150,
+        b"harden the ECAM/heap path. Phase 5 (desktop) is up next in the queue.",
+        0xFFCBD7E0,
+    );
+
+    // 5) Countdown — render the v1.6.7 version as a hint
+    crate::desktop::display::fb_text(
+        cx + 60,
+        cy + 220,
+        b"REBOOT the PC to return to the welcome screen.",
+        0xFFFFAA3D,
+    );
+
+    // 6) Live countdown bar (10s -> 0s) — animates by HLT-loop delay
+    let bar_w = cw - 120;
+    let bar_x = cx + 60;
+    let bar_y = cy + 280;
+    let total_steps: u32 = 100;
+    let total_ms: u32 = 5_000; // 5 s countdown
+    let step_ms: u32 = total_ms / total_steps;
+    for step in 0..total_steps {
+        crate::desktop::display::fb_fill(bar_x, bar_y, bar_w, 12, 0xFF1F2A38);
+        let fill_w = (bar_w as u32 * step) / total_steps;
+        let color = if step < total_steps * 2 / 3 {
+            0xFF4ECCA3
+        } else if step < total_steps * 9 / 10 {
+            0xFFE2C044
+        } else {
+            0xFFFF7B72
+        };
+        crate::desktop::display::fb_fill(bar_x, bar_y, fill_w, 12, color);
+        crate::arch::cpu::busy_wait_ms(step_ms as u64);
     }
 
-    // Spin forever (with interrupts enabled) so user can reboot.
-    // This is intentional: we don't trust the welcome loop re-entry.
+    // 7) HLT loop (rebooting is the only way back)
     loop {
         unsafe { core::arch::asm!("hlt"); }
     }
