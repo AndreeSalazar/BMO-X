@@ -67,40 +67,18 @@ pub fn flush_tlb() {
 ///
 /// v1.6.0: PML4 nuevo, NO heredado de UEFI.
 pub unsafe fn create_kernel_page_table() -> Option<u64> {
-    // Allocate a 4 KB page for the new PML4
-    let new_pml4_phys = crate::arch::page_alloc::alloc_pages_contiguous(1)?;
-    if new_pml4_phys == 0 {
-        return None;
-    }
-
-    // Zero the new PML4 (no entries = no mappings)
-    core::ptr::write_bytes(new_pml4_phys as *mut u8, 0, PAGE_SIZE as usize);
-
-    // For each PML4 slot that the kernel uses, copy the UEFI mapping.
-    // This preserves low-memory identity mapping (0..4GB) and any
-    // high-memory mappings the UEFI created for runtime services.
-    let current_cr3 = read_cr3() & ADDR_MASK;
-    let current_pml4 = current_cr3 as *const PageTable;
-    let new_pml4 = new_pml4_phys as *mut PageTable;
-
-    for i in 0..512 {
-        let entry = (*current_pml4).entries[i].0;
-        // Only copy PRESENT entries. Skip slots that the UEFI
-        // intentionally left empty (e.g. user-space slot 0 in
-        // UEFI's view = no mapping for kernel).
-        if entry & flags::PRESENT != 0 {
-            (*new_pml4).entries[i].0 = entry;
-        }
-    }
-
-    // Install the new PML4 in CR3
-    write_cr3(new_pml4_phys);
-
-    crate::drivers::serial::serial_write("[paging] new kernel PML4 installed at 0x");
-    print_hex_debug(new_pml4_phys);
-    crate::drivers::serial::serial_write("\n");
-
-    Some(new_pml4_phys)
+    // v1.6.2: DISABLED. Switching PML4 mid-execution is dangerous:
+    // the current code, stack, and globals are mapped by the OLD PML4.
+    // If the new PML4 doesn't have the same mappings, we triple fault
+    // immediately. The proper way to switch PML4 is in long mode
+    // entry assembly (with all state in low memory) which we don't have.
+    //
+    // Instead, we use the UEFI PML4 and ensure ALL our MMIO mappings
+    // go through map_kernel_mmio_huge() which writes the UEFI PML4.
+    // The UEFI PML4 has identity-mapped low memory (where the kernel
+    // and stack live) AND can be extended with high-memory entries.
+    crate::drivers::serial::serial_write("[paging] create_kernel_page_table: STUBBED (use UEFI PML4)\n");
+    None
 }
 
 fn print_hex_debug(val: u64) {
