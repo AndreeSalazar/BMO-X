@@ -72,18 +72,21 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     boot::visual::clear();
     boot::visual::log("boot", "K0 BootInfo received", boot::visual::color::OK);
 
+    boot::visual::log("boot", "K0a diag::init...", boot::visual::color::OK);
     diag::init();
+    boot::visual::log("boot", "K0b diag::init DONE", boot::visual::color::OK);
 
     // v1.1.0: Build a single BootContext and pass it through every phase.
-    // The BootInfo is a thin wrapper over the bootloader's memory, so we
-    // store a copy of its fields (the BootContext doesn't need to own the
-    // underlying buffer, only the relevant metadata).
+    boot::visual::log("boot", "K0c ctx::new...", boot::visual::color::OK);
     let mut ctx = boot::BootContext::new(unsafe { core::ptr::read(bi_ref) });
+    boot::visual::log("boot", "K0d ctx::new DONE", boot::visual::color::OK);
 
     let t0 = arch::cpu::rdtsc();
 
     // Run phases. Each `Phase::run` returns the TSC tick at which it ended.
+    boot::visual::log("boot", "K0e phase0_cpu::run...", boot::visual::color::OK);
     let (cpu, out0) = boot::phases::phase0_cpu::run(&mut ctx, t0);
+    boot::visual::log("boot", "K0f phase0_cpu::run DONE", boot::visual::color::OK);
 
     boot::phases::ring3_tests::run_all_tests();
 
