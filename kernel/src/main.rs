@@ -61,7 +61,7 @@ unsafe extern "C" fn _start() -> ! {
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     drivers::serial::init_serial();
-    boot::log::info("boot", "FastOS BMO Kernel v1.1.0 starting");
+    boot::log::info("boot", "FastOS-BMO v1.6.0 starting (modern: own PML4 + ECAM)");
 
     let bi_ref = match validate_boot_info(boot_info_ptr) {
         Ok(bi) => bi,

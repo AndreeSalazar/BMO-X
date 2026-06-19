@@ -53,8 +53,8 @@ pub fn init_ecam(base: u64, end_bus: u8) {
     print_u32((round_up_2mb / 0x20000) as u32);
     crate::drivers::serial::serial_write(" x 2 MiB huge pages)\n");
 
-    // v1.5.5: ALWAYS map ECAM, even if base < 4 GB. The UEFI may not
-    // have identity-mapped the entire ECAM region.
+    // v1.6.0: Re-enable ECAM mapping. We have our own PML4 now
+    // (created in Phase 0), so writing to PML4 slots is safe.
     let result = unsafe {
         crate::arch::paging::map_kernel_mmio_huge(base, base, round_up_2mb as usize)
     };

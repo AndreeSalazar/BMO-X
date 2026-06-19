@@ -1,32 +1,32 @@
-//! Welcome screen — pantalla profesional de bienvenida en framebuffer.
+﻿//! Welcome screen â€” pantalla profesional de bienvenida en framebuffer.
 //!
 //! Layout:
 //!
 //! ```text
-//!   ╔══════════════════════════════════════════════════════════╗
-//!   ║                                                          ║
-//!   ║                     FastOS / BMO                         ║
-//!   ║                  Bare Metal Orchestrator                 ║
-//!   ║                       v0.9.0                             ║
-//!   ║                                                          ║
-//!   ║   ✓  Ring 0 + Ring 3 listos                              ║
-//!   ║   ✓  13 syscalls BMO activos                             ║
-//!   ║   ✓  Compositor Ring 0 cargado                           ║
-//!   ║   ✓  Mouse PS/2 + Beep PC speaker                        ║
-//!   ║   ✓  RAMdisk con file I/O                                ║
-//!   ║                                                          ║
-//!   ║   Escribe (Run) y pulsa Enter para entrar al escritorio: ║
-//!   ║                                                          ║
-//!   ║       > _                                                ║
-//!   ║                                                          ║
-//!   ╚══════════════════════════════════════════════════════════╝
+//!   â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+//!   â•‘                                                          â•‘
+//!   â•‘                     FastOS / BMO                         â•‘
+//!   â•‘                  Bare Metal Orchestrator                 â•‘
+//!   â•‘                       v0.9.0                             â•‘
+//!   â•‘                                                          â•‘
+//!   â•‘   âœ“  Ring 0 + Ring 3 listos                              â•‘
+//!   â•‘   âœ“  13 syscalls BMO activos                             â•‘
+//!   â•‘   âœ“  Compositor Ring 0 cargado                           â•‘
+//!   â•‘   âœ“  Mouse PS/2 + Beep PC speaker                        â•‘
+//!   â•‘   âœ“  RAMdisk con file I/O                                â•‘
+//!   â•‘                                                          â•‘
+//!   â•‘   Escribe (Run) y pulsa Enter para entrar al escritorio: â•‘
+//!   â•‘                                                          â•‘
+//!   â•‘       > _                                                â•‘
+//!   â•‘                                                          â•‘
+//!   â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 //! ```
 //!
 //! Comandos aceptados (case-insensitive):
-//!   - `Run`   → lanza el escritorio estable: Ring 0 supervisor + Ring 3 preparado
-//!   - `Hello` → lanza el payload mínimo (`spawn_hello`)
-//!   - `Reboot` → reinicia
-//!   - cualquier otra cosa → muestra hint
+//!   - `Run`   â†’ lanza el escritorio estable: Ring 0 supervisor + Ring 3 preparado
+//!   - `Hello` â†’ lanza el payload mÃ­nimo (`spawn_hello`)
+//!   - `Reboot` â†’ reinicia
+//!   - cualquier otra cosa â†’ muestra hint
 
 use crate::boot_info;
 use crate::ui::fb::Framebuffer;
@@ -34,7 +34,7 @@ use crate::ui::font;
 use super::commands::{eq_ci, trim, should_enter_desktop, enter_desktop, nexo_test_compile};
 use super::sound;
 
-// ── Paleta del welcome ─────────────────────────────────────────────
+// â”€â”€ Paleta del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 mod pal {
     pub const BG_TOP:    u32 = 0xFF0E1729;
     pub const BG_BOT:    u32 = 0xFF1F1145;
@@ -59,7 +59,7 @@ mod pal {
     pub const RUN_BTN_HI:u32 = 0xFF1A8BE0;
 }
 
-// ── State del welcome ──────────────────────────────────────────────
+// â”€â”€ State del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MAX_INPUT: usize = 32;
 static mut INPUT_BUF: [u8; MAX_INPUT] = [0; MAX_INPUT];
@@ -67,7 +67,7 @@ static mut INPUT_LEN: usize = 0;
 static mut HINT_TIMER: u32 = 0;        // frames mostrando hint
 static mut HINT_MSG: &[u8] = b"";
 
-// ── Modificadores de teclado ───────────────────────────────────────
+// â”€â”€ Modificadores de teclado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 static mut KBD_LSHIFT: bool = false;
 static mut KBD_RSHIFT: bool = false;
 static mut KBD_CAPS:   bool = false;
@@ -78,10 +78,10 @@ fn shift_held() -> bool { unsafe { KBD_LSHIFT || KBD_RSHIFT } }
 #[inline]
 fn caps_on() -> bool { unsafe { KBD_CAPS } }
 
-/// Letras: si `shift XOR caps`, mayúscula. Otros símbolos: shift selecciona el
+/// Letras: si `shift XOR caps`, mayÃºscula. Otros sÃ­mbolos: shift selecciona el
 /// glifo superior. Devuelve `None` para teclas sin texto.
 fn translate_scancode(sc: u8) -> Option<u8> {
-    // Base (sin shift) — PS/2 Set 1 US-ASCII estándar.
+    // Base (sin shift) â€” PS/2 Set 1 US-ASCII estÃ¡ndar.
     let (base, shifted): (u8, u8) = match sc {
         0x29 => (b'`',  b'~'),
         0x02 => (b'1',  b'!'),
@@ -118,7 +118,7 @@ fn translate_scancode(sc: u8) -> Option<u8> {
         0x24 => (b'j',  b'J'),
         0x25 => (b'k',  b'K'),
         0x26 => (b'l',  b'L'),
-        0x27 => (164,  165), // ñ y Ñ (distribución española)
+        0x27 => (164,  165), // Ã± y Ã‘ (distribuciÃ³n espaÃ±ola)
         0x28 => (b'\'', b'"'),
         0x2B => (b'\\', b'|'),
         0x2C => (b'z',  b'Z'),
@@ -139,7 +139,7 @@ fn translate_scancode(sc: u8) -> Option<u8> {
 
     let is_letter = base.is_ascii_lowercase();
     let upper = if is_letter {
-        // Letras: shift XOR caps → mayúscula.
+        // Letras: shift XOR caps â†’ mayÃºscula.
         shift_held() ^ caps_on()
     } else {
         shift_held()
@@ -148,7 +148,7 @@ fn translate_scancode(sc: u8) -> Option<u8> {
 }
 
 /// Procesa un scancode crudo y, si es modifier, actualiza el estado;
-/// si es tecla normal pulsada, devuelve el carácter a insertar.
+/// si es tecla normal pulsada, devuelve el carÃ¡cter a insertar.
 fn process_scancode(raw: u8) -> Option<u8> {
     let released = (raw & 0x80) != 0;
     let sc = raw & 0x7F;
@@ -161,7 +161,7 @@ fn process_scancode(raw: u8) -> Option<u8> {
             if !released { unsafe { KBD_CAPS = !KBD_CAPS; } }
             return None;
         }
-        0x1D | 0x38 => return None, // Ctrl / Alt — ignorados aquí
+        0x1D | 0x38 => return None, // Ctrl / Alt â€” ignorados aquÃ­
         _ => {}
     }
 
@@ -169,21 +169,21 @@ fn process_scancode(raw: u8) -> Option<u8> {
     translate_scancode(sc)
 }
 
-// ── Drawing helpers ────────────────────────────────────────────────
+// â”€â”€ Drawing helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn fb() -> Option<Framebuffer> {
     let (addr, w, h, s) = unsafe {
         (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
     };
     if addr == 0 || w == 0 { return None; }
-    // FB_STRIDE llega desde GOP en píxeles por línea. `Framebuffer::new`
+    // FB_STRIDE llega desde GOP en pÃ­xeles por lÃ­nea. `Framebuffer::new`
     // espera pitch en bytes, igual que el escritorio Ring 0. Si pasamos el
-    // stride crudo, el welcome sólo pinta bien el fondo y el texto/tarjetas
+    // stride crudo, el welcome sÃ³lo pinta bien el fondo y el texto/tarjetas
     // quedan corruptos o fuera de sitio en hardware real.
     Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
 }
 
-/// Dibuja texto. Soporta escala 1×, 2× y 3× (replicando píxeles).
+/// Dibuja texto. Soporta escala 1Ã—, 2Ã— y 3Ã— (replicando pÃ­xeles).
 fn draw_text_scaled(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32, scale: u32) {
     let mut cx = x as usize;
     let cy = y as usize;
@@ -214,9 +214,9 @@ fn draw_text(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32) {
     draw_text_scaled(fb, x, y, text, color, 1);
 }
 
-// ── Render del welcome ─────────────────────────────────────────────
+// â”€â”€ Render del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// Geometría fija del prompt — usada tanto por el render principal como
+/// GeometrÃ­a fija del prompt â€” usada tanto por el render principal como
 /// por el repaint local del caret. Devuelve `(prompt_x, prompt_y, w, h)`.
 fn prompt_rect(fb: &Framebuffer) -> (usize, usize, usize, usize) {
     let cw = 980usize;
@@ -230,7 +230,7 @@ fn prompt_rect(fb: &Framebuffer) -> (usize, usize, usize, usize) {
     (px, py, pw, ph)
 }
 
-/// Posición del caret en píxeles, dado `len` (caracteres ya escritos).
+/// PosiciÃ³n del caret en pÃ­xeles, dado `len` (caracteres ya escritos).
 fn caret_pos(fb: &Framebuffer) -> (usize, usize) {
     let (px, py, _, _) = prompt_rect(fb);
     let len = unsafe { INPUT_LEN };
@@ -239,7 +239,7 @@ fn caret_pos(fb: &Framebuffer) -> (usize, usize) {
     (cx, cy)
 }
 
-/// Pinta o borra el caret en su posición actual. No toca el resto del
+/// Pinta o borra el caret en su posiciÃ³n actual. No toca el resto del
 /// frame: usado tanto por el render full como por el blink local.
 fn paint_caret(fb: &Framebuffer, on: bool) {
     let (cx, cy) = caret_pos(fb);
@@ -263,20 +263,20 @@ fn render(fb: &Framebuffer) {
     fb.fill_rounded_rect(cx, cy, cw, ch, 24, pal::CARD_BG);
     fb.draw_rect(cx, cy, cw, ch, pal::CARD_BD, 2);
 
-    // 3) Header — "FastOS / BMO" en grande
-    let title = b"FastOS / BMO";
+    // 3) Header â€” "FastOS / BMO" en grande
+    let title = b"FastOS-BMO";
     let tw = title.len() * 8 * 3;
     let tx = cx + (cw - tw) / 2;
     draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title, pal::TITLE, 3);
 
-    // 4) Subtítulo
-    let sub = b"Bare Metal Orchestrator";
+    // 4) SubtÃ­tulo
+    let sub = b"Bare Metal Orchestrator v1.6.0";
     let sw = sub.len() * 8 * 2;
     let sx = cx + (cw - sw) / 2;
     draw_text_scaled(fb, sx as u32, (cy + 120) as u32, sub, pal::SUBTITLE, 2);
 
-    // 5) Versión
-    let ver = b"v1.5.5  ::  Ring 0 + Ring 3  [ECAM always mapped]";
+    // 5) VersiÃ³n â€” v1.6.0: nuevo branding FastOS-BMO con kernelspace completo
+    let ver = b"v1.6.0  ::  FastOS-BMO  Ring 0 + Ring 3  [own PML4|ECAM]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
@@ -326,7 +326,7 @@ fn render(fb: &Framebuffer) {
         draw_text(fb, hx as u32, (py + ph + 16) as u32, msg, pal::HINT);
     }
 
-    // 10) Botón "RUN" visual a la derecha del prompt
+    // 10) BotÃ³n "RUN" visual a la derecha del prompt
     let btn_w = 120usize;
     let btn_h = 60usize;
     let bx = px + pw - btn_w;
@@ -349,11 +349,11 @@ fn render(fb: &Framebuffer) {
     draw_text(fb, fx as u32, (cy + ch - 36) as u32, foot, pal::SUBTITLE);
 }
 
-/// Render mínimo y robusto para hardware real.
+/// Render mÃ­nimo y robusto para hardware real.
 ///
-/// Usa sólo `clear/fill_rect/text` y evita gradientes/rounded-corners en el
-/// boot path. Así el prompt y el hotkey diag funcionan aunque el renderer
-/// avanzado tenga un problema de GOP/pitch específico de la máquina.
+/// Usa sÃ³lo `clear/fill_rect/text` y evita gradientes/rounded-corners en el
+/// boot path. AsÃ­ el prompt y el hotkey diag funcionan aunque el renderer
+/// avanzado tenga un problema de GOP/pitch especÃ­fico de la mÃ¡quina.
 fn render_safe(fb: &Framebuffer) {
     fb.clear(0xFF07111F);
     fb.fill_rect(0, 0, fb.width, 42, 0xFF101820);
@@ -380,13 +380,13 @@ fn render_safe(fb: &Framebuffer) {
     }
 }
 
-// ── State global del welcome ───────────────────────────────────────
+// â”€â”€ State global del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // `DIRTY` se pone a true cada vez que algo del frame cambia (input,
-// hint, etc). El loop principal sólo re-renderiza el frame entero
+// hint, etc). El loop principal sÃ³lo re-renderiza el frame entero
 // cuando `DIRTY = true`; el blink del caret se gestiona aparte
-// repintando sólo la zona del caret. Esto elimina el ghost flicker
-// que se veía cuando hacíamos full repaint cada 32 ms.
+// repintando sÃ³lo la zona del caret. Esto elimina el ghost flicker
+// que se veÃ­a cuando hacÃ­amos full repaint cada 32 ms.
 
 static mut DIRTY: bool = true;
 static mut LAST_BLINK_ON: bool = false;
@@ -403,7 +403,7 @@ fn show_hint(msg: &'static [u8]) {
     mark_dirty();
 }
 
-// ── Self-test commands ─────────────────────────────────────────────
+// â”€â”€ Self-test commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn run_phase_self_test(n: u8) {
     use crate::boot::phases::report_self_test;
@@ -472,7 +472,7 @@ fn process_enter() {
         sound::beep(440, 80);
         crate::sched::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"ring3") {
-        // Alias for "hello" — explicit Ring 3 transition test.
+        // Alias for "hello" â€” explicit Ring 3 transition test.
         crate::diag::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
         sound::beep(440, 80);
         crate::sched::user_init::spawn_hello();
@@ -480,7 +480,7 @@ fn process_enter() {
         crate::diag::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
     } else if eq_ci(trimmed_cmd, b"nexo") {
-        crate::diag::info("welcome", "NEXO compiler test — compiling hello program");
+        crate::diag::info("welcome", "NEXO compiler test â€” compiling hello program");
         nexo_test_compile();
     } else if eq_ci(trimmed_cmd, b"test desktop") {
         // Isolated desktop test: render one frame and report.
@@ -513,17 +513,17 @@ fn process_enter() {
     mark_dirty();
 }
 
-// ── Main loop ──────────────────────────────────────────────────────
+// â”€â”€ Main loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub fn run() -> ! {
     crate::drivers::serial::serial_write("[welcome] Pantalla de bienvenida activa.\n");
 
-    // v1.5.0: Windows-inspired logon sound (sweep A4 → A5)
+    // v1.5.0: Windows-inspired logon sound (sweep A4 â†’ A5)
     crate::gustos::tracks::windows::logon();
     crate::drivers::serial::serial_write("[welcome] gustOS logon sound played\n");
 
     loop {
-        // 1) Full repaint solo si algo cambió.
+        // 1) Full repaint solo si algo cambiÃ³.
         if unsafe { DIRTY } {
             if let Some(fb) = fb() {
                 render(&fb);
@@ -574,7 +574,7 @@ pub fn run() -> ! {
             core::hint::spin_loop();
         }
 
-        // 3) Decrementar hint timer — si llega a 0, marcar dirty para
+        // 3) Decrementar hint timer â€” si llega a 0, marcar dirty para
         //    borrarlo del frame.
         unsafe {
             let prev = HINT_TIMER;
@@ -598,7 +598,7 @@ fn handle_char(ch: u8) {
         b'\n' => process_enter(),
         8 => unsafe {
             if INPUT_LEN > 0 {
-                // Antes de mover el caret, borrarlo de la posición vieja
+                // Antes de mover el caret, borrarlo de la posiciÃ³n vieja
                 // para evitar ghost de la barra del caret previo.
                 if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_LEN -= 1;

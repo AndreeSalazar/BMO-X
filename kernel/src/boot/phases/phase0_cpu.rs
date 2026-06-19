@@ -34,6 +34,16 @@ pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
 
     bmo_abi::time::init_clock(arch::cpu::rdtsc(), cpu.tsc_freq);
 
+    // v1.6.0: Install our own PML4 (not UEFI's) so we can safely map
+    // MMIO regions above 4 GB (PCI ECAM) without corrupting UEFI
+    // runtime services that share the inherited page table.
+    log::info("phase0", "Installing new kernel PML4");
+    if unsafe { arch::paging::create_kernel_page_table() }.is_none() {
+        log::fault("phase0", "Failed to allocate new PML4 page");
+    } else {
+        log::info("phase0", "Kernel PML4 installed (safe for ECAM mapping)");
+    }
+
     // v1.1.0: write canonical state into the context
     ctx.cpu.tsc_freq_hz = cpu.tsc_freq;
     ctx.cpu.vendor = {

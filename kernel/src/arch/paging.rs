@@ -59,6 +59,64 @@ pub fn flush_tlb() {
     unsafe { write_cr3(read_cr3()); }
 }
 
+/// Allocate a new PML4 page and initialize it as a kernel page table.
+/// This is called once during early boot to give us a clean page table
+/// that we own (instead of inheriting UEFI's, which only identity-maps
+/// the lower 4 GB and may have entries that conflict with our MMIO
+/// mappings at addresses > 4 GB).
+///
+/// v1.6.0: PML4 nuevo, NO heredado de UEFI.
+pub unsafe fn create_kernel_page_table() -> Option<u64> {
+    // Allocate a 4 KB page for the new PML4
+    let new_pml4_phys = crate::arch::page_alloc::alloc_pages_contiguous(1)?;
+    if new_pml4_phys == 0 {
+        return None;
+    }
+
+    // Zero the new PML4 (no entries = no mappings)
+    core::ptr::write_bytes(new_pml4_phys as *mut u8, 0, PAGE_SIZE as usize);
+
+    // For each PML4 slot that the kernel uses, copy the UEFI mapping.
+    // This preserves low-memory identity mapping (0..4GB) and any
+    // high-memory mappings the UEFI created for runtime services.
+    let current_cr3 = read_cr3() & ADDR_MASK;
+    let current_pml4 = current_cr3 as *const PageTable;
+    let new_pml4 = new_pml4_phys as *mut PageTable;
+
+    for i in 0..512 {
+        let entry = (*current_pml4).entries[i].0;
+        // Only copy PRESENT entries. Skip slots that the UEFI
+        // intentionally left empty (e.g. user-space slot 0 in
+        // UEFI's view = no mapping for kernel).
+        if entry & flags::PRESENT != 0 {
+            (*new_pml4).entries[i].0 = entry;
+        }
+    }
+
+    // Install the new PML4 in CR3
+    write_cr3(new_pml4_phys);
+
+    crate::drivers::serial::serial_write("[paging] new kernel PML4 installed at 0x");
+    print_hex_debug(new_pml4_phys);
+    crate::drivers::serial::serial_write("\n");
+
+    Some(new_pml4_phys)
+}
+
+fn print_hex_debug(val: u64) {
+    let hex = b"0123456789ABCDEF";
+    let mut buf = [0u8; 18];
+    buf[0] = b'0';
+    buf[1] = b'x';
+    for i in 0..16 {
+        let nib = ((val >> (60 - i * 4)) & 0xF) as usize;
+        buf[2 + i] = hex[nib];
+    }
+    crate::drivers::serial::serial_write(unsafe {
+        core::str::from_utf8_unchecked(&buf)
+    });
+}
+
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
 const PAGE_SIZE: u64 = 4096;
 
