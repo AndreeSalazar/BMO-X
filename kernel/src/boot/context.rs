@@ -87,8 +87,12 @@ impl DevicesContext {
 /// The full boot context. Each phase receives `&mut BootContext` and
 /// reads/writes the slice it owns. Once a phase is done, downstream
 /// phases can rely on the data being filled in.
+///
+/// v1.5.1: `boot_info` was a `BootInfo` by value (4.2 KB on stack,
+/// caused overflow). Now it's a `*const BootInfo` pointing to the
+/// bootloader's memory, which is identity-mapped and persistent.
 pub struct BootContext {
-    pub boot_info: BootInfo,
+    pub boot_info: *const BootInfo,
     pub cpu: CpuContext,
     pub memory: MemoryContext,
     pub devices: DevicesContext,
@@ -111,7 +115,9 @@ impl PhaseSnapshot {
 }
 
 impl BootContext {
-    pub fn new(boot_info: BootInfo) -> Self {
+    /// Create a BootContext pointing to the bootloader's BootInfo.
+    /// v1.5.1: takes a pointer instead of a value to avoid 4.2 KB stack copy.
+    pub fn new(boot_info: *const BootInfo) -> Self {
         Self {
             boot_info,
             cpu: CpuContext::empty(),
@@ -119,6 +125,16 @@ impl BootContext {
             devices: DevicesContext::empty(),
             bmo_abi_initialized: false,
             phase_outputs: [None; 8],
+        }
+    }
+
+    /// Helper: dereferences `boot_info` safely. Returns None if the
+    /// pointer is null (shouldn't happen after Phase 0).
+    pub fn boot_info(&self) -> Option<&BootInfo> {
+        if self.boot_info.is_null() {
+            None
+        } else {
+            Some(unsafe { &*self.boot_info })
         }
     }
 

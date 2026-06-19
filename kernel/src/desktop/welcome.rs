@@ -276,7 +276,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 120) as u32, sub, pal::SUBTITLE, 2);
 
     // 5) Versión
-    let ver = b"v1.5.0  ::  Ring 0 + Ring 3  [gustOS|FM synth|PC speaker]";
+    let ver = b"v1.5.1  ::  Ring 0 + Ring 3  [gustOS|BootInfo ptr fix]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);

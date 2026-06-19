@@ -1,13 +1,13 @@
 //! Phase 5 — Desktop.
 
 use crate::{allocator, boot::log, desktop, sched, ui};
+use crate::boot::context::BootContext;
 use super::phase0_cpu::CpuState;
 use super::phase1_memory::MemState;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
-use fastos_boot_protocol;
 
 pub fn run(
-    bi: &fastos_boot_protocol::BootInfo,
+    ctx: &BootContext,
     cpu: &CpuState,
     mem: &MemState,
     boot_start: u64,
@@ -25,6 +25,7 @@ pub fn run(
     log::info_u64("phase5", "Total boot time (us)", boot_us);
     log::info_u64("phase5", "Phase 4 time (TSC ticks)", boot_end - phase4_end);
 
+    let bi = ctx.boot_info().expect("BootInfo not set");
     let mut con = ui::console::Console::new(
         bi.fb_addr, bi.fb_pitch(), bi.fb_stride, bi.fb_width, bi.fb_height,
     );

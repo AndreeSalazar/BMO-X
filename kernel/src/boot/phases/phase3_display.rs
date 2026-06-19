@@ -1,11 +1,13 @@
 //! Phase 3 — Display.
 
 use crate::{boot::log, desktop, drivers};
+use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
-use fastos_boot_protocol;
 
-pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> PhaseOutput {
+pub fn run(ctx: &BootContext, prev_end: u64) -> PhaseOutput {
     log::info("phase3", "=== Phase 3: Display ===");
+
+    let bi = ctx.boot_info().expect("BootInfo not set");
 
     if bi.fb_addr == 0 {
         log::fault("phase3", "No framebuffer; cannot start visual desktop");

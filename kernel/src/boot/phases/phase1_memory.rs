@@ -1,12 +1,12 @@
 //! Phase 1 — Memory.
 //!
 //! v1.1.0: Now takes `&mut BootContext` and writes memory info there.
+//! v1.5.1: BootInfo dereferenced from `ctx.boot_info()` pointer (no stack copy).
 
 use crate::{allocator, arch, boot::log};
 use crate::boot::context::BootContext;
 use super::phase0_cpu::CpuState;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
-use fastos_boot_protocol;
 
 pub struct MemState {
     pub free_pages: u64,
@@ -15,8 +15,10 @@ pub struct MemState {
     pub heap_used: u64,
 }
 
-pub fn run(ctx: &mut BootContext, bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, PhaseOutput) {
+pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
     log::info("phase1", "=== Phase 1: Memory ===");
+
+    let bi = ctx.boot_info().expect("BootInfo not set");
 
     if bi.memory_map_count == 0 {
         log::fault("phase1", "UEFI memory map is empty");

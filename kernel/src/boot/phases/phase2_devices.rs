@@ -36,9 +36,11 @@ fn store_and_log(bus_count_msg: &'static str, pci: pci::PciScanResult) -> u32 {
     count as u32
 }
 
-pub fn run(ctx: &mut BootContext, bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> PhaseOutput {
+pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
     log::info("phase2", "=== Phase 2: Devices ===");
     log::info("phase2", "GDT+IDT+SYSCALL already active (loaded in Phase 0)");
+
+    let bi = ctx.boot_info().expect("BootInfo not set");
 
     crate::drivers::serial::serial_write("[phase2] RSDP addr = 0x");
     boot_serial::hex(bi.rsdp_addr);
