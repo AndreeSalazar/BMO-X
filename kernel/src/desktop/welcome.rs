@@ -310,7 +310,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 130) as u32, sub, pal::SUBTITLE, 2);
 
     // 6) Version line
-    let ver = b"v1.6.13 ::  Ring 0 + Ring 3  ::  [dithered-wp|splash|stubbar-fix]";
+    let ver = b"v1.6.15 ::  Ring 0 + Ring 3  ::  [splash-fix|log-visible|warns-65]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);

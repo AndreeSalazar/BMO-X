@@ -3,7 +3,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::barex::{BxError, BxResult};
+use crate::barex::BxResult;
 use super::super::super::parser::ast::Ast;
 use super::reg::Reg64;
 
@@ -41,7 +41,7 @@ impl Emitter {
         Optimizer::optimize(&mut ast_clone);
 
         // Usar el Traductor para generar código
-        let mut trad = Traductor::new();
+        let _trad = Traductor::new();
         // We can't easily use Traductor because it owns state. Instead we duplicate
         // its logic via the public backend.
         Ok(())

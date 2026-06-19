@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-pub use crate::bmo_abi::interop::win32::ntdll_syscalls::{NtAllocateVirtualMemory, NtFreeVirtualMemory, NtProtectVirtualMemory};
+pub use crate::bmo_abi::interop::win32::ntdll_syscalls::{NtAllocateVirtualMemory, NtFreeVirtualMemory};
 
 /// NtAllocateVirtualMemory with MEM_COMMIT semantics.
 #[no_mangle]

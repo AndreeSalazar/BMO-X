@@ -5,7 +5,6 @@
 
 use crate::{allocator, arch, boot::log};
 use crate::boot::context::BootContext;
-use super::phase0_cpu::CpuState;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
 pub struct MemState {

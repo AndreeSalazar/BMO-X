@@ -13,10 +13,9 @@ pub mod ffi;
 pub mod types;
 
 // Re-exports
-pub use ffi::FfiBridge;
 
 use crate::barex::BxResult;
-use super::traits::{AbiBridge, AbiSignature, AbiType, AbiParam};
+use super::traits::{AbiBridge, AbiSignature, AbiType};
 
 /// ABI bridge implementation
 pub struct NexoAbiBridge {

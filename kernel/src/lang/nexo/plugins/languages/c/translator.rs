@@ -78,7 +78,7 @@ impl CToNexo {
                     .collect();
                 Ok(Some(NStmt::StructDecl { name: name.clone(), fields: nexo_fields }))
             }
-            CItem::Enum { name, variants } => {
+            CItem::Enum { name: _, variants } => {
                 // Translate enum as constants
                 let mut stmts = Vec::new();
                 for (i, (var_name, val)) in variants.iter().enumerate() {
@@ -194,7 +194,7 @@ impl CToNexo {
             }
             CStmt::Break => Ok(Some(NStmt::Break)),
             CStmt::Continue => Ok(Some(NStmt::Continue)),
-            CStmt::Label(name) => {
+            CStmt::Label(_name) => {
                 // Labels become comments in ÑEXO
                 Ok(None)
             }
@@ -264,7 +264,7 @@ impl CToNexo {
                 let size = ty.size_bytes();
                 Ok(Expr::LitInt(size))
             }
-            CExpr::SizeofExpr(inner) => {
+            CExpr::SizeofExpr(_inner) => {
                 // For sizeof(expr), we need to know the type
                 // For now, return a placeholder (8 bytes for pointers)
                 Ok(Expr::LitInt(8))

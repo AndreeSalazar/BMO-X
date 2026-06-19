@@ -127,7 +127,7 @@ pub fn dsp_min(a: f32, b: f32) -> f32 {
 pub fn dsp_sqrt(x: f32) -> f32 {
     if x <= 0.0 { return 0.0; }
     // Newton-Raphson: 3 iterations gives ~24 bits of precision
-    let mut guess = f32::from_bits(((x.to_bits() >> 1) + 0x1FC00000)); // rough estimate
+    let mut guess = f32::from_bits((x.to_bits() >> 1) + 0x1FC00000); // rough estimate
     for _ in 0..4 {
         guess = (guess + x / guess) * 0.5;
     }

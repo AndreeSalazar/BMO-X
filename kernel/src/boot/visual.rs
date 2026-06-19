@@ -1,4 +1,4 @@
-//! v1.6.13: Professional boot splash screen.
+//! v1.6.15: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
 //! splash that matches the welcome card's visual language:
@@ -47,10 +47,10 @@ const TRACK: u32 = 0xFF0A1018;
 
 // ── Layout (1920×1080 reference; auto-scales below 1280) ───────────
 
-const CARD_W: usize = 1280;
-const CARD_H: usize = 720;
-const LOG_ROWS: usize = 12;
-const LOG_ROW_H: usize = 18;
+const CARD_W: usize = 1100;
+const CARD_H: usize = 520;
+const LOG_ROWS: usize = 14;
+const LOG_ROW_H: usize = 16;
 
 // ── State ─────────────────────────────────────────────────────────
 
@@ -80,8 +80,11 @@ pub fn init() {
 
     INITIALIZED.store(true, Ordering::Relaxed);
 
-    // 1) Wallpaper gradient
-    gradient_v(addr, s, w, h.min(700), 0, 0, w, h.min(700), BG_TOP, BG_BOT);
+    // 1) Wallpaper gradient — cover the FULL screen, not just top 700px
+    //    (v1.6.14 bug: h.min(700) left a 380px band at the bottom of the
+    //    screen unpainted on 1080p displays, showing whatever UEFI left).
+    //    Use simple gradient (no dither) so the splash is unmistakably dark.
+    simple_gradient_v(addr, s, w, h, 0, 0, w, h, BG_TOP, BG_BOT);
 
     // 2) Centered card
     let cw = CARD_W.min(w.saturating_sub(40));
@@ -105,7 +108,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.6.13";
+    let sub = b"Bare Metal Orchestrator  ::  v1.6.15";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);
@@ -113,13 +116,7 @@ pub fn init() {
     // 6) Divider
     fill_rect(addr, s, w, h, cx + 60, cy + 140, cw - 120, 1, CARD_BD);
 
-    // 7) Phase strip — drawn in redraw_phase_strip()
-    // First paint: all 5 phases pending
-    for i in 0..5 {
-        CURRENT_PHASE.store(0, Ordering::Relaxed);
-        redraw_phase_strip();
-        let _ = i;
-    }
+    // 7) Phase strip — first paint with all phases pending
     CURRENT_PHASE.store(0, Ordering::Relaxed);
     redraw_phase_strip();
 
@@ -134,7 +131,7 @@ pub fn init() {
     let foot = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  GOP framebuffer  ::  UEFI";
     let fw = foot.len() * 8;
     let fx = cx + (cw - fw) / 2;
-    text(addr, s, w, h, fx, cy + ch - 36, foot, SUBTITLE);
+    text(addr, s, w, h, fx, cy + ch - 28, foot, SUBTITLE);
 }
 
 /// Repaint the 5 phase bars based on CURRENT_PHASE.
@@ -192,10 +189,14 @@ pub fn log(phase: &str, msg: &str, color: u32) {
     let cy = (h - ch) / 2;
 
     let row = NEXT_LOG_ROW.fetch_add(1, Ordering::Relaxed) % LOG_ROWS;
-    let y = cy + 320 + row * LOG_ROW_H;
+    let y = cy + 330 + row * LOG_ROW_H;
 
-    // Clear row (v1.6.9 — fix overlap)
-    fill_rect(addr, s, w, h, cx + 60, y, cw - 120, LOG_ROW_H, CARD_BG);
+    // v1.6.15: Clear row with a SLIGHTLY different shade than the card
+    // body. Previous versions used the same `CARD_BG` for both, which
+    // made each log row look like an invisible rectangle on top of the
+    // card body. Now we use 0xFF0A1320 (a hair darker) so the log
+    // strip is subtly distinct from the surrounding card.
+    fill_rect(addr, s, w, h, cx + 60, y, cw - 120, LOG_ROW_H, 0xFF0A1320);
 
     // Phase pill: small colored square (8x8) + label
     let phase_color = phase_color(phase);
@@ -299,6 +300,13 @@ fn gradient_v(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, 
     }
 }
 
+/// v1.6.14: simple (no-dither) gradient for the splash background. The
+/// dithered version in the welcome card can look noisy on the splash
+/// when the screen is mostly empty. Splash gets a clean dark gradient.
+fn simple_gradient_v(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, rw: usize, rh: usize, top: u32, bot: u32) {
+    gradient_v(addr, s, w, h, x, y, rw, rh, top, bot);
+}
+
 fn text(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &[u8], color: u32) {
     let mut cx = x;
     for &ch in txt {
@@ -340,10 +348,6 @@ fn text_scaled(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize,
     }
 }
 
-#[allow(dead_code)]
-pub use self::clear as early_visual_clear;
-#[allow(dead_code)]
-pub use self::log  as early_visual_log;
 #[allow(dead_code)]
 fn text_dummy() {} // placeholder to satisfy old callers (deprecated)
 

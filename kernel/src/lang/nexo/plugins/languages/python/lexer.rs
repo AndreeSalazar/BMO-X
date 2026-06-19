@@ -8,7 +8,6 @@ use alloc::vec::Vec;
 use alloc::vec;
 
 use crate::barex::BxResult;
-use super::ast::PyBinOp;
 
 /// Python token.
 #[derive(Debug, Clone, PartialEq)]

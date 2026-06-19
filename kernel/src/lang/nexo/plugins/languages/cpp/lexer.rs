@@ -7,7 +7,6 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::barex::BxResult;

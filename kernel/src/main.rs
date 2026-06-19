@@ -12,6 +12,15 @@
 #![no_std]
 #![no_main]
 
+// v1.6.15: allow `static_mut_refs` warnings project-wide. The Rust 2024
+// edition requires `&raw const FOO` / `&raw mut FOO` for shared refs to
+// `static mut`, but FastOS's `no_std` kernel predates that guidance and
+// uses `&FOO` in dozens of places (allocator, IDT, PCI, etc). Converting
+// them all is a 40-warning sweep with no behavior change; we'll do it
+// progressively in a v1.7.x cleanup pass. For now silence the warning
+// so the boot log doesn't drown in noise.
+#![allow(static_mut_refs)]
+
 extern crate alloc;
 
 mod allocator;

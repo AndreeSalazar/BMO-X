@@ -23,10 +23,9 @@ pub mod visual;
 pub mod phases;
 
 // Re-export BootContext at the crate root for ergonomic call sites
-pub use context::{BootContext, CpuContext, MemoryContext, DevicesContext, PhaseSnapshot};
+pub use context::BootContext;
 
 // Re-export boot serial helpers at `crate::boot::*` for legacy call sites
 // that historically imported `serial_hex` / `serial_u32` from `crate::main`.
 // New code should use `crate::boot::serial::hex` / `u32_dec`.
 pub use serial::hex   as serial_hex;
-pub use serial::u32_dec as serial_u32;

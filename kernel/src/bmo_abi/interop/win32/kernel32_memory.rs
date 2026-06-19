@@ -17,7 +17,7 @@ const MEM_DECOMMIT: u32 = 0x00004000;
 /// Real implementation: uses BMO heap allocator.
 /// Maps to BMO syscall 0x10 (Mmap) conceptually.
 #[no_mangle]
-pub extern "C" fn VirtualAlloc(addr: bx_u64, size: bx_u64, alloc_type: u32, protect: u32) -> bx_u64 {
+pub extern "C" fn VirtualAlloc(addr: bx_u64, size: bx_u64, _alloc_type: u32, protect: u32) -> bx_u64 {
     let _ = (addr, protect);
 
     if size == 0 || size > (1 << 30) {
@@ -135,7 +135,7 @@ pub extern "C" fn GetProcessHeap() -> bx_u64 {
 
 /// GlobalAlloc — allocate global memory.
 #[no_mangle]
-pub extern "C" fn GlobalAlloc(flags: u32, size: bx_u64) -> bx_u64 {
+pub extern "C" fn GlobalAlloc(_flags: u32, size: bx_u64) -> bx_u64 {
     HeapAlloc(1, 0, size)
 }
 
@@ -148,7 +148,7 @@ pub extern "C" fn GlobalFree(handle: bx_u64) -> bx_u64 {
 
 /// LocalAlloc — allocate local memory.
 #[no_mangle]
-pub extern "C" fn LocalAlloc(flags: u32, size: bx_u64) -> bx_u64 {
+pub extern "C" fn LocalAlloc(_flags: u32, size: bx_u64) -> bx_u64 {
     HeapAlloc(1, 0, size)
 }
 

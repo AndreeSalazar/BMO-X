@@ -3,11 +3,10 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub use super::super::c::ast::{CType, CExpr, CStmt, CItem, CAst, CParam, CBinOp, CUnaryOp};
+pub use super::super::c::ast::{CType, CExpr, CStmt, CItem, CParam};
 
 /// C++ access specifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -20,4 +20,3 @@ pub mod bsf;
 pub mod loader;
 
 // Re-exports planos para acceso ergonómico
-pub use bsf::{BsfArch, BsfError, BsfShader, BsfStage};

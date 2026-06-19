@@ -1,17 +1,17 @@
 //! Phase 5 — Desktop.
 
-use crate::{allocator, boot::log, desktop, sched, ui};
+use crate::{boot::log, desktop};
 use crate::boot::context::BootContext;
 use super::phase0_cpu::CpuState;
 use super::phase1_memory::MemState;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
 pub fn run(
-    ctx: &BootContext,
-    cpu: &CpuState,
-    mem: &MemState,
-    boot_start: u64,
-    phase4_end: u64,
+    _ctx: &BootContext,
+    _cpu: &CpuState,
+    _mem: &MemState,
+    _boot_start: u64,
+    _phase4_end: u64,
 ) -> ! {
     // v1.5.3: Direct welcome screen. The fancy banner + desktop loop
     // is stubbed because the render path is still being stabilized.

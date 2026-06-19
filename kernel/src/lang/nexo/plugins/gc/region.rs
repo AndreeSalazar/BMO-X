@@ -50,7 +50,7 @@ pub struct RegionGc {
 }
 
 impl RegionGc {
-    pub fn new(heap_size: usize) -> Self {
+    pub fn new(_heap_size: usize) -> Self {
         let region_size = 64 * 1024; // 64KB regions
         let mut regions = Vec::new();
         regions.push(Region::new(region_size));
@@ -113,7 +113,7 @@ impl GcPlugin for RegionGc {
         GcType::RegionBased
     }
 
-    fn init(&mut self, heap_size: usize) -> BxResult<()> {
+    fn init(&mut self, _heap_size: usize) -> BxResult<()> {
         self.regions.clear();
         self.regions.push(Region::new(self.region_size));
         self.current_region = 0;

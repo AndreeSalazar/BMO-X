@@ -23,8 +23,6 @@ pub mod python;
 
 // Re-exports of the plugin entry-point structs.
 pub use c::plugin::CPlugin;
-pub use cpp::plugin::CppPlugin;
-pub use java::plugin::JavaPlugin;
 pub use rust::RustPlugin;
 pub use go::GoPlugin;
 pub use python::plugin::PythonPlugin;

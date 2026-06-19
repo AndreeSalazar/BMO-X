@@ -40,9 +40,6 @@ pub mod runtime;
 pub use fundamentals::primitives;
 pub use fundamentals::status;
 pub use fundamentals::handle;
-pub use fundamentals::memory;
-pub use fundamentals::option;
-pub use fundamentals::result;
 
 pub use values::string;
 pub use values::time;
@@ -52,16 +49,10 @@ pub use machinery::calling;
 pub use machinery::sync;
 pub use machinery::type_system;
 pub use machinery::vtable;
-pub use machinery::closure;
 pub use machinery::exception;
-pub use machinery::async_io;
 
 pub use interop::lang_bridge;
-pub use interop::marshal;
-pub use interop::compat;
 
-pub use runtime::BmoRuntime;
-pub use runtime::RuntimeStats;
 
 /// Versión del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);

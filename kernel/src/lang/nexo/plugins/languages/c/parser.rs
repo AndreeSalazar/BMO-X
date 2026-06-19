@@ -378,7 +378,7 @@ impl CParser {
                     let name = self.expect_ident()?;
                     self.advance(); // consume colon
                     let body = self.parse_stmt()?;
-                    let mut stmts = vec![CStmt::Label(name), body];
+                    let stmts = vec![CStmt::Label(name), body];
                     Ok(CStmt::Block(stmts))
                 } else {
                     let expr = self.parse_expr()?;

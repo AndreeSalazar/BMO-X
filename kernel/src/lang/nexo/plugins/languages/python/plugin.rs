@@ -4,7 +4,7 @@
 
 extern crate alloc;
 use alloc::vec::Vec;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 
 use crate::barex::BxResult;
 use super::super::super::traits::{

@@ -49,7 +49,7 @@ pub fn cmajor_progression() {
 pub fn simple_bass() {
     let roots = [130.81, 196.00, 110.00, 174.61];  // C2, G2, A2, F2
 
-    for (i, &root) in roots.iter().enumerate() {
+    for (_i, &root) in roots.iter().enumerate() {
         let params = FmParams {
             carrier: root,
             modulator_ratio: 1.0,

@@ -3,14 +3,13 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use alloc::boxed::Box;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::barex::BxResult;
 use super::ast::*;
-use super::lexer::{PyToken, PyLexer};
+use super::lexer::PyToken;
 
 pub struct PyParser {
     tokens: Vec<PyToken>,
@@ -234,8 +233,8 @@ impl PyParser {
     fn skip_newlines(&mut self) {
         while matches!(self.peek(), PyToken::Newline) { self.advance(); }
     }
-    fn expect(&mut self, want: PyToken) -> BxResult<()> {
-        if matches!(self.peek(), want) { self.advance(); Ok(()) }
+    fn expect(&mut self, _want: PyToken) -> BxResult<()> {
+        if matches!(self.peek(), _want) { self.advance(); Ok(()) }
         else { Err(crate::barex::BxError::InvalidArgument) }
     }
     fn expect_name(&mut self) -> BxResult<String> {

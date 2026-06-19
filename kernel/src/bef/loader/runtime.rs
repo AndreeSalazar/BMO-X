@@ -12,9 +12,8 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use alloc::vec::Vec;
 
-use crate::bef::imports::{ImportEntry, ImportTable, ImportFlags};
+use crate::bef::imports::{ImportTable, ImportFlags};
 use crate::bef::exports::ExportTable;
 
 /// Maximum symbols in the runtime table.

@@ -26,8 +26,7 @@ pub mod abi;
 
 // Re-exports for convenience
 pub use traits::{
-    Language, LanguagePlugin,
-    GcPlugin, GilPlugin, AbiBridge,
+    Language, AbiBridge,
 };
 pub use registry::LanguageRegistry;
 pub use languages::{CPlugin, RustPlugin, GoPlugin, PythonPlugin};

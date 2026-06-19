@@ -19,11 +19,11 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::barex::BxResult;
-use super::ast::{CppAst, CppItem, CppClass, ClassMember, ClassMemberKind, CppAccess};
-use super::super::c::ast::{CType, CExpr, CStmt, CItem, CParam, CBinOp, CUnaryOp};
+use super::ast::{CppAst, CppItem, CppClass, ClassMemberKind};
+use super::super::c::ast::CType;
 use crate::lang::nexo::parser::{
-    Ast, Stmt as NStmt, Expr, Expr as NExpr, Param,
-    TypeAnnotation, BinOp as NBinOp, UnaryOp as NUnaryOp, ExternItem,
+    Ast, Stmt as NStmt,
+    TypeAnnotation,
 };
 
 pub struct CppToNexo {

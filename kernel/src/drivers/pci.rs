@@ -228,7 +228,7 @@ pub static mut SCAN_RESULT: Option<PciScanResult> = None;
 // ── Scan ──────────────────────────────────────────────────────────
 
 pub fn scan_pci_bus() -> PciScanResult {
-    let mut r = PciScanResult::new();
+    let r = PciScanResult::new();
     // v1.6.10: On the Ryzen 5 5600X the UEFI firmware has the legacy
     // PCI config space (ports 0xCF8/0xCFC) DISABLED, so even a single
     // `out 0xCF8, al` transaction wedges the CPU forever (it polls

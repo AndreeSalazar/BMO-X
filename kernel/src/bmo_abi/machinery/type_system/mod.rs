@@ -29,7 +29,7 @@ pub mod hash;
 
 pub use descriptor::{TypeDescriptor, TypeId};
 pub use kind::TypeKind;
-pub use layout::{TypeLayout, LayoutFlags};
+pub use layout::TypeLayout;
 pub use registry::TypeRegistry;
 
 /// Versión del sistema de tipos BMO.

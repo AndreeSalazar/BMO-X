@@ -60,7 +60,7 @@ impl FfiBridge {
     }
 
     /// Call a foreign function
-    pub fn call(&self, name: &str, args: &[u8]) -> BxResult<Vec<u8>> {
+    pub fn call(&self, name: &str, _args: &[u8]) -> BxResult<Vec<u8>> {
         if !self.functions.contains_key(name) {
             return Err(crate::barex::BxError::NotFound);
         }

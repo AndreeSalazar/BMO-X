@@ -325,7 +325,7 @@ fn apply_pe_relocations(
 /// Walk PE Import Directory and register resolved imports.
 fn resolve_pe_imports(
     bytes: &[u8],
-    img: &Image,
+    _img: &Image,
     sections: &[PeSectionHeader],
     import_dir: &DataDirectory,
     base: u64,
@@ -385,7 +385,7 @@ fn walk_pe_import_thunks(
     int_file_offset: usize,
     iat_file_offset: usize,
     sections: &[PeSectionHeader],
-    base: u64,
+    _base: u64,
 ) {
     let thunk_size = core::mem::size_of::<super::pe_imports::ImageThunk>();
     let mut i = 0;
@@ -402,7 +402,7 @@ fn walk_pe_import_thunks(
             core::ptr::copy_nonoverlapping(bytes.as_ptr().add(int_pos), buf.as_mut_ptr(), 8);
             u64::from_le_bytes(buf)
         });
-        let iat_thunk = super::pe_imports::ImageThunk(unsafe {
+        let _iat_thunk = super::pe_imports::ImageThunk(unsafe {
             let mut buf = [0u8; 8];
             core::ptr::copy_nonoverlapping(bytes.as_ptr().add(iat_pos), buf.as_mut_ptr(), 8);
             u64::from_le_bytes(buf)
@@ -431,8 +431,8 @@ fn walk_pe_import_thunks(
         // Resolve via PE thunk table — now returns real function pointers.
         let (target, fn_ptr) = super::pe_thunks::resolve_fn(dll_name, fn_name);
         let addr = match target {
-            super::pe_thunks::ThunkTarget::SilentStub => super::pe_thunks::silent_stub as u64,
-            super::pe_thunks::ThunkTarget::LogStub => super::pe_thunks::log_stub as u64,
+            super::pe_thunks::ThunkTarget::SilentStub => super::pe_thunks::silent_stub as *const () as u64,
+            super::pe_thunks::ThunkTarget::LogStub => super::pe_thunks::log_stub as *const () as u64,
             _ => fn_ptr, // Real bmo_abi::interop::win32 function pointer
         };
 

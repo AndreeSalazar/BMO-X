@@ -166,53 +166,53 @@ pub fn resolve_fn(dll: &str, name: &str) -> (ThunkTarget, u64) {
 
 fn get_fn_ptr(target: ThunkTarget, _dll: &str, name: &str) -> u64 {
     match target {
-        ThunkTarget::SilentStub => silent_stub as u64,
-        ThunkTarget::LogStub => log_stub as u64,
+        ThunkTarget::SilentStub => silent_stub as *const () as u64,
+        ThunkTarget::LogStub => log_stub as *const () as u64,
 
         ThunkTarget::NtdllGateway => resolve_ntdll_fn(name),
         ThunkTarget::Kernel32Impl => resolve_kernel32_fn(name),
 
-        ThunkTarget::SyscallProcess => win32::ntdll_syscalls::NtTerminateProcess as u64,
-        ThunkTarget::SyscallTime => win32::kernel32_thread::Sleep as u64,
-        ThunkTarget::SyscallMemory => win32::kernel32_memory::VirtualAlloc as u64,
-        ThunkTarget::SyscallVfs => win32::kernel32_file::CreateFileA as u64,
+        ThunkTarget::SyscallProcess => win32::ntdll_syscalls::NtTerminateProcess as *const () as u64,
+        ThunkTarget::SyscallTime => win32::kernel32_thread::Sleep as *const () as u64,
+        ThunkTarget::SyscallMemory => win32::kernel32_memory::VirtualAlloc as *const () as u64,
+        ThunkTarget::SyscallVfs => win32::kernel32_file::CreateFileA as *const () as u64,
 
         ThunkTarget::BarexGraphics | ThunkTarget::BarexAudio
         | ThunkTarget::BarexInput | ThunkTarget::BarexNet
         | ThunkTarget::ProtonDxvk | ThunkTarget::ProtonVkd3d
-        | ThunkTarget::ProtonD8vk => silent_stub as u64,
+        | ThunkTarget::ProtonD8vk => silent_stub as *const () as u64,
     }
 }
 
 fn resolve_ntdll_fn(name: &str) -> u64 {
     use win32::ntdll_syscalls as s;
     match name {
-        "NtAllocateVirtualMemory" => s::NtAllocateVirtualMemory as u64,
-        "NtFreeVirtualMemory" => s::NtFreeVirtualMemory as u64,
-        "NtProtectVirtualMemory" => s::NtProtectVirtualMemory as u64,
-        "NtCreateFile" => s::NtCreateFile as u64,
-        "NtReadFile" => s::NtReadFile as u64,
-        "NtWriteFile" => s::NtWriteFile as u64,
-        "NtClose" => s::NtClose as u64,
-        "NtTerminateProcess" => s::NtTerminateProcess as u64,
-        "NtCreateThreadEx" => s::NtCreateThreadEx as u64,
-        "NtTerminateThread" => s::NtTerminateThread as u64,
-        "NtQuerySystemTime" => s::NtQuerySystemTime as u64,
-        "NtQueryPerformanceCounter" => s::NtQueryPerformanceCounter as u64,
-        _ => silent_stub as u64,
+        "NtAllocateVirtualMemory" => s::NtAllocateVirtualMemory as *const () as u64,
+        "NtFreeVirtualMemory" => s::NtFreeVirtualMemory as *const () as u64,
+        "NtProtectVirtualMemory" => s::NtProtectVirtualMemory as *const () as u64,
+        "NtCreateFile" => s::NtCreateFile as *const () as u64,
+        "NtReadFile" => s::NtReadFile as *const () as u64,
+        "NtWriteFile" => s::NtWriteFile as *const () as u64,
+        "NtClose" => s::NtClose as *const () as u64,
+        "NtTerminateProcess" => s::NtTerminateProcess as *const () as u64,
+        "NtCreateThreadEx" => s::NtCreateThreadEx as *const () as u64,
+        "NtTerminateThread" => s::NtTerminateThread as *const () as u64,
+        "NtQuerySystemTime" => s::NtQuerySystemTime as *const () as u64,
+        "NtQueryPerformanceCounter" => s::NtQueryPerformanceCounter as *const () as u64,
+        _ => silent_stub as *const () as u64,
     }
 }
 
 fn resolve_kernel32_fn(name: &str) -> u64 {
     use win32::{kernel32_process as proc, kernel32_file as file};
     match name {
-        "GetCurrentProcess" => proc::GetCurrentProcess as u64,
-        "GetCurrentThread" => proc::GetCurrentThread as u64,
-        "GetCurrentProcessId" => proc::GetCurrentProcessId as u64,
-        "GetCurrentThreadId" => proc::GetCurrentThreadId as u64,
-        "GetLastError" => file::GetLastError as u64,
-        "SetLastError" => file::SetLastError as u64,
-        _ => silent_stub as u64,
+        "GetCurrentProcess" => proc::GetCurrentProcess as *const () as u64,
+        "GetCurrentThread" => proc::GetCurrentThread as *const () as u64,
+        "GetCurrentProcessId" => proc::GetCurrentProcessId as *const () as u64,
+        "GetCurrentThreadId" => proc::GetCurrentThreadId as *const () as u64,
+        "GetLastError" => file::GetLastError as *const () as u64,
+        "SetLastError" => file::SetLastError as *const () as u64,
+        _ => silent_stub as *const () as u64,
     }
 }
 

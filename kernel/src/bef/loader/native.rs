@@ -298,7 +298,7 @@ fn apply_relocations(
 }
 
 /// Resolve a symbol address for a relocation entry.
-fn resolve_symbol_for_reloc(reloc: &Relocation, mapped: &[MappedSection], base: u64) -> u64 {
+fn resolve_symbol_for_reloc(reloc: &Relocation, _mapped: &[MappedSection], base: u64) -> u64 {
     // Try runtime symbol table first.
     if reloc.symbol_idx != 0 {
         // Look up by symbol index in the runtime table.

@@ -5,13 +5,12 @@
 extern crate alloc;
 use alloc::boxed::Box;
 use alloc::string::String;
-use alloc::vec;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::barex::BxResult;
 use super::ast::*;
-use super::lexer::{JLexer, JToken};
+use super::lexer::JToken;
 
 pub struct JParser {
     tokens: Vec<JToken>,

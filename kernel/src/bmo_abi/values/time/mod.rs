@@ -11,6 +11,4 @@
 pub mod instant;
 pub mod duration;
 
-pub use instant::BmoInstant;
-pub use instant::{init as init_clock, tsc_to_ns, ns_to_tsc, is_initialized, tsc_freq_hz, sleep};
-pub use duration::BmoDuration;
+pub use instant::init as init_clock;

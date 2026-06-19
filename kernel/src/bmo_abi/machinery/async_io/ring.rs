@@ -37,7 +37,6 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64};
 use crate::bmo_abi::handle::BmoHandle;
-use crate::bmo_abi::sync::atomic::MemOrder;
 
 /// Op codes universales para cualquier subsistema async.
 #[repr(u16)]
@@ -375,4 +374,3 @@ impl<'a> CqConsumer<'a> {
 }
 
 // Re-exports de conveniencia (BmoMemOrder)
-pub use crate::bmo_abi::sync::MemOrder as BmoMemOrder;

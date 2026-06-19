@@ -14,10 +14,6 @@
 #![allow(deprecated)]
 #![allow(dead_code)]
 
-pub use crate::bmo_abi::interop::format::{
-    BinaryKind,
-    detect_binary_kind,
-};
 
 /// DLLs that a Win32 PE binary may import and that the Ring 3 shim
 /// (a BEF binary) must provide. This is the *contract* between the

@@ -35,7 +35,7 @@
 // El BMO ABI vive en top-level. Re-exportamos por compatibilidad.
 #[deprecated(since = "0.9.0", note = "Use crate::bmo_abi instead")]
 pub mod abi {
-    pub use crate::bmo_abi::*;
+    
 }
 
 // ── Producción (v1.3.0) ────────────────────────────────────────────────

@@ -8,7 +8,6 @@ use crate::{boot::log, drivers::pci};
 use crate::boot::serial as boot_serial;
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
-use fastos_boot_protocol;
 
 fn log_pci_device(dev: &pci::PciDevice) {
     crate::drivers::serial::serial_write("  PCI ");

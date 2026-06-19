@@ -8,6 +8,12 @@
 //!   - ARP:     Address Resolution Protocol (L2→L3)
 //!   - IP:      Internet Protocol (L3)
 //!   - ICMP:    Internet Control Message Protocol (ping)
+//!
+//! v1.6.15: PC is currently skip-PCI (no NIC detected on this Ryzen 5
+//! 5600X firmware), so most of these public APIs are not exercised.
+//! Allow dead_code and unused Result until we restore ECAM.
+#![allow(dead_code)]
+#![allow(unused_results)]
 //!   - UDP:     User Datagram Protocol (L4)
 //!   - TCP:     Transmission Control Protocol (L4) — nuevo en v1.4.0
 //!   - DHCP:    Dynamic Host Configuration Protocol (auto-IP)

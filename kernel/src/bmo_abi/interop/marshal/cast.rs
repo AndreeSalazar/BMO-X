@@ -2,7 +2,7 @@
 
 use crate::barex::{BxError, BxResult};
 use crate::bmo_abi::primitives::bx_usize;
-use crate::bmo_abi::type_system::{TypeId, TypeDescriptor, TypeLayout, TypeKind};
+use crate::bmo_abi::type_system::{TypeDescriptor, TypeLayout, TypeKind};
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

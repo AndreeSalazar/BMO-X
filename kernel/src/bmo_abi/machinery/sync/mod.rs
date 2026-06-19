@@ -8,5 +8,4 @@ pub mod atomic;
 pub mod futex;
 pub mod mutex;
 
-pub use atomic::MemOrder;
 

@@ -11,7 +11,6 @@
 //! handle.
 
 extern crate alloc;
-use alloc::vec::Vec;
 
 use crate::barex::{BxError, BxResult};
 use crate::bmo_abi::primitives::bx_u32;

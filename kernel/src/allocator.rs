@@ -5,7 +5,7 @@
 //! Free blocks are coalesced on dealloc when adjacent.
 
 use core::alloc::{GlobalAlloc, Layout};
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use core::sync::atomic::AtomicBool;
 
 const HEAP_SIZE: usize = 16 * 1024 * 1024; // 16 MB
 const BLOCK_HEADER_SIZE: usize = 8; // next_free: u32 + size: u32
@@ -161,7 +161,7 @@ unsafe impl GlobalAlloc for FreeListAllocator {
         if !ALLOC_INIT { init_free_list(); }
 
         let size = layout.size();
-        let align = layout.align();
+        let _align = layout.align();
 
         // Align up to block header alignment (8 bytes)
         let needed = (size + 7) & !7;

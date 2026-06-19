@@ -122,7 +122,7 @@ pub fn test_tss_and_syscall_stack_consistency() {
 pub fn test_user_memory_layout() {
     use crate::sched::user_init;
     // Verify spawn_init_process is a valid function pointer (no call).
-    let f_ptr: usize = user_init::spawn_init_process as usize;
+    let f_ptr: usize = user_init::spawn_init_process as *const () as usize;
     assert_true(f_ptr != 0, "spawn_init_process has non-null address");
     // Type-check the function signature.
     let _: fn() -> Option<(u64, u64)> = user_init::spawn_init_process;

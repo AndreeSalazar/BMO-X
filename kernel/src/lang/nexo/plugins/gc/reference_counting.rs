@@ -76,7 +76,7 @@ impl ReferenceCountingGc {
             &*(self.heap.as_ptr().add(offset) as *const GcObjectHeader)
         };
 
-        let total_size = core::mem::size_of::<GcObjectHeader>() + header.size;
+        let _total_size = core::mem::size_of::<GcObjectHeader>() + header.size;
         self.stats.total_freed += header.size;
         self.stats.live_objects -= 1;
 

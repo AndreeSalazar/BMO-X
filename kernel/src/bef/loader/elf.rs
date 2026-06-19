@@ -274,7 +274,7 @@ fn apply_elf_relocations(
     shent: usize,
     ehdr: &Elf64Ehdr,
 ) -> Result<(), LoadError> {
-    let shstrndx = ehdr.e_shstrndx as usize;
+    let _shstrndx = ehdr.e_shstrndx as usize;
     if shoff + shnum * shent > bytes.len() {
         return Ok(()); // No section headers.
     }
@@ -316,7 +316,7 @@ fn apply_elf_relocations(
                 {
                     if section.data_ptr == 0 { break; }
 
-                    let offset_in_section = (target_va - section.virt_addr) as usize;
+                    let _offset_in_section = (target_va - section.virt_addr) as usize;
                     let target_slice = unsafe {
                         core::slice::from_raw_parts_mut(
                             section.data_ptr as *mut u8,

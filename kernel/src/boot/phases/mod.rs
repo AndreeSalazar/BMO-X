@@ -16,6 +16,4 @@ pub mod phase5_desktop;
 pub mod ring3_tests;
 
 pub mod trait_def;
-pub use trait_def::{
-    PhaseOutput, SelfTestReport, CheckResult, Timestamp, report as report_self_test,
-};
+pub use trait_def::report as report_self_test;

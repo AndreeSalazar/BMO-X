@@ -22,6 +22,10 @@
 //!
 //! Estos módulos están diseñados para procesar buffers `&[f32]`
 //! in-place. No alocan, son `no_std + alloc` friendly.
+//!
+//! v1.6.15: HD audio codec is not yet wired (we have only PC speaker +
+//! gustOS FM synth). The DSP primitives (EQ, limiter, compressor, reverb)
+//! are kept around for when the HDA driver lands.
 
 pub mod math;
 pub mod effects;

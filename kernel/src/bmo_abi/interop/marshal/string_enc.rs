@@ -9,9 +9,8 @@
 //! UTF-16 little-endian (UTF-16LE) es el estándar en x86/x86-64. La salida
 //! de `utf16_from_utf8` es little-endian.
 
-use crate::barex::{BxError, BxResult};
+use crate::barex::BxError;
 use crate::bmo_abi::primitives::bx_u32;
-use core::convert::TryInto;
 
 // ─── Estimaciones de tamaño (worst case) ─────────────────────────────
 
