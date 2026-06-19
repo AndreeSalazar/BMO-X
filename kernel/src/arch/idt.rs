@@ -480,7 +480,22 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
 /// Reads RIP and RSP via register asm so we can show the faulting
 /// instruction address and the stack pointer — both critical for
 /// debugging kernel panics.
+///
+/// IMPORTANT: This function uses a static `RECURSION_GUARD` to prevent
+/// infinite recursion. If the framebuffer access or glyph lookup causes
+/// another #PF (e.g. unmapped memory), calling this again would
+/// overflow the stack and corrupt memory, causing the #UD we observed.
 unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
+    use core::sync::atomic::{AtomicU64, Ordering};
+    static RECURSION_GUARD: AtomicU64 = AtomicU64::new(0);
+
+    // Prevent infinite recursion: if we're already inside, just halt.
+    let prev = RECURSION_GUARD.fetch_add(1, Ordering::SeqCst);
+    if prev > 0 {
+        // Already displayed once; if we're back here, just halt silently.
+        loop { core::arch::asm!("cli; hlt"); }
+    }
+
     use crate::boot_info;
     use crate::ui::font::get_glyph;
     let fb_addr = boot_info::FB_ADDR;
@@ -500,6 +515,23 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         out(reg) rsp,
         options(nomem, nostack, preserves_flags)
     );
+
+    // CRITICAL: Log to serial FIRST (before any framebuffer work).
+    // If the framebuffer is unmapped or the glyph table is missing,
+    // we'd loop infinitely. Serial output is more reliable.
+    crate::drivers::serial::serial_write("\n!!! FAULT: vec=");
+    crate::drivers::serial::serial_write_u64(vector, 0);
+    crate::drivers::serial::serial_write(" err=0x");
+    crate::drivers::serial::serial_write_u64(error, 16);
+    crate::drivers::serial::serial_write(" cr2=0x");
+    crate::drivers::serial::serial_write_u64(cr2, 16);
+    crate::drivers::serial::serial_write(" rip=0x");
+    crate::drivers::serial::serial_write_u64(rip, 16);
+    crate::drivers::serial::serial_write(" rsp=0x");
+    crate::drivers::serial::serial_write_u64(rsp, 16);
+    crate::drivers::serial::serial_write(" fb=0x");
+    crate::drivers::serial::serial_write_u64(fb_addr, 16);
+    crate::drivers::serial::serial_write("\n");
 
     if fb_addr != 0 && w > 0 && h > 0 {
         let buf = fb_addr as *mut u32;
@@ -574,7 +606,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         };
 
         // Title
-        draw_str(b"FastOS KERNEL FAULT v0.9.2", 20, 20, 0xFFFFFFFF);
+        draw_str(b"FastOS KERNEL FAULT v0.9.3", 20, 20, 0xFFFFFFFF);
 
         // Fault name
         draw_str(b"Vector: ", 20, 50, 0xFFFFFF00);
@@ -599,7 +631,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         draw_str(to_hex(rsp), 84, 170, 0xFFFFAAFF);
 
         // Build version footer
-        draw_str(b"v0.9.2  ::  Heap:16MB  Watchdog:5s  #PF halt enabled", 20, 210, 0xFFCCCCCC);
+        draw_str(b"v0.9.3  ::  Heap:16MB  Watchdog:5s  Fault-Safe", 20, 210, 0xFFCCCCCC);
 
         // Instruction hint
         draw_str(b"CPU halted. Note CR2 + RIP, then re-flash with -Rollback if needed.", 20, 240, 0xFF8B949E);
