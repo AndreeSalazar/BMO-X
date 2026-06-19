@@ -1,6 +1,7 @@
 ﻿//! Reverb basado en 8 lÃ­neas de delay paralelas con feedback.
 
 
+use crate::barex::BxResult;
 const SR: f32 = 48_000.0;
 const MAX_DELAY: usize = 4096;
 const NUM_DELAYS: usize = 8;

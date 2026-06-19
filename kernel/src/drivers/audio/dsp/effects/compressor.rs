@@ -1,5 +1,6 @@
 ﻿//! Compresor de dinÃ¡mica con detector de pico suavizado.
 
+use crate::barex::BxResult;
 use super::super::math::{dsp_abs, dsp_exp, dsp_max};
 
 const SR: f32 = 48_000.0;

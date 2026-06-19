@@ -35,6 +35,7 @@ mod sandbox;
 
 mod lang;
 mod security;
+mod gustos;
 
 mod boot;
 

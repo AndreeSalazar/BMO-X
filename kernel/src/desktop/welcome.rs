@@ -276,7 +276,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 120) as u32, sub, pal::SUBTITLE, 2);
 
     // 5) Versión
-    let ver = b"v1.4.0  ::  Ring 0 + Ring 3  [net::init|TCP|Socket API]";
+    let ver = b"v1.5.0  ::  Ring 0 + Ring 3  [gustOS|FM synth|PC speaker]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
@@ -518,10 +518,9 @@ fn process_enter() {
 pub fn run() -> ! {
     crate::drivers::serial::serial_write("[welcome] Pantalla de bienvenida activa.\n");
 
-    // Beep suave de arranque
-    sound::beep(523, 40);
-    sound::beep(659, 40);
-    sound::beep(784, 80);
+    // v1.5.0: Windows-inspired logon sound (sweep A4 → A5)
+    crate::gustos::tracks::windows::logon();
+    crate::drivers::serial::serial_write("[welcome] gustOS logon sound played\n");
 
     loop {
         // 1) Full repaint solo si algo cambió.

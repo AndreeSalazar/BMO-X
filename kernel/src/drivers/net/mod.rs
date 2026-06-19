@@ -49,9 +49,8 @@ pub fn init() {
 
             rtl8168::RTL_DRIVER = Some(driver);
             serial_write("[net] RTL8168 driver ONLINE\n");
-
-            // Inicializar el stack unificado
-            stack::init();
+            // NOTA: stack::init() se llama desde boot::phases::phase4_scheduler
+            // para tener el orden correcto: net detect → stack init.
         } else {
             serial_write("[net] WARNING: no supported NIC found\n");
             serial_write("[net]   supported: Realtek RTL8168/RTL8111 (10EC:8168)\n");

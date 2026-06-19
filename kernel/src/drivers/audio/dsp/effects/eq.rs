@@ -1,5 +1,6 @@
 ﻿//! EQ paramÃ©trico 10 bandas con filtros biquad.
 
+use crate::barex::BxResult;
 use super::super::math::{dsp_sin, dsp_cos, dsp_powf};
 
 const SR: f32 = 48_000.0;
