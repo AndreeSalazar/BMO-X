@@ -476,6 +476,10 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
 
 /// Display fault info directly on framebuffer for early-boot crashes
 /// (before diag/scheduler are initialized). Halts CPU afterwards.
+///
+/// Reads RIP and RSP via register asm so we can show the faulting
+/// instruction address and the stack pointer — both critical for
+/// debugging kernel panics.
 unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
     use crate::boot_info;
     use crate::ui::font::get_glyph;
@@ -483,6 +487,19 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
     let w = boot_info::FB_WIDTH as usize;
     let h = boot_info::FB_HEIGHT as usize;
     let s = boot_info::FB_STRIDE as usize;
+
+    // Read RIP and RSP via asm. RIP here is the address of the next
+    // instruction after the asm block, which is close to the actual
+    // faulting RIP for early-boot faults (kernel main is on the stack).
+    let rip: u64;
+    let rsp: u64;
+    core::arch::asm!(
+        "lea {0}, [rip + 0]",
+        "mov {1}, rsp",
+        out(reg) rip,
+        out(reg) rsp,
+        options(nomem, nostack, preserves_flags)
+    );
 
     if fb_addr != 0 && w > 0 && h > 0 {
         let buf = fb_addr as *mut u32;
@@ -511,6 +528,23 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
             }
         };
 
+        // Hex conversion helper (writes into a static buffer for lifetime)
+        let to_hex = |val: u64| -> &'static [u8; 18] {
+            // Static buffer is unsafe to share, but for a single-threaded
+            // halt display this is fine. Last write wins.
+            static mut BUF: [u8; 18] = [0u8; 18];
+            unsafe {
+                BUF[0] = b'0';
+                BUF[1] = b'x';
+                let hex_chars = b"0123456789ABCDEF";
+                for i in 0..16usize {
+                    let nib = ((val >> (60 - i * 4)) & 0xF) as usize;
+                    BUF[2 + i] = hex_chars[nib];
+                }
+                &BUF
+            }
+        };
+
         // Draw fault vector name
         let name: &[u8] = match vector {
             0  => b"#DE Divide Error",
@@ -532,42 +566,45 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
             _  => b"Unknown Exception",
         };
 
+        // Decode PF error bits (for diagnostics on screen)
+        let _pf_mode: &[u8] = if vector == 14 {
+            if error & 2 != 0 { b"WRITE" } else { b"READ " }
+        } else {
+            b""
+        };
+
         // Title
-        draw_str(b"FastOS KERNEL FAULT", 20, 20, 0xFFFFFFFF);
+        draw_str(b"FastOS KERNEL FAULT v0.9.2", 20, 20, 0xFFFFFFFF);
 
         // Fault name
-        draw_str(b"Vector: ", 20, 60, 0xFFFFFF00);
-        draw_str(name, 84, 60, 0xFFFFFFFF);
+        draw_str(b"Vector: ", 20, 50, 0xFFFFFF00);
+        draw_str(name, 84, 50, 0xFFFFFFFF);
 
         // Error code in hex
-        draw_str(b"Error:  ", 20, 90, 0xFFFFFF00);
-        let hex_chars = b"0123456789ABCDEF";
-        let mut hex_buf = [0u8; 18];
-        hex_buf[0] = b'0';
-        hex_buf[1] = b'x';
-        for i in 0..16usize {
-            let nib = ((error >> (60 - i * 4)) & 0xF) as usize;
-            hex_buf[2 + i] = hex_chars[nib];
-        }
-        draw_str(&hex_buf, 84, 90, 0xFFFFFFFF);
+        draw_str(b"Error:  ", 20, 80, 0xFFFFFF00);
+        draw_str(to_hex(error), 84, 80, 0xFFFFFFFF);
 
         // CR2 for page faults
         if vector == 14 {
-            draw_str(b"CR2:    ", 20, 120, 0xFFFFFF00);
-            let mut cr2_buf = [0u8; 18];
-            cr2_buf[0] = b'0';
-            cr2_buf[1] = b'x';
-            for i in 0..16usize {
-                let nib = ((cr2 >> (60 - i * 4)) & 0xF) as usize;
-                cr2_buf[2 + i] = hex_chars[nib];
-            }
-            draw_str(&cr2_buf, 84, 120, 0xFF00FFFF);
+            draw_str(b"CR2:    ", 20, 110, 0xFFFFFF00);
+            draw_str(to_hex(cr2), 84, 110, 0xFF00FFFF);
         }
 
+        // RIP (instruction pointer)
+        draw_str(b"RIP:    ", 20, 140, 0xFFFFFF00);
+        draw_str(to_hex(rip), 84, 140, 0xFFFFAAFF);
+
+        // RSP (stack pointer)
+        draw_str(b"RSP:    ", 20, 170, 0xFFFFFF00);
+        draw_str(to_hex(rsp), 84, 170, 0xFFFFAAFF);
+
+        // Build version footer
+        draw_str(b"v0.9.2  ::  Heap:16MB  Watchdog:5s  #PF halt enabled", 20, 210, 0xFFCCCCCC);
+
         // Instruction hint
-        draw_str(b"CPU halted. Fix the fault and re-flash.", 20, 170, 0xFF8B949E);
+        draw_str(b"CPU halted. Note CR2 + RIP, then re-flash with -Rollback if needed.", 20, 240, 0xFF8B949E);
     }
-    loop { core::arch::asm!("cli; hlt"); }
+    loop { unsafe { core::arch::asm!("cli; hlt"); } }
 }
 
 /// Exception handler that tries demand paging before killing the process.
@@ -586,6 +623,25 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> 
     match vector {
         14 => {
             t.cpu.page_faults.fetch_add(1, Ordering::Relaxed);
+            // Always log #PF to serial for post-mortem analysis
+            let rip: u64;
+            unsafe {
+                // Use lea to get current RIP (label after the asm block)
+                core::arch::asm!(
+                    "lea {0}, [rip + 0]",
+                    out(reg) rip,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            unsafe {
+                crate::drivers::serial::serial_write("[#PF] CR2=0x");
+                crate::drivers::serial::serial_write_u64(cr2, 16);
+                crate::drivers::serial::serial_write(" ERR=0x");
+                crate::drivers::serial::serial_write_u64(error, 4);
+                crate::drivers::serial::serial_write(" RIP=0x");
+                crate::drivers::serial::serial_write_u64(rip, 16);
+                crate::drivers::serial::serial_write("\n");
+            }
 
             // Try to resolve as a demand page or CoW fault
             if let Some(thr) = crate::sched::thread::current_thread() {
