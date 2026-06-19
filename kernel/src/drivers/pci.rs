@@ -53,38 +53,30 @@ pub fn init_ecam(base: u64, end_bus: u8) {
     print_u32((round_up_2mb / 0x20000) as u32);
     crate::drivers::serial::serial_write(" x 2 MiB huge pages)\n");
 
-    if base < 0x1_0000_0000 {
-        // Low memory: identity map is enough.
-        unsafe {
-            ECAM_BASE = base;
-            ECAM_END_BUS = safe_end;
-            USE_ECAM = true;
+    // v1.5.5: ALWAYS map ECAM, even if base < 4 GB. The UEFI may not
+    // have identity-mapped the entire ECAM region.
+    let result = unsafe {
+        crate::arch::paging::map_kernel_mmio_huge(base, base, round_up_2mb as usize)
+    };
+    match result {
+        Ok(()) => {
+            crate::drivers::serial::serial_write("[pci] ECAM mapped OK\n");
+            unsafe {
+                ECAM_BASE = base;
+                ECAM_END_BUS = safe_end;
+                USE_ECAM = true;
+            }
         }
-    } else {
-        // High memory: explicit kernel MMIO mapping required.
-        let result = unsafe {
-            crate::arch::paging::map_kernel_mmio_huge(base, base, round_up_2mb as usize)
-        };
-        match result {
-            Ok(()) => {
-                crate::drivers::serial::serial_write("[pci] ECAM mapped OK\n");
-                unsafe {
-                    ECAM_BASE = base;
-                    ECAM_END_BUS = safe_end;
-                    USE_ECAM = true;
-                }
+        Err(e) => {
+            crate::drivers::serial::serial_write("[pci] ECAM map FAILED: ");
+            crate::drivers::serial::serial_write(e);
+            crate::drivers::serial::serial_write(" — falling back to IO ports\n");
+            unsafe {
+                ECAM_BASE = 0;
+                ECAM_END_BUS = 0;
+                USE_ECAM = false;
             }
-            Err(e) => {
-                crate::drivers::serial::serial_write("[pci] ECAM map FAILED: ");
-                crate::drivers::serial::serial_write(e);
-                crate::drivers::serial::serial_write(" — falling back to IO ports\n");
-                unsafe {
-                    ECAM_BASE = 0;
-                    ECAM_END_BUS = 0;
-                    USE_ECAM = false;
-                }
-                return;
-            }
+            return;
         }
     }
     crate::drivers::serial::serial_write("[pci] ECAM initialized (end_bus=");
