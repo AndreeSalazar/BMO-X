@@ -79,12 +79,25 @@ impl Framebuffer {
 
     /// Vertical gradient rectangle (top_color → bottom_color).
     pub fn gradient_v(&self, x: usize, y: usize, w: usize, h: usize, top: u32, bottom: u32) {
+        // v1.6.12: dithered gradient. Integer-only lerp on RGB produces
+        // visible bands on dark gradients (e.g. #050B12 -> #0E1B2E).
+        // We add ±1 to each channel based on (x*y) hash to break the bands.
         for row in 0..h {
             let t = row as u32;
             let inv = (h - 1).max(1) as u32;
-            let color = lerp_color(top, bottom, t, inv);
+            let base = lerp_color(top, bottom, t, inv);
+            let br = (base >> 16) & 0xFF;
+            let bg_c = (base >> 8) & 0xFF;
+            let bb = base & 0xFF;
             for col in x..(x + w).min(self.width) {
-                self.put_pixel(col, y + row, color);
+                // Tiny hash: pseudo-random ±1 per channel
+                let h = ((col as u32).wrapping_mul(2654435761)
+                       ^ (row as u32).wrapping_mul(40503)) & 0x7;
+                let d = h as i32 - 3; // -3..+3
+                let r = (br as i32 + d).clamp(0, 255) as u32;
+                let g = (bg_c as i32 + d).clamp(0, 255) as u32;
+                let b = (bb as i32 + d).clamp(0, 255) as u32;
+                self.put_pixel(col, y + row, 0xFF000000 | (r << 16) | (g << 8) | b);
             }
         }
     }

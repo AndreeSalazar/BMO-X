@@ -230,14 +230,15 @@ fn draw_text(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32) {
 /// GeometrÃ­a fija del prompt â€” usada tanto por el render principal como
 /// por el repaint local del caret. Devuelve `(prompt_x, prompt_y, w, h)`.
 fn prompt_rect(fb: &Framebuffer) -> (usize, usize, usize, usize) {
-    let cw = 980usize;
-    let ch = 620usize;
+    // v1.6.12: match the new card geometry (1100×540)
+    let cw = 1100usize;
+    let ch = 540usize;
     let cx = (fb.width - cw) / 2;
     let cy = (fb.height - ch) / 2;
-    let pw = 720usize;
+    let pw = 800usize;
     let ph = 60usize;
     let px = cx + (cw - pw) / 2;
-    let py = cy + ch - ph - 110;
+    let py = cy + ch - ph - 80;
     (px, py, pw, ph)
 }
 
@@ -259,25 +260,29 @@ fn paint_caret(fb: &Framebuffer, on: bool) {
 }
 
 fn render(fb: &Framebuffer) {
-    // 1) Wallpaper gradient (darker, more cinematic)
+    // 1) Wallpaper gradient — dithered in v1.6.12 to break visible bands
     fb.gradient_v(0, 0, fb.width, fb.height, pal::BG_TOP, pal::BG_BOT);
 
-    // 2) Card centrado — 980×620, raised shadow + teal border.
-    let cw = 980usize;
-    let ch = 620usize;
+    // 2) Card centrado — more compact v1.6.12 (1100×540) to fill the screen
+    //    better and reduce empty space between badges and prompt.
+    let cw = 1100usize;
+    let ch = 540usize;
     let cx = (fb.width - cw) / 2;
     let cy = (fb.height - ch) / 2;
 
-    // sombra
-    fb.fill_rounded_rect(cx + 10, cy + 14, cw, ch, 24, pal::CARD_SHADOW);
+    // sombra profunda
+    fb.fill_rounded_rect(cx + 12, cy + 16, cw, ch, 24, pal::CARD_SHADOW);
     // cuerpo
     fb.fill_rounded_rect(cx, cy, cw, ch, 24, pal::CARD_BG);
+    // border interno sutil
+    fb.draw_rect(cx + 1, cy + 1, cw - 2, ch - 2, 0xFF1A2D3A, 1);
+    // border principal teal
     fb.draw_rect(cx, cy, cw, ch, pal::CARD_BD, 2);
 
-    // 3) Header bar inside the card — thin mint accent strip at the top
-    fb.fill_rect(cx + 24, cy + 28, cw - 48, 2, pal::ACCENT);
+    // 3) Header bar — thin mint accent strip at the very top of the card
+    fb.fill_rect(cx + 24, cy + 28, cw - 48, 3, pal::ACCENT);
 
-    // 4) Title — "FastOS-BMO" big, mint accent on the dash
+    // 4) Title — "FastOS-BMO" big, scale 3×, mint dash, soft shadow
     let title_left  = b"FastOS";
     let title_dash  = b"-";
     let title_right = b"BMO";
@@ -285,13 +290,18 @@ fn render(fb: &Framebuffer) {
     let lw_l = title_left.len()  * 8 * scale_t as usize;
     let lw_d = title_dash.len()  * 8 * scale_t as usize;
     let lw_r = title_right.len() * 8 * scale_t as usize;
-    let total = lw_l + lw_d + lw_r + 16; // 16 px gap around dash
+    let total = lw_l + lw_d + lw_r + 24;
+    let title_y = cy + 60;
     let mut tx = cx + (cw - total) / 2;
-    draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title_left,  pal::TITLE, scale_t);
-    tx += lw_l + 8;
-    draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title_dash,  pal::ACCENT, scale_t);
-    tx += lw_d + 8;
-    draw_text_scaled(fb, tx as u32, (cy + 60) as u32, title_right, pal::TITLE, scale_t);
+    // soft shadow (3px offset, very dark)
+    draw_text_scaled(fb, (tx + 3) as u32, (title_y + 3) as u32, title_left,  0xFF020610, scale_t);
+    draw_text_scaled(fb, (tx + 3) as u32, (title_y + 3) as u32, title_dash,  0xFF020610, scale_t);
+    draw_text_scaled(fb, (tx + 3) as u32, (title_y + 3) as u32, title_right, 0xFF020610, scale_t);
+    draw_text_scaled(fb, tx as u32, title_y as u32, title_left,  pal::TITLE, scale_t);
+    tx += lw_l + 12;
+    draw_text_scaled(fb, tx as u32, title_y as u32, title_dash,  pal::ACCENT, scale_t);
+    tx += lw_d + 12;
+    draw_text_scaled(fb, tx as u32, title_y as u32, title_right, pal::TITLE, scale_t);
 
     // 5) Subtitle
     let sub = b"Bare Metal Orchestrator";
@@ -299,36 +309,35 @@ fn render(fb: &Framebuffer) {
     let sx = cx + (cw - sw) / 2;
     draw_text_scaled(fb, sx as u32, (cy + 130) as u32, sub, pal::SUBTITLE, 2);
 
-    // 6) Version line (gold for visibility)
-    let ver = b"v1.6.10 ::  Ring 0 + Ring 3  ::  [PCI-skip|ECAM-broken|PML4-UEFI]";
+    // 6) Version line
+    let ver = b"v1.6.12 ::  Ring 0 + Ring 3  ::  [dithered-wp|splash|PCI-skip]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
 
-    // 7) Phase progress bar (5 phases) — replaces the boring 5-item list
+    // 7) Phase progress bar — 5 segments with shimmer highlight on done
     let pb_x = cx + 80;
     let pb_y = cy + 210;
     let pb_w = cw - 160;
-    let pb_h = 8;
-    // Track
-    fb.fill_rounded_rect(pb_x, pb_y, pb_w, pb_h, 4, pal::PHASE_BG);
-    // 5 phase segments: P0..P4 all done, P5 (desktop) is current.
-    // We render a per-segment fill colored DONE for finished, CURR for the
-    // current phase, PEND for upcoming. We have 5 phases: cpu, memory,
-    // devices, display, scheduler. Phase 5 (desktop) is the one we're in.
+    let pb_h = 12;
+    fb.fill_rounded_rect(pb_x - 2, pb_y - 2, pb_w + 4, pb_h + 4, 6, pal::PHASE_BG);
     let phases_total = 5usize;
     let seg_w = pb_w / phases_total;
-    let seg_gap = 4usize;
-    let current_phase = 4usize; // we're at "scheduler / desktop" stage
+    let seg_gap = 6usize;
+    let current_phase = 4usize;
     for i in 0..phases_total {
-        let sx = pb_x + i * seg_w + seg_gap / 2;
-        let sw = seg_w - seg_gap;
+        let sxi = pb_x + i * seg_w + seg_gap / 2;
+        let swi = seg_w - seg_gap;
         let color = if i < current_phase { pal::PHASE_DONE }
                     else if i == current_phase { pal::PHASE_CURR }
                     else { pal::PHASE_PEND };
-        fb.fill_rounded_rect(sx, pb_y, sw, pb_h, 3, color);
+        fb.fill_rounded_rect(sxi, pb_y, swi, pb_h, 5, color);
+        // shimmer: thin mint highlight on the top 2 px of DONE segments
+        if i < current_phase {
+            fb.fill_rect(sxi + 2, pb_y + 1, swi - 4, 2, 0xFF8FF0CC);
+        }
     }
-    // Phase labels under the bar
+    // Phase labels under the bar with icons
     let labels: [&[u8]; 5] = [b"CPU", b"Mem", b"Dev", b"Disp", b"Desk"];
     let mut lx = pb_x;
     for (i, lab) in labels.iter().enumerate() {
@@ -337,42 +346,51 @@ fn render(fb: &Framebuffer) {
                     else { pal::SUBTITLE };
         let lw = lab.len() * 8;
         let lxoff = seg_w.saturating_sub(lw) / 2;
-        draw_text(fb, (lx + lxoff) as u32, (pb_y + 16) as u32, lab, color);
+        draw_text(fb, (lx + lxoff) as u32, (pb_y + 22) as u32, lab, color);
         lx += seg_w;
     }
 
-    // 8) Subsystem status badges (5) — replaces the boring [OK] list.
-    //    Each badge: a small rounded pill with a mint label and a value.
-    let badges: [(&[u8], &[u8]); 5] = [
-        (b"Ring0+3", b"active"),
-        (b"Syscalls", b"13 ops"),
-        (b"Compositor", b"loaded"),
-        (b"PS/2+Beep", b"ready"),
-        (b"RAMdisk+FS", b"open/rd/cls"),
+    // 8) Subsystem badges — v1.6.12 with ASCII icons
+    //    Check mark "v" for done, gold dot for current
+    let badges: [(&[u8], &[u8], &[u8]); 5] = [
+        (b"v", b"Ring0+3",    b"active"),
+        (b"v", b"Syscalls",   b"13 ops"),
+        (b"v", b"Compositor", b"loaded"),
+        (b"v", b"PS/2+Beep",  b"ready"),
+        (b"v", b"RAMdisk+FS", b"open/rd/cls"),
     ];
     let by0 = cy + 260;
-    let bw = (cw - 160 - 4 * 8) / 5;  // 5 badges, 8 px gap
-    let bh = 36;
-    for (i, (label, value)) in badges.iter().enumerate() {
+    let bw = (cw - 160 - 4 * 8) / 5;
+    let bh = 56;
+    for (i, (icon, label, value)) in badges.iter().enumerate() {
         let bx = cx + 80 + i * (bw + 8);
-        fb.fill_rounded_rect(bx, by0, bw, bh, 8, pal::OK_BG);
+        // base fill
+        fb.fill_rounded_rect(bx, by0, bw, bh, 10, pal::OK_BG);
+        // mint border
         fb.draw_rect(bx, by0, bw, bh, pal::OK_FG, 1);
-        draw_text(fb, (bx + 8) as u32, (by0 + 6) as u32, label, pal::OK_FG);
-        // value in dimmer mint
-        draw_text(fb, (bx + 8) as u32, (by0 + 22) as u32, value, pal::SUBTITLE);
+        // icon badge (small filled circle with check, 14x14 at top-left)
+        fb.fill_circle(bx + 14, by0 + 14, 8, pal::OK_FG);
+        draw_text(fb, (bx + 10) as u32, (by0 + 6) as u32, icon, pal::OK_BG);
+        // label in mint, value in cool gray
+        draw_text(fb, (bx + 28) as u32, (by0 + 8) as u32, label, pal::OK_FG);
+        draw_text(fb, (bx + 28) as u32, (by0 + 26) as u32, value, pal::SUBTITLE);
+        // second tiny icon next to value (•)
+        draw_text(fb, (bx + 28) as u32, (by0 + 42) as u32, b"\x95 ok", 0xFF3D5C50);
     }
 
     // 9) Prompt box
     let (px, py, pw, ph) = prompt_rect(fb);
 
-    // hint sobre el prompt
-    let hint = b"Escribe (Run) y pulsa Enter -> Ring 0 desktop (stub):";
+    // hint above the prompt
+    let hint = b">>  Escribe (Run) y pulsa Enter para entrar al Ring 0 desktop";
     let hx = px;
     draw_text(fb, hx as u32, (py - 28) as u32, hint, pal::SUBTITLE);
 
     // caja
     fb.fill_rounded_rect(px, py, pw, ph, 10, pal::PROMPT_BG);
     fb.draw_rect(px, py, pw, ph, pal::PROMPT_BD, 2);
+    // inner glow (subtle top border highlight)
+    fb.fill_rect(px + 2, py + 2, pw - 4, 1, 0xFF6FFFD0);
 
     // prompt "> " + input
     draw_text_scaled(fb, (px + 16) as u32, (py + 18) as u32, b"> ", pal::ACCENT, 2);
@@ -381,7 +399,7 @@ fn render(fb: &Framebuffer) {
         let txt = unsafe { &INPUT_BUF[..len] };
         draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, txt, pal::PROMPT_FG, 2);
     } else {
-        // v1.6.7: show ghosted placeholder when input is empty
+        // v1.6.7: ghosted placeholder
         draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, b"Run", 0xFF3D4F5F, 2);
     }
 
@@ -391,27 +409,53 @@ fn render(fb: &Framebuffer) {
         draw_text(fb, hx as u32, (py + ph + 16) as u32, msg, pal::HINT);
     }
 
-    // 11) BotÃ³n "RUN" a la derecha del prompt
+    // 11) RUN button — a la derecha del prompt, with subtle gradient
     let btn_w = 120usize;
     let btn_h = 60usize;
     let bx = px + pw - btn_w;
     let by = py;
-    let btn_color = if unsafe { INPUT_LEN > 0 && {
+    let btn_active = unsafe { INPUT_LEN > 0 && {
         let s = &INPUT_BUF[..INPUT_LEN];
         eq_ci(s, b"run")
-    } } { pal::RUN_BTN_HI } else { pal::RUN_BTN };
+    } };
+    let btn_color = if btn_active { pal::RUN_BTN_HI } else { pal::RUN_BTN };
     fb.fill_rounded_rect(bx, by, btn_w, btn_h, 10, btn_color);
-    fb.draw_rect(bx, by, btn_w, btn_h, pal::CARD_BD, 2);
+    fb.draw_rect(bx, by, btn_w, btn_h, pal::CARD_BD, 1);
+    // arrow icon on the left
+    draw_text_scaled(fb, (bx + 12) as u32, (by + 18) as u32, b"\x10", pal::TITLE, 2);
     let lbl = b"RUN";
-    let lw = lbl.len() * 8 * 3;
-    let lx = bx + (btn_w - lw) / 2;
-    draw_text_scaled(fb, lx as u32, (by + 12) as u32, lbl, pal::TITLE, 3);
+    let lw = lbl.len() * 8 * 2;
+    let lx = bx + 36 + (btn_w - 36 - lw) / 2;
+    draw_text_scaled(fb, lx as u32, (by + 18) as u32, lbl, pal::TITLE, 2);
 
-    // 12) Pie — show some quick stats
-    let foot = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  GOP framebuffer  ::  UEFI";
-    let fw = foot.len() * 8;
+    // 12) Pie — RAM, BIOS, build info
+    let free_mb = unsafe { (crate::arch::page_alloc::free_count() * 4) / 1024 };
+    let mut foot = [0u8; 96];
+    let prefix = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  ";
+    let mut i = 0;
+    while i < prefix.len() && i < foot.len() { foot[i] = prefix[i]; i += 1; }
+    // append free_mb as decimal
+    if free_mb > 0 {
+        let mut v = free_mb as u32;
+        if v == 0 { v = 0; }
+        // simple itoa
+        let mut buf = [0u8; 10];
+        let mut j = 10;
+        if v == 0 { j -= 1; buf[j] = b'0'; }
+        else { while v > 0 { j -= 1; buf[j] = b'0' + (v % 10) as u8; v /= 10; } }
+        let s = &buf[j..];
+        for &b in s { if i < foot.len() - 12 { foot[i] = b; i += 1; } }
+    }
+    let suffix = b" MB free  ::  UEFI";
+    for &b in suffix { if i < foot.len() { foot[i] = b; i += 1; } }
+    let fw = i * 8;
     let fx = cx + (cw - fw) / 2;
-    draw_text(fb, fx as u32, (cy + ch - 36) as u32, foot, pal::SUBTITLE);
+    draw_text(fb, fx as u32, (cy + ch - 32) as u32, &foot[..i], pal::SUBTITLE);
+    // build line below
+    let build = b"build 1.6.12  ::  AMD64  ::  BMO ABI v0.4.0";
+    let bw2 = build.len() * 8;
+    let bx2 = cx + (cw - bw2) / 2;
+    draw_text(fb, bx2 as u32, (cy + ch - 16) as u32, build, 0xFF455364);
 }
 
 /// Render mÃ­nimo y robusto para hardware real.
@@ -582,6 +626,9 @@ fn process_enter() {
 
 pub fn run() -> ! {
     crate::drivers::serial::serial_write("[welcome] Pantalla de bienvenida activa.\n");
+
+    // v1.6.11: wipe the boot splash before painting the welcome card.
+    crate::boot::visual::clear();
 
     // v1.5.0: Windows-inspired logon sound (sweep A4 â†’ A5)
     crate::gustos::tracks::windows::logon();
