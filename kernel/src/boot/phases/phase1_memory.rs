@@ -53,6 +53,16 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
     let phase1_end = arch::cpu::rdtsc();
     log::info_u64("phase1", "Phase 1 time (TSC ticks)", phase1_end - prev_end);
 
+    // v1.6.1: Install our own PML4 NOW that the page allocator is up.
+    // This lets us safely map MMIO regions above 4 GB (PCI ECAM)
+    // without corrupting UEFI runtime services.
+    log::info("phase1", "Installing new kernel PML4");
+    if unsafe { arch::paging::create_kernel_page_table() }.is_none() {
+        log::warn("phase1", "Failed to allocate new PML4 page; using UEFI PML4");
+    } else {
+        log::info("phase1", "Kernel PML4 installed (safe for ECAM mapping)");
+    }
+
     // v1.1.0: write canonical state into the context
     ctx.memory.free_pages = free_pages;
     ctx.memory.free_mb = free_mb;

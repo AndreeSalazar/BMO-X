@@ -276,7 +276,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 120) as u32, sub, pal::SUBTITLE, 2);
 
     // 5) VersiÃ³n â€” v1.6.0: nuevo branding FastOS-BMO con kernelspace completo
-    let ver = b"v1.6.0  ::  FastOS-BMO  Ring 0 + Ring 3  [own PML4|ECAM]";
+    let ver = b"v1.6.1  ::  FastOS-BMO  Ring 0 + Ring 3  [PML4 in Phase 1]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
