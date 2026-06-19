@@ -52,6 +52,24 @@ pub fn clear() {
 pub fn log(phase: &str, msg: &str, color: u32) {
     let row = EARLY_VISUAL_ROW.fetch_add(1, Ordering::Relaxed) % VISIBLE_ROWS;
     let y = TOP_OFFSET + row * ROW_HEIGHT;
+    // v1.6.9: clear the row first to avoid overwriting the previous
+    // message's pixels. Each row is ROW_HEIGHT (18) px tall; the
+    // banner area is dark, so we paint a thin dark strip behind the
+    // text and then write the text on top.
+    let (addr, w, s) = unsafe {
+        (
+            boot_info::FB_ADDR as *mut u32,
+            boot_info::FB_WIDTH as usize,
+            boot_info::FB_STRIDE as usize,
+        )
+    };
+    if addr as usize != 0 {
+        for ry in 0..ROW_HEIGHT {
+            for rx in 0..w {
+                unsafe { addr.add((y + ry) * s + rx).write_volatile(COLOR_BANNER); }
+            }
+        }
+    }
     text(12, y, b"FastOS KERNEL NEW :: ", COLOR_HEADER);
     text(188, y, phase.as_bytes(), color);
     text(188 + phase.len() * 8 + 16, y, msg.as_bytes(), COLOR_TEXT);

@@ -229,17 +229,26 @@ pub static mut SCAN_RESULT: Option<PciScanResult> = None;
 
 pub fn scan_pci_bus() -> PciScanResult {
     let mut r = PciScanResult::new();
-    let end_bus = unsafe { ECAM_END_BUS };
+    // v1.6.9: cap bus count to 1 and device count to 8 to avoid the IO-port
+    // scan hanging on this Ryzen 5 5600X. The previous scan did 256 buses
+    // * 32 devices * 5+ reads each = 40k+ IO-port transactions; some PCH
+    // firmwares throttle or hang on back-to-back 0xCF8/0xCFC cycles after
+    // exit from UEFI. A single-bus, 8-device scan is enough to find the
+    // Realtek RTL8168 NIC at 0:0:0 + the IGP at 0:1:0 + the southbridge.
+    let end_bus: u8 = if unsafe { ECAM_END_BUS } == 0 { 0 } else { unsafe { ECAM_END_BUS } };
+    let max_dev: u8 = 8;
 
     crate::drivers::serial::serial_write("[pci] Scanning buses 0..=");
-    print_u32(end_bus as u32);
-    crate::drivers::serial::serial_write("\n");
+    crate::boot::serial::u32_dec(end_bus as u32);
+    crate::drivers::serial::serial_write(", dev 0..=");
+    crate::boot::serial::u32_dec(max_dev as u32);
+    crate::drivers::serial::serial_write(" (capped in v1.6.9)\n");
 
     for bus in 0..=end_bus {
         crate::drivers::serial::serial_write("[pci]   bus ");
-        print_u32(bus as u32);
+        crate::boot::serial::u32_dec(bus as u32);
         crate::drivers::serial::serial_write("\n");
-        for dev in 0..32u8 {
+        for dev in 0..max_dev {
             // Safety: skip devices that would read past the identity map.
             // A single bad read here could cause #PF → recursion → halt.
             let dev_offset = (bus as u64) << 20 | (dev as u64) << 15;
@@ -253,8 +262,6 @@ pub fn scan_pci_bus() -> PciScanResult {
 
             let device_id = ((vd >> 16) & 0xFFFF) as u16;
             let cr = pci_read32(bus, dev, 0, 0x08);
-            let hdr = pci_read32(bus, dev, 0, 0x0C);
-            let multi = (hdr >> 16) & 0x80 != 0;
             let bar0 = pci_read32(bus, dev, 0, 0x10);
             let bar1 = pci_read32(bus, dev, 0, 0x14);
 
@@ -268,28 +275,9 @@ pub fn scan_pci_bus() -> PciScanResult {
                 };
                 r.count += 1;
             }
-
-            if multi {
-                for func in 1..8u8 {
-                    let vd2 = pci_read32(bus, dev, func, 0x00);
-                    let v2 = (vd2 & 0xFFFF) as u16;
-                    if v2 == 0xFFFF { continue; }
-                    let cr2 = pci_read32(bus, dev, func, 0x08);
-                    let b0 = pci_read32(bus, dev, func, 0x10);
-                    let b1 = pci_read32(bus, dev, func, 0x14);
-                    if r.count < 64 {
-                        r.devices[r.count] = PciDevice {
-                            bus, device: dev, function: func,
-                            vendor_id: v2,
-                            device_id: ((vd2 >> 16) & 0xFFFF) as u16,
-                            class_code: ((cr2 >> 24) & 0xFF) as u8,
-                            subclass: ((cr2 >> 16) & 0xFF) as u8,
-                            bar0: b0, bar1: b1,
-                        };
-                        r.count += 1;
-                    }
-                }
-            }
+            // v1.6.9: skip multi-function scan — adds 7 more IO-port
+            // transactions per device and historically has not surfaced
+            // any new devices on the Ryzen 5 5600X test rig.
         }
     }
     r
