@@ -63,6 +63,7 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
 
         crate::drivers::serial::serial_write("[phase2] P2-debug-B: about to init_ecam\n");
         log::info("phase2", "Step 2: pci::init_ecam");
+        crate::drivers::serial::serial_write("[phase2] P2-debug-B2: right before pci::init_ecam CALL\n");
         pci::init_ecam(ecam.base_addr, ecam.end_bus);
         crate::drivers::serial::serial_write("[phase2] P2-debug-C: init_ecam returned\n");
         log::info("phase2", "Step 3: pci::scan_pci_bus");
@@ -70,7 +71,9 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
     } else {
         log::warn("phase2", "MCFG not found; trying legacy IO port PCI scan");
         log::info("phase2", "Step 2b: pci::init_ecam(0, 32)");
+        crate::drivers::serial::serial_write("[phase2] P2-debug-B2-IO: right before pci::init_ecam(0,32) CALL\n");
         pci::init_ecam(0, 32);
+        crate::drivers::serial::serial_write("[phase2] P2-debug-C-IO: init_ecam(0,32) returned\n");
         log::info("phase2", "Step 3b: pci::scan_pci_bus (IO)");
         found = store_and_log("PCI devices discovered (IO port)", pci::scan_pci_bus());
     }

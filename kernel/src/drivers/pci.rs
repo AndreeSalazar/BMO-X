@@ -19,11 +19,18 @@ static mut USE_ECAM: bool = false;
 /// 0x1_0000_0000 would cause #PF on every config read. We explicitly
 /// map that region with 2 MiB huge pages (kernel MMIO mapping).
 pub fn init_ecam(base: u64, end_bus: u8) {
+    // v1.6.3: Localization prints — find where init_ecam hangs.
+    // Each marker writes a single line to COM1. If a marker is missing
+    // from the serial log, the cuelgue is between the previous marker
+    // and this one.
+    crate::drivers::serial::serial_write("[pci D1] init_ecam ENTERED\n");
+
     crate::drivers::serial::serial_write("[pci] init_ecam: base=0x");
     print_hex(base);
     crate::drivers::serial::serial_write(" end_bus=");
     print_u32(end_bus as u32);
     crate::drivers::serial::serial_write("\n");
+    crate::drivers::serial::serial_write("[pci D2] after header log\n");
 
     if base == 0 || base < 0x1000 {
         crate::drivers::serial::serial_write("[pci] ECAM base invalid, falling back to IO ports\n");
@@ -34,6 +41,7 @@ pub fn init_ecam(base: u64, end_bus: u8) {
         }
         return;
     }
+    crate::drivers::serial::serial_write("[pci D3] base sanity OK\n");
 
     // Cap end_bus to 8 — most consumer boards (incl. Ryzen 5 5600X) have
     // ECAM spanning only 0-7. Higher values mean server-class or buggy MCFG.
@@ -42,6 +50,11 @@ pub fn init_ecam(base: u64, end_bus: u8) {
     // Calculate ECAM size: each bus = 1 MB; buses 0..=safe_end.
     let bytes = (safe_end as usize + 1) * 1024 * 1024;
     let round_up_2mb = ((bytes + 0x1FFFFF) & !0x1FFFFF) as u64;
+    crate::drivers::serial::serial_write("[pci D4] safe_end=");
+    print_u32(safe_end as u32);
+    crate::drivers::serial::serial_write(" round_up_2mb=0x");
+    print_hex(round_up_2mb);
+    crate::drivers::serial::serial_write("\n");
 
     // Map ECAM at its physical address (identity-style). This works whether
     // it's in low memory (already identity-mapped) or high memory (we map
@@ -52,12 +65,16 @@ pub fn init_ecam(base: u64, end_bus: u8) {
     crate::drivers::serial::serial_write(" (");
     print_u32((round_up_2mb / 0x20000) as u32);
     crate::drivers::serial::serial_write(" x 2 MiB huge pages)\n");
+    crate::drivers::serial::serial_write("[pci D5] about to map_kernel_mmio_huge\n");
 
-    // v1.6.0: Re-enable ECAM mapping. We have our own PML4 now
-    // (created in Phase 0), so writing to PML4 slots is safe.
+    // v1.6.3: ECAM mapping is the most likely cuelgue site because it
+    // walks the UEFI PML4 and may try to write to a PDPT entry that UEFI
+    // already populated as a 1 GiB huge page. We catch the Err path and
+    // fall back to IO ports.
     let result = unsafe {
         crate::arch::paging::map_kernel_mmio_huge(base, base, round_up_2mb as usize)
     };
+    crate::drivers::serial::serial_write("[pci D6] map_kernel_mmio_huge returned\n");
     match result {
         Ok(()) => {
             crate::drivers::serial::serial_write("[pci] ECAM mapped OK\n");
