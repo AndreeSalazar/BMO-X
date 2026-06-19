@@ -441,6 +441,9 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     // Tick the scheduler (decrements time slice, may trigger schedule())
     crate::sched::timer_tick();
     crate::diag::tick_refresh();
+    // Pet the hardware watchdog (resets the 5-sec countdown)
+    crate::drivers::watchdog::pet();
+    crate::drivers::watchdog::check();
 
     // Check if we need to switch threads.
     // timer_tick() already calls schedule() when the time slice expires,
@@ -616,7 +619,10 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> 
         }
         8 => {
             t.cpu.df_faults.fetch_add(1, Ordering::Relaxed);
+            // #DF is unrecoverable in most cases. Show on framebuffer
+            // and halt so the user sees the crash on screen.
             crate::diag::fault_u64("#DF", "double fault", error);
+            unsafe { early_boot_fault_display(vector, error, cr2); }
         }
         6 => {
             t.cpu.ud_faults.fetch_add(1, Ordering::Relaxed);

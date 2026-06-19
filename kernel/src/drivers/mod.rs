@@ -17,5 +17,6 @@ pub mod nvme;
 pub mod ahci;
 pub mod net;
 pub mod gop;
+pub mod watchdog;
 // GPU experimental (NVIDIA RTX 3060) — removed. FastOS uses UEFI GOP/framebuffer.
 pub mod usb;

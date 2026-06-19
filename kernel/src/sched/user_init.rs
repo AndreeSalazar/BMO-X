@@ -316,11 +316,21 @@ pub fn spawn_hello() {
 }
 
 /// Shell command: launch the desktop path that is stable today.
-pub fn spawn_desktop() -> ! {
+///
+/// BUG WORKAROUND: instead of `-> !`, return from this function so
+/// the welcome screen can recover if anything fails. The desktop
+/// itself is `-> !` so if everything works, it runs forever.
+pub fn spawn_desktop() {
     crate::diag::info("sched", "spawn_desktop: Ring 0 GOP desktop stable path");
-    crate::drivers::serial::serial_write("[user_init] Launching stable Ring 0 GOP desktop; Ring 3 remains test-only.\n");
-    prepare_desktop_compositor();
+    crate::drivers::serial::serial_write("[user_init] Launching stable Ring 0 GOP desktop.\n");
+    if !prepare_desktop_compositor() {
+        crate::diag::warn("sched", "compositor build failed; returning to welcome");
+        crate::drivers::serial::serial_write("[user_init] compositor build FAILED, returning to welcome.\n");
+        return;
+    }
     crate::desktop::run_ring0();
+    // If run_ring0 ever returns (shouldn't), we end up here.
+    crate::drivers::serial::serial_write("[user_init] desktop returned (unexpected)\n");
 }
 
 /// Build a minimal Ring 3 program that executes `ud2` (undefined opcode).

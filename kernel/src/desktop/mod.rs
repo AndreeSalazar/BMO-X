@@ -52,52 +52,31 @@ pub fn run() -> ! {
 
 /// Ring 0 desktop main loop — stable GOP path.
 ///
-/// BUG ISOLATION: this loop can hang on hardware without proper PS/2
-/// support or with GOP quirks. Wrapped in a watchdog: if no frame
-/// advance happens for >5 seconds, return to the welcome screen.
+/// BUG ISOLATION: temporarily a no-op stub to isolate the hang.
+/// Returns to welcome immediately so we can debug safely.
 pub fn run_ring0() -> ! {
-    crate::diag::info("desktop", "entering Ring 0 GOP desktop supervisor");
-    crate::drivers::serial::serial_write("[desktop] Ring 0 GOP desktop supervisor active.\n");
+    crate::diag::warn("desktop", "run_ring0: STUBBED for debug, returning to welcome");
+    crate::drivers::serial::serial_write("[desktop] run_ring0 STUBBED — returning to welcome\n");
 
-    crate::diag::set_overlay_enabled(false);
+    // Disarm watchdog so the stub can take its time
+    crate::drivers::watchdog::disarm();
 
-    state::init();
-    state::mark_dirty();
-
-    // Try to render the first frame. If it fails (e.g. bad GOP), bail.
-    // We use a watchdog TSC: 5 seconds max for the entire desktop session.
-    let watchdog_start = crate::arch::cpu::rdtsc();
-    let watchdog_limit: u64 = 5 * 1_000_000_000; // 5s at 1GHz, scales with TSC
-    let mut last_frame = watchdog_start;
-
-    beep(880, 60);
-    beep(1320, 80);
-
-    loop {
-        // Watchdog: if no frame advance in 5s, exit to welcome.
-        let now = crate::arch::cpu::rdtsc();
-        if now.wrapping_sub(last_frame) > watchdog_limit {
-            crate::diag::warn("desktop", "watchdog timeout, returning to welcome");
-            crate::drivers::serial::serial_write("[desktop] watchdog timeout, returning to welcome\n");
-            // Re-enter the welcome loop. This function should not return,
-            // but if the watchdog fires, we re-enter welcome which also
-            // does not return. In practice this branch is dead code at
-            // the type level, but the watchdog makes the behavior
-            // explicit instead of a hard hang.
-            return crate::desktop::welcome::run();
-        }
-        if now != last_frame { last_frame = now; } // frame tick
-
-        render::render_frame();
-
-        let target = crate::arch::cpu::rdtsc().wrapping_add(16 * CYCLES_PER_MS);
-        loop {
-            let sc = poll_key();
-            if sc == input::SC_ESC { return_to_welcome(); }
-            if crate::arch::cpu::rdtsc() >= target { break; }
-            core::hint::spin_loop();
-        }
+    // Draw a visible "desktop disabled" marker on the framebuffer so
+    // the user knows what happened if serial isn't connected.
+    {
+        let w = 1920u32;
+        let h = 1080u32;
+        // Big red rectangle in the middle of the screen
+        crate::desktop::display::fb_fill(50, h / 4, w - 100, 60, 0x00FF2A2A);
+        // Text overlay
+        crate::desktop::display::fb_text(
+            100,
+            (h / 4 + 20),
+            b"[DESKTOP STUBBED] Run 'test' or 'Run' again to continue",
+            0xFFFFFFFF,
+        );
     }
+    return crate::desktop::welcome::run();
 }
 
 /// Return to the welcome screen (safer than halting).

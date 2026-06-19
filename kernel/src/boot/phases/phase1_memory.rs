@@ -35,6 +35,11 @@ pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, Pha
     log::info_u64("phase1", "Free pages", free_pages);
     log::info_u64("phase1", "Free memory (MB)", free_mb);
 
+    // Initialize the kernel heap now (was lazy-init in alloc()). Without
+    // this, the diag overlay reports 0/16384 KB and any Vec::new() panics.
+    allocator::init_heap();
+    log::info("phase1", "Kernel heap initialized (16 MB free-list)");
+
     let heap_total = allocator::heap_total() as u64;
     let heap_used = allocator::heap_used() as u64;
     log::info_u64("phase1", "Heap total (bytes)", heap_total);

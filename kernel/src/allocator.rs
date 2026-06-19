@@ -42,6 +42,12 @@ impl BlockHeader {
 }
 
 /// Initialize the free-list with one big block spanning the entire heap.
+/// Safe to call multiple times (idempotent).
+pub fn init_heap() {
+    unsafe { init_free_list() }
+}
+
+/// Initialize the free-list with one big block spanning the entire heap.
 unsafe fn init_free_list() {
     if ALLOC_INIT { return; }
     ALLOC_INIT = true;

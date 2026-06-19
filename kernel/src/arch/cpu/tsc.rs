@@ -36,6 +36,9 @@ pub fn calibrate() -> u64 {
     // Simpler: freq ≈ elapsed * 80 (calibrated for 50M PAUSE iterations)
     let freq = if elapsed > 0 { elapsed * 80 } else { 3_700_000_000 };
 
+    // Make available globally (for watchdog, bmo_abi::time, etc.)
+    super::set_tsc_freq(freq);
+
     crate::drivers::serial::serial_write("[cpu] TSC calibrated: ");
     let mut buf = [0u8; 20];
     let mut v = freq;

@@ -17,6 +17,9 @@ pub fn run(prev_end: u64) -> PhaseOutput {
     arch::cpu::sti();
     log::info("phase4", "Interrupts enabled (STI)");
 
+    // Arm hardware watchdog (5 sec timeout — auto-reboot if kernel hangs)
+    crate::drivers::watchdog::arm();
+
     let phase4_end = arch::cpu::rdtsc();
     log::info_u64("phase4", "Phase 4 time (TSC ticks)", phase4_end - prev_end);
     PhaseOutput { prev_end: phase4_end }

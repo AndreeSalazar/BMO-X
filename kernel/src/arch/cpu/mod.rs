@@ -102,6 +102,22 @@ pub fn rdtsc() -> u64 {
     ((high as u64) << 32) | low as u64
 }
 
+/// Global TSC frequency in Hz (set by `tsc::calibrate()`).
+/// Used by watchdog, sleep helpers, and bmo_abi::time::Instant.
+static mut TSC_FREQ_HZ: u64 = 0;
+
+/// Set the global TSC frequency (called from `tsc::calibrate`).
+pub fn set_tsc_freq(freq: u64) {
+    unsafe { TSC_FREQ_HZ = freq; }
+}
+
+/// Get the global TSC frequency in Hz.
+/// Returns 0 if TSC hasn't been calibrated yet.
+#[inline]
+pub fn tsc_per_sec() -> u64 {
+    unsafe { TSC_FREQ_HZ }
+}
+
 /// Read TSC with processor ID.
 #[inline]
 pub fn rdtscp() -> (u64, u32) {
