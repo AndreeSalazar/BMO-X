@@ -88,20 +88,34 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     let (cpu, out0) = boot::phases::phase0_cpu::run(&mut ctx, t0);
     boot::visual::log("boot", "K0f phase0_cpu::run DONE", boot::visual::color::OK);
 
-    boot::phases::ring3_tests::run_all_tests();
-
     // We need to read `ctx.boot_info` while still mutating `ctx`, so we
     // copy the BootInfo to a local first. BootInfo is `Copy`-able (it
     // holds only primitive fields plus a slice header for the memory map).
     let bi_copy = ctx.boot_info;
-    let (mem, out1) = boot::phases::phase1_memory::run(&mut ctx, &bi_copy, out0.prev_end);
-    boot::phases::ring3_tests::run_codegen_tests();
 
+    boot::visual::log("boot", "K1 phase1_memory::run...", boot::visual::color::OK);
+    let (mem, out1) = boot::phases::phase1_memory::run(&mut ctx, &bi_copy, out0.prev_end);
+    boot::visual::log("boot", "K1 phase1_memory::run DONE", boot::visual::color::OK);
+
+    boot::visual::log("boot", "K2 phase2_devices::run...", boot::visual::color::OK);
     let out2 = boot::phases::phase2_devices::run(&mut ctx, &bi_copy, out1.prev_end);
+    boot::visual::log("boot", "K2 phase2_devices::run DONE", boot::visual::color::OK);
+
+    boot::visual::log("boot", "K3 phase3_display::run...", boot::visual::color::OK);
     let out3 = boot::phases::phase3_display::run(&bi_copy, out2.prev_end);
+    boot::visual::log("boot", "K3 phase3_display::run DONE", boot::visual::color::OK);
+
+    boot::visual::log("boot", "K4 phase4_scheduler::run...", boot::visual::color::OK);
     let out4 = boot::phases::phase4_scheduler::run(out3.prev_end);
+    boot::visual::log("boot", "K4 phase4_scheduler::run DONE", boot::visual::color::OK);
+
+    // Full diag sinks are safe only after the boot-critical path is complete.
+    // Ring3 self-tests remain available from welcome commands; they must not
+    // block the stable path to the desktop.
+    diag::mark_boot_ready();
 
     // Phase 5 consumes the full boot aggregate; it does not return.
+    boot::visual::log("boot", "K5 phase5_desktop::run...", boot::visual::color::OK);
     boot::phases::phase5_desktop::run(&bi_copy, &cpu, &mem, t0, out4.prev_end);
 }
 

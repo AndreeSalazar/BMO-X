@@ -51,32 +51,33 @@ pub fn run() -> ! {
 }
 
 /// Ring 0 desktop main loop — stable GOP path.
-///
-/// BUG ISOLATION: temporarily a no-op stub to isolate the hang.
-/// Returns to welcome immediately so we can debug safely.
 pub fn run_ring0() -> ! {
-    crate::diag::warn("desktop", "run_ring0: STUBBED for debug, returning to welcome");
-    crate::drivers::serial::serial_write("[desktop] run_ring0 STUBBED — returning to welcome\n");
+    crate::diag::info("desktop", "entering Ring 0 GOP desktop supervisor");
+    crate::drivers::serial::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
 
-    // Disarm watchdog so the stub can take its time
+    // The desktop owns the screen now. Keep the watchdog and overlay out of the
+    // first-frame path so hardware real does not look frozen behind diag.
     crate::drivers::watchdog::disarm();
+    crate::diag::set_overlay_enabled(false);
 
-    // Draw a visible "desktop disabled" marker on the framebuffer so
-    // the user knows what happened if serial isn't connected.
-    {
-        let w = 1920u32;
-        let h = 1080u32;
-        // Big red rectangle in the middle of the screen
-        crate::desktop::display::fb_fill(50, h / 4, w - 100, 60, 0x00FF2A2A);
-        // Text overlay
-        crate::desktop::display::fb_text(
-            100,
-            (h / 4 + 20),
-            b"[DESKTOP STUBBED] Run 'test' or 'Run' again to continue",
-            0xFFFFFFFF,
-        );
+    state::init();
+    state::mark_dirty();
+    render::render_frame();
+
+    sound::beep(880, 50);
+
+    loop {
+        render::render_frame();
+        crate::diag::paint_overlay();
+
+        let target = crate::arch::cpu::rdtsc().wrapping_add(16 * CYCLES_PER_MS);
+        loop {
+            let sc = input::poll_key();
+            if sc == input::SC_ESC { return_to_welcome(); }
+            if crate::arch::cpu::rdtsc() >= target { break; }
+            core::hint::spin_loop();
+        }
     }
-    return crate::desktop::welcome::run();
 }
 
 /// Return to the welcome screen (safer than halting).

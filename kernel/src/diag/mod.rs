@@ -19,6 +19,9 @@ pub mod telemetry;
 pub use event::Severity;
 
 use event::Event;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+static BOOT_READY: AtomicBool = AtomicBool::new(false);
 
 // ── Tab system for overlay ─────────────────────────────────────────
 
@@ -92,6 +95,13 @@ pub fn current_tab() -> OverlayTab {
 pub fn init() {
     persistent::init();
     overlay::set_enabled(false);
+}
+
+/// Enable full diag sinks after the kernel has passed the fragile early boot
+/// path. Before this point diag is RAM-only: no GOP paint and no serial event
+/// sink from inside `emit()`. Boot messages still go to serial via `boot_log()`.
+pub fn mark_boot_ready() {
+    BOOT_READY.store(true, Ordering::Release);
     info("diag", "diag online: serial + GOP overlay + RAM blackbox");
 }
 
@@ -217,9 +227,11 @@ pub fn tick_refresh() {
 
 fn emit(event: Event) {
     let event = buffer::push(event);
-    serial_sink::write_event(event);
-    persistent::write_event(event);
-    overlay::paint();
+    if BOOT_READY.load(Ordering::Acquire) {
+        serial_sink::write_event(event);
+        persistent::write_event(event);
+        overlay::paint();
+    }
 }
 
 // ── Macros ─────────────────────────────────────────────────────────

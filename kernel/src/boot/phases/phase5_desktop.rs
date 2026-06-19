@@ -81,12 +81,12 @@ pub fn run(
     con.println("  Security: ByteDefender (Ring 0) | Restaurer (Snapshots)");
     con.println("================================================================");
     con.println("");
-    con.println("  Type 'Run' + Enter to launch desktop.");
+    con.println("  Launching Desktop Ring 0 automatically...");
     con.println("");
 
     desktop::init();
-    log::info("phase5", "Launching welcome screen — type 'Run'");
-    desktop::welcome::run();
+    log::info("phase5", "Launching Ring 0 desktop directly");
+    desktop::run();
 }
 
 /// Used by the `Phase` trait to satisfy the signature; phase5 does not

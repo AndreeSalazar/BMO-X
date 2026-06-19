@@ -18,29 +18,29 @@ use super::{serial as boot_serial, visual};
 
 /// Log an info-level boot message. `phase` and `msg` must be `'static`.
 pub fn info(phase: &'static str, msg: &'static str) {
+    visual::log(phase, msg, visual::color::OK);
     diag::info(phase, msg);
     serial::serial_write("[FastOS] ");
     serial::serial_write(msg);
     serial::serial_write("\n");
-    visual::log(phase, msg, visual::color::OK);
 }
 
 /// Log a recoverable warning.
 pub fn warn(phase: &'static str, msg: &'static str) {
+    visual::log(phase, msg, visual::color::WARN);
     diag::warn(phase, msg);
     serial::serial_write("[FastOS] WARN: ");
     serial::serial_write(msg);
     serial::serial_write("\n");
-    visual::log(phase, msg, visual::color::WARN);
 }
 
 /// Log an unrecoverable fault and halt. Never returns.
 pub fn fault(phase: &'static str, msg: &'static str) -> ! {
+    visual::log(phase, msg, visual::color::FAULT);
     diag::fault(phase, msg);
     serial::serial_write("[FastOS] FATAL: ");
     serial::serial_write(msg);
     serial::serial_write("\n");
-    visual::log(phase, msg, visual::color::FAULT);
     loop {
         unsafe { core::arch::asm!("hlt"); }
     }
@@ -48,6 +48,7 @@ pub fn fault(phase: &'static str, msg: &'static str) -> ! {
 
 /// Log an info message plus a u64 value rendered as 0xHEX.
 pub fn info_u64(phase: &'static str, msg: &'static str, val: u64) {
+    visual::log(phase, msg, visual::color::OK);
     diag::info_u64(phase, msg, val);
     serial::serial_write("[FastOS] ");
     serial::serial_write(msg);
