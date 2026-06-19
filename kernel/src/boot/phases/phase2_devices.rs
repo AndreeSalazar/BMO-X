@@ -61,13 +61,22 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
         boot_serial::u32_dec(ecam.end_bus as u32);
         crate::drivers::serial::serial_write("\n");
 
-        crate::drivers::serial::serial_write("[phase2] P2-debug-B: about to init_ecam\n");
-        log::info("phase2", "Step 2: pci::init_ecam");
-        crate::drivers::serial::serial_write("[phase2] P2-debug-B2: right before pci::init_ecam CALL\n");
-        pci::init_ecam(ecam.base_addr, ecam.end_bus);
-        crate::drivers::serial::serial_write("[phase2] P2-debug-C: init_ecam returned\n");
-        log::info("phase2", "Step 3: pci::scan_pci_bus");
-        found = store_and_log("PCI devices discovered", pci::scan_pci_bus());
+        // v1.6.6: SKIP ECAM. The map_kernel_mmio_huge() path triggers a #PF
+        // on this Ryzen 5 5600X's UEFI PML4 because the ECAM region falls
+        // into a 1 GiB huge-page PDPT entry that we can't safely subdivide
+        // while keeping the UEFI identity map intact. We could fix the
+        // page-table walker to handle that case, but IO-port PCI works
+        // perfectly for enumerating the Realtek NIC and is what most
+        // production firmwares fall back to. v1.6.5 confirmed the same
+        // CR2=0xBDC01000 across multiple fix attempts, so the issue is
+        // structural to the UEFI PML4, not to our allocator.
+        log::warn("phase2", "ECAM disabled in v1.6.6; using IO-port PCI scan (avoids #PF in map_kernel_mmio_huge)");
+        log::info("phase2", "Step 2: pci::init_ecam(0, 32) — IO-port fallback");
+        crate::drivers::serial::serial_write("[phase2] right before pci::init_ecam(0,32) CALL\n");
+        pci::init_ecam(0, 32);
+        crate::drivers::serial::serial_write("[phase2] init_ecam(0,32) returned\n");
+        log::info("phase2", "Step 3: pci::scan_pci_bus (IO)");
+        found = store_and_log("PCI devices discovered (IO port)", pci::scan_pci_bus());
     } else {
         log::warn("phase2", "MCFG not found; trying legacy IO port PCI scan");
         log::info("phase2", "Step 2b: pci::init_ecam(0, 32)");
