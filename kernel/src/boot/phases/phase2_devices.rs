@@ -33,15 +33,36 @@ pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> PhaseOutput {
     log::info("phase2", "=== Phase 2: Devices ===");
     log::info("phase2", "GDT+IDT+SYSCALL already active (loaded in Phase 0)");
 
-    if let Some(ecam) = crate::arch::acpi::parse_mcfg(bi.rsdp_addr) {
+    // Step 0: log rsdp address so we know what we're about to dereference.
+    crate::drivers::serial::serial_write("[phase2] RSDP addr = 0x");
+    crate::boot::serial::hex(bi.rsdp_addr);
+    crate::drivers::serial::serial_write("\n");
+
+    // Step 1: try MCFG (PCI Express ECAM)
+    log::info("phase2", "Step 1: parse_mcfg");
+    let mcfg_result = crate::arch::acpi::parse_mcfg(bi.rsdp_addr);
+    crate::drivers::serial::serial_write("[phase2] parse_mcfg returned\n");
+
+    if let Some(ecam) = mcfg_result {
+        crate::drivers::serial::serial_write("[phase2] MCFG found: base=0x");
+        crate::boot::serial::hex(ecam.base_addr);
+        crate::drivers::serial::serial_write(" end_bus=");
+        crate::boot::serial::u32_dec(ecam.end_bus as u32);
+        crate::drivers::serial::serial_write("\n");
+
+        log::info("phase2", "Step 2: pci::init_ecam");
         pci::init_ecam(ecam.base_addr, ecam.end_bus);
+        log::info("phase2", "Step 3: pci::scan_pci_bus");
         store_and_log("PCI devices discovered", pci::scan_pci_bus());
     } else {
         log::warn("phase2", "MCFG not found; trying legacy IO port PCI scan");
+        log::info("phase2", "Step 2b: pci::init_ecam(0, 32)");
         pci::init_ecam(0, 32);
+        log::info("phase2", "Step 3b: pci::scan_pci_bus (IO)");
         store_and_log("PCI devices discovered (IO port)", pci::scan_pci_bus());
     }
 
+    log::info("phase2", "Step 4: Phase 2 complete");
     log::warn("phase2", "Storage init deferred until desktop/service phase");
     log::warn("phase2", "Network init deferred until desktop/service phase");
 
