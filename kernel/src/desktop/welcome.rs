@@ -300,7 +300,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 130) as u32, sub, pal::SUBTITLE, 2);
 
     // 6) Version line (gold for visibility)
-    let ver = b"v1.6.9  ::  Ring 0 + Ring 3  ::  [PCI-cap-1-bus|ECAM-off|heap-PT]";
+    let ver = b"v1.6.10 ::  Ring 0 + Ring 3  ::  [PCI-skip|ECAM-broken|PML4-UEFI]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);

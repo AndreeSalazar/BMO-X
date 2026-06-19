@@ -229,61 +229,29 @@ pub static mut SCAN_RESULT: Option<PciScanResult> = None;
 
 pub fn scan_pci_bus() -> PciScanResult {
     let mut r = PciScanResult::new();
-    // v1.6.9: cap bus count to 1 and device count to 8 to avoid the IO-port
-    // scan hanging on this Ryzen 5 5600X. The previous scan did 256 buses
-    // * 32 devices * 5+ reads each = 40k+ IO-port transactions; some PCH
-    // firmwares throttle or hang on back-to-back 0xCF8/0xCFC cycles after
-    // exit from UEFI. A single-bus, 8-device scan is enough to find the
-    // Realtek RTL8168 NIC at 0:0:0 + the IGP at 0:1:0 + the southbridge.
-    let end_bus: u8 = if unsafe { ECAM_END_BUS } == 0 { 0 } else { unsafe { ECAM_END_BUS } };
-    let max_dev: u8 = 8;
-
-    crate::drivers::serial::serial_write("[pci] Scanning buses 0..=");
-    crate::boot::serial::u32_dec(end_bus as u32);
-    crate::drivers::serial::serial_write(", dev 0..=");
-    crate::boot::serial::u32_dec(max_dev as u32);
-    crate::drivers::serial::serial_write(" (capped in v1.6.9)\n");
-
-    for bus in 0..=end_bus {
-        crate::drivers::serial::serial_write("[pci]   bus ");
-        crate::boot::serial::u32_dec(bus as u32);
-        crate::drivers::serial::serial_write("\n");
-        for dev in 0..max_dev {
-            // Safety: skip devices that would read past the identity map.
-            // A single bad read here could cause #PF → recursion → halt.
-            let dev_offset = (bus as u64) << 20 | (dev as u64) << 15;
-            if unsafe { ECAM_BASE } != 0 && unsafe { ECAM_BASE } + dev_offset >= 0x1_0000_0000 {
-                continue;
-            }
-
-            let vd = pci_read32(bus, dev, 0, 0x00);
-            let vendor = (vd & 0xFFFF) as u16;
-            if vendor == 0xFFFF { continue; }
-
-            let device_id = ((vd >> 16) & 0xFFFF) as u16;
-            let cr = pci_read32(bus, dev, 0, 0x08);
-            let bar0 = pci_read32(bus, dev, 0, 0x10);
-            let bar1 = pci_read32(bus, dev, 0, 0x14);
-
-            if r.count < 64 {
-                r.devices[r.count] = PciDevice {
-                    bus, device: dev, function: 0,
-                    vendor_id: vendor, device_id,
-                    class_code: ((cr >> 24) & 0xFF) as u8,
-                    subclass: ((cr >> 16) & 0xFF) as u8,
-                    bar0, bar1,
-                };
-                r.count += 1;
-            }
-            // v1.6.9: skip multi-function scan — adds 7 more IO-port
-            // transactions per device and historically has not surfaced
-            // any new devices on the Ryzen 5 5600X test rig.
-        }
-    }
-    r
+    // v1.6.10: On the Ryzen 5 5600X the UEFI firmware has the legacy
+    // PCI config space (ports 0xCF8/0xCFC) DISABLED, so even a single
+    // `out 0xCF8, al` transaction wedges the CPU forever (it polls
+    // waiting for a response that never arrives). ECAM is also broken
+    // (see v1.6.6 — PDPT 1 GiB huge-page conflict with UEFI PML4).
+    // So we cannot enumerate PCI at all on this firmware. We return
+    // an empty scan result and the rest of the kernel keeps working.
+    crate::drivers::serial::serial_write(
+        "[pci] scan_pci_bus: SKIPPED in v1.6.10 (UEFI disabled IO-ports, ECAM broken)\n",
+    );
+    crate::drivers::serial::serial_write(
+        "[pci] scan_pci_bus: 0 devices. NIC/AHCI/NVMe unavailable until ECAM is fixed.\n",
+    );
+    unsafe { SCAN_RESULT = Some(PciScanResult::new()); }
+    return r;
 }
 
 /// Scan PCI bus using legacy IO ports (0xCF8/0xCFC) — 256 buses max.
+/// v1.6.10: NOT CALLED. The Ryzen 5 5600X UEFI firmware wedges the
+/// CPU on any 0xCF8/0xCFC transaction, so this is dead code until
+/// we have a real ECAM path. Kept for the day ECAM is fixed and
+/// we want a non-MCFG fallback for old machines.
+#[allow(dead_code)]
 fn scan_pci_bus_io() -> PciScanResult {
     let mut r = PciScanResult::new();
     for bus in 0..=255u16 {
