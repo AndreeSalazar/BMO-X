@@ -198,5 +198,14 @@ pub const fn heap_total() -> usize {
     HEAP_SIZE
 }
 
+/// Public wrapper around the global allocator so non-`alloc` code (e.g.
+/// the page-table allocator) can grab a 4 KB-aligned page from the heap
+/// without depending on `core::alloc::Layout`'s private visibility.
+pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
+    let layout = core::alloc::Layout::from_size_align(size, align)
+        .expect("heap_alloc: invalid layout");
+    ALLOCATOR.alloc(layout)
+}
+
 #[no_mangle]
 pub extern "C" fn __rust_no_alloc_shim_is_unstable() {}

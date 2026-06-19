@@ -167,8 +167,33 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
 
 /// Allocate a new page table page (4 KB, aligned).
 /// Returns physical address of the new page table, or None if OOM.
+///
+/// v1.6.4: Use the kernel heap (already initialized in Phase 1) instead of
+/// the page-frame bitmap. Reason: the bitmap allocator may hand back pages
+/// in regions that the UEFI PML4 left marked read-only (firmware data,
+/// EfiRuntimeServicesData, etc). Writing to such pages while we build new
+/// page tables triggers a #PF with CR2 = the page-table page address,
+/// exactly the fault we saw in v1.6.3 (CR2=0xBDC01000, Error=0x3, RIP
+/// inside map_kernel_mmio_huge). The kernel heap lives in a region we
+/// know is R/W because we just zeroed it during init_heap().
 unsafe fn alloc_page_table() -> Option<u64> {
-    crate::arch::page_alloc::alloc_pages_contiguous(1)
+    // Over-allocate (8 KB) so we can return a 4 KB-aligned slice even
+    // though our free-list only honors 8-byte alignment.
+    let raw = crate::allocator::heap_alloc(8192, 8);
+    if raw.is_null() {
+        return None;
+    }
+    let raw_addr = raw as usize;
+    // Round up to next 4 KB boundary.
+    let aligned_addr = (raw_addr + 4095) & !4095;
+    let aligned = aligned_addr as *mut u8;
+    let pad = aligned_addr - raw_addr;
+    if pad >= 8 {
+        let stash = (aligned_addr - 8) as *mut usize;
+        core::ptr::write_unaligned(stash, raw_addr);
+    }
+    core::ptr::write_bytes(aligned, 0, 4096);
+    Some(aligned as u64)
 }
 
 /// Clone kernel PML4 into a new user PML4, sharing kernel mappings (above 0xFFFF_8000_0000_0000).
@@ -226,6 +251,12 @@ pub unsafe fn map_kernel_mmio_huge(
         let pdpt_i = ((va >> 30) & 0x1FF) as usize;
         let pd_i   = ((va >> 21) & 0x1FF) as usize;
 
+        // v1.6.4 FIX: UEFI marks PML4 / PDPT / PD entries as R/O to protect
+        // firmware data. When we try to write a child entry (PDPT, PD, or
+        // PT) we need the parent entry to allow writes. We ALWAYS force
+        // WRITABLE on PML4/PDPT/PD entries we traverse so the subsequent
+        // child-level writes don't #PF with CR2 = parent entry address.
+
         // PML4 entry
         let pml4e = &mut (*pml4).entries[pml4_i];
         let pdpt_phys: u64 = if !pml4e.is_present() {
@@ -234,20 +265,36 @@ pub unsafe fn map_kernel_mmio_huge(
             pml4e.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
             new
         } else {
+            // Force WRITABLE on UEFI's existing PML4 entry so we can write
+            // the PDPT entry below. Clear NX so we can execute page-table
+            // walks from this level (UEFI sometimes sets NX on data).
             pml4e.0 |= flags::WRITABLE;
+            pml4e.0 &= !flags::NO_EXECUTE;
             pml4e.phys_addr()
         };
 
         // PDPT entry
         let pdpt = pdpt_phys as *mut PageTable;
         let pdpte = &mut (*pdpt).entries[pdpt_i];
+        // SAFETY: PDPT can be a 1 GiB huge page from UEFI. We must NOT
+        // touch the entry if it's a huge page — we just leave it alone and
+        // add a new PD under a sibling PML4 slot if needed.
         let pd_phys: u64 = if !pdpte.is_present() {
             let new = alloc_page_table().ok_or("OOM: PDPT->PD")?;
             core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
             pdpte.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
             new
+        } else if (pdpte.0 & flags::HUGE_PAGE) != 0 {
+            // PDPT entry is a 1 GiB huge page. We cannot sub-allocate 2 MiB
+            // pages from it. We have to either reuse it as-is (which means
+            // our ECAM region must be 1 GiB-aligned and within the existing
+            // 1 GiB mapping), or fail. For now we fail with a clear error
+            // so the caller can fall back to IO-port PCI.
+            return Err("map_kernel_mmio_huge: PDPT entry is 1 GiB huge page, cannot sub-allocate 2 MiB");
         } else {
+            // Force WRITABLE on the preexistent PDPT entry, clear NX.
             pdpte.0 |= flags::WRITABLE;
+            pdpte.0 &= !flags::NO_EXECUTE;
             pdpte.phys_addr()
         };
 
