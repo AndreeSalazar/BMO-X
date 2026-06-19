@@ -50,6 +50,9 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
     let mcfg_result = crate::arch::acpi::parse_mcfg(bi.rsdp_addr);
     crate::drivers::serial::serial_write("[phase2] parse_mcfg returned\n");
 
+    // v1.5.1: extra debug to find where Phase 2 hangs
+    crate::drivers::serial::serial_write("[phase2] P2-debug-A: mcfg_result ready\n");
+
     let mut found: u32 = 0;
     if let Some(ecam) = mcfg_result {
         crate::drivers::serial::serial_write("[phase2] MCFG found: base=0x");
@@ -58,8 +61,10 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
         boot_serial::u32_dec(ecam.end_bus as u32);
         crate::drivers::serial::serial_write("\n");
 
+        crate::drivers::serial::serial_write("[phase2] P2-debug-B: about to init_ecam\n");
         log::info("phase2", "Step 2: pci::init_ecam");
         pci::init_ecam(ecam.base_addr, ecam.end_bus);
+        crate::drivers::serial::serial_write("[phase2] P2-debug-C: init_ecam returned\n");
         log::info("phase2", "Step 3: pci::scan_pci_bus");
         found = store_and_log("PCI devices discovered", pci::scan_pci_bus());
     } else {

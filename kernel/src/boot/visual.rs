@@ -19,10 +19,10 @@ pub(crate) const COLOR_WARN:   u32 = 0xFFFFBD2E;
 pub(crate) const COLOR_FAULT:  u32 = 0xFFFF2A2A;
 pub(crate) const COLOR_TEXT:   u32 = 0xFFE6EDF3;
 
-const VISIBLE_ROWS: usize = 18;
+const VISIBLE_ROWS: usize = 36;  // v1.5.1: 36 filas para no superponer
 const ROW_HEIGHT: usize = 18;
 const TOP_OFFSET: usize = 12;
-const MAX_HEIGHT: usize = 360;
+const MAX_HEIGHT: usize = 700;  // cubre media pantalla
 
 static EARLY_VISUAL_ROW: AtomicUsize = AtomicUsize::new(0);
 
