@@ -12,9 +12,9 @@ use crate::boot_info;
 use crate::ui::font;
 
 const MIN_W: usize = 360;
-const MIN_H: usize = 200;
-const MAX_W: usize = 1040;
-const OVERLAY_H: usize = 240;
+const MIN_H: usize = 180;
+const MAX_W: usize = 480;
+const OVERLAY_H: usize = 190;
 const CHAR_W: usize = 8;
 
 // El HUD no debe tapar el welcome ni el primer escritorio. Se activa bajo
@@ -46,10 +46,16 @@ pub fn paint() {
     let Some((base, width, height, stride)) = fb() else { return; };
     if width < MIN_W || height < MIN_H { return; }
 
-    let x = 16usize.min(width.saturating_sub(1));
-    let y = height.saturating_sub(OVERLAY_H + 16);
-    let w = MAX_W.min(width.saturating_sub(x + 1)).max(MIN_W.min(width));
-    let h = OVERLAY_H.min(height.saturating_sub(y + 1));
+    // v1.6.8: anchor overlay to the top-right corner of the screen.
+    // The welcome card is centered horizontally (cx=470..1450) and
+    // vertically (cy=230..850). The previous bottom-anchor at y=874
+    // overlapped the bottom of the card and the UEFI framebuffer bar.
+    // Top-right (x = width - 480 - 16, y = 64) is fully outside the card
+    // and well above the screen edge.
+    let w = MAX_W.min(width.saturating_sub(32)).max(MIN_W.min(width));
+    let h = OVERLAY_H.min(height.saturating_sub(80));
+    let x = width.saturating_sub(w + 16);
+    let y = 64usize.min(height.saturating_sub(h + 1));
     if w < MIN_W || h < MIN_H { return; }
 
     // Background

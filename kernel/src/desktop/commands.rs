@@ -29,82 +29,124 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 ///
-/// v1.6.7: DESKTOP STUBBED — shows a friendly v1.6.7 stub screen with
-/// version banner, a 10-second countdown, and a hint to REBOOT to return
-/// to the welcome screen. (v1.5.4 used a flat red bar that lacked version
-/// context and a graceful way back.)
+/// v1.6.8: DESKTOP STUBBED — refined stub screen with:
+///   - Centered card (1080 wide × 380 tall, well within 1920×1080)
+///   - Clear "in development" badge at the top
+///   - Countdown bar inside the card, with 5 segments showing progress
+///   - "REBOOT" hint below the bar in warm orange
+///   - 5 s countdown animation that loops the bar color from mint → gold → red
 pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
-    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.7 (REBOOT to return to welcome)");
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.7. Reboot to recover.\n");
+    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.8 (REBOOT to return to welcome)");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.8. Reboot to recover.\n");
 
-    // Render a friendly stub screen
     let w = 1920u32;
     let h = 1080u32;
 
-    // 1) Background — dark gradient (top to bottom)
+    // 1) Background — solid dark
     crate::desktop::display::fb_fill(0, 0, w, h, 0xFF050B12);
 
-    // 2) Big card in the middle (warm orange border)
-    let cw = 1500u32;
-    let ch = 360u32;
+    // 2) Centered card (1080×380) — well within the 1920×1080 frame
+    let cw = 1080u32;
+    let ch = 380u32;
     let cx = (w - cw) / 2;
     let cy = (h - ch) / 2;
+    // Outer warm-orange border (8 px thick)
     crate::desktop::display::fb_fill(cx - 4, cy - 4, cw + 8, ch + 8, 0xFFE07832);
+    // Inner dark slate
     crate::desktop::display::fb_fill(cx, cy, cw, ch, 0xFF0F1827);
 
-    // 3) Title
+    // 3) Top accent bar (mint, 4 px) — visual interest
+    crate::desktop::display::fb_fill(cx + 8, cy + 8, cw - 16, 3, 0xFF4ECCA3);
+
+    // 4) "DESKTOP STUB" badge (small pill in upper-left of card)
+    let badge_x = cx + 40;
+    let badge_y = cy + 40;
+    crate::desktop::display::fb_fill(badge_x, badge_y, 220, 36, 0xFF3A1B0E);
     crate::desktop::display::fb_text(
-        cx + 60,
-        cy + 60,
-        b"FastOS-BMO  ::  Desktop STUB  ::  v1.6.7",
+        badge_x + 16,
+        badge_y + 10,
+        b"DESKTOP STUB  v1.6.8",
+        0xFFFFAA3D,
+    );
+
+    // 5) Main title (gold, big-ish)
+    crate::desktop::display::fb_text(
+        cx + 40,
+        cy + 110,
+        b"FastOS-BMO  ::  Ring 0 Desktop",
         0xFFE2C044,
     );
 
-    // 4) Subtitle explanation
+    // 6) Subtitle / explanation
     crate::desktop::display::fb_text(
-        cx + 60,
-        cy + 130,
-        b"The Ring 0 desktop loop is disabled in v1.6.x for stability while we",
+        cx + 40,
+        cy + 150,
+        b"Disabled in v1.6.x for stability while we harden the",
         0xFFCBD7E0,
     );
     crate::desktop::display::fb_text(
-        cx + 60,
-        cy + 150,
-        b"harden the ECAM/heap path. Phase 5 (desktop) is up next in the queue.",
+        cx + 40,
+        cy + 170,
+        b"ECAM/heap path. Phase 5 (desktop) is up next in the queue.",
         0xFFCBD7E0,
     );
 
-    // 5) Countdown — render the v1.6.7 version as a hint
+    // 7) Countdown bar (5 segments inside the card, no overflow)
+    let bar_x = cx + 40;
+    let bar_y = cy + 240;
+    let bar_total_w = cw - 80;
+    let seg_w = bar_total_w / 5;
+    let seg_h = 28;
+    // Background track
+    crate::desktop::display::fb_fill(bar_x - 4, bar_y - 4, bar_total_w + 8, seg_h + 8, 0xFF050B12);
+    crate::desktop::display::fb_fill(bar_x, bar_y, bar_total_w, seg_h, 0xFF1F2A38);
+
+    // 8) REBOOT hint below the bar
     crate::desktop::display::fb_text(
-        cx + 60,
-        cy + 220,
+        cx + 40,
+        cy + 310,
         b"REBOOT the PC to return to the welcome screen.",
         0xFFFFAA3D,
     );
 
-    // 6) Live countdown bar (10s -> 0s) — animates by HLT-loop delay
-    let bar_w = cw - 120;
-    let bar_x = cx + 60;
-    let bar_y = cy + 280;
+    // 9) Animated countdown: fill segments one by one over ~5 s
     let total_steps: u32 = 100;
-    let total_ms: u32 = 5_000; // 5 s countdown
+    let total_ms: u32 = 5_000;
     let step_ms: u32 = total_ms / total_steps;
     for step in 0..total_steps {
-        crate::desktop::display::fb_fill(bar_x, bar_y, bar_w, 12, 0xFF1F2A38);
-        let fill_w = (bar_w as u32 * step) / total_steps;
-        let color = if step < total_steps * 2 / 3 {
-            0xFF4ECCA3
-        } else if step < total_steps * 9 / 10 {
-            0xFFE2C044
-        } else {
-            0xFFFF7B72
-        };
-        crate::desktop::display::fb_fill(bar_x, bar_y, fill_w, 12, color);
+        // Re-paint track to clear previous fill
+        crate::desktop::display::fb_fill(bar_x, bar_y, bar_total_w, seg_h, 0xFF1F2A38);
+        // Active segment count: 0..5
+        let active = (step as usize * 5) / total_steps as usize;
+        let partial = ((step as usize * 5) % total_steps as usize) as u32;
+        for i in 0..5 {
+            let sxi = bar_x + (i as u32) * seg_w;
+            if (i as usize) < active {
+                // Fully filled
+                let c = match i {
+                    0 => 0xFF4ECCA3, // mint
+                    1 => 0xFF4ECCA3,
+                    2 => 0xFFE2C044, // gold
+                    3 => 0xFFE2C044,
+                    _ => 0xFFFF7B72,  // red
+                };
+                crate::desktop::display::fb_fill(sxi + 2, bar_y, seg_w - 4, seg_h, c);
+            } else if (i as usize) == active && partial > 0 {
+                // Partial fill on the active segment
+                let pw = ((seg_w - 4) * partial) / (total_steps / 5).max(1);
+                let c = match i {
+                    0 | 1 => 0xFF4ECCA3,
+                    2 | 3 => 0xFFE2C044,
+                    _ => 0xFFFF7B72,
+                };
+                crate::desktop::display::fb_fill(sxi + 2, bar_y, pw, seg_h, c);
+            }
+        }
         crate::arch::cpu::busy_wait_ms(step_ms as u64);
     }
 
-    // 7) HLT loop (rebooting is the only way back)
+    // 10) HLT loop (rebooting is the only way back)
     loop {
         unsafe { core::arch::asm!("hlt"); }
     }
