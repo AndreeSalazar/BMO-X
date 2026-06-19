@@ -29,7 +29,7 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 ///
-/// v1.6.11: DESKTOP STUBBED — refined stub screen with:
+/// v1.6.13: DESKTOP STUBBED — refined stub screen with:
 ///   - Centered card (1080 wide × 380 tall, well within 1920×1080)
 ///   - Clear "in development" badge at the top
 ///   - Countdown bar inside the card, with 5 segments showing progress
@@ -37,8 +37,8 @@ pub fn trim(s: &[u8]) -> &[u8] {
 ///   - 5 s countdown animation that loops the bar color from mint → gold → red
 pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
-    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.11 (REBOOT to return to welcome)");
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.11. Reboot to recover.\n");
+    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.13 (REBOOT to return to welcome)");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.13. Reboot to recover.\n");
 
     let w = 1920u32;
     let h = 1080u32;
@@ -66,7 +66,7 @@ pub fn enter_desktop() {
     crate::desktop::display::fb_text(
         badge_x + 16,
         badge_y + 10,
-        b"DESKTOP STUB  v1.6.11",
+        b"DESKTOP STUB  v1.6.13",
         0xFFFFAA3D,
     );
 
@@ -110,19 +110,30 @@ pub fn enter_desktop() {
         0xFFFFAA3D,
     );
 
-    // 9) Animated countdown: fill segments one by one over ~5 s
+    // 9) Animated countdown: fill segments one by one over ~5 s.
+    //
+    // v1.6.13 FIX: the previous version computed `partial` as
+    // `(step * 5) % total_steps` which ranges 0..99 instead of 0..(total_steps/5).
+    // When `step=99`, partial=95 and the active segment was filled to
+    // 95/20 = 4.75× its own width, painting a bar that extended far
+    // beyond the card. The correct math: each segment fills over
+    // `total_steps / num_segments` frames, so partial_in_sub must be
+    // 0..(total_steps/num_segments) and the fill width is
+    // `(seg_w - gap) * partial_in_sub / steps_per_segment`.
     let total_steps: u32 = 100;
     let total_ms: u32 = 5_000;
     let step_ms: u32 = total_ms / total_steps;
+    let num_segments: u32 = 5;
+    let steps_per_segment: u32 = total_steps / num_segments; // 20
     for step in 0..total_steps {
         // Re-paint track to clear previous fill
         crate::desktop::display::fb_fill(bar_x, bar_y, bar_total_w, seg_h, 0xFF1F2A38);
-        // Active segment count: 0..5
-        let active = (step as usize * 5) / total_steps as usize;
-        let partial = ((step as usize * 5) % total_steps as usize) as u32;
-        for i in 0..5 {
-            let sxi = bar_x + (i as u32) * seg_w;
-            if (i as usize) < active {
+        // Which segment is currently filling?
+        let active = step / steps_per_segment;            // 0..5
+        let sub_step = step % steps_per_segment;          // 0..19
+        for i in 0..num_segments {
+            let sxi = bar_x + i * seg_w;
+            if i < active {
                 // Fully filled
                 let c = match i {
                     0 => 0xFF4ECCA3, // mint
@@ -132,9 +143,10 @@ pub fn enter_desktop() {
                     _ => 0xFFFF7B72,  // red
                 };
                 crate::desktop::display::fb_fill(sxi + 2, bar_y, seg_w - 4, seg_h, c);
-            } else if (i as usize) == active && partial > 0 {
-                // Partial fill on the active segment
-                let pw = ((seg_w - 4) * partial) / (total_steps / 5).max(1);
+            } else if i == active && sub_step > 0 {
+                // Partial fill on the active segment.
+                // sub_step ranges 0..steps_per_segment. Map to 0..seg_w-4.
+                let pw = ((seg_w - 4) * sub_step) / steps_per_segment;
                 let c = match i {
                     0 | 1 => 0xFF4ECCA3,
                     2 | 3 => 0xFFE2C044,
