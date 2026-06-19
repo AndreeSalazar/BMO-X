@@ -1,8 +1,9 @@
 //! BareX — API moderna y nativa de FastOS
 //!
-//! v1.2.0: **Reorganización mayor**. Solo el código que se ejecuta en
-//! producción vive aquí. Los esqueletos y blueprints (definiciones
-//! vacías esperando Ring 3 / GPU) se movieron a `_blueprint/`.
+//! v1.3.0: **Eliminación del blueprint**. Solo queda lo que se usa
+//! en producción. El código DSP útil (eq, limiter, compressor,
+//! reverb, dsp_math) se movió a `drivers::audio::dsp::*` donde
+//! pertenece.
 //!
 //! ## Lo que está AQUÍ (producción)
 //!
@@ -10,26 +11,18 @@
 //! - `shader::bsf`— Loader BSF con BLAKE3 (Ring 0)
 //! - `shader::loader` — Dispatcher BLAKE3 + cache lookup
 //!
-//! ## Lo que está en `_blueprint/` (diseño, no producción)
+//! ## Lo que se FUE (v1.3.0)
 //!
-//! - `_blueprint::audio`      — `bx_audio` API (40 archivos, ~30K líneas)
-//! - `_blueprint::graphics`   — `BxDevice`, `BxSwapchain`, etc. (17 archivos)
-//! - `_blueprint::input`      — HID / gamepad / keyboard (39 archivos)
-//! - `_blueprint::net`        — TCP/UDP/QUIC/TLS (33 archivos)
-//! - `_blueprint::shader::{spirv,dxil,dxbc,ir,native,cache,stage}` — Stubs
+//! - `_blueprint::audio` (40 archivos) — DSP útil a `drivers::audio::dsp::`
+//!   - Stubs (engine, voice, mixer, codec, backend, ring, route, format)
+//!     eliminados por no tener callers
+//! - `_blueprint::input` (39 archivos) — todo stub
+//! - `_blueprint::net` (33 archivos) — todo stub
+//! - `_blueprint::graphics` (17 archivos) — todo stub
+//! - `_blueprint::shader::` (excepto bsf/loader) — todo stub
 //!
-//! Esos módulos existen como **documentación ejecutable**: describen
-//! la API que tendrá BareX cuando llegue Ring 3 + GPU. Compilan pero
-//! cada método retorna `BxError::NotImplemented`. Ver
-//! `_blueprint/README.md` para el roadmap.
-//!
-//! ## Estratificación
-//!
-//! ```text
-//!   L4  compat::*   (PE loader + COM thunks DX9/10/11/12, WINE-style)
-//!   L2  shader::bsf + loader (BLAKE3 + dispatcher)
-//!   L1  backend     ←── ahora GOP/software; GPU real será opcional.
-//! ```
+//! Si en el futuro se necesita código similar, se reescribe desde
+//! `drivers::audio::dsp::*` (que tiene los algoritmos reales).
 //!
 //! ## BMO ABI
 //!
@@ -45,7 +38,7 @@ pub mod abi {
     pub use crate::bmo_abi::*;
 }
 
-// ── Producción (v1.2.0 reorganización) ────────────────────────────────
+// ── Producción (v1.3.0) ────────────────────────────────────────────────
 
 /// PE thunks / WINE-style redirección de DLLs. Lo usa `bef::loader::pe`.
 pub mod compat;
@@ -53,13 +46,6 @@ pub mod compat;
 /// BSF (BareX Shader Format) loader y dispatcher.
 /// Usado por Ring 0 cuando un blob BSF entra por BEF.
 pub mod shader;
-
-// ── Blueprint (diseño, no producción) ────────────────────────────────
-
-/// Diseño de la API completa de BareX: audio, graphics, input, net,
-/// shader backends. Cada método retorna `NotImplemented` — son
-/// esqueletos esperando Ring 3 + GPU. Ver `_blueprint/README.md`.
-pub mod _blueprint;
 
 
 /// Versión mayor.menor.patch de la API BareX expuesta a Ring 3.

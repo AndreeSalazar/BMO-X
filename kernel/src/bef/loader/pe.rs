@@ -104,21 +104,23 @@ pub struct PeSectionHeader {
 
 /// DLL falsas que el devour-loader provee a los binarios PE.
 ///
-/// v1.2.0: ahora apunta a `_blueprint::*` (los esqueletos esperan
-/// Ring 3 / GPU). El string es solo informativo — el loader redirige
-/// al módulo BareX que sea necesario cuando esté implementado.
-pub const FAKE_DLLS_TO_BAREX: &[(&str, &str)] = &[
-    ("d3d12.dll",       "barex::_blueprint::graphics"),
-    ("d3d11.dll",       "barex::compat::dxvk11"),
-    ("d3d9.dll",        "barex::compat::dxvk9"),
-    ("dxgi.dll",        "barex::_blueprint::graphics::swapchain"),
-    ("xinput1_4.dll",   "barex::_blueprint::input"),
-    ("xaudio2_9.dll",   "barex::_blueprint::audio"),
-    ("ws2_32.dll",      "barex::_blueprint::net"),
-    ("winhttp.dll",     "barex::_blueprint::net::http"),
-    ("kernel32.dll",    "barex::compat::kernel32_stub"),
-    ("user32.dll",      "barex::compat::user32_stub"),
-    ("ntdll.dll",       "syscall::dispatch"),
+/// v1.3.0: reducido a una lista informativa de strings. Los nombres
+/// de módulos (`barex::compat::dxvk11`, etc.) son solo **etiquetas**
+/// — el loader no los usa como paths Rust, solo los imprime en
+/// logs. La redirección real sucede en `pe_thunks.rs` (en el mismo
+/// directorio) donde cada import se mapea a una función real.
+pub const FAKE_DLLS: &[&str] = &[
+    "d3d12.dll",
+    "d3d11.dll",
+    "d3d9.dll",
+    "dxgi.dll",
+    "xinput1_4.dll",
+    "xaudio2_9.dll",
+    "ws2_32.dll",
+    "winhttp.dll",
+    "kernel32.dll",
+    "user32.dll",
+    "ntdll.dll",
 ];
 
 /// PE relocation type: IMAGE_REL_BASED_DIR64.
