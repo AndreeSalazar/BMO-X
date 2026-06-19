@@ -276,7 +276,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 120) as u32, sub, pal::SUBTITLE, 2);
 
     // 5) Versión
-    let ver = b"v0.9.0  ::  Ring 0 + Ring 3";
+    let ver = b"v0.9.1  ::  Ring 0 + Ring 3  [WD:5s|Heap:16MB]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
@@ -304,7 +304,7 @@ fn render(fb: &Framebuffer) {
     let (px, py, pw, ph) = prompt_rect(fb);
 
     // hint sobre el prompt
-    let hint = b"Escribe (Run) y pulsa Enter para entrar al escritorio:";
+    let hint = b"Escribe (Run) y pulsa Enter -> Ring 0 desktop (stub):";
     let hx = px;
     draw_text(fb, hx as u32, (py - 28) as u32, hint, pal::TITLE);
 
