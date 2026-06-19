@@ -20,8 +20,12 @@ use crate::bmo_abi::primitives::bx_u32;
 use crate::diag;
 extern crate alloc;
 use alloc::vec::Vec;
-use super::ir::{ShaderBlob, ShaderIr};
-use super::{native, spirv, dxil, dxbc};
+// v1.2.0: el loader delega a los esqueletos de `_blueprint::shader::*`.
+// Mientras esos módulos retornen `NotImplemented`, el loader rechaza
+// el blob con un mensaje claro. Cuando se conecten los traductores
+// reales, este dispatcher los usará tal cual.
+use crate::barex::_blueprint::shader::ir::{ShaderBlob, ShaderIr};
+use crate::barex::_blueprint::shader::{native, spirv, dxil, dxbc};
 
 /// Consume un blob (cualquier IR) y devuelve handle en el device.
 pub fn load(blob: &ShaderBlob<'_>) -> BxResult<bx_u32> {

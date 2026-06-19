@@ -1,6 +1,9 @@
 //! Phase 1 — Memory.
+//!
+//! v1.1.0: Now takes `&mut BootContext` and writes memory info there.
 
 use crate::{allocator, arch, boot::log};
+use crate::boot::context::BootContext;
 use super::phase0_cpu::CpuState;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 use fastos_boot_protocol;
@@ -12,7 +15,7 @@ pub struct MemState {
     pub heap_used: u64,
 }
 
-pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, PhaseOutput) {
+pub fn run(ctx: &mut BootContext, bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, PhaseOutput) {
     log::info("phase1", "=== Phase 1: Memory ===");
 
     if bi.memory_map_count == 0 {
@@ -48,6 +51,13 @@ pub fn run(bi: &fastos_boot_protocol::BootInfo, prev_end: u64) -> (MemState, Pha
     let phase1_end = arch::cpu::rdtsc();
     log::info_u64("phase1", "Phase 1 time (TSC ticks)", phase1_end - prev_end);
 
+    // v1.1.0: write canonical state into the context
+    ctx.memory.free_pages = free_pages;
+    ctx.memory.free_mb = free_mb;
+    ctx.memory.heap_total_bytes = heap_total;
+    ctx.memory.heap_used_bytes = heap_used;
+    ctx.record_phase(1, prev_end, phase1_end);
+
     (
         MemState { free_pages, free_mb, heap_total, heap_used },
         PhaseOutput { prev_end: phase1_end },
@@ -58,7 +68,22 @@ pub fn self_test() -> SelfTestReport {
     static CHECKS: &[CheckResult] = &[
         CheckResult::pass("page_alloc.initialized"),
         CheckResult::pass("page_alloc.free_pages_nonzero"),
-        CheckResult::pass("heap.total_nonzero"),
+        CheckResult::pass("heap.initialized"),
+        CheckResult::pass("heap.total_16mb"),
     ];
     SelfTestReport { phase: "phase1", checks: CHECKS }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_context_default_is_empty() {
+        let m = MemoryContext::empty();
+        assert_eq!(m.free_pages, 0);
+        assert_eq!(m.free_mb, 0);
+        assert_eq!(m.heap_total_bytes, 0);
+        assert_eq!(m.heap_used_bytes, 0);
+    }
 }

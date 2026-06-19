@@ -13,14 +13,83 @@ static mut ECAM_END_BUS: u8 = 0;
 static mut USE_ECAM: bool = false;
 
 /// Initialize ECAM — called when ACPI MCFG provides the base address.
+///
+/// `base` is the physical base of the ECAM MMIO region. On Ryzen 5 5600X,
+/// the kernel identity-maps only the first 4 GB, so any ECAM base above
+/// 0x1_0000_0000 would cause #PF on every config read. We explicitly
+/// map that region with 2 MiB huge pages (kernel MMIO mapping).
 pub fn init_ecam(base: u64, end_bus: u8) {
-    unsafe {
-        ECAM_BASE = base;
-        ECAM_END_BUS = end_bus;
-        USE_ECAM = base != 0;
-    }
-    crate::drivers::serial::serial_write("[pci] ECAM initialized, base=");
+    crate::drivers::serial::serial_write("[pci] init_ecam: base=0x");
     print_hex(base);
+    crate::drivers::serial::serial_write(" end_bus=");
+    print_u32(end_bus as u32);
+    crate::drivers::serial::serial_write("\n");
+
+    if base == 0 || base < 0x1000 {
+        crate::drivers::serial::serial_write("[pci] ECAM base invalid, falling back to IO ports\n");
+        unsafe {
+            ECAM_BASE = 0;
+            ECAM_END_BUS = 0;
+            USE_ECAM = false;
+        }
+        return;
+    }
+
+    // Cap end_bus to 8 — most consumer boards (incl. Ryzen 5 5600X) have
+    // ECAM spanning only 0-7. Higher values mean server-class or buggy MCFG.
+    let safe_end = if end_bus > 8 { 8 } else { end_bus };
+
+    // Calculate ECAM size: each bus = 1 MB; buses 0..=safe_end.
+    let bytes = (safe_end as usize + 1) * 1024 * 1024;
+    let round_up_2mb = ((bytes + 0x1FFFFF) & !0x1FFFFF) as u64;
+
+    // Map ECAM at its physical address (identity-style). This works whether
+    // it's in low memory (already identity-mapped) or high memory (we map
+    // it now with 2 MiB huge pages so the kernel can dereference config
+    // space without #PF).
+    crate::drivers::serial::serial_write("[pci] Mapping ECAM at 0x");
+    print_hex(base);
+    crate::drivers::serial::serial_write(" (");
+    print_u32((round_up_2mb / 0x20000) as u32);
+    crate::drivers::serial::serial_write(" x 2 MiB huge pages)\n");
+
+    if base < 0x1_0000_0000 {
+        // Low memory: identity map is enough.
+        unsafe {
+            ECAM_BASE = base;
+            ECAM_END_BUS = safe_end;
+            USE_ECAM = true;
+        }
+    } else {
+        // High memory: explicit kernel MMIO mapping required.
+        let result = unsafe {
+            crate::arch::paging::map_kernel_mmio_huge(base, base, round_up_2mb as usize)
+        };
+        match result {
+            Ok(()) => {
+                crate::drivers::serial::serial_write("[pci] ECAM mapped OK\n");
+                unsafe {
+                    ECAM_BASE = base;
+                    ECAM_END_BUS = safe_end;
+                    USE_ECAM = true;
+                }
+            }
+            Err(e) => {
+                crate::drivers::serial::serial_write("[pci] ECAM map FAILED: ");
+                crate::drivers::serial::serial_write(e);
+                crate::drivers::serial::serial_write(" — falling back to IO ports\n");
+                unsafe {
+                    ECAM_BASE = 0;
+                    ECAM_END_BUS = 0;
+                    USE_ECAM = false;
+                }
+                return;
+            }
+        }
+    }
+    crate::drivers::serial::serial_write("[pci] ECAM initialized (end_bus=");
+    print_u32(safe_end as u32);
+    crate::drivers::serial::serial_write(")\n");
     crate::drivers::serial::serial_write("\n");
 }
 
@@ -153,8 +222,22 @@ pub fn scan_pci_bus() -> PciScanResult {
     let mut r = PciScanResult::new();
     let end_bus = unsafe { ECAM_END_BUS };
 
+    crate::drivers::serial::serial_write("[pci] Scanning buses 0..=");
+    print_u32(end_bus as u32);
+    crate::drivers::serial::serial_write("\n");
+
     for bus in 0..=end_bus {
+        crate::drivers::serial::serial_write("[pci]   bus ");
+        print_u32(bus as u32);
+        crate::drivers::serial::serial_write("\n");
         for dev in 0..32u8 {
+            // Safety: skip devices that would read past the identity map.
+            // A single bad read here could cause #PF → recursion → halt.
+            let dev_offset = (bus as u64) << 20 | (dev as u64) << 15;
+            if unsafe { ECAM_BASE } != 0 && unsafe { ECAM_BASE } + dev_offset >= 0x1_0000_0000 {
+                continue;
+            }
+
             let vd = pci_read32(bus, dev, 0, 0x00);
             let vendor = (vd & 0xFFFF) as u16;
             if vendor == 0xFFFF { continue; }
@@ -307,4 +390,21 @@ fn print_hex(val: u64) {
         buf[2 + i] = hex[((val >> (60 - i * 4)) & 0xF) as usize];
     }
     crate::drivers::serial::serial_write(core::str::from_utf8(&buf).unwrap_or("0x???"));
+}
+
+fn print_u32(val: u32) {
+    if val == 0 {
+        crate::drivers::serial::serial_write("0");
+        return;
+    }
+    let mut buf = [0u8; 10];
+    let mut i = buf.len();
+    let mut v = val;
+    while v > 0 {
+        i -= 1;
+        buf[i] = b'0' + (v % 10) as u8;
+        v /= 10;
+    }
+    let s = core::str::from_utf8(&buf[i..]).unwrap_or("?");
+    crate::drivers::serial::serial_write(s);
 }

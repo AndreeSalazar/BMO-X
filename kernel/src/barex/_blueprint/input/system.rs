@@ -5,7 +5,7 @@
 #![allow(dead_code)]
 
 use crate::drivers::serial;
-use super::super::BxError;
+use super::super::super::BxError;
 
 /// Maximum number of input devices.
 const MAX_DEVICES: usize = 8;

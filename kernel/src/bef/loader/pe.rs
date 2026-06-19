@@ -103,15 +103,19 @@ pub struct PeSectionHeader {
 }
 
 /// DLL falsas que el devour-loader provee a los binarios PE.
+///
+/// v1.2.0: ahora apunta a `_blueprint::*` (los esqueletos esperan
+/// Ring 3 / GPU). El string es solo informativo — el loader redirige
+/// al módulo BareX que sea necesario cuando esté implementado.
 pub const FAKE_DLLS_TO_BAREX: &[(&str, &str)] = &[
-    ("d3d12.dll",       "barex::graphics"),
+    ("d3d12.dll",       "barex::_blueprint::graphics"),
     ("d3d11.dll",       "barex::compat::dxvk11"),
     ("d3d9.dll",        "barex::compat::dxvk9"),
-    ("dxgi.dll",        "barex::graphics::swapchain"),
-    ("xinput1_4.dll",   "barex::input"),
-    ("xaudio2_9.dll",   "barex::audio"),
-    ("ws2_32.dll",      "barex::net"),
-    ("winhttp.dll",     "barex::net::http"),
+    ("dxgi.dll",        "barex::_blueprint::graphics::swapchain"),
+    ("xinput1_4.dll",   "barex::_blueprint::input"),
+    ("xaudio2_9.dll",   "barex::_blueprint::audio"),
+    ("ws2_32.dll",      "barex::_blueprint::net"),
+    ("winhttp.dll",     "barex::_blueprint::net::http"),
     ("kernel32.dll",    "barex::compat::kernel32_stub"),
     ("user32.dll",      "barex::compat::user32_stub"),
     ("ntdll.dll",       "syscall::dispatch"),

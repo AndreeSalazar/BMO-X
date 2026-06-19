@@ -1,42 +1,41 @@
 //! BareX — API moderna y nativa de FastOS
 //!
-//! Implementación de las specs en
-//! `combo_Window_Extractor/MAPA de Window/02_BEF_Format/`.
+//! v1.2.0: **Reorganización mayor**. Solo el código que se ejecuta en
+//! producción vive aquí. Los esqueletos y blueprints (definiciones
+//! vacías esperando Ring 3 / GPU) se movieron a `_blueprint/`.
+//!
+//! ## Lo que está AQUÍ (producción)
+//!
+//! - `compat`     — PE thunks / WINE-style redirección (lo carga el BEF devourer)
+//! - `shader::bsf`— Loader BSF con BLAKE3 (Ring 0)
+//! - `shader::loader` — Dispatcher BLAKE3 + cache lookup
+//!
+//! ## Lo que está en `_blueprint/` (diseño, no producción)
+//!
+//! - `_blueprint::audio`      — `bx_audio` API (40 archivos, ~30K líneas)
+//! - `_blueprint::graphics`   — `BxDevice`, `BxSwapchain`, etc. (17 archivos)
+//! - `_blueprint::input`      — HID / gamepad / keyboard (39 archivos)
+//! - `_blueprint::net`        — TCP/UDP/QUIC/TLS (33 archivos)
+//! - `_blueprint::shader::{spirv,dxil,dxbc,ir,native,cache,stage}` — Stubs
+//!
+//! Esos módulos existen como **documentación ejecutable**: describen
+//! la API que tendrá BareX cuando llegue Ring 3 + GPU. Compilan pero
+//! cada método retorna `BxError::NotImplemented`. Ver
+//! `_blueprint/README.md` para el roadmap.
 //!
 //! ## Estratificación
 //!
 //! ```text
 //!   L4  compat::*   (PE loader + COM thunks DX9/10/11/12, WINE-style)
-//!   L3  graphics    (BareX_API_Spec.md — 12 objetos núcleo)
-//!   L3  audio       (BareX_Audio_Spec.md — bx_audio)
-//!   L3  input       (BareX_Input_Spec.md — bx_input)
-//!   L3  net         (BareX_Network_Spec.md — bx_net)
-//!   L2  shader      (BareX_Shader_Pipeline.md — DXIL/DXBC/SPIR-V → IR nativa)
+//!   L2  shader::bsf + loader (BLAKE3 + dispatcher)
 //!   L1  backend     ←── ahora GOP/software; GPU real será opcional.
 //! ```
 //!
-//! `barex::graphics` debe funcionar primero sobre framebuffer GOP/software. Los
-//! backends acelerados se conectarán después como plugins/driver opcional, sin
-//! contaminar el boot path.
-//!
 //! ## BMO ABI
 //!
-//! El **BMO ABI** (tipos primitivos, calling convention, handle, status,
-//! string, time, type system, vtable, etc.) **ya no vive aquí**. Ahora está
-//! en `crate::bmo_abi` como módulo top-level. Este `barex` lo usa como
-//! fundación. Por compatibilidad, `crate::barex::abi` re-exporta todo.
-
-//! ## Migración
-//!
-//! | Antes                          | Ahora                              |
-//! |--------------------------------|------------------------------------|
-//! | `crate::barex::abi::*`         | `crate::bmo_abi::*` (recomendado) |
-//! | `crate::barex::abi::primitives`| `crate::bmo_abi::primitives`      |
-//! | `crate::barex::abi::status`    | `crate::bmo_abi::status`          |
-//! | `crate::barex::abi::handle`    | `crate::bmo_abi::handle`          |
-//! | `crate::barex::abi::runtime`   | `crate::bmo_abi::runtime`         |
-//!
-//! El re-export `crate::barex::abi` se mantiene por 1 release, marcado deprecated.
+//! El **BMO ABI** vive en `crate::bmo_abi` como módulo top-level.
+//! Este `barex` lo usa como fundación. Por compatibilidad,
+//! `crate::barex::abi` re-exporta todo (deprecated, use `bmo_abi`).
 
 #![allow(dead_code)]
 
@@ -46,12 +45,22 @@ pub mod abi {
     pub use crate::bmo_abi::*;
 }
 
-pub mod graphics;
-pub mod audio;
-pub mod input;
-pub mod net;
-pub mod shader;
+// ── Producción (v1.2.0 reorganización) ────────────────────────────────
+
+/// PE thunks / WINE-style redirección de DLLs. Lo usa `bef::loader::pe`.
 pub mod compat;
+
+/// BSF (BareX Shader Format) loader y dispatcher.
+/// Usado por Ring 0 cuando un blob BSF entra por BEF.
+pub mod shader;
+
+// ── Blueprint (diseño, no producción) ────────────────────────────────
+
+/// Diseño de la API completa de BareX: audio, graphics, input, net,
+/// shader backends. Cada método retorna `NotImplemented` — son
+/// esqueletos esperando Ring 3 + GPU. Ver `_blueprint/README.md`.
+pub mod _blueprint;
+
 
 /// Versión mayor.menor.patch de la API BareX expuesta a Ring 3.
 pub const BAREX_VERSION: (u16, u16, u16) = (1, 0, 0);

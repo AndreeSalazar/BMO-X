@@ -7,7 +7,9 @@
 
 use crate::drivers::serial;
 
-use super::BxError;
+// v1.2.0: blueprint está dos niveles abajo de `barex`, así que el
+// import pasa por `super::super::BxError`.
+use super::super::BxError;
 
 /// GOP framebuffer state (set during init).
 static mut FB_BASE: u64 = 0;

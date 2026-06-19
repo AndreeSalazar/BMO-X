@@ -158,6 +158,78 @@ pub unsafe fn create_user_page_table(kernel_cr3: u64) -> Option<u64> {
     Some(user_pml4_phys)
 }
 
+/// Map a kernel MMIO region using 2 MiB huge pages.
+///
+/// Used to map PCI Express ECAM (which lives above 4 GB on Ryzen / Threadripper)
+/// so the kernel can access config space without #PF.
+///
+/// `virt_start` is typically `phys_start` (identity-style) or a chosen high
+/// address. `bytes` is rounded up to a multiple of 2 MiB.
+pub unsafe fn map_kernel_mmio_huge(
+    phys_start: u64,
+    virt_start: u64,
+    bytes: usize,
+) -> Result<(), &'static str> {
+    if bytes == 0 {
+        return Ok(());
+    }
+    const HUGE_2MB: u64 = 2 * 1024 * 1024;
+    let pages = (bytes + (HUGE_2MB as usize) - 1) / (HUGE_2MB as usize);
+    if (virt_start & (HUGE_2MB - 1)) != 0 || (phys_start & (HUGE_2MB - 1)) != 0 {
+        return Err("map_kernel_mmio_huge: addresses must be 2 MiB aligned");
+    }
+
+    let pml4_phys = read_cr3() & 0x000F_FFFF_FFFF_F000;
+    let pml4 = pml4_phys as *mut PageTable;
+
+    for i in 0..pages {
+        let va = virt_start + (i as u64) * HUGE_2MB;
+        let pa = phys_start + (i as u64) * HUGE_2MB;
+
+        let pml4_i = ((va >> 39) & 0x1FF) as usize;
+        let pdpt_i = ((va >> 30) & 0x1FF) as usize;
+        let pd_i   = ((va >> 21) & 0x1FF) as usize;
+
+        // PML4 entry
+        let pml4e = &mut (*pml4).entries[pml4_i];
+        let pdpt_phys: u64 = if !pml4e.is_present() {
+            let new = alloc_page_table().ok_or("OOM: PML4->PDPT")?;
+            core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
+            pml4e.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
+            new
+        } else {
+            pml4e.0 |= flags::WRITABLE;
+            pml4e.phys_addr()
+        };
+
+        // PDPT entry
+        let pdpt = pdpt_phys as *mut PageTable;
+        let pdpte = &mut (*pdpt).entries[pdpt_i];
+        let pd_phys: u64 = if !pdpte.is_present() {
+            let new = alloc_page_table().ok_or("OOM: PDPT->PD")?;
+            core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
+            pdpte.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
+            new
+        } else {
+            pdpte.0 |= flags::WRITABLE;
+            pdpte.phys_addr()
+        };
+
+        // PD entry — set 2 MiB huge page pointing at `pa`
+        let pd = pd_phys as *mut PageTable;
+        let pde = &mut (*pd).entries[pd_i];
+        if pde.is_present() {
+            return Err("map_kernel_mmio_huge: page already mapped");
+        }
+        pde.0 = PageTableEntry::new(
+            pa,
+            flags::PRESENT | flags::WRITABLE | flags::HUGE_PAGE | flags::NO_EXECUTE,
+        ).0;
+        invlpg(va);
+    }
+    Ok(())
+}
+
 /// Map a user virtual address range to physical pages in the given PML4.
 /// Flags should include USER bit; NX for stack, !NX for code.
 /// Assumes physical pages are already allocated and identity-mapped (phys == virt for low 4 GB).

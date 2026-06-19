@@ -1,7 +1,7 @@
-use crate::barex::BxResult;
+﻿use crate::barex::BxResult;
 use crate::bmo_abi::handle::BmoHandle;
 use crate::bmo_abi::handle::kind::HandleKind;
-use crate::barex::audio::effects::dsp_math::{dsp_cos, dsp_sin};
+use super::super::effects::dsp_math::{dsp_cos, dsp_sin};
 
 /// Maximum PCM frames a single voice can hold (2 seconds at 48kHz).
 const MAX_PCM_FRAMES: usize = 96_000;
@@ -41,7 +41,7 @@ impl BxVoice {
             source_rate: sample_rate,
         };
 
-        // Convert i16 → f32
+        // Convert i16 â†’ f32
         let frames = pcm_i16.len() / 2;
         let copy = frames.min(MAX_PCM_FRAMES);
         for i in 0..copy * 2 {

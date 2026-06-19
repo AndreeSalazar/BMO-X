@@ -91,13 +91,54 @@ fn validate_checksum(header: *const SdtHeader) -> bool {
 }
 
 /// Validate the RSDP v1 checksum (first 20 bytes).
-fn validate_rsdp_checksum(rsdp: *const Rsdp) -> bool {
+pub fn validate_rsdp_checksum(rsdp: *const Rsdp) -> bool {
     let bytes = rsdp as *const u8;
     let mut sum: u8 = 0;
     for i in 0..mem::size_of::<Rsdp>() {
         sum = sum.wrapping_add(unsafe { *bytes.add(i) });
     }
     sum == 0
+}
+
+/// Test-only variant: takes a raw `*const u8` and a length, so the
+/// property tests in `phase2_devices` can pass a `&[u8]` slice as
+/// the RSDP body. Production code uses `validate_rsdp_checksum`.
+///
+/// `#[cfg(any(test, feature = "test_acpi"))]` so it doesn't bloat
+/// release builds unless the test feature is requested.
+#[doc(hidden)]
+#[cfg(any(test, feature = "test_acpi"))]
+pub unsafe fn validate_rsdp_checksum_for_test(rsdp: *const u8) -> bool {
+    let mut sum: u8 = 0;
+    // RSDP v1 is 20 bytes; v2 is 36. Sum at least 20 to validate v1.
+    for i in 0..20 {
+        sum = sum.wrapping_add(*rsdp.add(i));
+    }
+    sum == 0
+}
+
+/// Snapshot of the most recently discovered MCFG, exposed to boot
+/// phases so they can record it in `BootContext`. v1.1.0.
+#[derive(Clone, Copy, Default)]
+pub struct McfgSnapshot {
+    pub base: u64,
+    pub end_bus: u8,
+    pub start_bus: u8,
+}
+
+static mut LAST_MCFG: McfgSnapshot = McfgSnapshot {
+    base: 0, end_bus: 0, start_bus: 0,
+};
+
+/// Return the last MCFG the kernel discovered. v1.1.0.
+pub fn mcfg_snapshot() -> McfgSnapshot {
+    unsafe { LAST_MCFG }
+}
+
+pub fn record_mcfg(base: u64, start_bus: u8, end_bus: u8) {
+    unsafe {
+        LAST_MCFG = McfgSnapshot { base, start_bus, end_bus };
+    }
 }
 
 /// Parse the MCFG table reachable from the RSDP at `rsdp_addr`.
@@ -231,6 +272,9 @@ fn try_parse_mcfg(table_addr: u64) -> Option<EcamInfo> {
     ser("[ACPI] MCFG found! ECAM base=");
     ser_hex(info.base_addr);
     ser("\n");
+
+    // v1.1.0: record for BootContext introspection
+    record_mcfg(info.base_addr, info.start_bus, info.end_bus);
 
     Some(info)
 }

@@ -60,35 +60,45 @@ unsafe extern "C" fn _start() -> ! {
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     drivers::serial::init_serial();
-    boot::log::info("boot", "FastOS BMO Kernel v0.9.0 starting");
+    boot::log::info("boot", "FastOS BMO Kernel v1.1.0 starting");
 
-    let bi = match validate_boot_info(boot_info_ptr) {
+    let bi_ref = match validate_boot_info(boot_info_ptr) {
         Ok(bi) => bi,
         Err(msg) => boot::log::fault("boot", msg),
     };
-    unsafe { store_boot_info(bi); }
+    unsafe { store_boot_info(bi_ref); }
 
     boot::visual::clear();
     boot::visual::log("boot", "K0 BootInfo received", boot::visual::color::OK);
 
     diag::init();
 
+    // v1.1.0: Build a single BootContext and pass it through every phase.
+    // The BootInfo is a thin wrapper over the bootloader's memory, so we
+    // store a copy of its fields (the BootContext doesn't need to own the
+    // underlying buffer, only the relevant metadata).
+    let mut ctx = boot::BootContext::new(unsafe { core::ptr::read(bi_ref) });
+
     let t0 = arch::cpu::rdtsc();
 
     // Run phases. Each `Phase::run` returns the TSC tick at which it ended.
-    let (cpu, out0) = boot::phases::phase0_cpu::run(t0);
+    let (cpu, out0) = boot::phases::phase0_cpu::run(&mut ctx, t0);
 
     boot::phases::ring3_tests::run_all_tests();
 
-    let (mem, out1) = boot::phases::phase1_memory::run(bi, out0.prev_end);
+    // We need to read `ctx.boot_info` while still mutating `ctx`, so we
+    // copy the BootInfo to a local first. BootInfo is `Copy`-able (it
+    // holds only primitive fields plus a slice header for the memory map).
+    let bi_copy = ctx.boot_info;
+    let (mem, out1) = boot::phases::phase1_memory::run(&mut ctx, &bi_copy, out0.prev_end);
     boot::phases::ring3_tests::run_codegen_tests();
 
-    let out2 = boot::phases::phase2_devices::run(bi, out1.prev_end);
-    let out3 = boot::phases::phase3_display::run(bi, out2.prev_end);
+    let out2 = boot::phases::phase2_devices::run(&mut ctx, &bi_copy, out1.prev_end);
+    let out3 = boot::phases::phase3_display::run(&bi_copy, out2.prev_end);
     let out4 = boot::phases::phase4_scheduler::run(out3.prev_end);
 
     // Phase 5 consumes the full boot aggregate; it does not return.
-    boot::phases::phase5_desktop::run(bi, &cpu, &mem, t0, out4.prev_end);
+    boot::phases::phase5_desktop::run(&bi_copy, &cpu, &mem, t0, out4.prev_end);
 }
 
 fn validate_boot_info(ptr: *const fastos_boot_protocol::BootInfo)

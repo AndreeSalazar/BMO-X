@@ -19,7 +19,8 @@ use crate::barex::{BxError, BxResult};
 use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
 use crate::diag;
 use super::ir::ShaderBlob;
-use super::bsf;
+// v1.2.0: bsf vive en `barex::shader::bsf` (producción).
+use crate::barex::shader::bsf;
 
 /// Máximo número de shaders cargados simultáneamente.
 const MAX_HANDLES: usize = 256;

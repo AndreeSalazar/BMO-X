@@ -49,6 +49,7 @@ pub enum PixelFormat {
 /// The bootloader allocates this in memory that persists after ExitBootServices,
 /// fills all fields, then jumps to `_start` with a pointer to this in RDI.
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct BootInfo {
     /// Must be BOOT_MAGIC.
     pub magic: u64,

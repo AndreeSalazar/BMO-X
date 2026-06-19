@@ -1,52 +1,23 @@
-//! `barex::shader` — L2 pipeline de shaders.
+//! `barex::shader` — L2 pipeline de shaders (producción).
 //!
-//! Spec: `BareX_Shader_Pipeline.md`.
+//! v1.2.0: Solo se mantienen `bsf/` (loader con BLAKE3) y `loader/`
+//! (dispatcher). El resto de submódulos (stage, ir, native, spirv, dxil,
+//! dxbc, cache) están en `_blueprint::shader::*` — son esqueletos
+//! esperando Ring 3 / naga / vkd3d-shader-rs.
 //!
-//! ## Filosofía
+//! ## Filosofía (igual que antes)
 //!
-//! En kernel **NO se traduce** HLSL/DXIL/DXBC/SPIR-V a código nativo de GPU. Eso lo hace
-//! `barexc` en tiempo de build (Ring 3) y, en runtime, los crates ya
-//! existentes (`naga` para WGSL/SPIR-V, `vkd3d-shader-rs` para DXIL,
-//! `dxvk-spirv-rs` para DXBC). Aquí solo viven las **firmas BMO** que
-//! reciben el blob y delegan al crate adecuado — **cero re-implementación**.
-//!
-//! Frontends esperados:
-//!   - HLSL/DXIL → `dxc` offline → `vkd3d-shader-rs` runtime → SPIR-V
-//!   - HLSL5/DXBC → `dxvk-spirv-rs` → SPIR-V
-//!   - GLSL → `glslang` offline → SPIR-V
-//!   - WGSL → `naga` → SPIR-V
-//!   - Slang → `slang` offline → SPIR-V
-//!
-//! Backend inicial: SPIR-V/IR → interpretación/validación o raster GOP/software.
-//! Código nativo de GPU queda para backends acelerados opcionales.
-//!
-//! ## Estructura modular (Sesión 14) — minimalista, una carpeta por concern
-//!
-//! ```
-//!   shader/
-//!   ├── mod.rs       ← este archivo (re-exports)
-//!   ├── stage/       ← ShaderStage (12 stages)
-//!   ├── ir/          ← ShaderIr + ShaderBlob (formato de entrada)
-//!   ├── native/      ← blob nativo opcional de backend futuro
-//!   ├── spirv/       ← SPIR-V 1.6 → NAGA/IR
-//!   ├── dxil/        ← DXIL → vkd3d-shader-rs → SPIR-V
-//!   ├── dxbc/        ← DXBC → dxvk-spirv-rs → SPIR-V
-//!   ├── loader/      ← load() dispatcher (delega por IR)
-//!   └── cache/       ← LRU de blobs ya traducidos
-//! ```
+//! En kernel **NO se traduce** HLSL/DXIL/DXBC/SPIR-V a código nativo
+//! de GPU. Eso lo hace `nexo-sh` en tiempo de build (Ring 3) y, en
+//! runtime, los crates ya existentes (`naga` para WGSL/SPIR-V,
+//! `vkd3d-shader-rs` para DXIL, `dxvk-spirv-rs` para DXBC). Aquí solo
+//! viven las **firmas BMO** que reciben el blob y delegan al crate
+//! adecuado — **cero re-implementación**.
 
 #![allow(dead_code)]
 
-pub mod stage;
-pub mod ir;
-pub mod native;
-pub mod spirv;
-pub mod dxil;
-pub mod dxbc;
-pub mod loader;
-pub mod cache;
 pub mod bsf;
+pub mod loader;
 
-// ─── Re-exports planos ───────────────────────────────────────────────
-
-pub use bsf::{BsfShader, BsfError, BsfArch, BsfStage};
+// Re-exports planos para acceso ergonómico
+pub use bsf::{BsfArch, BsfError, BsfShader, BsfStage};
