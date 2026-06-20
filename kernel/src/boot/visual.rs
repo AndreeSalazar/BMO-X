@@ -1,4 +1,4 @@
-//! v1.6.18: Professional boot splash screen.
+//! v1.6.20: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
 //! splash that matches the welcome card's visual language:
@@ -108,7 +108,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.6.18";
+    let sub = b"Bare Metal Orchestrator  ::  v1.6.20";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);

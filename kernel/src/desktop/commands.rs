@@ -29,7 +29,7 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 ///
-/// v1.6.18: DESKTOP STUBBED — refined stub screen with:
+/// v1.6.20: DESKTOP STUBBED — refined stub screen with:
 ///   - Centered card (1080 wide × 380 tall, well within 1920×1080)
 ///   - Clear "in development" badge at the top
 ///   - Countdown bar inside the card, with 5 segments showing progress
@@ -37,8 +37,8 @@ pub fn trim(s: &[u8]) -> &[u8] {
 ///   - 5 s countdown animation that loops the bar color from mint → gold → red
 pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
-    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.18 (REBOOT to return to welcome)");
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.18. Reboot to recover.\n");
+    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.20 (REBOOT to return to welcome)");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.20. Reboot to recover.\n");
 
     let w = 1920u32;
     let h = 1080u32;
@@ -66,7 +66,7 @@ pub fn enter_desktop() {
     crate::desktop::display::fb_text(
         badge_x + 16,
         badge_y + 10,
-        b"DESKTOP STUB  v1.6.18",
+        b"DESKTOP STUB  v1.6.20",
         0xFFFFAA3D,
     );
 
@@ -96,7 +96,6 @@ pub fn enter_desktop() {
     let bar_x = cx + 40;
     let bar_y = cy + 240;
     let bar_total_w = cw - 80;
-    let seg_w = bar_total_w / 5;
     let seg_h = 28;
     // Background track
     crate::desktop::display::fb_fill(bar_x - 4, bar_y - 4, bar_total_w + 8, seg_h + 8, 0xFF050B12);
@@ -120,11 +119,18 @@ pub fn enter_desktop() {
     // `total_steps / num_segments` frames, so partial_in_sub must be
     // 0..(total_steps/num_segments) and the fill width is
     // `(seg_w - gap) * partial_in_sub / steps_per_segment`.
+    //
+    // v1.6.19: added `min(pw, seg_w - 4)` defensive cap. The math is
+    // already correct, but the user reported the last segment rendering
+    // wider than the others in some camera captures. This safety net
+    // guarantees that even if the math drifts in a future refactor,
+    // the bar cannot overflow the card.
     let total_steps: u32 = 100;
     let total_ms: u32 = 5_000;
     let step_ms: u32 = total_ms / total_steps;
     let num_segments: u32 = 5;
     let steps_per_segment: u32 = total_steps / num_segments; // 20
+    let seg_w: u32 = (bar_total_w / num_segments) as u32;
     for step in 0..total_steps {
         // Re-paint track to clear previous fill
         crate::desktop::display::fb_fill(bar_x, bar_y, bar_total_w, seg_h, 0xFF1F2A38);
@@ -132,7 +138,7 @@ pub fn enter_desktop() {
         let active = step / steps_per_segment;            // 0..5
         let sub_step = step % steps_per_segment;          // 0..19
         for i in 0..num_segments {
-            let sxi = bar_x + i * seg_w;
+            let sxi = bar_x + i as u32 * seg_w;
             if i < active {
                 // Fully filled
                 let c = match i {
@@ -142,11 +148,14 @@ pub fn enter_desktop() {
                     3 => 0xFFE2C044,
                     _ => 0xFFFF7B72,  // red
                 };
-                crate::desktop::display::fb_fill(sxi + 2, bar_y, seg_w - 4, seg_h, c);
+                let fill_w = seg_w.saturating_sub(4);
+                crate::desktop::display::fb_fill(sxi + 2, bar_y, fill_w, seg_h, c);
             } else if i == active && sub_step > 0 {
                 // Partial fill on the active segment.
                 // sub_step ranges 0..steps_per_segment. Map to 0..seg_w-4.
-                let pw = ((seg_w - 4) * sub_step) / steps_per_segment;
+                let max_w = seg_w.saturating_sub(4);
+                let raw_pw = (max_w * sub_step) / steps_per_segment;
+                let pw = raw_pw.min(max_w); // v1.6.19 defensive cap
                 let c = match i {
                     0 | 1 => 0xFF4ECCA3,
                     2 | 3 => 0xFFE2C044,

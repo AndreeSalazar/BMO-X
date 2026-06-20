@@ -276,11 +276,32 @@ fn render(fb: &Framebuffer) {
     fb.fill_rounded_rect(cx, cy, cw, ch, 24, pal::CARD_BG);
     // border interno sutil
     fb.draw_rect(cx + 1, cy + 1, cw - 2, ch - 2, 0xFF1A2D3A, 1);
-    // border principal teal
+
+    // v1.6.20: NEON glow on the card border. We draw 3 concentric
+    // borders in the same teal, each 2 px thick, with the outer ones
+    // slightly darker. This creates a soft glow halo around the card.
+    // Outermost (8 px out, very dim teal)
+    fb.draw_rect(
+        cx.saturating_sub(8), cy.saturating_sub(8),
+        cw + 16, ch + 16,
+        0xFF0A2638, 1,
+    );
+    // Middle (4 px out, dim teal)
+    fb.draw_rect(
+        cx.saturating_sub(4), cy.saturating_sub(4),
+        cw + 8, ch + 8,
+        0xFF143D54, 1,
+    );
+    // Border principal teal (already there, kept for compatibility)
     fb.draw_rect(cx, cy, cw, ch, pal::CARD_BD, 2);
 
-    // 3) Header bar — thin mint accent strip at the very top of the card
+    // 3) Header bar — mint accent strip at the very top of the card,
+    //    plus a thin teal "underglow" 2 px below for the neon feel.
     fb.fill_rect(cx + 24, cy + 28, cw - 48, 3, pal::ACCENT);
+    // Underglow — slightly dimmer mint, 1 px below the accent bar
+    fb.fill_rect(cx + 24, cy + 33, cw - 48, 1, 0xFF2E8C77);
+    // Outer underglow — 2 px below, very dim
+    fb.fill_rect(cx + 24, cy + 36, cw - 48, 1, 0xFF144D4D);
 
     // 4) Title — "FastOS-BMO" big, scale 3×, mint dash, soft shadow
     let title_left  = b"FastOS";
@@ -310,7 +331,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 130) as u32, sub, pal::SUBTITLE, 2);
 
     // 6) Version line
-    let ver = b"v1.6.18 ::  Ring 0 + Ring 3  ::  [splash-delay|begin-end-phase|0-warn]";
+    let ver = b"v1.6.20 ::  Ring 0 + Ring 3  ::  [neon-glow|watermark|EDDIE-ANDREE]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
@@ -364,6 +385,13 @@ fn render(fb: &Framebuffer) {
     let bh = 56;
     for (i, (icon, label, value)) in badges.iter().enumerate() {
         let bx = cx + 80 + i * (bw + 8);
+        // v1.6.20: NEON underglow — 2 px outside each badge in dim teal
+        // to give the impression the badge is glowing softly.
+        fb.draw_rect(
+            bx.saturating_sub(2), by0.saturating_sub(2),
+            bw + 4, bh + 4,
+            0xFF144D4D, 1,
+        );
         // base fill
         fb.fill_rounded_rect(bx, by0, bw, bh, 10, pal::OK_BG);
         // mint border
@@ -386,6 +414,12 @@ fn render(fb: &Framebuffer) {
     let hx = px;
     draw_text(fb, hx as u32, (py - 28) as u32, hint, pal::SUBTITLE);
 
+    // v1.6.20: NEON underglow on the prompt — 2 px out, dim teal
+    fb.draw_rect(
+        px.saturating_sub(2), py.saturating_sub(2),
+        pw + 4, ph + 4,
+        0xFF144D4D, 1,
+    );
     // caja
     fb.fill_rounded_rect(px, py, pw, ph, 10, pal::PROMPT_BG);
     fb.draw_rect(px, py, pw, ph, pal::PROMPT_BD, 2);
@@ -451,11 +485,22 @@ fn render(fb: &Framebuffer) {
     let fw = i * 8;
     let fx = cx + (cw - fw) / 2;
     draw_text(fb, fx as u32, (cy + ch - 32) as u32, &foot[..i], pal::SUBTITLE);
-    // build line below
-    let build = b"build 1.6.12  ::  AMD64  ::  BMO ABI v0.4.0";
+
+    // v1.6.20: PERSONAL WATERMARK — "Powered by Eddi Andreé Salazar Matos"
+    // in mint with a teal pill background, centered as the second-to-last
+    // footer line. The author is the human behind the kernel.
+    let author = b"\x95  Powered by Eddi Andre\x82 Salazar Matos";
+    let aw = author.len() * 8;
+    let ax = cx + (cw - aw) / 2;
+    // Mint pill background to highlight the author line
+    fb.fill_rounded_rect(ax - 16, cy + ch - 22, aw + 32, 22, 8, 0xFF0E2820);
+    draw_text(fb, ax as u32, (cy + ch - 18) as u32, author, pal::ACCENT);
+
+    // build line — bottom of card
+    let build = b"build 1.6.20  ::  AMD64  ::  BMO ABI v0.4.0  ::  Ring 0 + Ring 3";
     let bw2 = build.len() * 8;
     let bx2 = cx + (cw - bw2) / 2;
-    draw_text(fb, bx2 as u32, (cy + ch - 16) as u32, build, 0xFF455364);
+    draw_text(fb, bx2 as u32, (cy + ch - 4) as u32, build, 0xFF455364);
 }
 
 /// Render mÃ­nimo y robusto para hardware real.
