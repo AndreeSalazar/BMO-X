@@ -57,7 +57,7 @@ fn paint_desktop(slot: u32) {
     s.unlock();
     // Wallpaper procedural (mismo que welcome/desktop existentes).
     let fb = gop::get_backbuffer_fb();
-    super::super::super::desktop::wallpaper::draw(&fb, crate::arch::cpu::rdtsc());
+    super::super::desktop::wallpaper::draw(&fb, crate::arch::cpu::rdtsc());
     let _ = (x, y, w, h);
 }
 

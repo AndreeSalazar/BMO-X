@@ -1,8 +1,8 @@
 //! v2.0 — Window manager: Z-order, focus, drag/resize, snap, modal.
 //!
-//! Reemplaza al viejo `bmo_api/manager.rs` (max 16 windows, single
-//! Ring 0 control thread) por la versión completa con tree, focus
-//! follows mouse, modal loops y drag/resize intercept.
+//! Componente central del BMO API. Mantiene la Z-list singly-linked,
+//! el árbol parent/child, las reglas de focus, drag/resize con
+//! snap-to-edge, y el ciclo modal para ventanas de diálogo.
 
 #![allow(dead_code)]
 

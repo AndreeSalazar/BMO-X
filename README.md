@@ -152,19 +152,6 @@ FastOS/
 
 ---
 
-## Archivos legacy (no son parte del kernel)
-
-Estos archivos quedan como referencia pero no son necesarios para el boot:
-
-| Archivo | Propósito | Estado |
-|---------|-----------|--------|
-| `generate_payload_v2.py` | Generador de payload GPU NVIDIA | Legacy (NVIDIA) |
-| `write_gsp.ps1` | Writer de firmware GSP a SATA | Legacy (NVIDIA) |
-| `write_payload.ps1` | Writer de payload a SATA | Legacy (GPU) |
-| `combo_Window_Extractor/` | Reverse engineering de drivers Windows | Investigación |
-| `fastos_framebuffer_epic_animation.html` | Demo visual HTML | Demo |
-| `target_build/` | Artefactos de build | .gitignore |
-
 ---
 
 ## Build
