@@ -564,7 +564,25 @@ fn process_enter() {
 pub fn run() -> ! {
     crate::drivers::serial::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
 
+    // 1) Splash le pasa el control con la pantalla en estado
+    //    desconocido. Limpiamos explícitamente con negro fullscreen
+    //    para garantizar que el primer frame del welcome pinte sobre
+    //    un fondo conocido (no un splash residual).
+    if let Some(fb) = fb() {
+        fb.fill_rect(0, 0, fb.width, fb.height, 0xFF000000);
+    }
     crate::boot::visual::clear();
+
+    // 2) Pre-render: dibujar el welcome UNA vez antes de entrar al
+    //    loop, así garantizamos que la transición es visible aún si
+    //    DIRTY se desactiva por accidente o el input tiene un race.
+    if let Some(fb) = fb() {
+        render(&fb);
+        let on = blink_on();
+        paint_caret(&fb, on);
+        unsafe { LAST_BLINK_ON = on; }
+    }
+    unsafe { DIRTY = true; }
 
     crate::gustos::tracks::windows::logon();
     crate::drivers::serial::serial_write("[welcome] gustOS logon sound played\n");
