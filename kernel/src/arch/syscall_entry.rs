@@ -306,6 +306,14 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         crate::diag::trace_u64("syscall", "dispatch nr", nr);
 
         let result = match nr {
+            // ─── BMO API v2 (0x100..=0x1FF) ──────────────────────────
+            // Rango completo de 256 syscalls de windowing.
+            // Ver docs/BMO_API_SPEC.md §3 y kernel/src/bmo_api/v2/syscall.rs.
+            n if (0x100..=0x1FF).contains(&(n as u16)) => {
+                crate::diag::trace("syscall", "BMO API v2 dispatch");
+                crate::bmo_api::v2::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, _a5)
+            }
+
             // ─── Procesos ─────────────────────────────────────────────
             0x00 => {
                 crate::diag::trace("syscall", "ProcessExit");

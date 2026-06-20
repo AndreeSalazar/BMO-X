@@ -25,7 +25,7 @@ fn fb() -> Option<Framebuffer> {
     Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
 }
 
-pub(super) fn draw_text(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32) {
+pub(crate) fn draw_text(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32) {
     let mut cx = x as usize;
     let cy = y as usize;
     for &ch in text {

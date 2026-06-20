@@ -22,7 +22,7 @@ version = "0.1.0"
 
 [[package]]
 name = "fastos-kernel"
-version = "1.7.1"
+version = "1.7.2"
 dependencies = [
  "bitflags",
  "bmo_usb",
