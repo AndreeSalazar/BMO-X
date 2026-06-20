@@ -29,7 +29,7 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment (calls into sched::user_init).
 ///
-/// v1.6.13: DESKTOP STUBBED — refined stub screen with:
+/// v1.6.17: DESKTOP STUBBED — refined stub screen with:
 ///   - Centered card (1080 wide × 380 tall, well within 1920×1080)
 ///   - Clear "in development" badge at the top
 ///   - Countdown bar inside the card, with 5 segments showing progress
@@ -37,8 +37,8 @@ pub fn trim(s: &[u8]) -> &[u8] {
 ///   - 5 s countdown animation that loops the bar color from mint → gold → red
 pub fn enter_desktop() {
     crate::diag::set_overlay_enabled(false);
-    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.13 (REBOOT to return to welcome)");
-    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.13. Reboot to recover.\n");
+    crate::diag::info("welcome", "Run accepted; desktop STUBBED in v1.6.17 (REBOOT to return to welcome)");
+    crate::drivers::serial::serial_write("[welcome] Run aceptado: DESKTOP STUBBED v1.6.17. Reboot to recover.\n");
 
     let w = 1920u32;
     let h = 1080u32;
@@ -66,7 +66,7 @@ pub fn enter_desktop() {
     crate::desktop::display::fb_text(
         badge_x + 16,
         badge_y + 10,
-        b"DESKTOP STUB  v1.6.13",
+        b"DESKTOP STUB  v1.6.17",
         0xFFFFAA3D,
     );
 

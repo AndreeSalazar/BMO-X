@@ -1,4 +1,4 @@
-//! v1.6.15: Professional boot splash screen.
+//! v1.6.17: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
 //! splash that matches the welcome card's visual language:
@@ -110,7 +110,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.6.15";
+    let sub = b"Bare Metal Orchestrator  ::  v1.6.17";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);
@@ -198,27 +198,61 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     let row = NEXT_LOG_ROW.fetch_add(1, Ordering::Relaxed) % LOG_ROWS;
     let y = cy + 330 + row * LOG_ROW_H;
 
+    // v1.6.17: log row width is now computed with a SAFETY cap to
+    // never exceed the card body width. Previous versions used
+    // `cw - 120` which assumed `cw = CARD_W` (1100). If the screen
+    // is narrower than 1100, `cw` shrinks via `w.saturating_sub(40)`
+    // and the log row could still overflow. We now cap the log row
+    // width to the card width minus a 32-px margin on each side.
+    let log_margin: usize = 32;
+    let log_w: usize = if cw > 2 * log_margin { cw - 2 * log_margin } else { cw / 2 };
+    let log_x: usize = cx + (cw.saturating_sub(log_w)) / 2;
+
     // v1.6.16: log row gets a LIGHTER bg (0xFF1A2638, distinguishable
     // from the card body 0xFF0F1827) and the message is painted in
     // high-contrast near-white (0xFFE6F1F5). The previous attempt
     // (0xFF0A1320 row) was too close to the card body and the message
     // text in caller-supplied `color` blended into the dark background.
-    fill_rect(addr, s, w, h, cx + 60, y, cw - 120, LOG_ROW_H, 0xFF1A2638);
+    fill_rect(addr, s, w, h, log_x, y, log_w, LOG_ROW_H, 0xFF1A2638);
 
     // Phase pill: small colored square (8x8) + label
     let phase_color = phase_color(phase);
-    fill_rect(addr, s, w, h, cx + 60, y + 4, 8, 8, phase_color);
-    text(addr, s, w, h, cx + 76, y, phase.as_bytes(), phase_color);
+    let phase_pill_w: usize = 8;
+    let phase_gap: usize = 8;
+    fill_rect(addr, s, w, h, log_x, y + 4, phase_pill_w, 8, phase_color);
+    text(
+        addr, s, w, h,
+        log_x + phase_pill_w + phase_gap, y,
+        phase.as_bytes(), phase_color,
+    );
 
     // Arrow
-    text(addr, s, w, h, cx + 76 + phase.len() * 8 + 8, y, b"->", DIM);
+    let arrow_x = log_x + phase_pill_w + phase_gap + phase.len() * 8 + 4;
+    text(addr, s, w, h, arrow_x, y, b"->", DIM);
 
-    // Message in near-white for guaranteed contrast against the
-    // lighter row background. Caller-supplied `color` is ignored
-    // here on purpose: previous versions tried to honor it and the
-    // mint-on-dark-blue text was barely visible in camera captures.
-    let mx = cx + 76 + phase.len() * 8 + 8 + 24;
-    text(addr, s, w, h, mx, y, msg.as_bytes(), 0xFFE6F1F5);
+    // Message: compute available text columns and clip the message
+    // to fit. We append "..." when truncated so the user sees
+    // overflow without breaking the row width.
+    let msg_x: usize = arrow_x + 24;
+    let text_max_cols: usize = if log_w > (msg_x - log_x) + 16 {
+        (log_w - (msg_x - log_x) - 16) / 8
+    } else {
+        0
+    };
+    let msg_bytes = msg.as_bytes();
+    if msg_bytes.len() > text_max_cols {
+        if text_max_cols >= 3 {
+            // paint the first (text_max_cols - 3) chars + "..."
+            text(addr, s, w, h, msg_x, y, &msg_bytes[..text_max_cols - 3], 0xFFE6F1F5);
+            let dots_x = msg_x + (text_max_cols - 3) * 8;
+            text(addr, s, w, h, dots_x, y, b"...", DIM);
+        } else if text_max_cols > 0 {
+            // very narrow, just paint what fits
+            text(addr, s, w, h, msg_x, y, &msg_bytes[..text_max_cols], 0xFFE6F1F5);
+        }
+    } else {
+        text(addr, s, w, h, msg_x, y, msg_bytes, 0xFFE6F1F5);
+    }
 }
 
 fn phase_color(phase: &str) -> u32 {
