@@ -1,65 +1,33 @@
-//! v1.7.5 — Ring 0 coordinator.
+//! v1.7.11 — Ring 0 coordinator.
 //!
-//! Coordina la inicialización de todos los subsistemas de Ring 0 en el
-//! orden correcto. NO contiene lógica de aplicación — sólo inicializa
-//! y entrega el control a BMO Core vía `bmo_core::coord::enter`.
+//! El coordinator es deliberadamente pequeño: valida el `BootInfo`,
+//! prepara el log más temprano posible y entrega el control al boot
+//! por fases. Cada subsistema se inicializa una sola vez dentro de su
+//! fase dueña; el coordinator no repite GDT/IDT/APIC/mem/dev/proc.
 //!
-//! Orden de inicialización (no modificar sin revisar dependencias):
-//!   1. platform — CPUID, ACPI tables, firmware
-//!   2. arch     — GDT, IDT, APIC, SMP, syscall dispatcher
-//!   3. dev      — GOP, serial, PCI, watchdog, audio math
-//!   4. mem      — Page allocator + VMM (depende de cpu paging)
-//!   5. proc     — Scheduler, process, task (depende de arch APIC)
-//!   6. bmo_core — BMO API v2.0 init
+//! Orden real de fases:
+//!   0. arch/cpu  — CPUID, GDT, IDT, syscall, FPU
+//!   1. mem       — frame allocator, heap, VMM base
+//!   2. dev       — ACPI/PCI discovery seguro; storage/net/watchdog deferidos
+//!   3. display   — GOP framebuffer heredado de UEFI
+//!   4. proc      — scheduler/APIC timer/STI
+//!   5. bmo_core  — desktop/API CPU-side; no retorna
 //!
-//! Después de init(), llama a `bmo_core::coord::enter()` que es la
-//! fase 5 (welcome + desktop). Esa función no retorna.
+//! Política FastOS: Ring 0 es hardware puro, optimizado para el CPU
+//! objetivo del build (hoy Ryzen 5 5600X). Otros CPUs deben entrar como
+//! perfiles explícitos, no como una ruta genérica lenta.
 
 use super::boot;
 use super::boot::info;
-use super::proc;
-use super::arch::syscall;
-#[allow(unused_imports)]
-use super::{cpu, dev, mem, platform};
 
 use crate::bmo_core;
 
-/// Inicializa todos los subsistemas de Ring 0.
+/// Prepara el contexto mínimo antes del boot por fases.
+///
+/// No inicializa subsistemas de hardware salvo COM1 para logs tempranos.
+/// Las fases son la única fuente de verdad para arch/mem/dev/proc.
 pub fn init() -> boot::BootContext {
-    // 0) serial: lo primero para tener logs.
     crate::dev::console::init();
-
-    // 1) arch: GDT, IDT, APIC, FPU, MTRR/PAT, perf, paging.
-    boot::log::info("ring0", "init: arch (cpu + gdt + idt + apic)");
-    let _cpu_info = crate::cpu::init();
-    crate::arch::gdt::init_gdt();
-    crate::arch::idt::init_idt();
-    crate::cpu::fpu::init_fpu();
-    crate::arch::apic::init_apic(100);
-    crate::arch::syscall::init_syscall();
-
-    // 2) dev: hardware. GOP + serial (ya) + PCI + watchdog.
-    boot::log::info("ring0", "init: dev (gop + pci + watchdog)");
-    let bi = unsafe { &*info::BOOT_INFO };
-    if bi.fb_addr != 0 {
-        crate::dev::framebuffer::init_gop(bi.fb_addr, bi.fb_width, bi.fb_height, bi.fb_stride);
-    }
-    crate::dev::pcie::init_ecam(0xE000_0000, 255);
-    crate::dev::watchdog::init();
-
-    // 3) mem: page allocator + VMM.
-    boot::log::info("ring0", "init: mem");
-    crate::mem::init();
-
-    // 4) proc: scheduler, process, task.
-    boot::log::info("ring0", "init: proc");
-    proc::init();
-
-    // 5) syscall: dispatcher 0x00..0xFF (legacy).
-    boot::log::info("ring0", "init: syscall");
-    syscall::init();
-
-    // 6) BootContext con los recursos inicializados.
     let bi_ptr = unsafe { info::BOOT_INFO };
     boot::BootContext::new(bi_ptr)
 }
@@ -82,8 +50,9 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     boot::visual::log("ring0", "init start", boot::visual::color::OK);
 
     let mut ctx = init();
+    let boot_start = crate::cpu::rdtsc();
 
-    boot::phases::run_all(&mut ctx, crate::cpu::rdtsc());
+    let phase4_end = boot::phases::run_all(&mut ctx, boot_start);
 
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
     crate::cpu::busy_wait_ms(1500);
@@ -93,9 +62,7 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     boot::visual::log("ring0", "init bmo_api v2.0", boot::visual::color::OK);
     bmo_core::bmo_api::init();
 
-    let phase4_end = crate::cpu::rdtsc();
-    let t0 = phase4_end;
-    dispatch_phase5(&ctx, t0, phase4_end);
+    dispatch_phase5(&ctx, boot_start, phase4_end);
 }
 
 fn validate_boot_info(

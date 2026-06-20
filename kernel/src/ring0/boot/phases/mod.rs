@@ -5,12 +5,12 @@
 //! `crate::coordinator::main`.
 //!
 //! Phase order is load-bearing:
-//!   - Phase 0 (arch): GDT + IDT + APIC before anything can fault
-//!   - Phase 1 (mem):  heap + page_alloc before any Vec/Box
-//!   - Phase 2 (dev):  console, framebuffer, pcie, watchdog
-//!   - Phase 3 (proc): scheduler + idle task
-//!   - Phase 4 (bmo): BMO Core init
-//!   - Phase 5 (user): Ring 3 first process
+//!   - Phase 0 (arch): GDT + IDT + syscall + FPU before complex faults
+//!   - Phase 1 (mem):  frame allocator + heap before any Vec/Box
+//!   - Phase 2 (dev):  ACPI/PCI discovery; fragile services deferred
+//!   - Phase 3 (display): GOP framebuffer inherited from UEFI
+//!   - Phase 4 (proc): scheduler + APIC timer + interrupts
+//!   - Phase 5 (bmo): BMO Core desktop/API handoff (called by coordinator)
 
 pub mod p0_arch;
 pub mod p1_mem;

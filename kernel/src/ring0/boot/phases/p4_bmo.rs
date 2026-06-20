@@ -1,10 +1,13 @@
-//! Phase 4 — Scheduler.
+//! Phase 4 — Scheduler / process core.
 
 use crate::boot::log;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
 pub fn run(prev_end: u64) -> PhaseOutput {
-    log::info("phase4", "=== Phase 4: Scheduler ===");
+    log::info("phase4", "=== Phase 4: Scheduler / Process ===");
+
+    crate::proc::init();
+    log::info("phase4", "Process/task scheduler tables initialized");
 
     crate::arch::apic::init_apic(100);
     log::info("phase4", "APIC timer started (100 Hz, 10ms ticks)");
@@ -17,6 +20,7 @@ pub fn run(prev_end: u64) -> PhaseOutput {
     log::warn("phase4", "SMP deferred until desktop service phase");
     log::warn("phase4", "Security subsystem deferred until desktop service phase");
     log::warn("phase4", "Network stack deferred until desktop service phase");
+    log::warn("phase4", "Hardware watchdog deferred until desktop service phase");
 
     crate::cpu::sti();
     log::info("phase4", "Interrupts enabled (STI)");

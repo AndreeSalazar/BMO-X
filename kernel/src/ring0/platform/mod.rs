@@ -1,8 +1,10 @@
-//! Platform info for the Ryzen 5 5600X.
+//! Platform profiles for FastOS Ring 0.
 //!
-//! v1.7.8: simplified. `cpu::detect()` returns CpuIdentity with
-//! vendor/family/model/features/cache/topology. All values are
-//! hardcoded for the 5600X — if you change CPU, edit this file.
+//! FastOS is not a generic slow path kernel. It boots through enough
+//! CPUID/ACPI discovery to select or reject a profile, then runs the
+//! optimized path for the target CPU. The current profile is Ryzen 5
+//! 5600X (Zen 3 / Vermeer). When another CPU becomes a real target,
+//! add a sibling profile module instead of weakening the 5600X hot path.
 
 #![allow(dead_code)]
 
@@ -39,7 +41,10 @@ pub mod topology {
     pub fn cpu_count() -> u32 { crate::arch::topology::online_count() }
 }
 
-/// Re-export the 5600X topology constants. Always-true for the 5600X.
+/// Ryzen 5 5600X topology/performance constants.
+///
+/// Future CPUs should get their own module with the same shape. The
+/// installer/boot profile selector can choose the matching build/profile.
 pub mod r5_5600x {
     pub const TOTAL_THREADS: u32 = 12;
     pub const CORE_COUNT: u32 = 6;
