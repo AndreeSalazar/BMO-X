@@ -277,22 +277,22 @@ fn render(fb: &Framebuffer) {
     // border interno sutil
     fb.draw_rect(cx + 1, cy + 1, cw - 2, ch - 2, 0xFF1A2D3A, 1);
 
-    // v1.6.20: NEON glow on the card border. We draw 3 concentric
-    // borders in the same teal, each 2 px thick, with the outer ones
-    // slightly darker. This creates a soft glow halo around the card.
-    // Outermost (8 px out, very dim teal)
-    fb.draw_rect(
-        cx.saturating_sub(8), cy.saturating_sub(8),
-        cw + 16, ch + 16,
-        0xFF0A2638, 1,
-    );
-    // Middle (4 px out, dim teal)
+    // v1.6.21: NEON glow on the card border, toned down to be a
+    // soft halo rather than bright beams. We use a 1-px outline at
+    // 4 px and 2 px outside the card with progressively dimmer teal.
+    // Outermost (4 px out, very dim teal)
     fb.draw_rect(
         cx.saturating_sub(4), cy.saturating_sub(4),
         cw + 8, ch + 8,
+        0xFF0F2030, 1,
+    );
+    // Middle (2 px out, dim teal)
+    fb.draw_rect(
+        cx.saturating_sub(2), cy.saturating_sub(2),
+        cw + 4, ch + 4,
         0xFF143D54, 1,
     );
-    // Border principal teal (already there, kept for compatibility)
+    // Border principal teal
     fb.draw_rect(cx, cy, cw, ch, pal::CARD_BD, 2);
 
     // 3) Header bar — mint accent strip at the very top of the card,
@@ -331,7 +331,7 @@ fn render(fb: &Framebuffer) {
     draw_text_scaled(fb, sx as u32, (cy + 130) as u32, sub, pal::SUBTITLE, 2);
 
     // 6) Version line
-    let ver = b"v1.6.20 ::  Ring 0 + Ring 3  ::  [neon-glow|watermark|EDDIE-ANDREE]";
+    let ver = b"v1.6.21 ::  Ring 0 + Ring 3  ::  [neon-soft|log-debug|watermark]";
     let vw = ver.len() * 8;
     let vx = cx + (cw - vw) / 2;
     draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
@@ -385,12 +385,12 @@ fn render(fb: &Framebuffer) {
     let bh = 56;
     for (i, (icon, label, value)) in badges.iter().enumerate() {
         let bx = cx + 80 + i * (bw + 8);
-        // v1.6.20: NEON underglow — 2 px outside each badge in dim teal
-        // to give the impression the badge is glowing softly.
+        // v1.6.21: NEON underglow toned down — 1 px outside each badge
+        // in dim teal (was 2 px and brighter).
         fb.draw_rect(
-            bx.saturating_sub(2), by0.saturating_sub(2),
-            bw + 4, bh + 4,
-            0xFF144D4D, 1,
+            bx.saturating_sub(1), by0.saturating_sub(1),
+            bw + 2, bh + 2,
+            0xFF143D54, 1,
         );
         // base fill
         fb.fill_rounded_rect(bx, by0, bw, bh, 10, pal::OK_BG);

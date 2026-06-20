@@ -1,4 +1,4 @@
-//! v1.6.20: Professional boot splash screen.
+//! v1.6.21: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
 //! splash that matches the welcome card's visual language:
@@ -108,7 +108,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.6.20";
+    let sub = b"Bare Metal Orchestrator  ::  v1.6.21";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);
@@ -211,7 +211,12 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     // high-contrast near-white (0xFFE6F1F5). The previous attempt
     // (0xFF0A1320 row) was too close to the card body and the message
     // text in caller-supplied `color` blended into the dark background.
-    fill_rect(addr, s, w, h, log_x, y, log_w, LOG_ROW_H, 0xFF1A2638);
+    //
+    // v1.6.21: temporarily RED BG for visual debug — if rows show up
+    // as red bands, the layout is correct and only the text paint is
+    // broken. If the user still sees nothing, the rows aren't being
+    // called at all.
+    fill_rect(addr, s, w, h, log_x, y, log_w, LOG_ROW_H, 0xFFFF0000);
 
     // Phase pill: small colored square (8x8) + label
     let phase_color = phase_color(phase);
