@@ -62,7 +62,7 @@ pub fn init() -> CpuInfo {
     let tsc_freq = tsc::calibrate();
 
     // 9. Print CPU info
-    info::print(&features);
+    info::print();
 
     crate::dev::console::serial_write("[cpu] === Init Complete ===\n");
 

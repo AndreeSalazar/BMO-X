@@ -1,60 +1,69 @@
+//! CPU information display for the Ryzen 5 5600X.
+//!
+//! v1.7.8: simplified — no more bitmap. Just prints what the kernel
+//! knows is true (everything is always true on the 5600X).
+
 #![allow(dead_code)]
 
-//! CPU information display — prints detected features to serial.
+use super::features;
+use super::cpuid;
 
-use super::features::CpuFeatures;
+/// Print CPU info to serial console.
+pub fn print() {
+    crate::dev::console::serial_write("[cpu] === CPU Information (Ryzen 5 5600X) ===\n");
 
-/// Print full CPU information to serial console.
-pub fn print(features: &CpuFeatures) {
-    crate::dev::console::serial_write("[cpu] === CPU Information ===\n");
-    crate::dev::console::serial_write("[cpu] Brand: ");
-    crate::dev::console::serial_write(features.brand_string_str());
+    // Brand string from CPUID 0x8000_0002-4
+    let (max_ext, _, _, _) = cpuid(0x8000_0000, 0);
+    if max_ext >= 0x8000_0004 {
+        let mut brand = [0u8; 48];
+        for i in 0..3 {
+            let (a, b, c, d) = cpuid(0x8000_0002 + i, 0);
+            let off = i as usize * 16;
+            brand[off..off + 4].copy_from_slice(&a.to_le_bytes());
+            brand[off + 4..off + 8].copy_from_slice(&b.to_le_bytes());
+            brand[off + 8..off + 12].copy_from_slice(&c.to_le_bytes());
+            brand[off + 12..off + 16].copy_from_slice(&d.to_le_bytes());
+        }
+        let len = brand.iter().position(|&b| b == 0).unwrap_or(brand.len());
+        crate::dev::console::serial_write("[cpu] Brand: ");
+        crate::dev::console::serial_write(
+            core::str::from_utf8(&brand[..len]).unwrap_or("(invalid)"),
+        );
+        crate::dev::console::serial_write("\n");
+    }
+
+    // Family / model / stepping
+    let (eax, _, _, _) = cpuid(1, 0);
+    let stepping = eax & 0xF;
+    let base_model = (eax >> 4) & 0xF;
+    let base_family = (eax >> 8) & 0xF;
+    let family = if base_family == 0xF { base_family + ((eax >> 20) & 0xFF) } else { base_family };
+    let model = if family >= 0x6 { base_model | ((eax >> 12) & 0xF0) } else { base_model };
+    crate::dev::console::serial_write("[cpu] Family=0x");
+    print_hex(family);
+    crate::dev::console::serial_write(" Model=0x");
+    print_hex(model);
+    crate::dev::console::serial_write(" Stepping=0x");
+    print_hex(stepping);
     crate::dev::console::serial_write("\n");
 
-    crate::dev::console::serial_write("[cpu] Family=");
-    print_u32(features.cpu_family);
-    crate::dev::console::serial_write(" Model=");
-    print_u32(features.cpu_model);
-    crate::dev::console::serial_write(" Stepping=");
-    print_u32(features.cpu_stepping);
-    crate::dev::console::serial_write("\n");
+    // Features: we just say "Zen 3" and that everything is true.
+    crate::dev::console::serial_write("[cpu] Zen 3 (Vermeer), all features supported\n");
 
-    crate::dev::console::serial_write("[cpu] Features: SSE");
-    if features.has_sse2 { crate::dev::console::serial_write("/2"); }
-    if features.has_sse3 { crate::dev::console::serial_write("/3"); }
-    if features.has_ssse3 { crate::dev::console::serial_write("/SSSE3"); }
-    if features.has_sse41 { crate::dev::console::serial_write("/4.1"); }
-    if features.has_sse42 { crate::dev::console::serial_write("/4.2"); }
-    if features.has_sse4a { crate::dev::console::serial_write("/4A"); }
-    if features.has_avx { crate::dev::console::serial_write(" AVX"); }
-    if features.has_avx2 { crate::dev::console::serial_write("2"); }
-    if features.has_fma3 { crate::dev::console::serial_write(" FMA3"); }
-    if features.has_aes { crate::dev::console::serial_write(" AES-NI"); }
-    if features.has_sha { crate::dev::console::serial_write(" SHA"); }
-    if features.has_bmi1 { crate::dev::console::serial_write(" BMI1"); }
-    if features.has_bmi2 { crate::dev::console::serial_write("2"); }
-    if features.has_popcnt { crate::dev::console::serial_write(" POPCNT"); }
-    if features.has_lzcnt { crate::dev::console::serial_write(" LZCNT"); }
-    if features.has_rdrand { crate::dev::console::serial_write(" RDRAND"); }
-    if features.has_rdseed { crate::dev::console::serial_write(" RDSEED"); }
-    crate::dev::console::serial_write("\n");
-
-    crate::dev::console::serial_write("[cpu] Security: SMEP=");
-    crate::dev::console::serial_write(if features.has_smep { "OK" } else { "--" });
-    crate::dev::console::serial_write(" SMAP=");
-    crate::dev::console::serial_write(if features.has_smap { "OK" } else { "--" });
-    crate::dev::console::serial_write(" UMIP=");
-    crate::dev::console::serial_write(if features.has_umip { "OK" } else { "--" });
-    crate::dev::console::serial_write(" NX=");
-    crate::dev::console::serial_write(if features.has_nx { "OK" } else { "--" });
-    crate::dev::console::serial_write("\n");
+    // Show the constants that are *false* (the only thing that's not "true").
+    crate::dev::console::serial_write("[cpu] Not supported: AVX-512, LA57 (5-level paging)\n");
+    let _ = features::HAS_AVX2;  // silence unused warning
+    let _ = features::HAS_5LEVEL_PAGES;
 }
 
-fn print_u32(val: u32) {
-    let mut buf = [0u8; 10];
-    let mut i = buf.len();
-    let mut v = val;
-    if v == 0 { i -= 1; buf[i] = b'0'; }
-    else { while v > 0 { i -= 1; buf[i] = b'0' + (v % 10) as u8; v /= 10; } }
-    crate::dev::console::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
+fn print_hex(val: u32) {
+    let hex = b"0123456789ABCDEF";
+    let mut buf = [0u8; 8];
+    for i in 0..8 {
+        let nib = ((val >> (28 - i * 4)) & 0xF) as usize;
+        buf[i] = hex[nib];
+    }
+    crate::dev::console::serial_write(
+        core::str::from_utf8(&buf).unwrap_or("00000000"),
+    );
 }
