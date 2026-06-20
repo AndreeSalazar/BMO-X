@@ -63,3 +63,9 @@ pub trait DiskReader {
 pub trait DiskWriter: DiskReader {
     fn write_sectors(&mut self, lba: u64, count: u32, buf: &[u8]) -> Result<(), DiskError>;
 }
+
+/// Inicializa el subsistema de filesystem. v1.7.4: no-op
+/// (los módulos se auto-inicializan con static lazy en sus BSS).
+pub fn init() {
+    // v2.0: registrar FAT32 read-only driver + BMO-FS read-write.
+}

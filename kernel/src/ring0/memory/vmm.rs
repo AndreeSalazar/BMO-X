@@ -129,6 +129,13 @@ impl VmSpace {
 const MAX_PROCS: usize = 64;
 static mut VM_SPACES: [VmSpace; MAX_PROCS] = [VmSpace::empty(); MAX_PROCS];
 
+/// Inicializa el VMM. v1.7.4: no-op (las VM_SPACES ya están en BSS).
+/// El VMM se popula dinámicamente con `get_or_create(pid)` y
+/// `create_process_space(pid)`.
+pub fn init() {
+    // No-op por ahora. v2.0: bootstrap kernel page tables aquí.
+}
+
 /// Get or create a virtual address space for a process.
 pub fn get_or_create(pid: u32) -> &'static mut VmSpace {
     let idx = (pid as usize) % MAX_PROCS;

@@ -37,6 +37,11 @@
 #![allow(dead_code)]
 #![allow(static_mut_refs)]
 
+// ── Coordinator (orquesta init + enter) ──────────────────────────────
+// El módulo `coord` apunta a `bmo_core.rs` al lado de este archivo.
+#[path = "bmo_core.rs"]
+pub mod coord;
+
 pub mod bmo_api;
 pub mod desktop;
 pub mod ui;

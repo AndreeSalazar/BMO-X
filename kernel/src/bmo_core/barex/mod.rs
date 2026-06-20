@@ -88,3 +88,9 @@ impl BxError {
         crate::bmo_core::bmo_abi::status::BmoStatus::err(self as u32)
     }
 }
+
+/// Inicializa el subsistema BareX. v1.7.4: no-op.
+/// La inicialización real de BSF dispatcher ocurre en shader::loader.
+pub fn init() {
+    // v2.0: precargar shaders built-in.
+}

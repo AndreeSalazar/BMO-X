@@ -115,3 +115,11 @@ pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
         woken
     }
 }
+
+/// Inicializa el subsistema de syscall. v1.7.4: no-op.
+/// La tabla de dispatch estática está en `arch::syscall_entry::dispatch`.
+/// Este módulo expone el spec (números de syscall + struct de tipos).
+pub fn init() {
+    // v2.0: aquí se registrarán las llamadas syscall-only Ring 0 que
+    // no son BMO API (e.g. bmo_abi::process::exit, bmo_abi::time::now).
+}

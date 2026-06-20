@@ -27,5 +27,7 @@
 #![allow(dead_code)]
 #![allow(static_mut_refs)]
 
-// Por ahora vacío. El ring3_test se queda en ring0::arch::ring3_test
-// hasta que se cree el loader dinámico.
+// ── Coordinator (orquesta init + wnd_proc dispatch) ─────────────────
+// El módulo `coord` apunta a `ring_3.rs` al lado de este archivo.
+#[path = "ring_3.rs"]
+pub mod coord;

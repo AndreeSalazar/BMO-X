@@ -36,3 +36,8 @@ pub mod blake3;
 pub mod loader;
 
 // Re-exports planos para uso ergonómico.
+
+/// Inicializa el subsistema BEF. v1.7.4: no-op.
+pub fn init() {
+    // v2.0: precargar built-in BEFs desde ramdisk.
+}

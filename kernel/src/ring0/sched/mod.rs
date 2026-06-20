@@ -130,3 +130,9 @@ pub fn yield_now() {
     }
     schedule();
 }
+
+/// Inicializa el scheduler. v1.7.4: no-op (las tablas viven en BSS).
+/// Se llama desde `ring_0::ring_0::init()` después de arch::apic::init.
+pub fn init() {
+    // v2.0: configurar quantum, prioridades, runqueue.
+}
