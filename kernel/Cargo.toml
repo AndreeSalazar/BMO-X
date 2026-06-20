@@ -1,6 +1,6 @@
 [package]
 name = "fastos-kernel"
-version = "1.7.2"
+version = "1.7.3"
 edition = "2021"
 authors = ["FastOS Project"]
 description = "FastOS kernel - UEFI GOP framebuffer + BMO/BareX"
@@ -26,6 +26,6 @@ lto = true
 
 [[bin]]
 name = "fastos-kernel"
-path = "src/main.rs"
+path = "src/ring0/main.rs"
 
 # Linker configuration for x86_64-unknown-none target.

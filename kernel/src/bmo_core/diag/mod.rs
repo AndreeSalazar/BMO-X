@@ -1,0 +1,258 @@
+//! FastOS diag/ — diagnóstico modular integrado desde Ring 0.
+//!
+//! Capas:
+//! - `event`: tipos y severidad,
+//! - `buffer`: caja negra circular en RAM (256 eventos),
+//! - `serial_sink`: salida COM1,
+//! - `overlay`: render visual GOP con pestañas omniscientes,
+//! - `telemetry`: contadores atómicos en tiempo real.
+
+#![allow(dead_code)]
+
+mod buffer;
+mod event;
+pub mod overlay;
+mod persistent;
+mod serial_sink;
+pub mod telemetry;
+
+pub use event::Severity;
+
+use event::Event;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+static BOOT_READY: AtomicBool = AtomicBool::new(false);
+
+// ── Tab system for overlay ─────────────────────────────────────────
+
+/// Which panel the overlay is showing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum OverlayTab {
+    /// Main overview (CPU, Memory, Tasks, GOP).
+    Overview = 0,
+    /// CPU telemetry (interrupts, faults, frequency).
+    Cpu = 1,
+    /// Memory telemetry (allocs, frees, heap, fragmentation).
+    Memory = 2,
+    /// I/O telemetry (PCI, serial, PS/2).
+    Io = 3,
+    /// Scheduler telemetry (context switches, queues).
+    Scheduler = 4,
+    /// Event log (last 256 events).
+    Log = 5,
+}
+
+impl OverlayTab {
+    pub const ALL: [OverlayTab; 6] = [
+        OverlayTab::Overview,
+        OverlayTab::Cpu,
+        OverlayTab::Memory,
+        OverlayTab::Io,
+        OverlayTab::Scheduler,
+        OverlayTab::Log,
+    ];
+
+    pub fn next(self) -> Self {
+        match self {
+            OverlayTab::Overview => OverlayTab::Cpu,
+            OverlayTab::Cpu => OverlayTab::Memory,
+            OverlayTab::Memory => OverlayTab::Io,
+            OverlayTab::Io => OverlayTab::Scheduler,
+            OverlayTab::Scheduler => OverlayTab::Log,
+            OverlayTab::Log => OverlayTab::Overview,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            OverlayTab::Overview => "Overview",
+            OverlayTab::Cpu => "CPU",
+            OverlayTab::Memory => "Memory",
+            OverlayTab::Io => "I/O",
+            OverlayTab::Scheduler => "Scheduler",
+            OverlayTab::Log => "Log",
+        }
+    }
+}
+
+static mut CURRENT_TAB: OverlayTab = OverlayTab::Overview;
+
+/// Cycle to the next overlay tab.
+pub fn cycle_tab() {
+    unsafe {
+        CURRENT_TAB = CURRENT_TAB.next();
+    }
+}
+
+/// Get the current overlay tab.
+pub fn current_tab() -> OverlayTab {
+    unsafe { CURRENT_TAB }
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+
+pub fn init() {
+    persistent::init();
+    overlay::set_enabled(false);
+}
+
+/// Enable full diag sinks after the kernel has passed the fragile early boot
+/// path. Before this point diag is RAM-only: no GOP paint and no serial event
+/// sink from inside `emit()`. Boot messages still go to serial via `boot_log()`.
+pub fn mark_boot_ready() {
+    BOOT_READY.store(true, Ordering::Release);
+    info("diag", "diag online: serial + GOP overlay + RAM blackbox");
+}
+
+// ── Event emission ─────────────────────────────────────────────────
+
+pub fn info(module: &'static str, message: &'static str) {
+    emit(Event::new(Severity::Info, module, message));
+}
+
+pub fn warn(module: &'static str, message: &'static str) {
+    emit(Event::new(Severity::Warn, module, message));
+}
+
+pub fn fault(module: &'static str, message: &'static str) {
+    emit(Event::new(Severity::Fault, module, message));
+}
+
+pub fn trace(module: &'static str, message: &'static str) {
+    emit(Event::new(Severity::Trace, module, message));
+}
+
+pub fn trace_u64(module: &'static str, message: &'static str, value: u64) {
+    emit(Event::new_u64(Severity::Trace, module, message, value));
+}
+
+pub fn panic_event(module: &'static str, message: &'static str) {
+    emit(Event::new(Severity::Panic, module, message));
+}
+
+pub fn info_u64(module: &'static str, message: &'static str, value: u64) {
+    emit(Event::new_u64(Severity::Info, module, message, value));
+}
+
+pub fn warn_u64(module: &'static str, message: &'static str, value: u64) {
+    emit(Event::new_u64(Severity::Warn, module, message, value));
+}
+
+pub fn fault_u64(module: &'static str, message: &'static str, value: u64) {
+    emit(Event::new_u64(Severity::Fault, module, message, value));
+}
+
+pub fn event(severity: Severity, module: &'static str, message: &'static str) {
+    emit(Event::new(severity, module, message));
+}
+
+pub fn event_u64(severity: Severity, module: &'static str, message: &'static str, value: u64) {
+    emit(Event::new_u64(severity, module, message, value));
+}
+
+// ── Overlay control ────────────────────────────────────────────────
+
+pub fn set_overlay_enabled(enabled: bool) {
+    overlay::set_enabled(enabled);
+}
+
+pub fn is_overlay_enabled() -> bool {
+    overlay::is_enabled()
+}
+
+pub fn paint_overlay() {
+    overlay::paint();
+}
+
+// ── Persistent USB-ready spool ────────────────────────────────────
+
+/// Ruta objetivo futura para el log persistente en el USB.
+///
+/// Hoy el writer de archivos USB/BMO-FS aún no está cableado para append
+/// seguro, así que diag/ conserva el contenido listo en RAM. Cuando storage
+/// exponga `append_file`, este path será el destino: `/Datos/FASTOS-DIAG.LOG`.
+pub fn persistent_target_path() -> &'static str {
+    persistent::TARGET_PATH
+}
+
+pub fn persistent_pending_bytes() -> usize {
+    persistent::pending_bytes()
+}
+
+pub fn persistent_dropped_bytes() -> u64 {
+    persistent::dropped_bytes()
+}
+
+/// Copia los bytes pendientes del spool persistente a `out`.
+/// Retorna cuántos bytes se copiaron.
+pub fn copy_persistent_pending(out: &mut [u8]) -> usize {
+    persistent::copy_pending(out)
+}
+
+/// Marca como escritos `bytes` bytes del spool persistente.
+/// Debe llamarlo el futuro sink USB sólo después de confirmar escritura.
+pub fn ack_persistent_bytes(bytes: usize) {
+    persistent::ack(bytes);
+}
+
+/// Read the current CR3 and dump it to serial as hex.
+/// Used in Ring 3 transition tracing.
+pub fn read_cr3_into_serial() {
+    let cr3: u64;
+    unsafe { core::arch::asm!("mov {}, cr3", out(reg) cr3); }
+    crate::drivers::serial::serial_write("0x");
+    crate::drivers::serial::serial_write_u64(cr3, 16);
+}
+
+// ── Periodic refresh (called from APIC timer tick) ─────────────────
+//
+// Called every timer tick.  The overlay only repaints at REFRESH_HZ
+// to avoid burning CPU on every 10ms tick.
+
+/// Refresh rate for the overlay (Hz).
+pub const OVERLAY_REFRESH_HZ: u64 = 4; // 4 Hz = 250ms between repaints
+
+/// Called every timer tick. Only updates telemetry counters.
+/// The overlay is repainted on diag events and explicit paint_overlay() calls.
+pub fn tick_refresh() {
+    // Update telemetry snapshots (lightweight — no framebuffer access from IRQ)
+    telemetry::t().mem.update_free_pages(
+        unsafe { crate::arch::page_alloc::free_count() } as u64
+    );
+    telemetry::t().mem.update_heap(crate::allocator::heap_used() as u64);
+}
+
+// ── Private ────────────────────────────────────────────────────────
+
+fn emit(event: Event) {
+    let event = buffer::push(event);
+    if BOOT_READY.load(Ordering::Acquire) {
+        serial_sink::write_event(event);
+        persistent::write_event(event);
+        overlay::paint();
+    }
+}
+
+// ── Macros ─────────────────────────────────────────────────────────
+
+#[macro_export]
+macro_rules! diag_info {
+    ($module:expr, $message:expr) => {
+        $crate::bmo_core::diag::info($module, $message)
+    };
+}
+
+#[macro_export]
+macro_rules! diag_warn {
+    ($module:expr, $message:expr) => {
+        $crate::bmo_core::diag::warn($module, $message)
+    };
+}
+
+#[macro_export]
+macro_rules! diag_fault {
+    ($module:expr, $message:expr) => {
+        $crate::bmo_core::diag::fault($module, $message)
+    };
+}
