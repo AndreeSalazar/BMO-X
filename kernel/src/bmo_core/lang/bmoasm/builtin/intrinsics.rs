@@ -5,7 +5,7 @@
 //!   - los bytes exactos x86-64 emitidos
 //!   - intención semántica (qué problema resuelve)
 
-use crate::bmo_core::barex::{BxError, BxResult};
+use crate::bmo_gpu::{BxError, BxResult};
 use super::super::lexer::TokenKind;
 use super::super::emit::Emitter;
 

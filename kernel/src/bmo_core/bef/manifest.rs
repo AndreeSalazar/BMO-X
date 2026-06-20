@@ -9,14 +9,14 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::sandbox::Capability;
+use crate::bmo_core::fs::Capabilities;
 
 /// Manifest decodificado en memoria. La fuente es TOML pero aquí mostramos
 /// la estructura tipada que esperamos extraer.
 #[derive(Debug, Clone)]
 pub struct Manifest {
     pub identity: Identity,
-    pub capabilities: Capability,
+    pub capabilities: Capabilities,
     pub dependencies: alloc::vec::Vec<Dependency>,
     pub provenance: Provenance,
 }
@@ -70,10 +70,12 @@ impl Manifest {
     /// no incluye metadata BMO.
     pub fn synthetic_for(name: &str, prov: Provenance) -> Self {
         let caps = match prov {
-            Provenance::Native => Capability::NONE,
+            Provenance::Native => crate::bmo_core::fs::Capabilities::NONE,
             // PE/ELF devorados: sandbox restrictivo por defecto.
             Provenance::PeDevoured | Provenance::ElfDevoured => {
-                Capability::FS_READ | Capability::SYS_TIME_HIRES
+                let mut c = crate::bmo_core::fs::Capabilities::FS_READ;
+                c.insert(crate::bmo_core::fs::Capabilities::SYS_TIME_HIRES);
+                c
             }
         };
         Self {
@@ -100,7 +102,7 @@ impl Manifest {
     ///   [capabilities]
     ///   fs_read = true
     ///   sys_time_hires = true
-    ///   ... (maps to Capability flags)
+    ///   ... (maps to crate::bmo_core::fs::Capabilities flags)
     ///
     /// Returns a synthetic manifest on parse failure.
     pub fn parse_toml(bytes: &[u8], prov: Provenance) -> Self {
@@ -112,7 +114,7 @@ impl Manifest {
         let mut name = alloc::string::String::new();
         let mut version_str = alloc::string::String::new();
         let mut publisher = alloc::string::String::new();
-        let mut caps = Capability::NONE;
+        let mut caps = crate::bmo_core::fs::Capabilities::NONE;
 
         let mut in_identity = false;
         let mut in_capabilities = false;
@@ -153,11 +155,11 @@ impl Manifest {
                     }
                 } else if in_capabilities {
                     match key {
-                        "fs_read" if value == "true" => caps |= Capability::FS_READ,
-                        "fs_write" if value == "true" => caps |= Capability::FS_WRITE,
-                        "sys_time_hires" if value == "true" => caps |= Capability::SYS_TIME_HIRES,
-                        "sys_debug" if value == "true" => caps |= Capability::SYS_DEBUG,
-                        "net_raw" if value == "true" => caps |= Capability::NET_RAW,
+                        "fs_read" if value == "true" => caps.insert(crate::bmo_core::fs::Capabilities::FS_READ),
+                        "fs_write" if value == "true" => caps.insert(crate::bmo_core::fs::Capabilities::FS_WRITE),
+                        "sys_time_hires" if value == "true" => caps.insert(crate::bmo_core::fs::Capabilities::SYS_TIME_HIRES),
+                        "sys_debug" if value == "true" => caps.insert(crate::bmo_core::fs::Capabilities::SYS_DEBUG),
+                        "net_raw" if value == "true" => caps.insert(crate::bmo_core::fs::Capabilities::NET_RAW),
                         _ => {}
                     }
                 }

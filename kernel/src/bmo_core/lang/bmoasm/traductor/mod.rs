@@ -9,7 +9,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::{BxError, BxResult};
+use crate::bmo_gpu::{BxError, BxResult};
 use super::parser::{Parser, Ast, Stmt, Expr, BinOp, Type};
 use super::parser::ast::{CpuFlag, MemOrder};
 use super::sema::Sema;

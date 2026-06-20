@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::ast::{CType, CExpr, CBinOp, CUnaryOp, CStmt, CItem, CAst};
 use crate::bmo_core::lang::nexo::parser::{Ast, Stmt as NStmt, Expr, Param, TypeAnnotation, BinOp, UnaryOp, ExternItem};
 

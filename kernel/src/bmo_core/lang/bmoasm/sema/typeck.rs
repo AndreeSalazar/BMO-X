@@ -3,7 +3,7 @@
 
 use alloc::collections::BTreeMap;
 use alloc::string::String;
-use crate::bmo_core::barex::{BxError, BxResult};
+use crate::bmo_gpu::{BxError, BxResult};
 use super::super::parser::ast::{Ast, Stmt, Expr, Type, BinOp};
 use super::super::emit::Reg64;
 use super::scope::{Scope, ScopeEntry};

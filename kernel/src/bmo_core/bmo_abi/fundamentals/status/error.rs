@@ -1,6 +1,6 @@
 //! `ErrorCode` — códigos numéricos canónicos del BMO ABI.
 //!
-//! Mapean 1-a-1 con `crate::bmo_core::barex::BxError`. Esta tabla es la fuente de
+//! Mapean 1-a-1 con `crate::bmo_gpu::BxError`. Esta tabla es la fuente de
 //! verdad para FFI con apps que no usen el enum Rust.
 
 use crate::bmo_core::bmo_abi::primitives::bx_u32;

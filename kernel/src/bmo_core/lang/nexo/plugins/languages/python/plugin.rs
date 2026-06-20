@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use alloc::string::ToString;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::super::super::traits::{
     Language, LanguagePlugin, RuntimeConfig, LanguageFeatures, CompileResult, CompileError,
 };

@@ -51,20 +51,20 @@ impl Error {
     }
 
     /// Convert from kernel BxError.
-    pub fn from_bx(err: crate::bmo_core::barex::BxError) -> Self {
+    pub fn from_bx(err: crate::bmo_gpu::BxError) -> Self {
         match err {
-            crate::bmo_core::barex::BxError::OutOfMemory => Error::OutOfMemory,
-            crate::bmo_core::barex::BxError::InvalidArgument => Error::InvalidArgument,
-            crate::bmo_core::barex::BxError::NotFound => Error::NotFound,
-            crate::bmo_core::barex::BxError::PermissionDenied => Error::PermissionDenied,
-            crate::bmo_core::barex::BxError::AlreadyExists => Error::AlreadyExists,
-            crate::bmo_core::barex::BxError::IoError => Error::IoError,
-            crate::bmo_core::barex::BxError::Timeout => Error::Timeout,
-            crate::bmo_core::barex::BxError::BadHandle => Error::BadHandle,
-            crate::bmo_core::barex::BxError::BufferTooSmall => Error::BufferTooSmall,
-            crate::bmo_core::barex::BxError::NotImplemented | crate::bmo_core::barex::BxError::Unsupported => Error::NotSupported,
-            crate::bmo_core::barex::BxError::DeviceLost => Error::IoError,
-            crate::bmo_core::barex::BxError::NotInitialized => Error::InvalidArgument,
+            crate::bmo_gpu::BxError::OutOfMemory => Error::OutOfMemory,
+            crate::bmo_gpu::BxError::InvalidArgument => Error::InvalidArgument,
+            crate::bmo_gpu::BxError::NotFound => Error::NotFound,
+            crate::bmo_gpu::BxError::PermissionDenied => Error::PermissionDenied,
+            crate::bmo_gpu::BxError::AlreadyExists => Error::AlreadyExists,
+            crate::bmo_gpu::BxError::IoError => Error::IoError,
+            crate::bmo_gpu::BxError::Timeout => Error::Timeout,
+            crate::bmo_gpu::BxError::BadHandle => Error::BadHandle,
+            crate::bmo_gpu::BxError::BufferTooSmall => Error::BufferTooSmall,
+            crate::bmo_gpu::BxError::NotImplemented | crate::bmo_gpu::BxError::Unsupported => Error::NotSupported,
+            crate::bmo_gpu::BxError::DeviceLost => Error::IoError,
+            crate::bmo_gpu::BxError::NotInitialized => Error::InvalidArgument,
         }
     }
 }

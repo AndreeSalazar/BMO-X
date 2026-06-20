@@ -14,7 +14,7 @@ pub mod types;
 
 // Re-exports
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::traits::{AbiBridge, AbiSignature, AbiType};
 
 /// ABI bridge implementation

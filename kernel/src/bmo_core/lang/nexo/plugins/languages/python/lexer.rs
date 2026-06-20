@@ -7,7 +7,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 
 /// Python token.
 #[derive(Debug, Clone, PartialEq)]

@@ -69,3 +69,29 @@ pub trait DiskWriter: DiskReader {
 pub fn init() {
     // v2.0: registrar FAT32 read-only driver + BMO-FS read-write.
 }
+
+/// Capabilities de un proceso (qué puede hacer en el FS).
+/// Usado por `proc::process` y `bef::manifest` para validar permisos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Capabilities(pub u32);
+
+impl Capabilities {
+    pub const NONE: Self = Self(0);
+    pub const READ_FS: Self = Self(1 << 0);
+    pub const WRITE_FS: Self = Self(1 << 1);
+    pub const EXEC: Self = Self(1 << 2);
+    pub const NET: Self = Self(1 << 3);
+    pub const GPU: Self = Self(1 << 4);
+    pub const SYS_DEBUG: Self = Self(1 << 5);
+    pub const FS_READ: Self = Self(1 << 0);   // alias
+    pub const FS_WRITE: Self = Self(1 << 1);  // alias
+    pub const SYS_TIME_HIRES: Self = Self(1 << 6);
+    pub const SYS_GPU_SUBMIT: Self = Self(1 << 7);
+    pub const SYS_INPUT: Self = Self(1 << 8);
+    pub const NET_RAW: Self = Self(1 << 9);
+    pub const ALL: Self = Self(0xFFFF_FFFF);
+
+    pub fn has(self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+    pub fn insert(&mut self, other: Self) { self.0 |= other.0; }
+    pub fn remove(&mut self, other: Self) { self.0 &= !other.0; }
+}

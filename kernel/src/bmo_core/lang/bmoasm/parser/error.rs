@@ -57,9 +57,9 @@ impl core::fmt::Display for ParseError {
 }
 
 /// Convert ParseError to BxResult (loses location info, kept for ABI compat).
-impl From<ParseError> for crate::bmo_core::barex::BxError {
+impl From<ParseError> for crate::bmo_gpu::BxError {
     fn from(_: ParseError) -> Self {
-        crate::bmo_core::barex::BxError::InvalidArgument
+        crate::bmo_gpu::BxError::InvalidArgument
     }
 }
 

@@ -3,7 +3,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::super::super::parser::ast::Ast;
 use super::reg::Reg64;
 

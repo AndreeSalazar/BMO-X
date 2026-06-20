@@ -105,7 +105,7 @@ pub struct PeSectionHeader {
 /// DLL falsas que el devour-loader provee a los binarios PE.
 ///
 /// v1.3.0: reducido a una lista informativa de strings. Los nombres
-/// de módulos (`barex::compat::dxvk11`, etc.) son solo **etiquetas**
+/// de módulos (`bmo_gpu::compat::dxvk11`, etc.) son solo **etiquetas**
 /// — el loader no los usa como paths Rust, solo los imprime en
 /// logs. La redirección real sucede en `pe_thunks.rs` (en el mismo
 /// directorio) donde cada import se mapea a una función real.
@@ -339,13 +339,13 @@ fn resolve_pe_imports(
         return Err(LoadError::Truncated);
     }
 
-    let desc_size = core::mem::size_of::<super::pe_imports::ImageImportDescriptor>();
+    let desc_size = core::mem::size_of::<crate::bmo_gpu::shims::pe_imports::ImageImportDescriptor>();
     let mut pos = import_file_offset;
 
     loop {
         if pos + desc_size > bytes.len() { break; }
         let desc = unsafe {
-            &*(bytes.as_ptr().add(pos) as *const super::pe_imports::ImageImportDescriptor)
+            &*(bytes.as_ptr().add(pos) as *const crate::bmo_gpu::shims::pe_imports::ImageImportDescriptor)
         };
         if desc.is_terminator() { break; }
 
@@ -353,7 +353,7 @@ fn resolve_pe_imports(
         let dll_name = if desc.name_rva != 0 {
             let dll_offset = rva_to_file_offset_pe(desc.name_rva, sections);
             if let Some(off) = dll_offset {
-                super::pe_imports::read_cstr(bytes, off, 256).unwrap_or("???")
+                crate::bmo_gpu::shims::pe_imports::read_cstr(bytes, off, 256).unwrap_or("???")
             } else {
                 "???"
             }
@@ -387,7 +387,7 @@ fn walk_pe_import_thunks(
     sections: &[PeSectionHeader],
     _base: u64,
 ) {
-    let thunk_size = core::mem::size_of::<super::pe_imports::ImageThunk>();
+    let thunk_size = core::mem::size_of::<crate::bmo_gpu::shims::pe_imports::ImageThunk>();
     let mut i = 0;
 
     loop {
@@ -397,12 +397,12 @@ fn walk_pe_import_thunks(
             break;
         }
 
-        let int_thunk = super::pe_imports::ImageThunk(unsafe {
+        let int_thunk = crate::bmo_gpu::shims::pe_imports::ImageThunk(unsafe {
             let mut buf = [0u8; 8];
             core::ptr::copy_nonoverlapping(bytes.as_ptr().add(int_pos), buf.as_mut_ptr(), 8);
             u64::from_le_bytes(buf)
         });
-        let _iat_thunk = super::pe_imports::ImageThunk(unsafe {
+        let _iat_thunk = crate::bmo_gpu::shims::pe_imports::ImageThunk(unsafe {
             let mut buf = [0u8; 8];
             core::ptr::copy_nonoverlapping(bytes.as_ptr().add(iat_pos), buf.as_mut_ptr(), 8);
             u64::from_le_bytes(buf)
@@ -415,7 +415,7 @@ fn walk_pe_import_thunks(
             if let Some(off) = name_offset {
                 // IMAGE_IMPORT_BY_NAME: skip 2-byte Hint, read name.
                 let name_start = off + 2;
-                super::pe_imports::read_cstr(bytes, name_start, 256).unwrap_or("???")
+                crate::bmo_gpu::shims::pe_imports::read_cstr(bytes, name_start, 256).unwrap_or("???")
             } else {
                 "???"
             }
@@ -429,11 +429,11 @@ fn walk_pe_import_thunks(
         };
 
         // Resolve via PE thunk table — now returns real function pointers.
-        let (target, fn_ptr) = super::pe_thunks::resolve_fn(dll_name, fn_name);
+        let (target, fn_ptr) = crate::bmo_gpu::shims::pe_thunks::resolve_fn(dll_name, fn_name);
         let addr = match target {
-            super::pe_thunks::ThunkTarget::SilentStub => super::pe_thunks::silent_stub as *const () as u64,
-            super::pe_thunks::ThunkTarget::LogStub => super::pe_thunks::log_stub as *const () as u64,
-            _ => fn_ptr, // Real bmo_abi::interop::win32 function pointer
+            crate::bmo_gpu::shims::pe_thunks::ThunkTarget::SilentStub => crate::bmo_gpu::shims::pe_thunks::silent_stub as *const () as u64,
+            crate::bmo_gpu::shims::pe_thunks::ThunkTarget::LogStub => crate::bmo_gpu::shims::pe_thunks::log_stub as *const () as u64,
+            _ => fn_ptr, // Real bmo_abi::bmo_gpu::shims::win32 function pointer
         };
 
         // Register in runtime symbol table.

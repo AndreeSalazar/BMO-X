@@ -75,6 +75,8 @@ pub mod coordinator;
 // ── Módulos hermanos (BMO Core y Ring 3 vía path attribute) ─────────
 #[path = "../bmo_core/mod.rs"]
 pub mod bmo_core;
+#[path = "../bmo_gpu/mod.rs"]
+pub mod bmo_gpu;
 #[path = "../ring3/mod.rs"]
 pub mod ring3;
 

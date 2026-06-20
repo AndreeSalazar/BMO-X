@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::traits::{
     Language, LanguagePlugin, RuntimeConfig, LanguageFeatures, CompileResult,
 };
@@ -50,7 +50,7 @@ impl LanguageRegistry {
     pub fn compile(&self, source: &[u8], lang: Language) -> BxResult<CompileResult> {
         match self.get(lang) {
             Some(plugin) => plugin.compile(source),
-            None => Err(crate::bmo_core::barex::BxError::Unsupported),
+            None => Err(crate::bmo_gpu::BxError::Unsupported),
         }
     }
 
@@ -58,7 +58,7 @@ impl LanguageRegistry {
     pub fn compile_active(&self, source: &[u8]) -> BxResult<CompileResult> {
         match self.active_language {
             Some(lang) => self.compile(source, lang),
-            None => Err(crate::bmo_core::barex::BxError::Unsupported),
+            None => Err(crate::bmo_gpu::BxError::Unsupported),
         }
     }
 
@@ -96,7 +96,7 @@ impl LanguageRegistry {
     pub fn validate(&self, source: &[u8], lang: Language) -> BxResult<bool> {
         match self.get(lang) {
             Some(plugin) => plugin.validate(source),
-            None => Err(crate::bmo_core::barex::BxError::Unsupported),
+            None => Err(crate::bmo_gpu::BxError::Unsupported),
         }
     }
 

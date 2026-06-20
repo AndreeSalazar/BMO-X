@@ -12,7 +12,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::super::traits::{GcType, GcPlugin, GcStats};
 
 /// Concurrent garbage collector
@@ -115,7 +115,7 @@ impl GcPlugin for ConcurrentGc {
         }
 
         if self.heap.len() + total_size > self.heap.capacity() {
-            return Err(crate::bmo_core::barex::BxError::OutOfMemory);
+            return Err(crate::bmo_gpu::BxError::OutOfMemory);
         }
 
         let offset = self.heap.len();

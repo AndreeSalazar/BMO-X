@@ -16,12 +16,12 @@ extern crate alloc;
 pub mod native;
 pub mod pe;
 pub mod elf;
-pub mod pe_imports;
-pub mod pe_thunks;
 pub mod elf_dynamic;
 pub mod elf_thunks;
 pub mod meta_sections;
 pub mod runtime;
+
+// pe_imports and pe_thunks moved to crate::bmo_gpu::shims (v1.7.9)
 
 use crate::bmo_core::bef::header::BefMagic;
 use crate::bmo_core::bef::manifest::{Manifest, Provenance};

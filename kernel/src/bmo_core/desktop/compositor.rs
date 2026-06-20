@@ -14,7 +14,7 @@
 //! }
 //! ```
 //!
-//! El payload se ensambla con `barex::bmoasm::Emitter`.
+//! El payload se ensambla con `bmo_gpu::bmoasm::Emitter`.
 
 extern crate alloc;
 

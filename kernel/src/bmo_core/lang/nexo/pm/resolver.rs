@@ -9,7 +9,7 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::{BxError, BxResult};
+use crate::bmo_gpu::{BxError, BxResult};
 use super::manifest::{Manifest, DependencySpec};
 use super::registry::Registry;
 

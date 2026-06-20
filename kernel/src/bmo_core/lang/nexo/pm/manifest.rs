@@ -27,7 +27,7 @@ use alloc::vec::Vec;
 use alloc::format;
 use alloc::collections::BTreeMap;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 
 /// Package manifest.
 #[derive(Debug, Clone)]

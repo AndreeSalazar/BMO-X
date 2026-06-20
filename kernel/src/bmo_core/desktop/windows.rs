@@ -83,7 +83,7 @@ pub fn content_for<'a>(
         ],
         3 => [
             (b"== Web ==" as &[u8], palette::CYAN_INFO),
-            (b"barex::net listo:" as &[u8], palette::TITLE),
+            (b"bmo_gpu::net listo:" as &[u8], palette::TITLE),
             (b"  TCP/UDP/QUIC/TLS13" as &[u8], palette::SUBTITLE),
             (b"  HTTP3 + DNS" as &[u8], palette::SUBTITLE),
             (b"  ring buffers io_uring-style" as &[u8], palette::SUBTITLE),

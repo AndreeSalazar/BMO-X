@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::super::traits::{GilType, GilPlugin, GilStats};
 use super::sync::{SpinLock, RwLock};
 

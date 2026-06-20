@@ -22,7 +22,7 @@ use crate::bmo_core::bef::signing::{SignatureHeader, SectionHash};
 use crate::bmo_core::bef::relocations::Relocation;
 use crate::bmo_core::bef::tls::TlsTemplate;
 use super::{Image, LoadError, MappedSection, fake_provenance_image};
-use super::meta_sections::{parse_meta_sections, meta_stats, MetaSectionStats};
+use super::meta_sections::parse_meta_sections;
 use crate::bmo_core::bef::manifest::Provenance;
 
 /// Virtual base address for user-space loading (Ring 3).
@@ -69,7 +69,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
 
     // Step 4: Parse meta sections (TypeMap, VTables, LangBridge, etc.)
     let meta = parse_meta_sections(bytes, &table)?;
-    let _stats: MetaSectionStats = meta_stats(&meta);
+    let _ = meta;
 
     // Step 5: Map sections into virtual memory.
     let mapped = map_sections(bytes, &table, base)?;

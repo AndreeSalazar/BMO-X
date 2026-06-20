@@ -1,7 +1,8 @@
-//! API de queries reflectivas. Stubs — completos en sesiones futuras.
+//! API de queries reflectivas. v1.7.9: stub.
 
-use crate::bmo_core::bmo_abi::string::BmoStr;
-use crate::bmo_core::bmo_abi::type_system::{TypeDescriptor, TypeId, TypeRegistry};
+#![allow(dead_code)]
+
+use crate::bmo_core::bmo_abi::primitives::bx_u32;
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,25 +13,16 @@ pub enum ReflectError {
     NoMetadata   = 4,
 }
 
+pub type ReflectResult<T> = core::result::Result<T, ReflectError>;
+
+/// Query reflectiva. v1.7.9: stub. v2.0: alimentada por `bmo_abi::runtime`.
 pub struct ReflectQuery<'a> {
-    registry: &'a TypeRegistry<'a>,
+    _phantom: core::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> ReflectQuery<'a> {
-    pub const fn new(registry: &'a TypeRegistry<'a>) -> Self {
-        Self { registry }
+    pub const fn empty() -> Self {
+        Self { _phantom: core::marker::PhantomData }
     }
-
-    /// Busca un tipo por nombre fully-qualified.
-    pub fn type_by_name(&self, name: BmoStr<'_>) -> Result<&'a TypeDescriptor<'a>, ReflectError> {
-        for d in self.registry.iter() {
-            if d.name.eq_str(&name) { return Ok(d); }
-        }
-        Err(ReflectError::NoSuchType)
-    }
-
-    /// Búsqueda directa por TypeId.
-    pub fn type_by_id(&self, id: TypeId) -> Result<&'a TypeDescriptor<'a>, ReflectError> {
-        self.registry.lookup(id).map_err(|_| ReflectError::NoSuchType)
-    }
+    pub fn count(&self) -> bx_u32 { 0 }
 }

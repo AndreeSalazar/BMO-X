@@ -9,7 +9,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 
 /// Language identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -9,7 +9,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::super::c::lexer::{CLexer, CToken};
 
 /// C++ token — extends `CToken` with class-related variants.

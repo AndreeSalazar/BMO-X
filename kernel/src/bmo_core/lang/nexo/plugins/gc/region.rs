@@ -7,7 +7,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::super::traits::{GcType, GcPlugin, GcStats};
 
 /// Memory region
@@ -134,7 +134,7 @@ impl GcPlugin for RegionGc {
                 self.stats.live_objects += 1;
                 Ok(ptr)
             }
-            None => Err(crate::bmo_core::barex::BxError::OutOfMemory),
+            None => Err(crate::bmo_gpu::BxError::OutOfMemory),
         }
     }
 

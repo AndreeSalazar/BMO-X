@@ -8,7 +8,7 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::ast::*;
 use super::lexer::JToken;
 
@@ -315,7 +315,7 @@ impl JParser {
             }
             JToken::Ident(n) => { self.advance(); Ok(JExpr::Name(n)) }
             JToken::LParen => { self.advance(); let e = self.parse_expr()?; self.expect(JToken::RParen)?; Ok(e) }
-            _ => Err(crate::bmo_core::barex::BxError::InvalidArgument),
+            _ => Err(crate::bmo_gpu::BxError::InvalidArgument),
         }
     }
 
@@ -327,11 +327,11 @@ impl JParser {
     }
     fn expect(&mut self, want: JToken) -> BxResult<()> {
         if core::mem::discriminant(self.peek()) == core::mem::discriminant(&want) { self.advance(); Ok(()) }
-        else { Err(crate::bmo_core::barex::BxError::InvalidArgument) }
+        else { Err(crate::bmo_gpu::BxError::InvalidArgument) }
     }
     fn expect_ident(&mut self) -> BxResult<String> {
         if let JToken::Ident(n) = self.peek() { let n = n.clone(); self.advance(); Ok(n) }
-        else { Err(crate::bmo_core::barex::BxError::InvalidArgument) }
+        else { Err(crate::bmo_gpu::BxError::InvalidArgument) }
     }
 }
 

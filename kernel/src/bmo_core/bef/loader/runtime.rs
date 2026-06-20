@@ -231,8 +231,8 @@ pub fn register_kernel_symbols() {
 
 /// Register PE thunk stubs as symbols.
 pub fn register_pe_thunk_symbols() {
-    use super::pe_thunks::THUNK_TABLE;
-    use super::pe_thunks::silent_stub as stub_fn;
+    use crate::bmo_gpu::shims::pe_thunks::THUNK_TABLE;
+    use crate::bmo_gpu::shims::pe_thunks::silent_stub as stub_fn;
 
     for entry in THUNK_TABLE.iter() {
         // Register the stub address — a real implementation would

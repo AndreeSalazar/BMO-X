@@ -11,7 +11,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 
 /// Token types for ÑEXO.
 #[derive(Debug, Clone)]

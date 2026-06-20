@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::string::ToString;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::parser::{Ast, Stmt, Expr, BinOp, UnaryOp, TypeAnnotation};
 use crate::bmo_core::lang::bmoasm::parser::ast::{
     Ast as BmoAst, Stmt as BmoStmt, Expr as BmoExpr,

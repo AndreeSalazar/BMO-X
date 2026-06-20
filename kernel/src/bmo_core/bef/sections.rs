@@ -43,11 +43,11 @@ pub enum SectionKind {
     Signature = 0x0F,
 
     // ─── Sesión 8: secciones de metadatos genéricos multi-lenguaje ────
-    /// Tabla de `TypeDescriptor` (consumida por `barex::abi::type_system::TypeRegistry`).
+    /// Tabla de `TypeDescriptor` (consumida por `bmo_gpu::abi::type_system::TypeRegistry`).
     TypeMap   = 0x10,
-    /// VTables `BmoVTable` empacadas (`barex::abi::vtable`).
+    /// VTables `BmoVTable` empacadas (`bmo_gpu::abi::vtable`).
     VTables   = 0x11,
-    /// Bridges de lenguaje origen (`barex::abi::lang_bridge::LangDescriptor`).
+    /// Bridges de lenguaje origen (`bmo_gpu::abi::lang_bridge::LangDescriptor`).
     LangBridge = 0x12,
     /// Datos de reflection (mirrors, nombres mangled extra).
     Reflect   = 0x13,

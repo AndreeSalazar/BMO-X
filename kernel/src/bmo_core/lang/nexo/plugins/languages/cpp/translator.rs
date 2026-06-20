@@ -18,7 +18,7 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::ast::{CppAst, CppItem, CppClass, ClassMemberKind};
 use super::super::c::ast::CType;
 use crate::bmo_core::lang::nexo::parser::{

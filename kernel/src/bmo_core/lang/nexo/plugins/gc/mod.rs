@@ -28,7 +28,7 @@ pub use reference_counting::ReferenceCountingGc;
 pub use concurrent::ConcurrentGc;
 pub use region::RegionGc;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::traits::{GcType, GcPlugin};
 
 /// Create GC plugin based on type
@@ -70,7 +70,7 @@ pub fn create_gc(gc_type: GcType, heap_size: usize) -> BxResult<Box<dyn GcPlugin
             Ok(Box::new(gc))
         }
         GcType::None => {
-            Err(crate::bmo_core::barex::BxError::Unsupported)
+            Err(crate::bmo_gpu::BxError::Unsupported)
         }
     }
 }

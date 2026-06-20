@@ -12,7 +12,7 @@
 
 use crate::bmo_core::bmo_abi::primitives::bx_u64;
 use crate::bmo_core::bmo_abi::time::duration::BmoDuration;
-use crate::bmo_core::bmo_abi::sync::atomic::{BmoAtomicU64, MemOrder};
+use crate::bmo_core::bmo_abi::fundamentals::sync::{BmoAtomicU64, MemOrder};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::sandbox::Capability;
+use crate::bmo_core::fs::Capabilities;
 
 /// Maximum number of processes.
 pub const MAX_PROCESSES: usize = 64;
@@ -30,7 +30,7 @@ pub struct Process {
     /// CR3 value — physical address of PML4 page table root.
     pub page_table_root: u64,
     /// Security capabilities granted to this process.
-    pub caps: Capability,
+    pub caps: Capabilities,
     /// Name for debugging.
     pub name: [u8; 32],
     pub name_len: usize,
@@ -56,7 +56,7 @@ impl Process {
             pid: Pid(0),
             state: ProcessState::Free,
             page_table_root: 0,
-            caps: Capability::NONE,
+            caps: crate::bmo_core::fs::Capabilities::NONE,
             name: [0u8; 32],
             name_len: 0,
             entry_point: 0,
@@ -156,7 +156,7 @@ pub fn free_process(proc: &mut Process) {
     // Mark process as free
     proc.state = ProcessState::Free;
     proc.pid = Pid(0);
-    proc.caps = Capability::NONE;
+    proc.caps = crate::bmo_core::fs::Capabilities::NONE;
     proc.name = [0u8; 32];
     proc.name_len = 0;
     proc.entry_point = 0;

@@ -7,7 +7,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::super::traits::{GcType, GcPlugin, GcStats};
 
 /// Object header for copying GC
@@ -157,7 +157,7 @@ impl GcPlugin for CopyingGc {
 
         // If still no space, error
         if self.from_offset + total_size > self.from_space.capacity() {
-            return Err(crate::bmo_core::barex::BxError::OutOfMemory);
+            return Err(crate::bmo_gpu::BxError::OutOfMemory);
         }
 
         let offset = self.from_offset;

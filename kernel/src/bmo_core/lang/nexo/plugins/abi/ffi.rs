@@ -7,7 +7,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 
 /// FFI function signature
 #[derive(Debug, Clone)]
@@ -62,7 +62,7 @@ impl FfiBridge {
     /// Call a foreign function
     pub fn call(&self, name: &str, _args: &[u8]) -> BxResult<Vec<u8>> {
         if !self.functions.contains_key(name) {
-            return Err(crate::bmo_core::barex::BxError::NotFound);
+            return Err(crate::bmo_gpu::BxError::NotFound);
         }
 
         // Placeholder - would actually call the function

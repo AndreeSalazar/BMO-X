@@ -15,7 +15,7 @@ pub mod sync;
 // Re-exports
 pub use implementations::{TraditionalGil, FineGrainedGil, ReadWriteGil, LockFreeGil};
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::traits::{GilType, GilPlugin};
 
 /// Create GIL plugin based on type
@@ -25,6 +25,6 @@ pub fn create_gil(gil_type: GilType) -> BxResult<Box<dyn GilPlugin>> {
         GilType::FineGrained => Ok(Box::new(FineGrainedGil::new())),
         GilType::ReadWriteLock => Ok(Box::new(ReadWriteGil::new())),
         GilType::LockFree => Ok(Box::new(LockFreeGil::new())),
-        GilType::None => Err(crate::bmo_core::barex::BxError::Unsupported),
+        GilType::None => Err(crate::bmo_gpu::BxError::Unsupported),
     }
 }

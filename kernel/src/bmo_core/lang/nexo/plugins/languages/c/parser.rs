@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::{BxError, BxResult};
+use crate::bmo_gpu::{BxError, BxResult};
 use super::lexer::CToken;
 use super::ast::{CType, CExpr, CBinOp, CUnaryOp, CStmt, CCase, CParam, CItem, CAst};
 

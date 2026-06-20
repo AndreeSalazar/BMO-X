@@ -27,7 +27,7 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 use alloc::vec;
 
-use crate::bmo_core::barex::{BxError, BxResult};
+use crate::bmo_gpu::{BxError, BxResult};
 use super::parser::{Ast, Stmt, Path, TypeAnnotation};
 
 /// Identificador único de módulo (ruta punteada: "nexo::io").

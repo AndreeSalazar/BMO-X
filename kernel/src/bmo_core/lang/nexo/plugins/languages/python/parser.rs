@@ -7,7 +7,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::ast::*;
 use super::lexer::PyToken;
 
@@ -160,7 +160,7 @@ impl PyParser {
             self.expect_newline()?;
             Ok(PyStmt::Import(PyImport::From(module, names)))
         } else {
-            Err(crate::bmo_core::barex::BxError::InvalidArgument)
+            Err(crate::bmo_gpu::BxError::InvalidArgument)
         }
     }
 
@@ -219,7 +219,7 @@ impl PyParser {
             PyToken::False => { self.advance(); Ok(PyExpr::Literal(PyLiteral::Bool(false))) }
             PyToken::None => { self.advance(); Ok(PyExpr::Literal(PyLiteral::None)) }
             PyToken::Name(n) => { self.advance(); Ok(PyExpr::Name(n)) }
-            _ => Err(crate::bmo_core::barex::BxError::InvalidArgument),
+            _ => Err(crate::bmo_gpu::BxError::InvalidArgument),
         }
     }
 
@@ -235,11 +235,11 @@ impl PyParser {
     }
     fn expect(&mut self, _want: PyToken) -> BxResult<()> {
         if matches!(self.peek(), _want) { self.advance(); Ok(()) }
-        else { Err(crate::bmo_core::barex::BxError::InvalidArgument) }
+        else { Err(crate::bmo_gpu::BxError::InvalidArgument) }
     }
     fn expect_name(&mut self) -> BxResult<String> {
         if let PyToken::Name(n) = self.peek() { let n = n.clone(); self.advance(); Ok(n) }
-        else { Err(crate::bmo_core::barex::BxError::InvalidArgument) }
+        else { Err(crate::bmo_gpu::BxError::InvalidArgument) }
     }
     fn expect_newline(&mut self) -> BxResult<()> {
         match self.peek() {

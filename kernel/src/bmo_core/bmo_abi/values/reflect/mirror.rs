@@ -1,41 +1,34 @@
 //! `Mirror` — vista reflectiva sobre un valor o tipo.
 //!
-//! Inspirada en los Mirrors de Strongtalk/Smalltalk: la reflection NO está
-//! en el objeto, sino en un objeto separado (`Mirror`) que evita que cada
-//! valor BMO cargue overhead.
+//! v1.7.9: stub. Inspirada en los Mirrors de Strongtalk/Smalltalk.
+//! En v2.0 se llenará con datos de `bmo_abi::runtime::types`.
+
+#![allow(dead_code)]
 
 use crate::bmo_core::bmo_abi::primitives::bx_u64;
-use crate::bmo_core::bmo_abi::type_system::{TypeDescriptor, TypeId};
 
-/// Mirror sobre un *tipo* (estático).
-#[repr(C)]
+/// Mirror placeholder. v2.0: contendrá un descriptor real.
 #[derive(Debug, Clone, Copy)]
 pub struct Mirror<'a> {
-    pub descriptor: &'a TypeDescriptor<'a>,
+    pub type_name: &'a [u8],
 }
 
 impl<'a> Mirror<'a> {
-    #[inline(always)]
-    pub const fn new(descriptor: &'a TypeDescriptor<'a>) -> Self {
-        Self { descriptor }
+    pub const fn new(type_name: &'a [u8]) -> Self {
+        Self { type_name }
     }
-
-    #[inline(always)]
-    pub const fn type_id(&self) -> TypeId { self.descriptor.id }
+    pub fn type_name(&self) -> &[u8] { self.type_name }
 }
 
 /// Mirror sobre un *valor* concreto.
-#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct MirrorOf<'a> {
     pub mirror: Mirror<'a>,
-    /// Puntero al valor reflejado.
     pub value_ptr: bx_u64,
 }
 
 impl<'a> MirrorOf<'a> {
-    #[inline(always)]
-    pub const fn new(descriptor: &'a TypeDescriptor<'a>, value_ptr: bx_u64) -> Self {
-        Self { mirror: Mirror::new(descriptor), value_ptr }
+    pub const fn new(type_name: &'a [u8], value_ptr: bx_u64) -> Self {
+        Self { mirror: Mirror::new(type_name), value_ptr }
     }
 }

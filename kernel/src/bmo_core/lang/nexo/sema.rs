@@ -12,7 +12,7 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::collections::BTreeMap;
 
-use crate::bmo_core::barex::{BxError, BxResult};
+use crate::bmo_gpu::{BxError, BxResult};
 use super::parser::{Ast, Stmt, Expr, TypeAnnotation, BinOp, UnaryOp};
 
 /// Variable info.

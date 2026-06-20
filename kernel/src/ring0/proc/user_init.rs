@@ -8,7 +8,7 @@
 use super::process;
 use super::task;
 use super::Priority;
-use crate::bmo_core::sandbox::Capability;
+use crate::bmo_core::fs::Capabilities;
 use crate::mem::virt;
 
 /// Size of user stack (64 KB).
@@ -76,7 +76,7 @@ fn build_init_program() -> &'static [u8] {
     &INIT_CODE
 }
 
-fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u64, u64)> {
+fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<(u64, u64)> {
     crate::bmo_core::diag::info("ring3", "=== Ring 3 process allocation START ===");
     crate::dev::console::serial_write("[ring3] === alloc start ===\n");
     crate::bmo_core::diag::info("ring3", "allocating process struct");
@@ -188,7 +188,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
 /// Spawn the first user-mode process ("init").
 pub fn spawn_init_process() -> Option<(u64, u64)> {
     crate::bmo_core::diag::info("sched", "allocating init Ring 3 test process");
-    allocate_user_process("init", build_init_program(), Capability::SYS_DEBUG)
+    allocate_user_process("init", build_init_program(), crate::bmo_core::fs::Capabilities::SYS_DEBUG)
 }
 
 /// Prepare the future Ring 3 compositor contract without jumping to it yet.
@@ -290,7 +290,7 @@ fn launch_desktop_compositor_ring3() -> bool {
     let Some((entry, stack)) = allocate_user_process(
         "desktop3",
         &code_buf[..total],
-        Capability::SYS_DEBUG,
+        crate::bmo_core::fs::Capabilities::SYS_DEBUG,
     ) else {
         crate::bmo_core::diag::fault("ring3", "desktop compositor allocation failed");
         return false;
@@ -357,7 +357,7 @@ fn build_crash_program() -> &'static [u8] {
 pub fn spawn_crash() {
     crate::bmo_core::diag::info("sched", "spawn_crash: testing Ring 3 crash recovery");
     crate::dev::console::serial_write("[user_init] Spawning crash test process (ud2)...\n");
-    if let Some((entry, stack)) = allocate_user_process("crash_test", build_crash_program(), Capability::SYS_DEBUG) {
+    if let Some((entry, stack)) = allocate_user_process("crash_test", build_crash_program(), crate::bmo_core::fs::Capabilities::SYS_DEBUG) {
         crate::bmo_core::diag::info_u64("sched", "Ring 3 crash test entry", entry);
         crate::dev::console::serial_write("[user_init] Process created, jumping to Ring 3 (expect #UD)\n");
         unsafe { jump_to_ring3(entry, stack); }

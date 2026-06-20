@@ -17,7 +17,7 @@
 //! Punto de entrada: llamado desde `ring0::ring_0::dispatch_phase5()`.
 //! Esta función NO retorna.
 
-use super::barex;
+use crate::bmo_gpu;
 use super::bmo_api;
 use super::bef;
 use super::desktop;
@@ -47,7 +47,7 @@ pub fn init() {
     //    (No requiere init explícito — son bitflags.)
 
     // 6) barex: compat + shader loader.
-    barex::init();
+    bmo_gpu::init();
 
     // 7) bmo_abi: handle, status, type descriptors.
     //    (Stateless.)

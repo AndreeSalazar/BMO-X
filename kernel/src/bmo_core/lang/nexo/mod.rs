@@ -35,7 +35,7 @@ pub mod plugins;
 #[cfg(test)]
 pub mod tests;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 
 /// Versión del lenguaje ÑEXO.
 pub const NEXO_VERSION: (u8, u8, u8) = (0, 1, 0);

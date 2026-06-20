@@ -4,7 +4,7 @@
 
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::manifest::Manifest;
 use super::resolver::Resolver;
 

@@ -22,7 +22,7 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 use super::ast::*;
 use crate::bmo_core::lang::nexo::parser::Ast;
 

@@ -7,7 +7,7 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
-use crate::bmo_core::barex::BxResult;
+use crate::bmo_gpu::BxResult;
 
 /// Java token.
 #[derive(Debug, Clone, PartialEq)]
