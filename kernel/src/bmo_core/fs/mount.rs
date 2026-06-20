@@ -5,7 +5,7 @@
 //! Maps path prefixes to filesystem drivers.
 //! Supports: BMO-FS (root), FAT32, procfs, devfs.
 
-use crate::drivers::serial;
+use crate::device::serial;
 
 /// Maximum number of mount points.
 const MAX_MOUNTS: usize = 16;

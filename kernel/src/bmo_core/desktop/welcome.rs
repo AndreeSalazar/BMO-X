@@ -183,7 +183,7 @@ fn paint_caret(fb: &Framebuffer, on: bool) {
 }
 
 fn render(fb: &Framebuffer) {
-    let time = crate::arch::cpu::rdtsc();
+    let time = crate::cpu::rdtsc();
     wallpaper::draw(fb, time);
 
     let (cx, cy) = card_geom(fb);
@@ -483,9 +483,9 @@ fn process_enter() {
         nexo_test_compile();
     } else if eq_ci(trimmed_cmd, b"test desktop") {
         crate::bmo_core::diag::info("welcome", "test desktop: rendering single frame");
-        crate::drivers::serial::serial_write("[welcome] test desktop: calling render_frame()\n");
+        crate::device::serial::serial_write("[welcome] test desktop: calling render_frame()\n");
         crate::bmo_core::desktop::render::render_frame();
-        crate::drivers::serial::serial_write("[welcome] test desktop: render_frame() returned OK\n");
+        crate::device::serial::serial_write("[welcome] test desktop: render_frame() returned OK\n");
         crate::bmo_core::diag::info("welcome", "test desktop: render_frame OK");
     } else if eq_ci(trimmed_cmd, b"test") {
         run_test_all_phases();
@@ -512,7 +512,7 @@ fn process_enter() {
 }
 
 pub fn run() -> ! {
-    crate::drivers::serial::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
+    crate::device::serial::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
 
     if let Some(fb) = fb() {
         fb.fill_rect(0, 0, fb.width, fb.height, 0xFF000000);
@@ -528,7 +528,7 @@ pub fn run() -> ! {
     unsafe { DIRTY = true; }
 
     crate::bmo_core::gustos::tracks::windows::logon();
-    crate::drivers::serial::serial_write("[welcome] gustOS logon sound played\n");
+    crate::device::serial::serial_write("[welcome] gustOS logon sound played\n");
 
     loop {
         if unsafe { DIRTY } {
@@ -546,8 +546,8 @@ pub fn run() -> ! {
         }
 
         let cycles = 16u64 * 3_700_000;
-        let start = crate::arch::cpu::rdtsc();
-        while (crate::arch::cpu::rdtsc() - start) < cycles {
+        let start = crate::cpu::rdtsc();
+        while (crate::cpu::rdtsc() - start) < cycles {
             let overlay_was_enabled = crate::bmo_core::diag::is_overlay_enabled();
             let sc = super::input::poll_key();
             if crate::bmo_core::diag::is_overlay_enabled() != overlay_was_enabled {
@@ -561,7 +561,7 @@ pub fn run() -> ! {
                 }
             }
 
-            if let Some(mut ch) = crate::drivers::serial::serial_read_byte() {
+            if let Some(mut ch) = crate::device::serial::serial_read_byte() {
                 if ch == b'\r' { ch = b'\n'; }
                 handle_char(ch);
             }
@@ -589,7 +589,7 @@ pub fn run() -> ! {
 }
 
 fn blink_on() -> bool {
-    (crate::arch::cpu::rdtsc() / 1_250_000_000) & 1 != 0
+    (crate::cpu::rdtsc() / 1_250_000_000) & 1 != 0
 }
 
 fn handle_char(ch: u8) {

@@ -115,13 +115,13 @@ pub fn lookup_by_hash(hash: u32, name: &str) -> u64 {
 }
 
 /// Register symbols from a BEF export table.
-pub fn register_bef_exports(table: &ExportTable, base_addr: u64) {
+pub fn register_bef_exports(table: &ExportTable, base: u64) {
     for e in table.entries {
         let name = match table.symbol_name(e) {
             Some(n) => n,
             None => continue,
         };
-        let addr = base_addr + e.virt_addr;
+        let addr = base + e.virt_addr;
         let flags = SYM_EXPORT | SYM_EAGER;
         // Leak the name to get &'static str — acceptable in kernel context.
         let static_name = leak_str(name);

@@ -110,7 +110,7 @@ pub fn tick_global() {
     let s = super::state();
     s.lock();
     // now_ms desde TSC: rdtsc / 3_000_000 (asumiendo 3 GHz).
-    let tsc = crate::arch::cpu::rdtsc();
+    let tsc = crate::cpu::rdtsc();
     s.timers.now_ms = tsc / 3_000_000;
     s.timers.tick();
     s.unlock();

@@ -91,7 +91,7 @@ fn mouse_init() {
     unsafe {
         if MOUSE_INIT_DONE { return; }
         MOUSE_INIT_DONE = true;
-        crate::drivers::serial::serial_write("[desktop] Bypassing legacy PS/2 mouse setup for pure UEFI.\n");
+        crate::device::serial::serial_write("[desktop] Bypassing legacy PS/2 mouse setup for pure UEFI.\n");
     }
 }
 

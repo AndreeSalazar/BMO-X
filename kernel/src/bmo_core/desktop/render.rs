@@ -391,12 +391,12 @@ pub fn render_frame() {
         return;
     }
 
-    let backbuffer_fb = crate::drivers::gop::get_backbuffer_fb();
+    let backbuffer_fb = crate::device::gop::get_backbuffer_fb();
 
     handle_input(&backbuffer_fb);
 
     // Wallpaper procedural compartido (mismo look que el welcome).
-    let time = crate::arch::cpu::rdtsc();
+    let time = crate::cpu::rdtsc();
     wallpaper::draw(&backbuffer_fb, time);
 
     draw_status_bar(&backbuffer_fb);
@@ -419,7 +419,7 @@ pub fn render_frame() {
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
     if crate::bmo_core::diag::is_overlay_enabled() {
-        let bb_addr = crate::drivers::gop::backbuffer_ptr() as *mut u32;
+        let bb_addr = crate::device::gop::backbuffer_ptr() as *mut u32;
         crate::bmo_core::diag::overlay::set_target_override(Some((bb_addr, w as usize, h as usize, s as usize)));
         crate::bmo_core::diag::paint_overlay();
         crate::bmo_core::diag::overlay::set_target_override(None);

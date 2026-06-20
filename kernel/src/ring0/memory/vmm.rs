@@ -7,8 +7,9 @@
 //!
 //! Each process has an `AddressSpace` that tracks its VMAs.
 
-use crate::arch::page_alloc;
-use crate::drivers::serial;
+use crate::memory::page_alloc;
+use crate::boot::serial::{u32_dec, hex as serial_hex};
+use crate::device::serial;
 
 /// Virtual memory area flags.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -224,9 +225,9 @@ pub fn create_process_space(pid: u32) -> &'static mut VmSpace {
 pub fn dump_vmas(pid: u32) {
     let vms = get_or_create(pid);
     serial::serial_write("[vmm] VMA dump for PID=");
-    serial_write_u32(pid);
+    u32_dec(pid);
     serial::serial_write(" count=");
-    serial_write_u32(vms.count as u32);
+    u32_dec(vms.count as u32);
     serial::serial_write("\n");
 
     for i in 0..vms.count {
@@ -248,23 +249,4 @@ pub fn dump_vmas(pid: u32) {
         }
         serial::serial_write("\n");
     }
-}
-
-fn serial_write_u32(val: u32) {
-    let mut buf = [0u8; 10];
-    let mut i = buf.len();
-    let mut v = val;
-    if v == 0 { i -= 1; buf[i] = b'0'; }
-    else { while v > 0 { i -= 1; buf[i] = b'0' + (v % 10) as u8; v /= 10; } }
-    serial::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
-}
-
-fn serial_hex(val: u64) {
-    let hex = b"0123456789ABCDEF";
-    let mut buf = [0u8; 16];
-    for i in 0..16 {
-        buf[15 - i] = hex[((val >> (i * 4)) & 0xF) as usize];
-    }
-    serial::serial_write("0x");
-    serial::serial_write(core::str::from_utf8(&buf).unwrap_or("0000000000000000"));
 }

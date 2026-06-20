@@ -1,19 +1,20 @@
 //! Loop device driver wrapping bmofs.img as a block device.
 //!
-//! Conecta el crate `bmofs` (sistema de archivos) con el lector sector-por-sector
-//! del USB usando la tabla de clusters de FAT32.
+//! v1.7.4: sólo lectura desde RAM fallback.
+//! v2.0 (futuro): reabrir el path USB/ATA físico cuando se re-introduzca
+//! el driver de almacenamiento.
 
 #![allow(dead_code)]
 
-use crate::bmo_core::fs::fat32::Fat32Volume;
-use crate::bmo_core::fs::DiskReader;
 use bmofs::BlockDevice;
 
 /// Dispositivo de bloques para BMO-FS
 pub struct BmoBlockDevice {
     pub start_cluster: u32,
     pub file_size: u32,
-    pub fat_volume: Option<Fat32Volume>,
+    /// v2.0: tabla FAT32 para path físico (USB/ATA).
+    /// v1.7.4: sin uso, se conserva para evitar migración al re-introducir USB.
+    pub fat_volume: Option<()>,
     pub fallback_ram: Option<&'static [u8]>,
 }
 
@@ -21,31 +22,18 @@ impl BlockDevice for BmoBlockDevice {
     type Error = &'static str;
 
     fn read_block(&mut self, block_idx: u64, buf: &mut [u8; bmofs::BLOCK_SIZE]) -> Result<(), Self::Error> {
-        // Si hay una imagen en RAM de fallback, leer directo de memoria
-        if let Some(ram_data) = self.fallback_ram {
-            let offset = (block_idx as usize) * bmofs::BLOCK_SIZE;
-            if offset + bmofs::BLOCK_SIZE <= ram_data.len() {
-                buf.copy_from_slice(&ram_data[offset..offset + bmofs::BLOCK_SIZE]);
-                return Ok(());
-            }
-            return Err("Lectura fuera de límites de RAM fallback");
-        }
-
-        // De lo contrario, usar el disco físico USB
-        let fat = self.fat_volume.as_ref().ok_or("No se ha inicializado la tabla FAT32 para BMO-FS")?;
-        
-        unsafe {
-            if let Some(ref mut disk) = crate::drivers::usb::storage::ACTIVE_USB_DISK {
-                let physical_sector = fat.get_physical_sector_for_block(disk, self.start_cluster, block_idx)?;
-                
-                // Un bloque BMO-FS = 4096 bytes = 8 sectores de 512 bytes
-                disk.read_sectors(physical_sector, 8, buf)
-                    .map_err(|_| "Fallo leyendo bloques físicos desde el USB")?;
-                
-                Ok(())
-            } else {
-                Err("No hay un disco USB activo")
-            }
+        // v1.7.4: sólo lectura desde RAM fallback. El driver USB/ATA físico
+        // se eliminó en ring0/drivers/usb. Si en el futuro se re-introduce
+        // (v2.0 con soporte de USB mass storage + AHCI), este método
+        // despacha a `crate::device::usb::storage::ACTIVE_USB_DISK` o
+        // equivalente.
+        let ram_data = self.fallback_ram.ok_or("No hay fallback RAM ni disco físico")?;
+        let offset = (block_idx as usize) * bmofs::BLOCK_SIZE;
+        if offset + bmofs::BLOCK_SIZE <= ram_data.len() {
+            buf.copy_from_slice(&ram_data[offset..offset + bmofs::BLOCK_SIZE]);
+            Ok(())
+        } else {
+            Err("Lectura fuera de límites de RAM fallback")
         }
     }
 

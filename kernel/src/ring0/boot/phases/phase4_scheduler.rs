@@ -1,12 +1,12 @@
 //! Phase 4 — Scheduler.
 
-use crate::{arch, boot::log};
+use crate::{interrupt, boot::log};
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
 pub fn run(prev_end: u64) -> PhaseOutput {
     log::info("phase4", "=== Phase 4: Scheduler ===");
 
-    arch::apic::init_apic(100);
+    crate::interrupt::apic::init_apic(100);
     log::info("phase4", "APIC timer started (100 Hz, 10ms ticks)");
 
     // Stable desktop path: keep boot on the BSP and defer non-essential
@@ -18,10 +18,10 @@ pub fn run(prev_end: u64) -> PhaseOutput {
     log::warn("phase4", "Security subsystem deferred until desktop service phase");
     log::warn("phase4", "Network stack deferred until desktop service phase");
 
-    arch::cpu::sti();
+    crate::cpu::sti();
     log::info("phase4", "Interrupts enabled (STI)");
 
-    let phase4_end = arch::cpu::rdtsc();
+    let phase4_end = crate::cpu::rdtsc();
     log::info_u64("phase4", "Phase 4 time (TSC ticks)", phase4_end - prev_end);
     PhaseOutput { prev_end: phase4_end }
 }

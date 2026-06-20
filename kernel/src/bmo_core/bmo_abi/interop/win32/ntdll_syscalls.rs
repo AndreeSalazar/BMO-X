@@ -97,7 +97,7 @@ pub fn nt_name_to_bmo_syscall(name: &str) -> Option<u16> {
 #[no_mangle]
 pub extern "C" fn NtAllocateVirtualMemory(
     process_handle: bx_u64,
-    base_address: *mut bx_u64,
+    baseess: *mut bx_u64,
     zero_bits: bx_u64,
     region_size: *mut bx_u64,
     allocation_type: u32,
@@ -105,12 +105,12 @@ pub extern "C" fn NtAllocateVirtualMemory(
 ) -> i32 {
     let _ = (process_handle, zero_bits, allocation_type, protect);
 
-    if base_address.is_null() || region_size.is_null() {
+    if baseess.is_null() || region_size.is_null() {
         return NtStatus::InvalidParameter as i32;
     }
 
     let size = unsafe { *region_size };
-    let requested_addr = unsafe { *base_address };
+    let requested_addr = unsafe { *baseess };
 
     // Map to BMO Mmap syscall (0x10)
     // For now, use the kernel heap allocator
@@ -131,7 +131,7 @@ pub extern "C" fn NtAllocateVirtualMemory(
     }
 
     unsafe {
-        *base_address = ptr as bx_u64;
+        *baseess = ptr as bx_u64;
         *region_size = size;
     }
 
@@ -144,17 +144,17 @@ pub extern "C" fn NtAllocateVirtualMemory(
 #[no_mangle]
 pub extern "C" fn NtFreeVirtualMemory(
     process_handle: bx_u64,
-    base_address: *mut bx_u64,
+    baseess: *mut bx_u64,
     region_size: *mut bx_u64,
     free_type: u32,
 ) -> i32 {
     let _ = (process_handle, free_type);
 
-    if base_address.is_null() || region_size.is_null() {
+    if baseess.is_null() || region_size.is_null() {
         return NtStatus::InvalidParameter as i32;
     }
 
-    let addr = unsafe { *base_address };
+    let addr = unsafe { *baseess };
     let size = unsafe { *region_size };
 
     if addr == 0 {
@@ -171,7 +171,7 @@ pub extern "C" fn NtFreeVirtualMemory(
     }
 
     unsafe {
-        *base_address = 0;
+        *baseess = 0;
         *region_size = 0;
     }
 
@@ -184,12 +184,12 @@ pub extern "C" fn NtFreeVirtualMemory(
 #[no_mangle]
 pub extern "C" fn NtProtectVirtualMemory(
     process_handle: bx_u64,
-    base_address: *mut bx_u64,
+    baseess: *mut bx_u64,
     region_size: *mut bx_u64,
     new_protect: u32,
     old_protect: *mut u32,
 ) -> i32 {
-    let _ = (process_handle, base_address, region_size, new_protect);
+    let _ = (process_handle, baseess, region_size, new_protect);
 
     // BMO doesn't have fine-grained memory protection yet
     // Just return success and pretend it worked
@@ -408,7 +408,7 @@ pub extern "C" fn NtQuerySystemTime(system_time: *mut i64) -> i32 {
     }
 
     // Map to BMO ClockGetTime syscall (0x50)
-    let tsc = crate::arch::cpu::rdtsc();
+    let tsc = crate::cpu::rdtsc();
     unsafe {
         *system_time = tsc as i64;
     }
@@ -428,7 +428,7 @@ pub extern "C" fn NtQueryPerformanceCounter(
         return NtStatus::InvalidParameter as i32;
     }
 
-    let tsc = crate::arch::cpu::rdtsc();
+    let tsc = crate::cpu::rdtsc();
     unsafe {
         *performance_counter = tsc as i64;
     }

@@ -6,16 +6,14 @@
 //! Modular:
 //!   - process: Process management
 //!   - thread: Thread management + context switching
-//!   - rt: Real-time scheduler (EDF)
-//!   - user_init: Ring 3 process loading
-//!   - gate_test: Gate test utilities
+//!   - rt: Real-time scheduler (EDF) — reserved, no active callers
+//!   - user_init: Ring 3 process loading (spawn_hello para el welcome)
 
 #![allow(dead_code)]
 
 pub mod process;
 pub mod thread;
 pub mod user_init;
-pub mod gate_test;
 pub mod rt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,16 +98,16 @@ pub fn schedule() {
             };
 
             // Update kernel stack for syscalls from this thread
-            crate::arch::gdt::set_kernel_stack(next.kernel_stack_top);
-            crate::arch::syscall_entry::set_syscall_kernel_stack(next.kernel_stack_top);
+            crate::interrupt::gdt::set_kernel_stack(next.kernel_stack_top);
+            crate::interrupt::syscall::set_syscall_kernel_stack(next.kernel_stack_top);
 
             // Switch CR3 if process has different page table
             if let Some(proc) = process::get_process(next.pid) {
                 if proc.page_table_root != 0 {
-                    let current_cr3 = crate::arch::paging::read_cr3();
+                    let current_cr3 = crate::memory::paging::read_cr3();
                     if proc.page_table_root != current_cr3 {
                         crate::bmo_core::diag::trace_u64("sched", "CR3 switch", proc.page_table_root);
-                        unsafe { crate::arch::paging::write_cr3(proc.page_table_root); }
+                        unsafe { crate::memory::paging::write_cr3(proc.page_table_root); }
                     }
                 }
             }
@@ -132,7 +130,7 @@ pub fn yield_now() {
 }
 
 /// Inicializa el scheduler. v1.7.4: no-op (las tablas viven en BSS).
-/// Se llama desde `ring_0::ring_0::init()` después de arch::apic::init.
+/// Se llama desde `ring_0::ring_0::init()` después de crate::interrupt::apic::init.
 pub fn init() {
     // v2.0: configurar quantum, prioridades, runqueue.
 }

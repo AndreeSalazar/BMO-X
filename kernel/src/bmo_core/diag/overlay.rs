@@ -141,7 +141,7 @@ fn draw_overview(
     cy += 18;
 
     // Ring 3 status — dynamically check if any syscall has been received
-    let ring3_active = crate::arch::syscall_entry::ring3_alive();
+    let ring3_active = crate::interrupt::syscall::ring3_alive();
     if ring3_active {
         draw_text(base, stride, width, height, x, cy, b"Ring   : 0 Supervisor | Ring3 active", 0xFF76B900);
     } else {
@@ -160,7 +160,7 @@ fn draw_overview(
     cy += 18;
 
     // Memory
-    let free_pages = unsafe { crate::arch::page_alloc::free_count() };
+    let free_pages = unsafe { crate::memory::page_alloc::free_count() };
     let free_mb = (free_pages * 4) / 1024;
     draw_text(base, stride, width, height, x, cy, b"Memory : ", 0xFFE6EDF3);
     draw_dec(base, stride, width, height, x + 72, cy, free_mb as u64, 0xFF76B900);
@@ -168,8 +168,8 @@ fn draw_overview(
     cy += 18;
 
     // Heap
-    let heap_used_kb = crate::allocator::heap_used() / 1024;
-    let heap_total_kb = crate::allocator::heap_total() / 1024;
+    let heap_used_kb = crate::memory::heap::heap_used() / 1024;
+    let heap_total_kb = crate::memory::heap::heap_total() / 1024;
     let heap_color = if heap_used_kb > heap_total_kb * 3 / 4 { 0xFFFF7B72 } else { 0xFF76B900 };
     draw_text(base, stride, width, height, x, cy, b"Heap   : ", 0xFFE6EDF3);
     draw_dec(base, stride, width, height, x + 72, cy, heap_used_kb as u64, heap_color);
@@ -202,14 +202,14 @@ fn draw_overview(
         let mut ry = y + 18;
 
         draw_text(base, stride, width, height, rx, ry, b"PCI    : ", 0xFFE6EDF3);
-        draw_dec(base, stride, width, height, rx + 72, ry, crate::drivers::pci::device_count() as u64, 0xFFE6EDF3);
+        draw_dec(base, stride, width, height, rx + 72, ry, crate::device::pci::device_count() as u64, 0xFFE6EDF3);
         draw_text(base, stride, width, height, rx + 104, ry, b" devices", 0xFFE6EDF3);
         ry += 18;
-        draw_bool_row(base, stride, width, height, rx, ry, b"NVMe   : ", crate::drivers::pci::has_nvme());
+        draw_bool_row(base, stride, width, height, rx, ry, b"NVMe   : ", crate::device::pci::has_nvme());
         ry += 18;
-        draw_bool_row(base, stride, width, height, rx, ry, b"AHCI   : ", crate::drivers::pci::has_ahci());
+        draw_bool_row(base, stride, width, height, rx, ry, b"AHCI   : ", crate::device::pci::has_ahci());
         ry += 18;
-        draw_bool_row(base, stride, width, height, rx, ry, b"xHCI   : ", crate::drivers::pci::has_xhci());
+        draw_bool_row(base, stride, width, height, rx, ry, b"xHCI   : ", crate::device::pci::has_xhci());
         ry += 18;
         draw_text(base, stride, width, height, rx, ry, b"Interrupts: ", 0xFFE6EDF3);
         draw_dec(base, stride, width, height, rx + 96, ry, t.cpu.interrupts.load(core::sync::atomic::Ordering::Relaxed), 0xFF76B900);
@@ -287,8 +287,8 @@ fn draw_memory_tab(
     draw_text(base, stride, width, height, x, cy, b"Memory Telemetry", 0xFF58A6FF);
     cy += 22;
 
-    let free_pages = unsafe { crate::arch::page_alloc::free_count() };
-    let total_pages = crate::arch::page_alloc::total_pages();
+    let free_pages = unsafe { crate::memory::page_alloc::free_count() };
+    let total_pages = crate::memory::page_alloc::total_pages();
     let used_pages = total_pages - free_pages;
     let free_mb = (free_pages * 4) / 1024;
     let total_mb = (total_pages * 4) / 1024;
@@ -324,8 +324,8 @@ fn draw_memory_tab(
     draw_rect(base, stride, width, height, bar_x, cy, bar_w, 12, 0xFF56D4DD);
     cy += 20;
 
-    let heap_used_kb = crate::allocator::heap_used() / 1024;
-    let heap_total_kb = crate::allocator::heap_total() / 1024;
+    let heap_used_kb = crate::memory::heap::heap_used() / 1024;
+    let heap_total_kb = crate::memory::heap::heap_total() / 1024;
     draw_text(base, stride, width, height, x, cy, b"Heap Used    : ", 0xFFE6EDF3);
     draw_dec(base, stride, width, height, x + 120, cy, heap_used_kb as u64, 0xFF76B900);
     draw_text(base, stride, width, height, x + 180, cy, b"KB / ", 0xFF8B949E);
@@ -359,7 +359,7 @@ fn draw_io_tab(
     cy += 22;
 
     draw_text(base, stride, width, height, x, cy, b"PCI Devices  : ", 0xFFE6EDF3);
-    draw_dec(base, stride, width, height, x + 120, cy, crate::drivers::pci::device_count() as u64, 0xFFE6EDF3);
+    draw_dec(base, stride, width, height, x + 120, cy, crate::device::pci::device_count() as u64, 0xFFE6EDF3);
     cy += 18;
 
     draw_text(base, stride, width, height, x, cy, b"PCI Reads    : ", 0xFFE6EDF3);
@@ -378,11 +378,11 @@ fn draw_io_tab(
     draw_dec(base, stride, width, height, x + 120, cy, t.io.ps2_scancodes.load(core::sync::atomic::Ordering::Relaxed), 0xFF76B900);
     cy += 22;
 
-    draw_bool_row(base, stride, width, height, x, cy, b"NVMe   : ", crate::drivers::pci::has_nvme());
+    draw_bool_row(base, stride, width, height, x, cy, b"NVMe   : ", crate::device::pci::has_nvme());
     cy += 18;
-    draw_bool_row(base, stride, width, height, x, cy, b"AHCI   : ", crate::drivers::pci::has_ahci());
+    draw_bool_row(base, stride, width, height, x, cy, b"AHCI   : ", crate::device::pci::has_ahci());
     cy += 18;
-    draw_bool_row(base, stride, width, height, x, cy, b"xHCI   : ", crate::drivers::pci::has_xhci());
+    draw_bool_row(base, stride, width, height, x, cy, b"xHCI   : ", crate::device::pci::has_xhci());
 }
 
 // ── Scheduler tab ──────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 //! v2.0 — Dispatcher principal de la BMO API.
 //!
-//! Conectado al rango 0x100..0x1FF desde `arch::syscall_entry`.
+//! Conectado al rango 0x100..0x1FF desde `crate::interrupt::syscall_entry`.
 //! Maneja también 0x198 = BMO_DISPATCH_RETURN (retorno de wnd_proc).
 //!
 //! Convencion: rax=nr, rdi=a0, rsi=a1, rdx=a2, r10=a3, r8=a4, r9=a5.

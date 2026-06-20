@@ -5,7 +5,7 @@
 //! Unified filesystem API that routes operations to the correct filesystem
 //! driver based on the mount point.
 
-use crate::drivers::serial;
+use crate::device::serial;
 use super::inode;
 use super::mount;
 

@@ -6,7 +6,7 @@
 //! Used for audio threads, game render loops, and input processing.
 
 use super::thread::Tid;
-use crate::drivers::serial;
+use crate::device::serial;
 
 /// Maximum RT threads.
 const MAX_RT_THREADS: usize = 32;
@@ -77,7 +77,7 @@ pub fn register_rt(tid: Tid, period: RtPeriod) -> bool {
         RT_COUNT += 1;
 
         serial::serial_write("[sched] RT thread registered, tid=");
-        serial_write_tid(tid);
+        crate::boot::serial::u64_dec(tid.0 as u64);
         serial::serial_write(" period=");
         match period {
             RtPeriod::Audio => serial::serial_write("Audio"),
@@ -166,38 +166,22 @@ pub fn total_utilisation() -> f32 {
 
 /// Print RT scheduler status.
 pub fn print_status() {
+    use crate::boot::serial::u64_dec;
     serial::serial_write("[sched] RT threads: ");
-    serial_write_usize(unsafe { RT_COUNT });
+    u64_dec(unsafe { RT_COUNT as u64 });
     serial::serial_write(" util=");
     let util = total_utilisation();
     serial_write_f32(util);
     serial::serial_write("\n");
 }
 
-fn serial_write_tid(tid: Tid) {
-    let mut buf = [0u8; 6];
-    let mut i = buf.len();
-    let mut v = tid.0;
-    if v == 0 { i -= 1; buf[i] = b'0'; }
-    else { while v > 0 { i -= 1; buf[i] = b'0' + (v % 10) as u8; v /= 10; } }
-    serial::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
-}
-
-fn serial_write_usize(val: usize) {
-    let mut buf = [0u8; 10];
-    let mut i = buf.len();
-    let mut v = val;
-    if v == 0 { i -= 1; buf[i] = b'0'; }
-    else { while v > 0 { i -= 1; buf[i] = b'0' + (v % 10) as u8; v /= 10; } }
-    serial::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
-}
-
 fn serial_write_f32(val: f32) {
     // Simple integer part + 2 decimal places
     let int_part = val as u32;
     let frac_part = ((val - int_part as f32) * 100.0) as u32;
-    serial_write_usize(int_part as usize);
+    use crate::boot::serial::u32_dec;
+    u32_dec(int_part);
     serial::serial_write(".");
-    if frac_part < 10 { serial::serial_write("0"); }
-    serial_write_usize(frac_part as usize);
+    if frac_part < 10 { serial::serial_write_byte(b'0'); }
+    u32_dec(frac_part);
 }

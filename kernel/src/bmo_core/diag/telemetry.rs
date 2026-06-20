@@ -67,7 +67,7 @@ impl CpuTelemetry {
 
     /// Compute interrupts-per-second since last sample.
     pub fn interrupts_per_sec(&self) -> u64 {
-        let now_tsc = crate::arch::cpu::rdtsc();
+        let now_tsc = crate::cpu::rdtsc();
         let now_ticks = self.timer_ticks.load(Ordering::Relaxed);
         let old_tsc = self.last_tsc.swap(now_tsc, Ordering::Relaxed);
         let old_ticks = self.last_timer_ticks.swap(now_ticks, Ordering::Relaxed);

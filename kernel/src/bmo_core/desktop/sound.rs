@@ -31,8 +31,8 @@ pub fn beep(freq_hz: u32, duration_ms: u32) {
         outb(0x61, p | 0x03);
 
         let cycles = (duration_ms as u64) * 3_700_000;
-        let start = crate::arch::cpu::rdtsc();
-        while (crate::arch::cpu::rdtsc() - start) < cycles {
+        let start = crate::cpu::rdtsc();
+        while (crate::cpu::rdtsc() - start) < cycles {
             core::hint::spin_loop();
         }
 

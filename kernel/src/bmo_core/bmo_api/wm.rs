@@ -148,7 +148,7 @@ pub fn snap_to_edge(slot: u32) {
 /// usuario presiona ESC (igual que el viejo desktop stub).
 pub fn enter() -> ! {
     crate::bmo_core::diag::info("bmo_api_v2.wm", "Entering Ring 3 BMO API desktop");
-    crate::drivers::serial::serial_write("[bmo_api_v2] Entering desktop real (BMO API v2.0)\n");
+    crate::device::serial::serial_write("[bmo_api_v2] Entering desktop real (BMO API v2.0)\n");
 
     // Crea tres ventanas built-in para demostrar el WM.
     let _term = create_top_window("BMO Terminal", 60, 60, 720, 460);
@@ -161,7 +161,7 @@ pub fn enter() -> ! {
     // se completará cuando los Ring 3 programs estén listos.
     let mut last_tick: u64 = 0;
     loop {
-        let now = crate::arch::cpu::rdtsc();
+        let now = crate::cpu::rdtsc();
         // Procesa input de PS/2 → eventos.
         super::input::poll_and_dispatch();
         // 30 Hz repaint (33 ms ≈ 1_000_000_000 ciclos @ 3 GHz).
@@ -173,7 +173,7 @@ pub fn enter() -> ! {
         // ESC → volver al welcome.
         if super::input::esc_pressed() {
             crate::bmo_core::diag::info("bmo_api_v2.wm", "ESC pressed — return to welcome");
-            crate::drivers::serial::serial_write("[bmo_api_v2] ESC — returning to welcome.\n");
+            crate::device::serial::serial_write("[bmo_api_v2] ESC — returning to welcome.\n");
             crate::bmo_core::desktop::welcome::run();
         }
         core::hint::spin_loop();

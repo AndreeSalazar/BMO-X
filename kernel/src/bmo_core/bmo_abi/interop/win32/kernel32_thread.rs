@@ -24,8 +24,8 @@ pub extern "C" fn Sleep(ms: u32) {
     let ns = ms as u64 * 1_000_000;
     // Map to BMO SleepNs syscall (0x51)
     let target_cycles = (ns as u128 * 37) / 10;
-    let start = crate::arch::cpu::rdtsc();
-    while (crate::arch::cpu::rdtsc() - start) < target_cycles as u64 {
+    let start = crate::cpu::rdtsc();
+    while (crate::cpu::rdtsc() - start) < target_cycles as u64 {
         core::hint::spin_loop();
     }
 }

@@ -1,7 +1,7 @@
 //! Salida serial COM1 para diag/.
 
 use super::event::{severity_name, Event};
-use crate::drivers::serial;
+use crate::device::serial;
 
 pub(crate) fn write_event(event: Event) {
     serial::serial_write("[DIAG][");

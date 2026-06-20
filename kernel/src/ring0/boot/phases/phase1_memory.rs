@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 //! v1.5.1: BootInfo dereferenced from `ctx.boot_info()` pointer (no stack copy).
 
-use crate::{allocator, arch, boot::log};
+use crate::boot::log;
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
@@ -29,7 +29,7 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
     log::info_u64("phase1", "UEFI memory map entries", bi.memory_map_count as u64);
 
     unsafe {
-        arch::page_alloc::init(
+        crate::memory::page_alloc::init(
             &bi.memory_map,
             bi.memory_map_count as usize,
             bi.gsp_addr,
@@ -38,29 +38,29 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
             bi.kernel_size,
         );
     }
-    let free_pages = unsafe { arch::page_alloc::free_count() } as u64;
+    let free_pages = unsafe { crate::memory::page_alloc::free_count() } as u64;
     let free_mb = (free_pages * 4096) / (1024 * 1024);
     log::info_u64("phase1", "Free pages", free_pages);
     log::info_u64("phase1", "Free memory (MB)", free_mb);
 
     // Initialize the kernel heap now (was lazy-init in alloc()). Without
     // this, the diag overlay reports 0/16384 KB and any Vec::new() panics.
-    allocator::init_heap();
+    crate::memory::heap::init_heap();
     log::info("phase1", "Kernel heap initialized (16 MB free-list)");
 
-    let heap_total = allocator::heap_total() as u64;
-    let heap_used = allocator::heap_used() as u64;
+    let heap_total = crate::memory::heap::heap_total() as u64;
+    let heap_used = crate::memory::heap::heap_used() as u64;
     log::info_u64("phase1", "Heap total (bytes)", heap_total);
     log::info_u64("phase1", "Heap used (bytes)", heap_used);
 
-    let phase1_end = arch::cpu::rdtsc();
+    let phase1_end = crate::cpu::rdtsc();
     log::info_u64("phase1", "Phase 1 time (TSC ticks)", phase1_end - prev_end);
 
     // v1.6.1: Install our own PML4 NOW that the page allocator is up.
     // This lets us safely map MMIO regions above 4 GB (PCI ECAM)
     // without corrupting UEFI runtime services.
     log::info("phase1", "Installing new kernel PML4");
-    if unsafe { arch::paging::create_kernel_page_table() }.is_none() {
+    if unsafe { crate::memory::paging::create_kernel_page_table() }.is_none() {
         log::warn("phase1", "Failed to allocate new PML4 page; using UEFI PML4");
     } else {
         log::info("phase1", "Kernel PML4 installed (safe for ECAM mapping)");

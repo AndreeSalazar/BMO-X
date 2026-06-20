@@ -190,7 +190,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
 
     let mut img = fake_provenance_image(Provenance::PeDevoured);
     img.entry_point = base.wrapping_add(entry);
-    img.base_address = base;
+    img.baseess = base;
 
     // Mapear cada sección PE a una `MappedSection` BEF con datos reales.
     for s in sections {
@@ -300,7 +300,7 @@ fn apply_pe_relocations(
                 let target_rva = block_rva as u64 + reloc_offset;
                 // Find the section containing this RVA.
                 for section in &img.sections {
-                    let sec_rva = section.virt_addr - img.base_address;
+                    let sec_rva = section.virt_addr - img.baseess;
                     if target_rva >= sec_rva && target_rva < sec_rva + section.size {
                         let offset_in_section = (target_rva - sec_rva) as usize;
                         if section.data_ptr != 0 && offset_in_section + 8 <= section.size as usize {

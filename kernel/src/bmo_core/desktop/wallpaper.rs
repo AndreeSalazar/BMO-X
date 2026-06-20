@@ -15,7 +15,7 @@
 #![allow(dead_code)]
 
 use crate::bmo_core::ui::fb::Framebuffer;
-use crate::arch::cpu::rdtsc;
+use crate::cpu::rdtsc;
 
 #[inline]
 fn argb(r: u8, g: u8, b: u8) -> u32 { 0xFF000000 | ((r as u32) << 16) | ((g as u32) << 8) | b as u32 }

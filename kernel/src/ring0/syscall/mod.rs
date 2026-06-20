@@ -61,7 +61,7 @@ pub struct SyscallFrame {
     pub r9:  u64,
 }
 
-/// Despachador. La instalación del MSR `IA32_LSTAR` se hará en `arch::x86_64::cpu`.
+/// Despachador. La instalación del MSR `IA32_LSTAR` se hará en `crate::interrupt::x86_64::cpu`.
 pub fn dispatch(_frame: &mut SyscallFrame) {
     // TODO: enrutar por número de syscall.
 }
@@ -117,7 +117,7 @@ pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
 }
 
 /// Inicializa el subsistema de syscall. v1.7.4: no-op.
-/// La tabla de dispatch estática está en `arch::syscall_entry::dispatch`.
+/// La tabla de dispatch estática está en `crate::interrupt::syscall::dispatch`.
 /// Este módulo expone el spec (números de syscall + struct de tipos).
 pub fn init() {
     // v2.0: aquí se registrarán las llamadas syscall-only Ring 0 que

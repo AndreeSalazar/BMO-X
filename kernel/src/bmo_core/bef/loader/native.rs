@@ -33,7 +33,7 @@ const USER_BASE: u64 = 0x0040_0000;
 fn aslr_base() -> u64 {
     // Use TSC as entropy source — not cryptographically secure but
     // sufficient for basic ASLR in a bare-metal OS.
-    let tsc = crate::arch::cpu::rdtsc();
+    let tsc = crate::cpu::rdtsc();
     let offset = (tsc & 0x00FF_F000) as u64; // Random 4KB-aligned offset up to 16 MB
     USER_BASE + offset
 }
@@ -111,7 +111,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     // Build the final image.
     let mut img = fake_provenance_image(Provenance::Native);
     img.entry_point = base + hdr.entry_offset;
-    img.base_address = base;
+    img.baseess = base;
     img.sections = mapped;
     img.tls_offset = tls_off;
     img.tls_size = tls_sz;

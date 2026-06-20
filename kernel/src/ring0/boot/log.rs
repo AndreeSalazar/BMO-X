@@ -14,7 +14,7 @@
 //!   3. `visual`      — GOP framebuffer overlay (only if framebuffer is up)
 
 use crate::bmo_core::diag;
-use crate::drivers::serial;
+use crate::device::serial;
 use super::visual;
 
 /// Log an info-level boot message. `phase` and `msg` must be `'static`.

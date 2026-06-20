@@ -26,7 +26,7 @@
 //!
 //! Contrato con Ring 0:
 //!   - BMO Core puede llamar a `crate::*` libremente (mismo image).
-//!   - Ring 0 expone `arch::cpu::rdtsc`, `arch::cpu::busy_wait_ms` y
+//!   - Ring 0 expone `crate::cpu::rdtsc`, `crate::cpu::busy_wait_ms` y
 //!     syscalls legacy que BMO Core usa para timing.
 //!
 //! Contrato con Ring 3 (ver ../ring3/mod.rs):

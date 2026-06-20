@@ -1,19 +1,28 @@
-//! Memory subsystem for FastOS.
+//! Memory API (Ring 0 HAL).
 //!
-//! Modular memory management:
-//!   - Page allocator (physical pages) — vive en `arch::page_alloc`
-//!   - VMM (virtual memory manager — VMA management, CoW, demand paging)
+//! Subsistema de memoria:
+//!   - `heap`        — Bump heap allocator (BumpHeap)
+//!   - `page_alloc`  — Bitmap allocator (páginas físicas 16MB-4GB)
+//!   - `paging`      — Page table walker (huge pages, CoW)
+//!   - `vmm`         — Virtual memory manager (VMAs, demand paging)
 //!
-//! El orquestador `ring_0::init()` llama a:
-//!   - `arch::page_alloc::init(boot_info)`
-//!   - `memory::vmm::init()`
-//!   - `memory::init()` (este módulo, no-op por ahora)
+//! El orquestador `coordinator::init()` llama a `crate::memory::init()`
+//! (que llama a `vmm::init()`) y los drivers individuales (gop, etc.)
+//! llaman a `page_alloc::alloc_pages()` directamente.
+//!
+//! API pública:
+//!   - `page_alloc::alloc_pages(n)` / `free_pages(p, n)`
+//!   - `paging::map_page(...)` (cuando se implemente)
+//!   - `vmm::get_or_create(pid)`, `vmm::create_process_space(pid)`
 
+#![allow(dead_code)]
+
+pub mod heap;
+pub mod page_alloc;
+pub mod paging;
 pub mod vmm;
 
-/// Inicializa el subsistema de memoria. Llama a vmm::init() y
-/// cualquier inicialización adicional de page_alloc.
+/// Inicializa el subsistema de memoria. Llamar desde `coordinator::init()`.
 pub fn init() {
     vmm::init();
 }
-

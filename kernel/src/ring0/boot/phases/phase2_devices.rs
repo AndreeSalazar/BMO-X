@@ -9,25 +9,25 @@
 //! Also adds property-based unit tests for the ACPI parser so we catch
 //! regressions when the byte stream is malformed.
 
-use crate::{boot::log, drivers::pci};
+use crate::{boot::log, device::pci};
 use crate::boot::serial as boot_serial;
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
 fn log_pci_device(dev: &pci::PciDevice) {
-    crate::drivers::serial::serial_write("  PCI ");
+    crate::device::serial::serial_write("  PCI ");
     boot_serial::u32_dec(dev.bus as u32);
-    crate::drivers::serial::serial_write(":");
+    crate::device::serial::serial_write(":");
     boot_serial::u32_dec(dev.device as u32);
-    crate::drivers::serial::serial_write(".");
+    crate::device::serial::serial_write(".");
     boot_serial::u32_dec(dev.function as u32);
-    crate::drivers::serial::serial_write(" [");
+    crate::device::serial::serial_write(" [");
     boot_serial::hex(dev.vendor_id as u64);
-    crate::drivers::serial::serial_write(":");
+    crate::device::serial::serial_write(":");
     boot_serial::hex(dev.device_id as u64);
-    crate::drivers::serial::serial_write("] class=");
+    crate::device::serial::serial_write("] class=");
     boot_serial::hex(dev.class_code as u64);
-    crate::drivers::serial::serial_write("\n");
+    crate::device::serial::serial_write("\n");
 }
 
 fn store_and_log(bus_count_msg: &'static str, pci: pci::PciScanResult) -> u32 {
@@ -46,24 +46,24 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
 
     let bi = ctx.boot_info().expect("BootInfo not set");
 
-    crate::drivers::serial::serial_write("[phase2] RSDP addr = 0x");
+    crate::device::serial::serial_write("[phase2] RSDP addr = 0x");
     boot_serial::hex(bi.rsdp_addr);
-    crate::drivers::serial::serial_write("\n");
+    crate::device::serial::serial_write("\n");
 
     log::info("phase2", "Step 1: parse_mcfg");
-    let mcfg_result = crate::arch::acpi::parse_mcfg(bi.rsdp_addr);
-    crate::drivers::serial::serial_write("[phase2] parse_mcfg returned\n");
+    let mcfg_result = crate::device::acpi::parse_mcfg(bi.rsdp_addr);
+    crate::device::serial::serial_write("[phase2] parse_mcfg returned\n");
 
     // v1.5.1: extra debug to find where Phase 2 hangs
-    crate::drivers::serial::serial_write("[phase2] P2-debug-A: mcfg_result ready\n");
+    crate::device::serial::serial_write("[phase2] P2-debug-A: mcfg_result ready\n");
 
     let found: u32;
     if let Some(ecam) = mcfg_result {
-        crate::drivers::serial::serial_write("[phase2] MCFG found: base=0x");
-        boot_serial::hex(ecam.base_addr);
-        crate::drivers::serial::serial_write(" end_bus=");
+        crate::device::serial::serial_write("[phase2] MCFG found: base=0x");
+        boot_serial::hex(ecam.base);
+        crate::device::serial::serial_write(" end_bus=");
         boot_serial::u32_dec(ecam.end_bus as u32);
-        crate::drivers::serial::serial_write("\n");
+        crate::device::serial::serial_write("\n");
 
         // v1.6.6: SKIP ECAM. The map_kernel_mmio_huge() path triggers a #PF
         // on this Ryzen 5 5600X's UEFI PML4 because the ECAM region falls
@@ -76,17 +76,17 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
         // structural to the UEFI PML4, not to our allocator.
         log::warn("phase2", "ECAM disabled in v1.6.6; using IO-port PCI scan (avoids #PF in map_kernel_mmio_huge)");
         log::info("phase2", "Step 2: pci::init_ecam(0, 32) — IO-port fallback");
-        crate::drivers::serial::serial_write("[phase2] right before pci::init_ecam(0,32) CALL\n");
+        crate::device::serial::serial_write("[phase2] right before pci::init_ecam(0,32) CALL\n");
         pci::init_ecam(0, 32);
-        crate::drivers::serial::serial_write("[phase2] init_ecam(0,32) returned\n");
+        crate::device::serial::serial_write("[phase2] init_ecam(0,32) returned\n");
         log::info("phase2", "Step 3: pci::scan_pci_bus (IO)");
         found = store_and_log("PCI devices discovered (IO port)", pci::scan_pci_bus());
     } else {
         log::warn("phase2", "MCFG not found; trying legacy IO port PCI scan");
         log::info("phase2", "Step 2b: pci::init_ecam(0, 32)");
-        crate::drivers::serial::serial_write("[phase2] P2-debug-B2-IO: right before pci::init_ecam(0,32) CALL\n");
+        crate::device::serial::serial_write("[phase2] P2-debug-B2-IO: right before pci::init_ecam(0,32) CALL\n");
         pci::init_ecam(0, 32);
-        crate::drivers::serial::serial_write("[phase2] P2-debug-C-IO: init_ecam(0,32) returned\n");
+        crate::device::serial::serial_write("[phase2] P2-debug-C-IO: init_ecam(0,32) returned\n");
         log::info("phase2", "Step 3b: pci::scan_pci_bus (IO)");
         found = store_and_log("PCI devices discovered (IO port)", pci::scan_pci_bus());
     }
@@ -96,13 +96,13 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
     log::warn("phase2", "Network init deferred until desktop/service phase");
 
     // v1.1.0: write canonical state into the context
-    let mcfg = crate::arch::acpi::mcfg_snapshot();
-    ctx.devices.acpi_mcfg_base = mcfg.base;
-    ctx.devices.acpi_mcfg_end_bus = mcfg.end_bus;
-    ctx.devices.ecam_mapped = mcfg.base != 0;
+    let mcfg = crate::device::acpi::mcfg_snapshot();
+    ctx.devices.acpi_mcfg_base = mcfg.map(|m| m.base).unwrap_or(0);
+    ctx.devices.acpi_mcfg_end_bus = mcfg.map(|m| m.end_bus).unwrap_or(0);
+    ctx.devices.ecam_mapped = mcfg.is_some();
     ctx.devices.pci_devices_found = found;
 
-    let phase2_end = crate::arch::cpu::rdtsc();
+    let phase2_end = crate::cpu::rdtsc();
     log::info_u64("phase2", "Phase 2 time (TSC ticks)", phase2_end - prev_end);
     ctx.record_phase(2, prev_end, phase2_end);
     PhaseOutput { prev_end: phase2_end }
@@ -148,7 +148,7 @@ mod tests {
         // 0x284 % 256 = 0x84. So checksum should be 0x100-0x84 = 0x7C.
         // Let's just set a wrong checksum deliberately.
         buf[8] = 0x42; // bad checksum
-        let valid = unsafe { crate::arch::acpi::validate_rsdp_checksum_for_test(buf.as_ptr()) };
+        let valid = unsafe { crate::device::acpi::validate_rsdp_checksum_for_test(buf.as_ptr()) };
         assert!(!valid, "RSDP with bad checksum must be rejected");
     }
 
@@ -167,7 +167,7 @@ mod tests {
                 buf[i] = (seed >> 16) as u8;
             }
             // We just need to make sure this doesn't panic / loop.
-            let _ = unsafe { crate::arch::acpi::validate_rsdp_checksum_for_test(buf.as_ptr()) };
+            let _ = unsafe { crate::device::acpi::validate_rsdp_checksum_for_test(buf.as_ptr()) };
         }
     }
 
@@ -175,7 +175,7 @@ mod tests {
     /// This is the "bootloader gave us a bad address" case.
     #[test]
     fn parse_mcfg_null_returns_none() {
-        let result = crate::arch::acpi::parse_mcfg(0);
+        let result = crate::device::acpi::parse_mcfg(0);
         assert!(result.is_none(), "parse_mcfg(0) must return None");
     }
 
@@ -184,7 +184,7 @@ mod tests {
     /// previously caused the Phase 2 #PF cascade.
     #[test]
     fn parse_mcfg_bogus_address_returns_none() {
-        let result = crate::arch::acpi::parse_mcfg(0xDEAD_BEEF);
+        let result = crate::device::acpi::parse_mcfg(0xDEAD_BEEF);
         // We don't assert None specifically because the address might
         // be mapped in some test envs. We only assert it doesn't panic.
         let _ = result;

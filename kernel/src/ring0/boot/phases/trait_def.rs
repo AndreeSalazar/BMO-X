@@ -59,7 +59,7 @@ impl SelfTestReport {
 
 /// Pretty-print a self-test report to serial + visual.
 pub fn report(r: &SelfTestReport) {
-    use crate::drivers::serial;
+    use crate::device::serial;
     use crate::boot::visual;
 
     serial::serial_write("[selftest] ");

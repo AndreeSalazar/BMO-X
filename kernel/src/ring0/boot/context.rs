@@ -12,10 +12,10 @@
 //! ## Migration map
 //!
 //! Old (globals)                → New (ctx field)
-//! `arch::page_alloc::free_count` → `ctx.memory.free_pages`
-//! `arch::cpu::tsc_per_sec`     → `ctx.cpu.tsc_freq_hz`
+//! `crate::memory::page_alloc::free_count` → `ctx.memory.free_pages`
+//! `crate::cpu::tsc_per_sec`     → `ctx.cpu.tsc_freq_hz`
 //! `crate::bmo_core::bmo_abi::init()`     → `ctx.bmo_abi_initialized`
-//! `allocator::heap_total`      → `ctx.memory.heap_total`
+//! `crate::memory::heap::heap_total`      → `ctx.memory.heap_total`
 //!
 //! ## Stability
 //!

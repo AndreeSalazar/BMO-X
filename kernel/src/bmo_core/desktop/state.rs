@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use crate::arch::cpu;
+use crate::cpu;
 use crate::boot_info;
 
 /// Cycles per second en Ryzen 5 5600X (3.7 GHz boost).
@@ -108,7 +108,7 @@ static mut LAST_TICK_SEC: u64 = 0;
 pub fn init() {
     unsafe {
         if STATE.clock_start_tsc == 0 {
-            let t = cpu::rdtsc();
+            let t = crate::cpu::rdtsc();
             STATE.clock_start_tsc = t;
             STATE.last_tsc = t;
             STATE.mouse_x = (boot_info::FB_WIDTH / 2) as i32;
@@ -202,7 +202,7 @@ pub fn tick() {
             DIRTY = true;
         }
 
-        let now = cpu::rdtsc();
+        let now = crate::cpu::rdtsc();
         let dt = now.saturating_sub(STATE.last_tsc).max(1);
         STATE.last_tsc = now;
         // Clamp del FPS instantáneo a [1, 240] para que un dt anómalo (p.e.
@@ -231,7 +231,7 @@ pub fn tick() {
 
 pub fn uptime_sec() -> u64 {
     unsafe {
-        let now = cpu::rdtsc();
+        let now = crate::cpu::rdtsc();
         let dt = now.saturating_sub(STATE.clock_start_tsc);
         dt / CYCLES_PER_SEC
     }

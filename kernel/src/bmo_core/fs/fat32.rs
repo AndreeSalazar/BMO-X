@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-use crate::drivers::serial;
+use crate::device::serial;
 use crate::bmo_core::fs::DiskReader;
 
 #[repr(C, packed)]

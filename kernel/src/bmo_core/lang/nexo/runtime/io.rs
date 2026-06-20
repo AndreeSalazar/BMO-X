@@ -6,17 +6,17 @@
 
 /// Write a string to serial port (COM1).
 pub fn serial_write(s: &str) {
-    crate::drivers::serial::serial_write(s);
+    crate::device::serial::serial_write(s);
 }
 
 /// Write a single byte to serial.
 pub fn serial_write_byte(b: u8) {
-    crate::drivers::serial::serial_write_byte(b);
+    crate::device::serial::serial_write_byte(b);
 }
 
 /// Try to read a byte from serial (non-blocking).
 pub fn serial_read_byte() -> Option<u8> {
-    crate::drivers::serial::serial_read_byte()
+    crate::device::serial::serial_read_byte()
 }
 
 /// Framebuffer handle for graphics operations.

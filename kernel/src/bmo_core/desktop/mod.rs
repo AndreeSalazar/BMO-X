@@ -55,11 +55,11 @@ pub fn run() -> ! {
 /// Ring 0 desktop main loop — stable GOP path.
 pub fn run_ring0() -> ! {
     crate::bmo_core::diag::info("desktop", "entering Ring 0 GOP desktop supervisor");
-    crate::drivers::serial::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
+    crate::device::serial::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
 
     // The desktop owns the screen now. Keep the watchdog and overlay out of the
     // first-frame path so hardware real does not look frozen behind diag.
-    crate::drivers::watchdog::disarm();
+    crate::device::watchdog::disarm();
     crate::bmo_core::diag::set_overlay_enabled(false);
 
     state::init();
@@ -72,11 +72,11 @@ pub fn run_ring0() -> ! {
         render::render_frame();
         crate::bmo_core::diag::paint_overlay();
 
-        let target = crate::arch::cpu::rdtsc().wrapping_add(16 * CYCLES_PER_MS);
+        let target = crate::cpu::rdtsc().wrapping_add(16 * CYCLES_PER_MS);
         loop {
             let sc = input::poll_key();
             if sc == input::SC_ESC { return_to_welcome(); }
-            if crate::arch::cpu::rdtsc() >= target { break; }
+            if crate::cpu::rdtsc() >= target { break; }
             core::hint::spin_loop();
         }
     }
@@ -85,6 +85,6 @@ pub fn run_ring0() -> ! {
 /// Return to the welcome screen (safer than halting).
 fn return_to_welcome() -> ! {
     beep(0, 0);
-    crate::drivers::serial::serial_write("[desktop] ESC — returning to welcome.\n");
+    crate::device::serial::serial_write("[desktop] ESC — returning to welcome.\n");
     crate::bmo_core::desktop::welcome::run()
 }

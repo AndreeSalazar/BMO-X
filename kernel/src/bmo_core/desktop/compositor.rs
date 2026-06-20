@@ -62,7 +62,7 @@ fn sys2(e: &mut Emitter, nr: u64, a0: u64, a1: u64) {
 
 /// Construye el payload del compositor en `code_buf`. Devuelve
 /// `(entry_offset, total_size)`.
-pub fn build_compositor(code_buf: &mut [u8], _base_addr: u64) -> (usize, usize) {
+pub fn build_compositor(code_buf: &mut [u8], _base: u64) -> (usize, usize) {
     let mut e = Emitter::new();
 
     // Beep de bienvenida (660 Hz, 80 ms).

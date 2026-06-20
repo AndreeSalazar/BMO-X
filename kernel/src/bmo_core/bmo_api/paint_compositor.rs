@@ -10,13 +10,13 @@
 use super::window::WID_INVALID;
 #[allow(unused_imports)]
 use super::wm;
-use crate::drivers::gop;
+use crate::device::gop;
 use crate::bmo_core::desktop::theme;
 
 static mut LAST_TICK: u64 = 0;
 
 pub fn tick() {
-    let now = crate::arch::cpu::rdtsc();
+    let now = crate::cpu::rdtsc();
     unsafe {
         if now.wrapping_sub(LAST_TICK) < 16_000_000 { return; }
         LAST_TICK = now;
@@ -57,7 +57,7 @@ fn paint_desktop(slot: u32) {
     s.unlock();
     // Wallpaper procedural (mismo que welcome/desktop existentes).
     let fb = gop::get_backbuffer_fb();
-    super::super::desktop::wallpaper::draw(&fb, crate::arch::cpu::rdtsc());
+    super::super::desktop::wallpaper::draw(&fb, crate::cpu::rdtsc());
     let _ = (x, y, w, h);
 }
 

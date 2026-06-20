@@ -55,7 +55,7 @@ pub struct Image {
     pub format: BinaryFormat,
     pub manifest: Manifest,
     pub entry_point: u64,
-    pub base_address: u64,
+    pub baseess: u64,
     pub sections: alloc::vec::Vec<MappedSection>,
     /// TLS template offset (0 = no TLS).
     pub tls_offset: u64,
@@ -145,7 +145,7 @@ pub(crate) fn fake_provenance_image(prov: Provenance) -> Image {
         },
         manifest: Manifest::synthetic_for("(stub)", prov),
         entry_point: 0,
-        base_address: 0,
+        baseess: 0,
         sections: alloc::vec::Vec::new(),
         tls_offset: 0,
         tls_size: 0,

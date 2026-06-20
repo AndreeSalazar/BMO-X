@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use crate::drivers::gop;
+use crate::device::gop;
 
 pub mod id {
     pub const ARROW: u8 = 0;

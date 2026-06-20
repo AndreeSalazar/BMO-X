@@ -654,7 +654,7 @@ impl Traductor {
         bytes.push(0xFF);
         bytes.push(0x15);
         let func_ptr_offset = self.rodata.len();
-        let func_addr = crate::arch::page_alloc::free_pages as *const () as usize as u64;
+        let func_addr = crate::memory::page_alloc::free_pages as *const () as usize as u64;
         self.rodata.extend_from_slice(&func_addr.to_le_bytes());
         let disp_offset = bytes.len();
         bytes.extend_from_slice(&[0, 0, 0, 0]);
@@ -891,7 +891,7 @@ impl Traductor {
                 bytes.push(0xFF);
                 bytes.push(0x15);
                 let func_ptr_offset = self.rodata.len();
-                let func_addr = crate::arch::page_alloc::alloc_pages_contiguous as *const () as usize as u64;
+                let func_addr = crate::memory::page_alloc::alloc_pages_contiguous as *const () as usize as u64;
                 self.rodata.extend_from_slice(&func_addr.to_le_bytes());
                 let disp_offset = bytes.len();
                 bytes.extend_from_slice(&[0, 0, 0, 0]);

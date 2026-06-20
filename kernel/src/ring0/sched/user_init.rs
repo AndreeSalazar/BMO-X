@@ -9,7 +9,7 @@ use super::process;
 use super::thread;
 use super::Priority;
 use crate::bmo_core::sandbox::Capability;
-use crate::arch::paging;
+use crate::memory::paging;
 
 /// Size of user stack (64 KB).
 const USER_STACK_SIZE: usize = 65536;
@@ -78,7 +78,7 @@ fn build_init_program() -> &'static [u8] {
 
 fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u64, u64)> {
     crate::bmo_core::diag::info("ring3", "=== Ring 3 process allocation START ===");
-    crate::drivers::serial::serial_write("[ring3] === alloc start ===\n");
+    crate::device::serial::serial_write("[ring3] === alloc start ===\n");
     crate::bmo_core::diag::info("ring3", "allocating process struct");
     let proc = process::alloc_process()?;
     proc.set_name(name);
@@ -94,17 +94,17 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
     proc.page_table_root = user_cr3;
     crate::bmo_core::diag::info_u64("ring3", "user CR3", user_cr3);
 
-    let code_pages = (code.len() + crate::arch::page_alloc::page_size() - 1) / crate::arch::page_alloc::page_size();
-    let stack_pages = USER_STACK_SIZE / crate::arch::page_alloc::page_size();
+    let code_pages = (code.len() + crate::memory::page_alloc::page_size() - 1) / crate::memory::page_alloc::page_size();
+    let stack_pages = USER_STACK_SIZE / crate::memory::page_alloc::page_size();
     crate::bmo_core::diag::info_u64("ring3", "code pages", code_pages as u64);
     crate::bmo_core::diag::info_u64("ring3", "stack pages", stack_pages as u64);
 
     // Allocate physical pages for code and stack
     crate::bmo_core::diag::info("ring3", "allocating physical pages for code");
-    let code_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(code_pages.max(1))? };
+    let code_phys = unsafe { crate::memory::page_alloc::alloc_pages_contiguous(code_pages.max(1))? };
     crate::bmo_core::diag::info_u64("ring3", "code phys addr", code_phys);
     crate::bmo_core::diag::info("ring3", "allocating physical pages for stack");
-    let stack_phys = unsafe { crate::arch::page_alloc::alloc_pages_contiguous(stack_pages)? };
+    let stack_phys = unsafe { crate::memory::page_alloc::alloc_pages_contiguous(stack_pages)? };
     crate::bmo_core::diag::info_u64("ring3", "stack phys addr", stack_phys);
 
     // Map into user virtual address space
@@ -127,11 +127,11 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
     unsafe {
         let dst = code_phys as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
-        if code_pages * crate::arch::page_alloc::page_size() > code.len() {
+        if code_pages * crate::memory::page_alloc::page_size() > code.len() {
             core::ptr::write_bytes(
                 dst.add(code.len()),
                 0x90, // NOP padding
-                code_pages * crate::arch::page_alloc::page_size() - code.len(),
+                code_pages * crate::memory::page_alloc::page_size() - code.len(),
             );
         }
         // Zero stack
@@ -142,7 +142,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
     // After copy, code pages are mapped RW+USER for simplicity.
     proc.entry_point = USER_CODE_VBASE;
     proc.user_code_base = code_phys;
-    proc.user_code_size = code_pages * crate::arch::page_alloc::page_size();
+    proc.user_code_size = code_pages * crate::memory::page_alloc::page_size();
     proc.user_stack_base = stack_phys;
     proc.user_stack_size = USER_STACK_SIZE;
 
@@ -173,8 +173,8 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capability) -> Option<(u
     // Critical: set BOTH the TSS.rsp0 (for #GP/#DF exceptions) AND the
     // SYSCALL_KERNEL_RSP (for the syscall entry to switch to).
     crate::bmo_core::diag::info("ring3", "setting kernel stack for TSS.rsp0 and syscall entry");
-    crate::arch::gdt::set_kernel_stack(kernel_stack);
-    crate::arch::syscall_entry::set_syscall_kernel_stack(kernel_stack);
+    crate::interrupt::gdt::set_kernel_stack(kernel_stack);
+    crate::interrupt::syscall::set_syscall_kernel_stack(kernel_stack);
 
     // Sanity: read back the values to verify the writes took effect.
     crate::bmo_core::diag::info("ring3", "Ring 3 process allocation complete");
@@ -204,12 +204,12 @@ pub fn prepare_desktop_compositor() -> bool {
     let (_entry_off, total) = crate::bmo_core::desktop::compositor::build_compositor(&mut code_buf, 0);
     if total == 0 || total > code_buf.len() {
         crate::bmo_core::diag::fault("sched", "Ring 3 compositor build failed");
-        crate::drivers::serial::serial_write("[user_init] Ring 3 compositor build failed.\n");
+        crate::device::serial::serial_write("[user_init] Ring 3 compositor build failed.\n");
         return false;
     }
 
     crate::bmo_core::diag::info_u64("sched", "Ring 3 compositor payload bytes", total as u64);
-    crate::drivers::serial::serial_write("[user_init] Ring 3 compositor ABI validated; Ring 0 remains supervisor.\n");
+    crate::device::serial::serial_write("[user_init] Ring 3 compositor ABI validated; Ring 0 remains supervisor.\n");
     true
 }
 
@@ -246,13 +246,13 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
     crate::bmo_core::diag::info_u64("ring3", "CS expected", 0x23);
     crate::bmo_core::diag::info_u64("ring3", "SS expected", 0x1B);
     crate::bmo_core::diag::info_u64("ring3", "RFLAGS expected", 0x202);
-    crate::drivers::serial::serial_write("[ring3] jumping: RIP=");
-    crate::drivers::serial::serial_write_u64(entry_point, 16);
-    crate::drivers::serial::serial_write(" RSP=");
-    crate::drivers::serial::serial_write_u64(user_stack, 16);
-    crate::drivers::serial::serial_write(" CR3=");
+    crate::device::serial::serial_write("[ring3] jumping: RIP=");
+    crate::device::serial::serial_write_u64(entry_point, 16);
+    crate::device::serial::serial_write(" RSP=");
+    crate::device::serial::serial_write_u64(user_stack, 16);
+    crate::device::serial::serial_write(" CR3=");
     crate::bmo_core::diag::read_cr3_into_serial();
-    crate::drivers::serial::serial_write("\n");
+    crate::device::serial::serial_write("\n");
 
     // Build interrupt frame for iretq return to Ring 3
     // Layout (low to high on kernel stack):
@@ -297,21 +297,21 @@ fn launch_desktop_compositor_ring3() -> bool {
     };
 
     crate::bmo_core::diag::info_u64("ring3", "sysret desktop entry", entry);
-    crate::drivers::serial::serial_write("[user_init] Jumping to Ring 3 desktop compositor.\n");
+    crate::device::serial::serial_write("[user_init] Jumping to Ring 3 desktop compositor.\n");
     unsafe { jump_to_ring3(entry, stack); }
 }
 
 /// Shell command: spawn Ring 3 hello process.
 pub fn spawn_hello() {
     crate::bmo_core::diag::info("sched", "spawn_hello requested");
-    crate::drivers::serial::serial_write("[user_init] Spawning hello Ring 3 process...\n");
+    crate::device::serial::serial_write("[user_init] Spawning hello Ring 3 process...\n");
     if let Some((entry, stack)) = spawn_init_process() {
         crate::bmo_core::diag::info_u64("sched", "Ring 3 hello sysret entry", entry);
-        crate::drivers::serial::serial_write("[user_init] Process created, jumping to Ring 3\n");
+        crate::device::serial::serial_write("[user_init] Process created, jumping to Ring 3\n");
         unsafe { jump_to_ring3(entry, stack); }
     } else {
         crate::bmo_core::diag::fault("sched", "failed to spawn Ring 3 hello process");
-        crate::drivers::serial::serial_write("[user_init] ERROR: failed to spawn process\n");
+        crate::device::serial::serial_write("[user_init] ERROR: failed to spawn process\n");
     }
 }
 
@@ -322,17 +322,17 @@ pub fn spawn_hello() {
 /// itself is `-> !` so if everything works, it runs forever.
 pub fn spawn_desktop() {
     crate::bmo_core::diag::info("sched", "spawn_desktop: Ring 0 GOP desktop stable path");
-    crate::drivers::serial::serial_write("[user_init] Launching stable Ring 0 GOP desktop.\n");
+    crate::device::serial::serial_write("[user_init] Launching stable Ring 0 GOP desktop.\n");
     if !prepare_desktop_compositor() {
         crate::bmo_core::diag::warn("sched", "compositor build failed; returning to welcome");
-        crate::drivers::serial::serial_write("[user_init] compositor build FAILED, returning to welcome.\n");
+        crate::device::serial::serial_write("[user_init] compositor build FAILED, returning to welcome.\n");
         return;
     }
     crate::bmo_core::desktop::run_ring0();
     // If run_ring0 ever returns (shouldn't), we end up here.
     #[allow(unreachable_code)] // safety net for when run_ring0 changes its signature
     {
-        crate::drivers::serial::serial_write("[user_init] desktop returned (unexpected)\n");
+        crate::device::serial::serial_write("[user_init] desktop returned (unexpected)\n");
     }
 }
 
@@ -356,13 +356,13 @@ fn build_crash_program() -> &'static [u8] {
 /// Verifies exception → kill → scheduler → welcome returns.
 pub fn spawn_crash() {
     crate::bmo_core::diag::info("sched", "spawn_crash: testing Ring 3 crash recovery");
-    crate::drivers::serial::serial_write("[user_init] Spawning crash test process (ud2)...\n");
+    crate::device::serial::serial_write("[user_init] Spawning crash test process (ud2)...\n");
     if let Some((entry, stack)) = allocate_user_process("crash_test", build_crash_program(), Capability::SYS_DEBUG) {
         crate::bmo_core::diag::info_u64("sched", "Ring 3 crash test entry", entry);
-        crate::drivers::serial::serial_write("[user_init] Process created, jumping to Ring 3 (expect #UD)\n");
+        crate::device::serial::serial_write("[user_init] Process created, jumping to Ring 3 (expect #UD)\n");
         unsafe { jump_to_ring3(entry, stack); }
     } else {
         crate::bmo_core::diag::fault("sched", "failed to spawn crash test process");
-        crate::drivers::serial::serial_write("[user_init] ERROR: failed to spawn crash test process\n");
+        crate::device::serial::serial_write("[user_init] ERROR: failed to spawn crash test process\n");
     }
 }

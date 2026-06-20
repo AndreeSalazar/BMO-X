@@ -13,7 +13,8 @@
 //! state — useful for the welcome-screen `test` command and for
 //! QEMU pre-flight.
 
-use crate::{arch, bmo_core::bmo_abi, boot::log};
+use crate::bmo_core::bmo_abi;
+use crate::boot::log;
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
@@ -21,23 +22,23 @@ use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 /// `ctx.cpu` instead. This is kept so `main.rs` doesn't break while
 /// we migrate phase by phase.
 pub struct CpuState {
-    pub features: arch::cpu::CpuFeatures,
+    pub features: crate::cpu::CpuFeatures,
     pub tsc_freq: u64,
 }
 
 pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
     log::info("phase0", "=== Phase 0: CPU Init ===");
 
-    arch::gdt::init_gdt();
-    arch::idt::init_idt();
-    arch::syscall_entry::init_syscall();
+    crate::interrupt::gdt::init_gdt();
+    crate::interrupt::idt::init_idt();
+    crate::interrupt::syscall::init_syscall();
     log::info("phase0", "GDT+IDT+SYSCALL loaded");
 
     log::warn("phase0", "CPU modular init...");
-    let cpu = arch::cpu::init();
+    let cpu = crate::cpu::init();
     log::info("phase0", "CPU modular init DONE");
 
-    bmo_abi::time::init_clock(arch::cpu::rdtsc(), cpu.tsc_freq);
+    bmo_abi::time::init_clock(crate::cpu::rdtsc(), cpu.tsc_freq);
 
     // v1.6.1: Don't install new PML4 here. The page allocator hasn't
     // been initialized yet (Phase 1 hasn't run). We'll do it after
@@ -58,7 +59,7 @@ pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
     ctx.cpu.features_aes  = cpu.features.has_aes;
     ctx.bmo_abi_initialized = true;
 
-    let phase0_end = arch::cpu::rdtsc();
+    let phase0_end = crate::cpu::rdtsc();
     ctx.record_phase(0, boot_start, phase0_end);
 
     log::info_u64("phase0", "TSC frequency (Hz)", cpu.tsc_freq);

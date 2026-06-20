@@ -66,8 +66,8 @@ impl SavedRegs {
         Self {
             rip: entry,
             rsp: user_stack,
-            cs: crate::arch::gdt::USER_CS as u64,
-            ss: crate::arch::gdt::USER_DS as u64,
+            cs: crate::interrupt::gdt::USER_CS as u64,
+            ss: crate::interrupt::gdt::USER_DS as u64,
             rflags: 0x202, // IF=1 (interrupts enabled) + reserved bit 1
             ..Self::zero()
         }
@@ -78,8 +78,8 @@ impl SavedRegs {
         Self {
             rip: entry,
             rsp: kernel_stack,
-            cs: crate::arch::gdt::KERNEL_CS as u64,
-            ss: crate::arch::gdt::KERNEL_DS as u64,
+            cs: crate::interrupt::gdt::KERNEL_CS as u64,
+            ss: crate::interrupt::gdt::KERNEL_DS as u64,
             rflags: 0x202,
             ..Self::zero()
         }

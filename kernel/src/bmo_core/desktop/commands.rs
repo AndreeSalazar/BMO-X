@@ -38,7 +38,7 @@ pub fn trim(s: &[u8]) -> &[u8] {
 pub fn enter_desktop() {
     crate::bmo_core::diag::set_overlay_enabled(false);
     crate::bmo_core::diag::info("welcome", "Run accepted; entering BMO API v2 desktop");
-    crate::drivers::serial::serial_write(
+    crate::device::serial::serial_write(
         "[welcome] Run aceptado: BMO API v2.0 desktop real.\n",
     );
     crate::bmo_core::bmo_api::wm::enter()
