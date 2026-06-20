@@ -5,10 +5,9 @@
 //!
 //! ```text
 //!   lang::bmoasm  ← Ensamblador BMO (bajo nivel, semántico-puro)
-//!   lang::nexo    ← Lenguaje ÑEXO (alto nivel, inspirado Rust/Ada/CMD)
+//!   lang::nexo    ← Lenguaje ÑEXO (alto nivel, inspirado en Rust/Ada/CMD)
 //! ```
 
 #![allow(dead_code)]
 
-pub mod bmoasm;
-pub mod nexo;
+pub mod bmo;

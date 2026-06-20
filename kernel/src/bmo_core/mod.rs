@@ -2,7 +2,7 @@
 //!
 //! BMO Core es el "intermediate layer" entre Ring 0 (kernel privileged)
 //! y Ring 3 (userland apps). Aquí vive toda la API de windowing, el
-//! desktop GUI, los lenguajes (ÑEXO, BMOasm), el sistema de archivos,
+//! desktop GUI, los lenguajes (ÑEXO, BMO assembly syntax (legacy)), el sistema de archivos,
 //! y los diagnósticos.
 //!
 //! A diferencia de Ring 0, BMO Core no requiere privilegios especiales
@@ -19,7 +19,7 @@
 //!   barex         — BareX compatibility + shader loader
 //!   gustos        — Audio system (FM synth, chimes, procedural tracks)
 //!   bmo_abi       — BMO ABI primitives (handles, status, types)
-//!   lang          — Languages: BMOasm (compiler) + ÑEXO (CLI + runtime)
+//!   lang          — Languages: BMO assembly syntax (legacy) (compiler) + ÑEXO (CLI + runtime)
 //!   bef           — BEF binary devourer (PE/ELF/native)
 //!   fs            — Filesystems: FAT32 + BMO-FS + ramdisk
 //!   sandbox       — Application sandbox (capabilities)
