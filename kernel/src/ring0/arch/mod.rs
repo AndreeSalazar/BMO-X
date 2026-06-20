@@ -23,3 +23,4 @@ pub mod apic;
 pub mod smp;
 pub mod ctx;
 pub mod syscall;
+pub mod topology;

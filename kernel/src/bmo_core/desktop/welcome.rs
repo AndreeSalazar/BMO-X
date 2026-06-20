@@ -427,8 +427,8 @@ fn run_phase_self_test(n: u8) {
 
 fn run_phase_self_test_ring3() {
     use crate::boot::phases::report_self_test;
-    let report = crate::boot::phases::ring3_tests::self_test();
-    crate::bmo_core::diag::info("welcome", "Ring 3 self-test");
+    let report = crate::boot::phases::p0_arch::self_test();
+    crate::bmo_core::diag::info("welcome", "Ring 3 self-test (using p0_arch)");
     report_self_test(&report);
 }
 
@@ -436,7 +436,6 @@ fn run_test_all_phases() {
     use crate::boot::phases::report_self_test;
     let reports = [
         crate::boot::phases::p0_arch::self_test(),
-        crate::boot::phases::ring3_tests::self_test(),
         crate::boot::phases::p1_mem::self_test(),
         crate::boot::phases::p2_dev::self_test(),
         crate::boot::phases::p3_proc::self_test(),

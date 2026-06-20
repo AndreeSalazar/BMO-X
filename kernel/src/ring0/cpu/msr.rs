@@ -81,6 +81,10 @@ pub const AMD_MTRR_VAR_BASE: u32 = 0xC0010200;
 pub const AMD_MTRR_VAR_MASK: u32 = 0xC0010201;
 pub const AMD_SYSCALL_CFG: u32 = 0xC0010132;
 
+// GS base (per-CPU data)
+pub const IA32_GS_BASE: u32 = 0xC0000101;
+pub const IA32_KERNEL_GS_BASE: u32 = 0xC0000102;
+
 // MTRR memory types
 pub const MTRR_TYPE_UC: u64 = 0;
 pub const MTRR_TYPE_WC: u64 = 1;

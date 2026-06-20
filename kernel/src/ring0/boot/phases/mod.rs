@@ -18,7 +18,6 @@ pub mod p2_dev;
 pub mod p3_proc;
 pub mod p4_bmo;
 pub mod p5_user;
-pub mod ring3_tests;
 
 pub mod trait_def;
 pub use trait_def::report as report_self_test;
