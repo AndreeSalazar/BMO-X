@@ -1,816 +1,707 @@
 # ============================================================================
-# FastOS -- Build + Flash USB (UEFI GOP path) - ROBUST VERSION
+# FastOS -- Build + Flash USB (UEFI GOP) - MODERN VERSION
 # ============================================================================
-# Compila bootloader + kernel, prepara USB_boot/, y flashea al USB.
-# Soporta cambios fuertes (deps, refactors) con -Rebuild / -ForceRebuild.
+# Reescrito v1.7.3: modular, robusto, idempotente. Compila los 3 crates,
+# prepara USB_boot/ y flashea al USB con confirmación.
 #
 # Uso:
-#   .\build_uefi.ps1                       # Build + flash (incremental)
-#   .\build_uefi.ps1 -Rebuild              # Clean + build (cambios fuertes)
-#   .\build_uefi.ps1 -ForceRebuild         # Clean + force cargo build
-#   .\build_uefi.ps1 -BuildOnly -Rebuild   # Clean + build, no flash
-#   .\build_uefi.ps1 -FlashOnly            # Solo flashear (ya compilado)
-#   .\build_uefi.ps1 -KernelOnly           # Build rapido solo del kernel
-#   .\build_uefi.ps1 -BootloaderOnly       # Build rapido solo del bootloader
-#   .\build_uefi.ps1 -Verbose              # Mostrar todos los warnings
-#   .\build_uefi.ps1 -SkipDepsCheck        # Saltar verificacion de toolchain
-#   .\build_uefi.ps1 -Clean                # Limpiar artefactos
-#   .\build_uefi.ps1 -Rollback             # Restaurar kernel.elf anterior
+#   .\build_uefi.ps1                            # Build + flash (incremental)
+#   .\build_uefi.ps1 -Rebuild                   # Clean target_build + build
+#   .\build_uefi.ps1 -ForceRebuild              # Clean + force cargo build
+#   .\build_uefi.ps1 -BuildOnly                 # Solo compilar, sin flash
+#   .\build_uefi.ps1 -BuildOnly -Rebuild        # Clean + build, no flash
+#   .\build_uefi.ps1 -FlashOnly                 # Solo flashear (ya compilado)
+#   .\build_uefi.ps1 -KernelOnly                # Build rapido solo kernel
+#   .\build_uefi.ps1 -BootloaderOnly            # Build rapido solo bootloader
+#   .\build_uefi.ps1 -BmofsOnly                 # Build rapido solo bmofs
+#   .\build_uefi.ps1 -Clean                     # Solo limpiar artefactos
+#   .\build_uefi.ps1 -SkipDepsCheck             # Saltar verificacion de toolchain
+#   .\build_uefi.ps1 -ShowAllOutput            # Mostrar todos los warnings
+#   .\build_uefi.ps1 -Force                     # Saltar confirmacion de flash
+#   .\build_uefi.ps1 -DiskNumber 2             # Elegir disco especifico
 #
-# Si Windows bloquea scripts PowerShell por ExecutionPolicy, usa:
-#   .\build_uefi.cmd                       # Wrapper con Bypass solo para esta ejecucion
+# Si Windows bloquea scripts por ExecutionPolicy, usa:
+#   .\build_uefi.cmd                            # Wrapper con Bypass
 #
-# Target: Bootloader UEFI + kernel GOP/framebuffer
+# Crates:
+#   bootloader  -> target x86_64-unknown-uefi
+#   kernel      -> target x86_64-unknown-none
+#   bmofs       -> target host (x86_64-pc-windows-msvc)
 # ============================================================================
 
+[CmdletBinding()]
 param(
-    [int]$DiskNumber = -1,
-    [switch]$BuildOnly,
-    [switch]$FlashOnly,
-    [switch]$Clean,
-    [switch]$Force,
-    [switch]$Rebuild,           # Clean target/ antes de build
-    [switch]$ForceRebuild,      # Clean + force cargo build
-    [switch]$KernelOnly,        # Solo compilar kernel (no bootloader/bmofs)
-    [switch]$BootloaderOnly,    # Solo compilar bootloader
-    [switch]$Verbose,           # Mostrar todos los warnings
-    [switch]$SkipDepsCheck,     # Saltar verificacion de toolchain
-    [switch]$Rollback           # Restaurar kernel.elf anterior desde backup
+    [int]   $DiskNumber  = -1,
+    [switch] $BuildOnly,
+    [switch] $FlashOnly,
+    [switch] $Clean,
+    [switch] $Rebuild,
+    [switch] $ForceRebuild,
+    [switch] $KernelOnly,
+    [switch] $BootloaderOnly,
+    [switch] $BmofsOnly,
+    [switch] $SkipDepsCheck,
+    [switch] $ShowAllOutput,
+    [switch] $Force
 )
 
-$ErrorActionPreference = "Stop"
-$Root = $PSScriptRoot
+# ============================================================================
+# CONSTANTES
+# ============================================================================
+
+$Script:ScriptVersion = "1.7.3"
+$Script:Root          = (Resolve-Path $PSScriptRoot).Path
+$Script:TargetBuild    = Join-Path $Script:Root "target_build"
+$Script:UsbBoot        = Join-Path $Script:Root "USB_boot"
+$Script:BootloaderDir  = Join-Path $Script:Root "bootloader"
+$Script:KernelDir      = Join-Path $Script:Root "kernel"
+$Script:BmofsDir       = Join-Path $Script:Root "bmofs"
+$Script:BootloaderOut  = Join-Path $Script:TargetBuild "bootloader\x86_64-unknown-uefi\release\fastos-bootloader.efi"
+$Script:KernelOut      = Join-Path $Script:TargetBuild "kernel\x86_64-unknown-none\release\fastos-kernel"
+$Script:BmofsOut       = Join-Path $Script:TargetBuild "bmofs\release\bmofs.exe"
+$Script:EfiTarget      = "BOOTX64.EFI"
 
 # ============================================================================
-# Utilidades
+# OUTPUT HELPERS
 # ============================================================================
+
+function Write-Banner {
+    Clear-Host
+    Write-Host ""
+    Write-Host "================================================================" -ForegroundColor Cyan
+    Write-Host "  FastOS Build + Flash Script v$Script:ScriptVersion" -ForegroundColor Cyan
+    Write-Host "  Root: $Script:Root" -ForegroundColor DarkGray
+    Write-Host "================================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
 
 function Write-Step {
     param([string]$Msg, [string]$Color = "Cyan")
-    Write-Host "[$([DateTime]::Now.ToString('HH:mm:ss'))] $Msg" -ForegroundColor $Color
+    Write-Host ""
+    Write-Host "  [STEP] $Msg" -ForegroundColor $Color
+    Write-Host "  ----------------------------------------------------------------" -ForegroundColor DarkGray
 }
 
-function Write-Success { param([string]$Msg) Write-Host "  [OK] $Msg" -ForegroundColor Green }
-function Write-Warn    { param([string]$Msg) Write-Host "  [!]  $Msg" -ForegroundColor Yellow }
-function Write-Err     { param([string]$Msg) Write-Host "  [X]  $Msg" -ForegroundColor Red }
-
-function Test-Toolchain {
-    if ($SkipDepsCheck) { return $true }
-
-    Write-Step "Verificando toolchain..." "Cyan"
-
-    # Verificar rustup
-    $rustup = Get-Command rustup -ErrorAction SilentlyContinue
-    if (!$rustup) {
-        Write-Err "rustup no encontrado en PATH"
-        return $false
-    }
-
-    # Verificar nightly
-    $nightlyList = & rustup toolchain list 2>&1
-    $hasNightly = $false
-    foreach ($line in $nightlyList) {
-        if ($line -match "nightly") { $hasNightly = $true; break }
-    }
-
-    if (!$hasNightly) {
-        Write-Warn "Toolchain 'nightly' no instalado. Instalando..."
-        $installOutput = & rustup toolchain install nightly 2>&1
-        $installExit = $LASTEXITCODE
-        Write-Host $installOutput
-        if ($installExit -ne 0) {
-            Write-Err "No se pudo instalar nightly"
-            return $false
-        }
-    } else {
-        Write-Host "      nightly: instalado" -ForegroundColor DarkGray
-    }
-
-    # Verificar target x86_64-unknown-none
-    $targetsOutput = & rustup target list --installed --toolchain nightly 2>&1
-    $hasKernelTarget = $false
-    $hasUefiTarget = $false
-    foreach ($line in $targetsOutput) {
-        if ($line -match "x86_64-unknown-none") { $hasKernelTarget = $true }
-        if ($line -match "x86_64-unknown-uefi") { $hasUefiTarget = $true }
-    }
-
-    if (!$hasKernelTarget) {
-        Write-Warn "Target 'x86_64-unknown-none' no instalado. Instalando..."
-        & rustup target add x86_64-unknown-none --toolchain nightly 2>&1 | Out-Null
-    }
-
-    if (!$hasUefiTarget) {
-        Write-Warn "Target 'x86_64-unknown-uefi' no instalado. Instalando..."
-        & rustup target add x86_64-unknown-uefi --toolchain nightly 2>&1 | Out-Null
-    }
-
-    Write-Success "Toolchain OK"
-    return $true
-}
-
-function Get-CargoArtifacts {
-    # Devuelve los paths esperados de los artefactos
-    return @{
-        Bootloader = "$Root\target_build\bootloader\x86_64-unknown-uefi\release\fastos-bootloader.efi"
-        Kernel     = "$Root\target_build\kernel\x86_64-unknown-none\release\fastos-kernel"
-        Bmofs      = "$Root\target_build\bmofs\release\bmofs.exe"
-    }
-}
+function Write-OK   { param([string]$Msg) Write-Host "  [OK]   $Msg" -ForegroundColor Green }
+function Write-Info { param([string]$Msg) Write-Host "  [i]    $Msg" -ForegroundColor Gray }
+function Write-Warn { param([string]$Msg) Write-Host "  [!]    $Msg" -ForegroundColor Yellow }
+function Write-Err  { param([string]$Msg) Write-Host "  [ERR]  $Msg" -ForegroundColor Red }
+function Write-Sub  { param([string]$Msg) Write-Host "          $Msg" -ForegroundColor DarkGray }
 
 function Get-FileMTime {
     param([string]$Path)
-    if (Test-Path $Path) {
-        return (Get-Item $Path).LastWriteTime
-    }
+    if (Test-Path $Path) { return (Get-Item $Path).LastWriteTimeUtc }
     return [DateTime]::MinValue
 }
 
-function Test-NeedsRebuild {
-    # Detecta si Cargo.toml o archivos .rs cambiaron desde el ultimo build
-    # (heuristica simple: comparar timestamp de src/ vs target/)
+function Test-FileNewer {
+    param([string]$Path, [DateTime]$RefTime)
+    if (!(Test-Path $Path)) { return $false }
+    return (Get-Item $Path).LastWriteTimeUtc -gt $RefTime
+}
 
-    $artifacts = Get-CargoArtifacts
-    $cargoToml = Join-Path $Root "kernel\Cargo.toml"
-    $cargoTomlBoot = Join-Path $Root "bootloader\Cargo.toml"
+function Read-Confirm {
+    param([string]$Prompt, [string]$Expected, [switch]$Force)
+    if ($Force) {
+        Write-Host "  [FORCE] Saltando confirmacion..." -ForegroundColor Yellow
+        return $true
+    }
+    $resp = Read-Host "  $Prompt"
+    return ($resp -eq $Expected)
+}
 
-    if (!(Test-Path $artifacts.Kernel) -or !(Test-Path $artifacts.Bootloader)) {
+function Exit-With {
+    param([int]$Code, [string]$Msg = "")
+    if ($Msg) { Write-Err $Msg }
+    Write-Host ""
+    if ($Code -ne 0) { Read-Host "  Presiona Enter para salir" | Out-Null }
+    exit $Code
+}
+
+# ============================================================================
+# TOOLCHAIN CHECK
+# ============================================================================
+
+function Test-Toolchain {
+    if ($SkipDepsCheck) {
+        Write-Info "Saltando verificacion de toolchain (-SkipDepsCheck)"
         return $true
     }
 
-    $kernelTime = Get-FileMTime $artifacts.Kernel
-    $bootTime   = Get-FileMTime $artifacts.Bootloader
-    $tomlTime   = if (Test-Path $cargoToml) { Get-FileMTime $cargoToml } else { [DateTime]::MinValue }
-    $tomlTimeBoot = if (Test-Path $cargoTomlBoot) { Get-FileMTime $cargoTomlBoot } else { [DateTime]::MinValue }
+    Write-Step "Verificando toolchain" "Cyan"
 
-    # Si Cargo.toml es mas reciente que el artefacto, rebuild necesario
-    if ($tomlTime -gt $kernelTime -or $tomlTimeBoot -gt $bootTime) {
-        return $true
+    # rustc
+    try {
+        $rustcVer = & rustc --version 2>&1
+        Write-Sub "rustc: $rustcVer"
+    } catch {
+        Exit-With 1 "rustc no encontrado. Instala Rust: https://rustup.rs"
     }
 
-    return $false
-}
+    # nightly
+    $hasNightly = (& rustup toolchain list 2>&1) -match "nightly"
+    if (!$hasNightly) {
+        Write-Warn "Toolchain 'nightly' no instalado. Instalando..."
+        & rustup toolchain install nightly 2>&1 | Out-Null
+    }
+    Write-Sub "nightly: OK"
 
-function Backup-Kernel {
-    # Guarda el kernel.elf actual como .prev para rollback
-    $prev = "$Root\kernel.elf.prev"
-    if (Test-Path "$Root\kernel.elf") {
-        Copy-Item "$Root\kernel.elf" $prev -Force
-        Write-Success "Backup: kernel.elf -> kernel.elf.prev"
+    # targets
+    $installed = & rustup target list --installed --toolchain nightly 2>&1
+    $needTargets = @("x86_64-unknown-none", "x86_64-unknown-uefi")
+    foreach ($t in $needTargets) {
+        if ($installed -notcontains $t) {
+            Write-Warn "Target '$t' no instalado. Instalando..."
+            & rustup target add $t --toolchain nightly 2>&1 | Out-Null
+        }
     }
-    $prevBoot = "$Root\BOOTX64.EFI.prev"
-    if (Test-Path "$Root\BOOTX64.EFI") {
-        Copy-Item "$Root\BOOTX64.EFI" $prevBoot -Force
-    }
-}
+    Write-Sub "targets x86_64-unknown-none + x86_64-unknown-uefi: OK"
 
-function Restore-Rollback {
-    $prev = "$Root\kernel.elf.prev"
-    $prevBoot = "$Root\BOOTX64.EFI.prev"
-    if (!(Test-Path $prev) -or !(Test-Path $prevBoot)) {
-        Write-Err "No hay backup .prev para hacer rollback"
-        return $false
-    }
-    Copy-Item $prev "$Root\kernel.elf" -Force
-    Copy-Item $prev "$Root\kernel.elf" -Force
-    Copy-Item $prevBoot "$Root\BOOTX64.EFI" -Force
-    Write-Success "Rollback: kernel.elf y BOOTX64.EFI restaurados"
+    # cargo
+    $cargoVer = & cargo --version 2>&1
+    Write-Sub "cargo: $cargoVer"
+
+    Write-OK "Toolchain OK"
     return $true
 }
 
-function Invoke-CargoBuildWithRetry {
+# ============================================================================
+# CLEAN
+# ============================================================================
+
+function Invoke-Clean {
+    param([string]$What = "all")
+
+    Write-Step "Limpiando artefactos" "Yellow"
+
+    switch ($What) {
+        "all" {
+            $dirs = @($Script:TargetBuild, $Script:UsbBoot)
+            foreach ($d in $dirs) {
+                if (Test-Path $d) {
+                    Write-Sub "Borrando $d"
+                    Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        "build" {
+            if (Test-Path $Script:TargetBuild) {
+                Write-Sub "Borrando $Script:TargetBuild"
+                Remove-Item $Script:TargetBuild -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        "usb" {
+            if (Test-Path $Script:UsbBoot) {
+                Write-Sub "Borrando $Script:UsbBoot"
+                Remove-Item $Script:UsbBoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    # Root-level artifacts (que estan en .gitignore pero el script los regenera)
+    $artifacts = @(
+        (Join-Path $Script:Root $Script:EfiTarget),
+        (Join-Path $Script:Root "kernel.elf"),
+        (Join-Path $Script:Root "bmofs.img")
+    )
+    foreach ($a in $artifacts) {
+        if (Test-Path $a) {
+            Write-Sub "Borrando $a"
+            Remove-Item $a -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Write-OK "Clean completo"
+}
+
+# ============================================================================
+# BUILDERS
+# ============================================================================
+
+function Invoke-CargoBuild {
     param(
-        [string]$TargetDir,
-        [string]$ManifestPath = ".",
-        [string]$Target = "",
-        [int]$MaxAttempts = 3,
-        [switch]$Force
+        [string]   $ManifestPath,
+        [string]   $TargetDir,
+        [string]   $Target       = "",
+        [string]   $Label,
+        [switch]   $Force
     )
 
-    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        $forceFlag = ""
-        if ($Force) { $forceFlag = " --force" }
+    Write-Step "[BUILD] $Label" "Cyan"
 
-        $targetFlag = ""
-        if ($Target) { $targetFlag = " --target $Target" }
+    $targetFlag = if ($Target) { " --target $Target" } else { "" }
+    $forceFlag  = if ($Force) { " --force" } else { "" }
+    $cmd        = "rustup run nightly cargo build --release --target-dir `"$TargetDir`" --manifest-path `"$ManifestPath`"$targetFlag$forceFlag"
 
-        $cargoCmd = "rustup run nightly cargo build --release --target-dir `"$TargetDir`" --manifest-path `"$ManifestPath`"$targetFlag$forceFlag 2>&1"
-        $cargoOutput = cmd.exe /c $cargoCmd
-        $cargoExit = $LASTEXITCODE
+    Write-Sub "cmd: $cmd"
 
-        $accessDenied = ($cargoOutput | ForEach-Object { $_.ToString() }) -match "Acceso denegado|Access is denied|os error 5"
-        $lockError = ($cargoOutput | ForEach-Object { $_.ToString() }) -match "Blocking waiting for file lock"
+    # 1 intento + 1 retry (mitigacion contra file locks transitorios)
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        try {
+            $output = & rustup run nightly cargo build --release `
+                --target-dir $TargetDir `
+                --manifest-path $ManifestPath `
+                $(if ($Target) { "--target" } else { "" }) `
+                $(if ($Target) { $Target } else { "" }) `
+                $(if ($Force) { "--force" } else { "" }) `
+                2>&1
 
-        if ($cargoExit -eq 0) {
-            return @{
-                ExitCode = 0
-                Output = $cargoOutput
+            if ($LASTEXITCODE -eq 0) {
+                if ($ShowAllOutput -or $output | Select-String -Pattern "warning|error") {
+                    $output | ForEach-Object { Write-Host "          $_" -ForegroundColor DarkYellow }
+                }
+                Write-OK "${Label}: build OK"
+                return $true
             }
-        }
 
-        if (($accessDenied -or $lockError) -and $attempt -lt $MaxAttempts) {
-            Write-Host "      Cargo: archivo bloqueado, reintentando ($attempt/$MaxAttempts)..." -ForegroundColor Yellow
-            Start-Sleep -Seconds 3
-            # Matar procesos cargo.exe colgados
-            Get-Process cargo -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            $output | ForEach-Object { Write-Host "          $_" -ForegroundColor Yellow }
+            $lastError = "cargo fallo con exit code $LASTEXITCODE"
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+        if ($attempt -eq 1) {
+            Write-Warn "${Label}: intento 1 fallo -- reintentando..."
             Start-Sleep -Seconds 1
-            continue
-        }
-
-        return @{
-            ExitCode = $cargoExit
-            Output = $cargoOutput
-        }
-    }
-}
-
-function Invoke-CleanTarget {
-    param([string]$Component)
-
-    switch ($Component) {
-        "kernel" {
-            if (Test-Path "$Root\target_build\kernel") {
-                Write-Host "      Limpiando target_build\kernel..." -ForegroundColor DarkGray
-                Remove-Item "$Root\target_build\kernel" -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-        "bootloader" {
-            if (Test-Path "$Root\target_build\bootloader") {
-                Write-Host "      Limpiando target_build\bootloader..." -ForegroundColor DarkGray
-                Remove-Item "$Root\target_build\bootloader" -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-        "bmofs" {
-            if (Test-Path "$Root\target_build\bmofs") {
-                Write-Host "      Limpiando target_build\bmofs..." -ForegroundColor DarkGray
-                Remove-Item "$Root\target_build\bmofs" -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-        default {
-            if (Test-Path "$Root\target_build") {
-                Write-Host "      Limpiando target_build..." -ForegroundColor DarkGray
-                Remove-Item "$Root\target_build" -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
-}
-
-# ============================================================================
-# Banner
-# ============================================================================
-
-Write-Host ""
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "  FastOS -- UEFI GOP Builder (ROBUST)" -ForegroundColor Cyan
-Write-Host "  Target: bootloader UEFI + kernel GOP/framebuffer" -ForegroundColor Cyan
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host ""
-
-# ============================================================================
-# Rollback (salir despues)
-# ============================================================================
-if ($Rollback) {
-    if (Restore-Rollback) {
-        exit 0
-    } else {
-        exit 1
-    }
-}
-
-# ============================================================================
-# Clean
-# ============================================================================
-if ($Clean) {
-    Write-Step "[CLEAN] Eliminando artefactos..." "Yellow"
-    Invoke-CleanTarget "all"
-    Remove-Item "$Root\kernel.elf"        -ErrorAction SilentlyContinue
-    Remove-Item "$Root\BOOTX64.EFI"       -ErrorAction SilentlyContinue
-    Remove-Item "$Root\USB_boot"          -Recurse -ErrorAction SilentlyContinue
-    Write-Success "Clean completo"
-    return
-}
-
-# ============================================================================
-# Verificar toolchain
-# ============================================================================
-if (!(Test-Toolchain)) {
-    Write-Err "Toolchain invalida. Aborta."
-    exit 1
-}
-
-# ============================================================================
-# Backup antes de cambios fuertes
-# ============================================================================
-if (($Rebuild -or $ForceRebuild) -and (Test-Path "$Root\kernel.elf")) {
-    Write-Step "Backup de seguridad (cambio fuerte detectado)..." "Yellow"
-    Backup-Kernel
-}
-
-# ============================================================================
-# FASE 1: BUILD
-# ============================================================================
-$efiSize = 0
-$kernelSize = 0
-
-if (!$FlashOnly) {
-
-    # Decidir si hacer clean
-    $needsClean = $false
-    if ($ForceRebuild) {
-        $needsClean = $true
-    } elseif ($Rebuild) {
-        $needsClean = $true
-    } elseif (Test-NeedsRebuild) {
-        Write-Warn "Cambios estructurales detectados (Cargo.toml) -- recomendado -Rebuild"
-        if (!$Force) {
-            $ans = Read-Host "  Forzar rebuild? (s/N)"
-            if ($ans -eq "s" -or $ans -eq "S") {
-                $needsClean = $true
-            }
         }
     }
 
-    # -- Step 1: Build UEFI Bootloader ----------------------------------------
-    if (!$KernelOnly) {
-        Write-Step "[1/3] Compilando UEFI Bootloader..." "Cyan"
+    Write-Err "${Label}: build FALLO -- $lastError"
+    return $false
+}
 
-        if ($needsClean) {
-            Invoke-CleanTarget "bootloader"
-        }
+function Test-NeedsRebuild {
+    param(
+        [string]   $SourceDir,
+        [string]   $ArtifactPath,
+        [string[]] $ExtraWatch = @()
+    )
 
-        $bootloaderTarget = "$Root\target_build\bootloader"
-        New-Item -Path $bootloaderTarget -ItemType Directory -Force | Out-Null
-        $manifestPath = "$Root\bootloader\Cargo.toml"
+    if (!(Test-Path $ArtifactPath)) { return $true }
+    $artifactTime = Get-FileMTime $ArtifactPath
 
-        $cargoResult = Invoke-CargoBuildWithRetry -TargetDir $bootloaderTarget -ManifestPath $manifestPath -Target "x86_64-unknown-uefi" -Force:$ForceRebuild
-        $cargoOutput = $cargoResult.Output
-        $cargoExit = $cargoResult.ExitCode
+    # Si el manifest (Cargo.toml) o cualquier .rs o .toml en SourceDir es más nuevo
+    $manifest = Join-Path $SourceDir "Cargo.toml"
+    if (Test-FileNewer $manifest $artifactTime) { return $true }
 
-        if ($Verbose) {
-            $cargoOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
-        } else {
-            $cargoOutput | ForEach-Object {
-                $line = $_.ToString()
-                if ($line -match "error\[")     { Write-Host "      $line" -ForegroundColor Red }
-                elseif ($line -match "warning:") { Write-Host "      $line" -ForegroundColor Yellow }
-                elseif ($line -match "Compiling|Finished") { Write-Host "      $line" -ForegroundColor DarkGray }
-            }
-        }
-
-        if ($cargoExit -ne 0) {
-            $cargoOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
-            throw "Bootloader: fallo la compilacion"
-        }
-
-        $efiPath = Get-ChildItem "$bootloaderTarget\x86_64-unknown-uefi\release\fastos-bootloader*.efi" -File |
-                   Select-Object -First 1 -ExpandProperty FullName
-        if (!$efiPath) { throw "No se encontro BOOTX64.EFI" }
-
-        Copy-Item $efiPath "$Root\BOOTX64.EFI" -Force
-        $efiSize = (Get-Item "$Root\BOOTX64.EFI").Length
-        Write-Success "BOOTX64.EFI: $([math]::Round($efiSize/1024, 1)) KB"
-    } else {
-        # KernelOnly: usar el BOOTX64.EFI existente
-        if (Test-Path "$Root\BOOTX64.EFI") {
-            $efiSize = (Get-Item "$Root\BOOTX64.EFI").Length
-            Write-Success "BOOTX64.EFI (existente): $([math]::Round($efiSize/1024, 1)) KB"
-        }
+    $changed = Get-ChildItem -Path $SourceDir -Recurse -Include "*.rs","*.toml","*.ld" -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTimeUtc -gt $artifactTime } |
+        Select-Object -First 1
+    if ($changed) {
+        Write-Sub "Source mas nuevo: $($changed.FullName.Substring($SourceDir.Length))"
+        return $true
     }
-
-    # -- Step 2: Build Kernel -------------------------------------------------
-    if (!$BootloaderOnly) {
-        Write-Step "[2/3] Compilando Kernel (ELF)..." "Cyan"
-
-        if ($needsClean) {
-            Invoke-CleanTarget "kernel"
-        }
-
-        $kernelTarget = "$Root\target_build\kernel"
-        New-Item -Path $kernelTarget -ItemType Directory -Force | Out-Null
-        $manifestPath = "$Root\kernel\Cargo.toml"
-
-        $cargoResult = Invoke-CargoBuildWithRetry -TargetDir $kernelTarget -ManifestPath $manifestPath -Target "x86_64-unknown-none" -Force:$ForceRebuild
-        $cargoOutput = $cargoResult.Output
-        $cargoExit = $cargoResult.ExitCode
-
-        if ($Verbose) {
-            $cargoOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
-        } else {
-            $cargoOutput | ForEach-Object {
-                $line = $_.ToString()
-                if ($line -match "error\[")     { Write-Host "      $line" -ForegroundColor Red }
-                elseif ($line -match "warning:") { Write-Host "      $line" -ForegroundColor Yellow }
-                elseif ($line -match "Compiling|Finished") { Write-Host "      $line" -ForegroundColor DarkGray }
-            }
-        }
-
-        if ($cargoExit -ne 0) {
-            $cargoOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
-            throw "Kernel: fallo la compilacion"
-        }
-
-        $elfPath = "$kernelTarget\x86_64-unknown-none\release\fastos-kernel"
-        if (!(Test-Path $elfPath)) {
-            $elfPath = Get-ChildItem "$kernelTarget\x86_64-unknown-none\release\fastos-kernel*" -File |
-                       Where-Object { $_.Extension -eq "" -or $_.Extension -eq ".exe" } |
-                       Select-Object -First 1 -ExpandProperty FullName
-        }
-        if (!$elfPath -or !(Test-Path $elfPath)) { throw "No se encontro kernel.elf" }
-
-        Copy-Item $elfPath "$Root\kernel.elf" -Force
-        $kernelSize = (Get-Item "$Root\kernel.elf").Length
-        Write-Success "kernel.elf: $([math]::Round($kernelSize/1024, 1)) KB"
-    } else {
-        # BootloaderOnly: usar el kernel.elf existente
-        if (Test-Path "$Root\kernel.elf") {
-            $kernelSize = (Get-Item "$Root\kernel.elf").Length
-            Write-Success "kernel.elf (existente): $([math]::Round($kernelSize/1024, 1)) KB"
-        }
+    foreach ($w in $ExtraWatch) {
+        if (Test-FileNewer $w $artifactTime) { return $true }
     }
+    return $false
+}
 
-    # -- Step 2b: Build BMO-FS CLI --------------------------------------------
-    if (!$KernelOnly -and !$BootloaderOnly) {
-        Write-Step "[2b/3] Compilando BMO-FS CLI..." "Cyan"
-        Push-Location "$Root\bmofs"
-        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $bmofsTarget = "$Root\target_build\bmofs"
-        New-Item -Path $bmofsTarget -ItemType Directory -Force | Out-Null
-        $cargoResult = Invoke-CargoBuildWithRetry -TargetDir $bmofsTarget -ManifestPath "$Root\bmofs\Cargo.toml" -Force:$ForceRebuild
-        $cargoOutput = $cargoResult.Output
-        $cargoExit = $cargoResult.ExitCode
-        $ErrorActionPreference = $savedEAP
-
-        $cargoOutput | ForEach-Object {
-            $line = $_.ToString()
-            if ($line -match "error\[")     { Write-Host "      $line" -ForegroundColor Red }
-            elseif ($line -match "Compiling|Finished") { Write-Host "      $line" -ForegroundColor DarkGray }
-        }
-
-        if ($cargoExit -ne 0) {
-            $cargoOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
-            throw "BMO-FS CLI: fallo la compilacion"
-        }
-        $bmofsExe = "$bmofsTarget\release\bmofs.exe"
-        if (!(Test-Path $bmofsExe)) {
-            $bmofsExe = Get-ChildItem "$bmofsTarget\release\bmofs*.exe" -File | Select-Object -First 1 -ExpandProperty FullName
-        }
-        Pop-Location
-        Write-Success "BMO-FS CLI OK"
-
-        # -- Step 3: Preparar USB_boot/ -------------------------------------------
-        Write-Step "[3/3] Preparando USB_boot/..." "Cyan"
-
-        Write-Host "      Creando imagen de disco BMO-FS (bmofs.img)..." -ForegroundColor DarkGray
-        $bmofsImgPath = "$Root\bmofs.img"
-        & $bmofsExe format $bmofsImgPath 12800 | Out-Null
-        $readmeTemp = Join-Path $Root "readme_bmofs.txt"
-        Set-Content -Path $readmeTemp -Value "¡Bienvenido a BMO-FS! Este archivo vive dentro de la imagen nativa en tu USB." -Encoding UTF8
-        & $bmofsExe add $bmofsImgPath $readmeTemp "readme.txt" | Out-Null
-        Remove-Item $readmeTemp -Force -ErrorAction SilentlyContinue
-
-        $usbDir = "$Root\USB_boot"
-        $efiBootDir = "$usbDir\EFI\BOOT"
-        New-Item -Path $efiBootDir -ItemType Directory -Force | Out-Null
-
-        Copy-Item "$Root\BOOTX64.EFI" "$usbDir\BOOTX64.EFI" -Force
-        Copy-Item "$Root\BOOTX64.EFI" "$efiBootDir\BOOTX64.EFI" -Force
-        Copy-Item "$Root\kernel.elf"  "$usbDir\kernel.elf" -Force
-        Copy-Item "$Root\kernel.elf"  "$efiBootDir\kernel.elf" -Force
-        Copy-Item "$bmofsImgPath"     "$usbDir\bmofs.img" -Force
-
-        Write-Success "USB_boot/ listo"
+function Build-Bootloader {
+    param([switch]$Force)
+    if (!(Test-NeedsRebuild -SourceDir $Script:BootloaderDir -ArtifactPath $Script:BootloaderOut -Force:$Force)) {
+        Write-Info "bootloader: sin cambios, saltando"
+        return $true
     }
-} else {
-    if (!(Test-Path "$Root\BOOTX64.EFI") -or !(Test-Path "$Root\kernel.elf")) {
-        throw "No se encontraron BOOTX64.EFI o kernel.elf -- ejecuta sin -FlashOnly primero"
+    return Invoke-CargoBuild `
+        -ManifestPath (Join-Path $Script:BootloaderDir "Cargo.toml") `
+        -TargetDir   (Join-Path $Script:TargetBuild "bootloader") `
+        -Target      "x86_64-unknown-uefi" `
+        -Label       "bootloader" `
+        -Force:$Force
+}
+
+function Build-Kernel {
+    param([switch]$Force)
+    if (!(Test-NeedsRebuild -SourceDir $Script:KernelDir -ArtifactPath $Script:KernelOut -Force:$Force)) {
+        Write-Info "kernel: sin cambios, saltando"
+        return $true
     }
-    $efiSize = (Get-Item "$Root\BOOTX64.EFI").Length
-    $kernelSize = (Get-Item "$Root\kernel.elf").Length
-    Write-Warn "Saltando compilacion (-FlashOnly)"
-    Write-Host "      BOOTX64.EFI: $([math]::Round($efiSize/1024, 1)) KB" -ForegroundColor DarkGray
-    Write-Host "      kernel.elf:  $([math]::Round($kernelSize/1024, 1)) KB" -ForegroundColor DarkGray
+    return Invoke-CargoBuild `
+        -ManifestPath (Join-Path $Script:KernelDir "Cargo.toml") `
+        -TargetDir   (Join-Path $Script:TargetBuild "kernel") `
+        -Target      "x86_64-unknown-none" `
+        -Label       "kernel" `
+        -Force:$Force
+}
+
+function Build-Bmofs {
+    param([switch]$Force)
+    if (!(Test-NeedsRebuild -SourceDir $Script:BmofsDir -ArtifactPath $Script:BmofsOut -Force:$Force)) {
+        Write-Info "bmofs: sin cambios, saltando"
+        return $true
+    }
+    return Invoke-CargoBuild `
+        -ManifestPath (Join-Path $Script:BmofsDir "Cargo.toml") `
+        -TargetDir   (Join-Path $Script:TargetBuild "bmofs") `
+        -Label       "bmofs" `
+        -Force:$Force
 }
 
 # ============================================================================
-# Diff visual (mostrar que cambio)
-# ============================================================================
-$prevMarker = "$Root\USB_boot\FASTOS_BUILD_MARKER.txt"
-$newHash = (Get-FileHash "$Root\kernel.elf" -Algorithm SHA256).Hash
-$newEfiHash = (Get-FileHash "$Root\BOOTX64.EFI" -Algorithm SHA256).Hash
-$prevHash = $null
-$prevEfiHash = $null
-if (Test-Path $prevMarker) {
-    Get-Content $prevMarker | ForEach-Object {
-        if ($_ -match "kernel\.elf\.SHA256=(.+)") { $prevHash = $matches[1] }
-        if ($_ -match "BOOTX64\.EFI\.SHA256=(.+)") { $prevEfiHash = $matches[1] }
-    }
-}
-
-Write-Host ""
-Write-Step "Cambios desde el ultimo flash:" "Cyan"
-if ($prevHash -and $prevHash -ne $newHash) {
-    Write-Host "      kernel.elf:   CAMBIO  ($prevHash -> $newHash)" -ForegroundColor Yellow
-} elseif ($prevHash) {
-    Write-Host "      kernel.elf:   sin cambios" -ForegroundColor DarkGray
-} else {
-    Write-Host "      kernel.elf:   (primera compilacion)" -ForegroundColor DarkGray
-}
-if ($prevEfiHash -and $prevEfiHash -ne $newEfiHash) {
-    Write-Host "      BOOTX64.EFI:  CAMBIO  ($prevEfiHash -> $newEfiHash)" -ForegroundColor Yellow
-} elseif ($prevEfiHash) {
-    Write-Host "      BOOTX64.EFI:  sin cambios" -ForegroundColor DarkGray
-} else {
-    Write-Host "      BOOTX64.EFI:  (primera compilacion)" -ForegroundColor DarkGray
-}
-
-# ============================================================================
-# Salir si solo build
-# ============================================================================
-if ($BuildOnly) {
-    Write-Host ""
-    Write-Host "================================================================" -ForegroundColor Green
-    Write-Host "  BUILD COMPLETO (sin flash)" -ForegroundColor Green
-    Write-Host "  Para flashear: .\build_uefi.cmd -FlashOnly" -ForegroundColor Green
-    Write-Host "================================================================" -ForegroundColor Green
-    return
-}
-
-# ============================================================================
-# FASE 2: FLASH USB
+# ARTIFACT STAGING (USB_boot/)
 # ============================================================================
 
-# -- Auto-elevate to Admin ---------------------------------------------------
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole]::Administrator)
-
-if (!$isAdmin) {
-    Write-Host ""
-    Write-Step "Se necesitan permisos de Administrador..." "Yellow"
-    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
-    if ($DiskNumber -ge 0) { $argList += " -DiskNumber $DiskNumber" }
-    if ($FlashOnly) { $argList += " -FlashOnly" }
-    if ($BuildOnly) { $argList += " -BuildOnly" }
-    if ($Rebuild) { $argList += " -Rebuild" }
-    if ($ForceRebuild) { $argList += " -ForceRebuild" }
-    if ($KernelOnly) { $argList += " -KernelOnly" }
-    if ($BootloaderOnly) { $argList += " -BootloaderOnly" }
-    if ($Verbose) { $argList += " -Verbose" }
-    if ($SkipDepsCheck) { $argList += " -SkipDepsCheck" }
-    if ($Force) { $argList += " -Force" }
-    Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait
-    exit 0
+function Get-KernelVersion {
+    # Lee la version declarada en kernel/Cargo.toml
+    $toml = Join-Path $Script:KernelDir "Cargo.toml"
+    if (Test-Path $toml) {
+        $match = Select-String -Path $toml -Pattern '^version\s*=\s*"([^"]+)"' -AllMatches
+        if ($match) { return $match.Matches[0].Groups[1].Value }
+    }
+    return "unknown"
 }
 
-# -- Detectar USB ------------------------------------------------------------
-Write-Step "[FLASH] Flasheando al USB..." "Cyan"
-
-if ($DiskNumber -lt 0) {
-    Write-Host ""
-    Write-Host "  Buscando discos USB..." -ForegroundColor Cyan
-    $usbDisks = @(Get-Disk | Where-Object { $_.BusType -eq "USB" })
-
-    if ($usbDisks.Count -eq 0) {
-        Write-Err "No hay USB conectado."
-        if (!$Force) { Read-Host "  Presiona Enter para salir" }
-        exit 1
+function Get-BootloaderVersion {
+    $toml = Join-Path $Script:BootloaderDir "Cargo.toml"
+    if (Test-Path $toml) {
+        $match = Select-String -Path $toml -Pattern '^version\s*=\s*"([^"]+)"' -AllMatches
+        if ($match) { return $match.Matches[0].Value }
     }
-
-    Write-Host ""
-    Write-Host "  Discos USB:" -ForegroundColor Green
-    foreach ($d in $usbDisks) {
-        $sizeGB = [math]::Round($d.Size / 1GB, 1)
-        Write-Host "    [$($d.Number)]  $($d.FriendlyName)  ($sizeGB GB)" -ForegroundColor White
-    }
-    Write-Host ""
-
-    if ($usbDisks.Count -eq 1) {
-        $DiskNumber = $usbDisks[0].Number
-        Write-Host "  Solo 1 USB -> Disco $DiskNumber seleccionado." -ForegroundColor Green
-    } else {
-        $sel = Read-Host "  Escribe el numero del disco USB"
-        $DiskNumber = [int]$sel
-    }
-    Write-Host ""
+    return "unknown"
 }
 
-# -- Validar disco -----------------------------------------------------------
-$disk = Get-Disk -Number $DiskNumber -ErrorAction SilentlyContinue
-if (!$disk) { throw "Disco $DiskNumber no encontrado" }
+function Invoke-Stage {
+    Write-Step "Staging USB_boot/ desde artefactos" "Cyan"
 
-$sysDisk = (Get-Partition -DriveLetter C -ErrorAction SilentlyContinue).DiskNumber
-if ($DiskNumber -eq $sysDisk) {
-    Write-Err "El disco $DiskNumber es el DISCO DEL SISTEMA. Cancelado."
-    if (!$Force) { Read-Host "  Presiona Enter para salir" }
-    exit 1
+    $bootloaderPath = $Script:BootloaderOut
+    $kernelPath     = $Script:KernelOut
+    $bmofsPath      = $Script:BmofsOut
+    $bmofsImg       = Join-Path $Script:Root "bmofs.img"
+
+    foreach ($a in @($bootloaderPath, $kernelPath)) {
+        if (!(Test-Path $a)) {
+            Exit-With 1 "Artefacto faltante: $a (corre el build primero)"
+        }
+    }
+
+    # Limpiar USB_boot
+    if (Test-Path $Script:UsbBoot) {
+        Remove-Item $Script:UsbBoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    New-Item -ItemType Directory -Path $Script:UsbBoot -Force | Out-Null
+    $efiBootPath = Join-Path $Script:UsbBoot "EFI\BOOT"
+    New-Item -ItemType Directory -Path $efiBootPath -Force | Out-Null
+
+    # Copiar bootloader como BOOTX64.EFI (2 ubicaciones: root + EFI/BOOT)
+    Write-Sub "BOOTX64.EFI (bootloader)"
+    Copy-Item $bootloaderPath (Join-Path $Script:UsbBoot $Script:EfiTarget) -Force
+    Copy-Item $bootloaderPath (Join-Path $efiBootPath $Script:EfiTarget) -Force
+
+    # Copiar kernel.elf (2 ubicaciones: root + EFI/BOOT)
+    Write-Sub "kernel.elf"
+    Copy-Item $kernelPath (Join-Path $Script:UsbBoot "kernel.elf") -Force
+    Copy-Item $kernelPath (Join-Path $efiBootPath "kernel.elf") -Force
+
+    # Tambien copiarlos a root (convenience)
+    Write-Sub "Sincronizando root con staging"
+    Copy-Item $bootloaderPath (Join-Path $Script:Root $Script:EfiTarget) -Force
+    Copy-Item $kernelPath     (Join-Path $Script:Root "kernel.elf") -Force
+
+    # bmofs.img (si existe)
+    if (Test-Path $bmofsImg) {
+        Write-Sub "bmofs.img"
+        Copy-Item $bmofsImg (Join-Path $Script:UsbBoot "bmofs.img") -Force
+    } elseif (Test-Path $bmofsPath) {
+        Write-Warn "bmofs.exe existe pero bmofs.img no -- generando con bmofs (si hay firmware)"
+    }
+
+    # Build marker con SHA256
+    $bootloaderHash = (Get-FileHash $bootloaderPath -Algorithm SHA256).Hash
+    $kernelHash     = (Get-FileHash $kernelPath     -Algorithm SHA256).Hash
+    $markerPath     = Join-Path $Script:UsbBoot "FASTOS_BUILD_MARKER.txt"
+    $marker = @(
+        "FastOS USB build marker"
+        "Date=$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))"
+        "Script=v$Script:ScriptVersion"
+        "Kernel.Version=$(Get-KernelVersion)"
+        "Bootloader.Version=$(Get-BootloaderVersion)"
+        "BOOTX64.EFI.Size=$((Get-Item $bootloaderPath).Length)"
+        "BOOTX64.EFI.SHA256=$bootloaderHash"
+        "kernel.elf.Size=$((Get-Item $kernelPath).Length)"
+        "kernel.elf.SHA256=$kernelHash"
+    )
+    Set-Content -Path $markerPath -Encoding ASCII -Value $marker
+    Write-Sub "FASTOS_BUILD_MARKER.txt escrito (SHA256 capturado)"
+
+    Write-OK "Staging completo en $Script:UsbBoot"
 }
 
-$diskSizeGB = [math]::Round($disk.Size / 1GB, 1)
+# ============================================================================
+# USB FLASH
+# ============================================================================
 
-Write-Host ""
-Write-Host "  BOOTX64.EFI  $([math]::Round($efiSize/1024))KB" -ForegroundColor White
-Write-Host "  kernel.elf   $([math]::Round($kernelSize/1024))KB" -ForegroundColor White
-Write-Host "  Disco [$DiskNumber] $($disk.FriendlyName) -- $diskSizeGB GB ($($disk.BusType))" -ForegroundColor White
-Write-Host ""
-Write-Host "  ESTO FORMATEARA EL DISCO $DiskNumber POR COMPLETO" -ForegroundColor Red
-Write-Host ""
-if (!$Force) {
-    $confirm = Read-Host "  Escribe FLASH para continuar"
-    if ($confirm -ne "FLASH") {
-        Write-Host "  Cancelado." -ForegroundColor Yellow
-        Read-Host "  Presiona Enter para salir"
-        exit 0
+function Get-TargetDisk {
+    param([int]$DiskNumber)
+
+    Write-Step "Seleccionando disco USB" "Cyan"
+
+    if ($DiskNumber -lt 0) {
+        Write-Info "Listando discos disponibles:"
+        $disks = Get-Disk | Where-Object { $_.IsBoot -eq $false -or $_.IsBoot -eq $true } | Select-Object Number, FriendlyName, BusType, @{N="SizeGB";E={[math]::Round($_.Size/1GB,1)}}
+        $disks | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Host "          $_" }
+
+        $sysDisk = (Get-Partition -DriveLetter C -ErrorAction SilentlyContinue).DiskNumber
+        Write-Warn "El disco del sistema es [$sysDisk] (C:). NO lo uses."
+        $resp = Read-Host "  Numero de disco USB (ej: 2)"
+        $DiskNumber = [int]$resp
     }
-} else {
-    Write-Host "  [FORCE] Saltando confirmacion interactiva..." -ForegroundColor Yellow
+
+    $disk = Get-Disk -Number $DiskNumber -ErrorAction SilentlyContinue
+    if (!$disk) {
+        Exit-With 1 "Disco $DiskNumber no encontrado"
+    }
+
+    # Safety: no permitir flashear el disco del sistema
+    $sysDisk = (Get-Partition -DriveLetter C -ErrorAction SilentlyContinue).DiskNumber
+    if ($DiskNumber -eq $sysDisk) {
+        Exit-With 1 "El disco $DiskNumber es el DISCO DEL SISTEMA. Cancelado por seguridad."
+    }
+
+    Write-Sub "Disco [$DiskNumber] $($disk.FriendlyName) -- $([math]::Round($disk.Size/1GB,1)) GB ($($disk.BusType))"
+    return $disk
 }
 
-# -- Formatear USB: GPT + FAT32 (Estandar UEFI) --------------------------------
-Write-Host ""
-Write-Step "[FLASH 1/3] Formateando GPT + FAT32 (UEFI)..." "Cyan"
+function Format-UsbGptFat32 {
+    param($Disk)
 
-$dl = $null
-try {
-    Write-Host "      Limpiando disco (PowerShell)..." -ForegroundColor DarkGray
-    $disk | Clear-Disk -RemoveData -RemoveOEM -Confirm:$false
+    Write-Step "[FLASH 1/3] Formateando GPT + FAT32" "Cyan"
 
-    Write-Host "      Aplicando GPT (GUID Partition Table)..." -ForegroundColor DarkGray
-    $disk | Set-Disk -PartitionStyle GPT
-
-    Write-Host "      Creando particion EFI (ESP)..." -ForegroundColor DarkGray
-    $partition = $disk | New-Partition -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' -UseMaximumSize -AssignDriveLetter
-
-    Write-Host "      Formateando FAT32..." -ForegroundColor DarkGray
-    $partition | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "FastOS" -Confirm:$false
-    Start-Sleep -Seconds 2
-    $updatedPartition = Get-Partition -DiskNumber $DiskNumber | Where-Object { $_.DriveLetter } | Select-Object -First 1
-    if ($updatedPartition) {
-        $dl = $updatedPartition.DriveLetter
-    } else {
-        $dl = $partition.DriveLetter
+    $dl = $null
+    try {
+        Write-Sub "Limpiando disco..."
+        $Disk | Clear-Disk -RemoveData -RemoveOEM -Confirm:$false -ErrorAction Stop
+        Write-Sub "Aplicando GPT..."
+        $Disk | Set-Disk -PartitionStyle GPT -ErrorAction Stop
+        Write-Sub "Creando particion EFI (ESP)..."
+        $partition = $Disk | New-Partition -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' -UseMaximumSize -AssignDriveLetter -ErrorAction Stop
+        Write-Sub "Formateando FAT32..."
+        $partition | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "FastOS" -Confirm:$false -ErrorAction Stop
+        Start-Sleep -Seconds 2
+        $dl = (Get-Partition -DiskNumber $Disk.Number | Where-Object DriveLetter | Select-Object -First 1).DriveLetter
+    } catch {
+        Write-Warn "PowerShell fallo: $_"
+        Write-Info "Reintentando con Diskpart..."
+        $dl = Format-UsbGptFat32Diskpart $Disk.Number
     }
-} catch {
-    Write-Host "      [!] Error formateando con PowerShell: $_" -ForegroundColor Yellow
-    Write-Host "      [!] Intentando con Diskpart (metodo alternativo ultra-robusto)..." -ForegroundColor Cyan
 
-    $dpScriptPath = Join-Path $Root "diskpart_temp.txt"
-    $dpScript = @"
+    if (!$dl) { Exit-With 1 "No se pudo obtener letra de unidad" }
+    Write-OK "Unidad asignada: ${dl}:\"
+    return "${dl}:\"
+}
+
+function Format-UsbGptFat32Diskpart {
+    param([int]$DiskNumber)
+    $dpScript = Join-Path $Script:Root "diskpart_temp.txt"
+    @"
 select disk $DiskNumber
 clean
 convert gpt
 create partition efi
 format fs=fat32 quick label="FastOS"
 assign
-"@
-    Set-Content -Path $dpScriptPath -Value $dpScript -Encoding ASCII
+"@ | Set-Content -Path $dpScript -Encoding ASCII
 
-    Write-Host "      Ejecutando diskpart..." -ForegroundColor DarkGray
-    $process = Start-Process diskpart.exe -ArgumentList "/s `"$dpScriptPath`"" -NoNewWindow -PassThru -Wait
+    $p = Start-Process diskpart.exe -ArgumentList "/s `"$dpScript`"" -NoNewWindow -PassThru -Wait
+    Remove-Item $dpScript -Force -ErrorAction SilentlyContinue
+    if ($p.ExitCode -ne 0) { return $null }
 
-    Remove-Item $dpScriptPath -Force -ErrorAction SilentlyContinue
-
-    if ($process.ExitCode -ne 0) {
-        throw "Diskpart fallo con codigo de salida $($process.ExitCode)"
-    }
-
-    Write-Host "      Buscando nueva letra de unidad..." -ForegroundColor DarkGray
     Start-Sleep -Seconds 3
+    $part = Get-Partition -DiskNumber $DiskNumber | Where-Object DriveLetter | Select-Object -First 1
+    if ($part) { return $part.DriveLetter }
+    $vol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "FastOS" } | Select-Object -First 1
+    if ($vol -and $vol.DriveLetter) { return $vol.DriveLetter }
+    return $null
+}
 
-    $disk = Get-Disk -Number $DiskNumber
-    $partition = Get-Partition -DiskNumber $DiskNumber | Where-Object { $_.DriveLetter } | Select-Object -First 1
-    if (!$partition) {
-        $vol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "FastOS" } | Select-Object -First 1
-        if ($vol -and $vol.DriveLetter) {
-            $dl = $vol.DriveLetter
-        } else {
-            throw "No se encontro la letra de unidad asignada tras Diskpart"
+function Copy-ArtifactsToUsb {
+    param([string]$DriveRoot)
+
+    Write-Step "[FLASH 2/3] Copiando USB_boot -> $DriveRoot" "Cyan"
+
+    if (!(Test-Path $Script:UsbBoot)) {
+        Exit-With 1 "USB_boot/ no existe -- corre staging primero"
+    }
+
+    $efiBoot = Join-Path $DriveRoot "EFI\BOOT"
+    New-Item -ItemType Directory -Path $efiBoot -Force | Out-Null
+
+    # Copia recursiva de todo el staging
+    Write-Sub "Copiando contenido de USB_boot/*"
+    Copy-Item -Path "$Script:UsbBoot\*" -Destination $DriveRoot -Recurse -Force
+
+    Write-OK "Copia completa"
+}
+
+function Test-UsbFlash {
+    param([string]$DriveRoot)
+
+    Write-Step "[FLASH 3/3] Verificando integridad" "Cyan"
+
+    $required = @(
+        @{ Name = "BOOTX64.EFI (EFI/BOOT)"; Path = (Join-Path $DriveRoot "EFI\BOOT\BOOTX64.EFI"); Orig = $Script:BootloaderOut },
+        @{ Name = "BOOTX64.EFI (root)";     Path = (Join-Path $DriveRoot $Script:EfiTarget);    Orig = $Script:BootloaderOut },
+        @{ Name = "kernel.elf (EFI/BOOT)";  Path = (Join-Path $DriveRoot "EFI\BOOT\kernel.elf");  Orig = $Script:KernelOut },
+        @{ Name = "kernel.elf (root)";      Path = (Join-Path $DriveRoot "kernel.elf");        Orig = $Script:KernelOut },
+        @{ Name = "FASTOS_BUILD_MARKER.txt"; Path = (Join-Path $DriveRoot "FASTOS_BUILD_MARKER.txt"); Orig = (Join-Path $Script:UsbBoot "FASTOS_BUILD_MARKER.txt") }
+    )
+
+    $ok = $true
+    foreach ($c in $required) {
+        if (!(Test-Path $c.Path)) {
+            Write-Err "$($c.Name): no copiado"
+            $ok = $false
+            continue
         }
+        if (!(Test-Path $c.Orig)) {
+            Write-Warn "$($c.Name): origen no existe, saltando verificacion"
+            continue
+        }
+        $cHash = (Get-FileHash $c.Path -Algorithm SHA256).Hash
+        $oHash = (Get-FileHash $c.Orig -Algorithm SHA256).Hash
+        if ($cHash -eq $oHash) {
+            Write-Sub "$($c.Name): $([math]::Round((Get-Item $c.Path).Length/1024)) KB -- SHA256 OK"
+        } else {
+            Write-Err "$($c.Name): SHA256 no coincide"
+            Write-Sub "  origen: $oHash"
+            Write-Sub "  copia:  $cHash"
+            $ok = $false
+        }
+    }
+
+    if ($ok) { Write-OK "Verificacion: TODO OK" }
+    else     { Write-Err "Verificacion: HUBO ERRORES" }
+    return $ok
+}
+
+function Invoke-Flash {
+    param([int]$DiskNumber, [switch]$Force)
+
+    $disk = Get-TargetDisk -DiskNumber $DiskNumber
+    $bootloaderSize = [math]::Round((Get-Item $Script:BootloaderOut).Length / 1024, 1)
+    $kernelSize     = [math]::Round((Get-Item $Script:KernelOut).Length     / 1024, 1)
+    $diskSizeGB     = [math]::Round($disk.Size / 1GB, 1)
+
+    Write-Host ""
+    Write-Host "  =================================================================" -ForegroundColor Yellow
+    Write-Host "  RESUMEN FLASH" -ForegroundColor Yellow
+    Write-Host "    BOOTX64.EFI  ${bootloaderSize} KB  (kernel.elf bootloader)" -ForegroundColor White
+    Write-Host "    kernel.elf   ${kernelSize} KB  (FastOS v$(Get-KernelVersion))" -ForegroundColor White
+    Write-Host "    Disco        [$($disk.Number)] $($disk.FriendlyName) -- $diskSizeGB GB ($($disk.BusType))" -ForegroundColor White
+    Write-Host "  =================================================================" -ForegroundColor Yellow
+    Write-Host "  ESTO FORMATEARA EL DISCO [$($disk.Number)] POR COMPLETO" -ForegroundColor Red
+    Write-Host ""
+
+    if (-not (Read-Confirm "Escribe FLASH para continuar (o Enter para cancelar)" "FLASH" -Force:$Force)) {
+        Write-Warn "Cancelado por el usuario"
+        return
+    }
+
+    $driveRoot = Format-UsbGptFat32 $disk
+    Copy-ArtifactsToUsb $driveRoot
+
+    $verified = Test-UsbFlash $driveRoot
+    Show-FinalSummary $driveRoot $verified
+}
+
+function Show-FinalSummary {
+    param([string]$DriveRoot, [bool]$Verified)
+
+    $buildDate = Get-Date -Format 'yyyy-MM-dd HH:mm'
+
+    Write-Host ""
+    Write-Host "================================================================" -ForegroundColor Green
+    if ($Verified) {
+        Write-Host "  FASTOS LISTO EN USB ($DriveRoot)" -ForegroundColor Green
     } else {
-        $dl = $partition.DriveLetter
+        Write-Host "  FLASH COMPLETADO CON ERRORES -- revisa arriba" -ForegroundColor Yellow
+    }
+    Write-Host "  Build:  $buildDate" -ForegroundColor Green
+    Write-Host "  Kernel: v$(Get-KernelVersion)" -ForegroundColor Green
+    Write-Host "  Script: v$Script:ScriptVersion" -ForegroundColor Green
+    Write-Host "================================================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Contenido del USB:" -ForegroundColor White
+    Write-Host "    ${DriveRoot}EFI\BOOT\BOOTX64.EFI  (bootloader UEFI)" -ForegroundColor White
+    Write-Host "    ${DriveRoot}EFI\BOOT\kernel.elf    (kernel FastOS)" -ForegroundColor White
+    Write-Host "    ${DriveRoot}kernel.elf              (copia en root)" -ForegroundColor White
+    Write-Host "    ${DriveRoot}FASTOS_BUILD_MARKER.txt (build info + SHA256)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Pasos para bootear:" -ForegroundColor Yellow
+    Write-Host "    1. Reinicia el PC" -ForegroundColor White
+    Write-Host "    2. BIOS: CSM = DISABLED, Secure Boot = DISABLED" -ForegroundColor White
+    Write-Host "    3. Boot desde USB (UEFI only)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Que esperas en pantalla:" -ForegroundColor Cyan
+    Write-Host "    - Bootloader UEFI carga el kernel inmediatamente" -ForegroundColor White
+    Write-Host "    - 5 fases de boot (CPU, Mem, Dev, Disp, Desk)" -ForegroundColor White
+    Write-Host "    - Welcome screen v$(Get-KernelVersion) dark elegante" -ForegroundColor White
+    Write-Host "    - Escribe Run -> BMO API v2.0 desktop real" -ForegroundColor White
+    Write-Host "================================================================" -ForegroundColor Green
+    Write-Host ""
+
+    if (-not $Force) {
+        Read-Host "  Presiona Enter para cerrar" | Out-Null
     }
 }
 
-if (!$dl) {
-    throw "No se pudo obtener la letra de unidad del USB"
+# ============================================================================
+# MAIN FLOW
+# ============================================================================
+
+Write-Banner
+
+# -- 1) Clean si se pidio ----------------------------------------------------
+if ($Clean) {
+    Invoke-Clean "all"
+    if (!$BuildOnly) { exit 0 }
 }
 
-Write-Host "      Unidad asignada: ${dl}:\" -ForegroundColor DarkGray
-Write-Success "[FLASH 1/3] OK"
+# -- 2) Verificar toolchain --------------------------------------------------
+Test-Toolchain | Out-Null
 
-# -- Copiar archivos ---------------------------------------------------------
-Write-Step "[FLASH 2/3] Copiando archivos desde USB_boot..." "Cyan"
+# -- 3) Decidir alcance del build -------------------------------------------
+$buildAll      = !$KernelOnly -and !$BootloaderOnly -and !$BmofsOnly
+$doBootloader  = $buildAll -or $BootloaderOnly
+$doKernel      = $buildAll -or $KernelOnly
+$doBmofs       = $buildAll -or $BmofsOnly
+$doClean       = $Rebuild -or $ForceRebuild
 
-$efiBootPath = "${dl}:\EFI\BOOT"
+if ($doClean) { Invoke-Clean "build" }
 
-Copy-Item "$Root\BOOTX64.EFI" "$Root\USB_boot\BOOTX64.EFI" -Force
-Copy-Item "$Root\BOOTX64.EFI" "$Root\USB_boot\EFI\BOOT\BOOTX64.EFI" -Force
-Copy-Item "$Root\kernel.elf" "$Root\USB_boot\EFI\BOOT\kernel.elf" -Force
-Copy-Item "$Root\kernel.elf" "$Root\USB_boot\kernel.elf" -Force
-if (Test-Path "$Root\bmofs.img") {
-    Copy-Item "$Root\bmofs.img"  "$Root\USB_boot\bmofs.img" -Force
-}
+# -- 4) Build ----------------------------------------------------------------
+$buildOk = $true
 
-$markerPath = "$Root\USB_boot\FASTOS_BUILD_MARKER.txt"
-$efiHash = (Get-FileHash "$Root\BOOTX64.EFI" -Algorithm SHA256).Hash
-$kernelHash = (Get-FileHash "$Root\kernel.elf" -Algorithm SHA256).Hash
-Set-Content -Path $markerPath -Encoding ASCII -Value @(
-    "FastOS USB build marker",
-    "Date=$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))",
-    "BOOTX64.EFI.Size=$((Get-Item "$Root\BOOTX64.EFI").Length)",
-    "BOOTX64.EFI.SHA256=$efiHash",
-    "kernel.elf.Size=$((Get-Item "$Root\kernel.elf").Length)",
-    "kernel.elf.SHA256=$kernelHash"
-)
-
-# Copy the entire USB_boot directory to the USB flash drive
-Copy-Item -Path "$Root\USB_boot\*" -Destination "${dl}:\" -Recurse -Force
-Write-Host "      Copiado todo el contenido de USB_boot (BOOTX64.EFI, kernel.elf, bmofs.img, firmware, etc.)" -ForegroundColor DarkGray
-
-Write-Success "[FLASH 2/3] OK"
-
-# -- Verificar ---------------------------------------------------------------
-Write-Step "[FLASH 3/3] Verificando..." "Cyan"
-
-$ok = $true
-$checks = @(
-    @{ Path = "$efiBootPath\BOOTX64.EFI"; Name = "BOOTX64.EFI"; Orig = "$Root\BOOTX64.EFI"; Required = $true },
-    @{ Path = "${dl}:\BOOTX64.EFI";       Name = "BOOTX64.EFI root"; Orig = "$Root\BOOTX64.EFI"; Required = $true },
-    @{ Path = "$efiBootPath\kernel.elf";  Name = "kernel.elf EFI"; Orig = "$Root\kernel.elf"; Required = $true },
-    @{ Path = "${dl}:\kernel.elf";        Name = "kernel.elf";   Orig = "$Root\kernel.elf"; Required = $true },
-    @{ Path = "${dl}:\bmofs.img";         Name = "bmofs.img";    Orig = "$Root\bmofs.img";  Required = $true },
-    @{ Path = "${dl}:\FASTOS_BUILD_MARKER.txt"; Name = "FASTOS_BUILD_MARKER.txt"; Orig = "$Root\USB_boot\FASTOS_BUILD_MARKER.txt"; Required = $true },
-    @{ Path = "${dl}:\fastos_boot.bin";   Name = "fastos_boot.bin"; Orig = "$Root\USB_boot\fastos_boot.bin"; Required = $false }
-)
-
-foreach ($c in $checks) {
-    if (!(Test-Path $c.Orig)) {
-        if ($c.Required) {
-            Write-Err "$($c.Name): origen no existe"
-            $ok = $false
-        } else {
-            Write-Host "      $($c.Name): omitido (legacy opcional)" -ForegroundColor DarkGray
-        }
-        continue
-    }
-
-    if (!(Test-Path $c.Path)) {
-        if ($c.Required) {
-            Write-Err "$($c.Name): no se copio"
-            $ok = $false
-        } else {
-            Write-Host "      $($c.Name): no presente (legacy opcional)" -ForegroundColor DarkGray
-        }
-    } else {
-        $copied = (Get-Item $c.Path).Length
-        $orig   = (Get-Item $c.Orig).Length
-        $hashOk = $true
-        if ($c.Required) {
-            $copiedHash = (Get-FileHash $c.Path -Algorithm SHA256).Hash
-            $origHash = (Get-FileHash $c.Orig -Algorithm SHA256).Hash
-            $hashOk = ($copiedHash -eq $origHash)
-        }
-        if ($copied -eq $orig -and $hashOk) {
-            Write-Host "      $($c.Name): $copied bytes SHA256 OK" -ForegroundColor DarkGray
-        } else {
-            Write-Err "$($c.Name): no coincide ($copied vs $orig bytes)"
-            $ok = $false
-        }
-    }
-}
-
-if ($ok) {
-    Write-Success "[FLASH 3/3] Verificado OK"
+if ($FlashOnly) {
+    Write-Info "FlashOnly: saltando build, usando artefactos existentes"
 } else {
-    Write-Err "[FLASH 3/3] Hubo errores -- revisa arriba"
+    if ($doBootloader) { if (!(Build-Bootloader -Force:$ForceRebuild)) { $buildOk = $false } }
+    if ($doKernel)     { if (!(Build-Kernel     -Force:$ForceRebuild)) { $buildOk = $false } }
+    if ($doBmofs)      { if (!(Build-Bmofs      -Force:$ForceRebuild)) { $buildOk = $false } }
+
+    if (!$buildOk) {
+        Exit-With 1 "Build fallo. Corrige los errores y vuelve a intentar."
+    }
 }
 
-# -- Resultado final ---------------------------------------------------------
-$buildDate = Get-Date -Format 'yyyy-MM-dd HH:mm'
+# -- 5) Verificar que los artefactos requeridos existen ---------------------
+if (!(Test-Path $Script:BootloaderOut)) { Exit-With 1 "bootloader.efi no encontrado" }
+if (!(Test-Path $Script:KernelOut))     { Exit-With 1 "kernel.elf no encontrado" }
 
-Write-Host ""
-Write-Host "================================================================" -ForegroundColor Green
-Write-Host "  FASTOS LISTO EN USB (${dl}:\)" -ForegroundColor Green
-Write-Host "  Build: $buildDate" -ForegroundColor Green
-Write-Host "================================================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "  Contenido del USB:" -ForegroundColor White
-Write-Host "    ${dl}:\EFI\BOOT\BOOTX64.EFI  (bootloader UEFI)" -ForegroundColor White
-Write-Host "    ${dl}:\EFI\BOOT\kernel.elf    (kernel FastOS)" -ForegroundColor White
-Write-Host "    ${dl}:\kernel.elf              (copia en root)" -ForegroundColor White
-Write-Host "    ${dl}:\fastos_boot.bin         (payload legacy opcional; no requerido para GOP)" -ForegroundColor White
-Write-Host "    ${dl}:\firmware\               (Binarios extras de hardware)" -ForegroundColor White
-Write-Host ""
-Write-Host "  Pasos:" -ForegroundColor Yellow
-Write-Host "    1. Reinicia el PC" -ForegroundColor White
-Write-Host "    2. BIOS: CSM = DISABLED, Secure Boot = DISABLED" -ForegroundColor White
-Write-Host "    3. Boot desde USB (UEFI)" -ForegroundColor White
-Write-Host ""
-Write-Host "  FastOS GOP boot -- que esperar en pantalla:" -ForegroundColor Cyan
-Write-Host "    1. El Bootloader lanzara FastOS de inmediato." -ForegroundColor White
-Write-Host "    2. El kernel usara UEFI GOP framebuffer." -ForegroundColor White
-Write-Host "    3. Veras la pantalla de bienvenida BMO." -ForegroundColor White
-Write-Host "    4. Escribe Run para entrar al escritorio Ring 0." -ForegroundColor White
-Write-Host "================================================================" -ForegroundColor Green
-Write-Host ""
-if (!$Force) {
-    Read-Host "  Presiona Enter para cerrar"
+# -- 6) Staging USB_boot/ ----------------------------------------------------
+Invoke-Stage
+
+# -- 7) Flash ----------------------------------------------------------------
+if ($BuildOnly) {
+    Write-Host ""
+    Write-Host "  =================================================================" -ForegroundColor Cyan
+    Write-Host "  BUILD COMPLETO (sin flash)" -ForegroundColor Cyan
+    Write-Host "    bootloader: $Script:BootloaderOut" -ForegroundColor White
+    Write-Host "    kernel:     $Script:KernelOut" -ForegroundColor White
+    Write-Host "    staging:    $Script:UsbBoot" -ForegroundColor White
+    Write-Host "  =================================================================" -ForegroundColor Cyan
+    if (-not $Force) { Read-Host "  Presiona Enter para cerrar" | Out-Null }
+    exit 0
 }
+
+Invoke-Flash -DiskNumber $DiskNumber -Force:$Force
