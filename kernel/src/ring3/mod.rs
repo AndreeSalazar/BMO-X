@@ -4,7 +4,7 @@
 //! las apps Ring 3 aún no se cargan dinámicamente (eso es v2.1 del
 //! BMO API spec). Lo que existe hoy son:
 //!
-//!   - Tests del path Ring 0→3→0 vía `ring0::crate::interrupt::ring3_test` (en el kernel).
+//!   - Tests del path Ring 0→3→0 vía `ring0::crate::arch::ring3_test` (en el kernel).
 //!   - El crate externo `nexo_ring3/` con stubs de BSF loader y ABI.
 //!   - El BMO API v2.0 (`bmo_core::bmo_api`) que define los 256 syscalls
 //!     que las apps Ring 3 usarán cuando el loader dinámico esté listo.

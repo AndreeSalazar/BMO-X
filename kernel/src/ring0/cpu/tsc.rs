@@ -39,7 +39,7 @@ pub fn calibrate() -> u64 {
     // Make available globally (for watchdog, bmo_abi::time, etc.)
     super::set_tsc_freq(freq);
 
-    crate::device::serial::serial_write("[cpu] TSC calibrated: ");
+    crate::dev::console::serial_write("[cpu] TSC calibrated: ");
     let mut buf = [0u8; 20];
     let mut v = freq;
     let mut i = buf.len();
@@ -47,8 +47,8 @@ pub fn calibrate() -> u64 {
     else {
         while v > 0 { i -= 1; buf[i] = b'0' + (v % 10) as u8; v /= 10; }
     }
-    crate::device::serial::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("?"));
-    crate::device::serial::serial_write(" Hz\n");
+    crate::dev::console::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("?"));
+    crate::dev::console::serial_write(" Hz\n");
 
     freq
 }

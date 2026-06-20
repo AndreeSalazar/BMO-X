@@ -55,11 +55,11 @@ pub fn run() -> ! {
 /// Ring 0 desktop main loop — stable GOP path.
 pub fn run_ring0() -> ! {
     crate::bmo_core::diag::info("desktop", "entering Ring 0 GOP desktop supervisor");
-    crate::device::serial::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
+    crate::dev::console::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
 
     // The desktop owns the screen now. Keep the watchdog and overlay out of the
     // first-frame path so hardware real does not look frozen behind diag.
-    crate::device::watchdog::disarm();
+    crate::dev::watchdog::disarm();
     crate::bmo_core::diag::set_overlay_enabled(false);
 
     state::init();
@@ -85,6 +85,6 @@ pub fn run_ring0() -> ! {
 /// Return to the welcome screen (safer than halting).
 fn return_to_welcome() -> ! {
     beep(0, 0);
-    crate::device::serial::serial_write("[desktop] ESC — returning to welcome.\n");
+    crate::dev::console::serial_write("[desktop] ESC — returning to welcome.\n");
     crate::bmo_core::desktop::welcome::run()
 }

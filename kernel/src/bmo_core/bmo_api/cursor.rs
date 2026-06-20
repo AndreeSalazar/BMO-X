@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use crate::device::gop;
+use crate::dev::framebuffer;
 
 pub mod id {
     pub const ARROW: u8 = 0;
@@ -58,9 +58,9 @@ pub fn paint(x: i32, y: i32) {
             let py = y + row as i32;
             if px < 0 || py < 0 || px >= 1920 || py >= 1080 { continue; }
             if sprite[row][col] == 1 {
-                gop::put_pixel(px as u32, py as u32, gop::Color(color));
+                crate::dev::framebuffer::put_pixel(px as u32, py as u32, crate::dev::framebuffer::Color(color));
             } else if sprite[row][col] == 2 {
-                gop::put_pixel(px as u32, py as u32, gop::Color(shadow));
+                crate::dev::framebuffer::put_pixel(px as u32, py as u32, crate::dev::framebuffer::Color(shadow));
             }
         }
     }

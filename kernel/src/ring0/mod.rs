@@ -4,59 +4,52 @@
 //! que requiere privilegios de CPU (Ring 0 de x86-64). El resto del
 //! kernel nunca toca hardware directamente — pasa por estas APIs.
 //!
-//! # Estructura
+//! # Estructura (v1.7.5)
 //!
 //! ```text
 //! Ring 0 (Hardware)
-//! ├─ interrupt/      ← Interrupt API (GDT, IDT, APIC, SMP, syscall dispatch)
-//! ├─ device/         ← Device API (GOP, serial, PCI, watchdog, audio, ACPI)
-//! ├─ memory/         ← Memory API (heap, paging, page_alloc, VMM)
-//! └─ cpu/            ← CPU primitives (CR, MSRs, MTRR, PAT, FPU, features)
+//! ├─ platform/    ← Platform info: CPUID, ACPI tables, firmware, topology
+//! ├─ arch/        ← Architecture: GDT, IDT, APIC, SMP, ctx, syscall
+//! ├─ mem/         ← Memory: phys (frame alloc), virt (page tables), heap, space
+//! ├─ dev/         ← Devices: pcie, console, framebuffer, audio, acpi control, watchdog
+//! ├─ proc/        ← Processes: task, process, scheduler, idle, user_init
+//! ├─ cpu/         ← CPU primitives: features, regs, msr, cache, fpu, perf, tsc, info
+//! └─ boot/        ← Boot sequence phases 0-5
 //! ```
 //!
-//! Además, hay módulos "de soporte" que no son HAL pero viven en Ring 0
-//! porque su inicialización es parte del boot:
-//!   - boot/        — Fases 0-5 (CPU, memoria, devices, display, scheduler, desktop)
-//!   - sched/       — Scheduler, process, thread
-//!   - syscall/     — Driver API: tabla de syscalls 0x00..0xFF (legacy)
-//!
 //! # Top-level
-//!   - entry.rs         — Entry point (`_start` + handoff al coordinator)
 //!   - coordinator.rs   — init() + main(): orquesta todo Ring 0
-//!   - boot_info.rs     — BootInfo shared from bootloader
 //!   - panic.rs         — panic_handler
 //!
 //! # Contratos
 //!
 //! - **Ring 0 NUNCA** debe ser alcanzado por código de Ring 3. La única
-//!   vía es vía syscall (interrupt/syscall.rs), que valida origen y
-//!   destino antes de ejecutar.
+//!   vía es vía syscall (`arch::syscall`), que valida origen y destino.
 //!
-//! - **Ring 0 ↔ BMO Core**: BMO Core llama a `crate::bmo_core::*` y
-//!   nunca al revés. Ring 0 expone syscalls y helpers (rdtsc, busy_wait_ms)
+//! - **Ring 0 ↔ BMO Core**: BMO Core llama a `crate::bmo_core::*` y nunca
+//!   al revés. Ring 0 expone syscalls y helpers (rdtsc, busy_wait_ms)
 //!   que BMO Core consume.
 //!
 //! # Cómo añadir un nuevo driver
 //!
-//! 1. Crear `device/<nombre>.rs` con la API:
+//! 1. Crear `dev/<nombre>.rs` con la API y un trait si aplica:
 //!    ```ignore
+//!    pub trait MyDev { fn init(&mut self); fn read(&self) -> Data; }
 //!    pub fn init() { /* hardware init */ }
-//!    pub fn read() -> Result<Data, Error> { ... }
-//!    pub fn write(data: &Data) -> Result<(), Error> { ... }
 //!    ```
-//! 2. Agregar `pub mod <nombre>;` en `device/mod.rs`.
+//! 2. Agregar `pub mod <nombre>;` en `dev/mod.rs`.
 //! 3. Si el driver expone un syscall nuevo, agregar el case en
-//!    `interrupt/syscall.rs` y la constante en `syscall/mod.rs`.
+//!    `arch::syscall::dispatch`.
 //! 4. Si el driver necesita init en una fase específica, agregar en
-//!    `coordinator.rs::init()` y documentar dependencias.
+//!    `coordinator::init()` y documentar dependencias.
 //!
 //! # Cómo añadir un nuevo handler de interrupción
 //!
-//! 1. Definir el handler en `interrupt/handlers/<nombre>.rs` con la firma
+//! 1. Definir el handler en `arch/<nombre>.rs` con la firma
 //!    `extern "x86-interrupt" fn(frame: &mut InterruptFrame)`.
-//! 2. Registrar en la IDT con `crate::interrupt::idt::register(vector, handler)`.
+//! 2. Registrar en la IDT con `crate::arch::idt::register(vector, handler)`.
 //! 3. Si el handler es per-IRQ, registrar también en el IO-APIC con
-//!    `crate::interrupt::apic::register_irq(irq, vector)`.
+//!    `crate::arch::apic::register_irq(irq, vector)`.
 
 #![no_std]
 #![no_main]
@@ -64,19 +57,18 @@
 
 extern crate alloc;
 
-// ── Hardware APIs ────────────────────────────────────────────────────
-pub mod interrupt;
-pub mod device;
-pub mod memory;
+// ── Hardware APIs (4 capas principales) ──────────────────────────────
+pub mod platform;
+pub mod arch;
+pub mod mem;
+pub mod dev;
+pub mod proc;
 pub mod cpu;
 
 // ── Soporte de Ring 0 ───────────────────────────────────────────────
 pub mod boot;
-pub mod sched;
-pub mod syscall;
 
 // ── Top-level Ring 0 ────────────────────────────────────────────────
-pub mod boot_info;
 mod panic;
 pub mod coordinator;
 
@@ -86,8 +78,8 @@ pub mod bmo_core;
 #[path = "../ring3/mod.rs"]
 pub mod ring3;
 
-// Re-exports principales.
-pub use boot_info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE};
+// Re-exports principales (BootInfo shared from bootloader).
+pub use boot::info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE};
 
 // ── Entry point ─────────────────────────────────────────────────────
 

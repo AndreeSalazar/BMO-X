@@ -37,7 +37,7 @@ pub enum OverlayTab {
     Memory = 2,
     /// I/O telemetry (PCI, serial, PS/2).
     Io = 3,
-    /// Scheduler telemetry (context switches, queues).
+    /// Scheduler telemetry (ctx switches, queues).
     Scheduler = 4,
     /// Event log (last 256 events).
     Log = 5,
@@ -201,8 +201,8 @@ pub fn ack_persistent_bytes(bytes: usize) {
 pub fn read_cr3_into_serial() {
     let cr3: u64;
     unsafe { core::arch::asm!("mov {}, cr3", out(reg) cr3); }
-    crate::device::serial::serial_write("0x");
-    crate::device::serial::serial_write_u64(cr3, 16);
+    crate::dev::console::serial_write("0x");
+    crate::dev::console::serial_write_u64(cr3, 16);
 }
 
 // ── Periodic refresh (called from APIC timer tick) ─────────────────
@@ -218,9 +218,9 @@ pub const OVERLAY_REFRESH_HZ: u64 = 4; // 4 Hz = 250ms between repaints
 pub fn tick_refresh() {
     // Update telemetry snapshots (lightweight — no framebuffer access from IRQ)
     telemetry::t().mem.update_free_pages(
-        unsafe { crate::memory::page_alloc::free_count() } as u64
+        unsafe { crate::mem::phys::free_count() } as u64
     );
-    telemetry::t().mem.update_heap(crate::memory::heap::heap_used() as u64);
+    telemetry::t().mem.update_heap(crate::mem::heap::heap_used() as u64);
 }
 
 // ── Private ────────────────────────────────────────────────────────

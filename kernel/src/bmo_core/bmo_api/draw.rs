@@ -90,7 +90,7 @@ pub fn create_dc_for(window_slot: u32) -> Option<u32> {
 /// va directamente al GOP framebuffer con clipping contra el rect
 /// de la ventana dueña del DC.
 pub fn fill_rect(_dc_slot: u32, _x: i32, _y: i32, _w: i32, _h: i32, _color: u32) {
-    // v2.0: implementación real se conecta a gop::fill_rect con
+    // v2.0: implementación real se conecta a crate::dev::framebuffer::fill_rect con
     // clipping. Aquí dejamos el stub para no acoplar este módulo al
     // resto del kernel antes de tiempo.
 }

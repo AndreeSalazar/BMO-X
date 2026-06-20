@@ -8,7 +8,7 @@ use super::buffer;
 use super::event::{severity_color, severity_tag, Event};
 use super::telemetry;
 use super::OverlayTab;
-use crate::boot_info;
+use crate::boot::info;
 use crate::bmo_core::ui::font;
 
 const MIN_W: usize = 360;
@@ -22,7 +22,7 @@ const CHAR_W: usize = 8;
 static mut ENABLED: bool = false;
 
 /// Optional override: when set, the overlay draws to this framebuffer
-/// instead of `boot_info::FB_ADDR`. Used by the desktop render loop
+/// instead of `crate::boot::info::FB_ADDR`. Used by the desktop render loop
 /// to paint the overlay onto the backbuffer (eliminates flicker).
 static mut TARGET_OVERRIDE: Option<(*mut u32, usize, usize, usize)> = None;
 
@@ -141,7 +141,7 @@ fn draw_overview(
     cy += 18;
 
     // Ring 3 status — dynamically check if any syscall has been received
-    let ring3_active = crate::interrupt::syscall::ring3_alive();
+    let ring3_active = crate::arch::syscall::ring3_alive();
     if ring3_active {
         draw_text(base, stride, width, height, x, cy, b"Ring   : 0 Supervisor | Ring3 active", 0xFF76B900);
     } else {
@@ -160,7 +160,7 @@ fn draw_overview(
     cy += 18;
 
     // Memory
-    let free_pages = unsafe { crate::memory::page_alloc::free_count() };
+    let free_pages = unsafe { crate::mem::phys::free_count() };
     let free_mb = (free_pages * 4) / 1024;
     draw_text(base, stride, width, height, x, cy, b"Memory : ", 0xFFE6EDF3);
     draw_dec(base, stride, width, height, x + 72, cy, free_mb as u64, 0xFF76B900);
@@ -168,8 +168,8 @@ fn draw_overview(
     cy += 18;
 
     // Heap
-    let heap_used_kb = crate::memory::heap::heap_used() / 1024;
-    let heap_total_kb = crate::memory::heap::heap_total() / 1024;
+    let heap_used_kb = crate::mem::heap::heap_used() / 1024;
+    let heap_total_kb = crate::mem::heap::heap_total() / 1024;
     let heap_color = if heap_used_kb > heap_total_kb * 3 / 4 { 0xFFFF7B72 } else { 0xFF76B900 };
     draw_text(base, stride, width, height, x, cy, b"Heap   : ", 0xFFE6EDF3);
     draw_dec(base, stride, width, height, x + 72, cy, heap_used_kb as u64, heap_color);
@@ -180,9 +180,9 @@ fn draw_overview(
 
     // Tasks
     draw_text(base, stride, width, height, x, cy, b"Tasks  : P", 0xFFE6EDF3);
-    draw_dec(base, stride, width, height, x + 88, cy, crate::sched::process::process_count() as u64, 0xFFE6EDF3);
+    draw_dec(base, stride, width, height, x + 88, cy, crate::proc::process::process_count() as u64, 0xFFE6EDF3);
     draw_text(base, stride, width, height, x + 120, cy, b" T", 0xFFE6EDF3);
-    draw_dec(base, stride, width, height, x + 144, cy, crate::sched::thread::ready_count() as u64, 0xFFE6EDF3);
+    draw_dec(base, stride, width, height, x + 144, cy, crate::proc::task::ready_count() as u64, 0xFFE6EDF3);
     draw_text(base, stride, width, height, x + 176, cy, b" Ctx:", 0xFF8B949E);
     draw_dec(base, stride, width, height, x + 216, cy, t.sched.context_switches.load(core::sync::atomic::Ordering::Relaxed), 0xFF8B949E);
     cy += 18;
@@ -202,14 +202,14 @@ fn draw_overview(
         let mut ry = y + 18;
 
         draw_text(base, stride, width, height, rx, ry, b"PCI    : ", 0xFFE6EDF3);
-        draw_dec(base, stride, width, height, rx + 72, ry, crate::device::pci::device_count() as u64, 0xFFE6EDF3);
+        draw_dec(base, stride, width, height, rx + 72, ry, crate::dev::pcie::device_count() as u64, 0xFFE6EDF3);
         draw_text(base, stride, width, height, rx + 104, ry, b" devices", 0xFFE6EDF3);
         ry += 18;
-        draw_bool_row(base, stride, width, height, rx, ry, b"NVMe   : ", crate::device::pci::has_nvme());
+        draw_bool_row(base, stride, width, height, rx, ry, b"NVMe   : ", crate::dev::pcie::has_nvme());
         ry += 18;
-        draw_bool_row(base, stride, width, height, rx, ry, b"AHCI   : ", crate::device::pci::has_ahci());
+        draw_bool_row(base, stride, width, height, rx, ry, b"AHCI   : ", crate::dev::pcie::has_ahci());
         ry += 18;
-        draw_bool_row(base, stride, width, height, rx, ry, b"xHCI   : ", crate::device::pci::has_xhci());
+        draw_bool_row(base, stride, width, height, rx, ry, b"xHCI   : ", crate::dev::pcie::has_xhci());
         ry += 18;
         draw_text(base, stride, width, height, rx, ry, b"Interrupts: ", 0xFFE6EDF3);
         draw_dec(base, stride, width, height, rx + 96, ry, t.cpu.interrupts.load(core::sync::atomic::Ordering::Relaxed), 0xFF76B900);
@@ -287,8 +287,8 @@ fn draw_memory_tab(
     draw_text(base, stride, width, height, x, cy, b"Memory Telemetry", 0xFF58A6FF);
     cy += 22;
 
-    let free_pages = unsafe { crate::memory::page_alloc::free_count() };
-    let total_pages = crate::memory::page_alloc::total_pages();
+    let free_pages = unsafe { crate::mem::phys::free_count() };
+    let total_pages = crate::mem::phys::total_pages();
     let used_pages = total_pages - free_pages;
     let free_mb = (free_pages * 4) / 1024;
     let total_mb = (total_pages * 4) / 1024;
@@ -324,8 +324,8 @@ fn draw_memory_tab(
     draw_rect(base, stride, width, height, bar_x, cy, bar_w, 12, 0xFF56D4DD);
     cy += 20;
 
-    let heap_used_kb = crate::memory::heap::heap_used() / 1024;
-    let heap_total_kb = crate::memory::heap::heap_total() / 1024;
+    let heap_used_kb = crate::mem::heap::heap_used() / 1024;
+    let heap_total_kb = crate::mem::heap::heap_total() / 1024;
     draw_text(base, stride, width, height, x, cy, b"Heap Used    : ", 0xFFE6EDF3);
     draw_dec(base, stride, width, height, x + 120, cy, heap_used_kb as u64, 0xFF76B900);
     draw_text(base, stride, width, height, x + 180, cy, b"KB / ", 0xFF8B949E);
@@ -359,7 +359,7 @@ fn draw_io_tab(
     cy += 22;
 
     draw_text(base, stride, width, height, x, cy, b"PCI Devices  : ", 0xFFE6EDF3);
-    draw_dec(base, stride, width, height, x + 120, cy, crate::device::pci::device_count() as u64, 0xFFE6EDF3);
+    draw_dec(base, stride, width, height, x + 120, cy, crate::dev::pcie::device_count() as u64, 0xFFE6EDF3);
     cy += 18;
 
     draw_text(base, stride, width, height, x, cy, b"PCI Reads    : ", 0xFFE6EDF3);
@@ -378,11 +378,11 @@ fn draw_io_tab(
     draw_dec(base, stride, width, height, x + 120, cy, t.io.ps2_scancodes.load(core::sync::atomic::Ordering::Relaxed), 0xFF76B900);
     cy += 22;
 
-    draw_bool_row(base, stride, width, height, x, cy, b"NVMe   : ", crate::device::pci::has_nvme());
+    draw_bool_row(base, stride, width, height, x, cy, b"NVMe   : ", crate::dev::pcie::has_nvme());
     cy += 18;
-    draw_bool_row(base, stride, width, height, x, cy, b"AHCI   : ", crate::device::pci::has_ahci());
+    draw_bool_row(base, stride, width, height, x, cy, b"AHCI   : ", crate::dev::pcie::has_ahci());
     cy += 18;
-    draw_bool_row(base, stride, width, height, x, cy, b"xHCI   : ", crate::device::pci::has_xhci());
+    draw_bool_row(base, stride, width, height, x, cy, b"xHCI   : ", crate::dev::pcie::has_xhci());
 }
 
 // ── Scheduler tab ──────────────────────────────────────────────────
@@ -410,11 +410,11 @@ fn draw_scheduler_tab(
     cy += 18;
 
     draw_text(base, stride, width, height, x, cy, b"Active Processes : ", 0xFFE6EDF3);
-    draw_dec(base, stride, width, height, x + 144, cy, crate::sched::process::process_count() as u64, 0xFFE6EDF3);
+    draw_dec(base, stride, width, height, x + 144, cy, crate::proc::process::process_count() as u64, 0xFFE6EDF3);
     cy += 18;
 
     draw_text(base, stride, width, height, x, cy, b"Ready Threads    : ", 0xFFE6EDF3);
-    draw_dec(base, stride, width, height, x + 144, cy, crate::sched::thread::ready_count() as u64, 0xFFE6EDF3);
+    draw_dec(base, stride, width, height, x + 144, cy, crate::proc::task::ready_count() as u64, 0xFFE6EDF3);
     cy += 22;
 
     draw_text(base, stride, width, height, x, cy, b"Syscalls Total   : ", 0xFFE6EDF3);
@@ -488,10 +488,10 @@ fn fb() -> Option<(*mut u32, usize, usize, usize)> {
     }
     let (addr, w, h, s) = unsafe {
         (
-            boot_info::FB_ADDR,
-            boot_info::FB_WIDTH as usize,
-            boot_info::FB_HEIGHT as usize,
-            boot_info::FB_STRIDE as usize,
+            crate::boot::info::FB_ADDR,
+            crate::boot::info::FB_WIDTH as usize,
+            crate::boot::info::FB_HEIGHT as usize,
+            crate::boot::info::FB_STRIDE as usize,
         )
     };
     if addr == 0 || w == 0 || h == 0 || s == 0 { return None; }

@@ -1,18 +1,23 @@
-//! Phased boot orchestration.
+//! Phased boot orchestration (v1.7.5).
 //!
-//! Each phase is a self-contained module under this folder. The functions
-//! here are called in a fixed order from `crate::ring_0::ring_0::main`.
+//! Each phase is a self-contained module under this folder.
+//! The functions here are called in fixed order from
+//! `crate::coordinator::main`.
 //!
-//! Phase order is load-bearing: e.g. Phase 0 must install GDT/IDT before
-//! Phase 1 can fault safely, and Phase 1 must bring up the heap before
-//! Phase 5 can use Vec.
+//! Phase order is load-bearing:
+//!   - Phase 0 (arch): GDT + IDT + APIC before anything can fault
+//!   - Phase 1 (mem):  heap + page_alloc before any Vec/Box
+//!   - Phase 2 (dev):  console, framebuffer, pcie, watchdog
+//!   - Phase 3 (proc): scheduler + idle task
+//!   - Phase 4 (bmo): BMO Core init
+//!   - Phase 5 (user): Ring 3 first process
 
-pub mod phase0_cpu;
-pub mod phase1_memory;
-pub mod phase2_devices;
-pub mod phase3_display;
-pub mod phase4_scheduler;
-pub mod phase5_desktop;
+pub mod p0_arch;
+pub mod p1_mem;
+pub mod p2_dev;
+pub mod p3_proc;
+pub mod p4_bmo;
+pub mod p5_user;
 pub mod ring3_tests;
 
 pub mod trait_def;
@@ -26,28 +31,28 @@ use super::visual;
 /// consumes the welcome screen and does not return).
 pub fn run_all(ctx: &mut BootContext, t0: u64) -> u64 {
     visual::begin_phase(0);
-    visual::log("ring0", "phase0_cpu", visual::color::OK);
-    let (_cpu, out0) = phase0_cpu::run(ctx, t0);
+    visual::log("ring0", "p0_arch", visual::color::OK);
+    let (_cpu, out0) = p0_arch::run(ctx, t0);
     visual::end_phase(0);
 
     visual::begin_phase(1);
-    visual::log("ring0", "phase1_memory", visual::color::OK);
-    let (_mem, out1) = phase1_memory::run(ctx, out0.prev_end);
+    visual::log("ring0", "p1_mem", visual::color::OK);
+    let (_mem, out1) = p1_mem::run(ctx, out0.prev_end);
     visual::end_phase(1);
 
     visual::begin_phase(2);
-    visual::log("ring0", "phase2_devices", visual::color::OK);
-    let out2 = phase2_devices::run(ctx, out1.prev_end);
+    visual::log("ring0", "p2_dev", visual::color::OK);
+    let out2 = p2_dev::run(ctx, out1.prev_end);
     visual::end_phase(2);
 
     visual::begin_phase(3);
-    visual::log("ring0", "phase3_display", visual::color::OK);
-    let out3 = phase3_display::run(ctx, out2.prev_end);
+    visual::log("ring0", "p3_proc", visual::color::OK);
+    let out3 = p3_proc::run(ctx, out2.prev_end);
     visual::end_phase(3);
 
     visual::begin_phase(4);
-    visual::log("ring0", "phase4_scheduler", visual::color::OK);
-    let out4 = phase4_scheduler::run(out3.prev_end);
+    visual::log("ring0", "p4_bmo", visual::color::OK);
+    let out4 = p4_bmo::run(out3.prev_end);
     visual::end_phase(4);
 
     out4.prev_end

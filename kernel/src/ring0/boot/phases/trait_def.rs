@@ -59,31 +59,31 @@ impl SelfTestReport {
 
 /// Pretty-print a self-test report to serial + visual.
 pub fn report(r: &SelfTestReport) {
-    use crate::device::serial;
+    use crate::dev::console;
     use crate::boot::visual;
 
-    serial::serial_write("[selftest] ");
-    serial::serial_write(r.phase);
-    serial::serial_write(": ");
+    console::serial_write("[selftest] ");
+    console::serial_write(r.phase);
+    console::serial_write(": ");
     let total = r.checks.len();
     let failed = r.failed_count();
     if failed == 0 {
-        serial::serial_write("OK (");
+        console::serial_write("OK (");
         crate::boot::serial::u32_dec(total as u32);
-        serial::serial_write(" checks)\n");
+        console::serial_write(" checks)\n");
     } else {
-        serial::serial_write("FAIL ");
+        console::serial_write("FAIL ");
         crate::boot::serial::u32_dec(failed as u32);
-        serial::serial_write("/");
+        console::serial_write("/");
         crate::boot::serial::u32_dec(total as u32);
-        serial::serial_write("\n");
+        console::serial_write("\n");
         for c in r.checks {
             if !c.passed {
-                serial::serial_write("  - ");
-                serial::serial_write(c.name);
-                serial::serial_write(" detail=0x");
+                console::serial_write("  - ");
+                console::serial_write(c.name);
+                console::serial_write(" detail=0x");
                 crate::boot::serial::hex(c.detail);
-                serial::serial_write("\n");
+                console::serial_write("\n");
             }
         }
     }

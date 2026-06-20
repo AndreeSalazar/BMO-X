@@ -3,7 +3,7 @@
 use crate::bmo_core::barex::{BxError, BxResult};
 use crate::bmo_core::bmo_abi::primitives::bx_u64;
 
-/// Reserva memoria. Stub — futuro: `barex::abi::crate::memory::alloc_pages`.
+/// Reserva memoria. Stub — futuro: `barex::abi::crate::mem::alloc_pages`.
 pub fn aloc(_size: usize) -> BxResult<bx_u64> {
     Err(BxError::NotImplemented)
 }

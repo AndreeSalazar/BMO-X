@@ -6,17 +6,17 @@
 
 /// Write a string to serial port (COM1).
 pub fn serial_write(s: &str) {
-    crate::device::serial::serial_write(s);
+    crate::dev::console::serial_write(s);
 }
 
 /// Write a single byte to serial.
 pub fn serial_write_byte(b: u8) {
-    crate::device::serial::serial_write_byte(b);
+    crate::dev::console::serial_write_byte(b);
 }
 
 /// Try to read a byte from serial (non-blocking).
 pub fn serial_read_byte() -> Option<u8> {
-    crate::device::serial::serial_read_byte()
+    crate::dev::console::serial_read_byte()
 }
 
 /// Framebuffer handle for graphics operations.
@@ -28,7 +28,7 @@ impl Graphics {
     /// Create a graphics handle from the kernel framebuffer.
     pub fn new() -> Option<Self> {
         let (addr, stride, width, height) = unsafe {
-            (crate::boot_info::FB_ADDR, crate::boot_info::FB_STRIDE, crate::boot_info::FB_WIDTH, crate::boot_info::FB_HEIGHT)
+            (crate::boot::info::FB_ADDR, crate::boot::info::FB_STRIDE, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT)
         };
         if addr == 0 {
             return None;

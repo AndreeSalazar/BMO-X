@@ -5,15 +5,15 @@
 
 #![allow(dead_code)]
 
-use crate::boot_info;
+use crate::boot::info;
 use crate::bmo_core::ui::font;
 
 /// Raw framebuffer base pointer + dimensions (stride in pixels).
 #[inline(always)]
 pub(crate) fn fb_base() -> Option<(*mut u32, usize, usize, usize)> {
     let (addr, w, h, s) = unsafe {
-        (boot_info::FB_ADDR, boot_info::FB_WIDTH as usize,
-         boot_info::FB_HEIGHT as usize, boot_info::FB_STRIDE as usize)
+        (crate::boot::info::FB_ADDR, crate::boot::info::FB_WIDTH as usize,
+         crate::boot::info::FB_HEIGHT as usize, crate::boot::info::FB_STRIDE as usize)
     };
     if addr == 0 || w == 0 || h == 0 { return None; }
     Some((addr as *mut u32, s, w, h))

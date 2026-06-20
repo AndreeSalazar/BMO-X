@@ -123,13 +123,13 @@ pub fn register_bef_exports(table: &ExportTable, base: u64) {
         };
         let addr = base + e.virt_addr;
         let flags = SYM_EXPORT | SYM_EAGER;
-        // Leak the name to get &'static str — acceptable in kernel context.
+        // Leak the name to get &'static str — acceptable in kernel ctx.
         let static_name = leak_str(name);
         register_symbol("bef", static_name, addr, flags);
     }
 }
 
-/// Leak a string into &'static str (acceptable in kernel context).
+/// Leak a string into &'static str (acceptable in kernel ctx).
 fn leak_str(s: &str) -> &'static str {
     let len = s.len();
     let layout = core::alloc::Layout::from_size_align(len, 1).unwrap();

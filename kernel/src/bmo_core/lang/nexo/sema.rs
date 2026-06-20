@@ -172,7 +172,7 @@ impl Sema {
         Ok(())
     }
 
-    /// Check with explicit module context.
+    /// Check with explicit module ctx.
     pub fn check_module(&self, ast: &Ast, module_id: &str) -> BxResult<()> {
         let mut scope = Scope::default();
         scope.current_module = Some(module_id.to_string());

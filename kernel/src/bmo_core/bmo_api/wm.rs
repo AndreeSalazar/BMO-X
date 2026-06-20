@@ -14,11 +14,11 @@ use super::message::{BmoMsg, BmoMsgKind};
 #[allow(unused_imports)]
 use super::handle::BmoHandle;
 use super::surface;
-use crate::boot_info;
+use crate::boot::info;
 
 /// Crea la ventana de escritorio (cubre todo el framebuffer).
 pub fn create_desktop_window() -> u32 {
-    let (fbw, fbh) = unsafe { (boot_info::FB_WIDTH as i32, boot_info::FB_HEIGHT as i32) };
+    let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
     let s = super::state();
     s.lock();
     let slot = s.windows.alloc_window().expect("no free window slot");
@@ -132,7 +132,7 @@ pub fn start_drag(slot: u32, mx: i32, my: i32) {
 pub fn snap_to_edge(slot: u32) {
     let s = super::state();
     s.lock();
-    let (w, h) = unsafe { (boot_info::FB_WIDTH as i32, boot_info::FB_HEIGHT as i32) };
+    let (w, h) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
     if let Some(win) = s.windows.window_mut(slot) {
         if win.x < 16 { win.x = 0; }
         if win.y < 36 { win.y = 30; }
@@ -148,7 +148,7 @@ pub fn snap_to_edge(slot: u32) {
 /// usuario presiona ESC (igual que el viejo desktop stub).
 pub fn enter() -> ! {
     crate::bmo_core::diag::info("bmo_api_v2.wm", "Entering Ring 3 BMO API desktop");
-    crate::device::serial::serial_write("[bmo_api_v2] Entering desktop real (BMO API v2.0)\n");
+    crate::dev::console::serial_write("[bmo_api_v2] Entering desktop real (BMO API v2.0)\n");
 
     // Crea tres ventanas built-in para demostrar el WM.
     let _term = create_top_window("BMO Terminal", 60, 60, 720, 460);
@@ -173,7 +173,7 @@ pub fn enter() -> ! {
         // ESC → volver al welcome.
         if super::input::esc_pressed() {
             crate::bmo_core::diag::info("bmo_api_v2.wm", "ESC pressed — return to welcome");
-            crate::device::serial::serial_write("[bmo_api_v2] ESC — returning to welcome.\n");
+            crate::dev::console::serial_write("[bmo_api_v2] ESC — returning to welcome.\n");
             crate::bmo_core::desktop::welcome::run();
         }
         core::hint::spin_loop();

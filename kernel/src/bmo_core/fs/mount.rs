@@ -5,7 +5,7 @@
 //! Maps path prefixes to filesystem drivers.
 //! Supports: BMO-FS (root), FAT32, procfs, devfs.
 
-use crate::device::serial;
+use crate::dev::console;
 
 /// Maximum number of mount points.
 const MAX_MOUNTS: usize = 16;
@@ -68,20 +68,20 @@ pub fn mount(fs_type: FsType, path: &'static str, lba: u64, sectors: u32, read_o
                     in_use: true,
                 };
 
-                serial::serial_write("[vfs] Mounted ");
-                serial::serial_write(path);
-                serial::serial_write(" (");
+                console::serial_write("[vfs] Mounted ");
+                console::serial_write(path);
+                console::serial_write(" (");
                 match fs_type {
-                    FsType::BmoFs => serial::serial_write("BMO-FS"),
-                    FsType::Fat32 => serial::serial_write("FAT32"),
-                    FsType::ProcFs => serial::serial_write("procfs"),
-                    FsType::DevFs => serial::serial_write("devfs"),
-                    FsType::TmpFs => serial::serial_write("tmpfs"),
-                    FsType::None => serial::serial_write("none"),
+                    FsType::BmoFs => console::serial_write("BMO-FS"),
+                    FsType::Fat32 => console::serial_write("FAT32"),
+                    FsType::ProcFs => console::serial_write("procfs"),
+                    FsType::DevFs => console::serial_write("devfs"),
+                    FsType::TmpFs => console::serial_write("tmpfs"),
+                    FsType::None => console::serial_write("none"),
                 }
-                serial::serial_write(") id=");
+                console::serial_write(") id=");
                 serial_write_u16(mount_id);
-                serial::serial_write("\n");
+                console::serial_write("\n");
 
                 return Some(mount_id);
             }
@@ -96,9 +96,9 @@ pub fn unmount(mount_id: u16) -> bool {
         for i in 0..MAX_MOUNTS {
             if MOUNT_TABLE[i].in_use && MOUNT_TABLE[i].mount_id == mount_id {
                 MOUNT_TABLE[i].in_use = false;
-                serial::serial_write("[vfs] Unmounted id=");
+                console::serial_write("[vfs] Unmounted id=");
                 serial_write_u16(mount_id);
-                serial::serial_write("\n");
+                console::serial_write("\n");
                 return true;
             }
         }
@@ -148,22 +148,22 @@ pub fn mount_count() -> u32 {
 
 /// Print mount table to serial.
 pub fn print_mounts() {
-    serial::serial_write("[vfs] Active mounts:\n");
+    console::serial_write("[vfs] Active mounts:\n");
     unsafe {
         for i in 0..MAX_MOUNTS {
             if MOUNT_TABLE[i].in_use {
-                serial::serial_write("  ");
-                serial::serial_write(MOUNT_TABLE[i].path);
-                serial::serial_write(" -> ");
+                console::serial_write("  ");
+                console::serial_write(MOUNT_TABLE[i].path);
+                console::serial_write(" -> ");
                 match MOUNT_TABLE[i].fs_type {
-                    FsType::BmoFs => serial::serial_write("BMO-FS"),
-                    FsType::Fat32 => serial::serial_write("FAT32"),
-                    FsType::ProcFs => serial::serial_write("procfs"),
-                    FsType::DevFs => serial::serial_write("devfs"),
-                    FsType::TmpFs => serial::serial_write("tmpfs"),
-                    FsType::None => serial::serial_write("?"),
+                    FsType::BmoFs => console::serial_write("BMO-FS"),
+                    FsType::Fat32 => console::serial_write("FAT32"),
+                    FsType::ProcFs => console::serial_write("procfs"),
+                    FsType::DevFs => console::serial_write("devfs"),
+                    FsType::TmpFs => console::serial_write("tmpfs"),
+                    FsType::None => console::serial_write("?"),
                 }
-                serial::serial_write("\n");
+                console::serial_write("\n");
             }
         }
     }
@@ -175,5 +175,5 @@ fn serial_write_u16(val: u16) {
     let mut v = val;
     if v == 0 { i -= 1; buf[i] = b'0'; }
     else { while v > 0 { i -= 1; buf[i] = b'0' + (v % 10) as u8; v /= 10; } }
-    serial::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
+    console::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
 }

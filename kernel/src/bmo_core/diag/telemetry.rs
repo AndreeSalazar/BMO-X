@@ -1,6 +1,6 @@
 //! Omniscient Telemetry — atomic counters for every kernel subsystem.
 //!
-//! Each counter is an `AtomicU64` so the timer tick (interrupt context) can
+//! Each counter is an `AtomicU64` so the timer tick (interrupt ctx) can
 //! update them without locks.  The overlay reads them periodically.
 
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -134,7 +134,7 @@ impl MemoryTelemetry {
 }
 
 pub struct SchedulerTelemetry {
-    /// Total context switches since boot.
+    /// Total ctx switches since boot.
     pub context_switches: AtomicU64,
     /// Total processes created.
     pub processes_created: AtomicU64,

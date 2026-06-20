@@ -343,7 +343,7 @@ pub extern "C" fn NtClose(handle: bx_u64) -> i32 {
 #[no_mangle]
 pub extern "C" fn NtTerminateProcess(process_handle: bx_u64, exit_status: i32) -> i32 {
     let _ = process_handle;
-    crate::sched::process::kill_current_process(0, exit_status as u64, 0);
+    crate::proc::process::kill_current_process(0, exit_status as u64, 0);
     NtStatus::Success as i32
 }
 
@@ -372,13 +372,13 @@ pub extern "C" fn NtCreateThreadEx(
     }
 
     // Map to BMO ThreadCreate syscall (0x04)
-    match crate::sched::thread::alloc_thread(
-        crate::sched::process::Pid(1),
-        crate::sched::Priority::Interactive,
+    match crate::proc::task::alloc(
+        crate::proc::process::Pid(1),
+        crate::proc::Priority::Interactive,
     ) {
         Some(thr) => {
-            thr.regs = crate::sched::thread::SavedRegs::new_user(start_routine, 0);
-            thr.state = crate::sched::thread::ThreadState::Ready;
+            thr.regs = crate::proc::task::SavedRegs::new_user(start_routine, 0);
+            thr.state = crate::proc::task::State::Ready;
             unsafe {
                 *thread_handle = thr.tid.0 as bx_u64;
             }
@@ -394,7 +394,7 @@ pub extern "C" fn NtCreateThreadEx(
 #[no_mangle]
 pub extern "C" fn NtTerminateThread(thread_handle: bx_u64, exit_status: i32) -> i32 {
     let _ = thread_handle;
-    crate::sched::process::kill_current_process(0, exit_status as u64, 0);
+    crate::proc::process::kill_current_process(0, exit_status as u64, 0);
     NtStatus::Success as i32
 }
 

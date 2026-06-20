@@ -5,7 +5,7 @@
 //! Unified filesystem API that routes operations to the correct filesystem
 //! driver based on the mount point.
 
-use crate::device::serial;
+use crate::dev::console;
 use super::inode;
 use super::mount;
 
@@ -96,7 +96,7 @@ pub fn size(fd: u32) -> Option<u64> {
 /// Initialize the VFS.
 /// Mounts the root filesystem and virtual filesystems.
 pub fn init() {
-    serial::serial_write("[vfs] Initializing VFS...\n");
+    console::serial_write("[vfs] Initializing VFS...\n");
 
     // Mount root BMO-FS at "/"
     mount::mount(mount::FsType::BmoFs, "/", 0, 0, true);
@@ -110,5 +110,5 @@ pub fn init() {
     // Mount tmpfs at "/tmp"
     mount::mount(mount::FsType::TmpFs, "/tmp", 0, 0, false);
 
-    serial::serial_write("[vfs] VFS initialized\n");
+    console::serial_write("[vfs] VFS initialized\n");
 }

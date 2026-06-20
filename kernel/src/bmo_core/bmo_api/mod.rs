@@ -133,7 +133,7 @@ pub fn tick() {
     paint_compositor::tick();
 }
 
-/// Llamado por `crate::interrupt::syscall_entry` cuando el nr está en 0x100..0x1FF.
+/// Llamado por `crate::arch::syscall_entry` cuando el nr está en 0x100..0x1FF.
 /// Devuelve el valor a poner en RAX.
 pub fn dispatch_syscall(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
     syscall::dispatch(nr, a0, a1, a2, a3, a4, a5)

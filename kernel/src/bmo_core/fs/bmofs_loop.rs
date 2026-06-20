@@ -25,7 +25,7 @@ impl BlockDevice for BmoBlockDevice {
         // v1.7.4: sólo lectura desde RAM fallback. El driver USB/ATA físico
         // se eliminó en ring0/drivers/usb. Si en el futuro se re-introduce
         // (v2.0 con soporte de USB mass storage + AHCI), este método
-        // despacha a `crate::device::usb::storage::ACTIVE_USB_DISK` o
+        // despacha a `crate::dev::usb::storage::ACTIVE_USB_DISK` o
         // equivalente.
         let ram_data = self.fallback_ram.ok_or("No hay fallback RAM ni disco físico")?;
         let offset = (block_idx as usize) * bmofs::BLOCK_SIZE;

@@ -447,7 +447,7 @@ fn walk_pe_import_thunks(
     }
 }
 
-/// Leak a string into a &'static str (acceptable in kernel context).
+/// Leak a string into a &'static str (acceptable in kernel ctx).
 fn leak_str(s: &str) -> &'static str {
     let len = s.len();
     let layout = core::alloc::Layout::from_size_align(len, 1).unwrap();

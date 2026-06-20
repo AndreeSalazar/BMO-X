@@ -4,7 +4,7 @@
 //!
 //! v1.6.16: allow(irrefutable_let_patterns) for the two `if let Ok(_) = ...`
 //! sites that the compiler flagged. They are valid match-arms that we
-//! keep around for future error-context; the warning is noise.
+//! keep around for future error-ctx; the warning is noise.
 
 #![allow(irrefutable_let_patterns)]
 //! - `class Foo { ... }` → struct + vtable

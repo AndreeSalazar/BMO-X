@@ -19,7 +19,7 @@
 //! - Sin envelopes complejos (solo ADSR lineal)
 //! - Sin unison/detune
 
-use crate::device::audio::dsp::math::dsp_sin;
+use crate::dev::audio::dsp_sin;
 
 /// Parámetros de un track FM.
 #[derive(Debug, Clone, Copy)]

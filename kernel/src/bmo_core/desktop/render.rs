@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use crate::boot_info;
+use crate::boot::info;
 use crate::bmo_core::ui::fb::Framebuffer;
 use crate::bmo_core::ui::font;
 use super::state::{self, DesktopState, DOCK_SLOTS, MAX_WIN, WinInfo};
@@ -19,7 +19,7 @@ use super::wallpaper;
 
 fn fb() -> Option<Framebuffer> {
     let (addr, w, h, s) = unsafe {
-        (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
+        (crate::boot::info::FB_ADDR, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT, crate::boot::info::FB_STRIDE)
     };
     if addr == 0 || w == 0 { return None; }
     Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
@@ -384,14 +384,14 @@ pub fn render_frame() {
     unsafe { state::DIRTY = false; }
 
     let (addr, w, h, s) = unsafe {
-        (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
+        (crate::boot::info::FB_ADDR, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT, crate::boot::info::FB_STRIDE)
     };
     if addr == 0 || w == 0 {
         crate::bmo_core::diag::fault("desktop", "render_frame: FB_ADDR or width is zero");
         return;
     }
 
-    let backbuffer_fb = crate::device::gop::get_backbuffer_fb();
+    let backbuffer_fb = crate::dev::framebuffer::get_backbuffer_fb();
 
     handle_input(&backbuffer_fb);
 
@@ -419,7 +419,7 @@ pub fn render_frame() {
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
     if crate::bmo_core::diag::is_overlay_enabled() {
-        let bb_addr = crate::device::gop::backbuffer_ptr() as *mut u32;
+        let bb_addr = crate::dev::framebuffer::backbuffer_ptr() as *mut u32;
         crate::bmo_core::diag::overlay::set_target_override(Some((bb_addr, w as usize, h as usize, s as usize)));
         crate::bmo_core::diag::paint_overlay();
         crate::bmo_core::diag::overlay::set_target_override(None);

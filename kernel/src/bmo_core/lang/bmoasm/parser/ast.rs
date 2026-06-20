@@ -34,7 +34,7 @@ pub enum Type {
     Num,
     /// 64-bit pointer.
     Ptr,
-    /// Array (size inferred from context).
+    /// Array (size inferred from ctx).
     Arr,
     /// Reference (pointer with borrow semantics).
     Ref,

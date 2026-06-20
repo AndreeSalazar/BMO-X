@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-//! FPU/SSE/AVX context save/restore — XSAVE/XRSTOR for Ryzen 5 5600X.
+//! FPU/SSE/AVX ctx save/restore — XSAVE/XRSTOR for Ryzen 5 5600X.
 //!
 //! XSAVE area layout (Intel SDM Vol 1, Ch 13):
 //!   Bytes 0-511:   Legacy region (FXSAVE format)
@@ -178,7 +178,7 @@ pub unsafe fn xsave_component_info(comp: u32) -> (u32, u32) {
     (offset & 0x7FFFFFFF, size)
 }
 
-/// Enable CR0.TS (Task Switched) for lazy FPU context switching.
+/// Enable CR0.TS (Task Switched) for lazy FPU ctx switching.
 ///
 /// When TS is set, any FPU/SSE/AVX instruction causes #NM (vector 7).
 /// The ISR can then save the previous task's FPU state and restore the current task's.
@@ -244,11 +244,11 @@ pub fn init_fpu() {
             options(nostack),
         );
 
-        crate::device::serial::serial_write("[FPU] x87 FPU + MXCSR initialized\n");
+        crate::dev::console::serial_write("[FPU] x87 FPU + MXCSR initialized\n");
     }
 }
 
-/// Save FPU/SSE/AVX context for a task.
+/// Save FPU/SSE/AVX ctx for a task.
 ///
 /// Uses XSAVE if available, falls back to FXSAVE.
 /// Returns the number of bytes written.
@@ -266,7 +266,7 @@ pub unsafe fn save_context(area: *mut u8, use_xsave: bool, use_xsaveopt: bool) -
     }
 }
 
-/// Restore FPU/SSE/AVX context for a task.
+/// Restore FPU/SSE/AVX ctx for a task.
 ///
 /// Uses XRSTOR if available, falls back to FXRSTOR.
 pub unsafe fn restore_context(area: *const u8, use_xsave: bool) {

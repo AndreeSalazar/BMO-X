@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-use crate::device::serial;
+use crate::dev::console;
 use crate::bmo_core::fs::DiskReader;
 
 #[repr(C, packed)]
@@ -80,11 +80,11 @@ impl Fat32Volume {
         let fat_start_sector = reserved_sectors;
         let data_start_sector = reserved_sectors + (num_fats * sectors_per_fat);
 
-        serial::serial_write("[FAT32] Volume parsed. Sectors per cluster: ");
+        console::serial_write("[FAT32] Volume parsed. Sectors per cluster: ");
         crate::boot::serial_hex(sectors_per_cluster as u64);
-        serial::serial_write(" | Data start sector: ");
+        console::serial_write(" | Data start sector: ");
         crate::boot::serial_hex(data_start_sector as u64);
-        serial::serial_write("\n");
+        console::serial_write("\n");
 
         Ok(Self {
             bytes_per_sector,
@@ -193,13 +193,13 @@ impl Fat32Volume {
                     let start_cluster = (cluster_high << 16) | cluster_low;
                     let file_size = u32::from_le_bytes([entry[28], entry[29], entry[30], entry[31]]);
 
-                    serial::serial_write("[FAT32] Archivo encontrado: ");
-                    serial::serial_write(filename);
-                    serial::serial_write(" | Cluster Inicial: ");
+                    console::serial_write("[FAT32] Archivo encontrado: ");
+                    console::serial_write(filename);
+                    console::serial_write(" | Cluster Inicial: ");
                     crate::boot::serial_hex(start_cluster as u64);
-                    serial::serial_write(" | Tamaño: ");
+                    console::serial_write(" | Tamaño: ");
                     crate::boot::serial_hex(file_size as u64);
-                    serial::serial_write(" bytes\n");
+                    console::serial_write(" bytes\n");
 
                     return Ok((start_cluster, file_size));
                 }

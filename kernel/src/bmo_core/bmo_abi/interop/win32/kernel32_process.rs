@@ -8,7 +8,7 @@
 #[no_mangle]
 pub extern "C" fn ExitProcess(exit_code: u32) -> ! {
     crate::bmo_core::diag::info_u64("wcompat::k32", "ExitProcess", exit_code as u64);
-    crate::sched::process::kill_current_process(0, exit_code as u64, 0);
+    crate::proc::process::kill_current_process(0, exit_code as u64, 0);
 }
 
 /// GetCurrentProcess — returns pseudo-handle for current process.

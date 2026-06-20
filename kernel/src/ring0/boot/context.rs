@@ -1,6 +1,6 @@
 //! BootContext — Dependency Injection container for boot phases.
 //!
-//! v1.1.0: Replaces scattered globals with a single, typed context that
+//! v1.1.0: Replaces scattered globals with a single, typed ctx that
 //!
 //! v1.6.16: `tsc_start`/`tsc_end` fields and `elapsed_tsc` method
 //! are reserved for the per-phase timing dashboard in v1.7.x.
@@ -12,10 +12,10 @@
 //! ## Migration map
 //!
 //! Old (globals)                → New (ctx field)
-//! `crate::memory::page_alloc::free_count` → `ctx.memory.free_pages`
+//! `crate::mem::phys::free_count` → `ctx.memory.free_pages`
 //! `crate::cpu::tsc_per_sec`     → `ctx.cpu.tsc_freq_hz`
 //! `crate::bmo_core::bmo_abi::init()`     → `ctx.bmo_abi_initialized`
-//! `crate::memory::heap::heap_total`      → `ctx.memory.heap_total`
+//! `crate::mem::heap::heap_total`      → `ctx.memory.heap_total`
 //!
 //! ## Stability
 //!
@@ -89,7 +89,7 @@ impl DevicesContext {
     }
 }
 
-/// The full boot context. Each phase receives `&mut BootContext` and
+/// The full boot ctx. Each phase receives `&mut BootContext` and
 /// reads/writes the slice it owns. Once a phase is done, downstream
 /// phases can rely on the data being filled in.
 ///

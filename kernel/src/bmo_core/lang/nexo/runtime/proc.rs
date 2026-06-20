@@ -26,13 +26,13 @@ pub enum Priority {
 
 impl Priority {
     /// Map to kernel Priority enum.
-    fn to_kernel(self) -> crate::sched::Priority {
+    fn to_kernel(self) -> crate::proc::Priority {
         match self {
-            Priority::Realtime => crate::sched::Priority::Realtime,
-            Priority::High => crate::sched::Priority::HighGame,
-            Priority::Normal => crate::sched::Priority::Game,
-            Priority::Low => crate::sched::Priority::Interactive,
-            Priority::Idle => crate::sched::Priority::Idle,
+            Priority::Realtime => crate::proc::Priority::Realtime,
+            Priority::High => crate::proc::Priority::HighGame,
+            Priority::Normal => crate::proc::Priority::Game,
+            Priority::Low => crate::proc::Priority::Interactive,
+            Priority::Idle => crate::proc::Priority::Idle,
         }
     }
 }
@@ -47,18 +47,18 @@ pub struct ProcessInfo {
 
 /// Spawn a new process with given name and entry point.
 pub fn spawn(name: &str, entry: u64) -> Result<Pid> {
-    use crate::sched::process::alloc_process;
-    use crate::sched::thread::alloc_thread;
+    use crate::proc::process::alloc_process;
+    use crate::proc::task::alloc;
 
     let proc = alloc_process().ok_or(Error::ProcessLimit)?;
     proc.set_name(name);
     let pid = Pid(proc.pid.0);
 
-    let thread = alloc_thread(proc.pid, crate::sched::Priority::Interactive).ok_or(Error::ThreadLimit)?;
+    let thread = alloc(proc.pid, crate::proc::Priority::Interactive).ok_or(Error::ThreadLimit)?;
     let _tid = Tid(thread.tid.0);
 
     // Set thread entry to user-mode entry point
-    thread.regs = crate::sched::thread::SavedRegs::new_user(entry, 0x80_0000 + 64 * 1024);
+    thread.regs = crate::proc::task::SavedRegs::new_user(entry, 0x80_0000 + 64 * 1024);
 
     crate::bmo_core::diag::info("nexo_proc", "Process spawned");
     Ok(pid)
@@ -91,7 +91,7 @@ pub fn yield_now() {
 /// Get current process ID.
 pub fn current_pid() -> Pid {
     // Kernel tracks this via thread's pid field
-    if let Some(thread) = crate::sched::thread::current_thread() {
+    if let Some(thread) = crate::proc::task::current() {
         Pid(thread.pid.0)
     } else {
         Pid(0)
@@ -100,15 +100,15 @@ pub fn current_pid() -> Pid {
 
 /// Create a new thread in the current process.
 pub fn spawn_thread(entry: u64, priority: Priority) -> Result<Tid> {
-    use crate::sched::thread::alloc_thread;
+    use crate::proc::task::alloc;
 
     let pid = current_pid();
-    let thread = alloc_thread(
-        crate::sched::process::Pid(pid.0),
+    let thread = alloc(
+        crate::proc::process::Pid(pid.0),
         priority.to_kernel(),
     ).ok_or(Error::ThreadLimit)?;
 
-    thread.regs = crate::sched::thread::SavedRegs::new_user(entry, 0x80_0000 + 64 * 1024);
+    thread.regs = crate::proc::task::SavedRegs::new_user(entry, 0x80_0000 + 64 * 1024);
     let tid = Tid(thread.tid.0);
     Ok(tid)
 }

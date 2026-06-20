@@ -11,7 +11,7 @@
 //!
 //! Comandos aceptados: Run, Hello, Ring3, Nexo, Test, Reboot (sin cambios).
 
-use crate::boot_info;
+use crate::boot::info;
 use crate::bmo_core::ui::fb::Framebuffer;
 use crate::bmo_core::ui::font;
 use super::commands::{eq_ci, trim, should_enter_desktop, enter_desktop, nexo_test_compile};
@@ -114,7 +114,7 @@ fn process_scancode(raw: u8) -> Option<u8> {
 
 fn fb() -> Option<Framebuffer> {
     let (addr, w, h, s) = unsafe {
-        (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
+        (crate::boot::info::FB_ADDR, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT, crate::boot::info::FB_STRIDE)
     };
     if addr == 0 || w == 0 { return None; }
     Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
@@ -410,12 +410,12 @@ fn show_hint(msg: &'static [u8]) {
 fn run_phase_self_test(n: u8) {
     use crate::boot::phases::report_self_test;
     let report = match n {
-        0 => crate::boot::phases::phase0_cpu::self_test(),
-        1 => crate::boot::phases::phase1_memory::self_test(),
-        2 => crate::boot::phases::phase2_devices::self_test(),
-        3 => crate::boot::phases::phase3_display::self_test(),
-        4 => crate::boot::phases::phase4_scheduler::self_test(),
-        5 => crate::boot::phases::phase5_desktop::self_test(),
+        0 => crate::boot::phases::p0_arch::self_test(),
+        1 => crate::boot::phases::p1_mem::self_test(),
+        2 => crate::boot::phases::p2_dev::self_test(),
+        3 => crate::boot::phases::p3_proc::self_test(),
+        4 => crate::boot::phases::p4_bmo::self_test(),
+        5 => crate::boot::phases::p5_user::self_test(),
         _ => {
             crate::bmo_core::diag::warn("welcome", "Unknown phase index");
             return;
@@ -435,13 +435,13 @@ fn run_phase_self_test_ring3() {
 fn run_test_all_phases() {
     use crate::boot::phases::report_self_test;
     let reports = [
-        crate::boot::phases::phase0_cpu::self_test(),
+        crate::boot::phases::p0_arch::self_test(),
         crate::boot::phases::ring3_tests::self_test(),
-        crate::boot::phases::phase1_memory::self_test(),
-        crate::boot::phases::phase2_devices::self_test(),
-        crate::boot::phases::phase3_display::self_test(),
-        crate::boot::phases::phase4_scheduler::self_test(),
-        crate::boot::phases::phase5_desktop::self_test(),
+        crate::boot::phases::p1_mem::self_test(),
+        crate::boot::phases::p2_dev::self_test(),
+        crate::boot::phases::p3_proc::self_test(),
+        crate::boot::phases::p4_bmo::self_test(),
+        crate::boot::phases::p5_user::self_test(),
     ];
     crate::bmo_core::diag::info("welcome", "All-phase self-test");
     for r in &reports {
@@ -470,11 +470,11 @@ fn process_enter() {
     } else if eq_ci(trimmed_cmd, b"hello") {
         crate::bmo_core::diag::info("welcome", "Hello command accepted; preparing Ring 3 test");
         sound::beep(440, 80);
-        crate::sched::user_init::spawn_hello();
+        crate::proc::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"ring3") {
         crate::bmo_core::diag::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
         sound::beep(440, 80);
-        crate::sched::user_init::spawn_hello();
+        crate::proc::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"reboot") {
         crate::bmo_core::diag::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
@@ -483,9 +483,9 @@ fn process_enter() {
         nexo_test_compile();
     } else if eq_ci(trimmed_cmd, b"test desktop") {
         crate::bmo_core::diag::info("welcome", "test desktop: rendering single frame");
-        crate::device::serial::serial_write("[welcome] test desktop: calling render_frame()\n");
+        crate::dev::console::serial_write("[welcome] test desktop: calling render_frame()\n");
         crate::bmo_core::desktop::render::render_frame();
-        crate::device::serial::serial_write("[welcome] test desktop: render_frame() returned OK\n");
+        crate::dev::console::serial_write("[welcome] test desktop: render_frame() returned OK\n");
         crate::bmo_core::diag::info("welcome", "test desktop: render_frame OK");
     } else if eq_ci(trimmed_cmd, b"test") {
         run_test_all_phases();
@@ -512,7 +512,7 @@ fn process_enter() {
 }
 
 pub fn run() -> ! {
-    crate::device::serial::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
+    crate::dev::console::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
 
     if let Some(fb) = fb() {
         fb.fill_rect(0, 0, fb.width, fb.height, 0xFF000000);
@@ -528,7 +528,7 @@ pub fn run() -> ! {
     unsafe { DIRTY = true; }
 
     crate::bmo_core::gustos::tracks::windows::logon();
-    crate::device::serial::serial_write("[welcome] gustOS logon sound played\n");
+    crate::dev::console::serial_write("[welcome] gustOS logon sound played\n");
 
     loop {
         if unsafe { DIRTY } {
@@ -561,7 +561,7 @@ pub fn run() -> ! {
                 }
             }
 
-            if let Some(mut ch) = crate::device::serial::serial_read_byte() {
+            if let Some(mut ch) = crate::dev::console::serial_read_byte() {
                 if ch == b'\r' { ch = b'\n'; }
                 handle_char(ch);
             }

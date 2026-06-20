@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use crate::cpu;
-use crate::boot_info;
+use crate::boot::info;
 
 /// Cycles per second en Ryzen 5 5600X (3.7 GHz boost).
 pub const CYCLES_PER_SEC: u64 = 3_700_000_000;
@@ -111,8 +111,8 @@ pub fn init() {
             let t = crate::cpu::rdtsc();
             STATE.clock_start_tsc = t;
             STATE.last_tsc = t;
-            STATE.mouse_x = (boot_info::FB_WIDTH / 2) as i32;
-            STATE.mouse_y = (boot_info::FB_HEIGHT / 2) as i32;
+            STATE.mouse_x = (crate::boot::info::FB_WIDTH / 2) as i32;
+            STATE.mouse_y = (crate::boot::info::FB_HEIGHT / 2) as i32;
         }
         if !STATE.windows_init_done {
             init_default_windows();

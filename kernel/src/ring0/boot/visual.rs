@@ -14,7 +14,7 @@
 //! progress.
 
 use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
-use crate::boot_info;
+use crate::boot::info;
 use crate::bmo_core::ui::font;
 
 // ── Palette (matches welcome) ──────────────────────────────────────
@@ -296,10 +296,10 @@ pub fn clear() {
 fn fb() -> (*mut u32, usize, usize, usize) {
     let (addr, w, h, s) = unsafe {
         (
-            boot_info::FB_ADDR as *mut u32,
-            boot_info::FB_WIDTH as usize,
-            boot_info::FB_HEIGHT as usize,
-            boot_info::FB_STRIDE as usize,
+            crate::boot::info::FB_ADDR as *mut u32,
+            crate::boot::info::FB_WIDTH as usize,
+            crate::boot::info::FB_HEIGHT as usize,
+            crate::boot::info::FB_STRIDE as usize,
         )
     };
     (addr, w, h, s)

@@ -33,7 +33,7 @@ pub extern "C" fn Sleep(ms: u32) {
 /// SwitchToThread — yield to another thread.
 #[no_mangle]
 pub extern "C" fn SwitchToThread() -> u64 {
-    crate::sched::yield_now();
+    crate::proc::yield_now();
     1
 }
 

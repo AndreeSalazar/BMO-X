@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use crate::boot_info;
+use crate::boot::info;
 
 pub const SC_ESC: u8 = 0x01;
 const SC_F9: u8 = 0x43;
@@ -91,7 +91,7 @@ fn mouse_init() {
     unsafe {
         if MOUSE_INIT_DONE { return; }
         MOUSE_INIT_DONE = true;
-        crate::device::serial::serial_write("[desktop] Bypassing legacy PS/2 mouse setup for pure UEFI.\n");
+        crate::dev::console::serial_write("[desktop] Bypassing legacy PS/2 mouse setup for pure UEFI.\n");
     }
 }
 
@@ -110,8 +110,8 @@ unsafe fn process_mouse_byte(b: u8) {
     let dx = if (b0 & 0x10) != 0 { dx_raw - 0x100 } else { dx_raw };
     let dy = if (b0 & 0x20) != 0 { dy_raw - 0x100 } else { dy_raw };
 
-    MOUSE_X = (MOUSE_X + dx).clamp(0, boot_info::FB_WIDTH as i32 - 1);
-    MOUSE_Y = (MOUSE_Y - dy).clamp(0, boot_info::FB_HEIGHT as i32 - 1);
+    MOUSE_X = (MOUSE_X + dx).clamp(0, crate::boot::info::FB_WIDTH as i32 - 1);
+    MOUSE_Y = (MOUSE_Y - dy).clamp(0, crate::boot::info::FB_HEIGHT as i32 - 1);
     MOUSE_BUTTONS = b0 & 0x07;
 }
 

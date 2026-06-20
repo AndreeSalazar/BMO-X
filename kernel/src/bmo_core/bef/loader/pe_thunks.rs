@@ -249,6 +249,6 @@ pub extern "C" fn silent_stub(_a: bx_u64, _b: bx_u64, _c: bx_u64, _d: bx_u64) ->
 /// Stub that logs the import name and returns 0.
 #[allow(unused)]
 pub extern "C" fn log_stub(_a: bx_u64) -> bx_u64 {
-    // TODO: serial::log("[devour-pe] unresolved import called");
+    // TODO: console::log("[devour-pe] unresolved import called");
     0
 }

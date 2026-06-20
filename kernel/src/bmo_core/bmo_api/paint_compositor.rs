@@ -10,7 +10,7 @@
 use super::window::WID_INVALID;
 #[allow(unused_imports)]
 use super::wm;
-use crate::device::gop;
+use crate::dev::framebuffer;
 use crate::bmo_core::desktop::theme;
 
 static mut LAST_TICK: u64 = 0;
@@ -56,7 +56,7 @@ fn paint_desktop(slot: u32) {
     };
     s.unlock();
     // Wallpaper procedural (mismo que welcome/desktop existentes).
-    let fb = gop::get_backbuffer_fb();
+    let fb = crate::dev::framebuffer::get_backbuffer_fb();
     super::super::desktop::wallpaper::draw(&fb, crate::cpu::rdtsc());
     let _ = (x, y, w, h);
 }
@@ -66,7 +66,7 @@ fn paint_window_frame(w: &super::window::BmoWindow, focused: bool) {
     let y = w.y;
     let ww = w.w;
     let wh = w.h;
-    let fb = gop::get_backbuffer_fb();
+    let fb = crate::dev::framebuffer::get_backbuffer_fb();
     // Cuerpo de la ventana.
     fb.fill_rounded_rect(x as usize, y as usize, ww as usize, wh as usize, 14, theme::SURFACE_2);
     // Borde.

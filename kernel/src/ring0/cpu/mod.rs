@@ -8,11 +8,9 @@
 //! → performance counters → TSC calibration → info display.
 
 pub mod features;
-pub mod msrs;
-pub mod cr;
-pub mod xcr;
-pub mod mtrr;
-pub mod pat;
+pub mod msr;
+pub mod regs;
+pub mod cache;
 pub mod fpu;
 pub mod perf;
 pub mod tsc;
@@ -34,41 +32,38 @@ pub struct CpuInfo {
 /// let cpu = crate::cpu::init();
 /// ```
 pub fn init() -> CpuInfo {
-    crate::device::serial::serial_write("[cpu] === Modular CPU Init ===\n");
+    crate::dev::console::serial_write("[cpu] === Modular CPU Init ===\n");
 
     // 1. Detect features via CPUID
     let features = features::detect();
 
     // 2. Configure CR0/CR4 (FPU, SSE, AVX, SMEP, SMAP, etc.)
-    cr::init(&features);
+    regs::init(&features);
 
     // 3. Configure XCR0 safely (x87 + SSE + AVX state management)
-    xcr::init(&features);
+    regs::init_xcr0(&features);
 
     // 4. Initialize FPU clean state
     crate::cpu::fpu::init_fpu();
-    crate::device::serial::serial_write("[cpu] FPU initialized\n");
+    crate::dev::console::serial_write("[cpu] FPU initialized\n");
 
-    // 5. Configure MTRRs (default WB, VRAM as WC)
-    mtrr::init(&features, 0, 0);
+    // 5. Configure MTRRs (default WB, VRAM as WC) + PAT
+    cache::init(&features, 0, 0);
 
-    // 6. Configure PAT (default is fine for basic operation)
-    pat::init();
-
-    // 7. Enable performance counters
+    // 6. Enable performance counters
     perf::init(&features);
 
-    // 8. Enable lazy FPU switching (CR0.TS)
+    // 7. Enable lazy FPU switching (CR0.TS)
     crate::cpu::fpu::enable_lazy_fpu();
-    crate::device::serial::serial_write("[cpu] Lazy FPU switching enabled\n");
+    crate::dev::console::serial_write("[cpu] Lazy FPU switching enabled\n");
 
-    // 9. Calibrate TSC frequency
+    // 8. Calibrate TSC frequency
     let tsc_freq = tsc::calibrate();
 
-    // 10. Print CPU info
+    // 9. Print CPU info
     info::print(&features);
 
-    crate::device::serial::serial_write("[cpu] === Init Complete ===\n");
+    crate::dev::console::serial_write("[cpu] === Init Complete ===\n");
 
     CpuInfo { features, tsc_freq }
 }
