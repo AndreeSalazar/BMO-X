@@ -1,6 +1,11 @@
 //! Heap allocator — free-list with first-fit for FastOS kernel.
 //!
 //! Provides alloc + dealloc. 16 MB heap, split into free-list blocks.
+//!
+//! v1.6.16: `end_offset` is currently unused — keep around for the
+//! future coalescing-during-alloc optimization.
+
+#![allow(dead_code)]
 //! Each allocation uses an 8-byte header: [next_free: u32 | size: u32].
 //! Free blocks are coalesced on dealloc when adjacent.
 

@@ -1,6 +1,11 @@
 //! Concurrent Garbage Collector
 //!
 //! Runs GC in background thread, minimizing pause times.
+//!
+//! v1.6.16: `marked` variable is reserved for the next-generation GC
+//! trace phase (currently the collector is single-threaded).
+
+#![allow(unused_variables, unused_assignments)]
 
 #![allow(dead_code)]
 

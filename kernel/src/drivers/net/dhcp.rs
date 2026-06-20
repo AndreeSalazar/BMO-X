@@ -1,9 +1,13 @@
+#![allow(unused_results, dead_code)]
+
 #![allow(dead_code)]
 
 //! DHCP client for FastOS.
 //! Discovers and requests IP configuration from a DHCP server.
 //!
 //! RFC 2131 — BOOTP-compatible, message types: Discover, Offer, Request, Ack.
+
+#![allow(unused_results, dead_code)]
 
 use crate::drivers::serial;
 
@@ -308,3 +312,4 @@ fn serial_u32(val: u32) {
     else { while v > 0 { i -= 1; buf[i] = b'0' + (v % 10) as u8; v /= 10; } }
     serial::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("0"));
 }
+

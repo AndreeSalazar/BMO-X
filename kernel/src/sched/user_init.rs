@@ -330,7 +330,10 @@ pub fn spawn_desktop() {
     }
     crate::desktop::run_ring0();
     // If run_ring0 ever returns (shouldn't), we end up here.
-    crate::drivers::serial::serial_write("[user_init] desktop returned (unexpected)\n");
+    #[allow(unreachable_code)] // safety net for when run_ring0 changes its signature
+    {
+        crate::drivers::serial::serial_write("[user_init] desktop returned (unexpected)\n");
+    }
 }
 
 /// Build a minimal Ring 3 program that executes `ud2` (undefined opcode).

@@ -1,6 +1,13 @@
 //! Syscall Entry Point — IA32_LSTAR / STAR / FMASK MSR setup.
 //!
 //! x86-64 `syscall` instruction:
+//!
+//! v1.6.16: allow(dead_code) — `swapgs`, `read_gs_base`,
+//! `write_kernel_gs_base`, `write_user_gs_base` are public API
+//! functions used in inline asm tests but not by the live syscall
+//! path. They will be wired in v1.7.x when Ring 3 user code lands.
+
+#![allow(dead_code)]
 //!   - Saves RIP in RCX, RFLAGS in R11
 //!   - Loads CS from STAR[47:32], SS from STAR[47:32]+8
 //!   - Loads RIP from IA32_LSTAR

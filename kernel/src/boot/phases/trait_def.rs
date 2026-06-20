@@ -35,6 +35,7 @@ impl CheckResult {
     pub const fn pass(name: &'static str) -> Self {
         Self { name, passed: true, detail: 0 }
     }
+    #[allow(dead_code)] // reserved for future self-test failures
     pub const fn fail(name: &'static str, detail: u64) -> Self {
         Self { name, passed: false, detail }
     }
@@ -47,6 +48,7 @@ pub struct SelfTestReport {
 }
 
 impl SelfTestReport {
+    #[allow(dead_code)] // public API for future use
     pub fn all_passed(&self) -> bool {
         self.checks.iter().all(|c| c.passed)
     }

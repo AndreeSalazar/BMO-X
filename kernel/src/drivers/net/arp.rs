@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(unused_results, dead_code)]
 
 //! ARP (Address Resolution Protocol) for FastOS.
 //! Resolves IPv4 addresses to MAC addresses on the local LAN.
@@ -169,3 +169,4 @@ pub fn handle_packet(eth_frame: &[u8]) {
         _ => {}
     }
 }
+

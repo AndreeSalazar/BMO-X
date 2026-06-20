@@ -1,6 +1,11 @@
 //! Phase 0 — CPU Init.
 //!
 //! v1.1.0: Now takes `&mut BootContext` and writes CPU info there.
+//!
+//! v1.6.16: allow(dead_code) — `mark_entered`, `elapsed_tsc`, and
+//! some fields are public API for v1.7.x self-test features.
+
+#![allow(dead_code)]
 //! `CpuState` returned from `run` is kept for backwards compatibility
 //! with `main.rs` but the canonical data lives in `ctx.cpu`.
 //!

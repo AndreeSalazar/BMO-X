@@ -1,12 +1,16 @@
 //! ⭐ DEVOUR ELF — loader que come binarios Linux/Unix (.elf / .so).
 //!
 //! Lee el formato ELF64 (x86_64) y produce una `Image` BEF con
+//!
+//! v1.6.16: allow(dead_code, unused_assignments) on the `dyn_*` offset
+//! fields — they're parsed for completeness but the loader currently
+//! only handles statically-linked ELFs (no PT_DYNAMIC). Future work.
+
+#![allow(dead_code, unused_assignments, unused_variables)]
 //! `format = BinaryFormat::ElfDevoured`. Los segments de programa (LOAD,
 //! TLS, DYNAMIC) se mapean a `SectionKind` BEF; las relocs ELF
 //! (`R_X86_64_*`) se canonicalizan a las 3 de BEF; los `DT_NEEDED` se
 //! re-resuelven a libc-shim BMO.
-
-#![allow(dead_code)]
 
 use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use crate::bef::manifest::Provenance;

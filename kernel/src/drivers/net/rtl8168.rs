@@ -1,3 +1,5 @@
+#![allow(unused_results, dead_code)]
+
 #![allow(dead_code)]
 
 //! RTL8168/RTL8111 (Realtek GbE) NIC driver for FastOS.
@@ -5,6 +7,8 @@
 //!
 //! MMIO BAR0 (identity-mapped by UEFI), TX/RX descriptor rings, DMA-capable.
 //! Uses polling — no interrupt wiring needed.
+
+#![allow(unused_results, dead_code)]
 
 use crate::arch::page_alloc;
 use crate::drivers::pci::{self, PciDevice};
@@ -340,3 +344,4 @@ pub unsafe fn recv_frame(buf: &mut [u8]) -> Option<(u16, [u8; 6], usize)> {
 
     Some((ethertype, src_mac, len))
 }
+

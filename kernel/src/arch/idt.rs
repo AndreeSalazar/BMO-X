@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, unused_unsafe)]
 
 //! IDT — Interrupt Descriptor Table for x86-64 Long Mode.
 //! 256 entries, 16 bytes each. Ring 0, no_std.

@@ -3,6 +3,15 @@
 //! v1.4.0: ImplementaciÃ³n inicial con state machine completa, three-way
 //! handshake, y send/recv. Sliding window bÃ¡sico.
 //!
+//! v1.6.16: `unused_results` and `dead_code` allowed because the TCP
+//! state machine is fully implemented but never exercised (PCI skipped
+//! in v1.6.10, so RTL8168 NIC is not active). When ECAM is fixed,
+//! these allows can be removed.
+
+#![allow(unused_results)]
+#![allow(unused_must_use)]
+#![allow(dead_code)]
+
 //! ## Limitaciones actuales
 //!
 //! - Single-connection per `TcpSocket` (no connection pool)

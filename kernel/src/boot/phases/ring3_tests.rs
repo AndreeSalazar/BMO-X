@@ -10,6 +10,7 @@
 
 use crate::{arch, boot::{log, phases::trait_def::{SelfTestReport, CheckResult}}};
 
+#[allow(dead_code)] // wired in v1.7.x via welcome `test ring3` command
 pub fn run_all_tests() {
     log::info("ring3-test", "Running Ring 3 transition tests");
     crate::drivers::serial::serial_write("[probe] about to call run_all_tests\n");
@@ -25,6 +26,7 @@ pub fn run_all_tests() {
     }
 }
 
+#[allow(dead_code)] // wired in v1.7.x via welcome `test ring3` command
 pub fn run_codegen_tests() {
     log::info("ring3-codegen", "Running BMOasm codegen tests (heap live)");
     let n = arch::ring3_test::run_codegen_tests();

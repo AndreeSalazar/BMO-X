@@ -1,6 +1,13 @@
 //! NT Syscall Table — maps Nt* functions to BMO syscalls.
 //!
 //! This is the core of the ntdll gateway. Each NT syscall is translated
+//!
+//! v1.6.16: allow(unreachable_code) — `kill_current_process` returns
+//! `-> !` (never), so the `NtStatus::Success` lines after it are
+//! unreachable. The compiler still wants the explicit return for the
+//! type checker; we keep it as documentation of the syscall contract.
+
+#![allow(unreachable_code)]
 //! to the corresponding BMO syscall, similar to how Wine's syscall
 //! dispatcher works.
 //!

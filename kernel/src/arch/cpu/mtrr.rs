@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, unused_unsafe)]
 
 //! Memory Type Range Registers (MTRRs) — optimal memory mapping for RAM/VRAM.
 

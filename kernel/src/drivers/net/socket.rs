@@ -1,3 +1,5 @@
+#![allow(unused_results, dead_code)]
+
 //! Socket API — abstracción unificada sobre TCP y UDP.
 //!
 //! v1.4.0: API de sockets que las apps usarán. Encapsula la diferencia
@@ -15,6 +17,8 @@
 //!
 //! v1.4.0: stubs que devuelven errores si TCP no está listo. UDP
 //! funciona directamente sobre `udp::send`.
+
+#![allow(unused_results, dead_code)]
 
 use crate::drivers::serial;
 
@@ -79,3 +83,4 @@ pub enum SocketError {
     AddressInUse,
     Unknown,
 }
+

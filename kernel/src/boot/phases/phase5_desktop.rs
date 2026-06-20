@@ -1,4 +1,9 @@
 //! Phase 5 — Desktop.
+//!
+//! v1.6.16: `boot_start`/`phase4_end` are reserved for the desktop
+//! boot progress indicator in v1.7.x.
+
+#![allow(dead_code)]
 
 use crate::{boot::log, desktop};
 use crate::boot::context::BootContext;

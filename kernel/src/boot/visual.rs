@@ -60,6 +60,7 @@ static CURRENT_PHASE: AtomicUsize = AtomicUsize::new(0);
 
 /// Mark a phase as in-progress. The phase bar changes from pending to
 /// "current" (gold) until the phase completes.
+#[allow(dead_code)] // wired in v1.7.x when main.rs learns to call these
 pub fn begin_phase(idx: usize) {
     if !INITIALIZED.load(Ordering::Relaxed) { init(); }
     CURRENT_PHASE.store(idx.min(4), Ordering::Relaxed);
@@ -67,6 +68,7 @@ pub fn begin_phase(idx: usize) {
 }
 
 /// Mark a phase as complete. The phase bar turns mint.
+#[allow(dead_code)] // wired in v1.7.x when main.rs learns to call these
 pub fn end_phase(idx: usize) {
     CURRENT_PHASE.store((idx + 1).min(5), Ordering::Relaxed);
     redraw_phase_strip();
@@ -178,7 +180,12 @@ fn redraw_phase_strip() {
 }
 
 /// Public log entry point. Each call paints one line in the log area.
-pub fn log(phase: &str, msg: &str, color: u32) {
+///
+/// `color` is accepted for API symmetry with `boot::log::info` but the
+/// splash always uses near-white for the message so it stays visible
+/// against the row background (see v1.6.16). Pass any value; it's
+/// intentionally ignored.
+pub fn log(phase: &str, msg: &str, _color: u32) {
     if !INITIALIZED.load(Ordering::Relaxed) { init(); }
 
     let (addr, w, h, s) = fb();
@@ -191,12 +198,12 @@ pub fn log(phase: &str, msg: &str, color: u32) {
     let row = NEXT_LOG_ROW.fetch_add(1, Ordering::Relaxed) % LOG_ROWS;
     let y = cy + 330 + row * LOG_ROW_H;
 
-    // v1.6.15: Clear row with a SLIGHTLY different shade than the card
-    // body. Previous versions used the same `CARD_BG` for both, which
-    // made each log row look like an invisible rectangle on top of the
-    // card body. Now we use 0xFF0A1320 (a hair darker) so the log
-    // strip is subtly distinct from the surrounding card.
-    fill_rect(addr, s, w, h, cx + 60, y, cw - 120, LOG_ROW_H, 0xFF0A1320);
+    // v1.6.16: log row gets a LIGHTER bg (0xFF1A2638, distinguishable
+    // from the card body 0xFF0F1827) and the message is painted in
+    // high-contrast near-white (0xFFE6F1F5). The previous attempt
+    // (0xFF0A1320 row) was too close to the card body and the message
+    // text in caller-supplied `color` blended into the dark background.
+    fill_rect(addr, s, w, h, cx + 60, y, cw - 120, LOG_ROW_H, 0xFF1A2638);
 
     // Phase pill: small colored square (8x8) + label
     let phase_color = phase_color(phase);
@@ -206,9 +213,12 @@ pub fn log(phase: &str, msg: &str, color: u32) {
     // Arrow
     text(addr, s, w, h, cx + 76 + phase.len() * 8 + 8, y, b"->", DIM);
 
-    // Message
+    // Message in near-white for guaranteed contrast against the
+    // lighter row background. Caller-supplied `color` is ignored
+    // here on purpose: previous versions tried to honor it and the
+    // mint-on-dark-blue text was barely visible in camera captures.
     let mx = cx + 76 + phase.len() * 8 + 8 + 24;
-    text(addr, s, w, h, mx, y, msg.as_bytes(), color);
+    text(addr, s, w, h, mx, y, msg.as_bytes(), 0xFFE6F1F5);
 }
 
 fn phase_color(phase: &str) -> u32 {
@@ -355,6 +365,8 @@ pub mod color {
     pub(crate) const OK: u32 = 0xFF4ECCA3;
     pub(crate) const WARN: u32 = 0xFFFFBD2E;
     pub(crate) const FAULT: u32 = 0xFFFF2A2A;
+    #[allow(dead_code)]
     pub(crate) const HEADER: u32 = 0xFF58A6FF;
+    #[allow(dead_code)]
     pub(crate) const TEXT: u32 = 0xFFE6F1F5;
 }

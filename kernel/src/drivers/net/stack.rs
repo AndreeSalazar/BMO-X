@@ -1,9 +1,13 @@
+#![allow(unused_results, dead_code)]
+
 #![allow(dead_code)]
 
 //! Network stack for FastOS.
 //!
 //! Integrates RTL8168 NIC + ARP + IP + ICMP + UDP + DHCP.
 //! Provides a unified API for network initialization and polling.
+
+#![allow(unused_results, dead_code)]
 
 use crate::drivers::serial;
 
@@ -127,3 +131,4 @@ fn serial_ip(ip: u32) {
     }
     serial::serial_write(core::str::from_utf8(&buf[..pos]).unwrap_or("?"));
 }
+

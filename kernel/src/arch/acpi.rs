@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, unexpected_cfgs)]
 
 //! ACPI table parsing for UEFI-booted systems.
 //!

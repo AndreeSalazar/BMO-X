@@ -1,9 +1,13 @@
+#![allow(unused_results, dead_code)]
+
 #![allow(dead_code)]
 
 //! UDP (User Datagram Protocol) for FastOS.
 //! Minimal send/receive — used by DHCP client.
 //!
 //! RFC 768 — 8-byte header: src_port, dst_port, length, checksum.
+
+#![allow(unused_results, dead_code)]
 
 use alloc::vec::Vec;
 
@@ -105,3 +109,4 @@ fn udp_checksum(data: &[u8]) -> u16 {
     }
     !sum as u16
 }
+

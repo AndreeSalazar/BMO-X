@@ -1,9 +1,13 @@
+#![allow(unused_results, dead_code)]
+
 #![allow(dead_code)]
 
 //! ICMP (Internet Control Message Protocol) for FastOS.
 //! Handles ICMP Echo Request/Reply (ping).
 //!
 //! RFC 792 — Type 8 (Echo Request), Type 0 (Echo Reply).
+
+#![allow(unused_results, dead_code)]
 
 use crate::drivers::serial;
 
@@ -139,3 +143,4 @@ fn ip_to_str(ip: u32, buf: &mut [u8; 16]) {
         buf[i] = 0;
     }
 }
+

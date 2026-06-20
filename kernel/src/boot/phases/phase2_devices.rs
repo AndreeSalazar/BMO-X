@@ -1,6 +1,11 @@
 //! Phase 2 — Devices.
 //!
 //! v1.1.0: Now takes `&mut BootContext` and writes ACPI/PCI info there.
+//!
+//! v1.6.16: allow(dead_code) — `log_pci_device` is only used when the
+//! scan finds devices (currently PCI scan is skipped).
+
+#![allow(dead_code)]
 //! Also adds property-based unit tests for the ACPI parser so we catch
 //! regressions when the byte stream is malformed.
 
@@ -52,7 +57,7 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
     // v1.5.1: extra debug to find where Phase 2 hangs
     crate::drivers::serial::serial_write("[phase2] P2-debug-A: mcfg_result ready\n");
 
-    let mut found: u32 = 0;
+    let found: u32;
     if let Some(ecam) = mcfg_result {
         crate::drivers::serial::serial_write("[phase2] MCFG found: base=0x");
         boot_serial::hex(ecam.base_addr);

@@ -1,6 +1,6 @@
 //! Snapshot storage and management
 
-#![allow(dead_code)]
+#![allow(dead_code, unused_unsafe)]
 
 use super::Snapshot;
 

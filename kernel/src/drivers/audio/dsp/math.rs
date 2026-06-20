@@ -1,5 +1,11 @@
 //! Funciones matemáticas para DSP en `no_std`.
 //! Aproximaciones polynomial precisas para audio.
+//!
+//! v1.6.16: allow dead_code — atan/atan2/acos/log2/sqrt are not yet
+//! wired into any audio path (the gustOS FM synth uses sin/cos only).
+//! They'll be used by the future HDA limiter/compressor chain.
+
+#![allow(dead_code)]
 
 const FRAC_PI_2: f32 = core::f32::consts::FRAC_PI_2;
 const PI: f32 = core::f32::consts::PI;

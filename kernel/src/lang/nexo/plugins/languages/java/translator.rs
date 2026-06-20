@@ -1,6 +1,12 @@
 //! Java → ÑEXO Translator — converts Java AST to ÑEXO AST.
 //!
 //! Strategy: lower Java to a C-like ÑEXO AST with:
+//!
+//! v1.6.16: allow(irrefutable_let_patterns) for the two `if let Ok(_) = ...`
+//! sites that the compiler flagged. They are valid match-arms that we
+//! keep around for future error-context; the warning is noise.
+
+#![allow(irrefutable_let_patterns)]
 //! - `class Foo { ... }` → struct + vtable
 //! - `this.field` → struct field access
 //! - `new Foo(args)` → aloc + placement + constructor

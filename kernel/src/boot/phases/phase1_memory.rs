@@ -1,6 +1,10 @@
 //! Phase 1 — Memory.
 //!
 //! v1.1.0: Now takes `&mut BootContext` and writes memory info there.
+//!
+//! v1.6.16: allow(dead_code) — MemState fields are public for self-test.
+
+#![allow(dead_code)]
 //! v1.5.1: BootInfo dereferenced from `ctx.boot_info()` pointer (no stack copy).
 
 use crate::{allocator, arch, boot::log};

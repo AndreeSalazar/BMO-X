@@ -1,9 +1,13 @@
+#![allow(unused_results, dead_code)]
+
 #![allow(dead_code)]
 
 //! IPv4 layer for FastOS.
 //! Handles IP datagram receive/transmit, ICMP echo (ping), UDP send.
 //!
 //! Minimal implementation: no fragmentation, no options, no IPsec.
+
+#![allow(unused_results, dead_code)]
 
 use crate::drivers::net::rtl8168;
 
@@ -152,3 +156,4 @@ fn is_broadcast(ip: u32) -> bool {
 fn is_localnet(ip: u32, my_ip: u32) -> bool {
     (ip >> 24) == (my_ip >> 24)
 }
+

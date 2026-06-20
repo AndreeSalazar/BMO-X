@@ -1,6 +1,12 @@
 //! PIT (Programmable Interval Timer) driver — used as hardware watchdog.
 //!
 //! Channel 2 is repurposed as a watchdog: the kernel must call
+//!
+//! v1.6.16: allow(dead_code) — `init` and `arm` are part of the public
+//! watchdog API. Phase 4 starts the APIC timer and the PIT watchdog
+//! is left dormant; it arms automatically on a future fault path.
+
+#![allow(dead_code)]
 //! `pet()` periodically; if it doesn't within `WATCHDOG_TIMEOUT_SECS`,
 //! the system resets via keyboard controller (port 0x64, bit 0).
 //!
