@@ -27,6 +27,8 @@ pub mod windows;
 pub mod compositor;
 pub mod welcome;
 pub mod commands;
+pub mod theme;
+pub mod wallpaper;
 
 pub const CYCLES_PER_MS: u64 = 3_700_000;
 

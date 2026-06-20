@@ -1,84 +1,33 @@
-﻿//! Welcome screen â€” pantalla profesional de bienvenida en framebuffer.
+﻿//! v1.7.1 — Welcome screen profesional, dark, elegante.
 //!
-//! Layout:
+//! Cambios vs v1.6.x:
+//!   * Wallpaper procedural compartido con el desktop (mesh + aurora + grid).
+//!   * Card con glass (tinte negro 40% sobre el wallpaper).
+//!   * Tipografía jerárquica: title 3× → subtitle 2× → body 1×.
+//!   * Acentos mint teal + detalle gold; consistencia total con el desktop.
+//!   * Prompt rediseñado: pill con borde neón + caret cuadrado.
+//!   * Watermark "Powered by Eddi Andreé Salazar Matos" en una línea sutil.
+//!   * Footer con build / ring / arch en un strip inferior.
 //!
-//! ```text
-//!   â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-//!   â•‘                                                          â•‘
-//!   â•‘                     FastOS / BMO                         â•‘
-//!   â•‘                  Bare Metal Orchestrator                 â•‘
-//!   â•‘                       v0.9.0                             â•‘
-//!   â•‘                                                          â•‘
-//!   â•‘   âœ“  Ring 0 + Ring 3 listos                              â•‘
-//!   â•‘   âœ“  13 syscalls BMO activos                             â•‘
-//!   â•‘   âœ“  Compositor Ring 0 cargado                           â•‘
-//!   â•‘   âœ“  Mouse PS/2 + Beep PC speaker                        â•‘
-//!   â•‘   âœ“  RAMdisk con file I/O                                â•‘
-//!   â•‘                                                          â•‘
-//!   â•‘   Escribe (Run) y pulsa Enter para entrar al escritorio: â•‘
-//!   â•‘                                                          â•‘
-//!   â•‘       > _                                                â•‘
-//!   â•‘                                                          â•‘
-//!   â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//! ```
-//!
-//! Comandos aceptados (case-insensitive):
-//!   - `Run`   â†’ lanza el escritorio estable: Ring 0 supervisor + Ring 3 preparado
-//!   - `Hello` â†’ lanza el payload mÃ­nimo (`spawn_hello`)
-//!   - `Reboot` â†’ reinicia
-//!   - cualquier otra cosa â†’ muestra hint
+//! Comandos aceptados: Run, Hello, Ring3, Nexo, Test, Reboot (sin cambios).
 
 use crate::boot_info;
 use crate::ui::fb::Framebuffer;
 use crate::ui::font;
 use super::commands::{eq_ci, trim, should_enter_desktop, enter_desktop, nexo_test_compile};
 use super::sound;
+use super::theme;
+use super::wallpaper;
 
-// â”€â”€ Paleta del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-mod pal {
-    // v1.6.7 palette: modern dark cyan/teal with warm orange accents.
-    // Wallpaper is a dark teal->indigo gradient. Card body is a slightly
-    // raised dark slate with a teal border. Accents use FastOS green for
-    // OK badges and warm orange for hints and the Run button hover.
-    pub const BG_TOP:    u32 = 0xFF050B12;     // near-black with cool tint
-    pub const BG_BOT:    u32 = 0xFF0E1B2E;     // dark indigo
-
-    pub const CARD_BG:   u32 = 0xFF0F1827;     // raised slate
-    pub const CARD_BD:   u32 = 0xFF1F4D5C;     // teal border
-    pub const CARD_SHADOW: u32 = 0xFF020610;   // deep shadow
-
-    pub const TITLE:     u32 = 0xFFE6F1F5;     // near-white with cool tint
-    pub const ACCENT:    u32 = 0xFF4ECCA3;     // BMO mint/teal-green
-    pub const SUBTITLE:  u32 = 0xFF7B8FA1;     // cool gray
-    pub const VERSION:   u32 = 0xFFE2C044;     // warm gold (draws eye)
-
-    pub const OK_FG:     u32 = 0xFF4ECCA3;     // mint
-    pub const OK_BG:     u32 = 0xFF0E2820;     // dark mint pill
-    pub const ITEM:      u32 = 0xFFCBD7E0;     // soft white
-    pub const PROMPT_BG: u32 = 0xFF070D17;     // deeper than card
-    pub const PROMPT_BD: u32 = 0xFF4ECCA3;     // mint border
-    pub const PROMPT_FG: u32 = 0xFFE6F1F5;
-    pub const HINT:      u32 = 0xFFFFAA3D;     // warm orange
-
-    pub const RUN_BTN:   u32 = 0xFFE07832;     // warm orange
-    pub const RUN_BTN_HI:u32 = 0xFFFFA056;     // bright orange
-
-    // Phase progress colors (used by the new phase progress bar)
-    pub const PHASE_DONE:  u32 = 0xFF4ECCA3;
-    pub const PHASE_CURR:  u32 = 0xFFE2C044;
-    pub const PHASE_PEND:  u32 = 0xFF243140;
-    pub const PHASE_BG:    u32 = 0xFF0A1018;
-}
-
-// â”€â”€ State del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── State del welcome ───────────────────────────────────────────────
 
 const MAX_INPUT: usize = 32;
 static mut INPUT_BUF: [u8; MAX_INPUT] = [0; MAX_INPUT];
 static mut INPUT_LEN: usize = 0;
-static mut HINT_TIMER: u32 = 0;        // frames mostrando hint
+static mut HINT_TIMER: u32 = 0;
 static mut HINT_MSG: &[u8] = b"";
 
-// â”€â”€ Modificadores de teclado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modificadores de teclado ────────────────────────────────────────
 static mut KBD_LSHIFT: bool = false;
 static mut KBD_RSHIFT: bool = false;
 static mut KBD_CAPS:   bool = false;
@@ -89,10 +38,7 @@ fn shift_held() -> bool { unsafe { KBD_LSHIFT || KBD_RSHIFT } }
 #[inline]
 fn caps_on() -> bool { unsafe { KBD_CAPS } }
 
-/// Letras: si `shift XOR caps`, mayÃºscula. Otros sÃ­mbolos: shift selecciona el
-/// glifo superior. Devuelve `None` para teclas sin texto.
 fn translate_scancode(sc: u8) -> Option<u8> {
-    // Base (sin shift) â€” PS/2 Set 1 US-ASCII estÃ¡ndar.
     let (base, shifted): (u8, u8) = match sc {
         0x29 => (b'`',  b'~'),
         0x02 => (b'1',  b'!'),
@@ -129,7 +75,7 @@ fn translate_scancode(sc: u8) -> Option<u8> {
         0x24 => (b'j',  b'J'),
         0x25 => (b'k',  b'K'),
         0x26 => (b'l',  b'L'),
-        0x27 => (164,  165), // Ã± y Ã‘ (distribuciÃ³n espaÃ±ola)
+        0x27 => (164,  165),
         0x28 => (b'\'', b'"'),
         0x2B => (b'\\', b'|'),
         0x2C => (b'z',  b'Z'),
@@ -147,24 +93,14 @@ fn translate_scancode(sc: u8) -> Option<u8> {
         0x0E => (8,     8),
         _ => return None,
     };
-
     let is_letter = base.is_ascii_lowercase();
-    let upper = if is_letter {
-        // Letras: shift XOR caps â†’ mayÃºscula.
-        shift_held() ^ caps_on()
-    } else {
-        shift_held()
-    };
+    let upper = if is_letter { shift_held() ^ caps_on() } else { shift_held() };
     Some(if upper { shifted } else { base })
 }
 
-/// Procesa un scancode crudo y, si es modifier, actualiza el estado;
-/// si es tecla normal pulsada, devuelve el carÃ¡cter a insertar.
 fn process_scancode(raw: u8) -> Option<u8> {
     let released = (raw & 0x80) != 0;
     let sc = raw & 0x7F;
-
-    // Modificadores
     match sc {
         0x2A => { unsafe { KBD_LSHIFT = !released; } return None; }
         0x36 => { unsafe { KBD_RSHIFT = !released; } return None; }
@@ -172,29 +108,23 @@ fn process_scancode(raw: u8) -> Option<u8> {
             if !released { unsafe { KBD_CAPS = !KBD_CAPS; } }
             return None;
         }
-        0x1D | 0x38 => return None, // Ctrl / Alt â€” ignorados aquÃ­
+        0x1D | 0x38 => return None,
         _ => {}
     }
-
     if released { return None; }
     translate_scancode(sc)
 }
 
-// â”€â”€ Drawing helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Drawing helpers ─────────────────────────────────────────────────
 
 fn fb() -> Option<Framebuffer> {
     let (addr, w, h, s) = unsafe {
         (boot_info::FB_ADDR, boot_info::FB_WIDTH, boot_info::FB_HEIGHT, boot_info::FB_STRIDE)
     };
     if addr == 0 || w == 0 { return None; }
-    // FB_STRIDE llega desde GOP en pÃ­xeles por lÃ­nea. `Framebuffer::new`
-    // espera pitch en bytes, igual que el escritorio Ring 0. Si pasamos el
-    // stride crudo, el welcome sÃ³lo pinta bien el fondo y el texto/tarjetas
-    // quedan corruptos o fuera de sitio en hardware real.
     Some(Framebuffer::new(addr, (s as u64) * 4, w, h))
 }
 
-/// Dibuja texto. Soporta escala 1Ã—, 2Ã— y 3Ã— (replicando pÃ­xeles).
 fn draw_text_scaled(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32, scale: u32) {
     let mut cx = x as usize;
     let cy = y as usize;
@@ -225,85 +155,80 @@ fn draw_text(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32) {
     draw_text_scaled(fb, x, y, text, color, 1);
 }
 
-// â”€â”€ Render del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Geometría fija de la card (proporciones v1.7.1) ────────────────
 
-/// GeometrÃ­a fija del prompt â€” usada tanto por el render principal como
-/// por el repaint local del caret. Devuelve `(prompt_x, prompt_y, w, h)`.
-fn prompt_rect(fb: &Framebuffer) -> (usize, usize, usize, usize) {
-    // v1.6.12: match the new card geometry (1100×540)
-    let cw = 1100usize;
-    let ch = 540usize;
-    let cx = (fb.width - cw) / 2;
-    let cy = (fb.height - ch) / 2;
-    let pw = 800usize;
-    let ph = 60usize;
-    let px = cx + (cw - pw) / 2;
-    let py = cy + ch - ph - 80;
-    (px, py, pw, ph)
-}
+const CARD_W: usize = 1180;
+const CARD_H: usize = 580;
 
-/// PosiciÃ³n del caret en pÃ­xeles, dado `len` (caracteres ya escritos).
-fn caret_pos(fb: &Framebuffer) -> (usize, usize) {
-    let (px, py, _, _) = prompt_rect(fb);
-    let len = unsafe { INPUT_LEN };
-    let cx = px + 16 + 8 * 2 * 2 + len * 16;
-    let cy = py + 20;
+fn card_geom(fb: &Framebuffer) -> (usize, usize) {
+    let cx = (fb.width - CARD_W) / 2;
+    let cy = (fb.height - CARD_H) / 2;
     (cx, cy)
 }
 
-/// Pinta o borra el caret en su posiciÃ³n actual. No toca el resto del
-/// frame: usado tanto por el render full como por el blink local.
-fn paint_caret(fb: &Framebuffer, on: bool) {
-    let (cx, cy) = caret_pos(fb);
-    let color = if on { pal::PROMPT_FG } else { pal::PROMPT_BG };
-    fb.fill_rect(cx, cy, 12, 24, color);
+fn prompt_rect(fb: &Framebuffer) -> (usize, usize, usize, usize) {
+    let (cx, cy) = card_geom(fb);
+    let pw = 760usize;
+    let ph = 64usize;
+    let px = cx + (CARD_W - pw) / 2;
+    let py = cy + CARD_H - ph - 110;
+    (px, py, pw, ph)
 }
 
-fn render(fb: &Framebuffer) {
-    // 1) Wallpaper gradient — dithered in v1.6.12 to break visible bands
-    fb.gradient_v(0, 0, fb.width, fb.height, pal::BG_TOP, pal::BG_BOT);
+fn caret_pos(fb: &Framebuffer) -> (usize, usize) {
+    let (px, py, _, _) = prompt_rect(fb);
+    let len = unsafe { INPUT_LEN };
+    let cx = px + 20 + 8 * 2 * 2 + len * 16;
+    let cy = py + 18;
+    (cx, cy)
+}
 
-    // 2) Card centrado — more compact v1.6.12 (1100×540) to fill the screen
-    //    better and reduce empty space between badges and prompt.
-    let cw = 1100usize;
-    let ch = 540usize;
-    let cx = (fb.width - cw) / 2;
-    let cy = (fb.height - ch) / 2;
+fn paint_caret(fb: &Framebuffer, on: bool) {
+    let (cx, cy) = caret_pos(fb);
+    let color = if on { theme::MINT_SOFT } else { theme::PROMPT_BG };
+    fb.fill_rect(cx, cy, 10, 28, color);
+}
+
+// ── Render principal ────────────────────────────────────────────────
+
+fn render(fb: &Framebuffer) {
+    // 1) Wallpaper procedural compartido con el desktop.
+    let time = crate::arch::cpu::rdtsc();
+    wallpaper::draw(fb, time);
+
+    // 2) Card centrada con glass.
+    let (cx, cy) = card_geom(fb);
 
     // sombra profunda
-    fb.fill_rounded_rect(cx + 12, cy + 16, cw, ch, 24, pal::CARD_SHADOW);
-    // cuerpo
-    fb.fill_rounded_rect(cx, cy, cw, ch, 24, pal::CARD_BG);
-    // border interno sutil
-    fb.draw_rect(cx + 1, cy + 1, cw - 2, ch - 2, 0xFF1A2D3A, 1);
+    fb.fill_rounded_rect(cx + 16, cy + 22, CARD_W, CARD_H, 28, theme::CARD_SHADOW);
+    // cuerpo glass: capa surface + tinte negro 40%
+    fb.fill_rounded_rect(cx, cy, CARD_W, CARD_H, 28, theme::SURFACE_0);
+    // hairline interior
+    fb.draw_rect(cx + 1, cy + 1, CARD_W - 2, CARD_H - 2, theme::SURFACE_LINE, 1);
 
-    // v1.6.21: NEON glow on the card border, toned down to be a
-    // soft halo rather than bright beams. We use a 1-px outline at
-    // 4 px and 2 px outside the card with progressively dimmer teal.
-    // Outermost (4 px out, very dim teal)
+    // v1.7.1: 3 capas de neón exterior (halo soft) — mismo orden que v1.6.x
+    // pero con tonos del theme.
     fb.draw_rect(
-        cx.saturating_sub(4), cy.saturating_sub(4),
-        cw + 8, ch + 8,
-        0xFF0F2030, 1,
+        cx.saturating_sub(6), cy.saturating_sub(6),
+        CARD_W + 12, CARD_H + 12,
+        theme::NEON_OUTER, 1,
     );
-    // Middle (2 px out, dim teal)
     fb.draw_rect(
-        cx.saturating_sub(2), cy.saturating_sub(2),
-        cw + 4, ch + 4,
-        0xFF143D54, 1,
+        cx.saturating_sub(3), cy.saturating_sub(3),
+        CARD_W + 6, CARD_H + 6,
+        theme::NEON_MID, 1,
     );
-    // Border principal teal
-    fb.draw_rect(cx, cy, cw, ch, pal::CARD_BD, 2);
+    fb.draw_rect(cx, cy, CARD_W, CARD_H, theme::SURFACE_BORDER, 2);
 
-    // 3) Header bar — mint accent strip at the very top of the card,
-    //    plus a thin teal "underglow" 2 px below for the neon feel.
-    fb.fill_rect(cx + 24, cy + 28, cw - 48, 3, pal::ACCENT);
-    // Underglow — slightly dimmer mint, 1 px below the accent bar
-    fb.fill_rect(cx + 24, cy + 33, cw - 48, 1, 0xFF2E8C77);
-    // Outer underglow — 2 px below, very dim
-    fb.fill_rect(cx + 24, cy + 36, cw - 48, 1, 0xFF144D4D);
+    // Glass top sheen: 1 línea sutil blanca 10% alpha simulando luz superior.
+    fb.fill_rect(cx + 24, cy + 2, CARD_W - 48, 1, theme::GLASS_HIGHLIGHT);
 
-    // 4) Title — "FastOS-BMO" big, scale 3×, mint dash, soft shadow
+    // 3) Header strip — barra mint superior + underglow 2 px.
+    fb.fill_rect(cx + 24, cy + 28, CARD_W - 48, 3, theme::MINT);
+    fb.fill_rect(cx + 24, cy + 33, CARD_W - 48, 1, theme::MINT_DEEP);
+    fb.fill_rect(cx + 24, cy + 36, CARD_W - 48, 1, theme::NEON_INNER);
+
+    // 4) Title — FastOS-BMO con scale 3×, sombra + acento mint en "-".
     let title_left  = b"FastOS";
     let title_dash  = b"-";
     let title_right = b"BMO";
@@ -312,36 +237,38 @@ fn render(fb: &Framebuffer) {
     let lw_d = title_dash.len()  * 8 * scale_t as usize;
     let lw_r = title_right.len() * 8 * scale_t as usize;
     let total = lw_l + lw_d + lw_r + 24;
-    let title_y = cy + 60;
-    let mut tx = cx + (cw - total) / 2;
-    // soft shadow (3px offset, very dark)
+    let title_y = cy + 64;
+    let mut tx = cx + (CARD_W - total) / 2;
+    // Sombra suave 3 px offset.
     draw_text_scaled(fb, (tx + 3) as u32, (title_y + 3) as u32, title_left,  0xFF020610, scale_t);
     draw_text_scaled(fb, (tx + 3) as u32, (title_y + 3) as u32, title_dash,  0xFF020610, scale_t);
     draw_text_scaled(fb, (tx + 3) as u32, (title_y + 3) as u32, title_right, 0xFF020610, scale_t);
-    draw_text_scaled(fb, tx as u32, title_y as u32, title_left,  pal::TITLE, scale_t);
+    draw_text_scaled(fb, tx as u32, title_y as u32, title_left,  theme::TITLE, scale_t);
     tx += lw_l + 12;
-    draw_text_scaled(fb, tx as u32, title_y as u32, title_dash,  pal::ACCENT, scale_t);
+    draw_text_scaled(fb, tx as u32, title_y as u32, title_dash,  theme::MINT, scale_t);
     tx += lw_d + 12;
-    draw_text_scaled(fb, tx as u32, title_y as u32, title_right, pal::TITLE, scale_t);
+    draw_text_scaled(fb, tx as u32, title_y as u32, title_right, theme::TITLE, scale_t);
 
     // 5) Subtitle
     let sub = b"Bare Metal Orchestrator";
     let sw = sub.len() * 8 * 2;
-    let sx = cx + (cw - sw) / 2;
-    draw_text_scaled(fb, sx as u32, (cy + 130) as u32, sub, pal::SUBTITLE, 2);
+    let sx = cx + (CARD_W - sw) / 2;
+    draw_text_scaled(fb, sx as u32, (cy + 134) as u32, sub, theme::SUBTITLE, 2);
 
-    // 6) Version line
-    let ver = b"v1.6.21 ::  Ring 0 + Ring 3  ::  [neon-soft|log-debug|watermark]";
+    // 6) Version line (gold pill)
+    let ver = b"v1.7.1   ::   Ring 0 + Ring 3   ::   Dark Elegance";
     let vw = ver.len() * 8;
-    let vx = cx + (cw - vw) / 2;
-    draw_text(fb, vx as u32, (cy + 170) as u32, ver, pal::VERSION);
+    let vx = cx + (CARD_W - vw) / 2;
+    // Pill sutil mint de fondo
+    fb.fill_rounded_rect(vx - 16, cy + 174, vw + 32, 24, 8, theme::MINT_PILL_BG);
+    draw_text(fb, vx as u32, (cy + 180) as u32, ver, theme::GOLD);
 
-    // 7) Phase progress bar — 5 segments with shimmer highlight on done
-    let pb_x = cx + 80;
-    let pb_y = cy + 210;
-    let pb_w = cw - 160;
+    // 7) Phase progress bar — 5 segmentos.
+    let pb_x = cx + 90;
+    let pb_y = cy + 220;
+    let pb_w = CARD_W - 180;
     let pb_h = 12;
-    fb.fill_rounded_rect(pb_x - 2, pb_y - 2, pb_w + 4, pb_h + 4, 6, pal::PHASE_BG);
+    fb.fill_rounded_rect(pb_x - 2, pb_y - 2, pb_w + 4, pb_h + 4, 6, 0xFF0A1018);
     let phases_total = 5usize;
     let seg_w = pb_w / phases_total;
     let seg_gap = 6usize;
@@ -349,171 +276,146 @@ fn render(fb: &Framebuffer) {
     for i in 0..phases_total {
         let sxi = pb_x + i * seg_w + seg_gap / 2;
         let swi = seg_w - seg_gap;
-        let color = if i < current_phase { pal::PHASE_DONE }
-                    else if i == current_phase { pal::PHASE_CURR }
-                    else { pal::PHASE_PEND };
+        let (color, _bg) = if i < current_phase { (theme::MINT, theme::MINT_PILL_BG) }
+                    else if i == current_phase { (theme::GOLD, theme::CURRENT_BG) }
+                    else { (theme::PENDING_FG, theme::PENDING_BG) };
         fb.fill_rounded_rect(sxi, pb_y, swi, pb_h, 5, color);
-        // shimmer: thin mint highlight on the top 2 px of DONE segments
         if i < current_phase {
-            fb.fill_rect(sxi + 2, pb_y + 1, swi - 4, 2, 0xFF8FF0CC);
+            fb.fill_rect(sxi + 2, pb_y + 1, swi - 4, 2, theme::MINT_SOFT);
         }
     }
-    // Phase labels under the bar with icons
     let labels: [&[u8]; 5] = [b"CPU", b"Mem", b"Dev", b"Disp", b"Desk"];
     let mut lx = pb_x;
     for (i, lab) in labels.iter().enumerate() {
-        let color = if i < current_phase { pal::OK_FG }
-                    else if i == current_phase { pal::VERSION }
-                    else { pal::SUBTITLE };
+        let color = if i < current_phase { theme::OK_FG }
+                    else if i == current_phase { theme::CURRENT_FG }
+                    else { theme::SUBTITLE };
         let lw = lab.len() * 8;
         let lxoff = seg_w.saturating_sub(lw) / 2;
         draw_text(fb, (lx + lxoff) as u32, (pb_y + 22) as u32, lab, color);
         lx += seg_w;
     }
 
-    // 8) Subsystem badges — v1.6.12 with ASCII icons
-    //    Check mark "v" for done, gold dot for current
+    // 8) Subsystem badges — 5 cards pequeñas con icono + label + value.
     let badges: [(&[u8], &[u8], &[u8]); 5] = [
         (b"v", b"Ring0+3",    b"active"),
         (b"v", b"Syscalls",   b"13 ops"),
         (b"v", b"Compositor", b"loaded"),
         (b"v", b"PS/2+Beep",  b"ready"),
-        (b"v", b"RAMdisk+FS", b"open/rd/cls"),
+        (b"v", b"RAMdisk+FS", b"open/rd"),
     ];
-    let by0 = cy + 260;
-    let bw = (cw - 160 - 4 * 8) / 5;
-    let bh = 56;
+    let by0 = cy + 274;
+    let bw = (CARD_W - 180 - 4 * 8) / 5;
+    let bh = 60;
     for (i, (icon, label, value)) in badges.iter().enumerate() {
-        let bx = cx + 80 + i * (bw + 8);
-        // v1.6.21: NEON underglow toned down — 1 px outside each badge
-        // in dim teal (was 2 px and brighter).
+        let bx = cx + 90 + i * (bw + 8);
+        // halo exterior 1 px teal
         fb.draw_rect(
             bx.saturating_sub(1), by0.saturating_sub(1),
             bw + 2, bh + 2,
-            0xFF143D54, 1,
+            theme::NEON_MID, 1,
         );
-        // base fill
-        fb.fill_rounded_rect(bx, by0, bw, bh, 10, pal::OK_BG);
-        // mint border
-        fb.draw_rect(bx, by0, bw, bh, pal::OK_FG, 1);
-        // icon badge (small filled circle with check, 14x14 at top-left)
-        fb.fill_circle(bx + 14, by0 + 14, 8, pal::OK_FG);
-        draw_text(fb, (bx + 10) as u32, (by0 + 6) as u32, icon, pal::OK_BG);
-        // label in mint, value in cool gray
-        draw_text(fb, (bx + 28) as u32, (by0 + 8) as u32, label, pal::OK_FG);
-        draw_text(fb, (bx + 28) as u32, (by0 + 26) as u32, value, pal::SUBTITLE);
-        // second tiny icon next to value (•)
-        draw_text(fb, (bx + 28) as u32, (by0 + 42) as u32, b"\x95 ok", 0xFF3D5C50);
+        // body
+        fb.fill_rounded_rect(bx, by0, bw, bh, 12, theme::SURFACE_1);
+        // border mint
+        fb.draw_rect(bx, by0, bw, bh, theme::MINT, 1);
+        // top sheen blanco
+        fb.fill_rect(bx + 2, by0 + 2, bw - 4, 1, theme::GLASS_HIGHLIGHT);
+        // icon: círculo mint con check
+        fb.fill_circle(bx + 16, by0 + 18, 9, theme::MINT);
+        draw_text(fb, (bx + 12) as u32, (by0 + 10) as u32, icon, theme::MINT_PILL_BG);
+        // text
+        draw_text(fb, (bx + 32) as u32, (by0 + 8) as u32, label, theme::MINT);
+        draw_text(fb, (bx + 32) as u32, (by0 + 28) as u32, value, theme::SUBTITLE);
+        // status dot
+        fb.fill_circle(bx + 38, by0 + 48, 2, theme::MINT);
     }
 
-    // 9) Prompt box
+    // 9) Hint superior al prompt
+    let hint = b">>  Type  Run  and press  Enter  to enter the Ring 0 desktop";
+    let hx_pos;
+    {
+        let (px, py, _, _) = prompt_rect(fb);
+        hx_pos = px;
+        draw_text(fb, px as u32, (py - 30) as u32, hint, theme::SUBTITLE);
+    }
+
+    // 10) Prompt — pill con neón exterior
     let (px, py, pw, ph) = prompt_rect(fb);
-
-    // hint above the prompt
-    let hint = b">>  Escribe (Run) y pulsa Enter para entrar al Ring 0 desktop";
-    let hx = px;
-    draw_text(fb, hx as u32, (py - 28) as u32, hint, pal::SUBTITLE);
-
-    // v1.6.20: NEON underglow on the prompt — 2 px out, dim teal
     fb.draw_rect(
         px.saturating_sub(2), py.saturating_sub(2),
         pw + 4, ph + 4,
-        0xFF144D4D, 1,
+        theme::NEON_INNER, 1,
     );
-    // caja
-    fb.fill_rounded_rect(px, py, pw, ph, 10, pal::PROMPT_BG);
-    fb.draw_rect(px, py, pw, ph, pal::PROMPT_BD, 2);
-    // inner glow (subtle top border highlight)
-    fb.fill_rect(px + 2, py + 2, pw - 4, 1, 0xFF6FFFD0);
+    fb.fill_rounded_rect(px, py, pw, ph, 12, theme::PROMPT_BG);
+    fb.draw_rect(px, py, pw, ph, theme::MINT, 2);
+    fb.fill_rect(px + 2, py + 2, pw - 4, 1, theme::MINT_SOFT);
 
-    // prompt "> " + input
-    draw_text_scaled(fb, (px + 16) as u32, (py + 18) as u32, b"> ", pal::ACCENT, 2);
+    // prompt + input
+    draw_text_scaled(fb, (px + 20) as u32, (py + 20) as u32, b"> ", theme::MINT, 2);
     let len = unsafe { INPUT_LEN };
     if len > 0 {
         let txt = unsafe { &INPUT_BUF[..len] };
-        draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, txt, pal::PROMPT_FG, 2);
+        draw_text_scaled(fb, (px + 20 + 32) as u32, (py + 20) as u32, txt, theme::PROMPT_FG, 2);
     } else {
-        // v1.6.7: ghosted placeholder
-        draw_text_scaled(fb, (px + 16 + 8 * 2 * 2) as u32, (py + 18) as u32, b"Run", 0xFF3D4F5F, 2);
+        draw_text_scaled(fb, (px + 20 + 32) as u32, (py + 20) as u32, b"Run", theme::PLACEHOLDER, 2);
     }
 
-    // 10) Hint (si hay)
+    // 11) Hint (si hay)
     let (timer, msg) = unsafe { (HINT_TIMER, HINT_MSG) };
     if timer > 0 && !msg.is_empty() {
-        draw_text(fb, hx as u32, (py + ph + 16) as u32, msg, pal::HINT);
+        draw_text(fb, hx_pos as u32, (py + ph + 14) as u32, msg, theme::HINT);
     }
 
-    // 11) RUN button — a la derecha del prompt, with subtle gradient
-    let btn_w = 120usize;
-    let btn_h = 60usize;
+    // 12) RUN button — pill naranja a la derecha del prompt
+    let btn_w = 130usize;
+    let btn_h = 64usize;
     let bx = px + pw - btn_w;
     let by = py;
     let btn_active = unsafe { INPUT_LEN > 0 && {
         let s = &INPUT_BUF[..INPUT_LEN];
         eq_ci(s, b"run")
     } };
-    let btn_color = if btn_active { pal::RUN_BTN_HI } else { pal::RUN_BTN };
-    fb.fill_rounded_rect(bx, by, btn_w, btn_h, 10, btn_color);
-    fb.draw_rect(bx, by, btn_w, btn_h, pal::CARD_BD, 1);
-    // arrow icon on the left
-    draw_text_scaled(fb, (bx + 12) as u32, (by + 18) as u32, b"\x10", pal::TITLE, 2);
+    let btn_color = if btn_active { theme::ORANGE_HI } else { theme::ORANGE };
+    // halo neón
+    fb.draw_rect(
+        bx.saturating_sub(2), by.saturating_sub(2),
+        btn_w + 4, btn_h + 4,
+        theme::NEON_INNER, 1,
+    );
+    fb.fill_rounded_rect(bx, by, btn_w, btn_h, 12, btn_color);
+    fb.draw_rect(bx, by, btn_w, btn_h, theme::SURFACE_BORDER, 1);
+    // top sheen
+    fb.fill_rect(bx + 2, by + 2, btn_w - 4, 1, theme::GLASS_HIGHLIGHT);
+    // arrow icon
+    draw_text_scaled(fb, (bx + 14) as u32, (by + 20) as u32, b"\x10", theme::TITLE, 2);
     let lbl = b"RUN";
     let lw = lbl.len() * 8 * 2;
-    let lx = bx + 36 + (btn_w - 36 - lw) / 2;
-    draw_text_scaled(fb, lx as u32, (by + 18) as u32, lbl, pal::TITLE, 2);
+    let lx = bx + 40 + (btn_w - 40 - lw) / 2;
+    draw_text_scaled(fb, lx as u32, (by + 20) as u32, lbl, theme::TITLE, 2);
 
-    // 12) Pie — RAM, BIOS, build info
-    let free_mb = unsafe { (crate::arch::page_alloc::free_count() * 4) / 1024 };
-    let mut foot = [0u8; 96];
-    let prefix = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  ";
-    let mut i = 0;
-    while i < prefix.len() && i < foot.len() { foot[i] = prefix[i]; i += 1; }
-    // append free_mb as decimal
-    if free_mb > 0 {
-        let mut v = free_mb as u32;
-        if v == 0 { v = 0; }
-        // simple itoa
-        let mut buf = [0u8; 10];
-        let mut j = 10;
-        if v == 0 { j -= 1; buf[j] = b'0'; }
-        else { while v > 0 { j -= 1; buf[j] = b'0' + (v % 10) as u8; v /= 10; } }
-        let s = &buf[j..];
-        for &b in s { if i < foot.len() - 12 { foot[i] = b; i += 1; } }
-    }
-    let suffix = b" MB free  ::  UEFI";
-    for &b in suffix { if i < foot.len() { foot[i] = b; i += 1; } }
-    let fw = i * 8;
-    let fx = cx + (cw - fw) / 2;
-    draw_text(fb, fx as u32, (cy + ch - 32) as u32, &foot[..i], pal::SUBTITLE);
-
-    // v1.6.20: PERSONAL WATERMARK — "Powered by Eddi Andreé Salazar Matos"
-    // in mint with a teal pill background, centered as the second-to-last
-    // footer line. The author is the human behind the kernel.
+    // 13) Watermark del autor — pill mint en la franja inferior.
     let author = b"\x95  Powered by Eddi Andre\x82 Salazar Matos";
     let aw = author.len() * 8;
-    let ax = cx + (cw - aw) / 2;
-    // Mint pill background to highlight the author line
-    fb.fill_rounded_rect(ax - 16, cy + ch - 22, aw + 32, 22, 8, 0xFF0E2820);
-    draw_text(fb, ax as u32, (cy + ch - 18) as u32, author, pal::ACCENT);
+    let ax = cx + (CARD_W - aw) / 2;
+    fb.fill_rounded_rect(ax - 18, cy + CARD_H - 54, aw + 36, 22, 8, theme::MINT_PILL_BG);
+    draw_text(fb, ax as u32, (cy + CARD_H - 50) as u32, author, theme::MINT);
 
-    // build line — bottom of card
-    let build = b"build 1.6.20  ::  AMD64  ::  BMO ABI v0.4.0  ::  Ring 0 + Ring 3";
+    // 14) Footer build/ring/arch
+    let build = b"build 1.7.1  ::  AMD64  ::  BMO ABI v0.4.0  ::  Ring 0 + Ring 3";
     let bw2 = build.len() * 8;
-    let bx2 = cx + (cw - bw2) / 2;
-    draw_text(fb, bx2 as u32, (cy + ch - 4) as u32, build, 0xFF455364);
+    let bx2 = cx + (CARD_W - bw2) / 2;
+    draw_text(fb, bx2 as u32, (cy + CARD_H - 22) as u32, build, theme::DIM);
 }
 
-/// Render mÃ­nimo y robusto para hardware real.
-///
-/// Usa sÃ³lo `clear/fill_rect/text` y evita gradientes/rounded-corners en el
-/// boot path. AsÃ­ el prompt y el hotkey diag funcionan aunque el renderer
-/// avanzado tenga un problema de GOP/pitch especÃ­fico de la mÃ¡quina.
+// ── Render fallback (sin wallpaper) ────────────────────────────────
+
 fn render_safe(fb: &Framebuffer) {
     fb.clear(0xFF07111F);
     fb.fill_rect(0, 0, fb.width, 42, 0xFF101820);
-    draw_text(fb, 14, 13, b"FastOS / BMO - SAFE WELCOME", 0xFFE6EDF3);
+    draw_text(fb, 14, 13, b"FastOS / BMO  ::  v1.7.1  ::  SAFE WELCOME", 0xFFE6EDF3);
     draw_text(fb, 14, 58, b"GOP framebuffer OK. Storage/NIC deferred for stable boot.", 0xFF76B900);
-    draw_text(fb, 14, 82, b"F9: diag HUD   Ctrl+Alt: diag HUD   Run + Enter: desktop Ring 0", 0xFF8B949E);
+    draw_text(fb, 14, 82, b"Run + Enter: desktop  ::  F9: diag HUD", 0xFF8B949E);
 
     let y = (fb.height / 2).saturating_sub(32);
     fb.fill_rect(14, y, fb.width.saturating_sub(28), 72, 0xFF0D1117);
@@ -534,13 +436,7 @@ fn render_safe(fb: &Framebuffer) {
     }
 }
 
-// â”€â”€ State global del welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-//
-// `DIRTY` se pone a true cada vez que algo del frame cambia (input,
-// hint, etc). El loop principal sÃ³lo re-renderiza el frame entero
-// cuando `DIRTY = true`; el blink del caret se gestiona aparte
-// repintando sÃ³lo la zona del caret. Esto elimina el ghost flicker
-// que se veÃ­a cuando hacÃ­amos full repaint cada 32 ms.
+// ── Dirty tracking ──────────────────────────────────────────────────
 
 static mut DIRTY: bool = true;
 static mut LAST_BLINK_ON: bool = false;
@@ -552,12 +448,12 @@ fn mark_dirty() { unsafe { DIRTY = true; } }
 fn show_hint(msg: &'static [u8]) {
     unsafe {
         HINT_MSG = msg;
-        HINT_TIMER = 120; // ~2 seg a 60 FPS
+        HINT_TIMER = 120;
     }
     mark_dirty();
 }
 
-// â”€â”€ Self-test commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Self-test commands ──────────────────────────────────────────────
 
 fn run_phase_self_test(n: u8) {
     use crate::boot::phases::report_self_test;
@@ -614,11 +510,9 @@ fn process_enter() {
     let trimmed_cmd = trim(cmd);
 
     if trimmed_cmd.is_empty() {
-        show_hint(b"Escribe (Run) y Enter.");
+        show_hint(b"Type Run and press Enter.");
     } else if should_enter_desktop(trimmed_cmd) {
         enter_desktop();
-        // If we get here, the desktop returned (shouldn't happen but
-        // the watchdog can cause this). Just redraw the welcome.
         crate::diag::info("welcome", "Desktop returned; re-entering welcome");
         show_hint(b"Desktop returned unexpectedly. Type test for diagnostics.");
     } else if eq_ci(trimmed_cmd, b"hello") {
@@ -626,7 +520,6 @@ fn process_enter() {
         sound::beep(440, 80);
         crate::sched::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"ring3") {
-        // Alias for "hello" â€” explicit Ring 3 transition test.
         crate::diag::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
         sound::beep(440, 80);
         crate::sched::user_init::spawn_hello();
@@ -634,10 +527,9 @@ fn process_enter() {
         crate::diag::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
     } else if eq_ci(trimmed_cmd, b"nexo") {
-        crate::diag::info("welcome", "NEXO compiler test â€” compiling hello program");
+        crate::diag::info("welcome", "NEXO compiler test - compiling hello program");
         nexo_test_compile();
     } else if eq_ci(trimmed_cmd, b"test desktop") {
-        // Isolated desktop test: render one frame and report.
         crate::diag::info("welcome", "test desktop: rendering single frame");
         crate::drivers::serial::serial_write("[welcome] test desktop: calling render_frame()\n");
         crate::desktop::render::render_frame();
@@ -661,31 +553,26 @@ fn process_enter() {
         run_phase_self_test_ring3();
     } else {
         crate::diag::warn("welcome", "Unknown command at welcome prompt");
-        show_hint(b"Comandos: Run, Hello, Ring3, Nexo, Test, Reboot.");
+        show_hint(b"Commands: Run, Hello, Ring3, Nexo, Test, Reboot.");
     }
     unsafe { INPUT_LEN = 0; }
     mark_dirty();
 }
 
-// â”€â”€ Main loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main loop ───────────────────────────────────────────────────────
 
 pub fn run() -> ! {
-    crate::drivers::serial::serial_write("[welcome] Pantalla de bienvenida activa.\n");
+    crate::drivers::serial::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
 
-    // v1.6.11: wipe the boot splash before painting the welcome card.
     crate::boot::visual::clear();
 
-    // v1.5.0: Windows-inspired logon sound (sweep A4 â†’ A5)
     crate::gustos::tracks::windows::logon();
     crate::drivers::serial::serial_write("[welcome] gustOS logon sound played\n");
 
     loop {
-        // 1) Full repaint solo si algo cambiÃ³.
         if unsafe { DIRTY } {
             if let Some(fb) = fb() {
                 render(&fb);
-                // Pintar el caret en el estado actual del blink para que
-                // no aparezca/desaparezca en el siguiente sub-loop.
                 let on = blink_on();
                 paint_caret(&fb, on);
                 unsafe { LAST_BLINK_ON = on; }
@@ -693,11 +580,10 @@ pub fn run() -> ! {
             unsafe { DIRTY = false; }
         }
 
-            if crate::diag::is_overlay_enabled() {
-                crate::diag::paint_overlay();
-            }
+        if crate::diag::is_overlay_enabled() {
+            crate::diag::paint_overlay();
+        }
 
-        // 3) Sub-loop de ~16 ms: drena input y gestiona blink local.
         let cycles = 16u64 * 3_700_000;
         let start = crate::arch::cpu::rdtsc();
         while (crate::arch::cpu::rdtsc() - start) < cycles {
@@ -719,7 +605,6 @@ pub fn run() -> ! {
                 handle_char(ch);
             }
 
-            // Blink local: si el estado cambia, repintar SOLO el caret.
             let cur = blink_on();
             if cur != unsafe { LAST_BLINK_ON } {
                 if let Some(fb) = fb() {
@@ -731,8 +616,6 @@ pub fn run() -> ! {
             core::hint::spin_loop();
         }
 
-        // 3) Decrementar hint timer â€” si llega a 0, marcar dirty para
-        //    borrarlo del frame.
         unsafe {
             let prev = HINT_TIMER;
             if HINT_TIMER > 0 { HINT_TIMER -= 1; }
@@ -744,8 +627,6 @@ pub fn run() -> ! {
     }
 }
 
-/// Estado del caret blink basado en TSC (~1.5 Hz). Centralizado para
-/// que el render full y el blink local lean exactamente el mismo bit.
 fn blink_on() -> bool {
     (crate::arch::cpu::rdtsc() / 1_250_000_000) & 1 != 0
 }
@@ -755,8 +636,6 @@ fn handle_char(ch: u8) {
         b'\n' => process_enter(),
         8 => unsafe {
             if INPUT_LEN > 0 {
-                // Antes de mover el caret, borrarlo de la posiciÃ³n vieja
-                // para evitar ghost de la barra del caret previo.
                 if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_LEN -= 1;
                 mark_dirty();
@@ -767,8 +646,6 @@ fn handle_char(ch: u8) {
                 if let Some(fb) = fb() { paint_caret(&fb, false); }
                 INPUT_BUF[INPUT_LEN] = c;
                 INPUT_LEN += 1;
-                // Ya NO auto-disparamos al escribir "run": el usuario
-                // debe pulsar Enter para evitar congelamientos.
                 mark_dirty();
             }
         },

@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-use super::render::palette;
+use super::theme as palette;
 
 pub const TITLES: [&[u8]; 7] = [
     b"BMO Terminal",
@@ -36,14 +36,14 @@ pub fn content_for<'a>(
 ) -> [(&'a [u8], u32); 8] {
     match title_id {
         0 => [
-            (b"$ bmo > help" as &[u8], palette::TEXT_OK),
-            (b"  desktop   -- compositor Win/Mac/Linux" as &[u8], palette::TEXT_PRIMARY),
-            (b"  ring0     -- estado GDT/IDT/MSR" as &[u8], palette::TEXT_PRIMARY),
-            (b"  user      -- spawn 'hello' Ring 3" as &[u8], palette::TEXT_PRIMARY),
-            (b"$ bmo > _" as &[u8], palette::TEXT_OK),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"Arrastra la barra para mover." as &[u8], palette::TEXT_SECOND),
-            (b"Click rojo para cerrar." as &[u8], palette::TEXT_SECOND),
+            (b"$ bmo > help" as &[u8], palette::OK_FG),
+            (b"  desktop   -- compositor Win/Mac/Linux" as &[u8], palette::TITLE),
+            (b"  ring0     -- estado GDT/IDT/MSR" as &[u8], palette::TITLE),
+            (b"  user      -- spawn 'hello' Ring 3" as &[u8], palette::TITLE),
+            (b"$ bmo > _" as &[u8], palette::OK_FG),
+            (b"" as &[u8], palette::TITLE),
+            (b"Arrastra la barra para mover." as &[u8], palette::SUBTITLE),
+            (b"Click rojo para cerrar." as &[u8], palette::SUBTITLE),
         ],
         1 => {
             unsafe {
@@ -61,45 +61,45 @@ pub fn content_for<'a>(
                 core::slice::from_raw_parts(BMOFS_README_CONTENT.as_ptr(), BMOFS_README_LEN)
             };
             [
-                (b"FastOS / BMO-FS Reader" as &[u8], palette::TEXT_INFO),
-                (readme_slice as &[u8], palette::TEXT_PRIMARY),
-                (b"" as &[u8], palette::TEXT_PRIMARY),
-                (b"Montaje de Loop Device: OK" as &[u8], palette::TEXT_OK),
-                (b"Firma de Superblock: OK" as &[u8], palette::TEXT_OK),
-                (b"Particion FAT32: OK" as &[u8], palette::TEXT_OK),
-                (b"Interoperabilidad UEFI: OK" as &[u8], palette::TEXT_OK),
-                (b"Arrastra la barra para mover." as &[u8], palette::TEXT_SECOND),
+                (b"FastOS / BMO-FS Reader" as &[u8], palette::CYAN_INFO),
+                (readme_slice as &[u8], palette::TITLE),
+                (b"" as &[u8], palette::TITLE),
+                (b"Montaje de Loop Device: OK" as &[u8], palette::OK_FG),
+                (b"Firma de Superblock: OK" as &[u8], palette::OK_FG),
+                (b"Particion FAT32: OK" as &[u8], palette::OK_FG),
+                (b"Interoperabilidad UEFI: OK" as &[u8], palette::OK_FG),
+                (b"Arrastra la barra para mover." as &[u8], palette::SUBTITLE),
             ]
         },
         2 => [
-            (b"== Juegos ==" as &[u8], palette::TEXT_INFO),
-            (b"Snake     (pendiente)" as &[u8], palette::TEXT_SECOND),
-            (b"Tetris    (pendiente)" as &[u8], palette::TEXT_SECOND),
-            (b"Pong      (pendiente)" as &[u8], palette::TEXT_SECOND),
-            (b"DOOM      (4-6 sesiones)" as &[u8], palette::TEXT_SECOND),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"Ver ROADMAP_GAMES.md" as &[u8], palette::TEXT_OK),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"== Juegos ==" as &[u8], palette::CYAN_INFO),
+            (b"Snake     (pendiente)" as &[u8], palette::SUBTITLE),
+            (b"Tetris    (pendiente)" as &[u8], palette::SUBTITLE),
+            (b"Pong      (pendiente)" as &[u8], palette::SUBTITLE),
+            (b"DOOM      (4-6 sesiones)" as &[u8], palette::SUBTITLE),
+            (b"" as &[u8], palette::TITLE),
+            (b"Ver ROADMAP_GAMES.md" as &[u8], palette::OK_FG),
+            (b"" as &[u8], palette::TITLE),
         ],
         3 => [
-            (b"== Web ==" as &[u8], palette::TEXT_INFO),
-            (b"barex::net listo:" as &[u8], palette::TEXT_PRIMARY),
-            (b"  TCP/UDP/QUIC/TLS13" as &[u8], palette::TEXT_SECOND),
-            (b"  HTTP3 + DNS" as &[u8], palette::TEXT_SECOND),
-            (b"  ring buffers io_uring-style" as &[u8], palette::TEXT_SECOND),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"Falta: driver NIC real." as &[u8], palette::TEXT_SECOND),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"== Web ==" as &[u8], palette::CYAN_INFO),
+            (b"barex::net listo:" as &[u8], palette::TITLE),
+            (b"  TCP/UDP/QUIC/TLS13" as &[u8], palette::SUBTITLE),
+            (b"  HTTP3 + DNS" as &[u8], palette::SUBTITLE),
+            (b"  ring buffers io_uring-style" as &[u8], palette::SUBTITLE),
+            (b"" as &[u8], palette::TITLE),
+            (b"Falta: driver NIC real." as &[u8], palette::SUBTITLE),
+            (b"" as &[u8], palette::TITLE),
         ],
         4 => [
-            (b"== Ajustes ==" as &[u8], palette::TEXT_INFO),
-            (b"CPU: AMD Ryzen 5 5600X" as &[u8], palette::TEXT_PRIMARY),
-            (b"GPU: UEFI GOP framebuffer" as &[u8], palette::TEXT_PRIMARY),
-            (b"RAM: BootInfo memory map" as &[u8], palette::TEXT_PRIMARY),
-            (b"USB: keyboard + mouse + Redragon" as &[u8], palette::TEXT_PRIMARY),
-            (b"Boot: UEFI puro (sin legacy)" as &[u8], palette::TEXT_PRIMARY),
-            (b"BMO ABI: 7-GPR, 64B align" as &[u8], palette::TEXT_OK),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"== Ajustes ==" as &[u8], palette::CYAN_INFO),
+            (b"CPU: AMD Ryzen 5 5600X" as &[u8], palette::TITLE),
+            (b"GPU: UEFI GOP framebuffer" as &[u8], palette::TITLE),
+            (b"RAM: BootInfo memory map" as &[u8], palette::TITLE),
+            (b"USB: keyboard + mouse + Redragon" as &[u8], palette::TITLE),
+            (b"Boot: UEFI puro (sin legacy)" as &[u8], palette::TITLE),
+            (b"BMO ABI: 7-GPR, 64B align" as &[u8], palette::OK_FG),
+            (b"" as &[u8], palette::TITLE),
         ],
         5 => {
             let mut p = 0;
@@ -113,29 +113,29 @@ pub fn content_for<'a>(
             let l1: &[u8] = &buf1[..p1];
             let l2: &[u8] = &buf2[..p2];
             [
-                (l1, palette::TEXT_INFO),
-                (l2, palette::TEXT_INFO),
-                (b"Renderer: Ring 0 / Rust" as &[u8], palette::TEXT_PRIMARY),
-                (b"Wallpaper: gradiente azul -> purpura" as &[u8], palette::TEXT_SECOND),
-                (b"Ventanas: rounded + shadow + traffic" as &[u8], palette::TEXT_SECOND),
-                (b"Dock: macOS-style + click launch" as &[u8], palette::TEXT_SECOND),
-                (b"Drag-and-drop sobre titlebar" as &[u8], palette::TEXT_OK),
-                (b"ESC para salir." as &[u8], palette::TEXT_OK),
+                (l1, palette::CYAN_INFO),
+                (l2, palette::CYAN_INFO),
+                (b"Renderer: Ring 0 / Rust" as &[u8], palette::TITLE),
+                (b"Wallpaper: gradiente azul -> purpura" as &[u8], palette::SUBTITLE),
+                (b"Ventanas: rounded + shadow + traffic" as &[u8], palette::SUBTITLE),
+                (b"Dock: macOS-style + click launch" as &[u8], palette::SUBTITLE),
+                (b"Drag-and-drop sobre titlebar" as &[u8], palette::OK_FG),
+                (b"ESC para salir." as &[u8], palette::OK_FG),
             ]
         }
         6 => [
-            (b"Papelera vacia." as &[u8], palette::TEXT_SECOND),
-            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"Papelera vacia." as &[u8], palette::SUBTITLE),
+            (b"" as &[u8], palette::TITLE), (b"" as &[u8], palette::TITLE),
+            (b"" as &[u8], palette::TITLE), (b"" as &[u8], palette::TITLE),
+            (b"" as &[u8], palette::TITLE), (b"" as &[u8], palette::TITLE),
+            (b"" as &[u8], palette::TITLE),
         ],
         _ => [
-            (b"(ventana sin contenido)" as &[u8], palette::TEXT_SECOND),
-            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"" as &[u8], palette::TEXT_PRIMARY), (b"" as &[u8], palette::TEXT_PRIMARY),
-            (b"" as &[u8], palette::TEXT_PRIMARY),
+            (b"(ventana sin contenido)" as &[u8], palette::SUBTITLE),
+            (b"" as &[u8], palette::TITLE), (b"" as &[u8], palette::TITLE),
+            (b"" as &[u8], palette::TITLE), (b"" as &[u8], palette::TITLE),
+            (b"" as &[u8], palette::TITLE), (b"" as &[u8], palette::TITLE),
+            (b"" as &[u8], palette::TITLE),
         ],
     }
 }
