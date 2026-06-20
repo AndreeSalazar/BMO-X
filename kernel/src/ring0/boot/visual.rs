@@ -417,3 +417,12 @@ pub mod color {
     #[allow(dead_code)]
     pub(crate) const TEXT: u32 = 0xFFE6F1F5;
 }
+
+/// True if the visual overlay is active (framebuffer present and not
+/// cleared by clear()). After the desktop is up, drivers should NOT
+/// call into the visual overlay; only serial + diag are kept.
+pub fn is_active() -> bool {
+    use core::sync::atomic::Ordering;
+    if !INITIALIZED.load(Ordering::Relaxed) { return false; }
+    unsafe { crate::boot::info::FB_ADDR != 0 }
+}

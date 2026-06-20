@@ -14,6 +14,7 @@ pub mod cache;
 pub mod fpu;
 pub mod perf;
 pub mod tsc;
+pub mod delay;
 pub mod info;
 
 // Re-export key types for convenience
@@ -189,3 +190,4 @@ pub fn busy_wait_ms(ms: u64) {
         core::hint::spin_loop();
     }
 }
+

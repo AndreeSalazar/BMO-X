@@ -176,7 +176,9 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
 /// exactly the fault we saw in v1.6.3 (CR2=0xBDC01000, Error=0x3, RIP
 /// inside map_kernel_mmio_huge). The kernel heap lives in a region we
 /// know is R/W because we just zeroed it during init_heap().
-unsafe fn alloc_page_table() -> Option<u64> {
+/// Allocate a 4 KB-aligned page table page from the kernel heap.
+/// Returns the physical address (or None on OOM).
+pub unsafe fn alloc_page_table() -> Option<u64> {
     // v1.6.5: Diagnose heap allocation path. Print raw + aligned addresses
     // so we can see if the heap is returning something sane.
     let raw = crate::mem::heap::heap_alloc(8192, 8);

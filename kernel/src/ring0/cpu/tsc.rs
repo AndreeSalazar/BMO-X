@@ -61,3 +61,12 @@ pub fn busy_wait_ms(ms: u64, tsc_freq: u64) {
         core::hint::spin_loop();
     }
 }
+/// Read the current TSC value. Not serialized (use rdtscp if you
+/// need ordering with respect to previous instructions).
+#[inline]
+pub fn now() -> u64 {
+    let low: u32;
+    let high: u32;
+    unsafe { core::arch::asm!("rdtsc", out("eax") low, out("edx") high, options(nomem, nostack, preserves_flags)); }
+    ((high as u64) << 32) | low as u64
+}
