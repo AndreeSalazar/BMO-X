@@ -5,8 +5,8 @@
 
 #![allow(dead_code)]
 
-use super::super::v2::window::WID_INVALID;
-use super::super::v2::message::{BmoMsg, BmoMsgKind};
+use super::window::WID_INVALID;
+use super::message::{BmoMsg, BmoMsgKind};
 
 pub const MAX_TIMERS: usize = 1024;
 

@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use super::super::v2::window::BmoWindow;
+use super::window::BmoWindow;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BmoDc {
@@ -101,7 +101,7 @@ pub fn draw_line(_dc_slot: u32, _x0: i32, _y0: i32, _x1: i32, _y1: i32, _color: 
 
 /// Calcula el cliente rect de una ventana (área sin NC).
 pub fn client_rect(w: &BmoWindow) -> (i32, i32, i32, i32) {
-    let title_h = if w.style & super::super::v2::window::style::WS_CAPTION != 0 { 28 } else { 0 };
+    let title_h = if w.style & super::window::style::WS_CAPTION != 0 { 28 } else { 0 };
     let cx = w.x;
     let cy = w.y + title_h;
     let cw = w.w;

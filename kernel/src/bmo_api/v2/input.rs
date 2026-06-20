@@ -6,8 +6,8 @@
 
 #![allow(dead_code)]
 
-use super::super::v2::message::{BmoMsg, BmoMsgKind};
-use super::super::v2::window::WID_INVALID;
+use super::message::{BmoMsg, BmoMsgKind};
+use super::window::WID_INVALID;
 
 /// Estado del teclado: shift, ctrl, alt, caps.
 static mut KBD_LSHIFT: bool = false;

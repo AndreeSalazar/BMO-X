@@ -25,7 +25,6 @@ pub mod input;
 pub mod cursor;
 pub mod paint_compositor;
 pub mod syscall;
-pub mod compat;
 
 // Re-exports principales para que el dispatcher las use directamente.
 #[allow(unused_imports)]

@@ -3,8 +3,8 @@
 #![allow(dead_code)]
 
 #[allow(unused_imports)]
-use super::super::v2::window::{BmoClass, cs};
-use super::super::v2::message::{BmoMsg, BmoMsgKind};
+use super::window::{BmoClass, cs};
+use super::message::{BmoMsg, BmoMsgKind};
 
 /// Nombres de las clases built-in (WNDCLASSEX-style).
 pub mod names {

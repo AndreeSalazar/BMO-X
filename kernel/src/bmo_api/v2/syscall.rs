@@ -8,11 +8,11 @@
 
 #![allow(dead_code)]
 
-use super::super::v2::window::{style, WID_INVALID};
-use super::super::v2::surface;
-use super::super::v2::message::{BmoMsg, BmoMsgKind};
-use super::super::v2::handle::BmoHandle;
-use super::super::v2::class;
+use super::window::{style, WID_INVALID};
+use super::surface;
+use super::message::{BmoMsg, BmoMsgKind};
+use super::handle::BmoHandle;
+use super::class;
 
 // ── Syscall numbers (deben coincidir con docs/BMO_API_SPEC.md §3.3) ──
 pub mod nr {
@@ -243,13 +243,13 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::INPUT_WAIT       => err::OK,
         nr::INPUT_GRAB       => err::OK,
         nr::INPUT_UNGRAB     => err::OK,
-        nr::SHOW_CURSOR      => { super::super::v2::cursor::show(); err::OK }
-        nr::HIDE_CURSOR      => { super::super::v2::cursor::hide(); err::OK }
+        nr::SHOW_CURSOR      => { super::cursor::show(); err::OK }
+        nr::HIDE_CURSOR      => { super::cursor::hide(); err::OK }
         nr::SET_CURSOR_POS   => err::OK,
-        nr::SET_CURSOR       => { super::super::v2::cursor::set(a0 as u8); err::OK }
+        nr::SET_CURSOR       => { super::cursor::set(a0 as u8); err::OK }
 
         // ── WM ───────────────────────────────────────────────────
-        nr::BRING_TO_FRONT   => { super::super::v2::wm::bring_to_front(a0 as u32); err::OK }
+        nr::BRING_TO_FRONT   => { super::wm::bring_to_front(a0 as u32); err::OK }
         nr::SEND_TO_BACK     => err::OK,
         nr::SET_TOPMOST      => err::OK,
         nr::SET_TRANSIENT_FOR=> err::OK,
@@ -504,7 +504,7 @@ fn sys_paint_begin(handle: u64, _paintstruct_ptr: u64) -> u64 {
     s.lock();
     let r = match s.windows.window(slot) {
         Some(w) if w.generation == gen => {
-            match super::super::v2::draw::create_dc_for(slot) {
+            match super::draw::create_dc_for(slot) {
                 Some(dc) => dc as u64,
                 None => err::BAD_DC,
             }
@@ -550,7 +550,7 @@ fn sys_create_surface(w: u16, h: u16, format: u32) -> u64 {
 fn sys_get_message(msg_ptr: u64) -> u64 {
     if msg_ptr == 0 { return err::INVALID; }
     // En v2.0 simplificado: pop del thread por tid=0 (kernel thread).
-    let qt = super::super::v2::queue::queue_table();
+    let qt = super::queue::queue_table();
     qt.lock();
     if let Some(slot) = qt.slot_for_tid(0) {
         if let Some(m) = qt.queues[slot as usize].pop() {
@@ -567,7 +567,7 @@ fn sys_get_message(msg_ptr: u64) -> u64 {
 
 fn sys_peek_message(msg_ptr: u64) -> u64 {
     if msg_ptr == 0 { return err::INVALID; }
-    let qt = super::super::v2::queue::queue_table();
+    let qt = super::queue::queue_table();
     if let Some(slot) = qt.slot_for_tid(0) {
         let q = &qt.queues[slot as usize];
         if let Some(m) = q.peek() {
@@ -585,10 +585,10 @@ fn sys_post_message(handle: u64, kind: u16, wparam: u64, lparam: u64) -> u64 {
     let owner = s.windows.window(slot).and_then(|w| if w.generation == gen { Some(w.owner_tid) } else { None });
     s.unlock();
     let owner = match owner { Some(o) => o, None => return err::STALE };
-    let qt = super::super::v2::queue::queue_table();
+    let qt = super::queue::queue_table();
     if let Some(qslot) = qt.slot_for_tid(owner) {
         let msg = BmoMsg::new(BmoMsgKind::from_u16(kind), slot as u16, 0, wparam, lparam);
-        let ok = super::super::v2::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
+        let ok = super::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
         if ok { err::OK } else { err::QUEUE_FULL }
     } else { err::NOT_GUI_THR }
 }
@@ -686,7 +686,7 @@ fn sys_dc_create(handle: u64) -> u64 {
     let ok = s.windows.window(slot).map(|w| w.generation == gen).unwrap_or(false);
     s.unlock();
     if !ok { return err::STALE; }
-    match super::super::v2::draw::create_dc_for(slot) {
+    match super::draw::create_dc_for(slot) {
         Some(dc) => dc as u64,
         None => err::BAD_DC,
     }

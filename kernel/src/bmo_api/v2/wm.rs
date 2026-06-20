@@ -7,13 +7,13 @@
 #![allow(dead_code)]
 
 #[allow(unused_imports)]
-use super::super::v2::window::{
+use super::window::{
     BmoWindow, BmoWindowFlags, WindowTable, style, wf, WID_INVALID, MAX_WINDOWS,
 };
-use super::super::v2::message::{BmoMsg, BmoMsgKind};
+use super::message::{BmoMsg, BmoMsgKind};
 #[allow(unused_imports)]
-use super::super::v2::handle::BmoHandle;
-use super::super::v2::surface;
+use super::handle::BmoHandle;
+use super::surface;
 use crate::boot_info;
 
 /// Crea la ventana de escritorio (cubre todo el framebuffer).

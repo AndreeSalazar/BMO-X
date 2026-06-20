@@ -143,11 +143,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // Full diag sinks are safe only after the boot-critical path is complete.
     diag::mark_boot_ready();
 
-    // v1.7.1: inicializa BMO API v2.0 (tablas de ventanas/clases/handles,
+    // v1.7.2: inicializa BMO API v2.0 (tablas de ventanas/clases/handles,
     // dispatcher 0x100..0x1FF, default wnd_proc, desktop window, etc).
-    boot::visual::log("boot", "K5a bmo_api::v2::init...", boot::visual::color::OK);
-    bmo_api::v2::init();
-    boot::visual::log("boot", "K5b bmo_api::v2::init DONE", boot::visual::color::OK);
+    boot::visual::log("boot", "K5a bmo_api::init...", boot::visual::color::OK);
+    bmo_api::init();
+    boot::visual::log("boot", "K5b bmo_api::init DONE", boot::visual::color::OK);
 
     // Phase 5 consumes the full boot aggregate; it does not return.
     boot::visual::log("boot", "K5 phase5_desktop::run...", boot::visual::color::OK);

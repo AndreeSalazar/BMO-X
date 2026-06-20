@@ -29,8 +29,8 @@ pub fn trim(s: &[u8]) -> &[u8] {
 
 /// Enter the desktop environment.
 ///
-/// v1.7.1: el stub "DESKTOP STUB v1.6.21" se reemplaza por el
-/// BMO API v2.0 desktop real (`bmo_api::v2::wm::enter`). Ese módulo
+/// v1.7.2: el stub "DESKTOP STUB v1.6.21" se reemplaza por el
+/// BMO API v2.0 desktop real (`bmo_api::wm::enter`). Ese módulo
 /// crea ventanas top-level (Terminal, Datos.md viewer, Ajustes),
 /// inicia el window manager con Z-order, focus-follows-mouse, drag,
 /// resize, snap y modal, y entra en el loop principal. ESC devuelve
@@ -41,7 +41,7 @@ pub fn enter_desktop() {
     crate::drivers::serial::serial_write(
         "[welcome] Run aceptado: BMO API v2.0 desktop real.\n",
     );
-    crate::bmo_api::v2::wm::enter()
+    crate::bmo_api::wm::enter()
 }
 
 /// Test compile a ÑEXO program.

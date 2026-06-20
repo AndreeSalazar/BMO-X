@@ -7,9 +7,9 @@
 
 #![allow(dead_code)]
 
-use super::super::v2::window::WID_INVALID;
+use super::window::WID_INVALID;
 #[allow(unused_imports)]
-use super::super::v2::wm;
+use super::wm;
 use crate::drivers::gop;
 use crate::desktop::theme;
 
@@ -61,7 +61,7 @@ fn paint_desktop(slot: u32) {
     let _ = (x, y, w, h);
 }
 
-fn paint_window_frame(w: &super::super::v2::window::BmoWindow, focused: bool) {
+fn paint_window_frame(w: &super::window::BmoWindow, focused: bool) {
     let x = w.x;
     let y = w.y;
     let ww = w.w;
@@ -93,10 +93,10 @@ fn paint_window_frame(w: &super::super::v2::window::BmoWindow, focused: bool) {
 }
 
 fn paint_cursor() {
-    if !super::super::v2::cursor::is_visible() { return; }
+    if !super::cursor::is_visible() { return; }
     let (x, y) = unsafe {
         let st = &crate::desktop::state::STATE;
         (st.mouse_x, st.mouse_y)
     };
-    super::super::v2::cursor::paint(x, y);
+    super::cursor::paint(x, y);
 }
