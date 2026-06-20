@@ -93,29 +93,51 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
 
     let t0 = arch::cpu::rdtsc();
 
+    // v1.6.18: wire begin_phase / end_phase into the splash so the user
+    // sees the phase progress bar advance from CPU → Mem → Dev → Disp
+    // → Sched as each phase runs. Without these calls the splash is
+    // stuck on CPU = current (gold) for the entire boot.
+
     // Run phases. Each `Phase::run` returns the TSC tick at which it ended.
+    boot::visual::begin_phase(0);
     boot::visual::log("boot", "K0e phase0_cpu::run...", boot::visual::color::OK);
     let (cpu, out0) = boot::phases::phase0_cpu::run(&mut ctx, t0);
     boot::visual::log("boot", "K0f phase0_cpu::run DONE", boot::visual::color::OK);
+    boot::visual::end_phase(0);
 
     // v1.5.1: pass `&ctx` instead of `&bi_copy`. The BootContext holds
     // a *const BootInfo (no stack copy needed).
 
+    boot::visual::begin_phase(1);
     boot::visual::log("boot", "K1 phase1_memory::run...", boot::visual::color::OK);
     let (mem, out1) = boot::phases::phase1_memory::run(&mut ctx, out0.prev_end);
     boot::visual::log("boot", "K1 phase1_memory::run DONE", boot::visual::color::OK);
+    boot::visual::end_phase(1);
 
+    boot::visual::begin_phase(2);
     boot::visual::log("boot", "K2 phase2_devices::run...", boot::visual::color::OK);
     let out2 = boot::phases::phase2_devices::run(&mut ctx, out1.prev_end);
     boot::visual::log("boot", "K2 phase2_devices::run DONE", boot::visual::color::OK);
+    boot::visual::end_phase(2);
 
+    boot::visual::begin_phase(3);
     boot::visual::log("boot", "K3 phase3_display::run...", boot::visual::color::OK);
     let out3 = boot::phases::phase3_display::run(&ctx, out2.prev_end);
     boot::visual::log("boot", "K3 phase3_display::run DONE", boot::visual::color::OK);
+    boot::visual::end_phase(3);
 
+    boot::visual::begin_phase(4);
     boot::visual::log("boot", "K4 phase4_scheduler::run...", boot::visual::color::OK);
     let out4 = boot::phases::phase4_scheduler::run(out3.prev_end);
     boot::visual::log("boot", "K4 phase4_scheduler::run DONE", boot::visual::color::OK);
+    boot::visual::end_phase(4);
+
+    // v1.6.18: hold the splash visible for 1.5 s so the user actually
+    // gets to see the phase progress + the boot log. Without this
+    // delay, the boot takes ~50 ms total and the welcome takes over
+    // before the user can read the splash.
+    boot::visual::log("boot", "K4.5 hold splash for 1500 ms", boot::visual::color::OK);
+    arch::cpu::busy_wait_ms(1500);
 
     // Full diag sinks are safe only after the boot-critical path is complete.
     diag::mark_boot_ready();

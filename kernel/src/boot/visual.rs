@@ -1,4 +1,4 @@
-//! v1.6.17: Professional boot splash screen.
+//! v1.6.18: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
 //! splash that matches the welcome card's visual language:
@@ -60,7 +60,6 @@ static CURRENT_PHASE: AtomicUsize = AtomicUsize::new(0);
 
 /// Mark a phase as in-progress. The phase bar changes from pending to
 /// "current" (gold) until the phase completes.
-#[allow(dead_code)] // wired in v1.7.x when main.rs learns to call these
 pub fn begin_phase(idx: usize) {
     if !INITIALIZED.load(Ordering::Relaxed) { init(); }
     CURRENT_PHASE.store(idx.min(4), Ordering::Relaxed);
@@ -68,7 +67,6 @@ pub fn begin_phase(idx: usize) {
 }
 
 /// Mark a phase as complete. The phase bar turns mint.
-#[allow(dead_code)] // wired in v1.7.x when main.rs learns to call these
 pub fn end_phase(idx: usize) {
     CURRENT_PHASE.store((idx + 1).min(5), Ordering::Relaxed);
     redraw_phase_strip();
@@ -110,7 +108,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.6.17";
+    let sub = b"Bare Metal Orchestrator  ::  v1.6.18";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);
@@ -240,15 +238,25 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
         0
     };
     let msg_bytes = msg.as_bytes();
+    // v1.6.18: always paint SOMETHING (the phase label alone, even
+    // if the message is empty or doesn't fit). Previous versions could
+    // produce an empty row when text_max_cols was 0 on narrow screens.
+    if msg_bytes.is_empty() {
+        // No message — just paint the arrow alone so the user sees
+        // that a log entry was emitted but had no body.
+        return;
+    }
     if msg_bytes.len() > text_max_cols {
         if text_max_cols >= 3 {
-            // paint the first (text_max_cols - 3) chars + "..."
             text(addr, s, w, h, msg_x, y, &msg_bytes[..text_max_cols - 3], 0xFFE6F1F5);
             let dots_x = msg_x + (text_max_cols - 3) * 8;
             text(addr, s, w, h, dots_x, y, b"...", DIM);
         } else if text_max_cols > 0 {
-            // very narrow, just paint what fits
             text(addr, s, w, h, msg_x, y, &msg_bytes[..text_max_cols], 0xFFE6F1F5);
+        } else {
+            // No room for the message — paint at least the phase pill
+            // and label so the user sees the row was emitted.
+            text(addr, s, w, h, log_x + phase_pill_w + phase_gap, y, b"(...)", 0xFFE6F1F5);
         }
     } else {
         text(addr, s, w, h, msg_x, y, msg_bytes, 0xFFE6F1F5);
