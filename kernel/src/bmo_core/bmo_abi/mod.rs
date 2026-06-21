@@ -25,12 +25,17 @@
 //! │   ├── result/      — Result<T, E>
 //! │   ├── memory/      — slice, range, align
 //! │   ├── sync/        — atomics, SpinLock
-//! │   └── error/       — BmoError unificado
+//! │   ├── error/       — BmoError unificado
+//! │   ├── convert/     — BmoError↔BmoStatus↔ErrorCode
+//! │   ├── fmt/         — BmoFormatter, write!
+//! │   └── io/          — BmoFileHandle, BmoPipe, Read/Write/Seek
 //! ├── values/         — Tipos valor
 //! │   ├── string/      — BmoStr, ascii
 //! │   ├── time/        — Instant, Duration
 //! │   ├── reflect/     — TypeDescriptor, Mirror, ReflectQuery
-//! │   └── net/         — IPv4/IPv6, SocketAddr, Protocol
+//! │   ├── net/         — IPv4/IPv6, SocketAddr, Protocol
+//! │   ├── math/        — sqrt, sin, cos, pow (f64)
+//! │   └── hash/        — FNV-1a, CRC32
 //! └── runtime/        — BmoRuntime agregador
 //!     ├── types/       — TypeRegistry (256 slots)
 //!     ├── vtable/      — VTableStore (64 slots)
@@ -50,11 +55,16 @@ pub use fundamentals::status;
 pub use fundamentals::handle;
 pub use fundamentals::sync as sync_re;
 pub use fundamentals::error;
+pub use fundamentals::convert;
+pub use fundamentals::fmt;
+pub use fundamentals::io as abi_io;
 
 pub use values::string;
 pub use values::time;
 pub use values::reflect;
 pub use values::net;
+pub use values::math;
+pub use values::hash;
 
 /// Versión del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);
