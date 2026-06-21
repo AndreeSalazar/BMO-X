@@ -36,32 +36,60 @@ pub fn init() -> CpuInfo {
     crate::dev::console::serial_write("[cpu] === Modular CPU Init ===\n");
 
     // 1. Detect features via CPUID
+    crate::dev::console::serial_write("[cpu] step 1: features::detect\n");
     let features = features::detect();
 
     // 2. Configure CR0/CR4 (FPU, SSE, AVX, SMEP, SMAP, etc.)
+    crate::dev::console::serial_write("[cpu] step 2: regs::init\n");
     regs::init(&features);
 
     // 3. Configure XCR0 safely (x87 + SSE + AVX state management)
+    crate::dev::console::serial_write("[cpu] step 3: regs::init_xcr0\n");
     regs::init_xcr0(&features);
 
     // 4. Initialize FPU clean state
+    crate::dev::console::serial_write("[cpu] step 4: fpu::init_fpu\n");
     crate::cpu::fpu::init_fpu();
-    crate::dev::console::serial_write("[cpu] FPU initialized\n");
 
     // 5. Configure MTRRs (default WB, VRAM as WC) + PAT
-    cache::init(&features, 0, 0);
+    crate::dev::console::serial_write("[cpu] step 5: cache::init\n");
+    // Pass framebuffer info so MTRR marks it as Write-Combining (WC).
+    // Without WC, scattered writes (like font glyph pixels) stay in
+    // CPU cache and are invisible to the display controller.
+    let (fb_addr, fb_size) = unsafe {
+        let addr = crate::boot::info::FB_ADDR;
+        let size = if addr != 0 {
+            crate::boot::info::FB_WIDTH as u64
+                * crate::boot::info::FB_HEIGHT as u64
+                * 4
+        } else {
+            0
+        };
+        (addr, size)
+    };
+    if fb_addr != 0 && fb_size > 0 {
+        crate::dev::console::serial_write("[cpu]   framebuffer WC: base=0x");
+        crate::dev::console::serial_write_u64(fb_addr, 16);
+        crate::dev::console::serial_write(" size=");
+        crate::dev::console::serial_write_u64(fb_size, 10);
+        crate::dev::console::serial_write("\n");
+    }
+    cache::init(&features, fb_addr, fb_size);
 
     // 6. Enable performance counters
+    crate::dev::console::serial_write("[cpu] step 6: perf::init\n");
     perf::init(&features);
 
     // 7. Enable lazy FPU switching (CR0.TS)
+    crate::dev::console::serial_write("[cpu] step 7: enable_lazy_fpu\n");
     crate::cpu::fpu::enable_lazy_fpu();
-    crate::dev::console::serial_write("[cpu] Lazy FPU switching enabled\n");
 
     // 8. Calibrate TSC frequency
+    crate::dev::console::serial_write("[cpu] step 8: tsc::calibrate\n");
     let tsc_freq = tsc::calibrate();
 
     // 9. Print CPU info
+    crate::dev::console::serial_write("[cpu] step 9: info::print\n");
     info::print();
 
     crate::dev::console::serial_write("[cpu] === Init Complete ===\n");

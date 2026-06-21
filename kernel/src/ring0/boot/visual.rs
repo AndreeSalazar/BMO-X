@@ -136,6 +136,9 @@ pub fn init() {
     let pw = powered.len() * 8;
     let px = cx + (cw - pw) / 2;
     text(addr, s, w, h, px, cy + ch - 24, powered, DIM);
+
+    // SFENCE: ensure all splash screen writes are visible before continuing.
+    unsafe { core::arch::asm!("sfence"); }
 }
 
 /// Repaint the 5 phase bars based on CURRENT_PHASE.
@@ -220,6 +223,14 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     let phase_pill_w: usize = 8;
     let phase_gap: usize = 8;
     fill_rect(addr, s, w, h, log_x, y + 4, phase_pill_w, 8, phase_color);
+
+    // SFENCE: flush write-combining buffers before text rendering.
+    // The framebuffer is Write-Combining (WC) memory. Without SFENCE,
+    // the CPU's WC buffer may reorder or lose small scattered writes
+    // (like individual font glyph pixels) relative to the larger
+    // fill_rect writes above.
+    unsafe { core::arch::asm!("sfence"); }
+
     text(
         addr, s, w, h,
         log_x + phase_pill_w + phase_gap, y,
@@ -302,7 +313,7 @@ fn fb() -> (*mut u32, usize, usize, usize) {
     (addr, w, h, s)
 }
 
-#[inline]
+#[inline(never)]
 fn put(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, c: u32) {
     if x >= w || y >= h { return; }
     unsafe { addr.add(y * s + x).write_volatile(c); }
@@ -361,6 +372,7 @@ fn simple_gradient_v(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: 
     gradient_v(addr, s, w, h, x, y, rw, rh, top, bot);
 }
 
+#[inline(never)]
 fn text(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &[u8], color: u32) {
     let mut cx = x;
     for &ch in txt {
@@ -378,6 +390,7 @@ fn text(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &
     }
 }
 
+#[inline(never)]
 fn text_scaled(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &[u8], color: u32, scale: u32) {
     let sc = scale.max(1) as usize;
     let gw = 8 * sc;
