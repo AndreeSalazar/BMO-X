@@ -1,4 +1,4 @@
-//! ÑEXO std::str — Operaciones con strings.
+//! BMO std::str — Operaciones con strings.
 
 #![allow(dead_code)]
 

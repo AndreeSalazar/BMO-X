@@ -24,7 +24,7 @@ pub enum Error {
     DivisionByZero = 15,
 }
 
-/// Result type for ÑEXO runtime operations.
+/// Result type for BMO runtime operations.
 pub type Result<T> = core::result::Result<T, Error>;
 
 impl Error {

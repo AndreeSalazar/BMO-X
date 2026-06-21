@@ -1,4 +1,4 @@
-//! ÑEXO std::mem — Gestión de memoria.
+//! BMO std::mem — Gestión de memoria.
 
 #![allow(dead_code)]
 

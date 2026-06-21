@@ -1,4 +1,4 @@
-//! ÑEXO std::time — Reloj y temporización.
+//! BMO std::time — Reloj y temporización.
 
 #![allow(dead_code)]
 

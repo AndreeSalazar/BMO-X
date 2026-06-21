@@ -1,4 +1,4 @@
-//! ÑEXO std::fs — Sistema de archivos.
+//! BMO std::fs — Sistema de archivos.
 
 #![allow(dead_code)]
 

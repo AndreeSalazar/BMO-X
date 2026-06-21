@@ -1,4 +1,4 @@
-//! ÑEXO std::math — Aritmética.
+//! BMO std::math — Aritmética.
 
 #![allow(dead_code)]
 

@@ -1,4 +1,4 @@
-//! ÑEXO std::proc — Gestión de procesos.
+//! BMO std::proc — Gestión de procesos.
 
 #![allow(dead_code)]
 

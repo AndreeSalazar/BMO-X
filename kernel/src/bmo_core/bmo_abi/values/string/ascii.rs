@@ -29,6 +29,11 @@ pub const fn is_hex(b: bx_u8) -> bool {
 }
 
 #[inline(always)]
+pub const fn is_ascii(b: bx_u8) -> bool {
+    b < 0x80
+}
+
+#[inline(always)]
 pub const fn to_lower(b: bx_u8) -> bx_u8 {
     if is_upper(b) { b + 32 } else { b }
 }
@@ -38,7 +43,30 @@ pub const fn to_upper(b: bx_u8) -> bx_u8 {
     if is_lower(b) { b - 32 } else { b }
 }
 
-/// Parsea un dígito hex (0-9, a-f, A-F). Devuelve `None` si no es hex.
+#[inline(always)]
+pub const fn to_uppercase(b: bx_u8) -> bx_u8 {
+    if is_lower(b) { b - 32 } else { b }
+}
+
+#[inline(always)]
+pub const fn to_lowercase(b: bx_u8) -> bx_u8 {
+    if is_upper(b) { b + 32 } else { b }
+}
+
+pub const fn ascii_cmp(a: &[bx_u8], b: &[bx_u8], len: usize) -> bool {
+    if a.len() < len || b.len() < len {
+        return false;
+    }
+    let mut i = 0;
+    while i < len {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 pub const fn hex_value(b: bx_u8) -> Option<u8> {
     match b {
         b'0'..=b'9' => Some(b - b'0'),

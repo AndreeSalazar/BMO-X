@@ -1,4 +1,4 @@
-//! ÑEXO std::gfx — Primitivas gráficas.
+//! BMO std::gfx — Primitivas gráficas.
 
 #![allow(dead_code)]
 

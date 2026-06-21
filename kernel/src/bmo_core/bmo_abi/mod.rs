@@ -3,7 +3,7 @@
 //! **Reemplaza al C ABI** (cdecl/stdcall/Win64/SysV AMD64) y a su stdlib
 //! (`<stdint.h>`, `<stddef.h>`, `<string.h>`, `<errno.h>`, `<time.h>`, etc).
 //!
-//! # v1.7.9 — Rediseño
+//! # v2.0
 //!
 //! BMO ABI es ahora un ABI **modular**. Cada carpeta es un módulo
 //! autocontenido. Apps pueden importar solo lo que necesitan:
@@ -19,16 +19,22 @@
 //! bmo_abi/
 //! ├── fundamentals/   — Tipos que TODO código usa
 //! │   ├── primitives/ — int, bool, float
-//! │   ├── status/      — BmoStatus, BmoError
+//! │   ├── status/      — BmoStatus, ErrorCode
 //! │   ├── handle/      — Handle table
 //! │   ├── option/      — Option<T>
 //! │   ├── result/      — Result<T, E>
-//! │   └── memory/      — slice, range, align
+//! │   ├── memory/      — slice, range, align
+//! │   ├── sync/        — atomics, SpinLock
+//! │   └── error/       — BmoError unificado
 //! ├── values/         — Tipos valor
-//! │   ├── string/      — bx_str, ascii
+//! │   ├── string/      — BmoStr, ascii
 //! │   ├── time/        — Instant, Duration
-//! │   └── reflect/     — type info (mínimo)
-//! └── runtime/        — BmoRuntime agregador (handle único)
+//! │   ├── reflect/     — TypeDescriptor, Mirror, ReflectQuery
+//! │   └── net/         — IPv4/IPv6, SocketAddr, Protocol
+//! └── runtime/        — BmoRuntime agregador
+//!     ├── types/       — TypeRegistry (256 slots)
+//!     ├── vtable/      — VTableStore (64 slots)
+//!     └── lang_bridge/ — LangBridge (8 languages)
 //! ```
 
 #![allow(dead_code)]
@@ -43,10 +49,12 @@ pub use fundamentals::primitives;
 pub use fundamentals::status;
 pub use fundamentals::handle;
 pub use fundamentals::sync as sync_re;
+pub use fundamentals::error;
 
 pub use values::string;
 pub use values::time;
 pub use values::reflect;
+pub use values::net;
 
 /// Versión del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);

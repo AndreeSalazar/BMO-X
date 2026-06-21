@@ -1,32 +1,44 @@
-//! `bmo_abi::runtime` — agregador único de las sub-registries del BMO ABI.
+//! `runtime` — agregador único de las sub-registries del BMO ABI.
 //!
-//! v1.7.9: simplificado a un stub. Las registries específicas (types,
-//! vtables, lang_bridge, exceptions) se manejan en módulos separados
-//! en cada idioma de BMO. v2.0 reintroducirá el agregador cuando haya
-//! un caso real de uso.
+//! Contiene el registro de tipos, vtable storage y el puente FFI entre
+//! lenguajes. Cada sub-registry es un módulo separado pero el `BmoRuntime`
+//! los agrega en una sola estructura.
 
 #![allow(dead_code)]
 
+pub mod types;
+pub mod vtable;
+pub mod lang_bridge;
+
 use crate::bmo_core::bmo_abi::primitives::bx_u32;
+use types::TypeRegistry;
+use vtable::VTableStore;
+use lang_bridge::LangBridge;
 
-/// Versión del runtime (placeholder).
-pub const BMO_RUNTIME_VERSION: bx_u32 = 1;
+pub const BMO_RUNTIME_VERSION: bx_u32 = 2;
 
-/// Runtime placeholder. En v2.0 contendrá types, vtables, lang_bridge,
-/// unwind, etc. Por ahora solo el número de versión.
-#[derive(Debug, Clone, Copy)]
-pub struct BmoRuntimePlaceholder {
-    pub version: bx_u32,
+pub struct BmoRuntime<'a> {
+    pub types: TypeRegistry<'a>,
+    pub vtables: VTableStore,
+    pub lang_bridge: LangBridge,
 }
 
-impl BmoRuntimePlaceholder {
-    pub const EMPTY: Self = Self { version: 1 };
+impl<'a> BmoRuntime<'a> {
+    pub const fn new() -> Self {
+        Self {
+            types: TypeRegistry::new(),
+            vtables: VTableStore::new(),
+            lang_bridge: LangBridge::new(),
+        }
+    }
 
-    pub fn new() -> Self { Self { version: 1 } }
-
-    pub fn version(&self) -> bx_u32 { self.version }
+    pub const fn version(&self) -> bx_u32 {
+        BMO_RUNTIME_VERSION
+    }
 }
 
-impl Default for BmoRuntimePlaceholder {
-    fn default() -> Self { Self::new() }
+impl<'a> Default for BmoRuntime<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
 }

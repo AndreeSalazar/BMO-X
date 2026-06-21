@@ -1,4 +1,4 @@
-//! ÑEXO std::io — E/S serial y framebuffer.
+//! BMO std::io — E/S serial y framebuffer.
 
 #![allow(dead_code)]
 

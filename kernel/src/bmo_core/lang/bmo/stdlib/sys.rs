@@ -1,4 +1,4 @@
-//! ÑEXO std::sys — Llamadas al sistema BMO.
+//! BMO std::sys — Llamadas al sistema BMO.
 
 #![allow(dead_code)]
 
