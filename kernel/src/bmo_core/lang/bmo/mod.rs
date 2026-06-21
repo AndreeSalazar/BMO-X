@@ -33,9 +33,6 @@ pub mod plugins;
 
 // C, C++, Python, Java frontends live in plugins::languages.
 
-#[cfg(test)]
-pub mod tests;
-
 use crate::bmo_gpu::BxResult;
 
 /// Versión del lenguaje ÑEXO.

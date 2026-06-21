@@ -49,11 +49,21 @@ pub fn content_for<'a>(
             unsafe {
                 if !BMOFS_README_READ {
                     BMOFS_README_READ = true;
-                    if let Ok(readme) = crate::bmo_core::fs::bmofs_loop::read_readme_from_bmofs() {
-                        let bytes = readme.as_bytes();
-                        let len = bytes.len().min(BMOFS_README_CONTENT.len() - 1);
-                        BMOFS_README_CONTENT[..len].copy_from_slice(&bytes[..len]);
-                        BMOFS_README_LEN = len;
+                    // Leer contenido de datos:readme desde el ramdisk
+                    let name = b"datos:readme";
+                    let fd = crate::bmo_core::fs::ramdisk::open(
+                        name.as_ptr() as u64, name.len() as u64,
+                    );
+                    if fd != u64::MAX {
+                        let n = crate::bmo_core::fs::ramdisk::read(
+                            fd,
+                            BMOFS_README_CONTENT.as_mut_ptr() as u64,
+                            (BMOFS_README_CONTENT.len() - 1) as u64,
+                        );
+                        if n != u64::MAX {
+                            BMOFS_README_LEN = n as usize;
+                        }
+                        crate::bmo_core::fs::ramdisk::close(fd);
                     }
                 }
             }
@@ -61,14 +71,14 @@ pub fn content_for<'a>(
                 core::slice::from_raw_parts(BMOFS_README_CONTENT.as_ptr(), BMOFS_README_LEN)
             };
             [
-                (b"FastOS / BMO-FS Reader" as &[u8], palette::CYAN_INFO),
+                (b"FastOS / Datos Viewer" as &[u8], palette::CYAN_INFO),
                 (readme_slice as &[u8], palette::TITLE),
                 (b"" as &[u8], palette::TITLE),
-                (b"Montaje de Loop Device: OK" as &[u8], palette::OK_FG),
-                (b"Firma de Superblock: OK" as &[u8], palette::OK_FG),
-                (b"Particion FAT32: OK" as &[u8], palette::OK_FG),
-                (b"Interoperabilidad UEFI: OK" as &[u8], palette::OK_FG),
+                (b"RamFs: montado en /" as &[u8], palette::OK_FG),
+                (b"FAT32: particion boot (UEFI)" as &[u8], palette::OK_FG),
+                (b"exFAT: particion datos (RW)" as &[u8], palette::OK_FG),
                 (b"Arrastra la barra para mover." as &[u8], palette::SUBTITLE),
+                (b"" as &[u8], palette::TITLE),
             ]
         },
         2 => [

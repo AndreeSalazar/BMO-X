@@ -1,23 +1,20 @@
-#![allow(dead_code)]
-
 //! VFS Manager for FastOS.
 //!
 //! Unified filesystem API that routes operations to the correct filesystem
 //! driver based on the mount point.
 
+#![allow(dead_code)]
+
 use crate::dev::console;
 use super::inode;
 use super::mount;
 
-/// Maximum path length.
 const MAX_PATH: usize = 256;
 
 /// Open a file by path. Returns a file descriptor or error.
 pub fn open(path: &str) -> Result<u32, &'static str> {
-    // Resolve mount point
     let mp = mount::find_mount(path).ok_or("path not mounted")?;
 
-    // Strip mount prefix from path to get relative path
     let _rel_path = if path.len() > mp.path.len() {
         &path[mp.path.len()..]
     } else {
@@ -25,12 +22,10 @@ pub fn open(path: &str) -> Result<u32, &'static str> {
     };
 
     match mp.fs_type {
-        mount::FsType::BmoFs => {
-            // Delegate to BMO-FS via ramdisk file lookup
-            let full_path = path;
+        mount::FsType::RamFs => {
             let result = super::ramdisk::open(
-                full_path.as_ptr() as u64,
-                full_path.len() as u64,
+                path.as_ptr() as u64,
+                path.len() as u64,
             );
             if result == u64::MAX {
                 Err("file not found")
@@ -39,18 +34,17 @@ pub fn open(path: &str) -> Result<u32, &'static str> {
             }
         }
         mount::FsType::Fat32 => {
-            // FAT32 — read-only, requires disk driver
-            // TODO: wire FAT32 parse + locate_file + cluster read
-            Err("FAT32 not wired yet")
+            Err("FAT32: no disk driver wired")
+        }
+        mount::FsType::Exfat => {
+            Err("exFAT: no disk driver wired")
         }
         mount::FsType::ProcFs | mount::FsType::DevFs => {
-            // Virtual filesystems — handled via inode
             let id = inode::InodeId::new(mp.mount_id, 1);
             inode::open(id, inode::InodeType::File, 0)
                 .ok_or("inode table full")
         }
         mount::FsType::TmpFs => {
-            // Temporary filesystem (RAM-backed)
             let id = inode::InodeId::new(mp.mount_id, 1);
             inode::open(id, inode::InodeType::File, 0)
                 .ok_or("inode table full")
@@ -63,11 +57,10 @@ pub fn open(path: &str) -> Result<u32, &'static str> {
 pub fn read(fd: u32, buf: &mut [u8]) -> Result<usize, &'static str> {
     let open_inode = inode::get(fd).ok_or("bad fd")?;
     let mount_id = open_inode.id.mount_id;
-
     let mp = mount::get_mount(mount_id).ok_or("mount not found")?;
 
     match mp.fs_type {
-        mount::FsType::BmoFs => {
+        mount::FsType::RamFs => {
             let result = super::ramdisk::read(fd as u64, buf.as_mut_ptr() as u64, buf.len() as u64);
             if result == u64::MAX {
                 Err("read error")
@@ -75,10 +68,8 @@ pub fn read(fd: u32, buf: &mut [u8]) -> Result<usize, &'static str> {
                 Ok(result as usize)
             }
         }
-        mount::FsType::Fat32 => {
-            // TODO: read from FAT32 via cluster chain
-            Err("FAT32 read not wired yet")
-        }
+        mount::FsType::Fat32 => Err("FAT32: no disk driver wired"),
+        mount::FsType::Exfat => Err("exFAT: no disk driver wired"),
         _ => Err("read not supported for this filesystem"),
     }
 }
@@ -94,21 +85,22 @@ pub fn size(fd: u32) -> Option<u64> {
 }
 
 /// Initialize the VFS.
-/// Mounts the root filesystem and virtual filesystems.
 pub fn init() {
     console::serial_write("[vfs] Initializing VFS...\n");
 
-    // Mount root BMO-FS at "/"
-    mount::mount(mount::FsType::BmoFs, "/", 0, 0, true);
+    // Root: RamFs (archivos embebidos del kernel)
+    mount::mount(mount::FsType::RamFs, "/", 0, 0, true);
 
-    // Mount procfs at "/proc"
+    // Virtual filesystems
     mount::mount(mount::FsType::ProcFs, "/proc", 0, 0, true);
-
-    // Mount devfs at "/dev"
     mount::mount(mount::FsType::DevFs, "/dev", 0, 0, false);
-
-    // Mount tmpfs at "/tmp"
     mount::mount(mount::FsType::TmpFs, "/tmp", 0, 0, false);
+
+    // FAT32 boot partition (when disk driver is wired)
+    // mount::mount(mount::FsType::Fat32, "/boot", 0, 0, true);
+
+    // exFAT data partition (when disk driver is wired)
+    // mount::mount(mount::FsType::Exfat, "/data", 0, 0, false);
 
     console::serial_write("[vfs] VFS initialized\n");
 }

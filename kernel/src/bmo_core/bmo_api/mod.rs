@@ -50,18 +50,19 @@ use handle::HandleTable;
 use window::WindowTable;
 use surface::SurfaceTable;
 use timer::TimerWheel;
+use core::sync::atomic::{AtomicU8, Ordering};
 
 /// Estado global del subsistema BMO API v2.
 ///
 /// Vive en una static mutable conocida por el kernel. Todos los accesos
-/// están protegidos por `wm_lock` (un spinlock simple) en operaciones
+/// están protegidos por `wm_lock` (spinlock atómico) en operaciones
 /// que tocan más de una tabla.
 pub struct BmoState {
     pub handles: HandleTable,
     pub windows: WindowTable,
     pub surfaces: SurfaceTable,
     pub timers: TimerWheel,
-    pub wm_lock: u8, // 0 = unlocked, 1 = locked (simple spinlock)
+    wm_lock: AtomicU8,
     pub initialized: bool,
 }
 
@@ -72,29 +73,23 @@ impl BmoState {
             windows: WindowTable::new(),
             surfaces: SurfaceTable::new(),
             timers: TimerWheel::new(),
-            wm_lock: 0,
+            wm_lock: AtomicU8::new(0),
             initialized: false,
         }
     }
 
-    /// Spinlock acquire. v2.0 es single-CPU en la mayoría del código,
-    /// pero SMP boot ya tiene APs levantados — usamos el patrón
-    /// `lock: test-and-set + pause`.
-    pub fn lock(&mut self) {
-        // Minimal CAS spinlock. En ARM sería LDREX/STREX; en x86-64
-        // un simple `lock bts` es suficiente.
+    /// Spinlock atómico con test-and-set + pause.
+    pub fn lock(&self) {
         loop {
-            let prev = self.wm_lock;
-            if prev == 0 {
-                self.wm_lock = 1;
-                return;
+            match self.wm_lock.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed) {
+                Ok(_) => return,
+                Err(_) => core::hint::spin_loop(),
             }
-            core::hint::spin_loop();
         }
     }
 
-    pub fn unlock(&mut self) {
-        self.wm_lock = 0;
+    pub fn unlock(&self) {
+        self.wm_lock.store(0, Ordering::Release);
     }
 }
 

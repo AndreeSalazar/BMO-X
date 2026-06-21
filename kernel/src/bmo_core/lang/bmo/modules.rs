@@ -259,10 +259,11 @@ impl ModuleResolver {
             order.push(current.clone());
             if let Some(deps) = dependents.get(&current) {
                 for dep in deps {
-                    let d = in_degree.get_mut(dep).unwrap();
-                    *d -= 1;
-                    if *d == 0 {
-                        queue.push(dep.clone());
+                    if let Some(d) = in_degree.get_mut(dep) {
+                        *d -= 1;
+                        if *d == 0 {
+                            queue.push(dep.clone());
+                        }
                     }
                 }
             }

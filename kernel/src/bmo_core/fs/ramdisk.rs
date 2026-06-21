@@ -19,16 +19,29 @@ pub struct RamFile {
 }
 
 /// Tabla estática — embebe contenido en el ELF del kernel.
-///
-/// La primera entrada (`bmo:readme`) sirve como autotest del FileRead.
 pub static RAMDISK_FILES: &[RamFile] = &[
     RamFile {
         name: "bmo:readme",
         data: b"FastOS / BMO RAMdisk operativo.\n\
-Para cargar un WAD de DOOM coloca el binario y\n\
-declara la entrada en src/fs/ramdisk.rs::RAMDISK_FILES.\n\
-Las syscalls FileOpen(0x20)/FileRead(0x21)/FileClose(0x23)\n\
-sirven el contenido desde Ring 3 sin tocar el disco.\n",
+               Para cargar un WAD de DOOM coloca el binario y\n\
+               declara la entrada en src/fs/ramdisk.rs::RAMDISK_FILES.\n\
+               Las syscalls FileOpen(0x20)/FileRead(0x21)/FileClose(0x23)\n\
+               sirven el contenido desde Ring 3 sin tocar el disco.\n",
+    },
+    RamFile {
+        name: "datos:readme",
+        data: b"FastOS / BMO Datos\n\
+               \n\
+               Montaje de Loop Device: OK\n\
+               Firma de Superblock: OK\n\
+               Particion FAT32: OK\n\
+               Interoperabilidad UEFI: OK\n\
+               \n\
+               Archivos del sistema:\n\
+               - /proc  : informacion de procesos\n\
+               - /dev   : dispositivos\n\
+               - /tmp   : archivos temporales\n\
+               - /data  : particion exFAT (datos del usuario)\n",
     },
 ];
 

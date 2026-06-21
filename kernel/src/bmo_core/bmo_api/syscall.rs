@@ -340,7 +340,10 @@ fn sys_create_window_ex(class_id: u16, title_ptr: u64, title_len: u64, style: u3
     };
     let surf = s.surfaces.alloc(w.max(1) as u16, h.max(1) as u16, surface::format::XRGB32, slot);
     {
-        let win = s.windows.window_mut(slot).unwrap();
+        let win = match s.windows.window_mut(slot) {
+            Some(w) => w,
+            None => { s.unlock(); return err::NO_WINDOW; }
+        };
         win.class_id = class_id;
         win.style = style;
         if (style & style::WS_VISIBLE) != 0 {

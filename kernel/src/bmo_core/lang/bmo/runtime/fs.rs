@@ -1,6 +1,6 @@
-//! ÑEXO Runtime — Sistema de archivos.
+//! BMO Runtime — Filesystem operations.
 //!
-//! Wraps kernel filesystem (RAMdisk + BMO-FS).
+//! Wraps kernel RAMdisk filesystem API.
 
 #![allow(dead_code)]
 

@@ -104,7 +104,13 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
     crate::bmo_core::diag::info_u64("bef", "executing entry point", entry);
 
     // Build a minimal user stack (64 KB).
-    let stack_layout = core::alloc::Layout::from_size_align(65536, 16).unwrap();
+    let stack_layout = match core::alloc::Layout::from_size_align(65536, 16) {
+        Ok(l) => l,
+        Err(_) => {
+            crate::bmo_core::diag::fault("bef", "invalid stack layout");
+            loop { core::arch::asm!("hlt"); }
+        }
+    };
     let stack_ptr = alloc::alloc::alloc_zeroed(stack_layout);
     if stack_ptr.is_null() {
         crate::bmo_core::diag::fault("bef", "failed to allocate user stack");

@@ -1,34 +1,32 @@
-#![allow(dead_code)]
-
 //! VFS mount table for FastOS.
 //!
 //! Maps path prefixes to filesystem drivers.
-//! Supports: BMO-FS (root), FAT32, procfs, devfs.
+//! Supports: RamFs (root), FAT32 (boot), exFAT (data), procfs, devfs, tmpfs.
+
+#![allow(dead_code)]
 
 use crate::dev::console;
 
-/// Maximum number of mount points.
 const MAX_MOUNTS: usize = 16;
 
-/// Filesystem type.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FsType {
-    BmoFs,       // BMO-FS (native)
-    Fat32,       // FAT32
+    RamFs,       // Ramdisk (archivos embebidos del kernel)
+    Fat32,       // FAT32 (boot, UEFI compatible)
+    Exfat,       // exFAT (data, read-write)
     ProcFs,      // /proc (virtual)
     DevFs,       // /dev (virtual)
     TmpFs,       // /tmp (RAM-backed)
     None,
 }
 
-/// Mount point entry.
 #[derive(Debug, Clone, Copy)]
 pub struct MountPoint {
     pub mount_id: u16,
     pub fs_type: FsType,
-    pub path: &'static str,      // mount point path (e.g., "/", "/mnt/usb", "/dev")
-    pub device_lba: u64,          // starting LBA on device
-    pub device_sectors: u32,      // total sectors
+    pub path: &'static str,
+    pub device_lba: u64,
+    pub device_sectors: u32,
     pub read_only: bool,
     pub in_use: bool,
 }
@@ -50,7 +48,6 @@ impl MountPoint {
 static mut MOUNT_TABLE: [MountPoint; MAX_MOUNTS] = [MountPoint::empty(); MAX_MOUNTS];
 static mut NEXT_MOUNT_ID: u16 = 1;
 
-/// Register a mount point.
 pub fn mount(fs_type: FsType, path: &'static str, lba: u64, sectors: u32, read_only: bool) -> Option<u16> {
     unsafe {
         for i in 0..MAX_MOUNTS {
@@ -72,12 +69,13 @@ pub fn mount(fs_type: FsType, path: &'static str, lba: u64, sectors: u32, read_o
                 console::serial_write(path);
                 console::serial_write(" (");
                 match fs_type {
-                    FsType::BmoFs => console::serial_write("BMO-FS"),
-                    FsType::Fat32 => console::serial_write("FAT32"),
+                    FsType::RamFs  => console::serial_write("RamFs"),
+                    FsType::Fat32  => console::serial_write("FAT32"),
+                    FsType::Exfat  => console::serial_write("exFAT"),
                     FsType::ProcFs => console::serial_write("procfs"),
-                    FsType::DevFs => console::serial_write("devfs"),
-                    FsType::TmpFs => console::serial_write("tmpfs"),
-                    FsType::None => console::serial_write("none"),
+                    FsType::DevFs  => console::serial_write("devfs"),
+                    FsType::TmpFs  => console::serial_write("tmpfs"),
+                    FsType::None   => console::serial_write("none"),
                 }
                 console::serial_write(") id=");
                 serial_write_u16(mount_id);
@@ -90,7 +88,6 @@ pub fn mount(fs_type: FsType, path: &'static str, lba: u64, sectors: u32, read_o
     None
 }
 
-/// Unregister a mount point by ID.
 pub fn unmount(mount_id: u16) -> bool {
     unsafe {
         for i in 0..MAX_MOUNTS {
@@ -106,28 +103,23 @@ pub fn unmount(mount_id: u16) -> bool {
     false
 }
 
-/// Find a mount point by path prefix.
 pub fn find_mount(path: &str) -> Option<&'static MountPoint> {
     unsafe {
         let mut best_match: Option<usize> = None;
         let mut best_len = 0;
 
         for i in 0..MAX_MOUNTS {
-            if !MOUNT_TABLE[i].in_use {
-                continue;
-            }
+            if !MOUNT_TABLE[i].in_use { continue; }
             let mp_path = MOUNT_TABLE[i].path;
             if path.starts_with(mp_path) && mp_path.len() >= best_len {
                 best_match = Some(i);
                 best_len = mp_path.len();
             }
         }
-
         best_match.map(|i| &MOUNT_TABLE[i])
     }
 }
 
-/// Find a mount point by ID.
 pub fn get_mount(mount_id: u16) -> Option<&'static MountPoint> {
     unsafe {
         for i in 0..MAX_MOUNTS {
@@ -139,14 +131,10 @@ pub fn get_mount(mount_id: u16) -> Option<&'static MountPoint> {
     None
 }
 
-/// Count of active mounts.
 pub fn mount_count() -> u32 {
-    unsafe {
-        MOUNT_TABLE.iter().filter(|m| m.in_use).count() as u32
-    }
+    unsafe { MOUNT_TABLE.iter().filter(|m| m.in_use).count() as u32 }
 }
 
-/// Print mount table to serial.
 pub fn print_mounts() {
     console::serial_write("[vfs] Active mounts:\n");
     unsafe {
@@ -156,12 +144,13 @@ pub fn print_mounts() {
                 console::serial_write(MOUNT_TABLE[i].path);
                 console::serial_write(" -> ");
                 match MOUNT_TABLE[i].fs_type {
-                    FsType::BmoFs => console::serial_write("BMO-FS"),
-                    FsType::Fat32 => console::serial_write("FAT32"),
+                    FsType::RamFs  => console::serial_write("RamFs"),
+                    FsType::Fat32  => console::serial_write("FAT32"),
+                    FsType::Exfat  => console::serial_write("exFAT"),
                     FsType::ProcFs => console::serial_write("procfs"),
-                    FsType::DevFs => console::serial_write("devfs"),
-                    FsType::TmpFs => console::serial_write("tmpfs"),
-                    FsType::None => console::serial_write("?"),
+                    FsType::DevFs  => console::serial_write("devfs"),
+                    FsType::TmpFs  => console::serial_write("tmpfs"),
+                    FsType::None   => console::serial_write("?"),
                 }
                 console::serial_write("\n");
             }

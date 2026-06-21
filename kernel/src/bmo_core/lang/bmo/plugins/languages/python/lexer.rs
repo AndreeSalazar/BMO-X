@@ -127,12 +127,12 @@ impl PyLexer {
         if self.pos < self.src.len() && (self.peek() == b'\n' || self.peek() == b'#') {
             return Ok(());
         }
-        let current = *self.indent_stack.last().unwrap();
+        let current = *self.indent_stack.last().unwrap_or(&0);
         if spaces > current {
             self.indent_stack.push(spaces);
             self.tokens.push(PyToken::Indent);
         } else if spaces < current {
-            while *self.indent_stack.last().unwrap() > spaces {
+            while *self.indent_stack.last().unwrap_or(&0) > spaces {
                 self.indent_stack.pop();
                 self.tokens.push(PyToken::Dedent);
             }

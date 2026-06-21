@@ -23,23 +23,23 @@ pub fn create_desktop_window() -> u32 {
     s.lock();
     let slot = s.windows.alloc_window().expect("no free window slot");
     {
-        let w = s.windows.window_mut(slot).unwrap();
-        w.x = 0; w.y = 0;
-        w.w = fbw;
-        w.h = fbh;
-        w.style = 0;
-        w.style_ex = 0;
-        w.flags.0 = wf::VISIBLE | wf::ENABLED;
-        w.visible = true;
-        w.title[0] = b'D'; w.title[1] = b'e'; w.title[2] = b's';
-        w.title[3] = b'k'; w.title[4] = b't'; w.title[5] = b'o'; w.title[6] = b'p';
-        w.title_len = 7;
-        // Crea una surface del tamaño del desktop.
-        let surf = s.surfaces.alloc(
-            fbw as u16, fbh as u16,
-            surface::format::XRGB32, slot,
-        );
-        w.surface = surf.unwrap_or(0);
+        if let Some(w) = s.windows.window_mut(slot) {
+            w.x = 0; w.y = 0;
+            w.w = fbw;
+            w.h = fbh;
+            w.style = 0;
+            w.style_ex = 0;
+            w.flags.0 = wf::VISIBLE | wf::ENABLED;
+            w.visible = true;
+            w.title[0] = b'D'; w.title[1] = b'e'; w.title[2] = b's';
+            w.title[3] = b'k'; w.title[4] = b't'; w.title[5] = b'o'; w.title[6] = b'p';
+            w.title_len = 7;
+            let surf = s.surfaces.alloc(
+                fbw as u16, fbh as u16,
+                surface::format::XRGB32, slot,
+            );
+            w.surface = surf.unwrap_or(0);
+        }
     }
     s.windows.desktop = slot;
     s.windows.focus = slot;
@@ -189,7 +189,10 @@ fn create_top_window(title: &'static str, x: i32, y: i32, w: i32, h: i32) -> u32
     };
     let surf = st.surfaces.alloc(w as u16, h as u16, surface::format::XRGB32, slot);
     {
-        let win = st.windows.window_mut(slot).unwrap();
+        let win = match st.windows.window_mut(slot) {
+            Some(w) => w,
+            None => { st.unlock(); return WID_INVALID; }
+        };
         win.x = x; win.y = y; win.w = w; win.h = h;
         win.style = style::WS_OVERLAPPEDWINDOW;
         win.flags.0 = wf::VISIBLE | wf::ENABLED;

@@ -76,18 +76,28 @@ impl OverlayTab {
     }
 }
 
-static mut CURRENT_TAB: OverlayTab = OverlayTab::Overview;
+static mut CURRENT_TAB: u8 = OverlayTab::Overview as u8;
 
 /// Cycle to the next overlay tab.
 pub fn cycle_tab() {
     unsafe {
-        CURRENT_TAB = CURRENT_TAB.next();
+        let cur = CURRENT_TAB;
+        let next = ((cur + 1) % 6) as u8;
+        CURRENT_TAB = next;
     }
 }
 
 /// Get the current overlay tab.
 pub fn current_tab() -> OverlayTab {
-    unsafe { CURRENT_TAB }
+    let val = unsafe { CURRENT_TAB };
+    match val {
+        0 => OverlayTab::Overview,
+        1 => OverlayTab::Cpu,
+        2 => OverlayTab::Memory,
+        3 => OverlayTab::Io,
+        4 => OverlayTab::Scheduler,
+        _ => OverlayTab::Log,
+    }
 }
 
 // ── Init ───────────────────────────────────────────────────────────

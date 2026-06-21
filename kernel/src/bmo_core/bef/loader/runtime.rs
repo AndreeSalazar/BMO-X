@@ -132,7 +132,10 @@ pub fn register_bef_exports(table: &ExportTable, base: u64) {
 /// Leak a string into &'static str (acceptable in kernel ctx).
 fn leak_str(s: &str) -> &'static str {
     let len = s.len();
-    let layout = core::alloc::Layout::from_size_align(len, 1).unwrap();
+    let layout = match core::alloc::Layout::from_size_align(len, 1) {
+        Ok(l) => l,
+        Err(_) => return "",
+    };
     let ptr = unsafe { alloc::alloc::alloc(layout) };
     if ptr.is_null() {
         return "";

@@ -51,7 +51,7 @@ impl JParser {
                 _ => None,
             };
             match m {
-                Some(_) => { self.advance(); mods.push(m.unwrap()); }
+                Some(modifier) => { self.advance(); mods.push(modifier); }
                 None => break,
             }
         }

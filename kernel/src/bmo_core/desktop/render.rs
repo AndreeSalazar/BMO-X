@@ -49,7 +49,7 @@ fn fmt_hms(buf: &mut [u8; 8], h: u8, m: u8, s: u8) -> &str {
     buf[3] = b'0' + m / 10; buf[4] = b'0' + m % 10;
     buf[5] = b':';
     buf[6] = b'0' + s / 10; buf[7] = b'0' + s % 10;
-    core::str::from_utf8(buf).unwrap()
+    core::str::from_utf8(buf).unwrap_or("??:??:??")
 }
 
 // ── Status bar ─────────────────────────────────────────────────────

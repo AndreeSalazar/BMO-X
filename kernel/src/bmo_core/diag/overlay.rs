@@ -10,6 +10,7 @@ use super::telemetry;
 use super::OverlayTab;
 use crate::boot::info;
 use crate::bmo_core::ui::font;
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 const MIN_W: usize = 360;
 const MIN_H: usize = 180;
@@ -17,41 +18,46 @@ const MAX_W: usize = 480;
 const OVERLAY_H: usize = 190;
 const CHAR_W: usize = 8;
 
-// El HUD no debe tapar el welcome ni el primer escritorio. Se activa bajo
-// demanda con Ctrl+Alt, o explícitamente desde un handler de panic/fault.
-static mut ENABLED: bool = false;
+static ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// Optional override: when set, the overlay draws to this framebuffer
-/// instead of `crate::boot::info::FB_ADDR`. Used by the desktop render loop
-/// to paint the overlay onto the backbuffer (eliminates flicker).
-static mut TARGET_OVERRIDE: Option<(*mut u32, usize, usize, usize)> = None;
+/// Optional render target components: (base_ptr, width, height, stride).
+static TARGET_BASE: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static TARGET_W: AtomicU32 = AtomicU32::new(0);
+static TARGET_H: AtomicU32 = AtomicU32::new(0);
+static TARGET_S: AtomicU32 = AtomicU32::new(0);
+static HAS_TARGET: AtomicBool = AtomicBool::new(false);
 
-/// Set a temporary render target for the overlay. Pass `None` to revert
-/// to the default screen framebuffer.
+/// Set a temporary render target for the overlay.
 pub fn set_target_override(target: Option<(*mut u32, usize, usize, usize)>) {
-    unsafe { TARGET_OVERRIDE = target; }
+    match target {
+        Some((base, w, h, s)) => {
+            TARGET_BASE.store(base as u64, Ordering::Relaxed);
+            TARGET_W.store(w as u32, Ordering::Relaxed);
+            TARGET_H.store(h as u32, Ordering::Relaxed);
+            TARGET_S.store(s as u32, Ordering::Relaxed);
+            HAS_TARGET.store(true, Ordering::Relaxed);
+        }
+        None => {
+            HAS_TARGET.store(false, Ordering::Relaxed);
+        }
+    }
 }
 
 pub fn set_enabled(enabled: bool) {
-    unsafe { ENABLED = enabled; }
+    ENABLED.store(enabled, Ordering::Relaxed);
 }
 
 pub fn is_enabled() -> bool {
-    unsafe { ENABLED }
+    ENABLED.load(Ordering::Relaxed)
 }
 
 pub fn paint() {
-    if unsafe { !ENABLED } { return; }
+    if !ENABLED.load(Ordering::Relaxed) { return; }
 
     let Some((base, width, height, stride)) = fb() else { return; };
     if width < MIN_W || height < MIN_H { return; }
 
     // v1.6.8: anchor overlay to the top-right corner of the screen.
-    // The welcome card is centered horizontally (cx=470..1450) and
-    // vertically (cy=230..850). The previous bottom-anchor at y=874
-    // overlapped the bottom of the card and the UEFI framebuffer bar.
-    // Top-right (x = width - 480 - 16, y = 64) is fully outside the card
-    // and well above the screen edge.
     let w = MAX_W.min(width.saturating_sub(32)).max(MIN_W.min(width));
     let h = OVERLAY_H.min(height.saturating_sub(80));
     let x = width.saturating_sub(w + 16);
@@ -482,9 +488,13 @@ fn draw_event_line(
 // ── Drawing primitives ─────────────────────────────────────────────
 
 fn fb() -> Option<(*mut u32, usize, usize, usize)> {
-    // Use the override target if set (for backbuffer rendering)
-    if let Some(target) = unsafe { TARGET_OVERRIDE } {
-        return Some(target);
+    if HAS_TARGET.load(Ordering::Relaxed) {
+        let base = TARGET_BASE.load(Ordering::Relaxed) as *mut u32;
+        let w = TARGET_W.load(Ordering::Relaxed) as usize;
+        let h = TARGET_H.load(Ordering::Relaxed) as usize;
+        let s = TARGET_S.load(Ordering::Relaxed) as usize;
+        if base.is_null() || w == 0 || h == 0 || s == 0 { return None; }
+        return Some((base, w, h, s));
     }
     let (addr, w, h, s) = unsafe {
         (
