@@ -1,4 +1,4 @@
-//! Global Interpreter Lock (GIL) module for ÑEXO.
+//! Global Interpreter Lock (GIL) module for BMO.
 //!
 //! Provides different GIL implementations for languages that need them:
 //! - `implementations.rs` - Various GIL strategies

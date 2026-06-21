@@ -1,4 +1,4 @@
-//! Java language plugin for ÑEXO.
+//! Java language plugin for BMO.
 
 #![allow(dead_code)]
 
@@ -81,7 +81,7 @@ impl LanguagePlugin for JavaPlugin {
     fn validate(&self, source: &[u8]) -> BxResult<bool> { Ok(!source.is_empty()) }
     fn version(&self) -> &'static str { self.version }
     fn description(&self) -> &'static str {
-        "Java essential subset (class, interface, virtual, try/catch) for ÑEXO"
+        "Java essential subset (class, interface, virtual, try/catch) for BMO"
     }
 
     fn can_compile(&self, source: &[u8]) -> bool {

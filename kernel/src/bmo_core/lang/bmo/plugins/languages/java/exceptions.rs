@@ -1,4 +1,4 @@
-//! Java exceptions — try/catch lowered to ÑEXO control flow.
+//! Java exceptions — try/catch lowered to BMO control flow.
 //!
 //! Strategy: each `try { ... } catch (T e) { ... }` block becomes:
 //!   1. Save the current exception handler (setjmp-style).

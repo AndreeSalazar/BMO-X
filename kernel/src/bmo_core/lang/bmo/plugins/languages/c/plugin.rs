@@ -1,4 +1,4 @@
-//! C language plugin for ÑEXO.
+//! C language plugin for BMO.
 
 #![allow(dead_code)]
 
@@ -32,7 +32,7 @@ impl LanguagePlugin for CPlugin {
     }
 
     fn compile(&self, source: &[u8]) -> BxResult<CompileResult> {
-        // Use C frontend (translator) to produce ÑEXO AST.
+        // Use C frontend (translator) to produce BMO AST.
         let _result = super::translator::compile_c(source)?;
 
         Ok(CompileResult {
@@ -77,7 +77,7 @@ impl LanguagePlugin for CPlugin {
     }
 
     fn description(&self) -> &'static str {
-        "C programming language plugin for ÑEXO"
+        "C programming language plugin for BMO"
     }
 
     fn can_compile(&self, source: &[u8]) -> bool {

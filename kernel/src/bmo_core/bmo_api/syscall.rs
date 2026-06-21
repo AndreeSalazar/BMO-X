@@ -610,8 +610,9 @@ fn sys_send_message(handle: u64, kind: u16, wparam: u64, lparam: u64) -> u64 {
     let wnd_proc = s.windows.class(cls_id).map(|c| c.wnd_proc).unwrap_or(0);
     s.unlock();
     if wnd_proc != 0 {
-        // Ring 3 wnd_proc call path — ver syscall §6.2 del spec.
-        // v2.0: en stub. En v2.1 implementamos iretq a user RIP.
+        // Ring 3 wnd_proc: cuando existan programas Ring 3, aquí se
+        // haría iretq a user RIP con los args en registros. Por ahora
+        // todos loswnd_proc son kernel-side (wnd_proc=0).
         return 0;
     }
     class::default_wnd_proc(slot, BmoMsgKind::from_u16(kind), wparam, lparam)
@@ -633,7 +634,7 @@ fn sys_dispatch_message(msg_ptr: u64) -> u64 {
     let wnd_proc = s.windows.class(cls_id).map(|c| c.wnd_proc).unwrap_or(0);
     s.unlock();
     if wnd_proc != 0 {
-        // Ring 3 call — v2.0 stub.
+        // Ring 3 dispatch: pendiente cuando existan programas Ring 3.
         return 0;
     }
     class::default_wnd_proc(msg.target as u32, BmoMsgKind::from_u16(msg.kind), msg.wparam, msg.lparam)

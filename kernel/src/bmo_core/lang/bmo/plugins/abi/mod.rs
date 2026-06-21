@@ -1,4 +1,4 @@
-//! ABI (Application Binary Interface) bridge module for ÑEXO.
+//! ABI (Application Binary Interface) bridge module for BMO.
 //!
 //! Provides FFI support for calling foreign functions and registering native functions.
 
@@ -34,7 +34,7 @@ impl NexoAbiBridge {
 
 impl AbiBridge for NexoAbiBridge {
     fn name(&self) -> &'static str {
-        "nexo-abi"
+        "bmo-abi"
     }
 
     fn init(&mut self) -> BxResult<()> {

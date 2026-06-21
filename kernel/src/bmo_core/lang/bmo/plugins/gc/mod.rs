@@ -1,4 +1,4 @@
-//! Garbage Collection module for ÑEXO.
+//! Garbage Collection module for BMO.
 //!
 //! Provides multiple GC strategies for different language requirements:
 //! - `mark_sweep.rs` - Traditional mark-and-sweep GC

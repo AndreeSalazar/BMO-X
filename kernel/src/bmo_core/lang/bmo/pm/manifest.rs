@@ -1,4 +1,4 @@
-//! ÑEXO Package Manifest — Parser de nexo.toml.
+//! BMO Package Manifest — Parser de bmo.toml.
 //!
 //! Formato simplificado (TOML-subset):
 //!
@@ -10,11 +10,11 @@
 //! description = "Descripcion del proyecto"
 //!
 //! [dependencies]
-//! nexo_io = "0.1.0"
-//! nexo_fs = { version = "0.2.0", optional = true }
+//! bmo_io = "0.1.0"
+//! bmo_fs = { version = "0.2.0", optional = true }
 //!
 //! [dev-dependencies]
-//! nexo_test = "0.1.0"
+//! bmo_test = "0.1.0"
 //! ```
 
 #![allow(dead_code)]
@@ -76,7 +76,7 @@ impl DependencySpec {
     }
 }
 
-/// Simple TOML-like parser for nexo.toml.
+/// Simple TOML-like parser for bmo.toml.
 pub struct ManifestParser {
     lines: Vec<(usize, String)>,
     pos: usize,
@@ -153,7 +153,7 @@ impl ManifestParser {
         DependencySpec::Detailed { version, optional, path }
     }
 
-    /// Parse nexo.toml source into Manifest.
+    /// Parse bmo.toml source into Manifest.
     pub fn parse(&mut self) -> BxResult<Manifest> {
         let mut package = PackageInfo {
             name: String::new(),
@@ -207,7 +207,7 @@ impl ManifestParser {
     }
 }
 
-/// Parse a nexo.toml string into a Manifest.
+/// Parse a bmo.toml string into a Manifest.
 pub fn parse_manifest(source: &str) -> BxResult<Manifest> {
     ManifestParser::new(source).parse()
 }
@@ -226,7 +226,7 @@ pub fn default_manifest(name: &str) -> Manifest {
     }
 }
 
-/// Serialize a Manifest to nexo.toml format.
+/// Serialize a Manifest to bmo.toml format.
 pub fn serialize_manifest(manifest: &Manifest) -> String {
     let mut out = String::new();
     out.push_str("[package]\n");

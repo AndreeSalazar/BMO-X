@@ -1,7 +1,7 @@
-//! Core plugin traits for the ÑEXO language system.
+//! Core plugin traits for the BMO language system.
 //!
 //! These traits define the interface that all language plugins must implement.
-//! Each language provides: Lexer → Parser → AST → Translator → ÑEXO AST
+//! Each language provides: Lexer → Parser → AST → Translator → BMO AST
 
 #![allow(dead_code)]
 

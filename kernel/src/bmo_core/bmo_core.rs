@@ -4,7 +4,7 @@
 //! NO contiene lógica de aplicación — sólo:
 //!   1. diag (logging + overlay)
 //!   2. ui (framebuffer + font)
-//!   3. lang (BMO assembly syntax (legacy) + ÑEXO)
+//!   3. lang (BMO assembly syntax (legacy) + BMO)
 //!   4. fs (FAT32 + BMO-FS + ramdisk)
 //!   5. sandbox (capabilities)
 //!   6. barex (compat + shaders)
@@ -37,7 +37,7 @@ pub fn init() {
     //    etc. están aquí.
     //    (No requiere init explícito — es stateless.)
 
-    // 3) lang: BMO assembly syntax (legacy) (compiler) + ÑEXO (CLI + runtime).
+    // 3) lang: BMO assembly syntax (legacy) (compiler) + BMO (CLI + runtime).
     //    (No requiere init explícito — son compilers.)
 
     // 4) fs: FAT32 + BMO-FS + ramdisk.

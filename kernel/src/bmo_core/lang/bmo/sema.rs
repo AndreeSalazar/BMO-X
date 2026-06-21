@@ -1,4 +1,4 @@
-//! ÑEXO Sema — Análisis semántico completo con soporte de módulos.
+//! BMO Sema — Análisis semántico completo con soporte de módulos.
 //!
 //! Valida: scopes, tipos, funciones, structs, enums, variables,
 //! módulos, visibilidad, imports.
@@ -157,7 +157,7 @@ impl Scope {
     }
 }
 
-/// Semantic analyzer for ÑEXO — module-aware.
+/// Semantic analyzer for BMO — module-aware.
 pub struct Sema;
 
 impl Sema {

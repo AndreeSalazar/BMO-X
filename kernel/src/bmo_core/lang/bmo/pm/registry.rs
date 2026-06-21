@@ -1,4 +1,4 @@
-//! ÑEXO Package Registry — Registro local de paquetes.
+//! BMO Package Registry — Registro local de paquetes.
 //!
 //! Registry local (sin red) — paquetes disponibles en el RAMdisk
 //! o en la RAM filesystem.
@@ -41,15 +41,15 @@ impl Registry {
     /// Register built-in packages (stdlib modules).
     fn load_builtin_packages(&mut self) {
         let builtins = [
-            ("nexo_io", "0.1.0", "E/S serial y framebuffer"),
-            ("nexo_mem", "0.1.0", "Gestión de memoria"),
-            ("nexo_str", "0.1.0", "Operaciones con strings"),
-            ("nexo_math", "0.1.0", "Aritmética"),
-            ("nexo_fs", "0.1.0", "Sistema de archivos"),
-            ("nexo_proc", "0.1.0", "Gestión de procesos"),
-            ("nexo_time", "0.1.0", "Reloj y temporización"),
-            ("nexo_gfx", "0.1.0", "Primitivas gráficas"),
-            ("nexo_sys", "0.1.0", "Llamadas al sistema"),
+            ("bmo_io", "0.1.0", "E/S serial y framebuffer"),
+            ("bmo_mem", "0.1.0", "Gestión de memoria"),
+            ("bmo_str", "0.1.0", "Operaciones con strings"),
+            ("bmo_math", "0.1.0", "Aritmética"),
+            ("bmo_fs", "0.1.0", "Sistema de archivos"),
+            ("bmo_proc", "0.1.0", "Gestión de procesos"),
+            ("bmo_time", "0.1.0", "Reloj y temporización"),
+            ("bmo_gfx", "0.1.0", "Primitivas gráficas"),
+            ("bmo_sys", "0.1.0", "Llamadas al sistema"),
         ];
 
         for (name, version, desc) in builtins {

@@ -89,15 +89,83 @@ pub fn create_dc_for(window_slot: u32) -> Option<u32> {
 /// superficies de ventana son lógicas (no se blitean); el dibujado
 /// va directamente al GOP framebuffer con clipping contra el rect
 /// de la ventana dueña del DC.
-pub fn fill_rect(_dc_slot: u32, _x: i32, _y: i32, _w: i32, _h: i32, _color: u32) {
-    // v2.0: implementación real se conecta a crate::dev::framebuffer::fill_rect con
-    // clipping. Aquí dejamos el stub para no acoplar este módulo al
-    // resto del kernel antes de tiempo.
+pub fn fill_rect(dc_slot: u32, x: i32, y: i32, w: i32, h: i32, color: u32) {
+    let dc = match dc_table().dcs.get(dc_slot as usize) {
+        Some(d) if d.used => *d,
+        _ => return,
+    };
+    let (cx, cy, cw, ch) = client_rect_from_clip(&dc);
+    let ix = x.max(cx);
+    let iy = y.max(cy);
+    let ix2 = (x + w).min(cx + cw);
+    let iy2 = (y + h).min(cy + ch);
+    if ix >= ix2 || iy >= iy2 { return; }
+    let fb = get_fb();
+    fb.fill_rect(ix as usize, iy as usize, (ix2 - ix) as usize, (iy2 - iy) as usize, color);
 }
 
-pub fn draw_text(_dc_slot: u32, _x: i32, _y: i32, _text: &[u8], _color: u32) {}
+pub fn draw_text(dc_slot: u32, x: i32, y: i32, text: &[u8], color: u32) {
+    let dc = match dc_table().dcs.get(dc_slot as usize) {
+        Some(d) if d.used => *d,
+        _ => return,
+    };
+    let (cx, cy, cw, _ch) = client_rect_from_clip(&dc);
+    let fb = get_fb();
+    let mut cx_pos = x;
+    for &byte in text {
+        if cx_pos >= cx + cw { break; }
+        let glyph = crate::bmo_core::ui::font::get_glyph(byte);
+        for gy in 0..16 {
+            let row = glyph[gy];
+            for gx in 0..8 {
+                if row & (0x80 >> gx) != 0 {
+                    let px = cx_pos + gx;
+                    let py = y + gy as i32;
+                    if px >= cx && px < cx + cw && py >= cy && py < cy + _ch {
+                        fb.put_pixel(px as usize, py as usize, color);
+                    }
+                }
+            }
+        }
+        cx_pos += 8;
+    }
+}
 
-pub fn draw_line(_dc_slot: u32, _x0: i32, _y0: i32, _x1: i32, _y1: i32, _color: u32) {}
+pub fn draw_line(dc_slot: u32, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
+    let dc = match dc_table().dcs.get(dc_slot as usize) {
+        Some(d) if d.used => *d,
+        _ => return,
+    };
+    let (cx, cy, cw, ch) = client_rect_from_clip(&dc);
+    let fb = get_fb();
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+    let mut x = x0;
+    let mut y = y0;
+    loop {
+        if x >= cx && x < cx + cw && y >= cy && y < cy + ch {
+            fb.put_pixel(x as usize, y as usize, color);
+        }
+        if x == x1 && y == y1 { break; }
+        let e2 = 2 * err;
+        if e2 >= dy { err += dy; x += sx; }
+        if e2 <= dx { err += dx; y += sy; }
+    }
+}
+
+fn get_fb() -> crate::bmo_core::ui::fb::Framebuffer {
+    let (addr, stride, width, height) = unsafe {
+        (crate::boot::info::FB_ADDR, crate::boot::info::FB_STRIDE, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT)
+    };
+    crate::bmo_core::ui::fb::Framebuffer::new(addr, stride as u64, width, height)
+}
+
+fn client_rect_from_clip(dc: &BmoDc) -> (i32, i32, i32, i32) {
+    (dc.clip_x, dc.clip_y, dc.clip_w, dc.clip_h)
+}
 
 /// Calcula el cliente rect de una ventana (área sin NC).
 pub fn client_rect(w: &BmoWindow) -> (i32, i32, i32, i32) {

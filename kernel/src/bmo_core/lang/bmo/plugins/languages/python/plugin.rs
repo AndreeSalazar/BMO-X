@@ -1,4 +1,4 @@
-//! Python language plugin for ÑEXO.
+//! Python language plugin for BMO.
 
 #![allow(dead_code)]
 
@@ -91,7 +91,7 @@ impl LanguagePlugin for PythonPlugin {
         Ok(!source.is_empty())
     }
     fn version(&self) -> &'static str { self.version }
-    fn description(&self) -> &'static str { "Python programming language plugin for ÑEXO" }
+    fn description(&self) -> &'static str { "Python programming language plugin for BMO" }
 
     fn can_compile(&self, source: &[u8]) -> bool {
         let text = core::str::from_utf8(source).unwrap_or("");

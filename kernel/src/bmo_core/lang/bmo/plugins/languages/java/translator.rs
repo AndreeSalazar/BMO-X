@@ -1,6 +1,6 @@
-//! Java → ÑEXO Translator — converts Java AST to ÑEXO AST.
+//! Java → BMO Translator — converts Java AST to BMO AST.
 //!
-//! Strategy: lower Java to a C-like ÑEXO AST with:
+//! Strategy: lower Java to a C-like BMO AST with:
 //!
 //! v1.6.16: allow(irrefutable_let_patterns) for the two `if let Ok(_) = ...`
 //! sites that the compiler flagged. They are valid match-arms that we

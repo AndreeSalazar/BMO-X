@@ -200,7 +200,6 @@ impl GcPlugin for MarkSweepGc {
 
 impl MarkSweepGc {
     fn get_time_us(&self) -> u64 {
-        // Placeholder - would use actual timer
-        0
+        crate::bmo_core::lang::bmo::runtime::time::now_ns() / 1000
     }
 }

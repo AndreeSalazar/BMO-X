@@ -1,6 +1,6 @@
-//! C++ → ÑEXO Translator — converts C++ AST to ÑEXO AST.
+//! C++ → BMO Translator — converts C++ AST to BMO AST.
 //!
-//! Strategy: lower C++ to a C-like ÑEXO AST by:
+//! Strategy: lower C++ to a C-like BMO AST by:
 //! - `class Foo { ... }` → `struct Foo { ... fields ... }; struct Foo_vtable { ... };`
 //! - `this->field` → `(*this).field`
 //! - `virtual void f()` → adds entry to vtable; call site does vtable lookup
@@ -34,7 +34,7 @@ pub struct CppToNexo {
 impl CppToNexo {
     pub fn new() -> Self { Self { classes: BTreeMap::new() } }
 
-    /// Translate a C++ program to ÑEXO AST.
+    /// Translate a C++ program to BMO AST.
     pub fn translate(&mut self, past: &CppAst) -> BxResult<Ast> {
         // First pass: collect all class definitions.
         for item in &past.items {
@@ -43,7 +43,7 @@ impl CppToNexo {
             }
         }
 
-        // Second pass: emit ÑEXO AST.
+        // Second pass: emit BMO AST.
         let mut items = Vec::new();
         for item in &past.items {
             if let Some(stmt) = self.translate_item(item)? {

@@ -344,14 +344,52 @@ pub fn is_mounted() -> bool {
     unsafe { STATE.mounted }
 }
 
-/// Open a file by path (simplified: matches filename in root directory).
+/// Open a file by path. Scans root directory for matching filename (8.3 uppercase).
 pub fn open_file(name: &str, disk: &mut dyn crate::bmo_core::fs::DiskReader) -> Result<u32, ExfatError> {
     if !unsafe { STATE.mounted } {
         return Err(ExfatError::NotMounted);
     }
 
-    // Scan root directory entries for matching name
     let root_cluster = unsafe { STATE.header.first_cluster };
+    let target = to_exfat_83(name);
+    let mut cluster = root_cluster;
+
+    let found = loop {
+        let sector_data = match read_cluster(cluster, disk) {
+            Ok(d) => d,
+            Err(_) => break false,
+        };
+        let entries_per_sector = SECTOR_SIZE / 32;
+        let mut found_match = false;
+        for e in 0..entries_per_sector {
+            let offset = e * 32;
+            if offset + 32 > sector_data.len() { break; }
+            let entry_type = sector_data[offset];
+            if entry_type == 0x00 { break; }
+            if entry_type == 0xE5 { continue; }
+            if (entry_type & 0x80) != 0 { continue; }
+            if entry_type & 0x10 != 0 {
+                let mut match_name = [0u8; 11];
+                let name_len = (sector_data.len() - offset - 1).min(11);
+                for i in 0..name_len {
+                    match_name[i] = sector_data[offset + 1 + i];
+                }
+                if match_name == target {
+                    found_match = true;
+                    break;
+                }
+            }
+        }
+        if found_match { break true; }
+        match get_cluster_in_chain(cluster, 1, disk) {
+            Ok(c) if c >= 2 && c < 0xFFFFF8 => cluster = c,
+            _ => break false,
+        }
+    };
+
+    if !found {
+        return Err(ExfatError::FileNotFound);
+    }
 
     unsafe {
         for i in 0..MAX_OPEN_FILES {
@@ -362,20 +400,14 @@ pub fn open_file(name: &str, disk: &mut dyn crate::bmo_core::fs::DiskReader) -> 
                     file_size: 0,
                     position: 0,
                 };
-
-                // TODO: scan directory entries for actual filename match
-                // For now, return a handle pointing to root
-                let _ = name;
-                let _ = disk;
                 return Ok(i as u32);
             }
         }
     }
-
     Err(ExfatError::TooManyOpen)
 }
 
-/// Read from an open file handle.
+/// Read from an open file handle. Walks the cluster chain.
 pub fn read_file(fd: u32, buf: &mut [u8], disk: &mut dyn crate::bmo_core::fs::DiskReader) -> Result<usize, ExfatError> {
     if !unsafe { STATE.mounted } {
         return Err(ExfatError::NotMounted);
@@ -386,17 +418,53 @@ pub fn read_file(fd: u32, buf: &mut [u8], disk: &mut dyn crate::bmo_core::fs::Di
         return Err(ExfatError::BadHandle);
     }
 
-    unsafe {
+    let (cluster, pos) = unsafe {
         if !STATE.open_files[fd].in_use {
             return Err(ExfatError::BadHandle);
         }
+        (STATE.open_files[fd].first_cluster, STATE.open_files[fd].position)
+    };
+
+    let cluster_size = unsafe { STATE.header.cluster_size() };
+    let mut bytes_read = 0usize;
+
+    // Skip to the cluster containing our current position
+    let clusters_to_skip = (pos / cluster_size as u64) as u32;
+    let mut current_cluster = cluster;
+    for _ in 0..clusters_to_skip {
+        match get_cluster_in_chain(current_cluster, 1, disk) {
+            Ok(c) if c >= 2 && c < 0xFFFFF8 => current_cluster = c,
+            _ => return Ok(bytes_read),
+        }
     }
 
-    // TODO: implement proper cluster chain reading
-    // For now, return 0 bytes (EOF)
-    let _ = buf;
-    let _ = disk;
-    Ok(0)
+    let offset_in_cluster = (pos % cluster_size as u64) as usize;
+
+    // Read data from clusters
+    let mut remaining = buf.len();
+    let mut dst_offset = 0usize;
+    let mut local_offset = offset_in_cluster;
+
+    loop {
+        if remaining == 0 { break; }
+        let sector_data = read_cluster(current_cluster, disk)?;
+        let to_copy = (cluster_size - local_offset).min(remaining).min(sector_data.len() - local_offset);
+        buf[dst_offset..dst_offset + to_copy].copy_from_slice(&sector_data[local_offset..local_offset + to_copy]);
+        bytes_read += to_copy;
+        dst_offset += to_copy;
+        remaining -= to_copy;
+        local_offset = 0;
+
+        // Move to next cluster
+        match get_cluster_in_chain(current_cluster, 1, disk) {
+            Ok(c) if c >= 2 && c < 0xFFFFF8 => current_cluster = c,
+            _ => break,
+        }
+    }
+
+    // Update position
+    unsafe { STATE.open_files[fd].position += bytes_read as u64; }
+    Ok(bytes_read)
 }
 
 /// Close an open file handle.
@@ -435,6 +503,24 @@ pub fn cache_stats() -> (usize, usize) {
         let valid = STATE.sector_cache.iter().filter(|c| c.valid).count();
         (valid, total)
     }
+}
+
+fn to_exfat_83(name: &str) -> [u8; 11] {
+    let mut result = [0x20u8; 11];
+    let bytes = name.as_bytes();
+    let mut dot_pos = bytes.len();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'.' { dot_pos = i; break; }
+    }
+    let name_part = &bytes[..dot_pos.min(8)];
+    let ext_part = if dot_pos < bytes.len() { &bytes[dot_pos + 1..] } else { &[] };
+    for (i, &b) in name_part.iter().enumerate().take(8) {
+        result[i] = if b >= b'a' && b <= b'z' { b - 32 } else { b };
+    }
+    for (i, &b) in ext_part.iter().enumerate().take(3) {
+        result[8 + i] = if b >= b'a' && b <= b'z' { b - 32 } else { b };
+    }
+    result
 }
 
 fn serial_write_u64(val: u64) {

@@ -1,4 +1,4 @@
-//! ÑEXO Dependency Resolver — Resolución de dependencias.
+//! BMO Dependency Resolver — Resolución de dependencias.
 //!
 //! Topological sort, detección de ciclos, version matching.
 
@@ -59,7 +59,7 @@ impl Resolver {
     ) -> BxResult<()> {
         // Check for cycles
         if visiting.contains(&name.to_string()) {
-            crate::bmo_core::diag::warn("nexo_pm", "Circular dependency detected");
+            crate::bmo_core::diag::warn("bmo_pm", "Circular dependency detected");
             return Err(BxError::InvalidArgument);
         }
 

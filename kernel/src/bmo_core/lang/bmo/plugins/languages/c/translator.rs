@@ -1,4 +1,4 @@
-//! C → ÑEXO Translator — converts C AST to ÑEXO AST.
+//! C → BMO Translator — converts C AST to BMO AST.
 //!
 //! Supports: structs, unions, enums, switch/case, sizeof(expr), ternary, comma, goto/label.
 
@@ -14,13 +14,13 @@ use crate::bmo_gpu::BxResult;
 use super::ast::{CType, CExpr, CBinOp, CUnaryOp, CStmt, CItem, CAst};
 use crate::bmo_core::lang::bmo::parser::{Ast, Stmt as NStmt, Expr, Param, TypeAnnotation, BinOp, UnaryOp, ExternItem};
 
-/// Translates C AST to ÑEXO AST.
+/// Translates C AST to BMO AST.
 pub struct CToNexo;
 
 impl CToNexo {
     pub fn new() -> Self { Self }
 
-    /// Translate a C program to ÑEXO AST.
+    /// Translate a C program to BMO AST.
     pub fn translate(&self, cast: &CAst) -> BxResult<Ast> {
         let mut items = Vec::new();
         for item in &cast.items {
@@ -72,7 +72,7 @@ impl CToNexo {
                 Ok(Some(NStmt::StructDecl { name: name.clone(), fields: nexo_fields }))
             }
             CItem::Union { name, fields } => {
-                // Translate union as struct (ÑEXO doesn't have unions yet)
+                // Translate union as struct (BMO doesn't have unions yet)
                 let nexo_fields: Vec<(String, TypeAnnotation)> = fields.iter()
                     .map(|(ty, fname)| (fname.clone(), self.translate_type(ty)))
                     .collect();
@@ -195,11 +195,11 @@ impl CToNexo {
             CStmt::Break => Ok(Some(NStmt::Break)),
             CStmt::Continue => Ok(Some(NStmt::Continue)),
             CStmt::Label(_name) => {
-                // Labels become comments in ÑEXO
+                // Labels become comments in BMO
                 Ok(None)
             }
             CStmt::Goto(_) => {
-                // Goto becomes a comment in ÑEXO
+                // Goto becomes a comment in BMO
                 Ok(None)
             }
         }
@@ -248,7 +248,7 @@ impl CToNexo {
             CExpr::Assign(left, right) => {
                 if let CExpr::Ident(name) = left.as_ref() {
                     let val = self.translate_expr(right)?;
-                    // In ÑEXO, assignment becomes let binding
+                    // In BMO, assignment becomes let binding
                     Ok(Expr::Binary(BinOp::Add, Box::new(Expr::Ident(name.clone())), Box::new(val)))
                 } else {
                     let l = self.translate_expr(left)?;
@@ -279,7 +279,7 @@ impl CToNexo {
                 let c = self.translate_expr(cond)?;
                 let t = self.translate_expr(then_expr)?;
                 let e = self.translate_expr(else_expr)?;
-                // Ternary becomes a block expression with if-else in ÑEXO
+                // Ternary becomes a block expression with if-else in BMO
                 let if_stmt = NStmt::If {
                     cond: c,
                     then_body: vec![NStmt::ExprStmt(t)],
@@ -343,9 +343,9 @@ impl CToNexo {
     }
 }
 
-/// Top-level C → ÑEXO AST compilation entry point.
+/// Top-level C → BMO AST compilation entry point.
 ///
-/// Pipeline: C source bytes → C lexer → C parser → CAst → CToNexo → ÑEXO Ast.
+/// Pipeline: C source bytes → C lexer → C parser → CAst → CToNexo → BMO Ast.
 pub fn compile_c(source: &[u8]) -> BxResult<crate::bmo_core::lang::bmo::parser::Ast> {
     use super::lexer::CLexer;
     use super::parser::CParser;

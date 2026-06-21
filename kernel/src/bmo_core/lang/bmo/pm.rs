@@ -1,6 +1,6 @@
-//! ÑEXO Package Manager — Gestor de paquetes nativo.
+//! BMO Package Manager — Gestor de paquetes nativo.
 //!
-//! Formato de manifiesto: `nexo.toml` (TOML simplificado).
+//! Formato de manifiesto: `bmo.toml` (TOML simplificado).
 //! Registry local, resolución de dependencias, build system.
 
 #![allow(dead_code)]
@@ -11,5 +11,5 @@ pub mod resolver;
 pub mod build;
 
 pub fn init() {
-    crate::bmo_core::diag::info("nexo_pm", "Package manager initialized");
+    crate::bmo_core::diag::info("bmo_pm", "Package manager initialized");
 }

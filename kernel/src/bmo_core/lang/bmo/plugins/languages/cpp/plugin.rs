@@ -1,6 +1,6 @@
-//! C++ language plugin for ÑEXO.
+//! C++ language plugin for BMO.
 //!
-//! v0.1.0: stub. The translator lowers C++ to ÑEXO AST, then the
+//! v0.1.0: stub. The translator lowers C++ to BMO AST, then the
 //! standard codegen → BMO assembly syntax (legacy) → native pipeline runs.
 
 #![allow(dead_code)]
@@ -29,7 +29,7 @@ impl LanguagePlugin for CppPlugin {
     fn runtime_config(&self) -> RuntimeConfig { RuntimeConfig::for_c() }
 
     fn compile(&self, source: &[u8]) -> BxResult<CompileResult> {
-        // TODO: full C++ → ÑEXO pipeline (lexer/parser/translator).
+        // TODO: full C++ → BMO pipeline (lexer/parser/translator).
         // For now just acknowledge the source.
         let _ = source;
         Ok(CompileResult {
@@ -68,7 +68,7 @@ impl LanguagePlugin for CppPlugin {
     fn version(&self) -> &'static str { self.version }
 
     fn description(&self) -> &'static str {
-        "C++ essential subset (class, virtual, new/delete) for ÑEXO"
+        "C++ essential subset (class, virtual, new/delete) for BMO"
     }
 
     fn can_compile(&self, source: &[u8]) -> bool {

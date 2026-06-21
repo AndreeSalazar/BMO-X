@@ -161,21 +161,47 @@ pub fn enter() -> ! {
     let mut last_tick: u64 = 0;
     loop {
         let now = crate::cpu::rdtsc();
-        // Procesa input de PS/2 → eventos.
         super::input::poll_and_dispatch();
-        // 30 Hz repaint (33 ms ≈ 1_000_000_000 ciclos @ 3 GHz).
+        // Process queued messages
+        process_message_queue();
+        // 30 Hz repaint
         if now.wrapping_sub(last_tick) > 33_000_000 {
             super::paint_compositor::tick();
             super::timer::tick_global();
             last_tick = now;
         }
-        // ESC → volver al welcome.
         if super::input::esc_pressed() {
             crate::bmo_core::diag::info("bmo_api_v2.wm", "ESC pressed — return to welcome");
             crate::dev::console::serial_write("[bmo_api_v2] ESC — returning to welcome.\n");
             crate::bmo_core::desktop::welcome::run();
         }
         core::hint::spin_loop();
+    }
+}
+
+fn process_message_queue() {
+    let focused = {
+        let s = super::state();
+        s.lock();
+        let f = s.windows.focus;
+        s.unlock();
+        f
+    };
+    if focused == 0 { return; }
+
+    let s = super::state();
+    s.lock();
+    let cls_id = s.windows.window(focused).map(|w| w.class_id);
+    s.unlock();
+    let cls_id = match cls_id { Some(c) => c, None => return };
+
+    let s = super::state();
+    s.lock();
+    let wnd_proc = s.windows.class(cls_id).map(|c| c.wnd_proc).unwrap_or(0);
+    s.unlock();
+
+    if wnd_proc == 0 {
+        super::class::default_wnd_proc(focused, super::message::BmoMsgKind::Paint, 0, 0);
     }
 }
 

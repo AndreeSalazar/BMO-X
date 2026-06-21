@@ -191,6 +191,6 @@ impl GcPlugin for ReferenceCountingGc {
 
 impl ReferenceCountingGc {
     fn get_time_us(&self) -> u64 {
-        0
+        crate::bmo_core::lang::bmo::runtime::time::now_ns() / 1000
     }
 }

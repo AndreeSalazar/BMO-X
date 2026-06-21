@@ -1,4 +1,4 @@
-//! ÑEXO Parser — Parser recursivo descendente completo.
+//! BMO Parser — Parser recursivo descendente completo.
 //!
 //! Soporta: fn, let, if/else, while, for, return, break, continue,
 //! struct, enum, impl, match, block, syscall, emit, expressions.
@@ -16,7 +16,7 @@ use crate::bmo_core::lang::bmo::lexer::Token;
 
 // ── AST ──────────────────────────────────────────────────────────────
 
-/// Qualified path: `bmo::io::print` → Path(vec!["nexo", "io", "print"])
+/// Qualified path: `bmo::io::print` → Path(vec!["bmo", "io", "print"])
 pub type Path = Vec<String>;
 
 #[derive(Debug, Clone)]

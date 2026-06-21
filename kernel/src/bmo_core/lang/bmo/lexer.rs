@@ -1,4 +1,4 @@
-//! ÑEXO Lexer — Tokenización completa con soporte para:
+//! BMO Lexer — Tokenización completa con soporte para:
 //! - Keywords en español (32 keywords)
 //! - Literales: enteros (decimal, hex, bin, oct), flotantes, strings, bytes
 //! - Operadores: aritméticos, lógicos, bitwise, comparación
@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 
 use crate::bmo_gpu::BxResult;
 
-/// Token types for ÑEXO.
+/// Token types for BMO.
 #[derive(Debug, Clone)]
 pub enum Token {
     // ── Literals ──────────────────────────────────────────────

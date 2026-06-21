@@ -7,7 +7,7 @@
 //! Does NOT support: templates, exceptions, operator overloading,
 //! multiple inheritance, virtual inheritance, RTTI, namespaces.
 //!
-//! Lowered to ÑEXO AST via struct + vtable pattern.
+//! Lowered to BMO AST via struct + vtable pattern.
 
 #![allow(dead_code)]
 
