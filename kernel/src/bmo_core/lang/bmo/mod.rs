@@ -29,6 +29,7 @@ pub mod stdlib;
 pub mod pm;
 pub mod emit;
 pub mod vm;
+pub mod aot;
 pub mod plugins;
 
 use crate::bmo_gpu::BxResult;
@@ -51,6 +52,21 @@ pub fn compile(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     sema.check(&ast)?;
     let mut codegen = codegen::Codegen::new();
     codegen.emit(&ast)
+}
+
+/// Compile BMO source to native x86-64 machine code (AOT).
+///
+/// Pipeline: source → lexer → parser → sema → AOT emitter → native bytes
+pub fn compile_native(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
+    let mut lex = lexer::Lexer::new(source);
+    let tokens = lex.tokenize()?;
+    let mut parser = parser::Parser::new(&tokens);
+    let ast = parser.parse()?;
+    let sema = sema::Sema::new();
+    sema.check(&ast)?;
+    let mut compiler = aot::NativeCompiler::new();
+    let result = compiler.compile(&ast);
+    Ok(result.code)
 }
 
 /// Compile and run BMO source in one step.
