@@ -1,6 +1,6 @@
 [package]
 name = "fastos-kernel"
-version = "1.8.2"
+version = "1.8.3"
 edition = "2021"
 authors = ["FastOS Project"]
 description = "FastOS kernel - UEFI GOP framebuffer + BMO/BareX"
@@ -16,8 +16,13 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
-opt-level = 2
+opt-level = 3
 lto = true
+codegen-units = 1
+strip = "symbols"
+debug = false
+debug-assertions = false
+overflow-checks = false
 
 [[bin]]
 name = "fastos-kernel"

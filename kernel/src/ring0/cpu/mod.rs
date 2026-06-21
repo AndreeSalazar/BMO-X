@@ -184,10 +184,16 @@ pub fn cli() {
 
 /// Busy-wait for approximately `ms` milliseconds using a simple TSC loop.
 pub fn busy_wait_ms(ms: u64) {
-    let start = rdtsc();
-    let target = 3_700_000 * ms; // ~3.7 GHz fallback
-    while rdtsc().wrapping_sub(start) < target {
-        core::hint::spin_loop();
+    let freq = tsc_per_sec();
+    if freq > 0 {
+        tsc::busy_wait_ms(ms, freq);
+    } else {
+        // Fallback: ~3.7 GHz for Ryzen 5 5600X
+        let start = rdtsc();
+        let target = 3_700_000u64 * ms;
+        while rdtsc().wrapping_sub(start) < target {
+            core::hint::spin_loop();
+        }
     }
 }
 

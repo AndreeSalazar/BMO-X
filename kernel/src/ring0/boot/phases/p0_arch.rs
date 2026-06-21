@@ -38,8 +38,9 @@ pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
     let cpu = crate::cpu::init();
     log::info("phase0", "CPU modular init DONE");
 
-    crate::cpu::fpu::init_fpu();
-    log::info("phase0", "FPU/SSE/AVX state initialized");
+    // FPU already initialized inside cpu::init() + lazy FPU enabled.
+    // Do NOT call init_fpu() again here — it would trigger #NM (CR0.TS set
+    // by lazy FPU) and the handler clears TS, defeating lazy switching.
 
     bmo_abi::time::init_clock(crate::cpu::rdtsc(), cpu.tsc_freq);
 

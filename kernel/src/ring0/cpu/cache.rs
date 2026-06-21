@@ -53,8 +53,11 @@ pub fn init_mtrr(features: &CpuFeatures, vram_base: u64, vram_size: u64) {
         def |= 0x800;
         msr::wrmsr(IA32_MTRR_DEF_TYPE, def);
 
-        // Flush caches and TLB
-        core::arch::asm!("wbinvd");
+        // Flush TLB only (no wbinvd — on real hardware wbinvd can be
+        // extremely slow with a full L3 cache, or trigger #MC which
+        // the bare iretq handler turns into an infinite loop).
+        // MTRR changes take effect for new accesses immediately; dirty
+        // cache lines will be written back naturally when evicted.
         let dummy: u64;
         core::arch::asm!("mov {}, cr3", out(reg) dummy);
         core::arch::asm!("mov cr3, {}", in(reg) dummy);

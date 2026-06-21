@@ -31,8 +31,12 @@ const BITMAP_SIZE: usize = MAX_PAGES / 8; // ~128 KB
 // Static state (single-core, no preemption during init — safe with `unsafe`)
 // ---------------------------------------------------------------------------
 
-/// Every bit starts as 1 (used). `init()` clears bits for usable RAM.
-static mut BITMAP: [u8; BITMAP_SIZE] = [0xFF; BITMAP_SIZE];
+/// Page usage bitmap.
+///
+/// Keep this zero-initialized so it lives in `.bss` instead of adding
+/// 128 KiB of `0xFF` bytes to the kernel ELF. `init()` fills it with
+/// `0xFF` before freeing usable pages from the UEFI memory map.
+static mut BITMAP: [u8; BITMAP_SIZE] = [0; BITMAP_SIZE];
 static mut INITIALIZED: bool = false;
 static mut FREE_PAGES_COUNT: usize = 0;
 
@@ -141,7 +145,11 @@ pub unsafe fn init(
         return;
     }
 
-    // Bitmap is already all-ones (every page marked used).
+    // Start pessimistic: every page is marked used. This is done at
+    // runtime so the bitmap stays in `.bss` and does not bloat the ELF.
+    core::ptr::write_bytes(core::ptr::addr_of_mut!(BITMAP) as *mut u8, 0xFF, BITMAP_SIZE);
+
+    // Bitmap is now all-ones (every page marked used).
     // Walk the memory map and free pages that belong to Usable regions,
     // *except* those that overlap the kernel reservation.
 

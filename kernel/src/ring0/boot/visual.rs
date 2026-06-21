@@ -1,4 +1,4 @@
-//! v1.6.21: Professional boot splash screen.
+//! v1.8.2: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
 //! splash that matches the welcome card's visual language:
@@ -107,7 +107,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.6.21";
+    let sub = b"Bare Metal Orchestrator  ::  v1.8.2";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);
@@ -126,11 +126,16 @@ pub fn init() {
     text(addr, s, w, h, cx + 60, cy + 290, b"Boot Log", DIM);
     fill_rect(addr, s, w, h, cx + 130, cy + 298, 60, 2, ACCENT);
 
-    // 10) Footer
+    // 10) Footer — two lines
     let foot = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  GOP framebuffer  ::  UEFI";
     let fw = foot.len() * 8;
     let fx = cx + (cw - fw) / 2;
-    text(addr, s, w, h, fx, cy + ch - 28, foot, SUBTITLE);
+    text(addr, s, w, h, fx, cy + ch - 44, foot, SUBTITLE);
+
+    let powered = b"Powered by Eddi Andre Salazar Matos";
+    let pw = powered.len() * 8;
+    let px = cx + (cw - pw) / 2;
+    text(addr, s, w, h, px, cy + ch - 24, powered, DIM);
 }
 
 /// Repaint the 5 phase bars based on CURRENT_PHASE.
@@ -207,15 +212,8 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
 
     // v1.6.16: log row gets a LIGHTER bg (0xFF1A2638, distinguishable
     // from the card body 0xFF0F1827) and the message is painted in
-    // high-contrast near-white (0xFFE6F1F5). The previous attempt
-    // (0xFF0A1320 row) was too close to the card body and the message
-    // text in caller-supplied `color` blended into the dark background.
-    //
-    // v1.6.21: temporarily RED BG for visual debug — if rows show up
-    // as red bands, the layout is correct and only the text paint is
-    // broken. If the user still sees nothing, the rows aren't being
-    // called at all.
-    fill_rect(addr, s, w, h, log_x, y, log_w, LOG_ROW_H, 0xFFFF0000);
+    // high-contrast near-white (0xFFE6F1F5).
+    fill_rect(addr, s, w, h, log_x, y, log_w, LOG_ROW_H, 0xFF1A2638);
 
     // Phase pill: small colored square (8x8) + label
     let phase_color = phase_color(phase);
