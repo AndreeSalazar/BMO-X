@@ -322,21 +322,364 @@ pub fn mount(disk: &mut dyn crate::bmo_core::fs::DiskReader) -> Result<(), Exfat
 }
 
 /// Unmount.
-pub fn unmount() -> Result<(), ExfatError> {
+pub fn unmount(disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<(), ExfatError> {
     if !unsafe { STATE.mounted } {
         return Err(ExfatError::NotMounted);
     }
-
-    // Flush dirty cache entries
-    flush_cache();
+    flush_cache(disk);
     unsafe { STATE.mounted = false; }
     console::serial_write("[exfat] Unmounted\n");
     Ok(())
 }
 
-/// Flush all dirty cache entries.
-fn flush_cache() {
-    // Cache is read-only for now; no dirty entries
+/// Write a sector to cache (dirty).
+fn write_sector_cached(lba: u64, data: &[u8; SECTOR_SIZE], disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<(), ExfatError> {
+    unsafe {
+        for i in 0..MAX_CACHE_SECTORS {
+            if STATE.sector_cache[i].valid && STATE.sector_cache[i].lba == lba {
+                STATE.sector_cache[i].data.copy_from_slice(data);
+                STATE.sector_cache[i].dirty = true;
+                STATE.lru_counter += 1;
+                STATE.cache_lru[i] = STATE.lru_counter;
+                return Ok(());
+            }
+        }
+
+        let mut lru_slot = 0;
+        let mut lru_min = u32::MAX;
+        for i in 0..MAX_CACHE_SECTORS {
+            if !STATE.sector_cache[i].valid {
+                lru_slot = i;
+                break;
+            }
+            if STATE.cache_lru[i] < lru_min {
+                lru_min = STATE.cache_lru[i];
+                lru_slot = i;
+            }
+        }
+
+        if STATE.sector_cache[lru_slot].valid && STATE.sector_cache[lru_slot].dirty {
+            let _ = disk.write_sectors(
+                STATE.sector_cache[lru_slot].lba,
+                1,
+                &STATE.sector_cache[lru_slot].data,
+            );
+        }
+
+        STATE.sector_cache[lru_slot] = CacheEntry {
+            lba,
+            data: *data,
+            dirty: true,
+            valid: true,
+        };
+        STATE.lru_counter += 1;
+        STATE.cache_lru[lru_slot] = STATE.lru_counter;
+    }
+    Ok(())
+}
+
+/// Allocate a free cluster. Returns the cluster number.
+fn alloc_cluster(disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<u32, ExfatError> {
+    unsafe {
+        let fat_start = STATE.header.fat_start_sector();
+        let cluster_count = STATE.header.cluster_count;
+        let entries_per_sector = SECTOR_SIZE / 4;
+
+        for cluster in 2..cluster_count {
+            let fat_lba = fat_start + (cluster as u64 / entries_per_sector as u64);
+            let offset = (cluster as usize % entries_per_sector) * 4;
+            let sector = read_sector_cached(fat_lba, disk)?;
+            let entry = u32::from_ne_bytes([sector[offset], sector[offset+1], sector[offset+2], sector[offset+3]]);
+            if entry == 0 {
+                return Ok(cluster);
+            }
+        }
+    }
+    Err(ExfatError::NoSpace)
+}
+
+/// Write a FAT entry for a cluster.
+fn write_fat_entry(cluster: u32, value: u32, disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<(), ExfatError> {
+    unsafe {
+        let fat_start = STATE.header.fat_start_sector();
+        let entries_per_sector = SECTOR_SIZE / 4;
+        let fat_lba = fat_start + (cluster as u64 / entries_per_sector as u64);
+        let offset = (cluster as usize % entries_per_sector) * 4;
+
+        let mut sector = read_sector_cached(fat_lba, disk)?;
+        let val_bytes = value.to_ne_bytes();
+        sector[offset] = val_bytes[0];
+        sector[offset+1] = val_bytes[1];
+        sector[offset+2] = val_bytes[2];
+        sector[offset+3] = val_bytes[3];
+        write_sector_cached(fat_lba, &sector, disk)?;
+
+        if STATE.header.num_fats > 1 {
+            let fat_len = STATE.header.fat_length as u64;
+            let fat_lba2 = fat_start + fat_len + (cluster as u64 / entries_per_sector as u64);
+            let mut sector2 = read_sector_cached(fat_lba2, disk)?;
+            sector2[offset] = val_bytes[0];
+            sector2[offset+1] = val_bytes[1];
+            sector2[offset+2] = val_bytes[2];
+            sector2[offset+3] = val_bytes[3];
+            write_sector_cached(fat_lba2, &sector2, disk)?;
+        }
+    }
+    Ok(())
+}
+
+/// Write data to an open file. Extends the cluster chain as needed.
+pub fn write_file(fd: u32, data: &[u8], disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<usize, ExfatError> {
+    if !unsafe { STATE.mounted } { return Err(ExfatError::NotMounted); }
+    let fd = fd as usize;
+    if fd >= MAX_OPEN_FILES { return Err(ExfatError::BadHandle); }
+
+    let (first_cluster, file_size) = unsafe {
+        if !STATE.open_files[fd].in_use { return Err(ExfatError::BadHandle); }
+        (STATE.open_files[fd].first_cluster, STATE.open_files[fd].file_size)
+    };
+
+    let cluster_size = unsafe { STATE.header.cluster_size() };
+    let clusters_needed = ((file_size as usize + data.len() + cluster_size - 1) / cluster_size).max(1);
+    let mut current_cluster = first_cluster;
+
+    for _ in 1..clusters_needed {
+        let next = get_cluster_in_chain(current_cluster, 1, disk).unwrap_or(0);
+        if next >= 2 && next < 0xFFFFF8 {
+            current_cluster = next;
+        } else {
+            let new_cluster = alloc_cluster(disk)?;
+            write_fat_entry(current_cluster, new_cluster, disk)?;
+            write_fat_entry(new_cluster, 0xFFFFFFF8, disk)?;
+            current_cluster = new_cluster;
+        }
+    }
+
+    let mut written = 0usize;
+    let mut remaining = data.len();
+    let mut src_offset = 0usize;
+    let pos = file_size as usize;
+    let mut cur = first_cluster;
+
+    let clusters_to_skip = pos / cluster_size;
+    for _ in 0..clusters_to_skip {
+        match get_cluster_in_chain(cur, 1, disk) {
+            Ok(c) if c >= 2 && c < 0xFFFFF8 => cur = c,
+            _ => break,
+        }
+    }
+
+    let offset_in_cluster = pos % cluster_size;
+    if offset_in_cluster > 0 {
+        let mut sector_data = read_cluster(cur, disk)?;
+        let space = cluster_size - offset_in_cluster;
+        let to_write = space.min(remaining);
+        sector_data[offset_in_cluster..offset_in_cluster + to_write]
+            .copy_from_slice(&data[src_offset..src_offset + to_write]);
+        write_cluster(cur, &sector_data, disk)?;
+        written += to_write;
+        src_offset += to_write;
+        remaining -= to_write;
+        if remaining > 0 {
+            match get_cluster_in_chain(cur, 1, disk) {
+                Ok(c) if c >= 2 && c < 0xFFFFF8 => cur = c,
+                _ => {
+                    let new_c = alloc_cluster(disk)?;
+                    write_fat_entry(cur, new_c, disk)?;
+                    write_fat_entry(new_c, 0xFFFFFFF8, disk)?;
+                    cur = new_c;
+                }
+            }
+        }
+    }
+
+    while remaining > 0 {
+        let mut sector_data = [0u8; SECTOR_SIZE];
+        let to_write = cluster_size.min(remaining).min(data.len() - src_offset);
+        let copy_end = (src_offset + to_write).min(data.len());
+        let actual = copy_end - src_offset;
+        sector_data[..actual].copy_from_slice(&data[src_offset..copy_end]);
+        write_cluster(cur, &sector_data, disk)?;
+        written += actual;
+        src_offset += actual;
+        remaining -= actual;
+
+        if remaining > 0 {
+            match get_cluster_in_chain(cur, 1, disk) {
+                Ok(c) if c >= 2 && c < 0xFFFFF8 => cur = c,
+                _ => {
+                    let new_c = alloc_cluster(disk)?;
+                    write_fat_entry(cur, new_c, disk)?;
+                    write_fat_entry(new_c, 0xFFFFFFF8, disk)?;
+                    cur = new_c;
+                }
+            }
+        }
+    }
+
+    unsafe {
+        STATE.open_files[fd].file_size = file_size + written as u64;
+        STATE.open_files[fd].position = STATE.open_files[fd].file_size;
+    }
+    Ok(written)
+}
+
+/// Write raw cluster data to disk.
+fn write_cluster(cluster: u32, data: &[u8; SECTOR_SIZE], disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<(), ExfatError> {
+    if cluster < 2 { return Err(ExfatError::InvalidCluster); }
+    let lba = unsafe {
+        STATE.header.cluster_heap_start_sector()
+            + ((cluster - 2) as u64) * (1u64 << STATE.header.sectors_per_cluster_shift)
+    };
+    write_sector_cached(lba, data, disk)
+}
+
+/// Create a new file in the root directory.
+pub fn create_file(name: &str, disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<u32, ExfatError> {
+    if !unsafe { STATE.mounted } { return Err(ExfatError::NotMounted); }
+
+    let root_cluster = unsafe { STATE.header.first_cluster };
+    let new_cluster = alloc_cluster(disk)?;
+    write_fat_entry(new_cluster, 0xFFFFFFF8, disk)?;
+
+    let zero_sector = [0u8; SECTOR_SIZE];
+    write_cluster(new_cluster, &zero_sector, disk)?;
+
+    let target = to_exfat_83(name);
+    let mut cluster = root_cluster;
+    let mut entry_slot: Option<(u32, usize)> = None;
+
+    loop {
+        let sector_data = read_cluster(cluster, disk)?;
+        let entries_per_sector = SECTOR_SIZE / 32;
+        for e in 0..entries_per_sector {
+            let offset = e * 32;
+            if offset + 32 > sector_data.len() { break; }
+            let et = sector_data[offset];
+            if et == 0x00 || et == 0xE5 {
+                entry_slot = Some((cluster, e));
+                break;
+            }
+        }
+        if entry_slot.is_some() { break; }
+        match get_cluster_in_chain(cluster, 1, disk) {
+            Ok(c) if c >= 2 && c < 0xFFFFF8 => cluster = c,
+            _ => {
+                let new_c = alloc_cluster(disk)?;
+                write_fat_entry(cluster, new_c, disk)?;
+                write_fat_entry(new_c, 0xFFFFFFF8, disk)?;
+                let empty = [0u8; SECTOR_SIZE];
+                write_cluster(new_c, &empty, disk)?;
+                entry_slot = Some((new_c, 0));
+                break;
+            }
+        }
+    }
+
+    let (dir_cluster, entry_idx) = entry_slot.ok_or(ExfatError::NoSpace)?;
+    let mut sector_data = read_cluster(dir_cluster, disk)?;
+    let offset = entry_idx * 32;
+
+    sector_data[offset] = 0x85;
+    sector_data[offset + 1] = 0x20;
+    for i in 0..11 {
+        sector_data[offset + 2 + i] = target[i];
+    }
+    let cl_bytes = new_cluster.to_ne_bytes();
+    sector_data[offset + 20] = cl_bytes[0];
+    sector_data[offset + 21] = cl_bytes[1];
+    sector_data[offset + 22] = cl_bytes[2];
+    sector_data[offset + 23] = cl_bytes[3];
+    let size_bytes = 0u64.to_ne_bytes();
+    for i in 0..8 { sector_data[offset + 24 + i] = size_bytes[i]; }
+
+    write_cluster(dir_cluster, &sector_data, disk)?;
+
+    for i in 0..MAX_OPEN_FILES {
+        unsafe {
+            if !STATE.open_files[i].in_use {
+                STATE.open_files[i] = ExfatOpenFile {
+                    in_use: true,
+                    first_cluster: new_cluster,
+                    file_size: 0,
+                    position: 0,
+                };
+                return Ok(i as u32);
+            }
+        }
+    }
+    Err(ExfatError::TooManyOpen)
+}
+
+/// Delete a file from root directory.
+pub fn delete_file(name: &str, disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<(), ExfatError> {
+    if !unsafe { STATE.mounted } { return Err(ExfatError::NotMounted); }
+
+    let root_cluster = unsafe { STATE.header.first_cluster };
+    let target = to_exfat_83(name);
+    let mut cluster = root_cluster;
+
+    loop {
+        let mut sector_data = read_cluster(cluster, disk)?;
+        let entries_per_sector = SECTOR_SIZE / 32;
+        for e in 0..entries_per_sector {
+            let offset = e * 32;
+            if offset + 32 > sector_data.len() { break; }
+            let et = sector_data[offset];
+            if et == 0x00 { break; }
+            if et == 0xE5 { continue; }
+            if et & 0x10 != 0 {
+                let mut match_name = [0u8; 11];
+                for i in 0..11 { match_name[i] = sector_data[offset + 2 + i]; }
+                if match_name == target {
+                    let file_cluster = u32::from_ne_bytes([
+                        sector_data[offset + 20],
+                        sector_data[offset + 21],
+                        sector_data[offset + 22],
+                        sector_data[offset + 23],
+                    ]);
+                    sector_data[offset] = 0xE5;
+                    write_cluster(cluster, &sector_data, disk)?;
+                    free_chain(file_cluster, disk)?;
+                    return Ok(());
+                }
+            }
+        }
+        match get_cluster_in_chain(cluster, 1, disk) {
+            Ok(c) if c >= 2 && c < 0xFFFFF8 => cluster = c,
+            _ => break,
+        }
+    }
+    Err(ExfatError::FileNotFound)
+}
+
+/// Free a cluster chain.
+fn free_chain(start: u32, disk: &mut dyn crate::bmo_core::fs::DiskWriter) -> Result<(), ExfatError> {
+    let mut current = start;
+    loop {
+        let next = get_cluster_in_chain(current, 0, disk).unwrap_or(0xFFFFFFF8);
+        write_fat_entry(current, 0, disk)?;
+        if current == start && next == 0 { break; }
+        if next >= 0xFFFFFFF8 { break; }
+        current = next;
+    }
+    Ok(())
+}
+
+/// Flush all dirty cache entries to disk.
+fn flush_cache(disk: &mut dyn crate::bmo_core::fs::DiskWriter) {
+    unsafe {
+        for i in 0..MAX_CACHE_SECTORS {
+            if STATE.sector_cache[i].valid && STATE.sector_cache[i].dirty {
+                let _ = disk.write_sectors(
+                    STATE.sector_cache[i].lba,
+                    1,
+                    &STATE.sector_cache[i].data,
+                );
+                STATE.sector_cache[i].dirty = false;
+            }
+        }
+    }
 }
 
 /// Check if mounted.

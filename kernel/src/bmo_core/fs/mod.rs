@@ -17,6 +17,7 @@ pub mod manager;
 pub mod fat32;
 pub mod exfat;
 pub mod ramdisk;
+pub mod ramdisk_device;
 
 /// Disk error type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
