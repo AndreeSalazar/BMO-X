@@ -1,7 +1,0 @@
-[package]
-name = "nexo"
-version = "0.1.0"
-edition = "2021"
-description = "Nexo runtime — BSF loader para Ring 3 (no_std + alloc)"
-
-[dependencies]

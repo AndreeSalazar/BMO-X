@@ -1,6 +1,6 @@
 [package]
 name = "fastos-kernel"
-version = "1.7.11"
+version = "1.7.12"
 edition = "2021"
 authors = ["FastOS Project"]
 description = "FastOS kernel - UEFI GOP framebuffer + BMO/BareX"
@@ -8,11 +8,6 @@ license = "Techne"
 
 [dependencies]
 fastos-boot-protocol = { path = "../boot_protocol" }
-bmo_usb = { path = "../bmo_usb" }
-bmofs = { path = "../bmofs" }
-# Kernel slim: sólo dependencias usadas hoy.
-#  - volatile -> escrituras MMIO/framebuffer
-#  - bitflags -> capability flags del sandbox
 volatile = "0.4"
 bitflags = "2"
 

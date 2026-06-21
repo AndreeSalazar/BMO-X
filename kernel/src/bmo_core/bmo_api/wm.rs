@@ -14,7 +14,6 @@ use super::message::{BmoMsg, BmoMsgKind};
 #[allow(unused_imports)]
 use super::handle::BmoHandle;
 use super::surface;
-use crate::boot::info;
 
 /// Crea la ventana de escritorio (cubre todo el framebuffer).
 pub fn create_desktop_window() -> u32 {

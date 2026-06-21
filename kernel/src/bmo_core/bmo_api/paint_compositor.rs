@@ -10,7 +10,6 @@
 use super::window::WID_INVALID;
 #[allow(unused_imports)]
 use super::wm;
-use crate::dev::framebuffer;
 use crate::bmo_core::desktop::theme;
 
 static mut LAST_TICK: u64 = 0;

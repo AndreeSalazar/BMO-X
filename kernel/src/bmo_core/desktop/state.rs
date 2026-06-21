@@ -7,8 +7,7 @@
 
 #![allow(dead_code)]
 
-use crate::cpu;
-use crate::boot::info;
+
 
 /// Cycles per second en Ryzen 5 5600X (3.7 GHz boost).
 pub const CYCLES_PER_SEC: u64 = 3_700_000_000;

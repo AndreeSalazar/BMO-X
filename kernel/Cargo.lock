@@ -9,24 +9,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
-name = "bmo_usb"
-version = "0.1.0"
-
-[[package]]
-name = "bmofs"
-version = "0.1.0"
-
-[[package]]
 name = "fastos-boot-protocol"
 version = "0.1.0"
 
 [[package]]
 name = "fastos-kernel"
-version = "1.7.11"
+version = "1.7.12"
 dependencies = [
  "bitflags",
- "bmo_usb",
- "bmofs",
  "fastos-boot-protocol",
  "volatile",
 ]

@@ -496,7 +496,6 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         loop { core::arch::asm!("cli; hlt"); }
     }
 
-    use crate::boot::info;
     use crate::bmo_core::ui::font::get_glyph;
     let fb_addr = crate::boot::info::FB_ADDR;
     let w = crate::boot::info::FB_WIDTH as usize;

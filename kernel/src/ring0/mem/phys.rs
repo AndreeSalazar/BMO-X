@@ -18,9 +18,9 @@ use fastos_boot_protocol::{MemoryEntry, MemoryType};
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE: usize = 4096;
-const base: u64 = 0x0100_0000; // 16 MB — below this is legacy / kernel
+const BASE: u64 = 0x0100_0000; // 16 MB — below this is legacy / kernel
 const MAX_ADDR: u64 = 0x1_0000_0000; // 4 GB
-const MAX_PAGES: usize = ((MAX_ADDR - base) / PAGE_SIZE as u64) as usize; // ~1 M
+const MAX_PAGES: usize = ((MAX_ADDR - BASE) / PAGE_SIZE as u64) as usize; // ~1 M
 const BITMAP_SIZE: usize = MAX_PAGES / 8; // ~128 KB
 
 
@@ -44,16 +44,16 @@ static mut FREE_PAGES_COUNT: usize = 0;
 /// Returns `None` if the address is out of the tracked range.
 #[inline]
 fn addr_to_index(addr: u64) -> Option<usize> {
-    if addr < base || addr >= MAX_ADDR {
+    if addr < BASE || addr >= MAX_ADDR {
         return None;
     }
-    Some(((addr - base) / PAGE_SIZE as u64) as usize)
+    Some(((addr - BASE) / PAGE_SIZE as u64) as usize)
 }
 
 /// Convert a page index back to a physical address.
 #[inline]
 fn index_to_addr(idx: usize) -> u64 {
-    base + (idx as u64) * (PAGE_SIZE as u64)
+    BASE + (idx as u64) * (PAGE_SIZE as u64)
 }
 
 /// Check whether page `idx` is used (bit == 1).
@@ -196,8 +196,8 @@ pub unsafe fn init(
         let region_end = entry.base + entry.size;
 
         // Clamp to our tracked window [base, MAX_ADDR).
-        let start = if region_start < base {
-            base
+        let start = if region_start < BASE {
+            BASE
         } else {
             region_start
         };

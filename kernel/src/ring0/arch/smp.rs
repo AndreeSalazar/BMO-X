@@ -6,7 +6,6 @@
 //! Uses INIT-SIPI-SIPI IPI sequence through the Local APIC ICR.
 
 use super::apic;
-use crate::cpu;
 use crate::dev::console;
 use crate::mem::phys;
 use core::ptr::{read_volatile, write_volatile};

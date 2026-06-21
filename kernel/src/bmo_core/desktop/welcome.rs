@@ -11,7 +11,6 @@
 //!
 //! Comandos aceptados: Run, Hello, Ring3, Nexo, Test, Reboot (sin cambios).
 
-use crate::boot::info;
 use crate::bmo_core::ui::fb::Framebuffer;
 use crate::bmo_core::ui::font;
 use super::commands::{eq_ci, trim, should_enter_desktop, enter_desktop, nexo_test_compile};

@@ -1,21 +1,21 @@
-//! ÑEXO Module Resolver — Resolución de módulos, dependencias, compilation order.
+//! BMO Module Resolver — Module resolution, dependencies, compilation order.
 //!
-//! Diseño:
-//! - Cada archivo `.nexo` es una unidad de compilación
-//! - `usa bmo::io` → busca archivo `nexo/io.nexo`
-//! - Grafo de dependencias con topological sort
-//! - Detección de ciclos
-//! - Symbol table por módulo
+//! Design:
+//! - Each `.bmo` file is a compilation unit
+//! - `use bmo::io` → looks for file `bmo/io.bmo`
+//! - Dependency graph with topological sort
+//! - Cycle detection
+//! - Symbol table per module
 //!
-//! ## Convenciones de archivos
+//! ## File conventions
 //!
 //! ```text
-//!   mi_proyecto/
-//!     main.nexo          → módulo raíz
-//!     nexo/
-//!       io.nexo          → bmo::io
-//!       mem.nexo         → bmo::mem
-//!       gfx.nexo         → bmo::gfx
+//!   my_project/
+//!     main.bmo          → root module
+//!     bmo/
+//!       io.bmo          → bmo::io
+//!       mem.bmo         → bmo::mem
+//!       gfx.bmo         → bmo::gfx
 //! ```
 
 #![allow(dead_code)]
@@ -187,7 +187,7 @@ impl ModuleResolver {
         for (_id, info) in &self.modules {
             for dep in &info.dependencies {
                 if !self.modules.contains_key(dep) {
-                    crate::bmo_core::diag::info("nexo_mod", "Module dependency not registered");
+                    crate::bmo_core::diag::info("bmo_mod", "Module dependency not registered");
                     // Don't error — might be a stdlib module we haven't loaded yet
                 }
             }
@@ -206,7 +206,7 @@ impl ModuleResolver {
     fn detect_cycle_dfs(&self, id: &str, visited: &mut BTreeMap<String, bool>, stack: &mut Vec<String>) -> BxResult<()> {
             if let Some(&in_stack) = visited.get(id) {
             if in_stack {
-                crate::bmo_core::diag::warn("nexo_mod", "Circular dependency detected");
+                crate::bmo_core::diag::warn("bmo_mod", "Circular dependency detected");
                 return Err(BxError::InvalidArgument);
             }
             return Ok(()); // Already fully visited
@@ -271,7 +271,7 @@ impl ModuleResolver {
 
         // Check if all modules were included (no cycles)
         if order.len() != self.modules.len() {
-            crate::bmo_core::diag::warn("nexo_mod", "Some modules could not be ordered (circular dependency)");
+            crate::bmo_core::diag::warn("bmo_mod", "Some modules could not be ordered (circular dependency)");
         }
 
         // Update compilation order
@@ -389,7 +389,7 @@ impl ModuleResolver {
             for sym in &self.symbols {
                 if sym.name == *name && sym.is_pub {
                     if found.is_some() {
-                        crate::bmo_core::diag::warn("nexo_mod", "Ambiguous symbol");
+                        crate::bmo_core::diag::warn("bmo_mod", "Ambiguous symbol");
                         return None;
                     }
                     found = Some(ResolvedSymbol {

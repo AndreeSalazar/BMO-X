@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use crate::boot::info;
+
 
 pub const SC_ESC: u8 = 0x01;
 const SC_F9: u8 = 0x43;

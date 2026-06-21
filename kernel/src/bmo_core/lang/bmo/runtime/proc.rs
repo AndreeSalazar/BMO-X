@@ -1,4 +1,4 @@
-//! ÑEXO Runtime — Gestión de procesos e hilos.
+//! BMO Runtime — Process and thread management.
 //!
 //! Wraps kernel process/thread management into safe API.
 
@@ -141,5 +141,5 @@ pub fn clock_ns() -> u64 {
 
 /// Initialize process subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("nexo_proc", "Process subsystem initialized");
+    crate::bmo_core::diag::info("bmo_proc", "Process subsystem initialized");
 }

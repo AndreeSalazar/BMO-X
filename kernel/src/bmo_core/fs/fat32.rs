@@ -445,7 +445,7 @@ impl Fat32Volume {
         // Write data cluster by cluster
         for (i, &cluster) in current_chain.iter().enumerate().take(clusters_needed) {
             let offset = i * cluster_size;
-            let end = (offset + cluster_size).min(data.len());
+            let _end = (offset + cluster_size).min(data.len());
             let mut cluster_data = [0u8; 512];
 
             for s in 0..self.sectors_per_cluster {

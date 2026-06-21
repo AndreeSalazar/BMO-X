@@ -9,7 +9,7 @@
 //! Also adds property-based unit tests for the ACPI parser so we catch
 //! regressions when the byte stream is malformed.
 
-use crate::{boot::log, dev::pcie};
+use crate::boot::log;
 use crate::boot::serial as boot_serial;
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};

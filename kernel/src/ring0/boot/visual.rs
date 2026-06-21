@@ -14,7 +14,6 @@
 //! progress.
 
 use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
-use crate::boot::info;
 use crate::bmo_core::ui::font;
 
 // ── Palette (matches welcome) ──────────────────────────────────────

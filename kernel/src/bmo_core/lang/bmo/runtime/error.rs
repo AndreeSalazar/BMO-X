@@ -1,8 +1,8 @@
-//! ÑEXO Runtime — Tipos de error.
+//! BMO Runtime — Error types.
 
 #![allow(dead_code)]
 
-/// Error codes for ÑEXO runtime.
+/// Error codes for BMO runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Error {

@@ -7,7 +7,6 @@
 
 #![allow(dead_code)]
 
-use crate::boot::info;
 use crate::bmo_core::ui::fb::Framebuffer;
 use crate::bmo_core::ui::font;
 use super::state::{self, DesktopState, DOCK_SLOTS, MAX_WIN, WinInfo};

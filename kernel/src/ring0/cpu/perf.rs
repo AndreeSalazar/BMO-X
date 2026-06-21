@@ -3,7 +3,7 @@
 //! Performance monitoring counters — fixed counter 0 (instructions retired).
 
 use super::features::CpuFeatures;
-use super::msr::{self, IA32_PERF_GLOBAL_CTRL, IA32_FIXED_CTR0};
+use super::msr::{IA32_PERF_GLOBAL_CTRL, IA32_FIXED_CTR0};
 
 /// Initialize performance monitoring counters.
 ///

@@ -8,7 +8,6 @@ use super::buffer;
 use super::event::{severity_color, severity_tag, Event};
 use super::telemetry;
 use super::OverlayTab;
-use crate::boot::info;
 use crate::bmo_core::ui::font;
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 

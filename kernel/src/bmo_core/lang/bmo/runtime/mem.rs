@@ -1,4 +1,4 @@
-//! ÑEXO Runtime — Gestión de memoria.
+//! BMO Runtime — Memory management.
 //!
 //! Pool allocator sobre el bump allocator del kernel.
 //! El bump allocator (16MB) no libera, así que el pool
@@ -137,5 +137,5 @@ impl Arena {
 
 /// Initialize the memory subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("nexo_mem", "Memory subsystem initialized");
+    crate::bmo_core::diag::info("bmo_mem", "Memory subsystem initialized");
 }

@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bef::sections::{SectionKind, SectionTable, SectionEntry};
+use crate::bmo_core::bef::sections::{SectionKind, SectionTable};
 use super::LoadError;
 
 /// Vista zero-copy de las secciones meta. Cada campo es `None` si la
@@ -30,7 +30,7 @@ pub fn parse_meta_sections<'a>(
     _bytes: &'a [u8],
     table: &SectionTable,
 ) -> Result<MetaSectionViews<'a>, LoadError> {
-    let mut views = MetaSectionViews::default();
+    let views = MetaSectionViews::default();
     for kind in [SectionKind::TypeMap, SectionKind::VTables, SectionKind::LangBridge,
                  SectionKind::Reflect, SectionKind::Closures, SectionKind::Unwind] {
         if table.find(kind).is_some() {

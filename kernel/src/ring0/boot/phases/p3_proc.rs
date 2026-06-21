@@ -1,6 +1,6 @@
 //! Phase 3 — Display.
 
-use crate::{boot::log, bmo_core::desktop, dev};
+use crate::{boot::log, bmo_core::desktop};
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 

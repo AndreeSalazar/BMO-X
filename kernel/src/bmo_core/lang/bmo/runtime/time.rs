@@ -1,4 +1,4 @@
-//! ÑEXO Runtime — Reloj y tiempo.
+//! BMO Runtime — Clock and timing.
 //!
 //! Wraps kernel clock/timer services.
 
@@ -84,5 +84,5 @@ impl Timer {
 
 /// Initialize time subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("nexo_time", "Time subsystem initialized");
+    crate::bmo_core::diag::info("bmo_time", "Time subsystem initialized");
 }
