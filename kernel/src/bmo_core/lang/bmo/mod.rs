@@ -28,6 +28,7 @@ pub mod runtime;
 pub mod stdlib;
 pub mod pm;
 pub mod emit;
+pub mod vm;
 pub mod plugins;
 
 use crate::bmo_gpu::BxResult;
@@ -50,5 +51,17 @@ pub fn compile(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     sema.check(&ast)?;
     let mut codegen = codegen::Codegen::new();
     codegen.emit(&ast)
+}
+
+/// Compile and run BMO source in one step.
+///
+/// Pipeline: source → compile → VM execute → return last stack value.
+pub fn run(source: &[u8]) -> Result<u64, &'static str> {
+    let code = compile(source).map_err(|_| "compile error")?;
+    let mut vm_instance = vm::BmoVm::new();
+    match vm_instance.execute(&code) {
+        vm::VmExit::Halted => Ok(vm_instance.stack_top().unwrap_or(0)),
+        vm::VmExit::Error(e) => Err(e),
+    }
 }
 

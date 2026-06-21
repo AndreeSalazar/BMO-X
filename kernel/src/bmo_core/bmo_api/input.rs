@@ -160,13 +160,30 @@ pub fn poll_and_dispatch() -> u32 {
     if new_l != l_was_down {
         MOUSE_L.store(new_l, Ordering::Relaxed);
         if new_l {
-            let hit = super::wm::hit_test(mx, my);
-            let edge = super::wm::edge_hit_test(mx, my);
-            if hit != WID_INVALID && edge != 0 {
-                super::wm::start_resize(hit, edge, mx, my);
-            } else if hit != WID_INVALID {
-                super::wm::raise_and_focus(hit);
-                super::wm::start_drag(hit, mx, my);
+            let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
+            let _ = fbw;
+            if my >= fbh - super::taskbar::taskbar_height() {
+                if let Some(super::taskbar::TaskbarHit::Button(idx)) = super::taskbar::hit_test(mx, my, fbh) {
+                    super::taskbar::handle_click(idx, fbh);
+                }
+            } else if super::wm::is_dragging() || super::wm::is_resizing() {
+                // already in progress
+            } else {
+                let hit = super::wm::hit_test(mx, my);
+                if hit != WID_INVALID {
+                    let tb = super::wm::title_btn_hit_test(hit, mx, my);
+                    if tb != super::wm::TitleBtn::None {
+                        super::wm::handle_title_btn_click(hit, tb);
+                    } else {
+                        let edge = super::wm::edge_hit_test(mx, my);
+                        if edge != 0 {
+                            super::wm::start_resize(hit, edge, mx, my);
+                        } else {
+                            super::wm::raise_and_focus(hit);
+                            super::wm::start_drag(hit, mx, my);
+                        }
+                    }
+                }
             }
         } else {
             let kind = BmoMsgKind::LButtonUp;

@@ -40,6 +40,7 @@ pub mod input;
 pub mod cursor;
 pub mod paint_compositor;
 pub mod syscall;
+pub mod taskbar;
 
 // ── Estado global ──────────────────────────────────────────────────
 use handle::HandleTable;

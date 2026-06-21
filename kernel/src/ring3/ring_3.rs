@@ -1,37 +1,40 @@
-//! v1.7.4 — Ring 3 coordinator.
+//! v2.0 — Ring 3 coordinator.
 //!
-//! Coordina la inicialización del subsistema de userland. En esta
-//! versión (v1.7.4) Ring 3 está en preparación estructural — la
-//! wnd_proc real a Ring 3 vía iretq (syscall 0x198 BMO_DISPATCH_RETURN)
-//! está documentada en `docs/BMO_API_V2_SPEC.md` §6.2 pero su
-//! implementación completa (per-thread kernel stack + trampoline +
-//! reentrancy) queda para v2.1.
+//! Coordina la inicialización del subsistema de userland. La wnd_proc
+//! Ring 3 se ejecuta vía el scheduler del kernel:
 //!
-//! Estado actual:
-//!   * 256 syscalls 0x100..0x1FF definidos en bmo_core::bmo_api
-//!   * sys_send_message y sys_dispatch_message caen en default_wnd_proc
-//!     cuando wnd_proc=0 (sin wnd_proc real todavía)
-//!   * El BMO API spec completo está en docs/BMO_API_V2_SPEC.md
+//! 1. El kernel postea mensajes a la cola del proceso owner_tid.
+//! 2. El scheduler (round-robin preemptive) ejecuta el proceso Ring 3.
+//! 3. El proceso llama a GetMessage (syscall 0x120) → el wnd_proc se ejecuta.
+//! 4. El wnd_proc llama a DISPATCH_RETURN (syscall 0x198) → resultado vuelve al kernel.
 //!
-//! Punto de entrada: todavía no se llama desde ring_0 porque no hay
-//! un loader dinámico de apps. Cuando esté listo, `ring0::ring_0::main`
-//! invocará `ring3::ring_3::enter()` después de `bmo_core::coord::enter`
-//! devuelva el control — pero en v1.7.4 BMO Core no retorna.
+//! Para ventanas kernel-side (owner_tid == 0), el kernel ejecuta
+//! default_wnd_proc directamente sin transición a Ring 3.
 
-/// Inicializa el subsistema Ring 3. v1.7.4: no-op.
+#![allow(dead_code)]
+
+use crate::bmo_core::bmo_api::message::BmoMsgKind;
+
+/// Inicializa el subsistema Ring 3.
 pub fn init() {
-    // v2.0: cargar el ELF loader, registrar los BEFs built-in,
-    // validar el per-thread kernel stack size, y registrar la
-    // wnd_proc trampoline en el rango 0x100..0x1FF.
+    // Los procesos se crean bajo demanda via allocate_user_process().
+    // No hay loader dinámico todavía — las apps son 64 bytes de
+    // x86-64 machine code hardcodeado en user_init.rs.
 }
 
-/// Punto de entrada de una app Ring 3. v1.7.4: stub.
+/// Llama al wnd_proc de una ventana Ring 3 de forma sincrónica.
 ///
-/// En v2.0, esta función será llamada por el syscall 0x124
-/// `bmo_dispatch_message` con un iretq al wnd_proc del Ring 3.
-/// En v1.7.4 sólo se ejecuta el default_wnd_proc.
-pub fn enter_wnd_proc(_hwnd: u32, _msg: u16, _wparam: u64, _lparam: u64) -> u64 {
-    // v2.0: iretq al wnd_proc Ring 3 + esperar syscall 0x198
-    // BMO_DISPATCH_RETURN.
-    0
+/// Retorna el resultado de la wnd_proc, o None si no se pudo ejecutar.
+/// Nota: En la arquitectura actual, el wnd_proc se ejecuta cuando el
+/// scheduler ejecuta el proceso. Esta función es un placeholder para
+/// cuando se implemente la llamada síncrona kernel→Ring3.
+pub fn enter_wnd_proc(hwnd: u32, msg: u16, wparam: u64, lparam: u64) -> Option<u64> {
+    let kind = BmoMsgKind::from_u16(msg);
+    let _ = (hwnd, kind, wparam, lparam);
+    None
+}
+
+/// Verifica si un wnd_proc es kernel-side (0) o Ring 3 (!= 0).
+pub fn is_ring3_wnd_proc(wnd_proc: u64) -> bool {
+    wnd_proc != 0
 }

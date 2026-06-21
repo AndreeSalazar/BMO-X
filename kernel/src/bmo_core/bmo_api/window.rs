@@ -112,6 +112,12 @@ pub struct BmoWindow {
     pub dirty_w: i32,
     pub dirty_h: i32,
     pub has_dirty_rect: bool,
+    pub minimized: bool,
+    pub maximized: bool,
+    pub saved_x: i32,
+    pub saved_y: i32,
+    pub saved_w: i32,
+    pub saved_h: i32,
 }
 
 impl BmoWindow {
@@ -133,6 +139,8 @@ impl BmoWindow {
             dirty: true, visible: false, enabled: true, focus: false,
             captured: false, erase_pending: true, in_sizemove: false,
             dirty_x: 0, dirty_y: 0, dirty_w: 0, dirty_h: 0, has_dirty_rect: false,
+            minimized: false, maximized: false,
+            saved_x: 0, saved_y: 0, saved_w: 0, saved_h: 0,
         }
     }
 

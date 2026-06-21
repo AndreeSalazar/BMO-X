@@ -97,6 +97,7 @@ pub fn tick() {
     }
 
     paint_cursor();
+    paint_taskbar();
 }
 
 fn paint_desktop(slot: u32) {
@@ -110,4 +111,11 @@ fn paint_cursor() {
     let x = super::input::mouse_x();
     let y = super::input::mouse_y();
     super::cursor::paint(x, y);
+}
+
+fn paint_taskbar() {
+    let fb = crate::dev::framebuffer::get_backbuffer_fb();
+    let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT) };
+    let _ = fbw;
+    super::taskbar::paint(&fb, fbh as i32);
 }

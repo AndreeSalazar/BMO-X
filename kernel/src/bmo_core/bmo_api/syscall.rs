@@ -115,6 +115,11 @@ pub mod nr {
     pub const FLIP:                  u16 = 0x183;
 
     pub const DISPATCH_RETURN:       u16 = 0x198;
+
+    pub const MINIMIZE_WINDOW:      u16 = 0x1A0;
+    pub const MAXIMIZE_WINDOW:      u16 = 0x1A1;
+    pub const RESTORE_WINDOW:       u16 = 0x1A2;
+    pub const GET_TASKBAR_RECT:     u16 = 0x1A3;
 }
 
 pub mod err {
@@ -277,6 +282,15 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::EMPTY_CLIPBOARD  => err::OK,
 
         nr::DISPATCH_RETURN  => err::OK,
+
+        nr::MINIMIZE_WINDOW  => { super::wm::minimize_window(a0 as u32); err::OK }
+        nr::MAXIMIZE_WINDOW  => { super::wm::maximize_window(a0 as u32); err::OK }
+        nr::RESTORE_WINDOW   => { super::wm::restore_window(a0 as u32); err::OK }
+        nr::GET_TASKBAR_RECT => {
+            let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT) };
+            let ty = fbh.saturating_sub(48);
+            (0u64) | ((ty as u64) << 16) | ((fbw as u64) << 32) | ((48u64) << 48)
+        }
 
         _ => {
             crate::bmo_core::diag::warn_u64("bmo_api_v2.syscall", "unimplemented nr=", nr as u64);

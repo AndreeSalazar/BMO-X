@@ -65,6 +65,94 @@ pub fn bring_to_front(slot: u32) {
     s.unlock();
 }
 
+pub fn minimize_window(slot: u32) {
+    let s = super::state();
+    s.lock();
+    let (visible, is_desktop) = match s.windows.window(slot) {
+        Some(w) => (w.visible, slot == s.windows.desktop),
+        None => { s.unlock(); return; }
+    };
+    if !visible || is_desktop { s.unlock(); return; }
+    if let Some(w) = s.windows.window_mut(slot) {
+        w.minimized = true;
+        w.visible = false;
+    }
+    s.windows.z_remove(slot);
+    let mut new_focus = s.windows.desktop;
+    s.windows.z_foreach_top_down(|candidate| {
+        if candidate == slot || candidate == s.windows.desktop { return; }
+        if let Some(w) = s.windows.window(candidate) {
+            if w.visible && w.used {
+                new_focus = candidate;
+            }
+        }
+    });
+    s.windows.focus = new_focus;
+    s.windows.active = new_focus;
+    s.unlock();
+}
+
+pub fn maximize_window(slot: u32) {
+    let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
+    let taskbar_h: i32 = 48;
+    let s = super::state();
+    s.lock();
+    let (visible, is_desktop) = match s.windows.window(slot) {
+        Some(w) => (w.visible, slot == s.windows.desktop),
+        None => { s.unlock(); return; }
+    };
+    if !visible || is_desktop { s.unlock(); return; }
+    let was_maximized = s.windows.window(slot).map(|w| w.maximized).unwrap_or(false);
+    let (sx, sy, sw, sh) = s.windows.window(slot).map(|w| (w.x, w.y, w.w, w.h)).unwrap_or((0,0,0,0));
+    if was_maximized {
+        if let Some(w) = s.windows.window_mut(slot) {
+            w.x = w.saved_x; w.y = w.saved_y; w.w = w.saved_w; w.h = w.saved_h;
+            w.maximized = false;
+            w.dirty = true;
+            w.has_dirty_rect = true; w.dirty_x = 0; w.dirty_y = 0; w.dirty_w = w.w; w.dirty_h = w.h;
+        }
+    } else {
+        if let Some(w) = s.windows.window_mut(slot) {
+            w.saved_x = sx; w.saved_y = sy; w.saved_w = sw; w.saved_h = sh;
+            w.x = 0; w.y = 0; w.w = fbw; w.h = fbh - taskbar_h;
+            w.maximized = true;
+            w.dirty = true;
+            w.has_dirty_rect = true; w.dirty_x = 0; w.dirty_y = 0; w.dirty_w = w.w; w.dirty_h = w.h;
+        }
+    }
+    s.unlock();
+}
+
+pub fn restore_window(slot: u32) {
+    let s = super::state();
+    s.lock();
+    let (is_minimized, is_maximized) = match s.windows.window(slot) {
+        Some(w) => (w.minimized, w.maximized),
+        None => { s.unlock(); return; }
+    };
+    if !is_minimized && !is_maximized { s.unlock(); return; }
+    if is_minimized {
+        if let Some(w) = s.windows.window_mut(slot) {
+            w.minimized = false;
+            w.visible = true;
+            w.dirty = true;
+        }
+        s.windows.z_remove(slot);
+        s.windows.z_push_top(slot);
+        s.windows.focus = slot;
+        s.windows.active = slot;
+    }
+    if is_maximized {
+        if let Some(w) = s.windows.window_mut(slot) {
+            w.x = w.saved_x; w.y = w.saved_y; w.w = w.saved_w; w.h = w.saved_h;
+            w.maximized = false;
+            w.dirty = true;
+            w.has_dirty_rect = true; w.dirty_x = 0; w.dirty_y = 0; w.dirty_w = w.w; w.dirty_h = w.h;
+        }
+    }
+    s.unlock();
+}
+
 pub fn hit_test(px: i32, py: i32) -> u32 {
     let s = super::state();
     s.lock();
@@ -318,6 +406,46 @@ pub fn snap_to_edge(slot: u32) {
     s.unlock();
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TitleBtn { Close, Maximize, Minimize, None }
+
+pub fn title_btn_hit_test(slot: u32, px: i32, py: i32) -> TitleBtn {
+    let s = super::state();
+    s.lock();
+    let (wx, wy, style) = match s.windows.window(slot) {
+        Some(w) => (w.x, w.y, w.style),
+        None => { s.unlock(); return TitleBtn::None; }
+    };
+    s.unlock();
+    if style & style::WS_CAPTION == 0 { return TitleBtn::None; }
+    let btn_y = wy + 4;
+    let btn_h = 28;
+    let btn_r = 14;
+    if py >= btn_y && py <= btn_y + btn_h {
+        let cx = wx + 18;
+        if (px - cx).unsigned_abs() <= btn_r as u32 { return TitleBtn::Close; }
+        let cx2 = wx + 38;
+        if (px - cx2).unsigned_abs() <= btn_r as u32 { return TitleBtn::Maximize; }
+        let cx3 = wx + 58;
+        if (px - cx3).unsigned_abs() <= btn_r as u32 { return TitleBtn::Minimize; }
+    }
+    TitleBtn::None
+}
+
+pub fn handle_title_btn_click(slot: u32, btn: TitleBtn) {
+    match btn {
+        TitleBtn::Close => {
+            let s = super::state();
+            s.lock();
+            s.windows.free_window(slot);
+            s.unlock();
+        }
+        TitleBtn::Maximize => maximize_window(slot),
+        TitleBtn::Minimize => minimize_window(slot),
+        TitleBtn::None => {}
+    }
+}
+
 pub fn alt_tab() {
     let s = super::state();
     s.lock();
@@ -399,13 +527,27 @@ fn process_message_queue() {
 
     let s = super::state();
     s.lock();
-    let cls_id = s.windows.window(focused).map(|w| w.class_id);
-    let wnd_proc = cls_id.and_then(|cid| s.windows.class(cid).map(|c| c.wnd_proc));
+    let (owner_tid, wnd_proc) = match s.windows.window(focused) {
+        Some(w) => {
+            let owner = w.owner_tid;
+            let wp = if w.class_id != 0 {
+                s.windows.class(w.class_id).map(|c| c.wnd_proc).unwrap_or(0)
+            } else { 0 };
+            (owner, wp)
+        }
+        None => { s.unlock(); return; }
+    };
     s.unlock();
 
-    let wnd_proc = match wnd_proc { Some(wp) => wp, None => return };
-
-    if wnd_proc == 0 {
+    if owner_tid != 0 && wnd_proc != 0 {
+        let qt = super::queue::queue_table();
+        qt.acquire();
+        if let Some(slot) = qt.slot_for_tid(owner_tid) {
+            let msg = BmoMsg::new(BmoMsgKind::Paint, focused as u16, 0, 0, 0);
+            let _ = super::event::post_coalesced(&mut qt.queues[slot as usize], msg);
+        }
+        qt.release();
+    } else {
         super::class::default_wnd_proc(focused, super::message::BmoMsgKind::Paint, 0, 0);
     }
 }
