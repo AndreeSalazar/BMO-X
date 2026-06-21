@@ -12,23 +12,19 @@
 //!   handle         : Handle table con generation counter
 //!   window         : Windows + classes + Z-order + parent/child tree
 //!   message        : bmo_msg + BMO_MSG_* enum
-//!   queue          : SPSC ring per-thread (64 mensajes)
+//!   queue          : SPSC ring per-thread (64 mensajes) con AtomicU8 lock
 //!   event          : MouseMove dedup, paint-region coalesce
-//!   surface        : Offscreen surfaces (1:1 ventana↔surface)
-//!   draw           : DC + primitives
+//!   surface        : Offscreen surfaces con pixel pool allocation
+//!   draw           : DC + primitives con AtomicU8 lock
 //!   class          : Class table + default wnd_proc
 //!   wm             : Z-order, focus, drag/resize, snap, modal
 //!   timer          : Timer wheel (1 ms)
-//!   input          : PS/2 + USB HID → events
-//!   cursor         : 16 builtin cursor sprites
+//!   input          : PS/2 + USB HID → events con AtomicBool state
+//!   cursor         : 16 builtin cursor sprites con AtomicBool state
 //!   paint_compositor : Dirty-region tracking + blit
 //!   syscall        : Dispatcher 0x100..0x1FF
-//!
-//! Re-exports de alto nivel para que el resto del kernel no tenga que
-//! importar submódulos.
 
 #![allow(dead_code)]
-#![allow(static_mut_refs)]
 
 pub mod handle;
 pub mod window;
@@ -78,7 +74,6 @@ impl BmoState {
         }
     }
 
-    /// Spinlock atómico con test-and-set + pause.
     pub fn lock(&self) {
         loop {
             match self.wm_lock.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed) {
@@ -93,15 +88,12 @@ impl BmoState {
     }
 }
 
-#[inline]
+static mut BMO_STATE: BmoState = BmoState::new();
+
 pub fn state() -> &'static mut BmoState {
     unsafe { &mut BMO_STATE }
 }
 
-static mut BMO_STATE: BmoState = BmoState::new();
-
-/// Inicializa el subsistema. Llamar desde `boot::phase5` después del
-/// scheduler y antes de entrar al desktop.
 pub fn init() {
     let s = state();
     if s.initialized { return; }
@@ -109,27 +101,20 @@ pub fn init() {
     s.windows.init();
     s.surfaces.init();
     s.timers.init();
-    // Registra clases built-in (BmoClass, BmoButton, BmoStatic, BmoEdit).
     class::register_builtin_classes();
-    // Crea la ventana de escritorio (cubre todo el framebuffer).
     wm::create_desktop_window();
-    // Cursor por defecto.
     cursor::init();
     s.initialized = true;
     crate::bmo_core::diag::info("bmo_api_v2", "BMO API v2.0 initialized — 16 modules, 256 syscalls");
 }
 
-/// Tick periódico llamado desde el scheduler. Procesa timers y el
-/// compositor de pintado. ~10 ms de granularidad es suficiente.
 pub fn tick() {
     let s = state();
     if !s.initialized { return; }
-    s.timers.tick();
+    timer::tick_global();
     paint_compositor::tick();
 }
 
-/// Llamado por `crate::arch::syscall_entry` cuando el nr está en 0x100..0x1FF.
-/// Devuelve el valor a poner en RAX.
 pub fn dispatch_syscall(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
     syscall::dispatch(nr, a0, a1, a2, a3, a4, a5)
 }

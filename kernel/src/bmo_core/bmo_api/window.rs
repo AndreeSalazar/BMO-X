@@ -284,7 +284,6 @@ impl WindowTable {
 
     /// Quita la ventana de la Z-list (no la libera).
     pub fn z_remove(&mut self, slot: u32) {
-        // Encontrar el predecesor en la lista.
         let mut prev = WID_INVALID;
         let mut cur = self.z_head;
         while cur != WID_INVALID {
@@ -299,10 +298,7 @@ impl WindowTable {
                 return;
             }
             prev = cur;
-            // Tomamos una copia de prev_z para no mantener borrow.
-            let next = self.windows[cur as usize].prev_z;
-            if next == slot { break; }
-            cur = next;
+            cur = self.windows[cur as usize].prev_z;
         }
     }
 

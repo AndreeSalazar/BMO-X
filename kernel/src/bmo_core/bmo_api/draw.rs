@@ -4,10 +4,15 @@
 //! surface asignada al DC). En v2.0 simplificamos: cada DC tiene un
 //! framebuffer lógico (su surface) y todas las primitivas lo tratan
 //! como XRGB32 1920×1080.
+//!
+//! DC_TABLE protegido con AtomicU8 spinlock — acceso solo vía unsafe
+//! helpers que adquieren el lock.
 
 #![allow(dead_code)]
 
 use super::window::BmoWindow;
+use core::sync::atomic::{AtomicU8, Ordering};
+use core::cell::UnsafeCell;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BmoDc {
@@ -57,43 +62,72 @@ impl DcTable {
     }
 }
 
-static mut DC_TABLE: DcTable = DcTable::new();
-
-pub fn dc_table() -> &'static mut DcTable {
-    unsafe { &mut DC_TABLE }
+pub struct DcTableLock {
+    data: UnsafeCell<DcTable>,
+    lock: AtomicU8,
 }
 
-/// Crea un DC para la ventana indicada. Devuelve el slot index.
-pub fn create_dc_for(window_slot: u32) -> Option<u32> {
-    let t = dc_table();
-    for (i, d) in t.dcs.iter_mut().enumerate() {
-        if !d.used {
-            d.used = true;
-            d.id = t.next_id;
-            d.generation = d.generation.wrapping_add(1);
-            d.owner_window = window_slot;
-            d.clip_x = 0; d.clip_y = 0;
-            d.clip_w = 1920; d.clip_h = 1080;
-            d.text_color = 0xFFE6F1F5;
-            d.bg_color = 0xFF0F1827;
-            d.pen_color = 0xFFE6F1F5;
-            d.brush_color = 0xFF1F4D5C;
-            t.next_id = t.next_id.wrapping_add(1);
-            return Some(i as u32);
+impl DcTableLock {
+    pub const fn new() -> Self {
+        Self { data: UnsafeCell::new(DcTable::new()), lock: AtomicU8::new(0) }
+    }
+
+    pub fn acquire(&self) {
+        loop {
+            match self.lock.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed) {
+                Ok(_) => return,
+                Err(_) => core::hint::spin_loop(),
+            }
         }
     }
-    None
+    pub fn release(&self) { self.lock.store(0, Ordering::Release); }
+
+    pub unsafe fn get(&self) -> &mut DcTable {
+        &mut *self.data.get()
+    }
 }
 
-/// Primitivas — escriben en el framebuffer global. En v2.0 las
-/// superficies de ventana son lógicas (no se blitean); el dibujado
-/// va directamente al GOP framebuffer con clipping contra el rect
-/// de la ventana dueña del DC.
-pub fn fill_rect(dc_slot: u32, x: i32, y: i32, w: i32, h: i32, color: u32) {
-    let dc = match dc_table().dcs.get(dc_slot as usize) {
-        Some(d) if d.used => *d,
-        _ => return,
+unsafe impl Sync for DcTableLock {}
+
+pub static DC_TABLE_LOCK: DcTableLock = DcTableLock::new();
+
+pub unsafe fn dc_table() -> &'static mut DcTable {
+    &mut *DC_TABLE_LOCK.data.get()
+}
+
+pub fn create_dc_for(window_slot: u32) -> Option<u32> {
+    DC_TABLE_LOCK.acquire();
+    let t = unsafe { dc_table() };
+    let r = {
+        let mut found = None;
+        for (i, d) in t.dcs.iter_mut().enumerate() {
+            if !d.used {
+                d.used = true;
+                d.id = t.next_id;
+                d.generation = d.generation.wrapping_add(1);
+                d.owner_window = window_slot;
+                d.clip_x = 0; d.clip_y = 0;
+                d.clip_w = 1920; d.clip_h = 1080;
+                d.text_color = 0xFFE6F1F5;
+                d.bg_color = 0xFF0F1827;
+                d.pen_color = 0xFFE6F1F5;
+                d.brush_color = 0xFF1F4D5C;
+                t.next_id = t.next_id.wrapping_add(1);
+                found = Some(i as u32);
+                break;
+            }
+        }
+        found
     };
+    DC_TABLE_LOCK.release();
+    r
+}
+
+pub fn fill_rect(dc_slot: u32, x: i32, y: i32, w: i32, h: i32, color: u32) {
+    DC_TABLE_LOCK.acquire();
+    let dc = unsafe { dc_table().dcs.get(dc_slot as usize) }.and_then(|d| if d.used { Some(*d) } else { None });
+    DC_TABLE_LOCK.release();
+    let dc = match dc { Some(d) => d, None => return };
     let (cx, cy, cw, ch) = client_rect_from_clip(&dc);
     let ix = x.max(cx);
     let iy = y.max(cy);
@@ -105,10 +139,10 @@ pub fn fill_rect(dc_slot: u32, x: i32, y: i32, w: i32, h: i32, color: u32) {
 }
 
 pub fn draw_text(dc_slot: u32, x: i32, y: i32, text: &[u8], color: u32) {
-    let dc = match dc_table().dcs.get(dc_slot as usize) {
-        Some(d) if d.used => *d,
-        _ => return,
-    };
+    DC_TABLE_LOCK.acquire();
+    let dc = unsafe { dc_table().dcs.get(dc_slot as usize) }.and_then(|d| if d.used { Some(*d) } else { None });
+    DC_TABLE_LOCK.release();
+    let dc = match dc { Some(d) => d, None => return };
     let (cx, cy, cw, _ch) = client_rect_from_clip(&dc);
     let fb = get_fb();
     let mut cx_pos = x;
@@ -132,10 +166,10 @@ pub fn draw_text(dc_slot: u32, x: i32, y: i32, text: &[u8], color: u32) {
 }
 
 pub fn draw_line(dc_slot: u32, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
-    let dc = match dc_table().dcs.get(dc_slot as usize) {
-        Some(d) if d.used => *d,
-        _ => return,
-    };
+    DC_TABLE_LOCK.acquire();
+    let dc = unsafe { dc_table().dcs.get(dc_slot as usize) }.and_then(|d| if d.used { Some(*d) } else { None });
+    DC_TABLE_LOCK.release();
+    let dc = match dc { Some(d) => d, None => return };
     let (cx, cy, cw, ch) = client_rect_from_clip(&dc);
     let fb = get_fb();
     let dx = (x1 - x0).abs();
@@ -156,6 +190,26 @@ pub fn draw_line(dc_slot: u32, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
     }
 }
 
+pub fn draw_pixel(dc_slot: u32, x: i32, y: i32, color: u32) {
+    DC_TABLE_LOCK.acquire();
+    let dc = unsafe { dc_table().dcs.get(dc_slot as usize) }.and_then(|d| if d.used { Some(*d) } else { None });
+    DC_TABLE_LOCK.release();
+    let dc = match dc { Some(d) => d, None => return };
+    let (cx, cy, cw, ch) = client_rect_from_clip(&dc);
+    if x >= cx && x < cx + cw && y >= cy && y < cy + ch {
+        get_fb().put_pixel(x as usize, y as usize, color);
+    }
+}
+
+pub fn draw_rect(dc_slot: u32, x: i32, y: i32, w: i32, h: i32, color: u32) {
+    let bw = 1;
+    draw_line(dc_slot, x, y, x + w, y, color);
+    draw_line(dc_slot, x + w, y, x + w, y + h, color);
+    draw_line(dc_slot, x + w, y + h, x, y + h, color);
+    draw_line(dc_slot, x, y + h, x, y, color);
+    let _ = bw;
+}
+
 fn get_fb() -> crate::bmo_core::ui::fb::Framebuffer {
     let (addr, stride, width, height) = unsafe {
         (crate::boot::info::FB_ADDR, crate::boot::info::FB_STRIDE, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT)
@@ -167,7 +221,6 @@ fn client_rect_from_clip(dc: &BmoDc) -> (i32, i32, i32, i32) {
     (dc.clip_x, dc.clip_y, dc.clip_w, dc.clip_h)
 }
 
-/// Calcula el cliente rect de una ventana (área sin NC).
 pub fn client_rect(w: &BmoWindow) -> (i32, i32, i32, i32) {
     let title_h = if w.style & super::window::style::WS_CAPTION != 0 { 28 } else { 0 };
     let cx = w.x;

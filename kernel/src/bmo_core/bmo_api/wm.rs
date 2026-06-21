@@ -14,8 +14,13 @@ use super::message::{BmoMsg, BmoMsgKind};
 #[allow(unused_imports)]
 use super::handle::BmoHandle;
 use super::surface;
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
-/// Crea la ventana de escritorio (cubre todo el framebuffer).
+static DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+static DRAG_SLOT: AtomicU32 = AtomicU32::new(0);
+static DRAG_OFFSET_X: AtomicI32 = AtomicI32::new(0);
+static DRAG_OFFSET_Y: AtomicI32 = AtomicI32::new(0);
+
 pub fn create_desktop_window() -> u32 {
     let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
     let s = super::state();
@@ -48,7 +53,6 @@ pub fn create_desktop_window() -> u32 {
     slot
 }
 
-/// Trae la ventana al tope (raise).
 pub fn bring_to_front(slot: u32) {
     let s = super::state();
     s.lock();
@@ -59,7 +63,6 @@ pub fn bring_to_front(slot: u32) {
     s.unlock();
 }
 
-/// Devuelve el slot de la ventana más alta bajo el punto (px, py).
 pub fn hit_test(px: i32, py: i32) -> u32 {
     let s = super::state();
     s.lock();
@@ -77,57 +80,117 @@ pub fn hit_test(px: i32, py: i32) -> u32 {
     found
 }
 
-/// Mueve una ventana al frente y le da foco. Usado por click en
-/// title bar o por atajos de teclado (alt-tab).
 pub fn raise_and_focus(slot: u32) {
     let s = super::state();
     s.lock();
     let prev = s.windows.focus;
-    s.unlock();
     if prev != WID_INVALID && prev != slot {
-        post_killfocus(prev);
+        let owner = s.windows.window(prev).map(|w| w.owner_tid).unwrap_or(0);
+        s.unlock();
+        if owner != 0 {
+            let qt = super::queue::queue_table();
+            qt.acquire();
+            if let Some(qslot) = qt.slot_for_tid(owner) {
+                let msg = BmoMsg::new(BmoMsgKind::KillFocus, prev as u16, 0, 0, 0);
+                let _ = super::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
+            }
+            qt.release();
+        }
+        bring_to_front(slot);
+        let s2 = super::state();
+        s2.lock();
+        let owner2 = s2.windows.window(slot).map(|w| w.owner_tid).unwrap_or(0);
+        s2.unlock();
+        if owner2 != 0 {
+            let qt = super::queue::queue_table();
+            qt.acquire();
+            if let Some(qslot) = qt.slot_for_tid(owner2) {
+                let msg = BmoMsg::new(BmoMsgKind::SetFocus, slot as u16, 0, 0, 0);
+                let _ = super::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
+            }
+            qt.release();
+        }
+        return;
     }
-    bring_to_front(slot);
-    post_setfocus(slot);
-}
-
-fn post_setfocus(slot: u32) {
-    post_message_to_owner(slot, BmoMsgKind::SetFocus, 0, 0);
-}
-fn post_killfocus(slot: u32) {
-    post_message_to_owner(slot, BmoMsgKind::KillFocus, 0, 0);
-}
-fn post_message_to_owner(slot: u32, kind: BmoMsgKind, wparam: u64, lparam: u64) {
-    let s = super::state();
-    s.lock();
-    let owner_tid = s.windows.window(slot).map(|w| w.owner_tid).unwrap_or(0);
     s.unlock();
-    if owner_tid == 0 { return; }
-    let qt = super::queue::queue_table();
-    qt.lock();
-    if let Some(qslot) = qt.slot_for_tid(owner_tid) {
-        let msg = BmoMsg::new(kind, slot as u16, 0, wparam, lparam);
-        let _ = super::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
-    }
-    qt.unlock();
+    bring_to_front(slot);
 }
 
-/// Inicia drag: el WM entra en modal loop y emite MOUSEMOVE hasta LBUTTONUP.
 pub fn start_drag(slot: u32, mx: i32, my: i32) {
     let s = super::state();
     s.lock();
     if let Some(w) = s.windows.window_mut(slot) {
         w.in_sizemove = true;
         w.flags.set(wf::SIZEMOVE);
+        DRAG_OFFSET_X.store(mx - w.x, Ordering::Relaxed);
+        DRAG_OFFSET_Y.store(my - w.y, Ordering::Relaxed);
     }
     s.unlock();
-    crate::bmo_core::diag::info_u64("bmo_api_v2.wm", "drag start slot=", slot as u64);
-    crate::bmo_core::diag::info_u64("bmo_api_v2.wm", "    at mx=", mx as u64);
-    crate::bmo_core::diag::info_u64("bmo_api_v2.wm", "    my=", my as u64);
-    let _ = (mx, my);
+    DRAG_SLOT.store(slot, Ordering::Relaxed);
+    DRAG_ACTIVE.store(true, Ordering::Relaxed);
+    let owner = {
+        let s = super::state();
+        s.lock();
+        let o = s.windows.window(slot).map(|w| w.owner_tid).unwrap_or(0);
+        s.unlock();
+        o
+    };
+    if owner != 0 {
+        let qt = super::queue::queue_table();
+        qt.acquire();
+        if let Some(qslot) = qt.slot_for_tid(owner) {
+            let msg = BmoMsg::new(BmoMsgKind::EnterSizeMove, slot as u16, 0, 0, 0);
+            let _ = super::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
+        }
+        qt.release();
+    }
 }
 
-/// Snap a la ventana al borde más cercano si está a ≤ 16 px.
+pub fn end_drag() {
+    if !DRAG_ACTIVE.load(Ordering::Relaxed) { return; }
+    let slot = DRAG_SLOT.load(Ordering::Relaxed);
+    DRAG_ACTIVE.store(false, Ordering::Relaxed);
+    let s = super::state();
+    s.lock();
+    if let Some(w) = s.windows.window_mut(slot) {
+        w.in_sizemove = false;
+        w.flags.clear(wf::SIZEMOVE);
+    }
+    s.unlock();
+    snap_to_edge(slot);
+    let owner = {
+        let s = super::state();
+        s.lock();
+        let o = s.windows.window(slot).map(|w| w.owner_tid).unwrap_or(0);
+        s.unlock();
+        o
+    };
+    if owner != 0 {
+        let qt = super::queue::queue_table();
+        qt.acquire();
+        if let Some(qslot) = qt.slot_for_tid(owner) {
+            let msg = BmoMsg::new(BmoMsgKind::ExitSizeMove, slot as u16, 0, 0, 0);
+            let _ = super::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
+        }
+        qt.release();
+    }
+}
+
+pub fn update_drag(mx: i32, my: i32) -> bool {
+    if !DRAG_ACTIVE.load(Ordering::Relaxed) { return false; }
+    let slot = DRAG_SLOT.load(Ordering::Relaxed);
+    let ox = DRAG_OFFSET_X.load(Ordering::Relaxed);
+    let oy = DRAG_OFFSET_Y.load(Ordering::Relaxed);
+    let s = super::state();
+    s.lock();
+    if let Some(w) = s.windows.window_mut(slot) {
+        w.x = mx - ox;
+        w.y = my - oy;
+    }
+    s.unlock();
+    true
+}
+
 pub fn snap_to_edge(slot: u32) {
     let s = super::state();
     s.lock();
@@ -141,30 +204,19 @@ pub fn snap_to_edge(slot: u32) {
     s.unlock();
 }
 
-/// Entra al desktop real: lo llama `desktop::welcome::process_enter`
-/// cuando el usuario escribe "Run". Crea ventanas built-in, las pone
-/// en la Z-list y entra en el loop de pintado. Devuelve cuando el
-/// usuario presiona ESC (igual que el viejo desktop stub).
 pub fn enter() -> ! {
     crate::bmo_core::diag::info("bmo_api_v2.wm", "Entering Ring 3 BMO API desktop");
     crate::dev::console::serial_write("[bmo_api_v2] Entering desktop real (BMO API v2.0)\n");
 
-    // Crea tres ventanas built-in para demostrar el WM.
     let _term = create_top_window("BMO Terminal", 60, 60, 720, 460);
     let _editor = create_top_window("Datos.md viewer", 120, 100, 620, 420);
     let _settings = create_top_window("Ajustes", 180, 140, 520, 380);
 
-    // Loop principal: en v2.0 consume mensajes, procesa mouse y
-    // hace repaint de las superficies modificadas. La integración
-    // completa con wnd_proc Ring 3 está descrita en el spec §6 y
-    // se completará cuando los Ring 3 programs estén listos.
     let mut last_tick: u64 = 0;
     loop {
         let now = crate::cpu::rdtsc();
         super::input::poll_and_dispatch();
-        // Process queued messages
         process_message_queue();
-        // 30 Hz repaint
         if now.wrapping_sub(last_tick) > 33_000_000 {
             super::paint_compositor::tick();
             super::timer::tick_global();
@@ -187,23 +239,22 @@ fn process_message_queue() {
         s.unlock();
         f
     };
-    if focused == 0 { return; }
+    if focused == WID_INVALID { return; }
 
     let s = super::state();
     s.lock();
     let cls_id = s.windows.window(focused).map(|w| w.class_id);
+    let wnd_proc = cls_id.and_then(|cid| s.windows.class(cid).map(|c| c.wnd_proc));
     s.unlock();
-    let cls_id = match cls_id { Some(c) => c, None => return };
 
-    let s = super::state();
-    s.lock();
-    let wnd_proc = s.windows.class(cls_id).map(|c| c.wnd_proc).unwrap_or(0);
-    s.unlock();
+    let wnd_proc = match wnd_proc { Some(wp) => wp, None => return };
 
     if wnd_proc == 0 {
         super::class::default_wnd_proc(focused, super::message::BmoMsgKind::Paint, 0, 0);
     }
 }
+
+pub fn is_dragging() -> bool { DRAG_ACTIVE.load(Ordering::Relaxed) }
 
 fn create_top_window(title: &'static str, x: i32, y: i32, w: i32, h: i32) -> u32 {
     let st = super::state();
@@ -223,6 +274,7 @@ fn create_top_window(title: &'static str, x: i32, y: i32, w: i32, h: i32) -> u32
         win.flags.0 = wf::VISIBLE | wf::ENABLED;
         win.visible = true;
         win.surface = surf.unwrap_or(0);
+        win.owner_tid = 1;
         let tbytes = title.as_bytes();
         let n = tbytes.len().min(63);
         for i in 0..n { win.title[i] = tbytes[i]; }

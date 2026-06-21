@@ -11,10 +11,8 @@
 use super::window::{style, WID_INVALID};
 use super::surface;
 use super::message::{BmoMsg, BmoMsgKind};
-use super::handle::BmoHandle;
 use super::class;
 
-// ── Syscall numbers (deben coincidir con docs/BMO_API_SPEC.md §3.3) ──
 pub mod nr {
     pub const REGISTER_CLASS:        u16 = 0x100;
     pub const UNREGISTER_CLASS:      u16 = 0x101;
@@ -116,16 +114,13 @@ pub mod nr {
     pub const SURFACE_FLUSH:         u16 = 0x182;
     pub const FLIP:                  u16 = 0x183;
 
-    /// Retorno desde un wnd_proc. El kernel lo intercepta y restaura
-    /// el contexto de la llamada original.
     pub const DISPATCH_RETURN:       u16 = 0x198;
 }
 
-// ── Error codes (negativos en rax) ──
 pub mod err {
     pub const OK: u64             = 0;
-    pub const GENERIC: u64        = u64::MAX;     // -1
-    pub const BAD_HANDLE: u64     = u64::MAX - 1; // -2
+    pub const GENERIC: u64        = u64::MAX;
+    pub const BAD_HANDLE: u64     = u64::MAX - 1;
     pub const INVALID: u64        = u64::MAX - 2;
     pub const NO_MEMORY: u64      = u64::MAX - 3;
     pub const NO_WINDOW: u64      = u64::MAX - 4;
@@ -145,15 +140,17 @@ pub mod err {
     pub const STALE: u64          = u64::MAX - 18;
 }
 
-/// Dispatcher principal. Devuelve el valor para rax.
+fn validate_user_ptr(ptr: u64, len: u64) -> bool {
+    if ptr == 0 || len == 0 { return false; }
+    if ptr < 0x1000 { return false; }
+    if ptr + len < ptr { return false; }
+    true
+}
+
 pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
     match nr {
-        // ── Window lifecycle ─────────────────────────────────────
         nr::REGISTER_CLASS   => sys_register_class(a0),
         nr::UNREGISTER_CLASS => sys_unregister_class(a0 as u16),
-        // CREATE_WINDOW_EX(class_id, title_ptr, title_len, style, style_ex, x_y_packed, w, h)
-        // a4 = low32:x, a5 = high32:y. En v2.0 simplificado w/h no se
-        // pasan por registro; se usan valores por defecto.
         nr::CREATE_WINDOW_EX => {
             let xy = (a4 as i64) | ((a5 as i64) << 32);
             sys_create_window_ex(a0 as u16, a1, a2, a3 as u32, 0, xy, 720, 460)
@@ -166,36 +163,34 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::SHOW_WINDOW      => sys_show_window(a0, a1),
         nr::HIDE_WINDOW      => sys_hide_window(a0),
         nr::SET_TITLE        => sys_set_title(a0, a1, a2),
+        nr::GET_TITLE        => sys_get_title(a0, a1, a2),
         nr::SET_SIZE         => sys_set_size(a0, a1, a2),
         nr::SET_POS          => sys_set_pos(a0, a1, a2),
+        nr::GET_RECT         => sys_get_rect(a0, a1),
         nr::INVALIDATE       => sys_invalidate(a0),
         nr::UPDATE_WINDOW    => sys_invalidate(a0),
+        nr::REDRAW_WINDOW    => sys_invalidate(a0),
 
-        // ── Paint ────────────────────────────────────────────────
         nr::PAINT_BEGIN      => sys_paint_begin(a0, a1),
         nr::PAINT_END        => sys_paint_end(a0, a1),
-        nr::FILL_RECT        => err::OK,
-        nr::DRAW_TEXT        => err::OK,
-        nr::DRAW_LINE        => err::OK,
-        nr::DRAW_PIXEL       => err::OK,
-        nr::DRAW_RECT        => err::OK,
-        nr::DRAW_IMAGE       => err::OK,
-        nr::DRAW_POLYLINE    => err::OK,
-        nr::SET_CLIP         => err::OK,
-        nr::RESET_CLIP       => err::OK,
-        nr::SET_TEXT_COLOR   => err::OK,
-        nr::SET_BG_COLOR     => err::OK,
-        nr::SET_FONT         => err::OK,
+        nr::FILL_RECT        => sys_fill_rect(a0, a1, a2, a3, a4),
+        nr::DRAW_TEXT        => sys_draw_text(a0, a1, a2, a3),
+        nr::DRAW_LINE        => sys_draw_line(a0, a1, a2, a3, a4, a5),
+        nr::DRAW_PIXEL       => sys_draw_pixel(a0, a1, a2, a3),
+        nr::DRAW_RECT        => sys_draw_rect(a0, a1, a2, a3, a4, a5),
+        nr::SET_CLIP         => sys_set_clip(a0, a1, a2, a3),
+        nr::RESET_CLIP       => sys_reset_clip(a0),
+        nr::SET_TEXT_COLOR   => sys_set_text_color(a0, a1),
+        nr::SET_BG_COLOR     => sys_set_bg_color(a0, a1),
+        nr::SET_FONT         => sys_set_font(a0, a1),
 
-        // ── Surfaces ─────────────────────────────────────────────
         nr::CREATE_SURFACE   => sys_create_surface(a0 as u16, a1 as u16, a2 as u32),
-        nr::DESTROY_SURFACE  => err::OK,
-        nr::MAP_SURFACE      => surface::surface_storage_addr(),
+        nr::DESTROY_SURFACE  => sys_destroy_surface(a0),
+        nr::MAP_SURFACE      => sys_map_surface(a0),
         nr::UNMAP_SURFACE    => err::OK,
         nr::SURFACE_FLUSH    => err::OK,
         nr::FLIP             => err::OK,
 
-        // ── Messages ─────────────────────────────────────────────
         nr::GET_MESSAGE      => sys_get_message(a0),
         nr::PEEK_MESSAGE     => sys_peek_message(a0),
         nr::POST_MESSAGE     => sys_post_message(a0, a1 as u16, a2, a3),
@@ -206,9 +201,9 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::POST_QUIT        => err::OK,
         nr::POST_THREAD_MESSAGE => err::OK,
         nr::SET_TIMER        => sys_set_timer(a0, a1 as u16, a2 as u32),
-        nr::KILL_TIMER       => err::OK,
+        nr::KILL_TIMER       => sys_kill_timer(a0),
         nr::SET_CAPTURE      => sys_set_capture(a0),
-        nr::RELEASE_CAPTURE  => err::OK,
+        nr::RELEASE_CAPTURE  => sys_release_capture(),
         nr::SET_FOCUS        => sys_set_focus(a0),
         nr::GET_FOCUS        => {
             let s = super::state();
@@ -225,21 +220,19 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
             if a == WID_INVALID { err::NO_WINDOW } else { a as u64 }
         }
 
-        // ── DC ───────────────────────────────────────────────────
         nr::DC_CREATE        => sys_dc_create(a0),
-        nr::DC_RELEASE       => err::OK,
+        nr::DC_RELEASE       => sys_dc_release(a0),
         nr::GET_DC           => sys_dc_create(a0),
-        nr::RELEASE_DC       => err::OK,
+        nr::RELEASE_DC       => sys_dc_release(a0),
         nr::SAVE_DC          => err::OK,
         nr::RESTORE_DC       => err::OK,
         nr::SELECT_OBJECT    => err::OK,
-        nr::GET_PIXEL        => 0,
+        nr::GET_PIXEL        => err::OK,
         nr::SET_PIXEL        => err::OK,
         nr::BIT_BLT          => err::OK,
 
-        // ── Input ────────────────────────────────────────────────
-        nr::INPUT_POLL_KEY   => err::OK,
-        nr::INPUT_POLL_MOUSE => err::OK,
+        nr::INPUT_POLL_KEY   => sys_input_poll_key(),
+        nr::INPUT_POLL_MOUSE => sys_input_poll_mouse(),
         nr::INPUT_WAIT       => err::OK,
         nr::INPUT_GRAB       => err::OK,
         nr::INPUT_UNGRAB     => err::OK,
@@ -248,14 +241,13 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::SET_CURSOR_POS   => err::OK,
         nr::SET_CURSOR       => { super::cursor::set(a0 as u8); err::OK }
 
-        // ── WM ───────────────────────────────────────────────────
         nr::BRING_TO_FRONT   => { super::wm::bring_to_front(a0 as u32); err::OK }
         nr::SEND_TO_BACK     => err::OK,
         nr::SET_TOPMOST      => err::OK,
         nr::SET_TRANSIENT_FOR=> err::OK,
         nr::BEGIN_MODAL      => err::OK,
         nr::END_MODAL        => err::OK,
-        nr::SET_WINDOW_POS   => err::OK,
+        nr::SET_WINDOW_POS   => sys_set_window_pos(a0, a1, a2, a3),
         nr::GET_WINDOW       => err::OK,
         nr::ENUM_WINDOWS     => err::OK,
         nr::GET_DESKTOP_WINDOW => {
@@ -273,27 +265,18 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
             if a == WID_INVALID { err::NO_WINDOW } else { a as u64 }
         }
 
-        // ── Cursor / Icon ────────────────────────────────────────
         nr::LOAD_CURSOR      => err::OK,
         nr::LOAD_ICON        => err::OK,
         nr::SET_CLASS_CURSOR => err::OK,
         nr::SET_CLASS_ICON   => err::OK,
 
-        // ── Clipboard ────────────────────────────────────────────
         nr::OPEN_CLIPBOARD   => err::OK,
         nr::CLOSE_CLIPBOARD  => err::OK,
         nr::SET_CLIPBOARD_DATA => err::OK,
         nr::GET_CLIPBOARD_DATA => err::OK,
         nr::EMPTY_CLIPBOARD  => err::OK,
 
-        // ── Special: BMO_DISPATCH_RETURN ─────────────────────────
-        nr::DISPATCH_RETURN  => {
-            // Llamada desde el trampoline de Ring 3 al volver del wnd_proc.
-            // v2.0: simplificamos — el wnd_proc se ejecuta en Ring 0 vía
-            // default_wnd_proc cuando wnd_proc = 0, así que este caso
-            // no llega en el flujo actual. Lo dejamos como OK.
-            err::OK
-        }
+        nr::DISPATCH_RETURN  => err::OK,
 
         _ => {
             crate::bmo_core::diag::warn_u64("bmo_api_v2.syscall", "unimplemented nr=", nr as u64);
@@ -302,11 +285,9 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
     }
 }
 
-// ── Implementaciones individuales ─────────────────────────────────
+// ── Window syscalls ───────────────────────────────────────────────
 
 fn sys_register_class(_a0: u64) -> u64 {
-    // a0 = user pointer to struct BmoClass. En v2.0 simplificado,
-    // devolvemos una clase built-in (siguiente slot libre).
     let s = super::state();
     s.lock();
     let r = s.windows.alloc_class();
@@ -329,7 +310,6 @@ fn sys_unregister_class(class_id: u16) -> u64 {
 }
 
 fn sys_create_window_ex(class_id: u16, title_ptr: u64, title_len: u64, style: u32, _style_ex: u32, xy: i64, w: i64, h: i64) -> u64 {
-    // Empaquetamos x|y en `xy`: bajo 32 = x, alto 32 = y.
     let x = (xy & 0xFFFFFFFF) as i32;
     let y = ((xy >> 32) & 0xFFFFFFFF) as i32;
     let s = super::state();
@@ -347,11 +327,11 @@ fn sys_create_window_ex(class_id: u16, title_ptr: u64, title_len: u64, style: u3
         win.class_id = class_id;
         win.style = style;
         if (style & style::WS_VISIBLE) != 0 {
-            win.flags.0 |= 1; // WF_VISIBLE
+            win.flags.0 |= 1;
             win.visible = true;
         }
         if (style & style::WS_DISABLED) == 0 {
-            win.flags.0 |= 2; // WF_ENABLED
+            win.flags.0 |= 2;
             win.enabled = true;
         }
         win.x = x;
@@ -359,14 +339,12 @@ fn sys_create_window_ex(class_id: u16, title_ptr: u64, title_len: u64, style: u3
         win.w = w as i32;
         win.h = h as i32;
         win.surface = surf.unwrap_or(0);
-        // Título: copiamos desde user space (sin validar en v2.0).
         let tlen = (title_len as usize).min(63);
-        if tlen > 0 && title_ptr != 0 {
+        if tlen > 0 && title_ptr != 0 && validate_user_ptr(title_ptr, title_len) {
             let src = unsafe { core::slice::from_raw_parts(title_ptr as *const u8, tlen) };
             for i in 0..tlen { win.title[i] = src[i]; }
             win.title_len = tlen as u8;
         } else {
-            // Título por defecto.
             let d = b"BMO Window";
             for i in 0..d.len() { win.title[i] = d[i]; }
             win.title_len = d.len() as u8;
@@ -392,10 +370,7 @@ fn sys_destroy_window(handle: u64) -> u64 {
     let s = super::state();
     s.lock();
     let current_gen = s.windows.window(slot).map(|w| w.generation).unwrap_or(0);
-    if current_gen != gen {
-        s.unlock();
-        return err::STALE;
-    }
+    if current_gen != gen { s.unlock(); return err::STALE; }
     s.windows.z_remove(slot);
     let surf = s.windows.window(slot).map(|w| w.surface).unwrap_or(0);
     s.windows.free_window(slot);
@@ -409,11 +384,7 @@ fn sys_show_window(handle: u64, _cmd: u64) -> u64 {
     let s = super::state();
     s.lock();
     let r = match s.windows.window_mut(slot) {
-        Some(w) if w.generation == gen => {
-            w.visible = true;
-            w.flags.0 |= 1;
-            err::OK
-        }
+        Some(w) if w.generation == gen => { w.visible = true; w.flags.0 |= 1; err::OK }
         _ => err::STALE,
     };
     s.unlock();
@@ -425,11 +396,7 @@ fn sys_hide_window(handle: u64) -> u64 {
     let s = super::state();
     s.lock();
     let r = match s.windows.window_mut(slot) {
-        Some(w) if w.generation == gen => {
-            w.visible = false;
-            w.flags.0 &= !1;
-            err::OK
-        }
+        Some(w) if w.generation == gen => { w.visible = false; w.flags.0 &= !1; err::OK }
         _ => err::STALE,
     };
     s.unlock();
@@ -443,12 +410,32 @@ fn sys_set_title(handle: u64, ptr: u64, len: u64) -> u64 {
     let r = match s.windows.window_mut(slot) {
         Some(w) if w.generation == gen => {
             let tlen = (len as usize).min(63);
-            if ptr != 0 && tlen > 0 {
+            if ptr != 0 && tlen > 0 && validate_user_ptr(ptr, len) {
                 let src = unsafe { core::slice::from_raw_parts(ptr as *const u8, tlen) };
                 for i in 0..tlen { w.title[i] = src[i]; }
                 w.title_len = tlen as u8;
             }
             err::OK
+        }
+        _ => err::STALE,
+    };
+    s.unlock();
+    r
+}
+
+fn sys_get_title(handle: u64, buf_ptr: u64, buf_len: u64) -> u64 {
+    let (slot, gen) = decode_wid(handle);
+    let s = super::state();
+    s.lock();
+    let r = match s.windows.window(slot) {
+        Some(w) if w.generation == gen => {
+            let tlen = w.title_len as usize;
+            let copy_len = tlen.min(buf_len as usize).min(63);
+            if buf_ptr != 0 && copy_len > 0 && validate_user_ptr(buf_ptr, buf_len) {
+                let dst = unsafe { core::slice::from_raw_parts_mut(buf_ptr as *mut u8, copy_len) };
+                for i in 0..copy_len { dst[i] = w.title[i]; }
+            }
+            tlen as u64
         }
         _ => err::STALE,
     };
@@ -463,6 +450,7 @@ fn sys_set_size(handle: u64, w: u64, h: u64) -> u64 {
     let r = match s.windows.window_mut(slot) {
         Some(win) if win.generation == gen => {
             win.w = w as i32; win.h = h as i32;
+            win.dirty = true;
             err::OK
         }
         _ => err::STALE,
@@ -478,6 +466,25 @@ fn sys_set_pos(handle: u64, x: u64, y: u64) -> u64 {
     let r = match s.windows.window_mut(slot) {
         Some(win) if win.generation == gen => {
             win.x = x as i32; win.y = y as i32;
+            win.dirty = true;
+            err::OK
+        }
+        _ => err::STALE,
+    };
+    s.unlock();
+    r
+}
+
+fn sys_get_rect(handle: u64, rect_ptr: u64) -> u64 {
+    let (slot, gen) = decode_wid(handle);
+    let s = super::state();
+    s.lock();
+    let r = match s.windows.window(slot) {
+        Some(w) if w.generation == gen => {
+            if rect_ptr != 0 && validate_user_ptr(rect_ptr, 16) {
+                let dst = unsafe { core::slice::from_raw_parts_mut(rect_ptr as *mut i32, 4) };
+                dst[0] = w.x; dst[1] = w.y; dst[2] = w.w; dst[3] = w.h;
+            }
             err::OK
         }
         _ => err::STALE,
@@ -491,15 +498,14 @@ fn sys_invalidate(handle: u64) -> u64 {
     let s = super::state();
     s.lock();
     let r = match s.windows.window_mut(slot) {
-        Some(w) if w.generation == gen => {
-            w.dirty = true;
-            err::OK
-        }
+        Some(w) if w.generation == gen => { w.dirty = true; err::OK }
         _ => err::STALE,
     };
     s.unlock();
     r
 }
+
+// ── Paint / Drawing syscalls ──────────────────────────────────────
 
 fn sys_paint_begin(handle: u64, _paintstruct_ptr: u64) -> u64 {
     let (slot, gen) = decode_wid(handle);
@@ -523,15 +529,93 @@ fn sys_paint_end(handle: u64, _dc: u64) -> u64 {
     let s = super::state();
     s.lock();
     let r = match s.windows.window_mut(slot) {
-        Some(w) if w.generation == gen => {
-            w.dirty = false;
-            err::OK
-        }
+        Some(w) if w.generation == gen => { w.dirty = false; err::OK }
         _ => err::STALE,
     };
     s.unlock();
     r
 }
+
+fn sys_fill_rect(dc_slot: u64, x: u64, y: u64, w: u64, color: u64) -> u64 {
+    super::draw::fill_rect(dc_slot as u32, x as i32, y as i32, w as i32, w as i32, color as u32);
+    err::OK
+}
+
+fn sys_draw_text(dc_slot: u64, x: u64, y: u64, str_ptr: u64) -> u64 {
+    if str_ptr == 0 || !validate_user_ptr(str_ptr, 256) { return err::INVALID; }
+    let s = unsafe { core::slice::from_raw_parts(str_ptr as *const u8, 256) };
+    let end = s.iter().position(|&b| b == 0).unwrap_or(256);
+    super::draw::draw_text(dc_slot as u32, x as i32, y as i32, &s[..end], 0xFFE6F1F5);
+    err::OK
+}
+
+fn sys_draw_line(dc_slot: u64, x0: u64, y0: u64, x1: u64, y1: u64, color: u64) -> u64 {
+    super::draw::draw_line(dc_slot as u32, x0 as i32, y0 as i32, x1 as i32, y1 as i32, color as u32);
+    err::OK
+}
+
+fn sys_draw_pixel(dc_slot: u64, x: u64, y: u64, color: u64) -> u64 {
+    super::draw::draw_pixel(dc_slot as u32, x as i32, y as i32, color as u32);
+    err::OK
+}
+
+fn sys_draw_rect(dc_slot: u64, x: u64, y: u64, w: u64, h: u64, color: u64) -> u64 {
+    super::draw::draw_rect(dc_slot as u32, x as i32, y as i32, w as i32, h as i32, color as u32);
+    err::OK
+}
+
+fn sys_set_clip(dc_slot: u64, x: u64, y: u64, w_h_packed: u64) -> u64 {
+    let dc = dc_slot as u32;
+    let (cw, ch) = ((w_h_packed & 0xFFFF) as i32, ((w_h_packed >> 16) & 0xFFFF) as i32);
+    super::draw::DC_TABLE_LOCK.acquire();
+    if let Some(d) = unsafe { super::draw::dc_table().dcs.get_mut(dc as usize) } {
+        if d.used { d.clip_x = x as i32; d.clip_y = y as i32; d.clip_w = cw; d.clip_h = ch; }
+    }
+    super::draw::DC_TABLE_LOCK.release();
+    err::OK
+}
+
+fn sys_reset_clip(dc_slot: u64) -> u64 {
+    let dc = dc_slot as u32;
+    super::draw::DC_TABLE_LOCK.acquire();
+    if let Some(d) = unsafe { super::draw::dc_table().dcs.get_mut(dc as usize) } {
+        if d.used { d.clip_x = 0; d.clip_y = 0; d.clip_w = 1920; d.clip_h = 1080; }
+    }
+    super::draw::DC_TABLE_LOCK.release();
+    err::OK
+}
+
+fn sys_set_text_color(dc_slot: u64, color: u64) -> u64 {
+    let dc = dc_slot as u32;
+    super::draw::DC_TABLE_LOCK.acquire();
+    if let Some(d) = unsafe { super::draw::dc_table().dcs.get_mut(dc as usize) } {
+        if d.used { d.text_color = color as u32; }
+    }
+    super::draw::DC_TABLE_LOCK.release();
+    err::OK
+}
+
+fn sys_set_bg_color(dc_slot: u64, color: u64) -> u64 {
+    let dc = dc_slot as u32;
+    super::draw::DC_TABLE_LOCK.acquire();
+    if let Some(d) = unsafe { super::draw::dc_table().dcs.get_mut(dc as usize) } {
+        if d.used { d.bg_color = color as u32; }
+    }
+    super::draw::DC_TABLE_LOCK.release();
+    err::OK
+}
+
+fn sys_set_font(dc_slot: u64, font_id: u64) -> u64 {
+    let dc = dc_slot as u32;
+    super::draw::DC_TABLE_LOCK.acquire();
+    if let Some(d) = unsafe { super::draw::dc_table().dcs.get_mut(dc as usize) } {
+        if d.used { d.font_id = font_id as u8; }
+    }
+    super::draw::DC_TABLE_LOCK.release();
+    err::OK
+}
+
+// ── Surface syscalls ──────────────────────────────────────────────
 
 fn sys_create_surface(w: u16, h: u16, format: u32) -> u64 {
     let s = super::state();
@@ -550,26 +634,51 @@ fn sys_create_surface(w: u16, h: u16, format: u32) -> u64 {
     }
 }
 
+fn sys_destroy_surface(handle: u64) -> u64 {
+    let slot = (handle >> 16) as u32;
+    let gen = handle as u16;
+    let s = super::state();
+    s.lock();
+    let ok = s.surfaces.surface(slot).map(|x| x.generation == gen).unwrap_or(false);
+    if ok { s.surfaces.free(slot); }
+    s.unlock();
+    if ok { err::OK } else { err::BAD_SURFACE }
+}
+
+fn sys_map_surface(handle: u64) -> u64 {
+    let slot = (handle >> 16) as u32;
+    let gen = handle as u16;
+    let s = super::state();
+    s.lock();
+    let ok = s.surfaces.surface(slot).map(|x| x.generation == gen).unwrap_or(false);
+    let addr = if ok { s.surfaces.surface(slot).map(|x| x.pixels as u64).unwrap_or(0) } else { 0 };
+    s.unlock();
+    if ok { addr } else { err::BAD_SURFACE }
+}
+
+// ── Message syscalls ──────────────────────────────────────────────
+
 fn sys_get_message(msg_ptr: u64) -> u64 {
-    if msg_ptr == 0 { return err::INVALID; }
-    // En v2.0 simplificado: pop del thread por tid=0 (kernel thread).
+    if msg_ptr == 0 || !validate_user_ptr(msg_ptr, core::mem::size_of::<BmoMsg>() as u64) {
+        return err::INVALID;
+    }
     let qt = super::queue::queue_table();
-    qt.lock();
+    qt.acquire();
     if let Some(slot) = qt.slot_for_tid(0) {
         if let Some(m) = qt.queues[slot as usize].pop() {
-            unsafe {
-                *(msg_ptr as *mut BmoMsg) = m;
-            }
-            qt.unlock();
+            unsafe { *(msg_ptr as *mut BmoMsg) = m; }
+            qt.release();
             return 1;
         }
     }
-    qt.unlock();
+    qt.release();
     0
 }
 
 fn sys_peek_message(msg_ptr: u64) -> u64 {
-    if msg_ptr == 0 { return err::INVALID; }
+    if msg_ptr == 0 || !validate_user_ptr(msg_ptr, core::mem::size_of::<BmoMsg>() as u64) {
+        return err::INVALID;
+    }
     let qt = super::queue::queue_table();
     if let Some(slot) = qt.slot_for_tid(0) {
         let q = &qt.queues[slot as usize];
@@ -589,55 +698,44 @@ fn sys_post_message(handle: u64, kind: u16, wparam: u64, lparam: u64) -> u64 {
     s.unlock();
     let owner = match owner { Some(o) => o, None => return err::STALE };
     let qt = super::queue::queue_table();
+    qt.acquire();
     if let Some(qslot) = qt.slot_for_tid(owner) {
         let msg = BmoMsg::new(BmoMsgKind::from_u16(kind), slot as u16, 0, wparam, lparam);
         let ok = super::event::post_coalesced(&mut qt.queues[qslot as usize], msg);
+        qt.release();
         if ok { err::OK } else { err::QUEUE_FULL }
-    } else { err::NOT_GUI_THR }
+    } else {
+        qt.release();
+        err::NOT_GUI_THR
+    }
 }
 
 fn sys_send_message(handle: u64, kind: u16, wparam: u64, lparam: u64) -> u64 {
-    // En v2.0 send_message cae en el default_wnd_proc (no hay Ring 3
-    // wnd_proc real todavía); devolvemos 0 como retval.
     let (slot, gen) = decode_wid(handle);
     let s = super::state();
     s.lock();
     let cls_id = s.windows.window(slot).and_then(|w| if w.generation == gen { Some(w.class_id) } else { None });
+    let wnd_proc = cls_id.and_then(|cid| s.windows.class(cid).map(|c| c.wnd_proc));
     s.unlock();
-    let cls_id = match cls_id { Some(c) => c, None => return err::STALE };
-    let s = super::state();
-    s.lock();
-    let wnd_proc = s.windows.class(cls_id).map(|c| c.wnd_proc).unwrap_or(0);
-    s.unlock();
-    if wnd_proc != 0 {
-        // Ring 3 wnd_proc: cuando existan programas Ring 3, aquí se
-        // haría iretq a user RIP con los args en registros. Por ahora
-        // todos loswnd_proc son kernel-side (wnd_proc=0).
-        return 0;
-    }
+    let wnd_proc = match wnd_proc { Some(wp) => wp, None => return err::STALE };
+    if wnd_proc != 0 { return 0; }
     class::default_wnd_proc(slot, BmoMsgKind::from_u16(kind), wparam, lparam)
 }
 
 fn sys_dispatch_message(msg_ptr: u64) -> u64 {
-    if msg_ptr == 0 { return err::INVALID; }
-    let msg = unsafe { *(msg_ptr as *const BmoMsg) };
-    let s = super::state();
-    s.lock();
-    let (target, gen) = (msg.target as u32, 0u16);
-    let cls_id = s.windows.window(target).map(|w| w.class_id);
-    let owner = s.windows.window(target).map(|w| w.owner_tid);
-    s.unlock();
-    let cls_id = match cls_id { Some(c) => c, None => return err::NO_WINDOW };
-    let _ = (target, gen, owner);
-    let s = super::state();
-    s.lock();
-    let wnd_proc = s.windows.class(cls_id).map(|c| c.wnd_proc).unwrap_or(0);
-    s.unlock();
-    if wnd_proc != 0 {
-        // Ring 3 dispatch: pendiente cuando existan programas Ring 3.
-        return 0;
+    if msg_ptr == 0 || !validate_user_ptr(msg_ptr, core::mem::size_of::<BmoMsg>() as u64) {
+        return err::INVALID;
     }
-    class::default_wnd_proc(msg.target as u32, BmoMsgKind::from_u16(msg.kind), msg.wparam, msg.lparam)
+    let msg = unsafe { *(msg_ptr as *const BmoMsg) };
+    let target = msg.target as u32;
+    let s = super::state();
+    s.lock();
+    let cls_id = s.windows.window(target).map(|w| w.class_id);
+    let wnd_proc = cls_id.and_then(|cid| s.windows.class(cid).map(|c| c.wnd_proc));
+    s.unlock();
+    let wnd_proc = match wnd_proc { Some(wp) => wp, None => return err::NO_WINDOW };
+    if wnd_proc != 0 { return 0; }
+    class::default_wnd_proc(target, BmoMsgKind::from_u16(msg.kind), msg.wparam, msg.lparam)
 }
 
 fn sys_set_timer(handle: u64, _id: u16, timeout_ms: u32) -> u64 {
@@ -658,6 +756,14 @@ fn sys_set_timer(handle: u64, _id: u16, timeout_ms: u32) -> u64 {
     }
 }
 
+fn sys_kill_timer(timer_id: u64) -> u64 {
+    let s = super::state();
+    s.lock();
+    let ok = s.timers.free_by_id(timer_id as u32);
+    s.unlock();
+    if ok { err::OK } else { err::INVALID }
+}
+
 fn sys_set_capture(handle: u64) -> u64 {
     let (slot, gen) = decode_wid(handle);
     let s = super::state();
@@ -666,6 +772,14 @@ fn sys_set_capture(handle: u64) -> u64 {
     if ok { s.windows.capture = slot; }
     s.unlock();
     if ok { err::OK } else { err::STALE }
+}
+
+fn sys_release_capture() -> u64 {
+    let s = super::state();
+    s.lock();
+    s.windows.capture = WID_INVALID;
+    s.unlock();
+    err::OK
 }
 
 fn sys_set_focus(handle: u64) -> u64 {
@@ -683,6 +797,27 @@ fn sys_set_focus(handle: u64) -> u64 {
     if ok { err::OK } else { err::STALE }
 }
 
+fn sys_set_window_pos(handle: u64, x: u64, y: u64, w_h_packed: u64) -> u64 {
+    let (slot, gen) = decode_wid(handle);
+    let w = (w_h_packed & 0xFFFF) as i32;
+    let h = ((w_h_packed >> 16) & 0xFFFF) as i32;
+    let s = super::state();
+    s.lock();
+    let r = match s.windows.window_mut(slot) {
+        Some(win) if win.generation == gen => {
+            win.x = x as i32; win.y = y as i32;
+            win.w = w; win.h = h;
+            win.dirty = true;
+            err::OK
+        }
+        _ => err::STALE,
+    };
+    s.unlock();
+    r
+}
+
+// ── DC syscalls ───────────────────────────────────────────────────
+
 fn sys_dc_create(handle: u64) -> u64 {
     let (slot, gen) = decode_wid(handle);
     let s = super::state();
@@ -696,6 +831,23 @@ fn sys_dc_create(handle: u64) -> u64 {
     }
 }
 
-// Necesario para BmoHandle::encode/decode usage (no se usa por ahora).
-#[allow(dead_code)]
-fn _bh_unused() { let _ = BmoHandle::INVALID; }
+fn sys_dc_release(dc_slot: u64) -> u64 {
+    super::draw::DC_TABLE_LOCK.acquire();
+    let r = if let Some(d) = unsafe { super::draw::dc_table().dcs.get_mut(dc_slot as usize) } {
+        if d.used { d.used = false; err::OK } else { err::BAD_DC }
+    } else { err::BAD_DC };
+    super::draw::DC_TABLE_LOCK.release();
+    r
+}
+
+// ── Input syscalls ────────────────────────────────────────────────
+
+fn sys_input_poll_key() -> u64 {
+    let sc = crate::bmo_core::desktop::poll_key();
+    sc as u64
+}
+
+fn sys_input_poll_mouse() -> u64 {
+    let packed = crate::bmo_core::desktop::poll_mouse();
+    packed
+}

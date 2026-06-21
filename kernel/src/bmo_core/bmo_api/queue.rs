@@ -2,10 +2,12 @@
 //!
 //! Producer = kernel (push). Consumer = el thread (pop). Tamaño fijo 64.
 //! En overflow el kernel setea `overflow_count` y descarta el mensaje.
+//! Lock atómico con AtomicU8 + compare_exchange.
 
 #![allow(dead_code)]
 
 use super::message::BmoMsg;
+use core::sync::atomic::{AtomicU8, Ordering};
 
 pub const QUEUE_CAP: usize = 64;
 pub const QUEUE_MAGIC: u32 = 0xC1A551FE;
@@ -42,9 +44,7 @@ impl BmoQueue {
             self.overflow = self.overflow.wrapping_add(1);
             return false;
         }
-        // Copy out to avoid borrow issues.
         self.msgs[h as usize] = msg;
-        // Release-store head (en x86-64 todo store es release por default).
         self.head = next;
         true
     }
@@ -78,7 +78,7 @@ pub struct BmoQueueTable {
     pub queues: [BmoQueue; MAX_GUI_THREADS],
     /// Map thread_id → queue slot (0..MAX_GUI_THREADS) o 0xFFFF.
     pub tid_to_slot: [u16; MAX_GUI_THREADS],
-    pub lock: u8,
+    lock: AtomicU8,
 }
 
 impl BmoQueueTable {
@@ -86,15 +86,19 @@ impl BmoQueueTable {
         Self {
             queues: [const { BmoQueue::new() }; MAX_GUI_THREADS],
             tid_to_slot: [0xFFFF; MAX_GUI_THREADS],
-            lock: 0,
+            lock: AtomicU8::new(0),
         }
     }
 
-    pub fn lock(&mut self) {
-        while self.lock != 0 { core::hint::spin_loop(); }
-        self.lock = 1;
+    pub fn acquire(&self) {
+        loop {
+            match self.lock.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed) {
+                Ok(_) => return,
+                Err(_) => core::hint::spin_loop(),
+            }
+        }
     }
-    pub fn unlock(&mut self) { self.lock = 0; }
+    pub fn release(&self) { self.lock.store(0, Ordering::Release); }
 
     pub fn slot_for_tid(&self, tid: u16) -> Option<u16> {
         for (i, &t) in self.tid_to_slot.iter().enumerate() {

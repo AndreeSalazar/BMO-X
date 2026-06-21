@@ -2,10 +2,11 @@
 //!
 //! 16 sprites built-in (arrow, ibeam, wait, cross, resize, ...). En
 //! v2.0 sólo se dibuja el arrow (el resto quedan como stubs).
+//! Estado protegido con AtomicU8 spinlock.
 
 #![allow(dead_code)]
 
-
+use core::sync::atomic::{AtomicU8, AtomicBool, Ordering};
 
 pub mod id {
     pub const ARROW: u8 = 0;
@@ -26,37 +27,31 @@ pub mod id {
     pub const CDNONE: u8 = 15;
 }
 
-static mut CURRENT: u8 = id::ARROW;
-static mut VISIBLE: bool = true;
+static CURRENT: AtomicU8 = AtomicU8::new(id::ARROW);
+static VISIBLE: AtomicBool = AtomicBool::new(true);
 
 pub fn init() {
-    unsafe {
-        CURRENT = id::ARROW;
-        VISIBLE = true;
-    }
+    CURRENT.store(id::ARROW, Ordering::Relaxed);
+    VISIBLE.store(true, Ordering::Relaxed);
 }
 
-pub fn set(c: u8) { unsafe { CURRENT = c & 0xF; } }
-pub fn show() { unsafe { VISIBLE = true; } }
-pub fn hide() { unsafe { VISIBLE = false; } }
-pub fn current() -> u8 { unsafe { CURRENT } }
-pub fn is_visible() -> bool { unsafe { VISIBLE } }
+pub fn set(c: u8) { CURRENT.store(c & 0xF, Ordering::Relaxed); }
+pub fn show() { VISIBLE.store(true, Ordering::Relaxed); }
+pub fn hide() { VISIBLE.store(false, Ordering::Relaxed); }
+pub fn current() -> u8 { CURRENT.load(Ordering::Relaxed) }
+pub fn is_visible() -> bool { VISIBLE.load(Ordering::Relaxed) }
 
-/// Dibuja el cursor en la posición (x, y) sobre el framebuffer.
-/// Sólo soporta ARROW en v2.0; los demás caen al arrow.
 pub fn paint(x: i32, y: i32) {
     if !is_visible() { return; }
-    let c = current();
-    // Sprite 16×16 (1bpp + máscara). En v2.0 el arrow es hardcoded:
     let sprite: [[u8; 16]; 16] = arrow_sprite();
     let color = 0xFFFFFFFFu32;
     let shadow = 0x80000000u32;
-    let _ = c;
+    let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT) };
     for row in 0..16 {
         for col in 0..16 {
             let px = x + col as i32;
             let py = y + row as i32;
-            if px < 0 || py < 0 || px >= 1920 || py >= 1080 { continue; }
+            if px < 0 || py < 0 || px >= fbw as i32 || py >= fbh as i32 { continue; }
             if sprite[row][col] == 1 {
                 crate::dev::framebuffer::put_pixel(px as u32, py as u32, crate::dev::framebuffer::Color(color));
             } else if sprite[row][col] == 2 {
