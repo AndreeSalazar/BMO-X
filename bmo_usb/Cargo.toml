@@ -1,8 +1,0 @@
-[package]
-name = "bmo_usb"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-# Dual target support (compiled with standard library for tests, and no_std for kernel integration).
-# Can use the xhci low-level structure definitions crate in the future.
