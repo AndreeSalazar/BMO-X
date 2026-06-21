@@ -224,12 +224,12 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::DC_RELEASE       => sys_dc_release(a0),
         nr::GET_DC           => sys_dc_create(a0),
         nr::RELEASE_DC       => sys_dc_release(a0),
-        nr::SAVE_DC          => err::OK,
-        nr::RESTORE_DC       => err::OK,
+        nr::SAVE_DC          => sys_save_dc(a0),
+        nr::RESTORE_DC       => sys_restore_dc(a0),
         nr::SELECT_OBJECT    => err::OK,
         nr::GET_PIXEL        => err::OK,
         nr::SET_PIXEL        => err::OK,
-        nr::BIT_BLT          => err::OK,
+        nr::BIT_BLT          => sys_draw_image(a0, a1, a2, a3, a4, a5),
 
         nr::INPUT_POLL_KEY   => sys_input_poll_key(),
         nr::INPUT_POLL_MOUSE => sys_input_poll_mouse(),
@@ -850,4 +850,20 @@ fn sys_input_poll_key() -> u64 {
 fn sys_input_poll_mouse() -> u64 {
     let packed = crate::bmo_core::desktop::poll_mouse();
     packed
+}
+
+fn sys_save_dc(dc_slot: u64) -> u64 {
+    if super::draw::save_dc(dc_slot as u32) { 1 } else { err::BAD_DC }
+}
+
+fn sys_restore_dc(dc_slot: u64) -> u64 {
+    if super::draw::restore_dc(dc_slot as u32) { 1 } else { err::BAD_DC }
+}
+
+fn sys_draw_image(dc_slot: u64, dst_x: u64, dst_y: u64, pixels_ptr: u64, src_w: u64, src_h: u64) -> u64 {
+    if pixels_ptr == 0 || !validate_user_ptr(pixels_ptr, src_w * src_h * 4) { return err::INVALID; }
+    let pitch = (src_w * 4).next_multiple_of(16) as u32;
+    super::draw::draw_image(dc_slot as u32, dst_x as i32, dst_y as i32,
+        pixels_ptr as *const u32, src_w as u32, src_h as u32, pitch);
+    err::OK
 }

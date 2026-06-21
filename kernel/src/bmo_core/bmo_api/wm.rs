@@ -1,18 +1,9 @@
-//! v2.0 — Window manager: Z-order, focus, drag/resize, snap, modal.
-//!
-//! Componente central del BMO API. Mantiene la Z-list singly-linked,
-//! el árbol parent/child, las reglas de focus, drag/resize con
-//! snap-to-edge, y el ciclo modal para ventanas de diálogo.
+//! v3.0 — Window manager: Z-order, focus, drag/resize, snap, modal, alt-tab.
 
 #![allow(dead_code)]
 
-#[allow(unused_imports)]
-use super::window::{
-    BmoWindow, BmoWindowFlags, WindowTable, style, wf, WID_INVALID, MAX_WINDOWS,
-};
+use super::window::{style, wf, WID_INVALID};
 use super::message::{BmoMsg, BmoMsgKind};
-#[allow(unused_imports)]
-use super::handle::BmoHandle;
 use super::surface;
 use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
@@ -21,29 +12,40 @@ static DRAG_SLOT: AtomicU32 = AtomicU32::new(0);
 static DRAG_OFFSET_X: AtomicI32 = AtomicI32::new(0);
 static DRAG_OFFSET_Y: AtomicI32 = AtomicI32::new(0);
 
+static RESIZE_ACTIVE: AtomicBool = AtomicBool::new(false);
+static RESIZE_SLOT: AtomicU32 = AtomicU32::new(0);
+static RESIZE_EDGE: AtomicU32 = AtomicU32::new(0);
+static RESIZE_ORIG_X: AtomicI32 = AtomicI32::new(0);
+static RESIZE_ORIG_Y: AtomicI32 = AtomicI32::new(0);
+static RESIZE_ORIG_W: AtomicI32 = AtomicI32::new(0);
+static RESIZE_ORIG_H: AtomicI32 = AtomicI32::new(0);
+static RESIZE_MOUSE_X0: AtomicI32 = AtomicI32::new(0);
+static RESIZE_MOUSE_Y0: AtomicI32 = AtomicI32::new(0);
+
+const EDGE_NONE: u32 = 0;
+const EDGE_LEFT: u32 = 1;
+const EDGE_RIGHT: u32 = 2;
+const EDGE_TOP: u32 = 4;
+const EDGE_BOTTOM: u32 = 8;
+
+const EDGE_MARGIN: i32 = 6;
+
 pub fn create_desktop_window() -> u32 {
     let (fbw, fbh) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
     let s = super::state();
     s.lock();
     let slot = s.windows.alloc_window().expect("no free window slot");
-    {
-        if let Some(w) = s.windows.window_mut(slot) {
-            w.x = 0; w.y = 0;
-            w.w = fbw;
-            w.h = fbh;
-            w.style = 0;
-            w.style_ex = 0;
-            w.flags.0 = wf::VISIBLE | wf::ENABLED;
-            w.visible = true;
-            w.title[0] = b'D'; w.title[1] = b'e'; w.title[2] = b's';
-            w.title[3] = b'k'; w.title[4] = b't'; w.title[5] = b'o'; w.title[6] = b'p';
-            w.title_len = 7;
-            let surf = s.surfaces.alloc(
-                fbw as u16, fbh as u16,
-                surface::format::XRGB32, slot,
-            );
-            w.surface = surf.unwrap_or(0);
-        }
+    if let Some(w) = s.windows.window_mut(slot) {
+        w.x = 0; w.y = 0;
+        w.w = fbw; w.h = fbh;
+        w.style = 0;
+        w.flags.0 = wf::VISIBLE | wf::ENABLED;
+        w.visible = true;
+        let d = b"Desktop";
+        for i in 0..d.len() { w.title[i] = d[i]; }
+        w.title_len = 7;
+        let surf = s.surfaces.alloc(fbw as u16, fbh as u16, surface::format::XRGB32, slot);
+        w.surface = surf.unwrap_or(0);
     }
     s.windows.desktop = slot;
     s.windows.focus = slot;
@@ -78,6 +80,44 @@ pub fn hit_test(px: i32, py: i32) -> u32 {
     });
     s.unlock();
     found
+}
+
+pub fn edge_hit_test(px: i32, py: i32) -> u32 {
+    let s = super::state();
+    s.lock();
+    let mut edge = EDGE_NONE;
+    s.windows.z_foreach_top_down(|slot| {
+        if edge != EDGE_NONE { return; }
+        if let Some(w) = s.windows.window(slot) {
+            if !w.visible || slot == s.windows.desktop { return; }
+            if (w.style & style::WS_THICKFRAME) == 0 { return; }
+            if px >= w.x && py >= w.y && px < w.x + w.w && py < w.y + w.h {
+                if px < w.x + EDGE_MARGIN { edge |= EDGE_LEFT; }
+                if px >= w.x + w.w - EDGE_MARGIN { edge |= EDGE_RIGHT; }
+                if py < w.y + EDGE_MARGIN { edge |= EDGE_TOP; }
+                if py >= w.y + w.h - EDGE_MARGIN { edge |= EDGE_BOTTOM; }
+            }
+        }
+    });
+    s.unlock();
+    edge
+}
+
+pub fn edge_cursor(edge: u32) -> u8 {
+    let l = edge & EDGE_LEFT != 0;
+    let r = edge & EDGE_RIGHT != 0;
+    let t = edge & EDGE_TOP != 0;
+    let b = edge & EDGE_BOTTOM != 0;
+    if l && !r && !t && !b || r && !l && !t && !b {
+        super::cursor::id::SIZEWE
+    } else if t && !l && !r && !b || b && !l && !r && !t {
+        super::cursor::id::SIZENS
+    } else if (l || r) && (t || b) {
+        let nw_se = (l && t) || (r && b);
+        if nw_se { super::cursor::id::SIZENWSE } else { super::cursor::id::SIZENESW }
+    } else {
+        super::cursor::id::ARROW
+    }
 }
 
 pub fn raise_and_focus(slot: u32) {
@@ -155,6 +195,7 @@ pub fn end_drag() {
     if let Some(w) = s.windows.window_mut(slot) {
         w.in_sizemove = false;
         w.flags.clear(wf::SIZEMOVE);
+        w.dirty = true;
     }
     s.unlock();
     snap_to_edge(slot);
@@ -186,6 +227,79 @@ pub fn update_drag(mx: i32, my: i32) -> bool {
     if let Some(w) = s.windows.window_mut(slot) {
         w.x = mx - ox;
         w.y = my - oy;
+        w.dirty = true;
+    }
+    s.unlock();
+    true
+}
+
+pub fn start_resize(slot: u32, edge: u32, mx: i32, my: i32) {
+    let s = super::state();
+    s.lock();
+    if let Some(w) = s.windows.window_mut(slot) {
+        w.in_sizemove = true;
+        w.flags.set(wf::SIZEMOVE);
+        RESIZE_ORIG_X.store(w.x, Ordering::Relaxed);
+        RESIZE_ORIG_Y.store(w.y, Ordering::Relaxed);
+        RESIZE_ORIG_W.store(w.w, Ordering::Relaxed);
+        RESIZE_ORIG_H.store(w.h, Ordering::Relaxed);
+    }
+    s.unlock();
+    RESIZE_SLOT.store(slot, Ordering::Relaxed);
+    RESIZE_EDGE.store(edge, Ordering::Relaxed);
+    RESIZE_MOUSE_X0.store(mx, Ordering::Relaxed);
+    RESIZE_MOUSE_Y0.store(my, Ordering::Relaxed);
+    RESIZE_ACTIVE.store(true, Ordering::Relaxed);
+    super::cursor::set(edge_cursor(edge));
+}
+
+pub fn end_resize() {
+    if !RESIZE_ACTIVE.load(Ordering::Relaxed) { return; }
+    let slot = RESIZE_SLOT.load(Ordering::Relaxed);
+    RESIZE_ACTIVE.store(false, Ordering::Relaxed);
+    super::cursor::set(super::cursor::id::ARROW);
+    let s = super::state();
+    s.lock();
+    if let Some(w) = s.windows.window_mut(slot) {
+        w.in_sizemove = false;
+        w.flags.clear(wf::SIZEMOVE);
+        w.dirty = true;
+    }
+    s.unlock();
+}
+
+pub fn update_resize(mx: i32, my: i32) -> bool {
+    if !RESIZE_ACTIVE.load(Ordering::Relaxed) { return false; }
+    let slot = RESIZE_SLOT.load(Ordering::Relaxed);
+    let edge = RESIZE_EDGE.load(Ordering::Relaxed);
+    let ox = RESIZE_MOUSE_X0.load(Ordering::Relaxed);
+    let oy = RESIZE_MOUSE_Y0.load(Ordering::Relaxed);
+    let orig_x = RESIZE_ORIG_X.load(Ordering::Relaxed);
+    let orig_y = RESIZE_ORIG_Y.load(Ordering::Relaxed);
+    let orig_w = RESIZE_ORIG_W.load(Ordering::Relaxed);
+    let orig_h = RESIZE_ORIG_H.load(Ordering::Relaxed);
+    let dx = mx - ox;
+    let dy = my - oy;
+    let s = super::state();
+    s.lock();
+    if let Some(w) = s.windows.window_mut(slot) {
+        let min_w = 120;
+        let min_h = 80;
+        if edge & EDGE_LEFT != 0 {
+            w.x = orig_x + dx;
+            w.w = (orig_w - dx).max(min_w);
+        }
+        if edge & EDGE_RIGHT != 0 {
+            w.w = (orig_w + dx).max(min_w);
+        }
+        if edge & EDGE_TOP != 0 {
+            w.y = orig_y + dy;
+            w.h = (orig_h - dy).max(min_h);
+        }
+        if edge & EDGE_BOTTOM != 0 {
+            w.h = (orig_h + dy).max(min_h);
+        }
+        w.dirty = true;
     }
     s.unlock();
     true
@@ -194,19 +308,61 @@ pub fn update_drag(mx: i32, my: i32) -> bool {
 pub fn snap_to_edge(slot: u32) {
     let s = super::state();
     s.lock();
-    let (w, h) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
+    let (fw, fh) = unsafe { (crate::boot::info::FB_WIDTH as i32, crate::boot::info::FB_HEIGHT as i32) };
     if let Some(win) = s.windows.window_mut(slot) {
         if win.x < 16 { win.x = 0; }
         if win.y < 36 { win.y = 30; }
-        if w - (win.x + win.w) < 16 { win.x = w - win.w; }
-        if h - (win.y + win.h) < 16 { win.y = h - win.h; }
+        if fw - (win.x + win.w) < 16 { win.x = fw - win.w; }
+        if fh - (win.y + win.h) < 16 { win.y = fh - win.h; }
     }
     s.unlock();
 }
 
+pub fn alt_tab() {
+    let s = super::state();
+    s.lock();
+    let current_focus = s.windows.focus;
+    let count = s.windows.visible_count();
+    if count <= 1 { s.unlock(); return; }
+    let mut found_next = false;
+    let mut next_slot = WID_INVALID;
+    let mut start_search = false;
+    if current_focus == WID_INVALID || current_focus == s.windows.desktop {
+        start_search = true;
+    }
+    s.windows.z_foreach_top_down(|slot| {
+        if found_next || slot == s.windows.desktop { return; }
+        if start_search {
+            if let Some(w) = s.windows.window(slot) {
+                if w.visible && slot != s.windows.desktop {
+                    next_slot = slot;
+                    found_next = true;
+                }
+            }
+        } else if slot == current_focus {
+            start_search = true;
+        }
+    });
+    if !found_next {
+        s.windows.z_foreach_top_down(|slot| {
+            if found_next || slot == s.windows.desktop { return; }
+            if let Some(w) = s.windows.window(slot) {
+                if w.visible && slot != s.windows.desktop {
+                    next_slot = slot;
+                    found_next = true;
+                }
+            }
+        });
+    }
+    s.unlock();
+    if found_next && next_slot != WID_INVALID {
+        raise_and_focus(next_slot);
+    }
+}
+
 pub fn enter() -> ! {
     crate::bmo_core::diag::info("bmo_api_v2.wm", "Entering Ring 3 BMO API desktop");
-    crate::dev::console::serial_write("[bmo_api_v2] Entering desktop real (BMO API v2.0)\n");
+    crate::dev::console::serial_write("[bmo_api_v2] Entering desktop real (BMO API v3.0)\n");
 
     let _term = create_top_window("BMO Terminal", 60, 60, 720, 460);
     let _editor = create_top_window("Datos.md viewer", 120, 100, 620, 420);
@@ -255,6 +411,7 @@ fn process_message_queue() {
 }
 
 pub fn is_dragging() -> bool { DRAG_ACTIVE.load(Ordering::Relaxed) }
+pub fn is_resizing() -> bool { RESIZE_ACTIVE.load(Ordering::Relaxed) }
 
 fn create_top_window(title: &'static str, x: i32, y: i32, w: i32, h: i32) -> u32 {
     let st = super::state();

@@ -1,7 +1,7 @@
-//! v2.0 — Tabla de ventanas, clases, Z-order, parent/child tree.
+//! v3.0 — Tabla de ventanas, clases, Z-order doubly-linked, parent/child tree.
 //!
-//! `WINDOWS[256]` es la tabla plana. El árbol se mantiene con índices
-//! (no punteros) para que sea estable frente a movimientos de memoria.
+//! `WINDOWS[256]` es la tabla plana. Z-order es doubly-linked para O(1) remove.
+//! Dirty rect per-window para selective repaint.
 
 #![allow(dead_code)]
 
@@ -85,16 +85,17 @@ pub struct BmoWindow {
     pub style: u32,
     pub style_ex: u32,
     pub x: i32, pub y: i32, pub w: i32, pub h: i32,
-    pub cx: i32, pub cy: i32, pub cw: i32, pub ch: i32, // client rect
+    pub cx: i32, pub cy: i32, pub cw: i32, pub ch: i32,
     pub parent: u32,
     pub owner: u32,
     pub first_child: u32,
     pub next_sibling: u32,
     pub prev_sibling: u32,
-    pub z_order: i32,   // mayor = encima
-    pub prev_z: u32,    // singly-linked Z (top → next)
-    pub surface: u32,   // surface id
-    pub dc: u32,        // DC id (válido durante paint)
+    pub z_order: i32,
+    pub prev_z: u32,
+    pub next_z: u32,
+    pub surface: u32,
+    pub dc: u32,
     pub user_data: u64,
     pub last_paint_tick: u64,
     pub title: [u8; 64],
@@ -106,6 +107,11 @@ pub struct BmoWindow {
     pub captured: bool,
     pub erase_pending: bool,
     pub in_sizemove: bool,
+    pub dirty_x: i32,
+    pub dirty_y: i32,
+    pub dirty_w: i32,
+    pub dirty_h: i32,
+    pub has_dirty_rect: bool,
 }
 
 impl BmoWindow {
@@ -120,23 +126,57 @@ impl BmoWindow {
             cx: 0, cy: 0, cw: 0, ch: 0,
             parent: WID_INVALID, owner: WID_INVALID,
             first_child: WID_INVALID, next_sibling: WID_INVALID, prev_sibling: WID_INVALID,
-            z_order: 0, prev_z: WID_INVALID,
+            z_order: 0, prev_z: WID_INVALID, next_z: WID_INVALID,
             surface: 0, dc: 0,
             user_data: 0, last_paint_tick: 0,
             title: [0; 64], title_len: 0,
             dirty: true, visible: false, enabled: true, focus: false,
             captured: false, erase_pending: true, in_sizemove: false,
+            dirty_x: 0, dirty_y: 0, dirty_w: 0, dirty_h: 0, has_dirty_rect: false,
         }
+    }
+
+    pub fn mark_dirty(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        if !self.has_dirty_rect {
+            self.dirty_x = x;
+            self.dirty_y = y;
+            self.dirty_w = w;
+            self.dirty_h = h;
+            self.has_dirty_rect = true;
+        } else {
+            let nx = self.dirty_x.min(x);
+            let ny = self.dirty_y.min(y);
+            let nx2 = (self.dirty_x + self.dirty_w).max(x + w);
+            let ny2 = (self.dirty_y + self.dirty_h).max(y + h);
+            self.dirty_x = nx;
+            self.dirty_y = ny;
+            self.dirty_w = nx2 - nx;
+            self.dirty_h = ny2 - ny;
+        }
+        self.dirty = true;
+    }
+
+    pub fn clear_dirty(&mut self) {
+        self.dirty = false;
+        self.has_dirty_rect = false;
+    }
+
+    pub fn title_height(&self) -> i32 {
+        if self.style & style::WS_CAPTION != 0 { 36 } else { 0 }
+    }
+
+    pub fn client_rect(&self) -> (i32, i32, i32, i32) {
+        let th = self.title_height();
+        (self.x, self.y + th, self.w, self.h - th)
     }
 }
 
-/// Descriptor de clase — incluye RIP del wnd_proc en Ring 3.
 #[derive(Debug, Clone, Copy)]
 pub struct BmoClass {
     pub used: bool,
     pub id: u16,
-    pub magic: u32,             // BMO_WND_PROC_MAGIC cuando está "live"
-    pub wnd_proc: u64,          // Ring 3 RIP del wnd_proc (0 = default kernel-side)
+    pub magic: u32,
+    pub wnd_proc: u64,
     pub style: u32,
     pub style_ex: u32,
     pub extra_bytes: u16,
@@ -162,8 +202,8 @@ pub type BmoClassRef = u16;
 pub struct WindowTable {
     pub windows: [BmoWindow; MAX_WINDOWS],
     pub classes: [BmoClass; MAX_CLASSES],
-    /// Singly-linked list top→bottom: head es la ventana más alta.
     pub z_head: u32,
+    pub z_tail: u32,
     pub count: u32,
     pub focus: u32,
     pub capture: u32,
@@ -181,7 +221,7 @@ impl WindowTable {
         Self {
             windows: [WIN; MAX_WINDOWS],
             classes: [CLS; MAX_CLASSES],
-            z_head: WID_INVALID,
+            z_head: WID_INVALID, z_tail: WID_INVALID,
             count: 0,
             focus: WID_INVALID, capture: WID_INVALID, active: WID_INVALID,
             desktop: WID_INVALID, modal: WID_INVALID,
@@ -193,6 +233,7 @@ impl WindowTable {
         for w in self.windows.iter_mut() { *w = BmoWindow::empty(); }
         for c in self.classes.iter_mut() { *c = BmoClass::empty(); }
         self.z_head = WID_INVALID;
+        self.z_tail = WID_INVALID;
         self.count = 0;
         self.focus = WID_INVALID;
         self.capture = WID_INVALID;
@@ -203,13 +244,12 @@ impl WindowTable {
         self.next_class_id = 1;
     }
 
-    /// Reserva un slot de clase. Devuelve el class_id.
     pub fn alloc_class(&mut self) -> Option<u16> {
         for (i, c) in self.classes.iter_mut().enumerate() {
             if !c.used {
                 c.used = true;
                 c.id = self.next_class_id;
-                c.magic = 0xB17D; // BMO_WND_PROC_MAGIC
+                c.magic = 0xB17D;
                 self.next_class_id = self.next_class_id.wrapping_add(1);
                 return Some(i as u16);
             }
@@ -224,7 +264,6 @@ impl WindowTable {
         self.classes.iter_mut().find(|c| c.used && c.id == id)
     }
 
-    /// Reserva un slot de ventana. Devuelve el slot index.
     pub fn alloc_window(&mut self) -> Option<u32> {
         for (i, w) in self.windows.iter_mut().enumerate() {
             if !w.used {
@@ -237,12 +276,14 @@ impl WindowTable {
                 w.next_sibling = WID_INVALID;
                 w.prev_sibling = WID_INVALID;
                 w.prev_z = WID_INVALID;
+                w.next_z = WID_INVALID;
                 w.flags = BmoWindowFlags::EMPTY;
                 w.dirty = true;
                 w.visible = false;
                 w.enabled = true;
                 w.erase_pending = true;
                 w.in_sizemove = false;
+                w.has_dirty_rect = false;
                 self.next_id = self.next_id.wrapping_add(1);
                 self.count += 1;
                 return Some(i as u32);
@@ -270,44 +311,103 @@ impl WindowTable {
         self.windows.get_mut(slot as usize).and_then(|w| if w.used { Some(w) } else { None })
     }
 
-    /// Inserta la ventana en el tope de la Z-list. No hace coalesce
-    /// de duplicados — el caller debe quitar primero si la ventana ya
-    /// está en la lista.
     pub fn z_push_top(&mut self, slot: u32) {
-        // Copiamos z_head primero para evitar el borrow conflictivo.
-        let head = self.z_head;
+        let old_head = self.z_head;
         if let Some(w) = self.window_mut(slot) {
-            w.prev_z = head;
+            w.prev_z = WID_INVALID;
+            w.next_z = old_head;
+        }
+        if old_head != WID_INVALID {
+            if let Some(hw) = self.window_mut(old_head) {
+                hw.prev_z = slot;
+            }
         }
         self.z_head = slot;
-    }
-
-    /// Quita la ventana de la Z-list (no la libera).
-    pub fn z_remove(&mut self, slot: u32) {
-        let mut prev = WID_INVALID;
-        let mut cur = self.z_head;
-        while cur != WID_INVALID {
-            if cur == slot {
-                let next = self.windows[cur as usize].prev_z;
-                if prev == WID_INVALID {
-                    self.z_head = next;
-                } else {
-                    self.windows[prev as usize].prev_z = next;
-                }
-                self.windows[cur as usize].prev_z = WID_INVALID;
-                return;
-            }
-            prev = cur;
-            cur = self.windows[cur as usize].prev_z;
+        if self.z_tail == WID_INVALID {
+            self.z_tail = slot;
         }
     }
 
-    /// Itera la Z-list de top a bottom.
+    pub fn z_remove(&mut self, slot: u32) {
+        let prev = self.windows.get(slot as usize).map(|w| w.prev_z).unwrap_or(WID_INVALID);
+        let next = self.windows.get(slot as usize).map(|w| w.next_z).unwrap_or(WID_INVALID);
+
+        if prev != WID_INVALID {
+            if let Some(pw) = self.windows.get_mut(prev as usize) {
+                pw.next_z = next;
+            }
+        } else {
+            self.z_head = next;
+        }
+
+        if next != WID_INVALID {
+            if let Some(nw) = self.windows.get_mut(next as usize) {
+                nw.prev_z = prev;
+            }
+        } else {
+            self.z_tail = prev;
+        }
+
+        if let Some(w) = self.windows.get_mut(slot as usize) {
+            w.prev_z = WID_INVALID;
+            w.next_z = WID_INVALID;
+        }
+    }
+
     pub fn z_foreach_top_down<F: FnMut(u32)>(&self, mut f: F) {
         let mut cur = self.z_head;
         while cur != WID_INVALID {
             f(cur);
-            cur = self.windows[cur as usize].prev_z;
+            cur = self.windows[cur as usize].next_z;
         }
+    }
+
+    pub fn z_count(&self) -> u32 {
+        let mut count = 0u32;
+        let mut cur = self.z_head;
+        while cur != WID_INVALID {
+            count += 1;
+            cur = self.windows[cur as usize].next_z;
+        }
+        count
+    }
+
+    pub fn z_above(&self, slot: u32) -> Option<u32> {
+        self.windows.get(slot as usize).and_then(|w| {
+            if w.next_z != WID_INVALID { Some(w.next_z) } else { None }
+        })
+    }
+
+    pub fn z_below(&self, slot: u32) -> Option<u32> {
+        self.windows.get(slot as usize).and_then(|w| {
+            if w.prev_z != WID_INVALID { Some(w.prev_z) } else { None }
+        })
+    }
+
+    pub fn visible_count(&self) -> u32 {
+        let mut count = 0u32;
+        let mut cur = self.z_head;
+        while cur != WID_INVALID {
+            if let Some(w) = self.windows.get(cur as usize) {
+                if w.used && w.visible { count += 1; }
+                cur = w.next_z;
+            } else { break; }
+        }
+        count
+    }
+
+    pub fn nth_visible(&self, n: u32) -> Option<u32> {
+        let mut count = 0u32;
+        let mut cur = self.z_head;
+        while cur != WID_INVALID {
+            if let Some(w) = self.windows.get(cur as usize) {
+                if w.used && w.visible {
+                    if count == n { return Some(cur); }
+                    count += 1;
+                }
+                cur = w.next_z;
+            } else { break; }
+        }
+        None
     }
 }

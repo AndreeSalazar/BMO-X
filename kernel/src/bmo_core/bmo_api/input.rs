@@ -1,9 +1,6 @@
-//! v2.0 — Input: PS/2 keyboard + mouse + USB HID → BMO events.
+//! v3.0 — Input: PS/2 keyboard + mouse → BMO events.
 //!
-//! En v2.0 los eventos se generan desde el poll principal en `wm::enter`
-//! (no hay un thread dedicado todavía). La traducción de scancodes PS/2
-//! a BMO_MSG_KEYDOWN/KEYUP/CHAR se hace aquí.
-//! Estado protegido con AtomicBool.
+//! Alt-Tab cycling, resize edge detection, complete VK mapping.
 
 #![allow(dead_code)]
 
@@ -28,6 +25,8 @@ static ESC_LATCH: AtomicBool = AtomicBool::new(false);
 pub fn shift_held() -> bool { KBD_LSHIFT.load(Ordering::Relaxed) || KBD_RSHIFT.load(Ordering::Relaxed) }
 #[inline]
 pub fn caps_on() -> bool { KBD_CAPS.load(Ordering::Relaxed) }
+#[inline]
+pub fn alt_held() -> bool { KBD_ALT.load(Ordering::Relaxed) }
 
 pub fn mouse_x() -> i32 { MOUSE_X.load(Ordering::Relaxed) }
 pub fn mouse_y() -> i32 { MOUSE_Y.load(Ordering::Relaxed) }
@@ -48,7 +47,7 @@ pub fn translate_scancode(sc_raw: u8) -> Option<(BmoMsgKind, u8)> {
     }
     let kind = if released { BmoMsgKind::KeyUp } else { BmoMsgKind::KeyDown };
     let vk = match sc {
-        0x01 => 0x01, // ESC
+        0x01 => 0x1B, // ESC
         0x0E => 0x08, // Backspace
         0x0F => 0x09, // Tab
         0x1C => 0x0D, // Enter
@@ -63,18 +62,18 @@ pub fn translate_scancode(sc_raw: u8) -> Option<(BmoMsgKind, u8)> {
         0x51 => 0x22, // PageDown
         0x52 => 0x2D, // Insert
         0x53 => 0x2E, // Delete
-        0x3B => 0x41, // F1
-        0x3C => 0x42, // F2
-        0x3D => 0x43, // F3
-        0x3E => 0x44, // F4
-        0x3F => 0x45, // F5
-        0x40 => 0x46, // F6
-        0x41 => 0x47, // F7
-        0x42 => 0x48, // F8
-        0x43 => 0x49, // F9
-        0x44 => 0x4A, // F10
-        0x57 => 0x4B, // F11
-        0x58 => 0x4C, // F12
+        0x3B => 0x70, // F1
+        0x3C => 0x71, // F2
+        0x3D => 0x72, // F3
+        0x3E => 0x73, // F4
+        0x3F => 0x74, // F5
+        0x40 => 0x75, // F6
+        0x41 => 0x76, // F7
+        0x42 => 0x77, // F8
+        0x43 => 0x78, // F9
+        0x44 => 0x79, // F10
+        0x57 => 0x7A, // F11
+        0x58 => 0x7B, // F12
         0x02 => b'1', 0x03 => b'2', 0x04 => b'3', 0x05 => b'4',
         0x06 => b'5', 0x07 => b'6', 0x08 => b'7', 0x09 => b'8',
         0x0A => b'9', 0x0B => b'0',
@@ -99,6 +98,11 @@ pub fn poll_and_dispatch() -> u32 {
         let sc = crate::bmo_core::desktop::poll_key();
         if sc == 0 { break; }
         if let Some((kind, vk)) = translate_scancode(sc) {
+            if vk == 0x09 && kind == BmoMsgKind::KeyDown && alt_held() {
+                super::wm::alt_tab();
+                dispatched += 1;
+                continue;
+            }
             post_to_focused(kind, vk as u64, 0);
             dispatched += 1;
         }
@@ -111,30 +115,71 @@ pub fn poll_and_dispatch() -> u32 {
     let old_y = MOUSE_Y.load(Ordering::Relaxed);
     MOUSE_X.store(mx, Ordering::Relaxed);
     MOUSE_Y.store(my, Ordering::Relaxed);
+
+    let l_was_down = MOUSE_L.load(Ordering::Relaxed);
+    let new_l = (btns & 1) != 0;
+    let new_r = (btns & 2) != 0;
+    let new_m = (btns & 4) != 0;
+
+    if super::wm::is_resizing() {
+        if !new_l {
+            super::wm::end_resize();
+        } else {
+            super::wm::update_resize(mx, my);
+        }
+        return dispatched;
+    }
+
+    if super::wm::is_dragging() {
+        if !new_l {
+            super::wm::end_drag();
+        } else {
+            super::wm::update_drag(mx, my);
+        }
+        return dispatched;
+    }
+
     if old_x != mx || old_y != my {
+        let target = {
+            let s = super::state();
+            s.lock();
+            let t = s.windows.focus;
+            s.unlock();
+            t
+        };
         let m = BmoMsg {
             kind: BmoMsgKind::MouseMove as u16,
-            target: focused_wid(),
+            target: if target == WID_INVALID { 0 } else { target as u16 },
             source: 0, _pad0: 0,
             timestamp: 0, wparam: 0, lparam: 0,
             pt_x: mx, pt_y: my,
         };
         post_msg(m);
     }
-    let new_l = (btns & 1) != 0;
-    let new_r = (btns & 2) != 0;
-    let new_m = (btns & 4) != 0;
-    if new_l != MOUSE_L.load(Ordering::Relaxed) {
+
+    if new_l != l_was_down {
         MOUSE_L.store(new_l, Ordering::Relaxed);
-        let kind = if new_l { BmoMsgKind::LButtonDown } else { BmoMsgKind::LButtonUp };
-        let m = BmoMsg {
-            kind: kind as u16, target: focused_wid(),
-            source: 0, _pad0: 0, timestamp: 0,
-            wparam: 0, lparam: 0,
-            pt_x: mx, pt_y: my,
-        };
-        post_msg(m);
+        if new_l {
+            let hit = super::wm::hit_test(mx, my);
+            let edge = super::wm::edge_hit_test(mx, my);
+            if hit != WID_INVALID && edge != 0 {
+                super::wm::start_resize(hit, edge, mx, my);
+            } else if hit != WID_INVALID {
+                super::wm::raise_and_focus(hit);
+                super::wm::start_drag(hit, mx, my);
+            }
+        } else {
+            let kind = BmoMsgKind::LButtonUp;
+            let m = BmoMsg {
+                kind: kind as u16, target: focused_wid(),
+                source: 0, _pad0: 0, timestamp: 0,
+                wparam: 0, lparam: 0,
+                pt_x: mx, pt_y: my,
+            };
+            post_msg(m);
+        }
     }
+
     if new_r != MOUSE_R.load(Ordering::Relaxed) {
         MOUSE_R.store(new_r, Ordering::Relaxed);
         let kind = if new_r { BmoMsgKind::RButtonDown } else { BmoMsgKind::RButtonUp };
@@ -146,6 +191,7 @@ pub fn poll_and_dispatch() -> u32 {
         };
         post_msg(m);
     }
+
     if new_m != MOUSE_M.load(Ordering::Relaxed) {
         MOUSE_M.store(new_m, Ordering::Relaxed);
         let kind = if new_m { BmoMsgKind::MButtonDown } else { BmoMsgKind::MButtonUp };
