@@ -9,11 +9,13 @@ use alloc::vec::Vec;
 use crate::bmo_gpu::BxResult;
 use super::traits::{
     Language, LanguagePlugin, RuntimeConfig, LanguageFeatures, CompileResult,
+    LanguageAdapter,
 };
 
-/// Plugin registry - manages all registered language plugins
+/// Plugin registry - manages all registered language plugins and adapters
 pub struct LanguageRegistry {
     plugins: Vec<Box<dyn LanguagePlugin>>,
+    adapters: Vec<Box<dyn LanguageAdapter>>,
     active_language: Option<Language>,
 }
 
@@ -22,6 +24,7 @@ impl LanguageRegistry {
     pub fn new() -> Self {
         Self {
             plugins: Vec::new(),
+            adapters: Vec::new(),
             active_language: None,
         }
     }
@@ -151,6 +154,52 @@ impl LanguageRegistry {
     /// Get all supported extensions
     pub fn supported_extensions(&self) -> Vec<&'static str> {
         self.plugins.iter().map(|p| p.language().file_extension()).collect()
+    }
+
+    // ── LanguageAdapter methods (compile to native x86-64) ──────────
+
+    /// Register a language adapter (native compiler, no VM).
+    pub fn register_adapter(&mut self, adapter: Box<dyn LanguageAdapter>) {
+        self.adapters.push(adapter);
+    }
+
+    /// Find adapter by name.
+    pub fn get_adapter(&self, name: &str) -> Option<&dyn LanguageAdapter> {
+        self.adapters.iter().find(|a| a.name() == name).map(|a| a.as_ref())
+    }
+
+    /// Find adapter by file extension.
+    pub fn get_adapter_by_extension(&self, ext: &str) -> Option<&dyn LanguageAdapter> {
+        self.adapters.iter().find(|a| a.extensions().iter().any(|e| *e == ext)).map(|a| a.as_ref())
+    }
+
+    /// Auto-detect adapter from source content.
+    pub fn detect_adapter(&self, source: &[u8]) -> Option<&dyn LanguageAdapter> {
+        self.adapters.iter().find(|a| a.can_compile(source)).map(|a| a.as_ref())
+    }
+
+    /// Compile source to native x86-64 using auto-detected adapter.
+    pub fn compile_native(&self, source: &[u8]) -> Result<Vec<u8>, super::traits::AdapterError> {
+        if let Some(adapter) = self.detect_adapter(source) {
+            return adapter.compile_native(source);
+        }
+        Err(super::traits::AdapterError::NotSupported)
+    }
+
+    /// Compile using a specific named adapter.
+    pub fn compile_native_as(&self, name: &str, source: &[u8]) -> Result<Vec<u8>, super::traits::AdapterError> {
+        if let Some(adapter) = self.get_adapter(name) {
+            return adapter.compile_native(source);
+        }
+        Err(super::traits::AdapterError::NotSupported)
+    }
+
+    /// Number of registered adapters.
+    pub fn adapter_count(&self) -> usize { self.adapters.len() }
+
+    /// List all adapter names.
+    pub fn adapter_names(&self) -> Vec<&str> {
+        self.adapters.iter().map(|a| a.name()).collect()
     }
 }
 

@@ -30,6 +30,7 @@ pub mod pm;
 pub mod emit;
 pub mod vm;
 pub mod aot;
+pub mod marshal;
 pub mod plugins;
 
 use crate::bmo_gpu::BxResult;

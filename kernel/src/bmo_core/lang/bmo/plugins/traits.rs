@@ -419,3 +419,87 @@ pub enum AbiType {
     Struct(u32),
     Array(u32, u32),
 }
+
+// ── LanguageAdapter: compile to native x86-64 ─────────────────────────
+
+/// GC strategy a language requires.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcStrategy {
+    None,
+    ReferenceCounting,
+    MarkSweep,
+    Generational,
+    Copying,
+    Concurrent,
+    Region,
+}
+
+/// Memory model of a language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryModel2 {
+    Manual,
+    ReferenceCounted,
+    GarbageCollected,
+    Ownership,
+    Hybrid,
+}
+
+/// Language capabilities.
+#[derive(Debug, Clone, Copy)]
+pub struct LangCapabilities {
+    pub has_pointers: bool,
+    pub has_closures: bool,
+    pub has_threads: bool,
+    pub has_async: bool,
+    pub has_generics: bool,
+    pub has_classes: bool,
+}
+
+impl LangCapabilities {
+    pub const MINIMAL: Self = Self {
+        has_pointers: false, has_closures: false, has_threads: false,
+        has_async: false, has_generics: false, has_classes: false,
+    };
+    pub const FULL: Self = Self {
+        has_pointers: true, has_closures: true, has_threads: true,
+        has_async: true, has_generics: true, has_classes: true,
+    };
+}
+
+/// Language adapter for native compilation (no VM, no bytecode).
+///
+/// Implement this to integrate any language with BMO Runtime.
+/// The runtime calls `compile_native()` to get x86-64 machine code.
+pub trait LanguageAdapter: Send + Sync {
+    fn name(&self) -> &str;
+    fn version(&self) -> &str;
+    fn extensions(&self) -> &[&str];
+    fn compile_native(&self, source: &[u8]) -> Result<alloc::vec::Vec<u8>, AdapterError>;
+    fn memory_model(&self) -> MemoryModel2 { MemoryModel2::Manual }
+    fn gc_strategy(&self) -> GcStrategy { GcStrategy::None }
+    fn capabilities(&self) -> LangCapabilities { LangCapabilities::MINIMAL }
+    fn can_compile(&self, source: &[u8]) -> bool;
+    fn validate(&self, _source: &[u8]) -> bool { true }
+}
+
+/// Error from LanguageAdapter compilation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdapterError {
+    SyntaxError,
+    TypeError,
+    ImportError,
+    InternalError,
+    NotSupported,
+}
+
+impl AdapterError {
+    pub fn message(&self) -> &'static str {
+        match self {
+            AdapterError::SyntaxError   => "syntax error",
+            AdapterError::TypeError     => "type error",
+            AdapterError::ImportError   => "import error",
+            AdapterError::InternalError => "internal compiler error",
+            AdapterError::NotSupported  => "not supported",
+        }
+    }
+}
