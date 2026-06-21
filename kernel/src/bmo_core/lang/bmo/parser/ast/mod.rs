@@ -12,7 +12,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::bmo_gpu::{BxError, BxResult};
-use super::lexer::Token;
+use crate::bmo_core::lang::bmo::lexer::Token;
 
 // ── AST ──────────────────────────────────────────────────────────────
 

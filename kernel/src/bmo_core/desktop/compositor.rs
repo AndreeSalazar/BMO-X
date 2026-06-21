@@ -2,103 +2,103 @@
 //!
 //! Tras Sesión 20 todo el render del escritorio vive en Ring 0
 //! (`desktop/render.rs`). El proceso Ring 3 es minúsculo (~50 bytes)
-//! y sólo orquesta el frame loop:
+//! y sólo orquesta el frame loop.
 //!
-//! ```bmo (pseudo)
-//! beep 660 80                         ; bienvenida
-//! mientras 1 {
-//!     syscall DesktopFrame             ; 0x65 (Ring 0 dibuja todo)
-//!     syscall NanoSleep 16_000_000     ; 0x51
-//!     syscall KeyPoll                  ; 0x70 → rax
-//!     si rax == 0x01: salir            ; ESC
-//! }
-//! ```
-//!
-//! El payload se ensambla con `bmo_gpu::bmoasm::Emitter`.
+//! El payload se ensambla directamente con bytes x86-64.
+
+#![allow(dead_code)]
 
 extern crate alloc;
 
-use crate::bmo_core::lang::bmo::emit::{Emitter, Reg64};
+use alloc::vec::Vec;
 
 const SC_ESC: u8 = 0x01;
 
-const SYS_EXIT:         u64 = 0x00;
-const SYS_NSLEEP:       u64 = 0x51;
-const SYS_DESKTOP_FRAME:u64 = 0x65;
-const SYS_KEYPOLL:      u64 = 0x70;
-const SYS_BEEP:         u64 = 0x80;
+const SYS_EXIT:          u64 = 0x00;
+const SYS_NSLEEP:        u64 = 0x51;
+const SYS_DESKTOP_FRAME: u64 = 0x65;
+const SYS_KEYPOLL:       u64 = 0x70;
+const SYS_BEEP:          u64 = 0x80;
 
-// ── Helpers de encoding x86-64 (faltantes en bmoasm::Emitter S15) ───
-
-fn cmp_rax_imm32(e: &mut Emitter, imm: i32) {
-    e.emit_raw(&[0x48, 0x3D]);
-    e.emit_raw(&imm.to_le_bytes());
+fn emit_mov_rax_imm64(buf: &mut Vec<u8>, imm: u64) {
+    buf.extend_from_slice(&[0x48, 0xB8]);
+    buf.extend_from_slice(&imm.to_le_bytes());
 }
 
-fn jmp_rel32(e: &mut Emitter, rel: i32) {
-    e.emit_raw(&[0xE9]);
-    e.emit_raw(&rel.to_le_bytes());
+fn emit_mov_rdi_imm64(buf: &mut Vec<u8>, imm: u64) {
+    buf.extend_from_slice(&[0x48, 0xBF]);
+    buf.extend_from_slice(&imm.to_le_bytes());
 }
 
-// ── Macro-helpers ───────────────────────────────────────────────────
-
-fn sys0(e: &mut Emitter, nr: u64) {
-    e.mov_reg_imm64(Reg64::Rax, nr);
-    e.syscall();
+fn emit_mov_rsi_imm64(buf: &mut Vec<u8>, imm: u64) {
+    buf.extend_from_slice(&[0x48, 0xBE]);
+    buf.extend_from_slice(&imm.to_le_bytes());
 }
 
-fn sys1(e: &mut Emitter, nr: u64, a0: u64) {
-    e.mov_reg_imm64(Reg64::Rax, nr);
-    e.mov_reg_imm64(Reg64::Rdi, a0);
-    e.syscall();
+fn emit_syscall(buf: &mut Vec<u8>) {
+    buf.extend_from_slice(&[0x0F, 0x05]);
 }
 
-fn sys2(e: &mut Emitter, nr: u64, a0: u64, a1: u64) {
-    e.mov_reg_imm64(Reg64::Rax, nr);
-    e.mov_reg_imm64(Reg64::Rdi, a0);
-    e.mov_reg_imm64(Reg64::Rsi, a1);
-    e.syscall();
+fn emit_cmp_rax_imm32(buf: &mut Vec<u8>, imm: i32) {
+    buf.extend_from_slice(&[0x48, 0x3D]);
+    buf.extend_from_slice(&imm.to_le_bytes());
+}
+
+fn emit_jne_rel8(buf: &mut Vec<u8>, _placeholder: u8) {
+    buf.extend_from_slice(&[0x75, _placeholder]);
+}
+
+fn emit_jmp_rel32(buf: &mut Vec<u8>, rel: i32) {
+    buf.extend_from_slice(&[0xE9]);
+    buf.extend_from_slice(&rel.to_le_bytes());
+}
+
+fn emit_sys0(buf: &mut Vec<u8>, nr: u64) {
+    emit_mov_rax_imm64(buf, nr);
+    emit_syscall(buf);
+}
+
+fn emit_sys1(buf: &mut Vec<u8>, nr: u64, a0: u64) {
+    emit_mov_rax_imm64(buf, nr);
+    emit_mov_rdi_imm64(buf, a0);
+    emit_syscall(buf);
+}
+
+fn emit_sys2(buf: &mut Vec<u8>, nr: u64, a0: u64, a1: u64) {
+    emit_mov_rax_imm64(buf, nr);
+    emit_mov_rdi_imm64(buf, a0);
+    emit_mov_rsi_imm64(buf, a1);
+    emit_syscall(buf);
 }
 
 /// Construye el payload del compositor en `code_buf`. Devuelve
 /// `(entry_offset, total_size)`.
 pub fn build_compositor(code_buf: &mut [u8], _base: u64) -> (usize, usize) {
-    let mut e = Emitter::new();
+    let mut code = Vec::new();
 
-    // Beep de bienvenida (660 Hz, 80 ms).
-    sys2(&mut e, SYS_BEEP, 660, 80);
+    emit_sys2(&mut code, SYS_BEEP, 660, 80);
 
-    // ── ETIQUETA: .frame ─────────────────────────────────────────────
-    let frame_start = e.here();
+    let frame_start = code.len();
 
-    // 1. Render Ring 0 hace todo (wallpaper, status bar, ventanas, dock, cursor).
-    sys0(&mut e, SYS_DESKTOP_FRAME);
+    emit_sys0(&mut code, SYS_DESKTOP_FRAME);
+    emit_sys1(&mut code, SYS_NSLEEP, 16_000_000);
+    emit_sys0(&mut code, SYS_KEYPOLL);
+    emit_cmp_rax_imm32(&mut code, SC_ESC as i32);
 
-    // 2. Dormir ~16 ms (≈60 FPS).
-    sys1(&mut e, SYS_NSLEEP, 16_000_000);
+    let jne_off = code.len();
+    emit_jne_rel8(&mut code, 0);
 
-    // 3. Pollear teclado.
-    sys0(&mut e, SYS_KEYPOLL);
-    cmp_rax_imm32(&mut e, SC_ESC as i32);
+    emit_sys0(&mut code, SYS_EXIT);
 
-    // 4. Si NO es ESC → jne rel8 a `loop_back`.
-    let jne_off = e.here();
-    e.emit_raw(&[0x75, 0]); // placeholder
-
-    // 5. Si ES ESC → ProcessExit (sale).
-    sys0(&mut e, SYS_EXIT);
-
-    // loop_back: vuelve al inicio del frame
-    let loop_back = e.here();
+    let loop_back = code.len();
     let rel8 = (loop_back as isize) - (jne_off as isize + 2);
-    e.bytes[jne_off + 1] = (rel8 as i8) as u8;
+    code[jne_off + 1] = (rel8 as i8) as u8;
 
-    // jmp rel32 → frame_start
-    let here_after_jmp = e.here() + 5;
+    let here_after_jmp = code.len() + 5;
     let frame_rel = (frame_start as isize) - (here_after_jmp as isize);
-    jmp_rel32(&mut e, frame_rel as i32);
+    emit_jmp_rel32(&mut code, frame_rel as i32);
 
-    let total = e.bytes.len();
-    code_buf[..total].copy_from_slice(&e.bytes);
+    let total = code.len();
+    code_buf[..total].copy_from_slice(&code);
     (0, total)
 }

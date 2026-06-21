@@ -360,22 +360,18 @@ pub fn compile_c(source: &[u8]) -> BxResult<crate::bmo_core::lang::bmo::parser::
 
 /// Top-level C → native code entry point (full pipeline).
 ///
-/// Pipeline: C → ÑEXO AST → sema → codegen → BMO assembly syntax (legacy) AST → traductor → bytes.
+/// Pipeline: C → BMO AST → sema → codegen → native bytes.
 pub fn compile_c_to_native(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     use crate::bmo_core::lang::bmo::{sema, codegen};
 
-    // 1. C source → ÑEXO AST
+    // 1. C source → BMO AST
     let ast = compile_c(source)?;
 
     // 2. Semantic analysis
     let sema_check = sema::Sema::new();
     sema_check.check(&ast)?;
 
-    // 3. ÑEXO AST → BMO assembly syntax (legacy) AST
+    // 3. BMO AST → native bytes
     let mut cg = codegen::Codegen::new();
-    let mut bmo_ast = cg.emit(&ast)?;
-
-    // 4. BMO assembly syntax (legacy) AST → native bytes
-    let mut traductor = crate::bmo_core::lang::bmo::traductor::Traductor::new();
-    traductor.traducir_ast(&mut bmo_ast)
+    cg.emit(&ast)
 }
