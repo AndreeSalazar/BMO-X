@@ -1,78 +1,94 @@
-//! v1.7.4 — BMO Core coordinator.
+//! v1.8.8 — BMO Core coordinator.
 //!
-//! Coordina la inicialización de todos los subsistemas de BMO Core.
-//! NO contiene lógica de aplicación — sólo:
-//!   1. diag (logging + overlay)
-//!   2. ui (framebuffer + font)
-//!   3. lang (BMO assembly syntax (legacy) + BMO)
-//!   4. fs (FAT32 + BMO-FS + ramdisk)
-//!   5. sandbox (capabilities)
-//!   6. barex (compat + shaders)
-//!   7. bmo_api (windowing + 256 syscalls)
-//!   8. desktop (welcome + render)
+//! Coordina la inicialización y entrada de todos los subsistemas de BMO Core.
 //!
-//! Después de init_bmo_core(), `enter()` arranca el desktop welcome
-//! y se queda en el event loop.
+//! ## Orden de inicialización (v1.8.8)
 //!
-//! Punto de entrada: llamado desde `ring0::ring_0::dispatch_phase5()`.
-//! Esta función NO retorna.
+//! 1. **Cabina**    (cabina)         — El Ojo: log, telemetry, overlay
+//! 2. **Defense**   (defense)        — El Escudo: ByteDefender (BEF scanner)
+//! 3. **TimeBack**  (timeback)       — El Reloj: checkpoints + journal
+//! 4. **UI**        (ui)             — framebuffer + 8x16 font
+//! 5. **FS**        (fs)             — FAT32 + ramdisk + BMO-FS
+//! 6. **GPU**       (bmo_gpu)        — GPU bridge (RDNA4 skeleton)
+//! 7. **BEF**       (bef)            — BEF format + loaders
+//! 8. **BMO API**   (bmo_api)        — 256 syscalls + WM + paint
+//! 9. **Desktop**   (desktop)        — welcome + render + dock
+//!
+//! ## Punto de entrada
+//!
+//! `init()` se llama desde `ring0::coordinator::main` después de las 5 fases
+//! de boot (p0..p4). `enter()` se llama al final del coordinator y NO retorna.
+//!
+//! ## Hand-offs
+//!
+//! ```text
+//! Ring 0 boot
+//!     │
+//!     ▼
+//! ring0::coordinator::main
+//!     │
+//!     ├─► vendor::amd::cpu::zen3::init_fastos_cpu
+//!     ├─► boot::phases::run_all(p0..p4)
+//!     ├─► bmo_core::init()              ← este archivo
+//!     └─► bmo_core::enter()             ← welcome + event loop (no return)
+//! ```
 
-use crate::bmo_gpu;
 use super::bmo_api;
 use super::bef;
 use super::desktop;
-use super::diag;
 use super::fs;
 use super::gustos;
+use crate::bmo_gpu;
 
 /// Inicializa todos los subsistemas de BMO Core.
 ///
-/// Llamar desde `ring0::ring_0::dispatch_phase5()` antes de `enter()`.
+/// Esta función **retorna** y debe llamarse una sola vez al boot,
+/// después de las fases p0..p4 de Ring 0.
 pub fn init() {
-    // 1) diag: logging + overlay + telemetry. Sin esto no se ven
-    //    mensajes en pantalla.
-    diag::init();
+    // ── Trilogía: los 3 mosqueteros (hermanos, no bmo_core) ────────
+    // Cabina  = El Ojo   (observación)
+    // Defense = El Escudo (protección)
+    // TimeBack= El Reloj (rollback)
+    crate::cabina::init();
+    crate::defense::init();
+    crate::timeback::init();
+    cabina_mark_ready();
 
-    // 2) ui: framebuffer + 8x16 font. Las primitivas draw_text, fill_rect
-    //    etc. están aquí.
-    //    (No requiere init explícito — es stateless.)
-
-    // 3) lang: BMO assembly syntax (legacy) (compiler) + BMO (CLI + runtime).
-    //    (No requiere init explícito — son compilers.)
-
-    // 4) fs: FAT32 + BMO-FS + ramdisk.
+    // 4) ui: framebuffer + 8x16 font. (stateless, no requiere init.)
+    // 5) fs: FAT32 + BMO-FS + ramdisk.
     fs::init();
 
-    // 5) sandbox: capabilities.
-    //    (No requiere init explícito — son bitflags.)
-
-    // 6) barex: compat + shader loader.
+    // 6) GPU bridge: PE/ELF shims + BSF shaders.
     bmo_gpu::init();
 
-    // 7) bmo_abi: handle, status, type descriptors.
-    //    (Stateless.)
+    // 7) BEF loader: format + loaders (PE/ELF/native).
+    bef::init();
 
-    // 8) bmo_api: windowing — 256 syscalls + WM + paint compositor.
+    // 8) BMO API v2.0: 256 syscalls + WM + paint compositor.
     bmo_api::init();
 
-    // 9) desktop: init state + dock. Welcome se arranca desde enter().
+    // 9) Desktop: state + dock. (welcome se arranca desde enter().)
     desktop::init();
+
+    crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop");
+}
+
+/// Cabina se considera "ready" solo después de init() (FB GOP OK).
+fn cabina_mark_ready() {
+    crate::cabina::boot_ready();
 }
 
 /// Punto de entrada principal de BMO Core. Llamado desde
-/// `ring0::ring_0::dispatch_phase5()`.
+/// `ring0::coordinator::main` al final del boot.
 ///
-/// Muestra la pantalla de bienvenida v1.7.1, espera input, procesa
-/// comandos (Run, Hello, Nexo, Test, Reboot). No retorna.
+/// Esta función **NO retorna**. Arranca el welcome screen, espera
+/// input, procesa comandos, y queda en el event loop de desktop.
 pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     // Limpia el splash que dejó Ring 0.
     crate::boot::visual::clear();
 
     // Reproduce el logon sound (gustos).
     gustos::tracks::windows::logon();
-
-    // Inicializa el BEF loader por si vienen BEFs embebidos.
-    bef::init();
 
     // Lanza el welcome. Esta función NO retorna.
     desktop::welcome::run();

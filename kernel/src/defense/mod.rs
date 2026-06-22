@@ -41,7 +41,7 @@ pub use bytedefender::ByteDefender;
 pub use policy::{Policy, PolicyAction};
 pub use report::{SecurityReport, Verdict};
 pub use capability::{Capability, CapabilitySet};
-pub use quarantine::Quarantine;
+pub use quarantine::QuarantineList;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 

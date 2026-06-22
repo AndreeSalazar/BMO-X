@@ -2,9 +2,8 @@
 
 extern crate alloc;
 
-#![allow(dead_code)]
-
 use alloc::string::String;
+use core::mem::MaybeUninit;
 
 const MAX_CHECKPOINTS: usize = 32;
 
@@ -13,8 +12,7 @@ pub struct CheckpointId(pub u32);
 
 static mut NEXT_ID: u32 = 1;
 static mut COUNT: usize = 0;
-static mut NAMES: [Option<String>; MAX_CHECKPOINTS] = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None];
+static mut NAMES: [MaybeUninit<Option<String>>; MAX_CHECKPOINTS] = [const { MaybeUninit::uninit() }; MAX_CHECKPOINTS];
 
 /// Crea un checkpoint con `name` y retorna su ID.
 pub fn create(name: &str) -> CheckpointId {
@@ -22,7 +20,7 @@ pub fn create(name: &str) -> CheckpointId {
         let id = NEXT_ID;
         NEXT_ID += 1;
         let slot = (id as usize - 1) % MAX_CHECKPOINTS;
-        NAMES[slot] = Some(String::from(name));
+        NAMES[slot].write(Some(String::from(name)));
         if COUNT < MAX_CHECKPOINTS { COUNT += 1; }
         CheckpointId(id)
     }
@@ -32,7 +30,7 @@ pub fn create(name: &str) -> CheckpointId {
 pub fn name(id: CheckpointId) -> Option<String> {
     unsafe {
         let slot = (id.0 as usize - 1) % MAX_CHECKPOINTS;
-        NAMES[slot].clone()
+        NAMES[slot].assume_init_read().clone()
     }
 }
 

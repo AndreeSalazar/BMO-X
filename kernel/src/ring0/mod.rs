@@ -42,6 +42,10 @@ pub mod bmo_gpu;
 pub mod bmo_abi;
 #[path = "../cabina/mod.rs"]
 pub mod cabina;
+#[path = "../defense/mod.rs"]
+pub mod defense;
+#[path = "../timeback/mod.rs"]
+pub mod timeback;
 #[path = "../lang/mod.rs"]
 pub mod lang;
 #[path = "../ring3/mod.rs"]

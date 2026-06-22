@@ -81,10 +81,9 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
     crate::cpu::busy_wait_ms(1500);
 
-    bmo_core::diag::mark_boot_ready();
-
-    boot::visual::log("ring0", "init bmo_api v2.0", boot::visual::color::OK);
-    bmo_core::bmo_api::init();
+    // ── BMO Core init (cabina + defense + timeback + bmo_api + desktop) ──
+    boot::visual::log("ring0", "init bmo_core", boot::visual::color::OK);
+    bmo_core::coord::init();
 
     dispatch_phase5(&ctx, boot_start, phase4_end);
 }

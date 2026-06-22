@@ -1,7 +1,5 @@
 //! `defense::quarantine` — Apps en cuarentena.
 
-#![allow(dead_code)]
-
 use super::report::SecurityReport;
 
 const MAX_QUARANTINE: usize = 16;
@@ -9,6 +7,9 @@ const MAX_QUARANTINE: usize = 16;
 static mut COUNT: usize = 0;
 static mut HEAD: usize = 0;
 static mut ITEMS: [Option<SecurityReport>; MAX_QUARANTINE] = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None];
+
+/// API pública del módulo quarantine (re-exportada como `defense::QuarantineList`).
+pub struct QuarantineList;
 
 pub fn init() {}
 

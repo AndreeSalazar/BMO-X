@@ -2,9 +2,8 @@
 
 extern crate alloc;
 
-#![allow(dead_code)]
-
 use alloc::string::String;
+use core::mem::MaybeUninit;
 
 /// Tipo de operación registrada en el journal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,23 +37,7 @@ const MAX_JOURNAL: usize = 256;
 
 static mut HEAD: usize = 0;
 static mut COUNT: usize = 0;
-static mut BUF: [Option<JournalEntry>; MAX_JOURNAL] = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None];
+static mut BUF: [MaybeUninit<Option<JournalEntry>>; MAX_JOURNAL] = [const { MaybeUninit::uninit() }; MAX_JOURNAL];
 
 pub fn init() {}
 
@@ -62,12 +45,12 @@ pub fn init() {}
 pub fn log(op: JournalOp, detail: &str) {
     unsafe {
         let seq = (HEAD as u64) + 1;
-        BUF[HEAD] = Some(JournalEntry {
+        BUF[HEAD].write(Some(JournalEntry {
             seq,
             epoch: super::current_epoch(),
             op,
             detail: String::from(detail),
-        });
+        }));
         HEAD = (HEAD + 1) % MAX_JOURNAL;
         if COUNT < MAX_JOURNAL { COUNT += 1; }
     }

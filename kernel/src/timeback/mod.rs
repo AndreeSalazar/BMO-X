@@ -45,7 +45,7 @@ pub mod rollback;
 pub mod storage;
 pub mod policy;
 
-pub use checkpoint::{Checkpoint, CheckpointId};
+pub use checkpoint::CheckpointId;
 pub use snapshot::Snapshot;
 pub use delta::Delta;
 pub use journal::{JournalEntry, JournalOp};

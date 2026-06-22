@@ -2,8 +2,6 @@
 
 extern crate alloc;
 
-#![allow(dead_code)]
-
 use alloc::string::String;
 
 /// Veredicto final sobre una app/BEF.
