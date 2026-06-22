@@ -91,20 +91,20 @@ impl Emitter {
         }
     }
 
-    fn cb(&mut self, b: u8) {
+    pub fn cb(&mut self, b: u8) {
         if self.code_len < CODE_BUF_SIZE {
             self.code[self.code_len] = b;
             self.code_len += 1;
         }
     }
-    fn cs(&mut self, bs: &[u8]) {
+    pub fn cs(&mut self, bs: &[u8]) {
         for &b in bs { self.cb(b); }
     }
 
     // ─── REX prefix ──────────────────────────────────────────────
     /// Emite REX prefix: `0100 WRXB`.
     /// `w` = 64-bit operand, `r` = ext reg, `x` = ext index, `b` = ext rm.
-    fn rex(&mut self, w: bool, r: Reg, x: Reg, b: Reg) {
+    pub fn rex(&mut self, w: bool, r: Reg, x: Reg, b: Reg) {
         let mut rex = 0x40u8;
         if w { rex |= 0x08; }
         if r.needs_rex_r() { rex |= 0x04; }
@@ -114,12 +114,12 @@ impl Emitter {
     }
 
     /// ModR/M byte: mod(2) | reg(3) | rm(3).
-    fn modrm(&mut self, mod_: u8, reg: u8, rm: u8) {
+    pub fn modrm(&mut self, mod_: u8, reg: u8, rm: u8) {
         self.cb((mod_ << 6) | (reg << 3) | rm);
     }
 
     /// ModR/M con base [reg+disp8/32]. Requiere SIB si base = RSP/R12.
-    fn modrm_mem(&mut self, reg: Reg, base: Reg, disp: i32) {
+    pub fn modrm_mem(&mut self, reg: Reg, base: Reg, disp: i32) {
         let b = base.code3();
         let r = reg.code3();
         if disp == 0 && base != Reg::Rsp && base != Reg::R12 {
@@ -141,7 +141,7 @@ impl Emitter {
     }
 
     /// ModR/M con RIP-relative [rip + disp32].
-    fn modrm_rip(&mut self, reg: Reg) {
+    pub fn modrm_rip(&mut self, reg: Reg) {
         let r = reg.code3();
         self.modrm(0, r, 5); // mod=00, rm=101 (RIP-relative)
     }
@@ -292,6 +292,48 @@ impl Emitter {
         self.rex(true, src, Reg::Rax, dst);
         self.cb(0x31);
         self.modrm(3, src.code3(), dst.code3());
+    }
+
+    /// `and dst, src`.
+    pub fn and_rr(&mut self, dst: Reg, src: Reg) {
+        self.rex(true, src, Reg::Rax, dst);
+        self.cb(0x21);
+        self.modrm(3, src.code3(), dst.code3());
+    }
+
+    /// `or dst, src`.
+    pub fn or_rr(&mut self, dst: Reg, src: Reg) {
+        self.rex(true, src, Reg::Rax, dst);
+        self.cb(0x09);
+        self.modrm(3, src.code3(), dst.code3());
+    }
+
+    /// `shl rax, cl` (shift left by CL).
+    pub fn shl_cl(&mut self) {
+        self.rex(true, Reg::Rax, Reg::Rax, Reg::Rax);
+        self.cb(0xD3);
+        self.modrm(3, 4, Reg::Rax.code3());
+    }
+
+    /// `shr rax, cl` (shift right logical by CL).
+    pub fn shr_cl(&mut self) {
+        self.rex(true, Reg::Rax, Reg::Rax, Reg::Rax);
+        self.cb(0xD3);
+        self.modrm(3, 5, Reg::Rax.code3());
+    }
+
+    /// `neg rax`.
+    pub fn neg_rax(&mut self) {
+        self.rex(true, Reg::Rax, Reg::Rax, Reg::Rax);
+        self.cb(0xF7);
+        self.modrm(3, 3, Reg::Rax.code3());
+    }
+
+    /// `not rax`.
+    pub fn not_rax(&mut self) {
+        self.rex(true, Reg::Rax, Reg::Rax, Reg::Rax);
+        self.cb(0xF7);
+        self.modrm(3, 2, Reg::Rax.code3());
     }
 
     // ─── Comparación ─────────────────────────────────────────────

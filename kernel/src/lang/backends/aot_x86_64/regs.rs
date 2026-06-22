@@ -24,6 +24,9 @@
 
 #![allow(dead_code)]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+
 use super::abi::Reg;
 use super::emit::Emitter;
 
@@ -66,7 +69,7 @@ impl VarSize {
 /// Entrada de variable.
 #[derive(Clone, Copy, Debug)]
 struct VarEntry {
-    name: u32,        // StrId (para debug)
+    name: u32,        // StrId
     size: VarSize,
     loc: Location,
 }
@@ -79,19 +82,22 @@ pub struct RegAlloc {
     next_stack_offset: i32,
     /// Frame size ya calculado.
     frame_size: i32,
+    /// Mapa de StrId (u32) → Var para lookup por nombre.
+    by_name: BTreeMap<u32, Var>,
 }
 
 /// Registros callee-saved que podemos usar para variables locales.
 const ALLOC_REGS: [Reg; 5] = [Reg::R12, Reg::R13, Reg::R14, Reg::R15, Reg::Rbx];
 
 impl RegAlloc {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             vars: [None; MAX_VARS],
             n_vars: 0,
             next_reg_idx: 0,
             next_stack_offset: 0,
             frame_size: 0,
+            by_name: BTreeMap::new(),
         }
     }
 
@@ -113,6 +119,7 @@ impl RegAlloc {
         let var = Var(self.n_vars as u32);
         self.vars[self.n_vars] = Some(VarEntry { name, size, loc });
         self.n_vars += 1;
+        self.by_name.insert(name, var);
         var
     }
 
@@ -134,8 +141,17 @@ impl RegAlloc {
         let var = Var(self.n_vars as u32);
         self.vars[self.n_vars] = Some(VarEntry { name, size: VarSize::Qword, loc });
         self.n_vars += 1;
+        self.by_name.insert(name, var);
         var
     }
+
+    /// Busca una variable por nombre (StrId).
+    pub fn find_by_name(&self, name: u32) -> Option<Var> {
+        self.by_name.get(&name).copied()
+    }
+
+    /// Cuenta variables allocadas.
+    pub fn n_vars(&self) -> usize { self.n_vars }
 
     pub fn location(&self, var: Var) -> Location {
         if var.0 as usize >= self.n_vars { return Location::Stack(0); }
