@@ -1,6 +1,6 @@
 [package]
 name = "fastos-kernel"
-version = "1.8.7"
+version = "1.8.8"
 edition = "2021"
 authors = ["FastOS Project"]
 description = "FastOS kernel - UEFI GOP framebuffer + BMO/BareX"
