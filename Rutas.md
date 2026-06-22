@@ -1,11 +1,17 @@
-# Rutas.md — Mapa Arquitectónico de FastOS / BMO
+# Rutas.md — Mapa Arquitectónico de FastOS / BMO (v1.8.8)
 
-> Documento vivo. Define la responsabilidad de cada carpeta y la dirección
-> de dependencia entre módulos. Si tocas algo, actualiza este archivo.
+> Documento vivo. Define la responsabilidad de cada carpeta y la
+> dirección de dependencia entre módulos. Si tocas algo, actualiza
+> este archivo.
+
+> **v1.8.8:** BMO CORE se reposiciona como el **Kernel de Ring 3**.
+> Su trabajo es inicializar la windowing API + desktop, exponer 256
+> syscalls (0x100..0x1FF), y entregar control a userland apps.
+> `bmo_abi/` y `lang/` se separan como capas independientes.
 
 ---
 
-## 1. Filosofía de capas
+## 1. Filosofía de capas (v1.8.8)
 
 FastOS se organiza como **capas con dependencias unidireccionales**.
 Una capa inferior NUNCA importa a una capa superior. Esto permite:
@@ -21,13 +27,13 @@ Una capa inferior NUNCA importa a una capa superior. Esto permite:
                     └──────────┬───────────┘
                                │ iretq / syscall
                     ┌──────────▼───────────┐
-                    │     BMO CORE         │  ← servicios del sistema
-                    │  (windowing, FS,     │
-                    │   desktop, comp.)    │
+                    │   BMO CORE (kernel   │  ← kernel de Ring 3
+                    │   of Ring 3): win-   │  (inicializa servicios
+                    │   dowing, FS, desktop│  + entrega control)
                     └────┬────────────┬────┘
                          │            │
               ┌──────────▼──┐    ┌────▼──────────┐
-              │  BMO ABI    │    │   BMO GPU     │  ← lenguajes
+              │  BMO ABI    │    │   BMO GPU     │
               │ (contrato   │    │  (driver GPU, │
               │  lenguajes) │    │  compositor)  │
               └──────┬──────┘    └───────┬───────┘
@@ -35,13 +41,18 @@ Una capa inferior NUNCA importa a una capa superior. Esto permite:
                      └─────────┬─────────┘
                                │ syscall 0x00..0xF0
                     ┌──────────▼───────────┐
-                    │      RING 0          │  ← kernel / HAL
-                    │   (CPU, RAM, HW)     │
+                    │      RING 0          │  ← HAL puro
+                    │   (CPU, RAM, HW)     │  vendor/amd/cpu/zen3
                     └──────────────────────┘
 ```
 
 **Regla de oro:** una flecha solo puede ir hacia ABAJO.
 RING 0 no sabe que existe BMO CORE. BMO CORE no sabe que existe RING 3.
+
+**Capas independientes** (no se importan entre sí):
+- `bmo_abi/` y `lang/` solo se importan entre sí (ABI → compiladores)
+- `bmo_core/` y `bmo_gpu/` solo se importan de capas inferiores
+- `ring3/` solo recibe control de `bmo_core/` y habla vía syscalls
 
 ---
 
@@ -138,11 +149,15 @@ ring0/
 
 ---
 
-## 3. BMO CORE — Servicios del sistema
+## 3. BMO CORE — Kernel de Ring 3 (v1.8.8)
 
-**Único trabajo:** ser la "personalidad" de FastOS. Windowing, FS, desktop, composición.
-Corre **en Ring 0** pero es lógicamente una capa encima del HAL.
-Pasa el control a Ring 3 cuando hay userland.
+**Único trabajo:** ser el **kernel de Ring 3** de FastOS. Inicializa la
+windowing API, el desktop, el filesystem y la composición. Pasa el
+control a las apps de userland vía `iretq`/`sysret`. Expone 256
+syscalls (0x100..0x1FF) a Ring 3.
+
+Corre **en Ring 0** lógicamente (mismo binario) pero es una capa
+distinta del HAL. Ring 3 solo lo ve a través de syscalls.
 
 **Ruta:** `kernel/src/bmo_core/`
 
@@ -339,11 +354,15 @@ MMIO / BAR / ring buffer
 
 ---
 
-## 5. BMO ABI — Contrato de lenguajes
+## 5. BMO ABI — Contrato de lenguajes (CAPA INDEPENDIENTE, v1.8.8)
 
 **Único trabajo:** definir **cómo un lenguaje de programación habla con FastOS**.
 NO contiene lógica del OS, solo **contratos** (tipos, convenciones, números de syscall,
 layout de structs user↔kernel).
+
+v1.8.8: `bmo_abi/` es una **capa independiente** (no está dentro de
+`bmo_core/`). No depende de NADA (ni de ring0, ni de bmo_core, ni de
+bmo_gpu). Solo provee contratos.
 
 **Ruta:** `kernel/src/bmo_abi/`
 
@@ -405,12 +424,16 @@ Compilador BMO (bmo_core/lang/bmo/)     Compilador C (futuro)
 
 ---
 
-## 6. Lenguajes — Compilador BMO
+## 6. Lenguajes — Compilador BMO (CAPA INDEPENDIENTE, v1.8.8)
 
 **Único trabajo:** compilar el lenguaje BMO (y futuros C/C++/Java/Python)
 a x86-64 nativo o a BEF, usando BMO ABI como contrato.
 
-**Ruta:** `kernel/src/bmo_core/lang/bmo/`
+v1.8.8: `lang/` es una **capa independiente** (no está dentro de
+`bmo_core/`). Solo depende de `bmo_abi/`. No toca ring0 ni bmo_core
+directamente.
+
+**Ruta:** `kernel/src/lang/bmo/`
 
 ```
 lang/
@@ -520,7 +543,7 @@ ring3/
 
 ---
 
-## 8. Mapa completo de carpetas (resumen)
+## 8. Mapa completo de carpetas (resumen, v1.8.8)
 
 ```
 FastOS/
@@ -528,26 +551,48 @@ FastOS/
 ├── boot_protocol/                 ← struct compartido bootloader↔kernel
 │
 ├── kernel/                        ← kernel + servicios (todo en Rust)
-│   ├── Cargo.toml
+│   ├── Cargo.toml                 ← opt-level = "z" (Opus: tamaño mínimo)
 │   ├── linker.ld                  ← posiciones de memoria
 │   └── src/
-│       ├── ring0/                 ← RING 0: kernel/HAL
-│       ├── bmo_core/              ← BMO CORE: servicios
+│       ├── ring0/                 ← RING 0: HAL puro
+│       │   ├── AMD/               ←   solo docs del 5600X (.md)
+│       │   ├── arch/              ←   mecanismo x86-64
+│       │   ├── boot/              ←   secuencia de arranque
+│       │   ├── cpu/               ←   primitivas de CPU
+│       │   ├── dev/               ←   drivers HW
+│       │   ├── mem/               ←   memory management
+│       │   ├── proc/              ←   scheduler
+│       │   ├── vendor/amd/cpu/zen3/   ← codigo real del 5600X
+│       │   ├── profile/           ←   perfil de hardware
+│       │   ├── bus/               ←   ACPI/PCIe
+│       │   ├── gpu/               ←   interfaz kernel GPU
+│       │   └── syscall/           ←   tablas de syscall
+│       │
+│       ├── bmo_abi/               ← BMO ABI: contratos (CAPA INDEPENDIENTE)
+│       │   ├── fundamentals/      ←   tipos primitivos
+│       │   ├── runtime/           ←   runtime ABI
+│       │   └── values/            ←   tipos de datos
+│       │
+│       ├── lang/                  ← Compiladores (CAPA INDEPENDIENTE)
+│       │   └── bmo/               ←   BMO + frontends C/C++/Java/Python
+│       │
+│       ├── bmo_core/              ← BMO CORE = Kernel de Ring 3
 │       │   ├── bmo_api/           ←   windowing 0x100..0x1FF
-│       │   ├── bmo_abi/           ←   contrato lenguajes (en bmo_core/ ???)
 │       │   ├── desktop/           ←   shell
 │       │   ├── diag/              ←   diagnóstico
 │       │   ├── gustos/            ←   audio
-│       │   ├── lang/              ←   compilador BMO
 │       │   ├── bef/               ←   binary loader
 │       │   ├── fs/                ←   filesystem
 │       │   ├── ui/                ←   render 2D
-│       │   └── runtime/           ←   runtime
-│       ├── bmo_gpu/               ← BMO GPU: subsistema GPU
-│       └── ring3/                 ← RING 3: userland (stub)
+│       │   └── runtime/           ←   runtime de BMO
+│       │
+│       ├── bmo_gpu/               ← BMO GPU: subsistema GPU (skeleton)
+│       │
+│       ├── ring3/                 ← RING 3: userland (stub)
+│       │
+│       └── AMD/                   ← solo docs (.md) del 5600X
 │
 ├── docs/                          ← documentación
-├── gustos/                        ← catálogo audio (markdown)
 ├── target_build/                  ← artefactos de build
 ├── build_uefi.ps1                 ← script de build
 ├── README.md
@@ -557,46 +602,67 @@ FastOS/
 
 ---
 
-## 9. ⚠️ Inconsistencias detectadas vs. el código actual
+## 9. ⚠️ Estado actual vs. arquitectura ideal (v1.8.8)
 
-Este documento describe la **arquitectura ideal**. El código actual tiene
-varias desviaciones que hay que corregir:
-
-| # | Desviación | Acción |
+| # | Estado | Notas |
 |---|---|---|
-| 1 | `bmo_abi/` está DENTRO de `bmo_core/` (debería ser capa independiente) | Mover `bmo_abi/` a `kernel/src/bmo_abi/` |
-| 2 | `lang/bmo/` está DENTRO de `bmo_core/` (debería depender solo de `bmo_abi`) | Mover `lang/bmo/` a `kernel/src/lang/bmo/` y reescribir imports |
-| 3 | `runtime/` no existe aún | Crear cuando se necesite cargar BEF en userland |
-| 4 | `desktop/` depende de `bmo_api/` Y de `gustos/` (bien) pero también tira del `lang::bmo` directamente | Refactorizar: desktop solo debe usar `bmo_api` + servicios |
-| 5 | `bmofs/`, `bmo_usb/`, `nexo_ring3/`, `nexo-sh-tool/` mencionados en `WORKSPACE_OVERVIEW.md` NO existen | Borrar menciones o crearlos |
-| 6 | `bmo_gpu/shader/` solo declara BSF, no hay compilador de shaders | Crear cuando llegue driver GPU real |
-| 7 | `fs/fat32.rs`, `fs/exfat.rs`, `fs/manager.rs`, `fs/mount.rs`, `fs/inode.rs` no se han leído (probable stub) | Auditar y completar cuando llegue NVMe |
+| 1 | ✅ `bmo_abi/` movido a `kernel/src/bmo_abi/` (CAPA INDEPENDIENTE) | Movido en commit 1f84382a |
+| 2 | ✅ `lang/` movido a `kernel/src/lang/` (CAPA INDEPENDIENTE) | Movido en commit 1f84382a |
+| 3 | 🟡 `runtime/` no existe aún | Crear cuando se necesite cargar BEF en userland |
+| 4 | 🟡 `desktop/` depende de `bmo_api/` Y de `gustos/` (bien) pero también tira del `lang::bmo` directamente | Refactorizar: desktop solo debe usar `bmo_api` + servicios |
+| 5 | 🟡 `bmo_gpu/` es skeleton, no implementa RDNA4 | Fase 3: implementar `vendor/amd/gpu/rdna4/` |
+| 6 | 🟡 `bmo_gpu/shader/` solo declara BSF, no hay compilador de shaders | Crear cuando llegue driver GPU real |
+| 7 | 🟡 `fs/fat32.rs`, `fs/exfat.rs`, etc. son stubs | Auditar y completar cuando llegue NVMe |
+| 8 | 🟡 `BMO CORE` no entrega control a RING 3 todavía (welcome corre en Ring 0) | Conectar `coord::enter` con `ring3::start` |
+| 9 | ✅ `ring0/AMD/` → `vendor/amd/cpu/zen3/` (Fase 2 Opus) | Commit 7293c2c |
+| 10 | ✅ Nueva arquitectura `arch/`, `profile/`, `bus/`, `gpu/`, `syscall/` (Fase 1 Opus) | Commit 7e2f0915 |
 
 ---
 
-## 10. Reglas para contribuir
+## 10. Reglas para contribuir (v1.8.8)
 
 Antes de añadir un archivo, pregúntate:
 
 1. **¿Esta lógica es de HW puro?** → `ring0/`
-2. **¿Esta lógica es de servicio del sistema (ventanas, FS, audio)?** → `bmo_core/`
-3. **¿Esta lógica es de GPU/compositor?** → `bmo_gpu/`
-4. **¿Esto es solo un contrato/definición para lenguajes?** → `bmo_abi/`
-5. **¿Esto es un compilador/intérprete de lenguaje?** → `bmo_core/lang/<lenguaje>/`
+2. **¿Esta lógica es un contrato para lenguajes?** → `bmo_abi/`
+3. **¿Esto es un compilador/intérprete de lenguaje?** → `lang/`
+4. **¿Esta lógica es de servicio del sistema (windowing, FS, desktop)?** → `bmo_core/` (Kernel de Ring 3)
+5. **¿Esta lógica es de GPU/compositor?** → `bmo_gpu/`
 6. **¿Esto es una app?** → `ring3/`
 
-**Regla de imports:** solo se puede importar de capas iguales o inferiores.
-`bmo_core` puede usar `bmo_abi` y `ring0`. `ring0` no puede usar nada de arriba.
+**Regla de imports (v1.8.8):**
+- `bmo_abi/` no importa nada (es la raíz de los contratos)
+- `lang/` solo importa de `bmo_abi/`
+- `ring0/` no sabe de `bmo_core/`, `bmo_gpu/`, `lang/`, `bmo_abi/`, `ring3/`
+- `bmo_core/` importa de `ring0/`, `bmo_abi/`
+- `bmo_gpu/` importa de `ring0/`
+- `ring3/` importa de `bmo_core/`, `bmo_abi/` (vía syscalls)
 
 ---
 
-## 11. Próximos pasos concretos
+## 11. Próximos pasos concretos (post-Opus Phase 1-3)
 
-1. **Mover `bmo_abi/` a `kernel/src/bmo_abi/`** (1-2 horas)
-2. **Auditar dependencias de `bmo_core/lang/bmo/`** y migrar imports a `bmo_abi`
-3. **Borrar referencias a carpetas inexistentes** en `WORKSPACE_OVERVIEW.md`
-4. **Crear `bmo_gpu/driver/amd/` skeleton** con interfaces pero sin driver
-5. **Implementar `bmo_abi/syscalls/gpu.rs`** con números reservados para GPU
+1. **Implementar `vendor/amd/gpu/rdna4/` completo** (Fase 3 Opus)
+   - PCI detect (vendor 0x1002, RDNA4 device IDs)
+   - BAR mapping con MTRR/PAT
+   - GFX ring buffer, compute ring, SDMA ring
+   - VRAM aperture (32-64 GB en RX 9060 XT)
+   - Command submission, fences, semaphores
+   - Shader backend (RDNA4 ISA)
+
+2. **Conectar `bmo_core::coord::enter` con `ring3::start`** para que
+   BMO CORE entregue control a userland apps (vía `iretq`/`sysret`).
+
+3. **Implementar `bmo_gpu/` BSF shader compiler** (Fase 4 Opus)
+   - BSF header parser
+   - BMO IR → RDNA4 backend
+   - Pipeline creation, command encoder
+
+4. **Crear `bmo_core/runtime/`** con BEF loader para ejecutar
+   binarios userland compilados por `lang/bmo/`.
+
+5. **Auditar y completar FS** (FAT32, exFAT, manager, mount, inode)
+   cuando llegue soporte NVMe.
 
 ---
 
