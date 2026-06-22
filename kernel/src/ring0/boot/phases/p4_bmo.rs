@@ -13,14 +13,14 @@ pub fn run(prev_end: u64) -> PhaseOutput {
     log::info("phase4", "APIC timer started (100 Hz, 10ms ticks)");
 
     // Stable desktop path: keep boot on the BSP and defer non-essential
-    // services. SMP bring-up, ByteDefender/Restaurer, network/DHCP and the
-    // hardware watchdog can all touch fragile hardware paths; none are needed
-    // to reach the Ring 0 GOP desktop. They should be launched later from a
-    // desktop service once diag and UI are alive.
+    // services. SMP bring-up, ByteDefender/Restaurer and network/DHCP can all
+    // touch fragile hardware paths; none are needed to reach the Ring 0 GOP
+    // desktop. They should be launched later from a desktop service once diag
+    // and UI are alive. The watchdog is armed below because APIC ticks are now
+    // available and it protects the scheduler path.
     log::warn("phase4", "SMP deferred until desktop service phase");
     log::warn("phase4", "Security subsystem deferred until desktop service phase");
     log::warn("phase4", "Network stack deferred until desktop service phase");
-    log::warn("phase4", "Hardware watchdog deferred until desktop service phase");
 
     crate::cpu::sti();
     log::info("phase4", "Interrupts enabled (STI)");

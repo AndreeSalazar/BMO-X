@@ -21,19 +21,24 @@
 
 use super::msr_definitions::{rdmsr, wrmsr, MSR_IA32_EFER, MSR_IA32_STAR,
                               MSR_IA32_LSTAR, MSR_IA32_CSTAR, MSR_IA32_FMASK,
-                              MSR_IA32_FS_BASE, MSR_IA32_GS_BASE,
-                              MSR_IA32_KERNEL_GS_BASE, MSR_IA32_TSC_AUX,
-                              MSR_IA32_PAT, MSR_IA32_TSC_DEADLINE};
+                              MSR_IA32_GS_BASE, MSR_IA32_KERNEL_GS_BASE,
+                              MSR_IA32_TSC_AUX, MSR_IA32_PAT,
+                              MSR_IA32_TSC_DEADLINE};
 use super::msr_definitions::efer;
 
 /// Star selector values. Standard FastOS layout:
-/// - SYSCALL target: kernel CS=0x08, kernel SS=0x10 (star[47:32] = 0x08<<3 = 0x10)
-/// - SYSRET (to Ring 3): user CS=0x18, user SS=0x20 (star[63:48] = 0x18<<3 | 3 = 0xC3)
-pub const STAR_VALUE: u64 = 0x0010_0000_0000_0010;
+/// - SYSCALL target: kernel CS=0x08, kernel SS=0x10.
+/// - SYSRET base: STAR[63:48]=0x10 so AMD64 derives user SS=0x18 and
+///   user CS=0x20, matching `arch::gdt`'s Ring 3 layout.
+///
+/// Keep this identical to `arch::syscall::init_syscall`; that function calls
+/// this module after writing LSTAR, so a wrong STAR here would overwrite the
+/// working syscall setup.
+pub const STAR_VALUE: u64 = 0x0010_0008_0000_0000;
 
 /// RFLAGS mask (cleared on SYSCALL). Disable interrupts (IF=0x200) and
 /// direction flag (DF=0x400). User can re-enable with STI.
-pub const FMASK_VALUE: u64 = 0x0000_0000_0000_0200;
+pub const FMASK_VALUE: u64 = 0x0000_0000_0000_0600;
 
 /// Initialize all the MSRs that RING 0 needs to bootstrap a 64-bit
 /// environment. Call this once on the BSP, very early.
