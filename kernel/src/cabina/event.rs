@@ -1,16 +1,133 @@
-//! `cabina::event` — Eventos + caja negra circular.
+//! `cabina::event` — Eventos + caja negra circular con tags de capa.
 //!
-//! Caja negra en RAM: los últimos 256 eventos. Si el sistema cae
-//! antes de que el spool persistente funcione, todavía tenemos
-//! los últimos eventos en RAM (Ring 0 los puede leer via snapshot).
+//! Cada evento lleva:
+//! - **Capa (Layer)**: Ring 0, BMO Core, BMO GPU, Ring 3, Lang, FS, Net, Sec
+//! - **Entidad (Entity)**: Process, Thread, Syscall, File, GPUQueue, Window, Module
+//!
+//! Esto permite que los filtros inteligentes (`cabina::query`) filtren
+//! por capa o por entidad, además de por severidad y texto.
 
 #![allow(dead_code)]
 
-use core::sync::atomic::{AtomicU64, AtomicU32, AtomicBool, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, AtomicBool, Ordering};
 use core::fmt;
 use alloc::string::String;
 
 use crate::cabina::BLACKBOX_CAP;
+
+/// Capa del sistema que emitió el evento.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum Layer {
+    /// Ring 0: hardware, CPU, IRQ, memoria, drivers.
+    Ring0    = 0,
+    /// BMO Core: windowing, FS, desktop, ui.
+    BmoCore  = 1,
+    /// BMO GPU: RDNA4, compute, shaders.
+    BmoGpu   = 2,
+    /// Ring 3: userland apps.
+    Ring3    = 3,
+    /// Lang: AOT, linker, parser.
+    Lang     = 4,
+    /// FS: filesystem, mounts, drivers.
+    Fs       = 5,
+    /// Net: TCP/UDP, sockets.
+    Net      = 6,
+    /// Sec: capabilities, sandbox.
+    Sec      = 7,
+}
+
+impl Layer {
+    pub const ALL: [Layer; 8] = [
+        Layer::Ring0, Layer::BmoCore, Layer::BmoGpu, Layer::Ring3,
+        Layer::Lang, Layer::Fs, Layer::Net, Layer::Sec,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ring0 => "ring0",
+            Self::BmoCore => "bmo_core",
+            Self::BmoGpu => "bmo_gpu",
+            Self::Ring3 => "ring3",
+            Self::Lang => "lang",
+            Self::Fs => "fs",
+            Self::Net => "net",
+            Self::Sec => "sec",
+        }
+    }
+
+    /// Color para esta capa (HUD).
+    pub fn color(self) -> u32 {
+        match self {
+            Self::Ring0 => 0xFFFF4444,    // rojo (crítico)
+            Self::BmoCore => 0xFFFFAA00,  // naranja
+            Self::BmoGpu => 0xFF00FFFF,   // cyan
+            Self::Ring3 => 0xFF44FF44,    // verde
+            Self::Lang => 0xFFAAFF00,     // verde-amarillo
+            Self::Fs => 0xFFAA00FF,       // magenta
+            Self::Net => 0xFF0088FF,      // azul
+            Self::Sec => 0xFFFF0088,      // rosa
+        }
+    }
+
+    /// Infiere la capa a partir del nombre del módulo.
+    pub fn from_module(name: &str) -> Self {
+        let n = name.to_ascii_lowercase();
+        if n.starts_with("ring0") || n.starts_with("cpu") || n.starts_with("mem") || n.starts_with("kbc") || n.starts_with("dev") || n == "boot" || n == "acpi" {
+            Self::Ring0
+        } else if n.starts_with("bmo_gpu") || n.starts_with("gpu") || n == "rdna4" {
+            Self::BmoGpu
+        } else if n.starts_with("lang") || n == "aot" || n == "linker" || n == "frontend" || n == "backend" {
+            Self::Lang
+        } else if n.starts_with("fs") || n == "vfat" || n == "exfat" || n == "ramdisk" {
+            Self::Fs
+        } else if n.starts_with("net") || n == "tcp" || n == "udp" || n == "socket" {
+            Self::Net
+        } else if n.starts_with("sec") || n == "cap" || n == "sandbox" {
+            Self::Sec
+        } else {
+            // Por defecto: BMO Core.
+            Self::BmoCore
+        }
+    }
+}
+
+/// Entidad (qué originó el evento).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum Entity {
+    /// Módulo genérico.
+    Module   = 0,
+    /// Proceso (PID).
+    Process  = 1,
+    /// Thread (TID).
+    Thread   = 2,
+    /// Syscall (BMO ABI nr).
+    Syscall  = 3,
+    /// Archivo (path).
+    File     = 4,
+    /// Cola de GPU (gfx/compute/sdma).
+    GpuQueue = 5,
+    /// Ventana.
+    Window   = 6,
+    /// Dispositivo (PCI bus:dev.fn).
+    Device   = 7,
+}
+
+impl Entity {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Module => "module",
+            Self::Process => "process",
+            Self::Thread => "thread",
+            Self::Syscall => "syscall",
+            Self::File => "file",
+            Self::GpuQueue => "gpu_queue",
+            Self::Window => "window",
+            Self::Device => "device",
+        }
+    }
+}
 
 /// Severidad de un evento.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -41,11 +158,11 @@ impl Severity {
 
     pub fn color(self) -> u32 {
         match self {
-            Self::Info => 0xFFCCCCCC,    // gris claro
-            Self::Trace => 0xFF888888,   // gris oscuro
-            Self::Warning => 0xFFFFFF00, // amarillo
-            Self::Fault => 0xFFFF8800,    // naranja
-            Self::Panic => 0xFFFF0000,    // rojo
+            Self::Info => 0xFFCCCCCC,
+            Self::Trace => 0xFF888888,
+            Self::Warning => 0xFFFFFF00,
+            Self::Fault => 0xFFFF8800,
+            Self::Panic => 0xFFFF0000,
         }
     }
 }
@@ -56,9 +173,12 @@ pub struct Event {
     pub seq: u64,
     pub tick_ns: u64,
     pub severity: Severity,
-    pub module: String,    // "boot", "fs", "lang", "kbc", "BMO", ...
+    pub layer: Layer,
+    pub entity: Entity,
+    pub module: String,
+    pub entity_id: u32,    // PID, TID, syscall nr, file inode, etc.
     pub msg: String,
-    pub value: u64,         // valor numérico opcional (addr, code, etc.)
+    pub value: u64,
 }
 
 impl Event {
@@ -67,7 +187,10 @@ impl Event {
             seq: 0,
             tick_ns: 0,
             severity: Severity::Info,
+            layer: Layer::BmoCore,
+            entity: Entity::Module,
             module: String::new(),
+            entity_id: 0,
             msg: String::new(),
             value: 0,
         }
@@ -76,29 +199,41 @@ impl Event {
         let mut e = Self::empty();
         e.severity = severity;
         e.module = String::from(module);
+        e.layer = Layer::from_module(module);
         e.msg = String::from(msg);
         e
+    }
+    pub fn with_layer(mut self, layer: Layer) -> Self { self.layer = layer; self }
+    pub fn with_entity(mut self, entity: Entity, id: u32) -> Self {
+        self.entity = entity;
+        self.entity_id = id;
+        self
     }
 }
 
 impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}: {} {}",
+        let val = if self.value != 0 { alloc::format!(" (0x{:x})", self.value) } else { String::new() };
+        let eid = if self.entity_id != 0 {
+            alloc::format!("[{}#{}]", self.entity.name(), self.entity_id)
+        } else { String::new() };
+        write!(f, "[{}|{}] {}: {}{}{}",
+               self.layer.name(),
                self.severity.name(),
                self.module,
                self.msg,
-               if self.value != 0 { alloc::format!("(0x{:x})", self.value) } else { String::new() })
+               val,
+               eid)
     }
 }
 
 // ─── Buffer circular ──────────────────────────────────────────────
 
-/// Caja negra circular: 256 eventos en RAM.
 pub struct Blackbox {
     events: [Event; BLACKBOX_CAP],
-    head: AtomicU32,    // posición de escritura
-    count: AtomicU32,   // número de eventos (cap a BLACKBOX_CAP)
-    seq: AtomicU64,     // sequence number monotónico
+    head: AtomicU32,
+    count: AtomicU32,
+    seq: AtomicU64,
     initialized: AtomicBool,
 }
 
@@ -112,8 +247,8 @@ static mut BLACKBOX: Blackbox = Blackbox {
 
 pub mod buffer {
     use super::*;
+    use crate::cabina::telemetry;
 
-    /// Inicializa la caja negra.
     pub fn init() {
         unsafe {
             BLACKBOX.initialized.store(true, Ordering::SeqCst);
@@ -123,7 +258,6 @@ pub mod buffer {
         }
     }
 
-    /// Empuja un evento a la caja negra.
     pub fn push(ev: &Event) {
         unsafe {
             if !BLACKBOX.initialized.load(Ordering::Relaxed) { return; }
@@ -136,9 +270,13 @@ pub mod buffer {
                 let freq = crate::cpu::tsc_per_sec();
                 if freq == 0 { 0 } else { tsc.wrapping_mul(1_000_000_000) / freq }
             };
-            let _ = stored;
+            // Si el evento es un fault/panic, incrementar telemetry.
+            match stored.severity {
+                Severity::Fault => { telemetry::cpu::inc_gp(); }
+                Severity::Panic => { telemetry::cpu::inc_df(); }
+                _ => {}
+            }
             BLACKBOX.events[pos] = stored;
-            // Incrementar count solo si no hemos llegado al máximo.
             let c = BLACKBOX.count.load(Ordering::Relaxed);
             if c < BLACKBOX_CAP as u32 {
                 BLACKBOX.count.store(c + 1, Ordering::Relaxed);
@@ -146,19 +284,16 @@ pub mod buffer {
         }
     }
 
-    /// Obtiene el evento más reciente (índice 0).
     pub fn latest() -> Option<Event> {
         unsafe {
             if !BLACKBOX.initialized.load(Ordering::Relaxed) { return None; }
             let count = BLACKBOX.count.load(Ordering::Relaxed);
             if count == 0 { return None; }
-            // El último insertado está en head-1.
             let pos = (BLACKBOX.head.load(Ordering::Relaxed) as usize).wrapping_sub(1) % BLACKBOX_CAP;
             Some(BLACKBOX.events[pos].clone())
         }
     }
 
-    /// Itera sobre los últimos N eventos (del más reciente al más viejo).
     pub fn last(n: usize) -> alloc::vec::Vec<Event> {
         unsafe {
             if !BLACKBOX.initialized.load(Ordering::Relaxed) { return alloc::vec::Vec::new(); }
@@ -175,14 +310,8 @@ pub mod buffer {
         }
     }
 
-    /// Itera sobre todos los eventos (del más reciente al más viejo).
-    pub fn iter() -> alloc::vec::Vec<Event> {
-        last(BLACKBOX_CAP)
-    }
-
-    /// Número de eventos almacenados.
+    pub fn iter() -> alloc::vec::Vec<Event> { last(BLACKBOX_CAP) }
     pub fn count() -> usize {
         unsafe { BLACKBOX.count.load(Ordering::Relaxed) as usize }
     }
 }
-
