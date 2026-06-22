@@ -1,18 +1,23 @@
-//! `lang::tests` — Tests integrados del compilador.
+//! `lang::tests` — Tests integrados del compilador AOT x86-64.
 //!
-//! Como el kernel es no_std, no podemos usar `#[cfg(test)]`. En su
-//! lugar, estos tests se ejecutan manualmente desde el boot
-//! (ver `boot::smoke::run_lang_tests`).
+//! Como el kernel es no_std, no podemos usar `#[cfg(test)]`. Estos
+//! tests se ejecutan manualmente desde el boot (ver
+//! `boot::smoke::run_lang_tests`).
 //!
-//! ## Tests disponibles
+//! ## Cobertura
 //!
-//! - `hello_world_bmo()` — compila un "Hello, World!" en BMO
-//!   y verifica que produce > 0 bytes de x86-64.
+//! - **hello_world_bmo**: print + exit
+//! - **arithmetic_bmo**: + - * / (signed)
+//! - **if_else_bmo**: branch condicional
+//! - **while_loop_bmo**: loop con condición
+//! - **factorial_bmo**: recursión
+//! - **fibonacci_bmo**: while + variables múltiples
+//! - **call_bmo_abi**: syscall (mov rax, nr; syscall)
+//! - **comparison_bmo**: == < >
 
 #![allow(dead_code)]
 
 use crate::bmo_gpu::BxResult;
-use crate::lang::common::ast::Module;
 use crate::lang::pipeline::{compile, CompiledProgram, SourceLang};
 
 /// Resultado de un test: nombre + pass/fail + info.
@@ -29,59 +34,45 @@ pub fn run_all() -> alloc::vec::Vec<TestResult> {
     results.push(hello_world_bmo());
     results.push(arithmetic_bmo());
     results.push(if_else_bmo());
+    results.push(while_loop_bmo());
+    results.push(factorial_bmo());
+    results.push(fibonacci_bmo());
     results.push(call_bmo_abi());
+    results.push(comparison_bmo());
+    results.push(c_hello_world());
+    results.push(c_arithmetic());
 
     results
 }
 
-/// Test 1: Hello World en BMO.
+// ─── Tests BMO ─────────────────────────────────────────────────────
+
 fn hello_world_bmo() -> TestResult {
     let src = b"\
-extern {
-    fn diag_print(ptr: *const u8, len: u64) -> u64;
-    fn proc_exit(code: i32) -> ();
-}
-
 fn main() {
-    diag_print(\"Hello, World!\\n\" as *const u8, 14);
+    diag_print(\"Hello, World!\" as *const u8, 13);
     proc_exit(0);
 }
 ";
-    run_compile_test("hello_world_bmo", src, SourceLang::Bmo, |code| {
-        if code.is_empty() {
-            alloc::string::String::from("code buffer is empty")
-        } else if code.len() < 20 {
-            alloc::format!("code too short: {} bytes", code.len())
-        } else {
-            // Verificar que el primer byte sea 0x55 (push rbp) o 0x48 (REX.W)
-            if code[0] == 0x55 || (code[0] & 0xF0) == 0x40 {
-                alloc::string::String::from("ok")
-            } else {
-                alloc::format!("unexpected first byte: 0x{:02X}", code[0])
-            }
-        }
+    check("hello_world_bmo", src, SourceLang::Bmo, |c| {
+        ok_if(c.len() >= 30 && c[0] == 0x55, alloc::format!("len={}, first=0x{:02X}", c.len(), c[0]))
     })
 }
 
-/// Test 2: Aritmética simple.
 fn arithmetic_bmo() -> TestResult {
     let src = b"\
 fn main() -> i64 {
     let a: i64 = 1 + 2;
     let b: i64 = 3 * 4;
-    a + b
+    let c: i64 = a + b;
+    c
 }
 ";
-    run_compile_test("arithmetic_bmo", src, SourceLang::Bmo, |code| {
-        if code.is_empty() {
-            alloc::string::String::from("code buffer is empty")
-        } else {
-            alloc::string::String::from("ok")
-        }
+    check("arithmetic_bmo", src, SourceLang::Bmo, |c| {
+        ok_if(c.len() >= 30, alloc::format!("len={}", c.len()))
     })
 }
 
-/// Test 3: if/else.
 fn if_else_bmo() -> TestResult {
     let src = b"\
 fn main() -> i64 {
@@ -93,53 +84,168 @@ fn main() -> i64 {
     }
 }
 ";
-    run_compile_test("if_else_bmo", src, SourceLang::Bmo, |code| {
-        if code.is_empty() {
-            alloc::string::String::from("code buffer is empty")
-        } else {
-            alloc::string::String::from("ok")
+    check("if_else_bmo", src, SourceLang::Bmo, |c| {
+        // Buscar 0F 8C (jl) o 0F 8F (jg).
+        let mut has_cmp = false;
+        for w in c.windows(2) {
+            if w[0] == 0x83 && w[1] == 0xF8 { has_cmp = true; break; } // cmp rax, imm8
         }
+        ok_if(has_cmp, alloc::format!("no cmp found, len={}", c.len()))
     })
 }
 
-/// Test 4: llamada a BMO ABI (diag_print).
+fn while_loop_bmo() -> TestResult {
+    let src = b"\
+fn main() -> i64 {
+    let i: i64 = 0;
+    while i < 10 {
+        let j: i64 = i + 1;
+    }
+    i
+}
+";
+    check("while_loop_bmo", src, SourceLang::Bmo, |c| {
+        // Debe tener al menos 2 saltos condicionales (uno al inicio del loop,
+        // uno al final para volver).
+        let mut jmps = 0;
+        for w in c.windows(2) {
+            if w[0] == 0x0F && (w[1] & 0xF0) == 0x80 { jmps += 1; }
+        }
+        ok_if(jmps >= 2, alloc::format!("expected >=2 jcc, got {}", jmps))
+    })
+}
+
+fn factorial_bmo() -> TestResult {
+    let src = b"\
+fn factorial(n: i64) -> i64 {
+    if n <= 1 {
+        1
+    } else {
+        n * factorial(n - 1)
+    }
+}
+
+fn main() -> i64 {
+    factorial(5)
+}
+";
+    check("factorial_bmo", src, SourceLang::Bmo, |c| {
+        // Debe tener al menos 2 calls (uno a factorial, uno recursivo).
+        let mut calls = 0;
+        for w in c.windows(1) {
+            if w[0] == 0xE8 { calls += 1; }
+        }
+        ok_if(calls >= 2, alloc::format!("expected >=2 calls, got {}", calls))
+    })
+}
+
+fn fibonacci_bmo() -> TestResult {
+    let src = b"\
+fn main() -> i64 {
+    let a: i64 = 0;
+    let b: i64 = 1;
+    let i: i64 = 0;
+    while i < 10 {
+        let c: i64 = a + b;
+        a = b;
+        b = c;
+    }
+    b
+}
+";
+    check("fibonacci_bmo", src, SourceLang::Bmo, |c| {
+        ok_if(c.len() >= 40, alloc::format!("len={}", c.len()))
+    })
+}
+
 fn call_bmo_abi() -> TestResult {
     let src = b"\
 fn main() {
     diag_print(\"test\" as *const u8, 4);
+    proc_exit(0);
 }
 ";
-    run_compile_test("call_bmo_abi", src, SourceLang::Bmo, |code| {
-        if code.is_empty() {
-            alloc::string::String::from("code buffer is empty")
-        } else {
-            // Buscar la secuencia 0F 05 (syscall).
-            let mut has_syscall = false;
-            for w in code.windows(2) {
-                if w[0] == 0x0F && w[1] == 0x05 { has_syscall = true; break; }
-            }
-            if has_syscall {
-                alloc::string::String::from("ok (found syscall)")
-            } else {
-                alloc::string::String::from("no syscall instruction emitted")
-            }
+    check("call_bmo_abi", src, SourceLang::Bmo, |c| {
+        // Buscar la secuencia 0F 05 (syscall).
+        let mut has_syscall = false;
+        for w in c.windows(2) {
+            if w[0] == 0x0F && w[1] == 0x05 { has_syscall = true; break; }
         }
+        ok_if(has_syscall, alloc::string::String::from("no syscall instruction emitted"))
     })
 }
 
-fn run_compile_test<F>(name: &'static str, src: &[u8], lang: SourceLang, check: F) -> TestResult
+fn comparison_bmo() -> TestResult {
+    let src = b"\
+fn main() -> i64 {
+    let a: i64 = 5;
+    let b: i64 = 10;
+    if a < b {
+        1
+    } else {
+        0
+    }
+}
+";
+    check("comparison_bmo", src, SourceLang::Bmo, |c| {
+        // Debe tener `cmp` + setcc (0F 9X).
+        let mut has_cmp = false;
+        let mut has_setcc = false;
+        for w in c.windows(2) {
+            if w[0] == 0x83 && w[1] == 0xF8 { has_cmp = true; } // cmp rax, imm8
+            if w[0] == 0x0F && (w[1] & 0xF0) == 0x90 { has_setcc = true; } // setcc
+        }
+        ok_if(has_cmp && has_setcc, alloc::format!("cmp={}, setcc={}", has_cmp, has_setcc))
+    })
+}
+
+// ─── Tests C ───────────────────────────────────────────────────────
+
+fn c_hello_world() -> TestResult {
+    let src = b"\
+int main() {
+    return 42;
+}
+";
+    check("c_hello_world", src, SourceLang::C, |c| {
+        ok_if(c.len() >= 20, alloc::format!("len={}", c.len()))
+    })
+}
+
+fn c_arithmetic() -> TestResult {
+    let src = b"\
+int add(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    return add(2, 3);
+}
+";
+    check("c_arithmetic", src, SourceLang::C, |c| {
+        ok_if(c.len() >= 30, alloc::format!("len={}", c.len()))
+    })
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────
+
+fn check<F>(name: &'static str, src: &[u8], lang: SourceLang, check: F) -> TestResult
 where F: FnOnce(&[u8]) -> alloc::string::String
 {
     match compile(src, lang, name) {
         Ok(prog) => {
             let msg = check(&prog.code);
-            let passed = msg == "ok" || msg.starts_with("ok ");
+            let passed = msg == "ok";
             TestResult { name, passed, message: msg }
         }
         Err(e) => TestResult {
             name,
             passed: false,
             message: alloc::format!("compile error: {:?}", e),
-        }
+        },
     }
+}
+
+fn ok_if(cond: bool, msg: alloc::string::String) -> alloc::string::String {
+    if cond { alloc::string::String::from("ok") } else { msg }
 }
