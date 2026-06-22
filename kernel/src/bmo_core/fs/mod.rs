@@ -7,22 +7,21 @@
 //! v1.8.8: usa `BmoErrorCode` del ABI para errores visibles a Ring 3.
 //! Antes tenía un `DiskError` local que no se podía mapear al ABI.
 //!
-//! Modular architecture:
+//! Modular architecture (v1.8.8 simplificado):
 //!   - VFS (Virtual File System) — unified API
 //!   - Inode — file descriptor table (usa BmoFileType/BmoPerms)
 //!   - Mount — mount point management
-//!   - FAT32 — boot partition (UEFI compatible, read-only)
-//!   - exFAT — data partition (read-write, modern)
-//!   - RAMdisk — embedded files in kernel binary
+//!   - RAMdisk — embedded files in kernel binary (único FS en uso)
 //!   - Disk traits — block I/O abstraction for drivers
+//!
+//! v1.8.8: FAT32 y exFAT se eliminaron. Eran código de preparación
+//! sin disco físico. Cuando llegue el driver NVMe/AHCI en v1.9, se
+//! reintroducen desde cero con la API actual.
 
 #![allow(dead_code)]
 
 pub mod inode;
 pub mod mount;
-pub mod manager;
-pub mod fat32;
-pub mod exfat;
 pub mod ramdisk;
 pub mod ramdisk_device;
 
