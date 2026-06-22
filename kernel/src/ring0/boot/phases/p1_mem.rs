@@ -32,8 +32,8 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
         crate::mem::phys::init(
             &bi.memory_map,
             bi.memory_map_count as usize,
-            bi.gsp_addr,
-            bi.gsp_size,
+            bi.reserved_addr,
+            bi.reserved_size,
             bi.kernel_base,
             bi.kernel_size,
         );

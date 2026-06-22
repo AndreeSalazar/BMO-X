@@ -103,8 +103,8 @@ fn validate_boot_info(
 
 unsafe fn store_boot_info(bi: &fastos_boot_protocol::BootInfo) {
     info::BOOT_INFO = bi as *const _;
-    info::RESERVED_PAYLOAD_ADDR = bi.gsp_addr;
-    info::RESERVED_PAYLOAD_SIZE = bi.gsp_size;
+    info::RESERVED_PAYLOAD_ADDR = bi.reserved_addr;
+    info::RESERVED_PAYLOAD_SIZE = bi.reserved_size;
     info::FB_ADDR  = bi.fb_addr;
     info::FB_WIDTH = bi.fb_width;
     info::FB_HEIGHT = bi.fb_height;

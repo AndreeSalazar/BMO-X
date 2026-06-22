@@ -77,23 +77,9 @@ pub struct BootInfo {
     pub stack_top: u64,
     pub stack_size: u64,
 
-    // ── Legacy reserved payload fields (kept for ABI compatibility) ──
-    // Functional FastOS/GOP boot keeps these as 0. They used to describe GPU
-    // firmware experiments and must not be required by the kernel boot path.
-    pub gsp_addr: u64,
-    pub gsp_size: u64,
-
-    // ── Legacy reserved payload fields ──
-    pub gsp_bootloader_addr: u64,
-    pub gsp_bootloader_size: u64,
-
-    // ── Legacy reserved payload fields ──
-    pub gsp_booter_load_addr: u64,
-    pub gsp_booter_load_size: u64,
-
-    // ── Legacy reserved payload fields ──
-    pub vbios_addr: u64,
-    pub vbios_size: u64,
+    // ── Reserved payload (opcional, dejado en 0 en GOP path) ──
+    pub reserved_addr: u64,
+    pub reserved_size: u64,
 }
 
 impl BootInfo {

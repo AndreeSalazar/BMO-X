@@ -278,12 +278,10 @@ fn paint_bootloader_marker(gop: &GopInfo, stage: u32) {
     let width = gop.width as usize;
     let stride = gop.stride as usize;
     let y0 = 44usize + (stage as usize * 10);
-    let colors = [0xFF00FF00u32, 0xFF00FFFFu32, 0xFFFFFF00u32, 0xFFFF00FFu32];
-    let color = colors[(stage as usize).min(colors.len() - 1)];
 
     for y in y0..(y0 + 8).min(gop.height as usize) {
         for x in 0..width.min(640) {
-            unsafe { fb.add(y * stride + x).write_volatile(color); }
+            unsafe { fb.add(y * stride + x).write_volatile(0xFF00FF00); }
         }
     }
 }
@@ -527,15 +525,9 @@ fn main() -> Status {
         bi.stack_top = stack_top;
         bi.stack_size = KERNEL_STACK_SIZE as u64;
 
-        // Legacy GPU/payload fields: intentionally zero in the functional GOP path.
-        bi.gsp_addr = 0;
-        bi.gsp_size = 0;
-        bi.gsp_bootloader_addr = 0;
-        bi.gsp_bootloader_size = 0;
-        bi.gsp_booter_load_addr = 0;
-        bi.gsp_booter_load_size = 0;
-        bi.vbios_addr = 0;
-        bi.vbios_size = 0;
+        // Reserved payload: intentionally zero en el GOP path.
+        bi.reserved_addr = 0;
+        bi.reserved_size = 0;
     }
 
     info!("BootInfo at 0x{:x}", boot_info_ptr as u64);
