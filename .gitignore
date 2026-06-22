@@ -10,6 +10,7 @@
 # ── Build output folders ────────────────────────────────────────
 /USB_boot/
 /target_build/
+/kernel/target_build/
 
 # ── Rust ─────────────────────────────────────────────────────────
 **/target/

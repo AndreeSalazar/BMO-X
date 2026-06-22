@@ -1,3 +1,11 @@
+//! ⚠️  UBICACIÓN v1.8.7 — Las DSP (`dsp_sin/cos/exp/ln/...`) son
+//! matemáticas, no drivers. No tocan hardware. Pertenecen a
+//! `bmo_core/gustos/synth.rs` (donde se consume) o a una `bmo_dsp`
+//! aparte, no a `ring0/dev/`.
+//!
+//! Acción: cuando se refactoree audio (driver HDA real), mover este
+//! archivo a `bmo_core/gustos/dsp.rs` y eliminar de aquí.
+
 //! Funciones matemáticas para DSP en `no_std`.
 //! Aproximaciones polynomial precisas para audio.
 //!

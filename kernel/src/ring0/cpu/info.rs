@@ -1,11 +1,10 @@
 //! CPU information display for the Ryzen 5 5600X.
 //!
-//! v1.7.8: simplified — no more bitmap. Just prints what the kernel
-//! knows is true (everything is always true on the 5600X).
+//! v1.8.7: ya no importa `features` (las constantes `HAS_*` se eliminaron
+//! porque no se consumían). Solo se usa `cpuid` para leer el brand string.
 
 #![allow(dead_code)]
 
-use super::features;
 use super::cpuid;
 
 /// Print CPU info to serial console.
@@ -50,10 +49,9 @@ pub fn print() {
     // Features: we just say "Zen 3" and that everything is true.
     crate::dev::console::serial_write("[cpu] Zen 3 (Vermeer), all features supported\n");
 
-    // Show the constants that are *false* (the only thing that's not "true").
+    // Show what's NOT supported (the only things that are not "true").
+    // 5600X lacks AVX-512 and 5-level paging (LA57).
     crate::dev::console::serial_write("[cpu] Not supported: AVX-512, LA57 (5-level paging)\n");
-    let _ = features::HAS_AVX2;  // silence unused warning
-    let _ = features::HAS_5LEVEL_PAGES;
 }
 
 fn print_hex(val: u32) {

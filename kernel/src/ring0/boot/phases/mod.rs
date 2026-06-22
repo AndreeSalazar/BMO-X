@@ -1,16 +1,21 @@
-//! Phased boot orchestration (v1.7.5).
+//! Phased boot orchestration (v1.8.7).
 //!
 //! Each phase is a self-contained module under this folder.
 //! The functions here are called in fixed order from
 //! `crate::coordinator::main`.
 //!
 //! Phase order is load-bearing:
-//!   - Phase 0 (arch): GDT + IDT + syscall + FPU before complex faults
-//!   - Phase 1 (mem):  frame allocator + heap before any Vec/Box
-//!   - Phase 2 (dev):  ACPI/PCI discovery; fragile services deferred
+//!   - Phase 0 (arch):    GDT + IDT + syscall + FPU before complex faults
+//!   - Phase 1 (mem):     frame allocator + heap before any Vec/Box
+//!   - Phase 2 (dev):     ACPI/PCI discovery; fragile services deferred
 //!   - Phase 3 (display): GOP framebuffer inherited from UEFI
-//!   - Phase 4 (proc): scheduler + APIC timer + interrupts
-//!   - Phase 5 (bmo): BMO Core desktop/API handoff (called by coordinator)
+//!   - Phase 4 (proc):    scheduler + APIC timer + interrupts
+//!
+//! NOTA v1.8.7: Phase 5 (BMO Core handoff) se mantiene como módulo
+//! `p5_user` solo por compatibilidad con `bmo_core::desktop::welcome`
+//! que consulta `p5_user::self_test()`. La fase 5 real está en
+//! `coordinator::dispatch_phase5`, que llama a `bmo_core::coord::enter()`
+//! y nunca retorna.
 
 pub mod p0_arch;
 pub mod p1_mem;

@@ -14,7 +14,6 @@ pub mod cache;
 pub mod fpu;
 pub mod perf;
 pub mod tsc;
-pub mod delay;
 pub mod info;
 
 // Re-export key types for convenience

@@ -5,13 +5,17 @@
 //!   - pcie:         PCI Express scan
 //!   - framebuffer:  UEFI GOP framebuffer + backbuffer
 //!   - watchdog:     Hardware watchdog
-//!   - audio:        Audio DSP math (sin/cos/exp/log)
+//!   - audio:        Audio DSP math (sin/cos/exp/log) — DEPRECATED, mover a bmo_core
 //!   - acpi:         ACPI control (sleep, reboot) — tables en `platform`
 //!
 //! Cualquier driver nuevo:
 //! 1. Crear `dev/<nombre>.rs` con un trait (si es genérico) + init().
 //! 2. Agregar `pub mod <nombre>;` aquí.
 //! 3. Si expone syscall, agregar en `crate::arch::syscall::dispatch`.
+//!
+//! NOTA v1.8.7: el orquestador `dev::init()` se eliminó. Los drivers se
+//! inicializan directamente desde `boot::phases::p2_dev::run` y desde
+//! `coordinator::main` con su orden de dependencia real.
 
 #![allow(dead_code)]
 
@@ -21,17 +25,3 @@ pub mod framebuffer;
 pub mod watchdog;
 pub mod audio;
 pub mod acpi;
-
-// ── Init orchestrator ─────────────────────────────────────────────────
-
-/// Initialize all device drivers in dependency order.
-pub fn init() {
-    crate::dev::console::serial_write("[dev] === Device Init ===\n");
-    crate::dev::console::init();
-    crate::dev::framebuffer::init();
-    crate::dev::pcie::init();
-    crate::dev::watchdog::init();
-    crate::dev::audio::init();
-    crate::dev::acpi::init();
-    crate::dev::console::serial_write("[dev] === Device Init Complete ===\n");
-}

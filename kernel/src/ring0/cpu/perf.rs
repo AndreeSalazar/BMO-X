@@ -1,6 +1,10 @@
 #![allow(dead_code)]
 
 //! Performance monitoring counters — fixed counter 0 (instructions retired).
+//!
+//! v1.8.7: `instructions_retired` se eliminó (sin consumidores cross-layer).
+//! Si en el futuro quieres exponer métricas, restaurarla con la firma:
+//!   `pub fn instructions_retired() -> u64` leyendo IA32_FIXED_CTR0 vía MSR.
 
 use super::features::CpuFeatures;
 use super::msr::{IA32_PERF_GLOBAL_CTRL, IA32_FIXED_CTR0};
@@ -28,10 +32,4 @@ pub fn init(features: &CpuFeatures) {
         crate::cpu::msr::wrmsr(IA32_PERF_GLOBAL_CTRL, ctrl);
     }
     crate::dev::console::serial_write("[cpu] Perf counters initialized\n");
-}
-
-/// Read instructions retired counter (fixed counter 0).
-#[inline]
-pub fn instructions_retired() -> u64 {
-    unsafe { crate::cpu::msr::rdmsr(IA32_FIXED_CTR0) }
 }

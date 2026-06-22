@@ -1,35 +1,19 @@
-//! Phase 5 — Desktop.
+//! Phase 5 — Self-test stub only.
 //!
-//! v1.6.16: `boot_start`/`phase4_end` are reserved for the desktop
-//! boot progress indicator in v1.7.x.
+//! v1.8.7: la fase 5 REAL ya no vive aquí. `coordinator::dispatch_phase5`
+//! llama directamente a `bmo_core::coord::enter`, que a su vez lanza
+//! `desktop::welcome::run()`. Este módulo conserva **solo** la función
+//! `self_test()`, porque `bmo_core::desktop::welcome` la consulta para
+//! diagnóstico (3 callsites en `welcome::self_test_dispatch`).
+//!
+//! Si en el futuro se reactiva la fase 5 aquí (por ejemplo, para intercalar
+//! un banner intermedio), restaurar la lógica desde git.
 
 #![allow(dead_code)]
 
-use crate::{boot::log, bmo_core::desktop};
-use crate::boot::context::BootContext;
-use super::p0_arch::CpuState;
-use super::p1_mem::MemState;
-use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
+use super::trait_def::{SelfTestReport, CheckResult};
 
-pub fn run(
-    _ctx: &BootContext,
-    _cpu: &CpuState,
-    _mem: &MemState,
-    _boot_start: u64,
-    _phase4_end: u64,
-) -> ! {
-    // v1.5.3: Direct welcome screen. The fancy banner + desktop loop
-    // is stubbed because the render path is still being stabilized.
-    log::info("phase5", "=== Phase 5: Welcome (desktop stubbed) ===");
-    desktop::init();
-    desktop::welcome::run();
-}
-/// Used by the `Phase` trait to satisfy the signature; phase5 does not
-/// have a pure timestamp-driven run because it consumes the boot aggregate.
-pub fn mark_entered() -> PhaseOutput {
-    PhaseOutput { prev_end: 0 }
-}
-
+/// Consumido por `bmo_core::desktop::welcome::self_test` para diagnóstico.
 pub fn self_test() -> SelfTestReport {
     static CHECKS: &[CheckResult] = &[
         CheckResult::pass("console.fb_init"),

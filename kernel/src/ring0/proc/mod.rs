@@ -4,17 +4,19 @@
 //! Integra con APIC timer para preemptive scheduling.
 //!
 //! Modular:
-//!   - process: Process management
-//!   - task:    Task management + ctx switching
-//!   - rt:      Real-time scheduler (EDF) — reserved, no active callers
+//!   - process:  Process management
+//!   - task:     Task management + ctx switching
 //!   - user_init: Ring 3 process loading
+//!
+//! v1.8.7: eliminado `rt` (Real-time EDF scheduler) — sin consumidores
+//! activos. Restaurar desde git cuando se reactive el caso RT (audio
+//! HDA, render de juego).
 
 #![allow(dead_code)]
 
 pub mod process;
 pub mod task;
 pub mod user_init;
-pub mod rt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {

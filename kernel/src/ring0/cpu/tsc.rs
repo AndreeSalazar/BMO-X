@@ -37,84 +37,25 @@ pub fn calibrate() -> u64 {
         RYZEN_5600X_TSC_HZ
     };
 
-    // Verify with a short calibration loop (sanity check).
-    // If CPUID 0x15 returned garbage, the loop will correct it.
-    let verified_freq = verify_with_loop(freq);
+    // Trust the initial estimate (CPUID 0x15 or known constant).
+    // v1.8.7: eliminada `verify_with_loop` (anterior intento de calibrar
+    // TSC con un busy-loop). El comentario en su interior explicaba por
+    // qué NO puede calibrarse sin un reloj de referencia (ACPI PM Timer):
+    //   elapsed_ticks = F * (iterations * cycles_per_iter) / F
+    //                 = iterations * cycles_per_iter
+    // → independiente de F, no se puede romper la circularidad sin un
+    //   reloj externo. Se confía en CPUID 0x15 o el constante conocido
+    //   para el 5600X. Cuando se implemente ACPI real, sustituir por
+    //   calibración contra el PM Timer (3,579,545 Hz).
 
     // Make available globally (for watchdog, bmo_abi::time, etc.)
-    super::set_tsc_freq(verified_freq);
+    super::set_tsc_freq(freq);
 
     crate::dev::console::serial_write("[cpu] TSC calibrated: ");
-    print_freq(verified_freq);
+    print_freq(freq);
     crate::dev::console::serial_write(" Hz\n");
 
-    verified_freq
-}
-
-/// Verify TSC frequency with a short busy-loop.
-///
-/// Runs 5M iterations of PAUSE (≈ 625M cycles on Zen 3 at 3.7 GHz,
-/// takes ≈ 170 ms). Measures elapsed TSC ticks and computes the
-/// actual frequency. If the initial estimate is within 20% of the
-/// measured value, trust the measured value; otherwise use the
-/// measured value.
-fn verify_with_loop(initial: u64) -> u64 {
-    // Run a calibrated loop: 5M PAUSE iterations
-    let iterations = 5_000_000u64;
-
-    unsafe { core::arch::asm!("lfence"); }
-    let start = rdtsc();
-
-    let mut count = 0u64;
-    while count < iterations {
-        count += 1;
-        unsafe { core::arch::asm!("pause"); }
-    }
-
-    unsafe { core::arch::asm!("lfence"); }
-    let end = rdtsc();
-    let elapsed = end - start;
-
-    if elapsed == 0 {
-        return initial;
-    }
-
-    // The loop body is: pause (~125 cycles on Zen 3) + add + cmp + jmp
-    // Total ≈ 135 cycles per iteration on Zen 3.
-    // elapsed ≈ iterations * 135 = 675,000,000 at 3.7 GHz
-    //
-    // We need a reference time. Since we DON'T have one yet, we
-    // estimate: at frequency F, elapsed = F * iterations * 135 / F
-    // = iterations * 135. This is independent of F — circular.
-    //
-    // The ONLY way to break the circularity is to have a reference
-    // clock. The ACPI PM Timer runs at 3,579,545 Hz (3.58 MHz).
-    // But accessing it requires I/O port 0x40 or MMIO from ACPI tables.
-    //
-    // For a 5600X-specific kernel: trust CPUID 0x15 or the known constant.
-    // The verification loop is just a sanity check — if elapsed is
-    // wildly different from what we'd expect, use the initial value.
-
-    // Expected elapsed at the initial frequency:
-    // expected = initial * (iterations * 135) / initial = iterations * 135
-    // No wait, that's wrong. Let me think differently.
-    //
-    // At frequency F Hz, the loop takes:
-    //   time_seconds = (iterations * cycles_per_iter) / F
-    //   elapsed_ticks = F * time_seconds = iterations * cycles_per_iter
-    //
-    // So elapsed = iterations * cycles_per_iter, which is INDEPENDENT of F!
-    // This means we CANNOT calibrate TSC with just a busy loop.
-    // We NEED a reference clock.
-    //
-    // Solution: if we have a valid initial estimate (from CPUID 0x15 or
-    // known constant), use it directly. The loop just confirms the CPU
-    // is alive and TSC is counting.
-
-    let _ = elapsed; // Acknowledge we measured it
-
-    // Trust the initial estimate (CPUID 0x15 or known constant)
-    initial
+    freq
 }
 
 /// Print frequency in human-readable form.

@@ -5,47 +5,42 @@
 //!
 //! Encapsulates `mov crN, ...` and `xsetbv` semantics with safety
 //! checks (OSXSAVE must be set before xsetbv; XCR0 value must be valid).
+//!
+//! v1.8.7: `read_cr3` y `write_cr3` quedaron duplicadas con
+//! `mem::virt::read_cr3` / `mem::virt::write_cr3`. Las versiones de
+//! `mem::virt` son las canónicas (las usa `proc::mod::schedule`).
+//! Aquí solo se mantienen los read de CR0/CR2/CR4/CR8 que necesita
+//! `init` y `init_xcr0`. Si en el futuro algún consumidor externo
+//! pide `regs::read_cr3`, re-exponerla con `pub use mem::virt::read_cr3`.
 
 use super::features::CpuFeatures;
 use core::arch::asm;
 
-// ── CR0/CR2/CR3/CR4/CR8 read/write ───────────────────────────────────────────
+// ── CR0/CR2/CR4/CR8 read helpers (uso interno de `init`/`init_xcr0`) ────────
 
-/// Read CR0.
-pub fn read_cr0() -> u64 {
+#[inline]
+fn read_cr0() -> u64 {
     let v: u64;
     unsafe { asm!("mov {}, cr0", out(reg) v) };
     v
 }
 
-/// Read CR2 (the faulting address on #PF).
-pub fn read_cr2() -> u64 {
+#[inline]
+fn read_cr2() -> u64 {
     let v: u64;
     unsafe { asm!("mov {}, cr2", out(reg) v) };
     v
 }
 
-/// Read CR3 (current PML4 physical address).
-pub fn read_cr3() -> u64 {
-    let v: u64;
-    unsafe { asm!("mov {}, cr3", out(reg) v) };
-    v
-}
-
-/// Write CR3 (load a new PML4). Used in ctx switches.
-pub fn write_cr3(pml4_phys: u64) {
-    unsafe { asm!("mov cr3, {}", in(reg) pml4_phys) }
-}
-
-/// Read CR4.
-pub fn read_cr4() -> u64 {
+#[inline]
+fn read_cr4() -> u64 {
     let v: u64;
     unsafe { asm!("mov {}, cr4", out(reg) v) };
     v
 }
 
-/// Read CR8 (task priority for the local APIC, typically 0 in OS).
-pub fn read_cr8() -> u64 {
+#[inline]
+fn read_cr8() -> u64 {
     let v: u64;
     unsafe { asm!("mov {}, cr8", out(reg) v) };
     v

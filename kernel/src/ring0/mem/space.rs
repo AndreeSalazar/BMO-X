@@ -1,11 +1,15 @@
 #![allow(dead_code)]
 
-//! Virtual Memory Manager (VMM) for FastOS.
+//! ⚠️  DEPRECATED v1.8.7 — No usar. Los tipos VM reales del sistema
+//! están en `crate::mem::virt` (`AddressSpace`, `Vma`, `VmaKind`).
 //!
-//! Provides process-level virtual address space management.
-//! Integrates with the paging module for demand paging and CoW.
+//! Este módulo se conserva temporalmente para no romper referencias
+//! externas accidentales. Se eliminará en la próxima major. Si estás
+//! añadiendo código nuevo, importa desde `crate::mem::virt` directamente.
 //!
-//! Each process has an `AddressSpace` that tracks its VMAs.
+//! Histórico: `space.rs` definía `VmaFlags`, `VmaType`, `Vma` y
+//! `VmSpace` como una versión paralela al subsistema de paginación.
+//! `mem::virt` consolidó todo y estos tipos quedaron redundantes.
 
 use crate::mem::phys;
 use crate::boot::serial::{u32_dec, hex as serial_hex};

@@ -57,8 +57,7 @@
 
 extern crate alloc;
 
-// ── Hardware APIs (4 capas principales) ──────────────────────────────
-pub mod platform;
+// ── Hardware APIs (5 capas principales) ──────────────────────────────
 pub mod arch;
 pub mod mem;
 pub mod dev;
@@ -72,13 +71,16 @@ pub mod boot;
 mod panic;
 pub mod coordinator;
 
-// ── Módulos hermanos (BMO Core y Ring 3 vía path attribute) ─────────
+// ── Módulos hermanos (vía path attribute) ───────────────────────────
 #[path = "../bmo_core/mod.rs"]
 pub mod bmo_core;
 #[path = "../bmo_gpu/mod.rs"]
 pub mod bmo_gpu;
-#[path = "../ring3/mod.rs"]
-pub mod ring3;
+
+// NOTA v1.8.7: `ring3` se desactiva temporalmente. No tiene consumidores
+// en RING 0 ni en `bmo_core`. Mantenerlo activado gastaba BSS.
+// #[path = "../ring3/mod.rs"]
+// pub mod ring3;
 
 // Re-exports principales (BootInfo shared from bootloader).
 pub use boot::info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE};

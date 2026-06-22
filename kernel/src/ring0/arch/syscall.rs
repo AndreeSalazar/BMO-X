@@ -445,7 +445,7 @@ pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
     }
 }
 
-/// Initialize the syscall subsystem. v1.7.5: also installs the LSTAR MSR.
-pub fn init() {
-    init_syscall();
-}
+// NOTA: `init()` quedó como wrapper trivial de `init_syscall()`. v1.8.7:
+// los únicos call sites usan `init_syscall()` directamente, así que este
+// wrapper se elimina. Si en el futuro se quiere re-unificar, exponer un
+// solo nombre y llamarlo desde `p0_arch::run`.

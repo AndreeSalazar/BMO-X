@@ -1,64 +1,29 @@
 //! CPU feature detection for the Ryzen 5 5600X.
 //!
-//! # Política (v1.7.8)
+//! # Política (v1.8.7)
 //!
 //! El kernel es **específico** del 5600X. No exponemos un bitmap de 83
-//! features. Exponemos **constantes** que son siempre `true` en el 5600X:
+//! features ni constantes globales. Exponemos un struct compacto
+//! `CpuFeatures` que `cpu::init` pasa a `regs::init`, `cache::init`,
+//! `perf::init`, `fpu::*`.
 //!
-//! ```ignore
-//! use crate::cpu::features;
-//! if features::HAS_AVX2 { ... }   // siempre true
-//! ```
-//!
-//! Si en el futuro tienes otro CPU, edita este archivo. No hay fallback
+//! Si en el futuro hay otro CPU, edita este archivo. No hay fallback
 //! genérico. Si el kernel se compila para un CPU y corre en otro, panic.
+//!
+//! # Histórico (v1.7.8)
+//!
+//! Antes había 32 constantes `pub const HAS_SSE: bool = true;`...
+//! Se eliminaron en v1.8.7 porque nadie las consumía (se usaban solo
+//! para "silenciar warnings" en `cpu::info::print`).
 
 #![allow(dead_code)]
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Constantes del 5600X (siempre true en este CPU)
-// ═══════════════════════════════════════════════════════════════════════════
-
-pub const HAS_SSE: bool = true;
-pub const HAS_SSE2: bool = true;
-pub const HAS_SSE3: bool = true;
-pub const HAS_SSSE3: bool = true;
-pub const HAS_SSE4_1: bool = true;
-pub const HAS_SSE4_2: bool = true;
-pub const HAS_AVX: bool = true;
-pub const HAS_AVX2: bool = true;
-pub const HAS_FMA: bool = true;
-pub const HAS_BMI1: bool = true;
-pub const HAS_BMI2: bool = true;
-pub const HAS_AES_NI: bool = true;
-pub const HAS_SHA_NI: bool = true;
-pub const HAS_F16C: bool = true;
-pub const HAS_POPCNT: bool = true;
-pub const HAS_LZCNT: bool = true;
-pub const HAS_RDRAND: bool = true;
-pub const HAS_RDSEED: bool = true;
-pub const HAS_XSAVE: bool = true;
-pub const HAS_OSXSAVE: bool = true;
-pub const HAS_PCID: bool = true;
-pub const HAS_INVPCID: bool = true;
-pub const HAS_FSGSBASE: bool = true;
-pub const HAS_SMEP: bool = true;
-pub const HAS_SMAP: bool = true;
-pub const HAS_UMIP: bool = true;
-pub const HAS_RDPID: bool = true;
-pub const HAS_RDTSCP: bool = true;
-pub const HAS_INVTSC: bool = true;
-pub const HAS_MTRR: bool = true;
-pub const HAS_PAT: bool = true;
-pub const HAS_1GB_PAGES: bool = true;
-pub const HAS_PERFCTR_CORE: bool = true;
-pub const HAS_AVX512F: bool = false;
-pub const HAS_5LEVEL_PAGES: bool = false;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  CpuFeatures — struct compacto para que el resto del kernel lo use
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Features presentes en el Ryzen 5 5600X que el kernel usa para
+/// habilitar paths de init.
 #[derive(Debug, Clone, Copy)]
 pub struct CpuFeatures {
     pub has_sse: bool,
