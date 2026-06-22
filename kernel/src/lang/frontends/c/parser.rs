@@ -5,6 +5,6 @@
 
 #![allow(dead_code)]
 
-pub use crate::lang::bmo::plugins::languages::c::parser::CParser as Parser;
+pub use crate::lang::bmo::plugins::languages::c::parser::CParser;
 pub use crate::lang::bmo::plugins::languages::c::ast as ast_compat;
 pub use crate::lang::bmo::plugins::languages::c::ast::{CAst, CItem, CExpr, CStmt, CType, CBinOp, CUnaryOp};
