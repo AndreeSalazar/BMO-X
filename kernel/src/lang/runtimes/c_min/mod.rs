@@ -29,3 +29,9 @@ pub const C_MIN_VERSION: (u8, u8) = (1, 0);
 
 /// Tamaño aproximado del runtime en bytes.
 pub const C_MIN_SIZE_BYTES: u32 = 2048;
+
+/// Offset (en bytes) del símbolo `_exit` dentro del BEF.
+/// El linker usa este offset para parchear el `call _exit` de `_start`.
+/// Por ahora, como el linker no soporta múltiples símbolos, retorna 0.
+/// v1.9: implementar tabla de símbolos real.
+pub const EXIT_OFFSET: u32 = 0;

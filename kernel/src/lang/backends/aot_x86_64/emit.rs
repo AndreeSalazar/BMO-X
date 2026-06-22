@@ -21,6 +21,11 @@ use super::abi::Reg;
 const CODE_BUF_SIZE: usize = 64 * 1024;
 const RODATA_BUF_SIZE: usize = 16 * 1024;
 
+/// Tamaño máximo del code buffer (público para el linker).
+pub const fn code_buf_size() -> usize { CODE_BUF_SIZE }
+/// Tamaño máximo del rodata buffer.
+pub const fn rodata_buf_size() -> usize { RODATA_BUF_SIZE }
+
 /// Tamaño del operando: 8/16/32/64 bits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpSize {
