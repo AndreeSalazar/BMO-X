@@ -71,6 +71,16 @@ pub mod boot;
 #[path = "AMD/mod.rs"]
 pub mod amd_cpu;
 
+// ── Nueva arquitectura (v1.8.8+): vendor/profile/bus/gpu/syscall ───
+pub mod vendor;
+pub mod profile;
+pub mod bus;
+pub mod gpu;
+pub mod syscall;
+// Note: `arch/` already exists (gdt, idt, apic, ctx, syscall).
+// The `arch::x86_64` skeleton lives in `arch/x86_64/` and re-exports
+// the same modules. Don't add a new `pub mod arch` here.
+
 // ── Top-level Ring 0 ────────────────────────────────────────────────
 mod panic;
 pub mod coordinator;
