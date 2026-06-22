@@ -40,6 +40,8 @@ pub mod bmo_core;
 pub mod bmo_gpu;
 #[path = "../bmo_abi/mod.rs"]
 pub mod bmo_abi;
+#[path = "../cabina/mod.rs"]
+pub mod cabina;
 #[path = "../lang/mod.rs"]
 pub mod lang;
 #[path = "../ring3/mod.rs"]
