@@ -38,6 +38,7 @@ use super::bef;
 use super::desktop;
 use super::fs;
 use super::gustos;
+use super::ring3_gateway;
 use crate::bmo_gpu;
 
 /// Inicializa todos los subsistemas de BMO Core.
@@ -70,12 +71,16 @@ pub fn init() {
     // 9) Desktop: state + dock. (welcome se arranca desde enter().)
     desktop::init();
 
+    // 10) ring3_gateway: única puerta Ring 0 → BMO Core.
+    ring3_gateway::init();
+
     // ── Tests integrados de la trilogía ────────────────────────────
     // Se ejecutan en cada boot para validar que los subsistemas
     // funcionan end-to-end. No fallan el boot (solo reportan).
     run_trilogy_tests();
+    run_gateway_tests();
 
-    crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop");
+    crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop+ring3_gateway");
 }
 
 /// Ejecuta los tests integrados de cabina, defense y timeback.
@@ -115,6 +120,19 @@ fn run_trilogy_tests() {
 /// Cabina se considera "ready" solo después de init() (FB GOP OK).
 fn cabina_mark_ready() {
     crate::cabina::boot_ready();
+}
+
+/// Ejecuta los tests del ring3_gateway.
+fn run_gateway_tests() {
+    use crate::cabina::{info, warn};
+    for r in ring3_gateway::tests::run_all() {
+        if r.passed {
+            info("test.gw", &r.name);
+        } else {
+            warn("test.gw", &r.name);
+            warn("test.gw", &r.message);
+        }
+    }
 }
 
 /// Punto de entrada principal de BMO Core. Llamado desde

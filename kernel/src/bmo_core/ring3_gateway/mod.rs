@@ -171,3 +171,5 @@ pub fn total() -> u64 { unsafe { TOTAL_SYSCALLS } }
 pub fn allowed() -> u64 { unsafe { ALLOWED_SYSCALLS } }
 pub fn denied() -> u64 { unsafe { DENIED_SYSCALLS } }
 pub fn unknown() -> u64 { unsafe { UNKNOWN_SYSCALLS } }
+
+pub mod tests;
