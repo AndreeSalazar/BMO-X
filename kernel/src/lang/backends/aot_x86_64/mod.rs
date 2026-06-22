@@ -17,14 +17,11 @@
 //!   → codegen (per-function)
 //!     → regs (register allocation)
 //!     → emit (instruction encoding)
-//!   → Vec<u8> (machine code)
+//!   → CompiledArtifact { code, rodata, call_patches, string_offsets, function_offsets }
 //! ```
 //!
-//! ## Salida
-//!
-//! El output es un blob de bytes que contiene **una sola función**.
-//! El linker (futuro) se encargará de unir múltiples funciones en un
-//! BEF. Por ahora, una función = un blob.
+//! El linker (futuro) usa `call_patches` para resolver referencias
+//! cross-function y `string_offsets` para enlazar rodata.
 
 #![allow(dead_code)]
 
@@ -33,6 +30,6 @@ pub mod regs;
 pub mod abi;
 pub mod codegen;
 
-pub use codegen::{compile_module, compile_function};
+pub use codegen::{compile_module, CompiledArtifact};
 pub use emit::Emitter;
-pub use regs::RegAlloc;
+pub use regs::{RegAlloc, Var, VarSize, Location};

@@ -55,7 +55,8 @@ pub fn compile(source: &[u8], lang: SourceLang, name: &str) -> BxResult<Compiled
     };
 
     // 2. Backend → x86-64 bytes
-    let code = aot_x86_64::compile_module(&module)?;
+    let artifact = aot_x86_64::compile_module(&module)?;
+    let code = artifact.code;
 
     // 3. Runtime (linker decide si lo incluye).
     let runtime_size = crate::lang::runtimes::c_min::C_MIN_SIZE_BYTES;
