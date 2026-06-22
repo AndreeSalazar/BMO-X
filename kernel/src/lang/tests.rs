@@ -41,6 +41,8 @@ pub fn run_all() -> alloc::vec::Vec<TestResult> {
     results.push(comparison_bmo());
     results.push(c_hello_world());
     results.push(c_arithmetic());
+    results.push(bef_header_valid());
+    results.push(bef_section_table());
 
     results
 }
@@ -196,6 +198,49 @@ fn main() -> i64 {
             if w[0] == 0x0F && (w[1] & 0xF0) == 0x90 { has_setcc = true; } // setcc
         }
         ok_if(has_cmp && has_setcc, alloc::format!("cmp={}, setcc={}", has_cmp, has_setcc))
+    })
+}
+
+// ─── Tests BEF ──────────────────────────────────────────────────────
+
+fn bef_header_valid() -> TestResult {
+    let src = b"\
+fn main() {
+    proc_exit(0);
+}
+";
+    check("bef_header_valid", src, SourceLang::Bmo, |c| {
+        // El BEF empieza con magic "BEF1" = 0x31464542 LE.
+        if c.len() < 48 {
+            return alloc::string::String::from("BEF too short");
+        }
+        let magic = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+        if magic == u32::from_le_bytes(*b"BEF1") {
+            alloc::string::String::from("ok")
+        } else {
+            alloc::format!("wrong magic: 0x{:08X}", magic)
+        }
+    })
+}
+
+fn bef_section_table() -> TestResult {
+    let src = b"\
+fn main() {
+    proc_exit(0);
+}
+";
+    check("bef_section_table", src, SourceLang::Bmo, |c| {
+        if c.len() < 48 + 48 {
+            return alloc::string::String::from("BEF too short for section table");
+        }
+        // n_sections está en offset 24-27 (después de header de 24 bytes).
+        let n_sections = u32::from_le_bytes([c[24], c[25], c[26], c[27]]);
+        // section_count debe ser >= 1 (.text) + 1 (.rodata) + 1 (.meta) = 3
+        if n_sections >= 3 {
+            alloc::string::String::from("ok")
+        } else {
+            alloc::format!("too few sections: {}", n_sections)
+        }
     })
 }
 
