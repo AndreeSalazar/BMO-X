@@ -57,8 +57,8 @@ pub fn calibrate() -> u64 {
 
     // v1.8.8: if the global fastos_cpu::tsc_freq_hz is 0 (init not yet run),
     // delegate to the real calibration. Otherwise use the global.
-    let final_freq = if crate::amd_cpu::zen3::tsc_freq_hz() != 0 {
-        crate::amd_cpu::zen3::tsc_freq_hz()
+    let final_freq = if crate::vendor::amd::cpu::zen3::tsc_freq_hz() != 0 {
+        crate::vendor::amd::cpu::zen3::tsc_freq_hz()
     } else {
         freq
     };

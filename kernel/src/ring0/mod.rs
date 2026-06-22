@@ -1,55 +1,14 @@
 //! Ring 0 — Hardware Abstraction Layer (entry point del binario).
 //!
-//! Ring 0 es el "Hardware" layer de FastOS. Aquí vive todo el código
-//! que requiere privilegios de CPU (Ring 0 de x86-64). El resto del
-//! kernel nunca toca hardware directamente — pasa por estas APIs.
+//! v1.8.8 (Phase 2): arquitectura reorganizada. El código del 5600X
+//! vive en `vendor/amd/cpu/zen3/`. Ver `Rutas.md` y los comentarios
+//! en `vendor/` para detalles.
 //!
-//! # Estructura (v1.7.5)
+//! ## Compatibilidad
 //!
-//! ```text
-//! Ring 0 (Hardware)
-//! ├─ platform/    ← Platform info: CPUID, ACPI tables, firmware, topology
-//! ├─ arch/        ← Architecture: GDT, IDT, APIC, SMP, ctx, syscall
-//! ├─ mem/         ← Memory: phys (frame alloc), virt (page tables), heap, space
-//! ├─ dev/         ← Devices: pcie, console, framebuffer, audio, acpi control, watchdog
-//! ├─ proc/        ← Processes: task, process, scheduler, idle, user_init
-//! ├─ cpu/         ← CPU primitives: features, regs, msr, cache, fpu, perf, tsc, info
-//! └─ boot/        ← Boot sequence phases 0-5
-//! ```
-//!
-//! # Top-level
-//!   - coordinator.rs   — init() + main(): orquesta todo Ring 0
-//!   - panic.rs         — panic_handler
-//!
-//! # Contratos
-//!
-//! - **Ring 0 NUNCA** debe ser alcanzado por código de Ring 3. La única
-//!   vía es vía syscall (`arch::syscall`), que valida origen y destino.
-//!
-//! - **Ring 0 ↔ BMO Core**: BMO Core llama a `crate::bmo_core::*` y nunca
-//!   al revés. Ring 0 expone syscalls y helpers (rdtsc, busy_wait_ms)
-//!   que BMO Core consume.
-//!
-//! # Cómo añadir un nuevo driver
-//!
-//! 1. Crear `dev/<nombre>.rs` con la API y un trait si aplica:
-//!    ```ignore
-//!    pub trait MyDev { fn init(&mut self); fn read(&self) -> Data; }
-//!    pub fn init() { /* hardware init */ }
-//!    ```
-//! 2. Agregar `pub mod <nombre>;` en `dev/mod.rs`.
-//! 3. Si el driver expone un syscall nuevo, agregar el case en
-//!    `arch::syscall::dispatch`.
-//! 4. Si el driver necesita init en una fase específica, agregar en
-//!    `coordinator::init()` y documentar dependencias.
-//!
-//! # Cómo añadir un nuevo handler de interrupción
-//!
-//! 1. Definir el handler en `arch/<nombre>.rs` con la firma
-//!    `extern "x86-interrupt" fn(frame: &mut InterruptFrame)`.
-//! 2. Registrar en la IDT con `crate::arch::idt::register(vector, handler)`.
-//! 3. Si el handler es per-IRQ, registrar también en el IO-APIC con
-//!    `crate::arch::apic::register_irq(irq, vector)`.
+//! - `crate::AMD` (solo docs) — para referencias, sin código.
+//! - `crate::vendor::amd::cpu::zen3::foo` — alias legacy, sigue funcionando.
+//! - `crate::vendor::amd::cpu::zen3::foo` — path nuevo, recomendado.
 
 #![no_std]
 #![no_main]
@@ -68,18 +27,7 @@ pub mod cpu;
 pub mod boot;
 
 // ── CPU-specific (AMD Ryzen 5 5600X / Zen 3) ───────────────────────
-#[path = "AMD/mod.rs"]
-pub mod amd_cpu;
-
-// ── Nueva arquitectura (v1.8.8+): vendor/profile/bus/gpu/syscall ───
 pub mod vendor;
-pub mod profile;
-pub mod bus;
-pub mod gpu;
-pub mod syscall;
-// Note: `arch/` already exists (gdt, idt, apic, ctx, syscall).
-// The `arch::x86_64` skeleton lives in `arch/x86_64/` and re-exports
-// the same modules. Don't add a new `pub mod arch` here.
 
 // ── Top-level Ring 0 ────────────────────────────────────────────────
 mod panic;
@@ -91,13 +39,24 @@ pub mod bmo_core;
 #[path = "../bmo_gpu/mod.rs"]
 pub mod bmo_gpu;
 
-// NOTA v1.8.7: `ring3` se desactiva temporalmente. No tiene consumidores
-// en RING 0 ni en `bmo_core`. Mantenerlo activado gastaba BSS.
+// NOTA v1.8.7: `ring3` se desactiva temporalmente. No tiene consumidores.
 // #[path = "../ring3/mod.rs"]
 // pub mod ring3;
 
+// ── AMD/ — Solo documentación (.md) ────────────────────────────────
+#[path = "AMD/mod.rs"]
+pub mod amd_docs;
+
+// ── Nueva arquitectura: profile/bus/gpu/syscall ────────────────────
+pub mod profile;
+pub mod bus;
+pub mod gpu;
+pub mod syscall;
+
 // Re-exports principales (BootInfo shared from bootloader).
-pub use boot::info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE};
+pub use boot::info::{
+    BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE,
+};
 
 // ── Entry point ─────────────────────────────────────────────────────
 
@@ -122,6 +81,5 @@ unsafe extern "C" fn _start() -> ! {
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
-    // Toda la coordinación: ver coordinator::main()
     coordinator::main(boot_info_ptr);
 }

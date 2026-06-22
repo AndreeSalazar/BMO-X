@@ -17,10 +17,10 @@
 //!
 //! ```ignore
 //! // At boot, in boot_coordinator::main:
-//! crate::AMD::zen3::fastos_cpu::init_fastos_cpu();
+//! crate::vendor::amd::cpu::zen3::fastos_cpu::init_fastos_cpu();
 //!
 //! // Anywhere in the kernel:
-//! if let Some(id) = crate::AMD::zen3::fastos_cpu::identity() {
+//! if let Some(id) = crate::vendor::amd::cpu::zen3::fastos_cpu::identity() {
 //!     log!("Running on {}", id.family_model.name());
 //! }
 //! ```

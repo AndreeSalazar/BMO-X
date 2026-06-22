@@ -117,7 +117,7 @@ pub fn init_syscall() {
     // TSC_AUX, GS bases) using the real syscall entry point. This overrides
     // the placeholder that `init_fastos_cpu()` wrote in coordinator::main.
     let real_entry = syscall_entry_naked as *const () as u64;
-    crate::amd_cpu::zen3::init_msrs(real_entry);
+    crate::vendor::amd::cpu::zen3::init_msrs(real_entry);
 }
 
 /// Set the kernel stack pointer used by the syscall entry.

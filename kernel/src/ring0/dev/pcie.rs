@@ -379,8 +379,9 @@ fn print_u32(val: u32) {
 /// calls `init_ecam(0, 32)` to disable ECAM entirely (because the 5600X UEFI
 /// wedges on ECAM MMIO access above 4 GB without proper PML4 re-mapping).
 ///
-/// Use `amd_cpu::zen3::acpi_real::mcfg()` to read the real ECAM base, and
-/// only call `init_ecam(base, end)` with values from the MCFG table.
+/// Use `vendor::amd::cpu::zen3::acpi_real::mcfg()` to read the real
+/// ECAM base, and only call `init_ecam(base, end)` with values from
+/// the MCFG table.
 #[allow(dead_code)]
 pub fn init() {
     init_ecam(0xE000_0000, 255);

@@ -103,7 +103,7 @@ pub fn schedule() {
                         // v1.8.8: issue IBPB before switching to a new process's
                         // page table. This isolates the branch predictor state
                         // and mitigates Spectre v2 cross-process leakage.
-                        crate::amd_cpu::zen3::errata_workarounds::issue_ibpb();
+                        crate::vendor::amd::cpu::zen3::errata_workarounds::issue_ibpb();
                         unsafe { crate::mem::virt::write_cr3(proc.page_table_root); }
                     }
                 }

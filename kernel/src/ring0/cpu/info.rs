@@ -1,6 +1,6 @@
 //! CPU information display for the Ryzen 5 5600X.
 //!
-//! v1.8.8: now reads ALL data from `crate::amd_cpu::zen3::*` (the real
+//! v1.8.8: now reads ALL data from `crate::vendor::amd::cpu::zen3::*` (the real
 //! detection layer). If `init_fastos_cpu()` hasn't run yet, prints
 //! only the brand string and a hint.
 
@@ -14,7 +14,7 @@ pub fn print() {
     crate::dev::console::serial_write("[cpu] === CPU Information (Ryzen 5 5600X) ===\n");
 
     // Try to get the real detected identity
-    if let Some(id) = crate::amd_cpu::zen3::cpuid_detection::identity() {
+    if let Some(id) = crate::vendor::amd::cpu::zen3::cpuid_detection::identity() {
         // Brand string (up to 48 chars, null-padded)
         crate::dev::console::serial_write("[cpu] Brand: ");
         crate::dev::console::serial_write(id.brand.as_str());
@@ -39,7 +39,7 @@ pub fn print() {
         crate::dev::console::serial_write("\n");
 
         // Cache topology
-        if let Some(c) = crate::amd_cpu::zen3::cache() {
+        if let Some(c) = crate::vendor::amd::cpu::zen3::cache() {
             if let Some(c) = c.l1d {
                 crate::dev::console::serial_write("[cpu] Cache L1d: ");
                 crate::dev::console::serial_write_u64(c.size_kb as u64, 10);
@@ -79,12 +79,12 @@ pub fn print() {
         }
 
         // TSC frequency
-        let tsc_freq = crate::amd_cpu::zen3::tsc_freq_hz();
+        let tsc_freq = crate::vendor::amd::cpu::zen3::tsc_freq_hz();
         if tsc_freq > 0 {
             crate::dev::console::serial_write("[cpu] TSC: ");
             crate::dev::console::serial_write_u64(tsc_freq, 10);
             crate::dev::console::serial_write(" Hz");
-            if let Some(src) = crate::amd_cpu::zen3::tsc_source() {
+            if let Some(src) = crate::vendor::amd::cpu::zen3::tsc_source() {
                 crate::dev::console::serial_write(" (calibrated via ");
                 crate::dev::console::serial_write(src.name());
                 crate::dev::console::serial_write(")");
@@ -93,7 +93,7 @@ pub fn print() {
         }
 
         // Topology
-        if let Some(topo) = crate::amd_cpu::zen3::topology() {
+        if let Some(topo) = crate::vendor::amd::cpu::zen3::fastos_cpu::topology() {
             crate::dev::console::serial_write("[cpu] Topology: ");
             crate::dev::console::serial_write_u64(topo.total_cores as u64, 10);
             crate::dev::console::serial_write(" cores, ");
@@ -111,9 +111,9 @@ pub fn print() {
         if id.features_ecx & (1 << 28) != 0 { crate::dev::console::serial_write("  AVX, AVX2 (CPUID.7.EBX[5])\n"); }
         if id.features_ecx & (1 << 25) != 0 { crate::dev::console::serial_write("  AES-NI\n"); }
         if id.features_edx & (1 << 8) != 0 { crate::dev::console::serial_write("  Invariant TSC (warning: not on 5600X)\n"); }
-        if crate::amd_cpu::zen3::cpuid_detection::has_smep(id) { crate::dev::console::serial_write("  SMEP (Supervisor Mode Execution Prevention)\n"); }
-        if crate::amd_cpu::zen3::cpuid_detection::has_smap(id) { crate::dev::console::serial_write("  SMAP (Supervisor Mode Access Prevention)\n"); }
-        if crate::amd_cpu::zen3::cpuid_detection::has_fsgsbase(id) { crate::dev::console::serial_write("  FSGSBASE (RDFSBASE/WRGSBASE)\n"); }
+        if crate::vendor::amd::cpu::zen3::cpuid_detection::has_smep(id) { crate::dev::console::serial_write("  SMEP (Supervisor Mode Execution Prevention)\n"); }
+        if crate::vendor::amd::cpu::zen3::cpuid_detection::has_smap(id) { crate::dev::console::serial_write("  SMAP (Supervisor Mode Access Prevention)\n"); }
+        if crate::vendor::amd::cpu::zen3::cpuid_detection::has_fsgsbase(id) { crate::dev::console::serial_write("  FSGSBASE (RDFSBASE/WRGSBASE)\n"); }
         if id.features_edx & (1 << 27) != 0 { crate::dev::console::serial_write("  RDTSCP\n"); }
 
         crate::dev::console::serial_write("[cpu] NOT supported (5600X):\n");

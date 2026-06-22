@@ -1,6 +1,6 @@
 //! CPU feature detection for the Ryzen 5 5600X.
 //!
-//! v1.8.8: ahora delega en `crate::amd_cpu::zen3::cpuid_detection`
+//! v1.8.8: ahora delega en `crate::vendor::amd::cpu::zen3::cpuid_detection`
 //! (la implementación real con CPUID). Mantenemos `CpuFeatures` como
 //! struct público de RING 0 (usado por `cpu::init`) para no romper
 //! los call sites existentes.
@@ -41,21 +41,21 @@ impl CpuFeatures {
         }
     }
 
-    /// Build from a detected CpuIdentity (from `AMD::zen3::cpuid_detection`).
+    /// Build from a detected CpuIdentity (from `vendor::amd::cpu::zen3::cpuid_detection`).
     /// This is the REAL detection path — uses CPUID 1.ECX, CPUID 1.EDX,
     /// and CPUID 7.EBX to derive the boolean features.
-    pub fn from_identity(id: &crate::amd_cpu::zen3::cpuid_detection::CpuIdentity) -> Self {
+    pub fn from_identity(id: &crate::vendor::amd::cpu::zen3::cpuid_detection::CpuIdentity) -> Self {
         Self {
             has_sse: true,  // always true on x86-64
-            has_sse2: crate::amd_cpu::zen3::cpuid_detection::has_sse2(id),
-            has_avx: crate::amd_cpu::zen3::cpuid_detection::has_avx(id),
-            has_avx2: crate::amd_cpu::zen3::cpuid_detection::has_avx2(id),
+            has_sse2: crate::vendor::amd::cpu::zen3::cpuid_detection::has_sse2(id),
+            has_avx: crate::vendor::amd::cpu::zen3::cpuid_detection::has_avx(id),
+            has_avx2: crate::vendor::amd::cpu::zen3::cpuid_detection::has_avx2(id),
             has_xsave: (id.features_ecx & (1 << 26)) != 0,
             has_osxsave: (id.features_ecx & (1 << 27)) != 0,
-            has_fs_gs_base: crate::amd_cpu::zen3::cpuid_detection::has_fsgsbase(id),
-            has_smep: crate::amd_cpu::zen3::cpuid_detection::has_smep(id),
-            has_smap: crate::amd_cpu::zen3::cpuid_detection::has_smap(id),
-            has_umip: (crate::amd_cpu::zen3::cpuid_detection::cpuid(7, 0).1 & (1 << 2)) != 0,
+            has_fs_gs_base: crate::vendor::amd::cpu::zen3::cpuid_detection::has_fsgsbase(id),
+            has_smep: crate::vendor::amd::cpu::zen3::cpuid_detection::has_smep(id),
+            has_smap: crate::vendor::amd::cpu::zen3::cpuid_detection::has_smap(id),
+            has_umip: (crate::vendor::amd::cpu::zen3::cpuid_detection::cpuid(7, 0).1 & (1 << 2)) != 0,
             has_mtrr: (id.features_edx & (1 << 12)) != 0,
             has_perfctr_core: (id.features_ecx & (1 << 23)) != 0,  // POPCNT bit, close enough
         }
@@ -66,7 +66,7 @@ impl CpuFeatures {
 /// the hardcoded 5600X set if `init_fastos_cpu` hasn't run yet.
 pub fn detect() -> CpuFeatures {
     // Try the real detection
-    if let Some(id) = crate::amd_cpu::zen3::cpuid_detection::identity() {
+    if let Some(id) = crate::vendor::amd::cpu::zen3::cpuid_detection::identity() {
         return CpuFeatures::from_identity(id);
     }
     // Fallback: hardcoded (5600X-specific)

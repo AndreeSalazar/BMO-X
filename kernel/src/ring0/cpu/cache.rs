@@ -76,12 +76,12 @@ pub fn init_pat() {
 
 /// One-shot init: MTRR + PAT.
 ///
-/// v1.8.8: delegates to `crate::amd_cpu::zen3::mtrr_pat::init` which
+/// v1.8.8: delegates to `crate::vendor::amd::cpu::zen3::mtrr_pat::init` which
 /// uses the real MTRR + PAT logic for the Ryzen 5 5600X.
 pub fn init(features: &CpuFeatures, vram_base: u64, vram_size: u64) {
     // The local init_mtrr / init_pat are kept for compatibility but
-    // the real implementation is in AMD::zen3::mtrr_pat.
-    if crate::amd_cpu::zen3::mtrr_pat::init(vram_base, vram_size) {
+    // the real implementation is in vendor::amd::cpu::zen3::mtrr_pat.
+    if crate::vendor::amd::cpu::zen3::mtrr_pat::init(vram_base, vram_size) {
         return;
     }
     // Fallback: local basic init

@@ -1,44 +1,76 @@
 //! `vendor/amd/cpu/zen3/` — Knowledge of the AMD Ryzen 5 5600X (Zen 3).
 //!
-//! v1.8.8: this is a re-export of `crate::AMD::zen3` to migrate toward
-//! the new architecture. **No code moved yet** — all logic remains in
-//! `kernel/src/ring0/AMD/zen3/` for backwards compatibility. Future
-//! versions will move the actual implementations here.
+//! v1.8.8 (Phase 2): The actual code is now HERE. It was moved from
+//! `kernel/src/ring0/AMD/zen3/` to this new path. The `crate::amd_cpu`
+//! alias is preserved for backwards compatibility.
 //!
-//! ## Future layout (Phase 1+)
+//! ## What lives here
 //!
-//! ```
-//! vendor/amd/cpu/zen3/
-//! ├── mod.rs
-//! ├── cpuid.rs       (was: AMD/zen3/cpuid_detection.rs)
-//! ├── topology.rs    (was: AMD/zen3/topology.rs)
-//! ├── cache.rs       (was: AMD/zen3/cache_topology.rs)
-//! ├── tsc.rs         (was: AMD/zen3/tsc_calibration.rs)
-//! ├── msr.rs         (was: AMD/zen3/msr_definitions.rs + msr_init.rs)
-//! ├── mtrr_pat.rs    (was: AMD/zen3/mtrr_pat.rs)
-//! ├── power.rs       (was: AMD/zen3/power_management.rs)
-//! ├── errata.rs      (was: AMD/zen3/errata_workarounds.rs)
-//! ├── acpi.rs        (was: AMD/zen3/acpi_real.rs)
-//! ├── memory_ordering.rs
-//! ├── model_comparison.rs
-//! └── fastos_cpu.rs   (consolidated public API)
-//! ```
+//! All knowledge specific to the AMD Ryzen 5 5600X (Vermeer, Zen 3,
+//! Family 19h Model 01h). Nothing in this directory should be usable
+//! on a different CPU — those would live in `vendor/amd/cpu/zen4/`
+//! (future) or `vendor/intel/...` (future).
 //!
-//! ## What this module exports today
+//! ## Submodules
 //!
-//! All public types and functions of the existing AMD/zen3 implementation,
-//! accessible via the new path `crate::vendor::amd::cpu::zen3::*`.
+//! - `cpuid_detection` — Family/model/feature detection
+//! - `topology` — SMT/CCX/CCD/APIC IDs
+//! - `cache_topology` — L1/L2/L3/TLB sizes
+//! - `memory_ordering` — TSO débil, fences, atomic ops
+//! - `msr_definitions` — Tabla MSRs
+//! - `msr_init` — init_msr_common (EFER, STAR, LSTAR, FMASK, PAT, etc.)
+//! - `tsc_calibration` — Calibración con PM Timer
+//! - `power_management` — C1, C1e, P-state query
+//! - `mtrr_pat` — MTRR + PAT configuration
+//! - `errata_workarounds` — Spectre v2/v4, MDS, IBPB
+//! - `model_comparison` — Zen 1/2/3/4/5 differences
+//! - `acpi_real` — RSDP, XSDT, MCFG, FADT parsing
+//! - `fastos_cpu` — API pública consolidada
 
-#![allow(dead_code)] // v1.8.8: re-export only; original #[allow] in source
+#![allow(dead_code)] // v1.8.8: many helpers, not all called from ring0 yet
 
-// ── Re-export from old location for backwards compatibility ───────
-pub use crate::amd_cpu::zen3::*;
+// ── Submodules (the actual code) ───────────────────────────────────
+pub mod cpuid_detection;
+pub mod topology;
+pub mod cache_topology;
+pub mod memory_ordering;
+pub mod msr_definitions;
+pub mod tsc_calibration;
+pub mod power_management;
+pub mod mtrr_pat;
+pub mod errata_workarounds;
+pub mod model_comparison;
+pub mod acpi_real;
+pub mod msr_init;
+pub mod fastos_cpu;
 
-// ── Module index (informational) ───────────────────────────────────
+// ── Re-exports (consolidated public API) ───────────────────────────
+pub use cpuid_detection::{
+    detect_cpu, CpuVendor, CpuFamilyModel, CpuIdentity, CpuBrandString,
+};
+pub use topology::{Topology, CpuId, PerCpu};
+pub use tsc_calibration::{calibrate_tsc, TscSource};
+pub use mtrr_pat::{init_mtrr, init_pat};
+pub use acpi_real::{
+    find_rsdp, parse_rsdp, parse_xsdt, parse_mcfg, pm_timer_port,
+    RsdpHeader, McfgHeader, AcpiError, LegacyMcfgView,
+};
+pub use errata_workarounds::{
+    apply_spectre_v2_mitigations, apply_spectre_v4_mitigations,
+    apply_mds_mitigations, issue_ibpb,
+};
+pub use msr_init::init_msr_common;
+pub use fastos_cpu::{
+    init_fastos_cpu, init_msrs, init_acpi,
+    identity, topology as fastos_topology, cache, tsc_freq_hz, tsc_source,
+    is_initialized, summary,
+};
+
+// ── Static information about the Zen 3 profile ─────────────────────
 //
-// These constants describe the Zen 3 microarchitecture features that
-// this profile enables. They are used by `profile/amd_ryzen_5_5600x.rs`
-// to declare hardware capabilities.
+// Used by `profile/amd_ryzen_5_5600x.rs` to declare hardware
+// capabilities. These are static constants — they don't change at
+// runtime.
 pub mod info {
     //! Static information about the Zen 3 profile.
 

@@ -1,7 +1,7 @@
-//! v1.8.8 — ACPI delegating to `AMD::zen3::acpi_real`.
+//! v1.8.8 — ACPI delegating to `vendor::amd::cpu::zen3::acpi_real`.
 //!
 //! v1.7.4 era un stub minimalista. v1.8.8 invoca la implementación
-//! real (`crate::amd_cpu::zen3::acpi_real`) que parsea RSDP, XSDT,
+//! real (`crate::vendor::amd::cpu::zen3::acpi_real`) que parsea RSDP, XSDT,
 //! MCFG, FADT, HPET, MADT.
 //!
 //! Si `init_fastos_cpu()` no se ha llamado todavía, devuelve los
@@ -13,7 +13,7 @@
 
 #![allow(dead_code)]
 
-pub use crate::amd_cpu::zen3::acpi_real::{RsdpHeader, AcpiError};
+pub use crate::vendor::amd::cpu::zen3::acpi_real::{RsdpHeader, AcpiError};
 
 /// Legacy single-region MCFG view (compatible con v1.7.4).
 /// Expone `base`, `length`, `segment`, `bus_start`, `end_bus` del
@@ -34,7 +34,7 @@ impl McfgHeader {
 }
 
 /// Build a legacy McfgHeader from the real multi-entry McfgHeader.
-fn to_legacy(m: &crate::amd_cpu::zen3::acpi_real::McfgHeader) -> Option<McfgHeader> {
+fn to_legacy(m: &crate::vendor::amd::cpu::zen3::acpi_real::McfgHeader) -> Option<McfgHeader> {
     m.entries().first().map(|e| McfgHeader {
         base: e.base_address,
         length: e.ecam_size() as u16,
@@ -46,7 +46,7 @@ fn to_legacy(m: &crate::amd_cpu::zen3::acpi_real::McfgHeader) -> Option<McfgHead
 
 /// Busca el RSDP. v1.8.8: delegates to the real parser.
 pub fn find_rsdp() -> u64 {
-    if let Ok(addr) = crate::amd_cpu::zen3::acpi_real::find_rsdp(None) {
+    if let Ok(addr) = crate::vendor::amd::cpu::zen3::acpi_real::find_rsdp(None) {
         return addr;
     }
     0
@@ -54,24 +54,24 @@ pub fn find_rsdp() -> u64 {
 
 /// Parsea el RSDP. v1.8.8: delegates to the real parser.
 pub fn parse_rsdp(addr: u64) -> Option<RsdpHeader> {
-    crate::amd_cpu::zen3::acpi_real::parse_rsdp(addr).ok().copied()
+    crate::vendor::amd::cpu::zen3::acpi_real::parse_rsdp(addr).ok().copied()
 }
 
 /// Parsea la MCFG. v1.8.8: delegates to the real parser, returns the
 /// legacy single-region view.
 pub fn parse_mcfg(_rsdp_addr: u64) -> Option<McfgHeader> {
-    crate::amd_cpu::zen3::acpi_real::parse_mcfg().ok().and_then(|m| to_legacy(&m))
+    crate::vendor::amd::cpu::zen3::acpi_real::parse_mcfg().ok().and_then(|m| to_legacy(&m))
 }
 
 /// Snapshot global de la MCFG parseada.
 pub fn mcfg_snapshot() -> Option<McfgHeader> {
-    crate::amd_cpu::zen3::acpi_real::mcfg().and_then(|m| to_legacy(&m))
+    crate::vendor::amd::cpu::zen3::acpi_real::mcfg().and_then(|m| to_legacy(&m))
 }
 
 /// Init. v1.8.8: delegates to fastos_cpu::init_acpi.
 pub fn init() {
-    if crate::amd_cpu::zen3::is_initialized() {
-        crate::amd_cpu::zen3::init_acpi(None);
+    if crate::vendor::amd::cpu::zen3::is_initialized() {
+        crate::vendor::amd::cpu::zen3::init_acpi(None);
     } else {
         crate::dev::console::serial_write("[dev] ACPI: fastos_cpu not yet initialized\n");
     }

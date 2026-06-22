@@ -1,7 +1,7 @@
 //! v1.8.8 — Ring 0 coordinator.
 //!
 //! El coordinator es deliberadamente pequeño: valida el `BootInfo`,
-//! prepara el log más temprano posible, invoca `AMD::zen3::fastos_cpu`
+//! prepara el log más temprano posible, invoca `vendor::amd::cpu::zen3::fastos_cpu`
 //! para detectar todos los datos del 5600X, y entrega el control al
 //! boot por fases.
 //!
@@ -60,7 +60,7 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     //          cache hierarchy, TLB, topology (SMT/CCX/CCD),
     //          TSC frequency, errata workarounds, MSR setup,
     //          power management (C1e).
-    crate::amd_cpu::zen3::init_fastos_cpu();
+    crate::vendor::amd::cpu::zen3::init_fastos_cpu();
 
     // ── Init MSRs (EFER, STAR, LSTAR, FMASK, PAT, TSC_AUX) ───────
     // Need the syscall entry point — for now use a placeholder.
@@ -68,11 +68,11 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     // which is called in phase 0. We re-call init_msrs() from there
     // with the real address.
     let syscall_entry = bi.kernel_base;  // placeholder; updated in phase 0
-    crate::amd_cpu::zen3::init_msrs(syscall_entry);
+    crate::vendor::amd::cpu::zen3::init_msrs(syscall_entry);
 
     // ── Init ACPI (uses RSDP address from BootInfo) ──────────────
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
-    crate::amd_cpu::zen3::init_acpi(rsdp_hint);
+    crate::vendor::amd::cpu::zen3::init_acpi(rsdp_hint);
 
     boot::log::info("ring0", "fastos_cpu init complete");
 
