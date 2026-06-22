@@ -10,7 +10,9 @@
 
 
 pub const SC_ESC: u8 = 0x01;
+const SC_F8: u8 = 0x42;
 const SC_F9: u8 = 0x43;
+const SC_F10: u8 = 0x44;
 
 static mut CTRL_HELD: bool = false;
 static mut ALT_HELD: bool = false;
@@ -37,7 +39,18 @@ pub fn poll_key() -> u8 {
             SC_F9 => {
                 let on = crate::bmo_core::diag::is_overlay_enabled();
                 crate::bmo_core::diag::set_overlay_enabled(!on);
+                crate::cabina::cycle_tab();
                 super::sound::beep(660, 30);
+                super::state::mark_dirty();
+            }
+            SC_F10 => {
+                crate::cabina::cycle_tab();
+                super::sound::beep(550, 20);
+                super::state::mark_dirty();
+            }
+            SC_F8 => {
+                crate::cabina::cycle_query();
+                super::sound::beep(770, 20);
                 super::state::mark_dirty();
             }
             0x1D => { CTRL_HELD = true; }
