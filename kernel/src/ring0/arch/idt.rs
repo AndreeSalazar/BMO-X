@@ -451,7 +451,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
 
     // Tick the scheduler (decrements time slice, may trigger schedule())
     crate::proc::timer_tick();
-    crate::bmo_core::diag::tick_refresh();
+    crate::cabina::tick_refresh();
     // Pet the hardware watchdog (resets the 5-sec countdown)
     crate::dev::watchdog::pet();
     crate::dev::watchdog::check();
@@ -698,41 +698,41 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> 
                         )
                     };
                         if resolved {
-                            crate::bmo_core::diag::trace_u64("vm", "demand page resolved", cr2);
+                            crate::cabina::trace_u64("vm", "demand page resolved", cr2);
                         }
                     }
                 }
             }
 
-            crate::bmo_core::diag::fault_u64("#PF", "page fault at CR2", cr2);
-            crate::bmo_core::diag::fault_u64("#PF", "page fault error code", error);
+            crate::cabina::fault_u64("#PF", "page fault at CR2", cr2);
+            crate::cabina::fault_u64("#PF", "page fault error code", error);
         }
         13 => {
             t.cpu.gp_faults.fetch_add(1, Ordering::Relaxed);
-            crate::bmo_core::diag::fault_u64("#GP", "general protection fault", error);
+            crate::cabina::fault_u64("#GP", "general protection fault", error);
         }
         7 => {
             t.cpu.nm_faults.fetch_add(1, Ordering::Relaxed);
-            crate::bmo_core::diag::fault_u64("#NM", "device not available", error);
+            crate::cabina::fault_u64("#NM", "device not available", error);
         }
         8 => {
             t.cpu.df_faults.fetch_add(1, Ordering::Relaxed);
             // #DF is unrecoverable in most cases. Show on framebuffer
             // and halt so the user sees the crash on screen.
-            crate::bmo_core::diag::fault_u64("#DF", "double fault", error);
+            crate::cabina::fault_u64("#DF", "double fault", error);
             unsafe { early_boot_fault_display(vector, error, cr2); }
         }
         6 => {
             t.cpu.ud_faults.fetch_add(1, Ordering::Relaxed);
-            crate::bmo_core::diag::fault_u64("#UD", "invalid opcode", error);
+            crate::cabina::fault_u64("#UD", "invalid opcode", error);
         }
         18 => {
             t.cpu.mc_faults.fetch_add(1, Ordering::Relaxed);
-            crate::bmo_core::diag::fault_u64("#MC", "machine check", error);
+            crate::cabina::fault_u64("#MC", "machine check", error);
         }
         _ => {
             t.cpu.other_faults.fetch_add(1, Ordering::Relaxed);
-            crate::bmo_core::diag::fault_u64("trap", "fatal CPU exception", vector);
+            crate::cabina::fault_u64("trap", "fatal CPU exception", vector);
         }
     }
 
@@ -792,5 +792,6 @@ extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> boo
         crate::mem::virt::handle_page_fault(cr2, error, pml4_phys, vmas)
     }
 }
+
 
 

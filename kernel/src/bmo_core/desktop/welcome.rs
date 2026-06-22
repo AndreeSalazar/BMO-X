@@ -543,16 +543,16 @@ pub fn run() -> ! {
             unsafe { DIRTY = false; }
         }
 
-        if crate::bmo_core::diag::is_overlay_enabled() {
-            crate::bmo_core::diag::paint_overlay();
+        if crate::cabina::is_overlay_enabled() {
+            crate::cabina::paint_overlay();
         }
 
         let cycles = 16u64 * 3_700_000;
         let start = crate::cpu::rdtsc();
         while (crate::cpu::rdtsc() - start) < cycles {
-            let overlay_was_enabled = crate::bmo_core::diag::is_overlay_enabled();
+            let overlay_was_enabled = crate::cabina::is_overlay_enabled();
             let sc = super::input::poll_key();
-            if crate::bmo_core::diag::is_overlay_enabled() != overlay_was_enabled {
+            if crate::cabina::is_overlay_enabled() != overlay_was_enabled {
                 mark_dirty();
             }
             if sc != 0 {
@@ -615,5 +615,6 @@ fn handle_char(ch: u8) {
         _ => {}
     }
 }
+
 
 

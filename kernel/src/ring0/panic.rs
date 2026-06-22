@@ -5,7 +5,7 @@ use core::panic::PanicInfo;
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     crate::cabina::panic_msg("panic", "kernel panic; halting CPU");
-    crate::bmo_core::diag::paint_overlay();
+    crate::cabina::paint_overlay();
 
     // Output to serial COM1 (0x3F8) — works regardless of display mode
     let msg = b"\r\n!!! KERNEL PANIC !!!\r\n";
@@ -28,4 +28,5 @@ fn port_read(port: u16) -> u8 {
     unsafe { core::arch::asm!("in al, dx", out("al") v, in("dx") port); }
     v
 }
+
 

@@ -116,8 +116,8 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     img.tls_offset = tls_off;
     img.tls_size = tls_sz;
 
-    crate::bmo_core::diag::info_u64("bef", "native load complete, entry", img.entry_point);
-    crate::bmo_core::diag::info_u64("bef", "resolved imports", resolved_count as u64);
+    crate::cabina::info_u64("bef", "native load complete, entry", img.entry_point);
+    crate::cabina::info_u64("bef", "resolved imports", resolved_count as u64);
 
     Ok(img)
 }
@@ -328,5 +328,6 @@ fn parse_tls_template(bytes: &[u8], tls_entry: &SectionEntry) -> Result<TlsTempl
     };
     Ok(template)
 }
+
 
 

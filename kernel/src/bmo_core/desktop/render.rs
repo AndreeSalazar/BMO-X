@@ -436,10 +436,10 @@ pub fn render_frame() {
 
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
-    if crate::bmo_core::diag::is_overlay_enabled() {
+    if crate::cabina::is_overlay_enabled() {
         let bb_addr = crate::dev::framebuffer::backbuffer_ptr() as *mut u32;
         crate::bmo_core::diag::overlay::set_target_override(Some((bb_addr, w as usize, h as usize, s as usize)));
-        crate::bmo_core::diag::paint_overlay();
+        crate::cabina::paint_overlay();
         crate::bmo_core::diag::overlay::set_target_override(None);
     }
 
@@ -448,5 +448,6 @@ pub fn render_frame() {
     let screen_fb = Framebuffer::new(addr, (s as u64) * 4, w, h);
     backbuffer_fb.blit_to(&screen_fb);
 }
+
 
 

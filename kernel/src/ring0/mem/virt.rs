@@ -681,7 +681,7 @@ pub unsafe fn resolve_demand_page(
     // Invalidate TLB for this page
     invlpg(page_addr);
 
-    crate::bmo_core::diag::trace_u64("vm", "demand page resolved", page_addr);
+    crate::cabina::trace_u64("vm", "demand page resolved", page_addr);
     Ok(true)
 }
 
@@ -741,7 +741,7 @@ pub unsafe fn resolve_cow_page(
 
     invlpg(page_addr);
 
-    crate::bmo_core::diag::trace_u64("vm", "CoW page resolved", page_addr);
+    crate::cabina::trace_u64("vm", "CoW page resolved", page_addr);
     Ok(true)
 }
 
@@ -788,6 +788,7 @@ pub unsafe fn handle_page_fault(
 
     false // Not resolved → caller should kill process
 }
+
 
 
 

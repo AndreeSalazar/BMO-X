@@ -103,7 +103,7 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
         loop { core::arch::asm!("hlt"); }
     }
 
-    crate::bmo_core::diag::info_u64("bef", "executing entry point", entry);
+    crate::cabina::info_u64("bef", "executing entry point", entry);
 
     // Build a minimal user stack (64 KB).
     let stack_layout = match core::alloc::Layout::from_size_align(65536, 16) {
@@ -159,5 +159,6 @@ pub(crate) fn fake_provenance_image(prov: Provenance) -> Image {
         tls_size: 0,
     }
 }
+
 
 

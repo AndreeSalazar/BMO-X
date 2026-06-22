@@ -230,7 +230,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         let a4 = f.r8;
         let a5 = f.r9;
 
-        crate::bmo_core::diag::trace_u64("syscall", "dispatch nr", nr);
+        crate::cabina::trace_u64("syscall", "dispatch nr", nr);
 
         let result = match nr {
             // ─── BMO Core desktop3 (0x100..=0x1FF) ───────────────────
@@ -332,7 +332,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             }
             0x65 => {
                 crate::bmo_core::desktop::render::render_frame();
-                crate::bmo_core::diag::paint_overlay();
+                crate::cabina::paint_overlay();
                 crate::bmo_core::desktop::state::STATE.frame
             }
 
@@ -358,7 +358,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             }
 
             _ => {
-                crate::bmo_core::diag::warn_u64("syscall", "unknown syscall", nr);
+                crate::cabina::warn_u64("syscall", "unknown syscall", nr);
                 u64::MAX
             }
         };
@@ -457,5 +457,6 @@ pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
 // los únicos call sites usan `init_syscall()` directamente, así que este
 // wrapper se elimina. Si en el futuro se quiere re-unificar, exponer un
 // solo nombre y llamarlo desde `p0_arch::run`.
+
 
 

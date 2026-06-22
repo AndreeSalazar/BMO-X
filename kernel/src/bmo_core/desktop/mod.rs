@@ -64,7 +64,7 @@ pub fn run_ring0() -> ! {
     // The desktop owns the screen now. Keep the watchdog and overlay out of the
     // first-frame path so hardware real does not look frozen behind diag.
     crate::dev::watchdog::disarm();
-    crate::bmo_core::diag::set_overlay_enabled(false);
+    crate::cabina::set_overlay_enabled(false);
 
     state::init();
     state::mark_dirty();
@@ -74,7 +74,7 @@ pub fn run_ring0() -> ! {
 
     loop {
         render::render_frame();
-        crate::bmo_core::diag::paint_overlay();
+        crate::cabina::paint_overlay();
 
         let target = crate::cpu::rdtsc().wrapping_add(16 * CYCLES_PER_MS);
         loop {
@@ -92,5 +92,6 @@ fn return_to_welcome() -> ! {
     crate::dev::console::serial_write("[desktop] ESC — returning to welcome.\n");
     crate::bmo_core::desktop::welcome::run()
 }
+
 
 

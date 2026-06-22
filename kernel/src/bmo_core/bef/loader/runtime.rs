@@ -183,12 +183,12 @@ pub fn resolve_imports(
             }
         } else {
             unresolved += 1;
-            crate::bmo_core::diag::warn_u64("bef", "unresolved import", entry.binding_offset);
+            crate::cabina::warn_u64("bef", "unresolved import", entry.binding_offset);
         }
     }
 
     if unresolved > 0 {
-        crate::bmo_core::diag::warn_u64("bef", "total unresolved imports", unresolved as u64);
+        crate::cabina::warn_u64("bef", "total unresolved imports", unresolved as u64);
     }
 
     Ok(resolved)
@@ -290,7 +290,8 @@ pub fn init() {
     register_kernel_symbols();
     register_pe_thunk_symbols();
     register_elf_thunk_symbols();
-    crate::bmo_core::diag::info_u64("bef", "runtime symbol table initialized", symbol_count() as u64);
+    crate::cabina::info_u64("bef", "runtime symbol table initialized", symbol_count() as u64);
 }
+
 
 

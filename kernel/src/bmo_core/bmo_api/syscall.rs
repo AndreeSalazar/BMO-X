@@ -454,7 +454,7 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         }
 
         _ => {
-            crate::bmo_core::diag::warn_u64("bmo_api_v2.syscall", "unimplemented nr=", nr as u64);
+            crate::cabina::warn_u64("bmo_api_v2.syscall", "unimplemented nr=", nr as u64);
             err::INVALID
         }
     }
@@ -1385,5 +1385,6 @@ fn sys_winpaint_draw_line(dc: u64, x0: u64, y0: u64, x1: u64, y1: u64, color: u6
 fn sys_winpaint_draw_circle(_dc: u64, _cx: u64, _cy: u64, _r: u64, _color: u64) -> u64 {
     err::OK
 }
+
 
 

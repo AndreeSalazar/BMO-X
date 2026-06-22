@@ -37,8 +37,8 @@ pub fn poll_key() -> u8 {
     unsafe {
         match sc {
             SC_F9 => {
-                let on = crate::bmo_core::diag::is_overlay_enabled();
-                crate::bmo_core::diag::set_overlay_enabled(!on);
+                let on = crate::cabina::is_overlay_enabled();
+                crate::cabina::set_overlay_enabled(!on);
                 crate::cabina::cycle_tab();
                 super::sound::beep(660, 30);
                 super::state::mark_dirty();
@@ -61,8 +61,8 @@ pub fn poll_key() -> u8 {
         }
         if CTRL_HELD && ALT_HELD && !HOTKEY_TOGGLED {
             HOTKEY_TOGGLED = true;
-            let on = crate::bmo_core::diag::is_overlay_enabled();
-            crate::bmo_core::diag::set_overlay_enabled(!on);
+            let on = crate::cabina::is_overlay_enabled();
+            crate::cabina::set_overlay_enabled(!on);
             super::sound::beep(660, 30);
             super::state::mark_dirty();
         }
@@ -150,3 +150,4 @@ pub fn poll_mouse() -> u64 {
         x | (y << 16) | (bt << 32)
     }
 }
+

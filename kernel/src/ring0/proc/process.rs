@@ -175,7 +175,7 @@ pub fn free_process(proc: &mut Process) {
 /// After schedule(), loops with HLT — the next timer/interrupt will switch to
 /// another thread using TSS.RSP0 (already updated by schedule).
 pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
-    crate::bmo_core::diag::fault_u64("process", "killing current process", vector);
+    crate::cabina::fault_u64("process", "killing current process", vector);
 
     let current_idx = super::task::current_index();
     if let Some(thread) = super::task::get(current_idx) {
@@ -217,5 +217,6 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
         unsafe { core::arch::asm!("sti; hlt"); }
     }
 }
+
 
 
