@@ -11,16 +11,18 @@
 //!    en `ring0/dev/amdgpu.rs` (futuro).
 //! 3. **Exponen** una API limpia de errores (`BxError`) y resultados.
 //!
-//! # Estructura
+//! # Estructura (v1.8.8)
 //!
 //! ```text
 //! bmo_gpu/
 //! ├── mod.rs           — entry point, BAREX_VERSION, BxError
 //! ├── shims/           — Compatibilidad con apps externas (PE, ELF)
-//! ├── shader/          — BSF (BareX Shader Format) loader
-//! ├── compositor/       — Ring 0 ↔ Ring 3 GPU composition
-//! └── commands/         — GPU command buffers (ring submission)
+//! └── shader/          — BSF (BareX Shader Format) loader
 //! ```
+//!
+//! v1.8.8: `compositor/` y `commands/` se eliminaron (skeleton sin uso).
+//! Cuando llegue el driver RDNA4 en v2.0, se reintroducen desde cero
+//! con la API actual.
 //!
 //! # Relación con BMO Core y Ring 0
 //!
@@ -33,7 +35,7 @@
 //!   │
 //!   │  GPU syscall
 //!   ▼
-//! ring0/dev/amdgpu.rs       ← driver real (futuro v1.8)
+//! ring0/dev/amdgpu.rs       ← driver real (futuro v2.0)
 //!   │
 //!   │  MMIO a la GPU
 //!   ▼
@@ -47,8 +49,6 @@
 
 pub mod shims;
 pub mod shader;
-pub mod compositor;
-pub mod commands;
 
 // ── Versión y plataforma ────────────────────────────────────────────────
 
