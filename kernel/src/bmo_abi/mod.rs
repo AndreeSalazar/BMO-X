@@ -52,6 +52,8 @@
 pub mod fundamentals;
 pub mod values;
 pub mod windowing;
+pub mod drawing;
+pub mod input;
 pub mod befcore;
 pub mod syscalls;
 pub mod runtime;
