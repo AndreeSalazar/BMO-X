@@ -1,7 +1,7 @@
 //! Cabina panels: uno por categoría, todos comparten `helpers::H`.
 //!
 //! `render(tab, &Snapshot)` es el dispatcher que se llama desde
-//! `cabina::overlay`. `tab` ∈ 0..=10 (ver `PANEL_COUNT`).
+//! `cabina::overlay`. `tab` ∈ 0..=11 (ver `PANEL_COUNT`).
 
 use crate::cabina::snapshot::Snapshot;
 
@@ -17,17 +17,19 @@ pub mod boot;
 pub mod lang;
 pub mod query;
 pub mod gpu;
+pub mod gateway;
 
-pub const PANEL_COUNT: usize = 11;
+pub const PANEL_COUNT: usize = 12;
 
 pub const PANEL_NAMES: [&str; PANEL_COUNT] = [
     "OVERVIEW", "CPU", "MEM", "I/O", "SCHED",
-    "SYSCALL", "EVENTS", "GPU", "BOOT", "LANG", "QUERY",
+    "SYSCALL", "EVENTS", "GPU", "BOOT", "LANG", "QUERY", "GATEWAY",
 ];
 
 pub const PANEL_COLORS: [u32; PANEL_COUNT] = [
     0xFF00FFAA, 0xFF00FFAA, 0xFFAAFF00, 0xFFFFAA00, 0xFFFFFF00,
     0xFF00FFFF, 0xFFFF00FF, 0xFF00FFFF, 0xFFFF8800, 0xFFAAFF00, 0xFF44FF44,
+    0xFFFF0080,
 ];
 
 /// Renderiza el panel `tab` sobre el framebuffer.
@@ -44,6 +46,7 @@ pub fn render(tab: u8, s: &Snapshot) {
         8  => boot::render(s),
         9  => lang::render(s),
         10 => query::render(s),
+        11 => gateway::render(s),
         _  => overview::render(s),
     }
 }
@@ -62,6 +65,7 @@ pub fn name(tab: u8) -> &'static str {
         8  => "BOOT",
         9  => "LANG",
         10 => "QUERY",
+        11 => "GATEWAY",
         _  => "OVERVIEW",
     }
 }
