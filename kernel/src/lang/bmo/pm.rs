@@ -11,5 +11,6 @@ pub mod resolver;
 pub mod build;
 
 pub fn init() {
-    crate::bmo_core::diag::info("bmo_pm", "Package manager initialized");
+    crate::cabina::info("bmo_pm", "Package manager initialized");
 }
+

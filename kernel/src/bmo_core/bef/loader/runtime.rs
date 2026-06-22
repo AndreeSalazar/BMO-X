@@ -66,7 +66,7 @@ pub fn hash_symbol(name: &[u8]) -> u32 {
 pub fn register_symbol(lib: &'static str, name: &'static str, addr: u64, flags: u32) {
     unsafe {
         if SYMBOL_COUNT >= MAX_SYMBOLS {
-            crate::bmo_core::diag::warn("bef", "runtime symbol table full");
+            crate::cabina::warn("bef", "runtime symbol table full");
             return;
         }
         let hash = hash_symbol(name.as_bytes());
@@ -292,3 +292,5 @@ pub fn init() {
     register_elf_thunk_symbols();
     crate::bmo_core::diag::info_u64("bef", "runtime symbol table initialized", symbol_count() as u64);
 }
+
+

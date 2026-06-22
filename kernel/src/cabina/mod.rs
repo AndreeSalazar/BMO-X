@@ -10,12 +10,15 @@
 //! ┌──────────────────────────────────────────────────────┐
 //! │ cabina/                                              │
 //! │   ├── event      ← caja negra circular RAM           │
+//! │   ├── buffer     ← blackbox 256 eventos              │
 //! │   ├── telemetry  ← contadores atómicos               │
 //! │   ├── snapshot   ← API limpia para leer ring0        │
 //! │   ├── filter     ← filtros simples                   │
 //! │   ├── query      ← DSL de filtros inteligentes       │
 //! │   ├── serial     ← sink COM1                         │
+//! │   ├── persistent ← spool RAM→USB (futuro)            │
 //! │   ├── overlay    ← HUD GOP con tabs                  │
+//! │   ├── paint      ← primitivas FB                     │
 //! │   └── panels/    ← cada tab es un panel              │
 //! └──────────────────────────────────────────────────────┘
 //! ```
@@ -30,11 +33,13 @@
 #![allow(dead_code)]
 
 pub mod event;
+pub mod buffer;
 pub mod telemetry;
 pub mod snapshot;
 pub mod filter;
 pub mod query;
 pub mod serial;
+pub mod persistent;
 pub mod paint;
 pub mod overlay;
 pub mod panels;
@@ -105,12 +110,15 @@ pub fn query_id_name(qid: QueryId) -> &'static str {
     }
 }
 
+// ── Inicialización ────────────────────────────────────────────────
+
 /// Inicializa la cabina.
 pub fn init() {
-    event::buffer::init();
+    buffer::init();
     telemetry::init();
     serial::init();
     paint::init();
+    persistent::init();
     BOOT_READY.store(true, Ordering::SeqCst);
 }
 
@@ -120,6 +128,13 @@ pub fn boot_ready() {
     overlay::enable();
 }
 
+/// Marca la cabina como "ready" (alias para compatibilidad).
+pub fn mark_boot_ready() {
+    boot_ready();
+}
+
+// ── Emisión de eventos ───────────────────────────────────────────
+
 /// Emite un evento a la cabina.
 /// La capa se infiere automáticamente del nombre del módulo.
 pub fn emit(severity: Severity, module: &str, msg: &str) {
@@ -128,7 +143,7 @@ pub fn emit(severity: Severity, module: &str, msg: &str) {
         return;
     }
     let ev = Event::new(severity, module, msg);
-    event::buffer::push(&ev);
+    buffer::push(&ev);
     serial::write_event(&ev);
     overlay::mark_dirty();
 }
@@ -141,12 +156,12 @@ pub fn emit_layer(severity: Severity, layer: event::Layer, module: &str, msg: &s
     }
     let mut ev = Event::new(severity, module, msg);
     ev.layer = layer;
-    event::buffer::push(&ev);
+    buffer::push(&ev);
     serial::write_event(&ev);
     overlay::mark_dirty();
 }
 
-/// Emite con layer + entity + entity_id.
+/// Emite con layer + entity + entity_id + value.
 pub fn emit_full(
     severity: Severity,
     layer: event::Layer,
@@ -165,12 +180,12 @@ pub fn emit_full(
     ev.entity = entity;
     ev.entity_id = entity_id;
     ev.value = value;
-    event::buffer::push(&ev);
+    buffer::push(&ev);
     serial::write_event(&ev);
     overlay::mark_dirty();
 }
 
-/// Helpers de conveniencia.
+/// Helpers de conveniencia (severidad simple).
 pub fn info(module: &str, msg: &str) { emit(Severity::Info, module, msg); }
 pub fn warn(module: &str, msg: &str) { emit(Severity::Warning, module, msg); }
 pub fn fault(module: &str, msg: &str) { emit(Severity::Fault, module, msg); }
@@ -179,6 +194,51 @@ pub fn trace(module: &str, msg: &str) { emit(Severity::Trace, module, msg); }
 pub fn assert(cond: bool, module: &str, msg: &str) {
     if !cond { fault(module, msg); }
 }
+
+/// Helpers con `u64` (compatibilidad con bmo_core::diag legacy).
+pub fn info_u64(module: &str, msg: &str, value: u64) {
+    let mut ev = Event::new(Severity::Info, module, msg);
+    ev.value = value;
+    emit_event_obj(ev);
+}
+pub fn warn_u64(module: &str, msg: &str, value: u64) {
+    let mut ev = Event::new(Severity::Warning, module, msg);
+    ev.value = value;
+    emit_event_obj(ev);
+}
+pub fn fault_u64(module: &str, msg: &str, value: u64) {
+    let mut ev = Event::new(Severity::Fault, module, msg);
+    ev.value = value;
+    emit_event_obj(ev);
+}
+pub fn trace_u64(module: &str, msg: &str, value: u64) {
+    let mut ev = Event::new(Severity::Trace, module, msg);
+    ev.value = value;
+    emit_event_obj(ev);
+}
+
+fn emit_event_obj(ev: Event) {
+    if !BOOT_READY.load(Ordering::Relaxed) {
+        serial::write_event(&ev);
+        return;
+    }
+    buffer::push(&ev);
+    serial::write_event(&ev);
+    overlay::mark_dirty();
+}
+
+/// Emit un evento arbitrario (compatibilidad).
+pub fn event(severity: Severity, module: &str, msg: &str) {
+    emit(severity, module, msg);
+}
+
+pub fn event_u64(severity: Severity, module: &str, msg: &str, value: u64) {
+    let mut ev = Event::new(severity, module, msg);
+    ev.value = value;
+    emit_event_obj(ev);
+}
+
+// ── Overlay / Tabs ──────────────────────────────────────────────
 
 /// Toggle del overlay (F9 o Ctrl+Alt).
 pub fn toggle_overlay() {
@@ -214,6 +274,65 @@ pub fn overlay_enabled() -> bool { OVERLAY_ENABLED.load(Ordering::SeqCst) }
 pub fn current_tab() -> u8 { CURRENT_TAB.load(Ordering::SeqCst) }
 pub fn is_ready() -> bool { BOOT_READY.load(Ordering::Relaxed) }
 pub fn current_query() -> u8 { ACTIVE_QUERY.load(Ordering::SeqCst) }
+
+/// Alias de `overlay_enabled` (compatibilidad diag).
+pub fn is_overlay_enabled() -> bool { overlay_enabled() }
+
+/// Habilita o deshabilita el overlay (compatibilidad diag).
+pub fn set_overlay_enabled(enabled: bool) {
+    OVERLAY_ENABLED.store(enabled, Ordering::SeqCst);
+    if enabled { overlay::enable(); } else { overlay::disable(); }
+}
+
+/// Repinta el overlay (compatibilidad diag).
+pub fn paint_overlay() {
+    let tab = CURRENT_TAB.load(Ordering::SeqCst);
+    overlay::paint(tab);
+    overlay::clear_dirty();
+}
+
+// ── Snapshot del sistema (telemetría) ────────────────────────────
+
+/// Refresca la telemetría. Llamado desde el timer tick de Ring 0.
+pub fn tick_refresh() {
+    telemetry::memory::set_free_pages(
+        unsafe { crate::mem::phys::free_count() } as u64
+    );
+    telemetry::memory::add_heap_used(crate::mem::heap::heap_used() as u64);
+}
+
+/// Dump CR3 a serial (Ring 3 transition tracing).
+pub fn read_cr3_into_serial() {
+    let cr3: u64;
+    unsafe { core::arch::asm!("mov {}, cr3", out(reg) cr3); }
+    crate::dev::console::serial_write("0x");
+    crate::dev::console::serial_write_u64(cr3, 16);
+}
+
+// ── Persistencia ────────────────────────────────────────────────
+
+/// Ruta objetivo futura para el log persistente.
+pub fn persistent_target_path() -> &'static str {
+    persistent::TARGET_PATH
+}
+
+pub fn persistent_pending_bytes() -> usize {
+    persistent::pending_bytes()
+}
+
+pub fn persistent_dropped_bytes() -> u64 {
+    persistent::dropped_bytes()
+}
+
+pub fn copy_persistent_pending(out: &mut [u8]) -> usize {
+    persistent::copy_pending(out)
+}
+
+pub fn ack_persistent_bytes(bytes: usize) {
+    persistent::ack(bytes);
+}
+
+// ── Query activo ────────────────────────────────────────────────
 
 /// Devuelve el query activo.
 pub fn active_query() -> query::Query {

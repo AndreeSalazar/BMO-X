@@ -27,28 +27,28 @@ impl BuildSystem {
         let resolver = Resolver::new();
         let deps = resolver.resolve(_manifest)?;
 
-        crate::bmo_core::diag::info("bmo_build", "Building package");
+        crate::cabina::info("bmo_build", "Building package");
 
         let mut compiled = 0;
         let errors = Vec::new();
 
         for dep in &deps {
             if dep.is_optional {
-                crate::bmo_core::diag::info("bmo_build", "Skipping optional dep");
+                crate::cabina::info("bmo_build", "Skipping optional dep");
                 continue;
             }
-            crate::bmo_core::diag::info("bmo_build", "Resolving dep");
+            crate::cabina::info("bmo_build", "Resolving dep");
             compiled += 1;
         }
 
-        crate::bmo_core::diag::info("bmo_build", "Compiling package");
+        crate::cabina::info("bmo_build", "Compiling package");
         compiled += 1;
 
         let success = errors.is_empty();
         if success {
-            crate::bmo_core::diag::info("bmo_build", "Build succeeded");
+            crate::cabina::info("bmo_build", "Build succeeded");
         } else {
-            crate::bmo_core::diag::warn("bmo_build", "Build failed");
+            crate::cabina::warn("bmo_build", "Build failed");
         }
 
         Ok(BuildResult { success, compiled_files: compiled, errors })
@@ -68,3 +68,4 @@ impl BuildSystem {
 impl Default for BuildSystem {
     fn default() -> Self { Self::new() }
 }
+

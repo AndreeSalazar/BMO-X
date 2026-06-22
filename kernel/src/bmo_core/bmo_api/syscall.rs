@@ -906,3 +906,5 @@ fn sys_draw_image(dc_slot: u64, dst_x: u64, dst_y: u64, pixels_ptr: u64, src_w: 
         pixels_ptr as *const u32, src_w as u32, src_h as u32, pitch);
     err::OK
 }
+
+

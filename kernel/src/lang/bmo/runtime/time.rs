@@ -84,5 +84,6 @@ impl Timer {
 
 /// Initialize time subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("bmo_time", "Time subsystem initialized");
+    crate::cabina::info("bmo_time", "Time subsystem initialized");
 }
+

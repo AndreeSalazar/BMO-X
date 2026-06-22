@@ -218,7 +218,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
     unsafe {
         if !RING3_SYSCALL_SEEN {
             RING3_SYSCALL_SEEN = true;
-            crate::bmo_core::diag::info("ring3", "first syscall received; Ring 3 is alive");
+            crate::cabina::info("ring3", "first syscall received; Ring 3 is alive");
         }
 
         let f = &mut *frame;
@@ -235,13 +235,13 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         let result = match nr {
             // ─── BMO API v2 (0x100..=0x1FF) ──────────────────────────
             n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                crate::bmo_core::diag::trace("syscall", "BMO API v2 dispatch");
+                crate::cabina::trace("syscall", "BMO API v2 dispatch");
                 crate::bmo_core::bmo_api::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, a5)
             }
 
             // ─── Procesos ─────────────────────────────────────────────
             0x00 => {
-                crate::bmo_core::diag::trace("syscall", "ProcessExit");
+                crate::cabina::trace("syscall", "ProcessExit");
                 crate::proc::process::kill_current_process(0, a0, 0);
             }
             0x01 => u64::MAX,
@@ -251,7 +251,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 0
             }
             0x04 => {
-                crate::bmo_core::diag::trace("syscall", "ThreadCreate");
+                crate::cabina::trace("syscall", "ThreadCreate");
                 match crate::proc::task::alloc(
                     crate::proc::process::Pid(1),
                     crate::proc::Priority::Interactive,
@@ -265,7 +265,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 }
             }
             0x05 => {
-                crate::bmo_core::diag::trace("syscall", "ThreadExit");
+                crate::cabina::trace("syscall", "ThreadExit");
                 crate::proc::process::kill_current_process(0, a0, 0);
             }
 
@@ -455,3 +455,5 @@ pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
 // los únicos call sites usan `init_syscall()` directamente, así que este
 // wrapper se elimina. Si en el futuro se quiere re-unificar, exponer un
 // solo nombre y llamarlo desde `p0_arch::run`.
+
+

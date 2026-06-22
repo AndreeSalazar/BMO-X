@@ -26,5 +26,6 @@ pub const RUNTIME_VERSION: (u8, u8, u8) = (0, 1, 0);
 
 /// Initialize the BMO runtime.
 pub fn init() {
-    crate::bmo_core::diag::info("bmo_rt", "BMO Runtime initialized");
+    crate::cabina::info("bmo_rt", "BMO Runtime initialized");
 }
+

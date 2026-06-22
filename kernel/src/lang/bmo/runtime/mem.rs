@@ -137,5 +137,6 @@ impl Arena {
 
 /// Initialize the memory subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("bmo_mem", "Memory subsystem initialized");
+    crate::cabina::info("bmo_mem", "Memory subsystem initialized");
 }
+

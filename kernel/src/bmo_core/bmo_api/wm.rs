@@ -489,7 +489,7 @@ pub fn alt_tab() {
 }
 
 pub fn enter() -> ! {
-    crate::bmo_core::diag::info("bmo_api_v2.wm", "Entering Ring 3 BMO API desktop");
+    crate::cabina::info("bmo_api_v2.wm", "Entering Ring 3 BMO API desktop");
     crate::dev::console::serial_write("[bmo_api_v2] Entering desktop real (BMO API v3.0)\n");
 
     let _term = create_top_window("BMO Terminal", 60, 60, 720, 460);
@@ -507,7 +507,7 @@ pub fn enter() -> ! {
             last_tick = now;
         }
         if super::input::esc_pressed() {
-            crate::bmo_core::diag::info("bmo_api_v2.wm", "ESC pressed — return to welcome");
+            crate::cabina::info("bmo_api_v2.wm", "ESC pressed — return to welcome");
             crate::dev::console::serial_write("[bmo_api_v2] ESC — returning to welcome.\n");
             crate::bmo_core::desktop::welcome::run();
         }
@@ -585,3 +585,4 @@ fn create_top_window(title: &'static str, x: i32, y: i32, w: i32, h: i32) -> u32
     st.unlock();
     slot
 }
+

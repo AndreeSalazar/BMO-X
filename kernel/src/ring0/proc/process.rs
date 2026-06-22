@@ -207,7 +207,7 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
     }
 
     // Schedule next thread (updates TSS.RSP0 for next interrupt)
-    crate::bmo_core::diag::trace("process", "scheduling after kill");
+    crate::cabina::trace("process", "scheduling after kill");
     super::schedule();
 
     // We're on the dead thread's kernel stack — can't do anything useful.
@@ -217,3 +217,5 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
         unsafe { core::arch::asm!("sti; hlt"); }
     }
 }
+
+

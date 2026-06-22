@@ -416,18 +416,18 @@ fn run_phase_self_test(n: u8) {
         4 => crate::boot::phases::p4_bmo::self_test(),
         5 => crate::boot::phases::p5_user::self_test(),
         _ => {
-            crate::bmo_core::diag::warn("welcome", "Unknown phase index");
+            crate::cabina::warn("welcome", "Unknown phase index");
             return;
         }
     };
-    crate::bmo_core::diag::info("welcome", "Phase self-test");
+    crate::cabina::info("welcome", "Phase self-test");
     report_self_test(&report);
 }
 
 fn run_phase_self_test_ring3() {
     use crate::boot::phases::report_self_test;
     let report = crate::boot::phases::p0_arch::self_test();
-    crate::bmo_core::diag::info("welcome", "Ring 3 self-test (using p0_arch)");
+    crate::cabina::info("welcome", "Ring 3 self-test (using p0_arch)");
     report_self_test(&report);
 }
 
@@ -441,7 +441,7 @@ fn run_test_all_phases() {
         crate::boot::phases::p4_bmo::self_test(),
         crate::boot::phases::p5_user::self_test(),
     ];
-    crate::bmo_core::diag::info("welcome", "All-phase self-test");
+    crate::cabina::info("welcome", "All-phase self-test");
     for r in &reports {
         report_self_test(r);
     }
@@ -463,28 +463,28 @@ fn process_enter() {
         show_hint(b"Type Run and press Enter.");
     } else if should_enter_desktop(trimmed_cmd) {
         enter_desktop();
-        crate::bmo_core::diag::info("welcome", "Desktop returned; re-entering welcome");
+        crate::cabina::info("welcome", "Desktop returned; re-entering welcome");
         show_hint(b"Desktop returned unexpectedly. Type test for diagnostics.");
     } else if eq_ci(trimmed_cmd, b"hello") {
-        crate::bmo_core::diag::info("welcome", "Hello command accepted; preparing Ring 3 test");
+        crate::cabina::info("welcome", "Hello command accepted; preparing Ring 3 test");
         sound::beep(440, 80);
         crate::proc::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"ring3") {
-        crate::bmo_core::diag::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
+        crate::cabina::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
         sound::beep(440, 80);
         crate::proc::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"reboot") {
-        crate::bmo_core::diag::warn("welcome", "Reboot command accepted");
+        crate::cabina::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
     } else if eq_ci(trimmed_cmd, b"nexo") {
-        crate::bmo_core::diag::info("welcome", "NEXO compiler test - compiling hello program");
+        crate::cabina::info("welcome", "NEXO compiler test - compiling hello program");
         nexo_test_compile();
     } else if eq_ci(trimmed_cmd, b"test desktop") {
-        crate::bmo_core::diag::info("welcome", "test desktop: rendering single frame");
+        crate::cabina::info("welcome", "test desktop: rendering single frame");
         crate::dev::console::serial_write("[welcome] test desktop: calling render_frame()\n");
         crate::bmo_core::desktop::render::render_frame();
         crate::dev::console::serial_write("[welcome] test desktop: render_frame() returned OK\n");
-        crate::bmo_core::diag::info("welcome", "test desktop: render_frame OK");
+        crate::cabina::info("welcome", "test desktop: render_frame OK");
     } else if eq_ci(trimmed_cmd, b"test") {
         run_test_all_phases();
     } else if eq_ci(trimmed_cmd, b"test phase 0") {
@@ -502,7 +502,7 @@ fn process_enter() {
     } else if eq_ci(trimmed_cmd, b"test ring3") {
         run_phase_self_test_ring3();
     } else {
-        crate::bmo_core::diag::warn("welcome", "Unknown command at welcome prompt");
+        crate::cabina::warn("welcome", "Unknown command at welcome prompt");
         show_hint(b"Commands: Run, Hello, Ring3, Nexo, Test, Reboot.");
     }
     unsafe { INPUT_LEN = 0; }
@@ -611,3 +611,4 @@ fn handle_char(ch: u8) {
         _ => {}
     }
 }
+

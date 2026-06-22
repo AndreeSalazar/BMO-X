@@ -386,7 +386,7 @@ pub fn render_frame() {
         (crate::boot::info::FB_ADDR, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT, crate::boot::info::FB_STRIDE)
     };
     if addr == 0 || w == 0 {
-        crate::bmo_core::diag::fault("desktop", "render_frame: FB_ADDR or width is zero");
+        crate::cabina::fault("desktop", "render_frame: FB_ADDR or width is zero");
         return;
     }
 
@@ -429,3 +429,4 @@ pub fn render_frame() {
     let screen_fb = Framebuffer::new(addr, (s as u64) * 4, w, h);
     backbuffer_fb.blit_to(&screen_fb);
 }
+

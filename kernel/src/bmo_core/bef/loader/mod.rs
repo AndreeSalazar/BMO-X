@@ -97,7 +97,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
 pub unsafe fn run_entry_point(img: &Image) -> ! {
     let entry = img.entry_point;
     if entry == 0 {
-        crate::bmo_core::diag::fault("bef", "entry point is NULL");
+        crate::cabina::fault("bef", "entry point is NULL");
         loop { core::arch::asm!("hlt"); }
     }
 
@@ -107,13 +107,13 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
     let stack_layout = match core::alloc::Layout::from_size_align(65536, 16) {
         Ok(l) => l,
         Err(_) => {
-            crate::bmo_core::diag::fault("bef", "invalid stack layout");
+            crate::cabina::fault("bef", "invalid stack layout");
             loop { core::arch::asm!("hlt"); }
         }
     };
     let stack_ptr = alloc::alloc::alloc_zeroed(stack_layout);
     if stack_ptr.is_null() {
-        crate::bmo_core::diag::fault("bef", "failed to allocate user stack");
+        crate::cabina::fault("bef", "failed to allocate user stack");
         loop { core::arch::asm!("hlt"); }
     }
     let stack_top = stack_ptr as u64 + 65536;
@@ -157,3 +157,5 @@ pub(crate) fn fake_provenance_image(prov: Provenance) -> Image {
         tls_size: 0,
     }
 }
+
+

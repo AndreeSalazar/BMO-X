@@ -44,7 +44,7 @@ pub use sound::beep;
 /// Initialize the desktop subsystem. Call once from main.rs Phase 5.
 pub fn init() {
     state::init();
-    crate::bmo_core::diag::info("desktop", "desktop module initialized (modular)");
+    crate::cabina::info("desktop", "desktop module initialized (modular)");
 }
 
 /// Enter the Ring 0 desktop supervisor. Does NOT return.
@@ -54,7 +54,7 @@ pub fn run() -> ! {
 
 /// Ring 0 desktop main loop — stable GOP path.
 pub fn run_ring0() -> ! {
-    crate::bmo_core::diag::info("desktop", "entering Ring 0 GOP desktop supervisor");
+    crate::cabina::info("desktop", "entering Ring 0 GOP desktop supervisor");
     crate::dev::console::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
 
     // The desktop owns the screen now. Keep the watchdog and overlay out of the
@@ -88,3 +88,4 @@ fn return_to_welcome() -> ! {
     crate::dev::console::serial_write("[desktop] ESC — returning to welcome.\n");
     crate::bmo_core::desktop::welcome::run()
 }
+

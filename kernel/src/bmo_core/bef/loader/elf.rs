@@ -256,7 +256,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
                 if let Some(lib_name) = super::elf_dynamic::read_dynstr(dyn_bytes, needed_off) {
                     if !lib_name.is_empty() {
                         let _normalized = normalize_elf_lib(lib_name);
-                        crate::bmo_core::diag::info("elf", "registering ELF lib");
+                        crate::cabina::info("elf", "registering ELF lib");
                     }
                 }
             }
@@ -391,3 +391,4 @@ pub fn elf_reloc_to_bef(elf_kind: bx_u32) -> Option<crate::bmo_core::bef::reloca
         _ => None,
     }
 }
+

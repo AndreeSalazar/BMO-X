@@ -60,7 +60,7 @@ pub fn spawn(name: &str, entry: u64) -> Result<Pid> {
     // Set thread entry to user-mode entry point
     thread.regs = crate::proc::task::SavedRegs::new_user(entry, 0x80_0000 + 64 * 1024);
 
-    crate::bmo_core::diag::info("nexo_proc", "Process spawned");
+    crate::cabina::info("nexo_proc", "Process spawned");
     Ok(pid)
 }
 
@@ -141,5 +141,6 @@ pub fn clock_ns() -> u64 {
 
 /// Initialize process subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("bmo_proc", "Process subsystem initialized");
+    crate::cabina::info("bmo_proc", "Process subsystem initialized");
 }
+

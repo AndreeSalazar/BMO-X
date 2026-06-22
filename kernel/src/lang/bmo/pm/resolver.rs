@@ -59,7 +59,7 @@ impl Resolver {
     ) -> BxResult<()> {
         // Check for cycles
         if visiting.contains(&name.to_string()) {
-            crate::bmo_core::diag::warn("bmo_pm", "Circular dependency detected");
+            crate::cabina::warn("bmo_pm", "Circular dependency detected");
             return Err(BxError::InvalidArgument);
         }
 
@@ -102,3 +102,4 @@ impl Default for Resolver {
         Self::new()
     }
 }
+

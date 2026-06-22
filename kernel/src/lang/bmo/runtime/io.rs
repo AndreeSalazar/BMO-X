@@ -115,5 +115,6 @@ pub fn beep(freq: u32, duration_ms: u32) {
 
 /// Initialize I/O subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("bmo_io", "I/O subsystem initialized");
+    crate::cabina::info("bmo_io", "I/O subsystem initialized");
 }
+

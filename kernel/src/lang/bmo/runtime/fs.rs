@@ -66,5 +66,6 @@ pub fn read_all(name: &str, buf: &mut [u8]) -> Result<usize> {
 
 /// Initialize filesystem subsystem.
 pub fn init() {
-    crate::bmo_core::diag::info("bmo_fs", "Filesystem subsystem initialized");
+    crate::cabina::info("bmo_fs", "Filesystem subsystem initialized");
 }
+

@@ -187,7 +187,7 @@ impl ModuleResolver {
         for (_id, info) in &self.modules {
             for dep in &info.dependencies {
                 if !self.modules.contains_key(dep) {
-                    crate::bmo_core::diag::info("bmo_mod", "Module dependency not registered");
+                    crate::cabina::info("bmo_mod", "Module dependency not registered");
                     // Don't error — might be a stdlib module we haven't loaded yet
                 }
             }
@@ -206,7 +206,7 @@ impl ModuleResolver {
     fn detect_cycle_dfs(&self, id: &str, visited: &mut BTreeMap<String, bool>, stack: &mut Vec<String>) -> BxResult<()> {
             if let Some(&in_stack) = visited.get(id) {
             if in_stack {
-                crate::bmo_core::diag::warn("bmo_mod", "Circular dependency detected");
+                crate::cabina::warn("bmo_mod", "Circular dependency detected");
                 return Err(BxError::InvalidArgument);
             }
             return Ok(()); // Already fully visited
@@ -271,7 +271,7 @@ impl ModuleResolver {
 
         // Check if all modules were included (no cycles)
         if order.len() != self.modules.len() {
-            crate::bmo_core::diag::warn("bmo_mod", "Some modules could not be ordered (circular dependency)");
+            crate::cabina::warn("bmo_mod", "Some modules could not be ordered (circular dependency)");
         }
 
         // Update compilation order
@@ -389,7 +389,7 @@ impl ModuleResolver {
             for sym in &self.symbols {
                 if sym.name == *name && sym.is_pub {
                     if found.is_some() {
-                        crate::bmo_core::diag::warn("bmo_mod", "Ambiguous symbol");
+                        crate::cabina::warn("bmo_mod", "Ambiguous symbol");
                         return None;
                     }
                     found = Some(ResolvedSymbol {
@@ -426,3 +426,4 @@ impl Default for ModuleResolver {
         Self::new()
     }
 }
+
