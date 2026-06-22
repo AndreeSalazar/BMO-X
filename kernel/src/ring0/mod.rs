@@ -75,6 +75,20 @@ use core::arch::naked_asm;
 #[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
+        // ── Zero-init BSS (defensivo). El bootloader UEFI ya lo hace,
+        //    pero algunas páginas (PAGE_SIZE-aligned) pueden quedar
+        //    con basura de RAM si la UEFI las marcó como "BootServices"
+        //    y el kernel las reclama sin zero-init. Esto causa #GP en
+        //    load de static mut con valores random.
+        "lea rax, [rip + __bss_start]",
+        "lea rcx, [rip + __bss_end]",
+        "sub rcx, rax",
+        "jz 1f",                          // si BSS vacío, saltar
+        "mov rdi, rax",
+        "xor eax, eax",
+        "rep stosb",
+        "1:",
+        // ── Entry normal
         "test rdi, rdi",
         "jz 2f",
         "mov rbx, rdi",
