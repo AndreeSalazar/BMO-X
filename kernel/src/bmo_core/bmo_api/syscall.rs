@@ -9,7 +9,6 @@
 #![allow(dead_code)]
 
 use super::window::{style, WID_INVALID};
-use super::surface;
 use super::message::{BmoMsg, BmoMsgKind};
 use super::class;
 
@@ -178,6 +177,7 @@ fn validate_user_ptr(ptr: u64, len: u64) -> bool {
 }
 
 pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
+    #[allow(unreachable_patterns)] // varios `nr::*` legacy alias a la misma syscall
     match nr {
         nr::REGISTER_CLASS   => sys_register_class(a0),
         nr::UNREGISTER_CLASS => sys_unregister_class(a0 as u16),

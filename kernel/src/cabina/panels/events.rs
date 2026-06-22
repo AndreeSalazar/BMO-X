@@ -40,7 +40,7 @@ pub fn render(s: &Snapshot) {
         } else {
             alloc::format!("#{} {:<9} {:<10} {}", ev.seq, ev.severity.name(), ev.module, ev.msg)
         };
-        let _ = (ev.severity == Severity::Panic);
+        let _ = ev.severity == Severity::Panic;
         paint::draw_text(16, y, &line, ev.severity.color());
         y += 14;
         i += 1;

@@ -6,7 +6,6 @@
 #![allow(dead_code)]
 
 use crate::lang::common::source::{Pos, Span};
-use crate::lang::common::diagnostics::{Diagnostic, DiagCode};
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -254,7 +253,7 @@ impl<'src> Lexer<'src> {
     fn lex_char(&mut self) -> Result<Token, LexError> {
         let start = self.here();
         self.advance(); // consume '
-        let v = match self.advance() {
+        let _v = match self.advance() {
             Some(b'\\') => match self.advance() {
                 Some(b'n') => b'\n' as u32,
                 Some(b't') => b'\t' as u32,

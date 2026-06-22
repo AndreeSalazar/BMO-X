@@ -18,7 +18,7 @@ use crate::bmo_gpu::BxResult;
 use crate::bmo_abi::bef::{BefHeader, BefFlags, BEF_MAGIC, BEF_VERSION_MAJOR, BEF_VERSION_MINOR};
 use crate::bmo_abi::profile::RuntimeKind;
 use crate::lang::runtimes::c_min;
-use crate::lang::bef::{BmoObject, SectionKind, RelocationKind, ObjectSection, Relocation};
+use crate::lang::bef::{BmoObject, SectionKind, RelocationKind, Relocation};
 
 /// Un BEF final, listo para cargarse en Ring 3.
 pub struct LinkedBef {
@@ -132,7 +132,7 @@ impl Linker {
         out.extend_from_slice(&section_table_bytes);
 
         // Calcular el offset base de las secciones (después de header + section table).
-        let sections_start = 48 + section_table_bytes.len() as u32;
+        let _sections_start = 48 + section_table_bytes.len() as u32;
         // 8. Aplicar relocations.
         // Por cada relocation, calculamos su offset absoluto en out.
         // Como las relocations se crearon contra offsets en el .text
@@ -144,15 +144,12 @@ impl Linker {
         // section_offset correspondiente.
 
         // 9. Concatenar las secciones.
-        let mut out_cursor = sections_start as usize;
         for s in &sections {
             // Pad si hay gap.
-            if out_cursor < s.offset as usize {
+            if (out.len() as u32) < s.offset {
                 out.resize(s.offset as usize, 0);
-                out_cursor = s.offset as usize;
             }
             out.extend_from_slice(&s.data);
-            out_cursor = s.offset as usize + s.data.len();
         }
         let final_size = out.len() as u32;
 

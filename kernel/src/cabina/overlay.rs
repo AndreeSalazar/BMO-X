@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use crate::cabina::snapshot::{Snapshot, take};
+use crate::cabina::snapshot::take;
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static DIRTY: AtomicBool = AtomicBool::new(false);

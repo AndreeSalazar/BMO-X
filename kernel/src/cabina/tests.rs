@@ -13,8 +13,7 @@
 
 #![allow(dead_code)]
 
-use crate::cabina::{self, Severity, Layer, Entity, QueryId, event::Event};
-use crate::cabina::query::Query;
+use crate::cabina::{self, Severity, Layer, QueryId};
 use crate::cabina::filter::EventFilter;
 
 pub struct TestResult {

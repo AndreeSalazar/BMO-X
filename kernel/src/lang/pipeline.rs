@@ -23,7 +23,6 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use alloc::vec::Vec;
 
 use crate::bmo_gpu::BxResult;
 use crate::lang::common::ast::Module;

@@ -21,7 +21,6 @@
 #![allow(dead_code)]
 
 use crate::cabina::event::{Event, Layer, Entity, Severity};
-use crate::cabina::telemetry;
 
 /// Un filtro de eventos.
 ///

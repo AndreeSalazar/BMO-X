@@ -20,19 +20,16 @@
 extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::bmo_gpu::BxResult;
 use crate::lang::common::ast as ir;
 use crate::lang::common::ast::{Module, Item, Stmt, Expr, Block, StrId};
-use crate::lang::common::types::{IrType, IrTypeId};
 use super::emit::{Emitter, CondCode};
-use super::regs::{RegAlloc, Var, VarSize};
+use super::regs::{RegAlloc, VarSize};
 use super::abi::Reg;
 use crate::lang::bef::{
-    BmoObject, BmoObjectBuilder, ObjectSection, ObjectArch, SectionKind,
-    SectionFlags, Symbol, SymbolBinding, SymbolType, Relocation, RelocationKind,
+    BmoObject, BmoObjectBuilder, SectionKind, SymbolType, Relocation, RelocationKind,
 };
 
 /// Compila un módulo a un BmoObject (v2.0).
@@ -44,7 +41,7 @@ pub fn compile_module(module: &Module) -> BxResult<BmoObject> {
     // se registran cuando se usan en Expr::StrLit.)
 
     let mut str_to_offset: BTreeMap<u32, u32> = BTreeMap::new();
-    let mut str_id_to_name: BTreeMap<u32, String> = BTreeMap::new();
+    let _str_id_to_name: BTreeMap<u32, String> = BTreeMap::new();
 
     // Pasada 1: crear strings que aparecerán en el código.
     for item in &module.items {

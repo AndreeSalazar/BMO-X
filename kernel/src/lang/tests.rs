@@ -17,8 +17,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_gpu::BxResult;
-use crate::lang::pipeline::{compile, CompiledProgram, SourceLang};
+use crate::lang::pipeline::{compile, SourceLang};
 
 /// Resultado de un test: nombre + pass/fail + info.
 pub struct TestResult {

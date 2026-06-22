@@ -81,7 +81,7 @@ pub fn init() {
 /// Ejecuta los tests integrados de cabina, defense y timeback.
 /// Los resultados se emiten como eventos a la cabina.
 fn run_trilogy_tests() {
-    use crate::cabina::{Severity, info, warn, fault};
+    use crate::cabina::{info, warn, fault};
 
     // Cabina tests
     for r in crate::cabina::tests::run_all() {

@@ -215,7 +215,7 @@ pub fn init_fastos_cpu() {
     power_management::init();
 
     // 7. MSR setup (common across all cores)
-    let bsp_apic_id = topo.bsp.apic_id as u32;
+    let _bsp_apic_id = topo.bsp.apic_id as u32;
     // Note: syscall_entry should be the actual handler. For now we
     // pass a placeholder; the real call sites set it explicitly.
     // RING 0 will call `init_msr_common` with the real entry.

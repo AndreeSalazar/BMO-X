@@ -19,7 +19,6 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::lang::common::ast as ir;
@@ -27,7 +26,7 @@ use crate::lang::common::ast::Module;
 use crate::lang::common::source::Span;
 use crate::lang::common::types::{IrType, IrTypeId};
 use crate::lang::bmo::parser::ast::{
-    Ast as BmoAst, Stmt, Expr, Param, TypeAnnotation, BinOp, UnaryOp, ExternItem,
+    Ast as BmoAst, Stmt, Expr, TypeAnnotation, BinOp, UnaryOp, ExternItem,
 };
 
 /// Convierte un BMO AST al Module canónico del common IR.

@@ -4,7 +4,6 @@
 
 use super::window::{style, wf, WID_INVALID};
 use super::message::{BmoMsg, BmoMsgKind};
-use super::surface;
 use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
 static DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);

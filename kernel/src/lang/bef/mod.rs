@@ -24,12 +24,10 @@
 
 extern crate alloc;
 use alloc::collections::BTreeMap;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::bmo_gpu::BxResult;
 use crate::bmo_abi::profile::RuntimeKind;
-use crate::lang::common::ast::StrId;
 
 // ─── Section ────────────────────────────────────────────────────────
 

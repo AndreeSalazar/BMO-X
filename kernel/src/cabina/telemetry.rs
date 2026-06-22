@@ -13,7 +13,7 @@
 
 #![allow(dead_code)]
 
-use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 // ─── CPU ───────────────────────────────────────────────────────────
 

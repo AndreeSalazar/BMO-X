@@ -390,7 +390,7 @@ pub fn pm_timer_port() -> Option<u16> {
         return None;
     }
     let (fadt_addr, _len) = find_table(&FADT_SIGNATURE).ok()?;
-    let fadt = unsafe { &*(fadt_addr as *const FadtHeader) };
+    let _fadt = unsafe { &*(fadt_addr as *const FadtHeader) };
     // FADT:PM_TMR_LEN is at offset 76 (8 bits), PM_TMR_BLK at offset 76... wait.
     // Actually FADT layout (ACPI 6.5 Table 5-10):
     //   offset 0:    signature (4)

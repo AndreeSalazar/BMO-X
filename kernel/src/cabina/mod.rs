@@ -48,7 +48,6 @@ pub mod tests;
 pub use event::{Severity, Layer, Entity, Event};
 
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use alloc::string::String;
 
 static BOOT_READY: AtomicBool = AtomicBool::new(false);
 static OVERLAY_ENABLED: AtomicBool = AtomicBool::new(false);

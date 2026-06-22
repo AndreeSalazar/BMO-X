@@ -83,7 +83,7 @@ pub fn detect() -> Topology {
 
     // CPUID 0x0B sub-leaf 1: core level
     // ECX[15:8] = number of logical processors at this level
-    let (core_apic_id, core_shift) = {
+    let (_core_apic_id, core_shift) = {
         let (eax, _, ecx, _) = cpuid(0x0B, 1);
         ((eax & 0xFFFF) as u8, (ecx & 0x1F) as u8)
     };
@@ -103,7 +103,7 @@ pub fn detect() -> Topology {
     // CPUID 0x8000001E: extended APIC ID + node (CCX) info
     // EBX[7:0] = ThreadsPerComputeUnit (threads per CCX, typically 16 for Zen 3)
     // ECX[7:0] = NodeId (CCX index)
-    let (threads_per_ccx, ccx_id) = {
+    let (_threads_per_ccx, ccx_id) = {
         let (_, ebx, ecx, _) = cpuid(0x8000001E, 0);
         (((ebx >> 8) & 0xFF) as u32, (ecx & 0xFF) as u8)
     };

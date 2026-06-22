@@ -127,7 +127,7 @@ pub fn calibrate_tsc(pm_timer_port: u16) -> (u64, TscSource) {
     let tsc_start = rdtsc();
 
     // Spin until PM timer advances by MEASUREMENT_MS
-    let mut pm_now = pm_start;
+    let mut pm_now: u32;
     let mut safety_iter = 0u32;
     loop {
         pm_now = read_pm_timer(pm_timer_port);

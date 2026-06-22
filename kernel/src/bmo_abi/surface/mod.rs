@@ -14,7 +14,6 @@
 #![allow(dead_code)]
 
 use crate::bmo_abi::fundamentals::handle::BmoHandle;
-use crate::bmo_abi::windowing::BmoWindowHandle;
 
 // ─── Pixel format ──────────────────────────────────────────────────
 

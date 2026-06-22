@@ -199,13 +199,13 @@ pub fn has_sse2(id: &CpuIdentity) -> bool { id.features_edx & (1 << 26) != 0 }
 /// Returns true if the CPU has AVX.
 pub fn has_avx(id: &CpuIdentity) -> bool { id.features_ecx & (1 << 28) != 0 }
 /// Returns true if the CPU has AVX2.
-pub fn has_avx2(id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 5) != 0 }
+pub fn has_avx2(_id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 5) != 0 }
 /// Returns true if the CPU has SMEP.
-pub fn has_smep(id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 7) != 0 }
+pub fn has_smep(_id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 7) != 0 }
 /// Returns true if the CPU has SMAP.
-pub fn has_smap(id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 20) != 0 }
+pub fn has_smap(_id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 20) != 0 }
 /// Returns true if the CPU has FSGSBASE.
-pub fn has_fsgsbase(id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 0) != 0 }
+pub fn has_fsgsbase(_id: &CpuIdentity) -> bool { cpuid(7, 0).1 & (1 << 0) != 0 }
 /// Returns true if the CPU has RDTSCP.
 pub fn has_rdtscp(id: &CpuIdentity) -> bool { id.features_edx & (1 << 27) != 0 }
 /// Returns true if the CPU has invariant TSC.
