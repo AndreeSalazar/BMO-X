@@ -228,6 +228,14 @@ pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
     ptr
 }
 
+/// Public wrapper around the global allocator's dealloc.
+pub unsafe fn heap_free(ptr: *mut u8, size: usize, align: usize) {
+    if ptr.is_null() { return; }
+    if let Ok(layout) = core::alloc::Layout::from_size_align(size, align) {
+        ALLOCATOR.dealloc(ptr, layout);
+    }
+}
+
 fn print_u64_hex(val: u64) {
     crate::boot::serial::hex(val);
 }

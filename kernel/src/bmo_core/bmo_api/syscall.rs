@@ -152,6 +152,12 @@ pub mod nr {
     pub const DEBUG_TRACE:           u16 = _nr::NR_DEBUG_TRACE as u16;
     pub const DEBUG_ASSERT:          u16 = _nr::NR_DEBUG_ASSERT as u16;
     pub const DEBUG_PANIC:           u16 = _nr::NR_DEBUG_PANIC as u16;
+
+    // ─── Memory (canónicos) ────────────────────────────────────────
+    pub const MEM_ALLOC:             u16 = _nr::NR_MEM_ALLOC as u16;
+    pub const MEM_FREE:              u16 = _nr::NR_MEM_FREE as u16;
+    pub const MEM_MAP:               u16 = _nr::NR_MEM_MAP as u16;
+    pub const MEM_UNMAP:             u16 = _nr::NR_MEM_UNMAP as u16;
 }
 
 // v1.8.8: errores ahora vienen de `bmo_abi::error_code` (21 códigos
@@ -329,6 +335,12 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::DEBUG_TRACE      => sys_debug_trace(a0, a1),
         nr::DEBUG_ASSERT     => sys_debug_assert(a0, a1, a2),
         nr::DEBUG_PANIC      => sys_debug_panic(a0, a1),
+
+        // ─── Memory ───────────────────────────────────────────────
+        nr::MEM_ALLOC        => sys_mem_alloc(a0),
+        nr::MEM_FREE         => sys_mem_free(a0, a1),
+        nr::MEM_MAP          => sys_mem_map(a0, a1, a2, a3),
+        nr::MEM_UNMAP        => sys_mem_unmap(a0, a1),
 
         nr::DISPATCH_RETURN  => err::OK,
 
@@ -1002,6 +1014,42 @@ fn sys_debug_panic(msg_ptr: u64, len: u64) -> u64 {
 }
 
 // ── Validadores para syscalls desde Ring 3 ────────────────────────
+
+// ── Memory syscalls (NR_MEM_*) ────────────────────────────────────
+
+/// NR_MEM_ALLOC: asigna `size` bytes y devuelve el puntero (kernel heap).
+/// v1.8.8: asigna desde el heap del kernel. En v1.9 se mapeará a
+/// memoria de usuario por proceso.
+fn sys_mem_alloc(size: u64) -> u64 {
+    if size == 0 || size > 16 * 1024 * 1024 { return err::INVALID; }
+    let p = unsafe { crate::mem::heap::heap_alloc(size as usize, 8) };
+    if p.is_null() { err::NO_MEMORY } else { p as u64 }
+}
+
+/// NR_MEM_FREE: libera un bloque previamente asignado.
+fn sys_mem_free(ptr: u64, size: u64) -> u64 {
+    if ptr < 0x1000 { return err::INVALID; }
+    if size == 0 { return err::INVALID; }
+    unsafe { crate::mem::heap::heap_free(ptr as *mut u8, size as usize, 8); }
+    err::OK
+}
+
+/// NR_MEM_MAP: mmap estilo POSIX. v1.8.8: stub.
+fn sys_mem_map(addr: u64, len: u64, _prot: u64, _flags: u64) -> u64 {
+    if len == 0 || len > 16 * 1024 * 1024 { return err::INVALID; }
+    // v1.9: implementar con map_user_range.
+    let _ = addr;
+    err::OK
+}
+
+/// NR_MEM_UNMAP: libera un mmap. v1.8.8: stub.
+fn sys_mem_unmap(addr: u64, len: u64) -> u64 {
+    if addr < 0x1000 || len == 0 { return err::INVALID; }
+    // v1.9: implementar con free_user_page_tables (granular).
+    err::OK
+}
+
+// ── Validador para syscalls desde Ring 3 ──────────────────────────
 
 /// Valida un puntero de usuario que contiene una string UTF-8.
 fn validate_user_str(ptr: u64, len: u64) -> bool {
