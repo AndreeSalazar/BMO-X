@@ -79,8 +79,22 @@ pub fn init() {
     // funcionan end-to-end. No fallan el boot (solo reportan).
     run_trilogy_tests();
     run_gateway_tests();
+    run_bef_tests();
 
     crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop+desktop3");
+}
+
+/// Ejecuta los tests del BEF loader (3 formatos: BEF, PE, ELF).
+fn run_bef_tests() {
+    use crate::cabina::{info, warn};
+    for r in crate::bmo_core::bef::loader::tests::run_all() {
+        if r.passed {
+            info("test.bef", &r.name);
+        } else {
+            warn("test.bef", &r.name);
+            warn("test.bef", &r.message);
+        }
+    }
 }
 
 /// Ejecuta los tests integrados de cabina, defense y timeback.

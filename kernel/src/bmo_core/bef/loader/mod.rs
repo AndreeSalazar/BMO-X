@@ -21,6 +21,8 @@ pub mod elf_thunks;
 pub mod meta_sections;
 pub mod runtime;
 
+pub mod tests;
+
 // pe_imports and pe_thunks moved to crate::bmo_gpu::shims (v1.7.9)
 
 use crate::bmo_core::bef::header::BefMagic;
