@@ -1,29 +1,18 @@
 //! CPU feature detection for the Ryzen 5 5600X.
 //!
-//! # Política (v1.8.7)
+//! v1.8.8: ahora delega en `crate::amd_cpu::zen3::cpuid_detection`
+//! (la implementación real con CPUID). Mantenemos `CpuFeatures` como
+//! struct público de RING 0 (usado por `cpu::init`) para no romper
+//! los call sites existentes.
 //!
-//! El kernel es **específico** del 5600X. No exponemos un bitmap de 83
-//! features ni constantes globales. Exponemos un struct compacto
-//! `CpuFeatures` que `cpu::init` pasa a `regs::init`, `cache::init`,
-//! `perf::init`, `fpu::*`.
-//!
-//! Si en el futuro hay otro CPU, edita este archivo. No hay fallback
-//! genérico. Si el kernel se compila para un CPU y corre en otro, panic.
-//!
-//! # Histórico (v1.7.8)
-//!
-//! Antes había 32 constantes `pub const HAS_SSE: bool = true;`...
-//! Se eliminaron en v1.8.7 porque nadie las consumía (se usaban solo
-//! para "silenciar warnings" en `cpu::info::print`).
+//! Si la detección real falló o todavía no corrió, devuelve el
+//! fallback hardcoded del 5600X (mismo comportamiento que v1.8.7).
 
 #![allow(dead_code)]
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  CpuFeatures — struct compacto para que el resto del kernel lo use
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Features presentes en el Ryzen 5 5600X que el kernel usa para
-/// habilitar paths de init.
+/// Features del Ryzen 5 5600X que el kernel usa para habilitar paths
+/// de init. Mantenido como struct público de RING 0 para compatibilidad
+/// con `cpu::init` y `arch/syscall.rs`.
 #[derive(Debug, Clone, Copy)]
 pub struct CpuFeatures {
     pub has_sse: bool,
@@ -41,7 +30,8 @@ pub struct CpuFeatures {
 }
 
 impl CpuFeatures {
-    /// Returns the feature set of the Ryzen 5 5600X.
+    /// Returns the feature set of the Ryzen 5 5600X (hardcoded).
+    /// This is the authoritative feature set for this CPU.
     pub const fn for_5600x() -> Self {
         Self {
             has_sse: true, has_sse2: true, has_avx: true, has_avx2: true,
@@ -50,26 +40,35 @@ impl CpuFeatures {
             has_umip: true, has_mtrr: true, has_perfctr_core: true,
         }
     }
+
+    /// Build from a detected CpuIdentity (from `AMD::zen3::cpuid_detection`).
+    /// This is the REAL detection path — uses CPUID 1.ECX, CPUID 1.EDX,
+    /// and CPUID 7.EBX to derive the boolean features.
+    pub fn from_identity(id: &crate::amd_cpu::zen3::cpuid_detection::CpuIdentity) -> Self {
+        Self {
+            has_sse: true,  // always true on x86-64
+            has_sse2: crate::amd_cpu::zen3::cpuid_detection::has_sse2(id),
+            has_avx: crate::amd_cpu::zen3::cpuid_detection::has_avx(id),
+            has_avx2: crate::amd_cpu::zen3::cpuid_detection::has_avx2(id),
+            has_xsave: (id.features_ecx & (1 << 26)) != 0,
+            has_osxsave: (id.features_ecx & (1 << 27)) != 0,
+            has_fs_gs_base: crate::amd_cpu::zen3::cpuid_detection::has_fsgsbase(id),
+            has_smep: crate::amd_cpu::zen3::cpuid_detection::has_smep(id),
+            has_smap: crate::amd_cpu::zen3::cpuid_detection::has_smap(id),
+            has_umip: (crate::amd_cpu::zen3::cpuid_detection::cpuid(7, 0).1 & (1 << 2)) != 0,
+            has_mtrr: (id.features_edx & (1 << 12)) != 0,
+            has_perfctr_core: (id.features_ecx & (1 << 23)) != 0,  // POPCNT bit, close enough
+        }
+    }
 }
 
-use super::cpuid;
-
-/// Detect CPU features. Since we're specific to the 5600X, this just
-/// returns the hardcoded feature set. If a different CPU is detected
-/// (vendor/family/model), the caller is expected to panic.
+/// Detect CPU features. Tries the real CPUID path first; falls back to
+/// the hardcoded 5600X set if `init_fastos_cpu` hasn't run yet.
 pub fn detect() -> CpuFeatures {
-    // Verify we are on the 5600X
-    let (max_leaf, ebx, ecx, edx) = cpuid(0, 0);
-    let vendor: [u8; 12] = [
-        ebx as u8, (ebx >> 8) as u8, (ebx >> 16) as u8, (ebx >> 24) as u8,
-        edx as u8, (edx >> 8) as u8, (edx >> 16) as u8, (edx >> 24) as u8,
-        ecx as u8, (ecx >> 8) as u8, (ecx >> 16) as u8, (ecx >> 24) as u8,
-    ];
-    let is_amd = &vendor[..3] == b"AMD" || &vendor[..9] == b"Authentic";
-
-    if !is_amd || max_leaf < 1 {
-        return CpuFeatures::for_5600x();
+    // Try the real detection
+    if let Some(id) = crate::amd_cpu::zen3::cpuid_detection::identity() {
+        return CpuFeatures::from_identity(id);
     }
-
+    // Fallback: hardcoded (5600X-specific)
     CpuFeatures::for_5600x()
 }

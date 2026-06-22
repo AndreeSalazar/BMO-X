@@ -1,44 +1,23 @@
-//! v1.7.4 — ACPI parser (RSDP, MCFG).
+//! v1.8.8 — ACPI delegating to `AMD::zen3::acpi_real`.
 //!
-//! Stub minimalista. v1.7.x: leer RSDP, RSDT/XSDT, MCFG (PCIe ECAM
-//! range). v1.7.4: sólo expone stubs que devuelven None / false para
-//! que p2_dev compile sin warnings.
+//! v1.7.4 era un stub minimalista. v1.8.8 invoca la implementación
+//! real (`crate::amd_cpu::zen3::acpi_real`) que parsea RSDP, XSDT,
+//! MCFG, FADT, HPET, MADT.
+//!
+//! Si `init_fastos_cpu()` no se ha llamado todavía, devuelve los
+//! valores fallback de v1.7.4 (None / 0) para mantener compatibilidad.
+//!
+//! Mantenemos el struct `McfgHeader` legacy (con `base`, `end_bus`)
+//! usando un wrapper que expone la primera entry de la MCFG real.
+//! Esto preserva la ABI que `boot::phases::p2_dev` espera.
 
 #![allow(dead_code)]
 
-/// Busca el RSDP en las direcciones de memoria BIOS. Devuelve la
-/// dirección física del RSDP si lo encuentra, o 0.
-pub fn find_rsdp() -> u64 { 0 }
+pub use crate::amd_cpu::zen3::acpi_real::{RsdpHeader, AcpiError};
 
-/// Parsea el RSDP y devuelve el header RSDP si es válido. Stub.
-pub fn parse_rsdp(_addr: u64) -> Option<RsdpHeader> { None }
-
-/// Parsea la MCFG (PCIe ECAM regions). Stub.
-pub fn parse_mcfg(_rsdp_addr: u64) -> Option<McfgHeader> { None }
-
-/// Snapshot global de la MCFG parseada. Stub.
-pub fn mcfg_snapshot() -> Option<McfgHeader> { None }
-
-/// Header RSDP v2 (root system description pointer).
-#[derive(Debug, Clone, Copy)]
-pub struct RsdpHeader {
-    pub signature: [u8; 8],
-    pub checksum: u8,
-    pub oem_id: [u8; 6],
-    pub revision: u8,
-    pub rsdt_addr: u32,
-    pub length: u32,
-    pub xsdt_addr: u64,
-    pub extended_checksum: u8,
-}
-
-impl RsdpHeader {
-    pub fn is_valid(&self) -> bool {
-        &self.signature == b"RSD PTR "
-    }
-}
-
-/// Header MCFG (Memory Mapped Configuration).
+/// Legacy single-region MCFG view (compatible con v1.7.4).
+/// Expone `base`, `length`, `segment`, `bus_start`, `end_bus` del
+/// primer entry de la MCFG real.
 #[derive(Debug, Clone, Copy)]
 pub struct McfgHeader {
     pub base: u64,
@@ -54,6 +33,46 @@ impl McfgHeader {
     }
 }
 
+/// Build a legacy McfgHeader from the real multi-entry McfgHeader.
+fn to_legacy(m: &crate::amd_cpu::zen3::acpi_real::McfgHeader) -> Option<McfgHeader> {
+    m.entries().first().map(|e| McfgHeader {
+        base: e.base_address,
+        length: e.ecam_size() as u16,
+        segment: e.pci_segment_group,
+        bus_start: e.bus_number_start,
+        end_bus: e.bus_number_end,
+    })
+}
+
+/// Busca el RSDP. v1.8.8: delegates to the real parser.
+pub fn find_rsdp() -> u64 {
+    if let Ok(addr) = crate::amd_cpu::zen3::acpi_real::find_rsdp(None) {
+        return addr;
+    }
+    0
+}
+
+/// Parsea el RSDP. v1.8.8: delegates to the real parser.
+pub fn parse_rsdp(addr: u64) -> Option<RsdpHeader> {
+    crate::amd_cpu::zen3::acpi_real::parse_rsdp(addr).ok().copied()
+}
+
+/// Parsea la MCFG. v1.8.8: delegates to the real parser, returns the
+/// legacy single-region view.
+pub fn parse_mcfg(_rsdp_addr: u64) -> Option<McfgHeader> {
+    crate::amd_cpu::zen3::acpi_real::parse_mcfg().ok().and_then(|m| to_legacy(&m))
+}
+
+/// Snapshot global de la MCFG parseada.
+pub fn mcfg_snapshot() -> Option<McfgHeader> {
+    crate::amd_cpu::zen3::acpi_real::mcfg().and_then(|m| to_legacy(&m))
+}
+
+/// Init. v1.8.8: delegates to fastos_cpu::init_acpi.
 pub fn init() {
-    crate::dev::console::serial_write("[dev] ACPI control stub");
+    if crate::amd_cpu::zen3::is_initialized() {
+        crate::amd_cpu::zen3::init_acpi(None);
+    } else {
+        crate::dev::console::serial_write("[dev] ACPI: fastos_cpu not yet initialized\n");
+    }
 }

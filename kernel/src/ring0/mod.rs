@@ -67,6 +67,10 @@ pub mod cpu;
 // ── Soporte de Ring 0 ───────────────────────────────────────────────
 pub mod boot;
 
+// ── CPU-specific (AMD Ryzen 5 5600X / Zen 3) ───────────────────────
+#[path = "AMD/mod.rs"]
+pub mod amd_cpu;
+
 // ── Top-level Ring 0 ────────────────────────────────────────────────
 mod panic;
 pub mod coordinator;

@@ -224,3 +224,17 @@ pub fn assert_target_cpu(id: &CpuIdentity) {
         crate::dev::console::serial_write("). Continuing with reduced optimizations.\n");
     }
 }
+
+// ── Global cached identity (used by other modules as fallback) ────────
+static mut CACHED_IDENTITY: Option<CpuIdentity> = None;
+
+/// Cache the detected CpuIdentity globally so other modules (like
+/// `cpu::features::detect`) can use it without re-running CPUID.
+pub fn cache_identity(id: CpuIdentity) {
+    unsafe { CACHED_IDENTITY = Some(id); }
+}
+
+/// Returns the cached CpuIdentity, if any.
+pub fn identity() -> Option<&'static CpuIdentity> {
+    unsafe { CACHED_IDENTITY.as_ref() }
+}

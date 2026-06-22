@@ -163,6 +163,65 @@ impl McfgHeader {
             slice::from_raw_parts(base as *const McfgEntry, entry_count)
         }
     }
+
+    /// Returns the first ECAM base address, or 0 if no entries.
+    /// Convenience for callers that expect the legacy single-entry API.
+    pub fn first_base(&self) -> u64 {
+        self.entries().first().map(|e| e.base_address).unwrap_or(0)
+    }
+
+    /// Returns the maximum end_bus across all entries, or 0 if none.
+    /// Convenience for callers that expect the legacy single-entry API.
+    pub fn max_end_bus(&self) -> u8 {
+        self.entries()
+            .iter()
+            .map(|e| e.bus_number_end)
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+// ── Legacy single-entry view (for compatibility with v1.7.4 callers) ─
+//
+// The v1.7.4 `McfgHeader` had `base` and `end_bus` as direct fields.
+// v1.8.8 changes to a multi-entry model. To keep old code working,
+// provide an `as_legacy()` method that builds a `LegacyMcfgView` from
+// the first entry (or zeros if none).
+impl McfgHeader {
+    /// Legacy view: exposes `base` and `end_bus` from the first entry.
+    pub fn as_legacy(&self) -> LegacyMcfgView {
+        let e = self.entries().first();
+        match e {
+            Some(entry) => LegacyMcfgView {
+                base: entry.base_address,
+                length: entry.ecam_size() as u16,
+                segment: entry.pci_segment_group,
+                bus_start: entry.bus_number_start,
+                end_bus: entry.bus_number_end,
+            },
+            None => LegacyMcfgView::zeros(),
+        }
+    }
+}
+
+/// Legacy single-entry MCFG view. Used by p2_dev.rs which still
+/// expects the v1.7.4 single-region struct.
+#[derive(Debug, Clone, Copy)]
+pub struct LegacyMcfgView {
+    pub base: u64,
+    pub length: u16,
+    pub segment: u16,
+    pub bus_start: u8,
+    pub end_bus: u8,
+}
+
+impl LegacyMcfgView {
+    pub fn zeros() -> Self {
+        Self { base: 0, length: 0, segment: 0, bus_start: 0, end_bus: 0 }
+    }
+    pub fn ecam_size(&self) -> u64 {
+        ((self.end_bus - self.bus_start + 1) as u64) * (1 << 20)
+    }
 }
 
 /// Error type for ACPI operations.
@@ -321,6 +380,85 @@ pub fn has_ecam() -> bool {
 /// Returns the first ECAM base address (convenience for PCIe init).
 pub fn first_ecam_base() -> Option<u64> {
     mcfg().and_then(|m| m.entries().first().map(|e| e.base_address))
+}
+
+/// Returns the PM Timer I/O port if FADT was parsed. None otherwise.
+/// Used by `tsc_calibration::calibrate_tsc` to find the reference clock.
+pub fn pm_timer_port() -> Option<u16> {
+    // Search the XSDT for a FADT (Fixed ACPI Description Table).
+    if find_table(&FADT_SIGNATURE).is_err() {
+        return None;
+    }
+    let (fadt_addr, _len) = find_table(&FADT_SIGNATURE).ok()?;
+    let fadt = unsafe { &*(fadt_addr as *const FadtHeader) };
+    // FADT:PM_TMR_LEN is at offset 76 (8 bits), PM_TMR_BLK at offset 76... wait.
+    // Actually FADT layout (ACPI 6.5 Table 5-10):
+    //   offset 0:    signature (4)
+    //   offset 4:    length (4)
+    //   offset 8:    revision (1)
+    //   offset 9:    checksum (1)
+    //   offset 10:   oem_id (6)
+    //   offset 16:   oem_table_id (8)
+    //   offset 24:   oem_revision (4)
+    //   offset 28:   creator_id (4)
+    //   offset 32:   creator_revision (4)
+    //   offset 36:   FIRMWARE_CTRL (4)
+    //   offset 40:   DSDT (4)
+    //   offset 44:   reserved (1)
+    //   offset 45:   preferred_power_management_profile (1)
+    //   offset 46:   SCI_interrupt (2)
+    //   offset 48:   SMI_command_port (4)
+    //   offset 52:   ACPI_enable (1)
+    //   offset 53:   ACPI_disable (1)
+    //   offset 54:   S4BIOS_request (1)
+    //   offset 55:   PSTATE_control (1)
+    //   offset 56:   PM1a_event_block (4)
+    //   offset 60:   PM1b_event_block (4)
+    //   offset 64:   PM1a_control_block (4)
+    //   offset 68:   PM1b_control_block (4)
+    //   offset 72:   PM2_control_block (4)
+    //   offset 76:   PM_TIMER_block (4)  ← we want this
+    //   offset 80:   GPE0_block (4)
+    let pm_timer_block = unsafe {
+        let ptr = (fadt_addr as *const u8).add(76);
+        core::ptr::read_unaligned(ptr as *const u32)
+    };
+    if pm_timer_block == 0 {
+        None
+    } else {
+        Some(pm_timer_block as u16)
+    }
+}
+
+/// FADT header (just the bytes we need).
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+struct FadtHeader {
+    _signature: [u8; 4],
+    _length: u32,
+    _revision: u8,
+    _checksum: u8,
+    _oem_id: [u8; 6],
+    _oem_table_id: [u8; 8],
+    _oem_revision: u32,
+    _creator_id: u32,
+    _creator_revision: u32,
+    _firmware_ctrl: u32,
+    _dsdt: u32,
+    _reserved: u8,
+    _preferred_pm_profile: u8,
+    _sci_interrupt: u16,
+    _smi_command_port: u32,
+    _acpi_enable: u8,
+    _acpi_disable: u8,
+    _s4bios_request: u8,
+    _pstate_control: u8,
+    _pm1a_event_block: u32,
+    _pm1b_event_block: u32,
+    _pm1a_control_block: u32,
+    _pm1b_control_block: u32,
+    _pm2_control_block: u32,
+    _pm_timer_block: u32,  // offset 76
 }
 
 /// Initialize the full ACPI subsystem: locate RSDP, parse XSDT, MCFG.

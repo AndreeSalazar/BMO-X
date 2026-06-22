@@ -55,7 +55,15 @@ pub fn calibrate() -> u64 {
     print_freq(freq);
     crate::dev::console::serial_write(" Hz\n");
 
-    freq
+    // v1.8.8: if the global fastos_cpu::tsc_freq_hz is 0 (init not yet run),
+    // delegate to the real calibration. Otherwise use the global.
+    let final_freq = if crate::amd_cpu::zen3::tsc_freq_hz() != 0 {
+        crate::amd_cpu::zen3::tsc_freq_hz()
+    } else {
+        freq
+    };
+
+    final_freq
 }
 
 /// Print frequency in human-readable form.
