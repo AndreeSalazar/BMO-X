@@ -48,6 +48,7 @@ pub mod frontends;
 pub mod backends;
 pub mod runtimes;
 pub mod pipeline;
+pub mod tests;
 
 // `bmo/` es el módulo legacy (v1.8.7 y anterior) que contiene
 // lexer/parser/sema/aot/runtime/stdlib/pm/plugins. Se mantiene
