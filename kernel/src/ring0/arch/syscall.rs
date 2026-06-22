@@ -233,10 +233,12 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         crate::bmo_core::diag::trace_u64("syscall", "dispatch nr", nr);
 
         let result = match nr {
-            // ─── BMO API v2 (0x100..=0x1FF) ──────────────────────────
+            // ─── BMO Core ring3_gateway (0x100..=0x1FF) ──────────────
+            // v1.8.8: TODOS los syscalls de la BMO ABI pasan por el
+            // gateway único. El gateway valida + Cabina observa +
+            // ByteDefender permite + BMO API ejecuta.
             n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                crate::cabina::trace("syscall", "BMO API v2 dispatch");
-                crate::bmo_core::bmo_api::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, a5)
+                crate::bmo_core::ring3_gateway::enter(n as u16, a0, a1, a2, a3, a4, a5)
             }
 
             // ─── Procesos ─────────────────────────────────────────────
