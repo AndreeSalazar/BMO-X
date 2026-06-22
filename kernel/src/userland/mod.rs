@@ -13,14 +13,13 @@
 //! - Las apps usan los syscalls de BMO API (0x100..0x1FF) a través de
 //!   `bmo_core::desktop3` (la cúpula).
 //!
-//! ## Estado actual
+//! ## Componentes
 //!
-//! v1.8.8: hay un `userland_impl.rs` mínimo en este directorio. La fase
-//! completa de Ring 3 con BMO CORE handoff queda para sesiones futuras.
-//!
-//! Ver `Rutas.md` §7 (USERLAND) para la arquitectura ideal.
+//! - `app`: API de alto nivel para cargar y ejecutar binarios (BEF/PE/ELF).
 
 #![allow(dead_code)]
 
 #[path = "ring_3.rs"]
 pub mod userland_impl;
+
+pub mod app;

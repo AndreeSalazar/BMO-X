@@ -174,3 +174,15 @@ pub fn unknown() -> u64 { unsafe { UNKNOWN_SYSCALLS } }
 
 pub mod tests;
 
+/// Observa el lanzamiento de una app de Ring 3.
+/// Llamado por `userland::app::run` antes de saltar a Ring 3.
+pub fn observe_launch(name: &str, format: crate::bmo_core::bef::loader::BinaryFormat) {
+    use crate::bmo_core::bef::loader::BinaryFormat;
+    let fmt = match format {
+        BinaryFormat::BefNative => "BEF",
+        BinaryFormat::PeDevoured => "PE-devoured",
+        BinaryFormat::ElfDevoured => "ELF-devoured",
+    };
+    crate::cabina::info("desktop3", &alloc::format!("launch: {} (format={})", name, fmt));
+}
+
