@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! v1.7.1 — Welcome screen profesional, dark, elegante.
 //!
 //! Cambios vs v1.6.x:
@@ -611,4 +615,5 @@ fn handle_char(ch: u8) {
         _ => {}
     }
 }
+
 

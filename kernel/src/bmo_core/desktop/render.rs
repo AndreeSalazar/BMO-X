@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! v1.7.1 — Renderer del escritorio BMO (Ring 0). Mismo lenguaje visual
 //! que el welcome: wallpaper procedural, glass cards, paleta dark elegante.
 //!
@@ -373,6 +377,19 @@ fn wait_for_vsync() {
 
 // ── Frame ──────────────────────────────────────────────────────────
 
+/// Dibuja el footer del desktop con la firma del autor.
+fn draw_footer(fb: &Framebuffer, fb_w: u32) {
+    let h = unsafe { crate::boot::info::FB_HEIGHT };
+    let y = h.saturating_sub(20);
+    let s = b"Desarrollado por Salazar  ::  FastOS/BMO v1.8.8  ::  BMO ABI v1.0.0";
+    let w = s.len() * 8;
+    let x = if fb_w > w as u32 { (fb_w - w as u32) / 2 } else { 0 };
+    // Fondo semi-transparente simulado.
+    fb.fill_rect(0, y as usize, fb_w as usize, 20, 0xCC101820);
+    // Texto en gris claro.
+    draw_text(fb, x, y + 4, s, 0xFFCCCCCC);
+}
+
 #[allow(static_mut_refs)]
 pub fn render_frame() {
     state::tick();
@@ -415,6 +432,8 @@ pub fn render_frame() {
 
     draw_dock(&backbuffer_fb);
 
+    draw_footer(&backbuffer_fb, w);
+
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
     if crate::bmo_core::diag::is_overlay_enabled() {
@@ -429,4 +448,5 @@ pub fn render_frame() {
     let screen_fb = Framebuffer::new(addr, (s as u64) * 4, w, h);
     backbuffer_fb.blit_to(&screen_fb);
 }
+
 

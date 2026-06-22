@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! Filesystem subsystem for FastOS.
 //!
 //! v1.8.8: usa `BmoErrorCode` del ABI para errores visibles a Ring 3.
@@ -71,3 +75,4 @@ impl Capabilities {
     pub fn insert(&mut self, other: Self) { self.0 |= other.0; }
     pub fn remove(&mut self, other: Self) { self.0 &= !other.0; }
 }
+

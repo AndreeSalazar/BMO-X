@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! BMO Core — Windowing API + UI + FS + Desktop + BEF Loader.
 //!
 //! v1.8.8: BMO Core es el **kernel lógico de Ring 3** en la arquitectura
@@ -83,3 +87,4 @@ pub mod gustos;
 pub mod bef;
 pub mod fs;
 pub mod desktop3;
+

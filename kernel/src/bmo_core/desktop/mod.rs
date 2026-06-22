@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! Desktop — Ring 0 compositor supervisor for FastOS/BMO.
 //!
 //! Deeply modular structure:
@@ -88,4 +92,5 @@ fn return_to_welcome() -> ! {
     crate::dev::console::serial_write("[desktop] ESC — returning to welcome.\n");
     crate::bmo_core::desktop::welcome::run()
 }
+
 

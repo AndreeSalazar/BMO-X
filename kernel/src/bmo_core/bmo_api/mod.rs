@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! BMO API v2.0 — windowing API para FastOS/BMO.
 //!
 //! Facade: un solo `BmoState` global contiene todas las tablas del
@@ -119,4 +123,5 @@ pub fn tick() {
 pub fn dispatch_syscall(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
     syscall::dispatch(nr, a0, a1, a2, a3, a4, a5)
 }
+
 

@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! v1.8.8 — BMO Core coordinator.
 //!
 //! Coordina la inicialización y entrada de todos los subsistemas de BMO Core.
@@ -164,3 +168,4 @@ pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     // Lanza el welcome. Esta función NO retorna.
     desktop::welcome::run();
 }
+

@@ -1,3 +1,7 @@
+//! FastOS/BMO v1.8.8
+//!
+//! Desarrolado por Salazar.
+//!
 //! `bmo_core::desktop3` — Única puerta entre Ring 0 y BMO Core.
 //!
 //! v1.8.8: este módulo centraliza TODOS los syscalls de Ring 3.
@@ -185,4 +189,5 @@ pub fn observe_launch(name: &str, format: crate::bmo_core::bef::loader::BinaryFo
     };
     crate::cabina::info("desktop3", &alloc::format!("launch: {} (format={})", name, fmt));
 }
+
 
