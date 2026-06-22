@@ -108,11 +108,22 @@ pub fn link(artifact: &CompiledArtifact, main_fn_name: &str) -> BxResult<LinkedB
         }
     }
 
-    // 4. Parchear los str_lit_patches. v1.8.8: simplificación — el codegen
-    //    emite un disp32 placeholder que el linker parchea. Necesitamos
-    //    saber dónde están esos patches. El codegen no los devuelve aún;
-    //    por ahora, los parcheamos manualmente si están en posiciones
-    //    conocidas. v1.8.8: skip.
+    // 4. Parchear los str_lit_patches (LEA a rodata).
+    for patch in &artifact.str_lit_patches {
+        // El LEA está en code_offset + patch.pos. El disp32 ocupa 4 bytes
+        // justo después del ModR/M (que está en patch.pos - 1).
+        // En x86-64, `lea rax, [rip+disp32]`:
+        //   48 8D 05 <disp32>           (7 bytes total)
+        // El disp32 se calcula desde el final de la instrucción
+        // (es decir, lea_pos + 7) hasta el string en rodata.
+        let abs_pos = code_offset as usize + patch.pos;
+        let target = rodata_offset as i32 + patch.str_offset as i32;
+        let rel = target - (abs_pos as i32 + 4);
+        if abs_pos + 4 <= code.len() {
+            let bytes = rel.to_le_bytes();
+            code[abs_pos..abs_pos+4].copy_from_slice(&bytes);
+        }
+    }
 
     Ok(LinkedBef {
         code,

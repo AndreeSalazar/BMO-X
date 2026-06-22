@@ -28,6 +28,13 @@ use super::emit::{Emitter, CondCode};
 use super::regs::{RegAlloc, Var, VarSize};
 use super::abi::Reg;
 
+/// Patch pendiente para `lea rax, [rip+disp32]` que apunta a un string en rodata.
+/// `pos` es la posición en `code` del disp32.
+pub struct StrLitPatch {
+    pub pos: usize,
+    pub str_offset: u32, // offset del string dentro de rodata
+}
+
 /// Resultado de compilar un módulo.
 pub struct CompiledArtifact {
     pub code: Vec<u8>,
@@ -35,6 +42,8 @@ pub struct CompiledArtifact {
     pub call_patches: Vec<(usize, StrId)>,
     pub string_offsets: BTreeMap<u32, u32>,
     pub function_offsets: BTreeMap<u32, u32>,
+    /// Parches pendientes para `LEA` a strings en rodata.
+    pub str_lit_patches: Vec<StrLitPatch>,
 }
 
 pub fn compile_module(module: &Module) -> BxResult<CompiledArtifact> {
@@ -42,13 +51,15 @@ pub fn compile_module(module: &Module) -> BxResult<CompiledArtifact> {
     let mut call_patches: Vec<(usize, StrId)> = Vec::new();
     let mut string_offsets: BTreeMap<u32, u32> = BTreeMap::new();
     let mut function_offsets: BTreeMap<u32, u32> = BTreeMap::new();
+    let mut str_lit_patches: Vec<StrLitPatch> = Vec::new();
 
     for item in &module.items {
         match item {
             Item::Function { name, params, body, .. } => {
                 function_offsets.insert(name.0, em.code_len as u32);
                 compile_function(&mut em, name, params, body, module,
-                                 &mut string_offsets, &mut call_patches)?;
+                                 &mut string_offsets, &mut call_patches,
+                                 &mut str_lit_patches)?;
             }
             Item::Extern { .. } => {}
             _ => {}
@@ -61,6 +72,7 @@ pub fn compile_module(module: &Module) -> BxResult<CompiledArtifact> {
         call_patches,
         string_offsets,
         function_offsets,
+        str_lit_patches,
     })
 }
 
@@ -72,6 +84,7 @@ fn compile_function(
     module: &Module,
     string_offsets: &mut BTreeMap<u32, u32>,
     call_patches: &mut Vec<(usize, StrId)>,
+    str_lit_patches: &mut Vec<StrLitPatch>,
 ) -> BxResult<()> {
     let mut alloc = RegAlloc::new();
 
@@ -94,7 +107,7 @@ fn compile_function(
     // Body.
     let loop_stack: LoopStack = Vec::new();
     for stmt in &body.stmts {
-        emit_stmt(stmt, em, &mut alloc, module, string_offsets, call_patches, &loop_stack)?;
+        emit_stmt(stmt, em, &mut alloc, module, string_offsets, call_patches, str_lit_patches, &loop_stack)?;
     }
 
     // Epilogue.
@@ -116,24 +129,25 @@ fn emit_stmt(
     module: &Module,
     string_offsets: &mut BTreeMap<u32, u32>,
     call_patches: &mut Vec<(usize, StrId)>,
+    str_lit_patches: &mut Vec<StrLitPatch>,
     loop_stack: &LoopStack,
 ) -> BxResult<()> {
     match stmt {
         Stmt::Expr(e, _) => {
-            emit_expr(e, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+            emit_expr(e, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             Ok(())
         }
         Stmt::Let { name, ty: _, init, .. } => {
             let var = alloc.alloc(name.0, VarSize::Qword);
             if let Some(e) = init {
-                emit_expr(e, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+                emit_expr(e, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
                 alloc.emit_store(em, var, Reg::Rax);
             }
             Ok(())
         }
         Stmt::Assign { target, value, .. } => {
             if let Expr::Var { name, .. } = target {
-                emit_expr(value, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+                emit_expr(value, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
                 if let Some(v) = alloc.find_by_name(name.0) {
                     alloc.emit_store(em, v, Reg::Rax);
                 }
@@ -141,17 +155,17 @@ fn emit_stmt(
             Ok(())
         }
         Stmt::If { cond, then_branch, else_branch, .. } => {
-            emit_expr(cond, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+            emit_expr(cond, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             em.test_rr(Reg::Rax, Reg::Rax);
             let jz_else = em.reserve_rel32();
             for s in &then_branch.stmts {
-                emit_stmt(s, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+                emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             }
             let jmp_end = em.reserve_rel32();
             em.patch_rel32(jz_else, em.pos());
             if let Some(eb) = else_branch {
                 for s in &eb.stmts {
-                    emit_stmt(s, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+                    emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
                 }
             }
             em.patch_rel32(jmp_end, em.pos());
@@ -159,19 +173,17 @@ fn emit_stmt(
         }
         Stmt::While { cond, body, .. } => {
             let l_start = em.pos();
-            emit_expr(cond, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+            emit_expr(cond, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             em.test_rr(Reg::Rax, Reg::Rax);
             let jz_end = em.reserve_rel32();
             let l_end = em.pos();
-            // Push new loop labels.
-            let l_break_pos = em.reserve_rel32(); // will be patched
+            let l_break_pos = em.reserve_rel32();
             let l_continue_pos = l_start;
             let mut nested_stack = loop_stack.clone();
             nested_stack.push((l_break_pos, l_continue_pos));
             for s in &body.stmts {
-                emit_stmt(s, em, alloc, module, string_offsets, call_patches, &nested_stack)?;
+                emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, &nested_stack)?;
             }
-            // jmp to l_start
             let jmp = em.reserve_rel32();
             em.patch_rel32(jz_end, l_end);
             em.patch_rel32(l_break_pos, em.pos());
@@ -180,30 +192,20 @@ fn emit_stmt(
         }
         Stmt::Return(value, _) => {
             if let Some(e) = value {
-                emit_expr(e, em, alloc, module, string_offsets, call_patches, loop_stack)?;
-                // RAX ya tiene el valor.
+                emit_expr(e, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             }
-            // Saltar al epilogue.
             let jmp = em.reserve_rel32();
-            // Patchearemos después: en realidad, debemos saber dónde está
-            // el epilogue. Por simplicidad v1.8.8: emitimos `ret` directo,
-            // y el prologue/epilogue sigue al body. Si hay return intermedio,
-            // funciona solo si es el último stmt. Para el caso general,
-            // habría que patchar.
-            // Truco: hacemos un `ret` aquí también (código duplicado, pero
-            // funcional para Hello World donde el return está al final).
             em.ret();
             em.patch_rel32(jmp, em.pos());
             Ok(())
         }
         Stmt::Block(b) => {
             for s in &b.stmts {
-                emit_stmt(s, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+                emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             }
             Ok(())
         }
         Stmt::Break(_) => {
-            // Buscar el loop más cercano.
             if let Some(&(l_break, _)) = loop_stack.last() {
                 let jmp = em.reserve_rel32();
                 em.patch_rel32(jmp, l_break);
@@ -228,6 +230,7 @@ fn emit_expr(
     module: &Module,
     string_offsets: &mut BTreeMap<u32, u32>,
     call_patches: &mut Vec<(usize, StrId)>,
+    str_lit_patches: &mut Vec<StrLitPatch>,
     loop_stack: &LoopStack,
 ) -> BxResult<()> {
     match expr {
@@ -240,41 +243,21 @@ fn emit_expr(
             Ok(())
         }
         Expr::StrLit { id, .. } => {
-            // Emite el string en rodata y retorna su dirección en RAX
-            // usando RIP-relative LEA.
-            //
-            // Layout: rodata está DESPUÉS de code. El linker va a
-            // conocer el tamaño final de code. Aquí, el codegen todavía
-            // no sabe el offset final de rodata. Solución: parcheamos
-            // el disp32 del LEA al final (después de emitir todo el
-            // módulo).
-            //
-            // Para simplificar v1.8.8: usamos un patch pendiente.
+            // LEA rax, [rip+disp32] con patch pendiente.
             let s = module.get_str(*id);
-            let offset = if let Some(&off) = string_offsets.get(&id.0) {
+            let str_offset = if let Some(&off) = string_offsets.get(&id.0) {
                 off
             } else {
                 let off = em.add_string(s.as_bytes());
                 string_offsets.insert(id.0, off);
                 off
             };
-            // Reservamos 4 bytes para el disp32 del LEA.
-            // El LEA rax, [rip + disp32] tiene forma:
-            //   48 8D 05 <disp32>
-            // El disp32 se calcula como: (final_rodata_offset + string_offset) - (lea_pos + 7)
-            // Como aún no sabemos final_rodata_offset, lo parchamos.
             em.rex(true, Reg::Rax, Reg::Rax, Reg::Rax);
             em.cb(0x8D);
             em.modrm_rip(Reg::Rax);
             let patch_pos = em.code_len;
-            em.cs(&[0; 4]); // disp32 placeholder
-            // Registramos el patch.
-            // Por ahora usamos un truco: dejamos un sentinel y el caller
-            // (linker) lo resolverá. v1.8.8: simplificación.
-            let _ = (offset, patch_pos);
-            // Placeholder que el linker parchea.
-            // Para que el código corra sin linker, asumimos que el linker
-            // va a reemplazar este disp32 con el valor correcto.
+            em.cs(&[0; 4]);
+            str_lit_patches.push(StrLitPatch { pos: patch_pos, str_offset });
             Ok(())
         }
         Expr::Var { name, .. } => {
@@ -286,9 +269,9 @@ fn emit_expr(
             Ok(())
         }
         Expr::Bin { op, lhs, rhs, .. } => {
-            emit_expr(lhs, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+            emit_expr(lhs, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             em.push(Reg::Rax);
-            emit_expr(rhs, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+            emit_expr(rhs, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             em.mov_rr(Reg::Rcx, Reg::Rax);
             em.pop(Reg::Rax);
 
@@ -314,15 +297,14 @@ fn emit_expr(
                     em.or_rr(Reg::Rax, Reg::Rcx);
                 }
                 ir::BinOp::BitXor => em.xor_rr(Reg::Rax, Reg::Rcx),
-                ir::BinOp::Shl    => { em.shl_cl(); }
-                ir::BinOp::Shr    => { em.shr_cl(); }
-                ir::BinOp::And    => {
-                    // Lógico: emite `&&`. Por ahora: & + comparar != 0.
+                ir::BinOp::Shl => em.shl_cl(),
+                ir::BinOp::Shr => em.shr_cl(),
+                ir::BinOp::And => {
                     em.test_rr(Reg::Rcx, Reg::Rcx);
                     em.setcc_al(CondCode::Ne);
                     em.movzx_byte(Reg::Rax);
                     em.push(Reg::Rax);
-                    em.test_rr(Reg::Rax, Reg::Rax); // RAX ahora tiene 0 o 1
+                    em.test_rr(Reg::Rax, Reg::Rax);
                     em.setcc_al(CondCode::Ne);
                     em.movzx_byte(Reg::Rax);
                     em.pop(Reg::Rcx);
@@ -334,7 +316,6 @@ fn emit_expr(
                     em.movzx_byte(Reg::Rax);
                 }
                 ir::BinOp::Or => {
-                    // Lógico: ||. Si LAX != 0 → 1, si RCX != 0 → 1, si ambos 0 → 0.
                     em.test_rr(Reg::Rax, Reg::Rax);
                     em.setcc_al(CondCode::Ne);
                     em.movzx_byte(Reg::Rax);
@@ -361,7 +342,7 @@ fn emit_expr(
             Ok(())
         }
         Expr::Unary { op, expr, .. } => {
-            emit_expr(expr, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+            emit_expr(expr, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
             match op {
                 ir::UnaryOp::Neg => em.neg_rax(),
                 ir::UnaryOp::Not => {
@@ -376,18 +357,16 @@ fn emit_expr(
         }
         Expr::Call { callee, args, .. } => {
             let nargs = args.len();
-            // Stack args (7+): push en orden inverso.
             if nargs > 6 {
                 for i in (6..nargs).rev() {
                     if let Some(a) = args.get(i) {
-                        emit_expr(a, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+                        emit_expr(a, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
                         em.push(Reg::Rax);
                     }
                 }
             }
-            // Args 0..6 → RDI..R9.
             for (i, a) in args.iter().take(6).enumerate() {
-                emit_expr(a, em, alloc, module, string_offsets, call_patches, loop_stack)?;
+                emit_expr(a, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
                 let reg = match i {
                     0 => Reg::Rdi, 1 => Reg::Rsi, 2 => Reg::Rdx,
                     3 => Reg::Rcx, 4 => Reg::R8,  5 => Reg::R9,
