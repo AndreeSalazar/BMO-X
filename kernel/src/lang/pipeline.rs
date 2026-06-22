@@ -54,12 +54,12 @@ pub fn compile(source: &[u8], lang: SourceLang, name: &str) -> BxResult<Compiled
         SourceLang::C   => crate::lang::frontends::c::compile_to_ir(source, name)?,
     };
 
-    // 2. Backend → x86-64 bytes
-    let artifact = aot_x86_64::compile_module(&module)?;
-    let code = artifact.code;
-
-    // 3. Runtime (linker decide si lo incluye).
-    let runtime_size = crate::lang::runtimes::c_min::C_MIN_SIZE_BYTES;
+    // 2. Backend → BmoObject
+    let obj = aot_x86_64::compile_module(&module)?;
+    // 3. Linker v2.0 → BEF
+    let bef = crate::lang::linker::link(obj)?;
+    let code = bef.bytes;
+    let runtime_size = bef.runtime_size;
 
     Ok(CompiledProgram { code, runtime_size, lang })
 }

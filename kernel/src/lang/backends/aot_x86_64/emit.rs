@@ -78,6 +78,10 @@ impl Emitter {
     // ─── Buffer access ───────────────────────────────────────────
     pub fn bytes(&self) -> &[u8] { &self.code[..self.code_len] }
     pub fn rodata(&self) -> &[u8] { &self.rodata[..self.rodata_len] }
+    /// Acceso mutable al buffer de code (para el linker).
+    pub fn code_mut(&mut self) -> &mut [u8] { &mut self.code[..self.code_len] }
+    /// Acceso mutable al buffer de rodata.
+    pub fn rodata_mut(&mut self) -> &mut [u8] { &mut self.rodata[..self.rodata_len] }
 
     // ─── Low-level emit ──────────────────────────────────────────
     fn emit_byte_to(&mut self, buf: &mut usize, b: u8) {

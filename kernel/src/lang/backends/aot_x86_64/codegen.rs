@@ -1,22 +1,25 @@
-//! `backends::aot_x86_64::codegen` — Code generator principal.
+//! `backends::aot_x86_64::codegen` — Code generator que produce un `BmoObject`.
 //!
-//! v1.8.8: reescrito para soportar Hello World + Fibonacci + loops.
+//! v1.8.8 v2.0: en lugar de emitir `CompiledArtifact` (code + rodata + patches),
+//! el codegen ahora emite un `BmoObject` completo con secciones, símbolos
+//! y relocalizaciones formales. El linker v2.0 los une en un BEF final.
 //!
-//! ## Features
+//! ## Pipeline
 //!
-//! - Prologue/epilogue con callee-saved save/restore.
-//! - Stmt: Let, Assign, If/Else, While, Return, Block, Break, Continue.
-//! - Expr: IntLit, BoolLit, StrLit (rodata lea), Var, Bin (todas las ops),
-//!   Unary, Call (BMO ABI dispatch + user call con patch).
-//! - LoopStack para break/continue.
-//! - Map de StrId→Var en RegAlloc.
-//! - Signed/unsigned comparisons según IrType.
+//! 1. compile_module() crea un BmoObjectBuilder.
+//! 2. Por cada `Item::Function`, crea una sección .text con su código,
+//!    registra un símbolo, y emite parches como Relocations.
+//! 3. Por cada `Expr::StrLit`, agrega el string a .rodata y emite
+//!    una `Relocation::RipRel32` para el LEA.
+//! 4. Por cada `Expr::Call` a un símbolo no resuelto, emite
+//!    `Relocation::Rel32` (call) o registra el import (BMO ABI).
+//! 5. Al final, devuelve el `BmoObject` listo para el linker.
 
 #![allow(dead_code)]
 
 extern crate alloc;
 use alloc::collections::BTreeMap;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -27,68 +30,124 @@ use crate::lang::common::types::{IrType, IrTypeId};
 use super::emit::{Emitter, CondCode};
 use super::regs::{RegAlloc, Var, VarSize};
 use super::abi::Reg;
+use crate::lang::bef::{
+    BmoObject, BmoObjectBuilder, ObjectSection, ObjectArch, SectionKind,
+    SectionFlags, Symbol, SymbolBinding, SymbolType, Relocation, RelocationKind,
+};
 
-/// Patch pendiente para `lea rax, [rip+disp32]` que apunta a un string en rodata.
-/// `pos` es la posición en `code` del disp32.
-pub struct StrLitPatch {
-    pub pos: usize,
-    pub str_offset: u32, // offset del string dentro de rodata
-}
+/// Compila un módulo a un BmoObject (v2.0).
+pub fn compile_module(module: &Module) -> BxResult<BmoObject> {
+    let mut b = BmoObjectBuilder::new(module.name.clone());
 
-/// Resultado de compilar un módulo.
-pub struct CompiledArtifact {
-    pub code: Vec<u8>,
-    pub rodata: Vec<u8>,
-    pub call_patches: Vec<(usize, StrId)>,
-    pub string_offsets: BTreeMap<u32, u32>,
-    pub function_offsets: BTreeMap<u32, u32>,
-    /// Parches pendientes para `LEA` a strings en rodata.
-    pub str_lit_patches: Vec<StrLitPatch>,
-}
+    // Pre-registrar strings del module.
+    // (El module tiene `get_str` pero no iter; por ahora, los strings
+    // se registran cuando se usan en Expr::StrLit.)
 
-pub fn compile_module(module: &Module) -> BxResult<CompiledArtifact> {
-    let mut em = Emitter::new();
-    let mut call_patches: Vec<(usize, StrId)> = Vec::new();
-    let mut string_offsets: BTreeMap<u32, u32> = BTreeMap::new();
-    let mut function_offsets: BTreeMap<u32, u32> = BTreeMap::new();
-    let mut str_lit_patches: Vec<StrLitPatch> = Vec::new();
+    let mut str_to_offset: BTreeMap<u32, u32> = BTreeMap::new();
+    let mut str_id_to_name: BTreeMap<u32, String> = BTreeMap::new();
 
+    // Pasada 1: crear strings que aparecerán en el código.
     for item in &module.items {
-        match item {
-            Item::Function { name, params, body, .. } => {
-                function_offsets.insert(name.0, em.code_len as u32);
-                compile_function(&mut em, name, params, body, module,
-                                 &mut string_offsets, &mut call_patches,
-                                 &mut str_lit_patches)?;
-            }
-            Item::Extern { .. } => {}
-            _ => {}
+        if let Item::Function { body, .. } = item {
+            // Por ahora no pre-coleccionamos strings.
+            let _ = body;
         }
     }
 
-    Ok(CompiledArtifact {
-        code: em.bytes().to_vec(),
-        rodata: em.rodata().to_vec(),
-        call_patches,
-        string_offsets,
-        function_offsets,
-        str_lit_patches,
-    })
+    // Crear sección .text.
+    let text_idx = b.create_section(SectionKind::Text, ".text");
+    let rodata_idx = b.create_section(SectionKind::Rodata, ".rodata");
+    let reloc_idx = b.create_section(SectionKind::Reloc, ".reloc");
+    let symtab_idx = b.create_section(SectionKind::Symtab, ".symtab");
+    let strtab_idx = b.create_section(SectionKind::Strtab, ".strtab");
+    let meta_idx = b.create_section(SectionKind::Meta, ".meta");
+    let imports_idx = b.create_section(SectionKind::Imports, ".imports");
+    let _ = (reloc_idx, symtab_idx, strtab_idx, meta_idx, imports_idx);
+
+    // Importar _start (entry point del runtime).
+    b.import("_start", Some("c_min::start"));
+    // Importar _exit (llamado por _start al final).
+    b.import("_exit", Some("c_min::exit"));
+
+    // Compilar cada función.
+    for item in &module.items {
+        if let Item::Function { name, params, body, .. } = item {
+            let func_offset = b.obj.sections[text_idx].data.len() as u32;
+            let fn_name = module.get_str(*name).to_string();
+            b.define(&fn_name, text_idx, func_offset, SymbolType::Function);
+            b.register_str(name.0, &fn_name);
+            compile_function(
+                &mut b.obj, &mut b.str_cache, &mut str_to_offset,
+                text_idx, rodata_idx, reloc_idx,
+                name, params, body, module,
+            )?;
+        }
+    }
+
+    // Serializar metadata ABI en .meta.
+    b.append_to_section(meta_idx, &b.obj.abi_version.0.to_le_bytes());
+    b.append_to_section(meta_idx, &b.obj.abi_version.1.to_le_bytes());
+    b.append_to_section(meta_idx, &b.obj.capabilities.to_le_bytes());
+
+    Ok(b.build())
+}
+
+/// Recolecta los StrId de los Expr::StrLit en un body.
+fn collect_strings(body: &Block, out: &mut BTreeMap<u32, String>) {
+    for s in &body.stmts {
+        collect_strings_stmt(s, out);
+    }
+}
+
+fn collect_strings_stmt(stmt: &Stmt, out: &mut BTreeMap<u32, String>) {
+    match stmt {
+        Stmt::Expr(e, _) | Stmt::Return(Some(e), _) => collect_strings_expr(e, out),
+        Stmt::Let { init: Some(e), .. } | Stmt::Assign { value: e, .. } => collect_strings_expr(e, out),
+        Stmt::If { cond, then_branch, else_branch, .. } => {
+            collect_strings_expr(cond, out);
+            collect_strings(then_branch, out);
+            if let Some(b) = else_branch { collect_strings(b, out); }
+        }
+        Stmt::While { cond, body, .. } => {
+            collect_strings_expr(cond, out);
+            collect_strings(body, out);
+        }
+        Stmt::Block(b) => collect_strings(b, out),
+        _ => {}
+    }
+}
+
+fn collect_strings_expr(expr: &Expr, out: &mut BTreeMap<u32, String>) {
+    match expr {
+        Expr::StrLit { id, .. } => { out.insert(id.0, alloc::format!("str_{}", id.0)); }
+        Expr::Bin { lhs, rhs, .. } => {
+            collect_strings_expr(lhs, out);
+            collect_strings_expr(rhs, out);
+        }
+        Expr::Unary { expr, .. } => collect_strings_expr(expr, out),
+        Expr::Call { callee, args, .. } => {
+            collect_strings_expr(callee, out);
+            for a in args { collect_strings_expr(a, out); }
+        }
+        _ => {}
+    }
 }
 
 fn compile_function(
-    em: &mut Emitter,
+    obj: &mut BmoObject,
+    str_cache: &mut BTreeMap<u32, String>,
+    str_to_offset: &mut BTreeMap<u32, u32>,
+    text_idx: usize,
+    rodata_idx: usize,
+    reloc_idx: usize,
     _name: &StrId,
     params: &[ir::Param],
     body: &Block,
     module: &Module,
-    string_offsets: &mut BTreeMap<u32, u32>,
-    call_patches: &mut Vec<(usize, StrId)>,
-    str_lit_patches: &mut Vec<StrLitPatch>,
 ) -> BxResult<()> {
+    let mut em = Emitter::new();
     let mut alloc = RegAlloc::new();
 
-    // Registrar params como variables.
     for (i, p) in params.iter().enumerate() {
         alloc.alloc_arg(p.name.0, i);
     }
@@ -106,8 +165,10 @@ fn compile_function(
 
     // Body.
     let loop_stack: LoopStack = Vec::new();
+    let text_offset = obj.sections[text_idx].data.len();
     for stmt in &body.stmts {
-        emit_stmt(stmt, em, &mut alloc, module, string_offsets, call_patches, str_lit_patches, &loop_stack)?;
+        emit_stmt(stmt, &mut em, &mut alloc, module, obj, str_cache,
+                  str_to_offset, text_idx, rodata_idx, reloc_idx, text_offset, &loop_stack)?;
     }
 
     // Epilogue.
@@ -117,37 +178,47 @@ fn compile_function(
     em.leave();
     em.ret();
 
+    // Append a la sección .text.
+    obj.sections[text_idx].data.extend_from_slice(em.bytes());
+
     Ok(())
 }
 
-type LoopStack = Vec<(usize, usize)>; // (label_break, label_continue)
+type LoopStack = Vec<(usize, usize)>;
 
 fn emit_stmt(
     stmt: &Stmt,
     em: &mut Emitter,
     alloc: &mut RegAlloc,
     module: &Module,
-    string_offsets: &mut BTreeMap<u32, u32>,
-    call_patches: &mut Vec<(usize, StrId)>,
-    str_lit_patches: &mut Vec<StrLitPatch>,
+    obj: &mut BmoObject,
+    str_cache: &mut BTreeMap<u32, String>,
+    str_to_offset: &mut BTreeMap<u32, u32>,
+    text_idx: usize,
+    rodata_idx: usize,
+    reloc_idx: usize,
+    text_offset: usize,
     loop_stack: &LoopStack,
 ) -> BxResult<()> {
     match stmt {
         Stmt::Expr(e, _) => {
-            emit_expr(e, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+            emit_expr(e, em, alloc, module, obj, str_cache, str_to_offset,
+                      text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             Ok(())
         }
         Stmt::Let { name, ty: _, init, .. } => {
             let var = alloc.alloc(name.0, VarSize::Qword);
             if let Some(e) = init {
-                emit_expr(e, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                emit_expr(e, em, alloc, module, obj, str_cache, str_to_offset,
+                          text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
                 alloc.emit_store(em, var, Reg::Rax);
             }
             Ok(())
         }
         Stmt::Assign { target, value, .. } => {
             if let Expr::Var { name, .. } = target {
-                emit_expr(value, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                emit_expr(value, em, alloc, module, obj, str_cache, str_to_offset,
+                          text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
                 if let Some(v) = alloc.find_by_name(name.0) {
                     alloc.emit_store(em, v, Reg::Rax);
                 }
@@ -155,17 +226,20 @@ fn emit_stmt(
             Ok(())
         }
         Stmt::If { cond, then_branch, else_branch, .. } => {
-            emit_expr(cond, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+            emit_expr(cond, em, alloc, module, obj, str_cache, str_to_offset,
+                      text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             em.test_rr(Reg::Rax, Reg::Rax);
             let jz_else = em.reserve_rel32();
             for s in &then_branch.stmts {
-                emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                emit_stmt(s, em, alloc, module, obj, str_cache, str_to_offset,
+                          text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             }
             let jmp_end = em.reserve_rel32();
             em.patch_rel32(jz_else, em.pos());
             if let Some(eb) = else_branch {
                 for s in &eb.stmts {
-                    emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                    emit_stmt(s, em, alloc, module, obj, str_cache, str_to_offset,
+                              text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
                 }
             }
             em.patch_rel32(jmp_end, em.pos());
@@ -173,16 +247,17 @@ fn emit_stmt(
         }
         Stmt::While { cond, body, .. } => {
             let l_start = em.pos();
-            emit_expr(cond, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+            emit_expr(cond, em, alloc, module, obj, str_cache, str_to_offset,
+                      text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             em.test_rr(Reg::Rax, Reg::Rax);
             let jz_end = em.reserve_rel32();
             let l_end = em.pos();
             let l_break_pos = em.reserve_rel32();
-            let l_continue_pos = l_start;
             let mut nested_stack = loop_stack.clone();
-            nested_stack.push((l_break_pos, l_continue_pos));
+            nested_stack.push((l_break_pos, l_start));
             for s in &body.stmts {
-                emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, &nested_stack)?;
+                emit_stmt(s, em, alloc, module, obj, str_cache, str_to_offset,
+                          text_idx, rodata_idx, reloc_idx, text_offset, &nested_stack)?;
             }
             let jmp = em.reserve_rel32();
             em.patch_rel32(jz_end, l_end);
@@ -192,30 +267,38 @@ fn emit_stmt(
         }
         Stmt::Return(value, _) => {
             if let Some(e) = value {
-                emit_expr(e, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                emit_expr(e, em, alloc, module, obj, str_cache, str_to_offset,
+                          text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             }
-            let jmp = em.reserve_rel32();
             em.ret();
-            em.patch_rel32(jmp, em.pos());
             Ok(())
         }
         Stmt::Block(b) => {
             for s in &b.stmts {
-                emit_stmt(s, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                emit_stmt(s, em, alloc, module, obj, str_cache, str_to_offset,
+                          text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             }
             Ok(())
         }
         Stmt::Break(_) => {
             if let Some(&(l_break, _)) = loop_stack.last() {
-                let jmp = em.reserve_rel32();
-                em.patch_rel32(jmp, l_break);
+                em.jmp_rel32(0);
+                let pos = em.code_len - 4;
+                let target = obj.sections[text_idx].data.len() + l_break;
+                let rel = (target as isize - (obj.sections[text_idx].data.len() + pos) as isize - 4) as i32;
+                let cm = em.code_mut();
+                cm[pos..pos+4].copy_from_slice(&rel.to_le_bytes());
             }
             Ok(())
         }
         Stmt::Continue(_) => {
             if let Some(&(_, l_continue)) = loop_stack.last() {
-                let jmp = em.reserve_rel32();
-                em.patch_rel32(jmp, l_continue);
+                em.jmp_rel32(0);
+                let pos = em.code_len - 4;
+                let target = obj.sections[text_idx].data.len() + l_continue;
+                let rel = (target as isize - (obj.sections[text_idx].data.len() + pos) as isize - 4) as i32;
+                let cm = em.code_mut();
+                cm[pos..pos+4].copy_from_slice(&rel.to_le_bytes());
             }
             Ok(())
         }
@@ -228,9 +311,13 @@ fn emit_expr(
     em: &mut Emitter,
     alloc: &mut RegAlloc,
     module: &Module,
-    string_offsets: &mut BTreeMap<u32, u32>,
-    call_patches: &mut Vec<(usize, StrId)>,
-    str_lit_patches: &mut Vec<StrLitPatch>,
+    obj: &mut BmoObject,
+    str_cache: &mut BTreeMap<u32, String>,
+    str_to_offset: &mut BTreeMap<u32, u32>,
+    text_idx: usize,
+    rodata_idx: usize,
+    reloc_idx: usize,
+    text_offset: usize,
     loop_stack: &LoopStack,
 ) -> BxResult<()> {
     match expr {
@@ -243,21 +330,32 @@ fn emit_expr(
             Ok(())
         }
         Expr::StrLit { id, .. } => {
-            // LEA rax, [rip+disp32] con patch pendiente.
             let s = module.get_str(*id);
-            let str_offset = if let Some(&off) = string_offsets.get(&id.0) {
+            let str_offset = if let Some(&off) = str_to_offset.get(&id.0) {
                 off
             } else {
-                let off = em.add_string(s.as_bytes());
-                string_offsets.insert(id.0, off);
+                let off = obj.sections[rodata_idx].data.len() as u32;
+                obj.sections[rodata_idx].data.extend_from_slice(s.as_bytes());
+                obj.sections[rodata_idx].data.push(0);
+                str_to_offset.insert(id.0, off);
                 off
             };
+            let str_name = alloc::format!(".L.str.{}", id.0);
+            str_cache.insert(id.0, str_name.clone());
+            obj.define_symbol(&str_name, rodata_idx, str_offset, SymbolType::Object);
             em.rex(true, Reg::Rax, Reg::Rax, Reg::Rax);
             em.cb(0x8D);
             em.modrm_rip(Reg::Rax);
-            let patch_pos = em.code_len;
+            let disp_pos = text_offset + em.code_len - 4;
+            obj.relocations.push(Relocation {
+                kind: RelocationKind::RipRel32,
+                section: text_idx,
+                offset: disp_pos as u32,
+                symbol: str_name,
+                addend: 0,
+                size: 4,
+            });
             em.cs(&[0; 4]);
-            str_lit_patches.push(StrLitPatch { pos: patch_pos, str_offset });
             Ok(())
         }
         Expr::Var { name, .. } => {
@@ -269,9 +367,11 @@ fn emit_expr(
             Ok(())
         }
         Expr::Bin { op, lhs, rhs, .. } => {
-            emit_expr(lhs, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+            emit_expr(lhs, em, alloc, module, obj, str_cache, str_to_offset,
+                      text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             em.push(Reg::Rax);
-            emit_expr(rhs, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+            emit_expr(rhs, em, alloc, module, obj, str_cache, str_to_offset,
+                      text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             em.mov_rr(Reg::Rcx, Reg::Rax);
             em.pop(Reg::Rax);
 
@@ -279,57 +379,28 @@ fn emit_expr(
                 ir::BinOp::Add => em.add_rr(Reg::Rax, Reg::Rcx),
                 ir::BinOp::Sub => em.sub_rr(Reg::Rax, Reg::Rcx),
                 ir::BinOp::Mul => em.imul_rr(Reg::Rax, Reg::Rcx),
-                ir::BinOp::Div => {
-                    em.cqo();
-                    em.idiv(Reg::Rcx);
-                }
-                ir::BinOp::Mod => {
-                    em.cqo();
-                    em.idiv(Reg::Rcx);
-                    em.mov_rr(Reg::Rax, Reg::Rdx);
-                }
-                ir::BinOp::BitAnd => {
-                    em.xor_rr(Reg::Rax, Reg::Rcx);
-                    em.xor_rr(Reg::Rax, Reg::Rcx);
-                    em.and_rr(Reg::Rax, Reg::Rcx);
-                }
-                ir::BinOp::BitOr => {
-                    em.or_rr(Reg::Rax, Reg::Rcx);
-                }
+                ir::BinOp::Div => { em.cqo(); em.idiv(Reg::Rcx); }
+                ir::BinOp::Mod => { em.cqo(); em.idiv(Reg::Rcx); em.mov_rr(Reg::Rax, Reg::Rdx); }
+                ir::BinOp::BitAnd => { em.xor_rr(Reg::Rax, Reg::Rcx); em.xor_rr(Reg::Rax, Reg::Rcx); em.and_rr(Reg::Rax, Reg::Rcx); }
+                ir::BinOp::BitOr => { em.or_rr(Reg::Rax, Reg::Rcx); }
                 ir::BinOp::BitXor => em.xor_rr(Reg::Rax, Reg::Rcx),
                 ir::BinOp::Shl => em.shl_cl(),
                 ir::BinOp::Shr => em.shr_cl(),
                 ir::BinOp::And => {
-                    em.test_rr(Reg::Rcx, Reg::Rcx);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rcx, Reg::Rcx); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
                     em.push(Reg::Rax);
-                    em.test_rr(Reg::Rax, Reg::Rax);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rax, Reg::Rax); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
                     em.pop(Reg::Rcx);
-                    em.test_rr(Reg::Rax, Reg::Rax);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
-                    em.test_rr(Reg::Rcx, Reg::Rcx);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rax, Reg::Rax); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rcx, Reg::Rcx); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
                 }
                 ir::BinOp::Or => {
-                    em.test_rr(Reg::Rax, Reg::Rax);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rax, Reg::Rax); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
                     em.push(Reg::Rax);
-                    em.test_rr(Reg::Rcx, Reg::Rcx);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rcx, Reg::Rcx); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
                     em.pop(Reg::Rcx);
-                    em.test_rr(Reg::Rax, Reg::Rax);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
-                    em.test_rr(Reg::Rcx, Reg::Rcx);
-                    em.setcc_al(CondCode::Ne);
-                    em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rax, Reg::Rax); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
+                    em.test_rr(Reg::Rcx, Reg::Rcx); em.setcc_al(CondCode::Ne); em.movzx_byte(Reg::Rax);
                 }
                 ir::BinOp::Eq => emit_cmp(em, CondCode::E),
                 ir::BinOp::Ne => emit_cmp(em, CondCode::Ne),
@@ -342,7 +413,8 @@ fn emit_expr(
             Ok(())
         }
         Expr::Unary { op, expr, .. } => {
-            emit_expr(expr, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+            emit_expr(expr, em, alloc, module, obj, str_cache, str_to_offset,
+                      text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
             match op {
                 ir::UnaryOp::Neg => em.neg_rax(),
                 ir::UnaryOp::Not => {
@@ -360,13 +432,15 @@ fn emit_expr(
             if nargs > 6 {
                 for i in (6..nargs).rev() {
                     if let Some(a) = args.get(i) {
-                        emit_expr(a, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                        emit_expr(a, em, alloc, module, obj, str_cache, str_to_offset,
+                                  text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
                         em.push(Reg::Rax);
                     }
                 }
             }
             for (i, a) in args.iter().take(6).enumerate() {
-                emit_expr(a, em, alloc, module, string_offsets, call_patches, str_lit_patches, loop_stack)?;
+                emit_expr(a, em, alloc, module, obj, str_cache, str_to_offset,
+                          text_idx, rodata_idx, reloc_idx, text_offset, loop_stack)?;
                 let reg = match i {
                     0 => Reg::Rdi, 1 => Reg::Rsi, 2 => Reg::Rdx,
                     3 => Reg::Rcx, 4 => Reg::R8,  5 => Reg::R9,
@@ -384,22 +458,26 @@ fn emit_expr(
                     em.mov_rax_imm64(nr);
                     em.syscall();
                 } else {
-                    let patch_pos = em.reserve_rel32();
-                    call_patches.push((patch_pos, *name));
+                    let name_owned = name_str.to_string();
+                    obj.import_symbol(&name_owned, None);
                     em.call_rel32(0);
+                    let disp_pos = text_offset + em.code_len - 4;
+                    obj.relocations.push(Relocation {
+                        kind: RelocationKind::Rel32,
+                        section: text_idx,
+                        offset: disp_pos as u32,
+                        symbol: name_owned,
+                        addend: 0,
+                        size: 4,
+                    });
                 }
             }
             Ok(())
         }
-        _ => {
-            em.mov_rax_imm64(0);
-            Ok(())
-        }
+        _ => { em.mov_rax_imm64(0); Ok(()) }
     }
 }
 
-/// Emite una comparación: setea RAX a 1 o 0 según el CondCode.
-/// Asume RAX = lhs, RCX = rhs antes de llamar.
 fn emit_cmp(em: &mut Emitter, cc: CondCode) {
     em.cmp_rr(Reg::Rax, Reg::Rcx);
     em.setcc_al(cc);

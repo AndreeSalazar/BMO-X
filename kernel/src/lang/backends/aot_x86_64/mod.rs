@@ -30,6 +30,8 @@ pub mod regs;
 pub mod abi;
 pub mod codegen;
 
-pub use codegen::{compile_module, CompiledArtifact};
+pub use codegen::compile_module;
 pub use emit::Emitter;
 pub use regs::{RegAlloc, Var, VarSize, Location};
+pub use crate::lang::bef::{BmoObject, BmoObjectBuilder, ObjectSection, SectionKind, SectionFlags,
+                            Symbol, SymbolBinding, SymbolType, Relocation, RelocationKind, ObjectArch};

@@ -354,9 +354,11 @@ impl BmoObject {
 
 /// Builder helper para crear `BmoObject` incrementalmente (usado por el AOT).
 pub struct BmoObjectBuilder {
-    obj: BmoObject,
+    /// El objeto en construcción (público para que el codegen pueda
+    /// agregar secciones/relocs directamente).
+    pub obj: BmoObject,
     /// Cache de StrId → nombre (para resolver los patches del codegen).
-    str_cache: BTreeMap<u32, String>,
+    pub str_cache: BTreeMap<u32, String>,
 }
 
 impl BmoObjectBuilder {
