@@ -158,6 +158,18 @@ pub mod nr {
     pub const MEM_FREE:              u16 = _nr::NR_MEM_FREE as u16;
     pub const MEM_MAP:               u16 = _nr::NR_MEM_MAP as u16;
     pub const MEM_UNMAP:             u16 = _nr::NR_MEM_UNMAP as u16;
+
+    // ─── FS (canónicos) ────────────────────────────────────────────
+    pub const FS_OPEN:               u16 = _nr::NR_FS_OPEN as u16;
+    pub const FS_CLOSE:              u16 = _nr::NR_FS_CLOSE as u16;
+    pub const FS_READ:               u16 = _nr::NR_FS_READ as u16;
+    pub const FS_WRITE:              u16 = _nr::NR_FS_WRITE as u16;
+    pub const FS_SEEK:               u16 = _nr::NR_FS_SEEK as u16;
+    pub const FS_STAT:               u16 = _nr::NR_FS_STAT as u16;
+    pub const FS_MKDIR:              u16 = _nr::NR_FS_MKDIR as u16;
+    pub const FS_READDIR:            u16 = _nr::NR_FS_READDIR as u16;
+    pub const FS_DELETE:             u16 = _nr::NR_FS_DELETE as u16;
+    pub const FS_MOUNT:              u16 = _nr::NR_FS_MOUNT as u16;
 }
 
 // v1.8.8: errores ahora vienen de `bmo_abi::error_code` (21 códigos
@@ -341,6 +353,18 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::MEM_FREE         => sys_mem_free(a0, a1),
         nr::MEM_MAP          => sys_mem_map(a0, a1, a2, a3),
         nr::MEM_UNMAP        => sys_mem_unmap(a0, a1),
+
+        // ─── Filesystem ───────────────────────────────────────────
+        nr::FS_OPEN          => sys_fs_open(a0, a1),
+        nr::FS_CLOSE         => sys_fs_close(a0),
+        nr::FS_READ          => sys_fs_read(a0, a1, a2),
+        nr::FS_WRITE         => sys_fs_write(a0, a1, a2),
+        nr::FS_SEEK          => sys_fs_seek(a0, a1, a2),
+        nr::FS_STAT          => sys_fs_stat(a0),
+        nr::FS_MKDIR         => sys_fs_mkdir(a0, a1),
+        nr::FS_READDIR       => sys_fs_readdir(a0, a1, a2, a3),
+        nr::FS_DELETE        => sys_fs_delete(a0, a1),
+        nr::FS_MOUNT         => sys_fs_mount(a0, a1, a2, a3, a4),
 
         nr::DISPATCH_RETURN  => err::OK,
 
@@ -1054,6 +1078,63 @@ fn sys_mem_unmap(addr: u64, len: u64) -> u64 {
 /// Valida un puntero de usuario que contiene una string UTF-8.
 fn validate_user_str(ptr: u64, len: u64) -> bool {
     validate_user_ptr(ptr, len)
+}
+
+// ── Filesystem syscalls (NR_FS_*) ─────────────────────────────────
+
+/// NR_FS_OPEN: abre un archivo. Devuelve fd >= 0 o negativo.
+fn sys_fs_open(name_ptr: u64, name_len: u64) -> u64 {
+    if !validate_user_str(name_ptr, name_len) { return err::INVALID; }
+    crate::bmo_core::fs::ramdisk::open(name_ptr, name_len)
+}
+
+/// NR_FS_CLOSE: cierra un fd.
+fn sys_fs_close(fd: u64) -> u64 {
+    crate::bmo_core::fs::ramdisk::close(fd)
+}
+
+/// NR_FS_READ: lee `len` bytes de `fd` a `ptr`.
+fn sys_fs_read(fd: u64, ptr: u64, len: u64) -> u64 {
+    if !validate_user_ptr(ptr, len) { return err::INVALID; }
+    crate::bmo_core::fs::ramdisk::read(fd, ptr, len)
+}
+
+/// NR_FS_WRITE: escribe `len` bytes a `fd` desde `ptr`.
+fn sys_fs_write(fd: u64, ptr: u64, len: u64) -> u64 {
+    if !validate_user_ptr(ptr, len) { return err::INVALID; }
+    crate::bmo_core::fs::ramdisk::write(fd, ptr, len)
+}
+
+/// NR_FS_SEEK: reposiciona el cursor del fd.
+fn sys_fs_seek(fd: u64, offset: u64, whence: u64) -> u64 {
+    crate::bmo_core::fs::ramdisk::seek(fd, offset, whence)
+}
+
+/// NR_FS_STAT: tamaño del archivo. v1.8.8: usa ramdisk::size.
+fn sys_fs_stat(fd: u64) -> u64 {
+    crate::bmo_core::fs::ramdisk::size(fd)
+}
+
+/// NR_FS_MKDIR: crea un directorio. v1.8.8: stub.
+fn sys_fs_mkdir(_name_ptr: u64, _name_len: u64) -> u64 {
+    // v1.9: implementar en fs::manager.
+    err::OK
+}
+
+/// NR_FS_READDIR: lista directorio. v1.8.8: stub.
+fn sys_fs_readdir(_name_ptr: u64, _name_len: u64, _buf_ptr: u64, _buf_len: u64) -> u64 {
+    // v1.9: implementar en fs::manager.
+    err::OK
+}
+
+/// NR_FS_DELETE: borra archivo. v1.8.8: stub.
+fn sys_fs_delete(_name_ptr: u64, _name_len: u64) -> u64 {
+    err::OK
+}
+
+/// NR_FS_MOUNT: monta filesystem. v1.8.8: stub.
+fn sys_fs_mount(_src_ptr: u64, _src_len: u64, _dst_ptr: u64, _dst_len: u64, _fs: u64) -> u64 {
+    err::OK
 }
 
 
