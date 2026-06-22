@@ -357,7 +357,7 @@ fn sys_create_window_ex(class_id: u16, title_ptr: u64, title_len: u64, style: u3
         Some(s) => s,
         None => { s.unlock(); return err::NO_WINDOW; }
     };
-    let surf = s.surfaces.alloc(w.max(1) as u16, h.max(1) as u16, surface::format::XRGB32, slot);
+    let surf = s.surfaces.alloc(w.max(1) as u16, h.max(1) as u16, crate::bmo_abi::surface::BmoFormat::ARGB8 as u32, slot);
     {
         let win = match s.windows.window_mut(slot) {
             Some(w) => w,

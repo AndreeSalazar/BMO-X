@@ -1,19 +1,22 @@
 //! v2.0 — Tabla de superficies (offscreen buffers para doble buffer).
 //!
-//! Cada ventana tiene una surface; las superficies también pueden ser
-//! compartidas entre procesos. Cada surface obtiene su propio buffer
-//! de pixels desde un pool estático.
+//! v1.8.8: usa `BmoFormat` canónico de `bmo_abi::surface`. Antes
+//! redefinía `ARGB32=0x01, XRGB32=0x02` que colisionaban con el ABI.
 
 #![allow(dead_code)]
 
 use core::sync::atomic::{AtomicU8, Ordering};
+use crate::bmo_abi::surface::BmoFormat;
 
 pub const MAX_SURFACES: usize = 64;
 pub const SURFACE_INVALID: u32 = 0xFFFFFFFF;
 
+/// Formatos de pixel (re-export del ABI).
 pub mod format {
-    pub const ARGB32: u32 = 0x01;
-    pub const XRGB32: u32 = 0x02;
+    pub use crate::bmo_abi::surface::BmoFormat;
+    /// Alias legacy: el código viejo usaba `XRGB32` (= ARGB sin alpha).
+    pub const XRGB32: BmoFormat = BmoFormat::ARGB8;
+    pub const ARGB32: BmoFormat = BmoFormat::ARGB8;
 }
 
 /// Tamaño máximo por surface: 1920×1080×4 = 8.294.400 bytes.
@@ -42,7 +45,7 @@ impl BmoSurface {
         Self {
             used: false, id: 0, generation: 0,
             width: 0, height: 0, pitch: 0,
-            format: format::XRGB32,
+            format: BmoFormat::ARGB8 as u32,
             pixels: core::ptr::null_mut(),
             phys_addr: 0,
             refcount: 0, owner_window: SURFACE_INVALID,

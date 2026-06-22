@@ -44,7 +44,7 @@ pub fn create_desktop_window() -> u32 {
         let d = b"Desktop";
         for i in 0..d.len() { w.title[i] = d[i]; }
         w.title_len = 7;
-        let surf = s.surfaces.alloc(fbw as u16, fbh as u16, surface::format::XRGB32, slot);
+        let surf = s.surfaces.alloc(fbw as u16, fbh as u16, crate::bmo_abi::surface::BmoFormat::ARGB8 as u32, slot);
         w.surface = surf.unwrap_or(0);
     }
     s.windows.desktop = slot;
@@ -562,7 +562,7 @@ fn create_top_window(title: &'static str, x: i32, y: i32, w: i32, h: i32) -> u32
         Some(s) => s,
         None => { st.unlock(); return WID_INVALID; }
     };
-    let surf = st.surfaces.alloc(w as u16, h as u16, surface::format::XRGB32, slot);
+    let surf = st.surfaces.alloc(w as u16, h as u16, crate::bmo_abi::surface::BmoFormat::ARGB8 as u32, slot);
     {
         let win = match st.windows.window_mut(slot) {
             Some(w) => w,
