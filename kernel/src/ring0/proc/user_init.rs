@@ -1,14 +1,8 @@
-//! ⚠️  VERIFICAR v1.8.7 — Las funciones públicas (`spawn_init_process`,
-//! `jump_to_ring3`, `spawn_hello`, `spawn_desktop`, `spawn_crash`)
-//! no aparecen llamadas desde RING 0. El coordinator de BMO Core
-//! (`bmo_core::coord::enter`) podría invocarlas vía path, pero falta
-//! confirmar.
-//!
-//! Acción: grepear `bmo_core` para `user_init` y `spawn_` y, si nadie
-//! lo usa, mover este archivo a `ring3/init.rs` (su ubicación lógica)
-//! o eliminarlo.
-//!
-//! Hasta entonces se mantiene con `#![allow(dead_code)]`.
+//! v1.8.8: `spawn_hello` y `spawn_desktop` se llaman desde
+//! `bmo_core::desktop::welcome` (comandos Hello / Run / Reboot).
+//! `spawn_init_process` es interno. El resto de las funciones
+//! públicas son los entry points que `jump_to_ring3` invoca al
+//! hacer el iretq a Ring 3.
 
 //! User-space initialization — first Ring 3 process.
 //!

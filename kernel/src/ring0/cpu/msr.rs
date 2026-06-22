@@ -66,6 +66,7 @@ pub const IA32_PERFEVTSEL1: u32 = 0x187;
 pub const IA32_FIXED_CTR0: u32 = 0x309;
 pub const IA32_FIXED_CTR1: u32 = 0x30A;
 pub const IA32_FIXED_CTR2: u32 = 0x30B;
+pub const IA32_FIXED_CTR_CTRL: u32 = 0x38D;
 pub const IA32_PERF_CAPABILITIES: u32 = 0x345;
 pub const IA32_PERF_GLOBAL_STATUS: u32 = 0x34E;
 pub const IA32_PERF_GLOBAL_CTRL: u32 = 0x38F;

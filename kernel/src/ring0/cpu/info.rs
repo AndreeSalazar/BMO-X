@@ -1,67 +1,160 @@
 //! CPU information display for the Ryzen 5 5600X.
 //!
-//! v1.8.7: ya no importa `features` (las constantes `HAS_*` se eliminaron
-//! porque no se consumían). Solo se usa `cpuid` para leer el brand string.
+//! v1.8.8: now reads ALL data from `crate::amd_cpu::zen3::*` (the real
+//! detection layer). If `init_fastos_cpu()` hasn't run yet, prints
+//! only the brand string and a hint.
 
 #![allow(dead_code)]
 
 use super::cpuid;
 
-/// Print CPU info to serial console.
+/// Print CPU info to serial console. Uses data from the real detection
+/// layer (AMD/zen3/cpuid_detection + topology + cache).
 pub fn print() {
     crate::dev::console::serial_write("[cpu] === CPU Information (Ryzen 5 5600X) ===\n");
 
-    // Brand string from CPUID 0x8000_0002-4
-    let (max_ext, _, _, _) = cpuid(0x8000_0000, 0);
-    if max_ext >= 0x8000_0004 {
-        let mut brand = [0u8; 48];
-        for i in 0..3 {
-            let (a, b, c, d) = cpuid(0x8000_0002 + i, 0);
-            let off = i as usize * 16;
-            brand[off..off + 4].copy_from_slice(&a.to_le_bytes());
-            brand[off + 4..off + 8].copy_from_slice(&b.to_le_bytes());
-            brand[off + 8..off + 12].copy_from_slice(&c.to_le_bytes());
-            brand[off + 12..off + 16].copy_from_slice(&d.to_le_bytes());
-        }
-        let len = brand.iter().position(|&b| b == 0).unwrap_or(brand.len());
+    // Try to get the real detected identity
+    if let Some(id) = crate::amd_cpu::zen3::cpuid_detection::identity() {
+        // Brand string (up to 48 chars, null-padded)
         crate::dev::console::serial_write("[cpu] Brand: ");
-        crate::dev::console::serial_write(
-            core::str::from_utf8(&brand[..len]).unwrap_or("(invalid)"),
-        );
+        crate::dev::console::serial_write(id.brand.as_str());
+        crate::dev::console::serial_write("\n");
+
+        // Family/Model/Stepping
+        crate::dev::console::serial_write("[cpu] Family 0x");
+        crate::dev::console::serial_write_u64(id.family_model.family as u64, 16);
+        crate::dev::console::serial_write("h, Model 0x");
+        crate::dev::console::serial_write_u64(id.family_model.model as u64, 16);
+        crate::dev::console::serial_write("h, Stepping 0x");
+        crate::dev::console::serial_write_u64(id.family_model.stepping as u64, 16);
+        crate::dev::console::serial_write("h (");
+        crate::dev::console::serial_write(id.family_model.name());
+        crate::dev::console::serial_write(")\n");
+
+        // Logical cores
+        crate::dev::console::serial_write("[cpu] Logical cores: ");
+        crate::dev::console::serial_write_u64(id.logical_cores as u64, 10);
+        crate::dev::console::serial_write(", Initial APIC ID: ");
+        crate::dev::console::serial_write_u64(id.initial_apic_id as u64, 10);
+        crate::dev::console::serial_write("\n");
+
+        // Cache topology
+        if let Some(c) = crate::amd_cpu::zen3::cache() {
+            if let Some(c) = c.l1d {
+                crate::dev::console::serial_write("[cpu] Cache L1d: ");
+                crate::dev::console::serial_write_u64(c.size_kb as u64, 10);
+                crate::dev::console::serial_write(" KB, ");
+                crate::dev::console::serial_write_u64(c.associativity as u64, 10);
+                crate::dev::console::serial_write("-way, line=");
+                crate::dev::console::serial_write_u64(c.line_size_bytes as u64, 10);
+                crate::dev::console::serial_write(" B\n");
+            }
+            if let Some(c) = c.l1i {
+                crate::dev::console::serial_write("[cpu] Cache L1i: ");
+                crate::dev::console::serial_write_u64(c.size_kb as u64, 10);
+                crate::dev::console::serial_write(" KB, ");
+                crate::dev::console::serial_write_u64(c.associativity as u64, 10);
+                crate::dev::console::serial_write("-way, line=");
+                crate::dev::console::serial_write_u64(c.line_size_bytes as u64, 10);
+                crate::dev::console::serial_write(" B\n");
+            }
+            if let Some(c) = c.l2 {
+                crate::dev::console::serial_write("[cpu] Cache L2: ");
+                crate::dev::console::serial_write_u64(c.size_kb as u64, 10);
+                crate::dev::console::serial_write(" KB, ");
+                crate::dev::console::serial_write_u64(c.associativity as u64, 10);
+                crate::dev::console::serial_write("-way, line=");
+                crate::dev::console::serial_write_u64(c.line_size_bytes as u64, 10);
+                crate::dev::console::serial_write(" B\n");
+            }
+            if let Some(c) = c.l3 {
+                crate::dev::console::serial_write("[cpu] Cache L3: ");
+                crate::dev::console::serial_write_u64(c.size_kb as u64, 10);
+                crate::dev::console::serial_write(" KB, ");
+                crate::dev::console::serial_write_u64(c.associativity as u64, 10);
+                crate::dev::console::serial_write("-way, shared by ");
+                crate::dev::console::serial_write_u64(c.shared_threads as u64, 10);
+                crate::dev::console::serial_write(" threads\n");
+            }
+        }
+
+        // TSC frequency
+        let tsc_freq = crate::amd_cpu::zen3::tsc_freq_hz();
+        if tsc_freq > 0 {
+            crate::dev::console::serial_write("[cpu] TSC: ");
+            crate::dev::console::serial_write_u64(tsc_freq, 10);
+            crate::dev::console::serial_write(" Hz");
+            if let Some(src) = crate::amd_cpu::zen3::tsc_source() {
+                crate::dev::console::serial_write(" (calibrated via ");
+                crate::dev::console::serial_write(src.name());
+                crate::dev::console::serial_write(")");
+            }
+            crate::dev::console::serial_write("\n");
+        }
+
+        // Topology
+        if let Some(topo) = crate::amd_cpu::zen3::topology() {
+            crate::dev::console::serial_write("[cpu] Topology: ");
+            crate::dev::console::serial_write_u64(topo.total_cores as u64, 10);
+            crate::dev::console::serial_write(" cores, ");
+            crate::dev::console::serial_write_u64(topo.total_threads as u64, 10);
+            crate::dev::console::serial_write(" threads, ");
+            crate::dev::console::serial_write_u64(topo.total_ccxs as u64, 10);
+            crate::dev::console::serial_write(" CCX, ");
+            crate::dev::console::serial_write_u64(topo.total_ccds as u64, 10);
+            crate::dev::console::serial_write(" CCD\n");
+        }
+
+        // Features
+        crate::dev::console::serial_write("[cpu] Features:\n");
+        if id.features_edx & (1 << 25) != 0 { crate::dev::console::serial_write("  SSE, SSE2, MMX, FXSR\n"); }
+        if id.features_ecx & (1 << 28) != 0 { crate::dev::console::serial_write("  AVX, AVX2 (CPUID.7.EBX[5])\n"); }
+        if id.features_ecx & (1 << 25) != 0 { crate::dev::console::serial_write("  AES-NI\n"); }
+        if id.features_edx & (1 << 8) != 0 { crate::dev::console::serial_write("  Invariant TSC (warning: not on 5600X)\n"); }
+        if crate::amd_cpu::zen3::cpuid_detection::has_smep(id) { crate::dev::console::serial_write("  SMEP (Supervisor Mode Execution Prevention)\n"); }
+        if crate::amd_cpu::zen3::cpuid_detection::has_smap(id) { crate::dev::console::serial_write("  SMAP (Supervisor Mode Access Prevention)\n"); }
+        if crate::amd_cpu::zen3::cpuid_detection::has_fsgsbase(id) { crate::dev::console::serial_write("  FSGSBASE (RDFSBASE/WRGSBASE)\n"); }
+        if id.features_edx & (1 << 27) != 0 { crate::dev::console::serial_write("  RDTSCP\n"); }
+
+        crate::dev::console::serial_write("[cpu] NOT supported (5600X):\n");
+        crate::dev::console::serial_write("  AVX-512 (5600X is Zen 3, no AVX-512)\n");
+        crate::dev::console::serial_write("  LA57 (5-level paging) — only on Zen 4+\n");
+    } else {
+        // Fallback: no detection yet
+        let (max_ext, _, _, _) = cpuid(0x80000000, 0);
+        let (a, b, c, d) = cpuid(0x80000002, 0);
+        let (e, f, g, h) = cpuid(0x80000003, 0);
+        let (i, j, k, l) = cpuid(0x80000004, 0);
+        crate::dev::console::serial_write("[cpu] Brand: ");
+        let mut buf = [0u8; 48];
+        let mut idx = 0;
+        for (a, b, c, d) in [(a, b, c, d), (e, f, g, h), (i, j, k, l)] {
+            for v in &[a, b, c, d] {
+                if idx < 48 {
+                    buf[idx] = *v as u8;
+                    idx += 1;
+                    if *v > 0xFF { buf[idx] = (*v >> 8) as u8; idx += 1; }
+                    if *v > 0xFFFF { buf[idx] = (*v >> 16) as u8; idx += 1; }
+                    if *v > 0xFFFFFF { buf[idx] = (*v >> 24) as u8; idx += 1; }
+                }
+            }
+        }
+        if let Ok(s) = core::str::from_utf8(&buf[..idx.min(48)]) {
+            crate::dev::console::serial_write(s);
+        }
+        crate::dev::console::serial_write("\n");
+        crate::dev::console::serial_write("[cpu] (run init_fastos_cpu() for full info)\n");
+        crate::dev::console::serial_write("[cpu] Max ext leaf: 0x");
+        crate::dev::console::serial_write_u64(max_ext as u64, 16);
         crate::dev::console::serial_write("\n");
     }
-
-    // Family / model / stepping
-    let (eax, _, _, _) = cpuid(1, 0);
-    let stepping = eax & 0xF;
-    let base_model = (eax >> 4) & 0xF;
-    let base_family = (eax >> 8) & 0xF;
-    let family = if base_family == 0xF { base_family + ((eax >> 20) & 0xFF) } else { base_family };
-    let model = if family >= 0x6 { base_model | ((eax >> 12) & 0xF0) } else { base_model };
-    crate::dev::console::serial_write("[cpu] Family=0x");
-    print_hex(family);
-    crate::dev::console::serial_write(" Model=0x");
-    print_hex(model);
-    crate::dev::console::serial_write(" Stepping=0x");
-    print_hex(stepping);
-    crate::dev::console::serial_write("\n");
-
-    // Features: we just say "Zen 3" and that everything is true.
-    crate::dev::console::serial_write("[cpu] Zen 3 (Vermeer), all features supported\n");
-
-    // Show what's NOT supported (the only things that are not "true").
-    // 5600X lacks AVX-512 and 5-level paging (LA57).
-    crate::dev::console::serial_write("[cpu] Not supported: AVX-512, LA57 (5-level paging)\n");
 }
 
 fn print_hex(val: u32) {
     let hex = b"0123456789ABCDEF";
     let mut buf = [0u8; 8];
     for i in 0..8 {
-        let nib = ((val >> (28 - i * 4)) & 0xF) as usize;
-        buf[i] = hex[nib];
+        buf[i] = hex[((val >> (28 - i * 4)) & 0xF) as usize];
     }
-    crate::dev::console::serial_write(
-        core::str::from_utf8(&buf).unwrap_or("00000000"),
-    );
+    crate::dev::console::serial_write(core::str::from_utf8(&buf).unwrap_or("????????"));
 }

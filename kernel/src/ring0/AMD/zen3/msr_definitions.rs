@@ -89,6 +89,42 @@ pub const MSR_IA32_FIXED_CTR0: u32 = 0x0000_0309;
 pub const MSR_AMD_PATCH_LEVEL: u32 = 0x0000_008B;
 pub const MSR_AMD_SMM_BASE: u32 = 0xC001_0111;
 pub const MSR_AMD_IBS_OP: u32 = 0xC001_1030;  // Instruction-Based Sampling
+pub const MSR_AMD_SYSCALL_CFG: u32 = 0xC001_0132;  // bit 0 = long-mode SYSCALL enable
+
+// ── v1.8.8: MSRs added for completeness ───────────────────────────
+
+/// IA32_SYSENTER_CS (legacy 32-bit sysenter).
+pub const MSR_IA32_SYSENTER_CS: u32 = 0x0000_0174;
+/// IA32_SYSENTER_ESP.
+pub const MSR_IA32_SYSENTER_ESP: u32 = 0x0000_0175;
+/// IA32_SYSENTER_EIP.
+pub const MSR_IA32_SYSENTER_EIP: u32 = 0x0000_0176;
+/// IA32_MCG_CAP (Machine Check Architecture capabilities).
+pub const MSR_IA32_MCG_CAP: u32 = 0x0000_0179;
+/// IA32_MCG_STATUS.
+pub const MSR_IA32_MCG_STATUS: u32 = 0x0000_017A;
+/// IA32_MCG_CTL.
+pub const MSR_IA32_MCG_CTL: u32 = 0x0000_017B;
+/// IA32_DEBUGCTL (LBR / BTF).
+pub const MSR_IA32_DEBUGCTL: u32 = 0x0000_01D9;
+/// IA32_PERF_CAPABILITIES (LBR format, etc.).
+pub const MSR_IA32_PERF_CAPABILITIES: u32 = 0x0000_0345;
+/// IA32_PERF_GLOBAL_STATUS (read-only overflow status).
+pub const MSR_IA32_PERF_GLOBAL_STATUS: u32 = 0x0000_038E;
+/// IA32_PERFCTR0 (programmable performance counter 0).
+pub const MSR_IA32_PERFCTR0: u32 = 0x0000_00C1;
+/// IA32_PERFCTR1.
+pub const MSR_IA32_PERFCTR1: u32 = 0x0000_00C2;
+/// IA32_PERFEVTSEL0 (event select for IA32_PERFCTR0).
+pub const MSR_IA32_PERFEVTSEL0: u32 = 0x0000_0186;
+/// IA32_PERFEVTSEL1.
+pub const MSR_IA32_PERFEVTSEL1: u32 = 0x0000_0187;
+/// IA32_FIXED_CTR_CTRL (configure fixed counters 0/1/2).
+pub const MSR_IA32_FIXED_CTR_CTRL: u32 = 0x0000_038D;
+/// AMD MTRR variable base 0 (different from Intel — 0xC0010200+).
+pub const MSR_AMD_MTRR_VAR_BASE0: u32 = 0xC001_0200;
+/// AMD MTRR variable mask 0.
+pub const MSR_AMD_MTRR_VAR_MASK0: u32 = 0xC001_0201;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Bit definitions

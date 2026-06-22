@@ -100,6 +100,10 @@ pub fn schedule() {
                     let current_cr3 = crate::mem::virt::read_cr3();
                     if proc.page_table_root != current_cr3 {
                         crate::bmo_core::diag::trace_u64("sched", "CR3 switch", proc.page_table_root);
+                        // v1.8.8: issue IBPB before switching to a new process's
+                        // page table. This isolates the branch predictor state
+                        // and mitigates Spectre v2 cross-process leakage.
+                        crate::amd_cpu::zen3::errata_workarounds::issue_ibpb();
                         unsafe { crate::mem::virt::write_cr3(proc.page_table_root); }
                     }
                 }

@@ -112,6 +112,12 @@ pub fn init_syscall() {
         let stack_top = crate::arch::gdt::kernel_stack_top();
         SYSCALL_KERNEL_RSP = stack_top;
     }
+
+    // v1.8.8: re-initialize ALL common MSRs (EFER, STAR, LSTAR, FMASK, PAT,
+    // TSC_AUX, GS bases) using the real syscall entry point. This overrides
+    // the placeholder that `init_fastos_cpu()` wrote in coordinator::main.
+    let real_entry = syscall_entry_naked as *const () as u64;
+    crate::amd_cpu::zen3::init_msrs(real_entry);
 }
 
 /// Set the kernel stack pointer used by the syscall entry.

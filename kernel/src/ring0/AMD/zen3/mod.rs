@@ -64,5 +64,5 @@ pub use topology::{Topology, CpuId, PerCpu, smp_init as topology_smp_init};
 pub use tsc_calibration::{calibrate_tsc, TscSource};
 pub use mtrr_pat::{init_mtrr, init_pat};
 pub use acpi_real::{find_rsdp, parse_rsdp, parse_xsdt, parse_mcfg, RsdpHeader, McfgHeader, AcpiError, pm_timer_port};
-pub use errata_workarounds::{apply_spectre_v2_mitigations, apply_mds_mitigations};
+pub use errata_workarounds::{apply_spectre_v2_mitigations, apply_spectre_v4_mitigations, apply_mds_mitigations, issue_ibpb};
 pub use fastos_cpu::{init_fastos_cpu, init_msrs, init_acpi, identity, topology, cache, tsc_freq_hz, tsc_source, is_initialized, summary};

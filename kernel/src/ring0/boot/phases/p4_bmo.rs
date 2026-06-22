@@ -25,6 +25,12 @@ pub fn run(prev_end: u64) -> PhaseOutput {
     crate::cpu::sti();
     log::info("phase4", "Interrupts enabled (STI)");
 
+    // v1.8.8: arm the hardware watchdog now that interrupts are enabled.
+    // The watchdog timer is based on TSC and pets on every APIC tick.
+    // If the scheduler hangs, the watchdog will reboot the system.
+    crate::dev::watchdog::arm();
+    log::info("phase4", "Hardware watchdog armed (will reboot if scheduler hangs)");
+
     let phase4_end = crate::cpu::rdtsc();
     log::info_u64("phase4", "Phase 4 time (TSC ticks)", phase4_end - prev_end);
     PhaseOutput { prev_end: phase4_end }

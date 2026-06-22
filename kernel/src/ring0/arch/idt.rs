@@ -88,6 +88,17 @@ pub fn init_idt() {
         IDT[0].set_handler(isr_stub_divide_error as *const () as u64);
         IDT[0].ist = 1;   // IST1 — #DE (divide error)
 
+        // v1.8.8: IST dedicado para #DF (Double Fault), NMI, y #MC (Machine Check).
+        // Sin IST, si el stack está corrupto al llegar #DF, recursa y causa
+        // triple fault irrecuperable. IST garantiza un stack limpio de 8 KB.
+        // Ver AMD/ryzen_5_5600x.md §8.4.
+        IDT[8].set_handler(isr_stub_exception_err as *const () as u64);
+        IDT[8].ist = 1;   // IST1 — #DF (Double Fault)
+        IDT[2].set_handler(isr_stub_exception_no_err as *const () as u64);
+        IDT[2].ist = 1;   // IST1 — NMI (Non-Maskable Interrupt)
+        IDT[18].set_handler(isr_stub_exception_err as *const () as u64);
+        IDT[18].ist = 3;  // IST3 — #MC (Machine Check, errores de hardware)
+
         // IRQ0 — PIT timer (vector 32)
         IDT[32].set_handler(isr_stub_irq0 as *const () as u64);
 
