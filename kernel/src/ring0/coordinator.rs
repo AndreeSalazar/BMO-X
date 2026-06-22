@@ -58,11 +58,20 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     crate::dev::console::serial_write("[coord] main: init() done\n");
     let boot_start = crate::cpu::rdtsc();
 
+    // ── Phase 0 + 1 + 2 + 3 + 4 ──────────────────────────────────
+    // p0_arch inicializa GDT/IDT/SYSCALL antes de cualquier CPUID
+    // complejo. p1_mem inicializa el heap. Sin esto, init_fastos_cpu
+    // colgaba porque el código asumía un entorno más inicializado.
+    boot::visual::log("ring0", "[0/5] arch init", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: starting phases::run_all\n");
+    let phase4_end = boot::phases::run_all(&mut ctx, boot_start);
+    crate::dev::console::serial_write("[coord] main: phases::run_all returned\n");
+
     // ── Initialize ALL data of the 5600X (one-shot) ───────────────
-    // Detects: vendor, family, model, brand string, features,
-    //          cache hierarchy, TLB, topology (SMT/CCX/CCD),
-    //          TSC frequency, errata workarounds, MSR setup,
-    //          power management (C1e).
+    // AHORA es seguro: GDT/IDT/SYSCALL están listos (p0), heap está
+    // listo (p1), display está listo (p3). CPUID complejo, TSC
+    // calibration con PM timer, MSR writes y ACPI parsing funcionan
+    // en este orden. Antes se llamaba aquí sin init, lo que colgaba.
     boot::visual::log("ring0", "[1/5] detect 5600X", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: calling init_fastos_cpu\n");
     crate::vendor::amd::cpu::zen3::init_fastos_cpu();
@@ -70,11 +79,7 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     crate::dev::console::serial_write("[coord] main: init_fastos_cpu returned\n");
 
     // ── Init MSRs (EFER, STAR, LSTAR, FMASK, PAT, TSC_AUX) ───────
-    // Need the syscall entry point — for now use a placeholder.
-    // The real entry is set by `arch::system_call_dispatcher::init_syscall`
-    // which is called in phase 0. We re-call init_msrs() from there
-    // with the real address.
-    let syscall_entry = bi.kernel_base;  // placeholder; updated in phase 0
+    let syscall_entry = bi.kernel_base;
     boot::visual::log("ring0", "[2/5] init MSRs", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: calling init_msrs\n");
     crate::vendor::amd::cpu::zen3::init_msrs(syscall_entry);
@@ -89,10 +94,6 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
 
     boot::log::info("ring0", "fastos_cpu init complete");
     boot::visual::log("ring0", "[4/5] CPU ready", boot::visual::color::OK);
-    crate::dev::console::serial_write("[coord] main: starting phases::run_all\n");
-
-    let phase4_end = boot::phases::run_all(&mut ctx, boot_start);
-    crate::dev::console::serial_write("[coord] main: phases::run_all returned\n");
 
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
     crate::cpu::busy_wait_ms(1500);
