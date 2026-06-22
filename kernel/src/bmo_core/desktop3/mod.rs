@@ -1,4 +1,4 @@
-//! `bmo_core::ring3_gateway` — Única puerta entre Ring 0 y BMO Core.
+//! `bmo_core::desktop3` — Única puerta entre Ring 0 y BMO Core.
 //!
 //! v1.8.8: este módulo centraliza TODOS los syscalls de Ring 3.
 //! Antes, `ring0::arch::syscall` llamaba directamente a
@@ -10,10 +10,10 @@
 //!     ▼
 //! ring0::arch::syscall (lstar)
 //!     │  1) Captura contexto (PID, TID, CR3)
-//!     │  2) Llama ring3_gateway::enter
+//!     │  2) Llama desktop3::enter
 //!     │  3) Retorna el resultado en rax
 //!     ▼
-//! bmo_core::ring3_gateway::enter   ← ESTE MÓDULO
+//! bmo_core::desktop3::enter   ← ESTE MÓDULO
 //!     │  1) Valida con ByteDefender
 //!     │  2) Emite evento a Cabina
 //!     │  3) Llama bmo_api::dispatch_syscall
@@ -55,7 +55,7 @@ static mut UNKNOWN_SYSCALLS: u64 = 0;
 
 /// Inicializa el gateway (no-op en v1.8.8).
 pub fn init() {
-    crate::cabina::info("ring3_gateway", "ring3_gateway v1.0 online — single door to BMO Core");
+    crate::cabina::info("desktop3", "desktop3 v1.0 online — single door to BMO Core");
 }
 
 /// Punto de entrada ÚNICO para syscalls desde Ring 3.
@@ -81,7 +81,7 @@ pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u
     // Los NR_* válidos están en 0x100..0x1FF.
     if nr < 0x100 || nr > 0x1FF {
         unsafe { UNKNOWN_SYSCALLS += 1; }
-        crate::cabina::warn_u64("ring3_gateway", "syscall out of range", nr as u64);
+        crate::cabina::warn_u64("desktop3", "syscall out of range", nr as u64);
         return crate::bmo_abi::error_code::BmoErrorCode::InvalidArgument as u64;
     }
 
@@ -89,13 +89,13 @@ pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u
     // v1.8.8: stub. En v1.9 se consulta el proceso real.
     if !defense_allows(nr) {
         unsafe { DENIED_SYSCALLS += 1; }
-        crate::cabina::fault_u64("ring3_gateway", "syscall denied by ByteDefender", nr as u64);
+        crate::cabina::fault_u64("desktop3", "syscall denied by ByteDefender", nr as u64);
         return crate::bmo_abi::error_code::BmoErrorCode::PermissionDenied as u64;
     }
 
     // ── 3. Cabina: registra el syscall entrante ──────────────────
     let name = syscall_name(nr);
-    crate::cabina::trace_u64("ring3_gateway", &name, nr as u64);
+    crate::cabina::trace_u64("desktop3", &name, nr as u64);
 
     // ── 4. BMO API: ejecuta el syscall real ──────────────────────
     let result = crate::bmo_core::bmo_api::dispatch_syscall(nr, a0, a1, a2, a3, a4, a5);
@@ -104,7 +104,7 @@ pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u
     if result == 0 {
         unsafe { ALLOWED_SYSCALLS += 1; }
     } else if is_fatal_error(result) {
-        crate::cabina::fault_u64("ring3_gateway", "syscall returned fatal", result);
+        crate::cabina::fault_u64("desktop3", "syscall returned fatal", result);
     } else {
         // Resultado no-fatal: solo trace.
     }
@@ -173,3 +173,4 @@ pub fn denied() -> u64 { unsafe { DENIED_SYSCALLS } }
 pub fn unknown() -> u64 { unsafe { UNKNOWN_SYSCALLS } }
 
 pub mod tests;
+
