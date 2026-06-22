@@ -48,8 +48,8 @@ pub mod defense;
 pub mod timeback;
 #[path = "../lang/mod.rs"]
 pub mod lang;
-#[path = "../ring3/mod.rs"]
-pub mod ring3;
+#[path = "../userland/mod.rs"]
+pub mod userland;
 
 // ── AMD/ — Solo documentación (.md) — vive en kernel/src/AMD/ ─────
 // No se carga como módulo Rust (solo .md files). Ver
