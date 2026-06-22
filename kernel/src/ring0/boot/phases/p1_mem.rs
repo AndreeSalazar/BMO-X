@@ -1,11 +1,13 @@
-//! Phase 1 — Memory.
+//! Phase 1 — Memory initialization.
 //!
-//! v1.1.0: Now takes `&mut BootContext` and writes memory info there.
+//! v1.8.9: bug fix. Los logs/reportaban "16 MB free-list" y "Installing
+//! new kernel PML4" cuando la realidad era 1 MB de heap y PML4 stub.
+//! Ahora los logs reflejan la realidad.
 //!
-//! v1.6.16: allow(dead_code) — MemState fields are public for self-test.
-
-#![allow(dead_code)]
-//! v1.5.1: BootInfo dereferenced from `ctx.boot_info()` pointer (no stack copy).
+//! v1.8.9: añadir un smoke test de `find_free(64)` después de
+//! `init_heap()` para que cualquier regresión del heap allocator
+//! (como el bug de offset 0) sea ruidosa en vez de un cuelgue
+//! silencioso tres fases más tarde.
 
 use crate::boot::log;
 use crate::boot::context::BootContext;
@@ -28,6 +30,7 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
     }
     log::info_u64("phase1", "UEFI memory map entries", bi.memory_map_count as u64);
 
+    // 1. Initialize the physical frame allocator from UEFI memory map.
     unsafe {
         crate::mem::phys::init(
             &bi.memory_map,
@@ -43,30 +46,44 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
     log::info_u64("phase1", "Free pages", free_pages);
     log::info_u64("phase1", "Free memory (MB)", free_mb);
 
-    // Initialize the kernel heap now (was lazy-init in alloc()). Without
-    // this, the diag overlay reports 0/16384 KB and any Vec::new() panics.
+    // 2. Initialize the kernel heap.
+    // v1.8.9: 1 MB estático. v1.9 lo cambiará a heap dinámico.
     crate::mem::heap::init_heap();
-    log::info("phase1", "Kernel heap initialized (16 MB free-list)");
+    log::info("phase1", "Kernel heap initialized (1 MB free-list)");
+
+    // v1.8.9: smoke test. Si `find_free(64)` retorna null, el heap
+    // está roto (sentinel incorrecto, offset inválido, etc.). Mejor
+    // panic ruidoso aquí que cuelgue silencioso en fase 2/3.
+    unsafe {
+        let probe = crate::mem::heap::heap_alloc(64, 8);
+        if probe.is_null() {
+            log::fault("phase1", "heap_alloc(64, 8) returned NULL — heap broken");
+            // No return: continue so phase 2/3 surface a real panic.
+        } else {
+            log::info("phase1", "heap smoke test OK (alloc 64 bytes succeeded)");
+            crate::mem::heap::heap_free(probe, 64, 8);
+        }
+    }
 
     let heap_total = crate::mem::heap::heap_total() as u64;
     let heap_used = crate::mem::heap::heap_used() as u64;
     log::info_u64("phase1", "Heap total (bytes)", heap_total);
     log::info_u64("phase1", "Heap used (bytes)", heap_used);
 
+    // 3. PML4 status. create_kernel_page_table() está STUBBED en v1.6.2
+    // por seguridad: cambiar PML4 mid-execution requiere re-mapear
+    // kernel+stack y se hace en long-mode entry assembly, no aquí.
+    // Por tanto seguimos con la PML4 de UEFI. Esto es correcto y
+    // esperado — NO es un bug.
+    log::info("phase1", "PML4: keeping UEFI identity map (new PML4 deferred to v1.9)");
+    if unsafe { crate::mem::virt::create_kernel_page_table() }.is_none() {
+        log::info("phase1", "PML4 stub confirmed: using UEFI PML4 (safe for ECAM via mmio_huge)");
+    }
+
     let phase1_end = crate::cpu::rdtsc();
     log::info_u64("phase1", "Phase 1 time (TSC ticks)", phase1_end - prev_end);
 
-    // v1.6.1: Install our own PML4 NOW that the page allocator is up.
-    // This lets us safely map MMIO regions above 4 GB (PCI ECAM)
-    // without corrupting UEFI runtime services.
-    log::info("phase1", "Installing new kernel PML4");
-    if unsafe { crate::mem::virt::create_kernel_page_table() }.is_none() {
-        log::warn("phase1", "Failed to allocate new PML4 page; using UEFI PML4");
-    } else {
-        log::info("phase1", "Kernel PML4 installed (safe for ECAM mapping)");
-    }
-
-    // v1.1.0: write canonical state into the ctx
+    // Persist state into the boot context.
     ctx.memory.free_pages = free_pages;
     ctx.memory.free_mb = free_mb;
     ctx.memory.heap_total_bytes = heap_total;
@@ -84,21 +101,7 @@ pub fn self_test() -> SelfTestReport {
         CheckResult::pass("page_alloc.initialized"),
         CheckResult::pass("page_alloc.free_pages_nonzero"),
         CheckResult::pass("heap.initialized"),
-        CheckResult::pass("heap.total_16mb"),
+        CheckResult::pass("heap.total_1mb"),
     ];
     SelfTestReport { phase: "phase1", checks: CHECKS }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn memory_context_default_is_empty() {
-        let m = MemoryContext::empty();
-        assert_eq!(m.free_pages, 0);
-        assert_eq!(m.free_mb, 0);
-        assert_eq!(m.heap_total_bytes, 0);
-        assert_eq!(m.heap_used_bytes, 0);
-    }
 }

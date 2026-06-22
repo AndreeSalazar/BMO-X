@@ -5,10 +5,11 @@
 .DESCRIPTION
     Professional build pipeline for FastOS on real hardware:
       1. Validates environment (toolchains, disk space, admin)
-      2. Builds bootloader (nightly) + kernel (stable) with timing
-      3. Stages EFI/BOOT structure with SHA256 hashes
-      4. Flashes directly to USB with automatic detection
-      5. Verifies flash by reading back and comparing hashes
+      2. Auto-elevates to Administrator if needed for USB flashing
+      3. Builds bootloader (nightly) + kernel (stable) with timing
+      4. Stages EFI/BOOT structure with SHA256 hashes
+      5. Flashes directly to USB with automatic detection
+      6. Verifies flash by reading back and comparing hashes
 .PARAMETER Flash
     Flash to USB after building. Auto-detects drives or use -Drive.
 .PARAMETER Drive
@@ -27,6 +28,10 @@
     .\build_uefi.ps1 -Flash -Drive E        # Build + flash to E:
     .\build_uefi.ps1 -Verify -Drive E       # Verify USB contents
     .\build_uefi.ps1 -Clean                 # Clean + rebuild
+.NOTES
+    v2.1.0: auto-elevate to Administrator when -Flash is used.
+            If not admin, the script re-launches itself with
+            Start-Process -Verb RunAs and exits the original.
 #>
 param(
     [switch]$Flash,
@@ -34,11 +39,12 @@ param(
     [switch]$Clean,
     [switch]$BuildOnly,
     [switch]$Silent,
+    [switch]$Yes,  # skip interactive confirmations
     [string]$Drive
 )
 
 $ErrorActionPreference = "Stop"
-$scriptVersion = "2.0.0"
+$scriptVersion = "2.1.0"
 
 # ── Colors ─────────────────────────────────────────────────────────────
 function Write-Step    { param($msg) Write-Host "  [>>] " -NoNewline -ForegroundColor Cyan;    Write-Host $msg }
@@ -69,6 +75,54 @@ function Test-Admin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+# ── Auto-elevate to Administrator ──────────────────────────────────────
+# Re-lanza el script con permisos de admin usando UAC. Si ya es admin,
+# no hace nada. Si falla la elevación, aborta.
+function Request-AdminElevation {
+    if (Test-Admin) { return $true }
+
+    $scriptPath = $PSCommandPath
+    if (-not $scriptPath) { $scriptPath = $MyInvocation.MyCommand.Path }
+    if (-not $scriptPath) {
+        Write-Fail "Cannot determine script path for elevation."
+        return $false
+    }
+
+    # Reconstruir argumentos para pasarlos al proceso elevado.
+    $argList = @()
+    if ($Flash)     { $argList += "-Flash" }
+    if ($Verify)    { $argList += "-Verify" }
+    if ($Clean)     { $argList += "-Clean" }
+    if ($BuildOnly) { $argList += "-BuildOnly" }
+    if ($Silent)    { $argList += "-Silent" }
+    if ($Yes)       { $argList += "-Yes" }
+    if ($Drive)     { $argList += "-Drive", "`"$Drive`"" }
+
+    $argString = $argList -join " "
+
+    Write-Host ""
+    Write-Warn "Script no está corriendo como Administrator."
+    Write-Info  "Solicitando elevación UAC..."
+
+    try {
+        $proc = Start-Process -FilePath "powershell.exe" `
+                               -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" $argString" `
+                               -Verb RunAs `
+                               -PassThru
+        if ($null -eq $proc) {
+            Write-Fail "UAC elevation cancelled or failed."
+            return $false
+        }
+        # Esperar a que termine el proceso elevado.
+        $proc.WaitForExit()
+        # Propagar el exit code del proceso elevado.
+        exit $proc.ExitCode
+    } catch {
+        Write-Fail "Error al solicitar elevación: $_"
+        return $false
+    }
+}
+
 # ── Get version from Cargo.toml ────────────────────────────────────────
 function Get-KernelVersion {
     param($tomlPath)
@@ -81,26 +135,60 @@ function Get-KernelVersion {
 
 # ── Get available USB drives ───────────────────────────────────────────
 function Get-USBDrives {
-    $drives = Get-CimInstance Win32_DiskDrive | Where-Object {
-        $_.InterfaceType -eq "USB" -or $_.MediaType -eq "External hard disk media"
-    }
     $result = @()
-    foreach ($disk in $drives) {
-        $partitions = Get-CimInstance Win32_DiskPartition | Where-Object { $_.DiskIndex -eq $disk.Index }
-        foreach ($part in $partitions) {
-            $logical = Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DiskIndex -eq $part.Index -and $_.DriveType -eq 2 }
-            if ($logical) {
-                $result += [PSCustomObject]@{
-                    Letter     = $logical.DeviceID
-                    Label      = $logical.VolumeName
-                    SizeGB     = [math]::Round($logical.Size / 1GB, 1)
-                    FreeGB     = [math]::Round($logical.FreeSpace / 1GB, 1)
-                    FileSystem = $logical.FileSystem
-                    DiskIndex  = $disk.Index
+
+    # Estrategia 1: WMI/CIM (puede fallar en sesión elevada).
+    try {
+        $drives = Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Where-Object {
+            $_.InterfaceType -eq "USB" -or $_.MediaType -eq "External hard disk media"
+        }
+        foreach ($disk in $drives) {
+            $partitions = Get-CimInstance Win32_DiskPartition -ErrorAction SilentlyContinue | Where-Object { $_.DiskIndex -eq $disk.Index }
+            foreach ($part in $partitions) {
+                $logical = Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.DiskIndex -eq $part.Index -and $_.DriveType -eq 2 }
+                if ($logical) {
+                    $result += [PSCustomObject]@{
+                        Letter     = $logical.DeviceID
+                        Label      = $logical.VolumeName
+                        SizeGB     = [math]::Round($logical.Size / 1GB, 1)
+                        FreeGB     = [math]::Round($logical.FreeSpace / 1GB, 1)
+                        FileSystem = $logical.FileSystem
+                        DiskIndex  = $disk.Index
+                    }
                 }
             }
         }
+    } catch { }
+
+    # Estrategia 2: enumerar drive letters directamente con [IO.DriveInfo].
+    # Más robusto cuando CIM no expone el disco USB (sesión elevada,
+    # UAC, cambios de sesión). Si el usuario pidió un drive específico
+    # y no se encontró por CIM, este fallback lo rescata.
+    if ($result.Count -eq 0) {
+        $Removable = [IO.DriveType]::Removable
+        foreach ($letter in 'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z') {
+            $root = "${letter}:\"
+            if (Test-Path $root) {
+                try {
+                    $di = [IO.DriveInfo]::new($root)
+                    # Comparar contra el valor numérico del enum directamente
+                    # porque PowerShell 5.1 a veces trata los enums como
+                    # strings y la comparación `eq 'Removable'` falla.
+                    if ($di.DriveType -eq $Removable) {
+                        $result += [PSCustomObject]@{
+                            Letter     = "${letter}:"
+                            Label      = $di.VolumeLabel
+                            SizeGB     = [math]::Round($di.TotalSize / 1GB, 1)
+                            FreeGB     = [math]::Round($di.AvailableFreeSpace / 1GB, 1)
+                            FileSystem = $di.DriveFormat
+                            DiskIndex  = -1
+                        }
+                    }
+                } catch { }
+            }
+        }
     }
+
     return $result
 }
 
@@ -110,6 +198,13 @@ function Get-FileHash256 { param($path) return (Get-FileHash -Path $path -Algori
 # ══════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
+
+# ── Pre-flight: si vamos a flashear y no somos admin, elevar ──────────
+if ($Flash -or $Verify) {
+    if (-not (Request-AdminElevation)) {
+        exit 1
+    }
+}
 
 Show-Banner
 
@@ -138,7 +233,7 @@ $kernelVersion = Get-KernelVersion (Join-Path $kernelDir "Cargo.toml")
 
 Write-Host "  Kernel version:  $kernelVersion" -ForegroundColor White
 Write-Host "  Target:          x86_64-unknown-none (kernel) / x86_64-unknown-uefi (bootloader)" -ForegroundColor White
-Write-Host "  Profile:         release (opt-level=3, LTO, strip=symbols)" -ForegroundColor White
+Write-Host "  Profile:         release (opt-level=z, LTO, strip=symbols)" -ForegroundColor White
 Write-Host "  Build dir:       $targetDir" -ForegroundColor White
 Write-Host ""
 
@@ -177,10 +272,10 @@ if ($freeSpace -lt 50MB) {
 }
 Write-Info "Disk space: $([math]::Round($freeSpace/1GB,1))GB free on $systemDrive"
 
-# Check admin
+# Check admin status
 $isAdmin = Test-Admin
 if ($isAdmin) { Write-Info "Running as Administrator" }
-else          { Write-Info "Running as User" }
+else          { Write-Info "Running as User (no admin)" }
 
 Stop-PhaseTimer $envPhase
 
@@ -198,13 +293,20 @@ if ($Clean) {
 $bootPhase = Start-PhaseTimer "Build bootloader (nightly)"
 Push-Location $bootloaderDir
 try {
-    $bootOut = & { cargo build --release } 2>$null
+    # PS 5.1: si $ErrorActionPreference = "Stop", cargo stderr se
+    # convierte en RemoteException. Relajamos a "Continue" durante build.
+    $prevPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $bootOut = cargo build --release 2>&1
+    $ErrorActionPreference = $prevPref
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Bootloader build FAILED"
+        $bootOut | ForEach-Object { Write-Info $_ }
         exit 1
     }
     $bootOut | ForEach-Object {
-        if (-not $Silent -and $_ -match "Compiling|Finished") { Write-Info $_ }
+        $line = "$_"
+        if (-not $Silent -and ($line -match "Compiling|Finished|warning|error")) { Write-Info $line }
     }
 } finally {
     Pop-Location
@@ -225,19 +327,21 @@ $kernelPhase = Start-PhaseTimer "Build kernel (stable)"
 $kernelTargetDir = Join-Path $targetDir "kernel"
 Push-Location $kernelDir
 try {
+    $prevPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     $kernOut = cargo build --release --target x86_64-unknown-none --target-dir $kernelTargetDir 2>&1
-    $kernErr = $kernOut | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }
-    $kernOut | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object {
-        if (-not $Silent -and $_ -match "Compiling|Finished") { Write-Info $_ }
-    }
-    foreach ($e in $kernErr) {
-        $msg = "$e"
-        if ($msg -match "error") { Write-Fail $msg }
-        elseif (-not $Silent) { Write-Info "  warning: $($msg -replace '.*warning:\s*','')" }
-    }
+    $ErrorActionPreference = $prevPref
+
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Kernel build FAILED"
+        $kernOut | ForEach-Object { Write-Info "$_" }
         exit 1
+    }
+
+    foreach ($line in $kernOut) {
+        $msg = "$line"
+        if ($msg -match "^error") { Write-Fail $msg }
+        elseif (-not $Silent -and ($msg -match "Compiling|Finished|warning:")) { Write-Info "  $msg" }
     }
 } finally {
     Pop-Location
@@ -305,7 +409,7 @@ if ($Flash) {
     Write-Host ""
 
     # Detect USB drives
-    $usbDrives = Get-USBDrives
+    $usbDrives = @(Get-USBDrives)  # @(...) fuerza array aunque haya 1 elemento
 
     if ($usbDrives.Count -eq 0) {
         Write-Warn "No USB drives detected. Insert a USB drive and re-run with -Flash."
@@ -339,16 +443,24 @@ if ($Flash) {
             }
 
             # Safety check
-            $targetInfo = $usbDrives | Where-Object { $_.Letter -eq $targetLetter }
+            $targetInfo = $usbDrives | Where-Object { $_.Letter -eq "${targetLetter}:" }
             if (-not $targetInfo) {
                 Write-Warn "Drive $targetLetter is not detected as a USB drive."
-                $confirm = Read-Host "  Flash anyway? (type YES to confirm)"
-                if ($confirm -ne "YES") { Write-Info "Aborted."; exit 0 }
+                if ($Yes) {
+                    Write-Info "-Yes supplied, proceeding anyway."
+                } else {
+                    $confirm = Read-Host "  Flash anyway? (type YES to confirm)"
+                    if ($confirm -ne "YES") { Write-Info "Aborted."; exit 0 }
+                }
             } else {
                 Write-Host ""
                 Write-Host "  Target: $($targetLetter):\ ($($targetInfo.Label)) - $($targetInfo.FreeGB)GB free" -ForegroundColor Yellow
-                $confirm = Read-Host "  Flash FastOS to this drive? (type YES to confirm)"
-                if ($confirm -ne "YES") { Write-Info "Aborted."; exit 0 }
+                if ($Yes) {
+                    Write-Info "-Yes supplied, proceeding with flash."
+                } else {
+                    $confirm = Read-Host "  Flash FastOS to this drive? (type YES to confirm)"
+                    if ($confirm -ne "YES") { Write-Info "Aborted."; exit 0 }
+                }
             }
 
             # Flash
@@ -360,9 +472,17 @@ if ($Flash) {
             Copy-Item (Join-Path $efiBootDir "kernel.elf")   -Destination (Join-Path $efiDest "kernel.elf")   -Force
             Copy-Item (Join-Path $efiBootDir "MANIFEST.TXT") -Destination (Join-Path $efiDest "MANIFEST.TXT") -Force
 
-            # Flush to physical device
+            # Flush del filesystem al dispositivo físico. PS 5.1 a veces
+            # no propaga el flush correctamente con cmd; usamos .NET
+            # FileStream para garantizar WriteThrough.
             Write-Info "Flushing to physical device..."
-            & cmd /c "echo. > \\.\$targetLetter`:" 2>$null
+            try {
+                $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.elf", 'Open', 'Write')
+                $fs.Flush(1)  # FlushToDisk = 1, fuerza flush a la controladora
+                $fs.Close()
+            } catch {
+                Write-Warn "Flush via FileStream falló: $_"
+            }
             Stop-PhaseTimer $flashPhase
 
             # Verify

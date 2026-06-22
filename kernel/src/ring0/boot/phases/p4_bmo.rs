@@ -1,4 +1,9 @@
-//! Phase 4 — Scheduler / process core.
+//! Phase 4 — Scheduler, APIC timer, interrupts, watchdog.
+//!
+//! v1.8.9: aclaración. El orden importa: APIC timer DEBE estar
+//! calibrado y corriendo **antes** de `sti()` y del `watchdog::arm()`,
+//! porque el watchdog se alimenta desde la ISR del APIC timer (vector
+//! 48). Si el APIC no interrumpe, el watchdog resetea la máquina.
 
 use crate::boot::log;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
@@ -6,28 +11,30 @@ use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 pub fn run(prev_end: u64) -> PhaseOutput {
     log::info("phase4", "=== Phase 4: Scheduler / Process ===");
 
+    // 1. Process/task table init.
     crate::proc::init();
     log::info("phase4", "Process/task scheduler tables initialized");
 
+    // 2. APIC timer init. v1.8.9: la calibración es correcta — LVT
+    //    en one-shot antes de medir, luego cambio a periodic.
     crate::arch::apic::init_apic(100);
     log::info("phase4", "APIC timer started (100 Hz, 10ms ticks)");
 
-    // Stable desktop path: keep boot on the BSP and defer non-essential
-    // services. SMP bring-up, ByteDefender/Restaurer and network/DHCP can all
-    // touch fragile hardware paths; none are needed to reach the Ring 0 GOP
-    // desktop. They should be launched later from a desktop service once diag
-    // and UI are alive. The watchdog is armed below because APIC ticks are now
-    // available and it protects the scheduler path.
-    log::warn("phase4", "SMP deferred until desktop service phase");
-    log::warn("phase4", "Security subsystem deferred until desktop service phase");
-    log::warn("phase4", "Network stack deferred until desktop service phase");
+    // 3. Defer non-essential services. These need fragile hardware
+    //    paths (SMP, ByteDefender, DHCP) and aren't needed to reach
+    //    the Ring 0 GOP desktop. They run later from a desktop
+    //    service once diag and UI are alive.
+    log::info("phase4", "SMP deferred until desktop service phase");
+    log::info("phase4", "Security subsystem deferred until desktop service phase");
+    log::info("phase4", "Network stack deferred until desktop service phase");
 
+    // 4. Enable interrupts. The APIC timer ISR (vector 48) starts
+    //    firing now and feeding the watchdog.
     crate::cpu::sti();
     log::info("phase4", "Interrupts enabled (STI)");
 
-    // v1.8.8: arm the hardware watchdog now that interrupts are enabled.
-    // The watchdog timer is based on TSC and pets on every APIC tick.
-    // If the scheduler hangs, the watchdog will reboot the system.
+    // 5. Arm the hardware watchdog. If the scheduler hangs, the
+    //    watchdog fires and reboots the system.
     crate::dev::watchdog::arm();
     log::info("phase4", "Hardware watchdog armed (will reboot if scheduler hangs)");
 
@@ -42,7 +49,6 @@ pub fn self_test() -> SelfTestReport {
         CheckResult::pass("apic.id_within_range"),
         CheckResult::pass("ist1.stack_8kb"),
         CheckResult::pass("tsc.deadline_supported"),
-        CheckResult::pass("net.nic_detected"),
     ];
     SelfTestReport { phase: "phase4", checks: CHECKS }
 }

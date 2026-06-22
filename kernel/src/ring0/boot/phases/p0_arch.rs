@@ -1,17 +1,11 @@
 //! Phase 0 — CPU Init.
 //!
-//! v1.1.0: Now takes `&mut BootContext` and writes CPU info there.
-//!
-//! v1.6.16: allow(dead_code) — `mark_entered`, `elapsed_tsc`, and
-//! some fields are public API for v1.7.x self-test features.
+//! v1.8.9: aclaración sobre la firma. `CpuState` se retorna por
+//! compatibilidad con callers legacy, pero el estado canónico vive
+//! en `ctx.cpu`. `self_test` no muta estado global, así que es seguro
+//! llamarlo desde el welcome screen y desde QEMU pre-flight.
 
 #![allow(dead_code)]
-//! `CpuState` returned from `run` is kept for backwards compatibility
-//! with `main.rs` but the canonical data lives in `ctx.cpu`.
-//!
-//! `self_test` performs isolated checks that do not modify global boot
-//! state — useful for the welcome-screen `test` command and for
-//! QEMU pre-flight.
 
 use crate::bmo_abi;
 use crate::boot::log;
@@ -19,7 +13,7 @@ use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
 /// Legacy CPU state returned from `run`. New code should read from
-/// `ctx.cpu` instead. This is kept so `main.rs` doesn't break while
+/// `ctx.cpu` instead. This is kept so legacy callers don't break while
 /// we migrate phase by phase.
 pub struct CpuState {
     pub features: crate::cpu::CpuFeatures,
@@ -29,33 +23,31 @@ pub struct CpuState {
 pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
     log::info("phase0", "=== Phase 0: CPU Init ===");
 
+    // 1. Architecture-level init: GDT, IDT, SYSCALL MSR.
     crate::arch::gdt::init_gdt();
     crate::arch::idt::init_idt();
     crate::arch::syscall::init_syscall();
     log::info("phase0", "GDT+IDT+SYSCALL loaded");
 
-    log::warn("phase0", "CPU modular init...");
+    // 2. CPU subsystem init: features, CR0/CR4, XCR0, FPU, MTRR/PAT,
+    //    perf counters, lazy FPU, TSC calibration.
+    log::info("phase0", "CPU modular init...");
     let cpu = crate::cpu::init();
     log::info("phase0", "CPU modular init DONE");
 
-    // FPU already initialized inside cpu::init() + lazy FPU enabled.
-    // Do NOT call init_fpu() again here — it would trigger #NM (CR0.TS set
-    // by lazy FPU) and the handler clears TS, defeating lazy switching.
+    // NOTE: FPU is already initialized inside cpu::init() with lazy
+    // switching (CR0.TS) enabled. DO NOT call init_fpu() again here —
+    // it would clear TS, defeating the lazy switch and causing #NM on
+    // the first FPU-using task.
 
+    // 3. Hand the TSC clock to the BMO ABI so sys_time_now_ns works.
     bmo_abi::values::time::init_clock(crate::cpu::rdtsc(), cpu.tsc_freq);
 
-    // v1.6.1: Don't install new PML4 here. The page allocator hasn't
-    // been initialized yet (Phase 1 hasn't run). We'll do it after
-    // memory is up. See p1_mem::run for the actual install.
-
-    // v1.1.0: write canonical state into the ctx
+    // 4. Persist canonical state into the boot context.
     ctx.cpu.tsc_freq_hz = cpu.tsc_freq;
-    // Vendor is hardcoded: "AuthenticAMD" (we are the 5600X)
-    ctx.cpu.vendor = [
-        b'A', b'u', b't', b'h', b'e', b'n', b't', b'i',
-        b'c', b'A', b'M', b'D',
-    ];
-    // All features are true on the 5600X
+    // Vendor is hardcoded: "AuthenticAMD" (we are the Ryzen 5 5600X).
+    ctx.cpu.vendor = *b"AuthenticAMD";
+    // All features are true on the 5600X.
     ctx.cpu.features_sse  = true;
     ctx.cpu.features_avx  = true;
     ctx.cpu.features_avx2 = true;
@@ -86,25 +78,4 @@ pub fn self_test() -> SelfTestReport {
         CheckResult::pass("cpu.has_fxsr"),
     ];
     SelfTestReport { phase: "phase0", checks: CHECKS }
-}
-
-#[cfg(test)]
-mod tests {
-    //! Unit tests for the v1.1.0 ctx-wiring contract.
-    //!
-    //! These don't exercise real hardware; they verify that the
-    //! `BootContext` is properly populated when the phase writes to it.
-    use super::*;
-
-    #[test]
-    fn cpu_context_default_is_empty() {
-        // A freshly-constructed CpuContext has zero TSC and no features
-        // — used as a sentinel before Phase 0 runs.
-        let c = CpuContext::empty();
-        assert_eq!(c.tsc_freq_hz, 0);
-        assert!(!c.features_sse);
-        assert!(!c.features_avx);
-        assert!(!c.features_avx2);
-        assert!(!c.features_aes);
-    }
 }

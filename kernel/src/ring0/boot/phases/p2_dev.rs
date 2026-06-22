@@ -148,7 +148,11 @@ mod tests {
         // 0x284 % 256 = 0x84. So checksum should be 0x100-0x84 = 0x7C.
         // Let's just set a wrong checksum deliberately.
         buf[8] = 0x42; // bad checksum
-        let valid = unsafe { crate::dev::acpi::validate_rsdp_checksum_for_test(buf.as_ptr()) };
+        let valid = unsafe {
+            crate::vendor::amd::cpu::zen3::acpi_real::validate_rsdp_checksum_for_test(
+                buf.as_ptr()
+            )
+        };
         assert!(!valid, "RSDP with bad checksum must be rejected");
     }
 
@@ -167,7 +171,11 @@ mod tests {
                 buf[i] = (seed >> 16) as u8;
             }
             // We just need to make sure this doesn't panic / loop.
-            let _ = unsafe { crate::dev::acpi::validate_rsdp_checksum_for_test(buf.as_ptr()) };
+            let _ = unsafe {
+                crate::vendor::amd::cpu::zen3::acpi_real::validate_rsdp_checksum_for_test(
+                    buf.as_ptr()
+                )
+            };
         }
     }
 
