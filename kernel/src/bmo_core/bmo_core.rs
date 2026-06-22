@@ -70,7 +70,46 @@ pub fn init() {
     // 9) Desktop: state + dock. (welcome se arranca desde enter().)
     desktop::init();
 
+    // ── Tests integrados de la trilogía ────────────────────────────
+    // Se ejecutan en cada boot para validar que los subsistemas
+    // funcionan end-to-end. No fallan el boot (solo reportan).
+    run_trilogy_tests();
+
     crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop");
+}
+
+/// Ejecuta los tests integrados de cabina, defense y timeback.
+/// Los resultados se emiten como eventos a la cabina.
+fn run_trilogy_tests() {
+    use crate::cabina::{Severity, info, warn, fault};
+
+    // Cabina tests
+    for r in crate::cabina::tests::run_all() {
+        if r.passed {
+            info("test", &r.name);
+        } else {
+            fault("test", &r.name);
+            fault("test", &r.message);
+        }
+    }
+
+    // Defense tests
+    for r in crate::defense::tests::run_all() {
+        if r.passed {
+            info("test.def", &r.name);
+        } else {
+            fault("test.def", &r.name);
+        }
+    }
+
+    // TimeBack tests
+    for r in crate::timeback::tests::run_all() {
+        if r.passed {
+            info("test.tb", &r.name);
+        } else {
+            warn("test.tb", &r.name);
+        }
+    }
 }
 
 /// Cabina se considera "ready" solo después de init() (FB GOP OK).

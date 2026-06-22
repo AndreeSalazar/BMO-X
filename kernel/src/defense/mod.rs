@@ -36,6 +36,7 @@ pub mod verifier;
 pub mod capability;
 pub mod report;
 pub mod quarantine;
+pub mod tests;
 
 pub use bytedefender::ByteDefender;
 pub use policy::{Policy, PolicyAction};

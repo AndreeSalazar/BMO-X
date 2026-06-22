@@ -43,6 +43,7 @@ pub mod persistent;
 pub mod paint;
 pub mod overlay;
 pub mod panels;
+pub mod tests;
 
 pub use event::{Severity, Layer, Entity, Event};
 

@@ -75,6 +75,8 @@ impl Layer {
         let n = name.to_ascii_lowercase();
         if n.starts_with("ring0") || n.starts_with("cpu") || n.starts_with("mem") || n.starts_with("kbc") || n.starts_with("dev") || n == "boot" || n == "acpi" {
             Self::Ring0
+        } else if n.starts_with("ring3") {
+            Self::Ring3
         } else if n.starts_with("bmo_gpu") || n.starts_with("gpu") || n == "rdna4" {
             Self::BmoGpu
         } else if n.starts_with("lang") || n == "aot" || n == "linker" || n == "frontend" || n == "backend" {

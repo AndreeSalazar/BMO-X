@@ -44,6 +44,7 @@ pub mod journal;
 pub mod rollback;
 pub mod storage;
 pub mod policy;
+pub mod tests;
 
 pub use checkpoint::CheckpointId;
 pub use snapshot::Snapshot;
