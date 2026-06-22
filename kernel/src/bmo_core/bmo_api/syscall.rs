@@ -140,6 +140,18 @@ pub mod nr {
     pub const MAXIMIZE_WINDOW:       u16 = _nr::NR_WM_SHOW_WINDOW as u16;   // legacy
     pub const RESTORE_WINDOW:        u16 = _nr::NR_WM_SHOW_WINDOW as u16;   // legacy
     pub const GET_TASKBAR_RECT:      u16 = _nr::NR_WM_GET_BOUNDS as u16;    // legacy
+
+    // ─── Time (canónicos) ──────────────────────────────────────────
+    pub const TIME_NOW_NS:           u16 = _nr::NR_TIME_NOW_NS as u16;
+    pub const TIME_NOW_US:           u16 = _nr::NR_TIME_NOW_US as u16;
+    pub const TIME_SLEEP_NS:         u16 = _nr::NR_TIME_SLEEP_NS as u16;
+    pub const TIME_SLEEP_MS:         u16 = _nr::NR_TIME_SLEEP_MS as u16;
+
+    // ─── Debug (canónicos) ─────────────────────────────────────────
+    pub const DEBUG_PRINT:           u16 = _nr::NR_DEBUG_PRINT as u16;
+    pub const DEBUG_TRACE:           u16 = _nr::NR_DEBUG_TRACE as u16;
+    pub const DEBUG_ASSERT:          u16 = _nr::NR_DEBUG_ASSERT as u16;
+    pub const DEBUG_PANIC:           u16 = _nr::NR_DEBUG_PANIC as u16;
 }
 
 // v1.8.8: errores ahora vienen de `bmo_abi::error_code` (21 códigos
@@ -305,6 +317,18 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::SET_CLIPBOARD_DATA => err::OK,
         nr::GET_CLIPBOARD_DATA => err::OK,
         nr::EMPTY_CLIPBOARD  => err::OK,
+
+        // ─── Time ─────────────────────────────────────────────────
+        nr::TIME_NOW_NS      => sys_time_now_ns(),
+        nr::TIME_NOW_US      => sys_time_now_us(),
+        nr::TIME_SLEEP_NS    => sys_time_sleep_ns(a0),
+        nr::TIME_SLEEP_MS    => sys_time_sleep_ms(a0),
+
+        // ─── Debug ────────────────────────────────────────────────
+        nr::DEBUG_PRINT      => sys_debug_print(a0, a1),
+        nr::DEBUG_TRACE      => sys_debug_trace(a0, a1),
+        nr::DEBUG_ASSERT     => sys_debug_assert(a0, a1, a2),
+        nr::DEBUG_PANIC      => sys_debug_panic(a0, a1),
 
         nr::DISPATCH_RETURN  => err::OK,
 
@@ -905,6 +929,83 @@ fn sys_draw_image(dc_slot: u64, dst_x: u64, dst_y: u64, pixels_ptr: u64, src_w: 
     super::draw::draw_image(dc_slot as u32, dst_x as i32, dst_y as i32,
         pixels_ptr as *const u32, src_w as u32, src_h as u32, pitch);
     err::OK
+}
+
+// ── Time syscalls (NR_TIME_*) ──────────────────────────────────────
+
+/// NR_TIME_NOW_NS: devuelve los nanosegundos actuales (TSC-based).
+fn sys_time_now_ns() -> u64 {
+    let tsc = crate::cpu::rdtsc();
+    let hz = crate::cpu::tsc::calibrate();
+    if hz == 0 { return 0; }
+    tsc.wrapping_mul(1_000_000_000) / hz
+}
+
+/// NR_TIME_NOW_US: microsegundos.
+fn sys_time_now_us() -> u64 {
+    sys_time_now_ns() / 1_000
+}
+
+/// NR_TIME_SLEEP_NS: busy-wait N nanosegundos.
+fn sys_time_sleep_ns(ns: u64) -> u64 {
+    let t0 = sys_time_now_ns();
+    loop {
+        if sys_time_now_ns().wrapping_sub(t0) >= ns { break; }
+        core::hint::spin_loop();
+    }
+    err::OK
+}
+
+/// NR_TIME_SLEEP_MS: busy-wait N milisegundos.
+fn sys_time_sleep_ms(ms: u64) -> u64 {
+    sys_time_sleep_ns(ms * 1_000_000)
+}
+
+// ── Debug syscalls (NR_DEBUG_*) ────────────────────────────────────
+
+/// NR_DEBUG_PRINT: emite un mensaje a la cabina desde Ring 3.
+fn sys_debug_print(msg_ptr: u64, len: u64) -> u64 {
+    if msg_ptr == 0 || !validate_user_str(msg_ptr, len) { return err::INVALID; }
+    let s = unsafe { core::str::from_utf8_unchecked(
+        core::slice::from_raw_parts(msg_ptr as *const u8, len as usize)) };
+    crate::cabina::info("ring3", s);
+    err::OK
+}
+
+/// NR_DEBUG_TRACE: igual que print pero con severidad Trace.
+fn sys_debug_trace(msg_ptr: u64, len: u64) -> u64 {
+    if msg_ptr == 0 || !validate_user_str(msg_ptr, len) { return err::INVALID; }
+    let s = unsafe { core::str::from_utf8_unchecked(
+        core::slice::from_raw_parts(msg_ptr as *const u8, len as usize)) };
+    crate::cabina::trace("ring3", s);
+    err::OK
+}
+
+/// NR_DEBUG_ASSERT: si cond == 0, emite Fault con msg.
+fn sys_debug_assert(cond: u64, msg_ptr: u64, len: u64) -> u64 {
+    if cond != 0 { return err::OK; }
+    if msg_ptr == 0 || !validate_user_str(msg_ptr, len) { return err::INVALID; }
+    let s = unsafe { core::str::from_utf8_unchecked(
+        core::slice::from_raw_parts(msg_ptr as *const u8, len as usize)) };
+    crate::cabina::fault("ring3.assert", s);
+    err::OK
+}
+
+/// NR_DEBUG_PANIC: emite Panic y mata el proceso actual.
+fn sys_debug_panic(msg_ptr: u64, len: u64) -> u64 {
+    if msg_ptr == 0 || !validate_user_str(msg_ptr, len) { return err::INVALID; }
+    let s = unsafe { core::str::from_utf8_unchecked(
+        core::slice::from_raw_parts(msg_ptr as *const u8, len as usize)) };
+    crate::cabina::panic_msg("ring3.panic", s);
+    // Ring 3 verá el error y el scheduler lo matará en la próxima salida.
+    err::GENERIC
+}
+
+// ── Validadores para syscalls desde Ring 3 ────────────────────────
+
+/// Valida un puntero de usuario que contiene una string UTF-8.
+fn validate_user_str(ptr: u64, len: u64) -> bool {
+    validate_user_ptr(ptr, len)
 }
 
 
