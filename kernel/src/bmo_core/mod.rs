@@ -1,39 +1,73 @@
-//! BMO Core — Windowing API + UI + FS + Desktop.
+//! BMO Core — Windowing API + UI + FS + Desktop + BEF Loader.
 //!
-//! BMO Core is the "intermediate layer" between Ring 0 (kernel privileged)
-//! and Ring 3 (userland apps). It hosts the windowing API, desktop GUI,
-//! filesystem, and diagnostics.
+//! v1.8.8: BMO Core es el **kernel lógico de Ring 3** en la arquitectura
+//! Opus. Después de que Ring 0 termina el boot, le entrega el control.
 //!
-//! v1.8.8: this is the **kernel of Ring 3**. In the Opus architecture,
-//! BMO Core receives control from Ring 0 at the end of boot and is
-//! responsible for handing off to userland apps (via `iretq` or `sysret`).
+//! # Arquitectura limpia (v1.8.8)
 //!
-//! Unlike Ring 0, BMO Core doesn't require special privileges for its
-//! logic (most runs with Ring 0 implicit in the kernel image). However,
-//! its state is logically isolated: Ring 3 can only access BMO Core
-//! via the 256 syscalls 0x100..0x1FF (BMO API v2.0).
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │ bmo_abi/   ← contrato: tipos puros, syscall numbers, BEF     │
+//! │               (NO lógica, NO implementación)                  │
+//! └─────────────▲───────────────────────────────────────────────┘
+//!               │ usa
+//! ┌─────────────┴───────────────────────────────────────────────┐
+//! │ bmo_core/   ← este módulo: implementa los handlers, mantiene │
+//! │               el estado de ventanas, dispatch, etc.          │
+//! └─────────────────────────────────────────────────────────────┘
+//!               ▲
+//!               │ usa
+//! ┌─────────────┴───────────────────────────────────────────────┐
+//! │ bmo_gpu/    ← bridge a GPU: shims PE/ELF, BSF shaders       │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
 //!
-//! Submodules:
-//!   bmo_api       — BMO API v2.0: 256 syscalls, window manager, paint compositor
-//!   desktop       — Welcome + desktop Ring 0 supervisor
-//!   ui            — Framebuffer primitives + 8x16 font
-//!   diag          — Diagnostic overlay + events + telemetry
-//!   gustos        — Audio system (FM synth, chimes, procedural tracks)
-//!   bef           — BEF binary devourer (PE/ELF/native)
-//!   fs            — Filesystems: FAT32 + exFAT + ramdisk
+//! # Regla de oro
 //!
-//! Moved out (v1.8.8, Opus architecture):
-//!   bmo_abi       → moved to `kernel/src/bmo_abi/` (independent layer)
-//!   lang          → moved to `kernel/src/lang/` (independent layer)
+//! - `bmo_core` **importa** de `bmo_abi` (contrato).
+//! - `bmo_core` **NO redefine** tipos que ya están en `bmo_abi`.
+//! - Si algo de `bmo_core` debe ser visible para Ring 3, vive primero
+//!   en `bmo_abi` y `bmo_core` solo lo implementa.
 //!
-//! Contract with Ring 0:
-//!   - BMO Core can call `crate::*` freely (same image).
-//!   - Ring 0 exposes `crate::cpu::rdtsc`, `crate::cpu::busy_wait_ms` and
-//!     legacy syscalls that BMO Core uses for timing.
+//! # Submódulos
 //!
-//! Contract with Ring 3 (see ../ring3/mod.rs):
-//!   - BMO Core exposes 256 syscalls 0x100..0x1FF.
-//!   - Ring 3 only sees #[repr(C)] types and stable fn signatures.
+//! - `bmo_api`   — dispatcher 0x100..0x1FF + WindowManager + Paint
+//!                  Compositor. **Importa** syscall numbers de `bmo_abi`.
+//! - `desktop`   — welcome screen + desktop shell (Ring 0 supervisor).
+//! - `ui`        — framebuffer primitives + 8x16 font.
+//! - `diag`      — diagnostic overlay + events + telemetry.
+//! - `gustos`    — audio system (FM synth + chimes + procedural).
+//! - `bef`       — BEF binary format + loaders (PE/ELF/native).
+//!                  **Es la fuente única de verdad** del formato BEF
+//!                  (re-exportado en `bmo_abi::bef`).
+//! - `fs`        — filesystems (FAT32, exFAT, ramdisk) + VFS.
+//!
+//! # Relación con BMO ABI (v1.8.8)
+//!
+//! ```text
+//! Ring 3 app
+//!     │  syscall (con número de bmo_abi::syscalls::NR_*)
+//!     ▼
+//! arch::syscall_entry → bmo_core::bmo_api::dispatch_syscall
+//!     │  (bmo_api re-exporta syscall numbers de bmo_abi)
+//!     ▼
+//! bmo_api::syscall::sys_*  (implementaciones reales)
+//!     │
+//!     ▼
+//! bmo_api::BmoState (ventanas, handles, surfaces, timers)
+//! ```
+//!
+//! # Relación con BMO GPU
+//!
+//! ```text
+//! bmo_core::bmo_api::syscall (sys_xxx)
+//!     │ (cuando el syscall es de GPU)
+//!     ▼
+//! bmo_gpu::* (shims PE, BSF shaders, compositor)
+//!     │
+//!     ▼ (futuro)
+//! ring0::dev::amdgpu (driver real MMIO)
+//! ```
 
 #![allow(dead_code)]
 #![allow(static_mut_refs)]
