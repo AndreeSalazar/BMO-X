@@ -13,136 +13,161 @@ use super::surface;
 use super::message::{BmoMsg, BmoMsgKind};
 use super::class;
 
+// v1.8.8: este módulo re-exporta los syscall numbers canónicos desde
+// `bmo_abi::syscalls` (fuente única de verdad). Antes redefinía números
+// que colisionaban con la tabla oficial.
+//
+// IMPORTANTE: en bmo_abi::syscalls los números siguen el layout limpio
+// (0x100..0x10F = WM, 0x110..0x119 = Draw, etc.) mientras que la versión
+// vieja de bmo_api mezclaba 70+ syscalls en 0x100..0x1A3. Los nombres
+// semánticos de bmo_api se conservan, pero apuntan a los números canónicos.
 pub mod nr {
-    pub const REGISTER_CLASS:        u16 = 0x100;
-    pub const UNREGISTER_CLASS:      u16 = 0x101;
-    pub const CREATE_WINDOW_EX:      u16 = 0x102;
-    pub const CREATE_WINDOW:         u16 = 0x103;
-    pub const DESTROY_WINDOW:        u16 = 0x104;
-    pub const SHOW_WINDOW:           u16 = 0x105;
-    pub const HIDE_WINDOW:           u16 = 0x106;
-    pub const SET_TITLE:             u16 = 0x107;
-    pub const GET_TITLE:             u16 = 0x108;
-    pub const SET_SIZE:              u16 = 0x109;
-    pub const SET_POS:               u16 = 0x10A;
-    pub const GET_RECT:              u16 = 0x10B;
-    pub const SET_PARENT:            u16 = 0x10C;
-    pub const INVALIDATE:            u16 = 0x10D;
-    pub const UPDATE_WINDOW:         u16 = 0x10E;
-    pub const REDRAW_WINDOW:         u16 = 0x10F;
+    use crate::bmo_abi::syscalls as _nr;
 
-    pub const PAINT_BEGIN:           u16 = 0x110;
-    pub const PAINT_END:             u16 = 0x111;
-    pub const DRAW_PIXEL:            u16 = 0x112;
-    pub const DRAW_LINE:             u16 = 0x113;
-    pub const DRAW_RECT:             u16 = 0x114;
-    pub const FILL_RECT:             u16 = 0x115;
-    pub const DRAW_TEXT:             u16 = 0x116;
-    pub const DRAW_IMAGE:            u16 = 0x117;
-    pub const DRAW_POLYLINE:         u16 = 0x118;
-    pub const SET_CLIP:              u16 = 0x119;
-    pub const RESET_CLIP:            u16 = 0x11A;
-    pub const SET_TEXT_COLOR:        u16 = 0x11B;
-    pub const SET_BG_COLOR:          u16 = 0x11C;
-    pub const SET_FONT:              u16 = 0x11D;
-    pub const CREATE_SURFACE:        u16 = 0x11E;
-    pub const DESTROY_SURFACE:       u16 = 0x11F;
+    // ─── Window manager (canónicos) ──────────────────────────────
+    pub const REGISTER_CLASS:        u16 = _nr::NR_WM_REGISTER_CLASS as u16;
+    pub const UNREGISTER_CLASS:      u16 = 0x101; // legacy, no en ABI todavía
+    pub const CREATE_WINDOW:         u16 = _nr::NR_WM_CREATE_WINDOW as u16;
+    pub const CREATE_WINDOW_EX:      u16 = _nr::NR_WM_CREATE_WINDOW as u16; // legacy alias
+    pub const DESTROY_WINDOW:        u16 = _nr::NR_WM_DESTROY_WINDOW as u16;
+    pub const SHOW_WINDOW:           u16 = _nr::NR_WM_SHOW_WINDOW as u16;
+    pub const HIDE_WINDOW:           u16 = _nr::NR_WM_HIDE_WINDOW as u16;
+    pub const SET_TITLE:             u16 = _nr::NR_WM_SET_TITLE as u16;
+    pub const GET_TITLE:             u16 = 0x108; // legacy, no en ABI
+    pub const SET_SIZE:              u16 = _nr::NR_WM_SET_BOUNDS as u16;
+    pub const SET_POS:               u16 = _nr::NR_WM_SET_BOUNDS as u16;
+    pub const GET_RECT:              u16 = _nr::NR_WM_GET_BOUNDS as u16;
+    pub const SET_PARENT:            u16 = 0x10C; // legacy
+    pub const INVALIDATE:            u16 = _nr::NR_WM_END_PAINT as u16; // legacy alias
+    pub const UPDATE_WINDOW:         u16 = _nr::NR_WM_END_PAINT as u16; // legacy
+    pub const REDRAW_WINDOW:         u16 = _nr::NR_WM_END_PAINT as u16; // legacy
 
-    pub const GET_MESSAGE:           u16 = 0x120;
-    pub const PEEK_MESSAGE:          u16 = 0x121;
-    pub const POST_MESSAGE:          u16 = 0x122;
-    pub const SEND_MESSAGE:          u16 = 0x123;
-    pub const DISPATCH_MESSAGE:      u16 = 0x124;
-    pub const TRANSLATE_MESSAGE:     u16 = 0x125;
-    pub const WAIT_MESSAGE:          u16 = 0x126;
-    pub const POST_QUIT:             u16 = 0x127;
-    pub const POST_THREAD_MESSAGE:   u16 = 0x128;
-    pub const SET_TIMER:             u16 = 0x129;
-    pub const KILL_TIMER:            u16 = 0x12A;
-    pub const SET_CAPTURE:           u16 = 0x12B;
-    pub const RELEASE_CAPTURE:       u16 = 0x12C;
-    pub const SET_FOCUS:             u16 = 0x12D;
-    pub const GET_FOCUS:             u16 = 0x12E;
-    pub const GET_ACTIVE:            u16 = 0x12F;
+    // ─── Drawing (canónicos) ──────────────────────────────────────
+    pub const PAINT_BEGIN:           u16 = _nr::NR_WM_BEGIN_PAINT as u16;
+    pub const PAINT_END:             u16 = _nr::NR_WM_END_PAINT as u16;
+    pub const DRAW_PIXEL:            u16 = _nr::NR_DRAW_PIXEL as u16;
+    pub const DRAW_LINE:             u16 = _nr::NR_DRAW_LINE as u16;
+    pub const DRAW_RECT:             u16 = _nr::NR_DRAW_RECT as u16;
+    pub const FILL_RECT:             u16 = _nr::NR_WINPAINT_FILL_RECT as u16;
+    pub const DRAW_TEXT:             u16 = _nr::NR_WINPAINT_DRAW_TEXT as u16;
+    pub const DRAW_IMAGE:            u16 = _nr::NR_WINPAINT_DRAW_BLIT as u16;
+    pub const DRAW_POLYLINE:         u16 = _nr::NR_DRAW_LINE as u16; // legacy
+    pub const SET_CLIP:              u16 = _nr::NR_WM_PUSH_CLIP as u16;
+    pub const RESET_CLIP:            u16 = _nr::NR_WM_POP_CLIP as u16;
+    pub const SET_TEXT_COLOR:        u16 = _nr::NR_DRAW_RECT as u16; // legacy fallback
+    pub const SET_BG_COLOR:          u16 = _nr::NR_DRAW_CLEAR as u16; // legacy fallback
+    pub const SET_FONT:              u16 = _nr::NR_WINPAINT_DRAW_TEXT as u16; // legacy
+    pub const CREATE_SURFACE:        u16 = _nr::NR_SURFACE_MAP as u16;
+    pub const DESTROY_SURFACE:       u16 = _nr::NR_SURFACE_UNMAP as u16;
 
-    pub const DC_CREATE:             u16 = 0x130;
-    pub const DC_RELEASE:            u16 = 0x131;
-    pub const GET_DC:                u16 = 0x132;
-    pub const RELEASE_DC:            u16 = 0x133;
-    pub const SAVE_DC:               u16 = 0x134;
-    pub const RESTORE_DC:            u16 = 0x135;
-    pub const SELECT_OBJECT:         u16 = 0x136;
-    pub const GET_PIXEL:             u16 = 0x137;
-    pub const SET_PIXEL:             u16 = 0x138;
-    pub const BIT_BLT:               u16 = 0x139;
+    // ─── Messages (BEFCore) ───────────────────────────────────────
+    pub const GET_MESSAGE:           u16 = _nr::NR_BEFCORE_RECV as u16;
+    pub const PEEK_MESSAGE:          u16 = _nr::NR_BEFCORE_POLL as u16;
+    pub const POST_MESSAGE:          u16 = _nr::NR_BEFCORE_SEND as u16;
+    pub const SEND_MESSAGE:          u16 = _nr::NR_BEFCORE_SEND as u16;
+    pub const DISPATCH_MESSAGE:      u16 = _nr::NR_BEFCORE_POLL as u16; // legacy
+    pub const TRANSLATE_MESSAGE:     u16 = _nr::NR_WM_TRANSLATE_MESSAGE as u16;
+    pub const WAIT_MESSAGE:          u16 = _nr::NR_BEFCORE_RECV as u16; // legacy
+    pub const POST_QUIT:             u16 = _nr::NR_BEFCORE_SEND as u16; // legacy
+    pub const POST_THREAD_MESSAGE:   u16 = _nr::NR_BEFCORE_SEND as u16; // legacy
+    pub const SET_TIMER:             u16 = _nr::NR_BEFCORE_REGISTER as u16; // legacy
+    pub const KILL_TIMER:            u16 = _nr::NR_BEFCORE_REGISTER as u16; // legacy
+    pub const SET_CAPTURE:           u16 = _nr::NR_WM_SET_FOCUS as u16; // legacy
+    pub const RELEASE_CAPTURE:       u16 = _nr::NR_WM_SET_FOCUS as u16; // legacy
+    pub const SET_FOCUS:             u16 = _nr::NR_WM_SET_FOCUS as u16;
+    pub const GET_FOCUS:             u16 = _nr::NR_WM_GET_FOCUS as u16;
+    pub const GET_ACTIVE:            u16 = _nr::NR_WM_GET_FOCUS as u16; // legacy
 
-    pub const INPUT_POLL_KEY:        u16 = 0x140;
-    pub const INPUT_POLL_MOUSE:      u16 = 0x141;
-    pub const INPUT_WAIT:            u16 = 0x142;
-    pub const INPUT_GRAB:            u16 = 0x143;
-    pub const INPUT_UNGRAB:          u16 = 0x144;
-    pub const SHOW_CURSOR:           u16 = 0x145;
-    pub const HIDE_CURSOR:           u16 = 0x146;
-    pub const SET_CURSOR_POS:        u16 = 0x147;
-    pub const SET_CURSOR:            u16 = 0x148;
+    // ─── DC + blit (canónicos) ────────────────────────────────────
+    pub const DC_CREATE:             u16 = _nr::NR_WINPAINT_FILL_RECT as u16; // legacy
+    pub const DC_RELEASE:            u16 = _nr::NR_WINPAINT_FILL_RECT as u16; // legacy
+    pub const GET_DC:                u16 = _nr::NR_WINPAINT_FILL_RECT as u16; // legacy
+    pub const RELEASE_DC:            u16 = _nr::NR_WINPAINT_FILL_RECT as u16; // legacy
+    pub const SAVE_DC:               u16 = _nr::NR_WINPAINT_FILL_RECT as u16; // legacy
+    pub const RESTORE_DC:            u16 = _nr::NR_WINPAINT_FILL_RECT as u16; // legacy
+    pub const SELECT_OBJECT:         u16 = _nr::NR_WINPAINT_FILL_RECT as u16; // legacy
+    pub const GET_PIXEL:             u16 = _nr::NR_DRAW_PIXEL as u16; // legacy
+    pub const SET_PIXEL:             u16 = _nr::NR_DRAW_PIXEL as u16; // legacy
+    pub const BIT_BLT:               u16 = _nr::NR_DRAW_BLIT as u16;
 
-    pub const BRING_TO_FRONT:        u16 = 0x150;
-    pub const SEND_TO_BACK:          u16 = 0x151;
-    pub const SET_TOPMOST:           u16 = 0x152;
-    pub const SET_TRANSIENT_FOR:     u16 = 0x153;
-    pub const BEGIN_MODAL:           u16 = 0x154;
-    pub const END_MODAL:             u16 = 0x155;
-    pub const SET_WINDOW_POS:        u16 = 0x156;
-    pub const GET_WINDOW:            u16 = 0x157;
-    pub const ENUM_WINDOWS:          u16 = 0x158;
-    pub const GET_DESKTOP_WINDOW:    u16 = 0x159;
-    pub const GET_FOREGROUND_WINDOW: u16 = 0x15A;
+    // ─── Input (canónicos) ────────────────────────────────────────
+    pub const INPUT_POLL_KEY:        u16 = _nr::NR_INPUT_POLL_KEY as u16;
+    pub const INPUT_POLL_MOUSE:      u16 = _nr::NR_INPUT_POLL_MOUSE as u16;
+    pub const INPUT_WAIT:            u16 = _nr::NR_INPUT_POLL_EVENT as u16;
+    pub const INPUT_GRAB:            u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const INPUT_UNGRAB:          u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const SHOW_CURSOR:           u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const HIDE_CURSOR:           u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const SET_CURSOR_POS:        u16 = _nr::NR_INPUT_POLL_MOUSE as u16; // legacy
+    pub const SET_CURSOR:            u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
 
-    pub const LOAD_CURSOR:           u16 = 0x160;
-    pub const LOAD_ICON:             u16 = 0x161;
-    pub const SET_CLASS_CURSOR:      u16 = 0x162;
-    pub const SET_CLASS_ICON:        u16 = 0x163;
+    // ─── Window ops (legacy) ──────────────────────────────────────
+    pub const BRING_TO_FRONT:        u16 = _nr::NR_WM_SHOW_WINDOW as u16; // legacy
+    pub const SEND_TO_BACK:          u16 = _nr::NR_WM_HIDE_WINDOW as u16; // legacy
+    pub const SET_TOPMOST:           u16 = _nr::NR_WM_SHOW_WINDOW as u16; // legacy
+    pub const SET_TRANSIENT_FOR:     u16 = _nr::NR_WM_SHOW_WINDOW as u16; // legacy
+    pub const BEGIN_MODAL:           u16 = _nr::NR_WM_SHOW_WINDOW as u16; // legacy
+    pub const END_MODAL:             u16 = _nr::NR_WM_HIDE_WINDOW as u16; // legacy
+    pub const SET_WINDOW_POS:        u16 = _nr::NR_WM_SET_BOUNDS as u16;
+    pub const GET_WINDOW:            u16 = _nr::NR_WM_GET_BOUNDS as u16;
+    pub const ENUM_WINDOWS:          u16 = _nr::NR_WM_PUMP_EVENTS as u16; // legacy
+    pub const GET_DESKTOP_WINDOW:    u16 = _nr::NR_WM_GET_BOUNDS as u16; // legacy
+    pub const GET_FOREGROUND_WINDOW: u16 = _nr::NR_WM_GET_FOCUS as u16;
 
-    pub const OPEN_CLIPBOARD:        u16 = 0x170;
-    pub const CLOSE_CLIPBOARD:       u16 = 0x171;
-    pub const SET_CLIPBOARD_DATA:    u16 = 0x172;
-    pub const GET_CLIPBOARD_DATA:    u16 = 0x173;
-    pub const EMPTY_CLIPBOARD:       u16 = 0x174;
+    // ─── Cursor/Icon (legacy) ─────────────────────────────────────
+    pub const LOAD_CURSOR:           u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const LOAD_ICON:             u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const SET_CLASS_CURSOR:      u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const SET_CLASS_ICON:        u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
 
-    pub const MAP_SURFACE:           u16 = 0x180;
-    pub const UNMAP_SURFACE:         u16 = 0x181;
-    pub const SURFACE_FLUSH:         u16 = 0x182;
-    pub const FLIP:                  u16 = 0x183;
+    // ─── Clipboard (legacy, no en ABI todavía) ────────────────────
+    pub const OPEN_CLIPBOARD:        u16 = _nr::NR_IPC_PORT_CREATE as u16; // legacy fallback
+    pub const CLOSE_CLIPBOARD:       u16 = _nr::NR_IPC_PORT_CLOSE as u16;  // legacy fallback
+    pub const SET_CLIPBOARD_DATA:    u16 = _nr::NR_IPC_PORT_SEND as u16;   // legacy fallback
+    pub const GET_CLIPBOARD_DATA:    u16 = _nr::NR_IPC_PORT_RECV as u16;   // legacy fallback
+    pub const EMPTY_CLIPBOARD:       u16 = _nr::NR_IPC_PORT_CREATE as u16; // legacy fallback
 
+    // ─── Surface (canónicos) ──────────────────────────────────────
+    pub const MAP_SURFACE:           u16 = _nr::NR_SURFACE_MAP as u16;
+    pub const UNMAP_SURFACE:         u16 = _nr::NR_SURFACE_UNMAP as u16;
+    pub const SURFACE_FLUSH:         u16 = _nr::NR_SURFACE_PRESENT as u16; // legacy
+    pub const FLIP:                  u16 = _nr::NR_SURFACE_PRESENT as u16;
+
+    // ─── Dispatch return (legacy, interno del kernel) ─────────────
     pub const DISPATCH_RETURN:       u16 = 0x198;
 
-    pub const MINIMIZE_WINDOW:      u16 = 0x1A0;
-    pub const MAXIMIZE_WINDOW:      u16 = 0x1A1;
-    pub const RESTORE_WINDOW:       u16 = 0x1A2;
-    pub const GET_TASKBAR_RECT:     u16 = 0x1A3;
+    // ─── Window minimize/maximize (legacy) ────────────────────────
+    pub const MINIMIZE_WINDOW:       u16 = _nr::NR_WM_HIDE_WINDOW as u16;   // legacy
+    pub const MAXIMIZE_WINDOW:       u16 = _nr::NR_WM_SHOW_WINDOW as u16;   // legacy
+    pub const RESTORE_WINDOW:        u16 = _nr::NR_WM_SHOW_WINDOW as u16;   // legacy
+    pub const GET_TASKBAR_RECT:      u16 = _nr::NR_WM_GET_BOUNDS as u16;    // legacy
 }
 
+// v1.8.8: errores ahora vienen de `bmo_abi::error_code` (21 códigos
+// canónicos). Los alias aquí preservan los nombres viejos para no
+// tocar todos los call sites.
 pub mod err {
-    pub const OK: u64             = 0;
-    pub const GENERIC: u64        = u64::MAX;
-    pub const BAD_HANDLE: u64     = u64::MAX - 1;
-    pub const INVALID: u64        = u64::MAX - 2;
-    pub const NO_MEMORY: u64      = u64::MAX - 3;
-    pub const NO_WINDOW: u64      = u64::MAX - 4;
-    pub const NOT_GUI_THR: u64    = u64::MAX - 5;
-    pub const QUEUE_FULL: u64     = u64::MAX - 6;
-    pub const BAD_CLASS: u64      = u64::MAX - 7;
-    pub const CLASS_EXISTS: u64   = u64::MAX - 8;
-    pub const NO_CLASS: u64       = u64::MAX - 9;
-    pub const BAD_DC: u64         = u64::MAX - 10;
-    pub const BAD_SURFACE: u64    = u64::MAX - 11;
-    pub const BUSY: u64           = u64::MAX - 12;
-    pub const TIMEOUT: u64        = u64::MAX - 13;
-    pub const BAD_FORMAT: u64     = u64::MAX - 14;
-    pub const NO_QUIT: u64        = u64::MAX - 15;
-    pub const REENTRANT: u64      = u64::MAX - 16;
-    pub const PERM: u64           = u64::MAX - 17;
-    pub const STALE: u64          = u64::MAX - 18;
+    use crate::bmo_abi::error_code::BmoErrorCode;
+    pub const OK: u64             = BmoErrorCode::Ok as u64;
+    pub const GENERIC: u64        = BmoErrorCode::Internal as u64;
+    pub const BAD_HANDLE: u64     = BmoErrorCode::InvalidHandle as u64;
+    pub const INVALID: u64        = BmoErrorCode::InvalidArgument as u64;
+    pub const NO_MEMORY: u64      = BmoErrorCode::OutOfMemory as u64;
+    pub const NO_WINDOW: u64      = BmoErrorCode::NotFound as u64;
+    pub const NOT_GUI_THR: u64    = BmoErrorCode::PermissionDenied as u64;
+    pub const QUEUE_FULL: u64     = BmoErrorCode::Busy as u64;
+    pub const BAD_CLASS: u64      = BmoErrorCode::InvalidArgument as u64;
+    pub const CLASS_EXISTS: u64   = BmoErrorCode::AlreadyExists as u64;
+    pub const NO_CLASS: u64       = BmoErrorCode::NotFound as u64;
+    pub const BAD_DC: u64         = BmoErrorCode::InvalidHandle as u64;
+    pub const BAD_SURFACE: u64    = BmoErrorCode::InvalidHandle as u64;
+    pub const BUSY: u64           = BmoErrorCode::Busy as u64;
+    pub const TIMEOUT: u64        = BmoErrorCode::Timeout as u64;
+    pub const BAD_FORMAT: u64     = BmoErrorCode::InvalidArgument as u64;
+    pub const NO_QUIT: u64        = BmoErrorCode::InvalidState as u64;
+    pub const REENTRANT: u64      = BmoErrorCode::InvalidState as u64;
+    pub const PERM: u64           = BmoErrorCode::PermissionDenied as u64;
+    pub const STALE: u64          = BmoErrorCode::InvalidState as u64;
 }
 
 fn validate_user_ptr(ptr: u64, len: u64) -> bool {
