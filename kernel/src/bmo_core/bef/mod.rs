@@ -34,6 +34,7 @@ pub mod signing;
 pub mod tls;
 pub mod blake3;
 pub mod loader;
+pub mod compat;
 
 // Re-exports planos para uso ergonómico.
 
