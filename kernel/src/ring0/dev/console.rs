@@ -30,7 +30,15 @@ pub fn init() {
 }
 
 pub fn serial_write_byte(b: u8) {
-    while inb(COM1 + 5) & 0x20 == 0 {}
+    // Timeout guard: if COM1 is not wired/enabled by BIOS, inb returns
+    // 0x00 and THRE (bit 5) is never set. Without this timeout, every
+    // serial_write() call hangs the boot indefinitely. 100K iterations
+    // is ~50μs on Zen 3 — plenty for a real UART to drain.
+    let mut timeout = 100_000u32;
+    while inb(COM1 + 5) & 0x20 == 0 {
+        timeout = timeout.saturating_sub(1);
+        if timeout == 0 { return; }
+    }
     outb(COM1, b);
 }
 

@@ -107,7 +107,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.8.2";
+    let sub = b"Bare Metal Orchestrator  ::  v1.8.5";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);
@@ -257,6 +257,7 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     if msg_bytes.is_empty() {
         // No message — just paint the arrow alone so the user sees
         // that a log entry was emitted but had no body.
+        unsafe { core::arch::asm!("sfence"); }
         return;
     }
     if msg_bytes.len() > text_max_cols {
@@ -274,6 +275,11 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     } else {
         text(addr, s, w, h, msg_x, y, msg_bytes, 0xFFE6F1F5);
     }
+    // SFENCE: ensure all text pixel writes are flushed from the
+    // WC (Write-Combining) framebuffer buffer before returning.
+    // Without this trailing SFENCE, scattered glyph pixel writes
+    // may sit in the CPU's WC buffer and never reach the display.
+    unsafe { core::arch::asm!("sfence"); }
 }
 
 fn phase_color(phase: &str) -> u32 {
@@ -313,7 +319,6 @@ fn fb() -> (*mut u32, usize, usize, usize) {
     (addr, w, h, s)
 }
 
-#[inline(never)]
 fn put(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, c: u32) {
     if x >= w || y >= h { return; }
     unsafe { addr.add(y * s + x).write_volatile(c); }
@@ -372,7 +377,6 @@ fn simple_gradient_v(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: 
     gradient_v(addr, s, w, h, x, y, rw, rh, top, bot);
 }
 
-#[inline(never)]
 fn text(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &[u8], color: u32) {
     let mut cx = x;
     for &ch in txt {
@@ -390,7 +394,6 @@ fn text(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &
     }
 }
 
-#[inline(never)]
 fn text_scaled(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &[u8], color: u32, scale: u32) {
     let sc = scale.max(1) as usize;
     let gw = 8 * sc;

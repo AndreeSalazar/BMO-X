@@ -605,7 +605,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         };
 
         // Title
-        draw_str(b"FastOS KERNEL FAULT v0.9.3", 20, 20, 0xFFFFFFFF);
+        draw_str(b"FastOS KERNEL FAULT v1.8.5", 20, 20, 0xFFFFFFFF);
 
         // Fault name
         draw_str(b"Vector: ", 20, 50, 0xFFFFFF00);
@@ -630,7 +630,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         draw_str(to_hex(rsp), 84, 170, 0xFFFFAAFF);
 
         // Build version footer
-        draw_str(b"v0.9.3  ::  Heap:16MB  Watchdog:5s  Fault-Safe", 20, 210, 0xFFCCCCCC);
+        draw_str(b"v1.8.5  ::  Heap:16MB  Watchdog:5s  Fault-Safe", 20, 210, 0xFFCCCCCC);
 
         // Instruction hint
         draw_str(b"CPU halted. Note CR2 + RIP, then re-flash with -Rollback if needed.", 20, 240, 0xFF8B949E);

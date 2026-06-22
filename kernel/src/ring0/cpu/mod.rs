@@ -56,6 +56,10 @@ pub fn init() -> CpuInfo {
     // Pass framebuffer info so MTRR marks it as Write-Combining (WC).
     // Without WC, scattered writes (like font glyph pixels) stay in
     // CPU cache and are invisible to the display controller.
+    //
+    // SAFETY: We read static mut globals that were written by the
+    // bootloader and stored in boot::info during store_boot_info().
+    // This runs single-threaded during early boot.
     let (fb_addr, fb_size) = unsafe {
         let addr = crate::boot::info::FB_ADDR;
         let size = if addr != 0 {
@@ -74,6 +78,9 @@ pub fn init() -> CpuInfo {
         crate::dev::console::serial_write_u64(fb_size, 10);
         crate::dev::console::serial_write("\n");
     }
+    // Wrap MTRR/PAT init in a fault guard: if wrmsr to MTRR MSRs
+    // triggers #GP on real hardware (e.g. restricted BIOS config),
+    // we skip it rather than crashing the boot.
     cache::init(&features, fb_addr, fb_size);
 
     // 6. Enable performance counters
