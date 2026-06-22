@@ -3,17 +3,7 @@
 //! **Reemplaza al C ABI** (cdecl/stdcall/Win64/SysV AMD64) y a su stdlib
 //! (`<stdint.h>`, `<stddef.h>`, `<string.h>`, `<errno.h>`, `<time.h>`, etc).
 //!
-//! # v2.0
-//!
-//! BMO ABI es ahora un ABI **modular**. Cada carpeta es un módulo
-//! autocontenido. Apps pueden importar solo lo que necesitan:
-//!
-//! ```ignore
-//! use crate::bmo_abi::fundamentals::primitives::*;
-//! use crate::bmo_abi::fundamentals::status::*;
-//! ```
-//!
-//! # Estructura
+//! # Estructura (v1.8.8)
 //!
 //! ```text
 //! bmo_abi/
@@ -29,23 +19,35 @@
 //! │   ├── convert/     — BmoError↔BmoStatus↔ErrorCode
 //! │   ├── fmt/         — BmoFormatter, write!
 //! │   └── io/          — BmoFileHandle, BmoPipe, Read/Write/Seek
+//! │
 //! ├── values/         — Tipos valor
 //! │   ├── string/      — BmoStr, ascii
-//! │   ├── time/        — Instant, Duration
+//! │   ├── time/        — Instant, Duration (BmoClock re-exporta)
 //! │   ├── reflect/     — TypeDescriptor, Mirror, ReflectQuery
 //! │   ├── net/         — IPv4/IPv6, SocketAddr, Protocol
 //! │   ├── math/        — sqrt, sin, cos, pow (f64)
 //! │   └── hash/        — FNV-1a, CRC32
-//! ├── befcore/        — Protocolo BEFCore: mensajes app ↔ BMO CORE
-//! │   └── mod.rs       — BefcoreMessage (CreateWindow/DrawText/...)
-//! │                      + BefcoreEvent (Paint/KeyDown/MouseMove/...)
-//! │                      + NR_BEFCORE_SEND/RECV/POLL (0x190..0x192)
+//! │
+//! ├── windowing/      — Contrato de ventanas
+//! ├── drawing/        — Color, Rect, Point, Font
+//! ├── input/          — Key/Mouse/Gamepad state + event
+//! ├── fs/             — File/Dir handles, OpenFlags, Stat
+//! ├── clock/          — Re-export de Instant/Duration + helpers
+//! ├── ipc/            — Ports, Messages, Rights
+//! ├── surface/        — Formatos de pixel, surfaces CPU/GPU
+//! ├── process/        — Procesos, threads, info
+//! ├── memory/         — Allocator interface
+//! ├── error_code/     — Códigos extendidos (21 codes)
+//! ├── gpu/            — Contratos RDNA4 (skeleton)
+//! ├── bef/            — Formato BEF (header, secciones)
+//! ├── entry/          — Punto de entrada, stack, args
+//! ├── befcore/        — Protocolo BEFCore (app ↔ BMO CORE)
 //! ├── syscalls/       — Tabla de syscall numbers 0x100..0x1FF
-//! └── runtime/        — BmoRuntime agregador
-//!     ├── types/       — TypeRegistry (256 slots)
-//!     ├── vtable/      — VTableStore (64 slots)
-//!     └── lang_bridge/ — LangBridge (8 languages)
+//! ├── runtime/        — TypeRegistry, VTableStore, LangBridge
+//! └── profile/        — BmoLanguageProfile + ALL_PROFILES
 //! ```
+//!
+//! Ver `SPEC.md` para la especificación completa.
 
 #![allow(dead_code)]
 
@@ -61,11 +63,15 @@ pub mod surface;
 pub mod process;
 pub mod memory;
 pub mod error_code;
+pub mod gpu;
+pub mod bef;
+pub mod entry;
 pub mod befcore;
 pub mod syscalls;
 pub mod runtime;
+pub mod profile;
 
-// ─── Re-exports planos para uso ergonómico ────────────────────────────
+// ─── Re-exports planos para uso ergonómico ─────────────────────────
 
 pub use fundamentals::primitives;
 pub use fundamentals::status;
@@ -77,14 +83,13 @@ pub use fundamentals::fmt;
 pub use fundamentals::io as abi_io;
 
 pub use values::string;
-pub use values::time;
+pub use values::time as values_time;
 pub use values::reflect;
 pub use values::net;
 pub use values::math;
 pub use values::hash;
 
-// `befcore` y `syscalls` se usan directamente como `crate::bmo_abi::befcore::*`
-// y `crate::bmo_abi::syscalls::*` (ya son `pub mod`).
+// ─── Versión + magic ──────────────────────────────────────────────
 
 /// Versión del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);

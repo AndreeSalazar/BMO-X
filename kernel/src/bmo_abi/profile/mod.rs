@@ -1,0 +1,196 @@
+//! `bmo_abi::profile` — Perfiles de lenguaje.
+//!
+//! Cada frontend (C, BMO, Java-BMO, Python-BMO, ...) implementa un
+//! `BmoLanguageProfile` que describe **cómo** se compila el código
+//! fuente a BEF.
+//!
+//! ## Modelo
+//!
+//! ```text
+//!  ┌─────────────────────────────────────────────────────────────┐
+//!  │ BmoLanguageProfile                                          │
+//!  │   name:        &'static str                                 │
+//!  │   frontend:    FrontendKind (C | BMO | JavaBMO | PythonBMO) │
+//!  │   backend:     BackendKind  (AotX86_64 | PortableIR)        │
+//!  │   runtime:     RuntimeKind  (None | CMin | JavaCore | ...)  │
+//!  │   output:      BEF                                          │
+//!  └─────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! El kernel **no compila** nada. Solo provee:
+//! - el BEF loader (`crate::bmo_core::bef::loader`)
+//! - los runtimes opcionales (`crate::bmo_abi::profile::RuntimeKind`)
+//! - los syscalls (`crate::bmo_abi::syscalls`)
+//!
+//! Compilar es **offline** (el dev lo hace en su máquina). El kernel
+//! solo ejecuta.
+
+#![allow(dead_code)]
+
+// ─── Frontend / backend / runtime kinds ───────────────────────────
+
+/// Frontend soportado.
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrontendKind {
+    /// Lenguaje BMO nativo.
+    Bmo     = 0,
+    /// C estándar.
+    C       = 1,
+    /// C++ (subset + runtime).
+    Cpp     = 2,
+    /// Rust (subset + runtime).
+    Rust    = 3,
+    /// Java-BMO (no JVM completo).
+    JavaBmo = 4,
+    /// Python-BMO (typed + dynamic).
+    PythonBmo = 5,
+    /// Ada.
+    Ada     = 6,
+    /// Lenguaje custom / third-party.
+    Custom  = 0xFF,
+}
+
+impl FrontendKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Bmo => "bmo",
+            Self::C => "c",
+            Self::Cpp => "cpp",
+            Self::Rust => "rust",
+            Self::JavaBmo => "java-bmo",
+            Self::PythonBmo => "python-bmo",
+            Self::Ada => "ada",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+/// Backend de compilación.
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackendKind {
+    /// AOT puro x86-64 (default).
+    AotX86_64 = 0,
+    /// IR portable (cualquier CPU).
+    PortableIR = 1,
+    /// AOT RDNA4 (GPU shaders, no implementado todavía).
+    AotRdna4   = 2,
+}
+
+impl BackendKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::AotX86_64 => "aot-x86_64",
+            Self::PortableIR => "portable-ir",
+            Self::AotRdna4 => "aot-rdna4",
+        }
+    }
+}
+
+/// Runtime requerido por el lenguaje.
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuntimeKind {
+    /// Sin runtime. AOT puro, binario minúsculo.
+    None      = 0,
+    /// Runtime C mínimo (`_start`, `memcpy`, syscall wrappers).
+    CMin      = 1,
+    /// Runtime C++ (constructors, vtables).
+    CppMin    = 2,
+    /// Runtime Java-BMO (class model, strings, arrays).
+    JavaCore  = 3,
+    /// Runtime Python-BMO (dicts, types dinámicos).
+    PythonCore = 4,
+    /// Runtime Rust (panic handler, allocator).
+    RustCore  = 5,
+}
+
+impl RuntimeKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::CMin => "c_min",
+            Self::CppMin => "cpp_min",
+            Self::JavaCore => "java_core",
+            Self::PythonCore => "python_core",
+            Self::RustCore => "rust_core",
+        }
+    }
+}
+
+// ─── Language profile ─────────────────────────────────────────────
+
+/// Perfil de un lenguaje. Define cómo se compila a BEF.
+#[derive(Clone, Copy, Debug)]
+pub struct BmoLanguageProfile {
+    /// Nombre legible (ej: "C", "BMO", "Java-BMO").
+    pub name: &'static str,
+    /// Frontend usado.
+    pub frontend: FrontendKind,
+    /// Backend usado.
+    pub backend: BackendKind,
+    /// Runtime requerido.
+    pub runtime: RuntimeKind,
+    /// ABI que se usa para llamadas al sistema.
+    pub uses_bmo_abi: bool,
+    /// `true` si el lenguaje puede correr en Ring 0 (drivers).
+    pub ring0_capable: bool,
+}
+
+impl BmoLanguageProfile {
+    /// Perfil canónico de C: AOT puro, runtime CMin.
+    pub const C: Self = Self {
+        name: "C",
+        frontend: FrontendKind::C,
+        backend: BackendKind::AotX86_64,
+        runtime: RuntimeKind::CMin,
+        uses_bmo_abi: true,
+        ring0_capable: true,
+    };
+
+    /// Perfil canónico de BMO: AOT puro, sin runtime.
+    pub const BMO: Self = Self {
+        name: "BMO",
+        frontend: FrontendKind::Bmo,
+        backend: BackendKind::AotX86_64,
+        runtime: RuntimeKind::None,
+        uses_bmo_abi: true,
+        ring0_capable: true,
+    };
+
+    /// Perfil de Java-BMO: AOT + JavaCore runtime.
+    pub const JAVA_BMO: Self = Self {
+        name: "Java-BMO",
+        frontend: FrontendKind::JavaBmo,
+        backend: BackendKind::AotX86_64,
+        runtime: RuntimeKind::JavaCore,
+        uses_bmo_abi: true,
+        ring0_capable: false,
+    };
+
+    /// Perfil de Python-BMO: AOT typed + PythonCore runtime.
+    pub const PYTHON_BMO: Self = Self {
+        name: "Python-BMO",
+        frontend: FrontendKind::PythonBmo,
+        backend: BackendKind::AotX86_64,
+        runtime: RuntimeKind::PythonCore,
+        uses_bmo_abi: true,
+        ring0_capable: false,
+    };
+}
+
+// ─── Profiles predefinidos ────────────────────────────────────────
+
+/// Todos los perfiles predefinidos.
+pub const ALL_PROFILES: &[BmoLanguageProfile] = &[
+    BmoLanguageProfile::BMO,
+    BmoLanguageProfile::C,
+    BmoLanguageProfile::JAVA_BMO,
+    BmoLanguageProfile::PYTHON_BMO,
+];
+
+/// Busca un perfil por nombre.
+pub fn find_profile(name: &str) -> Option<&'static BmoLanguageProfile> {
+    ALL_PROFILES.iter().find(|p| p.name == name)
+}

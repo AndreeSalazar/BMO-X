@@ -42,7 +42,7 @@ pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
     // Do NOT call init_fpu() again here — it would trigger #NM (CR0.TS set
     // by lazy FPU) and the handler clears TS, defeating lazy switching.
 
-    bmo_abi::time::init_clock(crate::cpu::rdtsc(), cpu.tsc_freq);
+    bmo_abi::values::time::init_clock(crate::cpu::rdtsc(), cpu.tsc_freq);
 
     // v1.6.1: Don't install new PML4 here. The page allocator hasn't
     // been initialized yet (Phase 1 hasn't run). We'll do it after

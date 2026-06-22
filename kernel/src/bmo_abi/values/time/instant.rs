@@ -11,7 +11,7 @@
 //! posteriores retornan valores correctos.
 
 use crate::bmo_abi::primitives::bx_u64;
-use crate::bmo_abi::time::duration::BmoDuration;
+use crate::bmo_abi::values::time::duration::BmoDuration;
 use crate::bmo_abi::fundamentals::sync::{BmoAtomicU64, MemOrder};
 
 #[repr(transparent)]
