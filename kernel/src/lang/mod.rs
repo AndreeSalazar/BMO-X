@@ -47,6 +47,7 @@ pub mod common;
 pub mod frontends;
 pub mod backends;
 pub mod runtimes;
+pub mod bef;
 pub mod pipeline;
 pub mod linker;
 pub mod tests;
