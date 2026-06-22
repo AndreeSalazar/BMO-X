@@ -6,6 +6,6 @@
 
 #![allow(dead_code)]
 
-pub use crate::lang::bmo::parser::Parser;
-pub use crate::lang::bmo::parser::ast as ast_compat;
-pub use crate::lang::bmo::parser::ast::{Ast, Stmt, Expr, Param, TypeAnnotation, BinOp, UnaryOp, ExternItem};
+pub use crate::lang::bmo::parser::ast as ast;
+pub use crate::lang::bmo::parser::ast::Parser;
+pub use ast::{Ast, Stmt, Expr, Param, TypeAnnotation, BinOp, UnaryOp, ExternItem};

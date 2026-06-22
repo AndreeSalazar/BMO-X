@@ -24,6 +24,11 @@
 
 #![allow(dead_code)]
 
+extern crate alloc;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use super::source::Span;
 use super::types::{IrTypeId, NamedTypeId};
 use core::fmt;
@@ -50,7 +55,7 @@ impl Module {
             return StrId(idx as u32);
         }
         let id = StrId(self.strings.len() as u32);
-        self.strings.push(s.to_string());
+        self.strings.push(String::from(s));
         id
     }
 

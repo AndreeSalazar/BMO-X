@@ -79,7 +79,7 @@ pub fn preprocess(source: &[u8], filename: &str) -> Result<PreprocessResult, Pre
     // Macros predefinidas.
     macros.insert("__STDC__".into(), Macro::Object("1".into()));
     macros.insert("__STDC_VERSION__".into(), Macro::Object("201112".into()));
-    macros.insert("__FILE__".into(), Macro::Object(format!("\"{}\"", filename)));
+    macros.insert("__FILE__".into(), Macro::Object(alloc::format!("\"{}\"", filename)));
     macros.insert("__LINE__".into(), Macro::Object("1".into()));
     // Macros de FastOS.
     macros.insert("__FastOS__".into(), Macro::Object("1".into()));
@@ -98,15 +98,15 @@ pub fn preprocess(source: &[u8], filename: &str) -> Result<PreprocessResult, Pre
             // Es una directiva de preprocessor.
             let dir_line = rest.trim_start();
             let mut parts = dir_line.splitn(2, char::is_whitespace);
-            let directive = parts.next().unwrap_or("").to_string();
-            let arg = parts.next().unwrap_or("").trim().to_string();
+            let directive = String::from(parts.next().unwrap_or(""));
+            let arg = String::from(parts.next().unwrap_or("").trim());
 
             // Si estamos en un branch false, ignorar todo excepto #if/#ifdef/#ifndef/#endif/#else/#elif.
             let in_active = if_stack.iter().all(|&b| b);
 
             match directive.as_str() {
                 "include" if in_active => {
-                    output.push_str(&format!("// #include {}\n", arg));
+                    output.push_str(&alloc::format!("// #include {}\n", arg));
                 }
                 "define" if in_active => {
                     if let Some((name, rest)) = split_define(&arg) {
@@ -115,9 +115,9 @@ pub fn preprocess(source: &[u8], filename: &str) -> Result<PreprocessResult, Pre
                         } else if let Some((params, body)) = parse_function_macro(&rest) {
                             Macro::Function { params, body }
                         } else {
-                            Macro::Object(rest.to_string())
+                            Macro::Object(String::from(rest))
                         };
-                        macros.insert(name.to_string(), m);
+                        macros.insert(String::from(name), m);
                     }
                 }
                 "undef" if in_active => {
@@ -198,11 +198,11 @@ fn parse_function_macro(rest: &str) -> Option<(Vec<String>, String)> {
     if !rest.starts_with('(') { return None; }
     let close = rest.find(')')?;
     let params_str = &rest[1..close];
-    let body = rest[close+1..].trim().to_string();
+    let body = String::from(rest[close+1..].trim());
     let params: Vec<String> = if params_str.trim().is_empty() {
         Vec::new()
     } else {
-        params_str.split(',').map(|p| p.trim().to_string()).collect()
+        params_str.split(',').map(|p| String::from(p.trim())).collect()
     };
     Some((params, body))
 }

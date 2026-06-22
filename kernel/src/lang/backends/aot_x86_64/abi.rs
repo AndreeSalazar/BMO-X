@@ -85,7 +85,7 @@ impl Reg {
 
 /// Convierte índice de argumento (0..5) a registro.
 #[inline]
-pub const fn arg_reg(i: usize) -> Option<Reg> {
+pub fn arg_reg(i: usize) -> Option<Reg> {
     ARG_REGS.get(i).copied()
 }
 

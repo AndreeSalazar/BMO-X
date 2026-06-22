@@ -5,6 +5,9 @@
 
 #![allow(dead_code)]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 use super::source::Span;
 use core::fmt;
 
@@ -150,6 +153,14 @@ impl Diagnostics {
         self.push(Diagnostic::warning(code, msg, span));
     }
 
+    /// Variante que acepta cualquier Display.
+    pub fn error_display(&mut self, code: DiagCode, msg: impl core::fmt::Display, span: Span) {
+        use core::fmt::Write;
+        let mut s = String::new();
+        let _ = write!(s, "{}", msg);
+        self.push(Diagnostic::error(code, s, span));
+    }
+
     pub fn has_errors(&self) -> bool {
         self.items.iter().any(|d| d.is_error())
     }
@@ -160,10 +171,10 @@ impl Diagnostics {
 
     /// Convierte los diagnósticos a un solo String (uno por línea).
     pub fn to_string_lossy(&self) -> String {
+        use core::fmt::Write;
         let mut s = String::new();
         for d in &self.items {
-            s.push_str(&d.to_string());
-            s.push('\n');
+            let _ = write!(s, "{}\n", d);
         }
         s
     }
