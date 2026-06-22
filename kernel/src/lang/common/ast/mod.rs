@@ -30,8 +30,37 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use super::source::Span;
-use super::types::{IrTypeId, NamedTypeId};
+use super::types::{IrType, IrTypeId, NamedTypeId};
 use core::fmt;
+
+// ─── TypeTable ──────────────────────────────────────────────────────
+
+/// Tabla de tipos canónicos (IrType) deduplicados por valor.
+#[derive(Clone, Debug, Default)]
+pub struct TypeTable {
+    types: Vec<IrType>,
+}
+
+impl TypeTable {
+    pub fn new() -> Self { Self { types: Vec::new() } }
+
+    /// Intern un tipo: si ya existe, devuelve su id. Si no, lo agrega.
+    pub fn intern(&mut self, ty: IrType) -> IrTypeId {
+        for (i, t) in self.types.iter().enumerate() {
+            if *t == ty { return IrTypeId(i as u32); }
+        }
+        let id = IrTypeId(self.types.len() as u32);
+        self.types.push(ty);
+        id
+    }
+
+    pub fn get(&self, id: IrTypeId) -> Option<IrType> {
+        self.types.get(id.0 as usize).copied()
+    }
+
+    pub fn len(&self) -> usize { self.types.len() }
+    pub fn is_empty(&self) -> bool { self.types.is_empty() }
+}
 
 // ─── Módulo ─────────────────────────────────────────────────────────
 
@@ -42,12 +71,22 @@ pub struct Module {
     pub items: Vec<Item>,
     /// Tabla de strings (interner) para identificadores.
     strings: Vec<String>,
+    /// Tabla de tipos canónicos.
+    pub types: TypeTable,
 }
 
 impl Module {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), items: Vec::new(), strings: Vec::new() }
+        Self {
+            name: name.into(),
+            items: Vec::new(),
+            strings: Vec::new(),
+            types: TypeTable::new(),
+        }
     }
+
+    /// Helper: internar un tipo primitivo.
+    pub fn prim(&mut self, ty: IrType) -> IrTypeId { self.types.intern(ty) }
 
     /// Intern un string. Devuelve un ID opaco.
     pub fn intern(&mut self, s: &str) -> StrId {

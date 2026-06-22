@@ -33,5 +33,5 @@ pub mod ast;
 pub use source::{Pos, Span, FileId};
 pub use diagnostics::{Diagnostic, Diagnostics, Severity, DiagCode};
 pub use types::{IrType, IrTypeId, NamedTypeId, IrTypeIdList};
-pub use ast::{Module, Item, Stmt, Expr, Block, Param, Field, SwitchCase, StrId,
+pub use ast::{Module, TypeTable, Item, Stmt, Expr, Block, Param, Field, SwitchCase, StrId,
               Linkage, TypeDeclKind, ExternKind, BinOp, UnaryOp};
