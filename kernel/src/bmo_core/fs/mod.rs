@@ -1,8 +1,11 @@
 //! Filesystem subsystem for FastOS.
 //!
+//! v1.8.8: usa `BmoErrorCode` del ABI para errores visibles a Ring 3.
+//! Antes tenía un `DiskError` local que no se podía mapear al ABI.
+//!
 //! Modular architecture:
 //!   - VFS (Virtual File System) — unified API
-//!   - Inode — file descriptor table
+//!   - Inode — file descriptor table (usa BmoFileType/BmoPerms)
 //!   - Mount — mount point management
 //!   - FAT32 — boot partition (UEFI compatible, read-only)
 //!   - exFAT — data partition (read-write, modern)
@@ -19,31 +22,14 @@ pub mod exfat;
 pub mod ramdisk;
 pub mod ramdisk_device;
 
-/// Disk error type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiskError {
-    NotFound,
-    Timeout,
-    IOError,
-    InvalidLba,
-    NoMedia,
-    BadBlock,
-    Uninitialized,
-}
+use crate::bmo_abi::error_code::BmoErrorCode;
 
-impl DiskError {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            DiskError::NotFound => "not found",
-            DiskError::Timeout => "timeout",
-            DiskError::IOError => "I/O error",
-            DiskError::InvalidLba => "invalid LBA",
-            DiskError::NoMedia => "no media",
-            DiskError::BadBlock => "bad block",
-            DiskError::Uninitialized => "uninitialized",
-        }
-    }
-}
+/// Disk error — re-export del ABI. BmoErrorCode tiene 21 códigos que
+/// cubren todos los errores de disk (NotFound, Timeout, Io, etc).
+///
+/// Los drivers de bajo nivel pueden mapear sus errores específicos
+/// a BmoErrorCode en el punto donde cruzan la frontera ring 0↔ring 3.
+pub type DiskError = BmoErrorCode;
 
 /// Read-only block device trait.
 pub trait DiskReader {

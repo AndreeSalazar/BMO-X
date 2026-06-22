@@ -1,9 +1,19 @@
 //! v3.0 — Tabla de ventanas, clases, Z-order doubly-linked, parent/child tree.
 //!
+//! v1.8.8: este módulo es **interno del kernel** (no del ABI). Las
+//! constantes `style::WS_*` y `wf::*` son Win32-like y no se exponen
+//! a Ring 3. El **contrato** con Ring 3 está en
+//! `crate::bmo_abi::windowing` (`BmoWindowClass`, `BmoWindowCreateInfo`,
+//! `BmoWindowEvent`, `BmoKeyEvent`, etc.).
+//!
 //! `WINDOWS[256]` es la tabla plana. Z-order es doubly-linked para O(1) remove.
 //! Dirty rect per-window para selective repaint.
 
 #![allow(dead_code)]
+
+// Re-export del contrato ABI para que el resto de bmo_api pueda
+// importar tipos de ventana de un solo lugar.
+pub use crate::bmo_abi::windowing as abi_windowing;
 
 pub const MAX_WINDOWS: usize = 256;
 pub const MAX_CLASSES: usize = 32;

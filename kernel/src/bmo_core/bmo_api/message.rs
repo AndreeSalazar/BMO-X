@@ -1,4 +1,12 @@
 //! v2.0 — Mensajes BMO API (struct 32 bytes + enum kind).
+//!
+//! v1.8.8: este es el formato **interno** del kernel para el message
+//! loop. El contrato con Ring 3 está en:
+//! - `crate::bmo_abi::windowing::BmoWindowEvent` (eventos de ventana)
+//! - `crate::bmo_abi::befcore::BefcoreMessage` (mensajes app ↔ BMO CORE)
+//!
+//! El kernel convierte entre este formato interno y el formato ABI
+//! en `bmo_api::event::from_internal()` y `to_internal()`.
 
 #![allow(dead_code)]
 

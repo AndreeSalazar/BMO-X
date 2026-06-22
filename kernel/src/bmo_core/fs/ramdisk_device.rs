@@ -80,7 +80,7 @@ impl DiskReader for RamDiskDevice {
     fn read_sectors(&mut self, lba: u64, count: u32, buf: &mut [u8]) -> Result<(), DiskError> {
         let start = lba as usize;
         let end = start + count as usize;
-        if end > DEVICE_SECTORS { return Err(DiskError::InvalidLba); }
+        if end > DEVICE_SECTORS { return Err(DiskError::InvalidArgument); }
         let mut offset = 0usize;
         for i in start..end {
             let copy_len = SECTOR_SIZE.min(buf.len() - offset);
@@ -99,7 +99,7 @@ impl DiskWriter for RamDiskDevice {
     fn write_sectors(&mut self, lba: u64, count: u32, buf: &[u8]) -> Result<(), DiskError> {
         let start = lba as usize;
         let end = start + count as usize;
-        if end > DEVICE_SECTORS { return Err(DiskError::InvalidLba); }
+        if end > DEVICE_SECTORS { return Err(DiskError::InvalidArgument); }
         let mut offset = 0usize;
         for i in start..end {
             let copy_len = SECTOR_SIZE.min(buf.len() - offset);
@@ -113,3 +113,4 @@ impl DiskWriter for RamDiskDevice {
         Ok(())
     }
 }
+

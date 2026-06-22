@@ -55,7 +55,7 @@ pub fn open(path: &str) -> Result<u32, &'static str> {
             match super::exfat::open_file(path, disk) {
                 Ok(fd) => {
                     let id = inode::InodeId::new(mp.mount_id, fd as u64);
-                    inode::open(id, inode::InodeType::File, 0)
+                    inode::open(id, inode::InodeType::Regular, 0)
                         .ok_or("inode table full")
                 }
                 Err(e) => Err(e.as_str()),
@@ -63,12 +63,12 @@ pub fn open(path: &str) -> Result<u32, &'static str> {
         }
         mount::FsType::ProcFs | mount::FsType::DevFs => {
             let id = inode::InodeId::new(mp.mount_id, 1);
-            inode::open(id, inode::InodeType::File, 0)
+            inode::open(id, inode::InodeType::Regular, 0)
                 .ok_or("inode table full")
         }
         mount::FsType::TmpFs => {
             let id = inode::InodeId::new(mp.mount_id, 1);
-            inode::open(id, inode::InodeType::File, 0)
+            inode::open(id, inode::InodeType::Regular, 0)
                 .ok_or("inode table full")
         }
         mount::FsType::None => Err("no filesystem"),
@@ -149,7 +149,7 @@ pub fn create(path: &str) -> Result<u32, &'static str> {
             match super::exfat::create_file(name, disk) {
                 Ok(fd) => {
                     let id = inode::InodeId::new(mp.mount_id, fd as u64);
-                    inode::open(id, inode::InodeType::File, 0)
+                    inode::open(id, inode::InodeType::Regular, 0)
                         .ok_or("inode table full")
                 }
                 Err(e) => Err(e.as_str()),
@@ -206,3 +206,4 @@ pub fn init() {
 
     console::serial_write("[vfs] VFS initialized\n");
 }
+
