@@ -99,9 +99,12 @@ pub fn draw(fb: &Framebuffer, time: u64) {
     let w = fb.width as i32;
     let h = fb.height as i32;
     if w <= 0 || h <= 0 { return; }
+    crate::dev::console::serial_write("[wallpaper] start\n");
 
     // ── 1) Gradiente base por scanline ─────────────────────────────
+    crate::dev::console::serial_write("[wallpaper] step 1: gradient\n");
     fb.gradient_v(0, 0, fb.width, fb.height, 0xFF050B18, 0xFF0A101F);
+    crate::dev::console::serial_write("[wallpaper] step 1: done\n");
 
     // ── 2) Mesh gradient: dos blobs radiales ───────────────────────
     // t controla shimmer lento.
@@ -185,9 +188,11 @@ pub fn draw(fb: &Framebuffer, time: u64) {
     }
 
     // ── 3) Aurora: banda elíptica diagonal con glow mint tenue ─────
+    crate::dev::console::serial_write("[wallpaper] step 3: aurora\n");
     if w >= 800 {
         draw_aurora_band(fb, w, h, t);
     }
+    crate::dev::console::serial_write("[wallpaper] step 3: done\n");
 
     // ── 4) Grid sutil (1 px cada 64 px) ─────────────────────────────
     let grid_color = argb(0x1A, 0x25, 0x38);
@@ -220,6 +225,7 @@ pub fn draw(fb: &Framebuffer, time: u64) {
     }
 
     // ── 5) Estrellas dispersas ─────────────────────────────────────
+    crate::dev::console::serial_write("[wallpaper] step 5: stars\n");
     let mut rng = (rdtsc() as u32) | 1;
     let count = ((w as i32) * (h as i32) / 12000) as u32;
     for _ in 0..count {
@@ -232,6 +238,7 @@ pub fn draw(fb: &Framebuffer, time: u64) {
         let star = blend_rgb(0xE0, 0xEE, 0xFF, 0xFF0A101F, alpha);
         fb.put_pixel(sx, sy, star);
     }
+    crate::dev::console::serial_write("[wallpaper] DONE\n");
 }
 
 /// Aurora: banda elíptica diagonal pintada por scanline. Recorremos
