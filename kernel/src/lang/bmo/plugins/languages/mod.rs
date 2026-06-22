@@ -5,19 +5,29 @@
 //! The BMO ABI is THE filter: all kernel calls go through syscalls
 //! 0x100..0x1FF.
 //!
-//! ## v2.0.0
+//! ## v2.0.0 (reducido a 2 lenguajes)
 //!
-//! - Single `LanguageAdapter` trait (was `LanguagePlugin` + `LanguageAdapter`).
-//! - No VM, no bytecode, no interpreter.
-//! - C/C++/Java/Python adapters are STUBS. They advertise themselves
-//!   as available, but `compile_native()` returns `NotSupported` until
-//!   someone writes a real frontend. This is intentional — the BMO
-//!   AOT is the only working compiler right now.
+//! - **BMO**: el lenguaje nativo de FastOS. Pipeline completo.
+//! - **C**: frontend C → AST BMO → AOT. Funcional para Hello World.
 //!
-//! To add a new language:
+//! C++/Java/Python se eliminaron en v1.8.8 para enfocar el esfuerzo.
+//! Si en el futuro quieres añadirlos:
 //! 1. Add the variant to `Language` in `super::traits`.
 //! 2. Implement `LanguageAdapter` in this module.
 //! 3. Register it in `super::mod::init_plugins()`.
+//!
+//! ## Modelo
+//!
+//! Una app C se compila así:
+//! ```text
+//! C source (.c) → C frontend (lexer+parser+ast)
+//!              → BMO AST (translator)
+//!              → AOT x86-64 (aot.rs)
+//!              → BEF bytes (linker.rs)   ← NUEVO
+//!              → cargada por BEF loader
+//!              → saltada a Ring 3 vía iretq
+//!              → BMO CORE recibe mensajes BEFCore
+//! ```
 
 #![allow(dead_code)]
 
@@ -27,16 +37,10 @@ use alloc::vec::Vec;
 use super::traits::{Language, LanguageAdapter, AdapterError, MemoryModel, GcStrategy};
 
 pub mod c;
-pub mod cpp;
-pub mod java;
-pub mod python;
 
 // ─── BMO adapter (always available) ─────────────────────────────────
 
-/// BMO language adapter — the only fully-implemented adapter.
-/// Wraps `crate::lang::bmo::compile_native` so the BMO
-/// source language goes through the same plugin pipeline as C, C++,
-/// Java, and Python.
+/// BMO language adapter — el único adapter con pipeline completo.
 pub struct BmoAdapter;
 
 impl BmoAdapter {
@@ -51,7 +55,6 @@ impl LanguageAdapter for BmoAdapter {
             .map_err(|_| AdapterError::SyntaxError)
     }
     fn can_compile(&self, source: &[u8]) -> bool {
-        // BMO source is plain text. Heuristic: has a `fn` keyword.
         let text = core::str::from_utf8(source).unwrap_or("");
         text.contains("fn ") || text.contains("let ") || text.contains("si ")
     }
@@ -59,10 +62,5 @@ impl LanguageAdapter for BmoAdapter {
     fn gc_strategy(&self) -> GcStrategy { GcStrategy::None }
 }
 
-// ─── C, C++, Java, Python adapters (stubs) ──────────────────────────
-
-// Re-export the language-specific adapter structs.
+// Re-export the C adapter
 pub use c::CAdapter;
-pub use cpp::CppAdapter;
-pub use java::JavaAdapter;
-pub use python::PythonAdapter;

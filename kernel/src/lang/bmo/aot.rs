@@ -208,7 +208,7 @@ impl NativeCompiler {
     fn epilogue(&mut self) {
         // BMO ABI proc_exit (0x181) instead of Linux sys_exit (60).
         // The BMO ABI is THE interface — even the exit path uses it.
-        self.mov_rax_imm64(abi::PROC_EXIT as u64);
+        self.mov_rax_imm64(abi::NR_PROC_EXIT as u64);
         self.pop_rdi();
         self.emit(0x0F); self.emit(0x05); // syscall
         self.emit(0x90); self.emit(0x90); self.emit(0x90); // nop padding

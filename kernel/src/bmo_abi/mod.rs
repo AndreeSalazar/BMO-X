@@ -36,6 +36,11 @@
 //! │   ├── net/         — IPv4/IPv6, SocketAddr, Protocol
 //! │   ├── math/        — sqrt, sin, cos, pow (f64)
 //! │   └── hash/        — FNV-1a, CRC32
+//! ├── befcore/        — Protocolo BEFCore: mensajes app ↔ BMO CORE
+//! │   └── mod.rs       — BefcoreMessage (CreateWindow/DrawText/...)
+//! │                      + BefcoreEvent (Paint/KeyDown/MouseMove/...)
+//! │                      + NR_BEFCORE_SEND/RECV/POLL (0x190..0x192)
+//! ├── syscalls/       — Tabla de syscall numbers 0x100..0x1FF
 //! └── runtime/        — BmoRuntime agregador
 //!     ├── types/       — TypeRegistry (256 slots)
 //!     ├── vtable/      — VTableStore (64 slots)
@@ -46,6 +51,8 @@
 
 pub mod fundamentals;
 pub mod values;
+pub mod befcore;
+pub mod syscalls;
 pub mod runtime;
 
 // ─── Re-exports planos para uso ergonómico ────────────────────────────
@@ -65,6 +72,9 @@ pub use values::reflect;
 pub use values::net;
 pub use values::math;
 pub use values::hash;
+
+// `befcore` y `syscalls` se usan directamente como `crate::bmo_abi::befcore::*`
+// y `crate::bmo_abi::syscalls::*` (ya son `pub mod`).
 
 /// Versión del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);

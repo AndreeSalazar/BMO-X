@@ -1,242 +1,145 @@
-//! BMO ABI — Syscall number constants for the AOT compiler.
+//! BMO ABI → syscall number mapping for the AOT compiler.
 //!
-//! When BMO source code calls a BMO ABI function (windowing, FS, etc.),
-//! the AOT compiler emits a `syscall` instruction with the corresponding
-//! number from this table. This file is THE source of truth for the
-//! mapping from semantic BMO ABI function to syscall number.
+//! v1.8.8: este módulo ya NO define los números de syscall (eso vive
+//! en `crate::bmo_abi::syscalls`). Solo provee el mapping **name → nr**
+//! que el AOT necesita para resolver llamadas BMO ABI en `mov rax, <nr>; syscall`.
 //!
-//! Every function name listed here has a corresponding handler in
-//! `crate::bmo_core::bmo_api::dispatch_syscall`.
+//! El AOT emite bytes x86-64 reales. Cuando el código BMO o C generado
+//! llama a `win_create("Hello", 0, 0, 100, 100)`, el AOT traduce eso
+//! a `mov rax, 0x100; mov rdi, ...; syscall`.
 //!
-//! ## Calling convention
-//!
-//! Syscalls 0x100..=0x1FF use SysV AMD64:
-//!   - RAX  = syscall number
-//!   - RDI  = arg0
-//!   - RSI  = arg1
-//!   - RDX  = arg2
-//!   - R10  = arg3
-//!   - R8   = arg4
-//!   - R9   = arg5
-//!   - RAX  = return value (or 0xFFFF_FFFF_FFFF_FFFF on error)
-//!
-//! See `crate::bmo_abi::SPEC.md` for the full ABI spec.
+//! Los números vienen de `crate::bmo_abi::syscalls` (fuente única).
+//! Ver `kernel/src/bmo_abi/syscalls/mod.rs`.
 
 #![allow(dead_code)]
 
-// ─── Window manager (0x100..=0x10F) ───────────────────────────────────
-pub const WIN_CREATE:        u16 = 0x100;
-pub const WIN_DESTROY:       u16 = 0x101;
-pub const WIN_SHOW:          u16 = 0x102;
-pub const WIN_HIDE:          u16 = 0x103;
-pub const WIN_SET_TITLE:     u16 = 0x104;
-pub const WIN_SET_BOUNDS:    u16 = 0x105;
-pub const WIN_GET_BOUNDS:    u16 = 0x106;
-pub const WIN_INVALIDATE:    u16 = 0x107;
-pub const WIN_BEGIN_PAINT:   u16 = 0x108;
-pub const WIN_END_PAINT:     u16 = 0x109;
-pub const WIN_PUSH_CLIP:     u16 = 0x10A;
-pub const WIN_POP_CLIP:      u16 = 0x10B;
-pub const WIN_SET_FOCUS:     u16 = 0x10C;
-pub const WIN_GET_FOCUS:     u16 = 0x10D;
-pub const WIN_REGISTER_CLASS: u16 = 0x10E;
-pub const WIN_PUMP_EVENTS:   u16 = 0x10F;
+// Re-export the syscall numbers from the canonical table.
+// El AOT los usa directamente: `crate::bmo_abi::syscalls::NR_WM_CREATE_WINDOW`.
+pub use crate::bmo_abi::syscalls::*;
 
-// ─── Drawing primitives (0x110..=0x11F) ──────────────────────────────
-pub const DRAW_CLEAR:        u16 = 0x110;
-pub const DRAW_PIXEL:        u16 = 0x111;
-pub const DRAW_LINE:         u16 = 0x112;
-pub const DRAW_RECT:         u16 = 0x113;
-pub const DRAW_CIRCLE:       u16 = 0x114;
-pub const DRAW_TEXT:         u16 = 0x115;
-pub const DRAW_BLIT:         u16 = 0x116;
-pub const DRAW_GRADIENT_V:   u16 = 0x117;
-pub const DRAW_GRADIENT_H:   u16 = 0x118;
-pub const DRAW_ROUNDED_RECT: u16 = 0x119;
+// ─── Mapeo de nombre simbólico a número de syscall ───────────────────
+//
+// El AOT busca el nombre de la función BMO ABI que el programa está
+// llamando y lo convierte a un `mov rax, <número>; syscall`.
+//
+// Tabla centralizada: el nombre que el programador escribe en BMO o C
+// debe coincidir con uno de estos strings.
+pub fn resolve(name: &str) -> Option<u32> {
+    let nr = match name {
+        // Window manager (0x100..=0x10F)
+        "win_create"         => NR_WM_CREATE_WINDOW,
+        "win_destroy"        => NR_WM_DESTROY_WINDOW,
+        "win_show"           => NR_WM_SHOW_WINDOW,
+        "win_hide"           => NR_WM_HIDE_WINDOW,
+        "win_set_title"      => NR_WM_SET_TITLE,
+        "win_get_bounds"     => NR_WM_GET_BOUNDS,
+        "win_set_bounds"     => NR_WM_SET_BOUNDS,
+        "win_begin_paint"    => NR_WM_BEGIN_PAINT,
+        "win_end_paint"      => NR_WM_END_PAINT,
+        "win_push_clip"      => NR_WM_PUSH_CLIP,
+        "win_pop_clip"       => NR_WM_POP_CLIP,
+        "win_set_focus"      => NR_WM_SET_FOCUS,
+        "win_get_focus"      => NR_WM_GET_FOCUS,
+        "win_register_class" => NR_WM_REGISTER_CLASS,
+        "win_pump_events"    => NR_WM_PUMP_EVENTS,
 
-// ─── Window painting (0x120..=0x12F) ─────────────────────────────────
-pub const WIN_FILL_RECT:     u16 = 0x120;
-pub const WIN_DRAW_TEXT:     u16 = 0x121;
-pub const WIN_DRAW_PIXEL:    u16 = 0x122;
-pub const WIN_DRAW_LINE:     u16 = 0x123;
-pub const WIN_DRAW_BLIT:     u16 = 0x124;
-pub const WIN_DRAW_CIRCLE:   u16 = 0x125;
+        // Drawing (0x110..=0x119)
+        "draw_clear"         => NR_DRAW_CLEAR,
+        "draw_pixel"         => NR_DRAW_PIXEL,
+        "draw_line"          => NR_DRAW_LINE,
+        "draw_rect"          => NR_DRAW_RECT,
+        "draw_circle"        => NR_DRAW_CIRCLE,
+        "draw_text"          => NR_DRAW_TEXT,
+        "draw_blit"          => NR_DRAW_BLIT,
+        "draw_gradient_v"    => NR_DRAW_GRADIENT_V,
+        "draw_gradient_h"    => NR_DRAW_GRADIENT_H,
+        "draw_rounded_rect"  => NR_DRAW_ROUNDED_RECT,
 
-// ─── Compositor (0x130..=0x13F) ─────────────────────────────────────
-pub const COMP_BEGIN_FRAME:  u16 = 0x130;
-pub const COMP_END_FRAME:    u16 = 0x131;
-pub const COMP_PRESENT:      u16 = 0x132;
-pub const COMP_SET_TARGET:   u16 = 0x133;
-pub const COMP_FLUSH:        u16 = 0x134;
+        // Window painting (0x120..=0x125)
+        "win_fill_rect"      => NR_WINPAINT_FILL_RECT,
+        "win_draw_text"      => NR_WINPAINT_DRAW_TEXT,
+        "win_draw_pixel"     => NR_WINPAINT_DRAW_PIXEL,
+        "win_draw_line"      => NR_WINPAINT_DRAW_LINE,
+        "win_draw_blit"      => NR_WINPAINT_DRAW_BLIT,
+        "win_draw_circle"    => NR_WINPAINT_DRAW_CIRCLE,
 
-// ─── Filesystem (0x140..=0x14F) ─────────────────────────────────────
-pub const FS_OPEN:           u16 = 0x140;
-pub const FS_CLOSE:          u16 = 0x141;
-pub const FS_READ:           u16 = 0x142;
-pub const FS_WRITE:          u16 = 0x143;
-pub const FS_SEEK:           u16 = 0x144;
-pub const FS_STAT:           u16 = 0x145;
-pub const FS_MKDIR:          u16 = 0x146;
-pub const FS_READDIR:        u16 = 0x147;
-pub const FS_DELETE:         u16 = 0x148;
-pub const FS_MOUNT:          u16 = 0x149;
+        // Compositor (0x130..=0x134)
+        "comp_begin_frame"   => NR_COMPOSITOR_BEGIN_FRAME,
+        "comp_end_frame"     => NR_COMPOSITOR_END_FRAME,
+        "comp_present"       => NR_COMPOSITOR_PRESENT,
+        "comp_set_target"    => NR_COMPOSITOR_SET_TARGET,
+        "comp_flush"         => NR_COMPOSITOR_FLUSH,
 
-// ─── Time (0x150..=0x15F) ───────────────────────────────────────────
-pub const TIME_NOW_NS:       u16 = 0x150;
-pub const TIME_NOW_US:       u16 = 0x151;
-pub const TIME_SLEEP_NS:     u16 = 0x152;
-pub const TIME_SLEEP_MS:     u16 = 0x153;
+        // Filesystem (0x140..=0x149)
+        "fs_open"            => NR_FS_OPEN,
+        "fs_close"           => NR_FS_CLOSE,
+        "fs_read"            => NR_FS_READ,
+        "fs_write"           => NR_FS_WRITE,
+        "fs_seek"            => NR_FS_SEEK,
+        "fs_stat"            => NR_FS_STAT,
+        "fs_mkdir"           => NR_FS_MKDIR,
+        "fs_readdir"         => NR_FS_READDIR,
+        "fs_delete"          => NR_FS_DELETE,
+        "fs_mount"           => NR_FS_MOUNT,
 
-// ─── Input (0x160..=0x16F) ──────────────────────────────────────────
-pub const INPUT_POLL_KEY:    u16 = 0x160;
-pub const INPUT_POLL_MOUSE:  u16 = 0x161;
-pub const INPUT_POLL_EVENT:  u16 = 0x162;
+        // Time (0x150..=0x153)
+        "time_now_ns"        => NR_TIME_NOW_NS,
+        "time_now_us"        => NR_TIME_NOW_US,
+        "time_sleep_ns"      => NR_TIME_SLEEP_NS,
+        "time_sleep_ms"      => NR_TIME_SLEEP_MS,
 
-// ─── Audio (0x170..=0x17F) ──────────────────────────────────────────
-pub const AUDIO_PLAY:        u16 = 0x170;
-pub const AUDIO_STOP:        u16 = 0x171;
-pub const AUDIO_BEEP:        u16 = 0x172;
-pub const AUDIO_LOAD_WAVE:   u16 = 0x173;
+        // Input (0x160..=0x162)
+        "input_poll_key"     => NR_INPUT_POLL_KEY,
+        "input_poll_mouse"   => NR_INPUT_POLL_MOUSE,
+        "input_poll_event"   => NR_INPUT_POLL_EVENT,
 
-// ─── Process / thread (0x180..=0x18F) ───────────────────────────────
-pub const PROC_SPAWN:        u16 = 0x180;
-pub const PROC_EXIT:         u16 = 0x181;
-pub const PROC_GET_PID:      u16 = 0x182;
-pub const PROC_GET_TID:      u16 = 0x183;
-pub const PROC_YIELD:        u16 = 0x184;
-pub const THREAD_CREATE:     u16 = 0x185;
-pub const THREAD_EXIT:       u16 = 0x186;
-pub const THREAD_JOIN:       u16 = 0x187;
-pub const THREAD_SELF:       u16 = 0x188;
+        // Audio (0x170..=0x173)
+        "audio_play"         => NR_AUDIO_PLAY,
+        "audio_stop"         => NR_AUDIO_STOP,
+        "audio_beep"         => NR_AUDIO_BEEP,
+        "audio_load_wave"    => NR_AUDIO_LOAD_WAVE,
 
-// ─── Memory (0x190..=0x19F) ─────────────────────────────────────────
-pub const MEM_ALLOC:         u16 = 0x190;
-pub const MEM_FREE:          u16 = 0x191;
-pub const MEM_MAP:           u16 = 0x192;
-pub const MEM_UNMAP:         u16 = 0x193;
+        // Process (0x180..=0x188) — confirmado, este rango es PROC
+        "proc_spawn"         => NR_PROC_SPAWN,
+        "proc_exit"          => NR_PROC_EXIT,
+        "proc_get_pid"       => NR_PROC_GET_PID,
+        "proc_get_tid"       => NR_PROC_GET_TID,
+        "proc_yield"         => NR_PROC_YIELD,
+        "thread_create"      => NR_THREAD_CREATE,
+        "thread_exit"        => NR_THREAD_EXIT,
+        "thread_join"        => NR_THREAD_JOIN,
+        "thread_self"        => NR_THREAD_SELF,
 
-// ─── IPC (0x1A0..=0x1AF) ────────────────────────────────────────────
-pub const IPC_PORT_CREATE:   u16 = 0x1A0;
-pub const IPC_PORT_SEND:     u16 = 0x1A1;
-pub const IPC_PORT_RECV:     u16 = 0x1A2;
-pub const IPC_PORT_CLOSE:    u16 = 0x1A3;
+        // Memory (0x190..=0x193) + BEFCore (0x194..=0x197)
+        "mem_alloc"          => NR_MEM_ALLOC,
+        "mem_free"           => NR_MEM_FREE,
+        "mem_map"            => NR_MEM_MAP,
+        "mem_unmap"          => NR_MEM_UNMAP,
+        "befcore_send"       => NR_BEFCORE_SEND,
+        "befcore_recv"       => NR_BEFCORE_RECV,
+        "befcore_poll"       => NR_BEFCORE_POLL,
+        "befcore_register"   => NR_BEFCORE_REGISTER,
 
-// ─── Diagnostics (0x1F0..=0x1FF) ────────────────────────────────────
-pub const DIAG_PRINT:        u16 = 0x1F0;
-pub const DIAG_TRACE:        u16 = 0x1F1;
-pub const DIAG_ASSERT:       u16 = 0x1F2;
-pub const DIAG_PANIC:        u16 = 0x1F3;
+        // IPC (0x1A0..=0x1A3)
+        "ipc_port_create"    => NR_IPC_PORT_CREATE,
+        "ipc_port_send"      => NR_IPC_PORT_SEND,
+        "ipc_port_recv"      => NR_IPC_PORT_RECV,
+        "ipc_port_close"     => NR_IPC_PORT_CLOSE,
 
-// ─── Name → syscall number resolution ──────────────────────────────
-/// Look up a syscall number by its BMO ABI name (e.g. "win_create").
-/// Returns None if the name is not a known BMO ABI function.
-pub fn resolve(name: &str) -> Option<u16> {
-    match name {
-        // Window manager
-        "win_create"         => Some(WIN_CREATE),
-        "win_destroy"        => Some(WIN_DESTROY),
-        "win_show"           => Some(WIN_SHOW),
-        "win_hide"           => Some(WIN_HIDE),
-        "win_set_title"      => Some(WIN_SET_TITLE),
-        "win_set_bounds"     => Some(WIN_SET_BOUNDS),
-        "win_get_bounds"     => Some(WIN_GET_BOUNDS),
-        "win_invalidate"     => Some(WIN_INVALIDATE),
-        "win_begin_paint"    => Some(WIN_BEGIN_PAINT),
-        "win_end_paint"      => Some(WIN_END_PAINT),
-        "win_push_clip"      => Some(WIN_PUSH_CLIP),
-        "win_pop_clip"       => Some(WIN_POP_CLIP),
-        "win_set_focus"      => Some(WIN_SET_FOCUS),
-        "win_get_focus"      => Some(WIN_GET_FOCUS),
-        "win_register_class" => Some(WIN_REGISTER_CLASS),
-        "win_pump_events"    => Some(WIN_PUMP_EVENTS),
+        // Surface mapping (0x1C0..=0x1C2) — movido aquí por el conflicto 0x180
+        "surface_map"        => NR_SURFACE_MAP,
+        "surface_unmap"      => NR_SURFACE_UNMAP,
+        "surface_present"    => NR_SURFACE_PRESENT,
 
-        // Drawing
-        "draw_clear"         => Some(DRAW_CLEAR),
-        "draw_pixel"         => Some(DRAW_PIXEL),
-        "draw_line"          => Some(DRAW_LINE),
-        "draw_rect"          => Some(DRAW_RECT),
-        "draw_circle"        => Some(DRAW_CIRCLE),
-        "draw_text"          => Some(DRAW_TEXT),
-        "draw_blit"          => Some(DRAW_BLIT),
-        "draw_gradient_v"    => Some(DRAW_GRADIENT_V),
-        "draw_gradient_h"    => Some(DRAW_GRADIENT_H),
-        "draw_rounded_rect"  => Some(DRAW_ROUNDED_RECT),
+        // Diagnostics (0x1F0..=0x1F3)
+        "diag_print"         => NR_DEBUG_PRINT,
+        "diag_trace"         => NR_DEBUG_TRACE,
+        "diag_assert"        => NR_DEBUG_ASSERT,
+        "diag_panic"         => NR_DEBUG_PANIC,
 
-        // Window painting
-        "win_fill_rect"      => Some(WIN_FILL_RECT),
-        "win_draw_text"      => Some(WIN_DRAW_TEXT),
-        "win_draw_pixel"     => Some(WIN_DRAW_PIXEL),
-        "win_draw_line"      => Some(WIN_DRAW_LINE),
-        "win_draw_blit"      => Some(WIN_DRAW_BLIT),
-        "win_draw_circle"    => Some(WIN_DRAW_CIRCLE),
-
-        // Compositor
-        "comp_begin_frame"   => Some(COMP_BEGIN_FRAME),
-        "comp_end_frame"     => Some(COMP_END_FRAME),
-        "comp_present"       => Some(COMP_PRESENT),
-        "comp_set_target"    => Some(COMP_SET_TARGET),
-        "comp_flush"         => Some(COMP_FLUSH),
-
-        // Filesystem
-        "fs_open"            => Some(FS_OPEN),
-        "fs_close"           => Some(FS_CLOSE),
-        "fs_read"            => Some(FS_READ),
-        "fs_write"           => Some(FS_WRITE),
-        "fs_seek"            => Some(FS_SEEK),
-        "fs_stat"            => Some(FS_STAT),
-        "fs_mkdir"           => Some(FS_MKDIR),
-        "fs_readdir"         => Some(FS_READDIR),
-        "fs_delete"          => Some(FS_DELETE),
-        "fs_mount"           => Some(FS_MOUNT),
-
-        // Time
-        "time_now_ns"        => Some(TIME_NOW_NS),
-        "time_now_us"        => Some(TIME_NOW_US),
-        "time_sleep_ns"      => Some(TIME_SLEEP_NS),
-        "time_sleep_ms"      => Some(TIME_SLEEP_MS),
-
-        // Input
-        "input_poll_key"     => Some(INPUT_POLL_KEY),
-        "input_poll_mouse"   => Some(INPUT_POLL_MOUSE),
-        "input_poll_event"   => Some(INPUT_POLL_EVENT),
-
-        // Audio
-        "audio_play"         => Some(AUDIO_PLAY),
-        "audio_stop"         => Some(AUDIO_STOP),
-        "audio_beep"         => Some(AUDIO_BEEP),
-        "audio_load_wave"    => Some(AUDIO_LOAD_WAVE),
-
-        // Process
-        "proc_spawn"         => Some(PROC_SPAWN),
-        "proc_exit"          => Some(PROC_EXIT),
-        "proc_get_pid"       => Some(PROC_GET_PID),
-        "proc_get_tid"       => Some(PROC_GET_TID),
-        "proc_yield"         => Some(PROC_YIELD),
-        "thread_create"      => Some(THREAD_CREATE),
-        "thread_exit"        => Some(THREAD_EXIT),
-        "thread_join"        => Some(THREAD_JOIN),
-        "thread_self"        => Some(THREAD_SELF),
-
-        // Memory
-        "mem_alloc"          => Some(MEM_ALLOC),
-        "mem_free"           => Some(MEM_FREE),
-        "mem_map"            => Some(MEM_MAP),
-        "mem_unmap"          => Some(MEM_UNMAP),
-
-        // IPC
-        "ipc_port_create"    => Some(IPC_PORT_CREATE),
-        "ipc_port_send"      => Some(IPC_PORT_SEND),
-        "ipc_port_recv"      => Some(IPC_PORT_RECV),
-        "ipc_port_close"     => Some(IPC_PORT_CLOSE),
-
-        // Diagnostics
-        "diag_print"         => Some(DIAG_PRINT),
-        "diag_trace"         => Some(DIAG_TRACE),
-        "diag_assert"        => Some(DIAG_ASSERT),
-        "diag_panic"         => Some(DIAG_PANIC),
-
-        _ => None,
-    }
+        _ => return None,
+    };
+    Some(nr)
 }
 
 /// Returns true if the given name is a known BMO ABI function.

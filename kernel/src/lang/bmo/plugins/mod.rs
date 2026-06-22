@@ -72,12 +72,11 @@ pub fn init_plugins() -> LanguageRegistry {
     // BMO is always available.
     registry.register_bmo();
 
-    // C/C++/Java/Python are opt-in. C is enabled by default because
-    // many legacy code paths still need it.
+    // C is enabled by default (frontend C → BMO AST → AOT).
+    // v1.8.8: C++/Java/Python se eliminaron. Si en el futuro se
+    // añaden, crear `registry.register(Box::new(languages::XxxAdapter::new()));`
+    // aquí.
     registry.register(Box::new(languages::CAdapter::new()));
-    registry.register(Box::new(languages::CppAdapter::new()));
-    registry.register(Box::new(languages::JavaAdapter::new()));
-    registry.register(Box::new(languages::PythonAdapter::new()));
     registry.enable("c");
 
     registry
