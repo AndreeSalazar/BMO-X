@@ -20,9 +20,12 @@ pub mod format {
 }
 
 /// Tamaño máximo por surface: 1920×1080×4 = 8.294.400 bytes.
-const MAX_SURFACE_PIXELS: usize = 1920 * 1080;
-/// Pool estático de pixels: 4 surfaces × 8 MB = 32 MB.
-const SURFACE_POOL_SLOTS: usize = 4;
+/// v1.8.8: reducido a 1/16 (135 KB) para que el BSS estático quepa
+/// en la primera PT_LOAD sin colgarse. v1.9 usará heap para surfaces
+/// grandes y eliminará el pool estático.
+const MAX_SURFACE_PIXELS: usize = 1920 * 1080 / 16;
+/// Pool estático de pixels: 2 surfaces × 135 KB = 270 KB.
+const SURFACE_POOL_SLOTS: usize = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BmoSurface {

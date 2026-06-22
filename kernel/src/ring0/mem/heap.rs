@@ -12,7 +12,10 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::AtomicBool;
 
-const HEAP_SIZE: usize = 16 * 1024 * 1024; // 16 MB
+// v1.8.8: 16 MB de heap estático eran 16 MB de BSS. v1.9 usará
+// heap dinámico. Reducido a 1 MB para que el kernel quepa en una
+// sola PT_LOAD sin colgarse al reservar memoria.
+const HEAP_SIZE: usize = 1 * 1024 * 1024; // 1 MB
 const BLOCK_HEADER_SIZE: usize = 8; // next_free: u32 + size: u32
 const MIN_BLOCK_SIZE: usize = 16; // minimum usable size after header
 
