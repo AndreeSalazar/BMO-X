@@ -1,27 +1,68 @@
-//! Language plugin implementations for BMO (v1.8.0).
+//! Language adapters for BMO (v2.0.0).
 //!
-//! Each language provides a complete plugin implementation:
-//! - `c/`     - C language plugin (full frontend)
-//! - `cpp/`   - C++ language plugin (essential subset)
-//! - `python/`- Python language plugin
-//! - `java/`  - Java language plugin
+//! Each language provides a `LanguageAdapter` implementation that
+//! compiles the language to native x86-64 via the BMO AOT pipeline.
+//! The BMO ABI is THE filter: all kernel calls go through syscalls
+//! 0x100..0x1FF.
 //!
-//! Each language lives in its own subdirectory so it can have its own
-//! lexer, parser, AST, translator, and tests. They all produce BMO
-//! bytecode via `bmo::codegen`.
+//! ## v2.0.0
 //!
-//! v1.8.0: Rust and Go plugins are removed. BMO is the native language
-//! (no need for Rust→BMO shim).
+//! - Single `LanguageAdapter` trait (was `LanguagePlugin` + `LanguageAdapter`).
+//! - No VM, no bytecode, no interpreter.
+//! - C/C++/Java/Python adapters are STUBS. They advertise themselves
+//!   as available, but `compile_native()` returns `NotSupported` until
+//!   someone writes a real frontend. This is intentional — the BMO
+//!   AOT is the only working compiler right now.
+//!
+//! To add a new language:
+//! 1. Add the variant to `Language` in `super::traits`.
+//! 2. Implement `LanguageAdapter` in this module.
+//! 3. Register it in `super::mod::init_plugins()`.
 
 #![allow(dead_code)]
+
+extern crate alloc;
+use alloc::vec::Vec;
+
+use super::traits::{Language, LanguageAdapter, AdapterError, MemoryModel, GcStrategy};
 
 pub mod c;
 pub mod cpp;
 pub mod java;
 pub mod python;
 
-// Re-exports of the plugin entry-point structs.
-pub use c::plugin::CPlugin;
-pub use cpp::plugin::CppPlugin;
-pub use python::plugin::PythonPlugin;
-pub use java::plugin::JavaPlugin;
+// ─── BMO adapter (always available) ─────────────────────────────────
+
+/// BMO language adapter — the only fully-implemented adapter.
+/// Wraps `crate::bmo_core::lang::bmo::compile_native` so the BMO
+/// source language goes through the same plugin pipeline as C, C++,
+/// Java, and Python.
+pub struct BmoAdapter;
+
+impl BmoAdapter {
+    pub const fn new() -> Self { Self }
+}
+
+impl LanguageAdapter for BmoAdapter {
+    fn language(&self) -> Language { Language::Bmo }
+    fn extensions(&self) -> &[&'static str] { &["bmo"] }
+    fn compile_native(&self, source: &[u8]) -> Result<Vec<u8>, AdapterError> {
+        crate::bmo_core::lang::bmo::compile_native(source)
+            .map_err(|_| AdapterError::SyntaxError)
+    }
+    fn can_compile(&self, source: &[u8]) -> bool {
+        // BMO source is plain text. Heuristic: has a `fn` keyword.
+        let text = core::str::from_utf8(source).unwrap_or("");
+        text.contains("fn ") || text.contains("let ") || text.contains("si ")
+    }
+    fn memory_model(&self) -> MemoryModel { MemoryModel::Ownership }
+    fn gc_strategy(&self) -> GcStrategy { GcStrategy::None }
+}
+
+// ─── C, C++, Java, Python adapters (stubs) ──────────────────────────
+
+// Re-export the language-specific adapter structs.
+pub use c::CAdapter;
+pub use cpp::CppAdapter;
+pub use java::JavaAdapter;
+pub use python::PythonAdapter;

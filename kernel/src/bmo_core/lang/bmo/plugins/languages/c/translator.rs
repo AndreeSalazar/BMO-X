@@ -360,9 +360,13 @@ pub fn compile_c(source: &[u8]) -> BxResult<crate::bmo_core::lang::bmo::parser::
 
 /// Top-level C → native code entry point (full pipeline).
 ///
-/// Pipeline: C → BMO AST → sema → codegen → native bytes.
+/// Pipeline: C → BMO AST → sema → BMO AOT → x86-64 native bytes.
+///
+/// v2.0.0: replaced codegen (which produced VM bytecode) with the
+/// BMO AOT compiler. The C translator still produces BMO AST, but
+/// the AOT compiles that AST to native code instead of bytecode.
 pub fn compile_c_to_native(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
-    use crate::bmo_core::lang::bmo::{sema, codegen};
+    use crate::bmo_core::lang::bmo::{sema, aot};
 
     // 1. C source → BMO AST
     let ast = compile_c(source)?;
@@ -371,7 +375,8 @@ pub fn compile_c_to_native(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     let sema_check = sema::Sema::new();
     sema_check.check(&ast)?;
 
-    // 3. BMO AST → native bytes
-    let mut cg = codegen::Codegen::new();
-    cg.emit(&ast)
+    // 3. BMO AST → x86-64 native bytes (via AOT)
+    let mut compiler = aot::NativeCompiler::new();
+    let result = compiler.compile(&ast);
+    Ok(result.code)
 }

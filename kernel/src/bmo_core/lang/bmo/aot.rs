@@ -1,11 +1,20 @@
 //! BMO AOT Compiler — x86-64 native code generation.
 //!
 //! Compiles BMO AST directly to x86-64 machine code using a stack-machine model.
-//! Output is raw x86-64 bytes that can be executed via iretq.
+//! Output is raw x86-64 bytes that can be executed directly.
+//!
+//! ## BMO ABI integration
+//!
+//! When BMO source code calls a BMO ABI function (e.g. `win_create`,
+//! `fs_open`, `draw_text`), the AOT compiler looks up the syscall number
+//! in `super::abi` and emits a real `syscall` instruction. This is the
+//! ONLY way to call kernel services from BMO code — the BMO ABI is the
+//! single integration point.
 
 #![allow(dead_code)]
 
 use super::parser::ast::{Ast, Stmt, Expr, BinOp, UnaryOp};
+use super::abi;
 
 const CODE_BUF_SIZE: usize = 64 * 1024;
 const MAX_LOCALS: usize = 64;
@@ -197,7 +206,9 @@ impl NativeCompiler {
     }
 
     fn epilogue(&mut self) {
-        self.mov_rax_imm64(60); // sys_exit
+        // BMO ABI proc_exit (0x181) instead of Linux sys_exit (60).
+        // The BMO ABI is THE interface — even the exit path uses it.
+        self.mov_rax_imm64(abi::PROC_EXIT as u64);
         self.pop_rdi();
         self.emit(0x0F); self.emit(0x05); // syscall
         self.emit(0x90); self.emit(0x90); self.emit(0x90); // nop padding
@@ -458,24 +469,34 @@ impl NativeCompiler {
                 self.syscall_regs(*nr, args.len());
             }
             Expr::Call(name, args) => {
-                for a in args.iter().rev() {
-                    self.compile_expr(a);
-                }
-                let _ = name;
-                for _ in 0..args.len().min(6) {
-                    match args.len() - 1 {
-                        0 => self.pop_rdi(),
-                        1 => self.pop_rsi(),
-                        2 => self.pop_rdx(),
-                        3 => self.pop_rcx(),
-                        4 => self.pop_r8(),
-                        5 => self.pop_r9(),
-                        _ => self.pop_rax(),
+                // Check if this is a BMO ABI call.
+                // If the name matches a known BMO ABI function, emit
+                // a syscall instruction with the corresponding number.
+                if let Some(syscall_nr) = abi::resolve(name) {
+                    for a in args.iter().rev() {
+                        self.compile_expr(a);
                     }
+                    self.syscall_regs(syscall_nr as u64, args.len());
+                } else {
+                    // User-defined function — emit a regular call.
+                    for a in args.iter().rev() {
+                        self.compile_expr(a);
+                    }
+                    for _ in 0..args.len().min(6) {
+                        match args.len() - 1 {
+                            0 => self.pop_rdi(),
+                            1 => self.pop_rsi(),
+                            2 => self.pop_rdx(),
+                            3 => self.pop_rcx(),
+                            4 => self.pop_r8(),
+                            5 => self.pop_r9(),
+                            _ => self.pop_rax(),
+                        }
+                    }
+                    self.mov_rax_imm64(0);
+                    self.emit(0xFF); self.emit(0xD0); // call rax
+                    self.push_rax();
                 }
-                self.mov_rax_imm64(0);
-                self.emit(0xFF); self.emit(0xD0); // call rax
-                self.push_rax();
             }
             Expr::Emit(bytes) => {
                 for &b in bytes {

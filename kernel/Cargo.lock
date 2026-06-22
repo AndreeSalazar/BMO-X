@@ -14,7 +14,7 @@ version = "0.1.0"
 
 [[package]]
 name = "fastos-kernel"
-version = "1.8.5"
+version = "1.8.6"
 dependencies = [
  "bitflags",
  "fastos-boot-protocol",

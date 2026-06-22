@@ -107,7 +107,7 @@ pub fn init() {
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
 
     // 5) Subtitle
-    let sub = b"Bare Metal Orchestrator  ::  v1.8.5";
+    let sub = b"Bare Metal Orchestrator  ::  v1.8.7";
     let sw = sub.len() * 8;
     let sx = cx + (cw - sw) / 2;
     text(addr, s, w, h, sx, cy + 110, sub, SUBTITLE);
@@ -279,6 +279,33 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     // WC (Write-Combining) framebuffer buffer before returning.
     // Without this trailing SFENCE, scattered glyph pixel writes
     // may sit in the CPU's WC buffer and never reach the display.
+    unsafe { core::arch::asm!("sfence"); }
+
+    // CLFLUSHOPT loop: explicitly flush every cache line touched by
+    // the text pixels. SFENCE alone does NOT guarantee that the WC
+    // buffer has been drained to memory — the WC buffer is only
+    // drained when it's full, when a serializing instruction runs,
+    // or when CLFLUSH/CLFLUSHOPT is issued on the same line.
+    // For scattered glyph pixels (different rows, different chars),
+    // the WC buffer may not fill up, so the writes sit there
+    // forever. CLFLUSHOPT on each 64-byte-aligned address in the
+    // text region forces the issue.
+    let x_start = log_x;
+    let x_end = log_x + log_w;
+    let y_start = y;
+    let y_end = y + LOG_ROW_H;
+    // 16 pixels = 64 bytes = one cache line.
+    let pixels_per_line: usize = 16;
+    // Align start down to cache line boundary
+    let first_line = (x_start / pixels_per_line) * pixels_per_line;
+    let last_line = ((x_end + pixels_per_line - 1) / pixels_per_line) * pixels_per_line;
+    for row in y_start..y_end {
+        for col in (first_line..last_line).step_by(pixels_per_line) {
+            let pixel_addr = unsafe { addr.add(row * s + col) };
+            unsafe { core::arch::asm!("clflushopt [{}]", in(reg) pixel_addr, options(nostack)); }
+        }
+    }
+    // Serializing instruction after CLFLUSHOPT to commit the flushes.
     unsafe { core::arch::asm!("sfence"); }
 }
 

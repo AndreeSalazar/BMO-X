@@ -1,84 +1,93 @@
-//! lang::bmo — BMO programming language (v1.8.0).
+//! `bmo` — BMO programming language (v2.0.0).
 //!
-//! Inspired by CMD + Rust + Ada, BMO is the native language of FastOS.
-//! Compiles directly to BMO bytecode via `bmo::codegen`.
+//! BMO is the **native language** of FastOS. Compiles directly to
+//! **x86-64 native code** via AOT (Ahead-of-Time) — no VM, no bytecode,
+//! no interpreter. The output is real machine code that runs natively on
+//! the 5600X.
 //!
 //! ## Pipeline
 //!
 //! ```text
-//!   BMO Source → Lexer → Parser → AST → Sema → BMO bytecode
+//!   BMO Source → Lexer → Parser → AST → Sema → AOT → x86-64 bytes
 //! ```
 //!
-//! ## Status
+//! ## ABI
 //!
-//! Phase 1: Lexer complete (32 keywords, hex/bin/oct, strings, escapes)
-//! Phase 2: Parser complete (fn, let, if, while, for, struct, enum, impl, match)
-//! Phase 3: Sema complete (scopes, types, functions, structs)
-//! Phase 4: Codegen → BMO bytecode
-//! Phase 5: Pipeline end-to-end
+//! BMO source code that calls BMO runtime services (windowing, FS,
+//! network) goes through the **BMO ABI** syscalls (0x100..0x1FF). The
+//! AOT compiler emits a real `syscall` instruction with the BMO number.
+//! There is no other way to call the kernel from BMO — the BMO ABI is
+//! the *only* interface.
+//!
+//! ## Plugin languages
+//!
+//! C, C++, Java, Python live in `bmo::plugins::languages::*` and are
+//! integrated as `LanguageAdapter` implementations. Each adapter
+//! compiles its language directly to BMO AST (or to native x86-64) and
+//! the same AOT backend handles the rest.
 
 #![allow(dead_code)]
 
 pub mod lexer;
 pub mod parser;
 pub mod sema;
-pub mod codegen;
 pub mod modules;
 pub mod runtime;
 pub mod stdlib;
 pub mod pm;
-pub mod emit;
-pub mod vm;
 pub mod aot;
+pub mod abi;
 pub mod marshal;
 pub mod plugins;
 
 use crate::bmo_gpu::BxResult;
 
 /// BMO language version.
-pub const BMO_VERSION: (u8, u8, u8) = (0, 1, 0);
+pub const BMO_VERSION: (u8, u8, u8) = (2, 0, 0);
 
-/// Magic bytes of BMO bytecode.
-pub const BMO_MAGIC: u32 = u32::from_le_bytes(*b"BMOC");
+/// Magic bytes for BMO AOT-compiled object (used by the BEF loader).
+pub const BMO_MAGIC: u32 = u32::from_le_bytes(*b"BMOA");
 
-/// Compile BMO source to native code.
+/// Compile BMO source to native x86-64 machine code (AOT).
 ///
-/// Pipeline: source → lexer → parser → sema → codegen → native bytes
+/// This is THE primary entry point. All BMO compilation goes through
+/// here. The AOT compiler is the only backend — no VM, no bytecode,
+/// no interpreter.
+///
+/// Pipeline: source → lexer → parser → sema → AOT → x86-64 bytes
+///
+/// The returned bytes are a complete x86-64 function that can be
+/// called directly. Entry point is at offset 0.
 pub fn compile(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
-    let mut lex = lexer::Lexer::new(source);
-    let tokens = lex.tokenize()?;
-    let mut parser = parser::Parser::new(&tokens);
-    let ast = parser.parse()?;
-    let sema = sema::Sema::new();
-    sema.check(&ast)?;
-    let mut codegen = codegen::Codegen::new();
-    codegen.emit(&ast)
+    compile_native(source)
 }
 
 /// Compile BMO source to native x86-64 machine code (AOT).
 ///
-/// Pipeline: source → lexer → parser → sema → AOT emitter → native bytes
+/// Same as `compile()` — kept as a separate function for API clarity
+/// (matches `LanguageAdapter::compile_native`).
+///
+/// Pipeline: source → lexer → parser → sema → AOT → x86-64 bytes
 pub fn compile_native(source: &[u8]) -> BxResult<alloc::vec::Vec<u8>> {
     let mut lex = lexer::Lexer::new(source);
-    let tokens = lex.tokenize()?;
+    let tokens = lex.tokenize().map_err(|_| crate::bmo_gpu::BxError::InvalidArgument)?;
     let mut parser = parser::Parser::new(&tokens);
-    let ast = parser.parse()?;
+    let ast = parser.parse().map_err(|_| crate::bmo_gpu::BxError::InvalidArgument)?;
     let sema = sema::Sema::new();
-    sema.check(&ast)?;
+    sema.check(&ast).map_err(|_| crate::bmo_gpu::BxError::InvalidArgument)?;
     let mut compiler = aot::NativeCompiler::new();
     let result = compiler.compile(&ast);
     Ok(result.code)
 }
 
-/// Compile and run BMO source in one step.
-///
-/// Pipeline: source → compile → VM execute → return last stack value.
-pub fn run(source: &[u8]) -> Result<u64, &'static str> {
-    let code = compile(source).map_err(|_| "compile error")?;
-    let mut vm_instance = vm::BmoVm::new();
-    match vm_instance.execute(&code) {
-        vm::VmExit::Halted => Ok(vm_instance.stack_top().unwrap_or(0)),
-        vm::VmExit::Error(e) => Err(e),
-    }
+/// Lex + parse + sema only (for IDEs, syntax checkers, language
+/// servers). Returns the validated AST or a BxError.
+pub fn check(source: &[u8]) -> BxResult<parser::ast::Ast> {
+    let mut lex = lexer::Lexer::new(source);
+    let tokens = lex.tokenize()?;
+    let mut parser = parser::Parser::new(&tokens);
+    let ast = parser.parse()?;
+    let sema = sema::Sema::new();
+    sema.check(&ast)?;
+    Ok(ast)
 }
-

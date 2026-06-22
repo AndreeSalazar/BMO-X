@@ -1,79 +1,95 @@
-//! BMO Plugin System (v1.8.0).
+//! BMO Plugin System (v2.0.0).
 //!
 //! Modular architecture for supporting multiple programming languages
-//! through BMO as the intermediate representation.
+//! through the BMO ABI as the integration point.
 //!
-//! # Estructura
+//! # Architecture
 //!
 //! ```text
-//! bmo/plugins/
-//! ├── traits.rs       — Plugin traits (Language, AbiBridge)
-//! ├── registry.rs     — Plugin registry
-//! ├── languages/      — C, C++, Java, Python (cualquiera puede ser un plugin)
-//! ├── gc/             — Garbage collection strategies
-//! ├── gil/            — Global Interpreter Lock implementations
-//! └── abi/            — FFI bridge
+//!                   ┌─────────────┐
+//!   C source  ─────▶│ C Adapter   │──┐
+//!                   └─────────────┘  │
+//!                   ┌─────────────┐  │     ┌──────────┐     ┌─────────────┐
+//!   C++ source ────▶│ C++ Adapter │──┼────▶│ BMO ABI  │────▶│ BMO AOT     │──▶ x86-64
+//!                   └─────────────┘  │     │ (filter) │     │ Compiler    │     native
+//!                   ┌─────────────┐  │     │ 0x100..  │     │             │     code
+//!   Java source ───▶│ Java Adapter│──┘     │ 0x1FF    │     └─────────────┘
+//!                   └─────────────┘        └──────────┘
+//!                   ┌─────────────┐
+//!   BMO source  ───▶│ BMO Native  │─────────────────────────────────────▶
+//!                   └─────────────┘
 //! ```
 //!
-//! # Política (v1.8.0)
+//! # Policy (v2.0.0)
 //!
-//! - **BMO es el único lenguaje de alto nivel nativo** (inspirado en CMD + Rust + ADA).
-//! - **C, C++, Java, Python** son plugins opcionales. No se cargan por
-//!   defecto — el usuario los activa con `bmo.plugins.enable("c")` etc.
-//! - **El sistema de plugins es opt-in**. Si un plugin no está
-//!   disponible, BMO no falla — sólo no soporta ese lenguaje.
+//! - **BMO is the only first-class high-level language**.
+//! - **C, C++, Java, Python are optional plugins**. They are NOT
+//!   loaded by default — the user activates them with
+//!   `registry.enable("c")` etc.
+//! - **The BMO ABI is the single filter**: every language adapter
+//!   produces calls to the same BMO ABI syscalls (0x100..0x1FF). There
+//!   is no language-specific ABI leakage.
+//! - **No VM, no bytecode**: every language compiles to native x86-64
+//!   via the BMO AOT compiler (or via a language-specific AOT that
+//!   produces calls to the BMO ABI).
+//!
+//! # Quick start
+//!
+//! ```ignore
+//! use crate::bmo_core::lang::bmo::plugins::registry::LanguageRegistry;
+//!
+//! let mut registry = LanguageRegistry::new();
+//! // BMO is always available:
+//! let bmo = registry.bmo_adapter();
+//! // C is opt-in:
+//! if registry.enable("c") {
+//!     let c = registry.get("c").unwrap();
+//!     c.compile_native(source)?;
+//! }
+//! ```
 
 #![allow(dead_code)]
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 
-pub mod traits;
-pub mod registry;
+pub mod abi_bridge;
 pub mod languages;
-pub mod gc;
-pub mod gil;
-pub mod abi;
+pub mod registry;
+pub mod traits;
 
-// Re-exports for convenience
-pub use traits::{Language, AbiBridge};
+pub use traits::{Language, LanguageAdapter, AdapterError, MemoryModel, GcStrategy};
 pub use registry::LanguageRegistry;
-pub use languages::{CPlugin, CppPlugin, JavaPlugin, PythonPlugin};
 
-/// Initialize the plugin system with all built-in plugins.
+/// Initialize the plugin system with all built-in language plugins.
 ///
-/// v1.8.0: only the C plugin is enabled by default. Other plugins
-/// are loaded on-demand via `registry.enable("c")` etc.
+/// BMO is always available. C is enabled by default for convenience
+/// (the BMO kernel itself uses C-style headers internally). Other
+/// languages are opt-in.
 pub fn init_plugins() -> LanguageRegistry {
     let mut registry = LanguageRegistry::new();
 
-    // Register all built-in language plugins (enabled lazily)
-    registry.register(Box::new(CPlugin::new()));
-    registry.register(Box::new(CppPlugin::new()));
-    registry.register(Box::new(JavaPlugin::new()));
-    registry.register(Box::new(PythonPlugin::new()));
+    // BMO is always available.
+    registry.register_bmo();
 
-    // C is enabled by default. Others are opt-in.
+    // C/C++/Java/Python are opt-in. C is enabled by default because
+    // many legacy code paths still need it.
+    registry.register(Box::new(languages::CAdapter::new()));
+    registry.register(Box::new(languages::CppAdapter::new()));
+    registry.register(Box::new(languages::JavaAdapter::new()));
+    registry.register(Box::new(languages::PythonAdapter::new()));
     registry.enable("c");
 
     registry
 }
 
-/// Get list of supported languages.
-pub fn supported_languages() -> Vec<Language> {
+/// List of languages the plugin system knows about.
+pub fn supported_languages() -> alloc::vec::Vec<Language> {
     alloc::vec![
+        Language::Bmo,
         Language::C,
         Language::Cpp,
-        Language::Java,
         Language::Python,
+        Language::Java,
     ]
-}
-
-/// Check if a language is supported.
-pub fn is_language_supported(lang: Language) -> bool {
-    matches!(
-        lang,
-        Language::C | Language::Cpp | Language::Java | Language::Python
-    )
 }

@@ -1,4 +1,8 @@
-//! Plugin registry for managing language plugins.
+//! Plugin registry for managing language adapters.
+//!
+//! v2.0.0: simplified. Only one trait (`LanguageAdapter`), no more
+//! dual `LanguagePlugin`/`LanguageAdapter` paths. BMO is always
+//! available; other languages are opt-in.
 
 #![allow(dead_code)]
 
@@ -6,68 +10,61 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::bmo_gpu::BxResult;
-use super::traits::{
-    Language, LanguagePlugin, RuntimeConfig, LanguageFeatures, CompileResult,
-    LanguageAdapter,
-};
+use super::traits::{Language, LanguageAdapter, AdapterError};
+use super::languages::BmoAdapter;
 
-/// Plugin registry - manages all registered language plugins and adapters
+/// Plugin registry — manages all registered language adapters.
 pub struct LanguageRegistry {
-    plugins: Vec<Box<dyn LanguagePlugin>>,
     adapters: Vec<Box<dyn LanguageAdapter>>,
     active_language: Option<Language>,
 }
 
 impl LanguageRegistry {
-    /// Create empty registry
+    /// Create empty registry.
     pub fn new() -> Self {
         Self {
-            plugins: Vec::new(),
             adapters: Vec::new(),
             active_language: None,
         }
     }
 
-    /// Register a language plugin
-    pub fn register(&mut self, plugin: Box<dyn LanguagePlugin>) {
-        let lang = plugin.language();
-        self.plugins.push(plugin);
-        // Set first registered language as active
+    /// Register a language adapter.
+    pub fn register(&mut self, adapter: Box<dyn LanguageAdapter>) {
+        let lang = adapter.language();
+        self.adapters.push(adapter);
         if self.active_language.is_none() {
             self.active_language = Some(lang);
         }
     }
 
-    /// Get plugin for language
-    pub fn get(&self, lang: Language) -> Option<&dyn LanguagePlugin> {
-        self.plugins.iter().find(|p| p.language() == lang).map(|p| p.as_ref())
+    /// Register the built-in BMO adapter. Always succeeds.
+    pub fn register_bmo(&mut self) {
+        self.register(Box::new(BmoAdapter::new()));
     }
 
-    /// Get mutable plugin for language
-    pub fn get_mut(&mut self, lang: Language) -> Option<&mut Box<dyn LanguagePlugin>> {
-        self.plugins.iter_mut().find(|p| p.language() == lang)
+    /// Get adapter for a language.
+    pub fn get(&self, lang: Language) -> Option<&dyn LanguageAdapter> {
+        self.adapters.iter().find(|a| a.language() == lang).map(|a| a.as_ref())
     }
 
-    /// Compile source with appropriate plugin
-    pub fn compile(&self, source: &[u8], lang: Language) -> BxResult<CompileResult> {
-        match self.get(lang) {
-            Some(plugin) => plugin.compile(source),
-            None => Err(crate::bmo_gpu::BxError::Unsupported),
-        }
+    /// Get adapter by name.
+    pub fn get_by_name(&self, name: &str) -> Option<&dyn LanguageAdapter> {
+        self.adapters.iter().find(|a| a.name() == name).map(|a| a.as_ref())
     }
 
-    /// Compile with active language
-    pub fn compile_active(&self, source: &[u8]) -> BxResult<CompileResult> {
-        match self.active_language {
-            Some(lang) => self.compile(source, lang),
-            None => Err(crate::bmo_gpu::BxError::Unsupported),
-        }
+    /// Get adapter by file extension.
+    pub fn get_by_extension(&self, ext: &str) -> Option<&dyn LanguageAdapter> {
+        self.adapters.iter().find(|a| a.extensions().iter().any(|e| *e == ext)).map(|a| a.as_ref())
     }
 
-    /// Set active language
+    /// Auto-detect adapter from source content.
+    pub fn detect(&self, source: &[u8]) -> Option<&dyn LanguageAdapter> {
+        self.adapters.iter().find(|a| a.can_compile(source)).map(|a| a.as_ref())
+    }
+
+    /// Set the active language.
     pub fn set_active(&mut self, lang: Language) -> bool {
-        if self.plugins.iter().any(|p| p.language() == lang) {
+        if self.adapters.iter().any(|a| a.language() == lang) {
             self.active_language = Some(lang);
             true
         } else {
@@ -75,12 +72,11 @@ impl LanguageRegistry {
         }
     }
 
-    /// Enable a plugin by name. v1.8.0: enables a previously-registered
-    /// but disabled plugin.
+    /// Enable a previously-registered plugin by name.
     pub fn enable(&mut self, name: &str) -> bool {
-        for plugin in &mut self.plugins {
-            if plugin.name() == name {
-                plugin.enable();
+        for adapter in &mut self.adapters {
+            if adapter.name() == name {
+                adapter.enable();
                 return true;
             }
         }
@@ -89,122 +85,89 @@ impl LanguageRegistry {
 
     /// Disable a plugin by name.
     pub fn disable(&mut self, name: &str) -> bool {
-        for plugin in &mut self.plugins {
-            if plugin.name() == name {
-                plugin.disable();
+        for adapter in &mut self.adapters {
+            if adapter.name() == name {
+                adapter.disable();
                 return true;
             }
         }
         false
     }
 
-    /// Get active language
-    pub fn active_language(&self) -> Option<Language> {
-        self.active_language
-    }
-
-    /// List all registered languages
-    pub fn languages(&self) -> Vec<Language> {
-        self.plugins.iter().map(|p| p.language()).collect()
-    }
-
-    /// Get count of registered plugins
-    pub fn count(&self) -> usize {
-        self.plugins.len()
-    }
-
-    /// Check if language is registered
-    pub fn has_language(&self, lang: Language) -> bool {
-        self.plugins.iter().any(|p| p.language() == lang)
-    }
-
-    /// Validate source with appropriate plugin
-    pub fn validate(&self, source: &[u8], lang: Language) -> BxResult<bool> {
-        match self.get(lang) {
-            Some(plugin) => plugin.validate(source),
-            None => Err(crate::bmo_gpu::BxError::Unsupported),
-        }
-    }
-
-    /// Get runtime config for language
-    pub fn runtime_config(&self, lang: Language) -> Option<RuntimeConfig> {
-        self.get(lang).map(|p| p.runtime_config())
-    }
-
-    /// Get features for language
-    pub fn features(&self, lang: Language) -> Option<LanguageFeatures> {
-        self.get(lang).map(|p| p.features())
-    }
-
-    /// Auto-detect language from source
-    pub fn detect_language(&self, source: &[u8]) -> Option<Language> {
-        for plugin in &self.plugins {
-            if plugin.can_compile(source) {
-                return Some(plugin.language());
-            }
-        }
-        None
-    }
-
-    /// Get plugin by file extension
-    pub fn get_by_extension(&self, ext: &str) -> Option<&dyn LanguagePlugin> {
-        self.plugins.iter().find(|p| p.language().file_extension() == ext).map(|p| p.as_ref())
-    }
-
-    /// Get all supported extensions
-    pub fn supported_extensions(&self) -> Vec<&'static str> {
-        self.plugins.iter().map(|p| p.language().file_extension()).collect()
-    }
-
-    // ── LanguageAdapter methods (compile to native x86-64) ──────────
-
-    /// Register a language adapter (native compiler, no VM).
-    pub fn register_adapter(&mut self, adapter: Box<dyn LanguageAdapter>) {
-        self.adapters.push(adapter);
-    }
-
-    /// Find adapter by name.
-    pub fn get_adapter(&self, name: &str) -> Option<&dyn LanguageAdapter> {
-        self.adapters.iter().find(|a| a.name() == name).map(|a| a.as_ref())
-    }
-
-    /// Find adapter by file extension.
-    pub fn get_adapter_by_extension(&self, ext: &str) -> Option<&dyn LanguageAdapter> {
-        self.adapters.iter().find(|a| a.extensions().iter().any(|e| *e == ext)).map(|a| a.as_ref())
-    }
-
-    /// Auto-detect adapter from source content.
-    pub fn detect_adapter(&self, source: &[u8]) -> Option<&dyn LanguageAdapter> {
-        self.adapters.iter().find(|a| a.can_compile(source)).map(|a| a.as_ref())
-    }
-
-    /// Compile source to native x86-64 using auto-detected adapter.
-    pub fn compile_native(&self, source: &[u8]) -> Result<Vec<u8>, super::traits::AdapterError> {
-        if let Some(adapter) = self.detect_adapter(source) {
+    /// Compile source with the auto-detected adapter.
+    pub fn compile_native(&self, source: &[u8]) -> Result<Vec<u8>, AdapterError> {
+        if let Some(adapter) = self.detect(source) {
             return adapter.compile_native(source);
         }
-        Err(super::traits::AdapterError::NotSupported)
+        // Fallback: use the active language.
+        if let Some(lang) = self.active_language {
+            if let Some(adapter) = self.get(lang) {
+                return adapter.compile_native(source);
+            }
+        }
+        Err(AdapterError::NotSupported)
     }
 
     /// Compile using a specific named adapter.
-    pub fn compile_native_as(&self, name: &str, source: &[u8]) -> Result<Vec<u8>, super::traits::AdapterError> {
-        if let Some(adapter) = self.get_adapter(name) {
+    pub fn compile_native_as(&self, name: &str, source: &[u8]) -> Result<Vec<u8>, AdapterError> {
+        if let Some(adapter) = self.get_by_name(name) {
             return adapter.compile_native(source);
         }
-        Err(super::traits::AdapterError::NotSupported)
+        Err(AdapterError::NotSupported)
     }
 
-    /// Number of registered adapters.
-    pub fn adapter_count(&self) -> usize { self.adapters.len() }
+    /// Get mutable reference to a plugin by name.
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Box<dyn LanguageAdapter>> {
+        self.adapters.iter_mut().find(|a| a.name() == name)
+    }
+
+    /// Get mutable reference to a plugin by language.
+    pub fn get_lang_mut(&mut self, lang: Language) -> Option<&mut Box<dyn LanguageAdapter>> {
+        self.adapters.iter_mut().find(|a| a.language() == lang)
+    }
+
+    /// Get the BMO adapter (always available).
+    pub fn bmo_adapter(&self) -> &dyn LanguageAdapter {
+        self.get(Language::Bmo).expect("BMO adapter is always present")
+    }
+
+    /// Get the active language.
+    pub fn active_language(&self) -> Option<Language> { self.active_language }
+
+    /// List all registered languages.
+    pub fn languages(&self) -> Vec<Language> {
+        self.adapters.iter().map(|a| a.language()).collect()
+    }
 
     /// List all adapter names.
-    pub fn adapter_names(&self) -> Vec<&str> {
+    pub fn names(&self) -> Vec<&'static str> {
         self.adapters.iter().map(|a| a.name()).collect()
+    }
+
+    /// Get count of registered adapters.
+    pub fn count(&self) -> usize { self.adapters.len() }
+
+    /// Check if a language is registered.
+    pub fn has_language(&self, lang: Language) -> bool {
+        self.adapters.iter().any(|a| a.language() == lang)
+    }
+
+    /// Check if a name is registered.
+    pub fn has_name(&self, name: &str) -> bool {
+        self.adapters.iter().any(|a| a.name() == name)
+    }
+
+    /// Light validation with the auto-detected adapter.
+    pub fn validate(&self, source: &[u8]) -> bool {
+        self.detect(source).map(|a| a.validate(source)).unwrap_or(false)
+    }
+
+    /// Light validation with a specific adapter by name.
+    pub fn validate_as(&self, name: &str, source: &[u8]) -> bool {
+        self.get_by_name(name).map(|a| a.validate(source)).unwrap_or(false)
     }
 }
 
 impl Default for LanguageRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
