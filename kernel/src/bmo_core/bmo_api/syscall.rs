@@ -170,6 +170,19 @@ pub mod nr {
     pub const FS_READDIR:            u16 = _nr::NR_FS_READDIR as u16;
     pub const FS_DELETE:             u16 = _nr::NR_FS_DELETE as u16;
     pub const FS_MOUNT:              u16 = _nr::NR_FS_MOUNT as u16;
+
+    // ─── Process (canónicos) ──────────────────────────────────────
+    pub const PROC_SPAWN:            u16 = _nr::NR_PROC_SPAWN as u16;
+    pub const PROC_EXIT:             u16 = _nr::NR_PROC_EXIT as u16;
+    pub const PROC_GET_PID:          u16 = _nr::NR_PROC_GET_PID as u16;
+    pub const PROC_GET_TID:          u16 = _nr::NR_PROC_GET_TID as u16;
+    pub const PROC_YIELD:            u16 = _nr::NR_PROC_YIELD as u16;
+
+    // ─── Thread (canónicos) ───────────────────────────────────────
+    pub const THREAD_CREATE:         u16 = _nr::NR_THREAD_CREATE as u16;
+    pub const THREAD_EXIT:           u16 = _nr::NR_THREAD_EXIT as u16;
+    pub const THREAD_JOIN:           u16 = _nr::NR_THREAD_JOIN as u16;
+    pub const THREAD_SELF:           u16 = _nr::NR_THREAD_SELF as u16;
 }
 
 // v1.8.8: errores ahora vienen de `bmo_abi::error_code` (21 códigos
@@ -365,6 +378,19 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::FS_READDIR       => sys_fs_readdir(a0, a1, a2, a3),
         nr::FS_DELETE        => sys_fs_delete(a0, a1),
         nr::FS_MOUNT         => sys_fs_mount(a0, a1, a2, a3, a4),
+
+        // ─── Process ──────────────────────────────────────────────
+        nr::PROC_SPAWN       => sys_proc_spawn(a0, a1),
+        nr::PROC_EXIT        => sys_proc_exit(a0),
+        nr::PROC_GET_PID     => sys_proc_get_pid(),
+        nr::PROC_GET_TID     => sys_proc_get_tid(),
+        nr::PROC_YIELD       => sys_proc_yield(),
+
+        // ─── Thread ───────────────────────────────────────────────
+        nr::THREAD_CREATE    => sys_thread_create(a0, a1),
+        nr::THREAD_EXIT      => sys_thread_exit(),
+        nr::THREAD_JOIN      => sys_thread_join(a0),
+        nr::THREAD_SELF      => sys_thread_self(),
 
         nr::DISPATCH_RETURN  => err::OK,
 
@@ -1135,6 +1161,68 @@ fn sys_fs_delete(_name_ptr: u64, _name_len: u64) -> u64 {
 /// NR_FS_MOUNT: monta filesystem. v1.8.8: stub.
 fn sys_fs_mount(_src_ptr: u64, _src_len: u64, _dst_ptr: u64, _dst_len: u64, _fs: u64) -> u64 {
     err::OK
+}
+
+// ── Process/Thread syscalls (NR_PROC_*, NR_THREAD_*) ─────────────
+
+/// NR_PROC_SPAWN: crea un nuevo proceso desde un BEF (stub v1.8.8).
+fn sys_proc_spawn(_bef_ptr: u64, _bef_len: u64) -> u64 {
+    // v1.9: implementar carga dinámica de BEF.
+    err::OK
+}
+
+/// NR_PROC_EXIT: termina el proceso actual.
+fn sys_proc_exit(code: u64) -> u64 {
+    // Llamamos a kill_current_process con vector 0xFF (synthetic).
+    // Esta función es `-> !` así que no retorna, pero la marcamos
+    // como tal para que el compilador no se queje.
+    crate::proc::process::kill_current_process(0xFF, code, 0);
+}
+
+/// NR_PROC_GET_PID: devuelve el PID del proceso actual.
+fn sys_proc_get_pid() -> u64 {
+    use crate::proc::task;
+    match task::current() {
+        Some(t) => t.pid.0 as u64,
+        None => 0,
+    }
+}
+
+/// NR_PROC_GET_TID: devuelve el TID del thread actual.
+fn sys_proc_get_tid() -> u64 {
+    use crate::proc::task;
+    match task::current() {
+        Some(t) => t.tid.0 as u64,
+        None => 0,
+    }
+}
+
+/// NR_PROC_YIELD: cede el CPU al scheduler.
+fn sys_proc_yield() -> u64 {
+    crate::proc::yield_now();
+    err::OK
+}
+
+/// NR_THREAD_CREATE: crea un thread en el proceso actual. v1.8.8: stub.
+fn sys_thread_create(_entry: u64, _arg: u64) -> u64 {
+    // v1.9: implementar alloc + start.
+    err::OK
+}
+
+/// NR_THREAD_EXIT: termina el thread actual.
+fn sys_thread_exit() -> u64 {
+    // v1.9: implementar exit del thread (sin matar el proceso).
+    err::OK
+}
+
+/// NR_THREAD_JOIN: espera a un thread. v1.8.8: stub.
+fn sys_thread_join(_tid: u64) -> u64 {
+    err::OK
+}
+
+/// NR_THREAD_SELF: devuelve el TID actual (alias de GET_TID).
+fn sys_thread_self() -> u64 {
+    sys_proc_get_tid()
 }
 
 
