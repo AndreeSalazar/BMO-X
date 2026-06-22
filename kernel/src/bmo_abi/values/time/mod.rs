@@ -5,10 +5,12 @@
 //!
 //! ## Inicialización
 //!
-//! Tras el boot, llamar `bmo_abi::time::init(tsc_at_boot, tsc_freq_hz)` para
-//! activar el backend real. Antes de eso, `BmoInstant::now()` retorna ZERO.
+//! Tras el boot, llamar `bmo_abi::time::init_clock(tsc_at_boot, tsc_freq_hz)`
+//! para activar el backend real. Antes de eso, `BmoInstant::now()` retorna
+//! `BmoInstant::ZERO`.
 
 pub mod instant;
 pub mod duration;
 
-pub use instant::init as init_clock;
+pub use instant::{BmoInstant, init as init_clock};
+pub use duration::BmoDuration;
