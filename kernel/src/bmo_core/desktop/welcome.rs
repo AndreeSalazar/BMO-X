@@ -521,20 +521,27 @@ pub fn run() -> ! {
     crate::dev::console::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
 
     if let Some(fb) = fb() {
+        crate::dev::console::serial_write("[welcome] fb: clearing to black\n");
         fb.fill_rect(0, 0, fb.width, fb.height, 0xFF000000);
+        crate::dev::console::serial_write("[welcome] fb: cleared\n");
+    } else {
+        crate::dev::console::serial_write("[welcome] fb() returned None!\n");
     }
     crate::boot::visual::clear();
 
     if let Some(fb) = fb() {
+        crate::dev::console::serial_write("[welcome] starting first render\n");
         render(&fb);
+        crate::dev::console::serial_write("[welcome] first render done\n");
         let on = blink_on();
         paint_caret(&fb, on);
         unsafe { LAST_BLINK_ON = on; }
     }
     unsafe { DIRTY = true; }
 
+    crate::dev::console::serial_write("[welcome] playing logon sound\n");
     crate::bmo_core::gustos::tracks::windows::logon();
-    crate::dev::console::serial_write("[welcome] gustOS logon sound played\n");
+    crate::dev::console::serial_write("[welcome] logon done\n");
 
     loop {
         if unsafe { DIRTY } {

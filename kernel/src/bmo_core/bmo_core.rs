@@ -50,33 +50,45 @@ use crate::bmo_gpu;
 /// Esta función **retorna** y debe llamarse una sola vez al boot,
 /// después de las fases p0..p4 de Ring 0.
 pub fn init() {
+    crate::dev::console::serial_write("[bmo_core] init: starting\n");
     // ── Trilogía: los 3 mosqueteros (hermanos, no bmo_core) ────────
     // Cabina  = El Ojo   (observación)
     // Defense = El Escudo (protección)
     // TimeBack= El Reloj (rollback)
+    crate::dev::console::serial_write("[bmo_core] init: cabina\n");
     crate::cabina::init();
+    crate::dev::console::serial_write("[bmo_core] init: defensa\n");
     crate::defense::init();
+    crate::dev::console::serial_write("[bmo_core] init: timeback\n");
     crate::timeback::init();
+    crate::dev::console::serial_write("[bmo_core] init: mark ready\n");
     cabina_mark_ready();
+    crate::dev::console::serial_write("[bmo_core] init: fs\n");
 
     // 4) ui: framebuffer + 8x16 font. (stateless, no requiere init.)
     // 5) fs: FAT32 + BMO-FS + ramdisk.
     fs::init();
+    crate::dev::console::serial_write("[bmo_core] init: bmo_gpu\n");
 
     // 6) GPU bridge: PE/ELF shims + BSF shaders.
     bmo_gpu::init();
+    crate::dev::console::serial_write("[bmo_core] init: bef\n");
 
     // 7) BEF loader: format + loaders (PE/ELF/native).
     bef::init();
+    crate::dev::console::serial_write("[bmo_core] init: bmo_api\n");
 
     // 8) BMO API v2.0: 256 syscalls + WM + paint compositor.
     bmo_api::init();
+    crate::dev::console::serial_write("[bmo_core] init: desktop\n");
 
     // 9) Desktop: state + dock. (welcome se arranca desde enter().)
     desktop::init();
+    crate::dev::console::serial_write("[bmo_core] init: desktop3\n");
 
     // 10) desktop3: la cúpula encima de Ring 3 (única puerta).
     desktop3::init();
+    crate::dev::console::serial_write("[bmo_core] init: DONE\n");
 
     // ── Tests integrados de la trilogía ────────────────────────────
     // v1.8.8: tests DESHABILITADOS al boot por defecto.
@@ -171,13 +183,18 @@ fn run_gateway_tests() {
 /// Esta función **NO retorna**. Arranca el welcome screen, espera
 /// input, procesa comandos, y queda en el event loop de desktop.
 pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
+    crate::dev::console::serial_write("[bmo_core] enter: clearing ring0 splash\n");
     // Limpia el splash que dejó Ring 0.
     crate::boot::visual::clear();
+    crate::dev::console::serial_write("[bmo_core] enter: visual clear done\n");
 
     // Reproduce el logon sound (gustos).
+    crate::dev::console::serial_write("[bmo_core] enter: calling gustos::logon\n");
     gustos::tracks::windows::logon();
+    crate::dev::console::serial_write("[bmo_core] enter: gustos::logon returned\n");
 
     // Lanza el welcome. Esta función NO retorna.
+    crate::dev::console::serial_write("[bmo_core] enter: calling welcome::run\n");
     desktop::welcome::run();
 }
 
