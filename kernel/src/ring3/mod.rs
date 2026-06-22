@@ -1,33 +1,27 @@
-//! Ring 3 — Userland applications (work in progress).
+//! `ring3/` — Userland (futuro).
 //!
-//! Ring 3 de x86-64 es donde corren las apps de usuario. En FastOS/BMO,
-//! las apps Ring 3 aún no se cargan dinámicamente (eso es v2.1 del
-//! BMO API spec). Lo que existe hoy son:
+//! v1.8.8: stub. Esta capa NO existe todavía — es donde correrán las
+//! apps de usuario en el futuro (juegos, herramientas, tests).
 //!
-//!   - Tests del path Ring 0→3→0 vía `ring0::crate::arch::ring3_test` (en el kernel).
-//!   - El crate externo `nexo_ring3/` con stubs de BSF loader y ABI.
-//!   - El BMO API v2.0 (`bmo_core::bmo_api`) que define los 256 syscalls
-//!     que las apps Ring 3 usarán cuando el loader dinámico esté listo.
+//! ## Relación con BMO CORE
 //!
-//! Submódulos (a medida que se implementen):
-//!   apps/        — Apps de ejemplo (terminal, file manager, etc.)
-//!   libbmo/      — Ring 3 library (en libbmo.a) con wrappers Rust para syscalls
-//!   elf_loader/  — ELF loader para cargar apps en Ring 3 desde BMO-FS
+//! En la arquitectura Opus, BMO CORE es el "kernel del Ring 3":
+//! - Recibe control de RING 0 al final del boot (después de phase 4).
+//! - Inicializa la windowing API, el desktop, el FS.
+//! - Cuando un userland app está lista, BMO CORE le transfiere control
+//!   vía `iretq` o `sysret` a un proceso de Ring 3.
+//! - Las apps usan los syscalls de BMO API (0x100..0x1FF) y BMO GPU
+//!   (0x1E0..0x1FF) para hablar con el OS.
 //!
-//! Estado actual: preparación estructural. La wnd_proc real a Ring 3
-//! (syscall 0x198 BMO_DISPATCH_RETURN) está documentada en
-//! `docs/BMO_API_V2_SPEC.md` §6.2 pero la implementación del
-//! trampoline + per-thread kernel stack queda para v2.1.
+//! ## Estado actual
 //!
-//! Contrato con BMO Core (ver ../bmo_core/mod.rs):
-//!   - Ring 3 sólo accede a BMO Core vía syscalls 0x100..0x1FF.
-//!   - Cada syscall valida el origen (Ring 3, no Ring 0) y el destino
-//!     (handle válido con generation counter coincidente).
+//! v1.8.8: hay un `ring_3.rs` mínimo en este directorio. La fase
+//! completa de Ring 3 con BMO CORE handoff queda para sesiones
+//! futuras.
+//!
+//! Ver `Rutas.md` §7 (RING 3) para la arquitectura ideal.
 
 #![allow(dead_code)]
-#![allow(static_mut_refs)]
 
-// ── Coordinator (orquesta init + wnd_proc dispatch) ─────────────────
-// El módulo `coord` apunta a `ring_3.rs` al lado de este archivo.
 #[path = "ring_3.rs"]
-pub mod coord;
+pub mod ring3_impl;

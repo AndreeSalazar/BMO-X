@@ -38,14 +38,16 @@ pub mod coordinator;
 pub mod bmo_core;
 #[path = "../bmo_gpu/mod.rs"]
 pub mod bmo_gpu;
+#[path = "../bmo_abi/mod.rs"]
+pub mod bmo_abi;
+#[path = "../lang/mod.rs"]
+pub mod lang;
+#[path = "../ring3/mod.rs"]
+pub mod ring3;
 
-// NOTA v1.8.7: `ring3` se desactiva temporalmente. No tiene consumidores.
-// #[path = "../ring3/mod.rs"]
-// pub mod ring3;
-
-// ── AMD/ — Solo documentación (.md) ────────────────────────────────
-#[path = "AMD/mod.rs"]
-pub mod amd_docs;
+// ── AMD/ — Solo documentación (.md) — vive en kernel/src/AMD/ ─────
+// No se carga como módulo Rust (solo .md files). Ver
+// `kernel/src/AMD/ryzen_5_5600x.md` para la documentación.
 
 // ── Nueva arquitectura: profile/bus/gpu/syscall ────────────────────
 pub mod profile;

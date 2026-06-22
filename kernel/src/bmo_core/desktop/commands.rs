@@ -46,7 +46,7 @@ pub fn enter_desktop() {
 
 /// Test compile a BMO program.
 pub fn nexo_test_compile() {
-    use crate::bmo_core::lang::bmo;
+    use crate::lang::bmo;
     let source = b"fn main() -> num { retorna 42 }\n";
     crate::bmo_core::diag::info("bmo", "Compiling test program");
     match bmo::compile(source) {

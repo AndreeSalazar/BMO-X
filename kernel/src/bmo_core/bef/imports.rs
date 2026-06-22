@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bmo_abi::primitives::{bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 /// Una entrada del import table — 24 bytes.
 #[repr(C, align(8))]

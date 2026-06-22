@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use core::alloc::Layout;
-use crate::bmo_core::bmo_abi::primitives::{bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 /// Cabecera del template TLS.
 #[repr(C, align(8))]

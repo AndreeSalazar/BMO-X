@@ -11,7 +11,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32};
+use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32};
 
 /// Hash BLAKE3 256-bit de una sección.
 #[repr(C, align(8))]

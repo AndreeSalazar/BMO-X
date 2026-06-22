@@ -1,8 +1,12 @@
-//! BMO Core — Windowing API + UI + Lang + FS + Desktop.
+//! BMO Core — Windowing API + UI + FS + Desktop.
 //!
 //! BMO Core is the "intermediate layer" between Ring 0 (kernel privileged)
 //! and Ring 3 (userland apps). It hosts the windowing API, desktop GUI,
-//! languages (BMO), filesystem, and diagnostics.
+//! filesystem, and diagnostics.
+//!
+//! v1.8.8: this is the **kernel of Ring 3**. In the Opus architecture,
+//! BMO Core receives control from Ring 0 at the end of boot and is
+//! responsible for handing off to userland apps (via `iretq` or `sysret`).
 //!
 //! Unlike Ring 0, BMO Core doesn't require special privileges for its
 //! logic (most runs with Ring 0 implicit in the kernel image). However,
@@ -15,10 +19,12 @@
 //!   ui            — Framebuffer primitives + 8x16 font
 //!   diag          — Diagnostic overlay + events + telemetry
 //!   gustos        — Audio system (FM synth, chimes, procedural tracks)
-//!   bmo_abi       — BMO ABI primitives (handles, status, types)
-//!   lang          — Languages: BMO (compiler) + runtime
 //!   bef           — BEF binary devourer (PE/ELF/native)
 //!   fs            — Filesystems: FAT32 + exFAT + ramdisk
+//!
+//! Moved out (v1.8.8, Opus architecture):
+//!   bmo_abi       → moved to `kernel/src/bmo_abi/` (independent layer)
+//!   lang          → moved to `kernel/src/lang/` (independent layer)
 //!
 //! Contract with Ring 0:
 //!   - BMO Core can call `crate::*` freely (same image).
@@ -40,7 +46,5 @@ pub mod desktop;
 pub mod ui;
 pub mod diag;
 pub mod gustos;
-pub mod bmo_abi;
-pub mod lang;
 pub mod bef;
 pub mod fs;

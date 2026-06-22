@@ -11,7 +11,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bmo_abi::primitives::{bx_i64, bx_u64};
+use crate::bmo_abi::primitives::{bx_i64, bx_u64};
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]

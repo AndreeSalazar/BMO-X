@@ -114,8 +114,8 @@ pub type BxResult<T> = core::result::Result<T, BxError>;
 impl BxError {
     /// Convierte a `BmoStatus` para retorno via BMO ABI (RAX:RDX).
     #[inline(always)]
-    pub const fn to_status(self) -> crate::bmo_core::bmo_abi::status::BmoStatus {
-        crate::bmo_core::bmo_abi::status::BmoStatus::err(self as u32)
+    pub const fn to_status(self) -> crate::bmo_abi::status::BmoStatus {
+        crate::bmo_abi::status::BmoStatus::err(self as u32)
     }
 }
 

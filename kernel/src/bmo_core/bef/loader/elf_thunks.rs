@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bmo_abi::primitives::bx_u64;
+use crate::bmo_abi::primitives::bx_u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElfThunkTarget {

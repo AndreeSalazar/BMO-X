@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bmo_abi::primitives::bx_u64;
+use crate::bmo_abi::primitives::bx_u64;
 
 /// Where a Win32 PE import should be redirected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

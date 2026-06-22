@@ -13,7 +13,7 @@
 //! state — useful for the welcome-screen `test` command and for
 //! QEMU pre-flight.
 
-use crate::bmo_core::bmo_abi;
+use crate::bmo_abi;
 use crate::boot::log;
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
