@@ -110,7 +110,9 @@ pub fn init_fastos_cpu() {
     crate::dev::console::serial_write("\n[fastos_cpu] === Ryzen 5 5600X initialization ===\n");
 
     // 1. CPUID detection
+    crate::dev::console::serial_write("[fastos_cpu] step 1: CPUID\n");
     let cpu_id = detect_cpu();
+    crate::dev::console::serial_write("[fastos_cpu] step 1: CPUID done\n");
     crate::dev::console::serial_write("[fastos_cpu] CPU: ");
     crate::dev::console::serial_write(cpu_id.brand.as_str());
     crate::dev::console::serial_write("\n[fastos_cpu] Family ");
@@ -130,7 +132,9 @@ pub fn init_fastos_cpu() {
     super::cpuid_detection::cache_identity(cpu_id);
 
     // 2. Cache topology
+    crate::dev::console::serial_write("[fastos_cpu] step 2: cache\n");
     let cache = detect_cache();
+    crate::dev::console::serial_write("[fastos_cpu] step 2: cache done\n");
     crate::dev::console::serial_write("[fastos_cpu] Cache:\n");
     if let Some(c) = cache.l1d {
         crate::dev::console::serial_write("  L1d: ");
@@ -174,7 +178,9 @@ pub fn init_fastos_cpu() {
     unsafe { CPU_CACHE = Some(cache); }
 
     // 3. CPU topology (SMT, CCX, CCD)
+    crate::dev::console::serial_write("[fastos_cpu] step 3: topology\n");
     let topo = super::topology::detect();
+    crate::dev::console::serial_write("[fastos_cpu] step 3: topology done\n");
     crate::dev::console::serial_write("[fastos_cpu] Topology: ");
     crate::dev::console::serial_write_u64(topo.cpu_count as u64, 10);
     crate::dev::console::serial_write(" threads, ");
@@ -196,7 +202,10 @@ pub fn init_fastos_cpu() {
     // 4. TSC calibration (use PM Timer if available, else fallback)
     //    Note: acpi_real::init must be called first to find the PM Timer
     //    port. If ACPI init fails, we use the hardcoded constant.
+    crate::dev::console::serial_write("[fastos_cpu] step 4: TSC calibration\n");
     let pm_timer_port = find_pm_timer_port();
+    crate::dev::console::serial_write_u64(pm_timer_port as u64, 16);
+    crate::dev::console::serial_write(" = pm_timer_port\n");
     let (freq, source) = super::tsc_calibration::calibrate_tsc(pm_timer_port);
     crate::dev::console::serial_write("[fastos_cpu] TSC: ");
     crate::dev::console::serial_write_u64(freq, 10);

@@ -47,12 +47,15 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
         Ok(bi) => bi,
         Err(msg) => boot::log::fault("ring0", msg),
     };
+    crate::dev::console::serial_write("[coord] main: boot_info validated\n");
     unsafe { store_boot_info(bi); }
 
     boot::visual::clear();
     boot::visual::log("ring0", "init start", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: visual init done\n");
 
     let mut ctx = init();
+    crate::dev::console::serial_write("[coord] main: init() done\n");
     let boot_start = crate::cpu::rdtsc();
 
     // ── Initialize ALL data of the 5600X (one-shot) ───────────────
@@ -60,7 +63,11 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     //          cache hierarchy, TLB, topology (SMT/CCX/CCD),
     //          TSC frequency, errata workarounds, MSR setup,
     //          power management (C1e).
+    boot::visual::log("ring0", "[1/5] detect 5600X", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: calling init_fastos_cpu\n");
     crate::vendor::amd::cpu::zen3::init_fastos_cpu();
+    boot::visual::log("ring0", "[1/5] 5600X detected", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: init_fastos_cpu returned\n");
 
     // ── Init MSRs (EFER, STAR, LSTAR, FMASK, PAT, TSC_AUX) ───────
     // Need the syscall entry point — for now use a placeholder.
@@ -68,22 +75,33 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     // which is called in phase 0. We re-call init_msrs() from there
     // with the real address.
     let syscall_entry = bi.kernel_base;  // placeholder; updated in phase 0
+    boot::visual::log("ring0", "[2/5] init MSRs", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: calling init_msrs\n");
     crate::vendor::amd::cpu::zen3::init_msrs(syscall_entry);
+    crate::dev::console::serial_write("[coord] main: init_msrs returned\n");
 
     // ── Init ACPI (uses RSDP address from BootInfo) ──────────────
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
+    boot::visual::log("ring0", "[3/5] init ACPI", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: calling init_acpi\n");
     crate::vendor::amd::cpu::zen3::init_acpi(rsdp_hint);
+    crate::dev::console::serial_write("[coord] main: init_acpi returned\n");
 
     boot::log::info("ring0", "fastos_cpu init complete");
+    boot::visual::log("ring0", "[4/5] CPU ready", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: starting phases::run_all\n");
 
     let phase4_end = boot::phases::run_all(&mut ctx, boot_start);
+    crate::dev::console::serial_write("[coord] main: phases::run_all returned\n");
 
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
     crate::cpu::busy_wait_ms(1500);
 
     // ── BMO Core init (cabina + defense + timeback + bmo_api + desktop) ──
     boot::visual::log("ring0", "init bmo_core", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: calling bmo_core::coord::init\n");
     bmo_core::coord::init();
+    crate::dev::console::serial_write("[coord] main: bmo_core::coord::init returned\n");
 
     dispatch_phase5(&ctx, boot_start, phase4_end);
 }
