@@ -183,6 +183,31 @@ pub mod nr {
     pub const THREAD_EXIT:           u16 = _nr::NR_THREAD_EXIT as u16;
     pub const THREAD_JOIN:           u16 = _nr::NR_THREAD_JOIN as u16;
     pub const THREAD_SELF:           u16 = _nr::NR_THREAD_SELF as u16;
+
+    // ─── Audio (canónicos) ────────────────────────────────────────
+    pub const AUDIO_PLAY:            u16 = _nr::NR_AUDIO_PLAY as u16;
+    pub const AUDIO_STOP:            u16 = _nr::NR_AUDIO_STOP as u16;
+    pub const AUDIO_BEEP:            u16 = _nr::NR_AUDIO_BEEP as u16;
+    pub const AUDIO_LOAD_WAVE:       u16 = _nr::NR_AUDIO_LOAD_WAVE as u16;
+
+    // ─── Compositor (canónicos) ──────────────────────────────────
+    pub const COMPOSITOR_BEGIN_FRAME: u16 = _nr::NR_COMPOSITOR_BEGIN_FRAME as u16;
+    pub const COMPOSITOR_END_FRAME:   u16 = _nr::NR_COMPOSITOR_END_FRAME as u16;
+    pub const COMPOSITOR_PRESENT:     u16 = _nr::NR_COMPOSITOR_PRESENT as u16;
+    pub const COMPOSITOR_SET_TARGET:  u16 = _nr::NR_COMPOSITOR_SET_TARGET as u16;
+    pub const COMPOSITOR_FLUSH:       u16 = _nr::NR_COMPOSITOR_FLUSH as u16;
+
+    // ─── Draw extras (canónicos) ──────────────────────────────────
+    pub const DRAW_CIRCLE:           u16 = _nr::NR_DRAW_CIRCLE as u16;
+    // DRAW_TEXT ya está mapeado a NR_WINPAINT_DRAW_TEXT (0x121).
+    pub const DRAW_GRADIENT_H:       u16 = _nr::NR_DRAW_GRADIENT_H as u16;
+    pub const DRAW_GRADIENT_V:       u16 = _nr::NR_DRAW_GRADIENT_V as u16;
+    pub const DRAW_ROUNDED_RECT:     u16 = _nr::NR_DRAW_ROUNDED_RECT as u16;
+
+    // ─── WinPaint extras (canónicos) ──────────────────────────────
+    pub const WINPAINT_DRAW_PIXEL:   u16 = _nr::NR_WINPAINT_DRAW_PIXEL as u16;
+    pub const WINPAINT_DRAW_LINE:    u16 = _nr::NR_WINPAINT_DRAW_LINE as u16;
+    pub const WINPAINT_DRAW_CIRCLE:  u16 = _nr::NR_WINPAINT_DRAW_CIRCLE as u16;
 }
 
 // v1.8.8: errores ahora vienen de `bmo_abi::error_code` (21 códigos
@@ -391,6 +416,31 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::THREAD_EXIT      => sys_thread_exit(),
         nr::THREAD_JOIN      => sys_thread_join(a0),
         nr::THREAD_SELF      => sys_thread_self(),
+
+        // ─── Audio ───────────────────────────────────────────────
+        nr::AUDIO_PLAY       => sys_audio_play(a0),
+        nr::AUDIO_STOP       => sys_audio_stop(),
+        nr::AUDIO_BEEP       => sys_audio_beep(a0, a1),
+        nr::AUDIO_LOAD_WAVE  => sys_audio_load_wave(a0, a1),
+
+        // ─── Compositor ──────────────────────────────────────────
+        nr::COMPOSITOR_BEGIN_FRAME => sys_compositor_begin_frame(),
+        nr::COMPOSITOR_END_FRAME   => sys_compositor_end_frame(),
+        nr::COMPOSITOR_PRESENT     => sys_compositor_present(),
+        nr::COMPOSITOR_SET_TARGET  => sys_compositor_set_target(a0, a1, a2, a3),
+        nr::COMPOSITOR_FLUSH       => sys_compositor_flush(),
+
+        // ─── Draw extras ─────────────────────────────────────────
+        nr::DRAW_CIRCLE      => sys_draw_circle(a0, a1, a2, a3, a4),
+        nr::DRAW_TEXT        => sys_draw_text_user(a0, a1, a2, a3, a4),
+        nr::DRAW_GRADIENT_H  => sys_draw_gradient_h(a0, a1, a2, a3, a4, a5),
+        nr::DRAW_GRADIENT_V  => sys_draw_gradient_v(a0, a1, a2, a3, a4, a5),
+        nr::DRAW_ROUNDED_RECT => sys_draw_rounded_rect(a0, a1, a2, a3, a4, a5, 0),
+
+        // ─── WinPaint extras ─────────────────────────────────────
+        nr::WINPAINT_DRAW_PIXEL  => sys_winpaint_draw_pixel(a0, a1, a2, a3),
+        nr::WINPAINT_DRAW_LINE   => sys_winpaint_draw_line(a0, a1, a2, a3, a4, a5),
+        nr::WINPAINT_DRAW_CIRCLE => sys_winpaint_draw_circle(a0, a1, a2, a3, a4),
 
         nr::DISPATCH_RETURN  => err::OK,
 
@@ -1223,6 +1273,117 @@ fn sys_thread_join(_tid: u64) -> u64 {
 /// NR_THREAD_SELF: devuelve el TID actual (alias de GET_TID).
 fn sys_thread_self() -> u64 {
     sys_proc_get_tid()
+}
+
+// ── Audio syscalls (NR_AUDIO_*) ──────────────────────────────────
+
+/// NR_AUDIO_PLAY: inicia reproducción de un track (v1.8.8: stub).
+fn sys_audio_play(_track_id: u64) -> u64 {
+    // v1.9: reproducir desde RAM.
+    err::OK
+}
+
+/// NR_AUDIO_STOP: detiene reproducción.
+fn sys_audio_stop() -> u64 {
+    // v1.8.8: el audio se gestiona por eventos (logon, error, etc).
+    // En v1.9 se tendrá un canal que se puede detener.
+    err::OK
+}
+
+/// NR_AUDIO_BEEP: beep del PC speaker.
+fn sys_audio_beep(freq: u64, ms: u64) -> u64 {
+    if freq == 0 { return err::OK; }
+    crate::bmo_core::desktop::beep(freq as u32, ms as u32);
+    err::OK
+}
+
+/// NR_AUDIO_LOAD_WAVE: carga un WAVE desde RAM (v1.8.8: stub).
+fn sys_audio_load_wave(_ptr: u64, _len: u64) -> u64 {
+    err::OK
+}
+
+// ── Compositor syscalls (NR_COMPOSITOR_*) ────────────────────────
+
+/// NR_COMPOSITOR_BEGIN_FRAME: inicia un frame de composición.
+fn sys_compositor_begin_frame() -> u64 {
+    // v1.8.8: el compositor se actualiza por tick (timer ISR).
+    err::OK
+}
+
+/// NR_COMPOSITOR_END_FRAME: termina el frame.
+fn sys_compositor_end_frame() -> u64 {
+    err::OK
+}
+
+/// NR_COMPOSITOR_PRESENT: presenta al FB.
+fn sys_compositor_present() -> u64 {
+    crate::bmo_core::bmo_api::paint_compositor::tick();
+    err::OK
+}
+
+/// NR_COMPOSITOR_SET_TARGET: cambia el destino (v1.8.8: stub).
+fn sys_compositor_set_target(_ptr: u64, _w: u64, _h: u64, _stride: u64) -> u64 {
+    err::OK
+}
+
+/// NR_COMPOSITOR_FLUSH: vacía la cola (v1.8.8: stub).
+fn sys_compositor_flush() -> u64 {
+    err::OK
+}
+
+// ── Draw extras (NR_DRAW_CIRCLE etc.) ────────────────────────────
+
+/// NR_DRAW_CIRCLE: dibuja un círculo. v1.8.8: stub con fill_rect.
+fn sys_draw_circle(_dc: u64, _cx: u64, _cy: u64, _r: u64, color: u64) -> u64 {
+    // v1.9: implementar draw_circle real (Bresenham).
+    let _ = color;
+    err::OK
+}
+
+/// NR_DRAW_TEXT (alias WINPAINT_DRAW_TEXT): dibuja texto en un DC.
+fn sys_draw_text_user(dc: u64, x: u64, y: u64, text_ptr: u64, len: u64) -> u64 {
+    if !validate_user_str(text_ptr, len) { return err::INVALID; }
+    let s = unsafe { core::slice::from_raw_parts(text_ptr as *const u8, len as usize) };
+    super::draw::draw_text(dc as u32, x as i32, y as i32, s, 0xFFFFFFFF);
+    err::OK
+}
+
+/// NR_DRAW_GRADIENT_H: gradiente horizontal. v1.8.8: stub.
+fn sys_draw_gradient_h(dc: u64, x: u64, y: u64, w: u64, h: u64, c0: u64) -> u64 {
+    // v1.9: implementar real. v1.8.8 fallback: fill_rect.
+    super::draw::fill_rect(dc as u32, x as i32, y as i32, w as i32, h as i32, c0 as u32);
+    err::OK
+}
+
+/// NR_DRAW_GRADIENT_V: gradiente vertical. v1.8.8: stub.
+fn sys_draw_gradient_v(dc: u64, x: u64, y: u64, w: u64, h: u64, c0: u64) -> u64 {
+    super::draw::fill_rect(dc as u32, x as i32, y as i32, w as i32, h as i32, c0 as u32);
+    err::OK
+}
+
+/// NR_DRAW_ROUNDED_RECT: rectángulo redondeado. v1.8.8: stub.
+fn sys_draw_rounded_rect(dc: u64, x: u64, y: u64, w: u64, h: u64, _r: u64, color: u64) -> u64 {
+    super::draw::fill_rect(dc as u32, x as i32, y as i32, w as i32, h as i32, color as u32);
+    err::OK
+}
+
+// ── WinPaint extras (NR_WINPAINT_DRAW_*) ─────────────────────────
+
+/// NR_WINPAINT_DRAW_PIXEL: pixel individual en paint DC.
+fn sys_winpaint_draw_pixel(dc: u64, x: u64, y: u64, color: u64) -> u64 {
+    super::draw::draw_pixel(dc as u32, x as i32, y as i32, color as u32);
+    err::OK
+}
+
+/// NR_WINPAINT_DRAW_LINE: línea en paint DC.
+fn sys_winpaint_draw_line(dc: u64, x0: u64, y0: u64, x1: u64, y1: u64, color: u64) -> u64 {
+    super::draw::draw_line(dc as u32, x0 as i32, y0 as i32, x1 as i32, y1 as i32, color as u32);
+    err::OK
+}
+
+/// NR_WINPAINT_DRAW_CIRCLE: círculo en paint DC. v1.8.8: stub.
+fn sys_winpaint_draw_circle(_dc: u64, _cx: u64, _cy: u64, _r: u64, _color: u64) -> u64 {
+    err::OK
 }
 
 
