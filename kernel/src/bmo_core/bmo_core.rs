@@ -79,11 +79,23 @@ pub fn init() {
     desktop3::init();
 
     // ── Tests integrados de la trilogía ────────────────────────────
-    // Se ejecutan en cada boot para validar que los subsistemas
-    // funcionan end-to-end. No fallan el boot (solo reportan).
-    run_trilogy_tests();
-    run_gateway_tests();
-    run_bef_tests();
+    // v1.8.8: tests DESHABILITADOS al boot por defecto.
+    //
+    // Los 38 tests (cabina+defense+timeback+desktop3+bef) son útiles
+    // para validación, pero ejecutar `compile()` del BMO lang en cada
+    // boot es demasiado costoso y puede colgarse.
+    //
+    // Para correr tests manualmente desde el welcome o el shell:
+    //   `timeback::tests::run_all()` desde el welcome
+    //   `cabina::tests::run_all()` desde el shell
+    //
+    // Si quieres re-habilitar los tests en boot, descomenta las 3
+    // líneas siguientes. **Riesgo**: el BEF test compila programas
+    // BMO reales, lo que requiere ~5 MB de heap y puede tardar 1-2s.
+    //
+    // run_trilogy_tests();
+    // run_gateway_tests();
+    // run_bef_tests();
 
     crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop+desktop3");
 }

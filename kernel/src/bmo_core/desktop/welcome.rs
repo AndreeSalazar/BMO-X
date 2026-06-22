@@ -146,6 +146,10 @@ fn draw_text_scaled(fb: &Framebuffer, x: u32, y: u32, text: &[u8], color: u32, s
         }
         cx += gw;
     }
+    // SFENCE: flush the framebuffer's write-combining buffer so the
+    // scattered put_pixel writes aren't reordered relative to subsequent
+    // fill_rect calls. v1.8.8: critical for >=1080p GOP displays.
+    unsafe { core::arch::asm!("sfence"); }
 }
 
 #[inline]
