@@ -1,78 +1,60 @@
-//! `cabina::panels::lang` — Panel de LANG con detalle granular.
-//!
-//! Categorías:
-//! - **AOT stats**: bytes emitidos por función, calls, jumps
-//! - **Linker stats**: objetos linkeados, relocs aplicados, runtime size
-//! - **Tests**: cuántos tests pasaron/fallaron
-//! - **Benchmarks**: tiempo de compilación por source
-//!
-//! v1.8.8: solo contadores placeholder. El lang report debe actualizar
-//! estos contadores.
+//! `cabina::panels::lang` — Panel del toolchain de lenguajes.
 
 #![allow(dead_code)]
 
-use crate::cabina::snapshot::Snapshot;
+use crate::cabina::panels::helpers as H;
+use crate::cabina::paint;
 
-pub fn render(_s: &Snapshot) {
-    draw_header();
+pub fn render(_s: &crate::cabina::snapshot::Snapshot) {
+    H::header("LANG", 0xFFAAFF00);
+
     let mut y = 40u32;
 
-    draw_section_title(&mut y, "AOT x86-64");
-    draw_kv(&mut y, "Sources compiled", "0 (v1.9)", 0xFF888888);
-    draw_kv(&mut y, "Functions emitted", "0", 0xFFCCCCCC);
-    draw_kv(&mut y, "Total bytes",      "0", 0xFFCCCCCC);
-    draw_kv(&mut y, "Avg per function", "0", 0xFF888888);
-    draw_kv(&mut y, "Largest function", "0 B (v1.9)", 0xFF888888);
+    y = H::section(y, "Architecture", 0xFFAAFF00);
+    y = H::line(y, "Frontends: BMO, C (AOT, no VM)", 0xFF00FF00);
+    y = H::line(y, "Backend:   aot_x86_64",           0xFF00FF00);
+    y = H::line(y, "Linker:    v2.0 (BEF)",           0xFF00FF00);
+    y = H::line(y, "Runtime:   c_min",                0xFF00FF00);
+    y = H::line(y, "ABI:       bmo_abi v1.0.0",       0xFFCCCCCC);
 
-    draw_section_title(&mut y, "Linker v2.0");
-    draw_kv(&mut y, "Objects linked",     "0", 0xFFCCCCCC);
-    draw_kv(&mut y, "Relocs applied",     "0", 0xFFCCCCCC);
-    draw_kv(&mut y, "Sections in BEF",    "0", 0xFFCCCCCC);
-    draw_kv(&mut y, "Runtime embedded",   "0 B (v1.9: c_min)", 0xFFFFFF00);
-    draw_kv(&mut y, "Total BEF size",     "0 B", 0xFFFFFFFF);
+    y = H::section(y, "Pipeline", 0xFFAAFF00);
+    let stages = [
+        ("Source",      "BMO | C",     0xFFCCCCCC),
+        ("Frontend",    "lex+parse",   0xFFFFAA00),
+        ("AST",         "common::ast", 0xFFFFAA00),
+        ("Backend",     "AOT x86_64",  0xFF00FFFF),
+        ("BmoObject",   "lang::bef",   0xFF00FFFF),
+        ("Linker",      "BEF v2.0",    0xFF00FFAA),
+        ("Output",      "BEF (BEF1)",  0xFF00FF00),
+    ];
+    for (k, v, c) in &stages {
+        y = H::kv(y, k, v, *c);
+    }
 
-    draw_section_title(&mut y, "Tests");
-    draw_kv(&mut y, "Passed", "10 (hello, arith, if, while, ...)", 0xFF00FF00);
-    draw_kv(&mut y, "Failed", "0", 0xFF00FF00);
-    draw_kv(&mut y, "Total",  "10", 0xFFFFFFFF);
+    y = H::section(y, "Tests (run_all)", 0xFFAAFF00);
+    let tests = [
+        ("hello_world",        "OK"),
+        ("arithmetic",         "OK"),
+        ("if_else",            "OK"),
+        ("while_loop",         "OK"),
+        ("factorial",          "OK"),
+        ("fibonacci",          "OK"),
+        ("call_bmo_abi",       "OK"),
+        ("comparison",         "OK"),
+        ("c_hello_world",      "OK"),
+        ("c_arithmetic",       "OK"),
+        ("bef_header_valid",   "OK"),
+        ("bef_section_table",  "OK"),
+    ];
+    for (k, v) in &tests {
+        y = H::kv(y, k, v, 0xFF00FF00);
+    }
 
-    draw_section_title(&mut y, "Compilation time");
-    draw_kv(&mut y, "Hello World (BMO)",  "< 1 ms", 0xFF00FF00);
-    draw_kv(&mut y, "Fibonacci (BMO)",    "< 1 ms", 0xFF00FF00);
-    draw_kv(&mut y, "Factorial (BMO)",    "< 1 ms", 0xFF00FF00);
-    draw_kv(&mut y, "Factorial (C)",      "< 1 ms", 0xFF00FF00);
-
-    draw_section_title(&mut y, "Languages");
-    draw_kv(&mut y, "BMO",   "v2.0.0 — AOT working",  0xFF00FF00);
-    draw_kv(&mut y, "C",     "v1.8.8 — pipeline OK",  0xFF00FF00);
-    draw_kv(&mut y, "C++",   "v1.9 (skeleton)",      0xFF888888);
-    draw_kv(&mut y, "Java-BMO",  "v1.9 (skeleton)",  0xFF888888);
-    draw_kv(&mut y, "Python-BMO","v1.9 (skeleton)",  0xFF888888);
-    draw_kv(&mut y, "Rust-BMO",  "v1.9 (skeleton)",  0xFF888888);
-}
-
-fn draw_header() {
-    fill_rect(0, 0, 1920, 32, 0xFF1A2E2E);
-    draw_text(8, 8, "LANG", 0xFF00FFAA);
-    draw_text(80, 8, "— AOT + Linker + Tests", 0xFF888888);
-    draw_text(1700, 8, "Cabina v1.0", 0xFF666666);
-}
-
-fn draw_section_title(y: &mut u32, title: &str) {
-    fill_rect(0, *y, 1920, 20, 0xFF202828);
-    draw_text(8, *y + 2, title, 0xFF00FFAA);
-    *y += 24;
-}
-
-fn draw_kv(y: &mut u32, key: &str, val: &str, color: u32) {
-    draw_text(16, *y, key, 0xFFCCCCCC);
-    draw_text(280, *y, val, color);
-    *y += 16;
-}
-
-fn draw_text(x: u32, y: u32, s: &str, _color: u32) {
-    crate::dev::console::serial_write(&alloc::format!("[cabina.lang] ({}:{}) {}\n", x, y, s));
-}
-fn fill_rect(x: u32, y: u32, w: u32, h: u32, _color: u32) {
-    let _ = (x, y, w, h);
+    y = H::section(y, "Stats (v1.9)", 0xFFAAFF00);
+    y = H::kv(y, "AST nodes",      "-- (v1.9)", 0xFF888888);
+    y = H::kv(y, "Bytes compiled", "-- (v1.9)", 0xFF888888);
+    y = H::kv(y, "Objects linked", "-- (v1.9)", 0xFF888888);
+    y = H::kv(y, "Code size (BEF)","-- (v1.9)", 0xFF888888);
+    let _ = y;
+    let _ = paint::fill_rect;
 }

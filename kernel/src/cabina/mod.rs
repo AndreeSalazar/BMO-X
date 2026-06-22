@@ -8,15 +8,15 @@
 //!
 //! ```text
 //! ┌──────────────────────────────────────────────────────┐
-//! │ cabina/                                             │
-//! │   ├── event      ← caja negra circular RAM          │
-//! │   ├── telemetry  ← contadores atómicos             │
-//! │   ├── snapshot   ← API limpia para leer ring0      │
-//! │   ├── filter     ← filtros simples                 │
-//! │   ├── query      ← DSL de filtros inteligentes     │
-//! │   ├── serial     ← sink COM1                       │
-//! │   ├── overlay    ← HUD GOP con tabs                │
-//! │   └── panels/    ← cada tab es un panel             │
+//! │ cabina/                                              │
+//! │   ├── event      ← caja negra circular RAM           │
+//! │   ├── telemetry  ← contadores atómicos               │
+//! │   ├── snapshot   ← API limpia para leer ring0        │
+//! │   ├── filter     ← filtros simples                   │
+//! │   ├── query      ← DSL de filtros inteligentes       │
+//! │   ├── serial     ← sink COM1                         │
+//! │   ├── overlay    ← HUD GOP con tabs                  │
+//! │   └── panels/    ← cada tab es un panel              │
 //! └──────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -35,6 +35,7 @@ pub mod snapshot;
 pub mod filter;
 pub mod query;
 pub mod serial;
+pub mod paint;
 pub mod overlay;
 pub mod panels;
 
@@ -109,6 +110,7 @@ pub fn init() {
     event::buffer::init();
     telemetry::init();
     serial::init();
+    paint::init();
     BOOT_READY.store(true, Ordering::SeqCst);
 }
 
