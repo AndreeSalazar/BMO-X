@@ -1,8 +1,9 @@
 //! Ring 0 — Hardware Abstraction Layer (entry point del binario).
 //!
-//! v1.8.15 (Phase 3): reordenado de inicialización. init_fastos_cpu()
-//! y init_msrs() corren ANTES de las fases 1-4 para garantizar que
-//! MTRR/PAT estén configurados antes de tocar el framebuffer.
+//! v1.8.16: fix crítico en _start. RDI (boot_info_ptr) se guardaba
+//! en RBX DESPUÉS del BSS zero, pero `rep stosb` modifica RDI, así que
+//! el kernel arrancaba con un puntero inválido. Ahora se guarda en
+//! R12 (registro preservado) ANTES del BSS zero y se restaura después.
 //!
 //! ## Orden de boot
 //!
@@ -82,6 +83,11 @@ use core::arch::naked_asm;
 #[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
+        // ── CRITICAL: RDI contiene el boot_info_ptr del bootloader.
+        //    Se debe GUARDAR en un registro preservado (R12) ANTES
+        //    de cualquier otra cosa, porque `rep stosb` modifica RDI
+        //    y perderíamos el puntero.
+        "mov r12, rdi",
         // ── Zero-init BSS (defensivo). El bootloader UEFI ya lo hace,
         //    pero algunas páginas (PAGE_SIZE-aligned) pueden quedar
         //    con basura de RAM si la UEFI las marcó como "BootServices"
@@ -95,12 +101,9 @@ unsafe extern "C" fn _start() -> ! {
         "xor eax, eax",
         "rep stosb",
         "1:",
-        // ── Entry normal
-        "test rdi, rdi",
-        "jz 2f",
-        "mov rbx, rdi",
+        // ── Entry normal: restaurar RDI desde R12 (preservado).
+        "mov rdi, r12",
         "and rsp, -16",
-        "mov rdi, rbx",
         "call kernel_main_real",
         "2: hlt",
         "jmp 2b",
