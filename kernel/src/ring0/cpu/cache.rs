@@ -35,12 +35,22 @@ pub fn init_mtrr(features: &CpuFeatures, vram_base: u64, vram_size: u64) {
 
         // Configure VRAM as Write-Combining (WC)
         if vram_size > 0 {
+            // Detect physical address size from CPUID leaf 0x80000008 EAX[7:0]
+            let cpuid_8_eax = crate::vendor::amd::cpu::zen3::cpuid_detection::cpuid(0x8000_0008, 0).0;
+            let max_phy_addr = (cpuid_8_eax & 0xFF) as u32;
+            let max_phy_addr = if max_phy_addr == 0 { 36 } else { max_phy_addr };
+            let phy_addr_mask = if max_phy_addr >= 64 {
+                !0u64
+            } else {
+                (1u64 << max_phy_addr) - 1
+            };
+
             for i in 0..8u32 {
                 let mask_val = msr::rdmsr(IA32_MTRR_PHYSMASK0 + i * 2);
                 if mask_val & (1 << 11) == 0 {
-                    let base_val = (vram_base & 0x000FFFFF_FFFFF000) | MTRR_TYPE_WC;
+                    let base_val = (vram_base & phy_addr_mask & !0xFFF) | MTRR_TYPE_WC;
                     let align = vram_size.next_power_of_two();
-                    let mask = (!(align - 1)) & 0x000FFFFF_FFFFF000 | (1 << 11);
+                    let mask = (!(align - 1)) & phy_addr_mask & !0xFFF | (1 << 11);
                     msr::wrmsr(IA32_MTRR_PHYSBASE0 + i * 2, base_val);
                     msr::wrmsr(IA32_MTRR_PHYSMASK0 + i * 2, mask);
                     break;

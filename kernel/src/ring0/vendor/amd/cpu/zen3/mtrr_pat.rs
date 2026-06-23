@@ -92,14 +92,27 @@ pub fn init_mtrr(vram_base: u64, vram_size: u64) -> bool {
 
         // 3. Configure VRAM as Write-Combining if requested
         if vram_size > 0 {
+            // Detect physical address size from CPUID leaf 0x80000008 EAX[7:0]
+            let cpuid_8_eax = super::cpuid_detection::cpuid(0x8000_0008, 0).0;
+            let max_phy_addr = (cpuid_8_eax & 0xFF) as u32;
+            // Fallback to 36 bits if CPUID is not available or reports 0, typical is 40 or 48.
+            let max_phy_addr = if max_phy_addr == 0 { 36 } else { max_phy_addr };
+            
+            // Build the mask based on physical address width
+            let phy_addr_mask = if max_phy_addr >= 64 {
+                !0u64
+            } else {
+                (1u64 << max_phy_addr) - 1
+            };
+
             // Align down base, round up size to next power of 2.
             let base_aligned = vram_base & !0xFFF; // 4 KB alignment
             let size_aligned = (vram_size + 0xFFF) & !0xFFF;
             let size_pow2 = size_aligned.next_power_of_two();
 
             // Use MTRR 0 for VRAM
-            let phys_base = (base_aligned & 0x000F_FFFF_FFFF_F000) | MTRR_TYPE_WRITE_COMBINING;
-            let phys_mask = (!((size_pow2 - 1) as u64) & 0x000F_FFFF_FFFF_F000) | MTRR_VALID;
+            let phys_base = (base_aligned & phy_addr_mask & !0xFFF) | MTRR_TYPE_WRITE_COMBINING;
+            let phys_mask = (!((size_pow2 - 1) as u64) & phy_addr_mask & !0xFFF) | MTRR_VALID;
 
             wrmsr(MSR_IA32_MTRR_PHYSBASE0, phys_base);
             wrmsr(MSR_IA32_MTRR_PHYSMASK0, phys_mask);
