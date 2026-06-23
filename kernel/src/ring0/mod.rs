@@ -84,15 +84,11 @@ use core::arch::naked_asm;
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
         // ── CRITICAL: RDI contiene el boot_info_ptr del bootloader.
-        //    Se debe GUARDAR en un registro preservado (R12) ANTES
-        //    de cualquier otra cosa, porque `rep stosb` modifica RDI
-        //    y perderíamos el puntero.
+        //    Guardar en R12 (preservado) ANTES de cualquier cosa que
+        //    modifique RDI (como rep stosb).
         "mov r12, rdi",
         // ── Zero-init BSS (defensivo). El bootloader UEFI ya lo hace,
-        //    pero algunas páginas (PAGE_SIZE-aligned) pueden quedar
-        //    con basura de RAM si la UEFI las marcó como "BootServices"
-        //    y el kernel las reclama sin zero-init. Esto causa #GP en
-        //    load de static mut con valores random.
+        //    pero algunas páginas pueden quedar con basura.
         "lea rax, [rip + __bss_start]",
         "lea rcx, [rip + __bss_end]",
         "sub rcx, rax",
@@ -101,9 +97,13 @@ unsafe extern "C" fn _start() -> ! {
         "xor eax, eax",
         "rep stosb",
         "1:",
-        // ── Entry normal: restaurar RDI desde R12 (preservado).
+        // ── Entry normal:
+        //    - RSP ya está configurado por el bootloader (stack_top)
+        //      y YA está 16-byte aligned. NO tocar RSP con `and rsp,-16`
+        //      porque la dirección base del stack puede no ser múltiplo
+        //      de 0x10 y eso podría reducirla a una zona no mapeada.
+        //    - Restaurar RDI desde R12 (boot_info_ptr).
         "mov rdi, r12",
-        "and rsp, -16",
         "call kernel_main_real",
         "2: hlt",
         "jmp 2b",
