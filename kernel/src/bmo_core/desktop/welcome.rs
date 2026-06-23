@@ -499,87 +499,59 @@ fn process_enter() {
 }
 
 pub fn run() -> ! {
-    crate::dev::console::serial_write("[welcome] v1.7.1 Pantalla de bienvenida activa.\n");
+    crate::dev::console::serial_write("[welcome] v1.8.17 ULTRA-MINIMAL\n");
 
-    if let Some(fb) = fb() {
-        crate::dev::console::serial_write("[welcome] fb: clearing to black\n");
-        fb.fill_rect(0, 0, fb.width, fb.height, 0xFF000000);
-        crate::dev::console::serial_write("[welcome] fb: cleared\n");
-    } else {
-        crate::dev::console::serial_write("[welcome] fb() returned None!\n");
+    let (fb_addr, w, h, s) = unsafe {
+        (
+            crate::boot::info::FB_ADDR,
+            crate::boot::info::FB_WIDTH as usize,
+            crate::boot::info::FB_HEIGHT as usize,
+            crate::boot::info::FB_STRIDE as usize,
+        )
+    };
+
+    if fb_addr == 0 || w == 0 || h == 0 {
+        crate::dev::console::serial_write("[welcome] FATAL: no fb\n");
+        loop { unsafe { core::arch::asm!("hlt"); } }
     }
-    crate::dev::console::serial_write("[welcome] calling visual::clear\n");
-    crate::boot::visual::clear();
-    crate::dev::console::serial_write("[welcome] visual::clear done\n");
 
-    if let Some(fb) = fb() {
-        crate::dev::console::serial_write("[welcome] starting first render\n");
-        render(&fb);
-        crate::dev::console::serial_write("[welcome] first render done\n");
-        let on = blink_on();
-        paint_caret(&fb, on);
-        unsafe { LAST_BLINK_ON = on; }
+    // Pintar fondo
+    crate::dev::console::serial_write("[welcome] painting bg\n");
+    unsafe {
+        let buf = fb_addr as *mut u32;
+        for y in 0..h {
+            for x in 0..w {
+                buf.add(y * s + x).write_volatile(0xFF050B18);
+            }
+        }
     }
-    unsafe { DIRTY = true; }
 
-    crate::dev::console::serial_write("[welcome] entering event loop\n");
-
-    loop {
-        if unsafe { DIRTY } {
-            if let Some(fb) = fb() {
-                render(&fb);
-                let on = blink_on();
-                paint_caret(&fb, on);
-                unsafe { LAST_BLINK_ON = on; }
-            }
-            unsafe { DIRTY = false; }
-        }
-
-        if crate::cabina::is_overlay_enabled() {
-            crate::cabina::paint_overlay();
-        }
-
-        let cycles = 16u64 * 3_700_000;
-        let start = crate::cpu::rdtsc();
-        while (crate::cpu::rdtsc() - start) < cycles {
-            let overlay_was_enabled = crate::cabina::is_overlay_enabled();
-            let sc = super::input::poll_key();
-            if crate::cabina::is_overlay_enabled() != overlay_was_enabled {
-                mark_dirty();
-            }
-            if sc != 0 {
-                if sc == 0x1C {
-                    process_enter();
-                } else if let Some(ch) = process_scancode(sc) {
-                    handle_char(ch);
-                }
-            }
-
-            if let Some(mut ch) = crate::dev::console::serial_read_byte() {
-                if ch == b'\r' { ch = b'\n'; }
-                handle_char(ch);
-            }
-
-            let cur = blink_on();
-            if cur != unsafe { LAST_BLINK_ON } {
-                if let Some(fb) = fb() {
-                    paint_caret(&fb, cur);
-                }
-                unsafe { LAST_BLINK_ON = cur; }
-            }
-
-            core::hint::spin_loop();
-        }
-
+    // Dibujar texto "FastOS OK"
+    crate::dev::console::serial_write("[welcome] drawing text\n");
+    let text = b"FastOS OK";
+    let tx = w / 2 - (text.len() * 8) / 2;
+    let ty = h / 2 - 8;
+    for (i, &ch) in text.iter().enumerate() {
+        let glyph = crate::bmo_core::ui::font::get_glyph(ch);
         unsafe {
-            let prev = HINT_TIMER;
-            if HINT_TIMER > 0 { HINT_TIMER -= 1; }
-            if (prev > 0 && HINT_TIMER == 0) || (prev != LAST_HINT_TIMER && HINT_TIMER == 0) {
-                DIRTY = true;
+            let buf = fb_addr as *mut u32;
+            for py in 0..16 {
+                let row = glyph[py];
+                for px in 0..8 {
+                    if (row & (0x80 >> px)) != 0 {
+                        let xx = tx + i * 8 + px;
+                        let yy = ty + py;
+                        if xx < w && yy < h {
+                            buf.add(yy * s + xx).write_volatile(0xFF76B900);
+                        }
+                    }
+                }
             }
-            LAST_HINT_TIMER = HINT_TIMER;
         }
     }
+
+    crate::dev::console::serial_write("[welcome] entering hlt loop\n");
+    loop { unsafe { core::arch::asm!("hlt"); } }
 }
 
 fn blink_on() -> bool {
