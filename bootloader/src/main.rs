@@ -23,7 +23,7 @@ use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::fs::SimpleFileSystem;
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const KERNEL_STACK_SIZE: usize = 256 * 1024; // 256 KiB
+const KERNEL_STACK_SIZE: usize = 4 * 1024 * 1024; // 4 MiB (v1.8.17: was 256 KiB)
 const TARGET_FB_WIDTH: usize = 1920;
 const TARGET_FB_HEIGHT: usize = 1080;
 const TARGET_REFRESH_HZ: u32 = 74;
