@@ -55,7 +55,7 @@ impl CpuFeatures {
             has_fs_gs_base: crate::vendor::amd::cpu::zen3::cpuid_detection::has_fsgsbase(id),
             has_smep: crate::vendor::amd::cpu::zen3::cpuid_detection::has_smep(id),
             has_smap: crate::vendor::amd::cpu::zen3::cpuid_detection::has_smap(id),
-            has_umip: (crate::vendor::amd::cpu::zen3::cpuid_detection::cpuid(7, 0).1 & (1 << 2)) != 0,
+            has_umip: (crate::vendor::amd::cpu::zen3::cpuid_detection::cpuid(7, 0).2 & (1 << 2)) != 0, // ECX bit 2 = UMIP (not EBX which is SGX)
             has_mtrr: (id.features_edx & (1 << 12)) != 0,
             has_perfctr_core: (id.features_ecx & (1 << 23)) != 0,  // POPCNT bit, close enough
         }

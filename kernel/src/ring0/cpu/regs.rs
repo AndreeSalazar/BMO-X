@@ -75,7 +75,7 @@ pub fn init(features: &CpuFeatures) {
             cr4 |= 1 << 18; // OSXSAVE
         }
         if features.has_fs_gs_base {
-            cr4 |= 1 << 13; // FSGSBASE
+            cr4 |= 1 << 16; // FSGSBASE (CR4 bit 16, NOT bit 13 which is VMXE/reserved)
         }
         if features.has_smep {
             cr4 |= 1 << 20; // SMEP
