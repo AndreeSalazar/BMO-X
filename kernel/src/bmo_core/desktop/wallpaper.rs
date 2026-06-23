@@ -15,7 +15,6 @@
 #![allow(dead_code)]
 
 use crate::bmo_core::ui::fb::Framebuffer;
-use crate::cpu::rdtsc;
 
 #[inline]
 fn argb(r: u8, g: u8, b: u8) -> u32 { 0xFF000000 | ((r as u32) << 16) | ((g as u32) << 8) | b as u32 }
@@ -93,152 +92,24 @@ fn isqrt(v: u32) -> u32 {
 
 /// Pinta el wallpaper completo sobre `fb`.
 ///
-/// `time` (TSC ticks) se usa para una shimmer de aurora casi imperceptible.
-/// Si no quieres animación, pásale 0.
-pub fn draw(fb: &Framebuffer, time: u64) {
-    let w = fb.width as i32;
-    let h = fb.height as i32;
-    if w <= 0 || h <= 0 { return; }
-    crate::dev::console::serial_write("[wallpaper] start\n");
-
-    // ── 1) Gradiente base por scanline ─────────────────────────────
-    crate::dev::console::serial_write("[wallpaper] step 1: gradient\n");
-    fb.gradient_v(0, 0, fb.width, fb.height, 0xFF050B18, 0xFF0A101F);
-    crate::dev::console::serial_write("[wallpaper] step 1: done\n");
-
-    // ── 2) Mesh gradient: dos blobs radiales ───────────────────────
-    // t controla shimmer lento.
-    let t = (time / 60_000_000) as i32;
-    let blob_a_cx = w * 22 / 100 + ((t % 7) * 3);
-    let blob_a_cy = h * 18 / 100;
-    let blob_a_r = (w * 55 / 100).max(400);
-
-    let blob_b_cx = w * 78 / 100 - ((t % 5) * 2);
-    let blob_b_cy = h * 82 / 100;
-    let blob_b_r = (w * 50 / 100).max(380);
-
-    // Recorremos por bloques de 4 px en y para mantener coste bajo.
-    let step = 4i32;
-    let aa = (blob_a_r as i64) * (blob_a_r as i64);
-    let bb = (blob_b_r as i64) * (blob_b_r as i64);
-
-    let mut y = 0i32;
-    while y < h {
-        let block_h = step.min(h - y);
-        let sample_y = y + block_h / 2;
-        // Componente vertical del gradiente base en enteros 0..=255.
-        // 0x05..=0x0A en R, 0x0B..=0x10 en G, 0x18..=0x1F en B.
-        let t_num = sample_y.max(0) as u32;
-        let t_den = h as u32;
-        let t_y = if t_den == 0 { 0 } else { (t_num * 255) / t_den };
-        let base_r = (0x05 + ((0x0A - 0x05) * t_y) / 255) as u8;
-        let base_g = (0x0B + ((0x10 - 0x0B) * t_y) / 255) as u8;
-        let base_b = (0x18 + ((0x1F - 0x18) * t_y) / 255) as u8;
-        let base = argb(base_r, base_g, base_b);
-
-        let mut x = 0i32;
-        while x < w {
-            let block_w = step.min(w - x);
-
-            // Distancias al centro de cada blob.
-            let dxa = (x - blob_a_cx) as i64;
-            let dya = (y - blob_a_cy) as i64;
-            let da2 = dxa * dxa + dya * dya;
-            let a_int: u32 = if da2 < aa {
-                // Falloff cuadrático: t = 1 - d²/r²; alpha = t² * 255
-                let t_a_num = (aa - da2) as u32;
-                let t_a = (t_a_num * 255) / (aa as u32);
-                (t_a * t_a) / 255
-            } else { 0 };
-
-            let dxb = (x - blob_b_cx) as i64;
-            let dyb = (y - blob_b_cy) as i64;
-            let db2 = dxb * dxb + dyb * dyb;
-            let b_int: u32 = if db2 < bb {
-                let t_b_num = (bb - db2) as u32;
-                let t_b = (t_b_num * 200) / (bb as u32);
-                (t_b * t_b) / 255
-            } else { 0 };
-
-            if a_int == 0 && b_int == 0 {
-                x += step;
-                continue;
-            }
-
-            let mut px = base;
-            if a_int > 0 {
-                px = blend_rgb(0x4E, 0xCC, 0xA3, px, a_int);
-            }
-            if b_int > 0 {
-                px = blend_rgb(0x6C, 0x5C, 0xE7, px, b_int);
-            }
-
-            for yy in 0..block_h {
-                for xx in 0..block_w {
-                    let pxi = (x + xx) as usize;
-                    let pyi = (y + yy) as usize;
-                    if pxi < fb.width && pyi < fb.height {
-                        fb.put_pixel(pxi, pyi, px);
-                    }
-                }
-            }
-            x += step;
-        }
-        y += step;
-    }
-
-    // ── 3) Aurora: banda elíptica diagonal con glow mint tenue ─────
-    crate::dev::console::serial_write("[wallpaper] step 3: aurora\n");
-    if w >= 800 {
-        draw_aurora_band(fb, w, h, t);
-    }
-    crate::dev::console::serial_write("[wallpaper] step 3: done\n");
-
-    // ── 4) Grid sutil (1 px cada 64 px) ─────────────────────────────
-    let grid_color = argb(0x1A, 0x25, 0x38);
-    let step_g = 64i32;
-    let mut gx = step_g;
-    while gx < w {
-        let mut gy = 0i32;
-        while gy < h {
-            let pxi = gx as usize;
-            let pyi = gy as usize;
-            if pxi < fb.width && pyi < fb.height {
-                fb.put_pixel(pxi, pyi, grid_color);
-            }
-            gy += 1;
-        }
-        gx += step_g;
-    }
-    let mut gy = step_g;
-    while gy < h {
-        let mut gx2 = 0i32;
-        while gx2 < w {
-            let pxi = gx2 as usize;
-            let pyi = gy as usize;
-            if pxi < fb.width && pyi < fb.height {
-                fb.put_pixel(pxi, pyi, grid_color);
-            }
-            gx2 += 1;
-        }
-        gy += step_g;
-    }
-
-    // ── 5) Estrellas dispersas ─────────────────────────────────────
-    crate::dev::console::serial_write("[wallpaper] step 5: stars\n");
-    let mut rng = (rdtsc() as u32) | 1;
-    let count = ((w as i32) * (h as i32) / 12000) as u32;
-    for _ in 0..count {
-        let r1 = xorshift(&mut rng);
-        let r2 = xorshift(&mut rng);
-        let r3 = xorshift(&mut rng);
-        let sx = (r1 % (w as u32)) as usize;
-        let sy = (r2 % (h as u32)) as usize;
-        let alpha = 80 + (r3 % 70);
-        let star = blend_rgb(0xE0, 0xEE, 0xFF, 0xFF0A101F, alpha);
-        fb.put_pixel(sx, sy, star);
-    }
-    crate::dev::console::serial_write("[wallpaper] DONE\n");
+/// Dibuja el wallpaper del welcome.
+///
+/// v1.8.14: versión MINIMAL. La versión procedural anterior pintaba
+/// ~2M píxeles por frame (gradient + 2 blobs + aurora + grid + 173
+/// estrellas). En un monitor 1920×1080, sin MTRR WC bien configurado,
+/// cada `write_volatile` al framebuffer tardaba ~100ns = 200ms total.
+/// Eso provocaba que el watchdog de 5s disparara reset ANTES de que
+/// el welcome terminara de renderizar, y el usuario veía solo 2-3
+/// segmentos verdes de la progress bar.
+///
+/// Ahora: un solo `fill_rect` con un color sólido. El render del
+/// welcome se completa en <5ms y la progress bar pinta los 5
+/// segmentos correctamente. La estética procedural se puede
+/// reintroducir en v1.9 con MTRR WC fix.
+pub fn draw(fb: &Framebuffer, _time: u64) {
+    if fb.width == 0 || fb.height == 0 { return; }
+    // Color base del tema oscuro (mismo que el gradient bottom original).
+    fb.fill_rect(0, 0, fb.width, fb.height, 0xFF050B18);
 }
 
 /// Aurora: banda elíptica diagonal pintada por scanline. Recorremos

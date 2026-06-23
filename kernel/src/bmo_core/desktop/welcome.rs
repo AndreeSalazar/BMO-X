@@ -252,59 +252,20 @@ fn render(fb: &Framebuffer) {
     let pb_w = CARD_W - 180;
     let pb_h = 12;
     fb.fill_rounded_rect(pb_x - 2, pb_y - 2, pb_w + 4, pb_h + 4, 6, 0xFF0A1018);
-    let phases_total = 5usize;
-    let seg_w = pb_w / phases_total;
+    // v1.8.14: progress bar minimal. Solo dibujamos 1 segmento activo
+    // (GOLD) sin badges, sin labels, sin shimmer. Costo: ~3 fills.
+    let seg_w = pb_w;
     let seg_gap = 6usize;
-    let current_phase = 4usize;
-    for i in 0..phases_total {
-        let sxi = pb_x + i * seg_w + seg_gap / 2;
-        let swi = seg_w - seg_gap;
-        let color = if i < current_phase { theme::MINT }
-                    else if i == current_phase { theme::GOLD }
-                    else { theme::PENDING_FG };
-        fb.fill_rounded_rect(sxi, pb_y, swi, pb_h, 5, color);
-        if i < current_phase {
-            fb.fill_rect(sxi + 2, pb_y + 1, swi - 4, 2, theme::MINT_SOFT);
-        }
-    }
-    let labels: [&[u8]; 5] = [b"CPU", b"Mem", b"Dev", b"Disp", b"Desk"];
-    let mut lx = pb_x;
-    for (i, lab) in labels.iter().enumerate() {
-        let color = if i < current_phase { theme::OK_FG }
-                    else if i == current_phase { theme::CURRENT_FG }
-                    else { theme::SUBTITLE };
-        let lw = lab.len() * 8;
-        let lxoff = seg_w.saturating_sub(lw) / 2;
-        draw_text(fb, (lx + lxoff) as u32, (pb_y + 22) as u32, lab, color);
-        lx += seg_w;
-    }
+    let sxi = pb_x + seg_gap / 2;
+    let swi = seg_w - seg_gap;
+    fb.fill_rounded_rect(sxi, pb_y, swi, pb_h, 5, theme::GOLD);
 
-    let badges: [(&[u8], &[u8], &[u8]); 5] = [
-        (b"v", b"Ring0+3",    b"active"),
-        (b"v", b"Syscalls",   b"13 ops"),
-        (b"v", b"Compositor", b"loaded"),
-        (b"v", b"PS/2+Beep",  b"ready"),
-        (b"v", b"RAMdisk+FS", b"open/rd"),
-    ];
+    // v1.8.14: badges minimal. Solo un status line centrado.
     let by0 = cy + 274;
-    let bw = (CARD_W - 180 - 4 * 8) / 5;
-    let bh = 60;
-    for (i, (icon, label, value)) in badges.iter().enumerate() {
-        let bx = cx + 90 + i * (bw + 8);
-        fb.draw_rect(
-            bx.saturating_sub(1), by0.saturating_sub(1),
-            bw + 2, bh + 2,
-            theme::NEON_MID, 1,
-        );
-        fb.fill_rounded_rect(bx, by0, bw, bh, 12, theme::SURFACE_1);
-        fb.draw_rect(bx, by0, bw, bh, theme::MINT, 1);
-        fb.fill_rect(bx + 2, by0 + 2, bw - 4, 1, theme::GLASS_HIGHLIGHT);
-        fb.fill_circle(bx + 16, by0 + 18, 9, theme::MINT);
-        draw_text(fb, (bx + 12) as u32, (by0 + 10) as u32, icon, theme::MINT_PILL_BG);
-        draw_text(fb, (bx + 32) as u32, (by0 + 8) as u32, label, theme::MINT);
-        draw_text(fb, (bx + 32) as u32, (by0 + 28) as u32, value, theme::SUBTITLE);
-        fb.fill_circle(bx + 38, by0 + 48, 2, theme::MINT);
-    }
+    let status = b"FastOS / BMO :: Ryzen 5 5600X :: Ring 0 + Ring 3";
+    let sw = status.len() * 8;
+    let sx = cx + (CARD_W - sw) / 2;
+    draw_text(fb, sx as u32, by0 as u32, status, theme::MINT);
 
     let hint = b">>  Type  Run  and press  Enter  to enter the Ring 0 desktop";
     let hx_pos;
