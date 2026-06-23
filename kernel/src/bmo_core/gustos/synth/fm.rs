@@ -98,10 +98,52 @@ pub fn fm_sample(params: &FmParams, t: f32, duration: f32) -> f32 {
     carrier * envelope * params.volume
 }
 
+/// Reproduce un track de forma segura en el PC Speaker usando beeps con pasos de frecuencia,
+/// evitando saturar el bus LPC de E/S con miles de escrituras.
+fn play_pc_speaker_safe(params: FmParams) {
+    use crate::bmo_core::gustos::synth::pcm;
+    
+    let duration_ms = params.duration_ms;
+    if duration_ms == 0 {
+        return;
+    }
+    
+    let start_freq = params.carrier;
+    let end_freq = params.sweep_to.unwrap_or(start_freq);
+    
+    // Actualizamos la frecuencia cada 25ms (40 veces por segundo), lo que es suficiente
+    // para dar sensación de sweep sin saturar el bus LPC.
+    let step_ms = 25u32;
+    let num_steps = duration_ms / step_ms;
+    
+    if num_steps <= 1 || (start_freq - end_freq).abs() < 1.0 {
+        // Tono único
+        pcm::set_speaker_frequency(start_freq as u32);
+        crate::cpu::busy_wait_ms(duration_ms as u64);
+    } else {
+        // Sweep
+        for step in 0..num_steps {
+            let progress = step as f32 / num_steps as f32;
+            let freq = start_freq + (end_freq - start_freq) * progress;
+            pcm::set_speaker_frequency(freq as u32);
+            crate::cpu::busy_wait_ms(step_ms as u64);
+        }
+    }
+    
+    // Silenciar altavoz al terminar
+    pcm::silence();
+}
+
 /// Reproduce un track FM usando el destino PCM actual.
 /// El destino se setea con `pcm::set_destination`.
 pub fn play(params: FmParams) {
     use crate::bmo_core::gustos::synth::pcm;
+    
+    if pcm::get_output_mode() == pcm::OutputMode::PcSpeaker {
+        play_pc_speaker_safe(params);
+        return;
+    }
+
     const SAMPLE_RATE: f32 = 48000.0;
     let duration = params.duration_ms as f32 / 1000.0;
     let total_samples = (duration * SAMPLE_RATE) as u32;

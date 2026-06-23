@@ -37,6 +37,19 @@ pub fn set_output_mode(mode: OutputMode) {
     OUTPUT_MODE.store(mode as u32, Ordering::Relaxed);
 }
 
+/// Obtiene el modo de salida actual.
+pub fn get_output_mode() -> OutputMode {
+    match OUTPUT_MODE.load(Ordering::Relaxed) {
+        0 => OutputMode::PcSpeaker,
+        _ => OutputMode::PcmBuffer,
+    }
+}
+
+/// Establece la frecuencia del altavoz PC.
+pub fn set_speaker_frequency(freq: u32) {
+    set_pit_frequency(freq);
+}
+
 /// Emite un sample (f32 en [-1.0, 1.0]).
 ///
 /// En modo PC speaker, esto actualiza la frecuencia del PIT según
