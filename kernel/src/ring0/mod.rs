@@ -1,14 +1,21 @@
 //! Ring 0 — Hardware Abstraction Layer (entry point del binario).
 //!
-//! v1.8.8 (Phase 2): arquitectura reorganizada. El código del 5600X
-//! vive en `vendor/amd/cpu/zen3/`. Ver `Rutas.md` y los comentarios
-//! en `vendor/` para detalles.
+//! v1.8.15 (Phase 3): reordenado de inicialización. init_fastos_cpu()
+//! y init_msrs() corren ANTES de las fases 1-4 para garantizar que
+//! MTRR/PAT estén configurados antes de tocar el framebuffer.
 //!
-//! ## Compatibilidad
+//! ## Orden de boot
 //!
-//! - `crate::AMD` (solo docs) — para referencias, sin código.
-//! - `crate::vendor::amd::cpu::zen3::foo` — alias legacy, sigue funcionando.
-//! - `crate::vendor::amd::cpu::zen3::foo` — path nuevo, recomendado.
+//!   0. Phase 0 (arch):  GDT + IDT + SYSCALL
+//!   1. init_fastos_cpu: CPUID, MTRR/PAT, TSC, erratas
+//!   2. init_msrs:       EFER, STAR, LSTAR, FMASK, PAT, TSC_AUX
+//!   3. init_acpi:       ACPI tables
+//!   4. Phase 1 (mem):   frame allocator + heap
+//!   5. Phase 2 (dev):   ACPI/PCI discovery
+//!   6. Phase 3 (display): GOP framebuffer (con MTRR/PAT correctos)
+//!   7. Phase 4 (sched): scheduler + APIC timer + interrupts
+//!   8. bmo_core::init:  cabina + defense + timeback + bmo_api + desktop
+//!   9. welcome::run:    event loop (no retorna)
 
 #![no_std]
 #![no_main]

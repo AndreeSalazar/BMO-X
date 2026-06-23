@@ -1,23 +1,25 @@
-//! v1.8.8 — Ring 0 coordinator.
+//! v1.8.15 — Ring 0 coordinator.
 //!
 //! El coordinator es deliberadamente pequeño: valida el `BootInfo`,
-//! prepara el log más temprano posible, invoca `vendor::amd::cpu::zen3::fastos_cpu`
-//! para detectar todos los datos del 5600X, y entrega el control al
-//! boot por fases.
+//! prepara el log más temprano posible, y orquesta el boot en orden:
 //!
 //! Orden real:
-//!   0. fastos_cpu    — CPUID, family/model, brand, cache, TSC, errata, ACPI
 //!   0. arch/cpu      — GDT, IDT, syscall, FPU, MSRs (EFER/STAR/LSTAR/FMASK)
-//!   1. mem           — frame allocator, heap, VMM base
-//!   2. dev           — PCIe scan (con ACPI MCFG real), ACPI tables
-//!   3. display       — GOP framebuffer (con MTRR/PAT reales)
-//!   4. proc          — scheduler/APIC timer/STI
-//!   5. bmo_core      — desktop/API CPU-side; no retorna
+//!   1. fastos_cpu    — CPUID, family/model, brand, cache, TSC, erratas, ACPI
+//!   2. mem           — frame allocator, heap, VMM base
+//!   3. dev           — PCIe scan (con ACPI MCFG real), ACPI tables
+//!   4. display       — GOP framebuffer (con MTRR/PAT reales)
+//!   5. proc          — scheduler/APIC timer/STI
+//!   6. bmo_core      — desktop/API CPU-side; no retorna
 //!
-//! Política FastOS v1.8.8: el kernel es ESPECÍFICO del Ryzen 5 5600X.
+//! v1.8.15: init_fastos_cpu/init_msrs/init_acpi corren ANTES de las
+//! fases 1-4 para garantizar que MTRR/PAT estén configurados antes
+//! de Phase 3 (display) que toca el framebuffer.
+//!
+//! Política FastOS v1.8.15: el kernel es ESPECÍFICO del Ryzen 5 5600X.
 //! Todos los datos del CPU se obtienen de `AMD/zen3/` (no de genéricos
 //! o stubs). La detección se hace con `init_fastos_cpu()` en
-//! `coordinator::main`, antes de cualquier otra fase.
+//! `coordinator::main`, después de Phase 0 (arch).
 
 use super::boot;
 use super::boot::info;
@@ -58,42 +60,36 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     crate::dev::console::serial_write("[coord] main: init() done\n");
     let boot_start = crate::cpu::rdtsc();
 
-    // ── Phase 0 + 1 + 2 + 3 + 4 ──────────────────────────────────
-    // p0_arch inicializa GDT/IDT/SYSCALL antes de cualquier CPUID
-    // complejo. p1_mem inicializa el heap. Sin esto, init_fastos_cpu
-    // colgaba porque el código asumía un entorno más inicializado.
-    boot::visual::log("ring0", "[0/5] arch init", boot::visual::color::OK);
-    crate::dev::console::serial_write("[coord] main: starting phases::run_all\n");
-    let phase4_end = boot::phases::run_all(&mut ctx, boot_start);
-    crate::dev::console::serial_write("[coord] main: phases::run_all returned\n");
+    // ── Phase 0..4 (arch, mem, dev, display, sched) ─────────────
+    // Phase 0 ya hace GDT/IDT/SYSCALL con init_syscall() que internamente
+    // llama a init_msrs() con la dirección CORRECTA del syscall entry
+    // (syscall_entry_naked), NO con bi.kernel_base.
+    boot::visual::log("ring0", "[0/5] boot phases", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: starting phases 0-4\n");
+    let phase4_end = boot::phases::run_phases_0_to_4(&mut ctx, boot_start);
+    boot::visual::log("ring0", "[0/5] phases done", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: phases 0-4 returned\n");
 
     // ── Initialize ALL data of the 5600X (one-shot) ───────────────
-    // AHORA es seguro: GDT/IDT/SYSCALL están listos (p0), heap está
-    // listo (p1), display está listo (p3). CPUID complejo, TSC
-    // calibration con PM timer, MSR writes y ACPI parsing funcionan
-    // en este orden. Antes se llamaba aquí sin init, lo que colgaba.
+    // AHORA es seguro: GDT/IDT/SYSCALL están listos (phase 0), heap está
+    // listo (phase 1), display está listo (phase 3). CPUID complejo, TSC
+    // calibration con PM timer, erratas y ACPI parsing funcionan en
+    // este orden. NO escribir MSRs de syscall aquí (phase 0 ya lo hizo).
     boot::visual::log("ring0", "[1/5] detect 5600X", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: calling init_fastos_cpu\n");
     crate::vendor::amd::cpu::zen3::init_fastos_cpu();
     boot::visual::log("ring0", "[1/5] 5600X detected", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: init_fastos_cpu returned\n");
 
-    // ── Init MSRs (EFER, STAR, LSTAR, FMASK, PAT, TSC_AUX) ───────
-    let syscall_entry = bi.kernel_base;
-    boot::visual::log("ring0", "[2/5] init MSRs", boot::visual::color::OK);
-    crate::dev::console::serial_write("[coord] main: calling init_msrs\n");
-    crate::vendor::amd::cpu::zen3::init_msrs(syscall_entry);
-    crate::dev::console::serial_write("[coord] main: init_msrs returned\n");
-
-    // ── Init ACPI (uses RSDP address from BootInfo) ──────────────
+    // ─ Init ACPI (uses RSDP address from BootInfo) ──────────────
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
-    boot::visual::log("ring0", "[3/5] init ACPI", boot::visual::color::OK);
+    boot::visual::log("ring0", "[2/5] init ACPI", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: calling init_acpi\n");
     crate::vendor::amd::cpu::zen3::init_acpi(rsdp_hint);
     crate::dev::console::serial_write("[coord] main: init_acpi returned\n");
 
     boot::log::info("ring0", "fastos_cpu init complete");
-    boot::visual::log("ring0", "[4/5] CPU ready", boot::visual::color::OK);
+    boot::visual::log("ring0", "[3/5] CPU+ACPI ready", boot::visual::color::OK);
 
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
     crate::cpu::busy_wait_ms(1500);

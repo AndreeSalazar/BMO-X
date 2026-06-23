@@ -381,7 +381,7 @@ fn run_phase_self_test(n: u8) {
         0 => crate::boot::phases::p0_arch::self_test(),
         1 => crate::boot::phases::p1_mem::self_test(),
         2 => crate::boot::phases::p2_dev::self_test(),
-        3 => crate::boot::phases::p3_proc::self_test(),
+        3 => crate::boot::phases::p3_display::self_test(),
         4 => crate::boot::phases::p4_bmo::self_test(),
         5 => crate::boot::phases::p5_user::self_test(),
         _ => {
@@ -406,7 +406,7 @@ fn run_test_all_phases() {
         crate::boot::phases::p0_arch::self_test(),
         crate::boot::phases::p1_mem::self_test(),
         crate::boot::phases::p2_dev::self_test(),
-        crate::boot::phases::p3_proc::self_test(),
+        crate::boot::phases::p3_display::self_test(),
         crate::boot::phases::p4_bmo::self_test(),
         crate::boot::phases::p5_user::self_test(),
     ];

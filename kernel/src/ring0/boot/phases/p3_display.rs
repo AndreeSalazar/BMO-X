@@ -1,4 +1,8 @@
 //! Phase 3 — Display.
+//!
+//! v1.8.15: Renombrado de p3_proc a p3_display. Esta fase inicializa
+//! el framebuffer GOP heredado de UEFI. Ahora se ejecuta DESPUÉS de
+//! init_fastos_cpu() que configura MTRR/PAT para Write-Combining.
 
 use crate::{boot::log, bmo_core::desktop};
 use crate::boot::context::BootContext;
