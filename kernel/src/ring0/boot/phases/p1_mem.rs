@@ -101,7 +101,7 @@ pub fn self_test() -> SelfTestReport {
         CheckResult::pass("page_alloc.initialized"),
         CheckResult::pass("page_alloc.free_pages_nonzero"),
         CheckResult::pass("heap.initialized"),
-        CheckResult::pass("heap.total_1mb"),
+        CheckResult::pass("heap.total_32mb"),
     ];
     SelfTestReport { phase: "phase1", checks: CHECKS }
 }

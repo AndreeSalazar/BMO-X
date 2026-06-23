@@ -324,7 +324,7 @@ fn get_fb() -> crate::bmo_core::ui::fb::Framebuffer {
     let (addr, stride, width, height) = unsafe {
         (crate::boot::info::FB_ADDR, crate::boot::info::FB_STRIDE, crate::boot::info::FB_WIDTH, crate::boot::info::FB_HEIGHT)
     };
-    crate::bmo_core::ui::fb::Framebuffer::new(addr, stride as u64, width, height)
+    crate::bmo_core::ui::fb::Framebuffer::new(addr, (stride as u64) * 4, width, height)
 }
 
 fn client_rect_from_clip(dc: &BmoDc) -> (i32, i32, i32, i32) {

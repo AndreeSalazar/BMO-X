@@ -1,10 +1,21 @@
 #![no_std]
 
 static mut TSC_FREQ_HZ: u64 = 0;
+static mut VOLUME: u8 = 50;
 
 /// Inicializa el crate con la frecuencia calibrada de TSC.
 pub fn init(tsc_freq: u64) {
     unsafe { TSC_FREQ_HZ = tsc_freq; }
+}
+
+/// Ajusta el volumen global (0 a 100).
+pub fn set_volume(vol: u8) {
+    unsafe { VOLUME = vol; }
+}
+
+/// Obtiene el volumen global.
+pub fn get_volume() -> u8 {
+    unsafe { VOLUME }
 }
 
 #[inline]
@@ -43,17 +54,35 @@ fn rdtsc() -> u64 {
     ((high as u64) << 32) | low as u64
 }
 
-/// Emite un tono en el PC Speaker. Si `freq_hz == 0`, silencia el altavoz.
+/// Emite un tono en el PC Speaker usando el volumen global.
 pub fn beep(freq_hz: u32, duration_ms: u32) {
+    let vol = get_volume();
+    beep_ex(freq_hz, duration_ms, vol);
+}
+
+/// Emite un tono en el PC Speaker con volumen explícito.
+/// - volume == 0: Silencio
+/// - volume <= 50: Volumen bajo (PIT Modo 2)
+/// - volume > 50: Volumen alto (PIT Modo 3)
+pub fn beep_ex(freq_hz: u32, duration_ms: u32, volume: u8) {
     unsafe {
-        if freq_hz == 0 {
+        if freq_hz == 0 || volume == 0 {
             let p = inb(0x61);
             outb(0x61, p & 0xFC);
+            delay_ms(duration_ms as u64);
             return;
         }
         
         let div = (1_193_180u32 / freq_hz) as u16;
-        outb(0x43, 0xB6);
+        
+        // Volumen bajo usa PIT modo 2 (Rate Generator, pulsos muy estrechos)
+        // Volumen alto usa PIT modo 3 (Square Wave Generator, 50% duty cycle)
+        if volume <= 50 {
+            outb(0x43, 0xB4); // Canal 2, LSB/MSB, Modo 2, Binario
+        } else {
+            outb(0x43, 0xB6); // Canal 2, LSB/MSB, Modo 3, Binario
+        }
+        
         outb(0x42, (div & 0xFF) as u8);
         outb(0x42, ((div >> 8) & 0xFF) as u8);
         

@@ -96,8 +96,9 @@ pub fn tick() {
         s4.unlock();
     }
 
-    paint_cursor();
     paint_taskbar();
+    crate::dev::framebuffer::present();
+    paint_cursor();
 }
 
 fn paint_desktop(slot: u32) {

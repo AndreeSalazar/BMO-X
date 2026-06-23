@@ -438,6 +438,26 @@ fn process_enter() {
         crate::cabina::info("welcome", "Hello command accepted; preparing Ring 3 test");
         sound::beep(440, 80);
         crate::proc::user_init::spawn_hello();
+    } else if trimmed_cmd.len() >= 7 && eq_ci(&trimmed_cmd[..7], b"volume ") {
+        let val_bytes = &trimmed_cmd[7..];
+        let mut val = 0u8;
+        let mut ok = false;
+        for &b in val_bytes {
+            if b >= b'0' && b <= b'9' {
+                val = val.saturating_mul(10).saturating_add(b - b'0');
+                ok = true;
+            } else {
+                ok = false;
+                break;
+            }
+        }
+        if ok && val <= 100 {
+            bmo_audio::set_volume(val);
+            sound::beep(660, 100);
+            show_hint(b"Volume changed successfully.");
+        } else {
+            show_hint(b"Usage: volume <0-100>");
+        }
     } else if eq_ci(trimmed_cmd, b"ring3") {
         crate::cabina::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
         sound::beep(440, 80);

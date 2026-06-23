@@ -23,9 +23,20 @@ pub mod format {
 /// v1.8.8: reducido a 1/16 (135 KB) para que el BSS estático quepa
 /// en la primera PT_LOAD sin colgarse. v1.9 usará heap para surfaces
 /// grandes y eliminará el pool estático.
-const MAX_SURFACE_PIXELS: usize = 1920 * 1080 / 16;
-/// Pool estático de pixels: 2 surfaces × 135 KB = 270 KB.
-const SURFACE_POOL_SLOTS: usize = 2;
+extern crate alloc;
+
+unsafe fn pool_alloc(size: usize) -> Option<*mut u32> {
+    let mut v = alloc::vec![0u32; size];
+    let ptr = v.as_mut_ptr();
+    core::mem::forget(v);
+    Some(ptr)
+}
+
+unsafe fn pool_free(ptr: *mut u32, size: usize) {
+    if !ptr.is_null() {
+        let _v = alloc::vec::Vec::from_raw_parts(ptr, size, size);
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct BmoSurface {
@@ -53,30 +64,6 @@ impl BmoSurface {
             phys_addr: 0,
             refcount: 0, owner_window: SURFACE_INVALID,
             flags: 0,
-        }
-    }
-}
-
-static mut POOL_BUFFERS: [[u32; MAX_SURFACE_PIXELS]; SURFACE_POOL_SLOTS] =
-    [[0u32; MAX_SURFACE_PIXELS]; SURFACE_POOL_SLOTS];
-static mut POOL_USED: [bool; SURFACE_POOL_SLOTS] = [false; SURFACE_POOL_SLOTS];
-
-unsafe fn pool_alloc() -> Option<*mut u32> {
-    for (i, used) in POOL_USED.iter_mut().enumerate() {
-        if !*used {
-            *used = true;
-            return Some(POOL_BUFFERS[i].as_mut_ptr());
-        }
-    }
-    None
-}
-
-unsafe fn pool_free(ptr: *mut u32) {
-    for (i, buf) in POOL_BUFFERS.iter().enumerate() {
-        if buf.as_ptr() == ptr {
-            POOL_USED[i] = false;
-            POOL_BUFFERS[i] = [0u32; MAX_SURFACE_PIXELS];
-            return;
         }
     }
 }
@@ -110,13 +97,12 @@ impl SurfaceTable {
     pub fn init(&mut self) {
         for s in self.surfaces.iter_mut() { *s = BmoSurface::empty(); }
         self.next_id = 1;
-        unsafe {
-            POOL_USED = [false; SURFACE_POOL_SLOTS];
-        }
     }
 
     pub fn alloc(&mut self, w: u16, h: u16, format: u32, owner: u32) -> Option<u32> {
-        let pixels = unsafe { pool_alloc() };
+        let pitch = ((w as u32) * 4).next_multiple_of(16) as u16;
+        let size = (pitch as usize / 4) * h as usize;
+        let pixels = unsafe { pool_alloc(size) };
         let pixels = match pixels {
             Some(p) => p,
             None => return None,
@@ -128,7 +114,7 @@ impl SurfaceTable {
                 s.generation = s.generation.wrapping_add(1);
                 s.width = w;
                 s.height = h;
-                s.pitch = ((w as u32) * 4).next_multiple_of(16) as u16;
+                s.pitch = pitch;
                 s.format = format;
                 s.pixels = pixels;
                 s.phys_addr = pixels as u64;
@@ -139,7 +125,7 @@ impl SurfaceTable {
                 return Some(i as u32);
             }
         }
-        unsafe { pool_free(pixels); }
+        unsafe { pool_free(pixels, size); }
         None
     }
 
@@ -147,7 +133,8 @@ impl SurfaceTable {
         if let Some(s) = self.surfaces.get_mut(slot as usize) {
             if !s.used { return false; }
             if !s.pixels.is_null() {
-                unsafe { pool_free(s.pixels); }
+                let size = (s.pitch as usize / 4) * s.height as usize;
+                unsafe { pool_free(s.pixels, size); }
             }
             s.used = false;
             s.generation = s.generation.wrapping_add(1);

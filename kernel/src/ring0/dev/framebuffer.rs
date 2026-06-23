@@ -410,12 +410,14 @@ pub fn backbuffer_ptr() -> *mut u32 { unsafe { BACKBUFFER_MEM.as_mut_ptr() } }
 
 pub fn present() {
     if let Some(disp) = display() {
-        unsafe {
-            let src = BACKBUFFER_MEM.as_ptr();
-            let dst = disp.base;
-            let size = (disp.width * disp.height) as usize;
-            core::ptr::copy_nonoverlapping(src, dst, size);
-        }
+        let backbuffer = get_backbuffer_fb();
+        let dest = Framebuffer::new(
+            disp.base as u64,
+            (disp.stride as u64) * 4,
+            disp.width,
+            disp.height,
+        );
+        backbuffer.blit_to(&dest);
     }
 }
 

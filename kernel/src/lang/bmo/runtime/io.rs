@@ -33,7 +33,7 @@ impl Graphics {
         if addr == 0 {
             return None;
         }
-        let fb = crate::bmo_core::ui::fb::Framebuffer::new(addr, stride as u64, width, height);
+        let fb = crate::bmo_core::ui::fb::Framebuffer::new(addr, (stride as u64) * 4, width, height);
         Some(Self { fb })
     }
 

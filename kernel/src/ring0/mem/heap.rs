@@ -22,7 +22,7 @@ use core::sync::atomic::AtomicBool;
 /// Tamaño total del heap estático. 1 MB reduce el BSS del kernel a
 /// ~1 MB en vez de los 16 MB originales. v1.9 lo cambiará por heap
 /// dinámico backed por el page allocator.
-pub const HEAP_SIZE: usize = 1024 * 1024;
+pub const HEAP_SIZE: usize = 32 * 1024 * 1024;
 
 /// Tamaño del header de cada bloque (next: u32 + size: u32).
 const BLOCK_HEADER_SIZE: usize = 8;
