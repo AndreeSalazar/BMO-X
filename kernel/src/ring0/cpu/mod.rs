@@ -86,9 +86,13 @@ pub fn init() -> CpuInfo {
     crate::dev::console::serial_write("[cpu] step 6: perf::init\n");
     perf::init(&features);
 
-    // 7. Enable lazy FPU switching (CR0.TS)
-    crate::dev::console::serial_write("[cpu] step 7: enable_lazy_fpu\n");
-    crate::cpu::fpu::enable_lazy_fpu();
+    // 7. Enable lazy FPU switching (CR0.TS) - DISABLED
+    // v1.8.18: Disabled to prevent #NM exceptions on first FPU use.
+    // The naked ISR stub for #NM does not save all caller-saved registers (like rcx, rdx, r8-r11),
+    // causing task register corruption when returning. Leaving CR0.TS = 0 keeps FPU/SSE/AVX
+    // permanently enabled and avoids #NM entirely.
+    crate::dev::console::serial_write("[cpu] step 7: enable_lazy_fpu (disabled, keeping FPU eager)\n");
+    // crate::cpu::fpu::enable_lazy_fpu();
 
     // 8. Calibrate TSC frequency
     crate::dev::console::serial_write("[cpu] step 8: tsc::calibrate\n");

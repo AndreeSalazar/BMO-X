@@ -260,18 +260,27 @@ unsafe extern "C" fn isr_stub_invalid_opcode() {
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_device_not_avail() {
     naked_asm!(
-        // Save minimal ctx
+        // Save all caller-saved registers to prevent corruption when calling Rust
         "push rax",
-        "push rdi",
+        "push rcx",
+        "push rdx",
         "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
 
-        // Save FPU/SSE/AVX state for the preempted task
-        // rdi = pointer to save area (will be provided by scheduler)
-        // For now, just clear TS and let the task use FPU
         "call fpu_nm_handler_rust",
 
-        "pop rsi",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
         "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
         "pop rax",
         "iretq",
     );
