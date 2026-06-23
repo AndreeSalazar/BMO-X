@@ -113,7 +113,9 @@ pub fn init_msr_common(syscall_entry: u64, bsp_apic_id: u32) {
 
         // ── IA32_TSC_DEADLINE: clear any pending TSC-deadline ──────
         // (Important after warm reset.)
-        wrmsr(MSR_IA32_TSC_DEADLINE, 0);
+        // v1.8.17: Disabled here. Writing to TSC_DEADLINE when the local APIC
+        // is software-disabled (the default state during Phase 0) triggers a #GP.
+        // wrmsr(MSR_IA32_TSC_DEADLINE, 0);
     }
     crate::dev::console::serial_write("[msr] all common MSRs initialized\n");
 }

@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+    "kernel",
+    "bootloader",
+    "boot_protocol",
+    "bmo_abi",
+]

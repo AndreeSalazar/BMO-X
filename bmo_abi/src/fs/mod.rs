@@ -133,6 +133,18 @@ impl BmoPerms {
     pub fn is_writable(self) -> bool { (self.0 & 0o222) != 0 }
     #[inline]
     pub fn is_executable(self) -> bool { (self.0 & 0o111) != 0 }
+
+    /// Permisos `rw-r--r--` (0644).
+    #[inline]
+    pub const fn rw() -> Self {
+        Self(0o644)
+    }
+
+    /// Permisos `rwxr-xr-x` (0755).
+    #[inline]
+    pub const fn rwx() -> Self {
+        Self(0o755)
+    }
 }
 
 /// Resultado de `bmo_fs_stat` / `bmo_fs_fstat`.
@@ -192,4 +204,29 @@ impl BmoDirEntry {
         let end = self.name.iter().position(|&b| b == 0).unwrap_or(self.name.len());
         core::str::from_utf8(&self.name[..end]).unwrap_or("")
     }
+}
+
+/// Capabilities de un proceso (qué puede hacer en el FS).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Capabilities(pub u32);
+
+impl Capabilities {
+    pub const NONE: Self = Self(0);
+    pub const READ_FS: Self = Self(1 << 0);
+    pub const WRITE_FS: Self = Self(1 << 1);
+    pub const EXEC: Self = Self(1 << 2);
+    pub const NET: Self = Self(1 << 3);
+    pub const GPU: Self = Self(1 << 4);
+    pub const SYS_DEBUG: Self = Self(1 << 5);
+    pub const FS_READ: Self = Self(1 << 0);
+    pub const FS_WRITE: Self = Self(1 << 1);
+    pub const SYS_TIME_HIRES: Self = Self(1 << 6);
+    pub const SYS_GPU_SUBMIT: Self = Self(1 << 7);
+    pub const SYS_INPUT: Self = Self(1 << 8);
+    pub const NET_RAW: Self = Self(1 << 9);
+    pub const ALL: Self = Self(0xFFFF_FFFF);
+
+    pub fn has(self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+    pub fn insert(&mut self, other: Self) { self.0 |= other.0; }
+    pub fn remove(&mut self, other: Self) { self.0 &= !other.0; }
 }

@@ -46,8 +46,7 @@ pub mod coordinator;
 pub mod bmo_core;
 #[path = "../bmo_gpu/mod.rs"]
 pub mod bmo_gpu;
-#[path = "../bmo_abi/mod.rs"]
-pub mod bmo_abi;
+pub use bmo_abi;
 #[path = "../cabina/mod.rs"]
 pub mod cabina;
 #[path = "../defense/mod.rs"]

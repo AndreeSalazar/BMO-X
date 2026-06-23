@@ -21,6 +21,20 @@ pub struct BmoInstant {
     pub ns_since_boot: bx_u64,
 }
 
+#[inline(always)]
+fn rdtsc() -> u64 {
+    let low: u32;
+    let high: u32;
+    unsafe {
+        core::arch::asm!(
+            "rdtsc",
+            out("eax") low, out("edx") high,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    ((high as u64) << 32) | low as u64
+}
+
 impl BmoInstant {
     pub const ZERO: Self = Self { ns_since_boot: 0 };
 
@@ -34,7 +48,7 @@ impl BmoInstant {
     /// Antes de `init()`, retorna `ZERO`.
     #[inline]
     pub fn now() -> Self {
-        let tsc = crate::cpu::rdtsc();
+        let tsc = rdtsc();
         let ns = tsc_to_ns(tsc);
         Self { ns_since_boot: ns }
     }
@@ -142,9 +156,9 @@ pub fn ns_to_tsc(ns: u64) -> u64 {
 /// Backoff busy-wait usando TSC. Aproximación basada en freq calibrada.
 #[inline]
 pub fn sleep(d: BmoDuration) {
-    let start = crate::cpu::rdtsc();
+    let start = rdtsc();
     let target = ns_to_tsc(d.ns);
-    while crate::cpu::rdtsc().wrapping_sub(start) < target {
+    while rdtsc().wrapping_sub(start) < target {
         core::hint::spin_loop();
     }
 }

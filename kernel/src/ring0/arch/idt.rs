@@ -167,6 +167,9 @@ unsafe extern "C" fn isr_stub_general_protection() {
         // Get error code from stack (pushed by CPU before this handler)
         "mov rdi, 13",                 // vector = #GP (13)
         "mov rsi, [rsp + 24]",         // error code (after 3 pushes)
+        "xor rdx, rdx",                // cr2 = 0
+        "mov rcx, [rsp + 32]",         // faulting RIP
+        "mov r8, [rsp + 56]",          // faulting RSP
 
         // Call Rust handler
         "call exception_kill_handler_rust",
@@ -206,6 +209,8 @@ unsafe extern "C" fn isr_stub_page_fault() {
         "mov rdi, 14",
         "mov rsi, [rsp + 56]",
         "mov rdx, cr2",
+        "mov rcx, [rsp + 64]",         // faulting RIP
+        "mov r8, [rsp + 88]",          // faulting RSP
         "call exception_kill_handler_rust",
 
         "2:", // Fault resolved — pop ctx and return
@@ -237,6 +242,9 @@ unsafe extern "C" fn isr_stub_invalid_opcode() {
         "push rsi",
         "mov rdi, 6",          // vector = #UD (6)
         "xor rsi, rsi",        // error code = 0
+        "xor rdx, rdx",        // cr2 = 0
+        "mov rcx, [rsp + 24]", // faulting RIP
+        "mov r8, [rsp + 48]",  // faulting RSP
         "call exception_kill_handler_rust",
         "pop rsi",
         "pop rdi",
@@ -278,6 +286,9 @@ unsafe extern "C" fn isr_stub_x87_fp() {
         "push rsi",
         "mov rdi, 16",         // vector = #MF (16)
         "xor rsi, rsi",        // error code = 0
+        "xor rdx, rdx",        // cr2 = 0
+        "mov rcx, [rsp + 24]", // faulting RIP
+        "mov r8, [rsp + 48]",  // faulting RSP
         "call exception_kill_handler_rust",
         "pop rsi",
         "pop rdi",
@@ -295,6 +306,9 @@ unsafe extern "C" fn isr_stub_simd_fp() {
         "push rsi",
         "mov rdi, 19",         // vector = #XM (19)
         "xor rsi, rsi",        // error code = 0
+        "xor rdx, rdx",        // cr2 = 0
+        "mov rcx, [rsp + 24]", // faulting RIP
+        "mov r8, [rsp + 48]",  // faulting RSP
         "call exception_kill_handler_rust",
         "pop rsi",
         "pop rdi",
@@ -312,6 +326,9 @@ unsafe extern "C" fn isr_stub_divide_error() {
         "push rsi",
         "mov rdi, 0",          // vector = #DE (0)
         "xor rsi, rsi",        // error code = 0
+        "xor rdx, rdx",        // cr2 = 0
+        "mov rcx, [rsp + 24]", // faulting RIP
+        "mov r8, [rsp + 48]",  // faulting RSP
         "call exception_kill_handler_rust",
         "pop rsi",
         "pop rdi",
@@ -496,7 +513,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
 /// infinite recursion. If the framebuffer access or glyph lookup causes
 /// another #PF (e.g. unmapped memory), calling this again would
 /// overflow the stack and corrupt memory, causing the #UD we observed.
-unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
+unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, rsp: u64) -> ! {
     use core::sync::atomic::{AtomicU64, Ordering};
     static RECURSION_GUARD: AtomicU64 = AtomicU64::new(0);
 
@@ -513,32 +530,15 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
     let h = crate::boot::info::FB_HEIGHT as usize;
     let s = crate::boot::info::FB_STRIDE as usize;
 
-    // Read RIP and RSP via asm. RIP here is the address of the next
-    // instruction after the asm block, which is close to the actual
-    // faulting RIP for early-boot faults (kernel main is on the stack).
-    //
-    // v1.8.16: just dump to serial. Framebuffer might be the cause
-    // of the crash, and writing to it again could trigger another #GP.
-    // Serial is the most reliable way to get the real RIP.
-    let rip: u64;
-    let rsp: u64;
-    core::arch::asm!(
-        "lea {0}, [rip + 0]",
-        "mov {1}, rsp",
-        out(reg) rip,
-        out(reg) rsp,
-        options(nomem, nostack, preserves_flags)
-    );
-
     // Log to serial FIRST and IMMEDIATELY halt. Don't touch the
     // framebuffer — it might be corrupted and writing to it would
     // trigger another #GP.
     crate::dev::console::serial_write("\n!!! KERNEL FAULT (early boot, no thread) !!!\n");
     crate::dev::console::serial_write("    Vector: ");
     crate::dev::console::serial_write_u64(vector, 10);
-    crate::dev::console::serial_write(" (handler RIP=");
+    crate::dev::console::serial_write(" (fault RIP=");
     crate::dev::console::serial_write_u64(rip, 16);
-    crate::dev::console::serial_write(", handler RSP=");
+    crate::dev::console::serial_write(", fault RSP=");
     crate::dev::console::serial_write_u64(rsp, 16);
     crate::dev::console::serial_write(")\n");
     crate::dev::console::serial_write("    Error:  0x");
@@ -623,7 +623,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         };
 
         // Title
-        draw_str(b"FastOS KERNEL FAULT v1.8.5", 20, 20, 0xFFFFFFFF);
+        draw_str(b"FastOS KERNEL FAULT v1.8.14", 20, 20, 0xFFFFFFFF);
 
         // Fault name
         draw_str(b"Vector: ", 20, 50, 0xFFFFFF00);
@@ -648,7 +648,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         draw_str(to_hex(rsp), 84, 170, 0xFFFFAAFF);
 
         // Build version footer
-        draw_str(b"v1.8.5  ::  Heap:16MB  Watchdog:5s  Fault-Safe", 20, 210, 0xFFCCCCCC);
+        draw_str(b"v1.8.14  ::  Heap:16MB  Watchdog:5s  Fault-Safe", 20, 210, 0xFFCCCCCC);
 
         // Instruction hint
         draw_str(b"CPU halted. Note CR2 + RIP, then re-flash with -Rollback if needed.", 20, 240, 0xFF8B949E);
@@ -659,11 +659,11 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
 /// Exception handler that tries demand paging before killing the process.
 /// Called from #GP and #PF ISR stubs.
 #[unsafe(no_mangle)]
-extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> ! {
+extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip: u64, rsp: u64) -> ! {
     // Early boot safety: if no thread exists yet (Phase 0-1), display on
     // framebuffer and halt. The scheduler/diag may not be initialized.
     if crate::proc::task::current().is_none() {
-        unsafe { early_boot_fault_display(vector, error, cr2); }
+        unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
     }
 
     use core::sync::atomic::Ordering;
@@ -673,15 +673,6 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> 
         14 => {
             t.cpu.page_faults.fetch_add(1, Ordering::Relaxed);
             // Always log #PF to serial for post-mortem analysis
-            let rip: u64;
-            unsafe {
-                // Use lea to get current RIP (label after the asm block)
-                core::arch::asm!(
-                    "lea {0}, [rip + 0]",
-                    out(reg) rip,
-                    options(nomem, nostack, preserves_flags)
-                );
-            }
             unsafe {
                 crate::dev::console::serial_write("[#PF] CR2=0x");
                 crate::dev::console::serial_write_u64(cr2, 16);
@@ -727,7 +718,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64) -> 
             // #DF is unrecoverable in most cases. Show on framebuffer
             // and halt so the user sees the crash on screen.
             crate::cabina::fault_u64("#DF", "double fault", error);
-            unsafe { early_boot_fault_display(vector, error, cr2); }
+            unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
         }
         6 => {
             t.cpu.ud_faults.fetch_add(1, Ordering::Relaxed);

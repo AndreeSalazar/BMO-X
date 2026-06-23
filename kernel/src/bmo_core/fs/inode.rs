@@ -36,18 +36,6 @@ pub type InodeType = BmoFileType;
 /// Permission bits — alias del ABI `BmoPerms` (u16 Unix-like).
 pub type Perm = BmoPerms;
 
-impl Perm {
-    /// Permisos `rw-r--r--` (0644).
-    pub const fn rw() -> Self {
-        Self(0o644)
-    }
-
-    /// Permisos `rwxr-xr-x` (0755).
-    pub const fn rwx() -> Self {
-        Self(0o755)
-    }
-}
-
 /// Open file handle.
 #[derive(Debug, Clone, Copy)]
 pub struct OpenInode {

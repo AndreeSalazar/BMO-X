@@ -48,9 +48,9 @@
 //! ```
 //!
 //! Ver `SPEC.md` para la especificación completa.
-
+#![no_std]
 #![allow(dead_code)]
-
+extern crate alloc;
 pub mod fundamentals;
 pub mod values;
 pub mod windowing;
@@ -96,3 +96,5 @@ pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);
 
 /// Magic constant en headers BEF para identificar BMO ABI.
 pub const BMO_ABI_MAGIC: u32 = u32::from_le_bytes(*b"BMO1");
+
+pub use crate as bmo_abi;

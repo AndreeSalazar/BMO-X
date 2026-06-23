@@ -31,8 +31,19 @@
 
 #![allow(dead_code)]
 
+pub mod header;
+pub mod sections;
+pub mod manifest;
+pub mod signing;
+pub mod relocations;
+pub mod symbols;
+pub mod tls;
+pub mod imports;
+pub mod exports;
+pub mod blake3;
+
 // ─── Re-exports del loader canónico ─────────────────────────────────
-pub use crate::bmo_core::bef::header::{
+pub use header::{
     BEF_MAGIC, BEF_VERSION_MAJOR, BEF_VERSION_MINOR,
     BefMagic, BefFlags, BefArch, BefHeader,
 };
@@ -41,15 +52,15 @@ pub use crate::bmo_core::bef::header::{
 pub const BEF_VERSION: (u16, u16) = (BEF_VERSION_MAJOR, BEF_VERSION_MINOR);
 
 // ─── Re-exports de sections ─────────────────────────────────────────
-pub use crate::bmo_core::bef::sections::{
+pub use sections::{
     SectionKind, SectionFlags, SectionEntry, SectionTable,
 };
 
 // ─── Re-exports de manifest, signing, relocations, symbols, etc ────
-pub use crate::bmo_core::bef::manifest::Provenance;
-pub use crate::bmo_core::bef::signing::{SignatureHeader, SectionHash};
-pub use crate::bmo_core::bef::relocations::Relocation;
-pub use crate::bmo_core::bef::symbols::Symbol;
-pub use crate::bmo_core::bef::tls::TlsTemplate;
-pub use crate::bmo_core::bef::imports::ImportEntry;
-pub use crate::bmo_core::bef::exports::ExportEntry;
+pub use manifest::Provenance;
+pub use signing::{SignatureHeader, SectionHash};
+pub use relocations::Relocation;
+pub use symbols::Symbol;
+pub use tls::TlsTemplate;
+pub use imports::ImportEntry;
+pub use exports::ExportEntry;

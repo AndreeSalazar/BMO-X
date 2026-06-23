@@ -3,5 +3,6 @@ rustflags = [
   "-C", "link-arg=-T",
   "-C", "link-arg=linker.ld",
   "-C", "relocation-model=static",
-  "-C", "target-feature=+crt-static"
+  "-C", "target-feature=+crt-static",
+  "-C", "target-cpu=znver3"
 ]
