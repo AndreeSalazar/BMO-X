@@ -488,7 +488,9 @@ pub fn run() -> ! {
     } else {
         crate::dev::console::serial_write("[welcome] fb() returned None!\n");
     }
+    crate::dev::console::serial_write("[welcome] calling visual::clear\n");
     crate::boot::visual::clear();
+    crate::dev::console::serial_write("[welcome] visual::clear done\n");
 
     if let Some(fb) = fb() {
         crate::dev::console::serial_write("[welcome] starting first render\n");
@@ -503,6 +505,7 @@ pub fn run() -> ! {
     crate::dev::console::serial_write("[welcome] playing logon sound\n");
     crate::bmo_core::gustos::tracks::windows::logon();
     crate::dev::console::serial_write("[welcome] logon done\n");
+    crate::dev::console::serial_write("[welcome] entering event loop\n");
 
     loop {
         if unsafe { DIRTY } {

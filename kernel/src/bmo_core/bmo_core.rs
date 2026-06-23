@@ -183,18 +183,19 @@ fn run_gateway_tests() {
 /// Esta función **NO retorna**. Arranca el welcome screen, espera
 /// input, procesa comandos, y queda en el event loop de desktop.
 pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
-    crate::dev::console::serial_write("[bmo_core] enter: clearing ring0 splash\n");
+    crate::dev::console::serial_write("[bmo_core] enter: START\n");
     // Limpia el splash que dejó Ring 0.
+    crate::dev::console::serial_write("[bmo_core] enter: clear splash\n");
     crate::boot::visual::clear();
-    crate::dev::console::serial_write("[bmo_core] enter: visual clear done\n");
+    crate::dev::console::serial_write("[bmo_core] enter: splash cleared\n");
 
     // Reproduce el logon sound (gustos).
-    crate::dev::console::serial_write("[bmo_core] enter: calling gustos::logon\n");
+    crate::dev::console::serial_write("[bmo_core] enter: logon sound\n");
     gustos::tracks::windows::logon();
-    crate::dev::console::serial_write("[bmo_core] enter: gustos::logon returned\n");
+    crate::dev::console::serial_write("[bmo_core] enter: logon done\n");
 
     // Lanza el welcome. Esta función NO retorna.
-    crate::dev::console::serial_write("[bmo_core] enter: calling welcome::run\n");
+    crate::dev::console::serial_write("[bmo_core] enter: welcome::run\n");
     desktop::welcome::run();
 }
 

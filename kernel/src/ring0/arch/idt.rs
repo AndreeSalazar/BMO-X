@@ -516,6 +516,10 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
     // Read RIP and RSP via asm. RIP here is the address of the next
     // instruction after the asm block, which is close to the actual
     // faulting RIP for early-boot faults (kernel main is on the stack).
+    //
+    // v1.8.16: just dump to serial. Framebuffer might be the cause
+    // of the crash, and writing to it again could trigger another #GP.
+    // Serial is the most reliable way to get the real RIP.
     let rip: u64;
     let rsp: u64;
     core::arch::asm!(
@@ -526,22 +530,25 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64) -> ! {
         options(nomem, nostack, preserves_flags)
     );
 
-    // CRITICAL: Log to serial FIRST (before any framebuffer work).
-    // If the framebuffer is unmapped or the glyph table is missing,
-    // we'd loop infinitely. Serial output is more reliable.
-    crate::dev::console::serial_write("\n!!! FAULT: vec=");
-    crate::dev::console::serial_write_u64(vector, 0);
-    crate::dev::console::serial_write(" err=0x");
-    crate::dev::console::serial_write_u64(error, 16);
-    crate::dev::console::serial_write(" cr2=0x");
-    crate::dev::console::serial_write_u64(cr2, 16);
-    crate::dev::console::serial_write(" rip=0x");
+    // Log to serial FIRST and IMMEDIATELY halt. Don't touch the
+    // framebuffer — it might be corrupted and writing to it would
+    // trigger another #GP.
+    crate::dev::console::serial_write("\n!!! KERNEL FAULT (early boot, no thread) !!!\n");
+    crate::dev::console::serial_write("    Vector: ");
+    crate::dev::console::serial_write_u64(vector, 10);
+    crate::dev::console::serial_write(" (handler RIP=");
     crate::dev::console::serial_write_u64(rip, 16);
-    crate::dev::console::serial_write(" rsp=0x");
+    crate::dev::console::serial_write(", handler RSP=");
     crate::dev::console::serial_write_u64(rsp, 16);
-    crate::dev::console::serial_write(" fb=0x");
-    crate::dev::console::serial_write_u64(fb_addr, 16);
+    crate::dev::console::serial_write(")\n");
+    crate::dev::console::serial_write("    Error:  0x");
+    crate::dev::console::serial_write_u64(error, 16);
     crate::dev::console::serial_write("\n");
+    if vector == 14 {
+        crate::dev::console::serial_write("    CR2:    0x");
+        crate::dev::console::serial_write_u64(cr2, 16);
+        crate::dev::console::serial_write("\n");
+    }
 
     if fb_addr != 0 && w > 0 && h > 0 {
         let buf = fb_addr as *mut u32;
