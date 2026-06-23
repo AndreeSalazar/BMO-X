@@ -5,4 +5,5 @@ members = [
     "bootloader",
     "boot_protocol",
     "bmo_abi",
+    "bmo_audio",
 ]

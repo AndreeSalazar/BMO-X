@@ -41,7 +41,6 @@ use super::bmo_api;
 use super::bef;
 use super::desktop;
 use super::fs;
-use super::gustos;
 use super::desktop3;
 use crate::bmo_gpu;
 
@@ -189,13 +188,15 @@ pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     crate::boot::visual::clear();
     crate::dev::console::serial_write("[bmo_core] enter: splash cleared\n");
 
-    // Reproduce el logon sound (gustos).
-    crate::dev::console::serial_write("[bmo_core] enter: logon sound\n");
-    gustos::tracks::windows::logon();
+    // Inicializar el crate bmo_audio con la frecuencia de TSC calibrada.
+    bmo_audio::init(crate::cpu::tsc_per_sec());
+
+    // Reproduce el logon sound (Windows 10/11 chime).
+    crate::dev::console::serial_write("[bmo_core] enter: logon sound (bmo_audio)\n");
+    bmo_audio::play_logon_chime();
     crate::dev::console::serial_write("[bmo_core] enter: logon done\n");
 
     // Lanza el welcome. Esta función NO retorna.
     crate::dev::console::serial_write("[bmo_core] enter: welcome::run\n");
     desktop::welcome::run();
 }
-

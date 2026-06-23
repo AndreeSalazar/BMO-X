@@ -83,7 +83,6 @@ pub mod bmo_api;
 pub mod desktop;
 pub mod ui;
 pub mod diag;
-pub mod gustos;
 pub mod bef;
 pub mod fs;
 pub mod desktop3;

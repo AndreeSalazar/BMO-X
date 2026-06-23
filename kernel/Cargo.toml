@@ -8,6 +8,7 @@ license = "Techne"
 
 [dependencies]
 bmo-abi = { path = "../bmo_abi" }
+bmo-audio = { path = "../bmo_audio" }
 fastos-boot-protocol = { path = "../boot_protocol" }
 volatile = "0.4"
 bitflags = "2"

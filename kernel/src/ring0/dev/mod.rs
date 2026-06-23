@@ -23,5 +23,4 @@ pub mod console;
 pub mod pcie;
 pub mod framebuffer;
 pub mod watchdog;
-pub mod audio;
 pub mod acpi;
