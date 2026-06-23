@@ -257,30 +257,21 @@ unsafe extern "C" fn isr_stub_invalid_opcode() {
 ///
 /// When CR0.TS is set (lazy FPU mode), the first FPU/SSE/AVX instruction triggers #NM.
 /// We save the previous task's FPU state, restore the current task's state, and clear TS.
+/// #NM — Device Not Available (FPU/SSE). Kill current process (eager FPU is active, so #NM is fatal).
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_device_not_avail() {
     naked_asm!(
-        // Save all caller-saved registers to prevent corruption when calling Rust
         "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
         "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        "call fpu_nm_handler_rust",
-
-        "pop r11",
-        "pop r10",
-        "pop r9",
-        "pop r8",
-        "pop rdi",
+        "push rsi",
+        "mov rdi, 7",          // vector = #NM (7)
+        "xor rsi, rsi",        // error code = 0
+        "xor rdx, rdx",        // cr2 = 0
+        "mov rcx, [rsp + 24]", // faulting RIP
+        "mov r8, [rsp + 48]",  // faulting RSP
+        "call exception_kill_handler_rust",
         "pop rsi",
-        "pop rdx",
-        "pop rcx",
+        "pop rdi",
         "pop rax",
         "iretq",
     );
@@ -747,16 +738,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
     crate::proc::process::kill_current_process(vector, error, cr2)
 }
 
-/// #NM handler for lazy FPU ctx switching.
-///
-/// Called when CR0.TS is set and a FPU/SSE/AVX instruction is executed.
-/// Clears TS so the current task can use FPU/SSE/AVX.
-/// Full FPU state save/restore will be integrated with the scheduler.
-#[unsafe(no_mangle)]
-extern "C" fn fpu_nm_handler_rust() {
-    // Clear CR0.TS to allow FPU/SSE/AVX instructions
-    crate::cpu::fpu::clear_lazy_fpu();
-}
+
 
 /// Page fault handler — returns true if fault was resolved (demand page / CoW).
 /// Returns false if the fault is fatal and the process should be killed.

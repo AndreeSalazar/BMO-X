@@ -40,28 +40,3 @@ pub fn init_fpu() {
         crate::dev::console::serial_write("[FPU] x87 FPU + MXCSR initialized\n");
     }
 }
-
-/// Enable CR0.TS (Task Switched) for lazy FPU ctx switching.
-///
-/// When TS is set, any FPU/SSE/AVX instruction causes #NM (vector 7).
-/// The ISR can then save the previous task's FPU state and restore the current task's.
-#[inline]
-pub fn enable_lazy_fpu() {
-    unsafe {
-        let mut cr0: u64;
-        core::arch::asm!("mov {}, cr0", out(reg) cr0);
-        cr0 |= 1 << 3; // Set TS
-        core::arch::asm!("mov cr0, {}", in(reg) cr0);
-    }
-}
-
-/// Clear CR0.TS — allow FPU/SSE/AVX instructions.
-#[inline]
-pub fn clear_lazy_fpu() {
-    unsafe {
-        let mut cr0: u64;
-        core::arch::asm!("mov {}, cr0", out(reg) cr0);
-        cr0 &= !(1 << 3); // Clear TS
-        core::arch::asm!("mov cr0, {}", in(reg) cr0);
-    }
-}
