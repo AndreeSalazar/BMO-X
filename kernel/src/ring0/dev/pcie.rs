@@ -157,12 +157,13 @@ fn pci_read32_io(bus: u8, dev: u8, func: u8, off: u16) -> u32 {
         | ((func as u32) << 8)
         | ((off as u32) & 0xFC);
     unsafe {
-        asm!("out dx, al", in("dx") 0xCF8u16, in("al") (addr & 0xFF) as u8);
-        asm!("out dx, al", in("dx") 0xCF9u16, in("al") ((addr >> 8) & 0xFF) as u8);
-        asm!("out dx, al", in("dx") 0xCFAu16, in("al") ((addr >> 16) & 0xFF) as u8);
-        asm!("out dx, al", in("dx") 0xCFBu16, in("al") ((addr >> 24) & 0xFF) as u8);
+        // PCI config address must be written as one 32-bit transaction to
+        // 0xCF8. Do NOT split this into byte writes to 0xCF8..0xCFB: on PC
+        // hardware 0xCF9 is the reset-control register, so touching it can
+        // instantly reboot the machine during PCI/GPU probing.
+        asm!("out dx, eax", in("dx") 0xCF8u16, in("eax") addr, options(nostack, preserves_flags));
         let val: u32;
-        asm!("in eax, dx", in("dx") 0xCFCu16, out("eax") val);
+        asm!("in eax, dx", in("dx") 0xCFCu16, out("eax") val, options(nostack, preserves_flags));
         val
     }
 }
@@ -175,11 +176,10 @@ fn pci_write32_io(bus: u8, dev: u8, func: u8, off: u16, val: u32) {
         | ((func as u32) << 8)
         | ((off as u32) & 0xFC);
     unsafe {
-        asm!("out dx, al", in("dx") 0xCF8u16, in("al") (addr & 0xFF) as u8);
-        asm!("out dx, al", in("dx") 0xCF9u16, in("al") ((addr >> 8) & 0xFF) as u8);
-        asm!("out dx, al", in("dx") 0xCFAu16, in("al") ((addr >> 16) & 0xFF) as u8);
-        asm!("out dx, al", in("dx") 0xCFBu16, in("al") ((addr >> 24) & 0xFF) as u8);
-        asm!("out dx, eax", in("dx") 0xCFCu16, in("eax") val);
+        // Same safety rule as read: a single 32-bit write to 0xCF8 only.
+        // 0xCF9 is not PCI address byte 1; it is platform reset control.
+        asm!("out dx, eax", in("dx") 0xCF8u16, in("eax") addr, options(nostack, preserves_flags));
+        asm!("out dx, eax", in("dx") 0xCFCu16, in("eax") val, options(nostack, preserves_flags));
     }
 }
 

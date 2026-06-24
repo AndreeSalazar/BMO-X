@@ -70,7 +70,7 @@ pub mod syscall;
 
 // Re-exports principales (BootInfo shared from bootloader).
 pub use boot::info::{
-    BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE,
+    BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE, FB_PIXEL_FORMAT,
 };
 
 // ── Entry point ─────────────────────────────────────────────────────

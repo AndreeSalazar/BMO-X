@@ -30,9 +30,21 @@ pub fn run(ctx: &BootContext, prev_end: u64) -> PhaseOutput {
     crate::boot::serial::hex(bi.fb_height as u64);
     crate::dev::console::serial_write("\n");
     log::info_u64("phase3", "Stride (pixels)", bi.fb_stride as u64);
+    crate::dev::console::serial_write("[phase3] Pixel format: ");
+    match bi.fb_pixel_format {
+        fastos_boot_protocol::PixelFormat::Bgr => crate::dev::console::serial_write("BGR\n"),
+        fastos_boot_protocol::PixelFormat::Rgb => crate::dev::console::serial_write("RGB\n"),
+        fastos_boot_protocol::PixelFormat::Unknown => crate::dev::console::serial_write("Unknown\n"),
+    }
     log::info_u64("phase3", "Framebuffer size (MB)", fb_size_mb);
 
-    crate::dev::framebuffer::init_gop(bi.fb_addr, bi.fb_width, bi.fb_height, bi.fb_stride);
+    crate::dev::framebuffer::init_gop(
+        bi.fb_addr,
+        bi.fb_width,
+        bi.fb_height,
+        bi.fb_stride,
+        bi.fb_pixel_format,
+    );
     log::info("phase3", "GOP display initialized");
 
     desktop::fb_fill(0, 0, bi.fb_width, 34, 0xFF101820);

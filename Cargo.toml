@@ -7,3 +7,16 @@ members = [
     "bmo_abi",
     "bmo_audio",
 ]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "symbols"
+debug = false
+debug-assertions = false
+overflow-checks = false

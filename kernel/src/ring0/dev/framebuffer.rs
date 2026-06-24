@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 use crate::bmo_core::ui::fb::Framebuffer;
+use fastos_boot_protocol::PixelFormat;
 
 /// ARGB color (32-bit: 0xAARRGGBB).
 #[derive(Debug, Clone, Copy)]
@@ -67,6 +68,7 @@ pub struct GopDisplay {
     pub width: u32,
     pub height: u32,
     pub stride: u32,
+    pub pixel_format: PixelFormat,
 }
 
 static mut GOP_DISPLAY: Option<GopDisplay> = None;
@@ -76,13 +78,14 @@ pub fn init() {
     // delivered by the UEFI bootloader.
 }
 
-pub fn init_gop(fb_base: u64, width: u32, height: u32, stride: u32) {
+pub fn init_gop(fb_base: u64, width: u32, height: u32, stride: u32, pixel_format: PixelFormat) {
     unsafe {
         GOP_DISPLAY = Some(GopDisplay {
             base: fb_base as *mut u32,
             width,
             height,
             stride,
+            pixel_format,
         });
     }
 }
@@ -395,14 +398,24 @@ pub fn draw_line_aa(x0: f32, y0: f32, x1: f32, y1: f32, color: Color) {
 }
 
 // ── Static Backbuffer ────────────────────────────────────────────────
-const BACKBUFFER_SIZE: usize = 1920 * 1080;
+const BACKBUFFER_WIDTH: usize = 1920;
+const BACKBUFFER_HEIGHT: usize = 1080;
+const BACKBUFFER_SIZE: usize = BACKBUFFER_WIDTH * BACKBUFFER_HEIGHT;
 static mut BACKBUFFER_MEM: [u32; BACKBUFFER_SIZE] = [0; BACKBUFFER_SIZE];
 
 #[allow(static_mut_refs)]
 pub fn get_backbuffer_fb() -> Framebuffer {
     unsafe {
         let addr = BACKBUFFER_MEM.as_mut_ptr() as u64;
-        Framebuffer::new(addr, 1920 * 4, 1920, 1080)
+        let (width, height) = if let Some(disp) = display() {
+            (
+                (disp.width as usize).min(BACKBUFFER_WIDTH) as u32,
+                (disp.height as usize).min(BACKBUFFER_HEIGHT) as u32,
+            )
+        } else {
+            (BACKBUFFER_WIDTH as u32, BACKBUFFER_HEIGHT as u32)
+        };
+        Framebuffer::new(addr, (BACKBUFFER_WIDTH * 4) as u64, width, height)
     }
 }
 
@@ -424,15 +437,15 @@ pub fn present() {
 pub fn clear_backbuffer(color: Color) { unsafe { BACKBUFFER_MEM = [color.0; BACKBUFFER_SIZE]; } }
 
 pub fn get_backbuffer_pixel(x: u32, y: u32) -> Color {
-    if x < 1920 && y < 1080 {
-        unsafe { Color(BACKBUFFER_MEM[(y * 1920 + x) as usize]) }
+    if (x as usize) < BACKBUFFER_WIDTH && (y as usize) < BACKBUFFER_HEIGHT {
+        unsafe { Color(BACKBUFFER_MEM[y as usize * BACKBUFFER_WIDTH + x as usize]) }
     } else {
         Color::BLACK
     }
 }
 
 pub fn put_backbuffer_pixel(x: u32, y: u32, color: Color) {
-    if x < 1920 && y < 1080 {
-        unsafe { BACKBUFFER_MEM[(y * 1920 + x) as usize] = color.0; }
+    if (x as usize) < BACKBUFFER_WIDTH && (y as usize) < BACKBUFFER_HEIGHT {
+        unsafe { BACKBUFFER_MEM[y as usize * BACKBUFFER_WIDTH + x as usize] = color.0; }
     }
 }

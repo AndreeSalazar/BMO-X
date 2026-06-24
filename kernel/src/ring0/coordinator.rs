@@ -124,4 +124,5 @@ unsafe fn store_boot_info(bi: &fastos_boot_protocol::BootInfo) {
     info::FB_WIDTH = bi.fb_width;
     info::FB_HEIGHT = bi.fb_height;
     info::FB_STRIDE = bi.fb_stride;
+    info::FB_PIXEL_FORMAT = bi.fb_pixel_format;
 }

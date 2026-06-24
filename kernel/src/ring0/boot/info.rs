@@ -21,3 +21,6 @@ pub static mut FB_WIDTH: u32 = 0;
 pub static mut FB_HEIGHT: u32 = 0;
 /// Framebuffer stride in pixels (NOT bytes).
 pub static mut FB_STRIDE: u32 = 0;
+/// Framebuffer pixel format as delivered by UEFI GOP.
+pub static mut FB_PIXEL_FORMAT: fastos_boot_protocol::PixelFormat =
+    fastos_boot_protocol::PixelFormat::Unknown;

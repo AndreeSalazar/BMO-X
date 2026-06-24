@@ -13,19 +13,6 @@ fastos-boot-protocol = { path = "../boot_protocol" }
 volatile = "0.4"
 bitflags = "2"
 
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = "symbols"
-debug = false
-debug-assertions = false
-overflow-checks = false
-
 [[bin]]
 name = "fastos-kernel"
 path = "src/ring0/mod.rs"

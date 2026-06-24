@@ -10,10 +10,5 @@ uefi = { version = "0.37", features = ["alloc", "global_allocator", "logger", "p
 log = "0.4"
 fastos-boot-protocol = { path = "../boot_protocol" }
 
-[profile.release]
-panic = "abort"
-opt-level = 2
-lto = true
-
 [package.metadata.bootloader]
 target = "x86_64-unknown-uefi"
