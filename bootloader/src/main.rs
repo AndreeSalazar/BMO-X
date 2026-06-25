@@ -338,6 +338,14 @@ fn main() -> Status {
     uefi::helpers::init().unwrap();
     info!("FastOS UEFI Bootloader v0.2.0");
 
+    // UEFI arms a firmware watchdog when it launches an EFI image. If it
+    // remains active after our handoff, the firmware can reset the PC without
+    // any Ring 0 watchdog message. Disable it as soon as boot services exist.
+    match boot::set_watchdog_timer(0, 0x1_0000, None) {
+        Ok(()) => info!("UEFI watchdog disabled"),
+        Err(e) => info!("WARNING: failed to disable UEFI watchdog: {:?}", e.status()),
+    }
+
     // ── 1. Get boot device handle via LoadedImage ───────────────────────────
     info!("Getting boot device handle...");
     let loaded_image =
@@ -396,7 +404,7 @@ fn main() -> Status {
     );
 
     // ── 4. Load PT_LOAD segments into memory ────────────────────────────────
-    let mut kernel_buffer_ptr: *mut u8 = core::ptr::null_mut();
+    let kernel_buffer_ptr: *mut u8;
     let mut needs_relocation = false;
 
     // Try allocating at the exact fixed address first. If the firmware has this

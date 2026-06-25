@@ -501,25 +501,37 @@ fn process_enter() {
 pub fn run() -> ! {
     crate::dev::console::serial_write("[welcome] v1.8.17 ULTRA-MINIMAL\n");
 
-    let (fb_addr, w, h, s) = unsafe {
+    let (fb_addr, w, h, s, fb_size) = unsafe {
+        let fb_size = if crate::boot::info::BOOT_INFO.is_null() {
+            0
+        } else {
+            (*crate::boot::info::BOOT_INFO).fb_size as usize
+        };
         (
             crate::boot::info::FB_ADDR,
             crate::boot::info::FB_WIDTH as usize,
             crate::boot::info::FB_HEIGHT as usize,
             crate::boot::info::FB_STRIDE as usize,
+            fb_size,
         )
     };
 
-    if fb_addr == 0 || w == 0 || h == 0 {
+    if fb_addr == 0 || w == 0 || h == 0 || s == 0 {
         crate::dev::console::serial_write("[welcome] FATAL: no fb\n");
-        loop { unsafe { core::arch::asm!("hlt"); } }
+        loop { core::hint::spin_loop(); }
+    }
+    let max_rows_by_size = if fb_size != 0 { (fb_size / 4) / s } else { h };
+    let paint_h = h.min(max_rows_by_size);
+    if paint_h == 0 {
+        crate::dev::console::serial_write("[welcome] FATAL: fb_size/stride invalid\n");
+        loop { core::hint::spin_loop(); }
     }
 
     // Pintar fondo
     crate::dev::console::serial_write("[welcome] painting bg\n");
     unsafe {
         let buf = fb_addr as *mut u32;
-        for y in 0..h {
+        for y in 0..paint_h {
             for x in 0..w {
                 buf.add(y * s + x).write_volatile(0xFF050B18);
             }
@@ -541,7 +553,7 @@ pub fn run() -> ! {
                     if (row & (0x80 >> px)) != 0 {
                         let xx = tx + i * 8 + px;
                         let yy = ty + py;
-                        if xx < w && yy < h {
+                        if xx < w && yy < paint_h {
                             buf.add(yy * s + xx).write_volatile(0xFF76B900);
                         }
                     }
@@ -550,8 +562,27 @@ pub fn run() -> ! {
         }
     }
 
-    crate::dev::console::serial_write("[welcome] entering hlt loop\n");
-    loop { unsafe { core::arch::asm!("hlt"); } }
+    crate::dev::console::serial_write("[welcome] entering cooperative idle loop\n");
+    let mut last_heartbeat = crate::cpu::rdtsc();
+    let mut heartbeat_on = false;
+    loop {
+        let now = crate::cpu::rdtsc();
+        if now.wrapping_sub(last_heartbeat) >= 500 * super::CYCLES_PER_MS {
+            last_heartbeat = now;
+            heartbeat_on = !heartbeat_on;
+            unsafe {
+                let buf = fb_addr as *mut u32;
+                let color = if heartbeat_on { 0xFF76B900 } else { 0xFF050B18 };
+                for yy in 0..8.min(paint_h) {
+                    for xx in 0..8.min(w) {
+                        buf.add(yy * s + xx).write_volatile(color);
+                    }
+                }
+            }
+        }
+
+        core::hint::spin_loop();
+    }
 }
 
 fn blink_on() -> bool {
@@ -579,6 +610,3 @@ fn handle_char(ch: u8) {
         _ => {}
     }
 }
-
-
-

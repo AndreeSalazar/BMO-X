@@ -15,11 +15,37 @@ pub struct Framebuffer {
 
 impl Framebuffer {
     pub fn new(addr: u64, pitch: u64, width: u32, height: u32) -> Self {
+        let pitch = pitch as usize;
+        let mut width = width as usize;
+        let mut height = height as usize;
+
+        // If this handle points at the real GOP framebuffer, cap its logical
+        // dimensions by the byte size reported by UEFI. Several higher-level
+        // renderers only know width/height/stride; this central guard prevents
+        // a bad GOP mode or stale dimensions from writing past VRAM and
+        // corrupting kernel memory, which on real hardware often looks like a
+        // sudden reboot/triple fault with no diagnostic screen.
+        unsafe {
+            if addr != 0 && addr == crate::boot::info::FB_ADDR && pitch != 0 {
+                let fb_size = if crate::boot::info::BOOT_INFO.is_null() {
+                    0
+                } else {
+                    (*crate::boot::info::BOOT_INFO).fb_size as usize
+                };
+                if fb_size != 0 {
+                    let pitch_px = pitch / 4;
+                    let max_rows = fb_size / pitch;
+                    width = width.min(pitch_px);
+                    height = height.min(max_rows);
+                }
+            }
+        }
+
         Self {
             addr: addr as usize,
-            pitch: pitch as usize,
-            width: width as usize,
-            height: height as usize,
+            pitch,
+            width,
+            height,
         }
     }
 
