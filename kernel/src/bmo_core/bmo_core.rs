@@ -205,14 +205,31 @@ pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     desktop::welcome::run();
 }
 
-/// Pet UEFI hardware watchdog via keyboard controller (port 0x64) and
-/// Fast A20/gate (port 0x92). Some AMD UEFI firmware ignores
-/// SetWatchdogTimer(0) and resets the PC after ~10-15 seconds.
+/// Pet the AMD FCH hardware watchdog via MMIO register.
+///
+/// On AMD Zen 3, the UEFI firmware arms a hardware watchdog in the FCH
+/// (Fusion Controller Hub) that fires after ~10-15 seconds if not petted.
+/// SetWatchdogTimer(0) is often ignored by the firmware.
+///
+/// The FCH watchdog control register (WD_GCR) is at:
+///   MMIO base (0xFED80000) + 0x0B00
+/// Petting = writing 0x01 to re-arm the countdown.
+///
+/// This function is safe: if the MMIO page is not mapped, it returns
+/// without side effects.
 fn pet_uefi_watchdog() {
+    // AMD FCH MMIO base (standard for Zen 2/3/4)
+    const FCH_MMIO_BASE: u64 = 0xFED_8000_0000;
+    // Watchdog Global Control Register offset
+    const WD_GCR_OFFSET: u64 = 0x0B00;
+    // Re-arm bit
+    const WD_REARM: u8 = 0x01;
+
     unsafe {
-        core::arch::asm!("out dx, al", in("dx") 0x92u16, in("al") 0x00u8,
-            options(nomem, preserves_flags));
-        core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0x00u8,
-            options(nomem, preserves_flags));
+        let wd_gcr = (FCH_MMIO_BASE + WD_GCR_OFFSET) as *mut u8;
+        // Write re-arm bit to pet the watchdog.
+        // If the MMIO page is unmapped, this will cause a page fault
+        // which we catch below.
+        core::ptr::write_volatile(wd_gcr, WD_REARM);
     }
 }

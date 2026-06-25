@@ -50,6 +50,15 @@ pub struct Tss {
 struct Ist1Stack([u8; 8192]);
 static mut IST1_STACK: Ist1Stack = Ist1Stack([0; 8192]);
 
+/// IST3 stack for #MC (Machine Check) exception (8 KB, 16-byte aligned).
+///
+/// #MC is non-maskable (fires even with CLI). If IST3 is 0 (uninitialized),
+/// the CPU sets RSP=0 and pushes the interrupt frame at address 0, causing
+/// a page fault during #MC handling → double fault → triple fault → reset.
+#[repr(align(16))]
+struct Ist3Stack([u8; 8192]);
+static mut IST3_STACK: Ist3Stack = Ist3Stack([0; 8192]);
+
 impl Tss {
     pub const fn new() -> Self {
         Self {
@@ -161,6 +170,12 @@ pub fn init_gdt() {
         // Size matches Ist1Stack::[u8; 8192] above.
         let ist1_top = core::ptr::addr_of!(IST1_STACK) as u64 + 8192;
         TSS.ist[0] = ist1_top;
+
+        // Set IST3 for #MC (Machine Check) exception handling.
+        // #MC is non-maskable — fires even with CLI. Without IST3, RSP=0
+        // causes page fault → double fault → triple fault → instant reset.
+        let ist3_top = core::ptr::addr_of!(IST3_STACK) as u64 + 8192;
+        TSS.ist[2] = ist3_top;
 
         // Build GDT entries
         GDT.entries[0] = 0;                              // 0x00: Null

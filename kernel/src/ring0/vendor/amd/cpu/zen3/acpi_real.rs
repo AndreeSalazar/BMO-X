@@ -430,6 +430,21 @@ pub fn pm_timer_port() -> Option<u16> {
     }
 }
 
+/// Returns the PM1a Control Block I/O port from FADT.
+/// Used to pet/dismiss the UEFI hardware watchdog timer.
+pub fn pm1a_control_port() -> Option<u16> {
+    if find_table(&FADT_SIGNATURE).is_err() {
+        return None;
+    }
+    let (fadt_addr, _len) = find_table(&FADT_SIGNATURE).ok()?;
+    // FADT offset 64: PM1a_control_block (4 bytes, I/O port address)
+    let pm1a_cnt = unsafe {
+        let ptr = (fadt_addr as *const u8).add(64);
+        core::ptr::read_unaligned(ptr as *const u32)
+    };
+    if pm1a_cnt == 0 { None } else { Some(pm1a_cnt as u16) }
+}
+
 /// FADT header (just the bytes we need).
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]

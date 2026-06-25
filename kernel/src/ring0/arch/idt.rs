@@ -96,8 +96,8 @@ pub fn init_idt() {
         IDT[8].ist = 1;   // IST1 — #DF (Double Fault)
         IDT[2].set_handler(isr_stub_exception_no_err as *const () as u64);
         IDT[2].ist = 1;   // IST1 — NMI (Non-Maskable Interrupt)
-        IDT[18].set_handler(isr_stub_exception_err as *const () as u64);
-        IDT[18].ist = 3;  // IST3 — #MC (Machine Check, errores de hardware)
+        IDT[18].set_handler(isr_stub_exception_no_err as *const () as u64);
+        IDT[18].ist = 3;  // IST3 — #MC (Machine Check, NO error code on AMD64)
 
         // IRQ0 — PIT timer (vector 32)
         IDT[32].set_handler(isr_stub_irq0 as *const () as u64);

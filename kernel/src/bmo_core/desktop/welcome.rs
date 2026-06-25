@@ -573,19 +573,13 @@ pub fn run() -> ! {
         let now = crate::cpu::rdtsc();
 
         // ── UEFI watchdog pet (every 2 seconds) ──────────────────────
-        // Many AMD UEFI firmware implementations do NOT honor
-        // SetWatchdogTimer(0) and will reset the PC after ~10-15 seconds.
-        // Petting port 0x64 (keyboard controller) keeps the watchdog alive.
+        // AMD FCH watchdog fires after ~10-15 seconds if not petted.
+        // Pet via FCH MMIO register at 0xFED80B00 (WD_GCR).
         if now.wrapping_sub(last_watchdog_pet) >= 2 * super::CYCLES_PER_MS {
             last_watchdog_pet = now;
             unsafe {
-                // Keyboard controller: 0xFE = pulse reset line (not full reset)
-                // 0x00 = pet/watchdog keep-alive on some firmware implementations
-                core::arch::asm!("out dx, al", in("dx") 0x92u16, in("al") 0x00u8,
-                    options(nomem, preserves_flags));
-                // Also pet via keyboard controller command port
-                core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0x00u8,
-                    options(nomem, preserves_flags));
+                let wd_gcr = 0xFED8_0B00 as *mut u8;
+                core::ptr::write_volatile(wd_gcr, 0x01);
             }
         }
 
