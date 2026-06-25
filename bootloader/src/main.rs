@@ -153,26 +153,15 @@ fn read_file_from_device(device_handle: uefi::Handle, filename: &str) -> Option<
 
 // ── NVRAM Variable Access ──────────────────────────────────────────────────
 //
-// Before exit_boot_services, we use UEFI Runtime Services to access NVRAM.
-// The vendor GUID matches the one the kernel uses for Runtime Services.
-
-/// FastOS vendor GUID for NVRAM variables.
-fn fastos_vendor_guid() -> uefi::runtime::VariableVendor {
-    uefi::runtime::VariableVendor(uefi::Guid::from_bytes([
-        0x01, 0x00, 0xA5, 0xF1,
-        0x02, 0x00,
-        0x03, 0x00,
-        0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
-    ]))
-}
+// Uses the standard UEFI global variable GUID so the kernel can also
+// access the same variables via raw FFI.
 
 /// Read a UEFI NVRAM variable using runtime services.
 fn read_nvram_variable(_device_handle: uefi::Handle, name: &str) -> Option<alloc::string::String> {
     let name_cstr = uefi::CString16::try_from(name).ok()?;
-    let guid = fastos_vendor_guid();
     let mut buf = [0u8; 256];
 
-    match uefi::runtime::get_variable(&name_cstr, &guid, &mut buf) {
+    match uefi::runtime::get_variable(&name_cstr, &uefi::runtime::VariableVendor::GLOBAL_VARIABLE, &mut buf) {
         Ok((data, _attrs)) => {
             let mut result = alloc::string::String::new();
             for &b in data.iter() {
@@ -191,12 +180,11 @@ fn write_nvram_variable(_device_handle: uefi::Handle, name: &str, value: &str) {
         Ok(c) => c,
         Err(_) => return,
     };
-    let guid = fastos_vendor_guid();
     let data = value.as_bytes();
     let attrs = uefi::runtime::VariableAttributes::BOOTSERVICE_ACCESS
         | uefi::runtime::VariableAttributes::RUNTIME_ACCESS;
 
-    match uefi::runtime::set_variable(&name_cstr, &guid, attrs, data) {
+    match uefi::runtime::set_variable(&name_cstr, &uefi::runtime::VariableVendor::GLOBAL_VARIABLE, attrs, data) {
         Ok(()) => info!("NVRAM: set {}={}", name, value),
         Err(e) => info!("NVRAM: set {} failed: {:?}", name, e.status()),
     }

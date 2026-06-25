@@ -7,8 +7,8 @@
 /// UEFI System Table physical address (set from BootInfo).
 static mut SYSTEM_TABLE: u64 = 0;
 
-/// GUID for FastOS NVRAM variables.
-/// {F1A50001-0002-0003-04-05-06-07-08-09-0A-0B}
+/// GUID: UEFI Global Variable (standard, same as bootloader uses)
+/// {8be4df61-93ca-11d2-aa0d-00e098032b8c}
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct EfiGuid {
@@ -18,11 +18,11 @@ struct EfiGuid {
     data4: [u8; 8],
 }
 
-static FASTOS_GUID: EfiGuid = EfiGuid {
-    data1: 0xF1A5_0001,
-    data2: 0x0002,
-    data3: 0x0003,
-    data4: [0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B],
+static GLOBAL_VAR_GUID: EfiGuid = EfiGuid {
+    data1: 0x8BE4_DF61,
+    data2: 0x93CA,
+    data3: 0x11D2,
+    data4: [0xAA, 0x0D, 0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C],
 };
 
 /// Initialize with the UEFI System Table address from BootInfo.
@@ -108,7 +108,7 @@ pub fn set_variable(name: &str, data: &[u8]) -> bool {
     let status = unsafe {
         set_var(
             ucs2_name.as_ptr(),
-            &FASTOS_GUID as *const EfiGuid,
+            &GLOBAL_VAR_GUID as *const EfiGuid,
             ATTRS,
             data.len(),
             data.as_ptr(),
@@ -146,7 +146,7 @@ pub fn get_variable(name: &str) -> Option<[u8; 256]> {
     let status = unsafe {
         get_var(
             ucs2_name.as_ptr(),
-            &FASTOS_GUID as *const EfiGuid,
+            &GLOBAL_VAR_GUID as *const EfiGuid,
             &mut attrs,
             &mut data_size,
             buf.as_mut_ptr(),
