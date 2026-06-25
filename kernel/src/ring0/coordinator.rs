@@ -92,7 +92,23 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     boot::visual::log("ring0", "[3/5] CPU+ACPI ready", boot::visual::color::OK);
 
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
-    crate::cpu::busy_wait_ms(1500);
+    // Pet the UEFI watchdog during the long wait. Many AMD boards don't
+    // honor SetWatchdogTimer(0) and will reset after ~10-15 seconds.
+    let wait_start = crate::cpu::rdtsc();
+    let tsc_per_ms = crate::cpu::tsc_per_sec() / 1000;
+    while crate::cpu::rdtsc().wrapping_sub(wait_start) < 1500 * tsc_per_ms {
+        // Pet watchdog every 200ms during splash hold
+        let elapsed_ms = crate::cpu::rdtsc().wrapping_sub(wait_start) / tsc_per_ms.max(1);
+        if elapsed_ms % 200 == 0 {
+            unsafe {
+                core::arch::asm!("out dx, al", in("dx") 0x92u16, in("al") 0x00u8,
+                    options(nomem, preserves_flags));
+                core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0x00u8,
+                    options(nomem, preserves_flags));
+            }
+        }
+        core::hint::spin_loop();
+    }
 
     // ── BMO Core init (cabina + defense + timeback + bmo_api + desktop) ──
     boot::visual::log("ring0", "init bmo_core", boot::visual::color::OK);

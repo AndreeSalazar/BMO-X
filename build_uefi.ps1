@@ -233,7 +233,7 @@ $kernelVersion = Get-KernelVersion (Join-Path $kernelDir "Cargo.toml")
 
 Write-Host "  Kernel version:  $kernelVersion" -ForegroundColor White
 Write-Host "  Target:          x86_64-unknown-none (kernel) / x86_64-unknown-uefi (bootloader)" -ForegroundColor White
-Write-Host "  Profile:         release (opt-level=z, LTO, strip=symbols)" -ForegroundColor White
+Write-Host "  Profile:         release (opt-level=3, LTO, strip=symbols)" -ForegroundColor White
 Write-Host "  Build dir:       $targetDir" -ForegroundColor White
 Write-Host ""
 
@@ -291,13 +291,14 @@ if ($Clean) {
 
 # ── Phase 2: Build Bootloader ──────────────────────────────────────────
 $bootPhase = Start-PhaseTimer "Build bootloader (nightly)"
+$bootloaderTargetDir = Join-Path $targetDir "bootloader"
 Push-Location $bootloaderDir
 try {
     # PS 5.1: si $ErrorActionPreference = "Stop", cargo stderr se
     # convierte en RemoteException. Relajamos a "Continue" durante build.
     $prevPref = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $bootOut = cargo build --release 2>&1
+    $bootOut = cargo +nightly build --release --target x86_64-unknown-uefi --target-dir $bootloaderTargetDir 2>&1
     $ErrorActionPreference = $prevPref
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Bootloader build FAILED"
@@ -312,7 +313,7 @@ try {
     Pop-Location
 }
 
-$bootloaderEfi = Join-Path $bootloaderDir "target\x86_64-unknown-uefi\release\fastos-bootloader.efi"
+$bootloaderEfi = Join-Path $bootloaderTargetDir "x86_64-unknown-uefi\release\fastos-bootloader.efi"
 if (-not (Test-Path $bootloaderEfi)) {
     Write-Fail "Bootloader EFI binary not found at: $bootloaderEfi"
     exit 1

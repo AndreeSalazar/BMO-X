@@ -563,10 +563,33 @@ pub fn run() -> ! {
     }
 
     crate::dev::console::serial_write("[welcome] entering cooperative idle loop\n");
+    crate::dev::console::serial_write("[welcome] UEFI watchdog pet enabled\n");
+
     let mut last_heartbeat = crate::cpu::rdtsc();
+    let mut last_watchdog_pet = crate::cpu::rdtsc();
     let mut heartbeat_on = false;
+
     loop {
         let now = crate::cpu::rdtsc();
+
+        // ── UEFI watchdog pet (every 2 seconds) ──────────────────────
+        // Many AMD UEFI firmware implementations do NOT honor
+        // SetWatchdogTimer(0) and will reset the PC after ~10-15 seconds.
+        // Petting port 0x64 (keyboard controller) keeps the watchdog alive.
+        if now.wrapping_sub(last_watchdog_pet) >= 2 * super::CYCLES_PER_MS {
+            last_watchdog_pet = now;
+            unsafe {
+                // Keyboard controller: 0xFE = pulse reset line (not full reset)
+                // 0x00 = pet/watchdog keep-alive on some firmware implementations
+                core::arch::asm!("out dx, al", in("dx") 0x92u16, in("al") 0x00u8,
+                    options(nomem, preserves_flags));
+                // Also pet via keyboard controller command port
+                core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0x00u8,
+                    options(nomem, preserves_flags));
+            }
+        }
+
+        // ── Heartbeat blink (every 500ms) ───────────────────────────
         if now.wrapping_sub(last_heartbeat) >= 500 * super::CYCLES_PER_MS {
             last_heartbeat = now;
             heartbeat_on = !heartbeat_on;

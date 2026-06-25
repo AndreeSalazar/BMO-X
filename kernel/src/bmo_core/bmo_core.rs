@@ -188,15 +188,31 @@ pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     crate::boot::visual::clear();
     crate::dev::console::serial_write("[bmo_core] enter: splash cleared\n");
 
+    // Pet UEFI watchdog — some AMD firmware fires even after SetWatchdogTimer(0)
+    pet_uefi_watchdog();
+
     // Inicializar el crate bmo_audio con la frecuencia de TSC calibrada.
     bmo_audio::init(crate::cpu::tsc_per_sec());
 
-    // Reproduce el logon sound (Windows 10/11 chime).
+    // Reproduce el logon sound (Windows 10/11 chime) ~1 second.
     crate::dev::console::serial_write("[bmo_core] enter: logon sound (bmo_audio)\n");
     bmo_audio::play_logon_chime();
+    pet_uefi_watchdog();
     crate::dev::console::serial_write("[bmo_core] enter: logon done\n");
 
     // Lanza el welcome. Esta función NO retorna.
     crate::dev::console::serial_write("[bmo_core] enter: welcome::run\n");
     desktop::welcome::run();
+}
+
+/// Pet UEFI hardware watchdog via keyboard controller (port 0x64) and
+/// Fast A20/gate (port 0x92). Some AMD UEFI firmware ignores
+/// SetWatchdogTimer(0) and resets the PC after ~10-15 seconds.
+fn pet_uefi_watchdog() {
+    unsafe {
+        core::arch::asm!("out dx, al", in("dx") 0x92u16, in("al") 0x00u8,
+            options(nomem, preserves_flags));
+        core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0x00u8,
+            options(nomem, preserves_flags));
+    }
 }

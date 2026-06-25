@@ -341,9 +341,12 @@ fn main() -> Status {
     // UEFI arms a firmware watchdog when it launches an EFI image. If it
     // remains active after our handoff, the firmware can reset the PC without
     // any Ring 0 watchdog message. Disable it as soon as boot services exist.
-    match boot::set_watchdog_timer(0, 0x1_0000, None) {
-        Ok(()) => info!("UEFI watchdog disabled"),
-        Err(e) => info!("WARNING: failed to disable UEFI watchdog: {:?}", e.status()),
+    // Try multiple times — some AMD firmware ignores the first call.
+    for attempt in 0..5 {
+        match boot::set_watchdog_timer(0, 0x1_0000, None) {
+            Ok(()) => info!("UEFI watchdog disabled (attempt {})", attempt + 1),
+            Err(e) => info!("WARNING: failed to disable UEFI watchdog (attempt {}): {:?}", attempt + 1, e.status()),
+        }
     }
 
     // ── 1. Get boot device handle via LoadedImage ───────────────────────────
