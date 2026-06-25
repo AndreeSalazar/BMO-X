@@ -1,0 +1,7 @@
+[package]
+name = "usb-log"
+version = "0.1.0"
+edition = "2021"
+description = "FastOS real-time log to USB — writes boot stages and events to UEFI NVRAM, bootloader dumps to crash.log"
+
+[dependencies]

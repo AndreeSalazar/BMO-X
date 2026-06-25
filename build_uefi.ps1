@@ -90,7 +90,7 @@ if ($Flash -or $Verify) {
 # ── Paths ──────────────────────────────────────────────────────────────
 $root     = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
-$bootDir  = Join-Path $root "bootloader"
+$bootDir  = Join-Path $root "crates_Personal\bootloader"
 $kernDir  = Join-Path $root "kernel"
 $target   = Join-Path $root "target_build"
 $stage    = Join-Path $target "staging\EFI\BOOT"
