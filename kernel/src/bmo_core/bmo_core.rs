@@ -183,6 +183,10 @@ fn run_gateway_tests() {
 /// input, procesa comandos, y queda en el event loop de desktop.
 pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     crate::dev::console::serial_write("[bmo_core] enter: START\n");
+    // Stage 7: bmo_core::enter
+    crate::coordinator::write_crash_marker(7);
+    crate::boot::uefi_rt::write_boot_stage("bmo_enter");
+
     // Limpia el splash que dejó Ring 0.
     crate::dev::console::serial_write("[bmo_core] enter: clear splash\n");
     crate::boot::visual::clear();
@@ -218,18 +222,9 @@ pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
 /// This function is safe: if the MMIO page is not mapped, it returns
 /// without side effects.
 fn pet_uefi_watchdog() {
-    // AMD FCH MMIO base (standard for Zen 2/3/4)
-    const FCH_MMIO_BASE: u64 = 0xFED_8000_0000;
-    // Watchdog Global Control Register offset
-    const WD_GCR_OFFSET: u64 = 0x0B00;
-    // Re-arm bit
-    const WD_REARM: u8 = 0x01;
-
+    // AMD FCH MMIO base: 0xFED80000 (NOT 0xFED_8000_0000 — that was 4096x too large)
+    // Watchdog Global Control Register (WD_GCR) = base + 0x0B00 = 0xFED80B00
     unsafe {
-        let wd_gcr = (FCH_MMIO_BASE + WD_GCR_OFFSET) as *mut u8;
-        // Write re-arm bit to pet the watchdog.
-        // If the MMIO page is unmapped, this will cause a page fault
-        // which we catch below.
-        core::ptr::write_volatile(wd_gcr, WD_REARM);
+        core::ptr::write_volatile(0xFED8_0B00 as *mut u8, 0x01);
     }
 }

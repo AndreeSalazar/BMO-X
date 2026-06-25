@@ -16,6 +16,7 @@ pub mod context;
 pub mod log;
 pub mod serial;
 pub mod visual;
+pub mod uefi_rt;
 
 pub mod phases;
 

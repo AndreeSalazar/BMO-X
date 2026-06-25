@@ -80,6 +80,12 @@ pub struct BootInfo {
     // ── Reserved payload (opcional, dejado en 0 en GOP path) ──
     pub reserved_addr: u64,
     pub reserved_size: u64,
+
+    // ── UEFI Runtime Services ──
+    // Physical address of the UEFI System Table. After ExitBootServices,
+    // only Runtime Services are valid. The kernel uses this to call
+    // set_variable/get_variable for persistent NVRAM crash logging.
+    pub uefi_system_table: u64,
 }
 
 impl BootInfo {

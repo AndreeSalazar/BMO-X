@@ -151,6 +151,209 @@ fn read_file_from_device(device_handle: uefi::Handle, filename: &str) -> Option<
     Some(buf)
 }
 
+// ── NVRAM Variable Access ──────────────────────────────────────────────────
+//
+// Before exit_boot_services, we use UEFI Runtime Services to access NVRAM.
+// The vendor GUID matches the one the kernel uses for Runtime Services.
+
+/// FastOS vendor GUID for NVRAM variables.
+fn fastos_vendor_guid() -> uefi::runtime::VariableVendor {
+    uefi::runtime::VariableVendor(uefi::Guid::from_bytes([
+        0x01, 0x00, 0xA5, 0xF1,
+        0x02, 0x00,
+        0x03, 0x00,
+        0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
+    ]))
+}
+
+/// Read a UEFI NVRAM variable using runtime services.
+fn read_nvram_variable(_device_handle: uefi::Handle, name: &str) -> Option<alloc::string::String> {
+    let name_cstr = uefi::CString16::try_from(name).ok()?;
+    let guid = fastos_vendor_guid();
+    let mut buf = [0u8; 256];
+
+    match uefi::runtime::get_variable(&name_cstr, &guid, &mut buf) {
+        Ok((data, _attrs)) => {
+            let mut result = alloc::string::String::new();
+            for &b in data.iter() {
+                if b == 0 { break; }
+                result.push(b as char);
+            }
+            if result.is_empty() { None } else { Some(result) }
+        }
+        Err(_) => None,
+    }
+}
+
+/// Write a UEFI NVRAM variable using runtime services.
+fn write_nvram_variable(_device_handle: uefi::Handle, name: &str, value: &str) {
+    let name_cstr = match uefi::CString16::try_from(name) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let guid = fastos_vendor_guid();
+    let data = value.as_bytes();
+    let attrs = uefi::runtime::VariableAttributes::BOOTSERVICE_ACCESS
+        | uefi::runtime::VariableAttributes::RUNTIME_ACCESS;
+
+    match uefi::runtime::set_variable(&name_cstr, &guid, attrs, data) {
+        Ok(()) => info!("NVRAM: set {}={}", name, value),
+        Err(e) => info!("NVRAM: set {} failed: {:?}", name, e.status()),
+    }
+}
+
+// ── Crash Log ──────────────────────────────────────────────────────────────
+//
+// Strategy:
+//   1. Kernel writes a crash marker to physical address 0x90000
+//   2. On next boot, bootloader reads 0x90000 (may survive warm reset)
+//   3. Bootloader ALWAYS writes crash.log to USB with boot info
+//   4. User reads crash.log from Windows to see what happened
+//
+// Physical memory at 0x90000 may or may not survive an AMD watchdog reset.
+// If it does, we get the exact crash stage. If not, we still get a log file.
+
+const CRASH_MARKER_ADDR: u64 = 0x9_0000;
+const CRASH_MAGIC: u32 = 0x464F_5343; // "FOSC"
+
+/// Read the crash marker from physical address 0x90000.
+fn read_crash_marker() -> Option<u32> {
+    let magic = unsafe { core::ptr::read_volatile(CRASH_MARKER_ADDR as *const u32) };
+    if magic == CRASH_MAGIC {
+        let stage = unsafe { core::ptr::read_volatile((CRASH_MARKER_ADDR + 4) as *const u32) };
+        Some(stage)
+    } else {
+        None
+    }
+}
+
+/// Clear the crash marker at physical address 0x90000.
+fn clear_crash_marker() {
+    unsafe {
+        core::ptr::write_volatile(CRASH_MARKER_ADDR as *mut u32, 0);
+        core::ptr::write_volatile((CRASH_MARKER_ADDR + 4) as *mut u32, 0);
+    }
+}
+
+/// Increment boot counter stored at physical address 0x90008.
+/// If memory survives the reset, this counter persists.
+fn read_and_increment_boot_counter() -> u32 {
+    let counter_addr = CRASH_MARKER_ADDR + 8;
+    let val = unsafe { core::ptr::read_volatile(counter_addr as *const u32) };
+    let next = val.wrapping_add(1);
+    unsafe { core::ptr::write_volatile(counter_addr as *mut u32, next) };
+    next
+}
+
+/// Write crash log to USB filesystem. Called on every boot.
+fn write_crash_log(
+    device_handle: uefi::Handle,
+    nvram_stage: Option<&str>,
+    ram_marker: Option<u32>,
+    boot_num: u32,
+) {
+    use uefi::proto::media::file::{File, FileAttribute, FileInfo, FileMode};
+
+    let Ok(mut fs) = boot::open_protocol_exclusive::<SimpleFileSystem>(device_handle) else {
+        info!("crash.log: cannot open filesystem");
+        return;
+    };
+    let Ok(mut root) = fs.open_volume() else {
+        info!("crash.log: cannot open volume");
+        return;
+    };
+
+    // Read existing log (append mode)
+    let mut existing = Vec::new();
+    let mut ucs2_buf = [0u16; 256];
+    if let Ok(ucs2_name) = uefi::CStr16::from_str_with_buf(
+        "\\EFI\\BOOT\\crash.log", &mut ucs2_buf,
+    ) {
+        if let Ok(mut handle) = root.open(ucs2_name, FileMode::Read, FileAttribute::empty()) {
+            if let Some(mut file) = handle.into_regular_file() {
+                let mut info_buf = [0u8; 256];
+                if let Ok(finfo) = file.get_info::<FileInfo>(&mut info_buf) {
+                    let size = finfo.file_size() as usize;
+                    if size > 0 && size < 16384 {
+                        let mut buf = vec![0u8; size];
+                        let _ = file.read(&mut buf);
+                        existing.extend_from_slice(&buf);
+                    }
+                }
+            }
+        }
+    }
+
+    // Build new entry
+    let mut entry = Vec::new();
+    entry.extend_from_slice(b"[Boot #");
+
+    // Integer to string
+    let mut tmp = [0u8; 12];
+    let mut pos = 0;
+    let mut n = boot_num;
+    if n == 0 { tmp[0] = b'0'; pos = 1; }
+    else {
+        while n > 0 { tmp[pos] = b'0' + (n % 10) as u8; n /= 10; pos += 1; }
+        tmp[..pos].reverse();
+    }
+    entry.extend_from_slice(&tmp[..pos]);
+    entry.extend_from_slice(b"] ");
+
+    // NVRAM stage (survives resets — most reliable)
+    match nvram_stage {
+        Some("ok") => {
+            entry.extend_from_slice(b"OK (welcome reached)");
+        }
+        Some(stage) => {
+            entry.extend_from_slice(b"CRASH at: ");
+            entry.extend_from_slice(stage.as_bytes());
+        }
+        None => {
+            entry.extend_from_slice(b"no NVRAM data");
+        }
+    }
+
+    // Physical RAM marker (may or may not survive)
+    if let Some(stage) = ram_marker {
+        entry.extend_from_slice(b" | RAM=");
+        let mut sbuf = [0u8; 12];
+        let mut spos = 0;
+        let mut sn = stage;
+        if sn == 0 { sbuf[0] = b'0'; spos = 1; }
+        else {
+            while sn > 0 { sbuf[spos] = b'0' + (sn % 10) as u8; sn /= 10; spos += 1; }
+            sbuf[..spos].reverse();
+        }
+        entry.extend_from_slice(&sbuf[..spos]);
+    }
+
+    entry.extend_from_slice(b"\r\n");
+
+    // Append to existing
+    let mut content = existing;
+    content.extend_from_slice(&entry);
+
+    // Write file
+    let mut ucs2_buf2 = [0u16; 256];
+    if let Ok(ucs2_name) = uefi::CStr16::from_str_with_buf(
+        "\\EFI\\BOOT\\crash.log", &mut ucs2_buf2,
+    ) {
+        match root.open(ucs2_name, FileMode::CreateReadWrite, FileAttribute::empty()) {
+            Ok(mut handle) => {
+                if let Some(mut file) = handle.into_regular_file() {
+                    let _ = file.set_position(0);
+                    let _ = file.write(&content);
+                    info!("crash.log: written {} bytes (boot #{})", content.len(), boot_num);
+                }
+            }
+            Err(e) => {
+                info!("crash.log: create failed: {:?}", e.status());
+            }
+        }
+    }
+}
+
 // ── GOP query ───────────────────────────────────────────────────────────────
 
 struct GopInfo {
@@ -358,6 +561,29 @@ fn main() -> Status {
         .expect("LoadedImage has no device handle");
     drop(loaded_image); // release protocol before opening FS on same device
 
+    // ── Crash log: read NVRAM variable from previous boot ──────────────────
+    // UEFI NVRAM variables survive warm resets (unlike physical RAM).
+    // The kernel writes "FastOSBootStage" at each phase. If the system
+    // reboots, the variable persists and we can see where it died.
+    let prev_stage = read_nvram_variable(device_handle, "FastOSBootStage");
+
+    // Also try physical memory (backup, may or may not survive)
+    let crash_marker = read_crash_marker();
+
+    let boot_num = read_and_increment_boot_counter();
+
+    info!("Boot #{} — NVRAM stage: {:?} — RAM marker: {:?}",
+        boot_num, prev_stage.as_deref(), crash_marker);
+
+    // Write crash.log to USB
+    write_crash_log(device_handle, prev_stage.as_deref(), crash_marker, boot_num);
+
+    // Set current stage
+    write_nvram_variable(device_handle, "FastOSBootStage", "bootloader");
+
+    // Clear physical memory marker
+    clear_crash_marker();
+
     // -- 2. Read kernel.elf from ESP -----------------------------------------
     info!("Loading kernel.elf...");
     let elf_data = read_file_from_device(device_handle, "\\EFI\\BOOT\\kernel.elf")
@@ -539,6 +765,11 @@ fn main() -> Status {
         // Reserved payload: intentionally zero en el GOP path.
         bi.reserved_addr = 0;
         bi.reserved_size = 0;
+
+        // UEFI System Table pointer — kernel uses Runtime Services for NVRAM
+        bi.uefi_system_table = uefi::table::system_table_raw()
+            .map(|p| p.as_ptr() as u64)
+            .unwrap_or(0);
     }
 
     info!("BootInfo at 0x{:x}", boot_info_ptr as u64);

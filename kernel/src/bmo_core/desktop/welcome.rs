@@ -500,6 +500,9 @@ fn process_enter() {
 
 pub fn run() -> ! {
     crate::dev::console::serial_write("[welcome] v1.8.17 ULTRA-MINIMAL\n");
+    // Stage 8: welcome running
+    crate::coordinator::write_crash_marker(8);
+    crate::boot::uefi_rt::write_boot_stage("welcome_running");
 
     let (fb_addr, w, h, s, fb_size) = unsafe {
         let fb_size = if crate::boot::info::BOOT_INFO.is_null() {
@@ -564,6 +567,11 @@ pub fn run() -> ! {
 
     crate::dev::console::serial_write("[welcome] entering cooperative idle loop\n");
     crate::dev::console::serial_write("[welcome] UEFI watchdog pet enabled\n");
+
+    // Stage 9: welcome idle loop running — clear crash marker
+    // If we get here, boot succeeded. The marker is no longer needed.
+    crate::coordinator::clear_crash_marker();
+    crate::boot::uefi_rt::write_boot_stage("ok");
 
     let mut last_heartbeat = crate::cpu::rdtsc();
     let mut last_watchdog_pet = crate::cpu::rdtsc();

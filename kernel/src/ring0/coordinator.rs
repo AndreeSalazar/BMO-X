@@ -26,6 +26,29 @@ use super::boot::info;
 
 use crate::bmo_core;
 
+// ── Crash marker: physical address 0x90000 ─────────────────────────────
+// The bootloader reads this on next boot and writes to crash.log on USB.
+// Format: [magic: u32 LE] [stage: u32 LE]
+const CRASH_MARKER_ADDR: u64 = 0x9_0000;
+const CRASH_MAGIC: u32 = 0x464F_5343; // "FOSC"
+
+/// Write a boot stage marker to physical address 0x90000.
+/// Called at each phase so the bootloader knows where we died if we crash.
+pub fn write_crash_marker(stage: u32) {
+    unsafe {
+        core::ptr::write_volatile(CRASH_MARKER_ADDR as *mut u32, CRASH_MAGIC);
+        core::ptr::write_volatile((CRASH_MARKER_ADDR + 4) as *mut u32, stage);
+    }
+}
+
+/// Clear the crash marker (called after successful boot).
+pub fn clear_crash_marker() {
+    unsafe {
+        core::ptr::write_volatile(CRASH_MARKER_ADDR as *mut u32, 0);
+        core::ptr::write_volatile((CRASH_MARKER_ADDR + 4) as *mut u32, 0);
+    }
+}
+
 /// Prepara el contexto mínimo antes del boot por fases.
 pub fn init() -> boot::BootContext {
     crate::dev::console::init();
@@ -52,6 +75,13 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     crate::dev::console::serial_write("[coord] main: boot_info validated\n");
     unsafe { store_boot_info(bi); }
 
+    // Initialize UEFI Runtime Services for NVRAM access
+    boot::uefi_rt::init(bi.uefi_system_table);
+    boot::uefi_rt::write_boot_stage("kernel_start");
+
+    // Stage 1: boot_info validated
+    write_crash_marker(1);
+
     boot::visual::clear();
     boot::visual::log("ring0", "init start", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: visual init done\n");
@@ -60,28 +90,27 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     crate::dev::console::serial_write("[coord] main: init() done\n");
     let boot_start = crate::cpu::rdtsc();
 
-    // ── Phase 0..4 (arch, mem, dev, display, sched) ─────────────
-    // Phase 0 ya hace GDT/IDT/SYSCALL con init_syscall() que internamente
-    // llama a init_msrs() con la dirección CORRECTA del syscall entry
-    // (syscall_entry_naked), NO con bi.kernel_base.
+    // Stage 2: phases 0-4
+    write_crash_marker(2);
+    boot::uefi_rt::write_boot_stage("phase_0_to_4");
     boot::visual::log("ring0", "[0/5] boot phases", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: starting phases 0-4\n");
     let phase4_end = boot::phases::run_phases_0_to_4(&mut ctx, boot_start);
     boot::visual::log("ring0", "[0/5] phases done", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: phases 0-4 returned\n");
 
-    // ── Initialize ALL data of the 5600X (one-shot) ───────────────
-    // AHORA es seguro: GDT/IDT/SYSCALL están listos (phase 0), heap está
-    // listo (phase 1), display está listo (phase 3). CPUID complejo, TSC
-    // calibration con PM timer, erratas y ACPI parsing funcionan en
-    // este orden. NO escribir MSRs de syscall aquí (phase 0 ya lo hizo).
+    // Stage 3: init_fastos_cpu
+    write_crash_marker(3);
+    boot::uefi_rt::write_boot_stage("init_fastos_cpu");
     boot::visual::log("ring0", "[1/5] detect 5600X", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: calling init_fastos_cpu\n");
     crate::vendor::amd::cpu::zen3::init_fastos_cpu();
     boot::visual::log("ring0", "[1/5] 5600X detected", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: init_fastos_cpu returned\n");
 
-    // ─ Init ACPI (uses RSDP address from BootInfo) ──────────────
+    // Stage 4: init_acpi
+    write_crash_marker(4);
+    boot::uefi_rt::write_boot_stage("init_acpi");
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
     boot::visual::log("ring0", "[2/5] init ACPI", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: calling init_acpi\n");
@@ -107,11 +136,17 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
         core::hint::spin_loop();
     }
 
-    // ── BMO Core init (cabina + defense + timeback + bmo_api + desktop) ──
+    // Stage 5: bmo_core::coord::init
+    write_crash_marker(5);
+    boot::uefi_rt::write_boot_stage("bmo_core_init");
     boot::visual::log("ring0", "init bmo_core", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: calling bmo_core::coord::init\n");
     bmo_core::coord::init();
     crate::dev::console::serial_write("[coord] main: bmo_core::coord::init returned\n");
+
+    // Stage 6: entering welcome (no return expected)
+    write_crash_marker(6);
+    boot::uefi_rt::write_boot_stage("welcome");
 
     dispatch_phase5(&ctx, boot_start, phase4_end);
 }
