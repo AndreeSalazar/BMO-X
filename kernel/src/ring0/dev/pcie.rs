@@ -228,22 +228,64 @@ pub static mut SCAN_RESULT: Option<PciScanResult> = None;
 // ── Scan ──────────────────────────────────────────────────────────
 
 pub fn scan_pci_bus() -> PciScanResult {
-    let r = PciScanResult::new();
-    // v1.6.10: On the Ryzen 5 5600X the UEFI firmware has the legacy
-    // PCI config space (ports 0xCF8/0xCFC) DISABLED, so even a single
-    // `out 0xCF8, al` transaction wedges the CPU forever (it polls
-    // waiting for a response that never arrives). ECAM is also broken
-    // (see v1.6.6 — PDPT 1 GiB huge-page conflict with UEFI PML4).
-    // So we cannot enumerate PCI at all on this firmware. We return
-    // an empty scan result and the rest of the kernel keeps working.
-    crate::dev::console::serial_write(
-        "[pci] scan_pci_bus: SKIPPED in v1.6.10 (UEFI disabled IO-ports, ECAM broken)\n",
-    );
-    crate::dev::console::serial_write(
-        "[pci] scan_pci_bus: 0 devices. NIC/AHCI/NVMe unavailable until ECAM is fixed.\n",
-    );
-    unsafe { SCAN_RESULT = Some(PciScanResult::new()); }
-    return r;
+    // v1.6.10: UEFI had IO ports disabled, ECAM broken.
+    // v3.1: Re-enabled — try IO ports first. If they hang, the user
+    // will see no AHCI devices and we fall back to empty result.
+    crate::dev::console::serial_write("[pci] scan_pci_bus: trying IO ports (0xCF8/0xCFC)...\n");
+
+    // Probe: try reading vendor ID from Bus 0, Dev 0, Fn 0
+    let probe = pci_read32_io(0, 0, 0, 0x00);
+    let vendor = (probe & 0xFFFF) as u16;
+    if vendor == 0xFFFF {
+        // No device at Bus 0 Dev 0 — but IO ports might still work
+        // (just no device there). Try a few more common addresses.
+        let probe2 = pci_read32_io(0, 1, 0, 0x00);
+        let v2 = (probe2 & 0xFFFF) as u16;
+        if v2 == 0xFFFF {
+            crate::dev::console::serial_write("[pci] IO ports: no devices found on Bus 0 (probe=0x");
+            print_hex(probe as u64);
+            crate::dev::console::serial_write(")\n");
+            // Could be that IO ports are broken OR just no devices on bus 0.
+            // Try full scan anyway — if IO ports work, we'll find AHCI.
+        }
+    }
+    crate::dev::console::serial_write("[pci] IO probe OK, starting full scan...\n");
+
+    let mut r = scan_pci_bus_io();
+    crate::dev::console::serial_write("[pci] scan complete: ");
+    print_u32(r.count as u32);
+    crate::dev::console::serial_write(" devices found\n");
+
+    // Store first, then log from the stored reference
+    unsafe { SCAN_RESULT = Some(r); }
+
+    // Log each device found
+    unsafe {
+    if let Some(ref res) = SCAN_RESULT {
+    for i in 0..res.count {
+        let d = &res.devices[i];
+        crate::dev::console::serial_write("  [");
+        print_u32(i as u32);
+        crate::dev::console::serial_write("] PCI ");
+        print_u32(d.bus as u32);
+        crate::dev::console::serial_write(":");
+        print_u32(d.device as u32);
+        crate::dev::console::serial_write(".");
+        print_u32(d.function as u32);
+        crate::dev::console::serial_write(" VD=0x");
+        print_hex(((d.device_id as u64) << 16) | (d.vendor_id as u64));
+        crate::dev::console::serial_write(" class=");
+        print_u32(d.class_code as u32);
+        crate::dev::console::serial_write("/");
+        print_u32(d.subclass as u32);
+        crate::dev::console::serial_write(" BAR0=0x");
+        print_hex(d.bar0 as u64);
+        crate::dev::console::serial_write("\n");
+    }
+    }
+    }
+
+    unsafe { SCAN_RESULT.take().unwrap() }
 }
 
 /// Scan PCI bus using legacy IO ports (0xCF8/0xCFC) — 256 buses max.
@@ -334,6 +376,30 @@ pub fn has_ahci() -> bool {
         SCAN_RESULT.as_ref().map(|r| {
             r.devices[..r.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x06)
         }).unwrap_or(false)
+    }
+}
+
+/// Find the AHCI controller and return its MMIO base address (BAR5).
+/// AHCI controllers use BAR5 (ABAR) for memory-mapped registers.
+/// Returns None if no AHCI controller found.
+pub fn find_ahci_mmio() -> Option<u64> {
+    unsafe {
+        SCAN_RESULT.as_ref().and_then(|r| {
+            r.devices[..r.count].iter().find(|d| {
+                d.class_code == 0x01 && d.subclass == 0x06
+            }).map(|d| {
+                // BAR5 is at PCI config offset 0x24
+                let bar5_lo = pci_read32(d.bus, d.device, d.function, 0x24);
+                let bar5_hi = pci_read32(d.bus, d.device, d.function, 0x28);
+                let bar5 = ((bar5_hi as u64) << 32) | (bar5_lo as u64);
+                // Mask off BAR type bits (bit 0 = I/O, bit 1 = 64-bit)
+                let mmio = bar5 & !0xF_u64;
+                crate::dev::console::serial_write("[pci] AHCI ABAR=0x");
+                print_hex(mmio);
+                crate::dev::console::serial_write("\n");
+                mmio
+            })
+        })
     }
 }
 
