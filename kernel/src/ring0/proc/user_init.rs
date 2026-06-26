@@ -128,10 +128,10 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
         virt::map_user_range(user_cr3, USER_STACK_VBASE, stack_phys, stack_pages, stack_flags).ok()?;
     }
 
-    // Copy code to physical pages
+    // Copy code to physical pages (via high-mem mapping)
     crate::cabina::info("ring3", "copying code bytes to physical pages");
     unsafe {
-        let dst = code_phys as *mut u8;
+        let dst = crate::mm::virt::phys_to_virt(code_phys) as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
         if code_pages * crate::mm::phys::page_size() > code.len() {
             core::ptr::write_bytes(
@@ -140,8 +140,8 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
                 code_pages * crate::mm::phys::page_size() - code.len(),
             );
         }
-        // Zero stack
-        core::ptr::write_bytes(stack_phys as *mut u8, 0, USER_STACK_SIZE);
+        // Zero stack (via high-mem mapping)
+        core::ptr::write_bytes(crate::mm::virt::phys_to_virt(stack_phys) as *mut u8, 0, USER_STACK_SIZE);
     }
     crate::cabina::info("ring3", "code and stack zeroed/populated");
 

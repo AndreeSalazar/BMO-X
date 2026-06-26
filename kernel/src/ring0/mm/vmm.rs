@@ -108,16 +108,25 @@ pub unsafe fn create_kernel_page_table() -> Option<u64> {
 
 /// Allocate a 4 KiB-aligned page table page from the physical frame allocator.
 /// Returns the physical address (or None on OOM).
+/// The page is zeroed via phys_to_virt (safe for any physical address).
 pub unsafe fn alloc_page_table() -> Option<u64> {
     let phys = crate::mm::phys::alloc_pages_contiguous(1)?;
-    core::ptr::write_bytes(phys as *mut u8, 0, PAGE_SIZE as usize);
+    let virt = phys_to_virt(phys);
+    core::ptr::write_bytes(virt as *mut u8, 0, PAGE_SIZE as usize);
     Some(phys)
+}
+
+/// Convert a physical page table address to a virtual PageTable pointer.
+/// Used throughout the VMM to access page table entries.
+#[inline]
+unsafe fn phys_to_pt(phys: u64) -> *mut PageTable {
+    phys_to_virt(phys) as *mut PageTable
 }
 
 pub unsafe fn create_user_page_table(kernel_cr3: u64) -> Option<u64> {
     let user_pml4_phys = alloc_page_table()?;
-    let user_pml4 = user_pml4_phys as *mut PageTable;
-    let kernel_pml4 = (kernel_cr3 & ADDR_MASK) as *const PageTable;
+    let user_pml4 = phys_to_pt(user_pml4_phys);
+    let kernel_pml4 = phys_to_pt(kernel_cr3 & ADDR_MASK) as *const PageTable;
 
     core::ptr::write_bytes(user_pml4 as *mut u8, 0, PAGE_SIZE as usize);
 
@@ -141,7 +150,7 @@ pub unsafe fn map_kernel_mmio_huge(
         return Err("map_kernel_mmio_huge: addresses must be 2 MiB aligned");
     }
 
-    let pml4 = (read_cr3() & ADDR_MASK) as *mut PageTable;
+    let pml4 = phys_to_pt(read_cr3() & ADDR_MASK);
 
     for i in 0..pages {
         let va = virt_start + (i as u64) * HUGE_2MB;
@@ -154,7 +163,6 @@ pub unsafe fn map_kernel_mmio_huge(
         let pml4e = &mut (*pml4).entries[pml4_i];
         let pdpt_phys: u64 = if !pml4e.is_present() {
             let new = alloc_page_table().ok_or("OOM: PML4->PDPT")?;
-            core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
             pml4e.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
             new
         } else {
@@ -163,11 +171,10 @@ pub unsafe fn map_kernel_mmio_huge(
             pml4e.phys_addr()
         };
 
-        let pdpt = pdpt_phys as *mut PageTable;
+        let pdpt = phys_to_pt(pdpt_phys);
         let pdpte = &mut (*pdpt).entries[pdpt_i];
         let pd_phys: u64 = if !pdpte.is_present() {
             let new = alloc_page_table().ok_or("OOM: PDPT->PD")?;
-            core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
             pdpte.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
             new
         } else if (pdpte.0 & flags::HUGE_PAGE) != 0 {
@@ -178,7 +185,7 @@ pub unsafe fn map_kernel_mmio_huge(
             pdpte.phys_addr()
         };
 
-        let pd = pd_phys as *mut PageTable;
+        let pd = phys_to_pt(pd_phys);
         let pde = &mut (*pd).entries[pd_i];
         if pde.is_present() {
             return Err("map_kernel_mmio_huge: page already mapped");
@@ -203,7 +210,7 @@ pub unsafe fn map_user_range(
     flags: u64,
 ) -> Result<(), &'static str> {
     if pages == 0 { return Ok(()); }
-    let pml4 = pml4_phys as *mut PageTable;
+    let pml4 = phys_to_pt(pml4_phys);
     let mut va = virt_start;
     let mut pa = phys_start;
 
@@ -217,19 +224,17 @@ pub unsafe fn map_user_range(
         let pdpt_phys: u64;
         if !pml4e.is_present() {
             pdpt_phys = alloc_page_table().ok_or("OOM allocating PDPT")?;
-            core::ptr::write_bytes(pdpt_phys as *mut u8, 0, PAGE_SIZE as usize);
             pml4e.0 = PageTableEntry::new(pdpt_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
         } else {
             pdpt_phys = pml4e.phys_addr();
             pml4e.0 |= flags::USER | flags::WRITABLE;
         }
 
-        let pdpt = pdpt_phys as *mut PageTable;
+        let pdpt = phys_to_pt(pdpt_phys);
         let pdpte = &mut (*pdpt).entries[pdpt_i];
         let pd_phys: u64;
         if !pdpte.is_present() {
             pd_phys = alloc_page_table().ok_or("OOM allocating PD")?;
-            core::ptr::write_bytes(pd_phys as *mut u8, 0, PAGE_SIZE as usize);
             pdpte.0 = PageTableEntry::new(pd_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
         } else {
             pd_phys = pdpte.phys_addr();
@@ -240,12 +245,11 @@ pub unsafe fn map_user_range(
             return Err("Unexpected huge page in user mapping");
         }
 
-        let pd = pd_phys as *mut PageTable;
+        let pd = phys_to_pt(pd_phys);
         let pde = &mut (*pd).entries[pd_i];
         let pt_phys: u64;
         if !pde.is_present() {
             pt_phys = alloc_page_table().ok_or("OOM allocating PT")?;
-            core::ptr::write_bytes(pt_phys as *mut u8, 0, PAGE_SIZE as usize);
             pde.0 = PageTableEntry::new(pt_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
         } else {
             pt_phys = pde.phys_addr();
@@ -256,7 +260,7 @@ pub unsafe fn map_user_range(
             return Err("Unexpected huge page in user mapping");
         }
 
-        let pt = pt_phys as *mut PageTable;
+        let pt = phys_to_pt(pt_phys);
         let pte = &mut (*pt).entries[pt_i];
         if pte.is_present() {
             return Err("Page already mapped");
@@ -273,18 +277,18 @@ pub unsafe fn map_user_range(
 /// Free all user page tables for a process.
 /// Uses the frame allocator (same allocator as alloc_page_table).
 pub unsafe fn free_user_page_tables(pml4_phys: u64) {
-    let pml4 = pml4_phys as *mut PageTable;
+    let pml4 = phys_to_pt(pml4_phys);
 
     for pml4_i in 0..256 {
         let pml4e = &mut (*pml4).entries[pml4_i];
         if !pml4e.is_present() { continue; }
 
-        let pdpt = pml4e.phys_addr() as *mut PageTable;
+        let pdpt = phys_to_pt(pml4e.phys_addr());
         for pdpt_i in 0..512 {
             let pdpte = &mut (*pdpt).entries[pdpt_i];
             if !pdpte.is_present() { continue; }
 
-            let pd = pdpte.phys_addr() as *mut PageTable;
+            let pd = phys_to_pt(pdpte.phys_addr());
             for pd_i in 0..512 {
                 let pde = &mut (*pd).entries[pd_i];
                 if !pde.is_present() { continue; }
@@ -295,7 +299,7 @@ pub unsafe fn free_user_page_tables(pml4_phys: u64) {
                     continue;
                 }
 
-                let pt = pde.phys_addr() as *mut PageTable;
+                let pt = phys_to_pt(pde.phys_addr());
                 for pt_i in 0..512 {
                     let pte = &mut (*pt).entries[pt_i];
                     if pte.is_present() {
@@ -388,7 +392,7 @@ pub unsafe fn map_user_demand(
     flags: u64,
 ) -> Result<(), &'static str> {
     if pages == 0 { return Ok(()); }
-    let pml4 = pml4_phys as *mut PageTable;
+    let pml4 = phys_to_pt(pml4_phys);
     let mut va = virt_start;
 
     for _ in 0..pages {
@@ -401,35 +405,32 @@ pub unsafe fn map_user_demand(
         let pdpt_phys: u64;
         if !pml4e.is_present() {
             pdpt_phys = alloc_page_table().ok_or("OOM allocating PDPT")?;
-            core::ptr::write_bytes(pdpt_phys as *mut u8, 0, PAGE_SIZE as usize);
             pml4e.0 = PageTableEntry::new(pdpt_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
         } else {
             pdpt_phys = pml4e.phys_addr();
         }
 
-        let pdpt = pdpt_phys as *mut PageTable;
+        let pdpt = phys_to_pt(pdpt_phys);
         let pdpte = &mut (*pdpt).entries[pdpt_i];
         let pd_phys: u64;
         if !pdpte.is_present() {
             pd_phys = alloc_page_table().ok_or("OOM allocating PD")?;
-            core::ptr::write_bytes(pd_phys as *mut u8, 0, PAGE_SIZE as usize);
             pdpte.0 = PageTableEntry::new(pd_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
         } else {
             pd_phys = pdpte.phys_addr();
         }
 
-        let pd = pd_phys as *mut PageTable;
+        let pd = phys_to_pt(pd_phys);
         let pde = &mut (*pd).entries[pd_i];
         let pt_phys: u64;
         if !pde.is_present() {
             pt_phys = alloc_page_table().ok_or("OOM allocating PT")?;
-            core::ptr::write_bytes(pt_phys as *mut u8, 0, PAGE_SIZE as usize);
             pde.0 = PageTableEntry::new(pt_phys, flags::PRESENT | flags::WRITABLE | flags::USER).0;
         } else {
             pt_phys = pde.phys_addr();
         }
 
-        let pt = pt_phys as *mut PageTable;
+        let pt = phys_to_pt(pt_phys);
         let pte = &mut (*pt).entries[pt_i];
         if pte.is_present() {
             return Err("Page already mapped");
@@ -447,7 +448,7 @@ pub unsafe fn resolve_demand_page(
     vma: &Vma,
 ) -> Result<bool, &'static str> {
     let page_addr = fault_addr & !(PAGE_SIZE - 1);
-    let pml4 = pml4_phys as *mut PageTable;
+    let pml4 = phys_to_pt(pml4_phys);
 
     let pml4_i = ((page_addr >> 39) & 0x1FF) as usize;
     let pdpt_i = ((page_addr >> 30) & 0x1FF) as usize;
@@ -457,22 +458,23 @@ pub unsafe fn resolve_demand_page(
     let pml4e = &mut (*pml4).entries[pml4_i];
     if !pml4e.is_present() { return Ok(false); }
 
-    let pdpt = pml4e.phys_addr() as *mut PageTable;
+    let pdpt = phys_to_pt(pml4e.phys_addr());
     let pdpte = &mut (*pdpt).entries[pdpt_i];
     if !pdpte.is_present() { return Ok(false); }
 
-    let pd = pdpte.phys_addr() as *mut PageTable;
+    let pd = phys_to_pt(pdpte.phys_addr());
     let pde = &mut (*pd).entries[pd_i];
     if !pde.is_present() { return Ok(false); }
 
-    let pt = pde.phys_addr() as *mut PageTable;
+    let pt = phys_to_pt(pde.phys_addr());
     let pte = &mut (*pt).entries[pt_i];
 
     if pte.0 & DEMAND == 0 { return Ok(false); }
 
     let phys = crate::mm::phys::alloc_pages_contiguous(1)
         .ok_or("OOM resolving demand page")?;
-    core::ptr::write_bytes(phys as *mut u8, 0, PAGE_SIZE as usize);
+    // alloc_page_table zeroes, but alloc_pages_contiguous doesn't — zero manually
+    core::ptr::write_bytes(phys_to_virt(phys) as *mut u8, 0, PAGE_SIZE as usize);
 
     let final_flags = (vma.flags | flags::PRESENT) & !DEMAND;
     pte.0 = PageTableEntry::new(phys, final_flags).0;
@@ -488,7 +490,7 @@ pub unsafe fn resolve_cow_page(
     vma: &Vma,
 ) -> Result<bool, &'static str> {
     let page_addr = fault_addr & !(PAGE_SIZE - 1);
-    let pml4 = pml4_phys as *mut PageTable;
+    let pml4 = phys_to_pt(pml4_phys);
 
     let pml4_i = ((page_addr >> 39) & 0x1FF) as usize;
     let pdpt_i = ((page_addr >> 30) & 0x1FF) as usize;
@@ -498,15 +500,15 @@ pub unsafe fn resolve_cow_page(
     let pml4e = &mut (*pml4).entries[pml4_i];
     if !pml4e.is_present() { return Ok(false); }
 
-    let pdpt = pml4e.phys_addr() as *mut PageTable;
+    let pdpt = phys_to_pt(pml4e.phys_addr());
     let pdpte = &mut (*pdpt).entries[pdpt_i];
     if !pdpte.is_present() { return Ok(false); }
 
-    let pd = pdpte.phys_addr() as *mut PageTable;
+    let pd = phys_to_pt(pdpte.phys_addr());
     let pde = &mut (*pd).entries[pd_i];
     if !pde.is_present() { return Ok(false); }
 
-    let pt = pde.phys_addr() as *mut PageTable;
+    let pt = phys_to_pt(pde.phys_addr());
     let pte = &mut (*pt).entries[pt_i];
 
     if pte.0 & COW == 0 { return Ok(false); }
@@ -516,8 +518,8 @@ pub unsafe fn resolve_cow_page(
         .ok_or("OOM resolving CoW page")?;
 
     core::ptr::copy_nonoverlapping(
-        old_phys as *const u8,
-        new_phys as *mut u8,
+        phys_to_virt(old_phys) as *const u8,
+        phys_to_virt(new_phys) as *mut u8,
         PAGE_SIZE as usize,
     );
 
@@ -574,7 +576,7 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
     crate::boot::serial::hex(HIGH_MEM_BASE);
     crate::dev::console::serial_write("\n");
 
-    let pml4 = (read_cr3() & ADDR_MASK) as *mut PageTable;
+    let pml4 = phys_to_pt(read_cr3() & ADDR_MASK);
     let mut mapped_pages: u64 = 0;
     let mut mapped_huge: u64 = 0;
 
@@ -605,7 +607,6 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
             let pml4e = &mut (*pml4).entries[pml4_i];
             let pdpt_phys: u64 = if !pml4e.is_present() {
                 let new = alloc_page_table().expect("OOM: high-mem PML4");
-                core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
                 pml4e.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
                 new
             } else {
@@ -615,11 +616,10 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
             };
 
             // Ensure PDPT entry exists
-            let pdpt = pdpt_phys as *mut PageTable;
+            let pdpt = phys_to_pt(pdpt_phys);
             let pdpte = &mut (*pdpt).entries[pdpt_i];
             let pd_phys: u64 = if !pdpte.is_present() {
                 let new = alloc_page_table().expect("OOM: high-mem PDPT");
-                core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
                 pdpte.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
                 new
             } else if (pdpte.0 & flags::HUGE_PAGE) != 0 {
@@ -633,7 +633,7 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
             };
 
             // Map 2 MB huge page
-            let pd = pd_phys as *mut PageTable;
+            let pd = phys_to_pt(pd_phys);
             let pde = &mut (*pd).entries[pd_i];
             if !pde.is_present() {
                 pde.0 = PageTableEntry::new(
@@ -660,7 +660,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
     let end = start.checked_add(len as u64).ok_or("user range overflow")?;
     let mut va = start & !(PAGE_SIZE - 1);
     let end = (end + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-    let pml4 = (read_cr3() & ADDR_MASK) as *mut PageTable;
+    let pml4 = phys_to_pt(read_cr3() & ADDR_MASK);
 
     while va < end {
         let pml4_i = ((va >> 39) & 0x1FF) as usize;
@@ -672,7 +672,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
         if !pml4e.is_present() { return Err("PML4 entry not present"); }
         pml4e.0 |= flags::USER | flags::WRITABLE;
 
-        let pdpt = pml4e.phys_addr() as *mut PageTable;
+        let pdpt = phys_to_pt(pml4e.phys_addr());
         let pdpte = &mut (*pdpt).entries[pdpt_i];
         if !pdpte.is_present() { return Err("PDPT entry not present"); }
         pdpte.0 |= flags::USER | flags::WRITABLE;
@@ -684,7 +684,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
             continue;
         }
 
-        let pd = pdpte.phys_addr() as *mut PageTable;
+        let pd = phys_to_pt(pdpte.phys_addr());
         let pde = &mut (*pd).entries[pd_i];
         if !pde.is_present() { return Err("PD entry not present"); }
         pde.0 |= flags::USER | flags::WRITABLE;
@@ -696,7 +696,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
             continue;
         }
 
-        let pt = pde.phys_addr() as *mut PageTable;
+        let pt = phys_to_pt(pde.phys_addr());
         let pte = &mut (*pt).entries[pt_i];
         if !pte.is_present() { return Err("PT entry not present"); }
         pte.0 |= flags::USER | flags::WRITABLE;

@@ -3,6 +3,9 @@
 //!
 //! No static buffer — heap grows by allocating physical pages on demand.
 //! Initial chunk: 4 MB. Grows in 1 MB increments when allocation fails.
+//!
+//! All internal pointers use virtual addresses (via phys_to_virt).
+//! Works correctly with RAM at any physical address (above or below 4 GB).
 
 use core::alloc::{GlobalAlloc, Layout};
 
@@ -10,71 +13,91 @@ const INITIAL_CHUNK_SIZE: usize = 4 * 1024 * 1024;
 const GROW_CHUNK_SIZE: usize = 1 * 1024 * 1024;
 const BLOCK_HEADER_SIZE: usize = 8;
 const MIN_BLOCK_SIZE: usize = 16;
-const LIST_END: u32 = u32::MAX;
+const LIST_END: u64 = u64::MAX;
 
+/// Metadata for a heap chunk (contiguous physical pages).
 struct HeapChunk {
-    base: *mut u8,
+    virt_base: u64,
+    phys_base: u64,
     size: usize,
+    next: *mut HeapChunk,
 }
 
-static mut CHUNK_LIST: Option<HeapChunk> = None;
-static mut FREE_LIST: u32 = LIST_END;
+/// Linked list of all heap chunks (for free_block validation).
+static mut CHUNK_LIST: *mut HeapChunk = core::ptr::null_mut();
+
+/// Free list of blocks (virtual addresses).
+static mut FREE_LIST: u64 = LIST_END;
 static mut INITIALIZED: bool = false;
 static mut TOTAL_HEAP_SIZE: usize = 0;
+static mut CHUNK_COUNT: usize = 0;
 
 #[derive(Clone, Copy)]
 struct BlockHeader {
-    next: u32,
+    next: u64,
     size: u32,
 }
 
 impl BlockHeader {
     #[inline]
-    unsafe fn from_ptr(ptr: *mut u8) -> &'static mut BlockHeader {
-        &mut *(ptr.sub(BLOCK_HEADER_SIZE) as *mut BlockHeader)
-    }
-
-    #[inline]
-    fn data_ptr(&self) -> *mut u8 {
-        let hdr = self as *const BlockHeader as usize;
-        (hdr + BLOCK_HEADER_SIZE) as *mut u8
-    }
-
-    #[inline]
     fn total_size(&self) -> usize {
         BLOCK_HEADER_SIZE + self.size as usize
     }
+}
 
-    #[inline]
-    fn chunk_end(&self) -> usize {
-        self as *const BlockHeader as usize + self.total_size()
+/// Check if a virtual address belongs to any heap chunk.
+unsafe fn is_valid_heap_ptr(virt: u64) -> bool {
+    let mut node = CHUNK_LIST;
+    while !node.is_null() {
+        let chunk = &*node;
+        if virt >= chunk.virt_base && virt < chunk.virt_base + chunk.size as u64 {
+            return true;
+        }
+        node = chunk.next;
     }
+    false
 }
 
 unsafe fn add_chunk(size: usize) -> Option<*mut u8> {
     let pages = (size + super::PAGE_SIZE as usize - 1) / super::PAGE_SIZE as usize;
     let phys = crate::mm::phys::alloc_pages_contiguous(pages)?;
-    let base = phys as *mut u8;
+    let virt = crate::mm::virt::phys_to_virt(phys);
     let chunk_bytes = pages * super::PAGE_SIZE as usize;
 
-    let first = base as *mut BlockHeader;
+    // Initialize the first block header (at the start of the chunk)
+    let first = virt as *mut BlockHeader;
     (*first).next = LIST_END;
     (*first).size = (chunk_bytes - BLOCK_HEADER_SIZE) as u32;
 
-    CHUNK_LIST = Some(HeapChunk { base, size: chunk_bytes });
+    // Allocate chunk metadata from the frame allocator (small, identity-mapped)
+    let meta_phys = crate::mm::phys::alloc_pages_contiguous(1)?;
+    let meta_virt = crate::mm::virt::phys_to_virt(meta_phys);
+    core::ptr::write_bytes(meta_virt as *mut u8, 0, super::PAGE_SIZE as usize);
+    let chunk_meta = &mut *(meta_virt as *mut HeapChunk);
+    chunk_meta.virt_base = virt;
+    chunk_meta.phys_base = phys;
+    chunk_meta.size = chunk_bytes;
+    chunk_meta.next = CHUNK_LIST;
+    CHUNK_LIST = meta_virt as *mut HeapChunk;
+    CHUNK_COUNT += 1;
+
     TOTAL_HEAP_SIZE += chunk_bytes;
 
     // Add this block to the free list
     (*first).next = FREE_LIST;
-    FREE_LIST = base as u32;
+    FREE_LIST = virt;
 
     crate::dev::console::serial_write("[slab] grow +");
     crate::dev::console::serial_write_u64((chunk_bytes / (1024 * 1024)) as u64, 10);
     crate::dev::console::serial_write(" MB (total=");
     crate::dev::console::serial_write_u64((TOTAL_HEAP_SIZE / (1024 * 1024)) as u64, 10);
-    crate::dev::console::serial_write(" MB)\n");
+    crate::dev::console::serial_write(" MB, phys=0x");
+    crate::boot::serial::hex(phys);
+    crate::dev::console::serial_write(" virt=0x");
+    crate::boot::serial::hex(virt);
+    crate::dev::console::serial_write(")\n");
 
-    Some(base)
+    Some(virt as *mut u8)
 }
 
 pub fn init_heap() {
@@ -87,21 +110,21 @@ pub fn init_heap() {
 
 unsafe fn find_free(needed_size: usize, needed_align: usize) -> *mut u8 {
     let mut offset = FREE_LIST;
-    let mut prev_offset: u32 = LIST_END;
+    let mut prev_offset: u64 = LIST_END;
 
     while offset != LIST_END {
-        let block = &mut *(offset as usize as *mut BlockHeader);
-        let data_addr = (offset as usize) + BLOCK_HEADER_SIZE;
-        let aligned_addr = (data_addr + needed_align - 1) & !(needed_align - 1);
-        let align_pad = aligned_addr - data_addr;
+        let block = &mut *(offset as *mut BlockHeader);
+        let data_addr = offset + BLOCK_HEADER_SIZE as u64;
+        let aligned_addr = (data_addr + needed_align as u64 - 1) & !(needed_align as u64 - 1);
+        let align_pad = (aligned_addr - data_addr) as usize;
         let total_needed = align_pad + needed_size;
 
         if block.size as usize >= total_needed {
             let remaining = block.total_size().saturating_sub(BLOCK_HEADER_SIZE + total_needed);
 
             if remaining >= BLOCK_HEADER_SIZE + MIN_BLOCK_SIZE {
-                let new_offset = (offset as usize + BLOCK_HEADER_SIZE + total_needed) as u32;
-                let new_block = &mut *(new_offset as usize as *mut BlockHeader);
+                let new_offset = offset + (BLOCK_HEADER_SIZE + total_needed) as u64;
+                let new_block = &mut *(new_offset as *mut BlockHeader);
                 new_block.next = block.next;
                 new_block.size = (remaining - BLOCK_HEADER_SIZE) as u32;
                 block.size = total_needed as u32;
@@ -109,13 +132,13 @@ unsafe fn find_free(needed_size: usize, needed_align: usize) -> *mut u8 {
                 if prev_offset == LIST_END {
                     FREE_LIST = new_offset;
                 } else {
-                    (*(prev_offset as usize as *mut BlockHeader)).next = new_offset;
+                    (*(prev_offset as *mut BlockHeader)).next = new_offset;
                 }
             } else {
                 if prev_offset == LIST_END {
                     FREE_LIST = block.next;
                 } else {
-                    (*(prev_offset as usize as *mut BlockHeader)).next = block.next;
+                    (*(prev_offset as *mut BlockHeader)).next = block.next;
                 }
             }
             return aligned_addr as *mut u8;
@@ -131,32 +154,28 @@ unsafe fn find_free(needed_size: usize, needed_align: usize) -> *mut u8 {
 unsafe fn free_block(ptr: *mut u8) {
     if ptr.is_null() { return; }
 
-    let heap_base = match CHUNK_LIST {
-        Some(ref chunk) => chunk.base as usize,
-        None => return,
-    };
-    let heap_end = heap_base + TOTAL_HEAP_SIZE;
-    let ptr_addr = ptr as usize;
+    let ptr_addr = ptr as u64;
 
-    if ptr_addr < heap_base + BLOCK_HEADER_SIZE || ptr_addr >= heap_end { return; }
-    if (ptr_addr - BLOCK_HEADER_SIZE) % BLOCK_HEADER_SIZE != 0 { return; }
+    // Validate the pointer belongs to a heap chunk
+    if !is_valid_heap_ptr(ptr_addr) { return; }
+    if (ptr_addr - BLOCK_HEADER_SIZE as u64) % BLOCK_HEADER_SIZE as u64 != 0 { return; }
 
-    let block = &mut *((ptr_addr - BLOCK_HEADER_SIZE) as *mut BlockHeader);
-    let block_offset = (ptr_addr - BLOCK_HEADER_SIZE) as u32;
+    let block = &mut *((ptr_addr - BLOCK_HEADER_SIZE as u64) as *mut BlockHeader);
 
     block.next = FREE_LIST;
-    FREE_LIST = block_offset;
+    FREE_LIST = ptr_addr - BLOCK_HEADER_SIZE as u64;
 
+    // Coalesce adjacent free blocks
     let mut off = FREE_LIST;
-    let mut prev_off: u32 = LIST_END;
+    let mut prev_off: u64 = LIST_END;
 
     while off != LIST_END {
-        let b = &mut *(off as usize as *mut BlockHeader);
+        let b = &mut *(off as *mut BlockHeader);
         let next_off = b.next;
-        let b_end = off as usize + b.total_size();
+        let b_end = off + b.total_size() as u64;
 
-        if next_off != LIST_END && b_end == next_off as usize {
-            let next = &mut *(next_off as usize as *mut BlockHeader);
+        if next_off != LIST_END && b_end == next_off {
+            let next = &mut *(next_off as *mut BlockHeader);
             let merged_size = b.total_size() + next.total_size() - BLOCK_HEADER_SIZE;
             b.size = merged_size as u32;
             b.next = next.next;
@@ -164,7 +183,7 @@ unsafe fn free_block(ptr: *mut u8) {
             if prev_off == LIST_END {
                 FREE_LIST = off;
             } else {
-                (*(prev_off as usize as *mut BlockHeader)).next = off;
+                (*(prev_off as *mut BlockHeader)).next = off;
             }
             continue;
         }
@@ -209,7 +228,7 @@ pub fn heap_used() -> usize {
         let mut free_bytes = 0usize;
         let mut off = FREE_LIST;
         while off != LIST_END {
-            let b = &mut *(off as usize as *mut BlockHeader);
+            let b = &mut *(off as *mut BlockHeader);
             free_bytes += b.total_size();
             off = b.next;
         }

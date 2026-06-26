@@ -57,10 +57,11 @@ impl Console {
         let shadow_addr =
             unsafe { crate::mm::phys::alloc_pages_contiguous(shadow_pages).unwrap_or(0) }
                 as usize;
-        // Zero the shadow buffer to prevent garbage pixels
+        // Zero the shadow buffer to prevent garbage pixels (via high-mem)
         if shadow_addr != 0 {
             unsafe {
-                core::ptr::write_bytes(shadow_addr as *mut u8, 0, shadow_pages * 0x1000);
+                let virt = crate::mm::virt::phys_to_virt(shadow_addr as u64) as *mut u8;
+                core::ptr::write_bytes(virt, 0, shadow_pages * 0x1000);
             }
         }
 
@@ -76,10 +77,11 @@ impl Console {
         let history_addr =
             unsafe { crate::mm::phys::alloc_pages_contiguous(history_pages).unwrap_or(0) }
                 as usize;
-        // Zero the history buffer
+        // Zero the history buffer (via high-mem)
         if history_addr != 0 {
             unsafe {
-                core::ptr::write_bytes(history_addr as *mut u8, 0, history_pages * 0x1000);
+                let virt = crate::mm::virt::phys_to_virt(history_addr as u64) as *mut u8;
+                core::ptr::write_bytes(virt, 0, history_pages * 0x1000);
             }
         }
 
