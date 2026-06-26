@@ -220,6 +220,14 @@ pub fn cli() {
     unsafe { core::arch::asm!("cli"); }
 }
 
+/// Check if interrupts are enabled (RFLAGS.IF = 1).
+#[inline]
+pub fn irqs_enabled() -> bool {
+    let flags: u64;
+    unsafe { core::arch::asm!("pushfq; pop {}", out(reg) flags, options(nostack)); }
+    flags & 0x200 != 0
+}
+
 /// Busy-wait for approximately `ms` milliseconds using a simple TSC loop.
 pub fn busy_wait_ms(ms: u64) {
     let freq = tsc_per_sec();

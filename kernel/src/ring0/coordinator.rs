@@ -120,6 +120,25 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     boot::log::info("ring0", "fastos_cpu init complete");
     boot::visual::log("ring0", "[3/5] CPU+ACPI ready", boot::visual::color::OK);
 
+    // Stage 4.5: SMP — start AP cores
+    write_crash_marker(45);
+    boot::uefi_rt::write_boot_stage("smp_init");
+    boot::visual::log("ring0", "[3.5/5] SMP init", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: calling smp::init\n");
+    unsafe { crate::arch::smp::init(); }
+    let smp_state = crate::arch::smp::state();
+    let smp_cores = crate::arch::smp::core_count();
+    crate::dev::console::serial_write("[coord] main: SMP state=");
+    crate::dev::console::serial_write_u64(smp_state as u64, 10);
+    crate::dev::console::serial_write(" cores=");
+    crate::dev::console::serial_write_u64(smp_cores as u64, 10);
+    crate::dev::console::serial_write("\n");
+    if smp_cores > 1 {
+        boot::visual::log("ring0", "[3.5/5] SMP online", boot::visual::color::OK);
+    } else {
+        boot::visual::log("ring0", "[3.5/5] SMP single-core", boot::visual::color::WARN);
+    }
+
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
     // Pet the AMD FCH hardware watchdog during the long wait.
     // The watchdog fires after ~10-15 seconds if not petted via FCH MMIO.
