@@ -48,14 +48,18 @@ use super::visual;
 /// after the marker, we'll see `p0_arch` — and so on for each phase.
 pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     // Phase 0: CPU init (GDT + IDT + syscall + FPU)
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(20);
     crate::boot::uefi_rt::write_boot_stage("p0_arch");
+    crate::boot::uefi_rt::write_boot_stage("p0_visual");
     visual::begin_phase(0);
+    crate::boot::uefi_rt::write_boot_stage("p0_visual_ok");
     visual::log("ring0", "p0_arch", visual::color::OK);
     let (_cpu, out0) = p0_arch::run(ctx, t0);
     visual::end_phase(0);
 
     // Phase 1: Memory (frame alloc + heap + high-mem)
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(21);
     crate::boot::uefi_rt::write_boot_stage("p1_mem");
     visual::begin_phase(1);
@@ -64,6 +68,7 @@ pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     visual::end_phase(1);
 
     // Phase 2: Devices (PCI + AHCI + exFAT)
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(22);
     crate::boot::uefi_rt::write_boot_stage("p2_dev");
     visual::begin_phase(2);
@@ -72,6 +77,7 @@ pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     visual::end_phase(2);
 
     // Phase 3: Display (GOP framebuffer)
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(23);
     crate::boot::uefi_rt::write_boot_stage("p3_display");
     visual::begin_phase(3);

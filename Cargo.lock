@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "fastos-kernel"
-version = "1.8.14"
+version = "1.8.16"
 dependencies = [
  "bitflags",
  "bmo-abi",

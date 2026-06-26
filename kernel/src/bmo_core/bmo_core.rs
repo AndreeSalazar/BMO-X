@@ -87,6 +87,7 @@ pub fn init() {
 
     // 10) desktop3: la cúpula encima de Ring 3 (única puerta).
     desktop3::init();
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::dev::console::serial_write("[bmo_core] init: DONE\n");
 
     // ── Tests integrados de la trilogía ────────────────────────────
@@ -198,6 +199,7 @@ pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     // Reproduce el logon sound (Windows 10/11 chime) ~1 second.
     crate::dev::console::serial_write("[bmo_core] enter: logon sound (bmo_audio)\n");
     bmo_audio::play_logon_chime();
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::dev::console::serial_write("[bmo_core] enter: logon done\n");
 
     // Lanza el welcome. Esta función NO retorna.

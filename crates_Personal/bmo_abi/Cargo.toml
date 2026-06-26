@@ -6,4 +6,4 @@ authors = ["FastOS Project"]
 description = "BMO Application Binary Interface - Standard types and syscall definitions"
 
 [dependencies]
-bitflags = "2"
+bitflags = "2.13.0"

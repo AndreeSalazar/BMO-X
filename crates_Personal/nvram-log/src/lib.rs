@@ -88,13 +88,12 @@ fn str_to_ucs2(name: &str) -> [u16; 64] {
     ucs2
 }
 
-/// NON_VOLATILE | RUNTIME_ACCESS
-/// NOTE: BOOTSERVICE_ACCESS (0x02) intentionally excluded.
-/// After ExitBootServices, including BOOTSERVICE_ACCESS causes
-/// SetVariable to fail silently (return EFI_INVALID_PARAMETER) on
-/// AMD firmware. The bootloader writes during Boot Services and
-/// includes BOOTSERVICE_ACCESS there, but the kernel runs after EBS.
-const NVRAM_ATTRS: u32 = 0x01 | 0x04;
+/// NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS
+/// Must match the bootloader's attributes exactly. AMD firmware
+/// rejects SetVariable if the attributes differ from the existing
+/// variable's attributes (attribute mismatch → EFI_INVALID_PARAMETER).
+/// The bootloader creates this variable with 0x07; we must use 0x07 too.
+const NVRAM_ATTRS: u32 = 0x01 | 0x02 | 0x04;
 
 fn nvram_set(name: &str, data: &[u8]) -> bool {
     let Some(set_var) = set_variable_ptr() else { return false; };
@@ -135,9 +134,9 @@ pub fn init(system_table: u64) {
     unsafe { SYSTEM_TABLE = system_table; }
 }
 
-/// Write the current boot stage to NVRAM.
-pub fn write_boot_stage(stage: &str) {
-    nvram_set("FastOSBootStage", stage.as_bytes());
+/// Write the current boot stage to NVRAM. Returns true on success.
+pub fn write_boot_stage(stage: &str) -> bool {
+    nvram_set("FastOSBootStage", stage.as_bytes())
 }
 
 /// Read the last boot stage from NVRAM.

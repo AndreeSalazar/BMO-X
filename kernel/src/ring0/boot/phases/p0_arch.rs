@@ -24,22 +24,34 @@ pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
     log::info("phase0", "=== Phase 0: CPU Init ===");
 
     // 1. Architecture-level init: GDT, IDT, SYSCALL MSR.
-    // Sub-markers at physical 0x90000 for crash diagnosis.
-    // Codes: 200=GDT, 201=IDT, 202=SYSCALL, 203=CPU_INIT, 204=CPU_DONE, 205=ABI_INIT
+    // Use write_boot_stage for sub-markers (this function is proven to work).
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(200);
+    crate::boot::uefi_rt::write_boot_stage("p0_gdt");
     crate::arch::gdt::init_gdt();
+
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(201);
+    crate::boot::uefi_rt::write_boot_stage("p0_idt");
     crate::arch::idt::init_idt();
+
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(202);
+    crate::boot::uefi_rt::write_boot_stage("p0_syscall");
     crate::arch::syscall::init_syscall();
+
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(203);
+    crate::boot::uefi_rt::write_boot_stage("p0_cpu_init");
     log::info("phase0", "GDT+IDT+SYSCALL loaded");
 
     // 2. CPU subsystem init: features, CR0/CR4, XCR0, FPU, MTRR/PAT,
     //    perf counters, lazy FPU, TSC calibration.
     log::info("phase0", "CPU modular init...");
     let cpu = crate::cpu::init();
+    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(204);
+    crate::boot::uefi_rt::write_boot_stage("p0_cpu_done");
     log::info("phase0", "CPU modular init DONE");
 
     // NOTE: FPU is already initialized inside cpu::init() with lazy

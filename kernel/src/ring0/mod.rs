@@ -113,5 +113,23 @@ unsafe extern "C" fn _start() -> ! {
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
+    // Write RAM crash marker IMMEDIATELY — confirms _start reached Rust.
+    // Code 0 = "reached kernel_main_real". If this appears in crash.log,
+    // _start works. If it doesn't appear, _start itself is broken.
+    unsafe {
+        core::ptr::write_volatile(0x9_0000 as *mut u32, 0x464F_5343u32); // "FOSC"
+        core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32); // stage 0 = kernel_main_real
+    }
+
+    // NVRAM breadcrumb #1: very first thing after _start.
+    // Init nvram_log directly from BootInfo (before coordinator validates it).
+    if !boot_info_ptr.is_null() {
+        let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
+        if uefi_st != 0 {
+            nvram_log::init(uefi_st);
+            nvram_log::set_variable("FastOSDiag1", b"reached_kmain");
+        }
+    }
+
     coordinator::main(boot_info_ptr);
 }

@@ -77,7 +77,23 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
 
     // Initialize UEFI Runtime Services for NVRAM access
     boot::uefi_rt::init(bi.uefi_system_table);
-    boot::uefi_rt::write_boot_stage("kernel_start");
+
+    // CRITICAL: Disable FCH hardware watchdog IMMEDIATELY.
+    // The BIOS may enable it with a short timeout. If we don't disable
+    // it before Phase 0, the watchdog fires and resets the PC.
+    crate::dev::watchdog::pet_fch_watchdog();
+
+    // Write RAM crash marker EARLIEST possible — confirms _start reached main.
+    // Code 0 = "reached coordinator::main" (before NVRAM, before serial init).
+    write_crash_marker(0);
+
+    // Write NVRAM boot stage. This is the ONLY NVRAM write we know works.
+    // If this fails, the boot log on next boot will show
+    // "previous boot reached kernel handoff" (NVRAM=bootloader).
+    let nvram_ok = boot::uefi_rt::write_boot_stage("kernel_start");
+
+    crate::dev::console::serial_write("[coord] main: NVRAM write kernel_start=");
+    crate::dev::console::serial_write(if nvram_ok { "OK\n" } else { "FAIL\n" });
 
     // Stage 1: boot_info validated
     write_crash_marker(1);
@@ -143,6 +159,7 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     let wait_start = crate::cpu::rdtsc();
     let tsc_per_ms = crate::cpu::tsc_per_sec() / 1000;
     while crate::cpu::rdtsc().wrapping_sub(wait_start) < 1500 * tsc_per_ms.max(1) {
+        crate::dev::watchdog::pet_fch_watchdog();
         core::hint::spin_loop();
     }
 

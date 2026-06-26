@@ -57,6 +57,81 @@ pub fn pet() {
     LAST_PET_TSC.store(tsc, Ordering::Relaxed);
 }
 
+/// Pet the AMD FCH hardware watchdog via MMIO.
+///
+/// Hardware: AMD B550 FCH (Fusion Controller Hub) on Zen 3.
+/// Source: Linux kernel sp5100_tco.c, AMD BKDG for Family 17h.
+///
+/// # Register Map
+///
+/// ACPI MMIO base: `0xFED8_0000` (identity-mapped by UEFI)
+///
+///   PM_DECODEEN   (+0x00, u8):  bit 7 = WDT_TMREN
+///     On Family 17h+, this bit enables BOTH the WDT MMIO decode
+///     AND the watchdog hardware timer itself.
+///
+///   PM_ISACONTROL (+0x04, u8):  bit 1 = MMIOEN
+///     Determines which MMIO base the WDT registers use:
+///       MMIOEN=1 → WDT at 0xFED8_0B00 (ACPI_MMIO + 0xB00)
+///       MMIOEN=0 → WDT at 0xFEB_0000 (fixed address)
+///
+/// WDT MMIO registers (u32 read-modify-write):
+///
+///   WDT_CONTROL (base+0x00):
+///     bit 0 = START_STOP  (1 = start watchdog)
+///     bit 1 = FIRED       (read-only, set after timeout)
+///     bit 2 = ACTION_RESET (0 = reset, 1 = SMI/NMI)
+///     bit 3 = DISABLE     (1 = watchdog disabled)
+///     bit 7 = TRIGGER     (pet/ping — resets countdown)
+///
+///   WDT_COUNT (base+0x04, u16): countdown value
+///
+/// # Our Previous Bug
+///
+/// We wrote `0x01` (byte) to WDT_CONTROL, which set bit 0 (START_STOP)
+/// — that STARTS the watchdog, it does NOT pet it. The correct pet is
+/// bit 7 (TRIGGER) via u32 read-modify-write.
+pub fn pet_fch_watchdog() {
+    unsafe {
+        const ACPI_MMIO: u64 = 0xFED8_0000;
+        const PM_DECODEEN_OFF: u64 = 0x00;
+        const PM_ISACONTROL_OFF: u64 = 0x04;
+        const WDT_OFFSET: u64 = 0x0B00;
+        const WDT_FIXED: u64 = 0xFEB0_0000;
+
+        const WDT_TRIGGER: u32 = 1 << 7;
+        const WDT_DISABLE: u32 = 1 << 3;
+
+        // Step 1: Check PM_DECODEEN bit 7 (WDT_TMREN).
+        // If not set, the watchdog hardware is not active — nothing to do.
+        let pm_decodeen = core::ptr::read_volatile(
+            (ACPI_MMIO + PM_DECODEEN_OFF) as *const u8
+        );
+        if pm_decodeen & (1 << 7) == 0 {
+            return;
+        }
+
+        // Step 2: Determine WDT MMIO base from PM_ISACONTROL bit 1.
+        let pm_isa = core::ptr::read_volatile(
+            (ACPI_MMIO + PM_ISACONTROL_OFF) as *const u8
+        );
+        let wdt_base = if pm_isa & (1 << 1) != 0 {
+            ACPI_MMIO + WDT_OFFSET   // 0xFED80B00
+        } else {
+            WDT_FIXED                // 0xFEB00000
+        };
+
+        // Step 3: Disable the watchdog (bit 3) — read-modify-write u32.
+        let ctrl = wdt_base as *mut u32;
+        let val = core::ptr::read_volatile(ctrl);
+        core::ptr::write_volatile(ctrl, val | WDT_DISABLE);
+
+        // Step 4: Pet as safety net (bit 7 = TRIGGER) — read-modify-write u32.
+        let val = core::ptr::read_volatile(ctrl);
+        core::ptr::write_volatile(ctrl, val | WDT_TRIGGER);
+    }
+}
+
 /// Check if the watchdog has expired. Call this from the scheduler tick.
 /// If expired, resets the system.
 pub fn check() {

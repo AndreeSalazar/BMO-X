@@ -17,8 +17,8 @@ pub fn init(system_table: u64) {
 /// Fixed to NON_VOLATILE | RUNTIME_ACCESS (0x05). NVRAM is MORE reliable
 /// than the physical RAM marker at 0x90000 because the AMD FCH watchdog
 /// clears RAM on reset but NVRAM persists.
-pub fn write_boot_stage(stage: &str) {
-    nvram_log::write_boot_stage(stage);
+pub fn write_boot_stage(stage: &str) -> bool {
+    nvram_log::write_boot_stage(stage)
 }
 
 /// Read last boot stage from NVRAM (delegates to nvram-log).

@@ -578,6 +578,9 @@ pub fn run() -> ! {
     loop {
         let now = crate::cpu::rdtsc();
 
+        // ── FCH hardware watchdog pet (AMD FCH ~10-15s timeout) ─────
+        crate::dev::watchdog::pet_fch_watchdog();
+
         // ── Heartbeat blink (every 500ms) ───────────────────────────
         if now.wrapping_sub(last_heartbeat) >= 500 * super::CYCLES_PER_MS {
             last_heartbeat = now;

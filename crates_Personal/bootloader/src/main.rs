@@ -310,6 +310,7 @@ fn nvram_status_ok(result: &Result<(), alloc::string::String>) -> &'static [u8] 
 
 fn ram_marker_name(stage: u32) -> &'static str {
     match stage {
+        0 => "kernel_main_real",
         1 => "kernel_start/bootinfo",
         2 => "phase_0_to_4",
         20 => "p0_arch",
@@ -400,6 +401,32 @@ fn write_crash_log(
         entry.extend_from_slice(msg.as_bytes());
         entry.extend_from_slice(b")");
     }
+
+    // Read kernel diagnostic breadcrumbs
+    let d1 = nvram_get("FastOSDiag1");
+    let d2 = nvram_get("FastOSDiag2");
+    let d3 = nvram_get("FastOSDiag3");
+    let phase = nvram_get("FastOSPhase");
+    if d1.is_some() || d2.is_some() || d3.is_some() || phase.is_some() {
+        entry.extend_from_slice(b" | diag:");
+        if let Some(v) = &phase {
+            entry.extend_from_slice(b" phase=");
+            entry.extend_from_slice(v.as_bytes());
+        }
+        if let Some(v) = &d1 {
+            entry.extend_from_slice(b" D1=");
+            entry.extend_from_slice(v.as_bytes());
+        }
+        if let Some(v) = &d2 {
+            entry.extend_from_slice(b" D2=");
+            entry.extend_from_slice(v.as_bytes());
+        }
+        if let Some(v) = &d3 {
+            entry.extend_from_slice(b" D3=");
+            entry.extend_from_slice(v.as_bytes());
+        }
+    }
+
     entry.extend_from_slice(b"\r\n");
 
     // Append + truncate if over limit
@@ -610,6 +637,11 @@ fn main() -> Status {
     // stage and run diagnostics. The raw FFI pointers use RuntimeServices
     // which remain valid after EBS.
     let _ = nvram_set("FastOSBootStage", "bootloader");
+    // Clear kernel diagnostic breadcrumbs from previous boot
+    let _ = nvram_set("FastOSDiag1", "");
+    let _ = nvram_set("FastOSDiag2", "");
+    let _ = nvram_set("FastOSDiag3", "");
+    let _ = nvram_set("FastOSPhase", "");
     nvram_diag_raw();
 
     if needs_reloc {
