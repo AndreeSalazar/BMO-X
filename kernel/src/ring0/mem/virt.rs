@@ -135,7 +135,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
         if (pdpte.0 & flags::HUGE_PAGE) != 0 {
             pdpte.0 &= !flags::NO_EXECUTE;
             invlpg(va);
-            va += PAGE_SIZE;
+            va = (va & !((1u64 << 30) - 1)) + (1u64 << 30); // skip to next 1 GiB boundary
             continue;
         }
 
@@ -148,7 +148,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
         if (pde.0 & flags::HUGE_PAGE) != 0 {
             pde.0 &= !flags::NO_EXECUTE;
             invlpg(va);
-            va += PAGE_SIZE;
+            va = (va & !((1u64 << 21) - 1)) + (1u64 << 21); // skip to next 2 MiB boundary
             continue;
         }
 
