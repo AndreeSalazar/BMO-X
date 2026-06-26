@@ -12,7 +12,7 @@
 //! 2. **Defense**   (defense)        — El Escudo: ByteDefender (BEF scanner)
 //! 3. **TimeBack**  (timeback)       — El Reloj: checkpoints + journal
 //! 4. **UI**        (ui)             — framebuffer + 8x16 font
-//! 5. **FS**        (fs)             — FAT32 + ramdisk + BMO-FS
+//! 5. **FS**        (fs)             — ramdisk + exFAT + BMO-FS
 //! 6. **GPU**       (bmo_gpu)        — GPU bridge (RDNA4 skeleton)
 //! 7. **BEF**       (bef)            — BEF format + loaders
 //! 8. **BMO API**   (bmo_api)        — 256 syscalls + WM + paint
@@ -65,7 +65,7 @@ pub fn init() {
     crate::dev::console::serial_write("[bmo_core] init: fs\n");
 
     // 4) ui: framebuffer + 8x16 font. (stateless, no requiere init.)
-    // 5) fs: FAT32 + BMO-FS + ramdisk.
+    // 5) fs: ramdisk + exFAT (data).
     fs::init();
     crate::dev::console::serial_write("[bmo_core] init: bmo_gpu\n");
 

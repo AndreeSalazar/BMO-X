@@ -34,7 +34,6 @@ pub static RAMDISK_FILES: &[RamFile] = &[
                \n\
                Montaje de Loop Device: OK\n\
                Firma de Superblock: OK\n\
-               Particion FAT32: OK\n\
                Interoperabilidad UEFI: OK\n\
                \n\
                Archivos del sistema:\n\

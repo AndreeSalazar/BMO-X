@@ -44,7 +44,7 @@
 //! - `bef`       — BEF binary format + loaders (PE/ELF/native).
 //!                  **Es la fuente única de verdad** del formato BEF
 //!                  (re-exportado en `bmo_abi::bef`).
-//! - `fs`        — filesystems (FAT32, exFAT, ramdisk) + VFS.
+//! - `fs`        — filesystems (exFAT, ramdisk) + VFS.
 //!
 //! # Relación con BMO ABI (v1.8.8)
 //!

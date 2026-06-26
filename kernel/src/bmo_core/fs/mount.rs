@@ -1,7 +1,7 @@
 //! VFS mount table for FastOS.
 //!
 //! Maps path prefixes to filesystem drivers.
-//! Supports: RamFs (root), FAT32 (boot), exFAT (data), procfs, devfs, tmpfs.
+//! Supports: RamFs (root), exFAT (data), procfs, devfs, tmpfs.
 
 #![allow(dead_code)]
 
@@ -12,7 +12,6 @@ const MAX_MOUNTS: usize = 16;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FsType {
     RamFs,       // Ramdisk (archivos embebidos del kernel)
-    Fat32,       // FAT32 (boot, UEFI compatible)
     Exfat,       // exFAT (data, read-write)
     ProcFs,      // /proc (virtual)
     DevFs,       // /dev (virtual)
@@ -70,7 +69,6 @@ pub fn mount(fs_type: FsType, path: &'static str, lba: u64, sectors: u32, read_o
                 console::serial_write(" (");
                 match fs_type {
                     FsType::RamFs  => console::serial_write("RamFs"),
-                    FsType::Fat32  => console::serial_write("FAT32"),
                     FsType::Exfat  => console::serial_write("exFAT"),
                     FsType::ProcFs => console::serial_write("procfs"),
                     FsType::DevFs  => console::serial_write("devfs"),
@@ -145,7 +143,6 @@ pub fn print_mounts() {
                 console::serial_write(" -> ");
                 match MOUNT_TABLE[i].fs_type {
                     FsType::RamFs  => console::serial_write("RamFs"),
-                    FsType::Fat32  => console::serial_write("FAT32"),
                     FsType::Exfat  => console::serial_write("exFAT"),
                     FsType::ProcFs => console::serial_write("procfs"),
                     FsType::DevFs  => console::serial_write("devfs"),

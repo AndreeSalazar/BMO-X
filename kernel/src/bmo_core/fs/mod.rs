@@ -14,9 +14,7 @@
 //!   - RAMdisk — embedded files in kernel binary (único FS en uso)
 //!   - Disk traits — block I/O abstraction for drivers
 //!
-//! v1.8.8: FAT32 y exFAT se eliminaron. Eran código de preparación
-//! sin disco físico. Cuando llegue el driver NVMe/AHCI en v1.9, se
-//! reintroducen desde cero con la API actual.
+//! v1.8.8: exFAT driver en vendor crate (para partición data T:).
 
 #![allow(dead_code)]
 
@@ -46,8 +44,8 @@ pub trait DiskWriter: DiskReader {
 
 /// Inicializa el subsistema de filesystem.
 pub fn init() {
-    // FAT32 (boot) and exFAT (data) are initialized on-demand when
-    // a disk driver is wired. Ramdisk is always available.
+    // exFAT (data, T:) initialized on-demand when AHCI driver is wired.
+    // Ramdisk is always available.
 }
 
 pub use crate::bmo_abi::fs::Capabilities;

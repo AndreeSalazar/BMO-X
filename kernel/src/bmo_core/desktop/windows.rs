@@ -75,8 +75,8 @@ pub fn content_for<'a>(
                 (readme_slice as &[u8], palette::TITLE),
                 (b"" as &[u8], palette::TITLE),
                 (b"RamFs: montado en /" as &[u8], palette::OK_FG),
-                (b"FAT32: particion boot (UEFI)" as &[u8], palette::OK_FG),
                 (b"exFAT: particion datos (RW)" as &[u8], palette::OK_FG),
+                (b"UEFI: particion boot (FAT32)" as &[u8], palette::OK_FG),
                 (b"Arrastra la barra para mover." as &[u8], palette::SUBTITLE),
                 (b"" as &[u8], palette::TITLE),
             ]
