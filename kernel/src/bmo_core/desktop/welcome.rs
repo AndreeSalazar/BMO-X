@@ -566,7 +566,6 @@ pub fn run() -> ! {
     }
 
     crate::dev::console::serial_write("[welcome] entering cooperative idle loop\n");
-    crate::dev::console::serial_write("[welcome] UEFI watchdog pet enabled\n");
 
     // Stage 9: welcome idle loop running — clear crash marker
     // If we get here, boot succeeded. The marker is no longer needed.
@@ -574,22 +573,10 @@ pub fn run() -> ! {
     crate::boot::uefi_rt::write_boot_stage("ok");
 
     let mut last_heartbeat = crate::cpu::rdtsc();
-    let mut last_watchdog_pet = crate::cpu::rdtsc();
     let mut heartbeat_on = false;
 
     loop {
         let now = crate::cpu::rdtsc();
-
-        // ── UEFI watchdog pet (every 2 seconds) ──────────────────────
-        // AMD FCH watchdog fires after ~10-15 seconds if not petted.
-        // Pet via FCH MMIO register at 0xFED80B00 (WD_GCR).
-        if now.wrapping_sub(last_watchdog_pet) >= 2 * super::CYCLES_PER_MS {
-            last_watchdog_pet = now;
-            unsafe {
-                let wd_gcr = 0xFED8_0B00 as *mut u8;
-                core::ptr::write_volatile(wd_gcr, 0x01);
-            }
-        }
 
         // ── Heartbeat blink (every 500ms) ───────────────────────────
         if now.wrapping_sub(last_heartbeat) >= 500 * super::CYCLES_PER_MS {

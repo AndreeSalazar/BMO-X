@@ -140,18 +140,9 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     }
 
     boot::visual::log("ring0", "hold splash 1500ms", boot::visual::color::OK);
-    // Pet the AMD FCH hardware watchdog during the long wait.
-    // The watchdog fires after ~10-15 seconds if not petted via FCH MMIO.
     let wait_start = crate::cpu::rdtsc();
     let tsc_per_ms = crate::cpu::tsc_per_sec() / 1000;
     while crate::cpu::rdtsc().wrapping_sub(wait_start) < 1500 * tsc_per_ms.max(1) {
-        let elapsed_ms = crate::cpu::rdtsc().wrapping_sub(wait_start) / tsc_per_ms.max(1);
-        if elapsed_ms % 200 == 0 {
-            // Pet FCH watchdog: write 0x01 to WD_GCR at FED80B00
-            unsafe {
-                core::ptr::write_volatile(0xFED8_0B00 as *mut u8, 0x01);
-            }
-        }
         core::hint::spin_loop();
     }
 

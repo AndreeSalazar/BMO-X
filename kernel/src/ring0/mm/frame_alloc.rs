@@ -195,6 +195,14 @@ pub unsafe fn init(
                 addr += PAGE_SIZE;
                 continue;
             }
+            // Keep the crash marker page reserved. The bootloader reads
+            // physical 0x90000 on the next boot to write crash.log on the SSD.
+            // If the allocator hands this page out, later zeroing/copying can
+            // erase the only useful post-reset breadcrumb.
+            if ranges_overlap(addr, addr + PAGE_SIZE, 0x9_0000, 0x9_1000) {
+                addr += PAGE_SIZE;
+                continue;
+            }
             if let Some(idx) = addr_to_index(addr) {
                 if is_used(idx) {
                     mark_free(idx);

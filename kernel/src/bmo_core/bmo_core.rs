@@ -192,39 +192,15 @@ pub fn enter(_ctx: &crate::boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     crate::boot::visual::clear();
     crate::dev::console::serial_write("[bmo_core] enter: splash cleared\n");
 
-    // Pet UEFI watchdog — some AMD firmware fires even after SetWatchdogTimer(0)
-    pet_uefi_watchdog();
-
     // Inicializar el crate bmo_audio con la frecuencia de TSC calibrada.
     bmo_audio::init(crate::cpu::tsc_per_sec());
 
     // Reproduce el logon sound (Windows 10/11 chime) ~1 second.
     crate::dev::console::serial_write("[bmo_core] enter: logon sound (bmo_audio)\n");
     bmo_audio::play_logon_chime();
-    pet_uefi_watchdog();
     crate::dev::console::serial_write("[bmo_core] enter: logon done\n");
 
     // Lanza el welcome. Esta función NO retorna.
     crate::dev::console::serial_write("[bmo_core] enter: welcome::run\n");
     desktop::welcome::run();
-}
-
-/// Pet the AMD FCH hardware watchdog via MMIO register.
-///
-/// On AMD Zen 3, the UEFI firmware arms a hardware watchdog in the FCH
-/// (Fusion Controller Hub) that fires after ~10-15 seconds if not petted.
-/// SetWatchdogTimer(0) is often ignored by the firmware.
-///
-/// The FCH watchdog control register (WD_GCR) is at:
-///   MMIO base (0xFED80000) + 0x0B00
-/// Petting = writing 0x01 to re-arm the countdown.
-///
-/// This function is safe: if the MMIO page is not mapped, it returns
-/// without side effects.
-fn pet_uefi_watchdog() {
-    // AMD FCH MMIO base: 0xFED80000 (NOT 0xFED_8000_0000 — that was 4096x too large)
-    // Watchdog Global Control Register (WD_GCR) = base + 0x0B00 = 0xFED80B00
-    unsafe {
-        core::ptr::write_volatile(0xFED8_0B00 as *mut u8, 0x01);
-    }
 }

@@ -308,6 +308,26 @@ fn nvram_status_ok(result: &Result<(), alloc::string::String>) -> &'static [u8] 
     match result { Ok(()) => b"OK", Err(_) => b"FAIL" }
 }
 
+fn ram_marker_name(stage: u32) -> &'static str {
+    match stage {
+        1 => "kernel_start/bootinfo",
+        2 => "phase_0_to_4",
+        20 => "p0_arch",
+        21 => "p1_mem",
+        22 => "p2_dev",
+        23 => "p3_display",
+        24 => "p4_bmo",
+        3 => "init_fastos_cpu",
+        4 => "init_acpi",
+        45 => "smp_init",
+        5 => "bmo_core_init",
+        6 => "welcome_dispatch",
+        7 => "bmo_enter",
+        8 => "welcome_running",
+        _ => "unknown_ram_stage",
+    }
+}
+
 fn write_crash_log(
     handle: uefi::Handle,
     nvram_stage: Option<&str>,
@@ -345,18 +365,25 @@ fn write_crash_log(
     write_int(&mut entry, boot_num);
     entry.extend_from_slice(b"] ");
 
-    match nvram_stage {
-        Some("ok") => entry.extend_from_slice(b"OK (welcome reached)"),
-        Some(stage) => {
-            entry.extend_from_slice(b"CRASH at: ");
-            entry.extend_from_slice(stage.as_bytes());
-        }
-        None => entry.extend_from_slice(b"no NVRAM data"),
-    }
-
     if let Some(m) = ram_marker {
+        entry.extend_from_slice(b"CRASH at: ");
+        entry.extend_from_slice(ram_marker_name(m).as_bytes());
         entry.extend_from_slice(b" | RAM=");
         write_int(&mut entry, m);
+        if let Some(stage) = nvram_stage {
+            entry.extend_from_slice(b" | prev NVRAM=");
+            entry.extend_from_slice(stage.as_bytes());
+        }
+    } else {
+        match nvram_stage {
+            Some("ok") => entry.extend_from_slice(b"OK (welcome reached)"),
+            Some("bootloader") => entry.extend_from_slice(b"previous boot reached kernel handoff"),
+            Some(stage) => {
+                entry.extend_from_slice(b"CRASH at: ");
+                entry.extend_from_slice(stage.as_bytes());
+            }
+            None => entry.extend_from_slice(b"no NVRAM data"),
+        }
     }
 
     entry.extend_from_slice(b" | NVRAM: ");
@@ -575,7 +602,7 @@ fn main() -> Status {
     // SetVariable is only callable after EBS. This is where we write boot
     // stage and run diagnostics. The raw FFI pointers use RuntimeServices
     // which remain valid after EBS.
-    nvram_set("FastOSBootStage", "bootloader");
+    let _ = nvram_set("FastOSBootStage", "bootloader");
     nvram_diag_raw();
 
     if needs_reloc {

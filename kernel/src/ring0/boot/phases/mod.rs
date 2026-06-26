@@ -48,6 +48,7 @@ use super::visual;
 /// after the marker, we'll see `p0_arch` — and so on for each phase.
 pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     // Phase 0: CPU init (GDT + IDT + syscall + FPU)
+    crate::coordinator::write_crash_marker(20);
     crate::boot::uefi_rt::write_boot_stage("p0_arch");
     visual::begin_phase(0);
     visual::log("ring0", "p0_arch", visual::color::OK);
@@ -55,6 +56,7 @@ pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     visual::end_phase(0);
 
     // Phase 1: Memory (frame alloc + heap + high-mem)
+    crate::coordinator::write_crash_marker(21);
     crate::boot::uefi_rt::write_boot_stage("p1_mem");
     visual::begin_phase(1);
     visual::log("ring0", "p1_mem", visual::color::OK);
@@ -62,6 +64,7 @@ pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     visual::end_phase(1);
 
     // Phase 2: Devices (PCI + AHCI + exFAT)
+    crate::coordinator::write_crash_marker(22);
     crate::boot::uefi_rt::write_boot_stage("p2_dev");
     visual::begin_phase(2);
     visual::log("ring0", "p2_dev", visual::color::OK);
@@ -69,6 +72,7 @@ pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     visual::end_phase(2);
 
     // Phase 3: Display (GOP framebuffer)
+    crate::coordinator::write_crash_marker(23);
     crate::boot::uefi_rt::write_boot_stage("p3_display");
     visual::begin_phase(3);
     visual::log("ring0", "p3_display", visual::color::OK);
@@ -76,6 +80,7 @@ pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     visual::end_phase(3);
 
     // Phase 4: Scheduler (APIC timer + interrupts)
+    crate::coordinator::write_crash_marker(24);
     crate::boot::uefi_rt::write_boot_stage("p4_bmo");
     visual::begin_phase(4);
     visual::log("ring0", "p4_bmo", visual::color::OK);

@@ -11,6 +11,7 @@
 /SSD_boot/
 /target_build/
 /kernel/target_build/
+/crates_Personal/target_build/
 
 # ── Rust ─────────────────────────────────────────────────────────
 **/target/
