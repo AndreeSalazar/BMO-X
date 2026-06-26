@@ -14,13 +14,10 @@
 //!   1. `frame_alloc::init()` — parsear UEFI memory map
 //!   2. `slab::init_heap()`   — inicializar slab allocator
 //!   3. `vmm::*`              — page table operations
-//!
-//! API pública:
-//!   - `frame_alloc::alloc_pages(n)` / `free_pages(p, n)`
-//!   - `vmm::map_page(...)`, `vmm::AddressSpace`, `vmm::Vma`
-//!   - `slab::init_heap`, `slab::heap_alloc`
 
 #![allow(dead_code)]
+
+pub const PAGE_SIZE: u64 = 4096;
 
 pub mod frame_alloc;
 pub mod slab;
