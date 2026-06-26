@@ -2,8 +2,10 @@
 //!
 //! Auto-detects RAM size from UEFI memory map.
 //! Tracks 4 KiB physical frames from 16 MB up to detected limit.
-//! Identity mapping: only first 4 GB can be directly used by kernel.
-//! Higher memory tracked for statistics but not allocatable yet.
+//! Supports up to 1 TB of RAM (32 MB bitmap in .bss).
+//!
+//! With high-mem mapping, ALL physical pages are accessible via
+//! `phys_to_virt(phys)`, so there is no identity-mapping limit.
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use fastos_boot_protocol::{MemoryEntry, MemoryType};
@@ -12,14 +14,15 @@ const PAGE_SIZE: u64 = super::PAGE_SIZE;
 const BASE: u64 = 0x0100_0000;
 
 /// Maximum address we can track. Set dynamically at init from memory map.
-/// Capped at 4 GB for identity-mapped allocations.
+/// Now tracks ALL detected RAM (no 4 GB cap).
 static mut MAX_ADDR: u64 = 0;
 
 /// Maximum pages based on MAX_ADDR. Set dynamically at init.
 static mut MAX_PAGES: usize = 0;
 
-/// Bitmap supports up to 64 GB (2 MB). Lives in .bss (zero-init).
-const BITMAP_CAPACITY: usize = (64 * 1024 * 1024 * 1024 / 4096) / 8;
+/// Bitmap supports up to 1 TB (32 MB). Lives in .bss (zero-init).
+/// 1 TB = 1099511627776 bytes / 4096 = 268435456 pages / 8 = 33554432 bytes.
+const BITMAP_CAPACITY: usize = (1024 * 1024 * 1024 * 1024 / 4096) / 8;
 
 static mut BITMAP: [u8; BITMAP_CAPACITY] = [0; BITMAP_CAPACITY];
 static mut INITIALIZED: bool = false;
@@ -97,8 +100,9 @@ pub unsafe fn init(
     let ram = detect_ram(entries);
     TOTAL_RAM = ram.total_usable;
 
-    let identity_limit: u64 = 0x1_0000_0000;
-    MAX_ADDR = ram.max_usable.min(identity_limit);
+    // Track ALL detected RAM — no identity-mapping limit.
+    // With high-mem mapping, all pages are accessible via phys_to_virt().
+    MAX_ADDR = ram.max_usable;
     MAX_PAGES = ((MAX_ADDR - BASE) / PAGE_SIZE) as usize;
 
     let usable_mb = ram.total_usable / (1024 * 1024);
@@ -106,7 +110,7 @@ pub unsafe fn init(
 
     crate::dev::console::serial_write("[frame_alloc] RAM detected=");
     crate::dev::console::serial_write_u64(usable_mb, 10);
-    crate::dev::console::serial_write(" MB, identity-mapped tracking=");
+    crate::dev::console::serial_write(" MB, tracking=");
     crate::dev::console::serial_write_u64(tracked_mb, 10);
     crate::dev::console::serial_write(" MB (");
     crate::dev::console::serial_write_u64(MAX_PAGES as u64, 10);

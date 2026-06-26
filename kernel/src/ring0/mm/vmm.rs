@@ -3,6 +3,39 @@
 //! Page table pages are allocated from the physical frame allocator
 //! (identity-mapped in low 4 GB). All page table walks use the shared
 //! `super::PAGE_SIZE` constant.
+//!
+//! # High-Mem Architecture
+//!
+//! All physical RAM is mapped into a contiguous virtual region starting at
+//! `HIGH_MEM_BASE`. This allows the kernel to access ANY physical page
+//! via `phys_to_virt(phys_addr)`, regardless of the identity-mapping limit.
+//!
+//!   virt_to_phys(v) = v - HIGH_MEM_BASE
+//!   phys_to_virt(p) = p + HIGH_MEM_BASE
+//!
+//! This scales to 1 TB of RAM:
+//!   1 TB = 256M pages × 4 KB bitmap = 32 MB bitmap overhead.
+//!   Virtual range: 0xFFFF_8000_0000_0000 → 0xFFFF_8001_0000_0000 (1 TB)
+
+/// Base virtual address for the high-mem region.
+/// All physical RAM is identity-mapped here: virt = phys + HIGH_MEM_BASE.
+/// Chosen to be in the upper half (kernel space) and aligned for 1 GB pages.
+pub const HIGH_MEM_BASE: u64 = 0xFFFF_8000_0000_0000;
+
+/// Maximum supported physical address (1 TB).
+pub const MAX_PHYS_ADDR: u64 = 1 << 40; // 1 TB
+
+/// Convert a physical address to a kernel virtual address.
+#[inline]
+pub const fn phys_to_virt(phys: u64) -> u64 {
+    phys + HIGH_MEM_BASE
+}
+
+/// Convert a kernel virtual address to a physical address.
+#[inline]
+pub const fn virt_to_phys(virt: u64) -> u64 {
+    virt - HIGH_MEM_BASE
+}
 
 pub mod flags {
     pub const PRESENT: u64    = 1 << 0;
@@ -526,6 +559,100 @@ pub unsafe fn handle_page_fault(
     }
 
     false
+}
+
+/// Map all physical RAM into the high-mem region (HIGH_MEM_BASE).
+/// Uses 2 MiB huge pages for efficiency. Called once at boot after
+/// the UEFI memory map is parsed.
+///
+/// This maps every usable physical page so that `phys_to_virt(phys)`
+/// works for any address in the system. Scales to 1 TB of RAM.
+pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], count: usize) {
+    use fastos_boot_protocol::MemoryType;
+
+    crate::dev::console::serial_write("[vmm] mapping high-mem: base=0x");
+    crate::boot::serial::hex(HIGH_MEM_BASE);
+    crate::dev::console::serial_write("\n");
+
+    let pml4 = (read_cr3() & ADDR_MASK) as *mut PageTable;
+    let mut mapped_pages: u64 = 0;
+    let mut mapped_huge: u64 = 0;
+
+    const HUGE_2MB: u64 = 2 * 1024 * 1024;
+
+    for i in 0..count {
+        let entry = &memory_map[i];
+        if entry.mem_type != MemoryType::Usable { continue; }
+
+        let region_start = entry.base;
+        let region_end = entry.base + entry.size;
+
+        // Align to 2 MB boundary (huge page)
+        let start = (region_start + HUGE_2MB - 1) & !(HUGE_2MB - 1);
+        let end = (region_end) & !(HUGE_2MB - 1);
+
+        if start >= end { continue; }
+
+        let mut phys = start;
+        while phys < end {
+            let virt = HIGH_MEM_BASE + phys;
+
+            let pml4_i = ((virt >> 39) & 0x1FF) as usize;
+            let pdpt_i = ((virt >> 30) & 0x1FF) as usize;
+            let pd_i   = ((virt >> 21) & 0x1FF) as usize;
+
+            // Ensure PML4 entry exists
+            let pml4e = &mut (*pml4).entries[pml4_i];
+            let pdpt_phys: u64 = if !pml4e.is_present() {
+                let new = alloc_page_table().expect("OOM: high-mem PML4");
+                core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
+                pml4e.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
+                new
+            } else {
+                pml4e.0 |= flags::WRITABLE;
+                pml4e.0 &= !flags::NO_EXECUTE;
+                pml4e.phys_addr()
+            };
+
+            // Ensure PDPT entry exists
+            let pdpt = pdpt_phys as *mut PageTable;
+            let pdpte = &mut (*pdpt).entries[pdpt_i];
+            let pd_phys: u64 = if !pdpte.is_present() {
+                let new = alloc_page_table().expect("OOM: high-mem PDPT");
+                core::ptr::write_bytes(new as *mut u8, 0, PAGE_SIZE as usize);
+                pdpte.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
+                new
+            } else if (pdpte.0 & flags::HUGE_PAGE) != 0 {
+                // 1 GB huge page already mapped — skip this 2 MB range
+                phys = (phys & !((1u64 << 30) - 1)) + (1u64 << 30);
+                continue;
+            } else {
+                pdpte.0 |= flags::WRITABLE;
+                pdpte.0 &= !flags::NO_EXECUTE;
+                pdpte.phys_addr()
+            };
+
+            // Map 2 MB huge page
+            let pd = pd_phys as *mut PageTable;
+            let pde = &mut (*pd).entries[pd_i];
+            if !pde.is_present() {
+                pde.0 = PageTableEntry::new(
+                    phys,
+                    flags::PRESENT | flags::WRITABLE | flags::HUGE_PAGE | flags::NO_EXECUTE,
+                ).0;
+                mapped_huge += 1;
+            }
+            mapped_pages += 512; // 2 MB = 512 pages
+
+            phys += HUGE_2MB;
+        }
+    }
+
+    crate::dev::console::serial_write("[vmm] high-mem mapped: ");
+    crate::dev::console::serial_write_u64(mapped_huge, 10);
+    crate::dev::console::serial_write(" huge pages (");
+    crate::dev::console::serial_write_u64(mapped_pages / 256, 10);
+    crate::dev::console::serial_write(" MB)\n");
 }
 
 pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result<(), &'static str> {

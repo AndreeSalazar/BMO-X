@@ -46,6 +46,14 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
     log::info_u64("phase1", "Free pages", free_pages);
     log::info_u64("phase1", "Free memory (MB)", free_mb);
 
+    // 1.5. Map all physical RAM into high-mem region (HIGH_MEM_BASE).
+    //      This enables phys_to_virt()/virt_to_phys() for ALL RAM,
+    //      removing the 4 GB identity-mapping limit.
+    unsafe {
+        crate::mm::virt::map_high_mem(&bi.memory_map, bi.memory_map_count as usize);
+    }
+    log::info("phase1", "High-mem mapping complete");
+
     // 2. Initialize the kernel heap.
     // v1.8.9: 1 MB estático. v1.9 lo cambiará a heap dinámico.
     crate::mm::heap::init_heap();
