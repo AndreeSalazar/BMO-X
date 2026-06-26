@@ -10,14 +10,15 @@ pub fn init(system_table: u64) {
 }
 
 /// Write boot stage to NVRAM (delegates to nvram-log).
+///
+/// v1.8.16: Re-enabled. Previous Opus 4.8 disabled this because
+/// SetVariable was fragile on AMD firmware. The actual root cause was
+/// NVRAM_ATTRS including BOOTSERVICE_ACCESS (0x02) after ExitBootServices.
+/// Fixed to NON_VOLATILE | RUNTIME_ACCESS (0x05). NVRAM is MORE reliable
+/// than the physical RAM marker at 0x90000 because the AMD FCH watchdog
+/// clears RAM on reset but NVRAM persists.
 pub fn write_boot_stage(stage: &str) {
-    let _ = stage;
-    // Do not call UEFI RuntimeServices from the kernel boot path. On real
-    // firmware this is fragile unless runtime regions are mapped exactly as
-    // firmware expects. Early SetVariable faults leave the previous NVRAM
-    // stage (e.g. "phase_0_to_4") and can look like a triple fault. Fine
-    // crash location now uses the RAM marker at 0x90000; the bootloader reads
-    // it on next boot and writes crash.log on the SSD/ESP.
+    nvram_log::write_boot_stage(stage);
 }
 
 /// Read last boot stage from NVRAM (delegates to nvram-log).

@@ -317,6 +317,13 @@ fn ram_marker_name(stage: u32) -> &'static str {
         22 => "p2_dev",
         23 => "p3_display",
         24 => "p4_bmo",
+        // Phase 0 sub-markers (fine-grained)
+        200 => "p0_gdt",
+        201 => "p0_idt",
+        202 => "p0_syscall",
+        203 => "p0_cpu_init",
+        204 => "p0_cpu_done",
+        205 => "p0_abi_init",
         3 => "init_fastos_cpu",
         4 => "init_acpi",
         45 => "smp_init",
