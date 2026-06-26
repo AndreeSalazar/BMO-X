@@ -174,25 +174,31 @@ type RawGetVariableFn = unsafe extern "efiapi" fn(
     data: *mut u8,
 ) -> u64;
 
-fn raw_runtime_services_ptr() -> Option<u64> {
-    let st = uefi::table::system_table_raw()?;
+/// Cached function pointers — resolved BEFORE ExitBootServices, used AFTER.
+static mut CACHED_SET_VAR: Option<RawSetVariableFn> = None;
+static mut CACHED_GET_VAR: Option<RawGetVariableFn> = None;
+
+/// Must be called BEFORE ExitBootServices to cache RuntimeServices pointers.
+/// After EBS, the uefi crate may invalidate its internal state.
+fn nvram_init() {
+    let st = match uefi::table::system_table_raw() {
+        Some(s) => s,
+        None => return,
+    };
     let rt_ptr = unsafe { core::ptr::read_volatile((st.as_ptr() as u64 + 0x58) as *const u64) };
-    if rt_ptr == 0 { return None; }
-    Some(rt_ptr)
-}
+    if rt_ptr == 0 { return; }
 
-fn raw_set_variable_ptr() -> Option<RawSetVariableFn> {
-    let rt = raw_runtime_services_ptr()?;
-    let fp = unsafe { core::ptr::read_volatile((rt + 0x58) as *const u64) };
-    if fp == 0 { return None; }
-    Some(unsafe { core::mem::transmute(fp) })
-}
+    // GetVariable at RuntimeServices + 0x48
+    let get_fp = unsafe { core::ptr::read_volatile((rt_ptr + 0x48) as *const u64) };
+    if get_fp != 0 {
+        unsafe { CACHED_GET_VAR = Some(core::mem::transmute(get_fp)); }
+    }
 
-fn raw_get_variable_ptr() -> Option<RawGetVariableFn> {
-    let rt = raw_runtime_services_ptr()?;
-    let fp = unsafe { core::ptr::read_volatile((rt + 0x48) as *const u64) };
-    if fp == 0 { return None; }
-    Some(unsafe { core::mem::transmute(fp) })
+    // SetVariable at RuntimeServices + 0x58
+    let set_fp = unsafe { core::ptr::read_volatile((rt_ptr + 0x58) as *const u64) };
+    if set_fp != 0 {
+        unsafe { CACHED_SET_VAR = Some(core::mem::transmute(set_fp)); }
+    }
 }
 
 fn str_to_ucs2(name: &str) -> [u16; 64] {
@@ -207,11 +213,14 @@ fn str_to_ucs2(name: &str) -> [u16; 64] {
     ucs2
 }
 
-/// NON_VOLATILE | BOOTSERVICE_ACCESS (correct for Boot Services)
-const NVRAM_ATTRS: u32 = 0x01 | 0x02;
+/// NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS
+/// After ExitBootServices, all three bits are required for the variable
+/// to persist and be accessible on subsequent boots.
+const NVRAM_ATTRS: u32 = 0x01 | 0x02 | 0x04;
 
+/// Read NVRAM variable. Safe to call before or after EBS.
 fn nvram_get(name: &str) -> Option<alloc::string::String> {
-    let get_var = raw_get_variable_ptr()?;
+    let get_var = unsafe { CACHED_GET_VAR? };
     let ucs2_name = str_to_ucs2(name);
     let mut attrs: u32 = 0;
     let mut data_size: usize = 256;
@@ -225,8 +234,9 @@ fn nvram_get(name: &str) -> Option<alloc::string::String> {
     Some(alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned())
 }
 
+/// Write NVRAM variable. ONLY valid after ExitBootServices.
 fn nvram_set(name: &str, value: &str) -> Result<(), alloc::string::String> {
-    let set_var = raw_set_variable_ptr().ok_or("SetVariable ptr unavailable")?;
+    let set_var = unsafe { CACHED_SET_VAR.ok_or("SetVariable not cached")? };
     let ucs2_name = str_to_ucs2(name);
     let status = unsafe {
         set_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, NVRAM_ATTRS, value.len(), value.as_ptr())
@@ -235,25 +245,22 @@ fn nvram_set(name: &str, value: &str) -> Result<(), alloc::string::String> {
     else { Err(alloc::format!("SetVariable: status=0x{:x}", status)) }
 }
 
-/// Post-EBS diagnostic: test NVRAM attribute combinations.
-/// No filesystem access — only raw FFI to RuntimeServices.
+/// Post-EBS diagnostic: test NVRAM write+read with cached function pointers.
 fn nvram_diag_raw() {
-    let test_name = "FastOSDiag";
-    let test_val = b"diag1";
-    let ucs2_name = str_to_ucs2(test_name);
-    let set_var = raw_set_variable_ptr();
-    let get_var = raw_get_variable_ptr();
+    let set_var = unsafe { CACHED_SET_VAR };
+    let get_var = unsafe { CACHED_GET_VAR };
 
-    // Test: NON_VOLATILE + BOOTSERVICE (correct attrs for post-EBS too)
     if let Some(set_fn) = set_var {
-        let status = unsafe {
+        let test_name = "FastOSDiag";
+        let test_val = b"diag1";
+        let ucs2_name = str_to_ucs2(test_name);
+        let _status = unsafe {
             set_fn(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, 0x01 | 0x02, test_val.len(), test_val.as_ptr())
         };
-        // status 0 = success; anything else = error code
-        // We can't write to serial or crash.log after EBS, so just proceed.
-        let _ = status;
     }
     if let Some(get_fn) = get_var {
+        let test_name = "FastOSDiag";
+        let ucs2_name = str_to_ucs2(test_name);
         let mut attrs: u32 = 0;
         let mut data_size: usize = 256;
         let mut buf = [0u8; 256];
@@ -471,6 +478,9 @@ fn main() -> Status {
     let loaded_image = boot::open_protocol_exclusive::<LoadedImage>(boot::image_handle()).unwrap();
     let device = loaded_image.device().expect("no device handle");
     drop(loaded_image);
+
+    // Cache NVRAM function pointers BEFORE ExitBootServices
+    nvram_init();
 
     // Crash diagnostics — nvram_get is allowed during Boot Services (UEFI spec)
     let prev_stage = nvram_get("FastOSBootStage");
