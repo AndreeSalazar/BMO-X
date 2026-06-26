@@ -1,16 +1,15 @@
-//! USB-Log — Real-time log to USB via UEFI NVRAM.
+//! NVRAM-Log — Real-time log via UEFI NVRAM.
 //!
-//! After ExitBootServices, the kernel cannot access USB file systems directly.
+//! After ExitBootServices, the kernel cannot access block storage directly.
 //! This crate writes log entries to UEFI NVRAM variables. On next boot, the
 //! bootloader reads them and dumps everything to `\EFI\BOOT\crash.log`.
 //!
 //! ## Usage
 //!
 //! ```rust
-//! usb_log::init(system_table);
-//! usb_log::write_boot_stage("phase_0_to_4");
-//! usb_log::log("APIC timer configured");
-//! log::info!("critical event: {}", value); // via LogWriter
+//! nvram_log::init(system_table);
+//! nvram_log::write_boot_stage("phase_0_to_4");
+//! nvram_log::log("APIC timer configured");
 //! ```
 
 #![no_std]

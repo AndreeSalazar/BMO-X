@@ -27,7 +27,7 @@ use super::boot::info;
 use crate::bmo_core;
 
 // ── Crash marker: physical address 0x90000 ─────────────────────────────
-// The bootloader reads this on next boot and writes to crash.log on USB.
+// The bootloader reads this on next boot and writes to crash.log on SSD.
 // Format: [magic: u32 LE] [stage: u32 LE]
 const CRASH_MARKER_ADDR: u64 = 0x9_0000;
 const CRASH_MAGIC: u32 = 0x464F_5343; // "FOSC"

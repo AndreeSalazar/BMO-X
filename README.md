@@ -185,7 +185,7 @@ FastOS/
 ## Build
 
 ```powershell
-# Build completo + flash USB
+# Build completo + flash SSD
 powershell -ExecutionPolicy Bypass -File .\build_uefi.ps1 -Flash
 
 # Solo compilar (sin flash)
@@ -201,13 +201,13 @@ powershell -ExecutionPolicy Bypass -File .\build_uefi.ps1 -Flash
 Requisitos:
 - Rust **stable** (kernel) + **nightly** (bootloader)
 - UEFI con Secure Boot desactivado
-- USB conectado
+- SSD conectado (S:)
 
 El script build_uefi.ps1 ejecuta:
 1. Build bootloader (nightly, `x86_64-unknown-uefi`) → `fastos-bootloader.efi`
 2. Build kernel (stable, `x86_64-unknown-none`) → `fastos-kernel` ELF (~706 KB)
 3. Crea staging `EFI/BOOT/` con BOOTX64.EFI + kernel.elf
-4. Copia a USB + verifica SHA256
+4. Copia a SSD + verifica SHA256
 
 ---
 

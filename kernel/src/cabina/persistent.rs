@@ -1,8 +1,8 @@
-//! `cabina::persistent` — Spool persistente USB-ready.
+//! `cabina::persistent` — Spool persistente SSD-ready.
 //!
-//! Objetivo final: escribir `/Datos/FASTOS-DIAG.LOG` en el USB/BMO-FS.
+//! Objetivo final: escribir `/Datos/FASTOS-DIAG.LOG` en el SSD/BMO-FS.
 //!
-//! Por ahora NO toca el disco en el camino crítico. El storage/USB todavía
+//! Por ahora NO toca el disco en el camino crítico. El storage/SSD todavía
 //! puede congelar el kernel si se llama desde boot, IRQ o render. En vez
 //! de eso, formateamos el log en RAM sin allocaciones y exponemos funciones
 //! `copy/ack` para que un futuro worker de storage lo haga flush cuando
@@ -15,7 +15,7 @@
 
 use super::event::{Event, Severity};
 
-/// Ruta objetivo futura para el log persistente en USB.
+/// Ruta objetivo futura para el log persistente en SSD.
 pub const TARGET_PATH: &str = "/Datos/FASTOS-DIAG.LOG";
 
 /// Capacidad del spool circular (bytes).

@@ -1,6 +1,6 @@
 //! `timeback::storage` — Backend de almacenamiento para snapshots.
 //!
-//! v1.8.8: RAM only. En v1.9, USB/FS con append seguro.
+//! v1.8.8: RAM only. En v1.9, SSD/FS con append seguro.
 
 #![allow(dead_code)]
 

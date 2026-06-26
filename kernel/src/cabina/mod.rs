@@ -16,7 +16,7 @@
 //! │   ├── filter     ← filtros simples                   │
 //! │   ├── query      ← DSL de filtros inteligentes       │
 //! │   ├── serial     ← sink COM1                         │
-//! │   ├── persistent ← spool RAM→USB (futuro)            │
+//! │   ├── persistent ← spool RAM→SSD (futuro)            │
 //! │   ├── overlay    ← HUD GOP con tabs                  │
 //! │   ├── paint      ← primitivas FB                     │
 //! │   └── panels/    ← cada tab es un panel              │

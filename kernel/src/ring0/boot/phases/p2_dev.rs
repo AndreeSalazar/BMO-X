@@ -143,7 +143,7 @@ mod tests {
     //! and either returns `None` or a structurally valid `EcamInfo`.
     //!
     //! Tests don't depend on actual hardware, so they run in `cargo test`
-    //! without QEMU or a USB stick.
+    //! without QEMU or a physical SSD.
 
     /// Validate that `validate_checksum` (the low-level helper used by
     /// `parse_mcfg`) returns false on a buffer whose checksum byte is

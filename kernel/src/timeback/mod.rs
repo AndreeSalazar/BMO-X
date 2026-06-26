@@ -32,7 +32,7 @@
 //! ## v1.8.8: estado
 //!
 //! - API completa (stubs).
-//! - Storage en RAM (sin USB/FS todavía).
+//! - Storage en RAM (sin SSD/FS todavía).
 //! - Journal en ring buffer.
 
 #![allow(dead_code)]

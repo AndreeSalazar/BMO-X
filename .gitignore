@@ -8,7 +8,7 @@
 *.EFI
 
 # ── Build output folders ────────────────────────────────────────
-/USB_boot/
+/SSD_boot/
 /target_build/
 /kernel/target_build/
 

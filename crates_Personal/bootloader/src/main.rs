@@ -141,7 +141,7 @@ fn read_file(handle: uefi::Handle, path: &str) -> Option<Vec<u8>> {
 // ── NVRAM ────────────────────────────────────────────────────────────────────
 
 /// FastOS vendor GUID (uuid v5 from "fastos-nvram").
-/// Same GUID is used by the usb-log crate in the kernel.
+/// Same GUID is used by the nvram-log crate in the kernel.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct EfiGuid {
