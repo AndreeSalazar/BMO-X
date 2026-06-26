@@ -1,19 +1,19 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    FastOS Build System v3.0 — Maximum Performance Build Pipeline
+    FastOS Build System v3.1 — Maximum Performance Build Pipeline
 .DESCRIPTION
     Parallel-optimized build pipeline for FastOS:
       1. Parallel builds: bootloader (nightly) + kernel (stable) simultaneously
       2. Smart rebuild: skip if no source files changed
       3. SHA256 verification on flash
-      4. Auto-detect USB, auto-elevate to Admin
+      4. Auto-flash to SSD (S:) or use -Drive
 .PARAMETER Flash
-    Flash to USB after building. Auto-detects drives or use -Drive.
+    Flash to SSD after building. Defaults to S: (FastOS SSD).
 .PARAMETER Drive
-    USB drive letter to flash (e.g. "E").
+    Drive letter to flash (e.g. "S", "E").
 .PARAMETER Verify
-    Verify a previously flashed USB.
+    Verify a previously flashed drive.
 .PARAMETER Clean
     Force clean rebuild.
 .PARAMETER BuildOnly
@@ -22,13 +22,12 @@
     Max cargo parallel jobs (default: all CPU cores).
 .EXAMPLE
     .\build_uefi.ps1                     # Smart build (skip unchanged)
-    .\build_uefi.ps1 -Flash              # Build + flash
+    .\build_uefi.ps1 -Flash              # Build + flash to SSD (S:)
     .\build_uefi.ps1 -Flash -Drive E     # Build + flash to E:
     .\build_uefi.ps1 -Clean              # Clean + rebuild
     .\build_uefi.ps1 -Jobs 4             # Limit to 4 parallel cargo jobs
 .NOTES
-    v3.0: Parallel bootloader+kernel builds, smart rebuild detection,
-          cleaner output, performance-focused.
+    v3.1: SSD-first approach, simplified flash, parallel builds.
 #>
 param(
     [switch]$Flash,
@@ -41,7 +40,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$scriptVersion = "3.0.0"
+$scriptVersion = "3.1.0"
 
 # ── Colors ─────────────────────────────────────────────────────────────
 function Step  { param($m) Write-Host "  >> " -NoNewline -ForegroundColor Cyan;    Write-Host $m }
@@ -58,7 +57,7 @@ function PhaseDone  { param($t, $n) $t.Stop(); Write-Host "  OK $n ($([math]::Ro
 Write-Host ""
 Write-Host "  +============================================+" -ForegroundColor DarkCyan
 Write-Host "  |   FastOS Build System  v$scriptVersion                |" -ForegroundColor Cyan
-Write-Host "  |   Ryzen 5600X · GOP · Parallel Build        |" -ForegroundColor DarkCyan
+Write-Host "  |   Ryzen 5600X · GOP · SSD Boot                   |" -ForegroundColor DarkCyan
 Write-Host "  +============================================+" -ForegroundColor DarkCyan
 Write-Host ""
 
@@ -311,119 +310,61 @@ Write-Host ""
 if ($BuildOnly) { exit 0 }
 
 # ══════════════════════════════════════════════════════════════════════
-# USB FLASH
+# SSD FLASH
 # ══════════════════════════════════════════════════════════════════════
 if ($Flash) {
-    Write-Host "  ── USB Flash ──────────────────────────────────" -ForegroundColor Cyan
+    Write-Host "  ── Flash to SSD ──────────────────────────────" -ForegroundColor Cyan
     Write-Host ""
 
-    # Detect USB drives
-    $usbDrives = @()
+    $targetLetter = $Drive
+    if (-not $targetLetter) {
+        $targetLetter = "S"
+        Warn "No -Drive specified. Defaulting to S: (FastOS SSD)"
+    }
+
+    $targetLetter = $targetLetter.TrimEnd([char]':',[char]'\').ToUpper()
+    $targetRoot = "${targetLetter}:\"
+
+    if (-not (Test-Path $targetRoot)) { Fail "Drive $targetLetter not found" }
+    if (-not $Yes) {
+        $c = Read-Host "  Flash to ${targetLetter}:? (YES)"
+        if ($c -ne "YES") { Write-Host "  Aborted."; exit 0 }
+    }
+
+    $tf = PhaseStart "Flash → $targetLetter`:"
+    $efiDest = Join-Path $targetRoot "EFI\BOOT"
+    New-Item -ItemType Directory -Path $efiDest -Force | Out-Null
+
+    Copy-Item (Join-Path $stage "BOOTX64.EFI") -Destination (Join-Path $efiDest "BOOTX64.EFI") -Force
+    Copy-Item (Join-Path $stage "kernel.elf")   -Destination (Join-Path $efiDest "kernel.elf")   -Force
+    Copy-Item (Join-Path $stage "MANIFEST.TXT") -Destination (Join-Path $efiDest "MANIFEST.TXT") -Force
+
     try {
-        $disks = Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Where-Object {
-            $_.InterfaceType -eq "USB" -or $_.MediaType -eq "External hard disk media"
-        }
-        foreach ($disk in $disks) {
-            $parts = Get-CimInstance Win32_DiskPartition -ErrorAction SilentlyContinue | Where-Object { $_.DiskIndex -eq $disk.Index }
-            foreach ($part in $parts) {
-                $log = Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.DiskIndex -eq $part.Index -and $_.DriveType -eq 2 }
-                if ($log) {
-                    $usbDrives += [PSCustomObject]@{
-                        Letter = $log.DeviceID; Label = $log.VolumeName
-                        SizeGB = [math]::Round($log.Size/1GB,1); FreeGB = [math]::Round($log.FreeSpace/1GB,1)
-                    }
-                }
-            }
-        }
-    } catch { }
+        $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.elf", 'Open', 'Write')
+        $fs.Flush(1)
+        $fs.Close()
+    } catch { Warn "Flush failed: $_" }
+    PhaseDone $tf "Flash"
 
-    if ($usbDrives.Count -eq 0) {
-        $removable = [IO.DriveType]::Removable
-        foreach ($ch in 'D','E','F','G','H','I','J','K','L','M','N','O','P') {
-            $root2 = "${ch}:\"
-            if (Test-Path $root2) {
-                try {
-                    $di = [IO.DriveInfo]::new($root2)
-                    if ($di.DriveType -eq $removable) {
-                        $usbDrives += [PSCustomObject]@{
-                            Letter = "${ch}:"; Label = $di.VolumeLabel
-                            SizeGB = [math]::Round($di.TotalSize/1GB,1); FreeGB = [math]::Round($di.AvailableFreeSpace/1GB,1)
-                        }
-                    }
-                } catch { }
-            }
+    $tv = PhaseStart "Verify"
+    foreach ($f in @(@{Name="BOOTX64.EFI";Hash=$bootHash;Size=$bootSize}, @{Name="kernel.elf";Hash=$kernHash;Size=$kernSize})) {
+        $dp = Join-Path $efiDest $f.Name
+        if (-not (Test-Path $dp)) { Fail "MISSING: $($f.Name)" }
+        $dh = Hash256 $dp
+        $ds = (Get-Item $dp).Length
+        if ($dh -ne $f.Hash) {
+            Fail "HASH MISMATCH: $($f.Name)"
+        } else {
+            Write-Host "    $($f.Name): $ds bytes, SHA256 OK" -ForegroundColor Green
         }
     }
+    PhaseDone $tv "Verify"
 
-    if ($usbDrives.Count -eq 0) {
-        Warn "No USB drives found. Insert USB and re-run with -Flash."
-        Write-Host ""
-    } else {
-        for ($i = 0; $i -lt $usbDrives.Count; $i++) {
-            $d = $usbDrives[$i]
-            Write-Host ("    [{0}] {1} {2} - {3}/{4} GB" -f ($i+1), $d.Letter, $d.Label, $d.FreeGB, $d.SizeGB) -ForegroundColor White
-        }
-        Write-Host ""
-
-        $targetLetter = $Drive
-        if (-not $targetLetter) {
-            $sel = Read-Host "  Select drive (1-$($usbDrives.Count)) or Enter to skip"
-            if ($sel -and $sel -match '^\d+$' -and [int]$sel -ge 1 -and [int]$sel -le $usbDrives.Count) {
-                $targetLetter = $usbDrives[[int]$sel - 1].Letter
-            }
-        }
-
-        if ($targetLetter) {
-            $targetLetter = $targetLetter.TrimEnd([char]':',[char]'\').ToUpper()
-            $targetRoot = "${targetLetter}:\"
-
-            if (-not (Test-Path $targetRoot)) { Fail "Drive $targetLetter not found" }
-
-            $isUSB = $usbDrives | Where-Object { $_.Letter -eq "${targetLetter}:" }
-            if (-not $isUSB -and -not $Yes) {
-                $c = Read-Host "  Drive $targetLetter is not USB. Flash anyway? (YES)"
-                if ($c -ne "YES") { Write-Host "  Aborted."; exit 0 }
-            }
-
-            $tf = PhaseStart "Flash → $targetLetter`:"
-            $efiDest = Join-Path $targetRoot "EFI\BOOT"
-            New-Item -ItemType Directory -Path $efiDest -Force | Out-Null
-
-            Copy-Item (Join-Path $stage "BOOTX64.EFI") -Destination (Join-Path $efiDest "BOOTX64.EFI") -Force
-            Copy-Item (Join-Path $stage "kernel.elf")   -Destination (Join-Path $efiDest "kernel.elf")   -Force
-            Copy-Item (Join-Path $stage "MANIFEST.TXT") -Destination (Join-Path $efiDest "MANIFEST.TXT") -Force
-
-            # Flush to disk
-            try {
-                $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.elf", 'Open', 'Write')
-                $fs.Flush(1)
-                $fs.Close()
-            } catch { Warn "Flush failed: $_" }
-            PhaseDone $tf "Flash"
-
-            # Verify
-            $tv = PhaseStart "Verify"
-            $ok = $true
-            foreach ($f in @(@{Name="BOOTX64.EFI";Hash=$bootHash;Size=$bootSize}, @{Name="kernel.elf";Hash=$kernHash;Size=$kernSize})) {
-                $dp = Join-Path $efiDest $f.Name
-                if (-not (Test-Path $dp)) { Fail "MISSING: $($f.Name)" }
-                $dh = Hash256 $dp
-                $ds = (Get-Item $dp).Length
-                if ($dh -ne $f.Hash) {
-                    Fail "HASH MISMATCH: $($f.Name)"
-                } else {
-                    Write-Host "    $($f.Name): $ds bytes, SHA256 OK" -ForegroundColor Green
-                }
-            }
-            PhaseDone $tv "Verify"
-
-            Write-Host ""
-            Write-Host "  +============================================+" -ForegroundColor Green
-            Write-Host "  |   FLASH OK -- Reboot from USB              |" -ForegroundColor Green
-            Write-Host "  +============================================+" -ForegroundColor Green
-            Write-Host ""
-        }
-    }
+    Write-Host ""
+    Write-Host "  +============================================+" -ForegroundColor Green
+    Write-Host "  |   FLASH OK -- Reboot from SSD              |" -ForegroundColor Green
+    Write-Host "  +============================================+" -ForegroundColor Green
+    Write-Host ""
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -431,24 +372,7 @@ if ($Flash) {
 # ══════════════════════════════════════════════════════════════════════
 if ($Verify -and -not $Flash) {
     $tl = $Drive
-    if (-not $tl) {
-        $usbDrives2 = @()
-        try {
-            $removable2 = [IO.DriveType]::Removable
-            foreach ($ch2 in 'D','E','F','G','H','I','J','K','L','M','N','O','P') {
-                if (Test-Path "${ch2}:\") {
-                    try {
-                        $di2 = [IO.DriveInfo]::new("${ch2}:\")
-                        if ($di2.DriveType -eq $removable2) { $usbDrives2 += "${ch2}:" }
-                    } catch { }
-                }
-            }
-        } catch { }
-        if ($usbDrives2.Count -eq 0) { Fail "No USB drives found" }
-        for ($i2 = 0; $i2 -lt $usbDrives2.Count; $i2++) { Write-Host "    [$($i2+1)] $($usbDrives2[$i2])" }
-        $s2 = Read-Host "  Select drive"
-        $tl = $usbDrives2[[int]$s2 - 1]
-    }
+    if (-not $tl) { $tl = "S" }
     $tl = $tl.TrimEnd([char]':',[char]'\').ToUpper()
     $efiCheck = "${tl}:\EFI\BOOT"
     if (-not (Test-Path $efiCheck)) { Fail "EFI\BOOT not found on ${tl}:" }
@@ -463,7 +387,7 @@ if ($Verify -and -not $Flash) {
             Fail "MISSING: $n"
         }
     }
-    Write-Host "  USB verified OK" -ForegroundColor Green
+    Write-Host "  SSD verified OK" -ForegroundColor Green
     Write-Host ""
 }
 
