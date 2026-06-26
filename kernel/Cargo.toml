@@ -13,7 +13,7 @@ fastos-boot-protocol = { path = "../crates_Personal/boot_protocol" }
 usb-log = { path = "../crates_Personal/usb-log" }
 volatile = "0.4"
 bitflags = "2"
-
+    
 [[bin]]
 name = "fastos-kernel"
 path = "src/ring0/mod.rs"

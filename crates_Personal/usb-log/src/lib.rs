@@ -4,13 +4,14 @@
 //! This crate writes log entries to UEFI NVRAM variables. On next boot, the
 //! bootloader reads them and dumps everything to `\EFI\BOOT\crash.log`.
 //!
-//! ## NVRAM Variables Used
+//! ## Usage
 //!
-//! | Variable | Content |
-//! |---|---|
-//! | `FastOSBootStage` | Current boot phase (e.g. "phase_0_to_4") |
-//! | `FastOSLog` | Last N log entries (ring buffer) |
-//! | `FastOSCrash` | Crash reason if watchdog reset |
+//! ```rust
+//! usb_log::init(system_table);
+//! usb_log::write_boot_stage("phase_0_to_4");
+//! usb_log::log("APIC timer configured");
+//! log::info!("critical event: {}", value); // via LogWriter
+//! ```
 
 #![no_std]
 
@@ -88,12 +89,14 @@ fn str_to_ucs2(name: &str) -> [u16; 64] {
     ucs2
 }
 
+/// NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS
+const NVRAM_ATTRS: u32 = 0x01 | 0x02 | 0x04;
+
 fn nvram_set(name: &str, data: &[u8]) -> bool {
     let Some(set_var) = set_variable_ptr() else { return false; };
     let ucs2_name = str_to_ucs2(name);
-    const ATTRS: u32 = 0x01 | 0x02;
     let status = unsafe {
-        set_var(ucs2_name.as_ptr(), &GLOBAL_VAR_GUID, ATTRS, data.len(), data.as_ptr())
+        set_var(ucs2_name.as_ptr(), &GLOBAL_VAR_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
     };
     status == 0
 }
@@ -136,8 +139,7 @@ pub fn write_boot_stage(stage: &str) {
 /// Read the last boot stage from NVRAM.
 pub fn read_boot_stage() -> Option<alloc::string::String> {
     let buf = nvram_get("FastOSBootStage")?;
-    let mut len = 0;
-    while len < 256 && buf[len] != 0 { len += 1; }
+    let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
     if len == 0 { return None; }
     Some(alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned())
 }
@@ -150,8 +152,7 @@ pub fn write_crash(reason: &str) {
 /// Read the crash reason from NVRAM (if any).
 pub fn read_crash() -> Option<alloc::string::String> {
     let buf = nvram_get("FastOSCrash")?;
-    let mut len = 0;
-    while len < 256 && buf[len] != 0 { len += 1; }
+    let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
     if len == 0 { return None; }
     Some(alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned())
 }
@@ -163,30 +164,29 @@ pub fn clear_crash() {
 
 // ── Log ring buffer in NVRAM ─────────────────────────────────────────────────
 
-/// Max log entries stored in NVRAM (256 bytes per variable, 8 variables max).
+/// Max log entries stored in NVRAM (256 bytes per variable, 8 variables).
 const MAX_LOG_VARS: usize = 8;
-const LOG_VAR_PREFIX: &[u8] = b"FastOSLog";
+const LOG_VAR_PREFIX: &str = "FastOSLog";
 
 static mut LOG_INDEX: usize = 0;
 
-/// Append a log entry to NVRAM ring buffer.
-pub fn log(msg: &str) {
-    // Build entry: "[stage] msg\n"
-    let stage = unsafe { LOG_INDEX };
-    unsafe { LOG_INDEX += 1; }
+/// Append a log entry to NVRAM ring buffer. Returns true on success.
+pub fn log(msg: &str) -> bool {
+    let idx = unsafe {
+        let i = LOG_INDEX;
+        LOG_INDEX = LOG_INDEX.wrapping_add(1);
+        i
+    };
 
     let mut entry = [0u8; 256];
     let mut pos = 0;
 
-    // Stage number prefix
-    let stage_str = stage_to_str(stage);
-    for &b in stage_str.as_bytes() {
-        if pos >= 254 { break; }
-        entry[pos] = b;
-        pos += 1;
-    }
-    entry[pos] = b' ';
-    pos += 1;
+    // Prefix: [N]
+    entry[pos] = b'['; pos += 1;
+    let n = idx % MAX_LOG_VARS;
+    entry[pos] = b'0' + n as u8; pos += 1;
+    entry[pos] = b']'; pos += 1;
+    entry[pos] = b' '; pos += 1;
 
     // Message
     for &b in msg.as_bytes() {
@@ -197,30 +197,30 @@ pub fn log(msg: &str) {
     entry[pos] = b'\n';
     pos += 1;
 
-    // Write to NVRAM variable: FastOSLog0, FastOSLog1, ...
-    let var_idx = stage % MAX_LOG_VARS;
+    // Variable name: FastOSLog0..FastOSLog7
     let mut var_name = [0u8; 16];
-    let prefix_len = LOG_VAR_PREFIX.len();
-    var_name[..prefix_len].copy_from_slice(LOG_VAR_PREFIX);
-    var_name[prefix_len] = b'0' + var_idx as u8;
-    let name = core::str::from_utf8(&var_name[..prefix_len + 1]).unwrap_or("FastOSLog0");
+    let prefix_bytes = LOG_VAR_PREFIX.as_bytes();
+    var_name[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
+    var_name[prefix_bytes.len()] = b'0' + n as u8;
+    let name = core::str::from_utf8(&var_name[..prefix_bytes.len() + 1])
+        .unwrap_or("FastOSLog0");
 
-    nvram_set(name, &entry[..pos]);
+    nvram_set(name, &entry[..pos])
 }
 
 /// Read all log entries from NVRAM.
 pub fn read_log() -> alloc::vec::Vec<alloc::string::String> {
     let mut entries = alloc::vec::Vec::new();
+    let prefix_bytes = LOG_VAR_PREFIX.as_bytes();
     for i in 0..MAX_LOG_VARS {
         let mut var_name = [0u8; 16];
-        let prefix_len = LOG_VAR_PREFIX.len();
-        var_name[..prefix_len].copy_from_slice(LOG_VAR_PREFIX);
-        var_name[prefix_len] = b'0' + i as u8;
-        let name = core::str::from_utf8(&var_name[..prefix_len + 1]).unwrap_or("FastOSLog0");
+        var_name[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
+        var_name[prefix_bytes.len()] = b'0' + i as u8;
+        let name = core::str::from_utf8(&var_name[..prefix_bytes.len() + 1])
+            .unwrap_or("FastOSLog0");
 
         if let Some(buf) = nvram_get(name) {
-            let mut len = 0;
-            while len < 256 && buf[len] != 0 { len += 1; }
+            let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
             if len > 0 {
                 let s = alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned();
                 if !s.is_empty() {
@@ -234,27 +234,14 @@ pub fn read_log() -> alloc::vec::Vec<alloc::string::String> {
 
 /// Clear all log entries.
 pub fn clear_log() {
+    let prefix_bytes = LOG_VAR_PREFIX.as_bytes();
     for i in 0..MAX_LOG_VARS {
         let mut var_name = [0u8; 16];
-        let prefix_len = LOG_VAR_PREFIX.len();
-        var_name[..prefix_len].copy_from_slice(LOG_VAR_PREFIX);
-        var_name[prefix_len] = b'0' + i as u8;
-        let name = core::str::from_utf8(&var_name[..prefix_len + 1]).unwrap_or("FastOSLog0");
+        var_name[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
+        var_name[prefix_bytes.len()] = b'0' + i as u8;
+        let name = core::str::from_utf8(&var_name[..prefix_bytes.len() + 1])
+            .unwrap_or("FastOSLog0");
         nvram_set(name, b"");
-    }
-}
-
-fn stage_to_str(stage: usize) -> &'static str {
-    match stage % MAX_LOG_VARS {
-        0 => "[0]",
-        1 => "[1]",
-        2 => "[2]",
-        3 => "[3]",
-        4 => "[4]",
-        5 => "[5]",
-        6 => "[6]",
-        7 => "[7]",
-        _ => "[?]",
     }
 }
 
@@ -274,4 +261,12 @@ impl fmt::Write for LogWriter {
 pub fn log_fmt(args: fmt::Arguments) {
     use fmt::Write;
     let _ = LogWriter.write_fmt(args);
+}
+
+/// Log a formatted message (macro for ergonomic use).
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => {
+        $crate::log_fmt(format_args!($($arg)*))
+    };
 }
