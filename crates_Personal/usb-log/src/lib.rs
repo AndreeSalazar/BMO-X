@@ -22,7 +22,7 @@ use core::fmt;
 /// UEFI System Table physical address.
 static mut SYSTEM_TABLE: u64 = 0;
 
-/// GUID: UEFI Global Variable.
+/// GUID: FastOS vendor NVRAM (uuid v5 from "fastos-nvram").
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct EfiGuid {
@@ -32,11 +32,11 @@ struct EfiGuid {
     data4: [u8; 8],
 }
 
-static GLOBAL_VAR_GUID: EfiGuid = EfiGuid {
-    data1: 0x8BE4_DF61,
-    data2: 0x93CA,
-    data3: 0x11D2,
-    data4: [0xAA, 0x0D, 0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C],
+static FASTOS_NVRAM_GUID: EfiGuid = EfiGuid {
+    data1: 0xc22a_0b40,
+    data2: 0x52b8,
+    data3: 0x5f95,
+    data4: [0xa6, 0x81, 0x4b, 0x5c, 0x42, 0xeb, 0x02, 0x9a],
 };
 
 type SetVariableFn = unsafe extern "efiapi" fn(
@@ -96,7 +96,7 @@ fn nvram_set(name: &str, data: &[u8]) -> bool {
     let Some(set_var) = set_variable_ptr() else { return false; };
     let ucs2_name = str_to_ucs2(name);
     let status = unsafe {
-        set_var(ucs2_name.as_ptr(), &GLOBAL_VAR_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
+        set_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
     };
     status == 0
 }
@@ -108,7 +108,7 @@ fn nvram_get(name: &str) -> Option<[u8; 256]> {
     let mut data_size: usize = 256;
     let mut buf = [0u8; 256];
     let status = unsafe {
-        get_var(ucs2_name.as_ptr(), &GLOBAL_VAR_GUID, &mut attrs, &mut data_size, buf.as_mut_ptr())
+        get_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, &mut attrs, &mut data_size, buf.as_mut_ptr())
     };
     if status != 0 { return None; }
     Some(buf)
