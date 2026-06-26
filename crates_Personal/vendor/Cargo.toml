@@ -1,14 +1,12 @@
 [package]
 name = "vendor"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "FastOS Hardware Abstraction Layer — PCI, AHCI, Storage, Filesystem"
 authors = ["FastOS"]
 
 [dependencies]
+simple-ahci = { version = "=0.1.1-preview.1", default-features = false }
 bitfield-struct = "0.11"
 volatile = "0.6"
 log = "0.4"
-
-[features]
-default = []

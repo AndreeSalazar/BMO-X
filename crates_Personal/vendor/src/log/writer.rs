@@ -2,19 +2,13 @@ use core::fmt;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use crate::storage::BlockDevice;
-use crate::fs::{ExFatFs, FsError};
 
 /// SSD Logger — writes kernel logs to a file on the SSD.
 ///
-/// Usage:
-///   let mut logger = SsdLogger::new(disk, partition_start)?;
-///   logger.log("[Phase 0] GDT OK\n")?;
-///   logger.flush()?;
+/// Uses exfat-slim for filesystem operations and block-device-driver for I/O.
 pub struct SsdLogger {
     buffer: String,
     path: String,
-    flushed: bool,
 }
 
 impl SsdLogger {
@@ -24,32 +18,12 @@ impl SsdLogger {
         Self {
             buffer: String::with_capacity(4096),
             path: String::from(path),
-            flushed: false,
         }
     }
 
     /// Append a message to the log buffer.
     pub fn log(&mut self, msg: &str) {
         self.buffer.push_str(msg);
-    }
-
-    /// Flush the buffer to the SSD.
-    /// This creates/appends to the file on the exFAT partition.
-    pub fn flush_to_device<D: BlockDevice>(
-        &mut self,
-        device: D,
-        partition_start: u64,
-    ) -> Result<(), FsError> {
-        if self.buffer.is_empty() {
-            return Ok(());
-        }
-
-        let mut fs = ExFatFs::open(device, partition_start)?;
-        fs.append_file(&self.path, self.buffer.as_bytes())?;
-
-        self.buffer.clear();
-        self.flushed = true;
-        Ok(())
     }
 
     /// Get the current buffer contents.
