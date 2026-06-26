@@ -1,0 +1,14 @@
+[package]
+name = "vendor"
+version = "0.1.0"
+edition = "2021"
+description = "FastOS Hardware Abstraction Layer — PCI, AHCI, Storage, Filesystem"
+authors = ["FastOS"]
+
+[dependencies]
+bitfield-struct = "0.11"
+volatile = "0.6"
+log = "0.4"
+
+[features]
+default = []
