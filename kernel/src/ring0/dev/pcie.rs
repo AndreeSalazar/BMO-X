@@ -72,7 +72,7 @@ pub fn init_ecam(base: u64, end_bus: u8) {
     // already populated as a 1 GiB huge page. We catch the Err path and
     // fall back to IO ports.
     let result = unsafe {
-        crate::mem::virt::map_kernel_mmio_huge(base, base, round_up_2mb as usize)
+        crate::mm::virt::map_kernel_mmio_huge(base, base, round_up_2mb as usize)
     };
     crate::dev::console::serial_write("[pci D6] map_kernel_mmio_huge returned\n");
     match result {

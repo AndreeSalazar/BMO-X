@@ -181,7 +181,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
 pub unsafe fn alloc_page_table() -> Option<u64> {
     // v1.6.5: Diagnose heap allocation path. Print raw + aligned addresses
     // so we can see if the heap is returning something sane.
-    let raw = crate::mem::heap::heap_alloc(8192, 8);
+    let raw = crate::mm::heap::heap_alloc(8192, 8);
     crate::dev::console::serial_write("[alloc_pt] raw=");
     crate::dev::console::serial_write("0x");
     print_alloc_hex(raw as u64);
@@ -439,7 +439,7 @@ pub unsafe fn free_user_page_tables(pml4_phys: u64) {
 
                 // 2 MiB huge page
                 if (pde.0 & flags::HUGE_PAGE) != 0 {
-                    crate::mem::phys::free_pages(pde.phys_addr(), 512);
+                    crate::mm::phys::free_pages(pde.phys_addr(), 512);
                     pde.0 = 0;
                     continue;
                 }
@@ -448,17 +448,17 @@ pub unsafe fn free_user_page_tables(pml4_phys: u64) {
                 for pt_i in 0..512 {
                     let pte = &mut (*pt).entries[pt_i];
                     if pte.is_present() {
-                        crate::mem::phys::free_pages(pte.phys_addr(), 1);
+                        crate::mm::phys::free_pages(pte.phys_addr(), 1);
                         pte.0 = 0;
                     }
                 }
-                crate::mem::phys::free_pages(pde.phys_addr(), 1);
+                crate::mm::phys::free_pages(pde.phys_addr(), 1);
                 pde.0 = 0;
             }
-            crate::mem::phys::free_pages(pdpte.phys_addr(), 1);
+            crate::mm::phys::free_pages(pdpte.phys_addr(), 1);
             pdpte.0 = 0;
         }
-        crate::mem::phys::free_pages(pml4e.phys_addr(), 1);
+        crate::mm::phys::free_pages(pml4e.phys_addr(), 1);
         pml4e.0 = 0;
     }
 }
@@ -668,7 +668,7 @@ pub unsafe fn resolve_demand_page(
     }
 
     // Allocate a physical page
-    let phys = crate::mem::phys::alloc_pages_contiguous(1)
+    let phys = crate::mm::phys::alloc_pages_contiguous(1)
         .ok_or("OOM resolving demand page")?;
 
     // Zero the page
@@ -725,7 +725,7 @@ pub unsafe fn resolve_cow_page(
     let old_phys = pte.phys_addr();
 
     // Allocate a fresh page
-    let new_phys = crate::mem::phys::alloc_pages_contiguous(1)
+    let new_phys = crate::mm::phys::alloc_pages_contiguous(1)
         .ok_or("OOM resolving CoW page")?;
 
     // Copy old content to new page

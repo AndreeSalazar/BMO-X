@@ -1122,7 +1122,7 @@ fn sys_debug_panic(msg_ptr: u64, len: u64) -> u64 {
 /// memoria de usuario por proceso.
 fn sys_mem_alloc(size: u64) -> u64 {
     if size == 0 || size > 16 * 1024 * 1024 { return err::INVALID; }
-    let p = unsafe { crate::mem::heap::heap_alloc(size as usize, 8) };
+    let p = unsafe { crate::mm::heap::heap_alloc(size as usize, 8) };
     if p.is_null() { err::NO_MEMORY } else { p as u64 }
 }
 
@@ -1130,7 +1130,7 @@ fn sys_mem_alloc(size: u64) -> u64 {
 fn sys_mem_free(ptr: u64, size: u64) -> u64 {
     if ptr < 0x1000 { return err::INVALID; }
     if size == 0 { return err::INVALID; }
-    unsafe { crate::mem::heap::heap_free(ptr as *mut u8, size as usize, 8); }
+    unsafe { crate::mm::heap::heap_free(ptr as *mut u8, size as usize, 8); }
     err::OK
 }
 

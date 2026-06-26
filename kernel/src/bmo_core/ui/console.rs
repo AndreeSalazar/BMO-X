@@ -55,7 +55,7 @@ impl Console {
         let shadow_size = fb_pitch.saturating_mul(fb_height);
         let shadow_pages = (shadow_size + 0xFFF) / 0x1000;
         let shadow_addr =
-            unsafe { crate::mem::phys::alloc_pages_contiguous(shadow_pages).unwrap_or(0) }
+            unsafe { crate::mm::phys::alloc_pages_contiguous(shadow_pages).unwrap_or(0) }
                 as usize;
         // Zero the shadow buffer to prevent garbage pixels
         if shadow_addr != 0 {
@@ -74,7 +74,7 @@ impl Console {
             .saturating_mul(history_rows);
         let history_pages = (history_size + 0xFFF) / 0x1000;
         let history_addr =
-            unsafe { crate::mem::phys::alloc_pages_contiguous(history_pages).unwrap_or(0) }
+            unsafe { crate::mm::phys::alloc_pages_contiguous(history_pages).unwrap_or(0) }
                 as usize;
         // Zero the history buffer
         if history_addr != 0 {

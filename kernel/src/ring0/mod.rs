@@ -11,7 +11,7 @@
 //!   1. init_fastos_cpu: CPUID, MTRR/PAT, TSC, erratas
 //!   2. init_msrs:       EFER, STAR, LSTAR, FMASK, PAT, TSC_AUX
 //!   3. init_acpi:       ACPI tables
-//!   4. Phase 1 (mem):   frame allocator + heap
+//!   4. Phase 1 (mm):    frame allocator + slab
 //!   5. Phase 2 (dev):   ACPI/PCI discovery
 //!   6. Phase 3 (display): GOP framebuffer (con MTRR/PAT correctos)
 //!   7. Phase 4 (sched): scheduler + APIC timer + interrupts
@@ -26,7 +26,7 @@ extern crate alloc;
 
 // ── Hardware APIs (5 capas principales) ──────────────────────────────
 pub mod arch;
-pub mod mem;
+pub mod mm;
 pub mod dev;
 pub mod proc;
 pub mod cpu;

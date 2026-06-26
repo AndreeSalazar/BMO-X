@@ -31,7 +31,7 @@ pub fn equal(a: *const u8, b: *const u8, len: usize) -> bool {
 }
 
 /// Bytes usados del heap.
-pub fn heap_used() -> usize { crate::mem::heap::heap_used() }
+pub fn heap_used() -> usize { crate::mm::heap::heap_used() }
 
 /// Tamaño total del heap.
-pub fn heap_total() -> usize { crate::mem::heap::heap_total() }
+pub fn heap_total() -> usize { crate::mm::heap::heap_total() }

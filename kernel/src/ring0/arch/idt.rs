@@ -686,7 +686,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
                 if let Some(proc) = crate::proc::process::get_process(thr.pid) {
                     if proc.page_table_root != 0 && proc.addr_space.vma_count > 0 {
                     let resolved = unsafe {
-                        crate::mem::virt::handle_page_fault(
+                        crate::mm::virt::handle_page_fault(
                             cr2,
                             error,
                             proc.page_table_root,
@@ -775,7 +775,7 @@ extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> boo
 
     // Try to resolve
     unsafe {
-        crate::mem::virt::handle_page_fault(cr2, error, pml4_phys, vmas)
+        crate::mm::virt::handle_page_fault(cr2, error, pml4_phys, vmas)
     }
 }
 

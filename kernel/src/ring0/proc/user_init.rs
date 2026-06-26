@@ -15,7 +15,7 @@ use super::process;
 use super::task;
 use super::Priority;
 use crate::bmo_core::fs::Capabilities;
-use crate::mem::virt;
+use crate::mm::virt;
 
 /// Size of user stack (64 KB).
 const USER_STACK_SIZE: usize = 65536;
@@ -100,17 +100,17 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
     proc.page_table_root = user_cr3;
     crate::cabina::info_u64("ring3", "user CR3", user_cr3);
 
-    let code_pages = (code.len() + crate::mem::phys::page_size() - 1) / crate::mem::phys::page_size();
-    let stack_pages = USER_STACK_SIZE / crate::mem::phys::page_size();
+    let code_pages = (code.len() + crate::mm::phys::page_size() - 1) / crate::mm::phys::page_size();
+    let stack_pages = USER_STACK_SIZE / crate::mm::phys::page_size();
     crate::cabina::info_u64("ring3", "code pages", code_pages as u64);
     crate::cabina::info_u64("ring3", "stack pages", stack_pages as u64);
 
     // Allocate physical pages for code and stack
     crate::cabina::info("ring3", "allocating physical pages for code");
-    let code_phys = unsafe { crate::mem::phys::alloc_pages_contiguous(code_pages.max(1))? };
+    let code_phys = unsafe { crate::mm::phys::alloc_pages_contiguous(code_pages.max(1))? };
     crate::cabina::info_u64("ring3", "code phys addr", code_phys);
     crate::cabina::info("ring3", "allocating physical pages for stack");
-    let stack_phys = unsafe { crate::mem::phys::alloc_pages_contiguous(stack_pages)? };
+    let stack_phys = unsafe { crate::mm::phys::alloc_pages_contiguous(stack_pages)? };
     crate::cabina::info_u64("ring3", "stack phys addr", stack_phys);
 
     // Map into user virtual address space
@@ -133,11 +133,11 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
     unsafe {
         let dst = code_phys as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
-        if code_pages * crate::mem::phys::page_size() > code.len() {
+        if code_pages * crate::mm::phys::page_size() > code.len() {
             core::ptr::write_bytes(
                 dst.add(code.len()),
                 0x90, // NOP padding
-                code_pages * crate::mem::phys::page_size() - code.len(),
+                code_pages * crate::mm::phys::page_size() - code.len(),
             );
         }
         // Zero stack
@@ -148,7 +148,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
     // After copy, code pages are mapped RW+USER for simplicity.
     proc.entry_point = USER_CODE_VBASE;
     proc.user_code_base = code_phys;
-    proc.user_code_size = code_pages * crate::mem::phys::page_size();
+    proc.user_code_size = code_pages * crate::mm::phys::page_size();
     proc.user_stack_base = stack_phys;
     proc.user_stack_size = USER_STACK_SIZE;
 

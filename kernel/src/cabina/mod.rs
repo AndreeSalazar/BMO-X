@@ -296,9 +296,9 @@ pub fn paint_overlay() {
 /// Refresca la telemetría. Llamado desde el timer tick de Ring 0.
 pub fn tick_refresh() {
     telemetry::memory::set_free_pages(
-        unsafe { crate::mem::phys::free_count() } as u64
+        unsafe { crate::mm::phys::free_count() } as u64
     );
-    telemetry::memory::add_heap_used(crate::mem::heap::heap_used() as u64);
+    telemetry::memory::add_heap_used(crate::mm::heap::heap_used() as u64);
 }
 
 /// Dump CR3 a serial (Ring 3 transition tracing).

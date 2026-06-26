@@ -32,7 +32,7 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
 
     // 1. Initialize the physical frame allocator from UEFI memory map.
     unsafe {
-        crate::mem::phys::init(
+        crate::mm::phys::init(
             &bi.memory_map,
             bi.memory_map_count as usize,
             bi.reserved_addr,
@@ -41,32 +41,32 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
             bi.kernel_size,
         );
     }
-    let free_pages = unsafe { crate::mem::phys::free_count() } as u64;
+    let free_pages = unsafe { crate::mm::phys::free_count() } as u64;
     let free_mb = (free_pages * 4096) / (1024 * 1024);
     log::info_u64("phase1", "Free pages", free_pages);
     log::info_u64("phase1", "Free memory (MB)", free_mb);
 
     // 2. Initialize the kernel heap.
     // v1.8.9: 1 MB estático. v1.9 lo cambiará a heap dinámico.
-    crate::mem::heap::init_heap();
+    crate::mm::heap::init_heap();
     log::info("phase1", "Kernel heap initialized (1 MB free-list)");
 
     // v1.8.9: smoke test. Si `find_free(64)` retorna null, el heap
     // está roto (sentinel incorrecto, offset inválido, etc.). Mejor
     // panic ruidoso aquí que cuelgue silencioso en fase 2/3.
     unsafe {
-        let probe = crate::mem::heap::heap_alloc(64, 8);
+        let probe = crate::mm::heap::heap_alloc(64, 8);
         if probe.is_null() {
             log::fault("phase1", "heap_alloc(64, 8) returned NULL — heap broken");
             // No return: continue so phase 2/3 surface a real panic.
         } else {
             log::info("phase1", "heap smoke test OK (alloc 64 bytes succeeded)");
-            crate::mem::heap::heap_free(probe, 64, 8);
+            crate::mm::heap::heap_free(probe, 64, 8);
         }
     }
 
-    let heap_total = crate::mem::heap::heap_total() as u64;
-    let heap_used = crate::mem::heap::heap_used() as u64;
+    let heap_total = crate::mm::heap::heap_total() as u64;
+    let heap_used = crate::mm::heap::heap_used() as u64;
     log::info_u64("phase1", "Heap total (bytes)", heap_total);
     log::info_u64("phase1", "Heap used (bytes)", heap_used);
 
@@ -76,7 +76,7 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> (MemState, PhaseOutput) {
     // Por tanto seguimos con la PML4 de UEFI. Esto es correcto y
     // esperado — NO es un bug.
     log::info("phase1", "PML4: keeping UEFI identity map (new PML4 deferred to v1.9)");
-    if unsafe { crate::mem::virt::create_kernel_page_table() }.is_none() {
+    if unsafe { crate::mm::virt::create_kernel_page_table() }.is_none() {
         log::info("phase1", "PML4 stub confirmed: using UEFI PML4 (safe for ECAM via mmio_huge)");
     }
 

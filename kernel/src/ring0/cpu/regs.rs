@@ -7,11 +7,11 @@
 //! checks (OSXSAVE must be set before xsetbv; XCR0 value must be valid).
 //!
 //! v1.8.7: `read_cr3` y `write_cr3` quedaron duplicadas con
-//! `mem::virt::read_cr3` / `mem::virt::write_cr3`. Las versiones de
-//! `mem::virt` son las canónicas (las usa `proc::mod::schedule`).
+//! `mm::vmm::read_cr3` / `mm::vmm::write_cr3`. Las versiones de
+//! `mm::vmm` son las canónicas (las usa `proc::mod::schedule`).
 //! Aquí solo se mantienen los read de CR0/CR2/CR4/CR8 que necesita
 //! `init` y `init_xcr0`. Si en el futuro algún consumidor externo
-//! pide `regs::read_cr3`, re-exponerla con `pub use mem::virt::read_cr3`.
+//! pide `regs::read_cr3`, re-exponerla con `pub use mm::vmm::read_cr3`.
 
 use super::features::CpuFeatures;
 use core::arch::asm;

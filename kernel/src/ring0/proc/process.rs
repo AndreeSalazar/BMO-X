@@ -47,7 +47,7 @@ pub struct Process {
     /// User stack size in bytes.
     pub user_stack_size: usize,
     /// Virtual memory areas for demand paging / CoW.
-    pub addr_space: crate::mem::virt::AddressSpace,
+    pub addr_space: crate::mm::virt::AddressSpace,
 }
 
 impl Process {
@@ -65,7 +65,7 @@ impl Process {
             user_code_size: 0,
             user_stack_base: 0,
             user_stack_size: 0,
-            addr_space: crate::mem::virt::AddressSpace::empty(),
+            addr_space: crate::mm::virt::AddressSpace::empty(),
         }
     }
 
@@ -129,26 +129,26 @@ pub fn free_process(proc: &mut Process) {
 
     // Free user code pages
     if proc.user_code_size > 0 {
-        let code_pages = (proc.user_code_size + crate::mem::phys::page_size() - 1) / crate::mem::phys::page_size();
+        let code_pages = (proc.user_code_size + crate::mm::phys::page_size() - 1) / crate::mm::phys::page_size();
         unsafe {
-            crate::mem::phys::free_pages(proc.user_code_base, code_pages);
+            crate::mm::phys::free_pages(proc.user_code_base, code_pages);
         }
     }
 
     // Free user stack pages
     if proc.user_stack_size > 0 {
-        let stack_pages = (proc.user_stack_size + crate::mem::phys::page_size() - 1) / crate::mem::phys::page_size();
+        let stack_pages = (proc.user_stack_size + crate::mm::phys::page_size() - 1) / crate::mm::phys::page_size();
         unsafe {
-            crate::mem::phys::free_pages(proc.user_stack_base, stack_pages);
+            crate::mm::phys::free_pages(proc.user_stack_base, stack_pages);
         }
     }
 
     // Free user page tables (PDPTs, PDs, PTs)
     if proc.page_table_root != 0 {
         unsafe {
-            crate::mem::virt::free_user_page_tables(proc.page_table_root);
+            crate::mm::virt::free_user_page_tables(proc.page_table_root);
             // Free the PML4 itself
-            crate::mem::phys::free_pages(proc.page_table_root, 1);
+            crate::mm::phys::free_pages(proc.page_table_root, 1);
         }
         proc.page_table_root = 0;
     }
@@ -193,9 +193,9 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
             proc.state = ProcessState::Zombie;
 
             // Switch back to kernel page table before freeing user pages
-            let kernel_cr3 = crate::mem::virt::read_cr3();
+            let kernel_cr3 = crate::mm::virt::read_cr3();
             if proc.page_table_root != 0 && proc.page_table_root != kernel_cr3 {
-                unsafe { crate::mem::virt::write_cr3(kernel_cr3); }
+                unsafe { crate::mm::virt::write_cr3(kernel_cr3); }
             }
 
             // Free process resources (NOT kernel stack)
