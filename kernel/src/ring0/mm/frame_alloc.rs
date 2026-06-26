@@ -2,10 +2,16 @@
 //!
 //! Auto-detects RAM size from UEFI memory map.
 //! Tracks 4 KiB physical frames from 16 MB up to detected limit.
-//! Supports up to 1 TB of RAM (32 MB bitmap in .bss).
 //!
-//! With high-mem mapping, ALL physical pages are accessible via
-//! `phys_to_virt(phys)`, so there is no identity-mapping limit.
+//! The bitmap is dynamically sized based on detected RAM:
+//!   - 16 GB  → 512 KB bitmap
+//!   - 64 GB  → 2 MB bitmap
+//!   - 256 GB → 8 MB bitmap
+//!   - 1 TB   → 32 MB bitmap
+//!   - 4 TB   → 128 MB bitmap
+//!
+//! No static waste — bitmap only uses what's needed.
+//! Scales to any RAM size the UEFI firmware reports.
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use fastos_boot_protocol::{MemoryEntry, MemoryType};
@@ -14,17 +20,18 @@ const PAGE_SIZE: u64 = super::PAGE_SIZE;
 const BASE: u64 = 0x0100_0000;
 
 /// Maximum address we can track. Set dynamically at init from memory map.
-/// Now tracks ALL detected RAM (no 4 GB cap).
 static mut MAX_ADDR: u64 = 0;
 
 /// Maximum pages based on MAX_ADDR. Set dynamically at init.
 static mut MAX_PAGES: usize = 0;
 
-/// Bitmap supports up to 1 TB (32 MB). Lives in .bss (zero-init).
-/// 1 TB = 1099511627776 bytes / 4096 = 268435456 pages / 8 = 33554432 bytes.
-const BITMAP_CAPACITY: usize = (1024 * 1024 * 1024 * 1024 / 4096) / 8;
+/// Pointer to the dynamically-sized bitmap.
+/// Allocated from the frame allocator after detecting RAM size.
+static mut BITMAP: *mut u8 = core::ptr::null_mut();
 
-static mut BITMAP: [u8; BITMAP_CAPACITY] = [0; BITMAP_CAPACITY];
+/// Number of bytes allocated for the bitmap.
+static mut BITMAP_BYTES: usize = 0;
+
 static mut INITIALIZED: bool = false;
 static FREE_PAGES: AtomicUsize = AtomicUsize::new(0);
 static mut NEXT_FREE_HINT: usize = 0;
@@ -45,17 +52,17 @@ fn index_to_addr(idx: usize) -> u64 {
 
 #[inline]
 unsafe fn is_used(idx: usize) -> bool {
-    (BITMAP[idx / 8] & (1 << (idx % 8))) != 0
+    (*BITMAP.add(idx / 8) & (1 << (idx % 8))) != 0
 }
 
 #[inline]
 unsafe fn mark_used(idx: usize) {
-    BITMAP[idx / 8] |= 1 << (idx % 8);
+    *BITMAP.add(idx / 8) |= 1 << (idx % 8);
 }
 
 #[inline]
 unsafe fn mark_free(idx: usize) {
-    BITMAP[idx / 8] &= !(1 << (idx % 8));
+    *BITMAP.add(idx / 8) &= !(1 << (idx % 8));
 }
 
 #[inline]
@@ -101,9 +108,13 @@ pub unsafe fn init(
     TOTAL_RAM = ram.total_usable;
 
     // Track ALL detected RAM — no identity-mapping limit.
-    // With high-mem mapping, all pages are accessible via phys_to_virt().
     MAX_ADDR = ram.max_usable;
     MAX_PAGES = ((MAX_ADDR - BASE) / PAGE_SIZE) as usize;
+
+    // Dynamically size the bitmap based on detected RAM.
+    // This wastes nothing: 16 GB → 512 KB, 1 TB → 32 MB, 4 TB → 128 MB.
+    let bitmap_bytes = (MAX_PAGES + 7) / 8;
+    let bitmap_pages = (bitmap_bytes + PAGE_SIZE as usize - 1) / PAGE_SIZE as usize;
 
     let usable_mb = ram.total_usable / (1024 * 1024);
     let tracked_mb = (MAX_ADDR - BASE) / (1024 * 1024);
@@ -114,11 +125,46 @@ pub unsafe fn init(
     crate::dev::console::serial_write_u64(tracked_mb, 10);
     crate::dev::console::serial_write(" MB (");
     crate::dev::console::serial_write_u64(MAX_PAGES as u64, 10);
+    crate::dev::console::serial_write(" pages, bitmap=");
+    crate::dev::console::serial_write_u64(bitmap_bytes as u64 / 1024, 10);
+    crate::dev::console::serial_write(" KB)\n");
+
+    // Bootstrap: find a free region in the UEFI map for the bitmap.
+    // We scan the map to find a contiguous region of free pages large
+    // enough to hold the bitmap. This happens BEFORE the bitmap exists.
+    let mut bitmap_phys: u64 = 0;
+    for entry in entries {
+        if entry.mem_type != MemoryType::Usable { continue; }
+        let region_start = entry.base.max(BASE);
+        let region_end = entry.base + entry.size;
+        let region_pages = ((region_end - region_start) / PAGE_SIZE) as usize;
+        if region_pages >= bitmap_pages {
+            // Found a region. Use the first `bitmap_pages` pages for the bitmap.
+            bitmap_phys = ((region_start + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+            break;
+        }
+    }
+
+    if bitmap_phys == 0 {
+        crate::dev::console::serial_write("[frame_alloc] FATAL: cannot allocate bitmap (");
+        crate::dev::console::serial_write_u64(bitmap_pages as u64, 10);
+        crate::dev::console::serial_write(" pages needed)\n");
+        return;
+    }
+
+    // The bitmap is identity-mapped at low addresses (< 4 GB) because
+    // we search the UEFI map which is always in low memory.
+    BITMAP = bitmap_phys as *mut u8;
+    BITMAP_BYTES = bitmap_bytes;
+
+    crate::dev::console::serial_write("[frame_alloc] bitmap at phys=0x");
+    crate::boot::serial::hex(bitmap_phys);
+    crate::dev::console::serial_write(" (");
+    crate::dev::console::serial_write_u64(bitmap_pages as u64, 10);
     crate::dev::console::serial_write(" pages)\n");
 
-    // Fill bitmap: all pages marked used (pessimistic)
-    let bitmap_bytes = (MAX_PAGES + 7) / 8;
-    core::ptr::write_bytes(core::ptr::addr_of_mut!(BITMAP) as *mut u8, 0xFF, bitmap_bytes);
+    // Initialize bitmap: mark all pages as used (pessimistic)
+    core::ptr::write_bytes(BITMAP, 0xFF, bitmap_bytes);
 
     // Free usable pages from memory map
     for entry in entries {
@@ -141,6 +187,11 @@ pub unsafe fn init(
                 continue;
             }
             if reserved_size > 0 && ranges_overlap(addr, addr + PAGE_SIZE, reserved_addr, reserved_addr + reserved_size) {
+                addr += PAGE_SIZE;
+                continue;
+            }
+            // Don't mark the bitmap's own pages as free
+            if ranges_overlap(addr, addr + PAGE_SIZE, bitmap_phys, bitmap_phys + bitmap_bytes as u64) {
                 addr += PAGE_SIZE;
                 continue;
             }
