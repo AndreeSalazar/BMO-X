@@ -108,19 +108,34 @@ pub unsafe fn create_kernel_page_table() -> Option<u64> {
 
 /// Allocate a 4 KiB-aligned page table page from the physical frame allocator.
 /// Returns the physical address (or None on OOM).
-/// The page is zeroed via phys_to_virt (safe for any physical address).
+///
+/// SAFETY: Page table pages are always allocated from low memory (< 4 GB)
+/// because the frame allocator starts at BASE (16 MB) and page tables are
+/// small. Low memory is identity-mapped by UEFI, so `phys as *mut u8` is
+/// a valid virtual pointer. After map_high_mem() completes, `phys_to_virt`
+/// can be used instead.
 pub unsafe fn alloc_page_table() -> Option<u64> {
     let phys = crate::mm::phys::alloc_pages_contiguous(1)?;
-    let virt = phys_to_virt(phys);
-    core::ptr::write_bytes(virt as *mut u8, 0, PAGE_SIZE as usize);
+    // Identity-map safe: page table pages are always in low memory (< 4 GB)
+    // during early boot, before high-mem mapping exists.
+    core::ptr::write_bytes(phys as *mut u8, 0, PAGE_SIZE as usize);
     Some(phys)
 }
 
 /// Convert a physical page table address to a virtual PageTable pointer.
 /// Used throughout the VMM to access page table entries.
+/// SAFE ONLY AFTER map_high_mem() has completed.
 #[inline]
 unsafe fn phys_to_pt(phys: u64) -> *mut PageTable {
     phys_to_virt(phys) as *mut PageTable
+}
+
+/// Convert a physical address to an identity-mapped pointer.
+/// Used during early boot (before map_high_mem) when page table pages
+/// are in low memory (< 4 GB) and identity-mapped by UEFI.
+#[inline]
+unsafe fn phys_to_id(phys: u64) -> *mut PageTable {
+    phys as *mut PageTable
 }
 
 pub unsafe fn create_user_page_table(kernel_cr3: u64) -> Option<u64> {
@@ -576,7 +591,10 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
     crate::boot::serial::hex(HIGH_MEM_BASE);
     crate::dev::console::serial_write("\n");
 
-    let pml4 = phys_to_pt(read_cr3() & ADDR_MASK);
+    // CRITICAL: map_high_mem runs BEFORE the high-mem mapping exists.
+    // All page table pages are in low memory (< 4 GB), identity-mapped by UEFI.
+    // We use phys_to_id() (identity map) here, NOT phys_to_pt() (high-mem).
+    let pml4 = phys_to_id(read_cr3() & ADDR_MASK);
     let mut mapped_pages: u64 = 0;
     let mut mapped_huge: u64 = 0;
 
@@ -615,8 +633,8 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
                 pml4e.phys_addr()
             };
 
-            // Ensure PDPT entry exists
-            let pdpt = phys_to_pt(pdpt_phys);
+            // Ensure PDPT entry exists (identity-mapped)
+            let pdpt = phys_to_id(pdpt_phys);
             let pdpte = &mut (*pdpt).entries[pdpt_i];
             let pd_phys: u64 = if !pdpte.is_present() {
                 let new = alloc_page_table().expect("OOM: high-mem PDPT");
@@ -632,8 +650,8 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
                 pdpte.phys_addr()
             };
 
-            // Map 2 MB huge page
-            let pd = phys_to_pt(pd_phys);
+            // Map 2 MB huge page (identity-mapped)
+            let pd = phys_to_id(pd_phys);
             let pde = &mut (*pd).entries[pd_i];
             if !pde.is_present() {
                 pde.0 = PageTableEntry::new(
