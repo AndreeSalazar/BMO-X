@@ -30,6 +30,7 @@ pub mod mem;
 pub mod dev;
 pub mod proc;
 pub mod cpu;
+pub mod storage;
 
 // ── Soporte de Ring 0 ───────────────────────────────────────────────
 pub mod boot;

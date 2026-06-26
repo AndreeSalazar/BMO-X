@@ -11,6 +11,7 @@ bmo-abi = { path = "../crates_Personal/bmo_abi" }
 bmo-audio = { path = "../crates_Personal/bmo_audio" }
 fastos-boot-protocol = { path = "../crates_Personal/boot_protocol" }
 usb-log = { path = "../crates_Personal/usb-log" }
+vendor = { path = "../crates_Personal/vendor" }
 volatile = "0.4"
 bitflags = "2"
     

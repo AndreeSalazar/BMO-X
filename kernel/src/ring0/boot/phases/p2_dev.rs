@@ -92,6 +92,24 @@ pub fn run(ctx: &mut BootContext, prev_end: u64) -> PhaseOutput {
     }
 
     log::info("phase2", "Step 4: Phase 2 complete");
+
+    // Step 5: Initialize AHCI if found
+    if crate::dev::pcie::has_ahci() {
+        log::info("phase2", "Step 5: AHCI controller detected, initializing...");
+        if let Some(mmio) = crate::dev::pcie::find_ahci_mmio() {
+            crate::dev::console::serial_write("[phase2] AHCI MMIO=0x");
+            crate::dev::console::serial_write(&alloc::format!("{:x}", mmio));
+            crate::dev::console::serial_write("\n");
+            unsafe {
+                crate::storage::init_ahci(mmio as usize);
+            }
+        } else {
+            log::warn("phase2", "AHCI detected but BAR5 read failed");
+        }
+    } else {
+        log::info("phase2", "Step 5: No AHCI controller found");
+    }
+
     log::warn("phase2", "Storage init deferred until desktop/service phase");
     log::warn("phase2", "Network init deferred until desktop/service phase");
 
