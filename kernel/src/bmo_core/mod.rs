@@ -82,7 +82,6 @@ pub mod coord;
 pub mod bmo_api;
 pub mod desktop;
 pub mod ui;
-pub mod diag;
 pub mod bef;
 pub mod fs;
 pub mod desktop3;

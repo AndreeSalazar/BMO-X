@@ -110,7 +110,7 @@ pub fn schedule() {
             }
 
             task::set_current(next_idx);
-            crate::bmo_core::diag::telemetry::t().sched.record_context_switch();
+            crate::cabina::telemetry::scheduler::inc_ctx();
         }
     }
 }

@@ -13,7 +13,7 @@
 //!   2. `serial`      — COM1 (hardware capture during early boot)
 //!   3. `visual`      — GOP framebuffer overlay (only if framebuffer is up)
 
-use crate::bmo_core::diag;
+use crate::cabina as diag;
 use crate::dev::console;
 use super::visual;
 

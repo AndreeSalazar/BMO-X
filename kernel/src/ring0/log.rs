@@ -22,7 +22,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::diag;
+use crate::cabina as diag;
 use crate::dev::console;
 use super::boot::visual;
 

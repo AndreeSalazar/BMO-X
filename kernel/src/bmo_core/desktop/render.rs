@@ -438,9 +438,7 @@ pub fn render_frame() {
 
     if crate::cabina::is_overlay_enabled() {
         let bb_addr = crate::dev::framebuffer::backbuffer_ptr() as *mut u32;
-        crate::bmo_core::diag::overlay::set_target_override(Some((bb_addr, w as usize, h as usize, s as usize)));
         crate::cabina::paint_overlay();
-        crate::bmo_core::diag::overlay::set_target_override(None);
     }
 
     wait_for_vsync();

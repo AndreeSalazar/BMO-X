@@ -428,7 +428,7 @@ unsafe extern "C" fn isr_stub_irq1() {
 
 #[unsafe(no_mangle)]
 extern "C" fn irq0_handler_rust() {
-    crate::bmo_core::diag::telemetry::t().cpu.interrupts.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    crate::cabina::telemetry::cpu::inc_interrupts();
     unsafe {
         if let Some(handler) = IRQ_HANDLERS[0] {
             handler();
@@ -438,7 +438,7 @@ extern "C" fn irq0_handler_rust() {
 
 #[unsafe(no_mangle)]
 extern "C" fn irq1_handler_rust() {
-    crate::bmo_core::diag::telemetry::t().cpu.interrupts.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    crate::cabina::telemetry::cpu::inc_interrupts();
     unsafe {
         if let Some(handler) = IRQ_HANDLERS[1] {
             handler();
@@ -453,9 +453,8 @@ extern "C" fn irq1_handler_rust() {
 #[unsafe(no_mangle)]
 extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     use core::sync::atomic::Ordering;
-    let t = crate::bmo_core::diag::telemetry::t();
-    t.cpu.timer_ticks.fetch_add(1, Ordering::Relaxed);
-    t.cpu.interrupts.fetch_add(1, Ordering::Relaxed);
+    crate::cabina::telemetry::cpu::inc_timer();
+    crate::cabina::telemetry::cpu::inc_interrupts();
 
     // Save full register ctx from the kernel stack into the current thread.
     unsafe {
@@ -667,11 +666,10 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
     }
 
     use core::sync::atomic::Ordering;
-    let t = crate::bmo_core::diag::telemetry::t();
 
     match vector {
         14 => {
-            t.cpu.page_faults.fetch_add(1, Ordering::Relaxed);
+            crate::cabina::telemetry::cpu::inc_pf();
             // Always log #PF to serial for post-mortem analysis
             unsafe {
                 crate::dev::console::serial_write("[#PF] CR2=0x");
@@ -706,30 +704,29 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
             crate::cabina::fault_u64("#PF", "page fault error code", error);
         }
         13 => {
-            t.cpu.gp_faults.fetch_add(1, Ordering::Relaxed);
+            crate::cabina::telemetry::cpu::inc_gp();
             crate::cabina::fault_u64("#GP", "general protection fault", error);
         }
         7 => {
-            t.cpu.nm_faults.fetch_add(1, Ordering::Relaxed);
+            crate::cabina::telemetry::cpu::inc_nm();
             crate::cabina::fault_u64("#NM", "device not available", error);
         }
         8 => {
-            t.cpu.df_faults.fetch_add(1, Ordering::Relaxed);
+            crate::cabina::telemetry::cpu::inc_df();
             // #DF is unrecoverable in most cases. Show on framebuffer
             // and halt so the user sees the crash on screen.
             crate::cabina::fault_u64("#DF", "double fault", error);
             unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
         }
         6 => {
-            t.cpu.ud_faults.fetch_add(1, Ordering::Relaxed);
+            crate::cabina::telemetry::cpu::inc_ud();
             crate::cabina::fault_u64("#UD", "invalid opcode", error);
         }
         18 => {
-            t.cpu.mc_faults.fetch_add(1, Ordering::Relaxed);
+            crate::cabina::telemetry::cpu::inc_mc();
             crate::cabina::fault_u64("#MC", "machine check", error);
         }
         _ => {
-            t.cpu.other_faults.fetch_add(1, Ordering::Relaxed);
             crate::cabina::fault_u64("trap", "fatal CPU exception", vector);
         }
     }
@@ -747,7 +744,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 #[unsafe(no_mangle)]
 extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> bool {
     use core::sync::atomic::Ordering;
-    crate::bmo_core::diag::telemetry::t().cpu.page_faults.fetch_add(1, Ordering::Relaxed);
+    crate::cabina::telemetry::cpu::inc_pf();
 
     // Only try to resolve user-mode faults (bit 0 of error code = 1 means user mode)
     if error & 1 == 0 {

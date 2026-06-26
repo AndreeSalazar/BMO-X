@@ -151,15 +151,100 @@ fn nvram_get(name: &str) -> Option<alloc::string::String> {
     Some(alloc::string::String::from_utf8_lossy(&data[..len]).into_owned())
 }
 
+/// Diagnostic: try writing with different attribute combinations.
+/// Logs results to crash.log to help debug NVRAM issues.
+fn nvram_diag(handle: uefi::Handle) {
+    use uefi::proto::media::file::{File, FileAttribute, FileMode};
+
+    let test_name = "FastOSDiag";
+    let test_val = b"diag1";
+    let mut report = alloc::string::String::new();
+
+    let cstr = uefi::CString16::try_from(test_name).unwrap();
+
+    // Test 1: BOOTSERVICE only (no NON_VOLATILE, no RUNTIME)
+    let attrs_bs_only = uefi::runtime::VariableAttributes::BOOTSERVICE_ACCESS;
+    let r1 = uefi::runtime::set_variable(
+        &cstr, &uefi::runtime::VariableVendor::GLOBAL_VARIABLE, attrs_bs_only, test_val,
+    );
+    report.push_str(&alloc::format!("BS:{:?} ", r1));
+
+    // Test 2: NON_VOLATILE + BOOTSERVICE (correct for Boot Services)
+    let attrs_nv_bs = uefi::runtime::VariableAttributes::NON_VOLATILE
+        | uefi::runtime::VariableAttributes::BOOTSERVICE_ACCESS;
+    let r2 = uefi::runtime::set_variable(
+        &cstr, &uefi::runtime::VariableVendor::GLOBAL_VARIABLE, attrs_nv_bs, test_val,
+    );
+    report.push_str(&alloc::format!("NV+BS:{:?} ", r2));
+
+    // Test 3: All three (NON_VOLATILE + BOOTSERVICE + RUNTIME)
+    let attrs_all = uefi::runtime::VariableAttributes::NON_VOLATILE
+        | uefi::runtime::VariableAttributes::BOOTSERVICE_ACCESS
+        | uefi::runtime::VariableAttributes::RUNTIME_ACCESS;
+    let r3 = uefi::runtime::set_variable(
+        &cstr, &uefi::runtime::VariableVendor::GLOBAL_VARIABLE, attrs_all, test_val,
+    );
+    report.push_str(&alloc::format!("NV+BS+RT:{:?} ", r3));
+
+    // Test 4: Read back
+    let mut buf = [0u8; 256];
+    let r4 = uefi::runtime::get_variable(
+        &cstr, &uefi::runtime::VariableVendor::GLOBAL_VARIABLE, &mut buf,
+    );
+    report.push_str(&alloc::format!("READ:{:?} ", r4.map(|(d, _)| d.len())));
+
+    // Append to crash.log
+    if let Ok(mut fs) = boot::open_protocol_exclusive::<SimpleFileSystem>(handle) {
+        if let Ok(mut root) = fs.open_volume() {
+            let mut existing = Vec::new();
+            let mut ucs2 = [0u16; 256];
+            if let Ok(name) = uefi::CStr16::from_str_with_buf(CRASH_LOG_PATH, &mut ucs2) {
+                if let Ok(mut h) = root.open(name, FileMode::Read, FileAttribute::empty()) {
+                    if let Some(mut f) = h.into_regular_file() {
+                        let mut info_buf = [0u8; 256];
+                        if let Ok(fi) = f.get_info::<uefi::proto::media::file::FileInfo>(&mut info_buf) {
+                            let size = (fi.file_size() as usize).min(CRASH_LOG_MAX);
+                            if size > 0 {
+                                let mut rbuf = vec![0u8; size];
+                                let _ = f.read(&mut rbuf);
+                                existing.extend_from_slice(&rbuf);
+                            }
+                        }
+                    }
+                }
+            }
+            let mut entry = alloc::string::String::from("NVRAM diag: ");
+            entry.push_str(&report);
+            entry.push_str("\r\n");
+            let mut content = existing;
+            content.extend_from_slice(entry.as_bytes());
+            if content.len() > CRASH_LOG_MAX {
+                let trim = content.len() - CRASH_LOG_MAX;
+                content.drain(..trim);
+            }
+            let mut ucs2b = [0u16; 256];
+            if let Ok(name) = uefi::CStr16::from_str_with_buf(CRASH_LOG_PATH, &mut ucs2b) {
+                if let Ok(mut h) = root.open(name, FileMode::CreateReadWrite, FileAttribute::empty()) {
+                    if let Some(mut f) = h.into_regular_file() {
+                        let _ = f.set_position(0);
+                        let _ = f.write(&content);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn nvram_set(name: &str, value: &str) -> Result<(), alloc::string::String> {
     let cstr = uefi::CString16::try_from(name)
         .map_err(|e| alloc::format!("CString16: {:?}", e))?;
+    // UEFI spec: during Boot Services, attributes must NOT include RUNTIME_ACCESS.
+    // Including it causes INVALID_PARAMETER on AMD firmware.
     let attrs = uefi::runtime::VariableAttributes::NON_VOLATILE
-        | uefi::runtime::VariableAttributes::BOOTSERVICE_ACCESS
-        | uefi::runtime::VariableAttributes::RUNTIME_ACCESS;
+        | uefi::runtime::VariableAttributes::BOOTSERVICE_ACCESS;
     uefi::runtime::set_variable(
         &cstr, &uefi::runtime::VariableVendor::GLOBAL_VARIABLE, attrs, value.as_bytes(),
-    ).map_err(|e| alloc::format!("SetVariable: {:?}", e.status()))
+    ).map_err(|e| alloc::format!("SetVariable: {:?}", e))
 }
 
 // ── Crash Log ────────────────────────────────────────────────────────────────
@@ -379,6 +464,10 @@ fn main() -> Status {
 
     info!("Boot #{} — NVRAM: {:?} — RAM: {:?}", boot_num, prev_stage.as_deref(), ram_marker);
     write_crash_log(device, prev_stage.as_deref(), ram_marker, boot_num, &nvram_result);
+
+    // NVRAM diagnostics (tests different attribute combinations)
+    nvram_diag(device);
+
     clear_crash_marker();
 
     // Load kernel
