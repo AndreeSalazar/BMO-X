@@ -24,3 +24,4 @@ pub mod pcie;
 pub mod framebuffer;
 pub mod watchdog;
 pub mod acpi;
+pub mod keyboard;

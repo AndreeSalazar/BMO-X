@@ -233,6 +233,9 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
 
+    // PS/2 Keyboard (IRQ1)
+    crate::dev::keyboard::init();
+
     let phase2_end = crate::cpu::rdtsc();
     ctx.record_phase(2, prev_end, phase2_end);
 
