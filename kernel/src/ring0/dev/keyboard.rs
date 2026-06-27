@@ -242,7 +242,26 @@ pub fn init() {
         unsafe { inb(PS2_DATA); }
     }
 
-    crate::dev::console::serial_write("[keyboard] PS/2 keyboard initialized (IRQ1 enabled)\n");
+    // Re-enable keyboard LEDs (Num Lock ON) — PS/2 init or mouse reset
+    // may have turned them off. Command 0xED = Set LEDs, 0x02 = Num Lock.
+    unsafe {
+        // Wait for controller ready
+        let mut timeout = 100_000u32;
+        while inb(PS2_STATUS) & 0x02 != 0 && timeout > 0 { timeout -= 1; }
+        outb(PS2_DATA, 0xED); // Set LEDs command
+        // Wait for ACK
+        timeout = 100_000u32;
+        while inb(PS2_STATUS) & 0x01 == 0 && timeout > 0 { timeout -= 1; }
+        let ack = inb(PS2_DATA);
+        if ack == 0xFA {
+            // Got ACK, send LED bitmask: Num Lock = 0x02
+            timeout = 100_000;
+            while inb(PS2_STATUS) & 0x02 != 0 && timeout > 0 { timeout -= 1; }
+            outb(PS2_DATA, 0x02); // Num Lock LED ON
+        }
+    }
+
+    crate::dev::console::serial_write("[keyboard] PS/2 keyboard initialized (IRQ1 enabled, NumLock LED on)\n");
 
     // Register IRQ1 handler with the IDT dispatcher
     crate::arch::idt::register_irq(1, irq1_handler);

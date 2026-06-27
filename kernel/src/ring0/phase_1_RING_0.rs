@@ -236,11 +236,11 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
 
-    // PS/2 Keyboard (IRQ1)
-    crate::dev::keyboard::init();
-
-    // PS/2 Mouse (IRQ12)
+    // PS/2 Mouse (IRQ12) — init first so keyboard LED re-enable comes after
     crate::dev::mouse::init();
+
+    // PS/2 Keyboard (IRQ1) — re-enables Num Lock LED after mouse reset
+    crate::dev::keyboard::init();
 
     // USB HID (xHCI native keyboard/mouse)
     crate::dev::usb_hid::init();
