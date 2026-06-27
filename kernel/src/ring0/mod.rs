@@ -23,6 +23,9 @@ pub mod dev;
 pub mod proc;
 pub mod cpu;
 
+// ── CABINA_0: omniscient backbone (serial + ring buffer, zero heap) ─
+pub mod cabina_0;
+
 // ── Boot infrastructure (moved from boot/) ──────────────────────────
 pub mod info;
 pub mod context;
@@ -78,6 +81,10 @@ unsafe extern "C" fn _start() -> ! {
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
+    // CABINA_0: first event — we reached Rust
+    cabina_0::init();
+    cabina_0::info("ring0", "kernel_main_real entered");
+
     // Write RAM crash marker — confirms _start reached Rust.
     unsafe {
         core::ptr::write_volatile(0x9_0000 as *mut u32, 0x464F_5343u32); // "FOSC"
@@ -88,15 +95,24 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     if !boot_info_ptr.is_null() {
         let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
         if uefi_st != 0 {
-            nvram_log::init(uefi_st);
-            nvram_log::set_variable("FastOSDiag1", b"reached_kmain");
+            crate::uefi_rt::init(uefi_st);
+            // EARLIEST NVRAM write — bootloader reads this on next boot.
+            // If crash.log shows "CRASH at: kmain_early", kernel reached here.
+            // If crash.log shows "previous boot reached kernel handoff", kernel died BEFORE here.
+            crate::uefi_rt::write_boot_stage("kmain_early");
+            cabina_0::info("ring0", "nvram initialized + kmain_early written");
+        } else {
+            cabina_0::fault("ring0", "uefi_system_table is 0 — no NVRAM");
         }
+    } else {
+        cabina_0::fault("ring0", "boot_info_ptr is NULL — no NVRAM");
     }
 
-    // Enter Ring 0 main coordinator (does NOT return — loops forever).
+    // Enter Ring 0 main coordinator.
     phase_1_RING_0::main(boot_info_ptr);
 
-    // Should never reach here, but safety net.
+    cabina_0::fault("ring0", "phase_1_RING_0 returned unexpectedly");
+    cabina_0::dump_serial();
     loop {
         unsafe { core::arch::asm!("hlt"); }
     }

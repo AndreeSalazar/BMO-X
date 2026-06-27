@@ -22,17 +22,6 @@ const COM1_DATA: u16 = 0x3F8;
 const COM1_LSR: u16 = 0x3FD;
 const LSR_THRE: u8 = 0x20;
 
-/// Tamaño del buffer estático usado para formatear el mensaje del
-/// panic. No aloca en heap, así que es seguro aún si el heap está
-/// roto. Truncar es aceptable: el header y location ya salieron
-/// por serial, y un mensaje más largo se corta.
-const MSG_BUF_LEN: usize = 256;
-
-/// Buffer estático en BSS (no en heap). El panic lo usa para
-/// formatear el mensaje. Como vive en BSS, está disponible desde el
-/// primer momento del boot — incluso antes de `init_heap()`.
-static mut MSG_BUF: [u8; MSG_BUF_LEN] = [0u8; MSG_BUF_LEN];
-
 // ── fmt::Write adapter ────────────────────────────────────────────
 
 /// Adapter no-alocante que escribe a un slice de bytes. Implementa
@@ -109,28 +98,14 @@ fn write_dec(mut v: u32) {
     while i < 10 { write_byte(buf[i]); i += 1; }
 }
 
-/// Escribe el output de un `Display` al serial usando `MSG_BUF` como
-/// storage temporal. Trunca a `MSG_BUF_LEN` si el output es más largo.
-fn write_display<D: Display>(d: &D) {
-    // SAFETY: panic es single-threaded. El kernel aún no ha llegado
-    // al scheduler, o el scheduler ya está halted. MSG_BUF no se
-    // comparte con nadie más.
-    let buf = unsafe { &mut *(&mut MSG_BUF as *mut [u8; MSG_BUF_LEN]) };
-    let mut writer = SliceWriter { buf, pos: 0 };
-    // Ignoramos el Result: si write! falla, truncamos silenciosamente.
-    let _ = write!(&mut writer, "{}", d);
-    let len = writer.written();
-    unsafe { write_bytes(&MSG_BUF[..len]); }
-}
-
 // ── Panic handler ──────────────────────────────────────────────────
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // Header: cualquier estado puede ver esto en serial.
+    // 1. Direct serial output — always works, even before cabina_0 init
     write_bytes(b"\r\n!!! KERNEL PANIC !!!\r\n");
 
-    // Location: file:line. Best-effort.
+    // 2. Format location into static buffer (no heap)
     if let Some(loc) = info.location() {
         write_bytes(b"  at ");
         write_bytes(loc.file().as_bytes());
@@ -139,12 +114,23 @@ fn panic(info: &PanicInfo) -> ! {
         write_bytes(b"\r\n");
     }
 
-    // Message: formateado a buffer estático (no alloc) y enviado a serial.
-    write_bytes(b"  msg: ");
-    write_display(&PanicMsgWrap(info.message()));
-    write_bytes(b"\r\n");
+    // 3. Format message into static buffer (no heap)
+    {
+        let mut buf = [0u8; 128];
+        let mut writer = SliceWriter { buf: &mut buf, pos: 0 };
+        let _ = write!(&mut writer, "{}", PanicMsgWrap(info.message()));
+        let len = writer.written();
+        write_bytes(b"  msg: ");
+        write_bytes(&buf[..len]);
+        write_bytes(b"\r\n");
+    }
 
-    // Halt: disable interrupts, halt CPU, repeat.
+    // 4. CABINA_0: record in ring buffer (survives for dump_serial)
+    super::cabina_0::fault("panic", "KERNEL PANIC — see serial above");
+
+    // 5. Dump all CABINA_0 events to serial — gives full boot trace
+    super::cabina_0::dump_serial();
+
     loop {
         unsafe { asm!("cli; hlt") }
     }

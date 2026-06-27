@@ -296,19 +296,23 @@ fn phase4_sched(ctx: &mut BootContext, prev_end: u64) -> u64 {
 /// This function DOES return — the caller (bmo_core) takes over after this.
 pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext {
     // 1. Validate BootInfo
+    crate::cabina_0::info("ring0", "validating BootInfo");
     let bi = match validate_boot_info(boot_info_ptr) {
         Ok(bi) => bi,
         Err(msg) => crate::log::fault("ring0", msg),
     };
     crate::dev::console::serial_write("[ring0] boot_info validated\n");
     unsafe { store_boot_info(bi); }
+    crate::cabina_0::info("ring0", "BootInfo stored");
 
     // 2. Init UEFI Runtime Services
     crate::uefi_rt::init(bi.uefi_system_table);
+    crate::cabina_0::info("ring0", "UEFI RT initialized");
 
     // 3. Write crash marker + NVRAM
     write_crash_marker(0);
     let nvram_ok = crate::uefi_rt::write_boot_stage("kernel_start");
+    crate::cabina_0::info("ring0", "NVRAM boot_stage=kernel_start");
     crate::dev::console::serial_write("[ring0] NVRAM kernel_start=");
     crate::dev::console::serial_write(if nvram_ok { "OK\n" } else { "FAIL\n" });
 
@@ -323,37 +327,50 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
     // 6. Phase 0-4
     write_crash_marker(2);
     crate::uefi_rt::write_boot_stage("phases_0_to_4");
+    crate::cabina_0::info("ring0", "starting phases 0-4");
     crate::visual::log("ring0", "[0/5] boot phases", crate::visual::color::OK);
 
     let mut prev_end = boot_start;
+    crate::cabina_0::info("ring0", "entering phase0_arch");
     prev_end = phase0_arch(&mut ctx, prev_end);
+    crate::cabina_0::info("ring0", "entering phase1_mem");
     prev_end = phase1_mem(&mut ctx, prev_end);
+    crate::cabina_0::info("ring0", "entering phase2_dev");
     prev_end = phase2_dev(&mut ctx, prev_end);
+    crate::cabina_0::info("ring0", "entering phase3_display");
     prev_end = phase3_display(&mut ctx, prev_end);
+    crate::cabina_0::info("ring0", "entering phase4_sched");
     prev_end = phase4_sched(&mut ctx, prev_end);
 
     crate::visual::log("ring0", "[0/5] phases done", crate::visual::color::OK);
+    crate::cabina_0::info("ring0", "all boot phases completed");
 
     // 7. CPU-specific init (Ryzen 5 5600X)
     write_crash_marker(3);
     crate::uefi_rt::write_boot_stage("init_fastos_cpu");
+    crate::cabina_0::info("ring0", "detecting CPU");
     crate::visual::log("ring0", "[1/5] detect 5600X", crate::visual::color::OK);
     crate::vendor::amd::cpu::zen3::init_fastos_cpu();
+    crate::cabina_0::info("ring0", "CPU detected");
     crate::visual::log("ring0", "[1/5] 5600X detected", crate::visual::color::OK);
 
     // 8. ACPI tables
     write_crash_marker(4);
     crate::uefi_rt::write_boot_stage("init_acpi");
+    crate::cabina_0::info("ring0", "parsing ACPI tables");
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
     crate::visual::log("ring0", "[2/5] init ACPI", crate::visual::color::OK);
     crate::vendor::amd::cpu::zen3::init_acpi(rsdp_hint);
+    crate::cabina_0::info("ring0", "ACPI initialized");
 
     // 9. SMP init
     write_crash_marker(45);
     crate::uefi_rt::write_boot_stage("smp_init");
+    crate::cabina_0::info("ring0", "SMP init start");
     crate::visual::log("ring0", "[3.5/5] SMP init", crate::visual::color::OK);
     unsafe { crate::arch::smp::init(); }
     let smp_cores = crate::arch::smp::core_count();
+    crate::cabina_0::info("ring0", "SMP init done");
     if smp_cores > 1 {
         crate::visual::log("ring0", "[3.5/5] SMP online", crate::visual::color::OK);
     } else {
@@ -363,8 +380,12 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
     // 10. Mark boot complete
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
+    crate::cabina_0::info("ring0", "Ring 0 boot complete — returning to caller");
     crate::visual::log("ring0", "Ring 0 boot complete", crate::visual::color::OK);
     crate::dev::console::serial_write("[ring0] boot complete — returning to caller\n");
+
+    // Dump all CABINA_0 events to serial for diagnostics
+    crate::cabina_0::dump_serial();
 
     ctx
 }
