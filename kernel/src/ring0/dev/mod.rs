@@ -25,3 +25,4 @@ pub mod framebuffer;
 pub mod watchdog;
 pub mod acpi;
 pub mod keyboard;
+pub mod usb_hid;

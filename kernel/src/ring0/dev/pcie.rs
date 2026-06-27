@@ -416,6 +416,30 @@ pub fn has_xhci() -> bool {
     }
 }
 
+/// Find the xHCI controller and return its MMIO base address (BAR0).
+/// xHCI controllers use BAR0 for memory-mapped operational registers.
+/// Returns None if no xHCI controller found.
+pub fn find_xhci_mmio() -> Option<u64> {
+    unsafe {
+        SCAN_RESULT.as_ref().and_then(|r| {
+            r.devices[..r.count].iter().find(|d| {
+                d.class_code == 0x0C && d.subclass == 0x03
+            }).map(|d| {
+                // BAR0 is at PCI config offset 0x10
+                let bar0_lo = pci_read32(d.bus, d.device, d.function, 0x10);
+                let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);
+                let bar0 = ((bar0_hi as u64) << 32) | (bar0_lo as u64);
+                // Mask off BAR type bits (bit 0 = I/O, bit 1 = 64-bit)
+                let mmio = bar0 & !0xF_u64;
+                crate::dev::console::serial_write("[pci] xHCI BAR0=0x");
+                print_hex(mmio);
+                crate::dev::console::serial_write("\n");
+                mmio
+            })
+        })
+    }
+}
+
 fn print_hex(val: u64) {
     let hex = b"0123456789ABCDEF";
     let mut buf = [0u8; 18];
