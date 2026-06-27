@@ -78,10 +78,10 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     // Initialize UEFI Runtime Services for NVRAM access
     boot::uefi_rt::init(bi.uefi_system_table);
 
-    // CRITICAL: Disable FCH hardware watchdog IMMEDIATELY.
-    // The BIOS may enable it with a short timeout. If we don't disable
-    // it before Phase 0, the watchdog fires and resets the PC.
-    crate::dev::watchdog::pet_fch_watchdog();
+    // NOTE: pet_fch_watchdog() is NOT called here because it reads MMIO
+    // at 0xFED80000 which may not be identity-mapped before the kernel
+    // sets up its own page tables in Phase 0. The watchdog is pet
+    // AFTER Phase 0 (GDT+IDT setup) in run_phases_0_to_4.
 
     // Write RAM crash marker EARLIEST possible — confirms _start reached main.
     // Code 0 = "reached coordinator::main" (before NVRAM, before serial init).

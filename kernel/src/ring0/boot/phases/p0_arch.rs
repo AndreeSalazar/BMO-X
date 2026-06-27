@@ -24,17 +24,16 @@ pub fn run(ctx: &mut BootContext, boot_start: u64) -> (CpuState, PhaseOutput) {
     log::info("phase0", "=== Phase 0: CPU Init ===");
 
     // 1. Architecture-level init: GDT, IDT, SYSCALL MSR.
-    // Use write_boot_stage for sub-markers (this function is proven to work).
-    crate::dev::watchdog::pet_fch_watchdog();
+    // NOTE: pet_fch_watchdog NOT called before GDT/IDT — MMIO unsafe before IDT.
     crate::coordinator::write_crash_marker(200);
     crate::boot::uefi_rt::write_boot_stage("p0_gdt");
     crate::arch::gdt::init_gdt();
 
-    crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(201);
     crate::boot::uefi_rt::write_boot_stage("p0_idt");
     crate::arch::idt::init_idt();
 
+    // FIRST safe watchdog pet — IDT is now loaded, MMIO faults can be caught.
     crate::dev::watchdog::pet_fch_watchdog();
     crate::coordinator::write_crash_marker(202);
     crate::boot::uefi_rt::write_boot_stage("p0_syscall");

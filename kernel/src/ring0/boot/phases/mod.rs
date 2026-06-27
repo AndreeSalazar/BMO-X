@@ -48,7 +48,7 @@ use super::visual;
 /// after the marker, we'll see `p0_arch` — and so on for each phase.
 pub fn run_phases_0_to_4(ctx: &mut BootContext, t0: u64) -> u64 {
     // Phase 0: CPU init (GDT + IDT + syscall + FPU)
-    crate::dev::watchdog::pet_fch_watchdog();
+    // NOTE: pet_fch_watchdog NOT called before Phase 0 — MMIO unsafe before IDT
     crate::coordinator::write_crash_marker(20);
     crate::boot::uefi_rt::write_boot_stage("p0_arch");
     crate::boot::uefi_rt::write_boot_stage("p0_visual");
