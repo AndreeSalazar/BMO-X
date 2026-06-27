@@ -163,8 +163,15 @@ pub fn init_pat() -> bool {
 }
 
 /// Apply both MTRR and PAT configuration in one call.
+///
+/// v1.8.18: MTRR writes can trigger #GP on real hardware when BIOS has
+/// locked the MTRR registers. Rather than crashing the boot, we skip
+/// MTRR/PAT configuration entirely. The framebuffer works fine without
+/// WC — just slightly slower pixel writes. We can revisit once IDT
+/// fault handling is mature enough to catch #GP from WRMSR.
 pub fn init(vram_base: u64, vram_size: u64) -> bool {
-    let mtrr_ok = init_mtrr(vram_base, vram_size);
-    let pat_ok = init_pat();
-    mtrr_ok && pat_ok
+    crate::dev::console::serial_write("[mtrr] skipped (BIOS may lock MTRRs)\n");
+    crate::dev::console::serial_write("[pat] skipped (WB default OK)\n");
+    let _ = (vram_base, vram_size);
+    true
 }
