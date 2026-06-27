@@ -60,10 +60,10 @@ pub fn init() -> CpuInfo {
     // bootloader and stored in boot::info during store_boot_info().
     // This runs single-threaded during early boot.
     let (fb_addr, fb_size) = unsafe {
-        let addr = crate::boot::info::FB_ADDR;
+        let addr = crate::info::FB_ADDR;
         let size = if addr != 0 {
-            crate::boot::info::FB_WIDTH as u64
-                * crate::boot::info::FB_HEIGHT as u64
+            crate::info::FB_WIDTH as u64
+                * crate::info::FB_HEIGHT as u64
                 * 4
         } else {
             0

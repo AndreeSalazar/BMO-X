@@ -586,7 +586,7 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
     use fastos_boot_protocol::MemoryType;
 
     crate::dev::console::serial_write("[vmm] mapping high-mem: base=0x");
-    crate::boot::serial::hex(HIGH_MEM_BASE);
+    crate::serial::hex(HIGH_MEM_BASE);
     crate::dev::console::serial_write("\n");
 
     // CRITICAL: map_high_mem runs BEFORE the high-mem mapping exists.

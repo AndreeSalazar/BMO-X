@@ -523,10 +523,10 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
         &SOLID
     }
     let get_glyph = get_glyph_stub;
-    let fb_addr = crate::boot::info::FB_ADDR;
-    let w = crate::boot::info::FB_WIDTH as usize;
-    let h = crate::boot::info::FB_HEIGHT as usize;
-    let s = crate::boot::info::FB_STRIDE as usize;
+    let fb_addr = crate::info::FB_ADDR;
+    let w = crate::info::FB_WIDTH as usize;
+    let h = crate::info::FB_HEIGHT as usize;
+    let s = crate::info::FB_STRIDE as usize;
 
     // Log to serial FIRST and IMMEDIATELY halt. Don't touch the
     // framebuffer — it might be corrupted and writing to it would

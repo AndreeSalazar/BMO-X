@@ -158,7 +158,7 @@ pub unsafe fn init(
     BITMAP_BYTES = bitmap_bytes;
 
     crate::dev::console::serial_write("[frame_alloc] bitmap at phys=0x");
-    crate::boot::serial::hex(bitmap_phys);
+    crate::serial::hex(bitmap_phys);
     crate::dev::console::serial_write(" (");
     crate::dev::console::serial_write_u64(bitmap_pages as u64, 10);
     crate::dev::console::serial_write(" pages)\n");

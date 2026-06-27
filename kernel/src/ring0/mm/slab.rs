@@ -92,9 +92,9 @@ unsafe fn add_chunk(size: usize) -> Option<*mut u8> {
     crate::dev::console::serial_write(" MB (total=");
     crate::dev::console::serial_write_u64((TOTAL_HEAP_SIZE / (1024 * 1024)) as u64, 10);
     crate::dev::console::serial_write(" MB, phys=0x");
-    crate::boot::serial::hex(phys);
+    crate::serial::hex(phys);
     crate::dev::console::serial_write(" virt=0x");
-    crate::boot::serial::hex(virt);
+    crate::serial::hex(virt);
     crate::dev::console::serial_write(")\n");
 
     Some(virt as *mut u8)

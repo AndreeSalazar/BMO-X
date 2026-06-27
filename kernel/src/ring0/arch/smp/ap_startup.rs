@@ -101,7 +101,7 @@ pub unsafe fn init_trampoline() {
     TRAMPOLINE_VIRT = TRAMPOLINE_PHYS;
 
     crate::dev::console::serial_write("[smp] trampoline at 0x");
-    crate::boot::serial::hex(TRAMPOLINE_PHYS);
+    crate::serial::hex(TRAMPOLINE_PHYS);
     crate::dev::console::serial_write("\n");
 }
 
@@ -514,8 +514,8 @@ pub unsafe fn patch_trampoline(cr3: u64, ap_entry_addr: u64) {
     core::ptr::write_volatile(code_base.add(0x28), ((gdt_base >> 24) & 0xFF) as u8);
 
     crate::dev::console::serial_write("[smp] trampoline patched: CR3=0x");
-    crate::boot::serial::hex(cr3);
+    crate::serial::hex(cr3);
     crate::dev::console::serial_write(" entry=0x");
-    crate::boot::serial::hex(ap_entry_addr);
+    crate::serial::hex(ap_entry_addr);
     crate::dev::console::serial_write("\n");
 }

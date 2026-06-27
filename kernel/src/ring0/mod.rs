@@ -1,21 +1,14 @@
 //! Ring 0 — Hardware Abstraction Layer (entry point del binario).
 //!
-//! v1.8.16: fix crítico en _start. RDI (boot_info_ptr) se guardaba
-//! en RBX DESPUÉS del BSS zero, pero `rep stosb` modifica RDI, así que
-//! el kernel arrancaba con un puntero inválido. Ahora se guarda en
-//! R12 (registro preservado) ANTES del BSS zero y se restaura después.
+//! Ring 0 is the base layer that prepares ALL hardware for the system.
+//! It initializes CPU, memory, devices, and display before handing off
+//! to the next phase (bmo_core / desktop).
 //!
-//! ## Orden de boot
-//!
-//!   0. Phase 0 (arch):  GDT + IDT + SYSCALL
-//!   1. init_fastos_cpu: CPUID, MTRR/PAT, TSC, erratas
-//!   2. init_msrs:       EFER, STAR, LSTAR, FMASK, PAT, TSC_AUX
-//!   3. init_acpi:       ACPI tables
-//!   4. Phase 1 (mm):    frame allocator + slab
-//!   5. Phase 2 (dev):   ACPI/PCI discovery
-//!   6. Phase 3 (display): GOP framebuffer (con MTRR/PAT correctos)
-//!   7. Phase 4 (sched): scheduler + APIC timer + interrupts
-//!   8. welcome::run:    event loop (no retorna)
+//! Boot order:
+//!   1. _start: BSS zero, save boot_info_ptr
+//!   2. kernel_main_real: early NVRAM breadcrumb
+//!   3. phase_1_RING_0::main: full hardware init
+//!   4. Return to caller (next phase)
 
 #![no_std]
 #![no_main]
@@ -23,36 +16,36 @@
 
 extern crate alloc;
 
-// ── Hardware APIs (5 capas principales) ──────────────────────────────
+// ── Core Ring 0 modules ─────────────────────────────────────────────
 pub mod arch;
 pub mod mm;
 pub mod dev;
 pub mod proc;
 pub mod cpu;
-// ── Soporte de Ring 0 ───────────────────────────────────────────────
-pub mod boot;
+
+// ── Boot infrastructure (moved from boot/) ──────────────────────────
+pub mod info;
+pub mod context;
+pub mod uefi_rt;
+pub mod serial;
+pub mod visual;
+pub mod log;
+
+// ── Main coordinator ────────────────────────────────────────────────
+pub mod phase_1_RING_0;
 
 // ── CPU-specific (AMD Ryzen 5 5600X / Zen 3) ───────────────────────
 pub mod vendor;
 
-// ── Top-level Ring 0 ────────────────────────────────────────────────
+// ── Other Ring 0 modules ────────────────────────────────────────────
 mod panic;
-pub mod coordinator;
-
-pub use bmo_abi;
-
-// ── AMD/ — Solo documentación (.md) — vive en kernel/src/AMD/ ─────
-// No se carga como módulo Rust (solo .md files). Ver
-// `kernel/src/AMD/ryzen_5_5600x.md` para la documentación.
-
-// ── Nueva arquitectura: profile/syscall ─────────────────────────────
 pub mod profile;
 pub mod syscall;
 
-// Re-exports principales (BootInfo shared from bootloader).
-pub use boot::info::{
-    BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE, FB_PIXEL_FORMAT,
-};
+pub use bmo_abi;
+
+// Re-exports (BootInfo shared from bootloader)
+pub use info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE, FB_PIXEL_FORMAT};
 
 // ── Entry point ─────────────────────────────────────────────────────
 
@@ -63,26 +56,18 @@ use core::arch::naked_asm;
 #[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
-        // ── CRITICAL: RDI contiene el boot_info_ptr del bootloader.
-        //    Guardar en R12 (preservado) ANTES de cualquier cosa que
-        //    modifique RDI (como rep stosb).
+        // RDI = boot_info_ptr from bootloader. Save in R12 (preserved) BEFORE BSS zero.
         "mov r12, rdi",
-        // ── Zero-init BSS (defensivo). El bootloader UEFI ya lo hace,
-        //    pero algunas páginas pueden quedar con basura.
+        // Zero-init BSS (defensive).
         "lea rax, [rip + __bss_start]",
         "lea rcx, [rip + __bss_end]",
         "sub rcx, rax",
-        "jz 1f",                          // si BSS vacío, saltar
+        "jz 1f",
         "mov rdi, rax",
         "xor eax, eax",
         "rep stosb",
         "1:",
-        // ── Entry normal:
-        //    - RSP ya está configurado por el bootloader (stack_top)
-        //      y YA está 16-byte aligned. NO tocar RSP con `and rsp,-16`
-        //      porque la dirección base del stack puede no ser múltiplo
-        //      de 0x10 y eso podría reducirla a una zona no mapeada.
-        //    - Restaurar RDI desde R12 (boot_info_ptr).
+        // Restore RDI and call kernel_main_real.
         "mov rdi, r12",
         "call kernel_main_real",
         "2: hlt",
@@ -93,16 +78,13 @@ unsafe extern "C" fn _start() -> ! {
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
-    // Write RAM crash marker IMMEDIATELY — confirms _start reached Rust.
-    // Code 0 = "reached kernel_main_real". If this appears in crash.log,
-    // _start works. If it doesn't appear, _start itself is broken.
+    // Write RAM crash marker — confirms _start reached Rust.
     unsafe {
         core::ptr::write_volatile(0x9_0000 as *mut u32, 0x464F_5343u32); // "FOSC"
-        core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32); // stage 0 = kernel_main_real
+        core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32);
     }
 
-    // NVRAM breadcrumb #1: very first thing after _start.
-    // Init nvram_log directly from BootInfo (before coordinator validates it).
+    // Early NVRAM breadcrumb (before full init).
     if !boot_info_ptr.is_null() {
         let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
         if uefi_st != 0 {
@@ -111,5 +93,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    coordinator::main(boot_info_ptr);
+    // Enter Ring 0 main coordinator (does NOT return — loops forever).
+    phase_1_RING_0::main(boot_info_ptr);
+
+    // Should never reach here, but safety net.
+    loop {
+        unsafe { core::arch::asm!("hlt"); }
+    }
 }

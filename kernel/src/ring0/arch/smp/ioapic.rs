@@ -71,7 +71,7 @@ pub unsafe fn init_ioapic(base: u64) {
     IOAPIC_BASE = base;
 
     crate::dev::console::serial_write("[ioapic] base=0x");
-    crate::boot::serial::hex(base);
+    crate::serial::hex(base);
 
     let (max_redir, ver) = version();
     IOAPIC_MAX_REDIRECT = max_redir + 1;
@@ -81,11 +81,11 @@ pub unsafe fn init_ioapic(base: u64) {
     IOAPIC_ID = id;
 
     crate::dev::console::serial_write(" ver=");
-    crate::boot::serial::u64_dec(ver as u64);
+    crate::serial::u64_dec(ver as u64);
     crate::dev::console::serial_write(" max_irq=");
-    crate::boot::serial::u64_dec(max_redir as u64);
+    crate::serial::u64_dec(max_redir as u64);
     crate::dev::console::serial_write(" id=");
-    crate::boot::serial::u64_dec(id as u64);
+    crate::serial::u64_dec(id as u64);
     crate::dev::console::serial_write("\n");
 
     // Mask all redirection entries (bit 15 = mask)

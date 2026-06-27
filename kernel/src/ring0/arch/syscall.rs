@@ -304,9 +304,9 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
 
             // ─── Framebuffer ──────────────────────────────────────────
             0x60 => {
-                let w = crate::boot::info::FB_WIDTH as u64;
-                let h = crate::boot::info::FB_HEIGHT as u64;
-                let s = crate::boot::info::FB_STRIDE as u64;
+                let w = crate::info::FB_WIDTH as u64;
+                let h = crate::info::FB_HEIGHT as u64;
+                let s = crate::info::FB_STRIDE as u64;
                 w | (h << 32) | ((s & 0xFFFF) << 48)
             }
             0x61 => {

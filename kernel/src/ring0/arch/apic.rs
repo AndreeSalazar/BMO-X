@@ -119,7 +119,7 @@ pub fn init_apic(tick_hz: u32) {
     unsafe {
         APIC_BASE = read_apic_base();
         crate::dev::console::serial_write("[apic] base=0x");
-        crate::boot::serial::hex(APIC_BASE);
+        crate::serial::hex(APIC_BASE);
         crate::dev::console::serial_write("\n");
 
         // 1. Enable LAPIC: set spurious vector to 0xFF + bit 8 (enable).
@@ -167,9 +167,9 @@ pub fn init_apic(tick_hz: u32) {
         let initial_count = if initial_count == 0 { 1 } else { initial_count };
 
         crate::dev::console::serial_write("[apic] ticks/sec=");
-        crate::boot::serial::u64_dec(ticks_per_sec);
+        crate::serial::u64_dec(ticks_per_sec);
         crate::dev::console::serial_write(" init=");
-        crate::boot::serial::u64_dec(initial_count as u64);
+        crate::serial::u64_dec(initial_count as u64);
         crate::dev::console::serial_write(" @ ");
         crate::dev::console::serial_write_u64(tick_hz as u64, 10);
         crate::dev::console::serial_write(" Hz\n");
