@@ -32,31 +32,30 @@ pub struct CpuInfo {
 /// let cpu = crate::cpu::init();
 /// ```
 pub fn init() -> CpuInfo {
-    crate::dev::console::serial_write("[cpu] === Modular CPU Init ===\n");
+    crate::phase_1_RING_0::write_crash_marker(2031);
+    crate::uefi_rt::write_boot_stage("cpu_step1_feat");
 
     // 1. Detect features via CPUID
-    crate::dev::console::serial_write("[cpu] step 1: features::detect\n");
-    crate::phase_1_RING_0::write_crash_marker(2031);
     let features = features::detect();
 
     // 2. Configure CR0/CR4 (FPU, SSE, AVX, SMEP, SMAP, etc.)
-    crate::dev::console::serial_write("[cpu] step 2: regs::init\n");
     crate::phase_1_RING_0::write_crash_marker(2032);
+    crate::uefi_rt::write_boot_stage("cpu_step2_regs");
     regs::init(&features);
 
     // 3. Configure XCR0 safely (x87 + SSE + AVX state management)
-    crate::dev::console::serial_write("[cpu] step 3: regs::init_xcr0\n");
     crate::phase_1_RING_0::write_crash_marker(2033);
+    crate::uefi_rt::write_boot_stage("cpu_step3_xcr0");
     regs::init_xcr0(&features);
 
     // 4. Initialize FPU clean state
-    crate::dev::console::serial_write("[cpu] step 4: fpu::init_fpu\n");
     crate::phase_1_RING_0::write_crash_marker(2034);
+    crate::uefi_rt::write_boot_stage("cpu_step4_fpu");
     crate::cpu::fpu::init_fpu();
 
     // 5. Configure MTRRs (default WB, VRAM as WC) + PAT
-    crate::dev::console::serial_write("[cpu] step 5: cache::init\n");
     crate::phase_1_RING_0::write_crash_marker(2035);
+    crate::uefi_rt::write_boot_stage("cpu_step5_cache");
     // Pass framebuffer info so MTRR marks it as Write-Combining (WC).
     // Without WC, scattered writes (like font glyph pixels) stay in
     // CPU cache and are invisible to the display controller.
@@ -75,44 +74,29 @@ pub fn init() -> CpuInfo {
         };
         (addr, size)
     };
-    if fb_addr != 0 && fb_size > 0 {
-        crate::dev::console::serial_write("[cpu]   framebuffer WC: base=0x");
-        crate::dev::console::serial_write_u64(fb_addr, 16);
-        crate::dev::console::serial_write(" size=");
-        crate::dev::console::serial_write_u64(fb_size, 10);
-        crate::dev::console::serial_write("\n");
-    }
-    // Wrap MTRR/PAT init in a fault guard: if wrmsr to MTRR MSRs
-    // triggers #GP on real hardware (e.g. restricted BIOS config),
-    // we skip it rather than crashing the boot.
     cache::init(&features, fb_addr, fb_size);
 
     // 6. Enable performance counters
-    crate::dev::console::serial_write("[cpu] step 6: perf::init\n");
     crate::phase_1_RING_0::write_crash_marker(2036);
+    crate::uefi_rt::write_boot_stage("cpu_step6_perf");
     perf::init(&features);
 
     // 7. Enable lazy FPU switching (CR0.TS) - DISABLED
-    // v1.8.18: Disabled to prevent #NM exceptions on first FPU use.
-    // The naked ISR stub for #NM does not save all caller-saved registers (like rcx, rdx, r8-r11),
-    // causing task register corruption when returning. Leaving CR0.TS = 0 keeps FPU/SSE/AVX
-    // permanently enabled and avoids #NM entirely.
-    crate::dev::console::serial_write("[cpu] step 7: enable_lazy_fpu (disabled, keeping FPU eager)\n");
     crate::phase_1_RING_0::write_crash_marker(2037);
-    // crate::cpu::fpu::enable_lazy_fpu();
+    crate::uefi_rt::write_boot_stage("cpu_step7_fpu");
 
     // 8. Calibrate TSC frequency
-    crate::dev::console::serial_write("[cpu] step 8: tsc::calibrate\n");
     crate::phase_1_RING_0::write_crash_marker(2038);
+    crate::uefi_rt::write_boot_stage("cpu_step8_tsc");
     let tsc_freq = tsc::calibrate();
 
     // 9. Print CPU info
-    crate::dev::console::serial_write("[cpu] step 9: info::print\n");
     crate::phase_1_RING_0::write_crash_marker(2039);
+    crate::uefi_rt::write_boot_stage("cpu_step9_info");
     info::print();
 
     crate::phase_1_RING_0::write_crash_marker(2040);
-    crate::dev::console::serial_write("[cpu] === Init Complete ===\n");
+    crate::uefi_rt::write_boot_stage("cpu_init_done");
 
     CpuInfo { features, tsc_freq }
 }

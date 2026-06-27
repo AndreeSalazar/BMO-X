@@ -89,7 +89,6 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
     crate::dev::watchdog::pet_fch_watchdog();
     write_crash_marker(203);
     crate::uefi_rt::write_boot_stage("p0_cpu_init");
-    crate::log::info("phase0", "GDT+IDT+SYSCALL loaded");
 
     let cpu = crate::cpu::init();
     crate::dev::watchdog::pet_fch_watchdog();
