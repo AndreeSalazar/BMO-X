@@ -14,8 +14,12 @@
 use super::process;
 use super::task;
 use super::Priority;
-use crate::bmo_core::fs::Capabilities;
+// use crate::bmo_core::fs::Capabilities;  // TEMPORAL — moved to Temporal()
 use crate::mm::virt;
+
+/// Capabilities stub (bmo_core::fs::Capabilities moved to Temporal)
+pub type Capabilities = u32;
+const SYS_DEBUG: Capabilities = 1;
 
 /// Size of user stack (64 KB).
 const USER_STACK_SIZE: usize = 65536;
@@ -83,53 +87,53 @@ fn build_init_program() -> &'static [u8] {
 }
 
 fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<(u64, u64)> {
-    crate::cabina::info("ring3", "=== Ring 3 process allocation START ===");
+    // crate::cabina::info("ring3", "=== Ring 3 process allocation START ===");  // TEMPORAL
     crate::dev::console::serial_write("[ring3] === alloc start ===\n");
-    crate::cabina::info("ring3", "allocating process struct");
+    // crate::cabina::info("ring3", "allocating process struct");  // TEMPORAL
     let proc = process::alloc_process()?;
     proc.set_name(name);
     proc.caps = caps;
-    crate::cabina::info("ring3", "process struct allocated");
+    // crate::cabina::info("ring3", "process struct allocated");  // TEMPORAL
 
     // Create dedicated user page table (clones kernel mappings)
-    crate::cabina::info("ring3", "reading kernel CR3");
+    // crate::cabina::info("ring3", "reading kernel CR3");  // TEMPORAL
     let kernel_cr3 = virt::read_cr3();
-    crate::cabina::info_u64("ring3", "kernel CR3", kernel_cr3);
-    crate::cabina::info("ring3", "creating user page table");
+    // crate::cabina::info_u64("ring3", "kernel CR3", kernel_cr3);  // TEMPORAL
+    // crate::cabina::info("ring3", "creating user page table");  // TEMPORAL
     let user_cr3 = unsafe { virt::create_user_page_table(kernel_cr3)? };
     proc.page_table_root = user_cr3;
-    crate::cabina::info_u64("ring3", "user CR3", user_cr3);
+    // crate::cabina::info_u64("ring3", "user CR3", user_cr3);  // TEMPORAL
 
     let code_pages = (code.len() + crate::mm::phys::page_size() - 1) / crate::mm::phys::page_size();
     let stack_pages = USER_STACK_SIZE / crate::mm::phys::page_size();
-    crate::cabina::info_u64("ring3", "code pages", code_pages as u64);
-    crate::cabina::info_u64("ring3", "stack pages", stack_pages as u64);
+    // crate::cabina::info_u64("ring3", "code pages", code_pages as u64);  // TEMPORAL
+    // crate::cabina::info_u64("ring3", "stack pages", stack_pages as u64);  // TEMPORAL
 
     // Allocate physical pages for code and stack
-    crate::cabina::info("ring3", "allocating physical pages for code");
+    // crate::cabina::info("ring3", "allocating physical pages for code");  // TEMPORAL
     let code_phys = unsafe { crate::mm::phys::alloc_pages_contiguous(code_pages.max(1))? };
-    crate::cabina::info_u64("ring3", "code phys addr", code_phys);
-    crate::cabina::info("ring3", "allocating physical pages for stack");
+    // crate::cabina::info_u64("ring3", "code phys addr", code_phys);  // TEMPORAL
+    // crate::cabina::info("ring3", "allocating physical pages for stack");  // TEMPORAL
     let stack_phys = unsafe { crate::mm::phys::alloc_pages_contiguous(stack_pages)? };
-    crate::cabina::info_u64("ring3", "stack phys addr", stack_phys);
+    // crate::cabina::info_u64("ring3", "stack phys addr", stack_phys);  // TEMPORAL
 
     // Map into user virtual address space
     // Code: RX, USER, !NX
     let code_flags = virt::flags::PRESENT | virt::flags::USER | virt::flags::WRITABLE;
-    crate::cabina::info("ring3", "mapping code into user page table");
+    // crate::cabina::info("ring3", "mapping code into user page table");  // TEMPORAL
     unsafe {
         virt::map_user_range(user_cr3, USER_CODE_VBASE, code_phys, code_pages, code_flags).ok()?;
     }
 
     // Stack: RW, USER, NX
     let stack_flags = virt::flags::PRESENT | virt::flags::USER | virt::flags::WRITABLE | virt::flags::NO_EXECUTE;
-    crate::cabina::info("ring3", "mapping stack into user page table");
+    // crate::cabina::info("ring3", "mapping stack into user page table");  // TEMPORAL
     unsafe {
         virt::map_user_range(user_cr3, USER_STACK_VBASE, stack_phys, stack_pages, stack_flags).ok()?;
     }
 
     // Copy code to physical pages (via high-mem mapping)
-    crate::cabina::info("ring3", "copying code bytes to physical pages");
+    // crate::cabina::info("ring3", "copying code bytes to physical pages");  // TEMPORAL
     unsafe {
         let dst = crate::mm::virt::phys_to_virt(code_phys) as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
@@ -143,7 +147,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
         // Zero stack (via high-mem mapping)
         core::ptr::write_bytes(crate::mm::virt::phys_to_virt(stack_phys) as *mut u8, 0, USER_STACK_SIZE);
     }
-    crate::cabina::info("ring3", "code and stack zeroed/populated");
+    // crate::cabina::info("ring3", "code and stack zeroed/populated");  // TEMPORAL
 
     // After copy, code pages are mapped RW+USER for simplicity.
     proc.entry_point = USER_CODE_VBASE;
@@ -160,7 +164,7 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
         if ptr.is_null() { return None; }
         ptr as u64 + KERNEL_STACK_PER_THREAD as u64
     };
-    crate::cabina::info_u64("ring3", "kernel stack for this thread", kernel_stack);
+    // crate::cabina::info_u64("ring3", "kernel stack for this thread", kernel_stack);  // TEMPORAL
 
     let thr = task::alloc(proc.pid, Priority::Interactive)?;
     thr.regs = task::SavedRegs::new_user(USER_CODE_VBASE, user_stack_top);
@@ -174,27 +178,27 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
             t.state = task::State::Running;
         }
     }
-    crate::cabina::info_u64("ring3", "thread TID", tid.0 as u64);
+    // crate::cabina::info_u64("ring3", "thread TID", tid.0 as u64);  // TEMPORAL
 
     // Critical: set BOTH the TSS.rsp0 (for #GP/#DF exceptions) AND the
     // SYSCALL_KERNEL_RSP (for the syscall entry to switch to).
-    crate::cabina::info("ring3", "setting kernel stack for TSS.rsp0 and syscall entry");
+    // crate::cabina::info("ring3", "setting kernel stack for TSS.rsp0 and syscall entry");  // TEMPORAL
     crate::arch::gdt::set_kernel_stack(kernel_stack);
     crate::arch::syscall::set_syscall_kernel_stack(kernel_stack);
 
     // Sanity: read back the values to verify the writes took effect.
-    crate::cabina::info("ring3", "Ring 3 process allocation complete");
-    crate::cabina::info_u64("ring3", "user code entry (Ring 3 RIP)", USER_CODE_VBASE);
-    crate::cabina::info_u64("ring3", "user stack top (Ring 3 RSP)", user_stack_top);
-    crate::cabina::info_u64("ring3", "user CR3 (page table root)", user_cr3);
-    crate::cabina::info("ring3", "=== Ring 3 process allocation END ===");
+    // crate::cabina::info("ring3", "Ring 3 process allocation complete");  // TEMPORAL
+    // crate::cabina::info_u64("ring3", "user code entry (Ring 3 RIP)", USER_CODE_VBASE);  // TEMPORAL
+    // crate::cabina::info_u64("ring3", "user stack top (Ring 3 RSP)", user_stack_top);  // TEMPORAL
+    // crate::cabina::info_u64("ring3", "user CR3 (page table root)", user_cr3);  // TEMPORAL
+    // crate::cabina::info("ring3", "=== Ring 3 process allocation END ===");  // TEMPORAL
     Some((USER_CODE_VBASE, user_stack_top))
 }
 
 /// Spawn the first user-mode process ("init").
 pub fn spawn_init_process() -> Option<(u64, u64)> {
-    crate::cabina::info("sched", "allocating init Ring 3 test process");
-    allocate_user_process("init", build_init_program(), crate::bmo_core::fs::Capabilities::SYS_DEBUG)
+    // crate::cabina::info("sched", "allocating init Ring 3 test process");  // TEMPORAL
+    allocate_user_process("init", build_init_program(), SYS_DEBUG)
 }
 
 /// Prepare the future Ring 3 compositor contract without jumping to it yet.
@@ -205,18 +209,9 @@ pub fn spawn_init_process() -> Option<(u64, u64)> {
 /// process from the `Run` path. That keeps desktop boot stable until paging and
 /// scheduler return paths are complete.
 pub fn prepare_desktop_compositor() -> bool {
-    crate::cabina::info("sched", "validating Ring 3 compositor payload ABI");
-    let mut code_buf = [0u8; 256];
-    let (_entry_off, total) = crate::bmo_core::desktop::compositor::build_compositor(&mut code_buf, 0);
-    if total == 0 || total > code_buf.len() {
-        crate::cabina::fault("sched", "Ring 3 compositor build failed");
-        crate::dev::console::serial_write("[user_init] Ring 3 compositor build failed.\n");
-        return false;
-    }
-
-    crate::cabina::info_u64("sched", "Ring 3 compositor payload bytes", total as u64);
-    crate::dev::console::serial_write("[user_init] Ring 3 compositor ABI validated; Ring 0 remains supervisor.\n");
-    true
+    // TEMPORAL: bmo_core::desktop::compositor moved out — stubbed
+    crate::dev::console::serial_write("[user_init] Ring 3 compositor stubbed (TEMPORAL)\n");
+    false
 }
 
 /// Jump to Ring 3 — execute the init process. Does NOT return.
@@ -227,38 +222,39 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
     //
     // Sanity check 1: stack pointer must be 16-byte aligned.
     if user_stack & 0xF != 0 {
-        crate::cabina::fault("ring3", "user_stack NOT 16-byte aligned — #GP imminent");
+        crate::dev::console::serial_write("[ring3] user_stack NOT 16-byte aligned — #GP imminent\n");
         loop { core::arch::asm!("hlt"); }
     }
     // Sanity check 2: entry point must be canonical (high bit 47 == high bit 48-63).
     if (entry_point >> 47) != ((entry_point >> 48) & 1) {
-        crate::cabina::fault("ring3", "entry_point NOT canonical — #GP imminent");
+        crate::dev::console::serial_write("[ring3] entry_point NOT canonical — #GP imminent\n");
         loop { core::arch::asm!("hlt"); }
     }
     // Sanity check 3: user_stack must be canonical.
     if (user_stack >> 47) != ((user_stack >> 48) & 1) {
-        crate::cabina::fault("ring3", "user_stack NOT canonical — #GP imminent");
+        crate::dev::console::serial_write("[ring3] user_stack NOT canonical — #GP imminent\n");
         loop { core::arch::asm!("hlt"); }
     }
     // Sanity check 4: user_stack must be in lower half of user address space.
     if user_stack >= 0x0000_8000_0000_0000 {
-        crate::cabina::fault("ring3", "user_stack in kernel range — would overwrite kernel");
+        crate::dev::console::serial_write("[ring3] user_stack in kernel range — would overwrite kernel\n");
         loop { core::arch::asm!("hlt"); }
     }
 
-    crate::cabina::info("ring3", "=== Ring 3 JUMP START ===");
-    crate::cabina::info_u64("ring3", "entry (RIP)", entry_point);
-    crate::cabina::info_u64("ring3", "stack (RSP)", user_stack);
-    crate::cabina::info_u64("ring3", "CS expected", 0x23);
-    crate::cabina::info_u64("ring3", "SS expected", 0x1B);
-    crate::cabina::info_u64("ring3", "RFLAGS expected", 0x202);
+    // crate::cabina::info("ring3", "=== Ring 3 JUMP START ===");  // TEMPORAL
+    crate::dev::console::serial_write("[ring3] === Ring 3 JUMP START ===\n");
+    crate::dev::console::serial_write("  entry (RIP)=0x");
+    crate::dev::console::serial_write_u64(entry_point, 16);
+    crate::dev::console::serial_write(" stack (RSP)=0x");
+    crate::dev::console::serial_write_u64(user_stack, 16);
+    crate::dev::console::serial_write("\n");
     crate::dev::console::serial_write("[ring3] jumping: RIP=");
     crate::dev::console::serial_write_u64(entry_point, 16);
     crate::dev::console::serial_write(" RSP=");
     crate::dev::console::serial_write_u64(user_stack, 16);
     crate::dev::console::serial_write(" CR3=");
-    crate::cabina::read_cr3_into_serial();
-    crate::dev::console::serial_write("\n");
+    crate::dev::console::serial_write("...\n");
+    // crate::cabina::read_cr3_into_serial();  // TEMPORAL
 
     // Build interrupt frame for iretq return to Ring 3
     // Layout (low to high on kernel stack):
@@ -285,40 +281,15 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
 }
 
 fn launch_desktop_compositor_ring3() -> bool {
-    crate::cabina::info("ring3", "building desktop compositor process");
-    let mut code_buf = [0u8; 256];
-    let (_entry_off, total) = crate::bmo_core::desktop::compositor::build_compositor(&mut code_buf, 0);
-    if total == 0 || total > code_buf.len() {
-        crate::cabina::fault("ring3", "desktop compositor payload invalid");
-        return false;
-    }
-
-    let Some((entry, stack)) = allocate_user_process(
-        "desktop3",
-        &code_buf[..total],
-        crate::bmo_core::fs::Capabilities::SYS_DEBUG,
-    ) else {
-        crate::cabina::fault("ring3", "desktop compositor allocation failed");
-        return false;
-    };
-
-    crate::cabina::info_u64("ring3", "sysret desktop entry", entry);
-    crate::dev::console::serial_write("[user_init] Jumping to Ring 3 desktop compositor.\n");
-    unsafe { jump_to_ring3(entry, stack); }
+    // TEMPORAL: bmo_core::desktop::compositor moved out — stubbed
+    crate::dev::console::serial_write("[ring3] desktop compositor stubbed (TEMPORAL)\n");
+    false
 }
 
 /// Shell command: spawn Ring 3 hello process.
 pub fn spawn_hello() {
-    crate::cabina::info("sched", "spawn_hello requested");
-    crate::dev::console::serial_write("[user_init] Spawning hello Ring 3 process...\n");
-    if let Some((entry, stack)) = spawn_init_process() {
-        crate::cabina::info_u64("sched", "Ring 3 hello sysret entry", entry);
-        crate::dev::console::serial_write("[user_init] Process created, jumping to Ring 3\n");
-        unsafe { jump_to_ring3(entry, stack); }
-    } else {
-        crate::cabina::fault("sched", "failed to spawn Ring 3 hello process");
-        crate::dev::console::serial_write("[user_init] ERROR: failed to spawn process\n");
-    }
+    // TEMPORAL: cabina/bmo_core moved out — stubbed
+    crate::dev::console::serial_write("[user_init] spawn_hello: stubbed (TEMPORAL)\n");
 }
 
 /// Shell command: launch the desktop path that is stable today.
@@ -327,19 +298,8 @@ pub fn spawn_hello() {
 /// the welcome screen can recover if anything fails. The desktop
 /// itself is `-> !` so if everything works, it runs forever.
 pub fn spawn_desktop() {
-    crate::cabina::info("sched", "spawn_desktop: Ring 0 GOP desktop stable path");
-    crate::dev::console::serial_write("[user_init] Launching stable Ring 0 GOP desktop.\n");
-    if !prepare_desktop_compositor() {
-        crate::cabina::warn("sched", "compositor build failed; returning to welcome");
-        crate::dev::console::serial_write("[user_init] compositor build FAILED, returning to welcome.\n");
-        return;
-    }
-    crate::bmo_core::desktop::run_ring0();
-    // If run_ring0 ever returns (shouldn't), we end up here.
-    #[allow(unreachable_code)] // safety net for when run_ring0 changes its signature
-    {
-        crate::dev::console::serial_write("[user_init] desktop returned (unexpected)\n");
-    }
+    // TEMPORAL: bmo_core::desktop moved out — stubbed
+    crate::dev::console::serial_write("[user_init] spawn_desktop: stubbed (TEMPORAL)\n");
 }
 
 /// Build a minimal Ring 3 program that executes `ud2` (undefined opcode).
@@ -361,16 +321,8 @@ fn build_crash_program() -> &'static [u8] {
 /// Shell command: spawn a Ring 3 process that crashes with ud2.
 /// Verifies exception → kill → scheduler → welcome returns.
 pub fn spawn_crash() {
-    crate::cabina::info("sched", "spawn_crash: testing Ring 3 crash recovery");
-    crate::dev::console::serial_write("[user_init] Spawning crash test process (ud2)...\n");
-    if let Some((entry, stack)) = allocate_user_process("crash_test", build_crash_program(), crate::bmo_core::fs::Capabilities::SYS_DEBUG) {
-        crate::cabina::info_u64("sched", "Ring 3 crash test entry", entry);
-        crate::dev::console::serial_write("[user_init] Process created, jumping to Ring 3 (expect #UD)\n");
-        unsafe { jump_to_ring3(entry, stack); }
-    } else {
-        crate::cabina::fault("sched", "failed to spawn crash test process");
-        crate::dev::console::serial_write("[user_init] ERROR: failed to spawn crash test process\n");
-    }
+    // TEMPORAL: cabina/bmo_core moved out — stubbed
+    crate::dev::console::serial_write("[user_init] spawn_crash: stubbed (TEMPORAL)\n");
 }
 
 

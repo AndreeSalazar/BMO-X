@@ -2,7 +2,9 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::fs::Capabilities;
+/// Security capabilities (stub — bmo_core::fs::Capabilities moved to Temporal/)
+pub type Capabilities = u32;
+const CAP_NONE: Capabilities = 0;
 
 /// Maximum number of processes.
 pub const MAX_PROCESSES: usize = 64;
@@ -56,7 +58,7 @@ impl Process {
             pid: Pid(0),
             state: ProcessState::Free,
             page_table_root: 0,
-            caps: crate::bmo_core::fs::Capabilities::NONE,
+            caps: CAP_NONE,
             name: [0u8; 32],
             name_len: 0,
             entry_point: 0,
@@ -156,7 +158,7 @@ pub fn free_process(proc: &mut Process) {
     // Mark process as free
     proc.state = ProcessState::Free;
     proc.pid = Pid(0);
-    proc.caps = crate::bmo_core::fs::Capabilities::NONE;
+    proc.caps = CAP_NONE;
     proc.name = [0u8; 32];
     proc.name_len = 0;
     proc.entry_point = 0;
@@ -175,7 +177,7 @@ pub fn free_process(proc: &mut Process) {
 /// After schedule(), loops with HLT — the next timer/interrupt will switch to
 /// another thread using TSS.RSP0 (already updated by schedule).
 pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
-    crate::cabina::fault_u64("process", "killing current process", vector);
+    // crate::cabina::fault_u64("process", "killing current process", vector);  // TEMPORAL
 
     let current_idx = super::task::current_index();
     if let Some(thread) = super::task::get(current_idx) {
@@ -207,7 +209,7 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
     }
 
     // Schedule next thread (updates TSS.RSP0 for next interrupt)
-    crate::cabina::trace("process", "scheduling after kill");
+    // crate::cabina::trace("process", "scheduling after kill");  // TEMPORAL
     super::schedule();
 
     // We're on the dead thread's kernel stack — can't do anything useful.

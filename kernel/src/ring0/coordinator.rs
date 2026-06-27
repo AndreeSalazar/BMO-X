@@ -24,7 +24,7 @@
 use super::boot;
 use super::boot::info;
 
-use crate::bmo_core;
+// use crate::bmo_core;  // TEMPORAL — moved to Temporal()
 
 // ── Crash marker: physical address 0x90000 ─────────────────────────────
 // The bootloader reads this on next boot and writes to crash.log on SSD.
@@ -57,9 +57,12 @@ pub fn init() -> boot::BootContext {
 }
 
 /// Despacha la fase 5 (welcome + desktop). Esta función NO retorna.
-pub fn dispatch_phase5(ctx: &boot::BootContext, t0: u64, phase4_end: u64) -> ! {
-    boot::log::info("ring0", "dispatch phase5 -> bmo_core::coord::enter");
-    crate::bmo_core::coord::enter(ctx, t0, phase4_end)
+pub fn dispatch_phase5(_ctx: &boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
+    // TEMPORAL: bmo_core::coord::enter moved out — enter idle loop
+    crate::dev::console::serial_write("[coord] Ring 0 boot complete — entering idle loop\n");
+    loop {
+        unsafe { core::arch::asm!("sti; hlt"); }
+    }
 }
 
 /// Punto de entrada desde el bootloader.
@@ -166,10 +169,10 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     // Stage 5: bmo_core::coord::init
     write_crash_marker(5);
     boot::uefi_rt::write_boot_stage("bmo_core_init");
-    boot::visual::log("ring0", "init bmo_core", boot::visual::color::OK);
-    crate::dev::console::serial_write("[coord] main: calling bmo_core::coord::init\n");
-    bmo_core::coord::init();
-    crate::dev::console::serial_write("[coord] main: bmo_core::coord::init returned\n");
+    boot::visual::log("ring0", "init bmo_core (TEMPORAL: stubbed)", boot::visual::color::OK);
+    crate::dev::console::serial_write("[coord] main: bmo_core::coord::init (TEMPORAL: stubbed)\n");
+    // bmo_core::coord::init();  // TEMPORAL — moved to Temporal()
+    crate::dev::console::serial_write("[coord] main: bmo_core::coord::init skipped\n");
 
     // Stage 6: entering welcome (no return expected)
     write_crash_marker(6);

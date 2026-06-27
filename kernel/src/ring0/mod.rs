@@ -15,8 +15,7 @@
 //!   5. Phase 2 (dev):   ACPI/PCI discovery
 //!   6. Phase 3 (display): GOP framebuffer (con MTRR/PAT correctos)
 //!   7. Phase 4 (sched): scheduler + APIC timer + interrupts
-//!   8. bmo_core::init:  cabina + defense + timeback + bmo_api + desktop
-//!   9. welcome::run:    event loop (no retorna)
+//!   8. welcome::run:    event loop (no retorna)
 
 #![no_std]
 #![no_main]
@@ -42,22 +41,7 @@ pub mod vendor;
 mod panic;
 pub mod coordinator;
 
-// ── Módulos hermanos (vía path attribute) ───────────────────────────
-#[path = "../bmo_core/mod.rs"]
-pub mod bmo_core;
-#[path = "../bmo_gpu/mod.rs"]
-pub mod bmo_gpu;
 pub use bmo_abi;
-#[path = "../cabina/mod.rs"]
-pub mod cabina;
-#[path = "../defense/mod.rs"]
-pub mod defense;
-#[path = "../timeback/mod.rs"]
-pub mod timeback;
-#[path = "../lang/mod.rs"]
-pub mod lang;
-#[path = "../userland/mod.rs"]
-pub mod userland;
 
 // ── AMD/ — Solo documentación (.md) — vive en kernel/src/AMD/ ─────
 // No se carga como módulo Rust (solo .md files). Ver

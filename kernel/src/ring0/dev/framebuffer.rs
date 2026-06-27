@@ -8,8 +8,40 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::ui::fb::Framebuffer;
+// TEMPORAL: use crate::bmo_core::ui::fb::Framebuffer;  // moved to Temporal/
 use fastos_boot_protocol::PixelFormat;
+
+/// Minimal stub Framebuffer for backbuffer blit (replaces bmo_core::ui::fb::Framebuffer)
+#[derive(Debug, Clone, Copy)]
+pub struct Framebuffer {
+    base: u64,
+    stride: u64,
+    width: u32,
+    height: u32,
+}
+
+impl Framebuffer {
+    pub fn new(base: u64, stride: u64, width: u32, height: u32) -> Self {
+        Self { base, stride, width, height }
+    }
+
+    pub fn blit_to(&self, dest: &Framebuffer) {
+        let src = self.base as *const u32;
+        let dst = dest.base as *mut u32;
+        let copy_w = self.width.min(dest.width) as usize;
+        let copy_h = self.height.min(dest.height) as usize;
+        let src_stride = (self.stride / 4) as usize;
+        let dst_stride = (dest.stride / 4) as usize;
+        for y in 0..copy_h {
+            for x in 0..copy_w {
+                unsafe {
+                    let pixel = *src.add(y * src_stride + x);
+                    *dst.add(y * dst_stride + x) = pixel;
+                }
+            }
+        }
+    }
+}
 
 /// ARGB color (32-bit: 0xAARRGGBB).
 #[derive(Debug, Clone, Copy)]

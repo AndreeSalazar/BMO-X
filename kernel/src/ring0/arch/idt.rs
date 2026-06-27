@@ -428,7 +428,7 @@ unsafe extern "C" fn isr_stub_irq1() {
 
 #[unsafe(no_mangle)]
 extern "C" fn irq0_handler_rust() {
-    crate::cabina::telemetry::cpu::inc_interrupts();
+    // crate::cabina::telemetry::cpu::inc_interrupts();  // TEMPORAL — moved out
     unsafe {
         if let Some(handler) = IRQ_HANDLERS[0] {
             handler();
@@ -438,7 +438,7 @@ extern "C" fn irq0_handler_rust() {
 
 #[unsafe(no_mangle)]
 extern "C" fn irq1_handler_rust() {
-    crate::cabina::telemetry::cpu::inc_interrupts();
+    // crate::cabina::telemetry::cpu::inc_interrupts();  // TEMPORAL — moved out
     unsafe {
         if let Some(handler) = IRQ_HANDLERS[1] {
             handler();
@@ -453,8 +453,8 @@ extern "C" fn irq1_handler_rust() {
 #[unsafe(no_mangle)]
 extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     use core::sync::atomic::Ordering;
-    crate::cabina::telemetry::cpu::inc_timer();
-    crate::cabina::telemetry::cpu::inc_interrupts();
+    // crate::cabina::telemetry::cpu::inc_timer();  // TEMPORAL — moved out
+    // crate::cabina::telemetry::cpu::inc_interrupts();  // TEMPORAL — moved out
 
     // Save full register ctx from the kernel stack into the current thread.
     unsafe {
@@ -467,7 +467,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
 
     // Tick the scheduler (decrements time slice, may trigger schedule())
     crate::proc::timer_tick();
-    crate::cabina::tick_refresh();
+    // crate::cabina::tick_refresh();  // TEMPORAL — moved out
     // Pet the hardware watchdog (resets the 5-sec countdown)
     crate::dev::watchdog::pet();
     crate::dev::watchdog::check();
@@ -523,7 +523,12 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
         loop { core::arch::asm!("cli; hlt"); }
     }
 
-    use crate::bmo_core::ui::font::get_glyph;
+    // TEMPORAL: use crate::bmo_core::ui::font::get_glyph;  // moved to Temporal/
+    fn get_glyph_stub(_ch: u8) -> &'static [u8; 16] {
+        static SOLID: [u8; 16] = [0xFF; 16];
+        &SOLID
+    }
+    let get_glyph = get_glyph_stub;
     let fb_addr = crate::boot::info::FB_ADDR;
     let w = crate::boot::info::FB_WIDTH as usize;
     let h = crate::boot::info::FB_HEIGHT as usize;
@@ -669,7 +674,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 
     match vector {
         14 => {
-            crate::cabina::telemetry::cpu::inc_pf();
+            // crate::cabina::telemetry::cpu::inc_pf();  // TEMPORAL — moved out
             // Always log #PF to serial for post-mortem analysis
             unsafe {
                 crate::dev::console::serial_write("[#PF] CR2=0x");
@@ -694,40 +699,40 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
                         )
                     };
                         if resolved {
-                            crate::cabina::trace_u64("vm", "demand page resolved", cr2);
+                            // crate::cabina::trace_u64("vm", "demand page resolved", cr2);  // TEMPORAL
                         }
                     }
                 }
             }
 
-            crate::cabina::fault_u64("#PF", "page fault at CR2", cr2);
-            crate::cabina::fault_u64("#PF", "page fault error code", error);
+            // crate::cabina::fault_u64("#PF", "page fault at CR2", cr2);  // TEMPORAL
+            // crate::cabina::fault_u64("#PF", "page fault error code", error);  // TEMPORAL
         }
         13 => {
-            crate::cabina::telemetry::cpu::inc_gp();
-            crate::cabina::fault_u64("#GP", "general protection fault", error);
+            // crate::cabina::telemetry::cpu::inc_gp();  // TEMPORAL
+            // crate::cabina::fault_u64("#GP", "general protection fault", error);  // TEMPORAL
         }
         7 => {
-            crate::cabina::telemetry::cpu::inc_nm();
-            crate::cabina::fault_u64("#NM", "device not available", error);
+            // crate::cabina::telemetry::cpu::inc_nm();  // TEMPORAL
+            // crate::cabina::fault_u64("#NM", "device not available", error);  // TEMPORAL
         }
         8 => {
-            crate::cabina::telemetry::cpu::inc_df();
+            // crate::cabina::telemetry::cpu::inc_df();  // TEMPORAL
             // #DF is unrecoverable in most cases. Show on framebuffer
             // and halt so the user sees the crash on screen.
-            crate::cabina::fault_u64("#DF", "double fault", error);
+            // crate::cabina::fault_u64("#DF", "double fault", error);  // TEMPORAL
             unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
         }
         6 => {
-            crate::cabina::telemetry::cpu::inc_ud();
-            crate::cabina::fault_u64("#UD", "invalid opcode", error);
+            // crate::cabina::telemetry::cpu::inc_ud();  // TEMPORAL
+            // crate::cabina::fault_u64("#UD", "invalid opcode", error);  // TEMPORAL
         }
         18 => {
-            crate::cabina::telemetry::cpu::inc_mc();
-            crate::cabina::fault_u64("#MC", "machine check", error);
+            // crate::cabina::telemetry::cpu::inc_mc();  // TEMPORAL
+            // crate::cabina::fault_u64("#MC", "machine check", error);  // TEMPORAL
         }
         _ => {
-            crate::cabina::fault_u64("trap", "fatal CPU exception", vector);
+            // crate::cabina::fault_u64("trap", "fatal CPU exception", vector);  // TEMPORAL
         }
     }
 
@@ -744,7 +749,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 #[unsafe(no_mangle)]
 extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> bool {
     use core::sync::atomic::Ordering;
-    crate::cabina::telemetry::cpu::inc_pf();
+    // crate::cabina::telemetry::cpu::inc_pf();  // TEMPORAL — moved out
 
     // Only try to resolve user-mode faults (bit 0 of error code = 1 means user mode)
     if error & 1 == 0 {

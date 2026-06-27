@@ -218,7 +218,8 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
     unsafe {
         if !RING3_SYSCALL_SEEN {
             RING3_SYSCALL_SEEN = true;
-            crate::cabina::info("ring3", "first syscall received; Ring 3 is alive");
+            // crate::cabina::info("ring3", "first syscall received; Ring 3 is alive");  // TEMPORAL
+            crate::dev::console::serial_write("[syscall] first syscall received; Ring 3 is alive\n");
         }
 
         let f = &mut *frame;
@@ -230,7 +231,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         let a4 = f.r8;
         let a5 = f.r9;
 
-        crate::cabina::trace_u64("syscall", "dispatch nr", nr);
+        // crate::cabina::trace_u64("syscall", "dispatch nr", nr);  // TEMPORAL
 
         let result = match nr {
             // ─── BMO Core desktop3 (0x100..=0x1FF) ───────────────────
@@ -238,12 +239,13 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             // desktop3 (la cúpula encima de Ring 3). desktop3 valida +
             // Cabina observa + ByteDefender permite + BMO API ejecuta.
             n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                crate::bmo_core::desktop3::enter(n as u16, a0, a1, a2, a3, a4, a5)
+                // crate::bmo_core::desktop3::enter(n as u16, a0, a1, a2, a3, a4, a5)  // TEMPORAL
+                u64::MAX // stubbed: bmo_core desktop3 moved to Temporal
             }
 
             // ─── Procesos ─────────────────────────────────────────────
             0x00 => {
-                crate::cabina::trace("syscall", "ProcessExit");
+                // crate::cabina::trace("syscall", "ProcessExit");  // TEMPORAL
                 crate::proc::process::kill_current_process(0, a0, 0);
             }
             0x01 => u64::MAX,
@@ -253,7 +255,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 0
             }
             0x04 => {
-                crate::cabina::trace("syscall", "ThreadCreate");
+                // crate::cabina::trace("syscall", "ThreadCreate");  // TEMPORAL
                 match crate::proc::task::alloc(
                     crate::proc::process::Pid(1),
                     crate::proc::Priority::Interactive,
@@ -267,7 +269,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 }
             }
             0x05 => {
-                crate::cabina::trace("syscall", "ThreadExit");
+                // crate::cabina::trace("syscall", "ThreadExit");  // TEMPORAL
                 crate::proc::process::kill_current_process(0, a0, 0);
             }
 
@@ -277,12 +279,13 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             0x12 => u64::MAX,
 
             // ─── VFS ──────────────────────────────────────────────────
-            0x20 => crate::bmo_core::fs::ramdisk::open(a0, a1),
-            0x21 => crate::bmo_core::fs::ramdisk::read(a0, a1, a2),
-            0x22 => crate::bmo_core::fs::ramdisk::write(a0, a1, a2),
-            0x23 => crate::bmo_core::fs::ramdisk::close(a0),
-            0x24 => crate::bmo_core::fs::ramdisk::seek(a0, a1, a2),
-            0x25 => crate::bmo_core::fs::ramdisk::size(a0),
+            // TEMPORAL: bmo_core::fs::ramdisk moved out — stub with u64::MAX
+            0x20 => u64::MAX, // crate::bmo_core::fs::ramdisk::open(a0, a1)
+            0x21 => u64::MAX, // crate::bmo_core::fs::ramdisk::read(a0, a1, a2)
+            0x22 => u64::MAX, // crate::bmo_core::fs::ramdisk::write(a0, a1, a2)
+            0x23 => u64::MAX, // crate::bmo_core::fs::ramdisk::close(a0)
+            0x24 => u64::MAX, // crate::bmo_core::fs::ramdisk::seek(a0, a1, a2)
+            0x25 => u64::MAX, // crate::bmo_core::fs::ramdisk::size(a0)
 
             // ─── IPC ──────────────────────────────────────────────────
             0x30 => u64::MAX,
@@ -315,34 +318,35 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 w | (h << 32) | ((s & 0xFFFF) << 48)
             }
             0x61 => {
-                crate::bmo_core::desktop::fb_fill(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4 as u32);
+                // crate::bmo_core::desktop::fb_fill(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4 as u32);  // TEMPORAL
                 0
             }
             0x62 => {
-                if a3 > 0 && a3 < 256 {
-                    let slice = core::slice::from_raw_parts(a2 as *const u8, a3 as usize);
-                    crate::bmo_core::desktop::fb_text(a0 as u32, a1 as u32, slice, a4 as u32);
-                }
+                // if a3 > 0 && a3 < 256 {
+                //     let slice = core::slice::from_raw_parts(a2 as *const u8, a3 as usize);
+                //     crate::bmo_core::desktop::fb_text(a0 as u32, a1 as u32, slice, a4 as u32);  // TEMPORAL
+                // }
                 0
             }
             0x63 => 0,
             0x64 => {
-                crate::bmo_core::desktop::fb_blit(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4);
+                // crate::bmo_core::desktop::fb_blit(a0 as u32, a1 as u32, a2 as u32, a3 as u32, a4);  // TEMPORAL
                 0
             }
             0x65 => {
-                crate::bmo_core::desktop::render::render_frame();
-                crate::cabina::paint_overlay();
-                crate::bmo_core::desktop::state::STATE.frame
+                // crate::bmo_core::desktop::render::render_frame();  // TEMPORAL
+                // crate::cabina::paint_overlay();  // TEMPORAL
+                // crate::bmo_core::desktop::state::STATE.frame  // TEMPORAL
+                0
             }
 
             // ─── Input ────────────────────────────────────────────────
-            0x70 => crate::bmo_core::desktop::poll_key() as u64,
-            0x71 => crate::bmo_core::desktop::poll_mouse(),
+            0x70 => 0, // crate::bmo_core::desktop::poll_key() as u64  // TEMPORAL
+            0x71 => 0, // crate::bmo_core::desktop::poll_mouse()  // TEMPORAL
 
             // ─── Sonido ───────────────────────────────────────────────
             0x80 => {
-                crate::bmo_core::desktop::beep(a0 as u32, a1 as u32);
+                // crate::bmo_core::desktop::beep(a0 as u32, a1 as u32);  // TEMPORAL
                 0
             }
 
@@ -358,7 +362,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             }
 
             _ => {
-                crate::cabina::warn_u64("syscall", "unknown syscall", nr);
+                // crate::cabina::warn_u64("syscall", "unknown syscall", nr);  // TEMPORAL
                 u64::MAX
             }
         };
