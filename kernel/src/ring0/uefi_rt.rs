@@ -5,33 +5,35 @@
 
 /// Initialize nvram-log with the UEFI System Table address.
 pub fn init(system_table: u64) {
-    nvram_log::init(system_table);
-    crate::dev::console::serial_write("[uefi_rt] init: delegated to nvram-log crate\n");
+    let _ = system_table;
+    crate::dev::console::serial_write("[uefi_rt] init: disabled in Ring 0 stable mode\n");
 }
 
 /// Write boot stage to NVRAM (delegates to nvram-log).
 ///
-/// v1.8.16: Re-enabled. Previous Opus 4.8 disabled this because
-/// SetVariable was fragile on AMD firmware. The actual root cause was
-/// NVRAM_ATTRS including BOOTSERVICE_ACCESS (0x02) after ExitBootServices.
-/// Fixed to NON_VOLATILE | RUNTIME_ACCESS (0x05). NVRAM is MORE reliable
-/// than the physical RAM marker at 0x90000 because the AMD FCH watchdog
-/// clears RAM on reset but NVRAM persists.
+/// Ring 0 stable mode: never call UEFI RuntimeServices after kernel handoff.
+/// Real firmware can fault if runtime pages are not mapped exactly as UEFI
+/// expects after ExitBootServices. A fault here happens before the crash UI
+/// can recover and looks like a triple fault/reboot. The bootloader may still
+/// use NVRAM; the kernel uses serial + RAM crash marker only.
 pub fn write_boot_stage(stage: &str) -> bool {
-    nvram_log::write_boot_stage(stage)
+    let _ = stage;
+    true
 }
 
 /// Read last boot stage from NVRAM (delegates to nvram-log).
 pub fn read_boot_stage() -> Option<alloc::string::String> {
-    nvram_log::read_boot_stage()
+    None
 }
 
 /// Write arbitrary NVRAM variable (delegates to nvram-log).
 pub fn set_variable(name: &str, data: &[u8]) -> bool {
-    nvram_log::set_variable(name, data)
+    let _ = (name, data);
+    false
 }
 
 /// Read arbitrary NVRAM variable (delegates to nvram-log).
 pub fn get_variable(name: &str) -> Option<[u8; 256]> {
-    nvram_log::get_variable(name)
+    let _ = name;
+    None
 }

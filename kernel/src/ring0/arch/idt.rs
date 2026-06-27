@@ -92,7 +92,7 @@ pub fn init_idt() {
         // Sin IST, si el stack está corrupto al llegar #DF, recursa y causa
         // triple fault irrecuperable. IST garantiza un stack limpio de 8 KB.
         // Ver AMD/ryzen_5_5600x.md §8.4.
-        IDT[8].set_handler(isr_stub_exception_err as *const () as u64);
+        IDT[8].set_handler(isr_stub_double_fault as *const () as u64);
         IDT[8].ist = 1;   // IST1 — #DF (Double Fault)
         IDT[2].set_handler(isr_stub_exception_no_err as *const () as u64);
         IDT[2].ist = 1;   // IST1 — NMI (Non-Maskable Interrupt)
@@ -155,7 +155,18 @@ unsafe extern "C" fn isr_stub_exception_err() {
     );
 }
 
-/// #GP — kill current process instead of halting CPU.
+#[unsafe(naked)]
+unsafe extern "C" fn isr_stub_double_fault() {
+    naked_asm!(
+        "add rsp, 8",
+        "cli",
+        "2:",
+        "hlt",
+        "jmp 2b",
+    );
+}
+
+/// #GP - kill current process instead of halting CPU.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_general_protection() {
     naked_asm!(
@@ -761,6 +772,5 @@ extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> boo
         crate::mm::virt::handle_page_fault(cr2, error, pml4_phys, vmas)
     }
 }
-
 
 

@@ -207,12 +207,15 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         crate::dev::console::serial_write_u64(m.end_bus as u64, 10);
         crate::dev::console::serial_write("\n");
     } else {
-        crate::log::warn("phase2", "ACPI MCFG not found — using IO-port PCI");
+        crate::log::warn("phase2", "ACPI MCFG not found; PCI scan skipped");
     }
 
-    // PCI scan
-    crate::dev::pcie::init_ecam(0, 32);
-    let scan = crate::dev::pcie::scan_pci_bus();
+    // PCI scan is intentionally skipped in Ring 0 stable mode. Raw legacy
+    // 0xCF8/0xCFC probing and unverified ECAM MMIO can wedge/reboot real AMD
+    // boards before diagnostics are visible. ACPI is parsed above; a later
+    // vendor-specific driver can opt into mapped ECAM safely.
+    crate::dev::pcie::init_ecam(0, 0);
+    let scan = crate::dev::pcie::PciScanResult::empty();
     crate::log::info_u64("phase2", "PCI devices found", scan.count as u64);
 
     // AHCI detection
@@ -228,7 +231,7 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     // Persist state
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
     ctx.devices.acpi_mcfg_end_bus = mcfg.as_ref().map(|m| m.end_bus).unwrap_or(0);
-    ctx.devices.ecam_mapped = mcfg.is_some();
+    ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
 
     let phase2_end = crate::cpu::rdtsc();

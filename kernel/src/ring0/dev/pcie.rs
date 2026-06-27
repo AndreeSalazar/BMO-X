@@ -204,7 +204,7 @@ pub struct PciScanResult {
 }
 
 impl PciScanResult {
-    fn new() -> Self {
+    pub const fn empty() -> Self {
         Self {
             devices: [PciDevice {
                 bus: 0, device: 0, function: 0,
@@ -214,6 +214,10 @@ impl PciScanResult {
             }; 64],
             count: 0,
         }
+    }
+
+    fn new() -> Self {
+        Self::empty()
     }
 
     pub fn find_device(&self, vendor: u16, device: u16) -> Option<&PciDevice> {

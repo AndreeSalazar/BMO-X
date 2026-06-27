@@ -92,44 +92,11 @@ pub fn pet() {
 /// — that STARTS the watchdog, it does NOT pet it. The correct pet is
 /// bit 7 (TRIGGER) via u32 read-modify-write.
 pub fn pet_fch_watchdog() {
-    unsafe {
-        const ACPI_MMIO: u64 = 0xFED8_0000;
-        const PM_DECODEEN_OFF: u64 = 0x00;
-        const PM_ISACONTROL_OFF: u64 = 0x04;
-        const WDT_OFFSET: u64 = 0x0B00;
-        const WDT_FIXED: u64 = 0xFEB0_0000;
-
-        const WDT_TRIGGER: u32 = 1 << 7;
-        const WDT_DISABLE: u32 = 1 << 3;
-
-        // Step 1: Check PM_DECODEEN bit 7 (WDT_TMREN).
-        // If not set, the watchdog hardware is not active — nothing to do.
-        let pm_decodeen = core::ptr::read_volatile(
-            (ACPI_MMIO + PM_DECODEEN_OFF) as *const u8
-        );
-        if pm_decodeen & (1 << 7) == 0 {
-            return;
-        }
-
-        // Step 2: Determine WDT MMIO base from PM_ISACONTROL bit 1.
-        let pm_isa = core::ptr::read_volatile(
-            (ACPI_MMIO + PM_ISACONTROL_OFF) as *const u8
-        );
-        let wdt_base = if pm_isa & (1 << 1) != 0 {
-            ACPI_MMIO + WDT_OFFSET   // 0xFED80B00
-        } else {
-            WDT_FIXED                // 0xFEB00000
-        };
-
-        // Step 3: Disable the watchdog (bit 3) — read-modify-write u32.
-        let ctrl = wdt_base as *mut u32;
-        let val = core::ptr::read_volatile(ctrl);
-        core::ptr::write_volatile(ctrl, val | WDT_DISABLE);
-
-        // Step 4: Pet as safety net (bit 7 = TRIGGER) — read-modify-write u32.
-        let val = core::ptr::read_volatile(ctrl);
-        core::ptr::write_volatile(ctrl, val | WDT_TRIGGER);
-    }
+    // Ring 0 stable mode: do not touch AMD FCH watchdog MMIO blindly.
+    // 0xFED8_0000/0xFEB0_0000 may be unmapped or firmware-owned after
+    // ExitBootServices; a speculative read here can raise #PF/#GP during
+    // Phase 0 and turn a recoverable fault into an instant reset.
+    // Re-enable only after ACPI/PCI proves the region and maps it as MMIO.
 }
 
 /// Check if the watchdog has expired. Call this from the scheduler tick.
