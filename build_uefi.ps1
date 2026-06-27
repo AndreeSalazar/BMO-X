@@ -139,25 +139,49 @@ if ($Clean) {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# SMART REBUILD DETECTION
+# SMART REBUILD DETECTION (content-hash based)
 # ══════════════════════════════════════════════════════════════════════
-function Get-NewestSourceTime {
+# Uses content hashing instead of timestamps. Timestamps are unreliable
+# when source files are edited by external tools that don't update mtime.
+$script:srcHashCache = @{}
+
+function Get-SourceContentHash {
     param($dir, $exts = @("rs","toml","ld"))
-    $newest = [DateTime]::MinValue
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    $files = @()
     foreach ($ext in $exts) {
         Get-ChildItem -Path $dir -Recurse -Filter "*.$ext" -ErrorAction SilentlyContinue | ForEach-Object {
-            if ($_.LastWriteTime -gt $newest) { $newest = $_.LastWriteTime }
+            $files += $_.FullName
         }
     }
-    return $newest
+    $files = $files | Sort-Object
+    $combined = New-Object System.IO.MemoryStream
+    foreach ($f in $files) {
+        $bytes = [System.IO.File]::ReadAllBytes($f)
+        $combined.Write($bytes, 0, $bytes.Length)
+    }
+    $hash = $hasher.ComputeHash($combined.ToArray())
+    $combined.Dispose()
+    return [BitConverter]::ToString($hash).Replace("-","").ToLower()
 }
 
 function Needs-Rebuild {
     param($sourceDir, $outputFile)
     if (-not (Test-Path $outputFile)) { return $true }
-    $srcTime = Get-NewestSourceTime $sourceDir
-    $outTime = (Get-Item $outputFile).LastWriteTime
-    return $srcTime -gt $outTime
+    $srcHash = Get-SourceContentHash $sourceDir
+    $hashFile = "$outputFile.srcsha256"
+    if (Test-Path $hashFile) {
+        $savedHash = Get-Content $hashFile -ErrorAction SilentlyContinue
+        if ($srcHash -eq $savedHash) { return $false }
+    }
+    return $true
+}
+
+function Save-SourceHash {
+    param($sourceDir, $outputFile)
+    $srcHash = Get-SourceContentHash $sourceDir
+    $hashFile = "$outputFile.srcsha256"
+    $srcHash | Set-Content $hashFile -NoNewline
 }
 
 $bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\fastos-bootloader.efi"
@@ -253,6 +277,10 @@ if ($kernJob) {
 }
 
 PhaseDone $buildTimer "Parallel build"
+
+# Save source hashes for next build's change detection
+if ($needBoot) { Save-SourceHash $bootDir $bootEfi }
+if ($needKern) { Save-SourceHash $kernDir $kernelElf }
 
 # ══════════════════════════════════════════════════════════════════════
 # VALIDATE OUTPUTS
