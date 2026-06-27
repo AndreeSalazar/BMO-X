@@ -177,8 +177,23 @@ type RawGetVariableFn = unsafe extern "efiapi" fn(
     data: *mut u8,
 ) -> u64;
 
+type RawSetVariableFn = unsafe extern "efiapi" fn(
+    name: *const u16,
+    guid: *const EfiGuid,
+    attributes: u32,
+    data_size: usize,
+    data: *const u8,
+) -> u64;
+
 /// Cached GetVariable pointer resolved BEFORE ExitBootServices.
 static mut CACHED_GET_VAR: Option<RawGetVariableFn> = None;
+
+/// Cached SetVariable pointer resolved BEFORE ExitBootServices.
+static mut CACHED_SET_VAR: Option<RawSetVariableFn> = None;
+
+/// NVRAM attributes: NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS.
+/// Must match kernel's nvram-log NVRAM_ATTRS exactly.
+const NVRAM_ATTRS: u32 = 0x01 | 0x02 | 0x04;
 
 /// Must be called BEFORE ExitBootServices to cache RuntimeServices pointers.
 /// After EBS, the uefi crate may invalidate its internal state.
@@ -196,6 +211,11 @@ fn nvram_init() {
         unsafe { CACHED_GET_VAR = Some(core::mem::transmute(get_fp)); }
     }
 
+    // SetVariable at RuntimeServices + 0x58
+    let set_fp = unsafe { core::ptr::read_volatile((rt_ptr + 0x58) as *const u64) };
+    if set_fp != 0 {
+        unsafe { CACHED_SET_VAR = Some(core::mem::transmute(set_fp)); }
+    }
 }
 
 fn str_to_ucs2(name: &str) -> [u16; 64] {
@@ -225,6 +245,20 @@ fn nvram_get(name: &str) -> Option<alloc::string::String> {
     let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
     if len == 0 { return None; }
     Some(alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned())
+}
+
+/// Write NVRAM variable. Safe to call after EBS (uses cached pointer).
+/// Returns true on success.
+fn nvram_set(name: &str, data: &[u8]) -> bool {
+    let set_var = match unsafe { CACHED_SET_VAR } {
+        Some(f) => f,
+        None => return false,
+    };
+    let ucs2_name = str_to_ucs2(name);
+    let status = unsafe {
+        set_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
+    };
+    status == 0
 }
 
 
@@ -297,6 +331,17 @@ fn ram_marker_name(stage: u32) -> &'static str {
         203 => "p0_cpu_init",
         204 => "p0_cpu_done",
         205 => "p0_abi_init",
+        // cpu::init() sub-markers
+        2031 => "cpu_step1_features",
+        2032 => "cpu_step2_regs",
+        2033 => "cpu_step3_xcr0",
+        2034 => "cpu_step4_fpu",
+        2035 => "cpu_step5_cache",
+        2036 => "cpu_step6_perf",
+        2037 => "cpu_step7_lazyfpu",
+        2038 => "cpu_step8_tsc",
+        2039 => "cpu_step9_info",
+        2040 => "cpu_init_done",
         3 => "init_fastos_cpu",
         4 => "init_acpi",
         45 => "smp_init",
@@ -641,9 +686,9 @@ fn main() -> Status {
         core::ptr::write_volatile(0x9_0010 as *mut u32, 0x4542_5300u32); // "EBS\0"
     }
 
-    // Do not call UEFI RuntimeServices here. On real firmware, SetVariable can
-    // hang/fault after EBS before the kernel jump. From this point onward keep
-    // the path minimal and deterministic: RAM marker, BootInfo memory map, JMP.
+    // Write "bootloader" to NVRAM — confirms bootloader reached this point.
+    // Uses cached SetVariable pointer; safe post-EBS as a UEFI Runtime Service.
+    nvram_set("FastOSBootStage", b"bootloader");
 
     // Fill memory map into BootInfo
     let bi = unsafe { &mut *boot_info_ptr };

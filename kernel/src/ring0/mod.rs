@@ -81,32 +81,32 @@ unsafe extern "C" fn _start() -> ! {
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
-    // CABINA_0: first event — we reached Rust
-    cabina_0::init();
-    cabina_0::info("ring0", "kernel_main_real entered");
+    // ── SAFETY ORDER ────────────────────────────────────────────────
+    // NVRAM writes FIRST, serial LAST. COM1 can hang if no serial
+    // hardware responds (LSR=0x00 → infinite loop in serial_byte).
+    // NVRAM is the ONLY reliable diagnostic when serial is dead.
 
-    // Write RAM crash marker — confirms _start reached Rust.
+    // 1. RAM marker — no deps, always works, survives warm reset
     unsafe {
         core::ptr::write_volatile(0x9_0000 as *mut u32, 0x464F_5343u32); // "FOSC"
         core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32);
     }
 
-    // Early NVRAM breadcrumb (before full init).
+    // 2. CABINA_0 init (safe — only sets atomics, no serial output)
+    cabina_0::init();
+
+    // 3. NVRAM init + EARLIEST write — BEFORE any serial output
     if !boot_info_ptr.is_null() {
         let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
         if uefi_st != 0 {
             crate::uefi_rt::init(uefi_st);
-            // EARLIEST NVRAM write — bootloader reads this on next boot.
-            // If crash.log shows "CRASH at: kmain_early", kernel reached here.
-            // If crash.log shows "previous boot reached kernel handoff", kernel died BEFORE here.
             crate::uefi_rt::write_boot_stage("kmain_early");
-            cabina_0::info("ring0", "nvram initialized + kmain_early written");
-        } else {
-            cabina_0::fault("ring0", "uefi_system_table is 0 — no NVRAM");
         }
-    } else {
-        cabina_0::fault("ring0", "boot_info_ptr is NULL — no NVRAM");
     }
+
+    // 4. NOW serial is safe — NVRAM already written
+    cabina_0::info("ring0", "kernel_main_real entered");
+    cabina_0::info("ring0", "nvram init + kmain_early written");
 
     // Enter Ring 0 main coordinator.
     phase_1_RING_0::main(boot_info_ptr);

@@ -36,22 +36,27 @@ pub fn init() -> CpuInfo {
 
     // 1. Detect features via CPUID
     crate::dev::console::serial_write("[cpu] step 1: features::detect\n");
+    crate::phase_1_RING_0::write_crash_marker(2031);
     let features = features::detect();
 
     // 2. Configure CR0/CR4 (FPU, SSE, AVX, SMEP, SMAP, etc.)
     crate::dev::console::serial_write("[cpu] step 2: regs::init\n");
+    crate::phase_1_RING_0::write_crash_marker(2032);
     regs::init(&features);
 
     // 3. Configure XCR0 safely (x87 + SSE + AVX state management)
     crate::dev::console::serial_write("[cpu] step 3: regs::init_xcr0\n");
+    crate::phase_1_RING_0::write_crash_marker(2033);
     regs::init_xcr0(&features);
 
     // 4. Initialize FPU clean state
     crate::dev::console::serial_write("[cpu] step 4: fpu::init_fpu\n");
+    crate::phase_1_RING_0::write_crash_marker(2034);
     crate::cpu::fpu::init_fpu();
 
     // 5. Configure MTRRs (default WB, VRAM as WC) + PAT
     crate::dev::console::serial_write("[cpu] step 5: cache::init\n");
+    crate::phase_1_RING_0::write_crash_marker(2035);
     // Pass framebuffer info so MTRR marks it as Write-Combining (WC).
     // Without WC, scattered writes (like font glyph pixels) stay in
     // CPU cache and are invisible to the display controller.
@@ -84,6 +89,7 @@ pub fn init() -> CpuInfo {
 
     // 6. Enable performance counters
     crate::dev::console::serial_write("[cpu] step 6: perf::init\n");
+    crate::phase_1_RING_0::write_crash_marker(2036);
     perf::init(&features);
 
     // 7. Enable lazy FPU switching (CR0.TS) - DISABLED
@@ -92,16 +98,20 @@ pub fn init() -> CpuInfo {
     // causing task register corruption when returning. Leaving CR0.TS = 0 keeps FPU/SSE/AVX
     // permanently enabled and avoids #NM entirely.
     crate::dev::console::serial_write("[cpu] step 7: enable_lazy_fpu (disabled, keeping FPU eager)\n");
+    crate::phase_1_RING_0::write_crash_marker(2037);
     // crate::cpu::fpu::enable_lazy_fpu();
 
     // 8. Calibrate TSC frequency
     crate::dev::console::serial_write("[cpu] step 8: tsc::calibrate\n");
+    crate::phase_1_RING_0::write_crash_marker(2038);
     let tsc_freq = tsc::calibrate();
 
     // 9. Print CPU info
     crate::dev::console::serial_write("[cpu] step 9: info::print\n");
+    crate::phase_1_RING_0::write_crash_marker(2039);
     info::print();
 
+    crate::phase_1_RING_0::write_crash_marker(2040);
     crate::dev::console::serial_write("[cpu] === Init Complete ===\n");
 
     CpuInfo { features, tsc_freq }
