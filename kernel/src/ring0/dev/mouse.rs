@@ -281,15 +281,19 @@ pub fn init() {
         outb(0x21, mask & !0x04); // clear bit 2 → enable IRQ2
     }
 
-    // Step 4: Reset mouse
+    // Step 4: Reset mouse (must send 0xD4 first to select auxiliary port)
     wait_input();
-    unsafe { outb(PS2_DATA, 0xFF); }
+    unsafe { outb(PS2_STATUS, 0xD4); } // Tell controller: next byte is for mouse
+    wait_input();
+    unsafe { outb(PS2_DATA, 0xFF); }   // Reset command → goes to mouse
     wait_output();
     let _ack = unsafe { inb(PS2_DATA) }; // 0xFA (ACK) or 0xAA (BAT OK)
 
-    // Step 5: Enable data reporting
+    // Step 5: Enable data reporting (also needs 0xD4 prefix)
     wait_input();
-    unsafe { outb(PS2_DATA, 0xF4); }
+    unsafe { outb(PS2_STATUS, 0xD4); } // Select auxiliary port
+    wait_input();
+    unsafe { outb(PS2_DATA, 0xF4); }   // Enable data reporting → goes to mouse
     wait_output();
     let _ack2 = unsafe { inb(PS2_DATA) }; // 0xFA = ACK
 
