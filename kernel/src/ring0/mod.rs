@@ -32,6 +32,7 @@ pub mod context;
 pub mod uefi_rt;
 pub mod serial;
 pub mod visual;
+pub mod font;
 pub mod log;
 
 // ── Main coordinator ────────────────────────────────────────────────

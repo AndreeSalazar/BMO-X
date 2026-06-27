@@ -15,42 +15,8 @@
 
 use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 
-// ── Minimal font stub (replaces crate::bmo_core::ui::font) ──────────────────
-// Returns a simple 8x16 bitmap glyph. For printable ASCII (32..127) it
-// returns a fixed pattern so the splash screen still renders visible
-// characters. Unprintable bytes return an empty glyph.
-mod font_stub {
-    /// Stub glyph — returns a solid block for any printable character,
-    /// empty for non-printable. This keeps the splash screen visually
-    /// intact even without the real font module.
-    pub fn get_glyph(ch: u8) -> &'static [u8; 16] {
-        // Printable ASCII range: space (32) to tilde (126)
-        static SOLID: [u8; 16] = [
-            0b11111111,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b10000001,
-            0b11111111,
-            0b00000000,
-        ];
-        static EMPTY: [u8; 16] = [0u8; 16];
-        if ch >= 32 && ch < 127 {
-            &SOLID
-        } else {
-            &EMPTY
-        }
-    }
-}
+// ── Font: real CP437/VGA 8×16 bitmap (ring0/font.rs) ──────────────
+use super::font;
 
 // ── Palette (matches welcome) ──────────────────────────────────────
 
@@ -444,7 +410,7 @@ fn text(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, txt: &
     let mut cx = x;
     for &ch in txt {
         if cx + 8 >= w || y + 16 >= h { break; }
-        let glyph = font_stub::get_glyph(ch);
+        let glyph = font::get_glyph(ch);
         for py in 0..16 {
             let bits = glyph[py];
             for px in 0..8 {
@@ -464,7 +430,7 @@ fn text_scaled(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize,
     let mut cx = x;
     for &ch in txt {
         if cx + gw >= w || y + gh >= h { break; }
-        let glyph = font_stub::get_glyph(ch);
+        let glyph = font::get_glyph(ch);
         for py in 0..16 {
             let bits = glyph[py];
             for px in 0..8 {
