@@ -11,3 +11,8 @@ pub mod numbers;
 pub mod ring0;
 pub mod bmo_core;
 pub mod gpu;
+
+// ── Ring 3 API stubs ─────────────────────────────────────────────
+pub mod mmap;
+pub mod file_ops;
+pub mod signals;

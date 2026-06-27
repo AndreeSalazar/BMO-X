@@ -28,10 +28,10 @@ const APIC_EOI:            u32 = 0x0B0;
 pub const APIC_SPURIOUS:       u32 = 0x0F0;
 pub const APIC_ICR_LO:      u32 = 0x300;
 pub const APIC_ICR_HI:      u32 = 0x310;
-const APIC_TIMER_LVT:      u32 = 0x320;
-const APIC_TIMER_INIT:     u32 = 0x380;
-const APIC_TIMER_CUR:      u32 = 0x390;
-const APIC_TIMER_DIV:      u32 = 0x3E0;
+pub const APIC_TIMER_LVT:      u32 = 0x320;
+pub const APIC_TIMER_INIT:     u32 = 0x380;
+pub const APIC_TIMER_CUR:      u32 = 0x390;
+pub const APIC_TIMER_DIV:      u32 = 0x3E0;
 
 /// Timer interrupt vector — wired to IDT entry 48.
 pub const APIC_TIMER_VECTOR: u8 = 48;

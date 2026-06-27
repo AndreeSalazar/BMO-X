@@ -108,6 +108,9 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
     ctx.cpu.features_aes = true;
     ctx.bmo_abi_initialized = true;
 
+    // Timer subsystem init (HPET detection + timer wheel + timestamps)
+    crate::dev::timer::init();
+
     let phase0_end = crate::cpu::rdtsc();
     ctx.record_phase(0, boot_start, phase0_end);
 
@@ -241,6 +244,16 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
 
     // USB HID (xHCI native keyboard/mouse)
     crate::dev::usb_hid::init();
+
+    // Storage drivers (AHCI detection, NVMe detection)
+    if crate::dev::pcie::has_ahci() {
+        if let Some(mmio) = crate::dev::pcie::find_ahci_mmio() {
+            unsafe { crate::dev::ahci::probe(mmio, 0); }
+        }
+    }
+
+    // Power management (C-states, thermal monitoring)
+    crate::dev::power::init();
 
     let phase2_end = crate::cpu::rdtsc();
     ctx.record_phase(2, prev_end, phase2_end);

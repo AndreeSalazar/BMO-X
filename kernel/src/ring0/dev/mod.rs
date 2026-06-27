@@ -27,3 +27,21 @@ pub mod acpi;
 pub mod keyboard;
 pub mod mouse;
 pub mod usb_hid;
+
+// ── Storage (AHCI/NVMe/Block I/O) ────────────────────────────────
+pub mod storage;
+pub mod ahci;
+pub mod nvme;
+pub mod block_io;
+
+// ── Timers (HPET, timer wheel, timestamps) ────────────────────────
+pub mod timer;
+pub mod hpet;
+pub mod timer_wheel;
+pub mod timestamp;
+
+// ── Power (C-states, thermal, sleep) ──────────────────────────────
+pub mod power;
+pub mod cstates;
+pub mod thermal;
+pub mod sleep;
