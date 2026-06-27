@@ -237,7 +237,7 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::dev::keyboard::init();
 
     // PS/2 Mouse (IRQ12)
-    crate::dev::keyboard::init_mouse();
+    crate::dev::mouse::init();
 
     // USB HID (xHCI native keyboard/mouse)
     crate::dev::usb_hid::init();
