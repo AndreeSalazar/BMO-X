@@ -126,11 +126,13 @@ impl BootInfo {
         self.magic == BOOT_MAGIC && self.version >= PROTOCOL_VERSION
     }
 
-    /// Compile-time: BootInfo size must be exactly 8 KiB (2 pages).
+    /// Compile-time guard: BootInfo must fit in the 2 pages reserved by the
+    /// bootloader. It does not need to be exactly 8 KiB; it only needs a stable
+    /// `repr(C)` layout shared by bootloader and kernel.
     #[allow(dead_code)]
     const SIZE_CHECK: () = assert!(
-        core::mem::size_of::<Self>() == 8192,
-        "BootInfo must be exactly 8192 bytes (2 pages)"
+        core::mem::size_of::<Self>() <= 8192,
+        "BootInfo must fit in the bootloader's 2-page allocation"
     );
 
     /// Framebuffer pitch in bytes (stride × 4 for 32bpp).

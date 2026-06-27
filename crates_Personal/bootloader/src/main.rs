@@ -134,7 +134,18 @@ fn read_file(handle: uefi::Handle, path: &str) -> Option<Vec<u8>> {
     }
 
     let mut buf = vec![0u8; size];
-    file.read(&mut buf).ok()?;
+    let mut read_total = 0usize;
+    while read_total < size {
+        let n = file.read(&mut buf[read_total..]).ok()?;
+        if n == 0 {
+            break;
+        }
+        read_total += n;
+    }
+    if read_total != size {
+        info!("short read: expected {} bytes, got {}", size, read_total);
+        return None;
+    }
     Some(buf)
 }
 
@@ -158,14 +169,6 @@ static FASTOS_NVRAM_GUID: EfiGuid = EfiGuid {
     data4: [0xa6, 0x81, 0x4b, 0x5c, 0x42, 0xeb, 0x02, 0x9a],
 };
 
-type RawSetVariableFn = unsafe extern "efiapi" fn(
-    name: *const u16,
-    guid: *const EfiGuid,
-    attributes: u32,
-    data_size: usize,
-    data: *const u8,
-) -> u64;
-
 type RawGetVariableFn = unsafe extern "efiapi" fn(
     name: *const u16,
     guid: *const EfiGuid,
@@ -174,8 +177,7 @@ type RawGetVariableFn = unsafe extern "efiapi" fn(
     data: *mut u8,
 ) -> u64;
 
-/// Cached function pointers — resolved BEFORE ExitBootServices, used AFTER.
-static mut CACHED_SET_VAR: Option<RawSetVariableFn> = None;
+/// Cached GetVariable pointer resolved BEFORE ExitBootServices.
 static mut CACHED_GET_VAR: Option<RawGetVariableFn> = None;
 
 /// Must be called BEFORE ExitBootServices to cache RuntimeServices pointers.
@@ -194,11 +196,6 @@ fn nvram_init() {
         unsafe { CACHED_GET_VAR = Some(core::mem::transmute(get_fp)); }
     }
 
-    // SetVariable at RuntimeServices + 0x58
-    let set_fp = unsafe { core::ptr::read_volatile((rt_ptr + 0x58) as *const u64) };
-    if set_fp != 0 {
-        unsafe { CACHED_SET_VAR = Some(core::mem::transmute(set_fp)); }
-    }
 }
 
 fn str_to_ucs2(name: &str) -> [u16; 64] {
@@ -213,10 +210,6 @@ fn str_to_ucs2(name: &str) -> [u16; 64] {
     ucs2
 }
 
-/// NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS
-/// After ExitBootServices, all three bits are required for the variable
-/// to persist and be accessible on subsequent boots.
-const NVRAM_ATTRS: u32 = 0x01 | 0x02 | 0x04;
 
 /// Read NVRAM variable. Safe to call before or after EBS.
 fn nvram_get(name: &str) -> Option<alloc::string::String> {
@@ -234,41 +227,6 @@ fn nvram_get(name: &str) -> Option<alloc::string::String> {
     Some(alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned())
 }
 
-/// Write NVRAM variable. ONLY valid after ExitBootServices.
-fn nvram_set(name: &str, value: &str) -> Result<(), alloc::string::String> {
-    let set_var = unsafe { CACHED_SET_VAR.ok_or("SetVariable not cached")? };
-    let ucs2_name = str_to_ucs2(name);
-    let status = unsafe {
-        set_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, NVRAM_ATTRS, value.len(), value.as_ptr())
-    };
-    if status == 0 { Ok(()) }
-    else { Err(alloc::format!("SetVariable: status=0x{:x}", status)) }
-}
-
-/// Post-EBS diagnostic: test NVRAM write+read with cached function pointers.
-fn nvram_diag_raw() {
-    let set_var = unsafe { CACHED_SET_VAR };
-    let get_var = unsafe { CACHED_GET_VAR };
-
-    if let Some(set_fn) = set_var {
-        let test_name = "FastOSDiag";
-        let test_val = b"diag1";
-        let ucs2_name = str_to_ucs2(test_name);
-        let _status = unsafe {
-            set_fn(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, 0x01 | 0x02, test_val.len(), test_val.as_ptr())
-        };
-    }
-    if let Some(get_fn) = get_var {
-        let test_name = "FastOSDiag";
-        let ucs2_name = str_to_ucs2(test_name);
-        let mut attrs: u32 = 0;
-        let mut data_size: usize = 256;
-        let mut buf = [0u8; 256];
-        let _ = unsafe {
-            get_fn(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, &mut attrs, &mut data_size, buf.as_mut_ptr())
-        };
-    }
-}
 
 // ── Crash Log ────────────────────────────────────────────────────────────────
 
@@ -278,6 +236,20 @@ fn read_crash_marker() -> Option<u32> {
         Some(unsafe { core::ptr::read_volatile((CRASH_MARKER_ADDR + 4) as *const u32) })
     } else {
         None
+    }
+}
+
+fn read_ram_stage() -> Option<u32> {
+    let val = unsafe { core::ptr::read_volatile(0x9_0010 as *const u32) };
+    if val != 0 { Some(val) } else { None }
+}
+
+fn ram_stage_name(val: u32) -> &'static str {
+    match val {
+        0x4542_5300 => "post_EBS",          // "EBS\0"
+        0x4E56_5200 => "post_NVRAM",         // "NVR\0"
+        0x4A4D_5000 => "post_kernel_jump",   // "JMP\0"
+        _ => "unknown_ram_stage",
     }
 }
 
@@ -340,6 +312,7 @@ fn write_crash_log(
     handle: uefi::Handle,
     nvram_stage: Option<&str>,
     ram_marker: Option<u32>,
+    ram_stage: Option<u32>,
     boot_num: u32,
     nvram_result: &Result<(), alloc::string::String>,
 ) {
@@ -352,7 +325,7 @@ fn write_crash_log(
     let mut existing = Vec::new();
     let mut ucs2 = [0u16; 256];
     if let Ok(name) = uefi::CStr16::from_str_with_buf(CRASH_LOG_PATH, &mut ucs2) {
-        if let Ok(mut h) = root.open(name, FileMode::Read, FileAttribute::empty()) {
+        if let Ok(h) = root.open(name, FileMode::Read, FileAttribute::empty()) {
             if let Some(mut f) = h.into_regular_file() {
                 let mut info_buf = [0u8; 256];
                 if let Ok(fi) = f.get_info::<FileInfo>(&mut info_buf) {
@@ -382,10 +355,18 @@ fn write_crash_log(
             entry.extend_from_slice(b" | prev NVRAM=");
             entry.extend_from_slice(stage.as_bytes());
         }
+    } else if let Some(rs) = ram_stage {
+        entry.extend_from_slice(b"boot died at: ");
+        entry.extend_from_slice(ram_stage_name(rs).as_bytes());
+        if let Some(stage) = nvram_stage {
+            entry.extend_from_slice(b" | prev NVRAM=");
+            entry.extend_from_slice(stage.as_bytes());
+        }
     } else {
         match nvram_stage {
             Some("ok") => entry.extend_from_slice(b"OK (welcome reached)"),
             Some("bootloader") => entry.extend_from_slice(b"previous boot reached kernel handoff"),
+            Some("kernel_jump") => entry.extend_from_slice(b"bootloader jumped to kernel, kernel died before NVRAM write"),
             Some(stage) => {
                 entry.extend_from_slice(b"CRASH at: ");
                 entry.extend_from_slice(stage.as_bytes());
@@ -440,7 +421,7 @@ fn write_crash_log(
 
     let mut ucs2b = [0u16; 256];
     if let Ok(name) = uefi::CStr16::from_str_with_buf(CRASH_LOG_PATH, &mut ucs2b) {
-        if let Ok(mut h) = root.open(name, FileMode::CreateReadWrite, FileAttribute::empty()) {
+        if let Ok(h) = root.open(name, FileMode::CreateReadWrite, FileAttribute::empty()) {
             if let Some(mut f) = h.into_regular_file() {
                 let _ = f.set_position(0);
                 let _ = f.write(&content);
@@ -546,17 +527,28 @@ fn main() -> Status {
     // Crash diagnostics — nvram_get is allowed during Boot Services (UEFI spec)
     let prev_stage = nvram_get("FastOSBootStage");
     let ram_marker = read_crash_marker();
+    let ram_stage = read_ram_stage();
     let boot_num = read_and_increment_boot_counter();
 
     // NOTE: nvram_set CANNOT be called here — SetVariable is only valid after
-    // ExitBootServices per UEFI spec Section 8.2. Calling it before EBS causes
+    // ExitBootServices per UEFI spec Section 8. Calling it before EBS causes
     // INVALID_PARAMETER on AMD firmware. We write NVRAM after EBS below.
-    info!("Boot #{} — RAM: {:?}", boot_num, ram_marker);
-    write_crash_log(device, prev_stage.as_deref(), ram_marker, boot_num, &Ok(()));
+    info!("Boot #{} — RAM: {:?} stage: {:?}", boot_num, ram_marker, ram_stage);
+    write_crash_log(device, prev_stage.as_deref(), ram_marker, ram_stage, boot_num, &Ok(()));
 
     clear_crash_marker();
 
-    // Load kernel
+    // Also clear the RAM boot-stage markers from previous boot
+    unsafe {
+        core::ptr::write_volatile(0x9_0010 as *mut u32, 0u32);
+        core::ptr::write_volatile(0x9_0014 as *mut u32, 0u32);
+        core::ptr::write_volatile(0x9_0018 as *mut u32, 0u32);
+        core::ptr::write_volatile(0x9_0020 as *mut u32, 0u32);
+        core::ptr::write_volatile(0x9_0024 as *mut u32, 0u32);
+    }
+
+    // ── Allocate kernel ───────────────────────────────────────────────
+    // Load kernel ELF
     let elf_data = read_file(device, "\\EFI\\BOOT\\kernel.elf").expect("failed to read kernel.elf");
     let (entry_point, phdrs) = parse_elf64(&elf_data).expect("failed to parse ELF64");
 
@@ -571,17 +563,18 @@ fn main() -> Status {
     let page_base = base & !0xFFF;
     let total_pages = ((end - page_base + 0xFFF) / 0x1000) as usize;
 
-    // Allocate and load
-    let (kernel_ptr, needs_reloc) = match boot::allocate_pages(
+    // Allocate and load at the ELF virtual address. The kernel is linked as a
+    // non-relocatable higher/physical-half image, so a fallback allocation is
+    // not safe: jumping to `entry_point` only works if PT_LOAD is actually at
+    // `page_base`. If this fixed allocation fails, stop before EBS instead of
+    // corrupting occupied memory after EBS.
+    let kernel_ptr = match boot::allocate_pages(
         boot::AllocateType::Address(page_base), MemoryType::LOADER_CODE, total_pages,
     ) {
-        Ok(addr) => (addr.as_ptr() as *mut u8, false),
+        Ok(addr) => addr.as_ptr() as *mut u8,
         Err(_) => {
-            info!("WARN: fixed address 0x{:x} occupied, using fallback", page_base);
-            let tmp = boot::allocate_pages(
-                boot::AllocateType::AnyPages, MemoryType::LOADER_DATA, total_pages,
-            ).expect("alloc failed");
-            (tmp.as_ptr() as *mut u8, true)
+            info!("FATAL: fixed kernel address 0x{:x} occupied", page_base);
+            return Status::OUT_OF_RESOURCES;
         }
     };
 
@@ -597,18 +590,21 @@ fn main() -> Status {
     // GOP
     let gop = query_gop().expect("GOP failed");
 
-    // Stack
+    // ── Allocate stack + BootInfo below 4GB ──────────────────────────
+    // Using MaxAddress ensures these are always identity-mapped after
+    // ExitBootServices, even on firmware that only maps low memory.
     let stack_pages = KERNEL_STACK_SIZE / 4096;
     let stack_base = boot::allocate_pages(
-        boot::AllocateType::AnyPages, MemoryType::LOADER_DATA, stack_pages,
+        boot::AllocateType::MaxAddress(0x7FFF_F000), MemoryType::LOADER_DATA, stack_pages,
     ).expect("stack alloc failed").as_ptr() as u64;
     let stack_top = stack_base + KERNEL_STACK_SIZE as u64;
 
-    // Build BootInfo on heap (it's ~8KB, too large for UEFI loader stack)
+    // BootInfo (8 KiB = 2 pages)
     let boot_info_ptr = boot::allocate_pages(
-        boot::AllocateType::AnyPages, MemoryType::LOADER_DATA, 2, // 8 KiB = 2 pages
+        boot::AllocateType::MaxAddress(0x7FFE_F000), MemoryType::LOADER_DATA, 2,
     ).expect("BootInfo alloc failed").as_ptr() as *mut BootInfo;
 
+    // Fill BootInfo
     unsafe {
         core::ptr::write_bytes(boot_info_ptr, 0, 1);
         let bi = &mut *boot_info_ptr;
@@ -629,28 +625,27 @@ fn main() -> Status {
             .map(|p| p.as_ptr() as u64).unwrap_or(0);
     }
 
-    // Exit boot services
+    // ── Exit Boot Services ───────────────────────────────────────────
+    // This is the POINT OF NO RETURN. After this call:
+    //   - NO Boot Services (file I/O, console, allocation, protocols)
+    //   - ONLY Runtime Services (NVRAM SetVariable/GetVariable)
+    //   - NO hardware access except direct memory/IO
+    // Per UEFI spec, the firmware disables its software watchdog on EBS.
+    // The FCH hardware watchdog (if any) is the KERNEL's responsibility
+    // after it sets up its own IDT.
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
 
-    // ── NVRAM writes AFTER ExitBootServices (UEFI spec requirement) ──────
-    // SetVariable is only callable after EBS. This is where we write boot
-    // stage and run diagnostics. The raw FFI pointers use RuntimeServices
-    // which remain valid after EBS.
-    let _ = nvram_set("FastOSBootStage", "bootloader");
-    // Clear kernel diagnostic breadcrumbs from previous boot
-    let _ = nvram_set("FastOSDiag1", "");
-    let _ = nvram_set("FastOSDiag2", "");
-    let _ = nvram_set("FastOSDiag3", "");
-    let _ = nvram_set("FastOSPhase", "");
-    nvram_diag_raw();
-
-    if needs_reloc {
-        unsafe {
-            core::ptr::copy_nonoverlapping(kernel_ptr, page_base as *mut u8, total_pages * 4096);
-        }
+    // ── Post-EBS: ONLY safe operations ───────────────────────────────
+    // RAM markers survive warm reset (if RAM preserved). Checked on next boot.
+    unsafe {
+        core::ptr::write_volatile(0x9_0010 as *mut u32, 0x4542_5300u32); // "EBS\0"
     }
 
-    // Fill memory map into BootInfo (after EBS, memory addresses are final)
+    // Do not call UEFI RuntimeServices here. On real firmware, SetVariable can
+    // hang/fault after EBS before the kernel jump. From this point onward keep
+    // the path minimal and deterministic: RAM marker, BootInfo memory map, JMP.
+
+    // Fill memory map into BootInfo
     let bi = unsafe { &mut *boot_info_ptr };
     let mut count: u32 = 0;
     for desc in memory_map.entries() {
@@ -665,9 +660,14 @@ fn main() -> Status {
     }
     bi.memory_map_count = count;
 
-    info!("BootInfo at 0x{:x} entries={}", boot_info_ptr as u64, count);
+    unsafe {
+        core::ptr::write_volatile(0x9_0020 as *mut u32, 0x4A4D_5000u32); // "JMP\0"
+        core::ptr::write_volatile(0x9_0024 as *mut u32, entry_point as u32);
+    }
 
-    // Jump to kernel
+    // ── Jump to kernel ───────────────────────────────────────────────
+    // RDI = boot_info_ptr (first argument per System V AMD64 ABI)
+    // RSP = stack_top (16-byte aligned by UEFI page allocator)
     unsafe {
         core::arch::asm!(
             "mov rsp, {stack}",
