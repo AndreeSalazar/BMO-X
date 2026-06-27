@@ -14,7 +14,6 @@
 //! progress.
 
 use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
-// use crate::bmo_core::ui::font;  // TEMPORAL — moved to Temporal()
 
 // ── Minimal font stub (replaces crate::bmo_core::ui::font) ──────────────────
 // Returns a simple 8x16 bitmap glyph. For printable ASCII (32..127) it

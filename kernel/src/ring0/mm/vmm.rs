@@ -495,7 +495,6 @@ pub unsafe fn resolve_demand_page(
     pte.0 = PageTableEntry::new(phys, final_flags).0;
     invlpg(page_addr);
 
-    // crate::cabina::trace_u64("vm", "demand page resolved", page_addr);  // TEMPORAL
     Ok(true)
 }
 
@@ -542,7 +541,6 @@ pub unsafe fn resolve_cow_page(
     pte.0 = PageTableEntry::new(new_phys, final_flags).0;
     invlpg(page_addr);
 
-    // crate::cabina::trace_u64("vm", "CoW page resolved", page_addr);  // TEMPORAL
     Ok(true)
 }
 

@@ -29,8 +29,6 @@ pub mod mm;
 pub mod dev;
 pub mod proc;
 pub mod cpu;
-pub mod storage;
-
 // ── Soporte de Ring 0 ───────────────────────────────────────────────
 pub mod boot;
 
@@ -47,10 +45,8 @@ pub use bmo_abi;
 // No se carga como módulo Rust (solo .md files). Ver
 // `kernel/src/AMD/ryzen_5_5600x.md` para la documentación.
 
-// ── Nueva arquitectura: profile/bus/gpu/syscall ────────────────────
+// ── Nueva arquitectura: profile/syscall ─────────────────────────────
 pub mod profile;
-pub mod bus;
-pub mod gpu;
 pub mod syscall;
 
 // Re-exports principales (BootInfo shared from bootloader).

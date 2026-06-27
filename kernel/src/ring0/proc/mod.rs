@@ -99,7 +99,6 @@ pub fn schedule() {
                 if proc.page_table_root != 0 {
                     let current_cr3 = crate::mm::virt::read_cr3();
                     if proc.page_table_root != current_cr3 {
-                        // crate::cabina::trace_u64("sched", "CR3 switch", proc.page_table_root);  // TEMPORAL
                         // v1.8.8: issue IBPB before switching to a new process's
                         // page table. This isolates the branch predictor state
                         // and mitigates Spectre v2 cross-process leakage.
@@ -110,7 +109,6 @@ pub fn schedule() {
             }
 
             task::set_current(next_idx);
-            // crate::cabina::telemetry::scheduler::inc_ctx();  // TEMPORAL
         }
     }
 }
@@ -128,6 +126,4 @@ pub fn yield_now() {
 pub fn init() {
     // v2.0: configure quantum, priorities, runqueue.
 }
-
-
 

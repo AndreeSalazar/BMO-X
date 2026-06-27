@@ -22,7 +22,6 @@
 
 #![allow(dead_code)]
 
-// use crate::cabina as diag;  // TEMPORAL — moved to Temporal()
 use crate::dev::console;
 use super::boot::visual;
 
@@ -48,7 +47,6 @@ impl Logger {
         if visual::is_active() {
             visual::log(self.subsystem, msg, visual::color::OK);
         }
-        // diag::info(self.subsystem, msg);  // TEMPORAL
         self.write_serial(msg, "INFO");
     }
 
@@ -57,7 +55,6 @@ impl Logger {
         if visual::is_active() {
             visual::log(self.subsystem, msg, visual::color::WARN);
         }
-        // diag::warn(self.subsystem, msg);  // TEMPORAL
         self.write_serial(msg, "WARN");
     }
 
@@ -66,7 +63,6 @@ impl Logger {
         if visual::is_active() {
             visual::log(self.subsystem, msg, visual::color::WARN);
         }
-        // diag::fault(self.subsystem, msg);  // TEMPORAL
         self.write_serial(msg, "ERROR");
     }
 
@@ -76,7 +72,6 @@ impl Logger {
         if visual::is_active() {
             visual::log(self.subsystem, msg, visual::color::WARN);
         }
-        // diag::fault_u64(self.subsystem, msg, val);  // TEMPORAL
         console::serial_write("[");
         console::serial_write(self.subsystem);
         console::serial_write("] ERROR: ");
@@ -99,7 +94,6 @@ impl Logger {
         if visual::is_active() {
             visual::log(self.subsystem, msg, visual::color::FAULT);
         }
-        // diag::fault(self.subsystem, msg);  // TEMPORAL — moved out
         console::serial_write("[");
         console::serial_write(self.subsystem);
         console::serial_write("] FATAL: ");

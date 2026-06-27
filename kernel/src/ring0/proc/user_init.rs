@@ -14,7 +14,6 @@
 use super::process;
 use super::task;
 use super::Priority;
-// use crate::bmo_core::fs::Capabilities;  // TEMPORAL — moved to Temporal()
 use crate::mm::virt;
 
 /// Capabilities stub (bmo_core::fs::Capabilities moved to Temporal)
@@ -87,53 +86,37 @@ fn build_init_program() -> &'static [u8] {
 }
 
 fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<(u64, u64)> {
-    // crate::cabina::info("ring3", "=== Ring 3 process allocation START ===");  // TEMPORAL
     crate::dev::console::serial_write("[ring3] === alloc start ===\n");
-    // crate::cabina::info("ring3", "allocating process struct");  // TEMPORAL
     let proc = process::alloc_process()?;
     proc.set_name(name);
     proc.caps = caps;
-    // crate::cabina::info("ring3", "process struct allocated");  // TEMPORAL
 
     // Create dedicated user page table (clones kernel mappings)
-    // crate::cabina::info("ring3", "reading kernel CR3");  // TEMPORAL
     let kernel_cr3 = virt::read_cr3();
-    // crate::cabina::info_u64("ring3", "kernel CR3", kernel_cr3);  // TEMPORAL
-    // crate::cabina::info("ring3", "creating user page table");  // TEMPORAL
     let user_cr3 = unsafe { virt::create_user_page_table(kernel_cr3)? };
     proc.page_table_root = user_cr3;
-    // crate::cabina::info_u64("ring3", "user CR3", user_cr3);  // TEMPORAL
 
     let code_pages = (code.len() + crate::mm::phys::page_size() - 1) / crate::mm::phys::page_size();
     let stack_pages = USER_STACK_SIZE / crate::mm::phys::page_size();
-    // crate::cabina::info_u64("ring3", "code pages", code_pages as u64);  // TEMPORAL
-    // crate::cabina::info_u64("ring3", "stack pages", stack_pages as u64);  // TEMPORAL
 
     // Allocate physical pages for code and stack
-    // crate::cabina::info("ring3", "allocating physical pages for code");  // TEMPORAL
     let code_phys = unsafe { crate::mm::phys::alloc_pages_contiguous(code_pages.max(1))? };
-    // crate::cabina::info_u64("ring3", "code phys addr", code_phys);  // TEMPORAL
-    // crate::cabina::info("ring3", "allocating physical pages for stack");  // TEMPORAL
     let stack_phys = unsafe { crate::mm::phys::alloc_pages_contiguous(stack_pages)? };
-    // crate::cabina::info_u64("ring3", "stack phys addr", stack_phys);  // TEMPORAL
 
     // Map into user virtual address space
     // Code: RX, USER, !NX
     let code_flags = virt::flags::PRESENT | virt::flags::USER | virt::flags::WRITABLE;
-    // crate::cabina::info("ring3", "mapping code into user page table");  // TEMPORAL
     unsafe {
         virt::map_user_range(user_cr3, USER_CODE_VBASE, code_phys, code_pages, code_flags).ok()?;
     }
 
     // Stack: RW, USER, NX
     let stack_flags = virt::flags::PRESENT | virt::flags::USER | virt::flags::WRITABLE | virt::flags::NO_EXECUTE;
-    // crate::cabina::info("ring3", "mapping stack into user page table");  // TEMPORAL
     unsafe {
         virt::map_user_range(user_cr3, USER_STACK_VBASE, stack_phys, stack_pages, stack_flags).ok()?;
     }
 
     // Copy code to physical pages (via high-mem mapping)
-    // crate::cabina::info("ring3", "copying code bytes to physical pages");  // TEMPORAL
     unsafe {
         let dst = crate::mm::virt::phys_to_virt(code_phys) as *mut u8;
         core::ptr::copy_nonoverlapping(code.as_ptr(), dst, code.len());
@@ -147,7 +130,6 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
         // Zero stack (via high-mem mapping)
         core::ptr::write_bytes(crate::mm::virt::phys_to_virt(stack_phys) as *mut u8, 0, USER_STACK_SIZE);
     }
-    // crate::cabina::info("ring3", "code and stack zeroed/populated");  // TEMPORAL
 
     // After copy, code pages are mapped RW+USER for simplicity.
     proc.entry_point = USER_CODE_VBASE;
@@ -164,7 +146,6 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
         if ptr.is_null() { return None; }
         ptr as u64 + KERNEL_STACK_PER_THREAD as u64
     };
-    // crate::cabina::info_u64("ring3", "kernel stack for this thread", kernel_stack);  // TEMPORAL
 
     let thr = task::alloc(proc.pid, Priority::Interactive)?;
     thr.regs = task::SavedRegs::new_user(USER_CODE_VBASE, user_stack_top);
@@ -178,26 +159,18 @@ fn allocate_user_process(name: &str, code: &[u8], caps: Capabilities) -> Option<
             t.state = task::State::Running;
         }
     }
-    // crate::cabina::info_u64("ring3", "thread TID", tid.0 as u64);  // TEMPORAL
 
     // Critical: set BOTH the TSS.rsp0 (for #GP/#DF exceptions) AND the
     // SYSCALL_KERNEL_RSP (for the syscall entry to switch to).
-    // crate::cabina::info("ring3", "setting kernel stack for TSS.rsp0 and syscall entry");  // TEMPORAL
     crate::arch::gdt::set_kernel_stack(kernel_stack);
     crate::arch::syscall::set_syscall_kernel_stack(kernel_stack);
 
     // Sanity: read back the values to verify the writes took effect.
-    // crate::cabina::info("ring3", "Ring 3 process allocation complete");  // TEMPORAL
-    // crate::cabina::info_u64("ring3", "user code entry (Ring 3 RIP)", USER_CODE_VBASE);  // TEMPORAL
-    // crate::cabina::info_u64("ring3", "user stack top (Ring 3 RSP)", user_stack_top);  // TEMPORAL
-    // crate::cabina::info_u64("ring3", "user CR3 (page table root)", user_cr3);  // TEMPORAL
-    // crate::cabina::info("ring3", "=== Ring 3 process allocation END ===");  // TEMPORAL
     Some((USER_CODE_VBASE, user_stack_top))
 }
 
 /// Spawn the first user-mode process ("init").
 pub fn spawn_init_process() -> Option<(u64, u64)> {
-    // crate::cabina::info("sched", "allocating init Ring 3 test process");  // TEMPORAL
     allocate_user_process("init", build_init_program(), SYS_DEBUG)
 }
 
@@ -209,7 +182,6 @@ pub fn spawn_init_process() -> Option<(u64, u64)> {
 /// process from the `Run` path. That keeps desktop boot stable until paging and
 /// scheduler return paths are complete.
 pub fn prepare_desktop_compositor() -> bool {
-    // TEMPORAL: bmo_core::desktop::compositor moved out — stubbed
     crate::dev::console::serial_write("[user_init] Ring 3 compositor stubbed (TEMPORAL)\n");
     false
 }
@@ -241,7 +213,6 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
         loop { core::arch::asm!("hlt"); }
     }
 
-    // crate::cabina::info("ring3", "=== Ring 3 JUMP START ===");  // TEMPORAL
     crate::dev::console::serial_write("[ring3] === Ring 3 JUMP START ===\n");
     crate::dev::console::serial_write("  entry (RIP)=0x");
     crate::dev::console::serial_write_u64(entry_point, 16);
@@ -254,7 +225,6 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
     crate::dev::console::serial_write_u64(user_stack, 16);
     crate::dev::console::serial_write(" CR3=");
     crate::dev::console::serial_write("...\n");
-    // crate::cabina::read_cr3_into_serial();  // TEMPORAL
 
     // Build interrupt frame for iretq return to Ring 3
     // Layout (low to high on kernel stack):
@@ -281,14 +251,12 @@ pub unsafe fn jump_to_ring3(entry_point: u64, user_stack: u64) -> ! {
 }
 
 fn launch_desktop_compositor_ring3() -> bool {
-    // TEMPORAL: bmo_core::desktop::compositor moved out — stubbed
     crate::dev::console::serial_write("[ring3] desktop compositor stubbed (TEMPORAL)\n");
     false
 }
 
 /// Shell command: spawn Ring 3 hello process.
 pub fn spawn_hello() {
-    // TEMPORAL: cabina/bmo_core moved out — stubbed
     crate::dev::console::serial_write("[user_init] spawn_hello: stubbed (TEMPORAL)\n");
 }
 
@@ -298,7 +266,6 @@ pub fn spawn_hello() {
 /// the welcome screen can recover if anything fails. The desktop
 /// itself is `-> !` so if everything works, it runs forever.
 pub fn spawn_desktop() {
-    // TEMPORAL: bmo_core::desktop moved out — stubbed
     crate::dev::console::serial_write("[user_init] spawn_desktop: stubbed (TEMPORAL)\n");
 }
 
@@ -321,9 +288,6 @@ fn build_crash_program() -> &'static [u8] {
 /// Shell command: spawn a Ring 3 process that crashes with ud2.
 /// Verifies exception → kill → scheduler → welcome returns.
 pub fn spawn_crash() {
-    // TEMPORAL: cabina/bmo_core moved out — stubbed
     crate::dev::console::serial_write("[user_init] spawn_crash: stubbed (TEMPORAL)\n");
 }
-
-
 

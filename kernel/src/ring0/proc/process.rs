@@ -177,8 +177,6 @@ pub fn free_process(proc: &mut Process) {
 /// After schedule(), loops with HLT — the next timer/interrupt will switch to
 /// another thread using TSS.RSP0 (already updated by schedule).
 pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
-    // crate::cabina::fault_u64("process", "killing current process", vector);  // TEMPORAL
-
     let current_idx = super::task::current_index();
     if let Some(thread) = super::task::get(current_idx) {
         let pid = thread.pid;
@@ -209,7 +207,6 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
     }
 
     // Schedule next thread (updates TSS.RSP0 for next interrupt)
-    // crate::cabina::trace("process", "scheduling after kill");  // TEMPORAL
     super::schedule();
 
     // We're on the dead thread's kernel stack — can't do anything useful.
@@ -219,6 +216,4 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
         unsafe { core::arch::asm!("sti; hlt"); }
     }
 }
-
-
 

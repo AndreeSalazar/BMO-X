@@ -8,7 +8,6 @@
 
 #![allow(dead_code)]
 
-// TEMPORAL: use crate::bmo_core::ui::fb::Framebuffer;  // moved to Temporal/
 use fastos_boot_protocol::PixelFormat;
 
 /// Minimal stub Framebuffer for backbuffer blit (replaces bmo_core::ui::fb::Framebuffer)

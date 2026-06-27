@@ -24,8 +24,6 @@
 use super::boot;
 use super::boot::info;
 
-// use crate::bmo_core;  // TEMPORAL — moved to Temporal()
-
 // ── Crash marker: physical address 0x90000 ─────────────────────────────
 // The bootloader reads this on next boot and writes to crash.log on SSD.
 // Format: [magic: u32 LE] [stage: u32 LE]
@@ -58,7 +56,6 @@ pub fn init() -> boot::BootContext {
 
 /// Despacha la fase 5 (welcome + desktop). Esta función NO retorna.
 pub fn dispatch_phase5(_ctx: &boot::BootContext, _t0: u64, _phase4_end: u64) -> ! {
-    // TEMPORAL: bmo_core::coord::enter moved out — enter idle loop
     crate::dev::console::serial_write("[coord] Ring 0 boot complete — entering idle loop\n");
     loop {
         unsafe { core::arch::asm!("sti; hlt"); }
@@ -171,7 +168,6 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
     boot::uefi_rt::write_boot_stage("bmo_core_init");
     boot::visual::log("ring0", "init bmo_core (TEMPORAL: stubbed)", boot::visual::color::OK);
     crate::dev::console::serial_write("[coord] main: bmo_core::coord::init (TEMPORAL: stubbed)\n");
-    // bmo_core::coord::init();  // TEMPORAL — moved to Temporal()
     crate::dev::console::serial_write("[coord] main: bmo_core::coord::init skipped\n");
 
     // Stage 6: entering welcome (no return expected)

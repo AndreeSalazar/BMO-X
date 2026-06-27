@@ -5,7 +5,6 @@
 //! init_fastos_cpu() que configura MTRR/PAT para Write-Combining.
 
 use crate::boot::log;
-// use crate::bmo_core::desktop;  // TEMPORAL — moved to Temporal()
 use crate::boot::context::BootContext;
 use super::trait_def::{PhaseOutput, SelfTestReport, CheckResult};
 
@@ -48,8 +47,6 @@ pub fn run(ctx: &BootContext, prev_end: u64) -> PhaseOutput {
     );
     log::info("phase3", "GOP display initialized");
 
-    // desktop::fb_fill(0, 0, bi.fb_width, 34, 0xFF101820);  // TEMPORAL
-    // desktop::fb_text(12, 9, b"FastOS boot: GOP online, storage/net deferred, entering safe welcome...", 0xFF76B900);  // TEMPORAL
     crate::dev::console::serial_write("[phase3] GOP online, entering safe welcome...\n");
 
     let phase3_end = crate::cpu::rdtsc();

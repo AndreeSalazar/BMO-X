@@ -13,14 +13,12 @@
 //!   2. `serial`      — COM1 (hardware capture during early boot)
 //!   3. `visual`      — GOP framebuffer overlay (only if framebuffer is up)
 
-// use crate::cabina as diag;  // TEMPORAL — moved to Temporal()
 use crate::dev::console;
 use super::visual;
 
 /// Log an info-level boot message. `phase` and `msg` must be `'static`.
 pub fn info(phase: &'static str, msg: &'static str) {
     visual::log(phase, msg, visual::color::OK);
-    // diag::info(phase, msg);  // TEMPORAL — serial only
     console::serial_write("[FastOS] ");
     console::serial_write(msg);
     console::serial_write("\n");
@@ -29,7 +27,6 @@ pub fn info(phase: &'static str, msg: &'static str) {
 /// Log a recoverable warning.
 pub fn warn(phase: &'static str, msg: &'static str) {
     visual::log(phase, msg, visual::color::WARN);
-    // diag::warn(phase, msg);  // TEMPORAL — serial only
     console::serial_write("[FastOS] WARN: ");
     console::serial_write(msg);
     console::serial_write("\n");
@@ -38,7 +35,6 @@ pub fn warn(phase: &'static str, msg: &'static str) {
 /// Log an unrecoverable fault and halt. Never returns.
 pub fn fault(phase: &'static str, msg: &'static str) -> ! {
     visual::log(phase, msg, visual::color::FAULT);
-    // diag::fault(phase, msg);  // TEMPORAL — serial only
     console::serial_write("[FastOS] FATAL: ");
     console::serial_write(msg);
     console::serial_write("\n");
@@ -50,7 +46,6 @@ pub fn fault(phase: &'static str, msg: &'static str) -> ! {
 /// Log an info message plus a u64 value rendered as 0xHEX.
 pub fn info_u64(phase: &'static str, msg: &'static str, val: u64) {
     visual::log(phase, msg, visual::color::OK);
-    // diag::info_u64(phase, msg, val);  // TEMPORAL — serial only
     console::serial_write("[FastOS] ");
     crate::dev::console::serial_write(msg);
     crate::dev::console::serial_write(": ");
