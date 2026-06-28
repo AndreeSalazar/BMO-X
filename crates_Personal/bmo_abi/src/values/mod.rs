@@ -4,9 +4,4 @@
 //! - [`time`]     — `BmoInstant`, `BmoDuration` (sustituye `time_t`/`timespec`).
 //! - [`reflect`]  — reflection runtime sobre cualquier BEF cargado.
 
-pub mod string;
 pub mod time;
-pub mod reflect;
-pub mod net;
-pub mod math;
-pub mod hash;

@@ -18,11 +18,4 @@
 pub mod primitives;
 pub mod status;
 pub mod handle;
-pub mod option;
-pub mod result;
-pub mod memory;
 pub mod sync;
-pub mod error;
-pub mod convert;
-pub mod fmt;
-pub mod io;
