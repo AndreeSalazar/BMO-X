@@ -50,7 +50,6 @@ pub mod omni;
 // ── Other Ring 0 modules ────────────────────────────────────────────
 mod panic;
 pub mod profile;
-pub mod syscall;
 
 pub use bmo_abi;
 
