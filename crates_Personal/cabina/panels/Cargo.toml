@@ -1,0 +1,11 @@
+[package]
+name = "cabina-panels"
+version = "1.0.0"
+edition = "2021"
+description = "FastOS CABINA Panels — HUD rendering, query DSL, overlay (Ring 0)"
+
+[features]
+default = []
+
+[dependencies]
+cabina-core = { path = "../core" }

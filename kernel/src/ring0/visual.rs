@@ -348,9 +348,28 @@ fn fb() -> (*mut u32, usize, usize, usize) {
     (addr, w, h, s)
 }
 
+/// Convert a 0xAARRGGBB color to the framebuffer's native pixel format.
+#[inline]
+fn fix_color(c: u32) -> u32 {
+    let fmt = unsafe { crate::info::FB_PIXEL_FORMAT };
+    match fmt {
+        fastos_boot_protocol::PixelFormat::Rgb => {
+            // U32 0xAARRGGBB in memory (little-endian): BB GG RR AA
+            // RGB framebuffer reads as: R=BB, G=GG, B=RR → R and B swapped
+            // Fix: swap R and B channels
+            let a = c & 0xFF000000;
+            let r = (c >> 16) & 0xFF;
+            let g = (c >> 8) & 0xFF;
+            let b = c & 0xFF;
+            a | (b << 16) | (g << 8) | r
+        }
+        _ => c, // Bgr or Unknown — no conversion needed
+    }
+}
+
 fn put(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, c: u32) {
     if x >= w || y >= h { return; }
-    unsafe { addr.add(y * s + x).write_volatile(c); }
+    unsafe { addr.add(y * s + x).write_volatile(fix_color(c)); }
 }
 
 fn fill_rect(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, rw: usize, rh: usize, c: u32) {

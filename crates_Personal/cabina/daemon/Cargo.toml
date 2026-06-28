@@ -1,0 +1,11 @@
+[package]
+name = "cabina-daemon"
+version = "1.0.0"
+edition = "2021"
+description = "FastOS CABINA Daemon — Ring 0 diagnostic infrastructure (ring buffer, telemetry, serial, snapshot)"
+
+[features]
+default = []
+
+[dependencies]
+cabina-core = { path = "../core" }

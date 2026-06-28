@@ -37,6 +37,24 @@ name = "bmo-audio"
 version = "1.0.0"
 
 [[package]]
+name = "cabina-core"
+version = "1.0.0"
+
+[[package]]
+name = "cabina-daemon"
+version = "1.0.0"
+dependencies = [
+ "cabina-core",
+]
+
+[[package]]
+name = "cabina-panels"
+version = "1.0.0"
+dependencies = [
+ "cabina-core",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
