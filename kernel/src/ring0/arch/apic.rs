@@ -65,16 +65,8 @@ pub unsafe fn apic_read(offset: u32) -> u32 {
     core::ptr::read_volatile(ptr)
 }
 
-pub fn read_lapic_id() -> u32 {
-    unsafe { apic_read(APIC_ID) >> 24 }
-}
-
 pub fn apic_eoi() {
     unsafe { apic_write(APIC_EOI, 0); }
-}
-
-pub fn apic_id() -> u32 {
-    unsafe { (apic_read(APIC_ID) >> 24) & 0xFF }
 }
 
 // ── PIT-based delay ──────────────────────────────────────────────────
@@ -181,9 +173,4 @@ pub fn init_apic(tick_hz: u32) {
     }
 }
 
-/// Stop the APIC timer (mask it). Used during shutdown.
-pub fn stop_apic_timer() {
-    unsafe {
-        apic_write(APIC_TIMER_LVT, 1 << 16); // mask
-    }
-}
+

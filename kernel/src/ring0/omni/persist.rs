@@ -4,10 +4,7 @@
 //! and cabina-daemon spool for real-time buffering.
 //! exFAT driver (future) enables live writes to T: partition.
 
-use cabina_core::Severity;
-
 /// Max events to flush per NVRAM variable (256-byte limit).
-const EVENTS_PER_VAR: usize = 2;
 const NVRAM_VAR_PREFIX: &str = "FastOSDiag";
 
 /// Start the persist subsystem.

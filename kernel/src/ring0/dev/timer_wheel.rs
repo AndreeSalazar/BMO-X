@@ -16,7 +16,7 @@
 //!   timer_wheel::cancel_timer(id);
 //!   timer_wheel::tick(); // called from APIC timer ISR
 
-use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Timer callback function type.
 pub type TimerCallback = fn(u64); // argument: timer ID

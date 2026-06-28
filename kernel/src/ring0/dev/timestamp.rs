@@ -70,8 +70,9 @@ pub fn calibrate_tsc_hpet() -> u64 {
 
     // Wait ~10ms
     let target_ns = 10_000_000; // 10ms
+    let hpet_start_ns = super::hpet::now_ns();
     loop {
-        let elapsed = super::hpet::now_ns() - super::hpet::now_ns(); // simplified
+        let elapsed = super::hpet::now_ns() - hpet_start_ns;
         if elapsed >= target_ns { break; }
     }
 

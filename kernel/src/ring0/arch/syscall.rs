@@ -23,7 +23,6 @@
 #![allow(dead_code, static_mut_refs)]
 
 use core::arch::{asm, naked_asm};
-use alloc::collections::VecDeque;
 
 // ── MSR addresses (cached for clarity) ───────────────────────────────────────
 
@@ -52,24 +51,6 @@ unsafe fn rdmsr(msr: u32) -> u64 {
     let (lo, hi): (u32, u32);
     asm!("rdmsr", in("ecx") msr, out("eax") lo, out("edx") hi, options(nostack));
     ((hi as u64) << 32) | (lo as u64)
-}
-
-/// Read the current IA32_GS_BASE.
-#[inline(always)]
-pub unsafe fn read_gs_base() -> u64 { rdmsr(IA32_GS_BASE) }
-
-/// Set the kernel's IA32_KERNEL_GS_BASE.
-#[inline(always)]
-pub unsafe fn write_kernel_gs_base(v: u64) { wrmsr(IA32_KERNEL_GS_BASE, v); }
-
-/// Set the user's IA32_GS_BASE.
-#[inline(always)]
-pub unsafe fn write_user_gs_base(v: u64) { wrmsr(IA32_GS_BASE, v); }
-
-/// Switch from user GS to kernel GS.
-#[inline(always)]
-pub unsafe fn swapgs() {
-    asm!("swapgs", options(nostack, preserves_flags));
 }
 
 // ── Trait: implementable by any syscall handler ─────────────────────────────
@@ -386,56 +367,6 @@ pub enum Syscall {
     ClockGetTime        = 0x50,
     NanoSleep           = 0x51,
     DebugPrint          = 0xF0,
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub struct SyscallFrame {
-    pub rax: u64,
-    pub rdi: u64,
-    pub rsi: u64,
-    pub rdx: u64,
-    pub r10: u64,
-    pub r8:  u64,
-    pub r9:  u64,
-}
-
-// ── Futex (single-core) ──────────────────────────────────────────────────────
-
-struct FutexWaiter {
-    addr: *const u32,
-    woken: bool,
-}
-
-static mut FUTEX_QUEUE: VecDeque<FutexWaiter> = VecDeque::new();
-
-/// Kernel-side futex_wait: if `*addr == expected`, suspend current thread.
-pub fn futex_wait(addr: *const u32, expected: u32, _timeout_ns: u64) -> bool {
-    unsafe {
-        if core::ptr::read_volatile(addr) != expected {
-            return false;
-        }
-        FUTEX_QUEUE.push_back(FutexWaiter { addr, woken: false });
-        crate::proc::yield_now();
-        true
-    }
-}
-
-/// Wake up to `count` threads waiting on `addr`.
-pub fn futex_wake(addr: *const u32, count: u32) -> u32 {
-    unsafe {
-        let mut woken = 0u32;
-        let mut i = 0;
-        while i < FUTEX_QUEUE.len() && woken < count {
-            if FUTEX_QUEUE[i].addr == addr && !FUTEX_QUEUE[i].woken {
-                FUTEX_QUEUE[i].woken = true;
-                woken += 1;
-            }
-            i += 1;
-        }
-        FUTEX_QUEUE.retain(|w| !w.woken);
-        woken
-    }
 }
 
 // NOTA: `init()` quedó como wrapper trivial de `init_syscall()`. v1.8.7:

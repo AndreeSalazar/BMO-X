@@ -15,7 +15,7 @@
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-// ── xHCI Register Offsets (capability registers) ───────────────────
+// ── xHCI Register Offsets ──────────────────────────────────────────
 
 /// xHCI MMIO base (physical address, set during init).
 static XHCI_MMIO_PHYS: AtomicUsize = AtomicUsize::new(0);
@@ -47,97 +47,6 @@ const HCSPARAMS3: u32 = 0x0C;   // Structural Parameters 3
 const HCCPARAMS1: u32 = 0x10;   // Capability Parameters 1
 const DBOFF: u32 = 0x14;        // Doorbell Offset
 const RTSOFF: u32 = 0x18;       // Runtime Register Space Offset
-
-// ── USB HID Event Ring ─────────────────────────────────────────────
-
-/// USB keyboard event ring (for future HID use).
-const USB_KEY_RING_CAP: usize = 64;
-static USB_KEY_HEAD: AtomicUsize = AtomicUsize::new(0);
-static USB_KEY_TAIL: AtomicUsize = AtomicUsize::new(0);
-static USB_KEY_RING: [core::sync::atomic::AtomicU8; USB_KEY_RING_CAP] = {
-    const ZERO: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
-    [ZERO; USB_KEY_RING_CAP]
-};
-
-/// USB mouse event ring (for future HID use).
-const USB_MOUSE_RING_CAP: usize = 64;
-static USB_MOUSE_HEAD: AtomicUsize = AtomicUsize::new(0);
-static USB_MOUSE_TAIL: AtomicUsize = AtomicUsize::new(0);
-static USB_MOUSE_RING: [core::sync::atomic::AtomicU8; USB_MOUSE_RING_CAP * 5] = {
-    const ZERO: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
-    [ZERO; USB_MOUSE_RING_CAP * 5]
-};
-
-/// Push a USB keyboard character (for future HID driver use).
-pub fn usb_push_key(c: u8) {
-    let head = USB_KEY_HEAD.load(Ordering::Relaxed);
-    let tail = USB_KEY_TAIL.load(Ordering::Acquire);
-    let next = (head + 1) % USB_KEY_RING_CAP;
-    if next == tail { return; }
-    USB_KEY_RING[head].store(c, Ordering::Relaxed);
-    USB_KEY_HEAD.store(next, Ordering::Release);
-}
-
-/// Read one USB keyboard character. Returns None if empty.
-pub fn usb_read_key() -> Option<u8> {
-    let tail = USB_KEY_TAIL.load(Ordering::Relaxed);
-    let head = USB_KEY_HEAD.load(Ordering::Acquire);
-    if tail == head { return None; }
-    let c = USB_KEY_RING[tail].load(Ordering::Relaxed);
-    USB_KEY_TAIL.store((tail + 1) % USB_KEY_RING_CAP, Ordering::Release);
-    Some(c)
-}
-
-/// Push a USB mouse event (for future HID driver use).
-pub fn usb_push_mouse(dx: i16, dy: i16, left: bool, right: bool, middle: bool) {
-    let head = USB_MOUSE_HEAD.load(Ordering::Relaxed);
-    let tail = USB_MOUSE_TAIL.load(Ordering::Acquire);
-    let next = (head + 1) % USB_MOUSE_RING_CAP;
-    if next == tail { return; }
-    let base = head * 5;
-    let btns = ((left as u8) << 0) | ((right as u8) << 1) | ((middle as u8) << 2);
-    USB_MOUSE_RING[base].store((dx as u16 & 0xFF) as u8, Ordering::Relaxed);
-    USB_MOUSE_RING[base + 1].store((dx as u16 >> 8) as u8, Ordering::Relaxed);
-    USB_MOUSE_RING[base + 2].store((dy as u16 & 0xFF) as u8, Ordering::Relaxed);
-    USB_MOUSE_RING[base + 3].store((dy as u16 >> 8) as u8, Ordering::Relaxed);
-    USB_MOUSE_RING[base + 4].store(btns, Ordering::Relaxed);
-    USB_MOUSE_HEAD.store(next, Ordering::Release);
-}
-
-/// Read one USB mouse event.
-pub fn usb_read_mouse() -> Option<(i16, i16, bool, bool, bool)> {
-    let tail = USB_MOUSE_TAIL.load(Ordering::Relaxed);
-    let head = USB_MOUSE_HEAD.load(Ordering::Acquire);
-    if tail == head { return None; }
-    let base = tail * 5;
-    let dx_lo = USB_MOUSE_RING[base].load(Ordering::Relaxed) as u16;
-    let dx_hi = USB_MOUSE_RING[base + 1].load(Ordering::Relaxed) as u16;
-    let dy_lo = USB_MOUSE_RING[base + 2].load(Ordering::Relaxed) as u16;
-    let dy_hi = USB_MOUSE_RING[base + 3].load(Ordering::Relaxed) as u16;
-    let btns = USB_MOUSE_RING[base + 4].load(Ordering::Relaxed);
-    USB_MOUSE_TAIL.store((tail + 1) % USB_MOUSE_RING_CAP, Ordering::Release);
-    Some((
-        (dx_lo | (dx_hi << 8)) as i16,
-        (dy_lo | (dy_hi << 8)) as i16,
-        btns & 0x01 != 0,
-        btns & 0x02 != 0,
-        btns & 0x04 != 0,
-    ))
-}
-
-/// How many USB keyboard events are available.
-pub fn usb_key_available() -> usize {
-    let head = USB_KEY_HEAD.load(Ordering::Acquire);
-    let tail = USB_KEY_TAIL.load(Ordering::Relaxed);
-    head.wrapping_sub(tail) % USB_KEY_RING_CAP
-}
-
-/// How many USB mouse events are available.
-pub fn usb_mouse_available() -> usize {
-    let head = USB_MOUSE_HEAD.load(Ordering::Acquire);
-    let tail = USB_MOUSE_TAIL.load(Ordering::Relaxed);
-    head.wrapping_sub(tail) % USB_MOUSE_RING_CAP
-}
 
 /// Returns true if xHCI was detected and basic init succeeded.
 pub fn is_initialized() -> bool {

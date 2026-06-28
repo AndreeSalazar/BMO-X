@@ -466,9 +466,6 @@ fn text_scaled(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize,
     }
 }
 
-#[allow(dead_code)]
-fn text_dummy() {} // placeholder to satisfy old callers (deprecated)
-
 pub mod color {
     pub(crate) const OK: u32 = 0xFF4ECCA3;
     pub(crate) const WARN: u32 = 0xFFFFBD2E;

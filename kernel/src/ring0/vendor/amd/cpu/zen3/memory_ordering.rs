@@ -82,16 +82,18 @@ pub fn atomic_store_release<T>(ptr: *mut T, value: T) {
     }
 }
 
-/// Atomic compare-and-swap (uses LOCK CMPXCHG on x86).
+/// Atomic 64-bit compare-and-swap via LOCK CMPXCHG.
 #[inline]
-pub fn cas<T: Copy + PartialEq>(ptr: *mut T, expected: T, new: T) -> Result<T, T> {
+pub fn cas_u64(ptr: *mut u64, expected: u64, new: u64) -> Result<u64, u64> {
+    let prev: u64;
     unsafe {
-        let current = core::ptr::read_volatile(ptr);
-        if current == expected {
-            core::ptr::write_volatile(ptr, new);
-            Ok(current)
-        } else {
-            Err(current)
-        }
+        core::arch::asm!(
+            "lock cmpxchg [rdi], rsi",
+            in("rdi") ptr,
+            in("rsi") new,
+            inout("rax") expected => prev,
+            options(nostack),
+        );
     }
+    if prev == expected { Ok(prev) } else { Err(prev) }
 }

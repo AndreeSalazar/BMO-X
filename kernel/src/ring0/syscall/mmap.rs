@@ -52,14 +52,14 @@ pub struct MapResult {
 /// * `addr` - Hint address (0 = kernel chooses)
 /// * `size` - Size in bytes (rounded up to page boundary)
 /// * `prot` - Memory protection
-/// * `map_type` - Mapping type (file, anonymous, shared)
+/// * `_map_type` - Mapping type (file, anonymous, shared)
 ///
 /// Returns the mapped address, or an error code.
 pub fn mmap(
     addr: u64,
     size: u64,
-    prot: MemProt,
-    map_type: MapType,
+    _prot: MemProt,
+    _map_type: MapType,
 ) -> Result<MapResult, MmapError> {
     // Align size to page boundary
     let page_size = crate::mm::PAGE_SIZE;

@@ -23,9 +23,6 @@
 //!   - SERR: Serial ATA Error
 //!   - CI: Command Issue
 
-use super::storage::StorageDevice;
-use super::storage::StorageType;
-
 /// AHCI HBA register offsets (memory-mapped).
 const HBA_CAP: usize = 0x00;
 const HBA_GHC: usize = 0x04;

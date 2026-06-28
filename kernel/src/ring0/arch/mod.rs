@@ -28,5 +28,3 @@ pub mod ctx;
 pub mod syscall;
 pub mod smp;
 pub mod tlb;
-pub mod per_core_timer;
-pub mod preempt;

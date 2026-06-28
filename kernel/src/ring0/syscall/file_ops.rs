@@ -116,7 +116,7 @@ impl FdTable {
 }
 
 /// Open a file. Returns file descriptor or error.
-pub fn open(path: &str, flags: u32) -> Result<u32, FileError> {
+pub fn open(path: &str, _flags: u32) -> Result<u32, FileError> {
     // TODO: Resolve path via VFS
     // TODO: Check permissions
     // TODO: Create file object

@@ -461,8 +461,6 @@ extern "C" fn irq1_handler_rust() {
 /// Returns: 0 = no switch (restore same thread), non-zero = new RSP for switched thread.
 #[unsafe(no_mangle)]
 extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
-    use core::sync::atomic::Ordering;
-
     // Save full register ctx from the kernel stack into the current thread.
     unsafe {
         crate::arch::ctx::save_context_from_stack(saved_state);
@@ -675,8 +673,6 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
         unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
     }
 
-    use core::sync::atomic::Ordering;
-
     match vector {
         14 => {
             // Always log #PF to serial for post-mortem analysis
@@ -738,8 +734,6 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 /// Called from isr_stub_page_fault before the kill handler.
 #[unsafe(no_mangle)]
 extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> bool {
-    use core::sync::atomic::Ordering;
-
     // Only try to resolve user-mode faults (bit 0 of error code = 1 means user mode)
     if error & 1 == 0 {
         return false; // Kernel-mode fault → kill

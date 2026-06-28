@@ -157,45 +157,6 @@ pub fn rdtscp() -> (u64, u32) {
     (((high as u64) << 32) | low as u64, aux)
 }
 
-/// Read performance monitoring counter.
-#[inline]
-pub unsafe fn rdpmc(counter: u32) -> u64 {
-    let low: u32;
-    let high: u32;
-    core::arch::asm!("rdpmc", in("ecx") counter, out("eax") low, out("edx") high);
-    ((high as u64) << 32) | low as u64
-}
-
-/// Flush cache line.
-#[inline]
-pub fn clflush(addr: u64) {
-    unsafe { core::arch::asm!("clflush [{}]", in(reg) addr, options(nostack)); }
-}
-
-/// Flush cache line optimized (CLFLUSHOPT).
-#[inline]
-pub fn clflushopt(addr: u64) {
-    unsafe { core::arch::asm!("clflushopt [{}]", in(reg) addr, options(nostack)); }
-}
-
-/// Serialize instruction stream.
-#[inline]
-pub fn lfence() {
-    unsafe { core::arch::asm!("lfence"); }
-}
-
-/// Memory fence.
-#[inline]
-pub fn mfence() {
-    unsafe { core::arch::asm!("mfence"); }
-}
-
-/// CPUID with explicit ECX subleaf (alias for x2APIC enumeration).
-#[inline]
-pub fn cpuid_x2(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
-    cpuid(leaf, subleaf)
-}
-
 /// Halt the CPU until the next interrupt.
 #[inline]
 pub fn halt() {
