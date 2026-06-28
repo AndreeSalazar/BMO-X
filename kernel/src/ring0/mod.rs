@@ -47,6 +47,9 @@ pub mod vendor;
 // ── Omniscient infrastructure ───────────────────────────────────────
 pub mod omni;
 
+// ── Devour: PE/ELF → BEF translation ─────────────────────────────────
+pub mod devour;
+
 // ── Other Ring 0 modules ────────────────────────────────────────────
 mod panic;
 pub mod profile;

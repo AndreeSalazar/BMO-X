@@ -15,6 +15,8 @@ vendor = { path = "../crates_Personal/vendor" }
 cabina-core = { path = "../crates_Personal/cabina/core" }
 cabina-daemon = { path = "../crates_Personal/cabina/daemon" }
 cabina-panels = { path = "../crates_Personal/cabina/panels" }
+bmo-devour-pe = { path = "../crates_Personal/bmo_devour_pe" }
+bmo-devour-elf = { path = "../crates_Personal/bmo_devour_elf" }
 volatile = "0.4"
 bitflags = "2"
     

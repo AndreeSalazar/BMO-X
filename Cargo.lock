@@ -37,6 +37,20 @@ name = "bmo-audio"
 version = "1.0.0"
 
 [[package]]
+name = "bmo-devour-elf"
+version = "1.0.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
+name = "bmo-devour-pe"
+version = "1.0.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
 name = "cabina-core"
 version = "1.0.0"
 
@@ -80,6 +94,8 @@ dependencies = [
  "bitflags",
  "bmo-abi",
  "bmo-audio",
+ "bmo-devour-elf",
+ "bmo-devour-pe",
  "cabina-core",
  "cabina-daemon",
  "cabina-panels",
