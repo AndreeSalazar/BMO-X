@@ -125,10 +125,34 @@ fn panic(info: &PanicInfo) -> ! {
         write_bytes(b"\r\n");
     }
 
-    // 4. Record in cabina-daemon ring buffer (survives for dump)
-    let ev = cabina_daemon::fault("panic", "KERNEL PANIC — see serial above");
+    // 4. Write crash reason to NVRAM (survives reboot, bootloader writes to SSD)
+    {
+        let mut nvram_msg = [0u8; 128];
+        let len;
+        {
+            let mut nvram_w = SliceWriter { buf: &mut nvram_msg, pos: 0 };
+            let _ = write!(&mut nvram_w, "KERNEL PANIC at {}:{}",
+                info.location().map_or("?", |l| l.file()),
+                info.location().map_or(0, |l| l.line()));
+            len = nvram_w.pos.min(127);
+        }
+        let nvram_str = unsafe { core::str::from_utf8_unchecked(&nvram_msg[..len]) };
+        nvram_log::write_crash(nvram_str);
+    }
 
-    // 5. Dump cabina-daemon events to serial — gives full boot trace
+    // 5. Flush cabina-daemon persistent spool to NVRAM
+    {
+        let mut diag_buf = [0u8; 192];
+        let n = cabina_daemon::persistent::copy_pending(&mut diag_buf);
+        if n > 0 {
+            nvram_log::set_variable("FastOSPanicBuf", &diag_buf[..n]);
+        }
+    }
+
+    // 6. Record in cabina-daemon ring buffer
+    let _ev = cabina_daemon::fault("panic", "KERNEL PANIC — see serial above");
+
+    // 7. Dump cabina-daemon events to serial — gives full boot trace
     write_bytes(b"\r\n=== CABINA DUMP ===\r\n");
     {
         let cur = cabina_daemon::ring_buffer::next_seq();

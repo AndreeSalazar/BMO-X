@@ -36,6 +36,7 @@ pub fn emit_full(
     if !INITIALIZED.load(Ordering::Relaxed) { return ev; }
     ev.seq = ring_buffer::push(&ev);
     serial::write_event(&ev);
+    persistent::write_event(&ev);
     ev
 }
 

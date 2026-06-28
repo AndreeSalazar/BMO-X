@@ -348,6 +348,10 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
     let mut ctx = BootContext::new(boot_info_ptr);
     let boot_start = crate::cpu::rdtsc();
 
+    // 5b. Omniscient early init (HPET from ACPI before timer init)
+    crate::omni::init_early(boot_info_ptr);
+    crate::cabina_daemon::info("ring0", "omni early init done");
+
     // 6. Phase 0-4
     write_crash_marker(2);
     crate::uefi_rt::write_boot_stage("phases_0_to_4");
@@ -401,7 +405,10 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
         crate::visual::log("ring0", "[3.5/5] SMP single-core", crate::visual::color::WARN);
     }
 
-    // 10. Mark boot complete
+    // 10. Omniscient late init (watchdog, persist, HUD)
+    crate::omni::init_late();
+
+    // 11. Mark boot complete
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
     crate::cabina_daemon::info("ring0", "Ring 0 boot complete — returning to caller");

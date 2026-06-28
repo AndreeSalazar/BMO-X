@@ -44,6 +44,9 @@ pub mod phase_1_RING_0;
 // ── CPU-specific (AMD Ryzen 5 5600X / Zen 3) ───────────────────────
 pub mod vendor;
 
+// ── Omniscient infrastructure ───────────────────────────────────────
+pub mod omni;
+
 // ── Other Ring 0 modules ────────────────────────────────────────────
 mod panic;
 pub mod profile;
