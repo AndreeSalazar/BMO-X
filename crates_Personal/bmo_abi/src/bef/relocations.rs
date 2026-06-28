@@ -49,6 +49,7 @@ pub struct Relocation {
     /// Addend con signo.
     pub addend: bx_i64,
 }
+const _: () = assert!(core::mem::size_of::<Relocation>() == 24);
 
 impl Relocation {
     pub const SIZE: usize = 24;

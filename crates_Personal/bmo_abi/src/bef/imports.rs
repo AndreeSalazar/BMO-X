@@ -27,6 +27,7 @@ pub struct ImportEntry {
     /// Offset en `.code` o `.data` donde escribir la dirección resuelta.
     pub binding_offset: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<ImportEntry>() == 24);
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

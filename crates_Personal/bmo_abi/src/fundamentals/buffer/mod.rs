@@ -41,6 +41,7 @@ pub struct BmoBuffer {
     pub capacity: bx_u64,
     pub flags: BmoBufferFlags,
 }
+const _: () = assert!(core::mem::size_of::<BmoBuffer>() == 32);
 
 impl BmoBuffer {
     pub const EMPTY: Self = Self {

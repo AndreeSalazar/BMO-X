@@ -132,6 +132,7 @@ pub struct SectionEntry {
     /// Reservado.
     pub _reserved: bx_u32,
 }
+const _: () = assert!(core::mem::size_of::<SectionEntry>() == 48);
 
 impl SectionEntry {
     pub const SIZE: usize = 48;

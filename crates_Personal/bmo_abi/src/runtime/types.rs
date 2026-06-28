@@ -24,6 +24,7 @@ pub struct TypeMeta {
     /// Número de campos (0 para primitivos).
     pub field_count: bx_u32,
 }
+const _: () = assert!(core::mem::size_of::<TypeMeta>() == 32);
 
 impl TypeMeta {
     pub const fn empty() -> Self {

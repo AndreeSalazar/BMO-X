@@ -17,6 +17,7 @@ pub struct BmoStatus {
     pub flags: bx_u32,
     pub value: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoStatus>() == 16);
 
 impl BmoStatus {
     pub const OK: Self = Self { code: 0, flags: 0, value: 0 };

@@ -24,6 +24,7 @@ pub struct BmoStr {
     ptr: *const u8,
     len: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoStr>() == 16);
 
 impl BmoStr {
     /// Create from a raw pointer and length.
@@ -86,6 +87,7 @@ pub struct BmoString {
     len: bx_u64,
     capacity: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoString>() == 24);
 
 impl BmoString {
     pub fn new() -> Self {

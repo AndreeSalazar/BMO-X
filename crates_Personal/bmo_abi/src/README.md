@@ -2,41 +2,85 @@
 
 > The standard ABI for FastOS. Replaces C ABI (cdecl / Win64 / SysV AMD64)
 > and its standard library. Every kernel-to-userspace boundary uses BMO types.
-> The C ABI only appears in `bef/loader/*_thunks.rs` for legacy interop.
 
 ## Specification
 
-Read **[`SPEC.md`](./SPEC.md)** — the single source of truth:
+Read **[`SPEC.md`](./SPEC.md)** — canonical specification including:
 
 - Calling convention (7 GPRs, 256 B red zone, 64 B stack alignment)
-- Type layouts and alignment rules
-- Syscall numbering (0x100..0x1FF)
-- BEF integration patterns
+- Type layouts with compile-time `static_assert!` (34 assertions)
+- Syscall numbering (0x100..0x1FF) + `syscall0`–`syscall6` wrappers
+- BEF format: header (48 B), sections, relocs, imports/exports, TLS, signing
+- Reflect system wired to `TypeRegistry`
 
-## Module Map
+## Module Map (56 files, ~5 KLOC)
 
 ```
 bmo_abi/
-├── mod.rs              Re-exports + root docs
-├── SPEC.md             Canonical specification
+├── fundamentals/       Types used by EVERY BMO module (15 sub-modules)
+│   ├── primitives/     bx_u8..u128, bx_i8..i128, bx_f32/64, bx_f16, bx_bool
+│   ├── status/         BmoStatus (16 B), StatusFlags
+│   ├── handle/         BmoHandle (64-bit tag+gen+idx), 34 HandleKind variants
+│   ├── capability/     BmoCap + BmoCapSet (64-bit bitset)
+│   ├── option/         BmoOption<T> FFI-safe repr(C)
+│   ├── result/         BmoResult<T,E> FFI-safe repr(C)
+│   ├── error/          BmoError (16 B unified error type)
+│   ├── convert/        BmoStatus ↔ BmoError ↔ ErrorCode
+│   ├── string/         BmoStr (borrowed 16 B), BmoString (owned 24 B)
+│   ├── memory/         BmoSlice, BmoRange, BmoAligned
+│   ├── buffer/         BmoBuffer (32 B shared memory descriptor)
+│   ├── allocator/      BmoAllocator trait + Global wrapper
+│   ├── io/             BmoRead, BmoWrite, BmoSeek, BmoPipe
+│   ├── fmt/            BmoFormatter stack-allocated (256 B)
+│   └── sync/           BmoAtomicU32/U64/Bool, BmoSpinLock
 │
-├── fundamentals/       Types used by EVERY BMO module
-│   ├── primitives/     bx_u8..u64, bx_i*, bx_f*, bx_bool
-│   ├── status/         BmoStatus (16 B inline), ErrorCode, StatusFlags
-│   ├── handle/         BmoHandle (64-bit with tag + generation)
-│   └── sync/           BmoAtomicU32/U64/Bool, MemOrder, BmoSpinLock
+├── values/             Value types with own semantics (8 sub-modules)
+│   ├── time/           BmoInstant (RDTSC monotonic), BmoDuration
+│   ├── clock/          BmoClockId, sleep, sleep_until
+│   ├── uuid/           BmoUuid 128-bit (RFC 4122)
+│   ├── version/        BmoVersion semver (12 B)
+│   ├── math/           sqrt, sin, cos, pow (Newton/Taylor, no_std)
+│   ├── hash/           FNV-1a 32/64, CRC32c (SSE4.2), CRC32
+│   ├── net/            BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
+│   └── reflect/        BmoTypeInfo, TypeKind, ReflectQuery + TypeRegistry
 │
-├── values/             Value types with own semantics
-│   └── time/           BmoInstant (TSC-backed monotonic), BmoDuration
+├── runtime/            TypeRegistry (256 slots), VTableStore, LangBridge
+├── windowing/          BmoWindowClass, create info, 6 event types
+├── fs/                 BmoFileHandle, BmoOpenFlags, BmoStat (72 B), BmoDirEntry
+├── surface/            BmoFormat (22 pixel formats), BmoSurfaceInfo
+├── error_code/         BmoErrorCode enum (21 codes), severity, flags
+├── bef/                BEF format — complete toolchain
+│   ├── header/         BefHeader 48 B, BefMagic::detect() (PE/ELF/BEF)
+│   ├── sections/       SectionKind (10 types), SectionEntry 48 B
+│   ├── writer/         BefBuilder + BefSection — produce valid BEF
+│   ├── validator/      validate() — structural integrity check
+│   ├── loader/         load() — zero-copy parser + import callback
+│   ├── blake3/         Full BLAKE3 (294 L, no_std, no deps)
+│   ├── relocations/    3 types: Abs64, Rel32, Got64
+│   ├── imports/        ImportEntry 24 B, ImportTable
+│   ├── exports/        ExportEntry 32 B, ExportTable
+│   ├── symbols/        Symbol 32 B, SymbolTable
+│   ├── manifest/       Provenance (Native/PeDevoured/ElfDevoured)
+│   ├── tls/            TlsTemplate 24 B, TLS setup/teardown
+│   └── signing/        SectionHash 40 B, SignatureHeader 8 B
 │
-├── windowing/          Window contract: class, create info, events
-├── fs/                 File system: handles, open flags, stat, permissions
-├── surface/            Pixel formats (ARGB8, etc.), surface descriptors
-├── error_code/         21 extended error codes
-├── bef/                BEF format: header, sections, manifest, signing, relocs
-├── syscalls/           Syscall number table (0x100..0x1CF)
-└── profile/            BmoLanguageProfile + ALL_PROFILES registry
+├── syscalls/           Syscall number table (0x100..0x1FF) + syscall0–syscall6
+└── profile/            BmoLanguageProfile + ALL_PROFILES
 ```
+
+## Key Features
+
+| Feature | Status |
+|---------|--------|
+| 34 `static_assert!` for repr(C) type sizes | ✅ |
+| BEF writer/validator/loader | ✅ |
+| BLAKE3 hashing (no_std) | ✅ |
+| Syscall wrappers (syscall0–6) with inline asm | ✅ |
+| Reflect system wired to TypeRegistry | ✅ |
+| 42 unit tests + 7 integration tests passing | ✅ |
+| PE/ELF detection (`BefMagic::detect`) | ✅ |
+| Ed25519 signature infrastructure | ✅ |
+| PE/ELF devourers | 🔜 |
 
 ## Comparison with Legacy ABIs
 
@@ -47,39 +91,7 @@ bmo_abi/
 | Stack alignment   | 16 B          | 16 B          | **64 B**           |
 | Red zone          | 0 B           | 128 B         | **256 B**          |
 | Return (≤128 bit) | RAX           | RAX:RDX       | **RAX:RDX**        |
-| Error reporting   | `HRESULT`+TLS | `errno`+TLS   | **BmoStatus 16 B inline** |
+| Error reporting   | `HRESULT`+TLS | `errno`+TLS   | **BmoStatus 16 B** |
 | Strings           | `char*` nul   | `char*` nul   | **(ptr, len) UTF-8** |
-| Handles           | `HANDLE void*`| `int fd`      | **BmoHandle with tag+generation** |
+| Handles           | `HANDLE void*`| `int fd`      | **BmoHandle 64-bit with tag+generation** |
 | Syscall range     | 0x1000+       | 0x0001..      | **0x100..0x1FF**   |
-
-## What C ABI Lacks — What BMO ABI Provides
-
-| C ABI problem                    | BMO ABI solution                      |
-|----------------------------------|---------------------------------------|
-| `int`/`long` size varies by arch | `bx_u*` fixed-width, explicit         |
-| `errno` global + TLS overhead    | `BmoStatus` 16 B inline return value  |
-| `int fd` — no type safety        | `BmoHandle` 64-bit tag + generation   |
-| `char*` — null terminated        | `(ptr, len)` UTF-8 (planned)          |
-| Scattered syscall numbers        | Compact range 0x100..0x1FF            |
-| Platform-specific calling conv   | Single ABI: `bmo_call`                |
-
-## What Exists Today
-
-- Calling convention helpers (`align_stack`, `is_stack_aligned`)
-- Fixed-width primitives with constants (`BX_U64_MAX`, ...)
-- `BmoStatus` + 21 `ErrorCode` + `StatusFlags`
-- `BmoHandle` 64-bit with tag bit + `HandleKind`
-- `BmoInstant` backed by real TSC, `BmoDuration`
-- `BmoAtomicU32/U64/Bool` + `MemOrder` + `BmoSpinLock` (TTAS)
-- Syscall number table (`NR_*` constants for 0x100..0x1CF)
-- BEF format: header, sections, manifest, signing, relocations, imports/exports
-- `BmoFormat` pixel types (ARGB8, ...)
-- `Capabilities`, `BmoFileType`, `BmoPerms`
-- `BmoLanguageProfile` + `ALL_PROFILES`
-
-## Future (when Ring 3 ships)
-
-- String type: `BmoStr`/`BmoString` (ptr + len UTF-8, already drafted)
-- GC interface for managed languages
-- ARM64 trampolines
-- Dedicated marshaller for JVM, CLR, Python

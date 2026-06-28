@@ -71,6 +71,7 @@ pub struct Symbol {
     /// Reservado.
     pub _reserved: bx_u32,
 }
+const _: () = assert!(core::mem::size_of::<Symbol>() == 32);
 
 impl Symbol {
     pub const SIZE: usize = 32;

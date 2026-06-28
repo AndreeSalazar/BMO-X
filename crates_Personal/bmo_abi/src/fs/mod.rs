@@ -149,7 +149,7 @@ impl BmoPerms {
 
 /// Resultado de `bmo_fs_stat` / `bmo_fs_fstat`.
 ///
-/// Tamaño: 96 bytes.
+/// Tamaño: 72 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BmoStat {
@@ -179,7 +179,7 @@ pub struct BmoStat {
 
 // ─── Dir entry ──────────────────────────────────────────────────────
 
-/// Una entrada de directorio. Tamaño fijo: 320 bytes (256 name + 8 size + ...).
+/// Una entrada de directorio. Tamaño fijo: 296 bytes.
 ///
 /// Los nombres son UTF-8 null-terminated, máximo 255 bytes.
 #[repr(C)]

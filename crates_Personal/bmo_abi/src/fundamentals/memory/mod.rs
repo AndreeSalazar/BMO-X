@@ -16,6 +16,7 @@ pub struct BmoSlice {
     pub ptr: *const u8,
     pub len: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoSlice>() == 16);
 
 impl BmoSlice {
     pub const EMPTY: Self = Self { ptr: core::ptr::null(), len: 0 };
@@ -47,6 +48,7 @@ pub struct BmoSliceMut {
     pub ptr: *mut u8,
     pub len: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoSliceMut>() == 16);
 
 impl BmoSliceMut {
     pub const EMPTY: Self = Self { ptr: core::ptr::null_mut(), len: 0 };
@@ -85,6 +87,7 @@ pub struct BmoRange {
     pub offset: bx_u64,
     pub size: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoRange>() == 16);
 
 impl BmoRange {
     pub const fn new(offset: bx_u64, size: bx_u64) -> Self {
@@ -114,6 +117,7 @@ pub struct BmoAligned {
     pub ptr: *mut u8,
     pub align: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoAligned>() == 16);
 
 impl BmoAligned {
     pub const fn new(ptr: *mut u8, align: bx_u64) -> Self {

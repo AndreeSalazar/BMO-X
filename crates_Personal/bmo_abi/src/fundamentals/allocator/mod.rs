@@ -16,6 +16,7 @@ pub struct BmoAllocResult {
     pub status: BmoStatus,
     pub ptr: *mut u8,
 }
+const _: () = assert!(core::mem::size_of::<BmoAllocResult>() == 24);
 
 /// Trait de asignación de memoria.
 ///

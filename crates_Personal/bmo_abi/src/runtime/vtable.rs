@@ -22,6 +22,7 @@ pub struct VTable {
     pub method_count: bx_u32,
     pub interface_id: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<VTable>() == 272);
 
 impl VTable {
     pub const fn empty() -> Self {

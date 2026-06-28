@@ -14,6 +14,7 @@ pub struct BmoDuplicateResult {
     pub status: BmoStatus,
     pub new_handle: BmoHandle,
 }
+const _: () = assert!(core::mem::size_of::<BmoDuplicateResult>() == 24);
 
 /// Resultado de `wait`.
 #[repr(C)]
@@ -22,6 +23,7 @@ pub struct BmoWaitResult {
     pub status: BmoStatus,
     pub signaled_handle: BmoHandle,
 }
+const _: () = assert!(core::mem::size_of::<BmoWaitResult>() == 24);
 
 /// Operaciones sobre handles.
 ///

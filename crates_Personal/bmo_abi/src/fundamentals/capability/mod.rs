@@ -14,6 +14,7 @@ use crate::bmo_abi::primitives::bx_u64;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BmoCap(pub bx_u64);
+const _BMO_CAP_SIZE: () = assert!(core::mem::size_of::<BmoCap>() == 8);
 
 impl BmoCap {
     pub const fn new(id: bx_u64) -> Self { Self(id) }
@@ -32,6 +33,7 @@ impl BmoCap {
 pub struct BmoCapSet {
     bits: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoCapSet>() == 8);
 
 impl BmoCapSet {
     pub const EMPTY: Self = Self { bits: 0 };

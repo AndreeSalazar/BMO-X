@@ -13,6 +13,7 @@ use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32};
 pub struct BmoIpv4Addr {
     pub octets: [bx_u8; 4],
 }
+const _: () = assert!(core::mem::size_of::<BmoIpv4Addr>() == 4);
 
 impl BmoIpv4Addr {
     pub const UNSPECIFIED: Self = Self { octets: [0, 0, 0, 0] };
@@ -59,10 +60,11 @@ impl BmoIpv4Addr {
 
 /// Dirección IPv6. 16 bytes.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BmoIpv6Addr {
     pub segments: [bx_u16; 8],
 }
+const _: () = assert!(core::mem::size_of::<BmoIpv6Addr>() == 16);
 
 impl BmoIpv6Addr {
     pub const UNSPECIFIED: Self = Self { segments: [0; 8] };

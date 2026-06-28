@@ -24,6 +24,7 @@ pub struct SectionHash {
     /// 32 bytes BLAKE3.
     pub digest: [bx_u8; 32],
 }
+const _: () = assert!(core::mem::size_of::<SectionHash>() == 40);
 
 impl SectionHash {
     pub const SIZE: usize = 40;
@@ -47,6 +48,7 @@ pub struct SignatureHeader {
     /// Algoritmo de firma (1 = Ed25519, 0 = sin firma).
     pub sig_algo: bx_u32,
 }
+const _: () = assert!(core::mem::size_of::<SignatureHeader>() == 8);
 
 /// Hash BLAKE3 256-bit del buffer indicado. Implementación nativa en
 /// `crate::bef::blake3` (no_std, sin dependencias externas).

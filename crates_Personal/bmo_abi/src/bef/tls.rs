@@ -28,6 +28,7 @@ pub struct TlsTemplate {
     /// Offset dentro de la sección Tls donde empiezan los bytes inicializados.
     pub data_offset: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<TlsTemplate>() == 24);
 
 impl TlsTemplate {
     pub const ZERO: Self = Self {

@@ -21,6 +21,7 @@ use crate::bmo_abi::primitives::{bx_u8, bx_u64};
 pub struct BmoUuid {
     bytes: [bx_u8; 16],
 }
+const _: () = assert!(core::mem::size_of::<BmoUuid>() == 16);
 
 impl BmoUuid {
     pub const NIL: Self = Self { bytes: [0u8; 16] };

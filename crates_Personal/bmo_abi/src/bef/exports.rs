@@ -29,6 +29,7 @@ pub struct ExportEntry {
     /// Reservado.
     pub _reserved: bx_u32,
 }
+const _: () = assert!(core::mem::size_of::<ExportEntry>() == 32);
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

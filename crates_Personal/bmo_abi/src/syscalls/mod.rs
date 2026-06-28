@@ -176,6 +176,149 @@ pub const fn is_befcore(nr: u32) -> bool {
     nr >= NR_BEFCORE_SEND && nr <= NR_BEFCORE_REGISTER
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  Syscall wrappers (x86_64)
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Resultado de un syscall: (code, value) = (RAX, RDX).
+///
+/// El kernel siempre devuelve `BmoStatus` en RAX:RDX, donde:
+/// - RAX bits [31:0] = código de estado (0 = OK)
+/// - RDX = valor adicional (handle, contador, etc.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SyscallResult(pub u64, pub u64);
+
+impl SyscallResult {
+    pub fn code(&self) -> u32 { self.0 as u32 }
+    pub fn value(&self) -> u64 { self.1 }
+    pub fn is_ok(&self) -> bool { self.0 == 0 }
+}
+
+/// Syscall con 0 argumentos.
+#[inline(always)]
+pub unsafe fn syscall0(nr: u32) -> SyscallResult {
+    let code: u64;
+    let value: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") nr as u64,
+        lateout("rax") code,
+        lateout("rdx") value,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags),
+    );
+    SyscallResult(code, value)
+}
+
+/// Syscall con 1 argumento.
+#[inline(always)]
+pub unsafe fn syscall1(nr: u32, a1: u64) -> SyscallResult {
+    let code: u64;
+    let value: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") nr as u64,
+        in("rdi") a1,
+        lateout("rax") code,
+        lateout("rdx") value,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags),
+    );
+    SyscallResult(code, value)
+}
+
+/// Syscall con 2 argumentos.
+#[inline(always)]
+pub unsafe fn syscall2(nr: u32, a1: u64, a2: u64) -> SyscallResult {
+    let code: u64;
+    let value: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") nr as u64,
+        in("rdi") a1, in("rsi") a2,
+        lateout("rax") code,
+        lateout("rdx") value,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags),
+    );
+    SyscallResult(code, value)
+}
+
+/// Syscall con 3 argumentos.
+#[inline(always)]
+pub unsafe fn syscall3(nr: u32, a1: u64, a2: u64, a3: u64) -> SyscallResult {
+    let code: u64;
+    let value: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") nr as u64,
+        in("rdi") a1, in("rsi") a2, in("rdx") a3,
+        lateout("rax") code,
+        lateout("rdx") value,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags),
+    );
+    SyscallResult(code, value)
+}
+
+/// Syscall con 4 argumentos.
+#[inline(always)]
+pub unsafe fn syscall4(nr: u32, a1: u64, a2: u64, a3: u64, a4: u64) -> SyscallResult {
+    let code: u64;
+    let value: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") nr as u64,
+        in("rdi") a1, in("rsi") a2, in("rdx") a3, in("r10") a4,
+        lateout("rax") code,
+        lateout("rdx") value,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags),
+    );
+    SyscallResult(code, value)
+}
+
+/// Syscall con 5 argumentos.
+#[inline(always)]
+pub unsafe fn syscall5(nr: u32, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> SyscallResult {
+    let code: u64;
+    let value: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") nr as u64,
+        in("rdi") a1, in("rsi") a2, in("rdx") a3, in("r10") a4, in("r8") a5,
+        lateout("rax") code,
+        lateout("rdx") value,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags),
+    );
+    SyscallResult(code, value)
+}
+
+/// Syscall con 6 argumentos.
+#[inline(always)]
+pub unsafe fn syscall6(nr: u32, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64, a6: u64) -> SyscallResult {
+    let code: u64;
+    let value: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") nr as u64,
+        in("rdi") a1, in("rsi") a2, in("rdx") a3, in("r10") a4, in("r8") a5, in("r9") a6,
+        lateout("rax") code,
+        lateout("rdx") value,
+        lateout("rcx") _,
+        lateout("r11") _,
+        options(nostack, preserves_flags),
+    );
+    SyscallResult(code, value)
+}
+
 /// Retorna el nombre simbólico de un syscall (para diagnostics).
 pub fn name(nr: u32) -> &'static str {
     match nr {

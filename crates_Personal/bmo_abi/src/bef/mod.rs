@@ -67,6 +67,6 @@ pub use symbols::Symbol;
 pub use tls::TlsTemplate;
 pub use imports::ImportEntry;
 pub use exports::ExportEntry;
-pub use writer::BefBuilder;
+pub use writer::{BefBuilder, BefSection};
 pub use validator::validate;
 pub use loader::{load, LoadedBef, LoadedSection};

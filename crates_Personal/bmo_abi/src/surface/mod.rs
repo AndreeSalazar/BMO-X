@@ -97,6 +97,7 @@ pub struct BmoSurfaceInfo {
     /// Si es CPU, hint de alineación del buffer.
     pub align: u32,
 }
+const _: () = assert!(core::mem::size_of::<BmoSurfaceInfo>() == 20);
 
 impl BmoSurfaceInfo {
     /// Tamaño en bytes del buffer de la surface.

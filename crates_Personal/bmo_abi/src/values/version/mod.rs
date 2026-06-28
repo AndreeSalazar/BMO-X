@@ -22,6 +22,7 @@ pub struct BmoVersion {
     pub minor: bx_u32,
     pub patch: bx_u32,
 }
+const _: () = assert!(core::mem::size_of::<BmoVersion>() == 12);
 
 impl BmoVersion {
     pub const ZERO: Self = Self { major: 0, minor: 0, patch: 0 };

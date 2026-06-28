@@ -25,6 +25,7 @@ pub struct BmoError {
     pub flags: bx_u32,
     pub context: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<BmoError>() == 16);
 
 impl BmoError {
     pub const OK: Self = Self { code: 0, flags: 0, context: 0 };

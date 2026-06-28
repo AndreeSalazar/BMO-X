@@ -117,6 +117,7 @@ pub struct BefHeader {
 
 impl BefHeader {
     pub const SIZE: usize = 48;
+    const _SIZE_ASSERT: () = assert!(core::mem::size_of::<BefHeader>() == 48);
 
     /// Construye el header default para un ejecutable BEF v1.0 nativo.
     pub const fn new_executable() -> Self {

@@ -14,6 +14,7 @@ pub struct ReadResult {
     pub status: BmoStatus,
     pub bytes_read: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<ReadResult>() == 24);
 
 /// Resultado de una operación Write.
 #[repr(C)]
@@ -22,6 +23,7 @@ pub struct WriteResult {
     pub status: BmoStatus,
     pub bytes_written: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<WriteResult>() == 24);
 
 /// Resultado de una operación Seek.
 #[repr(C)]
@@ -30,6 +32,7 @@ pub struct SeekResult {
     pub status: BmoStatus,
     pub new_offset: bx_u64,
 }
+const _: () = assert!(core::mem::size_of::<SeekResult>() == 24);
 
 /// Trait de lectura. Reemplaza `read()` / `fread()` de C.
 pub trait BmoRead {

@@ -67,9 +67,10 @@ pub struct BmoWindowClass {
     /// Reservado (padding / futuro flags).
     pub flags: u32,
 }
+const _: () = assert!(core::mem::size_of::<BmoWindowClass>() == 48);
 
 impl BmoWindowClass {
-    pub const SIZE: usize = 64;
+    pub const SIZE: usize = 48;
 
     pub const fn new(name: &str, border: BmoWindowBorder, bg: u32) -> Self {
         let mut n = [0u8; 32];
@@ -127,9 +128,10 @@ pub struct BmoWindowCreateInfo {
     /// Flags (OR de `BmoWindowFlag`).
     pub flags: u32,
 }
+const _: () = assert!(core::mem::size_of::<BmoWindowCreateInfo>() == 52);
 
 impl BmoWindowCreateInfo {
-    pub const SIZE: usize = 48;
+    pub const SIZE: usize = 52;
 }
 
 // ─── Window handle ──────────────────────────────────────────────────
