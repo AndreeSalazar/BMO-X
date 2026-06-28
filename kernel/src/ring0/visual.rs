@@ -487,3 +487,52 @@ pub fn is_active() -> bool {
     if !INITIALIZED.load(Ordering::Relaxed) { return false; }
     unsafe { crate::info::FB_ADDR != 0 }
 }
+
+// ── GopFrameBuffer: FrameBuffer trait impl for cabina-panels ─────────
+
+pub struct GopFrameBuffer;
+
+impl GopFrameBuffer {
+    fn fb_addr(&self) -> *mut u32 {
+        unsafe { crate::info::FB_ADDR as *mut u32 }
+    }
+    fn fb_stride(&self) -> usize {
+        unsafe { crate::info::FB_STRIDE as usize }
+    }
+}
+
+impl cabina_panels::fb::FrameBuffer for GopFrameBuffer {
+    fn width(&self) -> u32 {
+        unsafe { crate::info::FB_WIDTH as u32 }
+    }
+    fn height(&self) -> u32 {
+        unsafe { crate::info::FB_HEIGHT as u32 }
+    }
+    fn put_pixel(&mut self, x: u32, y: u32, color: u32) {
+        let addr = self.fb_addr();
+        let s = self.fb_stride();
+        let w = self.width() as usize;
+        let h = self.height() as usize;
+        put(addr, s, w, h, x as usize, y as usize, color);
+    }
+    fn fill_rect(&mut self, x: u32, y: u32, w: u32, h: u32, color: u32) {
+        let addr = self.fb_addr();
+        let s = self.fb_stride();
+        let fb_w = self.width() as usize;
+        let fb_h = self.height() as usize;
+        fill_rect(addr, s, fb_w, fb_h, x as usize, y as usize, w as usize, h as usize, color);
+    }
+    fn glyph(&self, ch: u8) -> &[u8; 16] {
+        font::get_glyph(ch)
+    }
+    fn now_ns(&self) -> u64 {
+        unsafe {
+            let lo: u32;
+            let hi: u32;
+            core::arch::asm!("rdtsc", out("eax") lo, out("edx") hi);
+            let tsc = ((hi as u64) << 32) | (lo as u64);
+            let freq = crate::cpu::tsc_per_sec();
+            if freq == 0 { 0 } else { tsc.wrapping_mul(1_000_000_000) / freq }
+        }
+    }
+}

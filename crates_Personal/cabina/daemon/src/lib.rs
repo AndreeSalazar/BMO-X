@@ -35,6 +35,7 @@ pub fn emit_full(
     let mut ev = Event::new(severity, layer, entity, module, entity_id, msg, value);
     if !INITIALIZED.load(Ordering::Relaxed) { return ev; }
     ev.seq = ring_buffer::push(&ev);
+    serial::write_event(&ev);
     ev
 }
 

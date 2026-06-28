@@ -12,6 +12,9 @@ bmo-audio = { path = "../crates_Personal/bmo_audio" }
 fastos-boot-protocol = { path = "../crates_Personal/boot_protocol" }
 nvram-log = { path = "../crates_Personal/nvram-log" }
 vendor = { path = "../crates_Personal/vendor" }
+cabina-core = { path = "../crates_Personal/cabina/core" }
+cabina-daemon = { path = "../crates_Personal/cabina/daemon" }
+cabina-panels = { path = "../crates_Personal/cabina/panels" }
 volatile = "0.4"
 bitflags = "2"
     

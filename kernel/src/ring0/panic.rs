@@ -125,11 +125,29 @@ fn panic(info: &PanicInfo) -> ! {
         write_bytes(b"\r\n");
     }
 
-    // 4. CABINA_0: record in ring buffer (survives for dump_serial)
-    super::cabina_0::fault("panic", "KERNEL PANIC — see serial above");
+    // 4. Record in cabina-daemon ring buffer (survives for dump)
+    let ev = cabina_daemon::fault("panic", "KERNEL PANIC — see serial above");
 
-    // 5. Dump all CABINA_0 events to serial — gives full boot trace
-    super::cabina_0::dump_serial();
+    // 5. Dump cabina-daemon events to serial — gives full boot trace
+    write_bytes(b"\r\n=== CABINA DUMP ===\r\n");
+    {
+        let cur = cabina_daemon::ring_buffer::next_seq();
+        let start = if cur > 64 { cur - 64 } else { 1 };
+        for seq in start..cur {
+            if let Some(ev) = cabina_daemon::ring_buffer::event_by_seq(seq) {
+                write_bytes(b"#");
+                write_dec(seq as u32);
+                write_bytes(b" ");
+                write_bytes(ev.severity.name().as_bytes());
+                write_bytes(b" ");
+                write_bytes(ev.module_str().as_bytes());
+                write_bytes(b": ");
+                write_bytes(ev.msg_str().as_bytes());
+                write_bytes(b"\r\n");
+            }
+        }
+    }
+    write_bytes(b"=== END CABINA DUMP ===\r\n");
 
     loop {
         unsafe { asm!("cli; hlt") }

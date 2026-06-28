@@ -23,8 +23,11 @@ pub mod dev;
 pub mod proc;
 pub mod cpu;
 
-// ── CABINA_0: omniscient backbone (serial + ring buffer, zero heap) ─
-pub mod cabina_0;
+// ── CABINA: daemon + panels (omniscient diagnostic infrastructure) ──
+pub use cabina_core;
+pub use cabina_daemon;
+pub use cabina_panels;
+
 
 // ── Boot infrastructure (moved from boot/) ──────────────────────────
 pub mod info;
@@ -93,10 +96,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32);
     }
 
-    // 2. CABINA_0 init (safe — only sets atomics, no serial output)
-    cabina_0::init();
+    // 2. Register serial sink (enables cabina-daemon serial output)
+    crate::serial::register_cabina_sink();
 
-    // 3. NVRAM init + EARLIEST write — BEFORE any serial output
+    // 3. CABINA daemon init (ring buffer + telemetry)
+    cabina_daemon::init();
+
+    // 4. NVRAM init + EARLIEST write — BEFORE any serial output
     if !boot_info_ptr.is_null() {
         let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
         if uefi_st != 0 {
@@ -105,15 +111,26 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
         }
     }
 
-    // 4. NOW serial is safe — NVRAM already written
-    cabina_0::info("ring0", "kernel_main_real entered");
-    cabina_0::info("ring0", "nvram init + kmain_early written");
+    // 5. NOW serial + ring buffer are active
+    cabina_daemon::info("ring0", "kernel_main_real entered");
+    cabina_daemon::info("ring0", "nvram init + kmain_early written");
 
     // Enter Ring 0 main coordinator.
     phase_1_RING_0::main(boot_info_ptr);
 
-    cabina_0::fault("ring0", "phase_1_RING_0 returned unexpectedly");
-    cabina_0::dump_serial();
+    cabina_daemon::fault("ring0", "phase_1_RING_0 returned unexpectedly");
+    // Force serial dump before halt
+    cabina_daemon::info("ring0", "=== dumping cabina ring buffer ===");
+    let cur = cabina_daemon::ring_buffer::next_seq();
+    let start = if cur > 64 { cur - 64 } else { 1 };
+    for seq in start..cur {
+        if let Some(ev) = cabina_daemon::ring_buffer::event_by_seq(seq) {
+            crate::dev::console::serial_write(&alloc::format!(
+                "#{} {} {}: {}\n", ev.seq, ev.severity.name(), ev.module_str(), ev.msg_str()
+            ));
+        }
+    }
+    crate::dev::console::serial_write("=== end cabina dump ===\n");
     loop {
         unsafe { core::arch::asm!("hlt"); }
     }
