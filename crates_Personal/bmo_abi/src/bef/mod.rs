@@ -41,6 +41,9 @@ pub mod tls;
 pub mod imports;
 pub mod exports;
 pub mod blake3;
+pub mod writer;
+pub mod validator;
+pub mod loader;
 
 // ─── Re-exports del loader canónico ─────────────────────────────────
 pub use header::{
@@ -64,3 +67,6 @@ pub use symbols::Symbol;
 pub use tls::TlsTemplate;
 pub use imports::ImportEntry;
 pub use exports::ExportEntry;
+pub use writer::BefBuilder;
+pub use validator::validate;
+pub use loader::{load, LoadedBef, LoadedSection};
