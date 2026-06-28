@@ -3,24 +3,37 @@
 //! **Reemplaza al C ABI** (cdecl/stdcall/Win64/SysV AMD64) y a su stdlib
 //! (`<stdint.h>`, `<stddef.h>`, `<string.h>`, `<errno.h>`, `<time.h>`, etc).
 //!
-//! # Estructura (v1.8.8)
+//! # Estructura
 //!
 //! ```text
 //! bmo_abi/
 //! ├── fundamentals/   — Tipos que TODO código usa
-//! │   ├── primitives/ — int, bool, float
-//! │   ├── status/      — BmoStatus, ErrorCode
-//! │   ├── handle/      — Handle table
-//! │   └── sync/        — BmoAtomicU64, MemOrder
+//! │   ├── primitives/ — int, bool, float (bx_u8..u64, bx_i*, bx_f*)
+//! │   ├── status/      — BmoStatus 16-byte, StatusFlags
+//! │   ├── handle/      — BmoHandle 64-bit con tag+generation
+//! │   ├── option/      — BmoOption<T> FFI-safe
+//! │   ├── result/      — BmoResult<T, E> FFI-safe
+//! │   ├── error/       — BmoError 16-byte unificado
+//! │   ├── convert/     — BmoStatus ↔ BmoError ↔ ErrorCode
+//! │   ├── string/      — BmoStr (borrowed), BmoString (owned)
+//! │   ├── memory/      — BmoSlice, BmoRange, BmoAligned
+//! │   ├── io/          — BmoRead, BmoWrite, BmoSeek, BmoPipe
+//! │   ├── fmt/         — BmoFormatter stack-allocated
+//! │   └── sync/        — BmoAtomicU32/U64/Bool, MemOrder, BmoSpinLock
 //! │
-//! ├── values/         — Tipos valor
-//! │   └── time/        — Instant, Duration
+//! ├── values/         — Tipos valor con semántica propia
+//! │   ├── time/        — BmoInstant, BmoDuration
+//! │   ├── math/        — sqrt, sin, cos, pow
+//! │   ├── hash/        — FNV-1a, CRC32c, CRC32
+//! │   ├── net/         — BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
+//! │   └── reflect/     — ReflectQuery
 //! │
+//! ├── runtime/        — Agregador de runtime: TypeRegistry, VTableStore, LangBridge
 //! ├── windowing/      — Contrato de ventanas
 //! ├── fs/             — File/Dir handles, OpenFlags, Stat
 //! ├── surface/        — Formatos de pixel, surfaces CPU/GPU
-//! ├── error_code/     — Códigos extendidos (21 codes)
-//! ├── bef/            — Formato BEF (header, secciones)
+//! ├── error_code/     — BmoErrorCode enum, BmoErrorSeverity, raw constants
+//! ├── bef/            — Formato BEF (header, secciones, relocs)
 //! ├── syscalls/       — Tabla de syscall numbers 0x100..0x1FF
 //! └── profile/        — BmoLanguageProfile + ALL_PROFILES
 //! ```
@@ -31,6 +44,7 @@
 extern crate alloc;
 pub mod fundamentals;
 pub mod values;
+pub mod runtime;
 pub mod windowing;
 pub mod fs;
 pub mod surface;

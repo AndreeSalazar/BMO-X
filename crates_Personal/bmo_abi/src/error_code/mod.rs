@@ -148,81 +148,27 @@ impl BmoErrorFlags {
     pub const SHIFT: u32 = 24;
 }
 
-// ─── Packed BmoError ───────────────────────────────────────────────
+// ─── Raw code constants ─────────────────────────────────────────────
 
-/// Error empaquetado (32 bits).
-///
-/// **No** es lo mismo que `BmoStatus` (que también es u32) — pero
-/// pueden convertirse 1:1.
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct BmoError(pub u32);
-
-impl BmoError {
-    pub const OK: Self = Self(0);
-
-    #[inline]
-    pub const fn new(code: BmoErrorCode, severity: BmoErrorSeverity, flags: BmoErrorFlags) -> Self {
-        Self((code as u32) | ((severity as u32) << BmoErrorSeverity::SHIFT) | (flags.0 << BmoErrorFlags::SHIFT))
-    }
-
-    #[inline]
-    pub const fn code(self) -> BmoErrorCode {
-        match self.0 & 0xFFFF {
-            0 => BmoErrorCode::Ok,
-            1 => BmoErrorCode::OutOfMemory,
-            2 => BmoErrorCode::InvalidHandle,
-            3 => BmoErrorCode::PermissionDenied,
-            4 => BmoErrorCode::NotFound,
-            5 => BmoErrorCode::Busy,
-            6 => BmoErrorCode::Timeout,
-            7 => BmoErrorCode::InvalidArgument,
-            8 => BmoErrorCode::Io,
-            9 => BmoErrorCode::Internal,
-            10 => BmoErrorCode::Unsupported,
-            11 => BmoErrorCode::Cancelled,
-            12 => BmoErrorCode::Deadlock,
-            13 => BmoErrorCode::Again,
-            14 => BmoErrorCode::BufferTooSmall,
-            15 => BmoErrorCode::InvalidState,
-            16 => BmoErrorCode::Checksum,
-            17 => BmoErrorCode::Version,
-            18 => BmoErrorCode::PathNotFound,
-            19 => BmoErrorCode::AlreadyExists,
-            20 => BmoErrorCode::EndOfStream,
-            _ => BmoErrorCode::Internal, // unknown
-        }
-    }
-
-    #[inline]
-    pub const fn severity(self) -> BmoErrorSeverity {
-        match (self.0 & BmoErrorSeverity::MASK) >> BmoErrorSeverity::SHIFT {
-            0 => BmoErrorSeverity::None,
-            1 => BmoErrorSeverity::Warning,
-            2 => BmoErrorSeverity::Error,
-            3 => BmoErrorSeverity::Fatal,
-            _ => BmoErrorSeverity::Error,
-        }
-    }
-
-    #[inline]
-    pub const fn flags(self) -> BmoErrorFlags {
-        BmoErrorFlags((self.0 & BmoErrorFlags::MASK) >> BmoErrorFlags::SHIFT)
-    }
-
-    #[inline]
-    pub fn is_ok(self) -> bool { self.code() == BmoErrorCode::Ok }
-    #[inline]
-    pub fn is_err(self) -> bool { !self.is_ok() }
-
-    pub fn as_str(self) -> &'static str {
-        if self.is_ok() { "ok" } else { self.code().as_str() }
-    }
-}
-
-impl core::fmt::Display for BmoError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "BmoError({}:{})", self.code().as_str(), self.severity() as u32)
-    }
-}
+pub const OK:                u32 = 0;
+pub const OUT_OF_MEMORY:     u32 = 1;
+pub const INVALID_HANDLE:    u32 = 2;
+pub const PERMISSION_DENIED: u32 = 3;
+pub const NOT_FOUND:         u32 = 4;
+pub const BUSY:              u32 = 5;
+pub const TIMEOUT:           u32 = 6;
+pub const INVALID_ARGUMENT:  u32 = 7;
+pub const IO:                u32 = 8;
+pub const INTERNAL:          u32 = 9;
+pub const UNSUPPORTED:       u32 = 10;
+pub const CANCELLED:         u32 = 11;
+pub const DEADLOCK:          u32 = 12;
+pub const AGAIN:             u32 = 13;
+pub const BUFFER_TOO_SMALL:  u32 = 14;
+pub const INVALID_STATE:     u32 = 15;
+pub const CHECKSUM:          u32 = 16;
+pub const VERSION:           u32 = 17;
+pub const PATH_NOT_FOUND:    u32 = 18;
+pub const ALREADY_EXISTS:    u32 = 19;
+pub const END_OF_STREAM:     u32 = 20;
 
