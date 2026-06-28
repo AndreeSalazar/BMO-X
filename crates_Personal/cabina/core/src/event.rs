@@ -40,6 +40,16 @@ impl Severity {
             Self::Panic => "PANIC",
         }
     }
+
+    pub fn color(self) -> u32 {
+        match self {
+            Self::Info => 0xFFCCCCCC,
+            Self::Trace => 0xFF888888,
+            Self::Warning => 0xFFFFAA00,
+            Self::Fault => 0xFFFF8800,
+            Self::Panic => 0xFFFF0000,
+        }
+    }
 }
 
 impl fmt::Display for Severity {
