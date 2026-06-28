@@ -27,4 +27,3 @@ pub mod apic;
 pub mod ctx;
 pub mod syscall;
 pub mod smp;
-pub mod tlb;

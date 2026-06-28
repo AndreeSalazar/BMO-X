@@ -242,6 +242,8 @@ pub unsafe fn alloc_pages_contiguous(count: usize) -> Option<u64> {
                 for i in run_start..run_start + count { mark_used(i); }
                 FREE_PAGES.fetch_sub(count, Ordering::Relaxed);
                 NEXT_FREE_HINT = run_start + count;
+                cabina_daemon::telemetry::memory::inc_allocs();
+                cabina_daemon::telemetry::memory::set_free_pages(FREE_PAGES.load(Ordering::Relaxed) as u64);
                 return Some(index_to_addr(run_start));
             }
         }
@@ -258,6 +260,8 @@ pub unsafe fn alloc_pages_contiguous(count: usize) -> Option<u64> {
                 for i in run_start..run_start + count { mark_used(i); }
                 FREE_PAGES.fetch_sub(count, Ordering::Relaxed);
                 NEXT_FREE_HINT = run_start + count;
+                cabina_daemon::telemetry::memory::inc_allocs();
+                cabina_daemon::telemetry::memory::set_free_pages(FREE_PAGES.load(Ordering::Relaxed) as u64);
                 return Some(index_to_addr(run_start));
             }
         }
@@ -284,6 +288,8 @@ pub unsafe fn free_pages(addr: u64, count: usize) {
             FREE_PAGES.fetch_add(1, Ordering::Relaxed);
         }
     }
+    cabina_daemon::telemetry::memory::inc_frees();
+    cabina_daemon::telemetry::memory::set_free_pages(FREE_PAGES.load(Ordering::Relaxed) as u64);
 }
 
 pub fn free_count() -> usize {

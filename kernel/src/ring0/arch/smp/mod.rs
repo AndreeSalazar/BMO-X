@@ -39,11 +39,6 @@ static mut SMP_STATE: SmpState = SmpState::Uninitialized;
 /// Number of cores that successfully started.
 static mut CORES_ONLINE: u32 = 0;
 
-/// Get the current SMP state.
-pub fn state() -> SmpState {
-    unsafe { SMP_STATE }
-}
-
 /// Get the number of online cores.
 pub fn core_count() -> u32 {
     unsafe { CORES_ONLINE }
@@ -145,68 +140,4 @@ pub unsafe fn init() {
     crate::dev::console::serial_write(" cores online ===\n\n");
 }
 
-/// Halt the current CPU. Used for idle loop.
-#[inline]
-pub fn halt() {
-    unsafe {
-        asm!("sti; hlt", options(nostack));
-    }
-}
 
-/// Halt without enabling interrupts (used during critical sections).
-#[inline]
-pub fn halt_no_irq() {
-    unsafe {
-        asm!("hlt", options(nostack));
-    }
-}
-
-/// Get the current CPU's core ID.
-#[inline]
-pub fn core_id() -> u32 {
-    percpu::current().core_id
-}
-
-/// Get the current CPU's APIC ID.
-#[inline]
-pub fn apic_id() -> u32 {
-    percpu::current().apic_id
-}
-
-/// Is this the BSP (Bootstrap Processor)?
-#[inline]
-pub fn is_bsp() -> bool {
-    percpu::current().core_id == 0
-}
-
-/// Send a function call to a specific core.
-/// The function pointer is stored in the per-CPU call queue
-/// and the target core executes it when it receives the IPI.
-pub unsafe fn call_on_core(core_id: u32, func: fn()) {
-    if let Some(pc) = percpu::get(core_id) {
-        if !pc.online { return; }
-        // Store the function pointer in a per-CPU slot
-        // For now, use a simple approach: store in saved_rsp temporarily
-        // TODO: implement proper per-CPU call queue
-        let pc_mut = percpu::current_mut();
-        let old_rsp = pc_mut.saved_rsp;
-        pc_mut.saved_rsp = func as u64;
-        ipi::send_call_ipi(pc.apic_id);
-        pc_mut.saved_rsp = old_rsp;
-    }
-}
-
-/// Broadcast a function call to all cores (including self).
-pub unsafe fn call_on_all(func: fn()) {
-    for i in 0..percpu::online_count() {
-        if let Some(pc) = percpu::get(i) {
-            if i == core_id() {
-                // Execute directly on BSP
-                func();
-            } else {
-                // Send IPI to AP
-                call_on_core(i, func);
-            }
-        }
-    }
-}

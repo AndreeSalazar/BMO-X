@@ -211,6 +211,8 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         let a4 = f.r8;
         let a5 = f.r9;
 
+        cabina_daemon::telemetry::syscall::inc(nr as u16);
+
         let result = match nr {
             // ─── BMO Core desktop3 (0x100..=0x1FF) ───────────────────
             // v1.8.8: TODOS los syscalls de la BMO ABI pasan por

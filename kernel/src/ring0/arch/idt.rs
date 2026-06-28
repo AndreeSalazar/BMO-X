@@ -461,6 +461,9 @@ extern "C" fn irq1_handler_rust() {
 /// Returns: 0 = no switch (restore same thread), non-zero = new RSP for switched thread.
 #[unsafe(no_mangle)]
 extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
+    cabina_daemon::telemetry::cpu::inc_interrupts();
+    cabina_daemon::telemetry::cpu::inc_timer();
+
     // Save full register ctx from the kernel stack into the current thread.
     unsafe {
         crate::arch::ctx::save_context_from_stack(saved_state);
@@ -671,6 +674,17 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
     // framebuffer and halt. The scheduler/diag may not be initialized.
     if crate::proc::task::current().is_none() {
         unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
+    }
+
+    // Telemetry per exception type
+    match vector {
+        14 => { cabina_daemon::telemetry::cpu::inc_pf(); }
+        13 => { cabina_daemon::telemetry::cpu::inc_gp(); }
+        7  => { cabina_daemon::telemetry::cpu::inc_nm(); }
+        6  => { cabina_daemon::telemetry::cpu::inc_ud(); }
+        8  => { cabina_daemon::telemetry::cpu::inc_df(); }
+        18 => { cabina_daemon::telemetry::cpu::inc_mc(); }
+        _  => {}
     }
 
     match vector {

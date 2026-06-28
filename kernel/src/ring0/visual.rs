@@ -488,6 +488,7 @@ pub fn is_active() -> bool {
 // ── GopFrameBuffer: FrameBuffer trait impl for cabina-panels ─────────
 
 pub struct GopFrameBuffer;
+pub static mut GOP_FB: GopFrameBuffer = GopFrameBuffer;
 
 impl GopFrameBuffer {
     fn fb_addr(&self) -> *mut u32 {

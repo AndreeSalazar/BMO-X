@@ -245,11 +245,13 @@ pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
         Ok(l) => l,
         Err(_) => return core::ptr::null_mut(),
     };
+    cabina_daemon::telemetry::memory::inc_allocs();
     ALLOCATOR.alloc(layout)
 }
 
 pub unsafe fn heap_free(ptr: *mut u8, size: usize, align: usize) {
     if ptr.is_null() { return; }
+    cabina_daemon::telemetry::memory::inc_frees();
     if let Ok(layout) = Layout::from_size_align(size, align) {
         ALLOCATOR.dealloc(ptr, layout);
     }

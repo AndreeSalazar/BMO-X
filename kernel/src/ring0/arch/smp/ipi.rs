@@ -72,14 +72,6 @@ pub unsafe fn send_init_deinit_apic_ipi() {
     write_icr(0, low);
 }
 
-/// Broadcast INIT IPI to all processors (excluding self).
-pub unsafe fn broadcast_init_ipi() {
-    let low = (DELIVERY_INIT as u32) | (0b1111 << 16) // all excluding self
-            | (DEST_PHYSICAL << 11) | (LEVEL_ASSERT << 13)
-            | (TRIGGER_EDGE << 14);
-    write_icr(0, low);
-}
-
 /// Send SIPI (Startup IPI) to a specific APIC ID.
 /// `vector`: page number (physical address >> 12) where the AP starts.
 pub unsafe fn send_sipi(target_apic_id: u32, vector: u8) {
@@ -90,63 +82,4 @@ pub unsafe fn send_sipi(target_apic_id: u32, vector: u8) {
     write_icr(high, low);
 }
 
-/// Send a fixed IPI to a specific APIC ID.
-pub unsafe fn send_fixed_ipi(target_apic_id: u32, vector: u8) {
-    let high = (target_apic_id & 0xFF) << 24;
-    let low = (vector as u32) | (DELIVERY_FIXED as u32)
-            | (DEST_PHYSICAL << 11) | (LEVEL_ASSERT << 13)
-            | (TRIGGER_EDGE << 14);
-    write_icr(high, low);
-}
 
-/// Send a fixed IPI to all processors excluding self.
-pub unsafe fn broadcast_fixed_ipi(vector: u8) {
-    let low = (vector as u32) | (DELIVERY_FIXED as u32)
-            | (0b1111 << 16) | (DEST_PHYSICAL << 11)
-            | (LEVEL_ASSERT << 13) | (TRIGGER_EDGE << 14);
-    write_icr(0, low);
-}
-
-/// Send NMI to a specific APIC ID.
-pub unsafe fn send_nmi(target_apic_id: u32) {
-    let high = (target_apic_id & 0xFF) << 24;
-    let low = (DELIVERY_NMI as u32) | (DEST_PHYSICAL << 11)
-            | (LEVEL_ASSERT << 13) | (TRIGGER_EDGE << 14);
-    write_icr(high, low);
-}
-
-/// Broadcast NMI to all processors (including self).
-pub unsafe fn broadcast_nmi() {
-    let low = (DELIVERY_NMI as u32) | (0b1110 << 16) // all including self
-            | (DEST_PHYSICAL << 11) | (LEVEL_ASSERT << 13)
-            | (TRIGGER_EDGE << 14);
-    write_icr(0, low);
-}
-
-/// Send a function call IPI to a specific core.
-/// The target core should handle vector `SMP_CALL_VECTOR` and
-/// call the function pointer stored in the per-CPU call queue.
-pub unsafe fn send_call_ipi(target_apic_id: u32) {
-    const SMP_CALL_VECTOR: u8 = 200;
-    send_fixed_ipi(target_apic_id, SMP_CALL_VECTOR);
-}
-
-/// Broadcast a function call IPI to all cores (including self).
-pub unsafe fn broadcast_call_ipi() {
-    const SMP_CALL_VECTOR: u8 = 200;
-    broadcast_fixed_ipi(SMP_CALL_VECTOR);
-}
-
-/// TLB shootdown: flush TLB on a remote core.
-/// Sends an IPI with the TLB flush vector. The target core
-/// should execute `invpcid` or `invlpg` on the specified address.
-pub unsafe fn send_tlb_flush(target_apic_id: u32, _virt_addr: u64) {
-    const TLB_FLUSH_VECTOR: u8 = 201;
-    send_fixed_ipi(target_apic_id, TLB_FLUSH_VECTOR);
-}
-
-/// Broadcast TLB shootdown to all cores.
-pub unsafe fn broadcast_tlb_flush(_virt_addr: u64) {
-    const TLB_FLUSH_VECTOR: u8 = 201;
-    broadcast_fixed_ipi(TLB_FLUSH_VECTOR);
-}

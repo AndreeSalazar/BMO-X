@@ -5,7 +5,6 @@
 //! v1.6.16: `tsc_start`/`tsc_end` fields and `elapsed_tsc` method
 //! are reserved for the per-phase timing dashboard in v1.7.x.
 
-#![allow(dead_code)]
 //! each phase receives explicitly. This makes phase dependencies
 //! auditable and testable.
 //!
@@ -111,12 +110,6 @@ pub struct BootContext {
 pub struct PhaseSnapshot {
     pub tsc_end: u64,
     pub tsc_start: u64,
-}
-
-impl PhaseSnapshot {
-    pub fn elapsed_tsc(&self) -> u64 {
-        self.tsc_end.saturating_sub(self.tsc_start)
-    }
 }
 
 impl BootContext {
