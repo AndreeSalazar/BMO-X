@@ -10,31 +10,37 @@
 //! ├── fundamentals/   — Tipos que TODO código usa
 //! │   ├── primitives/ — int, bool, float (bx_u8..u64, bx_i*, bx_f*)
 //! │   ├── status/      — BmoStatus 16-byte, StatusFlags
-//! │   ├── handle/      — BmoHandle 64-bit con tag+generation
+//! │   ├── handle/      — BmoHandle 64-bit + ops (dup, close, wait)
+//! │   ├── capability/  — BmoCap, BmoCapSet (bitset de permisos)
 //! │   ├── option/      — BmoOption<T> FFI-safe
 //! │   ├── result/      — BmoResult<T, E> FFI-safe
 //! │   ├── error/       — BmoError 16-byte unificado
 //! │   ├── convert/     — BmoStatus ↔ BmoError ↔ ErrorCode
 //! │   ├── string/      — BmoStr (borrowed), BmoString (owned)
 //! │   ├── memory/      — BmoSlice, BmoRange, BmoAligned
+//! │   ├── buffer/      — BmoBuffer shared memory descriptor
+//! │   ├── allocator/   — BmoAllocator trait + Global wrapper
 //! │   ├── io/          — BmoRead, BmoWrite, BmoSeek, BmoPipe
 //! │   ├── fmt/         — BmoFormatter stack-allocated
 //! │   └── sync/        — BmoAtomicU32/U64/Bool, MemOrder, BmoSpinLock
 //! │
 //! ├── values/         — Tipos valor con semántica propia
 //! │   ├── time/        — BmoInstant, BmoDuration
+//! │   ├── clock/       — BmoClockId, sleep, sleep_until
+//! │   ├── uuid/        — BmoUuid 128-bit (RFC 4122)
+//! │   ├── version/     — BmoVersion semver (major.minor.patch)
 //! │   ├── math/        — sqrt, sin, cos, pow
 //! │   ├── hash/        — FNV-1a, CRC32c, CRC32
 //! │   ├── net/         — BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
 //! │   └── reflect/     — ReflectQuery
 //! │
-//! ├── runtime/        — Agregador de runtime: TypeRegistry, VTableStore, LangBridge
+//! ├── runtime/        — TypeRegistry, VTableStore, LangBridge
 //! ├── windowing/      — Contrato de ventanas
 //! ├── fs/             — File/Dir handles, OpenFlags, Stat
 //! ├── surface/        — Formatos de pixel, surfaces CPU/GPU
-//! ├── error_code/     — BmoErrorCode enum, BmoErrorSeverity, raw constants
+//! ├── error_code/     — BmoErrorCode enum, BmoErrorSeverity, constants
 //! ├── bef/            — Formato BEF (header, secciones, relocs)
-//! ├── syscalls/       — Tabla de syscall numbers 0x100..0x1FF
+//! ├── syscalls/       — Syscall numbers 0x100..0x1FF
 //! └── profile/        — BmoLanguageProfile + ALL_PROFILES
 //! ```
 //!

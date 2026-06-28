@@ -6,5 +6,6 @@
 
 pub mod opaque;
 pub mod kind;
+pub mod ops;
 
 pub use opaque::BmoHandle;
