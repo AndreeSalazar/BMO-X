@@ -32,14 +32,15 @@ pub fn init(features: &CpuFeatures) {
         crate::cpu::msr::wrmsr(IA32_FIXED_CTR1, 0);
         crate::cpu::msr::wrmsr(IA32_FIXED_CTR2, 0);
 
-        // 3. Configure IA32_FIXED_CTR_CTRL (0x38D) to enable all 3 counters
-        //    in "any thread, no PMI" mode. Bit layout per counter:
-        //    bit 0    = EN_FIXED_CTRn (enable counter n)
-        //    bit 1    = EN_FIXED_CTRn_PMI (enable PMI)
-        //    bit 2-3  = USR/OS selection (0b11 = both)
-        //    bit 4    = AnyThread (count on all logical processors)
+        // 3. Configure IA32_FIXED_CTR_CTRL (0x38D) to enable all 3 counters.
+        //    Bit layout per counter (Intel SDM Vol.3B §18.2.3):
+        //    bit 0    = EN (enable)
+        //    bit 1    = PMI (interrupt on overflow) — RESERVED on AMD, must be 0
+        //    bit 2    = OS (count CPL=0)
+        //    bit 3    = USR (count CPL>0)
+        //    Bit 1 set to 1 on AMD causes #GP (red screen crash).
         // For CTR0: bits 0-3; CTR1: bits 4-7; CTR2: bits 8-11.
-        let ctrl = 0b0111_0111_0111;  // EN + USR + OS for all 3
+        let ctrl = 0b1011_1011_1011;  // EN + OS + USR (no PMI) for all 3
         crate::cpu::msr::wrmsr(IA32_FIXED_CTR_CTRL, ctrl);
 
         // 4. Enable all 3 counters in GLOBAL_CTRL
