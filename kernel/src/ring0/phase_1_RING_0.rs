@@ -348,13 +348,10 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
     let mut ctx = BootContext::new(boot_info_ptr);
     let boot_start = crate::cpu::rdtsc();
 
-    // 5b. Omniscient early init (HPET from ACPI before timer init)
-    write_crash_marker(1);
-    crate::uefi_rt::write_boot_stage("omni_early");
-    crate::visual::log("ring0", "[pre] omni HPET scan", crate::visual::color::WARN);
-    crate::omni::init_early(boot_info_ptr);
-    crate::visual::log("ring0", "[ok] omni HPET done", crate::visual::color::OK);
-    crate::cabina_daemon::info("ring0", "omni early init done");
+    // NOTE: omni::init_early() deliberately NOT called here. It accesses ACPI
+    // tables (RSDP/XSDT) via raw pointers, but the IDT isn't set up yet
+    // (phase0_arch). A page fault before IDT = triple fault = system reset.
+    // HPET is non-critical; dev::timer::init() in phase0_arch falls back to TSC.
 
     // 6. Phase 0-4
     write_crash_marker(2);
