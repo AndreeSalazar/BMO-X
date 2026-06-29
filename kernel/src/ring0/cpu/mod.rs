@@ -76,10 +76,15 @@ pub fn init() -> CpuInfo {
     };
     cache::init(&features, fb_addr, fb_size);
 
-    // 6. Enable performance counters
+    // 6. Performance counters — SKIPPED on AMD Zen 3
+    // MSR 0x38D/0x38F (IA32_FIXED_CTR_CTRL/IA32_PERF_GLOBAL_CTRL) are
+    // Intel-architecture MSRs. On AMD they may not exist or have different
+    // reserved bits, causing #GP → red screen crash. Fixed counters are
+    // not essential for boot. Enable when AMD perfmon driver is mature.
+    // (See kernel/src/ring0/cpu/perf.rs for the AMD-adapted version.)
     crate::phase_1_RING_0::write_crash_marker(2036);
     crate::uefi_rt::write_boot_stage("cpu_step6_perf");
-    perf::init(&features);
+    // perf::init(&features);  // DISABLED — causes #GP on Ryzen 5600X
 
     // 7. Enable lazy FPU switching (CR0.TS) - DISABLED
     crate::phase_1_RING_0::write_crash_marker(2037);
