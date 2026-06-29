@@ -18,11 +18,14 @@
     Force clean rebuild.
 .PARAMETER BuildOnly
     Build + stage only. No flash.
+.PARAMETER LLFree
+    Build kernel with the LLFree physical backing allocator.
 .PARAMETER Jobs
     Max cargo parallel jobs (default: all CPU cores).
 .EXAMPLE
     .\build_uefi.ps1                     # Smart build (skip unchanged)
     .\build_uefi.ps1 -Flash              # Build + flash to SSD (S:)
+    .\build_uefi.ps1 -Flash -LLFree      # Build + flash with LLFree allocator
     .\build_uefi.ps1 -Flash -Drive E     # Build + flash to E:
     .\build_uefi.ps1 -Clean              # Clean + rebuild
     .\build_uefi.ps1 -Jobs 4             # Limit to 4 parallel cargo jobs
@@ -34,6 +37,7 @@ param(
     [switch]$Verify,
     [switch]$Clean,
     [switch]$BuildOnly,
+    [switch]$LLFree,
     [switch]$Yes,
     [string]$Drive,
     [int]$Jobs = 0
@@ -74,6 +78,7 @@ if ($Flash -or $Verify) {
         if ($Verify)    { $args += "-Verify" }
         if ($Clean)     { $args += "-Clean" }
         if ($BuildOnly) { $args += "-BuildOnly" }
+        if ($LLFree)    { $args += "-LLFree" }
         if ($Yes)       { $args += "-Yes" }
         if ($Drive)     { $args += "-Drive", "`"$Drive`"" }
         $argStr = $args -join " "
@@ -104,6 +109,8 @@ if ($toml -match 'version\s*=\s*"(.+?)"') { $kv = $Matches[1] }
 
 # ── Cargo jobs flag ────────────────────────────────────────────────────
 $jobsFlag = if ($Jobs -gt 0) { @("-j$Jobs") } else { @() }
+$kernelFeatureKey = if ($LLFree) { "llfree" } else { "buddy" }
+$kernelFeatureFlag = if ($LLFree) { @("--no-default-features", "--features", "alloc-llfree") } else { @() }
 
 # ── SHA256 ─────────────────────────────────────────────────────────────
 function Hash256 { param($p) return (Get-FileHash -Path $p -Algorithm SHA256).Hash.ToLower() }
@@ -166,10 +173,10 @@ function Get-SourceContentHash {
 }
 
 function Needs-Rebuild {
-    param($sourceDir, $outputFile)
+    param($sourceDir, $outputFile, $variant = "")
     if (-not (Test-Path $outputFile)) { return $true }
     $srcHash = Get-SourceContentHash $sourceDir
-    $hashFile = "$outputFile.srcsha256"
+    $hashFile = if ($variant) { "$outputFile.$variant.srcsha256" } else { "$outputFile.srcsha256" }
     if (Test-Path $hashFile) {
         $savedHash = Get-Content $hashFile -ErrorAction SilentlyContinue
         if ($srcHash -eq $savedHash) { return $false }
@@ -178,9 +185,9 @@ function Needs-Rebuild {
 }
 
 function Save-SourceHash {
-    param($sourceDir, $outputFile)
+    param($sourceDir, $outputFile, $variant = "")
     $srcHash = Get-SourceContentHash $sourceDir
-    $hashFile = "$outputFile.srcsha256"
+    $hashFile = if ($variant) { "$outputFile.$variant.srcsha256" } else { "$outputFile.srcsha256" }
     $srcHash | Set-Content $hashFile -NoNewline
 }
 
@@ -188,7 +195,7 @@ $bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\fastos-boot
 $kernelElf = Join-Path $target "kernel\x86_64-unknown-none\release\fastos-kernel"
 
 $needBoot = Needs-Rebuild $bootDir $bootEfi
-$needKern = Needs-Rebuild $kernDir $kernelElf
+$needKern = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey
 
 if (-not $needBoot -and -not $needKern -and -not $Clean) {
     Write-Host "  OK All up to date. Nothing to rebuild." -ForegroundColor Green
@@ -231,10 +238,10 @@ if ($needBoot) {
 if ($needKern) {
     $kernTargetDir = Join-Path $target "kernel"
     $kernScript = {
-        param($kernDir, $kernTargetDir, $jobsFlag)
+        param($kernDir, $kernTargetDir, $jobsFlag, $kernelFeatureFlag)
         Push-Location $kernDir
         try {
-            $out = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir @jobsFlag 2>&1
+            $out = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir @jobsFlag @kernelFeatureFlag 2>&1
             $err = $out | Where-Object { $_ -match "^error" }
             if ($err) { throw "Kernel build error: $err" }
             return @{ Ok=$true; Output=$out }
@@ -244,8 +251,8 @@ if ($needKern) {
             Pop-Location
         }
     }
-    $kernJob = Start-Job -ScriptBlock $kernScript -ArgumentList $kernDir, $kernTargetDir, $jobsFlag
-    Step "Kernel build started (PID $($kernJob.Id))"
+    $kernJob = Start-Job -ScriptBlock $kernScript -ArgumentList $kernDir, $kernTargetDir, $jobsFlag, $kernelFeatureFlag
+    Step "Kernel build started (PID $($kernJob.Id), allocator=$kernelFeatureKey)"
 }
 
 # Wait for both jobs
@@ -280,7 +287,7 @@ PhaseDone $buildTimer "Parallel build"
 
 # Save source hashes for next build's change detection
 if ($needBoot) { Save-SourceHash $bootDir $bootEfi }
-if ($needKern) { Save-SourceHash $kernDir $kernelElf }
+if ($needKern) { Save-SourceHash $kernDir $kernelElf $kernelFeatureKey }
 
 # ══════════════════════════════════════════════════════════════════════
 # VALIDATE OUTPUTS
@@ -315,6 +322,7 @@ $manifest = @"
 # FastOS EFI Boot Manifest
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 # Version: $kv
+# Allocator: $kernelFeatureKey
 #
 # File           Size        SHA256
 # ----           ----        ------

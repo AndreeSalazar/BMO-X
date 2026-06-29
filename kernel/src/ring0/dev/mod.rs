@@ -5,7 +5,6 @@
 //!   - pcie:         PCI Express scan
 //!   - framebuffer:  UEFI GOP framebuffer + backbuffer
 //!   - watchdog:     Hardware watchdog
-//!   - audio:        Audio DSP math (sin/cos/exp/log) — DEPRECATED, mover a bmo_core
 //!   - acpi:         ACPI control (sleep, reboot) — tables en `platform`
 //!
 //! Cualquier driver nuevo:

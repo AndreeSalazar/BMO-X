@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-/// Security capabilities (stub — bmo_core::fs::Capabilities moved to Temporal/)
+/// Security capabilities (stubbed in Ring 0 for now).
 pub type Capabilities = u32;
 const CAP_NONE: Capabilities = 0;
 
@@ -216,4 +216,3 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
         unsafe { core::arch::asm!("sti; hlt"); }
     }
 }
-

@@ -2,7 +2,7 @@
 
 use fastos_boot_protocol::PixelFormat;
 
-/// Minimal stub Framebuffer for backbuffer blit (replaces bmo_core::ui::fb::Framebuffer)
+/// Minimal Ring 0 framebuffer handle for backbuffer blits.
 #[derive(Debug, Clone, Copy)]
 pub struct Framebuffer {
     base: u64,

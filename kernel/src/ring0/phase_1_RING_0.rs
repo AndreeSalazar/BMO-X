@@ -14,7 +14,7 @@
 //!   8. init_fastos_cpu (Ryzen 5 5600X detection)
 //!   9. init_acpi (ACPI tables)
 //!  10. SMP init (AP cores)
-//!  11. Return to caller (next phase)
+//!  11. Return BootContext to the Ring 0 entry point
 
 use crate::info;
 use crate::context::BootContext;
@@ -309,8 +309,8 @@ fn phase4_sched(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::proc::init();
     crate::log::info("phase4", "scheduler tables initialized");
 
-    // NOTE: APIC timer, interrupts, watchdog DISABLED (cooperative mode)
-    // Will be re-enabled when bmo_core is ready
+    // NOTE: APIC timer and interrupts stay in cooperative mode here.
+    // A later owner can opt in once its scheduling contract is ready.
 
     let phase4_end = crate::cpu::rdtsc();
     ctx.record_phase(4, prev_end, phase4_end);
@@ -324,8 +324,9 @@ fn phase4_sched(ctx: &mut BootContext, prev_end: u64) -> u64 {
 
 /// Main entry point for Ring 0. Called from kernel_main_real.
 ///
-/// Initializes ALL hardware and returns a BootContext for the next phase.
-/// This function DOES return — the caller (bmo_core) takes over after this.
+/// Initializes ALL hardware and returns a BootContext to the Ring 0 entry
+/// point. The caller decides whether to enter a higher layer or stay in the
+/// Ring 0-owned GOP ready screen.
 pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext {
     // 1. Validate BootInfo
     crate::cabina_daemon::info("ring0", "validating BootInfo");
@@ -420,9 +421,9 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
     // 11. Mark boot complete
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
-    crate::cabina_daemon::info("ring0", "Ring 0 boot complete — returning to caller");
+    crate::cabina_daemon::info("ring0", "Ring 0 boot complete — returning BootContext");
     crate::visual::log("ring0", "Ring 0 boot complete", crate::visual::color::OK);
-    crate::dev::console::serial_write("[ring0] boot complete — returning to caller\n");
+    crate::dev::console::serial_write("[ring0] boot complete — returning BootContext\n");
 
     // Dump cabina ring buffer to serial for diagnostics
     {

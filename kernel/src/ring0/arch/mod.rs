@@ -8,16 +8,14 @@
 //!   - idt:     Interrupt Descriptor Table
 //!   - apic:    Local + I/O APIC (timer, IPIs)
 //!   - ctx:     15-GPR save/restore
-//!   - syscall: Syscall dispatcher (legacy 0x00..0xFF + BMO API 0x100..0x1FF)
+//!   - syscall: Ring 0 syscall entry + conservative stub dispatcher
 //!
 //! Cualquier handler de interrupción o syscall nuevo se registra en
 //! el módulo correspondiente. Ver ring0::mod.rs (comentario
 //! "Cómo añadir un nuevo handler de interrupción") para el patrón.
 //!
-//! v1.8.7: eliminados `smp` y `topology` (sin consumidores en Ring 0 ni
-//! en `bmo_core`/`bmo_gpu`/`ring3`; el SMP startup estaba deferido y
-//! la topología solo la consumía `platform/*` que también se eliminó).
-//! Cuando se reactive SMP (bloqueador para AAA), restaurarlos desde git.
+//! v1.8.7: topology consumers were removed from Ring 0. SMP startup is now
+//! represented by `arch::smp` and is initialized explicitly by the coordinator.
 
 #![allow(dead_code)]
 

@@ -1,5 +1,5 @@
 //! Boot info globals — stores the BootInfo pointer from the bootloader,
-//! plus simple framebuffer + input globals consumed by syscalls (Ring 3 desktop).
+//! plus simple framebuffer + input globals consumed by Ring 0 syscalls.
 
 /// Global pointer to the BootInfo structure passed by the bootloader.
 pub static mut BOOT_INFO: *const fastos_boot_protocol::BootInfo = core::ptr::null();

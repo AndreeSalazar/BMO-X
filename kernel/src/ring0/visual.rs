@@ -1,9 +1,9 @@
 //! v1.8.8: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
-//! splash that matches the welcome card's visual language:
+//! Ring 0 splash:
 //!
-//!   - Dark teal-indigo gradient background (same as welcome wallpaper)
+//!   - Dark teal-indigo gradient background
 //!   - Centered "FastOS-BMO" card with a mint accent bar
 //!   - 5 phase progress bars (CPU, Mem, Dev, Disp, Sched) with phase colors
 //!   - Live log area with rotating messages
@@ -18,18 +18,21 @@ use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 // ── Font: real CP437/VGA 8×16 bitmap (ring0/font.rs) ──────────────
 use super::font;
 
-// ── Palette (matches welcome) ──────────────────────────────────────
+// ── Palette ────────────────────────────────────────────────────────
 
 const BG_TOP:       u32 = 0xFF050B12;
 const BG_BOT:       u32 = 0xFF0E1B2E;
 const CARD_BG:      u32 = 0xFF0F1827;
 const CARD_BD:      u32 = 0xFF1F4D5C;
 const ACCENT:       u32 = 0xFF4ECCA3;
+const NEON_GREEN:   u32 = 0xFF39FF14;
+const NEON_DIM:     u32 = 0xFF147A4D;
+const NEON_DARK:    u32 = 0xFF063822;
 const TITLE:        u32 = 0xFFE6F1F5;
 const SUBTITLE:     u32 = 0xFF7B8FA1;
 const DIM:          u32 = 0xFF455364;
 
-// Phase colors (one per phase 0..4 + welcome)
+// Phase colors (one per Ring 0 phase 0..4)
 const PH_COLORS: [u32; 5] = [
     0xFF58A6FF, // phase0 CPU  — blue
     0xFF4ECCA3, // phase1 Mem  — mint
@@ -309,13 +312,11 @@ fn phase_color(phase: &str) -> u32 {
     if phase.starts_with("phase2") || phase.contains("dev")   { return PH_COLORS[2]; }
     if phase.starts_with("phase3") || phase.contains("disp")  { return PH_COLORS[3]; }
     if phase.starts_with("phase4") || phase.contains("sched") { return PH_COLORS[4]; }
-    if phase.starts_with("phase5") || phase.contains("desktop") || phase.contains("welcome") {
-        return ACCENT;
-    }
+    if phase.contains("ready") || phase.contains("idle")       { return ACCENT; }
     SUBTITLE
 }
 
-/// Clear the splash (called before handing off to the welcome screen).
+/// Clear the Ring 0 splash and reset visual state.
 pub fn clear() {
     let (addr, w, h, s) = fb();
     if addr.is_null() { return; }
@@ -323,6 +324,199 @@ pub fn clear() {
     INITIALIZED.store(false, Ordering::Relaxed);
     NEXT_LOG_ROW.store(0, Ordering::Relaxed);
     CURRENT_PHASE.store(0, Ordering::Relaxed);
+}
+
+/// Final Ring 0-owned GOP screen.
+///
+/// This is intentionally small and self-contained: it does not call any
+/// higher-layer UI code. It proves that Ring 0 completed, GOP is still
+/// writable, and the CPU is in a controlled heartbeat loop instead of the
+/// old silent `hlt` path.
+pub fn ring0_ready_loop(ctx: &crate::context::BootContext) -> ! {
+    let (addr, w, h, s) = fb();
+    if addr.is_null() || w == 0 || h == 0 {
+        crate::dev::console::serial_write("[ring0] ready: no GOP framebuffer; serial idle\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    INITIALIZED.store(true, Ordering::Relaxed);
+    NEXT_LOG_ROW.store(0, Ordering::Relaxed);
+    CURRENT_PHASE.store(5, Ordering::Relaxed);
+
+    crate::uefi_rt::write_boot_stage("ring0_ready_idle");
+    cabina_daemon::info("ring0", "Ring 0 ready screen entered");
+    crate::dev::console::serial_write("[ring0] ready: GOP heartbeat idle\n");
+
+    simple_gradient_v(addr, s, w, h, 0, 0, w, h, BG_TOP, BG_BOT);
+    draw_cyber_grid(addr, s, w, h);
+
+    let cw = if w > 80 { 760usize.min(w - 40) } else { w };
+    let ch = if h > 80 { 380usize.min(h - 40) } else { h };
+    let cx = (w - cw) / 2;
+    let cy = (h - ch) / 2;
+
+    // Neon cyberpunk glow: several translucent-looking hard-color outlines.
+    draw_rect(addr, s, w, h, cx.saturating_sub(10), cy.saturating_sub(10), cw + 20, ch + 20, NEON_DARK, 1);
+    draw_rect(addr, s, w, h, cx.saturating_sub(6), cy.saturating_sub(6), cw + 12, ch + 12, NEON_DIM, 1);
+    draw_rect(addr, s, w, h, cx.saturating_sub(3), cy.saturating_sub(3), cw + 6, ch + 6, ACCENT, 1);
+    fill_rect(addr, s, w, h, cx + 8, cy + 10, cw, ch, 0xFF020610);
+    fill_rect(addr, s, w, h, cx, cy, cw, ch, CARD_BG);
+    draw_rect(addr, s, w, h, cx, cy, cw, ch, CARD_BD, 2);
+    if cw > 48 {
+        fill_rect(addr, s, w, h, cx + 24, cy + 24, cw - 48, 2, NEON_DIM);
+        fill_rect(addr, s, w, h, cx + 24, cy + 27, cw - 48, 3, NEON_GREEN);
+    }
+
+    let title = b"RING 0 READY";
+    let scale = if cw >= 420 { 2 } else { 1 };
+    let tw = title.len() * 8 * scale as usize;
+    let tx = cx + cw.saturating_sub(tw) / 2;
+    text_scaled(addr, s, w, h, tx, cy + 56, title, TITLE, scale);
+
+    let sub = b"Hardware init complete :: GOP framebuffer alive";
+    let sw = sub.len() * 8;
+    let sx = cx + cw.saturating_sub(sw) / 2;
+    text(addr, s, w, h, sx, cy + 106, sub, NEON_GREEN);
+
+    if cw > 120 {
+        fill_rect(addr, s, w, h, cx + 60, cy + 138, cw - 120, 1, CARD_BD);
+    }
+
+    let mx = cx + 60usize.min(cw / 8);
+    let mut my = cy + 164;
+    draw_metric(addr, s, w, h, mx, my, b"Free RAM:      ", ctx.memory.free_mb, b" MiB");
+    my += 22;
+    draw_metric(addr, s, w, h, mx, my, b"Heap total:    ", ctx.memory.heap_total_bytes, b" bytes");
+    my += 22;
+    draw_metric(addr, s, w, h, mx, my, b"TSC frequency: ", ctx.cpu.tsc_freq_hz, b" Hz");
+    my += 22;
+    draw_metric(addr, s, w, h, mx, my, b"PCI devices:   ", ctx.devices.pci_devices_found as u64, b"");
+    my += 22;
+    text(addr, s, w, h, mx, my, b"Allocator:     ", DIM);
+    text(addr, s, w, h, mx + 15 * 8, my, allocator_name(), NEON_GREEN);
+
+    let status = b"Safe Ring 0 idle: neon heartbeat below. Higher UI not connected here.";
+    text(addr, s, w, h, mx, cy + ch.saturating_sub(72), status, SUBTITLE);
+
+    let track_x = mx;
+    let track_y = cy + ch.saturating_sub(42);
+    let track_w = cw.saturating_sub(120).max(1);
+    fill_rect(addr, s, w, h, track_x, track_y, track_w, 12, TRACK);
+    unsafe { core::arch::asm!("sfence"); }
+
+    let period = if ctx.cpu.tsc_freq_hz > 0 { ctx.cpu.tsc_freq_hz / 12 } else { 50_000_000 };
+    let mut step = 0usize;
+    loop {
+        crate::dev::watchdog::pet_fch_watchdog();
+        fill_rect(addr, s, w, h, track_x, track_y, track_w, 12, TRACK);
+        let pos_span = track_w.saturating_sub(48).max(1);
+        let x = track_x + ((step * 31) % pos_span);
+        draw_heartbeat(addr, s, w, h, track_x, track_y, track_w, x);
+        unsafe { core::arch::asm!("sfence"); }
+        delay_cycles(period.max(1));
+        step = step.wrapping_add(1);
+    }
+}
+
+fn allocator_name() -> &'static [u8] {
+    #[cfg(feature = "alloc-llfree")]
+    { b"LLFree lock-free" }
+    #[cfg(not(feature = "alloc-llfree"))]
+    { b"Buddy" }
+}
+
+fn draw_cyber_grid(addr: *mut u32, s: usize, w: usize, h: usize) {
+    let horizon = h.saturating_mul(62) / 100;
+    let step_x = 96usize;
+    let step_y = 36usize;
+
+    let mut x = 0usize;
+    while x < w {
+        let color = if x % (step_x * 2) == 0 { NEON_DARK } else { 0xFF082C22 };
+        fill_rect(addr, s, w, h, x, horizon, 1, h.saturating_sub(horizon), color);
+        x = x.saturating_add(step_x);
+    }
+
+    let mut y = horizon;
+    while y < h {
+        let color = if ((y - horizon) / step_y) % 2 == 0 { NEON_DARK } else { 0xFF082C22 };
+        fill_rect(addr, s, w, h, 0, y, w, 1, color);
+        y = y.saturating_add(step_y);
+    }
+
+    // Two diagonal neon rails, intentionally approximate and cheap.
+    let mut yy = horizon;
+    while yy < h {
+        let t = yy - horizon;
+        let left = w / 2usize;
+        let spread = t.saturating_mul(2);
+        if left > spread {
+            fill_rect(addr, s, w, h, left - spread, yy, 2, 1, NEON_DIM);
+        }
+        let right = (w / 2).saturating_add(spread);
+        if right < w {
+            fill_rect(addr, s, w, h, right, yy, 2, 1, NEON_DIM);
+        }
+        yy = yy.saturating_add(3);
+    }
+}
+
+fn draw_heartbeat(addr: *mut u32, s: usize, w: usize, h: usize, track_x: usize, track_y: usize, track_w: usize, x: usize) {
+    let glow_w = 72usize.min(track_w);
+    let core_w = 38usize.min(track_w);
+    let tail_w = 18usize.min(track_w);
+
+    if x > track_x + tail_w {
+        fill_rect(addr, s, w, h, x - tail_w, track_y + 3, tail_w, 6, NEON_DIM);
+    }
+    fill_rect(addr, s, w, h, x, track_y + 1, glow_w, 10, NEON_DARK);
+    fill_rect(addr, s, w, h, x, track_y + 3, core_w, 6, NEON_GREEN);
+    if track_w > 8 {
+        fill_rect(addr, s, w, h, track_x, track_y, track_w, 1, NEON_DIM);
+        fill_rect(addr, s, w, h, track_x, track_y + 11, track_w, 1, NEON_DIM);
+    }
+}
+
+fn draw_metric(
+    addr: *mut u32,
+    s: usize,
+    w: usize,
+    h: usize,
+    x: usize,
+    y: usize,
+    label: &[u8],
+    value: u64,
+    suffix: &[u8],
+) {
+    text(addr, s, w, h, x, y, label, DIM);
+    let mut buf = [0u8; 20];
+    let digits = dec_bytes(value, &mut buf);
+    let vx = x + label.len() * 8;
+    text(addr, s, w, h, vx, y, digits, TITLE);
+    text(addr, s, w, h, vx + digits.len() * 8, y, suffix, SUBTITLE);
+}
+
+fn dec_bytes<'a>(mut value: u64, buf: &'a mut [u8; 20]) -> &'a [u8] {
+    if value == 0 {
+        buf[19] = b'0';
+        return &buf[19..20];
+    }
+    let mut i = buf.len();
+    while value > 0 && i > 0 {
+        i -= 1;
+        buf[i] = b'0' + (value % 10) as u8;
+        value /= 10;
+    }
+    &buf[i..]
+}
+
+fn delay_cycles(cycles: u64) {
+    let start = crate::cpu::rdtsc();
+    while crate::cpu::rdtsc().wrapping_sub(start) < cycles {
+        core::hint::spin_loop();
+    }
 }
 
 // ── Framebuffer primitives (avoiding Framebuffer struct dep) ───────
@@ -410,7 +604,7 @@ fn gradient_v(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, 
 }
 
 /// v1.6.14: simple (no-dither) gradient for the splash background. The
-/// dithered version in the welcome card can look noisy on the splash
+/// dithered variants can look noisy on the splash
 /// when the screen is mostly empty. Splash gets a clean dark gradient.
 fn simple_gradient_v(addr: *mut u32, s: usize, w: usize, h: usize, x: usize, y: usize, rw: usize, rh: usize, top: u32, bot: u32) {
     gradient_v(addr, s, w, h, x, y, rw, rh, top, bot);
@@ -467,9 +661,9 @@ pub mod color {
     pub(crate) const TEXT: u32 = 0xFFE6F1F5;
 }
 
-/// True if the visual overlay is active (framebuffer present and not
-/// cleared by clear()). After the desktop is up, drivers should NOT
-/// call into the visual overlay; only serial + diag are kept.
+/// True if the Ring 0 visual overlay is active (framebuffer present and
+/// not cleared by clear()). If another screen owner is connected later,
+/// it should call `clear()` or otherwise take explicit ownership.
 pub fn is_active() -> bool {
     use core::sync::atomic::Ordering;
     if !INITIALIZED.load(Ordering::Relaxed) { return false; }

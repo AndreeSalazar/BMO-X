@@ -13,7 +13,7 @@
 //! Old (globals)                → New (ctx field)
 //! `crate::mm::phys::free_count` → `ctx.memory.free_pages`
 //! `crate::cpu::tsc_per_sec`     → `ctx.cpu.tsc_freq_hz`
-//! `crate::bmo_core::bmo_abi::init()`     → `ctx.bmo_abi_initialized`
+//! `bmo_abi clock init`          → `ctx.bmo_abi_initialized`
 //! `crate::mm::heap::heap_total`      → `ctx.memory.heap_total`
 //!
 //! ## Stability

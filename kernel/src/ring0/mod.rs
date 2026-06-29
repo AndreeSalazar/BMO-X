@@ -1,14 +1,14 @@
 //! Ring 0 — Hardware Abstraction Layer (entry point del binario).
 //!
 //! Ring 0 is the base layer that prepares ALL hardware for the system.
-//! It initializes CPU, memory, devices, and display before handing off
-//! to the next phase (bmo_core / desktop).
+//! It initializes CPU, memory, devices, and display, then stays in a
+//! visible GOP-safe idle screen until a higher layer is connected.
 //!
 //! Boot order:
 //!   1. _start: BSS zero, save boot_info_ptr
 //!   2. kernel_main_real: early NVRAM breadcrumb
 //!   3. phase_1_RING_0::main: full hardware init
-//!   4. Return to caller (next phase)
+//!   4. Ring 0 ready screen + heartbeat loop
 
 #![no_std]
 #![no_main]
@@ -120,23 +120,9 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     cabina_daemon::info("ring0", "kernel_main_real entered");
     cabina_daemon::info("ring0", "nvram init + kmain_early written");
 
-    // Enter Ring 0 main coordinator.
-    phase_1_RING_0::main(boot_info_ptr);
-
-    cabina_daemon::fault("ring0", "phase_1_RING_0 returned unexpectedly");
-    // Force serial dump before halt
-    cabina_daemon::info("ring0", "=== dumping cabina ring buffer ===");
-    let cur = cabina_daemon::ring_buffer::next_seq();
-    let start = if cur > 64 { cur - 64 } else { 1 };
-    for seq in start..cur {
-        if let Some(ev) = cabina_daemon::ring_buffer::event_by_seq(seq) {
-            crate::dev::console::serial_write(&alloc::format!(
-                "#{} {} {}: {}\n", ev.seq, ev.severity.name(), ev.module_str(), ev.msg_str()
-            ));
-        }
-    }
-    crate::dev::console::serial_write("=== end cabina dump ===\n");
-    loop {
-        unsafe { core::arch::asm!("hlt"); }
-    }
+    // Enter Ring 0 main coordinator. Returning means Ring 0 completed
+    // successfully; keep ownership in Ring 0 and show a visible GOP idle
+    // screen instead of treating this as a fatal path.
+    let ctx = phase_1_RING_0::main(boot_info_ptr);
+    crate::visual::ring0_ready_loop(&ctx);
 }

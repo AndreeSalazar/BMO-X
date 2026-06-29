@@ -214,12 +214,11 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         cabina_daemon::telemetry::syscall::inc(nr as u16);
 
         let result = match nr {
-            // ─── BMO Core desktop3 (0x100..=0x1FF) ───────────────────
-            // v1.8.8: TODOS los syscalls de la BMO ABI pasan por
-            // desktop3 (la cúpula encima de Ring 3). desktop3 valida +
-            // Cabina observa + ByteDefender permite + BMO API ejecuta.
+            // ─── Reserved BMO ABI range (0x100..=0x1FF) ──────────────
+            // Ring 0 does not own the higher-level BMO dispatcher here.
+            // Keep the range explicitly reserved and fail closed.
             n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                u64::MAX // stubbed: bmo_core desktop3 moved to Temporal
+                u64::MAX
             }
 
             // ─── Procesos ─────────────────────────────────────────────
@@ -255,12 +254,12 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             0x12 => u64::MAX,
 
             // ─── VFS ──────────────────────────────────────────────────
-            0x20 => u64::MAX, // crate::bmo_core::fs::ramdisk::open(a0, a1)
-            0x21 => u64::MAX, // crate::bmo_core::fs::ramdisk::read(a0, a1, a2)
-            0x22 => u64::MAX, // crate::bmo_core::fs::ramdisk::write(a0, a1, a2)
-            0x23 => u64::MAX, // crate::bmo_core::fs::ramdisk::close(a0)
-            0x24 => u64::MAX, // crate::bmo_core::fs::ramdisk::seek(a0, a1, a2)
-            0x25 => u64::MAX, // crate::bmo_core::fs::ramdisk::size(a0)
+            0x20 => u64::MAX,
+            0x21 => u64::MAX,
+            0x22 => u64::MAX,
+            0x23 => u64::MAX,
+            0x24 => u64::MAX,
+            0x25 => u64::MAX,
 
             // ─── IPC ──────────────────────────────────────────────────
             0x30 => u64::MAX,
@@ -339,8 +338,8 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
 
 /// Syscall numbers for the legacy 0x00..0xFF range.
 ///
-/// Note: the BMO API v2 (0x100..0x1FF) is dispatched directly to
-/// `bmo_core::bmo_api::dispatch_syscall` and is not enumerated here.
+/// Note: the BMO ABI range (0x100..0x1FF) is reserved here and fails closed
+/// until a higher-layer dispatcher is intentionally connected.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Syscall {
@@ -375,4 +374,3 @@ pub enum Syscall {
 // los únicos call sites usan `init_syscall()` directamente, así que este
 // wrapper se elimina. Si en el futuro se quiere re-unificar, exponer un
 // solo nombre y llamarlo desde `p0_arch::run`.
-
