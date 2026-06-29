@@ -59,7 +59,11 @@ pub fn init(features: &CpuFeatures) {
         cr0 |= 1 << 1;    // MP (Monitor Coprocessor)
         cr0 &= !(1 << 2); // clear EM (Emulation)
         cr0 |= 1 << 5;    // NE (Numeric Error)
-        cr0 |= 1 << 16;   // WP (Write Protect)
+        // WP (Write Protect) — DISABLED: UEFI maps the GOP framebuffer
+        // page as read-only (R/W=0 in the identity page table). Enabling
+        // WP causes #PF writes to the framebuffer. Re-enable after MM
+        // creates kernel-owned page tables with R/W=1 for the FB range.
+        // cr0 |= 1 << 16;   // WP (Write Protect)
         cr0 &= !(1 << 3); // clear TS (Task Switched — lazy FPU)
         asm!("mov cr0, {}", in(reg) cr0);
 
@@ -80,9 +84,12 @@ pub fn init(features: &CpuFeatures) {
         if features.has_smep {
             cr4 |= 1 << 20; // SMEP
         }
-        if features.has_smap {
-            cr4 |= 1 << 21; // SMAP
-        }
+        // SMAP — DISABLED: UEFI maps the GOP framebuffer as a user page
+        // (U/S=1). Enabling SMAP causes #PF when supervisor writes to the
+        // framebuffer. Re-enable after MM creates kernel-owned page tables.
+        // if features.has_smap {
+        //     cr4 |= 1 << 21; // SMAP
+        // }
         if features.has_umip {
             cr4 |= 1 << 11; // UMIP
         }
