@@ -103,7 +103,7 @@ $toml = Get-Content (Join-Path $kernDir "Cargo.toml") -Raw
 if ($toml -match 'version\s*=\s*"(.+?)"') { $kv = $Matches[1] }
 
 # ── Cargo jobs flag ────────────────────────────────────────────────────
-$jobsFlag = if ($Jobs -gt 0) { "-j$Jobs" } else { "" }
+$jobsFlag = if ($Jobs -gt 0) { @("-j$Jobs") } else { @() }
 
 # ── SHA256 ─────────────────────────────────────────────────────────────
 function Hash256 { param($p) return (Get-FileHash -Path $p -Algorithm SHA256).Hash.ToLower() }
@@ -214,7 +214,7 @@ if ($needBoot) {
         param($bootDir, $bootTargetDir, $jobsFlag)
         Push-Location $bootDir
         try {
-            $out = cargo +nightly build --release --target x86_64-unknown-uefi --target-dir $bootTargetDir $jobsFlag 2>&1
+            $out = cargo +nightly build --release --target x86_64-unknown-uefi --target-dir $bootTargetDir $(if ($jobsFlag) { $jobsFlag }) 2>&1
             $err = $out | Where-Object { $_ -match "^error" }
             if ($err) { throw "Bootloader build error: $err" }
             return @{ Ok=$true; Output=$out }
@@ -234,7 +234,7 @@ if ($needKern) {
         param($kernDir, $kernTargetDir, $jobsFlag)
         Push-Location $kernDir
         try {
-            $out = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir $jobsFlag 2>&1
+            $out = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir @jobsFlag 2>&1
             $err = $out | Where-Object { $_ -match "^error" }
             if ($err) { throw "Kernel build error: $err" }
             return @{ Ok=$true; Output=$out }

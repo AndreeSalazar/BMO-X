@@ -18,6 +18,26 @@
 #![allow(dead_code)]
 
 pub const PAGE_SIZE: u64 = 4096;
+pub(crate) const MAX_ORDER: usize = 11;
+
+use fastos_boot_protocol::MemoryEntry;
+
+/// Abstract interface for the physical page backing allocator.
+pub trait BackingAllocator: Sync {
+    unsafe fn init(&self, memory_map: &[MemoryEntry], count: usize,
+                   reserved_addr: u64, reserved_size: u64,
+                   kernel_base: u64, kernel_size: u64);
+    unsafe fn alloc_order(&self, order: usize) -> Option<u64>;
+    unsafe fn free_order(&self, addr: u64, order: usize);
+    fn free_count(&self) -> usize;
+    fn total_ram(&self) -> u64;
+    fn tracked_pages(&self) -> usize;
+}
+
+#[cfg(not(feature = "alloc-llfree"))]
+pub(crate) mod buddy;
+#[cfg(feature = "alloc-llfree")]
+pub(crate) mod llfree;
 
 pub mod frame_alloc;
 pub mod slab;
