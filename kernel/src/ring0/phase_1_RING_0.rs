@@ -349,7 +349,11 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
     let boot_start = crate::cpu::rdtsc();
 
     // 5b. Omniscient early init (HPET from ACPI before timer init)
+    write_crash_marker(1);
+    crate::uefi_rt::write_boot_stage("omni_early");
+    crate::visual::log("ring0", "[pre] omni HPET scan", crate::visual::color::WARN);
     crate::omni::init_early(boot_info_ptr);
+    crate::visual::log("ring0", "[ok] omni HPET done", crate::visual::color::OK);
     crate::cabina_daemon::info("ring0", "omni early init done");
 
     // 6. Phase 0-4
