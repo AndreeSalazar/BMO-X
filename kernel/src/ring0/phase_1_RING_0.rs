@@ -97,7 +97,11 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
     crate::log::info("phase0", "CPU modular init DONE");
 
     // Init BMO ABI clock
+    write_crash_marker(205);
+    crate::uefi_rt::write_boot_stage("p0_clock");
     crate::bmo_abi::values::time::init_clock(crate::cpu::rdtsc(), cpu.tsc_freq);
+    write_crash_marker(206);
+    crate::uefi_rt::write_boot_stage("p0_clock_done");
 
     // Persist state
     ctx.cpu.tsc_freq_hz = cpu.tsc_freq;
@@ -109,7 +113,11 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
     ctx.bmo_abi_initialized = true;
 
     // Timer subsystem init (HPET detection + timer wheel + timestamps)
+    write_crash_marker(207);
+    crate::uefi_rt::write_boot_stage("p0_timer");
     crate::dev::timer::init();
+    write_crash_marker(208);
+    crate::uefi_rt::write_boot_stage("p0_timer_done");
 
     let phase0_end = crate::cpu::rdtsc();
     ctx.record_phase(0, boot_start, phase0_end);
