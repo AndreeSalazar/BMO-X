@@ -1,258 +1,350 @@
-//! Kernel Slab Allocator — free-list with first-fit, coalescing,
-//! proper alignment, and dynamic growth from the frame allocator.
+//! Kernel Slab Allocator — object caching with per-size caches.
 //!
-//! No static buffer — heap grows by allocating physical pages on demand.
-//! Initial chunk: 4 MB. Grows in 1 MB increments when allocation fails.
+//! Pre-defined size classes for common allocations (16 B .. 4 KiB).
+//! Each cache manages a linked list of 4 KiB slabs from the buddy
+//! allocator. Each slab is divided into N equally-sized objects with
+//! a free-object bitmap.
 //!
-//! All internal pointers use virtual addresses (via phys_to_virt).
-//! Works correctly with RAM at any physical address (above or below 4 GB).
+//! Three slab states per cache: empty, partial, full.
+//! Allocation O(1): pop from partial (or empty if partial empty).
+//! Free O(1): return object to its slab's bitmap, promote slab.
+//!
+//! For sizes > 4 KiB or non-standard alignments: falls back to
+//! direct buddy allocator pages (4 KiB multiples).
 
 use core::alloc::{GlobalAlloc, Layout};
+use core::ptr;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
-const INITIAL_CHUNK_SIZE: usize = 4 * 1024 * 1024;
-const GROW_CHUNK_SIZE: usize = 1 * 1024 * 1024;
-const BLOCK_HEADER_SIZE: usize = 8;
-const MIN_BLOCK_SIZE: usize = 16;
-const LIST_END: u64 = u64::MAX;
+const SLAB_SIZE: usize = 4096; // each slab = 1 physical page
+const CACHE_COUNT: usize = 16;
 
-/// Metadata for a heap chunk (contiguous physical pages).
-struct HeapChunk {
-    virt_base: u64,
-    phys_base: u64,
-    size: usize,
-    next: *mut HeapChunk,
+// Power-of-2-ish size classes from 16 to 4096
+const CACHE_SIZES: [usize; CACHE_COUNT] = [
+    16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072,
+];
+
+// ── Slab metadata (embedded at the start of each 4 KiB slab page) ───
+//
+// Uses a free-list of indices stored IN free objects themselves
+// (each free object's first 4 bytes hold the next-free index).
+// This requires obj_size ≥ 4 (our smallest cache is 16 B, fine).
+
+#[repr(C)]
+struct SlabHead {
+    next: *mut SlabHead, // next slab in the cache's list
+    prev: *mut SlabHead, // previous slab
+    cache_idx: u8,       // index into CACHE_SIZES
+    obj_size: u16,       // size of each object in this slab
+    free_count: u16,     // how many objects are free
+    first_free: u32,     // index of first free object, or u32::MAX if none
+    _pad: [u8; 3],       // pad to 32 bytes for alignment
 }
 
-/// Linked list of all heap chunks (for free_block validation).
-static mut CHUNK_LIST: *mut HeapChunk = core::ptr::null_mut();
+const HEADER_SIZE: usize = 32;
+const FREE_END: u32 = u32::MAX;
 
-/// Free list of blocks (virtual addresses).
-static mut FREE_LIST: u64 = LIST_END;
-static mut INITIALIZED: bool = false;
-static mut TOTAL_HEAP_SIZE: usize = 0;
-static mut CHUNK_COUNT: usize = 0;
-
-#[derive(Clone, Copy)]
-struct BlockHeader {
-    next: u64,
-    size: u32,
-}
-
-impl BlockHeader {
-    #[inline]
-    fn total_size(&self) -> usize {
-        BLOCK_HEADER_SIZE + self.size as usize
+impl SlabHead {
+    fn obj_count(&self) -> usize {
+        (SLAB_SIZE - HEADER_SIZE) / self.obj_size as usize
     }
-}
 
-/// Check if a virtual address belongs to any heap chunk.
-unsafe fn is_valid_heap_ptr(virt: u64) -> bool {
-    let mut node = CHUNK_LIST;
-    while !node.is_null() {
-        let chunk = &*node;
-        if virt >= chunk.virt_base && virt < chunk.virt_base + chunk.size as u64 {
-            return true;
+    fn obj_ptr(&self, index: usize) -> *mut u8 {
+        unsafe {
+            let base = (self as *const Self as usize + HEADER_SIZE) as *mut u8;
+            base.add(index * self.obj_size as usize)
         }
-        node = chunk.next;
     }
-    false
+
+    fn pop_free(&mut self) -> Option<u32> {
+        if self.first_free == FREE_END { return None; }
+        let idx = self.first_free;
+        // Read the next-free index from the free object itself (first 4 bytes).
+        let next = unsafe { *(self.obj_ptr(idx as usize) as *const u32) };
+        self.first_free = if next == 0 { FREE_END } else { next };
+        self.free_count -= 1;
+        Some(idx)
+    }
+
+    fn push_free(&mut self, idx: u32) {
+        // Store the current first_free as the next-free in this object.
+        unsafe { *(self.obj_ptr(idx as usize) as *mut u32) = self.first_free; }
+        self.first_free = idx;
+        self.free_count += 1;
+    }
+
+    fn build_free_list(&mut self) {
+        let count = self.obj_count();
+        self.free_count = count as u16;
+        self.first_free = 0;
+        for i in 0..count {
+            let next = if i + 1 < count { (i + 1) as u32 } else { FREE_END };
+            unsafe { *(self.obj_ptr(i) as *mut u32) = next; }
+        }
+    }
 }
 
-unsafe fn add_chunk(size: usize) -> Option<*mut u8> {
-    let pages = (size + super::PAGE_SIZE as usize - 1) / super::PAGE_SIZE as usize;
-    let phys = crate::mm::phys::alloc_pages_contiguous(pages)?;
+// ── Per-cache structure ─────────────────────────────────────────────
+
+fn size_for_align(size: usize, align: usize) -> usize {
+    size.max(align)
+}
+
+#[derive(Copy, Clone)]
+struct SlabCache {
+    obj_size: usize,
+    partial: *mut SlabHead,
+    empty: *mut SlabHead,
+    full: *mut SlabHead,
+}
+
+static mut CACHES: [SlabCache; CACHE_COUNT + 1] = [SlabCache {
+    obj_size: 0,
+    partial: ptr::null_mut(),
+    empty: ptr::null_mut(),
+    full: ptr::null_mut(),
+}; CACHE_COUNT + 1];
+// The +1 cache is for "large allocations" (> 4 KiB) handled by buddy.
+
+static mut INITIALIZED: bool = false;
+static mut HEAP_TOTAL: usize = 0;
+static IN_USE: AtomicUsize = AtomicUsize::new(0);
+
+// ── Slab operations ─────────────────────────────────────────────────
+
+/// Create a new slab for the given cache index, backing it with one
+/// page from the buddy allocator. Returns pointer to the SlabHead.
+unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
+    let phys = crate::mm::phys::alloc_pages_contiguous(1)?;
     let virt = crate::mm::virt::phys_to_virt(phys);
-    let chunk_bytes = pages * super::PAGE_SIZE as usize;
+    core::ptr::write_bytes(virt as *mut u8, 0, SLAB_SIZE);
 
-    // Initialize the first block header (at the start of the chunk)
-    let first = virt as *mut BlockHeader;
-    (*first).next = LIST_END;
-    (*first).size = (chunk_bytes - BLOCK_HEADER_SIZE) as u32;
+    let obj_size = CACHE_SIZES[cache_idx];
+    let head = &mut *(virt as *mut SlabHead);
+    head.cache_idx = cache_idx as u8;
+    head.obj_size = obj_size as u16;
+    head.first_free = FREE_END;
+    head.free_count = 0;
+    head.build_free_list();
 
-    // Allocate chunk metadata from the frame allocator (small, identity-mapped)
-    let meta_phys = crate::mm::phys::alloc_pages_contiguous(1)?;
-    let meta_virt = crate::mm::virt::phys_to_virt(meta_phys);
-    core::ptr::write_bytes(meta_virt as *mut u8, 0, super::PAGE_SIZE as usize);
-    let chunk_meta = &mut *(meta_virt as *mut HeapChunk);
-    chunk_meta.virt_base = virt;
-    chunk_meta.phys_base = phys;
-    chunk_meta.size = chunk_bytes;
-    chunk_meta.next = CHUNK_LIST;
-    CHUNK_LIST = meta_virt as *mut HeapChunk;
-    CHUNK_COUNT += 1;
+    HEAP_TOTAL += SLAB_SIZE;
+    Some(head)
+}
 
-    TOTAL_HEAP_SIZE += chunk_bytes;
+/// Destroy a slab: return its page to the buddy allocator.
+unsafe fn slab_destroy(head: *mut SlabHead) {
+    let virt = head as u64;
+    let phys = crate::mm::virt::virt_to_phys(virt);
+    crate::mm::phys::free_pages(phys, 1);
+    HEAP_TOTAL -= SLAB_SIZE;
+}
 
-    // Add this block to the free list
-    (*first).next = FREE_LIST;
-    FREE_LIST = virt;
+/// Allocate an object from a cache. Returns pointer or null if OOM.
+unsafe fn cache_alloc(cache_idx: usize) -> *mut u8 {
+    let cache = &mut CACHES[cache_idx];
 
-    crate::dev::console::serial_write("[slab] grow +");
-    crate::dev::console::serial_write_u64((chunk_bytes / (1024 * 1024)) as u64, 10);
-    crate::dev::console::serial_write(" MB (total=");
-    crate::dev::console::serial_write_u64((TOTAL_HEAP_SIZE / (1024 * 1024)) as u64, 10);
-    crate::dev::console::serial_write(" MB, phys=0x");
-    crate::serial::hex(phys);
-    crate::dev::console::serial_write(" virt=0x");
-    crate::serial::hex(virt);
-    crate::dev::console::serial_write(")\n");
+    // 1. Try partial slab.
+    if !cache.partial.is_null() {
+        let slab = &mut *cache.partial;
+        if let Some(idx) = slab.pop_free() {
+            let ptr = slab.obj_ptr(idx as usize);
+            if slab.free_count == 0 {
+                let list = &mut cache.full as *mut *mut SlabHead;
+                unlink_slab(cache, slab);
+                link_slab(slab, &mut *list);
+            }
+            return ptr;
+        }
+        let list = &mut cache.full as *mut *mut SlabHead;
+        unlink_slab(cache, slab);
+        link_slab(slab, &mut *list);
+    }
 
-    Some(virt as *mut u8)
+    // 2. Try empty slab.
+    if !cache.empty.is_null() {
+        let slab = &mut *cache.empty;
+        let list_p = &mut cache.partial as *mut *mut SlabHead;
+        unlink_slab(cache, slab);
+        link_slab(slab, &mut *list_p);
+        if let Some(idx) = slab.pop_free() {
+            let ptr = slab.obj_ptr(idx as usize);
+            if slab.free_count == 0 {
+                let list_f = &mut cache.full as *mut *mut SlabHead;
+                unlink_slab(cache, slab);
+                link_slab(slab, &mut *list_f);
+            }
+            return ptr;
+        }
+    }
+
+    // 3. Create a new slab.
+    let new = match slab_create(cache_idx) {
+        Some(s) => s,
+        None => return ptr::null_mut(),
+    };
+    let list_e = &mut cache.empty as *mut *mut SlabHead;
+    link_slab(&mut *new, &mut *list_e);
+    cache_alloc(cache_idx)
+}
+
+/// Free an object. Determine its slab by rounding the pointer down
+/// to the 4 KiB page boundary (each slab occupies exactly one page).
+unsafe fn cache_free(ptr: *mut u8, cache_idx: usize) {
+    let page = (ptr as usize) & !(SLAB_SIZE - 1);
+    let slab = &mut *(page as *mut SlabHead);
+    let offset = ptr as usize - page - HEADER_SIZE;
+    let obj_idx = (offset / slab.obj_size as usize) as u32;
+    slab.push_free(obj_idx);
+
+    let cache = &mut CACHES[cache_idx];
+    if slab.free_count == 1 && slab.obj_count() > 1 {
+        let list_p = &mut cache.partial as *mut *mut SlabHead;
+        unlink_slab(cache, slab);
+        link_slab(slab, &mut *list_p);
+    } else if slab.free_count as usize == slab.obj_count() {
+        let list_e = &mut cache.empty as *mut *mut SlabHead;
+        unlink_slab(cache, slab);
+        link_slab(slab, &mut *list_e);
+    }
+}
+
+unsafe fn unlink_slab(cache: &mut SlabCache, slab: &mut SlabHead) {
+    let next = slab.next;
+    let prev = slab.prev;
+    if !prev.is_null() { (*prev).next = next; }
+    else if core::ptr::addr_eq(cache.partial, slab as *mut _) { cache.partial = next; }
+    else if core::ptr::addr_eq(cache.empty, slab as *mut _) { cache.empty = next; }
+    else if core::ptr::addr_eq(cache.full, slab as *mut _) { cache.full = next; }
+    if !next.is_null() { (*next).prev = prev; }
+    slab.next = ptr::null_mut();
+    slab.prev = ptr::null_mut();
+}
+
+unsafe fn link_slab(slab: &mut SlabHead, list: &mut *mut SlabHead) {
+    slab.next = *list;
+    slab.prev = ptr::null_mut();
+    if !(*list).is_null() { (**list).prev = slab; }
+    *list = slab;
+}
+
+// ── Public API ──────────────────────────────────────────────────────
+
+/// Find the cache index for a given allocation size.
+/// Returns None for large allocations (> 4 KiB).
+fn cache_for(size: usize) -> Option<usize> {
+    if size > CACHE_SIZES[CACHE_COUNT - 1] || size == 0 { return None; }
+    for i in 0..CACHE_COUNT {
+        if size <= CACHE_SIZES[i] { return Some(i); }
+    }
+    None
 }
 
 pub fn init_heap() {
     unsafe {
         if INITIALIZED { return; }
+        for i in 0..CACHE_COUNT {
+            CACHES[i].obj_size = CACHE_SIZES[i];
+        }
         INITIALIZED = true;
-        add_chunk(INITIAL_CHUNK_SIZE);
     }
 }
 
-unsafe fn find_free(needed_size: usize, needed_align: usize) -> *mut u8 {
-    let mut offset = FREE_LIST;
-    let mut prev_offset: u64 = LIST_END;
-
-    while offset != LIST_END {
-        let block = &mut *(offset as *mut BlockHeader);
-        let data_addr = offset + BLOCK_HEADER_SIZE as u64;
-        let aligned_addr = (data_addr + needed_align as u64 - 1) & !(needed_align as u64 - 1);
-        let align_pad = (aligned_addr - data_addr) as usize;
-        let total_needed = align_pad + needed_size;
-
-        if block.size as usize >= total_needed {
-            let remaining = block.total_size().saturating_sub(BLOCK_HEADER_SIZE + total_needed);
-
-            if remaining >= BLOCK_HEADER_SIZE + MIN_BLOCK_SIZE {
-                let new_offset = offset + (BLOCK_HEADER_SIZE + total_needed) as u64;
-                let new_block = &mut *(new_offset as *mut BlockHeader);
-                new_block.next = block.next;
-                new_block.size = (remaining - BLOCK_HEADER_SIZE) as u32;
-                block.size = total_needed as u32;
-
-                if prev_offset == LIST_END {
-                    FREE_LIST = new_offset;
-                } else {
-                    (*(prev_offset as *mut BlockHeader)).next = new_offset;
-                }
-            } else {
-                if prev_offset == LIST_END {
-                    FREE_LIST = block.next;
-                } else {
-                    (*(prev_offset as *mut BlockHeader)).next = block.next;
-                }
-            }
-            return aligned_addr as *mut u8;
+/// Allocate `size` bytes with `align` alignment.
+/// Small allocations go through slab caches; large ones through buddy.
+pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
+    if size == 0 { return ptr::null_mut(); }
+    if let Some(ci) = cache_for(size) {
+        if align > CACHE_SIZES[ci].min(64) {
+            // Alignment larger than our slab object can provide → buddy fallback
+            return buddy_alloc(size, align);
         }
-
-        prev_offset = offset;
-        offset = block.next;
+        IN_USE.fetch_add(size, Ordering::Relaxed);
+        cabina_daemon::telemetry::memory::inc_allocs();
+        cache_alloc(ci)
+    } else {
+        cabina_daemon::telemetry::memory::inc_allocs();
+        buddy_alloc(size, align)
     }
-
-    core::ptr::null_mut()
 }
 
-unsafe fn free_block(ptr: *mut u8) {
-    if ptr.is_null() { return; }
-
-    let ptr_addr = ptr as u64;
-
-    // Validate the pointer belongs to a heap chunk
-    if !is_valid_heap_ptr(ptr_addr) { return; }
-    if (ptr_addr - BLOCK_HEADER_SIZE as u64) % BLOCK_HEADER_SIZE as u64 != 0 { return; }
-
-    let block = &mut *((ptr_addr - BLOCK_HEADER_SIZE as u64) as *mut BlockHeader);
-
-    block.next = FREE_LIST;
-    FREE_LIST = ptr_addr - BLOCK_HEADER_SIZE as u64;
-
-    // Coalesce adjacent free blocks
-    let mut off = FREE_LIST;
-    let mut prev_off: u64 = LIST_END;
-
-    while off != LIST_END {
-        let b = &mut *(off as *mut BlockHeader);
-        let next_off = b.next;
-        let b_end = off + b.total_size() as u64;
-
-        if next_off != LIST_END && b_end == next_off {
-            let next = &mut *(next_off as *mut BlockHeader);
-            let merged_size = b.total_size() + next.total_size() - BLOCK_HEADER_SIZE;
-            b.size = merged_size as u32;
-            b.next = next.next;
-
-            if prev_off == LIST_END {
-                FREE_LIST = off;
-            } else {
-                (*(prev_off as *mut BlockHeader)).next = off;
-            }
-            continue;
+/// Free memory allocated by `heap_alloc`.
+pub unsafe fn heap_free(ptr: *mut u8, size: usize, align: usize) {
+    if ptr.is_null() || size == 0 { return; }
+    if let Some(ci) = cache_for(size) {
+        if align > CACHE_SIZES[ci].min(64) {
+            buddy_free(ptr, size);
+            return;
         }
-
-        prev_off = off;
-        off = next_off;
+        IN_USE.fetch_sub(size, Ordering::Relaxed);
+        cabina_daemon::telemetry::memory::inc_frees();
+        cache_free(ptr, ci);
+    } else {
+        cabina_daemon::telemetry::memory::inc_frees();
+        buddy_free(ptr, size);
     }
 }
 
-struct DynamicAllocator;
+/// Buddy fallback for large allocations or special alignment.
+unsafe fn buddy_alloc(size: usize, align: usize) -> *mut u8 {
+    let pages = (size + SLAB_SIZE - 1) / SLAB_SIZE;
+    let phys = match crate::mm::phys::alloc_pages_contiguous(pages) {
+        Some(p) => p,
+        None => return ptr::null_mut(),
+    };
+    let virt = crate::mm::virt::phys_to_virt(phys);
+    // Align within the allocated pages if needed.
+    let off = (virt as usize) & (align - 1);
+    let adjusted = if off == 0 { virt } else { virt + (align - off) as u64 };
+    if adjusted + size as u64 > virt + (pages * SLAB_SIZE) as u64 {
+        crate::mm::phys::free_pages(phys, pages);
+        let phys2 = match crate::mm::phys::alloc_pages_contiguous(pages + 1) {
+            Some(p) => p,
+            None => return ptr::null_mut(),
+        };
+        let virt2 = crate::mm::virt::phys_to_virt(phys2);
+        let off2 = (virt2 as usize) & (align - 1);
+        let adj2 = if off2 == 0 { virt2 } else { virt2 + (align - off2) as u64 };
+        HEAP_TOTAL += (pages + 1) * SLAB_SIZE;
+        IN_USE.fetch_add(size, Ordering::Relaxed);
+        return adj2 as *mut u8;
+    }
+    HEAP_TOTAL += pages * SLAB_SIZE;
+    IN_USE.fetch_add(size, Ordering::Relaxed);
+    adjusted as *mut u8
+}
 
-unsafe impl GlobalAlloc for DynamicAllocator {
+unsafe fn buddy_free(ptr: *mut u8, size: usize) {
+    let pages = (size + SLAB_SIZE - 1) / SLAB_SIZE;
+    // Round down to page boundary
+    let virt = (ptr as u64) & !(SLAB_SIZE as u64 - 1);
+    let phys = crate::mm::virt::virt_to_phys(virt);
+    crate::mm::phys::free_pages(phys, pages);
+    HEAP_TOTAL -= pages * SLAB_SIZE;
+    IN_USE.fetch_sub(size, Ordering::Relaxed);
+}
+
+// ── GlobalAlloc impl (Rust alloc) ───────────────────────────────────
+
+struct SlabAllocator;
+
+unsafe impl GlobalAlloc for SlabAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if !INITIALIZED { init_heap(); }
-
-        let align = layout.align().max(BLOCK_HEADER_SIZE);
-        let size = (layout.size() + align - 1) & !(align - 1);
-        if size < layout.size() { return core::ptr::null_mut(); }
-
-        let ptr = find_free(size, align);
-        if !ptr.is_null() { return ptr; }
-
-        // Heap full — grow and retry
-        let grow_size = size.max(GROW_CHUNK_SIZE);
-        if add_chunk(grow_size).is_none() {
-            return core::ptr::null_mut();
-        }
-        find_free(size, align)
+        heap_alloc(layout.size(), layout.align())
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        free_block(ptr);
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        heap_free(ptr, layout.size(), layout.align());
     }
 }
 
 #[global_allocator]
-static ALLOCATOR: DynamicAllocator = DynamicAllocator;
+static ALLOCATOR: SlabAllocator = SlabAllocator;
 
 pub fn heap_used() -> usize {
-    unsafe {
-        if !INITIALIZED { return 0; }
-        let mut free_bytes = 0usize;
-        let mut off = FREE_LIST;
-        while off != LIST_END {
-            let b = &mut *(off as *mut BlockHeader);
-            free_bytes += b.total_size();
-            off = b.next;
-        }
-        TOTAL_HEAP_SIZE - free_bytes
-    }
+    IN_USE.load(Ordering::Relaxed)
 }
 
 pub fn heap_total() -> usize {
-    unsafe { TOTAL_HEAP_SIZE }
-}
-
-pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
-    let layout = match Layout::from_size_align(size, align) {
-        Ok(l) => l,
-        Err(_) => return core::ptr::null_mut(),
-    };
-    cabina_daemon::telemetry::memory::inc_allocs();
-    ALLOCATOR.alloc(layout)
-}
-
-pub unsafe fn heap_free(ptr: *mut u8, size: usize, align: usize) {
-    if ptr.is_null() { return; }
-    cabina_daemon::telemetry::memory::inc_frees();
-    if let Ok(layout) = Layout::from_size_align(size, align) {
-        ALLOCATOR.dealloc(ptr, layout);
-    }
+    unsafe { HEAP_TOTAL }
 }
