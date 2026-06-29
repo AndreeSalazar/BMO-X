@@ -530,11 +530,13 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
         loop { core::arch::asm!("cli; hlt"); }
     }
 
-    fn get_glyph_stub(_ch: u8) -> &'static [u8; 16] {
-        static SOLID: [u8; 16] = [0xFF; 16];
-        &SOLID
-    }
-    let get_glyph = get_glyph_stub;
+    // Log fault to NVRAM for next-boot diagnosis
+    crate::uefi_rt::set_variable("FastOSFaultVec", &[vector as u8]);
+    crate::uefi_rt::set_variable("FastOSFaultRIP", &rip.to_ne_bytes());
+
+    // Use the REAL font so the user can read the error message on screen.
+    // The font data is in .rodata — safe to access even during a fault.
+    let get_glyph = crate::font::get_glyph;
     let fb_addr = crate::info::FB_ADDR;
     let w = crate::info::FB_WIDTH as usize;
     let h = crate::info::FB_HEIGHT as usize;

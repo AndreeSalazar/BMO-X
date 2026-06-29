@@ -285,7 +285,21 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     // it discards writes instead of flushing them, making scattered
     // font glyph pixels invisible. CPUID is a documented serializing
     // instruction that drains the WC store buffer on all x86 CPUs.
-    unsafe { core::arch::asm!("xor eax, eax", "cpuid", options(nostack, preserves_flags)); }
+    unsafe {
+        let _ebx: u32;
+        core::arch::asm!(
+            "push rbx",
+            "xor eax, eax",
+            "cpuid",
+            "mov {ebx_val:e}, ebx",
+            "pop rbx",
+            inout("eax") 0u32 => _,
+            ebx_val = out(reg) _ebx,
+            out("ecx") _,
+            out("edx") _,
+            options(nostack),
+        );
+    }
 }
 
 fn phase_color(phase: &str) -> u32 {
