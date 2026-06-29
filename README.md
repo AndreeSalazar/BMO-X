@@ -38,15 +38,40 @@ Sistema operativo bare metal escrito en Rust para AMD Ryzen 5 5600X. GPU por UEF
 
 ---
 
-## Estado actual
+## Memory Allocator Architecture
+
+```
+alloc_pages_contiguous() / free_pages()   ← public API (unchanged)
+        │
+        ▼
+  Per-CPU pagesets (orders 0..4, 16 slots each)
+  Cache hot path → lock-free on local CPU
+        │
+        ▼
+  BackingAllocator trait (pluggable)
+      ├── BuddyAllocator  [default, --features alloc-buddy]
+      │   O(log n) free lists, automatic coalescing
+      │   1 byte metadata per physical page
+      │
+      └── LLFree          [opt-in, --features alloc-llfree]
+          Lock-free, bitfield-based lower + tree-based upper
+          Per-CPU tree reservations → zero contention on N cores
+          Crash-consistent (persistent memory ready)
+          Reference: Wrenger et al., USENIX ATC '23
+```
+
+- **Buddy** (default): 384 lines, proven, ideal for ≤6 cores
+- **LLFree** (opt-in): 204 lines adapter + 2199 lines `llfree` crate (safe Rust), boots clean on Ryzen 5600X with identical behavior — no crashes, no regressions. Same binary footprint +25 KB.
+- **Per-CPU pagesets** sit above both: each core caches 16 pages × 5 orders before touching the backing allocator. Zero lock contention on the hot path regardless of backing.
 
 ### Funciona (real en hardware)
 - **Boot UEFI** → BOOTX64.EFI → kernel.elf → GOP framebuffer 1920x1080
 - **GDT + TSS** con Ring 0 / Ring 3, IST1 para excepciones
 - **IDT** con 256 entradas, ISR stubs naked, handlers para #GP/#PF/#UD/#NM/#MF/#XM/#DE/#DF
 - **SYSCALL/SYSRET** (IA32_LSTAR/STAR/FMASK) con dispatcher ~25 syscalls
-- **Page allocator** bitmap-based (16 MB – 4 GB) desde UEFI memory map
-- **Heap** free-list 32 MB con coalescing
+- **Page allocator**: buddy system (orders 0..11, 4 KiB..8 MiB) + per-CPU pagesets (orders 0..4) — replaces original bitmap
+  - **LLFree** (lock-free, USENIX ATC '23) available as opt-in backing allocator via `--features alloc-llfree`; compiles, links, and boots clean on Ryzen 5600X
+- **Heap** slab caches (16 sizes: 16 B..3 KiB) + buddy fallback — replaces original free-list
 - **VMM** 4 niveles (PML4/PDPT/PD/PT), demand paging + CoW
 - **Local APIC** con calibración PIT (timer periódico, deshabilitado temporalmente)
 - **MTRR + PAT** para framebuffer Write-Combining
