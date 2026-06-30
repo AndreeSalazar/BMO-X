@@ -340,3 +340,11 @@ Dispatcher con validación + Cabina audit + ByteDefender check. Window Manager, 
 - **Cooperativo**: Scheduler sin preempción (temporal, hasta fix del #GP)
 - **Modular**: Cada subsistema es independiente (ring0, bmo_core, cabina, defense, etc.)
 - **Depurable**: Diag integrado desde el primer byte
+
+
+"Athos, Porthos y Aramis
+
+Mosquetero	Rol	Frase
+Athos (Cabina)	Sabiduría, experiencia	"Yo vi qué pasó."
+Porthos (TimeBack)	Fuerza, acción	"Yo lo deshago."
+Aramis (ByteDefender)	Fe, protección	"Yo evito que pase.""

@@ -76,6 +76,8 @@ pub unsafe fn init() {
         crate::dev::console::serial_write("[smp] single CPU, SMP not needed\n");
         SMP_STATE = SmpState::Running;
         CORES_ONLINE = 1;
+        // Single core still needs APIC timer for scheduling
+        crate::arch::apic::init_apic(1000);
         return;
     }
 
@@ -138,6 +140,9 @@ pub unsafe fn init() {
     crate::dev::console::serial_write("/");
     crate::dev::console::serial_write_u64(total_threads as u64, 10);
     crate::dev::console::serial_write(" cores online ===\n\n");
+
+    // 6. Enable APIC timer on BSP for preemptive scheduling
+    crate::arch::apic::init_apic(1000);
 }
 
 

@@ -83,12 +83,10 @@ pub fn apply_spectre_v2_mitigations() {
                 spec_ctrl |= bits;
                 wrmsr(MSR_AMD_SPEC_CTRL, spec_ctrl);
 
-                // Also write to the Intel alias for compatibility (some KVM
-                // implementations check it).
-                let mut intel_spec = rdmsr(MSR_IA32_SPEC_CTRL);
-                intel_spec |= bits;
-                wrmsr(MSR_IA32_SPEC_CTRL, intel_spec);
-                crate::dev::console::serial_write("[errata] Spectre v2: IBRS+STIBP enabled\n");
+                // NOTE: Intel alias MSR 0x48 (IA32_SPEC_CTRL) skipped — on
+                // real AMD hardware this MSR may be locked by AGESA firmware
+                // and WRMSR causes #GP(0). The AMD MSR is sufficient.
+                crate::dev::console::serial_write("[errata] Spectre v2: IBRS+STIBP enabled (AMD MSR)\n");
             } else {
                 crate::dev::console::serial_write("[errata] Spectre v2: Not supported (skipped)\n");
             }

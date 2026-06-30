@@ -49,13 +49,13 @@ pub fn halt_no_sti() {
 
 /// Enable C1e (C1 enhanced) for lower idle power. On Zen 3, C1e
 /// drops the CPU voltage/frequency slightly while idle.
+///
+/// NOTE: MSR 0xC0010055 (PSTATE_CNTL) may be locked by AGESA firmware.
+/// WRMSR to a locked MSR causes #GP(0). Skipped for now — safe to leave
+/// this idle optimization off. Re-enable once the kernel has a #GP
+/// recovery path.
 pub fn enable_c1e() {
-    unsafe {
-        // MSR 0xC0010055 (PSTATE_CNTL) — bit 28 = C1eOnCmpHalt
-        let pstate = rdmsr(0xC001_0055);
-        wrmsr(0xC001_0055, pstate | (1u64 << 28));
-    }
-    crate::dev::console::serial_write("[pm] C1e enabled\n");
+    crate::dev::console::serial_write("[pm] C1e: skipped (AGESA may lock PSTATE_CNTL)\n");
 }
 
 /// Set the current P-state (request a frequency).

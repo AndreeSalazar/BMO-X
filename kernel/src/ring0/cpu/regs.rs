@@ -63,7 +63,7 @@ pub fn init(features: &CpuFeatures) {
         // page as read-only (R/W=0 in the identity page table). Enabling
         // WP causes #PF writes to the framebuffer. Re-enable after MM
         // creates kernel-owned page tables with R/W=1 for the FB range.
-        // cr0 |= 1 << 16;   // WP (Write Protect)
+        cr0 &= !(1 << 16);  // clear WP
         cr0 &= !(1 << 3); // clear TS (Task Switched — lazy FPU)
         asm!("mov cr0, {}", in(reg) cr0);
 

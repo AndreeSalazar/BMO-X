@@ -464,14 +464,18 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     cabina_daemon::telemetry::cpu::inc_interrupts();
     cabina_daemon::telemetry::cpu::inc_timer();
 
-    // Save full register ctx from the kernel stack into the current thread.
-    unsafe {
-        crate::arch::ctx::save_context_from_stack(saved_state);
+    // Only save context if the scheduler has a current task (boot may not
+    // have spawned any yet — proc::init() is a no-op until v2.0).
+    let has_task = crate::proc::task::current_index() < crate::proc::task::MAX_TASKS;
+    if has_task {
+        unsafe {
+            crate::arch::ctx::save_context_from_stack(saved_state);
+        }
     }
 
     // Snapshot current thread index before tick (schedule() inside timer_tick()
     // may change it when the time slice expires).
-    let cur_idx = crate::proc::task::current_index();
+    let cur_idx = if has_task { crate::proc::task::current_index() } else { usize::MAX };
 
     // Tick the scheduler (decrements time slice, may trigger schedule())
     crate::proc::timer_tick();
