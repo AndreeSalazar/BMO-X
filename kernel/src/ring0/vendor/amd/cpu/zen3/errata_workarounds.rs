@@ -60,63 +60,19 @@ unsafe fn wrmsr(msr: u32, value: u64) {
 }
 
 /// Apply Spectre v2 mitigations: enable IBRS and STIBP.
-/// On Zen 3, this is done via the AMD alias MSR 0xC0010115h.
+///
+/// NOTE: MSR 0xC0010115 (AMD_SPEC_CTRL) may be locked by AGESA firmware
+/// on some BIOS versions. WRMSR causes #GP(0) when locked. Skipped for
+/// now — re-enable with a proper #GP recovery path.
 pub fn apply_spectre_v2_mitigations() {
-    unsafe {
-        let (max_ext, _, _, _) = super::cpuid_detection::cpuid(0x8000_0000, 0);
-        if max_ext >= 0x8000_0008 {
-            let (_, ebx, _, _) = super::cpuid_detection::cpuid(0x8000_0008, 0);
-            let has_ibrs = (ebx & (1 << 12)) != 0;
-            let has_stibp = (ebx & (1 << 15)) != 0;
-
-            let mut bits = 0;
-            if has_ibrs {
-                bits |= SPEC_CTRL_IBRS;
-            }
-            if has_stibp {
-                bits |= SPEC_CTRL_STIBP;
-            }
-
-            if bits != 0 {
-                // AMD Zen 3 uses MSR 0xC0010115h for SPEC_CTRL (not the Intel one).
-                let mut spec_ctrl = rdmsr(MSR_AMD_SPEC_CTRL);
-                spec_ctrl |= bits;
-                wrmsr(MSR_AMD_SPEC_CTRL, spec_ctrl);
-
-                // NOTE: Intel alias MSR 0x48 (IA32_SPEC_CTRL) skipped — on
-                // real AMD hardware this MSR may be locked by AGESA firmware
-                // and WRMSR causes #GP(0). The AMD MSR is sufficient.
-                crate::dev::console::serial_write("[errata] Spectre v2: IBRS+STIBP enabled (AMD MSR)\n");
-            } else {
-                crate::dev::console::serial_write("[errata] Spectre v2: Not supported (skipped)\n");
-            }
-        } else {
-            crate::dev::console::serial_write("[errata] Spectre v2: CPUID leaf 0x80000008 not supported (skipped)\n");
-        }
-    }
+    crate::dev::console::serial_write("[errata] Spectre v2: skipped (MSR may be locked by AGESA)\n");
 }
 
 /// Apply Spectre v4 (Speculative Store Bypass) mitigation: enable SSBD.
+///
+/// NOTE: Same MSR 0xC0010115 issue as Spectre v2. Skipped for now.
 pub fn apply_spectre_v4_mitigations() {
-    unsafe {
-        let (max_ext, _, _, _) = super::cpuid_detection::cpuid(0x8000_0000, 0);
-        if max_ext >= 0x8000_0008 {
-            let (_, ebx, _, _) = super::cpuid_detection::cpuid(0x8000_0008, 0);
-            let has_ssbd = (ebx & (1 << 24)) != 0;
-
-            if has_ssbd {
-                // MSR 0xC0010115h supports SSBD on Zen 3.
-                let mut spec_ctrl = rdmsr(MSR_AMD_SPEC_CTRL);
-                spec_ctrl |= SPEC_CTRL_SSBD;
-                wrmsr(MSR_AMD_SPEC_CTRL, spec_ctrl);
-                crate::dev::console::serial_write("[errata] Spectre v4: SSBD enabled\n");
-            } else {
-                crate::dev::console::serial_write("[errata] Spectre v4: SSBD not supported (skipped)\n");
-            }
-        } else {
-            crate::dev::console::serial_write("[errata] Spectre v4: CPUID leaf 0x80000008 not supported (skipped)\n");
-        }
-    }
+    crate::dev::console::serial_write("[errata] Spectre v4: skipped (MSR may be locked by AGESA)\n");
 }
 
 /// Apply MDS (Microarchitectural Data Sampling) mitigation.
