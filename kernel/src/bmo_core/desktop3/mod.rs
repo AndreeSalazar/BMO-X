@@ -180,8 +180,8 @@ pub mod tests;
 
 /// Observa el lanzamiento de una app de Ring 3.
 /// Llamado por `userland::app::run` antes de saltar a Ring 3.
-pub fn observe_launch(name: &str, format: crate::bmo_core::bef::loader::BinaryFormat) {
-    use crate::bmo_core::bef::loader::BinaryFormat;
+pub fn observe_launch(name: &str, format: crate::bmo_core::bef::parsers::BinaryFormat) {
+    use crate::bmo_core::bef::parsers::BinaryFormat;
     let fmt = match format {
         BinaryFormat::BefNative => "BEF",
         BinaryFormat::PeDevoured => "PE-devoured",

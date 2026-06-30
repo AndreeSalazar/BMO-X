@@ -1,4 +1,4 @@
-use crate::bmo_core::bef::loader::{self, Image, LoadError};
+use crate::bmo_core::bef::parsers::{self, Image, LoadError};
 
 #[derive(Debug)]
 pub enum DevourError {
@@ -24,7 +24,7 @@ impl From<LoadError> for DevourError {
 }
 
 pub fn devour(bytes: &[u8]) -> Result<Image, DevourError> {
-    let img = loader::load(bytes)?;
+    let img = parsers::load(bytes)?;
 
     // Verify there's an entry point
     if img.entry_point == 0 {
@@ -48,7 +48,7 @@ pub fn devour_or_stub(bytes: &[u8]) -> Image {
         Ok(img) => img,
         Err(e) => {
             crate::cabina::warn("bef.devour", &alloc::format!("devour failed: {}, using stub", e));
-            loader::fake_provenance_image(crate::bmo_core::bef::compact::manifest::Provenance::Native)
+            parsers::fake_provenance_image(crate::bmo_core::bef::format::manifest::Provenance::Native)
         }
     }
 }

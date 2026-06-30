@@ -1,4 +1,4 @@
-//! `bmo_core::bef::loader::tests` — Tests del loader BEF.
+//! `bmo_core::bef::parsers::tests` — Tests del loader BEF.
 //!
 //! Valida que el loader BEF:
 //! 1. Detecta el formato correcto (BEF/PE/ELF).
@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bef::loader::{self, BinaryFormat, LoadError};
+use crate::bmo_core::bef::parsers::{self, BinaryFormat, LoadError};
 use crate::bmo_core::bef::header::{BefMagic, BEF_MAGIC, BefHeader};
 use crate::lang::pipeline::{compile, SourceLang};
 
@@ -83,7 +83,7 @@ fn main() {
         Ok(b) => b,
         Err(e) => return fail("load_bef_hello_world", &alloc::format!("compile: {:?}", e)),
     };
-    match loader::load(&bytes) {
+    match parsers::load(&bytes) {
         Ok(img) => {
             if img.format == BinaryFormat::BefNative && img.entry_point > 0 {
                 pass("load_bef_hello_world",
@@ -111,7 +111,7 @@ fn main() -> num {
         Ok(b) => b,
         Err(e) => return fail("load_bef_arithmetic", &alloc::format!("compile: {:?}", e)),
     };
-    match loader::load(&bytes) {
+    match parsers::load(&bytes) {
         Ok(img) => pass("load_bef_arithmetic",
                         &alloc::format!("sections={} entry=0x{:x}",
                                         img.sections.len(), img.entry_point)),
@@ -121,7 +121,7 @@ fn main() -> num {
 
 fn test_load_bef_invalid_truncated() -> TestResult {
     let bytes = [0u8; 8]; // Muy corto.
-    match loader::load(&bytes) {
+    match parsers::load(&bytes) {
         Err(LoadError::UnknownFormat)
         | Err(LoadError::Truncated)
         | Err(LoadError::InvalidHeader) => pass("load_bef_invalid_truncated", "8 bytes rejected"),
@@ -133,7 +133,7 @@ fn test_load_bef_invalid_truncated() -> TestResult {
 fn test_load_bef_invalid_magic() -> TestResult {
     let mut bytes = [0u8; 64];
     bytes[0..4].copy_from_slice(b"XXXX"); // Magic inválido.
-    match loader::load(&bytes) {
+    match parsers::load(&bytes) {
         Err(LoadError::UnknownFormat) => pass("load_bef_invalid_magic", "XXXX → UnknownFormat"),
         Err(e) => fail("load_bef_invalid_magic", &alloc::format!("got {:?}", e)),
         Ok(_) => fail("load_bef_invalid_magic", "invalid magic accepted?"),
@@ -141,7 +141,7 @@ fn test_load_bef_invalid_magic() -> TestResult {
 }
 
 fn test_load_empty() -> TestResult {
-    match loader::load(&[]) {
+    match parsers::load(&[]) {
         Err(_) => pass("load_empty", "0 bytes rejected"),
         Ok(_) => fail("load_empty", "0 bytes accepted?"),
     }

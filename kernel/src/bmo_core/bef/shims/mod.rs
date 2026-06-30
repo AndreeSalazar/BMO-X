@@ -1,4 +1,4 @@
-//! `bmo_core::bef::compat` — Universal App Intake Layer.
+//! `bmo_core::bef::shims` — Universal App Intake Layer.
 //!
 //! v1.8.8: **STUB**. Cero código de compat real.
 //!

@@ -25,8 +25,8 @@ pub mod tests;
 
 // pe_imports and pe_thunks moved to crate::bmo_gpu::shims (v1.7.9)
 
-use crate::bmo_core::bef::compact::header::BefMagic;
-use crate::bmo_core::bef::compact::manifest::{Manifest, Provenance};
+use crate::bmo_core::bef::format::header::BefMagic;
+use crate::bmo_core::bef::format::manifest::{Manifest, Provenance};
 
 /// Formato detectado del binario.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
