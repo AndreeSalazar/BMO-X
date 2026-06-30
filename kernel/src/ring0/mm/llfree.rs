@@ -12,12 +12,17 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 use fastos_boot_protocol::{MemoryEntry, MemoryType};
 use super::PAGE_SIZE;
-use super::MAX_ORDER;
 use super::BackingAllocator;
 
 use llfree::{LLFree, Alloc, FrameId, Init, Classing, MetaData, Request, Class};
 
 const BASE: u64 = 0x0100_0000;
+// Phase 1 initializes the physical allocator before `map_high_mem()`, so
+// LLFree metadata must live in the firmware's low identity-mapped window.
+// The bootloader already keeps critical handoff data below 0x8000_0000 for
+// this exact reason. Track low RAM first; high RAM can be enabled later once
+// Ring 0 owns all page tables.
+const LOW_IDENTITY_LIMIT: u64 = 0x8000_0000;
 const HUGE_ORDER: usize = 9; // 2^9 = 512 pages = 2 MiB
 
 static mut ALLOC: Option<LLFree<'static>> = None;
@@ -43,29 +48,12 @@ fn frame_to_addr(frame: FrameId) -> u64 {
     (frame.0 as u64) * PAGE_SIZE
 }
 
-/// Free all pages in a usable region into the LLFree allocator,
-/// trying coarser orders for efficiency.
-unsafe fn free_region(alloc: &LLFree<'static>, base: u64, size: u64) {
-    let mut addr = base;
-    let end = base + size;
-    while addr < end {
-        let remaining = ((end - addr) / PAGE_SIZE) as usize;
-        if remaining == 0 { break; }
+fn align_up(addr: u64, align: u64) -> u64 {
+    (addr + align - 1) & !(align - 1)
+}
 
-        let mut order = 0usize;
-        let mut block = 1usize;
-        while block <= remaining && order < MAX_ORDER {
-            if (addr as usize & ((block << 12) - 1)) != 0 { break; }
-            order += 1;
-            block <<= 1;
-        }
-        order -= 1;
-        block >>= 1;
-
-        let frame = addr_to_frame(addr).unwrap();
-        alloc.put(frame, mk_request(order, 0)).ok();
-        addr += (block as u64) * PAGE_SIZE;
-    }
+fn ranges_overlap(a_start: u64, a_end: u64, b_start: u64, b_end: u64) -> bool {
+    a_start < b_end && a_end > b_start
 }
 
 impl BackingAllocator for LlfreeAllocator {
@@ -76,7 +64,9 @@ impl BackingAllocator for LlfreeAllocator {
 
         let entries = &memory_map[..count];
 
-        // Detect max physical address.
+        // Detect max physical address and total RAM. LLFree metadata is built
+        // before high memory is mapped, so the active tracking window is capped
+        // to low identity-mapped RAM for now.
         let mut max_usable: u64 = 0;
         let mut total_ram: u64 = 0;
         for e in entries {
@@ -88,7 +78,13 @@ impl BackingAllocator for LlfreeAllocator {
         }
         TOTAL_RAM = total_ram;
 
-        let total_frames = (max_usable / PAGE_SIZE) as usize;
+        let tracked_limit = max_usable.min(LOW_IDENTITY_LIMIT);
+        if tracked_limit <= BASE {
+            crate::dev::console::serial_write("[llfree] FATAL: no low identity-mapped usable RAM\n");
+            loop { core::arch::asm!("cli; hlt"); }
+        }
+
+        let total_frames = (tracked_limit / PAGE_SIZE) as usize;
         TRACKED_FRAMES = total_frames;
 
         // Build classing with 1 core (BSP; SMP later adds more).
@@ -104,15 +100,38 @@ impl BackingAllocator for LlfreeAllocator {
         let mut meta_phys: u64 = 0;
         for e in entries {
             if e.mem_type != MemoryType::Usable { continue; }
-            let avail = ((e.base + e.size - e.base.max(BASE)) / PAGE_SIZE) as usize;
-            if avail >= meta_pages {
-                meta_phys = (e.base.max(BASE) + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+            let region_start = align_up(e.base.max(BASE), PAGE_SIZE);
+            let region_end = (e.base + e.size).min(tracked_limit);
+            if region_start >= region_end { continue; }
+
+            let meta_len = (meta_pages as u64) * PAGE_SIZE;
+            let mut candidate = region_start;
+            loop {
+                let meta_start = candidate;
+                let meta_end = meta_start + meta_len;
+                if meta_end > region_end { break; }
+
+                if kernel_size > 0 && ranges_overlap(meta_start, meta_end, kernel_base, kernel_base + kernel_size) {
+                    candidate = align_up(kernel_base + kernel_size, PAGE_SIZE);
+                    continue;
+                }
+                if reserved_size > 0 && ranges_overlap(meta_start, meta_end, reserved_addr, reserved_addr + reserved_size) {
+                    candidate = align_up(reserved_addr + reserved_size, PAGE_SIZE);
+                    continue;
+                }
+                if ranges_overlap(meta_start, meta_end, 0x9_0000, 0x9_1000) {
+                    candidate = 0x9_1000;
+                    continue;
+                }
+
+                meta_phys = meta_start;
                 break;
             }
+            if meta_phys != 0 { break; }
         }
         if meta_phys == 0 {
-            crate::dev::console::serial_write("[llfree] FATAL: cannot allocate metadata\n");
-            return;
+            crate::dev::console::serial_write("[llfree] FATAL: cannot allocate low metadata\n");
+            loop { core::arch::asm!("cli; hlt"); }
         }
 
         let local_ptr  = meta_phys as *mut u8;
@@ -129,8 +148,9 @@ impl BackingAllocator for LlfreeAllocator {
         match LLFree::new(total_frames, Init::FreeAll, &classing, meta) {
             Ok(alloc) => {
                 // Reserve kernel image, reserved area, metadata pages.
-                fn reserve_range(alloc: &LLFree<'static>, start: u64, end: u64) {
+                fn reserve_range(alloc: &LLFree<'static>, start: u64, end: u64, tracked_limit: u64) {
                     let mut addr = start;
+                    let end = end.min(tracked_limit);
                     while addr < end {
                         if let Some(frame) = addr_to_frame(addr) {
                             alloc.get(Some(frame), mk_request(0, 0)).ok();
@@ -138,19 +158,19 @@ impl BackingAllocator for LlfreeAllocator {
                         addr += PAGE_SIZE;
                     }
                 }
-                reserve_range(&alloc, 0, BASE); // below 16 MB
-                reserve_range(&alloc, kernel_base, kernel_base + kernel_size);
-                reserve_range(&alloc, reserved_addr, reserved_addr + reserved_size);
-                reserve_range(&alloc, meta_phys, meta_phys + (meta_pages as u64) * PAGE_SIZE);
-                reserve_range(&alloc, 0x9_0000, 0x9_1000); // crash marker
+                reserve_range(&alloc, 0, BASE, tracked_limit); // below 16 MB
+                reserve_range(&alloc, kernel_base, kernel_base + kernel_size, tracked_limit);
+                reserve_range(&alloc, reserved_addr, reserved_addr + reserved_size, tracked_limit);
+                reserve_range(&alloc, meta_phys, meta_phys + (meta_pages as u64) * PAGE_SIZE, tracked_limit);
+                reserve_range(&alloc, 0x9_0000, 0x9_1000, tracked_limit); // crash marker
 
                 // Also reserve non-usable regions from UEFI map.
                 for e in entries {
                     if e.mem_type != MemoryType::Usable {
                         let start = e.base.max(BASE);
-                        let end = (e.base + e.size).min(max_usable);
+                        let end = (e.base + e.size).min(tracked_limit);
                         if start < end {
-                            reserve_range(&alloc, start, end);
+                            reserve_range(&alloc, start, end, tracked_limit);
                         }
                     }
                 }
@@ -162,7 +182,9 @@ impl BackingAllocator for LlfreeAllocator {
                 crate::dev::console::serial_write_u64(free as u64, 10);
                 crate::dev::console::serial_write(" free frames, metadata=");
                 crate::dev::console::serial_write_u64(meta_pages as u64, 10);
-                crate::dev::console::serial_write(" pages\n");
+                crate::dev::console::serial_write(" pages, tracked_low_mb=");
+                crate::dev::console::serial_write_u64(tracked_limit / (1024 * 1024), 10);
+                crate::dev::console::serial_write("\n");
 
                 ALLOC = Some(alloc);
             }

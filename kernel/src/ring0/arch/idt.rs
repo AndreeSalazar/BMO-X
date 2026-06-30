@@ -564,12 +564,24 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
 
     if fb_addr != 0 && w > 0 && h > 0 {
         let buf = fb_addr as *mut u32;
-        // Fill screen red
+        // Fill screen with a dark fault background instead of a flat red wall.
         for y in 0..h {
             for x in 0..w {
-                buf.add(y * s + x).write_volatile(0xFFFF0000);
+                let shade = 0x40u32.saturating_add(((y as u32) * 0x30) / (h as u32).max(1));
+                let color = 0xFF000000 | (shade << 16);
+                buf.add(y * s + x).write_volatile(color);
     }
 }
+
+        let fill_rect = |px: usize, py: usize, rw: usize, rh: usize, color: u32| {
+            let x1 = (px + rw).min(w);
+            let y1 = (py + rh).min(h);
+            for yy in py..y1 {
+                for xx in px..x1 {
+                    buf.add(yy * s + xx).write_volatile(color);
+                }
+            }
+        };
 
         // Draw text helper: renders an ASCII string using the 8x16 bitmap font
         let draw_str = |text: &[u8], px: usize, py: usize, color: u32| {
@@ -588,6 +600,11 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
                 cx += 8;
             }
         };
+
+        // Fault panel + header stripe.
+        fill_rect(16, 16, w.saturating_sub(32), 330, 0xFF220000);
+        fill_rect(16, 16, w.saturating_sub(32), 4, 0xFFFFD000);
+        fill_rect(16, 48, w.saturating_sub(32), 1, 0xFF660000);
 
         // Hex conversion helper (writes into a static buffer for lifetime)
         let to_hex = |val: u64| -> &'static [u8; 18] {
@@ -635,29 +652,29 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
         };
 
         // Title
-        draw_str(b"FastOS KERNEL FAULT v1.8.16", 20, 20, 0xFFFFFFFF);
+        draw_str(b"FastOS KERNEL FAULT v1.8.16", 28, 26, 0xFFFFFFFF);
 
         // Fault name
-        draw_str(b"Vector: ", 20, 50, 0xFFFFFF00);
-        draw_str(name, 84, 50, 0xFFFFFFFF);
+        draw_str(b"Vector: ", 28, 62, 0xFFFFFF00);
+        draw_str(name, 108, 62, 0xFFFFFFFF);
 
         // Error code in hex
-        draw_str(b"Error:  ", 20, 80, 0xFFFFFF00);
-        draw_str(to_hex(error), 84, 80, 0xFFFFFFFF);
+        draw_str(b"Error:  ", 28, 92, 0xFFFFFF00);
+        draw_str(to_hex(error), 108, 92, 0xFFFFFFFF);
 
         // CR2 for page faults
         if vector == 14 {
-            draw_str(b"CR2:    ", 20, 110, 0xFFFFFF00);
-            draw_str(to_hex(cr2), 84, 110, 0xFF00FFFF);
+            draw_str(b"CR2:    ", 28, 122, 0xFFFFFF00);
+            draw_str(to_hex(cr2), 108, 122, 0xFF00FFFF);
         }
 
         // RIP (instruction pointer)
-        draw_str(b"RIP:    ", 20, 140, 0xFFFFFF00);
-        draw_str(to_hex(rip), 84, 140, 0xFFFFAAFF);
+        draw_str(b"RIP:    ", 28, 152, 0xFFFFFF00);
+        draw_str(to_hex(rip), 108, 152, 0xFFFFAAFF);
 
         // RSP (stack pointer)
-        draw_str(b"RSP:    ", 20, 170, 0xFFFFFF00);
-        draw_str(to_hex(rsp), 84, 170, 0xFFFFAAFF);
+        draw_str(b"RSP:    ", 28, 182, 0xFFFFFF00);
+        draw_str(to_hex(rsp), 108, 182, 0xFFFFAAFF);
 
         // CR0/CR4 control registers (diagnostic)
         let cr0_val: u64;
@@ -666,16 +683,30 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
             core::arch::asm!("mov {}, cr0", out(reg) cr0_val);
             core::arch::asm!("mov {}, cr4", out(reg) cr4_val);
         }
-        draw_str(b"CR0:    ", 20, 200, 0xFFFFFF00);
-        draw_str(to_hex(cr0_val), 84, 200, 0xFFFFFFFF);
-        draw_str(b"CR4:    ", 20, 230, 0xFFFFFF00);
-        draw_str(to_hex(cr4_val), 84, 230, 0xFFFFFFFF);
+        draw_str(b"CR0:    ", 28, 212, 0xFFFFFF00);
+        draw_str(to_hex(cr0_val), 108, 212, 0xFFFFFFFF);
+        draw_str(b"CR4:    ", 28, 242, 0xFFFFFF00);
+        draw_str(to_hex(cr4_val), 108, 242, 0xFFFFFFFF);
+
+        if vector == 14 {
+            draw_str(b"PF decode:", 28, 278, 0xFFFFFF00);
+            draw_str(if error & 1 != 0 { b"protection" } else { b"not-present" }, 124, 278, 0xFFFFFFFF);
+            draw_str(if error & 2 != 0 { b"write" } else { b"read" }, 236, 278, 0xFFFFFFFF);
+            draw_str(if error & 4 != 0 { b"user" } else { b"supervisor" }, 300, 278, 0xFFFFFFFF);
+            if error & 8 != 0 { draw_str(b"reserved-bit", 412, 278, 0xFFFFAA00); }
+            if error & 16 != 0 { draw_str(b"instruction-fetch", 532, 278, 0xFFFFAA00); }
+
+            draw_str(b"Likely:", 28, 308, 0xFFFFFF00);
+            if cr2 >= 0x8000_0000 {
+                draw_str(b"physical address above low identity map during early Ring 0 init", 108, 308, 0xFF00FFFF);
+            } else {
+                draw_str(b"kernel touched an unmapped/protected early address", 108, 308, 0xFF00FFFF);
+            }
+        }
 
         // Build version footer
-        draw_str(b"v1.8.16  ::  Heap:16MB  Watchdog:5s  Fault-Safe", 20, 270, 0xFFCCCCCC);
-
-        // Instruction hint
-        draw_str(b"CPU halted. Note CR2 + RIP, then re-flash with -Rollback if needed.", 20, 240, 0xFF8B949E);
+        draw_str(b"CPU halted. Note CR2 + RIP. Reflash fixed kernel or use buddy allocator if needed.", 28, 370, 0xFFCCCCCC);
+        draw_str(b"v1.8.16 :: Heap:16MB :: Watchdog:5s :: Fault-Safe", 28, 400, 0xFF8B949E);
     }
     loop { unsafe { core::arch::asm!("cli; hlt"); } }
 }
@@ -794,5 +825,4 @@ extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> boo
         crate::mm::virt::handle_page_fault(cr2, error, pml4_phys, vmas)
     }
 }
-
 
