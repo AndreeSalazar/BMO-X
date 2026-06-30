@@ -1,8 +1,0 @@
-[package]
-name = "bmo-devour-elf"
-version = "1.0.0"
-edition = "2021"
-description = "ELF → BEF devourer: translate Linux ELF binaries to native BMO BEF format"
-
-[dependencies]
-bmo-abi = { path = "../bmo_abi" }

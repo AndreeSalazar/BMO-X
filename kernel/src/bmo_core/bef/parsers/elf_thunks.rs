@@ -153,3 +153,45 @@ pub fn normalize_lib_name(lib: &str) -> &'static str {
 
 #[allow(unused)]
 pub extern "C" fn silent_stub() -> bx_u64 { 0 }
+
+/// Resuelve un símbolo a un puntero de función real.
+/// Busca en los shims de linux/win32 según el lib_name.
+pub fn resolve_fn_ptr(lib: &str, name: &str) -> Option<*const ()> {
+    let normalized = normalize_lib_name(lib);
+    match normalized {
+        "libc.so" => resolve_libc(name),
+        _ => None,
+    }
+}
+
+fn resolve_libc(name: &str) -> Option<*const ()> {
+    // Each entry maps to the extern "C" function in shims::linux::libc
+    match name {
+        "write" => Some(crate::bmo_core::bef::shims::linux::libc::write as *const ()),
+        "read" => Some(crate::bmo_core::bef::shims::linux::libc::read as *const ()),
+        "open" => Some(crate::bmo_core::bef::shims::linux::libc::open as *const ()),
+        "close" => Some(crate::bmo_core::bef::shims::linux::libc::close as *const ()),
+        "exit" | "_exit" => Some(crate::bmo_core::bef::shims::linux::libc::exit as *const ()),
+        "exit_group" => Some(crate::bmo_core::bef::shims::linux::libc::exit_group as *const ()),
+        "mmap" => Some(crate::bmo_core::bef::shims::linux::libc::mmap as *const ()),
+        "munmap" => Some(crate::bmo_core::bef::shims::linux::libc::munmap as *const ()),
+        "brk" => Some(crate::bmo_core::bef::shims::linux::libc::brk as *const ()),
+        "getpid" => Some(crate::bmo_core::bef::shims::linux::libc::getpid as *const ()),
+        "gettid" => Some(crate::bmo_core::bef::shims::linux::libc::gettid as *const ()),
+        "nanosleep" => Some(crate::bmo_core::bef::shims::linux::libc::nanosleep as *const ()),
+        "clock_gettime" => Some(crate::bmo_core::bef::shims::linux::libc::clock_gettime as *const ()),
+        "uname" => Some(crate::bmo_core::bef::shims::linux::libc::uname as *const ()),
+        "getcwd" => Some(crate::bmo_core::bef::shims::linux::libc::getcwd as *const ()),
+        "lseek" => Some(crate::bmo_core::bef::shims::linux::libc::lseek as *const ()),
+        "ioctl" => Some(crate::bmo_core::bef::shims::linux::libc::ioctl as *const ()),
+        "access" => Some(crate::bmo_core::bef::shims::linux::libc::access as *const ()),
+        "fcntl" => Some(crate::bmo_core::bef::shims::linux::libc::fcntl as *const ()),
+        "fstat" => Some(crate::bmo_core::bef::shims::linux::libc::fstat as *const ()),
+        "sched_yield" => Some(crate::bmo_core::bef::shims::linux::libc::sched_yield as *const ()),
+        _ => {
+            crate::cabina::info_u64("elf", "unresolved libc symbol: ", 0);
+            crate::cabina::info("elf", name);
+            Some(silent_stub as *const ())
+        }
+    }
+}

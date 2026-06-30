@@ -1,8 +1,0 @@
-[package]
-name = "bmo-devour-pe"
-version = "1.0.0"
-edition = "2021"
-description = "PE → BEF devourer: translate Windows PE binaries to native BMO BEF format"
-
-[dependencies]
-bmo-abi = { path = "../bmo_abi" }

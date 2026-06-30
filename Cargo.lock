@@ -122,20 +122,6 @@ name = "bmo-audio"
 version = "1.0.0"
 
 [[package]]
-name = "bmo-devour-elf"
-version = "1.0.0"
-dependencies = [
- "bmo-abi",
-]
-
-[[package]]
-name = "bmo-devour-pe"
-version = "1.0.0"
-dependencies = [
- "bmo-abi",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -242,8 +228,6 @@ dependencies = [
  "bitflags",
  "bmo-abi",
  "bmo-audio",
- "bmo-devour-elf",
- "bmo-devour-pe",
  "cabina-core",
  "cabina-daemon",
  "cabina-panels",

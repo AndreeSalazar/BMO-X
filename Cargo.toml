@@ -11,8 +11,6 @@ members = [
     "crates_Personal/cabina/core",
     "crates_Personal/cabina/daemon",
     "crates_Personal/cabina/panels",
-    "crates_Personal/bmo_devour_pe",
-    "crates_Personal/bmo_devour_elf",
 ]
 
 [profile.dev]

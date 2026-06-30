@@ -1,6 +1,7 @@
 use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use crate::bmo_core::bef::format::manifest::Provenance;
-use goblin::elf::{Elf, program_header, reloc};
+use alloc::vec::Vec;
+use goblin::elf::{Elf, program_header, reloc, sym};
 
 pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let elf = Elf::parse(bytes).map_err(|_| LoadError::InvalidHeader)?;
@@ -50,9 +51,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     }
 
     apply_elf_relocations(&elf, &mut img, bytes);
-    for lib in &elf.libraries {
-        let _normalized = super::elf_thunks::normalize_lib_name(lib);
-    }
+    resolve_plt_symbols(&elf, &mut img, bytes);
 
     let tls_segment = elf.program_headers.iter()
         .find(|ph| ph.p_type == program_header::PT_TLS);
@@ -158,5 +157,40 @@ fn pick_kind_from_flags(p_flags: u32) -> u8 {
         (true, _)      => SectionKind::Code as u8,
         (false, true)  => SectionKind::Data as u8,
         (false, false) => SectionKind::RoData as u8,
+    }
+}
+
+fn resolve_plt_symbols(elf: &Elf, img: &mut Image, bytes: &[u8]) {
+    let def_lib = elf.libraries.first().copied().unwrap_or("libc.so.6");
+    for reloc in elf.pltrelocs.iter() {
+        if reloc.r_type != reloc::R_X86_64_JUMP_SLOT {
+            continue;
+        }
+        let sym = elf.dynsyms.get(reloc.r_sym);
+        let sym_name = sym.and_then(|s| {
+            elf.dynstrtab.get(s.st_name)
+                .and_then(|r| r.ok())
+                .filter(|n| !n.is_empty())
+        });
+        let name = match sym_name {
+            Some(n) => n,
+            _ => continue,
+        };
+        let fn_ptr = super::elf_thunks::resolve_fn_ptr(def_lib, name);
+        let addr = fn_ptr.unwrap_or(super::elf_thunks::silent_stub as *const ()) as u64;
+        let got_va = reloc.r_offset;
+        for section in &img.sections {
+            if got_va >= section.virt_addr && got_va < section.virt_addr + section.size {
+                if section.data_ptr != 0 {
+                    let offset_in_section = (got_va - section.virt_addr) as usize;
+                    if offset_in_section + 8 <= section.size as usize {
+                        unsafe {
+                            core::ptr::write((section.data_ptr as *mut u64).add(offset_in_section / 8), addr);
+                        }
+                    }
+                }
+                break;
+            }
+        }
     }
 }

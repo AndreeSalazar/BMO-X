@@ -9,8 +9,8 @@
 //! bytes (PE/ELF/BEF)
 //!   → BefMagic::detect()
 //!     ├── BefNative → loader::load() directo (ya es BEF)
-//!     ├── PeWindows → bmo_devour_pe::devour_pe()
-//!     ├── ElfUnix   → bmo_devour_elf::devour_elf()
+//!     ├── PeWindows → bmo_core::bef::parsers::pe::load()
+//!     ├── ElfUnix   → bmo_core::bef::parsers::elf::load()
 //!     └── Unknown   → error
 //!   → loader::load() (ejecuta el BEF)
 //! ```
@@ -21,42 +21,55 @@
 //! los mapea directamente sin escribir a disco. El binario original se
 //! descarta tras la traducción (o se cachea en RAM).
 
-use bmo_abi::bef::{BefMagic, load, LoadedBef};
+use bmo_abi::bef::{BefMagic, LoadedBef, LoadedSection};
+use bmo_abi::bef::sections::SectionKind;
+use alloc::vec::Vec;
 
-/// Determina el formato y devora/ejecuta el binario.
-///
-/// Acepta BEF, PE o ELF. Si es BEF nativo, lo carga directo.
-/// Si es PE o ELF, lo traduce a BEF primero (devour), luego lo carga.
 pub fn devour_and_load(bytes: &[u8]) -> Result<LoadedBef, &'static str> {
-    match BefMagic::detect(bytes) {
+    let img = match BefMagic::detect(bytes) {
         BefMagic::BefNative => {
-            load(bytes, 0, resolve_import)
+            return bmo_abi::bef::load(bytes, 0, resolve_import);
         }
         BefMagic::PeWindows => {
-            devour_pe_then_load(bytes)
+            crate::bmo_core::bef::parsers::pe::load(bytes)
+                .map_err(|_| "PE parse failed")?
         }
         BefMagic::ElfUnix => {
-            devour_elf_then_load(bytes)
+            crate::bmo_core::bef::parsers::elf::load(bytes)
+                .map_err(|_| "ELF parse failed")?
         }
-        BefMagic::Unknown => {
-            Err("unknown binary format: not BEF, PE, or ELF")
-        }
-    }
+        BefMagic::Unknown => return Err("unknown binary format"),
+    };
+    Ok(image_to_loaded(&img))
 }
 
 fn resolve_import(_lib: &str, _sym: &str) -> Result<u64, &'static str> {
-    // TODO: conectar con el sistema de imports del kernel
     Err("import resolution not yet wired")
 }
 
-fn devour_pe_then_load(_pe_bytes: &[u8]) -> Result<LoadedBef, &'static str> {
-    // TODO: llamar a bmo_devour_pe::devour_pe() → luego load()
-    Err("PE devourer not yet linked — compile with bmo-devour-pe feature")
-}
-
-fn devour_elf_then_load(_elf_bytes: &[u8]) -> Result<LoadedBef, &'static str> {
-    // TODO: llamar a bmo_devour_elf::devour_elf() → luego load()
-    Err("ELF devourer not yet linked — compile with bmo-devour-elf feature")
+fn image_to_loaded(img: &crate::bmo_core::bef::parsers::Image) -> LoadedBef {
+    let mut sections = Vec::with_capacity(img.sections.len());
+    for s in &img.sections {
+        let data = if s.data_ptr != 0 {
+            unsafe {
+                core::slice::from_raw_parts(s.data_ptr as *const u8, s.size as usize).to_vec()
+            }
+        } else {
+            Vec::new()
+        };
+        sections.push(LoadedSection {
+            kind: SectionKind::from_u8(s.kind).unwrap_or(SectionKind::Data),
+            virt_addr: s.virt_addr,
+            size: s.size,
+            data,
+        });
+    }
+    LoadedBef {
+        entry_point: img.entry_point,
+        sections,
+        tls_base: 0,
+        base_addr: img.baseess,
+    }
 }
 
 #[cfg(test)]
