@@ -213,6 +213,24 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
 
         cabina_daemon::telemetry::syscall::inc(nr as u16);
 
+        // ─── Linux emulation: route to shims::linux::syscall::dispatch ──
+        // If the current process has linux_emulation=true, all ring3 syscall
+        // instructions go through the Linux syscall table instead of the BMO
+        // native one. Linux syscall numbers (0..99) overlap with the BMO low
+        // range, so we check the process flag, not the number.
+        if let Some(task) = crate::proc::task::current() {
+            if let Some(proc) = crate::proc::process::get_process(task.pid) {
+                if proc.linux_emulation {
+                    let result = crate::bmo_core::bef::shims::linux::syscall::dispatch(
+                        nr as usize,
+                        &[a0, a1, a2, a3, a4, a5],
+                    );
+                    f.rax = result as u64;
+                    return;
+                }
+            }
+        }
+
         let result = match nr {
             // ─── Reserved BMO ABI range (0x100..=0x1FF) ──────────────
             // Ring 0 does not own the higher-level BMO dispatcher here.

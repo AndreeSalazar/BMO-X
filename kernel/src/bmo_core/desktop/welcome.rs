@@ -401,6 +401,10 @@ fn process_enter() {
         crate::cabina::info("welcome", "Hello command accepted; preparing Ring 3 test");
         sound::beep(440, 80);
         crate::bmo_core::proc::user_init::spawn_hello();
+    } else if eq_ci(trimmed_cmd, b"elf") {
+        crate::cabina::info("welcome", "ELF command accepted; loading ELF hello world");
+        sound::beep(660, 80);
+        crate::bmo_core::proc::user_init::spawn_elf_hello();
     } else if trimmed_cmd.len() >= 7 && eq_ci(&trimmed_cmd[..7], b"volume ") {
         let val_bytes = &trimmed_cmd[7..];
         let mut val = 0u8;

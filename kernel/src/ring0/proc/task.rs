@@ -97,6 +97,12 @@ pub struct Task {
     pub kernel_stack_top: u64,
     /// Time slice remaining (in timer ticks).
     pub time_slice: u32,
+    /// Futex address we are blocked on (0 = not blocked).
+    pub blocked_on: u64,
+    /// Per-thread robust list head pointer (set_robust_list).
+    pub robust_list_head: u64,
+    /// Per-thread tid address (set_tid_address).
+    pub tid_address: *mut i32,
 }
 
 impl Task {
@@ -109,6 +115,9 @@ impl Task {
             regs: SavedRegs::zero(),
             kernel_stack_top: 0,
             time_slice: 0,
+            blocked_on: 0,
+            robust_list_head: 0,
+            tid_address: core::ptr::null_mut(),
         }
     }
 }
@@ -239,6 +248,33 @@ pub fn pick_next() -> Option<usize> {
         }
         None
     }
+}
+
+/// Block the current task on a futex address.
+/// The task will not be scheduled again until woken by `wake_on`.
+pub fn block_on(uaddr: u64) {
+    if let Some(t) = current() {
+        t.state = State::Blocked;
+        t.blocked_on = uaddr;
+    }
+    super::schedule();
+}
+
+/// Wake up to `max` tasks blocked on a futex address.
+/// Returns the number of tasks woken.
+pub fn wake_on(uaddr: u64, max: usize) -> usize {
+    let mut woken = 0;
+    unsafe {
+        for task in TASK_TABLE.iter_mut() {
+            if woken >= max { break; }
+            if task.state == State::Blocked && task.blocked_on == uaddr {
+                task.state = State::Ready;
+                task.blocked_on = 0;
+                woken += 1;
+            }
+        }
+    }
+    woken
 }
 
 /// Time slice in ticks per priority level.

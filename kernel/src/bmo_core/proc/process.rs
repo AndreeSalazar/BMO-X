@@ -28,6 +28,9 @@ pub struct Process {
     pub user_stack_base: u64,
     pub user_stack_size: usize,
     pub addr_space: crate::mm::virt::AddressSpace,
+    /// If true, ring3 `syscall` instructions route to Linux syscall emulation
+    /// instead of BMO native syscalls.
+    pub linux_emulation: bool,
 }
 
 impl Process {
@@ -46,6 +49,7 @@ impl Process {
             user_stack_base: 0,
             user_stack_size: 0,
             addr_space: crate::mm::virt::AddressSpace::empty(),
+            linux_emulation: false,
         }
     }
 
@@ -134,6 +138,7 @@ pub fn free_process(proc: &mut Process) {
     proc.user_code_size = 0;
     proc.user_stack_base = 0;
     proc.user_stack_size = 0;
+    proc.linux_emulation = false;
 }
 
 pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
