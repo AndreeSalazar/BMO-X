@@ -133,8 +133,11 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     cabina_daemon::info("ring0", "nvram init + kmain_early written");
 
     // Enter Ring 0 main coordinator. Returning means Ring 0 completed
-    // successfully; keep ownership in Ring 0 and show a visible GOP idle
-    // screen instead of treating this as a fatal path.
+    // successfully.
     let ctx = phase_1_RING_0::main(boot_info_ptr);
-    crate::visual::ring0_ready_loop(&ctx);
+
+    // Transition to BMO Core (logical Ring 3 kernel). This initializes
+    // all core subsystems and enters the welcome screen (never returns).
+    crate::bmo_core::coord::init();
+    crate::bmo_core::coord::enter(&ctx, 0, 0);
 }

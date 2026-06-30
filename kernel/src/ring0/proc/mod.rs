@@ -16,7 +16,6 @@
 
 pub mod process;
 pub mod task;
-pub mod user_init;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {

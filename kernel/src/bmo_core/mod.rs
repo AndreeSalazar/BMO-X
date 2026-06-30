@@ -85,4 +85,5 @@ pub mod ui;
 pub mod bef;
 pub mod fs;
 pub mod desktop3;
+pub mod proc;
 

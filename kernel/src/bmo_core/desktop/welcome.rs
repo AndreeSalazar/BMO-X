@@ -400,7 +400,7 @@ fn process_enter() {
     } else if eq_ci(trimmed_cmd, b"hello") {
         crate::cabina::info("welcome", "Hello command accepted; preparing Ring 3 test");
         sound::beep(440, 80);
-        crate::proc::user_init::spawn_hello();
+        crate::bmo_core::proc::user_init::spawn_hello();
     } else if trimmed_cmd.len() >= 7 && eq_ci(&trimmed_cmd[..7], b"volume ") {
         let val_bytes = &trimmed_cmd[7..];
         let mut val = 0u8;
@@ -424,7 +424,7 @@ fn process_enter() {
     } else if eq_ci(trimmed_cmd, b"ring3") {
         crate::cabina::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
         sound::beep(440, 80);
-        crate::proc::user_init::spawn_hello();
+        crate::bmo_core::proc::user_init::spawn_hello();
     } else if eq_ci(trimmed_cmd, b"reboot") {
         crate::cabina::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
