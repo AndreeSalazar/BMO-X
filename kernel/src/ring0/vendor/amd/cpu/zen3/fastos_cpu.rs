@@ -108,8 +108,10 @@ pub fn init_fastos_cpu() {
         return;  // idempotent
     }
     crate::dev::console::serial_write("\n[fastos_cpu] === Ryzen 5 5600X initialization ===\n");
+    crate::uefi_rt::write_boot_stage("ifc_start");
 
     // 1. CPUID detection
+    crate::uefi_rt::write_boot_stage("ifc_step1");
     crate::dev::console::serial_write("[fastos_cpu] step 1: CPUID\n");
     let cpu_id = detect_cpu();
     crate::dev::console::serial_write("[fastos_cpu] step 1: CPUID done\n");
@@ -132,6 +134,7 @@ pub fn init_fastos_cpu() {
     super::cpuid_detection::cache_identity(cpu_id);
 
     // 2. Cache topology
+    crate::uefi_rt::write_boot_stage("ifc_step2");
     crate::dev::console::serial_write("[fastos_cpu] step 2: cache\n");
     let cache = detect_cache();
     crate::dev::console::serial_write("[fastos_cpu] step 2: cache done\n");
@@ -178,6 +181,7 @@ pub fn init_fastos_cpu() {
     unsafe { CPU_CACHE = Some(cache); }
 
     // 3. CPU topology (SMT, CCX, CCD)
+    crate::uefi_rt::write_boot_stage("ifc_step3");
     crate::dev::console::serial_write("[fastos_cpu] step 3: topology\n");
     let topo = super::topology::detect();
     crate::dev::console::serial_write("[fastos_cpu] step 3: topology done\n");
@@ -202,6 +206,7 @@ pub fn init_fastos_cpu() {
     // 4. TSC calibration (use PM Timer if available, else fallback)
     //    Note: acpi_real::init must be called first to find the PM Timer
     //    port. If ACPI init fails, we use the hardcoded constant.
+    crate::uefi_rt::write_boot_stage("ifc_step4");
     crate::dev::console::serial_write("[fastos_cpu] step 4: TSC calibration\n");
     let pm_timer_port = find_pm_timer_port();
     crate::dev::console::serial_write_u64(pm_timer_port as u64, 16);
@@ -218,9 +223,11 @@ pub fn init_fastos_cpu() {
     }
 
     // 5. Errata workarounds
+    crate::uefi_rt::write_boot_stage("ifc_step5");
     errata_workarounds::apply_all();
 
     // 6. Power management: C1e
+    crate::uefi_rt::write_boot_stage("ifc_step6");
     power_management::init();
 
     // 7. MSR setup (common across all cores)
@@ -236,6 +243,7 @@ pub fn init_fastos_cpu() {
     //    from boot_coordinator when you have that info.
     crate::dev::console::serial_write("[fastos_cpu] ACPI init deferred (needs BootInfo.rsdp_addr)\n");
 
+    crate::uefi_rt::write_boot_stage("ifc_done");
     crate::dev::console::serial_write("[fastos_cpu] === Initialization complete ===\n\n");
     INITIALIZED.store(true, Ordering::Release);
 }
@@ -249,18 +257,13 @@ pub fn init_msrs(syscall_entry: u64) {
 
 /// Initialize ACPI tables. Call this from `boot_coordinator::main` when
 /// the bootloader has provided the RSDP address.
-pub fn init_acpi(rsdp_addr: Option<u64>) {
-    if let Err(e) = acpi_real::init(rsdp_addr) {
-        crate::dev::console::serial_write("[fastos_cpu] ACPI init failed: ");
-        crate::dev::console::serial_write(match e {
-            acpi_real::AcpiError::NotFound => "not found",
-            acpi_real::AcpiError::BadSignature => "bad signature",
-            acpi_real::AcpiError::BadChecksum => "bad checksum",
-            acpi_real::AcpiError::TooShort => "too short",
-            acpi_real::AcpiError::UnsupportedRevision => "unsupported rev",
-        });
-        crate::dev::console::serial_write("\n");
-    }
+///
+/// NOTE: Temporarily a no-op — acpi_real::init() causes #GP(0) on this
+/// board (likely from memory scanning in find_rsdp touching unmapped or
+/// MMIO regions). Re-enable when the page tables cover the full low 1 MB
+/// and the RSDP hint from the bootloader is validated.
+pub fn init_acpi(_rsdp_addr: Option<u64>) {
+    crate::dev::console::serial_write("[fastos_cpu] ACPI: skipped (find_rsdp scan may #GP)\n");
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

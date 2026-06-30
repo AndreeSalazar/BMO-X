@@ -27,6 +27,14 @@ pub mod cpu;
 pub use cabina_core;
 pub use cabina_daemon;
 pub use cabina_panels;
+#[path = "../cabina/mod.rs"]
+pub mod cabina;
+
+// ── Temporary stubs for bmo_core dependencies ──────────────────────
+#[path = "../bmo_gpu/mod.rs"]
+pub mod bmo_gpu;
+#[path = "../lang/mod.rs"]
+pub mod lang;
 
 
 // ── Boot infrastructure (moved from boot/) ──────────────────────────
@@ -37,6 +45,10 @@ pub mod serial;
 pub mod visual;
 pub mod font;
 pub mod log;
+
+// ── BMO Core: logical Ring 3 kernel (process mgmt, syscalls, UI, FS) ──
+#[path = "../bmo_core/mod.rs"]
+pub mod bmo_core;
 
 // ── Main coordinator ────────────────────────────────────────────────
 pub mod phase_1_RING_0;
