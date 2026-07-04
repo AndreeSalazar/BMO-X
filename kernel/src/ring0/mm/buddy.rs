@@ -215,14 +215,16 @@ impl BackingAllocator for BuddyAllocator {
         let meta_bytes = PAGE_COUNT;
         let meta_pages = (meta_bytes + PAGE_SIZE as usize - 1) / PAGE_SIZE as usize;
 
+        const HUGE_2MB: u64 = 2 * 1024 * 1024;
         let mut meta_phys: u64 = 0;
         for e in entries {
             if e.mem_type != MemoryType::Usable { continue; }
-            let region_start = e.base.max(BASE);
-            let region_end = e.base + e.size;
+            let region_start = (e.base.max(BASE) + HUGE_2MB - 1) & !(HUGE_2MB - 1);
+            let region_end = (e.base + e.size) & !(HUGE_2MB - 1);
+            if region_start >= region_end { continue; }
             let avail = ((region_end - region_start) / PAGE_SIZE) as usize;
             if avail >= meta_pages {
-                meta_phys = (region_start + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
+                meta_phys = region_start;
                 break;
             }
         }
@@ -249,8 +251,12 @@ impl BackingAllocator for BuddyAllocator {
             let region_start = e.base.max(BASE);
             let region_end = (e.base + e.size).min(BASE + (PAGE_COUNT as u64) * PAGE_SIZE);
             if region_start >= region_end { continue; }
-            let start_page = (region_start + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
-            let end_page = region_end / PAGE_SIZE * PAGE_SIZE;
+            
+            // Align start and end to 2 MiB to match high-mem page mapping
+            let start_page = (region_start + HUGE_2MB - 1) & !(HUGE_2MB - 1);
+            let end_page = region_end & !(HUGE_2MB - 1);
+            if start_page >= end_page { continue; }
+
             let mut addr = start_page;
             while addr < end_page {
                 let mut skip = false;

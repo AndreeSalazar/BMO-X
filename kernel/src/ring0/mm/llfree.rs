@@ -175,6 +175,26 @@ impl BackingAllocator for LlfreeAllocator {
                     }
                 }
 
+                // Reserve unmapped tails (non-2MB-aligned start and end of usable regions)
+                const HUGE_2MB: u64 = 2 * 1024 * 1024;
+                for e in entries {
+                    if e.mem_type == MemoryType::Usable {
+                        let region_start = e.base.max(BASE);
+                        let region_end = (e.base + e.size).min(tracked_limit);
+                        if region_start >= region_end { continue; }
+                        
+                        let start_aligned = (region_start + HUGE_2MB - 1) & !(HUGE_2MB - 1);
+                        let end_aligned = region_end & !(HUGE_2MB - 1);
+                        
+                        if region_start < start_aligned {
+                            reserve_range(&alloc, region_start, start_aligned, tracked_limit);
+                        }
+                        if end_aligned < region_end {
+                            reserve_range(&alloc, end_aligned, region_end, tracked_limit);
+                        }
+                    }
+                }
+
                 let free = alloc.tree_stats().free_frames;
                 FREE_COUNT.store(free, Ordering::Relaxed);
 
