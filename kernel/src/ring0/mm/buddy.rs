@@ -249,7 +249,8 @@ impl BackingAllocator for BuddyAllocator {
         for e in entries {
             if e.mem_type != MemoryType::Usable { continue; }
             let region_start = e.base.max(BASE);
-            let region_end = (e.base + e.size).min(BASE + (PAGE_COUNT as u64) * PAGE_SIZE);
+            // Cap at 2 GB (0x8000_0000) for the initial low-memory bootstrap phase
+            let region_end = (e.base + e.size).min(0x8000_0000);
             if region_start >= region_end { continue; }
             
             // Align start and end to 2 MiB to match high-mem page mapping
@@ -279,6 +280,38 @@ impl BackingAllocator for BuddyAllocator {
         crate::dev::console::serial_write(" MB), metadata=");
         crate::dev::console::serial_write_u64(meta_pages as u64, 10);
         crate::dev::console::serial_write(" pages\n");
+    }
+
+    unsafe fn free_high_memory(&self, memory_map: &[MemoryEntry], count: usize) {
+        let entries = &memory_map[..count];
+        const HUGE_2MB: u64 = 2 * 1024 * 1024;
+        for e in entries {
+            if e.mem_type != MemoryType::Usable { continue; }
+            let region_start = e.base;
+            let region_end = e.base + e.size;
+            // Only free pages that are ABOVE 2 GB (since below 2 GB were already freed)
+            if region_end <= 0x8000_0000 { continue; }
+            let start = region_start.max(0x8000_0000);
+            
+            // Align start and end to 2 MiB to match high-mem page mapping
+            let start_page = (start + HUGE_2MB - 1) & !(HUGE_2MB - 1);
+            let end_page = region_end & !(HUGE_2MB - 1);
+            if start_page >= end_page { continue; }
+
+            let mut addr = start_page;
+            while addr < end_page {
+                buddy_free_page(addr);
+                addr += PAGE_SIZE;
+            }
+        }
+        
+        let free = FREE_COUNT.load(Ordering::Relaxed);
+        let free_mb = (free as u64 * PAGE_SIZE) / (1024 * 1024);
+        crate::dev::console::serial_write("[buddy] post-high-mem free: ");
+        crate::dev::console::serial_write_u64(free as u64, 10);
+        crate::dev::console::serial_write(" free pages (");
+        crate::dev::console::serial_write_u64(free_mb, 10);
+        crate::dev::console::serial_write(" MB)\n");
     }
 
     unsafe fn alloc_order(&self, order: usize) -> Option<u64> {

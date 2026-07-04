@@ -216,6 +216,8 @@ impl BackingAllocator for LlfreeAllocator {
         }
     }
 
+    unsafe fn free_high_memory(&self, _memory_map: &[MemoryEntry], _count: usize) {}
+
     unsafe fn alloc_order(&self, order: usize) -> Option<u64> {
         let alloc = ALLOC.as_ref()?;
         let (frame, _) = alloc.get(None, mk_request(order, 0)).ok()?;

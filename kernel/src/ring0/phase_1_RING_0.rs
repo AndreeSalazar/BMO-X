@@ -156,16 +156,23 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
             0, // kernel_size
         );
     }
-    let free_pages = crate::mm::phys::free_count();
-    let free_mb = (free_pages * 4096) / (1024 * 1024);
-    crate::log::info_u64("phase1", "free pages", free_pages as u64);
-    crate::log::info_u64("phase1", "free MB", free_mb as u64);
+    let early_free_pages = crate::mm::phys::free_count();
+    let early_free_mb = (early_free_pages * 4096) / (1024 * 1024);
+    crate::log::info_u64("phase1", "bootstrap free pages (< 2 GB)", early_free_pages as u64);
+    crate::log::info_u64("phase1", "bootstrap free MB", early_free_mb as u64);
 
     // Map all physical RAM into high-mem region
     unsafe {
         crate::mm::virt::map_high_mem(&bi.memory_map, bi.memory_map_count as usize);
+        // Safely free memory above 2 GB after page tables are active
+        crate::mm::phys::free_high_memory(&bi.memory_map, bi.memory_map_count as usize);
     }
     crate::log::info("phase1", "high-mem mapped");
+
+    let free_pages = crate::mm::phys::free_count();
+    let free_mb = (free_pages * 4096) / (1024 * 1024);
+    crate::log::info_u64("phase1", "total free pages (full RAM)", free_pages as u64);
+    crate::log::info_u64("phase1", "total free MB", free_mb as u64);
 
     // Init kernel heap
     crate::mm::heap::init_heap();

@@ -27,6 +27,7 @@ pub trait BackingAllocator: Sync {
     unsafe fn init(&self, memory_map: &[MemoryEntry], count: usize,
                    reserved_addr: u64, reserved_size: u64,
                    kernel_base: u64, kernel_size: u64);
+    unsafe fn free_high_memory(&self, memory_map: &[MemoryEntry], count: usize);
     unsafe fn alloc_order(&self, order: usize) -> Option<u64>;
     unsafe fn free_order(&self, addr: u64, order: usize);
     fn free_count(&self) -> usize;

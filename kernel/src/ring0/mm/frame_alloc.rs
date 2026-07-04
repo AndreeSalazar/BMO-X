@@ -92,6 +92,11 @@ pub unsafe fn init(
     crate::dev::console::serial_write(" orders\n");
 }
 
+/// Free physical memory above 2 GB into the allocator (called after page tables are set up).
+pub unsafe fn free_high_memory(memory_map: &[MemoryEntry], count: usize) {
+    BACKING.free_high_memory(memory_map, count);
+}
+
 /// Allocate `count` contiguous pages. Rounds up to next power of 2.
 /// Small orders use the per-CPU cache; larger go directly to backing.
 pub unsafe fn alloc_pages_contiguous(count: usize) -> Option<u64> {
