@@ -644,9 +644,9 @@ fn main() -> Status {
     ).expect("stack alloc failed").as_ptr() as u64;
     let stack_top = stack_base + KERNEL_STACK_SIZE as u64;
 
-    // BootInfo (8 KiB = 2 pages)
+    // BootInfo (16 KiB = 4 pages)
     let boot_info_ptr = boot::allocate_pages(
-        boot::AllocateType::MaxAddress(0x7FFE_F000), MemoryType::LOADER_DATA, 2,
+        boot::AllocateType::MaxAddress(0x7FFE_F000), MemoryType::LOADER_DATA, 4,
     ).expect("BootInfo alloc failed").as_ptr() as *mut BootInfo;
 
     // Fill BootInfo

@@ -37,8 +37,8 @@ impl MemoryType {
 
 // ── Memory Map ───────────────────────────────────────────────────────────────
 
-/// Maximum memory map entries (fits in a single page).
-pub const MAX_MEMORY_ENTRIES: usize = 256;
+/// Maximum memory map entries (fits in 4 pages).
+pub const MAX_MEMORY_ENTRIES: usize = 512;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -126,13 +126,13 @@ impl BootInfo {
         self.magic == BOOT_MAGIC && self.version >= PROTOCOL_VERSION
     }
 
-    /// Compile-time guard: BootInfo must fit in the 2 pages reserved by the
-    /// bootloader. It does not need to be exactly 8 KiB; it only needs a stable
+    /// Compile-time guard: BootInfo must fit in the 4 pages reserved by the
+    /// bootloader. It does not need to be exactly 16 KiB; it only needs a stable
     /// `repr(C)` layout shared by bootloader and kernel.
     #[allow(dead_code)]
     const SIZE_CHECK: () = assert!(
-        core::mem::size_of::<Self>() <= 8192,
-        "BootInfo must fit in the bootloader's 2-page allocation"
+        core::mem::size_of::<Self>() <= 16384,
+        "BootInfo must fit in the bootloader's 4-page allocation"
     );
 
     /// Framebuffer pitch in bytes (stride × 4 for 32bpp).
