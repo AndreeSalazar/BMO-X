@@ -141,6 +141,9 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     if bi.memory_map_count == 0 {
         crate::log::fault("phase1", "UEFI memory map is empty");
     }
+    if bi.memory_map_count == fastos_boot_protocol::MAX_MEMORY_ENTRIES as u32 {
+        crate::log::warn("phase1", "UEFI memory map count reached MAX_MEMORY_ENTRIES limit. Memory map might be truncated!");
+    }
 
     // Init frame allocator from UEFI memory map
     unsafe {
