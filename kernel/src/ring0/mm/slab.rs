@@ -244,6 +244,13 @@ pub fn init_heap() {
         if INITIALIZED { return; }
         for i in 0..CACHE_COUNT {
             CACHES[i].obj_size = CACHE_SIZES[i];
+            // Pre-allocate 16 slabs per size class to warm up the heap (16 * 16 * 4096 = 1 MiB total initial heap)
+            for _ in 0..16 {
+                if let Some(new_slab) = slab_create(i) {
+                    let list_e = &mut CACHES[i].empty as *mut *mut SlabHead;
+                    link_slab(&mut *new_slab, &mut *list_e);
+                }
+            }
         }
         INITIALIZED = true;
     }

@@ -57,9 +57,9 @@ pub fn init() {
     crate::dev::console::serial_write("[bmo_core] init: cabina\n");
     crate::cabina::init();
     crate::dev::console::serial_write("[bmo_core] init: defensa\n");
-    // TODO: crate::defense::init();  — ByteDefender stub needed
+    crate::defense::init();
     crate::dev::console::serial_write("[bmo_core] init: timeback\n");
-    // TODO: crate::timeback::init();  — checkpoint/journal stub needed
+    crate::timeback::init();
     crate::dev::console::serial_write("[bmo_core] init: mark ready\n");
     cabina_mark_ready();
     crate::dev::console::serial_write("[bmo_core] init: fs\n");

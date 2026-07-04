@@ -62,6 +62,14 @@ pub mod omni;
 // ── Devour: PE/ELF → BEF translation ─────────────────────────────────
 pub mod devour;
 
+// ── Trilogía subsystems (defense + timeback + userland) ────────────
+#[path = "../defense/mod.rs"]
+pub mod defense;
+#[path = "../timeback/mod.rs"]
+pub mod timeback;
+#[path = "../userland/mod.rs"]
+pub mod userland;
+
 // ── Other Ring 0 modules ────────────────────────────────────────────
 mod panic;
 pub mod profile;

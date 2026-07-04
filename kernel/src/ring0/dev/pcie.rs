@@ -198,6 +198,7 @@ pub struct PciDevice {
     pub bar1: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct PciScanResult {
     pub devices: [PciDevice; 64],
     pub count: usize,
@@ -232,85 +233,80 @@ pub static mut SCAN_RESULT: Option<PciScanResult> = None;
 // ── Scan ──────────────────────────────────────────────────────────
 
 pub fn scan_pci_bus() -> PciScanResult {
-    // v1.6.10: UEFI had IO ports disabled, ECAM broken.
-    // v3.1: Re-enabled — try IO ports first. If they hang, the user
-    // will see no AHCI devices and we fall back to empty result.
-    crate::dev::console::serial_write("[pci] scan_pci_bus: trying IO ports (0xCF8/0xCFC)...\n");
+    if unsafe { USE_ECAM } {
+        crate::dev::console::serial_write("[pci] scan_pci_bus: scanning via ECAM MMIO...\n");
+    } else {
+        crate::dev::console::serial_write("[pci] scan_pci_bus: scanning via legacy IO ports (0xCF8/0xCFC)...\n");
 
-    // Probe: try reading vendor ID from Bus 0, Dev 0, Fn 0
-    let probe = pci_read32_io(0, 0, 0, 0x00);
-    let vendor = (probe & 0xFFFF) as u16;
-    if vendor == 0xFFFF {
-        // No device at Bus 0 Dev 0 — but IO ports might still work
-        // (just no device there). Try a few more common addresses.
-        let probe2 = pci_read32_io(0, 1, 0, 0x00);
-        let v2 = (probe2 & 0xFFFF) as u16;
-        if v2 == 0xFFFF {
-            crate::dev::console::serial_write("[pci] IO ports: no devices found on Bus 0 (probe=0x");
-            print_hex(probe as u64);
-            crate::dev::console::serial_write(")\n");
-            // Could be that IO ports are broken OR just no devices on bus 0.
-            // Try full scan anyway — if IO ports work, we'll find AHCI.
+        // Probe: try reading vendor ID from Bus 0, Dev 0, Fn 0
+        let probe = pci_read32_io(0, 0, 0, 0x00);
+        let vendor = (probe & 0xFFFF) as u16;
+        if vendor == 0xFFFF {
+            // No device at Bus 0 Dev 0 — but IO ports might still work
+            let probe2 = pci_read32_io(0, 1, 0, 0x00);
+            let v2 = (probe2 & 0xFFFF) as u16;
+            if v2 == 0xFFFF {
+                crate::dev::console::serial_write("[pci] IO ports: no devices found on Bus 0 (probe=0x");
+                print_hex(probe as u64);
+                crate::dev::console::serial_write(")\n");
+            }
         }
+        crate::dev::console::serial_write("[pci] IO probe completed, starting scan...\n");
     }
-    crate::dev::console::serial_write("[pci] IO probe OK, starting full scan...\n");
 
-    let mut r = scan_pci_bus_io();
+    let r = scan_pci_bus_internal();
     crate::dev::console::serial_write("[pci] scan complete: ");
     print_u32(r.count as u32);
     crate::dev::console::serial_write(" devices found\n");
 
-    // Store first, then log from the stored reference
+    // Store permanently in SCAN_RESULT so subsequent queries work
     unsafe { SCAN_RESULT = Some(r); }
 
     // Log each device found
     unsafe {
-    if let Some(ref res) = SCAN_RESULT {
-    for i in 0..res.count {
-        let d = &res.devices[i];
-        crate::dev::console::serial_write("  [");
-        print_u32(i as u32);
-        crate::dev::console::serial_write("] PCI ");
-        print_u32(d.bus as u32);
-        crate::dev::console::serial_write(":");
-        print_u32(d.device as u32);
-        crate::dev::console::serial_write(".");
-        print_u32(d.function as u32);
-        crate::dev::console::serial_write(" VD=0x");
-        print_hex(((d.device_id as u64) << 16) | (d.vendor_id as u64));
-        crate::dev::console::serial_write(" class=");
-        print_u32(d.class_code as u32);
-        crate::dev::console::serial_write("/");
-        print_u32(d.subclass as u32);
-        crate::dev::console::serial_write(" BAR0=0x");
-        print_hex(d.bar0 as u64);
-        crate::dev::console::serial_write("\n");
-    }
-    }
+        if let Some(ref res) = SCAN_RESULT {
+            for i in 0..res.count {
+                let d = &res.devices[i];
+                crate::dev::console::serial_write("  [");
+                print_u32(i as u32);
+                crate::dev::console::serial_write("] PCI ");
+                print_u32(d.bus as u32);
+                crate::dev::console::serial_write(":");
+                print_u32(d.device as u32);
+                crate::dev::console::serial_write(".");
+                print_u32(d.function as u32);
+                crate::dev::console::serial_write(" VD=0x");
+                print_hex(((d.device_id as u64) << 16) | (d.vendor_id as u64));
+                crate::dev::console::serial_write(" class=");
+                print_u32(d.class_code as u32);
+                crate::dev::console::serial_write("/");
+                print_u32(d.subclass as u32);
+                crate::dev::console::serial_write(" BAR0=0x");
+                print_hex(d.bar0 as u64);
+                crate::dev::console::serial_write("\n");
+            }
+        }
     }
 
-    unsafe { SCAN_RESULT.take().unwrap() }
+    unsafe { SCAN_RESULT.clone().unwrap() }
 }
 
-/// Scan PCI bus using legacy IO ports (0xCF8/0xCFC) — 256 buses max.
-/// v1.6.10: NOT CALLED. The Ryzen 5 5600X UEFI firmware wedges the
-/// CPU on any 0xCF8/0xCFC transaction, so this is dead code until
-/// we have a real ECAM path. Kept for the day ECAM is fixed and
-/// we want a non-MCFG fallback for old machines.
-#[allow(dead_code)]
-fn scan_pci_bus_io() -> PciScanResult {
+/// Safe internal PCI scanning using generic pci_read32 (auto-selects ECAM/IO ports).
+fn scan_pci_bus_internal() -> PciScanResult {
     let mut r = PciScanResult::new();
-    for bus in 0..=255u16 {
+    let max_bus = if unsafe { USE_ECAM } { unsafe { ECAM_END_BUS as u16 } } else { 15 };
+
+    for bus in 0..=max_bus {
         for dev in 0..32u8 {
-            let vd = pci_read32_io(bus as u8, dev, 0, 0x00);
+            let vd = pci_read32(bus as u8, dev, 0, 0x00);
             let vendor = (vd & 0xFFFF) as u16;
             if vendor == 0xFFFF { continue; }
             let device_id = ((vd >> 16) & 0xFFFF) as u16;
-            let cr = pci_read32_io(bus as u8, dev, 0, 0x08);
-            let hdr = pci_read32_io(bus as u8, dev, 0, 0x0C);
+            let cr = pci_read32(bus as u8, dev, 0, 0x08);
+            let hdr = pci_read32(bus as u8, dev, 0, 0x0C);
             let multi = (hdr >> 16) & 0x80 != 0;
-            let bar0 = pci_read32_io(bus as u8, dev, 0, 0x10);
-            let bar1 = pci_read32_io(bus as u8, dev, 0, 0x14);
+            let bar0 = pci_read32(bus as u8, dev, 0, 0x10);
+            let bar1 = pci_read32(bus as u8, dev, 0, 0x14);
             if r.count < 64 {
                 r.devices[r.count] = PciDevice {
                     bus: bus as u8, device: dev, function: 0,
@@ -323,12 +319,12 @@ fn scan_pci_bus_io() -> PciScanResult {
             }
             if multi {
                 for func in 1..8u8 {
-                    let vd2 = pci_read32_io(bus as u8, dev, func, 0x00);
+                    let vd2 = pci_read32(bus as u8, dev, func, 0x00);
                     let v2 = (vd2 & 0xFFFF) as u16;
                     if v2 == 0xFFFF { continue; }
-                    let cr2 = pci_read32_io(bus as u8, dev, func, 0x08);
-                    let b0 = pci_read32_io(bus as u8, dev, func, 0x10);
-                    let b1 = pci_read32_io(bus as u8, dev, func, 0x14);
+                    let cr2 = pci_read32(bus as u8, dev, func, 0x08);
+                    let b0 = pci_read32(bus as u8, dev, func, 0x10);
+                    let b1 = pci_read32(bus as u8, dev, func, 0x14);
                     if r.count < 64 {
                         r.devices[r.count] = PciDevice {
                             bus: bus as u8, device: dev, function: func,
@@ -342,7 +338,6 @@ fn scan_pci_bus_io() -> PciScanResult {
                     }
                 }
             }
-            if bus > 0 && dev == 0 && r.count == 0 { break; }
         }
         if bus > 0 && r.count == 0 {
             let found_on_0 = scan_any_on_bus(0);
@@ -354,7 +349,7 @@ fn scan_pci_bus_io() -> PciScanResult {
 
 fn scan_any_on_bus(bus: u8) -> bool {
     for dev in 0..32u8 {
-        let vd = pci_read32_io(bus, dev, 0, 0x00);
+        let vd = pci_read32(bus, dev, 0, 0x00);
         if (vd & 0xFFFF) as u16 != 0xFFFF { return true; }
     }
     false
