@@ -30,11 +30,9 @@ pub use cabina_panels;
 #[path = "../cabina/mod.rs"]
 pub mod cabina;
 
-// ── Temporary stubs for bmo_core dependencies ──────────────────────
+// ── BMO support dependencies ───────────────────────────────────────
 #[path = "../bmo_gpu/mod.rs"]
 pub mod bmo_gpu;
-#[path = "../lang/mod.rs"]
-pub mod lang;
 
 
 // ── Boot infrastructure (moved from boot/) ──────────────────────────

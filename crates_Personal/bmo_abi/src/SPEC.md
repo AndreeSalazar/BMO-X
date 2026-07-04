@@ -20,6 +20,10 @@ Reemplaza:
 **No** es un reemplazo de los lenguajes: es un **contrato** que **todos los
 lenguajes pueden usar** para hablar con FastOS.
 
+Frontends como C y COBOL deben vivir fuera del kernel (por ejemplo en
+`crates_Personal/Lenguajes/`) y generar BEF offline. El kernel solo carga BEF,
+resuelve imports y ofrece syscalls BMO; no compila lenguajes en Ring 0.
+
 ---
 
 ## 1. Principios de diseño

@@ -232,11 +232,13 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         }
 
         let result = match nr {
-            // ─── Reserved BMO ABI range (0x100..=0x1FF) ──────────────
-            // Ring 0 does not own the higher-level BMO dispatcher here.
-            // Keep the range explicitly reserved and fail closed.
+            // ─── BMO ABI range (0x100..=0x1FF) ──────────────────────
+            // Ring 0 owns the architectural syscall gate; BMO Core owns the
+            // higher-level API contract. Bridge the canonical ABI range here
+            // so early Ring 3/BEF commands can use windowing, FS, time,
+            // memory, process and debug services through one stable table.
             n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                u64::MAX
+                crate::bmo_core::bmo_api::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, a5)
             }
 
             // ─── Procesos ─────────────────────────────────────────────

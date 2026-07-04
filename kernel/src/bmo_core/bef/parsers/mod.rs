@@ -21,6 +21,7 @@ pub mod elf_thunks;
 pub mod meta_sections;
 pub mod runtime;
 
+#[cfg(test)]
 pub mod tests;
 
 // pe_imports and pe_thunks moved to crate::bmo_gpu::shims (v1.7.9)
@@ -159,6 +160,5 @@ pub(crate) fn fake_provenance_image(prov: Provenance) -> Image {
         tls_size: 0,
     }
 }
-
 
 

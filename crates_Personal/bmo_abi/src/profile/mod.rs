@@ -1,6 +1,6 @@
 //! `bmo_abi::profile` — Perfiles de lenguaje.
 //!
-//! Cada frontend (C, BMO, Java-BMO, Python-BMO, ...) implementa un
+//! Cada frontend (C, COBOL, BMO, Java-BMO, Python-BMO, ...) implementa un
 //! `BmoLanguageProfile` que describe **cómo** se compila el código
 //! fuente a BEF.
 //!
@@ -10,7 +10,7 @@
 //!  ┌─────────────────────────────────────────────────────────────┐
 //!  │ BmoLanguageProfile                                          │
 //!  │   name:        &'static str                                 │
-//!  │   frontend:    FrontendKind (C | BMO | JavaBMO | PythonBMO) │
+//!  │   frontend:    FrontendKind (C | COBOL | BMO | JavaBMO)     │
 //!  │   backend:     BackendKind  (AotX86_64 | PortableIR)        │
 //!  │   runtime:     RuntimeKind  (None | CMin | JavaCore | ...)  │
 //!  │   output:      BEF                                          │
@@ -47,6 +47,8 @@ pub enum FrontendKind {
     PythonBmo = 5,
     /// Ada.
     Ada     = 6,
+    /// COBOL clásico/empresarial compilado AOT a BEF.
+    Cobol   = 7,
     /// Lenguaje custom / third-party.
     Custom  = 0xFF,
 }
@@ -61,6 +63,7 @@ impl FrontendKind {
             Self::JavaBmo => "java-bmo",
             Self::PythonBmo => "python-bmo",
             Self::Ada => "ada",
+            Self::Cobol => "cobol",
             Self::Custom => "custom",
         }
     }
@@ -104,6 +107,8 @@ pub enum RuntimeKind {
     PythonCore = 4,
     /// Runtime Rust (panic handler, allocator).
     RustCore  = 5,
+    /// Runtime COBOL mínimo: decimal fijo, records, DISPLAY/ACCEPT y archivos.
+    CobolCore = 6,
 }
 
 impl RuntimeKind {
@@ -115,6 +120,7 @@ impl RuntimeKind {
             Self::JavaCore => "java_core",
             Self::PythonCore => "python_core",
             Self::RustCore => "rust_core",
+            Self::CobolCore => "cobol_core",
         }
     }
 }
@@ -178,6 +184,19 @@ impl BmoLanguageProfile {
         uses_bmo_abi: true,
         ring0_capable: false,
     };
+
+    /// Perfil de COBOL: AOT CPU + runtime mínimo orientado a datos/archivos.
+    ///
+    /// COBOL no requiere GPU: su valor inicial está en CPU, registros fijos,
+    /// decimal empaquetado, batch y FS sobre syscalls BMO.
+    pub const COBOL: Self = Self {
+        name: "COBOL",
+        frontend: FrontendKind::Cobol,
+        backend: BackendKind::AotX86_64,
+        runtime: RuntimeKind::CobolCore,
+        uses_bmo_abi: true,
+        ring0_capable: false,
+    };
 }
 
 // ─── Profiles predefinidos ────────────────────────────────────────
@@ -186,6 +205,7 @@ impl BmoLanguageProfile {
 pub const ALL_PROFILES: &[BmoLanguageProfile] = &[
     BmoLanguageProfile::BMO,
     BmoLanguageProfile::C,
+    BmoLanguageProfile::COBOL,
     BmoLanguageProfile::JAVA_BMO,
     BmoLanguageProfile::PYTHON_BMO,
 ];

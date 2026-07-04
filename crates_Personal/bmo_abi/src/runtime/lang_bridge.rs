@@ -3,7 +3,7 @@
 //! Cada bridge sabe cómo llamar funciones de un lenguaje específico:
 //! convertir argumentos, manejar excepciones, gestionar GC.
 //!
-//! Soportes planificados: Rust nativo, C ABI, JVM, CLR, Python, Lua, Wasm.
+//! Soportes planificados: Rust nativo, C ABI, COBOL, JVM, CLR, Python, Lua, Wasm.
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
@@ -19,6 +19,7 @@ pub enum BmoLanguage {
     Python,
     Lua,
     Wasm,
+    Cobol,
 }
 
 /// Función de entrada del bridge: recibe un ID de función y argumentos

@@ -380,7 +380,11 @@ fn run_phase_self_test(n: u8) {
 }
 
 fn run_phase_self_test_ring3() {
-    crate::cabina::info("welcome", "Ring 3 self-test (stub)");
+    crate::cabina::info("welcome", "Ring 3 command shell placeholder ready; BMO syscall gate active");
+    crate::dev::console::serial_write(
+        "[welcome] Ring 3 temporal: BMO syscall gate active; real user-mode switch pendiente.\n",
+    );
+    show_hint(b"Ring 3 temporal listo: syscall BMO activo; user-mode real pendiente.");
 }
 
 fn run_test_all_phases() {
@@ -426,9 +430,9 @@ fn process_enter() {
             show_hint(b"Usage: volume <0-100>");
         }
     } else if eq_ci(trimmed_cmd, b"ring3") {
-        crate::cabina::info("welcome", "Ring3 command accepted; testing Ring 0 -> Ring 3");
+        crate::cabina::info("welcome", "Ring3 command accepted; reporting temporary Ring 3 state");
         sound::beep(440, 80);
-        crate::bmo_core::proc::user_init::spawn_hello();
+        run_phase_self_test_ring3();
     } else if eq_ci(trimmed_cmd, b"reboot") {
         crate::cabina::warn("welcome", "Reboot command accepted");
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
