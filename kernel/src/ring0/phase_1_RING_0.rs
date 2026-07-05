@@ -22,12 +22,17 @@ use crate::context::BootContext;
 // ── Crash marker ────────────────────────────────────────────────────────────
 
 const CRASH_MARKER_ADDR: u64 = 0x9_0000;
+const RAM_STAGE_ADDR: u64 = 0x9_0010;
 const CRASH_MAGIC: u32 = 0x464F_5343; // "FOSC"
 
 pub fn write_crash_marker(stage: u32) {
     unsafe {
         core::ptr::write_volatile(CRASH_MARKER_ADDR as *mut u32, CRASH_MAGIC);
         core::ptr::write_volatile((CRASH_MARKER_ADDR + 4) as *mut u32, stage);
+        // Bootloader also reads this secondary warm-reset slot when the main
+        // magic word was not preserved by firmware. Keep both in sync so a
+        // Phase 1 reset reports `p1_*` instead of `unknown_ram_stage`.
+        core::ptr::write_volatile(RAM_STAGE_ADDR as *mut u32, stage);
     }
 }
 
@@ -131,9 +136,13 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
 // ── Phase 1: Memory Init (frame allocator + heap + high-mem) ────────────────
 
 fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
+    write_crash_marker(2100);
+    crate::uefi_rt::write_boot_stage("p1_enter");
     crate::log::info("phase1", "=== Phase 1: Memory Init ===");
 
     // Validate UEFI memory map
+    write_crash_marker(2101);
+    crate::uefi_rt::write_boot_stage("p1_bootinfo");
     let bi = match ctx.boot_info() {
         Some(bi) => bi,
         None => crate::log::fault("phase1", "BootInfo is null"),
@@ -146,6 +155,8 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     }
 
     // Init frame allocator from UEFI memory map
+    write_crash_marker(2102);
+    crate::uefi_rt::write_boot_stage("p1_phys_init");
     unsafe {
         crate::mm::phys::init(
             &bi.memory_map,
@@ -156,18 +167,21 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
             0, // kernel_size
         );
     }
+    write_crash_marker(2103);
+    crate::uefi_rt::write_boot_stage("p1_phys_done");
     let early_free_pages = crate::mm::phys::free_count();
     let early_free_mb = (early_free_pages * 4096) / (1024 * 1024);
     crate::log::info_u64("phase1", "bootstrap free pages (< 2 GB)", early_free_pages as u64);
     crate::log::info_u64("phase1", "bootstrap free MB", early_free_mb as u64);
 
-    // Map all physical RAM into high-mem region
-    unsafe {
-        crate::mm::virt::map_high_mem(&bi.memory_map, bi.memory_map_count as usize);
-        // Safely free memory above 2 GB after page tables are active
-        crate::mm::phys::free_high_memory(&bi.memory_map, bi.memory_map_count as usize);
-    }
-    crate::log::info("phase1", "high-mem mapped");
+    // High-memory mapping is deliberately deferred in this safety build.
+    // The previous boot died immediately after `p0_timer_done`, before Phase 1
+    // could report progress. Keep the allocator on its low identity-mapped
+    // bootstrap window first; once Ring 0 reaches the ready screen reliably,
+    // high-mem can be re-enabled with a dedicated page-table validation pass.
+    write_crash_marker(2104);
+    crate::uefi_rt::write_boot_stage("p1_highmem_deferred");
+    crate::log::warn("phase1", "high-mem deferred for stable Ring 0 bootstrap");
 
     let free_pages = crate::mm::phys::free_count();
     let free_mb = (free_pages * 4096) / (1024 * 1024);
@@ -175,10 +189,14 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::log::info_u64("phase1", "total free MB", free_mb as u64);
 
     // Init kernel heap
+    write_crash_marker(2105);
+    crate::uefi_rt::write_boot_stage("p1_heap_init");
     crate::mm::heap::init_heap();
     crate::log::info("phase1", "heap initialized");
 
     // Smoke test
+    write_crash_marker(2106);
+    crate::uefi_rt::write_boot_stage("p1_heap_smoke");
     unsafe {
         let test = alloc::alloc::alloc(core::alloc::Layout::from_size_align(64, 8).unwrap());
         if !test.is_null() {
@@ -189,6 +207,8 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
             crate::log::fault("phase1", "heap smoke test FAILED");
         }
     }
+    write_crash_marker(2107);
+    crate::uefi_rt::write_boot_stage("p1_done");
 
     // Persist state
     ctx.memory.free_pages = free_pages as u64;

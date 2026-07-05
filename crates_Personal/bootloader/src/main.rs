@@ -283,6 +283,9 @@ fn ram_stage_name(val: u32) -> &'static str {
         0x4542_5300 => "post_EBS",          // "EBS\0"
         0x4E56_5200 => "post_NVRAM",         // "NVR\0"
         0x4A4D_5000 => "post_kernel_jump",   // "JMP\0"
+        // Kernel mirrors its numeric crash marker here after handoff. If the
+        // primary magic slot is lost on warm reset, still decode the phase.
+        n if n < 10_000 => ram_marker_name(n),
         _ => "unknown_ram_stage",
     }
 }
@@ -331,6 +334,17 @@ fn ram_marker_name(stage: u32) -> &'static str {
         203 => "p0_cpu_init",
         204 => "p0_cpu_done",
         205 => "p0_abi_init",
+        206 => "p0_clock_done",
+        207 => "p0_timer",
+        208 => "p0_timer_done",
+        2100 => "p1_enter",
+        2101 => "p1_bootinfo",
+        2102 => "p1_phys_init",
+        2103 => "p1_phys_done",
+        2104 => "p1_highmem_deferred",
+        2105 => "p1_heap_init",
+        2106 => "p1_heap_smoke",
+        2107 => "p1_done",
         // cpu::init() sub-markers
         2031 => "cpu_step1_features",
         2032 => "cpu_step2_regs",
