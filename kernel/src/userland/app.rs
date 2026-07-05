@@ -1,13 +1,13 @@
-//! `userland::app` — Cargar y ejecutar apps de Ring 3 desde BEF/PE/ELF.
+﻿//! userland::app - Cargar y ejecutar apps de Ring 3 desde BEF/ELF.
 //!
 //! v1.8.8: API de alto nivel que:
-//! 1. Detecta el formato del binario (BEF nativo, PE, ELF).
+//! 1. Detecta el formato del binario (BEF nativo, ELF).
 //! 2. Lo carga con `bef::parsers::load` (que lo "devora" si no es BEF).
 //! 3. Lo mapea en memoria.
 //! 4. Salta a Ring 3 (`parsers::run_entry_point`).
 //!
-//! Esta función es la **puerta de userland** desde BMO Core. El
-//! welcome screen (o un futuro shell) llama a esta función para
+//! Esta funcion es la **puerta de userland** desde BMO Core. El
+//! welcome screen (o un futuro shell) llama a esta funcion para
 //! lanzar apps desde BEFs.
 
 #![allow(dead_code)]
@@ -16,23 +16,23 @@ use crate::bmo_core::bef::parsers::{self, BinaryFormat, Image, LoadError};
 use crate::bmo_core::bef::format::header::BefMagic;
 use crate::bmo_core::desktop3;
 
-/// Carga y ejecuta un binario (BEF/PE/ELF).
+/// Carga y ejecuta un binario (BEF/ELF).
 ///
 /// # Argumentos
 ///
-/// - `bytes`: contenido del binario (puede ser BEF, PE, o ELF).
+/// - `bytes`: contenido del binario (puede ser BEF o ELF).
 /// - `name`: nombre legible para Cabina.
 ///
 /// # Comportamiento
 ///
 /// 1. Detecta el formato con `BefMagic::detect`.
 /// 2. Carga con `bef::parsers::load` (devora si no es BEF nativo).
-/// 3. Si el formato es devorado (PE/ELF), lo traduce a BEF interno.
+/// 3. Si el formato es devorado (ELF), lo traduce a BEF interno.
 /// 4. Salta a Ring 3.
 ///
 /// # Retorno
 ///
-/// Esta función **NO retorna** en éxito (salta a Ring 3 con iretq).
+/// Esta funcion **NO retorna** en exito (salta a Ring 3 con iretq).
 /// En error, retorna `false` y el caller puede continuar.
 pub fn run(bytes: &[u8], name: &str) -> bool {
     crate::cabina::info("userland", &alloc::format!("launching: {}", name));
@@ -41,13 +41,12 @@ pub fn run(bytes: &[u8], name: &str) -> bool {
     let fmt = BefMagic::detect(bytes);
     let fmt_name = match fmt {
         BefMagic::BefNative => "BEF",
-        BefMagic::PeWindows => "PE (devoured)",
         BefMagic::ElfUnix => "ELF (devoured)",
-        BefMagic::Unknown => "unknown",
+        _ => "unknown",
     };
     crate::cabina::info("userland", &alloc::format!("format: {}", fmt_name));
 
-    // 2. Cargar (devora si es PE/ELF).
+    // 2. Cargar (devora si es ELF).
     let img = match parsers::load(bytes) {
         Ok(i) => i,
         Err(e) => {
@@ -64,20 +63,20 @@ pub fn run(bytes: &[u8], name: &str) -> bool {
     }
 
     if img.format == BinaryFormat::BefNative {
-        crate::cabina::info("userland", "BEF native — direct jump");
+        crate::cabina::info("userland", "BEF native - direct jump");
     } else {
         crate::cabina::info("userland", &alloc::format!("{:?} devorado y traducido a BEF",
                                                        img.format));
     }
 
-    // 4. Cabina: evento de auditoría antes de saltar a Ring 3.
+    // 4. Cabina: evento de auditoria antes de saltar a Ring 3.
     desktop3::observe_launch(name, img.format);
 
-    // 5. Saltar a Ring 3 (no retorna — divergente).
+    // 5. Saltar a Ring 3 (no retorna - divergente).
     unsafe { parsers::run_entry_point(&img); }
 }
 
-/// Carga un binario sin ejecutarlo (para tests / introspección).
+/// Carga un binario sin ejecutarlo (para tests / introspeccion).
 pub fn load_only(bytes: &[u8]) -> Result<Image, LoadError> {
     parsers::load(bytes)
 }
@@ -85,6 +84,5 @@ pub fn load_only(bytes: &[u8]) -> Result<Image, LoadError> {
 /// Lista de formatos soportados (para Cabina).
 pub const SUPPORTED_FORMATS: &[&str] = &[
     "BEF1 (FastOS native)",
-    "MZ (PE/Windows .exe/.dll — devoured)",
-    "\\x7FELF (Linux/Unix — devoured)",
+    "\\x7FELF (Linux/Unix - devoured)",
 ];

@@ -1,20 +1,18 @@
-//! Loader BEF — entry point único que devora 3 formatos: BEF, PE, ELF.
+﻿//! Loader BEF - entry point unico que devora 2 formatos: BEF, ELF.
 //!
-//! ```text
-//!   bef::load(bytes) ──▶ detect_format ─┬──▶ native::load (BEF)
-//!                                       ├──▶ pe::load     (Windows .exe/.dll)
-//!                                       └──▶ elf::load    (Linux/Unix)
-//!                              │
-//!                              ▼
-//!                          Image (representación BEF unificada)
-//! ```
+//! `	ext
+//!   bef::load(bytes) ---> detect_format ---> native::load (BEF)
+//!                                       ---> elf::load    (Linux/Unix)
+//!                              |
+//!                              v
+//!                          Image (representacion BEF unificada)
+//! `
 
 #![allow(dead_code)]
 
 extern crate alloc;
 
 pub mod native;
-pub mod pe;
 pub mod elf;
 pub mod elf_dynamic;
 pub mod elf_thunks;
@@ -24,8 +22,6 @@ pub mod runtime;
 #[cfg(test)]
 pub mod tests;
 
-// pe_imports and pe_thunks moved to crate::bmo_gpu::shims (v1.7.9)
-
 use crate::bmo_core::bef::format::header::BefMagic;
 use crate::bmo_core::bef::format::manifest::{Manifest, Provenance};
 
@@ -34,8 +30,6 @@ use crate::bmo_core::bef::format::manifest::{Manifest, Provenance};
 pub enum BinaryFormat {
     /// BEF nativo de FastOS.
     BefNative,
-    /// PE devorado y traducido a BEF interno.
-    PeDevoured,
     /// ELF devorado y traducido a BEF interno.
     ElfDevoured,
 }
@@ -52,8 +46,8 @@ pub enum LoadError {
     NotImplemented,
 }
 
-/// Imagen cargada en memoria — representación BEF unificada (cualquier
-/// origen acaba aquí).
+/// Imagen cargada en memoria - representacion BEF unificada (cualquier
+/// origen acaba aqui).
 pub struct Image {
     pub format: BinaryFormat,
     pub manifest: Manifest,
@@ -76,7 +70,7 @@ pub struct MappedSection {
     pub data_ptr: u64,
 }
 
-/// Punto de entrada universal — detecta formato y delega al sub-loader.
+/// Punto de entrada universal - detecta formato y delega al sub-loader.
 pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     // Initialize runtime symbol table if not done.
     static INIT: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
@@ -87,9 +81,8 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
 
     match BefMagic::detect(bytes) {
         BefMagic::BefNative => native::load(bytes),
-        BefMagic::PeWindows => pe::load(bytes),
         BefMagic::ElfUnix   => elf::load(bytes),
-        BefMagic::Unknown   => Err(LoadError::UnknownFormat),
+        _                   => Err(LoadError::UnknownFormat),
     }
 }
 
@@ -121,9 +114,6 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
     }
     let stack_top = stack_ptr as u64 + 65536;
 
-    // Switch to user page table if the image has one.
-    // For now, use kernel page table (identity-mapped).
-
     // Jump to Ring 3 via iretq.
     core::arch::asm!(
         "push qword ptr {user_ss}",
@@ -140,7 +130,7 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
     );
 }
 
-/// Helper compartido — sintetiza una `MappedSection` vacía.
+/// Helper compartido - sintetiza una MappedSection vacia.
 pub(crate) fn placeholder_section(kind: u8) -> MappedSection {
     MappedSection { kind, virt_addr: 0, size: 0, flags: 0, data_ptr: 0 }
 }
@@ -149,8 +139,8 @@ pub(crate) fn fake_provenance_image(prov: Provenance) -> Image {
     Image {
         format: match prov {
             Provenance::Native      => BinaryFormat::BefNative,
-            Provenance::PeDevoured  => BinaryFormat::PeDevoured,
             Provenance::ElfDevoured => BinaryFormat::ElfDevoured,
+            _                       => BinaryFormat::BefNative,
         },
         manifest: Manifest::synthetic_for("(stub)", prov),
         entry_point: 0,
@@ -160,5 +150,3 @@ pub(crate) fn fake_provenance_image(prov: Provenance) -> Image {
         tls_size: 0,
     }
 }
-
-

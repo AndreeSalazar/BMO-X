@@ -1,40 +1,40 @@
-//! FastOS/BMO v1.8.8
+﻿//! FastOS/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!
-//! v1.8.8 — BMO Core coordinator.
+//! v1.8.8 â€” BMO Core coordinator.
 //!
-//! Coordina la inicialización y entrada de todos los subsistemas de BMO Core.
+//! Coordina la inicializaciÃ³n y entrada de todos los subsistemas de BMO Core.
 //!
-//! ## Orden de inicialización (v1.8.8)
+//! ## Orden de inicializaciÃ³n (v1.8.8)
 //!
-//! 1. **Cabina**    (cabina)         — El Ojo: log, telemetry, overlay
-//! 2. **Defense**   (defense)        — El Escudo: ByteDefender (BEF scanner)
-//! 3. **TimeBack**  (timeback)       — El Reloj: checkpoints + journal
-//! 4. **UI**        (ui)             — framebuffer + 8x16 font
-//! 5. **FS**        (fs)             — ramdisk + exFAT + BMO-FS
-//! 6. **GPU**       (bmo_gpu)        — GPU bridge (RDNA4 skeleton)
-//! 7. **BEF**       (bef)            — BEF format + loaders
-//! 8. **BMO API**   (bmo_api)        — 256 syscalls + WM + paint
-//! 9. **Desktop**   (desktop)        — welcome + render + dock
+//! 1. **Cabina**    (cabina)         â€” El Ojo: log, telemetry, overlay
+//! 2. **Defense**   (defense)        â€” El Escudo: ByteDefender (BEF scanner)
+//! 3. **TimeBack**  (timeback)       â€” El Reloj: checkpoints + journal
+//! 4. **UI**        (ui)             â€” framebuffer + 8x16 font
+//! 5. **FS**        (fs)             â€” ramdisk + exFAT + BMO-FS
+//! 6. **GPU**       (bmo_gpu)        â€” GPU bridge (RDNA4 skeleton)
+//! 7. **BEF**       (bef)            â€” BEF format + loaders
+//! 8. **BMO API**   (bmo_api)        â€” 256 syscalls + WM + paint
+//! 9. **Desktop**   (desktop)        â€” welcome + render + dock
 //!
 //! ## Punto de entrada
 //!
-//! `init()` se llama desde `ring0::coordinator::main` después de las 5 fases
+//! `init()` se llama desde `ring0::coordinator::main` despuÃ©s de las 5 fases
 //! de boot (p0..p4). `enter()` se llama al final del coordinator y NO retorna.
 //!
 //! ## Hand-offs
 //!
 //! ```text
 //! Ring 0 boot
-//!     │
-//!     ▼
+//!     â”‚
+//!     â–¼
 //! ring0::coordinator::main
-//!     │
-//!     ├─► vendor::amd::cpu::zen3::init_fastos_cpu
-//!     ├─► boot::phases::run_all(p0..p4)
-//!     ├─► bmo_core::init()              ← este archivo
-//!     └─► bmo_core::enter()             ← welcome + event loop (no return)
+//!     â”‚
+//!     â”œâ”€â–º vendor::amd::cpu::zen3::init_fastos_cpu
+//!     â”œâ”€â–º boot::phases::run_all(p0..p4)
+//!     â”œâ”€â–º bmo_core::init()              â† este archivo
+//!     â””â”€â–º bmo_core::enter()             â† welcome + event loop (no return)
 //! ```
 
 use super::bmo_api;
@@ -46,13 +46,13 @@ use super::desktop3;
 
 /// Inicializa todos los subsistemas de BMO Core.
 ///
-/// Esta función **retorna** y debe llamarse una sola vez al boot,
-/// después de las fases p0..p4 de Ring 0.
+/// Esta funciÃ³n **retorna** y debe llamarse una sola vez al boot,
+/// despuÃ©s de las fases p0..p4 de Ring 0.
 pub fn init() {
     crate::dev::console::serial_write("[bmo_core] init: starting\n");
-    // ── Trilogía: los 3 mosqueteros (hermanos, no bmo_core) ────────
-    // Cabina  = El Ojo   (observación)
-    // Defense = El Escudo (protección)
+    // â”€â”€ TrilogÃ­a: los 3 mosqueteros (hermanos, no bmo_core) â”€â”€â”€â”€â”€â”€â”€â”€
+    // Cabina  = El Ojo   (observaciÃ³n)
+    // Defense = El Escudo (protecciÃ³n)
     // TimeBack= El Reloj (rollback)
     crate::dev::console::serial_write("[bmo_core] init: cabina\n");
     crate::cabina::init();
@@ -69,11 +69,11 @@ pub fn init() {
     fs::init();
     crate::dev::console::serial_write("[bmo_core] init: bmo_gpu\n");
 
-    // 6) GPU bridge: PE/ELF shims + BSF shaders.
-    // TODO: bmo_gpu::init();  — re-enable when bmo_gpu exists
+    // 6) GPU bridge: ELF shims + BSF shaders.
+    // TODO: bmo_gpu::init();  â€” re-enable when bmo_gpu exists
     crate::dev::console::serial_write("[bmo_core] init: bef\n");
 
-    // 7) BEF loader: format + loaders (PE/ELF/native).
+    // 7) BEF loader: format + loaders (BEF native + ELF).
     bef::init();
     crate::dev::console::serial_write("[bmo_core] init: bmo_api\n");
 
@@ -85,16 +85,16 @@ pub fn init() {
     desktop::init();
     crate::dev::console::serial_write("[bmo_core] init: desktop3\n");
 
-    // 10) desktop3: la cúpula encima de Ring 3 (única puerta).
+    // 10) desktop3: la cÃºpula encima de Ring 3 (Ãºnica puerta).
     desktop3::init();
     crate::dev::watchdog::pet_fch_watchdog();
     crate::dev::console::serial_write("[bmo_core] init: DONE\n");
 
-    // ── Tests integrados de la trilogía ────────────────────────────
+    // â”€â”€ Tests integrados de la trilogÃ­a â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // v1.8.8: tests DESHABILITADOS al boot por defecto.
     //
-    // Los 38 tests (cabina+defense+timeback+desktop3+bef) son útiles
-    // para validación, pero ejecutar `compile()` del BMO lang en cada
+    // Los 38 tests (cabina+defense+timeback+desktop3+bef) son Ãºtiles
+    // para validaciÃ³n, pero ejecutar `compile()` del BMO lang en cada
     // boot es demasiado costoso y puede colgarse.
     //
     // Para correr tests manualmente desde el welcome o el shell:
@@ -102,7 +102,7 @@ pub fn init() {
     //   `cabina::tests::run_all()` desde el shell
     //
     // Si quieres re-habilitar los tests en boot, descomenta las 3
-    // líneas siguientes. **Riesgo**: el BEF test compila programas
+    // lÃ­neas siguientes. **Riesgo**: el BEF test compila programas
     // BMO reales, lo que requiere ~5 MB de heap y puede tardar 1-2s.
     //
     // run_trilogy_tests();
@@ -112,7 +112,7 @@ pub fn init() {
     crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop+desktop3");
 }
 
-/// Cabina se considera "ready" solo después de init() (FB GOP OK).
+/// Cabina se considera "ready" solo despuÃ©s de init() (FB GOP OK).
 fn cabina_mark_ready() {
     crate::cabina::boot_ready();
 }
@@ -120,7 +120,7 @@ fn cabina_mark_ready() {
 /// Punto de entrada principal de BMO Core. Llamado desde
 /// `ring0::coordinator::main` al final del boot.
 ///
-/// Esta función **NO retorna**. Arranca el welcome screen, espera
+/// Esta funciÃ³n **NO retorna**. Arranca el welcome screen, espera
 /// input, procesa comandos, y queda en el event loop de desktop.
 pub fn enter(_ctx: &crate::context::BootContext, _t0: u64, _phase4_end: u64) -> ! {
     crate::dev::console::serial_write("[bmo_core] enter: START\n");
@@ -128,7 +128,7 @@ pub fn enter(_ctx: &crate::context::BootContext, _t0: u64, _phase4_end: u64) -> 
     crate::phase_1_RING_0::write_crash_marker(7);
     crate::uefi_rt::write_boot_stage("bmo_enter");
 
-    // Limpia el splash que dejó Ring 0.
+    // Limpia el splash que dejÃ³ Ring 0.
     crate::dev::console::serial_write("[bmo_core] enter: clear splash\n");
     crate::visual::clear();
     crate::dev::console::serial_write("[bmo_core] enter: splash cleared\n");
@@ -136,13 +136,15 @@ pub fn enter(_ctx: &crate::context::BootContext, _t0: u64, _phase4_end: u64) -> 
     // Inicializar el crate bmo_audio con la frecuencia de TSC calibrada.
     bmo_audio::init(crate::cpu::tsc_per_sec());
 
-    // Reproduce el logon sound (Windows 10/11 chime) ~1 second.
+    // Reproduce el logon sound (chime de bienvenida) ~1 second.
     crate::dev::console::serial_write("[bmo_core] enter: logon sound (bmo_audio)\n");
     bmo_audio::play_logon_chime();
     crate::dev::watchdog::pet_fch_watchdog();
     crate::dev::console::serial_write("[bmo_core] enter: logon done\n");
 
-    // Lanza el welcome. Esta función NO retorna.
+    // Lanza el welcome. Esta funciÃ³n NO retorna.
     crate::dev::console::serial_write("[bmo_core] enter: welcome::run\n");
     desktop::welcome::run();
 }
+
+

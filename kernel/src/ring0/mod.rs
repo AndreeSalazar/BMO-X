@@ -1,20 +1,10 @@
-//! Ring 0 — Hardware Abstraction Layer (entry point del binario).
+//! Ring 0 — Hardware Abstraction Layer.
 //!
-//! Ring 0 is the base layer that prepares ALL hardware for the system.
-//! It initializes CPU, memory, devices, and display, then stays in a
-//! visible GOP-safe idle screen until a higher layer is connected.
-//!
-//! Boot order:
+//! Boot order (desde main.rs):
 //!   1. _start: BSS zero, save boot_info_ptr
 //!   2. kernel_main_real: early NVRAM breadcrumb
 //!   3. phase_1_RING_0::main: full hardware init
 //!   4. Ring 0 ready screen + heartbeat loop
-
-#![no_std]
-#![no_main]
-#![allow(static_mut_refs)]
-
-extern crate alloc;
 
 // ── Core Ring 0 modules ─────────────────────────────────────────────
 pub mod arch;

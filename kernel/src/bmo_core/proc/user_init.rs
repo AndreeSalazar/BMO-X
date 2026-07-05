@@ -1,6 +1,6 @@
-use crate::bmo_core::bef::parsers::Image;
+﻿use crate::bmo_core::bef::parsers::Image;
 
-/// Spawn a process from a parsed Image (PE/ELF/BEF).
+/// Spawn a process from a parsed Image (ELF/BEF).
 ///
 /// Maps each section into user space at its virtual address, sets up a
 /// user stack, creates a Task, and marks the process for Linux emulation
@@ -20,9 +20,6 @@ pub fn spawn_from_image(img: &Image) {
         crate::bmo_core::bef::parsers::BinaryFormat::ElfDevoured => {
             proc.set_name("elf.bef");
             proc.linux_emulation = true;
-        }
-        crate::bmo_core::bef::parsers::BinaryFormat::PeDevoured => {
-            proc.set_name("pe.bef");
         }
         crate::bmo_core::bef::parsers::BinaryFormat::BefNative => {
             proc.set_name("bef.bef");
@@ -363,3 +360,4 @@ pub fn spawn_elf_hello() {
     crate::dev::console::serial_write("[bmo_core::proc] spawn_elf_hello: parse OK, spawning\n");
     spawn_from_image(&img);
 }
+

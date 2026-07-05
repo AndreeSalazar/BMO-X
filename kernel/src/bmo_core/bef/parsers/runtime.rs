@@ -1,13 +1,12 @@
-//! Runtime symbol table — resolves BEF imports to actual function addresses.
+﻿//! Runtime symbol table - resolves BEF imports to actual function addresses.
 //!
 //! Populated from:
 //!   1. BEF export tables (native binaries)
-//!   2. PE thunk table (devoured Windows binaries)
-//!   3. ELF thunk table (devoured Linux binaries)
-//!   4. Kernel-provided system calls
+//!   2. ELF thunk table (devoured Linux binaries)
+//!   3. Kernel-provided system calls
 //!
 //! The resolution pipeline:
-//!   ImportEntry → lookup (lib+name) → resolved address → patch binding_offset
+//!   ImportEntry -> lookup (lib+name) -> resolved address -> patch binding_offset
 
 #![allow(dead_code)]
 
@@ -22,7 +21,7 @@ const MAX_SYMBOLS: usize = 1024;
 /// A resolved symbol in the runtime table.
 #[derive(Debug, Clone, Copy)]
 pub struct RuntimeSymbol {
-    /// Library name (e.g., "kernel32.dll", "libc.so", "bmo:core").
+    /// Library name (e.g., "libc.so", "bmo:core").
     pub lib: &'static str,
     /// Symbol name (e.g., "ExitProcess", "malloc", "fb_fill").
     pub name: &'static str,
@@ -38,7 +37,6 @@ pub struct RuntimeSymbol {
 pub const SYM_EAGER: u32 = 1 << 0;
 pub const SYM_WEAK: u32 = 1 << 1;
 pub const SYM_KERNEL: u32 = 1 << 8;
-pub const SYM_PE_THUNK: u32 = 1 << 9;
 pub const SYM_ELF_THUNK: u32 = 1 << 10;
 pub const SYM_EXPORT: u32 = 1 << 11;
 
@@ -123,7 +121,7 @@ pub fn register_bef_exports(table: &ExportTable, base: u64) {
         };
         let addr = base + e.virt_addr;
         let flags = SYM_EXPORT | SYM_EAGER;
-        // Leak the name to get &'static str — acceptable in kernel ctx.
+        // Leak the name to get &'static str - acceptable in kernel ctx.
         let static_name = leak_str(name);
         register_symbol("bef", static_name, addr, flags);
     }
@@ -177,7 +175,7 @@ pub fn resolve_imports(
             }
             resolved += 1;
         } else if entry.flags & ImportFlags::WEAK.bits() != 0 {
-            // Weak import — write 0 (caller must null-check).
+            // Weak import - write 0 (caller must null-check).
             if entry.binding_offset != 0 {
                 patch_binding(entry.binding_offset, 0, mapped)?;
             }
@@ -217,8 +215,6 @@ fn patch_binding(
 
 /// Register kernel system call symbols.
 pub fn register_kernel_symbols() {
-    // Register core BMO syscalls as symbols.
-    // These are the addresses that imported functions resolve to.
     register_symbol("bmo:kernel", "ProcessExit",   0x0000_0001, SYM_KERNEL | SYM_EAGER);
     register_symbol("bmo:kernel", "Yield",         0x0000_0003, SYM_KERNEL | SYM_EAGER);
     register_symbol("bmo:kernel", "ThreadCreate",  0x0000_0004, SYM_KERNEL | SYM_EAGER);
@@ -230,19 +226,6 @@ pub fn register_kernel_symbols() {
     register_symbol("bmo:kernel", "KeyPoll",       0x0000_0070, SYM_KERNEL | SYM_EAGER);
     register_symbol("bmo:kernel", "Beep",          0x0000_0080, SYM_KERNEL | SYM_EAGER);
     register_symbol("bmo:kernel", "DebugPrint",    0x0000_00F0, SYM_KERNEL | SYM_EAGER);
-}
-
-/// Register PE thunk stubs as symbols.
-pub fn register_pe_thunk_symbols() {
-    use crate::bmo_gpu::shims::pe_thunks::THUNK_TABLE;
-    use crate::bmo_gpu::shims::pe_thunks::silent_stub as stub_fn;
-
-    for (_dll, fns) in THUNK_TABLE.iter() {
-        let addr = stub_fn as *const () as u64;
-        for (name, _val) in fns.iter() {
-            register_symbol(name, name, addr, SYM_PE_THUNK | SYM_EAGER);
-        }
-    }
 }
 
 /// Register ELF thunk stubs as symbols.
@@ -257,9 +240,8 @@ pub fn register_elf_thunk_symbols() {
     }
 }
 
-/// Normalize ELF library names (e.g., "libc.so.6" → "libc.so").
+/// Normalize ELF library names (e.g., "libc.so.6" -> "libc.so").
 fn normalize_lib_name<'a>(name: &'a str) -> &'a str {
-    // Find first '.' and use everything before it.
     if let Some(pos) = name.find('.') {
         &name[..pos]
     } else {
@@ -288,10 +270,6 @@ pub fn symbol_count() -> usize {
 /// Initialize the runtime symbol table with kernel + thunk symbols.
 pub fn init() {
     register_kernel_symbols();
-    register_pe_thunk_symbols();
     register_elf_thunk_symbols();
     crate::cabina::info_u64("bef", "runtime symbol table initialized", symbol_count() as u64);
 }
-
-
-

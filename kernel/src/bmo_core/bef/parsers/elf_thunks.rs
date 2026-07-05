@@ -1,7 +1,7 @@
-//! Fake-libs Linux/Unix — tabla de funciones que el devour-loader provee a
-//! binarios ELF para que **crean** que están corriendo sobre Linux/glibc.
+﻿//! Fake-libs Linux/Unix â€” tabla de funciones que el devour-loader provee a
+//! binarios ELF para que **crean** que estÃ¡n corriendo sobre Linux/glibc.
 //!
-//! Cuando un ELF importa `libc.so.6!malloc`, el resolver busca aquí y le
+//! Cuando un ELF importa `libc.so.6!malloc`, el resolver busca aquÃ­ y le
 //! da un puntero a un wrapper Rust que traduce a allocator FastOS / BMO.
 
 #![allow(dead_code)]
@@ -32,10 +32,10 @@ pub struct ElfThunkEntry {
     pub target: ElfThunkTarget,
 }
 
-/// Tabla maestra. **Nombres canónicos sin versiones** (`libc.so.6` se
+/// Tabla maestra. **Nombres canÃ³nicos sin versiones** (`libc.so.6` se
 /// normaliza a `libc.so` en el resolver).
 pub static THUNK_TABLE: &[ElfThunkEntry] = &[
-    // ─── libc.so (proceso, memoria, archivos, tiempo) ──────────────────
+    // â”€â”€â”€ libc.so (proceso, memoria, archivos, tiempo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ElfThunkEntry { lib: "libc.so", name: "exit",            target: ElfThunkTarget::SyscallProcess },
     ElfThunkEntry { lib: "libc.so", name: "_exit",           target: ElfThunkTarget::SyscallProcess },
     ElfThunkEntry { lib: "libc.so", name: "abort",           target: ElfThunkTarget::SyscallProcess },
@@ -103,7 +103,7 @@ pub static THUNK_TABLE: &[ElfThunkEntry] = &[
     ElfThunkEntry { lib: "libc.so", name: "memcmp",          target: ElfThunkTarget::LibcStringOps },
     ElfThunkEntry { lib: "libc.so", name: "memmove",         target: ElfThunkTarget::LibcStringOps },
 
-    // ─── libm.so (math) ────────────────────────────────────────────────
+    // â”€â”€â”€ libm.so (math) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ElfThunkEntry { lib: "libm.so", name: "sin",             target: ElfThunkTarget::LibmMath },
     ElfThunkEntry { lib: "libm.so", name: "cos",             target: ElfThunkTarget::LibmMath },
     ElfThunkEntry { lib: "libm.so", name: "tan",             target: ElfThunkTarget::LibmMath },
@@ -114,20 +114,20 @@ pub static THUNK_TABLE: &[ElfThunkEntry] = &[
     ElfThunkEntry { lib: "libm.so", name: "floor",           target: ElfThunkTarget::LibmMath },
     ElfThunkEntry { lib: "libm.so", name: "ceil",            target: ElfThunkTarget::LibmMath },
 
-    // ─── libpthread.so ─────────────────────────────────────────────────
+    // â”€â”€â”€ libpthread.so â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ElfThunkEntry { lib: "libpthread.so", name: "pthread_create",   target: ElfThunkTarget::SyscallProcess },
     ElfThunkEntry { lib: "libpthread.so", name: "pthread_join",     target: ElfThunkTarget::SyscallProcess },
     ElfThunkEntry { lib: "libpthread.so", name: "pthread_self",     target: ElfThunkTarget::SyscallProcess },
     ElfThunkEntry { lib: "libpthread.so", name: "pthread_exit",     target: ElfThunkTarget::SyscallProcess },
 
-    // ─── libdl.so (dlopen/dlsym) ───────────────────────────────────────
+    // â”€â”€â”€ libdl.so (dlopen/dlsym) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ElfThunkEntry { lib: "libdl.so", name: "dlopen",         target: ElfThunkTarget::SilentStub },
     ElfThunkEntry { lib: "libdl.so", name: "dlsym",          target: ElfThunkTarget::SilentStub },
     ElfThunkEntry { lib: "libdl.so", name: "dlclose",        target: ElfThunkTarget::SilentStub },
 ];
 
 /// Resuelve `(lib_name, fn_name)`. El `lib_name` puede venir como
-/// `libc.so.6`, `libc-2.31.so`, etc.; lo normalizamos al canónico antes.
+/// `libc.so.6`, `libc-2.31.so`, etc.; lo normalizamos al canÃ³nico antes.
 pub fn resolve(lib: &str, name: &str) -> ElfThunkTarget {
     let normalized = normalize_lib_name(lib);
     for e in THUNK_TABLE {
@@ -140,7 +140,7 @@ pub fn resolve(lib: &str, name: &str) -> ElfThunkTarget {
 
 pub const fn thunk_table_len() -> usize { THUNK_TABLE.len() }
 
-/// Normaliza `libc.so.6` / `libc-2.31.so` / `/lib64/libc.so.6` → `libc.so`.
+/// Normaliza `libc.so.6` / `libc-2.31.so` / `/lib64/libc.so.6` â†’ `libc.so`.
 pub fn normalize_lib_name(lib: &str) -> &'static str {
     let basename = lib.rsplit('/').next().unwrap_or(lib);
     if basename.starts_with("libc")        { return "libc.so"; }
@@ -154,8 +154,8 @@ pub fn normalize_lib_name(lib: &str) -> &'static str {
 #[allow(unused)]
 pub extern "C" fn silent_stub() -> bx_u64 { 0 }
 
-/// Resuelve un símbolo a un puntero de función real.
-/// Busca en los shims de linux/win32 según el lib_name.
+/// Resuelve un sÃ­mbolo a un puntero de funciÃ³n real.
+/// Busca en los shims de linux/win32 segÃºn el lib_name.
 pub fn resolve_fn_ptr(lib: &str, name: &str) -> Option<*const ()> {
     let normalized = normalize_lib_name(lib);
     match normalized {
@@ -195,3 +195,5 @@ fn resolve_libc(name: &str) -> Option<*const ()> {
         }
     }
 }
+
+
