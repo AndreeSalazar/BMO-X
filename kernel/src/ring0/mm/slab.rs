@@ -110,13 +110,31 @@ static mut INITIALIZED: bool = false;
 static mut HEAP_TOTAL: usize = 0;
 static IN_USE: AtomicUsize = AtomicUsize::new(0);
 
+#[inline]
+fn phys_to_heap_virt(phys: u64) -> u64 {
+    // Phase 1 currently defers the high-half direct map for stability, while
+    // the physical allocator only hands out low bootstrap pages. Use the low
+    // identity mapping for heap backing pages so `init_heap()` does not fault
+    // on 0xFFFF_8000_* before `map_high_mem()` exists.
+    phys
+}
+
+#[inline]
+fn heap_virt_to_phys(virt: u64) -> u64 {
+    if virt >= crate::mm::virt::HIGH_MEM_BASE {
+        crate::mm::virt::virt_to_phys(virt)
+    } else {
+        virt
+    }
+}
+
 // ── Slab operations ─────────────────────────────────────────────────
 
 /// Create a new slab for the given cache index, backing it with one
 /// page from the buddy allocator. Returns pointer to the SlabHead.
 unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
     let phys = crate::mm::phys::alloc_pages_contiguous(1)?;
-    let virt = crate::mm::virt::phys_to_virt(phys);
+    let virt = phys_to_heap_virt(phys);
     core::ptr::write_bytes(virt as *mut u8, 0, SLAB_SIZE);
 
     let obj_size = CACHE_SIZES[cache_idx];
@@ -134,7 +152,7 @@ unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
 /// Destroy a slab: return its page to the buddy allocator.
 unsafe fn slab_destroy(head: *mut SlabHead) {
     let virt = head as u64;
-    let phys = crate::mm::virt::virt_to_phys(virt);
+    let phys = heap_virt_to_phys(virt);
     crate::mm::phys::free_pages(phys, 1);
     HEAP_TOTAL -= SLAB_SIZE;
 }
@@ -298,7 +316,7 @@ unsafe fn buddy_alloc(size: usize, align: usize) -> *mut u8 {
         Some(p) => p,
         None => return ptr::null_mut(),
     };
-    let virt = crate::mm::virt::phys_to_virt(phys);
+    let virt = phys_to_heap_virt(phys);
     // Align within the allocated pages if needed.
     let off = (virt as usize) & (align - 1);
     let adjusted = if off == 0 { virt } else { virt + (align - off) as u64 };
@@ -308,7 +326,7 @@ unsafe fn buddy_alloc(size: usize, align: usize) -> *mut u8 {
             Some(p) => p,
             None => return ptr::null_mut(),
         };
-        let virt2 = crate::mm::virt::phys_to_virt(phys2);
+        let virt2 = phys_to_heap_virt(phys2);
         let off2 = (virt2 as usize) & (align - 1);
         let adj2 = if off2 == 0 { virt2 } else { virt2 + (align - off2) as u64 };
         HEAP_TOTAL += (pages + 1) * SLAB_SIZE;
@@ -324,7 +342,7 @@ unsafe fn buddy_free(ptr: *mut u8, size: usize) {
     let pages = (size + SLAB_SIZE - 1) / SLAB_SIZE;
     // Round down to page boundary
     let virt = (ptr as u64) & !(SLAB_SIZE as u64 - 1);
-    let phys = crate::mm::virt::virt_to_phys(virt);
+    let phys = heap_virt_to_phys(virt);
     crate::mm::phys::free_pages(phys, pages);
     HEAP_TOTAL -= pages * SLAB_SIZE;
     IN_USE.fetch_sub(size, Ordering::Relaxed);
