@@ -1,0 +1,17 @@
+[package]
+name = "fastos-cobol-front"
+version = "0.1.0"
+edition = "2021"
+authors = ["FastOS Project"]
+description = "COBOL frontend scaffold for FastOS BMO ABI"
+
+[dependencies]
+bmo-abi = { path = "../../bmo_abi" }
+
+[lib]
+name = "fastos_cobol_front"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fastos-cobol-front"
+path = "src/main.rs"

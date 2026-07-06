@@ -17,4 +17,11 @@ FastOS usando `bmo_abi` como contrato.
 - `cobol/`: frontend COBOL hacia BEF/BMO ABI. Debe apuntar primero a CPU/AOT:
   decimal fijo, records, `DISPLAY`, `ACCEPT`, FS y procesos.
 
+## COBOL actual
+
+`cobol/` contiene el primer frontend offline. Por ahora parsea un subconjunto
+mínimo (`PROGRAM-ID`, `DISPLAY`, `ACCEPT`, `MOVE`, `STOP RUN`) y emite un IR
+textual orientado a BMO. El siguiente paso es sustituir ese emisor por BEF real
+usando `bmo_abi::bef::writer`, sin meter el compilador en Ring 0.
+
 GPU queda fuera de esta fase; COBOL y C arrancan sobre CPU y syscalls BMO.
