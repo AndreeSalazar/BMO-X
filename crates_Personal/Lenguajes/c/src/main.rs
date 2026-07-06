@@ -4,12 +4,13 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 fn main() {
-    let mut args: Vec<String> = env::args().collect();
-    let program = args.remove(0);
+    let args: Vec<String> = env::args().collect();
+    let program = &args[0];
     let mut base_paths: Vec<PathBuf> = Vec::new();
+    let mut asm_paths: Vec<PathBuf> = Vec::new();
     let mut file_path = None;
 
-    let mut i = 0;
+    let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--base" | "-b" => {
@@ -21,6 +22,15 @@ fn main() {
                     process::exit(2);
                 }
             }
+            "--asm-path" | "-a" => {
+                i += 1;
+                if i < args.len() {
+                    asm_paths.push(PathBuf::from(&args[i]));
+                } else {
+                    eprintln!("error: --asm-path requires a path");
+                    process::exit(2);
+                }
+            }
             _ => {
                 file_path = Some(&args[i]);
             }
@@ -29,7 +39,7 @@ fn main() {
     }
 
     let Some(path) = file_path else {
-        eprintln!("usage: {program} [--base <path>] <source.c>");
+        eprintln!("usage: {program} [--base <path>] [--asm-path <path>] <source.c>");
         process::exit(2);
     };
 
@@ -41,10 +51,10 @@ fn main() {
         }
     };
 
-    let result = if base_paths.is_empty() {
+    let result = if base_paths.is_empty() && asm_paths.is_empty() {
         fastos_c_front::compile_source_to_bef(&source)
     } else {
-        fastos_c_front::compile_source_to_bef_with_modules(&source, base_paths)
+        fastos_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths)
     };
 
     match result {

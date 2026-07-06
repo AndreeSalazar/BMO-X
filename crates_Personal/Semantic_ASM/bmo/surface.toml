@@ -1,0 +1,4 @@
+# BMO Surface mapping syscalls (0x1C0..0x1CF)
+bmo_surface_map = 0x1C0, 2
+bmo_surface_unmap = 0x1C1, 1
+bmo_surface_present = 0x1C2, 1

@@ -1,0 +1,7 @@
+# BMO Input syscalls (0x160..0x162)
+bmo_poll_key = 0x160, 0
+bmo_input_poll_key = 0x160, 0
+bmo_poll_mouse = 0x161, 0
+bmo_input_poll_mouse = 0x161, 0
+bmo_poll_event = 0x162, 1
+bmo_input_poll_event = 0x162, 1

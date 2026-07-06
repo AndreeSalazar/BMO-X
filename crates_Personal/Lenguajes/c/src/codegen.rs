@@ -184,7 +184,7 @@ impl Codegen {
                 | Expr::BitAnd(a,b) | Expr::BitXor(a,b) | Expr::BitOr(a,b) | Expr::LAnd(a,b) | Expr::LOr(a,b)
                 | Expr::Shl(a,b) | Expr::Shr(a,b) => { self.collect_expr_strings(a); self.collect_expr_strings(b); }
             Expr::Conditional(c,t,f) => { self.collect_expr_strings(c); self.collect_expr_strings(t); self.collect_expr_strings(f); }
-            Expr::Call(_, args) => { for a in args { self.collect_expr_strings(a); } }
+            Expr::Call(_, args) | Expr::Syscall(_, args) => { for a in args { self.collect_expr_strings(a); } }
             Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => self.collect_expr_strings(p),
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => self.collect_expr_strings(v),
             Expr::Field(b,_,_) => self.collect_expr_strings(b),
@@ -655,6 +655,27 @@ impl Codegen {
                         self.code.extend_from_slice(&n.to_le_bytes());
                     }
                 }
+            }
+            Expr::Syscall(def, args) => {
+                // x86-64 SysV ABI syscall convention:
+                // args: rdi, rsi, rdx, r10, r8, r9  →  result in rax
+                let reg_mov: &[[u8; 3]] = &[
+                    [0x48, 0x89, 0xC7], // mov rdi, rax
+                    [0x48, 0x89, 0xC6], // mov rsi, rax
+                    [0x48, 0x89, 0xC2], // mov rdx, rax
+                    [0x49, 0x89, 0xC2], // mov r10, rax
+                    [0x49, 0x89, 0xC0], // mov r8, rax
+                    [0x49, 0x89, 0xC1], // mov r9, rax
+                ];
+                for (i, arg) in args.iter().enumerate() {
+                    if i < 6 {
+                        self.emit_expr(arg);          // rax = expr value
+                        self.code.extend_from_slice(&reg_mov[i]); // mov reg, rax
+                    }
+                }
+                self.code.extend_from_slice(&[0xB8]);        // mov eax, imm32
+                self.code.extend_from_slice(&def.nr.to_le_bytes());
+                self.code.extend_from_slice(&[0x0F, 0x05]);  // syscall
             }
             Expr::Assign(name, val) => {
                 self.emit_expr(val);

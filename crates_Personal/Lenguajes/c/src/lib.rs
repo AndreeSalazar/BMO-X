@@ -3,7 +3,8 @@ pub mod ast;
 pub mod module;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::fs;
 use ast::*;
 use bmo_abi::profile::BmoLanguageProfile;
 
@@ -23,7 +24,18 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
 
 pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {
     let mut resolver = module::ModuleResolver::new(base_paths);
-    let program = Parser::new(source).parse_program_with_modules(&mut resolver)?;
+    let program = Parser::new(source).parse_program_with_modules(&mut resolver, None)?;
+    let used = module::find_used_functions(&program, &program.exported);
+    codegen::compile_to_bef_bytes_filtered(&program, &used)
+}
+
+pub fn compile_source_to_bef_with_all(
+    source: &str,
+    base_paths: Vec<PathBuf>,
+    asm_paths: Vec<PathBuf>,
+) -> Result<Vec<u8>, CError> {
+    let mut resolver = module::ModuleResolver::new(base_paths);
+    let program = Parser::new(source).parse_program_with_modules(&mut resolver, Some(asm_paths))?;
     let used = module::find_used_functions(&program, &program.exported);
     codegen::compile_to_bef_bytes_filtered(&program, &used)
 }
@@ -70,6 +82,7 @@ struct Parser {
     struct_sizes: HashMap<String, u32>,
     usings: Vec<String>, // module paths collected from `use "path"` directives
     typedefs: HashMap<String, TypeSpec>,
+    syscalls: HashMap<String, SyscallDef>, // known semantic syscall definitions
 }
 
 impl Parser {
@@ -81,7 +94,36 @@ impl Parser {
             struct_sizes: HashMap::new(),
             usings: Vec::new(),
             typedefs: HashMap::new(),
+            syscalls: HashMap::new(),
         }
+    }
+
+    /// Parse a simplified .toml file with lines: name = 0xNR, N
+    /// Lines starting with '#' or empty are skipped.
+    fn load_asm_file(&mut self, path: &Path) -> Result<(), CError> {
+        let content = fs::read_to_string(path)
+            .map_err(|e| CError::new(0, format!("cannot read Semantic_ASM file {}: {e}", path.display())))?;
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') { continue; }
+            // format: name = <value>[, arg_count]
+            if let Some(eq_pos) = line.find('=') {
+                let name = line[..eq_pos].trim().to_string();
+                let rest = line[eq_pos + 1..].trim();
+                let (val_str, arg_count) = if let Some(comma_pos) = rest.find(',') {
+                    (rest[..comma_pos].trim(), rest[comma_pos + 1..].trim().parse::<u8>().unwrap_or(0))
+                } else {
+                    (rest, 0u8)
+                };
+                let nr = if val_str.starts_with("0x") || val_str.starts_with("0X") {
+                    u32::from_str_radix(&val_str[2..], 16).unwrap_or(0)
+                } else {
+                    val_str.parse::<u32>().unwrap_or(0)
+                };
+                self.syscalls.insert(name.clone(), SyscallDef { name, nr, arg_count });
+            }
+        }
+        Ok(())
     }
 
     #[cfg(test)]
@@ -525,44 +567,239 @@ impl Parser {
     }
 
     /// Parse with module resolution. Returns merged Program with all dependency sources.
-    fn parse_program_with_modules(&mut self, resolver: &mut module::ModuleResolver) -> Result<Program, CError> {
+    /// If `asm_paths` is provided, also loads Semantic_ASM .toml files for each `use` directive.
+    fn parse_program_with_modules(
+        &mut self,
+        resolver: &mut module::ModuleResolver,
+        asm_paths: Option<Vec<PathBuf>>,
+    ) -> Result<Program, CError> {
         let mut program = self.parse_program()?;
+        // Syscall defs and module manifests are loaded AFTER parse_program().
+        // We must post-process the AST to convert Expr::Call → Expr::Syscall
+        // for any function names that match a loaded syscall definition.
         let usings = std::mem::take(&mut self.usings);
         for path in &usings {
-            let manifest = resolver.find_manifest(path)?;
-            let mod_dir = resolver.find_base_dir(path);
-            for src_file in &manifest.source_files {
-                let full_path = mod_dir.join(src_file);
-                let source = std::fs::read_to_string(&full_path)
-                    .map_err(|e| CError::new(0, format!("cannot read module source {}: {e}", full_path.display())))?;
-                let mut sub = Parser::new(&source);
-                let sub_prog = sub.parse_program()?;
-                for f in sub_prog.functions {
-                    if !program.functions.iter().any(|pf| pf.name == f.name) {
-                        program.functions.push(f);
+            // Load module sources (optional — module may not exist for syscall-only paths)
+            if let Ok(manifest) = resolver.find_manifest(path) {
+                let mod_dir = resolver.find_base_dir(path);
+                for src_file in &manifest.source_files {
+                    let full_path = mod_dir.join(src_file);
+                    let source = std::fs::read_to_string(&full_path)
+                        .map_err(|e| CError::new(0, format!("cannot read module source {}: {e}", full_path.display())))?;
+                    let mut sub = Parser::new(&source);
+                    let sub_prog = sub.parse_program()?;
+                    for f in sub_prog.functions {
+                        if !program.functions.iter().any(|pf| pf.name == f.name) {
+                            program.functions.push(f);
+                        }
+                    }
+                    for g in sub_prog.globals {
+                        if !program.globals.iter().any(|pg| std::mem::discriminant(pg) == std::mem::discriminant(&g)) {
+                            program.globals.push(g);
+                        }
+                    }
+                    for (k, v) in sub.struct_fields {
+                        self.struct_fields.entry(k).or_insert(v);
+                    }
+                    for (k, v) in sub.struct_sizes {
+                        self.struct_sizes.entry(k).or_insert(v);
+                    }
+                    for (k, v) in sub.var_types {
+                        self.var_types.entry(k).or_insert(v);
+                    }
+                    for (k, v) in sub.typedefs {
+                        self.typedefs.entry(k).or_insert(v);
                     }
                 }
-                for g in sub_prog.globals {
-                    if !program.globals.iter().any(|pg| std::mem::discriminant(pg) == std::mem::discriminant(&g)) {
-                        program.globals.push(g);
+                program.exported.extend(manifest.exports);
+            }
+
+            // Load Semantic_ASM definitions if asm_paths provided
+            if let Some(ref paths) = asm_paths {
+                for asm_base in paths {
+                    let asm_file = asm_base.join(path).with_extension("toml");
+                    if asm_file.exists() {
+                        self.load_asm_file(&asm_file)?;
                     }
-                }
-                for (k, v) in sub.struct_fields {
-                    self.struct_fields.entry(k).or_insert(v);
-                }
-                for (k, v) in sub.struct_sizes {
-                    self.struct_sizes.entry(k).or_insert(v);
-                }
-                for (k, v) in sub.var_types {
-                    self.var_types.entry(k).or_insert(v);
-                }
-                for (k, v) in sub.typedefs {
-                    self.typedefs.entry(k).or_insert(v);
                 }
             }
-            program.exported.extend(manifest.exports);
         }
+        // Post-process: convert Expr::Call(name,args) → Expr::Syscall(def,args)
+        // for any function calls whose name matches a loaded syscall definition.
+        self.resolve_syscalls_in_program(&mut program);
+        // Validate syscall argument counts
+        self.validate_syscall_args(&program)?;
         Ok(program)
+    }
+
+    /// Validate that all Expr::Syscall nodes have the correct argument count.
+    fn validate_syscall_args(&self, program: &Program) -> Result<(), CError> {
+        for func in &program.functions {
+            Self::check_syscall_args_in_stmt_slice(&func.body, func.line)?;
+        }
+        Ok(())
+    }
+
+    fn check_syscall_args_in_stmt_slice(stmts: &[Stmt], line: usize) -> Result<(), CError> {
+        for stmt in stmts {
+            Self::check_syscall_args_in_stmt(stmt, line)?;
+        }
+        Ok(())
+    }
+
+    fn check_syscall_args_in_stmt(stmt: &Stmt, line: usize) -> Result<(), CError> {
+        match stmt {
+            Stmt::If(cond, t, e) => {
+                Self::check_syscall_args_in_expr(cond, line)?;
+                Self::check_syscall_args_in_stmt(t, line)?;
+                if let Some(el) = e { Self::check_syscall_args_in_stmt(el, line)?; }
+            }
+            Stmt::While(cond, body) => {
+                Self::check_syscall_args_in_expr(cond, line)?;
+                Self::check_syscall_args_in_stmt(body, line)?;
+            }
+            Stmt::DoWhile(body, cond) => {
+                Self::check_syscall_args_in_stmt(body, line)?;
+                Self::check_syscall_args_in_expr(cond, line)?;
+            }
+            Stmt::For(init, cond, inc, body) => {
+                if let Some(e) = init { Self::check_syscall_args_in_expr(e, line)?; }
+                if let Some(e) = cond { Self::check_syscall_args_in_expr(e, line)?; }
+                if let Some(e) = inc { Self::check_syscall_args_in_expr(e, line)?; }
+                Self::check_syscall_args_in_stmt(body, line)?;
+            }
+            Stmt::Switch(expr, cases) => {
+                Self::check_syscall_args_in_expr(expr, line)?;
+                for c in cases { Self::check_syscall_args_in_stmt_slice(&c.stmts, line)?; }
+            }
+            Stmt::Block(stmts) => Self::check_syscall_args_in_stmt_slice(stmts, line)?,
+            Stmt::Expr(e) | Stmt::Return(Some(e)) => Self::check_syscall_args_in_expr(e, line)?,
+            Stmt::DeclAssign(_, _, Some(e)) => Self::check_syscall_args_in_expr(e, line)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn check_syscall_args_in_expr(expr: &Expr, line: usize) -> Result<(), CError> {
+        match expr {
+            Expr::Syscall(def, args) => {
+                if args.len() != def.arg_count as usize {
+                    return Err(CError::new(line, format!(
+                        "syscall {}() expects {} arguments, got {}",
+                        def.name, def.arg_count, args.len()
+                    )));
+                }
+                for a in args { Self::check_syscall_args_in_expr(a, line)?; }
+            }
+            Expr::Neg(a) | Expr::Not(a) | Expr::BitNot(a) | Expr::Deref(a) | Expr::AddrOf(a)
+                => Self::check_syscall_args_in_expr(a, line)?,
+            Expr::Add(a,b) | Expr::Sub(a,b) | Expr::Mul(a,b) | Expr::Div(a,b) | Expr::Mod(a,b)
+                | Expr::Eq(a,b) | Expr::Neq(a,b) | Expr::Lt(a,b) | Expr::Gt(a,b) | Expr::Le(a,b) | Expr::Ge(a,b)
+                | Expr::BitAnd(a,b) | Expr::BitXor(a,b) | Expr::BitOr(a,b) | Expr::LAnd(a,b) | Expr::LOr(a,b)
+                | Expr::Shl(a,b) | Expr::Shr(a,b) => {
+                Self::check_syscall_args_in_expr(a, line)?;
+                Self::check_syscall_args_in_expr(b, line)?;
+            }
+            Expr::Conditional(c,t,f) => {
+                Self::check_syscall_args_in_expr(c, line)?;
+                Self::check_syscall_args_in_expr(t, line)?;
+                Self::check_syscall_args_in_expr(f, line)?;
+            }
+            Expr::Call(_, args) | Expr::Comma(args) => {
+                for a in args { Self::check_syscall_args_in_expr(a, line)?; }
+            }
+            Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => Self::check_syscall_args_in_expr(p, line)?,
+            Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::check_syscall_args_in_expr(v, line)?,
+            Expr::Field(b,_,_) => Self::check_syscall_args_in_expr(b, line)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Walk all function bodies and convert Expr::Call → Expr::Syscall for
+    /// any function calls whose name matches a loaded syscall definition.
+    fn resolve_syscalls_in_program(&self, program: &mut Program) {
+        for func in &mut program.functions {
+            Self::resolve_syscalls_in_stmt_slice(&self.syscalls, &mut func.body);
+        }
+    }
+
+    fn resolve_syscalls_in_stmt_slice(syscalls: &HashMap<String, SyscallDef>, stmts: &mut Vec<Stmt>) {
+        for stmt in stmts.iter_mut() {
+            Self::resolve_syscalls_in_stmt(syscalls, stmt);
+        }
+    }
+
+    fn resolve_syscalls_in_stmt(syscalls: &HashMap<String, SyscallDef>, stmt: &mut Stmt) {
+        match stmt {
+            Stmt::If(cond, t, e) => {
+                Self::resolve_syscalls_in_expr(syscalls, cond);
+                Self::resolve_syscalls_in_stmt(syscalls, t);
+                if let Some(el) = e { Self::resolve_syscalls_in_stmt(syscalls, el); }
+            }
+            Stmt::While(cond, body) => {
+                Self::resolve_syscalls_in_expr(syscalls, cond);
+                Self::resolve_syscalls_in_stmt(syscalls, body);
+            }
+            Stmt::DoWhile(body, cond) => {
+                Self::resolve_syscalls_in_stmt(syscalls, body);
+                Self::resolve_syscalls_in_expr(syscalls, cond);
+            }
+            Stmt::For(init, cond, inc, body) => {
+                if let Some(e) = init { Self::resolve_syscalls_in_expr(syscalls, e); }
+                if let Some(e) = cond { Self::resolve_syscalls_in_expr(syscalls, e); }
+                if let Some(e) = inc { Self::resolve_syscalls_in_expr(syscalls, e); }
+                Self::resolve_syscalls_in_stmt(syscalls, body);
+            }
+            Stmt::Switch(expr, cases) => {
+                Self::resolve_syscalls_in_expr(syscalls, expr);
+                for c in cases { Self::resolve_syscalls_in_stmt_slice(syscalls, &mut c.stmts); }
+            }
+            Stmt::Block(stmts) => Self::resolve_syscalls_in_stmt_slice(syscalls, stmts),
+            Stmt::Expr(e) | Stmt::Return(Some(e)) => Self::resolve_syscalls_in_expr(syscalls, e),
+            Stmt::DeclAssign(_, _, Some(e)) => Self::resolve_syscalls_in_expr(syscalls, e),
+            _ => {}
+        }
+    }
+
+    fn resolve_syscalls_in_expr(syscalls: &HashMap<String, SyscallDef>, expr: &mut Expr) {
+        match expr {
+            Expr::Call(name, args) => {
+                let mut new_args = std::mem::take(args);
+                // Resolve syscalls in args first (before we potentially move them)
+                for a in new_args.iter_mut() {
+                    Self::resolve_syscalls_in_expr(syscalls, a);
+                }
+                if let Some(def) = syscalls.get(name).cloned() {
+                    *expr = Expr::Syscall(def, new_args);
+                } else {
+                    *expr = Expr::Call(std::mem::take(name), new_args);
+                }
+            }
+            Expr::Syscall(_, args) => {
+                for a in args.iter_mut() {
+                    Self::resolve_syscalls_in_expr(syscalls, a);
+                }
+            }
+            Expr::Neg(a) | Expr::Not(a) | Expr::BitNot(a) | Expr::Deref(a) | Expr::AddrOf(a) => Self::resolve_syscalls_in_expr(syscalls, a),
+            Expr::Add(a,b) | Expr::Sub(a,b) | Expr::Mul(a,b) | Expr::Div(a,b) | Expr::Mod(a,b)
+                | Expr::Eq(a,b) | Expr::Neq(a,b) | Expr::Lt(a,b) | Expr::Gt(a,b) | Expr::Le(a,b) | Expr::Ge(a,b)
+                | Expr::BitAnd(a,b) | Expr::BitXor(a,b) | Expr::BitOr(a,b) | Expr::LAnd(a,b) | Expr::LOr(a,b)
+                | Expr::Shl(a,b) | Expr::Shr(a,b) => {
+                Self::resolve_syscalls_in_expr(syscalls, a);
+                Self::resolve_syscalls_in_expr(syscalls, b);
+            }
+            Expr::Conditional(c,t,f) => {
+                Self::resolve_syscalls_in_expr(syscalls, c);
+                Self::resolve_syscalls_in_expr(syscalls, t);
+                Self::resolve_syscalls_in_expr(syscalls, f);
+            }
+            Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, p),
+            Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::resolve_syscalls_in_expr(syscalls, v),
+            Expr::Field(b,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
+            Expr::Comma(v) => { for e in v { Self::resolve_syscalls_in_expr(syscalls, e); } }
+            _ => {}
+        }
     }
 
     fn try_parse_function(&mut self) -> Result<Option<Function>, CError> {
@@ -622,7 +859,7 @@ impl Parser {
                 }
             }
         }
-        Ok(Some(Function { ret_type, name, params, var_count, var_names, body }))
+        Ok(Some(Function { ret_type, name, params, var_count, var_names, body, line: 0 }))
     }
 
     fn try_parse_decl(&mut self) -> Result<Option<(TypeSpec, String)>, CError> {
@@ -1195,11 +1432,25 @@ impl Parser {
                     self.advance();
                     let mut args = Vec::new();
                     while *self.peek() != Token::CloseParen && *self.peek() != Token::Eof {
-                        args.push(self.parse_expr()?);
+                        // Use parse_assign (not parse_expr) to avoid the comma operator
+                        // consuming argument separators — C grammar requires
+                        // argument_expression_list: assignment_expression (',' assignment_expression)*
+                        args.push(self.parse_assign()?);
                         if *self.peek() == Token::Comma { self.advance(); }
                     }
                     self.expect(&Token::CloseParen)?;
-                    Ok(Expr::Call(name, args))
+                    // Check if this function name matches a known syscall definition
+                    if let Some(def) = self.syscalls.get(&name).cloned() {
+                        if args.len() != def.arg_count as usize {
+                            return Err(CError::new(1, format!(
+                                "syscall {}() expects {} arguments, got {}",
+                                def.name, def.arg_count, args.len()
+                            )));
+                        }
+                        Ok(Expr::Syscall(def, args))
+                    } else {
+                        Ok(Expr::Call(name, args))
+                    }
                 } else {
                     Ok(Expr::Var(name))
                 }
@@ -1580,6 +1831,97 @@ int sum(int a, int b, int c) {
         assert!(parse("void f(char* fmt) { int x; for (;;) { x = 0; } }").is_ok());
     }
 
+    #[test]
+    fn parses_syscall_direct() {
+        // Test that a syscall (bmo_exit) is recognized when definitions are loaded
+        let src = r#"use "bmo/proc"; int main() { bmo_exit(0); }"#;
+        let p = parse(src).unwrap();
+        // Without asm_path, bmo_exit is treated as a normal function call
+        assert_eq!(p.functions.len(), 1);
+    }
+
+    #[test]
+    fn parses_syscall_with_asm_defs() {
+        use std::path::PathBuf;
+        let src = r#"use "bmo/proc"; int main() { bmo_exit(42); }"#;
+        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn syscall_arg_count_validation() {
+        use std::path::PathBuf;
+        // bmo_exit expects 1 arg → passing 0 should fail
+        let src = r#"use "bmo/proc"; int main() { bmo_exit(); }"#;
+        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let result = compile_source_to_bef_with_all(src, vec![base], vec![asm]);
+        assert!(result.is_err(), "should reject wrong arg count");
+        if let Err(e) = result {
+            assert!(e.message.contains("expects 1"), "error should mention expected arg count: {e:?}");
+        }
+    }
+
+    #[test]
+    fn syscall_multiple_categories() {
+        use std::path::PathBuf;
+        let src = r#"use "bmo/proc"; use "bmo/diag"; int main() { bmo_exit(0); bmo_debug_print("test", 4); }"#;
+        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn syscall_all_toml_files_loadable() {
+        use std::path::PathBuf;
+        // Use every category to verify all .toml files load without error
+        let src = r#"
+use "bmo/proc";
+use "bmo/fs";
+use "bmo/mem";
+use "bmo/input";
+use "bmo/time";
+use "bmo/diag";
+use "bmo/wm";
+use "bmo/draw";
+use "bmo/winpaint";
+use "bmo/compositor";
+use "bmo/audio";
+use "bmo/ipc";
+use "bmo/surface";
+int main() { bmo_exit(0); }
+"#;
+        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn syscall_emits_correct_code() {
+        use std::path::PathBuf;
+        let src = r#"use "bmo/proc"; int main() { bmo_exit(42); }"#;
+        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
+        // BEF validation: magic, correct header, code section present
+        assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
+        // The emitted code should contain: mov eax, 0x181 (bmo_exit nr)
+        let _code_start = 48; // BEF header is 48 bytes
+        // Find b5 81 01 00 00 = mov eax, 0x181 (in little-endian)
+        let mov_eax = &[0xB8u8, 0x81, 0x01, 0x00, 0x00]; // mov eax, 0x181
+        let found = bef.windows(5).any(|w| w == mov_eax);
+        assert!(found, "BEF output should contain mov eax, 0x181 for bmo_exit syscall");
+        // Should contain syscall instruction (0F 05)
+        let syscall = &[0x0F, 0x05];
+        let found_syscall = bef.windows(2).any(|w| w == syscall);
+        assert!(found_syscall, "BEF output should contain syscall instruction");
+    }
+
+    #[test]
     fn parses_ptr_string_init() {
         let src = r#"int main() { char *p = "hello"; return 0; }"#;
         let bef = compile_source_to_bef(src).unwrap();

@@ -1,0 +1,5 @@
+# BMO Time syscalls (0x150..0x153)
+bmo_time_now_ns = 0x150, 0
+bmo_time_now_us = 0x151, 0
+bmo_time_sleep_ns = 0x152, 1
+bmo_time_sleep_ms = 0x153, 1

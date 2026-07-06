@@ -1,0 +1,9 @@
+# BMO Memory + BEFCore syscalls (0x190..0x197)
+bmo_mem_alloc = 0x190, 1
+bmo_mem_free = 0x191, 1
+bmo_mem_map = 0x192, 2
+bmo_mem_unmap = 0x193, 2
+bmo_befcore_send = 0x194, 3
+bmo_befcore_recv = 0x195, 2
+bmo_befcore_poll = 0x196, 0
+bmo_befcore_register = 0x197, 2

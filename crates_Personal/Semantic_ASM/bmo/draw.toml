@@ -1,0 +1,11 @@
+# BMO Draw syscalls (0x110..0x119)
+bmo_draw_clear = 0x110, 1
+bmo_draw_pixel = 0x111, 3
+bmo_draw_line = 0x112, 5
+bmo_draw_rect = 0x113, 5
+bmo_draw_circle = 0x114, 4
+bmo_draw_text = 0x115, 5
+bmo_draw_blit = 0x116, 6
+bmo_draw_gradient_v = 0x117, 6
+bmo_draw_gradient_h = 0x118, 6
+bmo_draw_rounded_rect = 0x119, 6

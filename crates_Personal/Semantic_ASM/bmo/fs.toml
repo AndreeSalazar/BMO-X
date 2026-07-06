@@ -1,0 +1,11 @@
+# BMO Filesystem syscalls (0x140..0x149)
+bmo_fs_open = 0x140, 2
+bmo_fs_close = 0x141, 1
+bmo_fs_read = 0x142, 3
+bmo_fs_write = 0x143, 3
+bmo_fs_seek = 0x144, 3
+bmo_fs_stat = 0x145, 2
+bmo_fs_mkdir = 0x146, 1
+bmo_fs_readdir = 0x147, 2
+bmo_fs_delete = 0x148, 1
+bmo_fs_mount = 0x149, 2

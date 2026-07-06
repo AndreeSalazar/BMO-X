@@ -32,6 +32,7 @@ pub struct Function {
     pub var_count: u32,
     pub var_names: Vec<String>,
     pub body: Vec<Stmt>,
+    pub line: usize, // source line number for error reporting
 }
 
 impl TypeSpec {
@@ -101,6 +102,16 @@ pub struct Case {
     pub stmts: Vec<Stmt>,
 }
 
+/// A named syscall definition loaded from Semantic_ASM .toml
+/// Args follow x86-64 SysV ABI convention: rdi, rsi, rdx, r10, r8, r9
+/// Return value in rax
+#[derive(Debug, Clone, PartialEq)]
+pub struct SyscallDef {
+    pub name: String,
+    pub nr: u32,
+    pub arg_count: u8, // 0..6
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Int(i64),
@@ -143,4 +154,6 @@ pub enum Expr {
     Arrow(Box<Expr>, String, u32), // ptr_expr, field_name, resolved_offset
     AssignField(Box<Expr>, String, u32, Box<Expr>), // base_expr, field_name, offset, val
     AssignArrow(Box<Expr>, String, u32, Box<Expr>), // ptr_expr, field_name, offset, val
+    /// Named syscall from Semantic_ASM definitions
+    Syscall(SyscallDef, Vec<Expr>),
 }

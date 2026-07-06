@@ -1,0 +1,9 @@
+# BMO Diagnostics syscalls (0x1F0..0x1F3)
+bmo_debug_print = 0x1F0, 2
+bmo_diag_print = 0x1F0, 2
+bmo_debug_trace = 0x1F1, 1
+bmo_diag_trace = 0x1F1, 1
+bmo_debug_assert = 0x1F2, 1
+bmo_diag_assert = 0x1F2, 1
+bmo_debug_panic = 0x1F3, 1
+bmo_diag_panic = 0x1F3, 1
