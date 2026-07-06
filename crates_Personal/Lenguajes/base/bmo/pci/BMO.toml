@@ -1,0 +1,9 @@
+[module]
+name = "bmo-pci"
+version = "1.0.0"
+
+[exports]
+functions = "pci_scan, pci_read_config, pci_write_config"
+
+[sources]
+files = "pci.c"

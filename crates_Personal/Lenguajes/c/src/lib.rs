@@ -1,6 +1,9 @@
 pub mod codegen;
 pub mod ast;
+pub mod module;
 
+use std::collections::HashMap;
+use std::path::PathBuf;
 use ast::*;
 use bmo_abi::profile::BmoLanguageProfile;
 
@@ -16,6 +19,13 @@ pub fn parse(source: &str) -> Result<Program, CError> {
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
     let program = parse(source)?;
     codegen::compile_to_bef_bytes(&program)
+}
+
+pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {
+    let mut resolver = module::ModuleResolver::new(base_paths);
+    let program = Parser::new(source).parse_program_with_modules(&mut resolver)?;
+    let used = module::find_used_functions(&program, &program.exported);
+    codegen::compile_to_bef_bytes_filtered(&program, &used)
 }
 
 #[derive(Debug, Clone)]
@@ -35,7 +45,9 @@ enum Token {
     Ident(String), IntLit(i64), StringLit(String), CharLit(u8),
     Int, Void, Char, Short, Long, Unsigned, Signed,
     If, Else, While, Do, For, Switch, Case, Default, Break, Continue,
-    Return, Sizeof, Struct, Typedef, Enum,
+    Float, Double,
+    Return, Sizeof, Struct, Union, Typedef, Enum, Goto, Use,
+    Const, Volatile, Extern,
     OpenParen, CloseParen, OpenBrace, CloseBrace, OpenBracket, CloseBracket,
     Semicolon, Comma, Colon, Question,
     Plus, Minus, Star, Slash, Percent,
@@ -53,12 +65,27 @@ enum Token {
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    var_types: HashMap<String, TypeSpec>,
+    struct_fields: HashMap<String, Vec<(String, u32, u32)>>, // name → [(field, offset, size)]
+    struct_sizes: HashMap<String, u32>,
+    usings: Vec<String>, // module paths collected from `use "path"` directives
+    typedefs: HashMap<String, TypeSpec>,
 }
 
 impl Parser {
     fn new(source: &str) -> Self {
-        Self { tokens: Self::tokenize(source), pos: 0 }
+        Self {
+            tokens: Self::tokenize(source), pos: 0,
+            var_types: HashMap::new(),
+            struct_fields: HashMap::new(),
+            struct_sizes: HashMap::new(),
+            usings: Vec::new(),
+            typedefs: HashMap::new(),
+        }
     }
+
+    #[cfg(test)]
+    fn tokenize_for_test(source: &str) -> Vec<Token> { Self::tokenize(source) }
 
     fn tokenize(source: &str) -> Vec<Token> {
         let mut t = Vec::new();
@@ -140,12 +167,75 @@ impl Parser {
                     i += 1; let mut s = String::new();
                     while i < c.len() && c[i] != '"' {
                         if c[i] == '\\' && i + 1 < c.len() { i += 1;
-                            match c[i] { 'n' => s.push('\n'), 't' => s.push('\t'), 'r' => s.push('\r'), '0' => s.push('\0'), '\\' => s.push('\\'), '"' => s.push('"'), '\'' => s.push('\''), x => { s.push('\\'); s.push(x); } }
+                            match c[i] {
+                                'n' => s.push('\n'), 't' => s.push('\t'), 'r' => s.push('\r'), '0' => s.push('\0'),
+                                '\\' => s.push('\\'), '"' => s.push('"'), '\'' => s.push('\''),
+                                'x' | 'X' => {
+                                    let mut hex = String::new();
+                                    while i + 1 < c.len() && c[i+1].is_ascii_hexdigit() { i += 1; hex.push(c[i]); }
+                                    if let Ok(v) = u8::from_str_radix(&hex, 16) { s.push(v as char); }
+                                }
+                                d if d.is_ascii_digit() && d != '8' && d != '9' => {
+                                    let mut oct = String::new(); oct.push(d);
+                                    for _ in 0..2 {
+                                        if i + 1 < c.len() && c[i+1] >= '0' && c[i+1] <= '7' { i += 1; oct.push(c[i]); } else { break; }
+                                    }
+                                    if let Ok(v) = u8::from_str_radix(&oct, 8) { s.push(v as char); }
+                                }
+                                x => { s.push('\\'); s.push(x); }
+                            }
                         } else { s.push(c[i]); } i += 1;
-                    } i += 1; t.push(Token::StringLit(s));
+                    } i += 1;
+                    // string literal concatenation: "foo" "bar" → "foobar"
+                    let mut combined = s;
+                    while i < c.len() && (c[i] == ' ' || c[i] == '\t' || c[i] == '\n' || c[i] == '\r') { i += 1; }
+                    while i < c.len() && c[i] == '"' {
+                        i += 1;
+                        while i < c.len() && c[i] != '"' {
+                            if c[i] == '\\' && i + 1 < c.len() { i += 1;
+                                match c[i] {
+                                    'n' => combined.push('\n'), 't' => combined.push('\t'), 'r' => combined.push('\r'), '0' => combined.push('\0'),
+                                    '\\' => combined.push('\\'), '"' => combined.push('"'), '\'' => combined.push('\''),
+                                    'x' | 'X' => {
+                                        let mut hex = String::new();
+                                        while i + 1 < c.len() && c[i+1].is_ascii_hexdigit() { i += 1; hex.push(c[i]); }
+                                        if let Ok(v) = u8::from_str_radix(&hex, 16) { combined.push(v as char); }
+                                    }
+                                    d if d.is_ascii_digit() && d != '8' && d != '9' => {
+                                        let mut oct = String::new(); oct.push(d);
+                                        for _ in 0..2 {
+                                            if i + 1 < c.len() && c[i+1] >= '0' && c[i+1] <= '7' { i += 1; oct.push(c[i]); } else { break; }
+                                        }
+                                        if let Ok(v) = u8::from_str_radix(&oct, 8) { combined.push(v as char); }
+                                    }
+                                    x => { combined.push('\\'); combined.push(x); }
+                                }
+                            } else { combined.push(c[i]); } i += 1;
+                        } i += 1;
+                        // skip whitespace between strings
+                        while i < c.len() && (c[i] == ' ' || c[i] == '\t' || c[i] == '\n' || c[i] == '\r') { i += 1; }
+                    }
+                    t.push(Token::StringLit(combined));
                 }
                 '\'' => {
-                    i += 1; let val = if c[i] == '\\' { i += 1; match c[i] { 'n' => 10, 't' => 9, 'r' => 13, '0' => 0, '\\' => 92, '\'' => 39, x => x as u8 } } else { c[i] as u8 };
+                    i += 1; let val = if c[i] == '\\' { i += 1;
+                        match c[i] {
+                            'n' => 10, 't' => 9, 'r' => 13, '0' => 0, '\\' => 92, '\'' => 39,
+                            'x' | 'X' => {
+                                let mut hex = String::new();
+                                while i + 1 < c.len() && c[i+1].is_ascii_hexdigit() { i += 1; hex.push(c[i]); }
+                                u8::from_str_radix(&hex, 16).unwrap_or(0)
+                            }
+                            d if d.is_ascii_digit() && d != '8' && d != '9' => {
+                                let mut oct = String::new(); oct.push(d);
+                                for _ in 0..2 {
+                                    if i + 1 < c.len() && c[i+1] >= '0' && c[i+1] <= '7' { i += 1; oct.push(c[i]); } else { break; }
+                                }
+                                u8::from_str_radix(&oct, 8).unwrap_or(0)
+                            }
+                            x => x as u8,
+                        }
+                    } else { c[i] as u8 };
                     i += 1; if i < c.len() && c[i] == '\'' { i += 1; } t.push(Token::CharLit(val));
                 }
                 d if d.is_ascii_digit() => {
@@ -173,7 +263,14 @@ impl Parser {
                         "case" => t.push(Token::Case), "default" => t.push(Token::Default),
                         "break" => t.push(Token::Break), "continue" => t.push(Token::Continue),
                         "return" => t.push(Token::Return), "sizeof" => t.push(Token::Sizeof),
-                        "struct" => t.push(Token::Struct), "typedef" => t.push(Token::Typedef),
+                        "goto" => t.push(Token::Goto),
+                        "use" => t.push(Token::Use),
+                        "const" => t.push(Token::Const),
+                        "volatile" => t.push(Token::Volatile),
+                        "extern" => t.push(Token::Extern),
+                        "float" => t.push(Token::Float),
+                        "double" => t.push(Token::Double),
+                        "struct" => t.push(Token::Struct), "union" => t.push(Token::Union), "typedef" => t.push(Token::Typedef),
                         "enum" => t.push(Token::Enum),
                         _ => t.push(Token::Ident(id)),
                     }
@@ -187,16 +284,133 @@ impl Parser {
     fn peek(&self) -> &Token { &self.tokens[self.pos] }
     fn advance(&mut self) -> Token { let t = self.tokens[self.pos].clone(); self.pos += 1; t }
 
-    fn expect(&mut self, expected: &Token) -> Result<Token, CError> {
-        let tok = self.advance();
-        if std::mem::discriminant(&tok) != std::mem::discriminant(expected) {
-            return Err(CError::new(1, format!("expected {:?}, got {:?}", expected, tok)));
+    fn get_field_offset(&self, struct_name: &str, field: &str) -> Option<u32> {
+        self.struct_fields.get(struct_name).and_then(|fields| {
+            fields.iter().find(|(n, _, _)| n == field).map(|(_, off, _)| *off)
+        })
+    }
+
+    fn resolve_struct_type(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Var(n) => {
+                self.var_types.get(n).and_then(|t| match t {
+                    TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
+                    _ => None,
+                })
+            }
+            Expr::Subscript(n, _, _) => {
+                self.var_types.get(n).and_then(|t| match t {
+                    TypeSpec::Ptr(base) => match base.as_ref() {
+                        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
+                        _ => None,
+                    },
+                    TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
+                    _ => None,
+                })
+            }
+            Expr::Deref(inner) => {
+                match inner.as_ref() {
+                    Expr::Var(n) => {
+                        self.var_types.get(n).and_then(|t| match t {
+                            TypeSpec::Ptr(base) => match base.as_ref() {
+                                TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
+                                _ => None,
+                            },
+                            _ => None,
+                        })
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Field(base, _, _) => {
+                self.resolve_struct_type(base)
+            }
+            _ => None,
         }
-        Ok(tok)
+    }
+
+    fn resolve_field_expr_offset(&self, expr: &Expr, field: &str) -> u32 {
+        self.resolve_struct_type(expr)
+            .and_then(|s| self.get_field_offset(&s, field))
+            .unwrap_or(0)
+    }
+
+    fn resolve_arrow_expr_offset(&self, expr: &Expr, field: &str) -> u32 {
+        // Arrow: expr->field, expr is a pointer to struct
+        match expr {
+            Expr::Var(n) => {
+                self.var_types.get(n).and_then(|t| match t {
+                    TypeSpec::Ptr(base) => match base.as_ref() {
+                        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => self.get_field_offset(s, field),
+                        _ => None,
+                    },
+                    _ => None,
+                }).unwrap_or(0)
+            }
+            _ => 0,
+        }
+    }
+
+    fn element_size(&self, name: &str) -> u8 {
+        if let Some(typ) = self.var_types.get(name) {
+            match typ {
+                TypeSpec::Char => 1, TypeSpec::UnsignedChar => 1,
+                TypeSpec::Short => 2, TypeSpec::UnsignedShort => 2,
+                TypeSpec::Int => 4, TypeSpec::UnsignedInt => 4,
+                TypeSpec::Long | TypeSpec::UnsignedLong => 8,
+                TypeSpec::Ptr(ref base) => {
+                    match base.as_ref() {
+                        TypeSpec::Char | TypeSpec::UnsignedChar => 1,
+                        TypeSpec::Short | TypeSpec::UnsignedShort => 2,
+                        TypeSpec::Int | TypeSpec::UnsignedInt => 4,
+                        TypeSpec::Float => 4, TypeSpec::Double => 8,
+                        TypeSpec::Void => 1,
+                        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => *self.struct_sizes.get(s.as_str()).unwrap_or(&8) as u8,
+                        _ => 8,
+                    }
+                }
+                _ => 8,
+            }
+        } else { 8 }
+    }
+
+    fn compute_struct_layout(&mut self, name: &str, members: &[StructMember]) {
+        let mut layout = Vec::new();
+        let mut offset = 0u32;
+        for m in members {
+            let sz = m.typ.stack_size();
+            let align = sz.min(8).max(1);
+            offset = (offset + align - 1) / align * align;
+            layout.push((m.name.clone(), offset, sz));
+            offset += sz;
+        }
+        let max_align = members.iter().map(|m| m.typ.stack_size().min(8).max(1)).max().unwrap_or(1);
+        let total = (offset + max_align - 1) / max_align * max_align;
+        self.struct_fields.insert(name.to_string(), layout);
+        self.struct_sizes.insert(name.to_string(), total);
+    }
+
+    fn compute_union_layout(&mut self, name: &str, members: &[StructMember]) {
+        let mut layout = Vec::new();
+        let mut max_sz = 0u32;
+        for m in members {
+            let sz = m.typ.stack_size();
+            layout.push((m.name.clone(), 0u32, sz));
+            if sz > max_sz { max_sz = sz; }
+        }
+        self.struct_fields.insert(name.to_string(), layout);
+        self.struct_sizes.insert(name.to_string(), max_sz);
+    }
+
+    fn expect(&mut self, expected: &Token) -> Result<Token, CError> {
+        if *self.peek() != *expected {
+            return Err(CError::new(1, format!("expected {:?}, got {:?}", expected, self.peek())));
+        }
+        Ok(self.advance())
     }
 
     fn skip_semicolon(&mut self) {
-        while *self.peek() == Token::Semicolon { self.advance(); }
+        if *self.peek() == Token::Semicolon { self.advance(); }
     }
 
     // ---- Program ----
@@ -204,15 +418,151 @@ impl Parser {
         let mut globals = Vec::new();
         let mut functions = Vec::new();
         while *self.peek() != Token::Eof {
+            if *self.peek() == Token::Struct || *self.peek() == Token::Union {
+                let is_union = *self.peek() == Token::Union;
+                self.advance();
+                let name = match self.advance() {
+                    Token::Ident(n) => n,
+                    t => return Err(CError::new(1, format!("expected struct name, got {:?}", t))),
+                };
+                if *self.peek() == Token::OpenBrace {
+                    self.advance();
+                    let mut members = Vec::new();
+                    while *self.peek() != Token::CloseBrace && *self.peek() != Token::Eof {
+                        let mtype = self.parse_type_spec()?;
+                        let mname = match self.advance() {
+                            Token::Ident(n) => n,
+                            t => return Err(CError::new(1, format!("expected member name, got {:?}", t))),
+                        };
+                        self.skip_semicolon();
+                        members.push(StructMember { typ: mtype, name: mname });
+                    }
+                    self.expect(&Token::CloseBrace)?;
+                    self.skip_semicolon();
+                    if is_union {
+                        self.compute_union_layout(&name, &members);
+                        globals.push(GlobalDecl::Union(name, members));
+                    } else {
+                        self.compute_struct_layout(&name, &members);
+                        globals.push(GlobalDecl::Struct(name, members));
+                    }
+                } else {
+                    // struct name var; — handled as type+name below
+                    if let Token::Ident(vname) = self.advance() {
+                        let typ = if is_union { TypeSpec::UnionRef(name) } else { TypeSpec::StructRef(name) };
+                        self.skip_semicolon();
+                        globals.push(GlobalDecl::Var(typ.clone(), vname.clone(), None));
+                        self.var_types.insert(vname, typ);
+                    }
+                }
+                continue;
+            }
+            if *self.peek() == Token::Enum {
+                self.advance();
+                let _name = match self.advance() {
+                    Token::Ident(n) => n,
+                    t => return Err(CError::new(1, format!("expected enum name, got {:?}", t))),
+                };
+                self.expect(&Token::OpenBrace)?;
+                loop {
+                    match self.advance() {
+                        Token::Ident(_en) => {
+                            if *self.peek() == Token::Assign {
+                                self.advance();
+                                let _val = match self.advance() {
+                                    Token::IntLit(n) => n,
+                                    t => return Err(CError::new(1, format!("expected int in enum, got {:?}", t))),
+                                };
+                            }
+                        }
+                        Token::CloseBrace => { break; }
+                        t => return Err(CError::new(1, format!("expected enum constant, got {:?}", t))),
+                    }
+                    if *self.peek() == Token::Comma { self.advance(); }
+                }
+                self.skip_semicolon();
+                continue;
+            }
+            if *self.peek() == Token::Use {
+                self.advance();
+                let path = match self.advance() {
+                    Token::StringLit(s) => s,
+                    t => return Err(CError::new(1, format!("expected module path string, got {:?}", t))),
+                };
+                self.skip_semicolon();
+                self.usings.push(path);
+                continue;
+            }
+            if *self.peek() == Token::Extern {
+                self.advance();
+                let (typ, name) = self.parse_type_and_name()?;
+                self.skip_semicolon();
+                self.var_types.insert(name.clone(), typ.clone());
+                globals.push(GlobalDecl::Var(typ, name, None));
+                continue;
+            }
+            if *self.peek() == Token::Typedef {
+                self.advance();
+                let typ = self.parse_type_spec()?;
+                let name = match self.advance() {
+                    Token::Ident(n) => n,
+                    t => return Err(CError::new(1, format!("expected typedef name, got {:?}", t))),
+                };
+                self.skip_semicolon();
+                self.typedefs.insert(name, typ);
+                continue;
+            }
             if let Some(f) = self.try_parse_function()? {
                 functions.push(f);
             } else {
                 let (typ, name) = self.parse_type_and_name()?;
                 self.skip_semicolon();
+                self.var_types.insert(name.clone(), typ.clone());
                 globals.push(GlobalDecl::Var(typ, name, None));
             }
         }
-        Ok(Program { globals, functions })
+        Ok(Program { globals, functions, exported: Vec::new() })
+    }
+
+    /// Parse with module resolution. Returns merged Program with all dependency sources.
+    fn parse_program_with_modules(&mut self, resolver: &mut module::ModuleResolver) -> Result<Program, CError> {
+        let mut program = self.parse_program()?;
+        let usings = std::mem::take(&mut self.usings);
+        for path in &usings {
+            let manifest = resolver.find_manifest(path)?;
+            let mod_dir = resolver.find_base_dir(path);
+            for src_file in &manifest.source_files {
+                let full_path = mod_dir.join(src_file);
+                let source = std::fs::read_to_string(&full_path)
+                    .map_err(|e| CError::new(0, format!("cannot read module source {}: {e}", full_path.display())))?;
+                let mut sub = Parser::new(&source);
+                let sub_prog = sub.parse_program()?;
+                for f in sub_prog.functions {
+                    if !program.functions.iter().any(|pf| pf.name == f.name) {
+                        program.functions.push(f);
+                    }
+                }
+                for g in sub_prog.globals {
+                    if !program.globals.iter().any(|pg| std::mem::discriminant(pg) == std::mem::discriminant(&g)) {
+                        program.globals.push(g);
+                    }
+                }
+                for (k, v) in sub.struct_fields {
+                    self.struct_fields.entry(k).or_insert(v);
+                }
+                for (k, v) in sub.struct_sizes {
+                    self.struct_sizes.entry(k).or_insert(v);
+                }
+                for (k, v) in sub.var_types {
+                    self.var_types.entry(k).or_insert(v);
+                }
+                for (k, v) in sub.typedefs {
+                    self.typedefs.entry(k).or_insert(v);
+                }
+            }
+            program.exported.extend(manifest.exports);
+        }
+        Ok(program)
     }
 
     fn try_parse_function(&mut self) -> Result<Option<Function>, CError> {
@@ -239,30 +589,47 @@ impl Parser {
             if *self.peek() == Token::Comma { self.advance(); }
         }
         self.expect(&Token::CloseParen)?;
-        if *self.peek() != Token::OpenBrace { self.pos = save; return Ok(None); }
+        // After expect advances past ), pos should be at {
+        if self.pos >= self.tokens.len() || *self.peek() != Token::OpenBrace { self.pos = save; return Ok(None); }
         self.advance();
         let mut var_count = 0u32;
+        let mut var_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
         let mut body = Vec::new();
         loop {
             match self.peek() {
                 Token::CloseBrace => { self.advance(); break; }
                 Token::Eof => return Err(CError::new(1, "unexpected eof in function body")),
                 _ => {
+                    // check for label: ident followed by colon
+                    if let Token::Ident(name) = self.peek().clone() {
+                        if self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1] == Token::Colon {
+                            self.advance();
+                            self.advance();
+                            body.push(Stmt::Label(name));
+                            continue;
+                        }
+                    }
                     if let Some((typ, name)) = self.try_parse_decl()? {
                         var_count += 1;
-                        body.push(Stmt::DeclAssign(typ, name, None));
+                        var_names.push(name.clone());
+                        let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
                         self.skip_semicolon();
+                        self.var_types.insert(name.clone(), typ.clone());
+                        body.push(Stmt::DeclAssign(typ, name, init));
                     } else {
                         body.push(self.parse_stmt()?);
                     }
                 }
             }
         }
-        Ok(Some(Function { ret_type, name, params, var_count, body }))
+        Ok(Some(Function { ret_type, name, params, var_count, var_names, body }))
     }
 
     fn try_parse_decl(&mut self) -> Result<Option<(TypeSpec, String)>, CError> {
         let save = self.pos;
+        if !self.peek_is_type_start() {
+            return Ok(None);
+        }
         let typ = match self.parse_type_spec() {
             Ok(t) => t,
             Err(_) => { self.pos = save; return Ok(None); }
@@ -272,6 +639,13 @@ impl Parser {
             self.pos = save; return Ok(None);
         }
         self.advance();
+        // handle array declarator: name[size]
+        if *self.peek() == Token::OpenBracket {
+            self.advance();
+            // consume size expression
+            self.parse_expr()?;
+            self.expect(&Token::CloseBracket)?;
+        }
         if *self.peek() != Token::Semicolon && *self.peek() != Token::Assign {
             self.pos = save; return Ok(None);
         }
@@ -284,10 +658,36 @@ impl Parser {
             Token::Ident(n) => n,
             t => return Err(CError::new(1, format!("expected identifier, got {:?}", t))),
         };
+        // skip optional array declarator [size]
+        if *self.peek() == Token::OpenBracket {
+            self.advance();
+            self.parse_expr()?;
+            self.expect(&Token::CloseBracket)?;
+        }
         Ok((typ, name))
     }
 
+    fn peek_is_type_start(&self) -> bool {
+        match self.peek() {
+            Token::Int | Token::Void | Token::Char | Token::Short | Token::Long |
+            Token::Unsigned | Token::Signed | Token::Float | Token::Double |
+            Token::Struct | Token::Union | Token::Enum | Token::Const | Token::Volatile => true,
+            Token::Ident(name) => self.typedefs.contains_key(name),
+            _ => false,
+        }
+    }
+
+    fn strip_qualifiers(&mut self) {
+        loop {
+            match self.peek() {
+                Token::Const | Token::Volatile => { self.advance(); }
+                _ => break,
+            }
+        }
+    }
+
     fn parse_type_spec(&mut self) -> Result<TypeSpec, CError> {
+        self.strip_qualifiers();
         let base = match self.advance() {
             Token::Void => TypeSpec::Void,
             Token::Char => TypeSpec::Char,
@@ -310,6 +710,29 @@ impl Parser {
                 }
             }
             Token::Signed => { self.advance(); TypeSpec::Int }
+            Token::Float => TypeSpec::Float,
+            Token::Double => TypeSpec::Double,
+            Token::Struct => { 
+                let name = match self.advance() {
+                    Token::Ident(n) => n,
+                    t => return Err(CError::new(1, format!("expected struct name, got {:?}", t))),
+                };
+                TypeSpec::StructRef(name)
+            }
+            Token::Union => {
+                let name = match self.advance() {
+                    Token::Ident(n) => n,
+                    t => return Err(CError::new(1, format!("expected union name, got {:?}", t))),
+                };
+                TypeSpec::UnionRef(name)
+            }
+            Token::Ident(name) => {
+                if let Some(typ) = self.typedefs.get(&name).cloned() {
+                    typ
+                } else {
+                    return Err(CError::new(1, format!("expected type, got {:?}", Token::Ident(name))));
+                }
+            }
             t => return Err(CError::new(1, format!("expected type, got {:?}", t))),
         };
         if *self.peek() == Token::Star {
@@ -332,7 +755,27 @@ impl Parser {
             Token::Continue => { self.advance(); self.skip_semicolon(); Ok(Stmt::Continue) }
             Token::Return => self.parse_return(),
             Token::OpenBrace => self.parse_block(),
-            _ => self.parse_expr_stmt(),
+            Token::Goto => {
+                self.advance();
+                let label = match self.advance() {
+                    Token::Ident(s) => s,
+                    t => return Err(CError::new(1, format!("expected label name, got {:?}", t))),
+                };
+                self.skip_semicolon();
+                Ok(Stmt::Goto(label))
+            }
+            Token::Semicolon => { self.advance(); Ok(Stmt::Block(vec![])) }
+            _ => {
+                // Try to parse as declaration if it starts with a type keyword
+                if self.peek_is_type_start() {
+                    if let Some((typ, name)) = self.try_parse_decl()? {
+                        let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
+                        self.skip_semicolon();
+                        return Ok(Stmt::DeclAssign(typ, name, init));
+                    }
+                }
+                self.parse_expr_stmt()
+            }
         }
     }
 
@@ -369,6 +812,42 @@ impl Parser {
     fn parse_for(&mut self) -> Result<Stmt, CError> {
         self.advance();
         self.expect(&Token::OpenParen)?;
+        // check for declaration: for(int i = 0; ...)
+        let has_decl = match self.peek() {
+            Token::Int | Token::Char | Token::Short | Token::Long |
+            Token::Void | Token::Unsigned | Token::Signed | Token::Float | Token::Double |
+            Token::Struct | Token::Union | Token::Const | Token::Volatile => true,
+            _ => false,
+        };
+        if has_decl {
+            let save = self.pos;
+            self.strip_qualifiers();
+            let _typ = match self.parse_type_spec() {
+                Ok(t) => t,
+                Err(_) => { self.pos = save; return self.parse_for_expr(); }
+            };
+            let name = match self.advance() {
+                Token::Ident(n) => n,
+                _ => { self.pos = save; return self.parse_for_expr(); }
+            };
+            let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
+            self.skip_semicolon();
+            self.var_types.insert(name.clone(), _typ.clone());
+            // wrap in Block: { type name = init; for(; cond; inc) body }
+            let mut stmts = Vec::new();
+            stmts.push(Stmt::DeclAssign(_typ, name, init));
+            let cond = if *self.peek() == Token::Semicolon { None } else { Some(self.parse_expr()?) };
+            self.skip_semicolon();
+            let inc = if *self.peek() == Token::CloseParen { None } else { Some(self.parse_expr()?) };
+            self.expect(&Token::CloseParen)?;
+            let body = self.parse_stmt()?;
+            stmts.push(Stmt::For(None, cond, inc, Box::new(body)));
+            return Ok(Stmt::Block(stmts));
+        }
+        self.parse_for_expr()
+    }
+
+    fn parse_for_expr(&mut self) -> Result<Stmt, CError> {
         let init = if *self.peek() == Token::Semicolon { None } else { Some(self.parse_expr()?) };
         self.skip_semicolon();
         let cond = if *self.peek() == Token::Semicolon { None } else { Some(self.parse_expr()?) };
@@ -429,9 +908,19 @@ impl Parser {
                 Token::CloseBrace => { self.advance(); break; }
                 Token::Eof => return Err(CError::new(1, "unexpected eof in block")),
                 _ => {
+                    // check for label: ident followed by colon
+                    if let Token::Ident(name) = self.peek().clone() {
+                        if self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1] == Token::Colon {
+                            self.advance(); // consume ident
+                            self.advance(); // consume colon
+                            stmts.push(Stmt::Label(name));
+                            continue;
+                        }
+                    }
                     if let Some((typ, name)) = self.try_parse_decl()? {
                         let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
                         self.skip_semicolon();
+                        self.var_types.insert(name.clone(), typ.clone());
                         stmts.push(Stmt::DeclAssign(typ, name, init));
                         continue;
                     } else {
@@ -470,10 +959,83 @@ impl Parser {
 
     fn parse_assign(&mut self) -> Result<Expr, CError> {
         let expr = self.parse_conditional()?;
+        let assign_op = |n: String, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+            let n2 = n.clone(); Expr::Assign(n, Box::new(op(Box::new(Expr::Var(n2)), Box::new(val))))
+        };
+        let field_assign_op = |e: Expr, f: String, off: u32, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+            let lhs = Expr::Field(Box::new(e.clone()), f.clone(), off);
+            Expr::AssignField(Box::new(e), f, off, Box::new(op(Box::new(lhs), Box::new(val))))
+        };
+        let arrow_assign_op = |e: Box<Expr>, f: String, off: u32, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+            Expr::AssignArrow(e.clone(), f.clone(), off, Box::new(op(Box::new(Expr::Arrow(e, f, off)), Box::new(val))))
+        };
         match self.peek() {
-            Token::Assign => { self.advance(); let val = self.parse_assign()?; match expr { Expr::Var(n) => Ok(Expr::Assign(n, Box::new(val))), _ => Ok(val) } }
-            Token::AddAssign => { self.advance(); let val = self.parse_assign()?; match expr { Expr::Var(n) => { let n2 = n.clone(); Ok(Expr::Assign(n, Box::new(Expr::Add(Box::new(Expr::Var(n2)), Box::new(val))))) } _ => Ok(val) } }
-            Token::SubAssign => { self.advance(); let val = self.parse_assign()?; match expr { Expr::Var(n) => { let n2 = n.clone(); Ok(Expr::Assign(n, Box::new(Expr::Sub(Box::new(Expr::Var(n2)), Box::new(val))))) } _ => Ok(val) } }
+            Token::Assign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(Expr::Assign(n, Box::new(val))),
+                Expr::Field(e, f, off) => Ok(Expr::AssignField(e, f, off, Box::new(val))),
+                Expr::Arrow(e, f, off) => Ok(Expr::AssignArrow(e, f, off, Box::new(val))),
+                _ => Ok(val),
+            }}
+            Token::AddAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::Add)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Add)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Add)),
+                _ => Ok(val),
+            }}
+            Token::SubAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::Sub)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Sub)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Sub)),
+                _ => Ok(val),
+            }}
+            Token::MulAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::Mul)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Mul)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Mul)),
+                _ => Ok(val),
+            }}
+            Token::DivAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::Div)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Div)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Div)),
+                _ => Ok(val),
+            }}
+            Token::ModAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::Mod)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Mod)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Mod)),
+                _ => Ok(val),
+            }}
+            Token::ShlAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::Shl)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Shl)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Shl)),
+                _ => Ok(val),
+            }}
+            Token::ShrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::Shr)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Shr)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Shr)),
+                _ => Ok(val),
+            }}
+            Token::AndAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::BitAnd)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitAnd)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitAnd)),
+                _ => Ok(val),
+            }}
+            Token::XorAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::BitXor)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitXor)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitXor)),
+                _ => Ok(val),
+            }}
+            Token::OrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
+                Expr::Var(n) => Ok(assign_op(n, val, Expr::BitOr)),
+                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitOr)),
+                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitOr)),
+                _ => Ok(val),
+            }}
             _ => Ok(expr),
         }
     }
@@ -566,9 +1128,27 @@ impl Parser {
             Token::Tilde => { self.advance(); let e = self.parse_unary()?; Ok(Expr::BitNot(Box::new(e))) }
             Token::PlusPlus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreInc(name)) } _ => Err(CError::new(1, "expected variable after ++")) } }
             Token::MinusMinus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreDec(name)) } _ => Err(CError::new(1, "expected variable after --")) } }
-            Token::And => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::AddrOf(name)) } _ => Err(CError::new(1, "expected variable after &")) } }
+            Token::And => { self.advance(); let expr = self.parse_unary()?; Ok(Expr::AddrOf(Box::new(expr))) }
             Token::Star => { self.advance(); let e = self.parse_unary()?; Ok(Expr::Deref(Box::new(e))) }
-            Token::Sizeof => { self.advance(); self.expect(&Token::OpenParen)?; let _ = self.parse_type_spec()?; self.expect(&Token::CloseParen)?; Ok(Expr::Int(8)) }
+            Token::Sizeof => { self.advance(); self.expect(&Token::OpenParen)?; let t = self.parse_type_spec()?; self.expect(&Token::CloseParen)?; Ok(Expr::Int(t.stack_size() as i64)) }
+            Token::OpenParen => {
+                let save = self.pos;
+                self.advance();
+                // Try to parse as cast: (type)expr
+                let is_cast = self.peek_is_type_start();
+                if is_cast {
+                    if let Ok(_typ) = self.parse_type_spec() {
+                        if *self.peek() == Token::CloseParen {
+                            self.advance();
+                            let expr = self.parse_unary()?;
+                            // cast is a no-op — just return the inner expression
+                            return Ok(expr);
+                        }
+                    }
+                }
+                self.pos = save;
+                self.parse_postfix()
+            }
             _ => self.parse_postfix(),
         }
     }
@@ -579,9 +1159,25 @@ impl Parser {
             match self.peek() {
                 Token::PlusPlus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostInc(n.clone()), _ => {} } }
                 Token::MinusMinus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostDec(n.clone()), _ => {} } }
-                Token::OpenBracket => { self.advance(); let index = self.parse_expr()?; self.expect(&Token::CloseBracket)?; match expr { Expr::Var(ref n) => expr = Expr::Subscript(n.clone(), Box::new(index)), _ => {} } }
-                Token::Dot => { self.advance(); let _ = self.advance(); }
-                Token::Arrow => { self.advance(); let _ = self.advance(); }
+                Token::OpenBracket => { self.advance(); let index = self.parse_expr()?; self.expect(&Token::CloseBracket)?; match &expr { Expr::Var(n) => { let scale = self.element_size(n); let n2 = n.clone(); expr = Expr::Subscript(n2, Box::new(index), scale); } _ => {} } }
+                Token::Dot => {
+                    self.advance();
+                    let field = match self.advance() {
+                        Token::Ident(s) => s,
+                        t => return Err(CError::new(1, format!("expected field name, got {:?}", t))),
+                    };
+                    let offset = self.resolve_field_expr_offset(&expr, &field);
+                    expr = Expr::Field(Box::new(expr), field, offset);
+                }
+                Token::Arrow => {
+                    self.advance();
+                    let field = match self.advance() {
+                        Token::Ident(s) => s,
+                        t => return Err(CError::new(1, format!("expected field name, got {:?}", t))),
+                    };
+                    let offset = self.resolve_arrow_expr_offset(&expr, &field);
+                    expr = Expr::Arrow(Box::new(expr), field, offset);
+                }
                 _ => break,
             }
         }
@@ -715,5 +1311,309 @@ int main() {
     fn handles_void_param() {
         let src = "int main(void) { return 0; }";
         parse(src).unwrap();
+    }
+
+    #[test]
+    fn handles_variable_assign_and_use() {
+        let src = r#"
+int main() {
+    int x;
+    x = 42;
+    int y;
+    y = x;
+    return y;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn handles_inc_dec() {
+        let src = r#"
+int main() {
+    int x;
+    x = 10;
+    x = x + 1;
+    x = x - 1;
+    return x;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn handles_pre_post_inc_dec() {
+        let src = r#"
+int main() {
+    int x;
+    x = 5;
+    int a;
+    a = ++x;
+    a = --x;
+    a = x++;
+    a = x--;
+    return x;
+}
+"#;
+        let _p = parse(src).unwrap();
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn handles_sizeof_types() {
+        let src = r#"
+int main() {
+    int a;
+    char b;
+    long c;
+    long long d;
+    int* p;
+    a = sizeof(int);
+    a = sizeof(char);
+    a = sizeof(long);
+    a = sizeof(long long);
+    a = sizeof(int*);
+    return 0;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn handles_function_call_codegen() {
+        let src = r#"
+int add(int a, int b) {
+    return a + b;
+}
+int main() {
+    int r;
+    r = add(3, 4);
+    return r;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn handles_compound_assign() {
+        let src = r#"
+int main() {
+    int x;
+    x = 10;
+    x += 5;
+    x -= 3;
+    x *= 2;
+    x /= 4;
+    x %= 3;
+    return x;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_goto_and_label() {
+        let src = "int main() { int x; x = 0; goto end; x = 1; end: return x; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_const_volatile() {
+        let src = "int main() { const volatile int x; const int y; volatile int z; return 0; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_float_double() {
+        let src = "int main() { float f; double d; return 0; }";
+        let p = parse(src).unwrap();
+        assert!(p.functions.len() > 0);
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_for_decl() {
+        let src = r#"
+int main() {
+    int sum = 0;
+    for (int i = 0; i < 10; i = i + 1) {
+        sum = sum + i;
+    }
+    return sum;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_escape_sequences() {
+        let src = r#"int main() { char c; c = '\x41'; c = '\101'; printf("hello\x0aworld"); return 0; }"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_string_concat() {
+        let src = r#"int main() { printf("hello " "world"); return 0; }"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_extern() {
+        let src = "extern int global_var; int main() { return 0; }";
+        let p = parse(src).unwrap();
+        assert_eq!(p.globals.len(), 1);
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_struct_declaration() {
+        let src = r#"
+struct Point { int x; long y; };
+int main() { return 0; }
+"#;
+        let p = parse(src).unwrap();
+        assert_eq!(p.globals.len(), 1);
+        match &p.globals[0] {
+            GlobalDecl::Struct(name, members) => {
+                assert_eq!(name, "Point");
+                assert_eq!(members.len(), 2);
+            }
+            _ => panic!("expected struct decl"),
+        }
+    }
+
+    #[test]
+    fn parses_struct_field_access() {
+        let src = r#"
+struct Point { int x; long y; };
+int main() {
+    struct Point pt;
+    pt.x = 10;
+    pt.y = 20;
+    int a;
+    a = pt.y;
+    return a;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_enum() {
+        let src = r#"
+enum Color { RED, GREEN, BLUE };
+int main() { return 0; }
+"#;
+        let p = parse(src).unwrap();
+        assert!(p.functions.len() > 0);
+    }
+
+    #[test]
+    fn parses_use_directive() {
+        let src = r#"use "bmo/core"; int main() { return 0; }"#;
+        // tokenize and check
+        let tokens = crate::Parser::tokenize_for_test(src);
+        assert!(tokens.contains(&Token::Use), "should contain Use token");
+    }
+
+    #[test]
+    fn handles_var_names_in_function() {
+        let src = r#"
+int sum(int a, int b, int c) {
+    int t;
+    t = a + b + c;
+    return t;
+}
+"#;
+        let p = parse(src).unwrap();
+        assert_eq!(p.functions[0].var_names.len(), 4); // 3 params + 1 local
+        assert_eq!(p.functions[0].var_names[0], "a");
+        assert_eq!(p.functions[0].var_names[1], "b");
+        assert_eq!(p.functions[0].var_names[2], "c");
+        assert_eq!(p.functions[0].var_names[3], "t");
+    }
+
+    #[test]
+    fn parses_cast_expression() {
+        let src = "int main() { int x; x = (int)42; return x; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_typedef() {
+        let src = "typedef unsigned int u32; u32 x; int main() { x = 42; return (int)x; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_array_decl() {
+        let src = "int main() { int arr[4]; arr[0] = 1; return arr[0]; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_for_loop() {
+        assert!(parse("void f() { }").is_ok());
+        assert!(parse("int f() { }").is_ok());
+        assert!(parse("void f() { int x; for(x = 0; x < 10; x = x + 1) { } }").is_ok());
+        assert!(parse("void f() { for(;;); }").is_ok());
+        assert!(parse("void f() { for(;;) { x = 0; } }").is_ok());
+        assert!(parse("void f(char* fmt) { for(;;) { } }").is_ok());
+        assert!(parse("void f(char* fmt) { int x; for(;;) { } }").is_ok());
+        assert!(parse("void f(char* fmt) { int x; for (;;) { x = 0; } }").is_ok());
+    }
+
+    fn parses_ptr_string_init() {
+        let src = r#"int main() { char *p = "hello"; return 0; }"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_field_on_subscript() {
+        let src = r#"
+struct Point { int x; int y; };
+int main() {
+    struct Point pts[2];
+    pts[0].x = 10;
+    return pts[0].x;
+}
+"#;
+        let p = parse(src).unwrap();
+        assert!(p.functions.len() > 0);
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_compound_field_assign() {
+        let src = r#"
+struct Point { int x; int y; };
+int main() {
+    struct Point pt;
+    pt.x = 5;
+    pt.x = pt.x + 1;
+    return pt.x;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
     }
 }

@@ -1,0 +1,9 @@
+[module]
+name = "lib-printf"
+version = "1.0.0"
+
+[exports]
+functions = "printf"
+
+[sources]
+files = "printf.c"

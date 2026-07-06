@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use crate::ast::*;
 use crate::CError;
@@ -7,6 +8,15 @@ type Result<T> = core::result::Result<T, CError>;
 pub fn compile_to_bef_bytes(program: &Program) -> Result<Vec<u8>> {
     let mut cg = Codegen::new();
     cg.emit_program(program)?;
+    Ok(cg.build_bef())
+}
+
+pub fn compile_to_bef_bytes_filtered(program: &Program, used: &[String]) -> Result<Vec<u8>> {
+    let mut cg = Codegen::new();
+    // Only emit functions that are in the used set (plus main which is always used)
+    let mut filtered = program.clone();
+    filtered.functions.retain(|f| f.name == "main" || used.contains(&f.name));
+    cg.emit_program(&filtered)?;
     Ok(cg.build_bef())
 }
 
@@ -20,19 +30,41 @@ struct PendingReloc {
     target_label: u32,
 }
 
+struct CallReloc {
+    offset: usize,
+    target: String,
+}
+
 struct Codegen {
     code: Vec<u8>,
     strings: Vec<String>,
     fixups: Vec<Fixup>,
     labels: u32,
     pending_relocs: Vec<PendingReloc>,
+    call_relocs: Vec<CallReloc>,
+    function_offsets: HashMap<String, usize>,
     break_target: Vec<u32>,
     continue_target: Vec<u32>,
+    var_offsets: HashMap<String, (i32, TypeSpec)>,
+    struct_layouts: HashMap<String, Vec<(String, u32, u32)>>,
+    struct_sizes: HashMap<String, u32>,
+    label_positions: HashMap<String, usize>,
+    goto_relocs: Vec<(usize, String)>,
+    entry_offset: usize,
+    is_entry_function: bool,
 }
 
 impl Codegen {
     fn new() -> Self {
-        Self { code: Vec::new(), strings: Vec::new(), fixups: Vec::new(), labels: 0, pending_relocs: Vec::new(), break_target: Vec::new(), continue_target: Vec::new() }
+        Self {
+            code: Vec::new(), strings: Vec::new(), fixups: Vec::new(),
+            labels: 0, pending_relocs: Vec::new(), call_relocs: Vec::new(),
+            function_offsets: HashMap::new(), break_target: Vec::new(),
+            continue_target: Vec::new(), var_offsets: HashMap::new(),
+            struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
+            label_positions: HashMap::new(), goto_relocs: Vec::new(),
+            entry_offset: 0, is_entry_function: false,
+        }
     }
 
     fn fresh_label(&mut self) -> u32 {
@@ -41,13 +73,81 @@ impl Codegen {
         l
     }
 
+    // ---- Program ----
     fn emit_program(&mut self, program: &Program) -> Result<()> {
+        // build struct/union layouts
+        for decl in &program.globals {
+            match decl {
+                GlobalDecl::Struct(name, members) => {
+                    self.build_struct_layout(name, members);
+                }
+                GlobalDecl::Union(name, members) => {
+                    self.build_union_layout(name, members);
+                }
+                _ => {}
+            }
+        }
         self.collect_strings(program);
+        // emit all functions, tracking entry point
         for func in &program.functions {
+            let off = self.code.len();
+            self.function_offsets.insert(func.name.clone(), off);
+            if func.name == "main" { self.entry_offset = off; }
+            self.is_entry_function = func.name == "main";
             self.emit_function(func);
         }
+        self.is_entry_function = false;
+        // patch all call relocs
+        self.patch_call_relocs();
+        self.patch_goto_relocs();
         self.patch_string_fixups();
         Ok(())
+    }
+
+    fn build_struct_layout(&mut self, name: &str, members: &[StructMember]) {
+        let mut layout = Vec::new();
+        let mut offset = 0u32;
+        for m in members {
+            let sz = self.type_stack_size(&m.typ);
+            // align to member size (max 8)
+            let align = sz.min(8).max(1);
+            offset = (offset + align - 1) / align * align;
+            layout.push((m.name.clone(), offset, sz));
+            offset += sz;
+        }
+        // total struct size aligns to largest member
+        let max_align = members.iter().map(|m| self.type_stack_size(&m.typ).min(8).max(1)).max().unwrap_or(1);
+        let total = (offset + max_align - 1) / max_align * max_align;
+        self.struct_layouts.insert(name.to_string(), layout);
+        self.struct_sizes.insert(name.to_string(), total);
+    }
+
+    fn build_union_layout(&mut self, name: &str, members: &[StructMember]) {
+        let mut layout = Vec::new();
+        let mut max_sz = 0u32;
+        for m in members {
+            let sz = self.type_stack_size(&m.typ);
+            layout.push((m.name.clone(), 0u32, sz));
+            if sz > max_sz { max_sz = sz; }
+        }
+        self.struct_layouts.insert(name.to_string(), layout);
+        self.struct_sizes.insert(name.to_string(), max_sz);
+    }
+
+    fn type_stack_size(&self, typ: &TypeSpec) -> u32 {
+        match typ {
+            TypeSpec::Void => 0,
+            TypeSpec::Char | TypeSpec::UnsignedChar => 1,
+            TypeSpec::Short | TypeSpec::UnsignedShort => 2,
+            TypeSpec::Int | TypeSpec::UnsignedInt => 4,
+            TypeSpec::Long | TypeSpec::UnsignedLong | TypeSpec::LongLong | TypeSpec::UnsignedLongLong => 8,
+            TypeSpec::Float => 4,
+            TypeSpec::Double => 8,
+            TypeSpec::Ptr(_) => 8,
+            TypeSpec::StructRef(name) | TypeSpec::UnionRef(name) => {
+                self.struct_sizes.get(name).copied().unwrap_or(8)
+            }
+        }
     }
 
     fn collect_strings(&mut self, program: &Program) {
@@ -67,6 +167,28 @@ impl Codegen {
             Stmt::For(_, _, _, b) => self.collect_stmt_strings(b),
             Stmt::Switch(_, cases) => { for c in cases { for s in &c.stmts { self.collect_stmt_strings(s); } } }
             Stmt::Block(stmts) => { for s in stmts { self.collect_stmt_strings(s); } }
+            Stmt::Expr(e) | Stmt::Return(Some(e)) => { self.collect_expr_strings(e); }
+            Stmt::DeclAssign(_, _, Some(e)) => { self.collect_expr_strings(e); }
+            _ => {}
+        }
+    }
+
+    fn collect_expr_strings(&mut self, expr: &Expr) {
+        match expr {
+            Expr::StringLit(s) => {
+                if !self.strings.iter().any(|t| *t == *s) { self.strings.push(s.clone()); }
+            }
+            Expr::Neg(a) | Expr::Not(a) | Expr::BitNot(a) | Expr::Deref(a) | Expr::AddrOf(a) => self.collect_expr_strings(a),
+            Expr::Add(a,b) | Expr::Sub(a,b) | Expr::Mul(a,b) | Expr::Div(a,b) | Expr::Mod(a,b)
+                | Expr::Eq(a,b) | Expr::Neq(a,b) | Expr::Lt(a,b) | Expr::Gt(a,b) | Expr::Le(a,b) | Expr::Ge(a,b)
+                | Expr::BitAnd(a,b) | Expr::BitXor(a,b) | Expr::BitOr(a,b) | Expr::LAnd(a,b) | Expr::LOr(a,b)
+                | Expr::Shl(a,b) | Expr::Shr(a,b) => { self.collect_expr_strings(a); self.collect_expr_strings(b); }
+            Expr::Conditional(c,t,f) => { self.collect_expr_strings(c); self.collect_expr_strings(t); self.collect_expr_strings(f); }
+            Expr::Call(_, args) => { for a in args { self.collect_expr_strings(a); } }
+            Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => self.collect_expr_strings(p),
+            Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => self.collect_expr_strings(v),
+            Expr::Field(b,_,_) => self.collect_expr_strings(b),
+            Expr::Comma(v) => { for e in v { self.collect_expr_strings(e); } }
             _ => {}
         }
     }
@@ -85,6 +207,25 @@ impl Codegen {
             self.code.extend_from_slice(s.as_bytes());
             self.code.push(0);
             str_off += s.len() + 1;
+        }
+    }
+
+    fn patch_goto_relocs(&mut self) {
+        for (off, label) in &self.goto_relocs {
+            if let Some(&target) = self.label_positions.get(label) {
+                let disp = target as i32 - (*off as i32 + 4);
+                self.code[*off..*off + 4].copy_from_slice(&disp.to_le_bytes());
+            }
+        }
+    }
+
+    fn patch_call_relocs(&mut self) {
+        for reloc in &self.call_relocs {
+            if let Some(&target_offset) = self.function_offsets.get(&reloc.target) {
+                let off = reloc.offset;
+                let disp = target_offset as i32 - (off as i32 + 4);
+                self.code[off..off + 4].copy_from_slice(&disp.to_le_bytes());
+            }
         }
     }
 
@@ -119,18 +260,206 @@ impl Codegen {
         self.code.extend_from_slice(&[0, 0, 0, 0]);
     }
 
+    // ---- Stack frame helpers ----
+    fn build_var_map(&mut self, params: &[Param], var_names: &[String], func: &Function) {
+        self.var_offsets.clear();
+        // build map from param name → type
+        let mut type_map: HashMap<&str, &TypeSpec> = HashMap::new();
+        for p in params { type_map.insert(&p.name, &p.typ); }
+        let param_count = params.len();
+        // from var_names + declared types in body, build type map
+        // Function doesn't store types for body variables, only param types.
+        // We use the function's DeclAssign statements to determine types.
+        for stmt in &func.body {
+            if let Stmt::DeclAssign(t, n, _) = stmt {
+                type_map.insert(n.as_str(), t);
+            }
+        }
+
+        for (i, p) in params.iter().enumerate() {
+            let off = 16 + i as i32 * 8;
+            let typ = type_map.get(p.name.as_str()).copied().cloned().unwrap_or(TypeSpec::Long);
+            self.var_offsets.insert(p.name.clone(), (off, typ));
+        }
+        for (i, name) in var_names.iter().skip(param_count).enumerate() {
+            let off = -((i as i32 + 1) * 8);
+            let typ = type_map.get(name.as_str()).copied().cloned().unwrap_or(TypeSpec::Long);
+            self.var_offsets.insert(name.clone(), (off, typ));
+        }
+    }
+
+    fn emit_store_var(&mut self, name: &str) {
+        let Some(&(offset, ref typ)) = self.var_offsets.get(name) else { return };
+        let disp = offset;
+        let rex8 = if disp >= -128 && disp <= 127 { 0x45 } else { 0x85 };
+        match typ {
+            TypeSpec::Char | TypeSpec::UnsignedChar => {
+                // mov byte [rbp+disp], al
+                self.code.extend_from_slice(&[0x88, rex8]);
+                if disp >= -128 && disp <= 127 { self.code.push(disp as u8); }
+                else { self.code.extend_from_slice(&(disp as i32).to_le_bytes()); }
+            }
+            TypeSpec::Short | TypeSpec::UnsignedShort => {
+                // mov word [rbp+disp], ax
+                self.code.extend_from_slice(&[0x66, 0x89, rex8]);
+                if disp >= -128 && disp <= 127 { self.code.push(disp as u8); }
+                else { self.code.extend_from_slice(&(disp as i32).to_le_bytes()); }
+            }
+            TypeSpec::Int | TypeSpec::UnsignedInt => {
+                // mov dword [rbp+disp], eax
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x89, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x89, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+            _ => {
+                // mov qword [rbp+disp], rax
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x89, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+        }
+    }
+
+    fn emit_load_var(&mut self, name: &str) {
+        let Some(&(offset, ref typ)) = self.var_offsets.get(name) else { self.emit_xor_eax(); return };
+        let disp = offset;
+        match typ {
+            TypeSpec::Char => {
+                // movsx rax, byte [rbp+disp]
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+            TypeSpec::UnsignedChar => {
+                // movzx rax, byte [rbp+disp]
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+            TypeSpec::Short => {
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+            TypeSpec::UnsignedShort => {
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+            TypeSpec::Int | TypeSpec::UnsignedInt => {
+                // mov eax, dword [rbp+disp] (zero-extends to rax)
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x8B, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x8B, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+            _ => {
+                // mov rax, qword [rbp+disp]
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x8B, 0x45, disp as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+        }
+    }
+
+    fn emit_xor_eax(&mut self) {
+        self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);
+    }
+
+    fn emit_inc_var(&mut self, name: &str) {
+        if !self.var_offsets.contains_key(name) { self.emit_xor_eax(); return; }
+        self.emit_load_var(name);
+        self.code.extend_from_slice(&[0x48, 0x83, 0xC0, 0x01]);
+        self.emit_store_var(name);
+    }
+
+    fn emit_dec_var(&mut self, name: &str) {
+        if !self.var_offsets.contains_key(name) { self.emit_xor_eax(); return; }
+        self.emit_load_var(name);
+        self.code.extend_from_slice(&[0x48, 0x83, 0xE8, 0x01]);
+        self.emit_store_var(name);
+    }
+
     // ---- Function emit ----
     fn emit_function(&mut self, func: &Function) {
-        self.emit_push_rbp();
-        let stack = func.var_count * 8;
-        if stack > 0 { self.emit_sub_rsp(stack as u8); }
+        self.build_var_map(&func.params, &func.var_names, func);
+        // prologue
+        self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]); // push rbp; mov rbp, rsp
+        // copy params from incoming stack to local slots
+        let param_count = func.params.len();
+        for (i, p) in func.params.iter().enumerate() {
+            // param is at [rbp + 16 + i*8]
+            let src_off = 16 + i as i32 * 8;
+            if src_off >= -128 && src_off <= 127 {
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x45, src_off as u8]);
+            } else {
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
+                self.code.extend_from_slice(&(src_off as i32).to_le_bytes());
+            }
+            // store to local slot if it differs
+                    if let Some(&(local_off, _)) = self.var_offsets.get(&p.name) {
+                        if local_off != src_off {
+                            if local_off >= -128 && local_off <= 127 {
+                                self.code.extend_from_slice(&[0x48, 0x89, 0x45, local_off as u8]);
+                            } else {
+                                self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                                self.code.extend_from_slice(&(local_off as i32).to_le_bytes());
+                            }
+                        }
+                    }
+        }
+        // allocate local var space
+        let local_count = func.var_names.len() as i32 - param_count as i32;
+        if local_count > 0 {
+            let stack_size = local_count * 8;
+            if stack_size <= 127 {
+                self.code.extend_from_slice(&[0x48, 0x83, 0xEC, stack_size as u8]);
+            } else if stack_size <= 0x7FFF {
+                self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
+                self.code.extend_from_slice(&(stack_size as u32).to_le_bytes());
+            } else {
+                self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
+                self.code.extend_from_slice(&(stack_size as u32).to_le_bytes());
+            }
+        }
         for stmt in &func.body { self.emit_stmt(stmt); }
         self.emit_epilogue();
     }
 
-    fn emit_push_rbp(&mut self) { self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]); }
-    fn emit_sub_rsp(&mut self, n: u8) { self.code.extend_from_slice(&[0x48, 0x83, 0xEC, n]); }
-    fn emit_epilogue(&mut self) { self.code.extend_from_slice(&[0x48, 0x89, 0xEC, 0x5D, 0xC3]); }
+    fn emit_epilogue(&mut self) {
+        self.code.extend_from_slice(&[0x48, 0x89, 0xEC, 0x5D]); // mov rsp,rbp; pop rbp
+        if self.is_entry_function {
+            // mov eax, NR_PROC_EXIT (0x181); syscall
+            self.code.extend_from_slice(&[0xB8]);
+            self.code.extend_from_slice(&0x181u32.to_le_bytes());
+            self.code.extend_from_slice(&[0x0F, 0x05]);
+        } else {
+            self.code.push(0xC3); // ret
+        }
+    }
 
     // ---- Statement emit ----
     fn emit_stmt(&mut self, stmt: &Stmt) {
@@ -198,13 +527,13 @@ impl Codegen {
                 let default_lbl = self.fresh_label();
                 for (i, c) in cases.iter().enumerate() {
                     if let Some(val) = c.value {
-                        self.code.push(0x50); // push rax (save switch value)
+                        self.code.push(0x50);
                         self.emit_expr(&Expr::Int(val));
-                        self.code.push(0x5A); // pop rdx
-                        self.code.push(0x58); // pop rax
+                        self.code.push(0x5A);
+                        self.code.push(0x58);
                         self.code.extend_from_slice(&[0x48, 0x39, 0xD0]);
                         self.emit_jz_reloc(case_labels[i]);
-                        self.code.push(0x50); // push rax back
+                        self.code.push(0x50);
                     }
                 }
                 self.emit_jmp_reloc(default_lbl);
@@ -229,12 +558,30 @@ impl Codegen {
             Stmt::Return(None) => {
                 self.emit_epilogue();
             }
-            Stmt::DeclAssign(_, _name, init) => {
+            Stmt::DeclAssign(_, name, init) => {
                 if let Some(e) = init { self.emit_expr(e); } else { self.emit_expr(&Expr::Int(0)); }
+                self.emit_store_var(name);
             }
             Stmt::Expr(e) => {
                 self.emit_expr(e);
                 self.emit_drop();
+            }
+            Stmt::Goto(label) => {
+                self.code.extend_from_slice(&[0xE9]);
+                self.goto_relocs.push((self.code.len(), label.clone()));
+                self.code.extend_from_slice(&[0, 0, 0, 0]);
+            }
+            Stmt::Label(label) => {
+                self.label_positions.insert(label.clone(), self.code.len());
+                // patch any pending gotos to this label
+                let mut i = 0;
+                while i < self.goto_relocs.len() {
+                    if self.goto_relocs[i].1 == *label {
+                        let (off, _) = self.goto_relocs.swap_remove(i);
+                        let disp = self.code.len() as i32 - (off as i32 + 4);
+                        self.code[off..off + 4].copy_from_slice(&disp.to_le_bytes());
+                    } else { i += 1; }
+                }
             }
             Stmt::Block(stmts) => {
                 for s in stmts { self.emit_stmt(s); }
@@ -254,9 +601,7 @@ impl Codegen {
         self.emit_jnz_reloc(label);
     }
 
-    fn emit_drop(&mut self) {
-        // result is already in rax, discard
-    }
+    fn emit_drop(&mut self) {}
 
     // ---- Printf ----
     fn emit_printf(&mut self, s: &str, newline: bool) {
@@ -281,20 +626,115 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0xB8]);
                 self.code.extend_from_slice(&(*c as u64).to_le_bytes());
             }
-            Expr::StringLit(_) | Expr::Var(_) | Expr::Call(_, _) => {
-                self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);
+            Expr::StringLit(s) => {
+                // lea rax, [rip + disp] — fixup patched in patch_string_fixups
+                self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
+                let idx = self.strings.iter().position(|t| t == s).unwrap_or(0);
+                self.fixups.push(Fixup { lea_offset: self.code.len() - 4, string_idx: idx });
             }
-            Expr::Assign(_, val) => { self.emit_expr(val); }
+            Expr::Var(name) => {
+                self.emit_load_var(name);
+            }
+            Expr::Call(name, args) => {
+                // push args right-to-left
+                for arg in args.iter().rev() {
+                    self.emit_expr(arg);
+                    self.code.push(0x50); // push rax
+                }
+                // call rel32 placeholder
+                self.code.extend_from_slice(&[0xE8]);
+                self.call_relocs.push(CallReloc { offset: self.code.len(), target: name.clone() });
+                self.code.extend_from_slice(&[0, 0, 0, 0]);
+                // cleanup stack (args * 8 bytes)
+                let n = args.len() as u32 * 8;
+                if n > 0 {
+                    if n <= 127 {
+                        self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
+                    } else {
+                        self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
+                        self.code.extend_from_slice(&n.to_le_bytes());
+                    }
+                }
+            }
+            Expr::Assign(name, val) => {
+                self.emit_expr(val);
+                self.emit_store_var(name);
+            }
             Expr::Neg(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); }
             Expr::Not(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x85, 0xC0, 0x0F, 0x94, 0xC0]); }
             Expr::BitNot(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x48, 0xF7, 0xD0]); }
-            Expr::PreInc(_n) => { self.code.extend_from_slice(&[0x48, 0x31, 0xC0]); }
-            Expr::PreDec(_n) => { self.code.extend_from_slice(&[0x48, 0x31, 0xC0]); }
-            Expr::PostInc(_n) => { self.code.extend_from_slice(&[0x48, 0x31, 0xC0]); }
-            Expr::PostDec(_n) => { self.code.extend_from_slice(&[0x48, 0x31, 0xC0]); }
-            Expr::Deref(a) => { self.emit_expr(a); }
-            Expr::AddrOf(_n) => { self.code.extend_from_slice(&[0x48, 0x31, 0xC0]); }
-            Expr::Subscript(_n, i) => { self.emit_expr(i); }
+            Expr::PreInc(name) => {
+                self.emit_inc_var(name);
+                // rax already has new value
+            }
+            Expr::PreDec(name) => {
+                self.emit_dec_var(name);
+            }
+            Expr::PostInc(name) => {
+                self.emit_load_var(name);
+                self.code.push(0x50); // push old value
+                self.emit_inc_var(name);
+                self.code.push(0x58); // pop rax (old value)
+            }
+            Expr::PostDec(name) => {
+                self.emit_load_var(name);
+                self.code.push(0x50);
+                self.emit_dec_var(name);
+                self.code.push(0x58);
+            }
+            Expr::Deref(a) => {
+                self.emit_expr(a); // rax = address
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
+            }
+            Expr::AddrOf(inner) => {
+                match inner.as_ref() {
+                    Expr::Var(name) => {
+                        if let Some(&(offset, _)) = self.var_offsets.get(name) {
+                            if offset >= -128 && offset <= 127 {
+                                self.code.extend_from_slice(&[0x48, 0x8D, 0x45, offset as u8]);
+                            } else {
+                                self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
+                                self.code.extend_from_slice(&(offset as i32).to_le_bytes());
+                            }
+                        } else { self.emit_xor_eax(); }
+                    }
+                    Expr::Subscript(name, idx, scale) => {
+                        // lea rax, [rbp + var_off + idx*scale]
+                        let var_off = self.var_offsets.get(name).map(|&(off,_)| off).unwrap_or(0);
+                        // compute index * scale
+                        self.emit_expr(idx);
+                        if *scale > 0 {
+                            let shift = scale.trailing_zeros() as u8;
+                            self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, shift]);
+                        }
+                        self.code.push(0x50); // push scaled index
+                        if var_off >= -128 && var_off <= 127 {
+                            self.code.extend_from_slice(&[0x48, 0x8D, 0x45, var_off as u8]); // lea rax, [rbp+var_off]
+                        } else {
+                            self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
+                            self.code.extend_from_slice(&(var_off as i32).to_le_bytes());
+                        }
+                        self.code.push(0x5A); // pop rdx = scaled index
+                        self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+                    }
+                    Expr::Deref(ptr) => {
+                        self.emit_expr(ptr); // rax = address of the pointed-to data
+                    }
+                    _ => self.emit_xor_eax(),
+                }
+            }
+            Expr::Subscript(name, index, scale) => {
+                self.emit_load_var(name); // rax = base address (value of name, which is a pointer)
+                self.code.push(0x50); // push base
+                self.emit_expr(index); // rax = index
+                if *scale > 0 {
+                    let shift = scale.trailing_zeros() as u8;
+                    self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, shift]); // shl rax, scale
+                }
+                self.code.push(0x5A); // pop rdx = base
+                self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx => base + index*scale
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
+            }
             Expr::Add(a, b) => self.emit_binop(a, b, &[0x48, 0x01, 0xD0]),
             Expr::Sub(a, b) => self.emit_binop(a, b, &[0x48, 0x29, 0xD0]),
             Expr::Mul(a, b) => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
@@ -345,12 +785,99 @@ impl Codegen {
                 self.emit_expr(f);
                 self.resolve_label(end_lbl);
             }
+            Expr::Field(base, _field, offset) => {
+                // compute base address, add field offset, load
+                self.emit_expr_as_ptr(base);
+                let off = *offset as i32;
+                if off >= -128 && off <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x05]);
+                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
+                }
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]);
+            }
+            Expr::Arrow(ptr, _field, offset) => {
+                self.emit_expr(ptr);
+                let off = *offset as i32;
+                if off >= -128 && off <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x05]);
+                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
+                }
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]);
+            }
+            Expr::AssignField(base, _field, offset, val) => {
+                self.emit_expr(val);
+                self.code.push(0x50);
+                self.emit_expr_as_ptr(base);
+                let off = *offset as i32;
+                if off >= -128 && off <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x05]);
+                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
+                }
+                self.code.push(0x5A);
+                self.code.extend_from_slice(&[0x48, 0x89, 0x10]);
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
+            }
+            Expr::AssignArrow(ptr, _field, offset, val) => {
+                self.emit_expr(val); // rax = value
+                self.code.push(0x50); // push value
+                self.emit_expr(ptr); // rax = pointer
+                let off = *offset as i32;
+                if off >= -128 && off <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x05]);
+                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
+                }
+                self.code.push(0x5A); // pop rdx (value)
+                self.code.extend_from_slice(&[0x48, 0x89, 0x10]); // mov [rax], rdx
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx (return value)
+            }
             Expr::Comma(exprs) => {
                 for (i, e) in exprs.iter().enumerate() {
                     self.emit_expr(e);
                     if i < exprs.len() - 1 { self.emit_drop(); }
                 }
             }
+        }
+    }
+
+    /// Emit expression as an address (pointer), not as a value
+    fn emit_expr_as_ptr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Var(name) => {
+                if let Some(&(offset, _)) = self.var_offsets.get(name) {
+                    if offset >= -128 && offset <= 127 {
+                        self.code.extend_from_slice(&[0x48, 0x8D, 0x45, offset as u8]);
+                    } else {
+                        self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
+                        self.code.extend_from_slice(&(offset as i32).to_le_bytes());
+                    }
+                } else { self.emit_xor_eax(); }
+            }
+            Expr::Subscript(name, index, scale) => {
+                let var_off = self.var_offsets.get(name).map(|&(off,_)| off).unwrap_or(0);
+                self.emit_expr(index);
+                if *scale > 0 {
+                    let shift = scale.trailing_zeros() as u8;
+                    self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, shift]);
+                }
+                self.code.push(0x50);
+                if var_off >= -128 && var_off <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x8D, 0x45, var_off as u8]);
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
+                    self.code.extend_from_slice(&(var_off as i32).to_le_bytes());
+                }
+                self.code.push(0x5A);
+                self.code.extend_from_slice(&[0x48, 0x01, 0xD0]);
+            }
+            _ => self.emit_expr(expr),
         }
     }
 
@@ -390,7 +917,7 @@ impl Codegen {
         let all = core::mem::take(&mut self.code);
         let mut b = BefBuilder::new();
         b.add_section(BefSection::code(all));
-        b.entry_offset = 0;
+        b.entry_offset = self.entry_offset as u64;
         b.build().unwrap_or_default()
     }
 }

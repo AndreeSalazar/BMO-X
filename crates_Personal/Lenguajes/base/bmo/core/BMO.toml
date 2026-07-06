@@ -1,0 +1,9 @@
+[module]
+name = "bmo-core"
+version = "1.0.0"
+
+[exports]
+functions = "mmio_read32, mmio_write32, mmio_read8, mmio_write8"
+
+[sources]
+files = "mmio.c"

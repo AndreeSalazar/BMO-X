@@ -2,11 +2,26 @@
 pub struct Program {
     pub globals: Vec<GlobalDecl>,
     pub functions: Vec<Function>,
+    pub exported: Vec<String>,
+}
+
+impl Program {
+    pub fn new() -> Self {
+        Self { globals: Vec::new(), functions: Vec::new(), exported: Vec::new() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructMember {
+    pub typ: TypeSpec,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GlobalDecl {
     Var(TypeSpec, String, Option<Expr>),
+    Struct(String, Vec<StructMember>),
+    Union(String, Vec<StructMember>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,7 +30,24 @@ pub struct Function {
     pub name: String,
     pub params: Vec<Param>,
     pub var_count: u32,
+    pub var_names: Vec<String>,
     pub body: Vec<Stmt>,
+}
+
+impl TypeSpec {
+    pub fn stack_size(&self) -> u32 {
+        match self {
+            TypeSpec::Void => 0,
+            TypeSpec::Char | TypeSpec::UnsignedChar => 1,
+            TypeSpec::Short | TypeSpec::UnsignedShort => 2,
+            TypeSpec::Int | TypeSpec::UnsignedInt => 4,
+            TypeSpec::Long | TypeSpec::UnsignedLong | TypeSpec::LongLong | TypeSpec::UnsignedLongLong => 8,
+            TypeSpec::Float => 4,
+            TypeSpec::Double => 8,
+            TypeSpec::Ptr(_) => 8,
+            TypeSpec::StructRef(_) | TypeSpec::UnionRef(_) => 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +69,11 @@ pub enum TypeSpec {
     UnsignedChar,
     UnsignedShort,
     UnsignedLongLong,
+    Float,
+    Double,
     Ptr(Box<TypeSpec>),
+    StructRef(String),
+    UnionRef(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +91,8 @@ pub enum Stmt {
     DeclAssign(TypeSpec, String, Option<Expr>),
     Expr(Expr),
     Block(Vec<Stmt>),
+    Goto(String),
+    Label(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +137,10 @@ pub enum Expr {
     Conditional(Box<Expr>, Box<Expr>, Box<Expr>),
     Comma(Vec<Expr>),
     Deref(Box<Expr>),
-    AddrOf(String),
-    Subscript(String, Box<Expr>),
+    AddrOf(Box<Expr>),
+    Subscript(String, Box<Expr>, u8),
+    Field(Box<Expr>, String, u32), // base_expr, field_name, resolved_offset
+    Arrow(Box<Expr>, String, u32), // ptr_expr, field_name, resolved_offset
+    AssignField(Box<Expr>, String, u32, Box<Expr>), // base_expr, field_name, offset, val
+    AssignArrow(Box<Expr>, String, u32, Box<Expr>), // ptr_expr, field_name, offset, val
 }
