@@ -227,6 +227,8 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
 // ── Phase 2: Device Discovery (ACPI + PCI) ──────────────────────────────────
 
 fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
+    write_crash_marker(2200);
+    crate::uefi_rt::write_boot_stage("p2_enter");
     crate::log::info("phase2", "=== Phase 2: Device Discovery ===");
 
     let bi = match ctx.boot_info() {
@@ -235,6 +237,8 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     };
 
     // Parse ACPI MCFG
+    write_crash_marker(2201);
+    crate::uefi_rt::write_boot_stage("p2_acpi_mcfg");
     let rsdp_addr = bi.rsdp_addr;
     let mcfg = if rsdp_addr != 0 {
         crate::dev::acpi::parse_mcfg(rsdp_addr)
@@ -254,6 +258,8 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     }
 
     // Perform safe and secure PCI scan in Ring 0
+    write_crash_marker(2202);
+    crate::uefi_rt::write_boot_stage("p2_pci_scan");
     let scan = crate::dev::pcie::scan_pci_bus();
     crate::log::info_u64("phase2", "PCI devices found", scan.count as u64);
 
@@ -274,28 +280,34 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.devices.pci_devices_found = scan.count as u32;
 
     // PS/2 Mouse (IRQ12) — init first so keyboard LED re-enable comes after
+    write_crash_marker(2203);
+    crate::uefi_rt::write_boot_stage("p2_ps2_input");
     crate::dev::mouse::init();
 
     // PS/2 Keyboard (IRQ1) — re-enables Num Lock LED after mouse reset
     crate::dev::keyboard::init();
 
-    // USB HID (xHCI native keyboard/mouse)
-    crate::dev::usb_hid::init();
-
-    // Storage drivers (AHCI detection, NVMe detection)
-    if crate::dev::pcie::has_ahci() {
-        if let Some(mmio) = crate::dev::pcie::find_ahci_mmio() {
-            unsafe { crate::dev::ahci::probe(mmio, 0); }
-        }
-    }
+    // MMIO-backed drivers are deferred while Phase 1 intentionally keeps the
+    // high-half direct map disabled. xHCI/AHCI BARs on this platform live near
+    // 0xFCxx_xxxx; touching them through `phys_to_virt()` faults at
+    // 0xFFFF_8000_FCxx_xxxx before the direct map exists. PCI detection above
+    // is still useful; actual MMIO probing comes back with the high-mem pass.
+    write_crash_marker(2204);
+    crate::uefi_rt::write_boot_stage("p2_mmio_deferred");
+    crate::log::warn("phase2", "USB/AHCI MMIO probes deferred until high-mem mapping");
 
     // Power management (C-states, thermal monitoring)
+    write_crash_marker(2205);
+    crate::uefi_rt::write_boot_stage("p2_power");
     crate::dev::power::init();
 
     let phase2_end = crate::cpu::rdtsc();
     ctx.record_phase(2, prev_end, phase2_end);
 
     crate::log::info_u64("phase2", "Phase 2 time (TSC ticks)", phase2_end - prev_end);
+
+    write_crash_marker(2206);
+    crate::uefi_rt::write_boot_stage("p2_done");
 
     phase2_end
 }

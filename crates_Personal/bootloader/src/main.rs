@@ -345,6 +345,13 @@ fn ram_marker_name(stage: u32) -> &'static str {
         2105 => "p1_heap_init",
         2106 => "p1_heap_smoke",
         2107 => "p1_done",
+        2200 => "p2_enter",
+        2201 => "p2_acpi_mcfg",
+        2202 => "p2_pci_scan",
+        2203 => "p2_ps2_input",
+        2204 => "p2_mmio_deferred",
+        2205 => "p2_power",
+        2206 => "p2_done",
         // cpu::init() sub-markers
         2031 => "cpu_step1_features",
         2032 => "cpu_step2_regs",
