@@ -558,9 +558,15 @@ impl Parser {
                 functions.push(f);
             } else {
                 let (typ, name) = self.parse_type_and_name()?;
+                let init = if *self.peek() == Token::Assign {
+                    self.advance();
+                    Some(self.parse_assign()?)
+                } else {
+                    None
+                };
                 self.skip_semicolon();
                 self.var_types.insert(name.clone(), typ.clone());
-                globals.push(GlobalDecl::Var(typ, name, None));
+                globals.push(GlobalDecl::Var(typ, name, init));
             }
         }
         Ok(Program { globals, functions, exported: Vec::new() })
@@ -1953,6 +1959,48 @@ int main() {
     pt.x = 5;
     pt.x = pt.x + 1;
     return pt.x;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn global_var_load_store() {
+        let src = r#"
+int g = 42;
+int main() {
+    int x;
+    x = g;
+    g = 100;
+    return x;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn global_var_zero_init() {
+        let src = r#"
+int z;
+int main() {
+    z = 7;
+    return z;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn global_var_addr_of() {
+        let src = r#"
+int g;
+int main() {
+    int *p = &g;
+    *p = 99;
+    return g;
 }
 "#;
         let bef = compile_source_to_bef(src).unwrap();

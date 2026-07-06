@@ -1,0 +1,11 @@
+# stdlib/math module — basic math functions
+
+[exports]
+sqrt = "double -> double"
+sin = "double -> double"
+cos = "double -> double"
+tan = "double -> double"
+pow = "double, double -> double"
+fabs = "double -> double"
+floor = "double -> double"
+ceil = "double -> double"

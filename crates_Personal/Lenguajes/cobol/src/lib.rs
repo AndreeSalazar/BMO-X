@@ -1,5 +1,8 @@
 pub mod codegen;
 
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use bmo_abi::profile::BmoLanguageProfile;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +18,14 @@ pub struct DataItem {
     pub name: String,
     pub pic: Option<String>,
     pub value: Option<String>,
+}
+
+/// A named syscall definition loaded from Semantic_ASM .toml
+#[derive(Debug, Clone, PartialEq)]
+pub struct SyscallDef {
+    pub name: String,
+    pub nr: u32,
+    pub arg_count: u8,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +46,8 @@ pub enum CobolStatement {
     Read(String, String),
     Write(String),
     StopRun,
+    /// Named syscall from Semantic_ASM definitions
+    Syscall(SyscallDef, Vec<String>),
     Expr(String),
 }
 
@@ -74,10 +87,21 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
     codegen::compile_to_bef_bytes(&program)
 }
 
+pub fn compile_source_to_bef_with_asm(
+    source: &str,
+    asm_paths: Vec<PathBuf>,
+) -> Result<Vec<u8>, CobolError> {
+    let mut p = Parser::new(source);
+    let program = p.parse_program_with_asm(asm_paths)?;
+    codegen::compile_to_bef_bytes(&program)
+}
+
 struct Parser {
     lines: Vec<(usize, String)>,
     pos: usize,
     in_procedure: bool,
+    syscalls: HashMap<String, SyscallDef>,
+    usings: Vec<String>,
 }
 
 impl Parser {
@@ -86,7 +110,69 @@ impl Parser {
             .enumerate()
             .map(|(i, l)| (i + 1, l.to_string()))
             .collect();
-        Self { lines, pos: 0, in_procedure: false }
+        Self { lines, pos: 0, in_procedure: false, syscalls: HashMap::new(), usings: Vec::new() }
+    }
+
+    /// Parse a simplified .toml file with lines: name = 0xNR, N
+    fn load_asm_file(&mut self, path: &Path) -> Result<(), CobolError> {
+        let content = fs::read_to_string(path)
+            .map_err(|e| CobolError::new(0, format!("cannot read Semantic_ASM file {}: {e}", path.display())))?;
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') { continue; }
+            if let Some(eq_pos) = line.find('=') {
+                let name = line[..eq_pos].trim().to_string();
+                let rest = line[eq_pos + 1..].trim();
+                let (val_str, arg_count) = if let Some(comma_pos) = rest.find(',') {
+                    (rest[..comma_pos].trim(), rest[comma_pos + 1..].trim().parse::<u8>().unwrap_or(0))
+                } else {
+                    (rest, 0u8)
+                };
+                let nr = if val_str.starts_with("0x") || val_str.starts_with("0X") {
+                    u32::from_str_radix(&val_str[2..], 16).unwrap_or(0)
+                } else {
+                    val_str.parse::<u32>().unwrap_or(0)
+                };
+                self.syscalls.insert(name.clone(), SyscallDef { name, nr, arg_count });
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_program_with_asm(&mut self, asm_paths: Vec<PathBuf>) -> Result<CobolProgram, CobolError> {
+        // Preload ALL .toml files from asm_paths before parsing, so that
+        // SYSCALL statements can resolve definitions at parse time.
+        for asm_base in &asm_paths {
+            self.preload_asm_dir(asm_base)?;
+        }
+        // Also load based on USE directives (harmless if already preloaded)
+        let program = self.parse_program()?;
+        let usings = std::mem::take(&mut self.usings);
+        for path in &usings {
+            for asm_base in &asm_paths {
+                let asm_file = asm_base.join(path).with_extension("toml");
+                if asm_file.exists() {
+                    self.load_asm_file(&asm_file)?;
+                }
+            }
+        }
+        Ok(program)
+    }
+
+    /// Load all .toml files recursively from the given directory
+    fn preload_asm_dir(&mut self, dir: &Path) -> Result<(), CobolError> {
+        if !dir.is_dir() { return Ok(()); }
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    self.preload_asm_dir(&path)?;
+                } else if path.extension().map_or(false, |e| e == "toml") {
+                    self.load_asm_file(&path)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn current(&self) -> Option<&(usize, String)> {
@@ -125,7 +211,6 @@ impl Parser {
             if upper == "PROCEDURE DIVISION" || upper.starts_with("PROCEDURE") {
                 in_data = false;
                 self.in_procedure = true;
-
                 let using = if let Some(up) = normalized.to_ascii_uppercase().find("USING") {
                     normalized[up + 5..].trim().to_string()
                 } else { String::new() };
@@ -148,6 +233,14 @@ impl Parser {
 
             if upper.starts_with("PROGRAM-ID") {
                 program_id = self.extract_program_id(&normalized, line_no)?;
+                continue;
+            }
+
+            if upper.starts_with("USE") {
+                let path = normalized[3..].trim().trim_matches('"').to_string();
+                if !path.is_empty() {
+                    self.usings.push(path);
+                }
                 continue;
             }
 
@@ -205,7 +298,25 @@ impl Parser {
     fn parse_statement(&self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let upper = line.trim().to_ascii_uppercase();
 
-        if upper.starts_with("DISPLAY ") {
+        if upper.starts_with("SYSCALL ") {
+            let rest = line[8..].trim().trim_end_matches('.');
+            let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+            let name = parts[0].to_string();
+            let args = if parts.len() > 1 {
+                parts[1].split(',').map(|a| a.trim().trim_matches('"').trim_matches('\'').to_string()).collect()
+            } else { Vec::new() };
+            if let Some(def) = self.syscalls.get(&name).cloned() {
+                if args.len() != def.arg_count as usize {
+                    return Err(CobolError::new(line_no, format!(
+                        "syscall {}() expects {} arguments, got {}",
+                        def.name, def.arg_count, args.len()
+                    )));
+                }
+                Ok(CobolStatement::Syscall(def, args))
+            } else {
+                Err(CobolError::new(line_no, format!("unknown syscall: {name}")))
+            }
+        } else if upper.starts_with("DISPLAY ") {
             let val = Self::parse_operand(&line[8..]);
             Ok(CobolStatement::Display(val))
         } else if upper.starts_with("ACCEPT ") {
@@ -326,6 +437,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn parses_display_program() {
@@ -405,5 +517,36 @@ STOP RUN.
 "#;
         let program = parse(src).unwrap();
         assert!(program.statements.len() >= 2);
+    }
+
+    #[test]
+    fn parses_cobol_use_and_syscall() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. TEST.
+USE "bmo/proc".
+PROCEDURE DIVISION.
+SYSCALL bmo_exit 0.
+"#;
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let p = compile_source_to_bef_with_asm(src, vec![asm]).unwrap();
+        assert!(p.len() > 48);
+    }
+
+    #[test]
+    fn cobol_syscall_with_asm_path() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. TEST.
+USE "bmo/proc".
+PROCEDURE DIVISION.
+SYSCALL bmo_exit 42.
+"#;
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let bef = compile_source_to_bef_with_asm(src, vec![asm]).unwrap();
+        assert!(bef.len() > 48);
+        // Should contain mov eax, 0x181 (bmo_exit nr)
+        let mov_eax = &[0xB8u8, 0x81, 0x01, 0x00, 0x00];
+        assert!(bef.windows(5).any(|w| w == mov_eax), "BEF should contain mov eax, 0x181 for bmo_exit");
     }
 }

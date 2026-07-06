@@ -1,0 +1,10 @@
+# stdlib/stdlib module — general utility functions
+
+[exports]
+atoi = "ptr -> int"
+atol = "ptr -> long"
+atoll = "ptr -> long_long"
+abs = "int -> int"
+labs = "long -> long"
+rand = "void -> int"
+srand = "unsigned -> void"

@@ -52,6 +52,9 @@ struct Codegen {
     goto_relocs: Vec<(usize, String)>,
     entry_offset: usize,
     is_entry_function: bool,
+    global_offsets: HashMap<String, (u32, TypeSpec)>,
+    global_data: Vec<u8>,
+    global_fixups: Vec<(usize, String)>,
 }
 
 impl Codegen {
@@ -64,6 +67,8 @@ impl Codegen {
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
             label_positions: HashMap::new(), goto_relocs: Vec::new(),
             entry_offset: 0, is_entry_function: false,
+            global_offsets: HashMap::new(), global_data: Vec::new(),
+            global_fixups: Vec::new(),
         }
     }
 
@@ -87,6 +92,30 @@ impl Codegen {
                 _ => {}
             }
         }
+        // allocate space for global variables
+        for decl in &program.globals {
+            if let GlobalDecl::Var(typ, name, init) = decl {
+                let size = typ.stack_size() as u32;
+                let pad = (8 - self.global_data.len() as u32 % 8) % 8;
+                for _ in 0..pad { self.global_data.push(0); }
+                let off = self.global_data.len() as u32;
+                match init {
+                    Some(Expr::Int(n)) => {
+                        let bytes: Vec<u8> = match size {
+                            1 => vec![*n as u8],
+                            2 => (*n as u16).to_le_bytes().to_vec(),
+                            4 => (*n as u32).to_le_bytes().to_vec(),
+                            _ => (*n as u64).to_le_bytes().to_vec(),
+                        };
+                        self.global_data.extend_from_slice(&bytes);
+                    }
+                    _ => {
+                        for _ in 0..size { self.global_data.push(0); }
+                    }
+                }
+                self.global_offsets.insert(name.clone(), (off, typ.clone()));
+            }
+        }
         self.collect_strings(program);
         // emit all functions, tracking entry point
         for func in &program.functions {
@@ -100,7 +129,7 @@ impl Codegen {
         // patch all call relocs
         self.patch_call_relocs();
         self.patch_goto_relocs();
-        self.patch_string_fixups();
+        self.patch_all_fixups();
         Ok(())
     }
 
@@ -193,8 +222,9 @@ impl Codegen {
         }
     }
 
-    fn patch_string_fixups(&mut self) {
+    fn patch_all_fixups(&mut self) {
         let code_end = self.code.len();
+        // Patch string fixups and append string data
         let mut str_off = code_end;
         for (idx, s) in self.strings.iter().enumerate() {
             for f in &self.fixups {
@@ -208,6 +238,16 @@ impl Codegen {
             self.code.push(0);
             str_off += s.len() + 1;
         }
+        // Patch global fixups and append global data
+        let global_base = self.code.len();
+        for &(lea_offset, ref name) in &self.global_fixups {
+            if let Some(&(data_off, _)) = self.global_offsets.get(name) {
+                let rip = lea_offset + 4;
+                let disp = (global_base as i64 + data_off as i64) - rip as i64;
+                self.code[lea_offset..lea_offset + 4].copy_from_slice(&(disp as i32).to_le_bytes());
+            }
+        }
+        self.code.extend_from_slice(&self.global_data);
     }
 
     fn patch_goto_relocs(&mut self) {
@@ -289,49 +329,55 @@ impl Codegen {
     }
 
     fn emit_store_var(&mut self, name: &str) {
-        let Some(&(offset, ref typ)) = self.var_offsets.get(name) else { return };
-        let disp = offset;
-        let rex8 = if disp >= -128 && disp <= 127 { 0x45 } else { 0x85 };
-        match typ {
-            TypeSpec::Char | TypeSpec::UnsignedChar => {
-                // mov byte [rbp+disp], al
-                self.code.extend_from_slice(&[0x88, rex8]);
-                if disp >= -128 && disp <= 127 { self.code.push(disp as u8); }
-                else { self.code.extend_from_slice(&(disp as i32).to_le_bytes()); }
-            }
-            TypeSpec::Short | TypeSpec::UnsignedShort => {
-                // mov word [rbp+disp], ax
-                self.code.extend_from_slice(&[0x66, 0x89, rex8]);
-                if disp >= -128 && disp <= 127 { self.code.push(disp as u8); }
-                else { self.code.extend_from_slice(&(disp as i32).to_le_bytes()); }
-            }
-            TypeSpec::Int | TypeSpec::UnsignedInt => {
-                // mov dword [rbp+disp], eax
-                if disp >= -128 && disp <= 127 {
-                    self.code.extend_from_slice(&[0x89, 0x45, disp as u8]);
-                } else {
-                    self.code.extend_from_slice(&[0x89, 0x85]);
-                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+        if let Some(&(offset, ref typ)) = self.var_offsets.get(name) {
+            let disp = offset;
+            let rex8 = if disp >= -128 && disp <= 127 { 0x45 } else { 0x85 };
+            match typ {
+                TypeSpec::Char | TypeSpec::UnsignedChar => {
+                    self.code.extend_from_slice(&[0x88, rex8]);
+                    if disp >= -128 && disp <= 127 { self.code.push(disp as u8); }
+                    else { self.code.extend_from_slice(&(disp as i32).to_le_bytes()); }
+                }
+                TypeSpec::Short | TypeSpec::UnsignedShort => {
+                    self.code.extend_from_slice(&[0x66, 0x89, rex8]);
+                    if disp >= -128 && disp <= 127 { self.code.push(disp as u8); }
+                    else { self.code.extend_from_slice(&(disp as i32).to_le_bytes()); }
+                }
+                TypeSpec::Int | TypeSpec::UnsignedInt => {
+                    if disp >= -128 && disp <= 127 {
+                        self.code.extend_from_slice(&[0x89, 0x45, disp as u8]);
+                    } else {
+                        self.code.extend_from_slice(&[0x89, 0x85]);
+                        self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                    }
+                }
+                _ => {
+                    if disp >= -128 && disp <= 127 {
+                        self.code.extend_from_slice(&[0x48, 0x89, 0x45, disp as u8]);
+                    } else {
+                        self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                        self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                    }
                 }
             }
-            _ => {
-                // mov qword [rbp+disp], rax
-                if disp >= -128 && disp <= 127 {
-                    self.code.extend_from_slice(&[0x48, 0x89, 0x45, disp as u8]);
-                } else {
-                    self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
-                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
-                }
+        } else if let Some(&(_, ref typ)) = self.global_offsets.get(name) {
+            // rax already has value; lea rdi, [rip+0]; mov [rdi], reg
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x3D, 0, 0, 0, 0]);
+            self.global_fixups.push((self.code.len() - 4, name.to_string()));
+            match typ {
+                TypeSpec::Char | TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x88, 0x07]),
+                TypeSpec::Short | TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x66, 0x89, 0x07]),
+                TypeSpec::Int | TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x89, 0x07]),
+                _ => self.code.extend_from_slice(&[0x48, 0x89, 0x07]),
             }
         }
     }
 
     fn emit_load_var(&mut self, name: &str) {
-        let Some(&(offset, ref typ)) = self.var_offsets.get(name) else { self.emit_xor_eax(); return };
-        let disp = offset;
-        match typ {
+        if let Some(&(offset, ref typ)) = self.var_offsets.get(name) {
+            let disp = offset;
+            match typ {
             TypeSpec::Char => {
-                // movsx rax, byte [rbp+disp]
                 if disp >= -128 && disp <= 127 {
                     self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x45, disp as u8]);
                 } else {
@@ -340,7 +386,6 @@ impl Codegen {
                 }
             }
             TypeSpec::UnsignedChar => {
-                // movzx rax, byte [rbp+disp]
                 if disp >= -128 && disp <= 127 {
                     self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x45, disp as u8]);
                 } else {
@@ -365,7 +410,6 @@ impl Codegen {
                 }
             }
             TypeSpec::Int | TypeSpec::UnsignedInt => {
-                // mov eax, dword [rbp+disp] (zero-extends to rax)
                 if disp >= -128 && disp <= 127 {
                     self.code.extend_from_slice(&[0x8B, 0x45, disp as u8]);
                 } else {
@@ -374,7 +418,6 @@ impl Codegen {
                 }
             }
             _ => {
-                // mov rax, qword [rbp+disp]
                 if disp >= -128 && disp <= 127 {
                     self.code.extend_from_slice(&[0x48, 0x8B, 0x45, disp as u8]);
                 } else {
@@ -383,6 +426,21 @@ impl Codegen {
                 }
             }
         }
+        } else if let Some(&(_, ref typ)) = self.global_offsets.get(name) {
+            // lea rax, [rip+0]; then mov with size to load value
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
+            self.global_fixups.push((self.code.len() - 4, name.to_string()));
+            match typ {
+                TypeSpec::Char => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x00]),
+                TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]),
+                TypeSpec::Short => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x00]),
+                TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0x00]),
+                TypeSpec::Int | TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x8B, 0x00]),
+                _ => self.code.extend_from_slice(&[0x48, 0x8B, 0x00]),
+            }
+        } else {
+            self.emit_xor_eax();
+        }
     }
 
     fn emit_xor_eax(&mut self) {
@@ -390,14 +448,14 @@ impl Codegen {
     }
 
     fn emit_inc_var(&mut self, name: &str) {
-        if !self.var_offsets.contains_key(name) { self.emit_xor_eax(); return; }
+        if !self.var_offsets.contains_key(name) && !self.global_offsets.contains_key(name) { self.emit_xor_eax(); return; }
         self.emit_load_var(name);
         self.code.extend_from_slice(&[0x48, 0x83, 0xC0, 0x01]);
         self.emit_store_var(name);
     }
 
     fn emit_dec_var(&mut self, name: &str) {
-        if !self.var_offsets.contains_key(name) { self.emit_xor_eax(); return; }
+        if !self.var_offsets.contains_key(name) && !self.global_offsets.contains_key(name) { self.emit_xor_eax(); return; }
         self.emit_load_var(name);
         self.code.extend_from_slice(&[0x48, 0x83, 0xE8, 0x01]);
         self.emit_store_var(name);
@@ -717,6 +775,9 @@ impl Codegen {
                                 self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
                                 self.code.extend_from_slice(&(offset as i32).to_le_bytes());
                             }
+                        } else if self.global_offsets.contains_key(name) {
+                            self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
+                            self.global_fixups.push((self.code.len() - 4, name.clone()));
                         } else { self.emit_xor_eax(); }
                     }
                     Expr::Subscript(name, idx, scale) => {
@@ -879,6 +940,9 @@ impl Codegen {
                         self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
                         self.code.extend_from_slice(&(offset as i32).to_le_bytes());
                     }
+                } else if self.global_offsets.contains_key(name) {
+                    self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
+                    self.global_fixups.push((self.code.len() - 4, name.clone()));
                 } else { self.emit_xor_eax(); }
             }
             Expr::Subscript(name, index, scale) => {

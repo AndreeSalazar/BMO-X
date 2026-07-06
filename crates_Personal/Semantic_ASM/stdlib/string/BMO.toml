@@ -1,0 +1,21 @@
+# stdlib/string module
+# Function signatures for string operations.
+# Each entry: name = "arg_type1, arg_type2, ... -> ret_type"
+
+[exports]
+memcpy = "ptr, ptr, size_t -> ptr"
+memmove = "ptr, ptr, size_t -> ptr"
+memset = "ptr, int, size_t -> ptr"
+memcmp = "ptr, ptr, size_t -> int"
+strlen = "ptr -> size_t"
+strcmp = "ptr, ptr -> int"
+strncmp = "ptr, ptr, size_t -> int"
+strcpy = "ptr, ptr -> ptr"
+strncpy = "ptr, ptr, size_t -> ptr"
+strcat = "ptr, ptr -> ptr"
+strncat = "ptr, ptr, size_t -> ptr"
+strchr = "ptr, int -> ptr"
+strrchr = "ptr, int -> ptr"
+strstr = "ptr, ptr -> ptr"
+strdup = "ptr -> ptr"
+strndup = "ptr, size_t -> ptr"
