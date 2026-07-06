@@ -222,6 +222,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastos-c-front"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
 name = "fastos-cobol-front"
 version = "0.1.0"
 dependencies = [

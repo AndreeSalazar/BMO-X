@@ -12,6 +12,7 @@ members = [
     "crates_Personal/cabina/daemon",
     "crates_Personal/cabina/panels",
     "crates_Personal/Lenguajes/cobol",
+    "crates_Personal/Lenguajes/c",
 ]
 
 [profile.dev]

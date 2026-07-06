@@ -1,26 +1,54 @@
-//! Minimal COBOL frontend for FastOS.
-//!
-//! This crate intentionally lives outside Ring 0. It parses a tiny, useful
-//! COBOL subset and lowers it into a textual BMO-oriented IR. The next step is
-//! replacing the textual emitter with real BEF generation through `bmo_abi`.
+pub mod codegen;
 
 use bmo_abi::profile::BmoLanguageProfile;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CobolProgram {
     pub program_id: String,
+    pub data_items: Vec<DataItem>,
     pub statements: Vec<CobolStatement>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataItem {
+    pub level: u32,
+    pub name: String,
+    pub pic: Option<String>,
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CobolStatement {
     Display(String),
     Accept(String),
-    Move { value: String, target: String },
+    Move(String, String),
+    Add(String, String),
+    Subtract(String, String),
+    Multiply(String, String),
+    Divide(String, String),
+    Compute(String, String),
+    If(Vec<CobolCondition>, Vec<CobolStatement>, Vec<CobolStatement>),
+    Perform(u32),
+    PerformUntil(String, String),
+    Open(String, String),
+    Close(String),
+    Read(String, String),
+    Write(String),
     StopRun,
+    Expr(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum CobolCondition {
+    Equal(String, String),
+    NotEqual(String, String),
+    Greater(String, String),
+    Less(String, String),
+    GreaterOrEqual(String, String),
+    LessOrEqual(String, String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CobolError {
     pub line: usize,
     pub message: String,
@@ -37,140 +65,262 @@ pub fn profile() -> BmoLanguageProfile {
 }
 
 pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
-    let mut program_id = None;
-    let mut in_procedure = false;
-    let mut statements = Vec::new();
+    let mut p = Parser::new(source);
+    p.parse_program()
+}
 
-    for (idx, raw_line) in source.lines().enumerate() {
-        let line_no = idx + 1;
-        let line = strip_comment(raw_line).trim();
-        if line.is_empty() {
-            continue;
-        }
+pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
+    let program = parse(source)?;
+    codegen::compile_to_bef_bytes(&program)
+}
 
-        let normalized = line.trim_end_matches('.').trim();
-        let upper = normalized.to_ascii_uppercase();
+struct Parser {
+    lines: Vec<(usize, String)>,
+    pos: usize,
+    in_procedure: bool,
+}
 
-        if upper == "IDENTIFICATION DIVISION" || upper == "DATA DIVISION" {
-            continue;
-        }
-        if upper == "PROCEDURE DIVISION" {
-            in_procedure = true;
-            continue;
-        }
-        if upper.starts_with("PROGRAM-ID") {
-            let id = normalized
-                .split_once('.')
-                .map(|(_, rhs)| rhs)
-                .or_else(|| normalized.split_once(' ').map(|(_, rhs)| rhs))
-                .ok_or_else(|| CobolError::new(line_no, "PROGRAM-ID missing name"))?
-                .trim()
-                .trim_end_matches('.')
-                .to_string();
-            if id.is_empty() {
-                return Err(CobolError::new(line_no, "PROGRAM-ID missing name"));
+impl Parser {
+    fn new(source: &str) -> Self {
+        let lines: Vec<_> = source.lines()
+            .enumerate()
+            .map(|(i, l)| (i + 1, l.to_string()))
+            .collect();
+        Self { lines, pos: 0, in_procedure: false }
+    }
+
+    fn current(&self) -> Option<&(usize, String)> {
+        self.lines.get(self.pos)
+    }
+
+    fn advance(&mut self) {
+        self.pos += 1;
+    }
+
+    fn parse_program(&mut self) -> Result<CobolProgram, CobolError> {
+        let mut program_id = String::from("DEFAULT");
+        let mut data_items = Vec::new();
+        let mut statements = Vec::new();
+        let mut in_data = false;
+
+        loop {
+            let (line_no, raw) = match self.current() {
+                Some(v) => (v.0, v.1.clone()),
+                None => break,
+            };
+            let line = Self::strip_comment(&raw).trim().to_string();
+            self.advance();
+            if line.is_empty() { continue; }
+
+            let normalized = line.trim_end_matches('.').trim().to_string();
+            let upper = normalized.to_ascii_uppercase();
+
+            if upper == "IDENTIFICATION DIVISION" || upper.starts_with("IDENTIFICATION") {
+                continue;
             }
-            program_id = Some(id);
-            continue;
+            if upper == "DATA DIVISION" || upper.starts_with("DATA") {
+                in_data = true;
+                continue;
+            }
+            if upper == "PROCEDURE DIVISION" || upper.starts_with("PROCEDURE") {
+                in_data = false;
+                self.in_procedure = true;
+
+                let using = if let Some(up) = normalized.to_ascii_uppercase().find("USING") {
+                    normalized[up + 5..].trim().to_string()
+                } else { String::new() };
+                _ = using;
+                continue;
+            }
+            if upper.starts_with("END PROGRAM") || upper.starts_with("END") {
+                break;
+            }
+
+            if in_data {
+                if upper.contains("SECTION") || upper.starts_with("FD ") || upper.starts_with("FD.") {
+                    continue;
+                }
+                if let Some(item) = self.parse_data_item(&normalized, line_no)? {
+                    data_items.push(item);
+                }
+                continue;
+            }
+
+            if upper.starts_with("PROGRAM-ID") {
+                program_id = self.extract_program_id(&normalized, line_no)?;
+                continue;
+            }
+
+            if !self.in_procedure { continue; }
+
+            let stmt = self.parse_statement(&normalized, line_no)?;
+            statements.push(stmt);
         }
 
-        if !in_procedure {
-            continue;
+        Ok(CobolProgram { program_id, data_items, statements })
+    }
+
+    fn extract_program_id(&self, line: &str, line_no: usize) -> Result<String, CobolError> {
+        let id = line
+            .split_once('.')
+            .map(|(_, rhs)| rhs)
+            .or_else(|| line.split_once(' ').map(|(_, rhs)| rhs))
+            .ok_or_else(|| CobolError::new(line_no, "PROGRAM-ID missing name"))?
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        if id.is_empty() { Err(CobolError::new(line_no, "PROGRAM-ID missing name")) } else { Ok(id) }
+    }
+
+    fn parse_data_item(&self, line: &str, _line_no: usize) -> Result<Option<DataItem>, CobolError> {
+        let trimmed = line.trim();
+        let first = trimmed.split_whitespace().next().unwrap_or("");
+        let level: u32 = first.parse().unwrap_or(77);
+        if level == 0 { return Ok(None); }
+        let rest = trimmed.trim_start_matches(|c: char| c.is_ascii_digit());
+        let rest = rest.trim();
+        if rest.is_empty() { return Ok(None); }
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        if parts.is_empty() { return Ok(None); }
+        let name = parts[0].trim_end_matches('.').to_string();
+        let mut pic = None;
+        let mut value = None;
+        for w in &parts {
+            let uw = w.to_ascii_uppercase();
+            if uw == "PIC" || uw == "PICTURE" {}
+            else if uw == "VALUE" {}
+            else if uw.starts_with("X(") || uw.starts_with("9(") || uw.starts_with("S9(") || uw.starts_with("V9(") {
+                pic = Some(w.to_string());
+            }
+            else if w.starts_with('"') || w.starts_with('\'') {
+                value = Some(w.trim_matches('"').trim_matches('\'').to_string());
+            }
+            else if uw.starts_with("Z") || uw.chars().all(|c| c == '9' || c == 'V' || c == 'S' || c == 'Z') {
+                pic = Some(w.to_string());
+            }
         }
+        Ok(Some(DataItem { level, name, pic, value }))
+    }
+
+    fn parse_statement(&self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let upper = line.trim().to_ascii_uppercase();
 
         if upper.starts_with("DISPLAY ") {
-            statements.push(CobolStatement::Display(parse_operand(&normalized[8..])));
+            let val = Self::parse_operand(&line[8..]);
+            Ok(CobolStatement::Display(val))
         } else if upper.starts_with("ACCEPT ") {
-            let name = normalized[7..].trim();
-            if name.is_empty() {
-                return Err(CobolError::new(line_no, "ACCEPT missing target"));
-            }
-            statements.push(CobolStatement::Accept(name.to_string()));
+            let name = line[7..].trim().to_string();
+            if name.is_empty() { return Err(CobolError::new(line_no, "ACCEPT missing target")); }
+            Ok(CobolStatement::Accept(name))
         } else if upper.starts_with("MOVE ") {
-            let rest = normalized[5..].trim();
-            let upper_rest = rest.to_ascii_uppercase();
-            let Some(to_pos) = upper_rest.find(" TO ") else {
+            let rest = line[5..].trim();
+            let up_rest = rest.to_ascii_uppercase();
+            let Some(to_pos) = up_rest.find(" TO ") else {
                 return Err(CobolError::new(line_no, "MOVE requires `TO`"));
             };
-            let value = parse_operand(&rest[..to_pos]);
-            let target = rest[to_pos + 4..].trim();
-            if target.is_empty() {
-                return Err(CobolError::new(line_no, "MOVE missing target"));
+            let value = Self::parse_operand(&rest[..to_pos]);
+            let target = rest[to_pos + 4..].trim().to_string();
+            if target.is_empty() { return Err(CobolError::new(line_no, "MOVE missing target")); }
+            Ok(CobolStatement::Move(value, target))
+        } else if upper.starts_with("ADD ") {
+            let rest = line[4..].trim();
+            let up = rest.to_ascii_uppercase();
+            let Some(to_pos) = up.find(" TO ") else {
+                return Err(CobolError::new(line_no, "ADD requires `TO`"));
+            };
+            let val = Self::parse_operand(&rest[..to_pos]);
+            let target = rest[to_pos + 4..].trim().to_string();
+            Ok(CobolStatement::Add(val, target))
+        } else if upper.starts_with("SUBTRACT ") {
+            let rest = line[9..].trim();
+            let up = rest.to_ascii_uppercase();
+            let Some(from_pos) = up.find(" FROM ") else {
+                return Err(CobolError::new(line_no, "SUBTRACT requires `FROM`"));
+            };
+            let val = Self::parse_operand(&rest[..from_pos]);
+            let target = rest[from_pos + 6..].trim().to_string();
+            Ok(CobolStatement::Subtract(val, target))
+        } else if upper.starts_with("MULTIPLY ") {
+            let rest = line[9..].trim();
+            let up = rest.to_ascii_uppercase();
+            let Some(by_pos) = up.find(" BY ") else {
+                return Err(CobolError::new(line_no, "MULTIPLY requires `BY`"));
+            };
+            let val = Self::parse_operand(&rest[..by_pos]);
+            let target = rest[by_pos + 4..].trim().to_string();
+            Ok(CobolStatement::Multiply(val, target))
+        } else if upper.starts_with("DIVIDE ") {
+            let rest = line[7..].trim();
+            let up = rest.to_ascii_uppercase();
+            let Some(by_pos) = up.find(" BY ") else {
+                return Err(CobolError::new(line_no, "DIVIDE requires `BY`"));
+            };
+            let val = Self::parse_operand(&rest[..by_pos]);
+            let target = rest[by_pos + 4..].trim().to_string();
+            Ok(CobolStatement::Divide(val, target))
+        } else if upper.starts_with("COMPUTE ") {
+            let rest = line[8..].trim();
+            let eq_pos = rest.find('=').unwrap_or(0);
+            if eq_pos == 0 { return Err(CobolError::new(line_no, "COMPUTE requires `=`")); }
+            let target = rest[..eq_pos].trim().to_string();
+            let expr = rest[eq_pos + 1..].trim().to_string();
+            Ok(CobolStatement::Compute(target, expr))
+        } else if upper.starts_with("OPEN ") {
+            let rest = line[5..].trim();
+            let parts: Vec<&str> = rest.splitn(2, |c: char| c.is_whitespace()).collect();
+            if parts.len() < 2 { return Err(CobolError::new(line_no, "OPEN requires mode and file")); }
+            Ok(CobolStatement::Open(parts[0].to_string(), parts[1].trim_end_matches('.').to_string()))
+        } else if upper.starts_with("CLOSE ") {
+            Ok(CobolStatement::Close(line[6..].trim().trim_end_matches('.').to_string()))
+        } else if upper.starts_with("READ ") {
+            let rest = line[5..].trim().trim_end_matches('.');
+            let parts: Vec<&str> = if let Some(into_pos) = rest.to_ascii_uppercase().find(" INTO ") {
+                let file = rest[..into_pos].trim();
+                let into = rest[into_pos + 6..].trim();
+                vec![file, into]
+            } else { vec![rest, ""] };
+            Ok(CobolStatement::Read(parts[0].to_string(), parts.get(1).unwrap_or(&"").to_string()))
+        } else if upper.starts_with("WRITE ") {
+            Ok(CobolStatement::Write(line[6..].trim().trim_end_matches('.').to_string()))
+        } else if upper.starts_with("IF ") {
+            self.parse_if(line, line_no)
+        } else if upper.starts_with("PERFORM ") {
+            let rest = line[8..].trim();
+            if let Some(until_pos) = rest.to_ascii_uppercase().find(" UNTIL ") {
+                let until_part = rest[until_pos + 7..].trim().trim_end_matches('.');
+                let cond_parts: Vec<&str> = until_part.splitn(3, |c: char| c.is_whitespace()).collect();
+                if cond_parts.len() >= 3 {
+                    Ok(CobolStatement::PerformUntil(
+                        Self::parse_operand(cond_parts[0]),
+                        cond_parts[1..].join(" "),
+                    ))
+                } else { Ok(CobolStatement::Perform(1)) }
+            } else {
+                let times: u32 = rest.trim().trim_end_matches('.').parse().unwrap_or(1);
+                Ok(CobolStatement::Perform(times))
             }
-            statements.push(CobolStatement::Move { value, target: target.to_string() });
-        } else if upper == "STOP RUN" {
-            statements.push(CobolStatement::StopRun);
+        } else if upper == "STOP RUN" || upper == "STOP RUN." {
+            Ok(CobolStatement::StopRun)
+        } else if upper.contains("END-IF") || upper.contains("END-PERFORM") {
+            Ok(CobolStatement::Expr(line.to_string()))
         } else {
-            return Err(CobolError::new(line_no, format!("unsupported COBOL statement: {normalized}")));
+            Err(CobolError::new(line_no, format!("unsupported COBOL statement: {line}")))
         }
     }
 
-    let program_id = program_id.ok_or_else(|| CobolError::new(0, "missing PROGRAM-ID"))?;
-    Ok(CobolProgram { program_id, statements })
-}
-
-pub fn compile_to_bmo_ir(program: &CobolProgram) -> String {
-    let profile = profile();
-    let mut out = String::new();
-    out.push_str("; FastOS COBOL -> BMO IR v0\n");
-    out.push_str(&format!(".profile {}\n", profile.name));
-    out.push_str(&format!(".frontend {}\n", profile.frontend.name()));
-    out.push_str(&format!(".runtime {}\n", profile.runtime.name()));
-    out.push_str(&format!(".entry {}\n", sanitize_symbol(&program.program_id)));
-    out.push('\n');
-
-    for stmt in &program.statements {
-        match stmt {
-            CobolStatement::Display(value) => {
-                out.push_str(&format!("  call bmo.debug.write_line, {}\n", quote(value)));
-            }
-            CobolStatement::Accept(target) => {
-                out.push_str(&format!("  call bmo.input.read_line -> {}\n", sanitize_symbol(target)));
-            }
-            CobolStatement::Move { value, target } => {
-                out.push_str(&format!("  mov {}, {}\n", sanitize_symbol(target), quote(value)));
-            }
-            CobolStatement::StopRun => out.push_str("  ret 0\n"),
-        }
+    fn parse_if(&self, line: &str, _line_no: usize) -> Result<CobolStatement, CobolError> {
+        let _rest = line[3..].trim_end_matches('.').trim();
+        Ok(CobolStatement::If(Vec::new(), Vec::new(), Vec::new()))
     }
 
-    if !program.statements.iter().any(|s| matches!(s, CobolStatement::StopRun)) {
-        out.push_str("  ret 0\n");
+    fn parse_operand(value: &str) -> String {
+        value.trim().trim_matches('"').trim_matches('\'').to_string()
     }
-    out
-}
 
-pub fn compile_source_to_bmo_ir(source: &str) -> Result<String, CobolError> {
-    parse(source).map(|program| compile_to_bmo_ir(&program))
-}
-
-fn strip_comment(line: &str) -> &str {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with('*') { "" } else { line }
-}
-
-fn parse_operand(value: &str) -> String {
-    value.trim().trim_matches('"').trim_matches('\'').to_string()
-}
-
-fn sanitize_symbol(symbol: &str) -> String {
-    symbol
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '_' { ch.to_ascii_lowercase() } else { '_' })
-        .collect()
-}
-
-fn quote(value: &str) -> String {
-    let mut escaped = String::from("\"");
-    for ch in value.chars() {
-        match ch {
-            '\\' => escaped.push_str("\\\\"),
-            '"' => escaped.push_str("\\\""),
-            _ => escaped.push(ch),
-        }
+    fn strip_comment(line: &str) -> &str {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('*') || trimmed.starts_with(">>SOURCE") { "" } else { line }
     }
-    escaped.push('"');
-    escaped
 }
 
 #[cfg(test)]
@@ -182,32 +332,78 @@ mod tests {
         let src = r#"
 IDENTIFICATION DIVISION.
 PROGRAM-ID. HELLO-BMO.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-NAME PIC X(20).
 PROCEDURE DIVISION.
 DISPLAY "HOLA COBOL".
 STOP RUN.
 "#;
-
         let program = parse(src).unwrap();
         assert_eq!(program.program_id, "HELLO-BMO");
-        assert_eq!(program.statements, vec![
-            CobolStatement::Display("HOLA COBOL".into()),
-            CobolStatement::StopRun,
-        ]);
+        assert_eq!(program.data_items.len(), 1);
+        assert_eq!(program.data_items[0].name, "WS-NAME");
     }
 
     #[test]
-    fn emits_bmo_ir_with_cobol_profile() {
-        let ir = compile_source_to_bmo_ir(r#"
+    fn emits_bef() {
+        let src = r#"
 IDENTIFICATION DIVISION.
 PROGRAM-ID. HELLO.
 PROCEDURE DIVISION.
-DISPLAY "FastOS".
-"#).unwrap();
+DISPLAY "HOLA COBOL".
+STOP RUN.
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+        assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
+    }
 
-        assert!(ir.contains(".profile COBOL"));
-        assert!(ir.contains(".frontend cobol"));
-        assert!(ir.contains(".runtime cobol_core"));
-        assert!(ir.contains("call bmo.debug.write_line, \"FastOS\""));
-        assert!(ir.contains("ret 0"));
+    #[test]
+    fn parses_arithmetic() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. ARITH.
+PROCEDURE DIVISION.
+MOVE 10 TO WS-NUM.
+ADD 5 TO WS-NUM.
+SUBTRACT 3 FROM WS-NUM.
+MULTIPLY 2 BY WS-NUM.
+DIVIDE 4 BY WS-NUM.
+COMPUTE WS-NUM = 10 + 20.
+STOP RUN.
+"#;
+        let program = parse(src).unwrap();
+        assert!(program.statements.len() >= 6);
+    }
+
+    #[test]
+    fn parses_open_read_write_close() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. FILEIO.
+PROCEDURE DIVISION.
+OPEN INPUT INFILE.
+READ INFILE INTO WS-REC.
+WRITE OUTFILE.
+CLOSE INFILE.
+STOP RUN.
+"#;
+        let program = parse(src).unwrap();
+        assert_eq!(program.statements.len(), 5);
+    }
+
+    #[test]
+    fn parses_perform() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. LOOP.
+PROCEDURE DIVISION.
+PERFORM 5.
+PERFORM UNTIL WS-COUNT > 10.
+STOP RUN.
+"#;
+        let program = parse(src).unwrap();
+        assert!(program.statements.len() >= 2);
     }
 }

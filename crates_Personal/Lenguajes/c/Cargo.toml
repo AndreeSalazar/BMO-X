@@ -1,0 +1,17 @@
+[package]
+name = "fastos-c-front"
+version = "0.1.0"
+edition = "2021"
+authors = ["FastOS Project"]
+description = "C frontend for FastOS BMO ABI — compiles minimal C to BEF"
+
+[dependencies]
+bmo-abi = { path = "../../bmo_abi" }
+
+[lib]
+name = "fastos_c_front"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fastos-c-front"
+path = "src/main.rs"
