@@ -30,6 +30,8 @@ pub mod info;
 pub mod context;
 pub mod uefi_rt;
 pub mod serial;
+pub mod visual_ring_0;
+pub mod visual_ring_3;
 pub mod visual;
 pub mod font;
 pub mod log;
@@ -132,8 +134,10 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
     // successfully.
     let ctx = phase_1_RING_0::main(boot_info_ptr);
 
-    // Transition to BMO Core (logical Ring 3 kernel). This initializes
-    // all core subsystems and enters the welcome screen (never returns).
+    // Transition to BMO Core (logical Ring 3 kernel) subsystems.
     crate::bmo_core::coord::init();
-    crate::bmo_core::coord::enter(&ctx, 0, 0);
+
+    // Real CPU-level transition to Ring 3 (CPL=3).
+    // Draws a purple border to visually confirm Ring 3 execution.
+    self::visual_ring_3::jump_to_ring3();
 }

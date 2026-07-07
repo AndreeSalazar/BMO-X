@@ -33,6 +33,7 @@ pub use ring0::context;
 pub use ring0::uefi_rt;
 pub use ring0::serial;
 pub use ring0::visual;
+pub use ring0::visual_ring_3;
 pub use ring0::font;
 pub use ring0::log;
 pub use ring0::bmo_core;
