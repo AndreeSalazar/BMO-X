@@ -9,7 +9,7 @@
 //!   │
 //!   ├── userland::init()          ← creates initial Ring 3 process
 //!   │
-//!   ├── ring3::desktop::enter()   ← transitions to CPL=3 with desktop BEF
+//!   ├── ring3::ring3_entry::enter()   ← transitions to CPL=3 with desktop
 //!   │
 //!   └── userland::enter_wnd_proc() ← dispatches window messages to Ring 3
 //! ```

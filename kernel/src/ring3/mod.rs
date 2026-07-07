@@ -12,4 +12,4 @@
 //! - `userland_ring3/` = runtime que las apps linkean (malloc, syscall wrappers)
 
 pub mod transition;
-pub mod desktop;
+pub mod ring3_entry;

@@ -2,7 +2,7 @@
 //!
 //! Desarrolado por Salazar.
 //!
-//! `bmo_core::desktop3` â€” Ãšnica puerta entre Ring 0 y BMO Core.
+//! `bmo_core::gateway` â€” Ãšnica puerta entre Ring 0 y BMO Core.
 //!
 //! v1.8.8: este mÃ³dulo centraliza TODOS los syscalls de Ring 3.
 //! Antes, `ring0::arch::syscall` llamaba directamente a
@@ -14,10 +14,10 @@
 //!     â–¼
 //! ring0::arch::syscall (lstar)
 //!     â”‚  1) Captura contexto (PID, TID, CR3)
-//!     â”‚  2) Llama desktop3::enter
+//!     â”‚  2) Llama gateway::enter
 //!     â”‚  3) Retorna el resultado en rax
 //!     â–¼
-//! bmo_core::desktop3::enter   â† ESTE MÃ“DULO
+//! bmo_core::gateway::enter   â† ESTE MÃ“DULO
 //!     â”‚  1) Valida con ByteDefender
 //!     â”‚  2) Emite evento a Cabina
 //!     â”‚  3) Llama bmo_api::dispatch_syscall
@@ -59,7 +59,7 @@ static mut UNKNOWN_SYSCALLS: u64 = 0;
 
 /// Inicializa el gateway (no-op en v1.8.8).
 pub fn init() {
-    crate::cabina::info("desktop3", "desktop3 v1.0 online â€” single door to BMO Core");
+    crate::cabina::info("gateway", "gateway v1.0 online â€” single door to BMO Core");
 }
 
 /// Punto de entrada ÃšNICO para syscalls desde Ring 3.
@@ -85,7 +85,7 @@ pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u
     // Los NR_* vÃ¡lidos estÃ¡n en 0x100..0x1FF.
     if nr < 0x100 || nr > 0x1FF {
         unsafe { UNKNOWN_SYSCALLS += 1; }
-        crate::cabina::warn_u64("desktop3", "syscall out of range", nr as u64);
+        crate::cabina::warn_u64("gateway", "syscall out of range", nr as u64);
         return crate::bmo_abi::error_code::BmoErrorCode::InvalidArgument as u64;
     }
 
@@ -93,13 +93,13 @@ pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u
     // v1.8.8: stub. En v1.9 se consulta el proceso real.
     if !defense_allows(nr) {
         unsafe { DENIED_SYSCALLS += 1; }
-        crate::cabina::fault_u64("desktop3", "syscall denied by ByteDefender", nr as u64);
+        crate::cabina::fault_u64("gateway", "syscall denied by ByteDefender", nr as u64);
         return crate::bmo_abi::error_code::BmoErrorCode::PermissionDenied as u64;
     }
 
     // â”€â”€ 3. Cabina: registra el syscall entrante â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let name = syscall_name(nr);
-    crate::cabina::trace_u64("desktop3", &name, nr as u64);
+    crate::cabina::trace_u64("gateway", &name, nr as u64);
 
     // â”€â”€ 4. BMO API: ejecuta el syscall real â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let result = crate::bmo_api::dispatch_syscall(nr, a0, a1, a2, a3, a4, a5);
@@ -108,7 +108,7 @@ pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u
     if result == 0 {
         unsafe { ALLOWED_SYSCALLS += 1; }
     } else if is_fatal_error(result) {
-        crate::cabina::fault_u64("desktop3", "syscall returned fatal", result);
+        crate::cabina::fault_u64("gateway", "syscall returned fatal", result);
     } else {
         // Resultado no-fatal: solo trace.
     }
@@ -186,7 +186,7 @@ pub fn observe_launch(name: &str, format: crate::bef::parsers::BinaryFormat) {
         BinaryFormat::BefNative => "BEF",
         BinaryFormat::ElfDevoured => "ELF-devoured",
     };
-    crate::cabina::info("desktop3", &alloc::format!("launch: {} (format={})", name, fmt));
+    crate::cabina::info("gateway", &alloc::format!("launch: {} (format={})", name, fmt));
 }
 
 

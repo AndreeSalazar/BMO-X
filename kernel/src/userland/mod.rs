@@ -14,7 +14,7 @@
 //! - Receives control from Ring 0 at boot completion.
 //! - Initializes windowing API, desktop, filesystem.
 //! - userland::init() creates the desktop process.
-//! - ring3::desktop::enter() transitions to CPL=3.
+//! - ring3::ring3_entry::enter() transitions to CPL=3.
 //! - Apps use bmo_api syscalls (0x100..0x1FF) through the scheduler.
 
 pub mod ring_3;

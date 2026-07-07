@@ -70,5 +70,5 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
     bmo_core::coord::init();
 
     // Transition to Ring 3 desktop (replaces old purple-border demo).
-    crate::ring3::desktop::enter();
+    crate::ring3::ring3_entry::enter();
 }

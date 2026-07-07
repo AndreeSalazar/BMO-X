@@ -6,7 +6,7 @@ pub mod hal;
 
 pub mod bmo_api;
 pub mod desktop;
-pub mod desktop3;
+pub mod gateway;
 pub mod ui;
 pub mod bef;
 pub mod fs;

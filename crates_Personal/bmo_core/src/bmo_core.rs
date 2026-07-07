@@ -41,7 +41,7 @@ use super::bmo_api;
 use super::bef;
 use super::desktop;
 use super::fs;
-use super::desktop3;
+use super::gateway;
 // use crate::bmo_gpu;  // TODO: re-enable when bmo_gpu module exists
 
 /// Inicializa todos los subsistemas de BMO Core.
@@ -83,17 +83,17 @@ pub fn init() {
 
     // 9) Desktop: state + dock. (welcome se arranca desde enter().)
     desktop::init();
-    crate::dev::console::serial_write("[bmo_core] init: desktop3\n");
+    crate::dev::console::serial_write("[bmo_core] init: gateway\n");
 
-    // 10) desktop3: la cÃºpula encima de Ring 3 (Ãºnica puerta).
-    desktop3::init();
+    // 10) gateway: la cÃºpula encima de Ring 3 (Ãºnica puerta).
+    gateway::init();
     crate::dev::watchdog::pet_fch_watchdog();
     crate::dev::console::serial_write("[bmo_core] init: DONE\n");
 
     // â”€â”€ Tests integrados de la trilogÃ­a â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // v1.8.8: tests DESHABILITADOS al boot por defecto.
     //
-    // Los 38 tests (cabina+defense+timeback+desktop3+bef) son Ãºtiles
+    // Los 38 tests (cabina+defense+timeback+gateway+bef) son Ãºtiles
     // para validaciÃ³n, pero ejecutar `compile()` del BMO lang en cada
     // boot es demasiado costoso y puede colgarse.
     //
@@ -109,7 +109,7 @@ pub fn init() {
     // run_gateway_tests();
     // run_bef_tests();
 
-    crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop+desktop3");
+    crate::cabina::info("bmo_core", "BMO Core initialized: cabina+defense+timeback+bmo_api+desktop+gateway");
 }
 
 /// Cabina se considera "ready" solo despuÃ©s de init() (FB GOP OK).

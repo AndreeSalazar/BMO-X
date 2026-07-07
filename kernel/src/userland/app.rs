@@ -14,7 +14,7 @@
 
 use bmo_core::bef::parsers::{self, BinaryFormat, Image, LoadError};
 use bmo_core::bef::format::header::BefMagic;
-use bmo_core::desktop3;
+use bmo_core::gateway;
 
 /// Carga y ejecuta un binario (BEF/ELF).
 ///
@@ -70,7 +70,7 @@ pub fn run(bytes: &[u8], name: &str) -> bool {
     }
 
     // 4. Cabina: evento de auditoria antes de saltar a Ring 3.
-    desktop3::observe_launch(name, img.format);
+    gateway::observe_launch(name, img.format);
 
     // 5. Saltar a Ring 3 (no retorna - divergente).
     unsafe { parsers::run_entry_point(&img); }
