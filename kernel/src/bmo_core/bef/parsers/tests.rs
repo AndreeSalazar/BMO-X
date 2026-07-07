@@ -147,7 +147,7 @@ fn test_header_from_bytes_valid() -> TestResult {
     bytes[6..8].copy_from_slice(&0u16.to_le_bytes());
     bytes[12..16].copy_from_slice(&2u32.to_le_bytes());
 
-    let header: &BefHeader = unsafe { &*(bytes.as_ptr() as *const BefHeader) };
+    let header: BefHeader = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const BefHeader) };
     if header.is_valid() && header.section_count == 2 {
         pass("header_from_bytes_valid", "valid header parsed")
     } else {
@@ -157,7 +157,7 @@ fn test_header_from_bytes_valid() -> TestResult {
 
 fn test_header_from_bytes_invalid() -> TestResult {
     let bytes = [0u8; BefHeader::SIZE];
-    let header: &BefHeader = unsafe { &*(bytes.as_ptr() as *const BefHeader) };
+    let header: BefHeader = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const BefHeader) };
     if !header.is_valid() {
         pass("header_from_bytes_invalid", "zeroed header rejected")
     } else {

@@ -10,6 +10,8 @@
 //! - Signature (hashing structure)
 //! - Flags semánticos consistentes por tipo de sección
 
+#[allow(unused_imports)]
+use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 use alloc::string::String;
@@ -753,7 +755,7 @@ mod tests {
 
         // Patch section[1] file_offset to match section[0] file_offset (overlap)
         let mut corrupted = bytes.clone();
-        let hdr = unsafe { &*(corrupted.as_ptr() as *const BefHeader) };
+        let hdr: BefHeader = unsafe { core::ptr::read_unaligned(corrupted.as_ptr() as *const BefHeader) };
         let table_start = hdr.section_table_offset as usize;
         // Read section[0] file_offset
         let sec0_file_off = u64::from_le_bytes(

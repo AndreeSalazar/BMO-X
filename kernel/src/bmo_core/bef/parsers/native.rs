@@ -42,8 +42,8 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     if bytes.len() < BefHeader::SIZE {
         return Err(LoadError::Truncated);
     }
-    // SAFETY: alignment guaranteed by size check + repr(C, align(16)).
-    let hdr = unsafe { &*(bytes.as_ptr() as *const BefHeader) };
+    // Read header via unaligned access (buffer may not be 16-byte aligned)
+    let hdr: BefHeader = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const BefHeader) };
     if hdr.magic != BEF_MAGIC {
         return Err(LoadError::InvalidHeader);
     }
@@ -134,8 +134,8 @@ fn verify_section_hashes(bytes: &[u8], table: &SectionTable) -> Result<(), LoadE
     if sig_start + core::mem::size_of::<SignatureHeader>() > bytes.len() {
         return Err(LoadError::Truncated);
     }
-    let sig_hdr = unsafe {
-        &*(bytes.as_ptr().add(sig_start) as *const SignatureHeader)
+    let sig_hdr: SignatureHeader = unsafe {
+        core::ptr::read_unaligned(bytes.as_ptr().add(sig_start) as *const SignatureHeader)
     };
 
     // If sig_algo == 0, no actual signature — just hash verification.
@@ -149,8 +149,8 @@ fn verify_section_hashes(bytes: &[u8], table: &SectionTable) -> Result<(), LoadE
 
     for i in 0..hash_count {
         let offset = hashes_start + i * SectionHash::SIZE;
-        let entry = unsafe {
-            &*(bytes.as_ptr().add(offset) as *const SectionHash)
+        let entry: SectionHash = unsafe {
+            core::ptr::read_unaligned(bytes.as_ptr().add(offset) as *const SectionHash)
         };
 
         // Find the section by index.
@@ -260,8 +260,8 @@ fn apply_relocations(
     let reloc_count = reloc_size / Relocation::SIZE;
     for i in 0..reloc_count {
         let offset = reloc_start + i * Relocation::SIZE;
-        let reloc = unsafe {
-            &*(bytes.as_ptr().add(offset) as *const Relocation)
+        let reloc: Relocation = unsafe {
+            core::ptr::read_unaligned(bytes.as_ptr().add(offset) as *const Relocation)
         };
 
         let _kind = reloc.kind().ok_or(LoadError::InvalidHeader)?;
@@ -275,7 +275,7 @@ fn apply_relocations(
 
         // Resolve symbol address via runtime table.
         // For BEF native, symbol_idx refers to the Symbols section.
-        let symbol_addr = resolve_symbol_for_reloc(reloc, mapped, base);
+        let symbol_addr = resolve_symbol_for_reloc(&reloc, mapped, base);
 
         // Apply the relocation using the actual section data pointer.
         if target.data_ptr != 0 {
@@ -286,7 +286,7 @@ fn apply_relocations(
                 )
             };
             let _ = crate::bmo_core::bef::relocations::apply(
-                reloc,
+                &reloc,
                 target_slice,
                 target.virt_addr + reloc.offset,
                 symbol_addr,
@@ -323,8 +323,8 @@ fn parse_tls_template(bytes: &[u8], tls_entry: &SectionEntry) -> Result<TlsTempl
     if start + core::mem::size_of::<TlsTemplate>() > bytes.len() {
         return Err(LoadError::Truncated);
     }
-    let template = unsafe {
-        core::ptr::read_volatile(bytes.as_ptr().add(start) as *const TlsTemplate)
+    let template: TlsTemplate = unsafe {
+        core::ptr::read_unaligned(bytes.as_ptr().add(start) as *const TlsTemplate)
     };
     Ok(template)
 }

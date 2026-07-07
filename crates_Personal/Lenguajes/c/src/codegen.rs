@@ -55,6 +55,10 @@ struct Codegen {
     global_offsets: HashMap<String, (u32, TypeSpec)>,
     global_data: Vec<u8>,
     global_fixups: Vec<(usize, String)>,
+    /// Offset in self.code where instruction bytes end (string data starts here after patching).
+    instruction_end: usize,
+    /// Offset in self.code where string data ends (global data starts here).
+    string_data_end: usize,
 }
 
 impl Codegen {
@@ -69,6 +73,7 @@ impl Codegen {
             entry_offset: 0, is_entry_function: false,
             global_offsets: HashMap::new(), global_data: Vec::new(),
             global_fixups: Vec::new(),
+            instruction_end: 0, string_data_end: 0,
         }
     }
 
@@ -224,6 +229,7 @@ impl Codegen {
 
     fn patch_all_fixups(&mut self) {
         let code_end = self.code.len();
+        self.instruction_end = code_end;
         // Patch string fixups and append string data
         let mut str_off = code_end;
         for (idx, s) in self.strings.iter().enumerate() {
@@ -239,6 +245,7 @@ impl Codegen {
             str_off += s.len() + 1;
         }
         // Patch global fixups and append global data
+        self.string_data_end = self.code.len();
         let global_base = self.code.len();
         for &(lea_offset, ref name) in &self.global_fixups {
             if let Some(&(data_off, _)) = self.global_offsets.get(name) {
@@ -1001,7 +1008,27 @@ impl Codegen {
     fn build_bef(&mut self) -> Vec<u8> {
         let all = core::mem::take(&mut self.code);
         let mut b = BefBuilder::new();
-        b.add_section(BefSection::code(all));
+
+        let code_bytes = &all[..self.instruction_end];
+        let rodata_bytes = &all[self.instruction_end..self.string_data_end];
+        let data_bytes = &all[self.string_data_end..];
+
+        let mut code_sec = BefSection::code(code_bytes.to_vec());
+        code_sec.alignment = 1;
+        b.add_section(code_sec);
+
+        if !rodata_bytes.is_empty() {
+            let mut rodata_sec = BefSection::rodata(rodata_bytes.to_vec());
+            rodata_sec.alignment = 1;
+            b.add_section(rodata_sec);
+        }
+
+        if !data_bytes.is_empty() {
+            let mut data_sec = BefSection::data(data_bytes.to_vec());
+            data_sec.alignment = 1;
+            b.add_section(data_sec);
+        }
+
         b.entry_offset = self.entry_offset as u64;
         b.build().unwrap_or_default()
     }

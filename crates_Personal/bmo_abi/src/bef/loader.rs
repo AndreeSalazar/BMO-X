@@ -34,7 +34,7 @@ where
         return Err("file too small");
     }
 
-    let header = unsafe { &*(bytes.as_ptr() as *const BefHeader) };
+    let header: BefHeader = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const BefHeader) };
     if !header.is_valid() {
         return Err("invalid header");
     }
@@ -45,12 +45,16 @@ where
         return Err("section table out of bounds");
     }
 
-    let entries = unsafe {
-        core::slice::from_raw_parts(
-            bytes[table_offset..].as_ptr() as *const SectionEntry,
-            header.section_count as usize,
-        )
-    };
+    // Read section entries via unaligned copies
+    let mut entries: Vec<SectionEntry> = Vec::with_capacity(header.section_count as usize);
+    let table_bytes = &bytes[table_offset..table_offset + table_size];
+    for i in 0..header.section_count as usize {
+        let off = i * SectionEntry::SIZE;
+        let e: SectionEntry = unsafe {
+            core::ptr::read_unaligned(table_bytes[off..].as_ptr() as *const SectionEntry)
+        };
+        entries.push(e);
+    }
 
     let base = if base_addr > 0 { base_addr } else { 0x7F00_0000_0000 };
     let mut loaded = Vec::new();
@@ -99,25 +103,25 @@ where
         }
     }
 
-    // Apply relocations
-    if let Some(section) = loaded.iter().find(|s| s.kind == SectionKind::Relocs) {
-        let reloc_bytes = &section.data;
-        if !reloc_bytes.is_empty() {
-            let reloc_slice = unsafe {
-                core::slice::from_raw_parts(
-                    reloc_bytes.as_ptr() as *const relocations::Relocation,
-                    reloc_bytes.len() / relocations::Relocation::SIZE,
-                )
+    // Apply relocations via read_unaligned
+    let reloc_data: Vec<Vec<u8>> = loaded.iter()
+        .filter(|s| s.kind == SectionKind::Relocs)
+        .map(|s| s.data.clone())
+        .collect();
+    if let Some(reloc_bytes) = reloc_data.first() {
+        let n = reloc_bytes.len() / relocations::Relocation::SIZE;
+        for i in 0..n {
+            let off = i * relocations::Relocation::SIZE;
+            let reloc: relocations::Relocation = unsafe {
+                core::ptr::read_unaligned(reloc_bytes[off..].as_ptr() as *const relocations::Relocation)
             };
-            for reloc in reloc_slice {
-                let target_idx = reloc.target_section as usize;
-                if target_idx >= loaded.len() {
-                    return Err("relocation target section out of range");
-                }
-                let reloc_va = loaded[target_idx].virt_addr + reloc.offset;
-                let symbol_addr = reloc.symbol_idx as u64;
-                let _ = relocations::apply(reloc, &mut loaded[target_idx].data, reloc_va, symbol_addr);
+            let target_idx = reloc.target_section as usize;
+            if target_idx >= loaded.len() {
+                return Err("relocation target section out of range");
             }
+            let reloc_va = loaded[target_idx].virt_addr + reloc.offset;
+            let symbol_addr = reloc.symbol_idx as u64;
+            let _ = relocations::apply(&reloc, &mut loaded[target_idx].data, reloc_va, symbol_addr);
         }
     }
 
@@ -125,10 +129,12 @@ where
     let tls_base = if let Some(section) = loaded.iter().find(|s| s.kind == SectionKind::Tls) {
         let tls_bytes = &section.data;
         if tls_bytes.len() >= core::mem::size_of::<crate::bmo_abi::bef::tls::TlsTemplate>() {
-            let template = unsafe { &*(tls_bytes.as_ptr() as *const crate::bmo_abi::bef::tls::TlsTemplate) };
+            let template: crate::bmo_abi::bef::tls::TlsTemplate = unsafe {
+                core::ptr::read_unaligned(tls_bytes.as_ptr() as *const crate::bmo_abi::bef::tls::TlsTemplate)
+            };
             let data_start = core::mem::size_of::<crate::bmo_abi::bef::tls::TlsTemplate>();
             let data = if data_start < tls_bytes.len() { &tls_bytes[data_start..] } else { &[] };
-            crate::bmo_abi::bef::tls::setup_for_thread(template, data).unwrap_or(0)
+            crate::bmo_abi::bef::tls::setup_for_thread(&template, data).unwrap_or(0)
         } else { 0 }
     } else { 0 };
 

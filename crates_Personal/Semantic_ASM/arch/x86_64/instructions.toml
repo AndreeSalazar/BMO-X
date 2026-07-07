@@ -1,0 +1,259 @@
+# x86-64 instruction encodings
+# Referenced by codegen when targeting x86_64.
+
+[instruction_set]
+name = "x86-64"
+description = "AMD64/x86-64 instruction encoding definitions"
+isa = "x86_64"
+endianness = "little"
+
+# === Data movement ===
+
+[mov]
+description = "Move register/memory"
+forms = [
+    { opcode = [0x89], operands = "mr", modrm = true, rex = "optional" },   # mov r/m, r
+    { opcode = [0x8B], operands = "rm", modrm = true, rex = "optional" },   # mov r, r/m
+    { opcode = [0xC7, 0x00], operands = "mi", modrm = true, rex = "optional" }, # mov r/m, imm32
+    { opcode = [0xB8], operands = "ri", modrm = false, rex = "w" },         # mov r64, imm64 (rax+rb)
+]
+
+[mov_imm]
+description = "Move immediate to register (single-byte base + rb)"
+opcode_base = 0xB8
+rex_w = true
+operands = "ri"
+
+[mov_rm_r]
+description = "mov r/m64, r64"
+opcode = [0x89]
+rex_w = true
+modrm = true
+
+[mov_r_rm]
+description = "mov r64, r/m64"
+opcode = [0x8B]
+rex_w = true
+modrm = true
+
+[lea]
+description = "Load effective address"
+opcode = [0x8D]
+rex_w = true
+modrm = true
+
+[push]
+description = "Push register"
+opcode_base = 0x50
+forms = [
+    { opcode_base = 0x50, rex = "none", operands = "r" }, # push reg
+    { opcode = [0x68], operands = "i" },                   # push imm32
+]
+
+[pop]
+description = "Pop register"
+opcode_base = 0x58
+
+# === Arithmetic ===
+
+[add]
+description = "Add"
+forms = [
+    { opcode = [0x01], rex_w = true, modrm = true }, # add r/m, r
+    { opcode = [0x03], rex_w = true, modrm = true }, # add r, r/m
+    { opcode = [0x83, 0x00], modrm = true, imm_size = 1 }, # add r/m, imm8
+    { opcode = [0x81, 0x00], modrm = true, imm_size = 4 }, # add r/m, imm32
+]
+
+[sub]
+description = "Subtract"
+forms = [
+    { opcode = [0x29], rex_w = true, modrm = true },
+    { opcode = [0x2B], rex_w = true, modrm = true },
+]
+
+[imul]
+description = "Signed multiply"
+forms = [
+    { opcode = [0x0F, 0xAF], rex_w = true, modrm = true }, # imul r, r/m
+]
+
+[div]
+description = "Unsigned divide"
+opcode = [0xF7, 0x06] # div r/m (rDX:rax / r/m → rax, rDX = remainder)
+rex_w = true
+modrm = true
+
+[idiv]
+description = "Signed divide"
+opcode = [0xF7, 0x07]
+rex_w = true
+modrm = true
+
+[neg]
+description = "Negate"
+forms = [
+    { opcode = [0xF7, 0x03], rex_w = true }, # neg r/m64
+    { opcode = [0xF7, 0x18] },               # neg r/m (no rex.w)
+]
+
+[inc]
+description = "Increment"
+opcode = [0xFF, 0x00]
+modrm = true
+
+[dec]
+description = "Decrement"
+opcode = [0xFF, 0x01]
+modrm = true
+
+# === Bitwise ===
+
+[and]
+forms = [
+    { opcode = [0x21], rex_w = true, modrm = true },
+    { opcode = [0x23], rex_w = true, modrm = true },
+]
+
+[or]
+forms = [
+    { opcode = [0x09], rex_w = true, modrm = true },
+    { opcode = [0x0B], rex_w = true, modrm = true },
+]
+
+[xor]
+forms = [
+    { opcode = [0x31], rex_w = true, modrm = true },
+    { opcode = [0x33], rex_w = true, modrm = true },
+]
+
+[not]
+opcode = [0xF7, 0x02]
+rex_w = true
+modrm = true
+
+[shl]
+description = "Shift left"
+forms = [
+    { opcode = [0xD3, 0xE0], rex_w = true, operands = "r,cl" }, # shl r64, cl
+    { opcode = [0xC1, 0xE0], imm_size = 1, rex_w = true },      # shl r64, imm8
+]
+
+[shr]
+description = "Shift right"
+forms = [
+    { opcode = [0xD3, 0xE8], rex_w = true },
+    { opcode = [0xC1, 0xE8], imm_size = 1, rex_w = true },
+]
+
+# === Comparison ===
+
+[cmp]
+description = "Compare (sets flags)"
+forms = [
+    { opcode = [0x39], rex_w = true, modrm = true }, # cmp r/m, r
+    { opcode = [0x3B], rex_w = true, modrm = true }, # cmp r, r/m
+    { opcode = [0x83, 0x07], imm_size = 1 },         # cmp r/m, imm8
+]
+
+[test]
+description = "Logical compare (sets flags)"
+opcode = [0x85]
+rex_w = true
+modrm = true
+
+[setcc]
+description = "Set byte on condition"
+opcode_prefix = [0x0F]
+opcode_base = 0x90
+modrm = true
+conditions = [
+    { name = "e",  code = 0x94 },
+    { name = "ne", code = 0x95 },
+    { name = "l",  code = 0x9C },
+    { name = "g",  code = 0x9F },
+    { name = "le", code = 0x9E },
+    { name = "ge", code = 0x9D },
+    { name = "b",  code = 0x92 },
+    { name = "be", code = 0x96 },
+    { name = "a",  code = 0x97 },
+    { name = "ae", code = 0x93 },
+]
+
+# === Control flow ===
+
+[jmp]
+description = "Jump near"
+forms = [
+    { opcode = [0xE9], imm_size = 4 },       # jmp rel32
+    { opcode = [0xEB], imm_size = 1 },       # jmp rel8
+    { opcode = [0xFF, 0x04], modrm = true }, # jmp r/m
+]
+
+[call]
+description = "Call near"
+forms = [
+    { opcode = [0xE8], imm_size = 4 },       # call rel32
+    { opcode = [0xFF, 0x02], modrm = true }, # call r/m
+]
+
+[ret]
+description = "Return near"
+opcode = [0xC3]
+
+[conditional_jump]
+description = "Conditional jumps"
+opcode_prefix = [0x0F]
+opcode_base = 0x80
+imm_size = 4
+short_prefix = []    # no prefix for short jumps (opcode 0x70-0x7F)
+short_imm_size = 1
+conditions = [
+    { name = "e",  code = 0x84 },
+    { name = "ne", code = 0x85 },
+    { name = "l",  code = 0x8C },
+    { name = "g",  code = 0x8F },
+    { name = "le", code = 0x8E },
+    { name = "ge", code = 0x8D },
+    { name = "b",  code = 0x82 },
+    { name = "be", code = 0x86 },
+    { name = "a",  code = 0x87 },
+    { name = "ae", code = 0x83 },
+]
+
+# === System ===
+
+[syscall]
+description = "Fast system call"
+opcode = [0x0F, 0x05]
+
+# === Stack frame ===
+
+[enter]
+description = "Enter stack frame"
+opcode = [0x55]  # push rbp
+forms = [
+    { opcode = [0x55] },                           # push rbp
+    { opcode = [0x48, 0x89, 0xE5] },               # mov rbp, rsp
+]
+
+[leave]
+description = "Leave stack frame"
+opcode = [0x48, 0x89, 0xEC]  # mov rsp, rbp
+form_pop = [0x5D]             # pop rbp
+
+# === Sign/zero extension ===
+
+[movsx]
+description = "Move with sign-extension"
+forms = [
+    { opcode = [0x0F, 0xBE], rex_w = true, modrm = true }, # movsx r64, r/m8
+    { opcode = [0x0F, 0xBF], rex_w = true, modrm = true }, # movsx r64, r/m16
+]
+
+[movzx]
+description = "Move with zero-extension"
+forms = [
+    { opcode = [0x0F, 0xB6], rex_w = true, modrm = true }, # movzx r64, r/m8
+    { opcode = [0x0F, 0xB7], rex_w = true, modrm = true }, # movzx r64, r/m16
+]
