@@ -42,7 +42,7 @@ pub use ring0::log;
 pub use bmo_core;
 pub use ring0::boot_phase;
 pub use ring0::entry;
-pub use ring0::vendor;
+pub use cpu_vendor_profile as vendor;
 pub use ring0::omni;
 pub use ring0::devour;
 pub use byte_defender;

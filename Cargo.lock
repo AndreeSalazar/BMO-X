@@ -177,6 +177,7 @@ dependencies = [
  "cabina-core",
  "cabina-daemon",
  "cabina-panels",
+ "cpu-vendor-profile",
  "goblin",
  "hw-profile",
  "llfree",

@@ -13,7 +13,7 @@ pub mod amd;
 /// `crate::dev::console::serial_write` etc. When running standalone (e.g. in
 /// a test harness or bootloader), they default to no-ops.
 pub static mut LOG_WRITE_STR: Option<fn(&str)> = None;
-pub static mut LOG_WRITE_U64: Option<fn(u64, u32)> = None;
+pub static mut LOG_WRITE_U64: Option<fn(u64, usize)> = None;
 pub static mut LOG_BOOT_STAGE: Option<fn(&str)> = None;
 
 /// Wrapper used internally by the vendor modules. Replacements for:
@@ -27,7 +27,7 @@ pub fn serial_write(s: &str) {
 }
 
 #[inline]
-pub fn serial_write_u64(v: u64, radix: u32) {
+pub fn serial_write_u64(v: u64, radix: usize) {
     if let Some(f) = unsafe { LOG_WRITE_U64 } { f(v, radix); }
 }
 

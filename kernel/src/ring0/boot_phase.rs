@@ -361,6 +361,12 @@ fn phase4_sched(ctx: &mut BootContext, prev_end: u64) -> u64 {
     phase4_end
 }
 
+// ── Wiring helper for cpu_vendor_profile logging ──────────
+
+fn wrap_boot_stage(s: &str) {
+    let _ = crate::uefi_rt::write_boot_stage(s);
+}
+
 // â”€â”€ Main Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Main entry point for Ring 0. Called from kernel_main_real.
@@ -426,10 +432,16 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
 
     // 7. CPU-specific init (Ryzen 5 5600X)
     write_crash_marker(3);
+    // Wire cpu_vendor_profile's logging callbacks (extracted crate)
+    unsafe {
+        cpu_vendor_profile::LOG_WRITE_STR = Some(crate::dev::console::serial_write as fn(&str));
+        cpu_vendor_profile::LOG_WRITE_U64 = Some(crate::dev::console::serial_write_u64 as fn(u64, usize));
+        cpu_vendor_profile::LOG_BOOT_STAGE = Some(wrap_boot_stage as fn(&str));
+    }
     crate::uefi_rt::write_boot_stage("init_bmo_cpu");
     crate::cabina_daemon::info("ring0", "detecting CPU");
     crate::visual::log("ring0", "[1/5] detect 5600X", crate::visual::color::OK);
-    crate::vendor::amd::cpu::zen3::init_bmo_cpu();
+    cpu_vendor_profile::amd::cpu::zen3::init_bmo_cpu();
     crate::cabina_daemon::info("ring0", "CPU detected");
     crate::visual::log("ring0", "[1/5] 5600X detected", crate::visual::color::OK);
 
@@ -439,7 +451,7 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     crate::cabina_daemon::info("ring0", "parsing ACPI tables");
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
     crate::visual::log("ring0", "[2/5] init ACPI", crate::visual::color::OK);
-    crate::vendor::amd::cpu::zen3::init_acpi(rsdp_hint);
+    cpu_vendor_profile::amd::cpu::zen3::init_acpi(rsdp_hint);
     crate::cabina_daemon::info("ring0", "ACPI initialized");
 
     // 9. SMP init
