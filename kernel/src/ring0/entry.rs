@@ -69,6 +69,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
     // Transition to BMO Core (logical Ring 3 kernel) subsystems.
     bmo_core::coord::init();
 
-    // Transition to Ring 3 desktop (replaces old purple-border demo).
-    crate::ring3::ring3_entry::enter();
+    // Enter the real desktop with Mac-like compositor (alpha, blur, shadows, dock).
+    bmo_core::desktop::commands::enter_desktop();
 }

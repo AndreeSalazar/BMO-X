@@ -189,12 +189,17 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         issue_ibpb:               crate::vendor::amd::cpu::zen3::errata_workarounds::issue_ibpb,
         amd_cpu_name:             || "AMD Ryzen",
 
-        // ── bmo_audio (PC Speaker via PIT, Ring 0 only) ────────────
-        audio_init:               |freq| bmo_audio::init(freq),
-        audio_play:               |tone| { let _ = bmo_audio::beep(tone, 100); },
-        audio_play_logon_chime:   || bmo_audio::play_logon_chime(),
-        audio_beep:               |hz, ms| bmo_audio::beep(hz, ms),
-        audio_set_volume:         |v| bmo_audio::set_volume(v as u8),
+        // ── bmo_audio (HD Audio Realtek ALC via HDA driver) ──────────
+        audio_init:               |_freq| {
+            // HD Audio doesn't need TSC frequency — volume is register-based
+        },
+        audio_play:               |_tone| {},
+        audio_play_logon_chime:   || {
+            // HD Audio doesn't have PIT beeps; logon sound is silent on HDA
+            // Future: load a WAV file and play through HDA stream
+        },
+        audio_beep:               |_hz, _ms| {},
+        audio_set_volume:         |v| crate::dev::hda::set_volume(v as u8),
 
         // ── dev::storage ────────────────────────────────────────────
         storage_test:             || false,

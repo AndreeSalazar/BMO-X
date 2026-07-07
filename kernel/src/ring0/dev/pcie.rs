@@ -462,7 +462,21 @@ fn print_u32(val: u32) {
     crate::dev::console::serial_write(s);
 }
 
-/// v1.8.8: This `init()` is a no-op that uses hardcoded values (base=0xE0000000,
+/// Generic: find a PCI device by class/subclass and return its BAR0 MMIO base.
+pub fn find_device_mmio(class_code: u8, subclass: u8) -> Option<u64> {
+    unsafe {
+        SCAN_RESULT.as_ref().and_then(|r| {
+            r.devices[..r.count].iter().find(|d| {
+                d.class_code == class_code && d.subclass == subclass
+            }).map(|d| {
+                let bar0_lo = pci_read32(d.bus, d.device, d.function, 0x10);
+                let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);
+                let bar0 = ((bar0_hi as u64) << 32) | (bar0_lo as u64);
+                bar0 & !0xF_u64
+            })
+        })
+    }
+}
 /// end_bus=255). It is NOT called by the boot path — `p2_dev::run` instead
 /// calls `init_ecam(0, 32)` to disable ECAM entirely (because the 5600X UEFI
 /// wedges on ECAM MMIO access above 4 GB without proper PML4 re-mapping).

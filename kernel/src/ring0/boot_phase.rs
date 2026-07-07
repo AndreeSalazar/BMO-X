@@ -273,6 +273,15 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         }
     }
 
+    // HD Audio detection (class=0x04, subclass=0x03)
+    if let Some(hda_mmio) = crate::dev::pcie::find_device_mmio(0x04, 0x03) {
+        crate::log::info("phase2", "HD Audio controller detected (Realtek ALC)");
+        crate::dev::console::serial_write("[phase2] HDA MMIO=0x");
+        crate::dev::console::serial_write(&alloc::format!("{:x}", hda_mmio));
+        crate::dev::console::serial_write("\n");
+        crate::dev::hda::init(hda_mmio);
+    }
+
     // Persist state
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
     ctx.devices.acpi_mcfg_end_bus = mcfg.as_ref().map(|m| m.end_bus).unwrap_or(0);

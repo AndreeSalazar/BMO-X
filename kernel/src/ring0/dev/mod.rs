@@ -25,6 +25,7 @@ pub mod acpi;
 pub mod keyboard;
 pub mod mouse;
 pub mod usb_hid;
+pub mod hda;
 
 // ── Storage (AHCI) ────────────────────────────────────────────────
 pub mod ahci;

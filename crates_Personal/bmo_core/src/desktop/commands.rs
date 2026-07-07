@@ -35,7 +35,7 @@ pub fn trim(s: &[u8]) -> &[u8] {
 /// inicia el window manager con Z-order, focus-follows-mouse, drag,
 /// resize, snap y modal, y entra en el loop principal. ESC devuelve
 /// al welcome.
-pub fn enter_desktop() {
+pub fn enter_desktop() -> ! {
     crate::cabina::set_overlay_enabled(false);
     crate::cabina::info("welcome", "Run accepted; entering BMO API v2 desktop");
     crate::dev::console::serial_write(
