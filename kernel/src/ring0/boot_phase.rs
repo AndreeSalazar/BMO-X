@@ -174,14 +174,14 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::log::info_u64("phase1", "bootstrap free pages (< 2 GB)", early_free_pages as u64);
     crate::log::info_u64("phase1", "bootstrap free MB", early_free_mb as u64);
 
-    // High-memory mapping is deliberately deferred in this safety build.
-    // The previous boot died immediately after `p0_timer_done`, before Phase 1
-    // could report progress. Keep the allocator on its low identity-mapped
-    // bootstrap window first; once Ring 0 reaches the ready screen reliably,
-    // high-mem can be re-enabled with a dedicated page-table validation pass.
+    // High-memory mapping: map all physical RAM into the upper-half (HIGH_MEM_BASE).
+    // Previously deferred for bootstrap stability — Ring 0 now reaches ready screen
+    // reliably. Enabled to unlock AHCI, NVMe, and USB MMIO access.
     write_crash_marker(2104);
-    crate::uefi_rt::write_boot_stage("p1_highmem_deferred");
-    crate::log::warn("phase1", "high-mem deferred for stable Ring 0 bootstrap");
+    crate::uefi_rt::write_boot_stage("p1_highmem_start");
+    unsafe { crate::mm::vmm::map_high_mem(&bi.memory_map, bi.memory_map_count as usize); }
+    crate::uefi_rt::write_boot_stage("p1_highmem_done");
+    crate::log::info("phase1", "high-mem direct map enabled");
 
     let free_pages = crate::mm::phys::free_count();
     let free_mb = (free_pages * 4096) / (1024 * 1024);
@@ -263,13 +263,21 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     let scan = crate::dev::pcie::scan_pci_bus();
     crate::log::info_u64("phase2", "PCI devices found", scan.count as u64);
 
-    // AHCI detection
-    if crate::dev::pcie::has_ahci() {
-        crate::log::info("phase2", "AHCI controller detected");
-        if let Some(mmio) = crate::dev::pcie::find_ahci_mmio() {
-            crate::dev::console::serial_write("[phase2] AHCI MMIO=0x");
-            crate::dev::console::serial_write(&alloc::format!("{:x}", mmio));
-            crate::dev::console::serial_write("\n");
+    // AHCI detection + probe
+    if let Some(ahci_mmio) = crate::dev::pcie::find_ahci_mmio() {
+        crate::log::info("phase2", "AHCI controller detected, probing...");
+        unsafe { crate::dev::ahci::probe(ahci_mmio, 0); }
+        // Init DMA on first active port
+        for i in 0..32u8 {
+            unsafe {
+                if let Some(ctrl) = crate::dev::ahci::controller() {
+                    if ctrl.ports[i as usize].state == crate::dev::ahci::PortState::Active {
+                        if crate::dev::ahci::init_port_dma(i) {
+                            crate::log::info_u64("phase2", "AHCI port DMA initialized", i as u64);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -293,14 +301,11 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     // Future: route PS/2 through a shared ring buffer or HAL input callback.
     crate::log::info("phase2", "PS/2 input: desktop handles via direct I/O polling");
 
-    // MMIO-backed drivers are deferred while Phase 1 intentionally keeps the
-    // high-half direct map disabled. xHCI/AHCI BARs on this platform live near
-    // 0xFCxx_xxxx; touching them through `phys_to_virt()` faults at
-    // 0xFFFF_8000_FCxx_xxxx before the direct map exists. PCI detection above
-    // is still useful; actual MMIO probing comes back with the high-mem pass.
+    // MMIO-backed drivers: now accessible via high-mem direct map.
+    // AHCI, xHCI, and NVMe BARs near 0xFCxx_xxxx work through phys_to_virt().
     write_crash_marker(2204);
-    crate::uefi_rt::write_boot_stage("p2_mmio_deferred");
-    crate::log::warn("phase2", "USB/AHCI MMIO probes deferred until high-mem mapping");
+    crate::uefi_rt::write_boot_stage("p2_mmio_enabled");
+    crate::log::info("phase2", "MMIO drivers: high-mem map active, probing hardware");
 
     // Power management (C-states, thermal monitoring)
     write_crash_marker(2205);

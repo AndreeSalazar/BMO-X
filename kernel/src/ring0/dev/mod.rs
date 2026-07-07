@@ -27,6 +27,7 @@ pub mod hda;
 
 // ── Storage (AHCI) ────────────────────────────────────────────────
 pub mod ahci;
+pub mod fat32;
 
 // ── Timers (HPET, timer wheel, timestamps) ────────────────────────
 pub mod timer;
