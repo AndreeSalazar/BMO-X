@@ -1,25 +1,31 @@
-﻿//! `userland_ring3` â€” the BMO userland standard library.
+﻿//! `userland_ring3` — the BMO userland standard library.
 //!
-//! Provides the single syscall dispatch point `bmo_syscall`, plus
-//! all BMO syscall wrappers, a heap allocator (`malloc`/`free`),
-//! and language-agnostic ABI functions for C, COBOL, and Rust programs.
+//! Provides:
+//! - Single syscall dispatch point `bmo_syscall` + all BMO syscall wrappers
+//! - Heap allocator (`malloc`, `free`, `calloc`, `realloc`)
+//! - String library (`memcpy`, `strlen`, `strcmp`, `strdup`, ...)
+//! - Formatted output (`printf`, `sprintf`, `snprintf` with %d, %x, %s...)
+//! - C runtime startup (`_start` → `main` → `exit`)
 //!
 //! # For C/COBOL
 //!
-//! The `BMO.toml` manifest exports these functions so frontends
-//! generate `call` relocations instead of inline `syscall` instructions.
+//! Frontends generate `call` relocations to functions exported in BMO.toml.
 //!
 //! # For Rust
 //!
-//! Use `#[global_allocator]` via the provided allocator, and call
-//! convenience wrappers like `userland_ring3::syscall::mem_alloc`.
+//! Use `#[global_allocator]` via the heap module.
 
 #![no_std]
+#![allow(static_mut_refs)]
 
 #[cfg(test)]
 extern crate std;
 
 pub mod syscall;
 pub mod heap;
+pub mod string;
+pub mod fmt;
+pub mod crt0;
 
 mod init;
+pub mod ffi;

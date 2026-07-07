@@ -1,13 +1,42 @@
-﻿# userland_ring3 module â€” the BMO userland standard library
-# All syscall dispatch goes through bmo_syscall; frontends link against this.
+﻿# userland_ring3 module — the BMO userland standard library
+# Every function here is available to C/COBOL frontends via call relocations.
 
 [module]
 name = "userland_ring3"
-version = "0.1.0"
+version = "1.0.0"
 
 [exports]
+# ── Syscall dispatch ──────────────────────────
 bmo_syscall = "u32, u64, u64, u64, u64, u64, u64 -> u64"
+
+# ── Heap ─────────────────────────────────────
 malloc = "size_t -> ptr"
 free = "ptr -> void"
 calloc = "size_t, size_t -> ptr"
 realloc = "ptr, size_t -> ptr"
+
+# ── String ───────────────────────────────────
+memcpy = "ptr, ptr, size_t -> ptr"
+memmove = "ptr, ptr, size_t -> ptr"
+memset = "ptr, int, size_t -> ptr"
+memcmp = "ptr, ptr, size_t -> int"
+strlen = "ptr -> size_t"
+strcmp = "ptr, ptr -> int"
+strncmp = "ptr, ptr, size_t -> int"
+strcpy = "ptr, ptr -> ptr"
+strncpy = "ptr, ptr, size_t -> ptr"
+strcat = "ptr, ptr -> ptr"
+strncat = "ptr, ptr, size_t -> ptr"
+strchr = "ptr, int -> ptr"
+strrchr = "ptr, int -> ptr"
+strstr = "ptr, ptr -> ptr"
+strdup = "ptr -> ptr"
+strndup = "ptr, size_t -> ptr"
+
+# ── Formatted output ──────────────────────────
+printf = "ptr -> int"
+snprintf = "ptr, size_t, ptr -> int"
+sprintf = "ptr -> int"
+
+# ── Startup ──────────────────────────────────
+_start = "void -> void"
