@@ -154,11 +154,19 @@ version = "1.8.16"
 dependencies = [
  "bmo-abi",
  "bmo-boot-protocol",
+ "bmo-input",
  "goblin",
 ]
 
 [[package]]
 name = "bmo-cpp-front"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
+name = "bmo-input"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
@@ -173,6 +181,7 @@ dependencies = [
  "bmo-audio",
  "bmo-boot-protocol",
  "bmo-core",
+ "bmo-input",
  "byte-defender",
  "cabina-core",
  "cabina-daemon",
