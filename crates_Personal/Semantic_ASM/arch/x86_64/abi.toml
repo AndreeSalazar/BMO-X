@@ -1,0 +1,30 @@
+# x86-64 specific ABI convention
+# Referenced by abi.toml at the root. Frontends load this when targeting x86_64.
+
+[calling_convention]
+# Argument passing order (register names)
+arg_regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"]
+# Return value register
+ret_reg = "rax"
+# Status/secondary return register
+status_reg = "rdx"
+# Stack alignment requirement (bytes)
+stack_align = 16
+# Callee-saved registers
+callee_saved = ["rbx", "rbp", "r12", "r13", "r14", "r15"]
+# Caller-saved registers
+caller_saved = ["rax", "rcx", "rdx", "rdi", "rsi", "r8", "r9", "r10", "r11"]
+
+[syscall_convention]
+# Register for syscall number
+nr_reg = "rax"
+# Argument passing for syscalls
+arg_regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"]
+# Result register
+ret_reg = "rax"
+# Status/secondary value register
+status_reg = "rdx"
+# Clobbered registers
+clobbered = ["rcx", "r11"]
+# Instruction used
+instruction = "syscall"

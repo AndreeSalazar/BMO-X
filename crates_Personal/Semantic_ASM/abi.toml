@@ -1,51 +1,23 @@
-# Semantic_ASM ABI convention
-# Explicit description of the calling convention that all frontends use.
-# Makes the implicit x86-64 SysV ABI convention observable and modifiable.
-
-[calling_convention]
-# Argument passing order (register names)
-arg_regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"]
-# Return value register
-ret_reg = "rax"
-# Status/secondary return register (for (status, value) pairs)
-status_reg = "rdx"
-# Stack alignment requirement (bytes)
-stack_align = 16
-# Callee-saved registers
-callee_saved = ["rbx", "rbp", "r12", "r13", "r14", "r15"]
-# Caller-saved registers
-caller_saved = ["rax", "rcx", "rdx", "rdi", "rsi", "r8", "r9", "r10", "r11"]
-
-[syscall_convention]
-# Register for syscall number
-nr_reg = "rax"
-# Argument passing for syscalls (different from function call)
-arg_regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"]
-# Result register
-ret_reg = "rax"
-# Status/secondary value register
-status_reg = "rdx"
-# Clobbered registers
-clobbered = ["rcx", "r11"]
-# Instruction used
-instruction = "syscall"
+# Semantic_ASM ABI convention — neutral (architecture-independent)
+#
+# Architecture-specific details (registers, syscall instruction, stack layout)
+# are in arch/<target>/abi.toml. Frontends load the root abi.toml first,
+# then the arch-specific file for the target they are compiling to.
 
 [data_model]
 # Pointer size in bytes
 pointer_size = 8
-# Pointer alignment
-pointer_alignment = 8
-# Char is signed by default
-char_is_signed = true
 # Byte order
 endianness = "little"
 # Minimum alignment for any type
 min_alignment = 1
 # Maximum alignment for any type
 max_alignment = 16
+# Char signed by default
+char_is_signed = true
 
 [type_sizes]
-# Default sizes for fundamental types (in bytes)
+# Default sizes for fundamental types (in bytes) — architecture neutral
 void = 0
 char = 1
 short = 2
