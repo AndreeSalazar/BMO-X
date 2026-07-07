@@ -74,6 +74,8 @@ struct Codegen {
     string_data_end: usize,
     /// Functions from userland_ring3 that need imports.
     stdlib_imports: std::collections::HashSet<String>,
+    /// Enum constants: name → integer value.
+    enum_values: HashMap<String, i64>,
 }
 
 impl Codegen {
@@ -91,6 +93,7 @@ impl Codegen {
             global_fixups: Vec::new(),
             instruction_end: 0, string_data_end: 0,
             stdlib_imports: std::collections::HashSet::new(),
+            enum_values: HashMap::new(),
         }
     }
 
@@ -405,6 +408,12 @@ impl Codegen {
     }
 
     fn emit_load_var(&mut self, name: &str) {
+        // Enum constants: emit integer literal directly
+        if let Some(&val) = self.enum_values.get(name) {
+            self.code.extend_from_slice(&[0xB8]); // mov eax, imm32
+            self.code.extend_from_slice(&(val as i32).to_le_bytes());
+            return;
+        }
         if let Some(&(offset, ref typ)) = self.var_offsets.get(name) {
             let disp = offset;
             match typ {

@@ -485,20 +485,25 @@ impl Parser {
                     t => return Err(CError::new(1, format!("expected enum name, got {:?}", t))),
                 };
                 self.expect(&Token::OpenBrace)?;
+                let mut val = 0i64;
                 loop {
                     match self.advance() {
-                        Token::Ident(_en) => {
+                        Token::Ident(en) => {
                             if *self.peek() == Token::Assign {
                                 self.advance();
-                                let _val = match self.advance() {
+                                let assigned = match self.advance() {
                                     Token::IntLit(n) => n,
                                     t => return Err(CError::new(1, format!("expected int in enum, got {:?}", t))),
                                 };
+                                val = assigned;
                             }
+                            // Store enum constant as if it were a variable with int type + constant value
+                            self.var_types.insert(en.clone(), TypeSpec::Int);
                         }
                         Token::CloseBrace => { break; }
                         t => return Err(CError::new(1, format!("expected enum constant, got {:?}", t))),
                     }
+                    val += 1;
                     if *self.peek() == Token::Comma { self.advance(); }
                 }
                 self.skip_semicolon();
