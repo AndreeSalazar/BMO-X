@@ -83,8 +83,7 @@ extern "C" {
 
 const PAGE_SIZE: usize = 4096;
 const BOOTSTRAP_IDENTITY_LIMIT: u64 = 0x8000_0000;
-const USER_CODE_BASE: u64 = 0x100_0000;
-const USER_STACK_BASE: u64 = 0x7FFF_FF00_0000;
+const STACK_PAGES: usize = 16;
 
 pub fn jump_to_ring3() -> ! {
     let fb_addr   = unsafe { crate::info::FB_ADDR };
@@ -101,37 +100,30 @@ pub fn jump_to_ring3() -> ! {
             - (&ring3_entry as *const u8 as usize)
     };
 
-    use crate::ring0::mm::vmm as virt;
+    use crate::ring0::mm::virt;
     use crate::ring0::mm::phys;
-
-    let kernel_cr3 = virt::read_cr3();
-    let pml4 = match unsafe { virt::create_user_page_table(kernel_cr3) } {
-        Some(p) => p,
-        None => loop { unsafe { core::arch::asm!("hlt"); } },
-    };
 
     let code_phys = match unsafe { phys::alloc_pages_contiguous(1) } {
         Some(p) => p,
         None => loop { unsafe { core::arch::asm!("hlt"); } },
     };
 
-    let stack_phys = match unsafe { phys::alloc_pages_contiguous(16) } {
+    let stack_phys = match unsafe { phys::alloc_pages_contiguous(STACK_PAGES) } {
         Some(p) => p,
         None => loop { unsafe { core::arch::asm!("hlt"); } },
     };
 
     if code_size > PAGE_SIZE
         || code_phys.saturating_add(PAGE_SIZE as u64) > BOOTSTRAP_IDENTITY_LIMIT
-        || stack_phys.saturating_add((16 * PAGE_SIZE) as u64) > BOOTSTRAP_IDENTITY_LIMIT
+        || stack_phys.saturating_add((STACK_PAGES * PAGE_SIZE) as u64) > BOOTSTRAP_IDENTITY_LIMIT
     {
         loop { unsafe { core::arch::asm!("hlt"); } }
     }
 
     unsafe {
-        // The high-half direct map is intentionally deferred in the stable
-        // LLFree bootstrap. The frame allocator returns low identity-mapped
-        // pages here, so populate the temporary Ring3 code page through its
-        // identity address instead of HIGH_MEM_BASE + phys.
+        // code_phys and stack_phys are identity-mapped by UEFI (low memory,
+        // < 2 GB).  Write the ring3 code directly through its identity
+        // address — no need for a separate virtual mapping.
         let code_kvirt = code_phys as *mut u8;
         core::ptr::write_bytes(code_kvirt, 0, PAGE_SIZE);
         core::ptr::copy_nonoverlapping(
@@ -145,27 +137,23 @@ pub fn jump_to_ring3() -> ! {
         code_kvirt.add(18).cast::<u32>().write(fb_stride);
     }
 
-    use virt::flags;
     unsafe {
-        let _ = virt::map_user_range(
-            pml4, USER_CODE_BASE, code_phys, 1,
-            flags::PRESENT | flags::WRITABLE | flags::USER,
-        );
-        let _ = virt::map_user_range(
-            pml4, USER_STACK_BASE, stack_phys, 16,
-            flags::PRESENT | flags::WRITABLE | flags::USER,
-        );
-
+        // Mark code, stack and framebuffer as user-accessible in the
+        // current (kernel) page table.  All three are identity-mapped,
+        // so we use mark_current_identity_user_range which correctly
+        // handles huge pages (both 1 GiB PDPT and 2 MiB PD).
+        // map_user_range is NOT used — it would fail on 1 GiB huge pages
+        // that the UEFI identity mapping may use.
+        let _ = virt::mark_current_identity_user_range(code_phys, PAGE_SIZE);
+        let _ = virt::mark_current_identity_user_range(stack_phys, STACK_PAGES * PAGE_SIZE);
         let fb_size_bytes = (fb_stride as u64) * (fb_height as u64) * 4;
-        let fb_pages = ((fb_size_bytes + PAGE_SIZE as u64 - 1) / PAGE_SIZE as u64) as usize;
-        let _ = virt::map_user_range(
-            pml4, fb_addr, fb_addr, fb_pages,
-            flags::PRESENT | flags::WRITABLE | flags::USER,
-        );
+        let _ = virt::mark_current_identity_user_range(fb_addr, fb_size_bytes as usize);
     }
 
-    let stack_top = USER_STACK_BASE + 65536;
-    unsafe { virt::write_cr3(pml4); }
+    // Entry is the identity-mapped code physical address.
+    // Stack top is also identity-mapped: stack_phys + stack_size.
+    let entry = code_phys;
+    let stack_top = stack_phys + (STACK_PAGES * PAGE_SIZE) as u64;
 
     unsafe {
         core::arch::asm!(
@@ -178,7 +166,7 @@ pub fn jump_to_ring3() -> ! {
             user_ss  = const 0x1B_u64,
             user_cs  = const 0x23_u64,
             stack_top = in(reg) stack_top,
-            entry    = in(reg) USER_CODE_BASE,
+            entry    = in(reg) entry,
             options(noreturn),
         );
     }

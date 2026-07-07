@@ -683,7 +683,10 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
     let end = start.checked_add(len as u64).ok_or("user range overflow")?;
     let mut va = start & !(PAGE_SIZE - 1);
     let end = (end + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-    let pml4 = phys_to_pt(read_cr3() & ADDR_MASK);
+    // UEFI page tables may be in non-Usable memory (BootServicesData/Code),
+    // so use identity-mapped access (phys_to_id) instead of high-mem
+    // (phys_to_pt) — the identity map covers the full 4 GB.
+    let pml4 = phys_to_id(read_cr3() & ADDR_MASK);
 
     while va < end {
         let pml4_i = ((va >> 39) & 0x1FF) as usize;
@@ -695,7 +698,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
         if !pml4e.is_present() { return Err("PML4 entry not present"); }
         pml4e.0 |= flags::USER | flags::WRITABLE;
 
-        let pdpt = phys_to_pt(pml4e.phys_addr());
+        let pdpt = phys_to_id(pml4e.phys_addr());
         let pdpte = &mut (*pdpt).entries[pdpt_i];
         if !pdpte.is_present() { return Err("PDPT entry not present"); }
         pdpte.0 |= flags::USER | flags::WRITABLE;
@@ -707,7 +710,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
             continue;
         }
 
-        let pd = phys_to_pt(pdpte.phys_addr());
+        let pd = phys_to_id(pdpte.phys_addr());
         let pde = &mut (*pd).entries[pd_i];
         if !pde.is_present() { return Err("PD entry not present"); }
         pde.0 |= flags::USER | flags::WRITABLE;
@@ -719,7 +722,7 @@ pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result
             continue;
         }
 
-        let pt = phys_to_pt(pde.phys_addr());
+        let pt = phys_to_id(pde.phys_addr());
         let pte = &mut (*pt).entries[pt_i];
         if !pte.is_present() { return Err("PT entry not present"); }
         pte.0 |= flags::USER | flags::WRITABLE;
