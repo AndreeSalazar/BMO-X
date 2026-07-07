@@ -198,42 +198,48 @@ global_asm!(
     "jmp hb_loop",
 
     // ══════════ fill_rect helper ════════════════════
-    // Stack: [x+40] [y+32] [w+24] [h+16] [ret+8] [edx=color]
-    // Uses r8=fb_addr, r9d=fb_w, esi=fb_h, edi=stride
+    // Args (pushed before call, bottom-to-top): y, x, w, h
+    // Color in edx. Preserves r10-r15. Uses r8=fb, r9d=fb_w, esi=fb_h, edi=stride.
+    // Stack layout: [rbp+16]=h, [rbp+24]=w, [rbp+32]=x, [rbp+40]=y
 "fr:",
     "push rbp",
     "mov rbp, rsp",
-    "mov eax, [rbp + 56]",  // y
-    "mov ecx, [rbp + 40]",  // h
+    "sub rsp, 16",                 // locals: [rbp-8]=max_x, [rbp-16]=max_y
+    // max_y = min(y+h, fb_h)
+    "mov eax, [rbp + 40]",         // y
+    "mov ecx, [rbp + 16]",         // h
     "add eax, ecx",
     "cmp eax, esi",
     "cmova eax, esi",
-    "mov [rbp + 24], eax",  // max_y = min(y+h, fb_h) — reuse stack slot
-    "mov eax, [rbp + 64]",  // x
-    "mov ecx, [rbp + 48]",  // w
+    "mov [rbp - 16], eax",         // local max_y
+    // max_x = min(x+w, fb_w)
+    "mov eax, [rbp + 32]",         // x
+    "mov ecx, [rbp + 24]",         // w
     "add eax, ecx",
     "cmp eax, r9d",
     "cmova eax, r9d",
-    "mov [rbp + 16], eax",  // max_x = min(x+w, fb_w)
-    "mov ecx, [rbp + 56]",  // row = y
+    "mov [rbp - 8], eax",          // local max_x
+    // row loop
+    "mov ecx, [rbp + 40]",         // row = y
 "fr_row:",
-    "cmp ecx, [rbp + 24]",
+    "cmp ecx, [rbp - 16]",
     "jae fr_done",
-    "mov ebx, [rbp + 64]",  // col = x
+    "mov ebx, [rbp + 32]",         // col = x
 "fr_col:",
-    "cmp ebx, [rbp + 16]",
+    "cmp ebx, [rbp - 8]",
     "jae fr_next",
     "mov eax, ecx",
-    "mul edi",
-    "add eax, ebx",
-    "shl eax, 2",
-    "mov [r8 + rax], edx",
+    "imul eax, edi",               // y * stride (imul preserves edx!)
+    "add eax, ebx",               // + x
+    "shl eax, 2",                 // * 4
+    "mov [r8 + rax], edx",        // *fb = color (edx still valid!)
     "inc ebx",
     "jmp fr_col",
 "fr_next:",
     "inc ecx",
     "jmp fr_row",
 "fr_done:",
+    "add rsp, 16",                 // free locals
     "pop rbp",
     "ret",
 
