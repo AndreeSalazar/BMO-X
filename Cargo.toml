@@ -13,6 +13,7 @@ members = [
     "crates_Personal/cabina/panels",
     "crates_Personal/bmo_core",
     "crates_Personal/hw_profile",
+    "crates_Personal/cpu_vendor_profile",
     "crates_Personal/byte_defender",
     "crates_Personal/timeback",
     "crates_Personal/Lenguajes/cobol",
