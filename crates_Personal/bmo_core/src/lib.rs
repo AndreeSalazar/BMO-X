@@ -4,6 +4,7 @@ extern crate alloc;
 
 pub mod hal;
 
+pub mod port_io;
 pub mod bmo_api;
 pub mod desktop;
 pub mod gateway;

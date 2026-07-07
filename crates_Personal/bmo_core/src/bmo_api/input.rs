@@ -267,3 +267,38 @@ pub fn esc_pressed() -> bool {
     ESC_LATCH.store(false, Ordering::Relaxed);
     r
 }
+
+// ── Spanish keyboard layout (CP437 compatible) ──────────────────
+
+/// Translate a Set 1 scancode to a character using Spanish layout.
+/// Returns None for non-character keys (arrows, modifiers, F-keys).
+pub fn scancode_to_char_es(sc: u8) -> Option<u8> {
+    let released = (sc & 0x80) != 0;
+    if released { return None; }
+    let sc = sc & 0x7F;
+    let caps = caps_on();
+    let shift = shift_held();
+    let upper = caps ^ shift;
+    match sc {
+        0x02..=0x09 => Some(if upper { b'1' - 1 + sc as u8 - 1 } else { b'1' - 1 + sc as u8 - 1 }),
+        0x0A => { None /* accent key — needs compose */ },
+        0x0B => Some(b'0'),
+        0x0C => Some(if upper { b'?' } else { b'\'' }),
+        0x0D => Some(if upper { 0xA8 } else { 0xAD }),          // ¿ / ¡
+        0x10 | 0x1E | 0x1F | 0x20 | 0x21 | 0x22 | 0x23 | 0x24 | 0x25 | 0x26
+        | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x16 | 0x17 | 0x18 | 0x19
+        | 0x2C | 0x2D | 0x2E | 0x2F | 0x30 | 0x31 | 0x32 => {
+            let base: u8 = if upper { b'A' - 0x1E } else { b'a' - 0x1E };
+            Some(base + sc as u8)
+        },
+        0x27 => Some(if upper { 0xA5 } else { 0xA4 }),          // Ñ / ñ
+        0x33 => Some(if upper { b';' } else { b',' }),
+        0x34 => Some(if upper { b':' } else { b'.' }),
+        0x35 => Some(if upper { b'_' } else { b'-' }),
+        0x39 => Some(b' '),
+        0x0E => Some(0x08),                                      // Backspace
+        0x1C => Some(b'\n'),                                     // Enter
+        0x53 => Some(0x7F),                                      // Delete
+        _ => None,
+    }
+}

@@ -435,7 +435,7 @@ fn process_enter() {
         run_phase_self_test_ring3();
     } else if eq_ci(trimmed_cmd, b"reboot") {
         crate::cabina::warn("welcome", "Reboot command accepted");
-        unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
+        crate::port_io::system_reset();
     } else if eq_ci(trimmed_cmd, b"nexo") {
         crate::cabina::info("welcome", "NEXO compiler test - compiling hello program");
         launch_bef_app();

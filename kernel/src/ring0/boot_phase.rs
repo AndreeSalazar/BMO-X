@@ -288,13 +288,10 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
 
-    // PS/2 Mouse (IRQ12) â€” init first so keyboard LED re-enable comes after
-    write_crash_marker(2203);
-    crate::uefi_rt::write_boot_stage("p2_ps2_input");
-    crate::dev::mouse::init();
-
-    // PS/2 Keyboard (IRQ1) â€” re-enables Num Lock LED after mouse reset
-    crate::dev::keyboard::init();
+    // PS/2 input: the bmo_api desktop reads ports 0x60/0x64 directly (polling).
+    // IRQ-based keyboard/mouse drivers are disabled to avoid byte-stealing conflicts.
+    // Future: route PS/2 through a shared ring buffer or HAL input callback.
+    crate::log::info("phase2", "PS/2 input: desktop handles via direct I/O polling");
 
     // MMIO-backed drivers are deferred while Phase 1 intentionally keeps the
     // high-half direct map disabled. xHCI/AHCI BARs on this platform live near

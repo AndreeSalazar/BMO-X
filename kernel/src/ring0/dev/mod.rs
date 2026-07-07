@@ -22,8 +22,6 @@ pub mod pcie;
 pub mod framebuffer;
 pub mod watchdog;
 pub mod acpi;
-pub mod keyboard;
-pub mod mouse;
 pub mod usb_hid;
 pub mod hda;
 
