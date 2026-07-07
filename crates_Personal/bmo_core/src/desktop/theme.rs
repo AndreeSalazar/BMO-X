@@ -56,3 +56,22 @@ pub const PLACEHOLDER:   u32 = 0xFF3D4F5F;
 pub const NEON_OUTER:    u32 = 0xFF0F2030;
 pub const NEON_MID:      u32 = 0xFF143D54;
 pub const NEON_INNER:    u32 = 0xFF144D4D;
+
+// ── Menu bar ────────────────────────────────────────────────────────
+pub const MENU_BG:       u32 = 0xDD0D1117;
+pub const MENU_TEXT:      u32 = 0xFFCBD7E0;
+pub const MENU_HOVER:     u32 = 0x2D4ECCA3;
+pub const MENU_ACTIVE:    u32 = 0xFF4ECCA3;
+pub const MENU_HEIGHT:    u32 = 28;
+
+// ── Per-window properties (configurable) ────────────────────────────
+pub const WINDOW_OPACITY:      f32 = 0.96;
+pub const WINDOW_CORNER_RADIUS: u32 = 14;
+pub const WINDOW_SHADOW_OFFSET:  i32 = 6;
+pub const WINDOW_SHADOW_BLUR:   u32 = 4;
+
+// ── Animations ──────────────────────────────────────────────────────
+pub const ANIM_OPEN_MS:     u32 = 300;
+pub const ANIM_CLOSE_MS:    u32 = 200;
+pub const ANIM_MINIMIZE_MS: u32 = 300;
+pub const ANIM_DOCK_MS:     u32 = 150;

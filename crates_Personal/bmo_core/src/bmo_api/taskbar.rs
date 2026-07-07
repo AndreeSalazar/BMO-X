@@ -40,8 +40,14 @@ pub fn paint(fb: &crate::ui::fb::Framebuffer, fb_height: i32) {
     let ty = taskbar_y(fb_height) as usize;
     let fb_width = fb.width as usize;
 
-    fb.fill_rounded_rect(0, ty, fb_width, TASKBAR_HEIGHT as usize, 0, 0xFF0D1117);
-    fb.fill_rect(0, ty, fb_width, 1, 0xFF30363D);
+    // Blur backdrop behind taskbar (frosted glass)
+    fb.box_blur_3x3(0, ty, fb_width, TASKBAR_HEIGHT as usize);
+    fb.fill_rect_alpha(0, ty, fb_width, TASKBAR_HEIGHT as usize, 0xCC0D1117);
+    fb.fill_rect_alpha(0, ty, fb_width, 1, 0x6630363D);
+
+    // Mouse position for hover magnification
+    let mouse_x = super::input::mouse_x() as i32;
+    let mouse_y = super::input::mouse_y() as i32;
 
     let mut btn_x = BTN_X0;
     let btn_y = ty + ((TASKBAR_HEIGHT - BTN_H) / 2) as usize;
@@ -59,23 +65,40 @@ pub fn paint(fb: &crate::ui::fb::Framebuffer, fb_height: i32) {
             let is_active = slot == s.windows.focus;
             let label_color = if is_active { theme::MINT } else { theme::TITLE };
 
+            // Hover magnification: scale button if mouse is near
+            let hover_dist = ((mouse_x - btn_x - BTN_W/2).abs()).min(60);
+            let hover_scale = if mouse_y >= ty as i32 && hover_dist < 60 && !w.minimized {
+                1.0 + (1.0 - hover_dist as f32 / 60.0) * 0.12
+            } else {
+                1.0
+            };
+            let scaled_w = (BTN_W as f32 * hover_scale) as i32;
+            let scaled_h = (BTN_H as f32 * hover_scale) as i32;
+            let offset_x = (BTN_W - scaled_w) / 2;
+            let offset_y = (BTN_H - scaled_h) / 2;
+
             let bg = if is_active {
                 0xFF1A2A35u32
             } else if is_minimized {
                 0xFF161B22u32
             } else {
-                0xFF0D1117u32
+                0xAA0D1117u32
             };
 
-            let bd = if is_active { theme::MINT } else { 0xFF30363Du32 };
+            let bd = if is_active { theme::MINT } else { 0x5530363Du32 };
 
             if btn_x + BTN_W > fb_width as i32 - 8 { return; }
 
-            fb.fill_rounded_rect(btn_x as usize, btn_y, BTN_W as usize, BTN_H as usize, 8, bg);
-            fb.draw_rect(btn_x as usize, btn_y, BTN_W as usize, BTN_H as usize, bd, 1);
+            let bx = (btn_x + offset_x) as usize;
+            let by = (btn_y as i32 + offset_y) as usize;
+
+            fb.fill_rounded_rect(bx, by, scaled_w as usize, scaled_h as usize, 8, bg);
+            fb.draw_rounded_rect(bx, by, scaled_w as usize, scaled_h as usize, 8, bd, 1);
 
             if is_active {
-                fb.fill_rect(btn_x as usize, btn_y + BTN_H as usize - 3, BTN_W as usize, 3, theme::MINT);
+                fb.fill_rect(bx, by + scaled_h as usize - 3, scaled_w as usize, 3, theme::MINT);
+                // Active glow
+                fb.fill_rect_alpha(bx, by - 1, scaled_w as usize, 1, 0x33FFFFFF);
             }
 
             let title_len = w.title_len as usize;
@@ -91,8 +114,8 @@ pub fn paint(fb: &crate::ui::fb::Framebuffer, fb_height: i32) {
                 let display_len = if title_len > 16 { 17 } else { copy_len };
                 crate::desktop::render::draw_text(
                     fb,
-                    (btn_x + 8) as u32,
-                    (btn_y + (BTN_H as usize - 14) / 2) as u32,
+                    (bx + 8) as u32,
+                    (by + (scaled_h - 14) as usize / 2) as u32,
                     &short_title[..display_len],
                     label_color,
                 );

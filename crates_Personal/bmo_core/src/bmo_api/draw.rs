@@ -320,6 +320,38 @@ pub fn blit_surface_to_fb(surface_slot: u32, dst_x: i32, dst_y: i32) {
     }
 }
 
+/// Alpha-blended blit of a surface to the framebuffer.
+/// Uses A_over_B blending for transparent/translucent surfaces.
+pub fn blit_surface_alpha_to_fb(surface_slot: u32, dst_x: i32, dst_y: i32) {
+    let st = super::surface::surface_table();
+    st.acquire();
+    let info = st.surface(surface_slot).map(|srf| {
+        (srf.pixels, srf.width as u32, srf.height as u32, srf.pitch as u32)
+    });
+    st.release();
+    let (pixels, sw, sh, pitch) = match info {
+        Some(i) => i,
+        None => return,
+    };
+    if pixels.is_null() || sw == 0 || sh == 0 { return; }
+    let fb = get_fb();
+    let (fbw, fbh) = unsafe { (crate::info::FB_WIDTH, crate::info::FB_HEIGHT) };
+    let pixels = unsafe { core::slice::from_raw_parts(pixels, (pitch as usize / 4) * sh as usize) };
+    for sy in 0..sh {
+        let py = dst_y + sy as i32;
+        if py < 0 || py >= fbh as i32 { continue; }
+        for sx in 0..sw {
+            let px = dst_x + sx as i32;
+            if px < 0 || px >= fbw as i32 { continue; }
+            let sp = sy as usize * (pitch as usize / 4) + sx as usize;
+            if sp < pixels.len() {
+                let color = pixels[sp];
+                fb.put_pixel_alpha(px as usize, py as usize, color);
+            }
+        }
+    }
+}
+
 fn get_fb() -> crate::ui::fb::Framebuffer {
     let (addr, stride, width, height) = unsafe {
         (crate::info::FB_ADDR, crate::info::FB_STRIDE, crate::info::FB_WIDTH, crate::info::FB_HEIGHT)
