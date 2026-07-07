@@ -70,7 +70,7 @@ global_asm!(
     "inc r12d",
     "cmp r12d, r14d",
     "jb 7b",
-"9:  hlt",
+"9:  pause",
     "jmp 9b",
     ".globl ring3_entry_end",
 "ring3_entry_end:",
