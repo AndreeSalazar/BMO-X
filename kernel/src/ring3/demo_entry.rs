@@ -85,6 +85,10 @@ const PAGE_SIZE: usize = 4096;
 const BOOTSTRAP_IDENTITY_LIMIT: u64 = 0x8000_0000;
 const STACK_PAGES: usize = 16;
 
+/// Jump to Ring 3 as a demo: draw a purple border on the framebuffer.
+///
+/// Allocates code + stack from identity-mapped physical pages, marks them
+/// USER-accessible, and calls `ring3_transition()` — no CR3 switch.
 pub fn jump_to_ring3() -> ! {
     let fb_addr   = unsafe { crate::info::FB_ADDR };
     let fb_width  = unsafe { crate::info::FB_WIDTH };
@@ -92,7 +96,7 @@ pub fn jump_to_ring3() -> ! {
     let fb_stride = unsafe { crate::info::FB_STRIDE };
 
     if fb_addr == 0 || fb_width == 0 || fb_height == 0 || fb_stride == 0 {
-        loop { unsafe { core::arch::asm!("hlt"); } }
+        loop { unsafe { core::arch::asm!("pause"); } }
     }
 
     let code_size = unsafe {
@@ -105,25 +109,23 @@ pub fn jump_to_ring3() -> ! {
 
     let code_phys = match unsafe { phys::alloc_pages_contiguous(1) } {
         Some(p) => p,
-        None => loop { unsafe { core::arch::asm!("hlt"); } },
+        None => loop { unsafe { core::arch::asm!("pause"); } },
     };
 
     let stack_phys = match unsafe { phys::alloc_pages_contiguous(STACK_PAGES) } {
         Some(p) => p,
-        None => loop { unsafe { core::arch::asm!("hlt"); } },
+        None => loop { unsafe { core::arch::asm!("pause"); } },
     };
 
     if code_size > PAGE_SIZE
         || code_phys.saturating_add(PAGE_SIZE as u64) > BOOTSTRAP_IDENTITY_LIMIT
         || stack_phys.saturating_add((STACK_PAGES * PAGE_SIZE) as u64) > BOOTSTRAP_IDENTITY_LIMIT
     {
-        loop { unsafe { core::arch::asm!("hlt"); } }
+        loop { unsafe { core::arch::asm!("pause"); } }
     }
 
     unsafe {
-        // code_phys and stack_phys are identity-mapped by UEFI (low memory,
-        // < 2 GB).  Write the ring3 code directly through its identity
-        // address — no need for a separate virtual mapping.
+        // Write ring3 code directly into identity-mapped physical page.
         let code_kvirt = code_phys as *mut u8;
         core::ptr::write_bytes(code_kvirt, 0, PAGE_SIZE);
         core::ptr::copy_nonoverlapping(
@@ -138,36 +140,17 @@ pub fn jump_to_ring3() -> ! {
     }
 
     unsafe {
-        // Mark code, stack and framebuffer as user-accessible in the
-        // current (kernel) page table.  All three are identity-mapped,
-        // so we use mark_current_identity_user_range which correctly
-        // handles huge pages (both 1 GiB PDPT and 2 MiB PD).
-        // map_user_range is NOT used — it would fail on 1 GiB huge pages
-        // that the UEFI identity mapping may use.
+        // Mark code, stack and framebuffer user-accessible in the current
+        // (kernel) page table.  All three are identity-mapped; use
+        // mark_current_identity_user_range (handles huge pages correctly).
         let _ = virt::mark_current_identity_user_range(code_phys, PAGE_SIZE);
         let _ = virt::mark_current_identity_user_range(stack_phys, STACK_PAGES * PAGE_SIZE);
         let fb_size_bytes = (fb_stride as u64) * (fb_height as u64) * 4;
         let _ = virt::mark_current_identity_user_range(fb_addr, fb_size_bytes as usize);
     }
 
-    // Entry is the identity-mapped code physical address.
-    // Stack top is also identity-mapped: stack_phys + stack_size.
     let entry = code_phys;
     let stack_top = stack_phys + (STACK_PAGES * PAGE_SIZE) as u64;
 
-    unsafe {
-        core::arch::asm!(
-            "push qword ptr {user_ss}",
-            "push {stack_top}",
-            "push qword ptr 0x202",
-            "push qword ptr {user_cs}",
-            "push {entry}",
-            "iretq",
-            user_ss  = const 0x1B_u64,
-            user_cs  = const 0x23_u64,
-            stack_top = in(reg) stack_top,
-            entry    = in(reg) entry,
-            options(noreturn),
-        );
-    }
+    unsafe { crate::ring3::transition::ring3_transition(entry, stack_top); }
 }

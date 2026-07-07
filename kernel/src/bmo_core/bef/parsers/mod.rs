@@ -89,7 +89,13 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
 /// Execute the entry point of a loaded image.
 ///
 /// SAFETY: The image must have a valid entry_point and all relocations
-/// resolved. This jumps to Ring 3 (user mode) and does not return.
+/// resolved, AND every section's `virt_addr` range must be mapped as
+/// USER-accessible in the current page table.  This jumps to Ring 3
+/// (user mode) and does not return.
+///
+/// NOTE: The stack is allocated from identity-mapped physical pages
+/// (same as `jump_to_ring3`).  The kernel heap (HIGH_MEM_BASE) cannot
+/// be used because it lacks the USER page-table flag.
 pub unsafe fn run_entry_point(img: &Image) -> ! {
     let entry = img.entry_point;
     if entry == 0 {
@@ -99,35 +105,35 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
 
     crate::cabina::info_u64("bef", "executing entry point", entry);
 
-    // Build a minimal user stack (64 KB).
-    let stack_layout = match core::alloc::Layout::from_size_align(65536, 16) {
-        Ok(l) => l,
-        Err(_) => {
-            crate::cabina::fault("bef", "invalid stack layout");
+    use crate::ring0::mm::phys;
+    use crate::ring0::mm::virt;
+
+    // Allocate a 64 KB user stack from identity-mapped physical pages.
+    const STACK_PAGES: usize = 16;
+    const PAGE_SIZE: u64 = 4096;
+    let stack_phys = match unsafe { phys::alloc_pages_contiguous(STACK_PAGES) } {
+        Some(p) => p,
+        None => {
+            crate::cabina::fault("bef", "OOM for user stack");
             loop { core::arch::asm!("hlt"); }
         }
     };
-    let stack_ptr = alloc::alloc::alloc_zeroed(stack_layout);
-    if stack_ptr.is_null() {
-        crate::cabina::fault("bef", "failed to allocate user stack");
-        loop { core::arch::asm!("hlt"); }
-    }
-    let stack_top = stack_ptr as u64 + 65536;
 
-    // Jump to Ring 3 via iretq.
-    core::arch::asm!(
-        "push qword ptr {user_ss}",
-        "push {stack_top}",
-        "push qword ptr 0x202",
-        "push qword ptr {user_cs}",
-        "push {entry}",
-        "iretq",
-        user_ss = const 0x1B_u64,
-        user_cs = const 0x23_u64,
-        stack_top = in(reg) stack_top,
-        entry = in(reg) entry,
-        options(noreturn),
-    );
+    // Mark stack pages USER-accessible.
+    unsafe {
+        let _ = virt::mark_current_identity_user_range(
+            stack_phys, STACK_PAGES * PAGE_SIZE as usize,
+        );
+    }
+
+    // Zero the stack (identity-mapped).
+    unsafe {
+        core::ptr::write_bytes(stack_phys as *mut u8, 0, STACK_PAGES * PAGE_SIZE as usize);
+    }
+
+    let stack_top = stack_phys + (STACK_PAGES as u64) * PAGE_SIZE;
+
+    crate::ring3::transition::ring3_transition(entry, stack_top);
 }
 
 /// Helper compartido - sintetiza una MappedSection vacia.
