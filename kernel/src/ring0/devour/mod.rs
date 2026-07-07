@@ -30,7 +30,7 @@ pub fn devour_and_load(bytes: &[u8]) -> Result<LoadedBef, &'static str> {
             return bmo_abi::bef::load(bytes, 0, resolve_import);
         }
         BefMagic::ElfUnix => {
-            crate::bmo_core::bef::parsers::elf::load(bytes)
+            bmo_core::bef::parsers::elf::load(bytes)
                 .map_err(|_| "ELF parse failed")?
         }
         _ => return Err("unknown binary format"),
@@ -39,7 +39,7 @@ pub fn devour_and_load(bytes: &[u8]) -> Result<LoadedBef, &'static str> {
 }
 
 fn resolve_import(lib: &str, sym: &str) -> Result<u64, &'static str> {
-    let addr = crate::bmo_core::bef::parsers::runtime::lookup(lib, sym);
+    let addr = bmo_core::bef::parsers::runtime::lookup(lib, sym);
     if addr != 0 {
         Ok(addr)
     } else {
@@ -47,7 +47,7 @@ fn resolve_import(lib: &str, sym: &str) -> Result<u64, &'static str> {
     }
 }
 
-fn image_to_loaded(img: &crate::bmo_core::bef::parsers::Image) -> LoadedBef {
+fn image_to_loaded(img: &bmo_core::bef::parsers::Image) -> LoadedBef {
     let mut sections = Vec::with_capacity(img.sections.len());
     for s in &img.sections {
         let data = if s.data_ptr != 0 {

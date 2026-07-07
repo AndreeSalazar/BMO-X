@@ -35,9 +35,7 @@ pub mod visual;
 pub mod font;
 pub mod log;
 
-// â”€â”€ BMO Core: logical Ring 3 kernel (process mgmt, syscalls, UI, FS) â”€â”€
-#[path = "../bmo_core/mod.rs"]
-pub mod bmo_core;
+
 
 // â”€â”€ Main coordinator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod phase_1_RING_0;
@@ -134,7 +132,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
     let ctx = phase_1_RING_0::main(boot_info_ptr);
 
     // Transition to BMO Core (logical Ring 3 kernel) subsystems.
-    crate::bmo_core::coord::init();
+    bmo_core::coord::init();
 
     // Real CPU-level transition to Ring 3 (CPL=3).
     // Draws a purple border to visually confirm Ring 3 execution.

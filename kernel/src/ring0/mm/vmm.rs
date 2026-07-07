@@ -340,72 +340,7 @@ pub unsafe fn free_user_page_tables(pml4_phys: u64) {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Vma {
-    pub virt_start: u64,
-    pub virt_end: u64,
-    pub flags: u64,
-    pub kind: VmaKind,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum VmaKind {
-    Fixed,
-    Demand,
-    Cow(u64),
-}
-
-impl Vma {
-    pub const fn empty() -> Self {
-        Self { virt_start: 0, virt_end: 0, flags: 0, kind: VmaKind::Fixed }
-    }
-
-    pub fn contains(&self, addr: u64) -> bool {
-        addr >= self.virt_start && addr < self.virt_end
-    }
-}
-
-#[derive(Debug)]
-pub struct AddressSpace {
-    pub pml4_phys: u64,
-    pub vmas: [Vma; 32],
-    pub vma_count: usize,
-}
-
-impl AddressSpace {
-    pub const fn empty() -> Self {
-        Self {
-            pml4_phys: 0,
-            vmas: [Vma::empty(); 32],
-            vma_count: 0,
-        }
-    }
-
-    pub fn add_vma(&mut self, vma: Vma) -> bool {
-        if self.vma_count >= self.vmas.len() { return false; }
-        self.vmas[self.vma_count] = vma;
-        self.vma_count += 1;
-        true
-    }
-
-    pub fn find_vma(&self, addr: u64) -> Option<&Vma> {
-        for i in 0..self.vma_count {
-            if self.vmas[i].contains(addr) {
-                return Some(&self.vmas[i]);
-            }
-        }
-        None
-    }
-
-    pub fn find_vma_mut(&mut self, addr: u64) -> Option<&mut Vma> {
-        for i in 0..self.vma_count {
-            if self.vmas[i].contains(addr) {
-                return Some(&mut self.vmas[i]);
-            }
-        }
-        None
-    }
-}
+pub use bmo_core::mm::virt::{VmaKind, Vma, AddressSpace};
 
 pub unsafe fn map_user_demand(
     pml4_phys: u64,

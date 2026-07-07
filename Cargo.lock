@@ -149,6 +149,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-core"
+version = "1.8.16"
+dependencies = [
+ "bmo-abi",
+ "bmo-boot-protocol",
+ "goblin",
+]
+
+[[package]]
 name = "bmo-kernel"
 version = "1.8.16"
 dependencies = [
@@ -156,6 +165,7 @@ dependencies = [
  "bmo-abi",
  "bmo-audio",
  "bmo-boot-protocol",
+ "bmo-core",
  "cabina-core",
  "cabina-daemon",
  "cabina-panels",

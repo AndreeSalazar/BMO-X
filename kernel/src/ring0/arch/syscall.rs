@@ -221,7 +221,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         if let Some(task) = crate::proc::task::current() {
             if let Some(proc) = crate::proc::process::get_process(task.pid) {
                 if proc.linux_emulation {
-                    let result = crate::bmo_core::bef::shims::linux::syscall::dispatch(
+                    let result = bmo_core::bef::shims::linux::syscall::dispatch(
                         nr as usize,
                         &[a0, a1, a2, a3, a4, a5],
                     );
@@ -238,7 +238,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             // so early Ring 3/BEF commands can use windowing, FS, time,
             // memory, process and debug services through one stable table.
             n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                crate::bmo_core::bmo_api::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, a5)
+                bmo_core::bmo_api::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, a5)
             }
 
             // â”€â”€â”€ Procesos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

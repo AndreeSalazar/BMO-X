@@ -36,7 +36,7 @@ pub use ring0::visual;
 pub mod ring3;
 pub use ring0::font;
 pub use ring0::log;
-pub use ring0::bmo_core;
+pub use bmo_core;
 pub use ring0::phase_1_RING_0;
 pub use ring0::vendor;
 pub use ring0::omni;

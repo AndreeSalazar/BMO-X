@@ -12,9 +12,9 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bef::parsers::{self, BinaryFormat, Image, LoadError};
-use crate::bmo_core::bef::format::header::BefMagic;
-use crate::bmo_core::desktop3;
+use bmo_core::bef::parsers::{self, BinaryFormat, Image, LoadError};
+use bmo_core::bef::format::header::BefMagic;
+use bmo_core::desktop3;
 
 /// Carga y ejecuta un binario (BEF/ELF).
 ///

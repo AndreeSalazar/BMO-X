@@ -13,7 +13,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_core::bmo_api::message::BmoMsgKind;
+use bmo_core::bmo_api::message::BmoMsgKind;
 
 /// Inicializa el subsistema Ring 3.
 pub fn init() {
