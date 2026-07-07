@@ -1,6 +1,7 @@
 ﻿pub mod codegen;
 pub mod ast;
 pub mod module;
+pub mod ir_emit;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,6 +21,12 @@ pub fn parse(source: &str) -> Result<Program, CError> {
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
     let program = parse(source)?;
     codegen::compile_to_bef_bytes(&program)
+}
+
+/// Compile C source to a unified IrModule (language-agnostic IR).
+pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CError> {
+    let program = parse(source)?;
+    Ok(ir_emit::compile_to_ir(&program))
 }
 
 pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {

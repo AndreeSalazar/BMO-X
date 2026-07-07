@@ -16,6 +16,7 @@ members = [
     "crates_Personal/byte_defender",
     "crates_Personal/timeback",
     "crates_Personal/Lenguajes/cobol",
+    "crates_Personal/Lenguajes/cpp",
     "crates_Personal/Lenguajes/c",
     "crates_Personal/userland_ring3",
 ]

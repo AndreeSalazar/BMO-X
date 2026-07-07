@@ -29,7 +29,7 @@ fn type_registry_basic() {
     let idx = reg.register(meta).unwrap();
     assert_eq!(idx, 0);
     let looked_up = reg.lookup(0xABCD).unwrap();
-    assert_eq!(looked_up.size, 16);
+    assert_eq!(looked_up.meta.size, 16);
 }
 
 #[test]

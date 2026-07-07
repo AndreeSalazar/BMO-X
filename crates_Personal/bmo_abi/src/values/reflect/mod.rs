@@ -51,12 +51,12 @@ pub struct ReflectQuery;
 impl ReflectQuery {
     /// Resolve a type by FNV-1a hash of its name, using a TypeRegistry.
     pub fn resolve_type(registry: &TypeRegistry, name_hash: bx_u64) -> Option<BmoTypeInfo> {
-        let meta = registry.lookup(name_hash)?;
+        let entry = registry.lookup(name_hash)?;
         Some(BmoTypeInfo {
             name: unsafe { BmoStr::from_raw(core::ptr::null(), 0) },
-            kind: TypeKind::from_u8(meta.kind),
-            size: meta.size,
-            field_count: meta.field_count,
+            kind: TypeKind::from_u8(entry.meta.kind),
+            size: entry.meta.size,
+            field_count: entry.meta.field_count,
         })
     }
 }

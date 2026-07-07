@@ -158,6 +158,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-cpp-front"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
 name = "bmo-kernel"
 version = "1.8.16"
 dependencies = [

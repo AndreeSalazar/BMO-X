@@ -2,6 +2,11 @@
 //!
 //! Almacena hasta 64 vtables, cada una con un array de hasta 32 function
 //! pointers. Usado por el sistema de interfaces polimórficas entre lenguajes.
+//!
+//! ## Companions
+//!
+//! `VTableMethodMeta` adds typed metadata to otherwise opaque `extern "C" fn()`
+//! entries: method name, TypeRegistry index for the signature, and flags.
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
@@ -13,6 +18,47 @@ pub const VTABLE_METHODS_MAX: usize = 32;
 
 /// Una entrada individual de vtable.
 pub type VTableEntry = Option<extern "C" fn()>;
+
+/// Typed metadata for one VTable method.
+///
+/// Companion to `VTableEntry`. While the entry itself is an opaque function
+/// pointer (required for BEF binary compatibility), this struct carries:
+/// - The method name (FNV-1a hash)
+/// - The TypeRegistry index of the method's `FunctionSignature`
+/// - Flags (virtual, final, override, etc.)
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct VTableMethodMeta {
+    /// FNV-1a 64-bit hash of the method name.
+    pub name_hash: bx_u64,
+    /// Index into TypeRegistry for the method's FunctionSignature.
+    pub sig_type_id: bx_u32,
+    /// Method flags.
+    pub flags: bx_u32,
+}
+
+const _: () = assert!(core::mem::size_of::<VTableMethodMeta>() == 16);
+
+impl VTableMethodMeta {
+    pub const fn new(name_hash: bx_u64, sig_type_id: bx_u32) -> Self {
+        Self { name_hash, sig_type_id, flags: 0 }
+    }
+}
+
+/// Method flags.
+pub mod method_flags {
+    use crate::bmo_abi::primitives::bx_u32;
+    /// Method is virtual (dispatched through vtable).
+    pub const VIRTUAL:  bx_u32 = 1 << 0;
+    /// Method is final (cannot be overridden).
+    pub const FINAL:    bx_u32 = 1 << 1;
+    /// Method overrides a parent method.
+    pub const OVERRIDE: bx_u32 = 1 << 2;
+    /// Method is pure virtual (abstract, no implementation).
+    pub const ABSTRACT: bx_u32 = 1 << 3;
+    /// Method is a syscall stub.
+    pub const SYSCALL:  bx_u32 = 1 << 4;
+}
 
 /// Una vtable: array de function pointers.
 #[repr(C)]

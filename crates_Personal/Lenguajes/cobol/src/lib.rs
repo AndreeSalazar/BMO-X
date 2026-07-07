@@ -1,4 +1,5 @@
 ﻿pub mod codegen;
+pub mod ir_emit;
 
 use std::collections::HashMap;
 use std::fs;
@@ -85,6 +86,12 @@ pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
     let program = parse(source)?;
     codegen::compile_to_bef_bytes(&program)
+}
+
+/// Compile COBOL source to a unified IrModule (language-agnostic IR).
+pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CobolError> {
+    let program = parse(source)?;
+    Ok(ir_emit::compile_to_ir(&program))
 }
 
 pub fn compile_source_to_bef_with_asm(
