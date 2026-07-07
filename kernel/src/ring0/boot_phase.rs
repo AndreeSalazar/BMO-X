@@ -290,6 +290,9 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         crate::dev::hda::init(hda_mmio);
     }
 
+    // xHCI USB controller — take ownership, reset, power ports
+    crate::dev::usb_hid::init();
+
     // Persist state
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
     ctx.devices.acpi_mcfg_end_bus = mcfg.as_ref().map(|m| m.end_bus).unwrap_or(0);
