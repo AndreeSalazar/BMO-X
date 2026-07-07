@@ -480,6 +480,17 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     bmo_core::hal::init(crate::ring0::hal_init::build(&ctx));
     crate::cabina_daemon::info("ring0", "bmo_core HAL wired");
 
+    // Visual "OK Ready" pulse — flash all phase bars green briefly
+    for _ in 0..3 {
+        crate::visual::end_phase(5); // all phases complete
+        crate::cpu::busy_wait_ms(80);
+        crate::visual::begin_phase(5);
+        crate::cpu::busy_wait_ms(80);
+    }
+    crate::visual::end_phase(5);
+    crate::visual::log("ring0", "BMO: Ok Ready", crate::visual::color::OK);
+    crate::dev::console::serial_write("[ring0] BMO: Ok Ready — all systems nominal\n");
+
     crate::visual::log("ring0", "Ring 0 boot complete", crate::visual::color::OK);
     crate::dev::console::serial_write("[ring0] boot complete â€” returning BootContext\n");
 
