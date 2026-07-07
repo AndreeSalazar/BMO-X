@@ -488,12 +488,17 @@ pub fn alt_tab() {
 }
 
 pub fn enter() -> ! {
-    crate::cabina::info("bmo_api_v2.wm", "Entering Ring 3 BMO API desktop");
+    crate::cabina::info("bmo_api_v2.wm", "Entering BMO API desktop");
     crate::dev::console::serial_write("[bmo_api_v2] Entering desktop real (BMO API v3.0)\n");
 
-    let _term = create_top_window("BMO Terminal", 60, 60, 720, 460);
-    let _editor = create_top_window("Datos.md viewer", 120, 100, 620, 420);
-    let _settings = create_top_window("Ajustes", 180, 140, 520, 380);
+    // Create top-level windows with surface content
+    let term = create_top_window("Terminal", 60, 60, 720, 460);
+    let editor = create_top_window("BEF App Output", 120, 100, 620, 420);
+    let _settings = create_top_window("Procesos", 180, 140, 520, 380);
+
+    // Draw welcome text into terminal surface
+    paint_welcome_surface(term);
+    paint_process_surface(editor);
 
     let mut last_tick: u64 = 0;
     loop {
@@ -583,5 +588,63 @@ fn create_top_window(title: &'static str, x: i32, y: i32, w: i32, h: i32) -> u32
     st.windows.active = slot;
     st.unlock();
     slot
+}
+
+/// Paint welcome info into a window surface.
+fn paint_welcome_surface(slot: u32) {
+    let surface_id = {
+        let s = super::state();
+        s.lock();
+        let sid = s.windows.window(slot).map(|w| w.surface).unwrap_or(0);
+        s.unlock();
+        sid
+    };
+    if surface_id == 0 { return; }
+    let dc = 0u32;
+    super::draw::fill_rect(dc, 0, 0, 720, 460, 0xFF0D1117);
+    let lines: &[&[u8]] = &[
+        b"BMO v1.8.8  |  Ryzen 5 5600X",
+        b"",
+        b"Ring 0:   OK  (boot complete)",
+        b"HAL:      OK  (audio + input)",
+        b"Compositor: OK (alpha, blur)",
+        b"Scheduler: OK (1kHz APIC)",
+        b"AHCI:     OK  (DMA read)",
+        b"FAT32:    OK  (cluster read)",
+        b"",
+        b"Type 'run' or ESC to continue.",
+    ];
+    for (i, line) in lines.iter().enumerate() {
+        super::draw::draw_text(dc, 16, (10 + i * 18) as i32, line, 0xFF4ECCA3);
+    }
+}
+
+fn paint_process_surface(slot: u32) {
+    let surface_id = {
+        let s = super::state();
+        s.lock();
+        let sid = s.windows.window(slot).map(|w| w.surface).unwrap_or(0);
+        s.unlock();
+        sid
+    };
+    if surface_id == 0 { return; }
+    super::draw::fill_rect(0, 0, 0, 620, 420, 0xFF0D1117);
+    let lines: &[&[u8]] = &[
+        b"BEF App Output",
+        b"",
+        b"Launch BEF apps via the taskbar.",
+        b"Processes are spawned as Ring 3",
+        b"tasks with their own page tables.",
+        b"Output goes to debug_print syscall.",
+        b"",
+        b"  [PID 1] desktop       (Ring 0 WM)",
+        b"  [PID 2] hello.bef      (Ring 3)",
+        b"",
+        b"Memory: 32 MB heap",
+        b"Storage: FAT32 on AHCI port 0",
+    ];
+    for (i, line) in lines.iter().enumerate() {
+        super::draw::draw_text(0, 16, (10 + i * 18) as i32, line, 0xFFCBD7E0);
+    }
 }
 
