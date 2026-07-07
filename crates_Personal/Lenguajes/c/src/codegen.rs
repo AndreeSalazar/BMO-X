@@ -5,18 +5,32 @@ use crate::CError;
 
 type Result<T> = core::result::Result<T, CError>;
 
+/// Target execution environment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetProfile {
+    /// Ring 0: inline `syscall` instruction, no stub needed.
+    Ring0Kernel,
+    /// Ring 3: emit `__bmo_syscall_stub` and call through it.
+    Ring3App,
+}
+
+impl Default for TargetProfile {
+    fn default() -> Self { TargetProfile::Ring3App }
+}
+
 pub fn compile_to_bef_bytes(program: &Program) -> Result<Vec<u8>> {
-    let mut cg = Codegen::new();
-    cg.emit_program(program)?;
-    Ok(cg.build_bef())
+    compile_with_target(program, TargetProfile::default())
 }
 
 pub fn compile_to_bef_bytes_filtered(program: &Program, used: &[String]) -> Result<Vec<u8>> {
-    let mut cg = Codegen::new();
-    // Only emit functions that are in the used set (plus main which is always used)
     let mut filtered = program.clone();
     filtered.functions.retain(|f| f.name == "main" || used.contains(&f.name));
-    cg.emit_program(&filtered)?;
+    compile_with_target(&filtered, TargetProfile::default())
+}
+
+pub fn compile_with_target(program: &Program, target: TargetProfile) -> Result<Vec<u8>> {
+    let mut cg = Codegen::new(target);
+    cg.emit_program(program)?;
     Ok(cg.build_bef())
 }
 
@@ -36,6 +50,7 @@ struct CallReloc {
 }
 
 struct Codegen {
+    target: TargetProfile,
     code: Vec<u8>,
     strings: Vec<String>,
     fixups: Vec<Fixup>,
@@ -55,15 +70,16 @@ struct Codegen {
     global_offsets: HashMap<String, (u32, TypeSpec)>,
     global_data: Vec<u8>,
     global_fixups: Vec<(usize, String)>,
-    /// Offset in self.code where instruction bytes end (string data starts here after patching).
     instruction_end: usize,
-    /// Offset in self.code where string data ends (global data starts here).
     string_data_end: usize,
+    /// Functions from userland_ring3 that need imports.
+    stdlib_imports: std::collections::HashSet<String>,
 }
 
 impl Codegen {
-    fn new() -> Self {
+    fn new(target: TargetProfile) -> Self {
         Self {
+            target,
             code: Vec::new(), strings: Vec::new(), fixups: Vec::new(),
             labels: 0, pending_relocs: Vec::new(), call_relocs: Vec::new(),
             function_offsets: HashMap::new(), break_target: Vec::new(),
@@ -74,6 +90,7 @@ impl Codegen {
             global_offsets: HashMap::new(), global_data: Vec::new(),
             global_fixups: Vec::new(),
             instruction_end: 0, string_data_end: 0,
+            stdlib_imports: std::collections::HashSet::new(),
         }
     }
 
@@ -131,10 +148,12 @@ impl Codegen {
             self.emit_function(func);
         }
         self.is_entry_function = false;
-        // Emit __bmo_syscall_stub (syscall; ret) so frontends call instead of inline syscall
-        let stub_off = self.code.len();
-        self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
-        self.function_offsets.insert("__bmo_syscall_stub".to_string(), stub_off);
+        // Emit syscall stub only for Ring 3 (Ring 0 uses inline syscall)
+        if self.target == TargetProfile::Ring3App {
+            let stub_off = self.code.len();
+            self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
+            self.function_offsets.insert("__bmo_syscall_stub".to_string(), stub_off);
+        }
         // patch all call relocs
         self.patch_call_relocs();
         self.patch_goto_relocs();
@@ -714,6 +733,10 @@ impl Codegen {
                 self.code.extend_from_slice(&[0xE8]);
                 self.call_relocs.push(CallReloc { offset: self.code.len(), target: name.clone() });
                 self.code.extend_from_slice(&[0, 0, 0, 0]);
+                // Track stdlib imports for Ring 3 apps
+                if self.target == TargetProfile::Ring3App && !self.function_offsets.contains_key(name) {
+                    self.stdlib_imports.insert(name.clone());
+                }
                 // cleanup stack (args * 8 bytes)
                 let n = args.len() as u32 * 8;
                 if n > 0 {
@@ -1018,9 +1041,15 @@ impl Codegen {
     }
 
     fn emit_call_to_syscall_stub(&mut self) {
-        self.code.extend_from_slice(&[0xE8]);
-        self.call_relocs.push(CallReloc { offset: self.code.len(), target: "__bmo_syscall_stub".to_string() });
-        self.code.extend_from_slice(&[0, 0, 0, 0]);
+        if self.target == TargetProfile::Ring0Kernel {
+            // Ring 0: inline syscall + ret (same 3 bytes, no call relocation needed)
+            self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
+        } else {
+            // Ring 3: call __bmo_syscall_stub via E8 rel32
+            self.code.extend_from_slice(&[0xE8]);
+            self.call_relocs.push(CallReloc { offset: self.code.len(), target: "__bmo_syscall_stub".to_string() });
+            self.code.extend_from_slice(&[0, 0, 0, 0]);
+        }
     }
 
     fn build_bef(&mut self) -> Vec<u8> {
