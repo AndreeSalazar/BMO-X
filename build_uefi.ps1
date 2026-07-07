@@ -191,8 +191,8 @@ function Save-SourceHash {
     $srcHash | Set-Content $hashFile -NoNewline
 }
 
-$bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\fastos-bootloader.efi"
-$kernelElf = Join-Path $target "kernel\x86_64-unknown-none\release\fastos-kernel"
+$bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\bmo-bootloader.efi"
+$kernelElf = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel"
 
 $needBoot = Needs-Rebuild $bootDir $bootEfi
 $needKern = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey

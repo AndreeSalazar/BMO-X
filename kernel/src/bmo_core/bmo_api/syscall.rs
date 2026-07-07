@@ -90,15 +90,15 @@ pub mod nr {
     pub const BIT_BLT:               u16 = _nr::NR_DRAW_BLIT as u16;
 
     // ─── Input (canónicos) ────────────────────────────────────────
-    pub const INPUT_POLL_KEY:        u16 = _nr::NR_INPUT_POLL_KEY as u16;
-    pub const INPUT_POLL_MOUSE:      u16 = _nr::NR_INPUT_POLL_MOUSE as u16;
-    pub const INPUT_WAIT:            u16 = _nr::NR_INPUT_POLL_EVENT as u16;
-    pub const INPUT_GRAB:            u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
-    pub const INPUT_UNGRAB:          u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
-    pub const SHOW_CURSOR:           u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
-    pub const HIDE_CURSOR:           u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
-    pub const SET_CURSOR_POS:        u16 = _nr::NR_INPUT_POLL_MOUSE as u16; // legacy
-    pub const SET_CURSOR:            u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const INPUT_POLL_KEY:        u16 = _nr::NR_POLL_KEY as u16;
+    pub const INPUT_POLL_MOUSE:      u16 = _nr::NR_POLL_MOUSE as u16;
+    pub const INPUT_WAIT:            u16 = _nr::NR_POLL_EVENT as u16;
+    pub const INPUT_GRAB:            u16 = _nr::NR_POLL_EVENT as u16; // legacy
+    pub const INPUT_UNGRAB:          u16 = _nr::NR_POLL_EVENT as u16; // legacy
+    pub const SHOW_CURSOR:           u16 = _nr::NR_POLL_EVENT as u16; // legacy
+    pub const HIDE_CURSOR:           u16 = _nr::NR_POLL_EVENT as u16; // legacy
+    pub const SET_CURSOR_POS:        u16 = _nr::NR_POLL_MOUSE as u16; // legacy
+    pub const SET_CURSOR:            u16 = _nr::NR_POLL_EVENT as u16; // legacy
 
     // ─── Window ops (legacy) ──────────────────────────────────────
     pub const BRING_TO_FRONT:        u16 = _nr::NR_WM_SHOW_WINDOW as u16; // legacy
@@ -114,10 +114,10 @@ pub mod nr {
     pub const GET_FOREGROUND_WINDOW: u16 = _nr::NR_WM_GET_FOCUS as u16;
 
     // ─── Cursor/Icon (legacy) ─────────────────────────────────────
-    pub const LOAD_CURSOR:           u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
-    pub const LOAD_ICON:             u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
-    pub const SET_CLASS_CURSOR:      u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
-    pub const SET_CLASS_ICON:        u16 = _nr::NR_INPUT_POLL_EVENT as u16; // legacy
+    pub const LOAD_CURSOR:           u16 = _nr::NR_POLL_EVENT as u16; // legacy
+    pub const LOAD_ICON:             u16 = _nr::NR_POLL_EVENT as u16; // legacy
+    pub const SET_CLASS_CURSOR:      u16 = _nr::NR_POLL_EVENT as u16; // legacy
+    pub const SET_CLASS_ICON:        u16 = _nr::NR_POLL_EVENT as u16; // legacy
 
     // ─── Clipboard (legacy, no en ABI todavía) ────────────────────
     pub const OPEN_CLIPBOARD:        u16 = _nr::NR_IPC_PORT_CREATE as u16; // legacy fallback

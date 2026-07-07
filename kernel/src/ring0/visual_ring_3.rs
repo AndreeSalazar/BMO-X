@@ -82,6 +82,7 @@ extern "C" {
 }
 
 const PAGE_SIZE: usize = 4096;
+const BOOTSTRAP_IDENTITY_LIMIT: u64 = 0x8000_0000;
 const USER_CODE_BASE: u64 = 0x100_0000;
 const USER_STACK_BASE: u64 = 0x7FFF_FF00_0000;
 
@@ -119,18 +120,29 @@ pub fn jump_to_ring3() -> ! {
         None => loop { unsafe { core::arch::asm!("hlt"); } },
     };
 
+    if code_size > PAGE_SIZE
+        || code_phys.saturating_add(PAGE_SIZE as u64) > BOOTSTRAP_IDENTITY_LIMIT
+        || stack_phys.saturating_add((16 * PAGE_SIZE) as u64) > BOOTSTRAP_IDENTITY_LIMIT
+    {
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+
     unsafe {
-        let code_kvirt = virt::phys_to_virt(code_phys);
-        core::ptr::write_bytes(code_kvirt as *mut u8, 0, PAGE_SIZE);
+        // The high-half direct map is intentionally deferred in the stable
+        // LLFree bootstrap. The frame allocator returns low identity-mapped
+        // pages here, so populate the temporary Ring3 code page through its
+        // identity address instead of HIGH_MEM_BASE + phys.
+        let code_kvirt = code_phys as *mut u8;
+        core::ptr::write_bytes(code_kvirt, 0, PAGE_SIZE);
         core::ptr::copy_nonoverlapping(
             &ring3_entry as *const u8,
-            code_kvirt as *mut u8,
+            code_kvirt,
             code_size,
         );
-        (code_kvirt as *mut u8).add(2).cast::<u64>().write(fb_addr);
-        (code_kvirt as *mut u8).add(10).cast::<u32>().write(fb_width);
-        (code_kvirt as *mut u8).add(14).cast::<u32>().write(fb_height);
-        (code_kvirt as *mut u8).add(18).cast::<u32>().write(fb_stride);
+        code_kvirt.add(2).cast::<u64>().write(fb_addr);
+        code_kvirt.add(10).cast::<u32>().write(fb_width);
+        code_kvirt.add(14).cast::<u32>().write(fb_height);
+        code_kvirt.add(18).cast::<u32>().write(fb_stride);
     }
 
     use virt::flags;
@@ -155,17 +167,19 @@ pub fn jump_to_ring3() -> ! {
     let stack_top = USER_STACK_BASE + 65536;
     unsafe { virt::write_cr3(pml4); }
 
-    core::arch::asm!(
-        "push qword ptr {user_ss}",
-        "push {stack_top}",
-        "push qword ptr 0x202",
-        "push qword ptr {user_cs}",
-        "push {entry}",
-        "iretq",
-        user_ss  = const 0x1B_u64,
-        user_cs  = const 0x23_u64,
-        stack_top = in(reg) stack_top,
-        entry    = in(reg) USER_CODE_BASE,
-        options(noreturn),
-    );
+    unsafe {
+        core::arch::asm!(
+            "push qword ptr {user_ss}",
+            "push {stack_top}",
+            "push qword ptr 0x202",
+            "push qword ptr {user_cs}",
+            "push {entry}",
+            "iretq",
+            user_ss  = const 0x1B_u64,
+            user_cs  = const 0x23_u64,
+            stack_top = in(reg) stack_top,
+            entry    = in(reg) USER_CODE_BASE,
+            options(noreturn),
+        );
+    }
 }

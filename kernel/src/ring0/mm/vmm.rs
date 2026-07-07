@@ -140,8 +140,12 @@ unsafe fn phys_to_id(phys: u64) -> *mut PageTable {
 
 pub unsafe fn create_user_page_table(kernel_cr3: u64) -> Option<u64> {
     let user_pml4_phys = alloc_page_table()?;
-    let user_pml4 = phys_to_pt(user_pml4_phys);
-    let kernel_pml4 = phys_to_pt(kernel_cr3 & ADDR_MASK) as *const PageTable;
+    // Ring3 bootstrap currently runs while the high-half direct map is still
+    // deliberately deferred. Page-table pages are allocated from the low
+    // identity-mapped allocator window, so walk them through identity addresses
+    // instead of HIGH_MEM_BASE + phys.
+    let user_pml4 = phys_to_id(user_pml4_phys);
+    let kernel_pml4 = phys_to_id(kernel_cr3 & ADDR_MASK) as *const PageTable;
 
     core::ptr::write_bytes(user_pml4 as *mut u8, 0, PAGE_SIZE as usize);
 
@@ -225,7 +229,10 @@ pub unsafe fn map_user_range(
     flags: u64,
 ) -> Result<(), &'static str> {
     if pages == 0 { return Ok(()); }
-    let pml4 = phys_to_pt(pml4_phys);
+    // Same bootstrap rule as create_user_page_table(): until the direct map is
+    // re-enabled and validated, page-table memory is accessed through the low
+    // identity map.
+    let pml4 = phys_to_id(pml4_phys);
     let mut va = virt_start;
     let mut pa = phys_start;
 
@@ -245,7 +252,7 @@ pub unsafe fn map_user_range(
             pml4e.0 |= flags::USER | flags::WRITABLE;
         }
 
-        let pdpt = phys_to_pt(pdpt_phys);
+        let pdpt = phys_to_id(pdpt_phys);
         let pdpte = &mut (*pdpt).entries[pdpt_i];
         let pd_phys: u64;
         if !pdpte.is_present() {
@@ -260,7 +267,7 @@ pub unsafe fn map_user_range(
             return Err("Unexpected huge page in user mapping");
         }
 
-        let pd = phys_to_pt(pd_phys);
+        let pd = phys_to_id(pd_phys);
         let pde = &mut (*pd).entries[pd_i];
         let pt_phys: u64;
         if !pde.is_present() {
@@ -275,7 +282,7 @@ pub unsafe fn map_user_range(
             return Err("Unexpected huge page in user mapping");
         }
 
-        let pt = phys_to_pt(pt_phys);
+        let pt = phys_to_id(pt_phys);
         let pte = &mut (*pt).entries[pt_i];
         if pte.is_present() {
             return Err("Page already mapped");
