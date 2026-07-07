@@ -1,7 +1,24 @@
-//! USB HID — xHCI controller initialization + device detection.
+//! USB HID — xHCI controller detection (BIOS Legacy Emulation passthrough).
 //!
-//! v1.9: Takes ownership from BIOS, resets and starts the controller.
-//! This powers up USB ports — RGB keyboards should light up immediately.
+//! v2.0: We do NOT take ownership of the xHCI from the BIOS and we do NOT
+//! reset or restart the controller. We only discover it (BAR0 + read-only
+//! capability register probes) for informational / panel purposes and leave
+//! the BIOS in charge of USB.
+//!
+//! Rationale: the bmo desktop polls the legacy PS/2 ports 0x60/0x64 for
+//! keyboard/mouse input. Those ports are serviced by the BIOS SMI handler
+//! via USB Legacy Emulation while the BIOS owns the xHC. If we write
+//! `USBLEGSUP_OS_SEM` (= take ownership) and then issue `USBCMD_HCRST`, the
+//! BIOS stops emulating PS/2 and the host-controller reset drops every
+//! currently-enumerated USB device — RGB keyboards/mice go dark, and we have
+//! no real xHCI enumeration driver to bring them back. Hence: discovery
+//! only, defer to BIOS.
+//!
+//! The register-layout constants and `xhci_write32` below are retained as
+//! documentation for a future full xHCI driver; they are unused at runtime
+//! today.
+
+#![allow(dead_code)]
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -49,8 +66,15 @@ pub fn is_initialized() -> bool {
     XHCI_INITIALIZED.load(Ordering::Relaxed)
 }
 
-/// Initialize the xHCI controller: take ownership, reset, start.
-/// This powers up USB ports — keyboard/mouse may get RGB and basic power.
+/// Detect the xHCI controller (read-only) and report its capabilities.
+///
+/// This does NOT take ownership from the BIOS and does NOT reset/restart the
+/// controller. USB Legacy Emulation stays active, so USB keyboards/mice keep
+/// appearing as PS/2 on ports 0x60/0x64 — which is what the desktop polls.
+///
+/// `XHCI_INITIALIZED` is set to true once discovery succeeds so that
+/// `is_initialized()` callers can tell we have a known xHCI controller under
+/// BIOS management. See the module doc comment for the full rationale.
 pub fn init() {
     if XHCI_INITIALIZED.load(Ordering::Relaxed) { return; }
 
@@ -68,79 +92,55 @@ pub fn init() {
 
     XHCI_MMIO_PHYS.store(bar0 as usize, Ordering::Relaxed);
 
+    // Read-only capability probing only. We must NOT write to the operational
+    // registers or to the USBLEGSUP OS semaphore: doing so would either take
+    // ownership from the BIOS (killing USB Legacy Emulation → 0x60/0x64 go
+    // silent) or reset the controller (dropping all enumerated USB devices
+    // and turning off RGB). The BIOS stays in charge of USB.
     unsafe {
-        // 1. Take ownership from BIOS (if EECP present)
+        // 1. Capability length + structural params (informational)
+        let cap_len = xhci_read32(CAPLENGTH) & 0xFF;
+        let hcs1 = xhci_read32(HCSPARAMS1);
+        let max_slots = (hcs1 & 0xFF).min(32);
         let hcc = xhci_read32(HCCPARAMS1);
         let eecp = ((hcc >> 8) & 0xFF) as u32;
-        if eecp >= 0x40 {
-            let bios_sem = xhci_read32(eecp + USBLEGSUP_BIOS_SEM);
-            if (bios_sem & 1) != 0 {
-                // BIOS owns the controller — request ownership
-                xhci_write32(eecp + USBLEGSUP_OS_SEM, 1);
-                // Wait for BIOS to release (reads back as 0)
-                for _ in 0..100000 {
-                    let bios = xhci_read32(eecp + USBLEGSUP_BIOS_SEM);
-                    if (bios & 1) == 0 { break; }
-                    core::hint::spin_loop();
-                }
-                crate::dev::console::serial_write("[xhci] Ownership taken from BIOS\n");
-            }
-        }
 
-        // 2. Wait for CNR (Controller Not Ready) to clear
-        let cap_len = xhci_read32(CAPLENGTH) & 0xFF;
-        let op_base = cap_len;
-        let mut timeout = 50000;
-        while (xhci_read32(op_base + USBSTS) & USBSTS_CNR) != 0 && timeout > 0 {
-            timeout -= 1;
-            core::hint::spin_loop();
-        }
-        if timeout == 0 {
-            crate::dev::console::serial_write("[xhci] WARN: CNR timeout\n");
-        }
-
-        // 3. Stop the controller (clear RS bit)
-        let cmd = xhci_read32(op_base + USBCMD);
-        xhci_write32(op_base + USBCMD, cmd & !USBCMD_RS);
-        // Wait for HCHalted
-        for _ in 0..50000 {
-            if (xhci_read32(op_base + USBSTS) & USBSTS_HCH) != 0 { break; }
-            core::hint::spin_loop();
-        }
-
-        // 4. Reset the controller
-        xhci_write32(op_base + USBCMD, USBCMD_HCRST);
-        for _ in 0..100000 {
-            if (xhci_read32(op_base + USBCMD) & USBCMD_HCRST) == 0 { break; }
-            if (xhci_read32(op_base + USBSTS) & USBSTS_CNR) == 0 { break; }
-            core::hint::spin_loop();
-        }
-        crate::dev::console::serial_write("[xhci] Controller reset complete\n");
-
-        // 5. Wait for CNR again after reset
-        timeout = 50000;
-        while (xhci_read32(op_base + USBSTS) & USBSTS_CNR) != 0 && timeout > 0 {
-            timeout -= 1;
-            core::hint::spin_loop();
-        }
-
-        // 6. Program max device slots (from HCSPARAMS1 bits 7:0)
-        let max_slots = (xhci_read32(HCSPARAMS1) & 0xFF).min(32);
-        let config_val = xhci_read32(op_base + CONFIG) & !0xFF;
-        xhci_write32(op_base + CONFIG, config_val | max_slots);
-        crate::dev::console::serial_write("[xhci] Max slots configured: ");
+        crate::dev::console::serial_write("[xhci] caplen=");
+        crate::dev::console::serial_write_u64(cap_len as u64, 10);
+        crate::dev::console::serial_write(" max_slots=");
         crate::dev::console::serial_write_u64(max_slots as u64, 10);
+        crate::dev::console::serial_write(" eecp=0x");
+        crate::dev::console::serial_write_u64(eecp as u64, 16);
         crate::dev::console::serial_write("\n");
 
-        // 7. Start the controller (set RS bit)
-        let cmd = xhci_read32(op_base + USBCMD);
-        xhci_write32(op_base + USBCMD, cmd | USBCMD_RS);
-        // Wait for HCHalted to clear (controller is running)
-        for _ in 0..50000 {
-            if (xhci_read32(op_base + USBSTS) & USBSTS_HCH) == 0 { break; }
-            core::hint::spin_loop();
+        // 2. Report BIOS ownership status (read-only — never request ownership)
+        if eecp >= 0x40 {
+            let bios_sem = xhci_read32(eecp + USBLEGSUP_BIOS_SEM);
+            let os_sem   = xhci_read32(eecp + USBLEGSUP_OS_SEM);
+            let bios_owned = (bios_sem & 1) != 0;
+            let os_owned   = (os_sem   & 1) != 0;
+            crate::dev::console::serial_write("[xhci] Legacy Support: BIOS-owned=");
+            crate::dev::console::serial_write(if bios_owned { "1" } else { "0" });
+            crate::dev::console::serial_write(" OS-owned=");
+            crate::dev::console::serial_write(if os_owned { "1" } else { "0" });
+            crate::dev::console::serial_write("\n");
+            if os_owned {
+                // Someone (us, on a prior boot, or an earlier buggy version)
+                // already took ownership. We can't safely hand it back, so
+                // just log it — the desktop may still work if BIOS SMI is
+                // still servicing ports 0x60/0x64 from a previous enumeration.
+                crate::dev::console::serial_write("[xhci] WARN: OS already owns controller; Legacy Emulation may be off\n");
+            }
+        } else {
+            crate::dev::console::serial_write("[xhci] No Legacy Support EECP — controller has no BIOS handoff\n");
         }
-        crate::dev::console::serial_write("[xhci] Controller started — USB ports powered\n");
+
+        // 3. Defer to BIOS — do NOT touch operational registers.
+        crate::dev::console::serial_write("[xhci] Deferring to BIOS USB Legacy Emulation (0x60/0x64); no reset/ownership take\n");
+        // Touch `op_base` only for a read-only status report; never write.
+        let _op_base = cap_len;
+        let _sts = xhci_read32(_op_base + USBSTS);
+        let _ = _sts; // suppress unused-bindings warning in case of `deny`
     }
 
     XHCI_INITIALIZED.store(true, Ordering::Relaxed);

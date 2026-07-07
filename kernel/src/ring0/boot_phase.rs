@@ -290,7 +290,8 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         crate::dev::hda::init(hda_mmio);
     }
 
-    // xHCI USB controller — take ownership, reset, power ports
+    // xHCI USB controller — discovery only; leave BIOS USB Legacy Emulation
+    // active so the desktop's PS/2 polling on 0x60/0x64 keeps working.
     crate::dev::usb_hid::init();
 
     // Persist state
