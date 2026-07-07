@@ -16,23 +16,95 @@ static mut HOTKEY_TOGGLED: bool = false;
 
 // ── PS/2 Initialization ─────────────────────────────────────────
 
-/// Send a command byte to the PS/2 controller (port 0x64).
+/// Full PS/2 controller initialization: enable ports, configure interrupts.
+/// Must be called once before keyboard_init() or mouse_init().
+fn ps2_controller_init() {
+    unsafe {
+        if PS2_CTRL_DONE { return; }
+        let status = port_io::inb(0x64);
+        if status == 0xFF { PS2_CTRL_DONE = true; return; }
+        PS2_CTRL_DONE = true;
+
+        // 1. Disable both PS/2 ports
+        ps2_send_cmd(0xAD); // disable port 1 (keyboard)
+        ps2_send_cmd(0xA7); // disable port 2 (mouse)
+
+        // 2. Flush output buffer (read until empty)
+        while let Some(_) = ps2_read_data() {}
+
+        // 3. Read controller configuration byte
+        ps2_send_cmd(0x20); // read config
+        let config = match ps2_read_data() {
+            Some(b) => b,
+            None => {
+                crate::dev::console::serial_write("[input] WARN: PS/2 config read failed\n");
+                return;
+            }
+        };
+
+        // 4. Modify config: enable IRQ1 (bit 0), enable IRQ12 (bit 1),
+        //    disable translation (bit 6 = 0), system flag (bit 2 = 0 for boot)
+        let new_config = (config & !0x40) | 0x01; // clear translation, enable IRQ1
+        // Don't enable IRQ12 until mouse port is confirmed working
+
+        // 5. Write config back
+        ps2_send_cmd(0x60);
+        ps2_send_data(new_config);
+
+        // 6. Controller self-test
+        ps2_send_cmd(0xAA);
+        let test = ps2_read_data();
+        let ok = test == Some(0x55);
+        crate::dev::console::serial_write("[input] PS/2 self-test: ");
+        if ok {
+            crate::dev::console::serial_write("OK\n");
+        } else {
+            crate::dev::console::serial_write("FAIL (");
+            crate::dev::console::serial_write_u64(test.unwrap_or(0) as u64, 16);
+            crate::dev::console::serial_write(")\n");
+        }
+
+        // 7. Enable port 1 (keyboard)
+        ps2_send_cmd(0xAE);
+        crate::dev::console::serial_write("[input] PS/2 port 1 enabled (keyboard)\n");
+
+        // 8. Try enabling port 2 (mouse) — may fail on single-port controllers
+        ps2_send_cmd(0xA8);
+        // Read config again to verify dual port
+        ps2_send_cmd(0x20);
+        let config2 = ps2_read_data().unwrap_or(0);
+        if (config2 & 0x20) != 0 {
+            // Bit 5 set → second port exists (clock line from mouse)
+            // Enable IRQ12
+            ps2_send_cmd(0x60);
+            ps2_send_data(new_config | 0x02);
+            crate::dev::console::serial_write("[input] PS/2 port 2 enabled (mouse)\n");
+            PS2_HAS_MOUSE = true;
+        } else {
+            crate::dev::console::serial_write("[input] PS/2 single-port (no mouse port)\n");
+        }
+    }
+}
+
+static mut PS2_CTRL_DONE: bool = false;
+static mut PS2_HAS_MOUSE: bool = false;
+
+// ── PS/2 I/O helpers ─────────────────────────────────────────────
+
 unsafe fn ps2_send_cmd(cmd: u8) -> bool {
     if !port_io::ps2_wait_input() { return false; }
     port_io::outb(0x64, cmd);
     true
 }
 
-/// Send a data byte to the PS/2 data port (port 0x60).
 unsafe fn ps2_send_data(data: u8) -> bool {
     if !port_io::ps2_wait_input() { return false; }
     port_io::outb(0x60, data);
     true
 }
 
-/// Read a byte from the PS/2 data port (port 0x60) with timeout.
 unsafe fn ps2_read_data() -> Option<u8> {
-    for _ in 0..1000 {
+    for _ in 0..5000 {
         let status = port_io::inb(0x64);
         if status == 0xFF { return None; }
         if (status & 0x01) != 0 {
@@ -47,61 +119,53 @@ unsafe fn ps2_read_data() -> Option<u8> {
 pub fn keyboard_init() {
     unsafe {
         if KEYBOARD_INIT_DONE { return; }
+        ps2_controller_init();
 
-        // Check if PS/2 port is alive
         let status = port_io::inb(0x64);
-        if status == 0xFF {
-            crate::dev::console::serial_write("[input] WARN: no PS/2 controller (port=0xFF), keyboard init skipped\n");
-            KEYBOARD_INIT_DONE = true;
-            return;
-        }
+        if status == 0xFF { KEYBOARD_INIT_DONE = true; return; }
 
         // Drain stale data
         while let Some(_) = ps2_read_data() {}
 
-        // Enable scanning: disable then re-enable
-        if !ps2_send_data(0xF5) { KEYBOARD_INIT_DONE = true; return; }
+        // Reset keyboard (0xFF), wait for BAT result
+        ps2_send_data(0xFF);
+        ps2_read_data(); // ACK
+        let bat = ps2_read_data();
+        // Enable scanning
+        ps2_send_data(0xF4);
         ps2_read_data();
-        if !ps2_send_data(0xF4) { KEYBOARD_INIT_DONE = true; return; }
-        ps2_read_data();
-
-        // Turn on Num Lock LED
-        if !ps2_send_data(0xED) { KEYBOARD_INIT_DONE = true; return; }
+        // Num Lock LED on
+        ps2_send_data(0xED);
         ps2_read_data();
         ps2_send_data(0x02);
 
         KEYBOARD_INIT_DONE = true;
-        crate::dev::console::serial_write("[input] keyboard initialized (Num Lock ON)\n");
+        crate::dev::console::serial_write("[input] keyboard ready (BAT=");
+        crate::dev::console::serial_write_u64(bat.unwrap_or(0) as u64, 16);
+        crate::dev::console::serial_write(")\n");
     }
 }
 
-/// Initialize PS/2 mouse: enable auxiliary port, reset, enable reporting.
 pub fn mouse_init() {
     unsafe {
         if MOUSE_INIT_DONE { return; }
+        ps2_controller_init();
+        if !PS2_HAS_MOUSE { MOUSE_INIT_DONE = true; return; }
 
-        let status = port_io::inb(0x64);
-        if status == 0xFF {
-            crate::dev::console::serial_write("[input] WARN: no PS/2 controller, mouse init skipped\n");
-            MOUSE_INIT_DONE = true;
-            return;
-        }
+        ps2_send_cmd(0xD4); ps2_send_data(0xFF); // reset
+        ps2_read_data(); // ACK
+        let bat = ps2_read_data();
+        ps2_read_data(); // device ID
 
-        // Enable auxiliary PS/2 port
-        if !ps2_send_cmd(0xA8) { MOUSE_INIT_DONE = true; return; }
-
-        // Set mouse defaults
-        if !ps2_send_cmd(0xD4) { MOUSE_INIT_DONE = true; return; }
-        ps2_send_data(0xF6);
+        ps2_send_cmd(0xD4); ps2_send_data(0xF6); // defaults
         ps2_read_data();
-
-        // Enable data reporting
-        if !ps2_send_cmd(0xD4) { MOUSE_INIT_DONE = true; return; }
-        ps2_send_data(0xF4);
+        ps2_send_cmd(0xD4); ps2_send_data(0xF4); // enable
         ps2_read_data();
 
         MOUSE_INIT_DONE = true;
-        crate::dev::console::serial_write("[input] mouse initialized\n");
+        crate::dev::console::serial_write("[input] mouse ready (BAT=");
+        crate::dev::console::serial_write_u64(bat.unwrap_or(0) as u64, 16);
+        crate::dev::console::serial_write(")\n");
     }
 }
 
