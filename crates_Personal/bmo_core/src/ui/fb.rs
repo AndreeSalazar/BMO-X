@@ -204,6 +204,134 @@ impl Framebuffer {
             }
         }
     }
+    /// Read a pixel from the framebuffer (for alpha blending / blur).
+    #[inline(always)]
+    pub fn get_pixel(&self, x: usize, y: usize) -> u32 {
+        if x >= self.width || y >= self.height { return 0; }
+        let off = y * (self.pitch / 4) + x;
+        unsafe { (self.addr as *const u32).add(off).read_volatile() }
+    }
+
+    /// Alpha-blended pixel write: source-over-destination (A_over_B).
+    #[inline(always)]
+    pub fn put_pixel_alpha(&self, x: usize, y: usize, color: u32) {
+        if x >= self.width || y >= self.height { return; }
+        let sa = (color >> 24) & 0xFF;
+        if sa == 0 { return; }
+        if sa == 255 { self.put_pixel(x, y, color); return; }
+        let dst = self.get_pixel(x, y);
+        let da = (dst >> 24) & 0xFF;
+        let inv = 255 - sa;
+        let r = (((color >> 16) & 0xFF) as u32 * sa + ((dst >> 16) & 0xFF) as u32 * inv) / 255;
+        let g = (((color >> 8) & 0xFF) as u32 * sa + ((dst >> 8) & 0xFF) as u32 * inv) / 255;
+        let b = ((color & 0xFF) as u32 * sa + (dst & 0xFF) as u32 * inv) / 255;
+        let a = if sa + da > 255 { 255 } else { sa + da };
+        self.put_pixel(x, y, (a << 24) | (r << 16) | (g << 8) | b);
+    }
+
+    /// Alpha-blended filled rectangle.
+    pub fn fill_rect_alpha(&self, x: usize, y: usize, w: usize, h: usize, color: u32) {
+        let sa = (color >> 24) & 0xFF;
+        if sa == 0 { return; }
+        if sa == 255 { self.fill_rect(x, y, w, h, color); return; }
+        for row in y..(y + h).min(self.height) {
+            for col in x..(x + w).min(self.width) {
+                self.put_pixel_alpha(col, row, color);
+            }
+        }
+    }
+
+    /// Draw rounded rectangle outline (border only, no fill).
+    pub fn draw_rounded_rect(&self, x: usize, y: usize, w: usize, h: usize, r: usize, color: u32, thickness: usize) {
+        if w < 2 * thickness || h < 2 * thickness { return; }
+        // Top straight edge
+        self.fill_rect(x + r, y, w.saturating_sub(2 * r), thickness, color);
+        // Bottom straight edge
+        self.fill_rect(x + r, y + h - thickness, w.saturating_sub(2 * r), thickness, color);
+        // Left straight edge
+        self.fill_rect(x, y + r, thickness, h.saturating_sub(2 * r), color);
+        // Right straight edge
+        self.fill_rect(x + w - thickness, y + r, thickness, h.saturating_sub(2 * r), color);
+        // Corner arcs (approximate with circle outline)
+        for i in 0..thickness {
+            self.draw_corner_arc(x + r, y + r, r, color, thickness, true, true);
+            self.draw_corner_arc(x + w - r - 1, y + r, r, color, thickness, false, true);
+            self.draw_corner_arc(x + r, y + h - r - 1, r, color, thickness, true, false);
+            self.draw_corner_arc(x + w - r - 1, y + h - r - 1, r, color, thickness, false, false);
+        }
+    }
+
+    fn draw_corner_arc(&self, cx: usize, cy: usize, r: usize, color: u32, t: usize, left: bool, top: bool) {
+        let r2 = (r * r) as isize;
+        let ri = r as isize;
+        let t2 = (t * t) as isize;
+        let inner_r2 = ((r.saturating_sub(t)) * (r.saturating_sub(t))) as isize;
+        for dy in 0..=ri {
+            for dx in 0..=ri {
+                let dd = dx * dx + dy * dy;
+                if dd <= r2 && dd >= inner_r2 {
+                    let px = if left { cx as isize - dx } else { cx as isize + dx };
+                    let py = if top { cy as isize - dy } else { cy as isize + dy };
+                    if px >= 0 && py >= 0 {
+                        self.put_pixel(px as usize, py as usize, color);
+                    }
+                }
+            }
+        }
+    }
+
+    /// 3x3 box blur over a region. Reads from the current framebuffer and
+    /// writes the blurred result back. Lightweight, good enough for shadows.
+    pub fn box_blur_3x3(&self, x: usize, y: usize, w: usize, h: usize) {
+        let pitch_px = self.pitch / 4;
+        let buf = self.addr as *mut u32;
+        // Read all pixels into a temporary buffer first
+        let mut tmp: [u32; 512] = [0; 512]; // Max blur width 512
+        for row in y..(y + h).min(self.height) {
+            for col in x..(x + w).min(self.width).min(512) {
+                let idx = col - x;
+                if idx >= 512 { break; }
+                let off = row * pitch_px + col;
+                tmp[idx] = unsafe { buf.add(off).read_volatile() };
+            }
+            // Write blurred back
+            for col in x..(x + w).min(self.width).min(512) {
+                let idx = col - x;
+                if idx >= 512 { break; }
+                let mut sum_r: u32 = 0; let mut sum_g: u32 = 0; let mut sum_b: u32 = 0; let mut n: u32 = 0;
+                for ddy in -1i32..=1 {
+                    for ddx in -1i32..=1 {
+                        let si = idx as i32 + ddx;
+                        if si >= 0 && si < (w as i32).min(512) {
+                            let p = tmp[si as usize];
+                            sum_r += (p >> 16) & 0xFF;
+                            sum_g += (p >> 8) & 0xFF;
+                            sum_b += p & 0xFF;
+                            n += 1;
+                        }
+                    }
+                }
+                let r = sum_r / n; let g = sum_g / n; let b = sum_b / n;
+                let off = row * pitch_px + col;
+                unsafe { buf.add(off).write_volatile(0xFF000000 | (r << 16) | (g << 8) | b); }
+            }
+        }
+    }
+
+    /// Alpha-blended blit of source pixels to this framebuffer.
+    /// src_data: raw ARGB pixels, src_w × src_h.
+    pub fn blit_alpha(&self, dst_x: usize, dst_y: usize, src_data: &[u32], src_w: usize, src_h: usize) {
+        for sy in 0..src_h {
+            let dy = dst_y + sy;
+            if dy >= self.height { break; }
+            for sx in 0..src_w {
+                let dx = dst_x + sx;
+                if dx >= self.width { break; }
+                let color = src_data[sy * src_w + sx];
+                self.put_pixel_alpha(dx, dy, color);
+            }
+        }
+    }
 }
 
 /// Create a Framebuffer wrapping the static backbuffer memory.

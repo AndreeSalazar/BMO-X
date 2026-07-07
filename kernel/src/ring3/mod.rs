@@ -1,10 +1,15 @@
-//! Ring 3 — Transición y entry points de CPL=3.
+//! Ring 3 — Primitivo de transición a CPL=3.
 //!
-//! Contiene el primitivo compartido `ring3_transition()` (iretq) y el
-//! desktop entry point que reemplaza el viejo demo de bordes morados.
-//! El app loader (`bmo_core::bef::parsers::run_entry_point`) también
-//! usa `ring3_transition()` — no hay duplicación del iretq.
+//! Contiene el único punto de salida a Ring 3: `transition::ring3_transition()` (iretq).
+//! No hay lógica de app ni desktop aquí — eso vive en `kernel/src/userland/` y en
+//! `crates_Personal/userland_ring3/`.
+//!
+//! ## Regla
+//!
+//! - `ring3/` = SOLO transición CPU (el iretq)
+//! - `userland/` = bridge kernel → Ring 3 (loader, procesos, dispatch)
+//! - `bmo_api/` = API que las apps consumen (syscalls, ventanas, dibujo)
+//! - `userland_ring3/` = runtime que las apps linkean (malloc, syscall wrappers)
 
 pub mod transition;
-pub mod demo_entry;
 pub mod desktop;
