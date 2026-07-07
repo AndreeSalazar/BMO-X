@@ -70,10 +70,16 @@ impl ModuleResolver {
                         match key { "name" => name = val.to_string(), "version" => version = val.to_string(), _ => {} }
                     }
                     "exports" => {
+                        // Support two formats:
+                        //   functions = "name1, name2, ..."    (list of names)
+                        //   funcname = "signature"              (name is the key itself)
                         if key == "functions" {
                             for f in val.split(',').map(|s| s.trim().trim_matches('"')) {
                                 if !f.is_empty() { exports.push(f.to_string()); }
                             }
+                        } else {
+                            // Treat the key as the exported function name
+                            exports.push(key.to_string());
                         }
                     }
                     "sources" => {

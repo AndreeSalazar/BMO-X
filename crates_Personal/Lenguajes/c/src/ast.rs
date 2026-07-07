@@ -154,6 +154,8 @@ pub enum Expr {
     Arrow(Box<Expr>, String, u32), // ptr_expr, field_name, resolved_offset
     AssignField(Box<Expr>, String, u32, Box<Expr>), // base_expr, field_name, offset, val
     AssignArrow(Box<Expr>, String, u32, Box<Expr>), // ptr_expr, field_name, offset, val
+    /// *addr = val — assign through a dereferenced pointer
+    AssignDeref(Box<Expr>, Box<Expr>), // deref_expr, value
     /// Named syscall from Semantic_ASM definitions
     Syscall(SyscallDef, Vec<Expr>),
 }

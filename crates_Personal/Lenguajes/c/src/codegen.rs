@@ -221,6 +221,7 @@ impl Codegen {
             Expr::Call(_, args) | Expr::Syscall(_, args) => { for a in args { self.collect_expr_strings(a); } }
             Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => self.collect_expr_strings(p),
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => self.collect_expr_strings(v),
+            Expr::AssignDeref(a, v) => { self.collect_expr_strings(a); self.collect_expr_strings(v); }
             Expr::Field(b,_,_) => self.collect_expr_strings(b),
             Expr::Comma(v) => { for e in v { self.collect_expr_strings(e); } }
             _ => {}
@@ -911,6 +912,14 @@ impl Codegen {
                 self.code.push(0x5A);
                 self.code.extend_from_slice(&[0x48, 0x89, 0x10]);
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
+            }
+            Expr::AssignDeref(addr, val) => {
+                self.emit_expr(val); // rax = value
+                self.code.push(0x50); // push value
+                self.emit_expr(addr); // rax = address
+                self.code.push(0x5A); // pop rdx (value)
+                self.code.extend_from_slice(&[0x48, 0x89, 0x10]); // mov [rax], rdx
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx (return value)
             }
             Expr::AssignArrow(ptr, _field, offset, val) => {
                 self.emit_expr(val); // rax = value

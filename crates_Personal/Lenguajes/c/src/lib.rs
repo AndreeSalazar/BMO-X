@@ -716,6 +716,7 @@ impl Parser {
             }
             Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => Self::check_syscall_args_in_expr(p, line)?,
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::check_syscall_args_in_expr(v, line)?,
+            Expr::AssignDeref(a, v) => { Self::check_syscall_args_in_expr(a, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             Expr::Field(b,_,_) => Self::check_syscall_args_in_expr(b, line)?,
             _ => {}
         }
@@ -802,6 +803,7 @@ impl Parser {
             }
             Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, p),
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::resolve_syscalls_in_expr(syscalls, v),
+            Expr::AssignDeref(a, v) => { Self::resolve_syscalls_in_expr(syscalls, a); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Field(b,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
             Expr::Comma(v) => { for e in v { Self::resolve_syscalls_in_expr(syscalls, e); } }
             _ => {}
@@ -1215,6 +1217,7 @@ impl Parser {
         match self.peek() {
             Token::Assign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(Expr::Assign(n, Box::new(val))),
+                Expr::Deref(a) => Ok(Expr::AssignDeref(a, Box::new(val))),
                 Expr::Field(e, f, off) => Ok(Expr::AssignField(e, f, off, Box::new(val))),
                 Expr::Arrow(e, f, off) => Ok(Expr::AssignArrow(e, f, off, Box::new(val))),
                 _ => Ok(val),
@@ -1937,6 +1940,50 @@ int main() { bmo_exit(0); }
         let syscall = &[0x0F, 0x05];
         let found_syscall = bef.windows(2).any(|w| w == syscall);
         assert!(found_syscall, "BEF output should contain syscall instruction");
+    }
+
+    #[test]
+    fn compiles_heap_module() {
+        use std::path::PathBuf;
+        // Load the heap stdlib module and the bmo/mem syscalls
+        let src = r#"
+use "bmo/mem";
+use "stdlib/heap";
+int main() {
+    void *p = malloc(64);
+    if (p == 0) return 1;
+    free(p);
+    return 0;
+}
+"#;
+        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
+        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        // Need both base and Semantic_ASM as module search paths so stdlib/heap can be found
+        let bef = compile_source_to_bef_with_all(src, vec![base, asm.clone()], vec![asm]).unwrap();
+        assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
+        // Should contain bmo_mem_alloc syscall mov eax, 0x190
+        let mov_alloc = &[0xB8u8, 0x90, 0x01, 0x00, 0x00];
+        assert!(bef.windows(5).any(|w| w == mov_alloc), "BEF should contain bmo_mem_alloc syscall");
+        // Should contain bmo_mem_free syscall mov eax, 0x191
+        let mov_free = &[0xB8u8, 0x91, 0x01, 0x00, 0x00];
+        assert!(bef.windows(5).any(|w| w == mov_free), "BEF should contain bmo_mem_free syscall");
+    }
+
+    #[test]
+    fn parses_assign_deref() {
+        // Test that *ptr = val parsing and codegen works
+        let src = r#"int main() {
+    unsigned long x;
+    unsigned long *p;
+    p = &x;
+    *p = 42;
+    return x;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
+        // Verify that the codegen doesn't crash and returns valid BEF
+        assert!(bef.len() > 48);
     }
 
     #[test]
