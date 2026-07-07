@@ -27,9 +27,18 @@ pub unsafe fn outw(port: u16, val: u16) {
 }
 
 /// Wait for PS/2 input buffer to be empty (bit 1 = 0).
+/// Returns false on timeout (port returning 0xFF or hanging).
 #[inline]
-pub unsafe fn ps2_wait_input() {
-    while (inb(0x64) & 0x02) != 0 { core::hint::spin_loop(); }
+pub unsafe fn ps2_wait_input() -> bool {
+    let mut timeout = 100000u32;
+    let mut s = inb(0x64);
+    if s == 0xFF { return false; } // port not present
+    while (s & 0x02) != 0 && timeout > 0 {
+        timeout -= 1;
+        core::hint::spin_loop();
+        s = inb(0x64);
+    }
+    timeout > 0
 }
 
 /// Wait for PS/2 output buffer to be full (bit 0 = 1).

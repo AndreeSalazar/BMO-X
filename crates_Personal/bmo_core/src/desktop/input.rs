@@ -17,15 +17,17 @@ static mut HOTKEY_TOGGLED: bool = false;
 // ── PS/2 Initialization ─────────────────────────────────────────
 
 /// Send a command byte to the PS/2 controller (port 0x64).
-unsafe fn ps2_send_cmd(cmd: u8) {
-    port_io::ps2_wait_input();
+unsafe fn ps2_send_cmd(cmd: u8) -> bool {
+    if !port_io::ps2_wait_input() { return false; }
     port_io::outb(0x64, cmd);
+    true
 }
 
 /// Send a data byte to the PS/2 data port (port 0x60).
-unsafe fn ps2_send_data(data: u8) {
-    port_io::ps2_wait_input();
+unsafe fn ps2_send_data(data: u8) -> bool {
+    if !port_io::ps2_wait_input() { return false; }
     port_io::outb(0x60, data);
+    true
 }
 
 /// Read a byte from the PS/2 data port (port 0x60) with timeout.
@@ -41,26 +43,34 @@ unsafe fn ps2_read_data() -> Option<u8> {
 }
 
 /// Initialize PS/2 keyboard: enable scanning, set LEDs.
+/// Returns early if no PS/2 controller present (port returns 0xFF).
 pub fn keyboard_init() {
     unsafe {
         if KEYBOARD_INIT_DONE { return; }
-        KEYBOARD_INIT_DONE = true;
+
+        // Check if PS/2 port is alive
+        let status = port_io::inb(0x64);
+        if status == 0xFF {
+            crate::dev::console::serial_write("[input] WARN: no PS/2 controller (port=0xFF), keyboard init skipped\n");
+            KEYBOARD_INIT_DONE = true;
+            return;
+        }
 
         // Drain stale data
         while let Some(_) = ps2_read_data() {}
 
-        // Disable scanning, then re-enable (classic reset sequence)
-        ps2_send_data(0xF5); // disable scanning
-        ps2_read_data();     // expect ACK 0xFA
+        // Enable scanning: disable then re-enable
+        if !ps2_send_data(0xF5) { KEYBOARD_INIT_DONE = true; return; }
+        ps2_read_data();
+        if !ps2_send_data(0xF4) { KEYBOARD_INIT_DONE = true; return; }
+        ps2_read_data();
 
-        ps2_send_data(0xF4); // enable scanning
-        ps2_read_data();     // expect ACK 0xFA
+        // Turn on Num Lock LED
+        if !ps2_send_data(0xED) { KEYBOARD_INIT_DONE = true; return; }
+        ps2_read_data();
+        ps2_send_data(0x02);
 
-        // Turn on Num Lock LED (bit 1 = 0x02)
-        ps2_send_data(0xED); // set LEDs command
-        ps2_read_data();     // expect ACK
-        ps2_send_data(0x02); // Num Lock on
-
+        KEYBOARD_INIT_DONE = true;
         crate::dev::console::serial_write("[input] keyboard initialized (Num Lock ON)\n");
     }
 }
@@ -69,21 +79,28 @@ pub fn keyboard_init() {
 pub fn mouse_init() {
     unsafe {
         if MOUSE_INIT_DONE { return; }
-        MOUSE_INIT_DONE = true;
 
-        // 1. Enable auxiliary PS/2 port
-        ps2_send_cmd(0xA8); // enable aux port
+        let status = port_io::inb(0x64);
+        if status == 0xFF {
+            crate::dev::console::serial_write("[input] WARN: no PS/2 controller, mouse init skipped\n");
+            MOUSE_INIT_DONE = true;
+            return;
+        }
 
-        // 2. Set mouse defaults
-        ps2_send_cmd(0xD4); // next byte goes to mouse
-        ps2_send_data(0xF6); // set defaults
-        ps2_read_data();     // expect ACK
+        // Enable auxiliary PS/2 port
+        if !ps2_send_cmd(0xA8) { MOUSE_INIT_DONE = true; return; }
 
-        // 3. Enable data reporting
-        ps2_send_cmd(0xD4);
-        ps2_send_data(0xF4); // enable
+        // Set mouse defaults
+        if !ps2_send_cmd(0xD4) { MOUSE_INIT_DONE = true; return; }
+        ps2_send_data(0xF6);
         ps2_read_data();
 
+        // Enable data reporting
+        if !ps2_send_cmd(0xD4) { MOUSE_INIT_DONE = true; return; }
+        ps2_send_data(0xF4);
+        ps2_read_data();
+
+        MOUSE_INIT_DONE = true;
         crate::dev::console::serial_write("[input] mouse initialized\n");
     }
 }
@@ -94,10 +111,12 @@ static mut MOUSE_INIT_DONE: bool = false;
 /// Update keyboard LEDs (bit 0=ScrollLock, bit 1=NumLock, bit 2=CapsLock).
 fn set_keyboard_leds(leds: u8) {
     unsafe {
-        port_io::ps2_wait_input();
-        port_io::outb(0x60, 0xED);  // set LEDs command
-        port_io::ps2_wait_input();
-        port_io::outb(0x60, leds);
+        if port_io::ps2_wait_input() {
+            port_io::outb(0x60, 0xED);
+        }
+        if port_io::ps2_wait_input() {
+            port_io::outb(0x60, leds);
+        }
     }
 }
 
