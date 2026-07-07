@@ -1,0 +1,13 @@
+# userland_ring3 module — the FastOS userland standard library
+# All syscall dispatch goes through bmo_syscall; frontends link against this.
+
+[module]
+name = "userland_ring3"
+version = "0.1.0"
+
+[exports]
+bmo_syscall = "u32, u64, u64, u64, u64, u64, u64 -> u64"
+malloc = "size_t -> ptr"
+free = "ptr -> void"
+calloc = "size_t, size_t -> ptr"
+realloc = "ptr, size_t -> ptr"

@@ -131,6 +131,10 @@ impl Codegen {
             self.emit_function(func);
         }
         self.is_entry_function = false;
+        // Emit __bmo_syscall_stub (syscall; ret) so frontends call instead of inline syscall
+        let stub_off = self.code.len();
+        self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
+        self.function_offsets.insert("__bmo_syscall_stub".to_string(), stub_off);
         // patch all call relocs
         self.patch_call_relocs();
         self.patch_goto_relocs();
@@ -518,10 +522,9 @@ impl Codegen {
     fn emit_epilogue(&mut self) {
         self.code.extend_from_slice(&[0x48, 0x89, 0xEC, 0x5D]); // mov rsp,rbp; pop rbp
         if self.is_entry_function {
-            // mov eax, NR_PROC_EXIT (0x181); syscall
             self.code.extend_from_slice(&[0xB8]);
             self.code.extend_from_slice(&0x181u32.to_le_bytes());
-            self.code.extend_from_slice(&[0x0F, 0x05]);
+            self.emit_call_to_syscall_stub();
         } else {
             self.code.push(0xC3); // ret
         }
@@ -741,7 +744,7 @@ impl Codegen {
                 }
                 self.code.extend_from_slice(&[0xB8]);        // mov eax, imm32
                 self.code.extend_from_slice(&def.nr.to_le_bytes());
-                self.code.extend_from_slice(&[0x0F, 0x05]);  // syscall
+                self.emit_call_to_syscall_stub();
             }
             Expr::Assign(name, val) => {
                 self.emit_expr(val);
@@ -1011,7 +1014,13 @@ impl Codegen {
     fn emit_mov_eax_syscall(&mut self, nr: u32) {
         self.code.extend_from_slice(&[0xB8]);
         self.code.extend_from_slice(&nr.to_le_bytes());
-        self.code.extend_from_slice(&[0x0F, 0x05]);
+        self.emit_call_to_syscall_stub();
+    }
+
+    fn emit_call_to_syscall_stub(&mut self) {
+        self.code.extend_from_slice(&[0xE8]);
+        self.call_relocs.push(CallReloc { offset: self.code.len(), target: "__bmo_syscall_stub".to_string() });
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
     }
 
     fn build_bef(&mut self) -> Vec<u8> {

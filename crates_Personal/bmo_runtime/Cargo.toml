@@ -1,8 +1,0 @@
-[package]
-name = "bmo-runtime"
-version = "0.1.0"
-edition = "2021"
-description = "BMO Runtime: heap allocator, startup, and user-space services for FastOS"
-
-[dependencies]
-bmo-abi = { path = "../bmo_abi" }
