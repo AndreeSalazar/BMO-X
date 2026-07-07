@@ -9,17 +9,17 @@ static XHCI_MMIO_PHYS: AtomicUsize = AtomicUsize::new(0);
 static XHCI_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 unsafe fn xhci_read32(offset: u32) -> u32 {
-    let base = XHCI_MMIO_PHYS.load(Ordering::Relaxed);
+    let base = XHCI_MMIO_PHYS.load(Ordering::Relaxed) as u64;
     if base == 0 { return 0xFFFFFFFF; }
-    let virt = crate::mm::vmm::phys_to_virt(base as u64);
-    unsafe { core::ptr::read_volatile((virt + offset as u64) as *const u32) }
+    // Use identity mapping (MMIO BAR is below 4GB, already 1:1 mapped by UEFI)
+    // phys_to_virt() only covers Usable RAM, not MMIO regions
+    unsafe { core::ptr::read_volatile((base + offset as u64) as *const u32) }
 }
 
 unsafe fn xhci_write32(offset: u32, val: u32) {
-    let base = XHCI_MMIO_PHYS.load(Ordering::Relaxed);
+    let base = XHCI_MMIO_PHYS.load(Ordering::Relaxed) as u64;
     if base == 0 { return; }
-    let virt = crate::mm::vmm::phys_to_virt(base as u64);
-    unsafe { core::ptr::write_volatile((virt + offset as u64) as *mut u32, val); }
+    unsafe { core::ptr::write_volatile((base + offset as u64) as *mut u32, val); }
 }
 
 // ── Capability Registers (offset from MMIO base) ───────────────────
