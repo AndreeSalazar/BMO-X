@@ -13,6 +13,7 @@ members = [
     "crates_Personal/cabina/panels",
     "crates_Personal/Lenguajes/cobol",
     "crates_Personal/Lenguajes/c",
+    "crates_Personal/bmo_runtime",
 ]
 
 [profile.dev]

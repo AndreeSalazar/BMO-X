@@ -1,0 +1,12 @@
+# bmo_runtime module — runtime services for FastOS programs
+# This manifest lets C/COBOL frontends link against the runtime.
+
+[module]
+name = "bmo_runtime"
+version = "0.1.0"
+
+[exports]
+malloc = "size_t -> ptr"
+free = "ptr -> void"
+calloc = "size_t, size_t -> ptr"
+realloc = "ptr, size_t -> ptr"
