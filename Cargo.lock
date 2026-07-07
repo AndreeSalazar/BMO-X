@@ -166,12 +166,15 @@ dependencies = [
  "bmo-audio",
  "bmo-boot-protocol",
  "bmo-core",
+ "byte-defender",
  "cabina-core",
  "cabina-daemon",
  "cabina-panels",
  "goblin",
+ "hw-profile",
  "llfree",
  "nvram-log",
+ "timeback",
  "vendor",
  "volatile 0.4.6",
 ]
@@ -181,6 +184,10 @@ name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+
+[[package]]
+name = "byte-defender"
+version = "0.1.0"
 
 [[package]]
 name = "cabina-core"
@@ -308,6 +315,10 @@ name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+
+[[package]]
+name = "hw-profile"
+version = "0.1.0"
 
 [[package]]
 name = "iana-time-zone"
@@ -604,6 +615,10 @@ checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
 ]
+
+[[package]]
+name = "timeback"
+version = "0.1.0"
 
 [[package]]
 name = "ucs2"

@@ -9,7 +9,7 @@
 
 #![allow(dead_code)]
 
-use crate::timeback::{self, checkpoint, journal, JournalOp};
+use crate::{checkpoint, journal, JournalOp};
 
 pub struct TestResult {
     pub name: &'static str,
@@ -65,8 +65,8 @@ fn test_snapshot_capture() -> TestResult {
 }
 
 fn test_delta_between() -> TestResult {
-    use crate::timeback::snapshot::Snapshot;
-    use crate::timeback::delta::Delta;
+    use crate::snapshot::Snapshot;
+    use crate::delta::Delta;
     let a = Snapshot { epoch: 1, tick_ns: 100, heap_used: 1024, running_processes: 2, open_files: 3 };
     let b = Snapshot { epoch: 2, tick_ns: 200, heap_used: 2048, running_processes: 3, open_files: 5 };
     let d = Delta::between(&a, &b);

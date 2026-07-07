@@ -35,7 +35,7 @@ use bmo_core::desktop3;
 /// Esta funcion **NO retorna** en exito (salta a Ring 3 con iretq).
 /// En error, retorna `false` y el caller puede continuar.
 pub fn run(bytes: &[u8], name: &str) -> bool {
-    crate::cabina::info("userland", &alloc::format!("launching: {}", name));
+    crate::cabina_daemon::info("userland", &alloc::format!("launching: {}", name));
 
     // 1. Detectar formato.
     let fmt = BefMagic::detect(bytes);
@@ -44,13 +44,13 @@ pub fn run(bytes: &[u8], name: &str) -> bool {
         BefMagic::ElfUnix => "ELF (devoured)",
         _ => "unknown",
     };
-    crate::cabina::info("userland", &alloc::format!("format: {}", fmt_name));
+    crate::cabina_daemon::info("userland", &alloc::format!("format: {}", fmt_name));
 
     // 2. Cargar (devora si es ELF).
     let img = match parsers::load(bytes) {
         Ok(i) => i,
         Err(e) => {
-            crate::cabina::fault("userland",
+            crate::cabina_daemon::fault("userland",
                 &alloc::format!("load failed: {:?}", e));
             return false;
         }
@@ -58,14 +58,14 @@ pub fn run(bytes: &[u8], name: &str) -> bool {
 
     // 3. Validar imagen.
     if img.entry_point == 0 {
-        crate::cabina::fault("userland", "entry point is NULL");
+        crate::cabina_daemon::fault("userland", "entry point is NULL");
         return false;
     }
 
     if img.format == BinaryFormat::BefNative {
-        crate::cabina::info("userland", "BEF native - direct jump");
+        crate::cabina_daemon::info("userland", "BEF native - direct jump");
     } else {
-        crate::cabina::info("userland", &alloc::format!("{:?} devorado y traducido a BEF",
+        crate::cabina_daemon::info("userland", &alloc::format!("{:?} devorado y traducido a BEF",
                                                        img.format));
     }
 

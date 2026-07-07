@@ -1,0 +1,9 @@
+[package]
+name = "timeback"
+version = "0.1.0"
+edition = "2021"
+description = "TimeBack — BMO system checkpoint and rollback subsystem"
+
+[lib]
+
+[dependencies]

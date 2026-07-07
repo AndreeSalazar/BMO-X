@@ -10,9 +10,9 @@
 
 #![allow(dead_code)]
 
-use crate::defense::{self, Verdict, Capability, CapabilitySet};
-use crate::defense::scanner;
-use crate::defense::verifier;
+use crate::{Verdict, Capability, CapabilitySet};
+use crate::scanner;
+use crate::verifier;
 
 pub struct TestResult {
     pub name: &'static str,
