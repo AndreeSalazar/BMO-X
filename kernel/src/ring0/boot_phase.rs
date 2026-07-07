@@ -290,9 +290,9 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         crate::dev::hda::init(hda_mmio);
     }
 
-    // xHCI USB controller — discovery only; leave BIOS USB Legacy Emulation
-    // active so the desktop's PS/2 polling on 0x60/0x64 keeps working.
-    crate::dev::usb_hid::init();
+    // USB: BIOS handles Legacy Emulation (USB→PS/2 via ports 0x60/0x64).
+    // Do NOT take xHCI ownership — that kills the emulation and disconnects devices.
+    // Full xHCI driver (rings/TRBs/enumeration) required before ownership transfer.
 
     // Persist state
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
