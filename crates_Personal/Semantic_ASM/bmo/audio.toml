@@ -1,6 +1,0 @@
-# BMO Audio syscalls (0x170..0x173)
-bmo_audio_play = 0x170, 2
-bmo_audio_stop = 0x171, 0
-bmo_beep = 0x172, 2
-bmo_audio_beep = 0x172, 2
-bmo_audio_load_wave = 0x173, 2

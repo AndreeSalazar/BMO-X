@@ -1,0 +1,9 @@
+[package]
+name = "cpu-vendor-profile"
+version = "0.1.0"
+edition = "2021"
+description = "CPU vendor profile — Ryzen 5 5600X (Zen 3) detection, configuration, and patching"
+
+[lib]
+
+[dependencies]

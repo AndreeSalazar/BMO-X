@@ -113,73 +113,22 @@ struct Parser {
 
 impl Parser {
     fn new(source: &str) -> Self {
+        let mut syscalls = HashMap::new();
+        // Preload embedded syscall definitions (no filesystem needed)
+        for d in bmo_abi::asm::defs::syscalls() {
+            syscalls.insert(d.name.clone(), SyscallDef { name: d.name, nr: d.nr, arg_count: d.arg_count });
+        }
         let lines: Vec<_> = source.lines()
             .enumerate()
             .map(|(i, l)| (i + 1, l.to_string()))
             .collect();
-        Self { lines, pos: 0, in_procedure: false, syscalls: HashMap::new(), usings: Vec::new() }
+        Self { lines, pos: 0, in_procedure: false, syscalls, usings: Vec::new() }
     }
 
-    /// Parse a simplified .toml file with lines: name = 0xNR, N
-    fn load_asm_file(&mut self, path: &Path) -> Result<(), CobolError> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| CobolError::new(0, format!("cannot read Semantic_ASM file {}: {e}", path.display())))?;
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
-            if let Some(eq_pos) = line.find('=') {
-                let name = line[..eq_pos].trim().to_string();
-                let rest = line[eq_pos + 1..].trim();
-                let (val_str, arg_count) = if let Some(comma_pos) = rest.find(',') {
-                    (rest[..comma_pos].trim(), rest[comma_pos + 1..].trim().parse::<u8>().unwrap_or(0))
-                } else {
-                    (rest, 0u8)
-                };
-                let nr = if val_str.starts_with("0x") || val_str.starts_with("0X") {
-                    u32::from_str_radix(&val_str[2..], 16).unwrap_or(0)
-                } else {
-                    val_str.parse::<u32>().unwrap_or(0)
-                };
-                self.syscalls.insert(name.clone(), SyscallDef { name, nr, arg_count });
-            }
-        }
-        Ok(())
-    }
-
-    fn parse_program_with_asm(&mut self, asm_paths: Vec<PathBuf>) -> Result<CobolProgram, CobolError> {
-        // Preload ALL .toml files from asm_paths before parsing, so that
-        // SYSCALL statements can resolve definitions at parse time.
-        for asm_base in &asm_paths {
-            self.preload_asm_dir(asm_base)?;
-        }
-        // Also load based on USE directives (harmless if already preloaded)
+    fn parse_program_with_asm(&mut self, _asm_paths: Vec<PathBuf>) -> Result<CobolProgram, CobolError> {
+        // Syscall definitions are now embedded — no filesystem loading needed.
         let program = self.parse_program()?;
-        let usings = std::mem::take(&mut self.usings);
-        for path in &usings {
-            for asm_base in &asm_paths {
-                let asm_file = asm_base.join(path).with_extension("toml");
-                if asm_file.exists() {
-                    self.load_asm_file(&asm_file)?;
-                }
-            }
-        }
         Ok(program)
-    }
-
-    /// Load all .toml files recursively from the given directory
-    fn preload_asm_dir(&mut self, dir: &Path) -> Result<(), CobolError> {
-        if !dir.is_dir() { return Ok(()); }
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    self.preload_asm_dir(&path)?;
-                } else if path.extension().map_or(false, |e| e == "toml") {
-                    self.load_asm_file(&path)?;
-                }
-            }
-        }
-        Ok(())
     }
 
     fn current(&self) -> Option<&(usize, String)> {

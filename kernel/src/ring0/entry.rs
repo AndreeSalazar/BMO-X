@@ -69,7 +69,6 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
     // Transition to BMO Core (logical Ring 3 kernel) subsystems.
     bmo_core::coord::init();
 
-    // Real CPU-level transition to Ring 3 (CPL=3).
-    // Draws a purple border to visually confirm Ring 3 execution.
-    crate::ring3::demo_entry::jump_to_ring3();
+    // Transition to Ring 3 desktop (replaces old purple-border demo).
+    crate::ring3::desktop::enter();
 }

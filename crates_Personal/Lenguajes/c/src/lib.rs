@@ -105,34 +105,6 @@ impl Parser {
         }
     }
 
-    /// Parse a simplified .toml file with lines: name = 0xNR, N
-    /// Lines starting with '#' or empty are skipped.
-    fn load_asm_file(&mut self, path: &Path) -> Result<(), CError> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| CError::new(0, format!("cannot read Semantic_ASM file {}: {e}", path.display())))?;
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
-            // format: name = <value>[, arg_count]
-            if let Some(eq_pos) = line.find('=') {
-                let name = line[..eq_pos].trim().to_string();
-                let rest = line[eq_pos + 1..].trim();
-                let (val_str, arg_count) = if let Some(comma_pos) = rest.find(',') {
-                    (rest[..comma_pos].trim(), rest[comma_pos + 1..].trim().parse::<u8>().unwrap_or(0))
-                } else {
-                    (rest, 0u8)
-                };
-                let nr = if val_str.starts_with("0x") || val_str.starts_with("0X") {
-                    u32::from_str_radix(&val_str[2..], 16).unwrap_or(0)
-                } else {
-                    val_str.parse::<u32>().unwrap_or(0)
-                };
-                self.syscalls.insert(name.clone(), SyscallDef { name, nr, arg_count });
-            }
-        }
-        Ok(())
-    }
-
     #[cfg(test)]
     fn tokenize_for_test(source: &str) -> Vec<Token> { Self::tokenize(source) }
 
@@ -627,13 +599,10 @@ impl Parser {
                 program.exported.extend(manifest.exports);
             }
 
-            // Load Semantic_ASM definitions if asm_paths provided
-            if let Some(ref paths) = asm_paths {
-                for asm_base in paths {
-                    let asm_file = asm_base.join(path).with_extension("toml");
-                    if asm_file.exists() {
-                        self.load_asm_file(&asm_file)?;
-                    }
+            // Load syscall definitions from embedded registry
+            if self.syscalls.is_empty() {
+                for d in bmo_abi::asm::defs::syscalls() {
+                    self.syscalls.entry(d.name.clone()).or_insert(SyscallDef { name: d.name, nr: d.nr, arg_count: d.arg_count });
                 }
             }
         }

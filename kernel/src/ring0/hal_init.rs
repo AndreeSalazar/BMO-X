@@ -189,12 +189,12 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         issue_ibpb:               crate::vendor::amd::cpu::zen3::errata_workarounds::issue_ibpb,
         amd_cpu_name:             || "AMD Ryzen",
 
-        // ── bmo_audio (stubs — audio HW not yet initialized here) ───
-        audio_init:               |_| {},
-        audio_play:               |_| {},
-        audio_play_logon_chime:   || {},
-        audio_beep:               |_, _| {},
-        audio_set_volume:         |_| {},
+        // ── bmo_audio (PC Speaker via PIT, Ring 0 only) ────────────
+        audio_init:               |freq| bmo_audio::init(freq),
+        audio_play:               |tone| { let _ = bmo_audio::beep(tone, 100); },
+        audio_play_logon_chime:   || bmo_audio::play_logon_chime(),
+        audio_beep:               |hz, ms| bmo_audio::beep(hz, ms),
+        audio_set_volume:         |v| bmo_audio::set_volume(v as u8),
 
         // ── dev::storage ────────────────────────────────────────────
         storage_test:             || false,

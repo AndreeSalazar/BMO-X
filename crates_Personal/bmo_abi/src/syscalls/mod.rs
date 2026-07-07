@@ -25,9 +25,10 @@
 //! | 0x1F0..0x1F3 | Diagnostics | print/trace/assert/panic |
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Constants + name() — GENERADOS desde Semantic_ASM/bmo/*.toml
+//  Constants + name() — EMBEDIDOS desde asm::defs
 // ═══════════════════════════════════════════════════════════════════════════
-include!(concat!(env!("OUT_DIR"), "/generated_syscalls.rs"));
+mod generated;
+pub use generated::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Syscall wrappers (x86_64). Arquitectura-específicos.

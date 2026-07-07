@@ -1,6 +1,0 @@
-# BMO Compositor syscalls (0x130..0x134)
-bmo_compositor_begin_frame = 0x130, 0
-bmo_compositor_end_frame = 0x131, 0
-bmo_compositor_present = 0x132, 1
-bmo_compositor_set_target = 0x133, 1
-bmo_compositor_flush = 0x134, 0

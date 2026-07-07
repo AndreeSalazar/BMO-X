@@ -1,7 +1,0 @@
-# BMO Window Painting syscalls (0x120..0x125)
-bmo_winpaint_fill_rect = 0x120, 5
-bmo_winpaint_draw_text = 0x121, 5
-bmo_winpaint_draw_pixel = 0x122, 3
-bmo_winpaint_draw_line = 0x123, 5
-bmo_winpaint_draw_blit = 0x124, 6
-bmo_winpaint_draw_circle = 0x125, 4

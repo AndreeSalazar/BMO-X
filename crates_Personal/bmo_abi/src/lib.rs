@@ -60,6 +60,7 @@ pub mod error_code;
 pub mod bef;
 pub mod syscalls;
 pub mod profile;
+pub mod asm;
 
 // â”€â”€â”€ Re-exports planos para uso ergonÃ³mico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

@@ -49,8 +49,30 @@ pub const MAX_ARGS: usize = 32;
 /// Maximum statements per basic block.
 pub const MAX_STMTS: usize = 256;
 
+/// Maximum syscall definitions per module.
+pub const MAX_SYSCALLS: usize = 128;
+
+/// Maximum imported library modules.
+pub const MAX_IMPORTS: usize = 64;
+
 /// Maximum globals per module.
 pub const MAX_GLOBALS: usize = 64;
+
+/// A syscall definition loaded from Semantic_ASM.
+#[derive(Debug, Clone, Copy)]
+pub struct IrSyscallDef {
+    pub name: u16,
+    pub nr: u32,
+    pub arg_count: u8,
+}
+
+/// An imported library module.
+#[derive(Debug, Clone, Copy)]
+pub struct IrImport {
+    pub module_path: u16,
+    pub bef_offset: u32,
+    pub bef_len: u32,
+}
 
 // ── IrType ──────────────────────────────────────────────────────────
 
@@ -174,6 +196,8 @@ pub enum IrExpr {
     Call { func: u16, args: u16, arg_count: u16 },
     /// Syscall invocation.
     Syscall { nr: u32, args: u16, arg_count: u16 },
+    /// Virtual call through vtable: *(obj->vtable[offset])(args).
+    VCall { this: u16, vtable_offset: u32, sig_type_id: u16, args: u16, arg_count: u16 },
     /// Type cast expression.
     Cast { expr: u16, to: IrType },
 }
@@ -341,6 +365,12 @@ pub struct IrModule {
     /// Global variable declarations.
     pub globals: [IrGlobal; MAX_GLOBALS],
     pub global_count: u16,
+    /// Syscall definitions loaded from Semantic_ASM.
+    pub syscalls: [IrSyscallDef; MAX_SYSCALLS],
+    pub syscall_count: u16,
+    /// Imported library modules (stdlib, etc.).
+    pub imports: [IrImport; MAX_IMPORTS],
+    pub import_count: u16,
 }
 
 impl IrModule {
@@ -357,6 +387,10 @@ impl IrModule {
             function_count: 0,
             globals: core::array::from_fn(|_| IrGlobal { name: 0, ty: 0, init: None, read_only: false }),
             global_count: 0,
+            syscalls: [IrSyscallDef { name: 0, nr: 0, arg_count: 0 }; MAX_SYSCALLS],
+            syscall_count: 0,
+            imports: [IrImport { module_path: 0, bef_offset: 0, bef_len: 0 }; MAX_IMPORTS],
+            import_count: 0,
         }
     }
 
@@ -406,5 +440,32 @@ impl IrModule {
         self.globals[idx as usize] = global;
         self.global_count += 1;
         Some(idx)
+    }
+
+    /// Add a syscall definition and return its index.
+    pub fn add_syscall(&mut self, name: u16, nr: u32, arg_count: u8) -> Option<u16> {
+        if self.syscall_count as usize >= MAX_SYSCALLS { return None; }
+        let idx = self.syscall_count;
+        self.syscalls[idx as usize] = IrSyscallDef { name, nr, arg_count };
+        self.syscall_count += 1;
+        Some(idx)
+    }
+
+    /// Add an imported library module.
+    pub fn add_import(&mut self, module_path: u16, bef_offset: u32, bef_len: u32) -> Option<u16> {
+        if self.import_count as usize >= MAX_IMPORTS { return None; }
+        let idx = self.import_count;
+        self.imports[idx as usize] = IrImport { module_path, bef_offset, bef_len };
+        self.import_count += 1;
+        Some(idx)
+    }
+
+    /// Load all syscall definitions from the embedded registry.
+    pub fn load_embedded_syscalls(&mut self) {
+        let defs = crate::bmo_abi::asm::defs::syscalls();
+        for d in &defs {
+            let name_idx = self.add_string(&d.name).unwrap_or(0);
+            self.add_syscall(name_idx, d.nr, d.arg_count);
+        }
     }
 }

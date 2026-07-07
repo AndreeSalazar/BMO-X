@@ -1,5 +1,0 @@
-# BMO IPC syscalls (0x1A0..0x1A3)
-bmo_ipc_port_create = 0x1A0, 0
-bmo_ipc_port_send = 0x1A1, 3
-bmo_ipc_port_recv = 0x1A2, 3
-bmo_ipc_port_close = 0x1A3, 1

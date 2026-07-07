@@ -1,25 +1,23 @@
-//! `userland/` — Aplicaciones de Ring 3 (futuro).
+//! `userland/` — Ring 3 userland subsystem.
 //!
-//! v1.8.8: stub. Esta capa NO existe todavía — es donde correrán las
-//! apps de usuario en el futuro (juegos, herramientas, tests).
+//! v1.8.8: active subsystem with desktop entry, BEF/ELF loader, and
+//! window message dispatch. Manages Ring 3 processes and their lifecycle.
 //!
-//! ## Relación con BMO CORE
+//! ## Components
 //!
-//! En la arquitectura Opus, BMO CORE es el "kernel del Ring 3":
-//! - Recibe control de RING 0 al final del boot (después de phase 4).
-//! - Inicializa la windowing API, el desktop, el FS.
-//! - Cuando una app de userland está lista, BMO CORE le transfiere
-//!   control vía `iretq` o `sysret` a un proceso de Ring 3.
-//! - Las apps usan los syscalls de BMO API (0x100..0x1FF) a través de
-//!   `bmo_core::desktop3` (la cúpula).
+//! - `ring_3`:    Ring 3 coordinator — process init, wnd_proc dispatch.
+//! - `app`:       BEF/ELF binary loader — format detection, memory mapping, execution.
 //!
-//! ## Componentes
+//! ## Relationship with BMO Core
 //!
-//! - `app`: API de alto nivel para cargar y ejecutar binarios (BEF/PE/ELF).
+//! In the Opus architecture, BMO Core is the "Ring 3 kernel":
+//! - Receives control from Ring 0 at boot completion.
+//! - Initializes windowing API, desktop, filesystem.
+//! - userland::init() creates the desktop process.
+//! - ring3::desktop::enter() transitions to CPL=3.
+//! - Apps use bmo_api syscalls (0x100..0x1FF) through the scheduler.
 
-#![allow(dead_code)]
-
-#[path = "ring_3.rs"]
-pub mod userland_impl;
-
+pub mod ring_3;
 pub mod app;
+
+pub use ring_3 as userland_impl;

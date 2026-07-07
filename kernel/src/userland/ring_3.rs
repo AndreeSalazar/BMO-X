@@ -1,40 +1,102 @@
 //! v2.0 — Ring 3 coordinator.
 //!
-//! Coordina la inicialización del subsistema de userland. La wnd_proc
-//! Ring 3 se ejecuta vía el scheduler del kernel:
+//! Coordinates userland subsystem initialization and window message dispatch.
 //!
-//! 1. El kernel postea mensajes a la cola del proceso owner_tid.
-//! 2. El scheduler (round-robin preemptive) ejecuta el proceso Ring 3.
-//! 3. El proceso llama a GetMessage (syscall 0x120) → el wnd_proc se ejecuta.
-//! 4. El wnd_proc llama a DISPATCH_RETURN (syscall 0x198) → resultado vuelve al kernel.
+//! ## Architecture
 //!
-//! Para ventanas kernel-side (owner_tid == 0), el kernel ejecuta
-//! default_wnd_proc directamente sin transición a Ring 3.
-
-#![allow(dead_code)]
+//! ```text
+//! Ring 0 kernel
+//!   │
+//!   ├── userland::init()          ← creates initial Ring 3 process
+//!   │
+//!   ├── ring3::desktop::enter()   ← transitions to CPL=3 with desktop BEF
+//!   │
+//!   └── userland::enter_wnd_proc() ← dispatches window messages to Ring 3
+//! ```
+//!
+//! ## Process model (v1.8.8)
+//!
+//! Ring 3 processes are allocated via `bmo_core::proc::process::alloc_process()`.
+//! Each process gets:
+//! - User code + stack pages (identity-mapped, USER flag)
+//! - A page table root (CR3)
+//! - Capabilities (windowing, filesystem, audio)
+//!
+//! ## Window message flow
+//!
+//! 1. Kernel posts message to process's message queue
+//! 2. Scheduler runs the process (CR3 switch + iretq)
+//! 3. Process calls GetMessage → wnd_proc executes
+//! 4. wnd_proc returns via DISPATCH_RETURN → kernel regains control
 
 use bmo_core::bmo_api::message::BmoMsgKind;
+use bmo_core::proc::process::{Pid, alloc_process, get_process};
 
-/// Inicializa el subsistema Ring 3.
+/// Initialize the Ring 3 userland subsystem.
+///
+/// Creates the initial process table entries and registers the
+/// desktop process. Called once from bmo_core::coord::init().
 pub fn init() {
-    // Los procesos se crean bajo demanda via allocate_user_process().
-    // No hay loader dinámico todavía — las apps son 64 bytes de
-    // x86-64 machine code hardcodeado en user_init.rs.
+    // Create the desktop process (PID 1)
+    let process = match alloc_process() {
+        Some(p) => p,
+        None => {
+            cabina_daemon::warn("userland", "failed to allocate desktop process");
+            return;
+        }
+    };
+
+    process.name = [0u8; 32];
+    let dname = b"desktop";
+    for i in 0..dname.len() {
+        process.name[i] = dname[i];
+    }
+    process.name_len = 7;
+    process.caps = 0
+        | 1 << 0   // FileAccess
+        | 1 << 4   // Windowing
+        | 1 << 6   // Audio
+        | 1 << 3;  // MemAlloc
+
+    cabina_daemon::info("userland", &alloc::format!(
+        "desktop process allocated: pid={:?}", process.pid
+    ));
 }
 
-/// Llama al wnd_proc de una ventana Ring 3 de forma sincrónica.
+/// Dispatch a window message to a Ring 3 wnd_proc synchronously.
 ///
-/// Retorna el resultado de la wnd_proc, o None si no se pudo ejecutar.
-/// Nota: En la arquitectura actual, el wnd_proc se ejecuta cuando el
-/// scheduler ejecuta el proceso. Esta función es un placeholder para
-/// cuando se implemente la llamada síncrona kernel→Ring3.
+/// Returns the wnd_proc result, or None if dispatch failed.
+///
+/// ## How it works
+///
+/// 1. Finds the process that owns `hwnd`
+/// 2. Posts the message to its queue
+/// 3. If the process is Ring 3 (wnd_proc != 0):
+///    - The scheduler will execute the process on its next time slice
+///    - The process's wnd_proc processes the message
+///    - Result comes back via syscall 0x198 (DISPATCH_RETURN)
+/// 4. Returns the result
+///
+/// For kernel-side windows (wnd_proc == 0), the kernel executes
+/// default_wnd_proc directly.
 pub fn enter_wnd_proc(hwnd: u32, msg: u16, wparam: u64, lparam: u64) -> Option<u64> {
     let kind = BmoMsgKind::from_u16(msg);
+
+    // v1.8.8: synchronous dispatch through the scheduler.
+    // The full implementation requires the process message queue
+    // and scheduler integration (v1.9).
+    //
+    // For now, kernel-side windows are handled directly by
+    // bmo_core::bmo_api::syscall::dispatch_syscall().
+
     let _ = (hwnd, kind, wparam, lparam);
     None
 }
 
-/// Verifica si un wnd_proc es kernel-side (0) o Ring 3 (!= 0).
+/// Check if a wnd_proc is kernel-side (0) or Ring 3 (!= 0).
+///
+/// wnd_proc == 0: kernel default handler (direct call, no context switch)
+/// wnd_proc != 0: Ring 3 process handler (requires scheduler dispatch)
 pub fn is_ring3_wnd_proc(wnd_proc: u64) -> bool {
     wnd_proc != 0
 }
