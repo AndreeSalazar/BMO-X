@@ -295,6 +295,15 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     // Do NOT take xHCI ownership — that kills the emulation and disconnects devices.
     // Full xHCI driver (rings/TRBs/enumeration) required before ownership transfer.
 
+    // Init xHCI controller (via bmo_xhci crate) for native USB HID
+    if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
+        static XHCI_HAL: super::xhci_hal_impl::KernelXhciHal = super::xhci_hal_impl::KernelXhciHal;
+        bmo_xhci::init_hal(&XHCI_HAL);
+        crate::log::info("phase2", "xHCI controller found, initializing via bmo_xhci...");
+        unsafe { bmo_xhci::init(xhci_mmio); }
+        crate::log::info("phase2", "xHCI init done — USB native HID available");
+    }
+
     // Persist state
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
     ctx.devices.acpi_mcfg_end_bus = mcfg.as_ref().map(|m| m.end_bus).unwrap_or(0);

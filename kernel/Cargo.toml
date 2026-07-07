@@ -23,6 +23,8 @@ cpu-vendor-profile = { path = "../crates_Personal/cpu_vendor_profile" }
 bmo-input = { path = "../crates_Personal/bmo_input" }
 bmo-ahci = { path = "../crates_Personal/bmo_ahci" }
 bmo-fat32 = { path = "../crates_Personal/bmo_fat32" }
+bmo-xhci = { path = "../crates_Personal/bmo_xhci" }
+bmo-uhid = { path = "../crates_Personal/bmo_uhid" }
 llfree = { path = "../crates_Personal/llfree-rs/core", optional = true }
 volatile = "0.4"
 bitflags = "2"

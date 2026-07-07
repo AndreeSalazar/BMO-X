@@ -16,6 +16,8 @@ members = [
     "crates_Personal/bmo_input",
     "crates_Personal/bmo_ahci",
     "crates_Personal/bmo_fat32",
+    "crates_Personal/bmo_xhci",
+    "crates_Personal/bmo_uhid",
     "crates_Personal/cpu_vendor_profile",
     "crates_Personal/byte_defender",
     "crates_Personal/timeback",

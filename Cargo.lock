@@ -162,6 +162,7 @@ dependencies = [
  "bmo-abi",
  "bmo-boot-protocol",
  "bmo-input",
+ "bmo-uhid",
  "goblin",
 ]
 
@@ -198,6 +199,8 @@ dependencies = [
  "bmo-core",
  "bmo-fat32",
  "bmo-input",
+ "bmo-uhid",
+ "bmo-xhci",
  "byte-defender",
  "cabina-core",
  "cabina-daemon",
@@ -210,6 +213,21 @@ dependencies = [
  "timeback",
  "vendor",
  "volatile 0.4.6",
+]
+
+[[package]]
+name = "bmo-uhid"
+version = "0.1.0"
+dependencies = [
+ "bmo-input",
+ "bmo-xhci",
+]
+
+[[package]]
+name = "bmo-xhci"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
 ]
 
 [[package]]

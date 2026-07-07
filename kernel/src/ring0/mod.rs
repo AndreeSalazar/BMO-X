@@ -24,6 +24,7 @@ pub mod cpu;         // CPU features, TSC, registers, cache, FPU
 pub mod boot_phase;
 pub mod hal_init;
 pub mod storage_hal_impl;
+pub mod xhci_hal_impl;
 pub mod entry;
 
 // ═══════════════════════════════════════════════════════════════════

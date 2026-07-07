@@ -8,5 +8,6 @@ description = "BMO Core - logical Ring 3 kernel (windowing, UI, FS, desktop, BEF
 [dependencies]
 bmo-abi = { path = "../bmo_abi" }
 bmo-input = { path = "../bmo_input" }
+bmo-uhid = { path = "../bmo_uhid" }
 bmo-boot-protocol = { path = "../boot_protocol" }
 goblin = { path = "../goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }

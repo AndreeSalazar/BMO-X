@@ -1,34 +1,40 @@
-//! Desktop input — thin wrapper over bmo_input crate.
+//! Desktop input — USB HID primary, PS/2 fallback.
 //!
-//! Legacy API preserved for compatibility. New code should use
-//! `bmo_input::hal_ps2::Ps2Hal` directly.
+//! Uses `bmo_uhid::UsbHidHal` (implements InputHal) when xHCI is available.
+//! Falls back to `bmo_input::hal_ps2::Ps2Hal` otherwise.
 
 #![allow(dead_code)]
 
-use bmo_input::hal_ps2::Ps2Hal;
 use bmo_input::hal::InputHal;
+use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 pub const SC_ESC: u8 = 0x01;
-
 static INIT_DONE: AtomicBool = AtomicBool::new(false);
 
-fn ensure_init() -> &'static mut Ps2Hal {
-    static mut PS2: Option<Ps2Hal> = None;
+fn hal() -> &'static mut dyn InputHal {
+    static mut ACTIVE: Option<Box<dyn InputHal>> = None;
     unsafe {
-        if !INIT_DONE.load(Ordering::Relaxed) {
-            PS2 = Some(Ps2Hal::new());
-            PS2.as_mut().unwrap().init();
-            INIT_DONE.store(true, Ordering::Relaxed);
+        if ACTIVE.is_none() {
+            // Try USB HID first
+            let mut uhid = Box::new(bmo_uhid::UsbHidHal::new());
+            if uhid.init() {
+                ACTIVE = Some(uhid);
+            } else {
+                // Fallback to PS/2
+                let mut ps2 = Box::new(bmo_input::hal_ps2::Ps2Hal::new());
+                ps2.init();
+                ACTIVE = Some(ps2);
+            }
         }
-        PS2.as_mut().unwrap()
+        ACTIVE.as_mut().unwrap().as_mut()
     }
 }
 
 pub fn poll_key() -> u8 {
-    let ps2 = ensure_init();
+    let h = hal();
     let mut buf = [bmo_input::event::InputEvent::empty(); 32];
-    let n = ps2.poll(&mut buf);
+    let n = h.poll(&mut buf);
     let mut last = None;
     for i in 0..n {
         if matches!(buf[i].kind, bmo_input::event::InputEventKind::KeyDown | bmo_input::event::InputEventKind::KeyUp) {
@@ -39,9 +45,9 @@ pub fn poll_key() -> u8 {
 }
 
 pub fn poll_mouse() -> u64 {
-    let ps2 = ensure_init();
+    let h = hal();
     let mut buf = [bmo_input::event::InputEvent::empty(); 32];
-    let n = ps2.poll(&mut buf);
+    let n = h.poll(&mut buf);
     let mut x: i32 = 0; let mut y: i32 = 0; let mut btns: u64 = 0;
     for i in 0..n {
         match buf[i].kind {
@@ -49,9 +55,7 @@ pub fn poll_mouse() -> u64 {
                 x = x.saturating_add(buf[i].mouse_dx() as i32);
                 y = y.saturating_add(buf[i].mouse_dy() as i32);
             }
-            bmo_input::event::InputEventKind::MouseButton => {
-                btns = buf[i].mouse_buttons() as u64;
-            }
+            bmo_input::event::InputEventKind::MouseButton => { btns = buf[i].mouse_buttons() as u64; }
             _ => {}
         }
     }
