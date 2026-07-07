@@ -1,15 +1,15 @@
-[package]
-name = "fastos-kernel"
+﻿[package]
+name = "bmo-kernel"
 version = "1.8.16"
 edition = "2021"
-authors = ["FastOS Project"]
-description = "FastOS kernel - UEFI GOP framebuffer + BMO/BareX"
+authors = ["BMO Project"]
+description = "BMO kernel - UEFI GOP framebuffer + BMO/BareX"
 license = "Techne"
 
 [dependencies]
 bmo-abi = { path = "../crates_Personal/bmo_abi" }
 bmo-audio = { path = "../crates_Personal/bmo_audio" }
-fastos-boot-protocol = { path = "../crates_Personal/boot_protocol" }
+bmo-boot-protocol = { path = "../crates_Personal/boot_protocol" }
 nvram-log = { path = "../crates_Personal/nvram-log" }
 vendor = { path = "../crates_Personal/vendor" }
 cabina-core = { path = "../crates_Personal/cabina/core" }
@@ -26,7 +26,7 @@ alloc-buddy = []
 alloc-llfree = ["llfree"]
     
 [[bin]]
-name =     "fastos-kernel"
+name =     "bmo-kernel"
 path = "src/main.rs"
 
 # Linker configuration for x86_64-unknown-none target.

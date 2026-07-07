@@ -1,4 +1,4 @@
-//! BootContext — Dependency Injection container for boot phases.
+﻿//! BootContext â€” Dependency Injection container for boot phases.
 //!
 //! v1.1.0: Replaces scattered globals with a single, typed ctx that
 //!
@@ -10,11 +10,11 @@
 //!
 //! ## Migration map
 //!
-//! Old (globals)                → New (ctx field)
-//! `crate::mm::phys::free_count` → `ctx.memory.free_pages`
-//! `crate::cpu::tsc_per_sec`     → `ctx.cpu.tsc_freq_hz`
-//! `bmo_abi clock init`          → `ctx.bmo_abi_initialized`
-//! `crate::mm::heap::heap_total`      → `ctx.memory.heap_total`
+//! Old (globals)                â†’ New (ctx field)
+//! `crate::mm::phys::free_count` â†’ `ctx.memory.free_pages`
+//! `crate::cpu::tsc_per_sec`     â†’ `ctx.cpu.tsc_freq_hz`
+//! `bmo_abi clock init`          â†’ `ctx.bmo_abi_initialized`
+//! `crate::mm::heap::heap_total`      â†’ `ctx.memory.heap_total`
 //!
 //! ## Stability
 //!
@@ -22,7 +22,7 @@
 //! breaking the many callsites in one go. v1.2.0 will introduce
 //! accessors and make fields private.
 
-use fastos_boot_protocol::BootInfo;
+use bmo_boot_protocol::BootInfo;
 
 /// Aggregate of CPU-related state captured during Phase 0.
 #[derive(Clone, Copy)]
@@ -104,7 +104,7 @@ pub struct BootContext {
     pub phase_outputs: [Option<PhaseSnapshot>; 8],
 }
 
-/// Lightweight snapshot of one phase's output — useful for cross-phase
+/// Lightweight snapshot of one phase's output â€” useful for cross-phase
 /// introspection (e.g. "did Phase 1 actually set up the heap?").
 #[derive(Clone, Copy)]
 pub struct PhaseSnapshot {

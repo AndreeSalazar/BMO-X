@@ -1,4 +1,4 @@
-//! FastOS kernel — entry point único.
+﻿//! BMO kernel â€” entry point Ãºnico.
 //!
 //! Boot order:
 //!   1. `_start` (en ring0/mod.rs): BSS zero, guarda boot_info_ptr
@@ -12,13 +12,13 @@
 
 extern crate alloc;
 
-// ─── Ring 0: HAL, boot, x86-64 ──────────────────────────────────────
-// ring0 declara también los submódulos: arch/, mm/, dev/, proc/, cpu/,
+// â”€â”€â”€ Ring 0: HAL, boot, x86-64 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ring0 declara tambiÃ©n los submÃ³dulos: arch/, mm/, dev/, proc/, cpu/,
 // cabina/, bmo_core/, y el _start asm + panic_handler.
 pub mod ring0;
 
-// ─── Re-exports: legacy crate::<mod> paths ──────────────────────────
-// ring0/mod.rs era antes la crate root; todo el código usa paths como
+// â”€â”€â”€ Re-exports: legacy crate::<mod> paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ring0/mod.rs era antes la crate root; todo el cÃ³digo usa paths como
 // crate::arch, crate::mm, etc. sin prefijo "ring0::". Re-exportamos
 // para mantener compatibilidad sin tocar 293 archivos fuente.
 pub use ring0::arch;

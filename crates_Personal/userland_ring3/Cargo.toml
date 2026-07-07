@@ -1,8 +1,8 @@
-[package]
+﻿[package]
 name = "userland-ring3"
 version = "0.1.0"
 edition = "2021"
-description = "FastOS userland Ring 3: syscall wrappers, heap allocator, and standard library for BMO"
+description = "BMO userland Ring 3: syscall wrappers, heap allocator, and standard library for BMO"
 
 [dependencies]
 bmo-abi = { path = "../bmo_abi" }

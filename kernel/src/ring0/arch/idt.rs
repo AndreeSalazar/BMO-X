@@ -1,6 +1,6 @@
-#![allow(dead_code, unused_unsafe)]
+﻿#![allow(dead_code, unused_unsafe)]
 
-//! IDT — Interrupt Descriptor Table for x86-64 Long Mode.
+//! IDT â€” Interrupt Descriptor Table for x86-64 Long Mode.
 //! 256 entries, 16 bytes each. Ring 0, no_std.
 //!
 //! CRITICAL: All ISR stubs MUST be `#[naked]` so the compiler does NOT
@@ -70,47 +70,47 @@ pub fn init_idt() {
             IDT[i].set_handler(isr_stub_exception_err as *const () as u64);
         }
 
-        // Diagnóstico real para las excepciones más probables en Ring 3:
-        // #GP, #PF, #UD, #NM, #MF, #XM, #DE — matan el proceso en vez de loops infinitos.
-        // Usan IST1 para stack dedicado y evitar corrupción del stack de usuario.
+        // DiagnÃ³stico real para las excepciones mÃ¡s probables en Ring 3:
+        // #GP, #PF, #UD, #NM, #MF, #XM, #DE â€” matan el proceso en vez de loops infinitos.
+        // Usan IST1 para stack dedicado y evitar corrupciÃ³n del stack de usuario.
         IDT[13].set_handler(isr_stub_general_protection as *const () as u64);
         IDT[13].ist = 1;  // IST1
         IDT[14].set_handler(isr_stub_page_fault as *const () as u64);
         IDT[14].ist = 1;  // IST1
         IDT[6].set_handler(isr_stub_invalid_opcode as *const () as u64);
-        IDT[6].ist = 1;   // IST1 — #UD (ud2 / undefined instruction)
+        IDT[6].ist = 1;   // IST1 â€” #UD (ud2 / undefined instruction)
         IDT[7].set_handler(isr_stub_device_not_avail as *const () as u64);
-        IDT[7].ist = 1;   // IST1 — #NM (FPU not available)
+        IDT[7].ist = 1;   // IST1 â€” #NM (FPU not available)
         IDT[16].set_handler(isr_stub_x87_fp as *const () as u64);
-        IDT[16].ist = 1;  // IST1 — #MF (x87 FP exception)
+        IDT[16].ist = 1;  // IST1 â€” #MF (x87 FP exception)
         IDT[19].set_handler(isr_stub_simd_fp as *const () as u64);
-        IDT[19].ist = 1;  // IST1 — #XM (SSE/AVX exception)
+        IDT[19].ist = 1;  // IST1 â€” #XM (SSE/AVX exception)
         IDT[0].set_handler(isr_stub_divide_error as *const () as u64);
-        IDT[0].ist = 1;   // IST1 — #DE (divide error)
+        IDT[0].ist = 1;   // IST1 â€” #DE (divide error)
 
         // v1.8.8: IST dedicado para #DF (Double Fault), NMI, y #MC (Machine Check).
-        // Sin IST, si el stack está corrupto al llegar #DF, recursa y causa
+        // Sin IST, si el stack estÃ¡ corrupto al llegar #DF, recursa y causa
         // triple fault irrecuperable. IST garantiza un stack limpio de 8 KB.
-        // Ver AMD/ryzen_5_5600x.md §8.4.
+        // Ver AMD/ryzen_5_5600x.md Â§8.4.
         IDT[8].set_handler(isr_stub_double_fault as *const () as u64);
-        IDT[8].ist = 1;   // IST1 — #DF (Double Fault)
+        IDT[8].ist = 1;   // IST1 â€” #DF (Double Fault)
         IDT[2].set_handler(isr_stub_exception_no_err as *const () as u64);
-        IDT[2].ist = 1;   // IST1 — NMI (Non-Maskable Interrupt)
+        IDT[2].ist = 1;   // IST1 â€” NMI (Non-Maskable Interrupt)
         IDT[18].set_handler(isr_stub_exception_no_err as *const () as u64);
-        IDT[18].ist = 3;  // IST3 — #MC (Machine Check, NO error code on AMD64)
+        IDT[18].ist = 3;  // IST3 â€” #MC (Machine Check, NO error code on AMD64)
 
-        // IRQ0 — PIT timer (vector 32)
+        // IRQ0 â€” PIT timer (vector 32)
         IDT[32].set_handler(isr_stub_irq0 as *const () as u64);
 
-        // IRQ1 — PS/2 keyboard (vector 33)
+        // IRQ1 â€” PS/2 keyboard (vector 33)
         IDT[33].set_handler(isr_stub_irq1 as *const () as u64);
 
-        // Remaining IRQs (34-47) — default
+        // Remaining IRQs (34-47) â€” default
         for i in 34..48 {
             IDT[i].set_handler(isr_stub_default_irq as *const () as u64);
         }
 
-        // APIC Timer (vector 48) — preemptive scheduling
+        // APIC Timer (vector 48) â€” preemptive scheduling
         IDT[48].set_handler(isr_stub_apic_timer as *const () as u64);
 
         // Spurious APIC (vector 255)
@@ -132,10 +132,10 @@ pub fn register_irq(irq: u8, handler: fn()) {
     }
 }
 
-// ── Raw ISR stubs ──────────────────────────────────────────────────────────
-// ALL stubs are #[naked] — the compiler MUST NOT generate prologue/epilogue.
+// â”€â”€ Raw ISR stubs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ALL stubs are #[naked] â€” the compiler MUST NOT generate prologue/epilogue.
 // Without #[naked], `push rbp; mov rbp, rsp` would corrupt the interrupt
-// frame and iretq would pop garbage → triple fault.
+// frame and iretq would pop garbage â†’ triple fault.
 
 /// Exception handler for vectors that do NOT push an error code.
 #[unsafe(naked)]
@@ -193,7 +193,7 @@ unsafe extern "C" fn isr_stub_general_protection() {
     );
 }
 
-/// #PF — kill current process, capturing CR2 for diagnostics.
+/// #PF â€” kill current process, capturing CR2 for diagnostics.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_page_fault() {
     naked_asm!(
@@ -211,12 +211,12 @@ unsafe extern "C" fn isr_stub_page_fault() {
         "mov rsi, [rsp + 56]",         // error code (after 7 pushes)
         "mov rdx, cr2",                // faulting address
 
-        // Call Rust handler — returns bool (true = resolved, false = kill)
+        // Call Rust handler â€” returns bool (true = resolved, false = kill)
         "call page_fault_handler_rust",
         "test al, al",
         "jnz 2f",                      // if resolved, skip to iretq
 
-        // Not resolved — call kill handler (never returns)
+        // Not resolved â€” call kill handler (never returns)
         "mov rdi, 14",
         "mov rsi, [rsp + 56]",
         "mov rdx, cr2",
@@ -224,7 +224,7 @@ unsafe extern "C" fn isr_stub_page_fault() {
         "mov r8, [rsp + 88]",          // faulting RSP
         "call exception_kill_handler_rust",
 
-        "2:", // Fault resolved — pop ctx and return
+        "2:", // Fault resolved â€” pop ctx and return
         "pop r9",
         "pop r8",
         "pop rcx",
@@ -236,7 +236,7 @@ unsafe extern "C" fn isr_stub_page_fault() {
     );
 }
 
-/// Default IRQ handler (vectors 34-47) — just iretq since PIC is removed.
+/// Default IRQ handler (vectors 34-47) â€” just iretq since PIC is removed.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_default_irq() {
     naked_asm!(
@@ -244,7 +244,7 @@ unsafe extern "C" fn isr_stub_default_irq() {
     );
 }
 
-/// #UD — Invalid Opcode (ud2, undefined instruction). Kill current process.
+/// #UD â€” Invalid Opcode (ud2, undefined instruction). Kill current process.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_invalid_opcode() {
     naked_asm!(
@@ -264,11 +264,11 @@ unsafe extern "C" fn isr_stub_invalid_opcode() {
     );
 }
 
-/// #NM — Device Not Available (FPU/SSE). Handles lazy FPU ctx switching.
+/// #NM â€” Device Not Available (FPU/SSE). Handles lazy FPU ctx switching.
 ///
 /// When CR0.TS is set (lazy FPU mode), the first FPU/SSE/AVX instruction triggers #NM.
 /// We save the previous task's FPU state, restore the current task's state, and clear TS.
-/// #NM — Device Not Available (FPU/SSE). Kill current process (eager FPU is active, so #NM is fatal).
+/// #NM â€” Device Not Available (FPU/SSE). Kill current process (eager FPU is active, so #NM is fatal).
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_device_not_avail() {
     naked_asm!(
@@ -288,7 +288,7 @@ unsafe extern "C" fn isr_stub_device_not_avail() {
     );
 }
 
-/// #MF — x87 FP Exception. Kill current process.
+/// #MF â€” x87 FP Exception. Kill current process.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_x87_fp() {
     naked_asm!(
@@ -308,7 +308,7 @@ unsafe extern "C" fn isr_stub_x87_fp() {
     );
 }
 
-/// #XM — SIMD/AVX Exception. Kill current process.
+/// #XM â€” SIMD/AVX Exception. Kill current process.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_simd_fp() {
     naked_asm!(
@@ -328,7 +328,7 @@ unsafe extern "C" fn isr_stub_simd_fp() {
     );
 }
 
-/// #DE — Divide Error. Kill current process.
+/// #DE â€” Divide Error. Kill current process.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_divide_error() {
     naked_asm!(
@@ -348,7 +348,7 @@ unsafe extern "C" fn isr_stub_divide_error() {
     );
 }
 
-/// APIC Timer (vector 48) — saves full ctx, calls ctx switch, sends EOI.
+/// APIC Timer (vector 48) â€” saves full ctx, calls ctx switch, sends EOI.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_apic_timer() {
     naked_asm!(
@@ -373,8 +373,8 @@ unsafe extern "C" fn isr_stub_apic_timer() {
         "mov rdi, rsp",
         "call apic_timer_full_handler",
 
-        // RAX = 0 → same thread, just restore and iretq
-        // RAX = new RSP → switch to new thread's kernel stack
+        // RAX = 0 â†’ same thread, just restore and iretq
+        // RAX = new RSP â†’ switch to new thread's kernel stack
         "test rax, rax",
         "jz 1f",
         "mov rsp, rax",
@@ -400,7 +400,7 @@ unsafe extern "C" fn isr_stub_apic_timer() {
     );
 }
 
-/// IRQ0 — PIT timer (vector 32). Just iretq for now to prevent crashes.
+/// IRQ0 â€” PIT timer (vector 32). Just iretq for now to prevent crashes.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_irq0() {
     naked_asm!(
@@ -408,7 +408,7 @@ unsafe extern "C" fn isr_stub_irq0() {
     );
 }
 
-/// IRQ1 — PS/2 keyboard (vector 33). Saves all caller-saved regs, calls Rust handler.
+/// IRQ1 â€” PS/2 keyboard (vector 33). Saves all caller-saved regs, calls Rust handler.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_irq1() {
     naked_asm!(
@@ -435,7 +435,7 @@ unsafe extern "C" fn isr_stub_irq1() {
     );
 }
 
-// ── Rust handler functions called from ISR stubs ────────────────────────────
+// â”€â”€ Rust handler functions called from ISR stubs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[unsafe(no_mangle)]
 extern "C" fn irq0_handler_rust() {
@@ -455,7 +455,7 @@ extern "C" fn irq1_handler_rust() {
     }
 }
 
-/// APIC timer interrupt handler — full ctx save/restore + scheduler tick.
+/// APIC timer interrupt handler â€” full ctx save/restore + scheduler tick.
 ///
 /// Called from `isr_stub_apic_timer` with RSP pointing to the saved GPR frame.
 /// Returns: 0 = no switch (restore same thread), non-zero = new RSP for switched thread.
@@ -465,7 +465,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     cabina_daemon::telemetry::cpu::inc_timer();
 
     // Only save context if the scheduler has a current task (boot may not
-    // have spawned any yet — proc::init() is a no-op until v2.0).
+    // have spawned any yet â€” proc::init() is a no-op until v2.0).
     let has_task = crate::proc::task::current_index() < crate::proc::task::MAX_TASKS;
     if has_task {
         unsafe {
@@ -486,7 +486,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     // Check if we need to switch threads.
     // timer_tick() already calls schedule() when the time slice expires,
     // which sets CURRENT_THREAD to the next thread. No need to call
-    // schedule() again here — doing so would cause a double ctx switch.
+    // schedule() again here â€” doing so would cause a double ctx switch.
     let new_idx = crate::proc::task::current_index();
 
     if new_idx != cur_idx && new_idx < crate::proc::task::MAX_TASKS {
@@ -516,7 +516,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
 /// (before diag/scheduler are initialized). Halts CPU afterwards.
 ///
 /// Reads RIP and RSP via register asm so we can show the faulting
-/// instruction address and the stack pointer — both critical for
+/// instruction address and the stack pointer â€” both critical for
 /// debugging kernel panics.
 ///
 /// IMPORTANT: This function uses a static `RECURSION_GUARD` to prevent
@@ -535,11 +535,11 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
     }
 
     // Log fault to NVRAM for next-boot diagnosis
-    crate::uefi_rt::set_variable("FastOSFaultVec", &[vector as u8]);
-    crate::uefi_rt::set_variable("FastOSFaultRIP", &rip.to_ne_bytes());
+    crate::uefi_rt::set_variable("BMOFaultVec", &[vector as u8]);
+    crate::uefi_rt::set_variable("BMOFaultRIP", &rip.to_ne_bytes());
 
     // Use the REAL font so the user can read the error message on screen.
-    // The font data is in .rodata — safe to access even during a fault.
+    // The font data is in .rodata â€” safe to access even during a fault.
     let get_glyph = crate::font::get_glyph;
     let fb_addr = crate::info::FB_ADDR;
     let w = crate::info::FB_WIDTH as usize;
@@ -547,7 +547,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
     let s = crate::info::FB_STRIDE as usize;
 
     // Log to serial FIRST and IMMEDIATELY halt. Don't touch the
-    // framebuffer — it might be corrupted and writing to it would
+    // framebuffer â€” it might be corrupted and writing to it would
     // trigger another #GP.
     crate::dev::console::serial_write("\n!!! KERNEL FAULT (early boot, no thread) !!!\n");
     crate::dev::console::serial_write("    Vector: ");
@@ -656,7 +656,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
         };
 
         // Title
-        draw_str(b"FastOS KERNEL FAULT v1.8.16", 28, 26, 0xFFFFFFFF);
+        draw_str(b"BMO KERNEL FAULT v1.8.16", 28, 26, 0xFFFFFFFF);
 
         // Fault name
         draw_str(b"Vector: ", 28, 62, 0xFFFFFF00);
@@ -791,7 +791,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 
 
 
-/// Page fault handler — returns true if fault was resolved (demand page / CoW).
+/// Page fault handler â€” returns true if fault was resolved (demand page / CoW).
 /// Returns false if the fault is fatal and the process should be killed.
 ///
 /// Called from isr_stub_page_fault before the kill handler.
@@ -799,7 +799,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 extern "C" fn page_fault_handler_rust(_vector: u64, error: u64, cr2: u64) -> bool {
     // Only try to resolve user-mode faults (bit 0 of error code = 1 means user mode)
     if error & 1 == 0 {
-        return false; // Kernel-mode fault → kill
+        return false; // Kernel-mode fault â†’ kill
     }
 
     // Get current process and its VMAs

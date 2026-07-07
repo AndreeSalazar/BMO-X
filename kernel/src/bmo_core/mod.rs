@@ -1,4 +1,4 @@
-﻿//! FastOS/BMO v1.8.8
+﻿//! BMO/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!

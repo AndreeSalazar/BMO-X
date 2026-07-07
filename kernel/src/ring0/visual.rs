@@ -1,10 +1,10 @@
-//! v1.8.8: Professional boot splash screen.
+﻿//! v1.8.8: Professional boot splash screen.
 //!
 //! Replaces the ugly "yellow text on black rows" overlay with a proper
 //! Ring 0 splash:
 //!
 //!   - Dark teal-indigo gradient background
-//!   - Centered "FastOS-BMO" card with a mint accent bar
+//!   - Centered "BMO-BMO" card with a mint accent bar
 //!   - 5 phase progress bars (CPU, Mem, Dev, Disp, Sched) with phase colors
 //!   - Live log area with rotating messages
 //!   - Footer with build info
@@ -15,10 +15,10 @@
 
 use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 
-// ── Font: real CP437/VGA 8×16 bitmap (ring0/font.rs) ──────────────
+// â”€â”€ Font: real CP437/VGA 8Ã—16 bitmap (ring0/font.rs) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 use super::font;
 
-// ── Palette ────────────────────────────────────────────────────────
+// â”€â”€ Palette â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const BG_TOP:       u32 = 0xFF050B12;
 const BG_BOT:       u32 = 0xFF0E1B2E;
@@ -34,11 +34,11 @@ const DIM:          u32 = 0xFF455364;
 
 // Phase colors (one per Ring 0 phase 0..4)
 const PH_COLORS: [u32; 5] = [
-    0xFF58A6FF, // phase0 CPU  — blue
-    0xFF4ECCA3, // phase1 Mem  — mint
-    0xFFE2C044, // phase2 Dev  — gold
-    0xFF56D4DD, // phase3 Disp — cyan
-    0xFFCB6CE6, // phase4 Sched— violet
+    0xFF58A6FF, // phase0 CPU  â€” blue
+    0xFF4ECCA3, // phase1 Mem  â€” mint
+    0xFFE2C044, // phase2 Dev  â€” gold
+    0xFF56D4DD, // phase3 Disp â€” cyan
+    0xFFCB6CE6, // phase4 Schedâ€” violet
 ];
 const PH_LABELS: [&[u8]; 5] = [
     b"CPU", b"Mem", b"Dev", b"Disp", b"Sched",
@@ -49,14 +49,14 @@ const CURR:  u32 = 0xFFE2C044;
 const PEND:  u32 = 0xFF243140;
 const TRACK: u32 = 0xFF0A1018;
 
-// ── Layout (1920×1080 reference; auto-scales below 1280) ───────────
+// â”€â”€ Layout (1920Ã—1080 reference; auto-scales below 1280) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CARD_W: usize = 1100;
 const CARD_H: usize = 520;
 const LOG_ROWS: usize = 14;
 const LOG_ROW_H: usize = 16;
 
-// ── State ─────────────────────────────────────────────────────────
+// â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static NEXT_LOG_ROW: AtomicUsize = AtomicUsize::new(0);
@@ -76,7 +76,7 @@ pub fn end_phase(idx: usize) {
     redraw_phase_strip();
 }
 
-// ── Init: draw the full splash once ────────────────────────────────
+// â”€â”€ Init: draw the full splash once â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub fn init() {
     let (addr, w, h, s) = fb();
@@ -84,7 +84,7 @@ pub fn init() {
 
     INITIALIZED.store(true, Ordering::Relaxed);
 
-    // 1) Wallpaper gradient — cover the FULL screen, not just top 700px
+    // 1) Wallpaper gradient â€” cover the FULL screen, not just top 700px
     //    (v1.6.14 bug: h.min(700) left a 380px band at the bottom of the
     //    screen unpainted on 1080p displays, showing whatever UEFI left).
     //    Use simple gradient (no dither) so the splash is unmistakably dark.
@@ -105,8 +105,8 @@ pub fn init() {
     // 3) Top accent bar
     fill_rect(addr, s, w, h, cx + 24, cy + 24, cw - 48, 3, ACCENT);
 
-    // 4) Title "FastOS-BMO" centered, scale 2×
-    let title = b"FastOS-BMO";
+    // 4) Title "BMO-BMO" centered, scale 2Ã—
+    let title = b"BMO: Ok Ready";
     let tw = title.len() * 8 * 2;
     let tx = cx + (cw - tw) / 2;
     text_scaled(addr, s, w, h, tx, cy + 60, title, TITLE, 2);
@@ -120,7 +120,7 @@ pub fn init() {
     // 6) Divider
     fill_rect(addr, s, w, h, cx + 60, cy + 140, cw - 120, 1, CARD_BD);
 
-    // 7) Phase strip — first paint with all phases pending
+    // 7) Phase strip â€” first paint with all phases pending
     CURRENT_PHASE.store(0, Ordering::Relaxed);
     redraw_phase_strip();
 
@@ -131,8 +131,8 @@ pub fn init() {
     text(addr, s, w, h, cx + 60, cy + 290, b"Boot Log", DIM);
     fill_rect(addr, s, w, h, cx + 130, cy + 298, 60, 2, ACCENT);
 
-    // 10) Footer — two lines
-    let foot = b"FastOS / BMO  ::  Ryzen 5 5600X  ::  GOP framebuffer  ::  UEFI";
+    // 10) Footer â€” two lines
+    let foot = b"BMO  ::  Ryzen 5 5600X  ::  GOP framebuffer  ::  UEFI";
     let fw = foot.len() * 8;
     let fx = cx + (cw - fw) / 2;
     text(addr, s, w, h, fx, cy + ch - 44, foot, SUBTITLE);
@@ -260,7 +260,7 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     // if the message is empty or doesn't fit). Previous versions could
     // produce an empty row when text_max_cols was 0 on narrow screens.
     if msg_bytes.is_empty() {
-        // No message — just paint the arrow alone so the user sees
+        // No message â€” just paint the arrow alone so the user sees
         // that a log entry was emitted but had no body.
         unsafe { core::arch::asm!("sfence"); }
         return;
@@ -273,7 +273,7 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
         } else if text_max_cols > 0 {
             text(addr, s, w, h, msg_x, y, &msg_bytes[..text_max_cols], 0xFFE6F1F5);
         } else {
-            // No room for the message — paint at least the phase pill
+            // No room for the message â€” paint at least the phase pill
             // and label so the user sees the row was emitted.
             text(addr, s, w, h, log_x + phase_pill_w + phase_gap, y, b"(...)", 0xFFE6F1F5);
         }
@@ -284,7 +284,7 @@ pub fn log(phase: &str, msg: &str, _color: u32) {
     unsafe { core::arch::asm!("sfence"); }
 
     // CPUID as a serializing instruction to drain the WC buffer.
-    // CLFLUSHOPT on WC memory is implementation-specific — on AMD Zen 3
+    // CLFLUSHOPT on WC memory is implementation-specific â€” on AMD Zen 3
     // it discards writes instead of flushing them, making scattered
     // font glyph pixels invisible. CPUID is a documented serializing
     // instruction that drains the WC store buffer on all x86 CPUs.
@@ -519,7 +519,7 @@ fn delay_cycles(cycles: u64) {
     }
 }
 
-// ── Framebuffer primitives (avoiding Framebuffer struct dep) ───────
+// â”€â”€ Framebuffer primitives (avoiding Framebuffer struct dep) â”€â”€â”€â”€â”€â”€â”€
 
 fn fb() -> (*mut u32, usize, usize, usize) {
     let (addr, w, h, s) = unsafe {
@@ -538,9 +538,9 @@ fn fb() -> (*mut u32, usize, usize, usize) {
 fn fix_color(c: u32) -> u32 {
     let fmt = unsafe { crate::info::FB_PIXEL_FORMAT };
     match fmt {
-        fastos_boot_protocol::PixelFormat::Rgb => {
+        bmo_boot_protocol::PixelFormat::Rgb => {
             // U32 0xAARRGGBB in memory (little-endian): BB GG RR AA
-            // RGB framebuffer reads as: R=BB, G=GG, B=RR → R and B swapped
+            // RGB framebuffer reads as: R=BB, G=GG, B=RR â†’ R and B swapped
             // Fix: swap R and B channels
             let a = c & 0xFF000000;
             let r = (c >> 16) & 0xFF;
@@ -548,7 +548,7 @@ fn fix_color(c: u32) -> u32 {
             let b = c & 0xFF;
             a | (b << 16) | (g << 8) | r
         }
-        _ => c, // Bgr or Unknown — no conversion needed
+        _ => c, // Bgr or Unknown â€” no conversion needed
     }
 }
 
@@ -670,7 +670,7 @@ pub fn is_active() -> bool {
     unsafe { crate::info::FB_ADDR != 0 }
 }
 
-// ── GopFrameBuffer: FrameBuffer trait impl for cabina-panels ─────────
+// â”€â”€ GopFrameBuffer: FrameBuffer trait impl for cabina-panels â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub struct GopFrameBuffer;
 pub static mut GOP_FB: GopFrameBuffer = GopFrameBuffer;

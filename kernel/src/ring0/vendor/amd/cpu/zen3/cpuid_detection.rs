@@ -1,15 +1,15 @@
-//! CPUID detection for the Ryzen 5 5600X (Vermeer, Zen 3, Family 19h).
+﻿//! CPUID detection for the Ryzen 5 5600X (Vermeer, Zen 3, Family 19h).
 //!
-//! Implements `AMD/ryzen_5_5600x.md` §1 (Identificación) and §4
+//! Implements `AMD/ryzen_5_5600x.md` Â§1 (IdentificaciÃ³n) and Â§4
 //! (CPUID leaves importantes).
 //!
-//! Status: ✅ COMPLETO — identificación real del 5600X, con validación
+//! Status: âœ… COMPLETO â€” identificaciÃ³n real del 5600X, con validaciÃ³n
 //! de vendor, family/model/stepping, brand string, y lectura de todos
 //! los CPUID leaves que el kernel usa.
 //!
 //! References:
-//! - AMD64 Architecture Programmer's Manual Vol. 3, §3.3 (CPUID)
-//! - AMD Zen 3 Family 19h BKDG, §3.17 (CPUID Specification)
+//! - AMD64 Architecture Programmer's Manual Vol. 3, Â§3.3 (CPUID)
+//! - AMD Zen 3 Family 19h BKDG, Â§3.17 (CPUID Specification)
 
 use core::arch::asm;
 
@@ -75,7 +75,7 @@ impl CpuFamilyModel {
     pub fn is_zen3_or_later(&self) -> bool {
         // Family 19h = Zen 3 (Vermeer, Cezanne) AND Zen 4 (Raphael)?
         // Actually Zen 4 = Family 19h Model 0x10+. So family 0x19 is
-        // not enough — must check model >= 0x10 for Zen 4.
+        // not enough â€” must check model >= 0x10 for Zen 4.
         // The 5600X is family 0x19 model 0x01.
         self.family == 0x19
     }
@@ -96,7 +96,7 @@ impl CpuFamilyModel {
     }
 }
 
-/// 48-byte brand string (12 chars per leaf × 4 leaves = 48).
+/// 48-byte brand string (12 chars per leaf Ã— 4 leaves = 48).
 #[derive(Debug, Clone, Copy)]
 pub struct CpuBrandString {
     pub s: [u8; 48],
@@ -127,7 +127,7 @@ pub struct CpuIdentity {
 /// Detect the CPU identity by running CPUID.
 /// Panics if the vendor is not AMD (this kernel is 5600X-specific).
 pub fn detect_cpu() -> CpuIdentity {
-    // ── Step 1: Maximum standard leaf + vendor string ──────────────
+    // â”€â”€ Step 1: Maximum standard leaf + vendor string â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let (max_leaf, ebx, ecx, edx) = cpuid(0, 0);
     let vendor_bytes: [u8; 12] = [
         ebx as u8, (ebx >> 8) as u8, (ebx >> 16) as u8, (ebx >> 24) as u8,
@@ -136,7 +136,7 @@ pub fn detect_cpu() -> CpuIdentity {
     ];
     let vendor = CpuVendor::from_bytes(&vendor_bytes);
 
-    // ── Step 2: Family/Model/Stepping (leaf 1) ──────────────────────
+    // â”€â”€ Step 2: Family/Model/Stepping (leaf 1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let (eax1, ebx1, ecx1, edx1) = cpuid(1, 0);
     let stepping = (eax1 & 0x0F) as u8;
     let base_model = ((eax1 >> 4) & 0x0F) as u8;
@@ -152,7 +152,7 @@ pub fn detect_cpu() -> CpuIdentity {
         family, model, stepping, ext_family, ext_model,
     };
 
-    // ── Step 3: Brand string (leaves 0x80000002-0x80000004) ─────────
+    // â”€â”€ Step 3: Brand string (leaves 0x80000002-0x80000004) â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let (a, b, c, d) = cpuid(0x80000002, 0);
     let (e, f, g, h) = cpuid(0x80000003, 0);
     let (i, j, k, l) = cpuid(0x80000004, 0);
@@ -176,7 +176,7 @@ pub fn detect_cpu() -> CpuIdentity {
     }
     let brand = CpuBrandString { s };
 
-    // ── Step 4: Maximum extended leaf ───────────────────────────────
+    // â”€â”€ Step 4: Maximum extended leaf â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let (max_ext_leaf, _, _, _) = cpuid(0x80000000, 0);
 
     CpuIdentity {
@@ -192,7 +192,7 @@ pub fn detect_cpu() -> CpuIdentity {
     }
 }
 
-// ── Public helpers for callers (convenience wrappers) ────────────────
+// â”€â”€ Public helpers for callers (convenience wrappers) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Returns true if the CPU has SSE2.
 pub fn has_sse2(id: &CpuIdentity) -> bool { id.features_edx & (1 << 26) != 0 }
@@ -215,17 +215,17 @@ pub fn has_invariant_tsc(id: &CpuIdentity) -> bool { id.features_edx & (1 << 8) 
 /// Call this early in `boot_coordinator::main` to fail fast.
 pub fn assert_target_cpu(id: &CpuIdentity) {
     if id.vendor != CpuVendor::Amd {
-        panic!("FastOS: requires an AMD CPU, found {:?}", id.vendor);
+        panic!("BMO: requires an AMD CPU, found {:?}", id.vendor);
     }
     if !id.family_model.is_ryzen_5_5600x() {
-        // Print info but continue — useful for development on other CPUs.
+        // Print info but continue â€” useful for development on other CPUs.
         crate::dev::console::serial_write("[cpu] WARNING: not a 5600X (");
         crate::dev::console::serial_write(id.family_model.name());
         crate::dev::console::serial_write("). Continuing with reduced optimizations.\n");
     }
 }
 
-// ── Global cached identity (used by other modules as fallback) ────────
+// â”€â”€ Global cached identity (used by other modules as fallback) â”€â”€â”€â”€â”€â”€â”€â”€
 static mut CACHED_IDENTITY: Option<CpuIdentity> = None;
 
 /// Cache the detected CpuIdentity globally so other modules (like

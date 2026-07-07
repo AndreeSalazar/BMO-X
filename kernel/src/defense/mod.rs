@@ -1,6 +1,6 @@
-//! `defense` — ByteDefender: El Escudo de FastOS/BMO.
+﻿//! `defense` â€” ByteDefender: El Escudo de BMO/BMO.
 //!
-//! v1.8.8: módulo hermano de `cabina` y `timeback` (la "Trilogía").
+//! v1.8.8: mÃ³dulo hermano de `cabina` y `timeback` (la "TrilogÃ­a").
 //! ByteDefender analiza y protege:
 //!
 //! - **Pre-execution**: BEF antes de cargar (headers, relocations, imports,
@@ -11,14 +11,14 @@
 //!
 //! ```text
 //! defense/
-//!   mod.rs         ← API pública + init()
-//!   bytedefender.rs ← orquestador (pre-exec + runtime)
-//!   policy.rs      ← reglas (qué se permite, qué se bloquea)
-//!   scanner.rs     ← análisis estático de BEF
-//!   verifier.rs    ← valida integridad (hash, firma)
-//!   capability.rs  ← capabilities por proceso
-//!   report.rs      ← SecurityReport
-//!   quarantine.rs  ← apps en cuarentena
+//!   mod.rs         â† API pÃºblica + init()
+//!   bytedefender.rs â† orquestador (pre-exec + runtime)
+//!   policy.rs      â† reglas (quÃ© se permite, quÃ© se bloquea)
+//!   scanner.rs     â† anÃ¡lisis estÃ¡tico de BEF
+//!   verifier.rs    â† valida integridad (hash, firma)
+//!   capability.rs  â† capabilities por proceso
+//!   report.rs      â† SecurityReport
+//!   quarantine.rs  â† apps en cuarentena
 //! ```
 //!
 //! ## Regla de oro
@@ -56,7 +56,7 @@ pub fn init() {
     quarantine::init();
 }
 
-/// Decisión final sobre un BEF.
+/// DecisiÃ³n final sobre un BEF.
 pub fn inspect_bef(name: &str, bytes: &[u8]) -> Verdict {
     let r = scanner::scan(name, bytes);
     if !r.is_well_formed() { return Verdict::Reject("malformed BEF".into()); }

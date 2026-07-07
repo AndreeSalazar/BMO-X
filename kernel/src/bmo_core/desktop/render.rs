@@ -1,12 +1,12 @@
-//! FastOS/BMO v1.8.8
+﻿//! BMO/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!
-//! v1.7.1 — Renderer del escritorio BMO (Ring 0). Mismo lenguaje visual
+//! v1.7.1 â€” Renderer del escritorio BMO (Ring 0). Mismo lenguaje visual
 //! que el welcome: wallpaper procedural, glass cards, paleta dark elegante.
 //!
 //! `render_frame()` pinta un frame completo (wallpaper + status bar +
-//! ventanas + dock + cursor) y `handle_input()` procesa el ratón (drag,
+//! ventanas + dock + cursor) y `handle_input()` procesa el ratÃ³n (drag,
 //! close-button, dock launcher).
 
 #![allow(dead_code)]
@@ -18,7 +18,7 @@ use super::windows::{self as win, TITLES, DOCK_LABELS, DOCK_TO_TITLE};
 use super::theme;
 use super::wallpaper;
 
-// ── Framebuffer helpers ────────────────────────────────────────────
+// â”€â”€ Framebuffer helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn fb() -> Option<Framebuffer> {
     let (addr, w, h, s) = unsafe {
@@ -55,18 +55,18 @@ fn fmt_hms(buf: &mut [u8; 8], h: u8, m: u8, s: u8) -> &str {
     core::str::from_utf8(buf).unwrap_or("??:??:??")
 }
 
-// ── Status bar ─────────────────────────────────────────────────────
+// â”€â”€ Status bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[allow(static_mut_refs)]
 fn draw_status_bar(fb: &Framebuffer) {
-    // Backdrop translúcido (glass dark).
+    // Backdrop translÃºcido (glass dark).
     fb.fill_rect(0, 0, fb.width, 30, theme::GLASS_TINT);
     // Hairline inferior mint
     fb.fill_rect(0, 30, fb.width, 1, theme::MINT_DEEP);
     // Hairline superior blanco 6% (sheen)
     fb.fill_rect(0, 0, fb.width, 1, 0x14FFFFFF);
 
-    draw_text(fb, 14, 7, b"\x95  FastOS", theme::MINT);
+    draw_text(fb, 14, 7, b"\x95  BMO", theme::MINT);
     draw_text(fb, 110, 7, b"File   Edit   View   Window   Help", theme::BODY);
 
     let (h, m, sec) = state::clock_hms();
@@ -89,7 +89,7 @@ fn draw_status_bar(fb: &Framebuffer) {
     draw_text(fb, clk_x as u32, 7, clock_s.as_bytes(), theme::TITLE);
 }
 
-// ── Ventana ────────────────────────────────────────────────────────
+// â”€â”€ Ventana â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[allow(static_mut_refs)]
 fn draw_window(fb: &Framebuffer, w: &WinInfo, active: bool) {
@@ -104,7 +104,7 @@ fn draw_window(fb: &Framebuffer, w: &WinInfo, active: bool) {
     fb.draw_rect(x + 1, y + 1, ww - 2, wh - 2, theme::SURFACE_LINE, 1);
     // Borde mint si activa, gris si no
     let bd = if active { theme::MINT } else { theme::SURFACE_BORDER };
-    // Halo neón exterior (sólo activa)
+    // Halo neÃ³n exterior (sÃ³lo activa)
     if active {
         fb.draw_rect(x.saturating_sub(2), y.saturating_sub(2), ww + 4, wh + 4, theme::NEON_INNER, 1);
     }
@@ -115,7 +115,7 @@ fn draw_window(fb: &Framebuffer, w: &WinInfo, active: bool) {
     fb.fill_rounded_rect(x, y, ww, 36, 16, tb_color);
     // Sheen title bar
     fb.fill_rect(x + 1, y + 1, ww - 2, 1, theme::GLASS_HIGHLIGHT);
-    // Línea inferior title bar
+    // LÃ­nea inferior title bar
     fb.fill_rect(x + 1, y + 35, ww - 2, 1, 0xFF0A1A2A);
 
     // Traffic lights
@@ -123,7 +123,7 @@ fn draw_window(fb: &Framebuffer, w: &WinInfo, active: bool) {
     fb.fill_circle(x + 38, y + 18, 7, 0xFFFFBD2E);
     fb.fill_circle(x + 58, y + 18, 7, 0xFF27C93F);
 
-    // Título
+    // TÃ­tulo
     let title = TITLES[w.title_id as usize];
     let title_x = x + 80 + (ww.saturating_sub(80 + title.len() * 8 + 16)) / 2;
     draw_text(fb, title_x as u32, (y + 10) as u32, title, theme::TITLE);
@@ -141,7 +141,7 @@ fn draw_window(fb: &Framebuffer, w: &WinInfo, active: bool) {
     }
 }
 
-// ── Dock ───────────────────────────────────────────────────────────
+// â”€â”€ Dock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DOCK_ICON: usize = 56;
 const DOCK_GAP: usize = 16;
@@ -163,15 +163,15 @@ fn icon_rect(fb: &Framebuffer, idx: usize) -> (usize, usize) {
     (ix, iy)
 }
 
-// Acentos mint/violeta/cobalto/cyan/ámbar/rosa/gris
+// Acentos mint/violeta/cobalto/cyan/Ã¡mbar/rosa/gris
 const DOCK_ACCENTS: [u32; 7] = [
-    0xFF6C5CE7, // Terminal — violeta
-    0xFF4ECCA3, // Editor — mint
-    0xFF56D4DD, // Files — cyan
-    0xFFE2C044, // Notes — gold
-    0xFFE07832, // Tasks — orange
-    0xFFFF7B72, // Monitor — rose
-    0xFF7F848A, // Settings — gray
+    0xFF6C5CE7, // Terminal â€” violeta
+    0xFF4ECCA3, // Editor â€” mint
+    0xFF56D4DD, // Files â€” cyan
+    0xFFE2C044, // Notes â€” gold
+    0xFFE07832, // Tasks â€” orange
+    0xFFFF7B72, // Monitor â€” rose
+    0xFF7F848A, // Settings â€” gray
 ];
 
 #[allow(static_mut_refs)]
@@ -233,7 +233,7 @@ fn draw_dock(fb: &Framebuffer) {
     }
 }
 
-// ── Cursor ─────────────────────────────────────────────────────────
+// â”€â”€ Cursor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CURSOR: [&[u8]; 17] = [
     b"X           ", b"XX          ", b"XOX         ", b"XOOX        ",
@@ -258,7 +258,7 @@ fn draw_cursor(fb: &Framebuffer, x: i32, y: i32) {
     }
 }
 
-// ── Input handling — drag, close, dock launcher ────────────────────
+// â”€â”€ Input handling â€” drag, close, dock launcher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn point_in_rect(px: i32, py: i32, x: i32, y: i32, w: i32, h: i32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
@@ -375,13 +375,13 @@ fn wait_for_vsync() {
     // No-op en UEFI puro.
 }
 
-// ── Frame ──────────────────────────────────────────────────────────
+// â”€â”€ Frame â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Dibuja el footer del desktop con la firma del autor.
 fn draw_footer(fb: &Framebuffer, fb_w: u32) {
     let h = unsafe { crate::info::FB_HEIGHT };
     let y = h.saturating_sub(20);
-    let s = b"Desarrollado por Salazar  ::  FastOS/BMO v1.8.8  ::  BMO ABI v1.0.0";
+    let s = b"Desarrollado por Salazar  ::  BMO/BMO v1.8.8  ::  BMO ABI v1.0.0";
     let w = s.len() * 8;
     let x = if fb_w > w as u32 { (fb_w - w as u32) / 2 } else { 0 };
     // Fondo semi-transparente simulado.

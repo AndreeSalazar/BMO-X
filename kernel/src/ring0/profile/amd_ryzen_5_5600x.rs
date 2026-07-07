@@ -1,6 +1,6 @@
-//! `profile/amd_ryzen_5_5600x.rs` — Active hardware profile.
+﻿//! `profile/amd_ryzen_5_5600x.rs` â€” Active hardware profile.
 //!
-//! v1.8.8: this is the ONLY hardware profile for FastOS. It enables
+//! v1.8.8: this is the ONLY hardware profile for BMO. It enables
 //! the Ryzen 5 5600X (Zen 3) and prepares the build for future RDNA4
 //! GPU support.
 //!
@@ -10,7 +10,7 @@
 /// Hardware profile identifier string.
 pub const HARDWARE_PROFILE: &str = "AMD-Ryzen-5-5600X";
 
-// ── CPU profile flags ──────────────────────────────────────────────
+// â”€â”€ CPU profile flags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Whether the CPU has SSE support (always true on x86-64).
 pub const ENABLE_SSE: bool = true;
@@ -71,7 +71,7 @@ pub const ENABLE_AVX512: bool = false;
 /// Whether 5-level paging (LA57) is available (5600X: NO).
 pub const ENABLE_LA57: bool = false;
 
-// ── GPU profile flags ──────────────────────────────────────────────
+// â”€â”€ GPU profile flags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Whether a discrete GPU is present (5600X: NO integrated GPU; would be
 /// YES for a Ryzen 7000G APU like 8700G with Radeon 780M).
@@ -90,7 +90,7 @@ pub const ENABLE_NVIDIA_DRIVER: bool = false;
 /// Whether Intel iGPU drivers are active.
 pub const ENABLE_INTEL_GPU_DRIVER: bool = false;
 
-// ── Memory & platform ──────────────────────────────────────────────
+// â”€â”€ Memory & platform â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Total physical address bits (5600X: 40 bits = 1 TB).
 pub const PHYS_ADDR_BITS: u8 = 40;
@@ -103,7 +103,7 @@ pub const CORE_COUNT: u32 = 6;
 /// Number of logical threads.
 pub const THREAD_COUNT: u32 = 12;
 
-// ── Human-readable strings ─────────────────────────────────────────
+// â”€â”€ Human-readable strings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Vendor name.
 pub const CPU_VENDOR: &str = "AMD";

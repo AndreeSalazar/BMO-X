@@ -1,6 +1,6 @@
-#![no_std]
+﻿#![no_std]
 
-//! FastOS Hardware Abstraction Layer
+//! BMO Hardware Abstraction Layer
 //!
 //! - PCI config space access (IO ports + ECAM)
 //! - AHCI/SATA disk driver (via simple-ahci)
@@ -11,15 +11,15 @@ extern crate alloc;
 
 pub mod pci;
 
-/// AHCI/SATA driver — wraps simple-ahci with our HAL.
+/// AHCI/SATA driver â€” wraps simple-ahci with our HAL.
 pub mod ahci {
     pub use simple_ahci::AhciDriver;
     pub use simple_ahci::Hal;
 
     /// Our HAL: identity mapping (virt == phys during boot).
-    pub struct FastOsHal;
+    pub struct BMOHal;
 
-    impl Hal for FastOsHal {
+    impl Hal for BMOHal {
         fn virt_to_phys(virt: usize) -> usize {
             virt
         }
@@ -29,7 +29,7 @@ pub mod ahci {
         }
 
         fn current_ms() -> u64 {
-            // Use TSC for timing — rough approximation
+            // Use TSC for timing â€” rough approximation
             unsafe {
                 let lo: u32;
                 let hi: u32;
@@ -39,14 +39,14 @@ pub mod ahci {
         }
     }
 
-    pub type AhciDisk = AhciDriver<FastOsHal>;
+    pub type AhciDisk = AhciDriver<BMOHal>;
 }
 
 /// Minimal exFAT support for kernel logging.
 pub mod fs {
     use alloc::vec::Vec;
 
-    /// Minimal exFAT writer — appends data to a file.
+    /// Minimal exFAT writer â€” appends data to a file.
     /// Full implementation uses exfat-slim when async runtime is available.
     pub struct ExFatWriter {
         pub data: Vec<u8>,
@@ -86,7 +86,7 @@ pub mod log {
     use alloc::string::String;
     use alloc::vec::Vec;
 
-    /// SSD Logger — buffers log entries for batch writing to SSD.
+    /// SSD Logger â€” buffers log entries for batch writing to SSD.
     pub struct SsdLogger {
         buffer: String,
         path: String,

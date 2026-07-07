@@ -1,10 +1,10 @@
-//! v1.8.8 — ACPI delegating to `vendor::amd::cpu::zen3::acpi_real`.
+﻿//! v1.8.8 â€” ACPI delegating to `vendor::amd::cpu::zen3::acpi_real`.
 //!
-//! v1.7.4 era un stub minimalista. v1.8.8 invoca la implementación
+//! v1.7.4 era un stub minimalista. v1.8.8 invoca la implementaciÃ³n
 //! real (`crate::vendor::amd::cpu::zen3::acpi_real`) que parsea RSDP, XSDT,
 //! MCFG, FADT, HPET, MADT.
 //!
-//! Si `init_fastos_cpu()` no se ha llamado todavía, devuelve los
+//! Si `init_bmo_cpu()` no se ha llamado todavÃ­a, devuelve los
 //! valores fallback de v1.7.4 (None / 0) para mantener compatibilidad.
 //!
 //! Mantenemos el struct `McfgHeader` legacy (con `base`, `end_bus`)
@@ -68,11 +68,11 @@ pub fn mcfg_snapshot() -> Option<McfgHeader> {
     crate::vendor::amd::cpu::zen3::acpi_real::mcfg().and_then(|m| to_legacy(&m))
 }
 
-/// Init. v1.8.8: delegates to fastos_cpu::init_acpi.
+/// Init. v1.8.8: delegates to bmo_cpu::init_acpi.
 pub fn init() {
     if crate::vendor::amd::cpu::zen3::is_initialized() {
         crate::vendor::amd::cpu::zen3::init_acpi(None);
     } else {
-        crate::dev::console::serial_write("[dev] ACPI: fastos_cpu not yet initialized\n");
+        crate::dev::console::serial_write("[dev] ACPI: bmo_cpu not yet initialized\n");
     }
 }

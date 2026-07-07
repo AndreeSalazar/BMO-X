@@ -2,7 +2,7 @@
 //! binarios ELF para que **crean** que estÃ¡n corriendo sobre Linux/glibc.
 //!
 //! Cuando un ELF importa `libc.so.6!malloc`, el resolver busca aquÃ­ y le
-//! da un puntero a un wrapper Rust que traduce a allocator FastOS / BMO.
+//! da un puntero a un wrapper Rust que traduce a allocator BMO / BMO.
 
 #![allow(dead_code)]
 

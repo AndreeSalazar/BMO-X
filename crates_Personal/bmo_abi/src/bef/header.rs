@@ -1,26 +1,26 @@
-//! Header BEF — 48 bytes fijos al inicio del archivo.
+﻿//! Header BEF â€” 48 bytes fijos al inicio del archivo.
 //!
-//! Mucho más compacto que ELF (64 B + Phdr) o PE (264 B DOS stub + IMAGE_NT).
+//! Mucho mÃ¡s compacto que ELF (64 B + Phdr) o PE (264 B DOS stub + IMAGE_NT).
 
 #![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64};
 
-/// Magic constant — `b"BEF1"` (4 bytes LE).
+/// Magic constant â€” `b"BEF1"` (4 bytes LE).
 pub const BEF_MAGIC: bx_u32 = u32::from_le_bytes(*b"BEF1");
 
-/// Versión actual del formato.
+/// VersiÃ³n actual del formato.
 pub const BEF_VERSION_MAJOR: bx_u16 = 1;
 pub const BEF_VERSION_MINOR: bx_u16 = 0;
 
 /// Magic alternativo aceptado por el loader (para devour).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BefMagic {
-    /// `b"BEF1"` — formato nativo.
+    /// `b"BEF1"` â€” formato nativo.
     BefNative,
-    /// `b"MZ"` — PE/COFF de Windows (debe procesarse por `loader::pe`).
+    /// `b"MZ"` â€” PE/COFF de Windows (debe procesarse por `loader::pe`).
     PeWindows,
-    /// `0x7F b"ELF"` — ELF de Linux/Unix (procesar por `loader::elf`).
+    /// `0x7F b"ELF"` â€” ELF de Linux/Unix (procesar por `loader::elf`).
     ElfUnix,
     /// Formato desconocido.
     Unknown,
@@ -43,26 +43,26 @@ bitflags::bitflags! {
     /// Flags del header BEF.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct BefFlags: bx_u32 {
-        /// El binario es ejecutable (vs. librería compartida).
+        /// El binario es ejecutable (vs. librerÃ­a compartida).
         const EXECUTABLE         = 1 << 0;
-        /// Es una librería compartida (.bef.so equivalent).
+        /// Es una librerÃ­a compartida (.bef.so equivalent).
         const SHARED_LIBRARY     = 1 << 1;
-        /// Tiene sección de manifest TOML válida.
+        /// Tiene secciÃ³n de manifest TOML vÃ¡lida.
         const HAS_MANIFEST       = 1 << 2;
-        /// Tiene sección de shaders/IR pre-compilados.
+        /// Tiene secciÃ³n de shaders/IR pre-compilados.
         const HAS_SHADERS        = 1 << 3;
         /// Tiene secciones comprimidas con GDeflate.
         const COMPRESSED         = 1 << 4;
-        /// Está firmado con Ed25519.
+        /// EstÃ¡ firmado con Ed25519.
         const SIGNED             = 1 << 5;
         /// Posee TLS (Thread Local Storage).
         const HAS_TLS            = 1 << 6;
         /// Soporta hot-reload de secciones en runtime.
         const HOT_RELOADABLE     = 1 << 7;
-        /// Marca PIE (Position Independent Executable) — siempre verdadero
-        /// para BEF nativo, pero útil para PE/ELF devorados.
+        /// Marca PIE (Position Independent Executable) â€” siempre verdadero
+        /// para BEF nativo, pero Ãºtil para PE/ELF devorados.
         const PIE                = 1 << 8;
-        /// Importa la API BareX (vs solo usar syscalls FastOS).
+        /// Importa la API BareX (vs solo usar syscalls BMO).
         const USES_BAREX         = 1 << 9;
         /// Origen: PE devorado (set por el loader, no por el compilador).
         const PROVENANCE_PE      = 1 << 14;
@@ -77,7 +77,7 @@ bitflags::bitflags! {
 pub enum BefArch {
     /// Reservado / desconocido.
     Reserved = 0x00,
-    /// AMD64 / x86-64 (baseline FastOS).
+    /// AMD64 / x86-64 (baseline BMO).
     X86_64   = 0x01,
     /// AArch64 (futuro, no implementado).
     Aarch64  = 0x02,
@@ -85,15 +85,15 @@ pub enum BefArch {
     Rv64gc   = 0x03,
 }
 
-/// Header BEF — 48 bytes, alineado a 16.
+/// Header BEF â€” 48 bytes, alineado a 16.
 ///
-/// Campos pequeños primero (BMO ABI struct layout).
+/// Campos pequeÃ±os primero (BMO ABI struct layout).
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy)]
 pub struct BefHeader {
     /// `BEF_MAGIC` = `BEF1` LE.
     pub magic: bx_u32,
-    /// Versión del formato.
+    /// VersiÃ³n del formato.
     pub version_major: bx_u16,
     pub version_minor: bx_u16,
     /// Flags `BefFlags`.
@@ -101,17 +101,17 @@ pub struct BefHeader {
     /// Arquitectura `BefArch as u8`, padding 3 bytes.
     pub arch: bx_u8,
     pub _pad0: [bx_u8; 3],
-    /// Versión del BMO ABI esperado (major, minor).
+    /// VersiÃ³n del BMO ABI esperado (major, minor).
     pub abi_version_major: bx_u8,
     pub abi_version_minor: bx_u8,
     pub _pad1: [bx_u8; 6],
-    /// Offset del entry point dentro de la sección `.code`.
+    /// Offset del entry point dentro de la secciÃ³n `.code`.
     pub entry_offset: bx_u64,
     /// Offset absoluto del section table.
     pub section_table_offset: bx_u64,
     /// Cantidad de secciones.
     pub section_count: bx_u32,
-    /// Tamaño total del archivo en bytes (validación rápida).
+    /// TamaÃ±o total del archivo en bytes (validaciÃ³n rÃ¡pida).
     pub total_size: bx_u32,
 }
 

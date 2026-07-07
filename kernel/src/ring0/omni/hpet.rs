@@ -1,4 +1,4 @@
-//! HPET early init — parse ACPI HPET table before phase 0.
+﻿//! HPET early init â€” parse ACPI HPET table before phase 0.
 //!
 //! The existing `dev::hpet` driver has register access + init logic,
 //! but `set_mmio_base()` was never called because ACPI parsing runs
@@ -9,7 +9,7 @@
 const HPET_SIGNATURE: [u8; 4] = *b"HPET";
 
 /// Parse the HPET ACPI table and wire the MMIO base.
-pub fn init_early(boot_info_ptr: *const fastos_boot_protocol::BootInfo) {
+pub fn init_early(boot_info_ptr: *const bmo_boot_protocol::BootInfo) {
     let rsdp_addr = if !boot_info_ptr.is_null() {
         let bi = unsafe { &*boot_info_ptr };
         bi.rsdp_addr
@@ -61,7 +61,7 @@ fn parse_hpet_base(table_addr: u64) -> Option<u64> {
     let hdr = unsafe { &*(table_addr as *const crate::vendor::amd::cpu::zen3::acpi_real::AcpiSdtHeader) };
     if hdr.length < 56 { return None; }  // HPET table min size
 
-    // HPET table layout (ACPI 6.5 §5.2.24):
+    // HPET table layout (ACPI 6.5 Â§5.2.24):
     //   offset  0: AcpiSdtHeader (36 bytes)
     //   offset 36: Event Timer Block ID (4 bytes)
     //   offset 40: Generic Address Structure (12 bytes)

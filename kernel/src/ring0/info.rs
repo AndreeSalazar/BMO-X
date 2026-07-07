@@ -1,8 +1,8 @@
-//! Boot info globals — stores the BootInfo pointer from the bootloader,
+﻿//! Boot info globals â€” stores the BootInfo pointer from the bootloader,
 //! plus simple framebuffer + input globals consumed by Ring 0 syscalls.
 
 /// Global pointer to the BootInfo structure passed by the bootloader.
-pub static mut BOOT_INFO: *const fastos_boot_protocol::BootInfo = core::ptr::null();
+pub static mut BOOT_INFO: *const bmo_boot_protocol::BootInfo = core::ptr::null();
 
 /// Optional boot-reserved payload info.
 ///
@@ -12,7 +12,7 @@ pub static mut BOOT_INFO: *const fastos_boot_protocol::BootInfo = core::ptr::nul
 pub static mut RESERVED_PAYLOAD_ADDR: u64 = 0;
 pub static mut RESERVED_PAYLOAD_SIZE: u64 = 0;
 
-// ─── Framebuffer globals (used by syscalls 0x60-0x63) ───────────────
+// â”€â”€â”€ Framebuffer globals (used by syscalls 0x60-0x63) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /// Linear framebuffer base address (XRGB-8888, 4 bytes per pixel).
 pub static mut FB_ADDR: u64 = 0;
 /// Framebuffer width in pixels.
@@ -22,5 +22,5 @@ pub static mut FB_HEIGHT: u32 = 0;
 /// Framebuffer stride in pixels (NOT bytes).
 pub static mut FB_STRIDE: u32 = 0;
 /// Framebuffer pixel format as delivered by UEFI GOP.
-pub static mut FB_PIXEL_FORMAT: fastos_boot_protocol::PixelFormat =
-    fastos_boot_protocol::PixelFormat::Unknown;
+pub static mut FB_PIXEL_FORMAT: bmo_boot_protocol::PixelFormat =
+    bmo_boot_protocol::PixelFormat::Unknown;

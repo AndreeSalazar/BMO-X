@@ -1,8 +1,8 @@
-[package]
+﻿[package]
 name = "bmo-abi"
 version = "1.0.0"
 edition = "2021"
-authors = ["FastOS Project"]
+authors = ["BMO Project"]
 description = "BMO Application Binary Interface - Standard types and syscall definitions"
 
 [dependencies]

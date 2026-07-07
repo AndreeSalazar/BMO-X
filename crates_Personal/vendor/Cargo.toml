@@ -1,9 +1,9 @@
-[package]
+﻿[package]
 name = "vendor"
 version = "0.3.0"
 edition = "2021"
-description = "FastOS Hardware Abstraction Layer — PCI, AHCI, Storage, Filesystem"
-authors = ["FastOS"]
+description = "BMO Hardware Abstraction Layer â€” PCI, AHCI, Storage, Filesystem"
+authors = ["BMO"]
 
 [dependencies]
 simple-ahci = { version = "=0.1.1-preview.1", default-features = false }

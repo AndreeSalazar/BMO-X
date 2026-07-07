@@ -1,4 +1,4 @@
-//! FastOS UEFI Bootloader v0.4.0
+﻿//! BMO UEFI Bootloader v0.4.0
 //!
 //! Loads kernel.elf from the EFI System Partition, parses ELF64,
 //! queries GOP for framebuffer, finds RSDP, builds BootInfo,
@@ -14,7 +14,7 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use fastos_boot_protocol::{BootInfo, MemoryEntry, MemoryType as BootMemType, PixelFormat, MAX_MEMORY_ENTRIES};
+use bmo_boot_protocol::{BootInfo, MemoryEntry, MemoryType as BootMemType, PixelFormat, MAX_MEMORY_ENTRIES};
 use log::info;
 use uefi::boot;
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
@@ -23,7 +23,7 @@ use uefi::proto::console::gop::GraphicsOutput;
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::fs::SimpleFileSystem;
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const KERNEL_STACK_SIZE: usize = 4 * 1024 * 1024;
 const TARGET_FB_WIDTH: usize = 1920;
@@ -38,7 +38,7 @@ const CRASH_MAGIC: u32 = 0x464F_5343; // "FOSC"
 const CRASH_LOG_MAX: usize = 16384;
 const CRASH_LOG_PATH: &str = "\\EFI\\BOOT\\crash.log";
 
-// ── GOP Info ─────────────────────────────────────────────────────────────────
+// â”€â”€ GOP Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 struct GopInfo {
     fb_addr: u64,
@@ -49,7 +49,7 @@ struct GopInfo {
     pixel_format: PixelFormat,
 }
 
-// ── ELF64 ────────────────────────────────────────────────────────────────────
+// â”€â”€ ELF64 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn read_u16(data: &[u8], off: usize) -> Option<u16> {
     Some(u16::from_le_bytes(data.get(off..off + 2)?.try_into().ok()?))
@@ -113,7 +113,7 @@ fn parse_elf64(data: &[u8]) -> Option<(u64, Vec<Elf64Phdr>)> {
     Some((entry, phdrs))
 }
 
-// ── File I/O ─────────────────────────────────────────────────────────────────
+// â”€â”€ File I/O â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn read_file(handle: uefi::Handle, path: &str) -> Option<Vec<u8>> {
     use uefi::proto::media::file::{File, FileAttribute, FileInfo, FileMode};
@@ -149,9 +149,9 @@ fn read_file(handle: uefi::Handle, path: &str) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-// ── NVRAM ────────────────────────────────────────────────────────────────────
+// â”€â”€ NVRAM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// FastOS vendor GUID (uuid v5 from "fastos-nvram").
+/// BMO vendor GUID (uuid v5 from "bmo-nvram").
 /// Same GUID is used by the nvram-log crate in the kernel.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -162,7 +162,7 @@ struct EfiGuid {
     data4: [u8; 8],
 }
 
-static FASTOS_NVRAM_GUID: EfiGuid = EfiGuid {
+static BMO_NVRAM_GUID: EfiGuid = EfiGuid {
     data1: 0xc22a_0b40,
     data2: 0x52b8,
     data3: 0x5f95,
@@ -239,7 +239,7 @@ fn nvram_get(name: &str) -> Option<alloc::string::String> {
     let mut data_size: usize = 256;
     let mut buf = [0u8; 256];
     let status = unsafe {
-        get_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, &mut attrs, &mut data_size, buf.as_mut_ptr())
+        get_var(ucs2_name.as_ptr(), &BMO_NVRAM_GUID, &mut attrs, &mut data_size, buf.as_mut_ptr())
     };
     if status != 0 { return None; }
     let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
@@ -256,13 +256,13 @@ fn nvram_set(name: &str, data: &[u8]) -> bool {
     };
     let ucs2_name = str_to_ucs2(name);
     let status = unsafe {
-        set_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
+        set_var(ucs2_name.as_ptr(), &BMO_NVRAM_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
     };
     status == 0
 }
 
 
-// ── Crash Log ────────────────────────────────────────────────────────────────
+// â”€â”€ Crash Log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn read_crash_marker() -> Option<u32> {
     let magic = unsafe { core::ptr::read_volatile(CRASH_MARKER_ADDR as *const u32) };
@@ -363,7 +363,7 @@ fn ram_marker_name(stage: u32) -> &'static str {
         2038 => "cpu_step8_tsc",
         2039 => "cpu_step9_info",
         2040 => "cpu_init_done",
-        3 => "init_fastos_cpu",
+        3 => "init_bmo_cpu",
         4 => "init_acpi",
         45 => "smp_init",
         5 => "bmo_core_init",
@@ -450,10 +450,10 @@ fn write_crash_log(
     }
 
     // Read kernel diagnostic breadcrumbs
-    let d1 = nvram_get("FastOSDiag1");
-    let d2 = nvram_get("FastOSDiag2");
-    let d3 = nvram_get("FastOSDiag3");
-    let phase = nvram_get("FastOSPhase");
+    let d1 = nvram_get("BMODiag1");
+    let d2 = nvram_get("BMODiag2");
+    let d3 = nvram_get("BMODiag3");
+    let phase = nvram_get("BMOPhase");
     if d1.is_some() || d2.is_some() || d3.is_some() || phase.is_some() {
         entry.extend_from_slice(b" | diag:");
         if let Some(v) = &phase {
@@ -497,7 +497,7 @@ fn write_crash_log(
     }
 }
 
-// ── GOP ──────────────────────────────────────────────────────────────────────
+// â”€â”€ GOP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn query_gop() -> Option<GopInfo> {
     use uefi::proto::console::gop::PixelFormat as GopFmt;
@@ -543,7 +543,7 @@ fn query_gop() -> Option<GopInfo> {
     Some(GopInfo { fb_addr: addr, fb_size: size, width: w as u32, height: h as u32, stride, pixel_format: fmt })
 }
 
-// ── Memory type conversion ───────────────────────────────────────────────────
+// â”€â”€ Memory type conversion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn convert_memory_type(ty: MemoryType) -> BootMemType {
     match ty {
@@ -556,7 +556,7 @@ fn convert_memory_type(ty: MemoryType) -> BootMemType {
     }
 }
 
-// ── RSDP ─────────────────────────────────────────────────────────────────────
+// â”€â”€ RSDP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn find_rsdp() -> u64 {
     use uefi::table::cfg::ConfigTableEntry;
@@ -570,12 +570,12 @@ fn find_rsdp() -> u64 {
     })
 }
 
-// ── Entry ────────────────────────────────────────────────────────────────────
+// â”€â”€ Entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[entry]
 fn main() -> Status {
     uefi::helpers::init().unwrap();
-    info!("FastOS Bootloader v0.4.0");
+    info!("BMO Bootloader v0.4.0");
 
     // Disable UEFI firmware watchdog
     for _ in 0..5 {
@@ -590,16 +590,16 @@ fn main() -> Status {
     // Cache NVRAM function pointers BEFORE ExitBootServices
     nvram_init();
 
-    // Crash diagnostics — nvram_get is allowed during Boot Services (UEFI spec)
-    let prev_stage = nvram_get("FastOSBootStage");
+    // Crash diagnostics â€” nvram_get is allowed during Boot Services (UEFI spec)
+    let prev_stage = nvram_get("BMOBootStage");
     let ram_marker = read_crash_marker();
     let ram_stage = read_ram_stage();
     let boot_num = read_and_increment_boot_counter();
 
-    // NOTE: nvram_set CANNOT be called here — SetVariable is only valid after
+    // NOTE: nvram_set CANNOT be called here â€” SetVariable is only valid after
     // ExitBootServices per UEFI spec Section 8. Calling it before EBS causes
     // INVALID_PARAMETER on AMD firmware. We write NVRAM after EBS below.
-    info!("Boot #{} — RAM: {:?} stage: {:?}", boot_num, ram_marker, ram_stage);
+    info!("Boot #{} â€” RAM: {:?} stage: {:?}", boot_num, ram_marker, ram_stage);
     write_crash_log(device, prev_stage.as_deref(), ram_marker, ram_stage, boot_num, &Ok(()));
 
     clear_crash_marker();
@@ -613,7 +613,7 @@ fn main() -> Status {
         core::ptr::write_volatile(0x9_0024 as *mut u32, 0u32);
     }
 
-    // ── Allocate kernel ───────────────────────────────────────────────
+    // â”€â”€ Allocate kernel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Load kernel ELF
     let elf_data = read_file(device, "\\EFI\\BOOT\\kernel.elf").expect("failed to read kernel.elf");
     let (entry_point, phdrs) = parse_elf64(&elf_data).expect("failed to parse ELF64");
@@ -656,7 +656,7 @@ fn main() -> Status {
     // GOP
     let gop = query_gop().expect("GOP failed");
 
-    // ── Allocate stack + BootInfo below 4GB ──────────────────────────
+    // â”€â”€ Allocate stack + BootInfo below 4GB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Using MaxAddress ensures these are always identity-mapped after
     // ExitBootServices, even on firmware that only maps low memory.
     let stack_pages = KERNEL_STACK_SIZE / 4096;
@@ -674,8 +674,8 @@ fn main() -> Status {
     unsafe {
         core::ptr::write_bytes(boot_info_ptr, 0, 1);
         let bi = &mut *boot_info_ptr;
-        bi.magic = fastos_boot_protocol::BOOT_MAGIC;
-        bi.version = fastos_boot_protocol::PROTOCOL_VERSION;
+        bi.magic = bmo_boot_protocol::BOOT_MAGIC;
+        bi.version = bmo_boot_protocol::PROTOCOL_VERSION;
         bi.fb_addr = gop.fb_addr;
         bi.fb_size = gop.fb_size;
         bi.fb_width = gop.width;
@@ -691,7 +691,7 @@ fn main() -> Status {
             .map(|p| p.as_ptr() as u64).unwrap_or(0);
     }
 
-    // ── Exit Boot Services ───────────────────────────────────────────
+    // â”€â”€ Exit Boot Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // This is the POINT OF NO RETURN. After this call:
     //   - NO Boot Services (file I/O, console, allocation, protocols)
     //   - ONLY Runtime Services (NVRAM SetVariable/GetVariable)
@@ -701,15 +701,15 @@ fn main() -> Status {
     // after it sets up its own IDT.
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
 
-    // ── Post-EBS: ONLY safe operations ───────────────────────────────
+    // â”€â”€ Post-EBS: ONLY safe operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // RAM markers survive warm reset (if RAM preserved). Checked on next boot.
     unsafe {
         core::ptr::write_volatile(0x9_0010 as *mut u32, 0x4542_5300u32); // "EBS\0"
     }
 
-    // Write "bootloader" to NVRAM — confirms bootloader reached this point.
+    // Write "bootloader" to NVRAM â€” confirms bootloader reached this point.
     // Uses cached SetVariable pointer; safe post-EBS as a UEFI Runtime Service.
-    nvram_set("FastOSBootStage", b"bootloader");
+    nvram_set("BMOBootStage", b"bootloader");
 
     // Fill memory map into BootInfo
     let bi = unsafe { &mut *boot_info_ptr };
@@ -731,7 +731,7 @@ fn main() -> Status {
         core::ptr::write_volatile(0x9_0024 as *mut u32, entry_point as u32);
     }
 
-    // ── Jump to kernel ───────────────────────────────────────────────
+    // â”€â”€ Jump to kernel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // RDI = boot_info_ptr (first argument per System V AMD64 ABI)
     // RSP = stack_top (16-byte aligned by UEFI page allocator)
     unsafe {

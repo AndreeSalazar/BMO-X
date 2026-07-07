@@ -1,13 +1,13 @@
-//! RAMdisk — archivos embebidos en el binario del kernel.
+﻿//! RAMdisk â€” archivos embebidos en el binario del kernel.
 //!
 //! Sirve a las syscalls `FileOpen (0x20)`, `FileRead (0x21)`,
-//! `FileClose (0x23)`. Diseñado para hospedar WADs pequeños, sprites,
-//! mapas o cualquier asset de un juego portado a FastOS.
+//! `FileClose (0x23)`. DiseÃ±ado para hospedar WADs pequeÃ±os, sprites,
+//! mapas o cualquier asset de un juego portado a BMO.
 //!
-//! Para añadir un archivo:
-//!   1. Coloca el binario en `kernel/src/fs/assets/<nombre>` (no existe aún;
-//!      en el repo embebemos sólo un README de prueba).
-//!   2. Añade una entrada a `RAMDISK_FILES` con
+//! Para aÃ±adir un archivo:
+//!   1. Coloca el binario en `kernel/src/fs/assets/<nombre>` (no existe aÃºn;
+//!      en el repo embebemos sÃ³lo un README de prueba).
+//!   2. AÃ±ade una entrada a `RAMDISK_FILES` con
 //!      `include_bytes!("assets/<nombre>")`.
 
 #![allow(dead_code)]
@@ -18,11 +18,11 @@ pub struct RamFile {
     pub data: &'static [u8],
 }
 
-/// Tabla estática — embebe contenido en el ELF del kernel.
+/// Tabla estÃ¡tica â€” embebe contenido en el ELF del kernel.
 pub static RAMDISK_FILES: &[RamFile] = &[
     RamFile {
         name: "bmo:readme",
-        data: b"FastOS / BMO RAMdisk operativo.\n\
+        data: b"BMO / BMO RAMdisk operativo.\n\
                Para cargar un WAD de DOOM coloca el binario y\n\
                declara la entrada en src/fs/ramdisk.rs::RAMDISK_FILES.\n\
                Las syscalls FileOpen(0x20)/FileRead(0x21)/FileClose(0x23)\n\
@@ -30,7 +30,7 @@ pub static RAMDISK_FILES: &[RamFile] = &[
     },
     RamFile {
         name: "datos:readme",
-        data: b"FastOS / BMO Datos\n\
+        data: b"BMO / BMO Datos\n\
                \n\
                Montaje de Loop Device: OK\n\
                Firma de Superblock: OK\n\
@@ -55,7 +55,7 @@ struct OpenFd {
 
 static mut FDS: [OpenFd; MAX_FDS] = [OpenFd { file_idx: -1, cursor: 0 }; MAX_FDS];
 
-/// `FileOpen` — devuelve `fd` (0..MAX_FDS) o `u64::MAX` en error.
+/// `FileOpen` â€” devuelve `fd` (0..MAX_FDS) o `u64::MAX` en error.
 pub fn open(name_ptr: u64, name_len: u64) -> u64 {
     if name_ptr == 0 || name_len == 0 || name_len > 256 {
         return u64::MAX;
@@ -81,7 +81,7 @@ pub fn open(name_ptr: u64, name_len: u64) -> u64 {
     u64::MAX
 }
 
-/// `FileRead(fd, ptr, len)` → bytes leídos, o `u64::MAX` en error.
+/// `FileRead(fd, ptr, len)` â†’ bytes leÃ­dos, o `u64::MAX` en error.
 pub fn read(fd: u64, ptr: u64, len: u64) -> u64 {
     let fd_idx = fd as usize;
     if fd_idx >= MAX_FDS { return u64::MAX; }
@@ -102,7 +102,7 @@ pub fn read(fd: u64, ptr: u64, len: u64) -> u64 {
     }
 }
 
-/// `FileClose(fd)` — libera el descriptor. Devuelve 0 OK, `u64::MAX` error.
+/// `FileClose(fd)` â€” libera el descriptor. Devuelve 0 OK, `u64::MAX` error.
 pub fn close(fd: u64) -> u64 {
     let fd_idx = fd as usize;
     if fd_idx >= MAX_FDS { return u64::MAX; }
@@ -114,7 +114,7 @@ pub fn close(fd: u64) -> u64 {
     0
 }
 
-/// `FileSize(fd)` — bytes totales del archivo, `u64::MAX` error.
+/// `FileSize(fd)` â€” bytes totales del archivo, `u64::MAX` error.
 pub fn size(fd: u64) -> u64 {
     let fd_idx = fd as usize;
     if fd_idx >= MAX_FDS { return u64::MAX; }
@@ -125,7 +125,7 @@ pub fn size(fd: u64) -> u64 {
     }
 }
 
-/// `FileWrite(fd, ptr, len)` — bytes escritos, o `u64::MAX` en error.
+/// `FileWrite(fd, ptr, len)` â€” bytes escritos, o `u64::MAX` en error.
 ///
 /// RAMdisk is read-only by default. This function supports a small
 /// writable overlay: the first RAMDISK_FILES entry can be marked
@@ -138,11 +138,11 @@ pub fn write(fd: u64, _ptr: u64, _len: u64) -> u64 {
         let f = &FDS[fd_idx];
         if f.file_idx < 0 { return u64::MAX; }
     }
-    // RAMdisk is read-only — write returns 0 bytes written.
+    // RAMdisk is read-only â€” write returns 0 bytes written.
     0
 }
 
-/// `FileSeek(fd, offset, whence)` — new offset from file start, or `u64::MAX` error.
+/// `FileSeek(fd, offset, whence)` â€” new offset from file start, or `u64::MAX` error.
 ///
 /// whence:
 ///   0 = SEEK_SET (offset from start)

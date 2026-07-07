@@ -1,4 +1,4 @@
-//! RAM-backed block device for testing filesystem drivers.
+﻿//! RAM-backed block device for testing filesystem drivers.
 //!
 //! Provides a 8 MB in-memory block device implementing DiskReader + DiskWriter.
 
@@ -64,7 +64,7 @@ impl RamDiskDevice {
             let cl3: u32 = 3;
             DEVICE_DATA[root_lba][20..24].copy_from_slice(&cl3.to_le_bytes());
 
-            let file_content = b"# FastOS - Datos\n\nThis file is stored on the exFAT data partition.\n";
+            let file_content = b"# BMO - Datos\n\nThis file is stored on the exFAT data partition.\n";
             let data_lba = cluster_heap_offset as usize + 1;
             let content_len = file_content.len().min(512);
             DEVICE_DATA[data_lba][..content_len].copy_from_slice(&file_content[..content_len]);

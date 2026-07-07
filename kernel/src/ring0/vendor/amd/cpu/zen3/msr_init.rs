@@ -1,6 +1,6 @@
-//! MSR initialization for the Ryzen 5 5600X.
+﻿//! MSR initialization for the Ryzen 5 5600X.
 //!
-//! Implements `AMD/ryzen_5_5600x.md` §10 + §11 (SYSCALL/SYSRET setup).
+//! Implements `AMD/ryzen_5_5600x.md` Â§10 + Â§11 (SYSCALL/SYSRET setup).
 //!
 //! Configures all the MSRs that RING 0 needs to bootstrap a 64-bit
 //! environment, including:
@@ -12,12 +12,12 @@
 //! - IA32_PAT: page attribute table (WC for framebuffer)
 //! - IA32_TSC_AUX: BSP core ID for RDTSCP serialization
 //!
-//! Status: ✅ COMPLETO — implementación completa de MSR setup.
+//! Status: âœ… COMPLETO â€” implementaciÃ³n completa de MSR setup.
 //!
 //! References:
-//! - AMD64 APM Vol. 2, §6.1 (MSR addressing)
-//! - AMD64 APM Vol. 2, §11.1 (SYSCALL/SYSRET)
-//! - AMD Zen 3 Family 19h BKDG, §3.12 (CPU setup)
+//! - AMD64 APM Vol. 2, Â§6.1 (MSR addressing)
+//! - AMD64 APM Vol. 2, Â§11.1 (SYSCALL/SYSRET)
+//! - AMD Zen 3 Family 19h BKDG, Â§3.12 (CPU setup)
 
 use super::msr_definitions::{rdmsr, wrmsr, MSR_IA32_EFER, MSR_IA32_STAR,
                               MSR_IA32_LSTAR, MSR_IA32_CSTAR, MSR_IA32_FMASK,
@@ -26,7 +26,7 @@ use super::msr_definitions::{rdmsr, wrmsr, MSR_IA32_EFER, MSR_IA32_STAR,
                               MSR_IA32_TSC_DEADLINE};
 use super::msr_definitions::efer;
 
-/// Star selector values. Standard FastOS layout:
+/// Star selector values. Standard BMO layout:
 /// - SYSCALL target: kernel CS=0x08, kernel SS=0x10.
 /// - SYSRET base: STAR[63:48]=0x10 so AMD64 derives user SS=0x18 and
 ///   user CS=0x20, matching `arch::gdt`'s Ring 3 layout.
@@ -48,7 +48,7 @@ pub const FMASK_VALUE: u64 = 0x0000_0000_0000_0600;
 /// `bsp_apic_id` is the APIC ID of the BSP (used as TSC_AUX).
 pub fn init_msr_common(syscall_entry: u64, bsp_apic_id: u32) {
     unsafe {
-        // ── IA32_EFER: enable SYSCALL/SYSRET, NXE, LMA, LME ─────────
+        // â”€â”€ IA32_EFER: enable SYSCALL/SYSRET, NXE, LMA, LME â”€â”€â”€â”€â”€â”€â”€â”€â”€
         let mut efer_val = rdmsr(MSR_IA32_EFER);
         efer_val |= efer::SCE;     // SYSCALL/SYSRET enable
         efer_val |= efer::NXE;     // No-Execute enable
@@ -61,38 +61,38 @@ pub fn init_msr_common(syscall_entry: u64, bsp_apic_id: u32) {
         crate::dev::console::serial_write_u64(efer_val, 16);
         crate::dev::console::serial_write("\n");
 
-        // ── IA32_STAR: kernel/user code/stack selectors ────────────
+        // â”€â”€ IA32_STAR: kernel/user code/stack selectors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         wrmsr(MSR_IA32_STAR, STAR_VALUE);
         crate::dev::console::serial_write("[msr] IA32_STAR: ");
         crate::dev::console::serial_write_u64(STAR_VALUE, 16);
         crate::dev::console::serial_write("\n");
 
-        // ── IA32_LSTAR: 64-bit SYSCALL entry ───────────────────────
+        // â”€â”€ IA32_LSTAR: 64-bit SYSCALL entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         wrmsr(MSR_IA32_LSTAR, syscall_entry);
         crate::dev::console::serial_write("[msr] IA32_LSTAR: ");
         crate::dev::console::serial_write_u64(syscall_entry, 16);
         crate::dev::console::serial_write("\n");
 
-        // ── IA32_CSTAR: not used in 64-bit mode, but set to 0 ───────
+        // â”€â”€ IA32_CSTAR: not used in 64-bit mode, but set to 0 â”€â”€â”€â”€â”€â”€â”€
         wrmsr(MSR_IA32_CSTAR, 0);
 
-        // ── IA32_FMASK: clear IF + DF on SYSCALL ─────────────────────
+        // â”€â”€ IA32_FMASK: clear IF + DF on SYSCALL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         wrmsr(MSR_IA32_FMASK, FMASK_VALUE);
 
-        // ── IA32_KERNEL_GS_BASE: kernel's GS (used with swapgs) ─────
-        // Set to a per-CPU data pointer. For now, 0 — populate when
+        // â”€â”€ IA32_KERNEL_GS_BASE: kernel's GS (used with swapgs) â”€â”€â”€â”€â”€
+        // Set to a per-CPU data pointer. For now, 0 â€” populate when
         // PerCpu is allocated.
         wrmsr(MSR_IA32_KERNEL_GS_BASE, 0);
 
-        // ── IA32_GS_BASE: user's GS (not used in Ring 0 directly) ──
+        // â”€â”€ IA32_GS_BASE: user's GS (not used in Ring 0 directly) â”€â”€
         wrmsr(MSR_IA32_GS_BASE, 0);
 
-        // ── IA32_TSC_AUX: APIC ID of the BSP (for RDTSCP) ──────────
+        // â”€â”€ IA32_TSC_AUX: APIC ID of the BSP (for RDTSCP) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // RDTSCP returns TSC_AUX in ECX, useful for identifying
         // which core took a timestamp.
         wrmsr(MSR_IA32_TSC_AUX, bsp_apic_id as u64);
 
-        // ── IA32_PAT: Page Attribute Table ──────────────────────────
+        // â”€â”€ IA32_PAT: Page Attribute Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // The default PAT layout (after reset):
         //   PA0 = WB
         //   PA1 = WT
@@ -111,7 +111,7 @@ pub fn init_msr_common(syscall_entry: u64, bsp_apic_id: u32) {
         let pat_new = (pat_default & !(0x7u64 << 40)) | (0x1u64 << 40);
         wrmsr(MSR_IA32_PAT, pat_new);
 
-        // ── IA32_TSC_DEADLINE: clear any pending TSC-deadline ──────
+        // â”€â”€ IA32_TSC_DEADLINE: clear any pending TSC-deadline â”€â”€â”€â”€â”€â”€
         // (Important after warm reset.)
         // v1.8.17: Disabled here. Writing to TSC_DEADLINE when the local APIC
         // is software-disabled (the default state during Phase 0) triggers a #GP.

@@ -122,6 +122,51 @@ name = "bmo-audio"
 version = "1.0.0"
 
 [[package]]
+name = "bmo-boot-protocol"
+version = "0.1.0"
+
+[[package]]
+name = "bmo-bootloader"
+version = "0.1.0"
+dependencies = [
+ "bmo-boot-protocol",
+ "log",
+ "uefi",
+]
+
+[[package]]
+name = "bmo-c-front"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
+name = "bmo-cobol-front"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
+name = "bmo-kernel"
+version = "1.8.16"
+dependencies = [
+ "bitflags",
+ "bmo-abi",
+ "bmo-audio",
+ "bmo-boot-protocol",
+ "cabina-core",
+ "cabina-daemon",
+ "cabina-panels",
+ "goblin",
+ "llfree",
+ "nvram-log",
+ "vendor",
+ "volatile 0.4.6",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -206,51 +251,6 @@ dependencies = [
  "anstyle",
  "env_filter",
  "log",
-]
-
-[[package]]
-name = "fastos-boot-protocol"
-version = "0.1.0"
-
-[[package]]
-name = "fastos-bootloader"
-version = "0.1.0"
-dependencies = [
- "fastos-boot-protocol",
- "log",
- "uefi",
-]
-
-[[package]]
-name = "fastos-c-front"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
-]
-
-[[package]]
-name = "fastos-cobol-front"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
-]
-
-[[package]]
-name = "fastos-kernel"
-version = "1.8.16"
-dependencies = [
- "bitflags",
- "bmo-abi",
- "bmo-audio",
- "cabina-core",
- "cabina-daemon",
- "cabina-panels",
- "fastos-boot-protocol",
- "goblin",
- "llfree",
- "nvram-log",
- "vendor",
- "volatile 0.4.6",
 ]
 
 [[package]]

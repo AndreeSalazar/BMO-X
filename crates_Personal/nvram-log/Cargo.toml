@@ -1,7 +1,7 @@
-[package]
+﻿[package]
 name = "nvram-log"
 version = "0.2.0"
 edition = "2021"
-description = "FastOS real-time log via UEFI NVRAM — writes boot stages and events, bootloader dumps to crash.log"
+description = "BMO real-time log via UEFI NVRAM â€” writes boot stages and events, bootloader dumps to crash.log"
 
 [dependencies]

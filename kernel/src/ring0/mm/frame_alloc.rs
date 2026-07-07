@@ -1,24 +1,24 @@
-//! Physical Frame Allocator — Generic dispatcher + Per-CPU Pagesets.
+﻿//! Physical Frame Allocator â€” Generic dispatcher + Per-CPU Pagesets.
 //!
 //! Architecture:
 //!
 //!   alloc_pages_contiguous() / free_pages()
-//!         │
-//!         ▼
+//!         â”‚
+//!         â–¼
 //!   Per-CPU pagesets (cache layer, orders 0..4)
-//!         │
-//!         ▼
+//!         â”‚
+//!         â–¼
 //!   BackingAllocator trait (buddy :: llfree)
 //!
 //! The backing allocator is selected at compile time via Cargo features:
-//!   - `alloc-buddy`  (default) — buddy system with coalescing
-//!   - `alloc-llfree`           — lock-free LLFree allocator
+//!   - `alloc-buddy`  (default) â€” buddy system with coalescing
+//!   - `alloc-llfree`           â€” lock-free LLFree allocator
 //!
 //! Each CPU has a local cache to avoid contending on the backing allocator.
 //! Orders > PER_CPU_MAX_ORDER bypass the cache and go directly to backing.
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use fastos_boot_protocol::MemoryEntry;
+use bmo_boot_protocol::MemoryEntry;
 
 const PAGE_SIZE: u64 = super::PAGE_SIZE;
 const MAX_ORDER: usize = super::MAX_ORDER;
@@ -27,7 +27,7 @@ const BATCH_SIZE: usize = 16;
 const CACHE_SLOTS: usize = PER_CPU_MAX_ORDER + 1;
 const MAX_CPUS: usize = 64;
 
-// ── Select backing allocator ────────────────────────────────────────
+// â”€â”€ Select backing allocator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 use super::BackingAllocator;
 
@@ -39,7 +39,7 @@ use super::llfree::LlfreeAllocator as Backing;
 static BACKING: Backing = Backing;
 static BACKING_INIT: AtomicUsize = AtomicUsize::new(0);
 
-// ── Per-CPU pagesets ────────────────────────────────────────────────
+// â”€â”€ Per-CPU pagesets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[derive(Copy, Clone)]
 struct PerCpuCache {
@@ -62,7 +62,7 @@ pub fn set_cpu_id(id: usize) {
     CURRENT_CPU.store(id.min(MAX_CPUS - 1), Ordering::Relaxed);
 }
 
-// ── Public API ──────────────────────────────────────────────────────
+// â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Initialize the frame allocator from the UEFI memory map.
 ///
@@ -87,7 +87,7 @@ pub unsafe fn init(
     crate::dev::console::serial_write("llfree");
     crate::dev::console::serial_write(", per-CPU caches: ");
     crate::dev::console::serial_write_u64(MAX_CPUS as u64, 10);
-    crate::dev::console::serial_write(" CPUs × ");
+    crate::dev::console::serial_write(" CPUs Ã— ");
     crate::dev::console::serial_write_u64(CACHE_SLOTS as u64, 10);
     crate::dev::console::serial_write(" orders\n");
 }

@@ -1,4 +1,4 @@
-use std::env;
+﻿use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -42,9 +42,9 @@ fn main() {
     };
 
     let result = if asm_paths.is_empty() {
-        fastos_cobol_front::compile_source_to_bef(&source)
+        bmo_cobol_front::compile_source_to_bef(&source)
     } else {
-        fastos_cobol_front::compile_source_to_bef_with_asm(&source, asm_paths)
+        bmo_cobol_front::compile_source_to_bef_with_asm(&source, asm_paths)
     };
 
     match result {
@@ -52,7 +52,7 @@ fn main() {
             let out_path = Path::new(path).with_extension("bef");
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
-                    println!("ok: wrote {} bytes → {}", bef_bytes.len(), out_path.display());
+                    println!("ok: wrote {} bytes â†’ {}", bef_bytes.len(), out_path.display());
                 }
                 Err(err) => {
                     eprintln!("error: cannot write {}: {}", out_path.display(), err);

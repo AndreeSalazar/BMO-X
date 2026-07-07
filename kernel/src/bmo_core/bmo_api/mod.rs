@@ -1,18 +1,18 @@
-//! FastOS/BMO v1.8.8
+﻿//! BMO/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!
-//! BMO API v2.0 — windowing API para FastOS/BMO.
+//! BMO API v2.0 â€” windowing API para BMO/BMO.
 //!
 //! Facade: un solo `BmoState` global contiene todas las tablas del
 //! subsistema (handles, ventanas, clases, colas, superficies, timers).
 //! Se inicializa con `init()` desde `boot::phase5` y se mantiene vivo
-//! durante toda la sesión.
+//! durante toda la sesiÃ³n.
 //!
-//! Syscall ABI: 0x100..0x1FF (256 números), convención System V AMD64.
+//! Syscall ABI: 0x100..0x1FF (256 nÃºmeros), convenciÃ³n System V AMD64.
 //! Ver `docs/BMO_API_V2_SPEC.md` para el spec completo.
 //!
-//! Módulos:
+//! MÃ³dulos:
 //!   handle         : Handle table con generation counter
 //!   window         : Windows + classes + Z-order + parent/child tree
 //!   message        : bmo_msg + BMO_MSG_* enum
@@ -23,7 +23,7 @@
 //!   class          : Class table + default wnd_proc
 //!   wm             : Z-order, focus, drag/resize, snap, modal
 //!   timer          : Timer wheel (1 ms)
-//!   input          : PS/2 + USB HID → events con AtomicBool state
+//!   input          : PS/2 + USB HID â†’ events con AtomicBool state
 //!   cursor         : 16 builtin cursor sprites con AtomicBool state
 //!   paint_compositor : Dirty-region tracking + blit
 //!   syscall        : Dispatcher 0x100..0x1FF
@@ -46,7 +46,7 @@ pub mod paint_compositor;
 pub mod syscall;
 pub mod taskbar;
 
-// ── Estado global ──────────────────────────────────────────────────
+// â”€â”€ Estado global â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 use handle::HandleTable;
 use window::WindowTable;
 use surface::SurfaceTable;
@@ -56,8 +56,8 @@ use core::sync::atomic::{AtomicU8, Ordering};
 /// Estado global del subsistema BMO API v2.
 ///
 /// Vive en una static mutable conocida por el kernel. Todos los accesos
-/// están protegidos por `wm_lock` (spinlock atómico) en operaciones
-/// que tocan más de una tabla.
+/// estÃ¡n protegidos por `wm_lock` (spinlock atÃ³mico) en operaciones
+/// que tocan mÃ¡s de una tabla.
 pub struct BmoState {
     pub handles: HandleTable,
     pub windows: WindowTable,
@@ -110,7 +110,7 @@ pub fn init() {
     wm::create_desktop_window();
     cursor::init();
     s.initialized = true;
-    crate::cabina::info("bmo_api_v2", "BMO API v2.0 initialized — 16 modules, 256 syscalls");
+    crate::cabina::info("bmo_api_v2", "BMO API v2.0 initialized â€” 16 modules, 256 syscalls");
 }
 
 pub fn tick() {

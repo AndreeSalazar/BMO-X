@@ -1,6 +1,6 @@
-//! `timeback` — TimeBack: El Reloj de FastOS/BMO.
+﻿//! `timeback` â€” TimeBack: El Reloj de BMO/BMO.
 //!
-//! v1.8.8: módulo hermano de `cabina` y `defense` (la "Trilogía").
+//! v1.8.8: mÃ³dulo hermano de `cabina` y `defense` (la "TrilogÃ­a").
 //! TimeBack permite retroceder en el tiempo:
 //!
 //! - **Checkpoints**: puntos de retorno nombrados.
@@ -13,26 +13,26 @@
 //!
 //! ```text
 //! timeback/
-//!   mod.rs         ← API pública + init()
-//!   checkpoint.rs  ← crear/listar/borrar checkpoints
-//!   snapshot.rs    ← captura del estado
-//!   delta.rs       ← diff entre snapshots
-//!   journal.rs     ← log de operaciones
-//!   rollback.rs    ← revertir a un checkpoint
-//!   storage.rs     ← dónde se guardan los snapshots
-//!   policy.rs      ← reglas de retención
+//!   mod.rs         â† API pÃºblica + init()
+//!   checkpoint.rs  â† crear/listar/borrar checkpoints
+//!   snapshot.rs    â† captura del estado
+//!   delta.rs       â† diff entre snapshots
+//!   journal.rs     â† log de operaciones
+//!   rollback.rs    â† revertir a un checkpoint
+//!   storage.rs     â† dÃ³nde se guardan los snapshots
+//!   policy.rs      â† reglas de retenciÃ³n
 //! ```
 //!
 //! ## Regla de oro
 //!
-//! - TimeBack **no decide políticas de seguridad** (eso es de ByteDefender).
+//! - TimeBack **no decide polÃ­ticas de seguridad** (eso es de ByteDefender).
 //! - Cabina puede pedir un rollback desde el HUD.
 //! - ByteDefender puede crear un checkpoint antes de ejecutar una app.
 //!
 //! ## v1.8.8: estado
 //!
 //! - API completa (stubs).
-//! - Storage en RAM (sin SSD/FS todavía).
+//! - Storage en RAM (sin SSD/FS todavÃ­a).
 //! - Journal en ring buffer.
 
 #![allow(dead_code)]
@@ -65,7 +65,7 @@ pub fn init() {
     policy::init();
 }
 
-/// Época actual (monotónicamente creciente). Se incrementa en cada checkpoint.
+/// Ã‰poca actual (monotÃ³nicamente creciente). Se incrementa en cada checkpoint.
 pub fn current_epoch() -> u64 { CURRENT_EPOCH.load(Ordering::SeqCst) }
 
 /// Crea un checkpoint con un nombre. Retorna el ID.

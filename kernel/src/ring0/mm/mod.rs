@@ -1,26 +1,26 @@
-//! Memory Management (Ring 0 HAL).
+﻿//! Memory Management (Ring 0 HAL).
 //!
-//! Subsistema de administración de memoria:
-//!   - `frame_alloc` — Physical Frame Allocator (bitmap, 4 KiB frames)
-//!   - `slab`        — Kernel Slab Allocator (free-list, first-fit, coalescing)
-//!   - `vmm`         — Virtual Memory Manager (page tables, VMA, demand paging, CoW)
+//! Subsistema de administraciÃ³n de memoria:
+//!   - `frame_alloc` â€” Physical Frame Allocator (bitmap, 4 KiB frames)
+//!   - `slab`        â€” Kernel Slab Allocator (free-list, first-fit, coalescing)
+//!   - `vmm`         â€” Virtual Memory Manager (page tables, VMA, demand paging, CoW)
 //!
 //! Arquitectura DDR4:
-//!   - Frame allocator: bitmap 128 KB, tracking 16 MB → 4 GB
-//!   - Slab allocator: 32 MB estático, crecerá en v1.9
+//!   - Frame allocator: bitmap 128 KB, tracking 16 MB â†’ 4 GB
+//!   - Slab allocator: 32 MB estÃ¡tico, crecerÃ¡ en v1.9
 //!   - VMM: 4-level x86-64 page tables, huge pages (2 MiB / 1 GiB)
 //!
-//! Inicialización (coordinator::main):
-//!   1. `frame_alloc::init()` — parsear UEFI memory map
-//!   2. `slab::init_heap()`   — inicializar slab allocator
-//!   3. `vmm::*`              — page table operations
+//! InicializaciÃ³n (coordinator::main):
+//!   1. `frame_alloc::init()` â€” parsear UEFI memory map
+//!   2. `slab::init_heap()`   â€” inicializar slab allocator
+//!   3. `vmm::*`              â€” page table operations
 
 #![allow(dead_code)]
 
 pub const PAGE_SIZE: u64 = 4096;
 pub(crate) const MAX_ORDER: usize = 11;
 
-use fastos_boot_protocol::MemoryEntry;
+use bmo_boot_protocol::MemoryEntry;
 
 /// Abstract interface for the physical page backing allocator.
 pub trait BackingAllocator: Sync {

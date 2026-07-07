@@ -1,7 +1,7 @@
-use core::cell::UnsafeCell;
+﻿use core::cell::UnsafeCell;
 use cabina_core::Event;
 
-pub const TARGET_PATH: &str = "/Datos/FASTOS-DIAG.LOG";
+pub const TARGET_PATH: &str = "/Datos/BMO-DIAG.LOG";
 const SPOOL_CAP: usize = 16 * 1024;
 
 struct Spool {

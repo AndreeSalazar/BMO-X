@@ -1,4 +1,4 @@
-use crate::fb::{self, FrameBuffer};
+﻿use crate::fb::{self, FrameBuffer};
 
 pub fn section(fb: &mut dyn FrameBuffer, y: u32, title: &str, color: u32) -> u32 {
     fb.fill_rect(0, y, fb.width(), 20, 0xFF202028);
@@ -12,7 +12,7 @@ pub fn header(fb: &mut dyn FrameBuffer, title: &str, color: u32) {
     fb::draw_text(fb, 8, 8, title, color);
     let subtitle = alloc::format!("-- Cabina v{}", env!("CARGO_PKG_VERSION"));
     fb::draw_text(fb, 80, 8, &subtitle, 0xFF888888);
-    fb::draw_text_right(fb, w - 8, 8, "FastOS", 0xFF666666);
+    fb::draw_text_right(fb, w - 8, 8, "BMO", 0xFF666666);
 }
 
 pub fn kv(fb: &mut dyn FrameBuffer, y: u32, key: &str, val: &str, color: u32) -> u32 {

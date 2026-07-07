@@ -1,19 +1,19 @@
-//! FastOS Boot Protocol — shared types between UEFI bootloader and kernel.
+﻿//! BMO Boot Protocol â€” shared types between UEFI bootloader and kernel.
 //!
 //! The bootloader fills `BootInfo`, the kernel reads it.
-//! Single pointer in RDI — that's the entire ABI.
+//! Single pointer in RDI â€” that's the entire ABI.
 //!
 //! v2: Builder pattern, better docs, memory helpers.
 
 #![no_std]
 
-/// Protocol version — bump on breaking layout changes.
+/// Protocol version â€” bump on breaking layout changes.
 pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Magic value to verify BootInfo integrity on kernel entry.
 pub const BOOT_MAGIC: u64 = 0xFA57_0505_B007_1AF0;
 
-// ── Memory Types ─────────────────────────────────────────────────────────────
+// â”€â”€ Memory Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,7 +35,7 @@ impl MemoryType {
     }
 }
 
-// ── Memory Map ───────────────────────────────────────────────────────────────
+// â”€â”€ Memory Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Maximum memory map entries (fits in 4 pages).
 pub const MAX_MEMORY_ENTRIES: usize = 512;
@@ -61,7 +61,7 @@ impl MemoryEntry {
     }
 }
 
-// ── Pixel Format ─────────────────────────────────────────────────────────────
+// â”€â”€ Pixel Format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,21 +71,21 @@ pub enum PixelFormat {
     Unknown = 255,
 }
 
-// ── Boot Info ────────────────────────────────────────────────────────────────
+// â”€â”€ Boot Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Boot information passed from UEFI bootloader to kernel via RDI.
 ///
-/// Fixed layout — no pointers, no allocations, pure data.
+/// Fixed layout â€” no pointers, no allocations, pure data.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BootInfo {
     /// Must be `BOOT_MAGIC`.
     pub magic: u64,
-    /// Protocol version — kernel checks this.
+    /// Protocol version â€” kernel checks this.
     pub version: u32,
     pub _pad: u32,
 
-    // ── Framebuffer (flat for backwards compat) ──
+    // â”€â”€ Framebuffer (flat for backwards compat) â”€â”€
     pub fb_addr: u64,
     pub fb_size: u64,
     pub fb_width: u32,
@@ -93,27 +93,27 @@ pub struct BootInfo {
     pub fb_stride: u32,
     pub fb_pixel_format: PixelFormat,
 
-    // ── Memory map ──
+    // â”€â”€ Memory map â”€â”€
     pub memory_map_count: u32,
     pub _pad2: u32,
     pub memory_map: [MemoryEntry; MAX_MEMORY_ENTRIES],
 
-    // ── ACPI ──
+    // â”€â”€ ACPI â”€â”€
     pub rsdp_addr: u64,
 
-    // ── Kernel ──
+    // â”€â”€ Kernel â”€â”€
     pub kernel_base: u64,
     pub kernel_size: u64,
 
-    // ── Stack ──
+    // â”€â”€ Stack â”€â”€
     pub stack_top: u64,
     pub stack_size: u64,
 
-    // ── Reserved (0 in GOP path) ──
+    // â”€â”€ Reserved (0 in GOP path) â”€â”€
     pub reserved_addr: u64,
     pub reserved_size: u64,
 
-    // ── UEFI Runtime Services ──
+    // â”€â”€ UEFI Runtime Services â”€â”€
     /// Physical address of UEFI System Table. After ExitBootServices,
     /// only Runtime Services are valid. Kernel uses this for NVRAM access.
     pub uefi_system_table: u64,
@@ -135,7 +135,7 @@ impl BootInfo {
         "BootInfo must fit in the bootloader's 4-page allocation"
     );
 
-    /// Framebuffer pitch in bytes (stride × 4 for 32bpp).
+    /// Framebuffer pitch in bytes (stride Ã— 4 for 32bpp).
     #[inline]
     pub fn fb_pitch(&self) -> u64 {
         self.fb_stride as u64 * 4
@@ -154,9 +154,9 @@ impl BootInfo {
     }
 }
 
-// ── Builder ──────────────────────────────────────────────────────────────────
+// â”€â”€ Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// Builder for `BootInfo` — fluent API for the bootloader.
+/// Builder for `BootInfo` â€” fluent API for the bootloader.
 pub struct BootInfoBuilder {
     inner: BootInfo,
 }

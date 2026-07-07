@@ -1,4 +1,4 @@
-//! `userland_ring3` — the FastOS userland standard library.
+﻿//! `userland_ring3` â€” the BMO userland standard library.
 //!
 //! Provides the single syscall dispatch point `bmo_syscall`, plus
 //! all BMO syscall wrappers, a heap allocator (`malloc`/`free`),

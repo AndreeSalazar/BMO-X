@@ -1,4 +1,4 @@
-# userland_ring3 module — the FastOS userland standard library
+﻿# userland_ring3 module â€” the BMO userland standard library
 # All syscall dispatch goes through bmo_syscall; frontends link against this.
 
 [module]

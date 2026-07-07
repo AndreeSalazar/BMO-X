@@ -1,16 +1,16 @@
-//! BLAKE3 — implementación nativa no_std para FastOS.
+﻿//! BLAKE3 â€” implementaciÃ³n nativa no_std para BMO.
 //!
 //! Spec: https://github.com/BLAKE3-team/BLAKE3-specs (v20211102).
 //!
-//! Soporta hash arbitrariamente largo en modo árbol (chunks de 1024 B
-//! combinados pairwise hasta llegar a la raíz). Single-thread, suficiente
+//! Soporta hash arbitrariamente largo en modo Ã¡rbol (chunks de 1024 B
+//! combinados pairwise hasta llegar a la raÃ­z). Single-thread, suficiente
 //! para verificar secciones BEF al cargar (~1 GB/s en Zen 3).
 
 #![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u8, bx_u32, bx_u64};
 
-// ─── Constantes ───────────────────────────────────────────────────────
+// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const OUT_LEN: usize    = 32;
 const KEY_LEN: usize    = 32;
 const BLOCK_LEN: usize  = 64;
@@ -22,18 +22,18 @@ const CHUNK_END:   bx_u32 = 1 << 1;
 const PARENT:      bx_u32 = 1 << 2;
 const ROOT:        bx_u32 = 1 << 3;
 
-// IV (idéntico a SHA-256)
+// IV (idÃ©ntico a SHA-256)
 const IV: [bx_u32; 8] = [
     0x6A09_E667, 0xBB67_AE85, 0x3C6E_F372, 0xA54F_F53A,
     0x510E_527F, 0x9B05_688C, 0x1F83_D9AB, 0x5BE0_CD19,
 ];
 
-// Permutación de mensaje aplicada antes de cada ronda (6 veces).
+// PermutaciÃ³n de mensaje aplicada antes de cada ronda (6 veces).
 const MSG_PERMUTATION: [usize; 16] = [
     2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8,
 ];
 
-// ─── G function + rounds ──────────────────────────────────────────────
+// â”€â”€â”€ G function + rounds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #[inline(always)]
 fn g(state: &mut [bx_u32; 16], a: usize, b: usize, c: usize, d: usize, mx: bx_u32, my: bx_u32) {
     state[a] = state[a].wrapping_add(state[b]).wrapping_add(mx);
@@ -68,7 +68,7 @@ fn permute(m: &mut [bx_u32; 16]) {
     }
 }
 
-/// Compresión de un bloque de 64 bytes. Devuelve el state de 16 palabras.
+/// CompresiÃ³n de un bloque de 64 bytes. Devuelve el state de 16 palabras.
 fn compress(
     chaining: &[bx_u32; 8],
     block: &[bx_u32; 16],
@@ -120,7 +120,7 @@ fn words_from_bytes(bytes: &[u8; BLOCK_LEN]) -> [bx_u32; 16] {
     out
 }
 
-// ─── Chunk state ──────────────────────────────────────────────────────
+// â”€â”€â”€ Chunk state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 struct ChunkState {
     chaining: [bx_u32; 8],
     chunk_counter: bx_u64,
@@ -152,7 +152,7 @@ impl ChunkState {
 
     fn update(&mut self, mut input: &[u8]) {
         while !input.is_empty() {
-            // Si el bloque actual está lleno, comprimirlo.
+            // Si el bloque actual estÃ¡ lleno, comprimirlo.
             if self.block_len as usize == BLOCK_LEN {
                 let block_words = words_from_bytes(&self.block);
                 let new_state = compress(
@@ -214,11 +214,11 @@ fn parent_cv(left: &[bx_u32; 8], right: &[bx_u32; 8], key: &[bx_u32; 8], flags: 
     [state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7]]
 }
 
-/// Hasher BLAKE3 stateful — modo "regular hash" (sin keyed/derive).
+/// Hasher BLAKE3 stateful â€” modo "regular hash" (sin keyed/derive).
 pub struct Hasher {
     chunk: ChunkState,
     /// Stack de CVs pendientes de combinar.
-    cv_stack: [[bx_u32; 8]; 54],   // 54 niveles → input máximo 2^54 chunks
+    cv_stack: [[bx_u32; 8]; 54],   // 54 niveles â†’ input mÃ¡ximo 2^54 chunks
     cv_stack_len: u8,
 }
 
@@ -232,7 +232,7 @@ impl Hasher {
     }
 
     fn push_cv(&mut self, cv: [bx_u32; 8], total_chunks: bx_u64) {
-        // Lo combinamos pairwise mientras los dos topes pertenezcan al mismo subárbol.
+        // Lo combinamos pairwise mientras los dos topes pertenezcan al mismo subÃ¡rbol.
         let mut new_cv = cv;
         let mut total = total_chunks;
         while total & 1 == 0 {
@@ -265,7 +265,7 @@ impl Hasher {
         if self.cv_stack_len == 0 {
             return cv_to_bytes(self.chunk.output(true));
         }
-        // Caso 2: vaciar el stack hacia la raíz.
+        // Caso 2: vaciar el stack hacia la raÃ­z.
         let mut output_cv = self.chunk.output(false);
         let mut idx = self.cv_stack_len as usize;
         while idx > 0 {
@@ -286,7 +286,7 @@ fn cv_to_bytes(cv: [bx_u32; 8]) -> [u8; OUT_LEN] {
     out
 }
 
-/// Hash one-shot — atajo para hashear un buffer único.
+/// Hash one-shot â€” atajo para hashear un buffer Ãºnico.
 pub fn hash(bytes: &[u8]) -> [u8; OUT_LEN] {
     let mut h = Hasher::new();
     h.update(bytes);

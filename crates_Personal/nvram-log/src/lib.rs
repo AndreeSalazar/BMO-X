@@ -1,4 +1,4 @@
-//! NVRAM-Log — Real-time log via UEFI NVRAM.
+﻿//! NVRAM-Log â€” Real-time log via UEFI NVRAM.
 //!
 //! After ExitBootServices, the kernel cannot access block storage directly.
 //! This crate writes log entries to UEFI NVRAM variables. On next boot, the
@@ -21,7 +21,7 @@ use core::fmt;
 /// UEFI System Table physical address.
 static mut SYSTEM_TABLE: u64 = 0;
 
-/// GUID: FastOS vendor NVRAM (uuid v5 from "fastos-nvram").
+/// GUID: BMO vendor NVRAM (uuid v5 from "bmo-nvram").
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct EfiGuid {
@@ -31,7 +31,7 @@ struct EfiGuid {
     data4: [u8; 8],
 }
 
-static FASTOS_NVRAM_GUID: EfiGuid = EfiGuid {
+static BMO_NVRAM_GUID: EfiGuid = EfiGuid {
     data1: 0xc22a_0b40,
     data2: 0x52b8,
     data3: 0x5f95,
@@ -91,7 +91,7 @@ fn str_to_ucs2(name: &str) -> [u16; 64] {
 /// NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS
 /// Must match the bootloader's attributes exactly. AMD firmware
 /// rejects SetVariable if the attributes differ from the existing
-/// variable's attributes (attribute mismatch → EFI_INVALID_PARAMETER).
+/// variable's attributes (attribute mismatch â†’ EFI_INVALID_PARAMETER).
 /// The bootloader creates this variable with 0x07; we must use 0x07 too.
 const NVRAM_ATTRS: u32 = 0x01 | 0x02 | 0x04;
 
@@ -99,7 +99,7 @@ fn nvram_set(name: &str, data: &[u8]) -> bool {
     let Some(set_var) = set_variable_ptr() else { return false; };
     let ucs2_name = str_to_ucs2(name);
     let status = unsafe {
-        set_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
+        set_var(ucs2_name.as_ptr(), &BMO_NVRAM_GUID, NVRAM_ATTRS, data.len(), data.as_ptr())
     };
     status == 0
 }
@@ -111,7 +111,7 @@ fn nvram_get(name: &str) -> Option<[u8; 256]> {
     let mut data_size: usize = 256;
     let mut buf = [0u8; 256];
     let status = unsafe {
-        get_var(ucs2_name.as_ptr(), &FASTOS_NVRAM_GUID, &mut attrs, &mut data_size, buf.as_mut_ptr())
+        get_var(ucs2_name.as_ptr(), &BMO_NVRAM_GUID, &mut attrs, &mut data_size, buf.as_mut_ptr())
     };
     if status != 0 { return None; }
     Some(buf)
@@ -127,7 +127,7 @@ pub fn get_variable(name: &str) -> Option<[u8; 256]> {
     nvram_get(name)
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
+// â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Initialize with the UEFI System Table address from BootInfo.
 pub fn init(system_table: u64) {
@@ -136,12 +136,12 @@ pub fn init(system_table: u64) {
 
 /// Write the current boot stage to NVRAM. Returns true on success.
 pub fn write_boot_stage(stage: &str) -> bool {
-    nvram_set("FastOSBootStage", stage.as_bytes())
+    nvram_set("BMOBootStage", stage.as_bytes())
 }
 
 /// Read the last boot stage from NVRAM.
 pub fn read_boot_stage() -> Option<alloc::string::String> {
-    let buf = nvram_get("FastOSBootStage")?;
+    let buf = nvram_get("BMOBootStage")?;
     let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
     if len == 0 { return None; }
     Some(alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned())
@@ -149,12 +149,12 @@ pub fn read_boot_stage() -> Option<alloc::string::String> {
 
 /// Write a crash reason to NVRAM.
 pub fn write_crash(reason: &str) {
-    nvram_set("FastOSCrash", reason.as_bytes());
+    nvram_set("BMOCrash", reason.as_bytes());
 }
 
 /// Read the crash reason from NVRAM (if any).
 pub fn read_crash() -> Option<alloc::string::String> {
-    let buf = nvram_get("FastOSCrash")?;
+    let buf = nvram_get("BMOCrash")?;
     let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
     if len == 0 { return None; }
     Some(alloc::string::String::from_utf8_lossy(&buf[..len]).into_owned())
@@ -162,14 +162,14 @@ pub fn read_crash() -> Option<alloc::string::String> {
 
 /// Clear the crash reason (call on clean boot).
 pub fn clear_crash() {
-    nvram_set("FastOSCrash", b"");
+    nvram_set("BMOCrash", b"");
 }
 
-// ── Log ring buffer in NVRAM ─────────────────────────────────────────────────
+// â”€â”€ Log ring buffer in NVRAM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Max log entries stored in NVRAM (256 bytes per variable, 8 variables).
 const MAX_LOG_VARS: usize = 8;
-const LOG_VAR_PREFIX: &str = "FastOSLog";
+const LOG_VAR_PREFIX: &str = "BMOLog";
 
 static mut LOG_INDEX: usize = 0;
 
@@ -200,13 +200,13 @@ pub fn log(msg: &str) -> bool {
     entry[pos] = b'\n';
     pos += 1;
 
-    // Variable name: FastOSLog0..FastOSLog7
+    // Variable name: BMOLog0..BMOLog7
     let mut var_name = [0u8; 16];
     let prefix_bytes = LOG_VAR_PREFIX.as_bytes();
     var_name[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
     var_name[prefix_bytes.len()] = b'0' + n as u8;
     let name = core::str::from_utf8(&var_name[..prefix_bytes.len() + 1])
-        .unwrap_or("FastOSLog0");
+        .unwrap_or("BMOLog0");
 
     nvram_set(name, &entry[..pos])
 }
@@ -220,7 +220,7 @@ pub fn read_log() -> alloc::vec::Vec<alloc::string::String> {
         var_name[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
         var_name[prefix_bytes.len()] = b'0' + i as u8;
         let name = core::str::from_utf8(&var_name[..prefix_bytes.len() + 1])
-            .unwrap_or("FastOSLog0");
+            .unwrap_or("BMOLog0");
 
         if let Some(buf) = nvram_get(name) {
             let len = buf.iter().position(|&b| b == 0).unwrap_or(256);
@@ -243,12 +243,12 @@ pub fn clear_log() {
         var_name[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
         var_name[prefix_bytes.len()] = b'0' + i as u8;
         let name = core::str::from_utf8(&var_name[..prefix_bytes.len() + 1])
-            .unwrap_or("FastOSLog0");
+            .unwrap_or("BMOLog0");
         nvram_set(name, b"");
     }
 }
 
-// ── fmt::Write for use with write!() ─────────────────────────────────────────
+// â”€â”€ fmt::Write for use with write!() â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Wrapper to use `write!(LogWriter, ...)` for structured log entries.
 pub struct LogWriter;

@@ -1,20 +1,20 @@
-//! FastOS/BMO v1.8.8
+﻿//! BMO/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!
-//! Filesystem subsystem for FastOS.
+//! Filesystem subsystem for BMO.
 //!
 //! v1.8.8: usa `BmoErrorCode` del ABI para errores visibles a Ring 3.
-//! Antes tenía un `DiskError` local que no se podía mapear al ABI.
+//! Antes tenÃ­a un `DiskError` local que no se podÃ­a mapear al ABI.
 //!
 //! Modular architecture (v1.8.8 simplificado):
-//!   - VFS (Virtual File System) — unified API
-//!   - Inode — file descriptor table (usa BmoFileType/BmoPerms)
-//!   - Mount — mount point management
-//!   - RAMdisk — embedded files in kernel binary (único FS en uso)
-//!   - Disk traits — block I/O abstraction for drivers
+//!   - VFS (Virtual File System) â€” unified API
+//!   - Inode â€” file descriptor table (usa BmoFileType/BmoPerms)
+//!   - Mount â€” mount point management
+//!   - RAMdisk â€” embedded files in kernel binary (Ãºnico FS en uso)
+//!   - Disk traits â€” block I/O abstraction for drivers
 //!
-//! v1.8.8: exFAT driver en vendor crate (para partición data T:).
+//! v1.8.8: exFAT driver en vendor crate (para particiÃ³n data T:).
 
 #![allow(dead_code)]
 
@@ -25,11 +25,11 @@ pub mod ramdisk_device;
 
 use crate::bmo_abi::error_code::BmoErrorCode;
 
-/// Disk error — re-export del ABI. BmoErrorCode tiene 21 códigos que
+/// Disk error â€” re-export del ABI. BmoErrorCode tiene 21 cÃ³digos que
 /// cubren todos los errores de disk (NotFound, Timeout, Io, etc).
 ///
-/// Los drivers de bajo nivel pueden mapear sus errores específicos
-/// a BmoErrorCode en el punto donde cruzan la frontera ring 0↔ring 3.
+/// Los drivers de bajo nivel pueden mapear sus errores especÃ­ficos
+/// a BmoErrorCode en el punto donde cruzan la frontera ring 0â†”ring 3.
 pub type DiskError = BmoErrorCode;
 
 /// Read-only block device trait.

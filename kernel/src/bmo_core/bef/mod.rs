@@ -1,4 +1,4 @@
-﻿//! BEF - formato ejecutable universal de FastOS.
+﻿//! BEF - formato ejecutable universal de BMO.
 //!
 //! Arquitectura:
 //! +---------------------------------------------+

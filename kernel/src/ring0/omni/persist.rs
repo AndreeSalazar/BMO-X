@@ -1,11 +1,11 @@
-//! Persist — flush cabina-daemon ring buffer to NVRAM/SSD.
+﻿//! Persist â€” flush cabina-daemon ring buffer to NVRAM/SSD.
 //!
 //! Uses nvram-log for post-mortem crash storage (survives reboot)
 //! and cabina-daemon spool for real-time buffering.
 //! exFAT driver (future) enables live writes to T: partition.
 
 /// Max events to flush per NVRAM variable (256-byte limit).
-const NVRAM_VAR_PREFIX: &str = "FastOSDiag";
+const NVRAM_VAR_PREFIX: &str = "BMODiag";
 
 /// Start the persist subsystem.
 pub fn start() {
@@ -45,7 +45,7 @@ pub fn flush_to_nvram() {
         let end = core::cmp::min(offset + chunk_max, pos);
         let chunk = &buf[offset..end];
 
-        // Build variable name "FastOSDiag0" through "FastOSDiag7"
+        // Build variable name "BMODiag0" through "BMODiag7"
         let name = build_var_name(var_idx);
         nvram_log::set_variable(&name, chunk);
 

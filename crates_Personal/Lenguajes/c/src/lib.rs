@@ -1,4 +1,4 @@
-pub mod codegen;
+﻿pub mod codegen;
 pub mod ast;
 pub mod module;
 
@@ -78,7 +78,7 @@ struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     var_types: HashMap<String, TypeSpec>,
-    struct_fields: HashMap<String, Vec<(String, u32, u32)>>, // name → [(field, offset, size)]
+    struct_fields: HashMap<String, Vec<(String, u32, u32)>>, // name â†’ [(field, offset, size)]
     struct_sizes: HashMap<String, u32>,
     usings: Vec<String>, // module paths collected from `use "path"` directives
     typedefs: HashMap<String, TypeSpec>,
@@ -228,7 +228,7 @@ impl Parser {
                             }
                         } else { s.push(c[i]); } i += 1;
                     } i += 1;
-                    // string literal concatenation: "foo" "bar" → "foobar"
+                    // string literal concatenation: "foo" "bar" â†’ "foobar"
                     let mut combined = s;
                     while i < c.len() && (c[i] == ' ' || c[i] == '\t' || c[i] == '\n' || c[i] == '\r') { i += 1; }
                     while i < c.len() && c[i] == '"' {
@@ -489,7 +489,7 @@ impl Parser {
                         globals.push(GlobalDecl::Struct(name, members));
                     }
                 } else {
-                    // struct name var; — handled as type+name below
+                    // struct name var; â€” handled as type+name below
                     if let Token::Ident(vname) = self.advance() {
                         let typ = if is_union { TypeSpec::UnionRef(name) } else { TypeSpec::StructRef(name) };
                         self.skip_semicolon();
@@ -581,11 +581,11 @@ impl Parser {
     ) -> Result<Program, CError> {
         let mut program = self.parse_program()?;
         // Syscall defs and module manifests are loaded AFTER parse_program().
-        // We must post-process the AST to convert Expr::Call → Expr::Syscall
+        // We must post-process the AST to convert Expr::Call â†’ Expr::Syscall
         // for any function names that match a loaded syscall definition.
         let usings = std::mem::take(&mut self.usings);
         for path in &usings {
-            // Load module sources (optional — module may not exist for syscall-only paths)
+            // Load module sources (optional â€” module may not exist for syscall-only paths)
             if let Ok(manifest) = resolver.find_manifest(path) {
                 let mod_dir = resolver.find_base_dir(path);
                 for src_file in &manifest.source_files {
@@ -630,7 +630,7 @@ impl Parser {
                 }
             }
         }
-        // Post-process: convert Expr::Call(name,args) → Expr::Syscall(def,args)
+        // Post-process: convert Expr::Call(name,args) â†’ Expr::Syscall(def,args)
         // for any function calls whose name matches a loaded syscall definition.
         self.resolve_syscalls_in_program(&mut program);
         // Validate syscall argument counts
@@ -723,7 +723,7 @@ impl Parser {
         Ok(())
     }
 
-    /// Walk all function bodies and convert Expr::Call → Expr::Syscall for
+    /// Walk all function bodies and convert Expr::Call â†’ Expr::Syscall for
     /// any function calls whose name matches a loaded syscall definition.
     fn resolve_syscalls_in_program(&self, program: &mut Program) {
         for func in &mut program.functions {
@@ -1387,7 +1387,7 @@ impl Parser {
                         if *self.peek() == Token::CloseParen {
                             self.advance();
                             let expr = self.parse_unary()?;
-                            // cast is a no-op — just return the inner expression
+                            // cast is a no-op â€” just return the inner expression
                             return Ok(expr);
                         }
                     }
@@ -1442,7 +1442,7 @@ impl Parser {
                     let mut args = Vec::new();
                     while *self.peek() != Token::CloseParen && *self.peek() != Token::Eof {
                         // Use parse_assign (not parse_expr) to avoid the comma operator
-                        // consuming argument separators — C grammar requires
+                        // consuming argument separators â€” C grammar requires
                         // argument_expression_list: assignment_expression (',' assignment_expression)*
                         args.push(self.parse_assign()?);
                         if *self.peek() == Token::Comma { self.advance(); }
@@ -1874,7 +1874,7 @@ int sum(int a, int b, int c) {
     #[test]
     fn syscall_arg_count_validation() {
         use std::path::PathBuf;
-        // bmo_exit expects 1 arg → passing 0 should fail
+        // bmo_exit expects 1 arg â†’ passing 0 should fail
         let src = r#"use "bmo/proc"; int main() { bmo_exit(); }"#;
         let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
         let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");

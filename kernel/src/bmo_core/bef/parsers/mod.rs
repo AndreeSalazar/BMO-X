@@ -28,7 +28,7 @@ use crate::bmo_core::bef::format::manifest::{Manifest, Provenance};
 /// Formato detectado del binario.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryFormat {
-    /// BEF nativo de FastOS.
+    /// BEF nativo de BMO.
     BefNative,
     /// ELF devorado y traducido a BEF interno.
     ElfDevoured,

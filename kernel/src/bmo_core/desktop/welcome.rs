@@ -1,16 +1,16 @@
-//! FastOS/BMO v1.8.8
+﻿//! BMO/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!
-//! v1.7.1 — Welcome screen profesional, dark, elegante.
+//! v1.7.1 â€” Welcome screen profesional, dark, elegante.
 //!
 //! Cambios vs v1.6.x:
 //!   * Wallpaper procedural compartido con el desktop (mesh + aurora + grid).
 //!   * Card con glass (tinte negro 40% sobre el wallpaper).
-//!   * Tipografía jerárquica: title 3× → subtitle 2× → body 1×.
+//!   * TipografÃ­a jerÃ¡rquica: title 3Ã— â†’ subtitle 2Ã— â†’ body 1Ã—.
 //!   * Acentos mint teal + detalle gold; consistencia total con el desktop.
-//!   * Prompt rediseñado: pill con borde neón + caret cuadrado.
-//!   * Watermark "Powered by Eddi Andreé Salazar Matos" en una línea sutil.
+//!   * Prompt rediseÃ±ado: pill con borde neÃ³n + caret cuadrado.
+//!   * Watermark "Powered by Eddi AndreÃ© Salazar Matos" en una lÃ­nea sutil.
 //!   * Footer con build / ring / arch en un strip inferior.
 //!
 //! Comandos aceptados: Run, Hello, Ring3, Nexo, Test, Reboot (sin cambios).
@@ -217,7 +217,7 @@ fn render(fb: &Framebuffer) {
     fb.fill_rect(cx + 24, cy + 33, CARD_W - 48, 1, theme::MINT_DEEP);
     fb.fill_rect(cx + 24, cy + 36, CARD_W - 48, 1, theme::NEON_INNER);
 
-    let title_left  = b"FastOS";
+    let title_left  = b"BMO";
     let title_dash  = b"-";
     let title_right = b"BMO";
     let scale_t = 3u32;
@@ -262,7 +262,7 @@ fn render(fb: &Framebuffer) {
 
     // v1.8.14: badges minimal. Solo un status line centrado.
     let by0 = cy + 274;
-    let status = b"FastOS / BMO :: Ryzen 5 5600X :: Ring 0 + Ring 3";
+    let status = b"BMO / BMO :: Ryzen 5 5600X :: Ring 0 + Ring 3";
     let sw = status.len() * 8;
     let sx = cx + (CARD_W - sw) / 2;
     draw_text(fb, sx as u32, by0 as u32, status, theme::MINT);
@@ -337,7 +337,7 @@ fn render(fb: &Framebuffer) {
 fn render_safe(fb: &Framebuffer) {
     fb.clear(0xFF07111F);
     fb.fill_rect(0, 0, fb.width, 42, 0xFF101820);
-    draw_text(fb, 14, 13, b"FastOS / BMO  ::  v1.7.1  ::  SAFE WELCOME", 0xFFE6EDF3);
+    draw_text(fb, 14, 13, b"BMO / BMO  ::  v1.7.1  ::  SAFE WELCOME", 0xFFE6EDF3);
     draw_text(fb, 14, 58, b"GOP framebuffer OK. Storage/NIC deferred for stable boot.", 0xFF76B900);
     draw_text(fb, 14, 82, b"Run + Enter: desktop  ::  F9: diag HUD", 0xFF8B949E);
 
@@ -512,9 +512,9 @@ pub fn run() -> ! {
         }
     }
 
-    // Dibujar texto "FastOS OK"
+    // Dibujar texto "BMO OK"
     crate::dev::console::serial_write("[welcome] drawing text\n");
-    let text = b"FastOS OK";
+    let text = b"BMO OK";
     let tx = w / 2 - (text.len() * 8) / 2;
     let ty = h / 2 - 8;
     for (i, &ch) in text.iter().enumerate() {
@@ -538,7 +538,7 @@ pub fn run() -> ! {
 
     crate::dev::console::serial_write("[welcome] entering cooperative idle loop\n");
 
-    // Stage 9: welcome idle loop running — clear crash marker
+    // Stage 9: welcome idle loop running â€” clear crash marker
     // If we get here, boot succeeded. The marker is no longer needed.
     crate::phase_1_RING_0::clear_crash_marker();
     crate::uefi_rt::write_boot_stage("ok");
@@ -549,10 +549,10 @@ pub fn run() -> ! {
     loop {
         let now = crate::cpu::rdtsc();
 
-        // ── FCH hardware watchdog pet (AMD FCH ~10-15s timeout) ─────
+        // â”€â”€ FCH hardware watchdog pet (AMD FCH ~10-15s timeout) â”€â”€â”€â”€â”€
         crate::dev::watchdog::pet_fch_watchdog();
 
-        // ── Heartbeat blink (every 500ms) ───────────────────────────
+        // â”€â”€ Heartbeat blink (every 500ms) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if now.wrapping_sub(last_heartbeat) >= 500 * super::CYCLES_PER_MS {
             last_heartbeat = now;
             heartbeat_on = !heartbeat_on;

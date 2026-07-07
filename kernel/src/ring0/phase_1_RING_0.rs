@@ -1,4 +1,4 @@
-//! Phase 1 — Ring 0 Main Coordinator
+﻿//! Phase 1 â€” Ring 0 Main Coordinator
 //!
 //! This is the main entry point for Ring 0 initialization.
 //! It orchestrates ALL hardware setup before handing off to the next phase.
@@ -11,7 +11,7 @@
 //!   5. Phase 2: ACPI + PCI discovery
 //!   6. Phase 3: GOP framebuffer
 //!   7. Phase 4: Scheduler init
-//!   8. init_fastos_cpu (Ryzen 5 5600X detection)
+//!   8. init_bmo_cpu (Ryzen 5 5600X detection)
 //!   9. init_acpi (ACPI tables)
 //!  10. SMP init (AP cores)
 //!  11. Return BootContext to the Ring 0 entry point
@@ -19,7 +19,7 @@
 use crate::info;
 use crate::context::BootContext;
 
-// ── Crash marker ────────────────────────────────────────────────────────────
+// â”€â”€ Crash marker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CRASH_MARKER_ADDR: u64 = 0x9_0000;
 const RAM_STAGE_ADDR: u64 = 0x9_0010;
@@ -43,22 +43,22 @@ pub fn clear_crash_marker() {
     }
 }
 
-// ── Boot validation ─────────────────────────────────────────────────────────
+// â”€â”€ Boot validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn validate_boot_info(
-    ptr: *const fastos_boot_protocol::BootInfo,
-) -> Result<&'static fastos_boot_protocol::BootInfo, &'static str> {
+    ptr: *const bmo_boot_protocol::BootInfo,
+) -> Result<&'static bmo_boot_protocol::BootInfo, &'static str> {
     if ptr.is_null() {
         return Err("boot_info_ptr is NULL");
     }
     let bi = unsafe { &*ptr };
-    if bi.magic != fastos_boot_protocol::BOOT_MAGIC {
+    if bi.magic != bmo_boot_protocol::BOOT_MAGIC {
         return Err("BootInfo magic mismatch");
     }
     Ok(bi)
 }
 
-unsafe fn store_boot_info(bi: &fastos_boot_protocol::BootInfo) {
+unsafe fn store_boot_info(bi: &bmo_boot_protocol::BootInfo) {
     info::BOOT_INFO = bi as *const _;
     info::FB_ADDR = bi.fb_addr;
     info::FB_WIDTH = bi.fb_width;
@@ -67,7 +67,7 @@ unsafe fn store_boot_info(bi: &fastos_boot_protocol::BootInfo) {
     info::FB_PIXEL_FORMAT = bi.fb_pixel_format;
 }
 
-// ── Phase 0: CPU Init (GDT + IDT + SYSCALL + CPU features) ─────────────────
+// â”€â”€ Phase 0: CPU Init (GDT + IDT + SYSCALL + CPU features) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
     crate::log::info("phase0", "=== Phase 0: CPU Init ===");
@@ -82,7 +82,7 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
     crate::uefi_rt::write_boot_stage("p0_idt");
     crate::arch::idt::init_idt();
 
-    // FIRST safe watchdog pet — IDT loaded, MMIO faults can be caught
+    // FIRST safe watchdog pet â€” IDT loaded, MMIO faults can be caught
     crate::dev::watchdog::pet_fch_watchdog();
 
     // SYSCALL MSRs
@@ -133,7 +133,7 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
     phase0_end
 }
 
-// ── Phase 1: Memory Init (frame allocator + heap + high-mem) ────────────────
+// â”€â”€ Phase 1: Memory Init (frame allocator + heap + high-mem) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     write_crash_marker(2100);
@@ -150,7 +150,7 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     if bi.memory_map_count == 0 {
         crate::log::fault("phase1", "UEFI memory map is empty");
     }
-    if bi.memory_map_count == fastos_boot_protocol::MAX_MEMORY_ENTRIES as u32 {
+    if bi.memory_map_count == bmo_boot_protocol::MAX_MEMORY_ENTRIES as u32 {
         crate::log::warn("phase1", "UEFI memory map count reached MAX_MEMORY_ENTRIES limit. Memory map might be truncated!");
     }
 
@@ -224,7 +224,7 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     phase1_end
 }
 
-// ── Phase 2: Device Discovery (ACPI + PCI) ──────────────────────────────────
+// â”€â”€ Phase 2: Device Discovery (ACPI + PCI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     write_crash_marker(2200);
@@ -279,12 +279,12 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
 
-    // PS/2 Mouse (IRQ12) — init first so keyboard LED re-enable comes after
+    // PS/2 Mouse (IRQ12) â€” init first so keyboard LED re-enable comes after
     write_crash_marker(2203);
     crate::uefi_rt::write_boot_stage("p2_ps2_input");
     crate::dev::mouse::init();
 
-    // PS/2 Keyboard (IRQ1) — re-enables Num Lock LED after mouse reset
+    // PS/2 Keyboard (IRQ1) â€” re-enables Num Lock LED after mouse reset
     crate::dev::keyboard::init();
 
     // MMIO-backed drivers are deferred while Phase 1 intentionally keeps the
@@ -312,7 +312,7 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     phase2_end
 }
 
-// ── Phase 3: Display Init (GOP framebuffer) ─────────────────────────────────
+// â”€â”€ Phase 3: Display Init (GOP framebuffer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn phase3_display(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::log::info("phase3", "=== Phase 3: Display Init ===");
@@ -341,7 +341,7 @@ fn phase3_display(ctx: &mut BootContext, prev_end: u64) -> u64 {
     phase3_end
 }
 
-// ── Phase 4: Scheduler Init ─────────────────────────────────────────────────
+// â”€â”€ Phase 4: Scheduler Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn phase4_sched(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::log::info("phase4", "=== Phase 4: Scheduler Init ===");
@@ -361,14 +361,14 @@ fn phase4_sched(ctx: &mut BootContext, prev_end: u64) -> u64 {
     phase4_end
 }
 
-// ── Main Entry Point ────────────────────────────────────────────────────────
+// â”€â”€ Main Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Main entry point for Ring 0. Called from kernel_main_real.
 ///
 /// Initializes ALL hardware and returns a BootContext to the Ring 0 entry
 /// point. The caller decides whether to enter a higher layer or stay in the
 /// Ring 0-owned GOP ready screen.
-pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext {
+pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     // 1. Validate BootInfo
     crate::cabina_daemon::info("ring0", "validating BootInfo");
     let bi = match validate_boot_info(boot_info_ptr) {
@@ -426,10 +426,10 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
 
     // 7. CPU-specific init (Ryzen 5 5600X)
     write_crash_marker(3);
-    crate::uefi_rt::write_boot_stage("init_fastos_cpu");
+    crate::uefi_rt::write_boot_stage("init_bmo_cpu");
     crate::cabina_daemon::info("ring0", "detecting CPU");
     crate::visual::log("ring0", "[1/5] detect 5600X", crate::visual::color::OK);
-    crate::vendor::amd::cpu::zen3::init_fastos_cpu();
+    crate::vendor::amd::cpu::zen3::init_bmo_cpu();
     crate::cabina_daemon::info("ring0", "CPU detected");
     crate::visual::log("ring0", "[1/5] 5600X detected", crate::visual::color::OK);
 
@@ -462,9 +462,9 @@ pub fn main(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> BootContext
     // 11. Mark boot complete
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
-    crate::cabina_daemon::info("ring0", "Ring 0 boot complete — returning BootContext");
+    crate::cabina_daemon::info("ring0", "Ring 0 boot complete â€” returning BootContext");
     crate::visual::log("ring0", "Ring 0 boot complete", crate::visual::color::OK);
-    crate::dev::console::serial_write("[ring0] boot complete — returning BootContext\n");
+    crate::dev::console::serial_write("[ring0] boot complete â€” returning BootContext\n");
 
     // Dump cabina ring buffer to serial for diagnostics
     {

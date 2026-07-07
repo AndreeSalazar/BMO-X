@@ -83,6 +83,6 @@ pub fn load_only(bytes: &[u8]) -> Result<Image, LoadError> {
 
 /// Lista de formatos soportados (para Cabina).
 pub const SUPPORTED_FORMATS: &[&str] = &[
-    "BEF1 (FastOS native)",
+    "BEF1 (BMO native)",
     "\\x7FELF (Linux/Unix - devoured)",
 ];

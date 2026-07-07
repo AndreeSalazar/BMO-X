@@ -1,16 +1,16 @@
-#![allow(dead_code)]
+﻿#![allow(dead_code)]
 
-//! Context switching for FastOS — saves/restores full register state across threads.
+//! Context switching for BMO â€” saves/restores full register state across threads.
 //!
 //! Kernel stack layout (what the ISR stub pushes, from RSP upward):
 //!
-//!   For Ring0→Ring0 (APIC timer fires while in kernel):
-//!     [rax] [rbx] [rcx] [rdx] [rsi] [rdi] [rbp] [r8]..[r15]    ← 15 GPRs (120 bytes)
-//!     [RIP] [CS] [RFLAGS]                                         ← CPU frame (3 values, 24 bytes)
+//!   For Ring0â†’Ring0 (APIC timer fires while in kernel):
+//!     [rax] [rbx] [rcx] [rdx] [rsi] [rdi] [rbp] [r8]..[r15]    â† 15 GPRs (120 bytes)
+//!     [RIP] [CS] [RFLAGS]                                         â† CPU frame (3 values, 24 bytes)
 //!
-//!   For Ring3→Ring0 (APIC timer fires while in user mode):
-//!     [rax] [rbx] [rcx] [rdx] [rsi] [rdi] [rbp] [r8]..[r15]    ← 15 GPRs (120 bytes)
-//!     [SS] [RSP] [RFLAGS] [CS] [RIP]                             ← CPU frame (5 values, 40 bytes)
+//!   For Ring3â†’Ring0 (APIC timer fires while in user mode):
+//!     [rax] [rbx] [rcx] [rdx] [rsi] [rdi] [rbp] [r8]..[r15]    â† 15 GPRs (120 bytes)
+//!     [SS] [RSP] [RFLAGS] [CS] [RIP]                             â† CPU frame (5 values, 40 bytes)
 //!
 //! This module provides helpers to save/load this layout to/from a `SavedRegs` struct.
 
@@ -69,7 +69,7 @@ pub unsafe extern "C" fn save_context_from_stack(saved_state: *mut u64) -> bool 
         regs.rip    = *cpu_frame.add(0);
         regs.cs     = *cpu_frame.add(1);
         regs.rflags = *cpu_frame.add(2);
-        regs.rsp    = 0; // Not saved by CPU for ring0→ring0
+        regs.rsp    = 0; // Not saved by CPU for ring0â†’ring0
         regs.ss     = 0;
     }
 

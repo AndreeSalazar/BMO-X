@@ -1,4 +1,4 @@
-//! Syscall Entry Point + Dispatcher.
+﻿//! Syscall Entry Point + Dispatcher.
 //!
 //! Combines the IA32_LSTAR/STAR/FMASK MSR setup, the naked `syscall`
 //! entry, the Rust handler, the syscall number enum, and the futex
@@ -24,7 +24,7 @@
 
 use core::arch::{asm, naked_asm};
 
-// ── MSR addresses (cached for clarity) ───────────────────────────────────────
+// â”€â”€ MSR addresses (cached for clarity) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const IA32_STAR: u32             = 0xC000_0081;
 const IA32_LSTAR: u32            = 0xC000_0082;
@@ -37,7 +37,7 @@ const IA32_KERNEL_GS_BASE: u32   = 0xC000_0102;
 const KERNEL_CS_SELECTOR: u64 = 0x08;
 const KERNEL_DS_SELECTOR: u64 = 0x10;
 
-// ── MSR read/write helpers ───────────────────────────────────────────────────
+// â”€â”€ MSR read/write helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[inline]
 unsafe fn wrmsr(msr: u32, val: u64) {
@@ -53,18 +53,18 @@ unsafe fn rdmsr(msr: u32) -> u64 {
     ((hi as u64) << 32) | (lo as u64)
 }
 
-// ── Trait: implementable by any syscall handler ─────────────────────────────
+// â”€â”€ Trait: implementable by any syscall handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Trait for dispatching a syscall by number.
 ///
 /// Implementors receive the syscall number and 6 argument registers
 /// (in BMO ABI order: rdi, rsi, rdx, r10, r8, r9). They return a
-/// `u64` (negative = error per POSIX, ≥0 = success).
+/// `u64` (negative = error per POSIX, â‰¥0 = success).
 pub trait SyscallHandler {
     fn handle(&self, nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64;
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Per-CPU kernel stack pointer used by the syscall entry.
 static mut SYSCALL_KERNEL_RSP: u64 = 0;
@@ -96,7 +96,7 @@ pub fn init_syscall() {
 
     // v1.8.8: re-initialize ALL common MSRs (EFER, STAR, LSTAR, FMASK, PAT,
     // TSC_AUX, GS bases) using the real syscall entry point. This overrides
-    // the placeholder that `init_fastos_cpu()` wrote in coordinator::main.
+    // the placeholder that `init_bmo_cpu()` wrote in coordinator::main.
     let real_entry = syscall_entry_naked as *const () as u64;
     crate::vendor::amd::cpu::zen3::init_msrs(real_entry);
 }
@@ -106,7 +106,7 @@ pub fn set_syscall_kernel_stack(rsp: u64) {
     unsafe { SYSCALL_KERNEL_RSP = rsp; }
 }
 
-// ── Saved user ctx ───────────────────────────────────────────────────────
+// â”€â”€ Saved user ctx â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Saved user ctx for iretq return.
 ///
@@ -138,7 +138,7 @@ pub struct InterruptFrame {
     pub ss: u64,
 }
 
-// ── Naked entry point ────────────────────────────────────────────────────────
+// â”€â”€ Naked entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry_naked() {
@@ -186,7 +186,7 @@ unsafe extern "C" fn syscall_entry_naked() {
     );
 }
 
-// ── Rust handler ─────────────────────────────────────────────────────────────
+// â”€â”€ Rust handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 static mut RING3_SYSCALL_SEEN: bool = false;
 
@@ -213,7 +213,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
 
         cabina_daemon::telemetry::syscall::inc(nr as u16);
 
-        // ─── Linux emulation: route to shims::linux::syscall::dispatch ──
+        // â”€â”€â”€ Linux emulation: route to shims::linux::syscall::dispatch â”€â”€
         // If the current process has linux_emulation=true, all ring3 syscall
         // instructions go through the Linux syscall table instead of the BMO
         // native one. Linux syscall numbers (0..99) overlap with the BMO low
@@ -232,7 +232,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         }
 
         let result = match nr {
-            // ─── BMO ABI range (0x100..=0x1FF) ──────────────────────
+            // â”€â”€â”€ BMO ABI range (0x100..=0x1FF) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             // Ring 0 owns the architectural syscall gate; BMO Core owns the
             // higher-level API contract. Bridge the canonical ABI range here
             // so early Ring 3/BEF commands can use windowing, FS, time,
@@ -241,7 +241,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 crate::bmo_core::bmo_api::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, a5)
             }
 
-            // ─── Procesos ─────────────────────────────────────────────
+            // â”€â”€â”€ Procesos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x00 => {
                 crate::proc::process::kill_current_process(0, a0, 0);
             }
@@ -268,12 +268,12 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 crate::proc::process::kill_current_process(0, a0, 0);
             }
 
-            // ─── Memoria ──────────────────────────────────────────────
+            // â”€â”€â”€ Memoria â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x10 => u64::MAX,
             0x11 => u64::MAX,
             0x12 => u64::MAX,
 
-            // ─── VFS ──────────────────────────────────────────────────
+            // â”€â”€â”€ VFS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x20 => u64::MAX,
             0x21 => u64::MAX,
             0x22 => u64::MAX,
@@ -281,18 +281,18 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             0x24 => u64::MAX,
             0x25 => u64::MAX,
 
-            // ─── IPC ──────────────────────────────────────────────────
+            // â”€â”€â”€ IPC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x30 => u64::MAX,
             0x31 => u64::MAX,
             0x32 => u64::MAX,
 
-            // ─── BareX bridges ────────────────────────────────────────
+            // â”€â”€â”€ BareX bridges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x40 => u64::MAX,
             0x41 => u64::MAX,
             0x42 => u64::MAX,
             0x43 => u64::MAX,
 
-            // ─── Tiempo ───────────────────────────────────────────────
+            // â”€â”€â”€ Tiempo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x50 => crate::cpu::rdtsc(),
             0x51 => {
                 let target_ns = a0;
@@ -304,7 +304,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 0
             }
 
-            // ─── Framebuffer ──────────────────────────────────────────
+            // â”€â”€â”€ Framebuffer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x60 => {
                 let w = crate::info::FB_WIDTH as u64;
                 let h = crate::info::FB_HEIGHT as u64;
@@ -325,16 +325,16 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                 0
             }
 
-            // ─── Input ────────────────────────────────────────────────
+            // â”€â”€â”€ Input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x70 => 0,
             0x71 => 0,
 
-            // ─── Sonido ───────────────────────────────────────────────
+            // â”€â”€â”€ Sonido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x80 => {
                 0
             }
 
-            // ─── Debug ────────────────────────────────────────────────
+            // â”€â”€â”€ Debug â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0xF0 => {
                 if a1 > 0 && a1 < 4096 {
                     let slice = core::slice::from_raw_parts(a0 as *const u8, a1 as usize);
@@ -354,7 +354,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
     }
 }
 
-// ── Syscall numbers (legacy 0x00..0xFF) ─────────────────────────────────────
+// â”€â”€ Syscall numbers (legacy 0x00..0xFF) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Syscall numbers for the legacy 0x00..0xFF range.
 ///
@@ -390,7 +390,7 @@ pub enum Syscall {
     DebugPrint          = 0xF0,
 }
 
-// NOTA: `init()` quedó como wrapper trivial de `init_syscall()`. v1.8.7:
-// los únicos call sites usan `init_syscall()` directamente, así que este
+// NOTA: `init()` quedÃ³ como wrapper trivial de `init_syscall()`. v1.8.7:
+// los Ãºnicos call sites usan `init_syscall()` directamente, asÃ­ que este
 // wrapper se elimina. Si en el futuro se quiere re-unificar, exponer un
 // solo nombre y llamarlo desde `p0_arch::run`.

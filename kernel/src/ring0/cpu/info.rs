@@ -1,7 +1,7 @@
-//! CPU information display for the Ryzen 5 5600X.
+﻿//! CPU information display for the Ryzen 5 5600X.
 //!
 //! v1.8.8: now reads ALL data from `crate::vendor::amd::cpu::zen3::*` (the real
-//! detection layer). If `init_fastos_cpu()` hasn't run yet, prints
+//! detection layer). If `init_bmo_cpu()` hasn't run yet, prints
 //! only the brand string and a hint.
 
 #![allow(dead_code)]
@@ -93,7 +93,7 @@ pub fn print() {
         }
 
         // Topology
-        if let Some(topo) = crate::vendor::amd::cpu::zen3::fastos_cpu::topology() {
+        if let Some(topo) = crate::vendor::amd::cpu::zen3::bmo_cpu::topology() {
             crate::dev::console::serial_write("[cpu] Topology: ");
             crate::dev::console::serial_write_u64(topo.total_cores as u64, 10);
             crate::dev::console::serial_write(" cores, ");
@@ -118,7 +118,7 @@ pub fn print() {
 
         crate::dev::console::serial_write("[cpu] NOT supported (5600X):\n");
         crate::dev::console::serial_write("  AVX-512 (5600X is Zen 3, no AVX-512)\n");
-        crate::dev::console::serial_write("  LA57 (5-level paging) — only on Zen 4+\n");
+        crate::dev::console::serial_write("  LA57 (5-level paging) â€” only on Zen 4+\n");
     } else {
         // Fallback: no detection yet
         let (max_ext, _, _, _) = cpuid(0x80000000, 0);
@@ -143,7 +143,7 @@ pub fn print() {
             crate::dev::console::serial_write(s);
         }
         crate::dev::console::serial_write("\n");
-        crate::dev::console::serial_write("[cpu] (run init_fastos_cpu() for full info)\n");
+        crate::dev::console::serial_write("[cpu] (run init_bmo_cpu() for full info)\n");
         crate::dev::console::serial_write("[cpu] Max ext leaf: 0x");
         crate::dev::console::serial_write_u64(max_ext as u64, 16);
         crate::dev::console::serial_write("\n");

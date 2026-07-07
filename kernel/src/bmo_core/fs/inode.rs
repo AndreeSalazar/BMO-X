@@ -1,8 +1,8 @@
-#![allow(dead_code)]
+﻿#![allow(dead_code)]
 
-//! VFS Inode abstraction for FastOS.
+//! VFS Inode abstraction for BMO.
 //!
-//! v1.8.8: usa `BmoFileType` y `BmoPerms` del ABI. Antes redefinía
+//! v1.8.8: usa `BmoFileType` y `BmoPerms` del ABI. Antes redefinÃ­a
 //! `InodeType` y `Perm` con layouts incompatibles. Ahora son
 //! type aliases del contrato.
 
@@ -29,11 +29,11 @@ impl InodeId {
     pub const ROOT: Self = Self { mount_id: 0, ino: 1 };
 }
 
-/// Inode type — alias del ABI `BmoFileType`.
+/// Inode type â€” alias del ABI `BmoFileType`.
 /// 7 variantes: Unknown/Regular/Directory/Symlink/Character/Block/Pipe/Socket.
 pub type InodeType = BmoFileType;
 
-/// Permission bits — alias del ABI `BmoPerms` (u16 Unix-like).
+/// Permission bits â€” alias del ABI `BmoPerms` (u16 Unix-like).
 pub type Perm = BmoPerms;
 
 /// Open file handle.

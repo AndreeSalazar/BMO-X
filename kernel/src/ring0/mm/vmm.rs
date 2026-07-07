@@ -1,4 +1,4 @@
-//! Virtual Memory Manager — x86-64 4-level page tables, demand paging, CoW.
+﻿//! Virtual Memory Manager â€” x86-64 4-level page tables, demand paging, CoW.
 //!
 //! Page table pages are allocated from the physical frame allocator
 //! (identity-mapped in low 4 GB). All page table walks use the shared
@@ -14,8 +14,8 @@
 //!   phys_to_virt(p) = p + HIGH_MEM_BASE
 //!
 //! This scales to 1 TB of RAM:
-//!   1 TB = 256M pages × 4 KB bitmap = 32 MB bitmap overhead.
-//!   Virtual range: 0xFFFF_8000_0000_0000 → 0xFFFF_8001_0000_0000 (1 TB)
+//!   1 TB = 256M pages Ã— 4 KB bitmap = 32 MB bitmap overhead.
+//!   Virtual range: 0xFFFF_8000_0000_0000 â†’ 0xFFFF_8001_0000_0000 (1 TB)
 
 /// Base virtual address for the high-mem region.
 /// All physical RAM is identity-mapped here: virt = phys + HIGH_MEM_BASE.
@@ -488,7 +488,7 @@ pub unsafe fn resolve_demand_page(
 
     let phys = crate::mm::phys::alloc_pages_contiguous(1)
         .ok_or("OOM resolving demand page")?;
-    // alloc_page_table zeroes, but alloc_pages_contiguous doesn't — zero manually
+    // alloc_page_table zeroes, but alloc_pages_contiguous doesn't â€” zero manually
     core::ptr::write_bytes(phys_to_virt(phys) as *mut u8, 0, PAGE_SIZE as usize);
 
     let final_flags = (vma.flags | flags::PRESENT) & !DEMAND;
@@ -582,8 +582,8 @@ pub unsafe fn handle_page_fault(
 ///
 /// This maps every usable physical page so that `phys_to_virt(phys)`
 /// works for any address in the system. Scales to 1 TB of RAM.
-pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], count: usize) {
-    use fastos_boot_protocol::MemoryType;
+pub unsafe fn map_high_mem(memory_map: &[bmo_boot_protocol::MemoryEntry], count: usize) {
+    use bmo_boot_protocol::MemoryType;
 
     crate::dev::console::serial_write("[vmm] mapping high-mem: base=0x");
     crate::serial::hex(HIGH_MEM_BASE);
@@ -639,7 +639,7 @@ pub unsafe fn map_high_mem(memory_map: &[fastos_boot_protocol::MemoryEntry], cou
                 pdpte.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
                 new
             } else if (pdpte.0 & flags::HUGE_PAGE) != 0 {
-                // 1 GB huge page already mapped — skip this 2 MB range
+                // 1 GB huge page already mapped â€” skip this 2 MB range
                 phys = (phys & !((1u64 << 30) - 1)) + (1u64 << 30);
                 continue;
             } else {

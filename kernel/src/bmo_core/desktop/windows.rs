@@ -1,4 +1,4 @@
-//! Windows — window title catalog, dock labels, and content-per-title mapping.
+﻿//! Windows â€” window title catalog, dock labels, and content-per-title mapping.
 //!
 //! Separated from render.rs so the render module stays focused on drawing.
 
@@ -71,7 +71,7 @@ pub fn content_for<'a>(
                 core::slice::from_raw_parts(BMOFS_README_CONTENT.as_ptr(), BMOFS_README_LEN)
             };
             [
-                (b"FastOS / Datos Viewer" as &[u8], palette::CYAN_INFO),
+                (b"BMO / Datos Viewer" as &[u8], palette::CYAN_INFO),
                 (readme_slice as &[u8], palette::TITLE),
                 (b"" as &[u8], palette::TITLE),
                 (b"RamFs: montado en /" as &[u8], palette::OK_FG),

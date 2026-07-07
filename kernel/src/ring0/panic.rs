@@ -1,28 +1,28 @@
-//! Panic handler — minimal, no-allocation, no-dependency.
+﻿//! Panic handler â€” minimal, no-allocation, no-dependency.
 //!
 //! v1.8.9: rewrite defensivo. El handler anterior llamaba a
 //! `cabina::panic_msg` y `cabina::paint_overlay`, los cuales
 //! internamente alocan `String` en el heap. Si el panic ocurre en
-//! un estado donde el heap está corrupto o no inicializado, el
+//! un estado donde el heap estÃ¡ corrupto o no inicializado, el
 //! handler mismo cuelga sin output.
 //!
 //! v1.8.9: el handler es ahora **100% serial-direct**. Sin
 //! allocations, sin globals de cabina, sin framebuffer. Solo escribe
 //! "!!! KERNEL PANIC !!!" a COM1 (0x3F8) y hace `cli; hlt` en loop.
-//! Funciona en cualquier estado del kernel — incluso con heap roto,
+//! Funciona en cualquier estado del kernel â€” incluso con heap roto,
 //! incluso antes de init_heap().
 
 use core::arch::asm;
 use core::fmt::{self, Display, Write as FmtWrite};
 use core::panic::PanicInfo;
 
-// ── COM1 (16550 UART) register ports ───────────────────────────────
+// â”€â”€ COM1 (16550 UART) register ports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const COM1_DATA: u16 = 0x3F8;
 const COM1_LSR: u16 = 0x3FD;
 const LSR_THRE: u8 = 0x20;
 
-// ── fmt::Write adapter ────────────────────────────────────────────
+// â”€â”€ fmt::Write adapter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Adapter no-alocante que escribe a un slice de bytes. Implementa
 /// `core::fmt::Write` para que pueda usarse con `write!` /
@@ -47,14 +47,14 @@ impl fmt::Write for SliceWriter<'_> {
     }
 }
 
-// ── Display wrapper for PanicMessage ──────────────────────────────
+// â”€â”€ Display wrapper for PanicMessage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Wrapper que implementa `Display` para `core::panic::PanicMessage<'_>`.
 /// Permite usar `write!(w, "{}", PanicMsgWrap(m))` con la API estable
 /// de Rust (sin `Arguments::new_v1` que solo existe inestable).
 ///
 /// `PanicMessage<'_>` no es `Display` directamente (en versiones estables
-/// solo se puede pasar a `set_hook`), así que lo envolvemos para que
+/// solo se puede pasar a `set_hook`), asÃ­ que lo envolvemos para que
 /// `write!` lo formatee via `Display`.
 struct PanicMsgWrap<'a>(core::panic::PanicMessage<'a>);
 
@@ -64,12 +64,12 @@ impl Display for PanicMsgWrap<'_> {
     }
 }
 
-// ── Serial helpers (locales, no dependen de cabina) ───────────────
+// â”€â”€ Serial helpers (locales, no dependen de cabina) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[inline]
 fn write_byte(b: u8) {
     unsafe {
-        // Espera a que el transmisor esté listo (THRE=1).
+        // Espera a que el transmisor estÃ© listo (THRE=1).
         loop {
             let lsr: u8;
             asm!("in al, dx", out("al") lsr, in("dx") COM1_LSR, options(nostack));
@@ -98,11 +98,11 @@ fn write_dec(mut v: u32) {
     while i < 10 { write_byte(buf[i]); i += 1; }
 }
 
-// ── Panic handler ──────────────────────────────────────────────────
+// â”€â”€ Panic handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // 1. Direct serial output — always works, even before cabina_0 init
+    // 1. Direct serial output â€” always works, even before cabina_0 init
     write_bytes(b"\r\n!!! KERNEL PANIC !!!\r\n");
 
     // 2. Format location into static buffer (no heap)
@@ -145,14 +145,14 @@ fn panic(info: &PanicInfo) -> ! {
         let mut diag_buf = [0u8; 192];
         let n = cabina_daemon::persistent::copy_pending(&mut diag_buf);
         if n > 0 {
-            nvram_log::set_variable("FastOSPanicBuf", &diag_buf[..n]);
+            nvram_log::set_variable("BMOPanicBuf", &diag_buf[..n]);
         }
     }
 
     // 6. Record in cabina-daemon ring buffer
-    let _ev = cabina_daemon::fault("panic", "KERNEL PANIC — see serial above");
+    let _ev = cabina_daemon::fault("panic", "KERNEL PANIC â€” see serial above");
 
-    // 7. Dump cabina-daemon events to serial — gives full boot trace
+    // 7. Dump cabina-daemon events to serial â€” gives full boot trace
     write_bytes(b"\r\n=== CABINA DUMP ===\r\n");
     {
         let cur = cabina_daemon::ring_buffer::next_seq();

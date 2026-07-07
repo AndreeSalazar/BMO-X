@@ -1,8 +1,8 @@
-[package]
+﻿[package]
 name = "bmo-audio"
 version = "1.0.0"
 edition = "2021"
-authors = ["FastOS Project"]
+authors = ["BMO Project"]
 description = "BMO Sound & Audio Library - Independent and safe PC speaker control"
 
 [dependencies]

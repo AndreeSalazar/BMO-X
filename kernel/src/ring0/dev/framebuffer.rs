@@ -1,6 +1,6 @@
-//! Framebuffer driver — UEFI GOP + static backbuffer.
+﻿//! Framebuffer driver â€” UEFI GOP + static backbuffer.
 
-use fastos_boot_protocol::PixelFormat;
+use bmo_boot_protocol::PixelFormat;
 
 /// Minimal Ring 0 framebuffer handle for backbuffer blits.
 #[derive(Debug, Clone, Copy)]
@@ -132,7 +132,7 @@ pub fn fill_rect(x: u32, y: u32, w: u32, h: u32, color: Color) {
 
 
 
-// ── Static Backbuffer ────────────────────────────────────────────────
+// â”€â”€ Static Backbuffer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BACKBUFFER_WIDTH: usize = 1920;
 const BACKBUFFER_HEIGHT: usize = 1080;
 const BACKBUFFER_SIZE: usize = BACKBUFFER_WIDTH * BACKBUFFER_HEIGHT;

@@ -1,4 +1,4 @@
-//! Ring 0 — Hardware Abstraction Layer.
+﻿//! Ring 0 â€” Hardware Abstraction Layer.
 //!
 //! Boot order (desde main.rs):
 //!   1. _start: BSS zero, save boot_info_ptr
@@ -6,26 +6,26 @@
 //!   3. phase_1_RING_0::main: full hardware init
 //!   4. Ring 0 ready screen + heartbeat loop
 
-// ── Core Ring 0 modules ─────────────────────────────────────────────
+// â”€â”€ Core Ring 0 modules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod arch;
 pub mod mm;
 pub mod dev;
 pub mod proc;
 pub mod cpu;
 
-// ── CABINA: daemon + panels (omniscient diagnostic infrastructure) ──
+// â”€â”€ CABINA: daemon + panels (omniscient diagnostic infrastructure) â”€â”€
 pub use cabina_core;
 pub use cabina_daemon;
 pub use cabina_panels;
 #[path = "../cabina/mod.rs"]
 pub mod cabina;
 
-// ── BMO support dependencies ───────────────────────────────────────
+// â”€â”€ BMO support dependencies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #[path = "../bmo_gpu/mod.rs"]
 pub mod bmo_gpu;
 
 
-// ── Boot infrastructure (moved from boot/) ──────────────────────────
+// â”€â”€ Boot infrastructure (moved from boot/) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod info;
 pub mod context;
 pub mod uefi_rt;
@@ -34,23 +34,23 @@ pub mod visual;
 pub mod font;
 pub mod log;
 
-// ── BMO Core: logical Ring 3 kernel (process mgmt, syscalls, UI, FS) ──
+// â”€â”€ BMO Core: logical Ring 3 kernel (process mgmt, syscalls, UI, FS) â”€â”€
 #[path = "../bmo_core/mod.rs"]
 pub mod bmo_core;
 
-// ── Main coordinator ────────────────────────────────────────────────
+// â”€â”€ Main coordinator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod phase_1_RING_0;
 
-// ── CPU-specific (AMD Ryzen 5 5600X / Zen 3) ───────────────────────
+// â”€â”€ CPU-specific (AMD Ryzen 5 5600X / Zen 3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod vendor;
 
-// ── Omniscient infrastructure ───────────────────────────────────────
+// â”€â”€ Omniscient infrastructure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod omni;
 
-// ── Devour: PE/ELF → BEF translation ─────────────────────────────────
+// â”€â”€ Devour: PE/ELF â†’ BEF translation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod devour;
 
-// ── Trilogía subsystems (defense + timeback + userland) ────────────
+// â”€â”€ TrilogÃ­a subsystems (defense + timeback + userland) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #[path = "../defense/mod.rs"]
 pub mod defense;
 #[path = "../timeback/mod.rs"]
@@ -58,7 +58,7 @@ pub mod timeback;
 #[path = "../userland/mod.rs"]
 pub mod userland;
 
-// ── Other Ring 0 modules ────────────────────────────────────────────
+// â”€â”€ Other Ring 0 modules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 mod panic;
 pub mod profile;
 
@@ -67,7 +67,7 @@ pub use bmo_abi;
 // Re-exports (BootInfo shared from bootloader)
 pub use info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE, FB_PIXEL_FORMAT};
 
-// ── Entry point ─────────────────────────────────────────────────────
+// â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 use core::arch::naked_asm;
 
@@ -97,13 +97,13 @@ unsafe extern "C" fn _start() -> ! {
 
 #[unsafe(no_mangle)]
 #[inline(never)]
-extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootInfo) -> ! {
-    // ── SAFETY ORDER ────────────────────────────────────────────────
+extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> ! {
+    // â”€â”€ SAFETY ORDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // NVRAM writes FIRST, serial LAST. COM1 can hang if no serial
-    // hardware responds (LSR=0x00 → infinite loop in serial_byte).
+    // hardware responds (LSR=0x00 â†’ infinite loop in serial_byte).
     // NVRAM is the ONLY reliable diagnostic when serial is dead.
 
-    // 1. RAM marker — no deps, always works, survives warm reset
+    // 1. RAM marker â€” no deps, always works, survives warm reset
     unsafe {
         core::ptr::write_volatile(0x9_0000 as *mut u32, 0x464F_5343u32); // "FOSC"
         core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32);
@@ -115,7 +115,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const fastos_boot_protocol::BootI
     // 3. CABINA daemon init (ring buffer + telemetry)
     cabina_daemon::init();
 
-    // 4. NVRAM init + EARLIEST write — BEFORE any serial output
+    // 4. NVRAM init + EARLIEST write â€” BEFORE any serial output
     if !boot_info_ptr.is_null() {
         let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
         if uefi_st != 0 {

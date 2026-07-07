@@ -1,4 +1,4 @@
-﻿//! FastOS/BMO v1.8.8
+﻿//! BMO/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!
@@ -31,7 +31,7 @@
 //!     â–¼
 //! ring0::coordinator::main
 //!     â”‚
-//!     â”œâ”€â–º vendor::amd::cpu::zen3::init_fastos_cpu
+//!     â”œâ”€â–º vendor::amd::cpu::zen3::init_bmo_cpu
 //!     â”œâ”€â–º boot::phases::run_all(p0..p4)
 //!     â”œâ”€â–º bmo_core::init()              â† este archivo
 //!     â””â”€â–º bmo_core::enter()             â† welcome + event loop (no return)

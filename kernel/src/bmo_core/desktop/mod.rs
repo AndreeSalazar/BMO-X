@@ -1,22 +1,22 @@
-//! FastOS/BMO v1.8.8
+﻿//! BMO/BMO v1.8.8
 //!
 //! Desarrolado por Salazar.
 //!
-//! Desktop — Ring 0 compositor supervisor for FastOS/BMO.
+//! Desktop â€” Ring 0 compositor supervisor for BMO/BMO.
 //!
 //! Deeply modular structure:
 //!
 //!   desktop/
-//!     mod.rs         ← this file: facade + run_ring0() main loop
-//!     input.rs       ← PS/2 keyboard + mouse polling
-//!     display.rs     ← framebuffer primitives (fb_fill, fb_text, fb_blit)
-//!     sound.rs       ← PC speaker beep
-//!     render.rs      ← full frame rendering (wallpaper, windows, dock, cursor)
-//!     state.rs       ← DesktopState (windows, mouse, FPS, clock)
-//!     windows.rs     ← window title catalog + content-per-title mapping
-//!     compositor.rs  ← Ring 3 compositor x86-64 payload builder
-//!     welcome.rs     ← welcome screen (input loop, render, command dispatch)
-//!     commands.rs    ← shell command dispatch (Run, Hello, Reboot, Nexo)
+//!     mod.rs         â† this file: facade + run_ring0() main loop
+//!     input.rs       â† PS/2 keyboard + mouse polling
+//!     display.rs     â† framebuffer primitives (fb_fill, fb_text, fb_blit)
+//!     sound.rs       â† PC speaker beep
+//!     render.rs      â† full frame rendering (wallpaper, windows, dock, cursor)
+//!     state.rs       â† DesktopState (windows, mouse, FPS, clock)
+//!     windows.rs     â† window title catalog + content-per-title mapping
+//!     compositor.rs  â† Ring 3 compositor x86-64 payload builder
+//!     welcome.rs     â† welcome screen (input loop, render, command dispatch)
+//!     commands.rs    â† shell command dispatch (Run, Hello, Reboot, Nexo)
 //!
 //! Entry point: `desktop::init()` then `desktop::run()` from main.rs.
 
@@ -36,14 +36,14 @@ pub mod wallpaper;
 
 pub const CYCLES_PER_MS: u64 = 3_700_000;
 
-// ── Re-exports for syscall_entry.rs and main.rs ────────────────────
+// â”€â”€ Re-exports for syscall_entry.rs and main.rs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // These keep the public API stable while the internals are modular.
 
 pub use input::{poll_key, poll_mouse};
 pub use display::{fb_fill, fb_text, fb_blit};
 pub use sound::beep;
 
-// ── Init + Run ─────────────────────────────────────────────────────
+// â”€â”€ Init + Run â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Initialize the desktop subsystem. Call once from main.rs Phase 5.
 pub fn init() {
@@ -56,7 +56,7 @@ pub fn run() -> ! {
     run_ring0()
 }
 
-/// Ring 0 desktop main loop — stable GOP path.
+/// Ring 0 desktop main loop â€” stable GOP path.
 pub fn run_ring0() -> ! {
     crate::cabina::info("desktop", "entering Ring 0 GOP desktop supervisor");
     crate::dev::console::serial_write("[desktop] Entrando en escritorio Ring 0 supervisor.\n");
@@ -89,7 +89,7 @@ pub fn run_ring0() -> ! {
 /// Return to the welcome screen (safer than halting).
 fn return_to_welcome() -> ! {
     beep(0, 0);
-    crate::dev::console::serial_write("[desktop] ESC — returning to welcome.\n");
+    crate::dev::console::serial_write("[desktop] ESC â€” returning to welcome.\n");
     crate::bmo_core::desktop::welcome::run()
 }
 

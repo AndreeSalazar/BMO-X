@@ -1,4 +1,4 @@
-//! VFS mount table for FastOS.
+﻿//! VFS mount table for BMO.
 //!
 //! Maps path prefixes to filesystem drivers.
 //! Supports: RamFs (root), exFAT (data), procfs, devfs, tmpfs.

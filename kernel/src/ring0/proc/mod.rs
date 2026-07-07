@@ -1,6 +1,6 @@
-//! Scheduler de FastOS — Round-Robin con prioridades.
+﻿//! Scheduler de BMO â€” Round-Robin con prioridades.
 //!
-//! Diseñado para Ryzen 5 5600X (1 CCD × 6 cores × 2 threads).
+//! DiseÃ±ado para Ryzen 5 5600X (1 CCD Ã— 6 cores Ã— 2 threads).
 //! Integra con APIC timer para preemptive scheduling.
 //!
 //! Modular:
@@ -8,7 +8,7 @@
 //!   - task:     Task management + ctx switching
 //!   - user_init: Ring 3 process loading
 //!
-//! v1.8.7: eliminado `rt` (Real-time EDF scheduler) — sin consumidores
+//! v1.8.7: eliminado `rt` (Real-time EDF scheduler) â€” sin consumidores
 //! activos. Restaurar desde git cuando se reactive el caso RT (audio
 //! HDA, render de juego).
 
@@ -19,7 +19,7 @@ pub mod task;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {
-    /// Audio/input: garantía de latencia sub-ms.
+    /// Audio/input: garantÃ­a de latencia sub-ms.
     Realtime,
     /// Render thread del juego.
     HighGame,
@@ -39,11 +39,11 @@ pub struct CoreAffinity {
 
 impl CoreAffinity {
     pub const ANY: Self = Self { mask: 0x0FFF };
-    /// Cores físicos solamente (sin SMT).
+    /// Cores fÃ­sicos solamente (sin SMT).
     pub const PHYSICAL_ONLY: Self = Self { mask: 0b0000_0101_0101_0101 };
 }
 
-/// Called from APIC timer interrupt — performs preemptive scheduling.
+/// Called from APIC timer interrupt â€” performs preemptive scheduling.
 pub fn timer_tick() {
     crate::omni::hud::tick();
     if let Some(current) = task::current() {

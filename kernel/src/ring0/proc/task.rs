@@ -1,4 +1,4 @@
-//! Task model + ctx switching for FastOS.
+﻿//! Task model + ctx switching for BMO.
 
 #![allow(dead_code)]
 
@@ -86,7 +86,7 @@ impl SavedRegs {
     }
 }
 
-/// A Task — unit of scheduling.
+/// A Task â€” unit of scheduling.
 pub struct Task {
     pub tid: Tid,
     pub pid: Pid,

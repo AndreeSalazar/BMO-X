@@ -1,4 +1,4 @@
-//! LLFree adapter — Lock-free backing allocator via llfree crate.
+﻿//! LLFree adapter â€” Lock-free backing allocator via llfree crate.
 //!
 //! Wraps `llfree::LLFree` into the `BackingAllocator` trait.
 //! Active with feature `alloc-llfree`.
@@ -10,7 +10,7 @@
 //! Reference: Wrenger et al., USENIX ATC '23
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use fastos_boot_protocol::{MemoryEntry, MemoryType};
+use bmo_boot_protocol::{MemoryEntry, MemoryType};
 use super::PAGE_SIZE;
 use super::BackingAllocator;
 

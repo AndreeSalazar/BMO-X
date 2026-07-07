@@ -1,4 +1,4 @@
-//! Heap: free-list allocator with a syscall backend.
+﻿//! Heap: free-list allocator with a syscall backend.
 //!
 //! Provides `malloc`, `free`, `realloc`, `calloc` convenience functions
 //! that use a global `FreelistAllocator<SyscallBackend>` instance.
@@ -13,7 +13,7 @@ use freelist::FreelistAllocator;
 use crate::init;
 use core::alloc::{GlobalAlloc, Layout};
 
-/// The global heap allocator instance for FastOS.
+/// The global heap allocator instance for BMO.
 /// Only registered as the global allocator when not testing (test runner runs on the host OS).
 #[cfg_attr(not(test), global_allocator)]
 pub static HEAP: FreelistAllocator<SyscallBackend> = FreelistAllocator::new_with(SyscallBackend::new());

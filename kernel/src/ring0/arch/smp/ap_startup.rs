@@ -1,4 +1,4 @@
-//! AP Core Startup — INIT/SIPI sequence + trampoline page.
+﻿//! AP Core Startup â€” INIT/SIPI sequence + trampoline page.
 //!
 //! Universal x86-64 AP startup. Works on Intel and AMD.
 //!
@@ -11,10 +11,10 @@
 //!   1. BSP sends INIT IPI (edge-triggered, deassert)
 //!   2. Wait 10 ms
 //!   3. BSP sends SIPI with vector = page >> 12
-//!   4. Wait 200 µs
+//!   4. Wait 200 Âµs
 //!   5. If AP didn't start, send second SIPI
-//!   6. Wait 200 µs
-//!   7. AP executes trampoline → enters Rust → registers per-CPU data
+//!   6. Wait 200 Âµs
+//!   7. AP executes trampoline â†’ enters Rust â†’ registers per-CPU data
 
 use core::arch::asm;
 use super::ipi;
@@ -35,7 +35,7 @@ pub struct TrampolinePage {
 }
 
 /// Fixed physical address for the trampoline. Must be < 1 MB.
-/// We use 0x8000 (32 KB) — safe, well below the 640 KB barrier.
+/// We use 0x8000 (32 KB) â€” safe, well below the 640 KB barrier.
 pub const TRAMPOLINE_PHYS: u64 = 0x8000;
 
 /// Offset of the 64-bit entry point within the trampoline code page.
@@ -147,7 +147,7 @@ pub unsafe fn start_ap(apic_id: u32, core_id: u32) -> Result<u32, ()> {
     let vector = (TRAMPOLINE_PHYS >> 12) as u8;
     ipi::send_sipi(apic_id, vector);
 
-    // 6. Wait 200 µs
+    // 6. Wait 200 Âµs
     delay_us(200);
 
     // 7. Check if AP started
@@ -189,7 +189,7 @@ pub unsafe fn start_ap(apic_id: u32, core_id: u32) -> Result<u32, ()> {
 }
 
 /// AP entry point. Called from the trampoline after entering 64-bit mode.
-/// This is a naked function — the trampoline jumps here directly.
+/// This is a naked function â€” the trampoline jumps here directly.
 #[no_mangle]
 pub unsafe extern "sysv64" fn ap_entry() {
     // We're now in 64-bit long mode on the AP core.
@@ -228,7 +228,7 @@ pub unsafe extern "sysv64" fn ap_entry() {
     let spurious = super::super::apic::apic_read(super::super::apic::APIC_SPURIOUS);
     super::super::apic::apic_write(super::super::apic::APIC_SPURIOUS, spurious | 0x1FF);
 
-    // Enter idle loop — scheduler will wake us up via IPI
+    // Enter idle loop â€” scheduler will wake us up via IPI
     loop {
         let pc = percpu::current_mut();
         pc.idle = true;
@@ -237,13 +237,13 @@ pub unsafe extern "sysv64" fn ap_entry() {
     }
 }
 
-// ── Delay helpers ──────────────────────────────────────────────────────
+// â”€â”€ Delay helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Busy-wait delay in milliseconds.
 unsafe fn delay_ms(ms: u32) {
     // Use PIT-based delay or rdtsc-based delay
     let start = crate::cpu::rdtsc();
-    let freq = crate::vendor::amd::cpu::zen3::fastos_cpu::tsc_freq_hz();
+    let freq = crate::vendor::amd::cpu::zen3::bmo_cpu::tsc_freq_hz();
     if freq == 0 {
         // Fallback: rough loop
         for _ in 0..ms * 10000 {
@@ -260,7 +260,7 @@ unsafe fn delay_ms(ms: u32) {
 /// Busy-wait delay in microseconds.
 unsafe fn delay_us(us: u32) {
     let start = crate::cpu::rdtsc();
-    let freq = crate::vendor::amd::cpu::zen3::fastos_cpu::tsc_freq_hz();
+    let freq = crate::vendor::amd::cpu::zen3::bmo_cpu::tsc_freq_hz();
     if freq == 0 {
         for _ in 0..us * 10 {
             asm!("pause", options(nostack));
@@ -273,7 +273,7 @@ unsafe fn delay_us(us: u32) {
     }
 }
 
-// ── Trampoline binary ─────────────────────────────────────────────────
+// â”€â”€ Trampoline binary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // This is the actual machine code that the trampoline page executes.
 // It starts in 16-bit real mode, transitions to 32-bit protected mode,
 // then to 64-bit long mode, and jumps to ap_entry().
@@ -322,7 +322,7 @@ static TRAMPOLINE_CODE: [u8; 256] = {
     // Load GDT (physical address = TRAMPOLINE_PHYS + 0x1000)
     // lgdt [gdt_ptr]
     code[0x20] = 0x0F; code[0x21] = 0x01;
-    code[0x22] = 0x1E; // mod=00, r/m=110 → [disp16]
+    code[0x22] = 0x1E; // mod=00, r/m=110 â†’ [disp16]
     // GDT pointer: limit=0x1F (32 bytes), base=TRAMPOLINE_PHYS+0x1000
     // We'll patch this at runtime. For now, use a fixed offset.
     code[0x23] = 0x20; // limit low
@@ -372,7 +372,7 @@ static TRAMPOLINE_CODE: [u8; 256] = {
     // Load CR3 with the PML4 table address (passed from BSP via trampoline data)
     // For simplicity, we'll use the same CR3 as the BSP (identity-mapped).
     // The BSP stores its CR3 at trampoline data offset 0x140.
-    // mov eax, [0x8000 + 0x1000 + 0x140]  → physical 0x8140
+    // mov eax, [0x8000 + 0x1000 + 0x140]  â†’ physical 0x8140
     code[0x59] = 0xA1; // mov eax, [disp32]
     code[0x5A] = 0x40; code[0x5B] = 0x81; code[0x5C] = 0x00; code[0x5D] = 0x00;
     // mov cr3, eax
@@ -414,7 +414,7 @@ static TRAMPOLINE_CODE: [u8; 256] = {
     // 64-bit mov rax, imm32 won't work with 0x80 prefix, use 32-bit mov + zero extend
     // Actually in 64-bit mode we need different encoding. Let's use:
     // mov ax, 0x10
-    // Wait — in 64-bit mode, segment loading works differently.
+    // Wait â€” in 64-bit mode, segment loading works differently.
     // Let's just load a known-good stack and jump to Rust.
 
     // Bits 0x80-0xBF: 64-bit setup

@@ -1,14 +1,14 @@
-[package]
-name = "fastos-bootloader"
+﻿[package]
+name = "bmo-bootloader"
 version = "0.1.0"
 edition = "2021"
-authors = ["FastOS Project"]
-description = "FastOS UEFI bootloader — loads kernel directly in 64-bit mode"
+authors = ["BMO Project"]
+description = "BMO UEFI bootloader â€” loads kernel directly in 64-bit mode"
 
 [dependencies]
 uefi = { version = "0.37", features = ["alloc", "global_allocator", "logger", "panic_handler", "unstable"] }
 log = "0.4"
-fastos-boot-protocol = { path = "../boot_protocol" }
+bmo-boot-protocol = { path = "../boot_protocol" }
 
 [package.metadata.bootloader]
 target = "x86_64-unknown-uefi"

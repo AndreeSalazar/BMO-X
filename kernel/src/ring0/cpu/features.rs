@@ -1,17 +1,17 @@
-//! CPU feature detection for the Ryzen 5 5600X.
+﻿//! CPU feature detection for the Ryzen 5 5600X.
 //!
 //! v1.8.8: ahora delega en `crate::vendor::amd::cpu::zen3::cpuid_detection`
-//! (la implementación real con CPUID). Mantenemos `CpuFeatures` como
-//! struct público de RING 0 (usado por `cpu::init`) para no romper
+//! (la implementaciÃ³n real con CPUID). Mantenemos `CpuFeatures` como
+//! struct pÃºblico de RING 0 (usado por `cpu::init`) para no romper
 //! los call sites existentes.
 //!
-//! Si la detección real falló o todavía no corrió, devuelve el
+//! Si la detecciÃ³n real fallÃ³ o todavÃ­a no corriÃ³, devuelve el
 //! fallback hardcoded del 5600X (mismo comportamiento que v1.8.7).
 
 #![allow(dead_code)]
 
 /// Features del Ryzen 5 5600X que el kernel usa para habilitar paths
-/// de init. Mantenido como struct público de RING 0 para compatibilidad
+/// de init. Mantenido como struct pÃºblico de RING 0 para compatibilidad
 /// con `cpu::init` y `arch/syscall.rs`.
 #[derive(Debug, Clone, Copy)]
 pub struct CpuFeatures {
@@ -42,7 +42,7 @@ impl CpuFeatures {
     }
 
     /// Build from a detected CpuIdentity (from `vendor::amd::cpu::zen3::cpuid_detection`).
-    /// This is the REAL detection path — uses CPUID 1.ECX, CPUID 1.EDX,
+    /// This is the REAL detection path â€” uses CPUID 1.ECX, CPUID 1.EDX,
     /// and CPUID 7.EBX to derive the boolean features.
     pub fn from_identity(id: &crate::vendor::amd::cpu::zen3::cpuid_detection::CpuIdentity) -> Self {
         Self {
@@ -63,7 +63,7 @@ impl CpuFeatures {
 }
 
 /// Detect CPU features. Tries the real CPUID path first; falls back to
-/// the hardcoded 5600X set if `init_fastos_cpu` hasn't run yet.
+/// the hardcoded 5600X set if `init_bmo_cpu` hasn't run yet.
 pub fn detect() -> CpuFeatures {
     // Try the real detection
     if let Some(id) = crate::vendor::amd::cpu::zen3::cpuid_detection::identity() {

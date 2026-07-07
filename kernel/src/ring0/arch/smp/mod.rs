@@ -1,4 +1,4 @@
-//! SMP — Symmetric Multi-Processing coordinator.
+﻿//! SMP â€” Symmetric Multi-Processing coordinator.
 //!
 //! Orchestrates AP core bring-up and provides the public SMP API.
 //!
@@ -57,7 +57,7 @@ pub unsafe fn init() {
     crate::dev::console::serial_write("\n[smp] === SMP initialization ===\n");
 
     // 1. Detect topology (if not already done)
-    let topo = match crate::vendor::amd::cpu::zen3::fastos_cpu::topology() {
+    let topo = match crate::vendor::amd::cpu::zen3::bmo_cpu::topology() {
         Some(t) => t.clone(),
         None => {
             crate::dev::console::serial_write("[smp] ERROR: topology not detected\n");

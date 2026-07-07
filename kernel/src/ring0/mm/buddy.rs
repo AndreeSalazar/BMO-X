@@ -1,14 +1,14 @@
-//! Buddy System — Backing allocator implementation.
+﻿//! Buddy System â€” Backing allocator implementation.
 //!
 //! O(log n) allocation and coalescing via power-of-2 free lists.
-//! Orders 0..MAX_ORDER: 2^k × 4 KiB → 4 KiB .. 8 MiB.
+//! Orders 0..MAX_ORDER: 2^k Ã— 4 KiB â†’ 4 KiB .. 8 MiB.
 //!
 //! Metadata is a u8-per-physical-page array sized at init from UEFI map.
 //! Free blocks store their linked-list pointers within the block itself.
 
 use core::ptr;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use fastos_boot_protocol::{MemoryEntry, MemoryType};
+use bmo_boot_protocol::{MemoryEntry, MemoryType};
 use super::PAGE_SIZE;
 use super::MAX_ORDER;
 use super::BackingAllocator;
@@ -24,7 +24,7 @@ static INITIALIZED: AtomicUsize = AtomicUsize::new(0);
 static FREE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static mut TOTAL_RAM: u64 = 0;
 
-/// Convert a physical address (≥ BASE) to a page index.
+/// Convert a physical address (â‰¥ BASE) to a page index.
 #[inline]
 fn addr_to_idx(addr: u64) -> Option<usize> {
     if addr < BASE { return None; }
