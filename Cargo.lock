@@ -118,6 +118,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-ahci"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
 name = "bmo-audio"
 version = "1.0.0"
 
@@ -166,6 +173,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-fat32"
+version = "0.1.0"
+dependencies = [
+ "bmo-ahci",
+]
+
+[[package]]
 name = "bmo-input"
 version = "0.1.0"
 dependencies = [
@@ -178,9 +192,11 @@ version = "1.8.16"
 dependencies = [
  "bitflags",
  "bmo-abi",
+ "bmo-ahci",
  "bmo-audio",
  "bmo-boot-protocol",
  "bmo-core",
+ "bmo-fat32",
  "bmo-input",
  "byte-defender",
  "cabina-core",

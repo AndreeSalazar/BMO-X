@@ -263,16 +263,17 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     let scan = crate::dev::pcie::scan_pci_bus();
     crate::log::info_u64("phase2", "PCI devices found", scan.count as u64);
 
-    // AHCI detection + probe
+    // AHCI detection + probe (via bmo_ahci crate)
+    static STORAGE_HAL: super::storage_hal_impl::KernelStorageHal = super::storage_hal_impl::KernelStorageHal;
+    bmo_ahci::storage_hal::init_hal(&STORAGE_HAL);
     if let Some(ahci_mmio) = crate::dev::pcie::find_ahci_mmio() {
         crate::log::info("phase2", "AHCI controller detected, probing...");
-        unsafe { crate::dev::ahci::probe(ahci_mmio, 0); }
-        // Init DMA on first active port
+        unsafe { bmo_ahci::probe(ahci_mmio); }
         for i in 0..32u8 {
             unsafe {
-                if let Some(ctrl) = crate::dev::ahci::controller() {
-                    if ctrl.ports[i as usize].state == crate::dev::ahci::PortState::Active {
-                        if crate::dev::ahci::init_port_dma(i) {
+                if let Some(ctrl) = bmo_ahci::controller() {
+                    if ctrl.ports[i as usize].state == bmo_ahci::PortState::Active {
+                        if bmo_ahci::init_port_dma(i) {
                             crate::log::info_u64("phase2", "AHCI port DMA initialized", i as u64);
                         }
                     }

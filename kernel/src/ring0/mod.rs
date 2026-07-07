@@ -13,6 +13,7 @@ pub mod dev;
 pub mod proc;
 pub mod cpu;
 pub mod hal_init;
+pub mod storage_hal_impl;
 
 // ── CABINA: daemon + panels (omniscient diagnostic infrastructure) ─
 pub use cabina_core;

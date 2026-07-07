@@ -25,10 +25,6 @@ pub mod acpi;
 pub mod usb_hid;
 pub mod hda;
 
-// ── Storage (AHCI) ────────────────────────────────────────────────
-pub mod ahci;
-pub mod fat32;
-
 // ── Timers (HPET, timer wheel, timestamps) ────────────────────────
 pub mod timer;
 pub mod hpet;
