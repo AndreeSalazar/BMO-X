@@ -691,7 +691,51 @@ impl Codegen {
 
     fn emit_drop(&mut self) {}
 
-    // ---- Printf ----
+    fn emit_printf_variadic(&mut self, args: &[Expr]) {
+        // printf(fmt, a1, a2, ...)
+        // Emit: RDI = fmt, push va_args right-to-left, RSI = RSP, RDX = num_va_args, call bmo_printf
+        let va_args = &args[1..];
+        let num_va = va_args.len() as u64;
+
+        // Push variadic args right-to-left (so they're in order on stack)
+        for arg in va_args.iter().rev() {
+            self.emit_expr(arg);
+            self.code.push(0x50); // push rax
+        }
+
+        // RDI = format string (first arg)
+        // The format string Expr is either StringLit or Var
+        self.emit_expr(&args[0]);
+        // After emit_expr, value is in RAX. Move to RDI.
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+
+        // RSI = RSP (pointer to first va_arg on stack)
+        self.code.extend_from_slice(&[0x48, 0x89, 0xE6]); // mov rsi, rsp
+
+        // RDX = number of va_args
+        self.code.extend_from_slice(&[0xBA]); // mov edx, imm32
+        self.code.extend_from_slice(&(num_va as u32).to_le_bytes());
+
+        // Call bmo_printf from userland_ring3
+        self.code.extend_from_slice(&[0xE8]);
+        self.call_relocs.push(CallReloc { offset: self.code.len(), target: "bmo_printf".to_string() });
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
+
+        if self.target == TargetProfile::Ring3App {
+            self.stdlib_imports.insert("bmo_printf".to_string());
+        }
+
+        // Cleanup stack
+        let n = num_va as u32 * 8;
+        if n > 0 {
+            if n <= 127 {
+                self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
+            } else {
+                self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
+                self.code.extend_from_slice(&n.to_le_bytes());
+            }
+        }
+    }
     fn emit_printf(&mut self, s: &str, newline: bool) {
         let text = if newline { let mut t = s.to_string(); t.push('\n'); t } else { s.to_string() };
         let Some(idx) = self.strings.iter().position(|t| *t == text) else { return };
@@ -724,27 +768,32 @@ impl Codegen {
                 self.emit_load_var(name);
             }
             Expr::Call(name, args) => {
-                // push args right-to-left
-                for arg in args.iter().rev() {
-                    self.emit_expr(arg);
-                    self.code.push(0x50); // push rax
-                }
-                // call rel32 placeholder
-                self.code.extend_from_slice(&[0xE8]);
-                self.call_relocs.push(CallReloc { offset: self.code.len(), target: name.clone() });
-                self.code.extend_from_slice(&[0, 0, 0, 0]);
-                // Track stdlib imports for Ring 3 apps
-                if self.target == TargetProfile::Ring3App && !self.function_offsets.contains_key(name) {
-                    self.stdlib_imports.insert(name.clone());
-                }
-                // cleanup stack (args * 8 bytes)
-                let n = args.len() as u32 * 8;
-                if n > 0 {
-                    if n <= 127 {
-                        self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
-                    } else {
-                        self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
-                        self.code.extend_from_slice(&n.to_le_bytes());
+                // Special case: printf → emit bmo_printf from userland_ring3
+                if name == "printf" && !args.is_empty() {
+                    self.emit_printf_variadic(args);
+                } else {
+                    // push args right-to-left
+                    for arg in args.iter().rev() {
+                        self.emit_expr(arg);
+                        self.code.push(0x50); // push rax
+                    }
+                    // call rel32 placeholder
+                    self.code.extend_from_slice(&[0xE8]);
+                    self.call_relocs.push(CallReloc { offset: self.code.len(), target: name.clone() });
+                    self.code.extend_from_slice(&[0, 0, 0, 0]);
+                    // Track stdlib imports for Ring 3 apps
+                    if self.target == TargetProfile::Ring3App && !self.function_offsets.contains_key(name) {
+                        self.stdlib_imports.insert(name.clone());
+                    }
+                    // cleanup stack (args * 8 bytes)
+                    let n = args.len() as u32 * 8;
+                    if n > 0 {
+                        if n <= 127 {
+                            self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
+                        } else {
+                            self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
+                            self.code.extend_from_slice(&n.to_le_bytes());
+                        }
                     }
                 }
             }

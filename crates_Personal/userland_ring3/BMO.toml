@@ -34,6 +34,7 @@ strdup = "ptr -> ptr"
 strndup = "ptr, size_t -> ptr"
 
 # ── Formatted output ──────────────────────────
+bmo_printf = "ptr, u64, ptr -> int"
 printf = "ptr -> int"
 snprintf = "ptr, size_t, ptr -> int"
 sprintf = "ptr -> int"

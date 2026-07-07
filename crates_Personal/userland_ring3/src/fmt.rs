@@ -182,15 +182,56 @@ pub fn snprintf(buf: &mut [u8], fmt: &str, args: *const u64) -> usize {
     vsnprintf(buf, fmt, args)
 }
 
-/// Print formatted output via debug_print syscall. Returns number of chars.
-pub fn printf(fmt: &str, args: *const u64) -> usize {
+/// C-compatible printf: reads format string from RDI and variadic args
+/// from the stack (x86-64 SysV ABI). Designed to be called by the C frontend.
+///
+/// The C codegen emits:
+///   - RDI = format string pointer
+///   - pushes variadic args right-to-left
+///   - calls this function
+#[no_mangle]
+pub unsafe extern "C" fn bmo_printf(fmt: *const u8, num_args: u64, args_ptr: *const u64) -> i32 {
+    if fmt.is_null() { return 0; }
     let mut buf: [u8; 1024] = [0; 1024];
-    let len = vsnprintf(&mut buf, fmt, args);
-    // Call debug_print syscall to output to CABINA/serial
-    unsafe {
-        crate::syscall::debug_print(buf.as_ptr(), len as u64);
+    let mut pos = 0;
+    let mut arg_idx = 0;
+    let mut i = 0;
+
+    while i < 8096 {
+        let c = *fmt.add(i);
+        if c == 0 { break; }
+        if c == b'%' && *fmt.add(i + 1) != 0 {
+            i += 1;
+            let ch = *fmt.add(i);
+            if ch == b'%' {
+                put(&mut buf, &mut pos, b'%');
+            } else {
+                let v = if arg_idx < num_args { *args_ptr.add(arg_idx as usize) } else { 0u64 };
+                arg_idx += 1;
+                match ch {
+                    b'd' | b'i' => puti(&mut buf, &mut pos, v as i64),
+                    b'u' => putu(&mut buf, &mut pos, v, 10, false),
+                    b'x' => putu(&mut buf, &mut pos, v, 16, false),
+                    b's' => {
+                        let sp = v as *const u8;
+                        if !sp.is_null() {
+                            let len = crate::string::strlen(sp);
+                            for j in 0..len.min(256) { put(&mut buf, &mut pos, *sp.add(j)); }
+                        }
+                    }
+                    b'c' => put(&mut buf, &mut pos, v as u8),
+                    b'p' => putp(&mut buf, &mut pos, v as usize),
+                    _ => { put(&mut buf, &mut pos, b'%'); put(&mut buf, &mut pos, ch); }
+                }
+            }
+        } else {
+            put(&mut buf, &mut pos, c);
+        }
+        i += 1;
     }
-    len
+    buf[pos] = 0;
+    crate::syscall::debug_print(buf.as_ptr(), pos as u64);
+    pos as i32
 }
 
 /// Format into a heap-allocated string (malloc).

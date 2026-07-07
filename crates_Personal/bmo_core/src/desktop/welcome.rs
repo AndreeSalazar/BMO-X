@@ -17,7 +17,7 @@
 
 use crate::ui::fb::Framebuffer;
 use crate::ui::font;
-use super::commands::{eq_ci, trim, should_enter_desktop, enter_desktop, nexo_test_compile};
+use super::commands::{eq_ci, trim, should_enter_desktop, enter_desktop, launch_bef_app};
 use super::sound;
 use super::theme;
 use super::wallpaper;
@@ -438,7 +438,7 @@ fn process_enter() {
         unsafe { core::arch::asm!("out dx, al", in("dx") 0x64u16, in("al") 0xFEu8); }
     } else if eq_ci(trimmed_cmd, b"nexo") {
         crate::cabina::info("welcome", "NEXO compiler test - compiling hello program");
-        nexo_test_compile();
+        launch_bef_app();
     } else if eq_ci(trimmed_cmd, b"test desktop") {
         crate::cabina::info("welcome", "test desktop: rendering single frame");
         crate::dev::console::serial_write("[welcome] test desktop: calling render_frame()\n");
