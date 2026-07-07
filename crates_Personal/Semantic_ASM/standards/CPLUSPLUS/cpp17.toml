@@ -1,0 +1,31 @@
+# cpp17.toml — ISO/IEC 14882:2017 (C++17)
+[standard]
+iso_number = "ISO/IEC 14882:2017"
+year = 2017
+short_name = "C++17"
+
+[features]
+if_constexpr = true
+structured_bindings = true
+fold_expressions = true
+nested_namespaces = true
+inline_variables = true
+if_init_statements = true
+constexpr_lambdas = true
+noexcept_in_type = true
+class_template_argument_deduction = true
+template_auto = true
+string_view = true
+optional = true
+variant = true
+any = true
+filesystem = true
+parallel_stl = true
+guaranteed_copy_elision = true
+structured_binding_decl = true
+
+[predefined_macros]
+__cplusplus = 201703
+
+[based_on]
+parent = "cpp14"

@@ -1,0 +1,23 @@
+# cpp14.toml — ISO/IEC 14882:2014 (C++14)
+[standard]
+iso_number = "ISO/IEC 14882:2014"
+year = 2014
+short_name = "C++14"
+
+[features]
+generic_lambdas = true
+lambda_init_captures = true
+return_type_deduction = true
+decltype_auto = true
+variable_templates = true
+binary_literals = true
+digit_separators = true
+deprecated_attribute = true
+constexpr_relaxed = true
+make_unique = true
+
+[predefined_macros]
+__cplusplus = 201402
+
+[based_on]
+parent = "cpp11"

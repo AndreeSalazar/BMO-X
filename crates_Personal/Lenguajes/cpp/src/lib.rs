@@ -28,6 +28,7 @@ pub fn profile() -> BmoLanguageProfile {
         runtime: bmo_abi::profile::RuntimeKind::CppMin,
         uses_bmo_abi: true,
         ring0_capable: true,
+        standard_version: "cpp17",
     }
 }
 

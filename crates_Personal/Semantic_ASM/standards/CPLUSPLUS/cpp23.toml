@@ -1,0 +1,34 @@
+# cpp23.toml — ISO/IEC 14882:2023 (C++23)
+[standard]
+iso_number = "ISO/IEC 14882:2023"
+year = 2023
+short_name = "C++23"
+
+[features]
+deducing_this = true
+if_consteval = true
+multidimensional_subscript = true
+static_operator = true
+lambda_attributes = true
+explicit_this_parameter = true
+auto_xparams = true
+literal_suffix_operator = true
+monadic_optional = true
+expected = true
+generator = true
+flat_map = true
+flat_set = true
+mdspan = true
+print = true
+ranges_to_container = true
+ranges_zip = true
+ranges_enumerate = true
+ranges_adjacent = true
+stacktrace = true
+assume = true
+
+[predefined_macros]
+__cplusplus = 202302
+
+[based_on]
+parent = "cpp20"

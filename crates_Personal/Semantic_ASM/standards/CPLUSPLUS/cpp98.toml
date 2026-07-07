@@ -1,0 +1,42 @@
+# cpp98.toml — ISO/IEC 14882:1998 (C++98)
+[standard]
+iso_number = "ISO/IEC 14882:1998"
+year = 1998
+short_name = "C++98"
+
+[features]
+classes = true
+single_inheritance = true
+multiple_inheritance = true
+virtual_functions = true
+vtables = true
+templates = true
+exceptions = true
+namespaces = true
+bool_type = true
+mutable = true
+explicit = true
+typeid = true
+dynamic_cast = true
+static_cast = true
+reinterpret_cast = true
+const_cast = true
+member_templates = true
+RTTI = true
+operator_overloading = true
+function_overloading = true
+default_arguments = true
+references = true
+new_delete = true
+inline_functions = true
+class_templates = true
+function_templates = true
+STL_basic = true
+
+[type_rules]
+implicit_int = false
+
+[predefined_macros]
+__cplusplus = 199711
+
+[based_on]

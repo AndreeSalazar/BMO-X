@@ -1,0 +1,37 @@
+# c99.toml — ISO/IEC 9899:1999 (C99)
+[standard]
+iso_number = "ISO/IEC 9899:1999"
+year = 1999
+short_name = "C99"
+
+[features]
+_Complex = true
+_Bool = true
+long_long = true
+inline = true
+restrict = true
+variadic_macros = true
+compound_literals = true
+designated_initializers = true
+flexible_array_members = true
+mixed_declarations_and_code = true
+line_comments = true
+universal_character_names = true
+variable_length_arrays = true
+static_array_indices = true
+complex_types = true
+imaginary_types = true
+pragmas = true
+
+[type_rules]
+implicit_int = false
+implicit_function_decl = false
+return_without_value_allowed = false
+
+[predefined_macros]
+__STDC__ = 1
+__STDC_VERSION__ = 199901
+__STDC_IEC_559__ = 1
+
+[based_on]
+parent = "c89"

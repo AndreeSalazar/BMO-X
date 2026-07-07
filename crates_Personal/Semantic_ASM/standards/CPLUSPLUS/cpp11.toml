@@ -1,0 +1,42 @@
+# cpp11.toml — ISO/IEC 14882:2011 (C++11)
+[standard]
+iso_number = "ISO/IEC 14882:2011"
+year = 2011
+short_name = "C++11"
+
+[features]
+auto = true
+decltype = true
+lambda = true
+rvalue_references = true
+move_semantics = true
+constexpr = true
+nullptr = true
+range_for = true
+override = true
+final = true
+static_assert = true
+variadic_templates = true
+thread_local = true
+noexcept = true
+uniform_initialization = true
+delegating_constructors = true
+inheriting_constructors = true
+default_delete = true
+enum_class = true
+raw_string_literals = true
+user_defined_literals = true
+trailing_return_type = true
+alignas = true
+alignof = true
+char16_t = true
+char32_t = true
+explicit_conversion = true
+type_alias = true
+attribute_syntax = true
+
+[predefined_macros]
+__cplusplus = 201103
+
+[based_on]
+parent = "cpp98"

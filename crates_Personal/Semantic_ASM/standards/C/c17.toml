@@ -1,0 +1,19 @@
+# c17.toml — ISO/IEC 9899:2018 (C17/C18)
+[standard]
+iso_number = "ISO/IEC 9899:2018"
+year = 2018
+short_name = "C17"
+
+[features]
+
+[type_rules]
+implicit_int = false
+implicit_function_decl = false
+return_without_value_allowed = false
+
+[predefined_macros]
+__STDC__ = 1
+__STDC_VERSION__ = 201710
+
+[based_on]
+parent = "c11"

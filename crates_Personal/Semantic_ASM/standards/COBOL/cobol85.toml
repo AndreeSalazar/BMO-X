@@ -1,0 +1,30 @@
+# cobol85.toml — ANSI X3.23-1985 / ISO 1989:1985 (COBOL-85)
+[standard]
+iso_number = "ISO 1989:1985"
+year = 1985
+short_name = "COBOL-85"
+
+[features]
+scope_terminators = true
+inline_perform = true
+nested_programs = false
+evaluate = false
+conditional_variable = false
+call_by_content = false
+report_writer = false
+intrinsic_functions = false
+recursive_programs = false
+screen_section = false
+object_oriented = false
+national_locale = false
+validate = false
+external_repository = false
+
+[divisions]
+required = ["IDENTIFICATION", "PROCEDURE"]
+optional = ["ENVIRONMENT", "DATA"]
+
+[predefined]
+COBOL_STANDARD = "X3.23-1985"
+
+[based_on]

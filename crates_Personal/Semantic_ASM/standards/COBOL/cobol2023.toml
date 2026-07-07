@@ -1,0 +1,53 @@
+# cobol2023.toml — ISO/IEC 1989:2023 (COBOL 2023)
+[standard]
+iso_number = "ISO/IEC 1989:2023"
+year = 2023
+short_name = "COBOL 2023"
+
+[features]
+scope_terminators = true
+inline_perform = true
+nested_programs = true
+evaluate = true
+conditional_variable = true
+call_by_content = true
+report_writer = true
+intrinsic_functions = true
+recursive_programs = true
+screen_section = true
+object_oriented = true
+national_locale = true
+validate = true
+external_repository = true
+local_storage_section = true
+free_format = true
+any_length_items = true
+user_functions = true
+float_binary = true
+dynamic_length_tables = true
+exception_handling = true
+method_overloading = true
+dynamic_capacity_tables = true
+any_length_arguments = true
+factory_methods = true
+property_methods = true
+enumerations = true
+value_clause_on_constants = true
+constant_entries = true
+json_parse = true
+json_generate = true
+xml_parse = true
+xml_generate = true
+async_message = true
+enhanced_locale = true
+utf8_support = true
+conditional_compilation = true
+
+[divisions]
+required = ["IDENTIFICATION", "PROCEDURE"]
+
+[predefined]
+COBOL_STANDARD = "ISO/IEC 1989:2023"
+
+[based_on]
+parent = "cobol2014"

@@ -1,0 +1,35 @@
+# c89.toml — ANSI X3.159-1989 / ISO/IEC 9899:1990 (C89/C90)
+[standard]
+iso_number = "ISO/IEC 9899:1990"
+year = 1990
+short_name = "C89"
+
+[features]
+void_type = true
+signed_unsigned = true
+long_double = false
+enum = true
+struct_union = true
+function_prototypes = true
+void_pointers = true
+const = true
+volatile = true
+string_literals_concat = true
+trigraphs = true
+
+[type_rules]
+implicit_int = true
+implicit_function_decl = true
+return_without_value_allowed = true
+
+[predefined_macros]
+__STDC__ = 1
+__STDC_VERSION__ = 0
+
+[limits]
+int_min = "-32767"
+int_max = "32767"
+long_min = "-2147483647"
+long_max = "2147483647"
+
+[based_on]

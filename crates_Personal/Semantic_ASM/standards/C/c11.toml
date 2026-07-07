@@ -1,0 +1,35 @@
+# c11.toml — ISO/IEC 9899:2011 (C11)
+[standard]
+iso_number = "ISO/IEC 9899:2011"
+year = 2011
+short_name = "C11"
+
+[features]
+_Atomic = true
+_Generic = true
+_Static_assert = true
+_Thread_local = true
+_Noreturn = true
+_Alignas = true
+_Alignof = true
+unicode_strings = true
+anonymous_structs = true
+anonymous_unions = true
+bounds_checking_interfaces = true
+analyzability_features = true
+no_return = true
+quick_exit = true
+aligned_alloc = true
+
+[type_rules]
+implicit_int = false
+implicit_function_decl = false
+return_without_value_allowed = false
+
+[predefined_macros]
+__STDC__ = 1
+__STDC_VERSION__ = 201112
+__STDC_NO_THREADS__ = 0
+
+[based_on]
+parent = "c99"

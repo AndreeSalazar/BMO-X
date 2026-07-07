@@ -1,0 +1,45 @@
+# cobol2014.toml — ISO/IEC 1989:2014 (COBOL 2014)
+[standard]
+iso_number = "ISO/IEC 1989:2014"
+year = 2014
+short_name = "COBOL 2014"
+
+[features]
+scope_terminators = true
+inline_perform = true
+nested_programs = true
+evaluate = true
+conditional_variable = true
+call_by_content = true
+report_writer = false
+intrinsic_functions = true
+recursive_programs = true
+screen_section = false
+object_oriented = true
+national_locale = true
+validate = true
+external_repository = true
+local_storage_section = true
+free_format = true
+any_length_items = true
+user_functions = true
+float_binary = true
+dynamic_length_tables = true
+exception_handling = true
+method_overloading = true
+dynamic_capacity_tables = true
+any_length_arguments = true
+factory_methods = true
+property_methods = true
+enumerations = true
+value_clause_on_constants = true
+constant_entries = true
+
+[divisions]
+required = ["IDENTIFICATION", "PROCEDURE"]
+
+[predefined]
+COBOL_STANDARD = "ISO/IEC 1989:2014"
+
+[based_on]
+parent = "cobol2002"

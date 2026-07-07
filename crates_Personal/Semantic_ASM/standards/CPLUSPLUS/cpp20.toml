@@ -1,0 +1,35 @@
+# cpp20.toml — ISO/IEC 14882:2020 (C++20)
+[standard]
+iso_number = "ISO/IEC 14882:2020"
+year = 2020
+short_name = "C++20"
+
+[features]
+concepts = true
+coroutines = true
+ranges = true
+modules = true
+spaceship_operator = true
+designated_initializers = true
+constinit = true
+consteval = true
+constexpr_dynamic_alloc = true
+constexpr_try_catch = true
+immediate_functions = true
+char8_t = true
+likely_unlikely = true
+using_enum = true
+format_library = true
+source_location = true
+calendar_timezone = true
+span = true
+jthread = true
+sync_stream = true
+bit_cast = true
+atomic_ref = true
+
+[predefined_macros]
+__cplusplus = 202002
+
+[based_on]
+parent = "cpp17"

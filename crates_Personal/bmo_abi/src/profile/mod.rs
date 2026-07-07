@@ -142,6 +142,8 @@ pub struct BmoLanguageProfile {
     pub uses_bmo_abi: bool,
     /// `true` si el lenguaje puede correr en Ring 0 (drivers).
     pub ring0_capable: bool,
+    /// Language standard version (e.g. "c11", "cpp17", "cobol85").
+    pub standard_version: &'static str,
 }
 
 impl BmoLanguageProfile {
@@ -153,9 +155,8 @@ impl BmoLanguageProfile {
         runtime: RuntimeKind::CMin,
         uses_bmo_abi: true,
         ring0_capable: true,
+        standard_version: "c11",
     };
-
-    /// Perfil canónico de BMO: AOT puro, sin runtime.
     pub const BMO: Self = Self {
         name: "BMO",
         frontend: FrontendKind::Bmo,
@@ -163,9 +164,8 @@ impl BmoLanguageProfile {
         runtime: RuntimeKind::None,
         uses_bmo_abi: true,
         ring0_capable: true,
+        standard_version: "latest",
     };
-
-    /// Perfil de Java-BMO: AOT + JavaCore runtime.
     pub const JAVA_BMO: Self = Self {
         name: "Java-BMO",
         frontend: FrontendKind::JavaBmo,
@@ -173,6 +173,7 @@ impl BmoLanguageProfile {
         runtime: RuntimeKind::JavaCore,
         uses_bmo_abi: true,
         ring0_capable: false,
+        standard_version: "latest",
     };
 
     /// Perfil de Python-BMO: AOT typed + PythonCore runtime.
@@ -183,6 +184,7 @@ impl BmoLanguageProfile {
         runtime: RuntimeKind::PythonCore,
         uses_bmo_abi: true,
         ring0_capable: false,
+        standard_version: "latest",
     };
 
     /// Perfil de COBOL: AOT CPU + runtime mínimo orientado a datos/archivos.
@@ -196,6 +198,7 @@ impl BmoLanguageProfile {
         runtime: RuntimeKind::CobolCore,
         uses_bmo_abi: true,
         ring0_capable: false,
+        standard_version: "cobol85",
     };
 }
 
