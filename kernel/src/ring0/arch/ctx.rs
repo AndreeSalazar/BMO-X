@@ -1,5 +1,4 @@
-﻿#![allow(dead_code)]
-
+﻿
 //! Context switching for BMO â€” saves/restores full register state across threads.
 //!
 //! Kernel stack layout (what the ISR stub pushes, from RSP upward):

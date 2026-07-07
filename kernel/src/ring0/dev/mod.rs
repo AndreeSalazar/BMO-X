@@ -16,7 +16,6 @@
 //! inicializan directamente desde `boot::phases::p2_dev::run` y desde
 //! `coordinator::main` con su orden de dependencia real.
 
-#![allow(dead_code)]
 
 pub mod console;
 pub mod pcie;

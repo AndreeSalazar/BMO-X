@@ -16,7 +16,6 @@
 //!   3. Timer wheel initialized with HPET as clock source
 //!   4. All `sleep()` / `timeout()` calls go through timer wheel
 
-#![allow(dead_code)]
 
 /// Timer source priority (best to worst).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

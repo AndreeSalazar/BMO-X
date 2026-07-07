@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Control Register (CR0/CR2/CR3/CR4/CR8) and Extended Control Register
 //! (XCR0) helpers.

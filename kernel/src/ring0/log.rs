@@ -1,7 +1,5 @@
 ﻿//! Ring 0 Logger â€” module-level logging for boot phases.
 
-#![allow(dead_code)]
-
 use crate::dev::console;
 use super::visual;
 

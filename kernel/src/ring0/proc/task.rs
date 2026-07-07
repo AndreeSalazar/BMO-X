@@ -1,6 +1,5 @@
 ﻿//! Task model + ctx switching for BMO.
 
-#![allow(dead_code)]
 
 use super::process::Pid;
 

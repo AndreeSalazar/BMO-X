@@ -11,7 +11,6 @@
 //! usando un wrapper que expone la primera entry de la MCFG real.
 //! Esto preserva la ABI que `boot::phases::p2_dev` espera.
 
-#![allow(dead_code)]
 
 pub use crate::vendor::amd::cpu::zen3::acpi_real::{RsdpHeader, AcpiError};
 

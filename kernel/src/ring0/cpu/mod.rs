@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Modular CPU initialization — single entry point for all CPU subsystems.
 //!
@@ -32,29 +31,29 @@ pub struct CpuInfo {
 /// let cpu = crate::cpu::init();
 /// ```
 pub fn init() -> CpuInfo {
-    crate::phase_1_RING_0::write_crash_marker(2031);
+    crate::boot_phase::write_crash_marker(2031);
     crate::uefi_rt::write_boot_stage("cpu_step1_feat");
 
     // 1. Detect features via CPUID
     let features = features::detect();
 
     // 2. Configure CR0/CR4 (FPU, SSE, AVX, SMEP, SMAP, etc.)
-    crate::phase_1_RING_0::write_crash_marker(2032);
+    crate::boot_phase::write_crash_marker(2032);
     crate::uefi_rt::write_boot_stage("cpu_step2_regs");
     regs::init(&features);
 
     // 3. Configure XCR0 safely (x87 + SSE + AVX state management)
-    crate::phase_1_RING_0::write_crash_marker(2033);
+    crate::boot_phase::write_crash_marker(2033);
     crate::uefi_rt::write_boot_stage("cpu_step3_xcr0");
     regs::init_xcr0(&features);
 
     // 4. Initialize FPU clean state
-    crate::phase_1_RING_0::write_crash_marker(2034);
+    crate::boot_phase::write_crash_marker(2034);
     crate::uefi_rt::write_boot_stage("cpu_step4_fpu");
     crate::cpu::fpu::init_fpu();
 
     // 5. Configure MTRRs (default WB, VRAM as WC) + PAT
-    crate::phase_1_RING_0::write_crash_marker(2035);
+    crate::boot_phase::write_crash_marker(2035);
     crate::uefi_rt::write_boot_stage("cpu_step5_cache");
     // Pass framebuffer info so MTRR marks it as Write-Combining (WC).
     // Without WC, scattered writes (like font glyph pixels) stay in
@@ -82,25 +81,25 @@ pub fn init() -> CpuInfo {
     // reserved bits, causing #GP → red screen crash. Fixed counters are
     // not essential for boot. Enable when AMD perfmon driver is mature.
     // (See kernel/src/ring0/cpu/perf.rs for the AMD-adapted version.)
-    crate::phase_1_RING_0::write_crash_marker(2036);
+    crate::boot_phase::write_crash_marker(2036);
     crate::uefi_rt::write_boot_stage("cpu_step6_perf");
     // perf::init(&features);  // DISABLED — causes #GP on Ryzen 5600X
 
     // 7. Enable lazy FPU switching (CR0.TS) - DISABLED
-    crate::phase_1_RING_0::write_crash_marker(2037);
+    crate::boot_phase::write_crash_marker(2037);
     crate::uefi_rt::write_boot_stage("cpu_step7_fpu");
 
     // 8. Calibrate TSC frequency
-    crate::phase_1_RING_0::write_crash_marker(2038);
+    crate::boot_phase::write_crash_marker(2038);
     crate::uefi_rt::write_boot_stage("cpu_step8_tsc");
     let tsc_freq = tsc::calibrate();
 
     // 9. Print CPU info
-    crate::phase_1_RING_0::write_crash_marker(2039);
+    crate::boot_phase::write_crash_marker(2039);
     crate::uefi_rt::write_boot_stage("cpu_step9_info");
     info::print();
 
-    crate::phase_1_RING_0::write_crash_marker(2040);
+    crate::boot_phase::write_crash_marker(2040);
     crate::uefi_rt::write_boot_stage("cpu_init_done");
 
     CpuInfo { features, tsc_freq }

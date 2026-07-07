@@ -15,7 +15,6 @@
 //!   2. `slab::init_heap()`   â€” inicializar slab allocator
 //!   3. `vmm::*`              â€” page table operations
 
-#![allow(dead_code)]
 
 pub const PAGE_SIZE: u64 = 4096;
 pub(crate) const MAX_ORDER: usize = 11;

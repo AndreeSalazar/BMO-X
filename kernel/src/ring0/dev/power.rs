@@ -5,7 +5,6 @@
 //!   - Thermal: Temperature monitoring, overheat protection
 //!   - Sleep: ACPI S3 (suspend-to-RAM), S4 (hibernate)
 
-#![allow(dead_code)]
 
 /// System power state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

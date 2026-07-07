@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Local APIC timer — preemptive scheduling tick.
 //!

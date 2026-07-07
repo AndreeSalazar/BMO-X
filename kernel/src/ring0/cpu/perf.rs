@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Performance monitoring counters.
 //!

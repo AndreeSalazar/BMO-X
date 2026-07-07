@@ -17,7 +17,6 @@
 //! v1.8.7: topology consumers were removed from Ring 0. SMP startup is now
 //! represented by `arch::smp` and is initialized explicitly by the coordinator.
 
-#![allow(dead_code)]
 
 pub mod gdt;
 pub mod idt;

@@ -3,7 +3,6 @@
 //! This is the lowest-level output device; every other subsystem
 //! (logger, diagnostics, ring3 debug print) routes through here.
 
-#![allow(dead_code)]
 
 const COM1: u16 = 0x3F8;
 

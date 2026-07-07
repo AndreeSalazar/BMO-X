@@ -8,7 +8,6 @@
 //! Si la detecciÃ³n real fallÃ³ o todavÃ­a no corriÃ³, devuelve el
 //! fallback hardcoded del 5600X (mismo comportamiento que v1.8.7).
 
-#![allow(dead_code)]
 
 /// Features del Ryzen 5 5600X que el kernel usa para habilitar paths
 /// de init. Mantenido como struct pÃºblico de RING 0 para compatibilidad

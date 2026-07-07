@@ -462,7 +462,12 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     // 11. Mark boot complete
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
-    crate::cabina_daemon::info("ring0", "Ring 0 boot complete â€” returning BootContext");
+    crate::cabina_daemon::info("ring0", "Ring 0 boot complete — returning BootContext");
+
+    // Wire bmo_core HAL — enables the external crate to call ring0 through HalServices.
+    bmo_core::hal::init(crate::ring0::hal_init::build(&ctx));
+    crate::cabina_daemon::info("ring0", "bmo_core HAL wired");
+
     crate::visual::log("ring0", "Ring 0 boot complete", crate::visual::color::OK);
     crate::dev::console::serial_write("[ring0] boot complete â€” returning BootContext\n");
 

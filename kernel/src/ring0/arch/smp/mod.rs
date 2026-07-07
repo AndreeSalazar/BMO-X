@@ -11,7 +11,6 @@
 //!
 //! This module is arch-agnostic: it works on Intel and AMD x86-64.
 
-#![allow(dead_code)]
 
 pub mod percpu;
 pub mod ap_startup;

@@ -1,5 +1,4 @@
-﻿#![allow(dead_code)]
-
+﻿
 //! Time Stamp Counter (TSC) calibration â€” measures CPU frequency.
 //!
 //! Ryzen 5 5600X has an invariant TSC that runs at the P0 (base) frequency

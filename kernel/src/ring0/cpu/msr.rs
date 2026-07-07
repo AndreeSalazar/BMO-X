@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Model-Specific Register (MSR) constants and safe read/write helpers.
 //!

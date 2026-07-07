@@ -4,7 +4,6 @@
 //! detection layer). If `init_bmo_cpu()` hasn't run yet, prints
 //! only the brand string and a hint.
 
-#![allow(dead_code)]
 
 use super::cpuid;
 

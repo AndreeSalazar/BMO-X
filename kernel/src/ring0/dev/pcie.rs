@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! PCI bus scanning — dual backend: IO ports (0xCF8/0xCFC) + ECAM MMIO.
 //!

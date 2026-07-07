@@ -27,7 +27,6 @@
 //! - `acpi_real` â€” RSDP, XSDT, MCFG, FADT parsing
 //! - `bmo_cpu` â€” API pÃºblica consolidada
 
-#![allow(dead_code)] // v1.8.8: many helpers, not all called from ring0 yet
 
 // â”€â”€ Submodules (the actual code) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 pub mod cpuid_detection;

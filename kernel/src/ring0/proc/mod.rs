@@ -12,7 +12,6 @@
 //! activos. Restaurar desde git cuando se reactive el caso RT (audio
 //! HDA, render de juego).
 
-#![allow(dead_code)]
 
 pub mod process;
 pub mod task;
