@@ -3,7 +3,7 @@ use crate::bmo_abi::bef::{
     header::*,
     sections::*,
     relocations,
-    imports::ImportTable,
+    imports::{ImportTable, ImportFlags},
 };
 
 #[derive(Debug)]
@@ -25,7 +25,7 @@ pub struct LoadedBef {
 pub fn load<F>(
     bytes: &[u8],
     base_addr: u64,
-    mut _resolve_import: F,
+    mut resolve_import: F,
 ) -> Result<LoadedBef, &'static str>
 where
     F: FnMut(&str, &str) -> Result<u64, &'static str>,
@@ -93,14 +93,32 @@ where
         current_va += size as u64;
     }
 
-    // Resolve imports
-    if let Some(section) = loaded.iter().find(|s| s.kind == SectionKind::Imports) {
-        if let Ok(import_table) = ImportTable::parse(&section.data, 256) {
-            for entry in import_table.entries {
-                let _lib = import_table.library_name(entry).unwrap_or("");
-                let _sym = import_table.symbol_name(entry).unwrap_or("");
+    // Resolve imports — collect entries first to avoid borrow conflict with patch_binding
+    let import_entries: Vec<(u64, u64)> = {
+        let imports_section = loaded.iter().find(|s| s.kind == SectionKind::Imports);
+        match imports_section.and_then(|s| ImportTable::parse(&s.data, 256).ok()) {
+            Some(table) => {
+                table.entries.iter().filter_map(|entry| {
+                    let sym = table.symbol_name(entry).unwrap_or("");
+                    if sym.is_empty() { return None; }
+                    let lib = table.library_name(entry).unwrap_or("");
+                    let addr = resolve_import(lib, sym);
+                    match addr {
+                        Ok(resolved) if resolved != 0 => {
+                            Some((entry.binding_offset, resolved))
+                        }
+                        Ok(_) if entry.flags & ImportFlags::WEAK.bits() != 0 => {
+                            Some((entry.binding_offset, 0))
+                        }
+                        _ => None,
+                    }
+                }).collect()
             }
+            None => Vec::new(),
         }
+    };
+    for &(binding_offset, addr) in &import_entries {
+        patch_binding(binding_offset, addr, &mut loaded)?;
     }
 
     // Apply relocations via read_unaligned
@@ -149,6 +167,28 @@ where
         tls_base,
         base_addr: base,
     })
+}
+
+/// Write `addr` (8 bytes, little-endian) at `binding_offset` in the correct section.
+fn patch_binding(
+    binding_offset: u64,
+    addr: u64,
+    loaded: &mut [LoadedSection],
+) -> Result<(), &'static str> {
+    for section in loaded.iter_mut() {
+        let start = section.virt_addr;
+        let end = start + section.size;
+        if binding_offset >= start && binding_offset + 8 <= end {
+            let offset_in_section = (binding_offset - start) as usize;
+            let data = &mut section.data;
+            if offset_in_section + 8 > data.len() {
+                return Err("binding offset out of data bounds");
+            }
+            data[offset_in_section..offset_in_section + 8].copy_from_slice(&addr.to_le_bytes());
+            return Ok(());
+        }
+    }
+    Err("binding offset outside all sections")
 }
 
 pub fn no_imports(_lib: &str, _sym: &str) -> Result<u64, &'static str> {

@@ -38,8 +38,13 @@ pub fn devour_and_load(bytes: &[u8]) -> Result<LoadedBef, &'static str> {
     Ok(image_to_loaded(&img))
 }
 
-fn resolve_import(_lib: &str, _sym: &str) -> Result<u64, &'static str> {
-    Err("import resolution not yet wired")
+fn resolve_import(lib: &str, sym: &str) -> Result<u64, &'static str> {
+    let addr = crate::bmo_core::bef::parsers::runtime::lookup(lib, sym);
+    if addr != 0 {
+        Ok(addr)
+    } else {
+        Err("unresolved import")
+    }
 }
 
 fn image_to_loaded(img: &crate::bmo_core::bef::parsers::Image) -> LoadedBef {
