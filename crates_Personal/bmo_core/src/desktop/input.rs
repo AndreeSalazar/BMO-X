@@ -1,7 +1,4 @@
-//! PS/2 Input — keyboard and mouse polling for the Ring 0 desktop.
-//!
-//! Uses unified `crate::port_io` for I/O. Tracks cursor position and
-//! dispatches scancodes to `bmo_api` for translation.
+//! PS/2 Input — keyboard and mouse polling with proper init sequences.
 
 #![allow(dead_code)]
 
@@ -16,7 +13,99 @@ static mut CTRL_HELD: bool = false;
 static mut ALT_HELD: bool = false;
 static mut HOTKEY_TOGGLED: bool = false;
 
+// ── PS/2 Initialization ─────────────────────────────────────────
+
+/// Send a command byte to the PS/2 controller (port 0x64).
+unsafe fn ps2_send_cmd(cmd: u8) {
+    port_io::ps2_wait_input();
+    port_io::outb(0x64, cmd);
+}
+
+/// Send a data byte to the PS/2 data port (port 0x60).
+unsafe fn ps2_send_data(data: u8) {
+    port_io::ps2_wait_input();
+    port_io::outb(0x60, data);
+}
+
+/// Read a byte from the PS/2 data port (port 0x60) with timeout.
+unsafe fn ps2_read_data() -> Option<u8> {
+    for _ in 0..1000 {
+        let status = port_io::inb(0x64);
+        if status == 0xFF { return None; }
+        if (status & 0x01) != 0 {
+            return Some(port_io::inb(0x60));
+        }
+    }
+    None
+}
+
+/// Initialize PS/2 keyboard: enable scanning, set LEDs.
+pub fn keyboard_init() {
+    unsafe {
+        if KEYBOARD_INIT_DONE { return; }
+        KEYBOARD_INIT_DONE = true;
+
+        // Drain stale data
+        while let Some(_) = ps2_read_data() {}
+
+        // Disable scanning, then re-enable (classic reset sequence)
+        ps2_send_data(0xF5); // disable scanning
+        ps2_read_data();     // expect ACK 0xFA
+
+        ps2_send_data(0xF4); // enable scanning
+        ps2_read_data();     // expect ACK 0xFA
+
+        // Turn on Num Lock LED (bit 1 = 0x02)
+        ps2_send_data(0xED); // set LEDs command
+        ps2_read_data();     // expect ACK
+        ps2_send_data(0x02); // Num Lock on
+
+        crate::dev::console::serial_write("[input] keyboard initialized (Num Lock ON)\n");
+    }
+}
+
+/// Initialize PS/2 mouse: enable auxiliary port, reset, enable reporting.
+pub fn mouse_init() {
+    unsafe {
+        if MOUSE_INIT_DONE { return; }
+        MOUSE_INIT_DONE = true;
+
+        // 1. Enable auxiliary PS/2 port
+        ps2_send_cmd(0xA8); // enable aux port
+
+        // 2. Set mouse defaults
+        ps2_send_cmd(0xD4); // next byte goes to mouse
+        ps2_send_data(0xF6); // set defaults
+        ps2_read_data();     // expect ACK
+
+        // 3. Enable data reporting
+        ps2_send_cmd(0xD4);
+        ps2_send_data(0xF4); // enable
+        ps2_read_data();
+
+        crate::dev::console::serial_write("[input] mouse initialized\n");
+    }
+}
+
+static mut KEYBOARD_INIT_DONE: bool = false;
+static mut MOUSE_INIT_DONE: bool = false;
+
+/// Update keyboard LEDs (bit 0=ScrollLock, bit 1=NumLock, bit 2=CapsLock).
+fn set_keyboard_leds(leds: u8) {
+    unsafe {
+        port_io::ps2_wait_input();
+        port_io::outb(0x60, 0xED);  // set LEDs command
+        port_io::ps2_wait_input();
+        port_io::outb(0x60, leds);
+    }
+}
+
+static mut LED_STATE: u8 = 0x02; // Num Lock ON by default
+
+// ── Keyboard ─────────────────────────────────────────────────────
+
 pub fn poll_key() -> u8 {
+    unsafe { keyboard_init(); }
     let status = unsafe { port_io::inb(0x64) };
     if status == 0xFF { return 0; }
     if (status & 0x01) == 0 { return 0; }
@@ -49,6 +138,13 @@ pub fn poll_key() -> u8 {
         0x9D => { unsafe { CTRL_HELD = false; HOTKEY_TOGGLED = false; } }
         0x38 => { unsafe { ALT_HELD = true; } }
         0xB8 => { unsafe { ALT_HELD = false; HOTKEY_TOGGLED = false; } }
+        0x3A => {
+            // Caps Lock toggle
+            unsafe {
+                LED_STATE ^= 0x04; // toggle Caps Lock bit
+                set_keyboard_leds(LED_STATE);
+            }
+        }
         _ => {}
     }
     unsafe {
@@ -95,6 +191,7 @@ fn process_mouse_byte(b: u8) {
 
 /// Returns `(x:i16) | (y:i16 << 16) | (buttons:u8 << 32)`.
 pub fn poll_mouse() -> u64 {
+    unsafe { mouse_init(); }
     unsafe {
         let mut limit = 0;
         loop {
