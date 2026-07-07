@@ -11,6 +11,7 @@ const SC_F10: u8 = 0x44;
 
 static mut CTRL_HELD: bool = false;
 static mut ALT_HELD: bool = false;
+static mut SHIFT_HELD: bool = false;
 static mut HOTKEY_TOGGLED: bool = false;
 
 // ── PS/2 Initialization ─────────────────────────────────────────
@@ -138,11 +139,21 @@ pub fn poll_key() -> u8 {
         0x9D => { unsafe { CTRL_HELD = false; HOTKEY_TOGGLED = false; } }
         0x38 => { unsafe { ALT_HELD = true; } }
         0xB8 => { unsafe { ALT_HELD = false; HOTKEY_TOGGLED = false; } }
+        0x2A | 0x36 => { unsafe { SHIFT_HELD = true; } }
+        0xAA | 0xB6 => { unsafe { SHIFT_HELD = false; } }
         0x3A => {
-            // Caps Lock toggle
             unsafe {
-                LED_STATE ^= 0x04; // toggle Caps Lock bit
+                LED_STATE ^= 0x04;
                 set_keyboard_leds(LED_STATE);
+            }
+        }
+        // Ctrl+Shift+Enter → system reboot
+        0x1C => {
+            unsafe {
+                if CTRL_HELD && SHIFT_HELD {
+                    crate::dev::console::serial_write("[desktop] Ctrl+Shift+Enter → system reset\n");
+                    crate::port_io::system_reset();
+                }
             }
         }
         _ => {}
