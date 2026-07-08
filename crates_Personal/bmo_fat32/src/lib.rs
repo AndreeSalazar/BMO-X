@@ -59,7 +59,9 @@ pub struct FatVolume {
     pub port: u8,
     bytes_per_sector: u16,
     sectors_per_cluster: u8,
+    num_fats: u8,
     fat_start: u32,
+    fat_size_sectors: u32,
     data_start: u32,
     root_cluster: u32,
     buf: [u8; 512],
@@ -76,9 +78,10 @@ pub fn mount(port: u8) -> Option<FatVolume> {
     if bpb.boot_sig != 0x29 && bpb.boot_sig != 0x28 { return None; }
     let fat_start = bpb.reserved_sectors as u32;
     let fat_size_sectors = bpb.fat_size;
-    let data_start = fat_start + (bpb.num_fats as u32) * fat_size_sectors;
+    let num_fats = bpb.num_fats;
+    let data_start = fat_start + (num_fats as u32) * fat_size_sectors;
     Some(FatVolume { port, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: bpb.sectors_per_cluster,
-        fat_start, data_start, root_cluster: bpb.root_cluster, buf: [0; 512], fat_cache: [0; 512] })
+        num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, buf: [0; 512], fat_cache: [0; 512] })
 }
 
 impl FatVolume {
@@ -153,13 +156,7 @@ impl FatVolume {
 
     /// Find a free cluster in the FAT.
     fn find_free_cluster(&mut self) -> Option<u32> {
-        let fat_size = unsafe {
-            let mut bpb_buf = [0u8; 512];
-            if bmo_ahci::read_sectors(self.port, 0, 1, bpb_buf.as_mut_ptr()) != 1 { return None; }
-            let bpb = &*(bpb_buf.as_ptr() as *const FatBpb);
-            bpb.fat_size
-        };
-        for sector in 0..fat_size {
+        for sector in 0..self.fat_size_sectors {
             unsafe {
                 if bmo_ahci::read_sectors(self.port, (self.fat_start + sector) as u64, 1, self.fat_cache.as_mut_ptr()) != 1 { continue; }
             }
@@ -177,22 +174,28 @@ impl FatVolume {
         None
     }
 
-    /// Mark a cluster as end-of-chain in the FAT.
+    /// Mark a cluster as end-of-chain in ALL FAT copies.
     fn mark_cluster_eoc(&mut self, cluster: u32) -> bool {
         let fat_offset = cluster * 4;
-        let fat_sector = self.fat_start + (fat_offset / 512);
-        let fat_index = (fat_offset % 512) as usize;
-        unsafe {
-            if bmo_ahci::read_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_mut_ptr()) != 1 { return false; }
-        }
+        let fat_index_in_sector = (fat_offset % 512) as usize;
+        let sectors_from_fat_start = fat_offset / 512;
         let eoc: u32 = 0x0FFF_FFFF;
-        self.fat_cache[fat_index] = eoc as u8;
-        self.fat_cache[fat_index+1] = (eoc >> 8) as u8;
-        self.fat_cache[fat_index+2] = (eoc >> 16) as u8;
-        self.fat_cache[fat_index+3] = (eoc >> 24) as u8;
-        unsafe {
-            bmo_ahci::write_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_ptr()) == 1
+
+        let mut ok = true;
+        for copy in 0..self.num_fats as u32 {
+            let fat_sector = self.fat_start + copy * self.fat_size_sectors + sectors_from_fat_start;
+            unsafe {
+                if bmo_ahci::read_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_mut_ptr()) != 1 { ok = false; continue; }
+            }
+            self.fat_cache[fat_index_in_sector] = eoc as u8;
+            self.fat_cache[fat_index_in_sector+1] = (eoc >> 8) as u8;
+            self.fat_cache[fat_index_in_sector+2] = (eoc >> 16) as u8;
+            self.fat_cache[fat_index_in_sector+3] = (eoc >> 24) as u8;
+            unsafe {
+                if bmo_ahci::write_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_ptr()) != 1 { ok = false; }
+            }
         }
+        ok
     }
 
     /// Find a free directory entry in a directory (by first cluster).

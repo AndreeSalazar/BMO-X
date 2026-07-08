@@ -39,34 +39,71 @@ pub fn flush_to_disk() {
     let name = b"CABINA.LOG";
     for (i, &b) in name.iter().enumerate() { name_8_3[i] = b; }
 
+    crate::dev::console::serial_write("[flush] start\n");
+
     unsafe {
-        if let Some(ctrl) = bmo_ahci::controller() {
-            for i in 0..ctrl.port_count {
-                if ctrl.ports[i as usize].state != bmo_ahci::PortState::Active { continue; }
-                if let Some(mut vol) = bmo_fat32::mount(i) {
-                    let root = vol.root_cluster();
-                    // Build 11-byte 8.3 names
-                    let mut efi_name = [b' '; 11];
-                    efi_name[0] = b'E'; efi_name[1] = b'F'; efi_name[2] = b'I';
-                    let mut boot_name = [b' '; 11];
-                    boot_name[0] = b'B'; boot_name[1] = b'O'; boot_name[2] = b'O'; boot_name[3] = b'T';
-                    // Navigate to EFI\BOOT
-                    if let Some(efi_cl) = vol.find_subdir_in(&efi_name, root) {
-                        if let Some(boot_cl) = vol.find_subdir_in(&boot_name, efi_cl) {
-                            if vol.create_file_in_dir(boot_cl, &name_8_3, &buf[..len]) {
-                                DISK_FLUSH_COUNT += 1;
-                                break;
-                            }
-                        }
-                    }
-                    // Fallback: write to root
-                    if vol.create_file_in_dir(root, &name_8_3, &buf[..len]) {
+        let ctrl = match bmo_ahci::controller() {
+            Some(c) => c,
+            None => { crate::dev::console::serial_write("[flush] no AHCI ctrl\n"); return; }
+        };
+        crate::dev::console::serial_write("[flush] ctrl OK, ports=");
+        crate::dev::console::serial_write_u64(ctrl.port_count as u64, 10);
+        crate::dev::console::serial_write("\n");
+
+        for i in 0..ctrl.port_count {
+            if ctrl.ports[i as usize].state != bmo_ahci::PortState::Active { continue; }
+            crate::dev::console::serial_write("[flush] trying port ");
+            crate::dev::console::serial_write_u64(i as u64, 10);
+            crate::dev::console::serial_write("\n");
+
+            let mut vol = match bmo_fat32::mount(i) {
+                Some(v) => v,
+                None => { crate::dev::console::serial_write("[flush] mount FAIL\n"); continue; }
+            };
+            crate::dev::console::serial_write("[flush] mount OK\n");
+
+            let root = vol.root_cluster();
+            crate::dev::console::serial_write("[flush] root_cluster=");
+            crate::dev::console::serial_write_u64(root as u64, 10);
+            crate::dev::console::serial_write("\n");
+
+            // Build 11-byte 8.3 names
+            let mut efi_name = [b' '; 11];
+            efi_name[0] = b'E'; efi_name[1] = b'F'; efi_name[2] = b'I';
+            let mut boot_name = [b' '; 11];
+            boot_name[0] = b'B'; boot_name[1] = b'O'; boot_name[2] = b'O'; boot_name[3] = b'T';
+
+            // Try EFI\BOOT
+            let efi_cl = vol.find_subdir_in(&efi_name, root);
+            crate::dev::console::serial_write("[flush] EFI dir=");
+            crate::dev::console::serial_write_u64(efi_cl.unwrap_or(0) as u64, 16);
+            crate::dev::console::serial_write("\n");
+
+            if let Some(efi_cl) = efi_cl {
+                let boot_cl = vol.find_subdir_in(&boot_name, efi_cl);
+                crate::dev::console::serial_write("[flush] BOOT dir=");
+                crate::dev::console::serial_write_u64(boot_cl.unwrap_or(0) as u64, 16);
+                crate::dev::console::serial_write("\n");
+
+                if let Some(boot_cl) = boot_cl {
+                    if vol.create_file_in_dir(boot_cl, &name_8_3, &buf[..len]) {
                         DISK_FLUSH_COUNT += 1;
+                        crate::dev::console::serial_write("[flush] WROTE EFI/BOOT/cabina.log\n");
+                        return;
                     }
+                    crate::dev::console::serial_write("[flush] create EFI/BOOT FAIL, try root\n");
                 }
-                break;
             }
+
+            // Fallback: write to root
+            if vol.create_file_in_dir(root, &name_8_3, &buf[..len]) {
+                DISK_FLUSH_COUNT += 1;
+                crate::dev::console::serial_write("[flush] WROTE root/cabina.log\n");
+                return;
+            }
+            crate::dev::console::serial_write("[flush] create root FAIL\n");
         }
+        crate::dev::console::serial_write("[flush] no port succeeded\n");
     }
 }
 
