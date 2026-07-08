@@ -5,6 +5,7 @@
 
 use bmo_input::hal::InputHal;
 use alloc::boxed::Box;
+use crate::dev::console::{serial_write, serial_write_u64};
 
 pub const SC_ESC: u8 = 0x01;
 
@@ -12,14 +13,18 @@ fn hal() -> &'static mut dyn InputHal {
     static mut ACTIVE: Option<Box<dyn InputHal>> = None;
     unsafe {
         if ACTIVE.is_none() {
-            // Try USB HID first
+            serial_write("[input] initializing...\n");
             let mut uhid = Box::new(bmo_uhid::UsbHidHal::new());
-            if uhid.init() {
+            let ok = uhid.init();
+            serial_write("[input] uhid.init() = ");
+            if ok {
+                serial_write("OK\n");
                 ACTIVE = Some(uhid);
             } else {
-                // Fallback to PS/2
+                serial_write("FAIL, fallback to PS/2\n");
                 let mut ps2 = Box::new(bmo_input::hal_ps2::Ps2Hal::new());
                 ps2.init();
+                serial_write("[input] PS/2 active\n");
                 ACTIVE = Some(ps2);
             }
         }
@@ -44,6 +49,11 @@ pub fn poll_raw_scancode() -> u8 {
             }
             _ => {}
         }
+    }
+    if last != 0 {
+        serial_write("[input] scancode=");
+        serial_write_u64(last as u64, 2);
+        serial_write("\n");
     }
     last
 }
