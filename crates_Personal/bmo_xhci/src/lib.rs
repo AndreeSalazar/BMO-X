@@ -1,7 +1,6 @@
-//! xHCI USB Controller Driver — controller init, port enumeration, device addressing.
+//! xHCI USB Controller Driver — full device lifecycle + HID interrupt transfers.
 //!
-//! Provides `XhciHal` trait for kernel services. The kernel writes MMIO via direct
-//! identity mapping (PCI BAR is below 4GB).
+//! Modeled after the proven xhci-nostd crate at github.com/suhteevah/xhci-nostd.
 
 #![no_std]
 
@@ -25,141 +24,150 @@ pub fn init_hal(hal: &'static dyn XhciHal) {
     if INIT.swap(true, Ordering::SeqCst) { return; }
     unsafe { XHCI_HAL = Some(hal); }
 }
-fn hal() -> &'static dyn XhciHal { unsafe { XHCI_HAL.expect("XhciHal not init") } }
+pub fn hal() -> &'static dyn XhciHal { unsafe { XHCI_HAL.expect("XhciHal not init") } }
 
 static MMIO_BASE: AtomicUsize = AtomicUsize::new(0);
 
-pub fn set_mmio(mmio: u64) {
-    MMIO_BASE.store(mmio as usize, Ordering::Relaxed);
-}
+pub fn set_mmio(mmio: u64) { MMIO_BASE.store(mmio as usize, Ordering::Relaxed); }
 pub fn get_mmio() -> Option<u64> {
     let v = MMIO_BASE.load(Ordering::Relaxed);
     if v == 0 { None } else { Some(v as u64) }
 }
-pub fn is_controller_initialized() -> bool {
-    unsafe { CTRL.is_some() }
-}
+pub fn is_controller_initialized() -> bool { unsafe { CTRL.is_some() } }
 
 // ═══════════════════════════════════════════════════════════════════
 //  Registers
 // ═══════════════════════════════════════════════════════════════════
 
-const CAPLENGTH:   u32 = 0x00; const HCSPARAMS1: u32 = 0x04;
-const HCSPARAMS2:  u32 = 0x08; const HCSPARAMS3: u32 = 0x0C;
-const HCCPARAMS1:  u32 = 0x10; const DBOFF:     u32 = 0x14;
-const RTSOFF:      u32 = 0x18;
-
-const USBCMD:   u32 = 0x00; const USBSTS: u32 = 0x04;
+const CAPLENGTH: u32 = 0x00; const HCSPARAMS1: u32 = 0x04;
+const HCSPARAMS2: u32 = 0x08; const HCSPARAMS3: u32 = 0x0C;
+const HCCPARAMS1: u32 = 0x10; const DBOFF: u32 = 0x14; const RTSOFF: u32 = 0x18;
+const USBCMD: u32 = 0x00; const USBSTS: u32 = 0x04;
 const PAGESIZE: u32 = 0x08; const CONFIG: u32 = 0x38;
-
 const DBOFF_DB: u32 = 0x00;
-
-const RT_IMAN: u32 = 0x20; const RT_IMOD:  u32 = 0x24;
+const RT_IMAN: u32 = 0x20; const RT_IMOD: u32 = 0x24;
 const RT_ERSTSZ: u32 = 0x28; const RT_ERSTBA: u32 = 0x30;
-const RT_ERDP:   u32 = 0x38;
-
-const PORTSC:   u32 = 0x00; const PORTPMSC: u32 = 0x04;
-const PORTLI:   u32 = 0x08;
-
+const RT_ERDP: u32 = 0x38;
+const PORTSC: u32 = 0x00;
 const USBCMD_RS: u32 = 1 << 0; const USBCMD_HCRST: u32 = 1 << 1;
 const USBSTS_HCH: u32 = 1 << 0; const USBSTS_CNR: u32 = 1 << 11;
 const PORTSC_CCS: u32 = 1 << 0; const PORTSC_PED: u32 = 1 << 1;
-const PORTSC_PR:  u32 = 1 << 4; const PORTSC_PP:  u32 = 1 << 9;
+const PORTSC_PR: u32 = 1 << 4; const PORTSC_PP: u32 = 1 << 9;
 const PORTSC_CSC: u32 = 1 << 17; const PORTSC_PRC: u32 = 1 << 21;
-const PORTSC_WRC: u32 = 1 << 19; const PORTSC_WPR: u32 = 1 << 31;
 const IMAN_IE: u32 = 1 << 1; const IMAN_IP: u32 = 1 << 0;
 
-const TRB_NORMAL:       u32 = 1;   const TRB_SETUP:    u32 = 2;
-const TRB_DATA:         u32 = 3;   const TRB_STATUS:   u32 = 4;
-const TRB_LINK:         u32 = 6;   const TRB_ENABLE:   u32 = 9;
-const TRB_ADDRESS_DEV:  u32 = 11;  const TRB_CONFIGURE: u32 = 12;
-const TRB_EVAL_CTX:     u32 = 13;  const TRB_NOOP:     u32 = 23;
-const TRB_TRANSFER:     u32 = 32;  const TRB_COMPLETION: u32 = 33;
-const TRB_PORT_STATUS:  u32 = 34;
+const TRB_NORMAL: u32 = 1;  const TRB_SETUP: u32 = 2;
+const TRB_DATA: u32 = 3;    const TRB_STATUS: u32 = 4;
+const TRB_LINK: u32 = 6;    const TRB_ENABLE: u32 = 9;
+const TRB_ADDRESS_DEV: u32 = 11; const TRB_CONFIGURE: u32 = 12;
+const TRB_EVAL_CTX: u32 = 13;
+const TRB_TRANSFER: u32 = 32; const TRB_COMPLETION: u32 = 33;
+const TRB_PORT_STATUS: u32 = 34;
 
 const TRB_SIZE: usize = 16;
 const RING_SIZE: usize = 256;
+const LAST_TRB_IDX: usize = RING_SIZE - 1; // Link TRB lives here
 
-// ── Transfer Ring ─────────────────────────────────────────────────────
+const CC_SUCCESS: u32 = 1;
+const CC_SHORT: u32 = 13;
 
-/// xHCI Transfer/Command/Event Ring backed by a DMA buffer.
-///
-/// **CRITICAL**: `enqueue_trb()` writes directly into the DMA buffer
-/// at `dma_virt`. The xHC reads from the physical address `dma_phys`,
-/// so the TRB *must* land in the same memory the controller is
-/// programmed to walk.
+// ═══════════════════════════════════════════════════════════════════
+//  TRB  (16 bytes, 4 DWORDs)
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Clone, Copy)]
+struct Trb { dw0: u32, dw1: u32, dw2: u32, dw3: u32 }
+
+impl Trb {
+    fn zeroed() -> Self { Trb { dw0: 0, dw1: 0, dw2: 0, dw3: 0 } }
+    fn with_ptr(ptr: u64) -> Self {
+        Trb { dw0: ptr as u32, dw1: (ptr >> 32) as u32, dw2: 0, dw3: 0 }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Transfer Ring
+// ═══════════════════════════════════════════════════════════════════
+
 pub struct TransferRing {
-    pub dma_virt: *mut u32,
-    pub dma_phys: u64,
-    pub enqueue: usize,
-    pub pcs: bool, // Producer Cycle State
+    dma_virt: *mut u32,
+    dma_phys: u64,
+    enqueue: usize,
+    pcs: bool,
 }
 
 impl TransferRing {
-    /// Create a ring backed by a caller-supplied DMA allocation.
-    /// The caller must zero the buffer before calling this.
-    pub fn new(dma_virt: *mut u32, dma_phys: u64) -> Self {
-        Self { dma_virt, dma_phys, enqueue: 0, pcs: true }
+    /// Create a new ring. The DMA buffer must be 4K, zeroed.
+    /// Places a Link TRB at LAST_TRB_IDX pointing back to `dma_phys`.
+    pub unsafe fn new(dma_virt: *mut u32, dma_phys: u64) -> Self {
+        let mut r = Self { dma_virt, dma_phys: dma_phys & !0xF, enqueue: 0, pcs: true };
+        // Link TRB at the last slot
+        let base = LAST_TRB_IDX * 4;
+        r.dma_virt.add(base    ).write_volatile((r.dma_phys & 0xFFFF_FFFF) as u32);
+        r.dma_virt.add(base + 1).write_volatile(((r.dma_phys >> 32) & 0xFFFF_FFFF) as u32);
+        r.dma_virt.add(base + 2).write_volatile(0);
+        r.dma_virt.add(base + 3).write_volatile((TRB_LINK << 10) | (1 << 1) | 1);
+        r
     }
 
-    /// Write a 4-dword TRB at the current enqueue position in the DMA buffer.
-    /// Returns the slot index (for later completion matching).
-    pub fn enqueue_trb(&mut self, p0: u32, p1: u32, p2: u32, p3: u32) -> usize {
+    pub fn phys_with_dcs(&self) -> u64 { self.dma_phys | if self.pcs { 1 } else { 0 } }
+
+    /// Write a TRB at the current enqueue position, advance.
+    pub fn enqueue(&mut self, trb: &Trb) {
         let idx = self.enqueue;
-        let base = idx * 4;
+        let b = idx * 4;
         unsafe {
-            self.dma_virt.add(base    ).write_volatile(p0);
-            self.dma_virt.add(base + 1).write_volatile(p1);
-            self.dma_virt.add(base + 2).write_volatile(p2);
+            self.dma_virt.add(b    ).write_volatile(trb.dw0);
+            self.dma_virt.add(b + 1).write_volatile(trb.dw1);
+            self.dma_virt.add(b + 2).write_volatile(trb.dw2);
             let cycle = if self.pcs { 1u32 } else { 0u32 };
-            self.dma_virt.add(base + 3).write_volatile(p3 | cycle);
+            self.dma_virt.add(b + 3).write_volatile(trb.dw3 | cycle);
         }
-        self.enqueue = (idx + 1) % RING_SIZE;
-        if self.enqueue == 0 { self.pcs = !self.pcs; }
-        idx
+        self.advance();
+    }
+
+    /// Advance enqueue, wrapping at Link TRB.
+    fn advance(&mut self) {
+        self.enqueue += 1;
+        if self.enqueue >= LAST_TRB_IDX {
+            // Update Link TRB cycle bit to match current PCS
+            let lb = LAST_TRB_IDX * 4;
+            unsafe {
+                let link_dw3 = self.dma_virt.add(lb + 3).read_volatile();
+                if self.pcs { self.dma_virt.add(lb + 3).write_volatile(link_dw3 | 1); }
+                else { self.dma_virt.add(lb + 3).write_volatile(link_dw3 & !1u32); }
+            }
+            self.enqueue = 0;
+            self.pcs = !self.pcs;
+        }
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Device context structures
+//  USB Descriptor types  (for external consumers)
 // ═══════════════════════════════════════════════════════════════════
 
-pub struct InputCtrlCtx { pub drop_flags: u32, pub add_flags: u32, _r: [u32; 6] }
-
-pub struct SlotCtx { pub entries: [u32; 8] }
-
-pub struct EpCtx { pub entries: [u32; 8] }
-
-pub struct DeviceCtx { pub slot: SlotCtx, pub ep0: EpCtx, pub eps: [EpCtx; 30] }
-
-pub struct InputCtx { pub ctrl: InputCtrlCtx, pub slot: SlotCtx, pub eps: [EpCtx; 31] }
+pub const USB_REQ_GET_DESCRIPTOR: u8 = 0x06;
+pub const USB_REQ_SET_CONFIG: u8 = 0x09;
+pub const USB_DESC_DEVICE: u16 = 1;
+pub const USB_DESC_CONFIG: u16 = 2;
 
 // ═══════════════════════════════════════════════════════════════════
-//  Controller state
+//  Controller
 // ═══════════════════════════════════════════════════════════════════
 
 pub struct XhciController {
-    pub mmio: u64,
-    pub op_base: u32,
-    pub rt_base: u32,
-    pub db_base: u32,
-    pub max_slots: u8,
-    pub max_ports: u8,
-    pub ctx_size: u8,
+    pub mmio: u64, pub op_base: u32, pub rt_base: u32, pub db_base: u32,
+    pub max_slots: u8, pub max_ports: u8, pub ctx_size: u8,
     pub dcbaa_phys: u64,
     pub cmd_ring: TransferRing,
     pub event_ring: TransferRing,
     pub erst_phys: u64,
-    pub erst_entry_phys: u64,
     pub initialized: bool,
-    pub evt_dequeue: u32,
-    pub evt_cycle: u32,
-    pub ctrl_trb_phys: u64,
-    pub ctrl_data_phys: u64,
+    pub evt_dequeue: u32, pub evt_cycle: u32,
 }
 
 static mut CTRL: Option<XhciController> = None;
-
 pub fn controller() -> Option<&'static XhciController> { unsafe { CTRL.as_ref() } }
 pub fn controller_mut() -> Option<&'static mut XhciController> { unsafe { CTRL.as_mut() } }
 
@@ -167,539 +175,537 @@ pub fn controller_mut() -> Option<&'static mut XhciController> { unsafe { CTRL.a
 //  MMIO helpers
 // ═══════════════════════════════════════════════════════════════════
 
-unsafe fn read32(addr: u64) -> u32 { core::ptr::read_volatile(addr as *const u32) }
-unsafe fn write32(addr: u64, val: u32) { core::ptr::write_volatile(addr as *mut u32, val); }
+unsafe fn r32(addr: u64) -> u32 { core::ptr::read_volatile(addr as *const u32) }
+unsafe fn w32(addr: u64, val: u32) { core::ptr::write_volatile(addr as *mut u32, val); }
+unsafe fn op_r(m: u64, o: u32, off: u32) -> u32 { r32(m + o as u64 + off as u64) }
+unsafe fn op_w(m: u64, o: u32, off: u32, v: u32) { w32(m + o as u64 + off as u64, v) }
+unsafe fn rt_w(m: u64, r: u32, off: u32, v: u32) { w32(m + r as u64 + off as u64, v) }
 
-unsafe fn cap_read(ctrl: &XhciController, off: u32) -> u32 {
-    read32(ctrl.mmio + off as u64)
-}
-unsafe fn op_read(ctrl: &XhciController, off: u32) -> u32 {
-    read32(ctrl.mmio + ctrl.op_base as u64 + off as u64)
-}
-unsafe fn op_write(ctrl: &XhciController, off: u32, val: u32) {
-    write32(ctrl.mmio + ctrl.op_base as u64 + off as u64, val)
-}
-unsafe fn rt_write(ctrl: &XhciController, off: u32, val: u32) {
-    write32(ctrl.mmio + ctrl.rt_base as u64 + off as u64, val)
+fn ctx_sz(c: &XhciController) -> usize { if c.ctx_size != 0 { 64 } else { 32 } }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Event ring consumer
+// ═══════════════════════════════════════════════════════════════════
+
+unsafe fn evt_poll_block(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)> {
+    let base = hal().phys_to_virt(ctrl.erst_phys) as *const u32;
+    let mut dq = ctrl.evt_dequeue;
+    let mut cy = ctrl.evt_cycle;
+    for _ in 0..500000 {
+        let dw3 = base.add((dq as usize) * 4 + 3).read_volatile();
+        if (dw3 & 1) == cy {
+            let dw0 = base.add((dq as usize) * 4).read_volatile();
+            let dw1 = base.add((dq as usize) * 4 + 1).read_volatile();
+            let dw2 = base.add((dq as usize) * 4 + 2).read_volatile();
+            dq += 1; if dq >= RING_SIZE as u32 { dq = 0; cy ^= 1; }
+            let erdp = ctrl.erst_phys + (dq as u64) * (TRB_SIZE as u64);
+            w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64, (erdp & 0xFFFF_FFFF) as u32);
+            w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4, ((erdp >> 32) & 0xFFFF_FFFF) as u32);
+            ctrl.evt_dequeue = dq; ctrl.evt_cycle = cy;
+            return Some((dw0, dw1, dw2, dw3));
+        }
+        core::hint::spin_loop();
+    }
+    None
 }
 
-unsafe fn op_read_reg(mmio: u64, op: u32, off: u32) -> u32 {
-    read32(mmio + op as u64 + off as u64)
-}
-unsafe fn op_write_reg(mmio: u64, op: u32, off: u32, val: u32) {
-    write32(mmio + op as u64 + off as u64, val)
-}
-unsafe fn rt_write_reg(mmio: u64, rt: u32, off: u32, val: u32) {
-    write32(mmio + rt as u64 + off as u64, val)
+unsafe fn evt_poll_nb(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)> {
+    let base = hal().phys_to_virt(ctrl.erst_phys) as *const u32;
+    let dq = ctrl.evt_dequeue;
+    let dw3 = base.add((dq as usize) * 4 + 3).read_volatile();
+    if (dw3 & 1) == ctrl.evt_cycle {
+        let dw0 = base.add((dq as usize) * 4).read_volatile();
+        let dw1 = base.add((dq as usize) * 4 + 1).read_volatile();
+        let dw2 = base.add((dq as usize) * 4 + 2).read_volatile();
+        let ndq = if dq + 1 >= RING_SIZE as u32 { 0 } else { dq + 1 };
+        let ncy = if ndq == 0 { ctrl.evt_cycle ^ 1 } else { ctrl.evt_cycle };
+        let erdp = ctrl.erst_phys + (ndq as u64) * (TRB_SIZE as u64);
+        w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64, (erdp & 0xFFFF_FFFF) as u32);
+        w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4, ((erdp >> 32) & 0xFFFF_FFFF) as u32);
+        ctrl.evt_dequeue = ndq; ctrl.evt_cycle = ncy;
+        Some((dw0, dw1, dw2, dw3))
+    } else { None }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Init
+//  Helpers
+// ═══════════════════════════════════════════════════════════════════
+
+unsafe fn dcbaa_get(slot: u8) -> Option<u64> {
+    let ctrl = CTRL.as_ref()?;
+    let a = hal().phys_to_virt(ctrl.dcbaa_phys) as *const u64;
+    let v = a.add(slot as usize).read_volatile();
+    if v == 0 { None } else { Some(v) }
+}
+
+unsafe fn send_cmd(trb: Trb) -> Option<(u32, u32, u32, u32)> {
+    let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
+    ctrl.cmd_ring.enqueue(&trb);
+    ring_doorbell(0, 0);
+    loop {
+        let ev = evt_poll_block(ctrl)?;
+        let typ = (ev.3 >> 10) & 0x3F;
+        if typ == TRB_COMPLETION {
+            let cc = (ev.2 >> 24) & 0xFF;
+            if cc == CC_SUCCESS || cc == CC_SHORT { return Some(ev); }
+            return None;
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Init  (unchanged logic, proven)
 // ═══════════════════════════════════════════════════════════════════
 
 pub unsafe fn init(mmio: u64) -> bool {
-    if CTRL.is_some() { hal().log("[xhci] already init, skip\n"); return true; }
+    if CTRL.is_some() { return true; }
     let h = hal();
-    h.log("[xhci] === INIT START ===\n");
-
-    let cap_len = read32(mmio + CAPLENGTH as u64) & 0xFF;
-    let hcs1 = read32(mmio + HCSPARAMS1 as u64);
-    let hcc1 = read32(mmio + HCCPARAMS1 as u64);
+    h.log("[xhci] === INIT ===\n");
+    let cap_len = r32(mmio + CAPLENGTH as u64) & 0xFF;
+    let hcs1 = r32(mmio + HCSPARAMS1 as u64);
+    let hcc1 = r32(mmio + HCCPARAMS1 as u64);
     let op_base = cap_len;
-    let rt_off = read32(mmio + RTSOFF as u64) & !0x1F;
-    let db_off = read32(mmio + DBOFF as u64) & !0x1F;
+    let rt_off = r32(mmio + RTSOFF as u64) & !0x1F;
+    let db_off = r32(mmio + DBOFF as u64) & !0x1F;
     let max_slots = (hcs1 & 0xFF) as u8;
     let max_ports = ((hcs1 >> 24) & 0xFF) as u8;
-    let ctx_size = if hcc1 & (1 << 2) != 0 { 1u8 } else { 0u8 };
+    let csz = if hcc1 & (1 << 2) != 0 { 1u8 } else { 0u8 };
+    h.log_u64(" max_slots=", max_slots as u64);
+    h.log_u64(" max_ports=", max_ports as u64);
 
-    h.log_u64("[xhci] cap_len=", cap_len as u64);
-    h.log_u64("[xhci] max_slots=", max_slots as u64);
-    h.log_u64("[xhci] max_ports=", max_ports as u64);
-    h.log_u64("[xhci] rt_off=", rt_off as u64);
-    h.log_u64("[xhci] db_off=", db_off as u64);
-
-    // 1. Take ownership from BIOS
     let eecp = ((hcc1 >> 8) & 0xFF) as u32;
-    if eecp >= 0x40 {
-        let bios = read32(mmio + eecp as u64);
-        h.log_u64("[xhci] EECP=", eecp as u64);
-        h.log_u64("[xhci] BIOS sem=", bios as u64);
-        if bios & 1 != 0 {
-            write32(mmio + eecp as u64 + 4, 1);
-            for i in 0..50000 {
-                if read32(mmio + eecp as u64) & 1 == 0 {
-                    h.log_u64("[xhci] ownership taken after ", i as u64);
-                    h.log(" loops\n");
-                    break;
-                }
-            }
-        } else {
-            h.log("[xhci] BIOS already released\n");
-        }
-    } else {
-        h.log("[xhci] No legacy support EECP\n");
+    if eecp >= 0x40 && (r32(mmio + eecp as u64) & 1) != 0 {
+        w32(mmio + eecp as u64 + 4, 1);
+        for _ in 0..50000 { if r32(mmio + eecp as u64) & 1 == 0 { break; } }
     }
+    let cmd = op_r(mmio, op_base, USBCMD);
+    op_w(mmio, op_base, USBCMD, cmd & !USBCMD_RS);
+    for _ in 0..50000 { if op_r(mmio, op_base, USBSTS) & USBSTS_HCH != 0 { break; } }
+    op_w(mmio, op_base, USBCMD, USBCMD_HCRST);
+    for _ in 0..100000 { if op_r(mmio, op_base, USBCMD) & USBCMD_HCRST == 0 { break; } }
+    for _ in 0..50000 { if op_r(mmio, op_base, USBSTS) & USBSTS_CNR == 0 { break; } }
+    op_w(mmio, op_base, CONFIG, (op_r(mmio, op_base, CONFIG) & !0xFF) | max_slots as u32);
 
-    // 2. Stop + reset
-    let cmd = op_read_reg(mmio, op_base, USBCMD);
-    h.log_u64("[xhci] USBCMD before stop=", cmd as u64);
-    op_write_reg(mmio, op_base, USBCMD, cmd & !USBCMD_RS);
-    for i in 0..50000 {
-        if op_read_reg(mmio, op_base, USBSTS) & USBSTS_HCH != 0 {
-            h.log_u64("[xhci] stopped after ", i as u64);
-            h.log(" loops\n");
-            break;
-        }
-    }
-    h.log_u64("[xhci] USBSTS after stop=", op_read_reg(mmio, op_base, USBSTS) as u64);
+    // DCBAA
+    let dp = ((max_slots as usize + 1) * 8 + 4095) / 4096;
+    let da = match h.alloc_dma_pages(dp) { Some(p) => p, None => { h.log("[xhci] FAIL dcbaa\n"); return false; } };
+    core::ptr::write_bytes(h.phys_to_virt(da), 0, dp * 4096);
+    let da2 = da & !0x3F;
+    op_w(mmio, op_base, 0x30, (da2 & 0xFFFF_FFFF) as u32);
+    op_w(mmio, op_base, 0x34, ((da2 >> 32) & 0xFFFF_FFFF) as u32);
 
-    op_write_reg(mmio, op_base, USBCMD, USBCMD_HCRST);
-    for i in 0..100000 {
-        if op_read_reg(mmio, op_base, USBCMD) & USBCMD_HCRST == 0 {
-            h.log_u64("[xhci] reset bit clear after ", i as u64);
-            h.log(" loops\n");
-            break;
-        }
-    }
-    for i in 0..50000 {
-        if op_read_reg(mmio, op_base, USBSTS) & USBSTS_CNR == 0 {
-            h.log_u64("[xhci] CNR clear after ", i as u64);
-            h.log(" loops\n");
-            break;
-        }
-    }
-    h.log("[xhci] reset complete\n");
+    // Cmd ring
+    let cp = (RING_SIZE * TRB_SIZE + 4095) / 4096;
+    let ca = match h.alloc_dma_pages(cp) { Some(p) => p, None => { h.log("[xhci] FAIL cmd\n"); return false; } };
+    let cv = h.phys_to_virt(ca) as *mut u32;
+    core::ptr::write_bytes(cv as *mut u8, 0, cp * 4096);
+    let cr_val = (ca & !0x3F) | 1;
+    op_w(mmio, op_base, 0x18, (cr_val & 0xFFFF_FFFF) as u32);
+    op_w(mmio, op_base, 0x1C, ((cr_val >> 32) & 0xFFFF_FFFF) as u32);
 
-    // 3. Set max slots
-    let cfg = op_read_reg(mmio, op_base, CONFIG);
-    op_write_reg(mmio, op_base, CONFIG, (cfg & !0xFF) | max_slots as u32);
-    h.log_u64("[xhci] CONFIG=", op_read_reg(mmio, op_base, CONFIG) as u64);
+    // Event ring
+    let ep = (RING_SIZE * TRB_SIZE + 4095) / 4096;
+    let ea = match h.alloc_dma_pages(ep) { Some(p) => p, None => { h.log("[xhci] FAIL evt\n"); return false; } };
+    let ev = h.phys_to_virt(ea) as *mut u32;
+    core::ptr::write_bytes(ev as *mut u8, 0, ep * 4096);
+    let eea = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] FAIL ERST\n"); return false; } };
+    let eev = h.phys_to_virt(eea) as *mut u32;
+    core::ptr::write_bytes(eev as *mut u8, 0, 4096);
+    eev.add(0).write_volatile((ea & 0xFFFF_FFFF) as u32);
+    eev.add(1).write_volatile(((ea >> 32) & 0xFFFF_FFFF) as u32);
+    eev.add(2).write_volatile(RING_SIZE as u32);
+    rt_w(mmio, rt_off, RT_ERSTSZ, 1);
+    rt_w(mmio, rt_off, RT_ERSTBA, (eea & 0xFFFF_FFFF) as u32);
+    rt_w(mmio, rt_off, RT_ERSTBA + 4, ((eea >> 32) & 0xFFFF_FFFF) as u32);
+    let eo = (ea & !0x3F) as u64;
+    rt_w(mmio, rt_off, RT_ERDP, (eo & 0xFFFF_FFFF) as u32);
+    rt_w(mmio, rt_off, RT_ERDP + 4, ((eo >> 32) & 0xFFFF_FFFF) as u32);
+    rt_w(mmio, rt_off, RT_IMAN, IMAN_IE);
 
-    // 4. Allocate DCBAA
-    let dcbaa_pages = ((max_slots as usize + 1) * 8 + 4095) / 4096;
-    let dcbaa_phys = match h.alloc_dma_pages(dcbaa_pages) { Some(p) => p, None => { h.log("[xhci] FAIL dcbaa alloc\n"); return false; } };
-    let dcbaa_virt = h.phys_to_virt(dcbaa_phys);
-    core::ptr::write_bytes(dcbaa_virt, 0, dcbaa_pages * 4096);
-    let dcbaa_phys_64 = dcbaa_phys & !0x3F;
-    op_write_reg(mmio, op_base, 0x30, (dcbaa_phys_64 & 0xFFFF_FFFF) as u32);
-    op_write_reg(mmio, op_base, 0x34, ((dcbaa_phys_64 >> 32) & 0xFFFF_FFFF) as u32);
-    h.log_u64("[xhci] DCBAA phys=", dcbaa_phys_64);
+    // Start
+    op_w(mmio, op_base, USBCMD, op_r(mmio, op_base, USBCMD) | USBCMD_RS);
+    for _ in 0..50000 { if op_r(mmio, op_base, USBSTS) & USBSTS_HCH == 0 { break; } }
 
-    // 5. Set up Command Ring — WRITE TRBs TO DMA BUFFER
-    let cmd_ring_pages = (RING_SIZE * TRB_SIZE + 4095) / 4096;
-    let cmd_ring_phys = match h.alloc_dma_pages(cmd_ring_pages) { Some(p) => p, None => { h.log("[xhci] FAIL cmd ring alloc\n"); return false; } };
-    let cmd_ring_virt = h.phys_to_virt(cmd_ring_phys) as *mut u32;
-    core::ptr::write_bytes(cmd_ring_virt as *mut u8, 0, cmd_ring_pages * 4096);
-    let cmd_ring_phys_64 = (cmd_ring_phys & !0x3F) | 1; // RCS = 1 (first cycle)
-    op_write_reg(mmio, op_base, 0x18, (cmd_ring_phys_64 & 0xFFFF_FFFF) as u32);
-    op_write_reg(mmio, op_base, 0x1C, ((cmd_ring_phys_64 >> 32) & 0xFFFF_FFFF) as u32);
-    h.log_u64("[xhci] CRCR=", cmd_ring_phys_64);
+    // Build ring wrappers
+    let cmd_ring = TransferRing::new(cv, ca & !0x3F);
+    let event_ring = TransferRing::new(ev, eo);
 
-    // 6. Set up Event Ring — ERST entry SEPARATE from event ring buffer
-    let evt_pages = (RING_SIZE * TRB_SIZE + 4095) / 4096;
-    let evt_phys = match h.alloc_dma_pages(evt_pages) { Some(p) => p, None => { h.log("[xhci] FAIL evt ring alloc\n"); return false; } };
-    let evt_virt = h.phys_to_virt(evt_phys) as *mut u32;
-    core::ptr::write_bytes(evt_virt as *mut u8, 0, evt_pages * 4096);
-    let erst_entry_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] FAIL ERST entry alloc\n"); return false; } };
-    let erst_entry_virt = h.phys_to_virt(erst_entry_phys) as *mut u32;
-    core::ptr::write_bytes(erst_entry_virt as *mut u8, 0, 4096);
-    erst_entry_virt.add(0).write_volatile((evt_phys & 0xFFFF_FFFF) as u32);
-    erst_entry_virt.add(1).write_volatile(((evt_phys >> 32) & 0xFFFF_FFFF) as u32);
-    erst_entry_virt.add(2).write_volatile(RING_SIZE as u32);
-    rt_write_reg(mmio, rt_off, RT_ERSTSZ, 1);
-    rt_write_reg(mmio, rt_off, RT_ERSTBA, (erst_entry_phys & 0xFFFF_FFFF) as u32);
-    rt_write_reg(mmio, rt_off, RT_ERSTBA + 4, ((erst_entry_phys >> 32) & 0xFFFF_FFFF) as u32);
-    rt_write_reg(mmio, rt_off, RT_ERDP, (evt_phys & 0xFFFF_FFFF) as u32);
-    rt_write_reg(mmio, rt_off, RT_ERDP + 4, ((evt_phys >> 32) & 0xFFFF_FFFF) as u32);
-    rt_write_reg(mmio, rt_off, RT_IMAN, IMAN_IE);
-    h.log_u64("[xhci] ERST entry phys=", erst_entry_phys);
-
-    // 7. Page size
-    op_write_reg(mmio, op_base, PAGESIZE, 1);
-
-    // 8. Start controller
-    let cmd2 = op_read_reg(mmio, op_base, USBCMD);
-    op_write_reg(mmio, op_base, USBCMD, cmd2 | USBCMD_RS);
-    for i in 0..50000 {
-        if op_read_reg(mmio, op_base, USBSTS) & USBSTS_HCH == 0 {
-            h.log_u64("[xhci] started after ", i as u64);
-            h.log(" loops\n");
-            break;
-        }
-    }
-    h.log_u64("[xhci] USBSTS after start=", op_read_reg(mmio, op_base, USBSTS) as u64);
-
-    // 9. Persistent control-transfer buffers
-    let ctrl_trb_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] FAIL ctrl trb alloc\n"); return false; } };
-    core::ptr::write_bytes(h.phys_to_virt(ctrl_trb_phys), 0, 4096);
-    let ctrl_data_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] FAIL ctrl data alloc\n"); return false; } };
-    core::ptr::write_bytes(h.phys_to_virt(ctrl_data_phys), 0, 4096);
-
-    // 10. Build TransferRing wrappers pointing to DMA memory
-    let cmd_ring = TransferRing::new(cmd_ring_virt, cmd_ring_phys & !0x3F);
-    let event_ring = TransferRing::new(evt_virt, evt_phys & !0x3F);
-
-    let ctrl = XhciController {
+    CTRL = Some(XhciController {
         mmio, op_base, rt_base: rt_off, db_base: db_off,
-        max_slots, max_ports, ctx_size,
-        dcbaa_phys: dcbaa_phys_64,
+        max_slots, max_ports, ctx_size: csz,
+        dcbaa_phys: da2,
         cmd_ring, event_ring,
-        erst_phys: evt_phys & !0x3F,
-        erst_entry_phys: erst_entry_phys & !0x3F,
+        erst_phys: eo,
         initialized: true,
         evt_dequeue: 0, evt_cycle: 1,
-        ctrl_trb_phys, ctrl_data_phys,
-    };
-    CTRL = Some(ctrl);
-
-    h.log("[xhci] === INIT DONE ===\n");
+    });
+    h.log("[xhci] INIT DONE\n");
     true
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Port enumeration
+//  Port ops
 // ═══════════════════════════════════════════════════════════════════
 
-/// Read the port speed from PORTSC (bits 13:10).
 pub unsafe fn port_speed(port: u8) -> u8 {
-    let ctrl = match CTRL.as_ref() { Some(c) => c, _ => return 0 };
-    let port_base = ctrl.op_base as u64 + 0x400 + port as u64 * 0x10;
-    let sc = read32(ctrl.mmio + port_base + PORTSC as u64);
-    ((sc >> 10) & 0x0F) as u8
+    let c = match CTRL.as_ref() { Some(c) => c, None => return 0 };
+    let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
+    ((r32(c.mmio + pb + PORTSC as u64) >> 10) & 0x0F) as u8
 }
 
 pub unsafe fn port_reset(port: u8) -> bool {
-    let ctrl = match CTRL.as_mut() { Some(c) => c, None => { hal().log("[xhci] port_reset: no ctrl\n"); return false; } };
-    let port_base = ctrl.op_base as u64 + 0x400 + port as u64 * 0x10;
-    let sc = read32(ctrl.mmio + port_base + PORTSC as u64);
-
-    hal().log_u64("[xhci] port_reset(", port as u64);
-    hal().log_u64(") PORTSC=", sc as u64);
-
-    if sc & PORTSC_CCS == 0 {
-        hal().log_u64("[xhci] port ", port as u64);
-        hal().log(" not connected\n");
-        return false;
-    }
-
-    let speed = (sc >> 10) & 0x0F;
-    hal().log_u64("[xhci] port speed=", speed as u64);
-
-    write32(ctrl.mmio + port_base + PORTSC as u64, sc | PORTSC_PR);
-    hal().log("[xhci] reset asserted, waiting...\n");
-    for i in 0..100000 {
-        let s = read32(ctrl.mmio + port_base + PORTSC as u64);
+    let c = match CTRL.as_mut() { Some(c) => c, None => return false };
+    let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
+    let sc = r32(c.mmio + pb + PORTSC as u64);
+    if sc & PORTSC_CCS == 0 { return false; }
+    w32(c.mmio + pb + PORTSC as u64, sc | PORTSC_PR);
+    for _ in 0..100000 {
+        let s = r32(c.mmio + pb + PORTSC as u64);
         if s & PORTSC_PR == 0 && s & PORTSC_PRC != 0 {
-            write32(ctrl.mmio + port_base + PORTSC as u64, s | PORTSC_PRC);
-            hal().log_u64("[xhci] PRC cleared at loop ", i as u64);
-            for j in 0..50000 {
-                let s2 = read32(ctrl.mmio + port_base + PORTSC as u64);
-                if s2 & PORTSC_PED != 0 {
-                    hal().log_u64("[xhci] port enabled at loop ", j as u64);
-                    hal().log("\n");
-                    return true;
-                }
+            w32(c.mmio + pb + PORTSC as u64, s | PORTSC_PRC);
+            for _ in 0..50000 {
+                if r32(c.mmio + pb + PORTSC as u64) & PORTSC_PED != 0 { return true; }
                 core::hint::spin_loop();
             }
-            hal().log("[xhci] port NOT enabled after reset\n");
             break;
         }
         core::hint::spin_loop();
     }
-    hal().log("[xhci] port_reset FAIL\n");
     false
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Enable Slot
+// ═══════════════════════════════════════════════════════════════════
+
+pub unsafe fn enable_slot() -> Option<u8> {
+    hal().log("[xhci] enable_slot\n");
+    let ev = send_cmd(Trb { dw0: 0, dw1: 0, dw2: 0, dw3: TRB_ENABLE << 10 })?;
+    let cc = (ev.2 >> 24) & 0xFF;
+    let slot = ((ev.3 >> 24) & 0xFF) as u8;
+    hal().log_u64(" cc=", cc as u64);
+    hal().log_u64(" slot=", slot as u64);
+    if cc != CC_SUCCESS || slot == 0 { None } else { Some(slot) }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Per-slot EP0 ring storage
+// ═══════════════════════════════════════════════════════════════════
+
+const MAX_SLOTS: usize = 255;
+#[derive(Clone, Copy)]
+struct Ep0Info { valid: bool, ring_phys: u64, ring_virt: *mut u32, pcs: bool, enqueue: usize }
+static mut EP0_RINGS: [Ep0Info; MAX_SLOTS] = [Ep0Info {
+    valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: true, enqueue: 0
+}; MAX_SLOTS];
+unsafe fn ep0_reg(slot: u8, phys: u64, virt: *mut u32) {
+    EP0_RINGS[slot as usize] = Ep0Info { valid: true, ring_phys: phys, ring_virt: virt, pcs: true, enqueue: 0 };
+}
+fn ep0_mut(slot: u8) -> Option<&'static mut Ep0Info> {
+    if (slot as usize) < MAX_SLOTS { unsafe { let p = &mut EP0_RINGS[slot as usize]; if p.valid { Some(p) } else { None } } }
+    else { None }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Address Device
+// ═══════════════════════════════════════════════════════════════════
+
 pub unsafe fn address_device(port: u8, speed: u8) -> Option<u8> {
-    let ctrl = match CTRL.as_mut() { Some(c) => c, None => { hal().log("[xhci] addr_dev: no ctrl\n"); return None; } };
+    let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
     let h = hal();
+    let slot = enable_slot()?;
+    let cs = ctx_sz(ctrl);
 
-    h.log_u64("[xhci] address_device port=", port as u64);
-    h.log_u64(" speed=", speed as u64);
-    h.log("\n");
+    let ep0_phys = h.alloc_dma_pages(1)?;
+    let ep0_virt = h.phys_to_virt(ep0_phys) as *mut u32;
+    core::ptr::write_bytes(ep0_virt as *mut u8, 0, 4096);
+    let _ring = TransferRing::new(ep0_virt, ep0_phys);
+    ep0_reg(slot, ep0_phys & !0xF, ep0_virt);
 
-    let slot = enable_slot(ctrl)?;
-    h.log_u64("[xhci] slot enabled → ", slot as u64);
-
-    let ctx_sz = if ctrl.ctx_size != 0 { 64usize } else { 32usize };
-
-    // Allocate SEPARATE buffers for Input Context and Device Context
-    let input_phys = h.alloc_dma_pages(1)?;
-    let input_virt = h.phys_to_virt(input_phys) as *mut u8;
-    core::ptr::write_bytes(input_virt, 0, 4096);
-
+    let in_phys = h.alloc_dma_pages(1)?;
+    let in_virt = h.phys_to_virt(in_phys) as *mut u8;
+    core::ptr::write_bytes(in_virt, 0, 4096);
     let dev_phys = h.alloc_dma_pages(1)?;
     let dev_virt = h.phys_to_virt(dev_phys) as *mut u8;
     core::ptr::write_bytes(dev_virt, 0, 4096);
 
-    // ── Input Control Context at input + 0 ──
-    let input32 = input_virt as *mut u32;
-    input32.add(0).write_volatile(0); // Drop flags
-    input32.add(1).write_volatile(3); // Add flags = Slot + EP0
+    // Input Control Context
+    let in32 = in_virt as *mut u32;
+    in32.add(0).write_volatile(0); // Drop
+    in32.add(1).write_volatile(3); // Add Slot+EP0
 
-    // ── Slot Context at input + 1 * ctx_sz ──
-    let slot32 = input_virt.add(ctx_sz) as *mut u32;
-    // DW0: Speed[23:20] | ContextEntries[31:27]=1
-    slot32.add(0).write_volatile(
-        ((speed as u32) & 0xF) << 20
-        | (1 << 27)
-    );
-    // DW1: RootHubPortNumber[23:16]
-    slot32.add(1).write_volatile((port as u32 + 1) << 16);
-    slot32.add(2).write_volatile(0);
-    slot32.add(3).write_volatile(0);
+    // Slot Context
+    let sc = in_virt.add(cs) as *mut u32;
+    sc.add(0).write_volatile(((speed as u32) & 0xF) << 20 | (1 << 27));
+    sc.add(1).write_volatile((port as u32 + 1) << 16);
 
-    // ── MPS from speed (xHCI speed IDs: 1=FS, 2=LS, 3=HS, 4=SS) ──
-    let mps: u32 = match speed {
-        1 | 2 => 8,     // FS or LS
-        3 => 64,        // HS
-        4 | 5 => 512,   // SS / SSP
-        _ => 8,
-    };
+    let mps: u32 = match speed { 1|2 => 8, 3 => 64, 4|5 => 512, _ => 8 };
+    let dq = (ep0_phys & !0xF) | 1;
 
-    // ── EP0 Context at input + 2 * ctx_sz ──
-    let ep0_base = input_virt.add(2 * ctx_sz) as *mut u32;
-    let dq = (ctrl.ctrl_trb_phys & !0xF) | 1; // DCS = 1
-    ep0_base.add(0).write_volatile(0); // DW0: EP State=0
-    // DW1: MaxPktSize[31:16] | EPType=Control(4)[5:3] | CErr=3[2:1]
-    ep0_base.add(1).write_volatile(
-        (mps << 16)
-        | (4 << 3)   // Control
-        | (3 << 1)   // CErr = 3
-    );
-    ep0_base.add(2).write_volatile((dq & 0xFFFF_FFFF) as u32); // DW2: dequeue lo
-    ep0_base.add(3).write_volatile(((dq >> 32) & 0xFFFF_FFFF) as u32); // DW3: dequeue hi
-    ep0_base.add(4).write_volatile(8); // DW4: Average TRB Length = 8
+    // EP0 Context
+    let ep0 = in_virt.add(2 * cs) as *mut u32;
+    ep0.add(0).write_volatile(0);
+    ep0.add(1).write_volatile((mps << 16) | (4 << 3) | (3 << 1));
+    ep0.add(2).write_volatile((dq & 0xFFFF_FFFF) as u32);
+    ep0.add(3).write_volatile(((dq >> 32) & 0xFFFF_FFFF) as u32);
+    ep0.add(4).write_volatile(8);
 
-    // ── DCBAA[slot] → separate Device Context ──
+    // DCBAA[slot]
     let dcbaa = h.phys_to_virt(ctrl.dcbaa_phys) as *mut u64;
     dcbaa.add(slot as usize).write_volatile(dev_phys & !0x3F);
 
-    h.log_u64("[xhci] input_phys=", input_phys);
-    h.log_u64("[xhci] dev_phys=", dev_phys);
+    // Address Device TRB
+    let trb = Trb {
+        dw0: (in_phys & 0xFFFF_FFFF) as u32,
+        dw1: ((in_phys >> 32) & 0xFFFF_FFFF) as u32,
+        dw2: 0,
+        dw3: ((slot as u32) << 24) | (TRB_ADDRESS_DEV << 10),
+    };
+    ctrl.cmd_ring.enqueue(&trb);
+    ring_doorbell(0, 0);
+    let ev = evt_poll_block(ctrl)?;
+    let cc = (ev.2 >> 24) & 0xFF;
+    h.log_u64(" addr_dev cc=", cc as u64);
+    if cc != CC_SUCCESS { return None; }
 
-    // ── Address Device TRB: Slot ID in DWORD3 ──
-    ctrl.cmd_ring.enqueue_trb(
-        (input_phys & 0xFFFF_FFFF) as u32,
-        ((input_phys >> 32) & 0xFFFF_FFFF) as u32,
-        0,                                  // DWORD2 = 0
-        ((slot as u32) << 24) | (TRB_ADDRESS_DEV << 10), // DWORD3
-    );
-    ring_doorbell(ctrl, 0);
-    h.log("[xhci] address_device doorbell rung, waiting event...\n");
+    // Write EP0 dequeue into Device Context EP0 for future doorbell reloads
+    let d_ep0 = dev_virt.add(cs) as *mut u32;
+    d_ep0.add(2).write_volatile((ep0_phys & !0xF) as u32 | 1);
+    d_ep0.add(3).write_volatile(((ep0_phys >> 32) & 0xFFFF_FFFF) as u32);
 
-    let evt = wait_for_event(ctrl);
-    let (_ev0, _ev1, ev2, _ev3) = evt?;
-    let cc = (ev2 >> 24) & 0xFF;
-    h.log_u64("[xhci] address_device cc=", cc as u64);
-    if cc != 1 {
-        h.log_u64("[xhci] address_device FAIL cc=", cc as u64);
-        return None;
-    }
     Some(slot)
 }
 
-unsafe fn enable_slot(ctrl: &mut XhciController) -> Option<u8> {
-    hal().log("[xhci] enable_slot...\n");
-    ctrl.cmd_ring.enqueue_trb(0, 0, 0, TRB_ENABLE << 10);
-    ring_doorbell(ctrl, 0);
-    let evt = wait_for_event(ctrl);
-    if evt.is_none() {
-        hal().log("[xhci] enable_slot: no event\n");
-        return None;
-    }
-    let (_, _, dw2, dw3) = evt.unwrap();
-    let cc = (dw2 >> 24) & 0xFF;
-    let slot = ((dw3 >> 24) & 0xFF) as u8;
-    hal().log_u64("[xhci] enable_slot cc=", cc as u64);
-    hal().log_u64(" slot=", slot as u64);
-    if cc != 1 { hal().log("[xhci] enable_slot FAIL\n"); return None; }
-    if slot == 0 { None } else { Some(slot) }
-}
-
-unsafe fn ring_doorbell(ctrl: &XhciController, target: u32) {
-    write32(ctrl.mmio + ctrl.db_base as u64 + DBOFF_DB as u64, target);
-}
-
-unsafe fn wait_for_event(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)> {
-    let evt_virt = hal().phys_to_virt(ctrl.erst_phys) as *const u32;
-    let mut dequeue = ctrl.evt_dequeue;
-    let mut cycle   = ctrl.evt_cycle;
-
-    for i in 0..500000 {
-        let base = (dequeue as usize) * 4;
-        let dw3 = evt_virt.add(base + 3).read_volatile();
-
-        if (dw3 & 1) == cycle {
-            let dw0 = evt_virt.add(base).read_volatile();
-            let dw1 = evt_virt.add(base + 1).read_volatile();
-            let dw2 = evt_virt.add(base + 2).read_volatile();
-
-            dequeue += 1;
-            if dequeue >= RING_SIZE as u32 {
-                dequeue = 0;
-                cycle ^= 1;
-            }
-
-            let new_erdp = ctrl.erst_phys + (dequeue as u64) * (TRB_SIZE as u64);
-            write32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64,
-                    (new_erdp & 0xFFFF_FFFF) as u32);
-            write32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4,
-                    ((new_erdp >> 32) & 0xFFFF_FFFF) as u32);
-
-            ctrl.evt_dequeue = dequeue;
-            ctrl.evt_cycle   = cycle;
-
-            let cc = (dw2 >> 24) & 0xFF;
-            if cc == 1 || cc == 13 {
-                return Some((dw0, dw1, dw2, dw3));
-            }
-            hal().log_u64("[xhci] event fail cc=", cc as u64);
-            hal().log_u64(" type=", ((dw3 >> 10) & 0x3F) as u64);
-            hal().log("\n");
-            return None;
-        }
-
-        if i == 5000 || i == 50000 || i == 250000 {
-            hal().log_u64("[xhci] waiting for event... ", i as u64);
-            hal().log_u64(" dequeue=", dequeue as u64);
-            hal().log_u64(" cycle=", cycle as u64);
-            hal().log_u64(" dw3=", dw3 as u64);
-            hal().log("\n");
-        }
-
-        core::hint::spin_loop();
-    }
-
-    hal().log("[xhci] EVENT TIMEOUT\n");
-    None
-}
-
 // ═══════════════════════════════════════════════════════════════════
-//  Control transfers
+//  Control Transfer — uses per-slot EP0 ring
 // ═══════════════════════════════════════════════════════════════════
 
 pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     w_value: u16, w_index: u16, buf: &mut [u8], data_in: bool) -> usize
 {
-    let ctrl = match CTRL.as_mut() { Some(c) => c, None => { hal().log("[xhci] ctrl_xfer: no ctrl\n"); return 0; } };
+    let ctrl = match CTRL.as_mut() { Some(c) => c, None => return 0 };
     let h = hal();
+    let ep0 = match ep0_mut(slot) { Some(e) => e, None => { h.log("no ep0 ring\n"); return 0; } };
+    let cs = ctx_sz(ctrl);
 
-    h.log_u64("[xhci] ctrl_xfer slot=", slot as u64);
-    h.log_u64(" type=", bm_req_type as u64);
-    h.log_u64(" req=", b_request as u64);
-    h.log("\n");
+    let has_data = !buf.is_empty();
+    let data_page = if has_data {
+        let dp = h.alloc_dma_pages(1).unwrap_or(0);
+        if dp != 0 && !data_in {
+            let dv = h.phys_to_virt(dp);
+            for i in 0..buf.len() { dv.add(i).write_volatile(buf[i]); }
+        }
+        dp
+    } else { 0 };
 
-    let dev_ctx_phys = match read_dcbaa(ctrl, slot) { Some(p) => p, None => { h.log("[xhci] ctrl_xfer: no dev ctx\n"); return 0; } };
-    let dev_ctx_virt = h.phys_to_virt(dev_ctx_phys) as *mut u8;
-    let ep0_off = 32 + (ctrl.ctx_size as u32) * 32;
-
-    // Use persistent DMA buffers for the control TRB chain and data
-    let trb_virt = h.phys_to_virt(ctrl.ctrl_trb_phys) as *mut u32;
-    core::ptr::write_bytes(trb_virt as *mut u8, 0, 4096);
-    let data_virt = h.phys_to_virt(ctrl.ctrl_data_phys) as *mut u8;
+    let trt = if !has_data { 0u32 } else if data_in { 2u32 } else { 3u32 };
 
     // Setup Stage
-    let setup_dwords: [u32; 2] = [
-        (bm_req_type as u32) | ((b_request as u32) << 8) | ((w_value as u32) << 16),
-        (w_index as u32) | ((buf.len() as u32) << 16),
-    ];
-    trb_virt.add(0).write_volatile(setup_dwords[0]);
-    trb_virt.add(1).write_volatile(setup_dwords[1]);
-    trb_virt.add(2).write_volatile(8);
-    let trt = if buf.is_empty() { 3u32 }
-              else if data_in   { 2u32 }
-              else              { 0u32 };
-    trb_virt.add(3).write_volatile(
-        (TRB_SETUP << 10)
-      | (1       <<  6)
-      | (trt     << 16)
-      | (1       <<  4)
-      | 1
-    );
+    let setup = Trb {
+        dw0: (bm_req_type as u32) | ((b_request as u32) << 8) | ((w_value as u32) << 16),
+        dw1: (w_index as u32) | ((buf.len() as u32) << 16),
+        dw2: 8,
+        dw3: (TRB_SETUP << 10) | (1 << 6) | (trt << 16) | (1 << 4), // IDT, CH
+    };
+    let s_idx = ep0.enqueue;
+    let sb = s_idx * 4;
+    ep0.ring_virt.add(sb).write_volatile(setup.dw0);
+    ep0.ring_virt.add(sb + 1).write_volatile(setup.dw1);
+    ep0.ring_virt.add(sb + 2).write_volatile(setup.dw2);
+    ep0.ring_virt.add(sb + 3).write_volatile(setup.dw3 | if ep0.pcs { 1 } else { 0 });
+    ep0.enqueue = s_idx + 1;
+    if ep0.enqueue >= LAST_TRB_IDX { ep0.enqueue = 0; ep0.pcs = !ep0.pcs; }
 
     // Data Stage
-    let mut status_idx = 1u32;
-    let has_data = !buf.is_empty();
     if has_data {
-        if !data_in {
-            for i in 0..buf.len() {
-                data_virt.add(i).write_volatile(buf[i]);
-            }
-        }
-        let dphys = ctrl.ctrl_data_phys;
-        trb_virt.add(4).write_volatile((dphys & 0xFFFF_FFFF) as u32);
-        trb_virt.add(5).write_volatile(((dphys >> 32) & 0xFFFF_FFFF) as u32);
-        trb_virt.add(6).write_volatile(buf.len() as u32);
-        let dir = if data_in { 1u32 << 16 } else { 0u32 };
-        trb_virt.add(7).write_volatile(
-            (TRB_DATA << 10)
-          | dir
-          | (1 << 4)
-          | 1
-        );
-        status_idx = 2;
+        let d_idx = ep0.enqueue;
+        let db = d_idx * 4;
+        ep0.ring_virt.add(db).write_volatile((data_page & 0xFFFF_FFFF) as u32);
+        ep0.ring_virt.add(db + 1).write_volatile(((data_page >> 32) & 0xFFFF_FFFF) as u32);
+        ep0.ring_virt.add(db + 2).write_volatile(buf.len() as u32 & 0x1FFFF);
+        let dir = if data_in { 1u32 << 16 } else { 0 };
+        ep0.ring_virt.add(db + 3).write_volatile(
+            (TRB_DATA << 10) | dir | (1 << 4) | if ep0.pcs { 1 } else { 0 });
+        ep0.enqueue = d_idx + 1;
+        if ep0.enqueue >= LAST_TRB_IDX { ep0.enqueue = 0; ep0.pcs = !ep0.pcs; }
     }
 
     // Status Stage
-    let sb = (status_idx as usize) * 4;
-    trb_virt.add(sb).write_volatile(0);
-    trb_virt.add(sb + 1).write_volatile(0);
-    trb_virt.add(sb + 2).write_volatile(0);
-    let dir_in  = if has_data { !data_in } else { true };
-    let dir_bit = if dir_in { 1u32 << 16 } else { 0u32 };
-    trb_virt.add(sb + 3).write_volatile(
-        (TRB_STATUS << 10)
-      | dir_bit
-      | (1 << 5)
-      | 1
+    let st_idx = ep0.enqueue;
+    let stb = st_idx * 4;
+    ep0.ring_virt.add(stb).write_volatile(0);
+    ep0.ring_virt.add(stb + 1).write_volatile(0);
+    ep0.ring_virt.add(stb + 2).write_volatile(0);
+    let dir_in = if has_data { !data_in } else { true };
+    ep0.ring_virt.add(stb + 3).write_volatile(
+        (TRB_STATUS << 10) | (if dir_in { 1u32 << 16 } else { 0 }) | (1 << 5)
+        | if ep0.pcs { 1 } else { 0 }
     );
+    // Don't advance past Status (let it be consumed)
 
-    // Update EP0 dequeue pointer in Device Context EP0 entries[2]/[3]
-    let dequeue = ctrl.ctrl_trb_phys | 1; // DCS = 1
-    let dq_lo = dev_ctx_virt.add((ep0_off + 8) as usize) as *mut u32;
-    let dq_hi = dev_ctx_virt.add((ep0_off + 12) as usize) as *mut u32;
-    dq_lo.write_volatile((dequeue & 0xFFFF_FFFF) as u32);
-    dq_hi.write_volatile(((dequeue >> 32) & 0xFFFF_FFFF) as u32);
+    // Update Device Context EP0 dequeue pointer so xHC reloads on doorbell
+    let dev_phys = match dcbaa_get(slot) { Some(p) => p, None => return 0 };
+    let dev_virt = h.phys_to_virt(dev_phys) as *mut u8;
+    let dq_val = (ep0.ring_phys + (st_idx as u64) * (TRB_SIZE as u64)) | if ep0.pcs { 1 } else { 0 };
+    let d_ep0 = dev_virt.add(cs) as *mut u32;
+    d_ep0.add(2).write_volatile((dq_val & 0xFFFF_FFFF) as u32);
+    d_ep0.add(3).write_volatile(((dq_val >> 32) & 0xFFFF_FFFF) as u32);
 
-    // Ring doorbell for EP0 on this slot
-    // DB[slot] = endpoint doorbell; value = endpoint ID (1 = EP0)
-    let db_addr = ctrl.mmio + ctrl.db_base as u64 + (slot as u64) * 4;
-    write32(db_addr, 1);
+    // Ring EP0 doorbell
+    ring_doorbell(slot, 1);
 
-    // Wait for Transfer Event completion
-    if let Some((_p0, _p1, dw2, dw3)) = wait_for_event(ctrl) {
-        let cc = (dw2 >> 24) & 0xFF;
-        h.log_u64("[xhci] ctrl_xfer event cc=", cc as u64);
-        h.log_u64(" dw3=", dw3 as u64);
-        h.log("\n");
-        if cc == 1 || cc == 13 {
-            let remaining = dw2 as usize;
-            let transferred = buf.len().saturating_sub(remaining);
-            if data_in && has_data {
-                let copy_len = transferred.min(buf.len());
-                for i in 0..copy_len {
-                    buf[i] = data_virt.add(i).read_volatile();
+    // Wait for Transfer Event
+    loop {
+        let ev = evt_poll_block(ctrl);
+        if ev.is_none() { return 0; }
+        let (_, _, dw2, dw3) = ev.unwrap();
+        let typ = (dw3 >> 10) & 0x3F;
+        if typ == TRB_TRANSFER {
+            let eslot = ((dw3 >> 24) & 0xFF) as u8;
+            let eepid = ((dw3 >> 16) & 0x1F) as u8;
+            if eslot == slot && eepid == 1 {
+                let cc = (dw2 >> 24) & 0xFF;
+                if cc == CC_SUCCESS || cc == CC_SHORT {
+                    let rem = dw2 & 0xFFFFFF;
+                    let xfer = buf.len().saturating_sub(rem as usize);
+                    if data_in && has_data && data_page != 0 {
+                        let dv = h.phys_to_virt(data_page);
+                        for i in 0..xfer.min(buf.len()) { buf[i] = dv.add(i).read_volatile(); }
+                    }
+                    return xfer;
                 }
+                h.log_u64(" ctrl_xfer cc=", cc as u64);
+                return 0;
             }
-            h.log_u64("[xhci] ctrl_xfer OK transferred=", transferred as u64);
-            h.log("\n");
-            return transferred;
         }
-    } else {
-        h.log("[xhci] ctrl_xfer: no event\n");
     }
-    0
 }
 
-unsafe fn read_dcbaa(ctrl: &XhciController, slot: u8) -> Option<u64> {
-    let dcbaa = hal().phys_to_virt(ctrl.dcbaa_phys) as *const u64;
-    let ctx = dcbaa.add(slot as usize).read_volatile();
-    if ctx == 0 {
-        hal().log_u64("[xhci] dcbaa slot ", slot as u64);
-        hal().log(" = 0\n");
-        None
-    } else {
-        Some(ctx)
+// ═══════════════════════════════════════════════════════════════════
+//  Descriptor helpers
+// ═══════════════════════════════════════════════════════════════════
+
+pub unsafe fn get_device_descriptor(slot: u8, buf: &mut [u8]) -> usize {
+    let len = if buf.len() > 18 { 18 } else { buf.len() };
+    control_transfer(slot, 0x80, USB_REQ_GET_DESCRIPTOR, USB_DESC_DEVICE << 8, 0, &mut buf[..len], true)
+}
+
+pub unsafe fn get_config_descriptor(slot: u8, index: u8, buf: &mut [u8]) -> usize {
+    control_transfer(slot, 0x80, USB_REQ_GET_DESCRIPTOR, (USB_DESC_CONFIG << 8) | index as u16, 0, buf, true)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Per-endpoint transfer ring storage (for non-EP0 endpoints)
+// ═══════════════════════════════════════════════════════════════════
+
+const MAX_DCI: usize = 32;
+#[derive(Clone, Copy)]
+struct EpRing { valid: bool, ring_phys: u64, ring_virt: *mut u32, pcs: bool, enqueue: usize }
+static mut EP_RINGS: [[EpRing; MAX_DCI]; MAX_SLOTS] = [[EpRing {
+    valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: true, enqueue: 0
+}; MAX_DCI]; MAX_SLOTS];
+fn ep_ring_mut(slot: u8, dci: u8) -> Option<&'static mut EpRing> {
+    if (slot as usize) < MAX_SLOTS && (dci as usize) < MAX_DCI {
+        unsafe { let p = &mut EP_RINGS[slot as usize][dci as usize]; if p.valid { Some(p) } else { None } }
+    } else { None }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Configure Endpoint
+// ═══════════════════════════════════════════════════════════════════
+
+pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, interval: u8) -> bool {
+    let ctrl = match CTRL.as_mut() { Some(c) => c, None => return false };
+    let h = hal();
+    let cs = ctx_sz(ctrl);
+
+    let in_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no mem\n"); return false; } };
+    let in_virt = h.phys_to_virt(in_phys) as *mut u8;
+    core::ptr::write_bytes(in_virt, 0, 4096);
+
+    let in32 = in_virt as *mut u32;
+    in32.add(0).write_volatile(0); // Drop
+    in32.add(1).write_volatile((1u32 << dci) | 1); // Add Slot(0) + EP(dci)
+
+    // Slot Context: ContextEntries = dci
+    let sc = in_virt.add(cs) as *mut u32;
+    sc.add(0).write_volatile((dci as u32) << 27);
+
+    // Allocate transfer ring for this endpoint
+    let tr_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no ring\n"); return false; } };
+    let tr_virt = h.phys_to_virt(tr_phys) as *mut u32;
+    core::ptr::write_bytes(tr_virt as *mut u8, 0, 4096);
+    TransferRing::new(tr_virt, tr_phys); // writes Link TRB
+    if (slot as usize) < MAX_SLOTS && (dci as usize) < MAX_DCI {
+        EP_RINGS[slot as usize][dci as usize] = EpRing {
+            valid: true, ring_phys: tr_phys & !0xF, ring_virt: tr_virt, pcs: true, enqueue: 0,
+        };
+    }
+
+    let dq = (tr_phys & !0xF) | 1;
+    let ep = in_virt.add((dci as usize + 1) * cs) as *mut u32;
+    ep.add(0).write_volatile((interval as u32) << 16); // DW0: Interval in bits 23:16
+    ep.add(1).write_volatile(
+        ((max_pkt as u32) << 16) | ((ep_type as u32) << 3) | (3 << 1)
+    );
+    ep.add(2).write_volatile((dq & 0xFFFF_FFFF) as u32);
+    ep.add(3).write_volatile(((dq >> 32) & 0xFFFF_FFFF) as u32);
+    ep.add(4).write_volatile(8);
+
+    let trb = Trb {
+        dw0: (in_phys & 0xFFFF_FFFF) as u32,
+        dw1: ((in_phys >> 32) & 0xFFFF_FFFF) as u32,
+        dw2: 0,
+        dw3: ((slot as u32) << 24) | (TRB_CONFIGURE << 10),
+    };
+    ctrl.cmd_ring.enqueue(&trb);
+    ring_doorbell(0, 0);
+    let ev = evt_poll_block(ctrl);
+    match ev {
+        Some((_, _, dw2, _)) => (dw2 >> 24) & 0xFF == CC_SUCCESS,
+        None => false
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Queue interrupt IN transfer
+// ═══════════════════════════════════════════════════════════════════
+
+pub unsafe fn queue_interrupt_in(slot: u8, dci: u8, buf_phys: u64, len: u16) -> bool {
+    let ring = match ep_ring_mut(slot, dci) { Some(r) => r, None => return false };
+    let idx = ring.enqueue;
+    let b = idx * 4;
+    ring.ring_virt.add(b).write_volatile((buf_phys & 0xFFFF_FFFF) as u32);
+    ring.ring_virt.add(b + 1).write_volatile(((buf_phys >> 32) & 0xFFFF_FFFF) as u32);
+    ring.ring_virt.add(b + 2).write_volatile(len as u32);
+    let ctl = (TRB_NORMAL << 10) | (1 << 5); // IOC
+    ring.ring_virt.add(b + 3).write_volatile(ctl | if ring.pcs { 1 } else { 0 });
+    ring.enqueue = idx + 1;
+    if ring.enqueue >= LAST_TRB_IDX { ring.enqueue = 0; ring.pcs = !ring.pcs; }
+    true
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Public non-blocking event poll
+// ═══════════════════════════════════════════════════════════════════
+
+/// Returns (slot, endpoint_id, cc) for the next transfer event, or None.
+/// Ring doorbell for a slot+endpoint. EP0=1, EP1 OUT=2, EP1 IN=3, etc.
+pub unsafe fn ring_doorbell(slot: u8, endpoint_id: u8) {
+    if let Some(c) = CTRL.as_ref() {
+        let db_addr = c.mmio + c.db_base as u64 + (slot as u64) * 4;
+        w32(db_addr, endpoint_id as u32);
+    }
+}
+
+pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
+    let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
+    loop {
+        let ev = evt_poll_nb(ctrl)?;
+        let typ = (ev.3 >> 10) & 0x3F;
+        if typ == TRB_TRANSFER {
+            return Some((((ev.3 >> 24) & 0xFF) as u8, ((ev.3 >> 16) & 0x1F) as u8, (ev.2 >> 24) as u8));
+        }
+        if typ == TRB_COMPLETION || typ == TRB_PORT_STATUS { continue; }
     }
 }
