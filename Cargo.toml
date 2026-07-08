@@ -26,6 +26,8 @@ members = [
     "crates_Personal/Lenguajes/c",
     "crates_Personal/bmo_hal_defs",
     "crates_Personal/mod_bmo_core",
+    "crates_Personal/mod_timeback",
+    "crates_Personal/mod_cabina",
     "crates_Personal/userland_ring3",
 ]
 

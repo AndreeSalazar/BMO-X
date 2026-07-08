@@ -1,0 +1,10 @@
+[package]
+name = "mod-cabina"
+version = "1.0.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "Cabina module — standalone Ring 3 telemetry/logging system loaded by bootloader"
+
+[dependencies]
+cabina-daemon = { path = "../cabina/daemon" }
+bmo-hal-defs = { path = "../bmo_hal_defs" }

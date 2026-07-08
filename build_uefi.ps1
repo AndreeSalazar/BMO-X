@@ -104,12 +104,16 @@ if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $bootDir  = Join-Path $root "crates_Personal\bootloader"
 $kernDir  = Join-Path $root "kernel"
 $moduleDir = Join-Path $root "crates_Personal\mod_bmo_core"
+$timebackDir = Join-Path $root "crates_Personal\mod_timeback"
+$cabinaDir = Join-Path $root "crates_Personal\mod_cabina"
 $target   = Join-Path $root "target_build"
 $stage    = Join-Path $target "staging\EFI\BOOT"
 
-if (-not (Test-Path (Join-Path $bootDir "Cargo.toml")))   { Fail "Bootloader not found at $bootDir" }
-if (-not (Test-Path (Join-Path $kernDir "Cargo.toml")))    { Fail "Kernel not found at $kernDir" }
-if (-not (Test-Path (Join-Path $moduleDir "Cargo.toml")))  { Fail "Module not found at $moduleDir" }
+if (-not (Test-Path (Join-Path $bootDir "Cargo.toml")))      { Fail "Bootloader not found at $bootDir" }
+if (-not (Test-Path (Join-Path $kernDir "Cargo.toml")))       { Fail "Kernel not found at $kernDir" }
+if (-not (Test-Path (Join-Path $moduleDir "Cargo.toml")))     { Fail "mod_bmo_core not found at $moduleDir" }
+if (-not (Test-Path (Join-Path $timebackDir "Cargo.toml")))   { Fail "mod_timeback not found at $timebackDir" }
+if (-not (Test-Path (Join-Path $cabinaDir "Cargo.toml")))     { Fail "mod_cabina not found at $cabinaDir" }
 
 # ── Version ────────────────────────────────────────────────────────────
 $kv = "unknown"
@@ -203,12 +207,16 @@ function Save-SourceHash {
 $bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\bmo-bootloader.efi"
 $kernelElf = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel"
 $moduleElf = Join-Path $target "x86_64-unknown-none\release\mod-bmo-core"
+$timebackElf = Join-Path $target "x86_64-unknown-none\release\mod-timeback"
+$cabinaElf = Join-Path $target "x86_64-unknown-none\release\mod-cabina"
 
-$needBoot   = Needs-Rebuild $bootDir $bootEfi
-$needKern   = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey
-$needModule = Needs-Rebuild $moduleDir $moduleElf
+$needBoot      = Needs-Rebuild $bootDir $bootEfi
+$needKern      = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey
+$needModule    = Needs-Rebuild $moduleDir $moduleElf
+$needTimeback  = Needs-Rebuild $timebackDir $timebackElf
+$needCabina    = Needs-Rebuild $cabinaDir $cabinaElf
 
-if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $Clean) {
+if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $needTimeback -and -not $needCabina -and -not $Clean) {
     Write-Host "  OK All up to date. Nothing to rebuild." -ForegroundColor Green
     if (-not $Flash -and -not $Verify) {
         Write-Host "  Use -Clean to force rebuild, or -Flash to flash existing build." -ForegroundColor DarkGray
@@ -220,12 +228,14 @@ if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $Clean) {
 # ══════════════════════════════════════════════════════════════════════
 # PARALLEL BUILD: BOOTLOADER + KERNEL + MODULE
 # ══════════════════════════════════════════════════════════════════════
-$buildTimer = PhaseStart "Building bootloader + kernel + module (parallel)"
+$buildTimer = PhaseStart "Building bootloader + kernel + modules (parallel)"
 
 # Define build jobs
 $bootJob = $null
 $kernJob = $null
 $moduleJob = $null
+$timebackJob = $null
+$cabinaJob = $null
 
 if ($needBoot) {
     $bootTargetDir = Join-Path $target "bootloader"
@@ -267,7 +277,7 @@ if ($needKern) {
     Step "Kernel build started (PID $($kernJob.Id), allocator=$kernelFeatureKey)"
 }
 
-# Build mod_bmo_core (desktop module)
+# Build all 3 modules (Ring 3)
 if ($needModule) {
     $moduleScript = {
         param($mdir, $mtargetDir, $jobsFlag)
@@ -282,15 +292,25 @@ if ($needModule) {
         }
     }
     $moduleJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $moduleDir, $target, $jobsFlag
-    Step "Module build started (PID $($moduleJob.Id))"
+    Step "mod_bmo_core build started (PID $($moduleJob.Id))"
 }
-$moduleJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $moduleDir, $target, $jobsFlag
-Step "Module build started (PID $($moduleJob.Id))"
+
+if ($needTimeback) {
+    $timebackJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $timebackDir, $target, $jobsFlag
+    Step "mod_timeback build started (PID $($timebackJob.Id))"
+}
+
+if ($needCabina) {
+    $cabinaJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $cabinaDir, $target, $jobsFlag
+    Step "mod_cabina build started (PID $($cabinaJob.Id))"
+}
 
 # Wait for all jobs
 $bootResult = $null
 $kernResult = $null
 $moduleResult = $null
+$timebackResult = $null
+$cabinaResult = $null
 
 if ($bootJob) {
     Step "Waiting for bootloader..."
@@ -317,43 +337,75 @@ if ($kernJob) {
 }
 
 if ($moduleJob) {
-    Step "Waiting for module..."
+    Step "Waiting for mod_bmo_core..."
     $moduleResult = Receive-Job -Job $moduleJob -Wait -ErrorAction SilentlyContinue
     Remove-Job -Job $moduleJob -Force
-    if (-not $moduleResult.Ok) { Fail "MODULE FAILED: $($moduleResult.Error)" }
+    if (-not $moduleResult.Ok) { Fail "BMO_CORE FAILED: $($moduleResult.Error)" }
     $moduleOutput = $moduleResult.Output
     foreach ($line in $moduleOutput) {
         $l = "$line"
-        if ($l -match "Compiling|Finished|warning") { Write-Host "    [mod]  $l" -ForegroundColor DarkGray }
+        if ($l -match "Compiling|Finished|warning") { Write-Host "    [core]  $l" -ForegroundColor DarkGray }
+    }
+}
+
+if ($timebackJob) {
+    Step "Waiting for mod_timeback..."
+    $timebackResult = Receive-Job -Job $timebackJob -Wait -ErrorAction SilentlyContinue
+    Remove-Job -Job $timebackJob -Force
+    if (-not $timebackResult.Ok) { Fail "TIMEBACK FAILED: $($timebackResult.Error)" }
+    foreach ($line in $timebackResult.Output) {
+        $l = "$line"
+        if ($l -match "Compiling|Finished|warning") { Write-Host "    [tb]   $l" -ForegroundColor DarkGray }
+    }
+}
+
+if ($cabinaJob) {
+    Step "Waiting for mod_cabina..."
+    $cabinaResult = Receive-Job -Job $cabinaJob -Wait -ErrorAction SilentlyContinue
+    Remove-Job -Job $cabinaJob -Force
+    if (-not $cabinaResult.Ok) { Fail "CABINA FAILED: $($cabinaResult.Error)" }
+    foreach ($line in $cabinaResult.Output) {
+        $l = "$line"
+        if ($l -match "Compiling|Finished|warning") { Write-Host "    [cab]  $l" -ForegroundColor DarkGray }
     }
 }
 
 PhaseDone $buildTimer "Parallel build"
 
 # Save source hashes for next build's change detection
-if ($needBoot)   { Save-SourceHash $bootDir $bootEfi }
-if ($needKern)   { Save-SourceHash $kernDir $kernelElf $kernelFeatureKey }
-if ($needModule) { Save-SourceHash $moduleDir $moduleElf }
+if ($needBoot)      { Save-SourceHash $bootDir $bootEfi }
+if ($needKern)      { Save-SourceHash $kernDir $kernelElf $kernelFeatureKey }
+if ($needModule)    { Save-SourceHash $moduleDir $moduleElf }
+if ($needTimeback)  { Save-SourceHash $timebackDir $timebackElf }
+if ($needCabina)    { Save-SourceHash $cabinaDir $cabinaElf }
 
 # ══════════════════════════════════════════════════════════════════════
 # VALIDATE OUTPUTS
 # ══════════════════════════════════════════════════════════════════════
 $tval = PhaseStart "Validate outputs"
 
-if (-not (Test-Path $bootEfi))   { Fail "Bootloader EFI not found: $bootEfi" }
-if (-not (Test-Path $kernelElf))  { Fail "Kernel ELF not found: $kernelElf" }
-if (-not (Test-Path $moduleElf))  { Fail "Module ELF not found: $moduleElf" }
+if (-not (Test-Path $bootEfi))      { Fail "Bootloader EFI not found: $bootEfi" }
+if (-not (Test-Path $kernelElf))     { Fail "Kernel ELF not found: $kernelElf" }
+if (-not (Test-Path $moduleElf))     { Fail "Module ELF not found: $moduleElf" }
+if (-not (Test-Path $timebackElf))   { Fail "Timeback ELF not found: $timebackElf" }
+if (-not (Test-Path $cabinaElf))     { Fail "Cabina ELF not found: $cabinaElf" }
 
-$bootSize   = (Get-Item $bootEfi).Length
-$kernSize   = (Get-Item $kernelElf).Length
-$moduleSize = (Get-Item $moduleElf).Length
-$bootHash   = Hash256 $bootEfi
-$kernHash   = Hash256 $kernelElf
-$moduleHash = Hash256 $moduleElf
+$bootSize      = (Get-Item $bootEfi).Length
+$kernSize      = (Get-Item $kernelElf).Length
+$moduleSize    = (Get-Item $moduleElf).Length
+$timebackSize  = (Get-Item $timebackElf).Length
+$cabinaSize    = (Get-Item $cabinaElf).Length
+$bootHash      = Hash256 $bootEfi
+$kernHash      = Hash256 $kernelElf
+$moduleHash    = Hash256 $moduleElf
+$timebackHash  = Hash256 $timebackElf
+$cabinaHash    = Hash256 $cabinaElf
 
-Write-Host "    BOOTX64.EFI   $([math]::Round($bootSize/1024,1)) KB  sha256:$($bootHash.Substring(0,16))" -ForegroundColor White
-Write-Host "    kernel.elf    $([math]::Round($kernSize/1024,1)) KB  sha256:$($kernHash.Substring(0,16))" -ForegroundColor White
-Write-Host "    mod_bmo_core.elf $([math]::Round($moduleSize/1024,1)) KB  sha256:$($moduleHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    BOOTX64.EFI        $([math]::Round($bootSize/1024,1)) KB  sha256:$($bootHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    kernel.elf         $([math]::Round($kernSize/1024,1)) KB  sha256:$($kernHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    mod_bmo_core.elf   $([math]::Round($moduleSize/1024,1)) KB  sha256:$($moduleHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    mod_timeback.elf   $([math]::Round($timebackSize/1024,1)) KB  sha256:$($timebackHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    mod_cabina.elf     $([math]::Round($cabinaSize/1024,1)) KB  sha256:$($cabinaHash.Substring(0,16))" -ForegroundColor White
 
 PhaseDone $tval "Outputs validated"
 
@@ -369,8 +421,11 @@ Copy-Item $bootEfi  -Destination (Join-Path $stage "BOOTX64.EFI")
 Copy-Item $kernelElf -Destination (Join-Path $stage "kernel.elf")
 $modulesStageDir = Join-Path $stage "modules"
 if (-not (Test-Path $modulesStageDir)) { New-Item -ItemType Directory -Path $modulesStageDir -Force | Out-Null }
-Copy-Item $moduleElf -Destination (Join-Path $modulesStageDir "mod_bmo_core.elf")
+Copy-Item $moduleElf   -Destination (Join-Path $modulesStageDir "mod_bmo_core.elf")
+Copy-Item $timebackElf -Destination (Join-Path $modulesStageDir "mod_timeback.elf")
+Copy-Item $cabinaElf   -Destination (Join-Path $modulesStageDir "mod_cabina.elf")
 
+$totalSize = $bootSize + $kernSize + $moduleSize + $timebackSize + $cabinaSize
 $manifest = @"
 # FastOS EFI Boot Manifest
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -379,13 +434,15 @@ $manifest = @"
 #
 # File           Size        SHA256
 # ----           ----        ------
-BOOTX64.EFI       $bootSize   $bootHash
-kernel.elf        $kernSize   $kernHash
+BOOTX64.EFI               $bootSize   $bootHash
+kernel.elf                $kernSize   $kernHash
 modules/mod_bmo_core.elf  $moduleSize $moduleHash
+modules/mod_timeback.elf  $timebackSize $timebackHash
+modules/mod_cabina.elf    $cabinaSize $cabinaHash
 "@
 $manifest | Set-Content -Path (Join-Path $stage "MANIFEST.TXT") -Encoding UTF8
 
-PhaseDone $tstage "Staged $([math]::Round(($bootSize+$kernSize+$moduleSize)/1024,1)) KB total"
+PhaseDone $tstage "Staged $([math]::Round($totalSize/1024,1)) KB total"
 
 # ══════════════════════════════════════════════════════════════════════
 # BUILD SUMMARY
@@ -430,21 +487,29 @@ if ($Flash) {
     $modulesDestDir = Join-Path $efiDest "modules"
     if (-not (Test-Path $modulesDestDir)) { New-Item -ItemType Directory -Path $modulesDestDir -Force | Out-Null }
     Copy-Item (Join-Path $stage "modules\mod_bmo_core.elf")  -Destination "${modulesDestDir}\mod_bmo_core.elf" -Force
+    Copy-Item (Join-Path $stage "modules\mod_timeback.elf")  -Destination "${modulesDestDir}\mod_timeback.elf" -Force
+    Copy-Item (Join-Path $stage "modules\mod_cabina.elf")    -Destination "${modulesDestDir}\mod_cabina.elf" -Force
     Copy-Item (Join-Path $stage "MANIFEST.TXT")      -Destination (Join-Path $efiDest "MANIFEST.TXT")      -Force
 
     try {
         $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.elf", 'Open', 'Write')
         $fs.Flush(1)
         $fs.Close()
-        $fs2 = [System.IO.File]::Open("${modulesDestDir}\mod_bmo_core.elf", 'Open', 'Write')
-        $fs2.Flush(1)
-        $fs2.Close()
+        $fs1 = [System.IO.File]::Open("${modulesDestDir}\mod_bmo_core.elf", 'Open', 'Write')
+        $fs1.Flush(1)
+        $fs1.Close()
     } catch { Warn "Flush failed: $_" }
     PhaseDone $tf "Flash"
 
     $tv = PhaseStart "Verify"
-    foreach ($f in @(@{Name="BOOTX64.EFI";Hash=$bootHash;Size=$bootSize}, @{Name="kernel.elf";Hash=$kernHash;Size=$kernSize}, @{Name="mod_bmo_core.elf";Hash=$moduleHash;Size=$moduleSize})) {
-        $dp = if ($f.Name -eq "mod_bmo_core.elf") { Join-Path (Join-Path $efiDest "modules") $f.Name } else { Join-Path $efiDest $f.Name }
+    foreach ($f in @(
+        @{Name="BOOTX64.EFI";Hash=$bootHash;Size=$bootSize;IsModule=$false},
+        @{Name="kernel.elf";Hash=$kernHash;Size=$kernSize;IsModule=$false},
+        @{Name="mod_bmo_core.elf";Hash=$moduleHash;Size=$moduleSize;IsModule=$true},
+        @{Name="mod_timeback.elf";Hash=$timebackHash;Size=$timebackSize;IsModule=$true},
+        @{Name="mod_cabina.elf";Hash=$cabinaHash;Size=$cabinaSize;IsModule=$true}
+    )) {
+        $dp = if ($f.IsModule) { Join-Path (Join-Path $efiDest "modules") $f.Name } else { Join-Path $efiDest $f.Name }
         if (-not (Test-Path $dp)) { Fail "MISSING: $($f.Name) at $dp" }
         $dh = Hash256 $dp
         $ds = (Get-Item $dp).Length
@@ -473,7 +538,7 @@ if ($Verify -and -not $Flash) {
     $efiCheck = "${tl}:\EFI\BOOT"
     if (-not (Test-Path $efiCheck)) { Fail "EFI\BOOT not found on ${tl}:" }
 
-    foreach ($n in @("BOOTX64.EFI","kernel.elf","modules\mod_bmo_core.elf")) {
+    foreach ($n in @("BOOTX64.EFI","kernel.elf","modules\mod_bmo_core.elf","modules\mod_timeback.elf","modules\mod_cabina.elf")) {
         $p2 = Join-Path $efiCheck $n
         if (Test-Path $p2) {
             $sz2 = (Get-Item $p2).Length
