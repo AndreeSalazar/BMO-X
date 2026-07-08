@@ -410,77 +410,92 @@ pub unsafe fn port_reset(port: u8) -> bool {
     false
 }
 
-pub unsafe fn address_device(port: u8, slot_type: u8) -> Option<u8> {
+pub unsafe fn address_device(port: u8, speed: u8) -> Option<u8> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => { hal().log("[xhci] addr_dev: no ctrl\n"); return None; } };
     let h = hal();
 
     h.log_u64("[xhci] address_device port=", port as u64);
-    h.log_u64(" type=", slot_type as u64);
+    h.log_u64(" speed=", speed as u64);
     h.log("\n");
 
     let slot = enable_slot(ctrl)?;
     h.log_u64("[xhci] slot enabled → ", slot as u64);
 
+    let ctx_sz = if ctrl.ctx_size != 0 { 64usize } else { 32usize };
+
     // Allocate SEPARATE buffers for Input Context and Device Context
-    let input_pages = (core::mem::size_of::<InputCtx>() + 4095) / 4096;
-    let input_phys = h.alloc_dma_pages(input_pages)?;
-    let input_virt = h.phys_to_virt(input_phys) as *mut InputCtx;
-    core::ptr::write_bytes(input_virt as *mut u8, 0, input_pages * 4096);
+    let input_phys = h.alloc_dma_pages(1)?;
+    let input_virt = h.phys_to_virt(input_phys) as *mut u8;
+    core::ptr::write_bytes(input_virt, 0, 4096);
 
     let dev_phys = h.alloc_dma_pages(1)?;
-    let _dev_virt = h.phys_to_virt(dev_phys) as *mut u8;
-    core::ptr::write_bytes(_dev_virt, 0, 4096);
+    let dev_virt = h.phys_to_virt(dev_phys) as *mut u8;
+    core::ptr::write_bytes(dev_virt, 0, 4096);
 
-    // Setup Input Context
-    (*input_virt).ctrl.add_flags = 3; // slot + EP0
-    let sc = &mut (*input_virt).slot;
-    sc.entries[0] = (1 << 27);
-    sc.entries[1] = (slot_type as u32) << 16;
-    sc.entries[2] = 0;
-    sc.entries[3] = (1 << 26) | (port as u32 + 1);
+    // ── Input Control Context at input + 0 ──
+    let input32 = input_virt as *mut u32;
+    input32.add(0).write_volatile(0); // Drop flags
+    input32.add(1).write_volatile(3); // Add flags = Slot + EP0
 
-    // Max packet size depends on speed
-    let max_pkt = match slot_type {
-        1 => 8,   // LS
-        2 => 64,  // FS
-        3 => 64,  // HS
-        4 => 512, // SS
+    // ── Slot Context at input + 1 * ctx_sz ──
+    let slot32 = input_virt.add(ctx_sz) as *mut u32;
+    // DW0: Speed[23:20] | ContextEntries[31:27]=1
+    slot32.add(0).write_volatile(
+        ((speed as u32) & 0xF) << 20
+        | (1 << 27)
+    );
+    // DW1: RootHubPortNumber[23:16]
+    slot32.add(1).write_volatile((port as u32 + 1) << 16);
+    slot32.add(2).write_volatile(0);
+    slot32.add(3).write_volatile(0);
+
+    // ── MPS from speed (xHCI speed IDs: 1=FS, 2=LS, 3=HS, 4=SS) ──
+    let mps: u32 = match speed {
+        1 | 2 => 8,     // FS or LS
+        3 => 64,        // HS
+        4 | 5 => 512,   // SS / SSP
         _ => 8,
     };
 
-    // Setup EP0 context with valid transfer ring
-    let ep0 = &mut (*input_virt).eps[0];
-    let dequeue = (ctrl.ctrl_trb_phys & !0xF) | 1; // DCS = 1
-    ep0.entries[0] = (3 << 1)   // EP Type = Control (bits 3:1)
-                   | (3 << 5);  // CERRL = 3
-    ep0.entries[1] = max_pkt;
-    ep0.entries[2] = max_pkt; // Average TRB Length
-    ep0.entries[4] = (dequeue & 0xFFFF_FFFF) as u32;
-    ep0.entries[5] = ((dequeue >> 32) & 0xFFFF_FFFF) as u32;
+    // ── EP0 Context at input + 2 * ctx_sz ──
+    let ep0_base = input_virt.add(2 * ctx_sz) as *mut u32;
+    let dq = (ctrl.ctrl_trb_phys & !0xF) | 1; // DCS = 1
+    ep0_base.add(0).write_volatile(0); // DW0: EP State=0
+    // DW1: MaxPktSize[31:16] | EPType=Control(4)[5:3] | CErr=3[2:1]
+    ep0_base.add(1).write_volatile(
+        (mps << 16)
+        | (4 << 3)   // Control
+        | (3 << 1)   // CErr = 3
+    );
+    ep0_base.add(2).write_volatile((dq & 0xFFFF_FFFF) as u32); // DW2: dequeue lo
+    ep0_base.add(3).write_volatile(((dq >> 32) & 0xFFFF_FFFF) as u32); // DW3: dequeue hi
+    ep0_base.add(4).write_volatile(8); // DW4: Average TRB Length = 8
 
-    // DCBAA[slot] → Device Context (separate from Input Context)
-    let dcbaa_virt = h.phys_to_virt(ctrl.dcbaa_phys) as *mut u64;
-    dcbaa_virt.add(slot as usize).write_volatile(dev_phys);
+    // ── DCBAA[slot] → separate Device Context ──
+    let dcbaa = h.phys_to_virt(ctrl.dcbaa_phys) as *mut u64;
+    dcbaa.add(slot as usize).write_volatile(dev_phys & !0x3F);
 
     h.log_u64("[xhci] input_phys=", input_phys);
     h.log_u64("[xhci] dev_phys=", dev_phys);
 
-    let trb_p0 = input_phys as u32;
-    let trb_p1 = ((input_phys >> 32) & 0xFFFF_FFFF) as u32;
-    let trb_p2 = (slot as u32) << 24;
-
-    // Write Address Device TRB into the DMA-backed command ring
-    ctrl.cmd_ring.enqueue_trb(trb_p0, trb_p1, trb_p2, TRB_ADDRESS_DEV << 10);
+    // ── Address Device TRB: Slot ID in DWORD3 ──
+    ctrl.cmd_ring.enqueue_trb(
+        (input_phys & 0xFFFF_FFFF) as u32,
+        ((input_phys >> 32) & 0xFFFF_FFFF) as u32,
+        0,                                  // DWORD2 = 0
+        ((slot as u32) << 24) | (TRB_ADDRESS_DEV << 10), // DWORD3
+    );
     ring_doorbell(ctrl, 0);
     h.log("[xhci] address_device doorbell rung, waiting event...\n");
 
     let evt = wait_for_event(ctrl);
-    if evt.is_none() {
-        h.log("[xhci] address_device: no event\n");
+    let (_ev0, _ev1, ev2, _ev3) = evt?;
+    let cc = (ev2 >> 24) & 0xFF;
+    h.log_u64("[xhci] address_device cc=", cc as u64);
+    if cc != 1 {
+        h.log_u64("[xhci] address_device FAIL cc=", cc as u64);
         return None;
     }
-
-    h.log_u64("[xhci] address_device event dw3=", evt.unwrap().3 as u64);
     Some(slot)
 }
 
@@ -493,9 +508,12 @@ unsafe fn enable_slot(ctrl: &mut XhciController) -> Option<u8> {
         hal().log("[xhci] enable_slot: no event\n");
         return None;
     }
-    let (_, _, _, dw3) = evt.unwrap();
-    let slot = ((dw3 >> 16) & 0xFF) as u8;
-    hal().log_u64("[xhci] enable_slot got slot=", slot as u64);
+    let (_, _, dw2, dw3) = evt.unwrap();
+    let cc = (dw2 >> 24) & 0xFF;
+    let slot = ((dw3 >> 24) & 0xFF) as u8;
+    hal().log_u64("[xhci] enable_slot cc=", cc as u64);
+    hal().log_u64(" slot=", slot as u64);
+    if cc != 1 { hal().log("[xhci] enable_slot FAIL\n"); return None; }
     if slot == 0 { None } else { Some(slot) }
 }
 
@@ -532,7 +550,7 @@ unsafe fn wait_for_event(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u3
             ctrl.evt_dequeue = dequeue;
             ctrl.evt_cycle   = cycle;
 
-            let cc = (dw3 >> 24) & 0xFF;
+            let cc = (dw2 >> 24) & 0xFF;
             if cc == 1 || cc == 13 {
                 return Some((dw0, dw1, dw2, dw3));
             }
@@ -637,10 +655,10 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
       | 1
     );
 
-    // Update EP0 dequeue pointer to point to our TRB chain in DMA memory
+    // Update EP0 dequeue pointer in Device Context EP0 entries[2]/[3]
     let dequeue = ctrl.ctrl_trb_phys | 1; // DCS = 1
-    let dq_lo = dev_ctx_virt.add((ep0_off + 16) as usize) as *mut u32;
-    let dq_hi = dev_ctx_virt.add((ep0_off + 20) as usize) as *mut u32;
+    let dq_lo = dev_ctx_virt.add((ep0_off + 8) as usize) as *mut u32;
+    let dq_hi = dev_ctx_virt.add((ep0_off + 12) as usize) as *mut u32;
     dq_lo.write_volatile((dequeue & 0xFFFF_FFFF) as u32);
     dq_hi.write_volatile(((dequeue >> 32) & 0xFFFF_FFFF) as u32);
 
@@ -651,7 +669,7 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
 
     // Wait for Transfer Event completion
     if let Some((_p0, _p1, dw2, dw3)) = wait_for_event(ctrl) {
-        let cc = (dw3 >> 24) & 0xFF;
+        let cc = (dw2 >> 24) & 0xFF;
         h.log_u64("[xhci] ctrl_xfer event cc=", cc as u64);
         h.log_u64(" dw3=", dw3 as u64);
         h.log("\n");
