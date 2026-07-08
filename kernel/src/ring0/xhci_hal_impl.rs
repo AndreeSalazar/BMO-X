@@ -17,7 +17,9 @@ impl XhciHal for KernelXhciHal {
         crate::dev::console::serial_write(msg);
     }
 
-    fn log_u64(&self, _msg: &str, _val: u64) {
-        // Simplified — avoid format! in no_std boot context
+    fn log_u64(&self, msg: &str, val: u64) {
+        crate::dev::console::serial_write(msg);
+        crate::dev::console::serial_write_u64(val, 16);
+        crate::dev::console::serial_write("\n");
     }
 }

@@ -181,9 +181,12 @@ impl InputHal for UsbHidHal {
             unsafe {
                 if !bmo_xhci::port_reset(port) { continue; }
 
-                // Try low speed (2) then full speed (1).
-                for speed in &[2u8, 1u8] {
-                    if let Some(slot) = bmo_xhci::address_device(port, *speed) {
+                // Read actual port speed from PORTSC, try it first, then fallbacks
+                let port_spd = bmo_xhci::port_speed(port);
+                for speed in &[port_spd, 3, 2, 1, 4] {
+                    let speed = *speed;
+                    if speed == 0 { continue; }
+                    if let Some(slot) = bmo_xhci::address_device(port, speed) {
                         // Set boot protocol + idle rate.
                         bmo_xhci::control_transfer(slot, 0x21, 0x0B, 0, 0, &mut [], false);
                         bmo_xhci::control_transfer(slot, 0x21, 0x0A, 0, 0, &mut [], false);

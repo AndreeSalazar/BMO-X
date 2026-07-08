@@ -352,6 +352,14 @@ pub unsafe fn init(mmio: u64) -> bool {
 //  Port enumeration
 // ═══════════════════════════════════════════════════════════════════
 
+/// Read the port speed from PORTSC (bits 13:10).
+pub unsafe fn port_speed(port: u8) -> u8 {
+    let ctrl = match CTRL.as_ref() { Some(c) => c, _ => return 0 };
+    let port_base = ctrl.op_base as u64 + 0x400 + port as u64 * 0x10;
+    let sc = read32(ctrl.mmio + port_base + PORTSC as u64);
+    ((sc >> 10) & 0x0F) as u8
+}
+
 pub unsafe fn port_reset(port: u8) -> bool {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => { hal().log("[xhci] port_reset: no ctrl\n"); return false; } };
     let port_base = ctrl.op_base as u64 + 0x400 + port as u64 * 0x10;
