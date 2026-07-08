@@ -3,7 +3,7 @@ ENTRY(_module_start)
 
 SECTIONS
 {
-    . = 0x2400000;
+    . = 0x2280000;
 
     .text ALIGN(4K) : {
         *(.text .text.*)
