@@ -243,6 +243,34 @@ fn render_dynamic(fb: &Framebuffer, uptime_sec: u64, countdown: u64) {
     let fastos = b"FASTOS :: OK";
     draw_text(fb, (w - 120) as u32, (h - 36) as u32, fastos, 0xFF76B900);
     fb.fill_rect(w - 134, h - 32, 8, 8, 0xFF76B900);
+
+    // On-screen log overlay
+    draw_log_overlay(fb, w, h);
+}
+
+fn draw_log_overlay(fb: &Framebuffer, w: usize, h: usize) {
+    let (lines, count) = crate::desktop::log_overlay::snapshot();
+    let max = crate::desktop::log_overlay::max_lines();
+    let show = if count < max { count } else { max };
+    if show == 0 { return; }
+
+    let log_y_start: usize = 260;
+    let log_w: usize = w.saturating_sub(48);
+    let log_h: usize = show * 18 + 8;
+    fb.fill_rect(24, log_y_start - 4, log_w, log_h, 0xCC06070B);
+
+    let title = b"[ LOG ]";
+    draw_text(fb, 24, log_y_start as u32, title, 0xFF58A6FF);
+
+    let start_line = if count > show { count - show } else { 0 };
+    for i in 0..show {
+        let (idx, bytes) = lines[start_line + i];
+        let y = (log_y_start + 20 + i * 18) as u32;
+        if (y as usize) + 16 > h { break; }
+        let color = if idx == 0 { 0xFF484F58 } else { 0xFFE6EDF3 };
+        let truncated = if bytes.len() > 120 { &bytes[..120] } else { bytes };
+        draw_text(fb, 24, y, truncated, color);
+    }
 }
 
 // ── Input processing ────────────────────────────────────────────

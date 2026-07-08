@@ -1,6 +1,7 @@
 use crate::hal;
 
 pub fn serial_write(s: &str) {
+    crate::desktop::log_overlay::log_line(s);
     if let Some(h) = unsafe { hal::HAL.as_ref() } {
         (h.serial_write)(s);
     }
