@@ -1,30 +1,24 @@
 //! `timeback::journal` — Log de operaciones (ring buffer).
+//!
+//! v1.9: kept as a simple in-RAM ring buffer for transient state changes.
+//! Persistent state is in the SSD repo (storage::write_object).
 
 extern crate alloc;
 
 use alloc::string::String;
 use core::mem::MaybeUninit;
 
-/// Tipo de operación registrada en el journal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JournalOp {
-    /// App ejecutada.
     AppRun,
-    /// App finalizada.
     AppExit,
-    /// Archivo creado.
     FileCreate,
-    /// Archivo modificado.
     FileWrite,
-    /// Archivo eliminado.
     FileDelete,
-    /// Checkpoint creado.
     Checkpoint,
-    /// Rollback ejecutado.
     Rollback,
 }
 
-/// Entrada del journal.
 #[derive(Clone, Debug)]
 pub struct JournalEntry {
     pub seq: u64,
@@ -41,7 +35,6 @@ static mut BUF: [MaybeUninit<Option<JournalEntry>>; MAX_JOURNAL] = [const { Mayb
 
 pub fn init() {}
 
-/// Registra una entrada en el journal.
 pub fn log(op: JournalOp, detail: &str) {
     unsafe {
         let seq = (HEAD as u64) + 1;
@@ -56,5 +49,4 @@ pub fn log(op: JournalOp, detail: &str) {
     }
 }
 
-/// # de entradas en el journal.
 pub fn count() -> usize { unsafe { COUNT } }

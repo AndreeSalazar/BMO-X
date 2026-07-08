@@ -341,9 +341,17 @@ fn process_enter() {
     } else if eq_ci(trimmed_cmd, b"test") {
         crate::cabina::info("welcome", "Test command");
         show_hint(b"All systems operational.");
+    } else if eq_ci(&trimmed_cmd[..2], b"tb") || eq_ci(&trimmed_cmd[..9], b"timeback ") || eq_ci(trimmed_cmd, b"timeback") {
+        // TimeBack Git-like CLI
+        let cmd = unsafe { core::str::from_utf8(trimmed_cmd).unwrap_or("tb help") };
+        let output = timeback::cli::run(cmd);
+        crate::dev::console::serial_write(&output);
+        for line in output.lines() {
+            show_hint(line.as_bytes());
+        }
     } else {
         crate::cabina::warn("welcome", "Unknown command at welcome prompt");
-        show_hint(b"Commands: Run, Hello, Elf, Ring3, Nexo, Test, Reboot.");
+        show_hint(b"Commands: Run, Hello, Elf, Ring3, Nexo, Test, Reboot, tb <cmd>.");
     }
     unsafe { INPUT_LEN = 0; }
 }

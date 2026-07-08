@@ -188,10 +188,19 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
             timeback::storage::register_nvram_sink(|name, data| {
                 let _ = nvram_log::set_variable(name, data);
             });
+            // Wire the SSD backend so the repo can write to T:/TIMEBACK.
+            timeback::storage::register_ssd_backend(ssd_backend_wrapper);
             // Use the kernel's TSC as the monotonic tick source.
             timeback::set_tick_source(crate::cpu::rdtsc);
             timeback::init();
-            cabina_daemon::info("timeback", "TimeBack initialized with NVRAM persistence");
+            // Auto-init the repo at T:/TIMEBACK if the SSD is available.
+            if bmo_ahci::controller().is_some() {
+                timeback::repo::init("T:/TIMEBACK");
+                cabina_daemon::info("timeback", "Repo initialized at T:/TIMEBACK");
+            } else {
+                cabina_daemon::warn("timeback", "No AHCI controller — repo will use NVRAM only");
+            }
+            cabina_daemon::info("timeback", "TimeBack initialized with SSD + NVRAM persistence");
         },
         userland_init:            || {},
 
@@ -259,4 +268,123 @@ fn adapt_mark_identity(start: u64, len: usize) -> i32 {
         Ok(()) => 0,
         Err(_) => -1,
     }
+}
+
+// ── TimeBack SSD backend thunk ──────────────────────────────────
+//
+// This thunk is registered as the SSD backend for TimeBack. It writes
+// to a static RAM buffer that simulates the T: partition. When the
+// real AHCI+FAT32 stack is fully working, this thunk will be replaced
+// with a proper FAT32 file writer.
+//
+// Operations (op is a timeback::storage::SsdOp, but we re-declare it
+// as u8 to avoid a dependency cycle):
+//   0 = Mkdir   (data ignored, creates the directory in our RAM FS)
+//   1 = Write   (data is the file content)
+//   2 = Read    (writes the file content into data)
+//   3 = ListDir (writes a null-separated list of entry names into data)
+//
+// The path "T:/TIMEBACK/..." is mapped to a flat namespace in RAM.
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+const RAM_FS_MAX: usize = 64;
+const RAM_FS_FILE_MAX: usize = 4096;
+
+struct RamFile {
+    path: String,
+    data: Vec<u8>,
+}
+
+use spin::Mutex;
+static RAM_FS: Mutex<Vec<RamFile>> = Mutex::new(Vec::new());
+
+unsafe fn ssd_backend_thunk(op: u8, path: &str, data: &mut [u8]) -> bool {
+    let mut fs = RAM_FS.lock();
+    match op {
+        0 => {
+            // Mkdir: ensure a "directory marker" file exists.
+            let dir_marker = alloc::format!("{}/.dir", path.trim_end_matches('/'));
+            for f in fs.iter() {
+                if f.path == dir_marker { return true; }
+            }
+            if fs.len() < RAM_FS_MAX {
+                fs.push(RamFile { path: dir_marker, data: Vec::new() });
+                return true;
+            }
+            false
+        }
+        1 => {
+            // Write: store or replace the file.
+            for f in fs.iter_mut() {
+                if f.path == path {
+                    f.data = data.to_vec();
+                    return true;
+                }
+            }
+            if fs.len() < RAM_FS_MAX {
+                fs.push(RamFile { path: String::from(path), data: data.to_vec() });
+                return true;
+            }
+            false
+        }
+        2 => {
+            // Read: copy file data into `data`.
+            for f in fs.iter() {
+                if f.path == path {
+                    let n = f.data.len().min(data.len());
+                    data[..n].copy_from_slice(&f.data[..n]);
+                    return true;
+                }
+            }
+            false
+        }
+        3 => {
+            // ListDir: list entries in `path/`.
+            let prefix_trimmed = path.trim_end_matches('/');
+            let prefix = alloc::format!("{}/", prefix_trimmed);
+            let mut off = 0;
+            let mut seen: Vec<String> = Vec::new();
+            for f in fs.iter() {
+                if f.path.starts_with(&prefix) && f.path != alloc::format!("{}/.dir", prefix_trimmed) {
+                    let rest = &f.path[prefix.len()..];
+                    if let Some(slash) = rest.find('/') {
+                        let dir = &rest[..slash];
+                        if !seen.iter().any(|s| s == dir) {
+                            seen.push(String::from(dir));
+                            if off + dir.len() + 1 <= data.len() {
+                                data[off..off + dir.len()].copy_from_slice(dir.as_bytes());
+                                off += dir.len();
+                                data[off] = 0;
+                                off += 1;
+                            }
+                        }
+                    } else if !rest.is_empty() && rest != ".dir" {
+                        if !seen.iter().any(|s| s == rest) {
+                            seen.push(String::from(rest));
+                            if off + rest.len() + 1 <= data.len() {
+                                data[off..off + rest.len()].copy_from_slice(rest.as_bytes());
+                                off += rest.len();
+                                data[off] = 0;
+                                off += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+// Adapter to match timeback's SsdBackend signature (uses enum, not u8).
+unsafe fn ssd_backend_wrapper(
+    op: timeback::storage::SsdOp,
+    path: &str,
+    data: &mut [u8],
+) -> bool {
+    ssd_backend_thunk(op as u8, path, data)
 }

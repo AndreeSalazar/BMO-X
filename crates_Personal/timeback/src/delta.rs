@@ -4,7 +4,6 @@
 
 use super::snapshot::Snapshot;
 
-/// Delta entre dos snapshots.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Delta {
     pub heap_used_diff: i64,
@@ -14,7 +13,6 @@ pub struct Delta {
 }
 
 impl Delta {
-    /// Calcula el delta entre `a` (anterior) y `b` (nuevo).
     pub fn between(a: &Snapshot, b: &Snapshot) -> Self {
         Self {
             heap_used_diff: b.heap_used as i64 - a.heap_used as i64,

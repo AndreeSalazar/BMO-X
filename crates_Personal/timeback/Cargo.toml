@@ -2,8 +2,9 @@
 name = "timeback"
 version = "0.1.0"
 edition = "2021"
-description = "TimeBack — BMO system checkpoint and rollback subsystem"
+description = "TimeBack — BMO system Git-like version control for kernel state"
 
 [lib]
 
 [dependencies]
+spin = "0.9"
