@@ -30,9 +30,17 @@ fn hal() -> &'static mut dyn InputHal {
                     serial_write("OK\n");
                     ACTIVE = Some(uhid);
                 } else {
-                    serial_write("FAIL, no input HAL ready\n");
-                    ACTIVE = Some(ps2);
+                    serial_write("FAIL\n");
+                    serial_write("[input] NO INPUT HAL READY — keyboard/mouse will NOT work\n");
+                    // Store uhid anyway (it's initialized, just found no device)
+                    // poll() will return 0 but at least it's not a dead HAL
+                    ACTIVE = Some(uhid);
                 }
+            }
+            if let Some(ref h) = ACTIVE {
+                serial_write("[input] active HAL: ");
+                serial_write(h.name());
+                serial_write("\n");
             }
         }
         ACTIVE.as_mut().unwrap().as_mut()
