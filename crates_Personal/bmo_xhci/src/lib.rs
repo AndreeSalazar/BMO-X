@@ -5,7 +5,7 @@
 
 #![no_std]
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // ═══════════════════════════════════════════════════════════════════
 //  HAL trait
@@ -26,6 +26,20 @@ pub fn init_hal(hal: &'static dyn XhciHal) {
     unsafe { XHCI_HAL = Some(hal); }
 }
 fn hal() -> &'static dyn XhciHal { unsafe { XHCI_HAL.expect("XhciHal not init") } }
+
+// ── Deferred init: kernel stores the MMIO base, USB HID takes ownership lazily ──
+static MMIO_BASE: AtomicUsize = AtomicUsize::new(0);
+
+pub fn set_mmio(mmio: u64) {
+    MMIO_BASE.store(mmio as usize, Ordering::Relaxed);
+}
+pub fn get_mmio() -> Option<u64> {
+    let v = MMIO_BASE.load(Ordering::Relaxed);
+    if v == 0 { None } else { Some(v as u64) }
+}
+pub fn is_controller_initialized() -> bool {
+    unsafe { CTRL.is_some() }
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //  Registers
@@ -149,6 +163,12 @@ pub struct XhciController {
     pub event_ring: TransferRing,
     pub erst_phys: u64,
     pub initialized: bool,
+    // Event ring dequeue tracking (polling position + cycle bit)
+    pub evt_dequeue: u32,    // current event ring index (0..RING_SIZE-1)
+    pub evt_cycle: u32,      // expected cycle bit (toggles on wrap)
+    // Persistent control-transfer resources (allocated once in init)
+    pub ctrl_trb_phys: u64,  // physical address of control TRB ring
+    pub ctrl_data_phys: u64, // physical address of control data buffer
 }
 
 static mut CTRL: Option<XhciController> = None;
@@ -258,6 +278,16 @@ pub unsafe fn init(mmio: u64) -> bool {
     op_write_reg(mmio, op_base, USBCMD, cmd2 | USBCMD_RS);
     for _ in 0..50000 { if op_read_reg(mmio, op_base, USBSTS) & USBSTS_HCH == 0 { break; } }
 
+    // 9. Allocate persistent control-transfer resources
+    let ctrl_trb_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => return false };
+    core::ptr::write_bytes(h.phys_to_virt(ctrl_trb_phys), 0, 4096);
+    let ctrl_data_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => return false };
+    core::ptr::write_bytes(h.phys_to_virt(ctrl_data_phys), 0, 4096);
+
+    // 10. Event ring starts at dequeue 0 with expected cycle 1
+    let evt_dequeue = 0u32;
+    let evt_cycle = 1u32;
+
     let ctrl = XhciController {
         mmio, op_base, rt_base: rt_off, db_base: db_off,
         max_slots, max_ports, ctx_size,
@@ -266,6 +296,8 @@ pub unsafe fn init(mmio: u64) -> bool {
         event_ring: TransferRing::new(),
         erst_phys: evt_phys,
         initialized: true,
+        evt_dequeue, evt_cycle,
+        ctrl_trb_phys, ctrl_data_phys,
     };
     CTRL = Some(ctrl);
 
@@ -360,18 +392,19 @@ pub unsafe fn address_device(port: u8, slot_type: u8) -> Option<u8> {
     let trb_p0 = ctx_phys as u32;
     let trb_p1 = ((ctx_phys >> 32) & 0xFFFF_FFFF) as u32;
     let trb_p2 = (slot as u32) << 24;
-    let trb_idx = ctrl.cmd_ring.enqueue_trb(trb_p0, trb_p1, trb_p2, TRB_ADDRESS_DEV << 10);
+    ctrl.cmd_ring.enqueue_trb(trb_p0, trb_p1, trb_p2, TRB_ADDRESS_DEV << 10);
     ring_doorbell(ctrl, 0);
-    wait_completion(ctrl, trb_idx)?;
+    wait_for_event(ctrl)?;
 
     Some(slot)
 }
 
 unsafe fn enable_slot(ctrl: &mut XhciController) -> Option<u8> {
-    let trb_idx = ctrl.cmd_ring.enqueue_trb(0, 0, 0, TRB_ENABLE << 10);
+    ctrl.cmd_ring.enqueue_trb(0, 0, 0, TRB_ENABLE << 10);
     ring_doorbell(ctrl, 0);
-    let (p0, _, p3) = wait_completion(ctrl, trb_idx)?;
-    let slot = ((p3 >> 24) & 0xFF) as u8;
+    let (_, _, _, dw3) = wait_for_event(ctrl)?;
+    // Slot ID is in Command Completion Event DW3[23:16]
+    let slot = ((dw3 >> 16) & 0xFF) as u8;
     if slot == 0 { None } else { Some(slot) }
 }
 
@@ -379,20 +412,48 @@ unsafe fn ring_doorbell(ctrl: &XhciController, target: u32) {
     write32(ctrl.mmio + ctrl.db_base as u64 + DBOFF_DB as u64, target);
 }
 
-unsafe fn wait_completion(ctrl: &XhciController, _cmd_idx: usize) -> Option<(u32, u32, u32)> {
-    let evt_base = hal().phys_to_virt(ctrl.erst_phys);
+/// Poll the event ring for a completed event (command or transfer).
+/// Advances the internal dequeue pointer and writes ERDP so the xHC
+/// can reuse the slot. Returns `(dw0, dw1, dw2, dw3)` on success.
+unsafe fn wait_for_event(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)> {
+    let evt_virt = hal().phys_to_virt(ctrl.erst_phys) as *const u32;
+    let mut dequeue = ctrl.evt_dequeue;
+    let mut cycle   = ctrl.evt_cycle;
+
     for _ in 0..100000 {
-        let p3 = read32(evt_base as u64 + 12);
-        if p3 & 1 == 1 { // cycle bit set = valid TRB
-            let p0 = read32(evt_base as u64);
-            let p1 = read32(evt_base as u64 + 4);
-            let code = (p3 >> 24) & 0xFF;
-            if code == 1 { // Success
-                // Advance event ring
-                rt_write(ctrl, RT_ERDP, evt_base as u32 + TRB_SIZE as u32);
-                rt_write(ctrl, RT_ERDP + 4, 0);
-                return Some((p0, p1, p3));
+        let base = (dequeue as usize) * 4;
+        let dw3 = evt_virt.add(base + 3).read_volatile();
+
+        if (dw3 & 1) == cycle {
+            let dw0 = evt_virt.add(base).read_volatile();
+            let dw1 = evt_virt.add(base + 1).read_volatile();
+            let dw2 = evt_virt.add(base + 2).read_volatile();
+
+            // Advance dequeue; toggle expected cycle on wrap
+            dequeue += 1;
+            if dequeue >= RING_SIZE as u32 {
+                dequeue = 0;
+                cycle ^= 1;
             }
+
+            // Tell the xHC we've consumed this event by advancing ERDP
+            let new_erdp = ctrl.erst_phys + (dequeue as u64) * (TRB_SIZE as u64);
+            write32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64,
+                    (new_erdp & 0xFFFF_FFFF) as u32);
+            write32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4,
+                    ((new_erdp >> 32) & 0xFFFF_FFFF) as u32);
+
+            // Persist updated state
+            ctrl.evt_dequeue = dequeue;
+            ctrl.evt_cycle   = cycle;
+
+            // Completion Code lives in DW3 bits 31:24
+            let cc = (dw3 >> 24) & 0xFF;
+            if cc == 1 || cc == 13 { // Success or Short Packet
+                return Some((dw0, dw1, dw2, dw3));
+            }
+            hal().log_u64("[xhci] event fail cc=", cc as u64);
+            return None;
         }
         core::hint::spin_loop();
     }
@@ -407,40 +468,118 @@ unsafe fn wait_completion(ctrl: &XhciController, _cmd_idx: usize) -> Option<(u32
 pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     w_value: u16, w_index: u16, buf: &mut [u8], data_in: bool) -> usize
 {
-    let ctrl = match CTRL.as_ref() { Some(c) => c, None => return 0 };
-    let ctx_phys = match read_dcbaa(ctrl, slot) { Some(p) => p, None => return 0 };
-    let ctx_virt = hal().phys_to_virt(ctx_phys) as *mut InputCtx;
-    let trb_pages = (256 + 4095) / 4096;
-    let trb_phys = match hal().alloc_dma_pages(trb_pages) { Some(p) => p, None => return 0 };
-    let trb_virt = hal().phys_to_virt(trb_phys) as *mut u32;
-    core::ptr::write_bytes(trb_virt as *mut u8, 0, trb_pages * 4096);
+    let ctrl = match CTRL.as_mut() { Some(c) => c, None => return 0 };
+    let h = hal();
 
-    // Setup stage TRB
-    let setup_data: [u32; 2] = [
+    // ── 1. Device context from DCBAA ──
+    let dev_ctx_phys = match read_dcbaa(ctrl, slot) { Some(p) => p, None => return 0 };
+    let dev_ctx_virt = h.phys_to_virt(dev_ctx_phys) as *mut u8;
+    let ep0_off = 32 + (ctrl.ctx_size as u32) * 32; // EP0 context offset
+
+    // ── 2. TRB ring (use the persistent buffer allocated during init) ──
+    let trb_virt = h.phys_to_virt(ctrl.ctrl_trb_phys) as *mut u32;
+    core::ptr::write_bytes(trb_virt as *mut u8, 0, 4096);
+
+    // Data buffer (for data stage IN/OUT)
+    let data_virt = h.phys_to_virt(ctrl.ctrl_data_phys) as *mut u8;
+
+    // ── 3. Build the control TRB chain ──
+    //
+    // Layout: [Setup Stage] [optional: Data Stage] [Status Stage]
+    //
+    //         Index 0       Index 1 (or 2)          Index 1 (or 2)
+    //         ┌──────────┐  ┌──────────┐            ┌──────────┐
+    //         │  Setup   │→ │  Data    │→ … →       │  Status  │
+    //         └──────────┘  └──────────┘            └──────────┘
+
+    // Setup Stage (index 0)
+    let setup_dwords: [u32; 2] = [
         (bm_req_type as u32) | ((b_request as u32) << 8) | ((w_value as u32) << 16),
-        ((w_index as u32) | ((buf.len() as u32) << 16)),
+        (w_index as u32) | ((buf.len() as u32) << 16),
     ];
-    trb_virt.add(0).write_volatile(setup_data[0]);
-    trb_virt.add(1).write_volatile(setup_data[1]);
-    trb_virt.add(2).write_volatile(8); // TRB transfer length
-    let td_size = 0;
-    let dir = if data_in { 2u32 } else { 0u32 };
-    trb_virt.add(3).write_volatile((TRB_SETUP << 10) | (td_size << 17) | (3 << 16) | dir);
+    trb_virt.add(0).write_volatile(setup_dwords[0]);
+    trb_virt.add(1).write_volatile(setup_dwords[1]);
+    trb_virt.add(2).write_volatile(8); // TRB transfer length = 8 (setup packet)
+    // TRT: 3 = no data stage, 2 = data IN, 0 = data OUT
+    let trt = if buf.is_empty() { 3u32 }
+              else if data_in   { 2u32 }
+              else              { 0u32 };
+    trb_virt.add(3).write_volatile(
+        (TRB_SETUP << 10)   // Type = Setup Stage TRB
+      | (1       <<  6)     // IDT = immediate data
+      | (trt     << 16)     // TRT (data stage direction)
+      | (1       <<  4)     // CHAIN = status/data follows
+      | 1                   // Cycle bit = 1
+    );
 
-    // Data stage TRB (if any)
-    let data_count = if !buf.is_empty() {
-        let _data_phys = if data_in { hal().alloc_dma_pages(1) } else { None };
-        1u32
-    } else { 0u32 };
+    // Data Stage (index 1, only if buffer is non-empty)
+    let mut status_idx = 1u32;
+    let has_data = !buf.is_empty();
+    if has_data {
+        // For OUT transfers: copy data to the DMA buffer first
+        if !data_in {
+            for i in 0..buf.len() {
+                data_virt.add(i).write_volatile(buf[i]);
+            }
+        }
 
-    // Set TR dequeue pointer
-    (*ctx_virt).eps[0].entries[2] = trb_phys as u32;
-    (*ctx_virt).eps[0].entries[3] = (trb_phys >> 32) as u32;
+        let dphys = ctrl.ctrl_data_phys;
+        trb_virt.add(4).write_volatile((dphys & 0xFFFF_FFFF) as u32);
+        trb_virt.add(5).write_volatile(((dphys >> 32) & 0xFFFF_FFFF) as u32);
+        trb_virt.add(6).write_volatile(buf.len() as u32); // TRB transfer length
+        let dir = if data_in { 1u32 << 16 } else { 0u32 };
+        trb_virt.add(7).write_volatile(
+            (TRB_DATA << 10)    // Type = Data Stage TRB
+          | dir                 // DIR = data direction
+          | (1       <<  4)     // CHAIN = status follows
+          | 1                   // Cycle bit = 1
+        );
+        status_idx = 2;
+    }
 
-    ring_doorbell(ctrl, slot as u32);
+    // Status Stage (at status_idx)
+    let sb = (status_idx as usize) * 4;
+    trb_virt.add(sb).write_volatile(0);
+    trb_virt.add(sb + 1).write_volatile(0);
+    trb_virt.add(sb + 2).write_volatile(0);
+    // Direction: opposite to data stage; IN if no data stage
+    let dir_in  = if has_data { !data_in } else { true };
+    let dir_bit = if dir_in { 1u32 << 16 } else { 0u32 };
+    trb_virt.add(sb + 3).write_volatile(
+        (TRB_STATUS << 10)   // Type = Status Stage TRB
+      | dir_bit              // DIR
+      | (1       <<  5)      // IOC = generate completion event
+      | 1                    // Cycle bit = 1
+    );
 
-    // For now, return stub (full control transfer needs proper TRB chain)
-    buf.len()
+    // ── 4. Update EP0 dequeue pointer in the device context ──
+    let dequeue = ctrl.ctrl_trb_phys | 1; // DCS = 1 (cycle starts at 1)
+    let dq_lo = dev_ctx_virt.add((ep0_off + 8) as usize) as *mut u32;
+    let dq_hi = dev_ctx_virt.add((ep0_off + 12) as usize) as *mut u32;
+    dq_lo.write_volatile((dequeue & 0xFFFF_FFFF) as u32);
+    dq_hi.write_volatile(((dequeue >> 32) & 0xFFFF_FFFF) as u32);
+
+    // ── 5. Ring doorbell for the slot (stream ID 0 = EP0) ──
+    write32(ctrl.mmio + ctrl.db_base as u64, slot as u32);
+
+    // ── 6. Wait for Transfer Event completion ──
+    if let Some((_p0, _p1, dw2, dw3)) = wait_for_event(ctrl) {
+        let cc = (dw3 >> 24) & 0xFF;
+        if cc == 1 || cc == 13 {
+            // Success (1) or Short Packet (13)
+            let remaining = dw2 as usize;
+            let transferred = buf.len().saturating_sub(remaining);
+
+            if data_in && has_data {
+                let copy_len = transferred.min(buf.len());
+                for i in 0..copy_len {
+                    buf[i] = data_virt.add(i).read_volatile();
+                }
+            }
+            return transferred;
+        }
+    }
+    0
 }
 
 unsafe fn read_dcbaa(ctrl: &XhciController, slot: u8) -> Option<u64> {

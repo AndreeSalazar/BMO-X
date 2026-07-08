@@ -291,17 +291,20 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         crate::dev::hda::init(hda_mmio);
     }
 
-    // USB: BIOS handles Legacy Emulation (USB→PS/2 via ports 0x60/0x64).
-    // Do NOT take xHCI ownership — that kills the emulation and disconnects devices.
-    // Full xHCI driver (rings/TRBs/enumeration) required before ownership transfer.
-
-    // Init xHCI controller (via bmo_xhci crate) for native USB HID
+    // Discover and register the xHCI controller with the bmo_xhci crate,
+    // but do NOT take ownership yet — ownership is taken lazily by
+    // bmo_uhid::UsbHidHal::init() when the desktop decides to use native
+    // USB HID.  This keeps BIOS USB Legacy Emulation active (ports
+    // 0x60/0x64) as a safe fallback if USB HID fails.
     if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
         static XHCI_HAL: super::xhci_hal_impl::KernelXhciHal = super::xhci_hal_impl::KernelXhciHal;
         bmo_xhci::init_hal(&XHCI_HAL);
-        crate::log::info("phase2", "xHCI controller found, initializing via bmo_xhci...");
-        unsafe { bmo_xhci::init(xhci_mmio); }
-        crate::log::info("phase2", "xHCI init done — USB native HID available");
+        bmo_xhci::set_mmio(xhci_mmio);
+        crate::dev::console::serial_write("[phase2] xHCI at 0x");
+        crate::dev::console::serial_write_u64(xhci_mmio, 16);
+        crate::dev::console::serial_write(" — deferred (USB HID or PS/2 fallback)\n");
+    } else {
+        crate::log::info("phase2", "No xHCI controller — PS/2 only");
     }
 
     // Persist state
