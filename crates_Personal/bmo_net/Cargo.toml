@@ -1,0 +1,11 @@
+[package]
+name = "bmo-net"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO Network — NIC driver (e1000) + packet I/O"
+
+[dependencies]
+smoltcp = { version = "0.12", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp"] }
+bitflags = "2"
+volatile = "0.4"

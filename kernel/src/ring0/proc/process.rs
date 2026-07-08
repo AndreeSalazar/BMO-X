@@ -20,6 +20,16 @@ pub struct Process {
     pub state: ProcessState,
     pub page_table_root: u64,
     pub addr_space: AddressSpace,
+    /// IPC message queue head pointer (linked list of MsgNode).
+    pub msg_head: *mut MsgNode,
+    pub msg_tail: *mut MsgNode,
+}
+
+/// IPC message node (heap-allocated, linked list).
+pub struct MsgNode {
+    pub next: *mut MsgNode,
+    pub data: *mut u8,
+    pub len: usize,
 }
 
 impl Process {
@@ -29,6 +39,8 @@ impl Process {
             state: ProcessState::Free,
             page_table_root: 0,
             addr_space: AddressSpace::empty(),
+            msg_head: core::ptr::null_mut(),
+            msg_tail: core::ptr::null_mut(),
         }
     }
 }

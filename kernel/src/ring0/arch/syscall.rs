@@ -246,9 +246,79 @@ fn sys_gpu_submit(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: 
 }
 
 #[cfg(feature = "syscalls-ipc")]
-fn sys_ipc_send(nr: u64, a0: u64, a1: u64, a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
-    u64::MAX // IPC message send
+fn sys_ipc_send(_nr: u64, dst_pid: u64, msg_ptr: u64, msg_len: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if msg_len == 0 || msg_len > 65536 || msg_ptr == 0 { return u64::MAX; }
+    let dst = match crate::proc::process::get_process(crate::proc::process::Pid(dst_pid as u32)) {
+        Some(p) => p as *mut crate::proc::process::Process,
+        None => return u64::MAX,
+    };
+    unsafe {
+        // Allocate message node on heap
+        let layout = core::alloc::Layout::new::<crate::proc::process::MsgNode>();
+        let node = crate::mm::slab::heap_alloc(layout.size(), layout.align())
+            as *mut crate::proc::process::MsgNode;
+        if node.is_null() { return u64::MAX; }
+
+        // Allocate data buffer
+        let data = crate::mm::slab::heap_alloc(msg_len as usize, 8);
+        if data.is_null() {
+            crate::mm::slab::heap_free(node as *mut u8, layout.size(), layout.align());
+            return u64::MAX;
+        }
+
+        core::ptr::copy_nonoverlapping(msg_ptr as *const u8, data, msg_len as usize);
+        (*node).next = core::ptr::null_mut();
+        (*node).data = data;
+        (*node).len = msg_len as usize;
+
+        let dst_ref = &mut *dst;
+        if dst_ref.msg_tail.is_null() {
+            dst_ref.msg_head = node;
+            dst_ref.msg_tail = node;
+        } else {
+            (*dst_ref.msg_tail).next = node;
+            dst_ref.msg_tail = node;
+        }
+    }
+    0
 }
+
+#[cfg(feature = "syscalls-ipc")]
+fn sys_ipc_recv(_nr: u64, buf_ptr: u64, buf_len: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if buf_ptr == 0 || buf_len == 0 { return u64::MAX; }
+    let cur = match crate::proc::task::current() {
+        Some(t) => t,
+        None => return u64::MAX,
+    };
+    let proc = match crate::proc::process::get_process(cur.pid) {
+        Some(p) => p,
+        None => return u64::MAX,
+    };
+    if proc.msg_head.is_null() { return 0; } // no messages (non-blocking for now)
+
+    unsafe {
+        let node = proc.msg_head;
+        proc.msg_head = (*node).next;
+        if proc.msg_head.is_null() { proc.msg_tail = core::ptr::null_mut(); }
+
+        let len = (*node).len.min(buf_len as usize);
+        core::ptr::copy_nonoverlapping((*node).data, buf_ptr as *mut u8, len);
+
+        // Free
+        let data_layout = core::alloc::Layout::from_size_align_unchecked((*node).len, 8);
+        crate::mm::slab::heap_free((*node).data, data_layout.size(), data_layout.align());
+        let node_layout = core::alloc::Layout::new::<crate::proc::process::MsgNode>();
+        crate::mm::slab::heap_free(node as *mut u8, node_layout.size(), node_layout.align());
+
+        len as u64
+    }
+}
+
+#[cfg(not(feature = "syscalls-ipc"))]
+fn sys_ipc_send(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 { stub(_nr, _a0, _a1, _a2, _a3, _a4, _a5) }
+
+#[cfg(not(feature = "syscalls-ipc"))]
+fn sys_ipc_recv(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 { stub(_nr, _a0, _a1, _a2, _a3, _a4, _a5) }
 
 // ── Jump table (256 entries, lazy-initialized once) ────────────────────
 
@@ -285,6 +355,7 @@ unsafe fn init_table() {
     // IPC (gated)
     #[cfg(feature = "syscalls-ipc")] {
         SYSCALL_TABLE[0x30] = sys_ipc_send;
+        SYSCALL_TABLE[0x31] = sys_ipc_recv;
     }
 
     TABLE_INIT = true;
@@ -339,4 +410,5 @@ pub const SYS_FB_FLUSH: u64     = 0x62;
 pub const SYS_NET_SEND: u64     = 0x90;
 pub const SYS_GPU_SUBMIT: u64   = 0xA0;
 pub const SYS_IPC_SEND: u64     = 0x30;
+pub const SYS_IPC_RECV: u64     = 0x31;
 pub const SYS_DEBUG_PRINT: u64  = 0xF0;
