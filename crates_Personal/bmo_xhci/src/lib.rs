@@ -150,6 +150,7 @@ pub struct XhciController {
     pub cmd_ring: TransferRing,
     pub event_ring: TransferRing,
     pub erst_phys: u64,
+    pub erst_entry_phys: u64,
     pub initialized: bool,
     pub evt_dequeue: u32,
     pub evt_cycle: u32,
@@ -294,18 +295,24 @@ pub unsafe fn init(mmio: u64) -> bool {
     op_write_reg(mmio, op_base, 0x1C, ((cmd_ring_phys_64 >> 32) & 0xFFFF_FFFF) as u32);
     h.log_u64("[xhci] CRCR=", cmd_ring_phys_64);
 
-    // 6. Set up Event Ring
+    // 6. Set up Event Ring — ERST entry SEPARATE from event ring buffer
     let evt_pages = (RING_SIZE * TRB_SIZE + 4095) / 4096;
     let evt_phys = match h.alloc_dma_pages(evt_pages) { Some(p) => p, None => { h.log("[xhci] FAIL evt ring alloc\n"); return false; } };
     let evt_virt = h.phys_to_virt(evt_phys) as *mut u32;
     core::ptr::write_bytes(evt_virt as *mut u8, 0, evt_pages * 4096);
+    let erst_entry_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] FAIL ERST entry alloc\n"); return false; } };
+    let erst_entry_virt = h.phys_to_virt(erst_entry_phys) as *mut u32;
+    core::ptr::write_bytes(erst_entry_virt as *mut u8, 0, 4096);
+    erst_entry_virt.add(0).write_volatile((evt_phys & 0xFFFF_FFFF) as u32);
+    erst_entry_virt.add(1).write_volatile(((evt_phys >> 32) & 0xFFFF_FFFF) as u32);
+    erst_entry_virt.add(2).write_volatile(RING_SIZE as u32);
     rt_write_reg(mmio, rt_off, RT_ERSTSZ, 1);
-    rt_write_reg(mmio, rt_off, RT_ERSTBA, (evt_phys & 0xFFFF_FFFF) as u32);
-    rt_write_reg(mmio, rt_off, RT_ERSTBA + 4, ((evt_phys >> 32) & 0xFFFF_FFFF) as u32);
+    rt_write_reg(mmio, rt_off, RT_ERSTBA, (erst_entry_phys & 0xFFFF_FFFF) as u32);
+    rt_write_reg(mmio, rt_off, RT_ERSTBA + 4, ((erst_entry_phys >> 32) & 0xFFFF_FFFF) as u32);
     rt_write_reg(mmio, rt_off, RT_ERDP, (evt_phys & 0xFFFF_FFFF) as u32);
     rt_write_reg(mmio, rt_off, RT_ERDP + 4, ((evt_phys >> 32) & 0xFFFF_FFFF) as u32);
     rt_write_reg(mmio, rt_off, RT_IMAN, IMAN_IE);
-    h.log_u64("[xhci] ERST phys=", evt_phys);
+    h.log_u64("[xhci] ERST entry phys=", erst_entry_phys);
 
     // 7. Page size
     op_write_reg(mmio, op_base, PAGESIZE, 1);
@@ -338,6 +345,7 @@ pub unsafe fn init(mmio: u64) -> bool {
         dcbaa_phys: dcbaa_phys_64,
         cmd_ring, event_ring,
         erst_phys: evt_phys & !0x3F,
+        erst_entry_phys: erst_entry_phys & !0x3F,
         initialized: true,
         evt_dequeue: 0, evt_cycle: 1,
         ctrl_trb_phys, ctrl_data_phys,
@@ -413,30 +421,52 @@ pub unsafe fn address_device(port: u8, slot_type: u8) -> Option<u8> {
     let slot = enable_slot(ctrl)?;
     h.log_u64("[xhci] slot enabled → ", slot as u64);
 
-    let ctx_pages = (core::mem::size_of::<InputCtx>() + 4095) / 4096;
-    let ctx_phys = h.alloc_dma_pages(ctx_pages)?;
-    let ctx_virt = h.phys_to_virt(ctx_phys) as *mut InputCtx;
-    core::ptr::write_bytes(ctx_virt as *mut u8, 0, ctx_pages * 4096);
+    // Allocate SEPARATE buffers for Input Context and Device Context
+    let input_pages = (core::mem::size_of::<InputCtx>() + 4095) / 4096;
+    let input_phys = h.alloc_dma_pages(input_pages)?;
+    let input_virt = h.phys_to_virt(input_phys) as *mut InputCtx;
+    core::ptr::write_bytes(input_virt as *mut u8, 0, input_pages * 4096);
 
-    (*ctx_virt).ctrl.add_flags = 3;
-    let sc = &mut (*ctx_virt).slot;
+    let dev_phys = h.alloc_dma_pages(1)?;
+    let _dev_virt = h.phys_to_virt(dev_phys) as *mut u8;
+    core::ptr::write_bytes(_dev_virt, 0, 4096);
+
+    // Setup Input Context
+    (*input_virt).ctrl.add_flags = 3; // slot + EP0
+    let sc = &mut (*input_virt).slot;
     sc.entries[0] = (1 << 27);
     sc.entries[1] = (slot_type as u32) << 16;
     sc.entries[2] = 0;
     sc.entries[3] = (1 << 26) | (port as u32 + 1);
 
-    let ep0 = &mut (*ctx_virt).eps[0];
-    ep0.entries[0] = 0;
-    ep0.entries[1] = 8;
-    ep0.entries[2] = 0;
+    // Max packet size depends on speed
+    let max_pkt = match slot_type {
+        1 => 8,   // LS
+        2 => 64,  // FS
+        3 => 64,  // HS
+        4 => 512, // SS
+        _ => 8,
+    };
 
+    // Setup EP0 context with valid transfer ring
+    let ep0 = &mut (*input_virt).eps[0];
+    let dequeue = (ctrl.ctrl_trb_phys & !0xF) | 1; // DCS = 1
+    ep0.entries[0] = (3 << 1)   // EP Type = Control (bits 3:1)
+                   | (3 << 5);  // CERRL = 3
+    ep0.entries[1] = max_pkt;
+    ep0.entries[2] = max_pkt; // Average TRB Length
+    ep0.entries[4] = (dequeue & 0xFFFF_FFFF) as u32;
+    ep0.entries[5] = ((dequeue >> 32) & 0xFFFF_FFFF) as u32;
+
+    // DCBAA[slot] → Device Context (separate from Input Context)
     let dcbaa_virt = h.phys_to_virt(ctrl.dcbaa_phys) as *mut u64;
-    dcbaa_virt.add(slot as usize).write_volatile(ctx_phys);
+    dcbaa_virt.add(slot as usize).write_volatile(dev_phys);
 
-    h.log_u64("[xhci] ctx_phys=", ctx_phys);
+    h.log_u64("[xhci] input_phys=", input_phys);
+    h.log_u64("[xhci] dev_phys=", dev_phys);
 
-    let trb_p0 = ctx_phys as u32;
-    let trb_p1 = ((ctx_phys >> 32) & 0xFFFF_FFFF) as u32;
+    let trb_p0 = input_phys as u32;
+    let trb_p1 = ((input_phys >> 32) & 0xFFFF_FFFF) as u32;
     let trb_p2 = (slot as u32) << 24;
 
     // Write Address Device TRB into the DMA-backed command ring
@@ -609,13 +639,15 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
 
     // Update EP0 dequeue pointer to point to our TRB chain in DMA memory
     let dequeue = ctrl.ctrl_trb_phys | 1; // DCS = 1
-    let dq_lo = dev_ctx_virt.add((ep0_off + 8) as usize) as *mut u32;
-    let dq_hi = dev_ctx_virt.add((ep0_off + 12) as usize) as *mut u32;
+    let dq_lo = dev_ctx_virt.add((ep0_off + 16) as usize) as *mut u32;
+    let dq_hi = dev_ctx_virt.add((ep0_off + 20) as usize) as *mut u32;
     dq_lo.write_volatile((dequeue & 0xFFFF_FFFF) as u32);
     dq_hi.write_volatile(((dequeue >> 32) & 0xFFFF_FFFF) as u32);
 
-    // Ring doorbell
-    write32(ctrl.mmio + ctrl.db_base as u64, slot as u32);
+    // Ring doorbell for EP0 on this slot
+    // DB[slot] = endpoint doorbell; value = endpoint ID (1 = EP0)
+    let db_addr = ctrl.mmio + ctrl.db_base as u64 + (slot as u64) * 4;
+    write32(db_addr, 1);
 
     // Wait for Transfer Event completion
     if let Some((_p0, _p1, dw2, dw3)) = wait_for_event(ctrl) {

@@ -187,6 +187,8 @@ impl InputHal for UsbHidHal {
                     let speed = *speed;
                     if speed == 0 { continue; }
                     if let Some(slot) = bmo_xhci::address_device(port, speed) {
+                        // Set Configuration 1 (must be configured before HID transfers)
+                        bmo_xhci::control_transfer(slot, 0x00, 0x09, 0x01, 0, &mut [], false);
                         // Set boot protocol + idle rate.
                         bmo_xhci::control_transfer(slot, 0x21, 0x0B, 0, 0, &mut [], false);
                         bmo_xhci::control_transfer(slot, 0x21, 0x0A, 0, 0, &mut [], false);
