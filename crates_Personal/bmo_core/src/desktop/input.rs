@@ -1,7 +1,8 @@
-//! Desktop input — USB HID primary, PS/2 fallback.
+//! Desktop input — PS/2/USB-legacy primary, native USB HID fallback.
 //!
-//! Uses `bmo_uhid::UsbHidHal` (implements InputHal) when xHCI is available.
-//! Falls back to `bmo_input::hal_ps2::Ps2Hal` otherwise.
+//! Prefer `bmo_input::hal_ps2::Ps2Hal` so BIOS USB Legacy Emulation keeps
+//! USB keyboards/mice usable while the native xHCI/HID stack is incomplete.
+//! Falls back to `bmo_uhid::UsbHidHal` only if PS/2 is unavailable.
 
 use bmo_input::hal::InputHal;
 use alloc::boxed::Box;
@@ -14,18 +15,24 @@ fn hal() -> &'static mut dyn InputHal {
     unsafe {
         if ACTIVE.is_none() {
             serial_write("[input] initializing...\n");
-            let mut uhid = Box::new(bmo_uhid::UsbHidHal::new());
-            let ok = uhid.init();
-            serial_write("[input] uhid.init() = ");
+            let mut ps2 = Box::new(bmo_input::hal_ps2::Ps2Hal::new());
+            let ok = ps2.init();
+            serial_write("[input] ps2.init() = ");
             if ok {
                 serial_write("OK\n");
-                ACTIVE = Some(uhid);
-            } else {
-                serial_write("FAIL, fallback to PS/2\n");
-                let mut ps2 = Box::new(bmo_input::hal_ps2::Ps2Hal::new());
-                ps2.init();
-                serial_write("[input] PS/2 active\n");
                 ACTIVE = Some(ps2);
+            } else {
+                serial_write("FAIL, fallback to native USB HID\n");
+                let mut uhid = Box::new(bmo_uhid::UsbHidHal::new());
+                let usb_ok = uhid.init();
+                serial_write("[input] uhid.init() = ");
+                if usb_ok {
+                    serial_write("OK\n");
+                    ACTIVE = Some(uhid);
+                } else {
+                    serial_write("FAIL, no input HAL ready\n");
+                    ACTIVE = Some(ps2);
+                }
             }
         }
         ACTIVE.as_mut().unwrap().as_mut()

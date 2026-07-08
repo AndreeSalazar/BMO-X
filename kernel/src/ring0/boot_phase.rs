@@ -291,20 +291,17 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         crate::dev::hda::init(hda_mmio);
     }
 
-    // Initialize xHCI controller in Ring 0 during boot.
-    // Takes ownership from BIOS USB Legacy Emulation so native USB HID
-    // works.  No PS/2 fallback — modern systems use USB keyboards/mice.
+    // Detect xHCI and publish its MMIO base, but do NOT initialize it here.
+    // Taking ownership from BIOS USB Legacy Emulation disconnects USB keyboards
+    // that currently work through the PS/2-compatible 0x60/0x64 path.  The
+    // native xHCI/HID stack can still opt in later if the PS/2/legacy HAL fails.
     if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
         static XHCI_HAL: super::xhci_hal_impl::KernelXhciHal = super::xhci_hal_impl::KernelXhciHal;
         bmo_xhci::init_hal(&XHCI_HAL);
         bmo_xhci::set_mmio(xhci_mmio);
         crate::dev::console::serial_write("[phase2] xHCI at 0x");
         crate::dev::console::serial_write_u64(xhci_mmio, 16);
-        if unsafe { bmo_xhci::init(xhci_mmio) } {
-            crate::dev::console::serial_write(" — initialized\n");
-        } else {
-            crate::dev::console::serial_write(" — init FAILED\n");
-        }
+        crate::dev::console::serial_write(" — deferred to input HAL\n");
     } else {
         crate::log::info("phase2", "No xHCI controller found");
     }
@@ -315,7 +312,7 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
 
-    crate::log::info("phase2", "Input: USB HID via xHCI (PS/2 fallback in HAL)");
+    crate::log::info("phase2", "Input: PS/2/USB-legacy first, native USB HID fallback");
 
     // MMIO-backed drivers: now accessible via high-mem direct map.
     // AHCI, xHCI, and NVMe BARs near 0xFCxx_xxxx work through phys_to_virt().
