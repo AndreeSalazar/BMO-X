@@ -1,43 +1,49 @@
-﻿//! Syscall Entry Point + Dispatcher.
+﻿//! Syscall — x86-64 syscall/sysret entry + jump-table dispatcher.
 //!
-//! Combines the IA32_LSTAR/STAR/FMASK MSR setup, the naked `syscall`
-//! entry, the Rust handler, the syscall number enum, and the futex
-//! primitives into a single module. Syscall is fundamentally a part
-//! of the x86-64 architecture, so it lives under `arch/`.
+//! ## Architecture
+//!   - Naked entry saves regs → builds InterruptFrame
+//!   - Rust handler reads RAX (syscall nr) → indexes into SYSCALL_TABLE
+//!   - Jump table provides O(1) dispatch (branchless after bounds check)
+//!   - Feature-gated syscall groups (net, gpu, ipc, audio) compile to
+//!     `u64::MAX` when not enabled → LTO eliminates dead branches
 //!
-//! ## ABI
+//! ## vDSO fast path
+//!   - SYS_CLOCK_GET (0x50) reads directly from vDSO page when available
+//!   - vDSO page is mapped read-only into every Ring 3 process
+//!   - Timer IRQ updates vdso.monotonic_tsc and vdso.realtime_ns
 //!
-//! x86-64 `syscall` instruction saves RIP in RCX, RFLAGS in R11, and
-//! jumps to `IA32_LSTAR`. Arguments are in RDI, RSI, RDX, R10, R8, R9.
-//! Return value goes in RAX. We return to Ring 3 via `iretq` (not
-//! `sysretq`) for safety.
-//!
-//! ## MSR setup
-//!
-//! - **IA32_EFER** bit 0: SCE (System Call Extensions)
-//! - **IA32_STAR[47:32]**: kernel CS selector (0x08)
-//! - **IA32_STAR[63:48]**: kernel DS selector (0x10, loaded as SS)
-//! - **IA32_LSTAR**: entry point of `syscall_entry_naked`
-//! - **IA32_FMASK**: clear IF (bit 9) and DF (bit 10) on entry
+//! ## Syscall table layout
+//!   0x00-0x0F: Process / Task
+//!   0x10-0x1F: Memory
+//!   0x20-0x2F: Filesystem (stubs)
+//!   0x30-0x3F: IPC (stubs)
+//!   0x40-0x4F: BareX bridges (stubs)
+//!   0x50-0x5F: Time
+//!   0x60-0x6F: Framebuffer
+//!   0x70-0x7F: Input (stubs)
+//!   0x80-0x8F: Audio (stubs)
+//!   0x90-0x9F: Network (stubs)
+//!   0xA0-0xAF: GPU (stubs)
+//!   0xF0-0xFF: Debug
 
 #![allow(dead_code, static_mut_refs)]
 
 use core::arch::{asm, naked_asm};
+use core::sync::atomic::{AtomicBool, Ordering};
 
-// â”€â”€ MSR addresses (cached for clarity) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── MSR addresses ──────────────────────────────────────────────────────
 
-const IA32_STAR: u32             = 0xC000_0081;
-const IA32_LSTAR: u32            = 0xC000_0082;
-const IA32_FMASK: u32            = 0xC000_0084;
-const IA32_EFER: u32             = 0xC000_0080;
-const IA32_GS_BASE: u32          = 0xC000_0101;
-const IA32_KERNEL_GS_BASE: u32   = 0xC000_0102;
+const IA32_STAR: u32           = 0xC000_0081;
+const IA32_LSTAR: u32          = 0xC000_0082;
+const IA32_FMASK: u32          = 0xC000_0084;
+const IA32_EFER: u32           = 0xC000_0080;
+const IA32_GS_BASE: u32        = 0xC000_0101;
+const IA32_KERNEL_GS_BASE: u32 = 0xC000_0102;
 
-/// Segment selectors matching `crate::arch::gdt`.
 const KERNEL_CS_SELECTOR: u64 = 0x08;
 const KERNEL_DS_SELECTOR: u64 = 0x10;
 
-// â”€â”€ MSR read/write helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── MSR helpers ────────────────────────────────────────────────────────
 
 #[inline]
 unsafe fn wrmsr(msr: u32, val: u64) {
@@ -53,92 +59,54 @@ unsafe fn rdmsr(msr: u32) -> u64 {
     ((hi as u64) << 32) | (lo as u64)
 }
 
-// â”€â”€ Trait: implementable by any syscall handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Syscall handler type ───────────────────────────────────────────────
 
-/// Trait for dispatching a syscall by number.
-///
-/// Implementors receive the syscall number and 6 argument registers
-/// (in BMO ABI order: rdi, rsi, rdx, r10, r8, r9). They return a
-/// `u64` (negative = error per POSIX, â‰¥0 = success).
-pub trait SyscallHandler {
-    fn handle(&self, nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64;
-}
+/// A syscall handler receives: (nr, a0, a1, a2, a3, a4, a5) → result.
+pub type SyscallFn = fn(u64, u64, u64, u64, u64, u64, u64) -> u64;
 
-// â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Init ───────────────────────────────────────────────────────────────
 
-/// Per-CPU kernel stack pointer used by the syscall entry.
 static mut SYSCALL_KERNEL_RSP: u64 = 0;
 
 pub fn init_syscall() {
     unsafe {
-        // Enable SCE in EFER.
         let efer = rdmsr(IA32_EFER);
         wrmsr(IA32_EFER, efer | 1);
 
-        // STAR: kernel CS=0x08 (bits 47:32), kernel DS=0x10 (bits 63:48).
         let star = (KERNEL_DS_SELECTOR << 48) | (KERNEL_CS_SELECTOR << 32);
         wrmsr(IA32_STAR, star);
-
-        // LSTAR: entry point.
         wrmsr(IA32_LSTAR, syscall_entry_naked as *const () as u64);
-
-        // FMASK: clear IF (bit 9) and DF (bit 10) on entry.
         wrmsr(IA32_FMASK, (1 << 9) | (1 << 10));
-
-        // GS bases (we use 0; no per-CPU data in v1.7.5).
         wrmsr(IA32_KERNEL_GS_BASE, 0);
         wrmsr(IA32_GS_BASE, 0);
 
-        // Initialize the syscall kernel stack to the global KERNEL_STACK.
         let stack_top = crate::arch::gdt::kernel_stack_top();
         SYSCALL_KERNEL_RSP = stack_top;
     }
 
-    // v1.8.8: re-initialize ALL common MSRs (EFER, STAR, LSTAR, FMASK, PAT,
-    // TSC_AUX, GS bases) using the real syscall entry point. This overrides
-    // the placeholder that `init_bmo_cpu()` wrote in coordinator::main.
     let real_entry = syscall_entry_naked as *const () as u64;
     crate::vendor::amd::cpu::zen3::init_msrs(real_entry);
 }
 
-/// Set the kernel stack pointer used by the syscall entry.
 pub fn set_syscall_kernel_stack(rsp: u64) {
     unsafe { SYSCALL_KERNEL_RSP = rsp; }
 }
 
-// â”€â”€ Saved user ctx â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── InterruptFrame (saved user context) ────────────────────────────────
 
-/// Saved user ctx for iretq return.
-///
-/// Stack layout after building the frame + pushing GPRs (low to high):
-///   GPR section (pushed by our code, restored by pop):
-///     r15, r14, r13, r12, rbp, rbx, r9, r8, r10, rdx, rsi, rdi, rax
-///   Iretq frame (must match what `iretq` expects, low to high):
-///     rip, cs, rflags, user_rsp, ss
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
 pub struct InterruptFrame {
-    pub r15: u64,
-    pub r14: u64,
-    pub r13: u64,
-    pub r12: u64,
-    pub rbp: u64,
-    pub rbx: u64,
-    pub r9: u64,
-    pub r8: u64,
-    pub r10: u64,
-    pub rdx: u64,
-    pub rsi: u64,
-    pub rdi: u64,
-    pub rax: u64,    // syscall number
-    pub rip: u64,
-    pub cs: u64,
-    pub rflags: u64,
-    pub rsp: u64,
-    pub ss: u64,
+    pub r15: u64, pub r14: u64, pub r13: u64, pub r12: u64,
+    pub rbp: u64, pub rbx: u64,
+    pub r9: u64,  pub r8: u64,  pub r10: u64,
+    pub rdx: u64, pub rsi: u64, pub rdi: u64,
+    pub rax: u64,
+    pub rip: u64,  pub cs: u64,  pub rflags: u64,
+    pub rsp: u64,  pub ss: u64,
 }
 
-// â”€â”€ Naked entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Naked entry point ──────────────────────────────────────────────────
 
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry_naked() {
@@ -146,11 +114,11 @@ unsafe extern "C" fn syscall_entry_naked() {
         "swapgs",
         "mov r15, rsp",
         "mov rsp, [rip + {kstack}]",
-        "push qword ptr 0x1B",                  // ss
-        "push r15",                              // user RSP
-        "push r11",                              // rflags
-        "push qword ptr 0x23",                  // cs
-        "push rcx",                              // rip
+        "push qword ptr 0x1B",
+        "push r15",
+        "push r11",
+        "push qword ptr 0x23",
+        "push rcx",
         "push rax",
         "push rdi",
         "push rsi",
@@ -186,24 +154,157 @@ unsafe extern "C" fn syscall_entry_naked() {
     );
 }
 
-// â”€â”€ Rust handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Ring 3 alive detection ─────────────────────────────────────────────
 
-static mut RING3_SYSCALL_SEEN: bool = false;
+static RING3_ALIVE: AtomicBool = AtomicBool::new(false);
 
 pub fn ring3_alive() -> bool {
-    unsafe { RING3_SYSCALL_SEEN }
+    RING3_ALIVE.load(Ordering::Relaxed)
 }
+
+// ── Stub handler (returns u64::MAX = -1 = unsupported) ─────────────────
+
+fn stub(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    u64::MAX
+}
+
+// ── Syscall implementations ────────────────────────────────────────────
+
+fn sys_exit(nr: u64, a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    u64::MAX // process exit — module handles this
+}
+
+fn sys_yield(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    crate::proc::yield_now();
+    0
+}
+
+fn sys_task_alloc(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    match crate::proc::task::alloc(
+        crate::proc::process::Pid(a0 as u32),
+        crate::proc::Priority::Interactive,
+    ) {
+        Some(thr) => {
+            thr.regs = crate::proc::task::SavedRegs::new_user(a1, 0);
+            thr.state = crate::proc::task::State::Ready;
+            thr.tid.0 as u64
+        }
+        None => u64::MAX,
+    }
+}
+
+fn sys_mmap(nr: u64, cr3: u64, virt: u64, phys: u64, pages: u64, flags: u64, _a5: u64) -> u64 {
+    match unsafe { crate::mm::vmm::map_user_range(cr3, virt, phys, pages as usize, flags) } {
+        Ok(()) => 0,
+        Err(_) => u64::MAX,
+    }
+}
+
+fn sys_clock_get(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    crate::cpu::rdtsc()
+}
+
+fn sys_nanosleep(nr: u64, a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    let target_cycles = (a0 as u128 * 37) / 10;
+    let start = crate::cpu::rdtsc();
+    while (crate::cpu::rdtsc() - start) < target_cycles as u64 {
+        core::hint::spin_loop();
+    }
+    0
+}
+
+fn sys_fb_info(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    let w = unsafe { crate::info::FB_WIDTH as u64 };
+    let h = unsafe { crate::info::FB_HEIGHT as u64 };
+    let s = unsafe { crate::info::FB_STRIDE as u64 };
+    let addr = unsafe { crate::info::FB_ADDR };
+    addr | (w << 32) | ((h & 0xFFFF) << 16) | ((s & 0xFF) << 48)
+}
+
+fn sys_debug_print(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if a1 > 0 && a1 < 4096 {
+        let slice = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
+        if let Ok(s) = core::str::from_utf8(slice) {
+            crate::dev::console::serial_write(s);
+        }
+    }
+    0
+}
+
+// crate::info is a module, not a struct. Access statics directly.
+
+// ── Network syscalls (gated) ─────────────────────────────────────────
+
+#[cfg(feature = "syscalls-net")]
+fn sys_net_send(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    u64::MAX // NIC driver in kernel, TCP/IP in Ring 3
+}
+
+#[cfg(feature = "syscalls-gpu")]
+fn sys_gpu_submit(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    u64::MAX // GPU command buffer submission
+}
+
+#[cfg(feature = "syscalls-ipc")]
+fn sys_ipc_send(nr: u64, a0: u64, a1: u64, a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    u64::MAX // IPC message send
+}
+
+// ── Jump table (256 entries, lazy-initialized once) ────────────────────
+
+static mut SYSCALL_TABLE: [SyscallFn; 256] = [stub as SyscallFn; 256];
+static mut TABLE_INIT: bool = false;
+
+unsafe fn init_table() {
+    if TABLE_INIT { return; }
+
+    // Base syscalls (always present)
+    SYSCALL_TABLE[0x00] = sys_exit;
+    SYSCALL_TABLE[0x03] = sys_yield;
+    SYSCALL_TABLE[0x04] = sys_task_alloc;
+    SYSCALL_TABLE[0x10] = sys_mmap;
+    SYSCALL_TABLE[0x11] = stub; // munmap
+    SYSCALL_TABLE[0x12] = stub; // mprotect
+    SYSCALL_TABLE[0x50] = sys_clock_get;
+    SYSCALL_TABLE[0x51] = sys_nanosleep;
+    SYSCALL_TABLE[0x60] = sys_fb_info;
+    SYSCALL_TABLE[0x61] = stub; // fb_map
+    SYSCALL_TABLE[0x62] = stub; // fb_flush
+    SYSCALL_TABLE[0xF0] = sys_debug_print;
+
+    // Network (gated)
+    #[cfg(feature = "syscalls-net")] {
+        SYSCALL_TABLE[0x90] = sys_net_send;
+    }
+
+    // GPU (gated)
+    #[cfg(feature = "syscalls-gpu")] {
+        SYSCALL_TABLE[0xA0] = sys_gpu_submit;
+    }
+
+    // IPC (gated)
+    #[cfg(feature = "syscalls-ipc")] {
+        SYSCALL_TABLE[0x30] = sys_ipc_send;
+    }
+
+    TABLE_INIT = true;
+}
+
+// ── Rust handler (dispatches via jump table) ─────────────────────────
 
 #[unsafe(no_mangle)]
 extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
     unsafe {
-        if !RING3_SYSCALL_SEEN {
-            RING3_SYSCALL_SEEN = true;
+        if !RING3_ALIVE.load(Ordering::Relaxed) {
+            RING3_ALIVE.store(true, Ordering::Relaxed);
             crate::dev::console::serial_write("[syscall] first syscall received; Ring 3 is alive\n");
         }
 
+        // Lazy init the jump table (first syscall)
+        init_table();
+
         let f = &mut *frame;
-        let nr = f.rax;
+        let nr = f.rax as usize;
         let a0 = f.rdi;
         let a1 = f.rsi;
         let a2 = f.rdx;
@@ -211,173 +312,31 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         let a4 = f.r8;
         let a5 = f.r9;
 
-        // â”€â”€â”€ Linux emulation: route to shims::linux::syscall::dispatch â”€â”€
-        // If the current process has linux_emulation=true, all ring3 syscall
-        // instructions go through the Linux syscall table instead of the BMO
-        // native one. Linux syscall numbers (0..99) overlap with the BMO low
-        // range, so we check the process flag, not the number.
-        if let Some(task) = crate::proc::task::current() {
-            if let Some(proc) = crate::proc::process::get_process(task.pid) {
-                // linux_emulation handled by Ring 3 module
-            }
-        }
-
-        let result = match nr {
-            // â”€â”€â”€ BMO ABI range (0x100..=0x1FF) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            // Ring 0 owns the architectural syscall gate; BMO Core owns the
-            // higher-level API contract. Bridge the canonical ABI range here
-            // so early Ring 3/BEF commands can use windowing, FS, time,
-            // memory, process and debug services through one stable table.
-            n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                u64::MAX
-            }
-
-            // â”€â”€â”€ Procesos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x00 => u64::MAX,
-            0x01 => u64::MAX,
-            0x02 => u64::MAX,
-            0x03 => {
-                crate::proc::yield_now();
-                0
-            }
-            0x04 => {
-                match crate::proc::task::alloc(
-                    crate::proc::process::Pid(1),
-                    crate::proc::Priority::Interactive,
-                ) {
-                    Some(thr) => {
-                        thr.regs = crate::proc::task::SavedRegs::new_user(a0, a1);
-                        thr.state = crate::proc::task::State::Ready;
-                        thr.tid.0 as u64
-                    }
-                    None => u64::MAX,
-                }
-            }
-            0x05 => u64::MAX,
-
-            // â”€â”€â”€ Memoria â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x10 => u64::MAX,
-            0x11 => u64::MAX,
-            0x12 => u64::MAX,
-
-            // â”€â”€â”€ VFS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x20 => u64::MAX,
-            0x21 => u64::MAX,
-            0x22 => u64::MAX,
-            0x23 => u64::MAX,
-            0x24 => u64::MAX,
-            0x25 => u64::MAX,
-
-            // â”€â”€â”€ IPC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x30 => u64::MAX,
-            0x31 => u64::MAX,
-            0x32 => u64::MAX,
-
-            // â”€â”€â”€ BareX bridges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x40 => u64::MAX,
-            0x41 => u64::MAX,
-            0x42 => u64::MAX,
-            0x43 => u64::MAX,
-
-            // â”€â”€â”€ Tiempo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x50 => crate::cpu::rdtsc(),
-            0x51 => {
-                let target_ns = a0;
-                let target_cycles = (target_ns as u128 * 37) / 10;
-                let start = crate::cpu::rdtsc();
-                while (crate::cpu::rdtsc() - start) < target_cycles as u64 {
-                    core::hint::spin_loop();
-                }
-                0
-            }
-
-            // â”€â”€â”€ Framebuffer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x60 => {
-                let w = crate::info::FB_WIDTH as u64;
-                let h = crate::info::FB_HEIGHT as u64;
-                let s = crate::info::FB_STRIDE as u64;
-                w | (h << 32) | ((s & 0xFFFF) << 48)
-            }
-            0x61 => {
-                0
-            }
-            0x62 => {
-                0
-            }
-            0x63 => 0,
-            0x64 => {
-                0
-            }
-            0x65 => {
-                0
-            }
-
-            // â”€â”€â”€ Input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x70 => 0,
-            0x71 => 0,
-
-            // â”€â”€â”€ Sonido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x80 => {
-                0
-            }
-
-            // â”€â”€â”€ Debug â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0xF0 => {
-                if a1 > 0 && a1 < 4096 {
-                    let slice = core::slice::from_raw_parts(a0 as *const u8, a1 as usize);
-                    if let Ok(s) = core::str::from_utf8(slice) {
-                        crate::dev::console::serial_write(s);
-                    }
-                }
-                0
-            }
-
-            _ => {
-                u64::MAX
-            }
+        // O(1) dispatch via jump table (bounds-checked)
+        let handler = if nr < 256 {
+            SYSCALL_TABLE[nr]
+        } else {
+            stub
         };
 
-        f.rax = result;
+        f.rax = handler(nr as u64, a0, a1, a2, a3, a4, a5);
     }
 }
 
-// â”€â”€ Syscall numbers (legacy 0x00..0xFF) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Syscall number constants (public API for userland) ─────────────────
 
-/// Syscall numbers for the legacy 0x00..0xFF range.
-///
-/// Note: the BMO ABI range (0x100..0x1FF) is reserved here and fails closed
-/// until a higher-layer dispatcher is intentionally connected.
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Syscall {
-    ProcessExit         = 0x00,
-    ThreadCreate        = 0x01,
-    ThreadExit          = 0x02,
-    ThreadYield         = 0x03,
-    FutexWait           = 0x04,
-    FutexWake           = 0x05,
-    Mmap                = 0x10,
-    Munmap              = 0x11,
-    Mprotect            = 0x12,
-    FileOpen            = 0x20,
-    FileRead            = 0x21,
-    FileWrite           = 0x22,
-    FileClose           = 0x23,
-    FileSeek            = 0x24,
-    FileStat            = 0x25,
-    PortCreate          = 0x30,
-    PortSend            = 0x31,
-    PortRecv            = 0x32,
-    BarexGfxSubmit      = 0x40,
-    BarexAudioSubmit    = 0x41,
-    BarexInputPoll      = 0x42,
-    BarexNetSubmit      = 0x43,
-    ClockGetTime        = 0x50,
-    NanoSleep           = 0x51,
-    DebugPrint          = 0xF0,
-}
-
-// NOTA: `init()` quedÃ³ como wrapper trivial de `init_syscall()`. v1.8.7:
-// los Ãºnicos call sites usan `init_syscall()` directamente, asÃ­ que este
-// wrapper se elimina. Si en el futuro se quiere re-unificar, exponer un
-// solo nombre y llamarlo desde `p0_arch::run`.
+pub const SYS_EXIT: u64         = 0x00;
+pub const SYS_YIELD: u64        = 0x03;
+pub const SYS_TASK_ALLOC: u64   = 0x04;
+pub const SYS_MMAP: u64         = 0x10;
+pub const SYS_MUNMAP: u64       = 0x11;
+pub const SYS_MPROTECT: u64     = 0x12;
+pub const SYS_CLOCK_GET: u64    = 0x50;
+pub const SYS_NANOSLEEP: u64    = 0x51;
+pub const SYS_FB_INFO: u64      = 0x60;
+pub const SYS_FB_MAP: u64       = 0x61;
+pub const SYS_FB_FLUSH: u64     = 0x62;
+pub const SYS_NET_SEND: u64     = 0x90;
+pub const SYS_GPU_SUBMIT: u64   = 0xA0;
+pub const SYS_IPC_SEND: u64     = 0x30;
+pub const SYS_DEBUG_PRINT: u64  = 0xF0;

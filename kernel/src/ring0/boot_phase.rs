@@ -109,6 +109,9 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.memory.heap_used_bytes = crate::mm::heap::heap_used() as u64;
     write_crash_marker(2107);
     crate::uefi_rt::write_boot_stage("p1_done");
+
+    // Init vDSO page
+    crate::ring0::vdso::init();
     let phase1_end = crate::cpu::rdtsc();
     ctx.record_phase(1, prev_end, phase1_end);
     s_log("[phase1] done");
