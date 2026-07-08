@@ -38,7 +38,7 @@ static ALLOCATOR: KernelHeapAlloc = KernelHeapAlloc;
 
 // ── Framebuffer text (on-screen diagnostics, no serial needed) ────────
 
-const FONT8: [[u8; 8]; 48] = [
+const FONT8: [[u8; 8]; 54] = [
     // space ! " # $ % & ' ( ) * + , - . /
     [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00], // 32: space
     [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00], // 33: !
@@ -90,6 +90,12 @@ const FONT8: [[u8; 8]; 48] = [
     [0x66,0x7E,0x7E,0x66,0x66,0x66,0x66,0x00], // 77: M
     [0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00], // 78: N
     [0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00], // 79: O
+    [0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00], // 80: P
+    [0x3C,0x66,0x66,0x66,0x7E,0x6C,0x3E,0x00], // 81: Q
+    [0x7C,0x66,0x66,0x7C,0x6C,0x66,0x66,0x00], // 82: R
+    [0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00], // 83: S
+    [0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00], // 84: T
+    [0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00], // 85: U
 ];
 
 const WHITE: u32 = 0xFFFFFFFF;
@@ -132,51 +138,65 @@ fn fb_fill_rect(hal: &bmo_hal_defs::HalServices, x: u32, y: u32, w: u32, h: u32,
     for dy in 0..h { for dx in 0..w { fb_put_pixel(hal, x + dx, y + dy, color); } }
 }
 
-fn show_diagnostics(hal: &bmo_hal_defs::HalServices, xhci_mmio: u64, xhci_ok: bool, hid_ok: bool, ps2_active: bool) {
+fn show_diagnostics(hal: &bmo_hal_defs::HalServices, info: &DiagInfo) {
     let x = 16u32;
     let mut y = 16u32;
     let w = hal.fb_width;
-    let _h = hal.fb_height;
 
-    // Background bar
-    fb_fill_rect(hal, 0, 0, w, 80, 0xFF222222);
+    fb_fill_rect(hal, 0, 0, w, 120, 0xFF222222);
 
-    // Title
     fb_draw_str(hal, x, y, "BMO INPUT DIAGNOSTICS", WHITE);
     y += CHAR_H as u32;
     y += 4;
 
     // XHCI line
-    let xhci_color = if xhci_ok { GREEN } else { RED };
-    if xhci_mmio == 0 {
-        fb_draw_str(hal, x, y, "XHCI:  NONE (no controller found)", xhci_color);
+    let xhci_color = if info.xhci_found { GREEN } else { RED };
+    if info.xhci_mmio == 0 {
+        fb_draw_str(hal, x, y, "XHCI:  NONE", xhci_color);
     } else {
         fb_draw_str(hal, x, y, "XHCI:  OK mmio=", xhci_color);
-        // Simple hex display of the address
-        let mut buf = [0u8; 10];
-        let mut v = xhci_mmio;
-        for i in (0..10).rev() {
-            let d = (v & 0xF) as u8;
-            buf[i] = if d < 10 { b'0' + d } else { b'A' + (d - 10) };
-            v >>= 4;
-        }
+        let mut buf = [0u8; 10]; let mut v = info.xhci_mmio;
+        for i in (0..10).rev() { let d = (v & 0xF) as u8; buf[i] = if d < 10 { b'0' + d } else { b'A' + (d - 10) }; v >>= 4; }
         fb_draw_str(hal, x + 16 * FONT_W as u32, y, core::str::from_utf8(&buf).unwrap_or("0000000000"), xhci_color);
     }
     y += CHAR_H as u32;
 
+    // Controller init
+    fb_draw_str(hal, x, y, "CTRL:  ", if info.ctrl_init { GREEN } else { RED });
+    fb_draw_str(hal, x + 7 * FONT_W as u32, y, info.ctrl_msg, if info.ctrl_init { GREEN } else { RED });
+    y += CHAR_H as u32;
+
+    // Ports
+    fb_draw_str(hal, x, y, "PORTS: ", WHITE);
+    let mut buf2 = [0u8; 4]; let mut p = info.port_count;
+    for i in (0..4).rev() { if p > 0 { buf2[i] = b'0' + (p % 10) as u8; p /= 10; } else if i > 0 { buf2[i] = b'0'; } else { buf2[i] = b'0'; } }
+    if info.port_count > 0 {
+        if info.port_count >= 100 { buf2[0] = b'0' + ((info.port_count/100) % 10) as u8; buf2[1] = b'0' + ((info.port_count/10) % 10) as u8; buf2[2] = b'0' + (info.port_count % 10) as u8; buf2[3] = 0; }
+    }
+    fb_draw_str(hal, x + 7 * FONT_W as u32, y, core::str::from_utf8(&buf2).unwrap_or("0"), WHITE);
+    y += CHAR_H as u32;
+
     // HID line
-    fb_draw_str(hal, x, y, "HID:   ", if hid_ok { GREEN } else { RED });
-    fb_draw_str(hal, x + 7 * FONT_W as u32, y, if hid_ok { "OK" } else { "FAIL" }, if hid_ok { GREEN } else { RED });
+    fb_draw_str(hal, x, y, "HID:   ", if info.hid_ok { GREEN } else { RED });
+    fb_draw_str(hal, x + 7 * FONT_W as u32, y, info.hid_msg, if info.hid_ok { GREEN } else { RED });
     y += CHAR_H as u32;
 
     // PS/2 line
     fb_draw_str(hal, x, y, "PS/2:  ", WHITE);
-    fb_draw_str(hal, x + 7 * FONT_W as u32, y, if ps2_active { "active" } else { "fallback" }, WHITE);
+    fb_draw_str(hal, x + 7 * FONT_W as u32, y, info.ps2_msg, WHITE);
 
-    // Wait 3 seconds
-    for _ in 0..300 {
-        (hal.busy_wait_ms)(10);
-    }
+    for _ in 0..300 { (hal.busy_wait_ms)(10); }
+}
+
+struct DiagInfo {
+    xhci_mmio: u64,
+    xhci_found: bool,
+    ctrl_init: bool,
+    ctrl_msg: &'static str,
+    port_count: u8,
+    hid_ok: bool,
+    hid_msg: &'static str,
+    ps2_msg: &'static str,
 }
 
 // ── XhciHal implementation (wraps HalServices) ────────────────────────
@@ -200,12 +220,7 @@ impl bmo_xhci::XhciHal for ModuleXhciHal {
         if phys == 0 { None } else { Some(phys) }
     }
     fn phys_to_virt(&self, phys: u64) -> *mut u8 {
-        if phys >= self.hal().HIGH_MEM_BASE {
-            phys as *mut u8
-        } else {
-            // Below 4GB, identity-mapped by UEFI
-            phys as *mut u8
-        }
+        self.hal().HIGH_MEM_BASE.wrapping_add(phys) as *mut u8
     }
     fn log(&self, msg: &str) { (self.hal().serial_write)(msg); }
     fn log_u64(&self, msg: &str, val: u64) { (self.hal().serial_write_u64)(val, 16); }
@@ -221,10 +236,10 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
         (hal.serial_write)("[mod_bmo_core] module loaded\n");
 
         // Init XHCI + USB HID for keyboard/mouse
-        let (xhci_mmio, xhci_ok, hid_ok) = init_xhci(hal);
+        let info = init_xhci(hal);
 
         // Show diagnostics ON SCREEN (no keyboard needed)
-        show_diagnostics(hal, xhci_mmio, xhci_ok, hid_ok, xhci_mmio == 0);
+        show_diagnostics(hal, &info);
 
         // Wire USB HID poll into bmo_core's input layer
         unsafe {
@@ -246,15 +261,16 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
     loop { unsafe { core::arch::asm!("hlt"); } }
 }
 
-fn init_xhci(hal: &bmo_hal_defs::HalServices) -> (u64, bool, bool) {
+fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
     let xhci_mmio = unsafe {
         if (hal.boot_info).is_null() { 0 }
         else { (*(hal.boot_info)).xhci_mmio }
     };
 
     if xhci_mmio == 0 {
-        (hal.serial_write)("[mod_bmo_core] no XHCI controller (xhci_mmio=0), input via PS/2 only\n");
-        return (0, false, false);
+        (hal.serial_write)("[mod_bmo_core] no XHCI controller\n");
+        return DiagInfo { xhci_mmio: 0, xhci_found: false, ctrl_init: false, ctrl_msg: "-",
+            port_count: 0, hid_ok: false, hid_msg: "no ctrl", ps2_msg: "active" };
     }
 
     (hal.serial_write)("[mod_bmo_core] XHCI mmio=0x");
@@ -267,28 +283,55 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> (u64, bool, bool) {
     bmo_xhci::init_hal(static_backend as &'static dyn bmo_xhci::XhciHal);
     bmo_xhci::set_mmio(xhci_mmio);
 
-    (hal.serial_write)("[mod_bmo_core] initializing XHCI controller...\n");
-    let xhci_ok = unsafe { bmo_xhci::init(xhci_mmio) };
-    if !xhci_ok {
-        (hal.serial_write)("[mod_bmo_core] XHCI controller init FAILED\n");
-        return (xhci_mmio, false, false);
-    }
-    (hal.serial_write)("[mod_bmo_core] XHCI controller initialized OK\n");
+    // Init XHCI controller explicitly
+    (hal.serial_write)("[mod_bmo_core] calling bmo_xhci::init()...\n");
+    let ctrl_init = unsafe { bmo_xhci::init(xhci_mmio) };
+    (hal.serial_write)(if ctrl_init { "[mod_bmo_core] XHCI init OK\n" } else { "[mod_bmo_core] XHCI init FAIL\n" });
 
+    if !ctrl_init {
+        return DiagInfo { xhci_mmio, xhci_found: true, ctrl_init: false, ctrl_msg: "FAIL",
+            port_count: 0, hid_ok: false, hid_msg: "ctrl fail", ps2_msg: "active" };
+    }
+
+    // Check controller + ports
+    let port_count = unsafe {
+        bmo_xhci::controller().map(|c| c.max_ports).unwrap_or(0)
+    };
+    (hal.serial_write)("[mod_bmo_core] ports=");
+    (hal.serial_write_u64)(port_count as u64, 10);
+    (hal.serial_write)("\n");
+
+    // Try UHID init
     let mut uhid = bmo_uhid::UsbHidHal::new();
     let hid_ok = {
         use bmo_input::hal::InputHal;
         uhid.init()
     };
+
     if hid_ok {
         (hal.serial_write)("[mod_bmo_core] USB HID ready\n");
+        unsafe { UHID_PTR = Some(uhid); }
+        DiagInfo { xhci_mmio, xhci_found: true, ctrl_init: true, ctrl_msg: "OK",
+            port_count, hid_ok: true, hid_msg: "OK", ps2_msg: "fallback" }
     } else {
-        (hal.serial_write)("[mod_bmo_core] USB HID init failed\n");
-        return (xhci_mmio, true, false);
-    }
+        // Check if any devices at all
+        let devices = unsafe {
+            bmo_xhci::controller().map(|c| {
+                let mut count = 0u8;
+                for p in 0..c.max_ports {
+                    if unsafe { bmo_xhci::port_speed(p) } != 0 { count += 1; }
+                }
+                count
+            }).unwrap_or(0)
+        };
+        (hal.serial_write)("[mod_bmo_core] USB HID FAIL (");
+        (hal.serial_write_u64)(devices as u64, 10);
+        (hal.serial_write)(" devices on bus)\n");
 
-    unsafe { UHID_PTR = Some(uhid); }
-    (xhci_mmio, true, true)
+        let msg = if devices == 0 { "0 devices" } else { "enum fail" };
+        DiagInfo { xhci_mmio, xhci_found: true, ctrl_init: true, ctrl_msg: "OK",
+            port_count, hid_ok: false, hid_msg: msg, ps2_msg: "active" }
+    }
 }
 
 static mut UHID_PTR: Option<bmo_uhid::UsbHidHal> = None;

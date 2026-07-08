@@ -138,8 +138,14 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     let scan = crate::dev::pcie::scan_pci_bus();
     s_log("[phase2] PCI scan complete");
 
-    // Store XHCI controller address for modules
+    // Store XHCI controller address for modules + map MMIO
     if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
+        // Map XHCI MMIO region (2MB huge page) so modules can access it
+        let mmio_base = xhci_mmio & !0x1F_FFFF; // align 2MiB
+        let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
+        let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
+        s_log("[phase2] XHCI MMIO mapped at high-mem");
+
         unsafe {
             let bi = crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo;
             (*bi).xhci_mmio = xhci_mmio;
