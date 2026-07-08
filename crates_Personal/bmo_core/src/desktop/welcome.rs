@@ -368,6 +368,7 @@ pub fn run() -> ! {
     let boot_tsc = crate::cpu::rdtsc();
     let mut last_input_tsc = boot_tsc;
     let mut last_sec: u64 = u64::MAX;
+    let mut last_flush_sec: u64 = u64::MAX;
     let mut dirty = true;
 
     render_dynamic(&fb, 0, AUTO_BOOT_SEC);
@@ -394,6 +395,11 @@ pub fn run() -> ! {
         if sec != last_sec {
             last_sec = sec;
             dirty = true;
+        }
+
+        if sec != last_flush_sec && sec % 2 == 0 {
+            last_flush_sec = sec;
+            crate::desktop::log_overlay::flush_to_disk();
         }
 
         if dirty {

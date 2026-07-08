@@ -160,6 +160,7 @@ name = "bmo-core"
 version = "1.8.16"
 dependencies = [
  "bmo-abi",
+ "bmo-ahci",
  "bmo-boot-protocol",
  "bmo-input",
  "bmo-uhid",

@@ -31,6 +31,7 @@ const CMD_CR:  u32 = 1 << 15;
 const SSTS_DET: u32 = 0x0F;
 const FIS_TYPE_REG_H2D: u8 = 0x27;
 const ATA_CMD_READ_DMA_EX: u8 = 0x25;
+const ATA_CMD_WRITE_DMA_EX: u8 = 0x35;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortState { Empty, Present, Active, Error }
@@ -168,6 +169,57 @@ pub unsafe fn read_sectors(port_idx: u8, lba: u64, sector_count: u16, buf: *mut 
     fis.write_volatile(FIS_TYPE_REG_H2D);
     fis.add(1).write_volatile(0x80); // C=1
     fis.add(2).write_volatile(ATA_CMD_READ_DMA_EX);
+    fis.add(3).write_volatile(0);
+    let lb = lba.to_le_bytes();
+    fis.add(4).write_volatile(lb[0]); fis.add(5).write_volatile(lb[1]); fis.add(6).write_volatile(lb[2]);
+    fis.add(7).write_volatile(0x40);
+    fis.add(8).write_volatile(lb[3]); fis.add(9).write_volatile(lb[4]); fis.add(10).write_volatile(lb[5]);
+    fis.add(11).write_volatile(0);
+    fis.add(12).write_volatile((sector_count & 0xFF) as u8);
+    fis.add(13).write_volatile((sector_count >> 8) as u8);
+
+    // PRDT
+    let prdt = ct_virt.add(0x80) as *mut u32;
+    prdt.write_volatile(buf as u32);
+    prdt.add(1).write_volatile(0);
+    prdt.add(2).write_volatile(0);
+    let bc = (sector_count as u32).min(65535 / 512) * 512;
+    prdt.add(3).write_volatile(bc | (1 << 31));
+
+    // CFL + PRDBC
+    let cl_hdr = cl_virt;
+    cl_hdr.add(2).write_volatile(0);
+    cl_hdr.add(3).write_volatile(bc | (5 << 16));
+
+    port_write(mmio, port_idx, PORT_CI, 1);
+
+    for _ in 0..1000000 {
+        let ci = port_read(mmio, port_idx, PORT_CI);
+        let is_val = port_read(mmio, port_idx, PORT_IS);
+        if (ci & 1) == 0 { port_write(mmio, port_idx, PORT_IS, is_val); return sector_count; }
+        if is_val & (1 << 30) != 0 { port_write(mmio, port_idx, PORT_IS, is_val); return 0; }
+        core::hint::spin_loop();
+    }
+    0
+}
+
+/// Write sectors to a port from a buffer.
+pub unsafe fn write_sectors(port_idx: u8, lba: u64, sector_count: u16, buf: *const u8) -> u16 {
+    let ctrl = match CONTROLLER.as_ref() { Some(c) => c, None => return 0 };
+    let port = &ctrl.ports[port_idx as usize];
+    let mmio = ctrl.mmio_base;
+    if port.command_list_phys == 0 { return 0; }
+    let hal = storage_hal::hal();
+
+    let cl_virt = hal.phys_to_virt(port.command_list_phys) as *mut u32;
+    let ct_phys = cl_virt.read_volatile() as u64;
+    let ct_virt = hal.phys_to_virt(ct_phys) as *mut u8;
+
+    // Build command FIS
+    let fis = ct_virt;
+    fis.write_volatile(FIS_TYPE_REG_H2D);
+    fis.add(1).write_volatile(0x80); // C=1
+    fis.add(2).write_volatile(ATA_CMD_WRITE_DMA_EX);
     fis.add(3).write_volatile(0);
     let lb = lba.to_le_bytes();
     fis.add(4).write_volatile(lb[0]); fis.add(5).write_volatile(lb[1]); fis.add(6).write_volatile(lb[2]);

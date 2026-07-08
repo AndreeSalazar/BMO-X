@@ -8,6 +8,46 @@ const LOG_LINES_MAX: usize = 20;
 static mut LOG_LINES: [[u8; LOG_LINE_MAX]; LOG_LINES_MAX] = [[0; LOG_LINE_MAX]; LOG_LINES_MAX];
 static mut LOG_HEAD: usize = 0;
 static mut LOG_COUNT: usize = 0;
+static mut DISK_FLUSH_COUNT: usize = 0;
+
+/// Flush the current log buffer to fixed sectors on the boot drive.
+/// Writes to LBA 6 of the first active AHCI port (FAT32 reserved area,
+/// typically unused). The user can read it from Windows with:
+///
+///   $disk = Get-Disk | Where-Object {$_.OperationalStatus -eq 'Online'} | Select-Object -First 1
+///   $bytes = [System.IO.File]::ReadAllBytes("\\.\PhysicalDisk" + ...)
+///
+/// or more practically, by booting to a Linux live USB and running `dd`.
+pub fn flush_to_disk() {
+    unsafe {
+        if let Some(ctrl) = bmo_ahci::controller() {
+            let mut buf = [0u8; 512];
+            buf[0..4].copy_from_slice(b"BMOL");
+            buf[4..8].copy_from_slice(&(LOG_COUNT as u32).to_le_bytes());
+            buf[8..12].copy_from_slice(&(DISK_FLUSH_COUNT as u32).to_le_bytes());
+
+            let mut off = 16usize;
+            let start = if LOG_COUNT < LOG_LINES_MAX { 0 } else { LOG_HEAD };
+            for k in 0..LOG_COUNT.min(LOG_LINES_MAX) {
+                let idx = (start + k) % LOG_LINES_MAX;
+                let len = LOG_LINES[idx].iter().position(|&b| b == 0).unwrap_or(LOG_LINE_MAX);
+                let copy_len = len.min(LOG_LINE_MAX).min(512 - off);
+                if copy_len == 0 || off >= 500 { break; }
+                buf[off..off + copy_len].copy_from_slice(&LOG_LINES[idx][..copy_len]);
+                off += copy_len + 1; // newline separator
+                if off >= 510 { break; }
+            }
+
+            for i in 0..ctrl.port_count {
+                if ctrl.ports[i as usize].state == bmo_ahci::PortState::Active {
+                    bmo_ahci::write_sectors(i, 6, 1, buf.as_ptr());
+                    DISK_FLUSH_COUNT += 1;
+                    break;
+                }
+            }
+        }
+    }
+}
 
 pub fn log_line(s: &str) {
     let bytes = s.as_bytes();
