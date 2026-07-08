@@ -60,6 +60,14 @@ impl InputEvent {
         }
     }
 
+    pub fn mouse_wheel(delta: i8) -> Self {
+        Self {
+            timestamp: 0, device_id: 1,
+            kind: InputEventKind::MouseWheel, _pad: 0, code: 0,
+            value: (delta as i8 as i16 as u16) as u64,
+        }
+    }
+
     pub fn mouse_dx(&self) -> i16 {
         (self.value & 0xFFFF) as i16
     }

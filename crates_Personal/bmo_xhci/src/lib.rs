@@ -106,8 +106,15 @@ impl TransferRing {
         r.dma_virt.add(base    ).write_volatile((r.dma_phys & 0xFFFF_FFFF) as u32);
         r.dma_virt.add(base + 1).write_volatile(((r.dma_phys >> 32) & 0xFFFF_FFFF) as u32);
         r.dma_virt.add(base + 2).write_volatile(0);
-        r.dma_virt.add(base + 3).write_volatile((TRB_LINK << 10) | (1 << 1) | 1);
+        r.dma_virt.add(base + 3).write_volatile((TRB_LINK << 10) | 1);
         r
+    }
+
+    /// Enable Toggle Cycle on Link TRB (for event rings where xHC manages cycle).
+    pub unsafe fn enable_toggle_cycle(&mut self) {
+        let base = LAST_TRB_IDX * 4;
+        let dw3 = self.dma_virt.add(base + 3).read_volatile();
+        self.dma_virt.add(base + 3).write_volatile(dw3 | (1 << 1));
     }
 
     pub fn phys_with_dcs(&self) -> u64 { self.dma_phys | if self.pcs { 1 } else { 0 } }
@@ -328,7 +335,8 @@ pub unsafe fn init(mmio: u64) -> bool {
 
     // Build ring wrappers
     let cmd_ring = TransferRing::new(cv, ca & !0x3F);
-    let event_ring = TransferRing::new(ev, eo);
+    let mut event_ring = TransferRing::new(ev, eo);
+    event_ring.enable_toggle_cycle(); // xHC manages event ring cycle
 
     CTRL = Some(XhciController {
         mmio, op_base, rt_base: rt_off, db_base: db_off,

@@ -295,8 +295,21 @@ impl InputHal for UsbHidHal {
                                 let on = report.modifiers & MOD_LALT != 0;
                                 if count < buf.len() { buf[count] = InputEvent::key(0x38, on); count += 1; }
                             }
-                            if mod_chg & MOD_RCTRL != 0 || mod_chg & MOD_RCTRL != 0 {
-                                // right ctrl = left ctrl scancode for now
+                            if mod_chg & MOD_RCTRL != 0 {
+                                let on = report.modifiers & MOD_RCTRL != 0;
+                                if count < buf.len() { buf[count] = InputEvent::key(0x1D, on); count += 1; }
+                            }
+                            if mod_chg & MOD_LGUI != 0 {
+                                let on = report.modifiers & MOD_LGUI != 0;
+                                if count < buf.len() { buf[count] = InputEvent::key(0x5B, on); count += 1; }
+                            }
+                            if mod_chg & MOD_RALT != 0 {
+                                let on = report.modifiers & MOD_RALT != 0;
+                                if count < buf.len() { buf[count] = InputEvent::key(0x38, on); count += 1; }
+                            }
+                            if mod_chg & MOD_RGUI != 0 {
+                                let on = report.modifiers & MOD_RGUI != 0;
+                                if count < buf.len() { buf[count] = InputEvent::key(0x5C, on); count += 1; }
                             }
 
                             // Diff keys
@@ -345,6 +358,12 @@ impl InputHal for UsbHidHal {
                                     count += 1;
                                 }
                                 m.prev_buttons = report.buttons;
+                            }
+                            if report.wheel != 0 {
+                                if count < buf.len() {
+                                    buf[count] = InputEvent::mouse_wheel(report.wheel);
+                                    count += 1;
+                                }
                             }
                         }
                         // Re-queue

@@ -24,12 +24,12 @@ unsafe fn outb(port: u16, val: u8) {
 
 unsafe fn wait_input() -> bool {
     let mut timeout = 100000u32;
-    let s = inb(PS2_STATUS);
-    if s == 0xFF { return false; }
-    while (s & 0x02) != 0 && timeout > 0 {
+    if inb(PS2_STATUS) == 0xFF { return false; }
+    while timeout > 0 {
+        let s = inb(PS2_STATUS);
+        if s == 0xFF { return false; }
+        if (s & 0x02) == 0 { return true; }
         timeout -= 1; core::hint::spin_loop();
-        let next = inb(PS2_STATUS);
-        if next == 0xFF { return false; }
     }
     timeout > 0
 }
@@ -147,9 +147,18 @@ impl InputHal for Ps2Hal {
             // 6. Enable port 1 (keyboard)
             send_cmd(0xAE);
 
-            // 7. Reset keyboard
+            // 7. Reset keyboard — if no device, no ACK comes back
             send_data(0xFF);
-            wait_output(); // ACK
+            let ack = wait_output();
+            if ack != Some(0xFA) {
+                // No keyboard (or no ACK) — try one more read for BAT result
+                let bat = wait_output();
+                if ack.is_none() && bat.is_none() {
+                    // No device at all
+                    self.initialized = false;
+                    return false;
+                }
+            }
             wait_output(); // BAT result (0xAA or 0xFC)
 
             // 8. Enable scanning
