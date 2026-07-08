@@ -34,6 +34,7 @@ pub mod commands;
 pub mod theme;
 pub mod wallpaper;
 pub mod log_overlay;
+pub mod partition_view;
 
 pub const CYCLES_PER_MS: u64 = 3_700_000;
 

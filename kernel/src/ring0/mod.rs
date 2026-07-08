@@ -45,6 +45,7 @@ pub mod log;
 
 pub mod devour;
 pub mod omni;
+pub mod partition_layout;
 mod panic;
 
 // ═══════════════════════════════════════════════════════════════════

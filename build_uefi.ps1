@@ -31,6 +31,13 @@
     .\build_uefi.ps1 -Jobs 4             # Limit to 4 parallel cargo jobs
 .NOTES
     v3.1: SSD-first approach, simplified flash, parallel builds.
+
+    SSD Partition Layout (3-partition plan):
+      S: FASTOS-EFI    (10 GB) — UEFI boot partition. BOOTX64.EFI + kernel.elf.
+      T: FastOS-Data   (~50 GB) — Apps, user data, /home.
+      X: Commit-Real   (~60 GB) — TimeBack git repo (commits, trees, blobs).
+    Run with -Drive S to flash the kernel.efi to S: (FASTOS-EFI).
+    Type `layout` in the CABINA to display this layout.
 #>
 param(
     [switch]$Flash,

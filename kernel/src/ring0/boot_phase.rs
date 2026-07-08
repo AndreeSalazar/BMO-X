@@ -282,6 +282,24 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         }
     }
 
+    // Log SSD partition layout (S: FASTOS-EFI / T: FastOS-Data / X: Commit-Real)
+    crate::dev::console::serial_write("[phase2] SSD partition layout (S/T/X plan):\n");
+    for p in super::partition_layout::LAYOUT.iter() {
+        let role = match p.role {
+            0 => "EFI/Boot",
+            1 => "Data/Apps",
+            2 => "Commit-Real (TimeBack)",
+            _ => "Other",
+        };
+        crate::dev::console::serial_write(&alloc::format!(
+            "  [{}] {} ({} MB)\n",
+            p.letter as char,
+            p.label_str(),
+            p.size_mb
+        ));
+        let _ = role;
+    }
+
     // HD Audio detection (class=0x04, subclass=0x03)
     if let Some(hda_mmio) = crate::dev::pcie::find_device_mmio(0x04, 0x03) {
         crate::log::info("phase2", "HD Audio controller detected (Realtek ALC)");

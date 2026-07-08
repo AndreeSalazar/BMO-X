@@ -188,15 +188,15 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
             timeback::storage::register_nvram_sink(|name, data| {
                 let _ = nvram_log::set_variable(name, data);
             });
-            // Wire the SSD backend so the repo can write to T:/TIMEBACK.
+            // Wire the SSD backend so the repo can write to X:/TIMEBACK.
             timeback::storage::register_ssd_backend(ssd_backend_wrapper);
             // Use the kernel's TSC as the monotonic tick source.
             timeback::set_tick_source(crate::cpu::rdtsc);
             timeback::init();
-            // Auto-init the repo at T:/TIMEBACK if the SSD is available.
+            // Auto-init the repo at X:/TIMEBACK (Commit-Real partition).
             if bmo_ahci::controller().is_some() {
-                timeback::repo::init("T:/TIMEBACK");
-                cabina_daemon::info("timeback", "Repo initialized at T:/TIMEBACK");
+                timeback::repo::init("X:/TIMEBACK");
+                cabina_daemon::info("timeback", "Repo initialized at X:/TIMEBACK (Commit-Real)");
             } else {
                 cabina_daemon::warn("timeback", "No AHCI controller — repo will use NVRAM only");
             }
