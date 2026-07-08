@@ -26,6 +26,7 @@ pub mod heap;
 pub mod string;
 pub mod fmt;
 pub mod crt0;
+pub mod input;
 
 mod init;
 pub mod ffi;
