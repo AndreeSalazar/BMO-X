@@ -231,6 +231,25 @@ fn sys_debug_print(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5:
     0
 }
 
+// ── Port I/O (for Ring 3 drivers: PS/2 keyboard, ATA, etc.) ────────────
+
+fn sys_port_in(_nr: u64, port: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if port > 0xFFFF { return u64::MAX; }
+    unsafe {
+        let val: u8;
+        core::arch::asm!("in al, dx", in("dx") port as u16, out("al") val, options(nostack, nomem));
+        val as u64
+    }
+}
+
+fn sys_port_out(_nr: u64, port: u64, val: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if port > 0xFFFF { return u64::MAX; }
+    unsafe {
+        core::arch::asm!("out dx, al", in("dx") port as u16, in("al") val as u8, options(nostack, nomem));
+    }
+    0
+}
+
 // crate::info is a module, not a struct. Access statics directly.
 
 // ── Network syscalls (gated) ─────────────────────────────────────────
@@ -340,6 +359,8 @@ unsafe fn init_table() {
     SYSCALL_TABLE[0x60] = sys_fb_info;
     SYSCALL_TABLE[0x61] = stub; // fb_map
     SYSCALL_TABLE[0x62] = stub; // fb_flush
+    SYSCALL_TABLE[0x70] = sys_port_in;
+    SYSCALL_TABLE[0x71] = sys_port_out;
     SYSCALL_TABLE[0xF0] = sys_debug_print;
 
     // Network (gated)
@@ -407,6 +428,8 @@ pub const SYS_NANOSLEEP: u64    = 0x51;
 pub const SYS_FB_INFO: u64      = 0x60;
 pub const SYS_FB_MAP: u64       = 0x61;
 pub const SYS_FB_FLUSH: u64     = 0x62;
+pub const SYS_PORT_IN: u64      = 0x70;
+pub const SYS_PORT_OUT: u64     = 0x71;
 pub const SYS_NET_SEND: u64     = 0x90;
 pub const SYS_GPU_SUBMIT: u64   = 0xA0;
 pub const SYS_IPC_SEND: u64     = 0x30;
