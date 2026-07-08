@@ -65,7 +65,39 @@ pub fn create_checkpoint(name: &str) -> CheckpointId {
     id
 }
 
+/// Auto-commit: called periodically (e.g. every 1s from the timer tick).
+/// Creates a checkpoint tagged "auto" if at least `min_secs` have elapsed
+/// since the last auto-commit. Returns Some(id) if a checkpoint was made.
+pub fn auto_commit_if_due(min_secs: u64) -> Option<CheckpointId> {
+    let now = read_tick_ns();
+    let last = LAST_AUTO_NS.load(Ordering::SeqCst);
+    if last != 0 && now.saturating_sub(last) < min_secs * 1_000_000_000 { return None; }
+    LAST_AUTO_NS.store(now, Ordering::SeqCst);
+    Some(create_checkpoint("auto"))
+}
+
 /// Revert the system to a checkpoint. Returns the result.
 pub fn rollback(id: CheckpointId) -> RollbackResult {
     rollback::to(id)
+}
+
+static LAST_AUTO_NS: AtomicU64 = AtomicU64::new(0);
+
+/// Read the kernel's monotonic tick counter. Implemented by the kernel via
+/// the HAL; defaults to a software counter for testing.
+fn read_tick_ns() -> u64 {
+    // The kernel can register a tick_ns source via set_tick_source().
+    let cb = unsafe { TICK_SOURCE };
+    if let Some(f) = cb { return f(); }
+    // Fallback: use an AtomicU64 incremented in software
+    SOFTWARE_TICKS.fetch_add(1_000_000, Ordering::Relaxed)
+}
+
+static mut TICK_SOURCE: Option<fn() -> u64> = None;
+static SOFTWARE_TICKS: AtomicU64 = AtomicU64::new(0);
+
+/// Register a function that returns monotonic nanoseconds.
+/// The kernel calls this once during `timeback::init()`.
+pub fn set_tick_source(f: fn() -> u64) {
+    unsafe { TICK_SOURCE = Some(f); }
 }

@@ -85,38 +85,64 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         log_write:                |_, _| {}, /* stub */
 
         // ── cabina ──────────────────────────────────────────────────
-        cabina_init:              || {},
-        cabina_boot_ready:        || {},
+        cabina_init:              cabina_daemon::init,
+        cabina_boot_ready:        || {
+            cabina_daemon::info("bmo-kernel", "boot_ready — entering Ring 0 supervisor");
+        },
         cabina_info:              |module, msg| {
             let s: &'static str = unsafe { core::mem::transmute(module) };
             let m: &'static str = unsafe { core::mem::transmute(msg) };
-            crate::log::info(s, m);
+            cabina_daemon::info(s, m);
         },
         cabina_fault:             |module, msg| {
             let s: &'static str = unsafe { core::mem::transmute(module) };
             let m: &'static str = unsafe { core::mem::transmute(msg) };
-            crate::log::fault(s, m);
+            cabina_daemon::fault(s, m);
         },
         cabina_warn:              |module, msg| {
             let s: &'static str = unsafe { core::mem::transmute(module) };
             let m: &'static str = unsafe { core::mem::transmute(msg) };
-            crate::log::warn(s, m);
+            cabina_daemon::warn(s, m);
         },
-        cabina_trace:             |_, _| {}, /* stub */
+        cabina_trace:             |module, msg| {
+            let s: &'static str = unsafe { core::mem::transmute(module) };
+            let m: &'static str = unsafe { core::mem::transmute(msg) };
+            cabina_daemon::trace(s, m);
+        },
         cabina_panic_msg:         |module, msg| {
             let s: &'static str = unsafe { core::mem::transmute(module) };
             let m: &'static str = unsafe { core::mem::transmute(msg) };
-            crate::log::fault(s, m);
+            cabina_daemon::fault(s, m);
         },
-        cabina_info_u64:          |_, _, _| {}, /* stub */
-        cabina_warn_u64:          |_, _, _| {}, /* stub */
-        cabina_fault_u64:         |_, _, _| {}, /* stub */
-        cabina_trace_u64:         |_, _, _| {}, /* stub */
-        cabina_is_overlay_enabled:|| false,     /* stub */
-        cabina_set_overlay_enabled:|_| {},       /* stub */
-        cabina_cycle_tab:         || {},         /* stub */
-        cabina_cycle_query:       || false,      /* stub */
-        cabina_paint_overlay:     || {},         /* stub */
+        cabina_info_u64:          |module, msg, v| {
+            let s: &'static str = unsafe { core::mem::transmute(module) };
+            let m: &'static str = unsafe { core::mem::transmute(msg) };
+            cabina_daemon::emit_full(cabina_core::Severity::Info, cabina_core::Layer::Ring0,
+                cabina_core::Entity::Module, s, v as u32, m, v);
+        },
+        cabina_warn_u64:          |module, msg, v| {
+            let s: &'static str = unsafe { core::mem::transmute(module) };
+            let m: &'static str = unsafe { core::mem::transmute(msg) };
+            cabina_daemon::emit_full(cabina_core::Severity::Warning, cabina_core::Layer::Ring0,
+                cabina_core::Entity::Module, s, v as u32, m, v);
+        },
+        cabina_fault_u64:         |module, msg, v| {
+            let s: &'static str = unsafe { core::mem::transmute(module) };
+            let m: &'static str = unsafe { core::mem::transmute(msg) };
+            cabina_daemon::emit_full(cabina_core::Severity::Fault, cabina_core::Layer::Ring0,
+                cabina_core::Entity::Module, s, v as u32, m, v);
+        },
+        cabina_trace_u64:         |module, msg, v| {
+            let s: &'static str = unsafe { core::mem::transmute(module) };
+            let m: &'static str = unsafe { core::mem::transmute(msg) };
+            cabina_daemon::emit_full(cabina_core::Severity::Trace, cabina_core::Layer::Ring0,
+                cabina_core::Entity::Module, s, v as u32, m, v);
+        },
+        cabina_is_overlay_enabled:|| crate::omni::hud::is_active(),
+        cabina_set_overlay_enabled:|on| crate::omni::hud::set_enabled(on),
+        cabina_cycle_tab:         || crate::omni::hud::cycle_tab(),
+        cabina_cycle_query:       || crate::omni::hud::cycle_query(),
+        cabina_paint_overlay:     || crate::omni::hud::paint(),
 
         // ── proc::task ──────────────────────────────────────────────
         task_current_index:       crate::proc::task::current_index,
@@ -157,7 +183,16 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
 
         // ── defense / timeback / userland ───────────────────────────
         defense_init:             || {},
-        timeback_init:            || {},
+        timeback_init:            || {
+            // Wire the NVRAM sink so checkpoints persist to UEFI variables.
+            timeback::storage::register_nvram_sink(|name, data| {
+                let _ = nvram_log::set_variable(name, data);
+            });
+            // Use the kernel's TSC as the monotonic tick source.
+            timeback::set_tick_source(crate::cpu::rdtsc);
+            timeback::init();
+            cabina_daemon::info("timeback", "TimeBack initialized with NVRAM persistence");
+        },
         userland_init:            || {},
 
         // ── context ─────────────────────────────────────────────────
@@ -170,7 +205,7 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         profile_main:             || loop { unsafe { core::arch::asm!("hlt"); } },
 
         // ── omni::hud ───────────────────────────────────────────────
-        hud_tick:                 || {},
+        hud_tick:                 crate::omni::hud::tick,
 
         // ── arch::gdt ───────────────────────────────────────────────
         KERNEL_CS:                crate::arch::gdt::KERNEL_CS as u64,

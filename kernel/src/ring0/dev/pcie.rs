@@ -359,15 +359,6 @@ pub fn device_count() -> usize {
     unsafe { SCAN_RESULT.as_ref().map(|r| r.count).unwrap_or(0) }
 }
 
-/// Check if any PCI device is NVMe (class 0x01, subclass 0x08).
-pub fn has_nvme() -> bool {
-    unsafe {
-        SCAN_RESULT.as_ref().map(|r| {
-            r.devices[..r.count].iter().any(|d| d.class_code == 0x01 && d.subclass == 0x08)
-        }).unwrap_or(false)
-    }
-}
-
 /// Check if any PCI device is AHCI/SATA (class 0x01, subclass 0x06).
 pub fn has_ahci() -> bool {
     unsafe {

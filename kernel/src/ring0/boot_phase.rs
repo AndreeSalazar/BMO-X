@@ -176,7 +176,7 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
 
     // High-memory mapping: map all physical RAM into the upper-half (HIGH_MEM_BASE).
     // Previously deferred for bootstrap stability — Ring 0 now reaches ready screen
-    // reliably. Enabled to unlock AHCI, NVMe, and USB MMIO access.
+    // reliably. Enabled to unlock AHCI and USB MMIO access.
     write_crash_marker(2104);
     crate::uefi_rt::write_boot_stage("p1_highmem_start");
     unsafe { crate::mm::vmm::map_high_mem(&bi.memory_map, bi.memory_map_count as usize); }
@@ -315,7 +315,7 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::log::info("phase2", "Input: PS/2/USB-legacy first, native USB HID fallback");
 
     // MMIO-backed drivers: now accessible via high-mem direct map.
-    // AHCI, xHCI, and NVMe BARs near 0xFCxx_xxxx work through phys_to_virt().
+    // AHCI and xHCI BARs near 0xFCxx_xxxx work through phys_to_virt().
     write_crash_marker(2204);
     crate::uefi_rt::write_boot_stage("p2_mmio_enabled");
     crate::log::info("phase2", "MMIO drivers: high-mem map active, probing hardware");

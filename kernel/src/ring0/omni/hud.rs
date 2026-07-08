@@ -19,8 +19,41 @@ pub fn tick() {
     }
 }
 
+/// Paint the overlay once (called from HAL when bmo_core requests it).
+pub fn paint() {
+    if !ACTIVE.load(Ordering::Relaxed) { return; }
+    let snapshot = cabina_daemon::take_snapshot();
+    unsafe {
+        OVERLAY.paint(&mut crate::visual::GOP_FB, &snapshot);
+    }
+}
+
 /// Enable/disable the HUD.
 pub fn toggle() {
     let active = ACTIVE.load(Ordering::Relaxed);
     ACTIVE.store(!active, Ordering::Relaxed);
+}
+
+/// Enable the HUD explicitly.
+pub fn set_enabled(on: bool) {
+    ACTIVE.store(on, Ordering::Relaxed);
+    if on { start(); }
+}
+
+/// Is the HUD currently active?
+pub fn is_active() -> bool {
+    ACTIVE.load(Ordering::Relaxed)
+}
+
+/// Cycle to next tab (called from HAL).
+pub fn cycle_tab() {
+    unsafe { OVERLAY.cycle_tab(); }
+}
+
+/// Cycle to next query (called from HAL).
+pub fn cycle_query() -> bool {
+    unsafe {
+        OVERLAY.cycle_query();
+        true
+    }
 }

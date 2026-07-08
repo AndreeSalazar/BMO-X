@@ -99,7 +99,7 @@ alloc_pages_contiguous() / free_pages()   ← public API (unchanged)
 - **Shader BSF**: Loader/validator existe, BLAKE3 es placeholder
 
 ### No existe (removido o nunca implementado)
-- ~~NVMe driver~~ — Solo check de PCI class
+- ~~NVMe driver~~ — Este proyecto usa solo SATA/AHCI
 - ~~AHCI driver~~ — Solo check de PCI class
 - ~~RTL8168 NIC~~ — Sin código en todo el codebase
 - ~~USB/xHCI~~ — Solo check de PCI class
@@ -322,7 +322,7 @@ Dispatcher con validación + Cabina audit + ByteDefender check. Window Manager, 
 1. **Fix boot #GP**: Conectar serial cable para diagnosticar crash exacto
 2. **Restaurar welcome completo**: Rehabilitar render/input/commands paso a paso
 3. **Re-habilitar APIC timer**: Preemptive scheduling (causaba #GP, necesita fix)
-4. **NVMe/AHCI**: Drivers de almacenamiento
+4. **AHCI**: Drivers de almacenamiento SATA
 5. **RTL8168**: Driver de red
 6. **USB/xHCI**: Drivers USB
 7. **SMP**: Multi-core (INIT-SIPI-SIPI restaurado)

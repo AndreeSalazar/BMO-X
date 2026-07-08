@@ -13,6 +13,9 @@
 
 use core::arch::{asm, naked_asm};
 
+/// Monotonic tick counter for periodic housekeeping.
+static mut TICK_COUNT: u64 = 0;
+
 /// IDT entry (16 bytes in Long Mode).
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -482,6 +485,16 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     // Pet the hardware watchdog (resets the 5-sec countdown)
     crate::dev::watchdog::pet();
     crate::dev::watchdog::check();
+
+    // Periodic housekeeping: every ~1000 ticks (~1s at 1kHz) drive the
+    // cabina HUD overlay, persist cabina events to NVRAM, and create
+    // a TimeBack auto-checkpoint for real-time rollback support.
+    unsafe { TICK_COUNT += 1; }
+    if unsafe { TICK_COUNT } % 1000 == 0 {
+        crate::omni::hud::tick();
+        crate::omni::persist::flush_to_nvram();
+        timeback::auto_commit_if_due(5);
+    }
 
     // Check if we need to switch threads.
     // timer_tick() already calls schedule() when the time slice expires,

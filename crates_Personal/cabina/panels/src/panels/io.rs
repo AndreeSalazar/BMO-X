@@ -16,7 +16,7 @@ pub fn render(fb: &mut dyn FrameBuffer, s: &SystemSnapshot) {
         ("Bus 0, dev 20, fn 0", "SMBus",        0xFFCCCCCC),
         ("Bus 1, dev 0, fn 0",  "Ethernet",     0xFFFFFF00),
         ("Bus 2, dev 0, fn 0",  "AMD GPU",      0xFF00FFFF),
-        ("Bus 3, dev 0, fn 0",  "NVMe SSD",     0xFF00FFFF),
+        ("Bus 3, dev 0, fn 0",  "SATA SSD",     0xFF00FFFF),
     ];
     for (k, v, c) in devices {
         y = H::kv(fb, y, k, v, *c);

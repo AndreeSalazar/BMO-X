@@ -612,7 +612,7 @@ FastOS/
 | 4 | 🟡 `desktop/` depende de `bmo_api/` Y de `gustos/` (bien) pero también tira del `lang::bmo` directamente | Refactorizar: desktop solo debe usar `bmo_api` + servicios |
 | 5 | 🟡 `bmo_gpu/` es skeleton, no implementa RDNA4 | Fase 3: implementar `vendor/amd/gpu/rdna4/` |
 | 6 | 🟡 `bmo_gpu/shader/` solo declara BSF, no hay compilador de shaders | Crear cuando llegue driver GPU real |
-| 7 | 🟡 `fs/fat32.rs`, `fs/exfat.rs`, etc. son stubs | Auditar y completar cuando llegue NVMe |
+| 7 | 🟡 `fs/fat32.rs`, `fs/exfat.rs`, etc. son stubs | Auditar y completar con driver AHCI |
 | 8 | 🟡 `BMO CORE` no entrega control a RING 3 todavía (welcome corre en Ring 0) | Conectar `coord::enter` con `ring3::start` |
 | 9 | ✅ `ring0/AMD/` → `vendor/amd/cpu/zen3/` (Fase 2 Opus) | Commit 7293c2c |
 | 10 | ✅ Nueva arquitectura `arch/`, `profile/`, `bus/`, `gpu/`, `syscall/` (Fase 1 Opus) | Commit 7e2f0915 |
@@ -662,7 +662,7 @@ Antes de añadir un archivo, pregúntate:
    binarios userland compilados por `lang/bmo/`.
 
 5. **Auditar y completar FS** (FAT32, exFAT, manager, mount, inode)
-   cuando llegue soporte NVMe.
+   con driver AHCI/SATA.
 
 ---
 
