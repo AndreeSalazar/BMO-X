@@ -18,8 +18,6 @@ const AUTO_BOOT_CYCLES: u64 = AUTO_BOOT_SEC * CYCLES_PER_SEC;
 const MAX_INPUT: usize = 32;
 static mut INPUT_BUF: [u8; MAX_INPUT] = [0; MAX_INPUT];
 static mut INPUT_LEN: usize = 0;
-static mut HINT_TIMER: u32 = 0;
-static mut HINT_MSG: &[u8] = b"";
 
 static mut KBD_LSHIFT: bool = false;
 static mut KBD_RSHIFT: bool = false;
@@ -108,11 +106,10 @@ fn process_scancode(raw: u8) -> Option<u8> {
     translate_scancode(sc)
 }
 
-fn show_hint(msg: &'static [u8]) {
-    unsafe {
-        HINT_MSG = msg;
-        HINT_TIMER = 120;
-    }
+fn show_hint(msg: &[u8]) {
+    crate::dev::console::serial_write("[welcome] ");
+    if let Ok(s) = core::str::from_utf8(msg) { crate::dev::console::serial_write(s); }
+    crate::dev::console::serial_write("\n");
 }
 
 // ── Text rendering helpers ──────────────────────────────────────

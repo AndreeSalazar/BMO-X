@@ -3,14 +3,10 @@
 //! Uses `bmo_uhid::UsbHidHal` (implements InputHal) when xHCI is available.
 //! Falls back to `bmo_input::hal_ps2::Ps2Hal` otherwise.
 
-#![allow(dead_code)]
-
 use bmo_input::hal::InputHal;
 use alloc::boxed::Box;
-use core::sync::atomic::{AtomicBool, Ordering};
 
 pub const SC_ESC: u8 = 0x01;
-static INIT_DONE: AtomicBool = AtomicBool::new(false);
 
 fn hal() -> &'static mut dyn InputHal {
     static mut ACTIVE: Option<Box<dyn InputHal>> = None;

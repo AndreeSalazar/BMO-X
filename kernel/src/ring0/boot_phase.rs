@@ -291,20 +291,22 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
         crate::dev::hda::init(hda_mmio);
     }
 
-    // Discover and register the xHCI controller with the bmo_xhci crate,
-    // but do NOT take ownership yet — ownership is taken lazily by
-    // bmo_uhid::UsbHidHal::init() when the desktop decides to use native
-    // USB HID.  This keeps BIOS USB Legacy Emulation active (ports
-    // 0x60/0x64) as a safe fallback if USB HID fails.
+    // Initialize xHCI controller in Ring 0 during boot.
+    // Takes ownership from BIOS USB Legacy Emulation so native USB HID
+    // works.  No PS/2 fallback — modern systems use USB keyboards/mice.
     if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
         static XHCI_HAL: super::xhci_hal_impl::KernelXhciHal = super::xhci_hal_impl::KernelXhciHal;
         bmo_xhci::init_hal(&XHCI_HAL);
         bmo_xhci::set_mmio(xhci_mmio);
         crate::dev::console::serial_write("[phase2] xHCI at 0x");
         crate::dev::console::serial_write_u64(xhci_mmio, 16);
-        crate::dev::console::serial_write(" — deferred (USB HID or PS/2 fallback)\n");
+        if unsafe { bmo_xhci::init(xhci_mmio) } {
+            crate::dev::console::serial_write(" — initialized\n");
+        } else {
+            crate::dev::console::serial_write(" — init FAILED\n");
+        }
     } else {
-        crate::log::info("phase2", "No xHCI controller — PS/2 only");
+        crate::log::info("phase2", "No xHCI controller found");
     }
 
     // Persist state
@@ -313,10 +315,7 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
 
-    // PS/2 input: the bmo_api desktop reads ports 0x60/0x64 directly (polling).
-    // IRQ-based keyboard/mouse drivers are disabled to avoid byte-stealing conflicts.
-    // Future: route PS/2 through a shared ring buffer or HAL input callback.
-    crate::log::info("phase2", "PS/2 input: desktop handles via direct I/O polling");
+    crate::log::info("phase2", "Input: USB HID via xHCI (PS/2 fallback in HAL)");
 
     // MMIO-backed drivers: now accessible via high-mem direct map.
     // AHCI, xHCI, and NVMe BARs near 0xFCxx_xxxx work through phys_to_virt().

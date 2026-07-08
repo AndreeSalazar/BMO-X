@@ -421,10 +421,14 @@ pub fn find_xhci_mmio() -> Option<u64> {
             }).map(|d| {
                 // BAR0 is at PCI config offset 0x10
                 let bar0_lo = pci_read32(d.bus, d.device, d.function, 0x10);
-                let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);
-                let bar0 = ((bar0_hi as u64) << 32) | (bar0_lo as u64);
-                // Mask off BAR type bits (bit 0 = I/O, bit 1 = 64-bit)
-                let mmio = bar0 & !0xF_u64;
+                // Bit 2:1 = 00 → 32-bit MMIO, 10 → 64-bit MMIO
+                let bar0: u64 = if (bar0_lo & 0x04) != 0 {
+                    let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);
+                    ((bar0_hi as u64) << 32) | (bar0_lo & !0x0F) as u64
+                } else {
+                    (bar0_lo & !0x0F) as u64
+                };
+                let mmio = bar0;
                 crate::dev::console::serial_write("[pci] xHCI BAR0=0x");
                 print_hex(mmio);
                 crate::dev::console::serial_write("\n");

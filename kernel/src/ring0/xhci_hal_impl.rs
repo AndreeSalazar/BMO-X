@@ -10,8 +10,7 @@ impl XhciHal for KernelXhciHal {
     }
 
     fn phys_to_virt(&self, phys: u64) -> *mut u8 {
-        // Use identity mapping for MMIO/DMA (below 4GB)
-        phys as *mut u8
+        crate::mm::vmm::phys_to_virt(phys) as *mut u8
     }
 
     fn log(&self, msg: &str) {

@@ -8,7 +8,7 @@
 //!
 //!   desktop/
 //!     mod.rs         â† this file: facade + run_ring0() main loop
-//!     input.rs       â† PS/2 keyboard + mouse polling
+//!     input.rs       â† USB HID primary + PS/2 fallback polling
 //!     display.rs     â† framebuffer primitives (fb_fill, fb_text, fb_blit)
 //!     sound.rs       â† PC speaker beep
 //!     render.rs      â† full frame rendering (wallpaper, windows, dock, cursor)
