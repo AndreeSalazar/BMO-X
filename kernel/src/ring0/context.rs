@@ -100,7 +100,6 @@ pub struct BootContext {
     pub cpu: CpuContext,
     pub memory: MemoryContext,
     pub devices: DevicesContext,
-    pub bmo_abi_initialized: bool,
     pub phase_outputs: [Option<PhaseSnapshot>; 8],
 }
 
@@ -121,7 +120,6 @@ impl BootContext {
             cpu: CpuContext::empty(),
             memory: MemoryContext::empty(),
             devices: DevicesContext::empty(),
-            bmo_abi_initialized: false,
             phase_outputs: [None; 8],
         }
     }

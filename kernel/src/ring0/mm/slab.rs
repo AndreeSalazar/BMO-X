@@ -284,10 +284,8 @@ pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
             return buddy_alloc(size, align);
         }
         IN_USE.fetch_add(size, Ordering::Relaxed);
-        cabina_daemon::telemetry::memory::inc_allocs();
         cache_alloc(ci)
     } else {
-        cabina_daemon::telemetry::memory::inc_allocs();
         buddy_alloc(size, align)
     }
 }
@@ -301,10 +299,8 @@ pub unsafe fn heap_free(ptr: *mut u8, size: usize, align: usize) {
             return;
         }
         IN_USE.fetch_sub(size, Ordering::Relaxed);
-        cabina_daemon::telemetry::memory::inc_frees();
         cache_free(ptr, ci);
     } else {
-        cabina_daemon::telemetry::memory::inc_frees();
         buddy_free(ptr, size);
     }
 }

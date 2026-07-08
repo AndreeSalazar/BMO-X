@@ -1,39 +1,32 @@
-﻿//! Ring 0 Logger â€” module-level logging for boot phases.
+﻿//! Ring 0 Logger — serial-only logging for boot phases.
+//! No visual, no cabina — just serial output.
 
 use crate::dev::console;
-use super::visual;
 
-// â”€â”€ Boot phase logging (module-level functions) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-pub fn info(phase: &'static str, msg: &'static str) {
-    visual::log(phase, msg, visual::color::OK);
+pub fn info(_phase: &'static str, msg: &'static str) {
     console::serial_write("[BMO] ");
     console::serial_write(msg);
     console::serial_write("\n");
 }
 
-pub fn warn(phase: &'static str, msg: &'static str) {
-    visual::log(phase, msg, visual::color::WARN);
+pub fn warn(_phase: &'static str, msg: &'static str) {
     console::serial_write("[BMO] WARN: ");
     console::serial_write(msg);
     console::serial_write("\n");
 }
 
-pub fn fault(phase: &'static str, msg: &'static str) -> ! {
-    visual::log(phase, msg, visual::color::FAULT);
+pub fn fault(_phase: &'static str, msg: &'static str) -> ! {
     console::serial_write("[BMO] FATAL: ");
     console::serial_write(msg);
     console::serial_write("\n");
-    loop {
-        unsafe { core::arch::asm!("hlt"); }
-    }
+    unsafe { core::arch::asm!("cli"); }
+    loop { unsafe { core::arch::asm!("hlt"); } }
 }
 
-pub fn info_u64(phase: &'static str, msg: &'static str, val: u64) {
-    visual::log(phase, msg, visual::color::OK);
+pub fn info_u64(_phase: &'static str, msg: &'static str, val: u64) {
     console::serial_write("[BMO] ");
     console::serial_write(msg);
     console::serial_write(": ");
-    super::serial::hex(val);
+    console::serial_write_u64(val, 10);
     console::serial_write("\n");
 }

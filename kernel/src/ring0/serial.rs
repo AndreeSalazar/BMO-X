@@ -2,15 +2,6 @@ use crate::dev::console;
 
 const HEX_TABLE: &[u8; 16] = b"0123456789ABCDEF";
 
-/// Must be called early (before any cabina-daemon emit) to wire serial output.
-pub fn register_cabina_sink() {
-    cabina_daemon::serial::register(com1_write_str);
-}
-
-fn com1_write_str(s: &str) {
-    console::serial_write(s);
-}
-
 pub fn hex(val: u64) {
     console::serial_write("0x");
     for i in (0..16).rev() {

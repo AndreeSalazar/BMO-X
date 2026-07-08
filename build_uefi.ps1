@@ -103,11 +103,13 @@ $root     = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $bootDir  = Join-Path $root "crates_Personal\bootloader"
 $kernDir  = Join-Path $root "kernel"
+$moduleDir = Join-Path $root "crates_Personal\mod_bmo_core"
 $target   = Join-Path $root "target_build"
 $stage    = Join-Path $target "staging\EFI\BOOT"
 
-if (-not (Test-Path (Join-Path $bootDir "Cargo.toml"))) { Fail "Bootloader not found at $bootDir" }
-if (-not (Test-Path (Join-Path $kernDir "Cargo.toml"))) { Fail "Kernel not found at $kernDir" }
+if (-not (Test-Path (Join-Path $bootDir "Cargo.toml")))   { Fail "Bootloader not found at $bootDir" }
+if (-not (Test-Path (Join-Path $kernDir "Cargo.toml")))    { Fail "Kernel not found at $kernDir" }
+if (-not (Test-Path (Join-Path $moduleDir "Cargo.toml")))  { Fail "Module not found at $moduleDir" }
 
 # ── Version ────────────────────────────────────────────────────────────
 $kv = "unknown"
@@ -200,11 +202,13 @@ function Save-SourceHash {
 
 $bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\bmo-bootloader.efi"
 $kernelElf = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel"
+$moduleElf = Join-Path $target "x86_64-unknown-none\release\mod-bmo-core"
 
-$needBoot = Needs-Rebuild $bootDir $bootEfi
-$needKern = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey
+$needBoot   = Needs-Rebuild $bootDir $bootEfi
+$needKern   = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey
+$needModule = Needs-Rebuild $moduleDir $moduleElf
 
-if (-not $needBoot -and -not $needKern -and -not $Clean) {
+if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $Clean) {
     Write-Host "  OK All up to date. Nothing to rebuild." -ForegroundColor Green
     if (-not $Flash -and -not $Verify) {
         Write-Host "  Use -Clean to force rebuild, or -Flash to flash existing build." -ForegroundColor DarkGray
@@ -214,13 +218,14 @@ if (-not $needBoot -and -not $needKern -and -not $Clean) {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# PARALLEL BUILD: BOOTLOADER + KERNEL
+# PARALLEL BUILD: BOOTLOADER + KERNEL + MODULE
 # ══════════════════════════════════════════════════════════════════════
-$buildTimer = PhaseStart "Building bootloader + kernel (parallel)"
+$buildTimer = PhaseStart "Building bootloader + kernel + module (parallel)"
 
 # Define build jobs
 $bootJob = $null
 $kernJob = $null
+$moduleJob = $null
 
 if ($needBoot) {
     $bootTargetDir = Join-Path $target "bootloader"
@@ -262,9 +267,30 @@ if ($needKern) {
     Step "Kernel build started (PID $($kernJob.Id), allocator=$kernelFeatureKey)"
 }
 
-# Wait for both jobs
+# Build mod_bmo_core (desktop module)
+if ($needModule) {
+    $moduleScript = {
+        param($mdir, $mtargetDir, $jobsFlag)
+        Set-Location -LiteralPath $mdir
+        try {
+            $out = cargo build --release --target x86_64-unknown-none --target-dir $mtargetDir @jobsFlag 2>&1
+            $err = $out | Where-Object { $_ -match "^error" }
+            if ($err) { throw "Module build error: $err" }
+            return @{ Ok=$true; Output=$out }
+        } catch {
+            return @{ Ok=$false; Error=$_.Exception.Message }
+        }
+    }
+    $moduleJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $moduleDir, $target, $jobsFlag
+    Step "Module build started (PID $($moduleJob.Id))"
+}
+$moduleJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $moduleDir, $target, $jobsFlag
+Step "Module build started (PID $($moduleJob.Id))"
+
+# Wait for all jobs
 $bootResult = $null
 $kernResult = $null
+$moduleResult = $null
 
 if ($bootJob) {
     Step "Waiting for bootloader..."
@@ -290,27 +316,44 @@ if ($kernJob) {
     }
 }
 
+if ($moduleJob) {
+    Step "Waiting for module..."
+    $moduleResult = Receive-Job -Job $moduleJob -Wait -ErrorAction SilentlyContinue
+    Remove-Job -Job $moduleJob -Force
+    if (-not $moduleResult.Ok) { Fail "MODULE FAILED: $($moduleResult.Error)" }
+    $moduleOutput = $moduleResult.Output
+    foreach ($line in $moduleOutput) {
+        $l = "$line"
+        if ($l -match "Compiling|Finished|warning") { Write-Host "    [mod]  $l" -ForegroundColor DarkGray }
+    }
+}
+
 PhaseDone $buildTimer "Parallel build"
 
 # Save source hashes for next build's change detection
-if ($needBoot) { Save-SourceHash $bootDir $bootEfi }
-if ($needKern) { Save-SourceHash $kernDir $kernelElf $kernelFeatureKey }
+if ($needBoot)   { Save-SourceHash $bootDir $bootEfi }
+if ($needKern)   { Save-SourceHash $kernDir $kernelElf $kernelFeatureKey }
+if ($needModule) { Save-SourceHash $moduleDir $moduleElf }
 
 # ══════════════════════════════════════════════════════════════════════
 # VALIDATE OUTPUTS
 # ══════════════════════════════════════════════════════════════════════
 $tval = PhaseStart "Validate outputs"
 
-if (-not (Test-Path $bootEfi))  { Fail "Bootloader EFI not found: $bootEfi" }
-if (-not (Test-Path $kernelElf)) { Fail "Kernel ELF not found: $kernelElf" }
+if (-not (Test-Path $bootEfi))   { Fail "Bootloader EFI not found: $bootEfi" }
+if (-not (Test-Path $kernelElf))  { Fail "Kernel ELF not found: $kernelElf" }
+if (-not (Test-Path $moduleElf))  { Fail "Module ELF not found: $moduleElf" }
 
-$bootSize = (Get-Item $bootEfi).Length
-$kernSize = (Get-Item $kernelElf).Length
-$bootHash = Hash256 $bootEfi
-$kernHash = Hash256 $kernelElf
+$bootSize   = (Get-Item $bootEfi).Length
+$kernSize   = (Get-Item $kernelElf).Length
+$moduleSize = (Get-Item $moduleElf).Length
+$bootHash   = Hash256 $bootEfi
+$kernHash   = Hash256 $kernelElf
+$moduleHash = Hash256 $moduleElf
 
-Write-Host "    BOOTX64.EFI  $([math]::Round($bootSize/1024,1)) KB  sha256:$($bootHash.Substring(0,16))" -ForegroundColor White
-Write-Host "    kernel.elf   $([math]::Round($kernSize/1024,1)) KB  sha256:$($kernHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    BOOTX64.EFI   $([math]::Round($bootSize/1024,1)) KB  sha256:$($bootHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    kernel.elf    $([math]::Round($kernSize/1024,1)) KB  sha256:$($kernHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    mod_bmo_core.elf $([math]::Round($moduleSize/1024,1)) KB  sha256:$($moduleHash.Substring(0,16))" -ForegroundColor White
 
 PhaseDone $tval "Outputs validated"
 
@@ -324,6 +367,9 @@ New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
 Copy-Item $bootEfi  -Destination (Join-Path $stage "BOOTX64.EFI")
 Copy-Item $kernelElf -Destination (Join-Path $stage "kernel.elf")
+$modulesStageDir = Join-Path $stage "modules"
+if (-not (Test-Path $modulesStageDir)) { New-Item -ItemType Directory -Path $modulesStageDir -Force | Out-Null }
+Copy-Item $moduleElf -Destination (Join-Path $modulesStageDir "mod_bmo_core.elf")
 
 $manifest = @"
 # FastOS EFI Boot Manifest
@@ -333,12 +379,13 @@ $manifest = @"
 #
 # File           Size        SHA256
 # ----           ----        ------
-BOOTX64.EFI     $bootSize   $bootHash
-kernel.elf      $kernSize   $kernHash
+BOOTX64.EFI       $bootSize   $bootHash
+kernel.elf        $kernSize   $kernHash
+modules/mod_bmo_core.elf  $moduleSize $moduleHash
 "@
 $manifest | Set-Content -Path (Join-Path $stage "MANIFEST.TXT") -Encoding UTF8
 
-PhaseDone $tstage "Staged $([math]::Round(($bootSize+$kernSize)/1024,1)) KB total"
+PhaseDone $tstage "Staged $([math]::Round(($bootSize+$kernSize+$moduleSize)/1024,1)) KB total"
 
 # ══════════════════════════════════════════════════════════════════════
 # BUILD SUMMARY
@@ -378,21 +425,27 @@ if ($Flash) {
     $efiDest = Join-Path $targetRoot "EFI\BOOT"
     New-Item -ItemType Directory -Path $efiDest -Force | Out-Null
 
-    Copy-Item (Join-Path $stage "BOOTX64.EFI") -Destination (Join-Path $efiDest "BOOTX64.EFI") -Force
-    Copy-Item (Join-Path $stage "kernel.elf")   -Destination (Join-Path $efiDest "kernel.elf")   -Force
-    Copy-Item (Join-Path $stage "MANIFEST.TXT") -Destination (Join-Path $efiDest "MANIFEST.TXT") -Force
+    Copy-Item (Join-Path $stage "BOOTX64.EFI")       -Destination (Join-Path $efiDest "BOOTX64.EFI")       -Force
+    Copy-Item (Join-Path $stage "kernel.elf")        -Destination (Join-Path $efiDest "kernel.elf")        -Force
+    $modulesDestDir = Join-Path $efiDest "modules"
+    if (-not (Test-Path $modulesDestDir)) { New-Item -ItemType Directory -Path $modulesDestDir -Force | Out-Null }
+    Copy-Item (Join-Path $stage "modules\mod_bmo_core.elf")  -Destination "${modulesDestDir}\mod_bmo_core.elf" -Force
+    Copy-Item (Join-Path $stage "MANIFEST.TXT")      -Destination (Join-Path $efiDest "MANIFEST.TXT")      -Force
 
     try {
         $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.elf", 'Open', 'Write')
         $fs.Flush(1)
         $fs.Close()
+        $fs2 = [System.IO.File]::Open("${modulesDestDir}\mod_bmo_core.elf", 'Open', 'Write')
+        $fs2.Flush(1)
+        $fs2.Close()
     } catch { Warn "Flush failed: $_" }
     PhaseDone $tf "Flash"
 
     $tv = PhaseStart "Verify"
-    foreach ($f in @(@{Name="BOOTX64.EFI";Hash=$bootHash;Size=$bootSize}, @{Name="kernel.elf";Hash=$kernHash;Size=$kernSize})) {
-        $dp = Join-Path $efiDest $f.Name
-        if (-not (Test-Path $dp)) { Fail "MISSING: $($f.Name)" }
+    foreach ($f in @(@{Name="BOOTX64.EFI";Hash=$bootHash;Size=$bootSize}, @{Name="kernel.elf";Hash=$kernHash;Size=$kernSize}, @{Name="mod_bmo_core.elf";Hash=$moduleHash;Size=$moduleSize})) {
+        $dp = if ($f.Name -eq "mod_bmo_core.elf") { Join-Path (Join-Path $efiDest "modules") $f.Name } else { Join-Path $efiDest $f.Name }
+        if (-not (Test-Path $dp)) { Fail "MISSING: $($f.Name) at $dp" }
         $dh = Hash256 $dp
         $ds = (Get-Item $dp).Length
         if ($dh -ne $f.Hash) {
@@ -420,7 +473,7 @@ if ($Verify -and -not $Flash) {
     $efiCheck = "${tl}:\EFI\BOOT"
     if (-not (Test-Path $efiCheck)) { Fail "EFI\BOOT not found on ${tl}:" }
 
-    foreach ($n in @("BOOTX64.EFI","kernel.elf")) {
+    foreach ($n in @("BOOTX64.EFI","kernel.elf","modules\mod_bmo_core.elf")) {
         $p2 = Join-Path $efiCheck $n
         if (Test-Path $p2) {
             $sz2 = (Get-Item $p2).Length

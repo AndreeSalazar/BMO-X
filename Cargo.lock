@@ -160,11 +160,8 @@ name = "bmo-core"
 version = "1.8.16"
 dependencies = [
  "bmo-abi",
- "bmo-ahci",
  "bmo-boot-protocol",
- "bmo-fat32",
- "bmo-input",
- "bmo-uhid",
+ "bmo-hal-defs",
  "goblin",
  "timeback",
 ]
@@ -185,6 +182,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-hal-defs"
+version = "1.0.0"
+dependencies = [
+ "bmo-boot-protocol",
+]
+
+[[package]]
 name = "bmo-input"
 version = "0.1.0"
 dependencies = [
@@ -193,30 +197,15 @@ dependencies = [
 
 [[package]]
 name = "bmo-kernel"
-version = "1.8.16"
+version = "2.0.0"
 dependencies = [
  "bitflags",
- "bmo-abi",
- "bmo-ahci",
- "bmo-audio",
  "bmo-boot-protocol",
- "bmo-core",
- "bmo-fat32",
- "bmo-input",
- "bmo-uhid",
- "bmo-xhci",
- "byte-defender",
- "cabina-core",
- "cabina-daemon",
- "cabina-panels",
+ "bmo-hal-defs",
  "cpu-vendor-profile",
- "goblin",
- "hw-profile",
  "llfree",
  "nvram-log",
  "spin",
- "timeback",
- "vendor",
  "volatile 0.4.6",
 ]
 
@@ -467,6 +456,17 @@ name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
+
+[[package]]
+name = "mod-bmo-core"
+version = "1.0.0"
+dependencies = [
+ "bmo-core",
+ "bmo-hal-defs",
+ "byte-defender",
+ "goblin",
+ "timeback",
+]
 
 [[package]]
 name = "num-traits"

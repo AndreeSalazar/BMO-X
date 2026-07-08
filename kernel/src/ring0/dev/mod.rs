@@ -22,15 +22,12 @@ pub mod pcie;
 pub mod framebuffer;
 pub mod watchdog;
 pub mod acpi;
-pub mod hda;
 
-// ── Timers (HPET, timer wheel, timestamps) ────────────────────────
+// ── Timers (HPET, timer wheel, timestamps) ───────────────────────
 pub mod timer;
 pub mod hpet;
 pub mod timer_wheel;
 pub mod timestamp;
 
-// ── Power (C-states, thermal) ────────────────────────────────────
+// ── Power (stub — full C-state/thermal in Ring 3 module) ────────
 pub mod power;
-pub mod cstates;
-pub mod thermal;

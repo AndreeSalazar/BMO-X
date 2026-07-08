@@ -112,7 +112,6 @@ pub unsafe fn alloc_pages_contiguous(count: usize) -> Option<u64> {
     if cache.count[order] > 0 {
         cache.count[order] -= 1;
         let page = cache.pages[order][cache.count[order]];
-        cabina_daemon::telemetry::memory::inc_allocs();
         return Some(page);
     }
 
@@ -127,7 +126,6 @@ pub unsafe fn alloc_pages_contiguous(count: usize) -> Option<u64> {
 
     cache.count[order] -= 1;
     let page = cache.pages[order][cache.count[order]];
-    cabina_daemon::telemetry::memory::inc_allocs();
     Some(page)
 }
 
@@ -139,7 +137,6 @@ pub unsafe fn free_pages(addr: u64, count: usize) {
 
     if order > PER_CPU_MAX_ORDER {
         BACKING.free_order(addr, order);
-        cabina_daemon::telemetry::memory::inc_frees();
         return;
     }
 
@@ -149,7 +146,6 @@ pub unsafe fn free_pages(addr: u64, count: usize) {
     if cache.count[order] < BATCH_SIZE {
         cache.pages[order][cache.count[order]] = addr;
         cache.count[order] += 1;
-        cabina_daemon::telemetry::memory::inc_frees();
         return;
     }
 
@@ -167,7 +163,6 @@ pub unsafe fn free_pages(addr: u64, count: usize) {
 
     cache.pages[order][cache.count[order]] = addr;
     cache.count[order] += 1;
-    cabina_daemon::telemetry::memory::inc_frees();
 }
 
 pub fn free_count() -> usize {

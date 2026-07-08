@@ -50,20 +50,10 @@ pub mod ring3;
 
 // ── Core ring0 modules ─────────────────────────────────────────
 pub use ring0::{arch, mm, dev, proc, cpu};
-pub use ring0::{info, context, uefi_rt, serial, visual, font, log};
-pub use ring0::{boot_phase, entry};
-pub use ring0::{omni, devour, hal_init};
+pub use ring0::{info, context, uefi_rt, serial, log};
+pub use ring0::{boot_phase, entry, mod_loader};
 
-// ── Crates (extracted from kernel) ─────────────────────────────
-pub use bmo_core;
+// ── Crates (pure Ring 0) ───────────────────────────────────────
 pub use cpu_vendor_profile as vendor;
-pub use byte_defender;
-pub use timeback;
-pub use hw_profile;
 
-// ── Crates (cabina diagnostic infrastructure) ──────────────────
-pub use ring0::{cabina_core, cabina_daemon, cabina_panels};
-pub use ring0::bmo_abi;
 
-// ── Userland bridge (kernel-side Ring 3 process management) ────
-pub use ring0::userland;

@@ -1,11 +1,12 @@
-﻿//! BMO UEFI Bootloader v0.4.0
+//! BMO UEFI Bootloader v0.5.0
 //!
-//! Loads kernel.elf from the EFI System Partition, parses ELF64,
-//! queries GOP for framebuffer, finds RSDP, builds BootInfo,
+//! Loads kernel.elf + Ring 3 modules from the EFI System Partition,
+//! parses ELF64, queries GOP, finds RSDP, builds BootInfo,
 //! exits boot services, and jumps to the kernel.
 //!
-//! v0.4.0: Stack-safe BootInfo allocation, ELF bounds checking,
-//!         GOP struct, cleaner crash diagnostics.
+//! v0.5.0: Module pre-loading — bootloader loads mod_bmo_core.elf,
+//!         mod_timeback.elf, mod_cabina.elf from \EFI\BOOT\modules\
+//!         before ExitBootServices.
 
 #![no_std]
 #![no_main]
@@ -14,7 +15,7 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use bmo_boot_protocol::{BootInfo, MemoryEntry, MemoryType as BootMemType, PixelFormat, MAX_MEMORY_ENTRIES};
+use bmo_boot_protocol::{BootInfo, MemoryEntry, MemoryType as BootMemType, ModuleEntry, PixelFormat, MAX_MEMORY_ENTRIES, MAX_MODULES};
 use log::info;
 use uefi::boot;
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
@@ -23,7 +24,7 @@ use uefi::proto::console::gop::GraphicsOutput;
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::fs::SimpleFileSystem;
 
-// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const KERNEL_STACK_SIZE: usize = 4 * 1024 * 1024;
 const TARGET_FB_WIDTH: usize = 1920;
@@ -38,7 +39,13 @@ const CRASH_MAGIC: u32 = 0x464F_5343; // "FOSC"
 const CRASH_LOG_MAX: usize = 16384;
 const CRASH_LOG_PATH: &str = "\\EFI\\BOOT\\crash.log";
 
-// â”€â”€ GOP Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const MODULE_PATHS: &[&str] = &[
+    "\\EFI\\BOOT\\modules\\mod_bmo_core.elf",
+    "\\EFI\\BOOT\\modules\\mod_timeback.elf",
+    "\\EFI\\BOOT\\modules\\mod_cabina.elf",
+];
+
+// ── GOP Info ─────────────────────────────────────────────────────────────────
 
 struct GopInfo {
     fb_addr: u64,
@@ -49,7 +56,7 @@ struct GopInfo {
     pixel_format: PixelFormat,
 }
 
-// â”€â”€ ELF64 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ELF64 ────────────────────────────────────────────────────────────────────
 
 fn read_u16(data: &[u8], off: usize) -> Option<u16> {
     Some(u16::from_le_bytes(data.get(off..off + 2)?.try_into().ok()?))
@@ -113,7 +120,50 @@ fn parse_elf64(data: &[u8]) -> Option<(u64, Vec<Elf64Phdr>)> {
     Some((entry, phdrs))
 }
 
-// â”€â”€ File I/O â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+
+/// Load a single module ELF: read, parse, allocate pages, copy segments,
+/// zero BSS. Returns ModuleEntry or None on failure.
+fn load_module(device: uefi::Handle, path: &str) -> Option<ModuleEntry> {
+    let data = read_file(device, path)?;
+    let (entry_point, phdrs) = parse_elf64(&data)?;
+
+    let mut base: u64 = u64::MAX;
+    let mut end: u64 = 0;
+    for ph in &phdrs {
+        if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
+        base = base.min(ph.p_vaddr);
+        end = end.max(ph.p_vaddr + ph.p_memsz);
+    }
+    if end == 0 { return None; }
+
+    let page_base = base & !0xFFF;
+    let total_pages = ((end - page_base + 0xFFF) / 0x1000) as usize;
+
+    info!("module {}: vaddr=0x{:x}-0x{:x} ({} pages)", path, base, end, total_pages);
+
+    let ptr = match boot::allocate_pages(
+        boot::AllocateType::Address(page_base), MemoryType::LOADER_CODE, total_pages,
+    ) {
+        Ok(addr) => addr.as_ptr() as *mut u8,
+        Err(e) => {
+            info!("module {}: alloc at 0x{:x} failed: {:?}", path, page_base, e);
+            return None;
+        }
+    };
+
+    for ph in &phdrs {
+        if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
+        let dst = unsafe { ptr.add((ph.p_vaddr - page_base) as usize) };
+        unsafe {
+            core::ptr::copy_nonoverlapping(data.as_ptr().add(ph.p_offset as usize), dst, ph.p_filesz as usize);
+            core::ptr::write_bytes(dst.add(ph.p_filesz as usize), 0, (ph.p_memsz - ph.p_filesz) as usize);
+        }
+    }
+
+    Some(ModuleEntry { base: page_base, size: end - page_base, entry_point })
+}
+// ── File I/O ─────────────────────────────────────────────────────────────────
 
 fn read_file(handle: uefi::Handle, path: &str) -> Option<Vec<u8>> {
     use uefi::proto::media::file::{File, FileAttribute, FileInfo, FileMode};
@@ -149,7 +199,7 @@ fn read_file(handle: uefi::Handle, path: &str) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-// â”€â”€ NVRAM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── NVRAM ────────────────────────────────────────────────────────────────────
 
 /// BMO vendor GUID (uuid v5 from "bmo-nvram").
 /// Same GUID is used by the nvram-log crate in the kernel.
@@ -262,7 +312,7 @@ fn nvram_set(name: &str, data: &[u8]) -> bool {
 }
 
 
-// â”€â”€ Crash Log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Crash Log ────────────────────────────────────────────────────────────────
 
 fn read_crash_marker() -> Option<u32> {
     let magic = unsafe { core::ptr::read_volatile(CRASH_MARKER_ADDR as *const u32) };
@@ -497,7 +547,7 @@ fn write_crash_log(
     }
 }
 
-// â”€â”€ GOP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── GOP ──────────────────────────────────────────────────────────────────────
 
 fn query_gop() -> Option<GopInfo> {
     use uefi::proto::console::gop::PixelFormat as GopFmt;
@@ -543,7 +593,7 @@ fn query_gop() -> Option<GopInfo> {
     Some(GopInfo { fb_addr: addr, fb_size: size, width: w as u32, height: h as u32, stride, pixel_format: fmt })
 }
 
-// â”€â”€ Memory type conversion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Memory type conversion ───────────────────────────────────────────────────
 
 fn convert_memory_type(ty: MemoryType) -> BootMemType {
     match ty {
@@ -556,7 +606,7 @@ fn convert_memory_type(ty: MemoryType) -> BootMemType {
     }
 }
 
-// â”€â”€ RSDP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── RSDP ─────────────────────────────────────────────────────────────────────
 
 fn find_rsdp() -> u64 {
     use uefi::table::cfg::ConfigTableEntry;
@@ -570,7 +620,7 @@ fn find_rsdp() -> u64 {
     })
 }
 
-// â”€â”€ Entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Entry ────────────────────────────────────────────────────────────────────
 
 #[entry]
 fn main() -> Status {
@@ -590,16 +640,16 @@ fn main() -> Status {
     // Cache NVRAM function pointers BEFORE ExitBootServices
     nvram_init();
 
-    // Crash diagnostics â€” nvram_get is allowed during Boot Services (UEFI spec)
+    // Crash diagnostics — nvram_get is allowed during Boot Services (UEFI spec)
     let prev_stage = nvram_get("BMOBootStage");
     let ram_marker = read_crash_marker();
     let ram_stage = read_ram_stage();
     let boot_num = read_and_increment_boot_counter();
 
-    // NOTE: nvram_set CANNOT be called here â€” SetVariable is only valid after
+    // NOTE: nvram_set CANNOT be called here — SetVariable is only valid after
     // ExitBootServices per UEFI spec Section 8. Calling it before EBS causes
     // INVALID_PARAMETER on AMD firmware. We write NVRAM after EBS below.
-    info!("Boot #{} â€” RAM: {:?} stage: {:?}", boot_num, ram_marker, ram_stage);
+    info!("Boot #{} — RAM: {:?} stage: {:?}", boot_num, ram_marker, ram_stage);
     write_crash_log(device, prev_stage.as_deref(), ram_marker, ram_stage, boot_num, &Ok(()));
 
     clear_crash_marker();
@@ -613,7 +663,7 @@ fn main() -> Status {
         core::ptr::write_volatile(0x9_0024 as *mut u32, 0u32);
     }
 
-    // â”€â”€ Allocate kernel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Allocate kernel ───────────────────────────────────────────────
     // Load kernel ELF
     let elf_data = read_file(device, "\\EFI\\BOOT\\kernel.elf").expect("failed to read kernel.elf");
     let (entry_point, phdrs) = parse_elf64(&elf_data).expect("failed to parse ELF64");
@@ -654,9 +704,30 @@ fn main() -> Status {
     }
 
     // GOP
+
+    // Pre-load Ring 3 modules (before ExitBootServices)
+    let mut module_entries: [bmo_boot_protocol::ModuleEntry; MAX_MODULES] =
+        [bmo_boot_protocol::ModuleEntry { base: 0, size: 0, entry_point: 0 }; MAX_MODULES];
+    let mut module_count: u32 = 0;
+    for mod_path in MODULE_PATHS {
+        info!("loading module: {}", mod_path);
+        if let Some(entry) = load_module(device, mod_path) {
+            let idx = module_count as usize;
+            if idx < MAX_MODULES {
+                module_entries[idx] = entry;
+                module_count += 1;
+                info!("  => loaded at 0x{:x} entry=0x{:x}", entry.base, entry.entry_point);
+            } else {
+                info!("  => MAX_MODULES reached, skipping");
+                break;
+            }
+        } else {
+            info!("  => not found or failed, skipping");
+        }
+    }
     let gop = query_gop().expect("GOP failed");
 
-    // â”€â”€ Allocate stack + BootInfo below 4GB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Allocate stack + BootInfo below 4GB ──────────────────────────
     // Using MaxAddress ensures these are always identity-mapped after
     // ExitBootServices, even on firmware that only maps low memory.
     let stack_pages = KERNEL_STACK_SIZE / 4096;
@@ -689,9 +760,14 @@ fn main() -> Status {
         bi.stack_size = KERNEL_STACK_SIZE as u64;
         bi.uefi_system_table = uefi::table::system_table_raw()
             .map(|p| p.as_ptr() as u64).unwrap_or(0);
+        bi.module_count = module_count;
+        for i in 0..module_count as usize {
+            bi.modules[i] = module_entries[i];
+        }
+
     }
 
-    // â”€â”€ Exit Boot Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Exit Boot Services ───────────────────────────────────────────
     // This is the POINT OF NO RETURN. After this call:
     //   - NO Boot Services (file I/O, console, allocation, protocols)
     //   - ONLY Runtime Services (NVRAM SetVariable/GetVariable)
@@ -701,13 +777,13 @@ fn main() -> Status {
     // after it sets up its own IDT.
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
 
-    // â”€â”€ Post-EBS: ONLY safe operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Post-EBS: ONLY safe operations ───────────────────────────────
     // RAM markers survive warm reset (if RAM preserved). Checked on next boot.
     unsafe {
         core::ptr::write_volatile(0x9_0010 as *mut u32, 0x4542_5300u32); // "EBS\0"
     }
 
-    // Write "bootloader" to NVRAM â€” confirms bootloader reached this point.
+    // Write "bootloader" to NVRAM — confirms bootloader reached this point.
     // Uses cached SetVariable pointer; safe post-EBS as a UEFI Runtime Service.
     nvram_set("BMOBootStage", b"bootloader");
 
@@ -731,7 +807,7 @@ fn main() -> Status {
         core::ptr::write_volatile(0x9_0024 as *mut u32, entry_point as u32);
     }
 
-    // â”€â”€ Jump to kernel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Jump to kernel ───────────────────────────────────────────────
     // RDI = boot_info_ptr (first argument per System V AMD64 ABI)
     // RSP = stack_top (16-byte aligned by UEFI page allocator)
     unsafe {

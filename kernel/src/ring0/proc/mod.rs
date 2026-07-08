@@ -43,9 +43,7 @@ impl CoreAffinity {
 }
 
 /// Called from APIC timer interrupt â€” performs preemptive scheduling.
-pub fn timer_tick() {
-    crate::omni::hud::tick();
-    if let Some(current) = task::current() {
+pub fn timer_tick() {if let Some(current) = task::current() {
         if current.time_slice > 0 {
             current.time_slice -= 1;
         }
@@ -80,8 +78,6 @@ pub fn schedule() {
                 cur.state = task::State::Ready;
             }
         }
-
-        cabina_daemon::telemetry::scheduler::inc_ctx();
 
         if let Some(next) = task::get(next_idx) {
             next.state = task::State::Running;

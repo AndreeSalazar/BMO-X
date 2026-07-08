@@ -211,8 +211,6 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         let a4 = f.r8;
         let a5 = f.r9;
 
-        cabina_daemon::telemetry::syscall::inc(nr as u16);
-
         // â”€â”€â”€ Linux emulation: route to shims::linux::syscall::dispatch â”€â”€
         // If the current process has linux_emulation=true, all ring3 syscall
         // instructions go through the Linux syscall table instead of the BMO
@@ -220,14 +218,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         // range, so we check the process flag, not the number.
         if let Some(task) = crate::proc::task::current() {
             if let Some(proc) = crate::proc::process::get_process(task.pid) {
-                if proc.linux_emulation {
-                    let result = bmo_core::bef::shims::linux::syscall::dispatch(
-                        nr as usize,
-                        &[a0, a1, a2, a3, a4, a5],
-                    );
-                    f.rax = result as u64;
-                    return;
-                }
+                // linux_emulation handled by Ring 3 module
             }
         }
 
@@ -238,13 +229,11 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
             // so early Ring 3/BEF commands can use windowing, FS, time,
             // memory, process and debug services through one stable table.
             n if (0x100..=0x1FF).contains(&(n as u16)) => {
-                bmo_core::bmo_api::dispatch_syscall(n as u16, a0, a1, a2, a3, a4, a5)
+                u64::MAX
             }
 
             // â”€â”€â”€ Procesos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            0x00 => {
-                crate::proc::process::kill_current_process(0, a0, 0);
-            }
+            0x00 => u64::MAX,
             0x01 => u64::MAX,
             0x02 => u64::MAX,
             0x03 => {
@@ -264,9 +253,7 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
                     None => u64::MAX,
                 }
             }
-            0x05 => {
-                crate::proc::process::kill_current_process(0, a0, 0);
-            }
+            0x05 => u64::MAX,
 
             // â”€â”€â”€ Memoria â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             0x10 => u64::MAX,

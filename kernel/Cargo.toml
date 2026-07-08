@@ -1,35 +1,20 @@
 ﻿[package]
 name = "bmo-kernel"
-version = "1.8.16"
+version = "2.0.0"
 edition = "2021"
 authors = ["BMO Project"]
-description = "BMO kernel - UEFI GOP framebuffer + BMO/BareX"
+description = "BMO kernel — pure Ring 0 (arch, mm, dev, cpu, proc)"
 license = "Techne"
 
 [dependencies]
-bmo-abi = { path = "../crates_Personal/bmo_abi" }
-bmo-audio = { path = "../crates_Personal/bmo_audio" }
 bmo-boot-protocol = { path = "../crates_Personal/boot_protocol" }
-nvram-log = { path = "../crates_Personal/nvram-log" }
-vendor = { path = "../crates_Personal/vendor" }
-cabina-core = { path = "../crates_Personal/cabina/core" }
-cabina-daemon = { path = "../crates_Personal/cabina/daemon" }
-cabina-panels = { path = "../crates_Personal/cabina/panels" }
-bmo-core = { path = "../crates_Personal/bmo_core" }
-hw-profile = { path = "../crates_Personal/hw_profile" }
-byte-defender = { path = "../crates_Personal/byte_defender" }
-timeback = { path = "../crates_Personal/timeback" }
 cpu-vendor-profile = { path = "../crates_Personal/cpu_vendor_profile" }
-bmo-input = { path = "../crates_Personal/bmo_input" }
-bmo-ahci = { path = "../crates_Personal/bmo_ahci" }
-bmo-fat32 = { path = "../crates_Personal/bmo_fat32" }
-bmo-xhci = { path = "../crates_Personal/bmo_xhci" }
-bmo-uhid = { path = "../crates_Personal/bmo_uhid" }
+nvram-log = { path = "../crates_Personal/nvram-log" }
+bmo-hal-defs = { path = "../crates_Personal/bmo_hal_defs" }
 llfree = { path = "../crates_Personal/llfree-rs/core", optional = true }
 volatile = "0.4"
 bitflags = "2"
 spin = "0.9"
-goblin = { path = "../crates_Personal/goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }
 
 [features]
 default = ["alloc-buddy"]
@@ -39,6 +24,3 @@ alloc-llfree = ["llfree"]
 [[bin]]
 name =     "bmo-kernel"
 path = "src/main.rs"
-
-# Linker configuration for x86_64-unknown-none target.
-

@@ -1,0 +1,13 @@
+[package]
+name = "mod-bmo-core"
+version = "1.0.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO Core module — loaded by kernel.elf as a separate binary"
+
+[dependencies]
+bmo-core = { path = "../bmo_core" }
+bmo-hal-defs = { path = "../bmo_hal_defs" }
+timeback = { path = "../timeback" }
+byte-defender = { path = "../byte_defender" }
+goblin = { path = "../goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }

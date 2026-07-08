@@ -49,6 +49,46 @@ pub mod flags {
 pub const DEMAND: u64 = 1 << 9;
 pub const COW: u64 = 1 << 10;
 
+// ── VMA types (native, no bmo_core dependency) ────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VmaKind {
+    Fixed,
+    Demand,
+    Cow(u64),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Vma {
+    pub virt_start: u64,
+    pub virt_end:   u64,
+    pub flags:      u64,
+    pub kind:       VmaKind,
+}
+
+impl Vma {
+    pub const fn empty() -> Self {
+        Self { virt_start: 0, virt_end: 0, flags: 0, kind: VmaKind::Fixed }
+    }
+
+    pub fn contains(&self, addr: u64) -> bool {
+        addr >= self.virt_start && addr < self.virt_end
+    }
+}
+
+#[derive(Debug)]
+pub struct AddressSpace {
+    pub pml4_phys: u64,
+    pub vmas: [Vma; 32],
+    pub vma_count: usize,
+}
+
+impl AddressSpace {
+    pub const fn empty() -> Self {
+        Self { pml4_phys: 0, vmas: [Vma::empty(); 32], vma_count: 0 }
+    }
+}
+
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
 const PAGE_SIZE: u64 = super::PAGE_SIZE;
 
@@ -339,8 +379,6 @@ pub unsafe fn free_user_page_tables(pml4_phys: u64) {
         pml4e.0 = 0;
     }
 }
-
-pub use bmo_core::mm::virt::{VmaKind, Vma, AddressSpace};
 
 pub unsafe fn map_user_demand(
     pml4_phys: u64,

@@ -1,37 +1,19 @@
-﻿//! Phase 1 â€” Ring 0 Main Coordinator
+﻿//! Ring 0 Main Coordinator — pure Ring 0 boot phases.
 //!
-//! This is the main entry point for Ring 0 initialization.
-//! It orchestrates ALL hardware setup before handing off to the next phase.
-//!
-//! Boot order:
-//!   1. Validate BootInfo
-//!   2. Init UEFI Runtime Services (NVRAM)
-//!   3. Phase 0: GDT + IDT + SYSCALL + CPU init
-//!   4. Phase 1: Frame allocator + heap + high-mem
-//!   5. Phase 2: ACPI + PCI discovery
-//!   6. Phase 3: GOP framebuffer
-//!   7. Phase 4: Scheduler init
-//!   8. init_bmo_cpu (Ryzen 5 5600X detection)
-//!   9. init_acpi (ACPI tables)
-//!  10. SMP init (AP cores)
-//!  11. Return BootContext to the Ring 0 entry point
+//! Orchestrates hardware setup: arch, memory, devices, display, scheduler.
+//! No Ring 3 services (cabina, AHCI, XHCI, input, audio, visual).
 
 use crate::info;
 use crate::context::BootContext;
 
-// â”€â”€ Crash marker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 const CRASH_MARKER_ADDR: u64 = 0x9_0000;
 const RAM_STAGE_ADDR: u64 = 0x9_0010;
-const CRASH_MAGIC: u32 = 0x464F_5343; // "FOSC"
+const CRASH_MAGIC: u32 = 0x464F_5343;
 
 pub fn write_crash_marker(stage: u32) {
     unsafe {
         core::ptr::write_volatile(CRASH_MARKER_ADDR as *mut u32, CRASH_MAGIC);
         core::ptr::write_volatile((CRASH_MARKER_ADDR + 4) as *mut u32, stage);
-        // Bootloader also reads this secondary warm-reset slot when the main
-        // magic word was not preserved by firmware. Keep both in sync so a
-        // Phase 1 reset reports `p1_*` instead of `unknown_ram_stage`.
         core::ptr::write_volatile(RAM_STAGE_ADDR as *mut u32, stage);
     }
 }
@@ -43,18 +25,17 @@ pub fn clear_crash_marker() {
     }
 }
 
-// â”€â”€ Boot validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+fn s_log(msg: &str) {
+    crate::dev::console::serial_write(msg);
+    crate::dev::console::serial_write("\n");
+}
 
 fn validate_boot_info(
     ptr: *const bmo_boot_protocol::BootInfo,
 ) -> Result<&'static bmo_boot_protocol::BootInfo, &'static str> {
-    if ptr.is_null() {
-        return Err("boot_info_ptr is NULL");
-    }
+    if ptr.is_null() { return Err("boot_info_ptr is NULL"); }
     let bi = unsafe { &*ptr };
-    if bi.magic != bmo_boot_protocol::BOOT_MAGIC {
-        return Err("BootInfo magic mismatch");
-    }
+    if bi.magic != bmo_boot_protocol::BOOT_MAGIC { return Err("BootInfo magic mismatch"); }
     Ok(bi)
 }
 
@@ -67,487 +48,176 @@ unsafe fn store_boot_info(bi: &bmo_boot_protocol::BootInfo) {
     info::FB_PIXEL_FORMAT = bi.fb_pixel_format;
 }
 
-// â”€â”€ Phase 0: CPU Init (GDT + IDT + SYSCALL + CPU features) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
-    crate::log::info("phase0", "=== Phase 0: CPU Init ===");
-
-    // GDT
+    s_log("[phase0] === CPU Init ===");
     write_crash_marker(200);
     crate::uefi_rt::write_boot_stage("p0_gdt");
     crate::arch::gdt::init_gdt();
-
-    // IDT
     write_crash_marker(201);
     crate::uefi_rt::write_boot_stage("p0_idt");
     crate::arch::idt::init_idt();
-
-    // FIRST safe watchdog pet â€” IDT loaded, MMIO faults can be caught
     crate::dev::watchdog::pet_fch_watchdog();
-
-    // SYSCALL MSRs
     write_crash_marker(202);
     crate::uefi_rt::write_boot_stage("p0_syscall");
     crate::arch::syscall::init_syscall();
-
-    // CPU features, CR0/CR4, XCR0, FPU, MTRR/PAT, TSC
-    crate::dev::watchdog::pet_fch_watchdog();
     write_crash_marker(203);
     crate::uefi_rt::write_boot_stage("p0_cpu_init");
-
     let cpu = crate::cpu::init();
-    crate::dev::watchdog::pet_fch_watchdog();
     write_crash_marker(204);
     crate::uefi_rt::write_boot_stage("p0_cpu_done");
-    crate::log::info("phase0", "CPU modular init DONE");
-
-    // Init BMO ABI clock
-    write_crash_marker(205);
-    crate::uefi_rt::write_boot_stage("p0_clock");
-    crate::bmo_abi::values::time::init_clock(crate::cpu::rdtsc(), cpu.tsc_freq);
-    write_crash_marker(206);
-    crate::uefi_rt::write_boot_stage("p0_clock_done");
-
-    // Persist state
+    s_log("[phase0] CPU modular init DONE");
     ctx.cpu.tsc_freq_hz = cpu.tsc_freq;
     ctx.cpu.vendor = *b"AuthenticAMD";
     ctx.cpu.features_sse = true;
     ctx.cpu.features_avx = true;
     ctx.cpu.features_avx2 = true;
     ctx.cpu.features_aes = true;
-    ctx.bmo_abi_initialized = true;
-
-    // Timer subsystem init (HPET detection + timer wheel + timestamps)
     write_crash_marker(207);
     crate::uefi_rt::write_boot_stage("p0_timer");
     crate::dev::timer::init();
     write_crash_marker(208);
     crate::uefi_rt::write_boot_stage("p0_timer_done");
-
     let phase0_end = crate::cpu::rdtsc();
     ctx.record_phase(0, boot_start, phase0_end);
-
-    crate::log::info_u64("phase0", "TSC frequency (Hz)", cpu.tsc_freq);
-    crate::log::info_u64("phase0", "Phase 0 time (TSC ticks)", phase0_end - boot_start);
-
+    s_log("[phase0] done");
     phase0_end
 }
 
-// â”€â”€ Phase 1: Memory Init (frame allocator + heap + high-mem) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
-    write_crash_marker(2100);
-    crate::uefi_rt::write_boot_stage("p1_enter");
-    crate::log::info("phase1", "=== Phase 1: Memory Init ===");
-
-    // Validate UEFI memory map
+    s_log("[phase1] === Memory Init ===");
     write_crash_marker(2101);
-    crate::uefi_rt::write_boot_stage("p1_bootinfo");
     let bi = match ctx.boot_info() {
         Some(bi) => bi,
-        None => crate::log::fault("phase1", "BootInfo is null"),
+        None => { s_log("[phase1] FATAL: BootInfo null"); loop { unsafe { core::arch::asm!("hlt"); } } }
     };
-    if bi.memory_map_count == 0 {
-        crate::log::fault("phase1", "UEFI memory map is empty");
-    }
-    if bi.memory_map_count == bmo_boot_protocol::MAX_MEMORY_ENTRIES as u32 {
-        crate::log::warn("phase1", "UEFI memory map count reached MAX_MEMORY_ENTRIES limit. Memory map might be truncated!");
-    }
-
-    // Init frame allocator from UEFI memory map
     write_crash_marker(2102);
     crate::uefi_rt::write_boot_stage("p1_phys_init");
     unsafe {
-        crate::mm::phys::init(
-            &bi.memory_map,
-            bi.memory_map_count as usize,
-            bi.reserved_addr,
-            bi.reserved_size,
-            0, // kernel_base (not needed for basic boot)
-            0, // kernel_size
-        );
+        crate::mm::phys::init(&bi.memory_map, bi.memory_map_count as usize,
+            bi.reserved_addr, bi.reserved_size, 0, 0);
     }
-    write_crash_marker(2103);
-    crate::uefi_rt::write_boot_stage("p1_phys_done");
-    let early_free_pages = crate::mm::phys::free_count();
-    let early_free_mb = (early_free_pages * 4096) / (1024 * 1024);
-    crate::log::info_u64("phase1", "bootstrap free pages (< 2 GB)", early_free_pages as u64);
-    crate::log::info_u64("phase1", "bootstrap free MB", early_free_mb as u64);
-
-    // High-memory mapping: map all physical RAM into the upper-half (HIGH_MEM_BASE).
-    // Previously deferred for bootstrap stability — Ring 0 now reaches ready screen
-    // reliably. Enabled to unlock AHCI and USB MMIO access.
     write_crash_marker(2104);
-    crate::uefi_rt::write_boot_stage("p1_highmem_start");
     unsafe { crate::mm::vmm::map_high_mem(&bi.memory_map, bi.memory_map_count as usize); }
-    crate::uefi_rt::write_boot_stage("p1_highmem_done");
-    crate::log::info("phase1", "high-mem direct map enabled");
-
-    let free_pages = crate::mm::phys::free_count();
-    let free_mb = (free_pages * 4096) / (1024 * 1024);
-    crate::log::info_u64("phase1", "total free pages (full RAM)", free_pages as u64);
-    crate::log::info_u64("phase1", "total free MB", free_mb as u64);
-
-    // Init kernel heap
+    s_log("[phase1] high-mem direct map enabled");
     write_crash_marker(2105);
     crate::uefi_rt::write_boot_stage("p1_heap_init");
     crate::mm::heap::init_heap();
-    crate::log::info("phase1", "heap initialized");
-
-    // Smoke test
-    write_crash_marker(2106);
-    crate::uefi_rt::write_boot_stage("p1_heap_smoke");
-    unsafe {
-        let test = alloc::alloc::alloc(core::alloc::Layout::from_size_align(64, 8).unwrap());
-        if !test.is_null() {
-            core::ptr::write_bytes(test, 0xAA, 64);
-            alloc::alloc::dealloc(test, core::alloc::Layout::from_size_align(64, 8).unwrap());
-            crate::log::info("phase1", "heap smoke test PASSED");
-        } else {
-            crate::log::fault("phase1", "heap smoke test FAILED");
-        }
-    }
-    write_crash_marker(2107);
-    crate::uefi_rt::write_boot_stage("p1_done");
-
-    // Persist state
+    let free_pages = crate::mm::phys::free_count();
     ctx.memory.free_pages = free_pages as u64;
-    ctx.memory.free_mb = free_mb as u64;
+    ctx.memory.free_mb = ((free_pages * 4096) / (1024 * 1024)) as u64;
     ctx.memory.heap_total_bytes = crate::mm::heap::heap_total() as u64;
     ctx.memory.heap_used_bytes = crate::mm::heap::heap_used() as u64;
-
+    write_crash_marker(2107);
+    crate::uefi_rt::write_boot_stage("p1_done");
     let phase1_end = crate::cpu::rdtsc();
     ctx.record_phase(1, prev_end, phase1_end);
-
-    crate::log::info_u64("phase1", "Phase 1 time (TSC ticks)", phase1_end - prev_end);
-
+    s_log("[phase1] done");
     phase1_end
 }
 
-// â”€â”€ Phase 2: Device Discovery (ACPI + PCI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
-    write_crash_marker(2200);
-    crate::uefi_rt::write_boot_stage("p2_enter");
-    crate::log::info("phase2", "=== Phase 2: Device Discovery ===");
-
+    s_log("[phase2] === Device Discovery ===");
+    write_crash_marker(2201);
     let bi = match ctx.boot_info() {
         Some(bi) => bi,
-        None => crate::log::fault("phase2", "BootInfo is null"),
+        None => { s_log("[phase2] FATAL: BootInfo null"); loop { unsafe { core::arch::asm!("hlt"); } } }
     };
-
-    // Parse ACPI MCFG
-    write_crash_marker(2201);
-    crate::uefi_rt::write_boot_stage("p2_acpi_mcfg");
     let rsdp_addr = bi.rsdp_addr;
-    let mcfg = if rsdp_addr != 0 {
-        crate::dev::acpi::parse_mcfg(rsdp_addr)
-    } else {
-        None
-    };
+    let mcfg = if rsdp_addr != 0 { crate::dev::acpi::parse_mcfg(rsdp_addr) } else { None };
     if let Some(ref m) = mcfg {
-        crate::log::info_u64("phase2", "ECAM base", m.base);
-        crate::dev::console::serial_write("[phase2] ECAM end_bus=");
-        crate::dev::console::serial_write_u64(m.end_bus as u64, 10);
-        crate::dev::console::serial_write("\n");
-        // Initialize ECAM MMIO space
+        s_log("[phase2] ECAM PCIe enumeration OK");
         crate::dev::pcie::init_ecam(m.base, m.end_bus);
     } else {
-        crate::log::warn("phase2", "ACPI MCFG not found; using legacy IO ports");
+        s_log("[phase2] ACPI MCFG not found, using legacy IO");
         crate::dev::pcie::init_ecam(0, 0);
     }
-
-    // Perform safe and secure PCI scan in Ring 0
     write_crash_marker(2202);
-    crate::uefi_rt::write_boot_stage("p2_pci_scan");
     let scan = crate::dev::pcie::scan_pci_bus();
-    crate::log::info_u64("phase2", "PCI devices found", scan.count as u64);
-
-    // AHCI detection + probe (via bmo_ahci crate)
-    static STORAGE_HAL: super::storage_hal_impl::KernelStorageHal = super::storage_hal_impl::KernelStorageHal;
-    bmo_ahci::storage_hal::init_hal(&STORAGE_HAL);
-    if let Some(ahci_mmio) = crate::dev::pcie::find_ahci_mmio() {
-        crate::log::info("phase2", "AHCI controller detected, probing...");
-        unsafe { bmo_ahci::probe(ahci_mmio); }
-        for i in 0..32u8 {
-            unsafe {
-                if let Some(ctrl) = bmo_ahci::controller() {
-                    if ctrl.ports[i as usize].state == bmo_ahci::PortState::Active {
-                        if bmo_ahci::init_port_dma(i) {
-                            crate::log::info_u64("phase2", "AHCI port DMA initialized", i as u64);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Log SSD partition layout (S: FASTOS-EFI / T: FastOS-Data / X: Commit-Real)
-    crate::dev::console::serial_write("[phase2] SSD partition layout (S/T/X plan):\n");
-    for p in super::partition_layout::LAYOUT.iter() {
-        let role = match p.role {
-            0 => "EFI/Boot",
-            1 => "Data/Apps",
-            2 => "Commit-Real (TimeBack)",
-            _ => "Other",
-        };
-        crate::dev::console::serial_write(&alloc::format!(
-            "  [{}] {} ({} MB)\n",
-            p.letter as char,
-            p.label_str(),
-            p.size_mb
-        ));
-        let _ = role;
-    }
-
-    // HD Audio detection (class=0x04, subclass=0x03)
-    if let Some(hda_mmio) = crate::dev::pcie::find_device_mmio(0x04, 0x03) {
-        crate::log::info("phase2", "HD Audio controller detected (Realtek ALC)");
-        crate::dev::console::serial_write("[phase2] HDA MMIO=0x");
-        crate::dev::console::serial_write(&alloc::format!("{:x}", hda_mmio));
-        crate::dev::console::serial_write("\n");
-        crate::dev::hda::init(hda_mmio);
-    }
-
-    // Detect xHCI and publish its MMIO base, but do NOT initialize it here.
-    // Taking ownership from BIOS USB Legacy Emulation disconnects USB keyboards
-    // that currently work through the PS/2-compatible 0x60/0x64 path.  The
-    // native xHCI/HID stack can still opt in later if the PS/2/legacy HAL fails.
-    if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
-        static XHCI_HAL: super::xhci_hal_impl::KernelXhciHal = super::xhci_hal_impl::KernelXhciHal;
-        bmo_xhci::init_hal(&XHCI_HAL);
-        bmo_xhci::set_mmio(xhci_mmio);
-        crate::dev::console::serial_write("[phase2] xHCI at 0x");
-        crate::dev::console::serial_write_u64(xhci_mmio, 16);
-        crate::dev::console::serial_write(" — deferred to input HAL\n");
-    } else {
-        crate::log::info("phase2", "No xHCI controller found");
-    }
-
-    // Persist state
+    s_log("[phase2] PCI scan complete");
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
-    ctx.devices.acpi_mcfg_end_bus = mcfg.as_ref().map(|m| m.end_bus).unwrap_or(0);
-    ctx.devices.ecam_mapped = false;
     ctx.devices.pci_devices_found = scan.count as u32;
-
-    crate::log::info("phase2", "Input: PS/2/USB-legacy first, native USB HID fallback");
-
-    // MMIO-backed drivers: now accessible via high-mem direct map.
-    // AHCI and xHCI BARs near 0xFCxx_xxxx work through phys_to_virt().
-    write_crash_marker(2204);
-    crate::uefi_rt::write_boot_stage("p2_mmio_enabled");
-    crate::log::info("phase2", "MMIO drivers: high-mem map active, probing hardware");
-
-    // Power management (C-states, thermal monitoring)
     write_crash_marker(2205);
-    crate::uefi_rt::write_boot_stage("p2_power");
     crate::dev::power::init();
-
     let phase2_end = crate::cpu::rdtsc();
     ctx.record_phase(2, prev_end, phase2_end);
-
-    crate::log::info_u64("phase2", "Phase 2 time (TSC ticks)", phase2_end - prev_end);
-
-    write_crash_marker(2206);
-    crate::uefi_rt::write_boot_stage("p2_done");
-
+    s_log("[phase2] done");
     phase2_end
 }
 
-// â”€â”€ Phase 3: Display Init (GOP framebuffer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn phase3_display(ctx: &mut BootContext, prev_end: u64) -> u64 {
-    crate::log::info("phase3", "=== Phase 3: Display Init ===");
-
+fn phase3_display(_ctx: &mut BootContext, prev_end: u64) -> u64 {
+    s_log("[phase3] === Display Init ===");
     let (fb_addr, fb_w, fb_h, fb_s) = unsafe {
         (crate::info::FB_ADDR, crate::info::FB_WIDTH, crate::info::FB_HEIGHT, crate::info::FB_STRIDE)
     };
-
-    if fb_addr == 0 || fb_w == 0 || fb_h == 0 || fb_s == 0 {
-        crate::log::fault("phase3", "Framebuffer parameters invalid");
-    }
-
-    crate::log::info_u64("phase3", "framebuffer addr", fb_addr);
-    crate::log::info_u64("phase3", "resolution", (fb_w as u64) << 32 | fb_h as u64);
-
-    // Init GOP display
     let fmt = unsafe { crate::info::FB_PIXEL_FORMAT };
     crate::dev::framebuffer::init_gop(fb_addr, fb_w, fb_h, fb_s, fmt);
-    crate::log::info("phase3", "GOP display initialized");
-
+    s_log("[phase3] GOP framebuffer initialized");
     let phase3_end = crate::cpu::rdtsc();
-    ctx.record_phase(3, prev_end, phase3_end);
-
-    crate::log::info_u64("phase3", "Phase 3 time (TSC ticks)", phase3_end - prev_end);
-
     phase3_end
 }
 
-// â”€â”€ Phase 4: Scheduler Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn phase4_sched(ctx: &mut BootContext, prev_end: u64) -> u64 {
-    crate::log::info("phase4", "=== Phase 4: Scheduler Init ===");
-
-    // Init process/task tables
+fn phase4_sched(_ctx: &mut BootContext, prev_end: u64) -> u64 {
+    s_log("[phase4] === Scheduler Init ===");
     crate::proc::init();
-    crate::log::info("phase4", "scheduler tables initialized");
-
-    // NOTE: APIC timer and interrupts stay in cooperative mode here.
-    // A later owner can opt in once its scheduling contract is ready.
-
+    s_log("[phase4] scheduler tables initialized");
     let phase4_end = crate::cpu::rdtsc();
-    ctx.record_phase(4, prev_end, phase4_end);
-
-    crate::log::info_u64("phase4", "Phase 4 time (TSC ticks)", phase4_end - prev_end);
-
     phase4_end
 }
-
-// ── Wiring helper for cpu_vendor_profile logging ──────────
 
 fn wrap_boot_stage(s: &str) {
     let _ = crate::uefi_rt::write_boot_stage(s);
 }
 
-// â”€â”€ Main Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-/// Main entry point for Ring 0. Called from kernel_main_real.
-///
-/// Initializes ALL hardware and returns a BootContext to the Ring 0 entry
-/// point. The caller decides whether to enter a higher layer or stay in the
-/// Ring 0-owned GOP ready screen.
 pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
-    // 1. Validate BootInfo
-    crate::cabina_daemon::info("ring0", "validating BootInfo");
+    s_log("[ring0] validating BootInfo");
     let bi = match validate_boot_info(boot_info_ptr) {
         Ok(bi) => bi,
-        Err(msg) => crate::log::fault("ring0", msg),
+        Err(msg) => { s_log(msg); loop { unsafe { core::arch::asm!("hlt"); } } }
     };
-    crate::dev::console::serial_write("[ring0] boot_info validated\n");
     unsafe { store_boot_info(bi); }
-    crate::cabina_daemon::info("ring0", "BootInfo stored");
-
-    // 2. Init UEFI Runtime Services
+    s_log("[ring0] BootInfo stored");
     crate::uefi_rt::init(bi.uefi_system_table);
-    crate::cabina_daemon::info("ring0", "UEFI RT initialized");
-
-    // 3. Write crash marker + NVRAM
+    s_log("[ring0] UEFI RT initialized");
     write_crash_marker(0);
-    let nvram_ok = crate::uefi_rt::write_boot_stage("kernel_start");
-    crate::cabina_daemon::info("ring0", "NVRAM boot_stage=kernel_start");
-    crate::dev::console::serial_write("[ring0] NVRAM kernel_start=");
-    crate::dev::console::serial_write(if nvram_ok { "OK\n" } else { "FAIL\n" });
-
-    // 4. Init visual (splash screen)
-    crate::visual::clear();
-    crate::visual::log("ring0", "Ring 0 init start", crate::visual::color::OK);
-
-    // 5. Create BootContext
+    crate::uefi_rt::write_boot_stage("kernel_start");
     let mut ctx = BootContext::new(boot_info_ptr);
     let boot_start = crate::cpu::rdtsc();
-
-    // NOTE: omni::init_early() deliberately NOT called here. It accesses ACPI
-    // tables (RSDP/XSDT) via raw pointers, but the IDT isn't set up yet
-    // (phase0_arch). A page fault before IDT = triple fault = system reset.
-    // HPET is non-critical; dev::timer::init() in phase0_arch falls back to TSC.
-
-    // 6. Phase 0-4
     write_crash_marker(2);
     crate::uefi_rt::write_boot_stage("phases_0_to_4");
-    crate::cabina_daemon::info("ring0", "starting phases 0-4");
-    crate::visual::log("ring0", "[0/5] boot phases", crate::visual::color::OK);
-
+    s_log("[ring0] starting boot phases");
     let mut prev_end = boot_start;
-    crate::cabina_daemon::info("ring0", "entering phase0_arch");
     prev_end = phase0_arch(&mut ctx, prev_end);
-    crate::cabina_daemon::info("ring0", "entering phase1_mem");
     prev_end = phase1_mem(&mut ctx, prev_end);
-    crate::cabina_daemon::info("ring0", "entering phase2_dev");
     prev_end = phase2_dev(&mut ctx, prev_end);
-    crate::cabina_daemon::info("ring0", "entering phase3_display");
     prev_end = phase3_display(&mut ctx, prev_end);
-    crate::cabina_daemon::info("ring0", "entering phase4_sched");
     prev_end = phase4_sched(&mut ctx, prev_end);
-
-    crate::visual::log("ring0", "[0/5] phases done", crate::visual::color::OK);
-    crate::cabina_daemon::info("ring0", "all boot phases completed");
-
-    // 7. CPU-specific init (Ryzen 5 5600X)
+    s_log("[ring0] all boot phases completed");
     write_crash_marker(3);
-    // Wire cpu_vendor_profile's logging callbacks (extracted crate)
     unsafe {
         cpu_vendor_profile::LOG_WRITE_STR = Some(crate::dev::console::serial_write as fn(&str));
         cpu_vendor_profile::LOG_WRITE_U64 = Some(crate::dev::console::serial_write_u64 as fn(u64, usize));
         cpu_vendor_profile::LOG_BOOT_STAGE = Some(wrap_boot_stage as fn(&str));
     }
     crate::uefi_rt::write_boot_stage("init_bmo_cpu");
-    crate::cabina_daemon::info("ring0", "detecting CPU");
-    crate::visual::log("ring0", "[1/5] detect 5600X", crate::visual::color::OK);
+    s_log("[ring0] detecting CPU");
     cpu_vendor_profile::amd::cpu::zen3::init_bmo_cpu();
-    crate::cabina_daemon::info("ring0", "CPU detected");
-    crate::visual::log("ring0", "[1/5] 5600X detected", crate::visual::color::OK);
-
-    // 8. ACPI tables
+    s_log("[ring0] CPU detected");
     write_crash_marker(4);
     crate::uefi_rt::write_boot_stage("init_acpi");
-    crate::cabina_daemon::info("ring0", "parsing ACPI tables");
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
-    crate::visual::log("ring0", "[2/5] init ACPI", crate::visual::color::OK);
     cpu_vendor_profile::amd::cpu::zen3::init_acpi(rsdp_hint);
-    crate::cabina_daemon::info("ring0", "ACPI initialized");
-
-    // 9. SMP init
+    s_log("[ring0] ACPI initialized");
     write_crash_marker(45);
     crate::uefi_rt::write_boot_stage("smp_init");
-    crate::cabina_daemon::info("ring0", "SMP init start");
-    crate::visual::log("ring0", "[3.5/5] SMP init", crate::visual::color::OK);
+    s_log("[ring0] SMP init start");
     unsafe { crate::arch::smp::init(); }
-    let smp_cores = crate::arch::smp::core_count();
-    crate::cabina_daemon::info("ring0", "SMP init done");
-    if smp_cores > 1 {
-        crate::visual::log("ring0", "[3.5/5] SMP online", crate::visual::color::OK);
-    } else {
-        crate::visual::log("ring0", "[3.5/5] SMP single-core", crate::visual::color::WARN);
-    }
-
-    // 10. Omniscient late init (watchdog, persist, HUD)
-    crate::omni::init_late();
-
-    // 11. Mark boot complete
+    s_log("[ring0] SMP init done");
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
-    crate::cabina_daemon::info("ring0", "Ring 0 boot complete — returning BootContext");
-
-    // Wire bmo_core HAL — enables the external crate to call ring0 through HalServices.
-    bmo_core::hal::init(crate::ring0::hal_init::build(&ctx));
-    crate::cabina_daemon::info("ring0", "bmo_core HAL wired");
-
-    // Visual "OK Ready" pulse — flash all phase bars green briefly
-    for _ in 0..3 {
-        crate::visual::end_phase(5); // all phases complete
-        crate::cpu::busy_wait_ms(80);
-        crate::visual::begin_phase(5);
-        crate::cpu::busy_wait_ms(80);
-    }
-    crate::visual::end_phase(5);
-    crate::visual::log("ring0", "BMO: Ok Ready", crate::visual::color::OK);
-    crate::dev::console::serial_write("[ring0] BMO: Ok Ready — all systems nominal\n");
-
-    crate::visual::log("ring0", "Ring 0 boot complete", crate::visual::color::OK);
-    crate::dev::console::serial_write("[ring0] boot complete â€” returning BootContext\n");
-
-    // Dump cabina ring buffer to serial for diagnostics
-    {
-        let cur = cabina_daemon::ring_buffer::next_seq();
-        let start = if cur > 64 { cur - 64 } else { 1 };
-        for seq in start..cur {
-            if let Some(ev) = cabina_daemon::ring_buffer::event_by_seq(seq) {
-                crate::dev::console::serial_write(&alloc::format!(
-                    "#{} {} {}: {}\n", ev.seq, ev.severity.name(), ev.module_str(), ev.msg_str()
-                ));
-            }
-        }
-    }
-
+    s_log("[ring0] boot complete");
+    let hal = alloc::boxed::Box::new(crate::ring0::hal_init::build(&ctx));
+    unsafe { crate::ring0::hal_init::HAL_SERVICES = alloc::boxed::Box::into_raw(hal) as *const _; }
+    s_log("[ring0] HalServices built");
+    s_log("[ring0] BMO: Ok Ready");
     ctx
 }

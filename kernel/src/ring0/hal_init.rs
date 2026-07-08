@@ -1,17 +1,15 @@
-//! HAL initialization — populates bmo_core's HalServices with ring0 function pointers.
+//! HAL initialization — builds HalServices function pointer table for modules.
 //!
-//! Called from `boot_phase::main()` after all subsystems are initialized.
+//! Essential Ring 0 services only. Ring 3 services (cabina, storage, input,
+//! audio, visual) are stubbed — modules provide or request their own drivers.
 
-use bmo_core::hal::HalServices;
-use bmo_core::proc::process::Pid;
+use bmo_hal_defs::HalServices;
+use crate::proc::process::Pid;
 
-/// Build the HalServices table, wiring ring0 implementations into bmo_core.
-///
-/// Functions marked `/* stub */` correspond to HAL entries that exist for
-/// completeness but are never called by the current bmo_core code path.
+pub static mut HAL_SERVICES: *const HalServices = core::ptr::null();
+
 pub fn build(ctx: &crate::context::BootContext) -> HalServices {
     HalServices {
-
         // ── dev::console ────────────────────────────────────────────
         serial_write:             crate::dev::console::serial_write,
         serial_write_u64:         crate::dev::console::serial_write_u64,
@@ -30,12 +28,12 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         devour_init:              || {},
 
         // ── mm::phys ────────────────────────────────────────────────
-        phys_to_pt:               |paddr| addr_to_pt(paddr),
+        phys_to_pt:               |paddr| crate::mm::vmm::phys_to_virt(paddr) as *mut u64,
         alloc_pages_contiguous:   |n| unsafe { crate::mm::frame_alloc::alloc_pages_contiguous(n).unwrap_or(0) },
         free_pages:               |addr, count| unsafe { crate::mm::frame_alloc::free_pages(addr, count); },
         page_size:                || crate::mm::PAGE_SIZE as usize,
-        alloc_gbil_page:          || 0,       /* stub */
-        free_gbil_page:           |_| {},     /* stub */
+        alloc_gbil_page:          || 0,
+        free_gbil_page:           |_| {},
         total_ram:                crate::mm::frame_alloc::total_ram,
 
         // ── mm::virt ────────────────────────────────────────────────
@@ -55,11 +53,11 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         rdtsc:                    crate::cpu::rdtsc,
         tsc_per_sec:              crate::cpu::tsc_per_sec,
         tsc_calibrate:            crate::cpu::tsc_per_sec,
-        tsc_busy_wait_ms:         |_, _| {}, /* stub */
+        tsc_busy_wait_ms:         |_, _| {},
         busy_wait_ms:             crate::cpu::busy_wait_ms,
         halt:                     || loop { unsafe { core::arch::asm!("hlt"); } },
 
-        // ── info (from ring0/info.rs statics) ───────────────────────
+        // ── info ────────────────────────────────────────────────────
         fb_addr:                  unsafe { crate::info::FB_ADDR },
         fb_width:                 unsafe { crate::info::FB_WIDTH },
         fb_height:                unsafe { crate::info::FB_HEIGHT },
@@ -70,79 +68,37 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         // ── uefi_rt ─────────────────────────────────────────────────
         write_boot_stage:         |s| { let _ = crate::uefi_rt::write_boot_stage(s); },
 
-        // ── visual (stubs — bmo_core uses Framebuffer methods directly) ─
-        clear:                    || { crate::visual::clear(); },
-        print_at:                 |_,_,_,_| {}, /* stub */
-        print_at_u64:             |_,_,_,_| {}, /* stub */
-        fill_rect:                |_,_,_,_,_| {}, /* stub */
-        draw_image:               |_,_,_,_,_| {}, /* stub */
-        draw_image_clip:          |_,_,_,_,_,_,_,_,_| {}, /* stub */
+        // ── visual (stubbed — module handles rendering) ─────────────
+        clear:                    || {},
+        print_at:                 |_,_,_,_| {},
+        print_at_u64:             |_,_,_,_| {},
+        fill_rect:                |_,_,_,_,_| {},
+        draw_image:               |_,_,_,_,_| {},
+        draw_image_clip:          |_,_,_,_,_,_,_,_,_| {},
 
         // ── font ────────────────────────────────────────────────────
-        FONT8x16:                 core::ptr::null(), /* stub */
+        FONT8x16:                 core::ptr::null(),
 
         // ── log ─────────────────────────────────────────────────────
-        log_write:                |_, _| {}, /* stub */
+        log_write:                |_, _| {},
 
-        // ── cabina ──────────────────────────────────────────────────
-        cabina_init:              cabina_daemon::init,
-        cabina_boot_ready:        || {
-            cabina_daemon::info("bmo-kernel", "boot_ready — entering Ring 0 supervisor");
-        },
-        cabina_info:              |module, msg| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::info(s, m);
-        },
-        cabina_fault:             |module, msg| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::fault(s, m);
-        },
-        cabina_warn:              |module, msg| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::warn(s, m);
-        },
-        cabina_trace:             |module, msg| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::trace(s, m);
-        },
-        cabina_panic_msg:         |module, msg| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::fault(s, m);
-        },
-        cabina_info_u64:          |module, msg, v| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::emit_full(cabina_core::Severity::Info, cabina_core::Layer::Ring0,
-                cabina_core::Entity::Module, s, v as u32, m, v);
-        },
-        cabina_warn_u64:          |module, msg, v| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::emit_full(cabina_core::Severity::Warning, cabina_core::Layer::Ring0,
-                cabina_core::Entity::Module, s, v as u32, m, v);
-        },
-        cabina_fault_u64:         |module, msg, v| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::emit_full(cabina_core::Severity::Fault, cabina_core::Layer::Ring0,
-                cabina_core::Entity::Module, s, v as u32, m, v);
-        },
-        cabina_trace_u64:         |module, msg, v| {
-            let s: &'static str = unsafe { core::mem::transmute(module) };
-            let m: &'static str = unsafe { core::mem::transmute(msg) };
-            cabina_daemon::emit_full(cabina_core::Severity::Trace, cabina_core::Layer::Ring0,
-                cabina_core::Entity::Module, s, v as u32, m, v);
-        },
-        cabina_is_overlay_enabled:|| crate::omni::hud::is_active(),
-        cabina_set_overlay_enabled:|on| crate::omni::hud::set_enabled(on),
-        cabina_cycle_tab:         || crate::omni::hud::cycle_tab(),
-        cabina_cycle_query:       || crate::omni::hud::cycle_query(),
-        cabina_paint_overlay:     || crate::omni::hud::paint(),
+        // ── cabina (stubbed — runs as separate Ring 3 module) ────
+        cabina_init:              || {},
+        cabina_boot_ready:        || {},
+        cabina_info:              |_, _| {},
+        cabina_fault:             |_, _| {},
+        cabina_warn:              |_, _| {},
+        cabina_trace:             |_, _| {},
+        cabina_panic_msg:         |_, _| {},
+        cabina_info_u64:          |_, _, _| {},
+        cabina_warn_u64:          |_, _, _| {},
+        cabina_fault_u64:         |_, _, _| {},
+        cabina_trace_u64:         |_, _, _| {},
+        cabina_is_overlay_enabled:|| false,
+        cabina_set_overlay_enabled:|_| {},
+        cabina_cycle_tab:         || {},
+        cabina_cycle_query:       || false,
+        cabina_paint_overlay:     || {},
 
         // ── proc::task ──────────────────────────────────────────────
         task_current_index:       crate::proc::task::current_index,
@@ -183,38 +139,20 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
 
         // ── defense / timeback / userland ───────────────────────────
         defense_init:             || {},
-        timeback_init:            || {
-            // Wire the NVRAM sink so checkpoints persist to UEFI variables.
-            timeback::storage::register_nvram_sink(|name, data| {
-                let _ = nvram_log::set_variable(name, data);
-            });
-            // Wire the SSD backend so the repo can write to X:/TIMEBACK.
-            timeback::storage::register_ssd_backend(ssd_backend_wrapper);
-            // Use the kernel's TSC as the monotonic tick source.
-            timeback::set_tick_source(crate::cpu::rdtsc);
-            timeback::init();
-            // Auto-init the repo at X:/TIMEBACK (Commit-Real partition).
-            if bmo_ahci::controller().is_some() {
-                timeback::repo::init("X:/TIMEBACK");
-                cabina_daemon::info("timeback", "Repo initialized at X:/TIMEBACK (Commit-Real)");
-            } else {
-                cabina_daemon::warn("timeback", "No AHCI controller — repo will use NVRAM only");
-            }
-            cabina_daemon::info("timeback", "TimeBack initialized with SSD + NVRAM persistence");
-        },
+        timeback_init:            || {},
         userland_init:            || {},
 
         // ── context ─────────────────────────────────────────────────
         context:                  ctx as *const _ as *mut u8,
 
         // ── serial ──────────────────────────────────────────────────
-        register_cabina_sink:     crate::serial::register_cabina_sink,
+        register_cabina_sink:     || {},
 
         // ── profile ─────────────────────────────────────────────────
         profile_main:             || loop { unsafe { core::arch::asm!("hlt"); } },
 
         // ── omni::hud ───────────────────────────────────────────────
-        hud_tick:                 crate::omni::hud::tick,
+        hud_tick:                 || {},
 
         // ── arch::gdt ───────────────────────────────────────────────
         KERNEL_CS:                crate::arch::gdt::KERNEL_CS as u64,
@@ -227,33 +165,38 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         set_syscall_kernel_stack: crate::arch::syscall::set_syscall_kernel_stack,
 
         // ── ring3::transition ───────────────────────────────────────
-        ring3_transition:         crate::ring3::transition::ring3_transition,
+        ring3_transition:         |_, _| loop { core::hint::spin_loop() },
 
         // ── vendor ──────────────────────────────────────────────────
         issue_ibpb:               crate::vendor::amd::cpu::zen3::errata_workarounds::issue_ibpb,
         amd_cpu_name:             || "AMD Ryzen",
 
-        // ── bmo_audio (HD Audio Realtek ALC via HDA driver) ──────────
-        audio_init:               |_freq| {
-            // HD Audio doesn't need TSC frequency — volume is register-based
-        },
-        audio_play:               |_tone| {},
-        audio_play_logon_chime:   || {
-            // HD Audio doesn't have PIT beeps; logon sound is silent on HDA
-            // Future: load a WAV file and play through HDA stream
-        },
-        audio_beep:               |_hz, _ms| {},
-        audio_set_volume:         |v| crate::dev::hda::set_volume(v as u8),
+        // ── audio (stubbed — module provides HDA driver) ───────────
+        audio_init:               |_| {},
+        audio_play:               |_| {},
+        audio_play_logon_chime:   || {},
+        audio_beep:               |_, _| {},
+        audio_set_volume:         |_| {},
 
-        // ── dev::storage ────────────────────────────────────────────
+        // ── dev::storage (stubbed — module provides AHCI driver) ───
         storage_test:             || false,
+
+        // ── input (stubbed — module provides input drivers) ─────────
+        input_init:               || false,
+        input_poll:               |_| 0,
+
+        // ── storage HAL (stubbed — module provides AHCI) ────────────
+        storage_read_sectors:     |_, _, _, _| false,
+        storage_write_sectors:    |_, _, _, _| false,
+        storage_port_count:       || 0,
+        storage_port_active:      |_| false,
+
+        // ── filesystem HAL (stubbed — module provides FAT32) ────────
+        fs_mount:                 |_| false,
+        fs_read_file:             |_, _, _| None,
+        fs_write_file:            |_, _, _| false,
+        fs_find_subdir:           |_, _| None,
     }
-}
-
-// ── Adapters for mismatched signatures ──────────────────────────────────
-
-fn addr_to_pt(paddr: u64) -> *mut u64 {
-    crate::mm::vmm::phys_to_virt(paddr) as *mut u64
 }
 
 fn adapt_map_user_range(pml4: u64, virt: u64, phys: u64, pages: usize, flags: u64) -> i32 {
@@ -268,123 +211,4 @@ fn adapt_mark_identity(start: u64, len: usize) -> i32 {
         Ok(()) => 0,
         Err(_) => -1,
     }
-}
-
-// ── TimeBack SSD backend thunk ──────────────────────────────────
-//
-// This thunk is registered as the SSD backend for TimeBack. It writes
-// to a static RAM buffer that simulates the T: partition. When the
-// real AHCI+FAT32 stack is fully working, this thunk will be replaced
-// with a proper FAT32 file writer.
-//
-// Operations (op is a timeback::storage::SsdOp, but we re-declare it
-// as u8 to avoid a dependency cycle):
-//   0 = Mkdir   (data ignored, creates the directory in our RAM FS)
-//   1 = Write   (data is the file content)
-//   2 = Read    (writes the file content into data)
-//   3 = ListDir (writes a null-separated list of entry names into data)
-//
-// The path "T:/TIMEBACK/..." is mapped to a flat namespace in RAM.
-
-extern crate alloc;
-use alloc::string::String;
-use alloc::vec::Vec;
-
-const RAM_FS_MAX: usize = 64;
-const RAM_FS_FILE_MAX: usize = 4096;
-
-struct RamFile {
-    path: String,
-    data: Vec<u8>,
-}
-
-use spin::Mutex;
-static RAM_FS: Mutex<Vec<RamFile>> = Mutex::new(Vec::new());
-
-unsafe fn ssd_backend_thunk(op: u8, path: &str, data: &mut [u8]) -> bool {
-    let mut fs = RAM_FS.lock();
-    match op {
-        0 => {
-            // Mkdir: ensure a "directory marker" file exists.
-            let dir_marker = alloc::format!("{}/.dir", path.trim_end_matches('/'));
-            for f in fs.iter() {
-                if f.path == dir_marker { return true; }
-            }
-            if fs.len() < RAM_FS_MAX {
-                fs.push(RamFile { path: dir_marker, data: Vec::new() });
-                return true;
-            }
-            false
-        }
-        1 => {
-            // Write: store or replace the file.
-            for f in fs.iter_mut() {
-                if f.path == path {
-                    f.data = data.to_vec();
-                    return true;
-                }
-            }
-            if fs.len() < RAM_FS_MAX {
-                fs.push(RamFile { path: String::from(path), data: data.to_vec() });
-                return true;
-            }
-            false
-        }
-        2 => {
-            // Read: copy file data into `data`.
-            for f in fs.iter() {
-                if f.path == path {
-                    let n = f.data.len().min(data.len());
-                    data[..n].copy_from_slice(&f.data[..n]);
-                    return true;
-                }
-            }
-            false
-        }
-        3 => {
-            // ListDir: list entries in `path/`.
-            let prefix_trimmed = path.trim_end_matches('/');
-            let prefix = alloc::format!("{}/", prefix_trimmed);
-            let mut off = 0;
-            let mut seen: Vec<String> = Vec::new();
-            for f in fs.iter() {
-                if f.path.starts_with(&prefix) && f.path != alloc::format!("{}/.dir", prefix_trimmed) {
-                    let rest = &f.path[prefix.len()..];
-                    if let Some(slash) = rest.find('/') {
-                        let dir = &rest[..slash];
-                        if !seen.iter().any(|s| s == dir) {
-                            seen.push(String::from(dir));
-                            if off + dir.len() + 1 <= data.len() {
-                                data[off..off + dir.len()].copy_from_slice(dir.as_bytes());
-                                off += dir.len();
-                                data[off] = 0;
-                                off += 1;
-                            }
-                        }
-                    } else if !rest.is_empty() && rest != ".dir" {
-                        if !seen.iter().any(|s| s == rest) {
-                            seen.push(String::from(rest));
-                            if off + rest.len() + 1 <= data.len() {
-                                data[off..off + rest.len()].copy_from_slice(rest.as_bytes());
-                                off += rest.len();
-                                data[off] = 0;
-                                off += 1;
-                            }
-                        }
-                    }
-                }
-            }
-            true
-        }
-        _ => false,
-    }
-}
-
-// Adapter to match timeback's SsdBackend signature (uses enum, not u8).
-unsafe fn ssd_backend_wrapper(
-    op: timeback::storage::SsdOp,
-    path: &str,
-    data: &mut [u8],
-) -> bool {
-    ssd_backend_thunk(op as u8, path, data)
 }

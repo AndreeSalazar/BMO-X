@@ -11,7 +11,6 @@ pub mod msr;
 pub mod regs;
 pub mod cache;
 pub mod fpu;
-pub mod perf;
 pub mod tsc;
 pub mod info;
 

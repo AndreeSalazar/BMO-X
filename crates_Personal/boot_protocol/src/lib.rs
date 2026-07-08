@@ -1,19 +1,20 @@
-﻿//! BMO Boot Protocol â€” shared types between UEFI bootloader and kernel.
+﻿//! BMO Boot Protocol — shared types between UEFI bootloader and kernel.
 //!
 //! The bootloader fills `BootInfo`, the kernel reads it.
-//! Single pointer in RDI â€” that's the entire ABI.
+//! Single pointer in RDI — that's the entire ABI.
 //!
-//! v2: Builder pattern, better docs, memory helpers.
+//! v3: Module pre-load support — bootloader loads Ring 3 modules
+//!     into memory and registers them via `ModuleEntry[]`.
 
 #![no_std]
 
-/// Protocol version â€” bump on breaking layout changes.
-pub const PROTOCOL_VERSION: u32 = 2;
+/// Protocol version — bump on breaking layout changes.
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Magic value to verify BootInfo integrity on kernel entry.
 pub const BOOT_MAGIC: u64 = 0xFA57_0505_B007_1AF0;
 
-// â”€â”€ Memory Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Memory Types ──────────────────────────────────────────────────────
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,7 +36,7 @@ impl MemoryType {
     }
 }
 
-// â”€â”€ Memory Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Memory Map ────────────────────────────────────────────────────────
 
 /// Maximum memory map entries (fits in 4 pages).
 pub const MAX_MEMORY_ENTRIES: usize = 512;
@@ -61,7 +62,7 @@ impl MemoryEntry {
     }
 }
 
-// â”€â”€ Pixel Format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Pixel Format ──────────────────────────────────────────────────────
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,21 +72,40 @@ pub enum PixelFormat {
     Unknown = 255,
 }
 
-// â”€â”€ Boot Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Module Entry ──────────────────────────────────────────────────────
+
+/// Maximum modules the bootloader can pre-load.
+pub const MAX_MODULES: usize = 16;
+
+/// A single pre-loaded Ring 3 module.
+///
+/// The bootloader parses the ELF, allocates pages at the module's linked
+/// virtual address, copies PT_LOAD segments, and zeroes BSS before
+/// ExitBootServices. The kernel then maps the module's VMA range and
+/// calls the entry point.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ModuleEntry {
+    pub base: u64,
+    pub size: u64,
+    pub entry_point: u64,
+}
+
+// ── Boot Info ─────────────────────────────────────────────────────────
 
 /// Boot information passed from UEFI bootloader to kernel via RDI.
 ///
-/// Fixed layout â€” no pointers, no allocations, pure data.
+/// Fixed layout — no pointers, no allocations, pure data.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BootInfo {
     /// Must be `BOOT_MAGIC`.
     pub magic: u64,
-    /// Protocol version â€” kernel checks this.
+    /// Protocol version — kernel checks this.
     pub version: u32,
     pub _pad: u32,
 
-    // â”€â”€ Framebuffer (flat for backwards compat) â”€â”€
+    // ── Framebuffer (flat for backwards compat) ──
     pub fb_addr: u64,
     pub fb_size: u64,
     pub fb_width: u32,
@@ -93,30 +113,35 @@ pub struct BootInfo {
     pub fb_stride: u32,
     pub fb_pixel_format: PixelFormat,
 
-    // â”€â”€ Memory map â”€â”€
+    // ── Memory map ──
     pub memory_map_count: u32,
     pub _pad2: u32,
     pub memory_map: [MemoryEntry; MAX_MEMORY_ENTRIES],
 
-    // â”€â”€ ACPI â”€â”€
+    // ── ACPI ──
     pub rsdp_addr: u64,
 
-    // â”€â”€ Kernel â”€â”€
+    // ── Kernel ──
     pub kernel_base: u64,
     pub kernel_size: u64,
 
-    // â”€â”€ Stack â”€â”€
+    // ── Stack ──
     pub stack_top: u64,
     pub stack_size: u64,
 
-    // â”€â”€ Reserved (0 in GOP path) â”€â”€
+    // ── Reserved (0 in GOP path) ──
     pub reserved_addr: u64,
     pub reserved_size: u64,
 
-    // â”€â”€ UEFI Runtime Services â”€â”€
+    // ── UEFI Runtime Services ──
     /// Physical address of UEFI System Table. After ExitBootServices,
     /// only Runtime Services are valid. Kernel uses this for NVRAM access.
     pub uefi_system_table: u64,
+
+    // ── Pre-loaded modules ──
+    pub module_count: u32,
+    pub _pad3: u32,
+    pub modules: [ModuleEntry; MAX_MODULES],
 }
 
 impl BootInfo {
@@ -135,7 +160,7 @@ impl BootInfo {
         "BootInfo must fit in the bootloader's 4-page allocation"
     );
 
-    /// Framebuffer pitch in bytes (stride Ã— 4 for 32bpp).
+    /// Framebuffer pitch in bytes (stride × 4 for 32bpp).
     #[inline]
     pub fn fb_pitch(&self) -> u64 {
         self.fb_stride as u64 * 4
@@ -154,9 +179,9 @@ impl BootInfo {
     }
 }
 
-// â”€â”€ Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Builder ───────────────────────────────────────────────────────────
 
-/// Builder for `BootInfo` â€” fluent API for the bootloader.
+/// Builder for `BootInfo` — fluent API for the bootloader.
 pub struct BootInfoBuilder {
     inner: BootInfo,
 }
@@ -179,6 +204,8 @@ impl BootInfoBuilder {
                 stack_top: 0, stack_size: 0,
                 reserved_addr: 0, reserved_size: 0,
                 uefi_system_table: 0,
+                module_count: 0, _pad3: 0,
+                modules: [ModuleEntry { base: 0, size: 0, entry_point: 0 }; MAX_MODULES],
             },
         }
     }
@@ -229,6 +256,17 @@ impl BootInfoBuilder {
         }
         self.inner.memory_map[idx] = entry;
         self.inner.memory_map_count += 1;
+        true
+    }
+
+    /// Add a pre-loaded module entry. Returns false if table is full.
+    pub fn add_module(&mut self, entry: ModuleEntry) -> bool {
+        let idx = self.inner.module_count as usize;
+        if idx >= MAX_MODULES {
+            return false;
+        }
+        self.inner.modules[idx] = entry;
+        self.inner.module_count += 1;
         true
     }
 

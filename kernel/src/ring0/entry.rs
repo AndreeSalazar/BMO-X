@@ -43,13 +43,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
         core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32);
     }
 
-    // 2. Register serial sink (enables cabina-daemon serial output)
-    crate::serial::register_cabina_sink();
-
-    // 3. CABINA daemon init (ring buffer + telemetry)
-    cabina_daemon::init();
-
-    // 4. NVRAM init + EARLIEST write — BEFORE any serial output
+    // 2. NVRAM init + EARLIEST write — BEFORE any serial output
     if !boot_info_ptr.is_null() {
         let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
         if uefi_st != 0 {
@@ -58,23 +52,27 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
         }
     }
 
-    // 5. NOW serial + ring buffer are active
-    cabina_daemon::info("ring0", "kernel_main_real entered");
-    cabina_daemon::info("ring0", "nvram init + kmain_early written");
+    // 3. Serial output now possible
+    crate::dev::console::serial_write("[entry] kernel_main_real entered\n");
 
-    // Enter Ring 0 main coordinator. Returning means Ring 0 completed
-    // successfully.
-    let ctx = super::boot_phase::main(boot_info_ptr);
+    // Enter Ring 0 main coordinator. Returning means Ring 0 completed successfully.
+    super::boot_phase::main(boot_info_ptr);
 
-    // Transition to BMO Core (logical Ring 3 kernel) subsystems.
-    crate::dev::console::serial_write("[entry] boot_phase complete, starting coord::init\n");
+    // Instead of calling bmo_core::coord::init() directly (which is now in a separate
+    // module binary), load the desktop module from S: and hand over control.
+    crate::dev::console::serial_write("[entry] boot_phase complete, loading desktop module\n");
     crate::ring0::boot_phase::write_crash_marker(6);
-    crate::uefi_rt::write_boot_stage("coord_init");
-    bmo_core::coord::init();
-    crate::dev::console::serial_write("[entry] coord::init complete, entering desktop\n");
-    crate::ring0::boot_phase::write_crash_marker(8);
-    crate::uefi_rt::write_boot_stage("welcome_dispatch");
+    crate::uefi_rt::write_boot_stage("module_load");
 
-    // Enter the real desktop with Mac-like compositor (alpha, blur, shadows, dock).
-    bmo_core::desktop::commands::enter_desktop();
+    unsafe {
+        let hal = crate::ring0::hal_init::HAL_SERVICES;
+        if !hal.is_null() {
+            let hal_ref = &*hal;
+            let boot_info = &*boot_info_ptr;
+            crate::ring0::mod_loader::load_bmo_core(hal_ref, boot_info)
+        } else {
+            crate::dev::console::serial_write("[entry] FATAL: HalServices is null\n");
+            loop { unsafe { core::arch::asm!("hlt"); } }
+        }
+    }
 }

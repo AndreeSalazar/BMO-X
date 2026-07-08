@@ -24,6 +24,8 @@ members = [
     "crates_Personal/Lenguajes/cobol",
     "crates_Personal/Lenguajes/cpp",
     "crates_Personal/Lenguajes/c",
+    "crates_Personal/bmo_hal_defs",
+    "crates_Personal/mod_bmo_core",
     "crates_Personal/userland_ring3",
 ]
 

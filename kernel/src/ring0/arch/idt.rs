@@ -463,11 +463,7 @@ extern "C" fn irq1_handler_rust() {
 /// Called from `isr_stub_apic_timer` with RSP pointing to the saved GPR frame.
 /// Returns: 0 = no switch (restore same thread), non-zero = new RSP for switched thread.
 #[unsafe(no_mangle)]
-extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
-    cabina_daemon::telemetry::cpu::inc_interrupts();
-    cabina_daemon::telemetry::cpu::inc_timer();
-
-    // Only save context if the scheduler has a current task (boot may not
+extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {// Only save context if the scheduler has a current task (boot may not
     // have spawned any yet â€” proc::init() is a no-op until v2.0).
     let has_task = crate::proc::task::current_index() < crate::proc::task::MAX_TASKS;
     if has_task {
@@ -490,11 +486,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {
     // cabina HUD overlay, persist cabina events to NVRAM, and create
     // a TimeBack auto-checkpoint for real-time rollback support.
     unsafe { TICK_COUNT += 1; }
-    if unsafe { TICK_COUNT } % 1000 == 0 {
-        crate::omni::hud::tick();
-        crate::omni::persist::flush_to_nvram();
-        timeback::auto_commit_if_due(5);
-    }
+    if unsafe { TICK_COUNT } % 1000 == 0 {}
 
     // Check if we need to switch threads.
     // timer_tick() already calls schedule() when the time slice expires,
@@ -553,7 +545,7 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
 
     // Use the REAL font so the user can read the error message on screen.
     // The font data is in .rodata â€” safe to access even during a fault.
-    let get_glyph = crate::font::get_glyph;
+    let get_glyph: fn(u8) -> &'static [u8; 16] = |_| { static B: [u8; 16] = [0u8; 16]; &B };
     let fb_addr = crate::info::FB_ADDR;
     let w = crate::info::FB_WIDTH as usize;
     let h = crate::info::FB_HEIGHT as usize;
@@ -740,13 +732,10 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 
     // Telemetry per exception type
     match vector {
-        14 => { cabina_daemon::telemetry::cpu::inc_pf(); }
-        13 => { cabina_daemon::telemetry::cpu::inc_gp(); }
-        7  => { cabina_daemon::telemetry::cpu::inc_nm(); }
-        6  => { cabina_daemon::telemetry::cpu::inc_ud(); }
-        8  => { cabina_daemon::telemetry::cpu::inc_df(); }
-        18 => { cabina_daemon::telemetry::cpu::inc_mc(); }
-        _  => {}
+        14 => { loop { unsafe { core::arch::asm!("hlt"); } } }13 => { loop { unsafe { core::arch::asm!("hlt"); } } }7  => {}
+        6  => {}
+        8  => {}
+        18 => { loop { unsafe { core::arch::asm!("hlt"); } } }_  => {}
     }
 
     match vector {
@@ -774,32 +763,22 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
                             &proc.addr_space.vmas[..proc.addr_space.vma_count],
                         )
                     };
-                        if resolved {
-                        }
+                        if resolved { loop { unsafe { core::arch::asm!("hlt"); } } }
                     }
                 }
             }
 
         }
-        13 => {
-        }
-        7 => {
-        }
-        8 => {
+        13 => { loop { unsafe { core::arch::asm!("hlt"); } } }7 => { loop { unsafe { core::arch::asm!("hlt"); } } }8 => {
             // #DF is unrecoverable in most cases. Show on framebuffer
             // and halt so the user sees the crash on screen.
             unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
         }
-        6 => {
-        }
-        18 => {
-        }
-        _ => {
-        }
-    }
+        6 => { loop { unsafe { core::arch::asm!("hlt"); } } }18 => { loop { unsafe { core::arch::asm!("hlt"); } } }_ => { loop { unsafe { core::arch::asm!("hlt"); } } }}
 
-    // Kill current process and switch to scheduler
-    crate::proc::process::kill_current_process(vector, error, cr2)
+    // All exceptions are fatal in Ring 0 -- halt
+    unsafe { core::arch::asm!("cli"); }
+    loop { unsafe { core::arch::asm!("hlt"); } }
 }
 
 
