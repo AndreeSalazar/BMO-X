@@ -31,6 +31,27 @@ fn hal() -> &'static mut dyn InputHal {
     }
 }
 
+/// Poll raw scancode byte (bit 7 = released), compatible with welcome.rs process_scancode().
+/// Returns 0 if no key event.
+pub fn poll_raw_scancode() -> u8 {
+    let h = hal();
+    let mut buf = [bmo_input::event::InputEvent::empty(); 32];
+    let n = h.poll(&mut buf);
+    let mut last = 0u8;
+    for i in 0..n {
+        match buf[i].kind {
+            bmo_input::event::InputEventKind::KeyDown => {
+                last = buf[i].code;
+            }
+            bmo_input::event::InputEventKind::KeyUp => {
+                last = buf[i].code | 0x80;
+            }
+            _ => {}
+        }
+    }
+    last
+}
+
 pub fn poll_key() -> u8 {
     let h = hal();
     let mut buf = [bmo_input::event::InputEvent::empty(); 32];
