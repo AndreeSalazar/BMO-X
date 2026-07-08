@@ -35,6 +35,10 @@ pub struct VdsoPage {
     pub kernel_version: [u8; 8],
     /// Feature flags bitmap (syscall groups available).
     pub feature_flags: u64,
+    /// XHCI controller MMIO base (0 if not present).
+    pub xhci_mmio_base: u64,
+    /// Reserved for future GPU info.
+    _pad: [u8; 48],
 }
 
 /// Feature flags exposed to Ring 3 via vDSO.
@@ -102,7 +106,11 @@ pub fn tick() {
     }
 }
 
-/// Get the physical address of the vDSO page (for user page table mapping).
-pub fn phys() -> u64 {
-    unsafe { VDSO_PHYS }
+/// Set XHCI MMIO base address (called from PCIe scan in phase2).
+pub fn set_xhci_mmio(mmio: u64) {
+    unsafe {
+        if let Some(vdso) = VDSO_PTR.as_mut() {
+            vdso.xhci_mmio_base = mmio;
+        }
+    }
 }

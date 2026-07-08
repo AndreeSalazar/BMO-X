@@ -137,6 +137,15 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     write_crash_marker(2202);
     let scan = crate::dev::pcie::scan_pci_bus();
     s_log("[phase2] PCI scan complete");
+
+    // Store XHCI controller address for modules
+    if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
+        unsafe {
+            let bi = crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo;
+            (*bi).xhci_mmio = xhci_mmio;
+        }
+        s_log("[phase2] XHCI found, stored in BootInfo");
+    }
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
     ctx.devices.pci_devices_found = scan.count as u32;
     write_crash_marker(2205);

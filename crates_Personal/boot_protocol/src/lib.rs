@@ -142,6 +142,8 @@ pub struct BootInfo {
     pub module_count: u32,
     pub _pad3: u32,
     pub modules: [ModuleEntry; MAX_MODULES],
+    // ── Hardware info for modules ──
+    pub xhci_mmio: u64,
 }
 
 impl BootInfo {
@@ -206,6 +208,7 @@ impl BootInfoBuilder {
                 uefi_system_table: 0,
                 module_count: 0, _pad3: 0,
                 modules: [ModuleEntry { base: 0, size: 0, entry_point: 0 }; MAX_MODULES],
+                xhci_mmio: 0,
             },
         }
     }

@@ -11,3 +11,6 @@ bmo-hal-defs = { path = "../bmo_hal_defs" }
 timeback = { path = "../timeback" }
 byte-defender = { path = "../byte_defender" }
 goblin = { path = "../goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }
+"bmo-xhci" = { path = "../bmo_xhci" }
+"bmo-uhid" = { path = "../bmo_uhid" }
+"bmo-input" = { path = "../bmo_input" }

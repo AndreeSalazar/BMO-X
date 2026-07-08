@@ -9,6 +9,9 @@ use core::arch::asm;
 
 pub const SC_ESC: u8 = 0x01;
 
+/// If set by the module, called to poll USB HID events before PS/2.
+pub static mut USB_HID_POLL: Option<fn() -> bool> = None;
+
 // ── Direct PS/2 port I/O (Ring 0 fallback) ────────────────────────────
 
 #[inline] unsafe fn inb(port: u16) -> u8 {
@@ -135,6 +138,12 @@ unsafe fn poll_direct_ps2(last_sc: &mut u8, last_mouse: &mut u64) {
 
 pub fn poll_raw_scancode() -> u8 {
     ensure_input_ready();
+
+    // USB HID first (module-provided)
+    unsafe {
+        if let Some(poll) = USB_HID_POLL { poll(); }
+    }
+
     unsafe {
         if PS2_FALLBACK {
             let mut sc: u8 = 0;

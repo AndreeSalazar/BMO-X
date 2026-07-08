@@ -1,6 +1,8 @@
 //! On-screen log overlay — captures serial_write calls and shows them
 //! on the welcome screen (CABINA) so the user can diagnose issues
 //! without needing a serial port.
+//!
+//! Uses HAL function pointers for storage and filesystem access.
 
 const LOG_LINE_MAX: usize = 128;
 const LOG_LINES_MAX: usize = 20;
@@ -30,8 +32,11 @@ fn build_log_blob() -> ([u8; 4096], usize) {
 }
 
 /// Flush the current log buffer to the boot drive.
-/// Tries FAT32 file write first, then falls back to raw sector write.
+/// Uses HAL function pointers for storage and filesystem access.
 pub fn flush_to_disk() {
+    use crate::hal;
+    use crate::dev::console::{serial_write, serial_write_u64};
+
     let (buf, len) = build_log_blob();
     if len == 0 { return; }
 
@@ -39,89 +44,66 @@ pub fn flush_to_disk() {
     let name = b"CABINA.LOG";
     for (i, &b) in name.iter().enumerate() { name_8_3[i] = b; }
 
-    crate::dev::console::serial_write("[flush] start\n");
+    serial_write("[flush] start\n");
 
+    let h = match unsafe { hal::HAL.as_ref() } {
+        Some(h) => h,
+        None => { serial_write("[flush] no HAL\n"); return; }
+    };
+
+    let port_count = (h.storage_port_count)();
+    serial_write("[flush] ports=");
+    serial_write_u64(port_count as u64, 10);
+    serial_write("\n");
+
+    for i in 0..port_count {
+        if !(h.storage_port_active)(i) { continue; }
+        serial_write("[flush] port ");
+        serial_write_u64(i as u64, 10);
+        serial_write(" active\n");
+
+        // ALWAYS write raw sector first (guaranteed to work if AHCI works)
+        let mut raw_buf = [0u8; 512];
+        let copy_len = len.min(500);
     unsafe {
-        let ctrl = match bmo_ahci::controller() {
-            Some(c) => c,
-            None => { crate::dev::console::serial_write("[flush] no AHCI ctrl\n"); return; }
-        };
-        crate::dev::console::serial_write("[flush] ctrl OK, ports=");
-        crate::dev::console::serial_write_u64(ctrl.port_count as u64, 10);
-        crate::dev::console::serial_write("\n");
+        raw_buf[0..4].copy_from_slice(b"BMOL");
+        raw_buf[4..8].copy_from_slice(&(copy_len as u32).to_le_bytes());
+        raw_buf[8..12].copy_from_slice(&(DISK_FLUSH_COUNT as u32).to_le_bytes());
+        raw_buf[12..16].copy_from_slice(&[0u8; 4]);
+        raw_buf[16..16+copy_len].copy_from_slice(&buf[..copy_len]);
+    }
+    let raw_result = (h.storage_write_sectors)(i, 6, 1, raw_buf.as_ptr());
+        serial_write("[flush] raw sector 6 write=");
+        serial_write_u64(raw_result as u64, 10);
+        serial_write("\n");
 
-        // Find the boot drive (first active port with FAT32)
-        for i in 0..ctrl.port_count {
-            if ctrl.ports[i as usize].state != bmo_ahci::PortState::Active { continue; }
-            crate::dev::console::serial_write("[flush] port ");
-            crate::dev::console::serial_write_u64(i as u64, 10);
-            crate::dev::console::serial_write(" active\n");
+        // Try FAT32 mount via HAL
+        let mounted = (h.fs_mount)(i);
+        serial_write("[flush] mount on port ");
+        serial_write_u64(i as u64, 10);
+        serial_write(if mounted { "= OK\n" } else { "= FAIL\n" });
+        if !mounted { continue; }
 
-            // ALWAYS write raw sector first (guaranteed to work if AHCI works)
-            let mut raw_buf = [0u8; 512];
-            let copy_len = len.min(500);
-            raw_buf[0..4].copy_from_slice(b"BMOL");
-            raw_buf[4..8].copy_from_slice(&(copy_len as u32).to_le_bytes());
-            raw_buf[8..12].copy_from_slice(&(DISK_FLUSH_COUNT as u32).to_le_bytes());
-            raw_buf[12..16].copy_from_slice(&[0u8; 4]);
-            raw_buf[16..16+copy_len].copy_from_slice(&buf[..copy_len]);
-            let raw_result = bmo_ahci::write_sectors(i, 6, 1, raw_buf.as_ptr());
-            crate::dev::console::serial_write("[flush] raw sector 6 write=");
-            crate::dev::console::serial_write_u64(raw_result as u64, 10);
-            crate::dev::console::serial_write("\n");
+        // Try to find EFI\BOOT directory
+        let efi_cl = (h.fs_find_subdir)(i, "EFI");
+        serial_write("[flush] EFI=");
+        serial_write_u64(efi_cl.unwrap_or(0) as u64, 16);
+        serial_write("\n");
 
-            // Try FAT32/exFAT mount
-            let mut vol = match bmo_fat32::mount(i) {
-                Some(v) => v,
-                None => { crate::dev::console::serial_write("[flush] mount FAIL on port "); crate::dev::console::serial_write_u64(i as u64, 10); crate::dev::console::serial_write("\n"); continue; }
-            };
-            crate::dev::console::serial_write("[flush] mount OK on port ");
-            crate::dev::console::serial_write_u64(i as u64, 10);
-            crate::dev::console::serial_write(", fs=");
-            match vol.fs_type {
-                bmo_fat32::FsType::Fat32 => crate::dev::console::serial_write("FAT32"),
-                bmo_fat32::FsType::ExFat => crate::dev::console::serial_write("exFAT"),
-            }
-            crate::dev::console::serial_write(", root=");
-            crate::dev::console::serial_write_u64(vol.root_cluster() as u64, 16);
-            crate::dev::console::serial_write("\n");
-
-            // Only write FAT32 file on FAT32 volumes (S: boot partition)
-            if vol.fs_type == bmo_fat32::FsType::Fat32 {
-                // Try EFI\BOOT
-                let mut efi_name = [b' '; 11];
-                efi_name[0] = b'E'; efi_name[1] = b'F'; efi_name[2] = b'I';
-                let mut boot_name = [b' '; 11];
-                boot_name[0] = b'B'; boot_name[1] = b'O'; boot_name[2] = b'O'; boot_name[3] = b'T';
-
-                let efi_cl = vol.find_subdir_in(&efi_name, vol.root_cluster());
-                crate::dev::console::serial_write("[flush] EFI=");
-                crate::dev::console::serial_write_u64(efi_cl.unwrap_or(0) as u64, 16);
-                crate::dev::console::serial_write("\n");
-
-                if let Some(efi_cl) = efi_cl {
-                    if let Some(boot_cl) = vol.find_subdir_in(&boot_name, efi_cl) {
-                        crate::dev::console::serial_write("[flush] BOOT=");
-                        crate::dev::console::serial_write_u64(boot_cl as u64, 16);
-                        crate::dev::console::serial_write("\n");
-                        if vol.create_file_in_dir(boot_cl, &name_8_3, &buf[..len]) {
-                            DISK_FLUSH_COUNT += 1;
-                            crate::dev::console::serial_write("[flush] WROTE EFI/BOOT/cabina.log\n");
-                            return;
-                        }
-                    }
-                }
-                // Fallback: root
-                if vol.create_file_in_dir(vol.root_cluster(), &name_8_3, &buf[..len]) {
-                    DISK_FLUSH_COUNT += 1;
-                    crate::dev::console::serial_write("[flush] WROTE root/cabina.log\n");
+        if let Some(efi_cl) = efi_cl {
+            if let Some(_boot_cl) = (h.fs_find_subdir)(i, "EFI\\BOOT") {
+                // Try to write CABINA.LOG to EFI\BOOT
+                let written = (h.fs_write_file)(i, "EFI\\BOOT\\CABINA.LOG", &buf[..len]);
+                if written {
+                    unsafe { DISK_FLUSH_COUNT += 1; }
+                    serial_write("[flush] WROTE EFI/BOOT/cabina.log\n");
                     return;
                 }
-                crate::dev::console::serial_write("[flush] FAT32 create FAIL, raw sector was written\n");
-            } else {
-                crate::dev::console::serial_write("[flush] exFAT volume, skipping file write (raw sector OK)\n");
             }
         }
+
+        // Fallback: raw sector was already written
+        serial_write("[flush] file write failed, raw sector was written\n");
     }
 }
 
