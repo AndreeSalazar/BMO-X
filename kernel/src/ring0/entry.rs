@@ -67,7 +67,13 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
     let ctx = super::boot_phase::main(boot_info_ptr);
 
     // Transition to BMO Core (logical Ring 3 kernel) subsystems.
+    crate::dev::console::serial_write("[entry] boot_phase complete, starting coord::init\n");
+    crate::ring0::boot_phase::write_crash_marker(6);
+    crate::uefi_rt::write_boot_stage("coord_init");
     bmo_core::coord::init();
+    crate::dev::console::serial_write("[entry] coord::init complete, entering desktop\n");
+    crate::ring0::boot_phase::write_crash_marker(8);
+    crate::uefi_rt::write_boot_stage("welcome_dispatch");
 
     // Enter the real desktop with Mac-like compositor (alpha, blur, shadows, dock).
     bmo_core::desktop::commands::enter_desktop();

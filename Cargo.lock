@@ -181,6 +181,7 @@ name = "bmo-fat32"
 version = "0.1.0"
 dependencies = [
  "bmo-ahci",
+ "log",
 ]
 
 [[package]]

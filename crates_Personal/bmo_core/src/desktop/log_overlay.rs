@@ -70,45 +70,57 @@ pub fn flush_to_disk() {
             crate::dev::console::serial_write_u64(raw_result as u64, 10);
             crate::dev::console::serial_write("\n");
 
-            // Try FAT32 mount
+            // Try FAT32/exFAT mount
             let mut vol = match bmo_fat32::mount(i) {
                 Some(v) => v,
-                None => { crate::dev::console::serial_write("[flush] mount FAIL\n"); continue; }
+                None => { crate::dev::console::serial_write("[flush] mount FAIL on port "); crate::dev::console::serial_write_u64(i as u64, 10); crate::dev::console::serial_write("\n"); continue; }
             };
-            crate::dev::console::serial_write("[flush] mount OK, root=");
+            crate::dev::console::serial_write("[flush] mount OK on port ");
+            crate::dev::console::serial_write_u64(i as u64, 10);
+            crate::dev::console::serial_write(", fs=");
+            match vol.fs_type {
+                bmo_fat32::FsType::Fat32 => crate::dev::console::serial_write("FAT32"),
+                bmo_fat32::FsType::ExFat => crate::dev::console::serial_write("exFAT"),
+            }
+            crate::dev::console::serial_write(", root=");
             crate::dev::console::serial_write_u64(vol.root_cluster() as u64, 16);
             crate::dev::console::serial_write("\n");
 
-            // Try EFI\BOOT
-            let mut efi_name = [b' '; 11];
-            efi_name[0] = b'E'; efi_name[1] = b'F'; efi_name[2] = b'I';
-            let mut boot_name = [b' '; 11];
-            boot_name[0] = b'B'; boot_name[1] = b'O'; boot_name[2] = b'O'; boot_name[3] = b'T';
+            // Only write FAT32 file on FAT32 volumes (S: boot partition)
+            if vol.fs_type == bmo_fat32::FsType::Fat32 {
+                // Try EFI\BOOT
+                let mut efi_name = [b' '; 11];
+                efi_name[0] = b'E'; efi_name[1] = b'F'; efi_name[2] = b'I';
+                let mut boot_name = [b' '; 11];
+                boot_name[0] = b'B'; boot_name[1] = b'O'; boot_name[2] = b'O'; boot_name[3] = b'T';
 
-            let efi_cl = vol.find_subdir_in(&efi_name, vol.root_cluster());
-            crate::dev::console::serial_write("[flush] EFI=");
-            crate::dev::console::serial_write_u64(efi_cl.unwrap_or(0) as u64, 16);
-            crate::dev::console::serial_write("\n");
+                let efi_cl = vol.find_subdir_in(&efi_name, vol.root_cluster());
+                crate::dev::console::serial_write("[flush] EFI=");
+                crate::dev::console::serial_write_u64(efi_cl.unwrap_or(0) as u64, 16);
+                crate::dev::console::serial_write("\n");
 
-            if let Some(efi_cl) = efi_cl {
-                if let Some(boot_cl) = vol.find_subdir_in(&boot_name, efi_cl) {
-                    crate::dev::console::serial_write("[flush] BOOT=");
-                    crate::dev::console::serial_write_u64(boot_cl as u64, 16);
-                    crate::dev::console::serial_write("\n");
-                    if vol.create_file_in_dir(boot_cl, &name_8_3, &buf[..len]) {
-                        DISK_FLUSH_COUNT += 1;
-                        crate::dev::console::serial_write("[flush] WROTE EFI/BOOT/cabina.log\n");
-                        return;
+                if let Some(efi_cl) = efi_cl {
+                    if let Some(boot_cl) = vol.find_subdir_in(&boot_name, efi_cl) {
+                        crate::dev::console::serial_write("[flush] BOOT=");
+                        crate::dev::console::serial_write_u64(boot_cl as u64, 16);
+                        crate::dev::console::serial_write("\n");
+                        if vol.create_file_in_dir(boot_cl, &name_8_3, &buf[..len]) {
+                            DISK_FLUSH_COUNT += 1;
+                            crate::dev::console::serial_write("[flush] WROTE EFI/BOOT/cabina.log\n");
+                            return;
+                        }
                     }
                 }
+                // Fallback: root
+                if vol.create_file_in_dir(vol.root_cluster(), &name_8_3, &buf[..len]) {
+                    DISK_FLUSH_COUNT += 1;
+                    crate::dev::console::serial_write("[flush] WROTE root/cabina.log\n");
+                    return;
+                }
+                crate::dev::console::serial_write("[flush] FAT32 create FAIL, raw sector was written\n");
+            } else {
+                crate::dev::console::serial_write("[flush] exFAT volume, skipping file write (raw sector OK)\n");
             }
-            // Fallback: root
-            if vol.create_file_in_dir(vol.root_cluster(), &name_8_3, &buf[..len]) {
-                DISK_FLUSH_COUNT += 1;
-                crate::dev::console::serial_write("[flush] WROTE root/cabina.log\n");
-                return;
-            }
-            crate::dev::console::serial_write("[flush] FAT32 create FAIL, raw sector was written\n");
         }
     }
 }

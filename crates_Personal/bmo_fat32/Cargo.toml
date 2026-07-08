@@ -8,3 +8,4 @@ description = "BMO FAT32 filesystem reader — cluster chain traversal, 8.3 name
 
 [dependencies]
 bmo-ahci = { path = "../bmo_ahci" }
+log = "0.4"
