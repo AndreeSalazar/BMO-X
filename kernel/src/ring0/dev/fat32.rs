@@ -207,6 +207,299 @@ impl FatVolume {
         }
         offset
     }
+
+    /// Find a free cluster in the FAT. Returns the cluster number.
+    fn find_free_cluster(&mut self) -> Option<u32> {
+        let fat_size_sectors = unsafe {
+            let bpb = self.read_bpb();
+            bpb.fat_size
+        };
+        for sector in 0..fat_size_sectors {
+            unsafe {
+                let read = ahci::read_sectors(self.port, (self.fat_start + sector) as u64, 1, self.fat_cache.as_mut_ptr());
+                if read != 1 { continue; }
+            }
+            for i in 0..(512 / 4) {
+                let entry = u32::from_le_bytes([
+                    self.fat_cache[i * 4],
+                    self.fat_cache[i * 4 + 1],
+                    self.fat_cache[i * 4 + 2],
+                    self.fat_cache[i * 4 + 3],
+                ]) & 0x0FFF_FFFF;
+                if entry == 0 {
+                    let cluster = sector * (512 / 4) + i as u32;
+                    if cluster >= 2 { return Some(cluster); }
+                }
+            }
+        }
+        None
+    }
+
+    /// Mark a cluster as end-of-chain in the FAT.
+    fn mark_cluster_eoc(&mut self, cluster: u32) -> bool {
+        let fat_offset = cluster * 4;
+        let fat_sector = self.fat_start + (fat_offset / 512);
+        let fat_index = (fat_offset % 512) as usize;
+
+        unsafe {
+            let read = ahci::read_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_mut_ptr());
+            if read != 1 { return false; }
+        }
+        let eoc = 0x0FFF_FFFFu32;
+        self.fat_cache[fat_index] = (eoc & 0xFF) as u8;
+        self.fat_cache[fat_index + 1] = ((eoc >> 8) & 0xFF) as u8;
+        self.fat_cache[fat_index + 2] = ((eoc >> 16) & 0xFF) as u8;
+        self.fat_cache[fat_index + 3] = ((eoc >> 24) & 0xFF) as u8;
+
+        unsafe {
+            let written = ahci::write_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_ptr());
+            written == 1
+        }
+    }
+
+    /// Find a free directory entry in the root directory.
+    /// Returns (sector_lba, byte_offset_in_sector).
+    fn find_free_dir_entry(&mut self) -> Option<(u64, usize)> {
+        let mut cluster = self.root_cluster;
+        let sectors_per_cluster = self.sectors_per_cluster as u64;
+
+        loop {
+            let lba = self.cluster_to_lba(cluster);
+            for s in 0..sectors_per_cluster {
+                unsafe {
+                    let read = ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr());
+                    if read != 1 { continue; }
+                }
+                let entries = self.buf.as_ptr() as *const DirEntry;
+                for i in 0..(512 / 32) {
+                    unsafe {
+                        let de = &*entries.add(i);
+                        if de.name[0] == 0 || de.name[0] == 0xE5 {
+                            return Some((lba + s, i * 32));
+                        }
+                    }
+                }
+            }
+            cluster = match self.read_fat_entry(cluster) {
+                Some(c) => c,
+                None => return None,
+            };
+        }
+    }
+
+    /// Read the BPB from sector 0.
+    unsafe fn read_bpb(&self) -> FatBpb {
+        let mut buf = [0u8; 512];
+        ahci::read_sectors(self.port, 0, 1, buf.as_mut_ptr());
+        core::ptr::read_unaligned(buf.as_ptr() as *const FatBpb)
+    }
+
+    /// Find a directory by name in the root directory.
+    /// Returns the first cluster of the directory, or None.
+    pub fn find_dir(&mut self, name: &[u8; 11]) -> Option<u32> {
+        let mut cluster = self.root_cluster;
+        let sectors_per_cluster = self.sectors_per_cluster as u64;
+
+        loop {
+            let lba = self.cluster_to_lba(cluster);
+            for s in 0..sectors_per_cluster {
+                unsafe {
+                    let read = ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr());
+                    if read != 1 { continue; }
+                }
+                let entries = self.buf.as_ptr() as *const DirEntry;
+                for i in 0..(512 / 32) {
+                    unsafe {
+                        let de = &*entries.add(i);
+                        if de.name[0] == 0 { return None; }
+                        if de.name[0] == 0xE5 { continue; }
+                        if de.attr & 0x10 == 0 { continue; } // not a directory
+                        if &de.name == name {
+                            let first_cluster = (de.first_cluster_hi as u32) << 16 | (de.first_cluster_lo as u32);
+                            return Some(first_cluster);
+                        }
+                    }
+                }
+            }
+            cluster = match self.read_fat_entry(cluster) {
+                Some(c) => c,
+                None => return None,
+            };
+        }
+    }
+
+    /// Find a free directory entry in a specific directory (by first cluster).
+    /// Returns (sector_lba, byte_offset_in_sector).
+    fn find_free_dir_entry_in(&mut self, dir_cluster: u32) -> Option<(u64, usize)> {
+        let mut cluster = dir_cluster;
+        let sectors_per_cluster = self.sectors_per_cluster as u64;
+
+        loop {
+            let lba = self.cluster_to_lba(cluster);
+            for s in 0..sectors_per_cluster {
+                unsafe {
+                    let read = ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr());
+                    if read != 1 { continue; }
+                }
+                let entries = self.buf.as_ptr() as *const DirEntry;
+                for i in 0..(512 / 32) {
+                    unsafe {
+                        let de = &*entries.add(i);
+                        if de.name[0] == 0 || de.name[0] == 0xE5 {
+                            return Some((lba + s, i * 32));
+                        }
+                    }
+                }
+            }
+            cluster = match self.read_fat_entry(cluster) {
+                Some(c) => c,
+                None => return None,
+            };
+        }
+    }
+
+    /// Create a file in a specific directory (given by first cluster) with the given 8.3 name and data.
+    pub fn create_file_in_dir(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> bool {
+        // Find a free cluster
+        let cluster = match self.find_free_cluster() {
+            Some(c) => c,
+            None => return false,
+        };
+
+        // Write data to the cluster
+        let lba = self.cluster_to_lba(cluster);
+        let sectors_per_cluster = self.sectors_per_cluster as u64;
+        let total_sectors = (data.len() as u64 + 511) / 512;
+        let write_sectors = total_sectors.min(sectors_per_cluster);
+
+        let mut temp_buf = [0u8; 512];
+        for s in 0..write_sectors {
+            let offset = (s * 512) as usize;
+            let count = core::cmp::min(512, data.len().saturating_sub(offset));
+            temp_buf[..count].copy_from_slice(&data[offset..offset + count]);
+            if count < 512 {
+                for i in count..512 { temp_buf[i] = 0; }
+            }
+            unsafe {
+                let written = ahci::write_sectors(self.port, lba + s, 1, temp_buf.as_ptr());
+                if written != 1 { return false; }
+            }
+        }
+        for s in write_sectors..sectors_per_cluster {
+            for i in 0..512 { temp_buf[i] = 0; }
+            unsafe {
+                ahci::write_sectors(self.port, lba + s, 1, temp_buf.as_ptr());
+            }
+        }
+
+        // Mark cluster as end-of-chain in the FAT
+        if !self.mark_cluster_eoc(cluster) { return false; }
+
+        // Find a free directory entry in the target directory
+        let (dir_lba, dir_offset) = match self.find_free_dir_entry_in(dir_cluster) {
+            Some(v) => v,
+            None => return false,
+        };
+
+        // Read the directory sector
+        unsafe {
+            let read = ahci::read_sectors(self.port, dir_lba, 1, self.buf.as_mut_ptr());
+            if read != 1 { return false; }
+        }
+
+        // Write the directory entry
+        let de = unsafe { &mut *(self.buf.as_mut_ptr().add(dir_offset) as *mut DirEntry) };
+        de.name = *name_8_3;
+        de.attr = 0x20; // Archive
+        de._nt_reserved = 0;
+        de._create_time_tenth = 0;
+        de.create_time = 0;
+        de.create_date = 0;
+        de.last_access = 0;
+        de.first_cluster_hi = (cluster >> 16) as u16;
+        de.write_time = 0;
+        de.write_date = 0;
+        de.first_cluster_lo = (cluster & 0xFFFF) as u16;
+        de.file_size = data.len() as u32;
+
+        // Write the directory sector back
+        unsafe {
+            let written = ahci::write_sectors(self.port, dir_lba, 1, self.buf.as_ptr());
+            written == 1
+        }
+    }
+
+    /// Create a file in the root directory with the given 8.3 name and data.
+    pub fn create_file(&mut self, name_8_3: &[u8; 11], data: &[u8]) -> bool {
+        // Find a free cluster
+        let cluster = match self.find_free_cluster() {
+            Some(c) => c,
+            None => return false,
+        };
+
+        // Write data to the cluster
+        let lba = self.cluster_to_lba(cluster);
+        let sectors_per_cluster = self.sectors_per_cluster as u64;
+        let total_sectors = (data.len() as u64 + 511) / 512;
+        let write_sectors = total_sectors.min(sectors_per_cluster);
+
+        let mut temp_buf = [0u8; 512];
+        for s in 0..write_sectors {
+            let offset = (s * 512) as usize;
+            let count = core::cmp::min(512, data.len().saturating_sub(offset));
+            temp_buf[..count].copy_from_slice(&data[offset..offset + count]);
+            if count < 512 {
+                for i in count..512 { temp_buf[i] = 0; }
+            }
+            unsafe {
+                let written = ahci::write_sectors(self.port, lba + s, 1, temp_buf.as_ptr());
+                if written != 1 { return false; }
+            }
+        }
+        // Zero remaining sectors in the cluster
+        for s in write_sectors..sectors_per_cluster {
+            for i in 0..512 { temp_buf[i] = 0; }
+            unsafe {
+                ahci::write_sectors(self.port, lba + s, 1, temp_buf.as_ptr());
+            }
+        }
+
+        // Mark cluster as end-of-chain in the FAT
+        if !self.mark_cluster_eoc(cluster) { return false; }
+
+        // Find a free directory entry
+        let (dir_lba, dir_offset) = match self.find_free_dir_entry() {
+            Some(v) => v,
+            None => return false,
+        };
+
+        // Read the directory sector
+        unsafe {
+            let read = ahci::read_sectors(self.port, dir_lba, 1, self.buf.as_mut_ptr());
+            if read != 1 { return false; }
+        }
+
+        // Write the directory entry
+        let de = unsafe { &mut *(self.buf.as_mut_ptr().add(dir_offset) as *mut DirEntry) };
+        de.name = *name_8_3;
+        de.attr = 0x20; // Archive
+        de._nt_reserved = 0;
+        de._create_time_tenth = 0;
+        de.create_time = 0;
+        de.create_date = 0;
+        de.last_access = 0;
+        de.first_cluster_hi = (cluster >> 16) as u16;
+        de.write_time = 0;
+        de.write_date = 0;
+        de.first_cluster_lo = (cluster & 0xFFFF) as u16;
+        de.file_size = data.len() as u32;
+
+        // Write the directory sector back
+        unsafe {
+            let written = ahci::write_sectors(self.port, dir_lba, 1, self.buf.as_ptr());
+            written == 1
+        }
+    }
 }
 
 /// Case-insensitive 8.3 name match.

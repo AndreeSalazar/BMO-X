@@ -162,6 +162,7 @@ dependencies = [
  "bmo-abi",
  "bmo-ahci",
  "bmo-boot-protocol",
+ "bmo-fat32",
  "bmo-input",
  "bmo-uhid",
  "goblin",

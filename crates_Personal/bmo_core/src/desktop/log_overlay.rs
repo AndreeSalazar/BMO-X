@@ -10,40 +10,61 @@ static mut LOG_HEAD: usize = 0;
 static mut LOG_COUNT: usize = 0;
 static mut DISK_FLUSH_COUNT: usize = 0;
 
-/// Flush the current log buffer to fixed sectors on the boot drive.
-/// Writes to LBA 6 of the first active AHCI port (FAT32 reserved area,
-/// typically unused). The user can read it from Windows with:
-///
-///   $disk = Get-Disk | Where-Object {$_.OperationalStatus -eq 'Online'} | Select-Object -First 1
-///   $bytes = [System.IO.File]::ReadAllBytes("\\.\PhysicalDisk" + ...)
-///
-/// or more practically, by booting to a Linux live USB and running `dd`.
+/// Build the full log as a single byte buffer (newline-separated lines).
+fn build_log_blob() -> ([u8; 4096], usize) {
+    let mut buf = [0u8; 4096];
+    let mut off = 0usize;
+    unsafe {
+        let start = if LOG_COUNT < LOG_LINES_MAX { 0 } else { LOG_HEAD };
+        let n = LOG_COUNT.min(LOG_LINES_MAX);
+        for k in 0..n {
+            let idx = (start + k) % LOG_LINES_MAX;
+            let len = LOG_LINES[idx].iter().position(|&b| b == 0).unwrap_or(LOG_LINE_MAX);
+            if off + len + 1 >= buf.len() { break; }
+            buf[off..off + len].copy_from_slice(&LOG_LINES[idx][..len]);
+            buf[off + len] = b'\n';
+            off += len + 1;
+        }
+    }
+    (buf, off)
+}
+
+/// Flush the current log buffer to EFI\BOOT\cabina.log on the boot drive.
+/// The user can read it from Windows as S:\EFI\BOOT\cabina.log.
 pub fn flush_to_disk() {
+    let (buf, len) = build_log_blob();
+    if len == 0 { return; }
+
+    let mut name_8_3 = [b' '; 11];
+    let name = b"CABINA.LOG";
+    for (i, &b) in name.iter().enumerate() { name_8_3[i] = b; }
+
     unsafe {
         if let Some(ctrl) = bmo_ahci::controller() {
-            let mut buf = [0u8; 512];
-            buf[0..4].copy_from_slice(b"BMOL");
-            buf[4..8].copy_from_slice(&(LOG_COUNT as u32).to_le_bytes());
-            buf[8..12].copy_from_slice(&(DISK_FLUSH_COUNT as u32).to_le_bytes());
-
-            let mut off = 16usize;
-            let start = if LOG_COUNT < LOG_LINES_MAX { 0 } else { LOG_HEAD };
-            for k in 0..LOG_COUNT.min(LOG_LINES_MAX) {
-                let idx = (start + k) % LOG_LINES_MAX;
-                let len = LOG_LINES[idx].iter().position(|&b| b == 0).unwrap_or(LOG_LINE_MAX);
-                let copy_len = len.min(LOG_LINE_MAX).min(512 - off);
-                if copy_len == 0 || off >= 500 { break; }
-                buf[off..off + copy_len].copy_from_slice(&LOG_LINES[idx][..copy_len]);
-                off += copy_len + 1; // newline separator
-                if off >= 510 { break; }
-            }
-
             for i in 0..ctrl.port_count {
-                if ctrl.ports[i as usize].state == bmo_ahci::PortState::Active {
-                    bmo_ahci::write_sectors(i, 6, 1, buf.as_ptr());
-                    DISK_FLUSH_COUNT += 1;
-                    break;
+                if ctrl.ports[i as usize].state != bmo_ahci::PortState::Active { continue; }
+                if let Some(mut vol) = bmo_fat32::mount(i) {
+                    let root = vol.root_cluster();
+                    // Build 11-byte 8.3 names
+                    let mut efi_name = [b' '; 11];
+                    efi_name[0] = b'E'; efi_name[1] = b'F'; efi_name[2] = b'I';
+                    let mut boot_name = [b' '; 11];
+                    boot_name[0] = b'B'; boot_name[1] = b'O'; boot_name[2] = b'O'; boot_name[3] = b'T';
+                    // Navigate to EFI\BOOT
+                    if let Some(efi_cl) = vol.find_subdir_in(&efi_name, root) {
+                        if let Some(boot_cl) = vol.find_subdir_in(&boot_name, efi_cl) {
+                            if vol.create_file_in_dir(boot_cl, &name_8_3, &buf[..len]) {
+                                DISK_FLUSH_COUNT += 1;
+                                break;
+                            }
+                        }
+                    }
+                    // Fallback: write to root
+                    if vol.create_file_in_dir(root, &name_8_3, &buf[..len]) {
+                        DISK_FLUSH_COUNT += 1;
+                    }
                 }
+                break;
             }
         }
     }
