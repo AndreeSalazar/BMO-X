@@ -278,19 +278,20 @@ if ($needKern) {
 }
 
 # Build all 3 modules (Ring 3)
-if ($needModule) {
-    $moduleScript = {
-        param($mdir, $mtargetDir, $jobsFlag)
-        Set-Location -LiteralPath $mdir
-        try {
-            $out = cargo build --release --target x86_64-unknown-none --target-dir $mtargetDir @jobsFlag 2>&1
-            $err = $out | Where-Object { $_ -match "^error" }
-            if ($err) { throw "Module build error: $err" }
-            return @{ Ok=$true; Output=$out }
-        } catch {
-            return @{ Ok=$false; Error=$_.Exception.Message }
-        }
+$moduleScript = {
+    param($mdir, $mtargetDir, $jobsFlag)
+    Set-Location -LiteralPath $mdir
+    try {
+        $out = cargo build --release --target x86_64-unknown-none --target-dir $mtargetDir @jobsFlag 2>&1
+        $err = $out | Where-Object { $_ -match "^error" }
+        if ($err) { throw "Module build error: $err" }
+        return @{ Ok=$true; Output=$out }
+    } catch {
+        return @{ Ok=$false; Error=$_.Exception.Message }
     }
+}
+
+if ($needModule) {
     $moduleJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $moduleDir, $target, $jobsFlag
     Step "mod_bmo_core build started (PID $($moduleJob.Id))"
 }
