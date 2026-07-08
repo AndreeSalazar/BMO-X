@@ -1,9 +1,9 @@
-/* mod_bmo_core Linker Script — loaded at 0x2200000 by kernel module loader */
+/* mod_bmo_core Linker Script — loaded at 0x2050000 by bootloader */
 ENTRY(_module_start)
 
 SECTIONS
 {
-    . = 0x2200000;
+    . = 0x3040000;
 
     .text ALIGN(4K) : {
         *(.text .text.*)
