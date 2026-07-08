@@ -101,29 +101,35 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
 }
 
 fn init_xhci(hal: &bmo_hal_defs::HalServices) {
-    // Get XHCI MMIO from BootInfo (kernel filled it during PCIe scan)
     let xhci_mmio = unsafe {
         if (hal.boot_info).is_null() { 0 }
         else { (*(hal.boot_info)).xhci_mmio }
     };
 
     if xhci_mmio == 0 {
-        (hal.serial_write)("[mod_bmo_core] no XHCI controller found, input via PS/2 only\n");
+        (hal.serial_write)("[mod_bmo_core] no XHCI controller (xhci_mmio=0), input via PS/2 only\n");
         return;
     }
 
-    let backend = ModuleXhciHal { hal: HalPtr(hal as *const _) };
-    let static_backend: &'static ModuleXhciHal = unsafe {
-        // SAFETY: the backend lives for the module's lifetime
-        core::mem::transmute::<&ModuleXhciHal, &'static ModuleXhciHal>(&backend)
-    };
+    (hal.serial_write)("[mod_bmo_core] XHCI mmio=0x");
+    (hal.serial_write_u64)(xhci_mmio, 16);
+    (hal.serial_write)("\n");
+
+    // Box::leak the backend so it lives on the heap, not the stack
+    let backend = alloc::boxed::Box::new(ModuleXhciHal { hal: HalPtr(hal as *const _) });
+    let static_backend: &'static ModuleXhciHal = alloc::boxed::Box::leak(backend);
 
     bmo_xhci::init_hal(static_backend as &'static dyn bmo_xhci::XhciHal);
     bmo_xhci::set_mmio(xhci_mmio);
 
-    (hal.serial_write)("[mod_bmo_core] XHCI init at 0x");
-    (hal.serial_write_u64)(xhci_mmio, 16);
-    (hal.serial_write)("\n");
+    // Init XHCI controller
+    (hal.serial_write)("[mod_bmo_core] initializing XHCI controller...\n");
+    if unsafe { bmo_xhci::init(xhci_mmio) } {
+        (hal.serial_write)("[mod_bmo_core] XHCI controller initialized OK\n");
+    } else {
+        (hal.serial_write)("[mod_bmo_core] XHCI controller init FAILED\n");
+        return;
+    }
 
     // Init USB HID
     let mut uhid = bmo_uhid::UsbHidHal::new();
@@ -133,6 +139,7 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) {
             (hal.serial_write)("[mod_bmo_core] USB HID ready\n");
         } else {
             (hal.serial_write)("[mod_bmo_core] USB HID init failed\n");
+            return;
         }
     }
 
