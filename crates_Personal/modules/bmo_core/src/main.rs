@@ -205,7 +205,7 @@ fn show_diagnostics(hal: &bmo_hal_defs::HalServices, info: &DiagInfo) {
         kpci, kf1, km1, kf2, km2);
     fb_draw_str(hal, x, y, &kernel_line, YELLOW);
 
-    for _ in 0..300 { (hal.busy_wait_ms)(10); }
+    for _ in 0..100 { (hal.busy_wait_ms)(10); }
 }
 
 struct DiagInfo {
@@ -292,9 +292,11 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
         // ═══ PHASE 2: Deferred init (background, desktop already visible) ═══
         (hal.serial_write)("[mod_bmo_core] desktop visible, deferring drivers...\n");
 
-        // Quick input diagnostics on screen (less intrusive — just 1s)
+        // Quick input init — show diagnostic only if there's a problem
         let info = init_xhci(hal);
-        show_diagnostics(hal, &info);
+        if !info.hid_ok {
+            show_diagnostics(hal, &info);
+        }
 
         // Wire USB HID poll (if available, otherwise PS/2 fallback in bmo_core)
         unsafe {

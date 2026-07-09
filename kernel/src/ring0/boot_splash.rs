@@ -194,7 +194,7 @@ pub fn splash_progress(pct: u32, label: &str) {
     let lx = (w as u32).saturating_sub(text_width(label)) / 2;
     draw_str(lx, bar_y + bar_h + 10, label, DIM);
 
-    let info = "Ryzen 5 5600X  .  GOP 1920x1080";
+    let info = "AMD Ryzen  .  GOP";
     let ix = (w as u32).saturating_sub(text_width(info)) / 2;
     fill_rect(0, h.saturating_sub(34), w, CHAR_H as u32, BG);
     draw_str(ix, h.saturating_sub(28), info, DIM);

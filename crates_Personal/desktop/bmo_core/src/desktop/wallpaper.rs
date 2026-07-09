@@ -97,19 +97,24 @@ fn isqrt(v: u32) -> u32 {
 /// v1.8.14: versión MINIMAL. La versión procedural anterior pintaba
 /// ~2M píxeles por frame (gradient + 2 blobs + aurora + grid + 173
 /// estrellas). En un monitor 1920×1080, sin MTRR WC bien configurado,
-/// cada `write_volatile` al framebuffer tardaba ~100ns = 200ms total.
-/// Eso provocaba que el watchdog de 5s disparara reset ANTES de que
-/// el welcome terminara de renderizar, y el usuario veía solo 2-3
-/// segmentos verdes de la progress bar.
-///
-/// Ahora: un solo `fill_rect` con un color sólido. El render del
-/// welcome se completa en <5ms y la progress bar pinta los 5
-/// segmentos correctamente. La estética procedural se puede
-/// reintroducir en v1.9 con MTRR WC fix.
+/// Draw a simple vertical gradient that's fast (<5ms at 1920x1080).
+/// Single-pass scanline loop — no watchdog timeout risk.
 pub fn draw(fb: &Framebuffer, _time: u64) {
     if fb.width == 0 || fb.height == 0 { return; }
-    // Color base del tema oscuro (mismo que el gradient bottom original).
-    fb.fill_rect(0, 0, fb.width, fb.height, 0xFF050B18);
+    let top: u32    = 0xFF0B1320;  // deep teal-black
+    let bottom: u32 = 0xFF050B18;  // almost black
+    for y in 0..fb.height {
+        let t = y as u64 * 256 / fb.height as u64;
+        let r = lerp_u8((top >> 16) as u8, (bottom >> 16) as u8, t);
+        let g = lerp_u8((top >> 8) as u8, (bottom >> 8) as u8, t);
+        let b = lerp_u8((top) as u8, (bottom) as u8, t);
+        let color: u32 = 0xFF000000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        fb.fill_rect(0, y, fb.width, 1, color);
+    }
+}
+
+fn lerp_u8(a: u8, b: u8, t: u64) -> u8 {
+    ((a as u64 * (256 - t) + b as u64 * t) / 256) as u8
 }
 
 /// Aurora: banda elíptica diagonal pintada por scanline. Recorremos
