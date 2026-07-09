@@ -59,6 +59,27 @@ unsafe fn rdmsr(msr: u32) -> u64 {
     ((hi as u64) << 32) | (lo as u64)
 }
 
+// ── Capability constants ──────────────────────────────────────────────
+
+pub const CAP_FS_READ: u32    = 1 << 0;
+pub const CAP_FS_WRITE: u32   = 1 << 1;
+pub const CAP_SYS_TIME: u32   = 1 << 5;
+pub const CAP_NET_RAW: u32    = 1 << 9;
+pub const CAP_GPU_DIRECT: u32 = 1 << 10;
+pub const CAP_AUDIO: u32      = 1 << 11;
+pub const CAP_IPC_SEND: u32   = 1 << 12;
+pub const CAP_IPC_RECV: u32   = 1 << 13;
+
+/// Check if the current process has the required capability.
+fn check_capability(required: u32) -> bool {
+    if let Some(task) = crate::proc::task::current() {
+        if let Some(proc) = crate::proc::process::get_process(task.pid) {
+            return proc.capabilities & required == required;
+        }
+    }
+    false // no process = deny
+}
+
 // ── Syscall handler type ───────────────────────────────────────────────
 
 /// A syscall handler receives: (nr, a0, a1, a2, a3, a4, a5) → result.
@@ -255,12 +276,14 @@ fn sys_port_out(_nr: u64, port: u64, val: u64, _a2: u64, _a3: u64, _a4: u64, _a5
 // ── Network syscalls (gated) ─────────────────────────────────────────
 
 #[cfg(feature = "syscalls-net")]
-fn sys_net_send(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+fn sys_net_send(_nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if !check_capability(CAP_NET_RAW) { return u64::MAX; }
     u64::MAX // NIC driver in kernel, TCP/IP in Ring 3
 }
 
 #[cfg(feature = "syscalls-gpu")]
-fn sys_gpu_submit(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+fn sys_gpu_submit(_nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if !check_capability(CAP_GPU_DIRECT) { return u64::MAX; }
     u64::MAX // GPU command buffer submission
 }
 

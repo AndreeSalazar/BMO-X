@@ -23,6 +23,8 @@ pub struct Process {
     /// IPC message queue head pointer (linked list of MsgNode).
     pub msg_head: *mut MsgNode,
     pub msg_tail: *mut MsgNode,
+    /// Sandbox capabilities bitmap (same format as crate::fs::Capabilities).
+    pub capabilities: u32,
 }
 
 /// IPC message node (heap-allocated, linked list).
@@ -41,6 +43,7 @@ impl Process {
             addr_space: AddressSpace::empty(),
             msg_head: core::ptr::null_mut(),
             msg_tail: core::ptr::null_mut(),
+            capabilities: 0,
         }
     }
 }

@@ -102,6 +102,10 @@ pub struct Task {
     pub robust_list_head: u64,
     /// Per-thread tid address (set_tid_address).
     pub tid_address: *mut i32,
+    /// Thread-Local Storage base address (fs:0 on x86-64).
+    /// Set up per-thread for BEF TLS template.
+    pub tls_base: u64,
+    pub tls_size: u64,
 }
 
 impl Task {
@@ -117,6 +121,8 @@ impl Task {
             blocked_on: 0,
             robust_list_head: 0,
             tid_address: core::ptr::null_mut(),
+            tls_base: 0,
+            tls_size: 0,
         }
     }
 }
