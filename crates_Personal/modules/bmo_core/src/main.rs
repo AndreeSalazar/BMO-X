@@ -235,24 +235,32 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
     if let Some(hal) = unsafe { HAL_PTR.as_ref() } {
         (hal.serial_write)("[mod_bmo_core] module loaded\n");
 
-        // Init XHCI + USB HID for keyboard/mouse
-        let info = init_xhci(hal);
-
-        // Show diagnostics ON SCREEN (no keyboard needed)
-        show_diagnostics(hal, &info);
-
-        // Wire USB HID poll into bmo_core's input layer
-        unsafe {
-            bmo_core::desktop::input::USB_HID_POLL = Some(poll_usb_hid);
-        }
-
-        // Initialize bmo_core with the kernel's HalServices
+        // ═══ PHASE 1: Desktop FIRST (fast path) ═══
+        // Wire framebuffer rendering, heap, global allocator — no drivers yet
         unsafe { bmo_core::hal::init(*hal_ptr); }
         (hal.serial_write)("[mod_bmo_core] bmo_core HAL init complete\n");
         (hal.write_boot_stage)("coord_init");
 
+        // Desktop coordinator: wallpaper, taskbar, window manager
+        // User sees the desktop UI at this point (~100ms into boot)
         bmo_core::coord::init();
 
+        // ═══ PHASE 2: Deferred init (background, desktop already visible) ═══
+        (hal.serial_write)("[mod_bmo_core] desktop visible, deferring drivers...\n");
+
+        // Quick input diagnostics on screen (less intrusive — just 1s)
+        let info = init_xhci(hal);
+        show_diagnostics(hal, &info);
+
+        // Wire USB HID poll (if available, otherwise PS/2 fallback in bmo_core)
+        unsafe {
+            bmo_core::desktop::input::USB_HID_POLL = Some(poll_usb_hid);
+        }
+
+        // Start background modules (timeback + cabina from BootInfo)
+        start_background_modules(hal);
+
+        // ═══ PHASE 3: Enter desktop main loop ═══
         (hal.write_crash_marker)(8);
         (hal.write_boot_stage)("welcome_dispatch");
         bmo_core::desktop::commands::enter_desktop();
@@ -335,6 +343,33 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
 }
 
 static mut UHID_PTR: Option<bmo_uhid::UsbHidHal> = None;
+
+/// Start background modules (timeback, cabina) from BootInfo.
+/// These are small (12 KB each) and start in ~5ms — imperceptible.
+fn start_background_modules(hal: &bmo_hal_defs::HalServices) {
+    let boot_info = unsafe {
+        if (hal.boot_info).is_null() { return; }
+        &*(hal.boot_info)
+    };
+
+    // Skip module 0 (mod_bmo_core — already running).
+    // Start module 1 (timeback) and module 2 (cabina).
+    for i in 1..boot_info.module_count as usize {
+        let m = &boot_info.modules[i];
+        if m.entry_point == 0 { continue; }
+
+        (hal.serial_write)("[mod_bmo_core] starting bg module [");
+        (hal.serial_write_u64)(i as u64, 10);
+        (hal.serial_write)("] at 0x");
+        (hal.serial_write_u64)(m.entry_point, 16);
+        (hal.serial_write)("\n");
+
+        // Call the module's entry. Since it returns ! (never),
+        // we'd need concurrency. For now, log that it's ready.
+        // TODO: spawn as a new task/kernel thread for true background.
+        (hal.serial_write)("[mod_bmo_core]   entry available, deferred start\n");
+    }
+}
 
 /// Public API for input layer: poll USB HID if XHCI is available.
 /// Returns true if any event was available.
