@@ -1,16 +1,22 @@
-//! Plugin Loader — resolves function symbols at runtime via BMO_SYMBOLS.toml.
+//! Plugin Loader — resolves function symbols + capabilities at runtime.
 //!
-//! The symbol table is embedded at compile time via `include_str!`.
-//! Functions from shared modules (timeback, cabina) are resolved by name.
+//! ## Capability-based discovery
+//! Instead of linking by symbol name, modules declare:
+//!   provides = "framebuffer.write, input.poll"
+//!   requires = "storage.read"
+//!
+//! The registry resolves requires → provides across all loaded modules.
 
 extern crate alloc;
 use alloc::vec::Vec;
 
 pub struct SymEntry {
     pub addr: u64,
+    pub provides: &'static str,
+    pub requires: &'static str,
 }
 
-/// Simple TOML parser for: [category.name]\naddr = X
+/// BMO_SYMBOLS.toml parser + capability resolver.
 pub struct SymbolRegistry {
     raw: &'static str,
 }
@@ -20,46 +26,76 @@ impl SymbolRegistry {
         Self { raw }
     }
 
-    /// Resolve a qualified symbol: "timeback._module_start" → address
+    /// Resolve a qualified symbol name: "timeback._module_start"
     pub fn resolve(&self, full_name: &str) -> Option<u64> {
         let header = alloc::format!("[{}]\naddr = ", full_name);
         if let Some(pos) = self.raw.find(&header) {
             let start = pos + header.len();
             let end = self.raw[start..].find('\n').unwrap_or(self.raw.len() - start);
-            let num_str = &self.raw[start..start + end];
-            let addr = parse_u64(num_str);
-            return addr;
+            return parse_u64(&self.raw[start..start + end]);
         }
         None
     }
 
     /// Call a function by name (no args, returns T).
-    /// # Safety
-    /// Function must exist at the resolved address with matching signature.
     pub unsafe fn call0<T>(&self, name: &str) -> Option<T> {
         let addr = self.resolve(name)?;
         let fn_ptr: extern "C" fn() -> T = core::mem::transmute(addr as *const ());
         Some(fn_ptr())
     }
 
-    /// List all symbols in a category.
+    /// Find a module that PROVIDES a specific capability.
+    /// Searches all entries for "provides = ...capability..."
+    pub fn find_by_capability(&self, capability: &str) -> Option<u64> {
+        let search = "provides = ";
+        let mut pos = 0usize;
+        while let Some(start) = self.raw[pos..].find(search) {
+            let abs_start = pos + start + search.len();
+            let line_end = self.raw[abs_start..].find('\n').unwrap_or(self.raw.len() - abs_start);
+            let caps_line = &self.raw[abs_start..abs_start + line_end];
+            if caps_line.contains(capability) {
+                let section_start = self.raw[..abs_start].rfind('[').unwrap_or(0);
+                if let Some(addr_pos) = self.raw[section_start..abs_start].rfind("addr = ") {
+                    let addr_start = section_start + addr_pos + 7;
+                    let addr_end = self.raw[addr_start..].find('\n').unwrap_or(10);
+                    if let Some(addr) = parse_u64(&self.raw[addr_start..addr_start + addr_end]) {
+                        return Some(addr);
+                    }
+                }
+            }
+            pos = abs_start + line_end;
+        }
+        None
+    }
+
+    /// List all symbols in a category with their capability info.
     pub fn in_category(&self, category: &str) -> Vec<SymEntry> {
         let mut results = Vec::new();
         let prefix = alloc::format!("[{}", category);
         let mut pos = 0usize;
         while let Some(start) = self.raw[pos..].find(&prefix) {
             let abs_start = pos + start;
-            let section_end = self.raw[abs_start..]
-                .find("\n\n")
+            let section_end = self.raw[abs_start..].find("\n\n")
                 .unwrap_or(self.raw.len() - abs_start);
             let section = &self.raw[abs_start..abs_start + section_end];
-            if let Some(addr_line) = section.find("addr = ") {
-                let addr_start = abs_start + addr_line + 7;
-                let addr_end = self.raw[addr_start..].find('\n').unwrap_or(10);
-                let num_str = &self.raw[addr_start..addr_start + addr_end];
-                if let Some(addr) = parse_u64(num_str) {
-                    results.push(SymEntry { addr });
+
+            let mut addr = 0u64;
+            let mut provides = "";
+            let mut requires = "";
+
+            for line in section.lines() {
+                if let Some((key, val)) = line.split_once('=') {
+                    match key.trim() {
+                        "addr" => addr = parse_u64(val.trim()).unwrap_or(0),
+                        "provides" => provides = val.trim().trim_matches('"'),
+                        "requires" => requires = val.trim().trim_matches('"'),
+                        _ => {}
+                    }
                 }
+            }
+
+            if addr != 0 {
+                results.push(SymEntry { addr, provides, requires });
             }
             pos = abs_start + section_end + 1;
         }
@@ -67,7 +103,6 @@ impl SymbolRegistry {
     }
 }
 
-/// Simple u64 parser (no_std, no alloc).
 fn parse_u64(s: &str) -> Option<u64> {
     let s = s.trim();
     let mut val: u64 = 0;

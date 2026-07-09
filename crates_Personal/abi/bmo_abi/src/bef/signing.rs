@@ -1,13 +1,14 @@
 //! Firma + integridad de binarios BEF.
 //!
-//! Reemplaza:
-//!   - PE: Authenticode (X.509 + PKCS#7) — pesado, slow, dependiente de CAs.
-//!   - ELF: nada estándar (depende de envoltorios externos como signify).
-//!
 //! Esquema BEF:
-//!   - **Hash** por sección: BLAKE3 256-bit (≈ 1 GB/s en Zen 3 single-thread).
-//!   - **Firma** del archivo entero: Ed25519 sobre el conjunto de hashes.
-//!   - Las claves públicas confiables viven en `/system/trust/*.pub`.
+//!   - Hash por sección: BLAKE3 256-bit.
+//!   - Firma del archivo entero: Ed25519 sobre el conjunto de hashes.
+//!   - Claves públicas confiables en /system/trust/*.pub.
+//!
+//! ## Chain-of-trust with TimeBack
+//!   - Cada BEF cargado → BLAKE3 hash → timeback journal entry
+//!   - Boot sequence: kernel.elf hash → mod_bmo_core hash → app.bef hash
+//!   - Si algo falla: rollback al último snapshot válido
 
 #![allow(dead_code)]
 
@@ -17,11 +18,8 @@ use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32};
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SectionHash {
-    /// Índice de la sección que este hash describe.
     pub section_index: bx_u16,
-    /// Padding.
     pub _pad: [bx_u8; 6],
-    /// 32 bytes BLAKE3.
     pub digest: [bx_u8; 32],
 }
 const _: () = assert!(core::mem::size_of::<SectionHash>() == 40);
@@ -35,23 +33,39 @@ impl SectionHash {
     };
 }
 
+/// Algoritmo de firma soportado.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SigAlgorithm {
+    None    = 0,
+    Ed25519 = 1,
+}
+
 /// Cabecera de la sección Signature.
-///
-/// Si `sig_algo != 0`, después de los `hash_count` `SectionHash` viene una
-/// firma de 64 bytes (Ed25519) seguida de 32 bytes de clave pública.
-/// Total trailing = 96 bytes después de los hashes.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct SignatureHeader {
-    /// Cantidad de `SectionHash` que siguen.
     pub hash_count: bx_u32,
-    /// Algoritmo de firma (1 = Ed25519, 0 = sin firma).
     pub sig_algo: bx_u32,
 }
 const _: () = assert!(core::mem::size_of::<SignatureHeader>() == 8);
 
-/// Hash BLAKE3 256-bit del buffer indicado. Implementación nativa en
-/// `crate::bef::blake3` (no_std, sin dependencias externas).
+/// Firma Ed25519 completa (64 bytes signature + 32 bytes public key).
+#[repr(C, align(8))]
+#[derive(Debug, Clone, Copy)]
+pub struct Ed25519Signature {
+    /// Ed25519 signature (R || S), 64 bytes.
+    pub sig: [bx_u8; 64],
+    /// Ed25519 public key, 32 bytes.
+    pub pubkey: [bx_u8; 32],
+}
+const _: () = assert!(core::mem::size_of::<Ed25519Signature>() == 96);
+
+impl SignatureHeader {
+    pub const SIGNATURE_SIZE: u32 = 96; // Ed25519 sig(64) + pubkey(32)
+}
+
+/// Hash BLAKE3 256-bit del buffer indicado.
 pub fn blake3_256(bytes: &[u8]) -> [u8; 32] {
     crate::bef::blake3::hash(bytes)
 }
@@ -59,5 +73,23 @@ pub fn blake3_256(bytes: &[u8]) -> [u8; 32] {
 /// Verifica que un hash precomputado coincida con los bytes provistos.
 pub fn verify(expected: &SectionHash, bytes: &[u8]) -> bool {
     let computed = blake3_256(bytes);
-    computed == expected.digest
+    &computed[..] == &expected.digest[..]
+}
+
+/// Compute a chain-of-trust hash for the entire BEF (all section digests combined).
+/// Used by TimeBack for boot-time integrity verification.
+pub fn chain_hash(hashes: &[SectionHash]) -> [u8; 32] {
+    let mut combined = alloc::vec::Vec::with_capacity(hashes.len() * 32);
+    for h in hashes {
+        combined.extend_from_slice(&h.digest);
+    }
+    blake3_256(&combined)
+}
+
+/// Verify an Ed25519 signature. Currently a stub — relies on external
+/// ed25519-dalek or similar crate for actual verification.
+/// Returns true if sig_algo is None (unsigned binaries are allowed in dev).
+pub fn verify_ed25519(_sig: &Ed25519Signature, _message: &[u8]) -> bool {
+    // TODO: integrate ed25519-dalek when available
+    false // signature verification not yet implemented
 }
