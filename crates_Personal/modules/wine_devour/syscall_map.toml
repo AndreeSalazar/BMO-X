@@ -1,0 +1,39 @@
+# Windows NT → BMO syscall translation map
+# Números de syscall para Windows 10/11 x64 (build 19041+)
+# Fuente: https://j00ru.vexillium.org/syscalls/nt/64/
+#
+# Fase 1: Hello World (ntdll.dll básico)
+# Fase 2: Graphics (kernel32 + user32 + d3d11)
+# Fase 3: Steam (ws2_32 + crypt32 + networking)
+
+[fase1_ntdll]
+# NtWriteFile: escribe a consola o archivo
+8   = { bmo = 0xF0, args = 9, name = "NtWriteFile" }
+# NtTerminateProcess: salir del proceso
+44  = { bmo = 0x00, args = 2, name = "NtTerminateProcess" }
+# NtAllocateVirtualMemory: allocar memoria
+24  = { bmo = 0x10, args = 6, name = "NtAllocateVirtualMemory" }
+# NtFreeVirtualMemory: liberar memoria
+30  = { bmo = 0x11, args = 4, name = "NtFreeVirtualMemory" }
+# NtCreateFile: abrir/crear archivo
+85  = { bmo = 0x20, args = 11, name = "NtCreateFile" }
+# NtClose: cerrar handle
+21  = { bmo = 0x24, args = 1, name = "NtClose" }
+
+[fase2_graphics]
+# NtUserCreateWindowEx (win32k.sys, indirect)
+4096 = { bmo = 0x60, args = 0, name = "NtUserCreateWindowEx" }
+# NtGdiDdDDICreateDevice (dxgkrnl.sys)
+2048 = { bmo = 0xA0, args = 0, name = "NtGdiDdDDICreateDevice" }
+# NtGdiDdDDISubmitCommand
+2049 = { bmo = 0xA0, args = 0, name = "NtGdiDdDDISubmitCommand" }
+
+[fase3_steam]
+# NtDeviceIoControlFile: networking ioctls
+7   = { bmo = 0x90, args = 10, name = "NtDeviceIoControlFile" }
+# NtCreateThreadEx
+193 = { bmo = 0x04, args = 11, name = "NtCreateThreadEx" }
+# NtWaitForSingleObject
+4   = { bmo = 0x03, args = 3, name = "NtWaitForSingleObject" }
+# NtQueryInformationProcess
+34  = { bmo = 0x50, args = 5, name = "NtQueryInformationProcess" }

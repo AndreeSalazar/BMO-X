@@ -21,3 +21,8 @@ requires = ""
 addr = 31200000
 provides = "elf.devour, elf.translate, elf.execute"
 requires = "heap.alloc, serial.write"
+
+[wine_devour._module_start]
+addr = 31300000
+provides = "pe.devour, pe.translate, pe.execute"
+requires = "heap.alloc, serial.write"
