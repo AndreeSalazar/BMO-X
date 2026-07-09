@@ -9,6 +9,138 @@ use std::fs;
 use ast::*;
 use bmo_abi::profile::BmoLanguageProfile;
 
+/// C standard version to compile against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CStandard {
+    C89,
+    C99,
+    C11,
+    C17,
+    C23,
+    DefaultC, // uses C99 as baseline
+}
+
+impl CStandard {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_lowercase().as_str() {
+            "c89" | "c90" => Some(Self::C89),
+            "c99" => Some(Self::C99),
+            "c11" => Some(Self::C11),
+            "c17" | "c18" => Some(Self::C17),
+            "c23" => Some(Self::C23),
+            "default" => Some(Self::DefaultC),
+            _ => None,
+        }
+    }
+
+    pub fn toml_name(&self) -> &str {
+        match self {
+            Self::C89 => "c89.toml",
+            Self::C99 | Self::DefaultC => "c99.toml",
+            Self::C11 => "c11.toml",
+            Self::C17 => "c17.toml",
+            Self::C23 => "c23.toml",
+        }
+    }
+}
+
+/// Standard feature set loaded from a cXX.toml manifest.
+#[derive(Debug, Clone)]
+pub struct StandardFeatures {
+    pub line_comments: bool,
+    pub long_long: bool,
+    pub inline: bool,
+    pub restrict: bool,
+    pub variadic_macros: bool,
+    pub compound_literals: bool,
+    pub designated_initializers: bool,
+    pub mixed_declarations: bool,
+    pub implicit_int: bool,
+    pub implicit_function_decl: bool,
+    pub return_without_value: bool,
+}
+
+impl Default for StandardFeatures {
+    fn default() -> Self {
+        Self {
+            line_comments: true,
+            long_long: true,
+            inline: true,
+            restrict: true,
+            variadic_macros: true,
+            compound_literals: true,
+            designated_initializers: true,
+            mixed_declarations: true,
+            implicit_int: false,
+            implicit_function_decl: false,
+            return_without_value: false,
+        }
+    }
+}
+
+impl StandardFeatures {
+    /// Load features from a Semantic_ASM/standards/C/cXX.toml file.
+    pub fn load_from_toml(path: &Path) -> Option<Self> {
+        let text = std::fs::read_to_string(path).ok()?;
+        let mut feats = Self::default();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with('[') { continue; }
+            if let Some((key, val)) = line.split_once('=') {
+                let key = key.trim();
+                let val = val.trim().trim_matches('"');
+                let enabled = val == "true" || val == "1";
+                match key {
+                    "line_comments" => feats.line_comments = enabled,
+                    "long_long" => feats.long_long = enabled,
+                    "inline" => feats.inline = enabled,
+                    "restrict" => feats.restrict = enabled,
+                    "variadic_macros" => feats.variadic_macros = enabled,
+                    "compound_literals" => feats.compound_literals = enabled,
+                    "designated_initializers" => feats.designated_initializers = enabled,
+                    "mixed_declarations_and_code" => feats.mixed_declarations = enabled,
+                    "implicit_int" => feats.implicit_int = enabled,
+                    "implicit_function_decl" => feats.implicit_function_decl = enabled,
+                    "return_without_value_allowed" => feats.return_without_value = enabled,
+                    _ => {}
+                }
+            }
+        }
+        Some(feats)
+    }
+
+    /// Try to load from Semantic_ASM standards path.
+    pub fn load_standard(std: CStandard) -> Self {
+        // Search for the TOML file relative to common workspace locations
+        let candidates = &[
+            "Semantic_ASM/standards/C",
+            "../Semantic_ASM/standards/C",
+            "../../Semantic_ASM/standards/C",
+            "../../../Semantic_ASM/standards/C",
+        ];
+        for c in candidates {
+            let p = PathBuf::from(c).join(std.toml_name());
+            if p.exists() {
+                if let Some(feats) = Self::load_from_toml(&p) {
+                    return feats;
+                }
+            }
+        }
+        // Also try Semantic_ASM bundled with the compiler
+        if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+            let p = PathBuf::from(&manifest_dir)
+                .join("../../Semantic_ASM/standards/C")
+                .join(std.toml_name());
+            if p.exists() {
+                if let Some(feats) = Self::load_from_toml(&p) {
+                    return feats;
+                }
+            }
+        }
+        Self::default()
+    }
+}
+
 pub fn profile() -> BmoLanguageProfile {
     BmoLanguageProfile::C
 }
@@ -23,6 +155,21 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
     codegen::compile_to_bef_bytes(&program)
 }
 
+/// Compile with a specific C standard (C89/C99/C11/C17/C23).
+/// Loads the standard TOML manifest and applies feature gating during parsing.
+pub fn compile_with_standard(source: &str, std: CStandard) -> Result<Vec<u8>, CError> {
+    let features = StandardFeatures::load_standard(std);
+    let program = parse_with_features(source, &features)?;
+    codegen::compile_to_bef_bytes(&program)
+}
+
+/// Parse with standard feature gating.
+pub fn parse_with_features(source: &str, features: &StandardFeatures) -> Result<Program, CError> {
+    let mut p = Parser::new(source);
+    p.features = features.clone();
+    p.parse_program()
+}
+
 /// Compile C source to a unified IrModule (language-agnostic IR).
 pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CError> {
     let program = parse(source)?;
@@ -30,7 +177,7 @@ pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CError> {
 }
 
 pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {
-    let mut resolver = module::ModuleResolver::new(base_paths);
+    let mut resolver = module::ModuleResolver::new(base_paths).with_semantic_asm();
     let program = Parser::new(source).parse_program_with_modules(&mut resolver, None)?;
     let used = module::find_used_functions(&program, &program.exported);
     codegen::compile_to_bef_bytes_filtered(&program, &used)
@@ -41,7 +188,7 @@ pub fn compile_source_to_bef_with_all(
     base_paths: Vec<PathBuf>,
     asm_paths: Vec<PathBuf>,
 ) -> Result<Vec<u8>, CError> {
-    let mut resolver = module::ModuleResolver::new(base_paths);
+    let mut resolver = module::ModuleResolver::new(base_paths).with_semantic_asm();
     let program = Parser::new(source).parse_program_with_modules(&mut resolver, Some(asm_paths))?;
     let used = module::find_used_functions(&program, &program.exported);
     codegen::compile_to_bef_bytes_filtered(&program, &used)
@@ -85,11 +232,12 @@ struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     var_types: HashMap<String, TypeSpec>,
-    struct_fields: HashMap<String, Vec<(String, u32, u32)>>, // name â†’ [(field, offset, size)]
+    struct_fields: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
-    usings: Vec<String>, // module paths collected from `use "path"` directives
+    usings: Vec<String>,
     typedefs: HashMap<String, TypeSpec>,
-    syscalls: HashMap<String, SyscallDef>, // known semantic syscall definitions
+    syscalls: HashMap<String, SyscallDef>,
+    features: StandardFeatures,
 }
 
 impl Parser {
@@ -102,6 +250,7 @@ impl Parser {
             usings: Vec::new(),
             typedefs: HashMap::new(),
             syscalls: HashMap::new(),
+            features: StandardFeatures::default(),
         }
     }
 
@@ -920,7 +1069,7 @@ impl Parser {
             Token::Short => TypeSpec::Short,
             Token::Int => TypeSpec::Int,
             Token::Long => {
-                if *self.peek() == Token::Long { self.advance(); TypeSpec::LongLong } else { TypeSpec::Long }
+                if self.features.long_long && *self.peek() == Token::Long { self.advance(); TypeSpec::LongLong } else { TypeSpec::Long }
             }
             Token::Unsigned => {
                 match self.peek() {

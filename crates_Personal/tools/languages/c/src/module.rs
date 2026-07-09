@@ -23,6 +23,26 @@ impl ModuleResolver {
         Self { base_paths }
     }
 
+    /// Auto-discover Semantic_ASM relative to common workspace locations.
+    /// Searches: ../Semantic_ASM, ../../Semantic_ASM, ../../../Semantic_ASM
+    pub fn with_semantic_asm(mut self) -> Self {
+        let candidates = &[
+            "Semantic_ASM",
+            "../Semantic_ASM",
+            "../../Semantic_ASM",
+            "../../../Semantic_ASM",
+            "../../../../Semantic_ASM",
+        ];
+        for c in candidates {
+            let p = PathBuf::from(c);
+            if p.join("stdlib").is_dir() {
+                self.base_paths.push(p);
+                return self;
+            }
+        }
+        self
+    }
+
     /// Find a module by name (e.g. "bmo/pci") across all base paths
     pub fn find_manifest(&self, name: &str) -> Result<ModuleManifest, CError> {
         for base in &self.base_paths {

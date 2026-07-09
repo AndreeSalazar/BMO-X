@@ -8,6 +8,7 @@ fn main() {
     let program = &args[0];
     let mut base_paths: Vec<PathBuf> = Vec::new();
     let mut asm_paths: Vec<PathBuf> = Vec::new();
+    let mut standard = bmo_c_front::CStandard::DefaultC;
     let mut file_path = None;
 
     let mut i = 1;
@@ -31,6 +32,21 @@ fn main() {
                     process::exit(2);
                 }
             }
+            "--std" => {
+                i += 1;
+                if i < args.len() {
+                    match bmo_c_front::CStandard::from_name(&args[i]) {
+                        Some(s) => standard = s,
+                        None => {
+                            eprintln!("error: unknown standard '{}'. Use c89/c99/c11/c17/c23", args[i]);
+                            process::exit(2);
+                        }
+                    }
+                } else {
+                    eprintln!("error: --std requires a standard name (c89/c99/c11/c17/c23)");
+                    process::exit(2);
+                }
+            }
             _ => {
                 file_path = Some(&args[i]);
             }
@@ -39,7 +55,7 @@ fn main() {
     }
 
     let Some(path) = file_path else {
-        eprintln!("usage: {program} [--base <path>] [--asm-path <path>] <source.c>");
+        eprintln!("usage: {program} [--std c99] [--base <path>] [--asm-path <path>] <source.c>");
         process::exit(2);
     };
 
@@ -51,10 +67,12 @@ fn main() {
         }
     };
 
-    let result = if base_paths.is_empty() && asm_paths.is_empty() {
-        bmo_c_front::compile_source_to_bef(&source)
-    } else {
-        bmo_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths)
+    let result = match (base_paths.is_empty(), asm_paths.is_empty()) {
+        (true, true) => bmo_c_front::compile_with_standard(&source, standard),
+        _ => {
+            // With --base or --asm-path, use the module-resolved path
+            bmo_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths)
+        }
     };
 
     match result {
@@ -62,7 +80,7 @@ fn main() {
             let out_path = Path::new(path).with_extension("bef");
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
-                    println!("ok: wrote {} bytes â†’ {}", bef_bytes.len(), out_path.display());
+                    println!("ok: wrote {} bytes -> {}", bef_bytes.len(), out_path.display());
                 }
                 Err(err) => {
                     eprintln!("error: cannot write {}: {}", out_path.display(), err);
