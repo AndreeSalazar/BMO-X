@@ -295,8 +295,9 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
         // ═══ BMO Channel input (Ring 0 ISR → syscall → desktop) ═══
         unsafe {
             bmo_core::desktop::input::CHANNEL_POLL = Some(poll_channel);
+            bmo_core::desktop::input::CHANNEL_MOUSE_POLL = Some(poll_channel_mouse);
         }
-        (hal.serial_write)("[mod_bmo_core] channel input wired\n");
+        (hal.serial_write)("[mod_bmo_core] channel input wired (kbd+mouse)\n");
 
         // Quick input init — show diagnostic only if there's a problem
         let info = init_xhci(hal);
@@ -452,6 +453,11 @@ static mut UHID_PTR: Option<bmo_uhid::UsbHidHal> = None;
 /// Poll BMO Channel via syscall for keyboard events.
 fn poll_channel() -> u8 {
     ring3_foundation::sys_keyboard_poll()
+}
+
+/// Poll BMO Channel via syscall for mouse events.
+fn poll_channel_mouse() -> u64 {
+    ring3_foundation::sys_mouse_poll()
 }
 
 /// USB Legacy Handover — take ownership of XHCI from BIOS (AMD chipset).

@@ -12,9 +12,13 @@ pub const SC_ESC: u8 = 0x01;
 /// If set by the module, called to poll USB HID events before PS/2/HAL input.
 pub static mut USB_HID_POLL: Option<fn(&mut [bmo_hal_defs::InputEvent]) -> usize> = None;
 
-/// If set by the module, called to poll BMO Channel events (Ring 0 → Ring 3).
-/// Runs before USB HID and PS/2. Returns raw scancodes via buffer.
+/// If set by the module, called to poll BMO Channel keyboard (Ring 0 ISR → syscall).
+/// Returns PS/2 Set 1 scancode (0-255) or 0 if no event.
 pub static mut CHANNEL_POLL: Option<fn() -> u8> = None;
+
+/// If set by the module, called to poll BMO Channel mouse (Ring 0 ISR → syscall).
+/// Returns packed: (buttons << 32) | (dy << 16) | dx, or u64::MAX if no event.
+pub static mut CHANNEL_MOUSE_POLL: Option<fn() -> u64> = None;
 
 // ── Direct PS/2 port I/O (Ring 0 fallback) ────────────────────────────
 
@@ -218,6 +222,12 @@ pub fn poll_key() -> u8 {
 pub fn poll_mouse() -> u64 {
     ensure_input_ready();
     unsafe {
+        // 0. BMO Channel mouse (Ring 0 ISR → syscall)
+        if let Some(poll) = CHANNEL_MOUSE_POLL {
+            let packed = poll();
+            if packed != u64::MAX { return packed; }
+        }
+
         let mut usb_x: i32 = 0;
         let mut usb_y: i32 = 0;
         let mut usb_btns: u64 = 0;
