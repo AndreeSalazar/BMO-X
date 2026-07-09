@@ -1215,10 +1215,19 @@ fn sys_fs_mount(_src_ptr: u64, _src_len: u64, _dst_ptr: u64, _dst_len: u64, _fs:
 
 // ── Process/Thread syscalls (NR_PROC_*, NR_THREAD_*) ─────────────
 
-/// NR_PROC_SPAWN: crea un nuevo proceso desde un BEF (stub v1.8.8).
-fn sys_proc_spawn(_bef_ptr: u64, _bef_len: u64) -> u64 {
-    // v1.9: implementar carga dinámica de BEF.
-    err::OK
+/// NR_PROC_SPAWN: crea un nuevo proceso desde un BEF binario.
+/// a0 = puntero a bytes BEF, a1 = longitud.
+/// Retorna: PID (> 0) o 0 si falló.
+fn sys_proc_spawn(bef_ptr: u64, bef_len: u64) -> u64 {
+    if bef_ptr == 0 || bef_len == 0 || bef_len > 16 * 1024 * 1024 { return 0; }
+    let bytes = unsafe { core::slice::from_raw_parts(bef_ptr as *const u8, bef_len as usize) };
+    let image = match crate::bef::parsers::load(bytes) {
+        Ok(img) => img,
+        Err(_) => return 0,
+    };
+    crate::proc::user_init::spawn_from_image(&image);
+    1 // success
+
 }
 
 /// NR_PROC_EXIT: termina el proceso actual.

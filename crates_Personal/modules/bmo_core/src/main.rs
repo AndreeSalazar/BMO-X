@@ -317,8 +317,7 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
             bmo_core::desktop::input::USB_HID_POLL = Some(poll_usb_hid);
         }
 
-        // Start background modules (timeback + cabina from BootInfo)
-        start_background_modules(hal);
+        // Background modules (timeback, cabina) deferred to PROC_SPAWN (v2.1)
 
         // ═══ PHASE 3: Enter desktop main loop ═══
         (hal.write_crash_marker)(8);
