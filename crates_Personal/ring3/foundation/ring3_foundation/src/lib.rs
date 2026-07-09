@@ -76,3 +76,15 @@ pub fn sys_beep(freq: u32, duration_ms: u32) {
 pub fn sys_channel_kick() -> usize {
     unsafe { syscall0(0x36) as usize }
 }
+
+/// Reboot the system.
+pub fn sys_reboot() -> ! {
+    unsafe { syscall0(0x3A); }
+    loop { unsafe { core::arch::asm!("hlt"); } }
+}
+
+/// Shutdown the system.
+pub fn sys_shutdown() -> ! {
+    unsafe { syscall0(0x3B); }
+    loop { unsafe { core::arch::asm!("hlt"); } }
+}

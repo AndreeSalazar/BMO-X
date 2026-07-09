@@ -447,6 +447,16 @@ fn sys_mouse_poll(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a
     if found { (btns << 32) | (dy << 16) | dx } else { u64::MAX }
 }
 
+/// SYS_REBOOT(0x3A): Reboot the system.
+fn sys_reboot(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    crate::dev::power::reboot()
+}
+
+/// SYS_SHUTDOWN(0x3B): Shutdown the system.
+fn sys_shutdown(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    crate::dev::power::shutdown()
+}
+
 // ── Jump table (256 entries, lazy-initialized once) ────────────────────
 
 static mut SYSCALL_TABLE: [SyscallFn; 256] = [stub as SyscallFn; 256];
@@ -475,6 +485,8 @@ unsafe fn init_table() {
     SYSCALL_TABLE[0x37] = sys_beep;
     SYSCALL_TABLE[0x38] = sys_keyboard_poll;
     SYSCALL_TABLE[0x39] = sys_mouse_poll;
+    SYSCALL_TABLE[0x3A] = sys_reboot;
+    SYSCALL_TABLE[0x3B] = sys_shutdown;
     SYSCALL_TABLE[0xF0] = sys_debug_print;
 
     // Network (gated)
