@@ -381,7 +381,7 @@ fn wait_for_vsync() {
 fn draw_footer(fb: &Framebuffer, fb_w: u32) {
     let h = unsafe { crate::info::FB_HEIGHT };
     let y = h.saturating_sub(20);
-    let s = b"Desarrollado por Salazar  ::  BMO/BMO v1.8.8  ::  BMO ABI v1.0.0";
+    let s = b"Desarrollado por Salazar  ::  BMO v2.0  ::  BMO ABI v1.0.0";
     let w = s.len() * 8;
     let x = if fb_w > w as u32 { (fb_w - w as u32) / 2 } else { 0 };
     // Fondo semi-transparente simulado.

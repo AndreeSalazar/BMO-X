@@ -173,7 +173,7 @@ fn paint_menu_bar() {
     }
 
     // Right side: clock area (simplified)
-    let clock_label = b"BMO  v1.8.8";
+    let clock_label = b"BMO v2.0";
     let cw = clock_label.len() * 8;
     crate::desktop::render::draw_text(
         &fb, (fbw as usize - cw - 16) as u32, 7, clock_label, theme::SUBTITLE,

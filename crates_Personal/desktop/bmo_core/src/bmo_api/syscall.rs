@@ -347,7 +347,7 @@ pub fn dispatch(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -
         nr::END_MODAL        => err::OK,
         nr::SET_WINDOW_POS   => sys_set_window_pos(a0, a1, a2, a3),
         nr::GET_WINDOW       => err::OK,
-        nr::ENUM_WINDOWS     => err::OK,
+        nr::ENUM_WINDOWS     => sys_enum_windows(a0, a1),
         nr::GET_DESKTOP_WINDOW => {
             let s = super::state();
             s.lock();
@@ -1333,10 +1333,28 @@ fn sys_compositor_flush() -> u64 {
 
 // ── Draw extras (NR_DRAW_CIRCLE etc.) ────────────────────────────
 
-/// NR_DRAW_CIRCLE: dibuja un círculo. v1.8.8: stub con fill_rect.
-fn sys_draw_circle(_dc: u64, _cx: u64, _cy: u64, _r: u64, color: u64) -> u64 {
-    // v1.9: implementar draw_circle real (Bresenham).
-    let _ = color;
+/// ENUM_WINDOWS: escribe IDs de ventanas visibles en un buffer Ring 3.
+/// a0 = *mut u32 (buffer), a1 = capacidad. Retorna count escrito.
+fn sys_enum_windows(buf_ptr: u64, capacity: u64) -> u64 {
+    let buf = buf_ptr as *mut u32;
+    if buf.is_null() || capacity == 0 { return 0; }
+    let s = super::state();
+    s.lock();
+    let mut count: u64 = 0;
+    s.windows.z_foreach_top_down(|slot| {
+        if count < capacity {
+            unsafe { *buf.add(count as usize) = slot; }
+            count += 1;
+        }
+    });
+    s.unlock();
+    count
+}
+
+/// NR_DRAW_CIRCLE: dibuja un círculo relleno.
+fn sys_draw_circle(_dc: u64, cx: u64, cy: u64, r: u64, color: u64) -> u64 {
+    let fb = crate::ui::fb::backbuffer_fb();
+    fb.fill_circle(cx as usize, cy as usize, r as usize, color as u32);
     err::OK
 }
 
