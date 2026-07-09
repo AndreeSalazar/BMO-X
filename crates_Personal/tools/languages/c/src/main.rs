@@ -68,11 +68,11 @@ fn main() {
     };
 
     let result = match (base_paths.is_empty(), asm_paths.is_empty()) {
-        (true, true) => bmo_c_front::compile_with_standard(&source, standard),
-        _ => {
-            // With --base or --asm-path, use the module-resolved path
-            bmo_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths)
+        (true, true) => {
+            let file = Path::new(path);
+            bmo_c_front::compile_with_preprocessor(&source, file, standard)
         }
+        _ => bmo_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths),
     };
 
     match result {

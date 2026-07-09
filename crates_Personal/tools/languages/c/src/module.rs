@@ -18,6 +18,38 @@ pub struct ModuleResolver {
     pub base_paths: Vec<PathBuf>,
 }
 
+/// Discover common include paths (Semantic_ASM).
+pub fn discover_include_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let candidates = &[
+        "Semantic_ASM",
+        "../Semantic_ASM",
+        "../../Semantic_ASM",
+        "../../../Semantic_ASM",
+        "../../../../Semantic_ASM",
+    ];
+    for c in candidates {
+        let p = PathBuf::from(c);
+        if p.join("stdlib").is_dir() {
+            // Add standards/C too
+            let std_path = p.join("standards").join("C");
+            if std_path.is_dir() { paths.push(std_path); }
+            paths.push(p);
+            break;
+        }
+    }
+    // Also try CARGO_MANIFEST_DIR
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let asm_path = PathBuf::from(&manifest_dir).join("../../Semantic_ASM");
+        if asm_path.join("stdlib").is_dir() {
+            let std_path = asm_path.join("standards").join("C");
+            if std_path.is_dir() { paths.push(std_path); }
+            paths.push(asm_path);
+        }
+    }
+    paths
+}
+
 impl ModuleResolver {
     pub fn new(base_paths: Vec<PathBuf>) -> Self {
         Self { base_paths }
@@ -26,20 +58,7 @@ impl ModuleResolver {
     /// Auto-discover Semantic_ASM relative to common workspace locations.
     /// Searches: ../Semantic_ASM, ../../Semantic_ASM, ../../../Semantic_ASM
     pub fn with_semantic_asm(mut self) -> Self {
-        let candidates = &[
-            "Semantic_ASM",
-            "../Semantic_ASM",
-            "../../Semantic_ASM",
-            "../../../Semantic_ASM",
-            "../../../../Semantic_ASM",
-        ];
-        for c in candidates {
-            let p = PathBuf::from(c);
-            if p.join("stdlib").is_dir() {
-                self.base_paths.push(p);
-                return self;
-            }
-        }
+        self.base_paths.extend(discover_include_paths());
         self
     }
 

@@ -2,6 +2,7 @@
 pub mod ast;
 pub mod module;
 pub mod ir_emit;
+pub mod parser;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -160,6 +161,25 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
 pub fn compile_with_standard(source: &str, std: CStandard) -> Result<Vec<u8>, CError> {
     let features = StandardFeatures::load_standard(std);
     let program = parse_with_features(source, &features)?;
+    codegen::compile_to_bef_bytes(&program)
+}
+
+/// Compile with full preprocessor pass (macros, includes, conditionals).
+/// This is the recommended entry point for real C files.
+pub fn compile_with_preprocessor(
+    source: &str,
+    file_path: &Path,
+    std: CStandard,
+) -> Result<Vec<u8>, CError> {
+    let features = StandardFeatures::load_standard(std);
+
+    // Run preprocessor: expand #include, #define, #ifdef, etc.
+    let include_paths = module::discover_include_paths();
+    let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
+    let expanded = pp.preprocess(source, file_path)?;
+
+    // Parse + compile the expanded source
+    let program = parse_with_features(&expanded, &features)?;
     codegen::compile_to_bef_bytes(&program)
 }
 
