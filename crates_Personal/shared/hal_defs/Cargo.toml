@@ -1,0 +1,9 @@
+[package]
+name = "bmo-hal-defs"
+version = "1.0.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO HAL definitions — shared types between Ring 0 kernel and Ring 3 modules"
+
+[dependencies]
+bmo-boot-protocol = { path = "../../ring0/boot_protocol" }

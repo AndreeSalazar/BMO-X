@@ -1,0 +1,13 @@
+[package]
+name = "bmo-core"
+version = "1.8.16"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO Core - logical Ring 3 kernel (windowing, UI, FS, desktop, BEF loader)"
+
+[dependencies]
+bmo-abi = { path = "../../abi/bmo_abi" }
+bmo-hal-defs = { path = "../../shared/hal_defs" }
+timeback = { path = "../../services/timeback" }
+bmo-boot-protocol = { path = "../../ring0/boot_protocol" }
+goblin = { path = "../../goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }

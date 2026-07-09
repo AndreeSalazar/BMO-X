@@ -1,0 +1,17 @@
+﻿[package]
+name = "bmo-c-front"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "C frontend for BMO BMO ABI â€” compiles minimal C to BEF"
+
+[dependencies]
+bmo-abi = { path = "../../../abi/bmo_abi" }
+
+[lib]
+name = "bmo_c_front"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bmo-c-front"
+path = "src/main.rs"

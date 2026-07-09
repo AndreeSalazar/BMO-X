@@ -1,0 +1,17 @@
+﻿[package]
+name = "bmo-cobol-front"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "COBOL frontend scaffold for BMO BMO ABI"
+
+[dependencies]
+bmo-abi = { path = "../../../abi/bmo_abi" }
+
+[lib]
+name = "bmo_cobol_front"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bmo-cobol-front"
+path = "src/main.rs"

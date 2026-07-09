@@ -1,0 +1,17 @@
+[package]
+name = "bmo-cpp-front"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "C++ frontend for BMO ABI — compiles minimal C++ to BEF with VTable support"
+
+[dependencies]
+bmo-abi = { path = "../../../abi/bmo_abi" }
+
+[lib]
+name = "bmo_cpp_front"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bmo-cpp-front"
+path = "src/main.rs"

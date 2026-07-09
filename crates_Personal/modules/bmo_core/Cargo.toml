@@ -1,0 +1,16 @@
+[package]
+name = "mod-bmo-core"
+version = "1.0.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO Core module — loaded by kernel.elf as a separate binary"
+
+[dependencies]
+bmo-core = { path = "../../desktop/bmo_core" }
+bmo-hal-defs = { path = "../../shared/hal_defs" }
+timeback = { path = "../../services/timeback" }
+byte-defender = { path = "../../services/byte_defender" }
+goblin = { path = "../../goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }
+"bmo-xhci" = { path = "../../drivers/usb/xhci" }
+"bmo-uhid" = { path = "../../drivers/usb/uhid" }
+"bmo-input" = { path = "../../drivers/usb/input" }

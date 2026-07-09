@@ -103,9 +103,9 @@ $root     = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $bootDir  = Join-Path $root "crates_Personal\bootloader"
 $kernDir  = Join-Path $root "kernel"
-$moduleDir = Join-Path $root "crates_Personal\mod_bmo_core"
-$timebackDir = Join-Path $root "crates_Personal\mod_timeback"
-$cabinaDir = Join-Path $root "crates_Personal\mod_cabina"
+$moduleDir = Join-Path $root "crates_Personal\modules\bmo_core"
+$timebackDir = Join-Path $root "crates_Personal\modules\timeback"
+$cabinaDir = Join-Path $root "crates_Personal\modules\cabina"
 $target   = Join-Path $root "target_build"
 $stage    = Join-Path $target "staging\EFI\BOOT"
 
