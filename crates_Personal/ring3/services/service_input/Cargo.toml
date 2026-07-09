@@ -1,5 +1,3 @@
-[workspace]
-
 [package]
 name = "service-input"
 version = "1.0.0"

@@ -12,6 +12,10 @@ pub const SC_ESC: u8 = 0x01;
 /// If set by the module, called to poll USB HID events before PS/2/HAL input.
 pub static mut USB_HID_POLL: Option<fn(&mut [bmo_hal_defs::InputEvent]) -> usize> = None;
 
+/// If set by the module, called to poll BMO Channel events (Ring 0 → Ring 3).
+/// Runs before USB HID and PS/2. Returns raw scancodes via buffer.
+pub static mut CHANNEL_POLL: Option<fn() -> u8> = None;
+
 // ── Direct PS/2 port I/O (Ring 0 fallback) ────────────────────────────
 
 #[inline] unsafe fn inb(port: u16) -> u8 {
@@ -166,6 +170,12 @@ pub fn poll_raw_scancode() -> u8 {
     ensure_input_ready();
 
     unsafe {
+        // 0. BMO Channel (Ring 0 → Ring 3, zero syscalls)
+        if let Some(poll) = CHANNEL_POLL {
+            let sc = poll();
+            if sc != 0 { return sc; }
+        }
+
         refill_usb_pending();
         for i in 0..USB_PENDING_COUNT {
             let ev = USB_PENDING[i];

@@ -372,6 +372,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "driver-keyboard"
+version = "1.0.0"
+dependencies = [
+ "bmo-channel",
+ "ring3-foundation",
+]
+
+[[package]]
+name = "driver-mouse"
+version = "1.0.0"
+dependencies = [
+ "bmo-channel",
+ "ring3-foundation",
+]
+
+[[package]]
 name = "env_filter"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -560,6 +576,7 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 name = "mod-bmo-core"
 version = "1.0.0"
 dependencies = [
+ "bmo-channel",
  "bmo-core",
  "bmo-hal-defs",
  "bmo-input",
@@ -567,6 +584,8 @@ dependencies = [
  "bmo-xhci",
  "byte-defender",
  "goblin",
+ "ring3-foundation",
+ "service-input",
  "timeback",
 ]
 
@@ -691,6 +710,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "ring3-foundation"
+version = "1.0.0"
+dependencies = [
+ "bmo-channel",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -720,6 +746,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "service-input"
+version = "1.0.0"
+dependencies = [
+ "driver-keyboard",
+ "driver-mouse",
+ "ring3-foundation",
 ]
 
 [[package]]

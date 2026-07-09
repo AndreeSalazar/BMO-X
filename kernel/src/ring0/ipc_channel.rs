@@ -123,6 +123,9 @@ pub fn init() {
     unsafe {
         SYS_CHANNEL.ch.init();
     }
+    // Write channel physical address to RAM marker so Ring 3 can find it
+    let phys = sys_channel_phys();
+    unsafe { core::ptr::write_volatile(0x9_0160 as *mut u64, phys); }
     crate::irq::keyboard::init();
     crate::irq::mouse::init();
 }

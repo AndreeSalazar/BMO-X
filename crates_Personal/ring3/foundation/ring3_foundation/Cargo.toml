@@ -1,5 +1,3 @@
-[workspace]
-
 [package]
 name = "ring3-foundation"
 version = "1.0.0"
