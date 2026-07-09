@@ -12,6 +12,10 @@ extern crate alloc;
 use core::alloc::{GlobalAlloc, Layout};
 use core::panic::PanicInfo;
 
+// ── Symbol table (embedded at build time) ────────────────────────────
+
+static SYMBOLS: &str = include_str!("../../../../BMO_SYMBOLS.toml");
+
 // ── Global allocator ──────────────────────────────────────────────────
 
 static mut HAL_PTR: *const bmo_hal_defs::HalServices = core::ptr::null();
@@ -234,6 +238,10 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
 
     if let Some(hal) = unsafe { HAL_PTR.as_ref() } {
         (hal.serial_write)("[mod_bmo_core] module loaded\n");
+
+        // Initialize plugin loader with embedded symbol table
+        let registry = bmo_core::plugin_loader::SymbolRegistry::new(SYMBOLS);
+        (hal.serial_write)("[mod_bmo_core] symbol registry loaded\n");
 
         // ═══ PHASE 1: Desktop FIRST (fast path) ═══
         // Wire framebuffer rendering, heap, global allocator — no drivers yet

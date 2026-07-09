@@ -13,6 +13,9 @@ pub mod bef;
 pub mod fs;
 
 pub mod dev;
+
+// ── Plugin Loader — runtime symbol resolution ───────────────────
+pub mod plugin_loader;
 pub mod mm;
 pub mod info;
 pub mod cpu;

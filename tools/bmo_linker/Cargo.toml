@@ -1,0 +1,10 @@
+[workspace]
+
+[package]
+name = "bmo-linker"
+version = "1.0.0"
+edition = "2021"
+description = "BMO Symbol Linker — extracts symbols from .elf modules and generates BMO_SYMBOLS.toml"
+
+[dependencies]
+goblin = "0.9"
