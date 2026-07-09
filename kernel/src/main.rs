@@ -50,8 +50,13 @@ pub mod ring3;
 
 // ── Core ring0 modules ─────────────────────────────────────────
 pub use ring0::{arch, mm, dev, proc, cpu};
-pub use ring0::{info, context, uefi_rt, serial, log};
-pub use ring0::{boot_phase, entry, mod_loader};
+pub use ring0::boot::{info, nvram as uefi_rt, serial, log};
+pub use ring0::core::{phase as boot_phase, entry, splash as boot_splash};
+pub use ring0::boot::loader as mod_loader;
+pub use ring0::arch::context;
+pub use ring0::hal as hal_init;
+pub use ring0::mm::vdso;
+pub use ring0::irq;
 
 // ── Crates (pure Ring 0) ───────────────────────────────────────
 pub use cpu_vendor_profile as vendor;

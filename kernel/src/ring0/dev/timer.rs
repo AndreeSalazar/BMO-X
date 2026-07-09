@@ -50,7 +50,7 @@ pub fn init() {
 /// Get current timestamp in nanoseconds.
 /// Also updates the vDSO page for Ring 3 fast access.
 pub fn now_ns() -> u64 {
-    crate::ring0::vdso::tick();
+    crate::vdso::tick();
     match unsafe { CURRENT_SOURCE } {
         TimerSource::Hpet => super::hpet::now_ns(),
         TimerSource::Tsc => super::timestamp::tsc_to_ns(crate::cpu::rdtsc()),

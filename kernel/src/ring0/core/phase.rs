@@ -1,4 +1,4 @@
-﻿//! Ring 0 Main Coordinator — pure Ring 0 boot phases.
+//! Ring 0 Main Coordinator — pure Ring 0 boot phases.
 //!
 //! Orchestrates hardware setup: arch, memory, devices, display, scheduler.
 //! No Ring 3 services (cabina, AHCI, XHCI, input, audio, visual).
@@ -109,7 +109,7 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     crate::uefi_rt::write_boot_stage("p1_done");
 
     // Init vDSO page
-    crate::ring0::vdso::init();
+    crate::vdso::init();
     let phase1_end = crate::cpu::rdtsc();
     ctx.record_phase(1, prev_end, phase1_end);
     s_log("[phase1] done");
@@ -232,26 +232,26 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     let boot_start = crate::cpu::rdtsc();
 
     // Show boot splash
-    crate::ring0::boot_splash::splash_init();
-    crate::ring0::boot_splash::splash_progress(5, "Starting kernel...");
+    crate::boot_splash::splash_init();
+    crate::boot_splash::splash_progress(5, "Starting kernel...");
 
     write_crash_marker(2);
     crate::uefi_rt::write_boot_stage("phases_0_to_4");
     s_log("[ring0] starting boot phases");
-    crate::ring0::boot_splash::splash_progress(15, "CPU, GDT, IDT...");
+    crate::boot_splash::splash_progress(15, "CPU, GDT, IDT...");
     let mut prev_end = boot_start;
     prev_end = phase0_arch(&mut ctx, prev_end);
-    crate::ring0::boot_splash::splash_progress(35, "Memory allocators...");
+    crate::boot_splash::splash_progress(35, "Memory allocators...");
     prev_end = phase1_mem(&mut ctx, prev_end);
-    crate::ring0::boot_splash::splash_progress(55, "Device discovery...");
+    crate::boot_splash::splash_progress(55, "Device discovery...");
     prev_end = phase2_dev(&mut ctx, prev_end);
-    crate::ring0::boot_splash::splash_progress(70, "Display init...");
+    crate::boot_splash::splash_progress(70, "Display init...");
     prev_end = phase3_display(&mut ctx, prev_end);
-    crate::ring0::boot_splash::splash_progress(80, "Scheduler...");
+    crate::boot_splash::splash_progress(80, "Scheduler...");
     prev_end = phase4_sched(&mut ctx, prev_end);
     s_log("[ring0] all boot phases completed");
     write_crash_marker(3);
-    crate::ring0::boot_splash::splash_progress(85, "Zen 3 CPU detection...");
+    crate::boot_splash::splash_progress(85, "Zen 3 CPU detection...");
     unsafe {
         cpu_vendor_profile::LOG_WRITE_STR = Some(crate::dev::console::serial_write as fn(&str));
         cpu_vendor_profile::LOG_WRITE_U64 = Some(crate::dev::console::serial_write_u64 as fn(u64, usize));
@@ -262,7 +262,7 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     cpu_vendor_profile::amd::cpu::zen3::init_bmo_cpu();
     s_log("[ring0] CPU detected");
     write_crash_marker(4);
-    crate::ring0::boot_splash::splash_progress(90, "ACPI tables...");
+    crate::boot_splash::splash_progress(90, "ACPI tables...");
     crate::uefi_rt::write_boot_stage("init_acpi");
     let rsdp_hint = unsafe {
         let addr = core::ptr::read_volatile(&(*bi_ptr).rsdp_addr);
@@ -271,18 +271,18 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     cpu_vendor_profile::amd::cpu::zen3::init_acpi(rsdp_hint);
     s_log("[ring0] ACPI initialized");
     write_crash_marker(45);
-    crate::ring0::boot_splash::splash_progress(95, "Starting CPU cores...");
+    crate::boot_splash::splash_progress(95, "Starting CPU cores...");
     crate::uefi_rt::write_boot_stage("smp_init");
     s_log("[ring0] SMP init start");
     unsafe { crate::arch::smp::init(); }
     s_log("[ring0] SMP init done");
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
-    crate::ring0::boot_splash::splash_progress(100, "BMO Ready.");
-    crate::ring0::boot_splash::splash_clear();
+    crate::boot_splash::splash_progress(100, "BMO Ready.");
+    crate::boot_splash::splash_clear();
     s_log("[ring0] boot complete");
-    let hal = alloc::boxed::Box::new(crate::ring0::hal_init::build(&ctx));
-    unsafe { crate::ring0::hal_init::HAL_SERVICES = alloc::boxed::Box::into_raw(hal) as *const _; }
+    let hal = alloc::boxed::Box::new(crate::hal_init::build(&ctx));
+    unsafe { crate::hal_init::HAL_SERVICES = alloc::boxed::Box::into_raw(hal) as *const _; }
     s_log("[ring0] HalServices built");
     s_log("[ring0] BMO: Ok Ready");
     ctx

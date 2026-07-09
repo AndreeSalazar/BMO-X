@@ -22,5 +22,7 @@ pub mod gdt;
 pub mod idt;
 pub mod apic;
 pub mod ctx;
+pub mod context;
 pub mod syscall;
+pub mod tlb;
 pub mod smp;

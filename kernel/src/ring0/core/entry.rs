@@ -78,19 +78,19 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
     crate::dev::console::serial_write("[entry] kernel_main_real entered\n");
 
     // ═══ STAGE 4: Boot phases 0..4 (arch, mm, dev, display, sched) ═══
-    super::boot_phase::main(boot_info_ptr);
+    super::phase::main(boot_info_ptr);
 
     // ═══ STAGE 5: Module load — hand control to Ring 3 desktop ═══
     crate::dev::console::serial_write("[entry] boot_phase complete, loading desktop module\n");
-    crate::ring0::boot_phase::write_crash_marker(6);
+    crate::boot_phase::write_crash_marker(6);
     crate::uefi_rt::write_boot_stage("module_load");
 
     unsafe {
-        let hal = crate::ring0::hal_init::HAL_SERVICES;
+        let hal = crate::hal_init::HAL_SERVICES;
         if hal.is_null() {
             crate::dev::console::serial_write("[entry] FATAL: HalServices is null\n");
             loop { core::arch::asm!("hlt"); }
         }
-        crate::ring0::mod_loader::load_bmo_core(&*hal, boot_info_ptr)
+        crate::mod_loader::load_bmo_core(&*hal, boot_info_ptr)
     }
 }

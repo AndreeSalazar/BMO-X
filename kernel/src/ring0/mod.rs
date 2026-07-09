@@ -1,50 +1,71 @@
 ﻿//! Ring 0 — Hardware Abstraction Layer.
 //!
-//! Pure Ring 0 kernel — only arch, mm, dev, cpu, proc.
+//! Pure Ring 0 kernel — only arch, mem, dev, cpu, proc.
 //! No Ring 3 services (cabina, storage, input, audio).
+//!
+//! ## Module Tree
+//!
+//! ```text
+//! ring0/
+//! ├── core/            — Boot entry, phases, splash
+//! ├── boot/            — Boot services (info, NVRAM, serial, log, loader)
+//! ├── arch/            — x86-64: GDT, IDT, APIC, syscall, SMP, context
+//! ├── cpu/             — CPU features, TSC, MSR, FPU, cache
+//! ├── mm/              — Memory: buddy, slab, VMM, vDSO
+//! ├── dev/             — Devices: PCIe, ACPI, HPET, framebuffer, console, watchdog
+//! ├── proc/            — Process table, tasks, scheduler
+//! ├── irq/             — Interrupt dispatching, LAPIC timer, MSI/MSI-X
+//! ├── hal.rs           — HAL init (HalServices wiring)
+//! └── mod.rs           — Module root
+//! ```
 
 // ═══════════════════════════════════════════════════════════════════
-//  Core — CPU architecture, memory bootstrap, devices, scheduler
+//  Core — Boot entry, phases, splash
 // ═══════════════════════════════════════════════════════════════════
 
-pub mod arch;       // GDT, IDT, APIC, syscall, SMP, context
-pub mod mm;          // Frame allocator, slab heap, VMM, page tables
-pub mod dev;         // Console, PCIe, framebuffer, watchdog, HPET, ACPI
-pub mod proc;        // Process table, task scheduler
-pub mod cpu;         // CPU features, TSC, registers, cache, FPU
+pub mod core {
+    pub mod entry;
+    pub mod phase;
+    pub mod splash;
+}
 
 // ═══════════════════════════════════════════════════════════════════
-//  Infrastructure — boot, HAL wiring, module loading
+//  Boot services — info, NVRAM, serial, log, loader
 // ═══════════════════════════════════════════════════════════════════
 
-pub mod boot_phase;
-pub mod hal_init;
-pub mod mod_loader;
-pub mod entry;
+pub mod boot {
+    pub mod info;
+    pub mod nvram;
+    pub mod serial;
+    pub mod log;
+    pub mod panic;
+    pub mod loader;
+}
 
 // ═══════════════════════════════════════════════════════════════════
-//  Boot services — info, context, UEFI runtime, serial, log
+//  Hardware — CPU, memory, devices, processes, architecture
 // ═══════════════════════════════════════════════════════════════════
 
-pub mod info;
-pub mod context;
-pub mod uefi_rt;
-pub mod serial;
-pub mod log;
-mod panic;
+pub mod arch;
+pub mod cpu;
+pub mod mm;
+pub mod dev;
+pub mod proc;
 
 // ═══════════════════════════════════════════════════════════════════
-//  Boot splash — macOS-style centered progress bar
+//  HAL wiring — function pointer table
 // ═══════════════════════════════════════════════════════════════════
-pub mod boot_splash;
+
+pub mod hal;
 
 // ═══════════════════════════════════════════════════════════════════
-//  vDSO — fast user-space data access without syscall
+//  Interrupts — IRQ dispatch, LAPIC timer, MSI/MSI-X
 // ═══════════════════════════════════════════════════════════════════
-pub mod vdso;
+
+pub mod irq;
 
 // ═══════════════════════════════════════════════════════════════════
 //  Re-exports — framebuffer globals shared with bootloader
 // ═══════════════════════════════════════════════════════════════════
 
-pub use info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE, FB_PIXEL_FORMAT};
+pub use boot::info::{BOOT_INFO, FB_ADDR, FB_WIDTH, FB_HEIGHT, FB_STRIDE, FB_PIXEL_FORMAT};

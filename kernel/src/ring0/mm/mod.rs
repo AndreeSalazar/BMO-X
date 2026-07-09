@@ -42,6 +42,7 @@ pub(crate) mod llfree;
 pub mod frame_alloc;
 pub mod slab;
 pub mod vmm;
+pub mod vdso;
 
 pub use frame_alloc as phys;
 pub use slab as heap;
