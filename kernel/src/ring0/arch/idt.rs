@@ -488,6 +488,9 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {// Only sav
     unsafe { TICK_COUNT += 1; }
     if unsafe { TICK_COUNT } % 1000 == 0 {}
 
+    // Process BMO Channels (Ring 0 ↔ Ring 3 IPC)
+    crate::channel::tick_process_all();
+
     // Check if we need to switch threads.
     // timer_tick() already calls schedule() when the time slice expires,
     // which sets CURRENT_THREAD to the next thread. No need to call

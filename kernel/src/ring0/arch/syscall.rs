@@ -362,6 +362,36 @@ fn sys_ipc_send(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5:
 #[cfg(not(feature = "syscalls-ipc"))]
 fn sys_ipc_recv(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 { stub(_nr, _a0, _a1, _a2, _a3, _a4, _a5) }
 
+// ── BMO Channel syscalls ───────────────────────────────────────────────
+
+/// SYS_CHANNEL_REGISTER(0x34): Register a BMO Channel page.
+/// a0 = physical address of the channel page
+/// Returns: 0 on success, u64::MAX on failure.
+fn sys_channel_register(_nr: u64, phys: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if phys == 0 { return u64::MAX; }
+    let virt = crate::mm::vmm::phys_to_virt(phys);
+    if virt == 0 { return u64::MAX; }
+    let ch = virt as *mut bmo_channel::Channel;
+    // Initialize if not already
+    unsafe {
+        if (*ch).magic != bmo_channel::CHANNEL_MAGIC {
+            (*ch).init();
+        }
+    }
+    if crate::channel::register(ch) { 0 } else { u64::MAX }
+}
+
+/// SYS_CHANNEL_POLL(0x35): Immediately poll for channel responses.
+/// a0 = physical address of the channel page
+/// Returns: number of entries consumed.
+fn sys_channel_poll(_nr: u64, phys: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    if phys == 0 { return 0; }
+    let virt = crate::mm::vmm::phys_to_virt(phys);
+    if virt == 0 { return 0; }
+    let ch = unsafe { &*(virt as *const bmo_channel::Channel) };
+    ch.ring3_poll(|_, _, _, _| {}) as u64
+}
+
 // ── Jump table (256 entries, lazy-initialized once) ────────────────────
 
 static mut SYSCALL_TABLE: [SyscallFn; 256] = [stub as SyscallFn; 256];
@@ -384,6 +414,8 @@ unsafe fn init_table() {
     SYSCALL_TABLE[0x62] = stub; // fb_flush
     SYSCALL_TABLE[0x70] = sys_port_in;
     SYSCALL_TABLE[0x71] = sys_port_out;
+    SYSCALL_TABLE[0x34] = sys_channel_register;
+    SYSCALL_TABLE[0x35] = sys_channel_poll;
     SYSCALL_TABLE[0xF0] = sys_debug_print;
 
     // Network (gated)

@@ -1,0 +1,7 @@
+[package]
+name = "bmo-channel"
+version = "1.0.0"
+edition = "2024"
+description = "BMO Channel — lock-free ring buffer IPC between Ring 0 and Ring 3"
+
+[dependencies]

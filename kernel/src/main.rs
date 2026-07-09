@@ -57,6 +57,7 @@ pub use ring0::arch::context;
 pub use ring0::hal as hal_init;
 pub use ring0::mm::vdso;
 pub use ring0::irq;
+pub use ring0::ipc_channel as channel;
 
 // ── Crates (pure Ring 0) ───────────────────────────────────────
 pub use cpu_vendor_profile as vendor;

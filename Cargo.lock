@@ -155,6 +155,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-channel"
+version = "1.0.0"
+
+[[package]]
 name = "bmo-cobol-front"
 version = "0.1.0"
 dependencies = [
@@ -207,6 +211,7 @@ version = "2.0.0"
 dependencies = [
  "bitflags 2.13.0",
  "bmo-boot-protocol",
+ "bmo-channel",
  "bmo-hal-defs",
  "cpu-vendor-profile",
  "llfree",
