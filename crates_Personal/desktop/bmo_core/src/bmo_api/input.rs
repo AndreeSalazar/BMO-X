@@ -47,7 +47,7 @@ pub fn translate_scancode(sc_raw: u8) -> Option<(BmoMsgKind, u8)> {
     }
     let kind = if released { BmoMsgKind::KeyUp } else { BmoMsgKind::KeyDown };
     let vk = match sc {
-        0x01 => 0x1B, // ESC
+        0x01 => { ESC_LATCH.store(true, Ordering::Relaxed); 0x1B }, // ESC
         0x0E => 0x08, // Backspace
         0x0F => 0x09, // Tab
         0x1C => 0x0D, // Enter

@@ -68,8 +68,7 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
         let hal = crate::ring0::hal_init::HAL_SERVICES;
         if !hal.is_null() {
             let hal_ref = &*hal;
-            let boot_info = &*boot_info_ptr;
-            crate::ring0::mod_loader::load_bmo_core(hal_ref, boot_info)
+            crate::ring0::mod_loader::load_bmo_core(hal_ref, boot_info_ptr)
         } else {
             crate::dev::console::serial_write("[entry] FATAL: HalServices is null\n");
             loop { unsafe { core::arch::asm!("hlt"); } }

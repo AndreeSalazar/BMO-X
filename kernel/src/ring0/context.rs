@@ -124,13 +124,12 @@ impl BootContext {
         }
     }
 
-    /// Helper: dereferences `boot_info` safely. Returns None if the
-    /// pointer is null (shouldn't happen after Phase 0).
-    pub fn boot_info(&self) -> Option<&BootInfo> {
+    /// Returns the BootInfo pointer. Returns None if the pointer is null.
+    pub fn boot_info(&self) -> Option<*const BootInfo> {
         if self.boot_info.is_null() {
             None
         } else {
-            Some(unsafe { &*self.boot_info })
+            Some(self.boot_info as *const BootInfo)
         }
     }
 

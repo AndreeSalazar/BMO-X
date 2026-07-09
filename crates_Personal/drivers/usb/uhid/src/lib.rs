@@ -157,6 +157,8 @@ impl InputHal for UsbHidHal {
         for port in 0..ctrl.max_ports {
             unsafe {
                 bmo_xhci::port_power_on(port);
+                // Additional settling time after power-on (AMD chipset)
+                for _ in 0..50000 { core::hint::spin_loop(); }
                 if !bmo_xhci::port_reset(port) { continue; }
                 let speed = bmo_xhci::port_speed(port);
                 if speed == 0 { continue; }

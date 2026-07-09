@@ -4,7 +4,7 @@
 //! falls back to direct PS/2 port I/O for keyboard + mouse.
 
 use crate::hal;
-use crate::dev::console::{serial_write, serial_write_u64};
+use crate::dev::console::serial_write;
 use core::arch::asm;
 
 pub const SC_ESC: u8 = 0x01;
@@ -92,13 +92,17 @@ unsafe fn ps2_init_direct() {
 }
 
 unsafe fn poll_direct_ps2(last_sc: &mut u8, last_mouse: &mut u64) {
+    static mut KBD_EXTENDED: bool = false;
     // Poll keyboard
     if ps2_has_data() {
         let sc = ps2_read_data();
         if sc == 0xE0 {
-            // Extended — ignore for now
-        } else if sc != 0xFA {
+            KBD_EXTENDED = true;
+        } else if sc == 0xFA {
+            KBD_EXTENDED = false;
+        } else {
             *last_sc = sc;
+            KBD_EXTENDED = false;
         }
     }
 

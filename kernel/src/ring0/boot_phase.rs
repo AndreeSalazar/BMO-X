@@ -32,20 +32,21 @@ fn s_log(msg: &str) {
 
 fn validate_boot_info(
     ptr: *const bmo_boot_protocol::BootInfo,
-) -> Result<&'static bmo_boot_protocol::BootInfo, &'static str> {
+) -> Result<*const bmo_boot_protocol::BootInfo, &'static str> {
     if ptr.is_null() { return Err("boot_info_ptr is NULL"); }
-    let bi = unsafe { &*ptr };
-    if bi.magic != bmo_boot_protocol::BOOT_MAGIC { return Err("BootInfo magic mismatch"); }
-    Ok(bi)
+    // Use raw pointer only — no &BootInfo to avoid aliasing UB with later writes
+    let magic = unsafe { core::ptr::read_volatile(&(*ptr).magic) };
+    if magic != bmo_boot_protocol::BOOT_MAGIC { return Err("BootInfo magic mismatch"); }
+    Ok(ptr)
 }
 
-unsafe fn store_boot_info(bi: &bmo_boot_protocol::BootInfo) {
-    info::BOOT_INFO = bi as *const _;
-    info::FB_ADDR = bi.fb_addr;
-    info::FB_WIDTH = bi.fb_width;
-    info::FB_HEIGHT = bi.fb_height;
-    info::FB_STRIDE = bi.fb_stride;
-    info::FB_PIXEL_FORMAT = bi.fb_pixel_format;
+unsafe fn store_boot_info(bi: *const bmo_boot_protocol::BootInfo) {
+    info::BOOT_INFO = bi;
+    info::FB_ADDR = core::ptr::read_volatile(&(*bi).fb_addr);
+    info::FB_WIDTH = core::ptr::read_volatile(&(*bi).fb_width);
+    info::FB_HEIGHT = core::ptr::read_volatile(&(*bi).fb_height);
+    info::FB_STRIDE = core::ptr::read_volatile(&(*bi).fb_stride);
+    info::FB_PIXEL_FORMAT = core::ptr::read_volatile(&(*bi).fb_pixel_format);
 }
 
 fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
@@ -86,18 +87,25 @@ fn phase0_arch(ctx: &mut BootContext, boot_start: u64) -> u64 {
 fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     s_log("[phase1] === Memory Init ===");
     write_crash_marker(2101);
-    let bi = match ctx.boot_info() {
-        Some(bi) => bi,
+    let bi_ptr = match ctx.boot_info() {
+        Some(p) => p,
         None => { s_log("[phase1] FATAL: BootInfo null"); loop { unsafe { core::arch::asm!("hlt"); } } }
     };
     write_crash_marker(2102);
     crate::uefi_rt::write_boot_stage("p1_phys_init");
     unsafe {
-        crate::mm::phys::init(&bi.memory_map, bi.memory_map_count as usize,
-            bi.reserved_addr, bi.reserved_size, 0, 0);
+        let mm = &(*bi_ptr).memory_map;
+        let mmc = core::ptr::read_volatile(&(*bi_ptr).memory_map_count) as usize;
+        let ra = core::ptr::read_volatile(&(*bi_ptr).reserved_addr);
+        let rs = core::ptr::read_volatile(&(*bi_ptr).reserved_size);
+        // Reserve BootInfo pages so the frame allocator never hands them out.
+        // BootInfo is allocated as LOADER_DATA, which converts to MemoryType::Bootloader,
+        // which IS usable — so the buddy allocator would otherwise hand out those pages.
+        let bi_base = (bi_ptr as u64) & !0xFFF;
+        crate::mm::phys::init(mm, mmc, bi_base, 16384, 0, 0);
     }
     write_crash_marker(2104);
-    unsafe { crate::mm::vmm::map_high_mem(&bi.memory_map, bi.memory_map_count as usize); }
+    unsafe { crate::mm::vmm::map_high_mem(&(*bi_ptr).memory_map, core::ptr::read_volatile(&(*bi_ptr).memory_map_count) as usize); }
     s_log("[phase1] high-mem direct map enabled");
     write_crash_marker(2105);
     crate::uefi_rt::write_boot_stage("p1_heap_init");
@@ -121,11 +129,11 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
 fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     s_log("[phase2] === Device Discovery ===");
     write_crash_marker(2201);
-    let bi = match ctx.boot_info() {
-        Some(bi) => bi,
+    let bi_ptr = match ctx.boot_info() {
+        Some(p) => p,
         None => { s_log("[phase2] FATAL: BootInfo null"); loop { unsafe { core::arch::asm!("hlt"); } } }
     };
-    let rsdp_addr = bi.rsdp_addr;
+    let rsdp_addr = unsafe { core::ptr::read_volatile(&(*bi_ptr).rsdp_addr) };
     let mcfg = if rsdp_addr != 0 { crate::dev::acpi::parse_mcfg(rsdp_addr) } else { None };
     if let Some(ref m) = mcfg {
         s_log("[phase2] ECAM PCIe enumeration OK");
@@ -138,41 +146,44 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     let scan = crate::dev::pcie::scan_pci_bus();
     s_log("[phase2] PCI scan complete");
 
-    // Store XHCI controller addresses for modules + map MMIO.
-    // AMD platforms have TWO controllers: CPU SoC + chipset (A320/Promontory).
-    s_log("[phase2] calling find_all_xhci_mmio...");
-    let (xhci1, xhci2) = crate::dev::pcie::find_all_xhci_mmio();
-    s_log("[phase2] find_all_xhci_mmio returned");
-
-    // Map first XHCI MMIO region
-    if let Some(mmio) = xhci1 {
-        let mmio_base = mmio & !0x1F_FFFF;
-        let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
-        let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
-        s_log("[phase2] XHCI1 MMIO mapped at high-mem");
-        unsafe {
-            let bi = crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo;
-            (*bi).xhci_mmio = mmio;
-        }
-        crate::ring0::vdso::set_xhci_mmio(mmio);
+    // ── RAM diagnostic markers (0x9_0100-0x9_0130) ──────────────────
+    unsafe {
+        core::ptr::write_volatile(0x9_0100 as *mut u32, 0); // found1 flag
+        core::ptr::write_volatile(0x9_0104 as *mut u32, 0); // found2 flag
+        core::ptr::write_volatile(0x9_0108 as *mut u64, 0); // xhci1 mmio
+        core::ptr::write_volatile(0x9_0110 as *mut u64, 0); // xhci2 mmio
+        core::ptr::write_volatile(0x9_0118 as *mut u64, 0); // pci count
+        core::ptr::write_volatile(0x9_0130 as *mut u64, crate::info::BOOT_INFO as u64); // BootInfo ptr
     }
 
-    // Map second XHCI MMIO region (chipset)
+    // ── XHCI detection (original proven pattern + chipset) ─────────
+    if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
+        let mmio_base = xhci_mmio & !0x1F_FFFF;
+        let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
+        let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
+        s_log("[phase2] XHCI MMIO mapped");
+        unsafe {
+            core::ptr::write_volatile(&mut (*(crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo)).xhci_mmio, xhci_mmio);
+            core::ptr::write_volatile(0x9_0100 as *mut u32, 1);
+            core::ptr::write_volatile(0x9_0108 as *mut u64, xhci_mmio);
+        }
+    }
+
+    // Chipset controller (AMD A320/Promontory)
+    let (_, xhci2) = crate::dev::pcie::find_all_xhci_mmio();
     if let Some(mmio) = xhci2 {
         let mmio_base = mmio & !0x1F_FFFF;
         let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
         let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
-        s_log("[phase2] XHCI2 MMIO mapped at high-mem");
+        s_log("[phase2] XHCI2 (chipset) mapped");
         unsafe {
-            let bi = crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo;
-            (*bi).xhci_mmio2 = mmio;
+            core::ptr::write_volatile(&mut (*(crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo)).xhci_mmio2, mmio);
+            core::ptr::write_volatile(0x9_0104 as *mut u32, 1);
+            core::ptr::write_volatile(0x9_0110 as *mut u64, mmio);
         }
-        crate::ring0::vdso::set_xhci_mmio2(mmio);
     }
 
-    if xhci1.is_some() || xhci2.is_some() {
-        s_log("[phase2] XHCI found, stored in BootInfo");
-    }
+    unsafe { core::ptr::write_volatile(0x9_0118 as *mut u64, scan.count as u64); }
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);
     ctx.devices.pci_devices_found = scan.count as u32;
     write_crash_marker(2205);
@@ -209,13 +220,14 @@ fn wrap_boot_stage(s: &str) {
 
 pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     s_log("[ring0] validating BootInfo");
-    let bi = match validate_boot_info(boot_info_ptr) {
-        Ok(bi) => bi,
+    let bi_ptr = match validate_boot_info(boot_info_ptr) {
+        Ok(p) => p,
         Err(msg) => { s_log(msg); loop { unsafe { core::arch::asm!("hlt"); } } }
     };
-    unsafe { store_boot_info(bi); }
+    unsafe { store_boot_info(bi_ptr); }
     s_log("[ring0] BootInfo stored");
-    crate::uefi_rt::init(bi.uefi_system_table);
+    let uefi_st = unsafe { core::ptr::read_volatile(&(*bi_ptr).uefi_system_table) };
+    crate::uefi_rt::init(uefi_st);
     s_log("[ring0] UEFI RT initialized");
     write_crash_marker(0);
     crate::uefi_rt::write_boot_stage("kernel_start");
@@ -255,7 +267,10 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     write_crash_marker(4);
     crate::ring0::boot_splash::splash_progress(90, "ACPI tables...");
     crate::uefi_rt::write_boot_stage("init_acpi");
-    let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
+    let rsdp_hint = unsafe {
+        let addr = core::ptr::read_volatile(&(*bi_ptr).rsdp_addr);
+        if addr != 0 { Some(addr) } else { None }
+    };
     cpu_vendor_profile::amd::cpu::zen3::init_acpi(rsdp_hint);
     s_log("[ring0] ACPI initialized");
     write_crash_marker(45);

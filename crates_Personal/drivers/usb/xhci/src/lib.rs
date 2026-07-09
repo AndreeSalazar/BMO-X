@@ -368,11 +368,17 @@ pub unsafe fn port_speed(port: u8) -> u8 {
     ((r32(c.mmio + pb + PORTSC as u64) >> 10) & 0x0F) as u8
 }
 
+pub unsafe fn port_peek(port: u8) -> u32 {
+    let c = match CTRL.as_ref() { Some(c) => c, None => return 0 };
+    let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
+    r32(c.mmio + pb + PORTSC as u64)
+}
+
 pub unsafe fn port_power_on(port: u8) {
     let c = match CTRL.as_mut() { Some(c) => c, None => return };
     let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
     w32(c.mmio + pb + PORTSC as u64, r32(c.mmio + pb + PORTSC as u64) | PORTSC_PP);
-    for _ in 0..20000 { core::hint::spin_loop(); }
+    for _ in 0..100000 { core::hint::spin_loop(); }
 }
 
 pub unsafe fn port_reset(port: u8) -> bool {
