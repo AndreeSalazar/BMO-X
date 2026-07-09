@@ -176,8 +176,8 @@ fn render_dynamic(fb: &Framebuffer, uptime_sec: u64, countdown: u64) {
     fb.fill_rect(0, h - 48, w, 1, 0xFF30363D);
 
     // Title
-    draw_text(fb, 24, 20, b"FastOS / BMO v1.9.0", 0xFF58A6FF);
-    draw_text(fb, 24, 40, b"Ryzen 5 5600X  |  GOP 1920x1080  |  UEFI", 0xFF8B949E);
+    draw_text(fb, 24, 20, b"FastOS / BMO v2.0", 0xFF58A6FF);
+    draw_text(fb, 24, 40, b"AMD Ryzen  .  GOP  .  UEFI Boot", 0xFF8B949E);
 
     // Divider
     for x in 24..w - 24 {
@@ -185,11 +185,11 @@ fn render_dynamic(fb: &Framebuffer, uptime_sec: u64, countdown: u64) {
     }
 
     // Status
-    draw_text(fb, 24, 80, b"[CPU]  x86-64  Zen 3  OK", 0xFF76B900);
-    draw_text(fb, 24, 100, b"[MEM]  Frame alloc  OK  |  Heap  OK", 0xFF76B900);
-    draw_text(fb, 24, 120, b"[DEV]  PCI  |  AHCI  |  HDA  |  xHCI  OK", 0xFF76B900);
-    draw_text(fb, 24, 140, b"[DISP]  GOP  framebuffer  OK", 0xFF76B900);
-    draw_text(fb, 24, 160, b"[SCHED]  Cooperative  scheduler  OK", 0xFF76B900);
+    draw_text(fb, 24, 80,  b"[CPU]  x86-64  Ready", 0xFF76B900);
+    draw_text(fb, 24, 100, b"[MEM]  Buddy + Slab  Ready", 0xFF76B900);
+    draw_text(fb, 24, 120, b"[DEV]  PCIe + xHCI  Ready", 0xFF76B900);
+    draw_text(fb, 24, 140, b"[DISP]  GOP Framebuffer  Ready", 0xFF76B900);
+    draw_text(fb, 24, 160, b"[IRQ]  APIC Timer + ISR  Ready", 0xFF76B900);
 
     // Divider
     for x in 24..w - 24 {

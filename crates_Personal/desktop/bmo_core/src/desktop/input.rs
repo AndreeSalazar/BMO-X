@@ -9,16 +9,17 @@ use core::arch::asm;
 
 pub const SC_ESC: u8 = 0x01;
 
-/// If set by the module, called to poll USB HID events before PS/2/HAL input.
-pub static mut USB_HID_POLL: Option<fn(&mut [bmo_hal_defs::InputEvent]) -> usize> = None;
-
 /// If set by the module, called to poll BMO Channel keyboard (Ring 0 ISR → syscall).
 /// Returns PS/2 Set 1 scancode (0-255) or 0 if no event.
+/// This is the PRIMARY keyboard input path on BMO.
 pub static mut CHANNEL_POLL: Option<fn() -> u8> = None;
 
 /// If set by the module, called to poll BMO Channel mouse (Ring 0 ISR → syscall).
 /// Returns packed: (buttons << 32) | (dy << 16) | dx, or u64::MAX if no event.
 pub static mut CHANNEL_MOUSE_POLL: Option<fn() -> u64> = None;
+
+/// Legacy USB HID polling (XHCI+UHID). Active when CCS detects devices.
+pub static mut USB_HID_POLL: Option<fn(&mut [bmo_hal_defs::InputEvent]) -> usize> = None;
 
 // ── Direct PS/2 port I/O (Ring 0 fallback) ────────────────────────────
 
@@ -171,15 +172,14 @@ unsafe fn remove_usb_pending(idx: usize) {
 // ── Public API ────────────────────────────────────────────────────────
 
 pub fn poll_raw_scancode() -> u8 {
-    ensure_input_ready();
-
     unsafe {
-        // 0. BMO Channel (Ring 0 → Ring 3, zero syscalls)
+        // Primary: BMO Channel keyboard (Ring 0 ISR, zero polling)
         if let Some(poll) = CHANNEL_POLL {
             let sc = poll();
             if sc != 0 { return sc; }
         }
 
+        // Fallback: USB HID (XHCI polling, active when CCS detects devices)
         refill_usb_pending();
         for i in 0..USB_PENDING_COUNT {
             let ev = USB_PENDING[i];
@@ -194,25 +194,15 @@ pub fn poll_raw_scancode() -> u8 {
             }
         }
 
+        // Last resort: PS/2 direct port I/O (only if no HAL input available)
         if PS2_FALLBACK {
             let mut sc: u8 = 0;
             let mut _m: u64 = 0;
             poll_direct_ps2(&mut sc, &mut _m);
-            sc
-        } else if let Some(h) = hal::HAL.as_mut() {
-            let mut buf = [bmo_hal_defs::InputEvent::empty(); 32];
-            let n = (h.input_poll)(&mut buf);
-            let mut last: u8 = 0;
-            for ev in &buf[..n] {
-                if matches!(ev.kind, bmo_hal_defs::InputEventKind::KeyDown) {
-                    last = ev.code;
-                } else if matches!(ev.kind, bmo_hal_defs::InputEventKind::KeyUp) {
-                    last = ev.code | 0x80;
-                }
-            }
-            last
-        } else { 0 }
+            return sc;
+        }
     }
+    0
 }
 
 pub fn poll_key() -> u8 {
