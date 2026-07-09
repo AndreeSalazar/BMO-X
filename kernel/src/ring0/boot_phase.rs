@@ -30,16 +30,6 @@ fn s_log(msg: &str) {
     crate::dev::console::serial_write("\n");
 }
 
-fn validate_boot_info(
-    ptr: *const bmo_boot_protocol::BootInfo,
-) -> Result<*const bmo_boot_protocol::BootInfo, &'static str> {
-    if ptr.is_null() { return Err("boot_info_ptr is NULL"); }
-    // Use raw pointer only — no &BootInfo to avoid aliasing UB with later writes
-    let magic = unsafe { core::ptr::read_volatile(&(*ptr).magic) };
-    if magic != bmo_boot_protocol::BOOT_MAGIC { return Err("BootInfo magic mismatch"); }
-    Ok(ptr)
-}
-
 unsafe fn store_boot_info(bi: *const bmo_boot_protocol::BootInfo) {
     info::BOOT_INFO = bi;
     info::FB_ADDR = core::ptr::read_volatile(&(*bi).fb_addr);
@@ -219,11 +209,18 @@ fn wrap_boot_stage(s: &str) {
 }
 
 pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
+    // Validate BootInfo pointer (no &BootInfo — aliasing-safe raw pointer only)
     s_log("[ring0] validating BootInfo");
-    let bi_ptr = match validate_boot_info(boot_info_ptr) {
-        Ok(p) => p,
-        Err(msg) => { s_log(msg); loop { unsafe { core::arch::asm!("hlt"); } } }
-    };
+    if boot_info_ptr.is_null() {
+        s_log("[ring0] FATAL: boot_info_ptr is NULL");
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+    let magic = unsafe { core::ptr::read_volatile(&(*boot_info_ptr).magic) };
+    if magic != bmo_boot_protocol::BOOT_MAGIC {
+        s_log("[ring0] FATAL: BootInfo magic mismatch");
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+    let bi_ptr = boot_info_ptr;
     unsafe { store_boot_info(bi_ptr); }
     s_log("[ring0] BootInfo stored");
     let uefi_st = unsafe { core::ptr::read_volatile(&(*bi_ptr).uefi_system_table) };

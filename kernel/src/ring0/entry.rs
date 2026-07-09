@@ -1,49 +1,71 @@
-//! Kernel entry point — minimal BSS zero-init and early boot breadcrumbs.
+//! Kernel entry point — raw `_start` + early boot sequence.
 //!
-//! Contains the raw `_start` entry (first code executed) and `kernel_main_real`
-//! which sequences early init before delegating to the Ring 0 boot phases.
+//! ```text
+//! _start (naked asm)
+//!   ├── Save RDI → R12
+//!   ├── Zero BSS (stosq + stosb, ~2ms for 16 MB)
+//!   ├── Restore RDI ← R12
+//!   └── call kernel_main_real ─┐
+//!                               ├─ 1. RAM marker ("FOSC")
+//!                               ├─ 2. NVRAM (before serial — COM1 can hang)
+//!                               ├─ 3. Serial output
+//!                               ├─ 4. boot_phase::main() — phases 0..4
+//!                               ├─ 5. HAL build + module load
+//!                               └─ 6. load_bmo_core → Ring 3 desktop
+//! ```
 
 use core::arch::naked_asm;
+
+// ── _start: first code executed ─────────────────────────────────────────
 
 #[unsafe(no_mangle)]
 #[link_section = ".text._start"]
 #[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     naked_asm!(
-        // RDI = boot_info_ptr from bootloader. Save in R12 (preserved) BEFORE BSS zero.
+        // RDI = boot_info_ptr from bootloader. Save in R12 (callee-saved).
         "mov r12, rdi",
-        // Zero-init BSS (defensive).
+
+        // ── Zero BSS (16 MB typical, ~2ms with stosq) ──────────
         "lea rax, [rip + __bss_start]",
         "lea rcx, [rip + __bss_end]",
         "sub rcx, rax",
-        "jz 1f",
+        "jz 2f",
         "mov rdi, rax",
         "xor eax, eax",
+        // Qword fast path
+        "mov rdx, rcx",
+        "shr rcx, 3",
+        "jz 1f",
+        "rep stosq",
+        // Byte remainder
+        "1: and rdx, 7",
+        "mov rcx, rdx",
+        "jz 2f",
         "rep stosb",
-        "1:",
-        // Restore RDI and call kernel_main_real.
-        "mov rdi, r12",
+
+        // ── Enter kernel ───────────────────────────────────────
+        "2: mov rdi, r12",
         "call kernel_main_real",
-        "2: hlt",
-        "jmp 2b",
+
+        // Halt if kernel_main_real ever returns
+        "3: hlt",
+        "jmp 3b",
     );
 }
+
+// ── kernel_main_real: early boot sequence ───────────────────────────────
 
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> ! {
-    // ── SAFETY ORDER ──────────────────────────────────────────
-    // NVRAM writes FIRST, serial LAST. COM1 can hang if no serial
-    // hardware responds (LSR=0x00 → infinite loop in serial_byte).
-    // NVRAM is the ONLY reliable diagnostic when serial is dead.
-
-    // 1. RAM marker — no deps, always works, survives warm reset
+    // ═══ STAGE 1: RAM marker (no deps, survives warm reset) ═══
     unsafe {
         core::ptr::write_volatile(0x9_0000 as *mut u32, 0x464F_5343u32); // "FOSC"
         core::ptr::write_volatile(0x9_0004 as *mut u32, 0u32);
     }
 
-    // 2. NVRAM init + EARLIEST write — BEFORE any serial output
+    // ═══ STAGE 2: NVRAM init (BEFORE serial — COM1 can hang on LSR=0x00) ═══
     if !boot_info_ptr.is_null() {
         let uefi_st = unsafe { (*boot_info_ptr).uefi_system_table };
         if uefi_st != 0 {
@@ -52,26 +74,23 @@ extern "C" fn kernel_main_real(boot_info_ptr: *const bmo_boot_protocol::BootInfo
         }
     }
 
-    // 3. Serial output now possible
+    // ═══ STAGE 3: Serial output now possible ═══
     crate::dev::console::serial_write("[entry] kernel_main_real entered\n");
 
-    // Enter Ring 0 main coordinator. Returning means Ring 0 completed successfully.
+    // ═══ STAGE 4: Boot phases 0..4 (arch, mm, dev, display, sched) ═══
     super::boot_phase::main(boot_info_ptr);
 
-    // Instead of calling bmo_core::coord::init() directly (which is now in a separate
-    // module binary), load the desktop module from S: and hand over control.
+    // ═══ STAGE 5: Module load — hand control to Ring 3 desktop ═══
     crate::dev::console::serial_write("[entry] boot_phase complete, loading desktop module\n");
     crate::ring0::boot_phase::write_crash_marker(6);
     crate::uefi_rt::write_boot_stage("module_load");
 
     unsafe {
         let hal = crate::ring0::hal_init::HAL_SERVICES;
-        if !hal.is_null() {
-            let hal_ref = &*hal;
-            crate::ring0::mod_loader::load_bmo_core(hal_ref, boot_info_ptr)
-        } else {
+        if hal.is_null() {
             crate::dev::console::serial_write("[entry] FATAL: HalServices is null\n");
-            loop { unsafe { core::arch::asm!("hlt"); } }
+            loop { core::arch::asm!("hlt"); }
         }
+        crate::ring0::mod_loader::load_bmo_core(&*hal, boot_info_ptr)
     }
 }
