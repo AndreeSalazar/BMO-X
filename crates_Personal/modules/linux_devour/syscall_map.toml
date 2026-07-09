@@ -1,0 +1,30 @@
+# Linux → BMO syscall translation map
+# Each entry: linux_nr = bmo_nr, bmo_arg_count
+#
+# Nivel 1: CLI básico (echo, cat, sh, calculadoras)
+# Nivel 2: Filesystem (ls, cp, mv, editores)
+# Nivel 3: Apps complejas (Steam, Proton, Firefox)
+
+[nivel1]
+1  = { bmo = 0xF0, args = 3, name = "write" }
+9  = { bmo = 0x10, args = 5, name = "mmap" }
+12 = { bmo = 0x10, args = 2, name = "brk" }
+60 = { bmo = 0x00, args = 1, name = "exit" }
+231= { bmo = 0x00, args = 1, name = "exit_group" }
+
+[nivel2]
+2   = { bmo = 0x20, args = 3, name = "open" }
+3   = { bmo = 0x24, args = 1, name = "close" }
+257 = { bmo = 0x20, args = 4, name = "openat" }
+5   = { bmo = 0x23, args = 2, name = "fstat" }
+8   = { bmo = 0x24, args = 3, name = "lseek" }
+78  = { bmo = 0x22, args = 3, name = "getdents64" }
+
+[nivel3]
+0   = { bmo = 0xF0, args = 3, name = "read" }
+11  = { bmo = 0x03, args = 0, name = "sched_yield" }
+35  = { bmo = 0x51, args = 1, name = "nanosleep" }
+39  = { bmo = 0x03, args = 0, name = "getpid" }
+102 = { bmo = 0x50, args = 0, name = "getuid" }
+201 = { bmo = 0x50, args = 0, name = "time" }
+228 = { bmo = 0x50, args = 1, name = "clock_gettime" }

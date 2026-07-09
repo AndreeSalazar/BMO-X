@@ -16,3 +16,8 @@ requires = "serial.write"
 addr = 30400000
 provides = "framebuffer.write, input.poll, desktop.render"
 requires = ""
+
+[linux_devour._module_start]
+addr = 31200000
+provides = "elf.devour, elf.translate, elf.execute"
+requires = "heap.alloc, serial.write"

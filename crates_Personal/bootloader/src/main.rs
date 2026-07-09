@@ -43,6 +43,7 @@ const MODULE_PATHS: &[&str] = &[
     "\\EFI\\BOOT\\modules\\mod_bmo_core.elf",
     "\\EFI\\BOOT\\modules\\mod_timeback.elf",
     "\\EFI\\BOOT\\modules\\mod_cabina.elf",
+    "\\EFI\\BOOT\\modules\\mod_linux_devour.elf",
 ];
 
 // ── GOP Info ─────────────────────────────────────────────────────────────────
