@@ -292,16 +292,11 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
         // ═══ PHASE 2: Deferred init (background, desktop already visible) ═══
         (hal.serial_write)("[mod_bmo_core] desktop visible, deferring drivers...\n");
 
-        // ═══ BMO Channel input (Ring 0 → Ring 3, zero syscall) ═══
-        let sys_ch_phys = unsafe { core::ptr::read_volatile(0x9_0160 as *const u64) };
-        if sys_ch_phys != 0 {
-            (hal.serial_write)("[mod_bmo_core] connecting BMO Channel input...\n");
-            unsafe {
-                SYS_INPUT = Some(service_input::InputService::connect(sys_ch_phys));
-                bmo_core::desktop::input::CHANNEL_POLL = Some(poll_channel);
-            }
-            (hal.serial_write)("[mod_bmo_core] BMO Channel input connected\n");
+        // ═══ BMO Channel input (Ring 0 ISR → syscall → desktop) ═══
+        unsafe {
+            bmo_core::desktop::input::CHANNEL_POLL = Some(poll_channel);
         }
+        (hal.serial_write)("[mod_bmo_core] channel input wired\n");
 
         // Quick input init — show diagnostic only if there's a problem
         let info = init_xhci(hal);
@@ -454,22 +449,9 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
 
 static mut UHID_PTR: Option<bmo_uhid::UsbHidHal> = None;
 
-/// BMO Channel input service — connected to Ring 0 system channel.
-static mut SYS_INPUT: Option<service_input::InputService> = None;
-
-/// Poll BMO Channel for keyboard events. Returns PS/2 Set 1 scancode or 0.
+/// Poll BMO Channel via syscall for keyboard events.
 fn poll_channel() -> u8 {
-    unsafe {
-        if let Some(ref mut service) = SYS_INPUT {
-            let events = service.poll();
-            for ev in events {
-                if let service_input::InputEvent::Key { scancode, pressed } = ev {
-                    return if pressed { scancode } else { scancode | 0x80 };
-                }
-            }
-        }
-    }
-    0
+    ring3_foundation::sys_keyboard_poll()
 }
 
 /// USB Legacy Handover — take ownership of XHCI from BIOS (AMD chipset).

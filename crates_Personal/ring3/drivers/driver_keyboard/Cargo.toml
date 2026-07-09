@@ -2,8 +2,7 @@
 name = "driver-keyboard"
 version = "1.0.0"
 edition = "2024"
-description = "BMO Keyboard Driver — reads scancodes from BMO Channel"
+description = "BMO Keyboard Driver — reads scancodes via syscall"
 
 [dependencies]
 ring3-foundation = { path = "../../foundation/ring3_foundation" }
-bmo-channel = { path = "../../../shared/bmo_channel" }

@@ -405,6 +405,48 @@ fn sys_beep(_nr: u64, freq: u64, duration_ms: u64, _a2: u64, _a3: u64, _a4: u64,
     0
 }
 
+/// SYS_KEYBOARD_POLL(0x38): Poll the system channel for next keyboard scancode.
+/// Returns: next scancode (0-255), or 0 if no events pending.
+/// Bit 7: 0=pressed, 1=released.
+fn sys_keyboard_poll(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    // Process channels internally to move keyboard events to complete ring
+    crate::channel::process_now();
+    let phys = crate::channel::sys_channel_phys();
+    let virt = crate::mm::vmm::phys_to_virt(phys);
+    if virt == 0 { return 0; }
+    let ch = unsafe { &*(virt as *const bmo_channel::Channel) };
+    let mut result: u64 = 0;
+    ch.ring3_poll(|opcode, arg0, arg1, _arg2| {
+        if opcode == 0xB000_0002 { // OP_KEY_SCANCODE
+            let pressed = arg1 != 0;
+            result = if pressed { arg0 } else { arg0 | 0x80 };
+        }
+    });
+    result
+}
+
+/// SYS_MOUSE_POLL(0x39): Poll the system channel for next mouse event.
+/// Returns: packed (buttons << 32) | (dy << 16) | dx, or u64::MAX if no events.
+fn sys_mouse_poll(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    crate::channel::process_now();
+    let phys = crate::channel::sys_channel_phys();
+    let virt = crate::mm::vmm::phys_to_virt(phys);
+    if virt == 0 { return u64::MAX; }
+    let ch = unsafe { &*(virt as *const bmo_channel::Channel) };
+    let mut dx: u64 = 0;
+    let mut dy: u64 = 0;
+    let mut btns: u64 = 0;
+    let mut found = false;
+    ch.ring3_poll(|opcode, arg0, arg1, _arg2| {
+        match opcode {
+            0xB000_0010 => { dx = arg0; dy = arg1; found = true; } // MOUSE_MOVE
+            0xB000_0011 => { btns = arg0; found = true; }            // MOUSE_BUTTON
+            _ => {}
+        }
+    });
+    if found { (btns << 32) | (dy << 16) | dx } else { u64::MAX }
+}
+
 // ── Jump table (256 entries, lazy-initialized once) ────────────────────
 
 static mut SYSCALL_TABLE: [SyscallFn; 256] = [stub as SyscallFn; 256];
@@ -431,6 +473,8 @@ unsafe fn init_table() {
     SYSCALL_TABLE[0x35] = sys_channel_poll;
     SYSCALL_TABLE[0x36] = sys_channel_kick;
     SYSCALL_TABLE[0x37] = sys_beep;
+    SYSCALL_TABLE[0x38] = sys_keyboard_poll;
+    SYSCALL_TABLE[0x39] = sys_mouse_poll;
     SYSCALL_TABLE[0xF0] = sys_debug_print;
 
     // Network (gated)

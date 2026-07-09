@@ -1,63 +1,27 @@
-//! Mouse Driver — consumes mouse events from BMO Channel.
+//! Mouse Driver — reads mouse events via SYS_MOUSE_POLL.
 //!
-//! Ring 0 ISR pushes 3-byte PS/2 mouse packets into the system channel.
-//! This driver polls the channel and emits typed mouse events.
-//!
-//! ## Usage
-//!
-//! ```rust
-//! let mouse = Mouse::connect(sys_channel_phys);
-//! loop {
-//!     for event in mouse.poll() {
-//!         desktop.on_mouse(event);
-//!     }
-//! }
-//! ```
+//! The kernel's PS/2 ISR pushes mouse packets into the system BMO Channel.
+//! This driver reads them via a lightweight syscall.
 
 #![no_std]
 
-use ring3_foundation::ChannelClient;
+extern crate alloc;
 
-const OP_MOUSE_MOVE: u64   = 0xB000_0010;
-const OP_MOUSE_BUTTON: u64 = 0xB000_0011;
+use ring3_foundation;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MouseState {
-    pub dx: i64,
-    pub dy: i64,
+    pub dx: i16,
+    pub dy: i16,
     pub buttons: u8,
 }
 
-pub struct Mouse {
-    channel: ChannelClient,
-    state: MouseState,
-}
-
-impl Mouse {
-    pub fn connect(sys_channel_phys: u64) -> Self {
-        Self {
-            channel: ChannelClient::connect_system(sys_channel_phys),
-            state: MouseState::default(),
-        }
-    }
-
-    /// Poll for mouse events. Returns true if state changed.
-    pub fn poll(&mut self) -> Option<MouseState> {
-        let mut changed = false;
-        self.channel.poll_with(|opcode, arg0, arg1, _arg2| {
-            match opcode {
-                OP_MOUSE_MOVE => {
-                    self.state.dx = arg0 as i64;
-                    self.state.dy = arg1 as i64;
-                    changed = true;
-                }
-                OP_MOUSE_BUTTON => {
-                    self.state.buttons = arg0 as u8;
-                    changed = true;
-                }
-                _ => {}
-            }
-        });
-        if changed { Some(self.state) } else { None }
-    }
+/// Poll for mouse events. Returns the accumulated state or None if unchanged.
+pub fn poll() -> Option<MouseState> {
+    let packed = ring3_foundation::sys_mouse_poll();
+    if packed == u64::MAX { return None; }
+    let dx = (packed & 0xFFFF) as i16;
+    let dy = ((packed >> 16) & 0xFFFF) as i16;
+    let buttons = ((packed >> 32) & 0xFF) as u8;
+    Some(MouseState { dx, dy, buttons })
 }

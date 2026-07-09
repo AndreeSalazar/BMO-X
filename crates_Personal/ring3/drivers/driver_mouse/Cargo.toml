@@ -2,8 +2,7 @@
 name = "driver-mouse"
 version = "1.0.0"
 edition = "2024"
-description = "BMO Mouse Driver — reads mouse events from BMO Channel"
+description = "BMO Mouse Driver — reads mouse events via syscall"
 
 [dependencies]
 ring3-foundation = { path = "../../foundation/ring3_foundation" }
-bmo-channel = { path = "../../../shared/bmo_channel" }
