@@ -392,6 +392,19 @@ fn sys_channel_poll(_nr: u64, phys: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64,
     ch.ring3_poll(|_, _, _, _| {}) as u64
 }
 
+/// SYS_CHANNEL_KICK(0x36): Force immediate channel processing (no timer tick wait).
+/// Returns: number of entries processed.
+fn sys_channel_kick(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    crate::channel::process_now() as u64
+}
+
+/// SYS_BEEP(0x37): Play a beep via PC speaker.
+/// a0 = frequency in Hz, a1 = duration in ms. Returns 0.
+fn sys_beep(_nr: u64, freq: u64, duration_ms: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    crate::dev::pc_speaker::beep(freq as u32, duration_ms as u32);
+    0
+}
+
 // ── Jump table (256 entries, lazy-initialized once) ────────────────────
 
 static mut SYSCALL_TABLE: [SyscallFn; 256] = [stub as SyscallFn; 256];
@@ -416,6 +429,8 @@ unsafe fn init_table() {
     SYSCALL_TABLE[0x71] = sys_port_out;
     SYSCALL_TABLE[0x34] = sys_channel_register;
     SYSCALL_TABLE[0x35] = sys_channel_poll;
+    SYSCALL_TABLE[0x36] = sys_channel_kick;
+    SYSCALL_TABLE[0x37] = sys_beep;
     SYSCALL_TABLE[0xF0] = sys_debug_print;
 
     // Network (gated)

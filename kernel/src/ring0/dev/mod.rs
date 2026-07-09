@@ -31,3 +31,6 @@ pub mod timestamp;
 
 // ── Power (stub — full C-state/thermal in Ring 3 module) ────────
 pub mod power;
+
+// ── PC Speaker (PIT channel 2) ────────────────────────────────────
+pub mod pc_speaker;
