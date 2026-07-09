@@ -251,7 +251,9 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     prev_end = phase4_sched(&mut ctx, prev_end);
     s_log("[ring0] all boot phases completed");
     write_crash_marker(3);
-    crate::boot_splash::splash_progress(85, "Zen 3 CPU detection...");
+    // Initialize IRQ dispatch system
+    crate::irq::init();
+    crate::boot_splash::splash_progress(85, "IRQ subsystem...");
     unsafe {
         cpu_vendor_profile::LOG_WRITE_STR = Some(crate::dev::console::serial_write as fn(&str));
         cpu_vendor_profile::LOG_WRITE_U64 = Some(crate::dev::console::serial_write_u64 as fn(u64, usize));

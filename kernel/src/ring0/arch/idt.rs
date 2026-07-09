@@ -499,7 +499,7 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {// Only sav
         let new_thread = match crate::proc::task::get(new_idx) {
             Some(t) => t,
             None => {
-                crate::arch::apic::apic_eoi();
+                crate::irq::lapic::eoi();
                 return 0;
             }
         };
