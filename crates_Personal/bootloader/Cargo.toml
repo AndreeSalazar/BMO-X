@@ -7,7 +7,7 @@ description = "BMO UEFI bootloader â€” loads kernel directly in 64-bit mode
 
 [dependencies]
 uefi = { version = "0.37", features = ["alloc", "global_allocator", "logger", "panic_handler", "unstable"] }
-log = "0.4"
+log = { version = "0.4", features = ["max_level_error"] }
 bmo-boot-protocol = { path = "../ring0/boot_protocol" }
 
 [package.metadata.bootloader]

@@ -3,9 +3,7 @@
 //! Minimalist black background + centered title + thin progress bar
 //! + status label + system info at the bottom.
 //!
-//! Uses 8x8 bitmap font, writes directly to framebuffer backbuffer.
-
-use crate::dev::framebuffer::Color;
+//! Writes directly to GOP front buffer — works before init_gop().
 
 // ── Font: 8x8 bitmap, chars 32 (space) through 90 (Z) ──────────────
 // Space ! " # $ % & ' ( ) * + , - . / 0-9 : ; < = > ? @ A-Z
@@ -87,24 +85,21 @@ const BG: u32 = 0xFF000000;
 const BAR_BG: u32 = 0xFF333333;
 const BAR_FILL: u32 = 0xFFFFFFFF;
 
-/// Write a pixel directly to the backbuffer.
-#[inline]
-fn put_pix(bb: *mut u32, stride_px: usize, x: u32, y: u32, color: u32) {
-    if (y as usize) < 1080 && (x as usize) < stride_px {
-        unsafe { *bb.add((y as usize) * stride_px + (x as usize)) = color; }
+/// Write a pixel directly to the GOP front buffer (works before init_gop).
+fn put_pix_raw(x: u32, y: u32, color: u32) {
+    let fb = unsafe { crate::info::FB_ADDR as *mut u32 };
+    let stride = unsafe { crate::info::FB_STRIDE as usize };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if y < h && (x as usize) < stride {
+        unsafe { *fb.add((y as usize) * stride + (x as usize)) = color; }
     }
 }
 
-/// Fill a rectangle.
-fn fill_rect(bb: *mut u32, stride_px: usize, x: u32, y: u32, w: u32, h: u32, color: u32) {
-    for dy in 0..h {
-        for dx in 0..w {
-            put_pix(bb, stride_px, x + dx, y + dy, color);
-        }
-    }
+fn fill_rect_raw(x: u32, y: u32, w: u32, h: u32, color: u32) {
+    for dy in 0..h { for dx in 0..w { put_pix_raw(x + dx, y + dy, color); } }
 }
 
-fn draw_char(bb: *mut u32, stride_px: usize, x: u32, y: u32, c: u8, color: u32) {
+fn draw_char_raw(x: u32, y: u32, c: u8, color: u32) {
     if c < 32 { return; }
     let idx = (c - 32) as usize;
     if idx >= FONT8.len() { return; }
@@ -113,18 +108,15 @@ fn draw_char(bb: *mut u32, stride_px: usize, x: u32, y: u32, c: u8, color: u32) 
         let bits = glyph[row];
         for col in 0..FONT_W {
             if bits & (1 << (7 - col)) != 0 {
-                put_pix(bb, stride_px, x + col as u32, y + row as u32, color);
+                put_pix_raw(x + col as u32, y + row as u32, color);
             }
         }
     }
 }
 
-fn draw_str(bb: *mut u32, stride_px: usize, x: u32, y: u32, s: &str, color: u32) {
+fn draw_str_raw(x: u32, y: u32, s: &str, color: u32) {
     let mut cx = x;
-    for b in s.bytes() {
-        draw_char(bb, stride_px, cx, y, b, color);
-        cx += CHAR_W as u32;
-    }
+    for b in s.bytes() { draw_char_raw(cx, y, b, color); cx += CHAR_W as u32; }
 }
 
 fn text_width(s: &str) -> u32 {
@@ -133,76 +125,52 @@ fn text_width(s: &str) -> u32 {
 
 /// Clear screen and show initial splash header.
 pub fn splash_init() {
-    let bb = crate::dev::framebuffer::backbuffer_ptr();
-    let stride_px = unsafe { crate::info::FB_STRIDE as usize };
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
-    if bb.is_null() || w == 0 || h == 0 { return; }
+    if w == 0 || h == 0 { return; }
 
-    // Fill black
-    fill_rect(bb, stride_px, 0, 0, w, h, BG);
+    fill_rect_raw(0, 0, w, h, BG);
 
-    // Title centered at Y = 140
     let title = "BMO v2.0";
     let title_x = (w as u32).saturating_sub(text_width(title)) / 2;
-    draw_str(bb, stride_px, title_x, 140, title, WHITE);
+    draw_str_raw(title_x, 140, title, WHITE);
 
-    // Subtitle
     let sub = "Pure Ring 0";
     let sub_x = (w as u32).saturating_sub(text_width(sub)) / 2;
-    draw_str(bb, stride_px, sub_x, 152, sub, DIM);
-
-    crate::dev::framebuffer::present();
+    draw_str_raw(sub_x, 152, sub, DIM);
 }
 
-/// Update progress bar + label. pct = 0..100, label = status text.
+/// Update progress bar + label.
 pub fn splash_progress(pct: u32, label: &str) {
-    let bb = crate::dev::framebuffer::backbuffer_ptr();
-    let stride_px = unsafe { crate::info::FB_STRIDE as usize };
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
-    if bb.is_null() || w == 0 { return; }
+    if w == 0 { return; }
 
     let bar_y = 200u32;
     let bar_w = 400u32;
     let bar_h = 6u32;
     let bar_x = (w as u32).saturating_sub(bar_w) / 2;
 
-    // Clear bar area
-    fill_rect(bb, stride_px, bar_x - 2, bar_y - 1, bar_w + 4, bar_h + 2, BG);
+    fill_rect_raw(bar_x - 2, bar_y - 1, bar_w + 4, bar_h + 2, BG);
+    fill_rect_raw(bar_x, bar_y, bar_w, bar_h, BAR_BG);
 
-    // Bar background
-    fill_rect(bb, stride_px, bar_x, bar_y, bar_w, bar_h, BAR_BG);
-
-    // Bar fill
     let fill_w = if pct > 0 { (bar_w as u64 * pct as u64 / 100) as u32 } else { 0 };
-    if fill_w > 0 {
-        fill_rect(bb, stride_px, bar_x, bar_y, fill_w.min(bar_w), bar_h, WHITE);
-    }
+    if fill_w > 0 { fill_rect_raw(bar_x, bar_y, fill_w.min(bar_w), bar_h, WHITE); }
 
-    // Clear label area (below bar)
-    fill_rect(bb, stride_px, 0, bar_y + bar_h + 4, w, CHAR_H as u32, BG);
-
-    // Label centered
+    fill_rect_raw(0, bar_y + bar_h + 4, w, CHAR_H as u32, BG);
     let label_x = (w as u32).saturating_sub(text_width(label)) / 2;
-    draw_str(bb, stride_px, label_x, bar_y + bar_h + 8, label, DIM);
+    draw_str_raw(label_x, bar_y + bar_h + 8, label, DIM);
 
-    // System info at bottom
     let info = "Ryzen 5 5600X  .  GOP 1920x1080";
     let info_x = (w as u32).saturating_sub(text_width(info)) / 2;
-    fill_rect(bb, stride_px, 0, h.saturating_sub(30), w, CHAR_H as u32, BG);
-    draw_str(bb, stride_px, info_x, h.saturating_sub(24), info, DIM);
-
-    crate::dev::framebuffer::present();
+    fill_rect_raw(0, h.saturating_sub(30), w, CHAR_H as u32, BG);
+    draw_str_raw(info_x, h.saturating_sub(24), info, DIM);
 }
 
 /// Clear splash before desktop starts.
 pub fn splash_clear() {
-    let bb = crate::dev::framebuffer::backbuffer_ptr();
-    let stride_px = unsafe { crate::info::FB_STRIDE as usize };
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
-    if bb.is_null() { return; }
-    fill_rect(bb, stride_px, 0, 0, w, h, BG);
-    crate::dev::framebuffer::present();
+    if w == 0 { return; }
+    fill_rect_raw(0, 0, w, h, BG);
 }
