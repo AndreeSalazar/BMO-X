@@ -494,19 +494,19 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return 0 };
     let h = hal();
     let ep0 = match ep0_mut(slot) { Some(e) => e, None => { h.log("no ep0 ring\n"); return 0; } };
-    let cs = ctx_sz(ctrl);
 
     let has_data = !buf.is_empty();
     let data_page = if has_data {
         let dp = h.alloc_dma_pages(1).unwrap_or(0);
-        if dp != 0 && !data_in {
+        if dp == 0 { return 0; }
+        if !data_in {
             let dv = h.phys_to_virt(dp);
             for i in 0..buf.len() { dv.add(i).write_volatile(buf[i]); }
         }
         dp
     } else { 0 };
 
-    let trt = if !has_data { 0u32 } else if data_in { 2u32 } else { 3u32 };
+    let trt = if !has_data { 0u32 } else if data_in { 3u32 } else { 2u32 };
 
     // Setup Stage
     let setup = Trb {
@@ -549,15 +549,8 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
         (TRB_STATUS << 10) | (if dir_in { 1u32 << 16 } else { 0 }) | (1 << 5)
         | if ep0.pcs { 1 } else { 0 }
     );
-    // Don't advance past Status (let it be consumed)
-
-    // Update Device Context EP0 dequeue pointer so xHC reloads on doorbell
-    let dev_phys = match dcbaa_get(slot) { Some(p) => p, None => return 0 };
-    let dev_virt = h.phys_to_virt(dev_phys) as *mut u8;
-    let dq_val = (ep0.ring_phys + (st_idx as u64) * (TRB_SIZE as u64)) | if ep0.pcs { 1 } else { 0 };
-    let d_ep0 = dev_virt.add(cs) as *mut u32;
-    d_ep0.add(2).write_volatile((dq_val & 0xFFFF_FFFF) as u32);
-    d_ep0.add(3).write_volatile(((dq_val >> 32) & 0xFFFF_FFFF) as u32);
+    ep0.enqueue = st_idx + 1;
+    if ep0.enqueue >= LAST_TRB_IDX { ep0.enqueue = 0; ep0.pcs = !ep0.pcs; }
 
     // Ring EP0 doorbell
     ring_doorbell(slot, 1);
@@ -635,9 +628,19 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     in32.add(0).write_volatile(0); // Drop
     in32.add(1).write_volatile((1u32 << dci) | 1); // Add Slot(0) + EP(dci)
 
-    // Slot Context: ContextEntries = dci
+    // Slot Context: preserve the controller-populated route/speed/root-port
+    // fields from the output Device Context; only raise Context Entries.
     let sc = in_virt.add(cs) as *mut u32;
-    sc.add(0).write_volatile((dci as u32) << 27);
+    let dev_phys = match dcbaa_get(slot) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no dev ctx\n"); return false; } };
+    let dev_virt = h.phys_to_virt(dev_phys) as *const u32;
+    let slot_dwords = cs / 4;
+    for i in 0..slot_dwords {
+        sc.add(i).write_volatile(dev_virt.add(i).read_volatile());
+    }
+    let old_dw0 = sc.add(0).read_volatile();
+    let old_entries = (old_dw0 >> 27) & 0x1F;
+    let new_entries = old_entries.max(dci as u32);
+    sc.add(0).write_volatile((old_dw0 & !(0x1F << 27)) | (new_entries << 27));
 
     // Allocate transfer ring for this endpoint
     let tr_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no ring\n"); return false; } };

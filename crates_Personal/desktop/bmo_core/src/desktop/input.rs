@@ -9,8 +9,8 @@ use core::arch::asm;
 
 pub const SC_ESC: u8 = 0x01;
 
-/// If set by the module, called to poll USB HID events before PS/2.
-pub static mut USB_HID_POLL: Option<fn() -> bool> = None;
+/// If set by the module, called to poll USB HID events before PS/2/HAL input.
+pub static mut USB_HID_POLL: Option<fn(&mut [bmo_hal_defs::InputEvent]) -> usize> = None;
 
 // ── Direct PS/2 port I/O (Ring 0 fallback) ────────────────────────────
 
@@ -31,6 +31,8 @@ static mut MOUSE_BUF: [u8; 3] = [0; 3];
 static mut MOUSE_X: i32 = 0;
 static mut MOUSE_Y: i32 = 0;
 static mut MOUSE_BTNS: u8 = 0;
+static mut USB_PENDING: [bmo_hal_defs::InputEvent; 32] = [bmo_hal_defs::InputEvent::empty(); 32];
+static mut USB_PENDING_COUNT: usize = 0;
 
 fn ensure_input_ready() {
     static mut INITIALIZED: bool = false;
@@ -134,17 +136,46 @@ unsafe fn poll_direct_ps2(last_sc: &mut u8, last_mouse: &mut u64) {
     }
 }
 
+unsafe fn refill_usb_pending() {
+    if USB_PENDING_COUNT != 0 { return; }
+    if let Some(poll) = USB_HID_POLL {
+        USB_PENDING_COUNT = poll(&mut USB_PENDING);
+        if USB_PENDING_COUNT > USB_PENDING.len() {
+            USB_PENDING_COUNT = USB_PENDING.len();
+        }
+    }
+}
+
+unsafe fn remove_usb_pending(idx: usize) {
+    if idx >= USB_PENDING_COUNT { return; }
+    let mut i = idx;
+    while i + 1 < USB_PENDING_COUNT {
+        USB_PENDING[i] = USB_PENDING[i + 1];
+        i += 1;
+    }
+    USB_PENDING_COUNT -= 1;
+}
+
 // ── Public API ────────────────────────────────────────────────────────
 
 pub fn poll_raw_scancode() -> u8 {
     ensure_input_ready();
 
-    // USB HID first (module-provided)
     unsafe {
-        if let Some(poll) = USB_HID_POLL { poll(); }
-    }
+        refill_usb_pending();
+        for i in 0..USB_PENDING_COUNT {
+            let ev = USB_PENDING[i];
+            if matches!(ev.kind, bmo_hal_defs::InputEventKind::KeyDown | bmo_hal_defs::InputEventKind::KeyUp) {
+                let sc = if matches!(ev.kind, bmo_hal_defs::InputEventKind::KeyUp) {
+                    ev.code | 0x80
+                } else {
+                    ev.code
+                };
+                remove_usb_pending(i);
+                return sc;
+            }
+        }
 
-    unsafe {
         if PS2_FALLBACK {
             let mut sc: u8 = 0;
             let mut _m: u64 = 0;
@@ -173,6 +204,43 @@ pub fn poll_key() -> u8 {
 pub fn poll_mouse() -> u64 {
     ensure_input_ready();
     unsafe {
+        let mut usb_x: i32 = 0;
+        let mut usb_y: i32 = 0;
+        let mut usb_btns: u64 = 0;
+        let mut usb_seen = false;
+        refill_usb_pending();
+        let mut i = 0;
+        while i < USB_PENDING_COUNT {
+            let ev = USB_PENDING[i];
+            match ev.kind {
+                bmo_hal_defs::InputEventKind::MouseMove => {
+                    usb_seen = true;
+                    usb_x = usb_x.saturating_add(ev.mouse_dx() as i32);
+                    usb_y = usb_y.saturating_add(ev.mouse_dy() as i32);
+                    remove_usb_pending(i);
+                    continue;
+                }
+                bmo_hal_defs::InputEventKind::MouseButton => {
+                    usb_seen = true;
+                    usb_btns = ev.mouse_buttons() as u64;
+                    remove_usb_pending(i);
+                    continue;
+                }
+                bmo_hal_defs::InputEventKind::MouseWheel => {
+                    usb_seen = true;
+                    remove_usb_pending(i);
+                    continue;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        if usb_seen {
+            let x = (usb_x.clamp(-32768, 32767) as i16) as u16 as u64;
+            let y = (usb_y.clamp(-32768, 32767) as i16) as u16 as u64;
+            return x | (y << 16) | (usb_btns << 32);
+        }
+
         if PS2_FALLBACK {
             let mut _sc: u8 = 0;
             let mut m: u64 = 0;

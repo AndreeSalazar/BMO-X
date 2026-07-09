@@ -379,16 +379,37 @@ fn start_background_modules(hal: &bmo_hal_defs::HalServices) {
     }
 }
 
-/// Public API for input layer: poll USB HID if XHCI is available.
-/// Returns true if any event was available.
-pub fn poll_usb_hid() -> bool {
+fn convert_input_event(ev: bmo_input::event::InputEvent) -> bmo_hal_defs::InputEvent {
+    let kind = match ev.kind {
+        bmo_input::event::InputEventKind::KeyDown => bmo_hal_defs::InputEventKind::KeyDown,
+        bmo_input::event::InputEventKind::KeyUp => bmo_hal_defs::InputEventKind::KeyUp,
+        bmo_input::event::InputEventKind::MouseMove => bmo_hal_defs::InputEventKind::MouseMove,
+        bmo_input::event::InputEventKind::MouseButton => bmo_hal_defs::InputEventKind::MouseButton,
+        bmo_input::event::InputEventKind::MouseWheel => bmo_hal_defs::InputEventKind::MouseWheel,
+    };
+    bmo_hal_defs::InputEvent {
+        timestamp: ev.timestamp,
+        device_id: ev.device_id,
+        kind,
+        _pad: ev._pad,
+        code: ev.code,
+        value: ev.value,
+    }
+}
+
+/// Public API for input layer: poll USB HID events if XHCI is available.
+pub fn poll_usb_hid(out: &mut [bmo_hal_defs::InputEvent]) -> usize {
     unsafe {
         if let Some(ref mut uhid) = UHID_PTR {
             let mut buf = [bmo_input::event::InputEvent::empty(); 32];
             use bmo_input::hal::InputHal;
             let n = uhid.poll(&mut buf);
-            n > 0
-        } else { false }
+            let copy = n.min(out.len()).min(buf.len());
+            for i in 0..copy {
+                out[i] = convert_input_event(buf[i]);
+            }
+            copy
+        } else { 0 }
     }
 }
 
