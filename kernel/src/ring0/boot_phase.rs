@@ -200,17 +200,28 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     crate::uefi_rt::write_boot_stage("kernel_start");
     let mut ctx = BootContext::new(boot_info_ptr);
     let boot_start = crate::cpu::rdtsc();
+
+    // Show boot splash
+    crate::ring0::boot_splash::splash_init();
+    crate::ring0::boot_splash::splash_progress(5, "Starting kernel...");
+
     write_crash_marker(2);
     crate::uefi_rt::write_boot_stage("phases_0_to_4");
     s_log("[ring0] starting boot phases");
+    crate::ring0::boot_splash::splash_progress(10, "Phase 0: CPU, GDT, IDT...");
     let mut prev_end = boot_start;
     prev_end = phase0_arch(&mut ctx, prev_end);
+    crate::ring0::boot_splash::splash_progress(30, "Phase 1: Memory allocators...");
     prev_end = phase1_mem(&mut ctx, prev_end);
+    crate::ring0::boot_splash::splash_progress(50, "Phase 2: Device discovery...");
     prev_end = phase2_dev(&mut ctx, prev_end);
+    crate::ring0::boot_splash::splash_progress(65, "Phase 3: Display init...");
     prev_end = phase3_display(&mut ctx, prev_end);
+    crate::ring0::boot_splash::splash_progress(75, "Phase 4: Scheduler init...");
     prev_end = phase4_sched(&mut ctx, prev_end);
     s_log("[ring0] all boot phases completed");
     write_crash_marker(3);
+    crate::ring0::boot_splash::splash_progress(82, "Detecting CPU...");
     unsafe {
         cpu_vendor_profile::LOG_WRITE_STR = Some(crate::dev::console::serial_write as fn(&str));
         cpu_vendor_profile::LOG_WRITE_U64 = Some(crate::dev::console::serial_write_u64 as fn(u64, usize));
@@ -221,17 +232,21 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     cpu_vendor_profile::amd::cpu::zen3::init_bmo_cpu();
     s_log("[ring0] CPU detected");
     write_crash_marker(4);
+    crate::ring0::boot_splash::splash_progress(90, "ACPI tables...");
     crate::uefi_rt::write_boot_stage("init_acpi");
     let rsdp_hint = if bi.rsdp_addr != 0 { Some(bi.rsdp_addr) } else { None };
     cpu_vendor_profile::amd::cpu::zen3::init_acpi(rsdp_hint);
     s_log("[ring0] ACPI initialized");
     write_crash_marker(45);
+    crate::ring0::boot_splash::splash_progress(95, "SMP: starting cores...");
     crate::uefi_rt::write_boot_stage("smp_init");
     s_log("[ring0] SMP init start");
     unsafe { crate::arch::smp::init(); }
     s_log("[ring0] SMP init done");
     write_crash_marker(5);
     crate::uefi_rt::write_boot_stage("ring0_complete");
+    crate::ring0::boot_splash::splash_progress(100, "Boot complete.");
+    crate::ring0::boot_splash::splash_clear();
     s_log("[ring0] boot complete");
     let hal = alloc::boxed::Box::new(crate::ring0::hal_init::build(&ctx));
     unsafe { crate::ring0::hal_init::HAL_SERVICES = alloc::boxed::Box::into_raw(hal) as *const _; }
