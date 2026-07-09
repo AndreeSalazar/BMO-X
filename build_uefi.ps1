@@ -216,7 +216,7 @@ $needModule    = Needs-Rebuild $moduleDir $moduleElf
 $needTimeback  = Needs-Rebuild $timebackDir $timebackElf
 $needCabina    = Needs-Rebuild $cabinaDir $cabinaElf
 
-if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $needTimeback -and -not $needCabina -and -not $Clean) {
+if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $needTimeback -and -not $needCabina -and -not $needLinuxDevour -and -not $Clean) {
     Write-Host "  OK All up to date. Nothing to rebuild." -ForegroundColor Green
     if (-not $Flash -and -not $Verify) {
         Write-Host "  Use -Clean to force rebuild, or -Flash to flash existing build." -ForegroundColor DarkGray
@@ -357,6 +357,17 @@ if ($timebackJob) {
     foreach ($line in $timebackResult.Output) {
         $l = "$line"
         if ($l -match "Compiling|Finished|warning") { Write-Host "    [tb]   $l" -ForegroundColor DarkGray }
+    }
+}
+
+if ($linuxDevourJob) {
+    Step "Waiting for mod_linux_devour..."
+    $linuxDevourResult = Receive-Job -Job $linuxDevourJob -Wait -ErrorAction SilentlyContinue
+    Remove-Job -Job $linuxDevourJob -Force
+    if (-not $linuxDevourResult.Ok) { Fail "LINUX DEVOUR FAILED: $($linuxDevourResult.Error)" }
+    foreach ($line in $linuxDevourResult.Output) {
+        $l = "$line"
+        if ($l -match "Compiling|Finished|warning") { Write-Host "    [dev]  $l" -ForegroundColor DarkGray }
     }
 }
 
