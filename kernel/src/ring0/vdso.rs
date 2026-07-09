@@ -37,8 +37,10 @@ pub struct VdsoPage {
     pub feature_flags: u64,
     /// XHCI controller MMIO base (0 if not present).
     pub xhci_mmio_base: u64,
+    /// Second XHCI controller MMIO base (chipset/A320; 0 if not present).
+    pub xhci_mmio_base2: u64,
     /// Reserved for future GPU info.
-    _pad: [u8; 48],
+    _pad: [u8; 40],
 }
 
 /// Feature flags exposed to Ring 3 via vDSO.
@@ -111,6 +113,15 @@ pub fn set_xhci_mmio(mmio: u64) {
     unsafe {
         if let Some(vdso) = VDSO_PTR.as_mut() {
             vdso.xhci_mmio_base = mmio;
+        }
+    }
+}
+
+/// Set second XHCI MMIO base address (chipset/A320).
+pub fn set_xhci_mmio2(mmio: u64) {
+    unsafe {
+        if let Some(vdso) = VDSO_PTR.as_mut() {
+            vdso.xhci_mmio_base2 = mmio;
         }
     }
 }

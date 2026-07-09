@@ -144,6 +144,8 @@ pub struct BootInfo {
     pub modules: [ModuleEntry; MAX_MODULES],
     // ── Hardware info for modules ──
     pub xhci_mmio: u64,
+    /// Second XHCI controller (AMD chipset: CPU SoC + Promontory/A320)
+    pub xhci_mmio2: u64,
 }
 
 impl BootInfo {
@@ -209,6 +211,7 @@ impl BootInfoBuilder {
                 module_count: 0, _pad3: 0,
                 modules: [ModuleEntry { base: 0, size: 0, entry_point: 0 }; MAX_MODULES],
                 xhci_mmio: 0,
+                xhci_mmio2: 0,
             },
         }
     }

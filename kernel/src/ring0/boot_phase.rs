@@ -138,18 +138,39 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     let scan = crate::dev::pcie::scan_pci_bus();
     s_log("[phase2] PCI scan complete");
 
-    // Store XHCI controller address for modules + map MMIO
-    if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
-        // Map XHCI MMIO region (2MB huge page) so modules can access it
-        let mmio_base = xhci_mmio & !0x1F_FFFF; // align 2MiB
+    // Store XHCI controller addresses for modules + map MMIO.
+    // AMD platforms have TWO controllers: CPU SoC + chipset (A320/Promontory).
+    s_log("[phase2] calling find_all_xhci_mmio...");
+    let (xhci1, xhci2) = crate::dev::pcie::find_all_xhci_mmio();
+    s_log("[phase2] find_all_xhci_mmio returned");
+
+    // Map first XHCI MMIO region
+    if let Some(mmio) = xhci1 {
+        let mmio_base = mmio & !0x1F_FFFF;
         let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
         let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
-        s_log("[phase2] XHCI MMIO mapped at high-mem");
-
+        s_log("[phase2] XHCI1 MMIO mapped at high-mem");
         unsafe {
             let bi = crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo;
-            (*bi).xhci_mmio = xhci_mmio;
+            (*bi).xhci_mmio = mmio;
         }
+        crate::ring0::vdso::set_xhci_mmio(mmio);
+    }
+
+    // Map second XHCI MMIO region (chipset)
+    if let Some(mmio) = xhci2 {
+        let mmio_base = mmio & !0x1F_FFFF;
+        let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
+        let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
+        s_log("[phase2] XHCI2 MMIO mapped at high-mem");
+        unsafe {
+            let bi = crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo;
+            (*bi).xhci_mmio2 = mmio;
+        }
+        crate::ring0::vdso::set_xhci_mmio2(mmio);
+    }
+
+    if xhci1.is_some() || xhci2.is_some() {
         s_log("[phase2] XHCI found, stored in BootInfo");
     }
     ctx.devices.acpi_mcfg_base = mcfg.as_ref().map(|m| m.base).unwrap_or(0);

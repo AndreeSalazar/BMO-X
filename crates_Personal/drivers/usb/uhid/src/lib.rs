@@ -156,6 +156,7 @@ impl InputHal for UsbHidHal {
         // ── Enumerate ports ──
         for port in 0..ctrl.max_ports {
             unsafe {
+                bmo_xhci::port_power_on(port);
                 if !bmo_xhci::port_reset(port) { continue; }
                 let speed = bmo_xhci::port_speed(port);
                 if speed == 0 { continue; }

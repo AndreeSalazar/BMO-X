@@ -429,6 +429,53 @@ pub fn find_xhci_mmio() -> Option<u64> {
     }
 }
 
+/// Find ALL XHCI controllers and return their MMIO BAR0 addresses.
+/// On AMD platforms there are TWO controllers: CPU SoC + chipset (Promontory/A320).
+pub fn find_all_xhci_mmio() -> (Option<u64>, Option<u64>) {
+    let mut first = None;
+    let mut second = None;
+    unsafe {
+        if let Some(r) = SCAN_RESULT.as_ref() {
+            crate::dev::console::serial_write("[pci] find_all_xhci: scanning ");
+            print_u32(r.count as u32);
+            crate::dev::console::serial_write(" devices\n");
+            for d in &r.devices[..r.count] {
+                if d.class_code == 0x0C && d.subclass == 0x03 {
+                    let bar0_lo = pci_read32(d.bus, d.device, d.function, 0x10);
+                    let bar0: u64 = if (bar0_lo & 0x04) != 0 {
+                        let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);
+                        ((bar0_hi as u64) << 32) | (bar0_lo & !0x0F) as u64
+                    } else {
+                        (bar0_lo & !0x0F) as u64
+                    };
+                    crate::dev::console::serial_write("[pci] xHCI found: bus=");
+                    print_u32(d.bus as u32);
+                    crate::dev::console::serial_write(" dev=");
+                    print_u32(d.device as u32);
+                    crate::dev::console::serial_write(" fn=");
+                    print_u32(d.function as u32);
+                    crate::dev::console::serial_write(" BAR0=0x");
+                    print_hex(bar0);
+                    crate::dev::console::serial_write("\n");
+                    if first.is_none() {
+                        first = Some(bar0);
+                    } else if second.is_none() {
+                        second = Some(bar0);
+                    }
+                }
+            }
+        } else {
+            crate::dev::console::serial_write("[pci] find_all_xhci: SCAN_RESULT is None!\n");
+        }
+    }
+    crate::dev::console::serial_write("[pci] find_all_xhci: returning (");
+    print_u32(first.is_some() as u32);
+    crate::dev::console::serial_write(", ");
+    print_u32(second.is_some() as u32);
+    crate::dev::console::serial_write(")\n");
+    (first, second)
+}
+
 fn print_hex(val: u64) {
     let hex = b"0123456789ABCDEF";
     let mut buf = [0u8; 18];

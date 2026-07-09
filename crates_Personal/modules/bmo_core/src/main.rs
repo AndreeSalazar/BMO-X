@@ -278,44 +278,108 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
 }
 
 fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
-    let xhci_mmio = unsafe {
-        if (hal.boot_info).is_null() { 0 }
-        else { (*(hal.boot_info)).xhci_mmio }
+    let boot_info = unsafe {
+        if (hal.boot_info).is_null() { return DiagInfo { xhci_mmio: 0, xhci_found: false, ctrl_init: false,
+            ctrl_msg: "-", port_count: 0, hid_ok: false, hid_msg: "no ctrl", ps2_msg: "active" }; }
+        &*(hal.boot_info)
     };
 
-    if xhci_mmio == 0 {
-        (hal.serial_write)("[mod_bmo_core] no XHCI controller\n");
+    let mmios = [boot_info.xhci_mmio, boot_info.xhci_mmio2];
+
+    // Init framebuffer logging early
+    unsafe {
+        FB_LOG_HAL = hal as *const _;
+        FB_LOG_Y = 130;
+    }
+
+    // Wait 4s — give BIOS (A320M chipset) time to finish USB init
+    (hal.serial_write)("[mod_bmo_core] waiting 4s for BIOS USB init...\n");
+    (hal.busy_wait_ms)(4000);
+
+    let backend = alloc::boxed::Box::new(ModuleXhciHal { hal: HalPtr(hal as *const _) });
+    let static_backend: &'static ModuleXhciHal = alloc::boxed::Box::leak(backend);
+    bmo_xhci::init_hal(static_backend as &'static dyn bmo_xhci::XhciHal);
+
+    let mut best_mmio = 0u64;
+    let mut best_alive = 0u8;
+    let mut best_speed = 0u8;
+    let mut best_ports = 0u8;
+    let mut best_init = false;
+
+    for (idx, &mmio) in mmios.iter().enumerate() {
+        if mmio == 0 { continue; }
+        (hal.serial_write)("[mod_bmo_core] trying XHCI");
+        (hal.serial_write_u64)(idx as u64, 10);
+        (hal.serial_write)(" mmio=0x");
+        (hal.serial_write_u64)(mmio, 16);
+        (hal.serial_write)("\n");
+
+        bmo_xhci::set_mmio(mmio);
+        if idx > 0 { bmo_xhci::reset_ctrl(); }
+        unsafe { xhci_usb_handover(mmio); }
+
+        let ok = unsafe { bmo_xhci::init(mmio) };
+        (hal.serial_write)(if ok { "[mod_bmo_core]   init OK\n" } else { "[mod_bmo_core]   init FAIL\n" });
+        if !ok { continue; }
+
+        let port_count = unsafe { bmo_xhci::controller().map(|c| c.max_ports).unwrap_or(0) };
+        let mut alive = 0u8;
+        let mut with_speed = 0u8;
+        unsafe {
+            for p in 0..port_count.min(16) {
+                bmo_xhci::port_power_on(p);
+                if bmo_xhci::port_reset(p) {
+                    alive += 1;
+                    let s = bmo_xhci::port_speed(p);
+                    if s != 0 { with_speed += 1; }
+                    (hal.serial_write)("[mod_bmo_core]     port ");
+                    (hal.serial_write_u64)(p as u64, 10);
+                    (hal.serial_write)(": alive speed=");
+                    (hal.serial_write_u64)(s as u64, 10);
+                    (hal.serial_write)("\n");
+                }
+            }
+        }
+        (hal.serial_write)("[mod_bmo_core]   alive=");
+        (hal.serial_write_u64)(alive as u64, 10);
+        (hal.serial_write)(" speed=");
+        (hal.serial_write_u64)(with_speed as u64, 10);
+        (hal.serial_write)("\n");
+
+        if alive > best_alive {
+            best_mmio = mmio;
+            best_alive = alive;
+            best_speed = with_speed;
+            best_ports = port_count;
+            best_init = ok;
+        }
+    }
+
+    if best_mmio == 0 {
+        (hal.serial_write)("[mod_bmo_core] no XHCI controller with alive ports\n");
+        unsafe { show_diag_screen(hal, 0, 0, 0, 0); }
         return DiagInfo { xhci_mmio: 0, xhci_found: false, ctrl_init: false, ctrl_msg: "-",
             port_count: 0, hid_ok: false, hid_msg: "no ctrl", ps2_msg: "active" };
     }
 
-    (hal.serial_write)("[mod_bmo_core] XHCI mmio=0x");
-    (hal.serial_write_u64)(xhci_mmio, 16);
+    // Switch to best controller
+    bmo_xhci::set_mmio(best_mmio);
+    bmo_xhci::reset_ctrl();
+    unsafe { bmo_xhci::init(best_mmio); }
+
+    (hal.serial_write)("[mod_bmo_core] using XHCI mmio=0x");
+    (hal.serial_write_u64)(best_mmio, 16);
     (hal.serial_write)("\n");
 
-    let backend = alloc::boxed::Box::new(ModuleXhciHal { hal: HalPtr(hal as *const _) });
-    let static_backend: &'static ModuleXhciHal = alloc::boxed::Box::leak(backend);
-
-    bmo_xhci::init_hal(static_backend as &'static dyn bmo_xhci::XhciHal);
-    bmo_xhci::set_mmio(xhci_mmio);
-
-    // Init XHCI controller explicitly
-    (hal.serial_write)("[mod_bmo_core] calling bmo_xhci::init()...\n");
-    let ctrl_init = unsafe { bmo_xhci::init(xhci_mmio) };
-    (hal.serial_write)(if ctrl_init { "[mod_bmo_core] XHCI init OK\n" } else { "[mod_bmo_core] XHCI init FAIL\n" });
-
-    if !ctrl_init {
-        return DiagInfo { xhci_mmio, xhci_found: true, ctrl_init: false, ctrl_msg: "FAIL",
-            port_count: 0, hid_ok: false, hid_msg: "ctrl fail", ps2_msg: "active" };
+    // Show port scan results on screen
+    unsafe {
+        if let Some(h) = FB_LOG_HAL.as_ref() {
+            fb_fill_rect(&*h, 0, 130, h.fb_width, 30, 0xFF222222);
+            let label = alloc::format!("Ports: {}/{} alive, {}/{} with speed  [ctrl=0x{:X}]",
+                best_alive as u32, best_ports as u32, best_speed as u32, best_ports as u32, best_mmio);
+            fb_draw_str(&*h, 16, 134, &label, if best_speed > 0 { GREEN } else { RED });
+        }
     }
-
-    // Check controller + ports
-    let port_count = unsafe {
-        bmo_xhci::controller().map(|c| c.max_ports).unwrap_or(0)
-    };
-    (hal.serial_write)("[mod_bmo_core] ports=");
-    (hal.serial_write_u64)(port_count as u64, 10);
-    (hal.serial_write)("\n");
 
     // Try UHID init
     let mut uhid = bmo_uhid::UsbHidHal::new();
@@ -327,33 +391,82 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
     if hid_ok {
         (hal.serial_write)("[mod_bmo_core] USB HID ready\n");
         unsafe { UHID_PTR = Some(uhid); }
-        DiagInfo { xhci_mmio, xhci_found: true, ctrl_init: true, ctrl_msg: "OK",
-            port_count, hid_ok: true, hid_msg: "OK", ps2_msg: "fallback" }
+        DiagInfo { xhci_mmio: best_mmio, xhci_found: true, ctrl_init: true, ctrl_msg: "OK",
+            port_count: best_ports, hid_ok: true, hid_msg: "OK", ps2_msg: "fallback" }
     } else {
-        // Check if any devices at all
-        let devices = unsafe {
-            bmo_xhci::controller().map(|c| {
-                let mut count = 0u8;
-                for p in 0..c.max_ports {
-                    if unsafe { bmo_xhci::port_speed(p) } != 0 { count += 1; }
-                }
-                count
-            }).unwrap_or(0)
-        };
-        (hal.serial_write)("[mod_bmo_core] USB HID FAIL (");
-        (hal.serial_write_u64)(devices as u64, 10);
-        (hal.serial_write)(" devices on bus)\n");
+        (hal.serial_write)("[mod_bmo_core] USB HID FAIL\n");
+        DiagInfo { xhci_mmio: best_mmio, xhci_found: true, ctrl_init: true, ctrl_msg: "OK",
+            port_count: best_ports, hid_ok: false, hid_msg: "enum fail", ps2_msg: "active" }
+    }
+}
 
-        let msg = if devices == 0 { "0 devices" } else { "enum fail" };
-        DiagInfo { xhci_mmio, xhci_found: true, ctrl_init: true, ctrl_msg: "OK",
-            port_count, hid_ok: false, hid_msg: msg, ps2_msg: "active" }
+fn show_diag_screen(hal: &bmo_hal_defs::HalServices, alive: u8, with_speed: u8, ports: u8, mmio: u64) {
+    unsafe {
+        if let Some(h) = FB_LOG_HAL.as_ref() {
+            fb_fill_rect(&*h, 0, 130, h.fb_width, 30, 0xFF222222);
+            let label = if mmio == 0 {
+                alloc::format!("XHCI: no controller found")
+            } else {
+                alloc::format!("Ports: {}/{} alive, {}/{} with speed  [0x{:X}]",
+                    alive as u32, ports as u32, with_speed as u32, ports as u32, mmio)
+            };
+            fb_draw_str(&*h, 16, 134, &label, RED);
+        }
     }
 }
 
 static mut UHID_PTR: Option<bmo_uhid::UsbHidHal> = None;
+static mut FB_LOG_Y: u32 = 0;
+static mut FB_LOG_HAL: *const bmo_hal_defs::HalServices = core::ptr::null();
 
-/// Start background modules (timeback, cabina) from BootInfo.
-/// These are small (12 KB each) and start in ~5ms — imperceptible.
+/// USB Legacy Handover — take ownership of XHCI from BIOS (AMD chipset).
+/// Without this, CCS (Current Connect Status) bits are 0 for all ports
+/// because the BIOS USB Legacy Support is still intercepting them.
+unsafe fn xhci_usb_handover(mmio: u64) {
+    use core::ptr::{read_volatile, write_volatile};
+    let mmio = mmio as *mut u32;
+
+    // Read HCCPARAMS1 to find xECP offset
+    let hcc1 = read_volatile(mmio.add(0x10 / 4));
+    let xecp_offset = ((hcc1 >> 16) & 0xFFFF) as usize;
+    if xecp_offset < 4 { return; } // no extended capabilities
+
+    // Walk extended capabilities looking for USB Legacy Support (ID=1)
+    let mut offset = xecp_offset;
+    for _ in 0..32 {
+        let cap = read_volatile(mmio.add(offset / 4));
+        let cap_id = cap & 0xFF;
+        let next = ((cap >> 8) & 0xFF) as usize;
+
+        if cap_id == 1 {
+            // USB Legacy Support Capability — take OS ownership
+            let usblegsup = mmio.add(offset / 4);
+            let mut val = read_volatile(usblegsup);
+
+            // Set OS Owned Semaphore (bit 24)
+            val |= 1 << 24;
+            write_volatile(usblegsup, val);
+
+            // Wait for BIOS to release (bit 16 goes to 0, bit 24 stays 1)
+            for _ in 0..100_000 {
+                let v = read_volatile(usblegsup);
+                if (v & (1 << 16)) == 0 { break; }
+                core::hint::spin_loop();
+            }
+
+            // Disable SMI generation (clear bits 1,2,3,4)
+            val = read_volatile(usblegsup);
+            val &= !0x1E; // clear bits 1-4 (SMI enables)
+            write_volatile(usblegsup, val);
+
+            break;
+        }
+
+        if next == 0 || next < offset { break; }
+        offset = offset + (next * 4); // next capability
+    }
+}
+
 fn start_background_modules(hal: &bmo_hal_defs::HalServices) {
     let boot_info = unsafe {
         if (hal.boot_info).is_null() { return; }

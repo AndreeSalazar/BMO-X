@@ -264,6 +264,13 @@ unsafe fn send_cmd(trb: Trb) -> Option<(u32, u32, u32, u32)> {
 //  Init  (unchanged logic, proven)
 // ═══════════════════════════════════════════════════════════════════
 
+/// Reset the global controller state so init() can be called again
+/// (needed when switching between CPU SoC and chipset XHCI controllers).
+pub fn reset_ctrl() {
+    unsafe { CTRL = None; }
+    unsafe { MMIO_BASE.store(0, core::sync::atomic::Ordering::SeqCst); }
+}
+
 pub unsafe fn init(mmio: u64) -> bool {
     if CTRL.is_some() { return true; }
     let h = hal();
@@ -359,6 +366,13 @@ pub unsafe fn port_speed(port: u8) -> u8 {
     let c = match CTRL.as_ref() { Some(c) => c, None => return 0 };
     let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
     ((r32(c.mmio + pb + PORTSC as u64) >> 10) & 0x0F) as u8
+}
+
+pub unsafe fn port_power_on(port: u8) {
+    let c = match CTRL.as_mut() { Some(c) => c, None => return };
+    let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
+    w32(c.mmio + pb + PORTSC as u64, r32(c.mmio + pb + PORTSC as u64) | PORTSC_PP);
+    for _ in 0..20000 { core::hint::spin_loop(); }
 }
 
 pub unsafe fn port_reset(port: u8) -> bool {
