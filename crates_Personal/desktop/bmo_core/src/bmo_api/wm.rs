@@ -33,7 +33,10 @@ pub fn create_desktop_window() -> u32 {
     let (fbw, fbh) = unsafe { (crate::info::FB_WIDTH as i32, crate::info::FB_HEIGHT as i32) };
     let s = super::state();
     s.lock();
-    let slot = s.windows.alloc_window().expect("no free window slot");
+    let slot = match s.windows.alloc_window() {
+        Some(s) => s,
+        None => { s.unlock(); return u32::MAX; }
+    };
     if let Some(w) = s.windows.window_mut(slot) {
         w.x = 0; w.y = 0;
         w.w = fbw; w.h = fbh;
