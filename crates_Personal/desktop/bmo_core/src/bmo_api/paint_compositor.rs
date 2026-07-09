@@ -125,11 +125,11 @@ pub fn tick() {
                 let ty = wy + 10;
                 crate::desktop::render::draw_text(&fb, tx as u32, ty as u32, t, theme::TITLE);
             }
-        }
 
-        // 8. Blit surface content (alpha-composited into the window body)
-        if surface_id != 0 && title_h > 0 {
-            super::draw::blit_surface_alpha_to_fb(surface_id, wx, wy + title_h);
+            // 8. Blit surface content (only when window is dirty)
+            if surface_id != 0 && title_h > 0 {
+                super::draw::blit_surface_alpha_to_fb(surface_id, wx, wy + title_h);
+            }
         }
 
         // Clear dirty flags
@@ -149,6 +149,9 @@ pub fn tick() {
 
 /// Global menu bar at the top of the screen (Mac-style).
 fn paint_menu_bar() {
+    unsafe {
+        if !MENUBAR_DIRTY { return; }
+    }
     let fb = crate::ui::fb::backbuffer_fb();
     let (fbw, _fbh) = unsafe { (crate::info::FB_WIDTH, crate::info::FB_HEIGHT) };
     let mh = theme::MENU_HEIGHT as usize;
@@ -175,6 +178,7 @@ fn paint_menu_bar() {
     crate::desktop::render::draw_text(
         &fb, (fbw as usize - cw - 16) as u32, 7, clock_label, theme::SUBTITLE,
     );
+    unsafe { MENUBAR_DIRTY = false; }
 }
 
 /// Soft drop shadow behind a window.
@@ -207,10 +211,23 @@ fn paint_glass_backdrop(fb: &crate::ui::fb::Framebuffer, x: i32, y: i32, w: i32,
     fb.fill_rect_alpha(gx, gy, gw.min(fb.width.saturating_sub(gx)), gh.min(fb.height.saturating_sub(gy)), 0x1A0A1018);
 }
 
+/// Desktop wallpaper needs redraw. Set on first frame, resolution change, wallpaper change.
+static mut DESKTOP_DIRTY: bool = true;
+
+/// Mark desktop for redraw (e.g., wallpaper change, resolution change).
+pub fn invalidate_desktop() {
+    unsafe { DESKTOP_DIRTY = true; }
+}
+
 fn paint_desktop(slot: u32) {
     if slot == WID_INVALID { return; }
-    let fb = crate::ui::fb::backbuffer_fb();
-    crate::desktop::wallpaper::draw(&fb, crate::cpu::rdtsc());
+    unsafe {
+        if DESKTOP_DIRTY {
+            let fb = crate::ui::fb::backbuffer_fb();
+            crate::desktop::wallpaper::draw(&fb, crate::cpu::rdtsc());
+            DESKTOP_DIRTY = false;
+        }
+    }
 }
 
 fn paint_cursor() {
@@ -220,9 +237,16 @@ fn paint_cursor() {
     super::cursor::paint(x, y);
 }
 
+static mut TASKBAR_DIRTY: bool = true;
+static mut MENUBAR_DIRTY: bool = true;
+
 fn paint_taskbar() {
+    unsafe {
+        if !TASKBAR_DIRTY { return; }
+    }
     let fb = crate::ui::fb::backbuffer_fb();
     let (fbw, fbh) = unsafe { (crate::info::FB_WIDTH, crate::info::FB_HEIGHT) };
     let _ = fbw;
     super::taskbar::paint(&fb, fbh as i32);
+    unsafe { TASKBAR_DIRTY = false; }
 }

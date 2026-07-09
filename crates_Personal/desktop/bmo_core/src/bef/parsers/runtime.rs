@@ -127,7 +127,9 @@ pub fn register_bef_exports(table: &ExportTable, base: u64) {
     }
 }
 
-/// Leak a string into &'static str (acceptable in kernel ctx).
+/// Leak a string into &'static str.
+/// Called once per symbol at boot time (bounded by SYMBOL_TABLE capacity).
+/// Memory lives for module lifetime — not freed until reboot.
 fn leak_str(s: &str) -> &'static str {
     let len = s.len();
     let layout = match core::alloc::Layout::from_size_align(len, 1) {
