@@ -24,8 +24,12 @@ unsafe fn syscall0(nr: u64) -> u64 {
     core::arch::asm!(
         "syscall",
         inlateout("rax") nr => result,
+        // syscall clobbers RCX (rip) and R11 (rflags)
+        // Kernel handler clobbers caller-saved regs (rdi,rsi,rdx,r8,r9,r10)
         lateout("rcx") _,
         lateout("r11") _,
+        out("rdi") _, out("rsi") _, out("rdx") _,
+        out("r8") _, out("r9") _, out("r10") _,
         options(nostack),
     );
     result
@@ -38,8 +42,10 @@ unsafe fn syscall2(nr: u64, a0: u64, a1: u64) -> u64 {
         inlateout("rax") nr => result,
         in("rdi") a0,
         in("rsi") a1,
+        // syscall clobbers RCX (rip) and R11 (rflags)
         lateout("rcx") _,
         lateout("r11") _,
+        out("rdx") _, out("r8") _, out("r9") _, out("r10") _,
         options(nostack),
     );
     result

@@ -95,6 +95,16 @@ impl BmoState {
 
 static mut BMO_STATE: BmoState = BmoState::new();
 
+/// Get mutable access to the global BMO state.
+///
+/// # SAFETY (UB justification)
+///
+/// Returns `&'static mut` to a `static mut`. In general Rust, creating
+/// multiple `&mut` references to the same data is UB. BMO is single-threaded
+/// and `state()` is only called from `init()` (boot, once) and `tick()`
+/// (main loop). These never overlap.
+///
+/// TODO(v2.0): Replace with `UnsafeCell<BmoState>` and return `*mut BmoState`.
 pub fn state() -> &'static mut BmoState {
     unsafe { &mut BMO_STATE }
 }

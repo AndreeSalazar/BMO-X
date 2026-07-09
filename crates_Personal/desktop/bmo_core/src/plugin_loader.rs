@@ -38,10 +38,16 @@ impl SymbolRegistry {
     }
 
     /// Call a function by name (no args, returns T).
+    /// SAFETY: `addr` must be a valid function pointer compiled by the BMO toolchain.
+    /// The caller must ensure T matches the function's actual return type.
     pub unsafe fn call0<T>(&self, name: &str) -> Option<T> {
         let addr = self.resolve(name)?;
-        let fn_ptr: extern "C" fn() -> T = core::mem::transmute(addr as *const ());
-        Some(fn_ptr())
+        if addr == 0 { return None; }
+        // SAFETY: addr is validated by the symbol registry (embedded at build time
+        // from BMO_SYMBOLS.toml). The linker resolves symbols to valid entry points.
+        // T must match the function signature in the module.
+        let fn_ptr: extern "C" fn() -> T = unsafe { core::mem::transmute(addr as *const ()) };
+        Some(unsafe { fn_ptr() })
     }
 
     /// Chain-of-trust: verify module integrity at load time.

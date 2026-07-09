@@ -192,6 +192,7 @@ fn show_diagnostics(hal: &bmo_hal_defs::HalServices, info: &DiagInfo) {
     y += 2;
 
     // ── Kernel RAM markers (0x9_0100) ──────────────────────────────
+    core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
     let (kf1, kf2, km1, km2, kpci) = unsafe {
         (
             core::ptr::read_volatile(0x9_0100 as *const u32),
@@ -230,6 +231,9 @@ struct HalPtr(*const bmo_hal_defs::HalServices);
 
 impl ModuleXhciHal {
     fn hal(&self) -> &bmo_hal_defs::HalServices {
+        // SAFETY: self.hal.0 is set from a valid &HalServices reference
+        // in init_xhci() and never freed during module lifetime.
+        debug_assert!(!self.hal.0.is_null(), "HalPtr is null — HAL not initialized");
         unsafe { &*self.hal.0 }
     }
 }
@@ -270,7 +274,10 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
             else { core::ptr::read_volatile(&(*bi).xhci_mmio2) }
         }
     };
-    unsafe { core::ptr::write_volatile(0x9_0150 as *mut u64, raw_xhci2_before_heap); }
+    unsafe {
+        core::ptr::write_volatile(0x9_0150 as *mut u64, raw_xhci2_before_heap);
+        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+    }
 
     if let Some(hal) = unsafe { HAL_PTR.as_ref() } {
         (hal.serial_write)("[mod_bmo_core] module loaded\n");
