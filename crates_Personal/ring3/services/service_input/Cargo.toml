@@ -1,0 +1,12 @@
+[workspace]
+
+[package]
+name = "service-input"
+version = "1.0.0"
+edition = "2024"
+description = "BMO Input Service — combines keyboard + mouse into typed events"
+
+[dependencies]
+driver-keyboard = { path = "../../drivers/driver_keyboard" }
+driver-mouse = { path = "../../drivers/driver_mouse" }
+ring3-foundation = { path = "../../foundation/ring3_foundation" }

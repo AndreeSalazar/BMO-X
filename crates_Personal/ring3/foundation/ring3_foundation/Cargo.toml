@@ -1,0 +1,10 @@
+[workspace]
+
+[package]
+name = "ring3-foundation"
+version = "1.0.0"
+edition = "2024"
+description = "BMO Ring 3 Foundation — syscall wrappers + BMO Channel client"
+
+[dependencies]
+bmo-channel = { path = "../../../shared/bmo_channel" }
