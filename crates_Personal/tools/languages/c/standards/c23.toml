@@ -1,0 +1,59 @@
+# C23 — ISO/IEC 9899:2024
+# Committee: ISO JTC1/SC22/WG14
+# Adopted: 2024-10-31
+
+[standard]
+name = "C23"
+iso = "9899:2024"
+year = 2024
+
+[features]
+function_prototypes = true
+void_type = true
+structs = true
+unions = true
+enums = true
+typedefs = true
+pointers = true
+arrays = true
+const = true
+volatile = true
+
+preprocessor = true
+inline = true
+restrict = true
+long_long = true
+
+# C23 additions (all planned, none implemented yet)
+bool_true_false = false
+typeof = false
+typeof_unqual = false
+embed = false
+auto_type_inference = false
+constexpr = false
+nullptr_constant = false
+enumerated_types = false
+digit_separators = false
+binary_literals = false
+empty_initializer = false
+
+[comments]
+block = true
+line = true
+
+[types]
+void = true
+char = true
+short = true
+int = true
+long = true
+long_long = true
+float = true
+double = true
+unsigned = true
+signed = true
+bool = false  # planned
+nullptr_t = false
+
+[license]
+text = "Public Domain — ISO standard"
