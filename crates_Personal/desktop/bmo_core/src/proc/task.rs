@@ -38,7 +38,8 @@ impl SavedRegs {
 
 pub struct Task {
     pub tid: Tid, pub pid: Pid, pub state: State, pub priority: Priority,
-    pub regs: SavedRegs, pub kernel_stack_top: u64, pub time_slice: u32,
+    pub regs: SavedRegs, pub kernel_stack_top: u64, pub kernel_stack_base: u64,
+    pub time_slice: u32,
     pub blocked_on: u64, pub robust_list_head: u64, pub tid_address: *mut i32,
 }
 
@@ -46,7 +47,7 @@ impl Task {
     pub const fn empty() -> Self {
         Self { tid: Tid(0), pid: Pid(0), state: State::Free,
                priority: Priority::Interactive, regs: SavedRegs::zero(),
-               kernel_stack_top: 0, time_slice: 0, blocked_on: 0,
+               kernel_stack_top: 0, kernel_stack_base: 0, time_slice: 0, blocked_on: 0,
                robust_list_head: 0, tid_address: core::ptr::null_mut() }
     }
 }

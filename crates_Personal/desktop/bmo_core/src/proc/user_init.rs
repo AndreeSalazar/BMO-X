@@ -42,6 +42,7 @@ pub fn spawn_from_image(img: &Image) {
 
     // Map each section into user space
     use crate::mm::virt::flags;
+    let mut first_section_paddr: u64 = 0;
     for section in &img.sections {
         if section.size == 0 {
             continue;
@@ -59,6 +60,9 @@ pub fn spawn_from_image(img: &Image) {
                 return;
             }
         };
+        if first_section_paddr == 0 {
+            first_section_paddr = section_paddr;
+        }
 
         // Copy section data from kernel heap to physical pages
         if section.data_ptr != 0 {
@@ -137,22 +141,22 @@ pub fn spawn_from_image(img: &Image) {
         return;
     }
 
-    proc.user_code_base = img.entry_point;
+    proc.user_code_paddr = first_section_paddr;
     proc.user_code_size = img.sections.iter().map(|s| s.size as usize).sum();
-    proc.user_stack_base = stack_base;
+    proc.user_stack_paddr = stack_paddr;
     proc.user_stack_size = stack_size as usize;
     proc.entry_point = img.entry_point;
 
     // Allocate kernel stack + create Task
-    let kernel_stack = unsafe {
-        let layout = core::alloc::Layout::from_size_align(8192, 16).unwrap();
+    let (kernel_stack_base_ptr, kernel_stack_top) = unsafe {
+        let layout = core::alloc::Layout::from_size_align_unchecked(8192, 16);
         let ptr = alloc::alloc::alloc(layout);
         if ptr.is_null() {
             crate::dev::console::serial_write("[bmo_core::proc] spawn_from_image: no heap for kernel stack\n");
             crate::proc::process::free_process(proc);
             return;
         }
-        ptr as u64 + 8192
+        (ptr as u64, ptr as u64 + 8192)
     };
 
     let task = match crate::proc::task::alloc(pid, crate::proc::Priority::Interactive) {
@@ -163,7 +167,8 @@ pub fn spawn_from_image(img: &Image) {
             return;
         }
     };
-    task.kernel_stack_top = kernel_stack;
+    task.kernel_stack_top = kernel_stack_top;
+    task.kernel_stack_base = kernel_stack_base_ptr;
     task.regs = crate::proc::task::SavedRegs::new_user(img.entry_point, stack_base + stack_size);
 
     crate::dev::console::serial_write("[bmo_core::proc] spawn_from_image: DONE\n");
@@ -211,7 +216,7 @@ pub fn spawn_hello() {
     }
 
     let user_code_base: u64 = 0x400_000;
-    proc.user_code_base = user_code_base;
+    proc.user_code_paddr = code_paddr;
     proc.user_code_size = 4096;
 
     use crate::mm::virt::flags;
@@ -236,7 +241,7 @@ pub fn spawn_hello() {
         }
     };
     let user_stack_base: u64 = 0x7FE0_0000;
-    proc.user_stack_base = user_stack_base;
+    proc.user_stack_paddr = stack_paddr;
     proc.user_stack_size = 4096;
 
     if let Err(e) = unsafe {
@@ -250,15 +255,15 @@ pub fn spawn_hello() {
     }
 
     // 5. Allocate kernel stack + create Task
-    let kernel_stack = unsafe {
-        let layout = core::alloc::Layout::from_size_align(8192, 16).unwrap();
+    let (kernel_stack_base_ptr, kernel_stack_top) = unsafe {
+        let layout = core::alloc::Layout::from_size_align_unchecked(8192, 16);
         let ptr = alloc::alloc::alloc(layout);
         if ptr.is_null() {
             crate::dev::console::serial_write("[bmo_core::proc] spawn_hello: no heap for kernel stack\n");
             crate::proc::process::free_process(proc);
             return;
         }
-        ptr as u64 + 8192
+        (ptr as u64, ptr as u64 + 8192)
     };
 
     let task = match crate::proc::task::alloc(pid, crate::proc::Priority::Interactive) {
@@ -269,7 +274,8 @@ pub fn spawn_hello() {
             return;
         }
     };
-    task.kernel_stack_top = kernel_stack;
+    task.kernel_stack_top = kernel_stack_top;
+    task.kernel_stack_base = kernel_stack_base_ptr;
     task.regs = crate::proc::task::SavedRegs::new_user(user_code_base, user_stack_base + 4096);
 
     crate::dev::console::serial_write("[bmo_core::proc] spawn_hello: DONE\n");

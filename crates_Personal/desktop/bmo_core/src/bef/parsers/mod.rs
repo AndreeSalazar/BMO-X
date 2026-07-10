@@ -74,9 +74,8 @@ pub struct MappedSection {
 pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     // Initialize runtime symbol table if not done.
     static INIT: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
-    if !INIT.load(core::sync::atomic::Ordering::Relaxed) {
+    if INIT.compare_exchange(false, true, core::sync::atomic::Ordering::AcqRel, core::sync::atomic::Ordering::Acquire).is_ok() {
         runtime::init();
-        INIT.store(true, core::sync::atomic::Ordering::Relaxed);
     }
 
     match BefMagic::detect(bytes) {

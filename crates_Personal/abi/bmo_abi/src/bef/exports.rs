@@ -80,6 +80,7 @@ impl<'a> ExportTable<'a> {
         let off = e.symbol_name_off as usize;
         if off + 2 > self.strings.len() { return None; }
         let len = u16::from_le_bytes(self.strings[off..off + 2].try_into().ok()?) as usize;
+        if off + 2 + len > self.strings.len() { return None; }
         let s = &self.strings[off + 2..off + 2 + len];
         core::str::from_utf8(s).ok()
     }

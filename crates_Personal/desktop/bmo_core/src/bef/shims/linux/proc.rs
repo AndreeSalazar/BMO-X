@@ -55,11 +55,26 @@ pub fn sys_getrandom(a0: u64, a1: u64, a2: u64, _a3: u64, _a4: u64, _a5: u64) ->
     let buflen = a1 as usize;
     let _flags = a2 as u32;
     if buf.is_null() { return -errno::EFAULT; }
-    let tsc = crate::cpu::rdtsc();
-    let mut state = tsc.wrapping_add(buf as u64);
     for i in 0..buflen {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        unsafe { *buf.add(i) = (state >> 32) as u8; }
+        let val: u8 = unsafe {
+            let mut out: u64 = 0;
+            let mut ok: u32 = 0;
+            core::arch::asm!(
+                "xor {tmp}, {tmp}",
+                "rdrand {tmp}",
+                "setc {ok_b}",
+                tmp = inout(reg) out => out,
+                ok_b = out(reg) ok,
+                options(nostack, nomem),
+            );
+            if ok != 0 { (out >> (i % 8)) as u8 }
+            else {
+                // Fallback: TSC + loop counter
+                let tsc = crate::cpu::rdtsc();
+                ((tsc >> (i % 7)) ^ (i as u64 * 0x9E3779B97F4A7C15)) as u8
+            }
+        };
+        unsafe { *buf.add(i) = val; }
     }
     buflen as i64
 }

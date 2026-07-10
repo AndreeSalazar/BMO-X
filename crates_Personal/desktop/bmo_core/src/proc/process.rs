@@ -23,9 +23,9 @@ pub struct Process {
     pub name_len: usize,
     pub entry_point: u64,
     pub exit_code: i32,
-    pub user_code_base: u64,
+    pub user_code_paddr: u64,
     pub user_code_size: usize,
-    pub user_stack_base: u64,
+    pub user_stack_paddr: u64,
     pub user_stack_size: usize,
     pub addr_space: crate::mm::virt::AddressSpace,
     /// If true, ring3 `syscall` instructions route to Linux syscall emulation
@@ -44,9 +44,9 @@ impl Process {
             name_len: 0,
             entry_point: 0,
             exit_code: 0,
-            user_code_base: 0,
+            user_code_paddr: 0,
             user_code_size: 0,
-            user_stack_base: 0,
+            user_stack_paddr: 0,
             user_stack_size: 0,
             addr_space: crate::mm::virt::AddressSpace::empty(),
             linux_emulation: false,
@@ -76,9 +76,12 @@ pub fn alloc_process() -> Option<&'static mut Process> {
     unsafe {
         for i in 0..MAX_PROCESSES {
             if PROCESS_TABLE[i].state == ProcessState::Free {
+                // Skip PID 0 — it's the sentinel for "no process".
+                if NEXT_PID == 0 { NEXT_PID = 1; }
                 PROCESS_TABLE[i].pid = Pid(NEXT_PID);
                 PROCESS_TABLE[i].state = ProcessState::Active;
-                NEXT_PID += 1;
+                NEXT_PID = NEXT_PID.wrapping_add(1);
+                if NEXT_PID == 0 { NEXT_PID = 1; }
                 return Some(&mut PROCESS_TABLE[i]);
             }
         }
@@ -105,20 +108,23 @@ pub fn free_process(proc: &mut Process) {
         return;
     }
 
-    if proc.user_code_size > 0 {
+    // Free code pages (using PHYSICAL addresses, not virtual).
+    if proc.user_code_paddr != 0 && proc.user_code_size > 0 {
         let code_pages = (proc.user_code_size + crate::mm::phys::page_size() - 1) / crate::mm::phys::page_size();
         unsafe {
-            crate::mm::phys::free_pages(proc.user_code_base, code_pages);
+            crate::mm::phys::free_pages(proc.user_code_paddr, code_pages);
         }
     }
 
-    if proc.user_stack_size > 0 {
+    // Free stack pages (using PHYSICAL addresses).
+    if proc.user_stack_paddr != 0 && proc.user_stack_size > 0 {
         let stack_pages = (proc.user_stack_size + crate::mm::phys::page_size() - 1) / crate::mm::phys::page_size();
         unsafe {
-            crate::mm::phys::free_pages(proc.user_stack_base, stack_pages);
+            crate::mm::phys::free_pages(proc.user_stack_paddr, stack_pages);
         }
     }
 
+    // Free user page tables.
     if proc.page_table_root != 0 {
         unsafe {
             crate::mm::virt::free_user_page_tables(proc.page_table_root);
@@ -127,6 +133,7 @@ pub fn free_process(proc: &mut Process) {
         proc.page_table_root = 0;
     }
 
+    // Reset all fields.
     proc.state = ProcessState::Free;
     proc.pid = Pid(0);
     proc.caps = CAP_NONE;
@@ -134,10 +141,11 @@ pub fn free_process(proc: &mut Process) {
     proc.name_len = 0;
     proc.entry_point = 0;
     proc.exit_code = 0;
-    proc.user_code_base = 0;
+    proc.user_code_paddr = 0;
     proc.user_code_size = 0;
-    proc.user_stack_base = 0;
+    proc.user_stack_paddr = 0;
     proc.user_stack_size = 0;
+    proc.addr_space = crate::mm::virt::AddressSpace::empty();
     proc.linux_emulation = false;
 }
 
@@ -153,16 +161,18 @@ pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
 
         if let Some(proc) = get_process(pid) {
             proc.exit_code = -1;
-            proc.state = ProcessState::Zombie;
 
             let kernel_cr3 = crate::mm::virt::read_cr3();
             if proc.page_table_root != 0 && proc.page_table_root != kernel_cr3 {
                 unsafe { crate::mm::virt::write_cr3(kernel_cr3); }
             }
 
-            free_process(proc);
+            // Leave as Zombie for parent's waitpid — do NOT free_process here.
+            proc.state = ProcessState::Zombie;
         }
 
+        // Free the task slot so it can be reused.
+        crate::proc::task::free_task(thread);
         crate::proc::task::set_current(usize::MAX);
     }
 

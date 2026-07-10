@@ -31,10 +31,29 @@ const USER_BASE: u64 = 0x0040_0000;
 
 /// Get ASLR-randomized base address.
 fn aslr_base() -> u64 {
-    // Use TSC as entropy source — not cryptographically secure but
-    // sufficient for basic ASLR in a bare-metal OS.
-    let tsc = crate::cpu::rdtsc();
-    let offset = (tsc & 0x00FF_F000) as u64; // Random 4KB-aligned offset up to 16 MB
+    let entropy: u64 = unsafe {
+        let mut val: u64 = 0;
+        let mut ok: u32 = 0;
+        core::arch::asm!(
+            "xor {tmp}, {tmp}",
+            "rdrand {tmp}",
+            "setc {ok_b}",
+            tmp = inout(reg) val => val,
+            ok_b = out(reg) ok,
+            options(nostack, nomem),
+        );
+        if ok != 0 {
+            val
+        } else {
+            // Fallback: TSC + stack pointer mix
+            let tsc = crate::cpu::rdtsc();
+            let sp: u64;
+            core::arch::asm!("mov {out}, rsp", out = out(reg) sp);
+            tsc ^ sp.wrapping_mul(6364136223846793005)
+        }
+    };
+    // Use bits [12..20] for a 4 KB-aligned offset up to 1 MB
+    let offset = (entropy & 0x000F_F000) as u64;
     USER_BASE + offset
 }
 
@@ -115,6 +134,16 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     img.sections = mapped;
     img.tls_offset = tls_off;
     img.tls_size = tls_sz;
+
+    // Validate entry point falls within a loaded code section.
+    if !img.sections.iter().any(|s| {
+        s.kind == SectionKind::Code as u8
+            && img.entry_point >= s.virt_addr
+            && img.entry_point < s.virt_addr + s.size
+    }) {
+        crate::cabina::fault_u64("bef", "entry point outside code sections", img.entry_point);
+        return Err(LoadError::InvalidHeader);
+    }
 
     crate::cabina::info_u64("bef", "native load complete, entry", img.entry_point);
     crate::cabina::info_u64("bef", "resolved imports", resolved_count as u64);
@@ -203,9 +232,13 @@ fn map_sections(bytes: &[u8], table: &SectionTable, base: u64) -> Result<Vec<Map
         unsafe { core::ptr::write_bytes(ptr, 0, aligned_size); }
 
         // Copy section data from file.
-        let copy_len = (entry.file_size as usize).min(bytes.len() - entry.file_offset as usize);
+        let file_offset = entry.file_offset as usize;
+        if file_offset >= bytes.len() {
+            continue; // Section is entirely beyond file — skip copy.
+        }
+        let copy_len = (entry.file_size as usize).min(bytes.len() - file_offset);
         if copy_len > 0 {
-            let src = &bytes[entry.file_offset as usize..entry.file_offset as usize + copy_len];
+            let src = &bytes[file_offset..file_offset + copy_len];
             unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), ptr, copy_len); }
         }
 
@@ -230,14 +263,14 @@ fn map_sections(bytes: &[u8], table: &SectionTable, base: u64) -> Result<Vec<Map
 fn section_flags(entry: &SectionEntry) -> u32 {
     let kind = SectionKind::from_u8(entry.kind);
     match kind {
-        Some(SectionKind::Code) => 0x1,         // RX
-        Some(SectionKind::RoData) => 0x4, // R
+        Some(SectionKind::Code) => 0x5,         // R+X
+        Some(SectionKind::RoData) => 0x1,       // R only
         Some(SectionKind::Data) => 0x3,         // RW
         Some(SectionKind::Tls) => 0x3,          // RW
-        Some(SectionKind::Imports) => 0x4,      // R
-        Some(SectionKind::Exports) => 0x4,      // R
-        Some(SectionKind::Relocs) => 0x4,       // R
-        Some(SectionKind::Signature) => 0x4,    // R
+        Some(SectionKind::Imports) => 0x1,      // R
+        Some(SectionKind::Exports) => 0x1,      // R
+        Some(SectionKind::Relocs) => 0x1,       // R
+        Some(SectionKind::Signature) => 0x1,    // R
         _ => 0x3, // Default RW.
     }
 }
@@ -278,20 +311,22 @@ fn apply_relocations(
         let symbol_addr = resolve_symbol_for_reloc(&reloc, mapped, base);
 
         // Apply the relocation using the actual section data pointer.
-        if target.data_ptr != 0 {
-            let target_slice = unsafe {
-                core::slice::from_raw_parts_mut(
-                    target.data_ptr as *mut u8,
-                    target.size as usize,
-                )
-            };
-            let _ = crate::bef::relocations::apply(
-                &reloc,
-                target_slice,
-                target.virt_addr + reloc.offset,
-                symbol_addr,
-            );
-        }
+            if target.data_ptr != 0 {
+                let target_slice = unsafe {
+                    core::slice::from_raw_parts_mut(
+                        target.data_ptr as *mut u8,
+                        target.size as usize,
+                    )
+                };
+                if crate::bef::relocations::apply(
+                    &reloc,
+                    target_slice,
+                    target.virt_addr + reloc.offset,
+                    symbol_addr,
+                ).is_err() {
+                    crate::cabina::warn_u64("bef", "relocation failed at offset", reloc.offset);
+                }
+            }
     }
 
     Ok(())

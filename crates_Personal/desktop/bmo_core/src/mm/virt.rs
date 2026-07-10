@@ -66,11 +66,16 @@ pub unsafe fn create_user_page_table(kernel_cr3: u64) -> Option<u64> {
 }
 
 pub fn phys_to_virt(phys: u64) -> u64 {
-    if let Some(h) = unsafe { hal::HAL.as_ref() } { phys + h.HIGH_MEM_BASE } else { phys }
+    if let Some(h) = unsafe { hal::HAL.as_ref() } {
+        phys.wrapping_add(h.HIGH_MEM_BASE)
+    } else { phys }
 }
 
 pub fn virt_to_phys(virt: u64) -> u64 {
-    if let Some(h) = unsafe { hal::HAL.as_ref() } { virt - h.HIGH_MEM_BASE } else { virt }
+    if let Some(h) = unsafe { hal::HAL.as_ref() } {
+        if virt < h.HIGH_MEM_BASE { return 0; } // Underflow guard
+        virt - h.HIGH_MEM_BASE
+    } else { virt }
 }
 
 pub mod flags {

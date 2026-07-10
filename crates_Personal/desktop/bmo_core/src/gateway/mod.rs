@@ -2,121 +2,93 @@
 //!
 //! Desarrolado por Salazar.
 //!
-//! `bmo_core::gateway` â€” Ãšnica puerta entre Ring 0 y BMO Core.
+//! `bmo_core::gateway` — Unica puerta entre Ring 0 y BMO Core.
 //!
-//! v1.8.8: este mÃ³dulo centraliza TODOS los syscalls de Ring 3.
+//! v1.8.8: este modulo centraliza TODOS los syscalls de Ring 3.
 //! Antes, `ring0::arch::syscall` llamaba directamente a
 //! `bmo_api::dispatch_syscall`. Ahora:
 //!
 //! ```text
 //! Ring 3 app
-//!     â”‚  syscall (mov rax, 0x100; syscall)
-//!     â–¼
+//!     |  syscall (mov rax, 0x100; syscall)
+//!     v
 //! ring0::arch::syscall (lstar)
-//!     â”‚  1) Captura contexto (PID, TID, CR3)
-//!     â”‚  2) Llama gateway::enter
-//!     â”‚  3) Retorna el resultado en rax
-//!     â–¼
-//! bmo_core::gateway::enter   â† ESTE MÃ“DULO
-//!     â”‚  1) Valida con ByteDefender
-//!     â”‚  2) Emite evento a Cabina
-//!     â”‚  3) Llama bmo_api::dispatch_syscall
-//!     â”‚  4) Emite resultado
-//!     â”‚  5) Retorna el valor
-//!     â–¼
+//!     |  1) Captura contexto (PID, TID, CR3)
+//!     |  2) Llama gateway::enter
+//!     |  3) Retorna el resultado en rax
+//!     v
+//! bmo_core::gateway::enter   <- ESTE MODULO
+//!     |  1) Valida con ByteDefender
+//!     |  2) Emite evento a Cabina
+//!     |  3) Llama bmo_api::dispatch_syscall
+//!     |  4) Emite resultado
+//!     |  5) Retorna el valor
+//!     v
 //! return to ring0::arch::syscall
-//!     â”‚  iretq â†’ Ring 3
-//!     â–¼
+//!     |  iretq -> Ring 3
+//!     v
 //! Ring 3 app continues
 //! ```
-//!
-//! ## Â¿Por quÃ©?
-//!
-//! - **AbstracciÃ³n**: Ring 0 no conoce los detalles de BMO API.
-//! - **Observabilidad**: cada syscall pasa por Cabina (auditorÃ­a).
-//! - **Seguridad**: cada syscall pasa por ByteDefender (capabilities).
-//! - **Extensibilidad**: aÃ±adir quotas/auditorÃ­a solo toca el gateway.
-//!
-//! ## v1.8.8 â€” Alcance
-//!
-//! - El gateway **delega** a `bmo_api::dispatch_syscall` (mismo resultado).
-//! - Cabina emite `info` por cada syscall.
-//! - ByteDefender valida capabilities (W^X, syscalls peligrosas).
-//! - Tests integrados para validar el pipeline completo.
 
 #![allow(dead_code)]
 
 use crate::bmo_abi::syscalls;
+use core::sync::atomic::{AtomicU64, Ordering};
 
-/// VersiÃ³n del gateway. Incrementar cuando cambia el contrato.
+/// Version del gateway. Incrementar cuando cambia el contrato.
 pub const GATEWAY_VERSION: (u8, u8) = (1, 0);
 
-/// EstadÃ­sticas del gateway (acumuladas desde boot).
-static mut TOTAL_SYSCALLS: u64 = 0;
-static mut ALLOWED_SYSCALLS: u64 = 0;
-static mut DENIED_SYSCALLS: u64 = 0;
-static mut UNKNOWN_SYSCALLS: u64 = 0;
+/// Estadisticas del gateway (acumuladas desde boot).
+static TOTAL_SYSCALLS: AtomicU64 = AtomicU64::new(0);
+static ALLOWED_SYSCALLS: AtomicU64 = AtomicU64::new(0);
+static DENIED_SYSCALLS: AtomicU64 = AtomicU64::new(0);
+static UNKNOWN_SYSCALLS: AtomicU64 = AtomicU64::new(0);
 
 /// Inicializa el gateway (no-op en v1.8.8).
 pub fn init() {
-    crate::cabina::info("gateway", "gateway v1.0 online â€” single door to BMO Core");
+    crate::cabina::info("gateway", "gateway v1.0 online - single door to BMO Core");
 }
 
-/// Punto de entrada ÃšNICO para syscalls desde Ring 3.
+/// Punto de entrada UNICO para syscalls desde Ring 3.
 ///
-/// Esta funciÃ³n se llama desde `ring0::arch::syscall` despuÃ©s de
-/// capturar el contexto del proceso. Es la **Ãºnica funciÃ³n** que Ring 0
+/// Esta funcion se llama desde `ring0::arch::syscall` despues de
+/// capturar el contexto del proceso. Es la **unica funcion** que Ring 0
 /// puede llamar para delegar un syscall a BMO Core.
-///
-/// ## ParÃ¡metros
-///
-/// - `nr`: nÃºmero de syscall (0x100..0x1FF en la ABI BMO).
-/// - `a0..a5`: hasta 6 argumentos (System V AMD64).
-///
-/// ## Retorno
-///
-/// El valor a poner en rax antes de `iretq`. Si el syscall no existe,
-/// retorna un cÃ³digo de error (los errores canÃ³nicos de
-/// `bmo_abi::error_code`).
 pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
-    unsafe { TOTAL_SYSCALLS += 1; }
+    TOTAL_SYSCALLS.fetch_add(1, Ordering::Relaxed);
 
-    // â”€â”€ 1. Validar rango BMO ABI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Los NR_* vÃ¡lidos estÃ¡n en 0x100..0x1FF.
+    // 1. Validar rango BMO ABI
     if nr < 0x100 || nr > 0x1FF {
-        unsafe { UNKNOWN_SYSCALLS += 1; }
+        UNKNOWN_SYSCALLS.fetch_add(1, Ordering::Relaxed);
         crate::cabina::warn_u64("gateway", "syscall out of range", nr as u64);
         return crate::bmo_abi::error_code::BmoErrorCode::InvalidArgument as u64;
     }
 
-    // â”€â”€ 2. ByteDefender: valida capabilities del proceso actual â”€â”€
-    // v1.8.8: stub. En v1.9 se consulta el proceso real.
+    // 2. ByteDefender: valida capabilities del proceso actual
     if !defense_allows(nr) {
-        unsafe { DENIED_SYSCALLS += 1; }
+        DENIED_SYSCALLS.fetch_add(1, Ordering::Relaxed);
         crate::cabina::fault_u64("gateway", "syscall denied by ByteDefender", nr as u64);
         return crate::bmo_abi::error_code::BmoErrorCode::PermissionDenied as u64;
     }
 
-    // â”€â”€ 3. Cabina: registra el syscall entrante â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // 3. Cabina: registra el syscall entrante
     let name = syscall_name(nr);
     crate::cabina::trace_u64("gateway", &name, nr as u64);
 
-    // â”€â”€ 4. BMO API: ejecuta el syscall real â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // 4. BMO API: ejecuta el syscall real
     let result = crate::bmo_api::dispatch_syscall(nr, a0, a1, a2, a3, a4, a5);
 
-    // â”€â”€ 5. Cabina: registra el resultado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // 5. Cabina: registra el resultado
     if result == 0 {
-        unsafe { ALLOWED_SYSCALLS += 1; }
+        ALLOWED_SYSCALLS.fetch_add(1, Ordering::Relaxed);
     } else if is_fatal_error(result) {
         crate::cabina::fault_u64("gateway", "syscall returned fatal", result);
-    } else {
-        // Resultado no-fatal: solo trace.
     }
 
     result
 }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Helpers ---
 
 /// Traduce un NR_* a su nombre legible para Cabina.
 fn syscall_name(nr: u16) -> &'static str {
@@ -159,7 +131,7 @@ fn defense_allows(_nr: u16) -> bool {
     true
 }
 
-/// Â¿Es un error fatal (el proceso deberÃ­a morir)?
+/// Es un error fatal (el proceso deberia morir)?
 fn is_fatal_error(code: u64) -> bool {
     use crate::bmo_abi::error_code::BmoErrorCode;
     matches!(
@@ -169,17 +141,16 @@ fn is_fatal_error(code: u64) -> bool {
     )
 }
 
-// â”€â”€ EstadÃ­sticas (read-only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Estadisticas (read-only) ---
 
-pub fn total() -> u64 { unsafe { TOTAL_SYSCALLS } }
-pub fn allowed() -> u64 { unsafe { ALLOWED_SYSCALLS } }
-pub fn denied() -> u64 { unsafe { DENIED_SYSCALLS } }
-pub fn unknown() -> u64 { unsafe { UNKNOWN_SYSCALLS } }
+pub fn total() -> u64 { TOTAL_SYSCALLS.load(Ordering::Relaxed) }
+pub fn allowed() -> u64 { ALLOWED_SYSCALLS.load(Ordering::Relaxed) }
+pub fn denied() -> u64 { DENIED_SYSCALLS.load(Ordering::Relaxed) }
+pub fn unknown() -> u64 { UNKNOWN_SYSCALLS.load(Ordering::Relaxed) }
 
 pub mod tests;
 
 /// Observa el lanzamiento de una app de Ring 3.
-/// Llamado por `userland::app::run` antes de saltar a Ring 3.
 pub fn observe_launch(name: &str, format: crate::bef::parsers::BinaryFormat) {
     use crate::bef::parsers::BinaryFormat;
     let fmt = match format {
@@ -188,7 +159,3 @@ pub fn observe_launch(name: &str, format: crate::bef::parsers::BinaryFormat) {
     };
     crate::cabina::info("gateway", &alloc::format!("launch: {} (format={})", name, fmt));
 }
-
-
-
-

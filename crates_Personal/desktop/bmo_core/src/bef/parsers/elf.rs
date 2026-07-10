@@ -12,6 +12,14 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let mut img = fake_provenance_image(Provenance::ElfDevoured);
     img.entry_point = elf.entry;
 
+    // Validate entry point falls within a loaded segment.
+    let entry_valid = elf.program_headers.iter()
+        .filter(|ph| ph.p_type == program_header::PT_LOAD)
+        .any(|ph| elf.entry >= ph.p_vaddr && elf.entry < ph.p_vaddr + ph.p_memsz);
+    if !entry_valid && elf.entry != 0 {
+        return Err(LoadError::InvalidHeader);
+    }
+
     for phdr in &elf.program_headers {
         if phdr.p_type != program_header::PT_LOAD { continue; }
         let mut flags = 0u32;
@@ -21,6 +29,9 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         let kind = pick_kind_from_flags(phdr.p_flags);
 
         let alloc_size = phdr.p_memsz as usize;
+        if alloc_size > 0x0010_0000_0000 {
+            continue; // Reject absurdly large segments (>256 GB).
+        }
         let align = 4096usize;
         let aligned_size = (alloc_size + align - 1) & !(align - 1);
 
@@ -56,7 +67,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let tls_segment = elf.program_headers.iter()
         .find(|ph| ph.p_type == program_header::PT_TLS);
     if let Some(tls) = tls_segment {
-        img.tls_offset = tls.p_offset;
+        img.tls_offset = tls.p_vaddr;
         img.tls_size = tls.p_memsz;
     }
 
@@ -185,7 +196,8 @@ fn resolve_plt_symbols(elf: &Elf, img: &mut Image, bytes: &[u8]) {
                     let offset_in_section = (got_va - section.virt_addr) as usize;
                     if offset_in_section + 8 <= section.size as usize {
                         unsafe {
-                            core::ptr::write((section.data_ptr as *mut u64).add(offset_in_section / 8), addr);
+                            let ptr = (section.data_ptr as *mut u8).add(offset_in_section) as *mut u64;
+                            core::ptr::write(ptr, addr);
                         }
                     }
                 }

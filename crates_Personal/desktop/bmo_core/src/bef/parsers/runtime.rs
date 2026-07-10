@@ -50,6 +50,26 @@ static mut SYMBOL_TABLE: [RuntimeSymbol; MAX_SYMBOLS] = [RuntimeSymbol {
 }; MAX_SYMBOLS];
 static mut SYMBOL_COUNT: usize = 0;
 
+/// Spinlock for symbol table access (disable interrupts while held).
+static mut TABLE_LOCK: bool = false;
+
+fn lock_table() {
+    unsafe {
+        core::arch::asm!("cli");
+        while TABLE_LOCK {
+            core::hint::spin_loop();
+        }
+        TABLE_LOCK = true;
+    }
+}
+
+fn unlock_table() {
+    unsafe {
+        TABLE_LOCK = false;
+        core::arch::asm!("sti");
+    }
+}
+
 /// Hash a string for symbol lookup (FNV-1a 32-bit).
 pub fn hash_symbol(name: &[u8]) -> u32 {
     let mut h: u32 = 0x811c_9dc5;
@@ -62,9 +82,11 @@ pub fn hash_symbol(name: &[u8]) -> u32 {
 
 /// Register a symbol in the runtime table.
 pub fn register_symbol(lib: &'static str, name: &'static str, addr: u64, flags: u32) {
+    lock_table();
     unsafe {
         if SYMBOL_COUNT >= MAX_SYMBOLS {
             crate::cabina::warn("bef", "runtime symbol table full");
+            unlock_table();
             return;
         }
         let hash = hash_symbol(name.as_bytes());
@@ -77,39 +99,49 @@ pub fn register_symbol(lib: &'static str, name: &'static str, addr: u64, flags: 
         };
         SYMBOL_COUNT += 1;
     }
+    unlock_table();
 }
 
 /// Look up a symbol by library + name. Returns the resolved address or 0.
 pub fn lookup(lib: &str, name: &str) -> u64 {
     let name_hash = hash_symbol(name.as_bytes());
-    unsafe {
+    lock_table();
+    let result = unsafe {
+        let mut found = 0u64;
         for i in 0..SYMBOL_COUNT {
             let sym = &SYMBOL_TABLE[i];
             if sym.hash == name_hash && sym.name == name {
-                // If lib is specified, also match library name.
                 if !lib.is_empty() && !sym.lib.is_empty() && !eq_ci(sym.lib, lib) {
                     continue;
                 }
                 if sym.addr != 0 {
-                    return sym.addr;
+                    found = sym.addr;
+                    break;
                 }
             }
         }
-    }
-    0
+        found
+    };
+    unlock_table();
+    result
 }
 
 /// Look up a symbol by hash only (fast path).
 pub fn lookup_by_hash(hash: u32, name: &str) -> u64 {
-    unsafe {
+    lock_table();
+    let result = unsafe {
+        let mut found = 0u64;
         for i in 0..SYMBOL_COUNT {
             let sym = &SYMBOL_TABLE[i];
             if sym.hash == hash && sym.name == name {
-                return sym.addr;
+                found = sym.addr;
+                break;
             }
         }
-    }
-    0
+        found
+    };
+    unlock_table();
+    result
 }
 
 /// Register symbols from a BEF export table.
@@ -205,9 +237,12 @@ fn patch_binding(
             && binding_offset + 8 <= section.virt_addr + section.size
         {
             let offset_in_section = (binding_offset - section.virt_addr) as usize;
+            if section.data_ptr == 0 {
+                continue;
+            }
             unsafe {
-                let ptr = (section.virt_addr as *mut u64).add(offset_in_section / 8);
-                *ptr = addr;
+                let ptr = (section.data_ptr as *mut u8).add(offset_in_section) as *mut u64;
+                core::ptr::write(ptr, addr);
             }
             return Ok(());
         }
@@ -242,13 +277,22 @@ pub fn register_elf_thunk_symbols() {
     }
 }
 
-/// Normalize ELF library names (e.g., "libc.so.6" -> "libc.so").
+/// Normalize ELF library names.
+/// "libc.so.6" -> "libc.so" (strip version suffix)
+/// "libpthread.so.0" -> "libpthread.so"
+/// "libm.so" -> "libm.so" (already normalized)
 fn normalize_lib_name<'a>(name: &'a str) -> &'a str {
-    if let Some(pos) = name.find('.') {
-        &name[..pos]
-    } else {
-        name
+    // Find the last dot that precedes a digit (version suffix).
+    if let Some(pos) = name.rfind('.') {
+        // If what follows the last dot is a digit, strip it.
+        // "libc.so.6" -> last dot at pos=7, "6" is digit -> "libc.so"
+        // "libc.so" -> last dot at pos=5, "so" is NOT digit -> keep as-is
+        let after = &name[pos + 1..];
+        if after.bytes().all(|b| b.is_ascii_digit()) && !after.is_empty() {
+            return &name[..pos];
+        }
     }
+    name
 }
 
 /// Case-insensitive string comparison.
