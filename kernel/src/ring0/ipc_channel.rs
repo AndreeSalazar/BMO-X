@@ -111,10 +111,9 @@ pub fn sys_channel_phys() -> u64 {
 
 /// Push an event into the system channel (called from IRQ handlers).
 /// These go into the submit_ring; Ring 3 reads from complete_ring.
-pub fn sys_send(opcode: u64, arg0: u64, arg1: u64, arg2: u64) {
+pub fn sys_send(opcode: u64, arg0: u64, arg1: u64, arg2: u64) -> bool {
     let ch = unsafe { &SYS_CHANNEL.ch };
-    ch.ring3_submit(opcode, arg0, arg1, arg2);
-    ch.ring3_doorbell();
+    ch.ring3_send(opcode, arg0, arg1, arg2)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -311,9 +310,8 @@ pub fn tick_all() {
     // Speaker timeout
     crate::dev::pc_speaker::tick();
 
-    // Poll keyboard + mouse (IRQ-driven once IOAPIC is configured)
+    // Poll the shared i8042 once; it routes keyboard and mouse bytes.
     crate::irq::keyboard::tick();
-    crate::irq::mouse::tick();
 
     // Process Ring 0 → Ring 3 system channel (forward HW events to ring 3)
     let ch = unsafe { &SYS_CHANNEL.ch };
@@ -366,8 +364,7 @@ pub fn init() {
     }
     let phys = sys_channel_phys();
     unsafe { core::ptr::write_volatile(0x9_0160 as *mut u64, phys); }
-    crate::irq::keyboard::init();
-    crate::irq::mouse::init();
+    let _ = crate::irq::i8042::init();
 
     // Emit a one-shot BOOT_READY event so userland can detect when the HAL
     // is fully up.

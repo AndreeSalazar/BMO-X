@@ -52,11 +52,10 @@ fn ensure_input_ready() {
         if let Some(h) = hal::HAL.as_ref() {
             let ok = (h.input_init)();
             serial_write("[input] HAL input_init() = ");
-            serial_write(if ok { "OK\n" } else { "FAIL (using direct PS/2)\n" });
-            if !ok {
-                PS2_FALLBACK = true;
-                ps2_init_direct();
-            }
+            // Ring 0 exclusively owns the shared i8042 ports. Falling back
+            // to direct port I/O here races the kernel and hangs on systems
+            // without a legacy controller.
+            serial_write(if ok { "OK\n" } else { "UNAVAILABLE\n" });
         } else {
             PS2_FALLBACK = true;
             ps2_init_direct();

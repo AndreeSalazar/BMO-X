@@ -84,6 +84,7 @@ pub fn init() {
         }
     }
     INITIALIZED.store(true, Ordering::Release);
+    let _ = crate::dev::hda::probe();
 }
 
 /// Set master volume 0..256.

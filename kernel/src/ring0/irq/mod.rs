@@ -13,8 +13,10 @@
 pub mod lapic;
 pub mod ioapic;
 pub mod msi;
+pub mod i8042;
 pub mod keyboard;
 pub mod mouse;
+pub mod apic_mmio;
 
 /// Maximum IRQ vectors supported.
 const MAX_HANDLERS: usize = 256;

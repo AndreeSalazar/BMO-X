@@ -40,6 +40,12 @@ impl InputEvent {
         Self { timestamp: 0, device_id: 0, kind: InputEventKind::KeyDown, _pad: 0, code: 0, value: 0 }
     }
 
+    /// True for a PS/2 Set-1 key preceded by E0. Non-keyboard backends may
+    /// leave this false or map their equivalent extended-key flag here.
+    pub fn is_extended_key(&self) -> bool {
+        self.value & 1 != 0
+    }
+
     pub fn mouse_dx(&self) -> i16 {
         (self.value & 0xFFFF) as i16
     }

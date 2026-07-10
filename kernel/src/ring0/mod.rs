@@ -71,6 +71,12 @@ pub mod irq;
 pub mod ipc_channel;
 
 // ═══════════════════════════════════════════════════════════════════
+//  Integration — Connect all new subsystems (APIC MMIO, Ring 3, AHCI, SMP)
+// ═══════════════════════════════════════════════════════════════════
+
+pub mod integration;
+
+// ═══════════════════════════════════════════════════════════════════
 //  Re-exports — framebuffer globals shared with bootloader
 // ═══════════════════════════════════════════════════════════════════
 

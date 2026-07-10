@@ -37,7 +37,9 @@ pub mod pc_speaker;
 
 // ── Audio mixer (PC speaker + HDA backend) ───────────────────────
 pub mod audio;
+pub mod hda;
 
 // ── Storage + FS HAL (stubs until AHCI/FAT32 land) ──────────────
 pub mod storage;
 pub mod fs;
+pub mod ahci;

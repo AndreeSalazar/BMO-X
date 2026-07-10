@@ -184,11 +184,7 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         // ═══════════════════════════════════════════════════════════
         //  Input HAL — drains BMO system channel into InputEvent[]
         // ═══════════════════════════════════════════════════════════
-        input_init:               || {
-            crate::irq::keyboard::init();
-            crate::irq::mouse::init();
-            true
-        },
+        input_init:               crate::irq::i8042::init,
         input_poll:               |buf: &mut [bmo_hal_defs::InputEvent]| {
             use bmo_channel::Channel;
             let phys = crate::channel::sys_channel_phys();
@@ -196,14 +192,14 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
             if virt == 0 { return 0; }
             let ch = unsafe { &*(virt as *const Channel) };
             let mut count = 0;
-            ch.ring3_poll(|opcode, a0, a1, _a2| {
+            ch.ring3_poll_n(buf.len(), |opcode, a0, a1, a2| {
                 if count >= buf.len() { return; }
                 let (kind, code, value) = match opcode {
                     crate::ring0::ipc_channel::OP_KEY_SCANCODE => {
                         let pressed = a1 != 0;
                         (if pressed { bmo_hal_defs::InputEventKind::KeyDown }
                                 else { bmo_hal_defs::InputEventKind::KeyUp },
-                                a0 as u8, 0u64)
+                                a0 as u8, a2 & 1)
                     }
                     crate::ring0::ipc_channel::OP_MOUSE_MOVE => {
                         let dx = a0 as u16 as u64;

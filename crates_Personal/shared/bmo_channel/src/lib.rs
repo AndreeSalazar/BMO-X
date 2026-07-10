@@ -116,12 +116,19 @@ impl Channel {
 
     /// Ring 3: poll for completed responses. Returns number of entries consumed.
     /// The callback receives each completed entry.
-    pub fn ring3_poll<F: FnMut(u64, u64, u64, u64)>(&self, mut callback: F) -> usize {
+    pub fn ring3_poll<F: FnMut(u64, u64, u64, u64)>(&self, callback: F) -> usize {
+        self.ring3_poll_n(RING_SIZE, callback)
+    }
+
+    /// Ring 3: consume at most `limit` completed entries, preserving the
+    /// remainder for a later poll.
+    pub fn ring3_poll_n<F: FnMut(u64, u64, u64, u64)>(&self, limit: usize, mut callback: F) -> usize {
         let head = self.complete_head.load(Ordering::Acquire);
         let mut tail = self.complete_tail.load(Ordering::Relaxed);
         let mut count = 0;
+        let limit = limit.min(RING_SIZE);
 
-        while tail < head && count < RING_SIZE {
+        while tail < head && count < limit {
             let idx = (tail % RING_SIZE as u64) as usize;
             let entry = unsafe { &*core::ptr::addr_of!(self.complete_ring[idx]) };
             if entry.opcode != 0 {
@@ -155,6 +162,9 @@ impl Channel {
         let mut count = 0;
 
         while tail < head && count < RING_SIZE {
+            let complete_head = self.complete_head.load(Ordering::Relaxed);
+            let complete_tail = self.complete_tail.load(Ordering::Acquire);
+            if complete_head.wrapping_sub(complete_tail) >= RING_SIZE as u64 { break; }
             let idx = (tail % RING_SIZE as u64) as usize;
             let entry = unsafe { &*core::ptr::addr_of!(self.submit_ring[idx]) };
             let (opcode, a0, a1, a2) = (entry.opcode, entry.arg0, entry.arg1, entry.arg2);
@@ -182,7 +192,7 @@ impl Channel {
         }
 
         self.submit_tail.store(tail, Ordering::Release);
-        self.doorbell.store(0, Ordering::Release);
+        self.doorbell.store((tail < head) as u64, Ordering::Release);
         count
     }
 }

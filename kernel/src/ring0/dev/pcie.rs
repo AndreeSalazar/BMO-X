@@ -359,6 +359,19 @@ pub fn device_count() -> usize {
     unsafe { SCAN_RESULT.as_ref().map(|r| r.count).unwrap_or(0) }
 }
 
+/// Return the first discovered PCI function matching a class/subclass pair.
+/// Keeping the BDF is required by real drivers that later need to configure
+/// PCI command bits or capabilities; returning only a BAR loses that context.
+pub fn find_by_class(class_code: u8, subclass: u8) -> Option<PciDevice> {
+    unsafe {
+        SCAN_RESULT.as_ref().and_then(|r| {
+            r.devices[..r.count].iter().copied().find(|d| {
+                d.class_code == class_code && d.subclass == subclass
+            })
+        })
+    }
+}
+
 /// Check if any PCI device is AHCI/SATA (class 0x01, subclass 0x06).
 pub fn has_ahci() -> bool {
     unsafe {
