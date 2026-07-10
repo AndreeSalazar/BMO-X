@@ -6,14 +6,28 @@ use bmo_boot_protocol::PixelFormat;
 #[derive(Debug, Clone, Copy)]
 pub struct Framebuffer {
     base: u64,
-    stride: u64,
+    /// Stride in **bytes** (UEFI GOP returns stride in pixels, multiply by 4).
+    stride_bytes: u64,
     width: u32,
     height: u32,
+    /// Pixel format of THIS framebuffer (backbuffer is always XRGB8888).
+    format: PixelFormat,
 }
 
 impl Framebuffer {
-    pub fn new(base: u64, stride: u64, width: u32, height: u32) -> Self {
-        Self { base, stride, width, height }
+    pub fn new(base: u64, stride_bytes: u64, width: u32, height: u32, format: PixelFormat) -> Self {
+        Self { base, stride_bytes, width, height, format }
+    }
+
+    /// Convert a 0xAARRGGBB value to the target pixel format.
+    /// BGR and RGB swap bytes 0/2 (red <-> blue) but keep alpha at byte 3.
+    #[inline]
+    fn convert_color(c: u32, dst_fmt: PixelFormat) -> u32 {
+        match dst_fmt {
+            PixelFormat::Rgb  => c,
+            PixelFormat::Bgr  => (c & 0xFF00_FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF),
+            _ => c,
+        }
     }
 
     pub fn blit_to(&self, dest: &Framebuffer) {
@@ -21,13 +35,15 @@ impl Framebuffer {
         let dst = dest.base as *mut u32;
         let copy_w = self.width.min(dest.width) as usize;
         let copy_h = self.height.min(dest.height) as usize;
-        let src_stride = (self.stride / 4) as usize;
-        let dst_stride = (dest.stride / 4) as usize;
+        let src_stride = (self.stride_bytes / 4) as usize;
+        let dst_stride = (dest.stride_bytes / 4) as usize;
+        let same_format = self.format as u32 == dest.format as u32;
         for y in 0..copy_h {
             for x in 0..copy_w {
                 unsafe {
                     let pixel = *src.add(y * src_stride + x);
-                    *dst.add(y * dst_stride + x) = pixel;
+                    let out = if same_format { pixel } else { Self::convert_color(pixel, dest.format) };
+                    *dst.add(y * dst_stride + x) = out;
                 }
             }
         }
@@ -85,6 +101,18 @@ pub fn init() {
 }
 
 pub fn init_gop(fb_base: u64, width: u32, height: u32, stride: u32, pixel_format: PixelFormat) {
+    if fb_base == 0 || width == 0 || height == 0 || stride == 0 {
+        crate::dev::console::serial_write("[fb] invalid GOP geometry: base=");
+        crate::dev::console::serial_write_u64(fb_base, 16);
+        crate::dev::console::serial_write(" w=");
+        crate::dev::console::serial_write_u64(width as u64, 10);
+        crate::dev::console::serial_write(" h=");
+        crate::dev::console::serial_write_u64(height as u64, 10);
+        crate::dev::console::serial_write(" stride=");
+        crate::dev::console::serial_write_u64(stride as u64, 10);
+        crate::dev::console::serial_write("\n");
+        return;
+    }
     unsafe {
         GOP_DISPLAY = Some(GopDisplay {
             base: fb_base as *mut u32,
@@ -94,6 +122,17 @@ pub fn init_gop(fb_base: u64, width: u32, height: u32, stride: u32, pixel_format
             pixel_format,
         });
     }
+    crate::dev::console::serial_write("[fb] GOP initialized: ");
+    crate::dev::console::serial_write_u64(width as u64, 10);
+    crate::dev::console::serial_write("x");
+    crate::dev::console::serial_write_u64(height as u64, 10);
+    crate::dev::console::serial_write(" stride=");
+    crate::dev::console::serial_write_u64(stride as u64, 10);
+    crate::dev::console::serial_write("px base=0x");
+    crate::dev::console::serial_write_u64(fb_base, 16);
+    crate::dev::console::serial_write(" fmt=");
+    crate::dev::console::serial_write_u64(pixel_format as u64, 10);
+    crate::dev::console::serial_write("\n");
 }
 
 #[allow(static_mut_refs)]
@@ -150,7 +189,8 @@ pub fn get_backbuffer_fb() -> Framebuffer {
         } else {
             (BACKBUFFER_WIDTH as u32, BACKBUFFER_HEIGHT as u32)
         };
-        Framebuffer::new(addr, (BACKBUFFER_WIDTH * 4) as u64, width, height)
+        // Backbuffer is always XRGB8888 (PixelFormat::Rgb == 0)
+        Framebuffer::new(addr, (BACKBUFFER_WIDTH * 4) as u64, width, height, PixelFormat::Rgb)
     }
 }
 
@@ -164,6 +204,7 @@ pub fn present() {
             (disp.stride as u64) * 4,
             disp.width,
             disp.height,
+            disp.pixel_format,
         );
         backbuffer.blit_to(&dest);
     }

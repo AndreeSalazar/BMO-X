@@ -232,4 +232,21 @@ pub fn init_gdt() {
             options(nostack),
         );
     }
+
+    crate::dev::console::serial_write("[gdt] GDT loaded: ");
+    crate::dev::console::serial_write_u64(core::mem::size_of::<Gdt>() as u64, 10);
+    crate::dev::console::serial_write(" bytes, KERNEL_CS=0x");
+    crate::dev::console::serial_write_u64(KERNEL_CS as u64, 16);
+    crate::dev::console::serial_write(" USER_CS=0x");
+    crate::dev::console::serial_write_u64(USER_CS as u64, 16);
+    crate::dev::console::serial_write(" TSS=0x");
+    crate::dev::console::serial_write_u64(TSS_SEL as u64, 16);
+    crate::dev::console::serial_write("\n");
+    crate::dev::console::serial_write("[gdt] IST1=0x");
+    crate::dev::console::serial_write_u64(unsafe { TSS.ist[0] }, 16);
+    crate::dev::console::serial_write(" IST3=0x");
+    crate::dev::console::serial_write_u64(unsafe { TSS.ist[2] }, 16);
+    crate::dev::console::serial_write(" RSP0=0x");
+    crate::dev::console::serial_write_u64(unsafe { TSS.rsp[0] }, 16);
+    crate::dev::console::serial_write("\n");
 }

@@ -26,8 +26,15 @@ pub enum TimerSource {
     Pit,
 }
 
-/// Global timer state.
+/// Global timer state. Defaults to TSC (always available after
+/// `tsc::calibrate()` ran). The timer subsystem upgrades to HPET if
+/// one is detected.
 static mut CURRENT_SOURCE: TimerSource = TimerSource::Tsc;
+
+/// Returns the currently active timer source.
+pub fn current_source() -> TimerSource {
+    unsafe { CURRENT_SOURCE }
+}
 
 /// Initialize the timer subsystem.
 pub fn init() {
@@ -51,10 +58,11 @@ pub fn init() {
 /// Also updates the vDSO page for Ring 3 fast access.
 pub fn now_ns() -> u64 {
     crate::vdso::tick();
-    match unsafe { CURRENT_SOURCE } {
+    let source = unsafe { CURRENT_SOURCE };
+    match source {
         TimerSource::Hpet => super::hpet::now_ns(),
-        TimerSource::Tsc => super::timestamp::tsc_to_ns(crate::cpu::rdtsc()),
-        _ => super::timestamp::tsc_to_ns(crate::cpu::rdtsc()),
+        TimerSource::ApicTimer | TimerSource::Tsc | TimerSource::Pit =>
+            super::timestamp::tsc_to_ns(crate::cpu::rdtsc()),
     }
 }
 

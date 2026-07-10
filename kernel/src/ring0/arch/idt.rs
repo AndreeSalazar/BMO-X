@@ -16,6 +16,17 @@ use core::arch::{asm, naked_asm};
 /// Monotonic tick counter for periodic housekeeping.
 static mut TICK_COUNT: u64 = 0;
 
+/// Per-vector exception counter (for diagnostics). Incremented on
+/// every exception dispatch so a stuck-firing exception is easy to
+/// spot from the serial log.
+static mut EXC_COUNT: [u64; 32] = [0; 32];
+
+#[inline]
+pub fn exc_count(vector: u8) -> u64 {
+    let v = (vector as usize) & 0x1F;
+    unsafe { EXC_COUNT[v] }
+}
+
 /// IDT entry (16 bytes in Long Mode).
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -196,7 +207,16 @@ unsafe extern "C" fn isr_stub_general_protection() {
     );
 }
 
-/// #PF â€” kill current process, capturing CR2 for diagnostics.
+/// #PF — kill current process, capturing CR2 for diagnostics.
+///
+/// Stack layout at entry (top to bottom):
+///   [rsp +  0..56]  7 caller-saved registers we pushed (r9, r8, rcx, rdx, rsi, rdi, rax)
+///   [rsp + 56]      CPU-pushed error code
+///   [rsp + 64]      CPU-pushed RIP
+///   [rsp + 72]      CPU-pushed CS
+///   [rsp + 80]      CPU-pushed RFLAGS
+///   [rsp + 88]      CPU-pushed RSP
+///   [rsp + 96]      CPU-pushed SS
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_page_fault() {
     naked_asm!(
@@ -211,23 +231,23 @@ unsafe extern "C" fn isr_stub_page_fault() {
 
         // Get error code and CR2
         "mov rdi, 14",                 // vector = #PF (14)
-        "mov rsi, [rsp + 56]",         // error code (after 7 pushes)
+        "mov rsi, [rsp + 56]",         // error code (pushed by CPU at rsp+56 after our 7*8=56 bytes)
         "mov rdx, cr2",                // faulting address
 
-        // Call Rust handler â€” returns bool (true = resolved, false = kill)
+        // Call Rust handler — returns bool (true = resolved, false = kill)
         "call page_fault_handler_rust",
         "test al, al",
         "jnz 2f",                      // if resolved, skip to iretq
 
-        // Not resolved â€” call kill handler (never returns)
+        // Not resolved — call kill handler (never returns)
         "mov rdi, 14",
-        "mov rsi, [rsp + 56]",
-        "mov rdx, cr2",
-        "mov rcx, [rsp + 64]",         // faulting RIP
-        "mov r8, [rsp + 88]",          // faulting RSP
+        "mov rsi, [rsp + 56]",         // error code
+        "mov rdx, cr2",                // CR2
+        "mov rcx, [rsp + 64]",         // faulting RIP (CPU pushed at rsp+64)
+        "mov r8, [rsp + 88]",          // faulting RSP (CPU pushed at rsp+88)
         "call exception_kill_handler_rust",
 
-        "2:", // Fault resolved â€” pop ctx and return
+        "2:", // Fault resolved — pop ctx and return
         "pop r9",
         "pop r8",
         "pop rcx",
@@ -239,12 +259,22 @@ unsafe extern "C" fn isr_stub_page_fault() {
     );
 }
 
-/// Default IRQ handler (vectors 34-47) â€” just iretq since PIC is removed.
+/// Default IRQ handler (vectors 34-47) — just iretq since PIC is removed.
 #[unsafe(naked)]
 unsafe extern "C" fn isr_stub_default_irq() {
     naked_asm!(
         "iretq",
     );
+}
+
+/// Increment per-vector counter from naked stubs. Pass the vector
+/// in AL. The Rust function is `extern "C"` so a normal prologue +
+/// epilogue is generated. Callers must preserve all caller-saved
+/// registers across the call.
+#[inline(never)]
+pub fn tick_exc(vector: u8) {
+    let v = (vector as usize) & 0x1F;
+    unsafe { EXC_COUNT[v] = EXC_COUNT[v].saturating_add(1); }
 }
 
 /// #UD â€” Invalid Opcode (ud2, undefined instruction). Kill current process.
@@ -582,8 +612,8 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
                 let shade = 0x40u32.saturating_add(((y as u32) * 0x30) / (h as u32).max(1));
                 let color = 0xFF000000 | (shade << 16);
                 buf.add(y * s + x).write_volatile(color);
-    }
-}
+            }
+        }
 
         let fill_rect = |px: usize, py: usize, rw: usize, rh: usize, color: u32| {
             let x1 = (px + rw).min(w);
@@ -735,10 +765,13 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
 
     // Telemetry per exception type
     match vector {
-        14 => { loop { unsafe { core::arch::asm!("hlt"); } } }13 => { loop { unsafe { core::arch::asm!("hlt"); } } }7  => {}
+        14 => { loop { unsafe { core::arch::asm!("hlt"); } } }
+        13 => { loop { unsafe { core::arch::asm!("hlt"); } } }
+        7  => {}
         6  => {}
         8  => {}
-        18 => { loop { unsafe { core::arch::asm!("hlt"); } } }_  => {}
+        18 => { loop { unsafe { core::arch::asm!("hlt"); } } }
+        _  => {}
     }
 
     match vector {
@@ -772,12 +805,17 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
             }
 
         }
-        13 => { loop { unsafe { core::arch::asm!("hlt"); } } }7 => { loop { unsafe { core::arch::asm!("hlt"); } } }8 => {
+        13 => { loop { unsafe { core::arch::asm!("hlt"); } } }
+        7 => { loop { unsafe { core::arch::asm!("hlt"); } } }
+        8 => {
             // #DF is unrecoverable in most cases. Show on framebuffer
             // and halt so the user sees the crash on screen.
             unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
         }
-        6 => { loop { unsafe { core::arch::asm!("hlt"); } } }18 => { loop { unsafe { core::arch::asm!("hlt"); } } }_ => { loop { unsafe { core::arch::asm!("hlt"); } } }}
+        6 => { loop { unsafe { core::arch::asm!("hlt"); } } }
+        18 => { loop { unsafe { core::arch::asm!("hlt"); } } }
+        _ => { loop { unsafe { core::arch::asm!("hlt"); } } }
+    }
 
     // All exceptions are fatal in Ring 0 -- halt
     unsafe { core::arch::asm!("cli"); }

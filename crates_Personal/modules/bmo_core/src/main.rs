@@ -323,11 +323,6 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
         (hal.write_crash_marker)(8);
         (hal.write_boot_stage)("welcome_dispatch");
 
-        // Boot chime — PC speaker audio feedback
-        ring3_foundation::sys_beep(523, 60);
-        ring3_foundation::sys_beep(659, 60);
-        ring3_foundation::sys_beep(784, 100);
-
         bmo_core::desktop::commands::enter_desktop();
     }
 

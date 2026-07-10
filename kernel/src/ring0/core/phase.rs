@@ -200,6 +200,15 @@ fn phase4_sched(_ctx: &mut BootContext, prev_end: u64) -> u64 {
     s_log("[phase4] === Scheduler Init ===");
     crate::proc::init();
     s_log("[phase4] scheduler tables initialized");
+
+    // Initialize audio mixer + BMO channel after the scheduler is up.
+    crate::dev::audio::init();
+    s_log("[phase4] audio mixer initialized");
+
+    // Initialize the BMO channel system + hardware polling (kbd, mouse).
+    crate::channel::init();
+    s_log("[phase4] BMO channel + input polling initialized");
+
     let phase4_end = crate::cpu::rdtsc();
     phase4_end
 }

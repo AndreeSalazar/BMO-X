@@ -34,3 +34,10 @@ pub mod power;
 
 // ── PC Speaker (PIT channel 2) ────────────────────────────────────
 pub mod pc_speaker;
+
+// ── Audio mixer (PC speaker + HDA backend) ───────────────────────
+pub mod audio;
+
+// ── Storage + FS HAL (stubs until AHCI/FAT32 land) ──────────────
+pub mod storage;
+pub mod fs;

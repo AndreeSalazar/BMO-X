@@ -171,31 +171,81 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         issue_ibpb:               crate::vendor::amd::cpu::zen3::errata_workarounds::issue_ibpb,
         amd_cpu_name:             || "AMD Ryzen",
 
-        // ── audio (stubbed — module provides HDA driver) ───────────
-        audio_init:               |_| {},
-        audio_play:               |_| {},
-        audio_play_logon_chime:   || {},
-        audio_beep:               |_, _| {},
-        audio_set_volume:         |_| {},
+        // ── audio (real mixer; HDA backend will swap in later) ───────
+        audio_init:               |_| crate::dev::audio::init(),
+        audio_play:               |_| { crate::dev::audio::play_click(880, 50); },
+        audio_play_logon_chime:   crate::dev::audio::play_logon_chime,
+        audio_beep:               |f, d| crate::dev::pc_speaker::beep(f, d),
+        audio_set_volume:         crate::dev::audio::set_volume,
 
-        // ── dev::storage (stubbed — module provides AHCI driver) ───
-        storage_test:             || false,
+        // ── dev::storage (real stub — fails loudly, not silently) ───
+        storage_test:             crate::dev::storage::self_test,
 
-        // ── input (stubbed — module provides input drivers) ─────────
-        input_init:               || false,
-        input_poll:               |_| 0,
+        // ═══════════════════════════════════════════════════════════
+        //  Input HAL — drains BMO system channel into InputEvent[]
+        // ═══════════════════════════════════════════════════════════
+        input_init:               || {
+            crate::irq::keyboard::init();
+            crate::irq::mouse::init();
+            true
+        },
+        input_poll:               |buf: &mut [bmo_hal_defs::InputEvent]| {
+            use bmo_channel::Channel;
+            let phys = crate::channel::sys_channel_phys();
+            let virt = crate::mm::vmm::phys_to_virt(phys);
+            if virt == 0 { return 0; }
+            let ch = unsafe { &*(virt as *const Channel) };
+            let mut count = 0;
+            ch.ring3_poll(|opcode, a0, a1, _a2| {
+                if count >= buf.len() { return; }
+                let (kind, code, value) = match opcode {
+                    crate::ring0::ipc_channel::OP_KEY_SCANCODE => {
+                        let pressed = a1 != 0;
+                        (if pressed { bmo_hal_defs::InputEventKind::KeyDown }
+                                else { bmo_hal_defs::InputEventKind::KeyUp },
+                                a0 as u8, 0u64)
+                    }
+                    crate::ring0::ipc_channel::OP_MOUSE_MOVE => {
+                        let dx = a0 as u16 as u64;
+                        let dy = a1 as u16 as u64;
+                        (bmo_hal_defs::InputEventKind::MouseMove, 0u8, (dy << 16) | dx)
+                    }
+                    crate::ring0::ipc_channel::OP_MOUSE_BUTTON => {
+                        (bmo_hal_defs::InputEventKind::MouseButton, 0u8, a0)
+                    }
+                    crate::ring0::ipc_channel::OP_MOUSE_WHEEL => {
+                        (bmo_hal_defs::InputEventKind::MouseWheel, 0u8, a0)
+                    }
+                    _ => return,
+                };
+                buf[count] = bmo_hal_defs::InputEvent {
+                    timestamp: crate::cpu::rdtsc(),
+                    device_id: 0,
+                    kind,
+                    _pad: 0,
+                    code,
+                    value,
+                };
+                count += 1;
+            });
+            count
+        },
 
-        // ── storage HAL (stubbed — module provides AHCI) ────────────
-        storage_read_sectors:     |_, _, _, _| false,
-        storage_write_sectors:    |_, _, _, _| false,
-        storage_port_count:       || 0,
-        storage_port_active:      |_| false,
+        // ═══════════════════════════════════════════════════════════
+        //  Storage HAL (safe stubs — return false on no-driver)
+        // ═══════════════════════════════════════════════════════════
+        storage_read_sectors:     |p, l, n, dst| unsafe { crate::dev::storage::read_sectors(p, l, n, dst) },
+        storage_write_sectors:    |p, l, n, src| unsafe { crate::dev::storage::write_sectors(p, l, n, src) },
+        storage_port_count:       crate::dev::storage::port_count,
+        storage_port_active:      crate::dev::storage::port_active,
 
-        // ── filesystem HAL (stubbed — module provides FAT32) ────────
+        // ═══════════════════════════════════════════════════════════
+        //  Filesystem HAL (safe stubs)
+        // ═══════════════════════════════════════════════════════════
         fs_mount:                 |_| false,
-        fs_read_file:             |_, _, _| None,
-        fs_write_file:            |_, _, _| false,
-        fs_find_subdir:           |_, _| None,
+        fs_read_file:             |_, path, buf| crate::dev::fs::read_file(path, buf),
+        fs_write_file:            |_, path, buf| crate::dev::fs::write_file(path, buf),
+        fs_find_subdir:           |_, path| crate::dev::fs::find_subdir(path),
     }
 }
 

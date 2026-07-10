@@ -85,3 +85,38 @@ pub fn serial_write_u64(value: u64, min_width: usize) {
         serial_write_byte(buf[i]);
     }
 }
+
+/// Write a u64 to serial as decimal.
+pub fn serial_write_u64_dec(value: u64) {
+    if value == 0 {
+        serial_write_byte(b'0');
+        return;
+    }
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    let mut v = value;
+    while v > 0 {
+        i -= 1;
+        buf[i] = b'0' + (v % 10) as u8;
+        v /= 10;
+    }
+    while i < buf.len() {
+        serial_write_byte(buf[i]);
+        i += 1;
+    }
+}
+
+/// Write a u32 to serial as hex padded to 8 chars (no prefix).
+pub fn serial_write_u32_hex(value: u32) {
+    serial_write_u64(value as u64, 8);
+}
+
+/// Convenience: write `name = 0xVAL (DEC)` on one line.
+pub fn serial_kv_u64(name: &str, val: u64) {
+    serial_write(name);
+    serial_write(" = 0x");
+    serial_write_u64(val, 16);
+    serial_write(" (");
+    serial_write_u64_dec(val);
+    serial_write(")\n");
+}

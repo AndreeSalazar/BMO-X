@@ -1,10 +1,18 @@
 ﻿//! Task model + ctx switching for BMO.
 
+extern crate alloc;
 
 use super::process::Pid;
 
 /// Maximum tasks system-wide.
 pub const MAX_TASKS: usize = 256;
+
+/// Per-task kernel stack size. Must be large enough for nested interrupts:
+///   1 IST frame (#DF) = 80 bytes
+///   1 ISR save        = 120 bytes
+///   1 syscall frame   = 160 bytes
+///   safety margin     = ~7 KiB
+pub const KERNEL_STACK_SIZE: usize = 8 * 1024;
 
 /// Task identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,9 +146,20 @@ static mut NEXT_TID: u32 = 1;
 /// Index of the currently running Task (or usize::MAX if none).
 static mut CURRENT_IDX: usize = usize::MAX;
 
-/// Allocate a new Task for a process.
+/// Allocate a new Task for a process. Each task gets its own kernel stack
+/// (8 KiB, 16-byte aligned) from the kernel heap. The previous behavior
+/// of leaving `kernel_stack_top = 0` caused a #PF in the first Ring 3→0
+/// transition because the CPU pushed the interrupt frame to address 0.
 pub fn alloc(pid: Pid, priority: super::Priority) -> Option<&'static mut Task> {
     unsafe {
+        // 1. Allocate kernel stack from heap (16-byte aligned)
+        let layout = core::alloc::Layout::from_size_align(KERNEL_STACK_SIZE, 16).ok()?;
+        let stack_base = alloc::alloc::alloc(layout) as u64;
+        if stack_base == 0 { return None; }
+        // Zero the stack to avoid leaking prior data into saved registers
+        core::ptr::write_bytes(stack_base as *mut u8, 0, KERNEL_STACK_SIZE);
+        let stack_top = stack_base + KERNEL_STACK_SIZE as u64;
+
         for i in 0..MAX_TASKS {
             if TASK_TABLE[i].state == State::Free {
                 TASK_TABLE[i].tid = Tid(NEXT_TID);
@@ -148,10 +167,13 @@ pub fn alloc(pid: Pid, priority: super::Priority) -> Option<&'static mut Task> {
                 TASK_TABLE[i].state = State::Ready;
                 TASK_TABLE[i].priority = priority;
                 TASK_TABLE[i].time_slice = priority_to_slice(priority);
+                TASK_TABLE[i].kernel_stack_top = stack_top;
                 NEXT_TID += 1;
                 return Some(&mut TASK_TABLE[i]);
             }
         }
+        // No free slot — return the stack to the allocator
+        alloc::alloc::dealloc(stack_base as *mut u8, layout);
         None
     }
 }
@@ -224,10 +246,9 @@ pub fn free_task(t: &mut Task) {
 
     // Free kernel stack
     if t.kernel_stack_top != 0 {
-        let kernel_stack_size = 8192; // KERNEL_STACK_PER_THREAD
         unsafe {
-            let layout = core::alloc::Layout::from_size_align(kernel_stack_size, 16).unwrap();
-            let ptr = (t.kernel_stack_top - kernel_stack_size as u64) as *mut u8;
+            let layout = core::alloc::Layout::from_size_align(KERNEL_STACK_SIZE, 16).unwrap();
+            let ptr = (t.kernel_stack_top - KERNEL_STACK_SIZE as u64) as *mut u8;
             alloc::alloc::dealloc(ptr, layout);
         }
         t.kernel_stack_top = 0;

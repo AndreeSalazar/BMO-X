@@ -83,9 +83,13 @@ pub unsafe fn init() {
     SMP_STATE = SmpState::Starting;
 
     // 2. Set up per-CPU data for BSP
+    // __bss_end is defined by the linker script and exported as a
+    // global symbol. The trampoline needs ~4 MiB of stack above BSS.
     let bsp_stack = {
         extern "C" { static __bss_end: u8; }
-        &__bss_end as *const u8 as u64 + 4 * 1024 * 1024 // 4 MB above BSS
+        let bss_end_addr = unsafe { &__bss_end as *const u8 as u64 };
+        // Align up to 2 MiB so the trampoline can use it as a base.
+        (bss_end_addr + 4 * 1024 * 1024) & !((1u64 << 21) - 1)
     };
     percpu::init_bsp(topo.bsp.apic_id as u32, bsp_stack);
     crate::dev::console::serial_write("[smp] BSP per-CPU initialized\n");

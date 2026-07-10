@@ -107,6 +107,17 @@ fn pit_wait_10ms() -> bool {
 pub fn init(tick_hz: u32) {
     unsafe {
         BASE = read_base();
+        if BASE == 0 {
+            crate::dev::console::serial_write("[lapic] FATAL: APIC base is 0 (no APIC?)\n");
+            return;
+        }
+        crate::dev::console::serial_write("[lapic] base=0x");
+        crate::dev::console::serial_write_u64(BASE, 16);
+        crate::dev::console::serial_write(" id=0x");
+        crate::dev::console::serial_write_u64(id() as u64, 16);
+        crate::dev::console::serial_write(" target=");
+        crate::dev::console::serial_write_u64(tick_hz as u64, 10);
+        crate::dev::console::serial_write(" Hz\n");
 
         // 1. Enable LAPIC (spurious vector = 0xFF + enable bit 8)
         let sp = read_reg(APIC_SPURIOUS);
@@ -126,20 +137,30 @@ pub fn init(tick_hz: u32) {
 
         if !pit_wait_10ms() {
             // Fallback: 1M ticks
+            crate::dev::console::serial_write("[lapic] PIT calibration timeout, using fallback\n");
             write_reg(APIC_INIT_COUNT, 1_000_000);
             write_reg(APIC_LVT_TIMER, TIMER_VECTOR as u32 | (1 << 17));
             return;
         }
 
-        let elapsed = 0xFFFF_FFFFu32.wrapping_sub(read_reg(APIC_CUR_COUNT));
-        let ticks_per_sec = (elapsed as u64).saturating_mul(100);
+        let elapsed = 0xFFFF_FFFFu32.wrapping_sub(read_reg(APIC_CUR_COUNT)) as u64;
+        let ticks_per_sec = elapsed.saturating_mul(100);
         if ticks_per_sec == 0 {
+            crate::dev::console::serial_write("[lapic] zero ticks per second, using fallback\n");
             write_reg(APIC_INIT_COUNT, 1_000_000);
             write_reg(APIC_LVT_TIMER, TIMER_VECTOR as u32 | (1 << 17));
             return;
         }
 
         let count = ((ticks_per_sec / tick_hz as u64) as u32).max(1);
+
+        crate::dev::console::serial_write("[lapic] calibrated: ");
+        crate::dev::console::serial_write_u64(ticks_per_sec, 10);
+        crate::dev::console::serial_write(" ticks/sec, count=");
+        crate::dev::console::serial_write_u64(count as u64, 10);
+        crate::dev::console::serial_write(" for ");
+        crate::dev::console::serial_write_u64(tick_hz as u64, 10);
+        crate::dev::console::serial_write(" Hz\n");
 
         // 6. Switch to periodic mode
         write_reg(APIC_LVT_TIMER, TIMER_VECTOR as u32 | (1 << 17));

@@ -437,6 +437,67 @@ pub unsafe fn map_user_demand(
     Ok(())
 }
 
+/// Unmap a user virtual address range. Frees the underlying physical
+/// pages back to the frame allocator and clears the PTEs. Intermediate
+/// page table pages are kept (cached) for reuse — freeing them would
+/// require atomic refcounting on a SMP system.
+pub unsafe fn unmap_user_range(
+    pml4_phys: u64,
+    virt_start: u64,
+    pages: usize,
+) -> Result<(), &'static str> {
+    if pages == 0 { return Ok(()); }
+    let pml4 = phys_to_pt(pml4_phys);
+    let mut va = virt_start;
+
+    for _ in 0..pages {
+        let pml4_i = ((va >> 39) & 0x1FF) as usize;
+        let pdpt_i = ((va >> 30) & 0x1FF) as usize;
+        let pd_i   = ((va >> 21) & 0x1FF) as usize;
+        let pt_i   = ((va >> 12) & 0x1FF) as usize;
+
+        let pml4e = &mut (*pml4).entries[pml4_i];
+        if !pml4e.is_present() { va += PAGE_SIZE; continue; }
+        let pdpt = phys_to_pt(pml4e.phys_addr());
+
+        let pdpte = &mut (*pdpt).entries[pdpt_i];
+        if !pdpte.is_present() { va += PAGE_SIZE; continue; }
+        if (pdpte.0 & flags::HUGE_PAGE) != 0 {
+            // 1 GiB huge page — free 512 * 512 pages back
+            let pa = pdpte.phys_addr();
+            crate::mm::phys::free_pages(pa, 512 * 512);
+            pdpte.0 = 0;
+            crate::arch::tlb::shootdown(va);
+            va += 1u64 << 30;
+            continue;
+        }
+        let pd = phys_to_pt(pdpte.phys_addr());
+
+        let pde = &mut (*pd).entries[pd_i];
+        if !pde.is_present() { va += PAGE_SIZE; continue; }
+        if (pde.0 & flags::HUGE_PAGE) != 0 {
+            let pa = pde.phys_addr();
+            crate::mm::phys::free_pages(pa, 512);
+            pde.0 = 0;
+            crate::arch::tlb::shootdown(va);
+            va += 2 * 1024 * 1024;
+            continue;
+        }
+        let pt = phys_to_pt(pde.phys_addr());
+
+        let pte = &mut (*pt).entries[pt_i];
+        if pte.is_present() {
+            let pa = pte.phys_addr();
+            crate::mm::phys::free_pages(pa, 1);
+            pte.0 = 0;
+        }
+        crate::arch::tlb::shootdown(va);
+
+        va += PAGE_SIZE;
+    }
+    Ok(())
+}
+
 pub unsafe fn resolve_demand_page(
     fault_addr: u64,
     pml4_phys: u64,
@@ -575,6 +636,9 @@ pub unsafe fn map_high_mem(memory_map: &[bmo_boot_protocol::MemoryEntry], count:
     let pml4 = phys_to_id(read_cr3() & ADDR_MASK);
     let mut mapped_pages: u64 = 0;
     let mut mapped_huge: u64 = 0;
+    let mut pml4_allocs: u64 = 0;
+    let mut pdpt_allocs: u64 = 0;
+    let mut pd_allocs: u64 = 0;
 
     const HUGE_2MB: u64 = 2 * 1024 * 1024;
 
@@ -604,6 +668,7 @@ pub unsafe fn map_high_mem(memory_map: &[bmo_boot_protocol::MemoryEntry], count:
             let pdpt_phys: u64 = if !pml4e.is_present() {
                 let new = alloc_page_table().expect("OOM: high-mem PML4");
                 pml4e.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
+                pml4_allocs += 1;
                 new
             } else {
                 pml4e.0 |= flags::WRITABLE;
@@ -617,9 +682,10 @@ pub unsafe fn map_high_mem(memory_map: &[bmo_boot_protocol::MemoryEntry], count:
             let pd_phys: u64 = if !pdpte.is_present() {
                 let new = alloc_page_table().expect("OOM: high-mem PDPT");
                 pdpte.0 = PageTableEntry::new(new, flags::PRESENT | flags::WRITABLE).0;
+                pdpt_allocs += 1;
                 new
             } else if (pdpte.0 & flags::HUGE_PAGE) != 0 {
-                // 1 GB huge page already mapped â€” skip this 2 MB range
+                // 1 GB huge page already mapped, skip this 2 MB range
                 phys = (phys & !((1u64 << 30) - 1)) + (1u64 << 30);
                 continue;
             } else {
@@ -637,6 +703,7 @@ pub unsafe fn map_high_mem(memory_map: &[bmo_boot_protocol::MemoryEntry], count:
                     flags::PRESENT | flags::WRITABLE | flags::HUGE_PAGE | flags::NO_EXECUTE,
                 ).0;
                 mapped_huge += 1;
+                pd_allocs += 1;
             }
             mapped_pages += 512; // 2 MB = 512 pages
 
@@ -648,7 +715,13 @@ pub unsafe fn map_high_mem(memory_map: &[bmo_boot_protocol::MemoryEntry], count:
     crate::dev::console::serial_write_u64(mapped_huge, 10);
     crate::dev::console::serial_write(" huge pages (");
     crate::dev::console::serial_write_u64(mapped_pages / 256, 10);
-    crate::dev::console::serial_write(" MB)\n");
+    crate::dev::console::serial_write(" MB); PT allocs PML4=");
+    crate::dev::console::serial_write_u64(pml4_allocs, 10);
+    crate::dev::console::serial_write(" PDPT=");
+    crate::dev::console::serial_write_u64(pdpt_allocs, 10);
+    crate::dev::console::serial_write(" PD=");
+    crate::dev::console::serial_write_u64(pd_allocs, 10);
+    crate::dev::console::serial_write("\n");
 }
 
 pub unsafe fn mark_current_identity_user_range(start: u64, len: usize) -> Result<(), &'static str> {
