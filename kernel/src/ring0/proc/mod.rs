@@ -55,18 +55,20 @@ impl CoreAffinity {
     pub const PHYSICAL_ONLY: Self = Self { mask: 0b0000_0101_0101_0101 };
 }
 
+use core::sync::atomic::{AtomicU64, Ordering};
+
 /// Total number of scheduler ticks since boot. Useful for diagnostic
 /// or for `sleep` in userland (number of ticks to wait).
-static mut TOTAL_TICKS: u64 = 0;
+static TOTAL_TICKS: AtomicU64 = AtomicU64::new(0);
 
 /// Number of times the scheduler found NO ready task. Each idle tick
 /// burns one APIC interrupt worth of CPU. Exposed for tests and
 /// profiling.
-static mut IDLE_TICKS: u64 = 0;
+static IDLE_TICKS: AtomicU64 = AtomicU64::new(0);
 
 /// Called from APIC timer interrupt — performs preemptive scheduling.
 pub fn timer_tick() {
-    unsafe { TOTAL_TICKS = TOTAL_TICKS.saturating_add(1); }
+    TOTAL_TICKS.fetch_add(1, Ordering::Relaxed);
 
     if let Some(current) = task::current() {
         if current.time_slice > 0 {
@@ -79,7 +81,7 @@ pub fn timer_tick() {
     } else {
         // No task running — try to find one; if none, count idle.
         if task::pick_next().is_none() {
-            unsafe { IDLE_TICKS = IDLE_TICKS.saturating_add(1); }
+            IDLE_TICKS.fetch_add(1, Ordering::Relaxed);
         } else {
             schedule();
         }
@@ -152,10 +154,11 @@ pub fn yield_now() {
 /// Initialize the scheduler. v1.7.5: no-op (tables live in BSS).
 pub fn init() {
     // v2.0: configure quantum, priorities, runqueue.
-    unsafe { TOTAL_TICKS = 0; IDLE_TICKS = 0; }
+    TOTAL_TICKS.store(0, Ordering::Relaxed);
+    IDLE_TICKS.store(0, Ordering::Relaxed);
 }
 
 /// Public diagnostic counters. Read-only from other modules.
-pub fn total_ticks() -> u64 { unsafe { TOTAL_TICKS } }
-pub fn idle_ticks() -> u64   { unsafe { IDLE_TICKS } }
+pub fn total_ticks() -> u64 { TOTAL_TICKS.load(Ordering::Relaxed) }
+pub fn idle_ticks() -> u64   { IDLE_TICKS.load(Ordering::Relaxed) }
 

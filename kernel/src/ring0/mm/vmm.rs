@@ -126,6 +126,13 @@ pub fn read_cr3() -> u64 {
     v
 }
 
+/// Write the CR3 register (page table base).
+///
+/// # Safety
+/// - `pml4` must be a valid physical address of a PML4 page table
+/// - The page table must be properly formed with valid mappings
+/// - Changing CR3 flushes the TLB (all cached translations are invalidated)
+/// - On SMP, other cores may see stale TLB entries until TLB shootdown
 #[inline]
 pub unsafe fn write_cr3(pml4: u64) {
     core::arch::asm!("mov cr3, {}", in(reg) pml4);
@@ -261,6 +268,14 @@ pub unsafe fn map_kernel_mmio_huge(
 /// Map a user virtual address range to physical pages in the given PML4.
 /// On OOM, any partially-allocated page tables are leaked (acceptable for
 /// process teardown paths that will free the entire page table tree).
+///
+/// # Safety
+/// - `pml4_phys` must be a valid PML4 physical address (from create_user_page_table)
+/// - `virt_start` must be in user space (< 0x0000_8000_0000_0000)
+/// - `phys_start` must be a valid physical address
+/// - `pages` must be > 0
+/// - `flags` must include PRESENT; USER and WRITABLE should be set for user pages
+/// - The mapping must not overlap with existing mappings (no TLB invalidation)
 pub unsafe fn map_user_range(
     pml4_phys: u64,
     virt_start: u64,
@@ -585,6 +600,15 @@ pub unsafe fn resolve_cow_page(
     Ok(true)
 }
 
+/// Handle a page fault by attempting demand paging or CoW resolution.
+///
+/// # Safety
+/// - `fault_addr` is the CR2 value (faulting virtual address)
+/// - `error_code` is the CPU error code (bit 0 = present, bit 1 = write, bit 2 = user)
+/// - `pml4_phys` must be a valid PML4 physical address for the faulting process
+/// - `vmas` must be a valid slice of the process's VMA descriptors
+/// - Called from interrupt context (single-core assumption)
+/// - Returns true if fault was resolved (demand page / CoW), false if fatal
 pub unsafe fn handle_page_fault(
     fault_addr: u64,
     error_code: u64,

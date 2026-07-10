@@ -45,9 +45,10 @@ pub fn dispatch(vector: u8) {
     }
 }
 
-/// Default timer handler — ticks the scheduler, pets the watchdog.
+/// Default timer handler — ticks the scheduler, timer wheel, pets the watchdog.
 fn default_timer() {
     crate::proc::timer_tick();
+    crate::dev::timer_wheel::tick();
     crate::dev::watchdog::pet();
     crate::dev::watchdog::check();
 }

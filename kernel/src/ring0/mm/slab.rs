@@ -14,7 +14,40 @@
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+// ── Interrupt-disable spinlock ───────────────────────────────────────
+// For a single-core kernel, disabling interrupts is the simplest way
+// to protect against re-entrancy from ISR handlers. This is the same
+// pattern used by Linux's local_irq_disable/enable.
+
+static SLAB_LOCK: AtomicBool = AtomicBool::new(false);
+
+/// Disable interrupts and acquire the slab lock.
+/// Returns the previous interrupt state (for restoration).
+#[inline]
+fn slab_lock() -> bool {
+    let flags: u64;
+    unsafe {
+        core::arch::asm!("pushfq; pop {}", out(reg) flags, options(nostack));
+        core::arch::asm!("cli", options(nostack));
+    }
+    let was_enabled = flags & 0x200 != 0; // RFLAGS.IF bit
+    // Spin if already locked (re-entrant interrupt case)
+    while SLAB_LOCK.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        core::hint::spin_loop();
+    }
+    was_enabled
+}
+
+/// Release the slab lock and restore interrupt state.
+#[inline]
+fn slab_unlock(was_enabled: bool) {
+    SLAB_LOCK.store(false, Ordering::Release);
+    if was_enabled {
+        unsafe { core::arch::asm!("sti", options(nostack)); }
+    }
+}
 
 const SLAB_SIZE: usize = 4096; // each slab = 1 physical page
 const CACHE_COUNT: usize = 16;
@@ -132,6 +165,11 @@ fn heap_virt_to_phys(virt: u64) -> u64 {
 
 /// Create a new slab for the given cache index, backing it with one
 /// page from the buddy allocator. Returns pointer to the SlabHead.
+///
+/// # Safety
+/// - `cache_idx` must be < CACHE_COUNT (16)
+/// - Caller must hold slab lock (interrupts disabled)
+/// - The returned SlabHead is valid until slab_destroy() is called
 unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
     let phys = crate::mm::phys::alloc_pages_contiguous(1)?;
     let virt = phys_to_heap_virt(phys);
@@ -150,6 +188,11 @@ unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
 }
 
 /// Destroy a slab: return its page to the buddy allocator.
+///
+/// # Safety
+/// - `head` must be a valid pointer to a SlabHead returned by slab_create()
+/// - The slab must not be linked in any cache list (caller must unlink first)
+/// - Caller must hold slab lock (interrupts disabled)
 unsafe fn slab_destroy(head: *mut SlabHead) {
     let virt = head as u64;
     let phys = heap_virt_to_phys(virt);
@@ -158,7 +201,13 @@ unsafe fn slab_destroy(head: *mut SlabHead) {
 }
 
 /// Allocate an object from a cache. Returns pointer or null if OOM.
-unsafe fn cache_alloc(cache_idx: usize) -> *mut u8 {
+///
+/// # Safety
+/// - `cache_idx` must be < CACHE_COUNT (16)
+/// - Caller must hold slab lock (interrupts disabled)
+/// - Returned pointer is valid for `CACHE_SIZES[cache_idx]` bytes
+/// - The pointer is not aliased until heap_free() is called on it
+unsafe fn cache_alloc_locked(cache_idx: usize) -> *mut u8 {
     let cache = &mut CACHES[cache_idx];
 
     // 1. Try partial slab.
@@ -195,19 +244,38 @@ unsafe fn cache_alloc(cache_idx: usize) -> *mut u8 {
         }
     }
 
-    // 3. Create a new slab.
+    // 3. Create a new slab and allocate from it (no recursion).
     let new = match slab_create(cache_idx) {
         Some(s) => s,
         None => return ptr::null_mut(),
     };
-    let list_e = &mut cache.empty as *mut *mut SlabHead;
-    link_slab(&mut *new, &mut *list_e);
-    cache_alloc(cache_idx)
+    let slab = &mut *new;
+    // New slab is fully free — allocate first object directly
+    if let Some(idx) = slab.pop_free() {
+        let ptr = slab.obj_ptr(idx as usize);
+        // Move to partial or full depending on remaining free count
+        if slab.free_count == 0 {
+            let list_f = &mut cache.full as *mut *mut SlabHead;
+            link_slab(slab, &mut *list_f);
+        } else {
+            let list_p = &mut cache.partial as *mut *mut SlabHead;
+            link_slab(slab, &mut *list_p);
+        }
+        return ptr;
+    }
+    // Should never happen on a fresh slab
+    ptr::null_mut()
 }
 
 /// Free an object. Determine its slab by rounding the pointer down
 /// to the 4 KiB page boundary (each slab occupies exactly one page).
-unsafe fn cache_free(ptr: *mut u8, cache_idx: usize) {
+///
+/// # Safety
+/// - `ptr` must have been returned by cache_alloc_locked() with the same `cache_idx`
+/// - `ptr` must be non-null and 4KiB-page-aligned when masked
+/// - Caller must hold slab lock (interrupts disabled)
+/// - After this call, `ptr` is invalidated (use-after-free is UB)
+unsafe fn cache_free_locked(ptr: *mut u8, cache_idx: usize) {
     let page = (ptr as usize) & !(SLAB_SIZE - 1);
     let slab = &mut *(page as *mut SlabHead);
     let offset = ptr as usize - page - HEADER_SIZE;
@@ -276,33 +344,52 @@ pub fn init_heap() {
 
 /// Allocate `size` bytes with `align` alignment.
 /// Small allocations go through slab caches; large ones through buddy.
+///
+/// # Safety
+/// - `size` must be > 0
+/// - `align` must be a power of 2
+/// - Returned pointer is valid for `size` bytes with `align` alignment
+/// - The pointer must be freed with heap_free() using the same size/align
+/// - This function acquires an interrupt-disable spinlock (re-entrant safe)
 pub unsafe fn heap_alloc(size: usize, align: usize) -> *mut u8 {
     if size == 0 { return ptr::null_mut(); }
-    if let Some(ci) = cache_for(size) {
+    let _guard = slab_lock(); // disable interrupts + acquire lock
+    let result = if let Some(ci) = cache_for(size) {
         if align > CACHE_SIZES[ci].min(64) {
-            // Alignment larger than our slab object can provide → buddy fallback
-            return buddy_alloc(size, align);
+            buddy_alloc(size, align)
+        } else {
+            IN_USE.fetch_add(size, Ordering::Relaxed);
+            cache_alloc_locked(ci)
         }
-        IN_USE.fetch_add(size, Ordering::Relaxed);
-        cache_alloc(ci)
     } else {
         buddy_alloc(size, align)
-    }
+    };
+    slab_unlock(_guard);
+    result
 }
 
 /// Free memory allocated by `heap_alloc`.
+///
+/// # Safety
+/// - `ptr` must have been returned by heap_alloc() with the same `size` and `align`
+/// - `ptr` must be non-null
+/// - Double-free is undefined behavior
+/// - After this call, `ptr` is invalidated (use-after-free is UB)
+/// - This function acquires an interrupt-disable spinlock (re-entrant safe)
 pub unsafe fn heap_free(ptr: *mut u8, size: usize, align: usize) {
     if ptr.is_null() || size == 0 { return; }
+    let _guard = slab_lock();
     if let Some(ci) = cache_for(size) {
         if align > CACHE_SIZES[ci].min(64) {
             buddy_free(ptr, size);
-            return;
+        } else {
+            IN_USE.fetch_sub(size, Ordering::Relaxed);
+            cache_free_locked(ptr, ci);
         }
-        IN_USE.fetch_sub(size, Ordering::Relaxed);
-        cache_free(ptr, ci);
     } else {
         buddy_free(ptr, size);
     }
+    slab_unlock(_guard);
 }
 
 /// Buddy fallback for large allocations or special alignment.

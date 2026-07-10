@@ -141,7 +141,7 @@ static mut TASK_TABLE: [Task; MAX_TASKS] = {
     [EMPTY; MAX_TASKS]
 };
 
-static mut NEXT_TID: u32 = 1;
+static NEXT_TID: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(1);
 
 /// Index of the currently running Task (or usize::MAX if none).
 static mut CURRENT_IDX: usize = usize::MAX;
@@ -162,13 +162,13 @@ pub fn alloc(pid: Pid, priority: super::Priority) -> Option<&'static mut Task> {
 
         for i in 0..MAX_TASKS {
             if TASK_TABLE[i].state == State::Free || TASK_TABLE[i].state == State::Dead {
-                TASK_TABLE[i].tid = Tid(NEXT_TID);
+                let tid = NEXT_TID.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                TASK_TABLE[i].tid = Tid(tid);
                 TASK_TABLE[i].pid = pid;
                 TASK_TABLE[i].state = State::Ready;
                 TASK_TABLE[i].priority = priority;
                 TASK_TABLE[i].time_slice = priority_to_slice(priority);
                 TASK_TABLE[i].kernel_stack_top = stack_top;
-                NEXT_TID += 1;
                 return Some(&mut TASK_TABLE[i]);
             }
         }
@@ -247,7 +247,8 @@ pub fn free_task(t: &mut Task) {
     // Free kernel stack
     if t.kernel_stack_top != 0 {
         unsafe {
-            let layout = core::alloc::Layout::from_size_align(KERNEL_STACK_SIZE, 16).unwrap();
+            // SAFETY: KERNEL_STACK_SIZE (8192) and align 16 are both valid power-of-2 values
+            let layout = core::alloc::Layout::from_size_align_unchecked(KERNEL_STACK_SIZE, 16);
             let ptr = (t.kernel_stack_top - KERNEL_STACK_SIZE as u64) as *mut u8;
             alloc::alloc::dealloc(ptr, layout);
         }

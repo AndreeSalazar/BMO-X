@@ -65,21 +65,31 @@ unsafe fn coalescable(addr: u64, order: usize) -> bool {
 }
 
 /// Mark a range of pages with a given order (called after allocating).
-unsafe fn set_allocated(addr: u64, order: usize) {
-    let idx = addr_to_idx(addr).unwrap();
+/// Returns false if addr is outside tracked range (callers should handle).
+unsafe fn set_allocated(addr: u64, order: usize) -> bool {
+    let idx = match addr_to_idx(addr) {
+        Some(i) => i,
+        None => return false,
+    };
     let len = 1usize << order;
     for i in idx..idx + len {
         *PAGE_ORDERS.add(i) = order as u8;
     }
+    true
 }
 
 /// Mark a range of pages as free.
-unsafe fn set_free(addr: u64, order: usize) {
-    let idx = addr_to_idx(addr).unwrap();
+/// Returns false if addr is outside tracked range.
+unsafe fn set_free(addr: u64, order: usize) -> bool {
+    let idx = match addr_to_idx(addr) {
+        Some(i) => i,
+        None => return false,
+    };
     let len = 1usize << order;
     for i in idx..idx + len {
         *PAGE_ORDERS.add(i) = ORDER_FREE;
     }
+    true
 }
 
 /// Pop a block from the free list at `order`. Returns physical address or 0.
@@ -98,6 +108,12 @@ unsafe fn list_push(addr: u64, order: usize) {
 }
 
 /// Allocate 2^order contiguous physical pages from the buddy system.
+///
+/// # Safety
+/// - `order` must be <= MAX_ORDER (11)
+/// - Returned address is a physical address in the tracked range
+/// - The returned pages are not aliased until buddy_free() is called
+/// - Each page is PAGE_SIZE (4096) bytes
 unsafe fn buddy_alloc(order: usize) -> Option<u64> {
     if order > MAX_ORDER { return None; }
     let mut o = order;
@@ -113,19 +129,28 @@ unsafe fn buddy_alloc(order: usize) -> Option<u64> {
         let upper = block + half_size * PAGE_SIZE;
         list_push(upper, o);
     }
-    set_allocated(block, order);
+    if !set_allocated(block, order) { return None; }
     FREE_COUNT.fetch_sub(1usize << order, Ordering::Relaxed);
     Some(block)
 }
 
 /// Free a block of 2^order pages starting at `addr`, coalescing with buddy.
+///
+/// # Safety
+/// - `addr` must have been returned by buddy_alloc() with the same `order`
+/// - `addr` must be non-zero and order-aligned
+/// - Double-free is undefined behavior (may corrupt free lists)
+/// - After this call, the pages are available for reallocation
 unsafe fn buddy_free(addr: u64, order: usize) {
     if order > MAX_ORDER || addr == 0 { return; }
     let mut o = order;
     let mut block = addr;
     set_free(block, o);
     while o < MAX_ORDER {
-        let block_idx = addr_to_idx(block).unwrap();
+        let block_idx = match addr_to_idx(block) {
+            Some(i) => i,
+            None => break, // address outside tracked range
+        };
         let buddy_idx = block_idx ^ (1usize << o);
         let buddy_addr = idx_to_addr(buddy_idx);
         if buddy_addr + (1u64 << o) * PAGE_SIZE > BASE + (PAGE_COUNT as u64) * PAGE_SIZE {
@@ -170,7 +195,10 @@ unsafe fn buddy_free_page(addr: u64) {
     let mut block = addr;
     set_free(block, o);
     while o < MAX_ORDER {
-        let block_idx = addr_to_idx(block).unwrap();
+        let block_idx = match addr_to_idx(block) {
+            Some(i) => i,
+            None => break,
+        };
         let buddy_idx = block_idx ^ (1usize << o);
         let buddy_addr = idx_to_addr(buddy_idx);
         if buddy_addr + (1u64 << o) * PAGE_SIZE > BASE + (PAGE_COUNT as u64) * PAGE_SIZE {

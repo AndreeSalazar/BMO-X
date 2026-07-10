@@ -53,7 +53,7 @@ static mut PROCESSES: [Process; MAX_PROCESSES] = {
     [E; MAX_PROCESSES]
 };
 
-static mut PROCESS_COUNT: usize = 0;
+static PROCESS_COUNT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 
 pub fn get_process(pid: Pid) -> Option<&'static mut Process> {
     unsafe {
@@ -67,7 +67,7 @@ pub fn get_process(pid: Pid) -> Option<&'static mut Process> {
 }
 
 pub fn process_count() -> usize {
-    unsafe { PROCESS_COUNT }
+    PROCESS_COUNT.load(core::sync::atomic::Ordering::Relaxed)
 }
 
 /// Allocate a new process with the given PID. Returns None if the table is full.
@@ -82,7 +82,7 @@ pub fn alloc_process(pid: Pid) -> Option<&'static mut Process> {
                 PROCESSES[i].msg_head = core::ptr::null_mut();
                 PROCESSES[i].msg_tail = core::ptr::null_mut();
                 PROCESSES[i].capabilities = 0;
-                PROCESS_COUNT += 1;
+                PROCESS_COUNT.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
                 return Some(&mut PROCESSES[i]);
             }
         }
@@ -97,7 +97,7 @@ pub fn free_process(pid: Pid) {
             if PROCESSES[i].state != ProcessState::Free && PROCESSES[i].pid == pid {
                 PROCESSES[i].state = ProcessState::Free;
                 PROCESSES[i].pid = Pid(0);
-                PROCESS_COUNT = PROCESS_COUNT.saturating_sub(1);
+                PROCESS_COUNT.fetch_sub(1, core::sync::atomic::Ordering::Relaxed);
                 return;
             }
         }

@@ -12,19 +12,20 @@
 //! stack. Our handlers must pop it before `iretq`.
 
 use core::arch::{asm, naked_asm};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Monotonic tick counter for periodic housekeeping.
-static mut TICK_COUNT: u64 = 0;
+static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Per-vector exception counter (for diagnostics). Incremented on
 /// every exception dispatch so a stuck-firing exception is easy to
 /// spot from the serial log.
-static mut EXC_COUNT: [u64; 32] = [0; 32];
+static EXC_COUNT: [AtomicU64; 32] = [const { AtomicU64::new(0) }; 32];
 
 #[inline]
 pub fn exc_count(vector: u8) -> u64 {
     let v = (vector as usize) & 0x1F;
-    unsafe { EXC_COUNT[v] }
+    EXC_COUNT[v].load(Ordering::Relaxed)
 }
 
 /// IDT entry (16 bytes in Long Mode).
@@ -274,7 +275,7 @@ unsafe extern "C" fn isr_stub_default_irq() {
 #[inline(never)]
 pub fn tick_exc(vector: u8) {
     let v = (vector as usize) & 0x1F;
-    unsafe { EXC_COUNT[v] = EXC_COUNT[v].saturating_add(1); }
+    EXC_COUNT[v].fetch_add(1, Ordering::Relaxed);
 }
 
 /// #UD â€” Invalid Opcode (ud2, undefined instruction). Kill current process.
@@ -515,8 +516,8 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {// Only sav
     // Periodic housekeeping: every ~1000 ticks (~1s at 1kHz) drive the
     // cabina HUD overlay, persist cabina events to NVRAM, and create
     // a TimeBack auto-checkpoint for real-time rollback support.
-    unsafe { TICK_COUNT += 1; }
-    if unsafe { TICK_COUNT } % 1000 == 0 {}
+    let tick = TICK_COUNT.fetch_add(1, Ordering::Relaxed);
+    if tick % 1000 == 0 {}
 
     // Process BMO Channels + hardware polling (keyboard, mouse, speaker)
     crate::channel::tick_all();
@@ -764,7 +765,7 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
     }
 
     // Telemetry per exception type — increment per-vector counters
-    unsafe { EXC_COUNT[vector as usize] += 1; }
+    EXC_COUNT[vector as usize].fetch_add(1, Ordering::Relaxed);
 
     // Log fatal exception to serial for post-mortem analysis
     unsafe {

@@ -287,7 +287,7 @@ pub fn scan_pci_bus() -> PciScanResult {
         }
     }
 
-    unsafe { SCAN_RESULT.clone().unwrap() }
+    r
 }
 
 /// Safe internal PCI scanning using generic pci_read32 (auto-selects ECAM/IO ports).

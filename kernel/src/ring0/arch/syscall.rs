@@ -245,11 +245,12 @@ fn sys_fb_info(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: 
 }
 
 fn sys_debug_print(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
-    if a1 > 0 && a1 < 4096 {
-        let slice = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
-        if let Ok(s) = core::str::from_utf8(slice) {
-            crate::dev::console::serial_write(s);
-        }
+    // Validate: pointer must be in user space, length must be reasonable
+    if a1 == 0 || a1 > 4096 { return 0; }
+    if a0 >= 0x0000_8000_0000_0000 { return 0; } // reject kernel pointers
+    let slice = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
+    if let Ok(s) = core::str::from_utf8(slice) {
+        crate::dev::console::serial_write(s);
     }
     0
 }
@@ -291,7 +292,9 @@ fn sys_gpu_submit(_nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5:
 
 #[cfg(feature = "syscalls-ipc")]
 fn sys_ipc_send(_nr: u64, dst_pid: u64, msg_ptr: u64, msg_len: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    // Validate: pointer in user space, length reasonable, non-zero
     if msg_len == 0 || msg_len > 65536 || msg_ptr == 0 { return u64::MAX; }
+    if msg_ptr >= 0x0000_8000_0000_0000 { return u64::MAX; } // reject kernel pointers
     let dst = match crate::proc::process::get_process(crate::proc::process::Pid(dst_pid as u32)) {
         Some(p) => p as *mut crate::proc::process::Process,
         None => return u64::MAX,
@@ -329,7 +332,9 @@ fn sys_ipc_send(_nr: u64, dst_pid: u64, msg_ptr: u64, msg_len: u64, _a3: u64, _a
 
 #[cfg(feature = "syscalls-ipc")]
 fn sys_ipc_recv(_nr: u64, buf_ptr: u64, buf_len: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    // Validate: buffer in user space, non-zero
     if buf_ptr == 0 || buf_len == 0 { return u64::MAX; }
+    if buf_ptr >= 0x0000_8000_0000_0000 { return u64::MAX; } // reject kernel pointers
     let cur = match crate::proc::task::current() {
         Some(t) => t,
         None => return u64::MAX,

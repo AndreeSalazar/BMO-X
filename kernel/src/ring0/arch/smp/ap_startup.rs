@@ -209,7 +209,13 @@ pub unsafe extern "sysv64" fn ap_entry() {
     let core_id_actual = percpu::register_ap(apic_id, kernel_stack_top);
 
     // Set GS-base to point to this core's PerCpu struct
-    let percpu_ptr = percpu::get(core_id_actual).unwrap() as *const percpu::PerCpu as u64;
+    let percpu_ptr = match percpu::get(core_id_actual) {
+        Some(p) => p as *const percpu::PerCpu as u64,
+        None => {
+            // PerCpu slot not registered — halt this AP
+            loop { unsafe { core::arch::asm!("hlt"); } }
+        }
+    };
     percpu::set_gs_base(percpu_ptr);
 
     // Set IA32_TSC_AUX (MSR 0xC0000103) — stores core ID for RDPID

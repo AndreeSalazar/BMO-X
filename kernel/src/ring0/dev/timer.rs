@@ -66,11 +66,35 @@ pub fn now_ns() -> u64 {
     }
 }
 
+use core::sync::atomic::{AtomicBool, Ordering};
+
+/// Flag used by timer wheel callback to signal sleep completion.
+static SLEEP_DONE: AtomicBool = AtomicBool::new(false);
+
+/// Timer wheel callback that sets the sleep-done flag.
+fn sleep_callback(_id: u64) {
+    SLEEP_DONE.store(true, Ordering::Release);
+}
+
 /// Sleep for the specified number of nanoseconds.
+/// For delays >= 10ms, uses the timer wheel to avoid burning CPU.
+/// For shorter delays, uses spin-wait (timer wheel resolution is 1ms).
 pub fn sleep_ns(ns: u64) {
-    let start = now_ns();
-    while now_ns().wrapping_sub(start) < ns {
-        core::hint::spin_loop();
+    const WHEEL_THRESHOLD_NS: u64 = 10_000_000; // 10 ms
+
+    if ns >= WHEEL_THRESHOLD_NS {
+        // Use timer wheel: register a callback, spin on the flag
+        SLEEP_DONE.store(false, Ordering::Release);
+        super::timer_wheel::add_timer(ns, sleep_callback);
+        while !SLEEP_DONE.load(Ordering::Acquire) {
+            core::hint::spin_loop();
+        }
+    } else {
+        // Short delay: spin-wait directly
+        let start = now_ns();
+        while now_ns().wrapping_sub(start) < ns {
+            core::hint::spin_loop();
+        }
     }
 }
 
