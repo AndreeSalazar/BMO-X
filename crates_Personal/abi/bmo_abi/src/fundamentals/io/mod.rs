@@ -112,7 +112,7 @@ impl BmoRead for BmoPipe {
             slice[i] = self.buf[self.read_pos];
             self.read_pos = (self.read_pos + 1) % 4096;
         }
-        self.full = false;
+        if self.full { self.full = false; }
         ReadResult { status: BmoStatus::OK, bytes_read: n as bx_u64 }
     }
 }

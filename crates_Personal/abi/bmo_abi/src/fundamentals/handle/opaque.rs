@@ -18,8 +18,9 @@ pub struct BmoHandle(pub bx_u64);
 impl BmoHandle {
     pub const NULL: Self = Self(0);
 
-    /// Alias de NULL para uso en fields default.
-    pub const INVALID: Self = Self(0);
+    /// Handle inválido (distinto de NULL para detectar errores).
+    /// Generación = 0xFFFF, index = 0xFFF... — nunca se asigna un handle real.
+    pub const INVALID: Self = Self(0x0000_FFFF_FFFF_FFFF);
 
     #[inline(always)]
     pub const fn new(kind: HandleKind, generation: bx_u16, index: bx_u64) -> Self {

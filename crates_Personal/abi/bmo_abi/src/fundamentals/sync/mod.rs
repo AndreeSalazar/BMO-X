@@ -107,7 +107,9 @@ impl BmoSpinLock {
             if self.state.swap(true, MemOrder::Acquire) == false {
                 return;
             }
-            while self.state.load(MemOrder::Relaxed) {}
+            while self.state.load(MemOrder::Relaxed) {
+                core::hint::spin_loop();
+            }
         }
     }
 

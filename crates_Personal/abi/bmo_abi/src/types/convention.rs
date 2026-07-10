@@ -39,7 +39,8 @@ impl CallingConvention {
     /// Number of GPR argument registers.
     pub const fn gpr_arg_count(self) -> bx_u8 {
         match self {
-            Self::BmoX86_64 | Self::SystemVAmd64 => 6,
+            Self::BmoX86_64 => 7,
+            Self::SystemVAmd64 => 6,
             Self::BmoArm64 | Self::BmoRiscV64 => 8,
         }
     }

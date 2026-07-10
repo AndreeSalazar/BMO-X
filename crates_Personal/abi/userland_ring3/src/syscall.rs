@@ -14,12 +14,20 @@ use bmo_abi::syscalls::{self, syscall6};
 /// ```c
 /// u64 bmo_syscall(u32 nr, u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5);
 /// ```
+///
+/// Returns the `value` (RDX) on success (RAX==0), or the `code` (RAX) on error.
+/// This ensures callers get the actual pointer/handle, not the status code.
 #[no_mangle]
 pub unsafe extern "C" fn bmo_syscall(
     nr: u32,
     a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64,
 ) -> u64 {
-    syscall6(nr, a0, a1, a2, a3, a4, a5).code() as u64
+    let result = syscall6(nr, a0, a1, a2, a3, a4, a5);
+    if result.is_ok() {
+        result.value()
+    } else {
+        result.code() as u64
+    }
 }
 
 // ─── Process / Thread ────────────────────────────────────────────────

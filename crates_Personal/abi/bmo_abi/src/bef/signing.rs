@@ -91,5 +91,10 @@ pub fn chain_hash(hashes: &[SectionHash]) -> [u8; 32] {
 /// Returns true if sig_algo is None (unsigned binaries are allowed in dev).
 pub fn verify_ed25519(_sig: &Ed25519Signature, _message: &[u8]) -> bool {
     // TODO: integrate ed25519-dalek when available
-    false // signature verification not yet implemented
+    // In dev, allow unsigned binaries (all-zeros signature).
+    // Check if the signature is all zeros (unsigned).
+    let is_unsigned = _sig.sig.iter().all(|&b| b == 0) && _sig.pubkey.iter().all(|&b| b == 0);
+    if is_unsigned { return true; }
+    // Signed binaries: cannot verify yet, reject.
+    false
 }

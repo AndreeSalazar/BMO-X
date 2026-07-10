@@ -19,7 +19,9 @@ impl SyscallBackend {
 impl MemBackend for SyscallBackend {
     unsafe fn alloc_chunk(&self, min_size: usize) -> *mut u8 {
         let result = syscall1(syscalls::NR_MEM_ALLOC, min_size as u64);
-        let ptr = result.code() as *mut u8;
+        // .code() = RAX (status), .value() = RDX (pointer).
+        // The kernel returns the allocated pointer in RDX.
+        let ptr = result.value() as *mut u8;
         if ptr.is_null() || (ptr as usize) < 0x1000 {
             core::ptr::null_mut()
         } else {
