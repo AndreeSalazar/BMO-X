@@ -6,5 +6,5 @@ authors = ["BMO Project"]
 description = "Cabina module — standalone Ring 3 telemetry/logging system loaded by bootloader"
 
 [dependencies]
-cabina-daemon = { path = "../../services/cabina/daemon" }
+cabina-daemon = { path = "../../ring0/cabina_daemon" }
 bmo-hal-defs = { path = "../../shared/hal_defs" }

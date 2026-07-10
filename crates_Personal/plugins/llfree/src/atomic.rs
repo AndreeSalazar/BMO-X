@@ -1,0 +1,228 @@
+#![allow(dead_code)]
+//! Generic atomics
+
+use core::fmt;
+use core::sync::atomic::Ordering::*;
+use core::sync::atomic::*;
+
+use log::trace;
+
+/// Atomic wrapper for types that can be converted into atomics
+///
+/// See [`core::sync::atomic::AtomicU64`] for the documentation.
+#[repr(transparent)]
+pub struct Atom<T: Atomic>(pub T::I);
+
+impl<T: Atomic> Atom<T> {
+    pub fn new(v: T) -> Self {
+        Self(T::I::new(v.into()))
+    }
+    #[cfg_attr(feature = "log_trace", track_caller)]
+    pub fn load(&self) -> T {
+        trace!("{} load", core::panic::Location::caller());
+        self.0.load().into()
+    }
+    #[cfg_attr(feature = "log_trace", track_caller)]
+    pub fn store(&self, v: T) {
+        trace!("{} store", core::panic::Location::caller());
+        self.0.store(v.into());
+    }
+    #[cfg_attr(feature = "log_trace", track_caller)]
+    pub fn swap(&self, v: T) -> T {
+        trace!("{} swap", core::panic::Location::caller());
+        self.0.swap(v.into()).into()
+    }
+    #[cfg_attr(feature = "log_trace", track_caller)]
+    pub fn compare_exchange(&self, current: T, new: T) -> Result<T, T> {
+        trace!("{} cmpxchg", core::panic::Location::caller());
+        match self.0.compare_exchange(current.into(), new.into()) {
+            Ok(v) => Ok(v.into()),
+            Err(v) => Err(v.into()),
+        }
+    }
+    #[cfg_attr(feature = "log_trace", track_caller)]
+    pub fn compare_exchange_weak(&self, current: T, new: T) -> Result<T, T> {
+        trace!("{} cmpxchgw", core::panic::Location::caller());
+        match self.0.compare_exchange_weak(current.into(), new.into()) {
+            Ok(v) => Ok(v.into()),
+            Err(v) => Err(v.into()),
+        }
+    }
+    #[cfg_attr(feature = "log_trace", track_caller)]
+    pub fn try_update<F: FnMut(T) -> Option<T>>(&self, mut f: F) -> Result<T, T> {
+        trace!("{} update", core::panic::Location::caller());
+        match self.0.try_update(|v| f(v.into()).map(Into::into)) {
+            Ok(v) => Ok(v.into()),
+            Err(v) => Err(v.into()),
+        }
+    }
+    #[cfg_attr(feature = "log_trace", track_caller)]
+    pub fn update<F: FnMut(T) -> T>(&self, mut f: F) -> T {
+        trace!("{} update", core::panic::Location::caller());
+        self.0.update(|v| f(v.into()).into()).into()
+    }
+}
+impl<T: Atomic + Default> Default for Atom<T> {
+    fn default() -> Self {
+        Self::new(Default::default())
+    }
+}
+impl<T: Atomic + fmt::Debug> fmt::Debug for Atom<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.load().fmt(f)
+    }
+}
+
+/// Types that can be converted from/into atomics
+///
+/// # Note
+/// For `compare_exchange` and `fetch_update`, equality on this type has to be
+/// the same as when they are converted into the underlying integers.
+///
+/// `a == b <-> a.into() == b.into()`
+pub trait Atomic:
+    Sized + Copy + Into<<Self::I as AtomicImpl>::V> + From<<Self::I as AtomicImpl>::V>
+{
+    type I: AtomicImpl;
+}
+
+/// Implementation of the atomic values.
+///
+/// This is implemented for all atomic types in the standard library.
+pub trait AtomicImpl: Sized {
+    type V: Sized + Eq + Copy;
+    fn new(v: Self::V) -> Self;
+    fn load(&self) -> Self::V;
+    fn store(&self, v: Self::V);
+    fn swap(&self, v: Self::V) -> Self::V;
+    fn compare_exchange(&self, current: Self::V, new: Self::V) -> Result<Self::V, Self::V>;
+    fn compare_exchange_weak(&self, current: Self::V, new: Self::V) -> Result<Self::V, Self::V>;
+    fn try_update<F: FnMut(Self::V) -> Option<Self::V>>(&self, f: F) -> Result<Self::V, Self::V>;
+    fn update<F: FnMut(Self::V) -> Self::V>(&self, f: F) -> Self::V;
+
+    fn fetch_min(&self, v: Self::V) -> Self::V;
+    fn fetch_max(&self, v: Self::V) -> Self::V;
+    fn fetch_add(&self, v: Self::V) -> Self::V;
+    fn fetch_sub(&self, v: Self::V) -> Self::V;
+    fn fetch_and(&self, v: Self::V) -> Self::V;
+    fn fetch_or(&self, v: Self::V) -> Self::V;
+    fn fetch_xor(&self, v: Self::V) -> Self::V;
+    fn fetch_nand(&self, v: Self::V) -> Self::V;
+}
+
+macro_rules! atomic_trivial {
+    ($($name:ident),+) => {
+        $(
+            fn $name(&self, v: Self::V) -> Self::V {
+                self.$name(v.into(), AcqRel).into()
+            }
+        )+
+    };
+}
+
+macro_rules! fn_trivial {
+    ($ty:ident ; $($name:ident),+) => {
+        $(
+            pub fn $name(&self, v: $ty) -> $ty {
+                AtomicImpl::$name(&self.0, v)
+            }
+        )+
+    };
+}
+
+macro_rules! atomic_impl {
+    ($ty:ident, $atomic:ident) => {
+        impl Atomic for $ty {
+            type I = $atomic;
+        }
+        impl AtomicImpl for $atomic {
+            type V = $ty;
+            fn new(v: Self::V) -> Self {
+                Self::new(v)
+            }
+            fn load(&self) -> Self::V {
+                self.load(Acquire)
+            }
+            fn store(&self, v: Self::V) {
+                self.store(v, Release)
+            }
+            fn compare_exchange(&self, current: Self::V, new: Self::V) -> Result<Self::V, Self::V> {
+                self.compare_exchange(current, new, AcqRel, Acquire)
+            }
+            fn compare_exchange_weak(
+                &self,
+                current: Self::V,
+                new: Self::V,
+            ) -> Result<Self::V, Self::V> {
+                self.compare_exchange_weak(current, new, AcqRel, Acquire)
+            }
+            fn try_update<F: FnMut(Self::V) -> Option<Self::V>>(
+                &self,
+                f: F,
+            ) -> Result<Self::V, Self::V> {
+                self.try_update(AcqRel, Acquire, f)
+            }
+            fn update<F: FnMut(Self::V) -> Self::V>(&self, f: F) -> Self::V {
+                self.update(AcqRel, Acquire, f)
+            }
+
+            atomic_trivial![
+                swap, fetch_min, fetch_max, fetch_add, fetch_sub, fetch_and, fetch_or, fetch_xor, fetch_nand
+            ];
+        }
+
+        impl Atom<$ty> {
+            fn_trivial![
+                $ty; fetch_min, fetch_max, fetch_add, fetch_sub, fetch_and, fetch_or, fetch_xor, fetch_nand
+            ];
+        }
+    };
+}
+
+atomic_impl!(u8, AtomicU8);
+atomic_impl!(u16, AtomicU16);
+atomic_impl!(u32, AtomicU32);
+atomic_impl!(u64, AtomicU64);
+atomic_impl!(usize, AtomicUsize);
+
+pub trait AtomicSlice<T: Copy + Atomic> {
+    /// Get a mutable reference to the whole array non-atomically.
+    ///
+    /// # Safety
+    /// This can be faster than atomics but does not handle race conditions!
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn non_atomic(&self) -> &mut [T];
+
+    /// Get a reference to the internal atomic values.
+    fn inner_atomic(&self) -> &[T::I];
+
+    /// Compare and exchange all values in the slice.
+    fn compare_exchange_all(&self, current: T, new: T) -> Result<(), ()>;
+}
+
+impl<T: Atomic> AtomicSlice<T> for [Atom<T>] {
+    unsafe fn non_atomic(&self) -> &mut [T] {
+        // cast to raw memory to let the compiler use vector instructions
+        #[allow(invalid_reference_casting)]
+        unsafe {
+            core::slice::from_raw_parts_mut(self.as_ptr().cast_mut().cast::<T>(), self.len())
+        }
+    }
+    fn inner_atomic(&self) -> &[T::I] {
+        // cast to raw memory to let the compiler use vector instructions
+        unsafe { core::slice::from_raw_parts(self.as_ptr().cast(), self.len()) }
+    }
+    fn compare_exchange_all(&self, current: T, new: T) -> Result<(), ()> {
+        for i in 0..self.len() {
+            if self[i].compare_exchange(current, new).is_err() {
+                // undo
+                for j in (0..i).rev() {
+                    let r = self[j].compare_exchange(new, current);
+                    assert!(r.is_ok(), "undo failed");
+                }
+                return Err(());
+            }
+        }
+        Ok(())
+    }
+}

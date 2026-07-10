@@ -8,4 +8,4 @@ description = "BMO CABINA Panels â€” HUD rendering, query DSL, overlay (Rin
 default = []
 
 [dependencies]
-cabina-core = { path = "../core" }
+cabina-core = { path = "../../services/cabina/core" }

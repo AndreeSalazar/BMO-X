@@ -8,4 +8,4 @@ description = "BMO Linux Devourer — ELF to BEF runtime converter (Ring 3 modul
 
 [dependencies]
 bmo-hal-defs = { path = "../../shared/hal_defs" }
-goblin = { path = "../../goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }
+goblin = { path = "../../plugins/goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }

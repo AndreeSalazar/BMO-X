@@ -1,36 +1,55 @@
 [workspace]
 resolver = "2"
 members = [
+    # ── RING 0 (Kernel) ──────────────────────────────────────────────
     "kernel",
     "crates_Personal/bootloader",
     "crates_Personal/ring0/boot_protocol",
-    "crates_Personal/abi/bmo_abi",
-    "crates_Personal/drivers/audio/audio",
-    "crates_Personal/shared/nvram_log",
-    "crates_Personal/vendor",
-    "crates_Personal/services/cabina/core",
-    "crates_Personal/services/cabina/daemon",
-    "crates_Personal/services/cabina/panels",
-    "crates_Personal/desktop/bmo_core",
-    "crates_Personal/shared/hw_profile",
-    "crates_Personal/drivers/usb/input",
-    "crates_Personal/drivers/storage/ahci",
-    "crates_Personal/drivers/storage/fat32",
-    "crates_Personal/drivers/usb/xhci",
-    "crates_Personal/drivers/usb/uhid",
     "crates_Personal/ring0/cpu_vendor_profile",
+    "crates_Personal/ring0/cabina_daemon",
+    "crates_Personal/ring0/cabina_panels",
+
+    # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
+    "crates_Personal/shared/hal_defs",
+    "crates_Personal/shared/hw_profile",
+    "crates_Personal/shared/nvram_log",
+    "crates_Personal/shared/bmo_channel",
+    "crates_Personal/services/cabina/core",
     "crates_Personal/services/byte_defender",
     "crates_Personal/services/timeback",
-    "crates_Personal/tools/languages/cobol",
-    "crates_Personal/tools/languages/cpp",
-    "crates_Personal/tools/languages/c",
-    "crates_Personal/shared/hal_defs",
+
+    # ── ABI ──────────────────────────────────────────────────────────
+    "crates_Personal/abi/bmo_abi",
+    "crates_Personal/abi/userland_ring3",
+
+    # ── RING 3 (Userspace) ──────────────────────────────────────────
+    "crates_Personal/desktop/bmo_core",
+
+    # ── DRIVERS (Hardware) ───────────────────────────────────────────
+    "crates_Personal/drivers/audio/audio",
+    "crates_Personal/drivers/usb/input",
+    "crates_Personal/drivers/usb/xhci",
+    "crates_Personal/drivers/usb/uhid",
+    "crates_Personal/drivers/storage/ahci",
+    "crates_Personal/drivers/storage/fat32",
+    "crates_Personal/drivers/storage/nvme",
+    "crates_Personal/drivers/net/net",
+
+    # ── MODULES (Ring 3 loadable) ───────────────────────────────────
     "crates_Personal/modules/bmo_core",
     "crates_Personal/modules/timeback",
     "crates_Personal/modules/cabina",
-    "crates_Personal/drivers/storage/nvme",
-    "crates_Personal/drivers/net/net",
-    "crates_Personal/abi/userland_ring3",
+
+    # ── PLUGINS (Third-party / vendored) ────────────────────────────
+    "crates_Personal/plugins/goblin",
+    "crates_Personal/plugins/llfree",
+    "crates_Personal/plugins/llfree-eval",
+    "crates_Personal/plugins/vendor",
+
+    # ── TOOLS (Build-time) ──────────────────────────────────────────
+    "crates_Personal/tools/languages/cobol",
+    "crates_Personal/tools/languages/cpp",
+    "crates_Personal/tools/languages/c",
 ]
 
 [profile.dev]

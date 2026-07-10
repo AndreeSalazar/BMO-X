@@ -1,0 +1,49 @@
+[package]
+name = "llfree"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.95.0"
+
+[dependencies]
+bitfield-struct = "0.13"
+env_logger = {
+  version = "0.11",
+  default-features = false,
+  features = ["auto-color"],
+  optional = true
+}
+log = { version = "0.4", default-features = false }
+
+[dev-dependencies]
+env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
+
+[features]
+default = []
+log_debug = ["log/max_level_debug"]
+log_error = ["log/max_level_error"]
+log_info = ["log/max_level_info"]
+log_trace = ["log/max_level_trace"]
+log_warn = ["log/max_level_warn"]
+std = ["env_logger", "log/std"]
+
+16K = []
+
+tree_huge_1 = []
+# 2 huge frames per tree -> 4MiB
+tree_huge_2 = []
+# 4 huge frames per tree -> 8MiB
+tree_huge_4 = []
+# 8 huge frames per tree -> 16MiB
+tree_huge_8 = []
+# 16 huge frames per tree -> 32MiB
+tree_huge_16 = []
+# 32 huge frames per tree -> 64MiB
+tree_huge_32 = []
+# 64 huge frames per tree -> 128MiB
+tree_huge_64 = []
+# 128 huge frames per tree -> 256MiB
+tree_huge_128 = []
+# 256 huge frames per tree -> 512MiB
+tree_huge_256 = []
+# 512 huge frames per tree -> 1GiB
+tree_huge_512 = []
