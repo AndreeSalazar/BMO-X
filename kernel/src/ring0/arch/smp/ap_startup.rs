@@ -212,9 +212,9 @@ pub unsafe extern "sysv64" fn ap_entry() {
     let percpu_ptr = percpu::get(core_id_actual).unwrap() as *const percpu::PerCpu as u64;
     percpu::set_gs_base(percpu_ptr);
 
-    // Set IA32_TSC_AUX to APIC ID
+    // Set IA32_TSC_AUX (MSR 0xC0000103) — stores core ID for RDPID
     let tsc_aux = (apic_id as u64) | ((core_id_actual as u64) << 32);
-    asm!("wrmsr", in("ecx") 0xC0000101u32,
+    asm!("wrmsr", in("ecx") 0xC0000103u32,
          in("eax") (tsc_aux as u32), in("edx") ((tsc_aux >> 32) as u32),
          options(nostack));
 

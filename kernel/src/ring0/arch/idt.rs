@@ -763,58 +763,25 @@ extern "C" fn exception_kill_handler_rust(vector: u64, error: u64, cr2: u64, rip
         unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
     }
 
-    // Telemetry per exception type
-    match vector {
-        14 => { loop { unsafe { core::arch::asm!("hlt"); } } }
-        13 => { loop { unsafe { core::arch::asm!("hlt"); } } }
-        7  => {}
-        6  => {}
-        8  => {}
-        18 => { loop { unsafe { core::arch::asm!("hlt"); } } }
-        _  => {}
+    // Telemetry per exception type — increment per-vector counters
+    unsafe { EXC_COUNT[vector as usize] += 1; }
+
+    // Log fatal exception to serial for post-mortem analysis
+    unsafe {
+        crate::dev::console::serial_write("[EXC] vec=0x");
+        crate::dev::console::serial_write_u64(vector, 2);
+        crate::dev::console::serial_write(" ERR=0x");
+        crate::dev::console::serial_write_u64(error, 4);
+        crate::dev::console::serial_write(" RIP=0x");
+        crate::dev::console::serial_write_u64(rip, 16);
+        crate::dev::console::serial_write(" CR2=0x");
+        crate::dev::console::serial_write_u64(cr2, 16);
+        crate::dev::console::serial_write("\n");
     }
 
-    match vector {
-        14 => {
-            // Always log #PF to serial for post-mortem analysis
-            unsafe {
-                crate::dev::console::serial_write("[#PF] CR2=0x");
-                crate::dev::console::serial_write_u64(cr2, 16);
-                crate::dev::console::serial_write(" ERR=0x");
-                crate::dev::console::serial_write_u64(error, 4);
-                crate::dev::console::serial_write(" RIP=0x");
-                crate::dev::console::serial_write_u64(rip, 16);
-                crate::dev::console::serial_write("\n");
-            }
-
-            // Try to resolve as a demand page or CoW fault
-            if let Some(thr) = crate::proc::task::current() {
-                if let Some(proc) = crate::proc::process::get_process(thr.pid) {
-                    if proc.page_table_root != 0 && proc.addr_space.vma_count > 0 {
-                    let resolved = unsafe {
-                        crate::mm::virt::handle_page_fault(
-                            cr2,
-                            error,
-                            proc.page_table_root,
-                            &proc.addr_space.vmas[..proc.addr_space.vma_count],
-                        )
-                    };
-                        if resolved { loop { unsafe { core::arch::asm!("hlt"); } } }
-                    }
-                }
-            }
-
-        }
-        13 => { loop { unsafe { core::arch::asm!("hlt"); } } }
-        7 => { loop { unsafe { core::arch::asm!("hlt"); } } }
-        8 => {
-            // #DF is unrecoverable in most cases. Show on framebuffer
-            // and halt so the user sees the crash on screen.
-            unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
-        }
-        6 => { loop { unsafe { core::arch::asm!("hlt"); } } }
-        18 => { loop { unsafe { core::arch::asm!("hlt"); } } }
-        _ => { loop { unsafe { core::arch::asm!("hlt"); } } }
+    // #DF is unrecoverable — show on framebuffer so user sees the crash
+    if vector == 8 {
+        unsafe { early_boot_fault_display(vector, error, cr2, rip, rsp); }
     }
 
     // All exceptions are fatal in Ring 0 -- halt

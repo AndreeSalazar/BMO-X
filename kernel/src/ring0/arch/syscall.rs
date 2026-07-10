@@ -226,7 +226,9 @@ fn sys_clock_get(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5
 }
 
 fn sys_nanosleep(nr: u64, a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
-    let target_cycles = (a0 as u128 * 37) / 10;
+    // Convert nanoseconds to TSC cycles using the calibrated frequency
+    let tsc_freq = crate::cpu::tsc_per_sec();
+    let target_cycles = (a0 as u128).saturating_mul(tsc_freq as u128) / 1_000_000_000;
     let start = crate::cpu::rdtsc();
     while (crate::cpu::rdtsc() - start) < target_cycles as u64 {
         core::hint::spin_loop();

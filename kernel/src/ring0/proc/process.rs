@@ -69,3 +69,37 @@ pub fn get_process(pid: Pid) -> Option<&'static mut Process> {
 pub fn process_count() -> usize {
     unsafe { PROCESS_COUNT }
 }
+
+/// Allocate a new process with the given PID. Returns None if the table is full.
+pub fn alloc_process(pid: Pid) -> Option<&'static mut Process> {
+    unsafe {
+        for i in 0..MAX_PROCESSES {
+            if PROCESSES[i].state == ProcessState::Free {
+                PROCESSES[i].pid = pid;
+                PROCESSES[i].state = ProcessState::Active;
+                PROCESSES[i].page_table_root = 0;
+                PROCESSES[i].addr_space = AddressSpace::empty();
+                PROCESSES[i].msg_head = core::ptr::null_mut();
+                PROCESSES[i].msg_tail = core::ptr::null_mut();
+                PROCESSES[i].capabilities = 0;
+                PROCESS_COUNT += 1;
+                return Some(&mut PROCESSES[i]);
+            }
+        }
+    }
+    None
+}
+
+/// Free a process slot, transitioning it to Free state.
+pub fn free_process(pid: Pid) {
+    unsafe {
+        for i in 0..MAX_PROCESSES {
+            if PROCESSES[i].state != ProcessState::Free && PROCESSES[i].pid == pid {
+                PROCESSES[i].state = ProcessState::Free;
+                PROCESSES[i].pid = Pid(0);
+                PROCESS_COUNT = PROCESS_COUNT.saturating_sub(1);
+                return;
+            }
+        }
+    }
+}

@@ -51,10 +51,12 @@ pub unsafe extern "C" fn save_context_from_stack(saved_state: *mut u64) -> bool 
     regs.r15 = s[14];
 
     // CPU interrupt frame (sits above the 15 GPRs)
+    // Ring 3: CPU pushed [SS][RSP][RFLAGS][CS][RIP] — CS at index 3
+    // Ring 0: CPU pushed [RIP][CS][RFLAGS]           — CS at index 1
     let cpu_frame = saved_state.add(GPR_COUNT);
-    let cs = *cpu_frame.add(3); // CS is at offset 3 for both ring transitions
-
-    let is_ring3 = (cs & 3) == 3;
+    let probe = *cpu_frame.add(3);
+    let is_ring3 = (probe & 3) == 3;
+    let cs = if is_ring3 { probe } else { *cpu_frame.add(1) };
 
     if is_ring3 {
         // CPU pushed: [SS] [RSP] [RFLAGS] [CS] [RIP] (5 values)

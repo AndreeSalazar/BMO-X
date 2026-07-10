@@ -505,6 +505,7 @@ fn print_u32(val: u32) {
 }
 
 /// Generic: find a PCI device by class/subclass and return its BAR0 MMIO base.
+/// Correctly handles 32-bit vs 64-bit BARs per PCI spec.
 pub fn find_device_mmio(class_code: u8, subclass: u8) -> Option<u64> {
     unsafe {
         SCAN_RESULT.as_ref().and_then(|r| {
@@ -512,9 +513,14 @@ pub fn find_device_mmio(class_code: u8, subclass: u8) -> Option<u64> {
                 d.class_code == class_code && d.subclass == subclass
             }).map(|d| {
                 let bar0_lo = pci_read32(d.bus, d.device, d.function, 0x10);
-                let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);
-                let bar0 = ((bar0_hi as u64) << 32) | (bar0_lo as u64);
-                bar0 & !0xF_u64
+                if bar0_lo & 0x04 != 0 {
+                    // 64-bit BAR: combine BAR0 (low) + BAR1 (high)
+                    let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);
+                    ((bar0_hi as u64) << 32) | ((bar0_lo & !0xF) as u64)
+                } else {
+                    // 32-bit BAR: only BAR0
+                    (bar0_lo & !0xF) as u64
+                }
             })
         })
     }

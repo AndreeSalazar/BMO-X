@@ -126,9 +126,10 @@ unsafe fn finish_packet_wheel() {
     let dy: i64 = if flags & 0x20 != 0 {
         -((MOUSE_BUF[2] as i8) as i64)
     } else { -(MOUSE_BUF[2] as i64) };
-    // Z wheel: low 4 bits signed
+    // Z wheel: low 4 bits of byte 3 are a signed value (-8..+7).
+    // Cast to i8 first (sign-extends from bit 3), then to i64.
     let dz: i8 = (MOUSE_BUF[3] & 0x0F) as i8;
-    let dz: i64 = if dz & 0x8 != 0 { ((dz | !0xFi64 as i8) as i64) } else { dz as i64 };
+    let dz: i64 = dz as i64;
     if dx != 0 || dy != 0 {
         crate::channel::sys_send(OP_MOUSE_MOVE, dx as u64, dy as u64, 0);
     }

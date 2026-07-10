@@ -66,9 +66,10 @@ pub unsafe fn send_init_ipi(target_apic_id: u32) {
 }
 
 /// Send INIT deassert IPI (used to clear the INIT state).
+/// Must be edge-triggered and deassert level — bit 14 (trigger) = 0 (edge).
 pub unsafe fn send_init_deinit_apic_ipi() {
     let low = (DELIVERY_INIT as u32) | (DEST_PHYSICAL << 11)
-            | (LEVEL_DEASSERT << 13) | (TRIGGER_EDGE << 14) | (1 << 14);
+            | (LEVEL_DEASSERT << 13) | (TRIGGER_EDGE << 14);
     write_icr(0, low);
 }
 

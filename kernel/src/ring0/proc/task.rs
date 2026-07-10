@@ -161,7 +161,7 @@ pub fn alloc(pid: Pid, priority: super::Priority) -> Option<&'static mut Task> {
         let stack_top = stack_base + KERNEL_STACK_SIZE as u64;
 
         for i in 0..MAX_TASKS {
-            if TASK_TABLE[i].state == State::Free {
+            if TASK_TABLE[i].state == State::Free || TASK_TABLE[i].state == State::Dead {
                 TASK_TABLE[i].tid = Tid(NEXT_TID);
                 TASK_TABLE[i].pid = pid;
                 TASK_TABLE[i].state = State::Ready;
