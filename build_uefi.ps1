@@ -211,11 +211,12 @@ function Save-SourceHash {
 $bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\bmo-bootloader.efi"
 $nanoWakeElf = Join-Path $target "kernel\x86_64-unknown-none\release\layer-nano-wake"
 $kernelElf = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel"
-$moduleElf = Join-Path $target "x86_64-unknown-none\release\mod-bmo-core"
-$timebackElf = Join-Path $target "x86_64-unknown-none\release\mod-timeback"
-$cabinaElf = Join-Path $target "x86_64-unknown-none\release\mod-cabina"
-$linuxDevourElf = Join-Path $target "x86_64-unknown-none\release\mod-linux-devour"
-$wineDevourElf = Join-Path $target "x86_64-unknown-none\release\mod-wine-devour"
+$moduleTargetDir = Join-Path $target "modules"
+$moduleElf = Join-Path $moduleTargetDir "bmo_core\x86_64-unknown-none\release\mod-bmo-core"
+$timebackElf = Join-Path $moduleTargetDir "timeback\x86_64-unknown-none\release\mod-timeback"
+$cabinaElf = Join-Path $moduleTargetDir "cabina\x86_64-unknown-none\release\mod-cabina"
+$linuxDevourElf = Join-Path $moduleTargetDir "linux_devour\x86_64-unknown-none\release\mod-linux-devour"
+$wineDevourElf = Join-Path $moduleTargetDir "wine_devour\x86_64-unknown-none\release\mod-wine-devour"
 
 $needBoot      = Needs-Rebuild $bootDir $bootEfi
 $needKern      = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey
@@ -252,6 +253,7 @@ if ($needBoot) {
         param($bootDir, $bootTargetDir, $jobsFlag)
         Push-Location $bootDir
         try {
+            $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
             $out = cargo +nightly build --release --target x86_64-unknown-uefi --target-dir $bootTargetDir $(if ($jobsFlag) { $jobsFlag }) 2>&1
             $err = $out | Where-Object { $_ -match "^error" }
             if ($err) { throw "Bootloader build error: $err" }
@@ -272,6 +274,7 @@ if ($needKern) {
         param($kernDir, $kernTargetDir, $jobsFlag, $kernelFeatureFlag)
         Push-Location $kernDir
         try {
+            $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
             $out1 = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir -p layer-nano-wake @jobsFlag 2>&1
             $err1 = $out1 | Where-Object { $_ -match "^error" }
             if ($err1) { throw "Nano-Wake build error: $err1" }
@@ -280,7 +283,7 @@ if ($needKern) {
             $err2 = $out2 | Where-Object { $_ -match "^error" }
             if ($err2) { throw "Kernel build error: $err2" }
 
-            return @{ Ok=$true; Output=($out1 + $out2) }
+            return @{ Ok=$true; Output=(@($out1) + @($out2)) }
         } catch {
             return @{ Ok=$false; Error=$_.Exception.Message }
         } finally {
@@ -292,11 +295,12 @@ if ($needKern) {
 }
 
 # Build all 3 modules (Ring 3)
-$moduleScript = {
-    param($mdir, $mtargetDir, $jobsFlag)
-    Set-Location -LiteralPath $mdir
-    try {
-        $out = cargo build --release --target x86_64-unknown-none --target-dir $mtargetDir @jobsFlag 2>&1
+    $moduleScript = {
+        param($mdir, $mtargetDir, $jobsFlag)
+        Set-Location -LiteralPath $mdir
+        try {
+            $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+            $out = cargo build --release --target x86_64-unknown-none --target-dir $mtargetDir @jobsFlag 2>&1
         $err = $out | Where-Object { $_ -match "^error" }
         if ($err) { throw "Module build error: $err" }
         return @{ Ok=$true; Output=$out }
@@ -306,27 +310,27 @@ $moduleScript = {
 }
 
 if ($needModule) {
-    $moduleJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $moduleDir, $target, $jobsFlag
+    $moduleJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $moduleDir, (Join-Path $moduleTargetDir "bmo_core"), $jobsFlag
     Step "mod_bmo_core build started (PID $($moduleJob.Id))"
 }
 
 if ($needTimeback) {
-    $timebackJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $timebackDir, $target, $jobsFlag
+    $timebackJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $timebackDir, (Join-Path $moduleTargetDir "timeback"), $jobsFlag
     Step "mod_timeback build started (PID $($timebackJob.Id))"
 }
 
 if ($needCabina) {
-    $cabinaJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $cabinaDir, $target, $jobsFlag
+    $cabinaJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $cabinaDir, (Join-Path $moduleTargetDir "cabina"), $jobsFlag
     Step "mod_cabina build started (PID $($cabinaJob.Id))"
 }
 
 if ($needLinuxDevour) {
-    $linuxDevourJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $linuxDevourDir, $target, $jobsFlag
+    $linuxDevourJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $linuxDevourDir, (Join-Path $moduleTargetDir "linux_devour"), $jobsFlag
     Step "mod_linux_devour build started (PID $($linuxDevourJob.Id))"
 }
 
 if ($needWineDevour) {
-    $wineDevourJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $wineDevourDir, $target, $jobsFlag
+    $wineDevourJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $wineDevourDir, (Join-Path $moduleTargetDir "wine_devour"), $jobsFlag
     Step "mod_wine_devour build started (PID $($wineDevourJob.Id))"
 }
 

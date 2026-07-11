@@ -47,12 +47,11 @@ static UNKNOWN_SYSCALLS: AtomicU64 = AtomicU64::new(0);
 /// Inicializa el gateway: registra el handler en el kernel y notifica a Cabina.
 pub fn init() {
     // Registrar este gateway como el dispatch de syscalls 0x100-0x1FF
-    unsafe { bmo_register_gateway(enter); }
+    // via HAL (el kernel pasa la función por la tabla de servicios)
+    if let Some(h) = unsafe { crate::hal::HAL.as_ref() } {
+        unsafe { (h.register_gateway)(enter); }
+    }
     crate::cabina::info("gateway", "gateway v1.0 online - single door to BMO Core");
-}
-
-extern "C" {
-    fn bmo_register_gateway(f: unsafe extern "C" fn(u16, u64, u64, u64, u64, u64, u64) -> u64);
 }
 
 /// Punto de entrada UNICO para syscalls desde Ring 3.

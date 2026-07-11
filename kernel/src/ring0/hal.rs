@@ -167,6 +167,9 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         // ── ring3::transition ───────────────────────────────────────
         ring3_transition:         crate::ring3::transition::ring3_transition,
 
+        // ── ring3::gateway ───────────────────────────────────────────
+        register_gateway:         crate::ring3::gateway::bmo_register_gateway,
+
         // ── vendor ──────────────────────────────────────────────────
         issue_ibpb:               crate::vendor::amd::cpu::zen3::errata_workarounds::issue_ibpb,
         amd_cpu_name:             || "AMD Ryzen",

@@ -249,6 +249,9 @@ pub struct HalServices {
     // ── ring3::transition ───────────────────────────────────────
     pub ring3_transition: unsafe fn(u64, u64) -> !,
 
+    // ── ring3::gateway ───────────────────────────────────────────
+    pub register_gateway: unsafe extern "C" fn(unsafe extern "C" fn(u16, u64, u64, u64, u64, u64, u64) -> u64),
+
     // ── vendor ──────────────────────────────────────────────────
     pub issue_ibpb: fn(),
     pub amd_cpu_name: fn() -> &'static str,
