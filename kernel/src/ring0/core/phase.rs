@@ -149,13 +149,17 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     // ── XHCI detection (original proven pattern + chipset) ─────────
     if let Some(xhci_mmio) = crate::dev::pcie::find_xhci_mmio() {
         let mmio_base = xhci_mmio & !0x1F_FFFF;
-        let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
-        let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
+        let virt_base = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
+        let virt = virt_base + (xhci_mmio - mmio_base);
+        let mapped_mmio = match unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt_base, 2 * 1024 * 1024) } {
+            Ok(()) => virt,
+            Err(_) => xhci_mmio,
+        };
         s_log("[phase2] XHCI MMIO mapped");
         unsafe {
-            core::ptr::write_volatile(&mut (*(crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo)).xhci_mmio, xhci_mmio);
+            core::ptr::write_volatile(&mut (*(crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo)).xhci_mmio, mapped_mmio);
             core::ptr::write_volatile(0x9_0100 as *mut u32, 1);
-            core::ptr::write_volatile(0x9_0108 as *mut u64, xhci_mmio);
+            core::ptr::write_volatile(0x9_0108 as *mut u64, mapped_mmio);
         }
     }
 
@@ -163,13 +167,17 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     let (_, xhci2) = crate::dev::pcie::find_all_xhci_mmio();
     if let Some(mmio) = xhci2 {
         let mmio_base = mmio & !0x1F_FFFF;
-        let virt = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
-        let _ = unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt, 2 * 1024 * 1024) };
+        let virt_base = crate::mm::vmm::HIGH_MEM_BASE + mmio_base;
+        let virt = virt_base + (mmio - mmio_base);
+        let mapped_mmio = match unsafe { crate::mm::vmm::map_kernel_mmio_huge(mmio_base, virt_base, 2 * 1024 * 1024) } {
+            Ok(()) => virt,
+            Err(_) => mmio,
+        };
         s_log("[phase2] XHCI2 (chipset) mapped");
         unsafe {
-            core::ptr::write_volatile(&mut (*(crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo)).xhci_mmio2, mmio);
+            core::ptr::write_volatile(&mut (*(crate::info::BOOT_INFO as *mut bmo_boot_protocol::BootInfo)).xhci_mmio2, mapped_mmio);
             core::ptr::write_volatile(0x9_0104 as *mut u32, 1);
-            core::ptr::write_volatile(0x9_0110 as *mut u64, mmio);
+            core::ptr::write_volatile(0x9_0110 as *mut u64, mapped_mmio);
         }
     }
 

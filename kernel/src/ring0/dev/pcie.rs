@@ -193,6 +193,7 @@ pub struct PciDevice {
     pub device_id: u16,
     pub class_code: u8,
     pub subclass: u8,
+    pub prog_if: u8,
     pub bar0: u32,
     pub bar1: u32,
 }
@@ -210,6 +211,7 @@ impl PciScanResult {
                 bus: 0, device: 0, function: 0,
                 vendor_id: 0, device_id: 0,
                 class_code: 0, subclass: 0,
+                prog_if: 0,
                 bar0: 0, bar1: 0,
             }; 64],
             count: 0,
@@ -280,6 +282,8 @@ pub fn scan_pci_bus() -> PciScanResult {
                 print_u32(d.class_code as u32);
                 crate::dev::console::serial_write("/");
                 print_u32(d.subclass as u32);
+                crate::dev::console::serial_write("/");
+                print_u32(d.prog_if as u32);
                 crate::dev::console::serial_write(" BAR0=0x");
                 print_hex(d.bar0 as u64);
                 crate::dev::console::serial_write("\n");
@@ -312,6 +316,7 @@ fn scan_pci_bus_internal() -> PciScanResult {
                     vendor_id: vendor, device_id,
                     class_code: ((cr >> 24) & 0xFF) as u8,
                     subclass: ((cr >> 16) & 0xFF) as u8,
+                    prog_if: ((cr >> 8) & 0xFF) as u8,
                     bar0, bar1,
                 };
                 r.count += 1;
@@ -331,6 +336,7 @@ fn scan_pci_bus_internal() -> PciScanResult {
                             device_id: ((vd2 >> 16) & 0xFFFF) as u16,
                             class_code: ((cr2 >> 24) & 0xFF) as u8,
                             subclass: ((cr2 >> 16) & 0xFF) as u8,
+                            prog_if: ((cr2 >> 8) & 0xFF) as u8,
                             bar0: b0, bar1: b1,
                         };
                         r.count += 1;
@@ -409,9 +415,14 @@ pub fn find_ahci_mmio() -> Option<u64> {
 pub fn has_xhci() -> bool {
     unsafe {
         SCAN_RESULT.as_ref().map(|r| {
-            r.devices[..r.count].iter().any(|d| d.class_code == 0x0C && d.subclass == 0x03)
+            r.devices[..r.count].iter().any(is_xhci_device)
         }).unwrap_or(false)
     }
+}
+
+#[inline]
+fn is_xhci_device(d: &PciDevice) -> bool {
+    d.class_code == 0x0C && d.subclass == 0x03 && d.prog_if == 0x30
 }
 
 /// Find the xHCI controller and return its MMIO base address (BAR0).
@@ -420,9 +431,7 @@ pub fn has_xhci() -> bool {
 pub fn find_xhci_mmio() -> Option<u64> {
     unsafe {
         SCAN_RESULT.as_ref().and_then(|r| {
-            r.devices[..r.count].iter().find(|d| {
-                d.class_code == 0x0C && d.subclass == 0x03
-            }).map(|d| {
+            r.devices[..r.count].iter().find(|d| is_xhci_device(d)).map(|d| {
                 // BAR0 is at PCI config offset 0x10
                 let bar0_lo = pci_read32(d.bus, d.device, d.function, 0x10);
                 // Bit 2:1 = 00 → 32-bit MMIO, 10 → 64-bit MMIO
@@ -453,7 +462,7 @@ pub fn find_all_xhci_mmio() -> (Option<u64>, Option<u64>) {
             print_u32(r.count as u32);
             crate::dev::console::serial_write(" devices\n");
             for d in &r.devices[..r.count] {
-                if d.class_code == 0x0C && d.subclass == 0x03 {
+                if is_xhci_device(d) {
                     let bar0_lo = pci_read32(d.bus, d.device, d.function, 0x10);
                     let bar0: u64 = if (bar0_lo & 0x04) != 0 {
                         let bar0_hi = pci_read32(d.bus, d.device, d.function, 0x14);

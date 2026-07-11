@@ -354,8 +354,8 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
         (hal.serial_write_u64)(mmio, 16);
         (hal.serial_write)("\n");
 
-        bmo_xhci::set_mmio(mmio);
         if idx > 0 { bmo_xhci::reset_ctrl(); }
+        bmo_xhci::set_mmio(mmio);
         unsafe { xhci_usb_handover(mmio); }
 
         let ok = unsafe { bmo_xhci::init(mmio) };
@@ -395,8 +395,8 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
     }
 
     // Re-init best controller (clean state after multi-controller probing)
-    bmo_xhci::set_mmio(best_mmio);
     bmo_xhci::reset_ctrl();
+    bmo_xhci::set_mmio(best_mmio);
     unsafe { xhci_usb_handover(best_mmio); }
     unsafe { bmo_xhci::init(best_mmio); }
 
