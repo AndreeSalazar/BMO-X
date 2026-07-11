@@ -83,4 +83,21 @@ pub unsafe fn send_sipi(target_apic_id: u32, vector: u8) {
     write_icr(high, low);
 }
 
+/// Send a fixed IPI to a specific APIC ID.
+pub unsafe fn send_fixed_ipi(target_apic_id: u32, vector: u8) {
+    let high = (target_apic_id & 0xFF) << 24;
+    let low = (vector as u32) | (DELIVERY_FIXED as u32)
+            | (DEST_PHYSICAL << 11) | (LEVEL_ASSERT << 13)
+            | (TRIGGER_EDGE << 14);
+    write_icr(high, low);
+}
+
+/// Send a fixed IPI to all CPUs except self.
+pub unsafe fn send_ipi_all_except_self(vector: u8) {
+    let low = (vector as u32) | (DELIVERY_FIXED as u32)
+            | (LEVEL_ASSERT << 13) | (TRIGGER_EDGE << 14)
+            | (3 << 18); // Shorthand: All excluding self
+    write_icr(0, low);
+}
+
 

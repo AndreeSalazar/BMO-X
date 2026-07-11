@@ -110,10 +110,13 @@ static FONT16: [[u8; 16]; 94] = [
     [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
 ];
 
-const WHITE: u32 = 0xFFFFFFFF;
-const DIM:   u32 = 0xFF888888;
-const BG:    u32 = 0xFF000000;
-const BAR_BG:  u32 = 0xFF333333;
+const BG: u32          = 0xFF0A0F1D; // Deep space slate-blue
+const WHITE: u32       = 0xFFF1F5F9; // Soft crisp white
+const DIM: u32         = 0xFF64748B; // Slate-500 muted text
+const ACCENT: u32      = 0xFF00E5FF; // Neon cyan highlight
+const ACCENT2: u32     = 0xFF818CF8; // Indigo-400 accent for loading state
+const BAR_BG: u32      = 0xFF1E293B; // Slate-800 progress bar background
+const BAR_BORDER: u32  = 0xFF334155; // Slate-700 progress bar border
 
 // ── Primitive drawing ─────────────────────────────────────────────
 
@@ -128,6 +131,45 @@ fn put_pix(x: u32, y: u32, color: u32) {
 
 fn fill_rect(x: u32, y: u32, w: u32, h: u32, color: u32) {
     for dy in 0..h { for dx in 0..w { put_pix(x + dx, y + dy, color); } }
+}
+
+fn draw_rect_outline(x: u32, y: u32, w: u32, h: u32, color: u32) {
+    if w == 0 || h == 0 { return; }
+    for dx in 0..w {
+        put_pix(x + dx, y, color);
+        put_pix(x + dx, y + h - 1, color);
+    }
+    for dy in 0..h {
+        put_pix(x, y + dy, color);
+        put_pix(x + w - 1, y + dy, color);
+    }
+}
+
+fn draw_ring(cx: u32, cy: u32, r: u32, thickness: u32, color: u32) {
+    let r_outer = r;
+    let r_inner = r.saturating_sub(thickness);
+    let r_outer_sq = r_outer * r_outer;
+    let r_inner_sq = r_inner * r_inner;
+    
+    for dy in -(r as i32)..=(r as i32) {
+        for dx in -(r as i32)..=(r as i32) {
+            let dist_sq = (dx * dx + dy * dy) as u32;
+            if dist_sq <= r_outer_sq && dist_sq >= r_inner_sq {
+                let px = (cx as i32 + dx) as u32;
+                let py = (cy as i32 + dy) as u32;
+                put_pix(px, py, color);
+            }
+        }
+    }
+}
+
+fn draw_logo(cx: u32, cy: u32) {
+    // Tech-styled layered ring
+    draw_ring(cx, cy, 32, 1, 0xFF1E293B); 
+    draw_ring(cx, cy, 28, 2, 0xFF312E81); 
+    draw_ring(cx, cy, 26, 3, 0xFF4F46E5); 
+    draw_ring(cx, cy, 22, 1, 0xFF00E5FF); 
+    fill_rect(cx - 3, cy - 3, 6, 6, 0xFF00E5FF);
 }
 
 fn draw_char(x: u32, y: u32, c: u8, color: u32) {
@@ -165,39 +207,49 @@ pub fn splash_init() {
     if w == 0 || h == 0 { return; }
     fill_rect(0, 0, w, h, BG);
 
+    let cy = h / 2;
+    let cx = w / 2;
+
+    draw_logo(cx, cy - 80);
+
     let title = "BMO v2.0";
     let tx = (w as u32).saturating_sub(text_width(title)) / 2;
-    draw_str(tx, 160, title, WHITE);
+    draw_str(tx, cy - 10, title, WHITE);
 
     let sub = "Pure Ring 0";
     let sx = (w as u32).saturating_sub(text_width(sub)) / 2;
-    draw_str(sx, 182, sub, DIM);
+    draw_str(sx, cy + 15, sub, DIM);
 }
 
 pub fn splash_progress(pct: u32, label: &str) {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
-    if w == 0 { return; }
+    if w == 0 || h == 0 { return; }
 
-    let bar_y = 240u32;
-    let bar_w = 420u32;
-    let bar_h = 8u32;
+    let cy = h / 2;
+    let bar_y = cy + 50;
+    let bar_w = 320u32;
+    let bar_h = 6u32;
     let bx = (w as u32).saturating_sub(bar_w) / 2;
 
-    fill_rect(bx - 2, bar_y - 1, bar_w + 4, bar_h + 2, BG);
+    // Clean bar area
+    fill_rect(bx - 4, bar_y - 2, bar_w + 8, bar_h + 4, BG);
+    draw_rect_outline(bx - 2, bar_y - 2, bar_w + 4, bar_h + 4, BAR_BORDER);
     fill_rect(bx, bar_y, bar_w, bar_h, BAR_BG);
 
     let fw = if pct > 0 { (bar_w as u64 * pct as u64 / 100) as u32 } else { 0 };
-    if fw > 0 { fill_rect(bx, bar_y, fw.min(bar_w), bar_h, WHITE); }
+    if fw > 0 { fill_rect(bx, bar_y, fw.min(bar_w), bar_h, ACCENT); }
 
-    fill_rect(0, bar_y + bar_h + 6, w, CHAR_H as u32, BG);
+    let label_y = bar_y + bar_h + 12;
+    fill_rect(0, label_y, w, CHAR_H as u32, BG);
     let lx = (w as u32).saturating_sub(text_width(label)) / 2;
-    draw_str(lx, bar_y + bar_h + 10, label, DIM);
+    draw_str(lx, label_y, label, ACCENT2);
 
-    let info = "AMD Ryzen  .  GOP";
+    let info = "AMD Ryzen 5 5600X · GOP Framebuffer · Ring 0";
     let ix = (w as u32).saturating_sub(text_width(info)) / 2;
-    fill_rect(0, h.saturating_sub(34), w, CHAR_H as u32, BG);
-    draw_str(ix, h.saturating_sub(28), info, DIM);
+    let info_y = h.saturating_sub(35);
+    fill_rect(0, info_y, w, CHAR_H as u32, BG);
+    draw_str(ix, info_y + 4, info, DIM);
 }
 
 pub fn splash_clear() {

@@ -114,7 +114,13 @@ pub fn init() -> bool {
 /// Detect CPUs via ACPI MADT (Multiple APIC Description Table)
 unsafe fn detect_cpus_acpi() -> bool {
     // Get RSDP from boot info
-    let rsdp_addr = crate::boot::info::rsdp_address();
+    let rsdp_addr = unsafe {
+        if crate::info::BOOT_INFO.is_null() {
+            0
+        } else {
+            (*crate::info::BOOT_INFO).rsdp_addr
+        }
+    };
     if rsdp_addr == 0 {
         crate::dev::console::serial_write("[smp_enabler] no RSDP found\n");
         return false;

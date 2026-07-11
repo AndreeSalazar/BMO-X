@@ -133,7 +133,9 @@ pub fn enter_usermode(entry_point: u64, user_stack: u64) -> ! {
     if !is_ready() {
         crate::dev::console::serial_write("[ring0_integration] ERROR: not all subsystems ready\n");
         loop {
-            core::arch::asm!("hlt");
+            unsafe {
+                core::arch::asm!("hlt");
+            }
         }
     }
     
