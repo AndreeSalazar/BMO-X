@@ -1,24 +1,18 @@
-/* BMO Layer_Nano-Wake Linker Script — loaded at 0x2000000 by UEFI */
+/* BMO Layer_Nano-Wake Linker Script — compact two-segment layout */
 ENTRY(_start)
 
 SECTIONS
 {
     . = 0x2000000;
 
-    .text ALIGN(4K) : {
+    .text ALIGN(16) : {
         *(.text._start)
         *(.text .text.*)
-    }
-
-    .rodata ALIGN(4K) : {
         *(.rodata .rodata.*)
-    }
-
-    .data ALIGN(4K) : {
         *(.data .data.*)
     }
 
-    .bss ALIGN(4K) : {
+    .bss ALIGN(16) : {
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)
@@ -31,5 +25,13 @@ SECTIONS
         *(.eh_frame)
         *(.comment)
         *(.note.*)
+        *(.got)
+        *(.got.plt)
+        *(.plt)
+        *(.rela.*)
+        *(.dynstr)
+        *(.dynsym)
+        *(.dynamic)
+        *(.gnu.hash)
     }
 }

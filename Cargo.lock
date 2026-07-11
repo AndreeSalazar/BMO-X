@@ -972,7 +972,6 @@ name = "layer-nano-wake"
 version = "2.0.0"
 dependencies = [
  "bmo-boot-protocol",
- "volatile 0.4.6",
 ]
 
 [[package]]

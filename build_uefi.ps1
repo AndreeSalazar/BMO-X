@@ -478,9 +478,15 @@ $tstage = PhaseStart "Stage EFI/BOOT"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
+# Locate llvm-objcopy from rustup
+$llvmObjcopy = Get-ChildItem -Path "C:\Users\andre\.rustup" -Filter "llvm-objcopy.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+if (-not $llvmObjcopy) { Fail "llvm-objcopy.exe not found in rustup directory" }
+
 Copy-Item $bootEfi  -Destination (Join-Path $stage "BOOTX64.EFI")
-Copy-Item $nanoWakeElf -Destination (Join-Path $stage "kernel.elf")
+# Convert ELF to flat raw binary
+& $llvmObjcopy -O binary $nanoWakeElf (Join-Path $stage "kernel.bin")
 Copy-Item $kernelElf -Destination (Join-Path $stage "kernel_services.elf")
+
 $modulesStageDir = Join-Path $stage "modules"
 if (-not (Test-Path $modulesStageDir)) { New-Item -ItemType Directory -Path $modulesStageDir -Force | Out-Null }
 Copy-Item $moduleElf   -Destination (Join-Path $modulesStageDir "mod_bmo_core.elf")
@@ -489,7 +495,11 @@ Copy-Item $cabinaElf   -Destination (Join-Path $modulesStageDir "mod_cabina.elf"
 Copy-Item $linuxDevourElf -Destination (Join-Path $modulesStageDir "mod_linux_devour.elf")
 Copy-Item $wineDevourElf  -Destination (Join-Path $modulesStageDir "mod_wine_devour.elf")
 
-$totalSize = $bootSize + $nanoWakeSize + $kernSize + $moduleSize + $timebackSize + $cabinaSize + $linuxDevourSize + $wineDevourSize
+$nanoWakeBin = Join-Path $stage "kernel.bin"
+$nanoWakeBinSize = (Get-Item $nanoWakeBin).Length
+$nanoWakeBinHash = Hash256 $nanoWakeBin
+
+$totalSize = $bootSize + $nanoWakeBinSize + $kernSize + $moduleSize + $timebackSize + $cabinaSize + $linuxDevourSize + $wineDevourSize
 $manifest = @"
 # FastOS EFI Boot Manifest
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -499,7 +509,7 @@ $manifest = @"
 # File           Size        SHA256
 # ----           ----        ------
 BOOTX64.EFI               $bootSize   $bootHash
-kernel.elf                $nanoWakeSize $nanoWakeHash
+kernel.bin                $nanoWakeBinSize $nanoWakeBinHash
 kernel_services.elf       $kernSize   $kernHash
 modules/mod_bmo_core.elf  $moduleSize $moduleHash
 modules/mod_timeback.elf  $timebackSize $timebackHash
@@ -550,7 +560,8 @@ if ($Flash) {
     New-Item -ItemType Directory -Path $efiDest -Force | Out-Null
 
     Copy-Item (Join-Path $stage "BOOTX64.EFI")       -Destination (Join-Path $efiDest "BOOTX64.EFI")       -Force
-    Copy-Item (Join-Path $stage "kernel.elf")        -Destination (Join-Path $efiDest "kernel.elf")        -Force
+    Copy-Item (Join-Path $stage "kernel.bin")        -Destination (Join-Path $efiDest "kernel.bin")        -Force
+    Remove-Item (Join-Path $efiDest "kernel.elf")    -Force -ErrorAction SilentlyContinue
     Copy-Item (Join-Path $stage "kernel_services.elf") -Destination (Join-Path $efiDest "kernel_services.elf") -Force
     $modulesDestDir = Join-Path $efiDest "modules"
     if (-not (Test-Path $modulesDestDir)) { New-Item -ItemType Directory -Path $modulesDestDir -Force | Out-Null }
@@ -562,7 +573,7 @@ if ($Flash) {
     Copy-Item (Join-Path $stage "MANIFEST.TXT")      -Destination (Join-Path $efiDest "MANIFEST.TXT")      -Force
 
     try {
-        $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.elf", 'Open', 'Write')
+        $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.bin", 'Open', 'Write')
         $fs.Flush(1)
         $fs.Close()
         $fss = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel_services.elf", 'Open', 'Write')
@@ -577,7 +588,8 @@ if ($Flash) {
     $tv = PhaseStart "Verify"
     foreach ($f in @(
         @{Name="BOOTX64.EFI";Hash=$bootHash;Size=$bootSize;IsModule=$false},
-        @{Name="kernel.elf";Hash=$kernHash;Size=$kernSize;IsModule=$false},
+        @{Name="kernel.bin";Hash=$nanoWakeBinHash;Size=$nanoWakeBinSize;IsModule=$false},
+        @{Name="kernel_services.elf";Hash=$kernHash;Size=$kernSize;IsModule=$false},
         @{Name="mod_bmo_core.elf";Hash=$moduleHash;Size=$moduleSize;IsModule=$true},
         @{Name="mod_timeback.elf";Hash=$timebackHash;Size=$timebackSize;IsModule=$true},
         @{Name="mod_cabina.elf";Hash=$cabinaHash;Size=$cabinaSize;IsModule=$true},

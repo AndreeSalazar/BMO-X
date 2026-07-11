@@ -666,42 +666,74 @@ fn main() -> Status {
     }
 
     // ── Allocate kernel ───────────────────────────────────────────────
-    // Load kernel ELF
-    let elf_data = read_file(device, "\\EFI\\BOOT\\kernel.elf").expect("failed to read kernel.elf");
-    let (entry_point, phdrs) = parse_elf64(&elf_data).expect("failed to parse ELF64");
-
-    // Compute kernel span
-    let mut base: u64 = u64::MAX;
-    let mut end: u64 = 0;
-    for ph in &phdrs {
-        if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
-        base = base.min(ph.p_vaddr);
-        end = end.max(ph.p_vaddr + ph.p_memsz);
-    }
-    let page_base = base & !0xFFF;
-    let total_pages = ((end - page_base + 0xFFF) / 0x1000) as usize;
-
-    // Allocate and load at the ELF virtual address. The kernel is linked as a
-    // non-relocatable higher/physical-half image, so a fallback allocation is
-    // not safe: jumping to `entry_point` only works if PT_LOAD is actually at
-    // `page_base`. If this fixed allocation fails, stop before EBS instead of
-    // corrupting occupied memory after EBS.
-    let kernel_ptr = match boot::allocate_pages(
-        boot::AllocateType::Address(page_base), MemoryType::LOADER_CODE, total_pages,
-    ) {
-        Ok(addr) => addr.as_ptr() as *mut u8,
-        Err(_) => {
-            info!("FATAL: fixed kernel address 0x{:x} occupied", page_base);
-            return Status::OUT_OF_RESOURCES;
+    // Load kernel binary (flat kernel.bin or ELF kernel.elf)
+    let mut is_elf = true;
+    let elf_data = match read_file(device, "\\EFI\\BOOT\\kernel.bin") {
+        Some(data) => {
+            is_elf = false;
+            data
+        }
+        None => {
+            read_file(device, "\\EFI\\BOOT\\kernel.elf").expect("failed to read kernel.elf/kernel.bin")
         }
     };
 
-    for ph in &phdrs {
-        if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
-        let dst = unsafe { kernel_ptr.add((ph.p_vaddr - page_base) as usize) };
+    let mut entry_point: u64 = 0;
+    let mut page_base: u64 = 0;
+    let mut end: u64 = 0;
+
+    if is_elf {
+        let (ep, phdrs) = parse_elf64(&elf_data).expect("failed to parse ELF64");
+        entry_point = ep;
+
+        // Compute kernel span
+        let mut base: u64 = u64::MAX;
+        for ph in &phdrs {
+            if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
+            base = base.min(ph.p_vaddr);
+            end = end.max(ph.p_vaddr + ph.p_memsz);
+        }
+        page_base = base & !0xFFF;
+        let total_pages = ((end - page_base + 0xFFF) / 0x1000) as usize;
+
+        let kernel_ptr = match boot::allocate_pages(
+            boot::AllocateType::Address(page_base), MemoryType::LOADER_CODE, total_pages,
+        ) {
+            Ok(addr) => addr.as_ptr() as *mut u8,
+            Err(_) => {
+                info!("FATAL: fixed kernel address 0x{:x} occupied", page_base);
+                return Status::OUT_OF_RESOURCES;
+            }
+        };
+
+        for ph in &phdrs {
+            if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
+            let dst = unsafe { kernel_ptr.add((ph.p_vaddr - page_base) as usize) };
+            unsafe {
+                core::ptr::copy_nonoverlapping(elf_data.as_ptr().add(ph.p_offset as usize), dst, ph.p_filesz as usize);
+                core::ptr::write_bytes(dst.add(ph.p_filesz as usize), 0, (ph.p_memsz - ph.p_filesz) as usize);
+            }
+        }
+    } else {
+        // Flat raw binary loaded at fixed 0x2000000
+        page_base = 0x2000000;
+        let file_size = elf_data.len() as u64;
+        end = page_base + file_size;
+        entry_point = page_base;
+        let total_pages = ((file_size + 0xFFF) / 0x1000) as usize;
+
+        let kernel_ptr = match boot::allocate_pages(
+            boot::AllocateType::Address(page_base), MemoryType::LOADER_CODE, total_pages,
+        ) {
+            Ok(addr) => addr.as_ptr() as *mut u8,
+            Err(_) => {
+                info!("FATAL: fixed flat kernel address 0x{:x} occupied", page_base);
+                return Status::OUT_OF_RESOURCES;
+            }
+        };
+
         unsafe {
-            core::ptr::copy_nonoverlapping(elf_data.as_ptr().add(ph.p_offset as usize), dst, ph.p_filesz as usize);
-            core::ptr::write_bytes(dst.add(ph.p_filesz as usize), 0, (ph.p_memsz - ph.p_filesz) as usize);
+            core::ptr::copy_nonoverlapping(elf_data.as_ptr(), kernel_ptr, file_size as usize);
         }
     }
 

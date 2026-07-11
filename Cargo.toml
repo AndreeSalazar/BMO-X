@@ -65,3 +65,6 @@ strip = "symbols"
 debug = false
 debug-assertions = false
 overflow-checks = false
+
+[profile.release.package.layer-nano-wake]
+opt-level = "z"
