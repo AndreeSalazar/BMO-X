@@ -1,4 +1,4 @@
-﻿//! BMO Boot Protocol — shared types between UEFI bootloader and kernel.
+//! BMO Boot Protocol — shared types between UEFI bootloader and kernel.
 //!
 //! The bootloader fills `BootInfo`, the kernel reads it.
 //! Single pointer in RDI — that's the entire ABI.
@@ -125,6 +125,11 @@ pub struct BootInfo {
     pub kernel_base: u64,
     pub kernel_size: u64,
 
+    // ── Core Services Kernel (bmo-kernel) ──
+    pub services_base: u64,
+    pub services_size: u64,
+    pub services_entry: u64,
+
     // ── Stack ──
     pub stack_top: u64,
     pub stack_size: u64,
@@ -205,6 +210,7 @@ impl BootInfoBuilder {
                 }; MAX_MEMORY_ENTRIES],
                 rsdp_addr: 0,
                 kernel_base: 0, kernel_size: 0,
+                services_base: 0, services_size: 0, services_entry: 0,
                 stack_top: 0, stack_size: 0,
                 reserved_addr: 0, reserved_size: 0,
                 uefi_system_table: 0,
@@ -234,6 +240,13 @@ impl BootInfoBuilder {
     pub fn kernel(mut self, base: u64, size: u64) -> Self {
         self.inner.kernel_base = base;
         self.inner.kernel_size = size;
+        self
+    }
+
+    pub fn services(mut self, base: u64, size: u64, entry: u64) -> Self {
+        self.inner.services_base = base;
+        self.inner.services_size = size;
+        self.inner.services_entry = entry;
         self
     }
 

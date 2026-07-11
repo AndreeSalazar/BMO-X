@@ -1,9 +1,9 @@
-/* FastOS Kernel Linker Script — ELF loaded at 1MB by UEFI bootloader */
+/* BMO Layer_Nano-Wake Linker Script — loaded at 0x2000000 by UEFI */
 ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x3000000;
+    . = 0x2000000;
 
     .text ALIGN(4K) : {
         *(.text._start)
@@ -25,7 +25,7 @@ SECTIONS
         __bss_end = .;
     }
 
-    __kernel_end = .;
+    __layer_end = .;
 
     /DISCARD/ : {
         *(.eh_frame)

@@ -968,6 +968,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "layer-nano-wake"
+version = "2.0.0"
+dependencies = [
+ "bmo-boot-protocol",
+ "volatile 0.4.6",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"

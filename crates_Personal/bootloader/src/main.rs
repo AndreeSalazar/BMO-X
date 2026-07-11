@@ -705,6 +705,39 @@ fn main() -> Status {
         }
     }
 
+    // Load kernel_services ELF
+    let s_elf_data = read_file(device, "\\EFI\\BOOT\\kernel_services.elf").expect("failed to read kernel_services.elf");
+    let (s_entry, s_phdrs) = parse_elf64(&s_elf_data).expect("failed to parse kernel_services ELF64");
+
+    let mut s_base: u64 = u64::MAX;
+    let mut s_end: u64 = 0;
+    for ph in &s_phdrs {
+        if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
+        s_base = s_base.min(ph.p_vaddr);
+        s_end = s_end.max(ph.p_vaddr + ph.p_memsz);
+    }
+    let s_page_base = s_base & !0xFFF;
+    let s_total_pages = ((s_end - s_page_base + 0xFFF) / 0x1000) as usize;
+
+    let s_kernel_ptr = match boot::allocate_pages(
+        boot::AllocateType::Address(s_page_base), MemoryType::LOADER_CODE, s_total_pages,
+    ) {
+        Ok(addr) => addr.as_ptr() as *mut u8,
+        Err(_) => {
+            info!("FATAL: fixed kernel services address 0x{:x} occupied", s_page_base);
+            return Status::OUT_OF_RESOURCES;
+        }
+    };
+
+    for ph in &s_phdrs {
+        if ph.p_type != PT_LOAD || ph.p_memsz == 0 { continue; }
+        let dst = unsafe { s_kernel_ptr.add((ph.p_vaddr - s_page_base) as usize) };
+        unsafe {
+            core::ptr::copy_nonoverlapping(s_elf_data.as_ptr().add(ph.p_offset as usize), dst, ph.p_filesz as usize);
+            core::ptr::write_bytes(dst.add(ph.p_filesz as usize), 0, (ph.p_memsz - ph.p_filesz) as usize);
+        }
+    }
+
     // GOP
 
     // Pre-load Ring 3 modules (before ExitBootServices)
@@ -758,6 +791,9 @@ fn main() -> Status {
         bi.rsdp_addr = find_rsdp();
         bi.kernel_base = page_base;
         bi.kernel_size = end - page_base;
+        bi.services_base = s_page_base;
+        bi.services_size = s_end - s_page_base;
+        bi.services_entry = s_entry;
         bi.stack_top = stack_top;
         bi.stack_size = KERNEL_STACK_SIZE as u64;
         bi.uefi_system_table = uefi::table::system_table_raw()

@@ -209,6 +209,7 @@ function Save-SourceHash {
 }
 
 $bootEfi = Join-Path $target "bootloader\x86_64-unknown-uefi\release\bmo-bootloader.efi"
+$nanoWakeElf = Join-Path $target "kernel\x86_64-unknown-none\release\layer-nano-wake"
 $kernelElf = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel"
 $moduleElf = Join-Path $target "x86_64-unknown-none\release\mod-bmo-core"
 $timebackElf = Join-Path $target "x86_64-unknown-none\release\mod-timeback"
@@ -271,10 +272,15 @@ if ($needKern) {
         param($kernDir, $kernTargetDir, $jobsFlag, $kernelFeatureFlag)
         Push-Location $kernDir
         try {
-            $out = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir @jobsFlag @kernelFeatureFlag 2>&1
-            $err = $out | Where-Object { $_ -match "^error" }
-            if ($err) { throw "Kernel build error: $err" }
-            return @{ Ok=$true; Output=$out }
+            $out1 = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir -p layer-nano-wake @jobsFlag 2>&1
+            $err1 = $out1 | Where-Object { $_ -match "^error" }
+            if ($err1) { throw "Nano-Wake build error: $err1" }
+
+            $out2 = cargo build --release --target x86_64-unknown-none --target-dir $kernTargetDir -p bmo-kernel @jobsFlag @kernelFeatureFlag 2>&1
+            $err2 = $out2 | Where-Object { $_ -match "^error" }
+            if ($err2) { throw "Kernel build error: $err2" }
+
+            return @{ Ok=$true; Output=($out1 + $out2) }
         } catch {
             return @{ Ok=$false; Error=$_.Exception.Message }
         } finally {
@@ -428,6 +434,7 @@ if ($needWineDevour) { Save-SourceHash $wineDevourDir $wineDevourElf }
 $tval = PhaseStart "Validate outputs"
 
 if (-not (Test-Path $bootEfi))      { Fail "Bootloader EFI not found: $bootEfi" }
+if (-not (Test-Path $nanoWakeElf))  { Fail "Nano-Wake ELF not found: $nanoWakeElf" }
 if (-not (Test-Path $kernelElf))     { Fail "Kernel ELF not found: $kernelElf" }
 if (-not (Test-Path $moduleElf))     { Fail "Module ELF not found: $moduleElf" }
 if (-not (Test-Path $timebackElf))   { Fail "Timeback ELF not found: $timebackElf" }
@@ -436,11 +443,13 @@ if (-not (Test-Path $linuxDevourElf)) { Fail "Linux Devour ELF not found: $linux
 if (-not (Test-Path $wineDevourElf))  { Fail "Wine Devour ELF not found: $wineDevourElf" }
 
 $bootSize      = (Get-Item $bootEfi).Length
+$nanoWakeSize  = (Get-Item $nanoWakeElf).Length
 $kernSize      = (Get-Item $kernelElf).Length
 $moduleSize    = (Get-Item $moduleElf).Length
 $timebackSize  = (Get-Item $timebackElf).Length
 $cabinaSize    = (Get-Item $cabinaElf).Length
 $bootHash      = Hash256 $bootEfi
+$nanoWakeHash  = Hash256 $nanoWakeElf
 $kernHash      = Hash256 $kernelElf
 $moduleHash    = Hash256 $moduleElf
 $timebackHash  = Hash256 $timebackElf
@@ -451,7 +460,8 @@ $wineDevourSize  = (Get-Item $wineDevourElf).Length
 $wineDevourHash  = Hash256 $wineDevourElf
 
 Write-Host "    BOOTX64.EFI         $([math]::Round($bootSize/1024,1)) KB  sha256:$($bootHash.Substring(0,16))" -ForegroundColor White
-Write-Host "    kernel.elf          $([math]::Round($kernSize/1024,1)) KB  sha256:$($kernHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    layer-nano-wake     $([math]::Round($nanoWakeSize/1024,1)) KB  sha256:$($nanoWakeHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    kernel_services.elf $([math]::Round($kernSize/1024,1)) KB  sha256:$($kernHash.Substring(0,16))" -ForegroundColor White
 Write-Host "    mod_bmo_core.elf    $([math]::Round($moduleSize/1024,1)) KB  sha256:$($moduleHash.Substring(0,16))" -ForegroundColor White
 Write-Host "    mod_timeback.elf    $([math]::Round($timebackSize/1024,1)) KB  sha256:$($timebackHash.Substring(0,16))" -ForegroundColor White
 Write-Host "    mod_cabina.elf      $([math]::Round($cabinaSize/1024,1)) KB  sha256:$($cabinaHash.Substring(0,16))" -ForegroundColor White
@@ -469,7 +479,8 @@ if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
 Copy-Item $bootEfi  -Destination (Join-Path $stage "BOOTX64.EFI")
-Copy-Item $kernelElf -Destination (Join-Path $stage "kernel.elf")
+Copy-Item $nanoWakeElf -Destination (Join-Path $stage "kernel.elf")
+Copy-Item $kernelElf -Destination (Join-Path $stage "kernel_services.elf")
 $modulesStageDir = Join-Path $stage "modules"
 if (-not (Test-Path $modulesStageDir)) { New-Item -ItemType Directory -Path $modulesStageDir -Force | Out-Null }
 Copy-Item $moduleElf   -Destination (Join-Path $modulesStageDir "mod_bmo_core.elf")
@@ -478,7 +489,7 @@ Copy-Item $cabinaElf   -Destination (Join-Path $modulesStageDir "mod_cabina.elf"
 Copy-Item $linuxDevourElf -Destination (Join-Path $modulesStageDir "mod_linux_devour.elf")
 Copy-Item $wineDevourElf  -Destination (Join-Path $modulesStageDir "mod_wine_devour.elf")
 
-$totalSize = $bootSize + $kernSize + $moduleSize + $timebackSize + $cabinaSize + $linuxDevourSize + $wineDevourSize
+$totalSize = $bootSize + $nanoWakeSize + $kernSize + $moduleSize + $timebackSize + $cabinaSize + $linuxDevourSize + $wineDevourSize
 $manifest = @"
 # FastOS EFI Boot Manifest
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -488,7 +499,8 @@ $manifest = @"
 # File           Size        SHA256
 # ----           ----        ------
 BOOTX64.EFI               $bootSize   $bootHash
-kernel.elf                $kernSize   $kernHash
+kernel.elf                $nanoWakeSize $nanoWakeHash
+kernel_services.elf       $kernSize   $kernHash
 modules/mod_bmo_core.elf  $moduleSize $moduleHash
 modules/mod_timeback.elf  $timebackSize $timebackHash
 modules/mod_cabina.elf    $cabinaSize $cabinaHash
@@ -539,6 +551,7 @@ if ($Flash) {
 
     Copy-Item (Join-Path $stage "BOOTX64.EFI")       -Destination (Join-Path $efiDest "BOOTX64.EFI")       -Force
     Copy-Item (Join-Path $stage "kernel.elf")        -Destination (Join-Path $efiDest "kernel.elf")        -Force
+    Copy-Item (Join-Path $stage "kernel_services.elf") -Destination (Join-Path $efiDest "kernel_services.elf") -Force
     $modulesDestDir = Join-Path $efiDest "modules"
     if (-not (Test-Path $modulesDestDir)) { New-Item -ItemType Directory -Path $modulesDestDir -Force | Out-Null }
     Copy-Item (Join-Path $stage "modules\mod_bmo_core.elf")  -Destination "${modulesDestDir}\mod_bmo_core.elf" -Force
@@ -552,6 +565,9 @@ if ($Flash) {
         $fs = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel.elf", 'Open', 'Write')
         $fs.Flush(1)
         $fs.Close()
+        $fss = [System.IO.File]::Open("${targetRoot}EFI\BOOT\kernel_services.elf", 'Open', 'Write')
+        $fss.Flush(1)
+        $fss.Close()
         $fs1 = [System.IO.File]::Open("${modulesDestDir}\mod_bmo_core.elf", 'Open', 'Write')
         $fs1.Flush(1)
         $fs1.Close()

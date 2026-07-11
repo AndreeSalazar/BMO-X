@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     # ── RING 0 (Kernel) ──────────────────────────────────────────────
     "kernel",
+    "kernel/Layer_Nano-Wake",
     "crates_Personal/bootloader",
     "crates_Personal/ring0/boot_protocol",
     "crates_Personal/ring0/cpu_vendor_profile",

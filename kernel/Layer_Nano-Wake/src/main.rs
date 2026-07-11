@@ -1,7 +1,12 @@
-//! Boot splash screen — macOS-style centered progress bar.
+//! BMO Layer_Nano-Wake — ultra-fast micro bootstrap layer
 //!
-//! Writes directly to GOP front buffer — works before init_gop().
-//! 8x16 VGA-inspired font with full ASCII (32-126).
+//! Serves as the kernel's first stage (kernel.elf). Sets up minimal state,
+//! renders a premium splash screen, and immediately jumps to the real
+//! kernel services (kernel_services.elf) already pre-loaded by the bootloader.
+
+#![no_std]
+#![no_main]
+#![allow(static_mut_refs)]
 
 // ── Font: 8x16 bitmap, chars 32..126 (space through ~) ──────────
 
@@ -104,7 +109,7 @@ static FONT16: [[u8; 16]; 95] = [
     [0x00,0x00,0x00,0x00,0x66,0x66,0x66,0x7E,0x7E,0x66,0x00,0x00,0x00,0x00,0x00,0x00], //119: w
     [0x00,0x00,0x00,0x00,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00,0x00,0x00,0x00,0x00,0x00], //120: x
     [0x00,0x00,0x00,0x00,0x66,0x66,0x66,0x3E,0x06,0x66,0x3C,0x00,0x00,0x00,0x00,0x00], //121: y
-    [0x00,0x00,0x00,0x00,0x7E,0x0C,0x18,0x30,0x60,0x7E,0x00,0x00,0x00,0x00,0x00,0x00], //122: z
+    [0x00,0x00,0x7E,0x0C,0x18,0x30,0x60,0x7E,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00], //122: z
     [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00], //123-126
     [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
     [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
@@ -119,12 +124,21 @@ const ACCENT2: u32     = 0xFF818CF8; // Indigo-400 accent for loading state
 const BAR_BG: u32      = 0xFF1E293B; // Slate-800 progress bar background
 const BAR_BORDER: u32  = 0xFF334155; // Slate-700 progress bar border
 
+// ── Globals for framebuffer ──────────────────────────────────────
+
+pub mod info {
+    pub static mut FB_ADDR: u64 = 0;
+    pub static mut FB_WIDTH: u32 = 0;
+    pub static mut FB_HEIGHT: u32 = 0;
+    pub static mut FB_STRIDE: u32 = 0;
+}
+
 // ── Primitive drawing ─────────────────────────────────────────────
 
 fn put_pix(x: u32, y: u32, color: u32) {
-    let fb = unsafe { crate::info::FB_ADDR as *mut u32 };
-    let st = unsafe { crate::info::FB_STRIDE as usize };
-    let h  = unsafe { crate::info::FB_HEIGHT };
+    let fb = unsafe { info::FB_ADDR as *mut u32 };
+    let st = unsafe { info::FB_STRIDE as usize };
+    let h  = unsafe { info::FB_HEIGHT };
     if y < h && (x as usize) < st {
         unsafe { *fb.add((y as usize) * st + (x as usize)) = color; }
     }
@@ -165,7 +179,6 @@ fn draw_ring(cx: u32, cy: u32, r: u32, thickness: u32, color: u32) {
 }
 
 fn draw_logo(cx: u32, cy: u32) {
-    // Tech-styled layered ring
     draw_ring(cx, cy, 32, 1, 0xFF1E293B); 
     draw_ring(cx, cy, 28, 2, 0xFF312E81); 
     draw_ring(cx, cy, 26, 3, 0xFF4F46E5); 
@@ -200,11 +213,9 @@ fn text_width(s: &str) -> u32 {
     s.len() as u32 * CHAR_W as u32
 }
 
-// ── Public API ────────────────────────────────────────────────────
-
 pub fn splash_init() {
-    let w = unsafe { crate::info::FB_WIDTH };
-    let h = unsafe { crate::info::FB_HEIGHT };
+    let w = unsafe { info::FB_WIDTH };
+    let h = unsafe { info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
     fill_rect(0, 0, w, h, BG);
 
@@ -223,8 +234,8 @@ pub fn splash_init() {
 }
 
 pub fn splash_progress(pct: u32, label: &str) {
-    let w = unsafe { crate::info::FB_WIDTH };
-    let h = unsafe { crate::info::FB_HEIGHT };
+    let w = unsafe { info::FB_WIDTH };
+    let h = unsafe { info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
 
     let cy = h / 2;
@@ -233,7 +244,6 @@ pub fn splash_progress(pct: u32, label: &str) {
     let bar_h = 6u32;
     let bx = (w as u32).saturating_sub(bar_w) / 2;
 
-    // Clean bar area
     fill_rect(bx - 4, bar_y - 2, bar_w + 8, bar_h + 4, BG);
     draw_rect_outline(bx - 2, bar_y - 2, bar_w + 4, bar_h + 4, BAR_BORDER);
     fill_rect(bx, bar_y, bar_w, bar_h, BAR_BG);
@@ -253,9 +263,115 @@ pub fn splash_progress(pct: u32, label: &str) {
     draw_str(ix, info_y + 4, info, DIM);
 }
 
-pub fn splash_clear() {
-    let w = unsafe { crate::info::FB_WIDTH };
-    let h = unsafe { crate::info::FB_HEIGHT };
-    if w == 0 { return; }
-    fill_rect(0, 0, w, h, BG);
+// ── Timing helper ──────────────────────────────────────────────────
+
+#[inline(always)]
+fn rdtsc() -> u64 {
+    let (lo, hi): (u32, u32);
+    unsafe {
+        core::arch::asm!("rdtsc", out("eax") lo, out("edx") hi, options(nostack, nomem));
+    }
+    ((hi as u64) << 32) | (lo as u64)
+}
+
+// ── Entry point assembly stub ──────────────────────────────────────
+
+#[unsafe(no_mangle)]
+#[link_section = ".text._start"]
+#[unsafe(naked)]
+unsafe extern "C" fn _start() -> ! {
+    core::arch::naked_asm!(
+        // Save BootInfo pointer in r12 (callee-saved)
+        "mov r12, rdi",
+
+        // Zero BSS section
+        "lea rax, [rip + __bss_start]",
+        "lea rcx, [rip + __bss_end]",
+        "sub rcx, rax",
+        "jz 2f",
+        "mov rdi, rax",
+        "xor eax, eax",
+        "mov rdx, rcx",
+        "shr rcx, 3",
+        "jz 1f",
+        "rep stosq",
+        "1: and rdx, 7",
+        "mov rcx, rdx",
+        "jz 2f",
+        "rep stosb",
+
+        // Jump to real entry point
+        "2: mov rdi, r12",
+        "call nano_wake_main",
+        
+        "3: hlt",
+        "jmp 3b",
+    );
+}
+
+// ── Real entry point ───────────────────────────────────────────────
+
+#[unsafe(no_mangle)]
+extern "C" fn nano_wake_main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> ! {
+    if boot_info_ptr.is_null() {
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+
+    let bi = unsafe { &*boot_info_ptr };
+    if bi.magic != bmo_boot_protocol::BOOT_MAGIC {
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+
+    // Capture framebuffer parameters
+    unsafe {
+        info::FB_ADDR = bi.fb_addr;
+        info::FB_WIDTH = bi.fb_width;
+        info::FB_HEIGHT = bi.fb_height;
+        info::FB_STRIDE = bi.fb_stride;
+    }
+
+    // Initialize splash screen
+    splash_init();
+    splash_progress(20, "Nano-Wake online...");
+
+    // Tiny visual hold (0.05 seconds roughly)
+    let start = rdtsc();
+    while rdtsc() - start < 150_000_000 {
+        core::hint::spin_loop();
+    }
+
+    splash_progress(60, "Handing over to Core Services...");
+
+    // Hold briefly to show transition message
+    let start2 = rdtsc();
+    while rdtsc() - start2 < 100_000_000 {
+        core::hint::spin_loop();
+    }
+
+    let entry_point = bi.services_entry;
+    if entry_point == 0 {
+        splash_progress(100, "FATAL: core services entry is null!");
+        loop { unsafe { core::arch::asm!("hlt"); } }
+    }
+
+    // Perform register handover and jump to kernel_services.elf
+    unsafe {
+        core::arch::asm!(
+            "jmp {entry}",
+            entry = in(reg) entry_point,
+            in("rdi") boot_info_ptr,
+            options(noreturn)
+        );
+    }
+}
+
+// ── Panic handler ──────────────────────────────────────────────────
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {
+        unsafe {
+            core::arch::asm!("hlt");
+        }
+    }
 }

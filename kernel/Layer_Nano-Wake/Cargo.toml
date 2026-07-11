@@ -1,0 +1,21 @@
+[package]
+name = "layer-nano-wake"
+version = "2.0.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO Layer_Nano-Wake — ultra-fast micro bootstrap layer"
+license = "Techne"
+
+[dependencies]
+bmo-boot-protocol = { path = "../../crates_Personal/ring0/boot_protocol" }
+volatile = "0.4"
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+lto = true
+codegen-units = 1
+
+[[bin]]
+name = "layer-nano-wake"
+path = "src/main.rs"
