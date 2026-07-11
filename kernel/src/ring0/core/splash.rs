@@ -1,7 +1,10 @@
-//! Boot splash screen — macOS-style centered progress bar.
+//! Boot splash screen — premium animated boot experience.
 //!
-//! Writes directly to GOP front buffer — works before init_gop().
-//! 8x16 VGA-inspired font with full ASCII (32-126).
+//! Ring 0 splash with smooth transitions:
+//!   - Animated concentric logo (inside-out expansion)
+//!   - Smooth interpolated progress bar
+//!   - Phase label fade transitions
+//!   - Professional typography with centered layout
 
 // ── Font: 8x16 bitmap, chars 32..126 (space through ~) ──────────
 
@@ -111,6 +114,7 @@ static FONT16: [[u8; 16]; 95] = [
     [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
 ];
 
+// ── Color palette ─────────────────────────────────────────────────
 const BG: u32          = 0xFF0A0F1D; // Deep space slate-blue
 const WHITE: u32       = 0xFFF1F5F9; // Soft crisp white
 const DIM: u32         = 0xFF64748B; // Slate-500 muted text
@@ -118,6 +122,15 @@ const ACCENT: u32      = 0xFF00E5FF; // Neon cyan highlight
 const ACCENT2: u32     = 0xFF818CF8; // Indigo-400 accent for loading state
 const BAR_BG: u32      = 0xFF1E293B; // Slate-800 progress bar background
 const BAR_BORDER: u32  = 0xFF334155; // Slate-700 progress bar border
+
+// Logo layers (inside → outside)
+const LOGO_CORE: u32   = 0xFF00E5FF; // Cyan core dot
+const LOGO_RING1: u32  = 0xFF4F46E5; // Indigo inner ring
+const LOGO_RING2: u32  = 0xFF312E81; // Deep indigo mid ring
+const LOGO_RING3: u32  = 0xFF1E293B; // Slate outer ring
+
+// ── State for smooth progress interpolation ───────────────────────
+static mut LAST_PCT: u32 = 0;
 
 // ── Primitive drawing ─────────────────────────────────────────────
 
@@ -146,32 +159,151 @@ fn draw_rect_outline(x: u32, y: u32, w: u32, h: u32, color: u32) {
     }
 }
 
-fn draw_ring(cx: u32, cy: u32, r: u32, thickness: u32, color: u32) {
-    let r_outer = r;
-    let r_inner = r.saturating_sub(thickness);
-    let r_outer_sq = r_outer * r_outer;
-    let r_inner_sq = r_inner * r_inner;
-    
-    for dy in -(r as i32)..=(r as i32) {
-        for dx in -(r as i32)..=(r as i32) {
-            let dist_sq = (dx * dx + dy * dy) as u32;
-            if dist_sq <= r_outer_sq && dist_sq >= r_inner_sq {
-                let px = (cx as i32 + dx) as u32;
-                let py = (cy as i32 + dy) as u32;
-                put_pix(px, py, color);
-            }
+/// Draw a filled circle using integer distance squared.
+fn fill_circle(cx: u32, cy: u32, r: u32, color: u32) {
+    let r_sq = r * r;
+    for dy in 0..=r {
+        // Horizontal span at this row: solve dx^2 + dy^2 <= r^2
+        // dx <= sqrt(r^2 - dy^2)
+        let dy_sq = dy * dy;
+        if dy_sq > r_sq { break; }
+        let dx_max = isqrt(r_sq - dy_sq);
+        // Draw 4 quadrants
+        let x0 = cx.saturating_sub(dx_max);
+        let x1 = cx + dx_max;
+        let y_top = cy.saturating_sub(dy);
+        let y_bot = cy + dy;
+        fill_rect(x0, y_top, x1 - x0 + 1, 1, color);
+        if dy > 0 {
+            fill_rect(x0, y_bot, x1 - x0 + 1, 1, color);
         }
     }
 }
 
-fn draw_logo(cx: u32, cy: u32) {
-    // Tech-styled layered ring
-    draw_ring(cx, cy, 32, 1, 0xFF1E293B); 
-    draw_ring(cx, cy, 28, 2, 0xFF312E81); 
-    draw_ring(cx, cy, 26, 3, 0xFF4F46E5); 
-    draw_ring(cx, cy, 22, 1, 0xFF00E5FF); 
-    fill_rect(cx - 3, cy - 3, 6, 6, 0xFF00E5FF);
+/// Draw a ring (filled circle minus inner filled circle).
+fn draw_ring(cx: u32, cy: u32, r_outer: u32, thickness: u32, color: u32) {
+    let r_inner = r_outer.saturating_sub(thickness);
+    let ro_sq = r_outer * r_outer;
+    let ri_sq = r_inner * r_inner;
+    for dy in 0..=r_outer {
+        let dy_sq = dy * dy;
+        if dy_sq > ro_sq { break; }
+        let dx_outer = isqrt(ro_sq - dy_sq);
+        let dx_inner = if dy_sq <= ri_sq { isqrt(ri_sq - dy_sq) } else { 0 };
+        // Right side
+        if dx_outer > dx_inner {
+            let x0 = cx + dx_inner + 1;
+            let w = dx_outer - dx_inner;
+            fill_rect(x0, cy.saturating_sub(dy), w, 1, color);
+            if dy > 0 { fill_rect(x0, cy + dy, w, 1, color); }
+        }
+        // Left side
+        if dx_outer > dx_inner {
+            let x0 = cx.saturating_sub(dx_outer);
+            let w = dx_outer - dx_inner;
+            fill_rect(x0, cy.saturating_sub(dy), w, 1, color);
+            if dy > 0 { fill_rect(x0, cy + dy, w, 1, color); }
+        }
+    }
 }
+
+/// Integer square root (Newton's method).
+fn isqrt(n: u32) -> u32 {
+    if n == 0 { return 0; }
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
+}
+
+/// TSC-based busy-wait.
+#[inline]
+fn tsc_wait(cycles: u64) {
+    let start = crate::cpu::rdtsc();
+    while crate::cpu::rdtsc() - start < cycles {
+        core::hint::spin_loop();
+    }
+}
+
+// ── Color blending ────────────────────────────────────────────────
+
+/// Blend a foreground color over BG at a given alpha (0..255).
+fn blend(fg: u32, alpha: u32) -> u32 {
+    let a = alpha.min(255);
+    let inv = 255 - a;
+    let fg_r = (fg >> 16) & 0xFF;
+    let fg_g = (fg >> 8) & 0xFF;
+    let fg_b = fg & 0xFF;
+    let bg_r = (BG >> 16) & 0xFF;
+    let bg_g = (BG >> 8) & 0xFF;
+    let bg_b = BG & 0xFF;
+    let r = (fg_r * a + bg_r * inv) / 255;
+    let g = (fg_g * a + bg_g * inv) / 255;
+    let b = (fg_b * a + bg_b * inv) / 255;
+    0xFF000000 | (r << 16) | (g << 8) | b
+}
+
+/// Create a gradient color along the progress bar (cyan → indigo).
+fn bar_gradient(x_off: u32, total_w: u32) -> u32 {
+    if total_w == 0 { return ACCENT; }
+    let t = (x_off * 255 / total_w).min(255);
+    let inv = 255 - t;
+    // ACCENT=0xFF00E5FF → ACCENT2=0xFF818CF8
+    let r = (0x00 * inv + 0x81 * t) / 255;
+    let g = (0xE5 * inv + 0x8C * t) / 255;
+    let b = (0xFF * inv + 0xF8 * t) / 255;
+    0xFF000000 | (r << 16) | (g << 8) | b
+}
+
+// ── Animated Logo (smooth radius sweep) ───────────────────────────
+
+/// Draw the logo with smooth inside-out animation.
+/// Each ring expands 1px of radius per frame tick.
+fn draw_logo_animated(cx: u32, cy: u32) {
+    // Phase 1: Core dot expands from r=0 to r=4
+    let mut r: u32 = 0;
+    while r <= 4 {
+        fill_circle(cx, cy, r, LOGO_CORE);
+        tsc_wait(8_000_000);
+        r += 1;
+    }
+    tsc_wait(15_000_000);
+
+    // Phase 2: Inner ring sweeps from r=8 to r=14
+    r = 8;
+    while r <= 14 {
+        draw_ring(cx, cy, r, 2, LOGO_RING1);
+        tsc_wait(5_000_000);
+        r += 1;
+    }
+    tsc_wait(10_000_000);
+
+    // Phase 3: Mid ring sweeps from r=16 to r=22
+    r = 16;
+    while r <= 22 {
+        draw_ring(cx, cy, r, 3, LOGO_RING2);
+        tsc_wait(4_000_000);
+        r += 1;
+    }
+    tsc_wait(8_000_000);
+
+    // Phase 4: Outer ring sweeps from r=24 to r=30
+    r = 24;
+    while r <= 30 {
+        draw_ring(cx, cy, r, 2, LOGO_RING3);
+        tsc_wait(3_000_000);
+        r += 1;
+    }
+
+    // Phase 5: Accent glow ring (instant thin highlight)
+    tsc_wait(6_000_000);
+    draw_ring(cx, cy, 34, 1, LOGO_RING1);
+}
+
+// ── Text drawing ──────────────────────────────────────────────────
 
 fn draw_char(x: u32, y: u32, c: u8, color: u32) {
     if (c as usize) < 32 { return; }
@@ -181,7 +313,8 @@ fn draw_char(x: u32, y: u32, c: u8, color: u32) {
     for row in 0..FONT_H {
         let bits = glyph[row];
         for col in 0..FONT_W {
-            if bits & (1 << col) != 0 {
+            // VGA fonts are MSB-first: bit 7 = leftmost pixel
+            if bits & (0x80 >> col) != 0 {
                 put_pix(x + col as u32, y + row as u32, color);
             }
         }
@@ -200,26 +333,100 @@ fn text_width(s: &str) -> u32 {
     s.len() as u32 * CHAR_W as u32
 }
 
+/// Animate text with a 4-step alpha fade-in.
+fn draw_str_fadein(x: u32, y: u32, s: &str, color: u32) {
+    // 4 alpha steps: 64, 128, 192, 255
+    let steps: [u32; 4] = [64, 128, 192, 255];
+    let tw = text_width(s);
+    for &alpha in steps.iter() {
+        let c = blend(color, alpha);
+        // Clear previous draw
+        fill_rect(x, y, tw, FONT_H as u32, BG);
+        draw_str(x, y, s, c);
+        tsc_wait(8_000_000);
+    }
+}
+
+// ── Smooth progress bar ───────────────────────────────────────────
+
+/// Animate the progress bar smoothly from `LAST_PCT` to `target_pct`.
+/// Uses sub-percentage pixel-level interpolation for ultra-smooth fill.
+fn smooth_progress(bx: u32, by: u32, bar_w: u32, bar_h: u32, target_pct: u32) {
+    let start_pix = unsafe { (bar_w as u64 * LAST_PCT as u64 / 100) as u32 };
+    let end_pix = (bar_w as u64 * target_pct.min(100) as u64 / 100) as u32;
+
+    if start_pix >= end_pix {
+        unsafe { LAST_PCT = target_pct.min(100); }
+        return;
+    }
+
+    // Animate pixel-by-pixel for maximum smoothness
+    let mut px = start_pix;
+    while px < end_pix {
+        // Draw the new column with gradient color
+        let col_color = bar_gradient(px, bar_w);
+        fill_rect(bx + px, by, 1, bar_h, col_color);
+        px += 1;
+
+        // Adaptive speed: fast start, smooth middle, slow finish
+        let progress_ratio = px * 100 / bar_w;
+        let delay = if progress_ratio < 30 {
+            800_000u64
+        } else if progress_ratio < 70 {
+            1_200_000u64
+        } else {
+            1_800_000u64
+        };
+        tsc_wait(delay);
+    }
+
+    unsafe { LAST_PCT = target_pct.min(100); }
+}
+
 // ── Public API ────────────────────────────────────────────────────
 
 pub fn splash_init() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
+
+    // Reset state
+    unsafe { LAST_PCT = 0; }
+
+    // Clear screen
     fill_rect(0, 0, w, h, BG);
 
     let cy = h / 2;
     let cx = w / 2;
 
-    draw_logo(cx, cy - 80);
+    // Step 1: Animated logo (inside-out expansion with smooth radius)
+    draw_logo_animated(cx, cy - 70);
 
+    // Step 2: Title fade-in
+    tsc_wait(20_000_000);
     let title = "BMO v2.0";
     let tx = (w as u32).saturating_sub(text_width(title)) / 2;
-    draw_str(tx, cy - 10, title, WHITE);
+    draw_str_fadein(tx, cy - 5, title, WHITE);
 
+    // Step 3: Subtitle fade-in
+    tsc_wait(10_000_000);
     let sub = "Pure Ring 0";
     let sx = (w as u32).saturating_sub(text_width(sub)) / 2;
-    draw_str(sx, cy + 15, sub, DIM);
+    draw_str_fadein(sx, cy + 18, sub, DIM);
+
+    // Step 4: Draw bar frame (outline + empty background)
+    let bar_w = 320u32;
+    let bar_h = 6u32;
+    let bx = (w as u32).saturating_sub(bar_w) / 2;
+    let bar_y = cy + 50;
+    draw_rect_outline(bx - 2, bar_y - 2, bar_w + 4, bar_h + 4, BAR_BORDER);
+    fill_rect(bx, bar_y, bar_w, bar_h, BAR_BG);
+
+    // Step 5: Footer info (immediate)
+    let info = "AMD Ryzen 5 5600X - GOP Framebuffer - Ring 0";
+    let ix = (w as u32).saturating_sub(text_width(info)) / 2;
+    let info_y = h.saturating_sub(35);
+    draw_str(ix, info_y + 4, info, DIM);
 }
 
 pub fn splash_progress(pct: u32, label: &str) {
@@ -228,29 +435,19 @@ pub fn splash_progress(pct: u32, label: &str) {
     if w == 0 || h == 0 { return; }
 
     let cy = h / 2;
-    let bar_y = cy + 50;
     let bar_w = 320u32;
     let bar_h = 6u32;
     let bx = (w as u32).saturating_sub(bar_w) / 2;
+    let bar_y = cy + 50;
 
-    // Clean bar area
-    fill_rect(bx - 4, bar_y - 2, bar_w + 8, bar_h + 4, BG);
-    draw_rect_outline(bx - 2, bar_y - 2, bar_w + 4, bar_h + 4, BAR_BORDER);
-    fill_rect(bx, bar_y, bar_w, bar_h, BAR_BG);
+    // Smooth pixel-level interpolated progress bar
+    smooth_progress(bx, bar_y, bar_w, bar_h, pct);
 
-    let fw = if pct > 0 { (bar_w as u64 * pct as u64 / 100) as u32 } else { 0 };
-    if fw > 0 { fill_rect(bx, bar_y, fw.min(bar_w), bar_h, ACCENT); }
-
+    // Update label (clear old, draw new centered)
     let label_y = bar_y + bar_h + 12;
     fill_rect(0, label_y, w, CHAR_H as u32, BG);
     let lx = (w as u32).saturating_sub(text_width(label)) / 2;
     draw_str(lx, label_y, label, ACCENT2);
-
-    let info = "AMD Ryzen 5 5600X · GOP Framebuffer · Ring 0";
-    let ix = (w as u32).saturating_sub(text_width(info)) / 2;
-    let info_y = h.saturating_sub(35);
-    fill_rect(0, info_y, w, CHAR_H as u32, BG);
-    draw_str(ix, info_y + 4, info, DIM);
 }
 
 pub fn splash_clear() {

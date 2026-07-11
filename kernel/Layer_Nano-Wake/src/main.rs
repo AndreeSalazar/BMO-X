@@ -120,21 +120,30 @@ extern "C" fn nano_wake_main(bi: *const bmo_boot_protocol::BootInfo) -> ! {
     // Clear screen using rep stosq
     clear_screen(BG);
 
-    // Logo: concentric squares
-    outline(cx - 32, cy - 92, 64, 64, 2, LOGO_OUT);
-    outline(cx - 24, cy - 84, 48, 48, 3, LOGO_MID);
-    outline(cx - 16, cy - 76, 32, 32, 1, CYAN);
+    // Animated Logo: concentric squares growing from inside-out
     fill_small(cx - 5, cy - 65, 10, 10, CYAN);
+    tsc_wait(30_000_000);
+
+    outline(cx - 16, cy - 76, 32, 32, 1, CYAN);
+    tsc_wait(30_000_000);
+
+    outline(cx - 24, cy - 84, 48, 48, 3, LOGO_MID);
+    tsc_wait(30_000_000);
+
+    outline(cx - 32, cy - 92, 64, 64, 2, LOGO_OUT);
+    tsc_wait(30_000_000);
 
     // Progress bar
     let bx = cx - 160;
     let by = cy + 20;
 
-    progress(bx, by, 20);
-    tsc_wait(120_000_000);
-    progress(bx, by, 60);
-    tsc_wait(80_000_000);
-    progress(bx, by, 100);
+    // Smooth progress bar slide from 0 to 100
+    let mut pct = 0u32;
+    while pct <= 100 {
+        progress(bx, by, pct);
+        tsc_wait(4_000_000); // Smooth fluid transition
+        pct += 2;
+    }
 
     let entry = b.services_entry;
     if entry == 0 { halt(); }
