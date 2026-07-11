@@ -1,6 +1,15 @@
-﻿//! Ring 3 — Transition primitive (iretq).
+﻿//! Ring 3 — Orquestador de modo usuario.
 //!
-//! This is the ONLY Ring 3 code in the kernel binary.
-//! Everything else lives in crates_Personal/ring3/.
+//! `kernel::ring3` orquesta la transición y gestión de Ring 3.
+//! Las implementaciones pesadas viven en `crates_Personal/`.
+//!
+//! ## Módulos
+//!
+//! - `transition` — iretq primitivo (la única instrucción CPU)
+//! - `entry`      — preparación de tasks, consulta de privilegio
+//! - `loader`     — carga de módulos Ring 3 (bmo_core, etc.)
 
 pub mod transition;
+pub mod entry;
+pub mod loader;
+pub mod gateway;

@@ -516,6 +516,11 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
         };
 
         f.rax = handler(nr as u64, a0, a1, a2, a3, a4, a5);
+
+        // Si el stub devolvió u64::MAX y es rango BMO ABI, delegar a ring3 gateway
+        if f.rax == u64::MAX && nr >= 0x100 && nr <= 0x1FF {
+            f.rax = crate::ring3::gateway::dispatch(nr as u16, a0, a1, a2, a3, a4, a5);
+        }
     }
 }
 

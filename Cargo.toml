@@ -23,8 +23,21 @@ members = [
     "crates_Personal/abi/bmo_abi",
     "crates_Personal/abi/userland_ring3",
 
-    # ── RING 3 (Userspace) ──────────────────────────────────────────
+    # ── RING 3 (Userspace - Desktop) ───────────────────────────────
     "crates_Personal/desktop/bmo_core",
+
+    # ── RING 3 (Userspace - Foundation) ────────────────────────────
+    "crates_Personal/ring3/foundation/ring3_foundation",
+
+    # ── RING 3 (Userspace - Drivers) ───────────────────────────────
+    "crates_Personal/ring3/drivers/driver_keyboard",
+    "crates_Personal/ring3/drivers/driver_mouse",
+    "crates_Personal/ring3/drivers/driver_audio_pc",
+
+    # ── RING 3 (Userspace - Services) ──────────────────────────────
+    "crates_Personal/ring3/services/service_input",
+    "crates_Personal/ring3/services/service_audio",
+    "crates_Personal/ring3/services/service_fs",
 
     # ── DRIVERS (Hardware) ───────────────────────────────────────────
     "crates_Personal/drivers/audio/audio",

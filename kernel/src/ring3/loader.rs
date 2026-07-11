@@ -1,26 +1,26 @@
-//! Module Loader — starts pre-loaded Ring 3 modules.
+//! Module Loader — Orquestador de módulos Ring 3.
 //!
-//! The UEFI bootloader loads all module ELFs into memory before ExitBootServices
-//! and registers them in BootInfo.modules[]. This loader only starts the first
-//! module (mod_bmo_core). Remaining modules are started later by the desktop
-//! via their entry points from BootInfo.
+//! El bootloader UEFI carga todos los ELF de módulos en RAM antes de
+//! ExitBootServices y los registra en BootInfo.modules[]. Este orquestador
+//! solo arranca el primer módulo (mod_bmo_core). El desktop inicia el resto.
+//!
+//! La implementación real (BEF loader, parsing ELF) vive en crates_Personal/.
 
 use bmo_boot_protocol::BootInfo;
 use bmo_hal_defs::HalServices;
 
-/// Start only the first module (mod_bmo_core).
-/// Other modules are available via BootInfo.modules[] for deferred startup.
+/// Arranca solo el primer módulo (mod_bmo_core).
+/// Otros módulos están disponibles en BootInfo.modules[] para inicio diferido.
 pub fn load_bmo_core(hal: &HalServices, boot_info: *const BootInfo) -> ! {
     let bi = unsafe { &*boot_info };
-    crate::dev::console::serial_write("[mod_loader] modules loaded: ");
+    crate::dev::console::serial_write("[ring3:loader] modules loaded: ");
     crate::dev::console::serial_write_u64(bi.module_count as u64, 10);
     crate::dev::console::serial_write("\n");
 
-    // Log all modules
     for i in 0..bi.module_count as usize {
         let m = &bi.modules[i];
         if m.entry_point == 0 { continue; }
-        crate::dev::console::serial_write("[mod_loader]   [");
+        crate::dev::console::serial_write("[ring3:loader]   [");
         crate::dev::console::serial_write_u64(i as u64, 10);
         crate::dev::console::serial_write("] at 0x");
         crate::dev::console::serial_write_u64(m.base, 16);
@@ -29,7 +29,6 @@ pub fn load_bmo_core(hal: &HalServices, boot_info: *const BootInfo) -> ! {
         crate::dev::console::serial_write("\n");
     }
 
-    // Start only module 0 (mod_bmo_core). The desktop starts the rest.
     if bi.module_count > 0 {
         let m = &bi.modules[0];
         if m.entry_point != 0 {
@@ -39,11 +38,8 @@ pub fn load_bmo_core(hal: &HalServices, boot_info: *const BootInfo) -> ! {
         }
     }
 
-    // ── Diagnostic: no module loaded ──
-    // The previous version simply halted here, which left the user
-    // staring at a blank screen with no clue. Log a detailed diagnostic
-    // and try to draw something visible on the framebuffer before halt.
-    crate::dev::console::serial_write("\n[mod_loader] FATAL: no module with valid entry point\n");
+    // ── Diagnóstico: ningún módulo cargado ──
+    crate::dev::console::serial_write("\n[ring3:loader] FATAL: no module with valid entry point\n");
     crate::dev::console::serial_write("                bi.module_count = ");
     crate::dev::console::serial_write_u64(bi.module_count as u64, 10);
     crate::dev::console::serial_write("\n");
@@ -58,7 +54,7 @@ pub fn load_bmo_core(hal: &HalServices, boot_info: *const BootInfo) -> ! {
     crate::dev::console::serial_write("                Check that the bootloader copied the .elf modules\n");
     crate::dev::console::serial_write("                and registered them in BootInfo.modules[].\n");
 
-    // Try to paint a fault screen so the user is not staring at black
+    // Pintar pantalla de error para que el usuario no vea pantalla negra
     let (fb, w, h, s) = unsafe { (crate::info::FB_ADDR, crate::info::FB_WIDTH, crate::info::FB_HEIGHT, crate::info::FB_STRIDE) };
     let w = w as usize;
     let h = h as usize;

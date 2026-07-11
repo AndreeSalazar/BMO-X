@@ -52,7 +52,7 @@ pub mod ring3;
 pub use ring0::{arch, mm, dev, proc, cpu};
 pub use ring0::boot::{info, nvram as uefi_rt, serial, log};
 pub use ring0::core::{phase as boot_phase, entry, splash as boot_splash};
-pub use ring0::boot::loader as mod_loader;
+pub use ring3::loader as mod_loader;
 pub use ring0::arch::context;
 pub use ring0::hal as hal_init;
 pub use ring0::mm::vdso;

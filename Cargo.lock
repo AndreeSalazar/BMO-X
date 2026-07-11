@@ -528,6 +528,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "driver-audio-pc"
+version = "1.0.0"
+dependencies = [
+ "ring3-foundation",
+]
+
+[[package]]
+name = "driver-keyboard"
+version = "1.0.0"
+dependencies = [
+ "ring3-foundation",
+]
+
+[[package]]
+name = "driver-mouse"
+version = "1.0.0"
+dependencies = [
+ "ring3-foundation",
+]
+
+[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1366,6 +1387,28 @@ name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+
+[[package]]
+name = "service-audio"
+version = "1.0.0"
+dependencies = [
+ "driver-audio-pc",
+]
+
+[[package]]
+name = "service-fs"
+version = "1.0.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
+name = "service-input"
+version = "1.0.0"
+dependencies = [
+ "driver-keyboard",
+ "driver-mouse",
+]
 
 [[package]]
 name = "shlex"

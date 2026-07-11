@@ -165,7 +165,7 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         set_syscall_kernel_stack: crate::arch::syscall::set_syscall_kernel_stack,
 
         // ── ring3::transition ───────────────────────────────────────
-        ring3_transition:         |_, _| loop { core::hint::spin_loop() },
+        ring3_transition:         crate::ring3::transition::ring3_transition,
 
         // ── vendor ──────────────────────────────────────────────────
         issue_ibpb:               crate::vendor::amd::cpu::zen3::errata_workarounds::issue_ibpb,

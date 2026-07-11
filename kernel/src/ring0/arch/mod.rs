@@ -26,4 +26,3 @@ pub mod context;
 pub mod syscall;
 pub mod tlb;
 pub mod smp;
-pub mod ring3_entry;

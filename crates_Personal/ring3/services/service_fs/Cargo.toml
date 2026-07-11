@@ -2,6 +2,7 @@
 name = "service-fs"
 version = "1.0.0"
 edition = "2024"
-description = "BMO Filesystem Service — VFS layer (stub)"
+description = "BMO Filesystem Service — VFS layer (mount, inode, ramdisk)"
 
 [dependencies]
+bmo-abi = { path = "../../../abi/bmo_abi" }

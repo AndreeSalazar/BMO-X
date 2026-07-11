@@ -17,24 +17,30 @@
 //!
 //! | Opcode | Name            | Args                       | Returns |
 //! |--------|-----------------|----------------------------|---------|
-//! | 0x100  | SVC_TIME_NOW    | -                          | tsc (u64) |
-//! | 0x101  | SVC_TIME_NS     | -                          | ns (u64) |
-//! | 0x102  | SVC_FB_INFO     | -                          | (w, h, stride, fmt) packed |
-//! | 0x103  | SVC_FB_PRESENT  | -                          | 0 |
-//! | 0x104  | SVC_FB_FILL     | (x, y, w, h, color)        | 0 |
-//! | 0x105  | SVC_FB_TEXT     | (x, y, color, ptr, len)    | bytes drawn |
-//! | 0x110  | SVC_SERIAL      | (ptr, len)                 | bytes written |
-//! | 0x120  | SVC_BEEP        | (freq_hz, duration_ms)     | 0 |
-//! | 0x121  | SVC_POWER_REBT  | -                          | (never returns) |
-//! | 0x122  | SVC_POWER_OFF   | -                          | (never returns) |
-//! | 0x130  | SVC_MEM_TOTAL   | -                          | bytes |
-//! | 0x131  | SVC_MEM_FREE    | -                          | bytes |
-//! | 0x132  | SVC_HEAP_USED   | -                          | bytes |
-//! | 0x140  | SVC_CPU_NAME    | (ptr, len)                 | bytes written |
-//! | 0x141  | SVC_TSC_FREQ    | -                          | Hz |
-//! | 0x150  | SVC_DIAG_BOOT   | -                          | boot stage string id |
-//! | 0x1F0  | SVC_LOG         | (level, ptr, len)          | 0 |
-//! | 0x1FF  | SVC_PING        | -                          | 0xC0FFEE |
+//! | 0xE00  | SVC_TIME_NOW    | -                          | tsc (u64) |
+//! | 0xE01  | SVC_TIME_NS     | -                          | ns (u64) |
+//! | 0xE02  | SVC_FB_INFO     | -                          | (w, h, stride, fmt) packed |
+//! | 0xE03  | SVC_FB_PRESENT  | -                          | 0 |
+//! | 0xE04  | SVC_FB_FILL     | (x, y, w, h, color)        | 0 |
+//! | 0xE05  | SVC_FB_TEXT     | (x, y, color, ptr, len)    | bytes drawn |
+//! | 0xE10  | SVC_SERIAL      | (ptr, len)                 | bytes written |
+//! | 0xE20  | SVC_BEEP        | (freq_hz, duration_ms)     | 0 |
+//! | 0xE21  | SVC_POWER_REBT  | -                          | (never returns) |
+//! | 0xE22  | SVC_POWER_OFF   | -                          | (never returns) |
+//! | 0xE30  | SVC_MEM_TOTAL   | -                          | bytes |
+//! | 0xE31  | SVC_MEM_FREE    | -                          | bytes |
+//! | 0xE32  | SVC_HEAP_USED   | -                          | bytes |
+//! | 0xE40  | SVC_CPU_NAME    | (ptr, len)                 | bytes written |
+//! | 0xE41  | SVC_TSC_FREQ    | -                          | Hz |
+//! | 0xE50  | SVC_DIAG_BOOT   | -                          | boot stage string id |
+//! | 0xEF0  | SVC_LOG         | (level, ptr, len)          | 0 |
+//! | 0xEFF  | SVC_PING        | -                          | 0xC0FFEE |
+//!
+//! ## BMO ABI via channel (0x100-0x1FF)
+//!
+//! Opcodes 0x100-0x1FF son BMO ABI (window mgmt, FS, draw, etc.) y se
+//! reenvían al gateway de bmo_core para que los procese. No hay conflicto
+//! con los SVC_* porque están en 0xE00-0xEFF.
 
 use bmo_channel::{Channel, ChannelEntry, CHANNEL_MAGIC};
 use core::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
@@ -43,24 +49,28 @@ use core::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 //  Service opcodes (Ring 3 → Ring 0 requests)
 // ═══════════════════════════════════════════════════════════════════
 
-pub const SVC_TIME_NOW:   u64 = 0x100;
-pub const SVC_TIME_NS:    u64 = 0x101;
-pub const SVC_FB_INFO:    u64 = 0x102;
-pub const SVC_FB_PRESENT: u64 = 0x103;
-pub const SVC_FB_FILL:    u64 = 0x104;
-pub const SVC_FB_TEXT:    u64 = 0x105;
-pub const SVC_SERIAL:     u64 = 0x110;
-pub const SVC_BEEP:       u64 = 0x120;
-pub const SVC_POWER_REBT: u64 = 0x121;
-pub const SVC_POWER_OFF:  u64 = 0x122;
-pub const SVC_MEM_TOTAL:  u64 = 0x130;
-pub const SVC_MEM_FREE:   u64 = 0x131;
-pub const SVC_HEAP_USED:  u64 = 0x132;
-pub const SVC_CPU_NAME:   u64 = 0x140;
-pub const SVC_TSC_FREQ:   u64 = 0x141;
-pub const SVC_DIAG_BOOT:  u64 = 0x150;
-pub const SVC_LOG:        u64 = 0x1F0;
-pub const SVC_PING:       u64 = 0x1FF;
+pub const SVC_TIME_NOW:   u64 = 0xE00;
+pub const SVC_TIME_NS:    u64 = 0xE01;
+pub const SVC_FB_INFO:    u64 = 0xE02;
+pub const SVC_FB_PRESENT: u64 = 0xE03;
+pub const SVC_FB_FILL:    u64 = 0xE04;
+pub const SVC_FB_TEXT:    u64 = 0xE05;
+pub const SVC_SERIAL:     u64 = 0xE10;
+pub const SVC_BEEP:       u64 = 0xE20;
+pub const SVC_POWER_REBT: u64 = 0xE21;
+pub const SVC_POWER_OFF:  u64 = 0xE22;
+pub const SVC_MEM_TOTAL:  u64 = 0xE30;
+pub const SVC_MEM_FREE:   u64 = 0xE31;
+pub const SVC_HEAP_USED:  u64 = 0xE32;
+pub const SVC_CPU_NAME:   u64 = 0xE40;
+pub const SVC_TSC_FREQ:   u64 = 0xE41;
+pub const SVC_DIAG_BOOT:  u64 = 0xE50;
+pub const SVC_LOG:        u64 = 0xEF0;
+pub const SVC_PING:       u64 = 0xEFF;
+
+/// Base del rango BMO ABI (window mgmt, FS, draw, etc.)
+pub const BMO_ABI_BASE: u64 = 0x100;
+pub const BMO_ABI_END:  u64 = 0x1FF;
 
 // ═══════════════════════════════════════════════════════════════════
 //  Event opcodes (Ring 0 → Ring 3 notifications)
@@ -295,6 +305,11 @@ fn dispatch_service(opcode: u64, a0: u64, a1: u64, a2: u64) -> Option<(u64, u64,
             Some((SVC_LOG, 0, 0, 0))
         }
 
+        // BMO ABI: forward to bmo_core gateway
+        _ if opcode >= BMO_ABI_BASE && opcode <= BMO_ABI_END => {
+            let result = crate::ring3::gateway::dispatch(opcode as u16, a0, a1, a2, 0, 0, 0);
+            Some((opcode, result, 0, 0))
+        }
         // Unknown opcode: drop silently but still return a no-op
         _ => Some((opcode, u64::MAX, 0, 0)),
     }

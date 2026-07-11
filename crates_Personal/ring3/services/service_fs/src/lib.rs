@@ -1,110 +1,78 @@
-//! Filesystem Service — Virtual File System.
-//!
-//! Provides a mount-based VFS layer over physical filesystems.
-//! Currently supports ramdisk; exFAT/FAT32 via AHCI planned.
-
 #![no_std]
+#![allow(static_mut_refs)]
 
 extern crate alloc;
 
-use alloc::string::String;
-use alloc::vec::Vec;
+pub mod inode;
+pub mod mount;
+pub mod ramdisk;
+pub mod ramdisk_device;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FsError {
-    NotFound,
-    PermissionDenied,
-    NotSupported,
-    IoError,
-    AlreadyExists,
-    IsDirectory,
-    NotDirectory,
-    BufferTooSmall,
+use bmo_abi::error_code::BmoErrorCode;
+use bmo_abi::fs::BmoFileType;
+
+pub type FsError = BmoErrorCode;
+
+pub fn init() {
+    mount::mount(mount::FsType::RamFs, "/", 0, 0, true);
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileType { File, Directory }
+pub struct FsResult;
 
-#[derive(Debug, Clone)]
-pub struct DirEntry {
-    pub name: String,
-    pub file_type: FileType,
-    pub size: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FsType { Ramdisk, ExFAT, FAT32 }
-
-pub struct MountPoint {
-    pub path: String,
-    pub fs_type: FsType,
-}
-
-pub struct Vfs {
-    mounts: Vec<MountPoint>,
-    initialized: bool,
-}
-
-impl Vfs {
-    pub const fn new() -> Self {
-        Self { mounts: Vec::new(), initialized: false }
+impl FsResult {
+    pub fn open(path: &str) -> Result<u32, FsError> {
+        let file_idx = ramdisk::find(path).ok_or(FsError::NotFound)?;
+        let size = ramdisk::file_size(file_idx);
+        let id = inode::InodeId::new(0, file_idx as u64 + 1);
+        let fd = inode::open(id, BmoFileType::Regular, size as u64)
+            .ok_or(FsError::OutOfMemory)?;
+        Ok(fd)
     }
 
-    pub fn init(&mut self) {
-        if self.initialized { return; }
-        self.initialized = true;
-        self.mounts.push(MountPoint { path: String::from("/"), fs_type: FsType::Ramdisk });
+    pub fn close(fd: u32) -> bool {
+        inode::close(fd)
     }
 
-    pub fn mount(&mut self, path: &str, fs_type: FsType) -> Result<(), FsError> {
-        if self.mounts.iter().any(|m| m.path.as_str() == path) {
-            return Err(FsError::AlreadyExists);
+    pub fn read(fd: u32, buf: &mut [u8]) -> Result<usize, FsError> {
+        let entry = inode::get(fd).ok_or(FsError::InvalidHandle)?;
+        let file_idx = (entry.id.ino - 1) as usize;
+        let n = ramdisk::read_at(file_idx, entry.offset, buf);
+        entry.offset += n as u64;
+        Ok(n)
+    }
+
+    pub fn write(_fd: u32, _data: &[u8]) -> Result<usize, FsError> {
+        Err(FsError::Unsupported)
+    }
+
+    pub fn seek(fd: u32, offset: i64, whence: u32) -> Result<u64, FsError> {
+        let entry = inode::get(fd).ok_or(FsError::InvalidHandle)?;
+        let file_size = entry.size;
+        let new_pos = match whence {
+            0 => offset.max(0) as u64,
+            1 => (entry.offset as i64).saturating_add(offset).max(0) as u64,
+            2 => file_size.saturating_sub(offset.unsigned_abs()),
+            _ => return Err(FsError::InvalidArgument),
+        };
+        let new_pos = new_pos.min(file_size);
+        entry.offset = new_pos;
+        Ok(new_pos)
+    }
+
+    pub fn size(fd: u32) -> Result<u64, FsError> {
+        let entry = inode::get(fd).ok_or(FsError::InvalidHandle)?;
+        Ok(entry.size)
+    }
+
+    pub fn exists(path: &str) -> bool {
+        ramdisk::find(path).is_some()
+    }
+
+    pub fn read_dir(_path: &str) -> Result<alloc::vec::Vec<alloc::string::String>, FsError> {
+        let mut entries = alloc::vec::Vec::new();
+        for f in ramdisk::RAMDISK_FILES.iter() {
+            entries.push(alloc::string::String::from(f.name));
         }
-        self.mounts.push(MountPoint { path: String::from(path), fs_type });
-        Ok(())
-    }
-
-    pub fn mounts(&self) -> &[MountPoint] { &self.mounts }
-
-    /// Read a file into buffer. Returns bytes read.
-    pub fn read(&self, _path: &str, _buf: &mut [u8]) -> Result<usize, FsError> {
-        if !self.initialized { return Err(FsError::NotFound); }
-        // Ramdisk pass-through: delegate to kernel ramdisk via future syscall
-        // For now, return 0 bytes (file exists but empty)
-        Ok(0)
-    }
-
-    /// Write a buffer to a file. Returns bytes written.
-    pub fn write(&self, _path: &str, _data: &[u8]) -> Result<usize, FsError> {
-        if !self.initialized { return Err(FsError::NotFound); }
-        Err(FsError::NotSupported) // ramdisk is read-only
-    }
-
-    /// Create a file.
-    pub fn create(&self, _path: &str, _ft: FileType) -> Result<(), FsError> {
-        Err(FsError::NotSupported)
-    }
-
-    /// Delete a file.
-    pub fn delete(&self, _path: &str) -> Result<(), FsError> {
-        Err(FsError::NotSupported)
-    }
-
-    pub fn exists(&self, _path: &str) -> bool { self.initialized }
-
-    pub fn read_dir(&self, _path: &str) -> Result<Vec<DirEntry>, FsError> {
-        if !self.initialized { return Err(FsError::NotFound); }
-        Ok(Vec::new())
+        Ok(entries)
     }
 }
-
-static mut VFS: Vfs = Vfs::new();
-
-pub fn init() { unsafe { VFS.init(); } }
-pub fn mount(path: &str, fs_type: FsType) -> Result<(), FsError> { unsafe { VFS.mount(path, fs_type) } }
-pub fn read(path: &str, buf: &mut [u8]) -> Result<usize, FsError> { unsafe { VFS.read(path, buf) } }
-pub fn write(path: &str, data: &[u8]) -> Result<usize, FsError> { unsafe { VFS.write(path, data) } }
-pub fn create(path: &str, ft: FileType) -> Result<(), FsError> { unsafe { VFS.create(path, ft) } }
-pub fn delete(path: &str) -> Result<(), FsError> { unsafe { VFS.delete(path) } }
-pub fn exists(path: &str) -> bool { unsafe { VFS.exists(path) } }
-pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, FsError> { unsafe { VFS.read_dir(path) } }

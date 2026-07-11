@@ -140,5 +140,5 @@ pub fn enter_usermode(entry_point: u64, user_stack: u64) -> ! {
     }
     
     // Enter Ring 3
-    crate::arch::ring3_entry::enter_ring3(entry_point, user_stack);
+    unsafe { crate::ring3::transition::ring3_transition(entry_point, user_stack); }
 }

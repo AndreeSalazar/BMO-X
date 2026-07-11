@@ -44,9 +44,15 @@ static ALLOWED_SYSCALLS: AtomicU64 = AtomicU64::new(0);
 static DENIED_SYSCALLS: AtomicU64 = AtomicU64::new(0);
 static UNKNOWN_SYSCALLS: AtomicU64 = AtomicU64::new(0);
 
-/// Inicializa el gateway (no-op en v1.8.8).
+/// Inicializa el gateway: registra el handler en el kernel y notifica a Cabina.
 pub fn init() {
+    // Registrar este gateway como el dispatch de syscalls 0x100-0x1FF
+    unsafe { bmo_register_gateway(enter); }
     crate::cabina::info("gateway", "gateway v1.0 online - single door to BMO Core");
+}
+
+extern "C" {
+    fn bmo_register_gateway(f: unsafe extern "C" fn(u16, u64, u64, u64, u64, u64, u64) -> u64);
 }
 
 /// Punto de entrada UNICO para syscalls desde Ring 3.
@@ -54,7 +60,7 @@ pub fn init() {
 /// Esta funcion se llama desde `ring0::arch::syscall` despues de
 /// capturar el contexto del proceso. Es la **unica funcion** que Ring 0
 /// puede llamar para delegar un syscall a BMO Core.
-pub fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
+pub extern "C" fn enter(nr: u16, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
     TOTAL_SYSCALLS.fetch_add(1, Ordering::Relaxed);
 
     // 1. Validar rango BMO ABI

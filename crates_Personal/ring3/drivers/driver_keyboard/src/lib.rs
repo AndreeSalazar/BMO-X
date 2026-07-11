@@ -5,8 +5,6 @@
 
 #![no_std]
 
-extern crate alloc;
-
 use ring3_foundation;
 
 /// Keyboard event.

@@ -39,7 +39,6 @@ pub mod boot {
     pub mod serial;
     pub mod log;
     pub mod panic;
-    pub mod loader;
 }
 
 // ═══════════════════════════════════════════════════════════════════
