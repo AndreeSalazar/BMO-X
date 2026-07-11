@@ -143,8 +143,8 @@ pub fn tick() {
 
     paint_taskbar();
     paint_menu_bar();
-    crate::dev::framebuffer::present();
     paint_cursor();
+    crate::dev::framebuffer::present();
 }
 
 /// Global menu bar at the top of the screen (Mac-style).

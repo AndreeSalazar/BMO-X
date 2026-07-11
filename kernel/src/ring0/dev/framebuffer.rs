@@ -207,6 +207,8 @@ pub fn present() {
             disp.pixel_format,
         );
         backbuffer.blit_to(&dest);
+        // Store fence: WC framebuffer writes MUST hit VRAM before consumer (display HW) sees them
+        unsafe { core::arch::asm!("sfence", options(nomem, nostack)); }
     }
 }
 
