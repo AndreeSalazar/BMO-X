@@ -19,6 +19,7 @@
 const HPET_ID: usize = 0x00;
 const HPET_PERIOD: usize = 0x04;
 const HPET_CFG: usize = 0x10;
+#[allow(dead_code)]
 const HPET_ISR: usize = 0x20;
 const HPET_COUNTER: usize = 0x0F0;
 

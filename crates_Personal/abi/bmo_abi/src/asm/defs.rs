@@ -6,7 +6,6 @@
 
 use alloc::vec::Vec;
 use alloc::string::String;
-use alloc::collections::BTreeMap;
 use super::{SyscallDef, TypeAlias, AbiDataModel};
 
 /// ── All syscall definitions (14 categories, ~100 entries) ─────────

@@ -22,13 +22,12 @@ extern crate alloc;
 
 use alloc::collections::BTreeMap;
 use alloc::format;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use super::hash::Hash;
 use super::tree::{Tree, TreeEntry};
-use super::blob::Blob;
 
 const TICK_OFFSET_NS: u64 = 1_700_000_000_000_000_000; // 2023-11-14 in ns
 

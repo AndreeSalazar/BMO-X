@@ -14,11 +14,14 @@ use core::arch::asm;
 // ── Register offsets ────────────────────────────────────────────────────
 
 const APIC_ID:      u32 = 0x020;
+#[allow(dead_code)]
 const APIC_VERSION: u32 = 0x030;
 const APIC_TPR:     u32 = 0x080;
 const APIC_EOI:     u32 = 0x0B0;
 const APIC_SPURIOUS: u32 = 0x0F0;
+#[allow(dead_code)]
 const APIC_ICR_LO:  u32 = 0x300;
+#[allow(dead_code)]
 const APIC_ICR_HI:  u32 = 0x310;
 const APIC_LVT_TIMER:  u32 = 0x320;
 const APIC_INIT_COUNT: u32 = 0x380;

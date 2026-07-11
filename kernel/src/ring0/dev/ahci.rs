@@ -21,6 +21,7 @@
 //! - Detects connected devices
 //! - Provides PIO mode read/write (DMA will be added later)
 
+#![allow(dead_code)]
 use core::arch::asm;
 
 /// PCI Configuration Space addresses
@@ -429,7 +430,7 @@ pub fn init() -> bool {
 /// # Safety
 /// 
 /// `dst` must be at least `sector_count * 512` bytes.
-pub unsafe fn read_sectors_pio(port_idx: u8, lba: u64, sector_count: u16, dst: *mut u8) -> bool {
+pub unsafe fn read_sectors_pio(port_idx: u8, _lba: u64, _sector_count: u16, _dst: *mut u8) -> bool {
     if AHCI_BASE == 0 {
         return false;
     }
@@ -449,7 +450,7 @@ pub unsafe fn read_sectors_pio(port_idx: u8, lba: u64, sector_count: u16, dst: *
 /// # Safety
 /// 
 /// `src` must be at least `sector_count * 512` bytes.
-pub unsafe fn write_sectors_pio(port_idx: u8, lba: u64, sector_count: u16, src: *const u8) -> bool {
+pub unsafe fn write_sectors_pio(port_idx: u8, _lba: u64, _sector_count: u16, _src: *const u8) -> bool {
     if AHCI_BASE == 0 {
         return false;
     }

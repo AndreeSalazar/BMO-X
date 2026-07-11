@@ -16,16 +16,16 @@
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::blob::Blob;
 use super::commit::{Author, Commit};
 use super::hash::Hash;
-use super::r#ref::{RefEntry, RefKind};
+use super::r#ref::RefEntry;
 use super::storage;
-use super::tree::{FileMode, Tree, TreeEntry};
+use super::tree::Tree;
 
 static REPO_PATH: spin::Mutex<Option<String>> = spin::Mutex::new(None);
 static REPO_INITIALIZED: AtomicBool = AtomicBool::new(false);

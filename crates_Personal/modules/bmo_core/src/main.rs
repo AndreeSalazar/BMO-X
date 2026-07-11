@@ -247,7 +247,7 @@ impl bmo_xhci::XhciHal for ModuleXhciHal {
         self.hal().HIGH_MEM_BASE.wrapping_add(phys) as *mut u8
     }
     fn log(&self, msg: &str) { (self.hal().serial_write)(msg); }
-    fn log_u64(&self, msg: &str, val: u64) { (self.hal().serial_write_u64)(val, 16); }
+    fn log_u64(&self, _msg: &str, val: u64) { (self.hal().serial_write_u64)(val, 16); }
 }
 
 // ── Entry point ──────────────────────────────────────────────────────
@@ -283,7 +283,7 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
         (hal.serial_write)("[mod_bmo_core] module loaded\n");
 
         // Initialize plugin loader with embedded symbol table
-        let registry = bmo_core::plugin_loader::SymbolRegistry::new(SYMBOLS);
+        let _registry = bmo_core::plugin_loader::SymbolRegistry::new(SYMBOLS);
         (hal.serial_write)("[mod_bmo_core] symbol registry loaded\n");
 
         // ═══ PHASE 1: Desktop FIRST (fast path) ═══
@@ -344,7 +344,6 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
 
     let mut best_mmio = 0u64;
     let mut best_alive = 0u8;
-    let mut best_speed = 0u8;
     let mut best_ports = 0u8;
 
     for (idx, &mmio) in mmios.iter().enumerate() {
@@ -363,7 +362,7 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
         (hal.serial_write)(if ok { "[mod_bmo_core]   init OK\n" } else { "[mod_bmo_core]   init FAIL\n" });
         if !ok { continue; }
 
-        let port_count = unsafe { bmo_xhci::controller().map(|c| c.max_ports).unwrap_or(0) };
+        let port_count = bmo_xhci::controller().map(|c| c.max_ports).unwrap_or(0);
         let mut alive = 0u8;
         let mut with_speed = 0u8;
         unsafe {
@@ -385,7 +384,6 @@ fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
         if alive > best_alive || best_mmio == 0 {
             best_mmio = mmio;
             best_alive = alive;
-            best_speed = with_speed;
             best_ports = port_count;
         }
     }
@@ -515,6 +513,7 @@ unsafe fn xhci_usb_handover(mmio: u64) {
     }
 }
 
+#[allow(dead_code)]
 fn start_background_modules(hal: &bmo_hal_defs::HalServices) {
     let boot_info = unsafe {
         if (hal.boot_info).is_null() { return; }

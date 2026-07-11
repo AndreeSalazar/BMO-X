@@ -52,7 +52,7 @@ pub fn spawn_from_image(img: &Image) {
             continue;
         }
 
-        let section_paddr = match unsafe { crate::mm::phys::alloc_pages_contiguous(pages) } {
+        let section_paddr = match crate::mm::phys::alloc_pages_contiguous(pages) {
             Some(p) => p,
             None => {
                 crate::dev::console::serial_write("[bmo_core::proc] spawn_from_image: no phys for section\n");
@@ -94,15 +94,13 @@ pub fn spawn_from_image(img: &Image) {
             | if (section.flags & 0x2) != 0 { flags::WRITABLE } else { 0 }
             | if (section.flags & 0x4) == 0 { flags::NO_EXECUTE } else { 0 };
 
-        if let Err(e) = unsafe {
-            crate::mm::virt::map_user_range(
-                pml4_paddr,
-                section.virt_addr,
-                section_paddr,
-                pages,
-                page_flags,
-            )
-        } {
+        if let Err(e) = crate::mm::virt::map_user_range(
+            pml4_paddr,
+            section.virt_addr,
+            section_paddr,
+            pages,
+            page_flags,
+        ) {
             crate::dev::console::serial_write("[bmo_core::proc] spawn_from_image: map section failed: ");
             crate::dev::console::serial_write(e);
             crate::dev::console::serial_write("\n");
@@ -115,7 +113,7 @@ pub fn spawn_from_image(img: &Image) {
     let stack_base: u64 = 0x7FFF_0000;
     let stack_size: u64 = 65536;
     let stack_pages = (stack_size as usize + 4095) / 4096;
-    let stack_paddr = match unsafe { crate::mm::phys::alloc_pages_contiguous(stack_pages) } {
+    let stack_paddr = match crate::mm::phys::alloc_pages_contiguous(stack_pages) {
         Some(p) => p,
         None => {
             crate::dev::console::serial_write("[bmo_core::proc] spawn_from_image: no phys for stack\n");
@@ -125,15 +123,13 @@ pub fn spawn_from_image(img: &Image) {
     };
 
     let stack_page_flags = flags::PRESENT | flags::WRITABLE | flags::USER | flags::NO_EXECUTE;
-    if let Err(e) = unsafe {
-        crate::mm::virt::map_user_range(
-            pml4_paddr,
-            stack_base,
-            stack_paddr,
-            stack_pages,
-            stack_page_flags,
-        )
-    } {
+    if let Err(e) = crate::mm::virt::map_user_range(
+        pml4_paddr,
+        stack_base,
+        stack_paddr,
+        stack_pages,
+        stack_page_flags,
+    ) {
         crate::dev::console::serial_write("[bmo_core::proc] spawn_from_image: map stack failed: ");
         crate::dev::console::serial_write(e);
         crate::dev::console::serial_write("\n");
@@ -202,7 +198,7 @@ pub fn spawn_hello() {
     proc.page_table_root = pml4_paddr;
 
     // 3. Allocate + map user code page (4KB)
-    let code_paddr = match unsafe { crate::mm::phys::alloc_pages_contiguous(1) } {
+    let code_paddr = match crate::mm::phys::alloc_pages_contiguous(1) {
         Some(p) => p,
         None => {
             crate::dev::console::serial_write("[bmo_core::proc] spawn_hello: no phys for code\n");
@@ -221,9 +217,7 @@ pub fn spawn_hello() {
 
     use crate::mm::virt::flags;
     let page_flags = flags::PRESENT | flags::WRITABLE | flags::USER | flags::NO_EXECUTE;
-    if let Err(e) = unsafe {
-        crate::mm::virt::map_user_range(pml4_paddr, user_code_base, code_paddr, 1, page_flags)
-    } {
+    if let Err(e) = crate::mm::virt::map_user_range(pml4_paddr, user_code_base, code_paddr, 1, page_flags) {
         crate::dev::console::serial_write("[bmo_core::proc] spawn_hello: map code failed: ");
         crate::dev::console::serial_write(e);
         crate::dev::console::serial_write("\n");
@@ -232,7 +226,7 @@ pub fn spawn_hello() {
     }
 
     // 4. Allocate + map user stack (4KB)
-    let stack_paddr = match unsafe { crate::mm::phys::alloc_pages_contiguous(1) } {
+    let stack_paddr = match crate::mm::phys::alloc_pages_contiguous(1) {
         Some(p) => p,
         None => {
             crate::dev::console::serial_write("[bmo_core::proc] spawn_hello: no phys for stack\n");
@@ -244,9 +238,7 @@ pub fn spawn_hello() {
     proc.user_stack_paddr = stack_paddr;
     proc.user_stack_size = 4096;
 
-    if let Err(e) = unsafe {
-        crate::mm::virt::map_user_range(pml4_paddr, user_stack_base, stack_paddr, 1, page_flags)
-    } {
+    if let Err(e) = crate::mm::virt::map_user_range(pml4_paddr, user_stack_base, stack_paddr, 1, page_flags) {
         crate::dev::console::serial_write("[bmo_core::proc] spawn_hello: map stack failed: ");
         crate::dev::console::serial_write(e);
         crate::dev::console::serial_write("\n");
@@ -357,7 +349,7 @@ pub fn spawn_elf_hello() {
 
     let img = match crate::bef::parsers::load(&bytes) {
         Ok(img) => img,
-        Err(e) => {
+        Err(_e) => {
             crate::dev::console::serial_write("[bmo_core::proc] spawn_elf_hello: parse failed\n");
             return;
         }

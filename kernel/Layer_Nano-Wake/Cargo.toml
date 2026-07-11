@@ -9,12 +9,6 @@ license = "Techne"
 [dependencies]
 bmo-boot-protocol = { path = "../../crates_Personal/ring0/boot_protocol" }
 
-[profile.release]
-opt-level = 3
-panic = "abort"
-lto = true
-codegen-units = 1
-
 [[bin]]
 name = "layer-nano-wake"
 path = "src/main.rs"

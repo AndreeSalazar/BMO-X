@@ -56,7 +56,7 @@ pub unsafe fn read_sectors(port: u8, lba: u64, sector_count: u16, dst: *mut u8) 
 /// on success.
 ///
 /// SAFETY: `src` must be at least `sector_count * 512` bytes.
-pub unsafe fn write_sectors(port: u8, lba: u64, sector_count: u16, src: *const u8) -> bool {
+pub unsafe fn write_sectors(port: u8, _lba: u64, sector_count: u16, src: *const u8) -> bool {
     if !is_ready() { return false; }
     if port >= port_count() { return false; }
     if src.is_null() || sector_count == 0 { return false; }

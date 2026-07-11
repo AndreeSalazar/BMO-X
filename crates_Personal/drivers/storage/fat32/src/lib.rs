@@ -141,6 +141,7 @@ pub struct ExFatNameEntry {
 pub struct FatVolume {
     pub port: u8,
     pub fs_type: FsType,
+    #[allow(dead_code)]
     bytes_per_sector: u16,
     sectors_per_cluster: u8,
     num_fats: u8,
@@ -252,7 +253,7 @@ impl FatVolume {
     fn find_file_exfat(&mut self, name: &[u8]) -> Option<(u32, u32)> {
         let mut cluster = self.root_cluster;
         let spc = self.sectors_per_cluster as u64;
-        let mut entry_buf = [0u8; 32];
+        let _entry_buf = [0u8; 32];
         loop {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
@@ -671,10 +672,10 @@ impl FatVolume {
             name_len += 1;
         }
 
-        let zero32 = [0u8; 32];
+        let _zero32 = [0u8; 32];
 
         // Entry 1: File Directory Entry (0x85)
-        let mut file_entry = ExFatFileEntry {
+        let file_entry = ExFatFileEntry {
             entry_type: 0x85,
             secondary_count: 2,
             set_checksum: 0,
@@ -695,7 +696,7 @@ impl FatVolume {
         });
 
         // Entry 2: Stream Extension Entry (0xC0)
-        let mut stream_entry = ExFatStreamEntry {
+        let stream_entry = ExFatStreamEntry {
             entry_type: 0xC0,
             general_secondary_flags: 0x01,
             _reserved1: 0,
@@ -713,7 +714,7 @@ impl FatVolume {
         });
 
         // Entry 3: Filename Entry (0xC1)
-        let mut name_entry = ExFatNameEntry {
+        let name_entry = ExFatNameEntry {
             entry_type: 0xC1,
             general_secondary_flags: 0x01,
             name_string: utf16_name,

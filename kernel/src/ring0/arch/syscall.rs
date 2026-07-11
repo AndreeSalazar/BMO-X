@@ -191,7 +191,7 @@ fn stub(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) ->
 
 // ── Syscall implementations ────────────────────────────────────────────
 
-fn sys_exit(nr: u64, a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+fn sys_exit(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
     u64::MAX // process exit — module handles this
 }
 
@@ -200,7 +200,7 @@ fn sys_yield(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u6
     0
 }
 
-fn sys_task_alloc(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+fn sys_task_alloc(_nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
     match crate::proc::task::alloc(
         crate::proc::process::Pid(a0 as u32),
         crate::proc::Priority::Interactive,
@@ -214,7 +214,7 @@ fn sys_task_alloc(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: 
     }
 }
 
-fn sys_mmap(nr: u64, cr3: u64, virt: u64, phys: u64, pages: u64, flags: u64, _a5: u64) -> u64 {
+fn sys_mmap(_nr: u64, cr3: u64, virt: u64, phys: u64, pages: u64, flags: u64, _a5: u64) -> u64 {
     match unsafe { crate::mm::vmm::map_user_range(cr3, virt, phys, pages as usize, flags) } {
         Ok(()) => 0,
         Err(_) => u64::MAX,
@@ -225,7 +225,7 @@ fn sys_clock_get(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5
     crate::cpu::rdtsc()
 }
 
-fn sys_nanosleep(nr: u64, a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+fn sys_nanosleep(_nr: u64, a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
     // Convert nanoseconds to TSC cycles using the calibrated frequency
     let tsc_freq = crate::cpu::tsc_per_sec();
     let target_cycles = (a0 as u128).saturating_mul(tsc_freq as u128) / 1_000_000_000;
@@ -244,7 +244,7 @@ fn sys_fb_info(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: 
     addr | (w << 32) | ((h & 0xFFFF) << 16) | ((s & 0xFF) << 48)
 }
 
-fn sys_debug_print(nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+fn sys_debug_print(_nr: u64, a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
     // Validate: pointer must be in user space, length must be reasonable
     if a1 == 0 || a1 > 4096 { return 0; }
     if a0 >= 0x0000_8000_0000_0000 { return 0; } // reject kernel pointers

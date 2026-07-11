@@ -44,7 +44,7 @@ pub fn sys_mmap(a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> i64 {
     if vaddr == 0 { return -errno::ENOMEM; }
 
     let pages = size / 4096;
-    let paddr = match unsafe { crate::mm::phys::alloc_pages_contiguous(pages) } {
+    let paddr = match crate::mm::phys::alloc_pages_contiguous(pages) {
         Some(p) => p,
         None => return -errno::ENOMEM,
     };
@@ -60,9 +60,7 @@ pub fn sys_mmap(a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> i64 {
 
     if let Some(task) = crate::proc::task::current() {
         if let Some(proc) = crate::proc::process::get_process(task.pid) {
-            let result = unsafe {
-                crate::mm::virt::map_user_range(proc.page_table_root, vaddr, paddr, pages, pt_flags)
-            };
+            let result = crate::mm::virt::map_user_range(proc.page_table_root, vaddr, paddr, pages, pt_flags);
             if let Err(e) = result {
                 crate::cabina::info("linux.mmap", e);
                 unsafe { crate::mm::phys::free_pages(paddr, pages); }
@@ -108,19 +106,17 @@ pub fn sys_brk(a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> i64
                     | crate::mm::virt::flags::NO_EXECUTE;
                 if let Some(task) = crate::proc::task::current() {
                     if let Some(proc) = crate::proc::process::get_process(task.pid) {
-                        let result = unsafe {
-                            crate::mm::virt::map_user_range(proc.page_table_root, PROGRAM_BREAK, paddr, pages, pf)
-                        };
+                        let result = crate::mm::virt::map_user_range(proc.page_table_root, PROGRAM_BREAK, paddr, pages, pf);
                         if result.is_err() {
-                            unsafe { crate::mm::phys::free_pages(paddr, pages); }
+                            crate::mm::phys::free_pages(paddr, pages);
                             return PROGRAM_BREAK as i64;
                         }
                     } else {
-                        unsafe { crate::mm::phys::free_pages(paddr, pages); }
+                        crate::mm::phys::free_pages(paddr, pages);
                         return PROGRAM_BREAK as i64;
                     }
                 } else {
-                    unsafe { crate::mm::phys::free_pages(paddr, pages); }
+                    crate::mm::phys::free_pages(paddr, pages);
                     return PROGRAM_BREAK as i64;
                 }
                 PROGRAM_BREAK += grow;

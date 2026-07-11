@@ -437,7 +437,7 @@ pub fn render_frame() {
     draw_cursor(&backbuffer_fb, st.mouse_x, st.mouse_y);
 
     if crate::cabina::is_overlay_enabled() {
-        let bb_addr = crate::dev::framebuffer::backbuffer_ptr() as *mut u32;
+        let _bb_addr = crate::dev::framebuffer::backbuffer_ptr() as *mut u32;
         crate::cabina::paint_overlay();
     }
 

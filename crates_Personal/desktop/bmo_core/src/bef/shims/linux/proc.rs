@@ -36,7 +36,7 @@ pub fn sys_getcwd(a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> i
     cwd.len() as i64
 }
 
-pub fn sys_set_robust_list(a0: u64, a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> i64 {
+pub fn sys_set_robust_list(a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> i64 {
     if let Some(t) = crate::proc::task::current() {
         t.robust_list_head = a0;
         0
@@ -62,7 +62,7 @@ pub fn sys_getrandom(a0: u64, a1: u64, a2: u64, _a3: u64, _a4: u64, _a5: u64) ->
             core::arch::asm!(
                 "xor {tmp}, {tmp}",
                 "rdrand {tmp}",
-                "setc {ok_b}",
+                "setc {ok_b:l}",
                 tmp = inout(reg) out => out,
                 ok_b = out(reg) ok,
                 options(nostack, nomem),

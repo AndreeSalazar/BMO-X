@@ -30,10 +30,12 @@ const APIC_BASE_MASK: u64 = 0xFFFF_F000;
 const APIC_GLOBAL_ENABLE_BIT: u64 = 1 << 11;
 
 /// APIC MMIO region size (4 KB)
+#[allow(dead_code)]
 const APIC_MMIO_SIZE: u64 = 4096;
 
 /// Virtual address where we map the APIC (in higher half)
 /// We use a fixed address in the kernel's MMIO region
+#[allow(dead_code)]
 const APIC_VIRT_ADDR: u64 = 0xFFFF_8000_0000_0000; // 4 GB mark in higher half
 
 /// Cached APIC physical base address

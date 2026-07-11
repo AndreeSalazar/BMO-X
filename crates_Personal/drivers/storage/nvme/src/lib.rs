@@ -13,7 +13,6 @@
 
 #![no_std]
 
-use bitflags::bitflags;
 use core::ptr;
 
 /// NVMe controller registers (BAR0 offsets).
@@ -39,15 +38,15 @@ impl Regs {
 
 // Register offsets
 const CAP:     usize = 0x00;
-const VS:      usize = 0x08;
+#[allow(dead_code)] const VS:      usize = 0x08;
 const CC:      usize = 0x14;
 const CSTS:    usize = 0x1C;
 const AQA:     usize = 0x24;
 const ASQ:     usize = 0x28;
 const ACQ:     usize = 0x30;
 
-fn sq0tdbl(cap: u64) -> usize { 0x1000 }
-fn cq0hdbl(cap: u64) -> usize { 0x1000 + 4 }
+fn sq0tdbl(_cap: u64) -> usize { 0x1000 }
+fn cq0hdbl(_cap: u64) -> usize { 0x1000 + 4 }
 
 // CAP register fields
 fn cap_mqes(cap: u64) -> u16 { (cap & 0xFFFF) as u16 }
@@ -63,9 +62,9 @@ const CC_IOCQES_SHIFT: u32 = 20;
 const CC_IOSQES_SHIFT: u32 = 16;
 
 // Admin commands
-const CMD_DELETE_IO_SQ: u8 = 0x00;
+#[allow(dead_code)] const CMD_DELETE_IO_SQ: u8 = 0x00;
 const CMD_CREATE_IO_SQ: u8 = 0x01;
-const CMD_DELETE_IO_CQ: u8 = 0x04;
+#[allow(dead_code)] const CMD_DELETE_IO_CQ: u8 = 0x04;
 const CMD_CREATE_IO_CQ: u8 = 0x05;
 const CMD_IDENTIFY:     u8 = 0x06;
 
@@ -134,9 +133,9 @@ pub struct Nvme {
     /// Virtual addr of admin CQ
     admin_cq: *mut CqEntry,
     /// Physical addr of admin SQ
-    admin_sq_phys: u64,
+    #[allow(dead_code)] admin_sq_phys: u64,
     /// Physical addr of admin CQ
-    admin_cq_phys: u64,
+    #[allow(dead_code)] admin_cq_phys: u64,
     /// Admin SQ tail index
     admin_sq_tail: u16,
     /// Admin CQ head index
@@ -235,7 +234,7 @@ impl Nvme {
         };
 
         // Identify namespace
-        let mut id_buf_phys = backend.alloc_dma(1)?;
+        let id_buf_phys = backend.alloc_dma(1)?;
         let id_buf = backend.phys_to_virt(id_buf_phys);
         ctrl.admin_cmd(CMD_IDENTIFY, 1,
             id_buf_phys, 0, // CNS=0, NSID=1
@@ -352,7 +351,7 @@ impl Nvme {
                     if self.admin_cq_head == 0 {
                         self.admin_cq_phase ^= 1;
                     }
-                    unsafe { self.mmio.write(cq0hdbl(self.cap), self.admin_cq_head as u32); }
+                    self.mmio.write(cq0hdbl(self.cap), self.admin_cq_head as u32);
                     return AdminCompletion { status };
                 }
             }
@@ -391,7 +390,7 @@ impl Nvme {
                     if self.io_cq_head == 0 { self.io_cq_phase ^= 1; }
                     // IO CQ1 doorbell
                     let cq1_doorbell = 0x1000 + (2 * 1 + 1) * stride;
-                    unsafe { self.mmio.write(cq1_doorbell, self.io_cq_head as u32); }
+                    self.mmio.write(cq1_doorbell, self.io_cq_head as u32);
                     return;
                 }
             }

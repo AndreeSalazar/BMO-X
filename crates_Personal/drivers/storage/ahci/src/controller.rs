@@ -110,6 +110,7 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
 
 /// Initialize DMA for a port.
 pub unsafe fn init_port_dma(port_idx: u8) -> bool {
+    #[allow(static_mut_refs)]
     let ctrl = match CONTROLLER.as_mut() { Some(c) => c, None => return false };
     let port = &mut ctrl.ports[port_idx as usize];
     if port.state != PortState::Active { return false; }
@@ -154,6 +155,7 @@ pub unsafe fn init_port_dma(port_idx: u8) -> bool {
 
 /// Read sectors from a port into a buffer.
 pub unsafe fn read_sectors(port_idx: u8, lba: u64, sector_count: u16, buf: *mut u8) -> u16 {
+    #[allow(static_mut_refs)]
     let ctrl = match CONTROLLER.as_ref() { Some(c) => c, None => return 0 };
     let port = &ctrl.ports[port_idx as usize];
     let mmio = ctrl.mmio_base;
@@ -205,6 +207,7 @@ pub unsafe fn read_sectors(port_idx: u8, lba: u64, sector_count: u16, buf: *mut 
 
 /// Write sectors to a port from a buffer.
 pub unsafe fn write_sectors(port_idx: u8, lba: u64, sector_count: u16, buf: *const u8) -> u16 {
+    #[allow(static_mut_refs)]
     let ctrl = match CONTROLLER.as_ref() { Some(c) => c, None => return 0 };
     let port = &ctrl.ports[port_idx as usize];
     let mmio = ctrl.mmio_base;
@@ -255,5 +258,6 @@ pub unsafe fn write_sectors(port_idx: u8, lba: u64, sector_count: u16, buf: *con
 }
 
 pub fn controller() -> Option<&'static AhciController> {
+    #[allow(static_mut_refs)]
     unsafe { CONTROLLER.as_ref() }
 }

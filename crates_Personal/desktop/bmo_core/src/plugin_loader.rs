@@ -47,7 +47,7 @@ impl SymbolRegistry {
         // from BMO_SYMBOLS.toml). The linker resolves symbols to valid entry points.
         // T must match the function signature in the module.
         let fn_ptr: extern "C" fn() -> T = unsafe { core::mem::transmute(addr as *const ()) };
-        Some(unsafe { fn_ptr() })
+        Some(fn_ptr())
     }
 
     /// Chain-of-trust: verify module integrity at load time.

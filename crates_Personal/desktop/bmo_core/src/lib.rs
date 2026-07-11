@@ -27,6 +27,8 @@ pub mod cabina;
 pub mod serial;
 pub mod profile;
 pub mod context;
+#[allow(non_snake_case)]
+#[allow(non_snake_case)]
 pub mod phase_1_RING_0;
 pub mod defense;
 pub mod timeback;

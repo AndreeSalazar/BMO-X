@@ -13,7 +13,6 @@
 #![allow(dead_code)]
 
 use crate::fs::Capabilities;
-use alloc::string::ToString;
 
 /// Manifest decodificado en memoria.
 #[derive(Debug, Clone)]

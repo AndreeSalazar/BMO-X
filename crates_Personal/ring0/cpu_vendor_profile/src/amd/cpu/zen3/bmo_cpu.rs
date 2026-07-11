@@ -59,17 +59,17 @@ static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Returns the CPU identity. None if `init_bmo_cpu` not yet called.
 pub fn identity() -> Option<&'static CpuIdentity> {
-    unsafe { CPU_IDENTITY.as_ref() }
+    unsafe { (&*core::ptr::addr_of!(CPU_IDENTITY)).as_ref() }
 }
 
 /// Returns the CPU topology. None if not yet detected.
 pub fn topology() -> Option<&'static Topology> {
-    unsafe { CPU_TOPOLOGY.as_ref() }
+    unsafe { (&*core::ptr::addr_of!(CPU_TOPOLOGY)).as_ref() }
 }
 
 /// Returns the cache topology. None if not yet detected.
 pub fn cache() -> Option<&'static CacheTopology> {
-    unsafe { CPU_CACHE.as_ref() }
+    unsafe { (&*core::ptr::addr_of!(CPU_CACHE)).as_ref() }
 }
 
 /// Returns the calibrated TSC frequency in Hz.

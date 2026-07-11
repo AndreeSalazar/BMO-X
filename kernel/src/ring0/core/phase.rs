@@ -86,8 +86,8 @@ fn phase1_mem(ctx: &mut BootContext, prev_end: u64) -> u64 {
     unsafe {
         let mm = &(*bi_ptr).memory_map;
         let mmc = core::ptr::read_volatile(&(*bi_ptr).memory_map_count) as usize;
-        let ra = core::ptr::read_volatile(&(*bi_ptr).reserved_addr);
-        let rs = core::ptr::read_volatile(&(*bi_ptr).reserved_size);
+        let _ra = core::ptr::read_volatile(&(*bi_ptr).reserved_addr);
+        let _rs = core::ptr::read_volatile(&(*bi_ptr).reserved_size);
         // Reserve BootInfo pages so the frame allocator never hands them out.
         // BootInfo is allocated as LOADER_DATA, which converts to MemoryType::Bootloader,
         // which IS usable — so the buddy allocator would otherwise hand out those pages.
@@ -184,7 +184,7 @@ fn phase2_dev(ctx: &mut BootContext, prev_end: u64) -> u64 {
     phase2_end
 }
 
-fn phase3_display(_ctx: &mut BootContext, prev_end: u64) -> u64 {
+fn phase3_display(_ctx: &mut BootContext, _prev_end: u64) -> u64 {
     s_log("[phase3] === Display Init ===");
     let (fb_addr, fb_w, fb_h, fb_s) = unsafe {
         (crate::info::FB_ADDR, crate::info::FB_WIDTH, crate::info::FB_HEIGHT, crate::info::FB_STRIDE)
@@ -196,7 +196,7 @@ fn phase3_display(_ctx: &mut BootContext, prev_end: u64) -> u64 {
     phase3_end
 }
 
-fn phase4_sched(_ctx: &mut BootContext, prev_end: u64) -> u64 {
+fn phase4_sched(_ctx: &mut BootContext, _prev_end: u64) -> u64 {
     s_log("[phase4] === Scheduler Init ===");
     crate::proc::init();
     s_log("[phase4] scheduler tables initialized");
@@ -257,7 +257,7 @@ pub fn main(boot_info_ptr: *const bmo_boot_protocol::BootInfo) -> BootContext {
     crate::boot_splash::splash_progress(70, "Display init...");
     prev_end = phase3_display(&mut ctx, prev_end);
     crate::boot_splash::splash_progress(80, "Scheduler...");
-    prev_end = phase4_sched(&mut ctx, prev_end);
+    let _ = phase4_sched(&mut ctx, prev_end);
     s_log("[ring0] all boot phases completed");
     write_crash_marker(3);
     // Initialize IRQ dispatch system

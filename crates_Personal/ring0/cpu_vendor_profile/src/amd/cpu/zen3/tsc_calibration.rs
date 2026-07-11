@@ -53,6 +53,7 @@ fn read_pm_timer(port: u16) -> u32 {
 /// Read the PIT (Programmable Interval Timer) counter on channel 2.
 /// Returns the current 16-bit counter value.
 #[inline]
+#[allow(dead_code)]
 fn read_pit_channel2() -> u16 {
     let low: u8;
     let high: u8;
@@ -67,6 +68,7 @@ fn read_pit_channel2() -> u16 {
 /// Configure PIT channel 2 for one-shot mode (used to measure time).
 /// `divisor` is the value loaded into channel 2 (1.193182 MHz base).
 #[inline]
+#[allow(dead_code)]
 fn setup_pit_channel2(divisor: u16) {
     unsafe {
         // Channel 2, lobyte/highbyte, mode 0 (one-shot), binary
@@ -86,6 +88,7 @@ fn rdtsc() -> u64 {
 }
 
 /// Wait for a specific number of microseconds using PIT channel 2.
+#[allow(dead_code)]
 fn pit_wait_us(us: u32) {
     // PIT base frequency is 1,193,182 Hz.
     let divisor: u16 = ((1_193_182u32 * us) / 1_000_000) as u16;

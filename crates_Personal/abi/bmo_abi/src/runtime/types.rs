@@ -13,7 +13,7 @@
 //! - `ParamDescriptor` lists (via `bmo_abi::types::ParamDescriptor`)
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
-use crate::bmo_abi::types::{TypeField, FieldTable, FunctionSignature, ParamDescriptor};
+use crate::bmo_abi::types::{FieldTable, FunctionSignature, ParamDescriptor};
 
 /// Capacidad máxima del registro de tipos.
 pub const TYPE_REGISTRY_CAP: usize = 256;

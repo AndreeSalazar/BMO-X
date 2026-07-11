@@ -40,6 +40,7 @@ fn idx_to_addr(idx: usize) -> u64 {
 }
 
 /// Check if a page is currently tracked as allocated.
+#[allow(dead_code)]
 #[inline]
 unsafe fn is_used(addr: u64) -> bool {
     match addr_to_idx(addr) {

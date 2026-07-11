@@ -1,7 +1,6 @@
 use super::{Image, LoadError, MappedSection, fake_provenance_image};
 use crate::bef::format::manifest::Provenance;
-use alloc::vec::Vec;
-use goblin::elf::{Elf, program_header, reloc, sym};
+use goblin::elf::{Elf, program_header, reloc};
 
 pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     let elf = Elf::parse(bytes).map_err(|_| LoadError::InvalidHeader)?;
@@ -104,7 +103,7 @@ fn apply_one_reloc(
     img: &mut Image,
     reloc: &reloc::Reloc,
     bef_kind: u8,
-    bytes: &[u8],
+    _bytes: &[u8],
 ) {
     let target_va = reloc.r_offset;
 
@@ -171,7 +170,7 @@ fn pick_kind_from_flags(p_flags: u32) -> u8 {
     }
 }
 
-fn resolve_plt_symbols(elf: &Elf, img: &mut Image, bytes: &[u8]) {
+fn resolve_plt_symbols(elf: &Elf, img: &mut Image, _bytes: &[u8]) {
     let def_lib = elf.libraries.first().copied().unwrap_or("libc.so.6");
     for reloc in elf.pltrelocs.iter() {
         if reloc.r_type != reloc::R_X86_64_JUMP_SLOT {
@@ -179,8 +178,7 @@ fn resolve_plt_symbols(elf: &Elf, img: &mut Image, bytes: &[u8]) {
         }
         let sym = elf.dynsyms.get(reloc.r_sym);
         let sym_name = sym.and_then(|s| {
-            elf.dynstrtab.get(s.st_name)
-                .and_then(|r| r.ok())
+            elf.dynstrtab.get_at(s.st_name)
                 .filter(|n| !n.is_empty())
         });
         let name = match sym_name {

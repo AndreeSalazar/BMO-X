@@ -24,6 +24,7 @@ fn read_cr0() -> u64 {
     v
 }
 
+#[allow(dead_code)]
 #[inline]
 fn read_cr2() -> u64 {
     let v: u64;
@@ -38,6 +39,7 @@ fn read_cr4() -> u64 {
     v
 }
 
+#[allow(dead_code)]
 #[inline]
 fn read_cr8() -> u64 {
     let v: u64;

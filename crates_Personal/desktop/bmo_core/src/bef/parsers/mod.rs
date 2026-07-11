@@ -110,7 +110,7 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
     // Allocate a 64 KB user stack from identity-mapped physical pages.
     const STACK_PAGES: usize = 16;
     const PAGE_SIZE: u64 = 4096;
-    let stack_phys = match unsafe { phys::alloc_pages_contiguous(STACK_PAGES) } {
+    let stack_phys = match phys::alloc_pages_contiguous(STACK_PAGES) {
         Some(p) => p,
         None => {
             crate::cabina::fault("bef", "OOM for user stack");
@@ -119,16 +119,12 @@ pub unsafe fn run_entry_point(img: &Image) -> ! {
     };
 
     // Mark stack pages USER-accessible.
-    unsafe {
-        let _ = virt::mark_current_identity_user_range(
-            stack_phys, STACK_PAGES * PAGE_SIZE as usize,
-        );
-    }
+    let _ = virt::mark_current_identity_user_range(
+        stack_phys, STACK_PAGES * PAGE_SIZE as usize,
+    );
 
     // Zero the stack (identity-mapped).
-    unsafe {
-        core::ptr::write_bytes(stack_phys as *mut u8, 0, STACK_PAGES * PAGE_SIZE as usize);
-    }
+    core::ptr::write_bytes(stack_phys as *mut u8, 0, STACK_PAGES * PAGE_SIZE as usize);
 
     let stack_top = stack_phys + (STACK_PAGES as u64) * PAGE_SIZE;
 

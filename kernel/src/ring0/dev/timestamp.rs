@@ -66,7 +66,7 @@ pub fn calibrate_tsc_hpet() -> u64 {
     }
 
     let tsc_start = crate::cpu::rdtsc();
-    let hpet_start = super::hpet::counter();
+    let _hpet_start = super::hpet::counter();
 
     // Wait ~10ms
     let target_ns = 10_000_000; // 10ms
@@ -77,7 +77,7 @@ pub fn calibrate_tsc_hpet() -> u64 {
     }
 
     let tsc_end = crate::cpu::rdtsc();
-    let hpet_end = super::hpet::counter();
+    let _hpet_end = super::hpet::counter();
 
     let tsc_delta = tsc_end.wrapping_sub(tsc_start);
     let hpet_ns = super::hpet::now_ns(); // use now_ns for calibrated value

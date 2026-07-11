@@ -149,6 +149,7 @@ pub fn print() {
     }
 }
 
+#[allow(dead_code)]
 fn print_hex(val: u32) {
     let hex = b"0123456789ABCDEF";
     let mut buf = [0u8; 8];

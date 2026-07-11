@@ -90,7 +90,7 @@ pub fn flush_to_disk() {
         serial_write_u64(efi_cl.unwrap_or(0) as u64, 16);
         serial_write("\n");
 
-        if let Some(efi_cl) = efi_cl {
+        if let Some(_efi_cl) = efi_cl {
             if let Some(_boot_cl) = (h.fs_find_subdir)(i, "EFI\\BOOT") {
                 // Try to write CABINA.LOG to EFI\BOOT
                 let written = (h.fs_write_file)(i, "EFI\\BOOT\\CABINA.LOG", &buf[..len]);

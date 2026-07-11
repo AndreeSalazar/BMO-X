@@ -72,7 +72,7 @@ unsafe fn ps2_init_direct() {
     // Send "enable scanning" to keyboard
     while inb(0x64) & 2 != 0 { core::hint::spin_loop(); }
     outb(0x60, 0xF4);
-    let ack = ps2_read_data();
+    let _ack = ps2_read_data();
 
     // Enable mouse (aux PS/2 port)
     while inb(0x64) & 2 != 0 { core::hint::spin_loop(); }
@@ -99,7 +99,7 @@ unsafe fn ps2_init_direct() {
     serial_write("[input] direct PS/2 keyboard+mouse enabled\n");
 }
 
-unsafe fn poll_direct_ps2(last_sc: &mut u8, last_mouse: &mut u64) {
+unsafe fn poll_direct_ps2(last_sc: &mut u8, _last_mouse: &mut u64) {
     static mut KBD_EXTENDED: bool = false;
     // Poll keyboard
     if ps2_has_data() {

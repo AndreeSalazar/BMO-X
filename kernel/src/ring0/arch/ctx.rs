@@ -18,6 +18,7 @@ use crate::proc::task::SavedRegs;
 /// Number of GPRs pushed by the ISR stub.
 const GPR_COUNT: usize = 15;
 /// Size in bytes of the GPR region on the kernel stack.
+#[allow(dead_code)]
 const GPR_SIZE: usize = GPR_COUNT * 8;
 
 /// Save the full register ctx from the kernel stack into a `SavedRegs`.
@@ -56,7 +57,7 @@ pub unsafe extern "C" fn save_context_from_stack(saved_state: *mut u64) -> bool 
     let cpu_frame = saved_state.add(GPR_COUNT);
     let probe = *cpu_frame.add(3);
     let is_ring3 = (probe & 3) == 3;
-    let cs = if is_ring3 { probe } else { *cpu_frame.add(1) };
+    let _cs = if is_ring3 { probe } else { *cpu_frame.add(1) };
 
     if is_ring3 {
         // CPU pushed: [SS] [RSP] [RFLAGS] [CS] [RIP] (5 values)

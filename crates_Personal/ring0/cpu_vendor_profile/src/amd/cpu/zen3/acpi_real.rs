@@ -307,7 +307,7 @@ pub fn parse_rsdp(addr: u64) -> Result<&'static RsdpHeader, AcpiError> {
 
 /// Parse the XSDT (or RSDT) pointed to by the cached RSDP.
 pub fn parse_xsdt() -> Result<&'static AcpiSdtHeader, AcpiError> {
-    let rsdp = unsafe { RSDP.as_ref().ok_or(AcpiError::NotFound)? };
+    let rsdp = unsafe { (&*core::ptr::addr_of!(RSDP)).as_ref().ok_or(AcpiError::NotFound)? };
     let sdt_addr = rsdp.sdt_addr();
     if sdt_addr == 0 {
         return Err(AcpiError::NotFound);
@@ -335,7 +335,7 @@ pub fn parse_xsdt() -> Result<&'static AcpiSdtHeader, AcpiError> {
 /// Walk the XSDT and find the table with the given signature.
 /// Returns the table's physical address and length, or NotFound.
 pub fn find_table(signature: &[u8; 4]) -> Result<(u64, u32), AcpiError> {
-    let xsdt = unsafe { XSDT.as_ref().ok_or(AcpiError::NotFound)? };
+    let xsdt = unsafe { (&*core::ptr::addr_of!(XSDT)).as_ref().ok_or(AcpiError::NotFound)? };
     let entry_count = (xsdt.length as usize - 36) / 8;
 
     let entries_ptr = unsafe { (xsdt as *const AcpiSdtHeader as *const u8).add(36) };
@@ -369,7 +369,7 @@ pub fn parse_mcfg() -> Result<&'static McfgHeader, AcpiError> {
 
 /// Public access to the cached MCFG. Returns None if not yet parsed.
 pub fn mcfg() -> Option<&'static McfgHeader> {
-    unsafe { MCFG.as_ref() }
+    unsafe { (&*core::ptr::addr_of!(MCFG)).as_ref() }
 }
 
 /// Returns true if at least one ECAM region was discovered.

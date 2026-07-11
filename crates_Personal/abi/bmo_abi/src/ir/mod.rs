@@ -31,7 +31,6 @@
 //! - **SSA-lite**: each local is assigned once per function (not strictly enforced)
 //! - **Fixed capacity**: IrModule, IrFunction, IrBlock have fixed maximum sizes
 
-use crate::bmo_abi::primitives::bx_u64;
 use crate::bmo_abi::types::convention::{ScalarKind, CallingConvention};
 
 /// Maximum functions per module.

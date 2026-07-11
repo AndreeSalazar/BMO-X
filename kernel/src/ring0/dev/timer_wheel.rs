@@ -128,7 +128,7 @@ pub fn tick() {
     // Process level 0 (1ms resolution)
     let slot = (tick_num % SLOTS_PER_LEVEL as u64) as usize;
     let count = unsafe { WHEEL_COUNT[0] };
-    for i in 0..count as usize {
+    for _i in 0..count as usize {
         if unsafe { WHEEL[0][slot] } != 0 {
             let timer_id = unsafe { WHEEL[0][slot] };
             let idx = (timer_id as usize) % MAX_TIMERS;

@@ -20,7 +20,6 @@
 //!   Bits [16-17]: Destination Field — Physical (0) or Logical (1)
 //!   Bits [56-63]: Destination APIC ID (physical mode)
 
-use core::arch::asm;
 
 /// I/O APIC register offsets.
 const IOREGSEL: u32 = 0x00;  // I/O Register Select (32-bit)

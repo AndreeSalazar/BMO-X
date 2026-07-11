@@ -149,7 +149,7 @@ pub fn free_process(proc: &mut Process) {
     proc.linux_emulation = false;
 }
 
-pub fn kill_current_process(vector: u64, _error_code: u64, _cr2: u64) -> ! {
+pub fn kill_current_process(_vector: u64, _error_code: u64, _cr2: u64) -> ! {
     let current_idx = crate::proc::task::current_index();
     if let Some(thread) = crate::proc::task::get(current_idx) {
         let pid = thread.pid;

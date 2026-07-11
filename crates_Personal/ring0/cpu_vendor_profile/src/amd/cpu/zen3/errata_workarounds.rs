@@ -18,21 +18,30 @@
 
 use core::arch::asm;
 
+#[allow(dead_code)]
 const MSR_IA32_SPEC_CTRL: u32 = 0x0000_0048;
 const MSR_IA32_PRED_CMD: u32 = 0x0000_0049;
+#[allow(dead_code)]
 const MSR_IA32_TSX_CTRL: u32 = 0x0000_0122;
+#[allow(dead_code)]
 const MSR_AMD_SPEC_CTRL: u32 = 0xC001_0115;
 const MSR_AMD_PRED_CMD: u32 = 0xC001_0116;
 
 // Bit definitions
+#[allow(dead_code)]
 const SPEC_CTRL_IBRS: u64 = 1 << 0;
+#[allow(dead_code)]
 const SPEC_CTRL_STIBP: u64 = 1 << 1;
+#[allow(dead_code)]
 const SPEC_CTRL_SSBD: u64 = 1 << 2;
 const PRED_CMD_IBPB: u64 = 1 << 0;
+#[allow(dead_code)]
 const TSX_CTRL_RTM_DISABLE: u64 = 1 << 0;
+#[allow(dead_code)]
 const TSX_CTRL_CPUID_CLEAR: u64 = 1 << 1;
 
 /// Read a Model-Specific Register.
+#[allow(dead_code)]
 #[inline]
 unsafe fn rdmsr(msr: u32) -> u64 {
     let low: u32;

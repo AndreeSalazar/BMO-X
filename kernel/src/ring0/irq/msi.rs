@@ -35,6 +35,7 @@ use crate::dev::pcie;
 /// PCI MSI capability ID.
 const PCI_CAP_ID_MSI: u8 = 0x05;
 /// PCI MSI-X capability ID.
+#[allow(dead_code)]
 const PCI_CAP_ID_MSIX: u8 = 0x11;
 
 /// LAPIC MSI address: 0xFEE00000 + (destination_id << 12).
@@ -53,15 +54,15 @@ fn msi_data(vector: u8) -> u32 {
 /// Returns (cap_offset, is_msix) or None.
 fn find_cap(bus: u8, dev: u8, func: u8, cap_id: u8) -> Option<u8> {
     // Read Status register (offset 0x04) to check Capabilities List bit
-    let status = unsafe { pcie::pci_read32(bus, dev, func, 0x04) };
+    let status = pcie::pci_read32(bus, dev, func, 0x04);
     if (status >> 16) & (1 << 4) == 0 {
         return None; // No capabilities list
     }
     // Capabilities Pointer is at offset 0x34
-    let mut cap_ptr = (unsafe { pcie::pci_read32(bus, dev, func, 0x34) } & 0xFF) as u8;
+    let mut cap_ptr = (pcie::pci_read32(bus, dev, func, 0x34) & 0xFF) as u8;
     for _ in 0..48 {
         if cap_ptr < 0x40 { break; }
-        let cap = unsafe { pcie::pci_read32(bus, dev, func, cap_ptr as u16) };
+        let cap = pcie::pci_read32(bus, dev, func, cap_ptr as u16);
         let id = (cap & 0xFF) as u8;
         if id == cap_id { return Some(cap_ptr); }
         cap_ptr = ((cap >> 8) & 0xFF) as u8;
@@ -85,8 +86,7 @@ pub fn enable_msi(bus: u8, dev: u8, func: u8, vector: u8) -> bool {
     let msi_addr: u32 = (MSI_ADDR_BASE & 0xFFFF_FFFF) as u32;
     let data = msi_data(vector);
 
-    unsafe {
-        // Read Message Control (offset + 2)
+    // Read Message Control (offset + 2)
         let ctrl = pcie::pci_read32(bus, dev, func, (cap as u16).wrapping_add(2));
         let is_64bit = (ctrl >> 23) & 1 != 0;
 
@@ -105,7 +105,6 @@ pub fn enable_msi(bus: u8, dev: u8, func: u8, vector: u8) -> bool {
 
         // Set MSI Enable bit (bit 0 of Message Control)
         pcie::pci_write32(bus, dev, func, (cap as u16).wrapping_add(2), ctrl | 1);
-    }
 
     true
 }

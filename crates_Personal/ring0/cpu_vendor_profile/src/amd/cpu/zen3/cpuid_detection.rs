@@ -236,5 +236,5 @@ pub fn cache_identity(id: CpuIdentity) {
 
 /// Returns the cached CpuIdentity, if any.
 pub fn identity() -> Option<&'static CpuIdentity> {
-    unsafe { CACHED_IDENTITY.as_ref() }
+    unsafe { (&*core::ptr::addr_of!(CACHED_IDENTITY)).as_ref() }
 }

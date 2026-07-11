@@ -119,6 +119,7 @@ impl SlabHead {
 
 // ── Per-cache structure ─────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn size_for_align(size: usize, align: usize) -> usize {
     size.max(align)
 }
@@ -193,6 +194,7 @@ unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
 /// - `head` must be a valid pointer to a SlabHead returned by slab_create()
 /// - The slab must not be linked in any cache list (caller must unlink first)
 /// - Caller must hold slab lock (interrupts disabled)
+#[allow(dead_code)]
 unsafe fn slab_destroy(head: *mut SlabHead) {
     let virt = head as u64;
     let phys = heap_virt_to_phys(virt);

@@ -11,7 +11,7 @@
 
 use super::window::WID_INVALID;
 use crate::desktop::theme;
-use crate::ui::animation::{AnimState, Easing, Tween};
+
 use core::sync::atomic::{AtomicU64, Ordering};
 
 static LAST_TICK: AtomicU64 = AtomicU64::new(0);
@@ -25,7 +25,7 @@ pub fn tick() {
     // Tick animations every ~16ms
     let anim_dt = now.wrapping_sub(LAST_ANIM_TICK.load(Ordering::Relaxed));
     LAST_ANIM_TICK.store(now, Ordering::Relaxed);
-    let dt_ms = if anim_dt > 0 { (anim_dt / 3_700_000) as u32 } else { 16 };
+    let _dt_ms = if anim_dt > 0 { (anim_dt / 3_700_000) as u32 } else { 16 };
 
     let s = super::state();
     s.lock();
@@ -182,7 +182,7 @@ fn paint_menu_bar() {
 }
 
 /// Soft drop shadow behind a window.
-fn paint_window_shadow(fb: &crate::ui::fb::Framebuffer, x: i32, y: i32, w: i32, h: i32, r: usize) {
+fn paint_window_shadow(fb: &crate::ui::fb::Framebuffer, x: i32, y: i32, w: i32, h: i32, _r: usize) {
     let sx = (x + 6) as usize;
     let sy = (y + 10) as usize;
     let sw = w as usize;
@@ -200,7 +200,7 @@ fn paint_window_shadow(fb: &crate::ui::fb::Framebuffer, x: i32, y: i32, w: i32, 
 }
 
 /// Frosted glass effect: blur the area behind the window, then overlay tint.
-fn paint_glass_backdrop(fb: &crate::ui::fb::Framebuffer, x: i32, y: i32, w: i32, h: i32, r: usize) {
+fn paint_glass_backdrop(fb: &crate::ui::fb::Framebuffer, x: i32, y: i32, w: i32, h: i32, _r: usize) {
     let gx = x as usize;
     let gy = y as usize;
     let gw = w as usize;

@@ -39,6 +39,7 @@ pub struct TrampolinePage {
 pub const TRAMPOLINE_PHYS: u64 = 0x8000;
 
 /// Offset of the 64-bit entry point within the trampoline code page.
+#[allow(dead_code)]
 const ENTRY_OFFSET: u16 = 0x200;
 
 /// AP boot status flags. Written by APs, read by BSP.
@@ -60,6 +61,7 @@ static mut AP_STACKS: [[u8; AP_STACK_SIZE]; percpu::MAX_CPUS] = [[0u8; AP_STACK_
 static mut TRAMPOLINE_VIRT: u64 = 0;
 
 /// Write a 16-bit value to the trampoline page at a given offset.
+#[allow(dead_code)]
 unsafe fn trampoline_write16(offset: u16, val: u16) {
     let ptr = (TRAMPOLINE_PHYS + offset as u64) as *mut u16;
     core::ptr::write_volatile(ptr, val);
@@ -196,7 +198,7 @@ pub unsafe extern "sysv64" fn ap_entry() {
     // The trampoline has already set up CR3, GDT, and enabled paging.
 
     // Read core_id and APIC ID from trampoline data
-    let core_id = trampoline_read32(0x130);
+    let _core_id = trampoline_read32(0x130);
     let apic_id = trampoline_read32(0x134);
     let stack_top_lo = trampoline_read32(0x120);
     let stack_top_hi = trampoline_read32(0x124);

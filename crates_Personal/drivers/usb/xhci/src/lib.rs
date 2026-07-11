@@ -3,6 +3,7 @@
 //! Modeled after the proven xhci-nostd crate at github.com/suhteevah/xhci-nostd.
 
 #![no_std]
+#![allow(static_mut_refs)]
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -40,12 +41,13 @@ pub fn is_controller_initialized() -> bool { unsafe { CTRL.is_some() } }
 // ═══════════════════════════════════════════════════════════════════
 
 const CAPLENGTH: u32 = 0x00; const HCSPARAMS1: u32 = 0x04;
-const HCSPARAMS2: u32 = 0x08; const HCSPARAMS3: u32 = 0x0C;
+#[allow(dead_code)] const HCSPARAMS2: u32 = 0x08;
+#[allow(dead_code)] const HCSPARAMS3: u32 = 0x0C;
 const HCCPARAMS1: u32 = 0x10; const DBOFF: u32 = 0x14; const RTSOFF: u32 = 0x18;
 const USBCMD: u32 = 0x00; const USBSTS: u32 = 0x04;
-const PAGESIZE: u32 = 0x08; const CONFIG: u32 = 0x38;
-const DBOFF_DB: u32 = 0x00;
-const RT_IMAN: u32 = 0x20; const RT_IMOD: u32 = 0x24;
+#[allow(dead_code)] const PAGESIZE: u32 = 0x08; const CONFIG: u32 = 0x38;
+#[allow(dead_code)] const DBOFF_DB: u32 = 0x00;
+const RT_IMAN: u32 = 0x20; #[allow(dead_code)] const RT_IMOD: u32 = 0x24;
 const RT_ERSTSZ: u32 = 0x28; const RT_ERSTBA: u32 = 0x30;
 const RT_ERDP: u32 = 0x38;
 const PORTSC: u32 = 0x00;
@@ -53,14 +55,14 @@ const USBCMD_RS: u32 = 1 << 0; const USBCMD_HCRST: u32 = 1 << 1;
 const USBSTS_HCH: u32 = 1 << 0; const USBSTS_CNR: u32 = 1 << 11;
 const PORTSC_CCS: u32 = 1 << 0; const PORTSC_PED: u32 = 1 << 1;
 const PORTSC_PR: u32 = 1 << 4; const PORTSC_PP: u32 = 1 << 9;
-const PORTSC_CSC: u32 = 1 << 17; const PORTSC_PRC: u32 = 1 << 21;
-const IMAN_IE: u32 = 1 << 1; const IMAN_IP: u32 = 1 << 0;
+#[allow(dead_code)] const PORTSC_CSC: u32 = 1 << 17; const PORTSC_PRC: u32 = 1 << 21;
+const IMAN_IE: u32 = 1 << 1; #[allow(dead_code)] const IMAN_IP: u32 = 1 << 0;
 
 const TRB_NORMAL: u32 = 1;  const TRB_SETUP: u32 = 2;
 const TRB_DATA: u32 = 3;    const TRB_STATUS: u32 = 4;
 const TRB_LINK: u32 = 6;    const TRB_ENABLE: u32 = 9;
 const TRB_ADDRESS_DEV: u32 = 11; const TRB_CONFIGURE: u32 = 12;
-const TRB_EVAL_CTX: u32 = 13;
+#[allow(dead_code)] const TRB_EVAL_CTX: u32 = 13;
 const TRB_TRANSFER: u32 = 32; const TRB_COMPLETION: u32 = 33;
 const TRB_PORT_STATUS: u32 = 34;
 
@@ -76,10 +78,12 @@ const CC_SHORT: u32 = 13;
 // ═══════════════════════════════════════════════════════════════════
 
 #[derive(Clone, Copy)]
-struct Trb { dw0: u32, dw1: u32, dw2: u32, dw3: u32 }
+pub struct Trb { dw0: u32, dw1: u32, dw2: u32, dw3: u32 }
 
 impl Trb {
+    #[allow(dead_code)]
     fn zeroed() -> Self { Trb { dw0: 0, dw1: 0, dw2: 0, dw3: 0 } }
+    #[allow(dead_code)]
     fn with_ptr(ptr: u64) -> Self {
         Trb { dw0: ptr as u32, dw1: (ptr >> 32) as u32, dw2: 0, dw3: 0 }
     }
@@ -100,7 +104,7 @@ impl TransferRing {
     /// Create a new ring. The DMA buffer must be 4K, zeroed.
     /// Places a Link TRB at LAST_TRB_IDX pointing back to `dma_phys`.
     pub unsafe fn new(dma_virt: *mut u32, dma_phys: u64) -> Self {
-        let mut r = Self { dma_virt, dma_phys: dma_phys & !0xF, enqueue: 0, pcs: true };
+        let r = Self { dma_virt, dma_phys: dma_phys & !0xF, enqueue: 0, pcs: true };
         // Link TRB at the last slot
         let base = LAST_TRB_IDX * 4;
         r.dma_virt.add(base    ).write_volatile((r.dma_phys & 0xFFFF_FFFF) as u32);
@@ -268,7 +272,7 @@ unsafe fn send_cmd(trb: Trb) -> Option<(u32, u32, u32, u32)> {
 /// (needed when switching between CPU SoC and chipset XHCI controllers).
 pub fn reset_ctrl() {
     unsafe { CTRL = None; }
-    unsafe { MMIO_BASE.store(0, core::sync::atomic::Ordering::SeqCst); }
+    MMIO_BASE.store(0, core::sync::atomic::Ordering::SeqCst);
 }
 
 pub unsafe fn init(mmio: u64) -> bool {
@@ -422,6 +426,7 @@ pub unsafe fn enable_slot() -> Option<u8> {
 
 const MAX_SLOTS: usize = 255;
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 struct Ep0Info { valid: bool, ring_phys: u64, ring_virt: *mut u32, pcs: bool, enqueue: usize }
 static mut EP0_RINGS: [Ep0Info; MAX_SLOTS] = [Ep0Info {
     valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: true, enqueue: 0
@@ -621,6 +626,7 @@ pub unsafe fn get_config_descriptor(slot: u8, index: u8, buf: &mut [u8]) -> usiz
 
 const MAX_DCI: usize = 32;
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 struct EpRing { valid: bool, ring_phys: u64, ring_virt: *mut u32, pcs: bool, enqueue: usize }
 static mut EP_RINGS: [[EpRing; MAX_DCI]; MAX_SLOTS] = [[EpRing {
     valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: true, enqueue: 0

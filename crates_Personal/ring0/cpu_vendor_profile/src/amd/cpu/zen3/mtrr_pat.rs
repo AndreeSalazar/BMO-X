@@ -24,20 +24,28 @@ const MSR_IA32_MTRR_PHYSMASK0: u32 = 0x0000_0201;
 const MSR_IA32_PAT: u32 = 0x0000_0277;
 
 // MTRR memory types
+#[allow(dead_code)]
 const MTRR_TYPE_UNCACHEABLE: u64 = 0x00;
 const MTRR_TYPE_WRITE_COMBINING: u64 = 0x01;
+#[allow(dead_code)]
 const MTRR_TYPE_WRITE_THROUGH: u64 = 0x04;
+#[allow(dead_code)]
 const MTRR_TYPE_WRITE_PROTECTED: u64 = 0x05;
 const MTRR_TYPE_WRITE_BACK: u64 = 0x06;
 
 const MTRR_VALID: u64 = 1 << 11;
 
 // PAT memory types (low 3 bits of each entry)
+#[allow(dead_code)]
 const PAT_WB: u64 = 0x00;  // Write-Back (entry 0)
+#[allow(dead_code)]
 const PAT_WT: u64 = 0x04;  // Write-Through (entry 1)
+#[allow(dead_code)]
 const PAT_UC_MINUS: u64 = 0x00; // Uncacheable minus (entry 2, with PWT=1 PCD=0)
+#[allow(dead_code)]
 const PAT_UC: u64 = 0x01;  // Strong Uncacheable (entry 3)
 const PAT_WC: u64 = 0x01;  // Write-Combining (entry 4, with PWT=0 PCD=1)
+#[allow(dead_code)]
 const PAT_WP: u64 = 0x05;  // Write-Protected (entry 5)
 
 /// Read an MSR.

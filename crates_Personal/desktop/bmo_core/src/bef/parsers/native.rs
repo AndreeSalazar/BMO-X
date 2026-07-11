@@ -37,7 +37,7 @@ fn aslr_base() -> u64 {
         core::arch::asm!(
             "xor {tmp}, {tmp}",
             "rdrand {tmp}",
-            "setc {ok_b}",
+            "setc {ok_b:l}",
             tmp = inout(reg) val => val,
             ok_b = out(reg) ok,
             options(nostack, nomem),

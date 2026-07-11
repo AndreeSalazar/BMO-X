@@ -253,7 +253,7 @@ impl Framebuffer {
         // Right straight edge
         self.fill_rect(x + w - thickness, y + r, thickness, h.saturating_sub(2 * r), color);
         // Corner arcs (approximate with circle outline)
-        for i in 0..thickness {
+        for _i in 0..thickness {
             self.draw_corner_arc(x + r, y + r, r, color, thickness, true, true);
             self.draw_corner_arc(x + w - r - 1, y + r, r, color, thickness, false, true);
             self.draw_corner_arc(x + r, y + h - r - 1, r, color, thickness, true, false);
@@ -264,7 +264,6 @@ impl Framebuffer {
     fn draw_corner_arc(&self, cx: usize, cy: usize, r: usize, color: u32, t: usize, left: bool, top: bool) {
         let r2 = (r * r) as isize;
         let ri = r as isize;
-        let t2 = (t * t) as isize;
         let inner_r2 = ((r.saturating_sub(t)) * (r.saturating_sub(t))) as isize;
         for dy in 0..=ri {
             for dx in 0..=ri {
@@ -299,7 +298,7 @@ impl Framebuffer {
                 let idx = col - x;
                 if idx >= 512 { break; }
                 let mut sum_r: u32 = 0; let mut sum_g: u32 = 0; let mut sum_b: u32 = 0; let mut n: u32 = 0;
-                for ddy in -1i32..=1 {
+                for _ddy in -1i32..=1 {
                     for ddx in -1i32..=1 {
                         let si = idx as i32 + ddx;
                         if si >= 0 && si < (w as i32).min(512) {

@@ -7,7 +7,7 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+
 
 // ═══════════════════════════════════════════════════════════════════
 //  Input Event Types (replaces direct bmo_input dependency)
@@ -102,6 +102,7 @@ pub struct ModuleInitRegs {
 /// Every hardware/kernel service is accessed through this table.
 /// Ring 3 code NEVER imports Ring 0 modules directly.
 #[derive(Copy, Clone)]
+#[allow(non_snake_case)]
 pub struct HalServices {
     // ── dev::console ────────────────────────────────────────────
     pub serial_write: fn(&str),
@@ -136,6 +137,7 @@ pub struct HalServices {
     pub write_cr3: unsafe fn(u64),
     pub free_user_page_tables: unsafe fn(u64),
     pub create_user_page_table: unsafe fn(u64) -> u64,
+    #[allow(non_snake_case)]
     pub HIGH_MEM_BASE: u64,
 
     // ── mm::heap ────────────────────────────────────────────────
@@ -170,6 +172,7 @@ pub struct HalServices {
     pub draw_image_clip: fn(*const u8, u64, u64, u64, u64, u64, u64, u64, u64),
 
     // ── font ────────────────────────────────────────────────────
+    #[allow(non_snake_case)]
     pub FONT8x16: *const [u8; 4096],
 
     // ── log ─────────────────────────────────────────────────────
@@ -230,9 +233,13 @@ pub struct HalServices {
     pub hud_tick: fn(),
 
     // ── arch::gdt ───────────────────────────────────────────────
+    #[allow(non_snake_case)]
     pub KERNEL_CS: u64,
+    #[allow(non_snake_case)]
     pub KERNEL_DS: u64,
+    #[allow(non_snake_case)]
     pub USER_CS: u64,
+    #[allow(non_snake_case)]
     pub USER_DS: u64,
     pub set_kernel_stack: fn(u64),
 

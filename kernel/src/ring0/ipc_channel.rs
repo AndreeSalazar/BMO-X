@@ -42,7 +42,7 @@
 //! reenvían al gateway de bmo_core para que los procese. No hay conflicto
 //! con los SVC_* porque están en 0xE00-0xEFF.
 
-use bmo_channel::{Channel, ChannelEntry, CHANNEL_MAGIC};
+use bmo_channel::{Channel, ChannelEntry};
 use core::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 
 // ═══════════════════════════════════════════════════════════════════
@@ -116,7 +116,7 @@ static mut SYS_CHANNEL: SystemChannel = SystemChannel {
 
 /// Get the physical address of the system channel (for Ring 3 mapping).
 pub fn sys_channel_phys() -> u64 {
-    unsafe { &raw const SYS_CHANNEL as *const SystemChannel as u64 }
+    &raw const SYS_CHANNEL as *const SystemChannel as u64
 }
 
 /// Push an event into the system channel (called from IRQ handlers).

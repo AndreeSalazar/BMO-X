@@ -349,7 +349,7 @@ fn process_enter() {
         }
     } else if eq_ci(&trimmed_cmd[..2], b"tb") || eq_ci(&trimmed_cmd[..9], b"timeback ") || eq_ci(trimmed_cmd, b"timeback") {
         // TimeBack Git-like CLI
-        let cmd = unsafe { core::str::from_utf8(trimmed_cmd).unwrap_or("tb help") };
+        let cmd = core::str::from_utf8(trimmed_cmd).unwrap_or("tb help");
         let output = timeback::cli::run(cmd);
         crate::dev::console::serial_write(&output);
         for line in output.lines() {

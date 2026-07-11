@@ -4,6 +4,8 @@ use crate::hal;
 /// Used when HAL is not initialized yet.
 static FALLBACK_FONT: [u8; 4096] = [0; 4096];
 
+#[allow(non_snake_case)]
+#[allow(non_snake_case)]
 pub fn FONT8x16() -> &'static [u8; 4096] {
     if let Some(h) = unsafe { hal::HAL.as_ref() } {
         unsafe { &*h.FONT8x16 }

@@ -14,7 +14,7 @@
 //! - AMD Zen 3 Family 19h BKDG, §3.12 (Power Management)
 
 use core::arch::asm;
-use super::msr_definitions::{rdmsr, wrmsr};
+use super::msr_definitions::rdmsr;
 
 /// P-state IDs (AMD-specific).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
