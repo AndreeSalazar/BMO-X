@@ -1,29 +1,29 @@
-//! BMO Layer_Nano-Wake — ultra-compact micro bootstrap
+//! BMO Layer_Nano-Wake — abre los ojos y nada más.
 //!
-//! Single-purpose: paint framebuffer, show progress, jump to real kernel.
-//! Zero allocations, zero strings, zero fonts, zero math.
+//! `nano_wake_main` recibe el framebuffer de UEFI, pinta una señal de
+//! vida breve (el ojo de BMO abriéndose), y salta al kernel real.
+//! Zero allocations, zero strings, zero fonts, zero math de más.
+//! Binario actual: ~785 bytes — cabe 40 veces en L1 cache.
 
 #![no_std]
 #![no_main]
 #![allow(static_mut_refs)]
 
-const BG: u32       = 0xFF0A0F1D;
-const CYAN: u32     = 0xFF00E5FF;
-const BAR_BG: u32   = 0xFF1E293B;
-const LOGO_OUT: u32 = 0xFF4F46E5;
-const LOGO_MID: u32 = 0xFF312E81;
+const BG: u32       = 0xFF0A0F1D;  // Azul profundo — el fondo antes de despertar
+const CYAN: u32     = 0xFF00E5FF;  // Primera luz — el color de la conciencia
+const LOGO_OUT: u32 = 0xFF4F46E5;  // Anillo exterior del ojo
+const LOGO_MID: u32 = 0xFF312E81;  // Anillo medio del ojo
 
-static mut FB: u64 = 0;
-static mut W: u32  = 0;
-static mut H: u32  = 0;
-static mut S: u32  = 0;
+static mut FB: u64 = 0;  // Dirección del framebuffer
+static mut W: u32  = 0;  // Ancho en píxeles
+static mut H: u32  = 0;  // Alto en píxeles
+static mut S: u32  = 0;  // Stride en bytes
 
-/// Fast full-screen clear using rep stosq (8 bytes per iteration)
+/// Pinta el fondo completo. Cada píxel es un latido.
 fn clear_screen(color: u32) {
     let fb = unsafe { FB } as *mut u64;
     let stride = unsafe { S } as usize;
     let height = unsafe { H } as usize;
-    // Pack two pixels into one u64
     let dword = ((color as u64) << 32) | color as u64;
     let count = (stride * height) / 2;
     unsafe {
@@ -37,7 +37,7 @@ fn clear_screen(color: u32) {
     }
 }
 
-/// Horizontal line fill (single row, used by hline/fill_small)
+/// Línea horizontal — un destello de luz en una fila.
 fn hline(x: u32, y: u32, w: u32, c: u32) {
     let fb = unsafe { FB } as *mut u32;
     let stride = unsafe { S } as usize;
@@ -49,7 +49,7 @@ fn hline(x: u32, y: u32, w: u32, c: u32) {
     }
 }
 
-/// Small rectangle fill (for logo & progress bar only)
+/// Rectángulo sólido — un plano de luz.
 fn fill_small(x: u32, y: u32, w: u32, h: u32, c: u32) {
     let mut row = 0u32;
     while row < h {
@@ -58,6 +58,7 @@ fn fill_small(x: u32, y: u32, w: u32, h: u32, c: u32) {
     }
 }
 
+/// Contorno rectangular — el borde del ojo que se abre.
 fn outline(x: u32, y: u32, w: u32, h: u32, t: u32, c: u32) {
     fill_small(x, y, w, t, c);
     fill_small(x, y + h - t, w, t, c);
@@ -117,34 +118,26 @@ extern "C" fn nano_wake_main(bi: *const bmo_boot_protocol::BootInfo) -> ! {
     let cx = w / 2;
     let cy = h / 2;
 
-    // Clear screen using rep stosq
+    // Abrir los ojos: pinta el fondo, luego la pupila que se expande en anillos.
     clear_screen(BG);
 
-    // Animated Logo: concentric squares growing from inside-out
+    // Pupila — el primer destello de conciencia
     fill_small(cx - 5, cy - 65, 10, 10, CYAN);
     tsc_wait(30_000_000);
 
+    // Iris — el ojo empieza a abrirse
     outline(cx - 16, cy - 76, 32, 32, 1, CYAN);
     tsc_wait(30_000_000);
 
+    // Anillo medio — la mirada se afirma
     outline(cx - 24, cy - 84, 48, 48, 3, LOGO_MID);
     tsc_wait(30_000_000);
 
+    // Anillo exterior — el ojo está completamente abierto. BMO ya ve.
     outline(cx - 32, cy - 92, 64, 64, 2, LOGO_OUT);
     tsc_wait(30_000_000);
 
-    // Progress bar
-    let bx = cx - 160;
-    let by = cy + 20;
-
-    // Smooth progress bar slide from 0 to 100
-    let mut pct = 0u32;
-    while pct <= 100 {
-        progress(bx, by, pct);
-        tsc_wait(4_000_000); // Smooth fluid transition
-        pct += 2;
-    }
-
+    // Despertar completo: saltar al kernel real
     let entry = b.services_entry;
     if entry == 0 { halt(); }
     unsafe {
@@ -154,14 +147,6 @@ extern "C" fn nano_wake_main(bi: *const bmo_boot_protocol::BootInfo) -> ! {
             in("rdi") bi,
             options(noreturn)
         );
-    }
-}
-
-fn progress(bx: u32, by: u32, pct: u32) {
-    fill_small(bx, by, 320, 4, BAR_BG);
-    if pct > 0 {
-        let fw = (320u64 * pct as u64 / 100) as u32;
-        fill_small(bx, by, fw, 4, CYAN);
     }
 }
 
