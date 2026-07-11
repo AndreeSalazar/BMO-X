@@ -1,42 +1,92 @@
-//! FPU/SSE/AVX setup + lazy FPU context switching.
-//!
-//! v1.8.7: este módulo se simplificó drásticamente. Antes exponía la
-//! API completa de XSAVE/XRSTOR/FXSAVE/FXRSTOR para save/restore de
-//! contexto por task. Esa API no tenía consumidores en el kernel actual
-//! (el scheduler RR no hace ctx switch con FPU state — solo lo activa
-//! "lazy" vía CR0.TS).
-//!
-//! Lo que se conserva:
-//!   - `init_fpu`: configura x87 + MXCSR al boot (lo llama `cpu::init`).
-//!   - `enable_lazy_fpu`: pone CR0.TS=1 (lo llama `cpu::init`).
-//!   - `clear_lazy_fpu`: pone CR0.TS=0 (lo llama el ISR de #NM en idt.rs
-//!     cuando un thread usa FPU por primera vez).
-//!
-//! Si en el futuro se quiere per-thread FPU state (vía save_context/
-//! restore_context), restaurar la API completa desde git.
+//! FPU/SSE/AVX context save/restore — XSAVE/XRSTOR for Ryzen 5 5600X.
 
-/// Initialize FPU/SSE/AVX for the boot CPU.
-///
-/// Must be called after CR0/CR4/XCR0 are configured.
-/// Sets up the initial FPU state with:
-/// - x87 FPU: round to nearest, double precision
-/// - MXCSR: default value (exceptions masked)
+use core::arch::asm;
+
+pub const XSAVE_AREA_SIZE: usize = 1024;
+
+/// 64-byte aligned buffer to store FPU/SSE/AVX state.
+/// XSAVE/XRSTOR instructions require the memory address to be 64-byte aligned.
+#[repr(align(64))]
+#[derive(Clone, Copy, Debug)]
+pub struct FpuStateBuffer(pub [u8; XSAVE_AREA_SIZE]);
+
+impl FpuStateBuffer {
+    pub const fn zero() -> Self {
+        Self([0; XSAVE_AREA_SIZE])
+    }
+}
+
+static mut INITIAL_FPU_STATE: FpuStateBuffer = FpuStateBuffer::zero();
+
+/// Save full x87+SSE+AVX state using XSAVE (up to 896+ bytes).
+#[inline]
+pub unsafe fn xsave(area: *mut u8) {
+    let mask_lo: u32 = 0x7; // x87 | SSE | AVX
+    let mask_hi: u32 = 0;
+    asm!(
+        "xsave [{}]",
+        in(reg) area,
+        in("eax") mask_lo,
+        in("edx") mask_hi,
+        options(nostack),
+    );
+}
+
+/// Restore full x87+SSE+AVX state using XRSTOR.
+#[inline]
+pub unsafe fn xrstor(area: *const u8) {
+    let mask_lo: u32 = 0x7;
+    let mask_hi: u32 = 0;
+    asm!(
+        "xrstor [{}]",
+        in(reg) area,
+        in("eax") mask_lo,
+        in("edx") mask_hi,
+        options(nostack),
+    );
+}
+
+/// Initialize FPU/SSE/AVX for the boot CPU, and capture the initial state.
 pub fn init_fpu() {
     unsafe {
         // Initialize x87 FPU state
-        core::arch::asm!(
+        asm!(
             "fninit",
             options(nostack),
         );
 
         // Set MXCSR to default: all exceptions masked, round to nearest
         let mxcsr: u32 = 0x1F80; // Default MXCSR value
-        core::arch::asm!(
+        asm!(
             "ldmxcsr [{addr}]",
             addr = in(reg) &mxcsr as *const u32,
             options(nostack),
         );
 
         crate::dev::console::serial_write("[FPU] x87 FPU + MXCSR initialized\n");
+
+        // Capture initial FPU state
+        let ptr = core::ptr::addr_of_mut!(INITIAL_FPU_STATE) as *mut u8;
+        xsave(ptr);
+        crate::dev::console::serial_write("[FPU] captured initial clean FPU state\n");
     }
+}
+
+/// Copy the initial clean FPU state into a buffer.
+pub fn copy_initial_state(dest: &mut FpuStateBuffer) {
+    unsafe {
+        dest.0.copy_from_slice(&INITIAL_FPU_STATE.0);
+    }
+}
+
+/// Save FPU context for a task.
+pub unsafe fn save_task_fpu(task: &mut crate::proc::task::Task) {
+    let ptr = core::ptr::addr_of_mut!(task.fpu_state) as *mut u8;
+    xsave(ptr);
+}
+
+/// Restore FPU context for a task.
+pub unsafe fn restore_task_fpu(task: &crate::proc::task::Task) {
+    let ptr = core::ptr::addr_of!(task.fpu_state) as *const u8;
+    xrstor(ptr);
 }

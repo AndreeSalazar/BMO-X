@@ -1,4 +1,4 @@
-﻿#![allow(dead_code, unused_unsafe)]
+#![allow(dead_code, unused_unsafe)]
 
 //! IDT â€” Interrupt Descriptor Table for x86-64 Long Mode.
 //! 256 entries, 16 bytes each. Ring 0, no_std.
@@ -529,7 +529,17 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {// Only sav
     let new_idx = crate::proc::task::current_index();
 
     if new_idx != cur_idx && new_idx < crate::proc::task::MAX_TASKS {
-        // Context switch! Build the new thread's frame on its kernel stack.
+        // Context switch!
+        // Save previous task's FPU state (if any)
+        if cur_idx < crate::proc::task::MAX_TASKS {
+            if let Some(prev) = crate::proc::task::get(cur_idx) {
+                unsafe {
+                    crate::cpu::fpu::save_task_fpu(prev);
+                }
+            }
+        }
+
+        // Build the new thread's frame on its kernel stack.
         let new_thread = match crate::proc::task::get(new_idx) {
             Some(t) => t,
             None => {
@@ -537,6 +547,12 @@ extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {// Only sav
                 return 0;
             }
         };
+
+        // Restore the new task's FPU state
+        unsafe {
+            crate::cpu::fpu::restore_task_fpu(new_thread);
+        }
+
         let kernel_stack_top = new_thread.kernel_stack_top;
         let regs_ptr = core::ptr::addr_of!(new_thread.regs) as *const crate::proc::task::SavedRegs;
 

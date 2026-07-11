@@ -1,4 +1,4 @@
-﻿//! Task model + ctx switching for BMO.
+//! Task model + ctx switching for BMO.
 
 extern crate alloc;
 
@@ -93,7 +93,7 @@ impl SavedRegs {
     }
 }
 
-/// A Task â€” unit of scheduling.
+/// A Task — unit of scheduling.
 pub struct Task {
     pub tid: Tid,
     pub pid: Pid,
@@ -114,6 +114,8 @@ pub struct Task {
     /// Set up per-thread for BEF TLS template.
     pub tls_base: u64,
     pub tls_size: u64,
+    /// FPU/SSE/AVX state buffer (aligned to 64 bytes).
+    pub fpu_state: crate::cpu::fpu::FpuStateBuffer,
 }
 
 impl Task {
@@ -131,6 +133,7 @@ impl Task {
             tid_address: core::ptr::null_mut(),
             tls_base: 0,
             tls_size: 0,
+            fpu_state: crate::cpu::fpu::FpuStateBuffer::zero(),
         }
     }
 }
@@ -169,6 +172,7 @@ pub fn alloc(pid: Pid, priority: super::Priority) -> Option<&'static mut Task> {
                 TASK_TABLE[i].priority = priority;
                 TASK_TABLE[i].time_slice = priority_to_slice(priority);
                 TASK_TABLE[i].kernel_stack_top = stack_top;
+                crate::cpu::fpu::copy_initial_state(&mut TASK_TABLE[i].fpu_state);
                 return Some(&mut TASK_TABLE[i]);
             }
         }
