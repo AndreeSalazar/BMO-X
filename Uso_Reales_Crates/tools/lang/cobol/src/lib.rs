@@ -148,7 +148,10 @@ SYSCALL bmo_exit 42.
         let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
         let bef = compile_source_to_bef_with_asm(src, vec![asm]).unwrap();
         assert!(bef.len() > 48);
-        let mov_eax = &[0xB8u8, 0x81, 0x01, 0x00, 0x00];
-        assert!(bef.windows(5).any(|w| w == mov_eax), "BEF should contain mov eax, 0x181 for bmo_exit");
+        let nr = bmo_abi::syscalls::NR_PROC_EXIT;
+        let mov_eax = &nr.to_le_bytes();
+        let mut expected = vec![0xB8u8];
+        expected.extend_from_slice(mov_eax);
+        assert!(bef.windows(5).any(|w| w == &expected[..]), "BEF should contain mov eax, NR_PROC_EXIT for bmo_exit");
     }
 }
