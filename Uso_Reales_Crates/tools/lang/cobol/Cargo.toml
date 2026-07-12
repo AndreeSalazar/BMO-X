@@ -3,10 +3,12 @@ name = "bmo-cobol-front"
 version = "0.1.0"
 edition = "2021"
 authors = ["BMO Project"]
-description = "COBOL frontend scaffold for BMO BMO ABI"
+description = "BMO COBOL frontend — parses COBOL via oak-cobol + gnucobol-rs, compiles to BEF"
 
 [dependencies]
-bmo-abi = { path = "../../../../Uso_Reales_Crates/abi/bmo-abi" }
+bmo-abi = { path = "../../../abi/bmo-abi" }
+oak-cobol = "0.0.11"
+gnucobol-rs = { path = "../../../../extern/gnucobol-rs/crates/gnucobol-rs" }
 
 [lib]
 name = "bmo_cobol_front"
