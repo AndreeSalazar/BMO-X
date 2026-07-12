@@ -83,13 +83,15 @@ alloc_pages_contiguous() / free_pages()   ← public API (unchanged)
 - **Round-robin scheduler** (cooperativo, sin preempción)
 - **Ring 0 → Ring 3** transición via iretq con user page tables
 - **BMO Language** compilador AOT x86-64 (lexer, parser, sema, codegen)
-- **BEF Loader** nativo + PE + ELF con relocations/imports/exports/TLS
 - **Cabina** sistema de diagnóstico con eventos, overlay HUD, telemetría
 - **Desktop** welcome screen + render + wallpaper + input
 - **BMO API v2.0** 256 syscalls + Window Manager + Paint Compositor
 - **AMD Zen 3** detección CPUID, errata workarounds, TSC calibration
 
 ### Parcial / Stub
+- **BEF nativo**: Formato, validación, secciones, imports/exports, relocaciones y TLS en evolución
+- **Linux Devour**: Módulo ELF64 experimental; analiza `PT_LOAD` y genera un contenedor BEF, pero todavía no ofrece una personalidad Linux/POSIX ejecutable
+- **Wine Devour**: Módulo PE64 experimental; analiza secciones y genera BEF, pero todavía no resuelve el entorno Win32, DLLs ni Wine
 - **ByteDefender**: Solo validación de headers BEF (sin análisis heurístico)
 - **Restaurer/TimeBack**: API existe pero capture retorna zeros, rollback no hace nada
 - **FPU lazy switching**: `init_fpu()` funciona, pero #NM mata el proceso (sin save/restore per-task)
@@ -111,6 +113,62 @@ alloc_pages_contiguous() / free_pages()   ← public API (unchanged)
 - ~~nexo-sh-tool~~ — No existe
 - ~~BareX network stack~~ — Sin código
 - ~~BareX audio hardware~~ — Solo beep()
+
+---
+
+## Estrategia BEF/BMO y compatibilidad futura
+
+La prioridad de FastOS es construir primero un ecosistema **nativo BMO**. Los
+programas escritos o reconstruidos para BMO —por ejemplo en COBOL, BMO
+Language, Rust o C— se compilan AOT a BEF y consumen directamente la ABI y las
+librerías de Ring 3. Este camino permite estabilizar procesos, memoria,
+filesystem, ventanas, IPC y seguridad sin depender de las reglas internas de
+otro sistema operativo.
+
+```text
+COBOL / BMO / Rust / C → compilador AOT → BEF nativo → BMO ABI → FastOS
+```
+
+### Estado de Linux y Wine
+
+Los módulos `mod_linux_devour` y `mod_wine_devour` ya se compilan y se incluyen
+en `EFI/BOOT/modules`. Son prototipos de ingestión de ELF64 y PE64: reconocen el
+formato original y pueden construir una representación BEF inicial. Esto
+demuestra el punto de extensión, pero **no equivale todavía a ejecutar Linux o
+Wine**.
+
+Para que un BEF importado sea ejecutable se debe conservar o traducir
+correctamente su layout virtual, relocaciones, imports, linker dinámico, TLS,
+stack inicial y convenciones ABI. También hace falta traducir el significado
+completo de cada servicio —argumentos, estructuras, errores y ciclo de vida—,
+no solamente cambiar números de syscall.
+
+Los árboles locales de `sources/linux` y `sources/wine` se conservan como
+material upstream para estudiar UAPI, ABI, pruebas y componentes portables. El
+kernel Linux completo no se pretende convertir en un módulo BEF. Wine sí puede
+llegar a ejecutarse en Ring 3 cuando BMO disponga de una base POSIX suficiente.
+
+### Evolución a un “triturador” real
+
+El potencial a largo plazo de BEF es actuar como contenedor nativo, verificable
+y cacheable para programas procedentes de otros formatos. La evolución prevista
+es incremental:
+
+1. **BEF/BMO nativo**: Ring 3 físico, procesos aislados, ABI estable y librerías
+   para aplicaciones propias, priorizando la reconstrucción en COBOL/BMO.
+2. **Linux mínimo**: personalidad Linux x86-64 para ELF estático con stack,
+   memoria, archivos y syscalls compatibles.
+3. **Linux dinámico**: threads, futex, señales, sockets, TLS, `.so` y linker
+   dinámico; primero programas musl y herramientas pequeñas.
+4. **Wine sobre BMO/POSIX**: `wineserver`, DLLs, handles, registro, filesystem
+   DOS y conexión con el compositor BMO.
+5. **Devour completo**: ELF/PE se analizan, normalizan, reciben capacidades BMO,
+   se validan y se guardan como BEF reutilizable sin perder su semántica.
+
+Por diseño, BEF es el **contenedor**, BMO es el **contrato de servicios y
+seguridad**, y cada personalidad de compatibilidad es el **traductor semántico**.
+Esta separación permite avanzar hoy con software nativo sin renunciar a la
+compatibilidad Linux/Wine en el futuro.
 
 ---
 
