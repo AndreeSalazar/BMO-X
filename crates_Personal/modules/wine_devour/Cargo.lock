@@ -3,6 +3,19 @@
 version = 4
 
 [[package]]
+name = "bitflags"
+version = "2.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
+
+[[package]]
+name = "bmo-abi"
+version = "1.0.0"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "bmo-boot-protocol"
 version = "0.1.0"
 
@@ -32,6 +45,7 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 name = "mod-wine-devour"
 version = "1.0.0"
 dependencies = [
+ "bmo-abi",
  "bmo-hal-defs",
  "goblin",
 ]

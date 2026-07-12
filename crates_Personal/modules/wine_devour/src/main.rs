@@ -41,6 +41,14 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
     if let Some(hal) = unsafe { HAL_PTR.as_ref() } {
         (hal.serial_write)("[wine_devour] module loaded at 0x3130000\n");
     }
+
+    // Register devour_pe with the BEF Linker so other BEFs can import it.
+    bmo_abi::bef::linker::register_symbol(
+        "bmo:module",
+        "devour_pe",
+        devour_pe as *const () as u64,
+    );
+
     loop { unsafe { core::arch::asm!("hlt"); } }
 }
 

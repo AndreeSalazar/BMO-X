@@ -14,8 +14,10 @@ extern crate alloc;
 
 pub mod native;
 pub mod elf;
+pub mod pe;
 pub mod elf_dynamic;
 pub mod elf_thunks;
+pub mod pe_thunks;
 pub mod meta_sections;
 pub mod runtime;
 
@@ -32,6 +34,8 @@ pub enum BinaryFormat {
     BefNative,
     /// ELF devorado y traducido a BEF interno.
     ElfDevoured,
+    /// PE devorado y traducido a BEF interno.
+    PeDevoured,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +85,7 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
     match BefMagic::detect(bytes) {
         BefMagic::BefNative => native::load(bytes),
         BefMagic::ElfUnix   => elf::load(bytes),
+        BefMagic::PeWindows => pe::load(bytes),
         _                   => Err(LoadError::UnknownFormat),
     }
 }
@@ -141,7 +146,7 @@ pub(crate) fn fake_provenance_image(prov: Provenance) -> Image {
         format: match prov {
             Provenance::Native      => BinaryFormat::BefNative,
             Provenance::ElfDevoured => BinaryFormat::ElfDevoured,
-            _                       => BinaryFormat::BefNative,
+            Provenance::PeDevoured  => BinaryFormat::PeDevoured,
         },
         manifest: Manifest::synthetic_for("(stub)", prov),
         entry_point: 0,

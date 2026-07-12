@@ -44,6 +44,7 @@ pub mod blake3;
 pub mod writer;
 pub mod validator;
 pub mod loader;
+pub mod linker;
 
 // ─── Re-exports del loader canónico ─────────────────────────────────
 pub use header::{

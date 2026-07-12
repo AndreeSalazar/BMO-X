@@ -1,13 +1,3 @@
-//! Runtime symbol table - resolves BEF imports to actual function addresses.
-//!
-//! Populated from:
-//!   1. BEF export tables (native binaries)
-//!   2. ELF thunk table (devoured Linux binaries)
-//!   3. Kernel-provided system calls
-//!
-//! The resolution pipeline:
-//!   ImportEntry -> lookup (lib+name) -> resolved address -> patch binding_offset
-
 #![allow(dead_code)]
 
 extern crate alloc;
@@ -15,175 +5,37 @@ extern crate alloc;
 use crate::bef::imports::{ImportTable, ImportFlags};
 use crate::bef::exports::ExportTable;
 
-/// Maximum symbols in the runtime table.
-const MAX_SYMBOLS: usize = 1024;
+use crate::bmo_abi::bef::linker as BefLinker;
 
-/// A resolved symbol in the runtime table.
-#[derive(Debug, Clone, Copy)]
-pub struct RuntimeSymbol {
-    /// Library name (e.g., "libc.so", "bmo:core").
-    pub lib: &'static str,
-    /// Symbol name (e.g., "ExitProcess", "malloc", "fb_fill").
-    pub name: &'static str,
-    /// Resolved virtual address.
-    pub addr: u64,
-    /// Symbol hash for fast lookup.
-    pub hash: u32,
-    /// Flags.
-    pub flags: u32,
+/// Initialize the runtime symbol table — delegates to the BEF Linker.
+pub fn init() {
+    BefLinker::init();
+    register_kernel_symbols();
+    register_elf_thunk_symbols();
+    crate::cabina::info_u64("bef", "linker initialized", BefLinker::symbol_count() as u64);
 }
 
-/// Flags for runtime symbols.
-pub const SYM_EAGER: u32 = 1 << 0;
-pub const SYM_WEAK: u32 = 1 << 1;
-pub const SYM_KERNEL: u32 = 1 << 8;
-pub const SYM_ELF_THUNK: u32 = 1 << 10;
-pub const SYM_EXPORT: u32 = 1 << 11;
-
-/// Global runtime symbol table.
-static mut SYMBOL_TABLE: [RuntimeSymbol; MAX_SYMBOLS] = [RuntimeSymbol {
-    lib: "",
-    name: "",
-    addr: 0,
-    hash: 0,
-    flags: 0,
-}; MAX_SYMBOLS];
-static mut SYMBOL_COUNT: usize = 0;
-
-/// Spinlock for symbol table access (disable interrupts while held).
-static mut TABLE_LOCK: bool = false;
-
-fn lock_table() {
-    unsafe {
-        core::arch::asm!("cli");
-        while TABLE_LOCK {
-            core::hint::spin_loop();
-        }
-        TABLE_LOCK = true;
-    }
+/// Register a symbol in the linker's global registry.
+pub fn register_symbol(lib: &str, name: &str, addr: u64, _flags: u32) {
+    BefLinker::register_symbol(lib, name, addr);
 }
 
-fn unlock_table() {
-    unsafe {
-        TABLE_LOCK = false;
-        core::arch::asm!("sti");
-    }
-}
-
-/// Hash a string for symbol lookup (FNV-1a 32-bit).
-pub fn hash_symbol(name: &[u8]) -> u32 {
-    let mut h: u32 = 0x811c_9dc5;
-    for &b in name {
-        h ^= b as u32;
-        h = h.wrapping_mul(0x0100_0193);
-    }
-    h
-}
-
-/// Register a symbol in the runtime table.
-pub fn register_symbol(lib: &'static str, name: &'static str, addr: u64, flags: u32) {
-    lock_table();
-    unsafe {
-        if SYMBOL_COUNT >= MAX_SYMBOLS {
-            crate::cabina::warn("bef", "runtime symbol table full");
-            unlock_table();
-            return;
-        }
-        let hash = hash_symbol(name.as_bytes());
-        SYMBOL_TABLE[SYMBOL_COUNT] = RuntimeSymbol {
-            lib,
-            name,
-            addr,
-            hash,
-            flags,
-        };
-        SYMBOL_COUNT += 1;
-    }
-    unlock_table();
-}
-
-/// Look up a symbol by library + name. Returns the resolved address or 0.
+/// Look up a symbol by library + name via the linker.
 pub fn lookup(lib: &str, name: &str) -> u64 {
-    let name_hash = hash_symbol(name.as_bytes());
-    lock_table();
-    let result = unsafe {
-        let mut found = 0u64;
-        for i in 0..SYMBOL_COUNT {
-            let sym = &SYMBOL_TABLE[i];
-            if sym.hash == name_hash && sym.name == name {
-                if !lib.is_empty() && !sym.lib.is_empty() && !eq_ci(sym.lib, lib) {
-                    continue;
-                }
-                if sym.addr != 0 {
-                    found = sym.addr;
-                    break;
-                }
-            }
-        }
-        found
-    };
-    unlock_table();
-    result
+    BefLinker::lookup(lib, name)
 }
 
 /// Look up a symbol by hash only (fast path).
 pub fn lookup_by_hash(hash: u32, name: &str) -> u64 {
-    lock_table();
-    let result = unsafe {
-        let mut found = 0u64;
-        for i in 0..SYMBOL_COUNT {
-            let sym = &SYMBOL_TABLE[i];
-            if sym.hash == hash && sym.name == name {
-                found = sym.addr;
-                break;
-            }
-        }
-        found
-    };
-    unlock_table();
-    result
+    BefLinker::lookup_by_hash(hash, name)
 }
 
 /// Register symbols from a BEF export table.
 pub fn register_bef_exports(table: &ExportTable, base: u64) {
-    for e in table.entries {
-        let name = match table.symbol_name(e) {
-            Some(n) => n,
-            None => continue,
-        };
-        let addr = base + e.virt_addr;
-        let flags = SYM_EXPORT | SYM_EAGER;
-        // Leak the name to get &'static str - acceptable in kernel ctx.
-        let static_name = leak_str(name);
-        register_symbol("bef", static_name, addr, flags);
-    }
-}
-
-/// Leak a string into &'static str.
-/// Called once per symbol at boot time (bounded by SYMBOL_TABLE capacity).
-/// Memory lives for module lifetime — not freed until reboot.
-fn leak_str(s: &str) -> &'static str {
-    let len = s.len();
-    let layout = match core::alloc::Layout::from_size_align(len, 1) {
-        Ok(l) => l,
-        Err(_) => return "",
-    };
-    let ptr = unsafe { alloc::alloc::alloc(layout) };
-    if ptr.is_null() {
-        return "";
-    }
-    unsafe {
-        core::ptr::copy_nonoverlapping(s.as_ptr(), ptr, len);
-        core::str::from_utf8_unchecked(core::slice::from_raw_parts(ptr, len))
-    }
+    BefLinker::register_library_exports("bef", table, base);
 }
 
 /// Resolve all BEF imports and patch binding offsets.
-///
-/// For each import:
-///   1. Look up the symbol in the runtime table.
-///   2. If found, write the address to `binding_offset` in the target section.
-///   3. If not found and not WEAK, log a warning.
 pub fn resolve_imports(
     import_table: &ImportTable,
     mapped: &[super::MappedSection],
@@ -199,23 +51,20 @@ pub fn resolve_imports(
             continue;
         }
 
-        // Look up in runtime symbol table.
-        let addr = lookup(lib, name);
+        let addr = BefLinker::lookup(lib, name);
 
         if addr != 0 {
-            // Patch the binding offset in the mapped section.
             if entry.binding_offset != 0 {
                 patch_binding(entry.binding_offset, addr, mapped)?;
             }
             resolved += 1;
         } else if entry.flags & ImportFlags::WEAK.bits() != 0 {
-            // Weak import - write 0 (caller must null-check).
             if entry.binding_offset != 0 {
                 patch_binding(entry.binding_offset, 0, mapped)?;
             }
         } else {
             unresolved += 1;
-            crate::cabina::warn_u64("bef", "unresolved import", entry.binding_offset);
+            crate::cabina::warn_u64("bef", "unresolved import @", entry.binding_offset);
         }
     }
 
@@ -226,7 +75,7 @@ pub fn resolve_imports(
     Ok(resolved)
 }
 
-/// Patch a binding offset in the mapped sections with the resolved address.
+/// Patch a binding offset in mapped sections with the resolved address.
 fn patch_binding(
     binding_offset: u64,
     addr: u64,
@@ -251,42 +100,35 @@ fn patch_binding(
 }
 
 /// Register kernel system call symbols.
-pub fn register_kernel_symbols() {
-    register_symbol("bmo:kernel", "ProcessExit",   0x0000_0001, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "Yield",         0x0000_0003, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "ThreadCreate",  0x0000_0004, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "ThreadExit",    0x0000_0005, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "ClockGetTime",  0x0000_0050, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "FbInfo",        0x0000_0060, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "FbFill",        0x0000_0061, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "FbText",        0x0000_0062, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "KeyPoll",       0x0000_0070, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "Beep",          0x0000_0080, SYM_KERNEL | SYM_EAGER);
-    register_symbol("bmo:kernel", "DebugPrint",    0x0000_00F0, SYM_KERNEL | SYM_EAGER);
+fn register_kernel_symbols() {
+    register_symbol("bmo:kernel", "ProcessExit",   0x0000_0001, 0);
+    register_symbol("bmo:kernel", "Yield",         0x0000_0003, 0);
+    register_symbol("bmo:kernel", "ThreadCreate",  0x0000_0004, 0);
+    register_symbol("bmo:kernel", "ThreadExit",    0x0000_0005, 0);
+    register_symbol("bmo:kernel", "ClockGetTime",  0x0000_0050, 0);
+    register_symbol("bmo:kernel", "FbInfo",        0x0000_0060, 0);
+    register_symbol("bmo:kernel", "FbFill",        0x0000_0061, 0);
+    register_symbol("bmo:kernel", "FbText",        0x0000_0062, 0);
+    register_symbol("bmo:kernel", "KeyPoll",       0x0000_0070, 0);
+    register_symbol("bmo:kernel", "Beep",          0x0000_0080, 0);
+    register_symbol("bmo:kernel", "DebugPrint",    0x0000_00F0, 0);
 }
 
-/// Register ELF thunk stubs as symbols.
-pub fn register_elf_thunk_symbols() {
+/// Register ELF thunk REAL addresses as linker symbols.
+fn register_elf_thunk_symbols() {
     use super::elf_thunks::THUNK_TABLE;
-    use super::elf_thunks::silent_stub as stub_fn;
 
     for entry in THUNK_TABLE.iter() {
-        let addr = stub_fn as *const () as u64;
         let lib = normalize_lib_name(entry.lib);
-        register_symbol(lib, entry.name, addr, SYM_ELF_THUNK | SYM_EAGER);
+        let addr = super::elf_thunks::resolve_fn_ptr(entry.lib, entry.name)
+            .map(|p| p as u64)
+            .unwrap_or(super::elf_thunks::silent_stub as *const () as u64);
+        register_symbol(&lib, entry.name, addr, 0);
     }
 }
 
-/// Normalize ELF library names.
-/// "libc.so.6" -> "libc.so" (strip version suffix)
-/// "libpthread.so.0" -> "libpthread.so"
-/// "libm.so" -> "libm.so" (already normalized)
 fn normalize_lib_name<'a>(name: &'a str) -> &'a str {
-    // Find the last dot that precedes a digit (version suffix).
     if let Some(pos) = name.rfind('.') {
-        // If what follows the last dot is a digit, strip it.
-        // "libc.so.6" -> last dot at pos=7, "6" is digit -> "libc.so"
-        // "libc.so" -> last dot at pos=5, "so" is NOT digit -> keep as-is
         let after = &name[pos + 1..];
         if after.bytes().all(|b| b.is_ascii_digit()) && !after.is_empty() {
             return &name[..pos];
@@ -295,27 +137,7 @@ fn normalize_lib_name<'a>(name: &'a str) -> &'a str {
     name
 }
 
-/// Case-insensitive string comparison.
-fn eq_ci(a: &str, b: &str) -> bool {
-    if a.len() != b.len() { return false; }
-    let aa = a.as_bytes();
-    let bb = b.as_bytes();
-    for i in 0..aa.len() {
-        if aa[i].to_ascii_lowercase() != bb[i].to_ascii_lowercase() {
-            return false;
-        }
-    }
-    true
-}
-
 /// Get the number of registered symbols.
 pub fn symbol_count() -> usize {
-    unsafe { SYMBOL_COUNT }
-}
-
-/// Initialize the runtime symbol table with kernel + thunk symbols.
-pub fn init() {
-    register_kernel_symbols();
-    register_elf_thunk_symbols();
-    crate::cabina::info_u64("bef", "runtime symbol table initialized", symbol_count() as u64);
+    BefLinker::symbol_count()
 }

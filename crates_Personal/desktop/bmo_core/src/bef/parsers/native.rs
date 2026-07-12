@@ -206,10 +206,12 @@ fn verify_section_hashes(bytes: &[u8], table: &SectionTable) -> Result<(), LoadE
     Ok(())
 }
 
-/// Step 5: Map sections into virtual memory (allocate and copy data).
+/// Step 5: Map sections into virtual memory (allocate physical pages + user mappings).
 fn map_sections(bytes: &[u8], table: &SectionTable, base: u64) -> Result<Vec<MappedSection>, LoadError> {
     let mut mapped = Vec::new();
     let mut current_va = base;
+    let page_size = crate::mm::phys::page_size() as u64;
+    let cr3 = crate::mm::virt::read_cr3();
 
     for entry in table.entries {
         if entry.file_size == 0 && entry.mem_size == 0 {
@@ -217,39 +219,45 @@ fn map_sections(bytes: &[u8], table: &SectionTable, base: u64) -> Result<Vec<Map
         }
 
         let mem_size = entry.mem_size.max(entry.file_size) as usize;
-        let align = 4096usize; // Page alignment.
-        let aligned_size = (mem_size + align - 1) & !(align - 1);
+        let aligned_size = (mem_size + page_size as usize - 1) & !(page_size as usize - 1);
+        let pages = aligned_size / page_size as usize;
 
-        // Allocate memory for this section.
-        let layout = alloc::alloc::Layout::from_size_align(aligned_size, align)
-            .map_err(|_| LoadError::SectionOutOfRange)?;
-        let ptr = unsafe { alloc::alloc::alloc(layout) };
-        if ptr.is_null() {
+        // Allocate contiguous physical pages.
+        let phys = crate::mm::phys::alloc_pages_contiguous(pages)
+            .ok_or(LoadError::SectionOutOfRange)?;
+
+        // Convert section flags to page-table flags.
+        let sec_flags = section_flags(entry);
+        let mut pt_flags = crate::mm::virt::flags::PRESENT | crate::mm::virt::flags::USER;
+        if sec_flags & 0x2 != 0 { pt_flags |= crate::mm::virt::flags::WRITABLE; }
+        if sec_flags & 0x4 == 0 { pt_flags |= crate::mm::virt::flags::NO_EXECUTE; }
+
+        // Map physical pages into the user virtual address range.
+        if crate::mm::virt::map_user_range(cr3, current_va, phys, pages, pt_flags).is_err() {
             return Err(LoadError::SectionOutOfRange);
         }
+
+        // Kernel-accessible pointer via identity/high mapping.
+        let ptr = crate::mm::virt::phys_to_virt(phys) as *mut u8;
 
         // Zero-fill the allocated memory.
         unsafe { core::ptr::write_bytes(ptr, 0, aligned_size); }
 
         // Copy section data from file.
         let file_offset = entry.file_offset as usize;
-        if file_offset >= bytes.len() {
-            continue; // Section is entirely beyond file — skip copy.
+        if file_offset < bytes.len() {
+            let copy_len = (entry.file_size as usize).min(bytes.len() - file_offset);
+            if copy_len > 0 {
+                let src = &bytes[file_offset..file_offset + copy_len];
+                unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), ptr, copy_len); }
+            }
         }
-        let copy_len = (entry.file_size as usize).min(bytes.len() - file_offset);
-        if copy_len > 0 {
-            let src = &bytes[file_offset..file_offset + copy_len];
-            unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), ptr, copy_len); }
-        }
-
-        // Determine flags from section kind.
-        let flags = section_flags(entry);
 
         mapped.push(MappedSection {
             kind: entry.kind,
             virt_addr: current_va,
             size: aligned_size as u64,
-            flags,
+            flags: sec_flags,
             data_ptr: ptr as u64,
         });
 

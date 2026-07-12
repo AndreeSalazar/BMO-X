@@ -8,4 +8,5 @@ description = "BMO WINE Devourer — Windows PE/COFF to BEF runtime converter (R
 
 [dependencies]
 bmo-hal-defs = { path = "../../shared/hal_defs" }
+bmo-abi = { path = "../../abi/bmo_abi" }
 goblin = { path = "../../plugins/goblin", default-features = false, features = ["alloc", "elf32", "elf64", "pe32", "pe64", "endian_fd"] }

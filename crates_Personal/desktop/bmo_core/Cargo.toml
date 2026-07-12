@@ -10,4 +10,4 @@ bmo-abi = { path = "../../abi/bmo_abi" }
 bmo-hal-defs = { path = "../../shared/hal_defs" }
 timeback = { path = "../../services/timeback" }
 bmo-boot-protocol = { path = "../../ring0/boot_protocol" }
-goblin = { path = "../../plugins/goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }
+goblin = { path = "../../plugins/goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd", "pe32", "pe64"] }

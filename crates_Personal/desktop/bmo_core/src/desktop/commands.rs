@@ -56,4 +56,44 @@ pub fn launch_bef_app() {
     crate::cabina::info("desktop", "BEF app process spawned");
 }
 
+/// Load a file from the ramdisk and execute it (any format: ELF, PE, BEF).
+/// This is the universal "open binary → spawn" pipeline:
+///   read file → parsers::load() (format auto-detect) → spawn_from_image()
+pub fn exec_file(filename: &str) {
+    crate::dev::console::serial_write("[desktop] exec_file: ");
+    crate::dev::console::serial_write(filename);
+    crate::dev::console::serial_write("\n");
+
+    // 1. Read file bytes (try ramdisk first)
+    let bytes = match crate::fs::ramdisk::find_file(filename) {
+        Some(data) => {
+            crate::dev::console::serial_write("[desktop]   found in ramdisk\n");
+            data.to_vec()
+        }
+        None => {
+            crate::dev::console::serial_write("[desktop]   file not found\n");
+            crate::cabina::fault("desktop", &alloc::format!("exec_file: '{}' not found", filename));
+            return;
+        }
+    };
+
+    // 2. Detect format and parse
+    let img = match crate::bef::parsers::load(&bytes) {
+        Ok(img) => {
+            crate::dev::console::serial_write("[desktop]   format detected, loading OK\n");
+            img
+        }
+        Err(e) => {
+            crate::dev::console::serial_write("[desktop]   parse failed\n");
+            crate::cabina::fault("desktop", &alloc::format!("exec_file: parse error {:?}", e));
+            return;
+        }
+    };
+
+    // 3. Spawn from the loaded Image (creates Process + Task, scheduler runs it)
+    crate::proc::user_init::spawn_from_image(&img);
+
+    crate::cabina::info("desktop", &alloc::format!("exec_file: spawned '{}'", filename));
+}
+
 

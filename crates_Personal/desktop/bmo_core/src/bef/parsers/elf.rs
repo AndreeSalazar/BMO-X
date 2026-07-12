@@ -31,16 +31,26 @@ pub fn load(bytes: &[u8]) -> Result<Image, LoadError> {
         if alloc_size > 0x0010_0000_0000 {
             continue; // Reject absurdly large segments (>256 GB).
         }
-        let align = 4096usize;
-        let aligned_size = (alloc_size + align - 1) & !(align - 1);
+        let page_size = crate::mm::phys::page_size() as u64;
+        let aligned_size = (alloc_size + page_size as usize - 1) & !(page_size as usize - 1);
+        let pages = aligned_size / page_size as usize;
+        let cr3 = crate::mm::virt::read_cr3();
 
         let data_ptr = if aligned_size > 0 {
-            let layout = core::alloc::Layout::from_size_align(aligned_size, align)
-                .map_err(|_| LoadError::SectionOutOfRange)?;
-            let ptr = unsafe { alloc::alloc::alloc_zeroed(layout) };
-            if ptr.is_null() {
+            let phys = match crate::mm::phys::alloc_pages_contiguous(pages) {
+                Some(p) => p,
+                None => return Err(LoadError::SectionOutOfRange),
+            };
+
+            let mut pt_flags = crate::mm::virt::flags::PRESENT | crate::mm::virt::flags::USER;
+            if flags & 0x2 != 0 { pt_flags |= crate::mm::virt::flags::WRITABLE; }
+            if flags & 0x4 == 0 { pt_flags |= crate::mm::virt::flags::NO_EXECUTE; }
+
+            if crate::mm::virt::map_user_range(cr3, phdr.p_vaddr, phys, pages, pt_flags).is_err() {
                 return Err(LoadError::SectionOutOfRange);
             }
+
+            let ptr = crate::mm::virt::phys_to_virt(phys) as *mut u8;
             let copy_len = (phdr.p_filesz as usize).min(bytes.len().saturating_sub(phdr.p_offset as usize));
             if copy_len > 0 {
                 let src = &bytes[phdr.p_offset as usize..phdr.p_offset as usize + copy_len];

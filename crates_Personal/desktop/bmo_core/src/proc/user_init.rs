@@ -21,6 +21,10 @@ pub fn spawn_from_image(img: &Image) {
             proc.set_name("elf.bef");
             proc.linux_emulation = true;
         }
+        crate::bef::parsers::BinaryFormat::PeDevoured => {
+            proc.set_name("pe.bef");
+            proc.linux_emulation = false;
+        }
         crate::bef::parsers::BinaryFormat::BefNative => {
             proc.set_name("bef.bef");
         }

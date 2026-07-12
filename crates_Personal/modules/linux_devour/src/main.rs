@@ -48,8 +48,13 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
         (hal.serial_write)("[linux_devour] module loaded at 0x3120000\n");
     }
 
-    // This module is started by the desktop on-demand, not at boot.
-    // The desktop calls our entry with an ELF buffer to devour.
+    // Register devour_elf with the BEF Linker so other BEFs can import it.
+    bmo_abi::bef::linker::register_symbol(
+        "bmo:module",
+        "devour_elf",
+        devour_elf as *const () as u64,
+    );
+
     loop { unsafe { core::arch::asm!("hlt"); } }
 }
 

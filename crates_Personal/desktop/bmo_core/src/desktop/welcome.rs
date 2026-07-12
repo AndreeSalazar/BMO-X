@@ -225,7 +225,7 @@ fn render_dynamic(fb: &Framebuffer, uptime_sec: u64, countdown: u64) {
     }
 
     // Hint
-    let hint = b"Commands:  Run  |  Hello  |  Elf  |  Ring3  |  Nexo  |  Test  |  Reboot";
+    let hint = b"Commands:  Run  |  Exec <file>  |  Hello  |  Elf  |  Test  |  Reboot";
     draw_text(fb, 24, (h - 72) as u32, hint, 0xFF484F58);
 
     // Prompt
@@ -338,6 +338,14 @@ fn process_enter() {
     } else if eq_ci(trimmed_cmd, b"nexo") {
         crate::cabina::info("welcome", "NEXO compiler test - compiling hello program");
         launch_bef_app();
+    } else if trimmed_cmd.len() >= 5 && eq_ci(&trimmed_cmd[..5], b"exec ") {
+        let filename = core::str::from_utf8(trim(&trimmed_cmd[5..])).unwrap_or("");
+        if filename.is_empty() {
+            show_hint(b"Usage: exec <filename>");
+        } else {
+            sound::beep(660, 80);
+            super::commands::exec_file(filename);
+        }
     } else if eq_ci(trimmed_cmd, b"test") {
         crate::cabina::info("welcome", "Test command");
         show_hint(b"All systems operational.");
@@ -357,7 +365,7 @@ fn process_enter() {
         }
     } else {
         crate::cabina::warn("welcome", "Unknown command at welcome prompt");
-        show_hint(b"Commands: Run, Hello, Elf, Ring3, Nexo, Test, Reboot, layout, tb <cmd>.");
+        show_hint(b"Commands: Run, Exec <file>, Hello, Elf, Test, Reboot, layout, tb <cmd>.");
     }
     unsafe { INPUT_LEN = 0; }
 }
