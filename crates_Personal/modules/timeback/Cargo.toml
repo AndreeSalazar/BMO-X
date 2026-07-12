@@ -6,5 +6,5 @@ authors = ["BMO Project"]
 description = "TimeBack module — standalone Ring 3 versioning system loaded by bootloader"
 
 [dependencies]
-timeback = { path = "../../services/timeback" }
-bmo-hal-defs = { path = "../../shared/hal_defs" }
+timeback = { path = "../../../Uso_Reales_Crates/services/timeback" }
+bmo-hal = { path = "../../../Uso_Reales_Crates/shared/bmo-hal" }

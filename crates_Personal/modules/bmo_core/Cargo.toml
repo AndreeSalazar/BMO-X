@@ -7,11 +7,11 @@ description = "BMO Core module — loaded by kernel.elf as a separate binary"
 
 [dependencies]
 bmo-core = { path = "../../desktop/bmo_core" }
-bmo-hal-defs = { path = "../../shared/hal_defs" }
-timeback = { path = "../../services/timeback" }
-byte-defender = { path = "../../services/byte_defender" }
+bmo-hal = { path = "../../../Uso_Reales_Crates/shared/bmo-hal" }
+timeback = { path = "../../../Uso_Reales_Crates/services/timeback" }
+byte-defender = { path = "../../../Uso_Reales_Crates/services/byte-defender" }
 goblin = { path = "../../plugins/goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd"] }
 "bmo-xhci" = { path = "../../drivers/usb/xhci" }
 "bmo-uhid" = { path = "../../drivers/usb/uhid" }
 "bmo-input" = { path = "../../drivers/usb/input" }
-ring3-foundation = { path = "../../ring3/foundation/ring3_foundation" }
+ring3-foundation = { path = "../../../kernel/ring3/foundation" }

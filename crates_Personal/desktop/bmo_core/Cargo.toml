@@ -7,7 +7,7 @@ description = "BMO Core - logical Ring 3 kernel (windowing, UI, FS, desktop, BEF
 
 [dependencies]
 bmo-abi = { path = "../../../Uso_Reales_Crates/abi/bmo-abi" }
-bmo-hal-defs = { path = "../../shared/hal_defs" }
-timeback = { path = "../../services/timeback" }
-bmo-boot-protocol = { path = "../../ring0/boot_protocol" }
+bmo-hal = { path = "../../../Uso_Reales_Crates/shared/bmo-hal" }
+timeback = { path = "../../../Uso_Reales_Crates/services/timeback" }
+bmo-boot-protocol = { path = "../../../kernel/Boot_Protocol" }
 goblin = { path = "../../plugins/goblin", default-features = false, features = ["alloc", "elf32", "elf64", "endian_fd", "pe32", "pe64"] }

@@ -4,40 +4,38 @@ members = [
     # ── RING 0 (Kernel) ──────────────────────────────────────────────
     "kernel",
     "kernel/Layer_Nano-Wake",
+    "kernel/Boot_Protocol",
     "crates_Personal/bootloader",
-    "crates_Personal/ring0/boot_protocol",
     "crates_Personal/ring0/cpu_vendor_profile",
     "crates_Personal/ring0/cabina_daemon",
     "crates_Personal/ring0/cabina_panels",
 
     # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
-    "crates_Personal/shared/hal_defs",
-    "crates_Personal/shared/hw_profile",
-    "crates_Personal/shared/nvram_log",
-    "crates_Personal/shared/bmo_channel",
-    "crates_Personal/services/cabina/core",
-    "crates_Personal/services/byte_defender",
-    "crates_Personal/services/timeback",
+    "Uso_Reales_Crates/shared/bmo-hal",
+    "Uso_Reales_Crates/shared/hw-profile",
+    "Uso_Reales_Crates/shared/nvram-log",
+    "Uso_Reales_Crates/shared/bmo-channel",
 
     # ── ABI (Foundation) ────────────────────────────────────────────
     "Uso_Reales_Crates/abi/bmo-abi",
     "Uso_Reales_Crates/abi/bmo-rt",
 
+    # ── SERVICES (System) ──────────────────────────────────────────
+    "Uso_Reales_Crates/services/cabina-core",
+    "Uso_Reales_Crates/services/byte-defender",
+    "Uso_Reales_Crates/services/timeback",
+
     # ── RING 3 (Userspace - Desktop) ───────────────────────────────
     "crates_Personal/desktop/bmo_core",
 
-    # ── RING 3 (Userspace - Foundation) ────────────────────────────
-    "crates_Personal/ring3/foundation/ring3_foundation",
-
-    # ── RING 3 (Userspace - Drivers) ───────────────────────────────
-    "crates_Personal/ring3/drivers/driver_keyboard",
-    "crates_Personal/ring3/drivers/driver_mouse",
-    "crates_Personal/ring3/drivers/driver_audio_pc",
-
-    # ── RING 3 (Userspace - Services) ──────────────────────────────
-    "crates_Personal/ring3/services/service_input",
-    "crates_Personal/ring3/services/service_audio",
-    "crates_Personal/ring3/services/service_fs",
+    # ── RING 3 (Kernel - Userspace support) ────────────────────────
+    "kernel/ring3/foundation",
+    "kernel/ring3/drivers/kbd",
+    "kernel/ring3/drivers/mouse",
+    "kernel/ring3/drivers/audio",
+    "kernel/ring3/services/input",
+    "kernel/ring3/services/audio",
+    "kernel/ring3/services/fs",
 
     # ── DRIVERS (Hardware) ───────────────────────────────────────────
     "crates_Personal/drivers/audio/audio",

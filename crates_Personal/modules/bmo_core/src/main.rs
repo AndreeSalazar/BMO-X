@@ -18,7 +18,7 @@ static SYMBOLS: &str = include_str!("../../../../BMO_SYMBOLS.toml");
 
 // ── Global allocator ──────────────────────────────────────────────────
 
-static mut HAL_PTR: *const bmo_hal_defs::HalServices = core::ptr::null();
+static mut HAL_PTR: *const bmo_hal::HalServices = core::ptr::null();
 
 struct KernelHeapAlloc;
 
@@ -111,11 +111,11 @@ const FONT_W: usize = 8;
 const FONT_H: usize = 8;
 const CHAR_H: usize = 10;
 
-fn fb_put_pixel(hal: &bmo_hal_defs::HalServices, x: u32, y: u32, color: u32) {
+fn fb_put_pixel(hal: &bmo_hal::HalServices, x: u32, y: u32, color: u32) {
     (hal.framebuffer_put_pixel)(x, y, color);
 }
 
-fn fb_draw_char(hal: &bmo_hal_defs::HalServices, x: u32, y: u32, c: u8, color: u32) {
+fn fb_draw_char(hal: &bmo_hal::HalServices, x: u32, y: u32, c: u8, color: u32) {
     let idx = c.wrapping_sub(32) as usize;
     if idx >= FONT8.len() { return; }
     let glyph = &FONT8[idx];
@@ -131,7 +131,7 @@ fn fb_draw_char(hal: &bmo_hal_defs::HalServices, x: u32, y: u32, c: u8, color: u
     }
 }
 
-fn fb_draw_str(hal: &bmo_hal_defs::HalServices, x: u32, y: u32, s: &str, color: u32) {
+fn fb_draw_str(hal: &bmo_hal::HalServices, x: u32, y: u32, s: &str, color: u32) {
     let mut cx = x;
     for b in s.bytes() {
         fb_draw_char(hal, cx, y, b, color);
@@ -139,11 +139,11 @@ fn fb_draw_str(hal: &bmo_hal_defs::HalServices, x: u32, y: u32, s: &str, color: 
     }
 }
 
-fn fb_fill_rect(hal: &bmo_hal_defs::HalServices, x: u32, y: u32, w: u32, h: u32, color: u32) {
+fn fb_fill_rect(hal: &bmo_hal::HalServices, x: u32, y: u32, w: u32, h: u32, color: u32) {
     for dy in 0..h { for dx in 0..w { fb_put_pixel(hal, x + dx, y + dy, color); } }
 }
 
-fn show_diagnostics(hal: &bmo_hal_defs::HalServices, info: &DiagInfo) {
+fn show_diagnostics(hal: &bmo_hal::HalServices, info: &DiagInfo) {
     let x = 16u32;
     let mut y = 16u32;
     let w = hal.fb_width;
@@ -227,10 +227,10 @@ struct ModuleXhciHal {
 }
 
 #[derive(Copy, Clone)]
-struct HalPtr(*const bmo_hal_defs::HalServices);
+struct HalPtr(*const bmo_hal::HalServices);
 
 impl ModuleXhciHal {
-    fn hal(&self) -> &bmo_hal_defs::HalServices {
+    fn hal(&self) -> &bmo_hal::HalServices {
         // SAFETY: self.hal.0 is set from a valid &HalServices reference
         // in init_xhci() and never freed during module lifetime.
         debug_assert!(!self.hal.0.is_null(), "HalPtr is null — HAL not initialized");
@@ -253,7 +253,7 @@ impl bmo_xhci::XhciHal for ModuleXhciHal {
 // ── Entry point ──────────────────────────────────────────────────────
 
 #[no_mangle]
-pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! {
+pub extern "C" fn _module_start(hal_ptr: *const bmo_hal::HalServices) -> ! {
     unsafe { HAL_PTR = hal_ptr; }
 
     // ── Capture BootInfo BEFORE any heap allocation ──────────────────
@@ -329,7 +329,7 @@ pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! 
     loop { unsafe { core::arch::asm!("hlt"); } }
 }
 
-fn init_xhci(hal: &bmo_hal_defs::HalServices) -> DiagInfo {
+fn init_xhci(hal: &bmo_hal::HalServices) -> DiagInfo {
     // Read XHCI MMIO addresses from RAM markers (captured BEFORE heap corruption)
     let mmios = unsafe {
         [
@@ -514,7 +514,7 @@ unsafe fn xhci_usb_handover(mmio: u64) {
 }
 
 #[allow(dead_code)]
-fn start_background_modules(hal: &bmo_hal_defs::HalServices) {
+fn start_background_modules(hal: &bmo_hal::HalServices) {
     let boot_info = unsafe {
         if (hal.boot_info).is_null() { return; }
         &*(hal.boot_info)
@@ -539,15 +539,15 @@ fn start_background_modules(hal: &bmo_hal_defs::HalServices) {
     }
 }
 
-fn convert_input_event(ev: bmo_input::event::InputEvent) -> bmo_hal_defs::InputEvent {
+fn convert_input_event(ev: bmo_input::event::InputEvent) -> bmo_hal::InputEvent {
     let kind = match ev.kind {
-        bmo_input::event::InputEventKind::KeyDown => bmo_hal_defs::InputEventKind::KeyDown,
-        bmo_input::event::InputEventKind::KeyUp => bmo_hal_defs::InputEventKind::KeyUp,
-        bmo_input::event::InputEventKind::MouseMove => bmo_hal_defs::InputEventKind::MouseMove,
-        bmo_input::event::InputEventKind::MouseButton => bmo_hal_defs::InputEventKind::MouseButton,
-        bmo_input::event::InputEventKind::MouseWheel => bmo_hal_defs::InputEventKind::MouseWheel,
+        bmo_input::event::InputEventKind::KeyDown => bmo_hal::InputEventKind::KeyDown,
+        bmo_input::event::InputEventKind::KeyUp => bmo_hal::InputEventKind::KeyUp,
+        bmo_input::event::InputEventKind::MouseMove => bmo_hal::InputEventKind::MouseMove,
+        bmo_input::event::InputEventKind::MouseButton => bmo_hal::InputEventKind::MouseButton,
+        bmo_input::event::InputEventKind::MouseWheel => bmo_hal::InputEventKind::MouseWheel,
     };
-    bmo_hal_defs::InputEvent {
+    bmo_hal::InputEvent {
         timestamp: ev.timestamp,
         device_id: ev.device_id,
         kind,
@@ -558,7 +558,7 @@ fn convert_input_event(ev: bmo_input::event::InputEvent) -> bmo_hal_defs::InputE
 }
 
 /// Public API for input layer: poll USB HID events if XHCI is available.
-pub fn poll_usb_hid(out: &mut [bmo_hal_defs::InputEvent]) -> usize {
+pub fn poll_usb_hid(out: &mut [bmo_hal::InputEvent]) -> usize {
     unsafe {
         if let Some(ref mut uhid) = UHID_PTR {
             let mut buf = [bmo_input::event::InputEvent::empty(); 32];

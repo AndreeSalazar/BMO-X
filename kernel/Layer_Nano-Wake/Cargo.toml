@@ -7,7 +7,7 @@ description = "BMO Layer_Nano-Wake — ultra-fast micro bootstrap layer"
 license = "Techne"
 
 [dependencies]
-bmo-boot-protocol = { path = "../../crates_Personal/ring0/boot_protocol" }
+bmo-boot-protocol = { path = "../Boot_Protocol" }
 
 [[bin]]
 name = "layer-nano-wake"

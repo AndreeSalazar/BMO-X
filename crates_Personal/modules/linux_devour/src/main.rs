@@ -18,7 +18,7 @@ extern crate alloc;
 use core::alloc::{GlobalAlloc, Layout};
 use core::panic::PanicInfo;
 
-static mut HAL_PTR: *const bmo_hal_defs::HalServices = core::ptr::null();
+static mut HAL_PTR: *const bmo_hal::HalServices = core::ptr::null();
 
 struct KernelHeapAlloc;
 
@@ -41,7 +41,7 @@ mod shim;
 /// Entry point called by desktop (not by kernel loader directly).
 /// Receives HalServices pointer and a buffer containing the ELF binary.
 #[no_mangle]
-pub extern "C" fn _module_start(hal_ptr: *const bmo_hal_defs::HalServices) -> ! {
+pub extern "C" fn _module_start(hal_ptr: *const bmo_hal::HalServices) -> ! {
     unsafe { HAL_PTR = hal_ptr; }
 
     if let Some(hal) = unsafe { HAL_PTR.as_ref() } {

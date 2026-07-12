@@ -3,7 +3,7 @@
 //! Essential Ring 0 services only. Ring 3 services (cabina, storage, input,
 //! audio, visual) are stubbed — modules provide or request their own drivers.
 
-use bmo_hal_defs::HalServices;
+use bmo_hal::HalServices;
 use crate::proc::process::Pid;
 
 pub static mut HAL_SERVICES: *const HalServices = core::ptr::null();
@@ -188,7 +188,7 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
         //  Input HAL — drains BMO system channel into InputEvent[]
         // ═══════════════════════════════════════════════════════════
         input_init:               crate::irq::i8042::init,
-        input_poll:               |buf: &mut [bmo_hal_defs::InputEvent]| {
+        input_poll:               |buf: &mut [bmo_hal::InputEvent]| {
             use bmo_channel::Channel;
             let phys = crate::channel::sys_channel_phys();
             let virt = crate::mm::vmm::phys_to_virt(phys);
@@ -200,24 +200,24 @@ pub fn build(ctx: &crate::context::BootContext) -> HalServices {
                 let (kind, code, value) = match opcode {
                     crate::ring0::ipc_channel::OP_KEY_SCANCODE => {
                         let pressed = a1 != 0;
-                        (if pressed { bmo_hal_defs::InputEventKind::KeyDown }
-                                else { bmo_hal_defs::InputEventKind::KeyUp },
+                        (if pressed { bmo_hal::InputEventKind::KeyDown }
+                                else { bmo_hal::InputEventKind::KeyUp },
                                 a0 as u8, a2 & 1)
                     }
                     crate::ring0::ipc_channel::OP_MOUSE_MOVE => {
                         let dx = a0 as u16 as u64;
                         let dy = a1 as u16 as u64;
-                        (bmo_hal_defs::InputEventKind::MouseMove, 0u8, (dy << 16) | dx)
+                        (bmo_hal::InputEventKind::MouseMove, 0u8, (dy << 16) | dx)
                     }
                     crate::ring0::ipc_channel::OP_MOUSE_BUTTON => {
-                        (bmo_hal_defs::InputEventKind::MouseButton, 0u8, a0)
+                        (bmo_hal::InputEventKind::MouseButton, 0u8, a0)
                     }
                     crate::ring0::ipc_channel::OP_MOUSE_WHEEL => {
-                        (bmo_hal_defs::InputEventKind::MouseWheel, 0u8, a0)
+                        (bmo_hal::InputEventKind::MouseWheel, 0u8, a0)
                     }
                     _ => return,
                 };
-                buf[count] = bmo_hal_defs::InputEvent {
+                buf[count] = bmo_hal::InputEvent {
                     timestamp: crate::cpu::rdtsc(),
                     device_id: 0,
                     kind,

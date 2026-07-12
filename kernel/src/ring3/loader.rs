@@ -7,7 +7,7 @@
 //! La implementación real (BEF loader, parsing ELF) vive en crates_Personal/.
 
 use bmo_boot_protocol::BootInfo;
-use bmo_hal_defs::HalServices;
+use bmo_hal::HalServices;
 
 /// Arranca solo el primer módulo (mod_bmo_core).
 /// Otros módulos están disponibles en BootInfo.modules[] para inicio diferido.

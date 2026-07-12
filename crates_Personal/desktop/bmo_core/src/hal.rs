@@ -1,6 +1,6 @@
 //! HAL bridge — re-exports bmo-hal-defs types and manages the global HAL instance.
 
-pub use bmo_hal_defs::{HalServices, InputEvent, InputEventKind, ModuleHeader, ModuleInitRegs, FMOD_MAGIC};
+pub use bmo_hal::{HalServices, InputEvent, InputEventKind, ModuleHeader, ModuleInitRegs, FMOD_MAGIC};
 
 pub static mut HAL: Option<HalServices> = None;
 

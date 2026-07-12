@@ -7,4 +7,4 @@ description = "Cabina module — standalone Ring 3 telemetry/logging system load
 
 [dependencies]
 cabina-daemon = { path = "../../ring0/cabina_daemon" }
-bmo-hal-defs = { path = "../../shared/hal_defs" }
+bmo-hal = { path = "../../../Uso_Reales_Crates/shared/bmo-hal" }

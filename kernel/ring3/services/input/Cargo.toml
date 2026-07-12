@@ -5,5 +5,5 @@ edition = "2024"
 description = "BMO Input Service — combines keyboard + mouse into typed events"
 
 [dependencies]
-driver-keyboard = { path = "../../drivers/driver_keyboard" }
-driver-mouse = { path = "../../drivers/driver_mouse" }
+driver-keyboard = { path = "../../drivers/kbd" }
+driver-mouse = { path = "../../drivers/mouse" }

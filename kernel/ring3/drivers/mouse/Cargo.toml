@@ -5,4 +5,4 @@ edition = "2024"
 description = "BMO Mouse Driver — reads mouse events via syscall"
 
 [dependencies]
-ring3-foundation = { path = "../../foundation/ring3_foundation" }
+ring3-foundation = { path = "../../foundation" }

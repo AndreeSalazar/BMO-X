@@ -19,7 +19,7 @@ pub static mut CHANNEL_POLL: Option<fn() -> u8> = None;
 pub static mut CHANNEL_MOUSE_POLL: Option<fn() -> u64> = None;
 
 /// Legacy USB HID polling (XHCI+UHID). Active when CCS detects devices.
-pub static mut USB_HID_POLL: Option<fn(&mut [bmo_hal_defs::InputEvent]) -> usize> = None;
+pub static mut USB_HID_POLL: Option<fn(&mut [bmo_hal::InputEvent]) -> usize> = None;
 
 // ── Direct PS/2 port I/O (Ring 0 fallback) ────────────────────────────
 
@@ -40,7 +40,7 @@ static mut MOUSE_BUF: [u8; 3] = [0; 3];
 static mut MOUSE_X: i32 = 0;
 static mut MOUSE_Y: i32 = 0;
 static mut MOUSE_BTNS: u8 = 0;
-static mut USB_PENDING: [bmo_hal_defs::InputEvent; 32] = [bmo_hal_defs::InputEvent::empty(); 32];
+static mut USB_PENDING: [bmo_hal::InputEvent; 32] = [bmo_hal::InputEvent::empty(); 32];
 static mut USB_PENDING_COUNT: usize = 0;
 
 fn ensure_input_ready() {
@@ -182,8 +182,8 @@ pub fn poll_raw_scancode() -> u8 {
         refill_usb_pending();
         for i in 0..USB_PENDING_COUNT {
             let ev = USB_PENDING[i];
-            if matches!(ev.kind, bmo_hal_defs::InputEventKind::KeyDown | bmo_hal_defs::InputEventKind::KeyUp) {
-                let sc = if matches!(ev.kind, bmo_hal_defs::InputEventKind::KeyUp) {
+            if matches!(ev.kind, bmo_hal::InputEventKind::KeyDown | bmo_hal::InputEventKind::KeyUp) {
+                let sc = if matches!(ev.kind, bmo_hal::InputEventKind::KeyUp) {
                     ev.code | 0x80
                 } else {
                     ev.code
@@ -226,20 +226,20 @@ pub fn poll_mouse() -> u64 {
         while i < USB_PENDING_COUNT {
             let ev = USB_PENDING[i];
             match ev.kind {
-                bmo_hal_defs::InputEventKind::MouseMove => {
+                bmo_hal::InputEventKind::MouseMove => {
                     usb_seen = true;
                     usb_x = usb_x.saturating_add(ev.mouse_dx() as i32);
                     usb_y = usb_y.saturating_add(ev.mouse_dy() as i32);
                     remove_usb_pending(i);
                     continue;
                 }
-                bmo_hal_defs::InputEventKind::MouseButton => {
+                bmo_hal::InputEventKind::MouseButton => {
                     usb_seen = true;
                     usb_btns = ev.mouse_buttons() as u64;
                     remove_usb_pending(i);
                     continue;
                 }
-                bmo_hal_defs::InputEventKind::MouseWheel => {
+                bmo_hal::InputEventKind::MouseWheel => {
                     usb_seen = true;
                     remove_usb_pending(i);
                     continue;
@@ -263,16 +263,16 @@ pub fn poll_mouse() -> u64 {
             MOUSE_X = 0; MOUSE_Y = 0;
             x | (y << 16) | ((MOUSE_BTNS as u64) << 32)
         } else if let Some(h) = hal::HAL.as_mut() {
-            let mut buf = [bmo_hal_defs::InputEvent::empty(); 32];
+            let mut buf = [bmo_hal::InputEvent::empty(); 32];
             let n = (h.input_poll)(&mut buf);
             let mut x: i32 = 0; let mut y: i32 = 0; let mut btns: u64 = 0;
             for ev in &buf[..n] {
                 match ev.kind {
-                    bmo_hal_defs::InputEventKind::MouseMove => {
+                    bmo_hal::InputEventKind::MouseMove => {
                         x = x.saturating_add(ev.mouse_dx() as i32);
                         y = y.saturating_add(ev.mouse_dy() as i32);
                     }
-                    bmo_hal_defs::InputEventKind::MouseButton => { btns = ev.mouse_buttons() as u64; }
+                    bmo_hal::InputEventKind::MouseButton => { btns = ev.mouse_buttons() as u64; }
                     _ => {}
                 }
             }

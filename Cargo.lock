@@ -207,7 +207,7 @@ version = "1.8.16"
 dependencies = [
  "bmo-abi",
  "bmo-boot-protocol",
- "bmo-hal-defs",
+ "bmo-hal",
  "goblin",
  "timeback",
 ]
@@ -228,7 +228,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bmo-hal-defs"
+name = "bmo-hal"
 version = "1.0.0"
 dependencies = [
  "bmo-boot-protocol",
@@ -248,7 +248,7 @@ dependencies = [
  "bitflags 2.13.0",
  "bmo-boot-protocol",
  "bmo-channel",
- "bmo-hal-defs",
+ "bmo-hal",
  "cpu-vendor-profile",
  "llfree",
  "nvram-log",
@@ -1106,7 +1106,7 @@ name = "mod-bmo-core"
 version = "1.0.0"
 dependencies = [
  "bmo-core",
- "bmo-hal-defs",
+ "bmo-hal",
  "bmo-input",
  "bmo-uhid",
  "bmo-xhci",
@@ -1120,7 +1120,7 @@ dependencies = [
 name = "mod-cabina"
 version = "1.0.0"
 dependencies = [
- "bmo-hal-defs",
+ "bmo-hal",
  "cabina-daemon",
 ]
 
@@ -1128,7 +1128,7 @@ dependencies = [
 name = "mod-timeback"
 version = "1.0.0"
 dependencies = [
- "bmo-hal-defs",
+ "bmo-hal",
  "timeback",
 ]
 
