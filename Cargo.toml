@@ -59,9 +59,9 @@ members = [
     "crates_Personal/plugins/vendor",
 
     # ── TOOLS (Build-time) ──────────────────────────────────────────
-    "crates_Personal/tools/languages/cobol",
-    "crates_Personal/tools/languages/cpp",
-    "crates_Personal/tools/languages/c",
+    "Uso_Reales_Crates/tools/lang/cobol",
+    "Uso_Reales_Crates/tools/lang/cpp",
+    "Uso_Reales_Crates/tools/lang/c",
 ]
 
 [profile.dev]
