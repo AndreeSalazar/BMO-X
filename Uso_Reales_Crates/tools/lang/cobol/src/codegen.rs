@@ -1,7 +1,8 @@
 //! COBOL codegen — v1.9: real arithmetic, IF/ELSE, variables on stack.
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
-use crate::{CobolProgram, CobolStatement, CobolCondition, CobolError};
+use crate::ast::{CobolProgram, CobolStatement, CobolCondition};
+use crate::ast::error::CobolError;
 
 type Result<T> = core::result::Result<T, CobolError>;
 
@@ -44,10 +45,12 @@ impl Codegen {
 
     fn emit_program(&mut self, program: &CobolProgram) -> Result<()> {
         // Allocate stack space for WORKING-STORAGE data items
-        // Each item gets 8 bytes (64-bit) aligned
+        // Use PIC-calculated sizes from gnucobol-rs, aligned to 8 bytes
         self.stack_size = 0;
         for item in &program.data_items {
-            self.stack_size += 8;
+            let size = item.storage_size();
+            let aligned = (size as i32 + 7) & !7;
+            self.stack_size += aligned;
             self.var_offsets.insert(item.name.clone(), -(self.stack_size));
         }
         self.collect_strings(program);

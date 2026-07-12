@@ -2,7 +2,7 @@
 
 use bmo_abi::ir::*;
 use bmo_abi::types::convention::CallingConvention;
-use crate::*;
+use crate::ast::{CobolProgram, CobolStatement};
 
 pub fn compile_to_ir(program: &CobolProgram) -> IrModule {
     let mut e = Emitter::new();
