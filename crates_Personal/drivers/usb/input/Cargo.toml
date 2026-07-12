@@ -7,7 +7,7 @@ description = "BMO Input Subsystem — HAL-based keyboard/mouse/pointer driver w
 [lib]
 
 [dependencies]
-bmo-abi = { path = "../../../abi/bmo_abi" }
+bmo-abi = { path = "../../../../Uso_Reales_Crates/abi/bmo-abi" }
 
 [features]
 default = ["ps2"]

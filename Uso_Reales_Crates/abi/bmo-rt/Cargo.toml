@@ -1,0 +1,8 @@
+﻿[package]
+name = "bmo-rt"
+version = "0.1.0"
+edition = "2021"
+description = "BMO Runtime — syscall wrappers, heap, string, startup for userspace"
+
+[dependencies]
+bmo-abi = { path = "../bmo-abi" }

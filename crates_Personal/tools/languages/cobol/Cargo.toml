@@ -6,7 +6,7 @@ authors = ["BMO Project"]
 description = "COBOL frontend scaffold for BMO BMO ABI"
 
 [dependencies]
-bmo-abi = { path = "../../../abi/bmo_abi" }
+bmo-abi = { path = "../../../../Uso_Reales_Crates/abi/bmo-abi" }
 
 [lib]
 name = "bmo_cobol_front"

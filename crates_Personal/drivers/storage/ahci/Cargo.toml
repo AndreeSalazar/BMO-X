@@ -7,4 +7,4 @@ description = "BMO AHCI/SATA Storage Driver — HAL-based controller driver"
 [lib]
 
 [dependencies]
-bmo-abi = { path = "../../../abi/bmo_abi" }
+bmo-abi = { path = "../../../../Uso_Reales_Crates/abi/bmo-abi" }

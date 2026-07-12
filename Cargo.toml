@@ -19,9 +19,9 @@ members = [
     "crates_Personal/services/byte_defender",
     "crates_Personal/services/timeback",
 
-    # ── ABI ──────────────────────────────────────────────────────────
-    "crates_Personal/abi/bmo_abi",
-    "crates_Personal/abi/userland_ring3",
+    # ── ABI (Foundation) ────────────────────────────────────────────
+    "Uso_Reales_Crates/abi/bmo-abi",
+    "Uso_Reales_Crates/abi/bmo-rt",
 
     # ── RING 3 (Userspace - Desktop) ───────────────────────────────
     "crates_Personal/desktop/bmo_core",

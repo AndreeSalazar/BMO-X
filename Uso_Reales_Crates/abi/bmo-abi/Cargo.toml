@@ -3,7 +3,7 @@ name = "bmo-abi"
 version = "1.0.0"
 edition = "2021"
 authors = ["BMO Project"]
-description = "BMO Application Binary Interface - Standard types and syscall definitions"
+description = "BMO ABI — types, syscall definitions, interfaces (foundation layer)"
 
 [dependencies]
 bitflags = "2.13.0"

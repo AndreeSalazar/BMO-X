@@ -2,7 +2,7 @@
 # Every function here is available to C/COBOL frontends via call relocations.
 
 [module]
-name = "userland_ring3"
+name = "bmo_rt"
 version = "1.0.0"
 
 [exports]

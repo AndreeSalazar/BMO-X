@@ -6,7 +6,7 @@ authors = ["BMO Project"]
 description = "C frontend for BMO BMO ABI â€” compiles minimal C to BEF"
 
 [dependencies]
-bmo-abi = { path = "../../../abi/bmo_abi" }
+bmo-abi = { path = "../../../../Uso_Reales_Crates/abi/bmo-abi" }
 
 [lib]
 name = "bmo_c_front"

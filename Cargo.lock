@@ -274,6 +274,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-rt"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
 name = "bmo-uhid"
 version = "0.1.0"
 dependencies = [
@@ -1767,13 +1774,6 @@ dependencies = [
  "mutants",
  "proc-macro2",
  "rustc-hash",
-]
-
-[[package]]
-name = "userland-ring3"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
 ]
 
 [[package]]
