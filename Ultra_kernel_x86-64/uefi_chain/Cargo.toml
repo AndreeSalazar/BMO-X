@@ -1,7 +1,9 @@
 [workspace]
-# uefi_chain is its own workspace because it targets
-# x86_64-unknown-uefi and cannot be mixed with the bare-metal
-# kernel/workspace in Ultra_kernel_x86-64/Cargo.toml.
+# uefi_chain has its own [workspace] because build.ps1 Push-Locations
+# into this directory to build the EFI binary. The local workspace
+# means cargo from this dir doesn't walk up to the FastOS root.
+# It also means this dir is excluded from FastOS's parent workspace
+# (see /Cargo.toml exclude = [...]).
 
 [package]
 name = "uefi-chain"

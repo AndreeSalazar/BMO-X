@@ -6,4 +6,7 @@ authors = ["BMO Project"]
 description = "BMO HAL — hardware abstraction layer types shared across rings"
 
 [dependencies]
-bmo-boot-protocol = { path = "../../../kernel/Boot_Protocol" }
+# The kernel's boot handoff struct. Renamed from bmo-boot-protocol
+# (which used to live in a now-deleted kernel/ tree) to boot-context
+# (which lives in Ultra_kernel_x86-64/boot_context/).
+boot-context = { path = "../../../Ultra_kernel_x86-64/boot_context" }

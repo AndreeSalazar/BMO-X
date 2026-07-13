@@ -158,7 +158,7 @@ pub struct HalServices {
     pub fb_height: u32,
     pub fb_stride: u32,
     pub fb_pixel_format: u32,
-    pub boot_info: *mut bmo_boot_protocol::BootInfo,
+    pub boot_info: *mut core::ffi::c_void,
 
     // ── uefi_rt ─────────────────────────────────────────────────
     pub write_boot_stage: fn(&str),

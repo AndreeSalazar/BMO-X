@@ -4,10 +4,8 @@ members = [
     # ── ULTRA KERNEL x86-64 (Ring 0 base + 12-stage faggin chain) ───
     # CPU-specific kernel. For ARM/RISC-V ports see Ultra_kernel_<arch>/.
     "Ultra_kernel_x86-64/boot_context",
-    "Ultra_kernel_x86-64/uefi_chain",
     "Ultra_kernel_x86-64/faggin",
     "Ultra_kernel_x86-64/kernel",
-    "Ultra_kernel_x86-64/Ultra_userspace",
 
     # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
     "Uso_Reales_Crates/shared/bmo-hal",
@@ -18,6 +16,17 @@ members = [
     # ── ABI (Foundation) ────────────────────────────────────────────
     "Uso_Reales_Crates/abi/bmo-abi",
     "Uso_Reales_Crates/abi/bmo-rt",
+
+    # ── USERSPACE (Ring 3 side, x86-64) ────────────────────────────
+    # Sibling of Ultra_kernel_x86-64/, NOT inside it. The whole
+    # workspace builds as `cargo check --workspace` from FastOS/.
+    "Ultra_userspace/userland",
+    "Ultra_userspace/services/gui",
+    "Ultra_userspace/services/input",
+    "Ultra_userspace/drivers/keyboard",
+    "Ultra_userspace/drivers/mouse",
+    "Ultra_userspace/apps/launcher",
+    "Ultra_userspace/apps/terminal",
 
     # ── DRIVERS (Hardware) ───────────────────────────────────────────
     "Uso_Reales_Crates/drivers/audio",
@@ -35,20 +44,30 @@ members = [
     "Uso_Reales_Crates/services/timeback",
 
     # ── PLUGINS (Vendored third-party) ──────────────────────────────
-    "crates_Personal/plugins/goblin",
-    "crates_Personal/plugins/plain",
-    "crates_Personal/plugins/scroll",
-    "crates_Personal/plugins/scroll_derive",
+    # Removed: crates_Personal/plugins/* were legacy and have been
+    # deleted. The bmo-elf (from goblin) and other plugin needs
+    # are now sourced from crates.io where possible.
 
     # ── TOOLS (Build-time) ──────────────────────────────────────────
     "Uso_Reales_Crates/tools/lang/cobol",
     "Uso_Reales_Crates/tools/lang/cpp",
     "Uso_Reales_Crates/tools/lang/c",
+
+    # ── PLATFORM (CPU-aware Ring 0/3 intermediary) ────────────────
+    # The only crate in BMO that knows the target CPU. Currently
+    # x86-64 only; ports will add Ultra_kernel_<arch>/ trees and
+    # aarch64/riscv64 features here.
+    "bmo-platform",
 ]
 
 exclude = [
     # Extern submodule with its own Cargo workspace
     "extern/gnucobol-rs",
+
+    # Sub-workspace (has its own [workspace] because build.ps1
+    # Push-Locations into this directory to build the EFI binary;
+    # see /Ultra_kernel_x86-64/uefi_chain/Cargo.toml).
+    "Ultra_kernel_x86-64/uefi_chain",
 ]
 
 [profile.dev]
