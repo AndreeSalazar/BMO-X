@@ -134,24 +134,30 @@ static mut LAST_PCT: u32 = 0;
 
 // ?????? Primitive drawing ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 //
-// The GOP framebuffer is mapped either WC (write-combining) or UC
-// (uncacheable) by UEFI. WC stores are not guaranteed to reach VRAM
-// until a serializing instruction runs. Without `sfence` after each
-// draw block, the display hardware may keep showing the previous
-// contents (i.e. the UEFI logo or black) for a long time. We emit
-// `sfence` after every primitive that writes a contiguous region.
+// The GOP framebuffer is typically mapped as WC (write-combining)
+// by UEFI. WC stores are batched into the WC buffer and NOT
+// guaranteed to reach VRAM until a full memory barrier flushes
+// the buffer. `sfence` only orders `movnti` non-temporal stores;
+// for normal WC writes, `mfence` is required. Without `mfence`,
+// the display hardware sees the old contents (black) for an
+// unpredictable amount of time, and the screen appears blank.
 
 #[inline]
-fn sfence() {
-    unsafe { core::arch::asm!("sfence", options(nostack, preserves_flags)); }
+fn wc_flush() {
+    // `mfence` is the correct barrier for WC memory:
+    // it serializes all load/store instructions AND drains
+    // the WC buffer before any subsequent loads or stores.
+    unsafe { core::arch::asm!("mfence", options(nostack, preserves_flags)); }
 }
 
 fn put_pix(x: u32, y: u32, color: u32) {
     let fb = unsafe { crate::info::FB_ADDR as *mut u32 };
-    let st = unsafe { crate::info::FB_STRIDE as usize };
-    let h  = unsafe { crate::info::FB_HEIGHT };
+    let st  = unsafe { crate::info::FB_STRIDE as usize };
+    let h   = unsafe { crate::info::FB_HEIGHT };
     if y < h && (x as usize) < st {
-        unsafe { *fb.add((y as usize) * st + (x as usize)) = color; }
+        unsafe {
+            fb.add((y as usize) * st + (x as usize)).write_volatile(color);
+        }
     }
 }
 
@@ -167,11 +173,11 @@ fn fill_rect(x: u32, y: u32, w: u32, h: u32, color: u32) {
         for dx in 0..w {
             let px = x + dx;
             if (px as usize) >= st { break; }
-            unsafe { *fb.add((py as usize) * st + (px as usize)) = color; }
+            unsafe { fb.add((py as usize) * st + (px as usize)).write_volatile(color); }
             any = true;
         }
     }
-    if any { sfence(); }
+    if any { wc_flush(); }
 }
 
 fn draw_rect_outline(x: u32, y: u32, w: u32, h: u32, color: u32) {
@@ -184,7 +190,7 @@ fn draw_rect_outline(x: u32, y: u32, w: u32, h: u32, color: u32) {
         put_pix(x, y + dy, color);
         put_pix(x + w - 1, y + dy, color);
     }
-    sfence();
+    wc_flush();
 }
 
 /// Draw a filled circle using integer distance squared.
@@ -424,54 +430,100 @@ fn smooth_progress(bx: u32, by: u32, bar_w: u32, bar_h: u32, target_pct: u32) {
 pub fn splash_init() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
-    if w == 0 || h == 0 { return; }
+    let fb_addr = unsafe { crate::info::FB_ADDR };
+    let fb_stride = unsafe { crate::info::FB_STRIDE };
+    let fb_fmt = unsafe { crate::info::FB_PIXEL_FORMAT };
 
-    // First, a tiny sanity ping: 1px red in the top-left corner.
-    // This tests that (a) the GOP base is mapped in our page
-    // tables, (b) the stride is sane, and (c) the pixel format
-    // isn't doing something weird that hides red.
-    unsafe {
-        let fb = crate::info::FB_ADDR as *mut u32;
-        if !fb.is_null() {
-            *fb = 0xFFFF_0000; // ARGB: red
-            core::arch::asm!("sfence", options(nostack, preserves_flags));
-        }
+    // ── Diagnostic: log everything we know about the FB ────────────
+    crate::ring0::dev::console::serial_write("[splash] fb_addr=0x");
+    crate::ring0::dev::console::serial_write_u64(fb_addr, 16);
+    crate::ring0::dev::console::serial_write(" w=");
+    crate::ring0::dev::console::serial_write_u64_dec(w as u64);
+    crate::ring0::dev::console::serial_write(" h=");
+    crate::ring0::dev::console::serial_write_u64_dec(h as u64);
+    crate::ring0::dev::console::serial_write(" stride_px=");
+    crate::ring0::dev::console::serial_write_u64_dec(fb_stride as u64);
+    crate::ring0::dev::console::serial_write(" fmt=");
+    crate::ring0::dev::console::serial_write_u64_dec(fb_fmt as u64);
+    crate::ring0::dev::console::serial_write("\n");
+
+    if w == 0 || h == 0 || fb_addr == 0 {
+        crate::ring0::dev::console::serial_write("[splash] FB not available — skipping\n");
+        return;
     }
 
-    // Reset state
-    unsafe { LAST_PCT = 0; }
+    // ── Write-Readback test: 4 pixels at (0,0),(1,0),(0,1),(1,1) ──
+    //    Save originals first, then write, read back, restore.
+    //    This tells us whether the GOP memory is even writable.
+    unsafe {
+        let fb = fb_addr as *mut u32;
+        let st = fb_stride as usize;
 
-    // Reset state
-    unsafe { LAST_PCT = 0; }
+        // Read originals
+        let orig: [u32; 4] = [
+            fb.add(0 * st + 0).read_volatile(),
+            fb.add(0 * st + 1).read_volatile(),
+            fb.add(1 * st + 0).read_volatile(),
+            fb.add(1 * st + 1).read_volatile(),
+        ];
 
-    // Clear screen
+        // Write test pattern: red, green, blue, white
+        fb.add(0 * st + 0).write_volatile(0xFFFF_0000u32);
+        fb.add(0 * st + 1).write_volatile(0xFF00_FF00u32);
+        fb.add(1 * st + 0).write_volatile(0xFF00_00FFu32);
+        fb.add(1 * st + 1).write_volatile(0xFFFF_FFFFu32);
+        core::arch::asm!("sfence", options(nostack, preserves_flags));
+
+        // Read back
+        let back: [u32; 4] = [
+            fb.add(0 * st + 0).read_volatile(),
+            fb.add(0 * st + 1).read_volatile(),
+            fb.add(1 * st + 0).read_volatile(),
+            fb.add(1 * st + 1).read_volatile(),
+        ];
+
+        // Restore
+        fb.add(0 * st + 0).write_volatile(orig[0]);
+        fb.add(0 * st + 1).write_volatile(orig[1]);
+        fb.add(1 * st + 0).write_volatile(orig[2]);
+        fb.add(1 * st + 1).write_volatile(orig[3]);
+        core::arch::asm!("sfence", options(nostack, preserves_flags));
+
+        crate::ring0::dev::console::serial_write("[splash] wr-back: ");
+        crate::ring0::dev::console::serial_write_u64(back[0] as u64, 16);
+        crate::ring0::dev::console::serial_write(" ");
+        crate::ring0::dev::console::serial_write_u64(back[1] as u64, 16);
+        crate::ring0::dev::console::serial_write(" ");
+        crate::ring0::dev::console::serial_write_u64(back[2] as u64, 16);
+        crate::ring0::dev::console::serial_write(" ");
+        crate::ring0::dev::console::serial_write_u64(back[3] as u64, 16);
+        crate::ring0::dev::console::serial_write("\n");
+        crate::ring0::dev::console::serial_write("[splash] orig:    ");
+        crate::ring0::dev::console::serial_write_u64(orig[0] as u64, 16);
+        crate::ring0::dev::console::serial_write(" ");
+        crate::ring0::dev::console::serial_write_u64(orig[1] as u64, 16);
+        crate::ring0::dev::console::serial_write(" ");
+        crate::ring0::dev::console::serial_write_u64(orig[2] as u64, 16);
+        crate::ring0::dev::console::serial_write(" ");
+        crate::ring0::dev::console::serial_write_u64(orig[3] as u64, 16);
+        crate::ring0::dev::console::serial_write("\n");
+    }
+
+    // ── Clear screen (skip animated logo until we confirm) ───────
     fill_rect(0, 0, w, h, BG);
 
+    // ── Draw a simple centered test rectangle ─────────────────────
     let cy = h / 2;
     let cx = w / 2;
+    let rw = 300u32;
+    let rh = 80u32;
+    fill_rect(cx - rw / 2, cy - rh / 2, rw, rh, ACCENT);
+    let txt = "BMO v2.0 Ring 0";
+    let tx = (w as u32).saturating_sub(text_width(txt)) / 2;
+    draw_str(tx, cy - 8, txt, WHITE);
 
-    // Step 1: Animated logo (inside-out expansion with smooth radius)
-    draw_logo_animated(cx, cy - 70);
-
-    // Step 2: Title fade-in
-    tsc_wait(20_000_000);
-    let title = "BMO v2.0";
-    let tx = (w as u32).saturating_sub(text_width(title)) / 2;
-    draw_str_fadein(tx, cy - 5, title, WHITE);
-
-    // Step 3: Subtitle fade-in
-    tsc_wait(10_000_000);
-    let sub = "Pure Ring 0";
-    let sx = (w as u32).saturating_sub(text_width(sub)) / 2;
-    draw_str_fadein(sx, cy + 18, sub, DIM);
-
-    // Step 4: Draw bar frame (outline + empty background)
-    let bar_w = 320u32;
-    let bar_h = 6u32;
-    let bx = (w as u32).saturating_sub(bar_w) / 2;
-    let bar_y = cy + 50;
-    draw_rect_outline(bx - 2, bar_y - 2, bar_w + 4, bar_h + 4, BAR_BORDER);
-    fill_rect(bx, bar_y, bar_w, bar_h, BAR_BG);
+    // Reset state
+    unsafe { LAST_PCT = 0; }
 
     // Step 5: Footer info (immediate)
     let info = "AMD Ryzen 5 5600X - GOP Framebuffer - Ring 0";
