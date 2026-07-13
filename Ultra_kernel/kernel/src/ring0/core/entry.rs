@@ -1,10 +1,10 @@
-//! Kernel entry point — `_start` naked asm + `kernel_main_real`.
+//! Kernel entry point ??? `_start` naked asm + `kernel_main_real`.
 //!
 //! Called from `stage3_dev` via `jmp` with `rdi = *const BootContext`.
 
 use core::arch::naked_asm;
 
-// ── _start: first code executed after the boot chain jumps here ─────
+// ?????? _start: first code executed after the boot chain jumps here ???????????????
 
 #[unsafe(no_mangle)]
 #[link_section = ".text._start"]

@@ -172,7 +172,10 @@ version = "1.0.0"
 
 [[package]]
 name = "bmo-boot-protocol"
-version = "0.1.0"
+version = "3.0.0"
+dependencies = [
+ "boot-context",
+]
 
 [[package]]
 name = "bmo-bootloader"
@@ -296,6 +299,10 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
 ]
+
+[[package]]
+name = "boot-context"
+version = "1.0.0"
 
 [[package]]
 name = "build-rs"

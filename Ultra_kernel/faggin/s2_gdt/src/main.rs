@@ -1,4 +1,4 @@
-//! Faggin stage 2 — GDT + TSS + kernel/IST stacks.
+//! Faggin stage 2 ??? GDT + TSS + kernel/IST stacks.
 //!
 //! Responsibilities (one only):
 //!   - Define the GDT (null, kernel CS/DS, user DS/CS, TSS).
@@ -15,9 +15,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s3_idt(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x120000;
 
 const KERNEL_CS: u16 = 0x08;
 const KERNEL_DS: u16 = 0x10;
@@ -122,7 +120,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s3_idt as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

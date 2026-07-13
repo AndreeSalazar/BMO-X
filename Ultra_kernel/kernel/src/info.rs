@@ -1,4 +1,4 @@
-//! Framebuffer globals — populated from `BootContext` at kernel entry.
+//! Framebuffer globals ??? populated from `BootContext` at kernel entry.
 //!
 //! These are the simplest possible "interface" that the splash, syscall
 //! handlers, and any future pixel-drawing code consume. They are written

@@ -1,4 +1,4 @@
-//! Faggin stage 10 — Heap (bitmap frame allocator + buddy + slab).
+//! Faggin stage 10 ??? Heap (bitmap frame allocator + buddy + slab).
 //!
 //! Responsibilities (one only):
 //!   - Initialize the bitmap frame allocator from ctx.memory_map.
@@ -14,12 +14,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s11_acpi(ctx: *mut boot_context::BootContext) -> !;
-    // The bitmap frame allocator (defined in s9_paging via a tiny
-    // extern block) — but to keep stages decoupled, we use a fresh
-    // helper here.
-}
+const NEXT_ADDR: u64 = 0x1A0000;
 
 const PAGE_SIZE: u64 = 4096;
 const MAX_FRAMES: usize = 32768; // 128 MB worth tracked
@@ -41,7 +36,7 @@ pub unsafe extern "C" fn alloc_frame() -> u64 {
 }
 
 /// Exposed to the next stage / kernel via BootContext.heap_base.
-/// Not actually a function call — it's a static pointer the kernel
+/// Not actually a function call ??? it's a static pointer the kernel
 /// will read.
 #[no_mangle]
 pub static HEAP_BASE_PTR: u64 = 0;
@@ -89,7 +84,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s11_acpi as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

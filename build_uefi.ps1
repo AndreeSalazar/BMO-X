@@ -108,6 +108,7 @@ $timebackDir = Join-Path $root "crates_Personal\modules\timeback"
 $cabinaDir = Join-Path $root "crates_Personal\modules\cabina"
 $linuxDevourDir = Join-Path $root "crates_Personal\modules\linux_devour"
 $wineDevourDir = Join-Path $root "crates_Personal\modules\wine_devour"
+$terminalDir = Join-Path $root "crates_Personal\modules\terminal"
 $target   = Join-Path $root "target_build"
 $stage    = Join-Path $target "staging\EFI\BOOT"
 
@@ -118,6 +119,7 @@ if (-not (Test-Path (Join-Path $timebackDir "Cargo.toml")))   { Fail "mod_timeba
 if (-not (Test-Path (Join-Path $cabinaDir "Cargo.toml")))     { Fail "mod_cabina not found at $cabinaDir" }
 if (-not (Test-Path (Join-Path $linuxDevourDir "Cargo.toml"))) { Fail "mod_linux_devour not found at $linuxDevourDir" }
 if (-not (Test-Path (Join-Path $wineDevourDir "Cargo.toml")))  { Fail "mod_wine_devour not found at $wineDevourDir" }
+if (-not (Test-Path (Join-Path $terminalDir "Cargo.toml")))    { Fail "mod_terminal not found at $terminalDir" }
 
 # ── Version ────────────────────────────────────────────────────────────
 $kv = "unknown"
@@ -217,6 +219,7 @@ $timebackElf = Join-Path $moduleTargetDir "timeback\x86_64-unknown-none\release\
 $cabinaElf = Join-Path $moduleTargetDir "cabina\x86_64-unknown-none\release\mod-cabina"
 $linuxDevourElf = Join-Path $moduleTargetDir "linux_devour\x86_64-unknown-none\release\mod-linux-devour"
 $wineDevourElf = Join-Path $moduleTargetDir "wine_devour\x86_64-unknown-none\release\mod-wine-devour"
+$terminalElf = Join-Path $moduleTargetDir "terminal\x86_64-unknown-none\release\mod-terminal"
 
 $needBoot      = Needs-Rebuild $bootDir $bootEfi
 $needKern      = Needs-Rebuild $kernDir $kernelElf $kernelFeatureKey
@@ -225,8 +228,9 @@ $needTimeback  = Needs-Rebuild $timebackDir $timebackElf
 $needCabina    = Needs-Rebuild $cabinaDir $cabinaElf
 $needLinuxDevour = Needs-Rebuild $linuxDevourDir $linuxDevourElf
 $needWineDevour = Needs-Rebuild $wineDevourDir $wineDevourElf
+$needTerminal  = Needs-Rebuild $terminalDir $terminalElf
 
-if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $needTimeback -and -not $needCabina -and -not $needLinuxDevour -and -not $Clean) {
+if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $needTimeback -and -not $needCabina -and -not $needLinuxDevour -and -not $needTerminal -and -not $Clean) {
     Write-Host "  OK All up to date. Nothing to rebuild." -ForegroundColor Green
     if (-not $Flash -and -not $Verify) {
         Write-Host "  Use -Clean to force rebuild, or -Flash to flash existing build." -ForegroundColor DarkGray
@@ -246,6 +250,7 @@ $kernJob = $null
 $moduleJob = $null
 $timebackJob = $null
 $cabinaJob = $null
+$terminalJob = $null
 
 if ($needBoot) {
     $bootTargetDir = Join-Path $target "bootloader"
@@ -334,12 +339,18 @@ if ($needWineDevour) {
     Step "mod_wine_devour build started (PID $($wineDevourJob.Id))"
 }
 
+if ($needTerminal) {
+    $terminalJob = Start-Job -ScriptBlock $moduleScript -ArgumentList $terminalDir, (Join-Path $moduleTargetDir "terminal"), $jobsFlag
+    Step "mod_terminal build started (PID $($terminalJob.Id))"
+}
+
 # Wait for all jobs
 $bootResult = $null
 $kernResult = $null
 $moduleResult = $null
 $timebackResult = $null
 $cabinaResult = $null
+$terminalResult = $null
 
 if ($bootJob) {
     Step "Waiting for bootloader..."
@@ -421,6 +432,17 @@ if ($cabinaJob) {
     }
 }
 
+if ($terminalJob) {
+    Step "Waiting for mod_terminal..."
+    $terminalResult = Receive-Job -Job $terminalJob -Wait -ErrorAction SilentlyContinue
+    Remove-Job -Job $terminalJob -Force
+    if (-not $terminalResult.Ok) { Fail "TERMINAL FAILED: $($terminalResult.Error)" }
+    foreach ($line in $terminalResult.Output) {
+        $l = "$line"
+        if ($l -match "Compiling|Finished|warning") { Write-Host "    [term] $l" -ForegroundColor DarkGray }
+    }
+}
+
 PhaseDone $buildTimer "Parallel build"
 
 # Save source hashes for next build's change detection
@@ -431,6 +453,7 @@ if ($needTimeback)  { Save-SourceHash $timebackDir $timebackElf }
 if ($needCabina)    { Save-SourceHash $cabinaDir $cabinaElf }
 if ($needLinuxDevour) { Save-SourceHash $linuxDevourDir $linuxDevourElf }
 if ($needWineDevour) { Save-SourceHash $wineDevourDir $wineDevourElf }
+if ($needTerminal)  { Save-SourceHash $terminalDir $terminalElf }
 
 # ══════════════════════════════════════════════════════════════════════
 # VALIDATE OUTPUTS
@@ -445,6 +468,7 @@ if (-not (Test-Path $timebackElf))   { Fail "Timeback ELF not found: $timebackEl
 if (-not (Test-Path $cabinaElf))     { Fail "Cabina ELF not found: $cabinaElf" }
 if (-not (Test-Path $linuxDevourElf)) { Fail "Linux Devour ELF not found: $linuxDevourElf" }
 if (-not (Test-Path $wineDevourElf))  { Fail "Wine Devour ELF not found: $wineDevourElf" }
+if (-not (Test-Path $terminalElf))    { Fail "Terminal ELF not found: $terminalElf" }
 
 $bootSize      = (Get-Item $bootEfi).Length
 $nanoWakeSize  = (Get-Item $nanoWakeElf).Length
@@ -462,6 +486,8 @@ $linuxDevourSize = (Get-Item $linuxDevourElf).Length
 $linuxDevourHash = Hash256 $linuxDevourElf
 $wineDevourSize  = (Get-Item $wineDevourElf).Length
 $wineDevourHash  = Hash256 $wineDevourElf
+$terminalSize    = (Get-Item $terminalElf).Length
+$terminalHash    = Hash256 $terminalElf
 
 Write-Host "    BOOTX64.EFI         $([math]::Round($bootSize/1024,1)) KB  sha256:$($bootHash.Substring(0,16))" -ForegroundColor White
 Write-Host "    layer-nano-wake     $([math]::Round($nanoWakeSize/1024,1)) KB  sha256:$($nanoWakeHash.Substring(0,16))" -ForegroundColor White
@@ -471,6 +497,7 @@ Write-Host "    mod_timeback.elf    $([math]::Round($timebackSize/1024,1)) KB  s
 Write-Host "    mod_cabina.elf      $([math]::Round($cabinaSize/1024,1)) KB  sha256:$($cabinaHash.Substring(0,16))" -ForegroundColor White
 Write-Host "    mod_linux_devour.elf $([math]::Round($linuxDevourSize/1024,1)) KB  sha256:$($linuxDevourHash.Substring(0,16))" -ForegroundColor White
 Write-Host "    mod_wine_devour.elf $([math]::Round($wineDevourSize/1024,1)) KB  sha256:$($wineDevourHash.Substring(0,16))" -ForegroundColor White
+Write-Host "    mod_terminal.elf    $([math]::Round($terminalSize/1024,1)) KB  sha256:$($terminalHash.Substring(0,16))" -ForegroundColor White
 
 PhaseDone $tval "Outputs validated"
 
@@ -498,12 +525,13 @@ Copy-Item $timebackElf -Destination (Join-Path $modulesStageDir "mod_timeback.el
 Copy-Item $cabinaElf   -Destination (Join-Path $modulesStageDir "mod_cabina.elf")
 Copy-Item $linuxDevourElf -Destination (Join-Path $modulesStageDir "mod_linux_devour.elf")
 Copy-Item $wineDevourElf  -Destination (Join-Path $modulesStageDir "mod_wine_devour.elf")
+Copy-Item $terminalElf   -Destination (Join-Path $modulesStageDir "mod_terminal.elf")
 
 $nanoWakeBin = Join-Path $stage "kernel.bin"
 $nanoWakeBinSize = (Get-Item $nanoWakeBin).Length
 $nanoWakeBinHash = Hash256 $nanoWakeBin
 
-$totalSize = $bootSize + $nanoWakeBinSize + $kernSize + $moduleSize + $timebackSize + $cabinaSize + $linuxDevourSize + $wineDevourSize
+$totalSize = $bootSize + $nanoWakeBinSize + $kernSize + $moduleSize + $timebackSize + $cabinaSize + $linuxDevourSize + $wineDevourSize + $terminalSize
 $manifest = @"
 # FastOS EFI Boot Manifest
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -520,6 +548,7 @@ modules/mod_timeback.elf  $timebackSize $timebackHash
 modules/mod_cabina.elf    $cabinaSize $cabinaHash
 modules/mod_linux_devour.elf $linuxDevourSize $linuxDevourHash
 modules/mod_wine_devour.elf  $wineDevourSize $wineDevourHash
+modules/mod_terminal.elf     $terminalSize $terminalHash
 "@
 $manifest | Set-Content -Path (Join-Path $stage "MANIFEST.TXT") -Encoding UTF8
 
@@ -574,6 +603,7 @@ if ($Flash) {
     Copy-Item (Join-Path $stage "modules\mod_cabina.elf")    -Destination "${modulesDestDir}\mod_cabina.elf" -Force
     Copy-Item (Join-Path $stage "modules\mod_linux_devour.elf") -Destination "${modulesDestDir}\mod_linux_devour.elf" -Force
     Copy-Item (Join-Path $stage "modules\mod_wine_devour.elf")  -Destination "${modulesDestDir}\mod_wine_devour.elf" -Force
+    Copy-Item (Join-Path $stage "modules\mod_terminal.elf")    -Destination "${modulesDestDir}\mod_terminal.elf" -Force
     Copy-Item (Join-Path $stage "MANIFEST.TXT")      -Destination (Join-Path $efiDest "MANIFEST.TXT")      -Force
 
     try {
@@ -586,6 +616,9 @@ if ($Flash) {
         $fs1 = [System.IO.File]::Open("${modulesDestDir}\mod_bmo_core.elf", 'Open', 'Write')
         $fs1.Flush(1)
         $fs1.Close()
+        $fs2 = [System.IO.File]::Open("${modulesDestDir}\mod_terminal.elf", 'Open', 'Write')
+        $fs2.Flush(1)
+        $fs2.Close()
     } catch { Warn "Flush failed: $_" }
     PhaseDone $tf "Flash"
 
@@ -598,7 +631,8 @@ if ($Flash) {
         @{Name="mod_timeback.elf";Hash=$timebackHash;Size=$timebackSize;IsModule=$true},
         @{Name="mod_cabina.elf";Hash=$cabinaHash;Size=$cabinaSize;IsModule=$true},
         @{Name="mod_linux_devour.elf";Hash=$linuxDevourHash;Size=$linuxDevourSize;IsModule=$true},
-        @{Name="mod_wine_devour.elf";Hash=$wineDevourHash;Size=$wineDevourSize;IsModule=$true}
+        @{Name="mod_wine_devour.elf";Hash=$wineDevourHash;Size=$wineDevourSize;IsModule=$true},
+        @{Name="mod_terminal.elf";Hash=$terminalHash;Size=$terminalSize;IsModule=$true}
     )) {
         $dp = if ($f.IsModule) { Join-Path (Join-Path $efiDest "modules") $f.Name } else { Join-Path $efiDest $f.Name }
         if (-not (Test-Path $dp)) { Fail "MISSING: $($f.Name) at $dp" }

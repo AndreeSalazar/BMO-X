@@ -1,18 +1,17 @@
-//! Ring 0 boot phases — orchestrator for the kernel entry path.
+//! Ring 0 boot phases - orchestrator for the kernel entry path.
 //!
-//! The legacy kernel had 4-5 phases plus SMP/ACPI orchestration via
-//! `cpu_vendor_profile`. In Ultra_kernel's Ring 0 base we keep the
-//! same Faggin-style phase structure but call only the local modules
-//! (no external vendor crate).
+//! In Ultra_kernel's minimal Ring 0 base we keep only what's necessary:
+//! the splash animation, the framebuffer init, and a serial shell.
+//! All GDT/IDT/CPU/MM/IRQ/SMP subsystems live in the faggin stages
+//! (s2_gdt, s3_idt, s4_cpuid, s5_control, s9_paging) and are already
+//! configured by the time the kernel runs.
 //!
 //! Phases:
-//!   0. arch  — GDT, IDT, syscall MSRs, CPU init
-//!   1. mem   — phys frame allocator
-//!   2. dev   — framebuffer init, HPET, ACPI stub
-//!   3. sched — single-CPU task table init
+//!   0. fb    - framebuffer init from BootContext
+//!   1. ui    - splash animation (if FB available)
 //!
-//! After phases: splash completes, `clear`, and a serial shell takes
-//! over so the user has a way to interact even without a display.
+//! After phases: serial shell takes over so the user has a way to
+//! interact even without a display.
 
 use boot_context::BootContext;
 use super::splash;
@@ -22,27 +21,8 @@ fn s_log(msg: &str) {
     crate::ring0::dev::console::serial_write("\n");
 }
 
-fn phase0_arch(_ctx: &BootContext) {
-    s_log("[phase0] === CPU Init ===");
-    crate::ring0::arch::gdt::init_gdt();
-    crate::ring0::arch::idt::init_idt();
-    crate::ring0::arch::syscall::init_syscall();
-    let _cpu = crate::ring0::cpu::init();
-    s_log("[phase0] done");
-}
-
-fn phase1_mem(ctx: &BootContext) {
-    s_log("[phase1] === Memory Init ===");
-    let entries = super::mm::types::from_ctx(&ctx.memory_map[..ctx.memory_map_count as usize]);
-    let bi_phys = ctx as *const BootContext as u64;
-    crate::ring0::mm::phys::init(&entries, bi_phys);
-    crate::ring0::mm::vmm_stub::map_high_mem(&entries, ctx.memory_map_count as usize);
-    crate::ring0::mm::heap_stub::init_heap();
-    s_log("[phase1] done");
-}
-
-fn phase2_dev(ctx: &BootContext) {
-    s_log("[phase2] === Device Init ===");
+fn phase0_fb(ctx: &BootContext) {
+    s_log("[phase0] === Framebuffer Init ===");
     let fmt = match ctx.fb_pixel_format {
         0 => crate::ring0::dev::framebuffer::PixelFormat::Bgr,
         1 => crate::ring0::dev::framebuffer::PixelFormat::Rgb,
@@ -55,24 +35,23 @@ fn phase2_dev(ctx: &BootContext) {
         ctx.fb_stride,
         fmt,
     );
-    crate::ring0::dev::timer::init();
-    crate::ring0::dev::watchdog::arm();
-    s_log("[phase2] done");
+    s_log("[phase0] done");
 }
 
-fn phase3_sched(_ctx: &BootContext) {
-    s_log("[phase3] === Scheduler Init ===");
-    crate::ring0::proc::init();
-    crate::ring0::irq::init();
-    s_log("[phase3] done");
+fn phase1_ui(_ctx: &BootContext) {
+    s_log("[phase1] === UI (splash) ===");
+    if crate::info::has_fb() {
+        splash::splash_progress(100, "BMO Ready.");
+        splash::splash_clear();
+    } else {
+        s_log("[splash] no framebuffer, skipping");
+    }
+    s_log("[phase1] done");
 }
 
-// ── Serial shell ──────────────────────────────────────────────────
-//
-// After all phases, the kernel runs an interactive shell over COM1.
-// The user can inspect BootContext, re-run the splash, trigger a
-// panic, reboot, or just halt. This is the base layer of "user
-// interaction" before Ring 3 exists.
+// ---------------------------------------------------------------------------
+// Serial shell
+// ---------------------------------------------------------------------------
 
 fn shell_prompt() {
     crate::ring0::dev::console::serial_write("> ");
@@ -86,7 +65,7 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
                 crate::ring0::dev::console::serial_write("\n");
                 return n;
             }
-            Some(0x7f) | Some(b'\b') => {
+            Some(0x7f) | Some(0x08) => {
                 if n > 0 {
                     n -= 1;
                     crate::ring0::dev::console::serial_write("\x08 \x08");
@@ -107,7 +86,6 @@ fn shell_help() {
     s_log("commands:");
     s_log("  help         show this help");
     s_log("  info         dump BootContext fields");
-    s_log("  regs         show GDT/IDT/TSS/syscall pointers");
     s_log("  fb           show framebuffer info");
     s_log("  splash       re-run boot splash animation");
     s_log("  panic        trigger test panic (does not return)");
@@ -143,35 +121,19 @@ fn shell_info(ctx: &BootContext) {
     crate::ring0::dev::console::serial_write("\n");
 }
 
-fn shell_regs() {
-    s_log("--- Ring 0 globals ---");
-    crate::ring0::dev::console::serial_write("FB_ADDR         = 0x");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_ADDR, 16);
-    crate::ring0::dev::console::serial_write(" (framebuffer physical)\n");
-    crate::ring0::dev::console::serial_write("FB_WIDTH        = ");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_WIDTH as u64, 10);
-    crate::ring0::dev::console::serial_write("\n");
-    crate::ring0::dev::console::serial_write("FB_HEIGHT       = ");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_HEIGHT as u64, 10);
-    crate::ring0::dev::console::serial_write("\n");
-    crate::ring0::dev::console::serial_write("FB_STRIDE       = ");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_STRIDE as u64, 10);
-    crate::ring0::dev::console::serial_write("\n");
-}
-
 fn shell_fb() {
     if !crate::info::has_fb() {
         s_log("[fb] no framebuffer (headless boot)");
         return;
     }
     crate::ring0::dev::console::serial_write("[fb] base=0x");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_ADDR, 16);
+    crate::ring0::dev::console::serial_write_u64(unsafe { crate::info::FB_ADDR }, 16);
     crate::ring0::dev::console::serial_write(" ");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_WIDTH as u64, 10);
+    crate::ring0::dev::console::serial_write_u64(unsafe { crate::info::FB_WIDTH } as u64, 10);
     crate::ring0::dev::console::serial_write("x");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_HEIGHT as u64, 10);
+    crate::ring0::dev::console::serial_write_u64(unsafe { crate::info::FB_HEIGHT } as u64, 10);
     crate::ring0::dev::console::serial_write("x32 stride=");
-    crate::ring0::dev::console::serial_write_u64(crate::info::FB_STRIDE as u64, 10);
+    crate::ring0::dev::console::serial_write_u64(unsafe { crate::info::FB_STRIDE } as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
 }
 
@@ -186,12 +148,12 @@ fn shell_splash() {
     s_log("[splash] done");
 }
 
-fn shell_panic() {
+fn shell_panic() -> ! {
     s_log("[shell] triggering test panic...");
     panic!("intentional panic from serial shell");
 }
 
-fn shell_reboot() {
+fn shell_reboot() -> ! {
     s_log("[shell] reboot (keyboard reset pulse)");
     unsafe { core::arch::asm!("out 0x64, al", in("al") 0xFEu8); }
     loop { unsafe { core::arch::asm!("hlt"); } }
@@ -218,8 +180,6 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_help();
         } else if cmd == b"info" {
             shell_info(ctx);
-        } else if cmd == b"regs" {
-            shell_regs();
         } else if cmd == b"fb" {
             shell_fb();
         } else if cmd == b"splash" {
@@ -250,6 +210,20 @@ pub fn main(ctx: &BootContext) {
     crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
 
+    // CPU identity detection (CPUID leaf 0, 1, 0x80000002-04)
+    let cpu = crate::ring0::cpu::detect_cpu();
+    crate::ring0::dev::console::serial_write("[cpu] ");
+    crate::ring0::dev::console::serial_write(cpu.brand.as_str());
+    crate::ring0::dev::console::serial_write(" | ");
+    crate::ring0::dev::console::serial_write(match cpu.vendor {
+        crate::ring0::cpu::CpuVendor::Amd => "AMD",
+        crate::ring0::cpu::CpuVendor::Intel => "Intel",
+        crate::ring0::cpu::CpuVendor::Unknown => "Unknown",
+    });
+    crate::ring0::dev::console::serial_write(" | cores=");
+    crate::ring0::dev::console::serial_write_u64_dec(cpu.logical_cores as u64);
+    crate::ring0::dev::console::serial_write("\n");
+
     // Populate FB globals from the context.
     crate::info::init_from(ctx);
 
@@ -261,16 +235,9 @@ pub fn main(ctx: &BootContext) {
         s_log("[splash] no framebuffer, skipping splash");
     }
 
-    splash::splash_progress(15, "CPU, GDT, IDT...");
-    phase0_arch(ctx);
-    splash::splash_progress(35, "Memory allocators...");
-    phase1_mem(ctx);
-    splash::splash_progress(55, "Devices...");
-    phase2_dev(ctx);
-    splash::splash_progress(80, "Scheduler...");
-    phase3_sched(ctx);
-    splash::splash_progress(100, "BMO Ready.");
-    splash::splash_clear();
+    splash::splash_progress(15, "Framebuffer init...");
+    phase0_fb(ctx);
+    phase1_ui(ctx);
     s_log("[ring0] boot complete");
     s_log("[ring0] BMO: Ok Ready");
 

@@ -1,4 +1,4 @@
-//! Faggin stage 4 — CPUID detection (vendor, brand, features).
+//! Faggin stage 4 ??? CPUID detection (vendor, brand, features).
 //!
 //! Responsibilities (one only):
 //!   - Read vendor string (leaf 0).
@@ -7,7 +7,7 @@
 //!   - Log them to serial.
 //!   - Jump to s5_control.
 //!
-//! Writes nothing to BootContext — s5 reads the same CPUID outputs
+//! Writes nothing to BootContext ??? s5 reads the same CPUID outputs
 //! directly from the CPU (CPUID is idempotent).
 
 #![no_std]
@@ -17,9 +17,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s5_control(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x140000;
 
 #[inline]
 fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
@@ -96,7 +94,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s5_control as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

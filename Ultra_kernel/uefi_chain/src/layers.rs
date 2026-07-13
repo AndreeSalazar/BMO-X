@@ -1,4 +1,4 @@
-//! UEFI boot chain — 5 layer modules.
+//! UEFI boot chain ??? 5 layer modules.
 
 pub mod layer0_enter;
 pub mod layer1_getmem;

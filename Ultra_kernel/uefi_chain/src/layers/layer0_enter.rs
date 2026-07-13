@@ -1,4 +1,4 @@
-//! Layer 0 — `uefi_enter`
+//! Layer 0 ??? `uefi_enter`
 //!
 //! Responsibilities (only these, nothing else):
 //! 1. Receive the UEFI handoff (`ImageHandle`, `SystemTable*`).

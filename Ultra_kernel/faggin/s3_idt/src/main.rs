@@ -1,4 +1,4 @@
-//! Faggin stage 3 — IDT (256 entries).
+//! Faggin stage 3 ??? IDT (256 entries).
 //!
 //! Responsibilities (one only):
 //!   - Define all 32 exception handlers (no-err and with-err) plus
@@ -9,14 +9,13 @@
 
 #![no_std]
 #![no_main]
+#![feature(abi_x86_interrupt)]
 #![allow(static_mut_refs)]
 
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s4_cpuid(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x130000;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -38,12 +37,12 @@ impl IdtEntry {
 #[repr(C, packed)] struct Idtr { limit: u16, base: u64 }
 static mut IDT: [IdtEntry; 256] = [IdtEntry::empty(); 256];
 
-// ── Exception handlers (all halt with a serial message) ──────────
+// ?????? Exception handlers (all halt with a serial message) ??????????????????????????????
 
 macro_rules! halt_handler {
     ($name:ident, $msg:literal) => {
         extern "x86-interrupt" fn $name(_sf: u64) {
-            serial_shared::puts(concat!("[s3 idt] ", $msg, " — halting\n"));
+            serial_shared::puts(concat!("[s3 idt] ", $msg, " ??? halting\n"));
             loop { unsafe { asm!("hlt"); } }
         }
     };
@@ -59,22 +58,22 @@ halt_handler!(exc_no_err2,     "EXCEPTION (no err, mirror)");
 halt_handler!(irq_stub,        "IRQ stub");
 
 extern "x86-interrupt" fn exc_with_err(_sf: u64, _e: u64) {
-    serial_shared::puts("[s3 idt] EXCEPTION (with err) — halting\n");
+    serial_shared::puts("[s3 idt] EXCEPTION (with err) ??? halting\n");
     loop { unsafe { asm!("hlt"); } }
 }
 
 extern "x86-interrupt" fn exc_double_fault(_sf: u64, _e: u64) {
-    serial_shared::puts("[s3 idt] #DF Double Fault — halting\n");
+    serial_shared::puts("[s3 idt] #DF Double Fault ??? halting\n");
     loop { unsafe { asm!("cli; hlt"); } }
 }
 
 extern "x86-interrupt" fn exc_gpf(_sf: u64, _e: u64) {
-    serial_shared::puts("[s3 idt] #GP — halting\n");
+    serial_shared::puts("[s3 idt] #GP ??? halting\n");
     loop { unsafe { asm!("hlt"); } }
 }
 
 extern "x86-interrupt" fn exc_page_fault(_sf: u64, _e: u64) {
-    serial_shared::puts("[s3 idt] #PF — halting\n");
+    serial_shared::puts("[s3 idt] #PF ??? halting\n");
     loop { unsafe { asm!("hlt"); } }
 }
 
@@ -127,7 +126,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s4_cpuid as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

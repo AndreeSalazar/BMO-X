@@ -1,4 +1,4 @@
-//! Layer 3 — `uefi_loader`
+//! Layer 3 ??? `uefi_loader`
 //!
 //! Responsibilities:
 //! 1. Locate `EFI_SIMPLE_FILE_SYSTEM_PROTOCOL`.
@@ -96,7 +96,7 @@ pub extern "C" fn l3_entry(
     crate::serial::puts("\n[L3 uefi_loader]\n");
 
     if ctx_ptr.is_null() || system_table.is_null() {
-        crate::serial::puts("[L3] null handoff — halting\n");
+        crate::serial::puts("[L3] null handoff ??? halting\n");
         halt();
     }
 
@@ -105,14 +105,14 @@ pub extern "C" fn l3_entry(
     let bs = st.boot_services;
 
     if bs.is_null() {
-        crate::serial::puts("[L3] BootServices null — halting\n");
+        crate::serial::puts("[L3] BootServices null ??? halting\n");
         halt();
     }
 
     let mut fs_handle: EfiHandle = core::ptr::null_mut();
     let r = unsafe { locate_protocol(bs, &mut FILE_SYSTEM_GUID, &mut fs_handle) };
     if r != EFI_SUCCESS || fs_handle.is_null() {
-        crate::serial::puts("[L3] Simple FS not found — halting\n");
+        crate::serial::puts("[L3] Simple FS not found ??? halting\n");
         halt();
     }
 
@@ -121,7 +121,7 @@ pub extern "C" fn l3_entry(
         unsafe { core::mem::transmute(*sfsp.add(1)) };
     let mut root: *mut core::ffi::c_void = core::ptr::null_mut();
     if unsafe { open_vol(fs_handle, &mut root) } != EFI_SUCCESS || root.is_null() {
-        crate::serial::puts("[L3] OpenVolume failed — halting\n");
+        crate::serial::puts("[L3] OpenVolume failed ??? halting\n");
         halt();
     }
 
@@ -135,12 +135,25 @@ pub extern "C" fn l3_entry(
     let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
         unsafe { core::mem::transmute(*file_base.add(4)) };
 
-    let stages: [LoadEntry; 14] = STAGES
-        .iter()
-        .map(|(n, a)| LoadEntry { name: n, addr: *a })
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap_or_else(|_| panic!("STAGES must have 14 entries"));
+    // Build the LoadEntry array from STAGES (compile-time-constant).
+    // No Vec — this is no_std, so we expand manually.
+    // STAGES has 14 entries: s1_serial .. s12_devices + kernel.
+    let stages: [LoadEntry; 14] = [
+        LoadEntry { name: STAGES[0].0,  addr: STAGES[0].1  },
+        LoadEntry { name: STAGES[1].0,  addr: STAGES[1].1  },
+        LoadEntry { name: STAGES[2].0,  addr: STAGES[2].1  },
+        LoadEntry { name: STAGES[3].0,  addr: STAGES[3].1  },
+        LoadEntry { name: STAGES[4].0,  addr: STAGES[4].1  },
+        LoadEntry { name: STAGES[5].0,  addr: STAGES[5].1  },
+        LoadEntry { name: STAGES[6].0,  addr: STAGES[6].1  },
+        LoadEntry { name: STAGES[7].0,  addr: STAGES[7].1  },
+        LoadEntry { name: STAGES[8].0,  addr: STAGES[8].1  },
+        LoadEntry { name: STAGES[9].0,  addr: STAGES[9].1  },
+        LoadEntry { name: STAGES[10].0, addr: STAGES[10].1 },
+        LoadEntry { name: STAGES[11].0, addr: STAGES[11].1 },
+        LoadEntry { name: STAGES[12].0, addr: STAGES[12].1 },
+        LoadEntry { name: STAGES[13].0, addr: STAGES[13].1 },
+    ];
 
     let mut file_buf = [0u8; MAX_FILE_SIZE];
     let mut ok = true;
@@ -184,7 +197,7 @@ pub extern "C" fn l3_entry(
     }
 
     if !ok {
-        crate::serial::puts("[L3] missing stage files — halting\n");
+        crate::serial::puts("[L3] missing stage files ??? halting\n");
         halt();
     }
 

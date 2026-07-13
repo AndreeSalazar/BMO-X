@@ -1,4 +1,4 @@
-//! Faggin stage 9 — Paging (PML4 + identity map + higher-half).
+//! Faggin stage 9 ??? Paging (PML4 + identity map + higher-half).
 //!
 //! Responsibilities (one only):
 //!   - Build a PML4 in a freshly-allocated frame.
@@ -16,9 +16,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s10_heap(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x190000;
 
 const PAGE_SIZE: u64 = 4096;
 const HIGH_MEM_BASE: u64 = 0xFFFF_8000_0000_0000;
@@ -92,7 +90,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
 
     let pml4 = unsafe { zeroed_frame() };
     if pml4.is_null() {
-        serial_shared::puts("[s9 paging] no frames — halting\n");
+        serial_shared::puts("[s9 paging] no frames ??? halting\n");
         loop { unsafe { asm!("hlt"); } }
     }
 
@@ -129,7 +127,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s10_heap as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

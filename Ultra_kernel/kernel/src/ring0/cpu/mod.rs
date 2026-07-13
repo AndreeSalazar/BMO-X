@@ -1,56 +1,10 @@
-//! Modular CPU initialization — single entry point for all CPU subsystems.
-//!
-//! Usage: `let info = crate::ring0::cpu::init();`
-//!
-//! This orchestrates: feature detection → CR0/CR4 → XCR0 → FPU → MTRR → PAT
-//! → TSC calibration → info display.
-
-pub mod features;
-pub mod msr;
-pub mod regs;
-pub mod cache;
-pub mod fpu;
-pub mod tsc;
-pub mod info;
-pub mod vendor_shim;
-
-pub use features::CpuFeatures;
-pub use vendor_shim as vendor;
-
-/// Complete CPU information after initialization.
-pub struct CpuInfo {
-    pub features: CpuFeatures,
-    pub tsc_freq: u64,
-}
-
-/// Initialize all CPU subsystems in the correct order.
-pub fn init() -> CpuInfo {
-    let features = features::detect();
-    regs::init(&features);
-    regs::init_xcr0(&features);
-    fpu::init_fpu();
-    let (fb_addr, fb_size) = unsafe {
-        let addr = crate::info::FB_ADDR;
-        let size = if addr != 0 {
-            crate::info::FB_WIDTH as u64
-                * crate::info::FB_HEIGHT as u64
-                * 4
-        } else {
-            0
-        };
-        (addr, size)
-    };
-    cache::init(&features, fb_addr, fb_size);
-    let tsc_freq = tsc::calibrate();
-    info::print();
-    CpuInfo { features, tsc_freq }
-}
+use core::arch::asm;
 
 #[inline]
 pub fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
     let (eax, ebx, ecx, edx);
     unsafe {
-        core::arch::asm!(
+        asm!(
             "push rbx",
             "cpuid",
             "mov {ebx_out:e}, ebx",
@@ -64,65 +18,128 @@ pub fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
     (eax, ebx, ecx, edx)
 }
 
-#[inline]
-pub fn rdtsc() -> u64 {
-    let low: u32;
-    let high: u32;
-    unsafe { core::arch::asm!("rdtsc", out("eax") low, out("edx") high); }
-    ((high as u64) << 32) | low as u64
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CpuVendor {
+    Amd,
+    Intel,
+    Unknown,
 }
 
-static mut TSC_FREQ_HZ: u64 = 0;
-
-pub fn set_tsc_freq(freq: u64) {
-    unsafe { TSC_FREQ_HZ = freq; }
-}
-
-#[inline]
-pub fn tsc_per_sec() -> u64 {
-    unsafe { TSC_FREQ_HZ }
-}
-
-#[inline]
-pub fn rdtscp() -> (u64, u32) {
-    let low: u32;
-    let high: u32;
-    let aux: u32;
-    unsafe { core::arch::asm!("rdtscp", out("eax") low, out("edx") high, out("ecx") aux); }
-    (((high as u64) << 32) | low as u64, aux)
-}
-
-#[inline]
-pub fn halt() {
-    unsafe { core::arch::asm!("sti; hlt"); }
-}
-
-#[inline]
-pub fn sti() {
-    unsafe { core::arch::asm!("sti"); }
-}
-
-#[inline]
-pub fn cli() {
-    unsafe { core::arch::asm!("cli"); }
-}
-
-#[inline]
-pub fn irqs_enabled() -> bool {
-    let flags: u64;
-    unsafe { core::arch::asm!("pushfq; pop {}", out(reg) flags, options(nostack)); }
-    flags & 0x200 != 0
-}
-
-pub fn busy_wait_ms(ms: u64) {
-    let freq = tsc_per_sec();
-    if freq > 0 {
-        tsc::busy_wait_ms(ms, freq);
-    } else {
-        let start = rdtsc();
-        let target = 3_700_000u64 * ms;
-        while rdtsc().wrapping_sub(start) < target {
-            core::hint::spin_loop();
+impl CpuVendor {
+    pub fn from_bytes(b: &[u8; 12]) -> Self {
+        if &b[0..3] == b"AMD" || &b[0..9] == b"Authentic" {
+            Self::Amd
+        } else if &b[0..6] == b"Genuin" {
+            Self::Intel
+        } else {
+            Self::Unknown
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CpuFamilyModel {
+    pub family: u8,
+    pub model: u8,
+    pub stepping: u8,
+    pub ext_family: u8,
+    pub ext_model: u8,
+}
+
+impl CpuFamilyModel {
+    pub fn is_ryzen_5_5600x(&self) -> bool {
+        self.family == 0x19 && self.model == 0x01
+    }
+    pub fn name(&self) -> &'static str {
+        if self.is_ryzen_5_5600x() {
+            "Ryzen 5 5600X (Vermeer, Zen 3)"
+        } else if self.family == 0x19 && self.model == 0x21 {
+            "Ryzen 7000 series (Raphael, Zen 4)"
+        } else if self.family == 0x19 {
+            "AMD Family 19h (Zen 3 era)"
+        } else if self.family == 0x17 {
+            "AMD Family 17h (Zen 1/2)"
+        } else {
+            "Unknown AMD CPU"
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CpuBrandString(pub [u8; 48]);
+
+impl CpuBrandString {
+    pub fn as_str(&self) -> &str {
+        let len = self.0.iter().position(|&b| b == 0).unwrap_or(48);
+        core::str::from_utf8(&self.0[..len]).unwrap_or("?")
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CpuIdentity {
+    pub vendor: CpuVendor,
+    pub family_model: CpuFamilyModel,
+    pub brand: CpuBrandString,
+    pub max_leaf: u32,
+    pub max_ext_leaf: u32,
+    pub logical_cores: u32,
+    pub initial_apic_id: u32,
+    pub features_ecx: u32,
+    pub features_edx: u32,
+}
+
+pub fn detect_cpu() -> CpuIdentity {
+    let (max_leaf, ebx, ecx, edx) = cpuid(0, 0);
+    let vendor_bytes: [u8; 12] = [
+        ebx as u8, (ebx >> 8) as u8, (ebx >> 16) as u8, (ebx >> 24) as u8,
+        edx as u8, (edx >> 8) as u8, (edx >> 16) as u8, (edx >> 24) as u8,
+        ecx as u8, (ecx >> 8) as u8, (ecx >> 16) as u8, (ecx >> 24) as u8,
+    ];
+    let vendor = CpuVendor::from_bytes(&vendor_bytes);
+
+    let (eax1, ebx1, ecx1, edx1) = cpuid(1, 0);
+    let stepping = (eax1 & 0x0F) as u8;
+    let base_model = ((eax1 >> 4) & 0x0F) as u8;
+    let base_family = ((eax1 >> 8) & 0x0F) as u8;
+    let ext_model = ((eax1 >> 16) & 0x0F) as u8;
+    let ext_family = ((eax1 >> 20) & 0xFF) as u8;
+    let (family, model) = if base_family == 0x0F {
+        (ext_family + 0x0F, (ext_model << 4) | base_model)
+    } else {
+        (base_family, base_model)
+    };
+    let family_model = CpuFamilyModel { family, model, stepping, ext_family, ext_model };
+
+    let (a, b, c, d) = cpuid(0x80000002, 0);
+    let (e, f, g, h) = cpuid(0x80000003, 0);
+    let (i, j, k, l) = cpuid(0x80000004, 0);
+    let mut s = [0u8; 48];
+    let chunks: [(u32, u32, u32, u32); 3] = [(a, b, c, d), (e, f, g, h), (i, j, k, l)];
+    let mut idx = 0;
+    for (a, b, c, d) in chunks {
+        s[idx] = a as u8; s[idx+1] = (a >> 8) as u8;
+        s[idx+2] = (a >> 16) as u8; s[idx+3] = (a >> 24) as u8;
+        s[idx+4] = b as u8; s[idx+5] = (b >> 8) as u8;
+        s[idx+6] = (b >> 16) as u8; s[idx+7] = (b >> 24) as u8;
+        s[idx+8] = c as u8; s[idx+9] = (c >> 8) as u8;
+        s[idx+10] = (c >> 16) as u8; s[idx+11] = (c >> 24) as u8;
+        s[idx+12] = d as u8; s[idx+13] = (d >> 8) as u8;
+        s[idx+14] = (d >> 16) as u8; s[idx+15] = (d >> 24) as u8;
+        idx += 16;
+    }
+    let brand = CpuBrandString(s);
+
+    let (max_ext_leaf, _, _, _) = cpuid(0x80000000, 0);
+
+    CpuIdentity {
+        vendor,
+        family_model,
+        brand,
+        max_leaf,
+        max_ext_leaf,
+        logical_cores: (ebx1 >> 16) & 0xFF,
+        initial_apic_id: (ebx1 >> 24) & 0xFF,
+        features_ecx: ecx1,
+        features_edx: edx1,
     }
 }

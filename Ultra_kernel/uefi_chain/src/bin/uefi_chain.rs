@@ -1,10 +1,10 @@
-//! BMO Ultra Kernel — UEFI entry point.
+//! BMO Ultra Kernel ??? UEFI entry point.
 //!
 //! This is the firmware-facing symbol. The actual work is split across
 //! 5 layers, each one a single function with `jmp` hand-off:
 //!
-//!   layer0_enter → layer1_getmem → layer2_getgop
-//!                → layer3_load    → layer4_exit → (jmp to stage1_arch)
+//!   layer0_enter ??? layer1_getmem ??? layer2_getgop
+//!                ??? layer3_load    ??? layer4_exit ??? (jmp to stage1_arch)
 
 #![no_std]
 #![no_main]

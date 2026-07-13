@@ -1,7 +1,10 @@
 [target.x86_64-unknown-none]
 rustflags = [
   "-C", "link-arg=-T",
-  "-C", "link-arg=s10_heap/linker.ld",
+  "-C", "link-arg=linker.ld",
   "-C", "relocation-model=static",
   "-C", "target-feature=+crt-static",
 ]
+
+[unstable]
+build-std = ["core"]

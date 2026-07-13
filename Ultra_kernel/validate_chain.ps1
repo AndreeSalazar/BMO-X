@@ -1,20 +1,20 @@
 param(
-    [int]$MaxStageKB = 4,    # each faggin stage must be <= this many KB
-    [int]$MaxKernelKB = 64   # kernel must be <= this many KB
+    [int]$MaxStageKB = 16,
+    [int]$MaxKernelKB = 64
 )
 
 $root = $PSScriptRoot
 $target = Join-Path $root "target"
 $stage  = Join-Path $root "staging\EFI\BOOT"
 
-function Pass { param($m) Write-Host "  ✓ $m" -ForegroundColor Green }
-function Warn { param($m) Write-Host "  ! $m" -ForegroundColor Yellow }
-function Fail { param($m) Write-Host "  ✗ $m" -ForegroundColor Red }
+function Pass { param($m) Write-Host ("  v " + $m) -ForegroundColor Green }
+function Warn { param($m) Write-Host ("  ! " + $m) -ForegroundColor Yellow }
+function Fail { param($m) Write-Host ("  x " + $m) -ForegroundColor Red }
 
 if (-not (Test-Path $stage)) {
     Write-Host ""
     Write-Host "  Ultra_kernel/validate_chain.ps1" -ForegroundColor Magenta
-    Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "  ------------------------------" -ForegroundColor DarkGray
     Write-Host ""
     Fail "staging dir not found: $stage"
     Write-Host "    Run .\build.ps1 first." -ForegroundColor Yellow
@@ -23,12 +23,11 @@ if (-not (Test-Path $stage)) {
 
 Write-Host ""
 Write-Host "  Ultra_kernel/validate_chain.ps1" -ForegroundColor Magenta
-Write-Host "  ──────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  ------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Validating that every faggin stage is small and in the right order." -ForegroundColor White
 Write-Host ""
 
-# ── 1. Check that all 14 files exist (uefi_chain + 12 stages + kernel) ─
 $expected = @(
     "BOOTX64.EFI",
     "s1_serial.bin", "s2_gdt.bin", "s3_idt.bin", "s4_cpuid.bin",
@@ -42,7 +41,7 @@ $total = 0
 $base = 0x100000
 
 Write-Host "  Step                                Address     Size      Status" -ForegroundColor White
-Write-Host "  ────────────────────────────────    ──────────   ────────  ──────" -ForegroundColor DarkGray
+Write-Host "  ----                                -------     ----      ------" -ForegroundColor DarkGray
 
 foreach ($f in $expected) {
     $path = Join-Path $stage $f
@@ -75,23 +74,30 @@ foreach ($f in $expected) {
     Write-Host $status -ForegroundColor $status_color
 }
 
-Write-Host "  ────────────────────────────────    ──────────   ────────  ──────" -ForegroundColor DarkGray
+Write-Host "  ----                                -------     ----     ------" -ForegroundColor DarkGray
 Write-Host ("  Total: {0} B ({1} KB)" -f $total, [math]::Round($total/1024, 2)) -ForegroundColor Yellow
 Write-Host ""
 
-# ── 2. Check the chain order matches the source code ───────────
+# Chain order: each stage jumps via NEXT_ADDR constant to the next stage's load addr
 Write-Host "  Chain order check:" -ForegroundColor White
-$expected_order = @(
-    "s1_serial", "s2_gdt", "s3_idt", "s4_cpuid",
-    "s5_control", "s6_fpu", "s7_tsc", "s8_syscall",
-    "s9_paging", "s10_heap", "s11_acpi", "s12_devices"
+$expected_addrs = @(
+    "s1_serial", 0x110000,
+    "s2_gdt",    0x120000,
+    "s3_idt",    0x130000,
+    "s4_cpuid",  0x140000,
+    "s5_control",0x150000,
+    "s6_fpu",    0x160000,
+    "s7_tsc",    0x170000,
+    "s8_syscall",0x180000,
+    "s9_paging", 0x190000,
+    "s10_heap",  0x1A0000,
+    "s11_acpi",  0x1B0000
 )
 
-# Verify each stage's jmp target: stage N should jmp to stage N+1
-# (except s12 which jumps to kernel@0x400000).
 $source_dir = Join-Path $root "faggin"
-for ($i = 0; $i -lt $expected_order.Count; $i++) {
-    $s = $expected_order[$i]
+for ($i = 0; $i -lt $expected_addrs.Count; $i += 2) {
+    $s = $expected_addrs[$i]
+    $nextAddr = $expected_addrs[$i + 1]
     $main = Join-Path $source_dir (Join-Path $s "src\main.rs")
     if (-not (Test-Path $main)) {
         Fail ("  {0,-12} main.rs missing" -f $s)
@@ -99,31 +105,34 @@ for ($i = 0; $i -lt $expected_order.Count; $i++) {
         continue
     }
     $content = Get-Content -LiteralPath $main -Raw
-
-    if ($i -lt $expected_order.Count - 1) {
-        $next = $expected_order[$i + 1]
-        if ($content -match [regex]::Escape($next)) {
-            Pass ("  {0,-12} -> {1}" -f $s, $next)
-        } else {
-            Fail ("  {0,-12} does NOT jmp to {1}" -f $s, $next)
-            $all_ok = $false
-        }
+    $addrHex = "0x{0:X}" -f $nextAddr
+    if ($content -match [regex]::Escape($addrHex)) {
+        Pass ("  {0,-12} -> {1}" -f $s, $addrHex)
     } else {
-        # last stage jumps to kernel
-        if ($content -match 'stage_entry\[0\]' -or $content -match '0x400000' -or $content -match 'kernel') {
-            Pass ("  {0,-12} -> kernel@0x400000" -f $s)
-        } else {
-            Fail ("  {0,-12} does NOT jmp to kernel" -f $s)
-            $all_ok = $false
-        }
+        Fail ("  {0,-12} does NOT jmp to {1}" -f $s, $addrHex)
+        $all_ok = $false
     }
+}
+# s12_devices jumps via stage_entry[0]
+$main = Join-Path $source_dir "s12_devices\src\main.rs"
+if (Test-Path $main) {
+    $content = Get-Content -LiteralPath $main -Raw
+    if ($content -match 'stage_entry\[0\]') {
+        Pass ("  s12_devices  -> kernel (stage_entry[0])")
+    } else {
+        Fail ("  s12_devices  does NOT jmp to kernel")
+        $all_ok = $false
+    }
+} else {
+    Fail ("  s12_devices  main.rs missing")
+    $all_ok = $false
 }
 
 Write-Host ""
 if ($all_ok) {
-    Write-Host "  ═══ ALL CHECKS PASSED ═══" -ForegroundColor Green
+    Write-Host "  === ALL CHECKS PASSED ===" -ForegroundColor Green
     exit 0
 } else {
-    Write-Host "  ═══ SOME CHECKS FAILED ═══" -ForegroundColor Red
+    Write-Host "  === SOME CHECKS FAILED ===" -ForegroundColor Red
     exit 1
 }

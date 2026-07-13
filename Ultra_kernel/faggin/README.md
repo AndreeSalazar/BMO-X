@@ -17,17 +17,17 @@ We apply the same principle to the boot chain. Each `s*_*.rs` is a
 
 | # | Stage        | Address     | Does                          | Writes to `BootContext`        |
 |---|--------------|-------------|-------------------------------|--------------------------------|
-| 1 | `s1_serial`  | 0x100000    | COM1 init                    | (none)                          |
-| 2 | `s2_gdt`     | 0x110000    | GDT + TSS + IST stacks       | `gdt_ptr`, `tss_ptr`, `kernel_stack_top` |
-| 3 | `s3_idt`     | 0x120000    | 256-entry IDT                | `idt_ptr`                       |
-| 4 | `s4_cpuid`   | 0x130000    | vendor + brand + features    | (none — read by s5 directly)    |
-| 5 | `s5_control` | 0x140000    | CR0 + CR4 + XCR0             | (CPU registers)                 |
-| 6 | `s6_fpu`     | 0x150000    | fninit + MXCSR + xsave       | (FPU state)                     |
-| 7 | `s7_tsc`     | 0x160000    | TSC calibration              | `tsc_freq`                      |
-| 8 | `s8_syscall` | 0x170000    | STAR + LSTAR + FMASK         | `syscall_entry`                 |
-| 9 | `s9_paging`  | 0x180000    | PML4 + identity + higher-half| `pml4`                          |
-| 10 | `s10_heap`  | 0x190000    | bitmap + buddy + slab        | `heap_base`, `heap_size`        |
-| 11 | `s11_acpi`  | 0x1A0000    | RSDP scan                    | `rsdp`                          |
+| 1 | `s1_serial`  | 0x100000    | COM1 init                     | (none)                          |
+| 2 | `s2_gdt`     | 0x110000    | GDT + TSS + IST stacks        | `gdt_ptr`, `tss_ptr`, `kernel_stack_top` |
+| 3 | `s3_idt`     | 0x120000    | 256-entry IDT                 | `idt_ptr`                       |
+| 4 | `s4_cpuid`   | 0x130000    | vendor + brand + features     | (none — read by s5 directly)    |
+| 5 | `s5_control` | 0x140000    | CR0 + CR4 + XCR0              | (CPU registers)                 |
+| 6 | `s6_fpu`     | 0x150000    | fninit + MXCSR + xsave        | (FPU state)                     |
+| 7 | `s7_tsc`     | 0x160000    | TSC calibration               | `tsc_freq`                      |
+| 8 | `s8_syscall` | 0x170000    | STAR + LSTAR + FMASK          | `syscall_entry`                 |
+| 9 | `s9_paging`  | 0x180000    | PML4 + identity + higher-half | `pml4`                          |
+| 10 | `s10_heap`  | 0x190000    | bitmap + buddy + slab         | `heap_base`, `heap_size`        |
+| 11 | `s11_acpi`  | 0x1A0000    | RSDP scan                     | `rsdp`                          |
 | 12 | `s12_devices`| 0x1B0000    | ACPI + PCI + APIC + HPET + i8042 | `ioapic_base`, `hpet_base`, `pci_count`, `pci_devices[]` |
 
 After `s12_devices`, the chain `jmp`s to `kernel@0x400000` (the

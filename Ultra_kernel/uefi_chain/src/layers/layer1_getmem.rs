@@ -1,4 +1,4 @@
-//! Layer 1 — `uefi_efi_getmem`
+//! Layer 1 ??? `uefi_efi_getmem`
 //!
 //! Responsibilities:
 //! 1. Resolve `BootServices` from the SystemTable.
@@ -72,7 +72,7 @@ pub extern "C" fn l1_entry(
     crate::serial::puts("\n[L1 uefi_efi_getmem]\n");
 
     if ctx_ptr.is_null() || system_table.is_null() {
-        crate::serial::puts("[L1] null handoff — halting\n");
+        crate::serial::puts("[L1] null handoff ??? halting\n");
         halt();
     }
 
@@ -81,7 +81,7 @@ pub extern "C" fn l1_entry(
     let bs = st.boot_services;
 
     if bs.is_null() {
-        crate::serial::puts("[L1] BootServices null — halting\n");
+        crate::serial::puts("[L1] BootServices null ??? halting\n");
         halt();
     }
 
@@ -110,7 +110,7 @@ pub extern "C" fn l1_entry(
     }
 
     if desc_size == 0 || map_size == 0 {
-        crate::serial::puts("[L1] empty memory map — halting\n");
+        crate::serial::puts("[L1] empty memory map ??? halting\n");
         halt();
     }
 

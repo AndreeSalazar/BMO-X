@@ -1,4 +1,4 @@
-//! Layer 2 — `uefi_efi_getgop`
+//! Layer 2 ??? `uefi_efi_getgop`
 //!
 //! Responsibilities:
 //! 1. Locate `EFI_GRAPHICS_OUTPUT_PROTOCOL` via `LocateProtocol`.
@@ -8,7 +8,7 @@
 //! 4. Jump to layer 3 (`uefi_loader`).
 //!
 //! If GOP is not available (headless firmware), this layer still
-//! succeeds — fields are left zero and the chain continues.
+//! succeeds ??? fields are left zero and the chain continues.
 
 #![allow(dead_code)]
 
@@ -95,7 +95,7 @@ pub extern "C" fn l2_entry(
     crate::serial::puts("\n[L2 uefi_efi_getgop]\n");
 
     if ctx_ptr.is_null() || system_table.is_null() {
-        crate::serial::puts("[L2] null handoff — halting\n");
+        crate::serial::puts("[L2] null handoff ??? halting\n");
         halt();
     }
 
@@ -104,7 +104,7 @@ pub extern "C" fn l2_entry(
     let bs = st.boot_services;
 
     if bs.is_null() {
-        crate::serial::puts("[L2] BootServices null — headless, fb=0\n");
+        crate::serial::puts("[L2] BootServices null ??? headless, fb=0\n");
         jump_next(ctx_ptr);
     }
 
@@ -112,7 +112,7 @@ pub extern "C" fn l2_entry(
     let r = unsafe { locate_protocol(bs, &mut GOP_GUID, &mut gop_handle) };
 
     if r != EFI_SUCCESS || gop_handle.is_null() {
-        crate::serial::puts("[L2] GOP not found — headless, fb=0\n");
+        crate::serial::puts("[L2] GOP not found ??? headless, fb=0\n");
         jump_next(ctx_ptr);
     }
 

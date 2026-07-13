@@ -1,4 +1,4 @@
-//! Faggin stage 5 — Control registers (CR0, CR4, XCR0).
+//! Faggin stage 5 ??? Control registers (CR0, CR4, XCR0).
 //!
 //! Responsibilities (one only):
 //!   - Set CR0 bits: MP, NE; clear EM, WP, TS.
@@ -16,9 +16,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s6_fpu(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x150000;
 
 #[inline]
 fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
@@ -55,7 +53,7 @@ unsafe fn init_cr0_cr4() {
     let cr4: u64;
     asm!("mov {}, cr4", out(reg) cr4);
     let mut cr4 = cr4;
-    cr4 |= 1 << 7;     // PGE — enable global pages (required by s9_paging PTE_GLOBAL)
+    cr4 |= 1 << 7;     // PGE ??? enable global pages (required by s9_paging PTE_GLOBAL)
     cr4 |= 1 << 9;     // OSFXSR
     cr4 |= 1 << 10;    // OSXMMEXCPT
     if avx && osxsave { cr4 |= 1 << 18; } // OSXSAVE
@@ -81,7 +79,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s6_fpu as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

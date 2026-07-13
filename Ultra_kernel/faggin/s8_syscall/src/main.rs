@@ -1,4 +1,4 @@
-//! Faggin stage 8 — SYSCALL MSRs (STAR, LSTAR, FMASK, EFER.SCE).
+//! Faggin stage 8 ??? SYSCALL MSRs (STAR, LSTAR, FMASK, EFER.SCE).
 //!
 //! Responsibilities (one only):
 //!   - Enable EFER.SCE.
@@ -15,9 +15,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s9_paging(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x180000;
 
 const IA32_EFER:  u32 = 0xC0000080;
 const IA32_STAR:  u32 = 0xC0000081;
@@ -43,13 +41,7 @@ unsafe fn wrmsr(msr: u32, val: u64) {
 #[no_mangle]
 #[link_section = ".text._start"]
 pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
-    unsafe {
-        // EFER.SCE
-        let efer: u64;
-        asm!("rdmsr", in("ecx") IA32_EFER, out("eax") lo, out("edx") hi);
-        // (manual read because we need a different register layout)
-    }
-    // EFER read (proper)
+    // EFER read
     let efer_lo: u32; let efer_hi: u32;
     unsafe { asm!("rdmsr", in("ecx") IA32_EFER, out("eax") efer_lo, out("edx") efer_hi); }
     let efer = ((efer_hi as u64) << 32) | (efer_lo as u64);
@@ -69,7 +61,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s9_paging as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

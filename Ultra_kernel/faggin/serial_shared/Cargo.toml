@@ -1,5 +1,13 @@
+[workspace]
 [package]
 name = "serial-shared"
 version = "2.0.0"
 edition = "2021"
 description = "Shared COM1 serial helpers for the fagging stages"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

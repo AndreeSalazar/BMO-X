@@ -1,4 +1,4 @@
-//! Faggin stage 11 — ACPI RSDP scan.
+//! Faggin stage 11 ??? ACPI RSDP scan.
 //!
 //! Responsibilities (one only):
 //!   - Try the BootContext.rsdp hint first.
@@ -15,9 +15,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s12_devices(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x1B0000;
 
 const RSDP_SIG: [u8; 8] = *b"RSD PTR ";
 
@@ -76,7 +74,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s12_devices as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

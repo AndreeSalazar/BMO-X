@@ -1,4 +1,4 @@
-//! Faggin stage 1 — COM1 serial init.
+//! Faggin stage 1 ??? COM1 serial init.
 //!
 //! Responsibilities (one only):
 //!   - Initialize COM1 at 115200 8N1.
@@ -15,9 +15,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s2_gdt(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x110000;
 
 #[no_mangle]
 #[link_section = ".text._start"]
@@ -28,7 +26,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s2_gdt as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

@@ -1,11 +1,11 @@
-//! Layer 4 — `uefi_exit`
+//! Layer 4 ??? `uefi_exit`
 //!
 //! The point of no return.
 //!
 //! Responsibilities:
 //! 1. Re-fetch a fresh `GetMemoryMap` (UEFI rule: key must be from the
 //!    most recent call before `ExitBootServices`).
-//! 2. Call `ExitBootServices(IH, fresh_key)` — after this, UEFI
+//! 2. Call `ExitBootServices(IH, fresh_key)` ??? after this, UEFI
 //!    services are gone forever.
 //! 3. **JUMP** to `ctx.stage_entry[0]` (stage1_arch). This is the
 //!    boundary between the UEFI world and the Ring 0 world.
@@ -60,7 +60,7 @@ pub extern "C" fn l4_entry(
     crate::serial::puts("\n[L4 uefi_exit]\n");
 
     if ctx_ptr.is_null() || system_table.is_null() {
-        crate::serial::puts("[L4] null handoff — halting\n");
+        crate::serial::puts("[L4] null handoff ??? halting\n");
         halt();
     }
 
@@ -69,7 +69,7 @@ pub extern "C" fn l4_entry(
     let bs = st.boot_services;
 
     if bs.is_null() {
-        crate::serial::puts("[L4] BootServices null — halting\n");
+        crate::serial::puts("[L4] BootServices null ??? halting\n");
         halt();
     }
 
@@ -101,13 +101,13 @@ pub extern "C" fn l4_entry(
     crate::serial::hex(r);
     crate::serial::puts("\n");
     if r != EFI_SUCCESS {
-        crate::serial::puts("[L4] ExitBootServices failed — halting\n");
+        crate::serial::puts("[L4] ExitBootServices failed ??? halting\n");
         halt();
     }
 
     let entry = ctx.stage_entry[0];
     if entry == 0 {
-        crate::serial::puts("[L4] stage_entry[0] == 0 — halting\n");
+        crate::serial::puts("[L4] stage_entry[0] == 0 ??? halting\n");
         halt();
     }
 

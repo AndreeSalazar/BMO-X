@@ -1,4 +1,4 @@
-//! Faggin stage 7 — TSC calibration.
+//! Faggin stage 7 ??? TSC calibration.
 //!
 //! Responsibilities (one only):
 //!   - Read CPUID leaf 0x15 (Core Crystal Clock).
@@ -13,9 +13,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s8_syscall(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x170000;
 
 #[inline]
 fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
@@ -53,7 +51,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s8_syscall as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );

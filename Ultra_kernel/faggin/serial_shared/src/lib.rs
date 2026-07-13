@@ -4,6 +4,7 @@
 //! `serial_write` / `serial_hex` / etc. The base address of COM1
 //! is `0x3F8` and the line discipline is 115200 8N1.
 
+#![no_std]
 #![allow(dead_code)]
 
 use core::arch::asm;

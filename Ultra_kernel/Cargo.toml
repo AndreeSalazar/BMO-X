@@ -1,25 +1,30 @@
 [workspace]
 # Ultra_kernel/ — workspace root.
 #
-#   boot_context/  shared lib (the BootContext ABI struct)
-#   uefi_chain/    5 UEFI layers (single .efi binary)
-#   faggin/        12 bare-metal stages (one tiny .bin each)
-#   kernel/        Ring 0 base (single .bin, loaded at 0x400000)
-#   Ultra_userspace/  Ring 3 stub workspace (apps, services, drivers)
+#   boot_context/   shared lib (the BootContext ABI struct)
+#   kernel/         Ring 0 base (single .bin, loaded at 0x400000)
 #
-# Each sub-workspace has its own per-package opt-level = "z" so the
-# resulting binaries are as small as possible.
+# Note: uefi_chain/ is intentionally NOT a member of this workspace
+# because it targets x86_64-unknown-uefi, while the kernel and
+# boot_context target x86_64-unknown-none. Mixing them in one
+# workspace causes the linker to look for UEFI symbols (efi_main)
+# in the kernel. Build uefi_chain separately:
+#
+#   cd uefi_chain
+#   cargo +nightly build --release --target x86_64-unknown-uefi
+#
+# faggin/ stages are also not workspace members (see build.ps1).
+# Ultra_userspace/ is a sibling workspace at FastOS/Ultra_userspace/.
 members = [
     "boot_context",
-    "uefi_chain",
-    "faggin",
     "kernel",
-    "Ultra_userspace",
 ]
 resolver = "2"
 
-# ── Workspace default profile ──
-# Sub-workspaces override opt-level per-package to "z" for tiny bins.
+# ── Workspace default release profile ──
+# All our stages and the kernel are `no_std` with their own
+# `panic_handler`, so `panic = "abort"` is the right default.
+# lto + codegen-units=1 + strip keep binaries small.
 [profile.release]
 opt-level = 3
 panic = "abort"
@@ -30,28 +35,14 @@ debug = false
 debug-assertions = false
 overflow-checks = false
 
-# ── Per-package overrides ──
-# boot_context is a small rlib used by everything; no need for size
-# optimization, but keep the same hygiene.
+# ── Per-package overrides: opt-level only (size-critical bins) ──
+# Allowed fields in [profile.release.package."..."]:
+#   opt-level, debug, debug-assertions, overflow-checks, incremental
+# NOT allowed per-package: panic, lto, codegen-units, strip
 [profile.release.package."boot-context"]
 opt-level = "z"
-lto = true
-codegen-units = 1
-
-# uefi_chain is a single .efi (not a faggin stage) but still benefits
-# from size optimization since the EFI firmware loads it from ESP.
-[profile.release.package."uefi-chain"]
-opt-level = "z"
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = "symbols"
 
 # bmo-kernel is the Ring 0 runtime. Larger than faggin stages but
 # should still be size-optimized.
 [profile.release.package."bmo-kernel"]
-opt-level = "z"
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = "symbols"
+opt-level = 3

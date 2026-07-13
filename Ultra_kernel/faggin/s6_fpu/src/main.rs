@@ -1,4 +1,4 @@
-//! Faggin stage 6 — FPU init.
+//! Faggin stage 6 ??? FPU init.
 //!
 //! Responsibilities (one only):
 //!   - `fninit` (reset FPU).
@@ -13,12 +13,11 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 
-extern "C" {
-    fn s7_tsc(ctx: *mut boot_context::BootContext) -> !;
-}
+const NEXT_ADDR: u64 = 0x160000;
 
-#[repr(C, align(64))]
-static mut FPU_STATE: [u8; 1024] = [0; 1024];
+#[repr(align(64))]
+struct Align64([u8; 1024]);
+static mut FPU_STATE: Align64 = Align64([0; 1024]);
 
 #[no_mangle]
 #[link_section = ".text._start"]
@@ -27,7 +26,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
         asm!("fninit");
         let mxcsr: u32 = 0x1F80;
         asm!("ldmxcsr [{addr}]", addr = in(reg) &mxcsr as *const u32);
-        let ptr = core::ptr::addr_of_mut!(FPU_STATE) as *mut u8;
+        let ptr = core::ptr::addr_of_mut!(FPU_STATE.0) as *mut u8;
         asm!("xsave [{}]", in(reg) ptr, in("eax") 0x7u32, in("edx") 0u32);
     }
     serial_shared::puts("[s6 fpu] FPU + MXCSR + XSAVE\n");
@@ -35,7 +34,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     unsafe {
         asm!(
             "jmp {next}",
-            next = in(reg) s7_tsc as *const () as u64,
+            next = in(reg) NEXT_ADDR,
             in("rdi") ctx_ptr,
             options(noreturn)
         );
