@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "boot_context",
+    "uefi_chain",
+    "stage1_arch",
+    "stage2_mm",
+    "stage3_dev",
+    "kernel",
+]
+resolver = "2"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

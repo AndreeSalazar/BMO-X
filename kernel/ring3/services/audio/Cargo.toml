@@ -1,8 +1,0 @@
-[package]
-name = "service-audio"
-version = "1.0.0"
-edition = "2024"
-description = "BMO Audio Service — tone generation + mixing"
-
-[dependencies]
-driver-audio-pc = { path = "../../drivers/audio" }

@@ -1,8 +1,0 @@
-[package]
-name = "bmo-boot-protocol"
-version = "3.0.0"
-edition = "2021"
-description = "BMO Boot Protocol — compatibility re-export from boot-context"
-
-[dependencies]
-boot-context = { path = "../../Kernel_Upgrade/boot_context" }

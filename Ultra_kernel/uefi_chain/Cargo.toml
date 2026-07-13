@@ -1,0 +1,8 @@
+[package]
+name = "uefi-chain"
+version = "2.0.0"
+edition = "2021"
+description = "UEFI-side boot chain for Ultra_kernel: 5 tiny layers, one EFI binary."
+
+[dependencies]
+boot-context = { path = "../boot_context" }

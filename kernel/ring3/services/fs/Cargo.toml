@@ -1,8 +1,0 @@
-[package]
-name = "service-fs"
-version = "1.0.0"
-edition = "2024"
-description = "BMO Filesystem Service — VFS layer (mount, inode, ramdisk)"
-
-[dependencies]
-bmo-abi = { path = "../../../../Uso_Reales_Crates/abi/bmo-abi" }

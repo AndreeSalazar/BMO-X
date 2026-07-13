@@ -1,9 +1,0 @@
-[package]
-name = "service-input"
-version = "1.0.0"
-edition = "2024"
-description = "BMO Input Service — combines keyboard + mouse into typed events"
-
-[dependencies]
-driver-keyboard = { path = "../../drivers/kbd" }
-driver-mouse = { path = "../../drivers/mouse" }

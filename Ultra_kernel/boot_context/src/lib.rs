@@ -1,0 +1,137 @@
+#![no_std]
+/// Boot context — shared struct passed between boot layers.
+///
+/// Each layer of the Ultra_kernel boot chain receives a `BootContext`,
+/// fills the fields it owns, and jumps to the next layer. There are no
+/// function calls between layers — only raw jumps, so this struct IS the
+/// ABI.
+
+pub const MAGIC: u64 = 0x464F_5343_424F_4F54; // "FOSCBOOT"
+pub const MAX_MEMORY_ENTRIES: usize = 64;
+pub const MAX_STAGES: usize = 8;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MemoryEntry {
+    pub base: u64,
+    pub size: u64,
+    pub kind: u32, // 1=usable, 2=reserved, 3=ACPI, 4=ACPI NVS, 5=bad
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PciDevice {
+    pub bus: u8,
+    pub device: u8,
+    pub function: u8,
+    pub class: u8,
+    pub subclass: u8,
+    pub vendor_id: u16,
+    pub device_id: u16,
+    pub bar0: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct BootContext {
+    // ── Layer 0: uefi_enter puts ─────────────────────────
+    pub magic: u64,
+    pub version: u32,
+
+    // ── Layer 1: uefi_efi_getmem puts ───────────────────
+    pub memory_map_count: u32,
+    pub memory_map: [MemoryEntry; MAX_MEMORY_ENTRIES],
+
+    // ── Layer 2: uefi_efi_getgop puts ───────────────────
+    pub fb_addr: u64,
+    pub fb_width: u32,
+    pub fb_height: u32,
+    pub fb_stride: u32,
+    pub fb_pixel_format: u32,
+
+    // ── Layer 3: uefi_loader puts ────────────────────────
+    pub rsdp: u64,
+    pub stage_base: [u64; MAX_STAGES],
+    pub stage_size: [u64; MAX_STAGES],
+    pub stage_entry: [u64; MAX_STAGES],
+
+    // ── Layer 5: stage1_arch puts ────────────────────────
+    pub gdt_ptr: u64,
+    pub idt_ptr: u64,
+    pub tss_ptr: u64,
+    pub syscall_entry: u64,
+    pub tsc_freq: u64,
+    pub kernel_stack_top: u64,
+
+    // ── Layer 6: stage2_mm puts ──────────────────────────
+    pub pml4: u64,
+    pub heap_base: u64,
+    pub heap_size: u64,
+
+    // ── Layer 7: stage3_dev puts ─────────────────────────
+    pub ioapic_base: u64,
+    pub hpet_base: u64,
+    pub pci_count: u32,
+    pub pci_devices: [PciDevice; 32],
+
+    // ── Layer 8: kernel puts ─────────────────────────────
+    pub kernel_stack: u64,
+    pub ring3_stack: u64,
+
+    // ── Padding for future use ───────────────────────────
+    _reserved: [u64; 32],
+}
+
+impl BootContext {
+    pub const fn new() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            memory_map_count: 0,
+            memory_map: [MemoryEntry { base: 0, size: 0, kind: 0 }; MAX_MEMORY_ENTRIES],
+            fb_addr: 0,
+            fb_width: 0,
+            fb_height: 0,
+            fb_stride: 0,
+            fb_pixel_format: 0,
+            rsdp: 0,
+            stage_base: [0; MAX_STAGES],
+            stage_size: [0; MAX_STAGES],
+            stage_entry: [0; MAX_STAGES],
+            gdt_ptr: 0,
+            idt_ptr: 0,
+            tss_ptr: 0,
+            syscall_entry: 0,
+            tsc_freq: 0,
+            kernel_stack_top: 0,
+            pml4: 0,
+            heap_base: 0,
+            heap_size: 0,
+            ioapic_base: 0,
+            hpet_base: 0,
+            pci_count: 0,
+            pci_devices: [PciDevice { bus: 0, device: 0, function: 0, class: 0, subclass: 0, vendor_id: 0, device_id: 0, bar0: 0 }; 32],
+            kernel_stack: 0,
+            ring3_stack: 0,
+            _reserved: [0; 32],
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.magic == MAGIC
+    }
+
+    pub fn set_memory_map(&mut self, entries: &[MemoryEntry]) {
+        let count = entries.len().min(MAX_MEMORY_ENTRIES);
+        self.memory_map_count = count as u32;
+        for i in 0..count {
+            self.memory_map[i] = entries[i];
+        }
+    }
+
+    pub fn usable_memory(&self) -> impl core::iter::Iterator<Item = &MemoryEntry> {
+        self.memory_map[..self.memory_map_count as usize]
+            .iter()
+            .filter(|e| e.kind == 1 && e.size > 0)
+    }
+}
