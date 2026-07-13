@@ -1,0 +1,9 @@
+[package]
+name = "bmo-service-input"
+version = "0.1.0"
+edition = "2021"
+description = "BMO input service — keyboard/mouse multiplexer for Ring 3"
+
+[dependencies]
+bmo-userland = { path = "../../userland" }
+boot-context = { path = "../../../Ultra_kernel/boot_context" }

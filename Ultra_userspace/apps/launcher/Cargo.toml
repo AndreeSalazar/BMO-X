@@ -1,0 +1,9 @@
+[package]
+name = "bmo-app-launcher"
+version = "0.1.0"
+edition = "2021"
+description = "BMO app launcher / desktop shell (Ring 3 app)"
+
+[dependencies]
+bmo-userland = { path = "../../userland" }
+boot-context = { path = "../../../Ultra_kernel/boot_context" }

@@ -1,0 +1,9 @@
+[package]
+name = "bmo-driver-mouse"
+version = "0.1.0"
+edition = "2021"
+description = "BMO mouse driver (Ring 3 userland driver)"
+
+[dependencies]
+bmo-userland = { path = "../../userland" }
+boot-context = { path = "../../../Ultra_kernel/boot_context" }

@@ -1,0 +1,9 @@
+[package]
+name = "bmo-service-gui"
+version = "0.1.0"
+edition = "2021"
+description = "BMO window manager / compositor (Ring 3 service)"
+
+[dependencies]
+bmo-userland = { path = "../../userland" }
+boot-context = { path = "../../../Ultra_kernel/boot_context" }

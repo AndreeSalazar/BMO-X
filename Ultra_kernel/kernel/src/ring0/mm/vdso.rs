@@ -58,7 +58,7 @@ static mut VDSO_PTR: *mut VdsoPage = core::ptr::null_mut();
 /// Initialize the vDSO page: allocate physical page, map in kernel space,
 /// fill static fields. Called during Phase 1 (memory init).
 pub fn init() {
-    let page = match unsafe { crate::mm::frame_alloc::alloc_pages_contiguous(1) } {
+    let page = match unsafe { crate::ring0::mm::frame_alloc::alloc_pages_contiguous(1) } {
         Some(phys) => phys,
         None => {
             crate::ring0::dev::console::serial_write("[vdso] FAIL: no physical page\n");
@@ -68,7 +68,7 @@ pub fn init() {
 
     unsafe {
         // Zero the page
-        let virt = crate::mm::vmm::phys_to_virt(page) as *mut u8;
+        let virt = crate::ring0::mm::vmm::phys_to_virt(page) as *mut u8;
         core::ptr::write_bytes(virt, 0, 4096);
 
         // Initialize static fields
@@ -81,7 +81,7 @@ pub fn init() {
         vdso.fb_height = crate::info::FB_HEIGHT;
         vdso.fb_stride = crate::info::FB_STRIDE;
         vdso.page_size = 4096;
-        vdso.total_ram_mb = crate::mm::frame_alloc::total_ram() / (1024 * 1024);
+        vdso.total_ram_mb = crate::ring0::mm::frame_alloc::total_ram() / (1024 * 1024);
         vdso.kernel_version = *b"2.0.0   ";
         vdso.feature_flags = 0
             | if cfg!(feature = "syscalls-net") { FEATURE_NET } else { 0 }

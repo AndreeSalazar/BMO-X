@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "userland",
+    "services/gui",
+    "services/input",
+    "apps/terminal",
+    "apps/launcher",
+    "drivers/keyboard",
+    "drivers/mouse",
+]
+resolver = "2"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

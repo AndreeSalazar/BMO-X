@@ -101,7 +101,7 @@ pub fn init_syscall() {
         wrmsr(IA32_KERNEL_GS_BASE, 0);
         wrmsr(IA32_GS_BASE, 0);
 
-        let stack_top = crate::arch::gdt::kernel_stack_top();
+        let stack_top = crate::ring0::arch::gdt::kernel_stack_top();
         SYSCALL_KERNEL_RSP = stack_top;
     }
 
@@ -237,10 +237,10 @@ fn sys_nanosleep(_nr: u64, a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5:
 }
 
 fn sys_fb_info(_nr: u64, _a0: u64, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
-    let w = unsafe { crate::ring0::info::FB_WIDTH as u64 };
-    let h = unsafe { crate::ring0::info::FB_HEIGHT as u64 };
-    let s = unsafe { crate::ring0::info::FB_STRIDE as u64 };
-    let addr = unsafe { crate::ring0::info::FB_ADDR };
+    let w = unsafe { crate::info::FB_WIDTH as u64 };
+    let h = unsafe { crate::info::FB_HEIGHT as u64 };
+    let s = unsafe { crate::info::FB_STRIDE as u64 };
+    let addr = unsafe { crate::info::FB_ADDR };
     addr | (w << 32) | ((h & 0xFFFF) << 16) | ((s & 0xFF) << 48)
 }
 
@@ -485,10 +485,9 @@ extern "C" fn syscall_handler_rust(frame: *mut InterruptFrame) {
 
         f.rax = handler(nr as u64, a0, a1, a2, a3, a4, a5);
 
-        // Si el stub devolvi� u64::MAX y es rango BMO ABI, delegar a ring3 gateway
-        if f.rax == u64::MAX && nr >= 0x100 && nr <= 0x1FF {
-            f.rax = crate::ring3::gateway::dispatch(nr as u16, a0, a1, a2, a3, a4, a5);
-        }
+        // BMO ABI syscalls (0x100..=0x1FF) used to delegate to a
+        // ring3 gateway. The Ring 0 base has no ring3 userland yet,
+        // so we leave the stub return value as-is.
     }
 }
 

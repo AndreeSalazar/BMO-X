@@ -1,5 +1,5 @@
-﻿
-//! Time Stamp Counter (TSC) calibration â€” measures CPU frequency.
+
+//! Time Stamp Counter (TSC) calibration — measures CPU frequency.
 //!
 //! Ryzen 5 5600X has an invariant TSC that runs at the P0 (base) frequency
 //! regardless of P-state. We use CPUID 0x15 for the crystal clock frequency,
@@ -14,8 +14,8 @@ const RYZEN_5600X_TSC_HZ: u64 = 3_700_000_000;
 /// Calibrate TSC frequency.
 ///
 /// Strategy:
-/// 1. CPUID 0x15 â€” Core Crystal Clock (Intel-defined, some AMD support it)
-/// 2. CPUID 0x80000022 â€” AMD Extended Performance Monitoring
+/// 1. CPUID 0x15 — Core Crystal Clock (Intel-defined, some AMD support it)
+/// 2. CPUID 0x80000022 — AMD Extended Performance Monitoring
 /// 3. Fallback: known Ryzen 5 5600X base clock
 ///
 /// Returns frequency in Hz.
@@ -39,20 +39,20 @@ pub fn calibrate() -> u64 {
     // Trust the initial estimate (CPUID 0x15 or known constant).
     // v1.8.7: eliminada `verify_with_loop` (anterior intento de calibrar
     // TSC con un busy-loop). El comentario en su interior explicaba por
-    // quÃ© NO puede calibrarse sin un reloj de referencia (ACPI PM Timer):
+    // qué NO puede calibrarse sin un reloj de referencia (ACPI PM Timer):
     //   elapsed_ticks = F * (iterations * cycles_per_iter) / F
     //                 = iterations * cycles_per_iter
-    // â†’ independiente de F, no se puede romper la circularidad sin un
-    //   reloj externo. Se confÃ­a en CPUID 0x15 o el constante conocido
+    // → independiente de F, no se puede romper la circularidad sin un
+    //   reloj externo. Se confía en CPUID 0x15 o el constante conocido
     //   para el 5600X. Cuando se implemente ACPI real, sustituir por
-    //   calibraciÃ³n contra el PM Timer (3,579,545 Hz).
+    //   calibración contra el PM Timer (3,579,545 Hz).
 
     // Make available globally (for watchdog, bmo_abi::time, etc.)
     super::set_tsc_freq(freq);
 
-    crate::dev::console::serial_write("[cpu] TSC calibrated: ");
+    crate::ring0::dev::console::serial_write("[cpu] TSC calibrated: ");
     print_freq(freq);
-    crate::dev::console::serial_write(" Hz\n");
+    crate::ring0::dev::console::serial_write(" Hz\n");
 
     freq
 }
@@ -72,13 +72,13 @@ fn print_freq(freq: u64) {
             v /= 10;
         }
     }
-    crate::dev::console::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("?"));
+    crate::ring0::dev::console::serial_write(core::str::from_utf8(&buf[i..]).unwrap_or("?"));
 }
 
 /// Busy-wait for approximately `ms` milliseconds using TSC.
 pub fn busy_wait_ms(ms: u64, tsc_freq: u64) {
     if tsc_freq == 0 {
-        // No calibrated TSC â€” use a simple loop fallback
+        // No calibrated TSC — use a simple loop fallback
         for _ in 0..ms {
             for _ in 0..100_000u32 {
                 unsafe { core::arch::asm!("pause"); }

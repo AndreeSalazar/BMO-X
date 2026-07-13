@@ -1,0 +1,9 @@
+[package]
+name = "bmo-driver-keyboard"
+version = "0.1.0"
+edition = "2021"
+description = "BMO keyboard driver (Ring 3 userland driver)"
+
+[dependencies]
+bmo-userland = { path = "../../userland" }
+boot-context = { path = "../../../Ultra_kernel/boot_context" }

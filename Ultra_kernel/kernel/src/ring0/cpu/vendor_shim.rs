@@ -130,4 +130,10 @@ pub mod zen3 {
             true
         }
     }
+
+    // ── AMD MSR initialization ─────────────────────────────
+    /// Stub: the legacy kernel set up vendor-specific MSRs (SVM,
+    /// SPEC_CTRL, etc.) here. In the Ring 0 base we don't have a
+    /// real vendor implementation, so this is a no-op.
+    pub fn init_msrs(_real_entry: u64) {}
 }

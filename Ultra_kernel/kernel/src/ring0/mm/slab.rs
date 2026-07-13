@@ -155,8 +155,8 @@ fn phys_to_heap_virt(phys: u64) -> u64 {
 
 #[inline]
 fn heap_virt_to_phys(virt: u64) -> u64 {
-    if virt >= crate::mm::virt::HIGH_MEM_BASE {
-        crate::mm::virt::virt_to_phys(virt)
+    if virt >= crate::ring0::mm::virt::HIGH_MEM_BASE {
+        crate::ring0::mm::virt::virt_to_phys(virt)
     } else {
         virt
     }
@@ -172,7 +172,7 @@ fn heap_virt_to_phys(virt: u64) -> u64 {
 /// - Caller must hold slab lock (interrupts disabled)
 /// - The returned SlabHead is valid until slab_destroy() is called
 unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
-    let phys = crate::mm::phys::alloc_pages_contiguous(1)?;
+    let phys = crate::ring0::mm::phys::alloc_pages_contiguous(1)?;
     let virt = phys_to_heap_virt(phys);
     core::ptr::write_bytes(virt as *mut u8, 0, SLAB_SIZE);
 
@@ -198,7 +198,7 @@ unsafe fn slab_create(cache_idx: usize) -> Option<*mut SlabHead> {
 unsafe fn slab_destroy(head: *mut SlabHead) {
     let virt = head as u64;
     let phys = heap_virt_to_phys(virt);
-    crate::mm::phys::free_pages(phys, 1);
+    crate::ring0::mm::phys::free_pages(phys, 1);
     HEAP_TOTAL -= SLAB_SIZE;
 }
 
@@ -397,7 +397,7 @@ pub unsafe fn heap_free(ptr: *mut u8, size: usize, align: usize) {
 /// Buddy fallback for large allocations or special alignment.
 unsafe fn buddy_alloc(size: usize, align: usize) -> *mut u8 {
     let pages = (size + SLAB_SIZE - 1) / SLAB_SIZE;
-    let phys = match crate::mm::phys::alloc_pages_contiguous(pages) {
+    let phys = match crate::ring0::mm::phys::alloc_pages_contiguous(pages) {
         Some(p) => p,
         None => return ptr::null_mut(),
     };
@@ -406,8 +406,8 @@ unsafe fn buddy_alloc(size: usize, align: usize) -> *mut u8 {
     let off = (virt as usize) & (align - 1);
     let adjusted = if off == 0 { virt } else { virt + (align - off) as u64 };
     if adjusted + size as u64 > virt + (pages * SLAB_SIZE) as u64 {
-        crate::mm::phys::free_pages(phys, pages);
-        let phys2 = match crate::mm::phys::alloc_pages_contiguous(pages + 1) {
+        crate::ring0::mm::phys::free_pages(phys, pages);
+        let phys2 = match crate::ring0::mm::phys::alloc_pages_contiguous(pages + 1) {
             Some(p) => p,
             None => return ptr::null_mut(),
         };
@@ -428,7 +428,7 @@ unsafe fn buddy_free(ptr: *mut u8, size: usize) {
     // Round down to page boundary
     let virt = (ptr as u64) & !(SLAB_SIZE as u64 - 1);
     let phys = heap_virt_to_phys(virt);
-    crate::mm::phys::free_pages(phys, pages);
+    crate::ring0::mm::phys::free_pages(phys, pages);
     HEAP_TOTAL -= pages * SLAB_SIZE;
     IN_USE.fetch_sub(size, Ordering::Relaxed);
 }

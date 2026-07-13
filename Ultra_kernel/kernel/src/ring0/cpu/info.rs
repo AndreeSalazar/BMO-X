@@ -1,4 +1,4 @@
-﻿//! CPU information display.
+//! CPU information display.
 //!
 //! In Ultra_kernel we don't depend on the legacy `cpu_vendor_profile`
 //! crate. We use the local shim's `CpuIdentity` (raw CPUID output) and

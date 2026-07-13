@@ -90,3 +90,54 @@ pub fn free_count() -> u64 {
         count
     }
 }
+
+/// Total physical RAM tracked by the allocator (in bytes).
+/// This is the size of the first usable memory range we adopted at
+/// `init()`. It is NOT the total installed RAM — only what we
+/// claimed for our frame bitmap.
+pub fn total_ram() -> u64 {
+    unsafe { FRAME_COUNT * FRAME_SIZE }
+}
+
+/// Allocate `n` physically contiguous 4KB frames.
+/// Returns `Some(phys_base)` or `None` if not enough.
+/// NOTE: In the simple bitmap allocator, frames need not be physically
+/// contiguous, so this returns `None` whenever the simple bitmap
+/// can't satisfy. For Ring 0 base this is fine; for future use, swap
+/// to a buddy allocator.
+pub fn alloc_pages_contiguous(n: usize) -> Option<u64> {
+    if n == 0 { return Some(0); }
+    if n > FRAME_COUNT as usize { return None; }
+    let first = alloc_frame();
+    if first == 0 { return None; }
+    let mut last = first;
+    for _ in 1..n {
+        let p = alloc_frame();
+        if p == 0 {
+            // Roll back what we allocated
+            free_frame(first);
+            for r in (1..n).map(|i| first + (i as u64) * FRAME_SIZE) {
+                free_frame(r);
+            }
+            return None;
+        }
+        if p != last + FRAME_SIZE {
+            // Non-contiguous: roll back
+            free_frame(p);
+            for r in (1..n).map(|i| first + (i as u64) * FRAME_SIZE) {
+                free_frame(r);
+            }
+            return None;
+        }
+        last = p;
+    }
+    Some(first)
+}
+
+/// Free `n` physically contiguous 4KB frames starting at `phys`.
+pub fn free_pages(phys: u64, n: usize) {
+    if n == 0 { return; }
+    for i in 0..n {
+        free_frame(phys + (i as u64) * FRAME_SIZE);
+    }
+}

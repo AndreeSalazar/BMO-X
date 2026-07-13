@@ -63,12 +63,12 @@ pub fn init_fpu() {
             options(nostack),
         );
 
-        crate::dev::console::serial_write("[FPU] x87 FPU + MXCSR initialized\n");
+        crate::ring0::dev::console::serial_write("[FPU] x87 FPU + MXCSR initialized\n");
 
         // Capture initial FPU state
         let ptr = core::ptr::addr_of_mut!(INITIAL_FPU_STATE) as *mut u8;
         xsave(ptr);
-        crate::dev::console::serial_write("[FPU] captured initial clean FPU state\n");
+        crate::ring0::dev::console::serial_write("[FPU] captured initial clean FPU state\n");
     }
 }
 
@@ -80,13 +80,13 @@ pub fn copy_initial_state(dest: &mut FpuStateBuffer) {
 }
 
 /// Save FPU context for a task.
-pub unsafe fn save_task_fpu(task: &mut crate::proc::task::Task) {
-    let ptr = core::ptr::addr_of_mut!(task.fpu_state) as *mut u8;
+pub unsafe fn save_task_fpu(task: &mut crate::ring0::proc::task::Task) {
+    let ptr = core::ptr::addr_of_mut!(task.fpu_save) as *mut u8;
     xsave(ptr);
 }
 
 /// Restore FPU context for a task.
-pub unsafe fn restore_task_fpu(task: &crate::proc::task::Task) {
-    let ptr = core::ptr::addr_of!(task.fpu_state) as *const u8;
+pub unsafe fn restore_task_fpu(task: &crate::ring0::proc::task::Task) {
+    let ptr = core::ptr::addr_of!(task.fpu_save) as *const u8;
     xrstor(ptr);
 }

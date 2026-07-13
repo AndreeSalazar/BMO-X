@@ -57,5 +57,5 @@ fn default_timer() {
 
 /// Initialize the IRQ subsystem: register built-in handlers.
 pub fn init() {
-    register(crate::irq::lapic::TIMER_VECTOR, default_timer);
+    register(crate::ring0::irq::lapic::TIMER_VECTOR, default_timer);
 }

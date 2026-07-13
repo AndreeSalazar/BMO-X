@@ -96,7 +96,7 @@ pub fn init(features: &CpuFeatures) {
         }
         asm!("mov cr4, {}", in(reg) cr4);
     }
-    crate::dev::console::serial_write("[cpu] CR0/CR4 configured\n");
+    crate::ring0::dev::console::serial_write("[cpu] CR0/CR4 configured\n");
 }
 
 // ── XCR0 ────────────────────────────────────────────────────────────────────
@@ -107,13 +107,13 @@ pub fn init(features: &CpuFeatures) {
 /// not set, or XCR0 value rejected by the hardware).
 pub fn init_xcr0(features: &CpuFeatures) -> bool {
     if !features.has_avx || !features.has_osxsave {
-        crate::dev::console::serial_write("[cpu] XCR0: skipped (no AVX/OSXSAVE)\n");
+        crate::ring0::dev::console::serial_write("[cpu] XCR0: skipped (no AVX/OSXSAVE)\n");
         return false;
     }
 
     unsafe {
         if read_cr4() & (1 << 18) == 0 {
-            crate::dev::console::serial_write("[cpu] XCR0: FAIL — CR4.OSXSAVE not set!\n");
+            crate::ring0::dev::console::serial_write("[cpu] XCR0: FAIL — CR4.OSXSAVE not set!\n");
             return false;
         }
 
@@ -129,6 +129,6 @@ pub fn init_xcr0(features: &CpuFeatures) -> bool {
             in("edx") edx,
         );
     }
-    crate::dev::console::serial_write("[cpu] XCR0 configured (x87 + SSE + AVX)\n");
+    crate::ring0::dev::console::serial_write("[cpu] XCR0 configured (x87 + SSE + AVX)\n");
     true
 }

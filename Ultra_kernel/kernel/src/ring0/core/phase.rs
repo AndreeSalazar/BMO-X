@@ -43,25 +43,20 @@ fn phase1_mem(ctx: &BootContext) {
 
 fn phase2_dev(ctx: &BootContext) {
     s_log("[phase2] === Device Init ===");
-    let fmt = ctx.fb_pixel_format;
+    let fmt = match ctx.fb_pixel_format {
+        0 => crate::ring0::dev::framebuffer::PixelFormat::Bgr,
+        1 => crate::ring0::dev::framebuffer::PixelFormat::Rgb,
+        _ => crate::ring0::dev::framebuffer::PixelFormat::Unknown,
+    };
     crate::ring0::dev::framebuffer::init_gop(
         ctx.fb_addr,
         ctx.fb_width,
         ctx.fb_height,
         ctx.fb_stride,
-        crate::ring0::dev::framebuffer::PixelFormat::Unknown, // legacy fmt enum re-mapped below
-    );
-    // The local `PixelFormat::Unknown` is just a placeholder; the real
-    // boot path passes the value from `ctx.fb_pixel_format` (0=BGR, 1=RGB, 2=Unknown).
-    crate::ring0::dev::framebuffer::init_gop(
-        ctx.fb_addr,
-        ctx.fb_width,
-        ctx.fb_height,
-        ctx.fb_stride,
-        match fmt { 0 => crate::ring0::dev::framebuffer::PixelFormat::Bgr, 1 => crate::ring0::dev::framebuffer::PixelFormat::Rgb, _ => crate::ring0::dev::framebuffer::PixelFormat::Unknown },
+        fmt,
     );
     crate::ring0::dev::timer::init();
-    crate::ring0::dev::watchdog::arm(crate::ring0::cpu::rdtsc());
+    crate::ring0::dev::watchdog::arm();
     s_log("[phase2] done");
 }
 

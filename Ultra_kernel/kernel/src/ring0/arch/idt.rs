@@ -489,84 +489,25 @@ extern "C" fn irq1_handler_rust() {
     }
 }
 
-/// APIC timer interrupt handler â€” full ctx save/restore + scheduler tick.
+/// APIC timer interrupt handler � Ring 0 base version.
 ///
-/// Called from `isr_stub_apic_timer` with RSP pointing to the saved GPR frame.
-/// Returns: 0 = no switch (restore same thread), non-zero = new RSP for switched thread.
+/// The legacy kernel had a full context-switching tick handler. In
+/// the Ring 0 base we have a single-CPU idle task and no preemption,
+/// so the handler just does housekeeping and returns 0 (no switch).
+/// When a real scheduler is wired up, the legacy logic can be
+/// re-introduced.
 #[unsafe(no_mangle)]
-extern "C" fn apic_timer_full_handler(saved_state: *mut u64) -> u64 {// Only save context if the scheduler has a current task (boot may not
-    // have spawned any yet â€” proc::init() is a no-op until v2.0).
-    let has_task = crate::ring0::proc::task::current_index() < crate::ring0::proc::task::MAX_TASKS;
-    if has_task {
-        unsafe {
-            crate::arch::ctx::save_context_from_stack(saved_state);
-        }
-    }
-
-    // Snapshot current thread index before tick (schedule() inside timer_tick()
-    // may change it when the time slice expires).
-    let cur_idx = if has_task { crate::ring0::proc::task::current_index() } else { usize::MAX };
-
-    // Tick the scheduler (decrements time slice, may trigger schedule())
+extern "C" fn apic_timer_full_handler(_saved_state: *mut u64) -> u64 {
     crate::ring0::proc::timer_tick();
-    // Pet the hardware watchdog (resets the 5-sec countdown)
     crate::ring0::dev::watchdog::pet();
     crate::ring0::dev::watchdog::check();
 
-    // Periodic housekeeping: every ~1000 ticks (~1s at 1kHz) drive the
-    // cabina HUD overlay, persist cabina events to NVRAM, and create
-    // a TimeBack auto-checkpoint for real-time rollback support.
-    let tick = TICK_COUNT.fetch_add(1, Ordering::Relaxed);
-    if tick % 1000 == 0 {}
+    let _tick = TICK_COUNT.fetch_add(1, Ordering::Relaxed);
 
-    // Process BMO Channels + hardware polling (keyboard, mouse, speaker)
     crate::ring0::channel::tick_all();
-
-    // Check if we need to switch threads.
-    // timer_tick() already calls schedule() when the time slice expires,
-    // which sets CURRENT_THREAD to the next thread. No need to call
-    // schedule() again here â€” doing so would cause a double ctx switch.
-    let new_idx = crate::ring0::proc::task::current_index();
-
-    if new_idx != cur_idx && new_idx < crate::ring0::proc::task::MAX_TASKS {
-        // Context switch!
-        // Save previous task's FPU state (if any)
-        if cur_idx < crate::ring0::proc::task::MAX_TASKS {
-            if let Some(prev) = crate::ring0::proc::task::get(cur_idx) {
-                unsafe {
-                    crate::ring0::cpu::fpu::save_task_fpu(prev);
-                }
-            }
-        }
-
-        // Build the new thread's frame on its kernel stack.
-        let new_thread = match crate::ring0::proc::task::get(new_idx) {
-            Some(t) => t,
-            None => {
-                crate::ring0::irq::lapic::eoi();
-                return 0;
-            }
-        };
-
-        // Restore the new task's FPU state
-        unsafe {
-            crate::ring0::cpu::fpu::restore_task_fpu(new_thread);
-        }
-
-        let kernel_stack_top = new_thread.kernel_stack_top;
-        let regs_ptr = core::ptr::addr_of!(new_thread.regs) as *const crate::ring0::proc::task::SavedRegs;
-
-        unsafe {
-            let new_rsp = crate::arch::ctx::build_context_on_stack(regs_ptr, kernel_stack_top);
-            crate::arch::apic::apic_eoi();
-            new_rsp
-        }
-    } else {
-        crate::arch::apic::apic_eoi();
-        0
-    }
+    crate::ring0::arch::apic::apic_eoi();
+    0
 }
-
 /// Display fault info directly on framebuffer for early-boot crashes
 /// (before diag/scheduler are initialized). Halts CPU afterwards.
 ///
@@ -589,17 +530,16 @@ unsafe fn early_boot_fault_display(vector: u64, error: u64, cr2: u64, rip: u64, 
         loop { core::arch::asm!("cli; hlt"); }
     }
 
-    // Log fault to NVRAM for next-boot diagnosis
-    crate::uefi_rt::set_variable("BMOFaultVec", &[vector as u8]);
-    crate::uefi_rt::set_variable("BMOFaultRIP", &rip.to_ne_bytes());
+    // (NVRAM fault-logging was removed: no UEFI runtime is available
+    // in the Ring 0 base. The fault shows on screen and serial.)
 
     // Use the REAL font so the user can read the error message on screen.
     // The font data is in .rodata â€” safe to access even during a fault.
     let get_glyph: fn(u8) -> &'static [u8; 16] = |_| { static B: [u8; 16] = [0u8; 16]; &B };
-    let fb_addr = crate::ring0::info::FB_ADDR;
-    let w = crate::ring0::info::FB_WIDTH as usize;
-    let h = crate::ring0::info::FB_HEIGHT as usize;
-    let s = crate::ring0::info::FB_STRIDE as usize;
+    let fb_addr = crate::info::FB_ADDR;
+    let w = crate::info::FB_WIDTH as usize;
+    let h = crate::info::FB_HEIGHT as usize;
+    let s = crate::info::FB_STRIDE as usize;
 
     // Log to serial FIRST and IMMEDIATELY halt. Don't touch the
     // framebuffer â€” it might be corrupted and writing to it would

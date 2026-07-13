@@ -1,0 +1,8 @@
+[package]
+name = "bmo-userland"
+version = "2.0.0"
+edition = "2021"
+description = "BMO userland — Ring 3 syscalls, allocator, panic handler, common types"
+
+[dependencies]
+boot-context = { path = "../../Ultra_kernel/boot_context" }

@@ -19,7 +19,7 @@ use super::msr::{
 /// VRAM as Write-Combining (WC) for better framebuffer performance.
 pub fn init_mtrr(features: &CpuFeatures, vram_base: u64, vram_size: u64) {
     if !features.has_mtrr {
-        crate::dev::console::serial_write("[cpu] MTRR: not supported, skipping\n");
+        crate::ring0::dev::console::serial_write("[cpu] MTRR: not supported, skipping\n");
         return;
     }
 
@@ -72,7 +72,7 @@ pub fn init_mtrr(features: &CpuFeatures, vram_base: u64, vram_size: u64) {
         core::arch::asm!("mov {}, cr3", out(reg) dummy);
         core::arch::asm!("mov cr3, {}", in(reg) dummy);
     }
-    crate::dev::console::serial_write("[cpu] MTRRs configured\n");
+    crate::ring0::dev::console::serial_write("[cpu] MTRRs configured\n");
 }
 
 // ── PAT ──────────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ pub fn init_mtrr(features: &CpuFeatures, vram_base: u64, vram_size: u64) {
 /// PAT[0]=WB, PAT[1]=WC, PAT[2]=UC-, PAT[3]=UC, ...
 /// No explicit write needed for basic operation.
 pub fn init_pat() {
-    crate::dev::console::serial_write("[cpu] PAT: default config OK (WB+WC)\n");
+    crate::ring0::dev::console::serial_write("[cpu] PAT: default config OK (WB+WC)\n");
 }
 
 /// One-shot init: MTRR + PAT.

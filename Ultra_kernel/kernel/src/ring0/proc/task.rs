@@ -33,7 +33,7 @@ static mut TASKS: [Task; super::MAX_TASKS] = [Task {
     id: 0, state: TaskState::Free, saved_regs: SavedRegs { rsp: 0, rbp: 0, rbx: 0, r12: 0, r13: 0, r14: 0, r15: 0, rip: 0, rflags: 0 }, fpu_save: core::ptr::null_mut()
 }; super::MAX_TASKS];
 
-pub fn current() -> &'static mut Task { unsafe { &mut TASKS[0] } }
+pub fn current() -> Option<&'static mut Task> { Some(unsafe { &mut TASKS[0] }) }
 pub fn current_index() -> usize { 0 }
 pub fn get(_idx: usize) -> Option<&'static mut Task> {
     if _idx < super::MAX_TASKS { Some(unsafe { &mut TASKS[_idx] }) } else { None }

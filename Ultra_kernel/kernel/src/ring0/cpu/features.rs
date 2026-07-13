@@ -1,7 +1,7 @@
-﻿//! CPU feature detection for the Ryzen 5 5600X.
+//! CPU feature detection for the Ryzen 5 5600X.
 
 /// Features del Ryzen 5 5600X que el kernel usa para habilitar paths
-/// de init. Mantenido como struct público de RING 0 para compatibilidad
+/// de init. Mantenido como struct p�blico de RING 0 para compatibilidad
 /// con `cpu::init` y `arch/syscall.rs`.
 #[derive(Debug, Clone, Copy)]
 pub struct CpuFeatures {
