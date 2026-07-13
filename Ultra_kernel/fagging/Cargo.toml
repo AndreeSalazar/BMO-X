@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "serial_shared",
+    "s1_serial",
+    "s2_gdt",
+    "s3_idt",
+    "s4_cpuid",
+    "s5_control",
+    "s6_fpu",
+    "s7_tsc",
+    "s8_syscall",
+    "s9_paging",
+    "s10_heap",
+    "s11_acpi",
+    "s12_devices",
+]
+resolver = "2"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1

@@ -9,8 +9,8 @@ param(
 $root = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 
-function Step   { param($m) Write-Host "  => $m" -ForegroundColor Cyan }
-function Fail   { param($m) Write-Host "  [X] $m" -ForegroundColor Red; exit 1 }
+function Step { param($m) Write-Host "  => $m" -ForegroundColor Cyan }
+function Fail { param($m) Write-Host "  [X] $m" -ForegroundColor Red; exit 1 }
 
 $target = Join-Path $root "target"
 $stage  = Join-Path $root "staging\EFI\BOOT"
@@ -22,10 +22,10 @@ if ($Clean) {
 }
 
 Write-Host ""
-Write-Host "  ═══ BMO Ultra Kernel v2 Build (5-layer UEFI chain) ═══" -ForegroundColor Magenta
+Write-Host "  ═══ BMO Ultra Kernel v2 Build (UEFI 5 layers + 12 fagging stages + kernel) ═══" -ForegroundColor Magenta
 Write-Host ""
 
-# ── Build uefi_chain (5 UEFI layers in one EFI binary) ──
+# ── Build uefi_chain (5 UEFI layers) ──
 Step "Building uefi_chain (5 UEFI layers)..."
 Push-Location $root
 try {
@@ -37,59 +37,106 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail "uefi_chain build failed" }
 } finally { Pop-Location }
 
-# ── Build stage1-3 + kernel (bare metal) ──
-$stages = @("stage1_arch", "stage2_mm", "stage3_dev", "kernel")
+# ── Build the 12 fagging stages ──
+$stages = @("s1_serial", "s2_gdt", "s3_idt", "s4_cpuid", "s5_control", "s6_fpu",
+            "s7_tsc", "s8_syscall", "s9_paging", "s10_heap", "s11_acpi", "s12_devices")
+$idx = 0
 foreach ($s in $stages) {
-    Step "Building $s..."
-    $stageDir = Join-Path $root $s
+    Step "Building fagging $s..."
+    $stageDir = Join-Path (Join-Path $root "fagging") $s
     Push-Location $stageDir
     try {
-        $out = cargo build --release --target x86_64-unknown-none --target-dir (Join-Path $target $s) 2>&1
+        $td = Join-Path $target "fagging\$s"
+        $out = cargo build --release --target x86_64-unknown-none --target-dir $td 2>&1
         $out | ForEach-Object {
             if ($_ -match "Compiling|Finished|error") { Write-Host "    [$s] $_" -ForegroundColor DarkGray }
         }
         if ($LASTEXITCODE -ne 0) { Fail "$s build failed" }
     } finally { Pop-Location }
+    $idx++
 }
+
+# ── Build kernel (Ring 0) ──
+Step "Building kernel (Ring 0 base)..."
+$stageDir = Join-Path $root "kernel"
+Push-Location $stageDir
+try {
+    $out = cargo build --release --target x86_64-unknown-none --target-dir (Join-Path $target "kernel") 2>&1
+    $out | ForEach-Object {
+        if ($_ -match "Compiling|Finished|error") { Write-Host "    [kernel] $_" -ForegroundColor DarkGray }
+    }
+    if ($LASTEXITCODE -ne 0) { Fail "kernel build failed" }
+} finally { Pop-Location }
 
 # ── Validate outputs ──
 Step "Validating outputs"
 $uefi_chain = Join-Path $target "x86_64-unknown-uefi\release\uefi_chain.efi"
-$stage1 = Join-Path $target "stage1_arch\x86_64-unknown-none\release\stage1-arch"
-$stage2 = Join-Path $target "stage2_mm\x86_64-unknown-none\release\stage2-mm"
-$stage3 = Join-Path $target "stage3_dev\x86_64-unknown-none\release\stage3-dev"
-$kernel = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel-v2"
 
-$all_binaries = @($uefi_chain, $stage1, $stage2, $stage3, $kernel)
+$all_binaries = @($uefi_chain)
+$idx = 0
+foreach ($s in $stages) {
+    $td = Join-Path $target "fagging\$s"
+    $bin = Join-Path $td "x86_64-unknown-none\release\$s.exe"
+    if (-not (Test-Path $bin)) {
+        # try without .exe (linux-style)
+        $bin = Join-Path $td "x86_64-unknown-none\release\$s"
+    }
+    $all_binaries += $bin
+    $idx++
+}
+$kernel = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel.exe"
+if (-not (Test-Path $kernel)) { $kernel = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel" }
+$all_binaries += $kernel
+
 foreach ($f in $all_binaries) {
     if (-not (Test-Path $f)) { Fail "Not found: $f" }
     $sz = (Get-Item $f).Length
     Write-Host "    $(Split-Path $f -Leaf): $([math]::Round($sz/1024,1)) KB" -ForegroundColor White
 }
 
-# ── Stage ──
+# ── Stage to ESP layout ──
 Step "Staging to $stage"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stage "modules") -Force | Out-Null
 
 Copy-Item $uefi_chain (Join-Path $stage "BOOTX64.EFI")
+
 $llvmObjcopy = Get-ChildItem -Path "C:\Users\andre\.rustup" -Filter "llvm-objcopy.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
 if ($llvmObjcopy) {
-    & $llvmObjcopy -O binary $stage1 (Join-Path $stage "stage1.bin")
-    & $llvmObjcopy -O binary $stage2 (Join-Path $stage "stage2.bin")
-    & $llvmObjcopy -O binary $stage3 (Join-Path $stage "stage3.bin")
-    & $llvmObjcopy -O binary $kernel (Join-Path $stage "kernel.bin")
+    # Convert ELF to flat binary for each fagging stage
+    $idx = 0
+    foreach ($s in $stages) {
+        $td = Join-Path $target "fagging\$s"
+        $bin = Join-Path $td "x86_64-unknown-none\release\$s.exe"
+        if (-not (Test-Path $bin)) { $bin = Join-Path $td "x86_64-unknown-none\release\$s" }
+        $out = Join-Path $stage "$s.bin"
+        & $llvmObjcopy -O binary $bin $out
+        if ($LASTEXITCODE -ne 0) { Fail "objcopy failed for $s" }
+        $idx++
+    }
+    $bin = $kernel
+    & $llvmObjcopy -O binary $bin (Join-Path $stage "kernel.bin")
+    if ($LASTEXITCODE -ne 0) { Fail "objcopy failed for kernel" }
 } else {
-    Copy-Item $stage1 (Join-Path $stage "stage1.bin")
-    Copy-Item $stage2 (Join-Path $stage "stage2.bin")
-    Copy-Item $stage3 (Join-Path $stage "stage3.bin")
+    Write-Host "  [WARN] llvm-objcopy not found — copying ELF files as-is" -ForegroundColor Yellow
+    $idx = 0
+    foreach ($s in $stages) {
+        $td = Join-Path $target "fagging\$s"
+        $bin = Join-Path $td "x86_64-unknown-none\release\$s.exe"
+        if (-not (Test-Path $bin)) { $bin = Join-Path $td "x86_64-unknown-none\release\$s" }
+        Copy-Item $bin (Join-Path $stage "$s.bin")
+        $idx++
+    }
     Copy-Item $kernel (Join-Path $stage "kernel.bin")
 }
 
 Write-Host ""
 Write-Host "  ═══ BUILD COMPLETE ═══" -ForegroundColor Green
 Write-Host "  Staged to: $stage" -ForegroundColor White
+Write-Host ""
+Write-Host "  12 fagging stages + kernel (Ring 0)" -ForegroundColor Cyan
+Write-Host "  Each stage loads at 0x100000 + (i-1)*0x10000" -ForegroundColor Cyan
 Write-Host ""
 
 if ($BuildOnly) { exit 0 }
@@ -109,13 +156,13 @@ if ($Flash) {
     $efiDest = Join-Path $targetRoot "EFI\BOOT"
     New-Item -ItemType Directory -Path $efiDest -Force | Out-Null
     Copy-Item (Join-Path $stage "BOOTX64.EFI") -Destination (Join-Path $efiDest "BOOTX64.EFI") -Force
-    Copy-Item (Join-Path $stage "stage1.bin")   -Destination (Join-Path $efiDest "stage1.bin") -Force
-    Copy-Item (Join-Path $stage "stage2.bin")   -Destination (Join-Path $efiDest "stage2.bin") -Force
-    Copy-Item (Join-Path $stage "stage3.bin")   -Destination (Join-Path $efiDest "stage3.bin") -Force
-    Copy-Item (Join-Path $stage "kernel.bin")   -Destination (Join-Path $efiDest "kernel.bin") -Force
+    foreach ($s in $stages) {
+        Copy-Item (Join-Path $stage "$s.bin") -Destination (Join-Path $efiDest "$s.bin") -Force
+    }
+    Copy-Item (Join-Path $stage "kernel.bin") -Destination (Join-Path $efiDest "kernel.bin") -Force
 
     try {
-        foreach ($f in @("BOOTX64.EFI", "stage1.bin", "stage2.bin", "stage3.bin", "kernel.bin")) {
+        foreach ($f in @("BOOTX64.EFI", "kernel.bin") + ($stages | ForEach-Object { "$_.bin" })) {
             $fs = [System.IO.File]::Open("$targetRoot\EFI\BOOT\$f", 'Open', 'Write')
             $fs.Flush(1); $fs.Close()
         }

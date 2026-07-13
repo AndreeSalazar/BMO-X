@@ -1,0 +1,7 @@
+[target.x86_64-unknown-none]
+rustflags = [
+  "-C", "link-arg=-T",
+  "-C", "link-arg=s6_fpu/linker.ld",
+  "-C", "relocation-model=static",
+  "-C", "target-feature=+crt-static",
+]

@@ -2,9 +2,7 @@
 members = [
     "boot_context",
     "uefi_chain",
-    "stage1_arch",
-    "stage2_mm",
-    "stage3_dev",
+    "fagging",
     "kernel",
 ]
 resolver = "2"

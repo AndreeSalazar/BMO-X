@@ -1,8 +1,0 @@
-[package]
-name = "stage1-arch"
-version = "1.0.0"
-edition = "2021"
-description = "Stage 1 — GDT, IDT, SYSCALL MSRs"
-
-[dependencies]
-boot-context = { path = "../boot_context" }

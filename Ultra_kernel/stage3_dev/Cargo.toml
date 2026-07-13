@@ -1,8 +1,0 @@
-[package]
-name = "stage3-dev"
-version = "1.0.0"
-edition = "2021"
-description = "Stage 3 — PCI, I/O APIC, HPET, UART"
-
-[dependencies]
-boot-context = { path = "../boot_context" }

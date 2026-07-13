@@ -1,0 +1,9 @@
+[package]
+name = "s6-fpu"
+version = "2.0.0"
+edition = "2021"
+description = "Faggin stage 6 — see Ultra_kernel/fagging/README.md"
+
+[dependencies]
+serial-shared = { path = "../serial_shared" }
+boot-context = { path = "../../boot_context" }
