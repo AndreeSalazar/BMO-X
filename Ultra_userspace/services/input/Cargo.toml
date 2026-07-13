@@ -6,4 +6,4 @@ description = "BMO input service — keyboard/mouse multiplexer for Ring 3"
 
 [dependencies]
 bmo-userland = { path = "../../userland" }
-boot-context = { path = "../../../Ultra_kernel/boot_context" }
+boot-context = { path = "../../../Ultra_kernel_x86-64/boot_context" }
