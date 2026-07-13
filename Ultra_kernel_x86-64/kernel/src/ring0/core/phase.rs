@@ -245,6 +245,11 @@ pub fn main(ctx: &BootContext) {
     crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
 
+    // Populate the BMO CPU profile (Ryzen 5 5600X topology + errata).
+    // This detects CPUID, SMT/CCX layout, cache hierarchy, TSC freq,
+    // and applies Zen 3 Spectre/MDS mitigations.
+    crate::ring0::cpu_vendor::ryzen_5_5600x::init_bmo_cpu();
+
     // CPU identity detection (CPUID leaf 0, 1, 0x80000002-04)
     let cpu = crate::ring0::cpu::detect_cpu();
     let cpu_line = match cpu.vendor {

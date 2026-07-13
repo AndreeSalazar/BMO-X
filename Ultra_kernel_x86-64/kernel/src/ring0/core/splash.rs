@@ -133,6 +133,18 @@ const LOGO_RING3: u32  = 0xFF1E293B; // Slate outer ring
 static mut LAST_PCT: u32 = 0;
 
 // ?????? Primitive drawing ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+//
+// The GOP framebuffer is mapped either WC (write-combining) or UC
+// (uncacheable) by UEFI. WC stores are not guaranteed to reach VRAM
+// until a serializing instruction runs. Without `sfence` after each
+// draw block, the display hardware may keep showing the previous
+// contents (i.e. the UEFI logo or black) for a long time. We emit
+// `sfence` after every primitive that writes a contiguous region.
+
+#[inline]
+fn sfence() {
+    unsafe { core::arch::asm!("sfence", options(nostack, preserves_flags)); }
+}
 
 fn put_pix(x: u32, y: u32, color: u32) {
     let fb = unsafe { crate::info::FB_ADDR as *mut u32 };
@@ -144,7 +156,22 @@ fn put_pix(x: u32, y: u32, color: u32) {
 }
 
 fn fill_rect(x: u32, y: u32, w: u32, h: u32, color: u32) {
-    for dy in 0..h { for dx in 0..w { put_pix(x + dx, y + dy, color); } }
+    let fb = unsafe { crate::info::FB_ADDR as *mut u32 };
+    let st = unsafe { crate::info::FB_STRIDE as usize };
+    let H  = unsafe { crate::info::FB_HEIGHT };
+    if fb.is_null() { return; }
+    let mut any = false;
+    for dy in 0..h {
+        let py = y + dy;
+        if py >= H { break; }
+        for dx in 0..w {
+            let px = x + dx;
+            if (px as usize) >= st { break; }
+            unsafe { *fb.add((py as usize) * st + (px as usize)) = color; }
+            any = true;
+        }
+    }
+    if any { sfence(); }
 }
 
 fn draw_rect_outline(x: u32, y: u32, w: u32, h: u32, color: u32) {
@@ -157,6 +184,7 @@ fn draw_rect_outline(x: u32, y: u32, w: u32, h: u32, color: u32) {
         put_pix(x, y + dy, color);
         put_pix(x + w - 1, y + dy, color);
     }
+    sfence();
 }
 
 /// Draw a filled circle using integer distance squared.
@@ -397,6 +425,21 @@ pub fn splash_init() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
+
+    // First, a tiny sanity ping: 1px red in the top-left corner.
+    // This tests that (a) the GOP base is mapped in our page
+    // tables, (b) the stride is sane, and (c) the pixel format
+    // isn't doing something weird that hides red.
+    unsafe {
+        let fb = crate::info::FB_ADDR as *mut u32;
+        if !fb.is_null() {
+            *fb = 0xFFFF_0000; // ARGB: red
+            core::arch::asm!("sfence", options(nostack, preserves_flags));
+        }
+    }
+
+    // Reset state
+    unsafe { LAST_PCT = 0; }
 
     // Reset state
     unsafe { LAST_PCT = 0; }

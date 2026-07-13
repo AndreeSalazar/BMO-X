@@ -4,6 +4,7 @@ pub mod core {
     pub mod splash;
 }
 pub mod cpu;
+pub mod cpu_vendor;
 pub mod dev {
     pub mod console;
     pub mod framebuffer;
