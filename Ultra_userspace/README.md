@@ -1,10 +1,14 @@
 # FastOS — Ultra Userspace (Ring 3)
 
-The Ring 3 side of FastOS. Companion to `../Ultra_kernel/`.
+The Ring 3 side of FastOS. Companion to `../Ultra_kernel_x86-64/`.
 
 This workspace contains everything that runs **after** the kernel has
 finished its phases and has booted into userland: services, drivers
 that live in userland, and the desktop applications.
+
+> **CPU target:** This workspace is currently **x86-64 only**, matching
+> the architecture of `../Ultra_kernel_x86-64/`. A future
+> `Ultra_userspace_<arch>/` would be needed to port to ARM/RISC-V.
 
 ## Boot relationship
 
@@ -12,24 +16,24 @@ that live in userland, and the desktop applications.
   UEFI firmware
        │
        ▼
-  uefi_chain.efi  (5 layers, ../Ultra_kernel/uefi_chain)
+  uefi_chain.efi  (5 layers, ../Ultra_kernel_x86-64/uefi_chain)
        │
        ▼
-  stage1_arch → stage2_mm → stage3_dev  (../Ultra_kernel/stageN)
+  stage1_arch → stage2_mm → stage3_dev  (../Ultra_kernel_x86-64/stageN)
        │
        ▼
-  bmo-kernel (Ring 0 base, ../Ultra_kernel/kernel)
+  bmo-kernel (Ring 0 base, ../Ultra_kernel_x86-64/kernel)
        │
        ▼  (future: ELF / .bmo loader)
   ┌────────────────────────────────────────────────────────────┐
-  │  Ultra_userspace  (this workspace) — Ring 3                 │
+  │  Ultra_userspace  (this workspace) — Ring 3                │
   │                                                            │
   │   bmo-service-gui     window manager / compositor          │
   │   bmo-service-input   keyboard + mouse multiplexer         │
   │   bmo-driver-keyboard keyboard userland driver             │
   │   bmo-driver-mouse    mouse userland driver                │
   │   bmo-app-launcher    desktop shell                        │
-  │   bmo-app-terminal    terminal emulator (PTY)               │
+  │   bmo-app-terminal    terminal emulator (PTY)              │
   │   bmo-userland        shared crate (syscalls, panic)       │
   └────────────────────────────────────────────────────────────┘
 ```
@@ -39,12 +43,12 @@ that live in userland, and the desktop applications.
 | Crate                  | Role                                                |
 |------------------------|-----------------------------------------------------|
 | `bmo-userland`         | Shared: panic handler, syscall bindings, allocator  |
-| `services/gui`         | Window manager / compositor (server)                 |
+| `services/gui`         | Window manager / compositor (server)                |
 | `services/input`       | Input multiplexer (server)                          |
 | `drivers/keyboard`     | Userland keyboard driver (PS/2 or USB HID)          |
-| `drivers/mouse`        | Userland mouse driver                                |
-| `apps/launcher`        | Desktop shell                                        |
-| `apps/terminal`        | Terminal emulator (PTY-backed)                       |
+| `drivers/mouse`        | Userland mouse driver                               |
+| `apps/launcher`        | Desktop shell                                       |
+| `apps/terminal`        | Terminal emulator (PTY-backed)                      |
 
 ## Current state
 

@@ -1,7 +1,7 @@
 #![no_std]
 /// Boot context ??? shared struct passed between boot layers.
 ///
-/// Each layer of the Ultra_kernel boot chain receives a `BootContext`,
+/// Each layer of the Ultra_kernel_x86-64 boot chain receives a `BootContext`,
 /// fills the fields it owns, and jumps to the next layer. There are no
 /// function calls between layers ??? only raw jumps, so this struct IS the
 /// ABI.

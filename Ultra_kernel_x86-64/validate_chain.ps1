@@ -13,8 +13,8 @@ function Fail { param($m) Write-Host ("  x " + $m) -ForegroundColor Red }
 
 if (-not (Test-Path $stage)) {
     Write-Host ""
-    Write-Host "  Ultra_kernel/validate_chain.ps1" -ForegroundColor Magenta
-    Write-Host "  ------------------------------" -ForegroundColor DarkGray
+    Write-Host "  Ultra_kernel_x86-64/validate_chain.ps1" -ForegroundColor Magenta
+    Write-Host "  --------------------------------------" -ForegroundColor DarkGray
     Write-Host ""
     Fail "staging dir not found: $stage"
     Write-Host "    Run .\build.ps1 first." -ForegroundColor Yellow
@@ -22,8 +22,8 @@ if (-not (Test-Path $stage)) {
 }
 
 Write-Host ""
-Write-Host "  Ultra_kernel/validate_chain.ps1" -ForegroundColor Magenta
-Write-Host "  ------------------------------" -ForegroundColor DarkGray
+Write-Host "  Ultra_kernel_x86-64/validate_chain.ps1" -ForegroundColor Magenta
+Write-Host "  --------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Validating that every faggin stage is small and in the right order." -ForegroundColor White
 Write-Host ""

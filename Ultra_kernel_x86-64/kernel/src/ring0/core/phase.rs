@@ -1,6 +1,6 @@
 //! Ring 0 boot phases - orchestrator for the kernel entry path.
 //!
-//! In Ultra_kernel's minimal Ring 0 base we keep only what's necessary:
+//! In Ultra_kernel_x86-64's minimal Ring 0 base we keep only what's necessary:
 //! the splash animation, the framebuffer init, and a serial shell.
 //! All GDT/IDT/CPU/MM/IRQ/SMP subsystems live in the faggin stages
 //! (s2_gdt, s3_idt, s4_cpuid, s5_control, s9_paging) and are already

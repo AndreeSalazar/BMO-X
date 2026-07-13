@@ -40,7 +40,7 @@ Each stage compiles with `opt-level = "z"` (size), `lto = true`,
 `Cargo.toml` of each stage inherits the workspace default profile
 and applies a per-package override for size.
 
-From the Ultra_kernel/ root:
+From the Ultra_kernel_x86-64/ root:
 
 ```powershell
 # Build everything (uefi_chain, all 12 faggin stages, kernel)

@@ -1,8 +1,18 @@
 [workspace]
-# Ultra_kernel/ — workspace root.
+# Ultra_kernel_x86-64/ — workspace root.
 #
+# This is the x86-64-specific kernel for FastOS. It contains:
 #   boot_context/   shared lib (the BootContext ABI struct)
 #   kernel/         Ring 0 base (single .bin, loaded at 0x400000)
+#   uefi_chain/     5 UEFI bootloader layers (EFI target, separate build)
+#   faggin/         12-stage pre-kernel boot chain (Faggin-style)
+#   Ultra_userspace/  Ring 3 side (sibling workspace at the top of FastOS)
+#
+# For other CPU architectures (AArch64, RISC-V) the entire tree is
+# duplicated as Ultra_kernel_<arch>/, since the faggin stages, linker
+# scripts, and bare-metal asm are CPU-specific. The shared contracts
+# (BootContext layout, bmo-abi, bmo-hal) live in Uso_Reales_Crates/
+# and are CPU-agnostic.
 #
 # Note: uefi_chain/ is intentionally NOT a member of this workspace
 # because it targets x86_64-unknown-uefi, while the kernel and
@@ -14,7 +24,6 @@
 #   cargo +nightly build --release --target x86_64-unknown-uefi
 #
 # faggin/ stages are also not workspace members (see build.ps1).
-# Ultra_userspace/ is a sibling workspace at FastOS/Ultra_userspace/.
 members = [
     "boot_context",
     "kernel",

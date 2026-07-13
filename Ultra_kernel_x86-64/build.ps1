@@ -22,11 +22,11 @@ if ($Clean) {
 }
 
 Write-Host ''
-Write-Host '  === BMO Ultra Kernel v2 Build (UEFI 5 layers + 12 faggin stages + kernel) ===' -ForegroundColor Magenta
+Write-Host '  === BMO Ultra Kernel x86-64 Build (UEFI 5 layers + 12 faggin stages + kernel) ===' -ForegroundColor Magenta
 Write-Host ''
 
 # ── Build uefi_chain (5 UEFI layers) ──────────────────────────────
-# uefi_chain is its own single-crate workspace at Ultra_kernel/uefi_chain/.
+# uefi_chain is its own single-crate workspace at Ultra_kernel_x86-64/uefi_chain/.
 # It targets x86_64-unknown-uefi and depends on boot-context (path).
 Step 'Building uefi_chain (5 UEFI layers)...'
 $uefiDir = Join-Path $root 'uefi_chain'

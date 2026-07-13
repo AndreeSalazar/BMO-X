@@ -19,7 +19,7 @@ type EfiStatus = u64;
 const EFI_SUCCESS: u64 = 0;
 
 // 12 faggin stages + 1 kernel, all at fixed physical addresses
-// (matches Ultra_kernel/faggin/*/linker.ld base addresses).
+// (matches Ultra_kernel_x86-64/faggin/*/linker.ld base addresses).
 const STAGES: [(&str, u64); MAX_STAGES] = [
     ("s1_serial.bin",    0x100000),
     ("s2_gdt.bin",       0x110000),

@@ -2,4 +2,4 @@
 name = "boot-context"
 version = "2.0.0"
 edition = "2021"
-description = "Shared BootContext between Ultra_kernel boot layers"
+description = "Shared BootContext between Ultra_kernel_x86-64 boot layers"

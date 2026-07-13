@@ -1,13 +1,13 @@
 [workspace]
 # uefi_chain is its own workspace because it targets
 # x86_64-unknown-uefi and cannot be mixed with the bare-metal
-# kernel/workspace in Ultra_kernel/Cargo.toml.
+# kernel/workspace in Ultra_kernel_x86-64/Cargo.toml.
 
 [package]
 name = "uefi-chain"
 version = "2.0.0"
 edition = "2021"
-description = "UEFI-side boot chain for Ultra_kernel: 5 tiny layers, one EFI binary."
+description = "UEFI-side boot chain for Ultra_kernel_x86-64: 5 tiny layers, one EFI binary."
 
 [dependencies]
 boot-context = { path = "../boot_context" }
