@@ -18,10 +18,23 @@ type EfiStatus = u64;
 
 const EFI_SUCCESS: u64 = 0;
 
-const STAGE1_ADDR: u64 = 0x100000;
-const STAGE2_ADDR: u64 = 0x200000;
-const STAGE3_ADDR: u64 = 0x300000;
-const KERNEL_ADDR: u64 = 0x400000;
+// 12 faggin stages + 1 kernel, all at fixed physical addresses
+// (matches Ultra_kernel/faggin/*/linker.ld base addresses).
+const STAGES: &[(/*name*/ &str, /*addr*/ u64)] = &[
+    ("s1_serial.bin",    0x100000),
+    ("s2_gdt.bin",       0x110000),
+    ("s3_idt.bin",       0x120000),
+    ("s4_cpuid.bin",     0x130000),
+    ("s5_control.bin",   0x140000),
+    ("s6_fpu.bin",       0x150000),
+    ("s7_tsc.bin",       0x160000),
+    ("s8_syscall.bin",   0x170000),
+    ("s9_paging.bin",    0x180000),
+    ("s10_heap.bin",     0x190000),
+    ("s11_acpi.bin",     0x1A0000),
+    ("s12_devices.bin",  0x1B0000),
+    ("kernel.bin",       0x400000),
+];
 const MAX_FILE_SIZE: usize = 256 * 1024;
 
 extern "C" {
@@ -122,12 +135,12 @@ pub extern "C" fn l3_entry(
     let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
         unsafe { core::mem::transmute(*file_base.add(4)) };
 
-    let stages = [
-        LoadEntry { name: "stage1.bin", addr: STAGE1_ADDR },
-        LoadEntry { name: "stage2.bin", addr: STAGE2_ADDR },
-        LoadEntry { name: "stage3.bin", addr: STAGE3_ADDR },
-        LoadEntry { name: "kernel.bin", addr: KERNEL_ADDR },
-    ];
+    let stages: [LoadEntry; 14] = STAGES
+        .iter()
+        .map(|(n, a)| LoadEntry { name: n, addr: *a })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap_or_else(|_| panic!("STAGES must have 14 entries"));
 
     let mut file_buf = [0u8; MAX_FILE_SIZE];
     let mut ok = true;

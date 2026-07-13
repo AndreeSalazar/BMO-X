@@ -55,6 +55,7 @@ unsafe fn init_cr0_cr4() {
     let cr4: u64;
     asm!("mov {}, cr4", out(reg) cr4);
     let mut cr4 = cr4;
+    cr4 |= 1 << 7;     // PGE — enable global pages (required by s9_paging PTE_GLOBAL)
     cr4 |= 1 << 9;     // OSFXSR
     cr4 |= 1 << 10;    // OSXMMEXCPT
     if avx && osxsave { cr4 |= 1 << 18; } // OSXSAVE

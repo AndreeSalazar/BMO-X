@@ -17,6 +17,7 @@ extern "C" {
     fn s7_tsc(ctx: *mut boot_context::BootContext) -> !;
 }
 
+#[repr(C, align(64))]
 static mut FPU_STATE: [u8; 1024] = [0; 1024];
 
 #[no_mangle]
