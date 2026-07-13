@@ -1,14 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    # ── RING 0 (Kernel) ──────────────────────────────────────────────
-    "kernel",
-    "kernel/Layer_Nano-Wake",
-    "kernel/Boot_Protocol",
-    "crates_Personal/bootloader",
-    "crates_Personal/ring0/cpu_vendor_profile",
-    "crates_Personal/ring0/cabina_daemon",
-    "crates_Personal/ring0/cabina_panels",
+    # ── ULTRA KERNEL (Ring 0 base + faggin chain) ──────────────────
+    "Ultra_kernel/boot_context",
+    "Ultra_kernel/uefi_chain",
+    "Ultra_kernel/faggin",
+    "Ultra_kernel/kernel",
+    "Ultra_kernel/Ultra_userspace",
 
     # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
     "Uso_Reales_Crates/shared/bmo-hal",
@@ -20,48 +18,36 @@ members = [
     "Uso_Reales_Crates/abi/bmo-abi",
     "Uso_Reales_Crates/abi/bmo-rt",
 
+    # ── DRIVERS (Hardware) ───────────────────────────────────────────
+    "Uso_Reales_Crates/drivers/audio",
+    "Uso_Reales_Crates/drivers/net",
+    "Uso_Reales_Crates/drivers/storage/ahci",
+    "Uso_Reales_Crates/drivers/storage/fat32",
+    "Uso_Reales_Crates/drivers/storage/nvme",
+    "Uso_Reales_Crates/drivers/usb/input",
+    "Uso_Reales_Crates/drivers/usb/uhid",
+    "Uso_Reales_Crates/drivers/usb/xhci",
+
     # ── SERVICES (System) ──────────────────────────────────────────
     "Uso_Reales_Crates/services/cabina-core",
     "Uso_Reales_Crates/services/byte-defender",
     "Uso_Reales_Crates/services/timeback",
 
-    # ── RING 3 (Userspace - Desktop) ───────────────────────────────
-    "crates_Personal/desktop/bmo_core",
-
-    # ── RING 3 (Kernel - Userspace support) ────────────────────────
-    "kernel/ring3/foundation",
-    "kernel/ring3/drivers/kbd",
-    "kernel/ring3/drivers/mouse",
-    "kernel/ring3/drivers/audio",
-    "kernel/ring3/services/input",
-    "kernel/ring3/services/audio",
-    "kernel/ring3/services/fs",
-
-    # ── DRIVERS (Hardware) ───────────────────────────────────────────
-    "crates_Personal/drivers/audio/audio",
-    "crates_Personal/drivers/usb/input",
-    "crates_Personal/drivers/usb/xhci",
-    "crates_Personal/drivers/usb/uhid",
-    "crates_Personal/drivers/storage/ahci",
-    "crates_Personal/drivers/storage/fat32",
-    "crates_Personal/drivers/storage/nvme",
-    "crates_Personal/drivers/net/net",
-
-    # ── MODULES (Ring 3 loadable) ───────────────────────────────────
-    "crates_Personal/modules/bmo_core",
-    "crates_Personal/modules/timeback",
-    "crates_Personal/modules/cabina",
-
-    # ── PLUGINS (Third-party / vendored) ────────────────────────────
+    # ── PLUGINS (Vendored third-party) ──────────────────────────────
     "crates_Personal/plugins/goblin",
-    "crates_Personal/plugins/llfree",
-    "crates_Personal/plugins/llfree-eval",
-    "crates_Personal/plugins/vendor",
+    "crates_Personal/plugins/plain",
+    "crates_Personal/plugins/scroll",
+    "crates_Personal/plugins/scroll_derive",
 
     # ── TOOLS (Build-time) ──────────────────────────────────────────
     "Uso_Reales_Crates/tools/lang/cobol",
     "Uso_Reales_Crates/tools/lang/cpp",
     "Uso_Reales_Crates/tools/lang/c",
+]
+
+exclude = [
+    # Extern submodule with its own Cargo workspace
+    "extern/gnucobol-rs",
 ]
 
 [profile.dev]
@@ -76,6 +62,3 @@ strip = "symbols"
 debug = false
 debug-assertions = false
 overflow-checks = false
-
-[profile.release.package.layer-nano-wake]
-opt-level = "z"

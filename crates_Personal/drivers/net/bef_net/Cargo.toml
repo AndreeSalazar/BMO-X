@@ -1,7 +1,0 @@
-[workspace]
-
-[package]
-name = "bmo-bef-net"
-version = "0.1.0"
-edition = "2021"
-description = "BMO Network BEF — receive .bef binaries over UDP, verify, execute"

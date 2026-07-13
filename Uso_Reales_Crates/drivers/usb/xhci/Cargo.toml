@@ -1,0 +1,10 @@
+[package]
+name = "bmo-xhci"
+version = "0.1.0"
+edition = "2021"
+description = "BMO xHCI USB Controller Driver — init, ports, devices, control transfers"
+
+[lib]
+
+[dependencies]
+bmo-abi = { path = "../../../abi/bmo-abi" }
