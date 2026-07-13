@@ -11,7 +11,6 @@
 
 #![allow(dead_code)]
 
-use core::arch::asm;
 use boot_context::BootContext;
 
 type EfiHandle = *mut core::ffi::c_void;
@@ -43,14 +42,5 @@ pub extern "efiapi" fn layer0_efi_main(
 
     crate::serial::puts("[L0] jump -> layer1_getmem\n");
 
-    unsafe {
-        asm!(
-            "jmp {l1}",
-            l1 = in(reg) l1_entry as *const () as u64,
-            in("rdi") &mut ctx as *mut BootContext,
-            in("rsi") image_handle,
-            in("rdx") system_table,
-            options(noreturn)
-        );
-    }
+    unsafe { l1_entry(&mut ctx, image_handle, system_table) }
 }

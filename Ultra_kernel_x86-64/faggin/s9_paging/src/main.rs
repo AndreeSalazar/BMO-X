@@ -1,12 +1,9 @@
-//! Faggin stage 9 ??? Paging (PML4 + identity map + higher-half).
+//! Faggin stage 9 ??? Paging handoff.
 //!
 //! Responsibilities (one only):
-//!   - Build a PML4 in a freshly-allocated frame.
-//!   - Identity-map the first 4MB (where the stages live).
-//!   - Higher-half mirror the first 2GB to 0xFFFF_8000_0000_0000.
-//!   - Map the framebuffer with WC (if any).
-//!   - Load CR3.
-//!   - Publish `pml4` in BootContext.
+//!   - Preserve the UEFI page tables that map the active stack, context,
+//!     fixed-address binaries, and GOP framebuffer.
+//!   - Publish the current `pml4` in BootContext.
 //!   - Jump to s10_heap.
 
 #![no_std]
@@ -85,44 +82,13 @@ unsafe fn map_page(pml4: *mut u64, v: u64, p: u64, flags: u64) {
 #[no_mangle]
 #[link_section = ".text._start"]
 pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
-    let ctx = unsafe { &*ctx_ptr };
-    unsafe { pool_init(ctx); }
-
-    let pml4 = unsafe { zeroed_frame() };
-    if pml4.is_null() {
-        serial_shared::puts("[s9 paging] no frames ??? halting\n");
-        loop { unsafe { asm!("hlt"); } }
-    }
-
-    let mut a: u64 = 0;
-    while a < 0x400000 {
-        unsafe { map_page(pml4, a, a, PTE_PRESENT | PTE_WRITABLE); }
-        a += PAGE_SIZE;
-    }
-    let mut a: u64 = 0;
-    while a < 0x80000000 {
-        unsafe { map_page(pml4, HIGH_MEM_BASE + a, a, PTE_PRESENT | PTE_WRITABLE | PTE_GLOBAL); }
-        a += PAGE_SIZE;
-    }
-    if ctx.fb_addr != 0 {
-        let fb_size = (ctx.fb_stride as u64) * (ctx.fb_height as u64) * 4;
-        let fb_start = ctx.fb_addr & !(PAGE_SIZE - 1);
-        let fb_end   = (ctx.fb_addr + fb_size + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-        let mut a = fb_start;
-        while a < fb_end {
-            unsafe { map_page(pml4, a, a, PTE_PRESENT | PTE_WRITABLE | PTE_CACHE_DISABLE); }
-            unsafe { map_page(pml4, HIGH_MEM_BASE + a, a, PTE_PRESENT | PTE_WRITABLE | PTE_CACHE_DISABLE | PTE_GLOBAL); }
-            a += PAGE_SIZE;
-        }
-    }
-
-    let pml4_phys = pml4 as u64;
-    unsafe { asm!("mov cr3, {}", in(reg) pml4_phys); }
+    let pml4_phys: u64;
+    unsafe { asm!("mov {}, cr3", out(reg) pml4_phys); }
 
     let ctx = unsafe { &mut *ctx_ptr };
     ctx.pml4 = pml4_phys;
 
-    serial_shared::puts("[s9 paging] PML4 + identity + higher-half mapped, CR3 loaded\n");
+    serial_shared::puts("[s9 paging] preserving UEFI mappings until kernel VMM init\n");
 
     unsafe {
         asm!(

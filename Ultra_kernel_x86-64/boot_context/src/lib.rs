@@ -8,7 +8,8 @@
 
 pub const MAGIC: u64 = 0x464F_5343_424F_4F54; // "FOSCBOOT"
 pub const MAX_MEMORY_ENTRIES: usize = 64;
-pub const MAX_STAGES: usize = 8;
+pub const MAX_STAGES: usize = 13; // 12 Faggin stages + kernel
+pub const KERNEL_STAGE_INDEX: usize = MAX_STAGES - 1;
 
 #[repr(C)]
 #[derive(Clone, Copy)]

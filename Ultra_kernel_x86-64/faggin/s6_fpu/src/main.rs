@@ -19,6 +19,19 @@ const NEXT_ADDR: u64 = 0x160000;
 struct Align64([u8; 1024]);
 static mut FPU_STATE: Align64 = Align64([0; 1024]);
 
+#[inline]
+fn has_xsave() -> bool {
+    let ecx: u32;
+    unsafe {
+        asm!(
+            "push rbx", "cpuid", "pop rbx",
+            inout("eax") 1u32 => _, inout("ecx") 0u32 => ecx,
+            out("edx") _,
+        );
+    }
+    ecx & (1 << 26) != 0
+}
+
 #[no_mangle]
 #[link_section = ".text._start"]
 pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
@@ -27,9 +40,16 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
         let mxcsr: u32 = 0x1F80;
         asm!("ldmxcsr [{addr}]", addr = in(reg) &mxcsr as *const u32);
         let ptr = core::ptr::addr_of_mut!(FPU_STATE.0) as *mut u8;
-        asm!("xsave [{}]", in(reg) ptr, in("eax") 0x7u32, in("edx") 0u32);
+        if has_xsave() {
+            let eax: u32;
+            let edx: u32;
+            asm!("xgetbv", in("ecx") 0u32, out("eax") eax, out("edx") edx);
+            asm!("xsave [{}]", in(reg) ptr, in("eax") eax, in("edx") edx);
+        } else {
+            asm!("fxsave64 [{}]", in(reg) ptr);
+        }
     }
-    serial_shared::puts("[s6 fpu] FPU + MXCSR + XSAVE\n");
+    serial_shared::puts("[s6 fpu] FPU + MXCSR state initialized\n");
 
     unsafe {
         asm!(

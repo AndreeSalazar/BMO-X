@@ -10,8 +10,6 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-use boot_context::BootContext;
-
 type EfiHandle = *mut core::ffi::c_void;
 type EfiStatus = u64;
 
@@ -20,18 +18,9 @@ pub extern "efiapi" fn efi_main(
     image_handle: EfiHandle,
     system_table: *mut core::ffi::c_void,
 ) -> EfiStatus {
-    let mut ctx = BootContext::new();
-
-    unsafe {
-        core::arch::asm!(
-            "jmp {l0}",
-            l0  = in(reg) uefi_chain::layer0_efi_main as *const () as u64,
-            in("rdi") &mut ctx as *mut BootContext,
-            in("rsi") image_handle,
-            in("rdx") system_table,
-            options(noreturn)
-        );
-    }
+    // Keep the firmware-facing Microsoft x64 ABI here. Layer 0 performs
+    // the explicit SysV-register handoff used by the remaining layers.
+    uefi_chain::layer0_efi_main(image_handle, system_table)
 }
 
 #[panic_handler]

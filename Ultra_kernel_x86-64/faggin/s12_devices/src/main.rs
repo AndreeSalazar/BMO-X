@@ -8,7 +8,8 @@
 //!   - HPET: enable + reset counter.
 //!   - i8042 PS/2: enable keyboard and mouse.
 //!   - Publish ioapic_base, hpet_base, pci_count, pci_devices[].
-//!   - Jump to kernel@0x400000 (ctx.stage_entry[0]).
+//!   - Publish discovered firmware addresses without touching unsafe MMIO.
+//!   - Jump to kernel@0x400000.
 
 #![no_std]
 #![no_main]
@@ -17,6 +18,7 @@
 use core::panic::PanicInfo;
 use core::arch::asm;
 use boot_context::PciDevice;
+use boot_context::KERNEL_STAGE_INDEX;
 
 const HIGH_MEM_BASE: u64 = 0xFFFF_8000_0000_0000;
 const COM1: u16 = 0x3F8;
@@ -270,21 +272,13 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
 
     let rsdp = unsafe { (*ctx_ptr).rsdp };
     let devs = if rsdp != 0 { unsafe { parse_acpi(rsdp) } } else {
-        Devs { mcfg: None, mcfg_end: Some(0xFF), hpet: None, lapic: Some(0xFEE00000), ioapic: Some(0xFEC00000) }
+        Devs { mcfg: None, mcfg_end: None, hpet: None, lapic: None, ioapic: None }
     };
 
-    unsafe { serial_puts("\n[s12 pci]\n"); }
-    pci_scan(unsafe { &mut *ctx_ptr }, &devs);
-
-    if let Some(base) = devs.ioapic { unsafe { ioapic_init(base); } }
-    unsafe { lapic_init(); }
-    if let Some(base) = devs.hpet { unsafe { hpet_init(base); } }
-    else { unsafe {
-        // Try default 0xFED00000
-        let v = phys_to_virt(0xFED00000) as *const u64;
-        if v.read_volatile() != 0 && v.read_volatile() != !0u64 { hpet_init(0xFED00000); }
-    } }
-    unsafe { i8042_init(); }
+    // Device MMIO is intentionally deferred until the kernel owns its page
+    // tables and exception handlers. A bad firmware address here otherwise
+    // becomes an unobservable triple fault before the first framebuffer draw.
+    unsafe { serial_puts("[s12] device activation deferred to kernel\n"); }
 
     let ctx = unsafe { &mut *ctx_ptr };
     ctx.ioapic_base = devs.ioapic.unwrap_or(0);
@@ -292,7 +286,11 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     ctx.rsdp = rsdp;
 
     unsafe { serial_puts("[s12] -> jmp kernel\n"); }
-    let entry = ctx.stage_entry[0];
+    let entry = ctx.stage_entry[KERNEL_STAGE_INDEX];
+    if entry == 0 {
+        unsafe { serial_puts("[s12] kernel entry missing - halting\n"); }
+        loop { unsafe { asm!("hlt"); } }
+    }
     unsafe {
         asm!(
             "jmp {next}",

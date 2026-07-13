@@ -21,7 +21,7 @@ type EfiStatus = u64;
 const EFI_SUCCESS: u64 = 0;
 
 extern "C" {
-    fn l3_entry(ctx: *mut BootContext) -> !;
+    fn l3_entry(ctx: *mut BootContext, ih: EfiHandle, st: *mut core::ffi::c_void) -> !;
 }
 
 #[repr(C)]
@@ -89,7 +89,7 @@ static mut GOP_GUID: EfiGuid = EfiGuid {
 #[no_mangle]
 pub extern "C" fn l2_entry(
     ctx_ptr: *mut BootContext,
-    _image_handle: EfiHandle,
+    image_handle: EfiHandle,
     system_table: *mut EfiSystemTable,
 ) -> ! {
     crate::serial::puts("\n[L2 uefi_efi_getgop]\n");
@@ -105,7 +105,7 @@ pub extern "C" fn l2_entry(
 
     if bs.is_null() {
         crate::serial::puts("[L2] BootServices null ??? headless, fb=0\n");
-        jump_next(ctx_ptr);
+        jump_next(ctx_ptr, image_handle, system_table);
     }
 
     let mut gop_handle: EfiHandle = core::ptr::null_mut();
@@ -113,7 +113,7 @@ pub extern "C" fn l2_entry(
 
     if r != EFI_SUCCESS || gop_handle.is_null() {
         crate::serial::puts("[L2] GOP not found ??? headless, fb=0\n");
-        jump_next(ctx_ptr);
+        jump_next(ctx_ptr, image_handle, system_table);
     }
 
     let gop = unsafe { &*(gop_handle as *const EfiGraphicsOutputProtocol) };
@@ -122,7 +122,16 @@ pub extern "C" fn l2_entry(
     let w = info[0];
     let h = info[1];
     let fmt = info[2];
-    let stride = (mode.frame_buffer_size as u32) / (h * 4).max(1);
+    // EFI_GRAPHICS_OUTPUT_MODE_INFORMATION.PixelsPerScanLine is the eighth
+    // u32. FrameBufferSize may include firmware padding and is not a stride.
+    let stride = info[7];
+
+    // PixelBltOnly (3) has no linear framebuffer. The kernel currently
+    // supports only the standard 32-bit RGB/BGR GOP modes.
+    if w == 0 || h == 0 || stride < w || fmt > 1 || mode.frame_buffer_base == 0 {
+        crate::serial::puts("[L2] unsupported GOP mode ??? headless, fb=0\n");
+        jump_next(ctx_ptr, image_handle, system_table);
+    }
 
     ctx.fb_addr = mode.frame_buffer_base;
     ctx.fb_width = w;
@@ -138,19 +147,16 @@ pub extern "C" fn l2_entry(
     crate::serial::dec(h as usize);
     crate::serial::puts("\n");
 
-    jump_next(ctx_ptr);
+    jump_next(ctx_ptr, image_handle, system_table);
 }
 
-fn jump_next(ctx_ptr: *mut BootContext) -> ! {
+fn jump_next(
+    ctx_ptr: *mut BootContext,
+    image_handle: EfiHandle,
+    system_table: *mut EfiSystemTable,
+) -> ! {
     crate::serial::puts("[L2] jump -> layer3_load\n");
-    unsafe {
-        asm!(
-            "jmp {l3}",
-            l3 = in(reg) l3_entry as *const () as u64,
-            in("rdi") ctx_ptr,
-            options(noreturn)
-        );
-    }
+    unsafe { l3_entry(ctx_ptr, image_handle, system_table.cast()) }
 }
 
 unsafe fn locate_protocol(

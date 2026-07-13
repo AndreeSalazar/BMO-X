@@ -113,12 +113,12 @@ for ($i = 0; $i -lt $expected_addrs.Count; $i += 2) {
         $all_ok = $false
     }
 }
-# s12_devices jumps via stage_entry[0]
+# s12_devices jumps via the shared kernel stage index.
 $main = Join-Path $source_dir "s12_devices\src\main.rs"
 if (Test-Path $main) {
     $content = Get-Content -LiteralPath $main -Raw
-    if ($content -match 'stage_entry\[0\]') {
-        Pass ("  s12_devices  -> kernel (stage_entry[0])")
+    if ($content -match 'stage_entry\[KERNEL_STAGE_INDEX\]') {
+        Pass ("  s12_devices  -> kernel (KERNEL_STAGE_INDEX)")
     } else {
         Fail ("  s12_devices  does NOT jmp to kernel")
         $all_ok = $false

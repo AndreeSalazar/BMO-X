@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use core::arch::asm;
-use boot_context::BootContext;
+use boot_context::{BootContext, MAX_STAGES};
 
 type EfiHandle = *mut core::ffi::c_void;
 type EfiStatus = u64;
@@ -20,7 +20,7 @@ const EFI_SUCCESS: u64 = 0;
 
 // 12 faggin stages + 1 kernel, all at fixed physical addresses
 // (matches Ultra_kernel/faggin/*/linker.ld base addresses).
-const STAGES: &[(/*name*/ &str, /*addr*/ u64)] = &[
+const STAGES: [(&str, u64); MAX_STAGES] = [
     ("s1_serial.bin",    0x100000),
     ("s2_gdt.bin",       0x110000),
     ("s3_idt.bin",       0x120000),
@@ -36,6 +36,9 @@ const STAGES: &[(/*name*/ &str, /*addr*/ u64)] = &[
     ("kernel.bin",       0x400000),
 ];
 const MAX_FILE_SIZE: usize = 256 * 1024;
+const STAGE_SLOT_SIZE: usize = 0x10000;
+const KERNEL_RESERVE_SIZE: usize = 16 * 1024 * 1024;
+static mut FILE_BUF: [u8; MAX_FILE_SIZE] = [0; MAX_FILE_SIZE];
 
 extern "C" {
     fn l4_entry(ctx: *mut BootContext, ih: EfiHandle, st: *mut core::ffi::c_void) -> !;
@@ -85,8 +88,6 @@ static mut FILE_SYSTEM_GUID: EfiGuid = EfiGuid {
     data4: [0x97, 0xa2, 0xff, 0x06, 0xff, 0x38, 0xb0, 0xdf],
 };
 
-struct LoadEntry { name: &'static str, addr: u64 }
-
 #[no_mangle]
 pub extern "C" fn l3_entry(
     ctx_ptr: *mut BootContext,
@@ -135,34 +136,15 @@ pub extern "C" fn l3_entry(
     let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
         unsafe { core::mem::transmute(*file_base.add(4)) };
 
-    // Build the LoadEntry array from STAGES (compile-time-constant).
-    // No Vec — this is no_std, so we expand manually.
-    // STAGES has 14 entries: s1_serial .. s12_devices + kernel.
-    let stages: [LoadEntry; 14] = [
-        LoadEntry { name: STAGES[0].0,  addr: STAGES[0].1  },
-        LoadEntry { name: STAGES[1].0,  addr: STAGES[1].1  },
-        LoadEntry { name: STAGES[2].0,  addr: STAGES[2].1  },
-        LoadEntry { name: STAGES[3].0,  addr: STAGES[3].1  },
-        LoadEntry { name: STAGES[4].0,  addr: STAGES[4].1  },
-        LoadEntry { name: STAGES[5].0,  addr: STAGES[5].1  },
-        LoadEntry { name: STAGES[6].0,  addr: STAGES[6].1  },
-        LoadEntry { name: STAGES[7].0,  addr: STAGES[7].1  },
-        LoadEntry { name: STAGES[8].0,  addr: STAGES[8].1  },
-        LoadEntry { name: STAGES[9].0,  addr: STAGES[9].1  },
-        LoadEntry { name: STAGES[10].0, addr: STAGES[10].1 },
-        LoadEntry { name: STAGES[11].0, addr: STAGES[11].1 },
-        LoadEntry { name: STAGES[12].0, addr: STAGES[12].1 },
-        LoadEntry { name: STAGES[13].0, addr: STAGES[13].1 },
-    ];
-
-    let mut file_buf = [0u8; MAX_FILE_SIZE];
+    // Keep this large read buffer out of the relatively small firmware stack.
+    let file_buf = unsafe { &mut *core::ptr::addr_of_mut!(FILE_BUF) };
     let mut ok = true;
 
-    for (i, s) in stages.iter().enumerate() {
+    for (i, &(name, addr)) in STAGES.iter().enumerate() {
         crate::serial::puts("[L3] load ");
-        crate::serial::puts(s.name);
+        crate::serial::puts(name);
         crate::serial::puts(" -> 0x");
-        crate::serial::hex(s.addr);
+        crate::serial::hex(addr);
         crate::serial::puts(" ... ");
 
         let mut path = [0u16; 260];
@@ -170,7 +152,7 @@ pub extern "C" fn l3_entry(
         let prefix = b"EFI\\BOOT\\";
         let mut idx = 1;
         for &c in prefix { path[idx] = c as u16; idx += 1; }
-        for &c in s.name.as_bytes() { path[idx] = c as u16; idx += 1; }
+        for &c in name.as_bytes() { path[idx] = c as u16; idx += 1; }
         path[idx] = 0;
 
         let mut file: *mut core::ffi::c_void = core::ptr::null_mut();
@@ -187,10 +169,25 @@ pub extern "C" fn l3_entry(
             continue;
         }
 
-        unsafe { copy_to_phys(s.addr, file_buf.as_ptr(), size.min(MAX_FILE_SIZE)); }
-        ctx.stage_base[i] = s.addr;
+        let reserve_size = if i + 1 == MAX_STAGES { KERNEL_RESERVE_SIZE } else { STAGE_SLOT_SIZE };
+        if size > reserve_size {
+            crate::serial::puts("TOO-LARGE\n");
+            ok = false;
+            continue;
+        }
+
+        let mut allocation = addr;
+        let pages = (reserve_size + 4095) / 4096;
+        if unsafe { allocate_pages(bs, pages, &mut allocation) } != EFI_SUCCESS || allocation != addr {
+            crate::serial::puts("ADDR-BUSY\n");
+            ok = false;
+            continue;
+        }
+
+        unsafe { copy_to_phys(addr, file_buf.as_ptr(), size); }
+        ctx.stage_base[i] = addr;
         ctx.stage_size[i] = size as u64;
-        ctx.stage_entry[i] = s.addr;
+        ctx.stage_entry[i] = addr;
 
         crate::serial::dec(size);
         crate::serial::puts(" bytes\n");
@@ -203,16 +200,7 @@ pub extern "C" fn l3_entry(
 
     crate::serial::puts("[L3] jump -> layer4_exit\n");
 
-    unsafe {
-        asm!(
-            "jmp {l4}",
-            l4 = in(reg) l4_entry as *const () as u64,
-            in("rdi") ctx_ptr,
-            in("rsi") image_handle,
-            in("rdx") system_table,
-            options(noreturn)
-        );
-    }
+    unsafe { l4_entry(ctx_ptr, image_handle, system_table.cast()) }
 }
 
 unsafe fn copy_to_phys(dst: u64, src: *const u8, len: usize) {
@@ -231,6 +219,15 @@ unsafe fn locate_protocol(
     let fnptr: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
         core::mem::transmute(*base.add(3 + 37));
     fnptr(guid, core::ptr::null_mut(), handle)
+}
+
+unsafe fn allocate_pages(bs: *mut EfiBootServices, pages: usize, address: &mut u64) -> EfiStatus {
+    let base = &(*bs).hdr as *const EfiTableHeader as *const *mut core::ffi::c_void;
+    let fnptr: extern "efiapi" fn(u32, u32, usize, &mut u64) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 2));
+    // AllocateAddress + EfiLoaderData. Fixed-address binaries must own their
+    // linker ranges instead of silently overwriting firmware allocations.
+    fnptr(2, 2, pages, address)
 }
 
 #[inline(never)]

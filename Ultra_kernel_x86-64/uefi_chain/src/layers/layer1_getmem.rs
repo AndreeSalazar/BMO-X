@@ -19,7 +19,7 @@ const EFI_CONVENTIONAL_MEMORY: u32 = 7;
 type EfiHandle = *mut core::ffi::c_void;
 
 extern "C" {
-    fn l2_entry(ctx: *mut BootContext) -> !;
+    fn l2_entry(ctx: *mut BootContext, ih: EfiHandle, st: *mut core::ffi::c_void) -> !;
 }
 
 #[repr(C)]
@@ -66,7 +66,7 @@ struct EfiMemoryDescriptor {
 #[no_mangle]
 pub extern "C" fn l1_entry(
     ctx_ptr: *mut BootContext,
-    _image_handle: EfiHandle,
+    image_handle: EfiHandle,
     system_table: *mut EfiSystemTable,
 ) -> ! {
     crate::serial::puts("\n[L1 uefi_efi_getmem]\n");
@@ -143,14 +143,7 @@ pub extern "C" fn l1_entry(
 
     crate::serial::puts("[L1] jump -> layer2_getgop\n");
 
-    unsafe {
-        asm!(
-            "jmp {l2}",
-            l2 = in(reg) l2_entry as *const () as u64,
-            in("rdi") ctx_ptr,
-            options(noreturn)
-        );
-    }
+    unsafe { l2_entry(ctx_ptr, image_handle, system_table.cast()) }
 }
 
 unsafe fn get_memory_map(

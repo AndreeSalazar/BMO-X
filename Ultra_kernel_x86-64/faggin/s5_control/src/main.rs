@@ -42,13 +42,19 @@ unsafe fn init_cr0_cr4() {
     cr0 &= !(1 << 3);  // clear TS
     asm!("mov cr0, {}", in(reg) cr0);
 
+    let (max_basic, _, _, _) = cpuid(0, 0);
     let (_, _, ecx1, _) = cpuid(1, 0);
-    let (_, ebx7, _, _) = cpuid(7, 0);
+    let (ebx7, ecx7) = if max_basic >= 7 {
+        let (_, ebx, ecx, _) = cpuid(7, 0);
+        (ebx, ecx)
+    } else {
+        (0, 0)
+    };
     let avx  = ecx1 & (1 << 28) != 0;
     let xsav = ecx1 & (1 << 26) != 0;
-    let osxsave = ecx1 & (1 << 27) != 0;
     let smep    = ebx7 & (1 << 7) != 0;
     let fsgs    = ebx7 & (1 << 0) != 0;
+    let umip    = ecx7 & (1 << 2) != 0;
 
     let cr4: u64;
     asm!("mov {}, cr4", out(reg) cr4);
@@ -56,14 +62,14 @@ unsafe fn init_cr0_cr4() {
     cr4 |= 1 << 7;     // PGE ??? enable global pages (required by s9_paging PTE_GLOBAL)
     cr4 |= 1 << 9;     // OSFXSR
     cr4 |= 1 << 10;    // OSXMMEXCPT
-    if avx && osxsave { cr4 |= 1 << 18; } // OSXSAVE
+    if xsav { cr4 |= 1 << 18; }           // OSXSAVE
     if fsgs { cr4 |= 1 << 16; }            // FSGSBASE
     if smep { cr4 |= 1 << 20; }            // SMEP
-    cr4 |= 1 << 11;                       // UMIP (always safe to set)
+    if umip { cr4 |= 1 << 11; }           // UMIP
     asm!("mov cr4, {}", in(reg) cr4);
 
     // XCR0: x87 + SSE + AVX (if supported)
-    if avx && xsav && osxsave {
+    if avx && xsav {
         let xcr0: u64 = (1 << 0) | (1 << 1) | (1 << 2);
         let eax = (xcr0 & 0xFFFFFFFF) as u32;
         let edx = (xcr0 >> 32) as u32;
