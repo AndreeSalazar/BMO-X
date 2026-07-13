@@ -2,7 +2,7 @@
 members = [
     "boot_context",
     "uefi_chain",
-    "fagging",
+    "faggin",
     "kernel",
 ]
 resolver = "2"

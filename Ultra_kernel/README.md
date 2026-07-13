@@ -23,7 +23,7 @@ bare-metal + kernel Ring 0). No external crates beyond the local
        │ (Ring 0 begins)
        ▼
   ┌─────────────────────────────────────────────────────────────────┐
-  │  fagging/  (12 bare-metal stages, each ~30-100 lines)          │
+  │  faggin/  (12 bare-metal stages, each ~30-100 lines)          │
   │                                                                 │
   │   s1_serial    0x100000   COM1 init                            │
   │   s2_gdt       0x110000   GDT + TSS + IST stacks                 │
@@ -107,7 +107,7 @@ only `jmp` with `rdi = *const BootContext`.
 |-----------------------|-----------------------|-------------------------------|
 | `boot_context/`       | shared lib            | BootContext ABI struct        |
 | `uefi_chain/`         | `x86_64-unknown-uefi` | 5 UEFI layers                  |
-| `fagging/`            | workspace             | 12 fagging stages + serial    |
+| `faggin/`            | workspace             | 12 faggin stages + serial    |
 | └─ `serial_shared/`   | rlib                  | COM1 helpers (static-linked)  |
 | └─ `s1_serial/`       | `x86_64-unknown-none` | COM1 init                      |
 | └─ `s2_gdt/`          | `x86_64-unknown-none` | GDT + TSS                      |
@@ -158,7 +158,7 @@ Higher-half mirror: `0xFFFF_8000_0000_0000 + phys`.
 Output staged at `staging\EFI\BOOT\`:
 
 - `BOOTX64.EFI`    — the 5-layer UEFI chain
-- `s1_serial.bin` … `s12_devices.bin` — the 12 fagging stages
+- `s1_serial.bin` … `s12_devices.bin` — the 12 faggin stages
 - `kernel.bin`      — the Ring 0 kernel
 
 ## What was migrated / removed

@@ -22,7 +22,7 @@ if ($Clean) {
 }
 
 Write-Host ""
-Write-Host "  ═══ BMO Ultra Kernel v2 Build (UEFI 5 layers + 12 fagging stages + kernel) ═══" -ForegroundColor Magenta
+Write-Host "  ═══ BMO Ultra Kernel v2 Build (UEFI 5 layers + 12 faggin stages + kernel) ═══" -ForegroundColor Magenta
 Write-Host ""
 
 # ── Build uefi_chain (5 UEFI layers) ──
@@ -37,16 +37,16 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail "uefi_chain build failed" }
 } finally { Pop-Location }
 
-# ── Build the 12 fagging stages ──
+# ── Build the 12 faggin stages ──
 $stages = @("s1_serial", "s2_gdt", "s3_idt", "s4_cpuid", "s5_control", "s6_fpu",
             "s7_tsc", "s8_syscall", "s9_paging", "s10_heap", "s11_acpi", "s12_devices")
 $idx = 0
 foreach ($s in $stages) {
-    Step "Building fagging $s..."
-    $stageDir = Join-Path (Join-Path $root "fagging") $s
+    Step "Building faggin $s..."
+    $stageDir = Join-Path (Join-Path $root "faggin") $s
     Push-Location $stageDir
     try {
-        $td = Join-Path $target "fagging\$s"
+        $td = Join-Path $target "faggin\$s"
         $out = cargo build --release --target x86_64-unknown-none --target-dir $td 2>&1
         $out | ForEach-Object {
             if ($_ -match "Compiling|Finished|error") { Write-Host "    [$s] $_" -ForegroundColor DarkGray }
@@ -75,7 +75,7 @@ $uefi_chain = Join-Path $target "x86_64-unknown-uefi\release\uefi_chain.efi"
 $all_binaries = @($uefi_chain)
 $idx = 0
 foreach ($s in $stages) {
-    $td = Join-Path $target "fagging\$s"
+    $td = Join-Path $target "faggin\$s"
     $bin = Join-Path $td "x86_64-unknown-none\release\$s.exe"
     if (-not (Test-Path $bin)) {
         # try without .exe (linux-style)
@@ -104,10 +104,10 @@ Copy-Item $uefi_chain (Join-Path $stage "BOOTX64.EFI")
 
 $llvmObjcopy = Get-ChildItem -Path "C:\Users\andre\.rustup" -Filter "llvm-objcopy.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
 if ($llvmObjcopy) {
-    # Convert ELF to flat binary for each fagging stage
+    # Convert ELF to flat binary for each faggin stage
     $idx = 0
     foreach ($s in $stages) {
-        $td = Join-Path $target "fagging\$s"
+        $td = Join-Path $target "faggin\$s"
         $bin = Join-Path $td "x86_64-unknown-none\release\$s.exe"
         if (-not (Test-Path $bin)) { $bin = Join-Path $td "x86_64-unknown-none\release\$s" }
         $out = Join-Path $stage "$s.bin"
@@ -122,7 +122,7 @@ if ($llvmObjcopy) {
     Write-Host "  [WARN] llvm-objcopy not found — copying ELF files as-is" -ForegroundColor Yellow
     $idx = 0
     foreach ($s in $stages) {
-        $td = Join-Path $target "fagging\$s"
+        $td = Join-Path $target "faggin\$s"
         $bin = Join-Path $td "x86_64-unknown-none\release\$s.exe"
         if (-not (Test-Path $bin)) { $bin = Join-Path $td "x86_64-unknown-none\release\$s" }
         Copy-Item $bin (Join-Path $stage "$s.bin")
@@ -135,7 +135,7 @@ Write-Host ""
 Write-Host "  ═══ BUILD COMPLETE ═══" -ForegroundColor Green
 Write-Host "  Staged to: $stage" -ForegroundColor White
 Write-Host ""
-Write-Host "  12 fagging stages + kernel (Ring 0)" -ForegroundColor Cyan
+Write-Host "  12 faggin stages + kernel (Ring 0)" -ForegroundColor Cyan
 Write-Host "  Each stage loads at 0x100000 + (i-1)*0x10000" -ForegroundColor Cyan
 Write-Host ""
 
