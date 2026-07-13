@@ -118,13 +118,18 @@ pub extern "C" fn l2_entry(
 
     let gop = unsafe { &*(gop_handle as *const EfiGraphicsOutputProtocol) };
     let mode = unsafe { &*gop.mode };
-    let info = unsafe { &*(mode.info as *const [u32; 8]) };
-    let w = info[0];
-    let h = info[1];
-    let fmt = info[2];
-    // EFI_GRAPHICS_OUTPUT_MODE_INFORMATION.PixelsPerScanLine is the eighth
-    // u32. FrameBufferSize may include firmware padding and is not a stride.
-    let stride = info[7];
+    // EFI_GRAPHICS_OUTPUT_MODE_INFORMATION layout (UEFI spec 2.10 §11.4):
+    //   [0] UINT32 Version
+    //   [1] UINT32 HorizontalResolution
+    //   [2] UINT32 VerticalResolution
+    //   [3] UINT32 PixelFormat
+    //   [4..7] EFI_PIXEL_BITMASK {Red,Green,Blue,Reserved} = 4 × UINT32
+    //   [8] UINT32 PixelsPerScanLine
+    let info = unsafe { &*(mode.info as *const [u32; 9]) };
+    let w = info[1];      // HorizontalResolution
+    let h = info[2];      // VerticalResolution
+    let fmt = info[3];    // PixelFormat (0=BGR, 1=RGB, 2=blt-only)
+    let stride = info[8]; // PixelsPerScanLine
 
     // PixelBltOnly (3) has no linear framebuffer. The kernel currently
     // supports only the standard 32-bit RGB/BGR GOP modes.
@@ -146,6 +151,60 @@ pub extern "C" fn l2_entry(
     crate::serial::puts("x");
     crate::serial::dec(h as usize);
     crate::serial::puts("\n");
+
+    // ── Early splash BEFORE ExitBootServices ────────────────────
+    // On NVIDIA GPUs (RTX 3060), the GOP display controller stops
+    // scanning from the framebuffer after ExitBootServices. To work
+    // around this, we draw a simple boot splash NOW, while UEFI
+    // boot services are still active and the GPU IS scanning.
+    // After ExitBootServices, the last rendered frame stays visible
+    // even if the kernel can't update the display.
+    if mode.frame_buffer_base != 0 {
+        crate::serial::puts("[L2] drawing pre-ExitBootServices splash...\n");
+        let fb = mode.frame_buffer_base as *mut u32;
+        let stride_px = stride as usize;
+        let total = stride_px * (h as usize);
+
+        // Fill the entire screen with a dark blue background
+        // using a simple loop (rep stosd isn't available in asm
+        // on all nightly versions, so we use a tight loop).
+        for i in 0..total {
+            unsafe { fb.add(i).write_volatile(0xFF0A_0F1Du32); }
+        }
+        // Fence so the writes reach VRAM before we move on.
+        unsafe { core::arch::asm!("mfence", options(nostack, preserves_flags)); }
+
+        // Draw a white horizontal bar near the top
+        let bar_h = 4u32;
+        let bar_y = (h / 8);
+        let bar_base = (bar_y as usize) * stride_px;
+        for dy in 0..bar_h {
+            for dx in 0..(stride as u32) {
+                unsafe { fb.add(bar_base + (dy as usize) * stride_px + (dx as usize))
+                    .write_volatile(0xFF00_E5FFu32); } // cyan
+            }
+        }
+        unsafe { core::arch::asm!("mfence", options(nostack, preserves_flags)); }
+
+        // Draw a centered text approximation (simple block letters)
+        // We don't have a font renderer in UEFI asm, so just draw
+        // three colored rectangles as a logo placeholder.
+        let cx = stride / 2;
+        let cy = h / 2;
+        // Center block: cyan rectangle
+        let bw = 120u32; let bh = 40u32;
+        let bx = cx - bw / 2; let by = cy - bh / 2;
+        for dy in 0..bh {
+            for dx in 0..bw {
+                unsafe {
+                    fb.add(((by + dy) as usize) * stride_px + ((bx + dx) as usize))
+                        .write_volatile(0xFF00_E5FFu32);
+                }
+            }
+        }
+        unsafe { core::arch::asm!("mfence", options(nostack, preserves_flags)); }
+        crate::serial::puts("[L2] splash drawn\n");
+    }
 
     jump_next(ctx_ptr, image_handle, system_table);
 }

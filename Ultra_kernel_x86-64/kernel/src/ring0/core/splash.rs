@@ -434,102 +434,65 @@ pub fn splash_init() {
     let fb_stride = unsafe { crate::info::FB_STRIDE };
     let fb_fmt = unsafe { crate::info::FB_PIXEL_FORMAT };
 
-    // ── Diagnostic: log everything we know about the FB ────────────
-    crate::ring0::dev::console::serial_write("[splash] fb_addr=0x");
+    // Log to serial (even if the user can't see it, it's useful later)
+    crate::ring0::dev::console::serial_write("[splash] fb=0x");
     crate::ring0::dev::console::serial_write_u64(fb_addr, 16);
-    crate::ring0::dev::console::serial_write(" w=");
+    crate::ring0::dev::console::serial_write(" ");
     crate::ring0::dev::console::serial_write_u64_dec(w as u64);
-    crate::ring0::dev::console::serial_write(" h=");
+    crate::ring0::dev::console::serial_write("x");
     crate::ring0::dev::console::serial_write_u64_dec(h as u64);
-    crate::ring0::dev::console::serial_write(" stride_px=");
+    crate::ring0::dev::console::serial_write(" stride=");
     crate::ring0::dev::console::serial_write_u64_dec(fb_stride as u64);
     crate::ring0::dev::console::serial_write(" fmt=");
     crate::ring0::dev::console::serial_write_u64_dec(fb_fmt as u64);
     crate::ring0::dev::console::serial_write("\n");
 
     if w == 0 || h == 0 || fb_addr == 0 {
-        crate::ring0::dev::console::serial_write("[splash] FB not available — skipping\n");
+        crate::ring0::dev::console::serial_write("[splash] FB not available\n");
         return;
     }
 
-    // ── Write-Readback test: 4 pixels at (0,0),(1,0),(0,1),(1,1) ──
-    //    Save originals first, then write, read back, restore.
-    //    This tells us whether the GOP memory is even writable.
+    // ── Try filling the whole screen using rep stosd ───────────────
+    //    This is the fastest, most reliable way to write a GPU
+    //    framebuffer: the CPU's string-store engine does 64-byte
+    //    bursts internally and handles WC buffering correctly.
+    //    After the fill, we use mfence to flush the WC buffer.
+    let total = (fb_stride as usize) * (h as usize);
+    crate::ring0::dev::console::serial_write("[splash] filling ");
+    crate::ring0::dev::console::serial_write_u64_dec(total as u64);
+    crate::ring0::dev::console::serial_write(" px\n");
+
     unsafe {
-        let fb = fb_addr as *mut u32;
-        let st = fb_stride as usize;
-
-        // Read originals
-        let orig: [u32; 4] = [
-            fb.add(0 * st + 0).read_volatile(),
-            fb.add(0 * st + 1).read_volatile(),
-            fb.add(1 * st + 0).read_volatile(),
-            fb.add(1 * st + 1).read_volatile(),
-        ];
-
-        // Write test pattern: red, green, blue, white
-        fb.add(0 * st + 0).write_volatile(0xFFFF_0000u32);
-        fb.add(0 * st + 1).write_volatile(0xFF00_FF00u32);
-        fb.add(1 * st + 0).write_volatile(0xFF00_00FFu32);
-        fb.add(1 * st + 1).write_volatile(0xFFFF_FFFFu32);
-        core::arch::asm!("sfence", options(nostack, preserves_flags));
-
-        // Read back
-        let back: [u32; 4] = [
-            fb.add(0 * st + 0).read_volatile(),
-            fb.add(0 * st + 1).read_volatile(),
-            fb.add(1 * st + 0).read_volatile(),
-            fb.add(1 * st + 1).read_volatile(),
-        ];
-
-        // Restore
-        fb.add(0 * st + 0).write_volatile(orig[0]);
-        fb.add(0 * st + 1).write_volatile(orig[1]);
-        fb.add(1 * st + 0).write_volatile(orig[2]);
-        fb.add(1 * st + 1).write_volatile(orig[3]);
-        core::arch::asm!("sfence", options(nostack, preserves_flags));
-
-        crate::ring0::dev::console::serial_write("[splash] wr-back: ");
-        crate::ring0::dev::console::serial_write_u64(back[0] as u64, 16);
-        crate::ring0::dev::console::serial_write(" ");
-        crate::ring0::dev::console::serial_write_u64(back[1] as u64, 16);
-        crate::ring0::dev::console::serial_write(" ");
-        crate::ring0::dev::console::serial_write_u64(back[2] as u64, 16);
-        crate::ring0::dev::console::serial_write(" ");
-        crate::ring0::dev::console::serial_write_u64(back[3] as u64, 16);
-        crate::ring0::dev::console::serial_write("\n");
-        crate::ring0::dev::console::serial_write("[splash] orig:    ");
-        crate::ring0::dev::console::serial_write_u64(orig[0] as u64, 16);
-        crate::ring0::dev::console::serial_write(" ");
-        crate::ring0::dev::console::serial_write_u64(orig[1] as u64, 16);
-        crate::ring0::dev::console::serial_write(" ");
-        crate::ring0::dev::console::serial_write_u64(orig[2] as u64, 16);
-        crate::ring0::dev::console::serial_write(" ");
-        crate::ring0::dev::console::serial_write_u64(orig[3] as u64, 16);
-        crate::ring0::dev::console::serial_write("\n");
+        let di = fb_addr;
+        let color: u32 = 0xFF00_FFFFu32;
+        core::arch::asm!(
+            "cld",
+            "mov rdi, {di}",
+            "mov eax, {color:e}",
+            "mov ecx, {count:e}",
+            "rep stosd",
+            "mfence",
+            di = in(reg) di,
+            color = in(reg) color,
+            count = in(reg) total,
+            options(nostack, preserves_flags),
+        );
     }
 
-    // ── Clear screen (skip animated logo until we confirm) ───────
-    fill_rect(0, 0, w, h, BG);
+    crate::ring0::dev::console::serial_write("[splash] fill done — screen should be yellow\n");
 
-    // ── Draw a simple centered test rectangle ─────────────────────
-    let cy = h / 2;
-    let cx = w / 2;
-    let rw = 300u32;
-    let rh = 80u32;
-    fill_rect(cx - rw / 2, cy - rh / 2, rw, rh, ACCENT);
-    let txt = "BMO v2.0 Ring 0";
+    // Wait a moment so the user can see the fill
+    tsc_wait(300_000_000); // ~100 ms @ 3.7 GHz
+
+    // Draw centered text over the fill
+    let txt = "BMO v2.0";
     let tx = (w as u32).saturating_sub(text_width(txt)) / 2;
-    draw_str(tx, cy - 8, txt, WHITE);
+    let cy = h / 2;
+    draw_str(tx, cy - 10, txt, 0xFF000000u32);
+    wc_flush();
+    crate::ring0::dev::console::serial_write("[splash] text drawn\n");
 
-    // Reset state
-    unsafe { LAST_PCT = 0; }
-
-    // Step 5: Footer info (immediate)
-    let info = "AMD Ryzen 5 5600X - GOP Framebuffer - Ring 0";
-    let ix = (w as u32).saturating_sub(text_width(info)) / 2;
-    let info_y = h.saturating_sub(35);
-    draw_str(ix, info_y + 4, info, DIM);
+    // Skip the animated splash for now — the fill test is priority
 }
 
 pub fn splash_progress(pct: u32, label: &str) {
