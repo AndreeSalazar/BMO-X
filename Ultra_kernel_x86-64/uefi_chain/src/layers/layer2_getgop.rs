@@ -126,10 +126,31 @@ pub extern "C" fn l2_entry(
     //   [4..7] EFI_PIXEL_BITMASK {Red,Green,Blue,Reserved} = 4 × UINT32
     //   [8] UINT32 PixelsPerScanLine
     let info = unsafe { &*(mode.info as *const [u32; 9]) };
+    
+    // DEBUG: log all info fields to serial
+    crate::serial::puts("[L2] GOP info[0..8]: ");
+    for i in 0..9 {
+        crate::serial::hex(info[i] as u64);
+        crate::serial::puts(" ");
+    }
+    crate::serial::puts("\n");
+    
     let w = info[1];      // HorizontalResolution
     let h = info[2];      // VerticalResolution
     let fmt = info[3];    // PixelFormat (0=BGR, 1=RGB, 2=blt-only)
     let stride = info[8]; // PixelsPerScanLine
+    
+    crate::serial::puts("[L2] parsed: w=");
+    crate::serial::dec(w as usize);
+    crate::serial::puts(" h=");
+    crate::serial::dec(h as usize);
+    crate::serial::puts(" fmt=");
+    crate::serial::dec(fmt as usize);
+    crate::serial::puts(" stride=");
+    crate::serial::dec(stride as usize);
+    crate::serial::puts(" fb_base=0x");
+    crate::serial::hex(mode.frame_buffer_base);
+    crate::serial::puts("\n");
 
     // PixelBltOnly (3) has no linear framebuffer. The kernel currently
     // supports only the standard 32-bit RGB/BGR GOP modes.
@@ -152,61 +173,104 @@ pub extern "C" fn l2_entry(
     crate::serial::dec(h as usize);
     crate::serial::puts("\n");
 
-    // ── Early splash BEFORE ExitBootServices ────────────────────
-    // On NVIDIA GPUs (RTX 3060), the GOP display controller stops
-    // scanning from the framebuffer after ExitBootServices. To work
-    // around this, we draw a simple boot splash NOW, while UEFI
-    // boot services are still active and the GPU IS scanning.
-    // After ExitBootServices, the last rendered frame stays visible
-    // even if the kernel can't update the display.
-    if mode.frame_buffer_base != 0 {
-        crate::serial::puts("[L2] drawing pre-ExitBootServices splash...\n");
-        let fb = mode.frame_buffer_base as *mut u32;
-        let stride_px = stride as usize;
-        let total = stride_px * (h as usize);
+    // Log GOP info to NVRAM for debugging
+    nvram_log::log("GOP detected");
+    let mut gop_info = [0u8; 128];
+    let mut pos = 0;
+    // Write "fb=" + hex address
+    gop_info[pos..pos+3].copy_from_slice(b"fb=");
+    pos += 3;
+    for i in (0..64).step_by(4) {
+        let nibble = ((ctx.fb_addr >> (60 - i)) & 0xF) as u8;
+        gop_info[pos] = if nibble < 10 { b'0' + nibble } else { b'a' + nibble - 10 };
+        pos += 1;
+    }
+    gop_info[pos] = b' ';
+    pos += 1;
+    // Write width
+    let w_str = format_dec(w as u64);
+    let w_len = w_str.iter().position(|&b| b == 0).unwrap_or(20);
+    gop_info[pos..pos+w_len].copy_from_slice(&w_str[..w_len]);
+    pos += w_len;
+    gop_info[pos] = b'x';
+    pos += 1;
+    // Write height
+    let h_str = format_dec(h as u64);
+    let h_len = h_str.iter().position(|&b| b == 0).unwrap_or(20);
+    gop_info[pos..pos+h_len].copy_from_slice(&h_str[..h_len]);
+    pos += h_len;
+    gop_info[pos] = b'\n';
+    pos += 1;
+    nvram_log::log(core::str::from_utf8(&gop_info[..pos]).unwrap_or("GOP info"));
 
-        // Fill the entire screen with a dark blue background
-        // using a simple loop (rep stosd isn't available in asm
-        // on all nightly versions, so we use a tight loop).
+    // Pre-ExitBootServices splash: draw a colored rectangle to verify GOP works
+    // This runs while UEFI still owns the display, so we can see if framebuffer is accessible
+    if ctx.fb_addr != 0 && w > 0 && h > 0 {
+        crate::serial::puts("[L2] drawing pre-ExitBootServices splash...\n");
+        nvram_log::log("drawing pre-ExitBootServices splash");
+
+        // Fill screen with dark blue
+        let fb = ctx.fb_addr as *mut u32;
+        let total = (stride as usize) * (h as usize);
         for i in 0..total {
             unsafe { fb.add(i).write_volatile(0xFF0A_0F1Du32); }
         }
-        // Fence so the writes reach VRAM before we move on.
         unsafe { core::arch::asm!("mfence", options(nostack, preserves_flags)); }
 
-        // Draw a white horizontal bar near the top
+        // Draw cyan horizontal bar near top
         let bar_h = 4u32;
-        let bar_y = (h / 8);
-        let bar_base = (bar_y as usize) * stride_px;
+        let bar_y = h / 8;
+        let bar_base = (bar_y as usize) * (stride as usize);
         for dy in 0..bar_h {
-            for dx in 0..(stride as u32) {
-                unsafe { fb.add(bar_base + (dy as usize) * stride_px + (dx as usize))
-                    .write_volatile(0xFF00_E5FFu32); } // cyan
+            for dx in 0..stride {
+                unsafe { fb.add(bar_base + (dy as usize) * (stride as usize) + (dx as usize))
+                    .write_volatile(0xFF00_E5FFu32); }
             }
         }
         unsafe { core::arch::asm!("mfence", options(nostack, preserves_flags)); }
 
-        // Draw a centered text approximation (simple block letters)
-        // We don't have a font renderer in UEFI asm, so just draw
-        // three colored rectangles as a logo placeholder.
+        // Draw centered cyan rectangle (logo placeholder)
         let cx = stride / 2;
         let cy = h / 2;
-        // Center block: cyan rectangle
-        let bw = 120u32; let bh = 40u32;
-        let bx = cx - bw / 2; let by = cy - bh / 2;
+        let bw = 120u32;
+        let bh = 40u32;
+        let bx = cx - bw / 2;
+        let by = cy - bh / 2;
         for dy in 0..bh {
             for dx in 0..bw {
                 unsafe {
-                    fb.add(((by + dy) as usize) * stride_px + ((bx + dx) as usize))
+                    fb.add(((by + dy) as usize) * (stride as usize) + ((bx + dx) as usize))
                         .write_volatile(0xFF00_E5FFu32);
                 }
             }
         }
         unsafe { core::arch::asm!("mfence", options(nostack, preserves_flags)); }
+
         crate::serial::puts("[L2] splash drawn\n");
+        nvram_log::log("splash drawn successfully");
     }
 
     jump_next(ctx_ptr, image_handle, system_table);
+}
+
+/// Helper to format a u64 as decimal string (no_std compatible)
+fn format_dec(mut val: u64) -> [u8; 20] {
+    let mut buf = [0u8; 20];
+    if val == 0 {
+        buf[0] = b'0';
+        return buf;
+    }
+    let mut pos = 20;
+    while val > 0 {
+        pos -= 1;
+        buf[pos] = b'0' + (val % 10) as u8;
+        val /= 10;
+    }
+    // Shift to start
+    let mut result = [0u8; 20];
+    let len = 20 - pos;
+    result[..len].copy_from_slice(&buf[pos..]);
+    result
 }
 
 fn jump_next(

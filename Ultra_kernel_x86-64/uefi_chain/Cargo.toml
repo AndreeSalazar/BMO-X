@@ -13,3 +13,4 @@ description = "UEFI-side boot chain for Ultra_kernel_x86-64: 5 tiny layers, one 
 
 [dependencies]
 boot-context = { path = "../boot_context" }
+nvram-log = { path = "../../Uso_Reales_Crates/shared/nvram-log" }
