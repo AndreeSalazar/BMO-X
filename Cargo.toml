@@ -1,12 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    # ── ULTRA KERNEL (Ring 0 base + faggin chain) ──────────────────
-    "Ultra_kernel/boot_context",
-    "Ultra_kernel/uefi_chain",
-    "Ultra_kernel/faggin",
-    "Ultra_kernel/kernel",
-    "Ultra_kernel/Ultra_userspace",
+    # ── ULTRA KERNEL x86-64 (Ring 0 base + 12-stage faggin chain) ───
+    # CPU-specific kernel. For ARM/RISC-V ports see Ultra_kernel_<arch>/.
+    "Ultra_kernel_x86-64/boot_context",
+    "Ultra_kernel_x86-64/uefi_chain",
+    "Ultra_kernel_x86-64/faggin",
+    "Ultra_kernel_x86-64/kernel",
+    "Ultra_kernel_x86-64/Ultra_userspace",
 
     # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
     "Uso_Reales_Crates/shared/bmo-hal",
