@@ -25,7 +25,9 @@ Write-Host ""
 Write-Host "  ═══ BMO Ultra Kernel v2 Build (UEFI 5 layers + 12 faggin stages + kernel) ═══" -ForegroundColor Magenta
 Write-Host ""
 
-# ── Build uefi_chain (5 UEFI layers) ──
+# ── Build uefi_chain (5 UEFI layers) ──────────────────────────────
+# Uses cargo +nightly for UEFI target. boot_context is a workspace
+# dep; uefi_chain statically links it.
 Step "Building uefi_chain (5 UEFI layers)..."
 Push-Location $root
 try {
@@ -37,17 +39,24 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail "uefi_chain build failed" }
 } finally { Pop-Location }
 
-# ── Build the 12 faggin stages ──
+# ── Build the 12 faggin stages in order ────────────────────────────
+# Each stage is a separate crate with its own target/x86_64-unknown-none
+# build. They depend on serial_shared and boot_context (rlibs from
+# the Ultra_kernel workspace) statically linked.
+#
+# Per-stage opt-level = "z" is set in faggin/Cargo.toml to keep
+# each binary as small as possible (target: 1-3 KB flat binary).
 $stages = @("s1_serial", "s2_gdt", "s3_idt", "s4_cpuid", "s5_control", "s6_fpu",
             "s7_tsc", "s8_syscall", "s9_paging", "s10_heap", "s11_acpi", "s12_devices")
 $idx = 0
 foreach ($s in $stages) {
-    Step "Building faggin $s..."
+    Step ("[{0,2}/12] Building faggin " -f ($idx + 1)) $s..."
     $stageDir = Join-Path (Join-Path $root "faggin") $s
     Push-Location $stageDir
     try {
+        $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
         $td = Join-Path $target "faggin\$s"
-        $out = cargo build --release --target x86_64-unknown-none --target-dir $td 2>&1
+        $out = cargo +nightly build --release --target x86_64-unknown-none --target-dir $td 2>&1
         $out | ForEach-Object {
             if ($_ -match "Compiling|Finished|error") { Write-Host "    [$s] $_" -ForegroundColor DarkGray }
         }
@@ -56,19 +65,20 @@ foreach ($s in $stages) {
     $idx++
 }
 
-# ── Build kernel (Ring 0) ──
+# ── Build kernel (Ring 0 base) ────────────────────────────────────
 Step "Building kernel (Ring 0 base)..."
 $stageDir = Join-Path $root "kernel"
 Push-Location $stageDir
 try {
-    $out = cargo build --release --target x86_64-unknown-none --target-dir (Join-Path $target "kernel") 2>&1
+    $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+    $out = cargo +nightly build --release --target x86_64-unknown-none --target-dir (Join-Path $target "kernel") 2>&1
     $out | ForEach-Object {
         if ($_ -match "Compiling|Finished|error") { Write-Host "    [kernel] $_" -ForegroundColor DarkGray }
     }
     if ($LASTEXITCODE -ne 0) { Fail "kernel build failed" }
 } finally { Pop-Location }
 
-# ── Validate outputs ──
+# ── Validate outputs ──────────────────────────────────────────────
 Step "Validating outputs"
 $uefi_chain = Join-Path $target "x86_64-unknown-uefi\release\uefi_chain.efi"
 
@@ -77,10 +87,7 @@ $idx = 0
 foreach ($s in $stages) {
     $td = Join-Path $target "faggin\$s"
     $bin = Join-Path $td "x86_64-unknown-none\release\$s.exe"
-    if (-not (Test-Path $bin)) {
-        # try without .exe (linux-style)
-        $bin = Join-Path $td "x86_64-unknown-none\release\$s"
-    }
+    if (-not (Test-Path $bin)) { $bin = Join-Path $td "x86_64-unknown-none\release\$s" }
     $all_binaries += $bin
     $idx++
 }
@@ -88,13 +95,37 @@ $kernel = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel.exe"
 if (-not (Test-Path $kernel)) { $kernel = Join-Path $target "kernel\x86_64-unknown-none\release\bmo-kernel" }
 $all_binaries += $kernel
 
+Write-Host ""
+Write-Host "  bin                        raw       flat     address" -ForegroundColor White
+Write-Host "  ──────────────────────    ──────   ──────   ─────────" -ForegroundColor DarkGray
+$total = 0
+$base = 0x100000
 foreach ($f in $all_binaries) {
     if (-not (Test-Path $f)) { Fail "Not found: $f" }
-    $sz = (Get-Item $f).Length
-    Write-Host "    $(Split-Path $f -Leaf): $([math]::Round($sz/1024,1)) KB" -ForegroundColor White
+    $raw = (Get-Item $f).Length
+    $name = Split-Path $f -Leaf
+    if ($name -eq "uefi_chain.efi") {
+        $line = "  {0,-25} {1,6} B              0xFE000000 (UEFI load)" -f $name, $raw
+    } else {
+        $flat = Join-Path (Join-Path $target "faggin\$(Split-Path (Split-Path $f -Parent) -Leaf)") (Split-Path $f -Leaf)
+        $flat = $flat -replace '\.exe$', ''
+        $flat = $flat + ".bin"
+        if (Test-Path $flat) {
+            $fsz = (Get-Item $flat).Length
+        } else {
+            $fsz = 0
+        }
+        $line = "  {0,-25} {1,6} B   {2,5} B   0x{3:X6}" -f $name, $raw, $fsz, $base
+        $base += 0x10000
+        $total += $fsz
+    }
+    Write-Host $line
 }
+Write-Host "  ──────────────────────    ──────   ──────" -ForegroundColor DarkGray
+Write-Host ("  TOTAL flat size:              {0,6} B" -f $total) -ForegroundColor Yellow
+Write-Host ""
 
-# ── Stage to ESP layout ──
+# ── Stage to ESP layout ───────────────────────────────────────────
 Step "Staging to $stage"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
@@ -104,7 +135,6 @@ Copy-Item $uefi_chain (Join-Path $stage "BOOTX64.EFI")
 
 $llvmObjcopy = Get-ChildItem -Path "C:\Users\andre\.rustup" -Filter "llvm-objcopy.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
 if ($llvmObjcopy) {
-    # Convert ELF to flat binary for each faggin stage
     $idx = 0
     foreach ($s in $stages) {
         $td = Join-Path $target "faggin\$s"
@@ -141,7 +171,7 @@ Write-Host ""
 
 if ($BuildOnly) { exit 0 }
 
-# ── Flash ──
+# ── Flash ────────────────────────────────────────────────────────
 if ($Flash) {
     $targetLetter = $Drive.TrimEnd([char]':',[char]'\').ToUpper()
     $targetRoot = "${targetLetter}:\"

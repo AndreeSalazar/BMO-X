@@ -1,13 +1,57 @@
 [workspace]
+# Ultra_kernel/ — workspace root.
+#
+#   boot_context/  shared lib (the BootContext ABI struct)
+#   uefi_chain/    5 UEFI layers (single .efi binary)
+#   faggin/        12 bare-metal stages (one tiny .bin each)
+#   kernel/        Ring 0 base (single .bin, loaded at 0x400000)
+#   Ultra_userspace/  Ring 3 stub workspace (apps, services, drivers)
+#
+# Each sub-workspace has its own per-package opt-level = "z" so the
+# resulting binaries are as small as possible.
 members = [
     "boot_context",
     "uefi_chain",
     "faggin",
     "kernel",
+    "Ultra_userspace",
 ]
 resolver = "2"
 
+# ── Workspace default profile ──
+# Sub-workspaces override opt-level per-package to "z" for tiny bins.
 [profile.release]
+opt-level = 3
 panic = "abort"
 lto = true
 codegen-units = 1
+strip = "symbols"
+debug = false
+debug-assertions = false
+overflow-checks = false
+
+# ── Per-package overrides ──
+# boot_context is a small rlib used by everything; no need for size
+# optimization, but keep the same hygiene.
+[profile.release.package."boot-context"]
+opt-level = "z"
+lto = true
+codegen-units = 1
+
+# uefi_chain is a single .efi (not a faggin stage) but still benefits
+# from size optimization since the EFI firmware loads it from ESP.
+[profile.release.package."uefi-chain"]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+# bmo-kernel is the Ring 0 runtime. Larger than faggin stages but
+# should still be size-optimized.
+[profile.release.package."bmo-kernel"]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
