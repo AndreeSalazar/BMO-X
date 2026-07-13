@@ -56,6 +56,26 @@ extern "C" fn kernel_main_real(ctx: *const boot_context::BootContext) -> ! {
     }
 
     crate::ring0::dev::console::serial_write("[entry] kernel_main_real entered\n");
+
+    // Drain any scancodes left in the i8042 PS/2 buffer by s12_devices.
+    // The keyboard controller accumulates up to 16 bytes; if the user
+    // pressed keys during boot (NumLock, CapsLock), those scancodes
+    // would otherwise stay in the buffer. Since the shell is serial-
+    // driven (COM1), we don't want stray PS/2 scancodes interfering
+    // with anything else later.
+    unsafe {
+        const KBD_STATUS: u16 = 0x64;
+        const KBD_DATA:   u16 = 0x60;
+        for _ in 0..32 {
+            // Bit 0 of status = output buffer full (data ready to read).
+            let status: u8;
+            core::arch::asm!("in al, dx", in("dx") KBD_STATUS, out("al") status);
+            if status & 1 == 0 { break; }
+            let _: u8;
+            core::arch::asm!("in al, dx", in("dx") KBD_DATA, out("al") _);
+        }
+    }
+
     crate::ring0::core::phase::main(ctx_ref);
 
     // Once all phases complete, idle forever (single-CPU Ring 0 base).

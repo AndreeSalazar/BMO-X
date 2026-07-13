@@ -464,3 +464,107 @@ pub fn splash_clear() {
     if w == 0 { return; }
     fill_rect(0, 0, w, h, BG);
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Persistent Dashboard
+// ═══════════════════════════════════════════════════════════════════
+//
+// Once the boot splash finishes, the kernel switches to a
+// persistent dashboard on the framebuffer. This is the visual
+// equivalent of the serial shell: it shows the system status,
+// the latest kernel log lines, and a prompt. Anything typed on
+// the serial (COM1) is echoed on the screen so the user can
+// interact even without a serial terminal attached.
+
+const DASH_HEADER_H:  u32 = 40;  // top bar height
+const DASH_FOOTER_H:  u32 = 32;  // bottom prompt bar height
+const DASH_LOG_LINES: usize = 14; // visible log lines
+const DASH_LOG_TOP:   u32 = 60;  // y of first log line
+const DASH_LOG_W:     u32 = 80;  // max chars per line
+
+const DASH_BG:        u32 = 0xFF0A0F1D;
+const DASH_BAR:       u32 = 0xFF1E293B;
+const DASH_ACCENT:    u32 = 0xFF00E5FF;
+const DASH_TEXT:      u32 = 0xFFF1F5F9;
+const DASH_DIM:       u32 = 0xFF64748B;
+
+/// Draw the persistent dashboard frame. Called once after the
+/// splash finishes — replaces the cleared screen with a UI that
+/// stays visible for the rest of the kernel's lifetime.
+pub fn splash_dashboard_init() {
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 { return; }
+
+    // 1. Full background
+    fill_rect(0, 0, w, h, DASH_BG);
+
+    // 2. Top bar (system identity)
+    fill_rect(0, 0, w, DASH_HEADER_H, DASH_BAR);
+    let title = "BMO v2.0 Ring 0";
+    draw_str(20, 12, title, DASH_ACCENT);
+    let right = "GOP Framebuffer | COM1 Serial Shell";
+    let rx = w.saturating_sub(text_width(right) + 20);
+    draw_str(rx, 12, right, DASH_DIM);
+
+    // 3. Bottom prompt bar
+    fill_rect(0, h - DASH_FOOTER_H, w, DASH_FOOTER_H, DASH_BAR);
+    let prompt_label = "serial > ";
+    draw_str(20, h - DASH_FOOTER_H + 8, prompt_label, DASH_ACCENT);
+
+    // 4. Section header
+    let sec = "kernel log";
+    draw_str(20, DASH_LOG_TOP - 22, sec, DASH_DIM);
+
+    // 5. Inner panel border around the log area
+    let log_y = DASH_LOG_TOP;
+    let log_h = h - DASH_FOOTER_H - log_y - 4;
+    draw_rect_outline(8, log_y - 4, w - 16, log_h, 0xFF334155);
+}
+
+/// Write a single log line into the dashboard's log area at
+/// line `row` (0 = top, growing downward). Newer lines overwrite
+/// older ones on the same row, so callers can manage a ring of
+/// `DASH_LOG_LINES` rows.
+pub fn splash_dashboard_log(row: usize, msg: &str) {
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 { return; }
+    if row >= DASH_LOG_LINES { return; }
+    let y = DASH_LOG_TOP + (row as u32) * CHAR_H as u32;
+    // Clear the row (background)
+    fill_rect(20, y, w - 40, CHAR_H as u32, DASH_BG);
+    // Draw up to DASH_LOG_W characters
+    let mut buf = [0u8; DASH_LOG_W as usize];
+    let bytes = msg.as_bytes();
+    let n = bytes.len().min(buf.len());
+    buf[..n].copy_from_slice(&bytes[..n]);
+    if let Ok(s) = core::str::from_utf8(&buf[..n]) {
+        draw_str(20, y, s, DASH_TEXT);
+    }
+}
+
+/// Update the bottom prompt area with the current command being
+/// typed. The caller passes the in-progress line (up to a
+/// reasonable limit). The prompt always starts with "serial > ".
+pub fn splash_dashboard_prompt(line: &str) {
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 { return; }
+    let y = h - DASH_FOOTER_H + 8;
+    // Clear the whole prompt row
+    fill_rect(20, y, w - 40, CHAR_H as u32, DASH_BAR);
+    // Prefix
+    draw_str(20, y, "serial > ", DASH_ACCENT);
+    // The current line (clipped to width)
+    let max_chars = ((w - 40 - text_width("serial > ")) / CHAR_W as u32) as usize;
+    let n = line.len().min(max_chars);
+    let prefix_w = text_width("serial > ");
+    // Find the largest char boundary <= n (avoid splitting a UTF-8 codepoint).
+    let mut end = n;
+    while end > 0 && !line.is_char_boundary(end) { end -= 1; }
+    let s = &line[..end];
+    // `draw_str` takes a `&str`; it iterates `.bytes()` internally,
+    // so non-ASCII is dropped (matches the rest of the FONT16 grid).
+    draw_str(20 + prefix_w, y, s, DASH_TEXT);
+}

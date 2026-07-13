@@ -19,6 +19,12 @@ use super::splash;
 fn s_log(msg: &str) {
     crate::ring0::dev::console::serial_write(msg);
     crate::ring0::dev::console::serial_write("\n");
+    // Mirror to the on-screen log panel (if framebuffer present).
+    if crate::info::has_fb() {
+        let row = unsafe { DASH_LOG_ROW };
+        unsafe { DASH_LOG_ROW = (row + 1) % 14; }
+        splash::splash_dashboard_log(row, msg);
+    }
 }
 
 fn phase0_fb(ctx: &BootContext) {
@@ -42,7 +48,9 @@ fn phase1_ui(_ctx: &BootContext) {
     s_log("[phase1] === UI (splash) ===");
     if crate::info::has_fb() {
         splash::splash_progress(100, "BMO Ready.");
-        splash::splash_clear();
+        // Switch from the boot splash to the persistent dashboard
+        // (so something stays on screen for the user to read).
+        splash::splash_dashboard_init();
     } else {
         s_log("[splash] no framebuffer, skipping");
     }
@@ -50,16 +58,41 @@ fn phase1_ui(_ctx: &BootContext) {
 }
 
 // ---------------------------------------------------------------------------
-// Serial shell
+// Serial shell (with optional framebuffer echo)
 // ---------------------------------------------------------------------------
+
+// Rolling index into the dashboard log. Each `dash_log` call
+// advances this and wraps at DASH_LOG_LINES.
+static mut DASH_LOG_ROW: usize = 0;
+
+// Mirror the serial output to a line in the dashboard's log
+// area, so the user can see what the kernel is doing without a
+// serial terminal attached.
+fn dash_log(msg: &str) {
+    if !crate::info::has_fb() { return; }
+    let row = unsafe { DASH_LOG_ROW };
+    unsafe { DASH_LOG_ROW = (row + 1) % 14; }
+    splash::splash_dashboard_log(row, msg);
+}
+
+// Mirror the current in-progress shell line to the framebuffer's
+// prompt area. Called every time the user presses a key.
+fn dash_prompt(line: &str) {
+    if !crate::info::has_fb() { return; }
+    splash::splash_dashboard_prompt(line);
+}
 
 fn shell_prompt() {
     crate::ring0::dev::console::serial_write("> ");
+    dash_prompt("");
 }
 
 fn shell_read_line(buf: &mut [u8]) -> usize {
     let mut n = 0;
-    while n < buf.len() {
+    loop {
+        // Update the framebuffer's prompt with the current line
+        // (so the screen shows what the user is typing).
+        dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
         match crate::ring0::dev::console::serial_read_byte() {
             Some(b'\r') | Some(b'\n') => {
                 crate::ring0::dev::console::serial_write("\n");
@@ -72,14 +105,15 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
                 }
             }
             Some(c) if c >= 0x20 && c < 0x7f => {
-                buf[n] = c;
-                n += 1;
-                crate::ring0::dev::console::serial_write_byte(c);
+                if n < buf.len() {
+                    buf[n] = c;
+                    n += 1;
+                    crate::ring0::dev::console::serial_write_byte(c);
+                }
             }
             _ => {}
         }
     }
-    n
 }
 
 fn shell_help() {
@@ -144,7 +178,8 @@ fn shell_splash() {
     }
     splash::splash_init();
     splash::splash_progress(50, "Shell re-triggered splash");
-    splash::splash_clear();
+    // Return to the persistent dashboard instead of clearing to black.
+    splash::splash_dashboard_init();
     s_log("[splash] done");
 }
 
@@ -212,17 +247,29 @@ pub fn main(ctx: &BootContext) {
 
     // CPU identity detection (CPUID leaf 0, 1, 0x80000002-04)
     let cpu = crate::ring0::cpu::detect_cpu();
-    crate::ring0::dev::console::serial_write("[cpu] ");
-    crate::ring0::dev::console::serial_write(cpu.brand.as_str());
-    crate::ring0::dev::console::serial_write(" | ");
-    crate::ring0::dev::console::serial_write(match cpu.vendor {
+    let cpu_line = match cpu.vendor {
         crate::ring0::cpu::CpuVendor::Amd => "AMD",
         crate::ring0::cpu::CpuVendor::Intel => "Intel",
         crate::ring0::cpu::CpuVendor::Unknown => "Unknown",
-    });
-    crate::ring0::dev::console::serial_write(" | cores=");
-    crate::ring0::dev::console::serial_write_u64_dec(cpu.logical_cores as u64);
-    crate::ring0::dev::console::serial_write("\n");
+    };
+    let brand = cpu.brand.as_str();
+    // Use a stack buffer to build the log line, then emit to both
+    // serial and the framebuffer dashboard.
+    let mut line = [0u8; 96];
+    let prefix = b"[cpu] ";
+    let mid1   = b" | ";
+    let mid2   = b" | cores=";
+    let mut off = 0;
+    for &b in prefix { line[off] = b; off += 1; }
+    for &b in brand.as_bytes() { if off < line.len() { line[off] = b; off += 1; } }
+    for &b in mid1 { if off < line.len() { line[off] = b; off += 1; } }
+    for &b in cpu_line.as_bytes() { if off < line.len() { line[off] = b; off += 1; } }
+    for &b in mid2 { if off < line.len() { line[off] = b; off += 1; } }
+    if off < line.len() { line[off] = b'0' + (cpu.logical_cores as u8 / 10); off += 1; }
+    if off < line.len() { line[off] = b'0' + (cpu.logical_cores as u8 % 10); off += 1; }
+    if let Ok(s) = core::str::from_utf8(&line[..off]) {
+        s_log(s);
+    }
 
     // Populate FB globals from the context.
     crate::info::init_from(ctx);

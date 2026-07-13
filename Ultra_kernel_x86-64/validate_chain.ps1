@@ -28,12 +28,20 @@ Write-Host ""
 Write-Host "  Validating that every faggin stage is small and in the right order." -ForegroundColor White
 Write-Host ""
 
+# Files in the new ESP layout (under staging/EFI/BOOT/):
+#   BOOTX64.EFI                      (UEFI spec, must be at the root)
+#   ring0/faggin/<stage>.bin         (12 pre-kernel stages)
+#   ring0/kernel.bin                 (Ring 0 base)
+#   ring3/{services,drivers,apps}/   (Ring 3 userland, reserved)
 $expected = @(
     "BOOTX64.EFI",
-    "s1_serial.bin", "s2_gdt.bin", "s3_idt.bin", "s4_cpuid.bin",
-    "s5_control.bin", "s6_fpu.bin", "s7_tsc.bin", "s8_syscall.bin",
-    "s9_paging.bin", "s10_heap.bin", "s11_acpi.bin", "s12_devices.bin",
-    "kernel.bin"
+    "ring0\faggin\s1_serial.bin", "ring0\faggin\s2_gdt.bin",
+    "ring0\faggin\s3_idt.bin",   "ring0\faggin\s4_cpuid.bin",
+    "ring0\faggin\s5_control.bin","ring0\faggin\s6_fpu.bin",
+    "ring0\faggin\s7_tsc.bin",   "ring0\faggin\s8_syscall.bin",
+    "ring0\faggin\s9_paging.bin","ring0\faggin\s10_heap.bin",
+    "ring0\faggin\s11_acpi.bin", "ring0\faggin\s12_devices.bin",
+    "ring0\kernel.bin"
 )
 
 $all_ok = $true
@@ -57,7 +65,7 @@ foreach ($f in $expected) {
     if ($f -eq "BOOTX64.EFI") {
         $addr = "0xFE000000"
         $status = "UEFI loader"
-    } elseif ($f -eq "kernel.bin") {
+    } elseif ($f -eq "ring0\kernel.bin" -or $f -eq "kernel.bin") {
         $addr = "0x400000"
         $ok = $szKB -le $MaxKernelKB
         $status = if ($ok) { "OK ($szKB KB)" } else { "TOO BIG (max $MaxKernelKB KB)" }

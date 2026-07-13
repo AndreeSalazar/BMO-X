@@ -3,10 +3,32 @@
 //! Responsibilities:
 //! 1. Locate `EFI_SIMPLE_FILE_SYSTEM_PROTOCOL`.
 //! 2. Open volume (root of ESP).
-//! 3. Read `\EFI\BOOT\stage1.bin`, `stage2.bin`, `stage3.bin`, `kernel.bin`.
+//! 3. Read each faggin stage from `\EFI\BOOT\ring0\faggin\<name>.bin`
+//!    and the kernel from `\EFI\BOOT\ring0\kernel.bin`.
 //! 4. Copy each to its fixed physical address (1MB, 2MB, 3MB, 4MB).
 //! 5. Fill `ctx.stage_base[]`, `ctx.stage_size[]`, `ctx.stage_entry[]`.
 //! 6. Jump to layer 4 (`uefi_exit`).
+//!
+//! ## ESP layout (this loader reads from)
+//!
+//! ```text
+//!   S:\EFI\BOOT\
+//!       BOOTX64.EFI                  (this loader, fixed by UEFI spec)
+//!       ring0\
+//!           faggin\
+//!               s1_serial.bin        (Ring 0 pre-kernel, loaded at 0x100000)
+//!               s2_gdt.bin           (...)
+//!               ...
+//!               s12_devices.bin      (loaded at 0x1B0000)
+//!           kernel.bin               (Ring 0 base, loaded at 0x400000)
+//!       ring3\                       (Ring 3 userland — empty for now,
+//!           ...                       populated by future BEF modules)
+//! ```
+//!
+//! `BOOTX64.EFI` must stay at `\EFI\BOOT\BOOTX64.EFI` because the UEFI
+//! firmware looks for it there by spec. Everything else lives under
+//! `ring0/` to keep Ring 0 (CPU-specific kernel + pre-kernel) clearly
+//! separated from `ring3/` (userland BEF modules).
 
 #![allow(dead_code)]
 
@@ -147,9 +169,18 @@ pub extern "C" fn l3_entry(
         crate::serial::hex(addr);
         crate::serial::puts(" ... ");
 
+        // Build the full UEFI path:
+        //   \EFI\BOOT\ring0\faggin\<name>   for faggin stages
+        //   \EFI\BOOT\ring0\<name>            for the kernel
+        // (the kernel is the last entry in STAGES — index MAX_STAGES-1,
+        // which is the KERNEL_STAGE_INDEX constant in boot_context).
         let mut path = [0u16; 260];
         path[0] = b'\\' as u16;
-        let prefix = b"EFI\\BOOT\\";
+        let prefix: &[u8] = if i == boot_context::KERNEL_STAGE_INDEX {
+            b"EFI\\BOOT\\ring0\\"
+        } else {
+            b"EFI\\BOOT\\ring0\\faggin\\"
+        };
         let mut idx = 1;
         for &c in prefix { path[idx] = c as u16; idx += 1; }
         for &c in name.as_bytes() { path[idx] = c as u16; idx += 1; }

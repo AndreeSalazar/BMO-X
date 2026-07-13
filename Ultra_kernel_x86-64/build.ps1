@@ -129,10 +129,22 @@ Write-Host ('  TOTAL flat size:           {0,6} B' -f $total) -ForegroundColor Y
 Write-Host ''
 
 # ── Stage to ESP layout ───────────────────────────────────────────
+# ESP layout:
+#   $stage\BOOTX64.EFI              (UEFI spec, must be here)
+#   $stage\ring0\faggin\s*.bin      (12 pre-kernel stages)
+#   $stage\ring0\kernel.bin         (Ring 0 base)
+#   $stage\ring3\                   (Ring 3 userland — empty for now)
 Step ('Staging to ' + $stage)
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'modules') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'ring0\faggin') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'ring0') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'ring3\services') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'ring3\drivers') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'ring3\apps') -Force | Out-Null
+# Marker files so empty dirs survive git/flash
+'# Reserved for future BEF modules. See Ultra_userspace/ for source.' `
+    | Set-Content -LiteralPath (Join-Path $stage 'ring3\README.txt')
 
 Copy-Item $uefi_chain (Join-Path $stage 'BOOTX64.EFI')
 
@@ -143,11 +155,11 @@ if ($llvmObjcopy) {
         $td = Join-Path $target (Join-Path 'faggin' $s)
         $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' ($bn + '.exe')))
         if (-not (Test-Path $bin)) { $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' $bn)) }
-        $out = Join-Path $stage ($s + '.bin')
+        $out = Join-Path $stage (Join-Path 'ring0\faggin' ($s + '.bin'))
         & $llvmObjcopy -O binary $bin $out
         if ($LASTEXITCODE -ne 0) { Fail ('objcopy failed for ' + $s) }
     }
-    & $llvmObjcopy -O binary $kernel (Join-Path $stage 'kernel.bin')
+    & $llvmObjcopy -O binary $kernel (Join-Path $stage 'ring0\kernel.bin')
     if ($LASTEXITCODE -ne 0) { Fail 'objcopy failed for kernel' }
 } else {
     Write-Host '  [WARN] llvm-objcopy not found - copying ELF files as-is' -ForegroundColor Yellow
@@ -156,9 +168,9 @@ if ($llvmObjcopy) {
         $td = Join-Path $target (Join-Path 'faggin' $s)
         $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' ($bn + '.exe')))
         if (-not (Test-Path $bin)) { $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' $bn)) }
-        Copy-Item $bin (Join-Path $stage ($s + '.bin'))
+        Copy-Item $bin (Join-Path $stage (Join-Path 'ring0\faggin' ($s + '.bin')))
     }
-    Copy-Item $kernel (Join-Path $stage 'kernel.bin')
+    Copy-Item $kernel (Join-Path $stage 'ring0\kernel.bin')
 }
 
 Write-Host ''
@@ -184,16 +196,34 @@ if ($Flash) {
 
     Step ('Flashing to ' + $targetLetter + ':\EFI\BOOT')
     $efiDest = Join-Path $targetRoot (Join-Path 'EFI' 'BOOT')
-    New-Item -ItemType Directory -Path $efiDest -Force | Out-Null
+    # Wipe the destination's old files (we are changing layout).
+    if (Test-Path $efiDest) {
+        Get-ChildItem -LiteralPath $efiDest -Force | Where-Object { -not $_.PSIsContainer } | Remove-Item -Force
+    }
+    # Mirror the staging tree's directory structure onto the target.
+    $ring0Dest = Join-Path $efiDest 'ring0'
+    $fagginDest = Join-Path $ring0Dest 'faggin'
+    $ring3Dest = Join-Path $efiDest 'ring3'
+    New-Item -ItemType Directory -Path (Join-Path $ring3Dest 'services') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $ring3Dest 'drivers')  -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $ring3Dest 'apps')     -Force | Out-Null
+    New-Item -ItemType Directory -Path $fagginDest -Force | Out-Null
+    # Mark the ring3 dir as reserved (in case it's empty after wipe).
+    if (-not (Test-Path (Join-Path $ring3Dest 'README.txt'))) {
+        '# Reserved for future BEF modules. See Ultra_userspace/ for source.' `
+            | Set-Content -LiteralPath (Join-Path $ring3Dest 'README.txt')
+    }
+
     Copy-Item (Join-Path $stage 'BOOTX64.EFI') -Destination (Join-Path $efiDest 'BOOTX64.EFI') -Force
     foreach ($s in $stages) {
-        Copy-Item (Join-Path $stage ($s + '.bin')) -Destination (Join-Path $efiDest ($s + '.bin')) -Force
+        Copy-Item (Join-Path $stage (Join-Path 'ring0\faggin' ($s + '.bin'))) `
+                   -Destination (Join-Path $fagginDest ($s + '.bin')) -Force
     }
-    Copy-Item (Join-Path $stage 'kernel.bin') -Destination (Join-Path $efiDest 'kernel.bin') -Force
+    Copy-Item (Join-Path $stage 'ring0\kernel.bin') -Destination (Join-Path $ring0Dest 'kernel.bin') -Force
 
     try {
-        $all_files = @('BOOTX64.EFI', 'kernel.bin')
-        foreach ($s in $stages) { $all_files += ($s + '.bin') }
+        $all_files = @('BOOTX64.EFI', 'ring0\kernel.bin')
+        foreach ($s in $stages) { $all_files += ('ring0\faggin\' + $s + '.bin') }
         foreach ($f in $all_files) {
             $fs = [System.IO.File]::Open(($targetRoot + 'EFI\BOOT\' + $f), 'Open', 'Write')
             $fs.Flush(1); $fs.Close()
