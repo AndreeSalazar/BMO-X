@@ -1,0 +1,9 @@
+[package]
+name = "bmo-kernel-v2"
+version = "2.0.0"
+edition = "2021"
+description = "BMO Kernel v2 — runtime: fb + sched + syscall + Ring 3"
+
+[dependencies]
+boot-context = { path = "../boot_context" }
+bmo-hal = { path = "../../Uso_Reales_Crates/shared/bmo-hal" }

@@ -129,7 +129,7 @@ unsafe fn locate_protocol(
     handle: &mut EfiHandle,
 ) -> EfiStatus {
     let fnptr: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
-        core::mem::transmute(bs_func(bs, 37)); // LocateProtocol = func[37]
+        unsafe { core::mem::transmute(bs_func(bs, 37)) };
     fnptr(guid, core::ptr::null_mut(), handle)
 }
 
@@ -142,13 +142,13 @@ unsafe fn get_memory_map(
     desc_ver: &mut u32,
 ) -> EfiStatus {
     let fnptr: extern "efiapi" fn(&mut usize, *mut u8, &mut usize, &mut usize, &mut u32) -> EfiStatus =
-        core::mem::transmute(bs_func(bs, 4)); // GetMemoryMap = func[4]
+        unsafe { core::mem::transmute(bs_func(bs, 4)) };
     fnptr(map_size, buf, map_key, desc_size, desc_ver)
 }
 
 unsafe fn exit_boot_services(bs: *mut EfiBootServices, handle: EfiHandle, key: usize) -> EfiStatus {
     let fnptr: extern "efiapi" fn(EfiHandle, usize) -> EfiStatus =
-        core::mem::transmute(bs_func(bs, 26)); // ExitBootServices = func[26]
+        unsafe { core::mem::transmute(bs_func(bs, 26)) };
     fnptr(handle, key)
 }
 
@@ -221,7 +221,7 @@ unsafe fn uefi_print(s: &str, con: *mut EfiSimpleTextOutput) {
     let mut buf = [0u16; 260];
     let ptr = ucs2(s, &mut buf);
     let f: extern "efiapi" fn(*mut EfiSimpleTextOutput, *const u16) -> EfiStatus =
-        core::mem::transmute(*((con as *const *mut core::ffi::c_void).add(4)));
+        unsafe { core::mem::transmute(*((con as *const *mut core::ffi::c_void).add(4))) };
     f(con, ptr);
 }
 
@@ -244,7 +244,7 @@ unsafe fn load_file(
     // Simple File System Protocol: [0]=Revision, [1]=OpenVolume
     let sfsp = fs_handle as *const *mut core::ffi::c_void;
     let open_vol: extern "efiapi" fn(EfiHandle, &mut *mut core::ffi::c_void) -> EfiStatus =
-        core::mem::transmute(*sfsp.add(1));
+        unsafe { core::mem::transmute(*sfsp.add(1)) };
     let mut root: *mut core::ffi::c_void = core::ptr::null_mut();
     if open_vol(fs_handle, &mut root) != EFI_SUCCESS || root.is_null() {
         return None;
@@ -262,7 +262,7 @@ unsafe fn load_file(
     // 4. Open the file (File Protocol: [0]=Revision, [1]=Open)
     let file_base = root as *const *mut core::ffi::c_void;
     let open_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64, *mut core::ffi::c_void) -> EfiStatus =
-        core::mem::transmute(*file_base.add(1));
+        unsafe { core::mem::transmute(*file_base.add(1)) };
     let mut file: *mut core::ffi::c_void = core::ptr::null_mut();
     if open_fn(root, &mut file, path.as_ptr(), 0, 0, core::ptr::null_mut()) != EFI_SUCCESS || file.is_null() {
         return None;
@@ -270,7 +270,7 @@ unsafe fn load_file(
 
     // 5. Read file (File Protocol: [0]=Revision, [1]=Open, [2]=Close, [3]=Delete, [4]=Read)
     let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
-        core::mem::transmute(*file_base.add(4));
+        unsafe { core::mem::transmute(*file_base.add(4)) };
     let mut size = buf.len();
     if read_fn(file, &mut size, buf.as_mut_ptr()) != EFI_SUCCESS {
         return None;
@@ -341,7 +341,7 @@ pub extern "efiapi" fn efi_main(
         let mut ec = 0;
         let num = map_size / desc_size;
         for i in 0..num.min(64) {
-            let desc = &*(mem_buf.as_ptr().add(i * desc_size) as *const EfiMemoryDescriptor);
+            let desc = unsafe { &*(mem_buf.as_ptr().add(i * desc_size) as *const EfiMemoryDescriptor) };
             if desc.mem_type == EFI_CONVENTIONAL_MEMORY && desc.num_pages > 0 {
                 entries[ec] = MemoryEntry { base: desc.phys_start, size: desc.num_pages * 4096, kind: 1 };
                 ec += 1;
@@ -427,7 +427,7 @@ pub extern "efiapi" fn efi_main(
     serial_puts("[stage0] Jump to 0x"); serial_hex(entry); serial_puts("\n");
 
     if entry != 0 {
-        let f: extern "C" fn(*mut BootContext) -> ! = core::mem::transmute(entry);
+        let f: extern "C" fn(*mut BootContext) -> ! = unsafe { core::mem::transmute(entry) };
         f(&mut ctx as *mut BootContext);
     }
 
