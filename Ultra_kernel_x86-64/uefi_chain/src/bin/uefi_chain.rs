@@ -10,7 +10,9 @@ type EfiStatus = u64;
 const EFI_SUCCESS: u64 = 0;
 const COM1: u16 = 0x3F8;
 const S1_ADDR: u64 = 0x100000;
-const S1_SLOT: u64 = 64 * 1024;
+// s1_cpu's .bss is ~296 KB (BootContext + GDT + IDT + TSS + FILE_BUF 256KB
+// + stacks + bitmap). Allocate 512 KB and zero the ENTIRE slot so .bss is clean.
+const S1_SLOT: u64 = 512 * 1024;
 const FILE_BUF_SIZE: usize = 64 * 1024;
 static mut FILE_BUF: [u8; FILE_BUF_SIZE] = [0; FILE_BUF_SIZE];
 
