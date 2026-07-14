@@ -1,0 +1,10 @@
+[package]
+name = "s2-mem"
+version = "2.0.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+boot-context = { path = "../../boot_context" }
+serial-shared = { path = "../serial_shared" }

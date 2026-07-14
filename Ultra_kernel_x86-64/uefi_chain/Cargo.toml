@@ -7,10 +7,9 @@
 
 [package]
 name = "uefi-chain"
-version = "2.0.0"
-edition = "2021"
-description = "UEFI-side boot chain for Ultra_kernel_x86-64: 5 tiny layers, one EFI binary."
+version = "3.0.0"
+edition = "2024"
+description = "UEFI shim: load s1_cpu.bin from ESP, ExitBootServices, jump to s1_cpu."
 
 [dependencies]
 boot-context = { path = "../boot_context" }
-nvram-log = { path = "../../Uso_Reales_Crates/shared/nvram-log" }

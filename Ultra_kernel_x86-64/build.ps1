@@ -22,7 +22,7 @@ if ($Clean) {
 }
 
 Write-Host ''
-Write-Host '  === BMO Ultra Kernel x86-64 Build (UEFI 5 layers + 12 faggin stages + kernel) ===' -ForegroundColor Magenta
+Write-Host '  === BMO Ultra Kernel x86-64 Build (UEFI 5 layers + 2 stages + kernel) ===' -ForegroundColor Magenta
 Write-Host ''
 
 # ── Build uefi_chain (5 UEFI layers) ──────────────────────────────
@@ -43,15 +43,11 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'uefi_chain build failed' }
 } finally { Pop-Location }
 
-# ── Build the 12 faggin stages in order ────────────────────────────
-$stages = @(
-    's1_serial', 's2_gdt', 's3_idt', 's4_cpuid',
-    's5_control', 's6_fpu', 's7_tsc', 's8_syscall',
-    's9_paging', 's10_heap', 's11_acpi', 's12_devices'
-)
+# ── Build the 2 consolidated stages ───────────────────────────────
+$stages = @('s1_cpu', 's2_mem')
 $idx = 0
 foreach ($s in $stages) {
-    Step (('[{0,2}/12] Building faggin ' -f ($idx + 1)) + $s + '...')
+    Step (('[{0,2}/2] Building stage ' -f ($idx + 1)) + $s + '...')
     $stageDir = Join-Path (Join-Path $root 'faggin') $s
     Push-Location $stageDir
     try {
@@ -177,8 +173,8 @@ Write-Host ''
 Write-Host '  === BUILD COMPLETE ===' -ForegroundColor Green
 Write-Host ('  Staged to: ' + $stage) -ForegroundColor White
 Write-Host ''
-Write-Host '  12 faggin stages + kernel (Ring 0)' -ForegroundColor Cyan
-Write-Host '  Each stage loads at 0x100000 + (i-1)*0x10000' -ForegroundColor Cyan
+Write-Host '  2 stages + kernel (Ring 0)' -ForegroundColor Cyan
+Write-Host '  s1_cpu@0x100000 s2_mem@0x200000 kernel@0x400000' -ForegroundColor Cyan
 Write-Host ''
 
 if ($BuildOnly) { exit 0 }

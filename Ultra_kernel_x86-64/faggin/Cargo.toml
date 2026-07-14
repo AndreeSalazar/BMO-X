@@ -1,6 +1,0 @@
-[package]
-name = "faggin-stages-stub"
-version = "0.0.0"
-edition = "2021"
-description = "Stub. The 12 faggin stages (s1_serial ... s12_devices) are built standalone by Ultra_kernel_x86-64/build.ps1, not by cargo workspace."
-publish = false
