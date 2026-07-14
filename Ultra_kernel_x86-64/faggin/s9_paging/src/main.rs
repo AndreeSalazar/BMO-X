@@ -43,16 +43,34 @@ static mut POOL_BASE: u64 = 0;
 static mut POOL_END: u64 = 0;
 
 unsafe fn pool_init(ctx: &boot_context::BootContext) {
-    // Find the first usable memory entry above 4 MB.
+    // Find the first usable memory entry AFTER the kernel region
+    // (kernel + 12 faggin stages = 0..0x1400000 = 0..20 MiB).
+    // We must avoid allocating pool frames inside this range because
+    // zeroing them would corrupt the kernel binary and the BSS of
+    // the faggin stages.
+    const KERNEL_END: u64 = 0x1400000; // 20 MiB
     for e in &ctx.memory_map[..ctx.memory_map_count as usize] {
         if e.kind != 1 || e.size == 0 { continue; }
-        let base = (e.base + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-        if base < 0x400000 { continue; }
+        let entry_end = e.base + e.size;
+        // Skip entries that end before our minimum address
+        if entry_end <= KERNEL_END { continue; }
+        // Use the first entry that starts at or after KERNEL_END
+        let base = if e.base < KERNEL_END {
+            // Entry overlaps KERNEL_END - start from KERNEL_END
+            KERNEL_END
+        } else {
+            (e.base + PAGE_SIZE - 1) & !(PAGE_SIZE - 1)
+        };
         POOL_BASE = base;
         POOL_END = base + (POOL_SIZE as u64) * PAGE_SIZE;
-        // Carve out the pool pages from the bitmap in s10_heap
-        // (s10 reads ctx, but the pool frames are ours).
+        serial_shared::puts("[s9] pool base=0x");
+        serial_shared::hex(base);
+        serial_shared::puts("\n");
         break;
+    }
+    if POOL_BASE == 0 {
+        serial_shared::puts("[s9] FATAL: no pool memory above 20MB\n");
+        loop { asm!("hlt"); }
     }
 }
 

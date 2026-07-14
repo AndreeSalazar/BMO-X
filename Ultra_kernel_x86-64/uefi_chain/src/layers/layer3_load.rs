@@ -216,12 +216,26 @@ pub extern "C" fn l3_entry(
         }
 
         unsafe { copy_to_phys(addr, file_buf.as_ptr(), size); }
+
+        // Zero the BSS region (anything past the file's .text/.data
+        // up to the reserved size). llvm-objcopy -O binary only
+        // includes the loaded segments, so any uninitialized statics
+        // (page tables, bitmaps, stacks, etc.) start with whatever
+        // garbage was in this physical range before we got it.
+        // The kernel cleans its own BSS in _start, but the faggin
+        // stages don't, so we must do it here.
+        let bss_start = addr + size as u64;
+        let bss_end   = addr + reserve_size as u64;
+        if bss_end > bss_start {
+            unsafe { zero_range(bss_start, bss_end - bss_start); }
+        }
+
         ctx.stage_base[i] = addr;
         ctx.stage_size[i] = size as u64;
         ctx.stage_entry[i] = addr;
 
         crate::serial::dec(size);
-        crate::serial::puts(" bytes\n");
+        crate::serial::puts(" bytes (bss cleared)\n");
     }
 
     if !ok {
@@ -238,6 +252,15 @@ unsafe fn copy_to_phys(dst: u64, src: *const u8, len: usize) {
     let dst_ptr = dst as *mut u8;
     for i in 0..len {
         dst_ptr.add(i).write(src.add(i).read());
+    }
+}
+
+/// Zero a physical address range. Used to clear BSS after copying
+/// the loaded .text/.data segments.
+unsafe fn zero_range(start: u64, len: u64) {
+    let dst = start as *mut u8;
+    for i in 0..len {
+        dst.add(i as usize).write(0);
     }
 }
 
