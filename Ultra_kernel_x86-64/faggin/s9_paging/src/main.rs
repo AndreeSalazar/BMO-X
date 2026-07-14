@@ -149,23 +149,33 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     serial_shared::hex(pml4_phys);
     serial_shared::puts("\n");
 
-    // 3. Identity-map the first 4 MB with 2 MB huge pages (fast path).
+    // 3. Identity-map 0..20 MB with 2 MB huge pages (fast path).
+    //    This covers:
+    //    - 0..4 MB: the 12 faggin stages (each at 0x100000 + n*0x10000)
+    //    - 4..20 MB: the kernel at 0x400000 (16 MiB reserved by L3)
+    //    Without the 4..20 MB range, s12_devices's jmp 0x400000
+    //    hits a not-present page and the kernel never runs.
     //    The physical address matches the virtual address.
     unsafe {
-        map_2m_huge(pml4.as_mut_ptr(), 0x0, 0x0, 2,
+        map_2m_huge(pml4.as_mut_ptr(), 0x0, 0x0, 10,
             PTE_PRESENT | PTE_WRITABLE);
     }
-    serial_shared::puts("[s9 paging] identity-mapped 0..4MB\n");
+    serial_shared::puts("[s9 paging] identity-mapped 0..20MB\n");
 
-    // 4. Higher-half mirror: map 0..2GB physical to 0xFFFF_8000_0000_0000.
-    //    This covers the kernel, the heap, the channel pages, any
-    //    later allocations, and every physical address the kernel
-    //    might need until the full VMM is initialized.
+    // 4. Higher-half mirror: map 0..16GB physical to 0xFFFF_8000_0000_0000.
+    //    This covers:
+    //    - 0..2GB: kernel, heap, channel pages, any allocations
+    //    - 2..16GB: the UEFI stack and runtime memory (which lives
+    //      in high physical memory and is accessed via the
+    //      higher-half mirror by the boot services before Exit)
+    //    The higher-half mirror is what the kernel uses to access
+    //    physical memory (HIGHER_HALF_BASE + phys_addr).
     unsafe {
-        map_2m_huge(pml4.as_mut_ptr(), HIGH_MEM_BASE, 0x0, 1024,
+        // 16 GB = 8192 × 2 MB huge pages
+        map_2m_huge(pml4.as_mut_ptr(), HIGH_MEM_BASE, 0x0, 8192,
             PTE_PRESENT | PTE_WRITABLE | PTE_GLOBAL);
     }
-    serial_shared::puts("[s9 paging] higher-half 0..2GB -> ");
+    serial_shared::puts("[s9 paging] higher-half 0..16GB -> ");
     serial_shared::hex(HIGH_MEM_BASE);
     serial_shared::puts("\n");
 
