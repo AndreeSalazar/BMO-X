@@ -1,11 +1,26 @@
-//! Kernel entry point ??? `_start` naked asm + `kernel_main_real`.
+//! Kernel entry point — `_start` naked asm + `kernel_main_real`.
 //!
-//! Called from `stage3_dev` via `jmp` with `rdi = *const BootContext`.
+//! Called from `s12_devices` via `jmp` with `rdi = *const BootContext`.
+//!
+//! ## Stack switch
+//!
+//! When s12_devices jumps here, RSP is still the UEFI stack which
+//! may live at a high physical address (e.g. 0x7FFF...) that
+//! s9_paging did not identity-map. The very first push/call would
+//! cause a #PF on a not-present page and triple-fault. We therefore
+//! switch to an internal stack (defined in .bss, identity-mapped by
+//! s9_paging) before doing anything that uses the stack.
 
-use core::arch::naked_asm;
+use core::arch::{asm, naked_asm};
 
-// ?????? _start: first code executed after the boot chain jumps here ???????????????
+// The kernel's 64 KiB stack is allocated by the linker script
+// (see linker.ld, .bss section, 65536 bytes). KERNEL_STACK_END_MARKER
+// is the address of the top of that stack. We do not declare the
+// array in Rust to avoid double-allocation; the linker creates the
+// backing memory and KERNEL_STACK_END_MARKER is the symbol just past
+// the end.
 
+// _start: first code executed after the boot chain jumps here.
 #[unsafe(no_mangle)]
 #[link_section = ".text._start"]
 #[unsafe(naked)]
@@ -13,6 +28,14 @@ unsafe extern "C" fn _start() -> ! {
     naked_asm!(
         // Save BootContext ptr in r12 (callee-saved).
         "mov r12, rdi",
+
+        // Switch to a known-good internal stack IMMEDIATELY.
+        // The UEFI stack may be unmapped after s9_paging.
+        // The stack lives in the kernel's .bss at KERNEL_STACK + 65536,
+        // which s9_paging identity-maps. The next block zeros BSS
+        // (including the stack), which is fine — we're not using
+        // any old stack contents.
+        "lea rsp, [rip + {stack_end}]",
 
         // Zero BSS (stosq + stosb).
         "lea rax, [rip + __bss_start]",
@@ -37,7 +60,20 @@ unsafe extern "C" fn _start() -> ! {
         // Halt if returned.
         "3: hlt",
         "jmp 3b",
+
+        // Linker-resolved address: KERNEL_STACK + 65536 (end of stack).
+        // The asm! block substitutes the address of KERNEL_STACK
+        // and adds the size constant at expansion time.
+        stack_end = sym KERNEL_STACK_END_MARKER,
     );
+}
+
+// Marker at the top of the kernel stack. This is at the same
+// address as KERNEL_STACK + 65536. We declare it as a zero-sized
+// extern so the linker resolves its address; the actual stack
+// memory is KERNEL_STACK.
+extern "C" {
+    static KERNEL_STACK_END_MARKER: u8;
 }
 
 #[unsafe(no_mangle)]
@@ -45,11 +81,11 @@ unsafe extern "C" fn _start() -> ! {
 extern "C" fn kernel_main_real(ctx: *const boot_context::BootContext) -> ! {
     // Defensive: if a non-magic context arrived, halt.
     if ctx.is_null() {
-        loop { unsafe { core::arch::asm!("hlt"); } }
+        loop { unsafe { asm!("hlt"); } }
     }
     let ctx_ref = unsafe { &*ctx };
 
-    // ARM crash marker at low RAM (visible to host debugger).
+    // Crash marker at low RAM (visible to host debugger).
     unsafe {
         core::ptr::write_volatile(0x9_0000 as *mut u32, 0x464F_5343u32); // "FOSC"
         core::ptr::write_volatile(0x9_0004 as *mut u32, 1u32);

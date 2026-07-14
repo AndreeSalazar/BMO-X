@@ -21,6 +21,8 @@ SECTIONS
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)
+        . = . + 65536;  /* KERNEL_STACK (64 KiB kernel stack) */
+        KERNEL_STACK_END_MARKER = .;
         __bss_end = .;
     }
 }
