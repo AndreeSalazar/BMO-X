@@ -37,15 +37,15 @@ type EfiStatus = u64;
 const EFI_SUCCESS: u64 = 0;
 const EFI_CONVENTIONAL_MEMORY: u32 = 7;
 const S2_ADDR: u64 = 0x200000;
-const STAGE_SLOT_SIZE: u64 = 0x10000;
+const S2_RESERVE_SIZE: u64 = 2 * 1024 * 1024;
 const KERNEL_RESERVE_SIZE: u64 = 16 * 1024 * 1024;
-const MAX_FILE_SIZE: usize = 256 * 1024;
 const COM1: u16 = 0x3F8;
 
 #[repr(C)] struct EfiTableHeader { signature: u64, revision: u32, header_size: u32, crc32: u32, _reserved: u32 }
 #[repr(C)] struct EfiBootServices { hdr: EfiTableHeader, _pad: [u8; 44 * 8] }
 #[repr(C)] struct EfiSystemTable {
     hdr: EfiTableHeader, _firmware: *mut core::ffi::c_void,
+    _firmware_revision: u32, _firmware_pad: u32,
     _cin_handle: EfiHandle, _con_in: *mut core::ffi::c_void,
     _cout_handle: EfiHandle, _con_out: *mut core::ffi::c_void,
     _cerr_handle: EfiHandle, _con_err: *mut core::ffi::c_void,
@@ -72,7 +72,6 @@ const COM1: u16 = 0x3F8;
 
 static mut FILE_SYSTEM_GUID: EfiGuid = EfiGuid { data1: 0x964e5b22, data2: 0x6409, data3: 0x47ef, data4: [0x97, 0xa2, 0xff, 0x06, 0xff, 0x38, 0xb0, 0xdf] };
 static mut GOP_GUID: EfiGuid = EfiGuid { data1: 0x9042a9de, data2: 0x23dc, data3: 0x4a38, data4: [0x96, 0xfb, 0x72, 0xde, 0x52, 0xfe, 0xc4, 0x49] };
-static mut FILE_BUF: [u8; MAX_FILE_SIZE] = [0; MAX_FILE_SIZE];
 
 // ═══════════════════════════════════════════════════════════════════
 //  AMD-SPECIFIC MSR ADDRESSES (Zen 3 / Family 19h)
@@ -342,9 +341,9 @@ unsafe fn detect_cpu() {
     let mut idx = 0;
     for v in [a, b, c, d, e, f, g, h, i, j, k, l] {
         if idx < 48 { cpu.brand[idx] = v as u8; idx += 1; }
-        if v > 0xFF && idx < 48 { cpu.brand[idx] = (v >> 8) as u8; idx += 1; }
-        if v > 0xFFFF && idx < 48 { cpu.brand[idx] = (v >> 16) as u8; idx += 1; }
-        if v > 0xFFFFFF && idx < 48 { cpu.brand[idx] = (v >> 24) as u8; idx += 1; }
+        if idx < 48 { cpu.brand[idx] = (v >> 8) as u8; idx += 1; }
+        if idx < 48 { cpu.brand[idx] = (v >> 16) as u8; idx += 1; }
+        if idx < 48 { cpu.brand[idx] = (v >> 24) as u8; idx += 1; }
     }
     ser_print!("[s1_cpu] brand: ");
     if let Ok(s) = core::str::from_utf8(&cpu.brand) { ser_print!(s.trim_end_matches('\0')); }
@@ -567,13 +566,11 @@ unsafe fn init_cr0_cr4() {
     let (_, _, ecx1, edx1) = cpuid(1, 0);
     let (ebx7, ecx7) = if max_basic >= 7 { let (_, ebx, ecx, _) = cpuid(7, 0); (ebx, ecx) } else { (0, 0) };
     let xsav = ecx1 & (1 << 26) != 0;
+    let avx = ecx1 & (1 << 28) != 0;
     let fsgs = ebx7 & (1 << 0) != 0;
     let smep = ebx7 & (1 << 7) != 0;
     let umip = ecx7 & (1 << 2) != 0;
 
-    let cr4: u64; asm!("mov {}, cr4", out(reg) cr4);
-    let mut cr4 = cr0; // bug: should be cr4
-    let _ = cr4;
     let cr4: u64; asm!("mov {}, cr4", out(reg) cr4);
     let mut cr4 = cr4;
     cr4 |= 1 << 7 | 1 << 9 | 1 << 10; // PGE, OSFXSR, OSXMMEXCPT
@@ -585,7 +582,8 @@ unsafe fn init_cr0_cr4() {
 
     // XCR0: x87 + SSE + AVX (Zen 3 has 256-bit AVX)
     if xsav {
-        wrmsr(0, 7); // x87 | SSE | AVX
+        let xcr0 = if avx { 7u32 } else { 3u32 };
+        asm!("xsetbv", in("ecx") 0u32, in("eax") xcr0, in("edx") 0u32);
     }
     ser_print!("[s1_cpu] CR0/CR4/XCR0 set for Zen 3\n");
 }
@@ -853,20 +851,20 @@ unsafe fn load_from_esp(ctx: &mut BootContext, system_table: *mut EfiSystemTable
     let mut root: *mut core::ffi::c_void = core::ptr::null_mut();
     if open_vol(fs_handle, &mut root) != EFI_SUCCESS { return false; }
     let file_base = root as *const *mut core::ffi::c_void;
-    let open_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64, *mut core::ffi::c_void) -> EfiStatus =
+    let open_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus =
         core::mem::transmute(*file_base.add(1));
-    let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
-        core::mem::transmute(*file_base.add(4));
     let alloc_pages: extern "efiapi" fn(u32, u32, usize, &mut u64) -> EfiStatus =
         core::mem::transmute(*base.add(3 + 2));
 
     let stages: [(&str, u64); MAX_STAGES] = [
-        ("s1_cpu.bin", 0x100000), ("s2_mem.bin", 0x200000),
+        ("", 0), ("s2_mem.bin", 0x200000),
         ("", 0), ("", 0), ("", 0), ("", 0), ("", 0),
         ("", 0), ("", 0), ("", 0), ("", 0), ("", 0),
         ("kernel.bin", 0x400000),
     ];
-    let file_buf = &mut *core::ptr::addr_of_mut!(FILE_BUF);
+    // s1 is already loaded and reserved by the UEFI shim.
+    ctx.stage_base[0] = 0x100000;
+    ctx.stage_entry[0] = 0x100000;
     let mut ok = true;
     for (i, &(name, addr)) in stages.iter().enumerate() {
         if name.is_empty() { continue; }
@@ -878,16 +876,17 @@ unsafe fn load_from_esp(ctx: &mut BootContext, system_table: *mut EfiSystemTable
         for &c in name.as_bytes() { path[idx] = c as u16; idx += 1; }
         path[idx] = 0;
         let mut file: *mut core::ffi::c_void = core::ptr::null_mut();
-        if open_fn(root, &mut file, path.as_ptr(), 0, 0, core::ptr::null_mut()) != EFI_SUCCESS { ok = false; continue; }
-        let mut size = file_buf.len();
-        if read_fn(file, &mut size, file_buf.as_mut_ptr()) != EFI_SUCCESS || size == 0 { ok = false; continue; }
-        let reserve_size = if i + 1 == MAX_STAGES { KERNEL_RESERVE_SIZE } else { STAGE_SLOT_SIZE };
-        if size as u64 > reserve_size { ok = false; continue; }
+        if open_fn(root, &mut file, path.as_ptr(), 1, 0) != EFI_SUCCESS { ok = false; continue; }
+        let opened_file = file as *const *mut core::ffi::c_void;
+        let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
+            core::mem::transmute(*opened_file.add(4));
+        let reserve_size = if i + 1 == MAX_STAGES { KERNEL_RESERVE_SIZE } else { S2_RESERVE_SIZE };
         let mut allocation = addr;
         let pages = (reserve_size as usize + 4095) / 4096;
         if alloc_pages(2, 2, pages, &mut allocation) != EFI_SUCCESS { ok = false; continue; }
         let dst = addr as *mut u8;
-        for j in 0..size { dst.add(j).write(file_buf[j]); }
+        let mut size = reserve_size as usize;
+        if read_fn(file, &mut size, dst) != EFI_SUCCESS || size == 0 { ok = false; continue; }
         let bss_end = addr + reserve_size;
         for j in size as u64..(bss_end - addr) { dst.add(j as usize).write(0); }
         ctx.stage_base[i] = addr;
@@ -913,6 +912,25 @@ unsafe fn exit_boot_services_and_jump(ctx_ptr: *mut BootContext, system_table: *
     let mut desc_size: usize = 0;
     let mut desc_ver: u32 = 0;
     if get_mm(&mut map_size, buf.as_mut_ptr(), &mut map_key, &mut desc_size, &mut desc_ver) != EFI_SUCCESS { loop { asm!("hlt"); } }
+
+    // Publish the final map, after reserving s1/s2/kernel.  The earlier map
+    // still marked those physical ranges as conventional and would let the
+    // kernel allocator overwrite its own boot images.
+    let ctx = &mut *ctx_ptr;
+    let mut entries = [MemoryEntry { base: 0, size: 0, kind: 0 }; MAX_MEMORY_ENTRIES];
+    let mut count = 0;
+    if desc_size != 0 {
+        for i in 0..(map_size / desc_size) {
+            let desc = &*(buf.as_ptr().add(i * desc_size) as *const EfiMemoryDescriptor);
+            if desc.mem_type == EFI_CONVENTIONAL_MEMORY && desc.num_pages > 0 && count < MAX_MEMORY_ENTRIES {
+                entries[count] = MemoryEntry { base: desc.phys_start, size: desc.num_pages * 4096, kind: 1 };
+                count += 1;
+            }
+        }
+    }
+    ctx.set_memory_map(&entries[..count]);
+    ctx.memory_map_count = count as u32;
+
     if exit_bs(image_handle, map_key) != EFI_SUCCESS { loop { asm!("hlt"); } }
     ser_print!("[s1_cpu] ===> JUMP s2_mem 0x");
     ser_hex!(entry);
@@ -998,8 +1016,8 @@ pub extern "efiapi" fn s1_entry(
     // 12. SYSCALL (AMD K8 ABI)
     unsafe { init_syscall(); }
 
-    // 12.5 SMP startup — wake all APs (must be before ExitBootServices)
-    unsafe { smp_startup(); }
+    // SMP remains disabled until its real-mode trampoline and low-memory page
+    // tables are reserved and built correctly.  Boot the BSP reliably first.
 
     // 13. Publish CPU profile to BootContext
     ctx.gdt_ptr = core::ptr::addr_of!(GDT) as u64;

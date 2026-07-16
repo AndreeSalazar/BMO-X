@@ -18,7 +18,7 @@ static mut FILE_BUF: [u8; FILE_BUF_SIZE] = [0; FILE_BUF_SIZE];
 
 #[repr(C)] struct EfiTableHeader { signature: u64, revision: u32, header_size: u32, crc32: u32, _r: u32 }
 #[repr(C)] struct EfiBootServices { hdr: EfiTableHeader, _pad: [u8; 44 * 8] }
-#[repr(C)] struct EfiSystemTable { hdr: EfiTableHeader, _firmware: *mut core::ffi::c_void, _cin: EfiHandle, _cin_h: *mut core::ffi::c_void, _cout: EfiHandle, _cout_h: *mut core::ffi::c_void, _cerr: EfiHandle, _cerr_h: *mut core::ffi::c_void, _rt: *mut core::ffi::c_void, bs: *mut EfiBootServices, _nt: usize, _ct: *mut core::ffi::c_void }
+#[repr(C)] struct EfiSystemTable { hdr: EfiTableHeader, _firmware: *mut core::ffi::c_void, _firmware_revision: u32, _firmware_pad: u32, _cin: EfiHandle, _cin_h: *mut core::ffi::c_void, _cout: EfiHandle, _cout_h: *mut core::ffi::c_void, _cerr: EfiHandle, _cerr_h: *mut core::ffi::c_void, _rt: *mut core::ffi::c_void, bs: *mut EfiBootServices, _nt: usize, _ct: *mut core::ffi::c_void }
 #[repr(C)] struct EfiGuid { d1: u32, d2: u16, d3: u16, d4: [u8; 8] }
 #[repr(C)] struct EfiSimpleFileSystemProtocol { revision: u64, open_volume: unsafe extern "efiapi" fn(*const Self, *mut *mut core::ffi::c_void) -> EfiStatus }
 #[repr(C)] struct EfiFileProtocol { revision: u64, open: unsafe extern "efiapi" fn(*const Self, *mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus, close: unsafe extern "efiapi" fn(*const Self) -> EfiStatus, _del: *mut core::ffi::c_void, read: *mut core::ffi::c_void, _w: *mut core::ffi::c_void, _gp: *mut core::ffi::c_void, _sp: *mut core::ffi::c_void, _gi: *mut core::ffi::c_void, _si: *mut core::ffi::c_void, _f: *mut core::ffi::c_void }
@@ -59,10 +59,8 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core
 
     // Open \EFI\BOOT\ring0\faggin\s1_cpu.bin
     let file_base = root as *const *mut core::ffi::c_void;
-    let open_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64, *mut core::ffi::c_void) -> EfiStatus =
+    let open_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus =
         unsafe { core::mem::transmute(*file_base.add(1)) };
-    let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
-        unsafe { core::mem::transmute(*file_base.add(4)) };
 
     let path: [u16; 36] = [
         b'\\' as u16, b'E' as u16, b'F' as u16, b'I' as u16, b'\\' as u16, b'B' as u16, b'O' as u16, b'O' as u16, b'T' as u16,
@@ -71,10 +69,13 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core
         b'p' as u16, b'u' as u16, b'.' as u16, b'b' as u16, b'i' as u16, b'n' as u16, 0, 0, 0,
     ];
     let mut file: *mut core::ffi::c_void = core::ptr::null_mut();
-    if unsafe { open_fn(root, &mut file, path.as_ptr(), 0, 0, core::ptr::null_mut()) } != EFI_SUCCESS {
+    if unsafe { open_fn(root, &mut file, path.as_ptr(), 1, 0) } != EFI_SUCCESS {
         puts("[uefi] open s1_cpu.bin FAIL\n");
         return 3;
     }
+    let opened_file = file as *const *mut core::ffi::c_void;
+    let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
+        unsafe { core::mem::transmute(*opened_file.add(4)) };
     let mut size = FILE_BUF_SIZE;
     let file_buf = unsafe { &mut *core::ptr::addr_of_mut!(FILE_BUF) };
     if unsafe { read_fn(file, &mut size, file_buf.as_mut_ptr()) } != EFI_SUCCESS || size == 0 {
@@ -96,30 +97,15 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core
     for i in size as u64..S1_SLOT { unsafe { dst.add(i as usize).write(0); } }
     puts("[uefi] s1_cpu loaded at 0x"); hex(S1_ADDR); puts("\n");
 
-    // Re-fetch memory map for ExitBootServices key
-    let get_mm: extern "efiapi" fn(*mut usize, *mut u8, *mut usize, *mut usize, *mut u32) -> EfiStatus =
-        unsafe { core::mem::transmute(*base.add(3 + 4)) };
-    let exit_bs: extern "efiapi" fn(EfiHandle, usize) -> EfiStatus =
-        unsafe { core::mem::transmute(*base.add(3 + 26)) };
-    let mut mm_buf = [0u8; 8192];
-    let mut mm_size = mm_buf.len();
-    let mut mm_key: usize = 0;
-    let mut mm_ds: usize = 0;
-    let mut mm_dv: u32 = 0;
-    if unsafe { get_mm(&mut mm_size, mm_buf.as_mut_ptr(), &mut mm_key, &mut mm_ds, &mut mm_dv) } != EFI_SUCCESS { return 7; }
-    if unsafe { exit_bs(image_handle, mm_key) } != EFI_SUCCESS { return 8; }
-
     puts("[uefi] ===> JUMP s1_cpu 0x"); hex(S1_ADDR); puts("\n");
     unsafe { asm!("sfence", options(nostack, preserves_flags)); }
-    unsafe {
-        asm!(
-            "jmp {entry}",
-            entry = in(reg) S1_ADDR,
-            in("rdi") image_handle,
-            in("rsi") system_table,
-            options(noreturn)
-        );
-    }
+
+    // s1 still needs GOP, file and memory-map services to load s2 + kernel.
+    // Keep Boot Services alive and use a typed EFI call so the compiler emits
+    // the Microsoft x64 argument registers and stack alignment required by UEFI.
+    let entry: extern "efiapi" fn(EfiHandle, *mut core::ffi::c_void) -> ! =
+        unsafe { core::mem::transmute(S1_ADDR as usize) };
+    entry(image_handle, system_table)
 }
 
 #[panic_handler]

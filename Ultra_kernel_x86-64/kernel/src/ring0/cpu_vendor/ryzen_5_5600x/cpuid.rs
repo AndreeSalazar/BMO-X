@@ -125,9 +125,9 @@ pub fn detect_cpu() -> CpuIdentity {
         let (a, b, c, d) = cpuid(leaf, 0);
         for v in [a, b, c, d] {
             if idx < 48 { s[idx] = v as u8; idx += 1; }
-            if v > 0xFF && idx < 48 { s[idx] = (v >> 8) as u8; idx += 1; }
-            if v > 0xFFFF && idx < 48 { s[idx] = (v >> 16) as u8; idx += 1; }
-            if v > 0xFFFFFF && idx < 48 { s[idx] = (v >> 24) as u8; idx += 1; }
+            if idx < 48 { s[idx] = (v >> 8) as u8; idx += 1; }
+            if idx < 48 { s[idx] = (v >> 16) as u8; idx += 1; }
+            if idx < 48 { s[idx] = (v >> 24) as u8; idx += 1; }
         }
     }
     let brand = CpuBrandString(s);

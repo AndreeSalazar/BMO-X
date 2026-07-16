@@ -20,7 +20,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use core::panic::PanicInfo;
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use boot_context::PciDevice;
 
 const KERNEL_ADDR: u64 = 0x400000;
@@ -38,8 +38,7 @@ const fn pte_addr(e: u64) -> u64 { e & 0x000F_FFFF_FFFF_F000 }
 
 // ── Safe stack in .bss (within identity-mapped region) ────────────
 
-const SAFE_STACK_SIZE: usize = 4096;
-static mut SAFE_STACK: [u8; SAFE_STACK_SIZE] = [0u8; SAFE_STACK_SIZE];
+// The 64 KiB transition stack is reserved by linker.ld.
 
 // ── Frame pool (page table frames) ───────────────────────────────
 
@@ -48,10 +47,10 @@ static mut POOL: [u64; POOL_SIZE / 64] = [0u64; POOL_SIZE / 64];
 static mut POOL_BASE: u64 = 0;
 static mut POOL_END: u64 = 0;
 
-unsafe fn pool_init(ctx: &boot_context::BootContext) {
+unsafe fn pool_init(ctx: &mut boot_context::BootContext) {
     // 32 MiB = 0x2000000 (covers s1_cpu + s2_mem + kernel + room)
     const REGION_END: u64 = 0x2000000;
-    for e in &ctx.memory_map[..ctx.memory_map_count as usize] {
+    for e in &mut ctx.memory_map[..ctx.memory_map_count as usize] {
         if e.kind != 1 || e.size == 0 { continue; }
         let entry_end = e.base + e.size;
         if entry_end <= REGION_END { continue; }
@@ -60,8 +59,13 @@ unsafe fn pool_init(ctx: &boot_context::BootContext) {
         } else {
             (e.base + PAGE_SIZE - 1) & !(PAGE_SIZE - 1)
         };
+        let pool_end = base + (POOL_SIZE as u64) * PAGE_SIZE;
+        if pool_end > entry_end { continue; }
         POOL_BASE = base;
-        POOL_END = base + (POOL_SIZE as u64) * PAGE_SIZE;
+        POOL_END = pool_end;
+        // Remove page-table frames from the map consumed by the kernel.
+        e.base = pool_end;
+        e.size = entry_end - pool_end;
         serial_shared::puts("[s2_mem] pool base=0x");
         serial_shared::hex(base);
         serial_shared::puts("\n");
@@ -424,10 +428,35 @@ unsafe fn i8042_init() {
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text._start")]
-pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
+#[unsafe(naked)]
+pub unsafe extern "C" fn _start() -> ! {
+    naked_asm!(
+        "mov r12, rdi",
+        "lea rsp, [rip + {stack_end}]",
+        "lea rax, [rip + __bss_start]",
+        "lea rcx, [rip + __bss_end]",
+        "sub rcx, rax",
+        "mov rdi, rax",
+        "xor eax, eax",
+        "rep stosb",
+        "mov rdi, r12",
+        "call s2_main",
+        "2: hlt",
+        "jmp 2b",
+        stack_end = sym S2_STACK_END,
+    );
+}
+
+unsafe extern "C" {
+    static S2_STACK_END: u8;
+}
+
+#[unsafe(no_mangle)]
+#[inline(never)]
+extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     serial_shared::puts("\n[s2_mem] === MEMORY + DEVICES INIT ===\n");
 
-    let ctx = unsafe { &*ctx_ptr };
+    let ctx = unsafe { &mut *ctx_ptr };
 
     // 1. Init frame pool from memory map
     unsafe { pool_init(ctx); }
@@ -457,7 +486,8 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     if ctx.fb_addr != 0 {
         let fb_start = ctx.fb_addr & !(PAGE_SIZE - 1);
         let fb_size = (ctx.fb_stride as u64) * (ctx.fb_height as u64) * 4;
-        let fb_pages = ((fb_size + PAGE_SIZE - 1) / PAGE_SIZE) as usize;
+        let fb_offset = ctx.fb_addr - fb_start;
+        let fb_pages = ((fb_offset + fb_size + PAGE_SIZE - 1) / PAGE_SIZE) as usize;
         for i in 0..fb_pages {
             let p = fb_start + (i as u64) * PAGE_SIZE;
             unsafe {
@@ -484,8 +514,7 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     }
 
     // 7. Write ctx.pml4 BEFORE CR3 switch
-    let ctx_mut = unsafe { &mut *ctx_ptr };
-    ctx_mut.pml4 = pml4_phys;
+    ctx.pml4 = pml4_phys;
 
     // ═══════════════════════════════════════════════════════════════
     // 8. CRITICAL: Switch to safe stack + CR3 NOW.
@@ -495,23 +524,13 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     //    The identity map (0..32 MiB) keeps our code accessible.
     //    The safe stack is in .BSS at 0x200000 (identity-mapped).
     // ═══════════════════════════════════════════════════════════════
-    let stack_top = unsafe { SAFE_STACK.as_ptr().add(SAFE_STACK_SIZE) as u64 };
     serial_shared::puts("[s2_mem] switching CR3 → 0x");
     serial_shared::hex(pml4_phys);
     serial_shared::puts("\n");
 
-    // We need to do the CR3 switch but NOT jump to kernel yet.
-    // Instead, we switch CR3 and continue executing s2_mem code
-    // (which is at 0x200000, identity-mapped).
+    // _start already moved execution to the internal identity-mapped stack.
     unsafe {
-        asm!(
-            "mov rsp, {stack}",
-            "mov cr3, {cr3}",
-            // Continue executing s2_mem code (identity-mapped)
-            stack = in(reg) stack_top,
-            cr3 = in(reg) pml4_phys,
-            options(nostack),
-        );
+        asm!("mov cr3, {}", in(reg) pml4_phys, options(nostack));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -527,12 +546,12 @@ pub extern "C" fn _start(ctx_ptr: *mut boot_context::BootContext) -> ! {
     let acpi = unsafe { acpi_parse(rsdp) };
 
     // 11. PCI scan (ECAM uses phys_to_virt)
-    pci_scan(ctx_mut, &acpi);
+    pci_scan(ctx, &acpi);
 
     // 12. Store ACPI/device info in BootContext
-    ctx_mut.rsdp = rsdp;
-    ctx_mut.ioapic_base = acpi.ioapic.unwrap_or(0);
-    ctx_mut.hpet_base   = acpi.hpet.unwrap_or(0);
+    ctx.rsdp = rsdp;
+    ctx.ioapic_base = acpi.ioapic.unwrap_or(0);
+    ctx.hpet_base   = acpi.hpet.unwrap_or(0);
 
     // 13. Device init (LAPIC, IOAPIC, HPET, i8042)
     //     phys_to_virt() now works because higher-half is mapped.

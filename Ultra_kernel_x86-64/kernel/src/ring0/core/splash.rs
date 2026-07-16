@@ -464,7 +464,7 @@ pub fn splash_init() {
 
     unsafe {
         let di = fb_addr;
-        let color: u32 = 0xFF00_FFFFu32;
+        let color: u32 = 0xFFFFFF00u32;
         core::arch::asm!(
             "cld",
             "mov rdi, {di}",

@@ -58,7 +58,11 @@ foreach ($s in $stages) {
         # as small as possible. Each stage also has its own
         # .cargo/config.toml that points to its linker.ld and adds
         # -C relocation-model=static -C target-feature=+crt-static.
-        $out = cargo +nightly build --release --target x86_64-unknown-none --target-dir $td 2>&1
+        # Cargo does not track linker.ld. Include its content hash in a harmless
+        # linker symbol so script-only changes invalidate just the final crate.
+        $linkerHash = (Get-FileHash (Join-Path $stageDir 'linker.ld') -Algorithm SHA256).Hash.Substring(0, 16)
+        $out = cargo +nightly rustc --release --target x86_64-unknown-none --target-dir $td -- `
+            -C ("link-arg=--defsym=BMO_LINKER_REV_" + $linkerHash + '=0') 2>&1
         $out | ForEach-Object {
             if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [' + $s + '] ' + $_) -ForegroundColor DarkGray }
         }
@@ -74,7 +78,9 @@ Push-Location $stageDir
 try {
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
     $kd = Join-Path $target 'kernel'
-    $out = cargo +nightly build --release --target x86_64-unknown-none --target-dir $kd 2>&1
+    $linkerHash = (Get-FileHash (Join-Path $stageDir 'linker.ld') -Algorithm SHA256).Hash.Substring(0, 16)
+    $out = cargo +nightly rustc --release --target x86_64-unknown-none --target-dir $kd -- `
+        -C ("link-arg=--defsym=BMO_LINKER_REV_" + $linkerHash + '=0') 2>&1
     $out | ForEach-Object {
         if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [kernel] ' + $_) -ForegroundColor DarkGray }
     }
@@ -144,7 +150,8 @@ New-Item -ItemType Directory -Path (Join-Path $stage 'ring3\apps') -Force | Out-
 
 Copy-Item $uefi_chain (Join-Path $stage 'BOOTX64.EFI')
 
-$llvmObjcopy = Get-ChildItem -Path 'C:\Users\andre\.rustup' -Filter 'llvm-objcopy.exe' -Recurse | Select-Object -First 1 -ExpandProperty FullName
+$llvmObjcopy = Get-ChildItem -Path "$env:USERPROFILE\.rustup" -Filter 'llvm-objcopy.exe' -Recurse | Select-Object -First 1 -ExpandProperty FullName
+if (-not $llvmObjcopy) { $llvmObjcopy = Get-ChildItem -Path "$env:USERPROFILE\.rustup\toolchains" -Filter 'llvm-objcopy.exe' -Recurse | Select-Object -First 1 -ExpandProperty FullName }
 if ($llvmObjcopy) {
     foreach ($s in $stages) {
         $bn = $s -replace '_', '-'
@@ -157,16 +164,38 @@ if ($llvmObjcopy) {
     }
     & $llvmObjcopy -O binary $kernel (Join-Path $stage 'ring0\kernel.bin')
     if ($LASTEXITCODE -ne 0) { Fail 'objcopy failed for kernel' }
-} else {
-    Write-Host '  [WARN] llvm-objcopy not found - copying ELF files as-is' -ForegroundColor Yellow
-    foreach ($s in $stages) {
-        $bn = $s -replace '_', '-'
-        $td = Join-Path $target (Join-Path 'faggin' $s)
-        $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' ($bn + '.exe')))
-        if (-not (Test-Path $bin)) { $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' $bn)) }
-        Copy-Item $bin (Join-Path $stage (Join-Path 'ring0\faggin' ($s + '.bin')))
+
+    # Flat binaries have no ELF entry metadata: the entry symbol itself must
+    # be the first byte at the fixed load address.
+    $llvmNm = Join-Path (Split-Path $llvmObjcopy -Parent) 'llvm-nm.exe'
+    if (-not (Test-Path $llvmNm)) { Fail 'llvm-nm not found; cannot validate flat-binary entry points' }
+    $entryChecks = @(
+        @{ File = $all_binaries[1]; Symbol = 's1_entry'; Expected = [uint64]0x100000 },
+        @{ File = $all_binaries[2]; Symbol = '_start';   Expected = [uint64]0x200000 },
+        @{ File = $kernel;          Symbol = '_start';   Expected = [uint64]0x400000 }
+    )
+    foreach ($check in $entryChecks) {
+        $pattern = '^[0-9A-Fa-f]+\s+\S\s+' + [regex]::Escape($check.Symbol) + '$'
+        $line = & $llvmNm -n $check.File 2>&1 | Where-Object { $_ -match $pattern } | Select-Object -First 1
+        if (-not $line) { Fail ('entry symbol not found: ' + $check.Symbol + ' in ' + $check.File) }
+        $actual = [Convert]::ToUInt64(($line -split '\s+')[0], 16)
+        if ($actual -ne $check.Expected) {
+            Fail ('flat entry mismatch for ' + $check.Symbol + ': expected 0x{0:X}, got 0x{1:X}' -f $check.Expected, $actual)
+        }
     }
-    Copy-Item $kernel (Join-Path $stage 'ring0\kernel.bin')
+    $stackChecks = @(
+        @{ File = $all_binaries[2]; Symbol = 'S2_STACK_END' },
+        @{ File = $kernel;          Symbol = 'KERNEL_STACK_END_MARKER' }
+    )
+    foreach ($check in $stackChecks) {
+        $pattern = '^[0-9A-Fa-f]+\s+\S\s+' + [regex]::Escape($check.Symbol) + '$'
+        $line = & $llvmNm -n $check.File 2>&1 | Where-Object { $_ -match $pattern } | Select-Object -First 1
+        if (-not $line) { Fail ('stack symbol not found: ' + $check.Symbol) }
+        $address = [Convert]::ToUInt64(($line -split '\s+')[0], 16)
+        if (($address -band 0xF) -ne 0) { Fail ('stack is not 16-byte aligned: ' + $check.Symbol) }
+    }
+} else {
+    Fail 'llvm-objcopy not found; the boot chain requires flat binaries and cannot load ELF files'
 }
 
 Write-Host ''
