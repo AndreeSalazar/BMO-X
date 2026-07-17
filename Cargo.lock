@@ -256,10 +256,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "faggin-stages-stub"
-version = "0.0.0"
-
-[[package]]
 name = "getrandom"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

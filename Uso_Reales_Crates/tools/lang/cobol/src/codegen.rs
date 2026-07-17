@@ -6,9 +6,11 @@ use crate::ast::error::CobolError;
 
 type Result<T> = core::result::Result<T, CobolError>;
 
+// BMO x86-64 ABI arguments: RDI, RSI, RDX, RCX, R8, R9, R10.
 const REG_MOV: &[[u8; 3]] = &[
     [0x48, 0x89, 0xC7], [0x48, 0x89, 0xC6], [0x48, 0x89, 0xC2],
-    [0x49, 0x89, 0xC2], [0x49, 0x89, 0xC0], [0x49, 0x89, 0xC1],
+    [0x48, 0x89, 0xC1], [0x49, 0x89, 0xC0], [0x49, 0x89, 0xC1],
+    [0x49, 0x89, 0xC2],
 ];
 
 pub fn compile_to_bef_bytes(program: &CobolProgram) -> Result<Vec<u8>> {
@@ -60,15 +62,12 @@ impl Codegen {
         // Function prologue
         self.code.extend_from_slice(&[0x55]);              // push rbp
         self.code.extend_from_slice(&[0x48, 0x89, 0xE5]); // mov rbp, rsp
-        if self.stack_size > 0 {
-            let aligned = (self.stack_size + 15) & !15;
-            if aligned <= 127 {
-                self.code.extend_from_slice(&[0x48, 0x83, 0xEC, aligned as u8]);
-            } else {
-                self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
-                self.code.extend_from_slice(&(aligned as u32).to_le_bytes());
-            }
-        }
+        // A BEF process entry may be reached by a jump rather than CALL. Do not
+        // assume an incoming RSP residue: reserve all locals plus alignment
+        // slack, then establish BMO's required 64-byte pre-call alignment.
+        self.code.extend_from_slice(&[0x48, 0x81, 0xEC]); // sub rsp, imm32
+        self.code.extend_from_slice(&((self.stack_size as u32) + 63).to_le_bytes());
+        self.code.extend_from_slice(&[0x48, 0x83, 0xE4, 0xC0]); // and rsp, -64
 
         // Emit COBOL statements
         for stmt in &program.statements {
@@ -143,7 +142,7 @@ impl Codegen {
         match stmt {
             CobolStatement::Syscall(def, args) => {
                 for (i, arg) in args.iter().enumerate() {
-                    if i < 6 {
+                    if i < REG_MOV.len() {
                         self.load_imm64(arg);
                         self.code.extend_from_slice(&REG_MOV[i]);
                     }

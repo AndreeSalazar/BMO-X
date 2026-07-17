@@ -20,7 +20,8 @@ pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
 
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
     let program = parse(source)?;
-    codegen::compile_to_bef_bytes(&program)
+    let bytes = codegen::compile_to_bef_bytes(&program)?;
+    validate_generated_bef(bytes)
 }
 
 pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CobolError> {
@@ -34,7 +35,22 @@ pub fn compile_source_to_bef_with_asm(
 ) -> Result<Vec<u8>, CobolError> {
     let mut p = parser::Parser::new(source);
     let program = p.parse_program_with_asm(asm_paths)?;
-    codegen::compile_to_bef_bytes(&program)
+    let bytes = codegen::compile_to_bef_bytes(&program)?;
+    validate_generated_bef(bytes)
+}
+
+fn validate_generated_bef(bytes: Vec<u8>) -> Result<Vec<u8>, CobolError> {
+    let validation = bmo_abi::bef::validate(&bytes);
+    if validation.is_valid {
+        return Ok(bytes);
+    }
+
+    let details = validation.issues.iter()
+        .filter(|issue| matches!(issue.severity, bmo_abi::bef::validator::IssueSeverity::Error))
+        .map(|issue| issue.message.as_str())
+        .collect::<Vec<_>>()
+        .join("; ");
+    Err(CobolError::new(0, format!("generated invalid BEF: {details}")))
 }
 
 #[cfg(test)]
@@ -72,6 +88,11 @@ STOP RUN.
         let bef = compile_source_to_bef(src).unwrap();
         assert!(bef.len() > 48);
         assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
+        let validation = bmo_abi::bef::validate(&bef);
+        assert!(validation.is_valid, "generated BEF must validate: {:?}", validation.issues);
+        let loaded = bmo_abi::bef::load(&bef, 0, bmo_abi::bef::loader::no_imports).unwrap();
+        assert_ne!(loaded.entry_point, 0);
+        assert!(loaded.sections.iter().any(|section| section.kind == bmo_abi::bef::SectionKind::Code));
     }
 
     #[test]

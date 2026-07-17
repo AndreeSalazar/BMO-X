@@ -4,7 +4,6 @@ members = [
     # ── ULTRA KERNEL x86-64 (Ring 0 base + 12-stage faggin chain) ───
     # CPU-specific kernel. For ARM/RISC-V ports see Ultra_kernel_<arch>/.
     "Ultra_kernel_x86-64/boot_context",
-    "Ultra_kernel_x86-64/faggin",
     "Ultra_kernel_x86-64/kernel",
 
     # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
