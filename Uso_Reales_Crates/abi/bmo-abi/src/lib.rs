@@ -60,6 +60,7 @@ pub mod error_code;
 pub mod bef;
 pub mod syscalls;
 pub mod profile;
+pub mod cpu_profiles;
 pub mod asm;
 pub mod standards;
 
@@ -79,5 +80,11 @@ pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);
 
 /// Magic constant en headers BEF para identificar BMO ABI.
 pub const BMO_ABI_MAGIC: u32 = u32::from_le_bytes(*b"BMO1");
+
+/// The CPU contract selected when this ABI crate was compiled.
+///
+/// A BEF producer can record this contract in its manifest; the BMO loader
+/// must reject a binary whose required profile is not available at boot.
+pub const BMO_CPU_PROFILE: cpu_profiles::CpuProfile = cpu_profiles::ACTIVE;
 
 pub use crate as bmo_abi;

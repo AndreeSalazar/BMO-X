@@ -1,13 +1,15 @@
 # `bmo_abi` — BMO Application Binary Interface
 
-> The standard ABI for FastOS. Replaces C ABI (cdecl / Win64 / SysV AMD64)
-> and its standard library. Every kernel-to-userspace boundary uses BMO types.
+> The native ABI for BMO. It defines BMO's binary contract instead of inheriting
+> the C ABI (cdecl / Win64 / SysV AMD64). Every Ring 0 to Ring 3 boundary uses
+> BMO types.
 
 ## Specification
 
 Read **[`SPEC.md`](./SPEC.md)** — canonical specification including:
 
 - Calling convention (7 GPRs, 256 B red zone, 64 B stack alignment)
+- CPU contract: x86-64 Zen 3 (`Ryzen 5 5600X` default; Zen 3 EPYC profile)
 - Type layouts with compile-time `static_assert!` (34 assertions)
 - Syscall numbering (0x100..0x1FF) + `syscall0`–`syscall6` wrappers
 - BEF format: header (48 B), sections, relocs, imports/exports, TLS, signing
@@ -95,3 +97,20 @@ bmo_abi/
 | Strings           | `char*` nul   | `char*` nul   | **(ptr, len) UTF-8** |
 | Handles           | `HANDLE void*`| `int fd`      | **BmoHandle 64-bit with tag+generation** |
 | Syscall range     | 0x1000+       | 0x0001..      | **0x100..0x1FF**   |
+
+## CPU profiles
+
+BMO v1 is not a generic desktop target. Its native CPU contract is x86-64,
+little-endian, 64-bit pointers, 4 KiB pages and the Zen 3 feature baseline
+(`SSE4.2`, `AVX2`, `FMA`, `BMI1/2`, `AES`, `PCLMULQDQ`, `RDTSCP`, invariant
+TSC). `cpu_profiles/` is the single ABI-facing source of those requirements.
+
+Cargo selects the deployment profile:
+
+```toml
+bmo-abi = { path = "...", default-features = false, features = ["cpu-epyc-zen3"] }
+```
+
+`Ryzen 5 5600X` remains the default profile. A future ARM or RISC-V profile
+will keep the BMO data model and BEF semantics, while supplying its own
+register and CPU-feature contract.

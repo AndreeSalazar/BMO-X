@@ -1,15 +1,15 @@
-# BMO ABI — Especificación v1.0
+# BMO ABI — Especificación v2.0
 
 > **Estado**: vivo, en evolución.
 > **Última revisión**: v2.0 (post-Opus).
-> **Mantenedor**: equipo FastOS.
+> **Mantenedor**: proyecto BMO.
 
 ---
 
 ## 0. ¿Qué es BMO ABI?
 
 **BMO ABI** es la **interfaz binaria y de programación** que define cómo un
-programa (compilado a BEF) interactúa con FastOS.
+programa (compilado a BEF) interactúa con BMO.
 
 Reemplaza:
 
@@ -18,7 +18,7 @@ Reemplaza:
   `<errno.h>`, `<time.h>`, `<stdio.h>`, etc).
 
 **No** es un reemplazo de los lenguajes: es un **contrato** que **todos los
-lenguajes pueden usar** para hablar con FastOS.
+lenguajes pueden usar** para hablar con BMO.
 
 Frontends como C y COBOL deben vivir fuera del kernel (por ejemplo en
 `crates_Personal/Lenguajes/`) y generar BEF offline. El kernel solo carga BEF,
@@ -38,6 +38,29 @@ resuelve imports y ofrece syscalls BMO; no compila lenguajes en Ring 0.
 | 6 | **Zero-copy donde sea posible** | IPC, surfaces, strings: pasar `(ptr, len)`, no copiar. |
 | 7 | **Handles opacos** | `BmoHandle(0xABCD)` con tag + generation + index. |
 | 8 | **Determinismo** | `BmoInstant` es monotónico RDTSC-backed, no afectado por NTP. |
+
+---
+
+## 1.1 Perfil de CPU BMO v1
+
+BMO v1 define un contrato nativo, no un objetivo genérico de escritorio:
+
+| Propiedad | Contrato v1 |
+|---|---|
+| Arquitectura | x86-64, little-endian |
+| Modelo de datos | punteros y `usize` de 64 bits |
+| Páginas base | 4 KiB |
+| CPU base | AMD Zen 3 (`target-cpu=znver3`) |
+| ISA requerida | SSE4.2, AVX, AVX2, FMA, BMI1/2, AES, PCLMULQDQ, RDTSCP, invariant TSC |
+| Perfil por defecto | AMD Ryzen 5 5600X |
+| Perfil alternativo v1 | AMD EPYC Zen 3 |
+
+El perfil se selecciona en Cargo (`cpu-ryzen-5-5600x` o
+`cpu-epyc-zen3`) y queda disponible para registrarse en el manifest BEF.
+El loader debe validar
+los requisitos mediante CPUID antes de transferir control al programa.
+Una futura arquitectura conservará el modelo de datos BMO y BEF, pero
+definirá su propio contrato de registros e instrucciones.
 
 ---
 
@@ -315,7 +338,7 @@ El loader de BEF salta a `_bmo_start` después de:
 - **AOT**: Ahead-Of-Time (compilación antes de ejecutar).
 - **BEF**: BMO Executable Format.
 - **BEFCore**: protocolo de mensajes app ↔ BMO CORE.
-- **BMO**: lenguaje nativo de FastOS.
+- **BMO**: plataforma nativa y contrato binario de BMO.
 - **BLAKE3**: hash criptográfico rápido (sección hashing de BEF).
 - **Devour**: traducción de PE/ELF a BEF nativo.
 - **Handle**: referencia opaca a un objeto del kernel.
