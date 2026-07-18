@@ -5,7 +5,7 @@
 #   boot_context/   shared lib (the BootContext ABI struct)
 #   kernel/         Ring 0 base (single .bin, loaded at 0x400000)
 #   uefi_chain/     5 UEFI bootloader layers (EFI target, separate build)
-#   faggin/         12-stage pre-kernel boot chain (Faggin-style)
+#   faggin/         2-stage consolidated pre-kernel chain (Faggin-style)
 #   Ultra_userspace/  Ring 3 side (sibling workspace at the top of FastOS)
 #
 # For other CPU architectures (AArch64, RISC-V) the entire tree is

@@ -1,4 +1,15 @@
-# Faggin — 12 single-purpose boot stages
+# Faggin — 2 consolidated pre-kernel stages
+
+The active hardware boot chain is:
+
+| # | Stage | Address | Responsibility |
+|---|-------|---------|----------------|
+| 1 | `s1_cpu` | `0x100000` | Serial, GDT/IDT/TSS, CPU/FPU, syscall MSRs, ACPI/PCI/APIC and SMP discovery |
+| 2 | `s2_mem` | `0x200000` | Final UEFI memory map, `ExitBootServices`, page tables and handoff to `kernel@0x400000` |
+
+Both stages are independent Cargo workspaces and are built by
+`Ultra_kernel_x86-64/build.ps1`. The sections below document the former twelve-stage
+design for historical context only; those crate names and addresses are not active.
 
 > Federico Faggin (1941–) diseñó el Zilog Z80 en 1974. Su principio:
 > cada chip hace **una sola cosa**, mide pocos transistores, y se

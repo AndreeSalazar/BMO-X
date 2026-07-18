@@ -3,7 +3,7 @@
 **The x86-64 port of the FastOS/BMO kernel.**
 
 This directory is the **CPU-specific** kernel tree for the `x86_64` (AMD64 / Intel 64) architecture.
-Everything in this tree — the bootloader, the 12 faggin pre-kernel stages, the Ring 0 base, and
+Everything in this tree — the bootloader, the 2 consolidated faggin stages, the Ring 0 base, and
 the userland workspace that hangs off it — is built around the **System V AMD64** calling
 convention, the **x86-64 segmented memory model** (with paging), and the **UEFI x86-64 boot
 protocol**.
@@ -84,23 +84,12 @@ Ultra_kernel_x86-64/
 ├── Cargo.toml              # this tree's workspace root
 ├── README.md               # this file
 ├── build.ps1               # one-shot build + objcopy + flash script
-├── validate_chain.ps1      # post-build chain order / size validator
 ├── boot_context/           # CPU-agnostic BootContext struct (lib, no_std)
 ├── uefi_chain/             # 5-layer UEFI bootloader (UEFI target)
-├── faggin/                 # 12-stage Faggin-style pre-kernel chain
-│   ├── serial_shared/      # COM1 helpers used by every stage
-│   ├── s1_serial/          # COM1 init at 115200 8N1
-│   ├── s2_gdt/             # GDT + TSS + IST stacks
-│   ├── s3_idt/             # 256-entry IDT
-│   ├── s4_cpuid/           # CPUID vendor + brand
-│   ├── s5_control/         # CR0 + CR4 + XCR0
-│   ├── s6_fpu/             # fninit + MXCSR + xsave
-│   ├── s7_tsc/             # TSC calibration
-│   ├── s8_syscall/         # STAR + LSTAR + FMASK
-│   ├── s9_paging/          # 4-level page tables + higher-half
-│   ├── s10_heap/           # bitmap frame allocator
-│   ├── s11_acpi/           # RSDP scan
-│   └── s12_devices/        # ACPI + PCI + APIC + HPET + i8042
+├── faggin/                 # 2 consolidated pre-kernel stages
+│   ├── serial_shared/      # COM1 helpers used by both stages
+│   ├── s1_cpu/             # CPU, GDT/IDT/TSS, syscall, SMP and devices
+│   └── s2_mem/             # memory map, page tables and kernel handoff
 ├── kernel/                 # Ring 0 base (single .bin, loaded at 0x400000)
 │   ├── Cargo.toml
 │   ├── linker.ld           # kernel linker script (loads at 0x400000)
@@ -111,7 +100,7 @@ Ultra_kernel_x86-64/
 │       └── dev/            # console, framebuffer
 ├── Ultra_userspace/        # Ring 3 side (sibling workspace, also x86-64)
 └── target/                 # cargo target dir (one per cargo workspace)
-    └── staging/EFI/BOOT/   # final 14 files: BOOTX64.EFI + 12 .bin + kernel.bin
+    └── staging/EFI/BOOT/   # BOOTX64.EFI + s1/s2 + kernel + SHA-256 manifest
 ```
 
 ## Boot flow
@@ -124,22 +113,9 @@ UEFI firmware (on this machine: Kingston SA400S37120GB SSD, partition "FASTOS-EF
    │
    ▼  /EFI/BOOT/BOOTX64.EFI  (uefi_chain, 5 layers)
    │
-   ▼  layer3_load reads s1..s12 .bin + kernel.bin from ESP,
-   │            places each at its fixed physical address
-   │            (s1=0x100000, s2=0x110000, …, s12=0x1B0000, kernel=0x400000)
-   │            fills BootContext, jumps to s1
+   ▼  uefi_chain reads s1_cpu.bin from the ESP and jumps to 0x100000
    ▼
-s1_serial  (0x100000)  ──►  s2_gdt  (0x110000)  ──►  s3_idt  (0x120000)
-                                                  ──►  s4_cpuid  (0x130000)
-                                                  ──►  s5_control  (0x140000)
-                                                  ──►  s6_fpu  (0x150000)
-                                                  ──►  s7_tsc  (0x160000)
-                                                  ──►  s8_syscall  (0x170000)
-                                                  ──►  s9_paging  (0x180000)
-                                                  ──►  s10_heap  (0x190000)
-                                                  ──►  s11_acpi  (0x1A0000)
-                                                  ──►  s12_devices  (0x1B0000)
-                                                  ──►  kernel  (0x400000)
+s1_cpu (0x100000) ──► s2_mem (0x200000) ──► bmo-kernel (0x400000)
    │
    ▼
 bmo-kernel (Ring 0 base)  — splash animation, framebuffer init, serial shell
@@ -150,7 +126,7 @@ bmo-kernel (Ring 0 base)  — splash animation, framebuffer init, serial shell
 From this directory:
 
 ```powershell
-# Build everything (uefi_chain + 12 faggin stages + kernel)
+# Build and stage everything without touching the SSD
 .\build.ps1
 
 # Clean first
@@ -159,12 +135,21 @@ From this directory:
 # Build only (skip flashing)
 .\build.ps1 -BuildOnly
 
-# Build + flash to SSD S: (will prompt unless -Yes)
-.\build.ps1 -Flash -Drive S -Yes
+# Build + deploy Ring 0 to the BMO SSD at D: (prompts by default)
+.\build.ps1 -Flash
 
-# Validate chain order and sizes
-.\validate_chain.ps1
+# Non-interactive deployment, only when D: is known to be the BMO FAT32 ESP
+.\build.ps1 -Flash -Drive D -Yes
+
+# Compare every deployed file by size and SHA-256 without writing to D:
+.\build.ps1 -Verify -Drive D
 ```
+
+`-Flash` only accepts a mounted FAT/FAT32 ESP. On the currently detected Kingston
+SA400S37120GB, `D:` is the large NTFS Ventoy payload partition and `E:` is Ventoy's
+small FAT boot partition. The script therefore refuses a direct deployment to `D:`
+instead of reporting a false UEFI success. Do not overwrite `E:` unless intentionally
+replacing Ventoy itself. A Ventoy-compatible BMO `.img` remains a separate deliverable.
 
 ### Optimization
 
@@ -179,9 +164,8 @@ From this directory:
 
 There are **three nested workspaces** at play here:
 
-1. `C:\Users\andre\Documents\FastOS\Cargo.toml` — the **top-level** FastOS workspace,
-   listing `Ultra_kernel_x86-64/{boot_context,kernel,uefi_chain,faggin,Ultra_userspace}`
-   plus all of `Uso_Reales_Crates/`.
+1. The top-level BMO workspace lists shared crates plus `boot_context` and `kernel`.
+   Target-specific boot crates remain isolated because they use different targets.
 2. `Ultra_kernel_x86-64/Cargo.toml` — the **kernel sub-workspace**, listing
    `boot_context/` and `kernel/`. faggin stages are NOT members (they each have their
    own `[workspace]` stub to keep them isolated).
@@ -197,13 +181,13 @@ There are **three nested workspaces** at play here:
 - **Boot device:** UEFI 2.x, ESP at `\EFI\BOOT\`.
 - **Build host:** Windows + `cargo +nightly` + `rust-lld` + `llvm-objcopy`.
 
-## Status (as of 2026-07-13)
+## Status (as of 2026-07-17)
 
 - 17 of 20 crates in `Uso_Reales_Crates/` build clean.
-- 12 of 12 faggin stages build clean (4-5 KB each).
-- uefi_chain builds clean (19.5 KB).
-- bmo-kernel builds clean (~31 KB raw, includes CPUID detection log).
-- All 14 files (BOOTX64.EFI + 12 .bin + kernel.bin) successfully flashed to `S:\EFI\BOOT\`.
+- The former 12-stage chain is consolidated into `s1_cpu` and `s2_mem`.
+- `build.ps1` validates flat entry addresses and stack alignment before deployment.
+- Deployment defaults to the BMO SSD at `D:` and verifies every file with SHA-256.
+- Ring 0 replacement preserves Ring 3 and unrelated files in `EFI\BOOT`.
 
 The boot chain is functional up to and including the kernel splash + serial shell.
 The serial shell accepts: `help`, `info`, `fb`, `splash`, `panic`, `reboot`, `halt`.

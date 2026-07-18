@@ -1,8 +1,9 @@
 param(
     [switch]$Clean,
     [switch]$Flash,
+    [switch]$Verify,
     [switch]$BuildOnly,
-    [string]$Drive = 'S',
+    [string]$Drive = 'D',
     [switch]$Yes
 )
 
@@ -11,6 +12,7 @@ if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 
 function Step { param($m) Write-Host ('  => ' + $m) -ForegroundColor Cyan }
 function Fail { param($m) Write-Host ('  [X] ' + $m) -ForegroundColor Red; exit 1 }
+function Hash256 { param($p) (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() }
 
 $target = Join-Path $root 'target'
 $stage  = Join-Path $root (Join-Path 'staging' 'EFI\BOOT')
@@ -104,30 +106,22 @@ if (-not (Test-Path $kernel)) { $kernel = Join-Path $target (Join-Path 'kernel' 
 $all_binaries += $kernel
 
 Write-Host ''
-Write-Host '  bin                         raw      flat     address' -ForegroundColor White
-Write-Host '  --------------------------  -------  -------  ----------' -ForegroundColor DarkGray
-$total = 0
-$base = 0x100000
-foreach ($f in $all_binaries) {
+Write-Host '  bin                         linked size  load address' -ForegroundColor White
+Write-Host '  --------------------------  -----------  ------------' -ForegroundColor DarkGray
+$loadAddresses = @($null, [uint64]0x100000, [uint64]0x200000, [uint64]0x400000)
+for ($binaryIndex = 0; $binaryIndex -lt $all_binaries.Count; $binaryIndex++) {
+    $f = $all_binaries[$binaryIndex]
     if (-not (Test-Path $f)) { Fail ('Not found: ' + $f) }
     $raw = (Get-Item $f).Length
     $name = Split-Path $f -Leaf
     if ($name -eq 'uefi_chain.efi') {
-        $line = ('  {0,-25} {1,6} B             0xFE000000 (UEFI load)' -f $name, $raw)
+        $line = ('  {0,-25} {1,9} B  firmware managed' -f $name, $raw)
     } else {
-        # Find the matching .bin in staging/ (if already there) or in target/
-        $flat_name = ($name -replace '\.exe$', '') + '.bin'
-        $flat = Join-Path $stage $flat_name
-        if (-not (Test-Path $flat)) { $flat = $null }
-        $fsz = if ($flat) { (Get-Item $flat).Length } else { 0 }
-        $line = ('  {0,-25} {1,6} B   {2,5} B   0x{3:X6}' -f $name, $raw, $fsz, $base)
-        $base += 0x10000
-        $total += $fsz
+        $line = ('  {0,-25} {1,9} B  0x{2:X6}' -f $name, $raw, $loadAddresses[$binaryIndex])
     }
     Write-Host $line
 }
-Write-Host '  --------------------------  -------  -------' -ForegroundColor DarkGray
-Write-Host ('  TOTAL flat size:           {0,6} B' -f $total) -ForegroundColor Yellow
+Write-Host '  --------------------------  -----------  ------------' -ForegroundColor DarkGray
 Write-Host ''
 
 # ── Stage to ESP layout ───────────────────────────────────────────
@@ -198,6 +192,24 @@ if ($llvmObjcopy) {
     Fail 'llvm-objcopy not found; the boot chain requires flat binaries and cannot load ELF files'
 }
 
+$deployFiles = @('BOOTX64.EFI', 'ring0\faggin\s1_cpu.bin', 'ring0\faggin\s2_mem.bin', 'ring0\kernel.bin')
+$gitRevision = (& git -C $root rev-parse --short=12 HEAD 2>$null)
+if (-not $gitRevision) { $gitRevision = 'unknown' }
+$manifestLines = @(
+    'BMO UEFI deployment manifest v1',
+    ('revision=' + $gitRevision),
+    'architecture=x86_64',
+    'boot_chain=uefi_chain,s1_cpu,s2_mem,kernel'
+)
+foreach ($relativePath in $deployFiles) {
+    $sourcePath = Join-Path $stage $relativePath
+    $manifestLines += ('file={0}|bytes={1}|sha256={2}' -f `
+        $relativePath, (Get-Item -LiteralPath $sourcePath).Length, (Hash256 $sourcePath))
+}
+$manifestPath = Join-Path $stage 'BMO-MANIFEST.TXT'
+$manifestLines | Set-Content -LiteralPath $manifestPath -Encoding Ascii
+$deployFiles += 'BMO-MANIFEST.TXT'
+
 Write-Host ''
 Write-Host '  === BUILD COMPLETE ===' -ForegroundColor Green
 Write-Host ('  Staged to: ' + $stage) -ForegroundColor White
@@ -209,54 +221,71 @@ Write-Host ''
 if ($BuildOnly) { exit 0 }
 
 # ── Flash ────────────────────────────────────────────────────────
-if ($Flash) {
+if ($Flash -or $Verify) {
     $targetLetter = $Drive.TrimEnd([char]':',[char]'\').ToUpper()
+    if ($targetLetter -notmatch '^[A-Z]$') { Fail ('Invalid drive letter: ' + $Drive) }
+    $systemLetter = $env:SystemDrive.TrimEnd([char]':',[char]'\').ToUpper()
+    if ($targetLetter -eq $systemLetter) { Fail 'Refusing to deploy BMO onto the Windows system volume' }
     $targetRoot = ($targetLetter + ':\')
     if (-not (Test-Path $targetRoot)) { Fail ('Drive ' + $targetLetter + ' not found') }
 
-    if (-not $Yes) {
-        $c = Read-Host ('  Flash to ' + $targetLetter + ':? (YES)')
-        if ($c -ne 'YES') { Write-Host '  Aborted.'; exit 0 }
-    }
-
-    Step ('Flashing to ' + $targetLetter + ':\EFI\BOOT')
-    $efiDest = Join-Path $targetRoot (Join-Path 'EFI' 'BOOT')
-    # Wipe the destination's old files (we are changing layout).
-    if (Test-Path $efiDest) {
-        Get-ChildItem -LiteralPath $efiDest -Force | Where-Object { -not $_.PSIsContainer } | Remove-Item -Force
-    }
-    # Mirror the staging tree's directory structure onto the target.
-    $ring0Dest = Join-Path $efiDest 'ring0'
-    $fagginDest = Join-Path $ring0Dest 'faggin'
-    $ring3Dest = Join-Path $efiDest 'ring3'
-    New-Item -ItemType Directory -Path (Join-Path $ring3Dest 'services') -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $ring3Dest 'drivers')  -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $ring3Dest 'apps')     -Force | Out-Null
-    New-Item -ItemType Directory -Path $fagginDest -Force | Out-Null
-    # Mark the ring3 dir as reserved (in case it's empty after wipe).
-    if (-not (Test-Path (Join-Path $ring3Dest 'README.txt'))) {
-        '# Reserved for future BEF modules. See Ultra_userspace/ for source.' `
-            | Set-Content -LiteralPath (Join-Path $ring3Dest 'README.txt')
-    }
-
-    Copy-Item (Join-Path $stage 'BOOTX64.EFI') -Destination (Join-Path $efiDest 'BOOTX64.EFI') -Force
-    foreach ($s in $stages) {
-        Copy-Item (Join-Path $stage (Join-Path 'ring0\faggin' ($s + '.bin'))) `
-                   -Destination (Join-Path $fagginDest ($s + '.bin')) -Force
-    }
-    Copy-Item (Join-Path $stage 'ring0\kernel.bin') -Destination (Join-Path $ring0Dest 'kernel.bin') -Force
-
-    try {
-        $all_files = @('BOOTX64.EFI', 'ring0\kernel.bin')
-        foreach ($s in $stages) { $all_files += ('ring0\faggin\' + $s + '.bin') }
-        foreach ($f in $all_files) {
-            $fs = [System.IO.File]::Open(($targetRoot + 'EFI\BOOT\' + $f), 'Open', 'Write')
-            $fs.Flush(1); $fs.Close()
+    $volume = Get-Volume -DriveLetter $targetLetter -ErrorAction SilentlyContinue
+    if ($volume) {
+        $sizeGiB = [math]::Round($volume.Size / 1GB, 1)
+        Write-Host ('  Target: {0}: label="{1}" filesystem={2} size={3} GiB' -f `
+            $targetLetter, $volume.FileSystemLabel, $volume.FileSystem, $sizeGiB) -ForegroundColor Yellow
+        if ($volume.FileSystem -notin @('FAT', 'FAT32')) {
+            Fail ('UEFI boot requires a FAT/FAT32 ESP; ' + $targetLetter + ': is ' + $volume.FileSystem)
         }
-    } catch { Write-Host ('  [WARN] Flush failed: ' + $_) -ForegroundColor Yellow }
+    }
+
+    $efiDest = Join-Path $targetRoot (Join-Path 'EFI' 'BOOT')
+    if ($Flash) {
+        if (-not $Yes) {
+            $expected = 'FLASH ' + $targetLetter + ' BMO'
+            $confirmation = Read-Host ('  Type "' + $expected + '" to update Ring 0')
+            if ($confirmation -ne $expected) { Write-Host '  Aborted.'; exit 0 }
+        }
+
+        Step ('Deploying Ring 0 to ' + $targetLetter + ':\EFI\BOOT')
+        New-Item -ItemType Directory -Path $efiDest -Force | Out-Null
+        $nextDest = Join-Path $efiDest ('.bmo-next-' + $PID)
+        if (Test-Path $nextDest) { Remove-Item -LiteralPath $nextDest -Recurse -Force }
+        New-Item -ItemType Directory -Path $nextDest -Force | Out-Null
+        Copy-Item (Join-Path $stage '*') -Destination $nextDest -Recurse -Force
+
+        foreach ($relativePath in $deployFiles) {
+            $expectedHash = Hash256 (Join-Path $stage $relativePath)
+            $nextPath = Join-Path $nextDest $relativePath
+            if (-not (Test-Path -LiteralPath $nextPath) -or (Hash256 $nextPath) -ne $expectedHash) {
+                Remove-Item -LiteralPath $nextDest -Recurse -Force -ErrorAction SilentlyContinue
+                Fail ('Staged SSD copy failed verification: ' + $relativePath)
+            }
+        }
+
+        # Ring 0 is an owned subtree. Ring 3 and unrelated EFI files are preserved.
+        $ring0Dest = Join-Path $efiDest 'ring0'
+        if (Test-Path $ring0Dest) { Remove-Item -LiteralPath $ring0Dest -Recurse -Force }
+        Move-Item -LiteralPath (Join-Path $nextDest 'ring0') -Destination $ring0Dest
+        Copy-Item -LiteralPath (Join-Path $nextDest 'BOOTX64.EFI') -Destination (Join-Path $efiDest 'BOOTX64.EFI') -Force
+        Copy-Item -LiteralPath (Join-Path $nextDest 'BMO-MANIFEST.TXT') -Destination (Join-Path $efiDest 'BMO-MANIFEST.TXT') -Force
+        Remove-Item -LiteralPath $nextDest -Recurse -Force
+    }
+
+    Step ('Verifying ' + $targetLetter + ':\EFI\BOOT against the current build')
+    foreach ($relativePath in $deployFiles) {
+        $sourcePath = Join-Path $stage $relativePath
+        $destinationPath = Join-Path $efiDest $relativePath
+        if (-not (Test-Path -LiteralPath $destinationPath)) { Fail ('Missing on SSD: ' + $relativePath) }
+        if ((Get-Item -LiteralPath $destinationPath).Length -ne (Get-Item -LiteralPath $sourcePath).Length) {
+            Fail ('Size mismatch on SSD: ' + $relativePath)
+        }
+        if ((Hash256 $destinationPath) -ne (Hash256 $sourcePath)) { Fail ('SHA-256 mismatch on SSD: ' + $relativePath) }
+        Write-Host ('    SHA-256 OK  ' + $relativePath) -ForegroundColor Green
+    }
 
     Write-Host ''
-    Write-Host '  === FLASH OK ===' -ForegroundColor Green
-    Write-Host '  Reboot from SSD to test.' -ForegroundColor White
+    Write-Host '  === BMO RING 0 SSD VERIFIED ===' -ForegroundColor Green
+    if ($Flash) { Write-Host '  Reboot from the SSD to test the new kernel.' -ForegroundColor White }
     Write-Host ''
 }
