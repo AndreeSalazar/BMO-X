@@ -148,17 +148,21 @@ fn unsupported() -> BmoStatus {
     BmoStatus::err(ERROR_UNSUPPORTED)
 }
 
-fn invoke(frame: &SyscallFrame) -> BmoStatus {
-    if frame.arg0 != CURRENT_TASK {
-        return unsupported();
-    }
-    match frame.arg1 {
+fn invoke_current_task(operation: u64) -> BmoStatus {
+    match operation {
         TASK_OP_GET_PID => BmoStatus::ok_value(crate::ring0::scheduler::current_pid() as u64),
         TASK_OP_GET_TID => BmoStatus::ok_value(crate::ring0::scheduler::current_tid() as u64),
         // Both operations require a real context-switch/termination path.
         TASK_OP_YIELD | TASK_OP_EXIT => unsupported(),
         _ => unsupported(),
     }
+}
+
+fn invoke(frame: &SyscallFrame) -> BmoStatus {
+    if frame.arg0 != CURRENT_TASK {
+        return unsupported();
+    }
+    invoke_current_task(frame.arg1)
 }
 
 #[unsafe(no_mangle)]
@@ -168,13 +172,11 @@ extern "C" fn dispatch(frame: &SyscallFrame) -> BmoStatus {
         // Recognized V2 boundaries. They become operational only after
         // capability-backed channels and scheduler blocking exist.
         NR_CHANNEL_KICK | NR_WAIT => unsupported(),
-        NR_PROC_GET_PID => BmoStatus::ok_value(crate::ring0::scheduler::current_pid() as u64),
-        NR_PROC_GET_TID | NR_THREAD_SELF => {
-            BmoStatus::ok_value(crate::ring0::scheduler::current_tid() as u64)
-        }
-        // The scheduler can select a next task, but yielding cannot claim
-        // success until the context-switch layer actually installs it.
-        NR_PROC_YIELD => unsupported(),
+        // Temporary ABI v1 adapter. All task behavior still flows through
+        // the canonical v2 operation dispatcher above.
+        NR_PROC_GET_PID => invoke_current_task(TASK_OP_GET_PID),
+        NR_PROC_GET_TID | NR_THREAD_SELF => invoke_current_task(TASK_OP_GET_TID),
+        NR_PROC_YIELD => invoke_current_task(TASK_OP_YIELD),
         NR_BEFCORE_POLL => {
             BmoStatus::ok_value(crate::ring0::channel::service_all() as u64)
         }

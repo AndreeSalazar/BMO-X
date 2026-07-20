@@ -61,12 +61,9 @@ impl Emitter {
                 }));
             }
             CobolStatement::StopRun => {
-                let nr = 0x182u32; // NR_PROC_EXIT
-                block.push(IrStmt::Expr(IrExpr::Syscall {
-                    nr,
-                    args: 0,
-                    arg_count: 0,
-                }));
+                // Process termination is emitted by the BEF entry wrapper as
+                // INVOKE(CURRENT_TASK, EXIT); the language IR only returns.
+                block.push(IrStmt::Return(None));
             }
             CobolStatement::Syscall(def, _args) => {
                 block.push(IrStmt::Expr(IrExpr::Syscall {

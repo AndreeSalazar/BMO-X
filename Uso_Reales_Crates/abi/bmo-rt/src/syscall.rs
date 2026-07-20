@@ -7,7 +7,12 @@
 //! All category wrappers (process, memory, fs, etc.) are thin Rust functions
 //! that call `bmo_syscall` with the appropriate NR constant.
 
-use bmo_abi::syscalls::{self, syscall6};
+use bmo_abi::syscalls::{self, syscall6, SyscallResult};
+
+#[inline]
+fn value_or_code(result: SyscallResult) -> u64 {
+    if result.is_ok() { result.value() } else { result.code() as u64 }
+}
 
 /// The single syscall dispatch point, exported for C/COBOL.
 ///
@@ -22,30 +27,53 @@ pub unsafe extern "C" fn bmo_syscall(
     nr: u32,
     a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64,
 ) -> u64 {
-    let result = syscall6(nr, a0, a1, a2, a3, a4, a5);
-    if result.is_ok() {
-        result.value()
-    } else {
-        result.code() as u64
-    }
+    value_or_code(syscall6(nr, a0, a1, a2, a3, a4, a5))
 }
 
 // ─── Process / Thread ────────────────────────────────────────────────
 
 pub unsafe fn proc_exit(code: u32) -> u64 {
-    bmo_syscall(syscalls::NR_PROC_EXIT, code as u64, 0, 0, 0, 0, 0)
+    value_or_code(syscalls::v2::invoke(
+        syscalls::v2::CURRENT_TASK,
+        syscalls::v2::task_op::EXIT,
+        code as u64,
+        0,
+        0,
+        0,
+    ))
 }
 
 pub unsafe fn proc_get_pid() -> u64 {
-    bmo_syscall(syscalls::NR_PROC_GET_PID, 0, 0, 0, 0, 0, 0)
+    value_or_code(syscalls::v2::invoke(
+        syscalls::v2::CURRENT_TASK,
+        syscalls::v2::task_op::GET_PID,
+        0,
+        0,
+        0,
+        0,
+    ))
 }
 
 pub unsafe fn proc_get_tid() -> u64 {
-    bmo_syscall(syscalls::NR_PROC_GET_TID, 0, 0, 0, 0, 0, 0)
+    value_or_code(syscalls::v2::invoke(
+        syscalls::v2::CURRENT_TASK,
+        syscalls::v2::task_op::GET_TID,
+        0,
+        0,
+        0,
+        0,
+    ))
 }
 
 pub unsafe fn proc_yield() -> u64 {
-    bmo_syscall(syscalls::NR_PROC_YIELD, 0, 0, 0, 0, 0, 0)
+    value_or_code(syscalls::v2::invoke(
+        syscalls::v2::CURRENT_TASK,
+        syscalls::v2::task_op::YIELD,
+        0,
+        0,
+        0,
+        0,
+    ))
 }
 
 pub unsafe fn proc_spawn(path: *const u8, path_len: u64) -> u64 {

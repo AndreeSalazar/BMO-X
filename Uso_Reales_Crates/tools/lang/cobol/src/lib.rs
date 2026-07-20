@@ -198,11 +198,26 @@ SYSCALL bmo_exit 42.
         let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
         let bef = compile_source_to_bef_with_asm(src, vec![asm]).unwrap();
         assert!(bef.len() > 48);
-        let nr = bmo_abi::syscalls::NR_PROC_EXIT;
+        let nr = bmo_abi::syscalls::v2::NR_INVOKE;
         let mov_eax = &nr.to_le_bytes();
         let mut expected = vec![0xB8u8];
         expected.extend_from_slice(mov_eax);
-        assert!(bef.windows(5).any(|w| w == &expected[..]), "BEF should contain mov eax, NR_PROC_EXIT for bmo_exit");
+        assert!(bef.windows(5).any(|w| w == &expected[..]), "BEF should lower bmo_exit to BMO_INVOKE");
+
+        let mut current_task = vec![0x48, 0xB8];
+        current_task.extend_from_slice(&bmo_abi::syscalls::v2::CURRENT_TASK.to_le_bytes());
+        current_task.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+        assert!(bef.windows(current_task.len()).any(|w| w == &current_task[..]));
+
+        let mut exit_operation = vec![0x48, 0xB8];
+        exit_operation.extend_from_slice(&bmo_abi::syscalls::v2::task_op::EXIT.to_le_bytes());
+        exit_operation.extend_from_slice(&[0x48, 0x89, 0xC6]); // mov rsi, rax
+        assert!(bef.windows(exit_operation.len()).any(|w| w == &exit_operation[..]));
+
+        let mut exit_code = vec![0x48, 0xB8];
+        exit_code.extend_from_slice(&42_u64.to_le_bytes());
+        exit_code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+        assert!(bef.windows(exit_code.len()).any(|w| w == &exit_code[..]));
     }
 
     #[test]

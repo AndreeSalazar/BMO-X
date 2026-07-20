@@ -29,6 +29,20 @@ pub mod task_op {
     pub const EXIT: u64 = super::TASK_OP_EXIT;
 }
 
+/// Translate the temporary v1 task surface into its v2 capability operation.
+///
+/// This belongs at the ABI boundary so compilers and runtimes do not each
+/// duplicate a legacy-number mapping. It can be removed with the v1 table.
+pub const fn task_operation_for_legacy_syscall(number: u32) -> Option<u64> {
+    match number {
+        super::NR_PROC_GET_PID => Some(TASK_OP_GET_PID),
+        super::NR_PROC_GET_TID | super::NR_THREAD_SELF => Some(TASK_OP_GET_TID),
+        super::NR_PROC_YIELD => Some(TASK_OP_YIELD),
+        super::NR_PROC_EXIT | super::NR_THREAD_EXIT => Some(TASK_OP_EXIT),
+        _ => None,
+    }
+}
+
 /// `INVOKE(capability, operation, a0, a1, a2, a3)`.
 #[inline(always)]
 pub unsafe fn invoke(
@@ -78,5 +92,14 @@ mod tests {
         assert_eq!(name(1), Some("bmo_channel_kick"));
         assert_eq!(name(2), Some("bmo_wait"));
         assert_eq!(name(3), None);
+    }
+
+    #[test]
+    fn legacy_task_translation_has_one_canonical_mapping() {
+        assert_eq!(task_operation_for_legacy_syscall(super::super::NR_PROC_EXIT), Some(TASK_OP_EXIT));
+        assert_eq!(task_operation_for_legacy_syscall(super::super::NR_PROC_GET_PID), Some(TASK_OP_GET_PID));
+        assert_eq!(task_operation_for_legacy_syscall(super::super::NR_PROC_GET_TID), Some(TASK_OP_GET_TID));
+        assert_eq!(task_operation_for_legacy_syscall(super::super::NR_PROC_YIELD), Some(TASK_OP_YIELD));
+        assert_eq!(task_operation_for_legacy_syscall(super::super::NR_FS_OPEN), None);
     }
 }

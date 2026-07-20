@@ -179,6 +179,16 @@ capabilities y BMO Channel. No agregan nuevas entradas privilegiadas.
 Esta tabla se conserva solamente para ejecutar y migrar BEF/BEX ABI 1.0. Los
 productores nuevos deben emitir exclusivamente las tres primitivas v2.
 
+Estado de migracion:
+
+- `bmo-rt` emite identidad, yield y exit mediante `BMO_INVOKE`.
+- El backend COBOL convierte los nombres de tarea v1 a `BMO_INVOKE`; no
+  incorpora sus numeros legacy en BEF nuevos.
+- Ring 0 conserva un adaptador temporal para artefactos ABI 1.0, pero dirige
+  esas operaciones al mismo dispatcher v2 para evitar dos implementaciones.
+- El resto de la tabla permanece aislado hasta que cada servicio tenga una
+  capability y un protocolo BMO Channel definidos.
+
 | Rango | Familia |
 |-------|---------|
 | 0x100..0x10F | Window manager |
