@@ -7,14 +7,14 @@ members = [
     "Ultra_kernel_x86-64/kernel",
 
     # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
-    "Uso_Reales_Crates/shared/bmo-hal",
-    "Uso_Reales_Crates/shared/hw-profile",
-    "Uso_Reales_Crates/shared/nvram-log",
-    "Uso_Reales_Crates/shared/bmo-channel",
+    "platform/shared/bmo-hal",
+    "platform/shared/hw-profile",
+    "platform/shared/nvram-log",
+    "platform/shared/bmo-channel",
 
     # ── ABI (Foundation) ────────────────────────────────────────────
-    "Uso_Reales_Crates/abi/bmo-abi",
-    "Uso_Reales_Crates/abi/bmo-rt",
+    "platform/abi/bmo-abi",
+    "platform/abi/bmo-rt",
 
     # ── USERSPACE (Ring 3 side, x86-64) ────────────────────────────
     # Sibling of Ultra_kernel_x86-64/, NOT inside it. The whole
@@ -22,35 +22,36 @@ members = [
     "Ultra_userspace/userland",
     "Ultra_userspace/services/gui",
     "Ultra_userspace/services/input",
-    "Ultra_userspace/drivers/keyboard",
-    "Ultra_userspace/drivers/mouse",
     "Ultra_userspace/apps/launcher",
     "Ultra_userspace/apps/terminal",
 
     # ── DRIVERS (Hardware) ───────────────────────────────────────────
-    "Uso_Reales_Crates/drivers/audio",
-    "Uso_Reales_Crates/drivers/net",
-    "Uso_Reales_Crates/drivers/storage/ahci",
-    "Uso_Reales_Crates/drivers/storage/fat32",
-    "Uso_Reales_Crates/drivers/storage/nvme",
-    "Uso_Reales_Crates/drivers/usb/input",
-    "Uso_Reales_Crates/drivers/usb/uhid",
-    "Uso_Reales_Crates/drivers/usb/xhci",
+    "platform/drivers/audio",
+    "platform/drivers/net",
+    "platform/drivers/storage/ahci",
+    "platform/drivers/storage/fat32",
+    "platform/drivers/storage/nvme",
+    "platform/drivers/usb/input",
+    "platform/drivers/usb/uhid",
+    "platform/drivers/usb/xhci",
+    # GPU profiles (Ring 3 servers; reserved until hardware is on the bench)
+    "platform/drivers/gpu/rdna4",
 
     # ── SERVICES (System) ──────────────────────────────────────────
-    "Uso_Reales_Crates/services/cabina-core",
-    "Uso_Reales_Crates/services/byte-defender",
-    "Uso_Reales_Crates/services/timeback",
+    "platform/services/cabina-core",
+    "platform/services/byte-defender",
+    "platform/services/timeback",
 
     # ── PLUGINS (Vendored third-party) ──────────────────────────────
     # Removed: crates_Personal/plugins/* were legacy and have been
     # deleted. The bmo-elf (from goblin) and other plugin needs
     # are now sourced from crates.io where possible.
 
-    # ── TOOLS (Build-time) ──────────────────────────────────────────
-    "Uso_Reales_Crates/tools/lang/cobol",
-    "Uso_Reales_Crates/tools/lang/cpp",
-    "Uso_Reales_Crates/tools/lang/c",
+    # ── TOOLCHAIN (Build-time: language frontends → BEF → BEX) ─────
+    "toolchain/lang/cobol",
+    "toolchain/lang/cpp",
+    "toolchain/lang/c",
+    "toolchain/bef-bootstrap",
 
     # ── PLATFORM (CPU-aware Ring 0/3 intermediary) ────────────────
     # The only crate in BMO that knows the target CPU. Currently

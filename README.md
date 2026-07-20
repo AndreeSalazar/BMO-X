@@ -13,17 +13,21 @@ FastOS is split into a **CPU-agnostic core** and a **per-CPU kernel tree**.
 ```
 FastOS/
 ├── Ultra_kernel_x86-64/      ← x86-64 kernel: UEFI bootloader + 12 faggin stages + Ring 0 base
-│   └── Ultra_userspace/      ← Ring 3 side, also x86-64 (sibling workspace)
-├── Uso_Reales_Crates/        ← CPU-AGNOSTIC core: BEF, bmo-abi, bmo-rt, drivers, services
+├── Ultra_userspace/          ← Ring 3 side, also x86-64 (sibling workspace)
+├── platform/                 ← CPU-AGNOSTIC core: bmo-abi, bmo-rt, drivers, services
 │   ├── abi/                  ← bmo-abi, bmo-rt                (CPU-neutral)
 │   ├── shared/               ← bmo-hal, bmo-channel, hw-profile (CPU-neutral)
 │   ├── drivers/              ← xhci, ahci, nvme, fat32, net, audio, input, uhid
-│   ├── services/             ← cabina-core, byte-defender, timeback
-│   └── tools/lang/           ← C, C++, COBOL frontends → BEF
+│   └── services/             ← cabina-core, byte-defender, timeback
+├── toolchain/                ← Build-time: language frontends → BEF → linker → BEX
+│   ├── lang/                 ← C, C++, COBOL (dialect library) frontends → BEF
+│   ├── bmo-linker/           ← symbol extraction / BMO_SYMBOLS.toml
+│   ├── bef-bootstrap/        ← minimal Ring 3 init payload generator
+│   └── sem-asm/              ← semantic-assembly definitions (arch/standards/stdlib)
 └── Ultra_kernel_aarch64/     ← (planned) same structure, ARM-flavored faggin chain
 ```
 
-`Uso_Reales_Crates/` is the part of BMO that is **truly CPU-agnostic** — the BEF
+`platform/` is the part of BMO that is **truly CPU-agnostic** — the BEF
 format, the syscall ABI, the lock-free channel, the version control service, the
 security scanner, the language frontends all work the same on any CPU. To port
 to a new architecture, you duplicate `Ultra_kernel_x86-64/` as

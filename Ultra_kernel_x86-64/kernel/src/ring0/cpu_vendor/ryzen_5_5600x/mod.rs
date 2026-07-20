@@ -21,3 +21,13 @@ pub mod errata;
 pub mod bmo_cpu;
 
 pub use bmo_cpu::init_bmo_cpu;
+
+/// Profile descriptor consumed by `cpu_vendor::profile::active()`.
+/// The rest of Ring 0 sees only this — never this module directly.
+pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
+    vendor: "AMD",
+    microarch: "Zen 3 (Vermeer)",
+    name: "Ryzen 5 5600X",
+    family_model: "19h/21h",
+    init: init_bmo_cpu,
+};

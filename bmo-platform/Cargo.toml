@@ -29,8 +29,8 @@ arch-x86_64 = []
 #               Used by `runtime::boot` to discover the hardware address
 #               map and channel locations.
 [dependencies]
-bmo-channel  = { path = "../Uso_Reales_Crates/shared/bmo-channel" }
-bmo-abi      = { path = "../Uso_Reales_Crates/abi/bmo-abi" }
+bmo-channel  = { path = "../platform/shared/bmo-channel" }
+bmo-abi      = { path = "../platform/abi/bmo-abi" }
 boot-context = { path = "../Ultra_kernel_x86-64/boot_context" }
 
 # ── Profile ──────────────────────────────────────────────────────

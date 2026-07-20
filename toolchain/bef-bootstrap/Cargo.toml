@@ -1,0 +1,8 @@
+[package]
+name = "bmo-bef-bootstrap"
+version = "0.1.0"
+edition = "2021"
+description = "Build-time generator for the first auditable BMO Ring 3 BEF payload"
+
+[dependencies]
+bmo-abi = { path = "../../platform/abi/bmo-abi" }

@@ -347,6 +347,7 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write_u64(frames_total, 10);
     crate::ring0::dev::console::serial_write("\n");
     crate::ring0::channel::init(ctx);
+    crate::ring0::svc::register_all();
     crate::ring0::syscall::init();
     let timer_ready = crate::ring0::timer::init(ctx);
     if timer_ready {
@@ -355,10 +356,17 @@ pub fn main(ctx: &mut BootContext) {
         s_log("[ring0] WARNING: LAPIC tick unavailable; scheduler remains cooperative");
     }
 
-    // Populate the BMO CPU profile (Ryzen 5 5600X topology + errata).
-    // This detects CPUID, SMT/CCX layout, cache hierarchy, TSC freq,
-    // and applies Zen 3 Spectre/MDS mitigations.
-    crate::ring0::cpu_vendor::ryzen_5_5600x::init_bmo_cpu();
+    // Populate the active BMO CPU profile (today: Ryzen 5 5600X).
+    // Identity, SMT/CCX topology, cache hierarchy, TSC calibration and
+    // errata/speculation mitigations all live behind the profile —
+    // changing CPU or vendor is a profile swap, never a kernel edit.
+    let cpu_profile = crate::ring0::cpu_vendor::active();
+    (cpu_profile.init)();
+    crate::ring0::dev::console::serial_write("[cpu] profile: ");
+    crate::ring0::dev::console::serial_write(cpu_profile.vendor);
+    crate::ring0::dev::console::serial_write(" ");
+    crate::ring0::dev::console::serial_write(cpu_profile.name);
+    crate::ring0::dev::console::serial_write("\n");
 
     // BEX is the only native executable contract admitted by this kernel.
     // The parser is allocation-free so it is safe before the process allocator.

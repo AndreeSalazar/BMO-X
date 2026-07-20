@@ -24,4 +24,7 @@
 //! - AMD Zen 3 Family 19h BKDG (PUB, revision 0.91+)
 //! - AMD Whitepaper "Software Techniques for Managing Speculation" (rev 4.10)
 
+pub mod profile;
 pub mod ryzen_5_5600x;
+
+pub use profile::{active, CpuProfile};

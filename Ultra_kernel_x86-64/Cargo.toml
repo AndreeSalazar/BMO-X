@@ -11,7 +11,7 @@
 # For other CPU architectures (AArch64, RISC-V) the entire tree is
 # duplicated as Ultra_kernel_<arch>/, since the faggin stages, linker
 # scripts, and bare-metal asm are CPU-specific. The shared contracts
-# (BootContext layout, bmo-abi, bmo-hal) live in Uso_Reales_Crates/
+# (BootContext layout, bmo-abi, bmo-hal) live in platform/
 # and are CPU-agnostic.
 #
 # Note: uefi_chain/ is intentionally NOT a member of this workspace

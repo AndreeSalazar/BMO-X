@@ -353,6 +353,30 @@ pub fn wait_current(key: u64, deadline_tsc: u64) {
     schedule_locked(s);
 }
 
+/// WAIT with a lost-wakeup guard: `seq()` is sampled *under the scheduler
+/// lock* and compared against `observed`. Because `wake_by_key` also takes
+/// the lock, a kick can never slip between the compare and the block. If
+/// the sequence already moved, returns it immediately without blocking.
+pub fn wait_current_checked(
+    key: u64,
+    deadline_tsc: u64,
+    observed: u64,
+    seq: impl Fn() -> u64,
+) -> u64 {
+    let _g = SCHED_LOCK.lock();
+    let current = seq();
+    if current != observed {
+        return current;
+    }
+    let s = sched();
+    mark_wait(s, key, deadline_tsc);
+    schedule_locked(s);
+    // Still pre-switch on this stack: the context switch commits at the
+    // trap epilogue. The value returned here is what the caller sees when
+    // resumed, so it is advisory — userland re-reads the shared page.
+    observed
+}
+
 /// Kernel-task parking: mark blocked, then `hlt` until scheduled again.
 pub fn park_until(deadline_tsc: u64) {
     {

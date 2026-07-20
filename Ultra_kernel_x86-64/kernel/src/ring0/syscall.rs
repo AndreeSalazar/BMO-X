@@ -1,4 +1,4 @@
-//! x86-64 SYSCALL entry and minimal BMO ABI dispatcher.
+//! x86-64 SYSCALL entry and BMO ABI v2 dispatcher (3 frozen syscalls).
 //!
 //! The entry builds the unified trap frame (see trap.rs): swapgs, switch to
 //! the per-CPU syscall stack, synthesize the 5-word trap tail (user SS/RSP/
@@ -9,15 +9,21 @@
 //! syscalls, no non-canonical-RCX #GP hazard in Ring 0, and — critically —
 //! the dispatcher may answer with a *different* context than the one that
 //! entered (YIELD/WAIT/EXIT switch right at the syscall boundary).
+//!
+//! The surface is frozen at `INVOKE`, `CHANNEL_KICK`, `WAIT`. Everything
+//! else is a capability operation resolved through `cap::resolve` — new
+//! functionality adds operations and handle kinds, never syscalls.
 
 use core::arch::{asm, naked_asm};
 
+use crate::ring0::cap;
+use crate::ring0::channel;
 use crate::ring0::percpu;
 use crate::ring0::scheduler;
 use crate::ring0::trap::TrapFrame;
 
-// Minimal no-alloc view of the canonical bmo-abi syscall contract. Keeping
-// these values here avoids linking the full alloc-using BEF/ABI implementation
+// Minimal no-alloc view of the canonical bmo-abi v2 contract. Keeping
+// these values here avoids linking the full alloc-using ABI implementation
 // into Ring 0; build.ps1 rejects values that drift from bmo-abi.
 const NR_INVOKE: u32 = 0x00;
 const NR_CHANNEL_KICK: u32 = 0x01;
@@ -27,11 +33,10 @@ const TASK_OP_GET_PID: u64 = 0x01;
 const TASK_OP_GET_TID: u64 = 0x02;
 const TASK_OP_YIELD: u64 = 0x03;
 const TASK_OP_EXIT: u64 = 0x04;
-const NR_PROC_GET_PID: u32 = 0x182;
-const NR_PROC_GET_TID: u32 = 0x183;
-const NR_PROC_YIELD: u32 = 0x184;
-const NR_THREAD_SELF: u32 = 0x188;
-const NR_BEFCORE_POLL: u32 = 0x196;
+const TASK_OP_CHANNEL_OPEN: u64 = 0x05;
+const CHANNEL_OP_GET_SEQ: u64 = 0x01;
+const CHANNEL_OP_GET_INDEX: u64 = 0x02;
+const ERROR_INVALID_ARGUMENT: u32 = 7;
 const ERROR_UNSUPPORTED: u32 = 10;
 
 #[repr(C)]
@@ -44,6 +49,7 @@ struct BmoStatus {
 impl BmoStatus {
     const fn ok_value(value: u64) -> Self { Self { code: 0, flags: 0, value } }
     const fn err(code: u32) -> Self { Self { code, flags: 0, value: 0 } }
+    const fn err_with_flags(code: u32, flags: u32) -> Self { Self { code, flags, value: 0 } }
 }
 
 const _: () = assert!(core::mem::size_of::<BmoStatus>() == 16);
@@ -130,6 +136,11 @@ fn unsupported() -> BmoStatus {
     BmoStatus::err(ERROR_UNSUPPORTED)
 }
 
+#[inline]
+fn cap_err(err: (u32, u32)) -> BmoStatus {
+    BmoStatus::err_with_flags(err.0, err.1)
+}
+
 fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
     match operation {
         TASK_OP_GET_PID => BmoStatus::ok_value(scheduler::current_pid() as u64),
@@ -142,47 +153,108 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
         }
         TASK_OP_EXIT => {
             let _ = arg0;
+            // Capabilities die with the process; every outstanding handle
+            // becomes invalid before the final switch (no SCHED/CAP lock
+            // nesting: revoke completes first).
+            cap::revoke_all(scheduler::current_pid());
             scheduler::exit_current();
             BmoStatus::ok_value(0)
+        }
+        // Discover the caller's seeded estuary capability for index arg0.
+        // The handle is the process's own; nothing new is granted here.
+        TASK_OP_CHANNEL_OPEN => {
+            if arg0 >= boot_context::MAX_CHANNEL_PAGES as u64 {
+                return BmoStatus::err(ERROR_INVALID_ARGUMENT);
+            }
+            match cap::find(scheduler::current_pid(), cap::KIND_CHANNEL, arg0) {
+                Some(handle) => BmoStatus::ok_value(handle),
+                None => cap_err((cap::ERROR_PERMISSION_DENIED, cap::FLAG_NEEDS_CAP)),
+            }
         }
         _ => unsupported(),
     }
 }
 
-fn invoke(frame: &TrapFrame) -> BmoStatus {
-    if frame.rdi != CURRENT_TASK {
-        return unsupported();
+/// Synchronous control operations on a resolved capability.
+fn invoke_channel(resolved: cap::Resolved, operation: u64) -> BmoStatus {
+    let index = resolved.object as usize;
+    match operation {
+        CHANNEL_OP_GET_SEQ => BmoStatus::ok_value(channel::complete_seq(index)),
+        CHANNEL_OP_GET_INDEX => BmoStatus::ok_value(resolved.object),
+        _ => unsupported(),
     }
-    invoke_current_task(frame.rsi, frame.rdx)
+}
+
+/// `INVOKE(capability, operation, a0..a3)` — the single synchronous door.
+fn invoke(frame: &TrapFrame) -> BmoStatus {
+    if frame.rdi == CURRENT_TASK {
+        return invoke_current_task(frame.rsi, frame.rdx);
+    }
+    let pid = scheduler::current_pid();
+    match cap::resolve(pid, frame.rdi, cap::RIGHT_READ) {
+        Ok(resolved) => match resolved.kind {
+            cap::KIND_CHANNEL => invoke_channel(resolved, frame.rsi),
+            _ => unsupported(),
+        },
+        Err(err) => cap_err(err),
+    }
+}
+
+/// `CHANNEL_KICK(capability, published_sequence)` — notify the consumer.
+/// Services the estuary with the per-kick budget and wakes its waiters.
+fn channel_kick(frame: &TrapFrame) -> BmoStatus {
+    let pid = scheduler::current_pid();
+    match cap::resolve(pid, frame.rdi, cap::RIGHT_WRITE) {
+        Ok(resolved) if resolved.kind == cap::KIND_CHANNEL => {
+            let processed = channel::service(resolved.object as usize);
+            BmoStatus::ok_value(processed as u64)
+        }
+        Ok(_) => unsupported(),
+        Err(err) => cap_err(err),
+    }
+}
+
+/// `WAIT(waitable, observed_sequence, timeout_ns)` — block until the
+/// waitable's sequence moves past `observed_sequence` or the timeout
+/// expires (0 = no timeout). `waitable = 0` is a pure timed sleep.
+///
+/// The observed-sequence compare happens under the scheduler lock, so a
+/// kick between the caller's read and this syscall can never be lost.
+fn wait(frame: &TrapFrame) -> BmoStatus {
+    let timeout_ns = frame.rdx;
+    let deadline = if timeout_ns == 0 {
+        0
+    } else {
+        scheduler::rdtsc() + scheduler::ns_to_tsc(timeout_ns)
+    };
+    if frame.rdi == 0 {
+        scheduler::wait_current(0, deadline);
+        return BmoStatus::ok_value(0);
+    }
+    let pid = scheduler::current_pid();
+    match cap::resolve(pid, frame.rdi, cap::RIGHT_WAIT) {
+        Ok(resolved) if resolved.kind == cap::KIND_CHANNEL => {
+            let index = resolved.object as usize;
+            let seq = scheduler::wait_current_checked(
+                channel::wait_key(index),
+                deadline,
+                frame.rsi,
+                || channel::complete_seq(index),
+            );
+            // Advisory: userland re-reads the shared sequence on resume.
+            BmoStatus::ok_value(seq)
+        }
+        Ok(_) => unsupported(),
+        Err(err) => cap_err(err),
+    }
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
     let status = match frame.rax as u32 {
         NR_INVOKE => invoke(frame),
-        // Recognized V2 boundary. It becomes operational with
-        // capability-backed channels (F2).
-        NR_CHANNEL_KICK => unsupported(),
-        // WAIT(waitable, observed_seq, absolute_deadline_ns): block until the
-        // waitable's sequence moves past observed or the deadline expires.
-        NR_WAIT => {
-            let deadline_ns = frame.rdx;
-            let deadline = if deadline_ns == 0 {
-                0
-            } else {
-                scheduler::rdtsc() + scheduler::ns_to_tsc(deadline_ns)
-            };
-            scheduler::wait_current(frame.rdi, deadline);
-            BmoStatus::ok_value(0)
-        }
-        // Temporary ABI v1 adapter. All task behavior still flows through
-        // the canonical v2 operation dispatcher above.
-        NR_PROC_GET_PID => invoke_current_task(TASK_OP_GET_PID, 0),
-        NR_PROC_GET_TID | NR_THREAD_SELF => invoke_current_task(TASK_OP_GET_TID, 0),
-        NR_PROC_YIELD => invoke_current_task(TASK_OP_YIELD, 0),
-        NR_BEFCORE_POLL => {
-            BmoStatus::ok_value(crate::ring0::channel::service_all() as u64)
-        }
+        NR_CHANNEL_KICK => channel_kick(frame),
+        NR_WAIT => wait(frame),
         _ => unsupported(),
     };
     frame.rax = (status.code as u64) | ((status.flags as u64) << 32);

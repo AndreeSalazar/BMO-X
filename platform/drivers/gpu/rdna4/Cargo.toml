@@ -1,0 +1,10 @@
+[package]
+name = "bmo-gpu-rdna4"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO GPU driver profile — AMD RDNA 4 (reserved: hardware pending on the bench)"
+
+[lib]
+name = "bmo_gpu_rdna4"
+path = "src/lib.rs"

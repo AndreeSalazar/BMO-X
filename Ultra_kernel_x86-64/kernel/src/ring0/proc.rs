@@ -143,6 +143,9 @@ pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
     let context = unsafe { trap::fabricate(kstack_top, entry_va, 0, true, vmm::USER_STACK_TOP) };
 
     let tid = scheduler::spawn_user(1, context, kframes[0], KERNEL_STACK_PAGES, kstack_top, aspace, 0)?;
+    // F3: seed the init process's capability table — one estuary handle
+    // per BMO Channel page, discoverable via TASK_OP_CHANNEL_OPEN.
+    crate::ring0::cap::seed_init(1);
     log("[proc] init.bex admitted: Ring 3 entry at 0x");
     crate::ring0::dev::console::serial_write_u64(entry_va, 16);
     log("\n");

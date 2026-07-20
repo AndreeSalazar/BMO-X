@@ -13,7 +13,7 @@ For other CPU architectures, the entire tree is duplicated as `Ultra_kernel_<arc
 
 ## Why the architecture-specific suffix?
 
-`Uso_Reales_Crates/` (the shared `abi/`, `shared/`, `drivers/`, `services/` tree) is
+`platform/` (the shared `abi/`, `shared/`, `drivers/`, `services/` tree) is
 **CPU-agnostic by design**:
 
 - `bmo-abi` defines the BEF (BMO Executable Format) header, syscall IDs, and type layouts
@@ -43,7 +43,7 @@ under this tree is **prepared specifically for x86-64**, and the moment a future
 
 Each per-CPU tree contains the same five top-level pieces, but with arch-specific
 content. The shared contract is `BootContext` (`boot_context/`) and the wider
-`Uso_Reales_Crates/` ABI.
+`platform/` ABI.
 
 | Piece | x86-64 (this tree) | AArch64 (port plan) |
 |-------|-------------------|---------------------|
@@ -63,14 +63,14 @@ content. The shared contract is `BootContext` (`boot_context/`) and the wider
 
 **What does NOT change in a port:**
 
-- `Uso_Reales_Crates/` (entire tree: `abi/`, `shared/`, `drivers/`, `services/`)
+- `platform/` (entire tree: `abi/`, `shared/`, `drivers/`, `services/`)
   — by design CPU-agnostic.
 - The `bmo-rt` userspace runtime (one 2-line asm change: `syscall` → `svc #0`).
 - The BEF format and its loader.
 - The C / C++ / COBOL frontends at the parser level (only the AOT codegen backend
   needs a new variant: `AotAArch64` next to `AotX86_64`).
 
-The drivers in `Uso_Reales_Crates/drivers/` (xhci, ahci, nvme, fat32, net, audio,
+The drivers in `platform/drivers/` (xhci, ahci, nvme, fat32, net, audio,
 input, uhid) **are** x86-64-specific in their current form because they use PCI
 MMIO patterns and `volatile` reads. For a port, they would either:
 
@@ -183,7 +183,7 @@ There are **three nested workspaces** at play here:
 
 ## Status (as of 2026-07-17)
 
-- 17 of 20 crates in `Uso_Reales_Crates/` build clean.
+- 17 of 20 crates in `platform/` build clean.
 - The former 12-stage chain is consolidated into `s1_cpu` and `s2_mem`.
 - `build.ps1` validates flat entry addresses and stack alignment before deployment.
 - Deployment defaults to the BMO SSD at `D:` and verifies every file with SHA-256.

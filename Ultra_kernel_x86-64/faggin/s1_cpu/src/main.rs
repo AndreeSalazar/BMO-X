@@ -39,6 +39,14 @@ const EFI_CONVENTIONAL_MEMORY: u32 = 7;
 const S2_ADDR: u64 = 0x200000;
 const S2_RESERVE_SIZE: u64 = 2 * 1024 * 1024;
 const KERNEL_RESERVE_SIZE: u64 = 16 * 1024 * 1024;
+// Ring 3 init payload + kernel-owned workspace. Placed just past the
+// kernel reserve (0x400000 + 16 MiB), inside the s2 identity map, and
+// taken out of the UEFI map via AllocateAddress so no allocator can
+// hand them out twice.
+const RING3_PAYLOAD_ADDR: u64 = 0x1400000;
+const RING3_PAYLOAD_MAX: u64 = 1024 * 1024;
+const RING3_WORKSPACE_ADDR: u64 = 0x1500000;
+const RING3_WORKSPACE_SIZE: u64 = 1024 * 1024;
 const COM1: u16 = 0x3F8;
 
 #[repr(C)] struct EfiTableHeader { signature: u64, revision: u32, header_size: u32, crc32: u32, _reserved: u32 }
@@ -71,6 +79,7 @@ const COM1: u16 = 0x3F8;
 }
 
 static mut FILE_SYSTEM_GUID: EfiGuid = EfiGuid { data1: 0x964e5b22, data2: 0x6409, data3: 0x47ef, data4: [0x97, 0xa2, 0xff, 0x06, 0xff, 0x38, 0xb0, 0xdf] };
+static mut LOADED_IMAGE_GUID: EfiGuid = EfiGuid { data1: 0x5b1b31a1, data2: 0x9562, data3: 0x11d2, data4: [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b] };
 static mut GOP_GUID: EfiGuid = EfiGuid { data1: 0x9042a9de, data2: 0x23dc, data3: 0x4a38, data4: [0x96, 0xfb, 0x72, 0xde, 0x52, 0xfe, 0xc4, 0x49] };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -838,13 +847,31 @@ unsafe fn fill_gop(ctx: &mut BootContext, system_table: *mut EfiSystemTable) -> 
     true
 }
 
-unsafe fn load_from_esp(ctx: &mut BootContext, system_table: *mut EfiSystemTable, _image_handle: EfiHandle) -> bool {
+unsafe fn load_from_esp(ctx: &mut BootContext, system_table: *mut EfiSystemTable, image_handle: EfiHandle) -> bool {
     let bs = (*system_table).boot_services;
     let base = &(*bs).hdr as *const EfiTableHeader as *const *mut core::ffi::c_void;
-    let locate: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
-        core::mem::transmute(*base.add(3 + 37));
+    // Resolve the SAME volume the boot chain was loaded from, via
+    // LoadedImage.DeviceHandle on the shim's image handle. With several
+    // FAT volumes present, LocateProtocol(FS) may return another disk's
+    // ESP where s2_mem.bin/kernel.bin do not exist.
+    let handle_protocol: extern "efiapi" fn(EfiHandle, *mut EfiGuid, &mut *mut core::ffi::c_void) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 16));
     let mut fs_handle: EfiHandle = core::ptr::null_mut();
-    if locate(&raw mut FILE_SYSTEM_GUID, core::ptr::null_mut(), &mut fs_handle) != EFI_SUCCESS { return false; }
+    let mut li: *mut core::ffi::c_void = core::ptr::null_mut();
+    if handle_protocol(image_handle, &raw mut LOADED_IMAGE_GUID, &mut li) == EFI_SUCCESS && !li.is_null() {
+        // EFI_LOADED_IMAGE_PROTOCOL: DeviceHandle at byte offset 24.
+        let device = *(li as *const EfiHandle).add(3);
+        let mut fs_if: *mut core::ffi::c_void = core::ptr::null_mut();
+        if handle_protocol(device, &raw mut FILE_SYSTEM_GUID, &mut fs_if) == EFI_SUCCESS {
+            fs_handle = fs_if as EfiHandle;
+        }
+    }
+    if fs_handle.is_null() {
+        // Fallback: first filesystem (single-volume setups).
+        let locate: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
+            core::mem::transmute(*base.add(3 + 37));
+        if locate(&raw mut FILE_SYSTEM_GUID, core::ptr::null_mut(), &mut fs_handle) != EFI_SUCCESS { return false; }
+    }
     let sfsp = fs_handle as *const *mut core::ffi::c_void;
     let open_vol: extern "efiapi" fn(EfiHandle, &mut *mut core::ffi::c_void) -> EfiStatus =
         core::mem::transmute(*sfsp.add(1));

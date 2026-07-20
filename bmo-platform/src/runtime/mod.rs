@@ -10,7 +10,7 @@
 //! 4. Jumps to the process's `_start` with `rdi = &BootContextV1`.
 //!
 //! `_start` is provided by `bmo-rt` (the userspace runtime in
-//! `Uso_Reales_Crates/abi/bmo-rt/`). It calls
+//! `platform/abi/bmo-rt/`). It calls
 //! [`bmo_platform::runtime::boot`] to initialize the platform layer,
 //! then jumps to the userland's `main`.
 //!

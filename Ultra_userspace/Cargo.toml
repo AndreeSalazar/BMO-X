@@ -5,8 +5,6 @@ members = [
     "services/input",
     "apps/terminal",
     "apps/launcher",
-    "drivers/keyboard",
-    "drivers/mouse",
 ]
 resolver = "2"
 

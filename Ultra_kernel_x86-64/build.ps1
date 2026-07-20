@@ -30,8 +30,7 @@ Write-Host ''
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'
 $kernelSyscalls = Get-Content (Join-Path $root 'kernel\src\ring0\syscall.rs') -Raw
-$abiSyscalls = Get-Content (Join-Path $root '..\Uso_Reales_Crates\abi\bmo-abi\src\syscalls\generated.rs') -Raw
-$abiV2Syscalls = Get-Content (Join-Path $root '..\Uso_Reales_Crates\abi\bmo-abi\src\syscalls\v2.rs') -Raw
+$abiV2Syscalls = Get-Content (Join-Path $root '..\platform\abi\bmo-abi\src\syscalls\v2.rs') -Raw
 foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
     $abiMatch = [regex]::Match($abiV2Syscalls, ('pub const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
@@ -39,19 +38,22 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
         Fail ('BMO ABI v2 syscall contract mismatch: ' + $name)
     }
 }
-foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT')) {
+foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     $abiMatch = [regex]::Match($abiV2Syscalls, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
         Fail ('BMO ABI v2 operation contract mismatch: ' + $name)
     }
 }
-foreach ($name in @('NR_PROC_GET_PID', 'NR_PROC_GET_TID', 'NR_PROC_YIELD', 'NR_THREAD_SELF', 'NR_BEFCORE_POLL')) {
-    $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
-    $abiMatch = [regex]::Match($abiSyscalls, ('pub const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
-    if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
-        Fail ('syscall contract mismatch: ' + $name)
-    }
+# The kernel's capability-engine mirror (cap.rs) must match bmo-abi too:
+# handle-kind codes and rights bits are part of the frozen contract.
+$kernelCap = Get-Content (Join-Path $root 'kernel\src\ring0\cap.rs') -Raw
+if (-not ($kernelCap -match 'KIND_CHANNEL:\s*u8\s*=\s*0x60')) {
+    Fail 'capability contract mismatch: KIND_CHANNEL must be 0x60 (bmo-abi HandleKind::Channel)'
+}
+$abiKind = Get-Content (Join-Path $root '..\platform\abi\bmo-abi\src\fundamentals\handle\kind.rs') -Raw
+if (-not ($abiKind -match 'Channel\s*=\s*0x60')) {
+    Fail 'capability contract mismatch: bmo-abi HandleKind::Channel must be 0x60'
 }
 
 # ── Build uefi_chain (5 UEFI layers) ──────────────────────────────

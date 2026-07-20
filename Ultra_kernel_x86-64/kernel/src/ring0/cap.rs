@@ -1,0 +1,217 @@
+//! Ring 0 Capability Engine (F3).
+//!
+//! Per-process capability tables backing the 3-syscall BMO ABI v2 surface.
+//! Every kernel object a Ring 3 task can name is reached through a
+//! `BmoHandle`-encoded capability: `INVOKE`/`CHANNEL_KICK`/`WAIT` resolve
+//! the handle here, validate the generation (anti-UAF by construction) and
+//! the rights bitset, and only then dispatch to the object.
+//!
+//! This is a minimal no-alloc mirror of the canonical `bmo-abi` types
+//! (`BmoHandle` layout, `BmoCapSet` bits, `HandleKind` codes). Keeping the
+//! values here avoids linking the alloc-using ABI crate into Ring 0;
+//! build.ps1 rejects values that drift from bmo-abi.
+//!
+//! Handle layout (must match `bmo_abi::fundamentals::handle::opaque`):
+//! ```text
+//!   bit 63        : tag        (0 = recurso, 1 = canal/cola)
+//!   bits 62..56   : kind       (7 bits)
+//!   bits 55..40   : generation (16 bits — invalida UAF)
+//!   bits 39..0    : index      (40 bits — slot en la tabla del proceso)
+//! ```
+
+use crate::ring0::spin::SpinLock;
+
+pub const MAX_PROCS: usize = 16;
+pub const SLOTS_PER_PROC: usize = 64;
+
+// HandleKind codes (mirror of bmo-abi handle/kind.rs).
+pub const KIND_CHANNEL: u8 = 0x60;
+
+// Rights bits (mirror of bmo-abi BmoCap ids: bit N = capability N).
+pub const RIGHT_READ: u64 = 1 << 0;
+pub const RIGHT_WRITE: u64 = 1 << 1;
+pub const RIGHT_WAIT: u64 = 1 << 6;
+
+// Error codes (mirror of bmo-abi status/error.rs).
+pub const ERROR_INVALID_HANDLE: u32 = 2;
+pub const ERROR_PERMISSION_DENIED: u32 = 3;
+/// BmoStatus flag raised alongside `ERROR_PERMISSION_DENIED` when the
+/// failure is specifically a missing capability (bmo-abi `NEEDS_CAP`).
+pub const FLAG_NEEDS_CAP: u32 = 1 << 4;
+
+#[derive(Clone, Copy)]
+struct CapSlot {
+    kind: u8,
+    live: bool,
+    /// Monotonic per-slot counter, never reset: a freed-and-reused slot
+    /// issues a new generation, so every stale handle fails to resolve
+    /// (anti-UAF by construction). Starts at 1; 0 never resolves.
+    generation: u16,
+    /// BmoCapSet bits: which operations this capability permits.
+    rights: u64,
+    /// Kernel object reference (e.g. estuary index for KIND_CHANNEL).
+    object: u64,
+}
+
+impl CapSlot {
+    const FREE: Self = Self { kind: 0, live: false, generation: 0, rights: 0, object: 0 };
+}
+
+/// A successfully resolved capability.
+#[derive(Clone, Copy)]
+pub struct Resolved {
+    pub kind: u8,
+    pub rights: u64,
+    pub object: u64,
+}
+
+struct CapTables {
+    slots: [[CapSlot; SLOTS_PER_PROC]; MAX_PROCS],
+}
+
+static CAP_LOCK: SpinLock = SpinLock::new();
+static mut TABLES: CapTables = CapTables {
+    slots: [[CapSlot::FREE; SLOTS_PER_PROC]; MAX_PROCS],
+};
+
+fn tables() -> &'static mut CapTables {
+    unsafe { &mut *core::ptr::addr_of_mut!(TABLES) }
+}
+
+/// Active-queue kinds carry tag bit 63 (mirror of HandleKind::tag()).
+const fn kind_tag(kind: u8) -> u64 {
+    match kind {
+        KIND_CHANNEL => 1,
+        _ => 0,
+    }
+}
+
+const fn encode(kind: u8, generation: u16, index: u64) -> u64 {
+    (kind_tag(kind) << 63)
+        | (((kind as u64) & 0x7F) << 56)
+        | (((generation as u64) & 0xFFFF) << 40)
+        | (index & 0x000000FF_FFFF_FFFF)
+}
+
+/// Grant a capability to `pid`. Returns the encoded handle, or `None` if
+/// the process table is full / pid out of range.
+pub fn grant(pid: u32, kind: u8, rights: u64, object: u64) -> Option<u64> {
+    let pid = pid as usize;
+    if pid >= MAX_PROCS {
+        return None;
+    }
+    let _g = CAP_LOCK.lock();
+    let table = &mut tables().slots[pid];
+    let index = table.iter().position(|s| !s.live)?;
+    // Advance the slot's monotonic generation; skip 0 on wrap so a zeroed
+    // or forged handle can never resolve.
+    let generation = {
+        let g = table[index].generation.wrapping_add(1);
+        if g == 0 { 1 } else { g }
+    };
+    table[index] = CapSlot { kind, live: true, generation, rights, object };
+    Some(encode(kind, generation, index as u64))
+}
+
+/// Resolve `handle` for `pid`, requiring every bit in `required_rights`.
+///
+/// Errors mirror bmo-abi: `ERROR_INVALID_HANDLE` for a stale/forged
+/// handle, `ERROR_PERMISSION_DENIED` (+`FLAG_NEEDS_CAP`) for missing
+/// rights.
+pub fn resolve(pid: u32, handle: u64, required_rights: u64) -> Result<Resolved, (u32, u32)> {
+    let pid = pid as usize;
+    if pid >= MAX_PROCS {
+        return Err((ERROR_INVALID_HANDLE, 0));
+    }
+    let kind = ((handle >> 56) & 0x7F) as u8;
+    let generation = ((handle >> 40) & 0xFFFF) as u16;
+    let index = (handle & 0x000000FF_FFFF_FFFF) as usize;
+    if index >= SLOTS_PER_PROC || generation == 0 {
+        return Err((ERROR_INVALID_HANDLE, 0));
+    }
+    let _g = CAP_LOCK.lock();
+    let slot = tables().slots[pid][index];
+    if !slot.live
+        || slot.generation != generation
+        || slot.kind != kind
+        || kind_tag(kind) != (handle >> 63)
+    {
+        return Err((ERROR_INVALID_HANDLE, 0));
+    }
+    if slot.rights & required_rights != required_rights {
+        return Err((ERROR_PERMISSION_DENIED, FLAG_NEEDS_CAP));
+    }
+    Ok(Resolved { kind: slot.kind, rights: slot.rights, object: slot.object })
+}
+
+/// Find the pid's existing capability for `(kind, object)`. Used by
+/// `TASK_OP_CHANNEL_OPEN` so userland can discover its seeded estuary
+/// handles without any out-of-band contract.
+pub fn find(pid: u32, kind: u8, object: u64) -> Option<u64> {
+    let pid = pid as usize;
+    if pid >= MAX_PROCS {
+        return None;
+    }
+    let _g = CAP_LOCK.lock();
+    let table = &tables().slots[pid];
+    for (index, slot) in table.iter().enumerate() {
+        if slot.live && slot.kind == kind && slot.object == object {
+            return Some(encode(slot.kind, slot.generation, index as u64));
+        }
+    }
+    None
+}
+
+/// Revoke a capability. The generation bump invalidates every copy of the
+/// old handle by construction.
+pub fn revoke(pid: u32, handle: u64) -> bool {
+    let pid = pid as usize;
+    if pid >= MAX_PROCS {
+        return false;
+    }
+    let generation = ((handle >> 40) & 0xFFFF) as u16;
+    let index = (handle & 0x000000FF_FFFF_FFFF) as usize;
+    if index >= SLOTS_PER_PROC || generation == 0 {
+        return false;
+    }
+    let _g = CAP_LOCK.lock();
+    let slot = &mut tables().slots[pid][index];
+    if !slot.live || slot.generation != generation {
+        return false;
+    }
+    // The generation stays (monotonic); only liveness and rights go.
+    slot.live = false;
+    slot.rights = 0;
+    slot.kind = 0;
+    slot.object = 0;
+    true
+}
+
+/// Drop every capability owned by `pid` (process exit). Generations are
+/// preserved so recycled slots keep invalidating stale handles.
+pub fn revoke_all(pid: u32) {
+    let pid = pid as usize;
+    if pid >= MAX_PROCS {
+        return;
+    }
+    let _g = CAP_LOCK.lock();
+    for slot in &mut tables().slots[pid] {
+        slot.live = false;
+        slot.rights = 0;
+        slot.kind = 0;
+        slot.object = 0;
+    }
+}
+
+/// Seed the init process: one capability per BMO Channel estuary with
+/// full transport rights (READ | WRITE | WAIT).
+pub fn seed_init(pid: u32) {
+    for index in 0..boot_context::MAX_CHANNEL_PAGES {
+        let _ = grant(
+            pid,
+            KIND_CHANNEL,
+            RIGHT_READ | RIGHT_WRITE | RIGHT_WAIT,
+            index as u64,
+        );
+    }
+}

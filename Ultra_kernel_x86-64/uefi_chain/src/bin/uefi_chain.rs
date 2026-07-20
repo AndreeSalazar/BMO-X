@@ -24,6 +24,7 @@ static mut FILE_BUF: [u8; FILE_BUF_SIZE] = [0; FILE_BUF_SIZE];
 #[repr(C)] struct EfiFileProtocol { revision: u64, open: unsafe extern "efiapi" fn(*const Self, *mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus, close: unsafe extern "efiapi" fn(*const Self) -> EfiStatus, _del: *mut core::ffi::c_void, read: *mut core::ffi::c_void, _w: *mut core::ffi::c_void, _gp: *mut core::ffi::c_void, _sp: *mut core::ffi::c_void, _gi: *mut core::ffi::c_void, _si: *mut core::ffi::c_void, _f: *mut core::ffi::c_void }
 
 static mut FS_GUID: EfiGuid = EfiGuid { d1: 0x964e5b22, d2: 0x6409, d3: 0x47ef, d4: [0x97, 0xa2, 0xff, 0x06, 0xff, 0x38, 0xb0, 0xdf] };
+static mut LOADED_IMAGE_GUID: EfiGuid = EfiGuid { d1: 0x5b1b31a1, d2: 0x9562, d3: 0x11d2, d4: [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b] };
 
 #[inline] unsafe fn outb(p: u16, v: u8) { asm!("out dx, al", in("dx") p, in("al") v); }
 #[inline] unsafe fn inb(p: u16) -> u8 { let v: u8; asm!("in al, dx", in("dx") p, out("al") v); v }
@@ -33,29 +34,106 @@ fn hex(mut v: u64) { unsafe { if v == 0 { put(b'0'); return; } let mut b = [0u8;
 fn dec(mut v: usize) { unsafe { if v == 0 { put(b'0'); return; } let mut b = [0u8; 20]; let mut i = 0; while v > 0 { b[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; } for j in (0..i).rev() { put(b[j]); } } }
 fn init_serial() { unsafe { outb(COM1+1, 0); outb(COM1+3, 0x80); outb(COM1+0, 1); outb(COM1+1, 0); outb(COM1+3, 3); outb(COM1+2, 0xC7); outb(COM1+4, 0xB); } }
 
+// ── ConOut: visible screen output (serial alone hides errors from the user) ──
+
+unsafe fn con_call1(st: *const EfiSystemTable, index: usize, arg: *const u16) {
+    let con = (*st)._cout_h as *const *mut core::ffi::c_void;
+    if con.is_null() { return; }
+    let f: extern "efiapi" fn(*mut core::ffi::c_void, *const u16) -> EfiStatus =
+        core::mem::transmute(*con.add(index));
+    f((*st)._cout_h as *mut core::ffi::c_void, arg);
+}
+
+/// Print ASCII on the firmware console (index 1 = OutputString).
+unsafe fn scr(st: *const EfiSystemTable, s: &str) {
+    let mut buf = [0u16; 96];
+    let mut i = 0;
+    for &b in s.as_bytes() {
+        if i >= buf.len() - 2 { buf[i] = 0; con_call1(st, 1, buf.as_ptr()); i = 0; }
+        if b == b'\n' { buf[i] = b'\r' as u16; i += 1; }
+        buf[i] = b as u16; i += 1;
+    }
+    buf[i] = 0;
+    con_call1(st, 1, buf.as_ptr());
+}
+
+/// SetAttribute (index 5). 0x0A = light green, 0x0C = light red, 0x07 = grey.
+unsafe fn scr_attr(st: *const EfiSystemTable, attr: usize) {
+    let con = (*st)._cout_h as *const *mut core::ffi::c_void;
+    if con.is_null() { return; }
+    let f: extern "efiapi" fn(*mut core::ffi::c_void, usize) -> EfiStatus =
+        core::mem::transmute(*con.add(5));
+    f((*st)._cout_h as *mut core::ffi::c_void, attr);
+}
+
+/// Visible failure: red message on screen + serial, then a 5 s pause so the
+/// firmware's return-to-menu cannot hide what happened.
+unsafe fn fail(st: *const EfiSystemTable, base: *const *mut core::ffi::c_void, msg: &str) {
+    puts("[uefi] FAIL: "); puts(msg); puts("\n");
+    scr_attr(st, 0x0C);
+    scr(st, "\n [BMO-X] FAIL: "); scr(st, msg); scr(st, "\n");
+    scr_attr(st, 0x07);
+    let stall: extern "efiapi" fn(usize) -> EfiStatus = core::mem::transmute(*base.add(3 + 28));
+    stall(5_000_000);
+}
+
 #[unsafe(no_mangle)]
 pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core::ffi::c_void) -> EfiStatus {
     init_serial();
     puts("\n[uefi] BMO shim\n");
 
-    // Locate simple filesystem
     let st = system_table as *const EfiSystemTable;
     let bs = unsafe { (*st).bs };
     let base = unsafe { &(*bs).hdr } as *const EfiTableHeader as *const *mut core::ffi::c_void;
-    let locate: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
-        unsafe { core::mem::transmute(*base.add(3 + 37)) };
-    let mut fs_h: EfiHandle = core::ptr::null_mut();
-    if unsafe { locate(&raw mut FS_GUID, core::ptr::null_mut(), &mut fs_h) } != EFI_SUCCESS {
-        puts("[uefi] no FS\n");
-        return 1;
+
+    // Green BMO-X banner: the boot is visible even without a serial cable.
+    unsafe {
+        scr_attr(st, 0x0A);
+        scr(st, "\n  ==========================================\n");
+        scr(st, "    B M O - X   |   Ultra Kernel x86-64\n");
+        scr(st, "  ==========================================\n\n");
+        scr_attr(st, 0x07);
     }
+
+    // Resolve the volume THIS image was loaded from, via
+    // LoadedImage.DeviceHandle. With several FAT volumes in the system
+    // (Windows ESP, other disks), LocateProtocol(FS) returns an arbitrary
+    // one and the chain files would not be found there.
+    let handle_protocol: extern "efiapi" fn(EfiHandle, *mut EfiGuid, &mut *mut core::ffi::c_void) -> EfiStatus =
+        unsafe { core::mem::transmute(*base.add(3 + 16)) };
+    let mut fs_if: *mut core::ffi::c_void = core::ptr::null_mut();
+    let mut li: *mut core::ffi::c_void = core::ptr::null_mut();
+    if unsafe { handle_protocol(image_handle, &raw mut LOADED_IMAGE_GUID, &mut li) } == EFI_SUCCESS && !li.is_null() {
+        // EFI_LOADED_IMAGE_PROTOCOL: Revision(+pad) @0, ParentHandle @8,
+        // SystemTable @16, DeviceHandle @24.
+        let device = unsafe { *(li as *const EfiHandle).add(3) };
+        if unsafe { handle_protocol(device, &raw mut FS_GUID, &mut fs_if) } == EFI_SUCCESS {
+            puts("[uefi] FS = boot volume (LoadedImage)\n");
+        }
+    }
+    if fs_if.is_null() {
+        // Fallback for single-volume setups (and odd firmwares).
+        let locate: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
+            unsafe { core::mem::transmute(*base.add(3 + 37)) };
+        let mut h: EfiHandle = core::ptr::null_mut();
+        if unsafe { locate(&raw mut FS_GUID, core::ptr::null_mut(), &mut h) } != EFI_SUCCESS {
+            unsafe { fail(st, base, "no FAT filesystem found") };
+            return 1;
+        }
+        puts("[uefi] FS = first volume (fallback)\n");
+        fs_if = h as *mut core::ffi::c_void;
+    }
+    let fs_h: EfiHandle = fs_if as EfiHandle;
 
     // Open volume
     let sfsp = fs_h as *const *mut core::ffi::c_void;
     let open_vol: extern "efiapi" fn(EfiHandle, &mut *mut core::ffi::c_void) -> EfiStatus =
         unsafe { core::mem::transmute(*sfsp.add(1)) };
     let mut root: *mut core::ffi::c_void = core::ptr::null_mut();
-    if unsafe { open_vol(fs_h, &mut root) } != EFI_SUCCESS { return 2; }
+    if unsafe { open_vol(fs_h, &mut root) } != EFI_SUCCESS {
+        unsafe { fail(st, base, "cannot open boot volume") };
+        return 2;
+    }
 
     // Open \EFI\BOOT\ring0\faggin\s1_cpu.bin
     let file_base = root as *const *mut core::ffi::c_void;
@@ -70,7 +148,7 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core
     ];
     let mut file: *mut core::ffi::c_void = core::ptr::null_mut();
     if unsafe { open_fn(root, &mut file, path.as_ptr(), 1, 0) } != EFI_SUCCESS {
-        puts("[uefi] open s1_cpu.bin FAIL\n");
+        unsafe { fail(st, base, "\\EFI\\BOOT\\ring0\\faggin\\s1_cpu.bin not found") };
         return 3;
     }
     let opened_file = file as *const *mut core::ffi::c_void;
@@ -79,17 +157,23 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core
     let mut size = FILE_BUF_SIZE;
     let file_buf = unsafe { &mut *core::ptr::addr_of_mut!(FILE_BUF) };
     if unsafe { read_fn(file, &mut size, file_buf.as_mut_ptr()) } != EFI_SUCCESS || size == 0 {
-        puts("[uefi] read s1_cpu.bin FAIL\n");
+        unsafe { fail(st, base, "read s1_cpu.bin failed") };
         return 4;
     }
-    if size as u64 > S1_SLOT { return 5; }
+    if size as u64 > S1_SLOT {
+        unsafe { fail(st, base, "s1_cpu.bin exceeds its slot") };
+        return 5;
+    }
     puts("[uefi] s1_cpu.bin="); dec(size); puts(" bytes\n");
 
     // Allocate fixed address 0x100000
     let alloc_p: extern "efiapi" fn(u32, u32, usize, &mut u64) -> EfiStatus =
         unsafe { core::mem::transmute(*base.add(3 + 2)) };
     let mut alloc = S1_ADDR;
-    if unsafe { alloc_p(2, 2, (S1_SLOT as usize + 0xFFF) / 0x1000, &mut alloc) } != EFI_SUCCESS { return 6; }
+    if unsafe { alloc_p(2, 2, (S1_SLOT as usize + 0xFFF) / 0x1000, &mut alloc) } != EFI_SUCCESS {
+        unsafe { fail(st, base, "cannot reserve 0x100000 for s1_cpu") };
+        return 6;
+    }
 
     // Copy + zero BSS
     let dst = S1_ADDR as *mut u8;
