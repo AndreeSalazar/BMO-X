@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
+use crate::{supports_abi, BMO_ABI_VERSION};
 
 /// Magic constant â€” `b"BEF1"` (4 bytes LE).
 pub const BEF_MAGIC: bx_u32 = u32::from_le_bytes(*b"BEF1");
@@ -130,8 +131,8 @@ impl BefHeader {
             flags: BefFlags::EXECUTABLE.bits() | BefFlags::PIE.bits() | BefFlags::USES_BAREX.bits(),
             arch: BefArch::X86_64 as u8,
             _pad0: [0; 3],
-            abi_version_major: 1,
-            abi_version_minor: 0,
+            abi_version_major: BMO_ABI_VERSION.0,
+            abi_version_minor: BMO_ABI_VERSION.1,
             _pad1: [0; 6],
             entry_offset: 0,
             section_table_offset: 0,
@@ -143,6 +144,7 @@ impl BefHeader {
     pub fn is_valid(&self) -> bool {
         self.magic == BEF_MAGIC
             && self.version_major == BEF_VERSION_MAJOR
+            && supports_abi((self.abi_version_major, self.abi_version_minor))
             && self.section_count > 0
             && self.section_count < 256
     }

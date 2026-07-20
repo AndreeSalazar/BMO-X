@@ -6,11 +6,11 @@ use crate::ast::error::CobolError;
 
 type Result<T> = core::result::Result<T, CobolError>;
 
-// BMO x86-64 ABI arguments: RDI, RSI, RDX, RCX, R8, R9, R10.
+// BMO x86-64 SYSCALL arguments: RDI, RSI, RDX, R10, R8, R9.
+// RCX is overwritten by the CPU with the user return address.
 const REG_MOV: &[[u8; 3]] = &[
     [0x48, 0x89, 0xC7], [0x48, 0x89, 0xC6], [0x48, 0x89, 0xC2],
-    [0x48, 0x89, 0xC1], [0x49, 0x89, 0xC0], [0x49, 0x89, 0xC1],
-    [0x49, 0x89, 0xC2],
+    [0x49, 0x89, 0xC2], [0x49, 0x89, 0xC0], [0x49, 0x89, 0xC1],
 ];
 
 pub fn compile_to_bef_bytes(program: &CobolProgram) -> Result<Vec<u8>> {

@@ -3,6 +3,7 @@ rustflags = [
   "-C", "link-arg=-T",
   "-C", "link-arg=kernel/linker.ld",
   "-C", "relocation-model=static",
+  "-C", "no-redzone=yes",
   "-C", "target-feature=+crt-static",
   "-C", "linker=rust-lld",
 ]

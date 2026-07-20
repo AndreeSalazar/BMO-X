@@ -47,11 +47,17 @@ impl SyscallResult {
     pub fn code(&self) -> u32 {
         self.0 as u32
     }
+    pub fn flags(&self) -> u32 {
+        (self.0 >> 32) as u32
+    }
     pub fn value(&self) -> u64 {
         self.1
     }
     pub fn is_ok(&self) -> bool {
-        self.0 == 0
+        self.code() == 0
+    }
+    pub fn status(&self) -> crate::fundamentals::status::BmoStatus {
+        crate::fundamentals::status::BmoStatus::from_registers(self.0, self.1)
     }
 }
 

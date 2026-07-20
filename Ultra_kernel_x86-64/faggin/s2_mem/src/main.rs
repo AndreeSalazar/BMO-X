@@ -357,7 +357,22 @@ fn pci_scan(ctx: &mut boot_context::BootContext, acpi: &AcpiInfo) {
 
 // ── LAPIC ─────────────────────────────────────────────────────────
 
-unsafe fn lapic_init() {
+fn pic_mask_all() {
+    // BMO uses LAPIC/IOAPIC. Keep the legacy 8259 from delivering stale
+    // firmware IRQs when Ring 0 eventually sets IF.
+    outb(0x21, 0xFF);
+    outb(0xA1, 0xFF);
+}
+
+#[inline]
+fn rdtsc() -> u64 {
+    let low: u32;
+    let high: u32;
+    unsafe { asm!("rdtsc", out("eax") low, out("edx") high, options(nomem, nostack)); }
+    ((high as u64) << 32) | low as u64
+}
+
+unsafe fn lapic_init(tsc_freq: u64) {
     let base = phys_to_virt(0xFEE00000);
     let sivr = (base as *mut u32).add(0x0F0 / 4).read_volatile() | 0x100;
     (base as *mut u32).add(0x0F0 / 4).write_volatile(sivr | 0xFF);
@@ -369,8 +384,17 @@ unsafe fn lapic_init() {
     outb(0x42, (11932 & 0xFF) as u8);
     outb(0x42, (11932 >> 8) as u8);
     outb(0x61, inb(0x61) | 1);
-    while inb(0x61) & 0x20 == 0 {}
     (base as *mut u32).add(0x380 / 4).write_volatile(0xFFFF_FFFF);
+    let started = rdtsc();
+    let timeout_ticks = (tsc_freq / 50).max(10_000_000);
+    while inb(0x61) & 0x20 == 0 {
+        if rdtsc().wrapping_sub(started) >= timeout_ticks {
+            (base as *mut u32).add(0x320 / 4).write_volatile(1 << 16);
+            serial_shared::puts("[s2_mem] LAPIC calibration timeout; timer masked\n");
+            return;
+        }
+        core::hint::spin_loop();
+    }
     let elapsed = 0xFFFF_FFFFu32.wrapping_sub((base as *mut u32).add(0x390 / 4).read_volatile());
     let hz = elapsed as u64 * 100;
     serial_shared::puts("[s2_mem] LAPIC ");
@@ -383,12 +407,17 @@ unsafe fn lapic_init() {
 // ── I/O APIC ──────────────────────────────────────────────────────
 
 unsafe fn ioapic_init(base: u64) {
-    let v = phys_to_virt(base) as *mut u32;
-    let ver = v.add(1).read_volatile();
+    let select = phys_to_virt(base) as *mut u32;
+    let window = (phys_to_virt(base) + 0x10) as *mut u32;
+    select.write_volatile(1);
+    let ver = window.read_volatile();
     let max = (ver >> 16) & 0xFF;
-    for i in 0..=max as usize {
-        v.add((0x10 / 4 + i * 2 + 1) as usize).write_volatile(0x00010000);
-        v.add((0x10 / 4 + i * 2) as usize).write_volatile(0);
+    for i in 0..=max {
+        let low = 0x10 + i * 2;
+        select.write_volatile(low + 1);
+        window.write_volatile(0);
+        select.write_volatile(low);
+        window.write_volatile(1 << 16);
     }
     serial_shared::puts("[s2_mem] I/O APIC all masked\n");
 }
@@ -403,7 +432,8 @@ unsafe fn hpet_init(base: u64) {
     serial_shared::dec(period as usize);
     serial_shared::puts(" fs\n");
     let cfg = v.add(1).read_volatile();
-    v.add(1).write_volatile(cfg | 3);
+    // Enable the main counter but do not claim legacy PIT/RTC routing.
+    v.add(1).write_volatile((cfg | 1) & !2);
     v.add(2).write_volatile(0);
 }
 
@@ -555,7 +585,8 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
 
     // 13. Device init (LAPIC, IOAPIC, HPET, i8042)
     //     phys_to_virt() now works because higher-half is mapped.
-    unsafe { lapic_init(); }
+    pic_mask_all();
+    unsafe { lapic_init(ctx.tsc_freq); }
     if let Some(ioapic_base) = acpi.ioapic {
         unsafe { ioapic_init(ioapic_base); }
     }

@@ -79,6 +79,12 @@ pub use values::time as values_time;
 /// VersiÃ³n del BMO ABI implementada por este kernel.
 pub const BMO_ABI_VERSION: (u8, u8) = (1, 0);
 
+/// Returns whether an artifact using `required` can run on this ABI.
+/// Major versions are incompatible; minor versions are additive.
+pub const fn supports_abi(required: (u8, u8)) -> bool {
+    required.0 == BMO_ABI_VERSION.0 && required.1 <= BMO_ABI_VERSION.1
+}
+
 /// Magic constant en headers BEF para identificar BMO ABI.
 pub const BMO_ABI_MAGIC: u32 = u32::from_le_bytes(*b"BMO1");
 

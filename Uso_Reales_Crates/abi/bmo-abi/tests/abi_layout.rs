@@ -54,6 +54,25 @@ fn bmo_status_layout() {
     assert!(ok.code == 0);
     let err = BmoStatus::err(5);
     assert!(err.code == 5);
+
+    let status = BmoStatus { code: 7, flags: 0xA5A5_5A5A, value: 0x1122_3344_5566_7788 };
+    let (rax, rdx) = status.into_registers();
+    assert_eq!(rax, 0xA5A5_5A5A_0000_0007);
+    assert_eq!(rdx, status.value);
+    assert_eq!(BmoStatus::from_registers(rax, rdx), status);
+}
+
+#[test]
+fn syscall_contract_is_distinct_from_native_calls() {
+    use bmo_abi::types::convention::*;
+    assert_eq!(GPR_ARG_COUNT, 7);
+    assert_eq!(SYSCALL_GPR_ARG_COUNT, 6);
+    assert_eq!(X86_64_SYSCALL_ARG_REGISTERS, &["rdi", "rsi", "rdx", "r10", "r8", "r9"]);
+
+    let result = bmo_abi::syscalls::SyscallResult(1_u64 << 32, 42);
+    assert!(result.is_ok());
+    assert_eq!(result.flags(), 1);
+    assert_eq!(result.status().value, 42);
 }
 
 #[test]

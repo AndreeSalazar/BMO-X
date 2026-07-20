@@ -184,6 +184,8 @@ fn shell_tasks() {
         crate::ring0::scheduler::current_tid() as u64,
         10,
     );
+    crate::ring0::dev::console::serial_write(" ticks=");
+    crate::ring0::dev::console::serial_write_u64(crate::ring0::timer::ticks(), 10);
     crate::ring0::dev::console::serial_write("\n");
 }
 
@@ -273,7 +275,12 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::scheduler::init();
     crate::ring0::channel::init(ctx);
     crate::ring0::syscall::init();
-    s_log("[ring0] scheduler + BMO Channel + SYSCALL ready (BSP)");
+    let timer_ready = crate::ring0::timer::init(ctx);
+    if timer_ready {
+        s_log("[ring0] scheduler + BMO Channel + SYSCALL + LAPIC tick ready (BSP)");
+    } else {
+        s_log("[ring0] WARNING: LAPIC tick unavailable; scheduler remains cooperative");
+    }
 
     // Populate the BMO CPU profile (Ryzen 5 5600X topology + errata).
     // This detects CPUID, SMT/CCX layout, cache hierarchy, TSC freq,
@@ -326,6 +333,10 @@ pub fn main(ctx: &mut BootContext) {
     phase1_ui(ctx);
     s_log("[ring0] boot complete");
     s_log("[ring0] BMO: Ok Ready");
+
+    if timer_ready {
+        crate::ring0::timer::enable();
+    }
 
     run_shell(ctx);
 }

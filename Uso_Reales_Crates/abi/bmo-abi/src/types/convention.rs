@@ -8,6 +8,13 @@ use crate::bmo_abi::primitives::{bx_u32, bx_u8};
 /// Number of GPR (General Purpose Register) argument slots.
 pub const GPR_ARG_COUNT: usize = 7;
 
+/// The privileged x86-64 syscall boundary is separate from native calls.
+/// `RCX` and `R11` are destroyed by the CPU, so argument four uses `R10`.
+pub const SYSCALL_GPR_ARG_COUNT: usize = 6;
+pub const X86_64_SYSCALL_ARG_REGISTERS: &[&str] =
+    &["rdi", "rsi", "rdx", "r10", "r8", "r9"];
+pub const X86_64_SYSCALL_RETURN_REGISTERS: &[&str] = &["rax", "rdx"];
+
 /// Red zone size in bytes below RSP.
 pub const RED_ZONE_BYTES: u32 = 256;
 

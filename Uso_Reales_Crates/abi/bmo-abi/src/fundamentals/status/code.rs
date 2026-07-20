@@ -67,6 +67,26 @@ impl BmoStatus {
     pub const fn has_flag(&self, flag: bx_u32) -> bool {
         (self.flags & flag) != 0
     }
+
+    /// Pack the fixed BMO x86-64 register representation:
+    /// `RAX[31:0] = code`, `RAX[63:32] = flags`, `RDX = value`.
+    #[inline(always)]
+    pub const fn into_registers(self) -> (bx_u64, bx_u64) {
+        (
+            (self.code as bx_u64) | ((self.flags as bx_u64) << 32),
+            self.value,
+        )
+    }
+
+    /// Decode the fixed BMO x86-64 register representation.
+    #[inline(always)]
+    pub const fn from_registers(rax: bx_u64, rdx: bx_u64) -> Self {
+        Self {
+            code: rax as bx_u32,
+            flags: (rax >> 32) as bx_u32,
+            value: rdx,
+        }
+    }
 }
 
 bitflags::bitflags! {

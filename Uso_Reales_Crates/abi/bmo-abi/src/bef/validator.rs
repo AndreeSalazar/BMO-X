@@ -212,6 +212,15 @@ fn validate_header(header: &BefHeader, bytes: &[u8], r: &mut ValidationResult) {
             header.version_minor, BEF_VERSION_MINOR
         ));
     }
+    if !crate::supports_abi((header.abi_version_major, header.abi_version_minor)) {
+        r.error(format!(
+            "unsupported BMO ABI {}.{} (runtime supports {}.{})",
+            header.abi_version_major,
+            header.abi_version_minor,
+            crate::BMO_ABI_VERSION.0,
+            crate::BMO_ABI_VERSION.1,
+        ));
+    }
     match header.arch {
         0x01 => {}
         0x00 => r.warn("arch is Reserved (0x00) — assuming x86-64"),
@@ -915,6 +924,18 @@ mod tests {
     fn validate_bad_magic() {
         let r = validate(&[0; 48]);
         assert!(!r.is_valid);
+    }
+
+    #[test]
+    fn validate_rejects_incompatible_bmo_abi() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        let mut bytes = b.build().unwrap();
+        bytes[16] = crate::BMO_ABI_VERSION.0.wrapping_add(1);
+
+        let r = validate(&bytes);
+        assert!(!r.is_valid);
+        assert!(r.issues.iter().any(|issue| issue.message.contains("unsupported BMO ABI")));
     }
 
     #[test]

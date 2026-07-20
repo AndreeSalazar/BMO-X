@@ -137,7 +137,11 @@ pub fn tick() -> Option<u32> {
             current.remaining_ticks -= 1;
             return None;
         }
-        Some(scheduler.schedule())
+        // Account for the expired quantum without changing the logical
+        // current task. The context-switch layer will commit that transition.
+        current.remaining_ticks = DEFAULT_QUANTUM_TICKS;
+        let next = scheduler.choose_next();
+        (next != scheduler.current).then_some(scheduler.tasks[next].tid)
     })
 }
 

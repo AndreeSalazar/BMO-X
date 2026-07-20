@@ -204,4 +204,19 @@ SYSCALL bmo_exit 42.
         expected.extend_from_slice(mov_eax);
         assert!(bef.windows(5).any(|w| w == &expected[..]), "BEF should contain mov eax, NR_PROC_EXIT for bmo_exit");
     }
+
+    #[test]
+    fn cobol_syscall_uses_r10_for_fourth_argument() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. SYSCALL-ABI.
+PROCEDURE DIVISION.
+SYSCALL bmo_wm_create_window 17, 34, 51, 68.
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        let mut expected = vec![0x48, 0xB8]; // mov rax, 68
+        expected.extend_from_slice(&68_u64.to_le_bytes());
+        expected.extend_from_slice(&[0x49, 0x89, 0xC2]); // mov r10, rax
+        assert!(bef.windows(expected.len()).any(|window| window == expected));
+    }
 }
