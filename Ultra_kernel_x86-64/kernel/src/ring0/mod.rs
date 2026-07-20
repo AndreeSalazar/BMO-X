@@ -11,6 +11,8 @@ pub mod dev {
     pub mod console;
     pub mod framebuffer;
 }
+pub mod mm;
 pub mod scheduler;
+pub mod spin;
 pub mod syscall;
 pub mod timer;

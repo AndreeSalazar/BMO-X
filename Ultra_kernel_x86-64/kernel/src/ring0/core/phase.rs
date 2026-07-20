@@ -121,6 +121,7 @@ fn shell_help() {
     s_log("  help         show this help");
     s_log("  info         dump BootContext fields");
     s_log("  tasks        show scheduler state");
+    s_log("  mem          frame allocator stats + vmm selftest");
     s_log("  fb           show framebuffer info");
     s_log("  splash       re-run boot splash animation");
     s_log("  bex          show native executable-loader status");
@@ -206,6 +207,23 @@ fn shell_bex() {
     s_log("[bex] next: storage input, Ring 3 pages, then iretq entry");
 }
 
+fn shell_mem() {
+    let (total, free) = crate::ring0::mm::phys::stats();
+    crate::ring0::dev::console::serial_write("[mem] frames free=");
+    crate::ring0::dev::console::serial_write_u64(free, 10);
+    crate::ring0::dev::console::serial_write(" total=");
+    crate::ring0::dev::console::serial_write_u64(total, 10);
+    crate::ring0::dev::console::serial_write(" (");
+    crate::ring0::dev::console::serial_write_u64(free * 4096 / (1024 * 1024), 10);
+    crate::ring0::dev::console::serial_write(" MiB free)\n");
+    dash_log("[mem] stats printed on serial");
+    if crate::ring0::mm::vmm::self_test() {
+        s_log("[mem] vmm selftest OK (alloc/map/translate/unmap/destroy)");
+    } else {
+        s_log("[mem] vmm selftest FAILED");
+    }
+}
+
 fn shell_panic() -> ! {
     s_log("[shell] triggering test panic...");
     panic!("intentional panic from serial shell");
@@ -240,6 +258,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_info(ctx);
         } else if cmd == b"tasks" {
             shell_tasks();
+        } else if cmd == b"mem" {
+            shell_mem();
         } else if cmd == b"fb" {
             shell_fb();
         } else if cmd == b"splash" {
@@ -273,6 +293,14 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write("\n");
 
     crate::ring0::scheduler::init();
+    crate::ring0::mm::phys::init(ctx);
+    crate::ring0::mm::vmm::init();
+    let (frames_total, frames_free) = crate::ring0::mm::phys::stats();
+    crate::ring0::dev::console::serial_write("[ring0] mm ready: frames free=");
+    crate::ring0::dev::console::serial_write_u64(frames_free, 10);
+    crate::ring0::dev::console::serial_write("/");
+    crate::ring0::dev::console::serial_write_u64(frames_total, 10);
+    crate::ring0::dev::console::serial_write("\n");
     crate::ring0::channel::init(ctx);
     crate::ring0::syscall::init();
     let timer_ready = crate::ring0::timer::init(ctx);
