@@ -77,6 +77,7 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     let flags = read_u32(bytes, 8).ok_or(BexError::TooSmall)?;
     let arch = *bytes.get(12).ok_or(BexError::TooSmall)?;
     let abi_major = *bytes.get(16).ok_or(BexError::TooSmall)?;
+    let abi_minor = *bytes.get(17).ok_or(BexError::TooSmall)?;
     let entry_offset = read_u64(bytes, 24).ok_or(BexError::TooSmall)?;
     let section_table_offset = read_u64(bytes, 32).ok_or(BexError::TooSmall)?;
     let section_count = read_u32(bytes, 40).ok_or(BexError::TooSmall)? as usize;
@@ -86,7 +87,9 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     if arch != BEX_ARCH_X86_64 {
         return Err(BexError::UnsupportedArchitecture);
     }
-    if abi_major != 1 {
+    let supported_abi = (abi_major == 1 && abi_minor == 0)
+        || (abi_major == 2 && abi_minor == 0);
+    if !supported_abi {
         return Err(BexError::AbiMismatch);
     }
     if flags & BEX_FLAG_EXECUTABLE == 0 {

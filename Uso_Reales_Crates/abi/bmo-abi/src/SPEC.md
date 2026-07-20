@@ -163,7 +163,21 @@ tamaño en tiempo de compilación. 34 aserciones activas:
 
 ---
 
-## 3. Syscalls (0x100..=0x1FF)
+## 3. BMO ABI v2: tres syscalls
+
+| Numero | Nombre | Responsabilidad |
+|--------|--------|-----------------|
+| 0x00 | `BMO_INVOKE` | Control sincrono sobre una capability |
+| 0x01 | `BMO_CHANNEL_KICK` | Notificar trabajo publicado en BMO Channel |
+| 0x02 | `BMO_WAIT` | Bloquear hasta cambio de secuencia o deadline |
+
+Filesystem, red, audio, input, compositor y GPU son servicios accesibles por
+capabilities y BMO Channel. No agregan nuevas entradas privilegiadas.
+
+### ABI v1 legacy (0x100..=0x1FF)
+
+Esta tabla se conserva solamente para ejecutar y migrar BEF/BEX ABI 1.0. Los
+productores nuevos deben emitir exclusivamente las tres primitivas v2.
 
 | Rango | Familia |
 |-------|---------|
@@ -318,10 +332,9 @@ El loader de BEF salta a `_bmo_start` después de:
 
 ## 9. Garantías
 
-1. **ABI estable dentro de la misma versión mayor**: un BEF v1.x carga en
-   cualquier kernel con BMO_ABI_VERSION 1.y.
-2. **No se agregan syscalls en un parche (1.0 → 1.1)**, solo en minor
-   (1.x → 1.(x+1)) con deprecation warning.
+1. **ABI v2 estable**: los tres números core no cambian dentro de v2.x.
+2. **Migración gradual**: el kernel v2 acepta BEX ABI 1.0 temporalmente;
+   nuevos productores escriben ABI 2.0.
 3. **Handles son procesos-locales**: un handle de un proceso no es válido
    en otro (salvo vía IPC explícito).
 4. **Strings son UTF-8 válido obligatorio**. Una función que recibe un

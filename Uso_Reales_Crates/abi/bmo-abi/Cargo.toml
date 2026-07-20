@@ -1,12 +1,12 @@
 ﻿[package]
 name = "bmo-abi"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
 authors = ["BMO Project"]
 description = "BMO ABI — types, syscall definitions, interfaces (foundation layer)"
 
 [features]
-# BMO v1 is deliberately tuned for its native Zen 3 x86-64 target. A
+# BMO v2 is deliberately tuned for its native Zen 3 x86-64 target. A
 # machine feature selects the physical deployment profile; both currently
 # share the same binary ABI baseline.
 default = ["cpu-ryzen-5-5600x"]

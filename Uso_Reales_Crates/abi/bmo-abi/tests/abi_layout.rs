@@ -76,6 +76,14 @@ fn syscall_contract_is_distinct_from_native_calls() {
 }
 
 #[test]
+fn abi_v2_keeps_v1_as_migration_input() {
+    assert_eq!(bmo_abi::BMO_ABI_VERSION, (2, 0));
+    assert!(bmo_abi::supports_abi((2, 0)));
+    assert!(bmo_abi::supports_abi((1, 0)));
+    assert!(!bmo_abi::supports_abi((3, 0)));
+}
+
+#[test]
 fn bmo_string_create() {
     use bmo_abi::fundamentals::string::BmoString;
     let s = BmoString::from_string(alloc::string::String::from("hello"));

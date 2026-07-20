@@ -30,6 +30,10 @@
 mod generated;
 pub use generated::*;
 
+/// Minimal BMO ABI v2 kernel surface. The generated table above is retained
+/// only while v1 producers and runtimes are migrated.
+pub mod v2;
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Syscall wrappers (x86_64). Arquitectura-específicos.
 //  Cuando se añada ARM: arch/aarch64.rs, arch/riscv64.rs, etc.

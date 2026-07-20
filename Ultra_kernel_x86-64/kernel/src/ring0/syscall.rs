@@ -8,6 +8,14 @@ use core::arch::{asm, naked_asm};
 // Minimal no-alloc view of the canonical bmo-abi syscall contract. Keeping
 // these values here avoids linking the full alloc-using BEF/ABI implementation
 // into Ring 0; build.ps1 rejects values that drift from bmo-abi.
+const NR_INVOKE: u32 = 0x00;
+const NR_CHANNEL_KICK: u32 = 0x01;
+const NR_WAIT: u32 = 0x02;
+const CURRENT_TASK: u64 = 0xFFFF_FFFF_FFFF_FFFE;
+const TASK_OP_GET_PID: u64 = 0x01;
+const TASK_OP_GET_TID: u64 = 0x02;
+const TASK_OP_YIELD: u64 = 0x03;
+const TASK_OP_EXIT: u64 = 0x04;
 const NR_PROC_GET_PID: u32 = 0x182;
 const NR_PROC_GET_TID: u32 = 0x183;
 const NR_PROC_YIELD: u32 = 0x184;
@@ -140,9 +148,26 @@ fn unsupported() -> BmoStatus {
     BmoStatus::err(ERROR_UNSUPPORTED)
 }
 
+fn invoke(frame: &SyscallFrame) -> BmoStatus {
+    if frame.arg0 != CURRENT_TASK {
+        return unsupported();
+    }
+    match frame.arg1 {
+        TASK_OP_GET_PID => BmoStatus::ok_value(crate::ring0::scheduler::current_pid() as u64),
+        TASK_OP_GET_TID => BmoStatus::ok_value(crate::ring0::scheduler::current_tid() as u64),
+        // Both operations require a real context-switch/termination path.
+        TASK_OP_YIELD | TASK_OP_EXIT => unsupported(),
+        _ => unsupported(),
+    }
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn dispatch(frame: &SyscallFrame) -> BmoStatus {
     match frame.number as u32 {
+        NR_INVOKE => invoke(frame),
+        // Recognized V2 boundaries. They become operational only after
+        // capability-backed channels and scheduler blocking exist.
+        NR_CHANNEL_KICK | NR_WAIT => unsupported(),
         NR_PROC_GET_PID => BmoStatus::ok_value(crate::ring0::scheduler::current_pid() as u64),
         NR_PROC_GET_TID | NR_THREAD_SELF => {
             BmoStatus::ok_value(crate::ring0::scheduler::current_tid() as u64)

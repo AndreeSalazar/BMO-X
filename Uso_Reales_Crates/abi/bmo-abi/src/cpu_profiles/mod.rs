@@ -22,7 +22,7 @@ pub const ACTIVE: CpuProfile = CpuProfile::Ryzen5_5600X;
 pub const ACTIVE: CpuProfile = CpuProfile::X86_64Zen3;
 
 #[cfg(not(feature = "cpu-x86-64-zen3"))]
-compile_error!("bmo-abi v1 requires an explicit supported CPU profile");
+compile_error!("bmo-abi v2 requires an explicit supported CPU profile");
 
 #[cfg(all(feature = "cpu-ryzen-5-5600x", feature = "cpu-epyc-zen3"))]
 compile_error!("select exactly one BMO machine profile");
