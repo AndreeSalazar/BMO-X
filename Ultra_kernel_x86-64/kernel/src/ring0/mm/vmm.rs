@@ -44,6 +44,13 @@ pub fn kernel_pml4() -> u64 {
     unsafe { KERNEL_PML4 }
 }
 
+/// Load CR3 with another address space. Only safe while running on
+/// kernel-owned mappings (physmap / identity), which exist in every
+/// address space the process loader creates.
+pub fn switch_to(pml4: u64) {
+    unsafe { core::arch::asm!("mov cr3, {}", in(reg) pml4, options(nostack)) };
+}
+
 /// Page-table frame as a mutable 512-entry array, through the physmap.
 fn table(phys: u64) -> &'static mut [u64; 512] {
     unsafe { &mut *(phys_to_virt(phys) as *mut [u64; 512]) }

@@ -15,9 +15,10 @@ const BEX_SECTION_SIZE: usize = 48;
 const BEX_VERSION_MAJOR: u16 = 1;
 const BEX_ARCH_X86_64: u8 = 0x01;
 const BEX_FLAG_EXECUTABLE: u32 = 1 << 0;
-const SECTION_CODE: u8 = 0x01;
-const SECTION_BSS: u8 = 0x04;
-const SECTION_FLAG_EXEC: u32 = 1 << 2;
+pub const SECTION_CODE: u8 = 0x01;
+pub const SECTION_BSS: u8 = 0x04;
+pub const SECTION_FLAG_EXEC: u32 = 1 << 2;
+pub const SECTION_FLAG_WRITE: u32 = 1 << 1;
 
 /// The first BEX process supports a compact, auditable section table.
 pub const MAX_BEX_SECTIONS: usize = 16;

@@ -47,6 +47,9 @@ pub struct Task {
     pub wait_deadline: u64,
     pub is_user: bool,
     pub cr3: u64,
+    /// Top of the task's kernel stack (traps from Ring 3 land here via
+    /// TSS.RSP0, and the SYSCALL entry reloads it from PerCpu).
+    pub kernel_stack_top: u64,
 }
 
 impl Task {
@@ -63,6 +66,7 @@ impl Task {
         wait_deadline: 0,
         is_user: false,
         cr3: 0,
+        kernel_stack_top: 0,
     };
 }
 
@@ -184,6 +188,18 @@ fn schedule_locked(s: &mut Scheduler) {
     s.tasks[next].remaining_ticks = DEFAULT_QUANTUM_TICKS;
     s.current = next;
     percpu::set_trap_rsp(next_rsp);
+    // Address space + Ring 3 trap landing pads follow the selected task.
+    // Kernel code keeps running through the switch because every user
+    // address space shares the kernel half and the identity map.
+    let next_task = s.tasks[next];
+    let next_cr3 = if next_task.is_user { next_task.cr3 } else { mm::vmm::kernel_pml4() };
+    if next_cr3 != mm::vmm::read_cr3() {
+        mm::vmm::switch_to(next_cr3);
+    }
+    if next_task.is_user {
+        crate::ring0::proc::set_tss_rsp0(next_task.kernel_stack_top);
+        percpu::set_syscall_stack_top(next_task.kernel_stack_top);
+    }
     s.reap();
 }
 
@@ -250,6 +266,42 @@ pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
         wait_deadline: 0,
         is_user: false,
         cr3: 0,
+        kernel_stack_top: stack_top,
+    };
+    Some(tid)
+}
+
+/// Register a Ring 3 task whose initial context was fabricated by the
+/// process loader. `kernel_stack` = the trap/syscall landing stack,
+/// `cr3` = the user address space. Returns the new TID.
+pub fn spawn_user(
+    pid: u32,
+    context_rsp: u64,
+    kernel_stack_phys: u64,
+    kernel_stack_pages: u64,
+    kernel_stack_top: u64,
+    cr3: u64,
+    priority: u8,
+) -> Option<u32> {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    let index = s.tasks.iter().position(|t| t.state == TaskState::Empty)?;
+    let tid = s.next_tid;
+    s.next_tid = s.next_tid.wrapping_add(1).max(2);
+    s.tasks[index] = Task {
+        tid,
+        pid,
+        state: TaskState::Ready,
+        priority: priority.min(31),
+        remaining_ticks: DEFAULT_QUANTUM_TICKS,
+        context_rsp,
+        stack_phys: kernel_stack_phys,
+        stack_pages: kernel_stack_pages,
+        wait_key: 0,
+        wait_deadline: 0,
+        is_user: true,
+        cr3,
+        kernel_stack_top,
     };
     Some(tid)
 }

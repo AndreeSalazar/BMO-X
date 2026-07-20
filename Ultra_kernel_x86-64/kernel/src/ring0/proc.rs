@@ -1,0 +1,150 @@
+//! Ring 3 process creation from BEX images (F2).
+//!
+//! Pipeline: BootContext payload → `bex::inspect` (validated mapping plan)
+//! → fresh user address space → frames copied/zeroed per section → user
+//! stack → 16 BMO Channel estuaries mapped U/S → fabricated Ring 3 trap
+//! frame → `scheduler::spawn_user`. The first timer tick after
+//! `timer::enable()` preempts the shell and enters CPL3 via iretq.
+//!
+//! v1 deliberately keeps the section leaf frames alive for the whole life
+//! of the system: the single init process does not exit-reclaim (that is
+//! part of the EXIT hardening work, with per-task allocation lists).
+
+use boot_context::BootContext;
+
+use crate::ring0::bex;
+use crate::ring0::channel;
+use crate::ring0::mm::{self, phys, vmm};
+use crate::ring0::scheduler;
+use crate::ring0::trap;
+
+const USER_STACK_PAGES: u64 = 16; // 64 KiB
+const KERNEL_STACK_PAGES: u64 = 2; // 8 KiB trap/syscall landing
+
+static mut TSS_PTR: u64 = 0;
+
+/// Capture the TSS location from the BootContext (identity-mapped).
+pub fn init(ctx: &BootContext) {
+    unsafe { TSS_PTR = ctx.tss_ptr };
+}
+
+/// Update TSS.RSP0: the kernel stack the CPU switches to when Ring 3 code
+/// of the *current* task takes an interrupt. Called at every switch into a
+/// user task.
+pub fn set_tss_rsp0(top: u64) {
+    let tss = unsafe { TSS_PTR };
+    if tss == 0 {
+        return;
+    }
+    unsafe {
+        ((tss + 4) as *mut u32).write_volatile(top as u32);
+        ((tss + 8) as *mut u32).write_volatile((top >> 32) as u32);
+    }
+}
+
+fn log(msg: &str) {
+    crate::ring0::dev::console::serial_write(msg);
+}
+
+/// Load the init process from the BootContext Ring 3 payload, if one was
+/// reserved by the boot chain. Returns the new TID. With no payload this
+/// is a no-op so boot stays exactly as before.
+pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
+    if ctx.ring3_payload_phys == 0 || ctx.ring3_payload_size < 48 {
+        log("[proc] no ring3 payload; staying in Ring 0 shell\n");
+        return None;
+    }
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            mm::phys_to_virt(ctx.ring3_payload_phys) as *const u8,
+            ctx.ring3_payload_size as usize,
+        )
+    };
+    let plan = match bex::inspect(bytes) {
+        Ok(p) => p,
+        Err(_) => {
+            log("[proc] FATAL: payload failed BEX admission\n");
+            return None;
+        }
+    };
+    let aspace = vmm::new_address_space()?;
+
+    // Sections: assigned sequentially from USER_IMAGE_BASE, honoring each
+    // section's alignment. entry_offset is relative to the Code section.
+    let mut va_cursor = vmm::USER_IMAGE_BASE;
+    let mut entry_va: u64 = 0;
+    for i in 0..plan.section_count {
+        let s = plan.sections[i];
+        let align = s.alignment as u64;
+        va_cursor = (va_cursor + align - 1) & !(align - 1);
+        let va_start = va_cursor;
+        let pages = (s.mem_size + mm::PAGE - 1) / mm::PAGE;
+        let writable = s.flags & bex::SECTION_FLAG_EXEC == 0;
+        for p in 0..pages {
+            let frame = phys::alloc_frame()?;
+            phys::zero_frame(frame);
+            let chunk = p * mm::PAGE;
+            if chunk < s.file_size {
+                let n = (s.file_size - chunk).min(mm::PAGE) as usize;
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        bytes.as_ptr().add((s.file_offset + chunk) as usize),
+                        mm::phys_to_virt(frame) as *mut u8,
+                        n,
+                    );
+                }
+            }
+            if vmm::map_page(aspace, va_start + p * mm::PAGE, frame, true, writable).is_err() {
+                log("[proc] FATAL: section map failed\n");
+                return None;
+            }
+        }
+        if s.kind == bex::SECTION_CODE {
+            entry_va = va_start + plan.entry_offset;
+        }
+        va_cursor = va_start + pages * mm::PAGE;
+    }
+    if entry_va == 0 {
+        log("[proc] FATAL: no entry point\n");
+        return None;
+    }
+
+    // User stack (64 KiB) just below USER_STACK_TOP.
+    for p in 0..USER_STACK_PAGES {
+        let frame = phys::alloc_frame()?;
+        phys::zero_frame(frame);
+        let va = vmm::USER_STACK_TOP - (p + 1) * mm::PAGE;
+        if vmm::map_page(aspace, va, frame, true, true).is_err() {
+            log("[proc] FATAL: stack map failed\n");
+            return None;
+        }
+    }
+
+    // The 16 BMO Channel estuaries, shared U/S with Ring 0.
+    for i in 0..boot_context::MAX_CHANNEL_PAGES {
+        let va = vmm::CHANNEL_VA_BASE + (i as u64) * mm::PAGE;
+        if vmm::map_page(aspace, va, channel::page_phys(i), true, true).is_err() {
+            log("[proc] FATAL: channel map failed\n");
+            return None;
+        }
+    }
+
+    // Kernel landing stack + fabricated Ring 3 context.
+    let kf0 = phys::alloc_frame()?;
+    let kf1 = match phys::alloc_frame() {
+        Some(f) => f,
+        None => {
+            phys::free_frame(kf0);
+            return None;
+        }
+    };
+    let kframes = [kf0, kf1];
+    let kstack_top = mm::phys_to_virt(kframes[0]) + KERNEL_STACK_PAGES * mm::PAGE;
+    let context = unsafe { trap::fabricate(kstack_top, entry_va, 0, true, vmm::USER_STACK_TOP) };
+
+    let tid = scheduler::spawn_user(1, context, kframes[0], KERNEL_STACK_PAGES, kstack_top, aspace, 0)?;
+    log("[proc] init.bex admitted: Ring 3 entry at 0x");
+    crate::ring0::dev::console::serial_write_u64(entry_va, 16);
+    log("\n");
+    Some(tid)
+}

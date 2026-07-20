@@ -21,6 +21,14 @@ pub fn init(ctx: &mut BootContext) {
     }
 }
 
+/// Physical address of a shared channel page (identity-mapped kernel
+/// statics, so the symbol address IS the physical address). Used by the
+/// process loader to map the estuaries into a Ring 3 address space.
+pub fn page_phys(index: usize) -> u64 {
+    assert!(index < MAX_CHANNEL_PAGES);
+    unsafe { core::ptr::addr_of!(CHANNEL_PAGES[index]) as u64 }
+}
+
 pub fn service_all() -> usize {
     let mut total = 0;
     for index in 0..MAX_CHANNEL_PAGES {

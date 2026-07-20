@@ -93,6 +93,14 @@ pub fn set_trap_rsp(rsp: u64) {
     unsafe { PER_CPUS[0].trap_rsp = rsp; }
 }
 
+/// Point the SYSCALL entry at the running task's kernel stack. The
+/// scheduler updates this when it switches to a user task; syscalls only
+/// ever arrive from the task currently on the CPU, so mid-dispatch updates
+/// only affect the next entry.
+pub fn set_syscall_stack_top(top: u64) {
+    unsafe { PER_CPUS[0].syscall_stack_top = top; }
+}
+
 pub fn cpu_count_online() -> usize {
     ONLINE.load(Ordering::Acquire)
 }

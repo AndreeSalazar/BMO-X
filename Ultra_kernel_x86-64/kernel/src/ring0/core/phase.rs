@@ -364,6 +364,16 @@ pub fn main(ctx: &mut BootContext) {
     // The parser is allocation-free so it is safe before the process allocator.
     crate::ring0::bex::announce();
 
+    // F2: if the boot chain reserved a Ring 3 payload, admit it as the
+    // init process. With no payload this is a no-op and the boot flow is
+    // exactly the Ring 0 shell as before.
+    crate::ring0::proc::init(ctx);
+    if let Some(tid) = crate::ring0::proc::spawn_init(ctx) {
+        crate::ring0::dev::console::serial_write("[ring0] Ring 3 init task ready, tid=");
+        crate::ring0::dev::console::serial_write_u64(tid as u64, 10);
+        crate::ring0::dev::console::serial_write("\n");
+    }
+
     // CPU identity detection (CPUID leaf 0, 1, 0x80000002-04)
     let cpu = crate::ring0::cpu::detect_cpu();
     let cpu_line = match cpu.vendor {
