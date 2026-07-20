@@ -7,6 +7,7 @@
 /// ABI.
 
 pub const MAGIC: u64 = 0x464F_5343_424F_4F54; // "FOSCBOOT"
+pub const VERSION: u32 = 3;
 pub const MAX_MEMORY_ENTRIES: usize = 64;
 pub const MAX_STAGES: usize = 13; // 12 Faggin stages + kernel
 pub const KERNEL_STAGE_INDEX: usize = MAX_STAGES - 1;
@@ -88,8 +89,15 @@ pub struct BootContext {
     // 3 = Log, 4..15 = available for custom estuaries.
     pub channel_pages: [u64; MAX_CHANNEL_PAGES],
 
+    // Layer 10: first Ring 3 launch image and kernel-owned workspace.
+    // s1 reserves both ranges through UEFI before ExitBootServices.
+    pub ring3_payload_phys: u64,
+    pub ring3_payload_size: u64,
+    pub ring3_workspace_phys: u64,
+    pub ring3_workspace_size: u64,
+
     // ?????? Padding for future use ?????????????????????????????????????????????????????????????????????????????????
-    _reserved: [u64; 16],
+    _reserved: [u64; 12],
 }
 
 impl BootContext {
@@ -124,12 +132,16 @@ impl BootContext {
             kernel_stack: 0,
             ring3_stack: 0,
             channel_pages: [0; MAX_CHANNEL_PAGES],
-            _reserved: [0; 16],
+            ring3_payload_phys: 0,
+            ring3_payload_size: 0,
+            ring3_workspace_phys: 0,
+            ring3_workspace_size: 0,
+            _reserved: [0; 12],
         }
     }
 
     pub fn is_valid(&self) -> bool {
-        self.magic == MAGIC
+        self.magic == MAGIC && self.version == VERSION
     }
 
     pub fn set_memory_map(&mut self, entries: &[MemoryEntry]) {
