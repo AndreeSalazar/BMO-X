@@ -22,23 +22,23 @@ use crate::bmo_abi::fundamentals::handle::BmoHandle;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoFormat {
     /// Desconocido / inválido.
-    Unknown   = 0,
+    Unknown = 0,
     /// 8-bit rojo (1 byte/pixel). Usado para masks/alpha.
-    R8        = 1,
+    R8 = 1,
     /// 8-bit alpha.
-    A8        = 2,
+    A8 = 2,
     /// 16-bit RG (2 bytes/pixel). Poco común.
-    RG8       = 3,
+    RG8 = 3,
     /// 24-bit RGB (3 bytes/pixel, padded a 4 en memoria).
-    RGB24     = 4,
+    RGB24 = 4,
     /// 32-bit RGBA. Cada pixel 4 bytes: R, G, B, A.
-    RGBA8     = 5,
+    RGBA8 = 5,
     /// 32-bit BGRA. Cada pixel 4 bytes: B, G, R, A.
-    BGRA8     = 6,
+    BGRA8 = 6,
     /// 32-bit ARGB (Windows style).
-    ARGB8     = 7,
+    ARGB8 = 7,
     /// 32-bit ABGR.
-    ABGR8     = 8,
+    ABGR8 = 8,
 }
 
 impl BmoFormat {
@@ -56,7 +56,10 @@ impl BmoFormat {
     /// `true` si el formato tiene canal alpha.
     #[inline]
     pub fn has_alpha(self) -> bool {
-        matches!(self, Self::A8 | Self::RGBA8 | Self::BGRA8 | Self::ARGB8 | Self::ABGR8)
+        matches!(
+            self,
+            Self::A8 | Self::RGBA8 | Self::BGRA8 | Self::ARGB8 | Self::ABGR8
+        )
     }
 }
 
@@ -67,9 +70,9 @@ impl BmoFormat {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoSurfaceKind {
     /// Memoria CPU (accesible directamente).
-    Cpu  = 0,
+    Cpu = 0,
     /// Memoria GPU (DMA-backed).
-    Gpu  = 1,
+    Gpu = 1,
     /// Lazy: la surface se computa on-demand (shader, blur, etc.).
     Lazy = 2,
 }
@@ -79,11 +82,11 @@ pub enum BmoSurfaceKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoPresentMode {
     /// Copy: el kernel copia la surface a la ventana.
-    Copy   = 0,
+    Copy = 0,
     /// Blit: el kernel blitea con alpha.
-    Blit   = 1,
+    Blit = 1,
     /// Flip: el kernel hace page-flip (efficient, requiere GPU).
-    Flip   = 2,
+    Flip = 2,
 }
 
 /// Info para crear una surface.

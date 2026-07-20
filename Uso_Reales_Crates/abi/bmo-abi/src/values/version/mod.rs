@@ -3,9 +3,9 @@
 //! Reemplaza la práctica de C de pasar `u32 major << 16 | minor << 8 | patch`
 //! con un tipo explícito que tiene operaciones de comparación semántica.
 
-use crate::bmo_abi::primitives::bx_u32;
 use crate::bmo_abi::error_code;
 use crate::bmo_abi::fundamentals::status::BmoStatus;
+use crate::bmo_abi::primitives::bx_u32;
 
 /// Semantic version: major.minor.patch (12 bytes).
 ///
@@ -25,10 +25,18 @@ pub struct BmoVersion {
 const _: () = assert!(core::mem::size_of::<BmoVersion>() == 12);
 
 impl BmoVersion {
-    pub const ZERO: Self = Self { major: 0, minor: 0, patch: 0 };
+    pub const ZERO: Self = Self {
+        major: 0,
+        minor: 0,
+        patch: 0,
+    };
 
     pub const fn new(major: bx_u32, minor: bx_u32, patch: bx_u32) -> Self {
-        Self { major, minor, patch }
+        Self {
+            major,
+            minor,
+            patch,
+        }
     }
 
     /// True if this version is compatible with `required`.

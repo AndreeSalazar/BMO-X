@@ -17,9 +17,13 @@ pub struct BmoCap(pub bx_u64);
 const _BMO_CAP_SIZE: () = assert!(core::mem::size_of::<BmoCap>() == 8);
 
 impl BmoCap {
-    pub const fn new(id: bx_u64) -> Self { Self(id) }
+    pub const fn new(id: bx_u64) -> Self {
+        Self(id)
+    }
 
-    pub const fn as_u64(&self) -> bx_u64 { self.0 }
+    pub const fn as_u64(&self) -> bx_u64 {
+        self.0
+    }
 }
 
 /// Conjunto de hasta 64 capacidades (bitset).
@@ -39,7 +43,9 @@ impl BmoCapSet {
     pub const EMPTY: Self = Self { bits: 0 };
     pub const ALL: Self = Self { bits: !0 };
 
-    pub const fn new() -> Self { Self { bits: 0 } }
+    pub const fn new() -> Self {
+        Self { bits: 0 }
+    }
 
     pub const fn has(&self, cap: BmoCap) -> bool {
         (self.bits & (1 << cap.0)) != 0
@@ -57,7 +63,9 @@ impl BmoCapSet {
         (self.bits & other.bits) == other.bits
     }
 
-    pub const fn bits(&self) -> bx_u64 { self.bits }
+    pub const fn bits(&self) -> bx_u64 {
+        self.bits
+    }
 }
 
 // ─── System capabilities (0..15 reserved) ─────────────────────────

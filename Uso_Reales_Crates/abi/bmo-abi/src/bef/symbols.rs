@@ -5,43 +5,43 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SymbolKind {
     /// Marcador (no apunta a nada).
-    NoType   = 0x00,
+    NoType = 0x00,
     /// Función.
     Function = 0x01,
     /// Dato (variable global, constante).
-    Object   = 0x02,
+    Object = 0x02,
     /// Sección entera (símbolo sintetizado).
-    Section  = 0x03,
+    Section = 0x03,
     /// Archivo de origen (debug).
-    File     = 0x04,
+    File = 0x04,
     /// TLS slot.
-    Tls      = 0x05,
+    Tls = 0x05,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SymbolBinding {
     /// Local — solo visible dentro del módulo.
-    Local    = 0x00,
+    Local = 0x00,
     /// Global — visible para linking dinámico.
-    Global   = 0x01,
+    Global = 0x01,
     /// Weak — global pero puede ser sobrescrito.
-    Weak     = 0x02,
+    Weak = 0x02,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SymbolVisibility {
     /// Default — visible según binding.
-    Default  = 0x00,
+    Default = 0x00,
     /// Hidden — global pero no exportable a otros módulos.
-    Hidden   = 0x01,
+    Hidden = 0x01,
     /// Internal — solo el linker lo ve.
     Internal = 0x02,
     /// Protected — visible global pero no preemptable.
@@ -122,7 +122,9 @@ impl<'a> SymbolTable<'a> {
 
     pub fn name_of(&self, sym: &Symbol) -> Option<&'a str> {
         let off = sym.name_off as usize;
-        if off + 2 > self.strings.len() { return None; }
+        if off + 2 > self.strings.len() {
+            return None;
+        }
         let len = u16::from_le_bytes(self.strings[off..off + 2].try_into().ok()?) as usize;
         let s = &self.strings[off + 2..off + 2 + len];
         core::str::from_utf8(s).ok()

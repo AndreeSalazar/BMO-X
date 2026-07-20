@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32};
+use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u8};
 
 /// Hash BLAKE3 256-bit de una sección.
 #[repr(C, align(8))]
@@ -37,7 +37,7 @@ impl SectionHash {
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SigAlgorithm {
-    None    = 0,
+    None = 0,
     Ed25519 = 1,
 }
 
@@ -94,7 +94,9 @@ pub fn verify_ed25519(_sig: &Ed25519Signature, _message: &[u8]) -> bool {
     // In dev, allow unsigned binaries (all-zeros signature).
     // Check if the signature is all zeros (unsigned).
     let is_unsigned = _sig.sig.iter().all(|&b| b == 0) && _sig.pubkey.iter().all(|&b| b == 0);
-    if is_unsigned { return true; }
+    if is_unsigned {
+        return true;
+    }
     // Signed binaries: cannot verify yet, reject.
     false
 }

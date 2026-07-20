@@ -31,43 +31,40 @@
 
 #![allow(dead_code)]
 
+pub mod blake3;
+pub mod exports;
 pub mod header;
-pub mod sections;
+pub mod imports;
+pub mod linker;
+pub mod loader;
 pub mod manifest;
-pub mod signing;
 pub mod relocations;
+pub mod sections;
+pub mod signing;
 pub mod symbols;
 pub mod tls;
-pub mod imports;
-pub mod exports;
-pub mod blake3;
-pub mod writer;
 pub mod validator;
-pub mod loader;
-pub mod linker;
+pub mod writer;
 
 // ─── Re-exports del loader canónico ─────────────────────────────────
 pub use header::{
-    BEF_MAGIC, BEF_VERSION_MAJOR, BEF_VERSION_MINOR,
-    BefMagic, BefFlags, BefArch, BefHeader,
+    BefArch, BefFlags, BefHeader, BefMagic, BEF_MAGIC, BEF_VERSION_MAJOR, BEF_VERSION_MINOR,
 };
 
 /// Versión del formato BEF como tupla `(major, minor)`.
 pub const BEF_VERSION: (u16, u16) = (BEF_VERSION_MAJOR, BEF_VERSION_MINOR);
 
 // ─── Re-exports de sections ─────────────────────────────────────────
-pub use sections::{
-    SectionKind, SectionFlags, SectionEntry, SectionTable,
-};
+pub use sections::{SectionEntry, SectionFlags, SectionKind, SectionTable};
 
 // ─── Re-exports de manifest, signing, relocations, symbols, etc ────
+pub use exports::ExportEntry;
+pub use imports::ImportEntry;
+pub use loader::{load, LoadedBef, LoadedSection};
 pub use manifest::Provenance;
-pub use signing::{SignatureHeader, SectionHash};
 pub use relocations::Relocation;
+pub use signing::{SectionHash, SignatureHeader};
 pub use symbols::Symbol;
 pub use tls::TlsTemplate;
-pub use imports::ImportEntry;
-pub use exports::ExportEntry;
-pub use writer::{BefBuilder, BefSection};
 pub use validator::validate;
-pub use loader::{load, LoadedBef, LoadedSection};
+pub use writer::{BefBuilder, BefSection};

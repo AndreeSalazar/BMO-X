@@ -222,7 +222,7 @@ Wrappers: `syscall0()` .. `syscall6()` en `syscalls/` (inline asm, `no_std`).
 ├──────────────────────────────────────┤
 │ Section data (alin. a 8..4096)       │
 ├──────────────────────────────────────┤
-│ Signature trailer (BLAKE3 hashes)     │
+│ Signature trailer (BLAKE3 hashes)    │
 └──────────────────────────────────────┘
 ```
 

@@ -7,8 +7,8 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::bef::imports::{ImportTable, ImportFlags};
 use super::registry::Registry;
+use crate::bmo_abi::bef::imports::{ImportFlags, ImportTable};
 
 /// Resultados de la resolución de imports.
 #[derive(Debug, Clone, Copy)]
@@ -57,7 +57,12 @@ pub fn resolve_imports(
         }
     }
 
-    ResolveResult { total, resolved, unresolved, weak }
+    ResolveResult {
+        total,
+        resolved,
+        unresolved,
+        weak,
+    }
 }
 
 /// Patchea `addr` (8 bytes LE) en `binding_data` en el offset correcto.
@@ -67,7 +72,9 @@ fn patch_binding_offset(
     binding_data: &mut [u8],
     binding_base: u64,
 ) {
-    if binding_offset == 0 { return; }
+    if binding_offset == 0 {
+        return;
+    }
     let rel = binding_offset.saturating_sub(binding_base);
     let start = rel as usize;
     if start + 8 <= binding_data.len() {

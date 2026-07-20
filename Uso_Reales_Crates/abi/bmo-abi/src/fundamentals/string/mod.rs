@@ -6,8 +6,8 @@
 //! - `BmoStr` — vista prestada (ptr + len), similar a `&str`.
 //! - `BmoString` — owned (ptr + len + capacity), similar a `String`.
 
-use alloc::string::String;
 use crate::bmo_abi::primitives::bx_u64;
+use alloc::string::String;
 
 // ─── BmoStr: string prestado (borrowed) ────────────────────────────
 
@@ -37,7 +37,10 @@ impl BmoStr {
 
     /// Create from a `&str`.
     pub fn from_str(s: &str) -> Self {
-        Self { ptr: s.as_ptr(), len: s.len() as bx_u64 }
+        Self {
+            ptr: s.as_ptr(),
+            len: s.len() as bx_u64,
+        }
     }
 
     /// Create from a Rust `&[u8]` (must be valid UTF-8).
@@ -45,7 +48,10 @@ impl BmoStr {
     /// # Safety
     /// Caller ensures bytes are valid UTF-8.
     pub unsafe fn from_bytes_unchecked(bytes: &[u8]) -> Self {
-        Self { ptr: bytes.as_ptr(), len: bytes.len() as bx_u64 }
+        Self {
+            ptr: bytes.as_ptr(),
+            len: bytes.len() as bx_u64,
+        }
     }
 
     pub fn as_slice(&self) -> &[u8] {
@@ -60,9 +66,15 @@ impl BmoStr {
         core::str::from_utf8_unchecked(self.as_slice())
     }
 
-    pub const fn len(&self) -> bx_u64 { self.len }
-    pub const fn is_empty(&self) -> bool { self.len == 0 }
-    pub const fn as_ptr(&self) -> *const u8 { self.ptr }
+    pub const fn len(&self) -> bx_u64 {
+        self.len
+    }
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    pub const fn as_ptr(&self) -> *const u8 {
+        self.ptr
+    }
 
     /// Compare with a `&str` (for convenience).
     pub fn eq_str(&self, other: &str) -> bool {
@@ -91,7 +103,11 @@ const _: () = assert!(core::mem::size_of::<BmoString>() == 24);
 
 impl BmoString {
     pub fn new() -> Self {
-        Self { ptr: core::ptr::null_mut(), len: 0, capacity: 0 }
+        Self {
+            ptr: core::ptr::null_mut(),
+            len: 0,
+            capacity: 0,
+        }
     }
 
     /// Create from a Rust `String`, transferring ownership.
@@ -125,11 +141,21 @@ impl BmoString {
         core::str::from_utf8_unchecked(self.as_slice())
     }
 
-    pub const fn len(&self) -> bx_u64 { self.len }
-    pub const fn capacity(&self) -> bx_u64 { self.capacity }
-    pub const fn is_empty(&self) -> bool { self.len == 0 }
-    pub const fn as_ptr(&self) -> *const u8 { self.ptr }
-    pub fn as_mut_ptr(&mut self) -> *mut u8 { self.ptr }
+    pub const fn len(&self) -> bx_u64 {
+        self.len
+    }
+    pub const fn capacity(&self) -> bx_u64 {
+        self.capacity
+    }
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    pub const fn as_ptr(&self) -> *const u8 {
+        self.ptr
+    }
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.ptr
+    }
 
     /// Drop the owned buffer (call when BMO ABI callee is done with it).
     ///
@@ -137,8 +163,7 @@ impl BmoString {
     /// Must only be called once. After this, the string is invalid.
     pub unsafe fn drop(&mut self) {
         if !self.ptr.is_null() {
-            let layout = core::alloc::Layout::from_size_align_unchecked(
-                self.capacity as usize, 1);
+            let layout = core::alloc::Layout::from_size_align_unchecked(self.capacity as usize, 1);
             alloc::alloc::dealloc(self.ptr, layout);
         }
         self.ptr = core::ptr::null_mut();
@@ -149,14 +174,19 @@ impl BmoString {
 
 impl Drop for BmoString {
     fn drop(&mut self) {
-        unsafe { self.drop(); }
+        unsafe {
+            self.drop();
+        }
     }
 }
 
 // ─── Constants ─────────────────────────────────────────────────────
 
 impl BmoStr {
-    pub const EMPTY: Self = Self { ptr: core::ptr::null(), len: 0 };
+    pub const EMPTY: Self = Self {
+        ptr: core::ptr::null(),
+        len: 0,
+    };
 }
 
 impl BmoString {

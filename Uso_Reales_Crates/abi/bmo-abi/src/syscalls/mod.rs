@@ -174,7 +174,15 @@ pub unsafe fn syscall5(nr: u32, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> 
 
 /// Syscall con 6 argumentos.
 #[inline(always)]
-pub unsafe fn syscall6(nr: u32, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64, a6: u64) -> SyscallResult {
+pub unsafe fn syscall6(
+    nr: u32,
+    a1: u64,
+    a2: u64,
+    a3: u64,
+    a4: u64,
+    a5: u64,
+    a6: u64,
+) -> SyscallResult {
     let code: u64;
     let value: u64;
     core::arch::asm!(

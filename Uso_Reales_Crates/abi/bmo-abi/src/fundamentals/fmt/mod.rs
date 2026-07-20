@@ -6,8 +6,8 @@
 //! Útil para logging en Ring 0 (donde no hay heap disponible) y para
 //! construir mensajes de error cortos sin dependencias.
 
-use crate::bmo_abi::primitives::bx_u64;
 use crate::bmo_abi::fundamentals::memory::BmoSlice;
+use crate::bmo_abi::primitives::bx_u64;
 
 const DEFAULT_CAPACITY: usize = 256;
 
@@ -47,9 +47,15 @@ impl BmoFormatter {
         BmoSlice::new(self.buf.as_ptr(), self.pos as bx_u64)
     }
 
-    pub fn len(&self) -> usize { self.pos }
-    pub fn is_empty(&self) -> bool { self.pos == 0 }
-    pub fn is_truncated(&self) -> bool { self.truncated }
+    pub fn len(&self) -> usize {
+        self.pos
+    }
+    pub fn is_empty(&self) -> bool {
+        self.pos == 0
+    }
+    pub fn is_truncated(&self) -> bool {
+        self.truncated
+    }
 
     /// Write a single byte.
     pub fn write_byte(&mut self, b: u8) {

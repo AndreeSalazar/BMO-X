@@ -3,7 +3,7 @@
 //! Define los IDs de reloj del sistema y operaciones asociadas.
 //! Reemplaza `clock_gettime` / `CLOCK_MONOTONIC` / etc. de POSIX.
 
-use crate::bmo_abi::values::time::{BmoInstant, BmoDuration};
+use crate::bmo_abi::values::time::{BmoDuration, BmoInstant};
 
 /// Identificador de reloj del sistema.
 #[repr(u32)]
@@ -46,7 +46,9 @@ pub fn sleep(duration: BmoDuration) {
     let start = BmoClockId::Monotonic.now();
     loop {
         let elapsed = BmoClockId::Monotonic.now().duration_since(start);
-        if elapsed >= duration { break; }
+        if elapsed >= duration {
+            break;
+        }
         core::hint::spin_loop();
     }
 }

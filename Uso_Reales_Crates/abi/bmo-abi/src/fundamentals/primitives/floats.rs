@@ -24,29 +24,32 @@ pub struct bx_f16(pub u16);
 
 impl bx_f16 {
     pub const ZERO: Self = Self(0x0000);
-    pub const ONE:  Self = Self(0x3C00);
-    pub const NAN:  Self = Self(0x7E00);
-    pub const INFINITY:     Self = Self(0x7C00);
+    pub const ONE: Self = Self(0x3C00);
+    pub const NAN: Self = Self(0x7E00);
+    pub const INFINITY: Self = Self(0x7C00);
     pub const NEG_INFINITY: Self = Self(0xFC00);
 
     /// Convierte un f16 (almacenado como `u16`) a `f32` por software.
     pub fn to_f32(self) -> f32 {
         let bits = self.0 as u32;
         let sign = (bits & 0x8000) << 16;
-        let exp  = (bits >> 10) & 0x1F;
+        let exp = (bits >> 10) & 0x1F;
         let mant = bits & 0x3FF;
         let f32_bits = match exp {
-            0  if mant == 0 => sign, // ±0
-            0  => {
+            0 if mant == 0 => sign, // ±0
+            0 => {
                 // subnormal — renormalizar
                 let mut m = mant;
                 let mut e: i32 = -14;
-                while m & 0x400 == 0 { m <<= 1; e -= 1; }
+                while m & 0x400 == 0 {
+                    m <<= 1;
+                    e -= 1;
+                }
                 m &= 0x3FF;
                 sign | (((e + 127) as u32) << 23) | (m << 13)
-            },
-            31 => sign | (0xFF << 23) | (mant << 13),  // inf/NaN
-            _  => sign | (((exp + 112) as u32) << 23) | (mant << 13),
+            }
+            31 => sign | (0xFF << 23) | (mant << 13), // inf/NaN
+            _ => sign | (((exp + 112) as u32) << 23) | (mant << 13),
         };
         f32::from_bits(f32_bits)
     }
@@ -55,7 +58,7 @@ impl bx_f16 {
     pub fn from_f32(v: f32) -> Self {
         let bits = v.to_bits();
         let sign = ((bits >> 31) & 0x1) as u16;
-        let exp  = ((bits >> 23) & 0xFF) as i32;
+        let exp = ((bits >> 23) & 0xFF) as i32;
         let mant = bits & 0x7FFFFF;
         let half = if exp == 0xFF {
             // Inf/NaN
@@ -66,8 +69,9 @@ impl bx_f16 {
             (sign << 15) | 0x7C00
         } else if exp < 113 {
             // Underflow → ±0 o subnormal
-            if exp < 103 { sign << 15 }
-            else {
+            if exp < 103 {
+                sign << 15
+            } else {
                 let m = (mant | 0x800000) >> ((113 - exp) as u32);
                 (sign << 15) | (m as u16 & 0x3FF)
             }

@@ -40,10 +40,14 @@ fn unlock() {
 }
 
 fn to_static(s: &str) -> &'static str {
-    if s.is_empty() { return ""; }
+    if s.is_empty() {
+        return "";
+    }
     let layout = core::alloc::Layout::from_size_align(s.len(), 1).unwrap();
     let ptr = unsafe { alloc::alloc::alloc(layout) };
-    if ptr.is_null() { return ""; }
+    if ptr.is_null() {
+        return "";
+    }
     unsafe {
         core::ptr::copy_nonoverlapping(s.as_ptr(), ptr, s.len());
         core::str::from_utf8_unchecked(core::slice::from_raw_parts(ptr, s.len()))
@@ -117,7 +121,9 @@ impl Registry {
 
     pub fn clear() {
         lock();
-        unsafe { SYMBOLS.clear(); }
+        unsafe {
+            SYMBOLS.clear();
+        }
         unlock();
     }
 
@@ -139,6 +145,10 @@ fn fnv1a_32(bytes: &[u8]) -> u32 {
 }
 
 fn eq_ci(a: &str, b: &str) -> bool {
-    if a.len() != b.len() { return false; }
-    a.bytes().zip(b.bytes()).all(|(x, y)| x.eq_ignore_ascii_case(&y))
+    if a.len() != b.len() {
+        return false;
+    }
+    a.bytes()
+        .zip(b.bytes())
+        .all(|(x, y)| x.eq_ignore_ascii_case(&y))
 }

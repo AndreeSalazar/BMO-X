@@ -1,4 +1,4 @@
-﻿//! BLAKE3 â€” implementaciÃ³n nativa no_std para BMO.
+//! BLAKE3 â€” implementaciÃ³n nativa no_std para BMO.
 //!
 //! Spec: https://github.com/BLAKE3-team/BLAKE3-specs (v20211102).
 //!
@@ -8,30 +8,34 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
 
 // â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const OUT_LEN: usize    = 32;
-const KEY_LEN: usize    = 32;
-const BLOCK_LEN: usize  = 64;
-const CHUNK_LEN: usize  = 1024;
+const OUT_LEN: usize = 32;
+const KEY_LEN: usize = 32;
+const BLOCK_LEN: usize = 64;
+const CHUNK_LEN: usize = 1024;
 
 // Flags
 const CHUNK_START: bx_u32 = 1 << 0;
-const CHUNK_END:   bx_u32 = 1 << 1;
-const PARENT:      bx_u32 = 1 << 2;
-const ROOT:        bx_u32 = 1 << 3;
+const CHUNK_END: bx_u32 = 1 << 1;
+const PARENT: bx_u32 = 1 << 2;
+const ROOT: bx_u32 = 1 << 3;
 
 // IV (idÃ©ntico a SHA-256)
 const IV: [bx_u32; 8] = [
-    0x6A09_E667, 0xBB67_AE85, 0x3C6E_F372, 0xA54F_F53A,
-    0x510E_527F, 0x9B05_688C, 0x1F83_D9AB, 0x5BE0_CD19,
+    0x6A09_E667,
+    0xBB67_AE85,
+    0x3C6E_F372,
+    0xA54F_F53A,
+    0x510E_527F,
+    0x9B05_688C,
+    0x1F83_D9AB,
+    0x5BE0_CD19,
 ];
 
 // PermutaciÃ³n de mensaje aplicada antes de cada ronda (6 veces).
-const MSG_PERMUTATION: [usize; 16] = [
-    2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8,
-];
+const MSG_PERMUTATION: [usize; 16] = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
 
 // â”€â”€â”€ G function + rounds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 #[inline(always)]
@@ -49,15 +53,15 @@ fn g(state: &mut [bx_u32; 16], a: usize, b: usize, c: usize, d: usize, mx: bx_u3
 #[inline(always)]
 fn round(state: &mut [bx_u32; 16], m: &[bx_u32; 16]) {
     // Column rounds
-    g(state, 0, 4,  8, 12, m[0],  m[1]);
-    g(state, 1, 5,  9, 13, m[2],  m[3]);
-    g(state, 2, 6, 10, 14, m[4],  m[5]);
-    g(state, 3, 7, 11, 15, m[6],  m[7]);
+    g(state, 0, 4, 8, 12, m[0], m[1]);
+    g(state, 1, 5, 9, 13, m[2], m[3]);
+    g(state, 2, 6, 10, 14, m[4], m[5]);
+    g(state, 3, 7, 11, 15, m[6], m[7]);
     // Diagonal rounds
-    g(state, 0, 5, 10, 15, m[8],  m[9]);
+    g(state, 0, 5, 10, 15, m[8], m[9]);
     g(state, 1, 6, 11, 12, m[10], m[11]);
-    g(state, 2, 7,  8, 13, m[12], m[13]);
-    g(state, 3, 4,  9, 14, m[14], m[15]);
+    g(state, 2, 7, 8, 13, m[12], m[13]);
+    g(state, 3, 4, 9, 14, m[14], m[15]);
 }
 
 #[inline]
@@ -77,28 +81,37 @@ fn compress(
     flags: bx_u32,
 ) -> [bx_u32; 16] {
     let mut state: [bx_u32; 16] = [
-        chaining[0], chaining[1], chaining[2], chaining[3],
-        chaining[4], chaining[5], chaining[6], chaining[7],
-        IV[0], IV[1], IV[2], IV[3],
+        chaining[0],
+        chaining[1],
+        chaining[2],
+        chaining[3],
+        chaining[4],
+        chaining[5],
+        chaining[6],
+        chaining[7],
+        IV[0],
+        IV[1],
+        IV[2],
+        IV[3],
         counter as bx_u32,
         (counter >> 32) as bx_u32,
         block_len,
         flags,
     ];
     let mut m = *block;
-    round(&mut state, &m);  // 1
+    round(&mut state, &m); // 1
     permute(&mut m);
-    round(&mut state, &m);  // 2
+    round(&mut state, &m); // 2
     permute(&mut m);
-    round(&mut state, &m);  // 3
+    round(&mut state, &m); // 3
     permute(&mut m);
-    round(&mut state, &m);  // 4
+    round(&mut state, &m); // 4
     permute(&mut m);
-    round(&mut state, &m);  // 5
+    round(&mut state, &m); // 5
     permute(&mut m);
-    round(&mut state, &m);  // 6
+    round(&mut state, &m); // 6
     permute(&mut m);
-    round(&mut state, &m);  // 7
+    round(&mut state, &m); // 7
 
     // XOR del state superior con el inferior (extended output truncado).
     for i in 0..8 {
@@ -113,9 +126,7 @@ fn words_from_bytes(bytes: &[u8; BLOCK_LEN]) -> [bx_u32; 16] {
     let mut out = [0u32; 16];
     for i in 0..16 {
         let off = i * 4;
-        out[i] = u32::from_le_bytes([
-            bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3],
-        ]);
+        out[i] = u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]]);
     }
     out
 }
@@ -147,7 +158,11 @@ impl ChunkState {
     }
 
     fn start_flag(&self) -> bx_u32 {
-        if self.blocks_compressed == 0 { CHUNK_START } else { 0 }
+        if self.blocks_compressed == 0 {
+            CHUNK_START
+        } else {
+            0
+        }
     }
 
     fn update(&mut self, mut input: &[u8]) {
@@ -163,8 +178,14 @@ impl ChunkState {
                     self.flags | self.start_flag(),
                 );
                 self.chaining = [
-                    new_state[0], new_state[1], new_state[2], new_state[3],
-                    new_state[4], new_state[5], new_state[6], new_state[7],
+                    new_state[0],
+                    new_state[1],
+                    new_state[2],
+                    new_state[3],
+                    new_state[4],
+                    new_state[5],
+                    new_state[6],
+                    new_state[7],
                 ];
                 self.blocks_compressed += 1;
                 self.block = [0; BLOCK_LEN];
@@ -186,12 +207,16 @@ impl ChunkState {
         for i in 0..16 {
             let off = i * 4;
             block_words[i] = u32::from_le_bytes([
-                self.block[off], self.block[off + 1],
-                self.block[off + 2], self.block[off + 3],
+                self.block[off],
+                self.block[off + 1],
+                self.block[off + 2],
+                self.block[off + 3],
             ]);
         }
         let mut flags = self.flags | self.start_flag() | CHUNK_END;
-        if is_root { flags |= ROOT; }
+        if is_root {
+            flags |= ROOT;
+        }
         let state = compress(
             &self.chaining,
             &block_words,
@@ -199,26 +224,38 @@ impl ChunkState {
             self.block_len as bx_u32,
             flags,
         );
-        [state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7]]
+        [
+            state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
+        ]
     }
 }
 
 /// Combina dos CVs en un nodo padre, devolviendo el CV combinado.
-fn parent_cv(left: &[bx_u32; 8], right: &[bx_u32; 8], key: &[bx_u32; 8], flags: bx_u32, is_root: bool) -> [bx_u32; 8] {
+fn parent_cv(
+    left: &[bx_u32; 8],
+    right: &[bx_u32; 8],
+    key: &[bx_u32; 8],
+    flags: bx_u32,
+    is_root: bool,
+) -> [bx_u32; 8] {
     let mut block = [0u32; 16];
     block[..8].copy_from_slice(left);
     block[8..].copy_from_slice(right);
     let mut f = flags | PARENT;
-    if is_root { f |= ROOT; }
+    if is_root {
+        f |= ROOT;
+    }
     let state = compress(key, &block, 0, BLOCK_LEN as bx_u32, f);
-    [state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7]]
+    [
+        state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
+    ]
 }
 
 /// Hasher BLAKE3 stateful â€” modo "regular hash" (sin keyed/derive).
 pub struct Hasher {
     chunk: ChunkState,
     /// Stack de CVs pendientes de combinar.
-    cv_stack: [[bx_u32; 8]; 54],   // 54 niveles â†’ input mÃ¡ximo 2^54 chunks
+    cv_stack: [[bx_u32; 8]; 54], // 54 niveles â†’ input mÃ¡ximo 2^54 chunks
     cv_stack_len: u8,
 }
 

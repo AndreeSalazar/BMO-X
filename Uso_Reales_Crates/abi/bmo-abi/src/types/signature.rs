@@ -1,8 +1,8 @@
 //! Function signature — typed parameter list and return type for function pointers,
 //! syscalls, VTable methods, and LangBridge calls.
 
-use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 use super::convention::{CallingConvention, ScalarKind};
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 /// Maximum number of parameters in a function signature.
 pub const MAX_PARAMS: usize = 16;
@@ -25,7 +25,12 @@ const _: () = assert!(core::mem::size_of::<ParamDescriptor>() == 16);
 
 impl ParamDescriptor {
     pub const fn new(name_hash: bx_u64, type_id: bx_u32, scalar_kind: ScalarKind) -> Self {
-        Self { name_hash, type_id, scalar_kind, _pad: 0 }
+        Self {
+            name_hash,
+            type_id,
+            scalar_kind,
+            _pad: 0,
+        }
     }
 
     pub const fn unnamed(type_id: bx_u32, scalar_kind: ScalarKind) -> Self {
@@ -62,7 +67,12 @@ const _: () = assert!(core::mem::size_of::<FunctionSignature>() == 16);
 
 impl FunctionSignature {
     pub const fn new(convention: CallingConvention) -> Self {
-        Self { convention, param_count: 0, return_type_id: 0, flags: 0 }
+        Self {
+            convention,
+            param_count: 0,
+            return_type_id: 0,
+            flags: 0,
+        }
     }
 
     pub const fn with_return(mut self, return_type_id: bx_u32) -> Self {
@@ -93,13 +103,13 @@ pub mod func_flags {
     use crate::bmo_abi::primitives::bx_u32;
 
     /// Function accepts variable arguments (e.g., printf-style).
-    pub const VARIADIC:   bx_u32 = 1 << 0;
+    pub const VARIADIC: bx_u32 = 1 << 0;
     /// Function cannot throw/exceptions (enables tail-call optimization).
-    pub const NOEXCEPT:   bx_u32 = 1 << 1;
+    pub const NOEXCEPT: bx_u32 = 1 << 1;
     /// Function is pure (no side effects, no memory writes).
-    pub const PURE:       bx_u32 = 1 << 2;
+    pub const PURE: bx_u32 = 1 << 2;
     /// Function does not return (e.g., exit, abort, longjmp).
-    pub const NORETURN:   bx_u32 = 1 << 3;
+    pub const NORETURN: bx_u32 = 1 << 3;
     /// Function is a syscall stub (3-byte: syscall; ret).
     pub const SYSCALL_STUB: bx_u32 = 1 << 4;
 }

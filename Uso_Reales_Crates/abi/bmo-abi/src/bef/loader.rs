@@ -1,10 +1,10 @@
-use alloc::vec::Vec;
 use crate::bmo_abi::bef::{
     header::*,
-    sections::*,
+    imports::{ImportFlags, ImportTable},
     relocations,
-    imports::{ImportTable, ImportFlags},
+    sections::*,
 };
+use alloc::vec::Vec;
 
 #[derive(Debug)]
 pub struct LoadedSection {
@@ -34,7 +34,8 @@ where
         return Err("file too small");
     }
 
-    let header: BefHeader = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const BefHeader) };
+    let header: BefHeader =
+        unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const BefHeader) };
     if !header.is_valid() {
         return Err("invalid header");
     }
@@ -56,7 +57,11 @@ where
         entries.push(e);
     }
 
-    let base = if base_addr > 0 { base_addr } else { 0x7F00_0000_0000 };
+    let base = if base_addr > 0 {
+        base_addr
+    } else {
+        0x7F00_0000_0000
+    };
     let mut loaded = Vec::new();
     let mut current_va = base;
 
@@ -97,23 +102,25 @@ where
     let import_entries: Vec<(u64, u64)> = {
         let imports_section = loaded.iter().find(|s| s.kind == SectionKind::Imports);
         match imports_section.and_then(|s| ImportTable::parse(&s.data, 256).ok()) {
-            Some(table) => {
-                table.entries.iter().filter_map(|entry| {
+            Some(table) => table
+                .entries
+                .iter()
+                .filter_map(|entry| {
                     let sym = table.symbol_name(entry).unwrap_or("");
-                    if sym.is_empty() { return None; }
+                    if sym.is_empty() {
+                        return None;
+                    }
                     let lib = table.library_name(entry).unwrap_or("");
                     let addr = resolve_import(lib, sym);
                     match addr {
-                        Ok(resolved) if resolved != 0 => {
-                            Some((entry.binding_offset, resolved))
-                        }
+                        Ok(resolved) if resolved != 0 => Some((entry.binding_offset, resolved)),
                         Ok(_) if entry.flags & ImportFlags::WEAK.bits() != 0 => {
                             Some((entry.binding_offset, 0))
                         }
                         _ => None,
                     }
-                }).collect()
-            }
+                })
+                .collect(),
             None => Vec::new(),
         }
     };
@@ -122,7 +129,8 @@ where
     }
 
     // Apply relocations via read_unaligned
-    let reloc_data: Vec<Vec<u8>> = loaded.iter()
+    let reloc_data: Vec<Vec<u8>> = loaded
+        .iter()
         .filter(|s| s.kind == SectionKind::Relocs)
         .map(|s| s.data.clone())
         .collect();
@@ -131,7 +139,9 @@ where
         for i in 0..n {
             let off = i * relocations::Relocation::SIZE;
             let reloc: relocations::Relocation = unsafe {
-                core::ptr::read_unaligned(reloc_bytes[off..].as_ptr() as *const relocations::Relocation)
+                core::ptr::read_unaligned(
+                    reloc_bytes[off..].as_ptr() as *const relocations::Relocation
+                )
             };
             let target_idx = reloc.target_section as usize;
             if target_idx >= loaded.len() {
@@ -148,15 +158,26 @@ where
         let tls_bytes = &section.data;
         if tls_bytes.len() >= core::mem::size_of::<crate::bmo_abi::bef::tls::TlsTemplate>() {
             let template: crate::bmo_abi::bef::tls::TlsTemplate = unsafe {
-                core::ptr::read_unaligned(tls_bytes.as_ptr() as *const crate::bmo_abi::bef::tls::TlsTemplate)
+                core::ptr::read_unaligned(
+                    tls_bytes.as_ptr() as *const crate::bmo_abi::bef::tls::TlsTemplate
+                )
             };
             let data_start = core::mem::size_of::<crate::bmo_abi::bef::tls::TlsTemplate>();
-            let data = if data_start < tls_bytes.len() { &tls_bytes[data_start..] } else { &[] };
+            let data = if data_start < tls_bytes.len() {
+                &tls_bytes[data_start..]
+            } else {
+                &[]
+            };
             crate::bmo_abi::bef::tls::setup_for_thread(&template, data).unwrap_or(0)
-        } else { 0 }
-    } else { 0 };
+        } else {
+            0
+        }
+    } else {
+        0
+    };
 
-    let entry_point = loaded.iter()
+    let entry_point = loaded
+        .iter()
         .find(|s| s.kind == SectionKind::Code)
         .map(|s| s.virt_addr + header.entry_offset)
         .unwrap_or(0);
@@ -198,8 +219,8 @@ pub fn no_imports(_lib: &str, _sym: &str) -> Result<u64, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
     use crate::bmo_abi::bef::writer::{BefBuilder, BefSection};
+    use alloc::vec;
 
     #[test]
     fn load_self_contained() {

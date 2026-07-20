@@ -9,8 +9,8 @@
 //! para activar el backend real. Antes de eso, `BmoInstant::now()` retorna
 //! `BmoInstant::ZERO`.
 
-pub mod instant;
 pub mod duration;
+pub mod instant;
 
-pub use instant::{BmoInstant, init as init_clock};
 pub use duration::BmoDuration;
+pub use instant::{init as init_clock, BmoInstant};

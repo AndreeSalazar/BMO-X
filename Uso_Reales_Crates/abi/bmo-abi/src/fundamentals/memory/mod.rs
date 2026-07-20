@@ -19,14 +19,20 @@ pub struct BmoSlice {
 const _: () = assert!(core::mem::size_of::<BmoSlice>() == 16);
 
 impl BmoSlice {
-    pub const EMPTY: Self = Self { ptr: core::ptr::null(), len: 0 };
+    pub const EMPTY: Self = Self {
+        ptr: core::ptr::null(),
+        len: 0,
+    };
 
     pub const fn new(ptr: *const u8, len: bx_u64) -> Self {
         Self { ptr, len }
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        Self { ptr: bytes.as_ptr(), len: bytes.len() as bx_u64 }
+        Self {
+            ptr: bytes.as_ptr(),
+            len: bytes.len() as bx_u64,
+        }
     }
 
     pub fn as_slice(&self) -> &[u8] {
@@ -37,8 +43,12 @@ impl BmoSlice {
         }
     }
 
-    pub const fn is_empty(&self) -> bool { self.len == 0 }
-    pub const fn len(&self) -> bx_u64 { self.len }
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    pub const fn len(&self) -> bx_u64 {
+        self.len
+    }
 }
 
 /// Slice mutable: puntero + longitud.
@@ -51,14 +61,20 @@ pub struct BmoSliceMut {
 const _: () = assert!(core::mem::size_of::<BmoSliceMut>() == 16);
 
 impl BmoSliceMut {
-    pub const EMPTY: Self = Self { ptr: core::ptr::null_mut(), len: 0 };
+    pub const EMPTY: Self = Self {
+        ptr: core::ptr::null_mut(),
+        len: 0,
+    };
 
     pub const fn new(ptr: *mut u8, len: bx_u64) -> Self {
         Self { ptr, len }
     }
 
     pub fn from_bytes(bytes: &mut [u8]) -> Self {
-        Self { ptr: bytes.as_mut_ptr(), len: bytes.len() as bx_u64 }
+        Self {
+            ptr: bytes.as_mut_ptr(),
+            len: bytes.len() as bx_u64,
+        }
     }
 
     pub fn as_slice(&self) -> &[u8] {
@@ -131,12 +147,12 @@ impl BmoAligned {
 
 // ─── Constantes de alineación ──────────────────────────────────────
 
-pub const BMO_ALIGN_1:   bx_u64 = 1;
-pub const BMO_ALIGN_2:   bx_u64 = 2;
-pub const BMO_ALIGN_4:   bx_u64 = 4;
-pub const BMO_ALIGN_8:   bx_u64 = 8;
-pub const BMO_ALIGN_16:  bx_u64 = 16;
-pub const BMO_ALIGN_32:  bx_u64 = 32;
-pub const BMO_ALIGN_64:  bx_u64 = 64;
+pub const BMO_ALIGN_1: bx_u64 = 1;
+pub const BMO_ALIGN_2: bx_u64 = 2;
+pub const BMO_ALIGN_4: bx_u64 = 4;
+pub const BMO_ALIGN_8: bx_u64 = 8;
+pub const BMO_ALIGN_16: bx_u64 = 16;
+pub const BMO_ALIGN_32: bx_u64 = 32;
+pub const BMO_ALIGN_64: bx_u64 = 64;
 pub const BMO_ALIGN_128: bx_u64 = 128;
 pub const BMO_ALIGN_PAGE: bx_u64 = 4096;

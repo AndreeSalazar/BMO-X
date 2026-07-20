@@ -34,23 +34,23 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FrontendKind {
     /// Lenguaje BMO nativo.
-    Bmo     = 0,
+    Bmo = 0,
     /// C estándar.
-    C       = 1,
+    C = 1,
     /// C++ (subset + runtime).
-    Cpp     = 2,
+    Cpp = 2,
     /// Rust (subset + runtime).
-    Rust    = 3,
+    Rust = 3,
     /// Java-BMO (no JVM completo).
     JavaBmo = 4,
     /// Python-BMO (typed + dynamic).
     PythonBmo = 5,
     /// Ada.
-    Ada     = 6,
+    Ada = 6,
     /// COBOL clásico/empresarial compilado AOT a BEF.
-    Cobol   = 7,
+    Cobol = 7,
     /// Lenguaje custom / third-party.
-    Custom  = 0xFF,
+    Custom = 0xFF,
 }
 
 impl FrontendKind {
@@ -78,7 +78,7 @@ pub enum BackendKind {
     /// IR portable (cualquier CPU).
     PortableIR = 1,
     /// AOT RDNA4 (GPU shaders, no implementado todavía).
-    AotRdna4   = 2,
+    AotRdna4 = 2,
 }
 
 impl BackendKind {
@@ -96,17 +96,17 @@ impl BackendKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeKind {
     /// Sin runtime. AOT puro, binario minúsculo.
-    None      = 0,
+    None = 0,
     /// Runtime C mínimo (`_start`, `memcpy`, syscall wrappers).
-    CMin      = 1,
+    CMin = 1,
     /// Runtime C++ (constructors, vtables).
-    CppMin    = 2,
+    CppMin = 2,
     /// Runtime Java-BMO (class model, strings, arrays).
-    JavaCore  = 3,
+    JavaCore = 3,
     /// Runtime Python-BMO (dicts, types dinámicos).
     PythonCore = 4,
     /// Runtime Rust (panic handler, allocator).
-    RustCore  = 5,
+    RustCore = 5,
     /// Runtime COBOL mínimo: decimal fijo, records, DISPLAY/ACCEPT y archivos.
     CobolCore = 6,
 }

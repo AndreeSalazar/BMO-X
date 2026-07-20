@@ -52,7 +52,12 @@ impl BmoBuffer {
     };
 
     pub const fn new(ptr: *mut u8, len: bx_u64, capacity: bx_u64, flags: BmoBufferFlags) -> Self {
-        Self { ptr, len, capacity, flags }
+        Self {
+            ptr,
+            len,
+            capacity,
+            flags,
+        }
     }
 
     pub fn from_slice(slice: &[u8]) -> Self {
@@ -93,7 +98,13 @@ impl BmoBuffer {
         }
     }
 
-    pub const fn len(&self) -> bx_u64 { self.len }
-    pub const fn capacity(&self) -> bx_u64 { self.capacity }
-    pub const fn is_empty(&self) -> bool { self.len == 0 }
+    pub const fn len(&self) -> bx_u64 {
+        self.len
+    }
+    pub const fn capacity(&self) -> bx_u64 {
+        self.capacity
+    }
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
 }

@@ -29,9 +29,9 @@ use crate::bmo_abi::fundamentals::handle::BmoHandle;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoWindowBorder {
     /// Sin borde (para splash screens).
-    None  = 0,
+    None = 0,
     /// Borde fino.
-    Thin  = 1,
+    Thin = 1,
     /// Borde estándar redimensionable.
     Sizable = 2,
     /// Solo título, no redimensionable.
@@ -43,11 +43,11 @@ pub enum BmoWindowBorder {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoCloseAction {
     /// Ocultar la ventana (no destruirla).
-    Hide   = 0,
+    Hide = 0,
     /// Destruir la ventana y liberar recursos.
     Destroy = 1,
     /// Terminar el proceso que la creó.
-    Exit   = 2,
+    Exit = 2,
 }
 
 /// Registro de clase de ventana. Pasado a `bmo_register_class`.
@@ -98,15 +98,15 @@ impl BmoWindowClass {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoWindowFlag {
     /// La ventana es visible desde el inicio.
-    Visible   = 1 << 0,
+    Visible = 1 << 0,
     /// La ventana acepta foco.
     Focusable = 1 << 1,
     /// La ventana siempre encima (topmost).
-    Topmost   = 1 << 2,
+    Topmost = 1 << 2,
     /// La ventana no aparece en la barra de tareas.
     NoTaskbar = 1 << 3,
     /// La ventana tiene sombra.
-    Shadowed  = 1 << 4,
+    Shadowed = 1 << 4,
 }
 
 /// Información para crear una ventana.
@@ -146,25 +146,25 @@ pub type BmoWindowHandle = BmoHandle;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoWindowEventKind {
     /// La ventana necesita repintarse. Datos: `BmoPaintEvent`.
-    Paint     = 1,
+    Paint = 1,
     /// Tecla presionada. Datos: `BmoKeyEvent`.
-    KeyDown   = 2,
+    KeyDown = 2,
     /// Tecla liberada. Datos: `BmoKeyEvent`.
-    KeyUp     = 3,
+    KeyUp = 3,
     /// Botón del ratón presionado. Datos: `BmoMouseEvent`.
     MouseDown = 4,
     /// Botón del ratón liberado. Datos: `BmoMouseEvent`.
-    MouseUp   = 5,
+    MouseUp = 5,
     /// Movimiento del ratón. Datos: `BmoMouseEvent`.
     MouseMove = 6,
     /// La ventana cambió de tamaño. Datos: `BmoResizeEvent`.
-    Resize    = 7,
+    Resize = 7,
     /// La ventana ganó foco. Datos: 0 bytes.
     FocusGained = 8,
     /// La ventana perdió foco. Datos: 0 bytes.
-    FocusLost   = 9,
+    FocusLost = 9,
     /// La ventana se cerró. Datos: 0 bytes.
-    Close     = 10,
+    Close = 10,
 }
 
 /// Evento de repintado.
@@ -190,23 +190,67 @@ pub struct BmoPaintEvent {
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoKey {
-    None   = 0,
-    A      = 0x41, B, C, D, E, F, G, H, I, J, K, L, M,
-    N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
-    D0     = 0x30, D1, D2, D3, D4, D5, D6, D7, D8, D9,
-    F1     = 0x70, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
-    Esc    = 0x1B,
-    Tab    = 0x09,
-    Space  = 0x20,
-    Enter  = 0x0D,
-    Back   = 0x08,
-    Shift  = 0x10,
-    Ctrl   = 0x11,
-    Alt    = 0x12,
-    Left   = 0x25,
-    Up     = 0x26,
-    Right  = 0x27,
-    Down   = 0x28,
+    None = 0,
+    A = 0x41,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
+    D0 = 0x30,
+    D1,
+    D2,
+    D3,
+    D4,
+    D5,
+    D6,
+    D7,
+    D8,
+    D9,
+    F1 = 0x70,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+    Esc = 0x1B,
+    Tab = 0x09,
+    Space = 0x20,
+    Enter = 0x0D,
+    Back = 0x08,
+    Shift = 0x10,
+    Ctrl = 0x11,
+    Alt = 0x12,
+    Left = 0x25,
+    Up = 0x26,
+    Right = 0x27,
+    Down = 0x28,
 }
 
 /// Modificadores activos.
@@ -214,13 +258,13 @@ pub enum BmoKey {
 pub struct BmoModifiers(pub u32);
 
 impl BmoModifiers {
-    pub const NONE:   Self = Self(0);
-    pub const SHIFT:  Self = Self(1 << 0);
-    pub const CTRL:   Self = Self(1 << 1);
-    pub const ALT:    Self = Self(1 << 2);
-    pub const SUPER:  Self = Self(1 << 3);
-    pub const CAPS:   Self = Self(1 << 4);
-    pub const NUM:    Self = Self(1 << 5);
+    pub const NONE: Self = Self(0);
+    pub const SHIFT: Self = Self(1 << 0);
+    pub const CTRL: Self = Self(1 << 1);
+    pub const ALT: Self = Self(1 << 2);
+    pub const SUPER: Self = Self(1 << 3);
+    pub const CAPS: Self = Self(1 << 4);
+    pub const NUM: Self = Self(1 << 5);
 
     pub fn contains(&self, other: Self) -> bool {
         (self.0 & other.0) == other.0
@@ -244,12 +288,12 @@ pub struct BmoKeyEvent {
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoMouseButton {
-    None   = 0,
-    Left   = 1,
-    Right  = 2,
+    None = 0,
+    Left = 1,
+    Right = 2,
     Middle = 3,
-    X1     = 4,
-    X2     = 5,
+    X1 = 4,
+    X2 = 5,
 }
 
 /// Evento de ratón.
@@ -280,16 +324,18 @@ pub struct BmoResizeEvent {
 /// Payload union para los datos de un evento.
 #[repr(C)]
 pub union BmoWindowEventData {
-    pub paint:  BmoPaintEvent,
-    pub key:    BmoKeyEvent,
-    pub mouse:  BmoMouseEvent,
+    pub paint: BmoPaintEvent,
+    pub key: BmoKeyEvent,
+    pub mouse: BmoMouseEvent,
     pub resize: BmoResizeEvent,
-    pub raw:    [u8; 32],
+    pub raw: [u8; 32],
 }
 
 impl Copy for BmoWindowEventData {}
 impl Clone for BmoWindowEventData {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 /// Evento completo recibido por `bmo_recv` (vía BEFCore).

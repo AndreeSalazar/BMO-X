@@ -41,7 +41,11 @@ const _: () = assert!(core::mem::size_of::<VTableMethodMeta>() == 16);
 
 impl VTableMethodMeta {
     pub const fn new(name_hash: bx_u64, sig_type_id: bx_u32) -> Self {
-        Self { name_hash, sig_type_id, flags: 0 }
+        Self {
+            name_hash,
+            sig_type_id,
+            flags: 0,
+        }
     }
 }
 
@@ -49,15 +53,15 @@ impl VTableMethodMeta {
 pub mod method_flags {
     use crate::bmo_abi::primitives::bx_u32;
     /// Method is virtual (dispatched through vtable).
-    pub const VIRTUAL:  bx_u32 = 1 << 0;
+    pub const VIRTUAL: bx_u32 = 1 << 0;
     /// Method is final (cannot be overridden).
-    pub const FINAL:    bx_u32 = 1 << 1;
+    pub const FINAL: bx_u32 = 1 << 1;
     /// Method overrides a parent method.
     pub const OVERRIDE: bx_u32 = 1 << 2;
     /// Method is pure virtual (abstract, no implementation).
     pub const ABSTRACT: bx_u32 = 1 << 3;
     /// Method is a syscall stub.
-    pub const SYSCALL:  bx_u32 = 1 << 4;
+    pub const SYSCALL: bx_u32 = 1 << 4;
 }
 
 /// Una vtable: array de function pointers.
@@ -105,12 +109,18 @@ impl VTableStore {
     }
 
     pub fn get(&self, idx: bx_u32) -> Option<&VTable> {
-        self.vtables.get(idx as usize).filter(|_| (idx as usize) < self.count)
+        self.vtables
+            .get(idx as usize)
+            .filter(|_| (idx as usize) < self.count)
     }
 
     pub fn lookup(&self, interface_id: bx_u64) -> Option<&VTable> {
-        self.vtables[..self.count].iter().find(|v| v.interface_id == interface_id)
+        self.vtables[..self.count]
+            .iter()
+            .find(|v| v.interface_id == interface_id)
     }
 
-    pub fn count(&self) -> usize { self.count }
+    pub fn count(&self) -> usize {
+        self.count
+    }
 }

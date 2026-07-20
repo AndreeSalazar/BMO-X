@@ -33,8 +33,12 @@ pub fn fnv1a_64(data: &[u8]) -> bx_u64 {
 }
 
 /// FNV-1a sobre un string (conveniencia).
-pub fn fnv1a_str_32(s: &str) -> bx_u32 { fnv1a_32(s.as_bytes()) }
-pub fn fnv1a_str_64(s: &str) -> bx_u64 { fnv1a_64(s.as_bytes()) }
+pub fn fnv1a_str_32(s: &str) -> bx_u32 {
+    fnv1a_32(s.as_bytes())
+}
+pub fn fnv1a_str_64(s: &str) -> bx_u64 {
+    fnv1a_64(s.as_bytes())
+}
 
 // ─── CRC32c (Castagnoli) ───────────────────────────────────────────
 

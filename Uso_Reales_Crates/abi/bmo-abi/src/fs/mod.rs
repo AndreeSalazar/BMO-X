@@ -36,27 +36,29 @@ impl BmoOpenFlags {
     /// Modo de acceso.
     pub const RDONLY: Self = Self(0x0000_0000);
     pub const WRONLY: Self = Self(0x0000_0001);
-    pub const RDWR:   Self = Self(0x0000_0002);
+    pub const RDWR: Self = Self(0x0000_0002);
 
     /// Modo de creación (uno de los tres).
-    pub const CREATE:    Self = Self(0x0000_0040);
+    pub const CREATE: Self = Self(0x0000_0040);
     pub const EXCLUSIVE: Self = Self(0x0000_0080);
-    pub const TRUNCATE:  Self = Self(0x0000_0200);
-    pub const APPEND:    Self = Self(0x0000_0400);
+    pub const TRUNCATE: Self = Self(0x0000_0200);
+    pub const APPEND: Self = Self(0x0000_0400);
 
     /// Misc.
-    pub const NOCTTY:  Self = Self(0x0000_0100);
+    pub const NOCTTY: Self = Self(0x0000_0100);
     pub const NONBLOCK: Self = Self(0x0000_0800);
     pub const DIRECTORY: Self = Self(0x0001_0000);
-    pub const NOFOLLOW:  Self = Self(0x0002_0000);
-    pub const SYMLINK:   Self = Self(0x0004_0000);
+    pub const NOFOLLOW: Self = Self(0x0002_0000);
+    pub const SYMLINK: Self = Self(0x0004_0000);
     pub const CLOSE_ON_EXEC: Self = Self(0x0008_0000);
 
     /// Bits de modo de acceso (máscara).
     pub const ACCESS_MASK: u32 = 0x0000_0003;
 
     #[inline]
-    pub fn access_mode(self) -> u32 { self.0 & Self::ACCESS_MASK }
+    pub fn access_mode(self) -> u32 {
+        self.0 & Self::ACCESS_MASK
+    }
 
     #[inline]
     pub fn is_readable(self) -> bool {
@@ -71,13 +73,19 @@ impl BmoOpenFlags {
 
     /// Combina dos sets de flags.
     #[inline]
-    pub fn union(self, other: Self) -> Self { Self(self.0 | other.0) }
+    pub fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
     /// Intersección.
     #[inline]
-    pub fn intersect(self, other: Self) -> Self { Self(self.0 & other.0) }
+    pub fn intersect(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
     /// `true` si todos los bits de `other` están en `self`.
     #[inline]
-    pub fn contains(self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+    pub fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
 }
 
 // ─── Seek whence ────────────────────────────────────────────────────
@@ -103,14 +111,14 @@ pub enum BmoSeekWhence {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum BmoFileType {
     #[default]
-    Unknown  = 0,
-    Regular  = 1,
+    Unknown = 0,
+    Regular = 1,
     Directory = 2,
-    Symlink  = 3,
+    Symlink = 3,
     Character = 4,
-    Block    = 5,
-    Pipe     = 6,
-    Socket   = 7,
+    Block = 5,
+    Pipe = 6,
+    Socket = 7,
 }
 
 /// Permisos (estilo Unix, pero simplificado).
@@ -119,20 +127,26 @@ pub enum BmoFileType {
 pub struct BmoPerms(pub u16);
 
 impl BmoPerms {
-    pub const NONE:   Self = Self(0o000);
-    pub const X:      Self = Self(0o111);
-    pub const W:      Self = Self(0o222);
-    pub const R:      Self = Self(0o444);
-    pub const RWX:    Self = Self(0o777);
-    pub const RW_R:   Self = Self(0o644); // usuario rw, grupo r, otros r
+    pub const NONE: Self = Self(0o000);
+    pub const X: Self = Self(0o111);
+    pub const W: Self = Self(0o222);
+    pub const R: Self = Self(0o444);
+    pub const RWX: Self = Self(0o777);
+    pub const RW_R: Self = Self(0o644); // usuario rw, grupo r, otros r
     pub const RWX_RXR: Self = Self(0o755);
 
     #[inline]
-    pub fn is_readable(self) -> bool { (self.0 & 0o444) != 0 }
+    pub fn is_readable(self) -> bool {
+        (self.0 & 0o444) != 0
+    }
     #[inline]
-    pub fn is_writable(self) -> bool { (self.0 & 0o222) != 0 }
+    pub fn is_writable(self) -> bool {
+        (self.0 & 0o222) != 0
+    }
     #[inline]
-    pub fn is_executable(self) -> bool { (self.0 & 0o111) != 0 }
+    pub fn is_executable(self) -> bool {
+        (self.0 & 0o111) != 0
+    }
 
     /// Permisos `rw-r--r--` (0644).
     #[inline]
@@ -201,7 +215,11 @@ impl BmoDirEntry {
 
     /// Lee el nombre como `&str` (o `""` si no es UTF-8 válido).
     pub fn name_str(&self) -> &str {
-        let end = self.name.iter().position(|&b| b == 0).unwrap_or(self.name.len());
+        let end = self
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(self.name.len());
         core::str::from_utf8(&self.name[..end]).unwrap_or("")
     }
 }
@@ -226,7 +244,13 @@ impl Capabilities {
     pub const NET_RAW: Self = Self(1 << 9);
     pub const ALL: Self = Self(0xFFFF_FFFF);
 
-    pub fn has(self, other: Self) -> bool { (self.0 & other.0) == other.0 }
-    pub fn insert(&mut self, other: Self) { self.0 |= other.0; }
-    pub fn remove(&mut self, other: Self) { self.0 &= !other.0; }
+    pub fn has(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+    pub fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+    pub fn remove(&mut self, other: Self) {
+        self.0 &= !other.0;
+    }
 }

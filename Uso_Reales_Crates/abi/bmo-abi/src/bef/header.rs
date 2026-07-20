@@ -1,10 +1,10 @@
-﻿//! Header BEF â€” 48 bytes fijos al inicio del archivo.
+//! Header BEF â€” 48 bytes fijos al inicio del archivo.
 //!
 //! Mucho mÃ¡s compacto que ELF (64 B + Phdr) o PE (264 B DOS stub + IMAGE_NT).
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
 
 /// Magic constant â€” `b"BEF1"` (4 bytes LE).
 pub const BEF_MAGIC: bx_u32 = u32::from_le_bytes(*b"BEF1");
@@ -29,7 +29,9 @@ pub enum BefMagic {
 impl BefMagic {
     /// Detecta el formato a partir de los primeros bytes.
     pub fn detect(bytes: &[u8]) -> Self {
-        if bytes.len() < 4 { return Self::Unknown; }
+        if bytes.len() < 4 {
+            return Self::Unknown;
+        }
         match &bytes[..4] {
             b"BEF1" => Self::BefNative,
             b"\x7FELF" => Self::ElfUnix,
@@ -78,11 +80,11 @@ pub enum BefArch {
     /// Reservado / desconocido.
     Reserved = 0x00,
     /// AMD64 / x86-64 (baseline BMO).
-    X86_64   = 0x01,
+    X86_64 = 0x01,
     /// AArch64 (futuro, no implementado).
-    Aarch64  = 0x02,
+    Aarch64 = 0x02,
     /// RISC-V 64-bit (futuro).
-    Rv64gc   = 0x03,
+    Rv64gc = 0x03,
 }
 
 /// Header BEF â€” 48 bytes, alineado a 16.
@@ -125,9 +127,7 @@ impl BefHeader {
             magic: BEF_MAGIC,
             version_major: BEF_VERSION_MAJOR,
             version_minor: BEF_VERSION_MINOR,
-            flags: BefFlags::EXECUTABLE.bits()
-                 | BefFlags::PIE.bits()
-                 | BefFlags::USES_BAREX.bits(),
+            flags: BefFlags::EXECUTABLE.bits() | BefFlags::PIE.bits() | BefFlags::USES_BAREX.bits(),
             arch: BefArch::X86_64 as u8,
             _pad0: [0; 3],
             abi_version_major: 1,

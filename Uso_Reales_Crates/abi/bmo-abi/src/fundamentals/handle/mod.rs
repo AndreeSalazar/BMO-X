@@ -4,8 +4,8 @@
 //! único tipo `BmoHandle` 64-bit que incluye **generación**: detecta UAF
 //! por construcción.
 
-pub mod opaque;
 pub mod kind;
+pub mod opaque;
 pub mod ops;
 
 pub use opaque::BmoHandle;

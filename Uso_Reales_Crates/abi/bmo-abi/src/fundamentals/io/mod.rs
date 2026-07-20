@@ -3,9 +3,9 @@
 //! Reemplaza `<stdio.h>` de C con un triplete de traits: Read, Write, Seek.
 //! Cada uno devuelve `BmoStatus` para composición FFI-safe.
 
-use crate::bmo_abi::primitives::{bx_u64, bx_i64};
-use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::fundamentals::memory::BmoSliceMut;
+use crate::bmo_abi::fundamentals::status::BmoStatus;
+use crate::bmo_abi::primitives::{bx_i64, bx_u64};
 
 /// Resultado de una operación Read.
 #[repr(C)]
@@ -105,21 +105,31 @@ impl BmoRead for BmoPipe {
         let avail = self.len();
         let n = avail.min(buf_len);
         if n == 0 {
-            return ReadResult { status: BmoStatus::OK, bytes_read: 0 };
+            return ReadResult {
+                status: BmoStatus::OK,
+                bytes_read: 0,
+            };
         }
         let slice = unsafe { core::slice::from_raw_parts_mut(buf.ptr, buf_len) };
         for i in 0..n {
             slice[i] = self.buf[self.read_pos];
             self.read_pos = (self.read_pos + 1) % 4096;
         }
-        if self.full { self.full = false; }
-        ReadResult { status: BmoStatus::OK, bytes_read: n as bx_u64 }
+        if self.full {
+            self.full = false;
+        }
+        ReadResult {
+            status: BmoStatus::OK,
+            bytes_read: n as bx_u64,
+        }
     }
 }
 
 impl BmoWrite for BmoPipe {
     fn write(&mut self, buf: &[u8]) -> WriteResult {
-        let avail = if self.full { 0 } else {
+        let avail = if self.full {
+            0
+        } else {
             let used = self.len();
             4096 - used
         };
@@ -137,7 +147,10 @@ impl BmoWrite for BmoPipe {
         if self.len() == 4096 {
             self.full = true;
         }
-        WriteResult { status: BmoStatus::OK, bytes_written: n as bx_u64 }
+        WriteResult {
+            status: BmoStatus::OK,
+            bytes_written: n as bx_u64,
+        }
     }
 
     fn flush(&mut self) -> BmoStatus {

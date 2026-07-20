@@ -3,7 +3,7 @@
 //! Encodes the BMO ABI calling convention as Rust code (not just SPEC.md docs).
 //! Language frontends and code generators query this to know which registers to use.
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u32};
+use crate::bmo_abi::primitives::{bx_u32, bx_u8};
 
 /// Number of GPR (General Purpose Register) argument slots.
 pub const GPR_ARG_COUNT: usize = 7;
@@ -105,19 +105,19 @@ impl CallingConvention {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScalarKind {
-    Void    = 0,
-    I8      = 1,
-    I16     = 2,
-    I32     = 3,
-    I64     = 4,
-    U8      = 5,
-    U16     = 6,
-    U32     = 7,
-    U64     = 8,
-    F32     = 9,
-    F64     = 10,
+    Void = 0,
+    I8 = 1,
+    I16 = 2,
+    I32 = 3,
+    I64 = 4,
+    U8 = 5,
+    U16 = 6,
+    U32 = 7,
+    U64 = 8,
+    F32 = 9,
+    F64 = 10,
     Pointer = 11,
-    Bool    = 12,
+    Bool = 12,
 }
 
 impl ScalarKind {
@@ -133,11 +133,19 @@ impl ScalarKind {
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Void => "void", Self::I8 => "i8", Self::I16 => "i16",
-            Self::I32 => "i32", Self::I64 => "i64", Self::U8 => "u8",
-            Self::U16 => "u16", Self::U32 => "u32", Self::U64 => "u64",
-            Self::F32 => "f32", Self::F64 => "f64",
-            Self::Pointer => "ptr", Self::Bool => "bool",
+            Self::Void => "void",
+            Self::I8 => "i8",
+            Self::I16 => "i16",
+            Self::I32 => "i32",
+            Self::I64 => "i64",
+            Self::U8 => "u8",
+            Self::U16 => "u16",
+            Self::U32 => "u32",
+            Self::U64 => "u64",
+            Self::F32 => "f32",
+            Self::F64 => "f64",
+            Self::Pointer => "ptr",
+            Self::Bool => "bool",
         }
     }
 }

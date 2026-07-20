@@ -76,12 +76,16 @@ impl<'a> ImportTable<'a> {
 
     fn read_str(&self, off: u32) -> Option<&'a str> {
         let off = off as usize;
-        if off >= self.strings.len() { return None; }
+        if off >= self.strings.len() {
+            return None;
+        }
         // BEF strings: prefijo de longitud u16 LE + bytes UTF-8 (sin '\0' final).
         let len = u16::from_le_bytes(self.strings.get(off..off + 2)?.try_into().ok()?) as usize;
         let start = off + 2;
         let end = start + len;
-        if end > self.strings.len() { return None; }
+        if end > self.strings.len() {
+            return None;
+        }
         core::str::from_utf8(&self.strings[start..end]).ok()
     }
 }

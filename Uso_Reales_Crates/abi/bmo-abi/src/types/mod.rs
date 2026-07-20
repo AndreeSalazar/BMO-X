@@ -23,10 +23,10 @@
 //! - VTable signature validation
 //! - Debug symbol resolution
 
-pub mod signature;
-pub mod field;
 pub mod convention;
+pub mod field;
+pub mod signature;
 
-pub use signature::*;
-pub use field::*;
 pub use convention::*;
+pub use field::*;
+pub use signature::*;

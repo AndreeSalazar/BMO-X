@@ -155,13 +155,24 @@ impl Channel {
     /// Handler return: (opcode, arg0, arg1, arg2) or None to skip response.
     pub fn ring0_process<F: FnMut(u64, u64, u64, u64) -> Option<(u64, u64, u64, u64)>>(
         &self,
+        handler: F,
+    ) -> usize {
+        self.ring0_process_n(RING_SIZE, handler)
+    }
+
+    /// Ring 0: process at most `limit` requests. A finite budget prevents a
+    /// busy producer from monopolizing a scheduler tick.
+    pub fn ring0_process_n<F: FnMut(u64, u64, u64, u64) -> Option<(u64, u64, u64, u64)>>(
+        &self,
+        limit: usize,
         mut handler: F,
     ) -> usize {
         let head = self.submit_head.load(Ordering::Acquire);
         let mut tail = self.submit_tail.load(Ordering::Relaxed);
         let mut count = 0;
+        let limit = limit.min(RING_SIZE);
 
-        while tail < head && count < RING_SIZE {
+        while tail < head && count < limit {
             let complete_head = self.complete_head.load(Ordering::Relaxed);
             let complete_tail = self.complete_tail.load(Ordering::Acquire);
             if complete_head.wrapping_sub(complete_tail) >= RING_SIZE as u64 { break; }
@@ -194,5 +205,32 @@ impl Channel {
         self.submit_tail.store(tail, Ordering::Release);
         self.doorbell.store((tail < head) as u64, Ordering::Release);
         count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[repr(align(4096))]
+    struct Page([u8; 4096]);
+
+    #[test]
+    fn ring0_budget_leaves_pending_work_signaled() {
+        let mut page = Page([0; 4096]);
+        let channel = unsafe { &mut *(page.0.as_mut_ptr().cast::<Channel>()) };
+        channel.init();
+        assert!(channel.ring3_send(1, 10, 0, 0));
+        assert!(channel.ring3_send(2, 20, 0, 0));
+        assert!(channel.ring3_send(3, 30, 0, 0));
+
+        let processed = channel.ring0_process_n(1, |opcode, a0, a1, a2| {
+            Some((opcode, a0, a1, a2))
+        });
+
+        assert_eq!(processed, 1);
+        assert!(channel.ring0_has_work());
+        assert_eq!(channel.submit_tail.load(Ordering::Relaxed), 1);
+        assert_eq!(channel.complete_head.load(Ordering::Relaxed), 1);
     }
 }

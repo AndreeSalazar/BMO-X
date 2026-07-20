@@ -76,7 +76,11 @@ impl Manifest {
         Self {
             identity: Identity {
                 name: alloc::string::String::from(name),
-                version: SemVer { major: 0, minor: 0, patch: 0 },
+                version: SemVer {
+                    major: 0,
+                    minor: 0,
+                    patch: 0,
+                },
                 publisher: alloc::string::String::from("(devoured)"),
                 binary_hash: [0; 32],
             },
@@ -107,10 +111,12 @@ impl Manifest {
 
         for line in text.lines() {
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
 
             if trimmed.starts_with('[') && trimmed.ends_with(']') {
-                section = alloc::string::String::from(trimmed[1..trimmed.len()-1].trim());
+                section = alloc::string::String::from(trimmed[1..trimmed.len() - 1].trim());
                 continue;
             }
 
@@ -125,18 +131,18 @@ impl Manifest {
                         "publisher" => publisher = parse_toml_string(value),
                         _ => {}
                     },
-                    "capabilities" => {
-                        match key {
-                            "fs_read" if value == "true" => caps.insert(Capabilities::FS_READ),
-                            "fs_write" if value == "true" => caps.insert(Capabilities::FS_WRITE),
-                            "sys_time_hires" if value == "true" => caps.insert(Capabilities::SYS_TIME_HIRES),
-                            "sys_debug" if value == "true" => caps.insert(Capabilities::SYS_DEBUG),
-                            "net_raw" if value == "true" => caps.insert(Capabilities::NET_RAW),
-                            "gpu_direct" if value == "true" => caps.insert(Capabilities(1 << 10)),
-                            "audio_output" if value == "true" => caps.insert(Capabilities(1 << 11)),
-                            "ipc_send" if value == "true" => caps.insert(Capabilities(1 << 12)),
-                            _ => {}
+                    "capabilities" => match key {
+                        "fs_read" if value == "true" => caps.insert(Capabilities::FS_READ),
+                        "fs_write" if value == "true" => caps.insert(Capabilities::FS_WRITE),
+                        "sys_time_hires" if value == "true" => {
+                            caps.insert(Capabilities::SYS_TIME_HIRES)
                         }
+                        "sys_debug" if value == "true" => caps.insert(Capabilities::SYS_DEBUG),
+                        "net_raw" if value == "true" => caps.insert(Capabilities::NET_RAW),
+                        "gpu_direct" if value == "true" => caps.insert(Capabilities(1 << 10)),
+                        "audio_output" if value == "true" => caps.insert(Capabilities(1 << 11)),
+                        "ipc_send" if value == "true" => caps.insert(Capabilities(1 << 12)),
+                        _ => {}
                     },
                     "provides" => {
                         let cap_name = parse_toml_string(value);
@@ -146,30 +152,38 @@ impl Manifest {
                             // Comma-separated list of provided capabilities
                             for item in parse_toml_string(value).split(',') {
                                 let item = item.trim();
-                                if !item.is_empty() { provides.push(item.into()); }
+                                if !item.is_empty() {
+                                    provides.push(item.into());
+                                }
                             }
                         }
-                    },
+                    }
                     "requires" => {
                         if key == "list" {
                             for item in parse_toml_string(value).split(',') {
                                 let item = item.trim();
-                                if !item.is_empty() { requires.push(item.into()); }
+                                if !item.is_empty() {
+                                    requires.push(item.into());
+                                }
                             }
                         } else if value == "true" {
                             requires.push(key.into());
                         }
-                    },
+                    }
                     "dependencies" => {
                         let dep_name = parse_toml_string(value);
                         if !dep_name.is_empty() {
                             dependencies.push(Dependency {
                                 name: dep_name,
-                                min_version: SemVer { major: 0, minor: 0, patch: 0 },
+                                min_version: SemVer {
+                                    major: 0,
+                                    minor: 0,
+                                    patch: 0,
+                                },
                                 kind: DependencyKind::BefLibrary,
                             });
                         }
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -179,9 +193,17 @@ impl Manifest {
 
         Self {
             identity: Identity {
-                name: if name.is_empty() { alloc::string::String::from("(unnamed)") } else { name },
+                name: if name.is_empty() {
+                    alloc::string::String::from("(unnamed)")
+                } else {
+                    name
+                },
                 version,
-                publisher: if publisher.is_empty() { alloc::string::String::from("(unknown)") } else { publisher },
+                publisher: if publisher.is_empty() {
+                    alloc::string::String::from("(unknown)")
+                } else {
+                    publisher
+                },
                 binary_hash: [0; 32],
             },
             capabilities: caps,
@@ -203,10 +225,22 @@ fn parse_toml_string(value: &str) -> alloc::string::String {
 }
 
 fn parse_semver(s: &str) -> SemVer {
-    let mut major = 0u16; let mut minor = 0u16; let mut patch = 0u16;
+    let mut major = 0u16;
+    let mut minor = 0u16;
+    let mut patch = 0u16;
     let parts: alloc::vec::Vec<&str> = s.split('.').collect();
-    if parts.len() >= 1 { major = parts[0].parse().unwrap_or(0); }
-    if parts.len() >= 2 { minor = parts[1].parse().unwrap_or(0); }
-    if parts.len() >= 3 { patch = parts[2].parse().unwrap_or(0); }
-    SemVer { major, minor, patch }
+    if parts.len() >= 1 {
+        major = parts[0].parse().unwrap_or(0);
+    }
+    if parts.len() >= 2 {
+        minor = parts[1].parse().unwrap_or(0);
+    }
+    if parts.len() >= 3 {
+        patch = parts[2].parse().unwrap_or(0);
+    }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }

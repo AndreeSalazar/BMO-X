@@ -7,11 +7,13 @@
 
 pub mod defs;
 
-use alloc::vec::Vec;
-use alloc::string::String;
 use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 
-fn str_to_string(s: &str) -> String { String::from(s) }
+fn str_to_string(s: &str) -> String {
+    String::from(s)
+}
 
 // ─ Syscall definitions ─────────────────────────────────────────────
 
@@ -26,12 +28,17 @@ pub fn parse_syscall_file(content: &str) -> Vec<SyscallDef> {
     let mut defs = Vec::new();
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') { continue; }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
         if let Some(eq_pos) = line.find('=') {
             let name = str_to_string(line[..eq_pos].trim());
             let rest = line[eq_pos + 1..].trim();
             let (val_str, arg_count) = if let Some(comma_pos) = rest.find(',') {
-                (rest[..comma_pos].trim(), rest[comma_pos + 1..].trim().parse::<u8>().unwrap_or(0))
+                (
+                    rest[..comma_pos].trim(),
+                    rest[comma_pos + 1..].trim().parse::<u8>().unwrap_or(0),
+                )
             } else {
                 (rest, 0u8)
             };
@@ -40,7 +47,11 @@ pub fn parse_syscall_file(content: &str) -> Vec<SyscallDef> {
             } else {
                 val_str.parse::<u32>().unwrap_or(0)
             };
-            defs.push(SyscallDef { name, nr, arg_count });
+            defs.push(SyscallDef {
+                name,
+                nr,
+                arg_count,
+            });
         }
     }
     defs
@@ -59,14 +70,24 @@ pub fn parse_types_file(content: &str) -> Vec<TypeAlias> {
     let mut aliases = Vec::new();
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') { continue; }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
         if let Some(eq_pos) = line.find('=') {
             let name = str_to_string(line[..eq_pos].trim());
             let val = line[eq_pos + 1..].trim().trim_matches('"');
             if let Ok(n) = val.parse::<i64>() {
-                aliases.push(TypeAlias { name, underlying: String::new(), value: Some(n) });
+                aliases.push(TypeAlias {
+                    name,
+                    underlying: String::new(),
+                    value: Some(n),
+                });
             } else {
-                aliases.push(TypeAlias { name, underlying: str_to_string(val), value: None });
+                aliases.push(TypeAlias {
+                    name,
+                    underlying: str_to_string(val),
+                    value: None,
+                });
             }
         }
     }
@@ -94,9 +115,17 @@ pub fn parse_stdlib_manifest(content: &str) -> StdlibManifest {
 
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') { continue; }
-        if line == "[exports]" { in_exports = true; continue; }
-        if line.starts_with('[') && line.ends_with(']') { in_exports = false; continue; }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line == "[exports]" {
+            in_exports = true;
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_exports = false;
+            continue;
+        }
         if in_exports {
             if let Some(eq_pos) = line.find('=') {
                 let name = str_to_string(line[..eq_pos].trim());
@@ -111,7 +140,10 @@ pub fn parse_stdlib_manifest(content: &str) -> StdlibManifest {
                 let param_types: Vec<String> = if params_str.is_empty() || params_str == "void" {
                     Vec::new()
                 } else {
-                    params_str.split(',').map(|s| str_to_string(s.trim())).collect()
+                    params_str
+                        .split(',')
+                        .map(|s| str_to_string(s.trim()))
+                        .collect()
                 };
                 exports.push(StdlibExport {
                     name,
@@ -144,7 +176,9 @@ pub fn parse_module_manifest(content: &str, default_name: &str) -> ModuleManifes
 
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') { continue; }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
         if line.starts_with('[') && line.ends_with(']') {
             current_section = str_to_string(line[1..line.len() - 1].trim());
             continue;
@@ -161,7 +195,9 @@ pub fn parse_module_manifest(content: &str, default_name: &str) -> ModuleManifes
                 "exports" => {
                     if key == "functions" {
                         for f in val.split(',').map(|s| s.trim().trim_matches('"')) {
-                            if !f.is_empty() { exports.push(str_to_string(f)); }
+                            if !f.is_empty() {
+                                exports.push(str_to_string(f));
+                            }
                         }
                     } else {
                         exports.push(str_to_string(key));
@@ -170,7 +206,9 @@ pub fn parse_module_manifest(content: &str, default_name: &str) -> ModuleManifes
                 "sources" => {
                     if key == "files" {
                         for f in val.split(',').map(|s| s.trim().trim_matches('"')) {
-                            if !f.is_empty() { source_files.push(str_to_string(f)); }
+                            if !f.is_empty() {
+                                source_files.push(str_to_string(f));
+                            }
                         }
                     }
                 }
@@ -178,7 +216,12 @@ pub fn parse_module_manifest(content: &str, default_name: &str) -> ModuleManifes
             }
         }
     }
-    ModuleManifest { name, version, exports, source_files }
+    ModuleManifest {
+        name,
+        version,
+        exports,
+        source_files,
+    }
 }
 
 // ─ ABI data model ──────────────────────────────────────────────────
@@ -198,7 +241,9 @@ pub fn parse_abi_file(content: &str) -> AbiDataModel {
 
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') { continue; }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
         if line.starts_with('[') && line.ends_with(']') {
             current_section = str_to_string(line[1..line.len() - 1].trim());
             continue;
@@ -221,5 +266,9 @@ pub fn parse_abi_file(content: &str) -> AbiDataModel {
             }
         }
     }
-    AbiDataModel { pointer_size, endianness, type_sizes }
+    AbiDataModel {
+        pointer_size,
+        endianness,
+        type_sizes,
+    }
 }

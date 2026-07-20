@@ -5,10 +5,10 @@
 
 #![allow(non_camel_case_types)]
 
-pub mod ints;
-pub mod floats;
 pub mod bool;
+pub mod floats;
+pub mod ints;
 
 // Re-exports — `use crate::bmo_abi::primitives::*;`
-pub use ints::*;
 pub use self::bool::*;
+pub use ints::*;

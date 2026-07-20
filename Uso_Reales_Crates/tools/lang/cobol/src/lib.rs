@@ -19,9 +19,16 @@ pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
 }
 
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
+    compile_source_to_bex(source)
+}
+
+/// Compile COBOL source into a native BMO executable image.
+///
+/// BEX v1 uses the validated BEF1 wire format defined by `bmo-abi`.
+pub fn compile_source_to_bex(source: &str) -> Result<Vec<u8>, CobolError> {
     let program = parse(source)?;
     let bytes = codegen::compile_to_bef_bytes(&program)?;
-    validate_generated_bef(bytes)
+    validate_generated_bex(bytes)
 }
 
 pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CobolError> {
@@ -33,14 +40,22 @@ pub fn compile_source_to_bef_with_asm(
     source: &str,
     asm_paths: Vec<PathBuf>,
 ) -> Result<Vec<u8>, CobolError> {
+    compile_source_to_bex_with_asm(source, asm_paths)
+}
+
+/// Compile COBOL source into BEX while using extra semantic-assembly paths.
+pub fn compile_source_to_bex_with_asm(
+    source: &str,
+    asm_paths: Vec<PathBuf>,
+) -> Result<Vec<u8>, CobolError> {
     let mut p = parser::Parser::new(source);
     let program = p.parse_program_with_asm(asm_paths)?;
     let bytes = codegen::compile_to_bef_bytes(&program)?;
-    validate_generated_bef(bytes)
+    validate_generated_bex(bytes)
 }
 
-fn validate_generated_bef(bytes: Vec<u8>) -> Result<Vec<u8>, CobolError> {
-    let validation = bmo_abi::bef::validate(&bytes);
+fn validate_generated_bex(bytes: Vec<u8>) -> Result<Vec<u8>, CobolError> {
+    let validation = bmo_abi::bex::validate(&bytes);
     if validation.is_valid {
         return Ok(bytes);
     }
@@ -93,6 +108,20 @@ STOP RUN.
         let loaded = bmo_abi::bef::load(&bef, 0, bmo_abi::bef::loader::no_imports).unwrap();
         assert_ne!(loaded.entry_point, 0);
         assert!(loaded.sections.iter().any(|section| section.kind == bmo_abi::bef::SectionKind::Code));
+    }
+
+    #[test]
+    fn emits_valid_bex_image() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. HELLO-BEX.
+PROCEDURE DIVISION.
+DISPLAY "HOLA BMO".
+STOP RUN.
+"#;
+        let bex = compile_source_to_bex(src).unwrap();
+        assert!(bmo_abi::bex::validate(&bex).is_valid);
+        assert_eq!(bmo_abi::bex::BEX_WIRE_MAGIC, bmo_abi::bef::BEF_MAGIC);
     }
 
     #[test]

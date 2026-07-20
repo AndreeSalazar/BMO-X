@@ -12,7 +12,9 @@ use crate::bmo_abi::primitives::{bx_i64, bx_u64};
 
 /// Square root, IEEE 754 exact para f64.
 pub fn sqrt_f64(x: bx_f64) -> bx_f64 {
-    if x <= 0.0 { return 0.0; }
+    if x <= 0.0 {
+        return 0.0;
+    }
     let mut guess = x;
     for _ in 0..10 {
         guess = (guess + x / guess) * 0.5;
@@ -29,22 +31,14 @@ pub fn sqrt_f32(x: bx_f32) -> bx_f32 {
 
 fn sin_taylor(x: bx_f64) -> bx_f64 {
     let x2 = x * x;
-    x * (1.0
-        - x2 / 6.0
-        + x2 * x2 / 120.0
-        - x2 * x2 * x2 / 5040.0
-        + x2 * x2 * x2 * x2 / 362880.0
+    x * (1.0 - x2 / 6.0 + x2 * x2 / 120.0 - x2 * x2 * x2 / 5040.0 + x2 * x2 * x2 * x2 / 362880.0
         - x2 * x2 * x2 * x2 * x2 / 39916800.0
         + x2 * x2 * x2 * x2 * x2 * x2 / 6227020800.0)
 }
 
 fn cos_taylor(x: bx_f64) -> bx_f64 {
     let x2 = x * x;
-    1.0
-        - x2 / 2.0
-        + x2 * x2 / 24.0
-        - x2 * x2 * x2 / 720.0
-        + x2 * x2 * x2 * x2 / 40320.0
+    1.0 - x2 / 2.0 + x2 * x2 / 24.0 - x2 * x2 * x2 / 720.0 + x2 * x2 * x2 * x2 / 40320.0
         - x2 * x2 * x2 * x2 * x2 / 3628800.0
         + x2 * x2 * x2 * x2 * x2 * x2 / 479001600.0
 }
@@ -54,9 +48,16 @@ fn cos_taylor(x: bx_f64) -> bx_f64 {
 /// Sine (f64), ~1e-12 precisión.
 pub fn sin_f64(x: bx_f64) -> bx_f64 {
     let mut x = x % (core::f64::consts::TAU);
-    if x < 0.0 { x += core::f64::consts::TAU; }
+    if x < 0.0 {
+        x += core::f64::consts::TAU;
+    }
 
-    let sign = if x > core::f64::consts::PI { x -= core::f64::consts::PI; -1.0 } else { 1.0 };
+    let sign = if x > core::f64::consts::PI {
+        x -= core::f64::consts::PI;
+        -1.0
+    } else {
+        1.0
+    };
 
     if x > core::f64::consts::FRAC_PI_2 {
         x = core::f64::consts::PI - x;
@@ -77,7 +78,9 @@ pub fn sin_f32(x: bx_f32) -> bx_f32 {
 
 pub fn cos_f64(x: bx_f64) -> bx_f64 {
     let mut x = x % core::f64::consts::TAU;
-    if x < 0.0 { x += core::f64::consts::TAU; }
+    if x < 0.0 {
+        x += core::f64::consts::TAU;
+    }
 
     if x > core::f64::consts::PI {
         x = core::f64::consts::TAU - x;
@@ -104,12 +107,16 @@ pub fn cos_f32(x: bx_f32) -> bx_f32 {
 // ─── Power (exponentiation by squaring) ────────────────────────────
 
 pub fn pow_f64(base: bx_f64, exp: bx_i64) -> bx_f64 {
-    if exp == 0 { return 1.0; }
+    if exp == 0 {
+        return 1.0;
+    }
     let mut result = 1.0;
     let mut b = if exp < 0 { 1.0 / base } else { base };
     let mut e = if exp < 0 { -exp } else { exp };
     while e > 0 {
-        if e & 1 != 0 { result *= b; }
+        if e & 1 != 0 {
+            result *= b;
+        }
         b *= b;
         e >>= 1;
     }
@@ -123,38 +130,94 @@ pub fn pow_f32(base: bx_f32, exp: bx_i64) -> bx_f32 {
 // ─── Absolute value ────────────────────────────────────────────────
 
 pub fn abs_f64(x: bx_f64) -> bx_f64 {
-    if x < 0.0 { -x } else { x }
+    if x < 0.0 {
+        -x
+    } else {
+        x
+    }
 }
 
 pub fn abs_f32(x: bx_f32) -> bx_f32 {
-    if x < 0.0 { -x } else { x }
+    if x < 0.0 {
+        -x
+    } else {
+        x
+    }
 }
 
 // ─── Floor / Ceil ─────────────────────────────────────────────────
 
 pub fn floor_f64(x: bx_f64) -> bx_f64 {
     let trunc = x as i64 as f64;
-    if x >= 0.0 || x == trunc { trunc } else { trunc - 1.0 }
+    if x >= 0.0 || x == trunc {
+        trunc
+    } else {
+        trunc - 1.0
+    }
 }
 
 pub fn ceil_f64(x: bx_f64) -> bx_f64 {
     let trunc = x as i64 as f64;
-    if x <= 0.0 || x == trunc { trunc } else { trunc + 1.0 }
+    if x <= 0.0 || x == trunc {
+        trunc
+    } else {
+        trunc + 1.0
+    }
 }
 
-pub fn floor_f32(x: bx_f32) -> bx_f32 { floor_f64(x as f64) as f32 }
-pub fn ceil_f32(x: bx_f32) -> bx_f32 { ceil_f64(x as f64) as f32 }
+pub fn floor_f32(x: bx_f32) -> bx_f32 {
+    floor_f64(x as f64) as f32
+}
+pub fn ceil_f32(x: bx_f32) -> bx_f32 {
+    ceil_f64(x as f64) as f32
+}
 
 // ─── Min/max ───────────────────────────────────────────────────────
 
-pub fn min_f64(a: bx_f64, b: bx_f64) -> bx_f64 { if a < b { a } else { b } }
-pub fn max_f64(a: bx_f64, b: bx_f64) -> bx_f64 { if a > b { a } else { b } }
+pub fn min_f64(a: bx_f64, b: bx_f64) -> bx_f64 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+pub fn max_f64(a: bx_f64, b: bx_f64) -> bx_f64 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
 
-pub fn min_f32(a: bx_f32, b: bx_f32) -> bx_f32 { if a < b { a } else { b } }
-pub fn max_f32(a: bx_f32, b: bx_f32) -> bx_f32 { if a > b { a } else { b } }
+pub fn min_f32(a: bx_f32, b: bx_f32) -> bx_f32 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+pub fn max_f32(a: bx_f32, b: bx_f32) -> bx_f32 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
 
-pub fn min_u64(a: bx_u64, b: bx_u64) -> bx_u64 { if a < b { a } else { b } }
-pub fn max_u64(a: bx_u64, b: bx_u64) -> bx_u64 { if a > b { a } else { b } }
+pub fn min_u64(a: bx_u64, b: bx_u64) -> bx_u64 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+pub fn max_u64(a: bx_u64, b: bx_u64) -> bx_u64 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
 
 // ─── Constants ─────────────────────────────────────────────────────
 

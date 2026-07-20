@@ -26,7 +26,12 @@ const _: () = assert!(core::mem::size_of::<TypeField>() == 24);
 
 impl TypeField {
     pub const fn new(name_hash: bx_u64, type_id: bx_u32, offset: bx_u32) -> Self {
-        Self { name_hash, type_id, offset, flags: 0 }
+        Self {
+            name_hash,
+            type_id,
+            offset,
+            flags: 0,
+        }
     }
 }
 
@@ -50,7 +55,9 @@ impl FieldTable {
     }
 
     pub fn add(&mut self, field: TypeField) -> Option<bx_u32> {
-        if self.count as usize >= MAX_FIELDS { return None; }
+        if self.count as usize >= MAX_FIELDS {
+            return None;
+        }
         let idx = self.count;
         self.fields[idx as usize] = field;
         self.count += 1;
@@ -58,14 +65,20 @@ impl FieldTable {
     }
 
     pub fn lookup_by_name(&self, name_hash: bx_u64) -> Option<&TypeField> {
-        self.fields[..self.count as usize].iter().find(|f| f.name_hash == name_hash)
+        self.fields[..self.count as usize]
+            .iter()
+            .find(|f| f.name_hash == name_hash)
     }
 
     pub fn lookup_by_offset(&self, offset: bx_u32) -> Option<&TypeField> {
-        self.fields[..self.count as usize].iter().find(|f| f.offset == offset)
+        self.fields[..self.count as usize]
+            .iter()
+            .find(|f| f.offset == offset)
     }
 
     pub fn get(&self, idx: bx_u32) -> Option<&TypeField> {
-        self.fields.get(idx as usize).filter(|_| (idx as usize) < self.count as usize)
+        self.fields
+            .get(idx as usize)
+            .filter(|_| (idx as usize) < self.count as usize)
     }
 }

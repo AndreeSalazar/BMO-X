@@ -8,6 +8,7 @@ license = "Techne"
 
 [dependencies]
 boot-context = { path = "../boot_context" }
+bmo-channel = { path = "../../Uso_Reales_Crates/shared/bmo-channel" }
 
 [[bin]]
 name =     "bmo-kernel"

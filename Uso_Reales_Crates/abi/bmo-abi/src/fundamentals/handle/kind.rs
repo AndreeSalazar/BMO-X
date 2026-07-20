@@ -10,54 +10,56 @@ use crate::bmo_abi::primitives::bx_u8;
 #[repr(u8)]
 pub enum HandleKind {
     // ─── Graphics (0x01..0x1F) ───────────────────────────────────────
-    Device       = 0x01,
-    Queue        = 0x02,
-    CmdList      = 0x03,
-    Pso          = 0x04,
-    RootSig      = 0x05,
-    Heap         = 0x06,
-    Buffer       = 0x07,
-    Texture      = 0x08,
-    Sampler      = 0x09,
-    Fence        = 0x0A,
-    Swapchain    = 0x0B,
-    QueryHeap    = 0x0C,
+    Device = 0x01,
+    Queue = 0x02,
+    CmdList = 0x03,
+    Pso = 0x04,
+    RootSig = 0x05,
+    Heap = 0x06,
+    Buffer = 0x07,
+    Texture = 0x08,
+    Sampler = 0x09,
+    Fence = 0x0A,
+    Swapchain = 0x0B,
+    QueryHeap = 0x0C,
     BlasAccelStruct = 0x0D,
     TlasAccelStruct = 0x0E,
 
     // ─── Audio (0x10..0x1F) ──────────────────────────────────────────
-    AudioEngine  = 0x10,
-    AudioVoice   = 0x11,
+    AudioEngine = 0x10,
+    AudioVoice = 0x11,
     AudioSpatializer = 0x12,
-    AudioStream  = 0x13,
+    AudioStream = 0x13,
 
     // ─── Input (0x20..0x2F) ──────────────────────────────────────────
-    InputDevice  = 0x20,
+    InputDevice = 0x20,
     InputProfile = 0x21,
 
     // ─── Network (0x30..0x3F) ────────────────────────────────────────
-    NetSocket    = 0x30,
-    NetEndpoint  = 0x31,
-    NetTlsCtx    = 0x32,
-    NetQuicConn  = 0x33,
+    NetSocket = 0x30,
+    NetEndpoint = 0x31,
+    NetTlsCtx = 0x32,
+    NetQuicConn = 0x33,
 
     // ─── VFS / Storage (0x40..0x4F) ──────────────────────────────────
-    File         = 0x40,
-    Directory    = 0x41,
-    Mount        = 0x42,
-    StorageOp    = 0x43,
+    File = 0x40,
+    Directory = 0x41,
+    Mount = 0x42,
+    StorageOp = 0x43,
 
     // ─── Procesos / threading (0x50..0x5F) ───────────────────────────
-    Process      = 0x50,
-    Thread       = 0x51,
-    Mutex        = 0x52,
-    Futex        = 0x53,
-    Port         = 0x54,
+    Process = 0x50,
+    Thread = 0x51,
+    Mutex = 0x52,
+    Futex = 0x53,
+    Port = 0x54,
 }
 
 impl HandleKind {
     #[inline(always)]
-    pub const fn code(self) -> bx_u8 { self as u8 }
+    pub const fn code(self) -> bx_u8 {
+        self as u8
+    }
 
     /// 0 = recurso pasivo, 1 = canal/cola activo.
     #[inline(always)]

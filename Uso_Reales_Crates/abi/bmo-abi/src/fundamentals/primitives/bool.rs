@@ -7,13 +7,17 @@
 
 pub type bx_bool = bool;
 
-pub const BX_TRUE:  bx_bool = true;
+pub const BX_TRUE: bx_bool = true;
 pub const BX_FALSE: bx_bool = false;
 
 /// Helper: convierte un `bx_u32` (estilo Win32 `BOOL`) a `bx_bool`.
 /// Útil sólo cuando se interactúa con código C heredado vía `compat`.
 #[inline(always)]
-pub const fn bx_bool_from_u32(v: u32) -> bx_bool { v != 0 }
+pub const fn bx_bool_from_u32(v: u32) -> bx_bool {
+    v != 0
+}
 
 #[inline(always)]
-pub const fn bx_bool_to_u32(v: bx_bool) -> u32 { v as u32 }
+pub const fn bx_bool_to_u32(v: bx_bool) -> u32 {
+    v as u32
+}

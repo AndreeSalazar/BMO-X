@@ -3,9 +3,9 @@
 //! Este módulo define el trait `BmoHandleOps` que todo backend de handles
 //! (kernel, driver, biblioteca) debe implementar.
 
-use crate::bmo_abi::primitives::{bx_u32, bx_u64};
-use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::fundamentals::handle::BmoHandle;
+use crate::bmo_abi::fundamentals::status::BmoStatus;
+use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
 /// Resultado de `duplicate`.
 #[repr(C)]

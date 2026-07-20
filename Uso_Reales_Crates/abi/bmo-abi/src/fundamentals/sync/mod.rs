@@ -24,8 +24,8 @@ impl MemOrder {
             MemOrder::Relaxed => core::sync::atomic::Ordering::Relaxed,
             MemOrder::Acquire => core::sync::atomic::Ordering::Acquire,
             MemOrder::Release => core::sync::atomic::Ordering::Release,
-            MemOrder::AcqRel  => core::sync::atomic::Ordering::AcqRel,
-            MemOrder::SeqCst  => core::sync::atomic::Ordering::SeqCst,
+            MemOrder::AcqRel => core::sync::atomic::Ordering::AcqRel,
+            MemOrder::SeqCst => core::sync::atomic::Ordering::SeqCst,
         }
     }
 }
@@ -46,8 +46,14 @@ impl BmoAtomicU64 {
     pub fn fetch_add(&self, v: bx_u64, o: MemOrder) -> bx_u64 {
         self.0.fetch_add(v, o.to_core())
     }
-    pub fn compare_exchange(&self, current: bx_u64, new: bx_u64, o: MemOrder) -> Result<bx_u64, bx_u64> {
-        self.0.compare_exchange(current, new, o.to_core(), o.to_core())
+    pub fn compare_exchange(
+        &self,
+        current: bx_u64,
+        new: bx_u64,
+        o: MemOrder,
+    ) -> Result<bx_u64, bx_u64> {
+        self.0
+            .compare_exchange(current, new, o.to_core(), o.to_core())
     }
 }
 
@@ -67,8 +73,14 @@ impl BmoAtomicU32 {
     pub fn fetch_add(&self, v: bx_u32, o: MemOrder) -> bx_u32 {
         self.0.fetch_add(v, o.to_core())
     }
-    pub fn compare_exchange(&self, current: bx_u32, new: bx_u32, o: MemOrder) -> Result<bx_u32, bx_u32> {
-        self.0.compare_exchange(current, new, o.to_core(), o.to_core())
+    pub fn compare_exchange(
+        &self,
+        current: bx_u32,
+        new: bx_u32,
+        o: MemOrder,
+    ) -> Result<bx_u32, bx_u32> {
+        self.0
+            .compare_exchange(current, new, o.to_core(), o.to_core())
     }
 }
 
@@ -89,7 +101,8 @@ impl BmoAtomicBool {
         self.0.swap(v, o.to_core())
     }
     pub fn compare_exchange(&self, current: bool, new: bool, o: MemOrder) -> Result<bool, bool> {
-        self.0.compare_exchange(current, new, o.to_core(), o.to_core())
+        self.0
+            .compare_exchange(current, new, o.to_core(), o.to_core())
     }
 }
 
@@ -99,7 +112,9 @@ pub struct BmoSpinLock {
 
 impl BmoSpinLock {
     pub const fn new() -> Self {
-        Self { state: BmoAtomicBool::new(false) }
+        Self {
+            state: BmoAtomicBool::new(false),
+        }
     }
 
     pub fn lock(&self) {
@@ -118,7 +133,9 @@ impl BmoSpinLock {
     }
 
     pub fn try_lock(&self) -> bool {
-        self.state.compare_exchange(false, true, MemOrder::Acquire).is_ok()
+        self.state
+            .compare_exchange(false, true, MemOrder::Acquire)
+            .is_ok()
     }
 }
 

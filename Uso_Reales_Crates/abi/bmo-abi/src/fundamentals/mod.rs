@@ -18,18 +18,18 @@
 //! - [`fmt`]          — `BmoFormatter` stack-allocated (sin heap).
 //! - [`sync`]         — `BmoAtomicU32/U64/Bool`, `MemOrder`, `BmoSpinLock`.
 
-pub mod primitives;
-pub mod status;
-pub mod handle;
-pub mod capability;
-pub mod option;
-pub mod result;
-pub mod error;
-pub mod convert;
-pub mod string;
-pub mod memory;
-pub mod buffer;
 pub mod allocator;
-pub mod io;
+pub mod buffer;
+pub mod capability;
+pub mod convert;
+pub mod error;
 pub mod fmt;
+pub mod handle;
+pub mod io;
+pub mod memory;
+pub mod option;
+pub mod primitives;
+pub mod result;
+pub mod status;
+pub mod string;
 pub mod sync;

@@ -34,7 +34,10 @@ impl StandardProfile {
 
     /// Get a predefined macro value. Returns None if not defined.
     pub fn macro_value(&self, name: &str) -> Option<i64> {
-        self.macros.iter().find(|(k, _)| *k == name).map(|(_, v)| *v)
+        self.macros
+            .iter()
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| *v)
     }
 
     /// Check if this standard inherits from another.
@@ -44,8 +47,8 @@ impl StandardProfile {
 }
 
 pub mod c;
-pub mod cpp;
 pub mod cobol;
+pub mod cpp;
 
 /// Find a standard profile by language and version.
 pub fn find(language: &str, version: &str) -> Option<&'static StandardProfile> {

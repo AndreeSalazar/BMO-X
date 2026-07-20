@@ -120,8 +120,10 @@ fn shell_help() {
     s_log("commands:");
     s_log("  help         show this help");
     s_log("  info         dump BootContext fields");
+    s_log("  tasks        show scheduler state");
     s_log("  fb           show framebuffer info");
     s_log("  splash       re-run boot splash animation");
+    s_log("  bex          show native executable-loader status");
     s_log("  panic        trigger test panic (does not return)");
     s_log("  reboot       keyboard reset pulse");
     s_log("  halt         stop and hlt");
@@ -171,6 +173,20 @@ fn shell_fb() {
     crate::ring0::dev::console::serial_write("\n");
 }
 
+fn shell_tasks() {
+    let (total, runnable) = crate::ring0::scheduler::counts();
+    crate::ring0::dev::console::serial_write("[tasks] total=");
+    crate::ring0::dev::console::serial_write_u64(total as u64, 10);
+    crate::ring0::dev::console::serial_write(" runnable=");
+    crate::ring0::dev::console::serial_write_u64(runnable as u64, 10);
+    crate::ring0::dev::console::serial_write(" current_tid=");
+    crate::ring0::dev::console::serial_write_u64(
+        crate::ring0::scheduler::current_tid() as u64,
+        10,
+    );
+    crate::ring0::dev::console::serial_write("\n");
+}
+
 fn shell_splash() {
     if !crate::info::has_fb() {
         s_log("[splash] no framebuffer");
@@ -181,6 +197,11 @@ fn shell_splash() {
     // Return to the persistent dashboard instead of clearing to black.
     splash::splash_dashboard_init();
     s_log("[splash] done");
+}
+
+fn shell_bex() {
+    s_log("[bex] BEX v1 / BEF1 x86-64 admission is enabled");
+    s_log("[bex] next: storage input, Ring 3 pages, then iretq entry");
 }
 
 fn shell_panic() -> ! {
@@ -215,10 +236,14 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_help();
         } else if cmd == b"info" {
             shell_info(ctx);
+        } else if cmd == b"tasks" {
+            shell_tasks();
         } else if cmd == b"fb" {
             shell_fb();
         } else if cmd == b"splash" {
             shell_splash();
+        } else if cmd == b"bex" {
+            shell_bex();
         } else if cmd == b"panic" {
             shell_panic();
         } else if cmd == b"reboot" {
@@ -234,7 +259,7 @@ fn run_shell(ctx: &BootContext) -> ! {
 
 /// Public entry: called from `entry::kernel_main_real` after the
 /// naked `_start` BSS zero.
-pub fn main(ctx: &BootContext) {
+pub fn main(ctx: &mut BootContext) {
     s_log("[ring0] validating BootContext");
     if !ctx.is_valid() {
         s_log("[ring0] FATAL: BootContext magic mismatch");
@@ -245,10 +270,19 @@ pub fn main(ctx: &BootContext) {
     crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
 
+    crate::ring0::scheduler::init();
+    crate::ring0::channel::init(ctx);
+    crate::ring0::syscall::init();
+    s_log("[ring0] scheduler + BMO Channel + SYSCALL ready (BSP)");
+
     // Populate the BMO CPU profile (Ryzen 5 5600X topology + errata).
     // This detects CPUID, SMT/CCX layout, cache hierarchy, TSC freq,
     // and applies Zen 3 Spectre/MDS mitigations.
     crate::ring0::cpu_vendor::ryzen_5_5600x::init_bmo_cpu();
+
+    // BEX is the only native executable contract admitted by this kernel.
+    // The parser is allocation-free so it is safe before the process allocator.
+    crate::ring0::bex::announce();
 
     // CPU identity detection (CPUID leaf 0, 1, 0x80000002-04)
     let cpu = crate::ring0::cpu::detect_cpu();

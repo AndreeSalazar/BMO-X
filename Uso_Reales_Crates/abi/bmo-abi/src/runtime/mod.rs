@@ -13,17 +13,17 @@
 //!   └── bridges:    LangBridge    (8 slots para bridges de lenguaje)
 //! ```
 
+pub mod lang_bridge;
 pub mod types;
 pub mod vtable;
-pub mod lang_bridge;
 
+use lang_bridge::LangBridge;
 use types::TypeRegistry;
 use vtable::VTableStore;
-use lang_bridge::LangBridge;
 
-use crate::bmo_abi::fundamentals::status::BmoStatus;
-use crate::bmo_abi::fundamentals::primitives::bx_u32;
 use crate::bmo_abi::error_code;
+use crate::bmo_abi::fundamentals::primitives::bx_u32;
+use crate::bmo_abi::fundamentals::status::BmoStatus;
 
 /// El agregador único de runtime del BMO ABI.
 ///

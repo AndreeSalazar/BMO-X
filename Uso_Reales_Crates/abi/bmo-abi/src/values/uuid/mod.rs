@@ -3,7 +3,7 @@
 //! Reemplaza `UUID` / `GUID` de COM/Win32 y `uuid_t` de POSIX.
 //! Compatible con RFC 4122.
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u64};
+use crate::bmo_abi::primitives::{bx_u64, bx_u8};
 
 /// UUID de 128 bits (RFC 4122).
 ///
@@ -36,12 +36,24 @@ impl BmoUuid {
 
     pub fn to_u64_pair(&self) -> (bx_u64, bx_u64) {
         let hi = u64::from_be_bytes([
-            self.bytes[0], self.bytes[1], self.bytes[2], self.bytes[3],
-            self.bytes[4], self.bytes[5], self.bytes[6], self.bytes[7],
+            self.bytes[0],
+            self.bytes[1],
+            self.bytes[2],
+            self.bytes[3],
+            self.bytes[4],
+            self.bytes[5],
+            self.bytes[6],
+            self.bytes[7],
         ]);
         let lo = u64::from_be_bytes([
-            self.bytes[8], self.bytes[9], self.bytes[10], self.bytes[11],
-            self.bytes[12], self.bytes[13], self.bytes[14], self.bytes[15],
+            self.bytes[8],
+            self.bytes[9],
+            self.bytes[10],
+            self.bytes[11],
+            self.bytes[12],
+            self.bytes[13],
+            self.bytes[14],
+            self.bytes[15],
         ]);
         (hi, lo)
     }
@@ -54,7 +66,9 @@ impl BmoUuid {
     }
 
     /// Create a nil/zero UUID.
-    pub const fn nil() -> Self { Self::NIL }
+    pub const fn nil() -> Self {
+        Self::NIL
+    }
 
     pub fn is_nil(&self) -> bool {
         self.bytes == [0u8; 16]
@@ -85,8 +99,8 @@ mod tests {
     #[test]
     fn u64_pair_roundtrip() {
         let u = BmoUuid::from_bytes([
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10,
         ]);
         let (hi, lo) = u.to_u64_pair();
         let u2 = BmoUuid::from_u64_pair(hi, lo);

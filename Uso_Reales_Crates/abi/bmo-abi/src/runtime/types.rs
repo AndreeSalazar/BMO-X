@@ -21,14 +21,14 @@ pub const TYPE_REGISTRY_CAP: usize = 256;
 /// Kind constants for TypeMeta.kind field.
 pub mod type_kind {
     use crate::bmo_abi::primitives::bx_u8;
-    pub const STRUCT:    bx_u8 = 0;
-    pub const ENUM:      bx_u8 = 1;
-    pub const UNION:     bx_u8 = 2;
-    pub const FUNCTION:  bx_u8 = 3;
+    pub const STRUCT: bx_u8 = 0;
+    pub const ENUM: bx_u8 = 1;
+    pub const UNION: bx_u8 = 2;
+    pub const FUNCTION: bx_u8 = 3;
     pub const PRIMITIVE: bx_u8 = 4;
-    pub const POINTER:   bx_u8 = 5;
-    pub const ARRAY:     bx_u8 = 6;
-    pub const ALIAS:     bx_u8 = 7;
+    pub const POINTER: bx_u8 = 5;
+    pub const ARRAY: bx_u8 = 6;
+    pub const ALIAS: bx_u8 = 7;
 }
 
 /// Metadatos de un tipo registrado.
@@ -50,7 +50,13 @@ const _: () = assert!(core::mem::size_of::<TypeMeta>() == 32);
 
 impl TypeMeta {
     pub const fn empty() -> Self {
-        Self { name_hash: 0, size: 0, align: 0, kind: 0, field_count: 0 }
+        Self {
+            name_hash: 0,
+            size: 0,
+            align: 0,
+            kind: 0,
+            field_count: 0,
+        }
     }
 }
 
@@ -93,16 +99,25 @@ impl TypeRegistry {
 
     /// Register a simple type (primitive, alias, pointer).
     pub fn register(&mut self, meta: TypeMeta) -> Option<bx_u32> {
-        if self.count >= TYPE_REGISTRY_CAP { return None; }
+        if self.count >= TYPE_REGISTRY_CAP {
+            return None;
+        }
         let idx = self.count as bx_u32;
-        self.entries[self.count] = TypeEntry { meta, fields: None, func_sig: None, params: None };
+        self.entries[self.count] = TypeEntry {
+            meta,
+            fields: None,
+            func_sig: None,
+            params: None,
+        };
         self.count += 1;
         Some(idx)
     }
 
     /// Register a struct/enum/union type with field descriptors.
     pub fn register_struct(&mut self, meta: TypeMeta, fields: FieldTable) -> Option<bx_u32> {
-        if self.count >= TYPE_REGISTRY_CAP { return None; }
+        if self.count >= TYPE_REGISTRY_CAP {
+            return None;
+        }
         let idx = self.count as bx_u32;
         self.entries[self.count] = TypeEntry {
             meta,
@@ -121,7 +136,9 @@ impl TypeRegistry {
         sig: FunctionSignature,
         params: [ParamDescriptor; 16],
     ) -> Option<bx_u32> {
-        if self.count >= TYPE_REGISTRY_CAP { return None; }
+        if self.count >= TYPE_REGISTRY_CAP {
+            return None;
+        }
         let idx = self.count as bx_u32;
         self.entries[self.count] = TypeEntry {
             meta,
@@ -134,11 +151,15 @@ impl TypeRegistry {
     }
 
     pub fn lookup(&self, name_hash: bx_u64) -> Option<&TypeEntry> {
-        self.entries[..self.count].iter().find(|e| e.meta.name_hash == name_hash)
+        self.entries[..self.count]
+            .iter()
+            .find(|e| e.meta.name_hash == name_hash)
     }
 
     pub fn get(&self, idx: bx_u32) -> Option<&TypeEntry> {
-        self.entries.get(idx as usize).filter(|_| (idx as usize) < self.count)
+        self.entries
+            .get(idx as usize)
+            .filter(|_| (idx as usize) < self.count)
     }
 
     /// Look up a type and return its field descriptors (if any).
@@ -147,20 +168,26 @@ impl TypeRegistry {
     }
 
     /// Look up a function type and return its signature + params.
-    pub fn get_function(&self, type_id: bx_u32) -> Option<(&FunctionSignature, &[ParamDescriptor])> {
-        self.get(type_id).and_then(|e| {
-            match (&e.func_sig, &e.params) {
+    pub fn get_function(
+        &self,
+        type_id: bx_u32,
+    ) -> Option<(&FunctionSignature, &[ParamDescriptor])> {
+        self.get(type_id)
+            .and_then(|e| match (&e.func_sig, &e.params) {
                 (Some(sig), Some(params)) => {
                     let n = sig.param_count as usize;
                     Some((sig, &params[..n.min(16)]))
                 }
                 _ => None,
-            }
-        })
+            })
     }
 
-    pub fn count(&self) -> usize { self.count }
+    pub fn count(&self) -> usize {
+        self.count
+    }
 
     /// True if at least one type has been registered.
-    pub fn is_valid(&self) -> bool { self.count > 0 }
+    pub fn is_valid(&self) -> bool {
+        self.count > 0
+    }
 }

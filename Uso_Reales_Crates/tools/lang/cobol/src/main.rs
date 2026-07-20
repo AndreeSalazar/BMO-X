@@ -42,14 +42,14 @@ fn main() {
     };
 
     let result = if asm_paths.is_empty() {
-        bmo_cobol_front::compile_source_to_bef(&source)
+        bmo_cobol_front::compile_source_to_bex(&source)
     } else {
-        bmo_cobol_front::compile_source_to_bef_with_asm(&source, asm_paths)
+        bmo_cobol_front::compile_source_to_bex_with_asm(&source, asm_paths)
     };
 
     match result {
         Ok(bef_bytes) => {
-            let out_path = Path::new(path).with_extension("bef");
+            let out_path = Path::new(path).with_extension(bmo_abi::bex::BEX_EXTENSION);
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
                     println!("ok: wrote {} bytes â†’ {}", bef_bytes.len(), out_path.display());

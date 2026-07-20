@@ -3,11 +3,11 @@
 //! BmoStatus ↔ BmoError ↔ ErrorCode ↔ BmoResult. Un solo punto de
 //! traducción para que el resto del kernel nunca tenga que pensar en esto.
 
-use crate::bmo_abi::primitives::bx_u32;
-use crate::bmo_abi::fundamentals::status::BmoStatus;
-use crate::bmo_abi::fundamentals::status::code::StatusFlags;
 use crate::bmo_abi::fundamentals::error::BmoError;
 use crate::bmo_abi::fundamentals::result::BmoResult;
+use crate::bmo_abi::fundamentals::status::code::StatusFlags;
+use crate::bmo_abi::fundamentals::status::BmoStatus;
+use crate::bmo_abi::primitives::bx_u32;
 
 // ─── BmoStatus → BmoError ──────────────────────────────────────────
 

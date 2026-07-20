@@ -30,7 +30,10 @@ impl<T: Copy> BmoOption<T> {
     };
 
     pub const fn some(v: T) -> Self {
-        Self { value: v, has_value: 1 }
+        Self {
+            value: v,
+            has_value: 1,
+        }
     }
 
     pub fn is_some(&self) -> bool {
@@ -47,7 +50,11 @@ impl<T: Copy> BmoOption<T> {
     }
 
     pub fn unwrap_or(self, default: T) -> T {
-        if self.has_value != 0 { self.value } else { default }
+        if self.has_value != 0 {
+            self.value
+        } else {
+            default
+        }
     }
 
     pub fn map<U: Copy>(self, f: impl FnOnce(T) -> U) -> BmoOption<U> {
@@ -82,6 +89,10 @@ impl<T: Copy> From<Option<T>> for BmoOption<T> {
 
 impl<T: Copy> From<BmoOption<T>> for Option<T> {
     fn from(b: BmoOption<T>) -> Self {
-        if b.is_some() { Some(b.value) } else { None }
+        if b.is_some() {
+            Some(b.value)
+        } else {
+            None
+        }
     }
 }

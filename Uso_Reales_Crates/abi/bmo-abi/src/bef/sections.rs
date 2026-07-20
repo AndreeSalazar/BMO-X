@@ -6,53 +6,53 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SectionKind {
     /// Código ejecutable x86-64. Cargada como RX.
-    Code      = 0x01,
+    Code = 0x01,
     /// Datos inicializados de solo lectura (rodata). Cargada como R.
-    RoData    = 0x02,
+    RoData = 0x02,
     /// Datos inicializados mutables. Cargada como RW.
-    Data      = 0x03,
+    Data = 0x03,
     /// Datos no inicializados (BSS). Reservado en RAM, no en archivo.
-    Bss       = 0x04,
+    Bss = 0x04,
     /// Tabla de imports (lazy/eager binding via BMO).
-    Imports   = 0x05,
+    Imports = 0x05,
     /// Tabla de exports (símbolos visibles desde fuera).
-    Exports   = 0x06,
+    Exports = 0x06,
     /// Tabla de relocations.
-    Relocs    = 0x07,
+    Relocs = 0x07,
     /// Tabla de símbolos (debug + dynamic linking).
-    Symbols   = 0x08,
+    Symbols = 0x08,
     /// Manifest TOML (capabilities, version, dependencies).
-    Manifest  = 0x09,
+    Manifest = 0x09,
     /// Shaders/IR pre-compilados.
-    Shaders   = 0x0A,
+    Shaders = 0x0A,
     /// Recursos arbitrarios (texturas BC7, audio Opus, fonts, etc.).
     Resources = 0x0B,
     /// Layout de TLS (Thread Local Storage).
-    Tls       = 0x0C,
+    Tls = 0x0C,
     /// Stack unwind info para excepciones / backtraces.
-    Unwind    = 0x0D,
+    Unwind = 0x0D,
     /// Debug info (DWARF-lite específico de BEF).
-    Debug     = 0x0E,
+    Debug = 0x0E,
     /// Hashes BLAKE3 + firma Ed25519 opcional.
     Signature = 0x0F,
 
     // ─── Sesión 8: secciones de metadatos genéricos multi-lenguaje ────
     /// Tabla de `TypeDescriptor` (consumida por `bmo_gpu::abi::type_system::TypeRegistry`).
-    TypeMap   = 0x10,
+    TypeMap = 0x10,
     /// VTables `BmoVTable` empacadas (`bmo_gpu::abi::vtable`).
-    VTables   = 0x11,
+    VTables = 0x11,
     /// Bridges de lenguaje origen (`bmo_gpu::abi::lang_bridge::LangDescriptor`).
     LangBridge = 0x12,
     /// Datos de reflection (mirrors, nombres mangled extra).
-    Reflect   = 0x13,
+    Reflect = 0x13,
     /// Tabla de cierres `BmoClosure` con `ClosureSig`.
-    Closures  = 0x14,
+    Closures = 0x14,
 }
 
 impl SectionKind {

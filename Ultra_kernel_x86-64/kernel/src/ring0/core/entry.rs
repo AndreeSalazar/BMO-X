@@ -83,7 +83,7 @@ extern "C" fn kernel_main_real(ctx: *const boot_context::BootContext) -> ! {
     if ctx.is_null() {
         loop { unsafe { asm!("hlt"); } }
     }
-    let ctx_ref = unsafe { &*ctx };
+    let ctx_ref = unsafe { &mut *(ctx as *mut boot_context::BootContext) };
 
     // Crash marker at low RAM (visible to host debugger).
     unsafe {

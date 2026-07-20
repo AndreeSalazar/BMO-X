@@ -43,6 +43,10 @@ pub struct LangBridge {
 
 impl LangBridge {
     pub const fn new(language: BmoLanguage, call: BridgeCallFn) -> Self {
-        Self { language, call, name_hash: 0 }
+        Self {
+            language,
+            call,
+            name_hash: 0,
+        }
     }
 }

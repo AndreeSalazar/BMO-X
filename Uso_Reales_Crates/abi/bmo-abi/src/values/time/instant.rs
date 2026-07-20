@@ -10,9 +10,9 @@
 //! `init(timestamp, tsc_freq)`. Una vez inicializado, todos los `now()`
 //! posteriores retornan valores correctos.
 
+use crate::bmo_abi::fundamentals::sync::{BmoAtomicU64, MemOrder};
 use crate::bmo_abi::primitives::bx_u64;
 use crate::bmo_abi::values::time::duration::BmoDuration;
-use crate::bmo_abi::fundamentals::sync::{BmoAtomicU64, MemOrder};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -67,12 +67,16 @@ impl BmoInstant {
 
     #[inline(always)]
     pub const fn add(self, d: BmoDuration) -> Self {
-        Self { ns_since_boot: self.ns_since_boot.saturating_add(d.ns) }
+        Self {
+            ns_since_boot: self.ns_since_boot.saturating_add(d.ns),
+        }
     }
 
     #[inline(always)]
     pub const fn sub(self, d: BmoDuration) -> Self {
-        Self { ns_since_boot: self.ns_since_boot.saturating_sub(d.ns) }
+        Self {
+            ns_since_boot: self.ns_since_boot.saturating_sub(d.ns),
+        }
     }
 }
 
@@ -83,10 +87,10 @@ impl BmoInstant {
 //
 // `ns_per_tick = 1_000_000_000 / tsc_freq_hz` (en punto fijo, Q32.32).
 
-static TSC_FREQ_HZ:    BmoAtomicU64 = BmoAtomicU64::new(0);
-static TSC_AT_BOOT:    BmoAtomicU64 = BmoAtomicU64::new(0);
+static TSC_FREQ_HZ: BmoAtomicU64 = BmoAtomicU64::new(0);
+static TSC_AT_BOOT: BmoAtomicU64 = BmoAtomicU64::new(0);
 static NS_PER_TICK_XFP: BmoAtomicU64 = BmoAtomicU64::new(0);
-static INITIALIZED:     BmoAtomicU64 = BmoAtomicU64::new(0);
+static INITIALIZED: BmoAtomicU64 = BmoAtomicU64::new(0);
 
 const Q32_SHIFT: u32 = 32;
 

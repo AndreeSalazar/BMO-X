@@ -24,53 +24,55 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoErrorCode {
     /// Sin error.
-    Ok              = 0,
+    Ok = 0,
     /// Sin memoria (heap exhausted, swap full, etc).
-    OutOfMemory     = 1,
+    OutOfMemory = 1,
     /// Handle inválido o de tipo incorrecto.
-    InvalidHandle   = 2,
+    InvalidHandle = 2,
     /// Permiso denegado.
     PermissionDenied = 3,
     /// Recurso no encontrado.
-    NotFound        = 4,
+    NotFound = 4,
     /// Recurso ocupado (lock contention, file in use, etc).
-    Busy            = 5,
+    Busy = 5,
     /// Timeout alcanzado.
-    Timeout         = 6,
+    Timeout = 6,
     /// Argumento inválido (NULL, out of range, etc).
     InvalidArgument = 7,
     /// Error de I/O (disk, network, etc).
-    Io              = 8,
+    Io = 8,
     /// Error interno del kernel. Bug probable.
-    Internal        = 9,
+    Internal = 9,
     /// Operación no soportada en este OS/config.
-    Unsupported     = 10,
+    Unsupported = 10,
     /// Operación cancelada.
-    Cancelled       = 11,
+    Cancelled = 11,
     /// Deadlock detectado.
-    Deadlock        = 12,
+    Deadlock = 12,
     /// Recurso temporalmente no disponible, reintentar.
-    Again           = 13,
+    Again = 13,
     /// Buffer demasiado pequeño.
-    BufferTooSmall  = 14,
+    BufferTooSmall = 14,
     /// Estado inconsistente.
-    InvalidState    = 15,
+    InvalidState = 15,
     /// Checksum o CRC no coincide.
-    Checksum        = 16,
+    Checksum = 16,
     /// Versión incompatible.
-    Version         = 17,
+    Version = 17,
     /// Path no encontrado o malformado.
-    PathNotFound    = 18,
+    PathNotFound = 18,
     /// Ya existe (file create, port name, etc).
-    AlreadyExists   = 19,
+    AlreadyExists = 19,
     /// Fin de archivo/directorio.
-    EndOfStream     = 20,
+    EndOfStream = 20,
 }
 
 impl BmoErrorCode {
     /// `true` si el código indica éxito.
     #[inline]
-    pub fn is_ok(self) -> bool { self == Self::Ok }
+    pub fn is_ok(self) -> bool {
+        self == Self::Ok
+    }
 
     /// `true` si el código indica un error que vale la pena reintentar.
     #[inline]
@@ -113,13 +115,13 @@ impl BmoErrorCode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoErrorSeverity {
     /// No es un error (status code = 0).
-    None      = 0,
+    None = 0,
     /// Advertencia, el programa puede continuar.
-    Warning   = 1,
+    Warning = 1,
     /// Error, la operación falló pero el programa sigue vivo.
-    Error     = 2,
+    Error = 2,
     /// Error fatal, el programa debería terminar.
-    Fatal     = 3,
+    Fatal = 3,
 }
 
 impl BmoErrorSeverity {
@@ -134,15 +136,15 @@ impl BmoErrorSeverity {
 pub struct BmoErrorFlags(pub u32);
 
 impl BmoErrorFlags {
-    pub const NONE:         Self = Self(0);
+    pub const NONE: Self = Self(0);
     /// El error es recuperable: reintentar puede funcionar.
-    pub const RECOVERABLE:  Self = Self(1 << 0);
+    pub const RECOVERABLE: Self = Self(1 << 0);
     /// El error es transitorio: desaparecerá solo.
-    pub const TRANSIENT:    Self = Self(1 << 1);
+    pub const TRANSIENT: Self = Self(1 << 1);
     /// El error es de usuario (input inválido, etc).
-    pub const USER:         Self = Self(1 << 2);
+    pub const USER: Self = Self(1 << 2);
     /// El error es interno (bug).
-    pub const INTERNAL:     Self = Self(1 << 3);
+    pub const INTERNAL: Self = Self(1 << 3);
 
     pub const MASK: u32 = 0xFF00_0000;
     pub const SHIFT: u32 = 24;
@@ -150,25 +152,24 @@ impl BmoErrorFlags {
 
 // ─── Raw code constants ─────────────────────────────────────────────
 
-pub const OK:                u32 = 0;
-pub const OUT_OF_MEMORY:     u32 = 1;
-pub const INVALID_HANDLE:    u32 = 2;
+pub const OK: u32 = 0;
+pub const OUT_OF_MEMORY: u32 = 1;
+pub const INVALID_HANDLE: u32 = 2;
 pub const PERMISSION_DENIED: u32 = 3;
-pub const NOT_FOUND:         u32 = 4;
-pub const BUSY:              u32 = 5;
-pub const TIMEOUT:           u32 = 6;
-pub const INVALID_ARGUMENT:  u32 = 7;
-pub const IO:                u32 = 8;
-pub const INTERNAL:          u32 = 9;
-pub const UNSUPPORTED:       u32 = 10;
-pub const CANCELLED:         u32 = 11;
-pub const DEADLOCK:          u32 = 12;
-pub const AGAIN:             u32 = 13;
-pub const BUFFER_TOO_SMALL:  u32 = 14;
-pub const INVALID_STATE:     u32 = 15;
-pub const CHECKSUM:          u32 = 16;
-pub const VERSION:           u32 = 17;
-pub const PATH_NOT_FOUND:    u32 = 18;
-pub const ALREADY_EXISTS:    u32 = 19;
-pub const END_OF_STREAM:     u32 = 20;
-
+pub const NOT_FOUND: u32 = 4;
+pub const BUSY: u32 = 5;
+pub const TIMEOUT: u32 = 6;
+pub const INVALID_ARGUMENT: u32 = 7;
+pub const IO: u32 = 8;
+pub const INTERNAL: u32 = 9;
+pub const UNSUPPORTED: u32 = 10;
+pub const CANCELLED: u32 = 11;
+pub const DEADLOCK: u32 = 12;
+pub const AGAIN: u32 = 13;
+pub const BUFFER_TOO_SMALL: u32 = 14;
+pub const INVALID_STATE: u32 = 15;
+pub const CHECKSUM: u32 = 16;
+pub const VERSION: u32 = 17;
+pub const PATH_NOT_FOUND: u32 = 18;
+pub const ALREADY_EXISTS: u32 = 19;
+pub const END_OF_STREAM: u32 = 20;

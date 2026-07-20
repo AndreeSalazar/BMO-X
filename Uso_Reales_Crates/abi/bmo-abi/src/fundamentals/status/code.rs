@@ -20,28 +20,48 @@ pub struct BmoStatus {
 const _: () = assert!(core::mem::size_of::<BmoStatus>() == 16);
 
 impl BmoStatus {
-    pub const OK: Self = Self { code: 0, flags: 0, value: 0 };
+    pub const OK: Self = Self {
+        code: 0,
+        flags: 0,
+        value: 0,
+    };
 
     #[inline(always)]
     pub const fn ok_value(v: bx_u64) -> Self {
-        Self { code: 0, flags: 0, value: v }
+        Self {
+            code: 0,
+            flags: 0,
+            value: v,
+        }
     }
 
     #[inline(always)]
     pub const fn err(code: bx_u32) -> Self {
-        Self { code, flags: 0, value: 0 }
+        Self {
+            code,
+            flags: 0,
+            value: 0,
+        }
     }
 
     #[inline(always)]
     pub const fn err_with_flags(code: bx_u32, flags: bx_u32) -> Self {
-        Self { code, flags, value: 0 }
+        Self {
+            code,
+            flags,
+            value: 0,
+        }
     }
 
     #[inline(always)]
-    pub const fn is_ok(&self) -> bool { self.code == 0 }
+    pub const fn is_ok(&self) -> bool {
+        self.code == 0
+    }
 
     #[inline(always)]
-    pub const fn is_err(&self) -> bool { self.code != 0 }
+    pub const fn is_err(&self) -> bool {
+        self.code != 0
+    }
 
     #[inline(always)]
     pub const fn has_flag(&self, flag: bx_u32) -> bool {

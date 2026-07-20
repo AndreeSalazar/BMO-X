@@ -9,11 +9,11 @@
 //! - [`net`]      — `BmoIpv4Addr`, `BmoIpv6Addr`, `BmoSocketAddr`.
 //! - [`reflect`]  — reflexión sobre tipos BEF cargados.
 
-pub mod time;
 pub mod clock;
-pub mod uuid;
-pub mod version;
-pub mod math;
 pub mod hash;
+pub mod math;
 pub mod net;
 pub mod reflect;
+pub mod time;
+pub mod uuid;
+pub mod version;

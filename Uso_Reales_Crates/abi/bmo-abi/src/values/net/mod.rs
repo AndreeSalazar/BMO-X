@@ -3,7 +3,7 @@
 //! Reemplaza `<netinet/in.h>`, `<sys/socket.h>`, y todo el caos de tipos
 //! de red de POSIX/Win32 con representaciones limpias y FFI-safe.
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u32};
+use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u8};
 
 // ─── IPv4 ──────────────────────────────────────────────────────────
 
@@ -16,22 +16,32 @@ pub struct BmoIpv4Addr {
 const _: () = assert!(core::mem::size_of::<BmoIpv4Addr>() == 4);
 
 impl BmoIpv4Addr {
-    pub const UNSPECIFIED: Self = Self { octets: [0, 0, 0, 0] };
-    pub const LOOPBACK: Self = Self { octets: [127, 0, 0, 1] };
-    pub const BROADCAST: Self = Self { octets: [255, 255, 255, 255] };
+    pub const UNSPECIFIED: Self = Self {
+        octets: [0, 0, 0, 0],
+    };
+    pub const LOOPBACK: Self = Self {
+        octets: [127, 0, 0, 1],
+    };
+    pub const BROADCAST: Self = Self {
+        octets: [255, 255, 255, 255],
+    };
 
     pub const fn new(a: bx_u8, b: bx_u8, c: bx_u8, d: bx_u8) -> Self {
-        Self { octets: [a, b, c, d] }
+        Self {
+            octets: [a, b, c, d],
+        }
     }
 
     /// From a u32 in host byte order.
     pub const fn from_u32(v: bx_u32) -> Self {
-        Self { octets: [
-            (v >> 24) as bx_u8,
-            (v >> 16) as bx_u8,
-            (v >> 8) as bx_u8,
-            v as bx_u8,
-        ]}
+        Self {
+            octets: [
+                (v >> 24) as bx_u8,
+                (v >> 16) as bx_u8,
+                (v >> 8) as bx_u8,
+                v as bx_u8,
+            ],
+        }
     }
 
     pub fn as_u32(&self) -> bx_u32 {
@@ -68,7 +78,9 @@ const _: () = assert!(core::mem::size_of::<BmoIpv6Addr>() == 16);
 
 impl BmoIpv6Addr {
     pub const UNSPECIFIED: Self = Self { segments: [0; 8] };
-    pub const LOOPBACK: Self = Self { segments: [0, 0, 0, 0, 0, 0, 0, 1] };
+    pub const LOOPBACK: Self = Self {
+        segments: [0, 0, 0, 0, 0, 0, 0, 1],
+    };
 
     pub const fn new(segments: [bx_u16; 8]) -> Self {
         Self { segments }

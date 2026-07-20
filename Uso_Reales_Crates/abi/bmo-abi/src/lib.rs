@@ -1,4 +1,4 @@
-﻿//! `bmo_abi` â€” BMO ABI: la convenciÃ³n y el "stdlib mÃ­nimo" nativo de BMO.
+//! `bmo_abi` â€” BMO ABI: la convenciÃ³n y el "stdlib mÃ­nimo" nativo de BMO.
 //!
 //! **Reemplaza al C ABI** (cdecl/stdcall/Win64/SysV AMD64) y a su stdlib
 //! (`<stdint.h>`, `<stddef.h>`, `<string.h>`, `<errno.h>`, `<time.h>`, etc).
@@ -58,6 +58,7 @@ pub mod fs;
 pub mod surface;
 pub mod error_code;
 pub mod bef;
+pub mod bex;
 pub mod syscalls;
 pub mod profile;
 pub mod cpu_profiles;

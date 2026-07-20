@@ -31,7 +31,7 @@
 //! - **SSA-lite**: each local is assigned once per function (not strictly enforced)
 //! - **Fixed capacity**: IrModule, IrFunction, IrBlock have fixed maximum sizes
 
-use crate::bmo_abi::types::convention::{ScalarKind, CallingConvention};
+use crate::bmo_abi::types::convention::{CallingConvention, ScalarKind};
 
 /// Maximum functions per module.
 pub const MAX_FUNCTIONS: usize = 64;
@@ -125,7 +125,11 @@ impl IrType {
             Self::I8 | Self::U8 | Self::Bool => 1,
             Self::I16 | Self::U16 => 2,
             Self::I32 | Self::U32 | Self::F32 => 4,
-            Self::I64 | Self::U64 | Self::F64 | Self::Pointer | Self::PointerTo(_)
+            Self::I64
+            | Self::U64
+            | Self::F64
+            | Self::Pointer
+            | Self::PointerTo(_)
             | Self::Function(_) => 8,
             Self::Array { elem: _, len } => {
                 // Approximate — actual size depends on elem type
@@ -137,12 +141,22 @@ impl IrType {
 
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Void => "void", Self::I8 => "i8", Self::I16 => "i16",
-            Self::I32 => "i32", Self::I64 => "i64", Self::U8 => "u8",
-            Self::U16 => "u16", Self::U32 => "u32", Self::U64 => "u64",
-            Self::F32 => "f32", Self::F64 => "f64", Self::Bool => "bool",
-            Self::Pointer => "ptr", Self::PointerTo(_) => "ptr",
-            Self::Array { .. } => "array", Self::Struct(_) => "struct",
+            Self::Void => "void",
+            Self::I8 => "i8",
+            Self::I16 => "i16",
+            Self::I32 => "i32",
+            Self::I64 => "i64",
+            Self::U8 => "u8",
+            Self::U16 => "u16",
+            Self::U32 => "u32",
+            Self::U64 => "u64",
+            Self::F32 => "f32",
+            Self::F64 => "f64",
+            Self::Bool => "bool",
+            Self::Pointer => "ptr",
+            Self::PointerTo(_) => "ptr",
+            Self::Array { .. } => "array",
+            Self::Struct(_) => "struct",
             Self::Function(_) => "fn",
         }
     }
@@ -150,11 +164,16 @@ impl IrType {
     pub const fn to_scalar_kind(&self) -> Option<ScalarKind> {
         match self {
             Self::Void => Some(ScalarKind::Void),
-            Self::I8 => Some(ScalarKind::I8), Self::I16 => Some(ScalarKind::I16),
-            Self::I32 => Some(ScalarKind::I32), Self::I64 => Some(ScalarKind::I64),
-            Self::U8 => Some(ScalarKind::U8), Self::U16 => Some(ScalarKind::U16),
-            Self::U32 => Some(ScalarKind::U32), Self::U64 => Some(ScalarKind::U64),
-            Self::F32 => Some(ScalarKind::F32), Self::F64 => Some(ScalarKind::F64),
+            Self::I8 => Some(ScalarKind::I8),
+            Self::I16 => Some(ScalarKind::I16),
+            Self::I32 => Some(ScalarKind::I32),
+            Self::I64 => Some(ScalarKind::I64),
+            Self::U8 => Some(ScalarKind::U8),
+            Self::U16 => Some(ScalarKind::U16),
+            Self::U32 => Some(ScalarKind::U32),
+            Self::U64 => Some(ScalarKind::U64),
+            Self::F32 => Some(ScalarKind::F32),
+            Self::F64 => Some(ScalarKind::F64),
             Self::Bool => Some(ScalarKind::Bool),
             Self::Pointer | Self::PointerTo(_) | Self::Function(_) => Some(ScalarKind::Pointer),
             Self::Array { .. } | Self::Struct(_) => None,
@@ -192,11 +211,21 @@ pub enum IrExpr {
     /// Address-of: &local or &global.
     AddrOf(u16),
     /// Call a function: fn(args...).
-    Call { func: u16, args: u16, arg_count: u16 },
+    Call {
+        func: u16,
+        args: u16,
+        arg_count: u16,
+    },
     /// Syscall invocation.
     Syscall { nr: u32, args: u16, arg_count: u16 },
     /// Virtual call through vtable: *(obj->vtable[offset])(args).
-    VCall { this: u16, vtable_offset: u32, sig_type_id: u16, args: u16, arg_count: u16 },
+    VCall {
+        this: u16,
+        vtable_offset: u32,
+        sig_type_id: u16,
+        args: u16,
+        arg_count: u16,
+    },
     /// Type cast expression.
     Cast { expr: u16, to: IrType },
 }
@@ -204,16 +233,35 @@ pub enum IrExpr {
 /// Binary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrBinOp {
-    Add, Sub, Mul, Div, Mod,
-    And, Or, Xor, Shl, Shr, Sar,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    LtU, LeU, GtU, GeU,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+    Sar,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    LtU,
+    LeU,
+    GtU,
+    GeU,
 }
 
 /// Unary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrUnOp {
-    Neg, Not, BitNot,
+    Neg,
+    Not,
+    BitNot,
 }
 
 // ── IrStmt ──────────────────────────────────────────────────────────
@@ -228,7 +276,11 @@ pub enum IrStmt {
     /// Evaluate expression, discard result.
     Expr(IrExpr),
     /// Conditional branch: if cond then true_block else false_block.
-    Branch { cond: u16, then_block: u16, else_block: u16 },
+    Branch {
+        cond: u16,
+        then_block: u16,
+        else_block: u16,
+    },
     /// Unconditional jump to another block.
     Jump(u16),
     /// Return from function (with optional value).
@@ -257,7 +309,9 @@ impl IrBlock {
     }
 
     pub fn push(&mut self, stmt: IrStmt) -> bool {
-        if self.stmt_count as usize >= MAX_STMTS { return false; }
+        if self.stmt_count as usize >= MAX_STMTS {
+            return false;
+        }
         self.stmts[self.stmt_count as usize] = stmt;
         self.stmt_count += 1;
         true
@@ -305,21 +359,27 @@ impl IrFunction {
     }
 
     pub fn add_arg(&mut self, type_id: u16) -> bool {
-        if self.arg_count as usize >= MAX_ARGS { return false; }
+        if self.arg_count as usize >= MAX_ARGS {
+            return false;
+        }
         self.args[self.arg_count as usize] = type_id;
         self.arg_count += 1;
         true
     }
 
     pub fn add_local(&mut self, idx: u16, ty: IrType) -> bool {
-        if self.local_count as usize >= MAX_LOCALS { return false; }
+        if self.local_count as usize >= MAX_LOCALS {
+            return false;
+        }
         self.locals[self.local_count as usize] = (idx, ty);
         self.local_count += 1;
         true
     }
 
     pub fn add_block(&mut self, block: IrBlock) -> Option<u16> {
-        if self.block_count as usize >= MAX_BLOCKS { return None; }
+        if self.block_count as usize >= MAX_BLOCKS {
+            return None;
+        }
         let idx = self.block_count;
         self.blocks[idx as usize] = block;
         self.block_count += 1;
@@ -327,7 +387,9 @@ impl IrFunction {
     }
 
     pub fn block_mut(&mut self, idx: u16) -> Option<&mut IrBlock> {
-        self.blocks.get_mut(idx as usize).filter(|_| idx < self.block_count)
+        self.blocks
+            .get_mut(idx as usize)
+            .filter(|_| idx < self.block_count)
     }
 }
 
@@ -384,18 +446,33 @@ impl IrModule {
             string_data_len: 0,
             functions: core::array::from_fn(|_| IrFunction::new(0)),
             function_count: 0,
-            globals: core::array::from_fn(|_| IrGlobal { name: 0, ty: 0, init: None, read_only: false }),
+            globals: core::array::from_fn(|_| IrGlobal {
+                name: 0,
+                ty: 0,
+                init: None,
+                read_only: false,
+            }),
             global_count: 0,
-            syscalls: [IrSyscallDef { name: 0, nr: 0, arg_count: 0 }; MAX_SYSCALLS],
+            syscalls: [IrSyscallDef {
+                name: 0,
+                nr: 0,
+                arg_count: 0,
+            }; MAX_SYSCALLS],
             syscall_count: 0,
-            imports: [IrImport { module_path: 0, bef_offset: 0, bef_len: 0 }; MAX_IMPORTS],
+            imports: [IrImport {
+                module_path: 0,
+                bef_offset: 0,
+                bef_len: 0,
+            }; MAX_IMPORTS],
             import_count: 0,
         }
     }
 
     /// Add a type and return its index.
     pub fn add_type(&mut self, ty: IrType) -> Option<u16> {
-        if self.type_count as usize >= 64 { return None; }
+        if self.type_count as usize >= 64 {
+            return None;
+        }
         let idx = self.type_count;
         self.types[idx as usize] = ty;
         self.type_count += 1;
@@ -406,8 +483,12 @@ impl IrModule {
     pub fn add_string(&mut self, s: &str) -> Option<u16> {
         let bytes = s.as_bytes();
         let len = bytes.len();
-        if self.string_count as usize >= 256 { return None; }
-        if self.string_data_len as usize + 2 + len > 4096 { return None; }
+        if self.string_count as usize >= 256 {
+            return None;
+        }
+        if self.string_data_len as usize + 2 + len > 4096 {
+            return None;
+        }
         let idx = self.string_count;
         // Store length prefix (u16 LE)
         self.string_data[self.string_data_len as usize] = (len & 0xFF) as u8;
@@ -425,7 +506,9 @@ impl IrModule {
 
     /// Add a function and return its index.
     pub fn add_function(&mut self, func: IrFunction) -> Option<u16> {
-        if self.function_count as usize >= MAX_FUNCTIONS { return None; }
+        if self.function_count as usize >= MAX_FUNCTIONS {
+            return None;
+        }
         let idx = self.function_count;
         self.functions[idx as usize] = func;
         self.function_count += 1;
@@ -434,7 +517,9 @@ impl IrModule {
 
     /// Add a global and return its index.
     pub fn add_global(&mut self, global: IrGlobal) -> Option<u16> {
-        if self.global_count as usize >= MAX_GLOBALS { return None; }
+        if self.global_count as usize >= MAX_GLOBALS {
+            return None;
+        }
         let idx = self.global_count;
         self.globals[idx as usize] = global;
         self.global_count += 1;
@@ -443,18 +528,30 @@ impl IrModule {
 
     /// Add a syscall definition and return its index.
     pub fn add_syscall(&mut self, name: u16, nr: u32, arg_count: u8) -> Option<u16> {
-        if self.syscall_count as usize >= MAX_SYSCALLS { return None; }
+        if self.syscall_count as usize >= MAX_SYSCALLS {
+            return None;
+        }
         let idx = self.syscall_count;
-        self.syscalls[idx as usize] = IrSyscallDef { name, nr, arg_count };
+        self.syscalls[idx as usize] = IrSyscallDef {
+            name,
+            nr,
+            arg_count,
+        };
         self.syscall_count += 1;
         Some(idx)
     }
 
     /// Add an imported library module.
     pub fn add_import(&mut self, module_path: u16, bef_offset: u32, bef_len: u32) -> Option<u16> {
-        if self.import_count as usize >= MAX_IMPORTS { return None; }
+        if self.import_count as usize >= MAX_IMPORTS {
+            return None;
+        }
         let idx = self.import_count;
-        self.imports[idx as usize] = IrImport { module_path, bef_offset, bef_len };
+        self.imports[idx as usize] = IrImport {
+            module_path,
+            bef_offset,
+            bef_len,
+        };
         self.import_count += 1;
         Some(idx)
     }

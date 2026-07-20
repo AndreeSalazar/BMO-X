@@ -6,8 +6,8 @@
 //! Para errores sin detalle, `BmoResult<T, ()>` equivale a
 //! `BmoOption<T>` pero con semántica de error.
 
-use crate::bmo_abi::primitives::bx_u64;
 use crate::bmo_abi::fundamentals::status::BmoStatus;
+use crate::bmo_abi::primitives::bx_u64;
 
 /// FFI-safe result type.
 ///
@@ -42,8 +42,12 @@ impl<T: Copy, E: Copy> BmoResult<T, E> {
         }
     }
 
-    pub fn is_ok(&self) -> bool { self.tag == 0 }
-    pub fn is_err(&self) -> bool { self.tag != 0 }
+    pub fn is_ok(&self) -> bool {
+        self.tag == 0
+    }
+    pub fn is_err(&self) -> bool {
+        self.tag != 0
+    }
 
     pub fn unwrap(self) -> T {
         assert!(self.tag == 0, "BmoResult::unwrap on Err");
@@ -56,7 +60,11 @@ impl<T: Copy, E: Copy> BmoResult<T, E> {
     }
 
     pub fn ok_value(self) -> Option<T> {
-        if self.tag == 0 { Some(self.ok) } else { None }
+        if self.tag == 0 {
+            Some(self.ok)
+        } else {
+            None
+        }
     }
 
     pub fn map<U: Copy>(self, f: impl FnOnce(T) -> U) -> BmoResult<U, E> {
@@ -124,6 +132,10 @@ impl<T: Copy, E: Copy> From<Result<T, E>> for BmoResult<T, E> {
 
 impl<T: Copy, E: Copy> From<BmoResult<T, E>> for Result<T, E> {
     fn from(b: BmoResult<T, E>) -> Self {
-        if b.is_ok() { Ok(b.ok) } else { Err(b.err) }
+        if b.is_ok() {
+            Ok(b.ok)
+        } else {
+            Err(b.err)
+        }
     }
 }

@@ -8,8 +8,8 @@
 //!   bits 39..0    : index      (40 bits — 1 trillón de slots)
 //! ```
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u16, bx_u64};
 use super::kind::HandleKind;
+use crate::bmo_abi::primitives::{bx_u16, bx_u64, bx_u8};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,13 +32,19 @@ impl BmoHandle {
     }
 
     #[inline(always)]
-    pub const fn is_null(self) -> bool { self.0 == 0 }
+    pub const fn is_null(self) -> bool {
+        self.0 == 0
+    }
 
     #[inline(always)]
-    pub const fn is_resource(self) -> bool { (self.0 >> 63) == 0 }
+    pub const fn is_resource(self) -> bool {
+        (self.0 >> 63) == 0
+    }
 
     #[inline(always)]
-    pub const fn is_active(self) -> bool { (self.0 >> 63) == 1 }
+    pub const fn is_active(self) -> bool {
+        (self.0 >> 63) == 1
+    }
 
     #[inline(always)]
     pub const fn kind_code(self) -> bx_u8 {
@@ -57,7 +63,9 @@ impl BmoHandle {
     }
 
     #[inline(always)]
-    pub const fn index(self) -> bx_u64 { self.0 & 0x000000FF_FFFFFFFF }
+    pub const fn index(self) -> bx_u64 {
+        self.0 & 0x000000FF_FFFFFFFF
+    }
 
     /// Verifica que el handle es del kind esperado. Útil para asserts en hot paths.
     #[inline(always)]

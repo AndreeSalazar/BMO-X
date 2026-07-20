@@ -7,8 +7,8 @@
 //! Este módulo es un esqueleto funcional. El registro completo de tipos
 //! se integra con `runtime::TypeRegistry`.
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u32, bx_u64};
 use crate::bmo_abi::fundamentals::string::BmoStr;
+use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
 use crate::bmo_abi::runtime::types::TypeRegistry;
 
 /// Kind de tipo reflectable.

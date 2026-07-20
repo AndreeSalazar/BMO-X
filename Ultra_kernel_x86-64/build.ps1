@@ -27,6 +27,18 @@ Write-Host ''
 Write-Host '  === BMO Ultra Kernel x86-64 Build (UEFI 5 layers + 2 stages + kernel) ===' -ForegroundColor Magenta
 Write-Host ''
 
+# Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
+Step 'Validating Ring 0 syscall contract'
+$kernelSyscalls = Get-Content (Join-Path $root 'kernel\src\ring0\syscall.rs') -Raw
+$abiSyscalls = Get-Content (Join-Path $root '..\Uso_Reales_Crates\abi\bmo-abi\src\syscalls\generated.rs') -Raw
+foreach ($name in @('NR_PROC_GET_PID', 'NR_PROC_GET_TID', 'NR_PROC_YIELD', 'NR_THREAD_SELF', 'NR_BEFCORE_POLL')) {
+    $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
+    $abiMatch = [regex]::Match($abiSyscalls, ('pub const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
+    if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
+        Fail ('syscall contract mismatch: ' + $name)
+    }
+}
+
 # ── Build uefi_chain (5 UEFI layers) ──────────────────────────────
 # uefi_chain is its own single-crate workspace at Ultra_kernel_x86-64/uefi_chain/.
 # It targets x86_64-unknown-uefi and depends on boot-context (path).

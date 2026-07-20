@@ -3,8 +3,8 @@
 pub mod registry;
 pub mod resolver;
 
-use crate::bmo_abi::bef::imports::ImportTable;
 use crate::bmo_abi::bef::exports::ExportTable;
+use crate::bmo_abi::bef::imports::ImportTable;
 use registry::Registry;
 use resolver::ResolveResult;
 
@@ -27,7 +27,9 @@ pub fn register_exports(table: &ExportTable, image_base: u64) -> u32 {
     let mut count = 0u32;
     for entry in table.entries {
         let name = table.symbol_name(entry).unwrap_or("");
-        if name.is_empty() { continue; }
+        if name.is_empty() {
+            continue;
+        }
         Registry::insert("", name, image_base + entry.virt_addr);
         count += 1;
     }
@@ -39,7 +41,9 @@ pub fn register_library_exports(lib_name: &str, table: &ExportTable, image_base:
     let mut count = 0u32;
     for entry in table.entries {
         let name = table.symbol_name(entry).unwrap_or("");
-        if name.is_empty() { continue; }
+        if name.is_empty() {
+            continue;
+        }
         Registry::insert(lib_name, name, image_base + entry.virt_addr);
         count += 1;
     }

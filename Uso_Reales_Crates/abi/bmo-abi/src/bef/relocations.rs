@@ -10,25 +10,30 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::primitives::{bx_u8, bx_u32, bx_u64, bx_i64};
+use crate::bmo_abi::primitives::{bx_i64, bx_u32, bx_u64, bx_u8};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum RelocationKind {
     /// Escribe `symbol_addr + addend` (64 bits absolutos).
     /// ELF: `R_X86_64_64`. PE: `IMAGE_REL_BASED_DIR64`.
-    Abs64    = 0x01,
+    Abs64 = 0x01,
     /// Escribe `symbol_addr + addend - reloc_addr` (32 bits, PC-relative).
     /// ELF: `R_X86_64_PC32`/`R_X86_64_PLT32`.
-    Rel32    = 0x02,
+    Rel32 = 0x02,
     /// Escribe la dirección del slot GOT del símbolo (64 bits).
     /// ELF: `R_X86_64_GLOB_DAT`/`R_X86_64_JUMP_SLOT`.
-    Got64    = 0x03,
+    Got64 = 0x03,
 }
 
 impl RelocationKind {
     pub fn from_u8(v: bx_u8) -> Option<Self> {
-        match v { 0x01 => Some(Self::Abs64), 0x02 => Some(Self::Rel32), 0x03 => Some(Self::Got64), _ => None }
+        match v {
+            0x01 => Some(Self::Abs64),
+            0x02 => Some(Self::Rel32),
+            0x03 => Some(Self::Got64),
+            _ => None,
+        }
     }
 }
 
@@ -64,23 +69,36 @@ impl Relocation {
 ///
 /// `reloc_va` es la dirección virtual final de `target[reloc.offset]`.
 /// `symbol_addr` es la dirección virtual final del símbolo.
-pub fn apply(reloc: &Relocation, target: &mut [u8], reloc_va: u64, symbol_addr: u64) -> Result<(), &'static str> {
+pub fn apply(
+    reloc: &Relocation,
+    target: &mut [u8],
+    reloc_va: u64,
+    symbol_addr: u64,
+) -> Result<(), &'static str> {
     let off = reloc.offset as usize;
     let kind = reloc.kind().ok_or("kind de relocation desconocido")?;
     match kind {
         RelocationKind::Abs64 => {
-            if off + 8 > target.len() { return Err("offset Abs64 fuera de rango"); }
+            if off + 8 > target.len() {
+                return Err("offset Abs64 fuera de rango");
+            }
             let v = symbol_addr.wrapping_add(reloc.addend as u64);
             target[off..off + 8].copy_from_slice(&v.to_le_bytes());
         }
         RelocationKind::Rel32 => {
-            if off + 4 > target.len() { return Err("offset Rel32 fuera de rango"); }
+            if off + 4 > target.len() {
+                return Err("offset Rel32 fuera de rango");
+            }
             let pc = reloc_va as i64;
-            let v = (symbol_addr as i64).wrapping_add(reloc.addend).wrapping_sub(pc);
+            let v = (symbol_addr as i64)
+                .wrapping_add(reloc.addend)
+                .wrapping_sub(pc);
             target[off..off + 4].copy_from_slice(&(v as i32).to_le_bytes());
         }
         RelocationKind::Got64 => {
-            if off + 8 > target.len() { return Err("offset Got64 fuera de rango"); }
+            if off + 8 > target.len() {
+                return Err("offset Got64 fuera de rango");
+            }
             // En BEF, el GOT slot ya fue resuelto por el loader; aquí escribimos
             // su dirección. El addend se suma como offset dentro del slot (raro).
             let v = symbol_addr.wrapping_add(reloc.addend as u64);

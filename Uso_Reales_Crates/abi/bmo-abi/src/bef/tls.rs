@@ -10,8 +10,8 @@
 
 #![allow(dead_code)]
 
-use core::alloc::Layout;
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
+use core::alloc::Layout;
 
 /// Cabecera del template TLS.
 #[repr(C, align(8))]
@@ -58,8 +58,7 @@ pub fn setup_for_thread(template: &TlsTemplate, data: &[u8]) -> Result<u64, &'st
     }
 
     // Allocate aligned buffer from kernel heap.
-    let layout = Layout::from_size_align(total, align)
-        .map_err(|_| "tls: invalid layout")?;
+    let layout = Layout::from_size_align(total, align).map_err(|_| "tls: invalid layout")?;
     let raw = unsafe { alloc::alloc::alloc(layout) };
     if raw.is_null() {
         return Err("tls: allocation failed");

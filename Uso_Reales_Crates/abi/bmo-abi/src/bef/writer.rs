@@ -1,16 +1,16 @@
-use alloc::vec::Vec;
-use alloc::vec;
-use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64};
 use crate::bmo_abi::bef::{
-    header::*,
-    sections::*,
-    relocations::Relocation,
-    imports::ImportEntry,
     exports::ExportEntry,
+    header::*,
+    imports::ImportEntry,
+    relocations::Relocation,
+    sections::*,
+    signing::{blake3_256, SectionHash, SignatureHeader},
     symbols::Symbol,
     tls::TlsTemplate,
-    signing::{SectionHash, SignatureHeader, blake3_256},
 };
+use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64};
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub struct BefSection {
     pub kind: SectionKind,
@@ -24,7 +24,14 @@ pub struct BefSection {
 impl BefSection {
     pub fn new(kind: SectionKind, data: Vec<u8>) -> Self {
         let mem_size = data.len() as bx_u64;
-        Self { kind, flags: SectionFlags::READ, data, mem_size, alignment: 8, hash_index: 0xFFFF }
+        Self {
+            kind,
+            flags: SectionFlags::READ,
+            data,
+            mem_size,
+            alignment: 8,
+            hash_index: 0xFFFF,
+        }
     }
 
     pub fn code(data: Vec<u8>) -> Self {
@@ -94,7 +101,11 @@ pub struct BefBuilder {
 
 impl BefBuilder {
     pub fn new() -> Self {
-        Self { header: BefHeader::new_executable(), sections: Vec::new(), entry_offset: 0 }
+        Self {
+            header: BefHeader::new_executable(),
+            sections: Vec::new(),
+            entry_offset: 0,
+        }
     }
 
     pub fn add_section(&mut self, section: BefSection) {
@@ -103,8 +114,12 @@ impl BefBuilder {
 
     pub fn build(&mut self) -> Result<Vec<u8>, &'static str> {
         let count = self.sections.len() as bx_u32;
-        if count == 0 { return Err("no sections"); }
-        if count > 255 { return Err("too many sections"); }
+        if count == 0 {
+            return Err("no sections");
+        }
+        if count > 255 {
+            return Err("too many sections");
+        }
 
         self.header.section_count = count;
         self.header.entry_offset = self.entry_offset;
@@ -113,7 +128,10 @@ impl BefBuilder {
         let header_size = BefHeader::SIZE as u64;
         let table_size = (count as u64) * (SectionEntry::SIZE as u64);
         let table_offset = header_size;
-        let sig_idx = self.sections.iter().position(|s| s.kind == SectionKind::Signature);
+        let sig_idx = self
+            .sections
+            .iter()
+            .position(|s| s.kind == SectionKind::Signature);
 
         let mut entries = Vec::with_capacity(count as usize);
         let mut file_off = header_size + table_size;
@@ -149,12 +167,18 @@ impl BefBuilder {
 
         let mut write_off = header_size + table_size;
         for (i, section) in self.sections.iter().enumerate() {
-            if section.kind == SectionKind::Bss || section.data.is_empty() { continue; }
-            if sig_idx == Some(i) { continue; }
+            if section.kind == SectionKind::Bss || section.data.is_empty() {
+                continue;
+            }
+            if sig_idx == Some(i) {
+                continue;
+            }
             let align = (section.alignment as u64).max(8);
             write_off = (write_off + align - 1) & !(align - 1);
             let end = write_off + section.data.len() as u64;
-            if end as usize > buf.len() { buf.resize(end as usize, 0); }
+            if end as usize > buf.len() {
+                buf.resize(end as usize, 0);
+            }
             buf[write_off as usize..end as usize].copy_from_slice(&section.data);
             write_off = end;
         }
@@ -163,14 +187,23 @@ impl BefBuilder {
         for (i, entry) in entries.iter().enumerate() {
             let start = entry.file_offset as usize;
             let end = start + entry.file_size as usize;
-            let section_bytes = if entry.file_size > 0 && end <= buf.len() { &buf[start..end] } else { &[] };
+            let section_bytes = if entry.file_size > 0 && end <= buf.len() {
+                &buf[start..end]
+            } else {
+                &[]
+            };
             let digest = blake3_256(section_bytes);
             section_hashes.push(SectionHash {
-                section_index: i as u16, _pad: [0; 6], digest,
+                section_index: i as u16,
+                _pad: [0; 6],
+                digest,
             });
         }
 
-        let sig_header = SignatureHeader { hash_count: section_hashes.len() as u32, sig_algo: 0 };
+        let sig_header = SignatureHeader {
+            hash_count: section_hashes.len() as u32,
+            sig_algo: 0,
+        };
         let mut sig_data = Vec::from(bytes_from_struct(&sig_header));
         sig_data.extend_from_slice(bytes_from_slice(&section_hashes));
 
@@ -196,7 +229,12 @@ fn bytes_from_struct<T: Sized>(val: &T) -> &[u8] {
 }
 
 fn bytes_from_slice<T: Sized>(slice: &[T]) -> &[u8] {
-    unsafe { core::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * core::mem::size_of::<T>()) }
+    unsafe {
+        core::slice::from_raw_parts(
+            slice.as_ptr() as *const u8,
+            slice.len() * core::mem::size_of::<T>(),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -222,7 +260,9 @@ mod tests {
         b.add_section(BefSection::rodata(b"data".to_vec()));
         b.add_section(BefSection::data(vec![0x00; 32]));
         b.add_section(BefSection::bss(256));
-        b.add_section(BefSection::manifest_toml(b"[identity]\nname = \"test\"\n".to_vec()));
+        b.add_section(BefSection::manifest_toml(
+            b"[identity]\nname = \"test\"\n".to_vec(),
+        ));
         let bytes = b.build().unwrap();
         assert!(bytes.len() > 48);
     }
