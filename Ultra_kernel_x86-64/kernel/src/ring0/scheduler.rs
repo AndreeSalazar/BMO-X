@@ -1,11 +1,24 @@
-//! Fixed-capacity scheduler policy for the BSP-first kernel.
+//! Fixed-capacity scheduler with real context switching at trap boundaries.
 //!
-//! This module owns task lifecycle, priorities and bounded quanta. Context
-//! switching is intentionally separate: the timer/interrupt layer will use
-//! `tick` and switch to the returned task once saved CPU contexts exist.
+//! Design rule: **a context switch only ever happens at a trap boundary**
+//! (timer IRQ or SYSCALL). Voluntary operations from kernel tasks just mark
+//! state and park in a `hlt` loop; the next trap commits the switch through
+//! the unified frame. SYSCALLs from Ring 3 are themselves trap frames, so
+//! YIELD/WAIT/EXIT switch immediately and correctly from the dispatcher.
+//!
+//! A running context is captured into its task by the trap stub writing
+//! `percpu.trap_rsp`; `schedule_locked` stores that into the outgoing task
+//! and publishes the next task's `context_rsp` back to `percpu.trap_rsp`,
+//! which the trap epilogue restores.
+
+use crate::ring0::mm::{self, phys};
+use crate::ring0::percpu;
+use crate::ring0::spin::SpinLock;
+use crate::ring0::trap;
 
 pub const MAX_TASKS: usize = 64;
 pub const DEFAULT_QUANTUM_TICKS: u16 = 4;
+const TASK_STACK_PAGES: u64 = 2;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,13 +30,23 @@ pub enum TaskState {
     Exited,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct Task {
     pub tid: u32,
     pub pid: u32,
     pub state: TaskState,
     pub priority: u8,
     pub remaining_ticks: u16,
+    /// fxsave-base of the saved context (see trap.rs); 0 = never ran.
+    pub context_rsp: u64,
+    pub stack_phys: u64,
+    pub stack_pages: u64,
+    /// WAIT: channel/waitable identity the task sleeps on (0 = none).
+    pub wait_key: u64,
+    /// WAIT: absolute TSC deadline (0 = sleeps until `wait_key` fires).
+    pub wait_deadline: u64,
+    pub is_user: bool,
+    pub cr3: u64,
 }
 
 impl Task {
@@ -33,6 +56,13 @@ impl Task {
         state: TaskState::Empty,
         priority: 0,
         remaining_ticks: 0,
+        context_rsp: 0,
+        stack_phys: 0,
+        stack_pages: 0,
+        wait_key: 0,
+        wait_deadline: 0,
+        is_user: false,
+        cr3: 0,
     };
 }
 
@@ -61,110 +91,269 @@ impl Scheduler {
         best.unwrap_or(self.current)
     }
 
-    fn schedule(&mut self) -> u32 {
-        let next = self.choose_next();
-        if next == self.current { return self.tasks[self.current].tid; }
-        if self.tasks[self.current].state == TaskState::Running {
-            self.tasks[self.current].state = TaskState::Ready;
+    /// Free kernel stacks of exited tasks and recycle their slots.
+    /// Never reaps the running task.
+    fn reap(&mut self) {
+        let current_tid = self.tasks[self.current].tid;
+        for task in &mut self.tasks {
+            if task.state == TaskState::Exited && task.tid != current_tid {
+                if task.stack_phys != 0 {
+                    for p in 0..task.stack_pages {
+                        phys::free_frame(task.stack_phys + p * mm::PAGE);
+                    }
+                }
+                *task = Task::EMPTY;
+            }
         }
-        self.current = next;
-        self.tasks[next].state = TaskState::Running;
-        self.tasks[next].remaining_ticks = DEFAULT_QUANTUM_TICKS;
-        self.tasks[next].tid
     }
 }
 
+static SCHED_LOCK: SpinLock = SpinLock::new();
 static mut SCHEDULER: Scheduler = Scheduler::new();
+static mut TSC_FREQ: u64 = 0;
 
-fn without_interrupts<T>(f: impl FnOnce(&mut Scheduler) -> T) -> T {
-    let flags: u64;
-    unsafe { core::arch::asm!("pushfq", "pop {}", "cli", out(reg) flags); }
-    let result = unsafe { f(&mut *core::ptr::addr_of_mut!(SCHEDULER)) };
-    if flags & (1 << 9) != 0 {
-        unsafe { core::arch::asm!("sti", options(nomem, nostack)); }
+fn sched() -> &'static mut Scheduler {
+    unsafe { &mut *core::ptr::addr_of_mut!(SCHEDULER) }
+}
+
+pub fn rdtsc() -> u64 {
+    let low: u32;
+    let high: u32;
+    unsafe { core::arch::asm!("rdtsc", out("eax") low, out("edx") high, options(nomem, nostack)); }
+    ((high as u64) << 32) | low as u64
+}
+
+pub fn tsc_freq() -> u64 {
+    unsafe { TSC_FREQ }
+}
+
+pub fn ns_to_tsc(ns: u64) -> u64 {
+    let hz = unsafe { TSC_FREQ };
+    if hz == 0 {
+        return 0;
     }
-    result
+    ((ns as u128 * hz as u128) / 1_000_000_000u128) as u64
 }
 
-pub fn init() {
-    without_interrupts(|scheduler| {
-        *scheduler = Scheduler::new();
-        scheduler.tasks[0] = Task {
-            tid: 1,
-            pid: 0,
-            state: TaskState::Running,
-            priority: 0,
-            remaining_ticks: DEFAULT_QUANTUM_TICKS,
-        };
-        scheduler.next_tid = 2;
-    });
+/// Boot task 0 is the shell/boot context itself; its context is captured on
+/// its first trap. `tsc_hz` feeds WAIT deadline conversion.
+pub fn init(tsc_hz: u64) {
+    let _g = SCHED_LOCK.lock();
+    unsafe { TSC_FREQ = tsc_hz };
+    let s = sched();
+    *s = Scheduler::new();
+    s.tasks[0] = Task {
+        tid: 1,
+        pid: 0,
+        state: TaskState::Running,
+        priority: 0,
+        remaining_ticks: DEFAULT_QUANTUM_TICKS,
+        ..Task::EMPTY
+    };
+    s.next_tid = 2;
 }
 
-pub fn create(pid: u32, priority: u8) -> Option<u32> {
-    without_interrupts(|scheduler| {
-        let index = scheduler.tasks.iter().position(|task| task.state == TaskState::Empty)?;
-        let tid = scheduler.next_tid;
-        scheduler.next_tid = scheduler.next_tid.wrapping_add(1).max(2);
-        scheduler.tasks[index] = Task {
-            tid,
-            pid,
-            state: TaskState::Ready,
-            priority: priority.min(31),
-            remaining_ticks: DEFAULT_QUANTUM_TICKS,
-        };
-        Some(tid)
-    })
+/// Commit a context switch if a better task exists. Must run with the lock
+/// held and from a trap boundary only.
+fn schedule_locked(s: &mut Scheduler) {
+    // Capture the outgoing context exactly as the trap stub left it.
+    let outgoing = percpu::trap_rsp();
+    if outgoing != 0 {
+        s.tasks[s.current].context_rsp = outgoing;
+    }
+    if s.tasks[s.current].state == TaskState::Running {
+        s.tasks[s.current].state = TaskState::Ready;
+    }
+    let next = s.choose_next();
+    if next == s.current {
+        if s.tasks[next].state == TaskState::Ready {
+            s.tasks[next].state = TaskState::Running;
+        }
+        s.reap();
+        return;
+    }
+    let next_rsp = s.tasks[next].context_rsp;
+    if next_rsp == 0 {
+        // Never switch into a context that does not exist.
+        if s.tasks[s.current].state != TaskState::Running {
+            s.tasks[s.current].state = TaskState::Running;
+        }
+        return;
+    }
+    s.tasks[next].state = TaskState::Running;
+    s.tasks[next].remaining_ticks = DEFAULT_QUANTUM_TICKS;
+    s.current = next;
+    percpu::set_trap_rsp(next_rsp);
+    s.reap();
+}
+
+/// Timer trap hook: sweep expired WAIT deadlines, account the quantum, and
+/// reschedule when it expires.
+pub fn on_timer() {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    let now = rdtsc();
+    for task in &mut s.tasks {
+        if task.state == TaskState::Blocked && task.wait_deadline != 0 && now >= task.wait_deadline {
+            task.wait_deadline = 0;
+            task.wait_key = 0;
+            task.state = TaskState::Ready;
+        }
+    }
+    let current = &mut s.tasks[s.current];
+    if current.remaining_ticks > 1 {
+        current.remaining_ticks -= 1;
+        return;
+    }
+    current.remaining_ticks = DEFAULT_QUANTUM_TICKS;
+    schedule_locked(s);
+}
+
+/// Wake every task blocked on `key` (BMO Channel sequence change, F2+).
+pub fn wake_by_key(key: u64) {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    for task in &mut s.tasks {
+        if task.state == TaskState::Blocked && task.wait_key == key {
+            task.wait_key = 0;
+            task.wait_deadline = 0;
+            task.state = TaskState::Ready;
+        }
+    }
+}
+
+/// Spawn a kernel task running `entry(arg)` on its own 8 KiB stack.
+/// Returns the new TID.
+pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
+    let mut frames = [0u64; TASK_STACK_PAGES as usize];
+    for f in &mut frames {
+        *f = phys::alloc_frame()?;
+    }
+    let stack_top = mm::phys_to_virt(frames[0]) + TASK_STACK_PAGES * mm::PAGE;
+    let context = unsafe { trap::fabricate(stack_top, entry, arg, false, 0) };
+
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    let index = s.tasks.iter().position(|t| t.state == TaskState::Empty)?;
+    let tid = s.next_tid;
+    s.next_tid = s.next_tid.wrapping_add(1).max(2);
+    s.tasks[index] = Task {
+        tid,
+        pid: 0,
+        state: TaskState::Ready,
+        priority: priority.min(31),
+        remaining_ticks: DEFAULT_QUANTUM_TICKS,
+        context_rsp: context,
+        stack_phys: frames[0],
+        stack_pages: TASK_STACK_PAGES,
+        wait_key: 0,
+        wait_deadline: 0,
+        is_user: false,
+        cr3: 0,
+    };
+    Some(tid)
+}
+
+// ── Voluntary operations ─────────────────────────────────────────────
+// Each has a trap variant (immediate switch, used by the SYSCALL
+// dispatcher) and a mark-only variant (kernel tasks; the next trap
+// commits the switch while the task parks in `hlt`).
+
+fn mark_yield(s: &mut Scheduler) {
+    if s.tasks[s.current].state == TaskState::Running {
+        s.tasks[s.current].state = TaskState::Ready;
+    }
+}
+
+fn mark_exit(s: &mut Scheduler) {
+    // Task 1 is the shell/boot context; it may not exit.
+    if s.current != 0 && s.tasks[s.current].state == TaskState::Running {
+        s.tasks[s.current].state = TaskState::Exited;
+    }
+}
+
+fn mark_wait(s: &mut Scheduler, key: u64, deadline: u64) {
+    if s.tasks[s.current].state == TaskState::Running {
+        s.tasks[s.current].state = TaskState::Blocked;
+        s.tasks[s.current].wait_key = key;
+        s.tasks[s.current].wait_deadline = deadline;
+    }
+}
+
+pub fn yield_current() {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    mark_yield(s);
+    schedule_locked(s);
+}
+
+pub fn exit_current() {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    mark_exit(s);
+    schedule_locked(s);
+}
+
+pub fn wait_current(key: u64, deadline_tsc: u64) {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    mark_wait(s, key, deadline_tsc);
+    schedule_locked(s);
+}
+
+/// Kernel-task parking: mark blocked, then `hlt` until scheduled again.
+pub fn park_until(deadline_tsc: u64) {
+    {
+        let _g = SCHED_LOCK.lock();
+        let s = sched();
+        mark_wait(s, 0, deadline_tsc);
+    }
+    while current_state() != TaskState::Running {
+        unsafe { core::arch::asm!("hlt"); }
+    }
+}
+
+/// Kernel-task exit: mark exited, then park forever (never resumed).
+pub fn exit_and_park() -> ! {
+    {
+        let _g = SCHED_LOCK.lock();
+        let s = sched();
+        mark_exit(s);
+    }
+    loop {
+        unsafe { core::arch::asm!("hlt"); }
+    }
+}
+
+pub fn current_state() -> TaskState {
+    let _g = SCHED_LOCK.lock();
+    sched().tasks[sched().current].state
 }
 
 pub fn current_tid() -> u32 {
-    without_interrupts(|scheduler| scheduler.tasks[scheduler.current].tid)
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks[s.current].tid
 }
 
 pub fn current_pid() -> u32 {
-    without_interrupts(|scheduler| scheduler.tasks[scheduler.current].pid)
-}
-
-/// Select another runnable task. This returns the selected TID; the context
-/// switch layer is responsible for making that task execute.
-pub fn yield_current() -> u32 {
-    without_interrupts(Scheduler::schedule)
-}
-
-pub fn tick() -> Option<u32> {
-    without_interrupts(|scheduler| {
-        let current = &mut scheduler.tasks[scheduler.current];
-        if current.remaining_ticks > 1 {
-            current.remaining_ticks -= 1;
-            return None;
-        }
-        // Account for the expired quantum without changing the logical
-        // current task. The context-switch layer will commit that transition.
-        current.remaining_ticks = DEFAULT_QUANTUM_TICKS;
-        let next = scheduler.choose_next();
-        (next != scheduler.current).then_some(scheduler.tasks[next].tid)
-    })
-}
-
-pub fn snapshot(out: &mut [Task]) -> usize {
-    without_interrupts(|scheduler| {
-        let mut count = 0;
-        for task in scheduler.tasks.iter().copied().filter(|task| task.state != TaskState::Empty) {
-            if count == out.len() { break; }
-            out[count] = task;
-            count += 1;
-        }
-        count
-    })
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks[s.current].pid
 }
 
 pub fn counts() -> (usize, usize) {
-    without_interrupts(|scheduler| {
-        let mut total = 0;
-        let mut runnable = 0;
-        for task in &scheduler.tasks {
-            if task.state != TaskState::Empty { total += 1; }
-            if matches!(task.state, TaskState::Ready | TaskState::Running) { runnable += 1; }
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    let mut total = 0;
+    let mut runnable = 0;
+    for task in &s.tasks {
+        if task.state != TaskState::Empty {
+            total += 1;
         }
-        (total, runnable)
-    })
+        if matches!(task.state, TaskState::Ready | TaskState::Running) {
+            runnable += 1;
+        }
+    }
+    (total, runnable)
 }

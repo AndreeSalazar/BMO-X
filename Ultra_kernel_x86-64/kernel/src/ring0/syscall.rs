@@ -1,9 +1,20 @@
 //! x86-64 SYSCALL entry and minimal BMO ABI dispatcher.
 //!
-//! BSP-only for now: the dedicated stack and saved user RSP become per-CPU
-//! storage before application processors are enabled.
+//! The entry builds the unified trap frame (see trap.rs): swapgs, switch to
+//! the per-CPU syscall stack, synthesize the 5-word trap tail (user SS/RSP/
+//! RFLAGS/CS/RIP from the SYSCALL contract), push 15 GPRs, FXSAVE, then call
+//! the Rust dispatcher with the frame pointer.
+//!
+//! Return is via `iretq`, never `sysretq`: one return path for traps and
+//! syscalls, no non-canonical-RCX #GP hazard in Ring 0, and — critically —
+//! the dispatcher may answer with a *different* context than the one that
+//! entered (YIELD/WAIT/EXIT switch right at the syscall boundary).
 
 use core::arch::{asm, naked_asm};
+
+use crate::ring0::percpu;
+use crate::ring0::scheduler;
+use crate::ring0::trap::TrapFrame;
 
 // Minimal no-alloc view of the canonical bmo-abi syscall contract. Keeping
 // these values here avoids linking the full alloc-using BEF/ABI implementation
@@ -46,74 +57,45 @@ const RFLAGS_DF: u64 = 1 << 10;
 const RFLAGS_NT: u64 = 1 << 14;
 const RFLAGS_AC: u64 = 1 << 18;
 const KERNEL_CS: u64 = 0x08;
-// SYSRET derives SS=base+8 and CS=base+16. A base of 0x10 selects
-// user DS=0x1b and user CS=0x23 after the CPU adds RPL 3.
+// Legacy STAR layout; kept armed although the exit path is iretq-only.
 const SYSRET_SELECTOR_BASE: u64 = 0x10;
-const SYSCALL_STACK_SIZE: usize = 32 * 1024;
-
-#[repr(C, align(64))]
-struct SyscallStack([u8; SYSCALL_STACK_SIZE]);
-
-static mut SYSCALL_STACK: SyscallStack = SyscallStack([0; SYSCALL_STACK_SIZE]);
-static mut SYSCALL_USER_RSP: u64 = 0;
-
-#[repr(C)]
-struct SyscallFrame {
-    number: u64,
-    arg0: u64,
-    arg1: u64,
-    arg2: u64,
-    arg3: u64,
-    arg4: u64,
-    arg5: u64,
-    user_rip: u64,
-    user_rflags: u64,
-}
 
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry() -> ! {
     naked_asm!(
-        // SYSCALL leaves the user stack active. Save it without touching it,
-        // then move to memory owned by Ring 0 before the first push.
-        "mov [rip + {user_rsp}], rsp",
-        "lea rsp, [rip + {stack}]",
-        "add rsp, {stack_size}",
-
-        // Build SyscallFrame in reverse order. RCX and R11 contain the return
-        // RIP and RFLAGS by architectural definition.
-        "push r11",
-        "push rcx",
-        "push r9",
-        "push r8",
-        "push r10",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push rax",
-
-        // Nine pushes leave RSP at 8 mod 16; reserve eight bytes so the Rust
-        // dispatcher is called with the SysV pre-call alignment.
-        "sub rsp, 8",
-        "lea rdi, [rsp + 8]",
+        "swapgs",
+        "mov gs:[0x08], rsp",          // stash user RSP
+        "mov rsp, gs:[0x00]",          // per-CPU syscall stack
+        // Trap tail: ss, rsp, rflags, cs, rip (SYSCALL contract values).
+        "push 0x1B",                   // user SS
+        "push qword ptr gs:[0x08]",    // user RSP
+        "push r11",                    // user RFLAGS
+        "push 0x23",                   // user CS
+        "push rcx",                    // user RIP
+        // 15 GPRs (push order; pops restore the reverse).
+        "push rax", "push rcx", "push rdx", "push rbx", "push rbp",
+        "push rsi", "push rdi", "push r8", "push r9", "push r10",
+        "push r11", "push r12", "push r13", "push r14", "push r15",
+        "mov rbp, rsp",
+        "sub rsp, 544",
+        "and rsp, -16",
+        "mov [rsp+512], rbp",          // back-pointer to the GPR block
+        "fxsave64 [rsp]",
+        "mov gs:[0x10], rsp",          // publish this context
+        "cld",
+        "mov rdi, rbp",
         "call {dispatch}",
-        "add rsp, 8",
-
-        // BmoStatus returns in RAX:RDX. Restore argument registers but skip
-        // the saved RAX and RDX so the status is not overwritten.
-        "add rsp, 8",
-        "pop rdi",
-        "pop rsi",
-        "add rsp, 8",
-        "pop r10",
-        "pop r8",
-        "pop r9",
-        "pop rcx",
-        "pop r11",
-        "mov rsp, [rip + {user_rsp}]",
-        "sysretq",
-        user_rsp = sym SYSCALL_USER_RSP,
-        stack = sym SYSCALL_STACK,
-        stack_size = const SYSCALL_STACK_SIZE,
+        // Shared trap epilogue: rax = fxsave-base of the context to run.
+        "mov rsp, rax",
+        "fxrstor64 [rsp]",
+        "mov rsp, [rsp+512]",
+        "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
+        "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
+        "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
+        "cmp qword ptr [rsp+8], 0x08", // returning to kernel CS?
+        "je 1f",
+        "swapgs",
+        "1: iretq",
         dispatch = sym dispatch,
     );
 }
@@ -123,7 +105,7 @@ unsafe fn wrmsr(msr: u32, value: u64) {
         "wrmsr",
         in("ecx") msr,
         in("eax") value as u32,
-        in("edx") (value >> 32) as u32,
+        in("edx") (value >> 32) as u64,
         options(nostack),
     );
 }
@@ -134,8 +116,8 @@ pub fn init() {
         wrmsr(MSR_STAR, star);
         wrmsr(MSR_LSTAR, syscall_entry as *const () as u64);
         // Do not let hostile user flags trigger #DB/#AC before the entry stub
-        // has switched away from the user stack. Interrupts remain disabled
-        // for this BSP-only, non-reentrant dispatcher.
+        // has switched away from the user stack. Interrupts stay masked for
+        // the whole dispatch; the iretq restores the user IF.
         wrmsr(
             MSR_SFMASK,
             RFLAGS_TF | RFLAGS_IF | RFLAGS_DF | RFLAGS_NT | RFLAGS_AC,
@@ -148,38 +130,62 @@ fn unsupported() -> BmoStatus {
     BmoStatus::err(ERROR_UNSUPPORTED)
 }
 
-fn invoke_current_task(operation: u64) -> BmoStatus {
+fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
     match operation {
-        TASK_OP_GET_PID => BmoStatus::ok_value(crate::ring0::scheduler::current_pid() as u64),
-        TASK_OP_GET_TID => BmoStatus::ok_value(crate::ring0::scheduler::current_tid() as u64),
-        // Both operations require a real context-switch/termination path.
-        TASK_OP_YIELD | TASK_OP_EXIT => unsupported(),
+        TASK_OP_GET_PID => BmoStatus::ok_value(scheduler::current_pid() as u64),
+        TASK_OP_GET_TID => BmoStatus::ok_value(scheduler::current_tid() as u64),
+        // These switch at the syscall boundary; when (if) this context runs
+        // again it resumes here and reports success.
+        TASK_OP_YIELD => {
+            scheduler::yield_current();
+            BmoStatus::ok_value(0)
+        }
+        TASK_OP_EXIT => {
+            let _ = arg0;
+            scheduler::exit_current();
+            BmoStatus::ok_value(0)
+        }
         _ => unsupported(),
     }
 }
 
-fn invoke(frame: &SyscallFrame) -> BmoStatus {
-    if frame.arg0 != CURRENT_TASK {
+fn invoke(frame: &TrapFrame) -> BmoStatus {
+    if frame.rdi != CURRENT_TASK {
         return unsupported();
     }
-    invoke_current_task(frame.arg1)
+    invoke_current_task(frame.rsi, frame.rdx)
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn dispatch(frame: &SyscallFrame) -> BmoStatus {
-    match frame.number as u32 {
+extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
+    let status = match frame.rax as u32 {
         NR_INVOKE => invoke(frame),
-        // Recognized V2 boundaries. They become operational only after
-        // capability-backed channels and scheduler blocking exist.
-        NR_CHANNEL_KICK | NR_WAIT => unsupported(),
+        // Recognized V2 boundary. It becomes operational with
+        // capability-backed channels (F2).
+        NR_CHANNEL_KICK => unsupported(),
+        // WAIT(waitable, observed_seq, absolute_deadline_ns): block until the
+        // waitable's sequence moves past observed or the deadline expires.
+        NR_WAIT => {
+            let deadline_ns = frame.rdx;
+            let deadline = if deadline_ns == 0 {
+                0
+            } else {
+                scheduler::rdtsc() + scheduler::ns_to_tsc(deadline_ns)
+            };
+            scheduler::wait_current(frame.rdi, deadline);
+            BmoStatus::ok_value(0)
+        }
         // Temporary ABI v1 adapter. All task behavior still flows through
         // the canonical v2 operation dispatcher above.
-        NR_PROC_GET_PID => invoke_current_task(TASK_OP_GET_PID),
-        NR_PROC_GET_TID | NR_THREAD_SELF => invoke_current_task(TASK_OP_GET_TID),
-        NR_PROC_YIELD => invoke_current_task(TASK_OP_YIELD),
+        NR_PROC_GET_PID => invoke_current_task(TASK_OP_GET_PID, 0),
+        NR_PROC_GET_TID | NR_THREAD_SELF => invoke_current_task(TASK_OP_GET_TID, 0),
+        NR_PROC_YIELD => invoke_current_task(TASK_OP_YIELD, 0),
         NR_BEFCORE_POLL => {
             BmoStatus::ok_value(crate::ring0::channel::service_all() as u64)
         }
         _ => unsupported(),
-    }
+    };
+    frame.rax = (status.code as u64) | ((status.flags as u64) << 32);
+    frame.rdx = status.value;
+    percpu::trap_rsp()
 }

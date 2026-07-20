@@ -1,11 +1,16 @@
-//! BSP local-APIC periodic tick.
+//! BSP local-APIC periodic tick on the unified trap frame.
 //!
 //! `s2_mem` calibrates and starts LAPIC vector 48. Ring 0 replaces that
-//! vector's boot-time halt stub with this bounded accounting handler.
+//! vector's boot-time halt stub with this handler, which shares the exact
+//! frame layout and epilogue with the SYSCALL entry: contexts captured here
+//! and contexts captured there are interchangeable to the scheduler.
 
 use boot_context::BootContext;
 use core::arch::{asm, naked_asm};
 use core::sync::atomic::{AtomicU64, Ordering};
+
+use crate::ring0::percpu;
+use crate::ring0::trap::TrapFrame;
 
 const TIMER_VECTOR: usize = 48;
 const SPURIOUS_VECTOR: usize = 0xFF;
@@ -50,23 +55,35 @@ impl IdtEntry {
 #[unsafe(naked)]
 unsafe extern "C" fn timer_entry() -> ! {
     naked_asm!(
-        "push rax", "push rcx", "push rdx", "push rbx", "push rbp",
+        // The CPU pushed rip/cs/rflags (plus rsp/ss from Ring 3). swapgs only
+        // if we interrupted userland; Ring 0 already runs on its PerCpu GS.
+        "cmp qword ptr [rsp+8], 0x08",
+        "je 1f",
+        "swapgs",
+        // 15 GPRs, same push order as the SYSCALL entry.
+        "1: push rax", "push rcx", "push rdx", "push rbx", "push rbp",
         "push rsi", "push rdi", "push r8", "push r9", "push r10",
         "push r11", "push r12", "push r13", "push r14", "push r15",
         "mov rbp, rsp",
-        // Rust may use caller-clobbered SIMD registers. Preserve the complete
-        // legacy x87/SSE state because an interrupt has no normal caller.
-        "sub rsp, 528",
+        "sub rsp, 544",
         "and rsp, -16",
+        "mov [rsp+512], rbp",
         "fxsave64 [rsp]",
+        "mov gs:[0x10], rsp",
         "cld",
+        "mov rdi, rbp",
         "call {dispatch}",
+        // Shared trap epilogue: rax = fxsave-base of the context to run.
+        "mov rsp, rax",
         "fxrstor64 [rsp]",
-        "mov rsp, rbp",
+        "mov rsp, [rsp+512]",
         "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
         "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
         "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
-        "iretq",
+        "cmp qword ptr [rsp+8], 0x08",
+        "je 2f",
+        "swapgs",
+        "2: iretq",
         dispatch = sym timer_dispatch,
     );
 }
@@ -78,13 +95,14 @@ unsafe extern "C" fn spurious_entry() -> ! {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn timer_dispatch() {
+extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
     TICKS.fetch_add(1, Ordering::Relaxed);
-    let _next_tid = crate::ring0::scheduler::tick();
+    crate::ring0::scheduler::on_timer();
 
     // SAFETY: initialized before vector 48 is installed and only used by the
     // BSP while SMP is disabled.
     unsafe { LAPIC_EOI.write_volatile(0) };
+    percpu::trap_rsp()
 }
 
 unsafe fn rdmsr(msr: u32) -> u64 {

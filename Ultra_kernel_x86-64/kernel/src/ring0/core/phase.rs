@@ -122,6 +122,7 @@ fn shell_help() {
     s_log("  info         dump BootContext fields");
     s_log("  tasks        show scheduler state");
     s_log("  mem          frame allocator stats + vmm selftest");
+    s_log("  ktest        spawn F1 context-switch demo task");
     s_log("  fb           show framebuffer info");
     s_log("  splash       re-run boot splash animation");
     s_log("  bex          show native executable-loader status");
@@ -207,6 +208,47 @@ fn shell_bex() {
     s_log("[bex] next: storage input, Ring 3 pages, then iretq entry");
 }
 
+/// F1 demo task: runs preempted by the timer, parks on a WAIT deadline,
+/// wakes, and exits through the reaper. Watch the interleaving with the
+/// shell prompt on serial — that interleaving IS the context switch.
+extern "C" fn ktest_main(arg: u64) -> ! {
+    use crate::ring0::dev::console::{serial_write, serial_write_u64};
+    serial_write("[ktest] start tid=");
+    serial_write_u64(crate::ring0::scheduler::current_tid() as u64, 10);
+    serial_write(" arg=");
+    serial_write_u64(arg, 10);
+    serial_write("\n");
+    for i in 0..3u64 {
+        serial_write("[ktest] window ");
+        serial_write_u64(i, 10);
+        serial_write("\n");
+        // Busy window ~250 ms so the timer preempts us several times and
+        // the shell task runs in between (look for the '>' echoes).
+        let start = crate::ring0::scheduler::rdtsc();
+        let span = crate::ring0::scheduler::tsc_freq() / 4;
+        while crate::ring0::scheduler::rdtsc().wrapping_sub(start) < span {
+            core::hint::spin_loop();
+        }
+    }
+    serial_write("[ktest] park 2000 ms (WAIT deadline)\n");
+    let deadline = crate::ring0::scheduler::rdtsc()
+        + crate::ring0::scheduler::ns_to_tsc(2_000_000_000);
+    crate::ring0::scheduler::park_until(deadline);
+    serial_write("[ktest] woke; exit via reaper\n");
+    crate::ring0::scheduler::exit_and_park();
+}
+
+fn shell_ktest() {
+    match crate::ring0::scheduler::spawn_kernel(ktest_main as usize as u64, 0xB0, 1) {
+        Some(tid) => {
+            crate::ring0::dev::console::serial_write("[ktest] spawned tid=");
+            crate::ring0::dev::console::serial_write_u64(tid as u64, 10);
+            crate::ring0::dev::console::serial_write("\n");
+        }
+        None => s_log("[ktest] spawn failed (no frames or task slots)"),
+    }
+}
+
 fn shell_mem() {
     let (total, free) = crate::ring0::mm::phys::stats();
     crate::ring0::dev::console::serial_write("[mem] frames free=");
@@ -260,6 +302,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_tasks();
         } else if cmd == b"mem" {
             shell_mem();
+        } else if cmd == b"ktest" {
+            shell_ktest();
         } else if cmd == b"fb" {
             shell_fb();
         } else if cmd == b"splash" {
@@ -292,7 +336,8 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
 
-    crate::ring0::scheduler::init();
+    crate::ring0::percpu::init_bsp();
+    crate::ring0::scheduler::init(ctx.tsc_freq);
     crate::ring0::mm::phys::init(ctx);
     crate::ring0::mm::vmm::init();
     let (frames_total, frames_free) = crate::ring0::mm::phys::stats();

@@ -12,7 +12,9 @@ pub mod dev {
     pub mod framebuffer;
 }
 pub mod mm;
+pub mod percpu;
 pub mod scheduler;
 pub mod spin;
 pub mod syscall;
 pub mod timer;
+pub mod trap;
