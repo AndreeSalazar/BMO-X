@@ -315,42 +315,9 @@ fn run_shell(ctx: &BootContext) -> ! {
     // physical keyboard reaches shell_read_line. No-op if the controller is
     // dead/absent (bounded timeouts inside).
     crate::ring0::dev::keyboard::init();
-    s_log("");
-    s_log("=== BMO-X Ring 0 shell (type 'help') ===");
-
-    // Ring 3 first-entry diagnostics: paint the fabricated frame + the live
-    // GDT user descriptors to FIXED rows as the LAST thing before the input
-    // loop, so no rolling log line overpaints them. The fault banner uses
-    // rows 0..3, this uses 5..9 — they never collide. These are exactly the
-    // values `iretq` loads on the first CPL3 entry.
-    if crate::info::has_fb() && crate::ring0::proc::init_status() == "admitted" {
-        let snap = unsafe { crate::ring0::proc::FRAME_SNAPSHOT };
-        let mut gdtr = [0u8; 10];
-        unsafe { core::arch::asm!("sgdt [{}]", in(reg) gdtr.as_mut_ptr(), options(nostack)); }
-        let gdt_base = u64::from_le_bytes([gdtr[2], gdtr[3], gdtr[4], gdtr[5], gdtr[6], gdtr[7], gdtr[8], gdtr[9]]);
-        let gdt_limit = u16::from_le_bytes([gdtr[0], gdtr[1]]) as u64;
-        let d3 = unsafe { core::ptr::read_volatile((gdt_base as *const u64).add(3)) };
-        let d4 = unsafe { core::ptr::read_volatile((gdt_base as *const u64).add(4)) };
-        const HEX: &[u8; 16] = b"0123456789ABCDEF";
-        fn row(r: usize, label: &str, vals: &[(&str, u64, usize)]) {
-            let mut b = [0u8; 72];
-            let mut o = 0;
-            for &c in label.as_bytes() { if o < b.len() { b[o] = c; o += 1; } }
-            for &(name, val, digits) in vals {
-                for &c in name.as_bytes() { if o < b.len() { b[o] = c; o += 1; } }
-                let mut d = digits;
-                while d > 0 { d -= 1; if o < b.len() { b[o] = HEX[((val >> (d * 4)) & 0xF) as usize]; o += 1; } }
-                if o < b.len() { b[o] = b' '; o += 1; }
-            }
-            if let Ok(s) = core::str::from_utf8(&b[..o]) { splash::splash_dashboard_log(r, s); }
-        }
-        row(5, "[r3f] ", &[("rip=", snap[0], 12), ("cs=", snap[1], 4), ("ss=", snap[2], 4)]);
-        row(6, "[r3f] ", &[("rsp=", snap[3], 12), ("rfl=", snap[4], 6)]);
-        row(7, "[gdt] ", &[("base=", gdt_base, 12), ("lim=", gdt_limit, 4)]);
-        row(8, "[gdt] ", &[("e3(ss)=", d3, 16)]);
-        row(9, "[gdt] ", &[("e4(cs)=", d4, 16)]);
-    }
-
+    // Serial-only banner: keep the rolling dashboard rows untouched so the
+    // fixed-row Ring 3 diagnostics painted just before timer::enable survive.
+    crate::ring0::dev::console::serial_write("\n=== BMO-X Ring 0 shell (type 'help') ===\n");
     shell_prompt();
 
     let mut buf = [0u8; 64];
@@ -539,6 +506,43 @@ pub fn main(ctx: &mut BootContext) {
     // phase::main and is entering the shell. If this shows, Ring 0 fully
     // booted on real hardware.
     kbar!(236, 0xFF00_FF00u32);
+
+    // Ring 3 first-entry diagnostics — painted to FIXED rows 5..9 with
+    // interrupts still masked, so the timer's first-tick fault (which enters
+    // CPL3 via iretq) can't win the race and hide them. These are exactly the
+    // values iretq loads: if cs!=0023 / ss!=001B the frame is wrong; if the
+    // GDT user descriptors are 0/malformed the table is wrong.
+    if crate::info::has_fb() && crate::ring0::proc::init_status() == "admitted" {
+        let snap = unsafe { crate::ring0::proc::FRAME_SNAPSHOT };
+        let mut gdtr = [0u8; 10];
+        unsafe { core::arch::asm!("sgdt [{}]", in(reg) gdtr.as_mut_ptr(), options(nostack)); }
+        let gdt_base = u64::from_le_bytes([gdtr[2], gdtr[3], gdtr[4], gdtr[5], gdtr[6], gdtr[7], gdtr[8], gdtr[9]]);
+        let gdt_limit = u16::from_le_bytes([gdtr[0], gdtr[1]]) as u64;
+        let d3 = unsafe { core::ptr::read_volatile((gdt_base as *const u64).add(3)) };
+        let d4 = unsafe { core::ptr::read_volatile((gdt_base as *const u64).add(4)) };
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        fn row(r: usize, label: &str, vals: &[(&str, u64, usize)]) {
+            let mut b = [0u8; 72];
+            let mut o = 0;
+            for &c in label.as_bytes() { if o < b.len() { b[o] = c; o += 1; } }
+            for &(name, val, digits) in vals {
+                for &c in name.as_bytes() { if o < b.len() { b[o] = c; o += 1; } }
+                let mut d = digits;
+                while d > 0 { d -= 1; if o < b.len() { b[o] = HEX[((val >> (d * 4)) & 0xF) as usize]; o += 1; } }
+                if o < b.len() { b[o] = b' '; o += 1; }
+            }
+            if let Ok(s) = core::str::from_utf8(&b[..o]) {
+                splash::splash_dashboard_log(r, s);
+                crate::ring0::dev::console::serial_write(s);
+                crate::ring0::dev::console::serial_write("\n");
+            }
+        }
+        row(5, "[r3f] ", &[("rip=", snap[0], 12), ("cs=", snap[1], 4), ("ss=", snap[2], 4)]);
+        row(6, "[r3f] ", &[("rsp=", snap[3], 12), ("rfl=", snap[4], 6)]);
+        row(7, "[gdt] ", &[("base=", gdt_base, 12), ("lim=", gdt_limit, 4)]);
+        row(8, "[gdt] ", &[("e3(ss)=", d3, 16)]);
+        row(9, "[gdt] ", &[("e4(cs)=", d4, 16)]);
+    }
 
     if timer_ready {
         crate::ring0::timer::enable();

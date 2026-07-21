@@ -50,10 +50,11 @@ macro_rules! err_stub {
         #[unsafe(naked)]
         unsafe extern "C" fn $name() -> ! {
             naked_asm!(
-                "mov rdi, {v}",       // vector
-                "mov rsi, [rsp]",     // error code (CPU-pushed)
-                "mov rdx, [rsp + 8]", // faulting RIP
-                "mov rcx, cr2",       // fault address
+                "mov rdi, {v}",        // vector
+                "mov rsi, [rsp]",      // error code (CPU-pushed)
+                "mov rdx, [rsp + 8]",  // faulting RIP
+                "mov rcx, cr2",        // fault address
+                "mov r8, [rsp + 32]",  // faulting RSP (err: err,rip,cs,rfl,RSP,ss)
                 "call {h}",
                 "cli",
                 "2: hlt",
@@ -70,10 +71,11 @@ macro_rules! noerr_stub {
         #[unsafe(naked)]
         unsafe extern "C" fn $name() -> ! {
             naked_asm!(
-                "mov rdi, {v}",    // vector
-                "xor esi, esi",    // no error code
-                "mov rdx, [rsp]",  // faulting RIP
-                "mov rcx, cr2",    // fault address
+                "mov rdi, {v}",        // vector
+                "xor esi, esi",        // no error code
+                "mov rdx, [rsp]",      // faulting RIP
+                "mov rcx, cr2",        // fault address
+                "mov r8, [rsp + 24]",  // faulting RSP (no-err: rip,cs,rfl,RSP,ss)
                 "call {h}",
                 "cli",
                 "2: hlt",
@@ -138,7 +140,7 @@ fn paint(row: usize, msg: &str) {
 
 /// Terminal fault reporter. Draws to the top of the dashboard log (rows that
 /// stay visible) so a Ring 3 crash is unmistakable instead of a silent hang.
-extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64) {
+extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rsp: u64) {
     let name = match vector {
         6 => "#UD invalid-op",
         8 => "#DF double-fault",
@@ -167,6 +169,48 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64) {
     l3.s("cr2=0x");
     l3.hex(cr2, 16);
     paint(3, l3.as_str());
+
+    // ALWAYS show the faulting RSP: it is the stack the faulting instruction
+    // ran on. For the timer iretq entering CPL3 this should be the user task's
+    // high-mem kernel stack; if it is something else, our model is wrong and
+    // this number says exactly where the CPU actually was.
+    let mut l4 = Line::new();
+    l4.s("flt_rsp=0x");
+    l4.hex(fault_rsp, 16);
+    paint(10, l4.as_str());
+
+    // If that RSP is in a plausibly-mapped range, read the 5 iretq operands
+    // (rip,cs,rflags,rsp,ss) sitting there — the LIVE values the CPU tried to
+    // load. Compare against the fabricated frame (rows 5-6): match ⇒ the
+    // target/CR3 is at fault; garbage ⇒ the scheduler handed a bad context.
+    let mapped = fault_rsp >= 0xFFFF_8000_0000_0000
+        || (fault_rsp >= 0x1000 && fault_rsp < 0x1_0000_0000);
+    if mapped {
+        let p = fault_rsp as *const u64;
+        let (irip, ics, irfl, irsp, iss) = unsafe {
+            (
+                p.read_volatile(),
+                p.add(1).read_volatile(),
+                p.add(2).read_volatile(),
+                p.add(3).read_volatile(),
+                p.add(4).read_volatile(),
+            )
+        };
+        let mut l5 = Line::new();
+        l5.s("iq rip=");
+        l5.hex(irip, 12);
+        l5.s(" cs=");
+        l5.hex(ics, 4);
+        l5.s(" ss=");
+        l5.hex(iss, 4);
+        paint(11, l5.as_str());
+        let mut l6 = Line::new();
+        l6.s("iq rsp=");
+        l6.hex(irsp, 12);
+        l6.s(" rfl=");
+        l6.hex(irfl, 6);
+        paint(12, l6.as_str());
+    }
 }
 
 /// Patch the live IDT so #UD/#DF/#GP/#PF report on screen. Uses IST1 (set up

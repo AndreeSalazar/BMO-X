@@ -352,6 +352,36 @@ fn draw_char(x: u32, y: u32, c: u8, color: u32) {
     let idx = (c as usize) - 32;
     if idx >= FONT16.len() { return; }
     let glyph = &FONT16[idx];
+
+    // Is the glyph pixel at (col,row) set? Out-of-bounds counts as empty.
+    let lit = |col: i32, row: i32| -> bool {
+        if col < 0 || col >= FONT_W as i32 || row < 0 || row >= FONT_H as i32 {
+            return false;
+        }
+        glyph[row as usize] & (0x80u8 >> col) != 0
+    };
+
+    // Two-pass render for a softer, more elegant look than raw bitmap pixels:
+    //   1. Anti-alias: any empty pixel wedged into a concave corner (a lit
+    //      neighbour both horizontally and vertically) gets a dim fill, which
+    //      rounds the hard staircase on curves and diagonals.
+    //   2. The crisp glyph on top at full colour.
+    // Same 8x16 cell, no layout change — just nicer edges.
+    let soft = blend(color, 96);
+    for row in 0..FONT_H as i32 {
+        for col in 0..FONT_W as i32 {
+            if lit(col, row) {
+                continue;
+            }
+            let l = lit(col - 1, row);
+            let r = lit(col + 1, row);
+            let u = lit(col, row - 1);
+            let d = lit(col, row + 1);
+            if (l && u) || (l && d) || (r && u) || (r && d) {
+                put_pix(x + col as u32, y + row as u32, soft);
+            }
+        }
+    }
     for row in 0..FONT_H {
         let bits = glyph[row];
         for col in 0..FONT_W {
