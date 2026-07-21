@@ -96,8 +96,21 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         // Accept input from EITHER the serial line (COM1) or the physical
         // PS/2 keyboard, whichever has a byte ready. Lets the user type on
         // the real keyboard even with no serial cable attached.
-        let byte = crate::ring0::dev::console::serial_read_byte()
-            .or_else(crate::ring0::dev::keyboard::poll_ascii);
+        let mut byte = crate::ring0::dev::console::serial_read_byte();
+        if byte.is_none() {
+            if let Some((raw, ascii)) = crate::ring0::dev::keyboard::poll_event() {
+                // Raw-scancode monitor: every keyboard byte is surfaced in
+                // the on-screen log ("kbd 0xXX"). Bytes appearing at all
+                // proves the legacy i8042 stream is alive post-EBS; the
+                // values reveal which scancode set the firmware delivers.
+                let mut m = *b"kbd 0x00";
+                const HEX: &[u8; 16] = b"0123456789ABCDEF";
+                m[6] = HEX[(raw >> 4) as usize];
+                m[7] = HEX[(raw & 0xF) as usize];
+                dash_log(core::str::from_utf8(&m).unwrap_or("kbd ??"));
+                byte = ascii;
+            }
+        }
         match byte {
             Some(b'\r') | Some(b'\n') => {
                 crate::ring0::dev::console::serial_write("\n");
@@ -290,6 +303,10 @@ fn shell_halt() -> ! {
 }
 
 fn run_shell(ctx: &BootContext) -> ! {
+    // Normalize the i8042 (translation → Set 1, re-enable scanning) so the
+    // physical keyboard reaches shell_read_line. No-op if the controller is
+    // dead/absent (bounded timeouts inside).
+    crate::ring0::dev::keyboard::init();
     s_log("");
     s_log("=== BMO-X Ring 0 shell (type 'help') ===");
     shell_prompt();

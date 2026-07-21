@@ -17,13 +17,73 @@ fn inb(port: u16) -> u8 {
     v
 }
 
+#[inline]
+fn outb(port: u16, val: u8) {
+    unsafe { core::arch::asm!("out dx, al", in("dx") port, in("al") val, options(nomem, nostack)); }
+}
+
+// i8042 controller commands / config-byte bits.
+const CMD_READ_CONFIG: u8 = 0x20;
+const CMD_WRITE_CONFIG: u8 = 0x60;
+const CFG_TRANSLATE: u8 = 1 << 6;         // Set 2 -> Set 1 translation
+const CFG_KBD_CLOCK_DISABLE: u8 = 1 << 4; // 1 = clock off
+
+/// Spin until the controller's input buffer is clear (safe to write), or a
+/// bounded timeout elapses. Returns false on timeout so a dead/absent
+/// controller can never hang the boot.
+fn wait_input_clear() -> bool {
+    let mut t = 200_000u32;
+    while inb(STATUS) & 0x02 != 0 {
+        t = t.saturating_sub(1);
+        if t == 0 { return false; }
+    }
+    true
+}
+
+/// Spin until a byte is waiting in the output buffer, or timeout.
+fn wait_output_full() -> bool {
+    let mut t = 200_000u32;
+    while inb(STATUS) & 0x01 == 0 {
+        t = t.saturating_sub(1);
+        if t == 0 { return false; }
+    }
+    true
+}
+
+/// Normalize the i8042 to deliver Scancode Set 1: enable controller
+/// translation so a keyboard reporting Set 2 still reaches this driver as
+/// Set 1 (which `translate` decodes). Also re-enables the keyboard clock
+/// and scanning. Every wait is bounded, so if the controller is dead or
+/// absent (e.g. USB-legacy emulation stopped at ExitBootServices) this is
+/// simply a no-op and the boot continues.
+pub fn init() {
+    if !wait_input_clear() { return; }
+    outb(STATUS, CMD_READ_CONFIG);
+    if !wait_output_full() { return; }
+    let cfg = inb(DATA);
+
+    let newcfg = (cfg | CFG_TRANSLATE) & !CFG_KBD_CLOCK_DISABLE;
+    if !wait_input_clear() { return; }
+    outb(STATUS, CMD_WRITE_CONFIG);
+    if !wait_input_clear() { return; }
+    outb(DATA, newcfg);
+
+    // Re-issue "enable scanning" (0xF4) to the keyboard device.
+    if !wait_input_clear() { return; }
+    outb(DATA, 0xF4);
+}
+
 /// Left/right shift held? Tracked across polls for upper/lower case.
 static mut SHIFT: bool = false;
 
-/// Poll the controller once. Returns an ASCII byte if a printable key (or
-/// Enter/Backspace/Tab) was pressed since the last poll, else `None`.
+/// Poll the controller once. Returns `(raw_scancode, Some(ascii))` when a
+/// printable key (or Enter/Backspace/Tab) was pressed, `(raw, None)` for
+/// any other keyboard byte (releases, modifiers, unknown sets). The raw
+/// byte lets the shell surface the stream on screen — the difference
+/// between "no bytes at all" (legacy emulation dead post-EBS) and "bytes
+/// in an unexpected scancode set" (translation problem) in one look.
 /// Never blocks.
-pub fn poll_ascii() -> Option<u8> {
+pub fn poll_event() -> Option<(u8, Option<u8>)> {
     let status = inb(STATUS);
     if status & 0x01 == 0 {
         return None; // output buffer empty — no byte waiting
@@ -35,12 +95,18 @@ pub fn poll_ascii() -> Option<u8> {
         return None;
     }
     let code = inb(DATA);
-    match code {
+    let ascii = match code {
         0x2A | 0x36 => { unsafe { SHIFT = true; } None }   // shift make
         0xAA | 0xB6 => { unsafe { SHIFT = false; } None }  // shift break
         c if c & 0x80 != 0 => None,                        // any other release
         c => translate(c, unsafe { SHIFT }),
-    }
+    };
+    Some((code, ascii))
+}
+
+/// ASCII-only view of `poll_event` (raw byte discarded).
+pub fn poll_ascii() -> Option<u8> {
+    poll_event().and_then(|(_, a)| a)
 }
 
 /// Scancode Set 1 make code → ASCII for a US QWERTY layout. `None` for keys
