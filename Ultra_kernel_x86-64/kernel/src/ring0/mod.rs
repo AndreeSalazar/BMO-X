@@ -11,6 +11,7 @@ pub mod channel;
 pub mod dev {
     pub mod console;
     pub mod framebuffer;
+    pub mod keyboard;
 }
 pub mod mm;
 pub mod percpu;

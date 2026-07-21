@@ -93,7 +93,12 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         // Update the framebuffer's prompt with the current line
         // (so the screen shows what the user is typing).
         dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
-        match crate::ring0::dev::console::serial_read_byte() {
+        // Accept input from EITHER the serial line (COM1) or the physical
+        // PS/2 keyboard, whichever has a byte ready. Lets the user type on
+        // the real keyboard even with no serial cable attached.
+        let byte = crate::ring0::dev::console::serial_read_byte()
+            .or_else(crate::ring0::dev::keyboard::poll_ascii);
+        match byte {
             Some(b'\r') | Some(b'\n') => {
                 crate::ring0::dev::console::serial_write("\n");
                 return n;
@@ -102,6 +107,8 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
                 if n > 0 {
                     n -= 1;
                     crate::ring0::dev::console::serial_write("\x08 \x08");
+                    // Reflect the edit on screen immediately.
+                    dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
                 }
             }
             Some(c) if c >= 0x20 && c < 0x7f => {
