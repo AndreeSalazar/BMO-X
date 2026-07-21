@@ -1,5 +1,6 @@
 pub mod bex;
 pub mod cap;
+pub mod faults;
 pub mod core {
     pub mod entry;
     pub mod phase;
@@ -21,4 +22,5 @@ pub mod spin;
 pub mod svc;
 pub mod syscall;
 pub mod timer;
+pub mod uconsole;
 pub mod trap;

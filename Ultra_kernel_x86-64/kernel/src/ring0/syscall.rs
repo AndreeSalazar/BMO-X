@@ -34,6 +34,7 @@ const TASK_OP_GET_TID: u64 = 0x02;
 const TASK_OP_YIELD: u64 = 0x03;
 const TASK_OP_EXIT: u64 = 0x04;
 const TASK_OP_CHANNEL_OPEN: u64 = 0x05;
+const TASK_OP_CONSOLE_WRITE: u64 = 0x06;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -158,6 +159,15 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
             // nesting: revoke completes first).
             cap::revoke_all(scheduler::current_pid());
             scheduler::exit_current();
+            BmoStatus::ok_value(0)
+        }
+        // Bootstrap console: render up to 8 packed bytes (LE, NUL-stop) to
+        // the kernel's on-screen log + serial. This is how the first Ring 3
+        // program draws — the whole point of the CPL3→CPL0 demo. It writes
+        // nothing but text and cannot escalate; the caller only ever paints
+        // into the kernel-owned console surface.
+        TASK_OP_CONSOLE_WRITE => {
+            crate::ring0::uconsole::write_packed(arg0);
             BmoStatus::ok_value(0)
         }
         // Discover the caller's seeded estuary capability for index arg0.

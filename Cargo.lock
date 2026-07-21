@@ -101,6 +101,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-hello-bex"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
 name = "bmo-input"
 version = "0.1.0"
 dependencies = [

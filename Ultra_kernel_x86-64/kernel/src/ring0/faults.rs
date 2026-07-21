@@ -1,0 +1,190 @@
+//! On-screen CPU fault reporter.
+//!
+//! The faggin `s1_cpu` stage installs exception handlers that print to COM1
+//! serial and halt. On a headless machine (no serial cable) a Ring 3 fault
+//! therefore freezes the display with no clue why. This module patches the
+//! live IDT (`ctx.idt_ptr`, same table `timer::init` patches for vector 48)
+//! so the most common faults paint their vector / error code / faulting RIP
+//! / CR2 into the dashboard log before halting — making a CPL3 crash visible.
+//!
+//! The handlers are terminal: they gather state, draw, and `hlt` forever. No
+//! register save/restore is needed because control never returns.
+
+use boot_context::BootContext;
+use core::arch::naked_asm;
+
+use crate::ring0::dev::console::serial_write;
+
+const KERNEL_CS: u16 = 0x08;
+
+#[repr(C, packed)]
+struct IdtEntry {
+    offset_low: u16,
+    selector: u16,
+    ist: u8,
+    attributes: u8,
+    offset_mid: u16,
+    offset_high: u32,
+    reserved: u32,
+}
+
+impl IdtEntry {
+    fn trap_gate(handler: u64, ist: u8) -> Self {
+        Self {
+            offset_low: handler as u16,
+            selector: KERNEL_CS,
+            ist,
+            attributes: 0x8E, // present, DPL0, interrupt gate
+            offset_mid: (handler >> 16) as u16,
+            offset_high: (handler >> 32) as u32,
+            reserved: 0,
+        }
+    }
+}
+
+// One naked stub per vector. Error-code vectors read the code the CPU pushed;
+// no-error vectors report 0. All read CR2 (only meaningful for #PF but
+// harmless otherwise). Then tail into the Rust reporter and halt.
+macro_rules! err_stub {
+    ($name:ident, $vec:expr) => {
+        #[unsafe(naked)]
+        unsafe extern "C" fn $name() -> ! {
+            naked_asm!(
+                "mov rdi, {v}",       // vector
+                "mov rsi, [rsp]",     // error code (CPU-pushed)
+                "mov rdx, [rsp + 8]", // faulting RIP
+                "mov rcx, cr2",       // fault address
+                "call {h}",
+                "cli",
+                "2: hlt",
+                "jmp 2b",
+                v = const $vec,
+                h = sym fault_report,
+            );
+        }
+    };
+}
+
+macro_rules! noerr_stub {
+    ($name:ident, $vec:expr) => {
+        #[unsafe(naked)]
+        unsafe extern "C" fn $name() -> ! {
+            naked_asm!(
+                "mov rdi, {v}",    // vector
+                "xor esi, esi",    // no error code
+                "mov rdx, [rsp]",  // faulting RIP
+                "mov rcx, cr2",    // fault address
+                "call {h}",
+                "cli",
+                "2: hlt",
+                "jmp 2b",
+                v = const $vec,
+                h = sym fault_report,
+            );
+        }
+    };
+}
+
+noerr_stub!(stub_ud, 6); // #UD invalid opcode
+err_stub!(stub_df, 8); //  #DF double fault
+err_stub!(stub_gp, 13); // #GP general protection
+err_stub!(stub_pf, 14); // #PF page fault
+
+/// Small fixed-capacity line builder (no alloc, exception-context safe).
+struct Line {
+    b: [u8; 80],
+    n: usize,
+}
+
+impl Line {
+    fn new() -> Self {
+        Self { b: [0; 80], n: 0 }
+    }
+    fn s(&mut self, s: &str) {
+        for &c in s.as_bytes() {
+            if self.n < self.b.len() {
+                self.b[self.n] = c;
+                self.n += 1;
+            }
+        }
+    }
+    fn hex(&mut self, mut v: u64, digits: usize) {
+        const H: &[u8; 16] = b"0123456789ABCDEF";
+        let mut tmp = [0u8; 16];
+        for i in 0..digits {
+            tmp[digits - 1 - i] = H[(v & 0xF) as usize];
+            v >>= 4;
+        }
+        for i in 0..digits {
+            if self.n < self.b.len() {
+                self.b[self.n] = tmp[i];
+                self.n += 1;
+            }
+        }
+    }
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.b[..self.n]).unwrap_or("")
+    }
+}
+
+fn paint(row: usize, msg: &str) {
+    serial_write("[fault] ");
+    serial_write(msg);
+    serial_write("\n");
+    if crate::info::has_fb() {
+        crate::ring0::core::splash::splash_dashboard_log(row, msg);
+    }
+}
+
+/// Terminal fault reporter. Draws to the top of the dashboard log (rows that
+/// stay visible) so a Ring 3 crash is unmistakable instead of a silent hang.
+extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64) {
+    let name = match vector {
+        6 => "#UD invalid-op",
+        8 => "#DF double-fault",
+        13 => "#GP protection",
+        14 => "#PF page-fault",
+        _ => "#?? exception",
+    };
+    let mut l0 = Line::new();
+    l0.s("*** CPU FAULT ");
+    l0.s(name);
+    paint(0, l0.as_str());
+
+    let mut l1 = Line::new();
+    l1.s("vec=0x");
+    l1.hex(vector, 2);
+    l1.s(" err=0x");
+    l1.hex(error, 8);
+    paint(1, l1.as_str());
+
+    let mut l2 = Line::new();
+    l2.s("rip=0x");
+    l2.hex(rip, 16);
+    paint(2, l2.as_str());
+
+    let mut l3 = Line::new();
+    l3.s("cr2=0x");
+    l3.hex(cr2, 16);
+    paint(3, l3.as_str());
+}
+
+/// Patch the live IDT so #UD/#DF/#GP/#PF report on screen. Uses IST1 (set up
+/// by the faggin TSS) so a fault on a bad stack still lands somewhere sane.
+pub fn init(ctx: &BootContext) {
+    if ctx.idt_ptr == 0 {
+        return;
+    }
+    let idt = ctx.idt_ptr as *mut IdtEntry;
+    unsafe {
+        idt.add(6)
+            .write_volatile(IdtEntry::trap_gate(stub_ud as *const () as u64, 1));
+        idt.add(8)
+            .write_volatile(IdtEntry::trap_gate(stub_df as *const () as u64, 1));
+        idt.add(13)
+            .write_volatile(IdtEntry::trap_gate(stub_gp as *const () as u64, 1));
+        idt.add(14)
+            .write_volatile(IdtEntry::trap_gate(stub_pf as *const () as u64, 1));
+    }
+    serial_write("[fault] on-screen exception reporter armed (#UD/#DF/#GP/#PF)\n");
+}

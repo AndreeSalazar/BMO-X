@@ -1,0 +1,8 @@
+[package]
+name = "bmo-hello-bex"
+version = "0.1.0"
+edition = "2021"
+description = "Build-time generator for the BMO 'hola mundo' Ring 3 BEX demo (CPL3 → INVOKE → CPL0)"
+
+[dependencies]
+bmo-abi = { path = "../../platform/abi/bmo-abi" }

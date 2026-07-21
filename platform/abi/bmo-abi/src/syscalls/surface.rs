@@ -24,6 +24,13 @@ pub const TASK_OP_EXIT: u64 = 0x04;
 /// capability handle for BMO Channel `index`. Fails with NEEDS_CAP when
 /// the process was not granted that estuary.
 pub const TASK_OP_CHANNEL_OPEN: u64 = 0x05;
+/// `INVOKE(CURRENT_TASK, CONSOLE_WRITE, packed)` → emit up to 8 bytes of
+/// text (packed little-endian in `packed`, NUL-terminated within the word)
+/// to the kernel bootstrap console. This is the debug door that lets the
+/// very first Ring 3 program prove the CPL3→CPL0 path visually before a
+/// real console capability/estuary service exists; it will migrate to a
+/// console handle once the display server lands.
+pub const TASK_OP_CONSOLE_WRITE: u64 = 0x06;
 
 /// Operations accepted by `CURRENT_TASK`.
 pub mod task_op {
@@ -32,6 +39,7 @@ pub mod task_op {
     pub const YIELD: u64 = super::TASK_OP_YIELD;
     pub const EXIT: u64 = super::TASK_OP_EXIT;
     pub const CHANNEL_OPEN: u64 = super::TASK_OP_CHANNEL_OPEN;
+    pub const CONSOLE_WRITE: u64 = super::TASK_OP_CONSOLE_WRITE;
 }
 
 /// `INVOKE` operations accepted by a channel (estuary) capability.

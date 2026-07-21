@@ -69,6 +69,14 @@ static mut DASH_LOG_ROW: usize = 0;
 // area, so the user can see what the kernel is doing without a
 // serial terminal attached.
 fn dash_log(msg: &str) {
+    dashboard_log(msg);
+}
+
+/// Append one line to the rolling on-screen kernel log. Public so other
+/// subsystems (e.g. the Ring 3 bootstrap console in `uconsole`) can surface
+/// output in the same panel instead of maintaining a competing row cursor.
+/// Framebuffer-only; a no-op on a headless (serial) boot.
+pub fn dashboard_log(msg: &str) {
     if !crate::info::has_fb() { return; }
     let row = unsafe { DASH_LOG_ROW };
     unsafe { DASH_LOG_ROW = (row + 1) % 14; }
@@ -391,6 +399,10 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::channel::init(ctx);
     crate::ring0::svc::register_all();
     crate::ring0::syscall::init();
+    // Arm the on-screen fault reporter before anything can enter Ring 3, so a
+    // CPL3 crash paints its vector/RIP/CR2 instead of the silent serial-halt
+    // the boot stage installs.
+    crate::ring0::faults::init(ctx);
     let timer_ready = crate::ring0::timer::init(ctx);
     if timer_ready {
         s_log("[ring0] scheduler + BMO Channel + SYSCALL + LAPIC tick ready (BSP)");
@@ -421,7 +433,8 @@ pub fn main(ctx: &mut BootContext) {
     // init process. With no payload this is a no-op and the boot flow is
     // exactly the Ring 0 shell as before.
     crate::ring0::proc::init(ctx);
-    if let Some(tid) = crate::ring0::proc::spawn_init(ctx) {
+    let ring3_tid = crate::ring0::proc::spawn_init(ctx);
+    if let Some(tid) = ring3_tid {
         crate::ring0::dev::console::serial_write("[ring0] Ring 3 init task ready, tid=");
         crate::ring0::dev::console::serial_write_u64(tid as u64, 10);
         crate::ring0::dev::console::serial_write("\n");
@@ -470,6 +483,23 @@ pub fn main(ctx: &mut BootContext) {
     phase1_ui(ctx);
     s_log("[ring0] boot complete");
     s_log("[ring0] BMO: Ok Ready");
+
+    // Surface the Ring 3 init outcome on the (now cleared) dashboard so the
+    // demo's state is visible without serial. If a tid was admitted, the next
+    // timer tick will enter CPL3 and its 'ring3>' lines should follow below.
+    {
+        let mut summary = [0u8; 64];
+        let head = b"[ring3] ";
+        let status = crate::ring0::proc::init_status();
+        let mut off = 0;
+        for &b in head { if off < summary.len() { summary[off] = b; off += 1; } }
+        for &b in status.as_bytes() { if off < summary.len() { summary[off] = b; off += 1; } }
+        if let Some(tid) = ring3_tid {
+            for &b in b" tid=" { if off < summary.len() { summary[off] = b; off += 1; } }
+            if off < summary.len() { summary[off] = b'0' + (tid as u8 % 10); off += 1; }
+        }
+        if let Ok(s) = core::str::from_utf8(&summary[..off]) { s_log(s); }
+    }
 
     // FINAL checkpoint: bright green at row 236 = kernel finished ALL of
     // phase::main and is entering the shell. If this shows, Ring 0 fully

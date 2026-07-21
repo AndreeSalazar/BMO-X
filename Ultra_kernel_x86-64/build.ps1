@@ -38,7 +38,7 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
         Fail ('BMO ABI surface syscall contract mismatch: ' + $name)
     }
 }
-foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
+foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'TASK_OP_CONSOLE_WRITE', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
