@@ -1,30 +1,50 @@
+//! BMO-X unified UEFI shim.
+//!
+//! s1_cpu, s2_mem and the kernel are **embedded in this PE** at build time
+//! (`include_bytes!` from paths in BMO_S1_BIN / BMO_S2_BIN / BMO_KERNEL_BIN,
+//! set by build.ps1). The shim only needs two firmware services — console
+//! output and AllocatePages — so it boots even on firmwares that never
+//! bind SimpleFileSystem to any handle (MSI A320M AMI fast path: the boot
+//! manager reads FAT with an internal reader; LocateHandle(ByProtocol,
+//! SimpleFS) returns NOT_FOUND and HandleProtocol on the boot device
+//! returns UNSUPPORTED, even after a recursive ConnectController pass).
+//!
+//! Layout contract (mirrors s1_cpu's reserves):
+//!   s1_cpu  @ 0x100000, slot 512 KiB (bin + zeroed .bss)
+//!   s2_mem  @ 0x200000, slot   2 MiB
+//!   kernel  @ 0x400000, slot  16 MiB
+//!
+//! s1 receives a `boot_context::PreloadInfo` pointer in r8 and skips its
+//! ESP loader when the magic matches.
+
 #![no_std]
 #![no_main]
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use core::arch::asm;
 
+use boot_context::{PreloadInfo, PRELOAD_MAGIC};
+
 type EfiHandle = *mut core::ffi::c_void;
 type EfiStatus = u64;
 
 const EFI_SUCCESS: u64 = 0;
 const COM1: u16 = 0x3F8;
+
 const S1_ADDR: u64 = 0x100000;
-// s1_cpu's .bss is ~296 KB (BootContext + GDT + IDT + TSS + FILE_BUF 256KB
-// + stacks + bitmap). Allocate 512 KB and zero the ENTIRE slot so .bss is clean.
 const S1_SLOT: u64 = 512 * 1024;
-const FILE_BUF_SIZE: usize = 64 * 1024;
-static mut FILE_BUF: [u8; FILE_BUF_SIZE] = [0; FILE_BUF_SIZE];
+const S2_ADDR: u64 = 0x200000;
+const S2_SLOT: u64 = 2 * 1024 * 1024;
+const KERNEL_ADDR: u64 = 0x400000;
+const KERNEL_SLOT: u64 = 16 * 1024 * 1024;
+
+static S1_BIN: &[u8] = include_bytes!(env!("BMO_S1_BIN"));
+static S2_BIN: &[u8] = include_bytes!(env!("BMO_S2_BIN"));
+static KERNEL_BIN: &[u8] = include_bytes!(env!("BMO_KERNEL_BIN"));
 
 #[repr(C)] struct EfiTableHeader { signature: u64, revision: u32, header_size: u32, crc32: u32, _r: u32 }
 #[repr(C)] struct EfiBootServices { hdr: EfiTableHeader, _pad: [u8; 44 * 8] }
 #[repr(C)] struct EfiSystemTable { hdr: EfiTableHeader, _firmware: *mut core::ffi::c_void, _firmware_revision: u32, _firmware_pad: u32, _cin: EfiHandle, _cin_h: *mut core::ffi::c_void, _cout: EfiHandle, _cout_h: *mut core::ffi::c_void, _cerr: EfiHandle, _cerr_h: *mut core::ffi::c_void, _rt: *mut core::ffi::c_void, bs: *mut EfiBootServices, _nt: usize, _ct: *mut core::ffi::c_void }
-#[repr(C)] struct EfiGuid { d1: u32, d2: u16, d3: u16, d4: [u8; 8] }
-#[repr(C)] struct EfiSimpleFileSystemProtocol { revision: u64, open_volume: unsafe extern "efiapi" fn(*const Self, *mut *mut core::ffi::c_void) -> EfiStatus }
-#[repr(C)] struct EfiFileProtocol { revision: u64, open: unsafe extern "efiapi" fn(*const Self, *mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus, close: unsafe extern "efiapi" fn(*const Self) -> EfiStatus, _del: *mut core::ffi::c_void, read: *mut core::ffi::c_void, _w: *mut core::ffi::c_void, _gp: *mut core::ffi::c_void, _sp: *mut core::ffi::c_void, _gi: *mut core::ffi::c_void, _si: *mut core::ffi::c_void, _f: *mut core::ffi::c_void }
-
-static mut FS_GUID: EfiGuid = EfiGuid { d1: 0x964e5b22, d2: 0x6409, d3: 0x47ef, d4: [0x97, 0xa2, 0xff, 0x06, 0xff, 0x38, 0xb0, 0xdf] };
-static mut LOADED_IMAGE_GUID: EfiGuid = EfiGuid { d1: 0x5b1b31a1, d2: 0x9562, d3: 0x11d2, d4: [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b] };
 
 #[inline] unsafe fn outb(p: u16, v: u8) { asm!("out dx, al", in("dx") p, in("al") v); }
 #[inline] unsafe fn inb(p: u16) -> u8 { let v: u8; asm!("in al, dx", in("dx") p, out("al") v); v }
@@ -57,6 +77,16 @@ unsafe fn scr(st: *const EfiSystemTable, s: &str) {
     con_call1(st, 1, buf.as_ptr());
 }
 
+/// Decimal on the firmware console.
+unsafe fn sdec(st: *const EfiSystemTable, v: usize) {
+    let mut d = [0u8; 20]; let mut n = v; let mut i = 0;
+    if n == 0 { d[0] = b'0'; i = 1; } else { while n > 0 { d[i] = b'0' + (n % 10) as u8; n /= 10; i += 1; } }
+    let mut buf = [0u16; 21];
+    for j in 0..i { buf[j] = d[i - 1 - j] as u16; }
+    buf[i] = 0;
+    con_call1(st, 1, buf.as_ptr());
+}
+
 /// SetAttribute (index 5). 0x0A = light green, 0x0C = light red, 0x07 = grey.
 unsafe fn scr_attr(st: *const EfiSystemTable, attr: usize) {
     let con = (*st)._cout_h as *const *mut core::ffi::c_void;
@@ -77,10 +107,42 @@ unsafe fn fail(st: *const EfiSystemTable, base: *const *mut core::ffi::c_void, m
     stall(5_000_000);
 }
 
+static mut PRELOAD: PreloadInfo = PreloadInfo { magic: 0, s2_size: 0, kernel_size: 0, kernel_src: 0 };
+
+/// Reserve `slot` bytes at fixed `addr`, copy `blob` there and zero the
+/// rest of the slot (the stages' .bss contract).
+unsafe fn load_slot(
+    st: *const EfiSystemTable,
+    base: *const *mut core::ffi::c_void,
+    addr: u64,
+    slot: u64,
+    blob: &[u8],
+    name: &str,
+) -> bool {
+    if blob.len() as u64 > slot {
+        fail(st, base, "embedded stage exceeds its slot");
+        return false;
+    }
+    let alloc_p: extern "efiapi" fn(u32, u32, usize, &mut u64) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 2));
+    let mut alloc = addr;
+    // 2 = AllocateAddress, 2 = EfiLoaderData
+    if alloc_p(2, 2, ((slot as usize) + 0xFFF) / 0x1000, &mut alloc) != EFI_SUCCESS {
+        fail(st, base, "cannot reserve a fixed stage address");
+        return false;
+    }
+    let dst = addr as *mut u8;
+    core::ptr::copy_nonoverlapping(blob.as_ptr(), dst, blob.len());
+    core::ptr::write_bytes(dst.add(blob.len()), 0, (slot as usize) - blob.len());
+    puts("[uefi] "); puts(name); puts("="); dec(blob.len()); puts(" bytes at 0x"); hex(addr); puts("\n");
+    scr(st, "  "); scr(st, name); scr(st, ": "); sdec(st, blob.len()); scr(st, " bytes\n");
+    true
+}
+
 #[unsafe(no_mangle)]
 pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core::ffi::c_void) -> EfiStatus {
     init_serial();
-    puts("\n[uefi] BMO shim\n");
+    puts("\n[uefi] BMO-X unified shim\n");
 
     let st = system_table as *const EfiSystemTable;
     let bs = unsafe { (*st).bs };
@@ -95,101 +157,43 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *mut core
         scr_attr(st, 0x07);
     }
 
-    // Resolve the volume THIS image was loaded from, via
-    // LoadedImage.DeviceHandle. With several FAT volumes in the system
-    // (Windows ESP, other disks), LocateProtocol(FS) returns an arbitrary
-    // one and the chain files would not be found there.
-    let handle_protocol: extern "efiapi" fn(EfiHandle, *mut EfiGuid, &mut *mut core::ffi::c_void) -> EfiStatus =
-        unsafe { core::mem::transmute(*base.add(3 + 16)) };
-    let mut fs_if: *mut core::ffi::c_void = core::ptr::null_mut();
-    let mut li: *mut core::ffi::c_void = core::ptr::null_mut();
-    if unsafe { handle_protocol(image_handle, &raw mut LOADED_IMAGE_GUID, &mut li) } == EFI_SUCCESS && !li.is_null() {
-        // EFI_LOADED_IMAGE_PROTOCOL: Revision(+pad) @0, ParentHandle @8,
-        // SystemTable @16, DeviceHandle @24.
-        let device = unsafe { *(li as *const EfiHandle).add(3) };
-        if unsafe { handle_protocol(device, &raw mut FS_GUID, &mut fs_if) } == EFI_SUCCESS {
-            puts("[uefi] FS = boot volume (LoadedImage)\n");
-        }
-    }
-    if fs_if.is_null() {
-        // Fallback for single-volume setups (and odd firmwares).
-        let locate: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
-            unsafe { core::mem::transmute(*base.add(3 + 37)) };
-        let mut h: EfiHandle = core::ptr::null_mut();
-        if unsafe { locate(&raw mut FS_GUID, core::ptr::null_mut(), &mut h) } != EFI_SUCCESS {
-            unsafe { fail(st, base, "no FAT filesystem found") };
-            return 1;
-        }
-        puts("[uefi] FS = first volume (fallback)\n");
-        fs_if = h as *mut core::ffi::c_void;
-    }
-    let fs_h: EfiHandle = fs_if as EfiHandle;
-
-    // Open volume
-    let sfsp = fs_h as *const *mut core::ffi::c_void;
-    let open_vol: extern "efiapi" fn(EfiHandle, &mut *mut core::ffi::c_void) -> EfiStatus =
-        unsafe { core::mem::transmute(*sfsp.add(1)) };
-    let mut root: *mut core::ffi::c_void = core::ptr::null_mut();
-    if unsafe { open_vol(fs_h, &mut root) } != EFI_SUCCESS {
-        unsafe { fail(st, base, "cannot open boot volume") };
-        return 2;
-    }
-
-    // Open \EFI\BOOT\ring0\faggin\s1_cpu.bin
-    let file_base = root as *const *mut core::ffi::c_void;
-    let open_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus =
-        unsafe { core::mem::transmute(*file_base.add(1)) };
-
-    let path: [u16; 36] = [
-        b'\\' as u16, b'E' as u16, b'F' as u16, b'I' as u16, b'\\' as u16, b'B' as u16, b'O' as u16, b'O' as u16, b'T' as u16,
-        b'\\' as u16, b'r' as u16, b'i' as u16, b'n' as u16, b'g' as u16, b'0' as u16, b'\\' as u16, b'f' as u16, b'a' as u16,
-        b'g' as u16, b'g' as u16, b'i' as u16, b'n' as u16, b'\\' as u16, b's' as u16, b'1' as u16, b'_' as u16, b'c' as u16,
-        b'p' as u16, b'u' as u16, b'.' as u16, b'b' as u16, b'i' as u16, b'n' as u16, 0, 0, 0,
-    ];
-    let mut file: *mut core::ffi::c_void = core::ptr::null_mut();
-    if unsafe { open_fn(root, &mut file, path.as_ptr(), 1, 0) } != EFI_SUCCESS {
-        unsafe { fail(st, base, "\\EFI\\BOOT\\ring0\\faggin\\s1_cpu.bin not found") };
+    // Everything this shim needs is already inside its own image: no
+    // filesystem, no probing, no firmware quirks.
+    if !unsafe { load_slot(st, base, S1_ADDR, S1_SLOT, S1_BIN, "s1_cpu") } { return 1; }
+    if !unsafe { load_slot(st, base, S2_ADDR, S2_SLOT, S2_BIN, "s2_mem") } { return 2; }
+    // The kernel is NOT copied to its 16 MiB slot here: firmwares keep
+    // Boot Services allocations in that range (AllocateAddress fails on
+    // the MSI A320M). It stays inside this image; s1 copies it to
+    // 0x400000 immediately after ExitBootServices, when the range is ours.
+    if KERNEL_BIN.len() as u64 > KERNEL_SLOT {
+        unsafe { fail(st, base, "kernel exceeds its slot") };
         return 3;
     }
-    let opened_file = file as *const *mut core::ffi::c_void;
-    let read_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut usize, *mut u8) -> EfiStatus =
-        unsafe { core::mem::transmute(*opened_file.add(4)) };
-    let mut size = FILE_BUF_SIZE;
-    let file_buf = unsafe { &mut *core::ptr::addr_of_mut!(FILE_BUF) };
-    if unsafe { read_fn(file, &mut size, file_buf.as_mut_ptr()) } != EFI_SUCCESS || size == 0 {
-        unsafe { fail(st, base, "read s1_cpu.bin failed") };
-        return 4;
-    }
-    if size as u64 > S1_SLOT {
-        unsafe { fail(st, base, "s1_cpu.bin exceeds its slot") };
-        return 5;
-    }
-    puts("[uefi] s1_cpu.bin="); dec(size); puts(" bytes\n");
+    let _ = KERNEL_ADDR;
 
-    // Allocate fixed address 0x100000
-    let alloc_p: extern "efiapi" fn(u32, u32, usize, &mut u64) -> EfiStatus =
-        unsafe { core::mem::transmute(*base.add(3 + 2)) };
-    let mut alloc = S1_ADDR;
-    if unsafe { alloc_p(2, 2, (S1_SLOT as usize + 0xFFF) / 0x1000, &mut alloc) } != EFI_SUCCESS {
-        unsafe { fail(st, base, "cannot reserve 0x100000 for s1_cpu") };
-        return 6;
+    unsafe {
+        scr(st, "  kernel: "); sdec(st, KERNEL_BIN.len()); scr(st, " bytes (staged)\n");
+        PRELOAD = PreloadInfo {
+            magic: PRELOAD_MAGIC,
+            s2_size: S2_BIN.len() as u64,
+            kernel_size: KERNEL_BIN.len() as u64,
+            kernel_src: KERNEL_BIN.as_ptr() as u64,
+        };
+        scr_attr(st, 0x0A);
+        scr(st, "  handoff -> s1_cpu\n");
+        scr_attr(st, 0x07);
     }
-
-    // Copy + zero BSS
-    let dst = S1_ADDR as *mut u8;
-    for i in 0..size { unsafe { dst.add(i).write(file_buf[i]); } }
-    for i in size as u64..S1_SLOT { unsafe { dst.add(i as usize).write(0); } }
-    puts("[uefi] s1_cpu loaded at 0x"); hex(S1_ADDR); puts("\n");
 
     puts("[uefi] ===> JUMP s1_cpu 0x"); hex(S1_ADDR); puts("\n");
     unsafe { asm!("sfence", options(nostack, preserves_flags)); }
 
-    // s1 still needs GOP, file and memory-map services to load s2 + kernel.
-    // Keep Boot Services alive and use a typed EFI call so the compiler emits
-    // the Microsoft x64 argument registers and stack alignment required by UEFI.
-    let entry: extern "efiapi" fn(EfiHandle, *mut core::ffi::c_void) -> ! =
+    // s1 still needs GOP and memory-map services. Keep Boot Services alive
+    // and use a typed EFI call so the compiler emits the Microsoft x64
+    // argument registers and stack alignment required by UEFI. The third
+    // argument (r8) is the preload handoff.
+    let entry: extern "efiapi" fn(EfiHandle, *mut core::ffi::c_void, *const PreloadInfo) -> ! =
         unsafe { core::mem::transmute(S1_ADDR as usize) };
-    entry(image_handle, system_table)
+    entry(image_handle, system_table, unsafe { core::ptr::addr_of!(PRELOAD) })
 }
 
 #[panic_handler]

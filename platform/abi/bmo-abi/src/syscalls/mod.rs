@@ -32,7 +32,7 @@ pub use generated::*;
 
 /// Minimal BMO ABI v2 kernel surface. The generated table above is retained
 /// only while v1 producers and runtimes are migrated.
-pub mod v2;
+pub mod surface;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Syscall wrappers (x86_64). Arquitectura-específicos.

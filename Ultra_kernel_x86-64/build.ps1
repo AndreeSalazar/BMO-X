@@ -30,19 +30,19 @@ Write-Host ''
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'
 $kernelSyscalls = Get-Content (Join-Path $root 'kernel\src\ring0\syscall.rs') -Raw
-$abiV2Syscalls = Get-Content (Join-Path $root '..\platform\abi\bmo-abi\src\syscalls\v2.rs') -Raw
+$abiSurface = Get-Content (Join-Path $root '..\platform\abi\bmo-abi\src\syscalls\surface.rs') -Raw
 foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
-    $abiMatch = [regex]::Match($abiV2Syscalls, ('pub const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
+    $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
     if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
-        Fail ('BMO ABI v2 syscall contract mismatch: ' + $name)
+        Fail ('BMO ABI surface syscall contract mismatch: ' + $name)
     }
 }
 foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
-    $abiMatch = [regex]::Match($abiV2Syscalls, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
+    $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
-        Fail ('BMO ABI v2 operation contract mismatch: ' + $name)
+        Fail ('BMO ABI surface operation contract mismatch: ' + $name)
     }
 }
 # The kernel's capability-engine mirror (cap.rs) must match bmo-abi too:
@@ -56,23 +56,11 @@ if (-not ($abiKind -match 'Channel\s*=\s*0x60')) {
     Fail 'capability contract mismatch: bmo-abi HandleKind::Channel must be 0x60'
 }
 
-# ── Build uefi_chain (5 UEFI layers) ──────────────────────────────
-# uefi_chain is its own single-crate workspace at Ultra_kernel_x86-64/uefi_chain/.
-# It targets x86_64-unknown-uefi and depends on boot-context (path).
-Step 'Building uefi_chain (5 UEFI layers)...'
-$uefiDir = Join-Path $root 'uefi_chain'
-Push-Location $uefiDir
-try {
-    $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-    # Use a separate target dir so uefi_chain's build artifacts
-    # don't pollute the bare-metal target dir.
-    $uefiTarget = Join-Path $target 'uefi_chain'
-    $out = cargo +nightly build --release --target x86_64-unknown-uefi --target-dir $uefiTarget 2>&1
-    $out | ForEach-Object {
-        if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [uefi_chain] ' + $_) -ForegroundColor DarkGray }
-    }
-    if ($LASTEXITCODE -ne 0) { Fail 'uefi_chain build failed' }
-} finally { Pop-Location }
+# NOTE: uefi_chain is now the UNIFIED shim — it embeds the flat binaries
+# of s1_cpu, s2_mem and the kernel via include_bytes!, so it is built
+# AFTER them (see 'Building unified uefi_chain' below). Rationale: some
+# firmwares (MSI A320M AMI fast path) never bind SimpleFileSystem, so
+# the boot chain cannot read the ESP through UEFI protocols at all.
 
 # ── Build the 2 consolidated stages ───────────────────────────────
 $stages = @('s1_cpu', 's2_mem')
@@ -117,6 +105,48 @@ try {
     }
     if ($LASTEXITCODE -ne 0) { Fail 'kernel build failed' }
 } finally { Pop-Location }
+
+# ── Embed payloads + build unified uefi_chain ─────────────────────
+Step 'Preparing embedded payloads'
+$embedDir = Join-Path $target 'embed'
+New-Item -ItemType Directory -Path $embedDir -Force | Out-Null
+$llvmObjcopyEmbed = Get-ChildItem -Path "$env:USERPROFILE\.rustup" -Filter 'llvm-objcopy.exe' -Recurse | Select-Object -First 1 -ExpandProperty FullName
+if (-not $llvmObjcopyEmbed) { Fail 'llvm-objcopy not found for embedded payloads' }
+$embedMap = @{}
+foreach ($s in $stages) {
+    $bn = $s -replace '_', '-'
+    $td = Join-Path $target (Join-Path 'faggin' $s)
+    $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' ($bn + '.exe')))
+    if (-not (Test-Path $bin)) { $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' $bn)) }
+    $outBin = Join-Path $embedDir ($s + '.bin')
+    & $llvmObjcopyEmbed -O binary $bin $outBin
+    if ($LASTEXITCODE -ne 0) { Fail ('objcopy (embed) failed for ' + $s) }
+    $embedMap[$s] = $outBin
+}
+$kernelElf = Join-Path $target (Join-Path 'kernel' (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel.exe')))
+if (-not (Test-Path $kernelElf)) { $kernelElf = Join-Path $target (Join-Path 'kernel' (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel'))) }
+$kernelEmbed = Join-Path $embedDir 'kernel.bin'
+& $llvmObjcopyEmbed -O binary $kernelElf $kernelEmbed
+if ($LASTEXITCODE -ne 0) { Fail 'objcopy (embed) failed for kernel' }
+
+Step 'Building unified uefi_chain (embedded stages)...'
+$uefiDir = Join-Path $root 'uefi_chain'
+Push-Location $uefiDir
+try {
+    $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+    $env:BMO_S1_BIN = $embedMap['s1_cpu']
+    $env:BMO_S2_BIN = $embedMap['s2_mem']
+    $env:BMO_KERNEL_BIN = $kernelEmbed
+    $uefiTarget = Join-Path $target 'uefi_chain'
+    $out = cargo +nightly build --release --target x86_64-unknown-uefi --target-dir $uefiTarget 2>&1
+    $out | ForEach-Object {
+        if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [uefi_chain] ' + $_) -ForegroundColor DarkGray }
+    }
+    if ($LASTEXITCODE -ne 0) { Fail 'uefi_chain build failed' }
+} finally {
+    Pop-Location
+    Remove-Item Env:\BMO_S1_BIN, Env:\BMO_S2_BIN, Env:\BMO_KERNEL_BIN -ErrorAction SilentlyContinue
+}
 
 # ── Validate outputs ──────────────────────────────────────────────
 Step 'Validating outputs'

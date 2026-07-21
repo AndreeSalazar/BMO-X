@@ -46,37 +46,70 @@ unsafe fn wrmsr(msr: u32, val: u64) {
          options(nostack, preserves_flags));
 }
 
+/// CPUID leaf/subleaf, preserving RBX (LLVM reserves it).
+unsafe fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
+    let (a, b, c, d): (u32, u32, u32, u32);
+    core::arch::asm!(
+        "push rbx",
+        "cpuid",
+        "mov {tmp:e}, ebx",
+        "pop rbx",
+        tmp = out(reg) b,
+        inout("eax") leaf => a,
+        inout("ecx") sub => c,
+        out("edx") d,
+        options(nostack, preserves_flags),
+    );
+    (a, b, c, d)
+}
+
 pub fn apply_all() -> u32 {
     // Mitigation result bitmask — bit i set = mitigation i applied
-    //   0: IBRS  via IA32_SPEC_CTRL
-    //   1: STIBP via IA32_SPEC_CTRL
+    //   0: IBRS  via IA32_SPEC_CTRL   3: IBPB via IA32_PRED_CMD
+    //   1: STIBP via IA32_SPEC_CTRL   4: TSX  via IA32_TSX_CTRL
     //   2: SSBD  via IA32_SPEC_CTRL
-    //   3: IBPB  via IA32_PRED_CMD  (write-only; no readback)
-    //   4: TSX   via IA32_TSX_CTRL
+    //
+    // GOLDEN RULE: never touch an MSR the CPU does not enumerate — writing
+    // an unimplemented MSR raises #GP. On real Zen 3 the old unconditional
+    // TSX_CTRL (0x122, an Intel-only MSR; AMD has no TSX) reset the kernel.
     let mut applied: u32 = 0;
 
-    // Read-modify-write IA32_SPEC_CTRL with IBRS | STIBP | SSBD
-    unsafe {
-        let cur = rdmsr(MSR_IA32_SPEC_CTRL);
-        let new = cur | SPEC_CTRL_IBRS | SPEC_CTRL_STIBP | SPEC_CTRL_SSBD;
-        wrmsr(MSR_IA32_SPEC_CTRL, new);
-        let readback = rdmsr(MSR_IA32_SPEC_CTRL);
-        if (readback & SPEC_CTRL_IBRS) != 0 { applied |= 1 << 0; }
-        if (readback & SPEC_CTRL_STIBP) != 0 { applied |= 1 << 1; }
-        if (readback & SPEC_CTRL_SSBD)  != 0 { applied |= 1 << 2; }
+    // AMD enumerates speculation controls in CPUID 0x80000008 EBX:
+    //   12 = IBPB, 14 = IBRS, 15 = STIBP, 24 = SSBD.
+    let (_, ebx_ext, _, _) = unsafe { cpuid(0x8000_0008, 0) };
+    let has_ibpb  = ebx_ext & (1 << 12) != 0;
+    let has_ibrs  = ebx_ext & (1 << 14) != 0;
+    let has_stibp = ebx_ext & (1 << 15) != 0;
+    let has_ssbd  = ebx_ext & (1 << 24) != 0;
 
-        // IBPB (write-only: PRED_CMD is a trigger, not a state)
-        wrmsr(MSR_IA32_PRED_CMD, PRED_CMD_IBPB);
+    if has_ibrs || has_stibp || has_ssbd {
+        unsafe {
+            let cur = rdmsr(MSR_IA32_SPEC_CTRL);
+            let mut new = cur;
+            if has_ibrs  { new |= SPEC_CTRL_IBRS; }
+            if has_stibp { new |= SPEC_CTRL_STIBP; }
+            if has_ssbd  { new |= SPEC_CTRL_SSBD; }
+            wrmsr(MSR_IA32_SPEC_CTRL, new);
+            let readback = rdmsr(MSR_IA32_SPEC_CTRL);
+            if (readback & SPEC_CTRL_IBRS)  != 0 { applied |= 1 << 0; }
+            if (readback & SPEC_CTRL_STIBP) != 0 { applied |= 1 << 1; }
+            if (readback & SPEC_CTRL_SSBD)  != 0 { applied |= 1 << 2; }
+        }
+    }
+    if has_ibpb {
+        unsafe { wrmsr(MSR_IA32_PRED_CMD, PRED_CMD_IBPB); }
         applied |= 1 << 3;
+    }
 
-        // TSX disable (best-effort; not all CPUs support TSX_CTRL)
-        wrmsr(MSR_IA32_TSX_CTRL, TSX_CTRL_RTM_DISABLE);
-        let tsx = rdmsr(MSR_IA32_TSX_CTRL);
-        if (tsx & TSX_CTRL_RTM_DISABLE) != 0 { applied |= 1 << 4; }
-
-        // Also write the AMD alias for completeness
-        let amd_cur = rdmsr(MSR_AMD_SPEC_CTRL);
-        wrmsr(MSR_AMD_SPEC_CTRL, amd_cur | SPEC_CTRL_IBRS | SPEC_CTRL_STIBP);
+    // TSX_CTRL only exists on CPUs that enumerate RTM (CPUID.7.0 EBX[11]).
+    // Zen 3 has no TSX, so this is skipped — which is the fix.
+    let (_, ebx7, _, _) = unsafe { cpuid(7, 0) };
+    if ebx7 & (1 << 11) != 0 {
+        unsafe {
+            wrmsr(MSR_IA32_TSX_CTRL, TSX_CTRL_RTM_DISABLE);
+            let tsx = rdmsr(MSR_IA32_TSX_CTRL);
+            if (tsx & TSX_CTRL_RTM_DISABLE) != 0 { applied |= 1 << 4; }
+        }
     }
 
     applied

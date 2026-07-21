@@ -1,39 +1,44 @@
-# FastOS / BMO — Bare Metal Orchestrator
+# BMO-X — Bare Metal Orchestrator
 
-Sistema operativo bare metal escrito en Rust para AMD Ryzen 5 5600X. GPU por UEFI GOP (framebuffer). Sin dependencias de drivers propietarios.
+Sistema operativo bare metal escrito en Rust, con un kernel de **capabilities y superficie de 3 syscalls congelada**. GPU por UEFI GOP (framebuffer). Sin dependencias de drivers propietarios.
 
-**Versión**: 1.8.14 | **Bootloader**: v0.2.0 | **Estado**: Boot funcional + desktop Ring 0
+**Estado**: ✅ **Arranca en hardware real** — Ring 0 completo con UI en framebuffer (bench: MSI A320M PRO MAX / AMD Ryzen 5 5600X, Zen 3). Boot chain: UEFI unificado (BOOTX64.EFI con las etapas embebidas) → s1_cpu → s2_mem → kernel.
+
+**Superficie ABI**: `INVOKE` · `CHANNEL_KICK` · `WAIT` (congelada) + Capability Engine en Ring 0.
 
 ---
 
 ## Layout (multi-arch from day one)
 
-FastOS is split into a **CPU-agnostic core** and a **per-CPU kernel tree**.
+BMO se divide en un **core agnóstico de CPU** y un **árbol de kernel por-CPU**.
 
 ```
-FastOS/
-├── Ultra_kernel_x86-64/      ← x86-64 kernel: UEFI bootloader + 12 faggin stages + Ring 0 base
-├── Ultra_userspace/          ← Ring 3 side, also x86-64 (sibling workspace)
-├── platform/                 ← CPU-AGNOSTIC core: bmo-abi, bmo-rt, drivers, services
-│   ├── abi/                  ← bmo-abi, bmo-rt                (CPU-neutral)
-│   ├── shared/               ← bmo-hal, bmo-channel, hw-profile (CPU-neutral)
-│   ├── drivers/              ← xhci, ahci, nvme, fat32, net, audio, input, uhid
+BMO/
+├── Ultra_kernel_x86-64/      ← kernel x86-64: shim UEFI unificado + 2 etapas + Ring 0
+│   ├── uefi_chain/           ← shim UEFI: embebe s1/s2/kernel, arranca sin leer disco
+│   ├── faggin/               ← etapas de arranque: s1_cpu, s2_mem, serial_shared
+│   ├── boot_context/         ← contrato de handoff shim→s1→s2→kernel (magic + version)
+│   └── kernel/               ← Ring 0: Capability Engine, scheduler, mm, syscall, UI
+├── Ultra_userspace/          ← lado Ring 3, también x86-64 (workspace hermano)
+├── platform/                 ← CORE agnóstico de CPU: bmo-abi, bmo-rt, drivers, servicios
+│   ├── abi/                  ← bmo-abi (surface, capability, handle, BEF/BEX), bmo-rt
+│   ├── shared/               ← bmo-hal, bmo-channel, hw-profile
+│   ├── drivers/              ← xhci, ahci, nvme, fat32, net, audio, input, uhid, gpu/rdna4
 │   └── services/             ← cabina-core, byte-defender, timeback
-├── toolchain/                ← Build-time: language frontends → BEF → linker → BEX
-│   ├── lang/                 ← C, C++, COBOL (dialect library) frontends → BEF
-│   ├── bmo-linker/           ← symbol extraction / BMO_SYMBOLS.toml
-│   ├── bef-bootstrap/        ← minimal Ring 3 init payload generator
-│   └── sem-asm/              ← semantic-assembly definitions (arch/standards/stdlib)
-└── Ultra_kernel_aarch64/     ← (planned) same structure, ARM-flavored faggin chain
+├── toolchain/                ← Build-time: frontends de lenguaje → BEF → linker → BEX
+│   ├── lang/                 ← C, C++, COBOL (biblioteca de dialectos) → BEF
+│   ├── bmo-linker/           ← extracción de símbolos / BMO_SYMBOLS.toml
+│   ├── bef-bootstrap/        ← generador del payload init de Ring 3
+│   └── sem-asm/              ← semantic-assembly (arch/standards/stdlib)
+└── Ultra_kernel_aarch64/     ← (planeado) misma estructura, cadena ARM
 ```
 
-`platform/` is the part of BMO that is **truly CPU-agnostic** — the BEF
-format, the syscall ABI, the lock-free channel, the version control service, the
-security scanner, the language frontends all work the same on any CPU. To port
-to a new architecture, you duplicate `Ultra_kernel_x86-64/` as
-`Ultra_kernel_<arch>/` and rewrite the **12 faggin stages** (which are the only
-CPU-specific code) plus the inline asm in the kernel's `_start`. See
-`Ultra_kernel_x86-64/README.md` for the full porting matrix.
+`platform/` es la parte de BMO **verdaderamente agnóstica de CPU** — el formato
+BEF, la superficie de syscalls, el canal lock-free, el control de versiones y los
+frontends de lenguaje funcionan igual en cualquier CPU. Para portar a otra
+arquitectura, duplicas `Ultra_kernel_x86-64/` como `Ultra_kernel_<arch>/` y
+reescribes las **2 etapas** (`faggin/s1_cpu`, `faggin/s2_mem`, el único código
+CPU-específico) más el asm inline del `_start` del kernel.
 
 
 

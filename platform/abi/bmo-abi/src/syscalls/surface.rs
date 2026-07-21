@@ -1,4 +1,4 @@
-//! BMO ABI v2 core syscall contract.
+//! BMO ABI core syscall surface (the frozen 3-call surface).
 //!
 //! Services such as files, network, audio, graphics and input are capability
 //! operations transported through BMO Channel. They are not kernel syscalls.

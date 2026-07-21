@@ -158,3 +158,33 @@ impl BootContext {
             .filter(|e| e.kind == 1 && e.size > 0)
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Preload handoff (unified-EFI boot)
+// ═══════════════════════════════════════════════════════════════════
+
+/// "BMOPRLD1" — magic of the shim→s1 preload handoff block.
+pub const PRELOAD_MAGIC: u64 = 0x424D_4F50_524C_4431;
+
+/// Handoff from the UEFI shim when s2_mem and the kernel were embedded in
+/// BOOTX64.EFI and copied to their fixed load addresses before s1 runs.
+/// Passed to `s1_entry` as the third (r8) argument; null or a wrong magic
+/// means "not preloaded" and s1 falls back to loading from the ESP.
+///
+/// Rationale: some firmwares (MSI A320M AMI fast path) load the boot
+/// application with an internal FAT reader and never bind
+/// SimpleFileSystem to any handle — the ESP is unreadable through UEFI
+/// protocols even after a recursive ConnectController pass.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct PreloadInfo {
+    pub magic: u64,
+    pub s2_size: u64,
+    pub kernel_size: u64,
+    /// Address of the kernel image bytes (inside the shim's loaded PE).
+    /// The kernel is NOT copied to 0x400000 while Boot Services are alive:
+    /// firmwares keep allocations in that range, so AllocateAddress on the
+    /// 16 MiB slot can fail (observed on MSI A320M). s1 performs the copy
+    /// right AFTER ExitBootServices, when that memory becomes ours.
+    pub kernel_src: u64,
+}

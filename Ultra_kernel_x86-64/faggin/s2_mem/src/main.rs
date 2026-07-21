@@ -270,7 +270,12 @@ unsafe fn acpi_parse(rsdp: u64) -> AcpiInfo {
         serial_shared::puts("\n");
     }
     if let Some(addr) = find_table(xsdt, &HPET_SIG) {
-        let base = (addr + 40 + 8) as *const u64;
+        // HPET table: 36-byte SDT header, then Event Timer Block ID (4B,
+        // offset 36), then a Generic Address Structure at offset 40 whose
+        // 8-byte Address field is at offset 44 (40 + 4B GAS header), NOT
+        // offset 48. The old +8 read garbage → a bogus base that page-
+        // faulted in hpet_init on real hardware.
+        let base = (addr + 44) as *const u64;
         info.hpet = Some(base.read());
         serial_shared::puts("[s2_mem] HPET 0x");
         serial_shared::hex(info.hpet.unwrap());
@@ -431,10 +436,13 @@ unsafe fn hpet_init(base: u64) {
     serial_shared::puts("[s2_mem] HPET period ");
     serial_shared::dec(period as usize);
     serial_shared::puts(" fs\n");
-    let cfg = v.add(1).read_volatile();
+    // Register offsets (as u64 index): General Config = 0x010 = index 2,
+    // General Interrupt Status = 0x020 = index 4. (Was index 1/2 — the
+    // 0x008 slot is reserved.)
+    let cfg = v.add(2).read_volatile();
     // Enable the main counter but do not claim legacy PIT/RTC routing.
-    v.add(1).write_volatile((cfg | 1) & !2);
-    v.add(2).write_volatile(0);
+    v.add(2).write_volatile((cfg | 1) & !2);
+    v.add(4).write_volatile(0);
 }
 
 // ── i8042 PS/2 ────────────────────────────────────────────────────
@@ -481,12 +489,36 @@ unsafe extern "C" {
     static S2_STACK_END: u8;
 }
 
+/// Boot-progress bar on the framebuffer (8 rows tall at `y0`). Visible
+/// without a serial cable; only meaningful once s1 populated ctx.fb_addr
+/// and the region is mapped (identity pre-CR3, and re-mapped after).
+fn s2_bar(ctx: &boot_context::BootContext, y0: u64, color: u32) {
+    if ctx.fb_addr == 0 { return; }
+    let fb = ctx.fb_addr as *mut u32;
+    for y in y0..y0 + 8 {
+        for x in 0..ctx.fb_width as u64 {
+            unsafe { fb.add((y * ctx.fb_stride as u64 + x) as usize).write_volatile(color); }
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 #[inline(never)]
 extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     serial_shared::puts("\n[s2_mem] === MEMORY + DEVICES INIT ===\n");
 
     let ctx = unsafe { &mut *ctx_ptr };
+
+    // Visual bisect marker: CYAN bar rows 8..16 = "s2 alive" (s1 painted
+    // green above; the kernel paints magenta below).
+    if ctx.fb_addr != 0 {
+        let fb = ctx.fb_addr as *mut u32;
+        for y in 8..16u64 {
+            for x in 0..ctx.fb_width as u64 {
+                unsafe { fb.add((y * ctx.fb_stride as u64 + x) as usize).write_volatile(0xFF00_BBDD); }
+            }
+        }
+    }
 
     // 1. Init frame pool from memory map
     unsafe { pool_init(ctx); }
@@ -498,12 +530,17 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     serial_shared::hex(pml4_phys);
     serial_shared::puts("\n");
 
-    // 3. Identity-map 0..32 MiB (16 × 2 MiB huge pages)
+    // 3. Identity-map 0..4 GiB (2048 × 2 MiB huge pages).
+    //    ACPI tables, PCI ECAM and device MMIO all live at physical
+    //    addresses above 32 MiB (typically just under 4 GiB), and s2
+    //    reads them by raw physical address. Mapping only 32 MiB made
+    //    acpi_parse page-fault on real hardware. 4 GiB covers the whole
+    //    low physical space the boot path touches.
     unsafe {
-        map_2m_huge(pml4.as_mut_ptr(), 0x0, 0x0, 16,
+        map_2m_huge(pml4.as_mut_ptr(), 0x0, 0x0, 2048,
             PTE_PRESENT | PTE_WRITABLE);
     }
-    serial_shared::puts("[s2_mem] identity-mapped 0..32MB\n");
+    serial_shared::puts("[s2_mem] identity-mapped 0..4GB\n");
 
     // 4. Higher-half mirror: 0..16 GiB → 0xFFFF_8000_0000_0000
     unsafe {
@@ -512,22 +549,24 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     }
     serial_shared::puts("[s2_mem] higher-half 0..16GB\n");
 
-    // 5. Identity-map GOP framebuffer (if present)
+    // 5. Map the GOP framebuffer as cache-disabled 2 MiB huge pages.
+    //    Huge pages (not 4 KiB) so this never collides with the 0..4 GiB
+    //    huge-page identity map above: for a framebuffer below 4 GiB this
+    //    OVERRIDES those entries to cache-disable (MMIO writes must reach
+    //    the device, not sit in a write-back cache); above 4 GiB it just
+    //    adds the mapping.
     if ctx.fb_addr != 0 {
-        let fb_start = ctx.fb_addr & !(PAGE_SIZE - 1);
+        const HUGE: u64 = 0x20_0000;
+        let fb_2m_start = ctx.fb_addr & !(HUGE - 1);
         let fb_size = (ctx.fb_stride as u64) * (ctx.fb_height as u64) * 4;
-        let fb_offset = ctx.fb_addr - fb_start;
-        let fb_pages = ((fb_offset + fb_size + PAGE_SIZE - 1) / PAGE_SIZE) as usize;
-        for i in 0..fb_pages {
-            let p = fb_start + (i as u64) * PAGE_SIZE;
-            unsafe {
-                map_page(pml4.as_mut_ptr(), p, p,
-                    PTE_PRESENT | PTE_WRITABLE | PTE_CACHE_DISABLE);
-            }
+        let fb_2m_pages = ((ctx.fb_addr + fb_size - fb_2m_start + HUGE - 1) / HUGE) as usize;
+        unsafe {
+            map_2m_huge(pml4.as_mut_ptr(), fb_2m_start, fb_2m_start, fb_2m_pages,
+                PTE_PRESENT | PTE_WRITABLE | PTE_CACHE_DISABLE);
         }
         serial_shared::puts("[s2_mem] GOP fb mapped (");
-        serial_shared::dec(fb_pages);
-        serial_shared::puts(" pages)\n");
+        serial_shared::dec(fb_2m_pages);
+        serial_shared::puts(" x 2MB)\n");
     }
 
     // 6. Map BootContext page if outside identity region
@@ -567,6 +606,8 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     //  NOW ON NEW PAGE TABLES. phys_to_virt() works.
     // ═══════════════════════════════════════════════════════════════
     serial_shared::puts("[s2_mem] CR3 switched OK\n");
+    // YELLOW rows 16..24: paging switched + framebuffer re-mapped OK.
+    s2_bar(ctx, 16, 0xFFFF_FF00);
 
     // 9. Heap init
     unsafe { heap_init(ctx); }
@@ -574,9 +615,13 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     // 10. ACPI parse
     let rsdp = scan_rsdp();
     let acpi = unsafe { acpi_parse(rsdp) };
+    // ORANGE rows 24..32: heap + ACPI parse survived.
+    s2_bar(ctx, 24, 0xFFFF_8800);
 
     // 11. PCI scan (ECAM uses phys_to_virt)
     pci_scan(ctx, &acpi);
+    // RED rows 32..40: PCI scan survived.
+    s2_bar(ctx, 32, 0xFFFF_0000);
 
     // 12. Store ACPI/device info in BootContext
     ctx.rsdp = rsdp;
@@ -587,13 +632,18 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     //     phys_to_virt() now works because higher-half is mapped.
     pic_mask_all();
     unsafe { lapic_init(ctx.tsc_freq); }
+    s2_bar(ctx, 40, 0xFFFF_00FF); // rows 40..48 (pink): LAPIC done
     if let Some(ioapic_base) = acpi.ioapic {
         unsafe { ioapic_init(ioapic_base); }
     }
+    s2_bar(ctx, 48, 0xFF00_FFFF); // rows 48..56 (aqua): IOAPIC done
     if let Some(hpet_base) = acpi.hpet {
         unsafe { hpet_init(hpet_base); }
     }
+    s2_bar(ctx, 56, 0xFFFF_FF00); // rows 56..64 (yellow): HPET done
     unsafe { i8042_init(); }
+    // WHITE rows 64..72: all device init done, about to jump to kernel.
+    s2_bar(ctx, 64, 0xFFFF_FFFF);
 
     serial_shared::puts("[s2_mem] === ALL INIT DONE ===\n");
     serial_shared::puts("[s2_mem] jumping to kernel at 0x400000\n");

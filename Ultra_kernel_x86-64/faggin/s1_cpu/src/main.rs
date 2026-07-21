@@ -78,9 +78,15 @@ const COM1: u16 = 0x3F8;
     blt: *mut core::ffi::c_void, mode: *mut EfiGraphicsOutputProtocolMode,
 }
 
-static mut FILE_SYSTEM_GUID: EfiGuid = EfiGuid { data1: 0x964e5b22, data2: 0x6409, data3: 0x47ef, data4: [0x97, 0xa2, 0xff, 0x06, 0xff, 0x38, 0xb0, 0xdf] };
+// Standard UEFI protocol GUIDs. The two below were previously wrong,
+// which is why LocateProtocol for the filesystem and the framebuffer
+// always failed on real firmware (the project ran on serial output, so
+// nobody noticed the framebuffer never came up).
+//   EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID = 964e5b22-6409-11d2-8e39-00a0c969723b
+//   EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID    = 9042a9de-23dc-4a38-96fb-7aded080516a
+static mut FILE_SYSTEM_GUID: EfiGuid = EfiGuid { data1: 0x964e5b22, data2: 0x6409, data3: 0x11d2, data4: [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b] };
 static mut LOADED_IMAGE_GUID: EfiGuid = EfiGuid { data1: 0x5b1b31a1, data2: 0x9562, data3: 0x11d2, data4: [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b] };
-static mut GOP_GUID: EfiGuid = EfiGuid { data1: 0x9042a9de, data2: 0x23dc, data3: 0x4a38, data4: [0x96, 0xfb, 0x72, 0xde, 0x52, 0xfe, 0xc4, 0x49] };
+static mut GOP_GUID: EfiGuid = EfiGuid { data1: 0x9042a9de, data2: 0x23dc, data3: 0x4a38, data4: [0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a] };
 
 // ═══════════════════════════════════════════════════════════════════
 //  AMD-SPECIFIC MSR ADDRESSES (Zen 3 / Family 19h)
@@ -525,35 +531,25 @@ unsafe fn detect_cpu() {
 // ═══════════════════════════════════════════════════════════════════
 
 unsafe fn init_amd_msrs() {
-    // EFER: SYSCALL enable + NXE (No-Execute) + LMA (already in long mode)
+    // ONLY the MSR writes actually required to boot. Early boot must not
+    // poke model-specific or reserved MSR bits: on real Zen 3 those #GP
+    // where QEMU silently accepts them (the exact reason this reset on
+    // hardware but not in the emulator).
+    //
+    // EFER: SYSCALL enable (SCE, for the SYSCALL instruction) + NXE (so
+    // page tables may set the No-Execute bit). Both are architectural and
+    // required. LMA is already set (we are in long mode).
     let efer = rdmsr(MSR_EFER);
     let new_efer = efer | EFER_SCE | EFER_NXE;
-    if cpu_has_sme() {
-        // SME: NXE for all pages, even supervisor
-        // Don't auto-enable encryption here (would encrypt kernel too)
-    }
     wrmsr(MSR_EFER, new_efer);
     ser_print!("[s1_cpu] EFER: 0x");
     ser_hex!(new_efer);
     ser_print!("\n");
 
-    // SYSCFG (Zen 3 specific): Enable FSGSBASE for fast FS/GS access
-    if CPU.has_fsgsbase {
-        let syscfg = rdmsr(MSR_SYSCFG);
-        // bit 25 = FB_MODE (FSGSBASE enable on Zen 3)
-        // bit 18 = MFDM (Memory Disambiguation Flush Disable)
-        wrmsr(MSR_SYSCFG, syscfg | (1 << 25));
-        ser_print!("[s1_cpu] SYSCFG: 0x");
-        ser_hex!(rdmsr(MSR_SYSCFG));
-        ser_print!(" (FSGSBASE enabled)\n");
-    }
-
-    // HWCR: Disable flush filter (improves single-thread perf slightly)
-    let hwcr = rdmsr(MSR_HWCR);
-    wrmsr(MSR_HWCR, hwcr | HWCR_FFDIS);
-    ser_print!("[s1_cpu] HWCR: 0x");
-    ser_hex!(rdmsr(MSR_HWCR));
-    ser_print!(" (flush filter disabled)\n");
+    // Deliberately NOT written here (all optional / hazardous early):
+    //   * SYSCFG bit 25 — FSGSBASE is enabled via CR4.FSGSBASE (done in
+    //     init_cr0_cr4); that SYSCFG bit is reserved and writing it #GPs.
+    //   * HWCR flush-filter — a micro perf tweak, not needed to boot.
 }
 
 fn cpu_has_sme() -> bool { unsafe { CPU.has_sme } }
@@ -611,45 +607,17 @@ unsafe fn init_fpu() {
 }
 
 unsafe fn init_zen3_perf() {
-    // Zen 3 specific performance MSRs
-
-    // LS_CFG: configure load-store unit
-    // Default 0x00200000 enables hardware prefetcher behavior
-    let ls_cfg = rdmsr(MSR_LS_CFG);
-    ser_print!("[s1_cpu] LS_CFG: 0x");
-    ser_hex!(ls_cfg);
-    ser_print!("\n");
-
-    // IC_CFG: instruction cache configuration
-    let ic_cfg = rdmsr(MSR_IC_CFG);
-    ser_print!("[s1_cpu] IC_CFG: 0x");
-    ser_hex!(ic_cfg);
-    ser_print!("\n");
-
-    // DC_CFG: data cache configuration
-    let dc_cfg = rdmsr(MSR_DC_CFG);
-    ser_print!("[s1_cpu] DC_CFG: 0x");
-    ser_hex!(dc_cfg);
-    ser_print!("\n");
-
-    // CU_CFG: compute unit configuration
-    let cu_cfg = rdmsr(MSR_CU_CFG);
-    ser_print!("[s1_cpu] CU_CFG: 0x");
-    ser_hex!(cu_cfg);
-    ser_print!("\n");
-
-    // L2_CFG: L2 cache configuration
-    let l2_cfg = rdmsr(MSR_L2_CFG);
-    ser_print!("[s1_cpu] L2_CFG: 0x");
-    ser_hex!(l2_cfg);
-    ser_print!("\n");
-
-    // PF2_INSTR_CTL: L2 prefetch control
-    // Zen 3 default already has good prefetch; don't change
-    let pf2 = rdmsr(MSR_PF2_INSTR_CTL);
-    ser_print!("[s1_cpu] PF2 (L2 prefetch): 0x");
-    ser_hex!(pf2);
-    ser_print!("\n");
+    // Intentionally a no-op during early boot.
+    //
+    // The previous version RDMSR'd a list of undocumented, model-specific
+    // Zen 3 config MSRs (LS_CFG, IC_CFG, DC_CFG, CU_CFG, L2_CFG,
+    // PF2_INSTR_CTL) purely to print them. Reading an MSR that the silicon
+    // does not implement raises #GP — which is exactly what reset this
+    // machine (QEMU returns 0 for the same reads, so it never surfaced).
+    // None of these reads affect booting, so they are gone. If cache/
+    // prefetch tuning is ever wanted, it belongs in a Ring 0 driver behind
+    // a proper CPUID/allowlist guard, not in the blind boot path.
+    ser_print!("[s1_cpu] zen3 perf tuning skipped (safe boot)\n");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -822,26 +790,95 @@ unsafe fn fill_memory_map(ctx: &mut BootContext, buf: &mut [u8; 32768], system_t
     ec
 }
 
-unsafe fn fill_gop(ctx: &mut BootContext, system_table: *mut EfiSystemTable) -> bool {
-    let bs = (*system_table).boot_services;
-    let mut gop_handle: EfiHandle = core::ptr::null_mut();
-    let base = &(*bs).hdr as *const EfiTableHeader as *const *mut core::ffi::c_void;
-    let locate: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
-        core::mem::transmute(*base.add(3 + 37));
-    let r = locate(&mut GOP_GUID, core::ptr::null_mut(), &mut gop_handle);
-    if r != EFI_SUCCESS || gop_handle.is_null() { return false; }
+/// Boot-progress marker on the firmware console (visible without serial).
+/// Only valid while Boot Services are alive.
+unsafe fn con_mark(system_table: *mut EfiSystemTable, s: &str) {
+    let con = (*system_table)._con_out as *const *mut core::ffi::c_void;
+    if con.is_null() { return; }
+    let out: extern "efiapi" fn(*mut core::ffi::c_void, *const u16) -> EfiStatus =
+        core::mem::transmute(*con.add(1));
+    let mut buf = [0u16; 64];
+    let mut i = 0;
+    for &b in s.as_bytes() {
+        if i >= buf.len() - 2 { break; }
+        if b == b'\n' { buf[i] = 13; i += 1; }
+        buf[i] = b as u16; i += 1;
+    }
+    buf[i] = 0;
+    out((*system_table)._con_out as *mut core::ffi::c_void, buf.as_ptr());
+}
+
+/// Extract a valid framebuffer from one GOP handle into `ctx`.
+unsafe fn try_gop_handle(ctx: &mut BootContext, gop_handle: EfiHandle) -> bool {
+    if gop_handle.is_null() { return false; }
     let gop = &*(gop_handle as *const EfiGraphicsOutputProtocol);
+    if gop.mode.is_null() { return false; }
     let mode = &*gop.mode;
+    if mode.info.is_null() { return false; }
     let info = &*(mode.info as *const [u32; 9]);
     let w = info[1]; let h = info[2]; let fmt = info[3]; let stride = info[8];
     if w == 0 || h == 0 || stride < w || fmt > 1 || mode.frame_buffer_base == 0 { return false; }
     ctx.fb_addr = mode.frame_buffer_base;
     ctx.fb_width = w; ctx.fb_height = h;
     ctx.fb_stride = stride; ctx.fb_pixel_format = fmt;
-    ser_print!("[s1_cpu] GOP fb=0x"); ser_hex!(mode.frame_buffer_base);
-    ser_print!(" "); ser_dec!(w as usize); ser_print!("x"); ser_dec!(h as usize); ser_print!("\n");
-    let fb = mode.frame_buffer_base as *mut u32;
-    let total = (stride as usize) * (h as usize);
+    true
+}
+
+/// Acquire the framebuffer, robustly. Some firmwares (MSI A320M AMI fast
+/// path) render text through their own console yet never publish a GOP
+/// protocol via LocateProtocol. We escalate: LocateProtocol → enumerate
+/// every GOP handle → ConnectController connect-all then re-enumerate.
+unsafe fn fill_gop(ctx: &mut BootContext, system_table: *mut EfiSystemTable) -> bool {
+    let bs = (*system_table).boot_services;
+    let base = &(*bs).hdr as *const EfiTableHeader as *const *mut core::ffi::c_void;
+    let locate_protocol: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 37));
+    let locate_handle: extern "efiapi" fn(u32, *mut EfiGuid, *mut core::ffi::c_void, &mut usize, *mut EfiHandle) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 19));
+    let handle_protocol: extern "efiapi" fn(EfiHandle, *mut EfiGuid, &mut *mut core::ffi::c_void) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 16));
+    let connect_controller: extern "efiapi" fn(EfiHandle, *mut EfiHandle, *mut core::ffi::c_void, u8) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 30));
+
+    // 1) LocateProtocol (fast path, works on normal firmwares).
+    let mut gop_handle: EfiHandle = core::ptr::null_mut();
+    if locate_protocol(&raw mut GOP_GUID, core::ptr::null_mut(), &mut gop_handle) == EFI_SUCCESS
+        && try_gop_handle(ctx, gop_handle)
+    {
+        con_mark(system_table, "gopLP ");
+        return finish_gop(ctx);
+    }
+
+    // 2) Enumerate every handle that carries GOP (harmless, read-only).
+    //    We deliberately do NOT ConnectController connect-all here: it
+    //    arms device drivers (timers/IRQs) that would trigger a fault
+    //    during the later GDT swap, and on this firmware it did not
+    //    surface a GOP handle anyway.
+    let _ = &connect_controller; // reserved; not used on this path
+    let mut nbytes = ALL_GOP.len() * core::mem::size_of::<EfiHandle>();
+    let all = &mut *core::ptr::addr_of_mut!(ALL_GOP);
+    // 2 = ByProtocol
+    if locate_handle(2, &raw mut GOP_GUID, core::ptr::null_mut(), &mut nbytes, all.as_mut_ptr()) == EFI_SUCCESS {
+        let n = (nbytes / core::mem::size_of::<EfiHandle>()).min(all.len());
+        for i in 0..n {
+            let mut iface: *mut core::ffi::c_void = core::ptr::null_mut();
+            if handle_protocol(all[i], &raw mut GOP_GUID, &mut iface) == EFI_SUCCESS
+                && try_gop_handle(ctx, iface as EfiHandle)
+            {
+                con_mark(system_table, "gopEN ");
+                return finish_gop(ctx);
+            }
+        }
+    }
+    false
+}
+
+/// Clear the framebuffer to the BMO dark background once acquired.
+unsafe fn finish_gop(ctx: &mut BootContext) -> bool {
+    ser_print!("[s1_cpu] GOP fb=0x"); ser_hex!(ctx.fb_addr);
+    ser_print!(" "); ser_dec!(ctx.fb_width as usize); ser_print!("x"); ser_dec!(ctx.fb_height as usize); ser_print!("\n");
+    let fb = ctx.fb_addr as *mut u32;
+    let total = (ctx.fb_stride as usize) * (ctx.fb_height as usize);
     for i in 0..total { fb.add(i).write_volatile(0xFF0A_0F1Du32); }
     asm!("mfence", options(nostack, preserves_flags));
     true
@@ -850,33 +887,59 @@ unsafe fn fill_gop(ctx: &mut BootContext, system_table: *mut EfiSystemTable) -> 
 unsafe fn load_from_esp(ctx: &mut BootContext, system_table: *mut EfiSystemTable, image_handle: EfiHandle) -> bool {
     let bs = (*system_table).boot_services;
     let base = &(*bs).hdr as *const EfiTableHeader as *const *mut core::ffi::c_void;
-    // Resolve the SAME volume the boot chain was loaded from, via
-    // LoadedImage.DeviceHandle on the shim's image handle. With several
-    // FAT volumes present, LocateProtocol(FS) may return another disk's
-    // ESP where s2_mem.bin/kernel.bin do not exist.
+    // Volume resolution, strongest form (mirrors the UEFI shim): probe the
+    // LoadedImage device first, then EVERY SimpleFS handle, and claim the
+    // first volume that actually contains the chain's s2_mem.bin. Immune
+    // to firmwares that enumerate several disks/ESPs.
     let handle_protocol: extern "efiapi" fn(EfiHandle, *mut EfiGuid, &mut *mut core::ffi::c_void) -> EfiStatus =
         core::mem::transmute(*base.add(3 + 16));
-    let mut fs_handle: EfiHandle = core::ptr::null_mut();
+    let locate_handle: extern "efiapi" fn(u32, *mut EfiGuid, *mut core::ffi::c_void, &mut usize, *mut EfiHandle) -> EfiStatus =
+        core::mem::transmute(*base.add(3 + 19));
+
+    const MAX_FS: usize = 32;
+    let mut candidates: [EfiHandle; MAX_FS + 1] = [core::ptr::null_mut(); MAX_FS + 1];
+    let mut count: usize = 0;
     let mut li: *mut core::ffi::c_void = core::ptr::null_mut();
     if handle_protocol(image_handle, &raw mut LOADED_IMAGE_GUID, &mut li) == EFI_SUCCESS && !li.is_null() {
         // EFI_LOADED_IMAGE_PROTOCOL: DeviceHandle at byte offset 24.
         let device = *(li as *const EfiHandle).add(3);
+        if !device.is_null() { candidates[count] = device; count += 1; }
+    }
+    let first_fs = count;
+    let mut bytes = MAX_FS * core::mem::size_of::<EfiHandle>();
+    // 2 = ByProtocol
+    if locate_handle(2, &raw mut FILE_SYSTEM_GUID, core::ptr::null_mut(), &mut bytes, candidates.as_mut_ptr().add(first_fs)) == EFI_SUCCESS {
+        count += bytes / core::mem::size_of::<EfiHandle>();
+        if count > candidates.len() { count = candidates.len(); }
+    }
+    ser_print!("[s1_cpu] FS candidates="); ser_dec!(count); ser_print!("\n");
+
+    // Probe marker: the stage this loader must find next
+    // ("\EFI\BOOT\ring0\faggin\s2_mem.bin").
+    let mut probe_full = [0u16; 36];
+    for (i, &c) in b"\\EFI\\BOOT\\ring0\\faggin\\s2_mem.bin".iter().enumerate() {
+        probe_full[i] = c as u16;
+    }
+    let mut root: *mut core::ffi::c_void = core::ptr::null_mut();
+    for c in 0..count {
         let mut fs_if: *mut core::ffi::c_void = core::ptr::null_mut();
-        if handle_protocol(device, &raw mut FILE_SYSTEM_GUID, &mut fs_if) == EFI_SUCCESS {
-            fs_handle = fs_if as EfiHandle;
+        if handle_protocol(candidates[c], &raw mut FILE_SYSTEM_GUID, &mut fs_if) != EFI_SUCCESS || fs_if.is_null() { continue; }
+        let sfsp = fs_if as *const *mut core::ffi::c_void;
+        let open_vol: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void) -> EfiStatus =
+            core::mem::transmute(*sfsp.add(1));
+        let mut vol_root: *mut core::ffi::c_void = core::ptr::null_mut();
+        if open_vol(fs_if, &mut vol_root) != EFI_SUCCESS || vol_root.is_null() { continue; }
+        let fb = vol_root as *const *mut core::ffi::c_void;
+        let ofn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus =
+            core::mem::transmute(*fb.add(1));
+        let mut f: *mut core::ffi::c_void = core::ptr::null_mut();
+        if ofn(vol_root, &mut f, probe_full.as_ptr(), 1, 0) == EFI_SUCCESS && !f.is_null() {
+            ser_print!("[s1_cpu] chain volume = candidate "); ser_dec!(c); ser_print!("\n");
+            root = vol_root;
+            break;
         }
     }
-    if fs_handle.is_null() {
-        // Fallback: first filesystem (single-volume setups).
-        let locate: extern "efiapi" fn(*mut EfiGuid, *mut core::ffi::c_void, &mut EfiHandle) -> EfiStatus =
-            core::mem::transmute(*base.add(3 + 37));
-        if locate(&raw mut FILE_SYSTEM_GUID, core::ptr::null_mut(), &mut fs_handle) != EFI_SUCCESS { return false; }
-    }
-    let sfsp = fs_handle as *const *mut core::ffi::c_void;
-    let open_vol: extern "efiapi" fn(EfiHandle, &mut *mut core::ffi::c_void) -> EfiStatus =
-        core::mem::transmute(*sfsp.add(1));
-    let mut root: *mut core::ffi::c_void = core::ptr::null_mut();
-    if open_vol(fs_handle, &mut root) != EFI_SUCCESS { return false; }
+    if root.is_null() { return false; }
     let file_base = root as *const *mut core::ffi::c_void;
     let open_fn: extern "efiapi" fn(*mut core::ffi::c_void, &mut *mut core::ffi::c_void, *const u16, u64, u64) -> EfiStatus =
         core::mem::transmute(*file_base.add(1));
@@ -959,6 +1022,34 @@ unsafe fn exit_boot_services_and_jump(ctx_ptr: *mut BootContext, system_table: *
     ctx.memory_map_count = count as u32;
 
     if exit_bs(image_handle, map_key) != EFI_SUCCESS { loop { asm!("hlt"); } }
+
+    // Firmware is dead: 0x400000..+16 MiB is ours now. Place the kernel
+    // that the unified shim kept inside its own image (AllocateAddress on
+    // this range fails on firmwares that park Boot Services data there —
+    // observed on MSI A320M; post-EBS the range is conventional memory).
+    let ksrc = PRELOAD_KERNEL_SRC;
+    let ksize = PRELOAD_KERNEL_SIZE as usize;
+    if ksrc != 0 && ksize != 0 {
+        let dst = 0x400000 as *mut u8;
+        core::ptr::copy_nonoverlapping(ksrc as *const u8, dst, ksize);
+        core::ptr::write_bytes(dst.add(ksize), 0, KERNEL_RESERVE_SIZE as usize - ksize);
+        ser_print!("[s1_cpu] kernel placed at 0x400000 (");
+        ser_dec!(ksize);
+        ser_print!(" bytes, post-EBS)\n");
+    }
+
+    // Visual bisect marker (no serial needed): GREEN bar rows 0..8 =
+    // "s1 survived ExitBootServices + kernel placement, jumping to s2".
+    // s2 paints CYAN below it, the kernel MAGENTA below that.
+    if ctx.fb_addr != 0 {
+        let fb = ctx.fb_addr as *mut u32;
+        for y in 0..8u64 {
+            for x in 0..ctx.fb_width as u64 {
+                fb.add((y * ctx.fb_stride as u64 + x) as usize).write_volatile(0xFF00_CC44);
+            }
+        }
+    }
+
     ser_print!("[s1_cpu] ===> JUMP s2_mem 0x");
     ser_hex!(entry);
     ser_print!("\n");
@@ -978,6 +1069,14 @@ unsafe fn exit_boot_services_and_jump(ctx_ptr: *mut BootContext, system_table: *
 
 static mut CTX: BootContext = unsafe { core::mem::zeroed() };
 
+/// Unified-shim handoff: where the kernel image lives until the post-EBS
+/// copy to 0x400000 (0 = not preloaded; the ESP loader placed it).
+static mut PRELOAD_KERNEL_SRC: u64 = 0;
+static mut PRELOAD_KERNEL_SIZE: u64 = 0;
+
+/// Scratch buffer for GOP/connect-all handle enumeration.
+static mut ALL_GOP: [EfiHandle; 256] = [core::ptr::null_mut(); 256];
+
 // ═══════════════════════════════════════════════════════════════════
 //  ENTRY POINT
 // ═══════════════════════════════════════════════════════════════════
@@ -987,6 +1086,7 @@ static mut CTX: BootContext = unsafe { core::mem::zeroed() };
 pub extern "efiapi" fn s1_entry(
     image_handle: EfiHandle,
     system_table: *mut core::ffi::c_void,
+    preload: *const boot_context::PreloadInfo,
 ) -> ! {
     serial_init();
     ser_print!("\n[s1_cpu] === BMO BOOT START (Zen 3) ===\n");
@@ -995,27 +1095,82 @@ pub extern "efiapi" fn s1_entry(
     let ctx_ptr: *mut BootContext = core::ptr::addr_of_mut!(CTX);
     let ctx = unsafe { &mut *ctx_ptr };
     ctx.magic = boot_context::MAGIC;
-    ctx.version = 2;
+    // Must match boot_context::VERSION exactly — the kernel's is_valid()
+    // rejects any other value. Use the shared constant so the two never
+    // drift again (this hardcoded 2-vs-3 mismatch halted the kernel right
+    // after entry on real hardware).
+    ctx.version = boot_context::VERSION;
     ser_print!("[s1_cpu] magic=0x"); ser_hex!(ctx.magic);
     ser_print!(" version="); ser_dec!(ctx.version as usize); ser_print!("\n");
 
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "s1:enter "); }
     // 2. Memory map
     let mut mem_buf = [0u8; 32768];
     let ec = unsafe { fill_memory_map(ctx, &mut mem_buf, system_table as *mut EfiSystemTable) };
     ser_print!("[s1_cpu] memory map: "); ser_dec!(ec); ser_print!(" entries\n");
 
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "mm "); }
     // 3. GOP framebuffer
     unsafe { fill_gop(ctx, system_table as *mut EfiSystemTable); }
 
-    // 4. Load s2_mem + kernel
-    if !unsafe { load_from_esp(ctx, system_table as *mut EfiSystemTable, image_handle) } {
+    unsafe {
+        if ctx.fb_addr != 0 { con_mark(system_table as *mut EfiSystemTable, "gop+ "); }
+        else { con_mark(system_table as *mut EfiSystemTable, "gop- "); }
+    }
+    // 4. Load s2_mem + kernel. Preferred path: the unified shim already
+    // copied both to their fixed addresses and handed off sizes in r8 —
+    // no ESP access needed (some firmwares never expose SimpleFS). The
+    // ESP loader remains as fallback for legacy/QEMU boots.
+    let preloaded = !preload.is_null()
+        && unsafe { (*preload).magic } == boot_context::PRELOAD_MAGIC;
+    if preloaded {
+        let p = unsafe { &*preload };
+        ctx.stage_base[0] = 0x100000;
+        ctx.stage_entry[0] = 0x100000;
+        ctx.stage_base[1] = 0x200000;
+        ctx.stage_size[1] = p.s2_size;
+        ctx.stage_entry[1] = 0x200000;
+        ctx.stage_base[KERNEL_STAGE_INDEX] = 0x400000;
+        ctx.stage_size[KERNEL_STAGE_INDEX] = p.kernel_size;
+        ctx.stage_entry[KERNEL_STAGE_INDEX] = 0x400000;
+        // The kernel bytes stay in the shim image until the post-EBS copy
+        // (see exit_boot_services_and_jump).
+        unsafe {
+            PRELOAD_KERNEL_SRC = p.kernel_src;
+            PRELOAD_KERNEL_SIZE = p.kernel_size;
+        }
+        ser_print!("[s1_cpu] stages preloaded by shim: s2=");
+        ser_dec!(p.s2_size as usize);
+        ser_print!(" kernel=");
+        ser_dec!(p.kernel_size as usize);
+        ser_print!(" bytes\n");
+    } else if !unsafe { load_from_esp(ctx, system_table as *mut EfiSystemTable, image_handle) } {
         ser_print!("[s1_cpu] FATAL: load failed\n");
         loop { unsafe { asm!("hlt"); } }
     }
 
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "pre "); }
     // 5. CPU detection (AMD Ryzen 5 5600X specific)
     ser_print!("\n[s1_cpu] === AMD ZEN 3 DETECTION ===\n");
     unsafe { detect_cpu(); }
+
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "cpu "); }
+
+    // ── Disable interrupts before swapping the descriptor tables ──────
+    // The firmware handed off with interrupts ENABLED. If a device IRQ
+    // (timer, keyboard, SATA...) fires between `lgdt` and our IDT being
+    // installed, the CPU dispatches it through an inconsistent GDT/IDT
+    // state and triple-faults — a reset, not a fault we can catch. This
+    // is the classic reason a kernel boots under QEMU (no live IRQs at
+    // boot) but resets on real hardware. Do what Linux does at its first
+    // boot steps: mask everything now, re-enable only once the kernel has
+    // its own IDT + LAPIC. `cli` covers the CPU; masking the legacy 8259
+    // PIC covers any IRQ the firmware/other drivers left armed.
+    unsafe {
+        asm!("cli", options(nomem, nostack));
+        outb(0x21, 0xFF);
+        outb(0xA1, 0xFF);
+    }
 
     // 6. GDT + IDT (universal x86-64)
     ser_print!("\n[s1_cpu] === UNIVERSAL CPU INIT ===\n");
@@ -1024,6 +1179,7 @@ pub extern "efiapi" fn s1_entry(
     unsafe { init_idt(); }
     ser_print!("[s1_cpu] IDT loaded\n");
 
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "gdt "); }
     // 7. CR0/CR4/XCR0
     unsafe { init_cr0_cr4(); }
 
@@ -1033,12 +1189,15 @@ pub extern "efiapi" fn s1_entry(
     // 9. TSC
     unsafe { init_tsc(); }
 
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "crs "); }
     // 10. AMD MSRs (Zen 3 specific)
     ser_print!("\n[s1_cpu] === AMD ZEN 3 MSR INIT ===\n");
     unsafe { init_amd_msrs(); }
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "am "); }
 
     // 11. Zen 3 performance configuration
     unsafe { init_zen3_perf(); }
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "pf "); }
 
     // 12. SYSCALL (AMD K8 ABI)
     unsafe { init_syscall(); }
@@ -1046,6 +1205,7 @@ pub extern "efiapi" fn s1_entry(
     // SMP remains disabled until its real-mode trampoline and low-memory page
     // tables are reserved and built correctly.  Boot the BSP reliably first.
 
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "msr "); }
     // 13. Publish CPU profile to BootContext
     ctx.gdt_ptr = core::ptr::addr_of!(GDT) as u64;
     ctx.tss_ptr = core::ptr::addr_of!(TSS) as u64;
@@ -1058,7 +1218,11 @@ pub extern "efiapi" fn s1_entry(
     ser_print!("[s1_cpu] Ryzen 5 5600X: 6C/12T, 3.7GHz base, 4.6GHz boost\n");
     ser_print!("[s1_cpu] Cache: L1 32K, L2 512K, L3 32M\n");
 
-    // 14. ExitBootServices + jump to s2_mem
+    unsafe { con_mark(system_table as *mut EfiSystemTable, "cpuOK ebs...\n"); }
+    // 14. ExitBootServices + jump to s2_mem. Post-EBS the firmware console
+    // is gone; the only output is the framebuffer, which the GOP GUID fix
+    // above should now provide. s1/s2/kernel each paint a colored bar
+    // (green/cyan/magenta) so the boot is visible without a serial cable.
     unsafe { exit_boot_services_and_jump(ctx_ptr, system_table as *mut EfiSystemTable, image_handle, S2_ADDR); }
 }
 

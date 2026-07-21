@@ -485,7 +485,7 @@ pub fn splash_init() {
     tsc_wait(300_000_000); // ~100 ms @ 3.7 GHz
 
     // Draw centered text over the fill
-    let txt = "BMO v2.0";
+    let txt = "BMO-X";
     let tx = (w as u32).saturating_sub(text_width(txt)) / 2;
     let cy = h / 2;
     draw_str(tx, cy - 10, txt, 0xFF000000u32);
@@ -559,7 +559,7 @@ pub fn splash_dashboard_init() {
 
     // 2. Top bar (system identity)
     fill_rect(0, 0, w, DASH_HEADER_H, DASH_BAR);
-    let title = "BMO v2.0 Ring 0";
+    let title = "BMO-X Ring 0";
     draw_str(20, 12, title, DASH_ACCENT);
     let right = "GOP Framebuffer | COM1 Serial Shell";
     let rx = w.saturating_sub(text_width(right) + 20);

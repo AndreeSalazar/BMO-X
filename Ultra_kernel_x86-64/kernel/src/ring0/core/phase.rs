@@ -284,7 +284,7 @@ fn shell_halt() -> ! {
 
 fn run_shell(ctx: &BootContext) -> ! {
     s_log("");
-    s_log("=== BMO v2.0 Ring 0 shell (type 'help') ===");
+    s_log("=== BMO-X Ring 0 shell (type 'help') ===");
     shell_prompt();
 
     let mut buf = [0u8; 64];
@@ -326,20 +326,38 @@ fn run_shell(ctx: &BootContext) -> ! {
 /// Public entry: called from `entry::kernel_main_real` after the
 /// naked `_start` BSS zero.
 pub fn main(ctx: &mut BootContext) {
+    // Boot bisected cleanly on real hardware; the visual progress markers
+    // are retired. `kbar!` is now a no-op so the call sites can stay as
+    // documentation of the init order without painting over the UI. (Their
+    // spirit lives on in the planned per-module status/version registry.)
+    macro_rules! kbar { ($y:expr, $c:expr) => {{ let _ = ($y, $c); }}; }
+
+    kbar!(90, 0xFF00_FF00u32); // green @90: past the magenta paint, before s_log
     s_log("[ring0] validating BootContext");
     if !ctx.is_valid() {
+        // Make an invalid BootContext VISIBLE (red @90) instead of a silent
+        // halt — otherwise a magic mismatch looks identical to a hang.
+        kbar!(90, 0xFFFF_0000u32);
         s_log("[ring0] FATAL: BootContext magic mismatch");
         loop { unsafe { core::arch::asm!("hlt"); } }
     }
+    kbar!(110, 0xFFFF_FFFFu32); // white @110: BootContext valid, before percpu
 
     crate::ring0::dev::console::serial_write("[ring0] BootContext OK, version=");
     crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
 
+    // Kernel-init checkpoints live in the empty band starting at row 140
+    // (well below the boot bars that end near row 120), so any new bar is
+    // unmistakably kernel progress — not a repeat of an s1/s2 color.
     crate::ring0::percpu::init_bsp();
+    kbar!(140, 0xFF00_FF00u32); // green: percpu OK
     crate::ring0::scheduler::init(ctx.tsc_freq);
+    kbar!(152, 0xFFFF_FFFFu32); // white: scheduler OK
     crate::ring0::mm::phys::init(ctx);
+    kbar!(164, 0xFFFF_0000u32); // red: phys::init OK
     crate::ring0::mm::vmm::init();
+    kbar!(176, 0xFF00_FFFFu32); // aqua: vmm::init OK
     let (frames_total, frames_free) = crate::ring0::mm::phys::stats();
     crate::ring0::dev::console::serial_write("[ring0] mm ready: frames free=");
     crate::ring0::dev::console::serial_write_u64(frames_free, 10);
@@ -355,6 +373,7 @@ pub fn main(ctx: &mut BootContext) {
     } else {
         s_log("[ring0] WARNING: LAPIC tick unavailable; scheduler remains cooperative");
     }
+    kbar!(188, 0xFFFF_FF00u32); // yellow: channel/svc/syscall/timer OK
 
     // Populate the active BMO CPU profile (today: Ryzen 5 5600X).
     // Identity, SMT/CCX topology, cache hierarchy, TSC calibration and
@@ -362,6 +381,7 @@ pub fn main(ctx: &mut BootContext) {
     // changing CPU or vendor is a profile swap, never a kernel edit.
     let cpu_profile = crate::ring0::cpu_vendor::active();
     (cpu_profile.init)();
+    kbar!(200, 0xFFFF_8800u32); // orange: CPU profile + errata (MSR) OK
     crate::ring0::dev::console::serial_write("[cpu] profile: ");
     crate::ring0::dev::console::serial_write(cpu_profile.vendor);
     crate::ring0::dev::console::serial_write(" ");
@@ -371,6 +391,7 @@ pub fn main(ctx: &mut BootContext) {
     // BEX is the only native executable contract admitted by this kernel.
     // The parser is allocation-free so it is safe before the process allocator.
     crate::ring0::bex::announce();
+    kbar!(212, 0xFF00_FFFFu32); // aqua: bex announce OK, before proc::spawn_init
 
     // F2: if the boot chain reserved a Ring 3 payload, admit it as the
     // init process. With no payload this is a no-op and the boot flow is
@@ -381,6 +402,7 @@ pub fn main(ctx: &mut BootContext) {
         crate::ring0::dev::console::serial_write_u64(tid as u64, 10);
         crate::ring0::dev::console::serial_write("\n");
     }
+    kbar!(224, 0xFFFF_FFFFu32); // white: proc init + Ring 3 spawn OK, before splash
 
     // CPU identity detection (CPUID leaf 0, 1, 0x80000002-04)
     let cpu = crate::ring0::cpu::detect_cpu();
@@ -424,6 +446,11 @@ pub fn main(ctx: &mut BootContext) {
     phase1_ui(ctx);
     s_log("[ring0] boot complete");
     s_log("[ring0] BMO: Ok Ready");
+
+    // FINAL checkpoint: bright green at row 236 = kernel finished ALL of
+    // phase::main and is entering the shell. If this shows, Ring 0 fully
+    // booted on real hardware.
+    kbar!(236, 0xFF00_FF00u32);
 
     if timer_ready {
         crate::ring0::timer::enable();

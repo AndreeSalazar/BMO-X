@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::*;
-use bmo_abi::syscalls::v2;
+use bmo_abi::syscalls::surface;
 use crate::ast::{CobolProgram, CobolStatement, CobolCondition};
 use crate::ast::error::CobolError;
 
@@ -76,7 +76,7 @@ impl Codegen {
         }
 
         // Exit
-        self.emit_v2_task_invoke(v2::task_op::EXIT, &[]);
+        self.emit_v2_task_invoke(surface::task_op::EXIT, &[]);
         self.code.push(0xF4);                              // hlt
 
         // Syscall stub
@@ -141,7 +141,7 @@ impl Codegen {
     fn emit_statement(&mut self, stmt: &CobolStatement) {
         match stmt {
             CobolStatement::Syscall(def, args) => {
-                if let Some(operation) = v2::task_operation_for_legacy_syscall(def.nr) {
+                if let Some(operation) = surface::task_operation_for_legacy_syscall(def.nr) {
                     self.emit_v2_task_invoke(operation, args);
                 } else {
                     for (i, arg) in args.iter().enumerate() {
@@ -272,13 +272,13 @@ impl Codegen {
     }
 
     fn emit_v2_task_invoke(&mut self, operation: u64, args: &[String]) {
-        self.emit_imm64_syscall_arg(0, v2::CURRENT_TASK);
+        self.emit_imm64_syscall_arg(0, surface::CURRENT_TASK);
         self.emit_imm64_syscall_arg(1, operation);
         for index in 0..4 {
             let value = args.get(index).and_then(|arg| arg.parse().ok()).unwrap_or(0);
             self.emit_imm64_syscall_arg(index + 2, value);
         }
-        self.emit_mov_eax_syscall(v2::NR_INVOKE);
+        self.emit_mov_eax_syscall(surface::NR_INVOKE);
     }
 
     fn emit_imm64_syscall_arg(&mut self, index: usize, value: u64) {

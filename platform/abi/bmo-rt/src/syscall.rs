@@ -33,9 +33,9 @@ pub unsafe extern "C" fn bmo_syscall(
 // ─── Process / Thread ────────────────────────────────────────────────
 
 pub unsafe fn proc_exit(code: u32) -> u64 {
-    value_or_code(syscalls::v2::invoke(
-        syscalls::v2::CURRENT_TASK,
-        syscalls::v2::task_op::EXIT,
+    value_or_code(syscalls::surface::invoke(
+        syscalls::surface::CURRENT_TASK,
+        syscalls::surface::task_op::EXIT,
         code as u64,
         0,
         0,
@@ -44,9 +44,9 @@ pub unsafe fn proc_exit(code: u32) -> u64 {
 }
 
 pub unsafe fn proc_get_pid() -> u64 {
-    value_or_code(syscalls::v2::invoke(
-        syscalls::v2::CURRENT_TASK,
-        syscalls::v2::task_op::GET_PID,
+    value_or_code(syscalls::surface::invoke(
+        syscalls::surface::CURRENT_TASK,
+        syscalls::surface::task_op::GET_PID,
         0,
         0,
         0,
@@ -55,9 +55,9 @@ pub unsafe fn proc_get_pid() -> u64 {
 }
 
 pub unsafe fn proc_get_tid() -> u64 {
-    value_or_code(syscalls::v2::invoke(
-        syscalls::v2::CURRENT_TASK,
-        syscalls::v2::task_op::GET_TID,
+    value_or_code(syscalls::surface::invoke(
+        syscalls::surface::CURRENT_TASK,
+        syscalls::surface::task_op::GET_TID,
         0,
         0,
         0,
@@ -66,9 +66,9 @@ pub unsafe fn proc_get_tid() -> u64 {
 }
 
 pub unsafe fn proc_yield() -> u64 {
-    value_or_code(syscalls::v2::invoke(
-        syscalls::v2::CURRENT_TASK,
-        syscalls::v2::task_op::YIELD,
+    value_or_code(syscalls::surface::invoke(
+        syscalls::surface::CURRENT_TASK,
+        syscalls::surface::task_op::YIELD,
         0,
         0,
         0,
@@ -81,9 +81,9 @@ pub unsafe fn proc_yield() -> u64 {
 /// Discover this process's estuary capability for channel `index`.
 /// Returns the handle, or an error code (3 = NEEDS_CAP) as value.
 pub unsafe fn channel_open(index: u64) -> u64 {
-    value_or_code(syscalls::v2::invoke(
-        syscalls::v2::CURRENT_TASK,
-        syscalls::v2::task_op::CHANNEL_OPEN,
+    value_or_code(syscalls::surface::invoke(
+        syscalls::surface::CURRENT_TASK,
+        syscalls::surface::task_op::CHANNEL_OPEN,
         index,
         0,
         0,
@@ -94,9 +94,9 @@ pub unsafe fn channel_open(index: u64) -> u64 {
 /// Completion-side sequence of the estuary behind `handle` — the value
 /// `channel_wait` compares against.
 pub unsafe fn channel_seq(handle: u64) -> u64 {
-    value_or_code(syscalls::v2::invoke(
+    value_or_code(syscalls::surface::invoke(
         handle,
-        syscalls::v2::channel_op::GET_SEQ,
+        syscalls::surface::channel_op::GET_SEQ,
         0,
         0,
         0,
@@ -106,18 +106,18 @@ pub unsafe fn channel_seq(handle: u64) -> u64 {
 
 /// Notify Ring 0 after publishing submissions. Returns requests serviced.
 pub unsafe fn channel_kick(handle: u64, published_seq: u64) -> u64 {
-    value_or_code(syscalls::v2::channel_kick(handle, published_seq))
+    value_or_code(syscalls::surface::channel_kick(handle, published_seq))
 }
 
 /// Block until the estuary's completion sequence moves past
 /// `observed_seq` or `timeout_ns` elapses (0 = no timeout).
 pub unsafe fn channel_wait(handle: u64, observed_seq: u64, timeout_ns: u64) -> u64 {
-    value_or_code(syscalls::v2::wait(handle, observed_seq, timeout_ns))
+    value_or_code(syscalls::surface::wait(handle, observed_seq, timeout_ns))
 }
 
 /// Pure timed sleep through the v2 WAIT surface.
 pub unsafe fn sleep_ns(timeout_ns: u64) -> u64 {
-    value_or_code(syscalls::v2::wait(0, 0, timeout_ns))
+    value_or_code(syscalls::surface::wait(0, 0, timeout_ns))
 }
 
 pub unsafe fn proc_spawn(path: *const u8, path_len: u64) -> u64 {
