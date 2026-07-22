@@ -724,7 +724,25 @@ unsafe fn init_gdt() {
     let (lo, hi) = make_tss_descriptor(tss_addr, (core::mem::size_of::<Tss>() - 1) as u16);
     GDT.entries[5] = lo; GDT.entries[6] = hi;
     let gdtr = Gdtr { limit: (core::mem::size_of::<Gdt>() - 1) as u16, base: core::ptr::addr_of!(GDT) as u64 };
-    asm!("lgdt [{}]", in(reg) &gdtr);
+    // lgdt alone does NOT reload CS: the CPU keeps executing on the stale
+    // UEFI code descriptor cached in the CS shadow register (cs=0x38 on this
+    // firmware). That works silently — until anything RE-validates that
+    // selector against OUR table (the first trap-return iretq), which finds
+    // entry 7 empty and #GPs with err=0x38. It also poisons every
+    // `cmp cs, 0x08` kernel-vs-user check in the trap stubs (spurious
+    // swapgs). The canonical fix: far-return through the new GDT so CS
+    // becomes KERNEL_CS right here. retfq pops RIP, then CS.
+    asm!(
+        "lgdt [{gdtr}]",
+        "push {kcs}",
+        "lea {tmp}, [rip + 55f]",
+        "push {tmp}",
+        "retfq",
+        "55:",
+        gdtr = in(reg) &gdtr,
+        kcs = in(reg) KERNEL_CS as u64,
+        tmp = out(reg) _,
+    );
     asm!("mov ds, {0:x}", "mov es, {0:x}", "mov ss, {0:x}", "mov fs, {0:x}", "mov gs, {0:x}", in(reg) KERNEL_DS as u64);
     asm!("ltr {0:x}", in(reg) TSS_SEL as u64);
 }

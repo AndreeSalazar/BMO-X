@@ -84,21 +84,55 @@ pub fn init_bsp() {
 
 /// Read the fxsave-base stack pointer of the context currently on this CPU.
 /// The trap epilogue returns to whatever this holds.
+///
+/// **gs-relative on purpose.** The trap entry stubs write this slot as
+/// `mov gs:[0x10], rsp`; reading the `PER_CPUS` static instead silently
+/// splits the brain the moment `GS_BASE != &PER_CPUS[0]` — the stub's write
+/// lands elsewhere, this read returns the never-written 0, and the epilogue
+/// restores a context from address 0 (the observed #GP: backptr 0, pops to
+/// rsp 0x78, iretq with cs=0). One access path = writer and reader agree by
+/// construction, whatever GS_BASE holds.
 pub fn trap_rsp() -> u64 {
-    unsafe { PER_CPUS[0].trap_rsp }
+    let v: u64;
+    unsafe {
+        core::arch::asm!("mov {}, gs:[0x10]", out(reg) v, options(nostack, readonly));
+    }
+    v
 }
 
-/// Called by the scheduler when it commits a context switch.
+/// Called by the scheduler when it commits a context switch. gs-relative
+/// for the same single-access-path reason as `trap_rsp`.
 pub fn set_trap_rsp(rsp: u64) {
-    unsafe { PER_CPUS[0].trap_rsp = rsp; }
+    unsafe {
+        core::arch::asm!("mov gs:[0x10], {}", in(reg) rsp, options(nostack));
+    }
 }
 
 /// Point the SYSCALL entry at the running task's kernel stack. The
 /// scheduler updates this when it switches to a user task; syscalls only
 /// ever arrive from the task currently on the CPU, so mid-dispatch updates
-/// only affect the next entry.
+/// only affect the next entry. gs-relative: the SYSCALL entry reads this
+/// slot as `mov rsp, gs:[0x00]`.
 pub fn set_syscall_stack_top(top: u64) {
-    unsafe { PER_CPUS[0].syscall_stack_top = top; }
+    unsafe {
+        core::arch::asm!("mov gs:[0x00], {}", in(reg) top, options(nostack));
+    }
+}
+
+/// Raw `(GS_BASE, KERNEL_GS_BASE, &PER_CPUS[0])` for diagnostics: the two
+/// MSRs and the address they are SUPPOSED to hold. If GS_BASE differs from
+/// the static's address, some path rewrote it (or an unbalanced swapgs).
+pub fn gs_diag() -> (u64, u64, u64) {
+    fn rdmsr(msr: u32) -> u64 {
+        let (lo, hi): (u32, u32);
+        unsafe {
+            core::arch::asm!("rdmsr", in("ecx") msr, out("eax") lo, out("edx") hi,
+                options(nostack, readonly));
+        }
+        ((hi as u64) << 32) | lo as u64
+    }
+    let expected = unsafe { core::ptr::addr_of!(PER_CPUS[0]) } as u64;
+    (rdmsr(MSR_GS_BASE), rdmsr(MSR_KERNEL_GS_BASE), expected)
 }
 
 pub fn cpu_count_online() -> usize {

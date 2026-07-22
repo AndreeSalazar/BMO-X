@@ -96,12 +96,19 @@ unsafe extern "C" fn spurious_entry() -> ! {
 
 #[unsafe(no_mangle)]
 extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
-    TICKS.fetch_add(1, Ordering::Relaxed);
+    let n = TICKS.fetch_add(1, Ordering::Relaxed) + 1;
     // Budgeted estuary service before the scheduler decision: pending
     // submissions become completions and their WAITers wake this tick.
     // Must run before on_timer so no scheduler lock is held here.
     crate::ring0::channel::service_all();
     crate::ring0::scheduler::on_timer();
+    // Heartbeat from IRQ context every 64 ticks: paints even when no task
+    // ever reaches the shell poll loop. If this row stops updating, ticks
+    // stopped — the hang is running with IF masked (a syscall dispatch or a
+    // cli section); if it updates, the counters say where execution lives.
+    if n % 64 == 0 {
+        crate::ring0::core::phase::dash_heartbeat();
+    }
 
     // SAFETY: initialized before vector 48 is installed and only used by the
     // BSP while SMP is disabled.

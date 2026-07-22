@@ -141,6 +141,16 @@ fn paint(row: usize, msg: &str) {
 /// Terminal fault reporter. Draws to the top of the dashboard log (rows that
 /// stay visible) so a Ring 3 crash is unmistakable instead of a silent hang.
 extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rsp: u64) {
+    // Terminal reporter: force the KERNEL CR3 before painting. A fault taken
+    // under a user CR3 (which does not map the framebuffer identity range)
+    // would otherwise #PF on the first pixel and recurse through this very
+    // handler forever — a frozen screen instead of a report. We never
+    // return, so no need to restore. Guard: before `vmm::init` captures the
+    // boot CR3, kernel_pml4() is 0 — loading that would triple-fault.
+    let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
+    if kpml4 != 0 {
+        crate::ring0::mm::vmm::switch_to(kpml4);
+    }
     let name = match vector {
         6 => "#UD invalid-op",
         8 => "#DF double-fault",
@@ -178,6 +188,47 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     l4.s("flt_rsp=0x");
     l4.hex(fault_rsp, 16);
     paint(10, l4.as_str());
+
+    // Last user-task switch (see scheduler::SWITCH_SNAP): the context the
+    // scheduler handed over, its back-pointer AT the switch instant, and the
+    // same slot re-read NOW under the fault CR3. b valid + n zero ⇒ content
+    // clobbered between switch and epilogue; b zero ⇒ handed over already
+    // dead; b==n==valid ⇒ the epilogue never used this context at all.
+    let snap = crate::ring0::scheduler::switch_snap();
+    let live = if snap[0] != 0 {
+        unsafe { ((snap[0] + 512) as *const u64).read_volatile() }
+    } else {
+        0
+    };
+    let mut l7 = Line::new();
+    l7.s("sw");
+    l7.hex(snap[3], 2);
+    l7.s(" c=");
+    l7.hex(snap[0], 12);
+    l7.s(" b=");
+    l7.hex(snap[1], 12);
+    l7.s(" n=");
+    l7.hex(live, 12);
+    paint(13, l7.as_str());
+
+    // GS split-brain check: the two GS MSRs vs. the PerCpu static address
+    // they are supposed to hold, and the tick count at death. If `b` (live
+    // GS_BASE) differs from `s` (&PER_CPUS[0]), some path moved GS after
+    // init_bsp — the trap stubs then publish the context somewhere the
+    // dispatcher never reads, which restores address 0 (rsp 0x78, cs=0).
+    let (gsb, kgs, pcaddr) = crate::ring0::percpu::gs_diag();
+    let mut l8 = Line::new();
+    l8.s("gs b=");
+    l8.hex(gsb, 12);
+    l8.s(" k=");
+    l8.hex(kgs, 12);
+    paint(11, l8.as_str());
+    let mut l9 = Line::new();
+    l9.s("pc s=");
+    l9.hex(pcaddr, 12);
+    l9.s(" tk=");
+    l9.hex(crate::ring0::timer::ticks(), 4);
+    paint(12, l9.as_str());
 
     // If that RSP is in a plausibly-mapped range, read the 5 iretq operands
     // (rip,cs,rflags,rsp,ss) sitting there — the LIVE values the CPU tried to

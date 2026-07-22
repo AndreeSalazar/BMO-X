@@ -199,8 +199,47 @@ fn schedule_locked(s: &mut Scheduler) {
     if next_task.is_user {
         crate::ring0::proc::set_tss_rsp0(next_task.kernel_stack_top);
         percpu::set_syscall_stack_top(next_task.kernel_stack_top);
+        // Debug capture for the Ring 3 #GP hunt: the context pointer we just
+        // published and what its back-pointer slot reads RIGHT NOW, under
+        // the user CR3 that is already loaded. If this reads valid here but
+        // zero in the trap epilogue an instant later, the content is being
+        // clobbered in that window; if it is already zero here, the task
+        // table entry itself is stale/corrupt. Painted by faults.rs.
+        unsafe {
+            SWITCH_SNAP[0] = next_rsp;
+            SWITCH_SNAP[1] = ((next_rsp + 512) as *const u64).read_volatile();
+            SWITCH_SNAP[2] = mm::vmm::read_cr3();
+            SWITCH_SNAP[3] = SWITCH_SNAP[3].wrapping_add(1);
+        }
     }
     s.reap();
+}
+
+/// Debug: last switch into a user task — `[context_rsp, backptr@switch,
+/// cr3@switch, ordinal]`. See the capture in `schedule_locked`.
+pub static mut SWITCH_SNAP: [u64; 4] = [0; 4];
+
+/// Copy of `SWITCH_SNAP` for the fault reporter.
+pub fn switch_snap() -> [u64; 4] {
+    unsafe { SWITCH_SNAP }
+}
+
+/// Number of switches into user tasks since boot (SWITCH_SNAP ordinal).
+pub fn user_switches() -> u64 {
+    unsafe { SWITCH_SNAP[3] }
+}
+
+/// Lock-free diagnostic read of a task's state by TID. Racy by design —
+/// telemetry only. 255 = no live task with that TID (never existed, or
+/// exited and was reaped).
+pub fn tid_state(tid: u32) -> u8 {
+    let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
+    for t in &s.tasks {
+        if t.tid == tid && t.state != TaskState::Empty {
+            return t.state as u8;
+        }
+    }
+    255
 }
 
 /// Timer trap hook: sweep expired WAIT deadlines, account the quantum, and

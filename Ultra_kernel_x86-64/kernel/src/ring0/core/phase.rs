@@ -95,12 +95,84 @@ fn shell_prompt() {
     dash_prompt("");
 }
 
+/// Live Ring 3 heartbeat on FIXED row 10, repainted by the shell's poll loop
+/// whenever a value changes. This is the always-on view the post-mortem
+/// fault reporter cannot give when nothing faults:
+///   tk = timer ticks (counting ⇒ timer alive)
+///   sw = switches into CPL3 (nonzero ⇒ scheduler entered the user task)
+///   st = init task (tid 2) state: 01 Ready, 02 Running, 03 Blocked,
+///        04 Exited, FF reaped/absent (FF after sw>0 ⇒ ran and finished)
+///   rx/ln = CONSOLE_WRITE words / lines received from Ring 3
+pub(crate) fn dash_heartbeat() {
+    if !crate::info::has_fb() {
+        return;
+    }
+    let ticks = crate::ring0::timer::ticks();
+    let sw = crate::ring0::scheduler::user_switches();
+    let st = crate::ring0::scheduler::tid_state(2);
+    let (rx, ln) = crate::ring0::uconsole::stats();
+    static mut LAST: [u64; 4] = [u64::MAX; 4];
+    let cur = [ticks, sw, st as u64, (ln << 32) | (rx & 0xFFFF_FFFF)];
+    unsafe {
+        let last = &mut *core::ptr::addr_of_mut!(LAST);
+        if *last == cur {
+            return;
+        }
+        *last = cur;
+    }
+    fn hx(b: &mut [u8; 56], o: &mut usize, v: u64, digits: usize) {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        for i in (0..digits).rev() {
+            if *o < b.len() {
+                b[*o] = HEX[((v >> (i * 4)) & 0xF) as usize];
+                *o += 1;
+            }
+        }
+    }
+    fn txt(b: &mut [u8; 56], o: &mut usize, s: &str) {
+        for &c in s.as_bytes() {
+            if *o < b.len() {
+                b[*o] = c;
+                *o += 1;
+            }
+        }
+    }
+    let mut b = [0u8; 56];
+    let mut o = 0;
+    txt(&mut b, &mut o, "r3hb tk=");
+    hx(&mut b, &mut o, ticks, 6);
+    txt(&mut b, &mut o, " sw=");
+    hx(&mut b, &mut o, sw, 4);
+    txt(&mut b, &mut o, " st=");
+    hx(&mut b, &mut o, st as u64, 2);
+    txt(&mut b, &mut o, " rx=");
+    hx(&mut b, &mut o, rx, 4);
+    txt(&mut b, &mut o, " ln=");
+    hx(&mut b, &mut o, ln, 2);
+    if let Ok(s) = core::str::from_utf8(&b[..o]) {
+        // The timer may call this while the USER CR3 is loaded (its address
+        // space does not map the framebuffer's identity range) — paint under
+        // the kernel CR3 and restore. See uconsole::flush for the full why.
+        let cur = crate::ring0::mm::vmm::read_cr3();
+        let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
+        if cur != kpml4 {
+            crate::ring0::mm::vmm::switch_to(kpml4);
+        }
+        splash::splash_dashboard_log(10, s);
+        if cur != kpml4 {
+            crate::ring0::mm::vmm::switch_to(cur);
+        }
+    }
+}
+
 fn shell_read_line(buf: &mut [u8]) -> usize {
     let mut n = 0;
     loop {
         // Update the framebuffer's prompt with the current line
         // (so the screen shows what the user is typing).
         dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
+        // Live Ring 3 heartbeat (row 10): timer/scheduler/console telemetry.
+        dash_heartbeat();
         // Accept input from EITHER the serial line (COM1) or the physical
         // PS/2 keyboard, whichever has a byte ready. Lets the user type on
         // the real keyboard even with no serial cable attached.
