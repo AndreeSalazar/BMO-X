@@ -16,6 +16,16 @@ pub trait XhciHal {
     fn phys_to_virt(&self, phys: u64) -> *mut u8;
     fn log(&self, msg: &str);
     fn log_u64(&self, msg: &str, val: u64);
+    /// Espera de tiempo REAL en milisegundos. Los tiempos físicos del USB
+    /// (debounce de conexión, reset de puerto, recovery) son del orden de
+    /// decenas de ms — imposibles de cubrir con spin-counts sin depender de
+    /// la frecuencia del CPU. El default es un spin grosero (para QEMU/tests);
+    /// el kernel lo sobreescribe con una espera exacta por TSC.
+    fn delay_ms(&self, ms: u64) {
+        for _ in 0..(ms * 500_000) {
+            core::hint::spin_loop();
+        }
+    }
 }
 
 static mut XHCI_HAL: Option<&'static dyn XhciHal> = None;
@@ -382,26 +392,33 @@ pub unsafe fn port_power_on(port: u8) {
     let c = match CTRL.as_mut() { Some(c) => c, None => return };
     let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
     w32(c.mmio + pb + PORTSC as u64, r32(c.mmio + pb + PORTSC as u64) | PORTSC_PP);
-    for _ in 0..100000 { core::hint::spin_loop(); }
+    // Spec: >=20 ms de estabilización de VBUS antes de confiar en CCS.
+    hal().delay_ms(20);
 }
 
+/// Reset del puerto con TIEMPOS REALES. Un reset USB2 tarda ~10-50 ms; el
+/// firmware/PHY latchea PED sólo cuando termina. Poll a 1 ms, hasta 120 ms.
 pub unsafe fn port_reset(port: u8) -> bool {
     let c = match CTRL.as_mut() { Some(c) => c, None => return false };
     let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
     let sc = r32(c.mmio + pb + PORTSC as u64);
     if sc & PORTSC_CCS == 0 { return false; }
-    w32(c.mmio + pb + PORTSC as u64, sc | PORTSC_PR);
-    for _ in 0..100000 {
+    // Escribir PR preservando bits RW1C (no re-limpiar cambios por error):
+    // sólo PP + PR, el resto a 0 (los bits de estado son RO/RW1C).
+    w32(c.mmio + pb + PORTSC as u64, (sc & PORTSC_PP) | PORTSC_PR);
+    for _ in 0..120 {
+        hal().delay_ms(1);
         let s = r32(c.mmio + pb + PORTSC as u64);
-        if s & PORTSC_PR == 0 && s & PORTSC_PRC != 0 {
-            w32(c.mmio + pb + PORTSC as u64, s | PORTSC_PRC);
-            for _ in 0..50000 {
-                if r32(c.mmio + pb + PORTSC as u64) & PORTSC_PED != 0 { return true; }
-                core::hint::spin_loop();
+        // Reset completo cuando PR se auto-limpia. Reconocer PRC.
+        if s & PORTSC_PR == 0 {
+            if s & PORTSC_PRC != 0 {
+                w32(c.mmio + pb + PORTSC as u64, (s & PORTSC_PP) | PORTSC_PRC);
             }
-            break;
+            // Recovery post-reset (spec: 10 ms) y comprobar habilitación.
+            hal().delay_ms(10);
+            let e = r32(c.mmio + pb + PORTSC as u64);
+            return e & PORTSC_PED != 0;
         }
-        core::hint::spin_loop();
     }
     false
 }
@@ -452,7 +469,11 @@ pub unsafe fn address_device(port: u8, speed: u8) -> Option<u8> {
     let ep0_phys = h.alloc_dma_pages(1)?;
     let ep0_virt = h.phys_to_virt(ep0_phys) as *mut u32;
     core::ptr::write_bytes(ep0_virt as *mut u8, 0, 4096);
-    let _ring = TransferRing::new(ep0_virt, ep0_phys);
+    let mut ring = TransferRing::new(ep0_virt, ep0_phys);
+    // El productor (control_transfer) alterna su cycle state al dar la
+    // vuelta — el Link TRB necesita Toggle Cycle para que el xHC haga lo
+    // mismo, o el anillo se desincroniza tras el primer wrap.
+    ring.enable_toggle_cycle();
     ep0_reg(slot, ep0_phys & !0xF, ep0_virt);
 
     let in_phys = h.alloc_dma_pages(1)?;
@@ -533,12 +554,14 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
 
     let trt = if !has_data { 0u32 } else if data_in { 3u32 } else { 2u32 };
 
-    // Setup Stage
+    // Setup Stage. Spec 4.11.2.2: Setup/Data/Status son TDs SEPARADOS —
+    // CH=0 en cada stage. Encadenarlos (CH=1) lo tolera QEMU pero el
+    // silicio real (AMD) responde con Transaction Error (cc=4).
     let setup = Trb {
         dw0: (bm_req_type as u32) | ((b_request as u32) << 8) | ((w_value as u32) << 16),
         dw1: (w_index as u32) | ((buf.len() as u32) << 16),
         dw2: 8,
-        dw3: (TRB_SETUP << 10) | (1 << 6) | (trt << 16) | (1 << 4), // IDT, CH
+        dw3: (TRB_SETUP << 10) | (1 << 6) | (trt << 16), // IDT; sin CH
     };
     let s_idx = ep0.enqueue;
     let sb = s_idx * 4;
@@ -557,8 +580,9 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
         ep0.ring_virt.add(db + 1).write_volatile(((data_page >> 32) & 0xFFFF_FFFF) as u32);
         ep0.ring_virt.add(db + 2).write_volatile(buf.len() as u32 & 0x1FFFF);
         let dir = if data_in { 1u32 << 16 } else { 0 };
+        // Data Stage de un solo TRB = TD propio: sin CH (ver nota del Setup).
         ep0.ring_virt.add(db + 3).write_volatile(
-            (TRB_DATA << 10) | dir | (1 << 4) | if ep0.pcs { 1 } else { 0 });
+            (TRB_DATA << 10) | dir | if ep0.pcs { 1 } else { 0 });
         ep0.enqueue = d_idx + 1;
         if ep0.enqueue >= LAST_TRB_IDX { ep0.enqueue = 0; ep0.pcs = !ep0.pcs; }
     }

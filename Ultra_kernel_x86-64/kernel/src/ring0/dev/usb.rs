@@ -22,12 +22,64 @@ use bmo_input::hal::InputHal;
 use bmo_uhid::UsbHidHal;
 use bmo_xhci::XhciHal;
 
-use crate::ring0::dev::console::{serial_write, serial_write_u64};
+use crate::ring0::dev::console::serial_write;
 use crate::ring0::mm::{self, phys};
 
-/// PCI class/subclass del controlador USB.
-const PCI_CLASS_SERIAL_BUS: u8 = 0x0C;
-const PCI_SUBCLASS_USB: u8 = 0x03;
+use crate::ring0::dev::pci;
+
+// Line buffer for the driver's diagnostic stream. The driver logs in
+// fragments (`log("[uhid] slot=")` then `log_u64(..)` then `log("\n")`), so
+// we accumulate to '\n' and flush the whole line to the on-screen panel —
+// otherwise every xHCI/HID diagnostic is invisible on a headless board and
+// we debug blind (exactly what "init sin teclado" left us).
+const DLOG_MAX: usize = 96;
+static mut DLOG: [u8; DLOG_MAX] = [0u8; DLOG_MAX];
+static mut DLOG_N: usize = 0;
+
+fn dlog_push(s: &str) {
+    serial_write(s); // serial keeps the verbatim stream
+    if !crate::info::has_fb() {
+        return;
+    }
+    unsafe {
+        let buf = &mut *core::ptr::addr_of_mut!(DLOG);
+        for &b in s.as_bytes() {
+            if b == b'\n' {
+                let n = DLOG_N;
+                if n > 0 {
+                    if let Ok(line) = core::str::from_utf8(&buf[..n]) {
+                        crate::ring0::core::phase::dashboard_log(line);
+                    }
+                }
+                DLOG_N = 0;
+            } else if b >= 0x20 && b < 0x7F && DLOG_N < DLOG_MAX {
+                buf[DLOG_N] = b;
+                DLOG_N += 1;
+            }
+        }
+    }
+}
+
+fn dlog_u64(val: u64) {
+    const H: &[u8; 16] = b"0123456789ABCDEF";
+    // Trim leading zeros to a compact hex, prefixed 0x.
+    let mut tmp = [0u8; 18];
+    let mut o = 0;
+    tmp[o] = b'0'; o += 1;
+    tmp[o] = b'x'; o += 1;
+    let mut started = false;
+    for i in (0..16).rev() {
+        let nib = ((val >> (i * 4)) & 0xF) as usize;
+        if nib != 0 || started || i == 0 {
+            tmp[o] = H[nib];
+            o += 1;
+            started = true;
+        }
+    }
+    if let Ok(s) = core::str::from_utf8(&tmp[..o]) {
+        dlog_push(s);
+    }
+}
 
 /// El HAL que `bmo-xhci` invoca para DMA / traducción de direcciones / log.
 struct KernelXhciHal;
@@ -43,12 +95,14 @@ impl XhciHal for KernelXhciHal {
         mm::phys_to_virt(phys) as *mut u8
     }
     fn log(&self, msg: &str) {
-        serial_write("[usb] ");
-        serial_write(msg);
+        dlog_push(msg);
     }
     fn log_u64(&self, msg: &str, val: u64) {
-        serial_write(msg);
-        serial_write_u64(val, 1);
+        dlog_push(msg);
+        dlog_u64(val);
+    }
+    fn delay_ms(&self, ms: u64) {
+        delay_ms(ms);
     }
 }
 
@@ -65,37 +119,105 @@ fn log(msg: &str) {
     }
 }
 
-/// Localiza el controlador xHCI y trae su MMIO (BAR0, enmascarando los bits
-/// de tipo). Asume MMIO < 4 GiB (identity-mapped por s2) — cierto en esta
-/// placa; el caso 64-bit alto se atenderá cuando el BootContext capture BAR1.
-fn find_xhci(ctx: &BootContext) -> Option<u64> {
-    for i in 0..ctx.pci_count.min(ctx.pci_devices.len() as u32) as usize {
-        let d = ctx.pci_devices[i];
-        if d.class == PCI_CLASS_SERIAL_BUS && d.subclass == PCI_SUBCLASS_USB {
-            // BAR de memoria: bit0=0. Enmascarar los 4 bits bajos de tipo.
-            let bar = (d.bar0 & 0xFFFF_FFF0) as u64;
-            if bar != 0 {
-                log("[usb] xHC en PCI ");
-                serial_write_u64(d.bus as u64, 1);
-                log(":");
-                return Some(bar);
-            }
+/// Espera real en milisegundos por TSC. El spec USB pide tiempos HUMANOS
+/// (100 ms de debounce de conexión, 20+ ms de estabilización de power) — los
+/// spin-counts heredados de QEMU duran microsegundos y en hardware real los
+/// puertos aún no reportan CCS cuando el driver pregunta.
+fn delay_ms(ms: u64) {
+    let f = crate::ring0::scheduler::tsc_freq();
+    if f == 0 {
+        for _ in 0..ms * 2_000_000 {
+            core::hint::spin_loop();
         }
+        return;
     }
-    None
+    let end = crate::ring0::scheduler::rdtsc() + ms * (f / 1000);
+    while crate::ring0::scheduler::rdtsc() < end {
+        core::hint::spin_loop();
+    }
 }
 
-/// Descubre e inicializa xHCI + HID. Idempotente. Reporta al panel.
-pub fn init(ctx: &BootContext) {
-    let mmio = match find_xhci(ctx) {
-        Some(m) => m,
-        None => {
-            log("[usb] no se encontro controlador xHCI\n");
-            return;
-        }
-    };
+/// Descubre e inicializa xHCI + HID. Reporta al panel.
+///
+/// Estrategia hardware-real:
+/// 1. Scan PCI propio (dev::pci, detrás de bridges, MEM+BME habilitados).
+/// 2. Los Ryzen traen VARIOS xHC (CPU + chipset): se prueban en orden.
+/// 3. Por controlador: init → power a TODOS los puertos → 200 ms de settle
+///    (spec: 100 ms debounce) → censo PORTSC. Si algún puerto tiene CCS=1
+///    (dispositivo FÍSICAMENTE presente), ese controlador gana y el HID
+///    enumera ahí. El censo se pinta: dice dónde está el teclado
+///    eléctricamente aunque la enumeración posterior fallara.
+pub fn init(_ctx: &BootContext) {
     bmo_xhci::init_hal(&HAL);
-    bmo_xhci::set_mmio(mmio);
+
+    let mut chosen = false;
+    for skip in 0..4usize {
+        let loc = match pci::find_xhci(skip) {
+            Some(l) => l,
+            None => break,
+        };
+        // MMIO virtual: < 4 GiB cae en la identidad de s2; más arriba lo
+        // cubre el physmap.
+        let mmio_va = if loc.mmio < 0x1_0000_0000 {
+            loc.mmio
+        } else {
+            mm::phys_to_virt(loc.mmio)
+        };
+        dlog_push("[usb] xHC pci ");
+        dlog_u64(loc.bus as u64);
+        dlog_push(":");
+        dlog_u64(loc.dev as u64);
+        dlog_push(".");
+        dlog_u64(loc.func as u64);
+        dlog_push(" mmio=");
+        dlog_u64(loc.mmio);
+        dlog_push("\n");
+
+        bmo_xhci::reset_ctrl();
+        bmo_xhci::set_mmio(mmio_va);
+        if !unsafe { bmo_xhci::init(mmio_va) } {
+            dlog_push("[usb] init fallo en este xHC, probando siguiente\n");
+            continue;
+        }
+        let nports = match bmo_xhci::controller() {
+            Some(c) => c.max_ports,
+            None => continue,
+        };
+        // Power a todos los puertos y settle REAL (el uhid hace su propio
+        // power+reset después; para entonces CCS ya estará latcheado).
+        for p in 0..nports {
+            unsafe { bmo_xhci::port_power_on(p) };
+        }
+        delay_ms(200);
+        // Censo: qué puertos tienen un dispositivo físico (PORTSC.CCS).
+        let mut connected = 0u64;
+        for p in 0..nports {
+            let sc = unsafe { bmo_xhci::port_peek(p) };
+            if sc & 1 != 0 {
+                connected += 1;
+                dlog_push(" p");
+                dlog_u64(p as u64);
+                dlog_push("=");
+                dlog_u64(sc as u64);
+            }
+        }
+        if connected > 0 {
+            dlog_push("\n");
+        }
+        dlog_push("[usb] puertos con dispositivo: ");
+        dlog_u64(connected);
+        dlog_push("\n");
+        if connected > 0 {
+            chosen = true;
+            break;
+        }
+        // Nada conectado aquí: probar el siguiente controlador.
+    }
+
+    if !chosen {
+        log("[usb] ningun xHC ve el teclado (probar otro puerto fisico)\n");
+        return;
+    }
 
     let ok = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
@@ -108,7 +230,7 @@ pub fn init(ctx: &BootContext) {
     if ok {
         log("[usb] teclado USB listo\n");
     } else {
-        log("[usb] xHCI init sin teclado (ver serial)\n");
+        log("[usb] dispositivo visto pero HID no enumero (ver lineas uhid)\n");
     }
 }
 
