@@ -366,39 +366,60 @@ UEFI Firmware
 
 ---
 
-## Syscalls disponibles
+## Superficie congelada y Subsyscalls (teoría BMO)
 
-### Kernel syscalls (Ring 0 → Ring 0)
+**Subsyscall** (término BMO): una operación que viaja *dentro* de un syscall
+congelado, dirigida a una capability. El kernel expone **3 puertas y solo 3
+— para siempre**:
 
-| Número | Nombre | Descripción |
-|--------|--------|-------------|
-| 0x00 | ProcessExit | Matar proceso actual |
-| 0x03 | ThreadYield | Yield al scheduler |
-| 0x20 | FileOpen | Abrir archivo |
-| 0x21 | FileRead | Leer archivo |
-| 0x23 | FileClose | Cerrar archivo |
-| 0x25 | FileStat | Tamaño de archivo |
-| 0x50 | ClockGetTime | Leer TSC |
-| 0x51 | NanoSleep | Dormir (busy-wait) |
-| 0x60 | FbInfo | Info del framebuffer |
-| 0x61 | FbFill | Rellenar rectángulo |
-| 0x62 | FbText | Dibujar texto |
-| 0x63 | FbPresent | Present (noop) |
-| 0x64 | FbBlit | Blit de imagen |
-| 0x65 | DesktopFrame | Render frame completo |
-| 0x70 | KeyPoll | Poll teclado PS/2 |
-| 0x71 | MousePoll | Poll ratón PS/2 |
-| 0x80 | Beep | Beep por frecuencia |
-| 0xA0 | BD_Scan | Escanear archivo (ByteDefender) |
-| 0xA1 | BD_Status | Estado de ByteDefender |
-| 0xA2 | SnapshotCreate | Crear snapshot |
-| 0xA3 | SnapshotRollback | Retroceder a snapshot |
-| 0xA4 | SnapshotList | Listar snapshots |
-| 0xF0 | DebugPrint | Imprimir por serial |
+| # | Puerta | Rol |
+|---|--------|-----|
+| 0x00 | `INVOKE(cap, operation, a0..a3)` | Llamada síncrona — la única puerta de servicios |
+| 0x01 | `CHANNEL_KICK(cap, seq)` | Notificar (async) |
+| 0x02 | `WAIT(waitable, seq, timeout)` | Bloquear (async) |
 
-### BMO API v2.0 (Ring 3 → Ring 0, 0x100..0x1FF)
+Todo lo demás es un **subsyscall**: el par `(kind del handle × operation)`
+resuelto por el Capability Engine. El sistema crece agregando *kinds* y
+*operaciones* — **jamás** una puerta nueva.
 
-Dispatcher con validación + Cabina audit + ByteDefender check. Window Manager, Paint Compositor, Surface management, Timer wheel, Input events.
+### Subsyscalls registrados hoy
+
+| Kind | Operation | # | Estado |
+|------|-----------|---|--------|
+| Task (`CURRENT_TASK`) | `GET_PID` | 0x01 | estable |
+| Task | `GET_TID` | 0x02 | estable |
+| Task | `YIELD` | 0x03 | estable |
+| Task | `EXIT` | 0x04 | estable |
+| Task | `CHANNEL_OPEN` | 0x05 | estable |
+| Task | `CONSOLE_WRITE` | 0x06 | *bootstrap* → migrará a capability de consola |
+| Channel | `GET_SEQ` | 0x01 | estable |
+| Channel | `GET_INDEX` | 0x02 | estable |
+
+### Reglas del contrato
+
+1. **Fuente única de verdad**: los números viven en `platform/abi/bmo-abi`
+   (`syscalls/surface.rs`); el kernel los espeja y `build.ps1` tiene un
+   drift-guard que rompe el build si divergen.
+2. **Ciclo de vida**: un subsyscall puede nacer como *bootstrap* sobre Task
+   (p.ej. `CONSOLE_WRITE`) y madurar a operación de una capability dedicada.
+   Nacer es fácil; **la puerta nunca cambia**.
+3. **By-value primero**: los argumentos viajan por registros. Payloads
+   grandes van por BMO Channel (datos) — el subsyscall lleva el control.
+4. **RPC a Ring 3**: el diseño Endpoint (`platform/abi/bmo-abi/src/ENDPOINT_RPC.md`)
+   extiende `INVOKE` a servidores Ring 3 sin tocar la superficie.
+
+### Prueba empírica (hardware real, 2026-07-22)
+
+El primer programa Ring 3 vivió y murió con **9 llamadas por 1 sola puerta**
+(8× `INVOKE·CONSOLE_WRITE` + 1× `INVOKE·EXIT`): superficie intacta.
+
+### Compatibilidad futura (nota Wine/Win32)
+
+Una capa de compatibilidad estilo Wine **no necesita puertas nuevas**: las
+~450 NtXxx de Windows se traducen a subsyscalls y endpoints — exactamente el
+patrón `wineserver` (un servidor de userspace que implementa la semántica NT
+por IPC), que en BMO es *nativo* vía Endpoint RPC. La superficie ajena se
+convierte en biblioteca + operaciones; la puerta sigue siendo `INVOKE`.
 
 ---
 
@@ -415,16 +436,19 @@ Dispatcher con validación + Cabina audit + ByteDefender check. Window Manager, 
 
 ## Próximos pasos
 
-1. **Fix boot #GP**: Conectar serial cable para diagnosticar crash exacto
-2. **Restaurar welcome completo**: Rehabilitar render/input/commands paso a paso
-3. **Re-habilitar APIC timer**: Preemptive scheduling (causaba #GP, necesita fix)
-4. **AHCI**: Drivers de almacenamiento SATA
-5. **RTL8168**: Driver de red
-6. **USB/xHCI**: Drivers USB
-7. **SMP**: Multi-core (INIT-SIPI-SIPI restaurado)
-8. **I/O APIC**: IRQ routing
-9. **FPU per-task**: Save/restore con XSAVE/XRSTOR
-10. **PML4 propio**: Separación kernel/usuario real (sin UEFI identity map)
+✅ **2026-07-22 — Ring 3 ejecuta en hardware real** (commit `179c19b1`):
+CPL3→INVOKE→CPL0→EXIT→reap completo, scheduler preemptivo por LAPIC timer.
+
+1. **Font profesional**: tabla de glifos diseñada (estética 80s-cyberpunk)
+2. **Limpieza de debug**: retirar filas fijas cr3/r3f/gdt (el heartbeat `r3hb` queda)
+3. **Fault isolation**: fault de CPL3 mata la tarea, no el kernel (`faults.rs` → reap + schedule)
+4. **EXIT-reclaim**: listas de frames per-task; liberar todo al morir
+5. **2+ procesos Ring 3**: validar round-robin multi-usuario
+6. **Teclado**: el i8042 entrega bytes (`kbd 0x6D` visto) — traductor Set-2 → shell interactivo
+7. **Endpoint RPC**: servidores Ring 3 (ver `ENDPOINT_RPC.md`) — puerta a drivers/GUI
+8. **Demand paging + NX/SMEP**: el handler #PF unificado (lazy pages / kill)
+9. **Storage AHCI/NVMe + FAT32**: persistencia (partición F: BMO-DATA espera)
+10. **Compositor/desktop**: Win11+Mac elegante, SVG propios, Ring 3 total
 
 ---
 
@@ -433,7 +457,7 @@ Dispatcher con validación + Cabina audit + ByteDefender check. Window Manager, 
 - **GOP primero**: Todo visual por framebuffer, sin drivers GPU propietarios
 - **Ring 0 + Ring 3**: Sin Rings 1/2 (x86-64 moderno)
 - **Serial debug**: COM1 como canal de diagnóstico primario
-- **Cooperativo**: Scheduler sin preempción (temporal, hasta fix del #GP)
+- **Preemptivo**: scheduler por LAPIC timer con switch real Ring 0 ↔ Ring 3 (probado en hardware)
 - **Modular**: Cada subsistema es independiente (ring0, bmo_core, cabina, defense, etc.)
 - **Depurable**: Diag integrado desde el primer byte
 
