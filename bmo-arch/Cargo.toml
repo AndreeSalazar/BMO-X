@@ -1,5 +1,5 @@
 [package]
-name = "bmo-platform"
+name = "bmo-arch"
 version = "0.1.0"
 edition = "2021"
 description = "BMO platform — the agnostic intermediary between Ring 0 and Ring 3. x86-64 today, any CPU tomorrow."
@@ -8,7 +8,7 @@ license = "MIT"
 # ── Library type ─────────────────────────────────────────────────
 # The platform crate is a `no_std` library used by both Ring 0 and Ring 3.
 # It must compile in both contexts (so no allocation, no_std-only).
-# When `bmo-platform` is built for x86_64-unknown-none, the right arch
+# When `bmo-arch` is built for x86_64-unknown-none, the right arch
 # module is selected at compile time via `target_arch` cfg.
 [lib]
 path = "src/lib.rs"

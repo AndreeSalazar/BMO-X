@@ -1,4 +1,4 @@
-//! Bitmap physical frame allocator (4 KiB frames, physical < 4 GiB).
+//! Bitmap physical frame allocator (4 KiB frames, physical < PHYSMAP_SIZE).
 //!
 //! Source of truth: the BootContext memory map *after* `s2_mem` already
 //! carved out its page-table pool (so the tables that built the physmap can
@@ -7,17 +7,20 @@
 //! images, the BootContext page, the GOP framebuffer, the LAPIC/IOAPIC/HPET
 //! window, and the reserved Ring 3 payload/workspace ranges.
 //!
-//! The 128 KiB bitmap lives in `.bss` (identity-mapped, zeroed by `_start`).
-//! 4 GiB is deliberately small: the physmap covers it, BMO v1 fits in it,
-//! and the constant can move when the system needs more.
+//! The 512 KiB bitmap lives in `.bss` (identity-mapped, zeroed by `_start`).
+//! Coverage is exactly `mm::PHYSMAP_SIZE` (16 GiB): the allocator must never
+//! hand out a frame the physmap cannot reach, because `zero_frame` and every
+//! page-table access go through `phys_to_virt`. The 1 TiB path is: s2_mem
+//! sizes the physmap from the memory map (1 GiB pages), PHYSMAP_SIZE follows
+//! it, and the bitmap moves out of `.bss` into a boot-time carve.
 
 use boot_context::BootContext;
 
 use super::{phys_to_virt, PAGE};
 use crate::ring0::spin::SpinLock;
 
-const MAX_PHYS: u64 = 0x1_0000_0000; // 4 GiB
-const FRAME_SLOTS: usize = (MAX_PHYS / PAGE) as usize / 64; // 16384 words
+const MAX_PHYS: u64 = super::PHYSMAP_SIZE; // 16 GiB — capped by the physmap
+const FRAME_SLOTS: usize = (MAX_PHYS / PAGE) as usize / 64; // 65536 words
 
 static mut BITMAP: [u64; FRAME_SLOTS] = [0; FRAME_SLOTS];
 static mut TOTAL_FRAMES: u64 = 0;
@@ -145,6 +148,56 @@ pub fn alloc_frame() -> Option<u64> {
             }
             i = (i + 1) % FRAME_SLOTS;
         }
+    }
+}
+
+/// Allocate `count` physically CONTIGUOUS frames; returns the base address.
+///
+/// Required by every multi-page region addressed linearly through the
+/// physmap (kernel task stacks, the Ring 3 trap-landing stacks): the physmap
+/// maps physical memory 1:1, so `phys_to_virt(base) + n*PAGE` is physical
+/// `base + n*PAGE` — N independent `alloc_frame` calls only produce that by
+/// accident (clean QEMU maps) and not on real memory maps with holes, where
+/// the tail pages would land in frames the caller does not own.
+pub fn alloc_frames_contig(count: u64) -> Option<u64> {
+    if count == 0 {
+        return None;
+    }
+    let _g = LOCK.lock();
+    unsafe {
+        if FREE_FRAMES < count {
+            return None;
+        }
+        let bm = bitmap();
+        let total = FRAME_SLOTS * 64;
+        let mut run: u64 = 0;
+        let mut start = 0usize;
+        let mut frame = 0usize;
+        while frame < total {
+            // Fast-skip fully used words when no run is open.
+            if run == 0 && frame % 64 == 0 && bm[frame / 64] == !0 {
+                frame += 64;
+                continue;
+            }
+            if bm[frame / 64] & (1 << (frame % 64)) == 0 {
+                if run == 0 {
+                    start = frame;
+                }
+                run += 1;
+                if run == count {
+                    for f in start..start + count as usize {
+                        bm[f / 64] |= 1 << (f % 64);
+                    }
+                    FREE_FRAMES -= count;
+                    HINT = start / 64;
+                    return Some(start as u64 * PAGE);
+                }
+            } else {
+                run = 0;
+            }
+            frame += 1;
+        }
+        None
     }
 }
 

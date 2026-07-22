@@ -241,11 +241,11 @@ pub fn wake_by_key(key: u64) {
 /// Spawn a kernel task running `entry(arg)` on its own 8 KiB stack.
 /// Returns the new TID.
 pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
-    let mut frames = [0u64; TASK_STACK_PAGES as usize];
-    for f in &mut frames {
-        *f = phys::alloc_frame()?;
-    }
-    let stack_top = mm::phys_to_virt(frames[0]) + TASK_STACK_PAGES * mm::PAGE;
+    // Contiguous: the stack is addressed linearly through the physmap, and
+    // `reap` frees it as `stack_phys + p*PAGE` — both are only sound when
+    // the frames really are physical neighbors.
+    let stack_base = phys::alloc_frames_contig(TASK_STACK_PAGES)?;
+    let stack_top = mm::phys_to_virt(stack_base) + TASK_STACK_PAGES * mm::PAGE;
     let context = unsafe { trap::fabricate(stack_top, entry, arg, false, 0) };
 
     let _g = SCHED_LOCK.lock();
@@ -260,7 +260,7 @@ pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
         priority: priority.min(31),
         remaining_ticks: DEFAULT_QUANTUM_TICKS,
         context_rsp: context,
-        stack_phys: frames[0],
+        stack_phys: stack_base,
         stack_pages: TASK_STACK_PAGES,
         wait_key: 0,
         wait_deadline: 0,

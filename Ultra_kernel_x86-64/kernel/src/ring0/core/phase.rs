@@ -537,6 +537,8 @@ pub fn main(ctx: &mut BootContext) {
                 crate::ring0::dev::console::serial_write("\n");
             }
         }
+        let cr3t = unsafe { crate::ring0::proc::CR3_TEST };
+        row(4, "[cr3] ", &[("kernel=", cr3t[0], 12), ("user=", cr3t[1], 12)]);
         row(5, "[r3f] ", &[("rip=", snap[0], 12), ("cs=", snap[1], 4), ("ss=", snap[2], 4)]);
         row(6, "[r3f] ", &[("rsp=", snap[3], 12), ("rfl=", snap[4], 6)]);
         row(7, "[gdt] ", &[("base=", gdt_base, 12), ("lim=", gdt_limit, 4)]);

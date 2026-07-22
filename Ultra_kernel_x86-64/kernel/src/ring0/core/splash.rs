@@ -361,32 +361,36 @@ fn draw_char(x: u32, y: u32, c: u8, color: u32) {
         glyph[row as usize] & (0x80u8 >> col) != 0
     };
 
-    // Two-pass render for a softer, more elegant look than raw bitmap pixels:
+    // Semi-bold shape: every stroke thickened 1 px to the right. This is the
+    // weight upgrade — raw 1 px VGA strokes read thin and dusty on a modern
+    // panel; the doubled stroke carries against the dark background. The
+    // extra column (max col = 8) still fits the CHAR_W=10 cell.
+    let bold = |col: i32, row: i32| -> bool { lit(col, row) || lit(col - 1, row) };
+
+    // Two-pass render over the BOLD shape:
     //   1. Anti-alias: any empty pixel wedged into a concave corner (a lit
-    //      neighbour both horizontally and vertically) gets a dim fill, which
-    //      rounds the hard staircase on curves and diagonals.
-    //   2. The crisp glyph on top at full colour.
-    // Same 8x16 cell, no layout change — just nicer edges.
-    let soft = blend(color, 96);
+    //      neighbour both horizontally and vertically) gets a dim fill,
+    //      rounding the staircase on curves and diagonals.
+    //   2. The crisp thickened glyph on top at full colour.
+    // Same 8x16 cell and layout — only weight and edges change.
+    let soft = blend(color, 110);
     for row in 0..FONT_H as i32 {
-        for col in 0..FONT_W as i32 {
-            if lit(col, row) {
+        for col in 0..=FONT_W as i32 {
+            if bold(col, row) {
                 continue;
             }
-            let l = lit(col - 1, row);
-            let r = lit(col + 1, row);
-            let u = lit(col, row - 1);
-            let d = lit(col, row + 1);
+            let l = bold(col - 1, row);
+            let r = bold(col + 1, row);
+            let u = bold(col, row - 1);
+            let d = bold(col, row + 1);
             if (l && u) || (l && d) || (r && u) || (r && d) {
                 put_pix(x + col as u32, y + row as u32, soft);
             }
         }
     }
-    for row in 0..FONT_H {
-        let bits = glyph[row];
-        for col in 0..FONT_W {
-            // VGA fonts are MSB-first: bit 7 = leftmost pixel
-            if bits & (0x80 >> col) != 0 {
+    for row in 0..FONT_H as i32 {
+        for col in 0..=FONT_W as i32 {
+            if bold(col, row) {
                 put_pix(x + col as u32, y + row as u32, color);
             }
         }

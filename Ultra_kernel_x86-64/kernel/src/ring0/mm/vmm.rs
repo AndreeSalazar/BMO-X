@@ -28,10 +28,49 @@ pub const CHANNEL_VA_BASE: u64 = 0x0000_0000_C000_0000;
 
 static mut KERNEL_PML4: u64 = 0;
 
-/// Capture the boot CR3 (installed by `s2_mem`). Called once from
-/// `phase::main`, after which `new_address_space` can clone the kernel half.
+/// Kernel-half PML4 slots that were still empty at init and could not get a
+/// pre-populated PDPT (allocator exhaustion — should never happen at boot).
+static mut KERNEL_HALF_HOLES: u32 = 0;
+
+/// Capture the boot CR3 (installed by `s2_mem`) and **pre-populate the whole
+/// kernel half**: every empty PML4 slot in [256..512) gets a zeroed,
+/// supervisor-only PDPT right now, *before any user address space exists*.
+///
+/// This is the invariant that makes `new_address_space`'s entry copy a true
+/// share-by-pointer forever: user PML4s copy these 256 entries once, so any
+/// higher-half mapping the kernel adds later (physmap growth toward 1 TiB,
+/// MMIO windows, a kernel heap) lands *inside* a PDPT every address space
+/// already points at — visible under every CR3, no per-process patching.
+/// Cost: ≤256 frames (1 MiB), once.
 pub fn init() {
     unsafe { KERNEL_PML4 = read_cr3() };
+    let kernel = table(kernel_pml4());
+    for i in 256..512 {
+        if kernel[i] & PTE_PRESENT == 0 {
+            match phys::alloc_frame() {
+                Some(f) => {
+                    phys::zero_frame(f);
+                    // Supervisor-only on purpose: no PTE_USER at any level of
+                    // the kernel half, ever.
+                    kernel[i] = (f & ADDR_MASK) | PTE_PRESENT | PTE_WRITABLE;
+                }
+                None => unsafe { KERNEL_HALF_HOLES += 1 },
+            }
+        }
+    }
+    // Fresh top-level entries: reload CR3 so no stale paging-structure cache
+    // survives (cheap, once at boot).
+    switch_to(kernel_pml4());
+    if unsafe { KERNEL_HALF_HOLES } != 0 {
+        crate::ring0::dev::console::serial_write(
+            "[vmm] WARN: kernel-half pre-population incomplete\n",
+        );
+    }
+}
+
+/// Number of kernel-half PML4 slots left unpopulated at init (0 = healthy).
+pub fn kernel_half_holes() -> u32 {
+    unsafe { KERNEL_HALF_HOLES }
 }
 
 pub fn read_cr3() -> u64 {
@@ -73,7 +112,10 @@ pub fn new_address_space() -> Option<u64> {
 
     let kernel = table(kernel_pml4());
     let user = table(pml4);
-    // Share the entire kernel half (physmap lives at index 256..).
+    // Share the entire kernel half (physmap lives at index 256..). Since
+    // `init` pre-populated every slot, this copy is share-by-pointer of the
+    // PDPTs themselves: kernel-half mappings added *after* this process was
+    // created are still visible under its CR3.
     for i in 256..512 {
         user[i] = kernel[i];
     }

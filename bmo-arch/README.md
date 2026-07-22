@@ -1,4 +1,4 @@
-# bmo-platform
+# bmo-arch
 
 **The agnostic intermediary between Ring 0 and Ring 3.**
 

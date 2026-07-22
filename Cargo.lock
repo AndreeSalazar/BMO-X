@@ -45,6 +45,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-arch"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+ "bmo-channel",
+ "boot-context",
+]
+
+[[package]]
 name = "bmo-audio"
 version = "1.0.0"
 
@@ -137,15 +146,6 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.0",
  "volatile",
-]
-
-[[package]]
-name = "bmo-platform"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
- "bmo-channel",
- "boot-context",
 ]
 
 [[package]]

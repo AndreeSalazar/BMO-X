@@ -20,7 +20,7 @@ name = "bmo-channel"
 version = "1.0.0"
 
 [[package]]
-name = "bmo-platform"
+name = "bmo-arch"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",

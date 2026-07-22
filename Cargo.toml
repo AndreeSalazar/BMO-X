@@ -58,7 +58,7 @@ members = [
     # The only crate in BMO that knows the target CPU. Currently
     # x86-64 only; ports will add Ultra_kernel_<arch>/ trees and
     # aarch64/riscv64 features here.
-    "bmo-platform",
+    "bmo-arch",
 ]
 
 exclude = [
