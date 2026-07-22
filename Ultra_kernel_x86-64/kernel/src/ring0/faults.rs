@@ -42,10 +42,100 @@ impl IdtEntry {
     }
 }
 
-// One naked stub per vector. Error-code vectors read the code the CPU pushed;
-// no-error vectors report 0. All read CR2 (only meaningful for #PF but
-// harmless otherwise). Then tail into the Rust reporter and halt.
-macro_rules! err_stub {
+// One naked stub per vector.
+//
+// ISOLATING stubs (#UD/#GP/#PF): a fault from CPL3 kills only that task —
+// swapgs to the kernel GS (percpu accessors are gs-relative), hand the fault
+// to `fault_dispatch`, and if it returns a context (rax != 0) restore it via
+// the shared trap epilogue: the kernel LIVES through the crash. A kernel
+// fault (or dispatch returning 0) falls through to the terminal halt.
+//
+// TERMINAL stub (#DF): a double fault means the machine state is already
+// beyond rescue — report and halt, as before.
+macro_rules! err_stub_isolating {
+    ($name:ident, $vec:expr) => {
+        #[unsafe(naked)]
+        unsafe extern "C" fn $name() -> ! {
+            naked_asm!(
+                // CPL3 fault? Load the kernel GS before any percpu access.
+                "cmp qword ptr [rsp + 16], 0x08",
+                "je 2f",
+                "swapgs",
+                "2:",
+                "mov rdi, {v}",        // vector
+                "mov rsi, [rsp]",      // error code (CPU-pushed)
+                "mov rdx, [rsp + 8]",  // faulting RIP
+                "mov rcx, cr2",        // fault address
+                "mov r8, [rsp + 16]",  // faulting CS (kernel vs user decision)
+                "mov r9, [rsp + 32]",  // faulting RSP (err: err,rip,cs,rfl,RSP,ss)
+                // The CPU fault frame is fully captured in registers; the
+                // dying context is never resumed, so the frame itself is
+                // dead weight — realign for the SysV call.
+                "and rsp, -16",
+                "call {h}",            // rax = next context_rsp, 0 = terminal
+                "test rax, rax",
+                "jz 3f",
+                // Shared trap epilogue (same shape as timer/syscall).
+                "mov rsp, rax",
+                "fxrstor64 [rsp]",
+                "mov rsp, [rsp + 512]",
+                "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
+                "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
+                "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
+                "cmp qword ptr [rsp + 8], 0x08",
+                "je 4f",
+                "swapgs",
+                "4: iretq",
+                "3: cli",
+                "5: hlt",
+                "jmp 5b",
+                v = const $vec,
+                h = sym fault_dispatch,
+            );
+        }
+    };
+}
+
+macro_rules! noerr_stub_isolating {
+    ($name:ident, $vec:expr) => {
+        #[unsafe(naked)]
+        unsafe extern "C" fn $name() -> ! {
+            naked_asm!(
+                "cmp qword ptr [rsp + 8], 0x08",
+                "je 2f",
+                "swapgs",
+                "2:",
+                "mov rdi, {v}",        // vector
+                "xor esi, esi",        // no error code
+                "mov rdx, [rsp]",      // faulting RIP
+                "mov rcx, cr2",        // fault address
+                "mov r8, [rsp + 8]",   // faulting CS
+                "mov r9, [rsp + 24]",  // faulting RSP (no-err: rip,cs,rfl,RSP,ss)
+                "and rsp, -16",
+                "call {h}",
+                "test rax, rax",
+                "jz 3f",
+                "mov rsp, rax",
+                "fxrstor64 [rsp]",
+                "mov rsp, [rsp + 512]",
+                "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
+                "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
+                "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
+                "cmp qword ptr [rsp + 8], 0x08",
+                "je 4f",
+                "swapgs",
+                "4: iretq",
+                "3: cli",
+                "5: hlt",
+                "jmp 5b",
+                v = const $vec,
+                h = sym fault_dispatch,
+            );
+        }
+    };
+}
+
+macro_rules! err_stub_terminal {
     ($name:ident, $vec:expr) => {
         #[unsafe(naked)]
         unsafe extern "C" fn $name() -> ! {
@@ -54,7 +144,7 @@ macro_rules! err_stub {
                 "mov rsi, [rsp]",      // error code (CPU-pushed)
                 "mov rdx, [rsp + 8]",  // faulting RIP
                 "mov rcx, cr2",        // fault address
-                "mov r8, [rsp + 32]",  // faulting RSP (err: err,rip,cs,rfl,RSP,ss)
+                "mov r8, [rsp + 32]",  // faulting RSP
                 "call {h}",
                 "cli",
                 "2: hlt",
@@ -66,31 +156,57 @@ macro_rules! err_stub {
     };
 }
 
-macro_rules! noerr_stub {
-    ($name:ident, $vec:expr) => {
-        #[unsafe(naked)]
-        unsafe extern "C" fn $name() -> ! {
-            naked_asm!(
-                "mov rdi, {v}",        // vector
-                "xor esi, esi",        // no error code
-                "mov rdx, [rsp]",      // faulting RIP
-                "mov rcx, cr2",        // fault address
-                "mov r8, [rsp + 24]",  // faulting RSP (no-err: rip,cs,rfl,RSP,ss)
-                "call {h}",
-                "cli",
-                "2: hlt",
-                "jmp 2b",
-                v = const $vec,
-                h = sym fault_report,
-            );
-        }
-    };
-}
+noerr_stub_isolating!(stub_ud, 6); // #UD invalid opcode → kill task if CPL3
+err_stub_terminal!(stub_df, 8); //    #DF double fault → always terminal
+err_stub_isolating!(stub_gp, 13); //  #GP general protection → kill if CPL3
+err_stub_isolating!(stub_pf, 14); //  #PF page fault → kill if CPL3
 
-noerr_stub!(stub_ud, 6); // #UD invalid opcode
-err_stub!(stub_df, 8); //  #DF double fault
-err_stub!(stub_gp, 13); // #GP general protection
-err_stub!(stub_pf, 14); // #PF page fault
+/// Triage: a CPL3 fault kills ONLY the faulting task — revoke its
+/// capabilities, mark it Exited, pick the next runnable context and hand it
+/// back to the stub's shared epilogue. BMO keeps running. A Ring 0 fault is
+/// a kernel bug: full terminal report, return 0 (stub halts).
+extern "C" fn fault_dispatch(
+    vector: u64,
+    error: u64,
+    rip: u64,
+    cr2: u64,
+    cs: u64,
+    fault_rsp: u64,
+) -> u64 {
+    if cs & 3 == 3 {
+        let pid = crate::ring0::scheduler::current_pid();
+        let tid = crate::ring0::scheduler::current_tid();
+        // Capabilities die with the process (same order as EXIT: revoke
+        // completes before the final switch — no lock nesting).
+        crate::ring0::cap::revoke_all(pid);
+        // One red line in the rolling log, painted under the kernel CR3
+        // (the user CR3 may not map the framebuffer identity range).
+        let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
+        let cur = crate::ring0::mm::vmm::read_cr3();
+        if kpml4 != 0 && cur != kpml4 {
+            crate::ring0::mm::vmm::switch_to(kpml4);
+        }
+        let mut l = Line::new();
+        l.s("*** ring3 fault vec=0x");
+        l.hex(vector, 2);
+        l.s(" rip=0x");
+        l.hex(rip, 10);
+        l.s(" tid=");
+        l.hex(tid as u64, 2);
+        l.s(" - task killed, BMO alive");
+        serial_write("[fault] ");
+        serial_write(l.as_str());
+        serial_write("\n");
+        if crate::info::has_fb() {
+            crate::ring0::core::phase::dashboard_log(l.as_str());
+        }
+        let _ = (error, cr2, fault_rsp);
+        // schedule() below loads the NEXT task's CR3 itself.
+        return crate::ring0::scheduler::kill_current_and_pick();
+    }
+    fault_report(vector, error, rip, cr2, fault_rsp);
+    0
+}
 
 /// Small fixed-capacity line builder (no alloc, exception-context safe).
 struct Line {

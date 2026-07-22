@@ -229,6 +229,22 @@ pub fn user_switches() -> u64 {
     unsafe { SWITCH_SNAP[3] }
 }
 
+/// Fault isolation: the CURRENT task took a CPU fault it cannot survive.
+/// Mark it Exited (never the shell at index 0), commit a switch to the next
+/// runnable context, and return the context_rsp the fault stub must restore.
+/// Called from the #UD/#GP/#PF stubs when the fault came from CPL3 — the
+/// dying context is NOT saved (it is dead by definition), so unlike the
+/// voluntary paths this never touches the outgoing frame.
+pub fn kill_current_and_pick() -> u64 {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    if s.current != 0 && s.tasks[s.current].state == TaskState::Running {
+        s.tasks[s.current].state = TaskState::Exited;
+    }
+    schedule_locked(s);
+    percpu::trap_rsp()
+}
+
 /// Lock-free diagnostic read of a task's state by TID. Racy by design —
 /// telemetry only. 255 = no live task with that TID (never existed, or
 /// exited and was reaped).
