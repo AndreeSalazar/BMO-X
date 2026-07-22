@@ -8,6 +8,8 @@
 
 use std::path::{Path, PathBuf};
 
+pub mod x86_64;
+
 /// Ubica `tables/` relativo a este crate — sin depender de las rutas muertas
 /// `X:\FastOS\...` que arrastraban los frontends.
 pub fn tables_dir() -> PathBuf {
