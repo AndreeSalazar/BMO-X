@@ -1,0 +1,10 @@
+[package]
+name = "bmo-fontgen"
+version = "0.1.0"
+edition = "2021"
+description = "Genera la tabla de glifos FONT16 del kernel (font16_data.rs) desde arte ASCII auditable."
+license = "MIT"
+
+[[bin]]
+name = "bmo-fontgen"
+path = "src/main.rs"

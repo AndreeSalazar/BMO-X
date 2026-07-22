@@ -53,6 +53,7 @@ members = [
     "toolchain/lang/c",
     "toolchain/bef-bootstrap",
     "toolchain/hello-bex",
+    "toolchain/fontgen",
 
     # ── PLATFORM (CPU-aware Ring 0/3 intermediary) ────────────────
     # The only crate in BMO that knows the target CPU. Currently
