@@ -22,7 +22,7 @@ bytes válidos para el BMO ABI.
 
 ```
 toolchain/
-  lang/           ← frontends (ESENCIA, individual): c, cobol, cpp
+  lang/           ← frontends (ESENCIA, individual): c, cobol, cpp, base
   forge/          ← ESTA carpeta: librerías compartidas del pipeline
     sem-asm/
       src/        (motor Rust que lee las tablas)
@@ -30,13 +30,14 @@ toolchain/
     bmo-lower/
     bmo-opt/
     bmo-verify/
-  tools/          ← (futuro) generadores: linker, bef-bootstrap, hello-bex, fontgen
+  tools/          ← generadores: linker, bef-bootstrap, hello-bex, fontgen
 ```
 
-## Migración (en curso)
+## Migración
 
 1. ✅ Mover tablas sem-asm a `forge/sem-asm/tables`.
-2. ⬜ Motor sem-asm: leer `tables/arch/x86_64/instructions.toml` → encodear.
+2. ✅ Motor sem-asm: lee `tables/arch/x86_64/instructions.toml` → encodea
+   (mov→0x89, mov_imm→0xB8; 3 tests verdes).
 3. ⬜ Migrar `lang/c/codegen.rs` y `lang/cobol/codegen.rs` a usar el motor
    (borrar el hardcodeo de bytes duplicado; arreglar las rutas muertas
    `X:\FastOS\...\Semantic_ASM`).

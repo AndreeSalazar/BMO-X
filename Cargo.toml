@@ -51,9 +51,10 @@ members = [
     "toolchain/lang/cobol",
     "toolchain/lang/cpp",
     "toolchain/lang/c",
-    "toolchain/bef-bootstrap",
-    "toolchain/hello-bex",
-    "toolchain/fontgen",
+    # ── TOOLS (generadores build-time) ─────────────────────────────
+    "toolchain/tools/bef-bootstrap",
+    "toolchain/tools/hello-bex",
+    "toolchain/tools/fontgen",
 
     # ── FORGE (pipeline de compilación: 3 librerías + verificación) ──
     # Librerías OPCIONALES que cada frontend elige enlazar (nunca embudos).

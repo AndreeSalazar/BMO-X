@@ -209,7 +209,7 @@ fn main() {
         "Ultra_kernel_x86-64/kernel/src/ring0/core/font16_data.rs".to_string()
     });
     let mut s = String::from(
-        "// AUTO-GENERADO por toolchain/fontgen — NO editar a mano.\n\
+        "// AUTO-GENERADO por toolchain/tools/fontgen — NO editar a mano.\n\
          // Regenerar: cargo run -p bmo-fontgen\n\
          // Glifos 8x16 (arte en filas 2..14), trazos 2px nativos, ASCII 32..=126.\n[\n",
     );
