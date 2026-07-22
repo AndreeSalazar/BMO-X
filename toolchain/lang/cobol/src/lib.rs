@@ -195,7 +195,7 @@ USE "bmo/proc".
 PROCEDURE DIVISION.
 SYSCALL bmo_exit 0.
 "#;
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         let p = compile_source_to_bef_with_asm(src, vec![asm]).unwrap();
         assert!(p.len() > 48);
     }
@@ -209,7 +209,7 @@ USE "bmo/proc".
 PROCEDURE DIVISION.
 SYSCALL bmo_exit 42.
 "#;
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         let bef = compile_source_to_bef_with_asm(src, vec![asm]).unwrap();
         assert!(bef.len() > 48);
         let nr = bmo_abi::syscalls::surface::NR_INVOKE;

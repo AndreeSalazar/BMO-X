@@ -2015,8 +2015,8 @@ int sum(int a, int b, int c) {
     fn parses_syscall_with_asm_defs() {
         use std::path::PathBuf;
         let src = r#"use "bmo/proc"; int main() { bmo_exit(42); }"#;
-        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
         assert!(bef.len() > 48);
     }
@@ -2026,8 +2026,8 @@ int sum(int a, int b, int c) {
         use std::path::PathBuf;
         // bmo_exit expects 1 arg â†’ passing 0 should fail
         let src = r#"use "bmo/proc"; int main() { bmo_exit(); }"#;
-        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         let result = compile_source_to_bef_with_all(src, vec![base], vec![asm]);
         assert!(result.is_err(), "should reject wrong arg count");
         if let Err(e) = result {
@@ -2039,8 +2039,8 @@ int sum(int a, int b, int c) {
     fn syscall_multiple_categories() {
         use std::path::PathBuf;
         let src = r#"use "bmo/proc"; use "bmo/diag"; int main() { bmo_exit(0); bmo_debug_print("test", 4); }"#;
-        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
         assert!(bef.len() > 48);
     }
@@ -2065,8 +2065,8 @@ use "bmo/ipc";
 use "bmo/surface";
 int main() { bmo_exit(0); }
 "#;
-        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
         assert!(bef.len() > 48);
     }
@@ -2075,8 +2075,8 @@ int main() { bmo_exit(0); }
     fn syscall_emits_correct_code() {
         use std::path::PathBuf;
         let src = r#"use "bmo/proc"; int main() { bmo_exit(42); }"#;
-        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
         // BEF validation: magic, correct header, code section present
         assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
@@ -2106,8 +2106,8 @@ int main() {
     return 0;
 }
 "#;
-        let base = PathBuf::from("X:\\FastOS\\crates_Personal\\Lenguajes\\base");
-        let asm = PathBuf::from("X:\\FastOS\\crates_Personal\\Semantic_ASM");
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
+        let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
         // Need both base and Semantic_ASM as module search paths so stdlib/heap can be found
         let bef = compile_source_to_bef_with_all(src, vec![base, asm.clone()], vec![asm]).unwrap();
         assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
