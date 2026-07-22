@@ -123,15 +123,15 @@ dependencies = [
 [[package]]
 name = "bmo-input"
 version = "0.1.0"
-dependencies = [
- "bmo-abi",
-]
 
 [[package]]
 name = "bmo-kernel"
 version = "2.0.0"
 dependencies = [
  "bmo-channel",
+ "bmo-input",
+ "bmo-uhid",
+ "bmo-xhci",
  "boot-context",
 ]
 
@@ -193,9 +193,6 @@ dependencies = [
 [[package]]
 name = "bmo-xhci"
 version = "0.1.0"
-dependencies = [
- "bmo-abi",
-]
 
 [[package]]
 name = "boot-context"

@@ -177,6 +177,10 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         // PS/2 keyboard, whichever has a byte ready. Lets the user type on
         // the real keyboard even with no serial cable attached.
         let mut byte = crate::ring0::dev::console::serial_read_byte();
+        // USB HID keyboard (xHCI) — the real input path on this board.
+        if byte.is_none() {
+            byte = crate::ring0::dev::usb::poll_ascii();
+        }
         if byte.is_none() {
             if let Some((raw, ascii)) = crate::ring0::dev::keyboard::poll_event() {
                 // Raw-scancode monitor: every keyboard byte is surfaced in
@@ -387,6 +391,10 @@ fn run_shell(ctx: &BootContext) -> ! {
     // physical keyboard reaches shell_read_line. No-op if the controller is
     // dead/absent (bounded timeouts inside).
     crate::ring0::dev::keyboard::init();
+    // Bring up the USB HID stack (xHCI + boot-protocol keyboard). On this
+    // board the i8042 emulation is dead post-EBS, so this is the real path
+    // to a working keyboard. Reports what it finds to the kernel log.
+    crate::ring0::dev::usb::init(ctx);
     // Serial-only banner: keep the rolling dashboard rows untouched so the
     // fixed-row Ring 3 diagnostics painted just before timer::enable survive.
     crate::ring0::dev::console::serial_write("\n=== BMO-X Ring 0 shell (type 'help') ===\n");

@@ -2,11 +2,15 @@
 //! interrupt transfers, HID boot protocol parsing for keyboard + mouse.
 
 #![no_std]
-extern crate alloc;
 
 use bmo_input::hal::{InputHal, PointerMode};
 use bmo_input::event::InputEvent;
-use alloc::vec::Vec;
+
+/// Máximo de interfaces que consideramos por dispositivo (fijo, sin alloc:
+/// el driver corre dentro de Ring 0 de BMO, que no tiene allocator).
+const MAX_IFACES: usize = 8;
+/// Tamaño máximo aceptado del config descriptor completo (fijo, sin alloc).
+const MAX_CFG: usize = 512;
 
 // ── HID boot protocol report structures ──────────────────────
 
@@ -87,23 +91,25 @@ impl UsbHidHal {
         (buf[off] as u16) | ((buf[off + 1] as u16) << 8)
     }
 
-    /// Parse interface descriptors from a full config descriptor set.
-    /// Returns (interface_number, class, subclass, protocol) for each.
-    fn parse_interfaces(cfg: &[u8]) -> Vec<(u8, u8, u8, u8)> {
-        let mut ifs = Vec::new();
+    /// Parse interface descriptors from a full config descriptor set into a
+    /// fixed buffer. Returns how many (interface_number, class, subclass,
+    /// protocol) entries were written.
+    fn parse_interfaces(cfg: &[u8], out: &mut [(u8, u8, u8, u8); MAX_IFACES]) -> usize {
+        let mut n = 0;
         let total = if cfg.len() >= 2 { Self::le_u16(cfg, 2) as usize } else { 0 };
         let limit = if total > 0 && total <= cfg.len() { total } else { cfg.len() };
         let mut off = if cfg.len() >= 1 { cfg[0] as usize } else { 9 };
-        while off + 3 <= limit {
+        while off + 3 <= limit && n < MAX_IFACES {
             let len = cfg[off] as usize;
             let dtype = cfg[off + 1];
             if len < 2 || off + len > limit { break; }
             if dtype == 4 && len >= 9 {
-                ifs.push((cfg[off + 2], cfg[off + 5], cfg[off + 6], cfg[off + 7]));
+                out[n] = (cfg[off + 2], cfg[off + 5], cfg[off + 6], cfg[off + 7]);
+                n += 1;
             }
             off += len;
         }
-        ifs
+        n
     }
 
     /// Find interrupt IN endpoint for a given interface.
@@ -184,19 +190,20 @@ impl InputHal for UsbHidHal {
                 h.log_u64(" cfg_val=", cfg_val as u64);
                 h.log_u64(" total_len=", total_len as u64);
 
-                // Read full config descriptor
-                if total_len > 512 { h.log("[uhid] cfg too big\n"); continue; }
-                let mut cfg_full = Vec::new();
-                cfg_full.resize(total_len, 0u8);
-                let n3 = bmo_xhci::get_config_descriptor(slot, 0, &mut cfg_full);
+                // Read full config descriptor (fixed buffer, no alloc)
+                if total_len > MAX_CFG { h.log("[uhid] cfg too big\n"); continue; }
+                let mut cfg_buf = [0u8; MAX_CFG];
+                let n3 = bmo_xhci::get_config_descriptor(slot, 0, &mut cfg_buf[..total_len]);
                 if n3 < total_len { h.log("[uhid] cfg short\n"); continue; }
+                let cfg_full: &[u8] = &cfg_buf[..total_len];
 
                 // Parse interfaces
-                let ifs = Self::parse_interfaces(&cfg_full);
+                let mut if_buf = [(0u8, 0u8, 0u8, 0u8); MAX_IFACES];
+                let n_ifs = Self::parse_interfaces(cfg_full, &mut if_buf);
                 let mut found_kbd = false;
                 let mut found_mouse = false;
 
-                for (iface_num, class, subclass, protocol) in &ifs {
+                for (iface_num, class, subclass, protocol) in &if_buf[..n_ifs] {
                     // HID class = 3
                     if *class != 3 { continue; }
 
@@ -209,7 +216,7 @@ impl InputHal for UsbHidHal {
 
                     // Find interrupt IN endpoint
                     if let Some((ep_addr, mps, interval, dci)) =
-                        Self::find_intr_in(&cfg_full, *iface_num)
+                        Self::find_intr_in(cfg_full, *iface_num)
                     {
                         h.log_u64(" found ep addr=", ep_addr as u64);
                         h.log_u64(" mps=", mps as u64);

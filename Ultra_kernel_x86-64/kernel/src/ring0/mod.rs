@@ -13,6 +13,7 @@ pub mod dev {
     pub mod console;
     pub mod framebuffer;
     pub mod keyboard;
+    pub mod usb;
 }
 pub mod mm;
 pub mod percpu;

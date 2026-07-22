@@ -109,6 +109,12 @@ pub fn poll_ascii() -> Option<u8> {
     poll_event().and_then(|(_, a)| a)
 }
 
+/// Set 1 make code → ASCII, exposed so the USB HID bridge (`dev::usb`) feeds
+/// its scancodes through the exact same US-QWERTY layout as the PS/2 path.
+pub(crate) fn scancode1_to_ascii(code: u8, shift: bool) -> Option<u8> {
+    translate(code, shift)
+}
+
 /// Scancode Set 1 make code → ASCII for a US QWERTY layout. `None` for keys
 /// with no shell meaning (function keys, arrows, modifiers, keypad, ...).
 fn translate(code: u8, shift: bool) -> Option<u8> {

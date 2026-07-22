@@ -7,4 +7,3 @@ description = "BMO xHCI USB Controller Driver — init, ports, devices, control 
 [lib]
 
 [dependencies]
-bmo-abi = { path = "../../../abi/bmo-abi" }

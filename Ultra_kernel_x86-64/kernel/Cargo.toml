@@ -9,6 +9,9 @@ license = "Techne"
 [dependencies]
 boot-context = { path = "../boot_context" }
 bmo-channel = { path = "../../platform/shared/bmo-channel" }
+bmo-xhci = { path = "../../platform/drivers/usb/xhci" }
+bmo-input = { path = "../../platform/drivers/usb/input" }
+bmo-uhid = { path = "../../platform/drivers/usb/uhid" }
 
 [[bin]]
 name =     "bmo-kernel"
