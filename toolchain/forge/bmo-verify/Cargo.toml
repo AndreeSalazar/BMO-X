@@ -1,0 +1,12 @@
+[package]
+name = "bmo-verify"
+version = "0.1.0"
+edition = "2021"
+description = "Gate de verificación: valida el BEF (capabilities, memory-safety, firma) antes del BMO ABI. El único checkpoint común. Habilita SIPs (Singularity)."
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }

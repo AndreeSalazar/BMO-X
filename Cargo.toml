@@ -55,6 +55,14 @@ members = [
     "toolchain/hello-bex",
     "toolchain/fontgen",
 
+    # ── FORGE (pipeline de compilación: 3 librerías + verificación) ──
+    # Librerías OPCIONALES que cada frontend elige enlazar (nunca embudos).
+    # Ver toolchain/forge/README.md y toolchain/lang/cobol/cobol.md.
+    "toolchain/forge/sem-asm",
+    "toolchain/forge/bmo-lower",
+    "toolchain/forge/bmo-opt",
+    "toolchain/forge/bmo-verify",
+
     # ── PLATFORM (CPU-aware Ring 0/3 intermediary) ────────────────
     # The only crate in BMO that knows the target CPU. Currently
     # x86-64 only; ports will add Ultra_kernel_<arch>/ trees and

@@ -1,0 +1,12 @@
+[package]
+name = "bmo-opt"
+version = "0.1.0"
+edition = "2021"
+description = "Optimización genérica: register allocation, constant folding, dead-code elimination, strength reduction. La 1ª librería del pipeline (opcional, a dial)."
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }

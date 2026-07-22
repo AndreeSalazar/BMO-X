@@ -1,0 +1,12 @@
+[package]
+name = "bmo-lower"
+version = "0.1.0"
+edition = "2021"
+description = "Descenso al BMO ABI: helpers que traducen exigencias del lenguaje (print, I/O) a operaciones INVOKE/subsyscalls. La 2ª librería del pipeline."
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }

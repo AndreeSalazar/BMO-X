@@ -1,0 +1,14 @@
+[package]
+name = "bmo-sem-asm"
+version = "0.1.0"
+edition = "2021"
+description = "Motor de codificación semántica: lee las tablas TOML (tables/) y encodea instrucciones → bytes precisos. La 3ª librería del pipeline (Codificación)."
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Lector de las tablas TOML. Es una herramienta de build-time (host, std).
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
