@@ -45,11 +45,9 @@ fn phase0_fb(ctx: &BootContext) {
 }
 
 fn phase1_ui(_ctx: &BootContext) {
-    s_log("[phase1] === UI (splash) ===");
+    s_log("[phase1] === UI (dashboard) ===");
     if crate::info::has_fb() {
-        splash::splash_progress(100, "BMO Ready.");
-        // Switch from the boot splash to the persistent dashboard
-        // (so something stays on screen for the user to read).
+        // Land on the persistent dashboard after the cinematic intro.
         splash::splash_dashboard_init();
     } else {
         s_log("[splash] no framebuffer, skipping");
@@ -221,18 +219,14 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
 }
 
 fn shell_help() {
-    s_log("commands:");
-    s_log("  help         show this help");
-    s_log("  info         dump BootContext fields");
-    s_log("  tasks        show scheduler state");
-    s_log("  mem          frame allocator stats + vmm selftest");
-    s_log("  ktest        spawn F1 context-switch demo task");
-    s_log("  fb           show framebuffer info");
-    s_log("  splash       re-run boot splash animation");
-    s_log("  bex          show native executable-loader status");
-    s_log("  panic        trigger test panic (does not return)");
-    s_log("  reboot       keyboard reset pulse");
-    s_log("  halt         stop and hlt");
+    // Compacto por categorías: cabe entero en el panel de 14 filas sin
+    // barrer el resto del log, y se lee de un vistazo.
+    s_log("== BMO-X shell ==");
+    s_log(" sistema : info  mem  tasks");
+    s_log(" video   : fb  splash");
+    s_log(" ring3   : bex  ktest");
+    s_log(" poder   : reboot  halt  panic");
+    s_log(" ayuda   : help");
 }
 
 fn shell_info(ctx: &BootContext) {
@@ -389,12 +383,10 @@ fn shell_halt() -> ! {
 fn run_shell(ctx: &BootContext) -> ! {
     // Normalize the i8042 (translation → Set 1, re-enable scanning) so the
     // physical keyboard reaches shell_read_line. No-op if the controller is
-    // dead/absent (bounded timeouts inside).
+    // dead/absent (bounded timeouts inside). El stack USB real (xHCI+HID)
+    // ya despertó en el Acto I de main().
     crate::ring0::dev::keyboard::init();
-    // Bring up the USB HID stack (xHCI + boot-protocol keyboard). On this
-    // board the i8042 emulation is dead post-EBS, so this is the real path
-    // to a working keyboard. Reports what it finds to the kernel log.
-    crate::ring0::dev::usb::init(ctx);
+    dash_log("== BMO-X operativo : escribe help ==");
     // Serial-only banner: keep the rolling dashboard rows untouched so the
     // fixed-row Ring 3 diagnostics painted just before timer::enable survive.
     crate::ring0::dev::console::serial_write("\n=== BMO-X Ring 0 shell (type 'help') ===\n");
@@ -548,23 +540,50 @@ pub fn main(ctx: &mut BootContext) {
         s_log(s);
     }
 
-    // Populate FB globals from the context.
+    // Populate FB globals from the context, then bring up the fb driver.
     crate::info::init_from(ctx);
+    phase0_fb(ctx);
 
-    // Show boot splash (if framebuffer available).
+    // ── Intro cinemática (logo → preparando → RING 0 → RING 3) ──────────
+    // Escenas centradas con fundido y transición, al estilo de un arranque
+    // moderno. Al terminar aterrizamos en el dashboard, donde el trabajo
+    // REAL de cada etapa fluye como log (igual que Windows: la animación
+    // juega, luego apareces en el escritorio).
     if crate::info::has_fb() {
-        splash::splash_init();
-        splash::splash_progress(5, "Starting kernel...");
+        splash::boot_intro();
     } else {
         s_log("[splash] no framebuffer, skipping splash");
     }
 
-    splash::splash_progress(15, "Framebuffer init...");
-    phase0_fb(ctx);
+    // Aterrizar en el dashboard persistente.
     phase1_ui(ctx);
-    s_log("[ring0] boot complete");
-    s_log("[ring0] BMO: Ok Ready");
 
+    // ── Acto I: RING 0 despierta el hardware (log real) ─────────────────
+    // Los encabezados "==" se pintan en cyan (dash_line_color).
+    dash_log("== RING 0 : despertando hardware ==");
+    s_log("[ring0] cpu Zen 3 perfilado + GDT/IDT propias");
+    {
+        let (total, free) = crate::ring0::mm::phys::stats();
+        let mut b = [0u8; 48];
+        let mut o = 0;
+        for &c in b"[ring0] mem ".iter() { if o < b.len() { b[o] = c; o += 1; } }
+        let gib = (total * 4096) >> 30;
+        let mut tmp = [0u8; 4];
+        let mut t = 0;
+        let mut v = gib.max(1);
+        while v > 0 && t < 4 { tmp[t] = b'0' + (v % 10) as u8; v /= 10; t += 1; }
+        while t > 0 { t -= 1; if o < b.len() { b[o] = tmp[t]; o += 1; } }
+        for &c in b" GiB physmap listos".iter() { if o < b.len() { b[o] = c; o += 1; } }
+        let _ = free;
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    s_log("[ring0] scheduler preemptivo + capabilities armados");
+    // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
+    crate::ring0::dev::usb::init(ctx);
+    dash_log("== RING 0 : hardware al mando ==");
+
+    // ── Acto II: RING 3 — el userspace nace ─────────────────────────────
+    dash_log("== RING 3 : userspace ==");
     // Surface the Ring 3 init outcome on the (now cleared) dashboard so the
     // demo's state is visible without serial. If a tid was admitted, the next
     // timer tick will enter CPL3 and its 'ring3>' lines should follow below.

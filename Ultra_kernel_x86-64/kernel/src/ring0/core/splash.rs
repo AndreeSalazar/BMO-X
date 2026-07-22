@@ -298,6 +298,11 @@ fn draw_str(x: u32, y: u32, s: &str, color: u32) {
         draw_char(cx, y, b, color);
         cx += CHAR_W as u32;
     }
+    // `draw_char` pinta con `put_pix`, que NO drena el buffer WC. Sin este
+    // flush, las letras llegan a VRAM tarde/parciales y dejan estela
+    // fantasma (el "ghosting" del log rodante y del prompt). Un solo flush
+    // por línea — barato — mata el efecto en todos los que dibujan texto.
+    wc_flush();
 }
 
 fn text_width(s: &str) -> u32 {
@@ -316,6 +321,102 @@ fn draw_str_fadein(x: u32, y: u32, s: &str, color: u32) {
         draw_str(x, y, s, c);
         tsc_wait(8_000_000);
     }
+}
+
+// ══ Boot cinematic: escenas escaladas con transiciones ═══════════════════
+//
+// La entrada de BMO-X deja de ser un volcado de texto: una secuencia de
+// escenas centradas (logo → preparando → RING 0 → RING 3) con fundido de
+// entrada y una línea de acento que barre, al estilo de un arranque de SO
+// moderno. Luego aterriza en el dashboard donde el trabajo real fluye.
+
+/// Espera de `ms` milisegundos reales (usa la frecuencia TSC ya calibrada;
+/// si aún no existe, aproxima a ~3 GHz).
+fn hold_ms(ms: u64) {
+    let f = crate::ring0::scheduler::tsc_freq();
+    let cycles = if f == 0 { ms * 3_000_000 } else { ms * (f / 1000) };
+    let start = tsc_read();
+    while tsc_read().wrapping_sub(start) < cycles {
+        core::hint::spin_loop();
+    }
+}
+
+fn text_width_scaled(s: &str, scale: u32) -> u32 {
+    s.len() as u32 * CHAR_W as u32 * scale
+}
+
+/// Un glifo dibujado a `scale`× (cada píxel = un bloque scale×scale). Sin AA:
+/// a escala ≥3 los bloques ya leen limpios y con peso.
+fn draw_char_scaled(x: u32, y: u32, c: u8, color: u32, scale: u32) {
+    if (c as usize) < 32 { return; }
+    let idx = (c as usize) - 32;
+    if idx >= FONT16.len() { return; }
+    let glyph = &FONT16[idx];
+    for row in 0..FONT_H {
+        let bits = glyph[row];
+        for col in 0..FONT_W {
+            if bits & (0x80 >> col) != 0 {
+                fill_rect(x + col as u32 * scale, y + row as u32 * scale, scale, scale, color);
+            }
+        }
+    }
+}
+
+fn draw_str_scaled(x: u32, y: u32, s: &str, color: u32, scale: u32) {
+    let mut cx = x;
+    for b in s.bytes() {
+        draw_char_scaled(cx, y, b, color, scale);
+        cx += CHAR_W as u32 * scale;
+    }
+}
+
+/// Una escena centrada: título grande con fundido de entrada, subtítulo dim,
+/// y una línea de acento que barre bajo el título. Deja la pantalla en BG.
+fn scene(title: &str, sub: &str, accent: u32, scale: u32) {
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 { return; }
+    fill_rect(0, 0, w, h, BG);
+
+    let tw = text_width_scaled(title, scale);
+    let th = FONT_H as u32 * scale;
+    let tx = w.saturating_sub(tw) / 2;
+    let ty = h / 2 - th / 2 - 8;
+
+    // Fundido de entrada del título (4 pasos de alpha sobre BG).
+    for &a in &[70u32, 140, 210, 255] {
+        draw_str_scaled(tx, ty, title, blend(accent, a), scale);
+        wc_flush();
+        hold_ms(45);
+    }
+
+    // Línea de acento que barre bajo el título.
+    let uy = ty + th + 8;
+    for step in 0..=24u32 {
+        fill_rect(tx, uy, tw * step / 24, 3, accent);
+        wc_flush();
+        hold_ms(9);
+    }
+
+    // Subtítulo dim, centrado bajo la línea.
+    if !sub.is_empty() {
+        let sw = text_width(sub);
+        draw_str(w.saturating_sub(sw) / 2, uy + 16, sub, DIM);
+        wc_flush();
+    }
+}
+
+/// Reproduce la secuencia de arranque completa (4 escenas). Llamar una vez,
+/// con framebuffer disponible, antes de montar el dashboard.
+pub fn boot_intro() {
+    scene("BMO-X", "Bare Metal Orchestrator", ACCENT, 5);
+    hold_ms(700);
+    scene("Preparando", "iniciando subsistemas", ACCENT2, 3);
+    hold_ms(350);
+    scene("RING 0", "kernel + hardware al mando", ACCENT, 4);
+    hold_ms(550);
+    scene("RING 3", "userspace listo", DASH_RING3, 4);
+    hold_ms(550);
 }
 
 // ?????? Smooth progress bar ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
@@ -487,8 +588,11 @@ const DASH_FAULT:     u32 = 0xFFFF4D4D; // rojo — reporter de CPU faults
 /// pasan por `splash_dashboard_log`.
 fn dash_line_color(msg: &str) -> u32 {
     let b = msg.as_bytes();
-    if b.starts_with(b"ring3>") {
+    if b.starts_with(b"ring3>") || b.starts_with(b"[ring3]") {
         DASH_RING3
+    } else if b.starts_with(b"==") {
+        // Encabezados de etapa del boot ("== RING 0 ... ==") y del shell.
+        DASH_ACCENT
     } else if b.starts_with(b"r3hb") {
         DASH_TELEMETRY
     } else if b.starts_with(b"kbd ") {
