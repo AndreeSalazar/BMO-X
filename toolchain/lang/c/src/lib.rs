@@ -551,6 +551,67 @@ int main() { int (*fp)(void); fp = &foo; return fp(); }
         assert!(bef.windows(2).any(|w| w == [0xFF, 0xD0]), "falta call rax indirecto");
     }
 
+    #[test]
+    fn subscript_on_compound_base_now_works() {
+        // p->arr[i] con arr: int* — antes ERROR honesto, ahora compila.
+        let src = r#"
+struct S { int pad; int* arr; };
+int main() {
+    struct S* s;
+    int x;
+    x = s->arr[2];
+    return x;
+}
+"#;
+        let p = parse(src).unwrap();
+        let main_fn = p.functions.iter().find(|f| f.name == "main").unwrap();
+        // x = IndexPtr(Arrow(s,"arr"), 2, Int)
+        let ok = main_fn.body.iter().any(|st| matches!(st,
+            Stmt::Expr(Expr::Assign(n, v)) if n == "x" && matches!(v.as_ref(), Expr::IndexPtr(_, _, TypeSpec::Int))));
+        assert!(ok, "s->arr[2] debe ser IndexPtr con elemento Int");
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn subscript_compound_base_assign_and_compound() {
+        // p->arr[i] = v  y  p->arr[i] += v — no se descartan.
+        let src = r#"
+struct S { int* arr; };
+int main() {
+    struct S* s;
+    s->arr[0] = 5;
+    s->arr[0] += 3;
+    return s->arr[0];
+}
+"#;
+        let p = parse(src).unwrap();
+        let n = p.functions[0].body.iter().filter(|st| matches!(st,
+            Stmt::Expr(Expr::AssignIndexPtr(_, _, _, _)))).count();
+        assert_eq!(n, 2, "las 2 asignaciones a s->arr[0] deben sobrevivir");
+        compile_source_to_bef(src).unwrap();
+    }
+
+    #[test]
+    fn explicit_deref_call_works() {
+        // (*fp)(args) — forma explícita del puntero a función.
+        let src = r#"
+int add(int a, int b) { return a + b; }
+int main() {
+    int (*fp)(int, int);
+    fp = add;
+    return (*fp)(3, 4);
+}
+"#;
+        let p = parse(src).unwrap();
+        // return CallPtr(Deref(Var fp), [3,4])
+        let ok = p.functions.iter().find(|f| f.name == "main").unwrap().body.iter().any(|st|
+            matches!(st, Stmt::Return(Some(Expr::CallPtr(callee, _))) if matches!(callee.as_ref(), Expr::Deref(_))));
+        assert!(ok, "(*fp)(3,4) debe ser CallPtr sobre Deref");
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(2).any(|w| w == [0xFF, 0xD0]), "falta call rax indirecto");
+    }
+
     // ---- LA FUSIÓN sem-asm↔C (Fase 1) ----
 
     #[test]
@@ -731,14 +792,18 @@ int main() { struct Point pt; pt.x = 10; return 0; }
     }
 
     #[test]
-    fn subscript_on_compound_base_errors_honestly() {
-        // p->arr[i]: antes el [i] se IGNORABA en silencio; ahora error claro.
+    fn subscript_on_compound_base_via_field() {
+        // s.arr[0] con arr: int* — evolución del test de Fase 0: antes se
+        // rechazaba (honesto pero limitado), en Fase 2 ya COMPILA como IndexPtr.
         let src = r#"
 struct S { int* arr; };
 int main() { struct S s; int x; x = s.arr[0]; return x; }
 "#;
-        // s.arr[0]: base compuesta (Field) — debe RECHAZARSE, no compilar mal
-        assert!(parse(src).is_err(), "subscript sobre base compuesta debe dar error honesto");
+        let p = parse(src).unwrap();
+        let ok = p.functions[0].body.iter().any(|st| matches!(st,
+            Stmt::Expr(Expr::Assign(n, v)) if n == "x" && matches!(v.as_ref(), Expr::IndexPtr(_, _, _))));
+        assert!(ok, "s.arr[0] ahora es IndexPtr, ya no un error");
+        compile_source_to_bef(src).unwrap();
     }
 
     #[test]

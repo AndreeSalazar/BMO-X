@@ -224,6 +224,9 @@ fn collect_expr_callees(expr: &Expr, callees: &mut Vec<String>) {
         Expr::Field(b,_,_,_) => collect_expr_callees(b, callees),
         Expr::Cast(_, a) => collect_expr_callees(a, callees),
         Expr::Intrinsic(_, args) => { for a in args { collect_expr_callees(a, callees); } }
+        Expr::IndexPtr(b, idx, _) => { collect_expr_callees(b, callees); collect_expr_callees(idx, callees); }
+        Expr::AssignIndexPtr(b, idx, _, v) => { collect_expr_callees(b, callees); collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
+        Expr::CallPtr(c, args) => { collect_expr_callees(c, callees); for a in args { collect_expr_callees(a, callees); } }
         Expr::Subscript(_, idx, _) => collect_expr_callees(idx, callees),
         Expr::AssignSubscript(_, idx, _, v) => { collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
         Expr::Comma(v) => { for e in v { collect_expr_callees(e, callees); } }

@@ -492,6 +492,9 @@ impl Parser {
             Expr::Field(b,_,_,_) => Self::check_syscall_args_in_expr(b, line)?,
             Expr::Cast(_, a) => Self::check_syscall_args_in_expr(a, line)?,
             Expr::Intrinsic(_, args) => { for a in args { Self::check_syscall_args_in_expr(a, line)?; } }
+            Expr::IndexPtr(b, idx, _) => { Self::check_syscall_args_in_expr(b, line)?; Self::check_syscall_args_in_expr(idx, line)?; }
+            Expr::AssignIndexPtr(b, idx, _, v) => { Self::check_syscall_args_in_expr(b, line)?; Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
+            Expr::CallPtr(c, args) => { Self::check_syscall_args_in_expr(c, line)?; for a in args { Self::check_syscall_args_in_expr(a, line)?; } }
             Expr::Subscript(_, idx, _) => Self::check_syscall_args_in_expr(idx, line)?,
             Expr::AssignSubscript(_, idx, _, v) => { Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             _ => {}
@@ -583,6 +586,9 @@ impl Parser {
             Expr::Field(b,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
             Expr::Cast(_, a) => Self::resolve_syscalls_in_expr(syscalls, a),
             Expr::Intrinsic(_, args) => { for a in args { Self::resolve_syscalls_in_expr(syscalls, a); } }
+            Expr::IndexPtr(b, idx, _) => { Self::resolve_syscalls_in_expr(syscalls, b); Self::resolve_syscalls_in_expr(syscalls, idx); }
+            Expr::AssignIndexPtr(b, idx, _, v) => { Self::resolve_syscalls_in_expr(syscalls, b); Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
+            Expr::CallPtr(c, args) => { Self::resolve_syscalls_in_expr(syscalls, c); for a in args { Self::resolve_syscalls_in_expr(syscalls, a); } }
             Expr::Subscript(_, idx, _) => Self::resolve_syscalls_in_expr(syscalls, idx),
             Expr::AssignSubscript(_, idx, _, v) => { Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Comma(v) => { for e in v { Self::resolve_syscalls_in_expr(syscalls, e); } }
@@ -1050,6 +1056,10 @@ impl Parser {
             let lhs = Expr::Subscript(n.clone(), idx.clone(), sc);
             Expr::AssignSubscript(n, idx, sc, Box::new(op(Box::new(lhs), Box::new(val))))
         };
+        let idxptr_assign_op = |b: Box<Expr>, idx: Box<Expr>, ty: TypeSpec, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+            let lhs = Expr::IndexPtr(b.clone(), idx.clone(), ty.clone());
+            Expr::AssignIndexPtr(b, idx, ty, Box::new(op(Box::new(lhs), Box::new(val))))
+        };
         match self.peek() {
             Token::Assign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(Expr::Assign(n, Box::new(val))),
@@ -1057,6 +1067,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(Expr::AssignField(e, f, off, ft, Box::new(val))),
                 Expr::Arrow(e, f, off, ft) => Ok(Expr::AssignArrow(e, f, off, ft, Box::new(val))),
                 Expr::Subscript(n, idx, sc) => Ok(Expr::AssignSubscript(n, idx, sc, Box::new(val))),
+                Expr::IndexPtr(b, idx, ty) => Ok(Expr::AssignIndexPtr(b, idx, ty, Box::new(val))),
                 _ => Ok(val),
             }}
             Token::AddAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1064,6 +1075,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Add)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Add)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Add)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Add)),
                 _ => Ok(val),
             }}
             Token::SubAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1071,6 +1083,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Sub)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Sub)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Sub)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Sub)),
                 _ => Ok(val),
             }}
             Token::MulAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1078,6 +1091,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Mul)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Mul)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mul)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Mul)),
                 _ => Ok(val),
             }}
             Token::DivAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1085,6 +1099,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Div)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Div)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Div)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Div)),
                 _ => Ok(val),
             }}
             Token::ModAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1092,6 +1107,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Mod)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Mod)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mod)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Mod)),
                 _ => Ok(val),
             }}
             Token::ShlAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1099,6 +1115,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Shl)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Shl)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shl)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Shl)),
                 _ => Ok(val),
             }}
             Token::ShrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1106,6 +1123,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Shr)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Shr)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shr)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Shr)),
                 _ => Ok(val),
             }}
             Token::AndAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1113,6 +1131,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitAnd)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitAnd)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitAnd)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::BitAnd)),
                 _ => Ok(val),
             }}
             Token::XorAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1120,6 +1139,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitXor)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitXor)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitXor)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::BitXor)),
                 _ => Ok(val),
             }}
             Token::OrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -1127,6 +1147,7 @@ impl Parser {
                 Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitOr)),
                 Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitOr)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitOr)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::BitOr)),
                 _ => Ok(val),
             }}
             _ => Ok(expr),
@@ -1252,6 +1273,18 @@ impl Parser {
             match self.peek() {
                 Token::PlusPlus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostInc(n.clone()), _ => {} } }
                 Token::MinusMinus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostDec(n.clone()), _ => {} } }
+                Token::OpenParen => {
+                    // (*fp)(args) — llamada a través de un puntero CALCULADO.
+                    // (fp(args) con fp variable ya lo maneja parse_primary.)
+                    self.advance();
+                    let mut args = Vec::new();
+                    while *self.peek() != Token::CloseParen && *self.peek() != Token::Eof {
+                        args.push(self.parse_assign()?);
+                        if *self.peek() == Token::Comma { self.advance(); }
+                    }
+                    self.expect(&Token::CloseParen)?;
+                    expr = Expr::CallPtr(Box::new(expr), args);
+                }
                 Token::OpenBracket => {
                     self.advance();
                     let index = self.parse_expr()?;
@@ -1262,9 +1295,17 @@ impl Parser {
                             let n2 = n.clone();
                             expr = Expr::Subscript(n2, Box::new(index), scale);
                         }
-                        // Antes: se IGNORABA el subscript en silencio (p->arr[i] compilaba mal).
-                        // Un compilador honesto rechaza lo que aun no sabe hacer.
-                        _ => return Err(CError::new(self.line(),"subscript [] solo soportado sobre variables por ahora (bases compuestas como p->arr[i]: pendiente)")),
+                        // base compuesta (p->arr[i], (a+1)[i]): el elemento sale
+                        // del tipo de la base. Antes se rechazaba en seco.
+                        _ => {
+                            let elem = self.resolve_expr_type(&expr)
+                                .and_then(|t| match t {
+                                    TypeSpec::Ptr(inner) | TypeSpec::Array(inner, _) => Some(*inner),
+                                    _ => None,
+                                })
+                                .unwrap_or(TypeSpec::Long);
+                            expr = Expr::IndexPtr(Box::new(expr), Box::new(index), elem);
+                        }
                     }
                 }
                 Token::Dot => {

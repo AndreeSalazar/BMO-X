@@ -52,6 +52,14 @@ pub enum Expr {
     Subscript(String, Box<Expr>, u8),
     /// arr[i] = val — antes la asignación a subscript se DESCARTABA en silencio.
     AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
+    /// base[i] donde base es una EXPRESIÓN que da un puntero (p->arr[i],
+    /// (a+1)[i]): (base, índice, tipo del elemento). Antes se rechazaba.
+    IndexPtr(Box<Expr>, Box<Expr>, TypeSpec),
+    /// base[i] = val para bases compuestas.
+    AssignIndexPtr(Box<Expr>, Box<Expr>, TypeSpec, Box<Expr>),
+    /// (*fp)(args) — llamada a través de un puntero a función CALCULADO
+    /// (no una simple variable). callee da la dirección; args por la pila.
+    CallPtr(Box<Expr>, Vec<Expr>),
     /// base.campo — (base, nombre, offset, TIPO del campo).
     /// El tipo viaja en el AST para que codegen cargue/guarde el tamaño EXACTO:
     /// antes pt.x=10 con x:int escribía 8 bytes y pisaba al campo siguiente.

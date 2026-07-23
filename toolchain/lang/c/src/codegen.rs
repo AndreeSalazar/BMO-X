@@ -293,6 +293,9 @@ impl Codegen {
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => self.collect_expr_strings(v),
             Expr::Cast(_, a) => self.collect_expr_strings(a),
             Expr::Intrinsic(_, args) => { for a in args { self.collect_expr_strings(a); } }
+            Expr::IndexPtr(b, idx, _) => { self.collect_expr_strings(b); self.collect_expr_strings(idx); }
+            Expr::AssignIndexPtr(b, idx, _, v) => { self.collect_expr_strings(b); self.collect_expr_strings(idx); self.collect_expr_strings(v); }
+            Expr::CallPtr(c, args) => { self.collect_expr_strings(c); for a in args { self.collect_expr_strings(a); } }
             Expr::AssignDeref(a, v) => { self.collect_expr_strings(a); self.collect_expr_strings(v); }
             Expr::Field(b,_,_,_) => self.collect_expr_strings(b),
             Expr::Comma(v) => { for e in v { self.collect_expr_strings(e); } }
@@ -1013,6 +1016,33 @@ impl Codegen {
                 self.emit_store_elem(&elem);  // [rax] = rdx (tamaño exacto)
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor (resultado del assign)
             }
+            Expr::IndexPtr(base, index, elem) => {
+                // p->arr[i]: dirección = base(puntero) + i*sizeof(elem), luego load
+                self.emit_index_ptr_addr(base, index, elem);
+                self.emit_load_elem(&elem.clone());
+            }
+            Expr::AssignIndexPtr(base, index, elem, val) => {
+                self.emit_expr(val);          // rax = valor
+                self.code.push(0x50);         // push valor
+                self.emit_index_ptr_addr(base, index, elem); // rax = dirección
+                self.code.push(0x5A);         // pop rdx = valor
+                self.emit_store_elem(&elem.clone());
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
+            }
+            Expr::CallPtr(callee, args) => {
+                // (*fp)(args): args a la pila, callee da la dirección, call rax
+                for arg in args.iter().rev() {
+                    self.emit_expr(arg);
+                    self.code.push(0x50);
+                }
+                self.emit_expr(callee);                     // rax = dirección de la función
+                self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
+                let n = args.len() as u32 * 8;
+                if n > 0 {
+                    if n <= 127 { self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]); }
+                    else { self.code.extend_from_slice(&[0x48, 0x81, 0xC4]); self.code.extend_from_slice(&n.to_le_bytes()); }
+                }
+            }
             Expr::Add(a, b) => self.emit_binop(a, b, &[0x48, 0x01, 0xD0]),
             Expr::Sub(a, b) => self.emit_binop(a, b, &[0x48, 0x29, 0xD0]),
             Expr::Mul(a, b) => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
@@ -1193,6 +1223,18 @@ impl Codegen {
         }
     }
 
+    /// rax = base_ptr + index * sizeof(elem), donde `base` es una EXPRESIÓN
+    /// que produce un puntero (p->arr, a+1...). Deja la dirección en rax.
+    fn emit_index_ptr_addr(&mut self, base: &Expr, index: &Expr, elem: &TypeSpec) {
+        let size = self.type_stack_size(elem).max(1) as u8;
+        self.emit_expr(base);          // rax = puntero base
+        self.code.push(0x50);          // push base
+        self.emit_expr(index);         // rax = índice
+        self.emit_scale_index(size);   // rax = índice * size
+        self.code.push(0x5A);          // pop rdx = base
+        self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+    }
+
     /// Carga [rax] → rax con el tamaño y signo EXACTOS del elemento.
     /// Antes siempre era `mov rax,[rax]` (8 bytes): leer int[i] traía basura vecina.
     fn emit_load_elem(&mut self, elem: &TypeSpec) {
@@ -1305,6 +1347,9 @@ impl Codegen {
             }
             Expr::Subscript(name, index, scale) => {
                 self.emit_subscript_addr(name, index, *scale);
+            }
+            Expr::IndexPtr(base, index, elem) => {
+                self.emit_index_ptr_addr(base, index, elem);
             }
             _ => self.emit_expr(expr),
         }
