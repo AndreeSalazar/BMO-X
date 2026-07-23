@@ -93,6 +93,16 @@ fn shell_prompt() {
     dash_prompt("");
 }
 
+/// Limpia la pantalla y re-dibuja el dashboard vacío (comando `cls` y
+/// auto-limpieza al terminar un proceso). Reinicia el cursor rodante del log
+/// para que el panel arranque de cero, como una terminal recién abierta.
+pub(crate) fn clear_screen() {
+    if !crate::info::has_fb() { return; }
+    splash::splash_clear();
+    splash::splash_dashboard_init();
+    unsafe { DASH_LOG_ROW = 0; }
+}
+
 /// Live Ring 3 heartbeat on FIXED row 10, repainted by the shell's poll loop
 /// whenever a value changes. This is the always-on view the post-mortem
 /// fault reporter cannot give when nothing faults:
@@ -163,9 +173,25 @@ pub(crate) fn dash_heartbeat() {
     }
 }
 
+/// Último total de tareas visto por el shell, para detectar cuándo un proceso
+/// TERMINÓ (el total baja) y limpiar la pantalla automáticamente.
+static mut LAST_TASK_TOTAL: usize = 0;
+
 fn shell_read_line(buf: &mut [u8]) -> usize {
     let mut n = 0;
     loop {
+        // Auto-limpieza: si un proceso terminó (el total de tareas bajó) y NO
+        // estás escribiendo (línea vacía), limpia la pantalla — como una
+        // terminal que se refresca al acabar el programa. Nunca borra a media
+        // escritura (solo con n==0).
+        let (total, _) = crate::ring0::scheduler::counts();
+        unsafe {
+            if n == 0 && total < LAST_TASK_TOTAL {
+                clear_screen();
+                dash_log("== proceso terminado : pantalla limpia ==");
+            }
+            LAST_TASK_TOTAL = total;
+        }
         // Update the framebuffer's prompt with the current line
         // (so the screen shows what the user is typing).
         dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
@@ -223,7 +249,7 @@ fn shell_help() {
     // barrer el resto del log, y se lee de un vistazo.
     s_log("== BMO-X shell ==");
     s_log(" sistema : info  mem  tasks");
-    s_log(" video   : fb  splash");
+    s_log(" video   : fb  splash  cls");
     s_log(" ring3   : bex  ktest");
     s_log(" poder   : reboot  halt  panic");
     s_log(" ayuda   : help");
@@ -401,6 +427,8 @@ fn run_shell(ctx: &BootContext) -> ! {
 
         if cmd == b"help" {
             shell_help();
+        } else if cmd == b"cls" || cmd == b"clear" {
+            clear_screen();
         } else if cmd == b"info" {
             shell_info(ctx);
         } else if cmd == b"tasks" {

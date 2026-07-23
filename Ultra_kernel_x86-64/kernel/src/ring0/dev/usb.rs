@@ -110,6 +110,7 @@ static HAL: KernelXhciHal = KernelXhciHal;
 static mut HID: UsbHidHal = UsbHidHal::new();
 static mut READY: bool = false;
 static mut SHIFT: bool = false;
+static mut CAPS: bool = false;
 static mut PRESENT: bool = false;
 
 fn log(msg: &str) {
@@ -260,9 +261,14 @@ pub fn poll_ascii() -> Option<u8> {
                     unsafe { SHIFT = true };
                     continue;
                 }
-                if let Some(a) =
-                    crate::ring0::dev::keyboard::scancode1_to_ascii(ev.code, unsafe { SHIFT })
-                {
+                // Caps Lock (0x3A): toggle al presionar, como Windows.
+                if ev.code == 0x3A {
+                    unsafe { CAPS = !CAPS };
+                    continue;
+                }
+                if let Some(a) = crate::ring0::dev::keyboard::scancode1_to_ascii(
+                    ev.code, unsafe { SHIFT }, unsafe { CAPS },
+                ) {
                     out = Some(a); // el último gana (typematic ya viene diffeado)
                 }
             }

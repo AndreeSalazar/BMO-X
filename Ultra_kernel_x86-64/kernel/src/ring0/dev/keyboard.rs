@@ -75,6 +75,9 @@ pub fn init() {
 
 /// Left/right shift held? Tracked across polls for upper/lower case.
 static mut SHIFT: bool = false;
+/// Caps Lock activo (toggle, como Windows). Afecta SOLO las letras:
+/// el caso efectivo de una letra es Shift XOR Caps; los símbolos ignoran Caps.
+static mut CAPS: bool = false;
 
 /// Poll the controller once. Returns `(raw_scancode, Some(ascii))` when a
 /// printable key (or Enter/Backspace/Tab) was pressed, `(raw, None)` for
@@ -98,8 +101,9 @@ pub fn poll_event() -> Option<(u8, Option<u8>)> {
     let ascii = match code {
         0x2A | 0x36 => { unsafe { SHIFT = true; } None }   // shift make
         0xAA | 0xB6 => { unsafe { SHIFT = false; } None }  // shift break
+        0x3A => { unsafe { CAPS = !CAPS; } None }          // Caps Lock make: toggle
         c if c & 0x80 != 0 => None,                        // any other release
-        c => translate(c, unsafe { SHIFT }),
+        c => translate(c, unsafe { SHIFT }, unsafe { CAPS }),
     };
     Some((code, ascii))
 }
@@ -110,14 +114,15 @@ pub fn poll_ascii() -> Option<u8> {
 }
 
 /// Set 1 make code → ASCII, exposed so the USB HID bridge (`dev::usb`) feeds
-/// its scancodes through the exact same US-QWERTY layout as the PS/2 path.
-pub(crate) fn scancode1_to_ascii(code: u8, shift: bool) -> Option<u8> {
-    translate(code, shift)
+/// its scancodes through la MISMA tabla US-QWERTY + Caps que el path PS/2.
+pub(crate) fn scancode1_to_ascii(code: u8, shift: bool, caps: bool) -> Option<u8> {
+    translate(code, shift, caps)
 }
 
 /// Scancode Set 1 make code → ASCII for a US QWERTY layout. `None` for keys
 /// with no shell meaning (function keys, arrows, modifiers, keypad, ...).
-fn translate(code: u8, shift: bool) -> Option<u8> {
+/// `caps` invierte el caso SOLO de letras (comportamiento Windows).
+fn translate(code: u8, shift: bool, caps: bool) -> Option<u8> {
     let c = match code {
         0x02 => if shift { b'!' } else { b'1' },
         0x03 => if shift { b'@' } else { b'2' },
@@ -172,5 +177,10 @@ fn translate(code: u8, shift: bool) -> Option<u8> {
         0x39 => b' ', // Space
         _ => return None,
     };
+    // Caps Lock: invierte el caso de las letras (Shift XOR Caps). Los símbolos
+    // (no alfabéticos) no se tocan — igual que Windows.
+    if caps && c.is_ascii_alphabetic() {
+        return Some(c ^ 0x20);
+    }
     Some(c)
 }
