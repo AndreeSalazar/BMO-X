@@ -6,8 +6,23 @@
 //! nada: el codegen decimal exacto sigue igual, solo cambia quién arma el AST.
 
 use crate::ast::error::CobolError;
-use crate::ast::CobolStatement;
+use crate::ast::{CobolStatement, DataItem};
 use crate::lexer::{lex, Tok, Token};
+
+/// Texto fuente de un token — para reensamblar una cláusula PIC que el lexer
+/// partió (`9(5)V99` → Number "9", `(`, "5", `)`, Ident "V99").
+fn tok_text(t: &Tok) -> String {
+    match t {
+        Tok::Keyword(w) | Tok::Ident(w) | Tok::Number(w) => w.clone(),
+        Tok::Str(s) => s.clone(),
+        Tok::Period => ".".into(),
+        Tok::Comma => ",".into(),
+        Tok::LParen => "(".into(),
+        Tok::RParen => ")".into(),
+        Tok::Equal => "=".into(),
+        Tok::Punct(c) => c.to_string(),
+    }
+}
 
 /// Cursor sobre el flujo de tokens.
 pub struct Cursor {
@@ -129,6 +144,74 @@ pub fn parse_statement(c: &mut Cursor) -> Result<CobolStatement, CobolError> {
     Ok(st)
 }
 
+// ── DATA DIVISION: records con PIC (la esencia de datos de COBOL) ────────
+
+impl Cursor {
+    /// Reensambla una cláusula PIC concatenando los textos de los tokens
+    /// contiguos hasta un keyword (VALUE/…) o Period. `9(5)V99` vuelve a ser
+    /// un solo string que `pic::parse_pic` entiende.
+    fn read_pic(&mut self) -> String {
+        let mut s = String::new();
+        while let Some(t) = self.peek() {
+            match t {
+                Tok::Keyword(_) | Tok::Period => break,
+                other => {
+                    s.push_str(&tok_text(other));
+                    self.pos += 1;
+                }
+            }
+        }
+        s
+    }
+}
+
+/// Parsea UN data item: `NN NOMBRE [PIC[TURE] [IS] <pic>] [VALUE <lit>] .`
+pub fn parse_data_item(c: &mut Cursor) -> Result<DataItem, CobolError> {
+    let line = c.line();
+    let level: u32 = match c.bump() {
+        Some(Tok::Number(n)) => n.parse().map_err(|_| {
+            CobolError::new(line, format!("nivel de data inválido: {n}"))
+        })?,
+        _ => return Err(CobolError::new(line, "se esperaba un número de nivel (01, 05…)")),
+    };
+    let name = match c.bump() {
+        Some(Tok::Ident(id)) => id,
+        Some(Tok::Keyword(k)) if k == "FILLER" => "FILLER".into(),
+        _ => return Err(CobolError::new(line, "se esperaba el nombre del dato")),
+    };
+
+    let mut pic: Option<String> = None;
+    let mut value: Option<String> = None;
+    // Cláusulas en cualquier orden hasta el punto.
+    loop {
+        if c.eat_kw("PIC") || c.eat_kw("PICTURE") {
+            c.eat_kw("IS"); // opcional
+            pic = Some(c.read_pic());
+        } else if c.eat_kw("VALUE") {
+            c.eat_kw("IS"); // opcional
+            value = c.bump().map(|t| tok_text(&t));
+        } else if matches!(c.peek(), Some(Tok::Period)) || c.done() {
+            break;
+        } else {
+            // Cláusula aún no soportada (USAGE, OCCURS…): sáltala.
+            c.bump();
+        }
+    }
+    c.eat_periods();
+    Ok(DataItem::new(level, name, pic, value))
+}
+
+/// Parsea la WORKING-STORAGE / DATA DIVISION: items mientras empiece por un
+/// número de nivel.
+pub fn parse_data_items(src: &str) -> Result<Vec<DataItem>, CobolError> {
+    let mut c = Cursor::from_source(src);
+    let mut out = Vec::new();
+    while matches!(c.peek(), Some(Tok::Number(_))) {
+        out.push(parse_data_item(&mut c)?);
+    }
+    Ok(out)
+}
+
 /// Parsea una secuencia de sentencias (cuerpo del PROCEDURE) desde el fuente.
 pub fn parse_statements(src: &str) -> Result<Vec<CobolStatement>, CobolError> {
     let mut c = Cursor::from_source(src);
@@ -169,5 +252,27 @@ mod tests {
     #[test]
     fn errors_are_clear() {
         assert!(parse_statements("MOVE 5 SALDO.").is_err()); // falta TO
+    }
+
+    #[test]
+    fn parses_data_item_with_pic_scale() {
+        // El corazón de COBOL: un record con PIC decimal, desde tokens.
+        let items = parse_data_items("01 SALDO PIC 9(5)V99 VALUE 0.").unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].level, 1);
+        assert_eq!(items[0].name, "SALDO");
+        assert_eq!(items[0].pic.as_deref(), Some("9(5)V99"));
+        assert_eq!(items[0].scale(), 2); // ← centavos: la esencia bancaria
+    }
+
+    #[test]
+    fn parses_several_items_and_text() {
+        let src = "01 NOMBRE PIC X(20).\n01 EDAD PIC 9(3).\n01 PRECIO PICTURE IS S9(4)V99.";
+        let items = parse_data_items(src).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].scale(), 0);   // texto
+        assert_eq!(items[1].scale(), 0);   // entero
+        assert_eq!(items[2].scale(), 2);   // dinero con signo
+        assert!(items[2].pic_field.as_ref().unwrap().signed);
     }
 }
