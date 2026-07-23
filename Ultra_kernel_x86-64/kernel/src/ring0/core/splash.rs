@@ -646,7 +646,7 @@ pub fn splash_dashboard_log(row: usize, msg: &str) {
 /// Update the bottom prompt area with the current command being
 /// typed. The caller passes the in-progress line (up to a
 /// reasonable limit). The prompt always starts with "serial > ".
-pub fn splash_dashboard_prompt(line: &str) {
+pub fn splash_dashboard_prompt(line: &str, cursor: bool) {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
@@ -666,4 +666,12 @@ pub fn splash_dashboard_prompt(line: &str) {
     // `draw_str` takes a `&str`; it iterates `.bytes()` internally,
     // so non-ASCII is dropped (matches the rest of the FONT16 grid).
     draw_str(20 + prefix_w, y, s, DASH_TEXT);
+    // Cursor de bloque parpadeante (estilo terminal). Se pinta al final del
+    // texto cuando `cursor` está activo; el parpadeo lo decide quien llama
+    // (según los ticks) para no repintar constantemente.
+    if cursor {
+        let cx = 20 + prefix_w + text_width(s);
+        fill_rect(cx, y, (CHAR_W as u32) - 2, FONT_H as u32, DASH_ACCENT);
+    }
+    wc_flush();
 }

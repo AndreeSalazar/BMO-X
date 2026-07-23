@@ -759,12 +759,24 @@ pub unsafe fn ring_doorbell(slot: u8, endpoint_id: u8) {
     }
 }
 
+/// Diagnóstico: cuántos Transfer Events ha posteado el xHC (cualquier slot/ep)
+/// y cuántos eventos crudos de cualquier tipo. Si al presionar teclas TEV no
+/// sube, el controlador no está completando la transferencia de interrupción
+/// (endpoint/ring/doorbell), no el parseo. Ojos en metal desnudo.
+static mut XFER_EVENTS: u32 = 0;
+static mut RAW_EVENTS: u32 = 0;
+
+pub fn xfer_events() -> u32 { unsafe { XFER_EVENTS } }
+pub fn raw_events() -> u32 { unsafe { RAW_EVENTS } }
+
 pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
     loop {
         let ev = evt_poll_nb(ctrl)?;
+        RAW_EVENTS = RAW_EVENTS.wrapping_add(1);
         let typ = (ev.3 >> 10) & 0x3F;
         if typ == TRB_TRANSFER {
+            XFER_EVENTS = XFER_EVENTS.wrapping_add(1);
             return Some((((ev.3 >> 24) & 0xFF) as u8, ((ev.3 >> 16) & 0x1F) as u8, (ev.2 >> 24) as u8));
         }
         if typ == TRB_COMPLETION || typ == TRB_PORT_STATUS { continue; }

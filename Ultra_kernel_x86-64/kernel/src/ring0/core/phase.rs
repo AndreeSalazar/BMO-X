@@ -81,11 +81,25 @@ pub fn dashboard_log(msg: &str) {
     splash::splash_dashboard_log(row, msg);
 }
 
-// Mirror the current in-progress shell line to the framebuffer's
-// prompt area. Called every time the user presses a key.
+// Mirror the current in-progress shell line to the framebuffer's prompt area,
+// con CURSOR PARPADEANTE. Antes se repintaba en CADA iteración del loop del
+// shell (limpiar+dibujar sin cambio) → ese era el ghosting ocasional del
+// prompt. Ahora solo repinta cuando: cambia la línea, parpadea el cursor, o
+// hubo un clear. Pantalla estable + cursor vivo.
 fn dash_prompt(line: &str) {
     if !crate::info::has_fb() { return; }
-    splash::splash_dashboard_prompt(line);
+    let ticks = crate::ring0::timer::ticks();
+    let blink = ((ticks >> 6) & 1) == 0; // visible ~mitad del tiempo
+    let n = line.len();
+    static mut LAST_N: usize = usize::MAX;
+    static mut LAST_BLINK: bool = false;
+    static mut LAST_GEN: u32 = u32::MAX;
+    unsafe {
+        let gen = SCREEN_GEN;
+        if LAST_N == n && LAST_BLINK == blink && LAST_GEN == gen { return; }
+        LAST_N = n; LAST_BLINK = blink; LAST_GEN = gen;
+    }
+    splash::splash_dashboard_prompt(line, blink);
 }
 
 fn shell_prompt() {
@@ -201,16 +215,18 @@ pub(crate) fn dash_heartbeat() {
 pub(crate) fn dash_usb_status() {
     if !crate::info::has_fb() { return; }
     let (kbd, mouse, ks, ms, mev, mx, my, btn, kev) = crate::ring0::dev::usb::hid_stats();
+    let (tev, rev, hev) = crate::ring0::dev::usb::xfer_stats();
     static mut LAST: u64 = u64::MAX;
     static mut LAST_GEN: u32 = u32::MAX;
     // Firma de cambio: agrupa lo relevante. mx/my se truncan a 12 bits para que
     // micro-jitter del mouse no dispare repintados (anti-ghosting).
     let sig = (kbd as u64) | ((mouse as u64) << 1)
-        | ((mev as u64 & 0xFFFF) << 8)
-        | (((mx as u64) & 0xFFF) << 24)
-        | (((my as u64) & 0xFFF) << 36)
+        | ((mev as u64 & 0xFF) << 8)
+        | ((kev as u64 & 0xFF) << 16)
+        | ((tev as u64 & 0xFFFF) << 24)
+        | ((hev as u64 & 0xFF) << 40)
         | ((btn as u64) << 48)
-        | ((kev as u64 & 0xFF) << 56);
+        | (((mx as u64) & 0x3F) << 56);
     unsafe {
         let gen = SCREEN_GEN;
         // Repintar si algo cambió O si hubo un clear (gen distinta) que borró la fila.
@@ -218,6 +234,7 @@ pub(crate) fn dash_usb_status() {
         LAST = sig;
         LAST_GEN = gen;
     }
+    let _ = rev;
 
     fn txt(b: &mut [u8; 80], o: &mut usize, s: &str) {
         for &c in s.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
@@ -246,6 +263,10 @@ pub(crate) fn dash_usb_status() {
     txt(&mut b, &mut o, " y="); sdec(&mut b, &mut o, my);
     txt(&mut b, &mut o, " b="); dec(&mut b, &mut o, btn as u32);
     txt(&mut b, &mut o, " kev="); dec(&mut b, &mut o, kev);
+    // Contadores xHC: tev (transfer events del controlador) + hev (eventos HID).
+    // El corte del teclado se lee aqui: tev=0 al teclear => xHC no completa.
+    txt(&mut b, &mut o, " tev="); dec(&mut b, &mut o, tev);
+    txt(&mut b, &mut o, " hev="); dec(&mut b, &mut o, hev);
 
     if let Ok(s) = core::str::from_utf8(&b[..o]) {
         let cur = crate::ring0::mm::vmm::read_cr3();

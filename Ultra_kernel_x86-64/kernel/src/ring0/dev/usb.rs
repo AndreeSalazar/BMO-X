@@ -124,6 +124,7 @@ static mut MOUSE_X: i32 = 0;        // posición acumulada (relativa) X
 static mut MOUSE_Y: i32 = 0;        // posición acumulada (relativa) Y
 static mut MOUSE_BTN: u8 = 0;       // bitmap de botones actual
 static mut KEY_EVENTS: u32 = 0;     // nº de teclas imprimibles entregadas
+static mut HID_EVENTS: u32 = 0;     // nº TOTAL de InputEvents de hid.poll (kbd+mouse)
 
 fn log(msg: &str) {
     serial_write(msg);
@@ -285,6 +286,7 @@ pub fn poll_ascii() -> Option<u8> {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
         hid.poll(&mut evs)
     };
+    unsafe { HID_EVENTS = HID_EVENTS.wrapping_add(n as u32); }
     let mut out: Option<u8> = None;
     for ev in &evs[..n] {
         match ev.kind {
@@ -339,4 +341,13 @@ pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
         (KBD_RDY, MOUSE_RDY, KBD_SLOT, MOUSE_SLOT,
          MOUSE_EVENTS, MOUSE_X, MOUSE_Y, MOUSE_BTN, KEY_EVENTS)
     }
+}
+
+/// Contadores de bajo nivel del xHC + HID para cazar el corte del teclado:
+/// (transfer_events_del_xHC, raw_events_del_xHC, hid_events_totales).
+/// Si al teclear TEV no sube → el xHC no completa la interrupción (endpoint/
+/// ring/doorbell). Si TEV sube pero HEV no → el evento no matchea al teclado.
+/// Si HEV sube pero kev no → mapeo (ya no deberia tras el keypad).
+pub fn xfer_stats() -> (u32, u32, u32) {
+    (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
 }
