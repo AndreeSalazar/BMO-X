@@ -27,6 +27,20 @@ mod generated_tests {
     }
 
     #[test]
+    fn parser_knows_full_cobol_vocabulary() {
+        use crate::parser::Parser;
+        // Un verbo COBOL reservado pero aún sin codegen → error que cita el
+        // estándar (las tablas generadas por Python alimentan el parser).
+        let src = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nEVALUATE X.\n";
+        let err = Parser::new(src).parse_program().unwrap_err();
+        assert!(err.message.contains("COBOL85"), "esperaba estándar: {}", err.message);
+        // Algo que no es COBOL → error distinto.
+        let src2 = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nXYZZY 1.\n";
+        let err2 = Parser::new(src2).parse_program().unwrap_err();
+        assert!(err2.message.contains("no es COBOL"), "esperaba no-COBOL: {}", err2.message);
+    }
+
+    #[test]
     fn standard_tagging_and_intrinsics() {
         use crate::generated::words;
         // Cada palabra sabe de qué era viene (Grace Hopper -> ISO 2023).

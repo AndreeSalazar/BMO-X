@@ -272,7 +272,26 @@ impl Parser {
         } else if upper.contains("END-IF") || upper.contains("END-PERFORM") {
             Ok(CobolStatement::Expr(line.to_string()))
         } else {
-            Err(CobolError::new(line_no, format!("unsupported COBOL statement: {line}")))
+            // Vocabulario COBOL COMPLETO vía las tablas generadas por Python
+            // (cobol-gen): el parser distingue un verbo COBOL conocido pero
+            // aún sin codegen, de una palabra reservada de cierto estándar,
+            // de algo que sencillamente no es COBOL. Conoce todo el idioma
+            // aunque todavía no compile cada forma.
+            use crate::generated::words;
+            let first = upper.split_whitespace().next().unwrap_or("");
+            if let Some(kind) = words::verb_kind(first) {
+                Err(CobolError::new(line_no, format!(
+                    "verbo COBOL '{first}' (=> {kind}) reconocido, pero esta forma aún no se compila: {line}"
+                )))
+            } else if let Some(std) = words::reserved_since(first) {
+                Err(CobolError::new(line_no, format!(
+                    "'{first}' es palabra reservada COBOL ({std}); aún sin soporte como sentencia: {line}"
+                )))
+            } else {
+                Err(CobolError::new(line_no, format!(
+                    "no es COBOL reconocido: '{first}' desconocido en: {line}"
+                )))
+            }
         }
     }
 
