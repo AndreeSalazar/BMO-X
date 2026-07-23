@@ -33,6 +33,12 @@ def all_reserved_with_standard():
             wu = w.upper()
             if wu not in seen:
                 seen[wu] = std
+    # Lista comprehensiva (union de estandares + extensiones IBM/VAX). Las que
+    # ya tienen era la conservan; el resto queda etiquetado "COMMON".
+    for w in getattr(definition, "RESERVED_COMMON", []):
+        wu = w.upper()
+        if wu not in seen:
+            seen[wu] = "COMMON"
     return seen
 
 
