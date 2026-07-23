@@ -2,6 +2,7 @@
 pub mod codegen;
 pub mod dialect;
 pub mod ir_emit;
+pub mod lexer;
 pub mod parser;
 pub mod pic;
 /// Tablas de COBOL GENERADAS por `toolchain/tools/cobol-gen` (Python).
