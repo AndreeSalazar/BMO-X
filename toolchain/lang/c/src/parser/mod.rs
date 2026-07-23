@@ -491,6 +491,7 @@ impl Parser {
             Expr::AssignDeref(a, v) => { Self::check_syscall_args_in_expr(a, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             Expr::Field(b,_,_,_) => Self::check_syscall_args_in_expr(b, line)?,
             Expr::Cast(_, a) => Self::check_syscall_args_in_expr(a, line)?,
+            Expr::Intrinsic(_, args) => { for a in args { Self::check_syscall_args_in_expr(a, line)?; } }
             Expr::Subscript(_, idx, _) => Self::check_syscall_args_in_expr(idx, line)?,
             Expr::AssignSubscript(_, idx, _, v) => { Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             _ => {}
@@ -581,6 +582,7 @@ impl Parser {
             Expr::AssignDeref(a, v) => { Self::resolve_syscalls_in_expr(syscalls, a); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Field(b,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
             Expr::Cast(_, a) => Self::resolve_syscalls_in_expr(syscalls, a),
+            Expr::Intrinsic(_, args) => { for a in args { Self::resolve_syscalls_in_expr(syscalls, a); } }
             Expr::Subscript(_, idx, _) => Self::resolve_syscalls_in_expr(syscalls, idx),
             Expr::AssignSubscript(_, idx, _, v) => { Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Comma(v) => { for e in v { Self::resolve_syscalls_in_expr(syscalls, e); } }
@@ -1277,14 +1279,12 @@ impl Parser {
                         }
                         Ok(Expr::Syscall(def, args))
                     } else if let Some(stripped) = name.strip_prefix("__") {
-                        // FUSIÓN sem-asm↔C: __hlt(), __rdtsc()... = instrucción
-                        // de la tabla como función. El namespace __ es reservado
-                        // para la implementación en C — aquí ES la implementación.
-                        if !args.is_empty() {
-                            return Err(CError::new(tok_line, format!(
-                                "intrinsic {name}() no lleva argumentos (por ahora)")));
-                        }
-                        Ok(Expr::Intrinsic(stripped.to_string()))
+                        // FUSIÓN sem-asm↔C: __hlt(), __outb(p,v), __rdtsc()... =
+                        // instrucción de la tabla como función. El namespace __
+                        // es reservado a la implementación — aquí ES la
+                        // implementación. La aridad la valida el codegen contra
+                        // la tabla (donde vive la verdad de cada intrínseco).
+                        Ok(Expr::Intrinsic(stripped.to_string(), args))
                     } else {
                         Ok(Expr::Call(name, args))
                     }

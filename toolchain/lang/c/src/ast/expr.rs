@@ -62,8 +62,9 @@ pub enum Expr {
     AssignDeref(Box<Expr>, Box<Expr>),
     /// (tipo)expr — cast REAL: trunca/extiende; antes era no-op silencioso.
     Cast(TypeSpec, Box<Expr>),
-    /// __nombre() — la FUSIÓN sem-asm↔C: instrucción de la tabla
+    /// __nombre(args...) — la FUSIÓN sem-asm↔C: instrucción de la tabla
     /// intrinsics.toml invocada como función. El nombre va SIN el prefijo __.
-    Intrinsic(String),
+    /// Los argumentos van a los registros que dicta la tabla (dx, al, ecx...).
+    Intrinsic(String, Vec<Expr>),
     Syscall(SyscallDef, Vec<Expr>),
 }

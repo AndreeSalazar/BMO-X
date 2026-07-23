@@ -223,6 +223,7 @@ fn collect_expr_callees(expr: &Expr, callees: &mut Vec<String>) {
         Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => collect_expr_callees(v, callees),
         Expr::Field(b,_,_,_) => collect_expr_callees(b, callees),
         Expr::Cast(_, a) => collect_expr_callees(a, callees),
+        Expr::Intrinsic(_, args) => { for a in args { collect_expr_callees(a, callees); } }
         Expr::Subscript(_, idx, _) => collect_expr_callees(idx, callees),
         Expr::AssignSubscript(_, idx, _, v) => { collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
         Expr::Comma(v) => { for e in v { collect_expr_callees(e, callees); } }

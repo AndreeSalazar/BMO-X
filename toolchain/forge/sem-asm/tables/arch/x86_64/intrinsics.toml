@@ -56,3 +56,58 @@ bytes = [0xCC]
 description = "Lee el contador de ciclos del CPU (TSC)"
 bytes = [0x0F, 0x31]
 returns = "u64_edx_eax"
+
+# === Con operandos: los que un DRIVER necesita ===
+# `args` mapea cada argumento (en orden) a su registro; el codegen evalua
+# cada expresion, la apila, y la vuelca al registro justo antes de la
+# instruccion. `returns` dice de que registro sale el valor.
+
+[outb]
+description = "Escribe un byte a un puerto de E/S: __outb(puerto, valor)"
+bytes = [0xEE]        # out dx, al
+args = ["dx", "al"]
+
+[outw]
+description = "Escribe una palabra a un puerto: __outw(puerto, valor)"
+bytes = [0x66, 0xEF]  # out dx, ax
+args = ["dx", "ax"]
+
+[outl]
+description = "Escribe un dword a un puerto: __outl(puerto, valor)"
+bytes = [0xEF]        # out dx, eax
+args = ["dx", "eax"]
+
+[inb]
+description = "Lee un byte de un puerto: __inb(puerto)"
+bytes = [0xEC]        # in al, dx
+args = ["dx"]
+returns = "al"
+
+[inw]
+description = "Lee una palabra de un puerto: __inw(puerto)"
+bytes = [0x66, 0xED]  # in ax, dx
+args = ["dx"]
+returns = "ax"
+
+[inl]
+description = "Lee un dword de un puerto: __inl(puerto)"
+bytes = [0xED]        # in eax, dx
+args = ["dx"]
+returns = "eax"
+
+[rdmsr]
+description = "Lee un Model-Specific Register: __rdmsr(nr) (Ring 0)"
+bytes = [0x0F, 0x32]  # rdmsr: ecx=nr -> edx:eax
+args = ["ecx"]
+returns = "u64_edx_eax"
+
+[wrmsr]
+description = "Escribe un MSR: __wrmsr(nr, valor) (Ring 0)"
+bytes = [0x0F, 0x30]  # wrmsr: ecx=nr, edx:eax=valor
+args = ["ecx", "u64_edx_eax"]
+
+[cpuid]
+description = "CPUID hoja en eax -> devuelve eax (los otros 3 regs: pendiente)"
+bytes = [0x0F, 0xA2]
+args = ["eax"]
+returns = "eax"

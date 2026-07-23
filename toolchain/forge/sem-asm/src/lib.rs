@@ -85,13 +85,16 @@ fn toml_byte(v: &toml::Value) -> Option<u8> {
     v.as_integer().and_then(|i| u8::try_from(i).ok())
 }
 
-/// Un intrínseco: bytes exactos + convención de retorno.
-/// La fusión lenguaje↔ASM: los frontends los exponen como `__nombre()`.
+/// Un intrínseco: bytes exactos + cómo entran los argumentos y sale el valor.
+/// La fusión lenguaje↔ASM: los frontends los exponen como `__nombre(...)`.
 pub struct IntrinsicDef {
     pub bytes: Vec<u8>,
-    /// El resultado sale en edx:eax (rdtsc y familia) — el codegen lo
-    /// combina a rax con `shl rdx,32; or rax,rdx`.
-    pub returns_edx_eax: bool,
+    /// Registro destino de cada argumento, en orden ("dx", "al", "ecx",
+    /// "u64_edx_eax"...). Vacío = intrínseco sin operandos.
+    pub args: Vec<String>,
+    /// De dónde sale el valor de retorno: "al"/"ax"/"eax"/"u64_edx_eax",
+    /// o None para los que no devuelven nada.
+    pub returns: Option<String>,
 }
 
 /// Tabla de intrínsecos cargada desde `arch/<isa>/intrinsics.toml`.
@@ -112,9 +115,12 @@ impl Intrinsics {
             let Some(arr) = entry.get("bytes").and_then(|v| v.as_array()) else { continue };
             let bytes: Vec<u8> = arr.iter().filter_map(toml_byte).collect();
             if bytes.is_empty() { continue; }
-            let returns_edx_eax =
-                entry.get("returns").and_then(|v| v.as_str()) == Some("u64_edx_eax");
-            map.insert(name.clone(), IntrinsicDef { bytes, returns_edx_eax });
+            let args: Vec<String> = entry.get("args")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let returns = entry.get("returns").and_then(|v| v.as_str()).map(String::from);
+            map.insert(name.clone(), IntrinsicDef { bytes, args, returns });
         }
         Ok(Self { map })
     }
@@ -150,8 +156,16 @@ mod tests {
         assert_eq!(intr.get("pause").unwrap().bytes, vec![0xF3, 0x90]);
         let rdtsc = intr.get("rdtsc").unwrap();
         assert_eq!(rdtsc.bytes, vec![0x0F, 0x31]);
-        assert!(rdtsc.returns_edx_eax, "rdtsc devuelve edx:eax");
+        assert_eq!(rdtsc.returns.as_deref(), Some("u64_edx_eax"));
+        assert!(rdtsc.args.is_empty(), "rdtsc no lleva operandos");
         assert!(intr.get("meta").is_none(), "[meta] no es un intrínseco");
+        // con operandos
+        let outb = intr.get("outb").unwrap();
+        assert_eq!(outb.bytes, vec![0xEE]);
+        assert_eq!(outb.args, vec!["dx", "al"]);
+        let wrmsr = intr.get("wrmsr").unwrap();
+        assert_eq!(wrmsr.args, vec!["ecx", "u64_edx_eax"]);
+        assert_eq!(intr.get("inb").unwrap().returns.as_deref(), Some("al"));
     }
 
     #[test]

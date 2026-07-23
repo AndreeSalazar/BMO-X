@@ -276,6 +276,7 @@ impl Codegen {
             Expr::AssignArrow(p,_,_,_,v) => { self.collect_expr_strings(p); self.collect_expr_strings(v); }
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => self.collect_expr_strings(v),
             Expr::Cast(_, a) => self.collect_expr_strings(a),
+            Expr::Intrinsic(_, args) => { for a in args { self.collect_expr_strings(a); } }
             Expr::AssignDeref(a, v) => { self.collect_expr_strings(a); self.collect_expr_strings(v); }
             Expr::Field(b,_,_,_) => self.collect_expr_strings(b),
             Expr::Comma(v) => { for e in v { self.collect_expr_strings(e); } }
@@ -1043,25 +1044,7 @@ impl Codegen {
                 self.emit_store_elem(&ftyp.clone()); // tamaño exacto del campo
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
             }
-            Expr::Intrinsic(name) => {
-                // LA FUSIÓN: bytes exactos de intrinsics.toml, sin caja negra.
-                match self.intrinsics.get(name) {
-                    Some(def) => {
-                        let bytes = def.bytes.clone();
-                        let combine = def.returns_edx_eax;
-                        self.code.extend_from_slice(&bytes);
-                        if combine {
-                            // edx:eax → rax (rdtsc y familia)
-                            self.code.extend_from_slice(&[0x48, 0xC1, 0xE2, 0x20]); // shl rdx, 32
-                            self.code.extend_from_slice(&[0x48, 0x09, 0xD0]);       // or rax, rdx
-                        }
-                    }
-                    None => {
-                        self.errors.push(format!(
-                            "intrinsic __{name}() no existe en la tabla sem-asm (tables/arch/x86_64/intrinsics.toml)"));
-                    }
-                }
-            }
+            Expr::Intrinsic(name, args) => self.emit_intrinsic(name, args),
             Expr::Cast(t, inner) => {
                 // cast REAL: trunca/extiende rax al tamaño del tipo destino.
                 // Antes era no-op: (char)300 quedaba como 300.
@@ -1177,6 +1160,73 @@ impl Codegen {
             2 => self.code.extend_from_slice(&[0x66, 0x89, 0x10]),  // mov [rax], dx
             4 => self.code.extend_from_slice(&[0x89, 0x10]),        // mov [rax], edx
             _ => self.code.extend_from_slice(&[0x48, 0x89, 0x10]),  // mov [rax], rdx
+        }
+    }
+
+    /// LA FUSIÓN sem-asm↔C: emite un intrínseco de la tabla.
+    /// Evalúa cada argumento, lo apila, y lo vuelca al registro que dicta
+    /// la tabla justo antes de los bytes de la instrucción. Bytes EXACTOS,
+    /// sin caja negra: si el nombre o la aridad no cuadran → error, no adivina.
+    fn emit_intrinsic(&mut self, name: &str, args: &[Expr]) {
+        let Some(def) = self.intrinsics.get(name) else {
+            self.errors.push(format!(
+                "intrinsic __{name}() no existe en la tabla sem-asm (tables/arch/x86_64/intrinsics.toml)"));
+            return;
+        };
+        if args.len() != def.args.len() {
+            self.errors.push(format!(
+                "intrinsic __{name}() espera {} argumento(s), recibio {}",
+                def.args.len(), args.len()));
+            return;
+        }
+        let bytes = def.bytes.clone();
+        let arg_regs = def.args.clone();
+        let returns = def.returns.clone();
+
+        // 1) evaluar cada argumento a rax y apilarlo (orden de aparición)
+        for a in args {
+            self.emit_expr(a);
+            self.code.push(0x50); // push rax
+        }
+        // 2) volcar a los registros destino, en REVERSA (el tope es el último
+        //    arg). Cada destino es un registro DISTINTO (rax/rcx/rdx) → pop
+        //    directo sin pisarse.
+        for reg in arg_regs.iter().rev() {
+            self.emit_pop_to_reg(reg);
+        }
+        // 3) los bytes exactos de la instrucción
+        self.code.extend_from_slice(&bytes);
+        // 4) normalizar el valor de retorno a rax
+        self.emit_intrinsic_return(returns.as_deref());
+    }
+
+    /// Saca el tope de la pila al registro destino de un argumento.
+    fn emit_pop_to_reg(&mut self, reg: &str) {
+        match reg {
+            "eax" | "ax" | "al" => self.code.push(0x58),          // pop rax
+            "ecx" | "cx" | "cl" => self.code.push(0x59),          // pop rcx
+            "edx" | "dx"        => self.code.push(0x5A),          // pop rdx
+            "u64_edx_eax" => {
+                // valor de 64 bits en rax → edx:eax (para wrmsr)
+                self.code.push(0x58);                              // pop rax
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+                self.code.extend_from_slice(&[0x48, 0xC1, 0xEA, 0x20]); // shr rdx, 32
+            }
+            _ => self.errors.push(format!("registro de argumento desconocido: {reg}")),
+        }
+    }
+
+    /// Deja el resultado del intrínseco limpio en rax según de dónde salga.
+    fn emit_intrinsic_return(&mut self, returns: Option<&str>) {
+        match returns {
+            Some("u64_edx_eax") => {
+                self.code.extend_from_slice(&[0x48, 0xC1, 0xE2, 0x20]); // shl rdx, 32
+                self.code.extend_from_slice(&[0x48, 0x09, 0xD0]);       // or rax, rdx
+            }
+            Some("al") => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]), // movzx rax, al
+            Some("ax") => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0xC0]), // movzx rax, ax
+            // "eax": escribir eax en modo 64-bit ya deja rax con el alto en cero
+            _ => {}
         }
     }
 
