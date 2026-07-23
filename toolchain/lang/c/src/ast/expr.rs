@@ -52,10 +52,15 @@ pub enum Expr {
     Subscript(String, Box<Expr>, u8),
     /// arr[i] = val — antes la asignación a subscript se DESCARTABA en silencio.
     AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
-    Field(Box<Expr>, String, u32),
-    Arrow(Box<Expr>, String, u32),
-    AssignField(Box<Expr>, String, u32, Box<Expr>),
-    AssignArrow(Box<Expr>, String, u32, Box<Expr>),
+    /// base.campo — (base, nombre, offset, TIPO del campo).
+    /// El tipo viaja en el AST para que codegen cargue/guarde el tamaño EXACTO:
+    /// antes pt.x=10 con x:int escribía 8 bytes y pisaba al campo siguiente.
+    Field(Box<Expr>, String, u32, TypeSpec),
+    Arrow(Box<Expr>, String, u32, TypeSpec),
+    AssignField(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
+    AssignArrow(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
     AssignDeref(Box<Expr>, Box<Expr>),
+    /// (tipo)expr — cast REAL: trunca/extiende; antes era no-op silencioso.
+    Cast(TypeSpec, Box<Expr>),
     Syscall(SyscallDef, Vec<Expr>),
 }

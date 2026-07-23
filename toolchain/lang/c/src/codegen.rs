@@ -260,10 +260,12 @@ impl Codegen {
                 | Expr::Shl(a,b) | Expr::Shr(a,b) => { self.collect_expr_strings(a); self.collect_expr_strings(b); }
             Expr::Conditional(c,t,f) => { self.collect_expr_strings(c); self.collect_expr_strings(t); self.collect_expr_strings(f); }
             Expr::Call(_, args) | Expr::Syscall(_, args) => { for a in args { self.collect_expr_strings(a); } }
-            Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => self.collect_expr_strings(p),
-            Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => self.collect_expr_strings(v),
+            Expr::Arrow(p,_,_,_) => self.collect_expr_strings(p),
+            Expr::AssignArrow(p,_,_,_,v) => { self.collect_expr_strings(p); self.collect_expr_strings(v); }
+            Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => self.collect_expr_strings(v),
+            Expr::Cast(_, a) => self.collect_expr_strings(a),
             Expr::AssignDeref(a, v) => { self.collect_expr_strings(a); self.collect_expr_strings(v); }
-            Expr::Field(b,_,_) => self.collect_expr_strings(b),
+            Expr::Field(b,_,_,_) => self.collect_expr_strings(b),
             Expr::Comma(v) => { for e in v { self.collect_expr_strings(e); } }
             _ => {}
         }
@@ -991,42 +993,25 @@ impl Codegen {
                 self.emit_expr(f);
                 self.resolve_label(end_lbl);
             }
-            Expr::Field(base, _field, offset) => {
-                // compute base address, add field offset, load
+            Expr::Field(base, _field, offset, ftyp) => {
+                // dirección base + offset, carga del TAMAÑO/SIGNO del campo
                 self.emit_expr_as_ptr(base);
-                let off = *offset as i32;
-                if off >= -128 && off <= 127 {
-                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
-                } else {
-                    self.code.extend_from_slice(&[0x48, 0x05]);
-                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
-                }
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]);
+                self.emit_add_offset(*offset);
+                self.emit_load_elem(&ftyp.clone());
             }
-            Expr::Arrow(ptr, _field, offset) => {
+            Expr::Arrow(ptr, _field, offset, ftyp) => {
                 self.emit_expr(ptr);
-                let off = *offset as i32;
-                if off >= -128 && off <= 127 {
-                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
-                } else {
-                    self.code.extend_from_slice(&[0x48, 0x05]);
-                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
-                }
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]);
+                self.emit_add_offset(*offset);
+                self.emit_load_elem(&ftyp.clone());
             }
-            Expr::AssignField(base, _field, offset, val) => {
+            Expr::AssignField(base, _field, offset, ftyp, val) => {
                 self.emit_expr(val);
                 self.code.push(0x50);
                 self.emit_expr_as_ptr(base);
-                let off = *offset as i32;
-                if off >= -128 && off <= 127 {
-                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
-                } else {
-                    self.code.extend_from_slice(&[0x48, 0x05]);
-                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
-                }
+                self.emit_add_offset(*offset);
                 self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x89, 0x10]);
+                // store del TAMAÑO exacto: pt.x=10 con x:int ya no pisa a pt.y
+                self.emit_store_elem(&ftyp.clone());
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
             }
             Expr::AssignDeref(addr, val) => {
@@ -1037,20 +1022,28 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x89, 0x10]); // mov [rax], rdx
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx (return value)
             }
-            Expr::AssignArrow(ptr, _field, offset, val) => {
+            Expr::AssignArrow(ptr, _field, offset, ftyp, val) => {
                 self.emit_expr(val); // rax = value
                 self.code.push(0x50); // push value
                 self.emit_expr(ptr); // rax = pointer
-                let off = *offset as i32;
-                if off >= -128 && off <= 127 {
-                    self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
-                } else {
-                    self.code.extend_from_slice(&[0x48, 0x05]);
-                    self.code.extend_from_slice(&(off as u32).to_le_bytes());
-                }
+                self.emit_add_offset(*offset);
                 self.code.push(0x5A); // pop rdx (value)
-                self.code.extend_from_slice(&[0x48, 0x89, 0x10]); // mov [rax], rdx
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx (return value)
+                self.emit_store_elem(&ftyp.clone()); // tamaño exacto del campo
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+            }
+            Expr::Cast(t, inner) => {
+                // cast REAL: trunca/extiende rax al tamaño del tipo destino.
+                // Antes era no-op: (char)300 quedaba como 300.
+                self.emit_expr(inner);
+                match t {
+                    TypeSpec::Char => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0xC0]), // movsx rax, al
+                    TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]), // movzx
+                    TypeSpec::Short => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0xC0]),
+                    TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0xC0]),
+                    TypeSpec::Int => self.code.extend_from_slice(&[0x48, 0x63, 0xC0]), // movsxd rax, eax
+                    TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x89, 0xC0]), // mov eax, eax (zero-ext)
+                    _ => {} // 64-bit y punteros: sin cambio de representación
+                }
             }
             Expr::Comma(exprs) => {
                 for (i, e) in exprs.iter().enumerate() {
@@ -1117,10 +1110,24 @@ impl Codegen {
         self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
     }
 
+    /// rax += offset (encoding corto si cabe en imm8)
+    fn emit_add_offset(&mut self, offset: u32) {
+        if offset == 0 { return; }
+        let off = offset as i32;
+        if off <= 127 {
+            self.code.extend_from_slice(&[0x48, 0x83, 0xC0, off as u8]);
+        } else {
+            self.code.extend_from_slice(&[0x48, 0x05]);
+            self.code.extend_from_slice(&(off as u32).to_le_bytes());
+        }
+    }
+
     /// Carga [rax] → rax con el tamaño y signo EXACTOS del elemento.
     /// Antes siempre era `mov rax,[rax]` (8 bytes): leer int[i] traía basura vecina.
     fn emit_load_elem(&mut self, elem: &TypeSpec) {
         match elem {
+            // agregados: la dirección ES el valor (a.b.c anidado, arrays en structs)
+            TypeSpec::Array(_, _) | TypeSpec::StructRef(_) | TypeSpec::UnionRef(_) => {}
             TypeSpec::Char => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x00]), // movsx rax, byte
             TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]), // movzx
             TypeSpec::Short => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x00]),

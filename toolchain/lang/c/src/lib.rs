@@ -228,7 +228,7 @@ impl CError {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
-    Ident(String), IntLit(i64), StringLit(String), CharLit(u8),
+    Ident(String), IntLit(i64), FloatLit(f64), StringLit(String), CharLit(u8),
     Int, Void, Char, Short, Long, Unsigned, Signed,
     If, Else, While, Do, For, Switch, Case, Default, Break, Continue,
     Float, Double,
@@ -248,8 +248,23 @@ enum Token {
     Eof,
 }
 
+/// Vec de tokens que registra la LÍNEA de cada uno (para errores con línea real).
+struct TokStream {
+    toks: Vec<Token>,
+    lines: Vec<usize>,
+    cur_line: usize,
+}
+
+impl TokStream {
+    fn push(&mut self, tk: Token) {
+        self.toks.push(tk);
+        self.lines.push(self.cur_line);
+    }
+}
+
 struct Parser {
     tokens: Vec<Token>,
+    token_lines: Vec<usize>,
     pos: usize,
     var_types: HashMap<String, TypeSpec>,
     struct_fields: HashMap<String, Vec<(String, u32, u32)>>,
@@ -265,8 +280,9 @@ struct Parser {
 
 impl Parser {
     fn new(source: &str) -> Self {
+        let (tokens, token_lines) = Self::tokenize(source);
         Self {
-            tokens: Self::tokenize(source), pos: 0,
+            tokens, token_lines, pos: 0,
             var_types: HashMap::new(),
             struct_fields: HashMap::new(),
             struct_sizes: HashMap::new(),
@@ -279,17 +295,17 @@ impl Parser {
     }
 
     #[cfg(test)]
-    fn tokenize_for_test(source: &str) -> Vec<Token> { Self::tokenize(source) }
+    fn tokenize_for_test(source: &str) -> Vec<Token> { Self::tokenize(source).0 }
 
-    fn tokenize(source: &str) -> Vec<Token> {
-        let mut t = Vec::new();
+    fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>) {
+        let mut t = TokStream { toks: Vec::new(), lines: Vec::new(), cur_line: 1 };
         let c: Vec<char> = source.chars().collect();
         let mut i = 0;
         while i < c.len() {
-            if c[i].is_whitespace() { i += 1; continue; }
+            if c[i].is_whitespace() { if c[i] == '\n' { t.cur_line += 1; } i += 1; continue; }
             if c[i] == '/' && i + 1 < c.len() {
                 if c[i+1] == '/' { while i < c.len() && c[i] != '\n' { i += 1; } continue; }
-                if c[i+1] == '*' { i += 2; while i + 1 < c.len() && !(c[i] == '*' && c[i+1] == '/') { i += 1; } i += 2; continue; }
+                if c[i+1] == '*' { i += 2; while i + 1 < c.len() && !(c[i] == '*' && c[i+1] == '/') { if c[i] == '\n' { t.cur_line += 1; } i += 1; } i += 2; continue; }
             }
             match c[i] {
                 '(' => { t.push(Token::OpenParen); i += 1; }
@@ -440,6 +456,14 @@ impl Parser {
                         t.push(Token::IntLit(i64::from_str_radix(&n[2..], 16).unwrap_or(0)));
                     } else {
                         while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
+                        // literal float: 1.5, 3.14f — antes "1.5" se partía en 1 . 5
+                        if i + 1 < c.len() && c[i] == '.' && c[i+1].is_ascii_digit() {
+                            n.push('.'); i += 1;
+                            while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
+                            if i < c.len() && (c[i] == 'f' || c[i] == 'F') { i += 1; }
+                            t.push(Token::FloatLit(n.parse().unwrap_or(0.0)));
+                            continue;
+                        }
                         t.push(Token::IntLit(n.parse().unwrap_or(0)));
                     }
                     // sufijos de literal entero: U, L, UL, LL, ULL (cualquier orden/caso)
@@ -474,11 +498,18 @@ impl Parser {
                 _ => { i += 1; }
             }
         }
-        t.push(Token::Eof); t
+        t.push(Token::Eof);
+        (t.toks, t.lines)
     }
 
     fn peek(&self) -> &Token { &self.tokens[self.pos] }
     fn advance(&mut self) -> Token { let t = self.tokens[self.pos].clone(); self.pos += 1; t }
+
+    /// Línea del token actual (para errores con ubicación REAL, no "línea 1").
+    fn line(&self) -> usize {
+        self.token_lines.get(self.pos.min(self.token_lines.len().saturating_sub(1)))
+            .copied().unwrap_or(1)
+    }
 
     fn get_field_offset(&self, struct_name: &str, field: &str) -> Option<u32> {
         self.struct_fields.get(struct_name).and_then(|fields| {
@@ -525,12 +556,12 @@ impl Parser {
                 let t = self.resolve_expr_type(inner)?;
                 Some(TypeSpec::Ptr(Box::new(t)))
             }
-            Expr::Field(base, fname, _) => {
+            Expr::Field(base, fname, _, _) => {
                 // base.f: tipo del campo f en el struct de base
                 let s = self.resolve_struct_type(base)?;
                 self.field_types.get(&(s, fname.clone())).cloned()
             }
-            Expr::Arrow(base, fname, _) => {
+            Expr::Arrow(base, fname, _, _) => {
                 // base->f: tipo del campo f en el struct APUNTADO por base
                 let t = self.resolve_expr_type(base)?;
                 let s = Self::pointee_struct_of(&t)?.to_string();
@@ -554,6 +585,21 @@ impl Parser {
         self.resolve_struct_type(expr)
             .and_then(|s| self.get_field_offset(&s, field))
             .unwrap_or(0)
+    }
+
+    /// Tipo del campo para `expr.field` (base por valor).
+    fn field_type_via_value(&self, expr: &Expr, field: &str) -> TypeSpec {
+        self.resolve_struct_type(expr)
+            .and_then(|s| self.field_types.get(&(s, field.to_string())).cloned())
+            .unwrap_or(TypeSpec::Long)
+    }
+
+    /// Tipo del campo para `expr->field` (base puntero).
+    fn field_type_via_pointer(&self, expr: &Expr, field: &str) -> TypeSpec {
+        self.resolve_expr_type(expr)
+            .and_then(|t| Self::pointee_struct_of(&t).map(str::to_string))
+            .and_then(|s| self.field_types.get(&(s, field.to_string())).cloned())
+            .unwrap_or(TypeSpec::Long)
     }
 
     fn resolve_arrow_expr_offset(&self, expr: &Expr, field: &str) -> u32 {
@@ -624,7 +670,7 @@ impl Parser {
 
     fn expect(&mut self, expected: &Token) -> Result<Token, CError> {
         if *self.peek() != *expected {
-            return Err(CError::new(1, format!("expected {:?}, got {:?}", expected, self.peek())));
+            return Err(CError::new(self.line(),format!("expected {:?}, got {:?}", expected, self.peek())));
         }
         Ok(self.advance())
     }
@@ -643,7 +689,7 @@ impl Parser {
                 self.advance();
                 let name = match self.advance() {
                     Token::Ident(n) => n,
-                    t => return Err(CError::new(1, format!("expected struct name, got {:?}", t))),
+                    t => return Err(CError::new(self.line(),format!("expected struct name, got {:?}", t))),
                 };
                 if *self.peek() == Token::OpenBrace {
                     self.advance();
@@ -652,7 +698,7 @@ impl Parser {
                         let mtype = self.parse_type_spec()?;
                         let mname = match self.advance() {
                             Token::Ident(n) => n,
-                            t => return Err(CError::new(1, format!("expected member name, got {:?}", t))),
+                            t => return Err(CError::new(self.line(),format!("expected member name, got {:?}", t))),
                         };
                         self.skip_semicolon();
                         members.push(StructMember { typ: mtype, name: mname });
@@ -681,7 +727,7 @@ impl Parser {
                 self.advance();
                 let _name = match self.advance() {
                     Token::Ident(n) => n,
-                    t => return Err(CError::new(1, format!("expected enum name, got {:?}", t))),
+                    t => return Err(CError::new(self.line(),format!("expected enum name, got {:?}", t))),
                 };
                 self.expect(&Token::OpenBrace)?;
                 let mut val = 0i64;
@@ -692,7 +738,7 @@ impl Parser {
                                 self.advance();
                                 let assigned = match self.advance() {
                                     Token::IntLit(n) => n,
-                                    t => return Err(CError::new(1, format!("expected int in enum, got {:?}", t))),
+                                    t => return Err(CError::new(self.line(),format!("expected int in enum, got {:?}", t))),
                                 };
                                 val = assigned;
                             }
@@ -700,7 +746,7 @@ impl Parser {
                             self.var_types.insert(en.clone(), TypeSpec::Int);
                         }
                         Token::CloseBrace => { break; }
-                        t => return Err(CError::new(1, format!("expected enum constant, got {:?}", t))),
+                        t => return Err(CError::new(self.line(),format!("expected enum constant, got {:?}", t))),
                     }
                     val += 1;
                     if *self.peek() == Token::Comma { self.advance(); }
@@ -712,7 +758,7 @@ impl Parser {
                 self.advance();
                 let path = match self.advance() {
                     Token::StringLit(s) => s,
-                    t => return Err(CError::new(1, format!("expected module path string, got {:?}", t))),
+                    t => return Err(CError::new(self.line(),format!("expected module path string, got {:?}", t))),
                 };
                 self.skip_semicolon();
                 self.usings.push(path);
@@ -731,7 +777,7 @@ impl Parser {
                 let typ = self.parse_type_spec()?;
                 let name = match self.advance() {
                     Token::Ident(n) => n,
-                    t => return Err(CError::new(1, format!("expected typedef name, got {:?}", t))),
+                    t => return Err(CError::new(self.line(),format!("expected typedef name, got {:?}", t))),
                 };
                 self.skip_semicolon();
                 self.typedefs.insert(name, typ);
@@ -897,10 +943,11 @@ impl Parser {
             Expr::Call(_, args) | Expr::Comma(args) => {
                 for a in args { Self::check_syscall_args_in_expr(a, line)?; }
             }
-            Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => Self::check_syscall_args_in_expr(p, line)?,
-            Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::check_syscall_args_in_expr(v, line)?,
+            Expr::Arrow(p,_,_,_) | Expr::AssignArrow(p,_,_,_,_) => Self::check_syscall_args_in_expr(p, line)?,
+            Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => Self::check_syscall_args_in_expr(v, line)?,
             Expr::AssignDeref(a, v) => { Self::check_syscall_args_in_expr(a, line)?; Self::check_syscall_args_in_expr(v, line)?; }
-            Expr::Field(b,_,_) => Self::check_syscall_args_in_expr(b, line)?,
+            Expr::Field(b,_,_,_) => Self::check_syscall_args_in_expr(b, line)?,
+            Expr::Cast(_, a) => Self::check_syscall_args_in_expr(a, line)?,
             Expr::Subscript(_, idx, _) => Self::check_syscall_args_in_expr(idx, line)?,
             Expr::AssignSubscript(_, idx, _, v) => { Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             _ => {}
@@ -986,10 +1033,11 @@ impl Parser {
                 Self::resolve_syscalls_in_expr(syscalls, t);
                 Self::resolve_syscalls_in_expr(syscalls, f);
             }
-            Expr::Arrow(p,_,_) | Expr::AssignArrow(p,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, p),
-            Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::resolve_syscalls_in_expr(syscalls, v),
+            Expr::Arrow(p,_,_,_) | Expr::AssignArrow(p,_,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, p),
+            Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => Self::resolve_syscalls_in_expr(syscalls, v),
             Expr::AssignDeref(a, v) => { Self::resolve_syscalls_in_expr(syscalls, a); Self::resolve_syscalls_in_expr(syscalls, v); }
-            Expr::Field(b,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
+            Expr::Field(b,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
+            Expr::Cast(_, a) => Self::resolve_syscalls_in_expr(syscalls, a),
             Expr::Subscript(_, idx, _) => Self::resolve_syscalls_in_expr(syscalls, idx),
             Expr::AssignSubscript(_, idx, _, v) => { Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Comma(v) => { for e in v { Self::resolve_syscalls_in_expr(syscalls, e); } }
@@ -999,6 +1047,7 @@ impl Parser {
 
     fn try_parse_function(&mut self) -> Result<Option<Function>, CError> {
         let save = self.pos;
+        let start_line = self.line();
         let ret_type = match self.parse_type_spec() {
             Ok(t) => t,
             Err(_) => { self.pos = save; return Ok(None); }
@@ -1015,7 +1064,7 @@ impl Parser {
             let ptype = self.parse_type_spec()?;
             let pname = match self.advance() {
                 Token::Ident(n) => n,
-                t => return Err(CError::new(1, format!("expected param name, got {:?}", t))),
+                t => return Err(CError::new(self.line(),format!("expected param name, got {:?}", t))),
             };
             params.push(Param { typ: ptype, name: pname });
             if *self.peek() == Token::Comma { self.advance(); }
@@ -1030,7 +1079,7 @@ impl Parser {
         loop {
             match self.peek() {
                 Token::CloseBrace => { self.advance(); break; }
-                Token::Eof => return Err(CError::new(1, "unexpected eof in function body")),
+                Token::Eof => return Err(CError::new(self.line(),"unexpected eof in function body")),
                 _ => {
                     // check for label: ident followed by colon
                     if let Token::Ident(name) = self.peek().clone() {
@@ -1054,7 +1103,7 @@ impl Parser {
                 }
             }
         }
-        Ok(Some(Function { ret_type, name, params, var_count, var_names, body, line: 0 }))
+        Ok(Some(Function { ret_type, name, params, var_count, var_names, body, line: start_line }))
     }
 
     fn try_parse_decl(&mut self) -> Result<Option<(TypeSpec, String)>, CError> {
@@ -1089,7 +1138,7 @@ impl Parser {
         let mut typ = self.parse_type_spec()?;
         let name = match self.advance() {
             Token::Ident(n) => n,
-            t => return Err(CError::new(1, format!("expected identifier, got {:?}", t))),
+            t => return Err(CError::new(self.line(),format!("expected identifier, got {:?}", t))),
         };
         // array declarator [size] — el tamaño SE GUARDA (antes se tiraba)
         if *self.peek() == Token::OpenBracket {
@@ -1150,14 +1199,14 @@ impl Parser {
             Token::Struct => { 
                 let name = match self.advance() {
                     Token::Ident(n) => n,
-                    t => return Err(CError::new(1, format!("expected struct name, got {:?}", t))),
+                    t => return Err(CError::new(self.line(),format!("expected struct name, got {:?}", t))),
                 };
                 TypeSpec::StructRef(name)
             }
             Token::Union => {
                 let name = match self.advance() {
                     Token::Ident(n) => n,
-                    t => return Err(CError::new(1, format!("expected union name, got {:?}", t))),
+                    t => return Err(CError::new(self.line(),format!("expected union name, got {:?}", t))),
                 };
                 TypeSpec::UnionRef(name)
             }
@@ -1165,10 +1214,10 @@ impl Parser {
                 if let Some(typ) = self.typedefs.get(&name).cloned() {
                     typ
                 } else {
-                    return Err(CError::new(1, format!("expected type, got {:?}", Token::Ident(name))));
+                    return Err(CError::new(self.line(),format!("expected type, got {:?}", Token::Ident(name))));
                 }
             }
-            t => return Err(CError::new(1, format!("expected type, got {:?}", t))),
+            t => return Err(CError::new(self.line(),format!("expected type, got {:?}", t))),
         };
         // punteros multinivel: int **pp, char ***ppp, ...
         let mut typ = base;
@@ -1195,7 +1244,7 @@ impl Parser {
                 self.advance();
                 let label = match self.advance() {
                     Token::Ident(s) => s,
-                    t => return Err(CError::new(1, format!("expected label name, got {:?}", t))),
+                    t => return Err(CError::new(self.line(),format!("expected label name, got {:?}", t))),
                 };
                 self.skip_semicolon();
                 Ok(Stmt::Goto(label))
@@ -1310,7 +1359,7 @@ impl Parser {
                     self.advance();
                     let val = match self.advance() {
                         Token::IntLit(n) => n,
-                        t => return Err(CError::new(1, format!("expected int in case, got {:?}", t))),
+                        t => return Err(CError::new(self.line(),format!("expected int in case, got {:?}", t))),
                     };
                     current_val = Some(val);
                     self.expect(&Token::Colon)?;
@@ -1322,7 +1371,7 @@ impl Parser {
                     self.expect(&Token::Colon)?;
                 }
                 Token::CloseBrace => { self.advance(); break; }
-                Token::Eof => return Err(CError::new(1, "unexpected eof in switch")),
+                Token::Eof => return Err(CError::new(self.line(),"unexpected eof in switch")),
                 _ => { current.push(self.parse_stmt()?); }
             }
         }
@@ -1342,7 +1391,7 @@ impl Parser {
         loop {
             match self.peek() {
                 Token::CloseBrace => { self.advance(); break; }
-                Token::Eof => return Err(CError::new(1, "unexpected eof in block")),
+                Token::Eof => return Err(CError::new(self.line(),"unexpected eof in block")),
                 _ => {
                     // check for label: ident followed by colon
                     if let Token::Ident(name) = self.peek().clone() {
@@ -1398,12 +1447,12 @@ impl Parser {
         let assign_op = |n: String, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
             let n2 = n.clone(); Expr::Assign(n, Box::new(op(Box::new(Expr::Var(n2)), Box::new(val))))
         };
-        let field_assign_op = |e: Expr, f: String, off: u32, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
-            let lhs = Expr::Field(Box::new(e.clone()), f.clone(), off);
-            Expr::AssignField(Box::new(e), f, off, Box::new(op(Box::new(lhs), Box::new(val))))
+        let field_assign_op = |e: Expr, f: String, off: u32, ft: TypeSpec, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+            let lhs = Expr::Field(Box::new(e.clone()), f.clone(), off, ft.clone());
+            Expr::AssignField(Box::new(e), f, off, ft, Box::new(op(Box::new(lhs), Box::new(val))))
         };
-        let arrow_assign_op = |e: Box<Expr>, f: String, off: u32, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
-            Expr::AssignArrow(e.clone(), f.clone(), off, Box::new(op(Box::new(Expr::Arrow(e, f, off)), Box::new(val))))
+        let arrow_assign_op = |e: Box<Expr>, f: String, off: u32, ft: TypeSpec, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+            Expr::AssignArrow(e.clone(), f.clone(), off, ft.clone(), Box::new(op(Box::new(Expr::Arrow(e, f, off, ft)), Box::new(val))))
         };
         let sub_assign_op = |n: String, idx: Box<Expr>, sc: u8, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
             let lhs = Expr::Subscript(n.clone(), idx.clone(), sc);
@@ -1413,78 +1462,78 @@ impl Parser {
             Token::Assign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(Expr::Assign(n, Box::new(val))),
                 Expr::Deref(a) => Ok(Expr::AssignDeref(a, Box::new(val))),
-                Expr::Field(e, f, off) => Ok(Expr::AssignField(e, f, off, Box::new(val))),
-                Expr::Arrow(e, f, off) => Ok(Expr::AssignArrow(e, f, off, Box::new(val))),
+                Expr::Field(e, f, off, ft) => Ok(Expr::AssignField(e, f, off, ft, Box::new(val))),
+                Expr::Arrow(e, f, off, ft) => Ok(Expr::AssignArrow(e, f, off, ft, Box::new(val))),
                 Expr::Subscript(n, idx, sc) => Ok(Expr::AssignSubscript(n, idx, sc, Box::new(val))),
                 _ => Ok(val),
             }}
             Token::AddAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Add)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Add)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Add)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Add)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Add)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Add)),
                 _ => Ok(val),
             }}
             Token::SubAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Sub)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Sub)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Sub)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Sub)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Sub)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Sub)),
                 _ => Ok(val),
             }}
             Token::MulAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Mul)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Mul)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Mul)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Mul)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Mul)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mul)),
                 _ => Ok(val),
             }}
             Token::DivAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Div)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Div)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Div)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Div)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Div)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Div)),
                 _ => Ok(val),
             }}
             Token::ModAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Mod)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Mod)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Mod)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Mod)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Mod)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mod)),
                 _ => Ok(val),
             }}
             Token::ShlAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Shl)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Shl)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Shl)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Shl)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Shl)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shl)),
                 _ => Ok(val),
             }}
             Token::ShrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Shr)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Shr)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Shr)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Shr)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Shr)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shr)),
                 _ => Ok(val),
             }}
             Token::AndAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitAnd)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitAnd)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitAnd)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitAnd)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitAnd)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitAnd)),
                 _ => Ok(val),
             }}
             Token::XorAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitXor)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitXor)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitXor)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitXor)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitXor)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitXor)),
                 _ => Ok(val),
             }}
             Token::OrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitOr)),
-                Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitOr)),
-                Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitOr)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitOr)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitOr)),
                 Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitOr)),
                 _ => Ok(val),
             }}
@@ -1578,8 +1627,8 @@ impl Parser {
             Token::Minus => { self.advance(); let e = self.parse_unary()?; Ok(Expr::Neg(Box::new(e))) }
             Token::Not => { self.advance(); let e = self.parse_unary()?; Ok(Expr::Not(Box::new(e))) }
             Token::Tilde => { self.advance(); let e = self.parse_unary()?; Ok(Expr::BitNot(Box::new(e))) }
-            Token::PlusPlus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreInc(name)) } _ => Err(CError::new(1, "expected variable after ++")) } }
-            Token::MinusMinus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreDec(name)) } _ => Err(CError::new(1, "expected variable after --")) } }
+            Token::PlusPlus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreInc(name)) } _ => Err(CError::new(self.line(),"expected variable after ++")) } }
+            Token::MinusMinus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreDec(name)) } _ => Err(CError::new(self.line(),"expected variable after --")) } }
             Token::And => { self.advance(); let expr = self.parse_unary()?; Ok(Expr::AddrOf(Box::new(expr))) }
             Token::Star => { self.advance(); let e = self.parse_unary()?; Ok(Expr::Deref(Box::new(e))) }
             Token::Sizeof => { self.advance(); self.expect(&Token::OpenParen)?; let t = self.parse_type_spec()?; self.expect(&Token::CloseParen)?; Ok(Expr::Int(t.stack_size() as i64)) }
@@ -1589,12 +1638,12 @@ impl Parser {
                 // Try to parse as cast: (type)expr
                 let is_cast = self.peek_is_type_start();
                 if is_cast {
-                    if let Ok(_typ) = self.parse_type_spec() {
+                    if let Ok(typ) = self.parse_type_spec() {
                         if *self.peek() == Token::CloseParen {
                             self.advance();
                             let expr = self.parse_unary()?;
-                            // cast is a no-op â€” just return the inner expression
-                            return Ok(expr);
+                            // cast REAL: codegen trunca/extiende al tamaño del tipo
+                            return Ok(Expr::Cast(typ, Box::new(expr)));
                         }
                     }
                 }
@@ -1623,26 +1672,28 @@ impl Parser {
                         }
                         // Antes: se IGNORABA el subscript en silencio (p->arr[i] compilaba mal).
                         // Un compilador honesto rechaza lo que aun no sabe hacer.
-                        _ => return Err(CError::new(1, "subscript [] solo soportado sobre variables por ahora (bases compuestas como p->arr[i]: pendiente)")),
+                        _ => return Err(CError::new(self.line(),"subscript [] solo soportado sobre variables por ahora (bases compuestas como p->arr[i]: pendiente)")),
                     }
                 }
                 Token::Dot => {
                     self.advance();
                     let field = match self.advance() {
                         Token::Ident(s) => s,
-                        t => return Err(CError::new(1, format!("expected field name, got {:?}", t))),
+                        t => return Err(CError::new(self.line(),format!("expected field name, got {:?}", t))),
                     };
                     let offset = self.resolve_field_expr_offset(&expr, &field);
-                    expr = Expr::Field(Box::new(expr), field, offset);
+                    let ftyp = self.field_type_via_value(&expr, &field);
+                    expr = Expr::Field(Box::new(expr), field, offset, ftyp);
                 }
                 Token::Arrow => {
                     self.advance();
                     let field = match self.advance() {
                         Token::Ident(s) => s,
-                        t => return Err(CError::new(1, format!("expected field name, got {:?}", t))),
+                        t => return Err(CError::new(self.line(),format!("expected field name, got {:?}", t))),
                     };
                     let offset = self.resolve_arrow_expr_offset(&expr, &field);
-                    expr = Expr::Arrow(Box::new(expr), field, offset);
+                    let ftyp = self.field_type_via_pointer(&expr, &field);
+                    expr = Expr::Arrow(Box::new(expr), field, offset, ftyp);
                 }
                 _ => break,
             }
@@ -1651,9 +1702,14 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, CError> {
+        let tok_line = self.line(); // línea del token que vamos a consumir
         let tok = self.advance();
         match tok {
             Token::IntLit(n) => Ok(Expr::Int(n)),
+            // Honesto: el codegen aún no emite aritmética SSE — mejor rechazar
+            // que compilar floats como enteros y dar resultados basura.
+            Token::FloatLit(_) => Err(CError::new(tok_line,
+                "literal float aun no soportado por el codegen (aritmetica SSE pendiente); usa enteros escalados")),
             Token::StringLit(s) => Ok(Expr::StringLit(s)),
             Token::CharLit(c) => Ok(Expr::CharLit(c)),
             Token::Ident(name) => {
@@ -1671,7 +1727,7 @@ impl Parser {
                     // Check if this function name matches a known syscall definition
                     if let Some(def) = self.syscalls.get(&name).cloned() {
                         if args.len() != def.arg_count as usize {
-                            return Err(CError::new(1, format!(
+                            return Err(CError::new(self.line(),format!(
                                 "syscall {}() expects {} arguments, got {}",
                                 def.name, def.arg_count, args.len()
                             )));
@@ -1689,7 +1745,7 @@ impl Parser {
                 self.expect(&Token::CloseParen)?;
                 Ok(expr)
             }
-            t => Err(CError::new(1, format!("unexpected token: {:?}", t))),
+            t => Err(CError::new(tok_line, format!("unexpected token: {:?}", t))),
         }
     }
 }
@@ -2025,10 +2081,11 @@ int main() {
         for stmt in &main_fn.body {
             if let Stmt::Expr(Expr::Assign(name, val)) = stmt {
                 if name == "a" {
-                    if let Expr::Arrow(base, f2, off2) = val.as_ref() {
+                    if let Expr::Arrow(base, f2, off2, ft2) = val.as_ref() {
                         assert_eq!(f2, "y");
                         assert_eq!(*off2, 8, "offset de y en Inner debe ser 8 (x:4 + padding)");
-                        if let Expr::Arrow(_, f1, off1) = base.as_ref() {
+                        assert_eq!(*ft2, TypeSpec::Long, "el tipo del campo y debe viajar en el AST");
+                        if let Expr::Arrow(_, f1, off1, _) = base.as_ref() {
                             assert_eq!(f1, "in");
                             assert_eq!(*off1, 8, "offset de in en Outer debe ser 8 (pad:4 + align 8)");
                             found = true;
@@ -2059,10 +2116,11 @@ int main() {
         for stmt in &main_fn.body {
             if let Stmt::Expr(Expr::Assign(name, val)) = stmt {
                 if name == "a" {
-                    if let Expr::Field(base, f2, off2) = val.as_ref() {
+                    if let Expr::Field(base, f2, off2, ft2) = val.as_ref() {
                         assert_eq!(f2, "y");
                         assert_eq!(*off2, 8, "offset de y dentro de Inner debe ser 8");
-                        if let Expr::Field(_, f1, off1) = base.as_ref() {
+                        assert_eq!(*ft2, TypeSpec::Long, "el tipo del campo y debe viajar en el AST");
+                        if let Expr::Field(_, f1, off1, _) = base.as_ref() {
                             assert_eq!(f1, "in");
                             assert_eq!(*off1, 8, "offset de in dentro de Outer debe ser 8");
                             found = true;
@@ -2072,6 +2130,62 @@ int main() {
             }
         }
         assert!(found, "no se encontro el acceso anidado a.b.c en el AST");
+    }
+
+    #[test]
+    fn field_assign_carries_exact_type() {
+        // pt.x = 10 con x:int — el AssignField lleva TypeSpec::Int para que
+        // codegen escriba 4 bytes, NO 8 (antes pisaba a pt.y).
+        let src = r#"
+struct Point { int x; long y; };
+int main() { struct Point pt; pt.x = 10; return 0; }
+"#;
+        let p = parse(src).unwrap();
+        let mut found = false;
+        for stmt in &p.functions[0].body {
+            if let Stmt::Expr(Expr::AssignField(_, f, off, ft, _)) = stmt {
+                assert_eq!(f, "x");
+                assert_eq!(*off, 0);
+                assert_eq!(*ft, TypeSpec::Int, "tipo del campo x debe ser Int (store de 4 bytes)");
+                found = true;
+            }
+        }
+        assert!(found, "pt.x = 10 debe producir AssignField con tipo");
+        compile_source_to_bef(src).unwrap();
+    }
+
+    #[test]
+    fn cast_is_real_node() {
+        // (char)x ya NO es no-op: el AST lleva Cast(Char, x) y codegen trunca.
+        let src = "int main() { int x; x = 300; x = (char)x; return x; }";
+        let p = parse(src).unwrap();
+        let mut found = false;
+        for stmt in &p.functions[0].body {
+            if let Stmt::Expr(Expr::Assign(_, val)) = stmt {
+                if let Expr::Cast(t, _) = val.as_ref() {
+                    assert_eq!(*t, TypeSpec::Char);
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "(char)x debe producir Expr::Cast(Char, ...)");
+        compile_source_to_bef(src).unwrap();
+    }
+
+    #[test]
+    fn float_literal_rejected_honestly() {
+        // Sin aritmética SSE, un float compilado como int es basura silenciosa.
+        // Preferimos el error claro.
+        let err = parse("int main() { int x; x = 1.5; return x; }").unwrap_err();
+        assert!(err.message.contains("float"), "el error debe explicar que floats están pendientes: {}", err.message);
+    }
+
+    #[test]
+    fn errors_report_real_line() {
+        // Antes TODO error decía "línea 1".
+        let src = "int main() {\n    int x;\n    x = ;\n    return 0;\n}";
+        let err = parse(src).unwrap_err();
+        assert_eq!(err.line, 3, "el error de 'x = ;' está en la línea 3, no la 1");
     }
 
     #[test]
