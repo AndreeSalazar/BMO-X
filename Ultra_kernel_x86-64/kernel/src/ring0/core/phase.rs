@@ -120,7 +120,14 @@ pub(crate) fn dash_heartbeat() {
     let st = crate::ring0::scheduler::tid_state(2);
     let (rx, ln) = crate::ring0::uconsole::stats();
     static mut LAST: [u64; 4] = [u64::MAX; 4];
-    let cur = [ticks, sw, st as u64, (ln << 32) | (rx & 0xFFFF_FFFF)];
+    // ANTI-GHOSTING (monitor 74 Hz): el disparo de repintado usaba `ticks`
+    // crudo → se repintaba en CADA pulso del timer, y como el clear+draw no
+    // está sincronizado con el refresco, se veía parpadeo/estela. Ahora `tk`
+    // solo dispara cada 256 ticks (bucket) → la pantalla queda ESTABLE y solo
+    // se repinta cuando pasa algo REAL (sw/st/rx/ln) o de tanto en tanto.
+    // El VALOR mostrado sigue siendo el tk completo (abajo).
+    const TK_BUCKET_SHIFT: u32 = 8;
+    let cur = [ticks >> TK_BUCKET_SHIFT, sw, st as u64, (ln << 32) | (rx & 0xFFFF_FFFF)];
     unsafe {
         let last = &mut *core::ptr::addr_of_mut!(LAST);
         if *last == cur {
