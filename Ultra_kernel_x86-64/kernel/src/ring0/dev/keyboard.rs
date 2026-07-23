@@ -175,6 +175,16 @@ fn translate(code: u8, shift: bool, caps: bool) -> Option<u8> {
         0x34 => if shift { b'>' } else { b'.' },
         0x35 => if shift { b'?' } else { b'/' },
         0x39 => b' ', // Space
+        // ── Keypad / numpad (Num Lock ON = dígitos). El teclado del usuario ES
+        // un numpad: sus teclas llegan como estos scancodes de keypad y antes
+        // se descartaban (kev=0). 0x35 (/) y 0x1C (Enter) ya están arriba.
+        0x47 => b'7', 0x48 => b'8', 0x49 => b'9',
+        0x4A => b'-',
+        0x4B => b'4', 0x4C => b'5', 0x4D => b'6',
+        0x4E => b'+',
+        0x4F => b'1', 0x50 => b'2', 0x51 => b'3',
+        0x52 => b'0', 0x53 => b'.',
+        0x37 => b'*', // Keypad multiply
         _ => return None,
     };
     // Caps Lock: invierte el caso de las letras (Shift XOR Caps). Los símbolos
