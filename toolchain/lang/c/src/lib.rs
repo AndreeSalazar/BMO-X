@@ -485,6 +485,40 @@ int main() {
         assert!(found, "no se encontro el acceso anidado a.b.c en el AST");
     }
 
+    // ---- LA FUSIÓN sem-asm↔C (Fase 1) ----
+
+    #[test]
+    fn intrinsic_emits_exact_table_bytes() {
+        // __pause() y __hlt() = bytes EXACTOS de intrinsics.toml en el código.
+        let src = "int main() { __pause(); __hlt(); return 0; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(2).any(|w| w == [0xF3, 0x90]), "falta pause (F3 90)");
+        assert!(bef.contains(&0xF4), "falta hlt (F4)");
+    }
+
+    #[test]
+    fn intrinsic_rdtsc_returns_combined_value() {
+        // __rdtsc() devuelve u64: rdtsc + shl rdx,32 + or rax,rdx.
+        let src = "int main() { unsigned long t; t = __rdtsc(); return (int)t; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        let seq = [0x0F, 0x31, 0x48, 0xC1, 0xE2, 0x20, 0x48, 0x09, 0xD0];
+        assert!(bef.windows(seq.len()).any(|w| w == seq),
+            "falta la secuencia rdtsc + combine edx:eax → rax");
+    }
+
+    #[test]
+    fn unknown_intrinsic_fails_honestly() {
+        // __zzz() no está en la tabla → error con nombre y ubicación de la tabla.
+        let err = compile_source_to_bef("int main() { __zzz(); return 0; }").unwrap_err();
+        assert!(err.message.contains("no existe en la tabla"), "mensaje: {}", err.message);
+    }
+
+    #[test]
+    fn intrinsic_with_args_rejected() {
+        assert!(parse("int main() { __hlt(1); return 0; }").is_err(),
+            "los intrínsecos sin operandos no llevan argumentos");
+    }
+
     #[test]
     fn field_assign_carries_exact_type() {
         // pt.x = 10 con x:int — el AssignField lleva TypeSpec::Int para que

@@ -85,6 +85,48 @@ fn toml_byte(v: &toml::Value) -> Option<u8> {
     v.as_integer().and_then(|i| u8::try_from(i).ok())
 }
 
+/// Un intrínseco: bytes exactos + convención de retorno.
+/// La fusión lenguaje↔ASM: los frontends los exponen como `__nombre()`.
+pub struct IntrinsicDef {
+    pub bytes: Vec<u8>,
+    /// El resultado sale en edx:eax (rdtsc y familia) — el codegen lo
+    /// combina a rax con `shl rdx,32; or rax,rdx`.
+    pub returns_edx_eax: bool,
+}
+
+/// Tabla de intrínsecos cargada desde `arch/<isa>/intrinsics.toml`.
+pub struct Intrinsics {
+    map: std::collections::HashMap<String, IntrinsicDef>,
+}
+
+impl Intrinsics {
+    /// Carga `tables/arch/x86_64/intrinsics.toml`.
+    pub fn load_x86_64() -> Result<Self, SemAsmError> {
+        let path = tables_dir().join("arch/x86_64/intrinsics.toml");
+        let text = std::fs::read_to_string(&path)
+            .map_err(|_| SemAsmError::TablesNotFound(path))?;
+        let root: toml::Table = text.parse().map_err(|e| SemAsmError::Parse(format!("{e}")))?;
+        let mut map = std::collections::HashMap::new();
+        for (name, entry) in &root {
+            // entradas sin `bytes` (p.ej. [meta]) no son intrínsecos
+            let Some(arr) = entry.get("bytes").and_then(|v| v.as_array()) else { continue };
+            let bytes: Vec<u8> = arr.iter().filter_map(toml_byte).collect();
+            if bytes.is_empty() { continue; }
+            let returns_edx_eax =
+                entry.get("returns").and_then(|v| v.as_str()) == Some("u64_edx_eax");
+            map.insert(name.clone(), IntrinsicDef { bytes, returns_edx_eax });
+        }
+        Ok(Self { map })
+    }
+
+    pub fn get(&self, name: &str) -> Option<&IntrinsicDef> {
+        self.map.get(name)
+    }
+
+    pub fn len(&self) -> usize { self.map.len() }
+    pub fn is_empty(&self) -> bool { self.map.is_empty() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,6 +140,18 @@ mod tests {
     fn loads_real_x86_64_table() {
         let isa = Instructions::load_x86_64().expect("carga instructions.toml");
         assert_eq!(isa.isa_name(), Some("x86-64"));
+    }
+
+    #[test]
+    fn loads_intrinsics_table() {
+        let intr = Intrinsics::load_x86_64().expect("carga intrinsics.toml");
+        assert!(!intr.is_empty());
+        assert_eq!(intr.get("hlt").unwrap().bytes, vec![0xF4]);
+        assert_eq!(intr.get("pause").unwrap().bytes, vec![0xF3, 0x90]);
+        let rdtsc = intr.get("rdtsc").unwrap();
+        assert_eq!(rdtsc.bytes, vec![0x0F, 0x31]);
+        assert!(rdtsc.returns_edx_eax, "rdtsc devuelve edx:eax");
+        assert!(intr.get("meta").is_none(), "[meta] no es un intrínseco");
     }
 
     #[test]

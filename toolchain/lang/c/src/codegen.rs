@@ -80,6 +80,11 @@ struct Codegen {
     enum_values: HashMap<String, i64>,
     /// Tabla de instrucciones sem-asm (opcodes leídos de la TOML de forge).
     isa: bmo_sem_asm::Instructions,
+    /// Tabla de intrínsecos (la fusión __nombre() ↔ bytes exactos).
+    intrinsics: bmo_sem_asm::Intrinsics,
+    /// Errores acumulados durante la emisión (p.ej. intrínseco desconocido) —
+    /// el compilador FALLA con mensaje, jamás emite bytes adivinados.
+    errors: Vec<String>,
 }
 
 impl Codegen {
@@ -108,6 +113,9 @@ impl Codegen {
             enum_values: HashMap::new(),
             isa: bmo_sem_asm::Instructions::load_x86_64()
                 .expect("tablas sem-asm x86-64 (forge/sem-asm/tables)"),
+            intrinsics: bmo_sem_asm::Intrinsics::load_x86_64()
+                .expect("tabla de intrínsecos x86-64 (forge/sem-asm/tables)"),
+            errors: Vec::new(),
         }
     }
 
@@ -175,6 +183,10 @@ impl Codegen {
         self.patch_call_relocs();
         self.patch_goto_relocs();
         self.patch_all_fixups();
+        // errores acumulados en la emisión: fallar con claridad, no callar
+        if !self.errors.is_empty() {
+            return Err(CError::new(0, self.errors.join("; ")));
+        }
         Ok(())
     }
 
@@ -1030,6 +1042,25 @@ impl Codegen {
                 self.code.push(0x5A); // pop rdx (value)
                 self.emit_store_elem(&ftyp.clone()); // tamaño exacto del campo
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+            }
+            Expr::Intrinsic(name) => {
+                // LA FUSIÓN: bytes exactos de intrinsics.toml, sin caja negra.
+                match self.intrinsics.get(name) {
+                    Some(def) => {
+                        let bytes = def.bytes.clone();
+                        let combine = def.returns_edx_eax;
+                        self.code.extend_from_slice(&bytes);
+                        if combine {
+                            // edx:eax → rax (rdtsc y familia)
+                            self.code.extend_from_slice(&[0x48, 0xC1, 0xE2, 0x20]); // shl rdx, 32
+                            self.code.extend_from_slice(&[0x48, 0x09, 0xD0]);       // or rax, rdx
+                        }
+                    }
+                    None => {
+                        self.errors.push(format!(
+                            "intrinsic __{name}() no existe en la tabla sem-asm (tables/arch/x86_64/intrinsics.toml)"));
+                    }
+                }
             }
             Expr::Cast(t, inner) => {
                 // cast REAL: trunca/extiende rax al tamaño del tipo destino.

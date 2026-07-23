@@ -1276,6 +1276,15 @@ impl Parser {
                             )));
                         }
                         Ok(Expr::Syscall(def, args))
+                    } else if let Some(stripped) = name.strip_prefix("__") {
+                        // FUSIÓN sem-asm↔C: __hlt(), __rdtsc()... = instrucción
+                        // de la tabla como función. El namespace __ es reservado
+                        // para la implementación en C — aquí ES la implementación.
+                        if !args.is_empty() {
+                            return Err(CError::new(tok_line, format!(
+                                "intrinsic {name}() no lleva argumentos (por ahora)")));
+                        }
+                        Ok(Expr::Intrinsic(stripped.to_string()))
                     } else {
                         Ok(Expr::Call(name, args))
                     }
