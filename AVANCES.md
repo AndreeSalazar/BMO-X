@@ -25,7 +25,7 @@ sin QEMU. Toolchain propio (C/C++/COBOL → BEF → BEX nativo).
 | Toolchain reorganizado (lang/forge/tools) | ✅ |
 | sem-asm (encoder tabla→bytes) | ✅ C y COBOL lo usan |
 | BMO COBOL | ◐ base sólida (~15%); ver abajo |
-| C frontend | ◐ el más desarrollado (~4500 líneas) |
+| BMO C ("CONTROL ABSOLUTE") | ◐ el más desarrollado (~4500 líneas) |
 | C++ frontend | ◐ mínimo (~900 líneas) |
 | Desktop / compositor (F5) | ⬜ pendiente |
 
@@ -156,8 +156,13 @@ cargo test -p bmo-cobol-front
 2. Fault isolation: probar con un payload crasher.
 
 **Lenguajes (C es el MÁS factible; ver nota):**
-3. **C**: el más desarrollado y de menor espec; el camino pragmático a un
-   lenguaje *usable* de verdad (systems + drivers).
+3. **BMO C — "CONTROL ABSOLUTE"** (bautizo oficial): el mismo C de Ritchie
+   (esencia hasta C11, sin deriva posterior), devuelto a su hábitat natural:
+   escribir el sistema con privilegio directo al metal. En BMO-X nada se
+   interpone entre C y el hardware — C *es* la capa. El más desarrollado y
+   de menor espec; el camino pragmático a un lenguaje *usable* de verdad
+   (systems + drivers). Nota: el privilegio es del código sobre el hardware;
+   la *autoridad* siempre la acotan las capabilities (3 syscalls congelados).
 4. **COBOL**: la base está; crecer por features (records+OCCURS → IF/EVALUATE →
    PERFORM VARYING → COMPUTE → edit-masks → File I/O).
 5. **BMO C++ (esencial, ACOTADO)**: NO es "todo C++". Alcance deliberado =
