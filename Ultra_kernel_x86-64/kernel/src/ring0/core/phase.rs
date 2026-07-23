@@ -93,6 +93,12 @@ fn shell_prompt() {
     dash_prompt("");
 }
 
+/// Generación de pantalla: se incrementa en cada limpieza. Los paneles de fila
+/// FIJA (heartbeat, usb) la comparan para FORZAR un repintado tras un clear,
+/// aunque sus valores no hayan cambiado — si no, la detección de cambios los
+/// dejaría en blanco para siempre después de limpiar (bug real observado).
+static mut SCREEN_GEN: u32 = 0;
+
 /// Limpia la pantalla y re-dibuja el dashboard vacío (comando `cls` y
 /// auto-limpieza al terminar un proceso). Reinicia el cursor rodante del log
 /// para que el panel arranque de cero, como una terminal recién abierta.
@@ -100,7 +106,10 @@ pub(crate) fn clear_screen() {
     if !crate::info::has_fb() { return; }
     splash::splash_clear();
     splash::splash_dashboard_init();
-    unsafe { DASH_LOG_ROW = 0; }
+    unsafe {
+        DASH_LOG_ROW = 0;
+        SCREEN_GEN = SCREEN_GEN.wrapping_add(1); // fuerza repintado de paneles fijos
+    }
 }
 
 /// Live Ring 3 heartbeat on FIXED row 10, repainted by the shell's poll loop
@@ -120,6 +129,7 @@ pub(crate) fn dash_heartbeat() {
     let st = crate::ring0::scheduler::tid_state(2);
     let (rx, ln) = crate::ring0::uconsole::stats();
     static mut LAST: [u64; 4] = [u64::MAX; 4];
+    static mut LAST_GEN: u32 = u32::MAX;
     // ANTI-GHOSTING (monitor 74 Hz): el disparo de repintado usaba `ticks`
     // crudo → se repintaba en CADA pulso del timer, y como el clear+draw no
     // está sincronizado con el refresco, se veía parpadeo/estela. Ahora `tk`
@@ -129,11 +139,14 @@ pub(crate) fn dash_heartbeat() {
     const TK_BUCKET_SHIFT: u32 = 8;
     let cur = [ticks >> TK_BUCKET_SHIFT, sw, st as u64, (ln << 32) | (rx & 0xFFFF_FFFF)];
     unsafe {
+        let gen = SCREEN_GEN;
         let last = &mut *core::ptr::addr_of_mut!(LAST);
-        if *last == cur {
+        // Repintar si algo cambió O si hubo un clear (gen distinta).
+        if *last == cur && LAST_GEN == gen {
             return;
         }
         *last = cur;
+        LAST_GEN = gen;
     }
     fn hx(b: &mut [u8; 56], o: &mut usize, v: u64, digits: usize) {
         const HEX: &[u8; 16] = b"0123456789ABCDEF";
@@ -189,6 +202,7 @@ pub(crate) fn dash_usb_status() {
     if !crate::info::has_fb() { return; }
     let (kbd, mouse, ks, ms, mev, mx, my, btn, kev) = crate::ring0::dev::usb::hid_stats();
     static mut LAST: u64 = u64::MAX;
+    static mut LAST_GEN: u32 = u32::MAX;
     // Firma de cambio: agrupa lo relevante. mx/my se truncan a 12 bits para que
     // micro-jitter del mouse no dispare repintados (anti-ghosting).
     let sig = (kbd as u64) | ((mouse as u64) << 1)
@@ -198,8 +212,11 @@ pub(crate) fn dash_usb_status() {
         | ((btn as u64) << 48)
         | ((kev as u64 & 0xFF) << 56);
     unsafe {
-        if LAST == sig { return; }
+        let gen = SCREEN_GEN;
+        // Repintar si algo cambió O si hubo un clear (gen distinta) que borró la fila.
+        if LAST == sig && LAST_GEN == gen { return; }
         LAST = sig;
+        LAST_GEN = gen;
     }
 
     fn txt(b: &mut [u8; 80], o: &mut usize, s: &str) {
