@@ -4,6 +4,25 @@ pub mod dialect;
 pub mod ir_emit;
 pub mod parser;
 pub mod pic;
+/// Tablas de COBOL GENERADAS por `toolchain/tools/cobol-gen` (Python).
+/// Crecer `definition.py` y regenerar hace crecer esto solo.
+pub mod generated {
+    pub mod words;
+}
+
+#[cfg(test)]
+mod generated_tests {
+    #[test]
+    fn reserved_words_and_verbs() {
+        use crate::generated::words;
+        assert!(words::is_reserved("DISPLAY"));
+        assert!(words::is_reserved("PICTURE"));
+        assert!(!words::is_reserved("HELLO"));
+        assert_eq!(words::verb_kind("MOVE"), Some("Move"));
+        assert_eq!(words::verb_kind("STOP"), Some("StopRun"));
+        assert_eq!(words::verb_kind("NOTAVERB"), None);
+    }
+}
 
 use std::path::PathBuf;
 use bmo_abi::profile::BmoLanguageProfile;
