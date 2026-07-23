@@ -88,6 +88,40 @@ IR— la que habilita el aislamiento barato.
 - Todos los dialectos (85/2002/2014/2023) comparten el **contrato** (BEF+ABI),
   cada uno con su propia tabla de reglas en `sem-asm/standards/COBOL/`.
 
+## La ESENCIA de COBOL (Grace Hopper, 1959) — protegerla
+
+COBOL no es "otro lenguaje que baja a bytes". Su alma, tal como la diseñó
+Grace Hopper y su equipo para la banca:
+
+1. **Legible por humanos de negocio** — English-like, DIVISIONs
+   (IDENTIFICATION / ENVIRONMENT / DATA / PROCEDURE). El gerente lee el código.
+2. **Centrado en datos / records** — niveles (01, 05…), cláusulas `PIC`.
+3. **★ Aritmética DECIMAL exacta** — `PIC 9(5)V99`, packed decimal (COMP-3),
+   `ROUNDED`, `ON SIZE ERROR`. **Centavos sin error de redondeo.** Esta es la
+   razón por la que los bancos usan COBOL 60 años después: el float binario
+   pierde centavos; el decimal de COBOL no. **Es el corazón, no un detalle.**
+
+### Cómo la arquitectura la protege
+
+- El descenso de COBOL es **individual** (`lang/cobol`, nunca un IR/cerebro
+  compartido). Un IR central presionaría a representar todo como binario
+  (modelo C) y **mancharía** la esencia. Mantenerlo aparte la salva.
+- El encoder `sem-asm` es **máquina neutral** (cómo se escribe un byte, igual
+  para todos) — NUNCA toca la semántica. Migrar a él no mancha nada.
+
+### Deuda de fidelidad ACTUAL (a saldar para honrar la esencia)
+
+- ❌ `ADD`/`COMPUTE` hoy bajan a aritmética **binaria** (`add rax, rdx`), no
+  decimal. Parsea como COBOL (PIC existe) pero **calcula como C**. Para el
+  alma bancaria: aritmética que respete la escala del `PIC` y, a futuro,
+  packed decimal. Esto vive en el descenso propio de COBOL — no afecta a C.
+- ⚠️ La PIC la parsea `gnucobol-rs` (**GPL**). Para un BMO 100% propio y
+  limpio, la esencia pediría un parser de PIC propio (hoy el corazón del
+  DATA DIVISION es código ajeno con copyleft).
+
+> Regla: **el encoder puede ser compartido; la ARITMÉTICA de COBOL jamás.**
+> El decimal es sagrado y vive solo en `lang/cobol`.
+
 ## Orden de construcción
 
 1. **COBOL y C primero** (los dos primeros ciudadanos, pipelines individuales).
