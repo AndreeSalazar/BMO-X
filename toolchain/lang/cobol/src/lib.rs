@@ -56,6 +56,21 @@ mod generated_tests {
         assert!(words::is_intrinsic("NUMVAL"));
         assert!(!words::is_intrinsic("MOVE"));
     }
+
+    #[test]
+    fn essence_vs_vendor_separation() {
+        use crate::generated::words;
+        // Esencia estándar (Grace Hopper → ISO): el núcleo del idioma.
+        assert!(words::is_essence("MOVE"));
+        assert!(words::is_essence("PERFORM"));
+        assert!(words::is_essence("OCCURS"));
+        assert!(!words::is_vendor("MOVE"));
+        // Extensiones de vendor (VAX DBMS / IBM obsoletas): reconocidas pero
+        // NO son la esencia — BMO COBOL las devora pero las marca aparte.
+        assert!(words::is_vendor("CONNECT"));   // VAX DBMS
+        assert!(words::is_vendor("EXAMINE"));   // IBM obsoleta
+        assert!(!words::is_essence("CONNECT"));
+    }
 }
 
 use std::path::PathBuf;

@@ -65,13 +65,13 @@ RESERVED_BY_STANDARD = {
     ],
 }
 
-# ── Lista COMPREHENSIVA (unión de estándares + extensiones comunes) ───────
-# Fuente autoritativa: Gordon College CS323 COBOL reserved words
-# (https://cs.gordon.edu/courses/cs323/COBOL/COBOL-reservedWords.html), unión
-# de ANSI/ISO + extensiones IBM/VAX. GnuCOBOL define 1130+ según dialecto
-# (cobc --list-reserved); esto es un núcleo amplio y real. Las que ya están
-# etiquetadas por era arriba conservan su era; el resto queda como "COMMON".
-RESERVED_COMMON = [
+# ── Corpus ESTÁNDAR (la esencia del idioma) ───────────────────────────────
+# Fuente: Gordon College CS323 (unión ANSI/ISO). GnuCOBOL infla a 1130+ PERO
+# eso incluye su traducción-a-C, todos los dialectos y extensiones de vendor
+# — NO es la esencia. Aquí solo el idioma estándar; las extensiones de vendor
+# viven aparte en RESERVED_VENDOR (marcadas, no confundidas con el núcleo).
+# Las palabras ya etiquetadas por era conservan su era; el resto = "STANDARD".
+RESERVED_STANDARD = [
     "ACCEPT", "ACCESS", "ADD", "ADDRESS", "ADVANCING", "AFTER", "ALL",
     "ALLOWING", "ALPHABET", "ALPHABETIC", "ALPHABETIC-LOWER",
     "ALPHABETIC-UPPER", "ALPHANUMERIC", "ALPHANUMERIC-EDITED", "ALSO",
@@ -157,6 +157,52 @@ RESERVED_COMMON = [
     "WITHIN", "WORDS", "WORKING-STORAGE", "WRITE", "WRITERS", "ZERO",
     "ZEROES", "ZEROS",
 ]
+
+# ── Extensiones de VENDOR (NO son la esencia; marcadas aparte) ────────────
+# Palabras reservadas SOLO en dialectos de vendor (VAX DBMS, IBM obsoletas,
+# pantalla VAX/MF, COMP no-estándar). BMO COBOL las RECONOCE pero las trata
+# como extensión, no como núcleo. Esto es lo que separa a BMO COBOL de la
+# bola inflada de GnuCOBOL: la esencia limpia arriba, el vendor identificado.
+RESERVED_VENDOR = {
+    # DBMS de VAX COBOL (base de datos en red CODASYL): nada estándar.
+    "VAX-DBMS": [
+        "ALLOWING", "CONNECT", "DISCONNECT", "RECONNECT", "DB", "DBKEY",
+        "REALM", "REALMS", "FIND", "FETCH", "STORE", "KEEP", "MEMBER",
+        "MEMBERSHIP", "TENANT", "SUB-SCHEMA", "RETAINING", "RETRIEVAL",
+        "DICTIONARY", "CONCURRENT", "EXCLUSIVE", "PROTECTED",
+        "LOCK-HOLDING", "LOCALLY", "REGARDLESS", "UPDATERS", "READERS",
+        "USAGE-MODE", "EMPTY", "CURRENT", "OWNER", "WHERE", "OFFSET",
+        "MATCH", "MATCHES", "UNEQUAL", "EQUALS", "EXCEEDS", "SUCCESS",
+        "FAILURE", "DOES", "DEPENDENCY", "DESCRIPTOR", "COMMIT", "ROLLBACK",
+        "MODIFY", "GET", "FREE", "SETS", "FINISH", "RECORD-NAME",
+        "RECORD-OVERFLOW", "REORG-CRITERIA", "SERVICE", "RELOAD",
+        "END-COMMIT", "END-CONNECT", "END-DISCONNECT", "END-ERASE",
+        "END-FETCH", "END-FIND", "END-FINISH", "END-FREE", "END-GET",
+        "END-KEEP", "END-MODIFY", "END-READY", "END-RECONNECT",
+        "END-ROLLBACK", "END-STORE",
+    ],
+    # Manejo de pantalla de VAX/Micro Focus (algunas se solapan con ISO-2002
+    # SCREEN SECTION, pero estas atribuciones son de vendor).
+    "SCREEN": [
+        "AUTO", "AUTOMATIC", "AUTOTERMINATE", "BATCH", "BELL", "BLINK",
+        "BLINKING", "BOLD", "ECHO", "HIGHLIGHT", "LOWLIGHT",
+        "REVERSE-VIDEO", "REVERSED", "SECURE", "UNDERLINE", "UNDERLINED",
+        "BACKGROUND-COLOR", "FOREGROUND-COLOR", "VFU-CHANNEL", "CHANGED",
+        "POSITIONING",
+    ],
+    # Obsoletas / extensiones IBM antiguas (reemplazadas o no estándar).
+    "IBM-OBSOLETE": [
+        "EXAMINE", "EXHIBIT", "NOTE", "REMARKS", "TRANSFORM", "CORE-INDEX",
+        "ID", "IDENT", "DISP", "READY", "TRACE", "SKIP1", "SKIP2", "SKIP3",
+        "EJECT", "APPLY", "BEGINNING", "ENDING", "MODULES", "MEMORY",
+        "RERUN", "RECORDING", "KANJI", "DBCS", "RETURN-CODE", "NAMED",
+    ],
+    # Tipos COMP no estándar (Micro Focus / vendor).
+    "VENDOR-COMP": [
+        "COMP-6", "COMP-X", "COMPUTATIONAL-6", "COMPUTATIONAL-X",
+        "DISPLAY-1",
+    ],
+}
 
 # ── Verbos con codegen (palabra COBOL -> variante CobolStatement) ─────────
 VERBS = {

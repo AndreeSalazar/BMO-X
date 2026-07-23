@@ -25,21 +25,35 @@ HEADER = (
 
 
 def all_reserved_with_standard():
-    """Devuelve {palabra: estandar} deduplicado (primer estandar gana)."""
-    order = ["COBOL74", "COBOL85", "COBOL2002", "COBOL2023"]
+    """Devuelve {palabra: etiqueta}. La ESENCIA (era/STANDARD) se distingue de
+    las extensiones de VENDOR (VENDOR:categoria).
+
+    Orden de prioridad de etiqueta:
+      1. era estandar (COBOL74/85/2002/2023) — esencia curada, gana.
+      2. VENDOR:<categoria> — extensiones no estandar.
+      3. STANDARD — resto del corpus estandar (Gordon) no clasificado.
+    """
     seen = {}
-    for std in order:
+    # 1. Esencia por era (gana sobre todo).
+    for std in ["COBOL74", "COBOL85", "COBOL2002", "COBOL2023"]:
         for w in definition.RESERVED_BY_STANDARD.get(std, []):
             wu = w.upper()
-            if wu not in seen:
-                seen[wu] = std
-    # Lista comprehensiva (union de estandares + extensiones IBM/VAX). Las que
-    # ya tienen era la conservan; el resto queda etiquetado "COMMON".
-    for w in getattr(definition, "RESERVED_COMMON", []):
+            seen.setdefault(wu, std)
+    # 2. Extensiones de vendor (marcadas aparte).
+    for cat, words in getattr(definition, "RESERVED_VENDOR", {}).items():
+        for w in words:
+            wu = w.upper()
+            seen.setdefault(wu, f"VENDOR:{cat}")
+    # 3. Resto del corpus estandar.
+    for w in getattr(definition, "RESERVED_STANDARD", []):
         wu = w.upper()
-        if wu not in seen:
-            seen[wu] = "COMMON"
+        seen.setdefault(wu, "STANDARD")
     return seen
+
+
+def is_essence(tag: str) -> bool:
+    """¿La etiqueta es esencia estándar (no vendor)?"""
+    return not tag.startswith("VENDOR:")
 
 
 def gen_words() -> str:
@@ -64,10 +78,21 @@ def gen_words() -> str:
     out.append("    RESERVED.binary_search(&w).is_ok()")
     out.append("}\n")
 
-    out.append("/// Estandar donde `w` entro como reservada (None si no lo es).")
+    out.append("/// Etiqueta de `w`: era estandar (COBOL74..2023), \"STANDARD\", o")
+    out.append("/// \"VENDOR:<cat>\". None si no es reservada.")
     out.append("pub fn reserved_since(w: &str) -> Option<&'static str> {")
     out.append("    RESERVED_STD.binary_search_by(|(k, _)| k.cmp(&w))")
     out.append("        .ok().map(|i| RESERVED_STD[i].1)")
+    out.append("}\n")
+
+    out.append("/// Es `w` ESENCIA COBOL estandar (no extension de vendor)?")
+    out.append("pub fn is_essence(w: &str) -> bool {")
+    out.append("    reserved_since(w).map_or(false, |s| !s.starts_with(\"VENDOR:\"))")
+    out.append("}\n")
+
+    out.append("/// Es `w` una extension de VENDOR (IBM/VAX/pantalla, NO estandar)?")
+    out.append("pub fn is_vendor(w: &str) -> bool {")
+    out.append("    reserved_since(w).map_or(false, |s| s.starts_with(\"VENDOR:\"))")
     out.append("}\n")
 
     out.append("/// Verbo COBOL -> nombre de la variante CobolStatement que lo emite.")

@@ -24,9 +24,17 @@ py toolchain/tools/cobol-gen/generate.py
 
 | Archivo | Rol |
 |---|---|
-| `definition.py` | **La fuente**: listas/dicts compactos de COBOL (reservadas, verbos…). **Aquí creces COBOL.** |
+| `definition.py` | **La fuente**: `RESERVED_BY_STANDARD` (esencia por era), `RESERVED_STANDARD` (corpus ISO), `RESERVED_VENDOR` (extensiones marcadas), `VERBS`, `INTRINSIC_FUNCTIONS`. **Aquí creces COBOL.** |
 | `generate.py` | La fábrica: lee la definición, escribe el Rust. |
-| → `lang/cobol/src/generated/words.rs` | **Salida generada** (Rust, commiteada, NO editar a mano). |
+| → `lang/cobol/src/generated/words.rs` | **Salida generada** (Rust, commiteada, NO editar a mano). 556 reservadas + `is_essence`/`is_vendor`. |
+
+## Esencia vs vendor (COBOL devorado → BMO COBOL)
+
+GnuCOBOL infla a 1130+ palabras porque traduce a C y trae todos los dialectos.
+No es la esencia. Aquí separamos: **STANDARD** (el idioma de Grace Hopper,
+primera clase) vs **VENDOR** (VAX DBMS / IBM obsoletas / pantalla — reconocidas
+pero aparte). El número inflado de GnuCOBOL NO es el objetivo; la cobertura del
+estándar sí.
 
 ## Flujo
 

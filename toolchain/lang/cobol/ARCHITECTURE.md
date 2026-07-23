@@ -52,14 +52,28 @@ Leyenda: ✅ hecho · ◐ funciona en un subconjunto, crece · ⬜ pendiente.
 ## Lo que genera Python (la fábrica cobol-gen)
 
 `toolchain/tools/cobol-gen/definition.py` (compacto) → `generate.py` →
-`src/generated/words.rs`:
+`src/generated/words.rs` (556 palabras reservadas, 55 intrínsecas):
 - `RESERVED[]` + `is_reserved()` (búsqueda binaria)
-- `RESERVED_STD[]` + `reserved_since()` (era: COBOL74/85/2002/2023)
+- `RESERVED_STD[]` + `reserved_since()` — etiqueta por origen
 - `verb_kind()`, `INTRINSIC[]` + `is_intrinsic()`
+- **`is_essence()` / `is_vendor()`** — separan la ESENCIA del VENDOR
 
-Crecer al COBOL 2023 completo = ampliar `definition.py` + `py generate.py`.
-Candidatos futuros a generar: tabla de formatos de sentencia, funciones
-intrínsecas con su firma, edit-masks de PIC.
+### COBOL devorado → BMO COBOL (esencia vs vendor)
+
+GnuCOBOL infla a 1130+ palabras porque **traduce COBOL a C** y mete TODOS los
+dialectos + su runtime. Eso NO es la esencia. BMO devora COBOL y lo hace suyo,
+separando:
+
+- **STANDARD** = la esencia (COBOL74/85/2002/2023 + corpus ISO/ANSI). Primera
+  clase. Es el idioma de Grace Hopper.
+- **VENDOR** = extensiones de vendor (VAX DBMS, IBM obsoletas, pantalla VAX/MF,
+  COMP no estándar). Se RECONOCEN (`is_vendor`) pero marcadas aparte, jamás
+  confundidas con el núcleo.
+
+BMO compila COBOL a BEF **nativo** (sin C intermedio, sin runtime ajeno) — lo
+opuesto de GnuCOBOL. Crecer la esencia = ampliar `RESERVED_STANDARD`/las eras
+en `definition.py` + `py generate.py`; nunca perseguir el número inflado de
+GnuCOBOL.
 
 ## Esencia protegida (ver cobol.md)
 
