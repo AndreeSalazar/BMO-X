@@ -6,7 +6,7 @@
 //! nada: el codegen decimal exacto sigue igual, solo cambia quién arma el AST.
 
 use crate::ast::error::CobolError;
-use crate::ast::{CobolStatement, DataItem};
+use crate::ast::{CobolProgram, CobolStatement, DataItem};
 use crate::lexer::{lex, Tok, Token};
 
 /// Texto fuente de un token — para reensamblar una cláusula PIC que el lexer
@@ -226,6 +226,61 @@ pub fn parse_statements(src: &str) -> Result<Vec<CobolStatement>, CobolError> {
     Ok(out)
 }
 
+// ── Programa completo (IDENTIFICATION / DATA / PROCEDURE) sobre tokens ────
+
+/// Parsea un programa COBOL entero desde el fuente al AST `CobolProgram`.
+/// Este es el camino que jubila al parser por-líneas: Source → lexer →
+/// tparser → CobolProgram → codegen → BEF.
+pub fn parse_program(src: &str) -> Result<CobolProgram, CobolError> {
+    let mut c = Cursor::from_source(src);
+
+    // 1. PROGRAM-ID. <nombre>.
+    let mut program_id = String::from("PROGRAM");
+    while !c.done() {
+        if c.eat_kw("PROGRAM-ID") {
+            if matches!(c.peek(), Some(Tok::Period)) {
+                c.bump();
+            }
+            if let Some(t) = c.bump() {
+                program_id = tok_text(&t);
+            }
+            c.eat_periods();
+            break;
+        }
+        c.bump();
+    }
+    let mut prog = CobolProgram::new(program_id);
+
+    // 2. Recorre divisiones. Los items de datos empiezan por número de nivel;
+    //    al llegar a PROCEDURE DIVISION se parsean las sentencias.
+    while !c.done() {
+        if matches!(c.peek(), Some(Tok::Number(_))) {
+            prog.data_items.push(parse_data_item(&mut c)?);
+            continue;
+        }
+        if c.eat_kw("PROCEDURE") {
+            c.eat_kw("DIVISION");
+            // Cabecera (USING …) hasta el punto.
+            while !matches!(c.peek(), Some(Tok::Period)) && !c.done() {
+                c.bump();
+            }
+            c.eat_periods();
+            // Sentencias hasta el final.
+            while !c.done() {
+                if matches!(c.peek(), Some(Tok::Period)) {
+                    c.bump();
+                    continue;
+                }
+                prog.statements.push(parse_statement(&mut c)?);
+            }
+            break;
+        }
+        // Cabeceras de división/sección y demás: saltar.
+        c.bump();
+    }
+    Ok(prog)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,5 +329,33 @@ mod tests {
         assert_eq!(items[1].scale(), 0);   // entero
         assert_eq!(items[2].scale(), 2);   // dinero con signo
         assert!(items[2].pic_field.as_ref().unwrap().signed);
+    }
+
+    #[test]
+    fn parses_whole_program_end_to_end() {
+        let src = "\
+IDENTIFICATION DIVISION.
+PROGRAM-ID. BANCO.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 SALDO PIC 9(5)V99 VALUE 0.
+PROCEDURE DIVISION.
+MOVE 10.05 TO SALDO.
+ADD 3.20 TO SALDO.
+DISPLAY \"listo\".
+STOP RUN.
+";
+        let prog = parse_program(src).unwrap();
+        assert_eq!(prog.program_id, "BANCO");
+        assert_eq!(prog.data_items.len(), 1);
+        assert_eq!(prog.data_items[0].name, "SALDO");
+        assert_eq!(prog.data_items[0].scale(), 2); // centavos
+        assert_eq!(prog.statements.len(), 4);
+        assert_eq!(prog.statements[0], CobolStatement::Move("10.05".into(), "SALDO".into()));
+
+        // Pipeline NUEVO completo: tokens → AST → BEF (ejecutable real).
+        let bef = crate::codegen::compile_to_bef_bytes(&prog).unwrap();
+        assert!(bef.len() > 48, "el BEF debe tener cabecera + codigo");
+        assert_eq!(&bef[..4], b"BEF1"); // magic del contenedor
     }
 }
