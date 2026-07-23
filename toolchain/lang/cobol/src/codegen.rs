@@ -31,6 +31,9 @@ struct Codegen {
     call_relocs: Vec<CallReloc>,
     function_offsets: HashMap<String, usize>,
     var_offsets: HashMap<String, i32>,
+    /// Escala decimal por variable (dígitos tras la V del PIC). El alma
+    /// bancaria: un `PIC 9(3)V99` tiene escala 2 → guarda centavos.
+    var_scales: HashMap<String, u32>,
     next_label: u32,
     stack_size: i32,
     /// Tabla de instrucciones sem-asm (opcodes leídos de la TOML).
@@ -46,10 +49,42 @@ impl Codegen {
             call_relocs: vec![],
             function_offsets: HashMap::new(),
             var_offsets: HashMap::new(),
+            var_scales: HashMap::new(),
             next_label: 0,
             stack_size: 0,
             isa: Instructions::load_x86_64().expect("tablas sem-asm x86-64 (forge/sem-asm/tables)"),
         }
+    }
+
+    /// Escala decimal de una variable (0 = entero / no declarada).
+    fn var_scale(&self, name: &str) -> u32 {
+        *self.var_scales.get(name).unwrap_or(&0)
+    }
+
+    /// Convierte un literal COBOL a su ENTERO escalado por `scale`. Es el
+    /// corazón del decimal exacto: `"10.05"` con escala 2 → `1005` centavos;
+    /// `"3.2"` → `320`; `"7"` → `700`. Trunca los decimales sobrantes (el
+    /// default de COBOL sin `ROUNDED`). Un entero con escala 0 queda igual.
+    fn scaled_imm(lit: &str, scale: u32) -> u64 {
+        let s = lit.trim().trim_start_matches(['+', '-']);
+        let (int_part, frac_part) = s.split_once('.').unwrap_or((s, ""));
+        let int_val: u64 = int_part.parse().unwrap_or(0);
+        let mut frac = frac_part.to_string();
+        while (frac.len() as u32) < scale {
+            frac.push('0');
+        }
+        let frac_val: u64 = if scale == 0 {
+            0
+        } else {
+            frac[..scale as usize].parse().unwrap_or(0)
+        };
+        int_val * 10u64.pow(scale) + frac_val
+    }
+
+    /// `mov rax, <literal escalado a `scale`>`.
+    fn load_scaled_imm(&mut self, lit: &str, scale: u32) {
+        let v = Self::scaled_imm(lit, scale);
+        self.emit_asm(|a| { a.mov_imm64(Reg::Rax, v).unwrap(); });
     }
 
     /// Emite bytes con el encoder sem-asm (opcode de la tabla + REX/ModRM).
@@ -68,6 +103,8 @@ impl Codegen {
             let aligned = (size as i32 + 7) & !7;
             self.stack_size += aligned;
             self.var_offsets.insert(item.name.clone(), -(self.stack_size));
+            // Recuerda la escala decimal del PIC para la aritmética exacta.
+            self.var_scales.insert(item.name.clone(), item.scale());
         }
         self.collect_strings(program);
 
@@ -167,35 +204,48 @@ impl Codegen {
             CobolStatement::Display(s) => self.emit_display(s),
             CobolStatement::Accept(_) => self.emit_mov_eax_syscall(NR_INPUT_POLL_EVENT),
 
+            // Decimal EXACTO: el literal se escala a la escala del destino,
+            // así $10.05 en un PIC 9(3)V99 se guarda como el entero 1005.
             CobolStatement::Move(src, dst) => {
-                self.load_imm64(src);
+                let sc = self.var_scale(dst);
+                self.load_scaled_imm(src, sc);
                 self.store_var(dst);
             }
+            // ADD a misma escala: ambos operandos en centavos → `add` es
+            // suma decimal exacta (sin float, sin redondeo). El alma bancaria.
             CobolStatement::Add(src, dst) => {
+                let sc = self.var_scale(dst);
                 self.load_var(dst);
                 self.code.push(0x50);                    // push rax
-                self.load_imm64(src);
+                self.load_scaled_imm(src, sc);
                 self.code.push(0x5A);                    // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
                 self.store_var(dst);
             }
             CobolStatement::Subtract(src, dst) => {
+                let sc = self.var_scale(dst);
                 self.load_var(dst);
                 self.code.push(0x50);
-                self.load_imm64(src);
+                self.load_scaled_imm(src, sc);
                 self.code.push(0x5B);
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD8]);
                 self.code.push(0x50);
-                self.load_imm64(src);
+                self.load_scaled_imm(src, sc);
                 self.code.push(0x5A);
                 self.code.extend_from_slice(&[0x48, 0x29, 0xC2]);
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
                 self.store_var(dst);
             }
+            // TODO(decimal): MULTIPLY/DIVIDE cambian la ESCALA del resultado
+            // (mul: las escalas se suman → hay que reescalar /10^s; div:
+            // reescalar ×10^s). Por ahora escala el literal al destino, pero
+            // el resultado aún necesita corrección de escala. No usar para
+            // dinero con decimales hasta implementar el reescalado.
             CobolStatement::Multiply(src, dst) => {
+                let sc = self.var_scale(dst);
                 self.load_var(dst);
                 self.code.push(0x50);
-                self.load_imm64(src);
+                self.load_scaled_imm(src, sc);
                 self.code.push(0x5A);
                 self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]);
                 self.store_var(dst);
@@ -214,7 +264,8 @@ impl Codegen {
                 self.store_var(dst);
             }
             CobolStatement::Compute(dst, expr) => {
-                self.load_imm64(expr);
+                let sc = self.var_scale(dst);
+                self.load_scaled_imm(expr, sc);
                 self.store_var(dst);
             }
             CobolStatement::If(cond, then_stmts, else_stmts) => {
@@ -339,5 +390,37 @@ impl Codegen {
         b.add_section(BefSection::code(all));
         b.entry_offset = 0;
         b.build().unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Codegen;
+
+    #[test]
+    fn decimal_literals_scale_to_exact_cents() {
+        // El alma bancaria: literal decimal → entero escalado exacto.
+        assert_eq!(Codegen::scaled_imm("10.05", 2), 1005); // $10.05 → 1005 centavos
+        assert_eq!(Codegen::scaled_imm("3.2", 2), 320);    // $3.20  → 320
+        assert_eq!(Codegen::scaled_imm("7", 2), 700);      // $7.00  → 700
+        assert_eq!(Codegen::scaled_imm("0.99", 2), 99);    // 99 centavos
+        // Suma exacta de centavos, sin float:
+        assert_eq!(
+            Codegen::scaled_imm("10.05", 2) + Codegen::scaled_imm("3.20", 2),
+            1325 // $13.25 exacto
+        );
+    }
+
+    #[test]
+    fn scale_zero_is_plain_integer() {
+        // Enteros: comportamiento previo intacto (no rompe nada).
+        assert_eq!(Codegen::scaled_imm("42", 0), 42);
+        assert_eq!(Codegen::scaled_imm("1000", 0), 1000);
+    }
+
+    #[test]
+    fn truncates_extra_decimals() {
+        // COBOL sin ROUNDED trunca (no redondea).
+        assert_eq!(Codegen::scaled_imm("1.999", 2), 199);
     }
 }
