@@ -758,15 +758,30 @@ impl Codegen {
                 if let Some(lbl) = self.continue_target.last() { self.emit_jmp_reloc(*lbl); }
             }
             Stmt::Return(Some(e)) => {
-                self.emit_expr(e);
+                // return de un float: el valor vive en xmm0 (ABI de retorno SSE);
+                // el epílogo preserva xmm0. En contexto entero, emit_expr trunca.
+                if self.expr_is_float(e) && !self.is_entry_function {
+                    self.emit_fexpr(e);
+                } else {
+                    self.emit_expr(e);
+                }
                 self.emit_epilogue();
             }
             Stmt::Return(None) => {
                 self.emit_epilogue();
             }
-            Stmt::DeclAssign(_, name, init) => {
-                if let Some(e) = init { self.emit_expr(e); } else { self.emit_expr(&Expr::Int(0)); }
-                self.emit_store_var(name);
+            Stmt::DeclAssign(typ, name, init) => {
+                // Variable float/double: valor por la ruta SSE, store movsd/movss.
+                if Self::is_float_ty(typ) {
+                    match init {
+                        Some(e) => self.emit_fexpr_operand(e), // acepta double d = 5;
+                        None => self.code.extend_from_slice(&[0x66, 0x0F, 0x57, 0xC0]), // xorpd xmm0,xmm0 = 0.0
+                    }
+                    self.store_float_var(name);
+                } else {
+                    if let Some(e) = init { self.emit_expr(e); } else { self.emit_expr(&Expr::Int(0)); }
+                    self.emit_store_var(name);
+                }
             }
             Stmt::Expr(e) => {
                 self.emit_expr(e);
@@ -867,10 +882,26 @@ impl Codegen {
 
     // ---- Expression emit ----
     fn emit_expr(&mut self, expr: &Expr) {
+        // Guard SSE: una expresión FLOTANTE que llega a la ruta entera está en
+        // contexto entero (int x = 1.5; return d;) → calcular en xmm y truncar
+        // a rax (cvttsd2si). Las comparaciones dan int 0/1 (no son float) y se
+        // manejan abajo. emit_fexpr_operand solo llama aquí para NO-floats, así
+        // que no hay recursión infinita.
+        if self.expr_is_float(expr) {
+            self.emit_fexpr(expr);
+            self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2C, 0xC0]); // cvttsd2si rax, xmm0
+            return;
+        }
         match expr {
             Expr::Int(n) => {
                 let v = *n as u64;
                 self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, v).unwrap(); });
+            }
+            // El guard SSE de arriba ya captura los floats; este brazo solo
+            // existe por exhaustividad (defensivo: trunca a entero).
+            Expr::FloatLit(_) => {
+                self.emit_fexpr(expr);
+                self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2C, 0xC0]); // cvttsd2si rax, xmm0
             }
             Expr::CharLit(c) => {
                 let v = *c as u64;
@@ -945,8 +976,14 @@ impl Codegen {
                 self.emit_call_to_syscall_stub();
             }
             Expr::Assign(name, val) => {
-                self.emit_expr(val);
-                self.emit_store_var(name);
+                // Asignación a variable float/double → ruta SSE.
+                if self.var_type_of(name).map_or(false, |t| Self::is_float_ty(&t)) {
+                    self.emit_fexpr_operand(val);
+                    self.store_float_var(name);
+                } else {
+                    self.emit_expr(val);
+                    self.emit_store_var(name);
+                }
             }
             Expr::Neg(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); }
             Expr::Not(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x85, 0xC0, 0x0F, 0x94, 0xC0]); }
@@ -1056,12 +1093,14 @@ impl Codegen {
                 self.emit_expr(b); self.code.push(0x5A);
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD6, 0x58, 0x48, 0x31, 0xD2, 0x48, 0xF7, 0xF6, 0x48, 0x89, 0xD0]);
             }
-            Expr::Eq(a, b) => self.emit_cmp(a, b, &[0x0F, 0x94, 0xC0]),
-            Expr::Neq(a, b) => self.emit_cmp(a, b, &[0x0F, 0x95, 0xC0]),
-            Expr::Lt(a, b) => self.emit_cmp(a, b, &[0x0F, 0x9C, 0xC0]),
-            Expr::Gt(a, b) => self.emit_cmp_swapped(b, a, &[0x0F, 0x9C, 0xC0]),
-            Expr::Le(a, b) => self.emit_cmp_swapped(b, a, &[0x0F, 0x9E, 0xC0]),
-            Expr::Ge(a, b) => self.emit_cmp(a, b, &[0x0F, 0x9D, 0xC0]),
+            // Comparaciones: si algún operando es float → comisd (setcc unsigned);
+            // si no, la comparación entera de siempre.
+            Expr::Eq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x94) } else { self.emit_cmp(a, b, &[0x0F, 0x94, 0xC0]) },
+            Expr::Neq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x95) } else { self.emit_cmp(a, b, &[0x0F, 0x95, 0xC0]) },
+            Expr::Lt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x92) } else { self.emit_cmp(a, b, &[0x0F, 0x9C, 0xC0]) },
+            Expr::Gt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x97) } else { self.emit_cmp_swapped(b, a, &[0x0F, 0x9C, 0xC0]) },
+            Expr::Le(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x96) } else { self.emit_cmp_swapped(b, a, &[0x0F, 0x9E, 0xC0]) },
+            Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) } else { self.emit_cmp(a, b, &[0x0F, 0x9D, 0xC0]) },
             Expr::BitAnd(a, b) => self.emit_binop(a, b, &[0x48, 0x21, 0xD0]),
             Expr::BitXor(a, b) => self.emit_binop(a, b, &[0x48, 0x31, 0xD0]),
             Expr::BitOr(a, b) => self.emit_binop(a, b, &[0x48, 0x09, 0xD0]),
@@ -1327,6 +1366,156 @@ impl Codegen {
             // "eax": escribir eax en modo 64-bit ya deja rax con el alto en cero
             _ => {}
         }
+    }
+
+    // ═══════════════ Ruta SSE: floats en xmm0 (doble precisión) ═══════════════
+    // C tradicional oculta si un valor es float; aquí el codegen lo SABE y lo
+    // rutea por xmm. Se computa todo en double; `float` (f32) se convierte en
+    // los bordes (load/store). Registro de trabajo: xmm0; scratch: xmm1.
+
+    fn var_type_of(&self, name: &str) -> Option<TypeSpec> {
+        self.var_offsets.get(name).map(|&(_, ref t)| t.clone())
+            .or_else(|| self.global_offsets.get(name).map(|&(_, ref t)| t.clone()))
+    }
+
+    fn is_float_ty(t: &TypeSpec) -> bool { matches!(t, TypeSpec::Float | TypeSpec::Double) }
+
+    /// ¿Esta expresión produce un valor de punto flotante?
+    fn expr_is_float(&self, e: &Expr) -> bool {
+        match e {
+            Expr::FloatLit(_) => true,
+            Expr::Var(n) => self.var_type_of(n).map_or(false, |t| Self::is_float_ty(&t)),
+            Expr::Cast(t, _) => Self::is_float_ty(t),
+            Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) =>
+                self.expr_is_float(a) || self.expr_is_float(b),
+            Expr::Neg(a) => self.expr_is_float(a),
+            Expr::Field(_, _, _, t) | Expr::Arrow(_, _, _, t) => Self::is_float_ty(t),
+            Expr::IndexPtr(_, _, t) => Self::is_float_ty(t),
+            Expr::Conditional(_, a, b) => self.expr_is_float(a) || self.expr_is_float(b),
+            _ => false,
+        }
+    }
+
+    /// cvtsi2sd xmm0, rax — entero (rax) → double (xmm0).
+    fn emit_int_to_double(&mut self) {
+        self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2A, 0xC0]);
+    }
+
+    /// modrm+disp para `<sse> xmm0, [rbp+off]` / `[rbp+off], xmm0` (reg field = 0).
+    fn emit_rbp_disp(&mut self, off: i32) {
+        if off >= -128 && off <= 127 {
+            self.code.push(0x45);           // mod=01, reg=0, rm=101 (rbp) + disp8
+            self.code.push(off as u8);
+        } else {
+            self.code.push(0x85);           // mod=10 + disp32
+            self.code.extend_from_slice(&off.to_le_bytes());
+        }
+    }
+
+    /// Carga una variable float/double del stack a xmm0 (siempre como double).
+    fn emit_load_float_var(&mut self, name: &str) {
+        if let Some(&(off, ref typ)) = self.var_offsets.get(name) {
+            let is_f32 = matches!(typ, TypeSpec::Float);
+            let off = off;
+            if is_f32 {
+                self.code.extend_from_slice(&[0xF3, 0x0F, 0x10]); // movss xmm0,[rbp+off]
+                self.emit_rbp_disp(off);
+                self.code.extend_from_slice(&[0xF3, 0x0F, 0x5A, 0xC0]); // cvtss2sd xmm0,xmm0
+            } else {
+                self.code.extend_from_slice(&[0xF2, 0x0F, 0x10]); // movsd xmm0,[rbp+off]
+                self.emit_rbp_disp(off);
+            }
+        } else {
+            // global float: pendiente (locales primero) → xmm0 = 0
+            self.code.extend_from_slice(&[0x66, 0x0F, 0x57, 0xC0]); // xorpd xmm0,xmm0
+            self.errors.push(format!("variable float global '{name}' aun no soportada (usa locales)"));
+        }
+    }
+
+    /// Guarda xmm0 (double) en una variable float/double del stack.
+    fn store_float_var(&mut self, name: &str) {
+        if let Some(&(off, ref typ)) = self.var_offsets.get(name) {
+            let is_f32 = matches!(typ, TypeSpec::Float);
+            let off = off;
+            if is_f32 {
+                self.code.extend_from_slice(&[0xF2, 0x0F, 0x5A, 0xC0]); // cvtsd2ss xmm0,xmm0
+                self.code.extend_from_slice(&[0xF3, 0x0F, 0x11]);       // movss [rbp+off],xmm0
+                self.emit_rbp_disp(off);
+            } else {
+                self.code.extend_from_slice(&[0xF2, 0x0F, 0x11]);       // movsd [rbp+off],xmm0
+                self.emit_rbp_disp(off);
+            }
+        } else {
+            self.errors.push(format!("variable float global '{name}' aun no soportada (usa locales)"));
+        }
+    }
+
+    /// Evalúa `e` a xmm0 como double, convirtiendo enteros si hace falta.
+    fn emit_fexpr_operand(&mut self, e: &Expr) {
+        if self.expr_is_float(e) {
+            self.emit_fexpr(e);
+        } else {
+            self.emit_expr(e);          // rax = valor entero
+            self.emit_int_to_double();  // xmm0 = (double) rax
+        }
+    }
+
+    /// a OP b en double: resultado en xmm0. `op` = bytes de `<opsd> xmm0,xmm1`.
+    fn emit_fbinop(&mut self, a: &Expr, b: &Expr, op: &[u8]) {
+        self.emit_fexpr_operand(a);
+        self.code.extend_from_slice(&[0x48, 0x83, 0xEC, 0x08]);       // sub rsp,8
+        self.code.extend_from_slice(&[0xF2, 0x0F, 0x11, 0x04, 0x24]); // movsd [rsp],xmm0  (spill a)
+        self.emit_fexpr_operand(b);
+        self.code.extend_from_slice(&[0xF2, 0x0F, 0x10, 0xC8]);       // movsd xmm1,xmm0  (xmm1=b)
+        self.code.extend_from_slice(&[0xF2, 0x0F, 0x10, 0x04, 0x24]); // movsd xmm0,[rsp] (xmm0=a)
+        self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]);       // add rsp,8
+        self.code.extend_from_slice(op);                             // op xmm0,xmm1
+    }
+
+    /// Evalúa una expresión FLOTANTE dejando el resultado (double) en xmm0.
+    fn emit_fexpr(&mut self, e: &Expr) {
+        match e {
+            Expr::FloatLit(f) => {
+                let bits = f.to_bits();
+                self.code.extend_from_slice(&[0x48, 0xB8]);            // mov rax, imm64
+                self.code.extend_from_slice(&bits.to_le_bytes());
+                self.code.extend_from_slice(&[0x66, 0x48, 0x0F, 0x6E, 0xC0]); // movq xmm0, rax
+            }
+            Expr::Var(n) => self.emit_load_float_var(n),
+            Expr::Cast(t, inner) if Self::is_float_ty(t) => {
+                // (double)algo — si algo ya es float, no-op; si es entero, convierte
+                self.emit_fexpr_operand(inner);
+            }
+            Expr::Neg(a) => {
+                self.emit_fexpr(a);
+                // xorpd xmm0, sign-bit → negación
+                self.code.extend_from_slice(&[0x48, 0xB8]);
+                self.code.extend_from_slice(&0x8000_0000_0000_0000u64.to_le_bytes());
+                self.code.extend_from_slice(&[0x66, 0x48, 0x0F, 0x6E, 0xC8]); // movq xmm1, rax
+                self.code.extend_from_slice(&[0x66, 0x0F, 0x57, 0xC1]);       // xorpd xmm0, xmm1
+            }
+            Expr::Add(a, b) => self.emit_fbinop(a, b, &[0xF2, 0x0F, 0x58, 0xC1]), // addsd
+            Expr::Sub(a, b) => self.emit_fbinop(a, b, &[0xF2, 0x0F, 0x5C, 0xC1]), // subsd
+            Expr::Mul(a, b) => self.emit_fbinop(a, b, &[0xF2, 0x0F, 0x59, 0xC1]), // mulsd
+            Expr::Div(a, b) => self.emit_fbinop(a, b, &[0xF2, 0x0F, 0x5E, 0xC1]), // divsd
+            // cualquier otra cosa: es entera → convertir a double
+            _ => self.emit_fexpr_operand(e),
+        }
+    }
+
+    /// Comparación de floats: a CMP b → 0/1 en rax. `setcc` es el opcode
+    /// SETcc estilo UNSIGNED (comisd fija CF/ZF como comparación sin signo).
+    fn emit_fcmp(&mut self, a: &Expr, b: &Expr, setcc: u8) {
+        self.emit_fexpr_operand(a);
+        self.code.extend_from_slice(&[0x48, 0x83, 0xEC, 0x08]);       // sub rsp,8
+        self.code.extend_from_slice(&[0xF2, 0x0F, 0x11, 0x04, 0x24]); // movsd [rsp],xmm0
+        self.emit_fexpr_operand(b);
+        self.code.extend_from_slice(&[0xF2, 0x0F, 0x10, 0xC8]);       // movsd xmm1,xmm0 (b)
+        self.code.extend_from_slice(&[0xF2, 0x0F, 0x10, 0x04, 0x24]); // movsd xmm0,[rsp] (a)
+        self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]);       // add rsp,8
+        self.code.extend_from_slice(&[0x66, 0x0F, 0x2F, 0xC1]);       // comisd xmm0,xmm1
+        self.code.extend_from_slice(&[0x0F, setcc, 0xC0]);            // setcc al
+        self.code.extend_from_slice(&[0x0F, 0xB6, 0xC0]);            // movzx eax, al
     }
 
     /// Emit expression as an address (pointer), not as a value

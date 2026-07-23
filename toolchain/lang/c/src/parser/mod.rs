@@ -1339,10 +1339,7 @@ impl Parser {
         let tok = self.advance();
         match tok {
             Token::IntLit(n) => Ok(Expr::Int(n)),
-            // Honesto: el codegen aún no emite aritmética SSE — mejor rechazar
-            // que compilar floats como enteros y dar resultados basura.
-            Token::FloatLit(_) => Err(CError::new(tok_line,
-                "literal float aun no soportado por el codegen (aritmetica SSE pendiente); usa enteros escalados")),
+            Token::FloatLit(f) => Ok(Expr::FloatLit(f)),
             Token::StringLit(s) => Ok(Expr::StringLit(s)),
             Token::CharLit(c) => Ok(Expr::CharLit(c)),
             Token::Ident(name) => {

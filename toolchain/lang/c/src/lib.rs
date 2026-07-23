@@ -9,9 +9,9 @@ mod lexer;
 use parser::Parser;
 
 pub use standard::{CStandard, StandardFeatures};
+#[cfg(test)]
 use lexer::Token;
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use ast::*;
 use bmo_abi::profile::BmoLanguageProfile;
@@ -726,11 +726,13 @@ int main() { struct Point pt; pt.x = 10; return 0; }
     }
 
     #[test]
-    fn float_literal_rejected_honestly() {
-        // Sin aritmética SSE, un float compilado como int es basura silenciosa.
-        // Preferimos el error claro.
-        let err = parse("int main() { int x; x = 1.5; return x; }").unwrap_err();
-        assert!(err.message.contains("float"), "el error debe explicar que floats están pendientes: {}", err.message);
+    fn float_in_int_context_truncates() {
+        // Evolución del test de Fase 0: 1.5 ya NO se rechaza. En contexto ENTERO
+        // (int x = 1.5) se trunca vía cvttsd2si — semántica C correcta.
+        let src = "int main() { int x; x = 1.5; return x; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(5).any(|w| w == [0xF2, 0x48, 0x0F, 0x2C, 0xC0]),
+            "1.5 en contexto entero debe truncar con cvttsd2si");
     }
 
     #[test]
@@ -789,6 +791,91 @@ int main() { struct Point pt; pt.x = 10; return 0; }
         }).count();
         assert_eq!(n_assigns, 3, "las 3 asignaciones a arr[1] deben sobrevivir");
         compile_source_to_bef(src).unwrap();
+    }
+
+    // ---- Floats SSE (Fase 2) ----
+
+    #[test]
+    fn float_literal_is_number_now() {
+        // 1.5 ya NO es error: se acepta y se compila por la ruta SSE.
+        let src = "int main() { double d; d = 1.5; return 0; }";
+        let p = parse(src).unwrap();
+        // d = FloatLit(1.5)
+        let ok = p.functions[0].body.iter().any(|s| matches!(s,
+            Stmt::Expr(Expr::Assign(n, v)) if n == "d" && matches!(v.as_ref(), Expr::FloatLit(_))));
+        assert!(ok, "1.5 debe ser FloatLit, ya no un error");
+        let bef = compile_source_to_bef(src).unwrap();
+        // movq xmm0, rax (66 48 0F 6E C0) del literal + movsd store (F2 0F 11)
+        assert!(bef.windows(5).any(|w| w == [0x66, 0x48, 0x0F, 0x6E, 0xC0]), "falta movq xmm0,rax del literal");
+        assert!(bef.windows(3).any(|w| w == [0xF2, 0x0F, 0x11]), "falta movsd store del double");
+    }
+
+    #[test]
+    fn double_arithmetic_uses_sse() {
+        // d = a + b * c → addsd/mulsd, no aritmética entera.
+        let src = r#"
+int main() {
+    double a; double b; double c; double d;
+    a = 2.0; b = 3.0; c = 4.0;
+    d = a + b * c;
+    return 0;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(4).any(|w| w == [0xF2, 0x0F, 0x59, 0xC1]), "falta mulsd xmm0,xmm1");
+        assert!(bef.windows(4).any(|w| w == [0xF2, 0x0F, 0x58, 0xC1]), "falta addsd xmm0,xmm1");
+    }
+
+    #[test]
+    fn double_from_int_converts() {
+        // double d = 5; → cvtsi2sd (entero a double).
+        let src = "int main() { double d; d = 5; return 0; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(5).any(|w| w == [0xF2, 0x48, 0x0F, 0x2A, 0xC0]), "falta cvtsi2sd de 5");
+    }
+
+    #[test]
+    fn float_to_int_truncates() {
+        // int x = (int)2.7; → cvttsd2si (double a entero, trunca).
+        let src = "int main() { int x; x = (int)2.7; return x; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(5).any(|w| w == [0xF2, 0x48, 0x0F, 0x2C, 0xC0]), "falta cvttsd2si");
+    }
+
+    #[test]
+    fn double_comparison_uses_comisd() {
+        // if (d > 0.5) → comisd + seta, NO comparación entera de bits.
+        let src = r#"
+int main() {
+    double d; d = 1.0;
+    if (d > 0.5) { return 1; }
+    return 0;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(4).any(|w| w == [0x66, 0x0F, 0x2F, 0xC1]), "falta comisd xmm0,xmm1");
+        assert!(bef.windows(3).any(|w| w == [0x0F, 0x97, 0xC0]), "falta seta (a > b unsigned)");
+    }
+
+    #[test]
+    fn float_f32_narrows_on_store() {
+        // float f = 1.5; → cvtsd2ss (double a float) + movss store.
+        let src = "int main() { float f; f = 1.5; return 0; }";
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(4).any(|w| w == [0xF2, 0x0F, 0x5A, 0xC0]), "falta cvtsd2ss");
+        assert!(bef.windows(3).any(|w| w == [0xF3, 0x0F, 0x11]), "falta movss store");
+    }
+
+    #[test]
+    fn double_return_value_in_xmm0() {
+        // double f() { return d; } — el valor de retorno queda en xmm0.
+        let src = r#"
+double half(void) { double d; d = 0.5; return d; }
+int main() { return 0; }
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        // el return de half carga d con movsd xmm0,[rbp+off] (F2 0F 10 45 ..)
+        assert!(bef.windows(4).any(|w| w == [0xF2, 0x0F, 0x10, 0x45]), "falta movsd load del return");
     }
 
     #[test]

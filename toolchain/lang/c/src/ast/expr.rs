@@ -15,6 +15,9 @@ pub struct SyscallDef {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Int(i64),
+    /// Literal de punto flotante (1.5, 3.14). Se computa en doble precisión
+    /// por la ruta SSE (xmm), no por la ruta entera (rax).
+    FloatLit(f64),
     StringLit(String),
     CharLit(u8),
     Var(String),
