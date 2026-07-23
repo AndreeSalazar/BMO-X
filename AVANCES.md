@@ -160,7 +160,15 @@ cargo test -p bmo-cobol-front
    lenguaje *usable* de verdad (systems + drivers).
 4. **COBOL**: la base está; crecer por features (records+OCCURS → IF/EVALUATE →
    PERFORM VARYING → COMPUTE → edit-masks → File I/O).
-5. **C++**: el más difícil (templates/clases/excepciones); solo un subconjunto
-   "C con clases" es realista.
+5. **BMO C++ (esencial, ACOTADO)**: NO es "todo C++". Alcance deliberado =
+   desde Bjarne (origen) hasta lo ESENCIAL de C++17, sin la bola moderna.
+   - DENTRO: clases/structs, ctor/dtor (RAII), referencias, sobrecarga,
+     herencia + virtuales (vtables, ya presente), namespaces, templates
+     básicos, new/delete, auto, range-for, nullptr, constexpr básico, lambdas.
+   - FUERA (la "basura" que hunde el barco, cf. Stroustrup "Remember the
+     Vasa!"): concepts, coroutines, modules, ranges, STL gigante,
+     metaprogramación pesada, C++20/23, el treadmill moderno.
+   - Los 3 syscalls + runtime mínimo (bmo-rt) lo hacen FINITO/terminable:
+     no necesita std::thread/filesystem/etc. **C++ congelado en su esencia.**
 
 **Desktop (F5)**: compositor sobre Endpoint RPC, estética Win11+Mac cyberpunk.
