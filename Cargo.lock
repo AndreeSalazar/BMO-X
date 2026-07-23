@@ -137,13 +137,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bmo-lower"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
-]
-
-[[package]]
 name = "bmo-net"
 version = "0.1.0"
 dependencies = [
@@ -158,13 +151,6 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.0",
  "volatile",
-]
-
-[[package]]
-name = "bmo-opt"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
 ]
 
 [[package]]
