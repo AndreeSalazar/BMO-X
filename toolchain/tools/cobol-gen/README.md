@@ -24,9 +24,19 @@ py toolchain/tools/cobol-gen/generate.py
 
 | Archivo | Rol |
 |---|---|
-| `definition.py` | **La fuente**: `RESERVED_BY_STANDARD` (esencia por era), `RESERVED_STANDARD` (corpus ISO), `RESERVED_VENDOR` (extensiones marcadas), `VERBS`, `INTRINSIC_FUNCTIONS`. **Aquí creces COBOL.** |
+| `defs/words.py` | Palabras reservadas: esencia por era + `RESERVED_STANDARD` + `RESERVED_VENDOR`. |
+| `defs/verbs.py` | Verbos con codegen (palabra → `CobolStatement`). |
+| `defs/intrinsics.py` | Funciones intrínsecas (lista de reconocimiento). |
+| `defs/grammar.py` | *(futuro)* formatos de sentencia por verbo → dispatch del parser. |
+| `defs/editmasks.py` | *(futuro)* máscaras de edición PIC (`$$,$$9.99`, Z, CR/DB…). |
+| `definition.py` | Agregador: importa de `defs/` y re-exporta. **Aquí NO se edita datos.** |
 | `generate.py` | La fábrica: lee la definición, escribe el Rust. |
 | → `lang/cobol/src/generated/words.rs` | **Salida generada** (Rust, commiteada, NO editar a mano). 556 reservadas + `is_essence`/`is_vendor`. |
+
+**Organizado por concern**: cada archivo en `defs/` es una cosa; crecer uno
+crece BMO COBOL sin tocar el resto. Python genera lo **tabular** (tablas,
+dispatch, esqueletos); la **semántica/codegen** de cada verbo es lógica Rust
+(no generable — Python arma el esqueleto, Rust pone la inteligencia).
 
 ## Esencia vs vendor (COBOL devorado → BMO COBOL)
 
