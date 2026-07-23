@@ -8,6 +8,9 @@ description = "BMO COBOL frontend — parses COBOL and compiles native BEX execu
 [dependencies]
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 gnucobol-rs = { path = "../../../extern/gnucobol-rs/crates/gnucobol-rs" }
+# forge: encoder compartido (elegido, no embudo) — sustituye el hardcodeo
+# de bytes (mov imm64/reg, syscall) por la tabla TOML.
+bmo-sem-asm = { path = "../../forge/sem-asm" }
 
 [lib]
 name = "bmo_cobol_front"

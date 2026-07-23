@@ -2,17 +2,18 @@ use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::*;
 use bmo_abi::syscalls::surface;
+use bmo_sem_asm::Instructions;
+use bmo_sem_asm::x86_64::{Asm, Reg};
 use crate::ast::{CobolProgram, CobolStatement, CobolCondition};
 use crate::ast::error::CobolError;
 
 type Result<T> = core::result::Result<T, CobolError>;
 
-// BMO x86-64 SYSCALL arguments: RDI, RSI, RDX, R10, R8, R9.
-// RCX is overwritten by the CPU with the user return address.
-const REG_MOV: &[[u8; 3]] = &[
-    [0x48, 0x89, 0xC7], [0x48, 0x89, 0xC6], [0x48, 0x89, 0xC2],
-    [0x49, 0x89, 0xC2], [0x49, 0x89, 0xC0], [0x49, 0x89, 0xC1],
-];
+// BMO x86-64 SYSCALL argument registers: RDI, RSI, RDX, R10, R8, R9.
+// RCX lo pisa el CPU con la dirección de retorno del usuario. Antes esto era
+// la tabla REG_MOV de bytes a mano; ahora el mov reg,rax lo emite el encoder
+// sem-asm (mismos bytes, leídos de la tabla TOML).
+const ARG_REGS: [Reg; 6] = [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
 
 pub fn compile_to_bef_bytes(program: &CobolProgram) -> Result<Vec<u8>> {
     let mut cg = Codegen::new();
@@ -32,6 +33,8 @@ struct Codegen {
     var_offsets: HashMap<String, i32>,
     next_label: u32,
     stack_size: i32,
+    /// Tabla de instrucciones sem-asm (opcodes leídos de la TOML).
+    isa: Instructions,
 }
 
 impl Codegen {
@@ -45,7 +48,15 @@ impl Codegen {
             var_offsets: HashMap::new(),
             next_label: 0,
             stack_size: 0,
+            isa: Instructions::load_x86_64().expect("tablas sem-asm x86-64 (forge/sem-asm/tables)"),
         }
+    }
+
+    /// Emite bytes con el encoder sem-asm (opcode de la tabla + REX/ModRM).
+    fn emit_asm(&mut self, build: impl FnOnce(&mut Asm)) {
+        let mut a = Asm::new(&self.isa);
+        build(&mut a);
+        self.code.extend_from_slice(a.bytes());
     }
 
     fn fresh_label(&mut self) -> u32 { let l = self.next_label; self.next_label += 1; l }
@@ -122,8 +133,8 @@ impl Codegen {
 
     fn load_imm64(&mut self, val: &str) {
         let num: u64 = val.parse().unwrap_or(0);
-        self.code.extend_from_slice(&[0x48, 0xB8]);
-        self.code.extend_from_slice(&num.to_le_bytes());
+        // mov rax, imm64 — antes [0x48,0xB8]+imm a mano; ahora el encoder.
+        self.emit_asm(|a| { a.mov_imm64(Reg::Rax, num).unwrap(); });
     }
 
     fn emit_display(&mut self, s: &str) {
@@ -145,9 +156,9 @@ impl Codegen {
                     self.emit_v2_task_invoke(operation, args);
                 } else {
                     for (i, arg) in args.iter().enumerate() {
-                        if i < REG_MOV.len() {
-                            self.load_imm64(arg);
-                            self.code.extend_from_slice(&REG_MOV[i]);
+                        if i < ARG_REGS.len() {
+                            let value: u64 = arg.parse().unwrap_or(0);
+                            self.emit_imm64_syscall_arg(i, value);
                         }
                     }
                     self.emit_mov_eax_syscall(def.nr);
@@ -282,9 +293,12 @@ impl Codegen {
     }
 
     fn emit_imm64_syscall_arg(&mut self, index: usize, value: u64) {
-        self.code.extend_from_slice(&[0x48, 0xB8]);
-        self.code.extend_from_slice(&value.to_le_bytes());
-        self.code.extend_from_slice(&REG_MOV[index]);
+        // mov rax, imm64 ; mov <arg_reg>, rax — todo por el encoder sem-asm.
+        let dst = ARG_REGS[index];
+        self.emit_asm(|a| {
+            a.mov_imm64(Reg::Rax, value).unwrap();
+            a.mov_reg(dst, Reg::Rax).unwrap();
+        });
     }
 
     fn emit_call_to_syscall_stub(&mut self) {
