@@ -50,6 +50,8 @@ pub enum Expr {
     Deref(Box<Expr>),
     AddrOf(Box<Expr>),
     Subscript(String, Box<Expr>, u8),
+    /// arr[i] = val — antes la asignación a subscript se DESCARTABA en silencio.
+    AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
     Field(Box<Expr>, String, u32),
     Arrow(Box<Expr>, String, u32),
     AssignField(Box<Expr>, String, u32, Box<Expr>),

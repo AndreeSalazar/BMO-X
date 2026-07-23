@@ -61,6 +61,8 @@ struct Codegen {
     break_target: Vec<u32>,
     continue_target: Vec<u32>,
     var_offsets: HashMap<String, (i32, TypeSpec)>,
+    // bytes de stack locales de la función actual (arrays/structs con tamaño REAL)
+    frame_size: i32,
     struct_layouts: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
     label_positions: HashMap<String, usize>,
@@ -95,6 +97,7 @@ impl Codegen {
             labels: 0, pending_relocs: Vec::new(), call_relocs: Vec::new(),
             function_offsets: HashMap::new(), break_target: Vec::new(),
             continue_target: Vec::new(), var_offsets: HashMap::new(),
+            frame_size: 0,
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
             label_positions: HashMap::new(), goto_relocs: Vec::new(),
             entry_offset: 0, is_entry_function: false,
@@ -215,6 +218,7 @@ impl Codegen {
             TypeSpec::Float => 4,
             TypeSpec::Double => 8,
             TypeSpec::Ptr(_) => 8,
+            TypeSpec::Array(t, n) => self.type_stack_size(t) * n,
             TypeSpec::StructRef(name) | TypeSpec::UnionRef(name) => {
                 self.struct_sizes.get(name).copied().unwrap_or(8)
             }
@@ -346,31 +350,50 @@ impl Codegen {
     }
 
     // ---- Stack frame helpers ----
+
+    /// Recolecta TODAS las DeclAssign del cuerpo, a cualquier profundidad.
+    /// Antes solo se miraba el nivel superior: una `int i` dentro de un
+    /// for/if/bloque NO recibía slot — stores descartados, loads = 0.
+    fn collect_decls_stmt<'a>(s: &'a Stmt, out: &mut Vec<(&'a String, &'a TypeSpec)>) {
+        match s {
+            Stmt::DeclAssign(t, n, _) => out.push((n, t)),
+            Stmt::Block(v) => for x in v { Self::collect_decls_stmt(x, out); },
+            Stmt::If(_, a, b) => {
+                Self::collect_decls_stmt(a, out);
+                if let Some(b) = b { Self::collect_decls_stmt(b, out); }
+            }
+            Stmt::While(_, b) | Stmt::DoWhile(b, _) | Stmt::For(_, _, _, b) => Self::collect_decls_stmt(b, out),
+            Stmt::Switch(_, cases) => for c in cases { for st in &c.stmts { Self::collect_decls_stmt(st, out); } },
+            _ => {}
+        }
+    }
+
     fn build_var_map(&mut self, params: &[Param], var_names: &[String], func: &Function) {
         self.var_offsets.clear();
-        // build map from param name → type
-        let mut type_map: HashMap<&str, &TypeSpec> = HashMap::new();
-        for p in params { type_map.insert(&p.name, &p.typ); }
-        let param_count = params.len();
-        // from var_names + declared types in body, build type map
-        // Function doesn't store types for body variables, only param types.
-        // We use the function's DeclAssign statements to determine types.
-        for stmt in &func.body {
-            if let Stmt::DeclAssign(t, n, _) = stmt {
-                type_map.insert(n.as_str(), t);
-            }
-        }
-
+        // parámetros: slots de 8 en [rbp+16+i*8] (convención de llamada propia)
         for (i, p) in params.iter().enumerate() {
             let off = 16 + i as i32 * 8;
-            let typ = type_map.get(p.name.as_str()).copied().cloned().unwrap_or(TypeSpec::Long);
-            self.var_offsets.insert(p.name.clone(), (off, typ));
+            self.var_offsets.insert(p.name.clone(), (off, p.typ.clone()));
         }
-        for (i, name) in var_names.iter().skip(param_count).enumerate() {
-            let off = -((i as i32 + 1) * 8);
-            let typ = type_map.get(name.as_str()).copied().cloned().unwrap_or(TypeSpec::Long);
-            self.var_offsets.insert(name.clone(), (off, typ));
+        // locales: tamaño REAL del tipo (arrays y structs incluidos), alineado a 8
+        let mut decls = Vec::new();
+        for stmt in &func.body { Self::collect_decls_stmt(stmt, &mut decls); }
+        let mut cur: i32 = 0;
+        for (name, typ) in &decls {
+            if self.var_offsets.contains_key(*name) { continue; } // sombra: un solo slot
+            let sz = self.type_stack_size(typ).max(8);
+            let sz = ((sz + 7) / 8 * 8) as i32;
+            cur -= sz;
+            self.var_offsets.insert((*name).clone(), (cur, (*typ).clone()));
         }
+        // legado: nombres registrados por el parser sin DeclAssign visible
+        for name in var_names.iter().skip(params.len()) {
+            if !self.var_offsets.contains_key(name) {
+                cur -= 8;
+                self.var_offsets.insert(name.clone(), (cur, TypeSpec::Long));
+            }
+        }
+        self.frame_size = -cur;
     }
 
     fn emit_store_var(&mut self, name: &str) {
@@ -423,6 +446,21 @@ impl Codegen {
         if let Some(&val) = self.enum_values.get(name) {
             self.code.extend_from_slice(&[0xB8]); // mov eax, imm32
             self.code.extend_from_slice(&(val as i32).to_le_bytes());
+            return;
+        }
+        // Arrays: decaen a puntero — "cargar" arr es su DIRECCIÓN, no su contenido
+        if self.var_is_array(name) {
+            if let Some(&(off, _)) = self.var_offsets.get(name) {
+                if off >= -128 && off <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x8D, 0x45, off as u8]); // lea rax,[rbp+off]
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
+                    self.code.extend_from_slice(&off.to_le_bytes());
+                }
+            } else {
+                self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
+                self.global_fixups.push((self.code.len() - 4, name.to_string()));
+            }
             return;
         }
         if let Some(&(offset, ref typ)) = self.var_offsets.get(name) {
@@ -540,15 +578,13 @@ impl Codegen {
                         }
                     }
         }
-        // allocate local var space
-        let local_count = func.var_names.len() as i32 - param_count as i32;
-        if local_count > 0 {
-            let stack_size = local_count * 8;
+        // allocate local var space — tamaño REAL calculado por build_var_map
+        // (antes: var_count*8, y los arrays/structs pisaban a sus vecinos)
+        let _ = param_count;
+        let stack_size = self.frame_size;
+        if stack_size > 0 {
             if stack_size <= 127 {
                 self.code.extend_from_slice(&[0x48, 0x83, 0xEC, stack_size as u8]);
-            } else if stack_size <= 0x7FFF {
-                self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
-                self.code.extend_from_slice(&(stack_size as u32).to_le_bytes());
             } else {
                 self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
                 self.code.extend_from_slice(&(stack_size as u32).to_le_bytes());
@@ -882,23 +918,7 @@ impl Codegen {
                         } else { self.emit_xor_eax(); }
                     }
                     Expr::Subscript(name, idx, scale) => {
-                        // lea rax, [rbp + var_off + idx*scale]
-                        let var_off = self.var_offsets.get(name).map(|&(off,_)| off).unwrap_or(0);
-                        // compute index * scale
-                        self.emit_expr(idx);
-                        if *scale > 0 {
-                            let shift = scale.trailing_zeros() as u8;
-                            self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, shift]);
-                        }
-                        self.code.push(0x50); // push scaled index
-                        if var_off >= -128 && var_off <= 127 {
-                            self.code.extend_from_slice(&[0x48, 0x8D, 0x45, var_off as u8]); // lea rax, [rbp+var_off]
-                        } else {
-                            self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
-                            self.code.extend_from_slice(&(var_off as i32).to_le_bytes());
-                        }
-                        self.code.push(0x5A); // pop rdx = scaled index
-                        self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+                        self.emit_subscript_addr(name, idx, *scale);
                     }
                     Expr::Deref(ptr) => {
                         self.emit_expr(ptr); // rax = address of the pointed-to data
@@ -907,16 +927,19 @@ impl Codegen {
                 }
             }
             Expr::Subscript(name, index, scale) => {
-                self.emit_load_var(name); // rax = base address (value of name, which is a pointer)
-                self.code.push(0x50); // push base
-                self.emit_expr(index); // rax = index
-                if *scale > 0 {
-                    let shift = scale.trailing_zeros() as u8;
-                    self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, shift]); // shl rax, scale
-                }
-                self.code.push(0x5A); // pop rdx = base
-                self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx => base + index*scale
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
+                // dirección exacta (array o puntero) + carga del TAMAÑO del elemento
+                self.emit_subscript_addr(name, index, *scale);
+                let elem = self.elem_type_of(name);
+                self.emit_load_elem(&elem);
+            }
+            Expr::AssignSubscript(name, index, scale, val) => {
+                self.emit_expr(val);          // rax = valor
+                self.code.push(0x50);         // push valor
+                self.emit_subscript_addr(name, index, *scale); // rax = dirección
+                self.code.push(0x5A);         // pop rdx = valor
+                let elem = self.elem_type_of(name);
+                self.emit_store_elem(&elem);  // [rax] = rdx (tamaño exacto)
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor (resultado del assign)
             }
             Expr::Add(a, b) => self.emit_binop(a, b, &[0x48, 0x01, 0xD0]),
             Expr::Sub(a, b) => self.emit_binop(a, b, &[0x48, 0x29, 0xD0]),
@@ -1038,6 +1061,87 @@ impl Codegen {
         }
     }
 
+    // ---- Subscript helpers (array en memoria vs puntero-valor) ----
+
+    /// ¿`name` es un array (su memoria vive en el slot) o un puntero (el slot
+    /// guarda una dirección)? La distinción que antes no existía y corrompía.
+    fn var_is_array(&self, name: &str) -> bool {
+        if let Some(&(_, ref t)) = self.var_offsets.get(name) { return matches!(t, TypeSpec::Array(_, _)); }
+        if let Some(&(_, ref t)) = self.global_offsets.get(name) { return matches!(t, TypeSpec::Array(_, _)); }
+        false
+    }
+
+    /// Tipo del elemento de un array/puntero (para cargas/stores del tamaño exacto).
+    fn elem_type_of(&self, name: &str) -> TypeSpec {
+        let t = self.var_offsets.get(name).map(|&(_, ref t)| t.clone())
+            .or_else(|| self.global_offsets.get(name).map(|&(_, ref t)| t.clone()));
+        match t {
+            Some(TypeSpec::Array(e, _)) | Some(TypeSpec::Ptr(e)) => *e,
+            _ => TypeSpec::Long,
+        }
+    }
+
+    /// rax = rax * scale (shl si es potencia de 2; imul si no — structs)
+    fn emit_scale_index(&mut self, scale: u8) {
+        if scale > 1 {
+            if scale.is_power_of_two() {
+                self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, scale.trailing_zeros() as u8]);
+            } else {
+                self.code.extend_from_slice(&[0x48, 0x6B, 0xC0, scale]); // imul rax, rax, imm8
+            }
+        }
+    }
+
+    /// rax = dirección de name[idx]. Array → base = lea del slot;
+    /// puntero → base = VALOR del slot. Local o global.
+    fn emit_subscript_addr(&mut self, name: &str, index: &Expr, scale: u8) {
+        self.emit_expr(index);
+        self.emit_scale_index(scale);
+        self.code.push(0x50); // push índice escalado
+        if self.var_is_array(name) {
+            if let Some(&(off, _)) = self.var_offsets.get(name) {
+                if off >= -128 && off <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x8D, 0x45, off as u8]); // lea rax,[rbp+off]
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
+                    self.code.extend_from_slice(&off.to_le_bytes());
+                }
+            } else {
+                self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]); // lea rax,[rip+global]
+                self.global_fixups.push((self.code.len() - 4, name.to_string()));
+            }
+        } else {
+            self.emit_load_var(name); // rax = valor del puntero
+        }
+        self.code.push(0x5A); // pop rdx = índice escalado
+        self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+    }
+
+    /// Carga [rax] → rax con el tamaño y signo EXACTOS del elemento.
+    /// Antes siempre era `mov rax,[rax]` (8 bytes): leer int[i] traía basura vecina.
+    fn emit_load_elem(&mut self, elem: &TypeSpec) {
+        match elem {
+            TypeSpec::Char => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x00]), // movsx rax, byte
+            TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]), // movzx
+            TypeSpec::Short => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x00]),
+            TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0x00]),
+            TypeSpec::Int => self.code.extend_from_slice(&[0x48, 0x63, 0x00]), // movsxd rax, dword
+            TypeSpec::UnsignedInt | TypeSpec::Float => self.code.extend_from_slice(&[0x8B, 0x00]), // mov eax, dword
+            _ => self.code.extend_from_slice(&[0x48, 0x8B, 0x00]), // mov rax, qword
+        }
+    }
+
+    /// Guarda rdx → [rax] con el tamaño EXACTO del elemento.
+    /// Antes un store de 8 bytes a int[i] pisaba el elemento siguiente.
+    fn emit_store_elem(&mut self, elem: &TypeSpec) {
+        match self.type_stack_size(elem) {
+            1 => self.code.extend_from_slice(&[0x88, 0x10]),        // mov [rax], dl
+            2 => self.code.extend_from_slice(&[0x66, 0x89, 0x10]),  // mov [rax], dx
+            4 => self.code.extend_from_slice(&[0x89, 0x10]),        // mov [rax], edx
+            _ => self.code.extend_from_slice(&[0x48, 0x89, 0x10]),  // mov [rax], rdx
+        }
+    }
+
     /// Emit expression as an address (pointer), not as a value
     fn emit_expr_as_ptr(&mut self, expr: &Expr) {
         match expr {
@@ -1055,21 +1159,7 @@ impl Codegen {
                 } else { self.emit_xor_eax(); }
             }
             Expr::Subscript(name, index, scale) => {
-                let var_off = self.var_offsets.get(name).map(|&(off,_)| off).unwrap_or(0);
-                self.emit_expr(index);
-                if *scale > 0 {
-                    let shift = scale.trailing_zeros() as u8;
-                    self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, shift]);
-                }
-                self.code.push(0x50);
-                if var_off >= -128 && var_off <= 127 {
-                    self.code.extend_from_slice(&[0x48, 0x8D, 0x45, var_off as u8]);
-                } else {
-                    self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
-                    self.code.extend_from_slice(&(var_off as i32).to_le_bytes());
-                }
-                self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x01, 0xD0]);
+                self.emit_subscript_addr(name, index, *scale);
             }
             _ => self.emit_expr(expr),
         }

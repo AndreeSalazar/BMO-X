@@ -511,7 +511,8 @@ impl Parser {
                 // arr[i]: el tipo del elemento
                 match self.var_types.get(n)? {
                     TypeSpec::Ptr(base) => Some(base.as_ref().clone()),
-                    t => Some(t.clone()), // array declarado: var_types guarda el tipo base
+                    TypeSpec::Array(base, _) => Some(base.as_ref().clone()),
+                    t => Some(t.clone()),
                 }
             }
             Expr::Deref(inner) => {
@@ -564,6 +565,19 @@ impl Parser {
             .unwrap_or(0)
     }
 
+    /// Tamaño del elemento apuntado/contenido por `base` (para escalar subíndices).
+    fn pointee_size(&self, base: &TypeSpec) -> u8 {
+        match base {
+            TypeSpec::Char | TypeSpec::UnsignedChar => 1,
+            TypeSpec::Short | TypeSpec::UnsignedShort => 2,
+            TypeSpec::Int | TypeSpec::UnsignedInt => 4,
+            TypeSpec::Float => 4, TypeSpec::Double => 8,
+            TypeSpec::Void => 1,
+            TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => *self.struct_sizes.get(s.as_str()).unwrap_or(&8) as u8,
+            _ => 8,
+        }
+    }
+
     fn element_size(&self, name: &str) -> u8 {
         if let Some(typ) = self.var_types.get(name) {
             match typ {
@@ -571,17 +585,8 @@ impl Parser {
                 TypeSpec::Short => 2, TypeSpec::UnsignedShort => 2,
                 TypeSpec::Int => 4, TypeSpec::UnsignedInt => 4,
                 TypeSpec::Long | TypeSpec::UnsignedLong => 8,
-                TypeSpec::Ptr(ref base) => {
-                    match base.as_ref() {
-                        TypeSpec::Char | TypeSpec::UnsignedChar => 1,
-                        TypeSpec::Short | TypeSpec::UnsignedShort => 2,
-                        TypeSpec::Int | TypeSpec::UnsignedInt => 4,
-                        TypeSpec::Float => 4, TypeSpec::Double => 8,
-                        TypeSpec::Void => 1,
-                        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => *self.struct_sizes.get(s.as_str()).unwrap_or(&8) as u8,
-                        _ => 8,
-                    }
-                }
+                TypeSpec::Ptr(ref base) => self.pointee_size(base),
+                TypeSpec::Array(ref base, _) => self.pointee_size(base),
                 _ => 8,
             }
         } else { 8 }
@@ -896,6 +901,8 @@ impl Parser {
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::check_syscall_args_in_expr(v, line)?,
             Expr::AssignDeref(a, v) => { Self::check_syscall_args_in_expr(a, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             Expr::Field(b,_,_) => Self::check_syscall_args_in_expr(b, line)?,
+            Expr::Subscript(_, idx, _) => Self::check_syscall_args_in_expr(idx, line)?,
+            Expr::AssignSubscript(_, idx, _, v) => { Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             _ => {}
         }
         Ok(())
@@ -983,6 +990,8 @@ impl Parser {
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,v) => Self::resolve_syscalls_in_expr(syscalls, v),
             Expr::AssignDeref(a, v) => { Self::resolve_syscalls_in_expr(syscalls, a); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Field(b,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
+            Expr::Subscript(_, idx, _) => Self::resolve_syscalls_in_expr(syscalls, idx),
+            Expr::AssignSubscript(_, idx, _, v) => { Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Comma(v) => { for e in v { Self::resolve_syscalls_in_expr(syscalls, e); } }
             _ => {}
         }
@@ -1053,7 +1062,7 @@ impl Parser {
         if !self.peek_is_type_start() {
             return Ok(None);
         }
-        let typ = match self.parse_type_spec() {
+        let mut typ = match self.parse_type_spec() {
             Ok(t) => t,
             Err(_) => { self.pos = save; return Ok(None); }
         };
@@ -1062,12 +1071,13 @@ impl Parser {
             self.pos = save; return Ok(None);
         }
         self.advance();
-        // handle array declarator: name[size]
+        // array declarator: name[size] — el tamaño SE GUARDA (antes se tiraba)
         if *self.peek() == Token::OpenBracket {
             self.advance();
-            // consume size expression
-            self.parse_expr()?;
+            let size_expr = self.parse_expr()?;
             self.expect(&Token::CloseBracket)?;
+            let n = match size_expr { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
+            typ = TypeSpec::Array(Box::new(typ), n);
         }
         if *self.peek() != Token::Semicolon && *self.peek() != Token::Assign {
             self.pos = save; return Ok(None);
@@ -1076,16 +1086,18 @@ impl Parser {
     }
 
     fn parse_type_and_name(&mut self) -> Result<(TypeSpec, String), CError> {
-        let typ = self.parse_type_spec()?;
+        let mut typ = self.parse_type_spec()?;
         let name = match self.advance() {
             Token::Ident(n) => n,
             t => return Err(CError::new(1, format!("expected identifier, got {:?}", t))),
         };
-        // skip optional array declarator [size]
+        // array declarator [size] — el tamaño SE GUARDA (antes se tiraba)
         if *self.peek() == Token::OpenBracket {
             self.advance();
-            self.parse_expr()?;
+            let size_expr = self.parse_expr()?;
             self.expect(&Token::CloseBracket)?;
+            let n = match size_expr { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
+            typ = TypeSpec::Array(Box::new(typ), n);
         }
         Ok((typ, name))
     }
@@ -1393,72 +1405,87 @@ impl Parser {
         let arrow_assign_op = |e: Box<Expr>, f: String, off: u32, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
             Expr::AssignArrow(e.clone(), f.clone(), off, Box::new(op(Box::new(Expr::Arrow(e, f, off)), Box::new(val))))
         };
+        let sub_assign_op = |n: String, idx: Box<Expr>, sc: u8, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+            let lhs = Expr::Subscript(n.clone(), idx.clone(), sc);
+            Expr::AssignSubscript(n, idx, sc, Box::new(op(Box::new(lhs), Box::new(val))))
+        };
         match self.peek() {
             Token::Assign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(Expr::Assign(n, Box::new(val))),
                 Expr::Deref(a) => Ok(Expr::AssignDeref(a, Box::new(val))),
                 Expr::Field(e, f, off) => Ok(Expr::AssignField(e, f, off, Box::new(val))),
                 Expr::Arrow(e, f, off) => Ok(Expr::AssignArrow(e, f, off, Box::new(val))),
+                Expr::Subscript(n, idx, sc) => Ok(Expr::AssignSubscript(n, idx, sc, Box::new(val))),
                 _ => Ok(val),
             }}
             Token::AddAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Add)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Add)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Add)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Add)),
                 _ => Ok(val),
             }}
             Token::SubAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Sub)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Sub)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Sub)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Sub)),
                 _ => Ok(val),
             }}
             Token::MulAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Mul)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Mul)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Mul)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mul)),
                 _ => Ok(val),
             }}
             Token::DivAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Div)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Div)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Div)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Div)),
                 _ => Ok(val),
             }}
             Token::ModAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Mod)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Mod)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Mod)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mod)),
                 _ => Ok(val),
             }}
             Token::ShlAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Shl)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Shl)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Shl)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shl)),
                 _ => Ok(val),
             }}
             Token::ShrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Shr)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::Shr)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::Shr)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shr)),
                 _ => Ok(val),
             }}
             Token::AndAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitAnd)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitAnd)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitAnd)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitAnd)),
                 _ => Ok(val),
             }}
             Token::XorAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitXor)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitXor)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitXor)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitXor)),
                 _ => Ok(val),
             }}
             Token::OrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitOr)),
                 Expr::Field(e, f, off) => Ok(field_assign_op(*e, f, off, val, Expr::BitOr)),
                 Expr::Arrow(e, f, off) => Ok(arrow_assign_op(e, f, off, val, Expr::BitOr)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitOr)),
                 _ => Ok(val),
             }}
             _ => Ok(expr),
@@ -1584,7 +1611,21 @@ impl Parser {
             match self.peek() {
                 Token::PlusPlus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostInc(n.clone()), _ => {} } }
                 Token::MinusMinus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostDec(n.clone()), _ => {} } }
-                Token::OpenBracket => { self.advance(); let index = self.parse_expr()?; self.expect(&Token::CloseBracket)?; match &expr { Expr::Var(n) => { let scale = self.element_size(n); let n2 = n.clone(); expr = Expr::Subscript(n2, Box::new(index), scale); } _ => {} } }
+                Token::OpenBracket => {
+                    self.advance();
+                    let index = self.parse_expr()?;
+                    self.expect(&Token::CloseBracket)?;
+                    match &expr {
+                        Expr::Var(n) => {
+                            let scale = self.element_size(n);
+                            let n2 = n.clone();
+                            expr = Expr::Subscript(n2, Box::new(index), scale);
+                        }
+                        // Antes: se IGNORABA el subscript en silencio (p->arr[i] compilaba mal).
+                        // Un compilador honesto rechaza lo que aun no sabe hacer.
+                        _ => return Err(CError::new(1, "subscript [] solo soportado sobre variables por ahora (bases compuestas como p->arr[i]: pendiente)")),
+                    }
+                }
                 Token::Dot => {
                     self.advance();
                     let field = match self.advance() {
@@ -2031,6 +2072,85 @@ int main() {
             }
         }
         assert!(found, "no se encontro el acceso anidado a.b.c en el AST");
+    }
+
+    #[test]
+    fn array_decl_records_size() {
+        // int arr[4] debe ser Array(Int, 4) — antes el tamaño se TIRABA.
+        let src = "int main() { int arr[4]; return 0; }";
+        let p = parse(src).unwrap();
+        let main_fn = &p.functions[0];
+        let mut found = false;
+        for stmt in &main_fn.body {
+            if let Stmt::DeclAssign(TypeSpec::Array(elem, n), name, _) = stmt {
+                assert_eq!(name, "arr");
+                assert_eq!(**elem, TypeSpec::Int);
+                assert_eq!(*n, 4);
+                found = true;
+            }
+        }
+        assert!(found, "int arr[4] debe declarar TypeSpec::Array(Int, 4)");
+    }
+
+    #[test]
+    fn subscript_assign_not_discarded() {
+        // arr[i] = x ANTES SE DESCARTABA EN SILENCIO (parse_assign no tenia caso).
+        let src = "int main() { int arr[4]; arr[2] = 7; return arr[2]; }";
+        let p = parse(src).unwrap();
+        let main_fn = &p.functions[0];
+        let mut found = false;
+        for stmt in &main_fn.body {
+            if let Stmt::Expr(Expr::AssignSubscript(name, _, scale, val)) = stmt {
+                assert_eq!(name, "arr");
+                assert_eq!(*scale, 4, "escala de int = 4 bytes");
+                assert_eq!(**val, Expr::Int(7));
+                found = true;
+            }
+        }
+        assert!(found, "arr[2] = 7 debe producir AssignSubscript, no descartarse");
+        // y debe compilar a BEF
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn subscript_compound_assign() {
+        let src = "int main() { int arr[4]; arr[1] = 1; arr[1] += 5; arr[1] <<= 2; return arr[1]; }";
+        let p = parse(src).unwrap();
+        let n_assigns = p.functions[0].body.iter().filter(|s| {
+            matches!(s, Stmt::Expr(Expr::AssignSubscript(_, _, _, _)))
+        }).count();
+        assert_eq!(n_assigns, 3, "las 3 asignaciones a arr[1] deben sobrevivir");
+        compile_source_to_bef(src).unwrap();
+    }
+
+    #[test]
+    fn subscript_on_compound_base_errors_honestly() {
+        // p->arr[i]: antes el [i] se IGNORABA en silencio; ahora error claro.
+        let src = r#"
+struct S { int* arr; };
+int main() { struct S s; int x; x = s.arr[0]; return x; }
+"#;
+        // s.arr[0]: base compuesta (Field) — debe RECHAZARSE, no compilar mal
+        assert!(parse(src).is_err(), "subscript sobre base compuesta debe dar error honesto");
+    }
+
+    #[test]
+    fn nested_decl_compiles() {
+        // int i dentro del for: antes NO recibia slot de stack (loads = 0,
+        // loop infinito en runtime). Ahora build_var_map recorre anidado.
+        let src = r#"
+int main() {
+    int sum = 0;
+    for (int i = 0; i < 10; i = i + 1) {
+        if (i > 5) { int extra = 2; sum = sum + extra; }
+        sum = sum + i;
+    }
+    return sum;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
     }
 
     #[test]

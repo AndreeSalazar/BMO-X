@@ -35,6 +35,7 @@ impl Emitter {
             TypeSpec::Float => IrType::F32,
             TypeSpec::Double => IrType::F64,
             TypeSpec::Ptr(_) => IrType::Pointer,
+            TypeSpec::Array(_, _) => IrType::Pointer, // decae a puntero en IR
             TypeSpec::StructRef(_) | TypeSpec::UnionRef(_) => IrType::Pointer,
         };
         self.module.add_type(ir).unwrap_or(0)
@@ -116,6 +117,7 @@ impl Emitter {
             TypeSpec::Float => IrType::F32,
             TypeSpec::Double => IrType::F64,
             TypeSpec::Ptr(_) => IrType::Pointer,
+            TypeSpec::Array(_, _) => IrType::Pointer, // decae a puntero en IR
             TypeSpec::StructRef(_) | TypeSpec::UnionRef(_) => IrType::Pointer,
         }
     }
