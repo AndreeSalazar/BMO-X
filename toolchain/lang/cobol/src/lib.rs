@@ -17,10 +17,28 @@ mod generated_tests {
         use crate::generated::words;
         assert!(words::is_reserved("DISPLAY"));
         assert!(words::is_reserved("PICTURE"));
+        assert!(words::is_reserved("EVALUATE")); // COBOL-85
+        assert!(words::is_reserved("INVOKE"));   // COBOL-2002 (OO)
+        assert!(words::is_reserved("JSON"));     // COBOL-2023
         assert!(!words::is_reserved("HELLO"));
         assert_eq!(words::verb_kind("MOVE"), Some("Move"));
         assert_eq!(words::verb_kind("STOP"), Some("StopRun"));
         assert_eq!(words::verb_kind("NOTAVERB"), None);
+    }
+
+    #[test]
+    fn standard_tagging_and_intrinsics() {
+        use crate::generated::words;
+        // Cada palabra sabe de qué era viene (Grace Hopper -> ISO 2023).
+        assert_eq!(words::reserved_since("MOVE"), Some("COBOL74"));
+        assert_eq!(words::reserved_since("EVALUATE"), Some("COBOL85"));
+        assert_eq!(words::reserved_since("CLASS-ID"), Some("COBOL2002"));
+        assert_eq!(words::reserved_since("JSON"), Some("COBOL2023"));
+        assert_eq!(words::reserved_since("NOPE"), None);
+        // Funciones intrínsecas.
+        assert!(words::is_intrinsic("CURRENT-DATE"));
+        assert!(words::is_intrinsic("NUMVAL"));
+        assert!(!words::is_intrinsic("MOVE"));
     }
 }
 

@@ -236,31 +236,40 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
                 self.store_var(dst);
             }
-            // TODO(decimal): MULTIPLY/DIVIDE cambian la ESCALA del resultado
-            // (mul: las escalas se suman → hay que reescalar /10^s; div:
-            // reescalar ×10^s). Por ahora escala el literal al destino, pero
-            // el resultado aún necesita corrección de escala. No usar para
-            // dinero con decimales hasta implementar el reescalado.
+            // MULTIPLY decimal exacto: dst y src están en escala `sc`
+            // (centavos). El producto queda en escala 2·sc → se REESCALA
+            // dividiendo entre 10^sc para volver a `sc`. $2.00 × 3 = $6.00.
             CobolStatement::Multiply(src, dst) => {
                 let sc = self.var_scale(dst);
-                self.load_var(dst);
-                self.code.push(0x50);
-                self.load_scaled_imm(src, sc);
-                self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]);
+                self.load_var(dst);                              // rax = dst_scaled
+                self.code.push(0x50);                            // push rax
+                self.load_scaled_imm(src, sc);                   // rax = src_scaled
+                self.code.push(0x5A);                            // pop rdx
+                self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
+                if sc > 0 {
+                    let p = 10u64.pow(sc);
+                    self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); }); // mov rcx, 10^sc
+                    self.code.extend_from_slice(&[0x48, 0x99]);         // cqo
+                    self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]);   // idiv rcx
+                }
                 self.store_var(dst);
             }
+            // DIVIDE decimal exacto: dst / src. Para conservar la escala, el
+            // dividendo se PREESCALA ×10^sc antes de dividir (si no, el
+            // resultado quedaría en escala 0). $10.00 / 4 = $2.50.
             CobolStatement::Divide(src, dst) => {
-                self.load_var(dst);
-                self.code.push(0x50);
-                self.load_imm64(src);
-                self.code.push(0x5B);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD8]);
-                self.code.extend_from_slice(&[0x48, 0x31, 0xD2]);
-                self.code.push(0x51);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xC1]);
-                self.code.push(0x58);
-                self.code.extend_from_slice(&[0x48, 0xF7, 0xF1]);
+                let sc = self.var_scale(dst);
+                self.load_scaled_imm(src, sc);                   // rax = src_scaled (divisor)
+                self.code.push(0x50);                            // push rax
+                self.load_var(dst);                              // rax = dst_scaled (dividendo)
+                if sc > 0 {
+                    let p = 10u64.pow(sc);
+                    self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); }); // mov rcx, 10^sc
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]);    // imul rax, rcx
+                }
+                self.code.push(0x59);                            // pop rcx (divisor)
+                self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
+                self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
                 self.store_var(dst);
             }
             CobolStatement::Compute(dst, expr) => {
