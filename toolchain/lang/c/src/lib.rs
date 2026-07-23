@@ -254,6 +254,9 @@ struct Parser {
     var_types: HashMap<String, TypeSpec>,
     struct_fields: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
+    // (struct_name, field_name) -> tipo del campo. Necesario para resolver
+    // offsets de accesos anidados (a->b->c, a.b.c) sin adivinar.
+    field_types: HashMap<(String, String), TypeSpec>,
     usings: Vec<String>,
     typedefs: HashMap<String, TypeSpec>,
     syscalls: HashMap<String, SyscallDef>,
@@ -267,6 +270,7 @@ impl Parser {
             var_types: HashMap::new(),
             struct_fields: HashMap::new(),
             struct_sizes: HashMap::new(),
+            field_types: HashMap::new(),
             usings: Vec::new(),
             typedefs: HashMap::new(),
             syscalls: HashMap::new(),
@@ -438,6 +442,8 @@ impl Parser {
                         while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
                         t.push(Token::IntLit(n.parse().unwrap_or(0)));
                     }
+                    // sufijos de literal entero: U, L, UL, LL, ULL (cualquier orden/caso)
+                    while i < c.len() && matches!(c[i], 'u' | 'U' | 'l' | 'L') { i += 1; }
                 }
                 l if l.is_ascii_alphabetic() || l == '_' => {
                     let mut id = String::new();
@@ -480,41 +486,65 @@ impl Parser {
         })
     }
 
-    fn resolve_struct_type(&self, expr: &Expr) -> Option<String> {
+    /// Nombre del struct/union del que un TypeSpec ES valor directo.
+    fn struct_of(t: &TypeSpec) -> Option<&str> {
+        match t {
+            TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Nombre del struct/union al que un TypeSpec APUNTA (un nivel de *).
+    fn pointee_struct_of(t: &TypeSpec) -> Option<&str> {
+        match t {
+            TypeSpec::Ptr(base) => Self::struct_of(base),
+            _ => None,
+        }
+    }
+
+    /// Tipo estático de una expresión, hasta donde el parser puede saberlo.
+    /// Devuelve None si no es resoluble (y el offset caerá a 0 — visible en tests).
+    fn resolve_expr_type(&self, expr: &Expr) -> Option<TypeSpec> {
         match expr {
-            Expr::Var(n) => {
-                self.var_types.get(n).and_then(|t| match t {
-                    TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
-                    _ => None,
-                })
-            }
+            Expr::Var(n) => self.var_types.get(n).cloned(),
             Expr::Subscript(n, _, _) => {
-                self.var_types.get(n).and_then(|t| match t {
-                    TypeSpec::Ptr(base) => match base.as_ref() {
-                        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
-                        _ => None,
-                    },
-                    TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
-                    _ => None,
-                })
+                // arr[i]: el tipo del elemento
+                match self.var_types.get(n)? {
+                    TypeSpec::Ptr(base) => Some(base.as_ref().clone()),
+                    t => Some(t.clone()), // array declarado: var_types guarda el tipo base
+                }
             }
             Expr::Deref(inner) => {
-                match inner.as_ref() {
-                    Expr::Var(n) => {
-                        self.var_types.get(n).and_then(|t| match t {
-                            TypeSpec::Ptr(base) => match base.as_ref() {
-                                TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
-                                _ => None,
-                            },
-                            _ => None,
-                        })
-                    }
+                match self.resolve_expr_type(inner)? {
+                    TypeSpec::Ptr(base) => Some(*base),
                     _ => None,
                 }
             }
-            Expr::Field(base, _, _) => {
-                self.resolve_struct_type(base)
+            Expr::AddrOf(inner) => {
+                let t = self.resolve_expr_type(inner)?;
+                Some(TypeSpec::Ptr(Box::new(t)))
             }
+            Expr::Field(base, fname, _) => {
+                // base.f: tipo del campo f en el struct de base
+                let s = self.resolve_struct_type(base)?;
+                self.field_types.get(&(s, fname.clone())).cloned()
+            }
+            Expr::Arrow(base, fname, _) => {
+                // base->f: tipo del campo f en el struct APUNTADO por base
+                let t = self.resolve_expr_type(base)?;
+                let s = Self::pointee_struct_of(&t)?.to_string();
+                self.field_types.get(&(s, fname.clone())).cloned()
+            }
+            _ => None,
+        }
+    }
+
+    /// Struct/union del que la expresión ES valor (para `expr.field`).
+    fn resolve_struct_type(&self, expr: &Expr) -> Option<String> {
+        let t = self.resolve_expr_type(expr)?;
+        match &t {
+            TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
+            // permisivo histórico: p[i] con p: struct* ya cae en resolve_expr_type
             _ => None,
         }
     }
@@ -526,19 +556,12 @@ impl Parser {
     }
 
     fn resolve_arrow_expr_offset(&self, expr: &Expr, field: &str) -> u32 {
-        // Arrow: expr->field, expr is a pointer to struct
-        match expr {
-            Expr::Var(n) => {
-                self.var_types.get(n).and_then(|t| match t {
-                    TypeSpec::Ptr(base) => match base.as_ref() {
-                        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => self.get_field_offset(s, field),
-                        _ => None,
-                    },
-                    _ => None,
-                }).unwrap_or(0)
-            }
-            _ => 0,
-        }
+        // expr->field: expr es puntero a struct; funciona ANIDADO (a->b->c)
+        // porque resolve_expr_type sigue los tipos de campo registrados.
+        self.resolve_expr_type(expr)
+            .and_then(|t| Self::pointee_struct_of(&t).map(str::to_string))
+            .and_then(|s| self.get_field_offset(&s, field))
+            .unwrap_or(0)
     }
 
     fn element_size(&self, name: &str) -> u8 {
@@ -572,6 +595,7 @@ impl Parser {
             let align = sz.min(8).max(1);
             offset = (offset + align - 1) / align * align;
             layout.push((m.name.clone(), offset, sz));
+            self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
             offset += sz;
         }
         let max_align = members.iter().map(|m| m.typ.stack_size().min(8).max(1)).max().unwrap_or(1);
@@ -586,6 +610,7 @@ impl Parser {
         for m in members {
             let sz = m.typ.stack_size();
             layout.push((m.name.clone(), 0u32, sz));
+            self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
             if sz > max_sz { max_sz = sz; }
         }
         self.struct_fields.insert(name.to_string(), layout);
@@ -762,6 +787,9 @@ impl Parser {
                     }
                     for (k, v) in sub.struct_sizes {
                         self.struct_sizes.entry(k).or_insert(v);
+                    }
+                    for (k, v) in sub.field_types {
+                        self.field_types.entry(k).or_insert(v);
                     }
                     for (k, v) in sub.var_types {
                         self.var_types.entry(k).or_insert(v);
@@ -1130,12 +1158,13 @@ impl Parser {
             }
             t => return Err(CError::new(1, format!("expected type, got {:?}", t))),
         };
-        if *self.peek() == Token::Star {
+        // punteros multinivel: int **pp, char ***ppp, ...
+        let mut typ = base;
+        while *self.peek() == Token::Star {
             self.advance();
-            Ok(TypeSpec::Ptr(Box::new(base)))
-        } else {
-            Ok(base)
+            typ = TypeSpec::Ptr(Box::new(typ));
         }
+        Ok(typ)
     }
 
     // ---- Statements ----
@@ -1930,6 +1959,112 @@ int main() {
     return a;
 }
 "#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn resolves_nested_arrow_offsets() {
+        // a->b->c ANIDADO: antes devolvía offset 0 silencioso. Ahora el parser
+        // sigue los tipos de campo y calcula el offset REAL de cada salto.
+        let src = r#"
+struct Inner { int x; long y; };
+struct Outer { int pad; struct Inner* in; };
+int main() {
+    struct Outer* o;
+    int a;
+    a = o->in->y;
+    return a;
+}
+"#;
+        let p = parse(src).unwrap();
+        let main_fn = p.functions.iter().find(|f| f.name == "main").unwrap();
+        // buscar el Assign("a", Arrow(Arrow(o,"in",8),"y",8))
+        let mut found = false;
+        for stmt in &main_fn.body {
+            if let Stmt::Expr(Expr::Assign(name, val)) = stmt {
+                if name == "a" {
+                    if let Expr::Arrow(base, f2, off2) = val.as_ref() {
+                        assert_eq!(f2, "y");
+                        assert_eq!(*off2, 8, "offset de y en Inner debe ser 8 (x:4 + padding)");
+                        if let Expr::Arrow(_, f1, off1) = base.as_ref() {
+                            assert_eq!(f1, "in");
+                            assert_eq!(*off1, 8, "offset de in en Outer debe ser 8 (pad:4 + align 8)");
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found, "no se encontro el acceso anidado a->b->c en el AST");
+    }
+
+    #[test]
+    fn resolves_nested_dot_offsets() {
+        // a.b.c con structs por valor: el offset del campo interior debe resolverse.
+        let src = r#"
+struct Inner { int x; long y; };
+struct Outer { long pad; struct Inner in; };
+int main() {
+    struct Outer o;
+    int a;
+    a = o.in.y;
+    return a;
+}
+"#;
+        let p = parse(src).unwrap();
+        let main_fn = p.functions.iter().find(|f| f.name == "main").unwrap();
+        let mut found = false;
+        for stmt in &main_fn.body {
+            if let Stmt::Expr(Expr::Assign(name, val)) = stmt {
+                if name == "a" {
+                    if let Expr::Field(base, f2, off2) = val.as_ref() {
+                        assert_eq!(f2, "y");
+                        assert_eq!(*off2, 8, "offset de y dentro de Inner debe ser 8");
+                        if let Expr::Field(_, f1, off1) = base.as_ref() {
+                            assert_eq!(f1, "in");
+                            assert_eq!(*off1, 8, "offset de in dentro de Outer debe ser 8");
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found, "no se encontro el acceso anidado a.b.c en el AST");
+    }
+
+    #[test]
+    fn parses_multi_level_pointers() {
+        let src = r#"
+int main() {
+    int x;
+    int* p;
+    int** pp;
+    int*** ppp;
+    x = 1;
+    return x;
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn parses_int_literal_suffixes() {
+        let src = r#"
+int main() {
+    long a;
+    unsigned long b;
+    a = 10L;
+    b = 10UL;
+    a = 100ll;
+    b = 0xFFul;
+    b = 42u;
+    return 0;
+}
+"#;
+        let p = parse(src).unwrap();
+        assert!(p.functions.len() > 0);
         let bef = compile_source_to_bef(src).unwrap();
         assert!(bef.len() > 48);
     }
