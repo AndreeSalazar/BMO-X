@@ -660,6 +660,21 @@ impl Parser {
             Ok(t) => t,
             Err(_) => { self.pos = save; return Ok(None); }
         };
+        // puntero a función: RETTYPE (*name)(params) — variable de tipo puntero.
+        // Es lo que sostiene las vtables de C++ y las tablas de drivers.
+        if *self.peek() == Token::OpenParen
+            && self.tokens.get(self.pos + 1) == Some(&Token::Star)
+        {
+            match self.parse_fnptr_tail() {
+                Ok(fname) => {
+                    if *self.peek() != Token::Semicolon && *self.peek() != Token::Assign {
+                        self.pos = save; return Ok(None);
+                    }
+                    return Ok(Some((TypeSpec::Ptr(Box::new(TypeSpec::Void)), fname)));
+                }
+                Err(_) => { self.pos = save; return Ok(None); }
+            }
+        }
         let Token::Ident(name) = self.peek().clone() else { self.pos = save; return Ok(None); };
         if self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1] == Token::OpenParen {
             self.pos = save; return Ok(None);
@@ -679,8 +694,40 @@ impl Parser {
         Ok(Some((typ, name)))
     }
 
+    /// Consume la cola de un puntero a función: `(*name)(param-types)`.
+    /// Asume estar en el `(` inicial. Devuelve el nombre. El tipo del
+    /// puntero es opaco (se trata como Ptr): las llamadas son indirectas.
+    fn parse_fnptr_tail(&mut self) -> Result<String, CError> {
+        self.expect(&Token::OpenParen)?;
+        self.expect(&Token::Star)?;
+        let name = match self.advance() {
+            Token::Ident(n) => n,
+            t => return Err(CError::new(self.line(), format!("expected fnptr name, got {:?}", t))),
+        };
+        self.expect(&Token::CloseParen)?;
+        // saltar la lista de parámetros ( ... ) balanceada
+        self.expect(&Token::OpenParen)?;
+        let mut depth = 1;
+        while depth > 0 {
+            match self.advance() {
+                Token::OpenParen => depth += 1,
+                Token::CloseParen => depth -= 1,
+                Token::Eof => return Err(CError::new(self.line(), "eof en lista de parametros de fnptr")),
+                _ => {}
+            }
+        }
+        Ok(name)
+    }
+
     fn parse_type_and_name(&mut self) -> Result<(TypeSpec, String), CError> {
         let mut typ = self.parse_type_spec()?;
+        // puntero a función en globals/params: RETTYPE (*name)(params)
+        if *self.peek() == Token::OpenParen
+            && self.tokens.get(self.pos + 1) == Some(&Token::Star)
+        {
+            let fname = self.parse_fnptr_tail()?;
+            return Ok((TypeSpec::Ptr(Box::new(TypeSpec::Void)), fname));
+        }
         let name = match self.advance() {
             Token::Ident(n) => n,
             t => return Err(CError::new(self.line(),format!("expected identifier, got {:?}", t))),

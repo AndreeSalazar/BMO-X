@@ -58,6 +58,13 @@ struct Codegen {
     pending_relocs: Vec<PendingReloc>,
     call_relocs: Vec<CallReloc>,
     function_offsets: HashMap<String, usize>,
+    /// Nombres de TODAS las funciones del programa (para distinguir una
+    /// llamada directa de una indirecta por puntero, y la decadencia
+    /// función→dirección).
+    known_functions: std::collections::HashSet<String>,
+    /// Sitios donde hay que escribir la dirección (rip-relativa) de una
+    /// función: `lea rax, [rip+func]`. Habilita punteros a función.
+    func_addr_fixups: Vec<(usize, String)>,
     break_target: Vec<u32>,
     continue_target: Vec<u32>,
     var_offsets: HashMap<String, (i32, TypeSpec)>,
@@ -100,7 +107,10 @@ impl Codegen {
             target,
             code: Vec::new(), strings: Vec::new(), fixups: Vec::new(),
             labels: 0, pending_relocs: Vec::new(), call_relocs: Vec::new(),
-            function_offsets: HashMap::new(), break_target: Vec::new(),
+            function_offsets: HashMap::new(),
+            known_functions: std::collections::HashSet::new(),
+            func_addr_fixups: Vec::new(),
+            break_target: Vec::new(),
             continue_target: Vec::new(), var_offsets: HashMap::new(),
             frame_size: 0,
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
@@ -164,6 +174,11 @@ impl Codegen {
             }
         }
         self.collect_strings(program);
+        // registrar todos los nombres de función ANTES de emitir: una llamada
+        // puede referir a una función definida más abajo (forward reference).
+        for func in &program.functions {
+            self.known_functions.insert(func.name.clone());
+        }
         // emit all functions, tracking entry point
         for func in &program.functions {
             let off = self.code.len();
@@ -181,6 +196,7 @@ impl Codegen {
         }
         // patch all call relocs
         self.patch_call_relocs();
+        self.patch_func_addr_fixups();
         self.patch_goto_relocs();
         self.patch_all_fixups();
         // errores acumulados en la emisión: fallar con claridad, no callar
@@ -333,6 +349,26 @@ impl Codegen {
         }
     }
 
+    /// Escribe la dirección rip-relativa de cada función referida por un
+    /// `lea rax, [rip+func]` (punteros a función). Mismo esquema que las
+    /// call relocs: displacement dentro de la sección de código.
+    fn patch_func_addr_fixups(&mut self) {
+        for (off, name) in &self.func_addr_fixups {
+            if let Some(&target) = self.function_offsets.get(name) {
+                let disp = target as i32 - (*off as i32 + 4);
+                self.code[*off..*off + 4].copy_from_slice(&disp.to_le_bytes());
+            } else {
+                self.errors.push(format!("no existe la funcion '{name}' cuya direccion se tomo"));
+            }
+        }
+    }
+
+    /// `lea rax, [rip+func]` — deja en rax la dirección de una función.
+    fn emit_func_addr(&mut self, name: &str) {
+        self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
+        self.func_addr_fixups.push((self.code.len() - 4, name.to_string()));
+    }
+
     fn resolve_label(&mut self, label: u32) {
         let here = self.code.len() as i32;
         let mut i = 0;
@@ -461,6 +497,14 @@ impl Codegen {
         if let Some(&val) = self.enum_values.get(name) {
             self.code.extend_from_slice(&[0xB8]); // mov eax, imm32
             self.code.extend_from_slice(&(val as i32).to_le_bytes());
+            return;
+        }
+        // Función usada como VALOR (fp = myfunc): decae a su dirección.
+        if self.known_functions.contains(name)
+            && !self.var_offsets.contains_key(name)
+            && !self.global_offsets.contains_key(name)
+        {
+            self.emit_func_addr(name);
             return;
         }
         // Arrays: decaen a puntero — "cargar" arr es su DIRECCIÓN, no su contenido
@@ -842,13 +886,23 @@ impl Codegen {
                 // Special case: printf → emit bmo_printf from userland_ring3
                 if name == "printf" && !args.is_empty() {
                     self.emit_printf_variadic(args);
+                    return;
+                }
+                // ¿Llamada INDIRECTA? El nombre no es una función pero SÍ una
+                // variable → contiene una dirección (puntero a función).
+                let is_indirect = !self.known_functions.contains(name)
+                    && (self.var_offsets.contains_key(name) || self.global_offsets.contains_key(name));
+
+                // push args right-to-left
+                for arg in args.iter().rev() {
+                    self.emit_expr(arg);
+                    self.code.push(0x50); // push rax
+                }
+                if is_indirect {
+                    self.emit_load_var(name);                 // rax = dirección
+                    self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
                 } else {
-                    // push args right-to-left
-                    for arg in args.iter().rev() {
-                        self.emit_expr(arg);
-                        self.code.push(0x50); // push rax
-                    }
-                    // call rel32 placeholder
+                    // call rel32 placeholder (directa)
                     self.code.extend_from_slice(&[0xE8]);
                     self.call_relocs.push(CallReloc { offset: self.code.len(), target: name.clone() });
                     self.code.extend_from_slice(&[0, 0, 0, 0]);
@@ -856,15 +910,15 @@ impl Codegen {
                     if self.target == TargetProfile::Ring3App && !self.function_offsets.contains_key(name) {
                         self.stdlib_imports.insert(name.clone());
                     }
-                    // cleanup stack (args * 8 bytes)
-                    let n = args.len() as u32 * 8;
-                    if n > 0 {
-                        if n <= 127 {
-                            self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
-                        } else {
-                            self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
-                            self.code.extend_from_slice(&n.to_le_bytes());
-                        }
+                }
+                // cleanup stack (args * 8 bytes)
+                let n = args.len() as u32 * 8;
+                if n > 0 {
+                    if n <= 127 {
+                        self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
+                    } else {
+                        self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
+                        self.code.extend_from_slice(&n.to_le_bytes());
                     }
                 }
             }
@@ -930,6 +984,9 @@ impl Codegen {
                         } else if self.global_offsets.contains_key(name) {
                             self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
                             self.global_fixups.push((self.code.len() - 4, name.clone()));
+                        } else if self.known_functions.contains(name) {
+                            // &myfunc — dirección de la función
+                            self.emit_func_addr(name);
                         } else { self.emit_xor_eax(); }
                     }
                     Expr::Subscript(name, idx, scale) => {

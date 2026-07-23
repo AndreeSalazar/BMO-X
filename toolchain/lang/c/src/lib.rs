@@ -485,6 +485,72 @@ int main() {
         assert!(found, "no se encontro el acceso anidado a.b.c en el AST");
     }
 
+    // ---- Punteros a función (Fase 2) ----
+
+    #[test]
+    fn parses_function_pointer_declarator() {
+        // int (*op)(int, int); — variable de tipo puntero.
+        let src = r#"
+int add(int a, int b) { return a + b; }
+int main() {
+    int (*op)(int, int);
+    op = add;
+    int r;
+    r = op(3, 4);
+    return r;
+}
+"#;
+        let p = parse(src).unwrap();
+        let main_fn = p.functions.iter().find(|f| f.name == "main").unwrap();
+        // op debe estar declarada como puntero
+        let has_op = main_fn.body.iter().any(|s| matches!(s,
+            Stmt::DeclAssign(TypeSpec::Ptr(_), name, _) if name == "op"));
+        assert!(has_op, "int (*op)(int,int) debe declarar un puntero llamado op");
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.len() > 48);
+    }
+
+    #[test]
+    fn function_decays_to_address() {
+        // op = add; — 'add' como valor = lea rax,[rip+add] (48 8D 05).
+        let src = r#"
+int add(int a, int b) { return a + b; }
+int main() { int (*op)(int, int); op = add; return 0; }
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        let lea = [0x48, 0x8D, 0x05];
+        assert!(bef.windows(lea.len()).any(|w| w == lea),
+            "la decadencia función→dirección debe emitir lea rax,[rip+func]");
+    }
+
+    #[test]
+    fn indirect_call_through_pointer() {
+        // op(3,4) donde op es variable → call rax (FF D0), no call rel32.
+        let src = r#"
+int add(int a, int b) { return a + b; }
+int main() {
+    int (*op)(int, int);
+    op = add;
+    return op(3, 4);
+}
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(2).any(|w| w == [0xFF, 0xD0]),
+            "la llamada indirecta debe emitir call rax (FF D0)");
+    }
+
+    #[test]
+    fn addr_of_function_works() {
+        // &myfunc también da la dirección (equivalente a la decadencia).
+        let src = r#"
+int foo(void) { return 7; }
+int main() { int (*fp)(void); fp = &foo; return fp(); }
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        assert!(bef.windows(3).any(|w| w == [0x48, 0x8D, 0x05]), "falta lea del &foo");
+        assert!(bef.windows(2).any(|w| w == [0xFF, 0xD0]), "falta call rax indirecto");
+    }
+
     // ---- LA FUSIÓN sem-asm↔C (Fase 1) ----
 
     #[test]
