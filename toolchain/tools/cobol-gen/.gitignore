@@ -1,0 +1,4 @@
+# Caché de Python — herramienta de build, nunca se versiona.
+__pycache__/
+*.pyc
+*.pyo
