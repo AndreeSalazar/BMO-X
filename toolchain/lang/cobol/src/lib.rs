@@ -5,6 +5,7 @@ pub mod ir_emit;
 pub mod lexer;
 pub mod parser;
 pub mod pic;
+pub mod tparser;
 /// Tablas de COBOL GENERADAS por `toolchain/tools/cobol-gen` (Python).
 /// Crecer `definition.py` y regenerar hace crecer esto solo.
 pub mod generated {
