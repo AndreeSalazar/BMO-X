@@ -3,6 +3,7 @@ pub mod codegen;
 pub mod dialect;
 pub mod ir_emit;
 pub mod parser;
+pub mod pic;
 
 use std::path::PathBuf;
 use bmo_abi::profile::BmoLanguageProfile;

@@ -82,7 +82,6 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
  "bmo-sem-asm",
- "gnucobol-rs",
 ]
 
 [[package]]
@@ -294,19 +293,6 @@ name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
-
-[[package]]
-name = "gnucobol-rs"
-version = "0.8.50"
-dependencies = [
- "gnucobol-rs-bdb-format",
-]
-
-[[package]]
-name = "gnucobol-rs-bdb-format"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac59126f0470a464e6ae252b18c7dcbda7775f94e02a6a494cfd938105dd63a8"
 
 [[package]]
 name = "hash32"

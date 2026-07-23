@@ -7,10 +7,12 @@ description = "BMO COBOL frontend — parses COBOL and compiles native BEX execu
 
 [dependencies]
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
-gnucobol-rs = { path = "../../../extern/gnucobol-rs/crates/gnucobol-rs" }
 # forge: encoder compartido (elegido, no embudo) — sustituye el hardcodeo
 # de bytes (mov imm64/reg, syscall) por la tabla TOML.
 bmo-sem-asm = { path = "../../forge/sem-asm" }
+# NOTA: gnucobol-rs (GPL) ELIMINADO — la PIC ahora la parsea nuestro propio
+# src/pic.rs. El submódulo extern/gnucobol-rs queda solo como oráculo de
+# validación cruzada, jamás enlazado. COBOL 100% BMO.
 
 [lib]
 name = "bmo_cobol_front"
