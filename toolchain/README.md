@@ -12,10 +12,10 @@ toolchain/
 │   └── base/     stdlib base (bmo/core, pci, lib/printf) — datos, no crate
 │
 ├── forge/    ← PIPELINE compartido (librerías OPCIONALES, nunca embudos)
-│   ├── sem-asm/    bmo-sem-asm   codificación: tablas TOML → bytes  ✅ motor vivo
-│   ├── bmo-lower/  descenso al BMO ABI (DISPLAY/printf → INVOKE)
-│   ├── bmo-opt/    optimización a dial (const-fold, DCE, regalloc)
-│   └── bmo-verify/ gate de verificación del BEF (habilita SIPs)
+│   ├── sem-asm/    bmo-sem-asm   codificación: tablas TOML → bytes  ✅ vivo (lo usa C)
+│   └── bmo-verify/ gate del BEF: delega en bmo-abi::validator  ✅ vivo
+│   #  bmo-lower (descenso ABI) y bmo-opt (optimización) se crearán
+│   #  CON código real al empezar su fase — sin stubs vacíos en el árbol.
 │
 └── tools/    ← GENERADORES build-time
     ├── bef-bootstrap/  primer payload BEF auditable

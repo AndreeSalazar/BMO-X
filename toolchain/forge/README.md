@@ -9,14 +9,23 @@ bytes válidos para el BMO ABI.
 > (`../lang/*`) **elige** qué enlazar. La esencia de cada lenguaje (parser,
 > AST, su descenso propio) vive en su crate, jamás aquí.
 
-## Las 3 librerías (opcionales) + el gate
+## Lo que FUNCIONA hoy (regla: nada de stubs)
 
 | Crate | Rol | Estado |
 |-------|-----|--------|
-| **`sem-asm/`** (`bmo-sem-asm`) | **Codificación**: motor que lee las tablas TOML (`tables/`) y encodea instrucciones → bytes. Reemplaza el hardcodeo de bytes duplicado en cada `codegen.rs`. | motor por construir; tablas migradas |
-| **`bmo-lower/`** | **Descenso al ABI**: helpers que traducen las *exigencias* del lenguaje (print, I/O) a operaciones del BMO ABI (`INVOKE`/subsyscalls). | esqueleto |
-| **`bmo-opt/`** | **Optimización genérica**: pasadas clásicas (register allocation, constant folding, dead-code elimination, strength reduction). | esqueleto (dial: empezar vacío) |
-| **`bmo-verify/`** | **Gate de verificación**: valida el BEF (capabilities, memory-safety, firma) antes del ABI. Crece desde `platform/abi/bmo-abi/src/bef/{validator,signing,blake3}.rs`. Habilita SIPs (Singularity). | esqueleto |
+| **`sem-asm/`** (`bmo-sem-asm`) | **Codificación**: motor que lee las tablas TOML (`tables/`) y encodea instrucciones + intrínsecos → bytes. Lo usa `lang/c/codegen.rs`. | ✅ funciona (7 tests) |
+| **`bmo-verify/`** | **Gate de verificación**: valida el BEF (header, secciones, imports/relocs, firma, flags) antes del ABI. Delega en el validador REAL de `bmo-abi::bef::validator`. Habilita SIPs (Singularity). | ✅ funciona (4 tests + 15 en bmo-abi) |
+
+## Fases futuras (se crearán CON código real, no como stubs)
+
+Cuando arranquen, estas librerías nacerán con lógica de verdad — no se
+dejan andamios vacíos en el árbol:
+
+- **`bmo-lower`** — Descenso al ABI: centralizar la emisión de `INVOKE`/
+  subsyscalls hoy duplicada entre `lang/c` y `lang/cobol`.
+- **`bmo-opt`** — Optimización genérica a dial: const-fold → DCE →
+  strength reduction → register allocation lineal (el que importa para
+  loops COBOL).
 
 ## Layout
 
@@ -27,20 +36,6 @@ toolchain/
     sem-asm/
       src/        (motor Rust que lee las tablas)
       tables/     (arch/, standards/, stdlib/ — las TOML)
-    bmo-lower/
-    bmo-opt/
-    bmo-verify/
+    bmo-verify/   (gate: delega en bmo-abi::bef::validator)
   tools/          ← generadores: linker, bef-bootstrap, hello-bex, fontgen
 ```
-
-## Migración
-
-1. ✅ Mover tablas sem-asm a `forge/sem-asm/tables`.
-2. ✅ Motor sem-asm: lee `tables/arch/x86_64/instructions.toml` → encodea
-   (mov→0x89, mov_imm→0xB8; 3 tests verdes).
-3. ⬜ Migrar `lang/c/codegen.rs` y `lang/cobol/codegen.rs` a usar el motor
-   (borrar el hardcodeo de bytes duplicado; arreglar las rutas muertas
-   `X:\FastOS\...\Semantic_ASM`).
-4. ⬜ Extraer `bmo-lower` de la emisión de INVOKE duplicada.
-5. ⬜ `bmo-opt`: empezar con const-fold + DCE.
-6. ⬜ `bmo-verify`: crecer del validator existente.

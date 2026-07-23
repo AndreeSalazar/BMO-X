@@ -51,13 +51,15 @@ del endpoint de interrupción a `shell_read_line`), demand paging, XSAVE
 ```
 toolchain/
   lang/    frontends (esencia): c, cobol, cpp, base(stdlib)
-  forge/   pipeline compartido: sem-asm(encoder ✅), bmo-lower, bmo-opt, bmo-verify
+  forge/   pipeline compartido: sem-asm(encoder ✅), bmo-verify(gate ✅)
   tools/   generadores: bef-bootstrap, hello-bex, fontgen, bmo-linker, cobol-gen(Python)
 ```
 
 - **sem-asm** ✅: motor que lee `forge/sem-asm/tables/*.toml` y encodea
   instrucciones→bytes. C y COBOL migrados a usarlo (fuera bytes hardcodeados).
-- **bmo-lower/opt/verify**: esqueletos (descenso ABI / optimización / verificación).
+- **bmo-verify**: gate que valida el BEF (delega en `bmo-abi::bef::validator`,
+  el validador real de 15 tests). `bmo-lower` (descenso ABI) y `bmo-opt`
+  (optimización) se recrearán con código real al empezar su fase — no stubs.
 
 ---
 
