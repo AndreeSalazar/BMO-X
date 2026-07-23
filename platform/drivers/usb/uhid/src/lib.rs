@@ -84,6 +84,14 @@ impl UsbHidHal {
         Self { kbd: None, mouse: None, initialized: false }
     }
 
+    /// ¿Enumeró un teclado? (interface HID subclass 1 / protocol 1)
+    pub fn has_kbd(&self) -> bool { self.kbd.is_some() }
+    /// ¿Enumeró un mouse? (interface HID subclass 1 / protocol 2)
+    pub fn has_mouse(&self) -> bool { self.mouse.is_some() }
+    /// Slot xHCI del teclado / mouse (0 si ausente) — para diagnóstico.
+    pub fn kbd_slot(&self) -> u8 { self.kbd.as_ref().map_or(0, |k| k.slot) }
+    pub fn mouse_slot(&self) -> u8 { self.mouse.as_ref().map_or(0, |m| m.slot) }
+
     // ── Parsing helpers ─────────────────────────────────────
 
     /// Read 2 bytes from a slice as little-endian u16.

@@ -112,6 +112,18 @@ static mut READY: bool = false;
 static mut SHIFT: bool = false;
 static mut CAPS: bool = false;
 static mut PRESENT: bool = false;
+// Diagnóstico DETALLADO del HID (pedido del usuario: "llamar al mouse, más
+// detallado total"). Estado por dispositivo + telemetría viva del mouse, para
+// que la próxima foto diga exactamente qué enumeró y si el mouse late.
+static mut KBD_RDY: bool = false;
+static mut MOUSE_RDY: bool = false;
+static mut KBD_SLOT: u8 = 0;
+static mut MOUSE_SLOT: u8 = 0;
+static mut MOUSE_EVENTS: u32 = 0;   // nº de reportes de movimiento/botón vistos
+static mut MOUSE_X: i32 = 0;        // posición acumulada (relativa) X
+static mut MOUSE_Y: i32 = 0;        // posición acumulada (relativa) Y
+static mut MOUSE_BTN: u8 = 0;       // bitmap de botones actual
+static mut KEY_EVENTS: u32 = 0;     // nº de teclas imprimibles entregadas
 
 fn log(msg: &str) {
     serial_write(msg);
@@ -222,16 +234,35 @@ pub fn init(_ctx: &BootContext) {
 
     let ok = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
-        hid.init()
+        let r = hid.init();
+        // Estado por dispositivo (teclado y mouse son interfaces separadas, o
+        // dispositivos separados): registramos ambos aunque READY mire al kbd.
+        KBD_RDY = hid.has_kbd();
+        MOUSE_RDY = hid.has_mouse();
+        KBD_SLOT = hid.kbd_slot();
+        MOUSE_SLOT = hid.mouse_slot();
+        r
     };
     unsafe {
         PRESENT = true;
         READY = ok;
     }
-    if ok {
-        log("[usb] teclado USB listo\n");
-    } else {
-        log("[usb] dispositivo visto pero HID no enumero (ver lineas uhid)\n");
+    // Resumen detallado en serial + panel (además del status fijo en pantalla).
+    unsafe {
+        if KBD_RDY {
+            log("[usb] teclado USB listo (slot ");
+            dlog_u64(KBD_SLOT as u64);
+            log(")\n");
+        } else {
+            log("[usb] SIN teclado (no enumero interface kbd)\n");
+        }
+        if MOUSE_RDY {
+            log("[usb] mouse USB listo (slot ");
+            dlog_u64(MOUSE_SLOT as u64);
+            log(")\n");
+        } else {
+            log("[usb] SIN mouse (no enumero interface mouse)\n");
+        }
     }
 }
 
@@ -244,7 +275,9 @@ pub fn is_ready() -> bool {
 /// tecla imprimible (o Enter/Backspace/Tab). Mantiene el estado de Shift.
 /// Alimenta `shell_read_line` igual que `keyboard::poll_ascii`.
 pub fn poll_ascii() -> Option<u8> {
-    if !unsafe { READY } {
+    // Correr si hay CUALQUIER dispositivo enumerado (no solo teclado): así el
+    // mouse late en el diagnóstico aunque el teclado no haya enumerado.
+    if !unsafe { PRESENT } {
         return None;
     }
     let mut evs = [InputEvent::empty(); 16];
@@ -270,6 +303,7 @@ pub fn poll_ascii() -> Option<u8> {
                     ev.code, unsafe { SHIFT }, unsafe { CAPS },
                 ) {
                     out = Some(a); // el último gana (typematic ya viene diffeado)
+                    unsafe { KEY_EVENTS = KEY_EVENTS.wrapping_add(1); }
                 }
             }
             InputEventKind::KeyUp => {
@@ -277,8 +311,32 @@ pub fn poll_ascii() -> Option<u8> {
                     unsafe { SHIFT = false };
                 }
             }
-            _ => {} // mouse: se cablea con el compositor (F5)
+            // MOUSE: antes se descartaba (esperaba el compositor F5). Ahora lo
+            // "llamamos": acumulamos posición y botones para el diagnóstico y,
+            // a futuro, el cursor del compositor.
+            InputEventKind::MouseMove => unsafe {
+                MOUSE_X = MOUSE_X.saturating_add(ev.mouse_dx() as i32);
+                MOUSE_Y = MOUSE_Y.saturating_add(ev.mouse_dy() as i32);
+                MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
+            },
+            InputEventKind::MouseButton => unsafe {
+                MOUSE_BTN = ev.mouse_buttons();
+                MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
+            },
+            InputEventKind::MouseWheel => unsafe {
+                MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
+            },
         }
     }
     out
+}
+
+/// Estado DETALLADO del HID para el panel de diagnóstico (fila fija, sobrevive
+/// al auto-clear). Devuelve: (teclado_listo, mouse_listo, slot_kbd, slot_mouse,
+/// eventos_mouse, x_mouse, y_mouse, botones, eventos_tecla).
+pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
+    unsafe {
+        (KBD_RDY, MOUSE_RDY, KBD_SLOT, MOUSE_SLOT,
+         MOUSE_EVENTS, MOUSE_X, MOUSE_Y, MOUSE_BTN, KEY_EVENTS)
+    }
 }

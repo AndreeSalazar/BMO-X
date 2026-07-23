@@ -180,6 +180,65 @@ pub(crate) fn dash_heartbeat() {
     }
 }
 
+/// Panel USB DETALLADO en fila fija 12 (sobrevive al auto-clear porque se
+/// repinta en cada iteración del shell). Muestra teclado/mouse por separado y
+/// telemetría VIVA del mouse — mueve el mouse y verás mev/x/y/b cambiar, aunque
+/// el teclado aún no escriba. Pedido del usuario: "llamar al mouse, más
+/// detallado total". Throttled por change-detection para no parpadear.
+pub(crate) fn dash_usb_status() {
+    if !crate::info::has_fb() { return; }
+    let (kbd, mouse, ks, ms, mev, mx, my, btn, kev) = crate::ring0::dev::usb::hid_stats();
+    static mut LAST: u64 = u64::MAX;
+    // Firma de cambio: agrupa lo relevante. mx/my se truncan a 12 bits para que
+    // micro-jitter del mouse no dispare repintados (anti-ghosting).
+    let sig = (kbd as u64) | ((mouse as u64) << 1)
+        | ((mev as u64 & 0xFFFF) << 8)
+        | (((mx as u64) & 0xFFF) << 24)
+        | (((my as u64) & 0xFFF) << 36)
+        | ((btn as u64) << 48)
+        | ((kev as u64 & 0xFF) << 56);
+    unsafe {
+        if LAST == sig { return; }
+        LAST = sig;
+    }
+
+    fn txt(b: &mut [u8; 80], o: &mut usize, s: &str) {
+        for &c in s.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
+    }
+    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u32) {
+        if v == 0 { if *o < b.len() { b[*o] = b'0'; *o += 1; } return; }
+        let mut tmp = [0u8; 10]; let mut i = 0;
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
+    }
+    fn sdec(b: &mut [u8; 80], o: &mut usize, v: i32) {
+        if v < 0 { if *o < b.len() { b[*o] = b'-'; *o += 1; } dec(b, o, (-v) as u32); }
+        else { if *o < b.len() { b[*o] = b'+'; *o += 1; } dec(b, o, v as u32); }
+    }
+
+    let mut b = [0u8; 80];
+    let mut o = 0;
+    txt(&mut b, &mut o, "usb kbd=");
+    txt(&mut b, &mut o, if kbd { "OK" } else { "--" });
+    txt(&mut b, &mut o, "(s"); dec(&mut b, &mut o, ks as u32); txt(&mut b, &mut o, ")");
+    txt(&mut b, &mut o, " mouse=");
+    txt(&mut b, &mut o, if mouse { "OK" } else { "--" });
+    txt(&mut b, &mut o, "(s"); dec(&mut b, &mut o, ms as u32); txt(&mut b, &mut o, ")");
+    txt(&mut b, &mut o, " mev="); dec(&mut b, &mut o, mev);
+    txt(&mut b, &mut o, " x="); sdec(&mut b, &mut o, mx);
+    txt(&mut b, &mut o, " y="); sdec(&mut b, &mut o, my);
+    txt(&mut b, &mut o, " b="); dec(&mut b, &mut o, btn as u32);
+    txt(&mut b, &mut o, " kev="); dec(&mut b, &mut o, kev);
+
+    if let Ok(s) = core::str::from_utf8(&b[..o]) {
+        let cur = crate::ring0::mm::vmm::read_cr3();
+        let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
+        if cur != kpml4 { crate::ring0::mm::vmm::switch_to(kpml4); }
+        splash::splash_dashboard_log(12, s);
+        if cur != kpml4 { crate::ring0::mm::vmm::switch_to(cur); }
+    }
+}
+
 /// Último total de tareas visto por el shell, para detectar cuándo un proceso
 /// TERMINÓ (el total baja) y limpiar la pantalla automáticamente.
 static mut LAST_TASK_TOTAL: usize = 0;
@@ -204,6 +263,8 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
         // Live Ring 3 heartbeat (row 10): timer/scheduler/console telemetry.
         dash_heartbeat();
+        // Panel USB detallado (row 12): teclado/mouse + telemetría viva del mouse.
+        dash_usb_status();
         // Accept input from EITHER the serial line (COM1) or the physical
         // PS/2 keyboard, whichever has a byte ready. Lets the user type on
         // the real keyboard even with no serial cable attached.
