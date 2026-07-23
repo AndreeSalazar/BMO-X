@@ -76,9 +76,18 @@ struct Codegen {
     stdlib_imports: std::collections::HashSet<String>,
     /// Enum constants: name → integer value.
     enum_values: HashMap<String, i64>,
+    /// Tabla de instrucciones sem-asm (opcodes leídos de la TOML de forge).
+    isa: bmo_sem_asm::Instructions,
 }
 
 impl Codegen {
+    /// Emite bytes con el encoder sem-asm (opcode de la tabla + REX/ModRM).
+    fn emit_asm(&mut self, build: impl FnOnce(&mut bmo_sem_asm::x86_64::Asm)) {
+        let mut a = bmo_sem_asm::x86_64::Asm::new(&self.isa);
+        build(&mut a);
+        self.code.extend_from_slice(a.bytes());
+    }
+
     fn new(target: TargetProfile) -> Self {
         Self {
             target,
@@ -94,6 +103,8 @@ impl Codegen {
             instruction_end: 0, string_data_end: 0,
             stdlib_imports: std::collections::HashSet::new(),
             enum_values: HashMap::new(),
+            isa: bmo_sem_asm::Instructions::load_x86_64()
+                .expect("tablas sem-asm x86-64 (forge/sem-asm/tables)"),
         }
     }
 
@@ -760,12 +771,12 @@ impl Codegen {
     fn emit_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Int(n) => {
-                self.code.extend_from_slice(&[0x48, 0xB8]);
-                self.code.extend_from_slice(&(*n as u64).to_le_bytes());
+                let v = *n as u64;
+                self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, v).unwrap(); });
             }
             Expr::CharLit(c) => {
-                self.code.extend_from_slice(&[0x48, 0xB8]);
-                self.code.extend_from_slice(&(*c as u64).to_le_bytes());
+                let v = *c as u64;
+                self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, v).unwrap(); });
             }
             Expr::StringLit(s) => {
                 // lea rax, [rip + disp] — fixup patched in patch_string_fixups
@@ -808,19 +819,17 @@ impl Codegen {
             }
             Expr::Syscall(def, args) => {
                 // x86-64 SysV ABI syscall convention:
-                // args: rdi, rsi, rdx, r10, r8, r9  →  result in rax
-                let reg_mov: &[[u8; 3]] = &[
-                    [0x48, 0x89, 0xC7], // mov rdi, rax
-                    [0x48, 0x89, 0xC6], // mov rsi, rax
-                    [0x48, 0x89, 0xC2], // mov rdx, rax
-                    [0x49, 0x89, 0xC2], // mov r10, rax
-                    [0x49, 0x89, 0xC0], // mov r8, rax
-                    [0x49, 0x89, 0xC1], // mov r9, rax
-                ];
+                // args: rdi, rsi, rdx, r10, r8, r9  →  result in rax.
+                // El `mov <reg>, rax` lo emite el encoder sem-asm (antes era
+                // la tabla reg_mov de bytes a mano — misma dup que COBOL).
+                use bmo_sem_asm::x86_64::Reg;
+                const ARG_REGS: [Reg; 6] =
+                    [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
                 for (i, arg) in args.iter().enumerate() {
                     if i < 6 {
                         self.emit_expr(arg);          // rax = expr value
-                        self.code.extend_from_slice(&reg_mov[i]); // mov reg, rax
+                        let dst = ARG_REGS[i];
+                        self.emit_asm(|a| { a.mov_reg(dst, Reg::Rax).unwrap(); });
                     }
                 }
                 self.code.extend_from_slice(&[0xB8]);        // mov eax, imm32

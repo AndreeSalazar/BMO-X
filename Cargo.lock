@@ -69,6 +69,7 @@ name = "bmo-c-front"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-sem-asm",
 ]
 
 [[package]]

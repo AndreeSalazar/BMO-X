@@ -7,6 +7,8 @@ description = "C frontend for BMO BMO ABI â€” compiles minimal C to BEF"
 
 [dependencies]
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
+# forge: encoder compartido (elegido, no embudo).
+bmo-sem-asm = { path = "../../forge/sem-asm" }
 
 [lib]
 name = "bmo_c_front"
