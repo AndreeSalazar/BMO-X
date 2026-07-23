@@ -18,15 +18,17 @@ pub struct ModuleResolver {
     pub base_paths: Vec<PathBuf>,
 }
 
-/// Discover common include paths (Semantic_ASM).
+/// Descubre las tablas sem-asm (forge/sem-asm/tables): stdlib/ + standards/C.
+/// NOTA: antes buscaba "Semantic_ASM/" — directorio muerto tras la
+/// reorganización; el descubrimiento fallaba en silencio.
 pub fn discover_include_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let candidates = &[
-        "Semantic_ASM",
-        "../Semantic_ASM",
-        "../../Semantic_ASM",
-        "../../../Semantic_ASM",
-        "../../../../Semantic_ASM",
+        "toolchain/forge/sem-asm/tables",
+        "forge/sem-asm/tables",
+        "../forge/sem-asm/tables",
+        "../../forge/sem-asm/tables",
+        "../toolchain/forge/sem-asm/tables",
     ];
     for c in candidates {
         let p = PathBuf::from(c);
@@ -38,9 +40,9 @@ pub fn discover_include_paths() -> Vec<PathBuf> {
             break;
         }
     }
-    // Also try CARGO_MANIFEST_DIR
+    // relativo a la crate (toolchain/lang/c → ../../forge/sem-asm/tables)
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        let asm_path = PathBuf::from(&manifest_dir).join("../../Semantic_ASM");
+        let asm_path = PathBuf::from(&manifest_dir).join("../../forge/sem-asm/tables");
         if asm_path.join("stdlib").is_dir() {
             let std_path = asm_path.join("standards").join("C");
             if std_path.is_dir() { paths.push(std_path); }
@@ -55,8 +57,7 @@ impl ModuleResolver {
         Self { base_paths }
     }
 
-    /// Auto-discover Semantic_ASM relative to common workspace locations.
-    /// Searches: ../Semantic_ASM, ../../Semantic_ASM, ../../../Semantic_ASM
+    /// Auto-descubre las tablas sem-asm (forge/sem-asm/tables) como base paths.
     pub fn with_semantic_asm(mut self) -> Self {
         self.base_paths.extend(discover_include_paths());
         self

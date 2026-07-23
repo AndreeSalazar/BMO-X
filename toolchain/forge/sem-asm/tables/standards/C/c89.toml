@@ -16,6 +16,16 @@ const = true
 volatile = true
 string_literals_concat = true
 trigraphs = true
+# C89 NO tiene lo de C99 — explícitos para que el gating del parser los apague
+# (el default de StandardFeatures es C99-ish; sin estas claves C89 heredaba C99)
+line_comments = false
+long_long = false
+inline = false
+restrict = false
+variadic_macros = false
+compound_literals = false
+designated_initializers = false
+mixed_declarations_and_code = false
 
 [type_rules]
 implicit_int = true

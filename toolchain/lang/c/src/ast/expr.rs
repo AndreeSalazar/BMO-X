@@ -2,7 +2,7 @@
 
 use super::types::*;
 
-/// A named syscall definition loaded from Semantic_ASM .toml
+/// A named syscall definition loaded from sem-asm tables (.toml)
 /// Args follow x86-64 SysV ABI convention: rdi, rsi, rdx, r10, r8, r9
 /// Return value in rax
 #[derive(Debug, Clone, PartialEq)]

@@ -1,146 +1,18 @@
-﻿pub mod codegen;
+pub mod codegen;
 pub mod ast;
 pub mod module;
 pub mod ir_emit;
 pub mod parser;
+pub mod standard;
+mod lexer;
+
+pub use standard::{CStandard, StandardFeatures};
+use lexer::Token;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::fs;
 use ast::*;
 use bmo_abi::profile::BmoLanguageProfile;
-
-/// C standard version to compile against.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CStandard {
-    C89,
-    C99,
-    C11,
-    C17,
-    C23,
-    DefaultC, // uses C99 as baseline
-}
-
-impl CStandard {
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "c89" | "c90" => Some(Self::C89),
-            "c99" => Some(Self::C99),
-            "c11" => Some(Self::C11),
-            "c17" | "c18" => Some(Self::C17),
-            "c23" => Some(Self::C23),
-            "default" => Some(Self::DefaultC),
-            _ => None,
-        }
-    }
-
-    pub fn toml_name(&self) -> &str {
-        match self {
-            Self::C89 => "c89.toml",
-            Self::C99 | Self::DefaultC => "c99.toml",
-            Self::C11 => "c11.toml",
-            Self::C17 => "c17.toml",
-            Self::C23 => "c23.toml",
-        }
-    }
-}
-
-/// Standard feature set loaded from a cXX.toml manifest.
-#[derive(Debug, Clone)]
-pub struct StandardFeatures {
-    pub line_comments: bool,
-    pub long_long: bool,
-    pub inline: bool,
-    pub restrict: bool,
-    pub variadic_macros: bool,
-    pub compound_literals: bool,
-    pub designated_initializers: bool,
-    pub mixed_declarations: bool,
-    pub implicit_int: bool,
-    pub implicit_function_decl: bool,
-    pub return_without_value: bool,
-}
-
-impl Default for StandardFeatures {
-    fn default() -> Self {
-        Self {
-            line_comments: true,
-            long_long: true,
-            inline: true,
-            restrict: true,
-            variadic_macros: true,
-            compound_literals: true,
-            designated_initializers: true,
-            mixed_declarations: true,
-            implicit_int: false,
-            implicit_function_decl: false,
-            return_without_value: false,
-        }
-    }
-}
-
-impl StandardFeatures {
-    /// Load features from a Semantic_ASM/standards/C/cXX.toml file.
-    pub fn load_from_toml(path: &Path) -> Option<Self> {
-        let text = std::fs::read_to_string(path).ok()?;
-        let mut feats = Self::default();
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with('[') { continue; }
-            if let Some((key, val)) = line.split_once('=') {
-                let key = key.trim();
-                let val = val.trim().trim_matches('"');
-                let enabled = val == "true" || val == "1";
-                match key {
-                    "line_comments" => feats.line_comments = enabled,
-                    "long_long" => feats.long_long = enabled,
-                    "inline" => feats.inline = enabled,
-                    "restrict" => feats.restrict = enabled,
-                    "variadic_macros" => feats.variadic_macros = enabled,
-                    "compound_literals" => feats.compound_literals = enabled,
-                    "designated_initializers" => feats.designated_initializers = enabled,
-                    "mixed_declarations_and_code" => feats.mixed_declarations = enabled,
-                    "implicit_int" => feats.implicit_int = enabled,
-                    "implicit_function_decl" => feats.implicit_function_decl = enabled,
-                    "return_without_value_allowed" => feats.return_without_value = enabled,
-                    _ => {}
-                }
-            }
-        }
-        Some(feats)
-    }
-
-    /// Try to load from Semantic_ASM standards path.
-    pub fn load_standard(std: CStandard) -> Self {
-        // Search for the TOML file relative to common workspace locations
-        let candidates = &[
-            "Semantic_ASM/standards/C",
-            "../Semantic_ASM/standards/C",
-            "../../Semantic_ASM/standards/C",
-            "../../../Semantic_ASM/standards/C",
-        ];
-        for c in candidates {
-            let p = PathBuf::from(c).join(std.toml_name());
-            if p.exists() {
-                if let Some(feats) = Self::load_from_toml(&p) {
-                    return feats;
-                }
-            }
-        }
-        // Also try Semantic_ASM bundled with the compiler
-        if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-            let p = PathBuf::from(&manifest_dir)
-                .join("../../Semantic_ASM/standards/C")
-                .join(std.toml_name());
-            if p.exists() {
-                if let Some(feats) = Self::load_from_toml(&p) {
-                    return feats;
-                }
-            }
-        }
-        Self::default()
-    }
-}
 
 pub fn profile() -> BmoLanguageProfile {
     BmoLanguageProfile::C
@@ -226,41 +98,7 @@ impl CError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum Token {
-    Ident(String), IntLit(i64), FloatLit(f64), StringLit(String), CharLit(u8),
-    Int, Void, Char, Short, Long, Unsigned, Signed,
-    If, Else, While, Do, For, Switch, Case, Default, Break, Continue,
-    Float, Double,
-    Return, Sizeof, Struct, Union, Typedef, Enum, Goto, Use,
-    Const, Volatile, Extern,
-    OpenParen, CloseParen, OpenBrace, CloseBrace, OpenBracket, CloseBracket,
-    Semicolon, Comma, Colon, Question,
-    Plus, Minus, Star, Slash, Percent,
-    PlusPlus, MinusMinus,
-    EqEq, Neq, Lt, Gt, Le, Ge,
-    And, Or, Xor, Not, Tilde,
-    LAnd, LOr,
-    Shl, Shr,
-    Arrow, Dot,
-    Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign,
-    ShlAssign, ShrAssign, AndAssign, XorAssign, OrAssign,
-    Eof,
-}
 
-/// Vec de tokens que registra la LÍNEA de cada uno (para errores con línea real).
-struct TokStream {
-    toks: Vec<Token>,
-    lines: Vec<usize>,
-    cur_line: usize,
-}
-
-impl TokStream {
-    fn push(&mut self, tk: Token) {
-        self.toks.push(tk);
-        self.lines.push(self.cur_line);
-    }
-}
 
 struct Parser {
     tokens: Vec<Token>,
@@ -280,7 +118,7 @@ struct Parser {
 
 impl Parser {
     fn new(source: &str) -> Self {
-        let (tokens, token_lines) = Self::tokenize(source);
+        let (tokens, token_lines) = crate::lexer::tokenize(source);
         Self {
             tokens, token_lines, pos: 0,
             var_types: HashMap::new(),
@@ -295,212 +133,8 @@ impl Parser {
     }
 
     #[cfg(test)]
-    fn tokenize_for_test(source: &str) -> Vec<Token> { Self::tokenize(source).0 }
+    fn tokenize_for_test(source: &str) -> Vec<Token> { crate::lexer::tokenize(source).0 }
 
-    fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>) {
-        let mut t = TokStream { toks: Vec::new(), lines: Vec::new(), cur_line: 1 };
-        let c: Vec<char> = source.chars().collect();
-        let mut i = 0;
-        while i < c.len() {
-            if c[i].is_whitespace() { if c[i] == '\n' { t.cur_line += 1; } i += 1; continue; }
-            if c[i] == '/' && i + 1 < c.len() {
-                if c[i+1] == '/' { while i < c.len() && c[i] != '\n' { i += 1; } continue; }
-                if c[i+1] == '*' { i += 2; while i + 1 < c.len() && !(c[i] == '*' && c[i+1] == '/') { if c[i] == '\n' { t.cur_line += 1; } i += 1; } i += 2; continue; }
-            }
-            match c[i] {
-                '(' => { t.push(Token::OpenParen); i += 1; }
-                ')' => { t.push(Token::CloseParen); i += 1; }
-                '{' => { t.push(Token::OpenBrace); i += 1; }
-                '}' => { t.push(Token::CloseBrace); i += 1; }
-                '[' => { t.push(Token::OpenBracket); i += 1; }
-                ']' => { t.push(Token::CloseBracket); i += 1; }
-                ';' => { t.push(Token::Semicolon); i += 1; }
-                ',' => { t.push(Token::Comma); i += 1; }
-                '?' => { t.push(Token::Question); i += 1; }
-                ':' => { t.push(Token::Colon); i += 1; }
-                '~' => { t.push(Token::Tilde); i += 1; }
-                '+' => {
-                    if i + 1 < c.len() && c[i+1] == '+' { t.push(Token::PlusPlus); i += 2; }
-                    else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::AddAssign); i += 2; }
-                    else { t.push(Token::Plus); i += 1; }
-                }
-                '-' => {
-                    if i + 1 < c.len() && c[i+1] == '-' { t.push(Token::MinusMinus); i += 2; }
-                    else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::SubAssign); i += 2; }
-                    else if i + 1 < c.len() && c[i+1] == '>' { t.push(Token::Arrow); i += 2; }
-                    else { t.push(Token::Minus); i += 1; }
-                }
-                '*' => {
-                    if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::MulAssign); i += 2; } else { t.push(Token::Star); i += 1; }
-                }
-                '/' => {
-                    if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::DivAssign); i += 2; } else { t.push(Token::Slash); i += 1; }
-                }
-                '%' => {
-                    if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::ModAssign); i += 2; } else { t.push(Token::Percent); i += 1; }
-                }
-                '&' => {
-                    if i + 1 < c.len() && c[i+1] == '&' { t.push(Token::LAnd); i += 2; }
-                    else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::AndAssign); i += 2; }
-                    else { t.push(Token::And); i += 1; }
-                }
-                '|' => {
-                    if i + 1 < c.len() && c[i+1] == '|' { t.push(Token::LOr); i += 2; }
-                    else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::OrAssign); i += 2; }
-                    else { t.push(Token::Or); i += 1; }
-                }
-                '^' => {
-                    if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::XorAssign); i += 2; } else { t.push(Token::Xor); i += 1; }
-                }
-                '!' => {
-                    if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::Neq); i += 2; } else { t.push(Token::Not); i += 1; }
-                }
-                '<' => {
-                    if i + 1 < c.len() && c[i+1] == '<' {
-                        if i + 2 < c.len() && c[i+2] == '=' { t.push(Token::ShlAssign); i += 3; }
-                        else { t.push(Token::Shl); i += 2; }
-                    } else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::Le); i += 2; }
-                    else { t.push(Token::Lt); i += 1; }
-                }
-                '>' => {
-                    if i + 1 < c.len() && c[i+1] == '>' {
-                        if i + 2 < c.len() && c[i+2] == '=' { t.push(Token::ShrAssign); i += 3; }
-                        else { t.push(Token::Shr); i += 2; }
-                    } else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::Ge); i += 2; }
-                    else { t.push(Token::Gt); i += 1; }
-                }
-                '.' => { t.push(Token::Dot); i += 1; }
-                '=' => {
-                    if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::EqEq); i += 2; } else { t.push(Token::Assign); i += 1; }
-                }
-                '"' => {
-                    i += 1; let mut s = String::new();
-                    while i < c.len() && c[i] != '"' {
-                        if c[i] == '\\' && i + 1 < c.len() { i += 1;
-                            match c[i] {
-                                'n' => s.push('\n'), 't' => s.push('\t'), 'r' => s.push('\r'), '0' => s.push('\0'),
-                                '\\' => s.push('\\'), '"' => s.push('"'), '\'' => s.push('\''),
-                                'x' | 'X' => {
-                                    let mut hex = String::new();
-                                    while i + 1 < c.len() && c[i+1].is_ascii_hexdigit() { i += 1; hex.push(c[i]); }
-                                    if let Ok(v) = u8::from_str_radix(&hex, 16) { s.push(v as char); }
-                                }
-                                d if d.is_ascii_digit() && d != '8' && d != '9' => {
-                                    let mut oct = String::new(); oct.push(d);
-                                    for _ in 0..2 {
-                                        if i + 1 < c.len() && c[i+1] >= '0' && c[i+1] <= '7' { i += 1; oct.push(c[i]); } else { break; }
-                                    }
-                                    if let Ok(v) = u8::from_str_radix(&oct, 8) { s.push(v as char); }
-                                }
-                                x => { s.push('\\'); s.push(x); }
-                            }
-                        } else { s.push(c[i]); } i += 1;
-                    } i += 1;
-                    // string literal concatenation: "foo" "bar" â†’ "foobar"
-                    let mut combined = s;
-                    while i < c.len() && (c[i] == ' ' || c[i] == '\t' || c[i] == '\n' || c[i] == '\r') { i += 1; }
-                    while i < c.len() && c[i] == '"' {
-                        i += 1;
-                        while i < c.len() && c[i] != '"' {
-                            if c[i] == '\\' && i + 1 < c.len() { i += 1;
-                                match c[i] {
-                                    'n' => combined.push('\n'), 't' => combined.push('\t'), 'r' => combined.push('\r'), '0' => combined.push('\0'),
-                                    '\\' => combined.push('\\'), '"' => combined.push('"'), '\'' => combined.push('\''),
-                                    'x' | 'X' => {
-                                        let mut hex = String::new();
-                                        while i + 1 < c.len() && c[i+1].is_ascii_hexdigit() { i += 1; hex.push(c[i]); }
-                                        if let Ok(v) = u8::from_str_radix(&hex, 16) { combined.push(v as char); }
-                                    }
-                                    d if d.is_ascii_digit() && d != '8' && d != '9' => {
-                                        let mut oct = String::new(); oct.push(d);
-                                        for _ in 0..2 {
-                                            if i + 1 < c.len() && c[i+1] >= '0' && c[i+1] <= '7' { i += 1; oct.push(c[i]); } else { break; }
-                                        }
-                                        if let Ok(v) = u8::from_str_radix(&oct, 8) { combined.push(v as char); }
-                                    }
-                                    x => { combined.push('\\'); combined.push(x); }
-                                }
-                            } else { combined.push(c[i]); } i += 1;
-                        } i += 1;
-                        // skip whitespace between strings
-                        while i < c.len() && (c[i] == ' ' || c[i] == '\t' || c[i] == '\n' || c[i] == '\r') { i += 1; }
-                    }
-                    t.push(Token::StringLit(combined));
-                }
-                '\'' => {
-                    i += 1; let val = if c[i] == '\\' { i += 1;
-                        match c[i] {
-                            'n' => 10, 't' => 9, 'r' => 13, '0' => 0, '\\' => 92, '\'' => 39,
-                            'x' | 'X' => {
-                                let mut hex = String::new();
-                                while i + 1 < c.len() && c[i+1].is_ascii_hexdigit() { i += 1; hex.push(c[i]); }
-                                u8::from_str_radix(&hex, 16).unwrap_or(0)
-                            }
-                            d if d.is_ascii_digit() && d != '8' && d != '9' => {
-                                let mut oct = String::new(); oct.push(d);
-                                for _ in 0..2 {
-                                    if i + 1 < c.len() && c[i+1] >= '0' && c[i+1] <= '7' { i += 1; oct.push(c[i]); } else { break; }
-                                }
-                                u8::from_str_radix(&oct, 8).unwrap_or(0)
-                            }
-                            x => x as u8,
-                        }
-                    } else { c[i] as u8 };
-                    i += 1; if i < c.len() && c[i] == '\'' { i += 1; } t.push(Token::CharLit(val));
-                }
-                d if d.is_ascii_digit() => {
-                    let mut n = String::new();
-                    if d == '0' && i + 1 < c.len() && (c[i+1] == 'x' || c[i+1] == 'X') {
-                        n.push_str("0x"); i += 2;
-                        while i < c.len() && c[i].is_ascii_hexdigit() { n.push(c[i]); i += 1; }
-                        t.push(Token::IntLit(i64::from_str_radix(&n[2..], 16).unwrap_or(0)));
-                    } else {
-                        while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
-                        // literal float: 1.5, 3.14f — antes "1.5" se partía en 1 . 5
-                        if i + 1 < c.len() && c[i] == '.' && c[i+1].is_ascii_digit() {
-                            n.push('.'); i += 1;
-                            while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
-                            if i < c.len() && (c[i] == 'f' || c[i] == 'F') { i += 1; }
-                            t.push(Token::FloatLit(n.parse().unwrap_or(0.0)));
-                            continue;
-                        }
-                        t.push(Token::IntLit(n.parse().unwrap_or(0)));
-                    }
-                    // sufijos de literal entero: U, L, UL, LL, ULL (cualquier orden/caso)
-                    while i < c.len() && matches!(c[i], 'u' | 'U' | 'l' | 'L') { i += 1; }
-                }
-                l if l.is_ascii_alphabetic() || l == '_' => {
-                    let mut id = String::new();
-                    while i < c.len() && (c[i].is_ascii_alphanumeric() || c[i] == '_') { id.push(c[i]); i += 1; }
-                    match id.as_str() {
-                        "int" => t.push(Token::Int), "void" => t.push(Token::Void),
-                        "char" => t.push(Token::Char), "short" => t.push(Token::Short),
-                        "long" => t.push(Token::Long), "unsigned" => t.push(Token::Unsigned),
-                        "signed" => t.push(Token::Signed),
-                        "if" => t.push(Token::If), "else" => t.push(Token::Else),
-                        "while" => t.push(Token::While), "do" => t.push(Token::Do),
-                        "for" => t.push(Token::For), "switch" => t.push(Token::Switch),
-                        "case" => t.push(Token::Case), "default" => t.push(Token::Default),
-                        "break" => t.push(Token::Break), "continue" => t.push(Token::Continue),
-                        "return" => t.push(Token::Return), "sizeof" => t.push(Token::Sizeof),
-                        "goto" => t.push(Token::Goto),
-                        "use" => t.push(Token::Use),
-                        "const" => t.push(Token::Const),
-                        "volatile" => t.push(Token::Volatile),
-                        "extern" => t.push(Token::Extern),
-                        "float" => t.push(Token::Float),
-                        "double" => t.push(Token::Double),
-                        "struct" => t.push(Token::Struct), "union" => t.push(Token::Union), "typedef" => t.push(Token::Typedef),
-                        "enum" => t.push(Token::Enum),
-                        _ => t.push(Token::Ident(id)),
-                    }
-                }
-                _ => { i += 1; }
-            }
-        }
-        t.push(Token::Eof);
-        (t.toks, t.lines)
-    }
 
     fn peek(&self) -> &Token { &self.tokens[self.pos] }
     fn advance(&mut self) -> Token { let t = self.tokens[self.pos].clone(); self.pos += 1; t }
