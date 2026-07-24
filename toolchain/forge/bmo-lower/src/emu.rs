@@ -1,30 +1,62 @@
-//! Emulador x86-64 mínimo — **solo para tests**.
+//! Emulador x86-64 mínimo — el banco de pruebas del toolchain.
 //!
 //! # Por qué existe
 //!
 //! Un emisor de código máquina que solo se testea comparando bytes contra
 //! bytes escritos a mano no prueba nada: si el autor entendió mal una
-//! codificación, el test la repite y pasa igual de mal. Y aquí el costo de
-//! equivocarse no es un `assert` rojo, es flashear un USB, arrancar el
-//! Ryzen y mirar una pantalla negra sin saber por qué.
+//! codificación, el test la repite y pasa igual de mal. Peor aún: un
+//! `IF` que emite un salto con desplazamiento cero **parece** código
+//! correcto en un volcado de bytes, compila, valida el BEF, y ejecuta las
+//! dos ramas en hardware. Esa clase de mentira solo la caza la ejecución.
 //!
-//! Así que en vez de comparar bytes, este módulo los **ejecuta**: decodifica
-//! exactamente las formas que emite `x86.rs`, corre el bucle, y modela la
-//! puerta del kernel (`uconsole::write_packed`: 8 bytes LE, NUL-stop) para
-//! reconstruir el texto que aparecería en pantalla. El test compara ese
-//! texto con el original. Si una codificación está mal, el emulador se
-//! atraganta o el texto sale distinto.
+//! Así que este módulo no compara: **ejecuta**. Corre el código emitido y
+//! modela la puerta del kernel (`uconsole::write_packed`: 8 bytes LE,
+//! NUL-stop) para reconstruir el texto que aparecería en pantalla. El test
+//! compara ese texto con lo que el programa debería imprimir.
 //!
 //! Modela también dos cosas que el silicio hace y es fácil olvidar:
 //! - `syscall` destruye `rcx` y `r11` → aquí se llenan de veneno, para que
 //!   cualquier código que dependa de ellos falle en el test y no en el metal.
 //! - Escribir un registro de 32 bits pone a cero la mitad alta del de 64.
 //!
-//! No pretende ser un emulador general: si aparece un opcode que `x86.rs` no
-//! emite, hace panic con el byte, que es la respuesta correcta.
+//! # Alcance
+//!
+//! Cubre el subconjunto que emiten los frontends de BMO: movimientos,
+//! aritmética entera con signo, `imul`/`idiv`, pila, direccionamiento
+//! `[rbp+disp]` y `[rsp]`, comparaciones, saltos condicionales e
+//! incondicionales, y `syscall`. **No** es un emulador general: ante un
+//! opcode que ningún emisor de BMO produce hace panic con el byte, que es
+//! la respuesta correcta — significa que alguien emitió algo sin pensar en
+//! cómo lo iba a verificar.
+//!
+//! Se activa con la feature `emulator` para que no viaje en las builds
+//! normales del toolchain.
 
-const DATA_BASE: u64 = 0x1_0000;
+use std::collections::HashMap;
+
+/// Dirección base del área de datos que carga el test.
+pub const DATA_BASE: u64 = 0x1_0000;
+/// Tope de pila inicial. Alineado a 64 como pide el contrato de BMO.
+pub const STACK_TOP: u64 = 0x7000_0000;
+
 const POISON: u64 = 0xDEAD_BEEF_DEAD_BEEF;
+
+const RAX: usize = 0;
+const RCX: usize = 1;
+const RDX: usize = 2;
+const RSP: usize = 4;
+const RSI: usize = 6;
+const RDI: usize = 7;
+const R11: usize = 11;
+
+/// Una llamada observada cruzando CPL3→CPL0.
+#[derive(Debug, Clone, Copy)]
+pub struct ObservedSyscall {
+    pub nr: u64,
+    pub capability: u64,
+    pub operation: u64,
+    pub arg0: u64,
+}
 
 pub struct Machine {
     pub regs: [u64; 16],
@@ -32,42 +64,66 @@ pub struct Machine {
     pub rip: usize,
     /// Texto que el kernel habría pintado.
     pub console: String,
-    /// Cuántas veces se cruzó CPL3→CPL0.
-    pub syscalls: usize,
-    data: Vec<u8>,
+    /// Toda llamada observada, en orden.
+    pub syscalls: Vec<ObservedSyscall>,
+    /// True cuando el programa invocó `TASK_OP_EXIT`.
+    pub exited: bool,
+    mem: HashMap<u64, u8>,
+    data_len: u64,
     zf: bool,
+    sf: bool,
+    of: bool,
     cf: bool,
 }
 
 impl Machine {
     pub fn new(code: Vec<u8>) -> Self {
-        Self {
+        let mut m = Self {
             regs: [0; 16],
             code,
             rip: 0,
             console: String::new(),
-            syscalls: 0,
-            data: Vec::new(),
+            syscalls: Vec::new(),
+            exited: false,
+            mem: HashMap::new(),
+            data_len: 0,
             zf: false,
+            sf: false,
+            of: false,
             cf: false,
-        }
+        };
+        m.regs[RSP] = STACK_TOP;
+        m
     }
 
     /// Coloca bytes en memoria y devuelve su dirección.
     pub fn load_data(&mut self, bytes: &[u8]) -> u64 {
-        let addr = DATA_BASE + self.data.len() as u64;
-        self.data.extend_from_slice(bytes);
+        let addr = DATA_BASE + self.data_len;
+        for (i, b) in bytes.iter().enumerate() {
+            self.mem.insert(addr + i as u64, *b);
+        }
+        self.data_len += bytes.len() as u64;
         addr
     }
 
-    fn read_u8(&self, addr: u64) -> u8 {
-        let idx = addr
-            .checked_sub(DATA_BASE)
-            .expect("lectura fuera del área de datos") as usize;
-        *self
-            .data
-            .get(idx)
-            .unwrap_or_else(|| panic!("lectura fuera de rango en {addr:#x}"))
+    /// Lee 8 bytes de memoria (cero si nunca se escribieron — el kernel
+    /// entrega páginas en cero, así que es el modelo fiel).
+    pub fn read_u64(&self, addr: u64) -> u64 {
+        let mut v = 0u64;
+        for i in 0..8 {
+            v |= (*self.mem.get(&(addr + i)).unwrap_or(&0) as u64) << (i * 8);
+        }
+        v
+    }
+
+    fn write_u64(&mut self, addr: u64, value: u64) {
+        for i in 0..8 {
+            self.mem.insert(addr + i, ((value >> (i * 8)) & 0xFF) as u8);
+        }
+    }
+
+    fn read_u8_mem(&self, addr: u64) -> u8 {
+        *self.mem.get(&addr).unwrap_or(&0)
     }
 
     fn fetch_u8(&mut self) -> u8 {
@@ -90,7 +146,6 @@ impl Machine {
         u64::from_le_bytes(buf)
     }
 
-    /// Escribe respetando el ancho: 32 bits pone a cero la mitad alta.
     fn write_reg(&mut self, reg: usize, value: u64, wide: bool) {
         self.regs[reg] = if wide { value } else { value as u32 as u64 };
     }
@@ -103,37 +158,147 @@ impl Machine {
         }
     }
 
-    /// La puerta del kernel, modelada: `uconsole::write_packed`.
-    fn do_syscall(&mut self) {
-        use bmo_abi::syscalls::surface::{CURRENT_TASK, NR_INVOKE, TASK_OP_CONSOLE_WRITE};
+    fn push(&mut self, value: u64) {
+        self.regs[RSP] = self.regs[RSP].wrapping_sub(8);
+        let sp = self.regs[RSP];
+        self.write_u64(sp, value);
+    }
 
-        assert_eq!(self.regs[0], NR_INVOKE as u64, "rax debe ser NR_INVOKE");
-        assert_eq!(self.regs[7], CURRENT_TASK, "rdi debe ser CURRENT_TASK");
+    fn pop(&mut self) -> u64 {
+        let sp = self.regs[RSP];
+        let v = self.read_u64(sp);
+        self.regs[RSP] = sp.wrapping_add(8);
+        v
+    }
+
+    /// Flags de una resta `a - b`, que es lo que produce `cmp`.
+    fn flags_sub(&mut self, a: u64, b: u64) {
+        let r = a.wrapping_sub(b);
+        self.zf = r == 0;
+        self.sf = (r as i64) < 0;
+        self.cf = a < b;
+        // Overflow con signo: los operandos difieren en signo y el
+        // resultado toma el del sustraendo.
+        self.of = ((a ^ b) & (a ^ r)) >> 63 != 0;
+    }
+
+    fn flags_logic(&mut self, r: u64) {
+        self.zf = r == 0;
+        self.sf = (r as i64) < 0;
+        self.cf = false;
+        self.of = false;
+    }
+
+    /// La puerta del kernel, modelada.
+    fn do_syscall(&mut self) {
+        use bmo_abi::syscalls::surface::{
+            CURRENT_TASK, NR_INVOKE, TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT,
+        };
+
+        let call = ObservedSyscall {
+            nr: self.regs[RAX],
+            capability: self.regs[RDI],
+            operation: self.regs[RSI],
+            arg0: self.regs[RDX],
+        };
+        self.syscalls.push(call);
+
         assert_eq!(
-            self.regs[6], TASK_OP_CONSOLE_WRITE,
-            "rsi debe ser CONSOLE_WRITE"
+            call.nr, NR_INVOKE as u64,
+            "solo INVOKE cruza esta puerta (rax={:#x})",
+            call.nr
         );
 
-        let packed = self.regs[2];
-        for i in 0..8 {
-            let b = ((packed >> (i * 8)) & 0xFF) as u8;
-            if b == 0 {
-                break; // NUL-stop: idéntico al kernel
+        if call.capability == CURRENT_TASK {
+            match call.operation {
+                op if op == TASK_OP_CONSOLE_WRITE => {
+                    for i in 0..8 {
+                        let b = ((call.arg0 >> (i * 8)) & 0xFF) as u8;
+                        if b == 0 {
+                            break; // NUL-stop: idéntico al kernel
+                        }
+                        self.console.push(b as char);
+                    }
+                }
+                op if op == TASK_OP_EXIT => self.exited = true,
+                _ => {}
             }
-            self.console.push(b as char);
         }
-        self.syscalls += 1;
 
-        // El silicio destruye estos dos. Envenenarlos convierte "funcionó de
-        // milagro" en un test rojo.
-        self.regs[1] = POISON; // rcx
-        self.regs[11] = POISON; // r11
-        self.regs[0] = 0; // rax = estado devuelto
+        // El silicio destruye estos dos.
+        self.regs[RCX] = POISON;
+        self.regs[R11] = POISON;
+        self.regs[RAX] = 0;
+    }
+
+    /// Decodifica un ModRM y devuelve `(reg, destino)`.
+    fn modrm(&mut self, rex_r: usize, rex_x: usize, rex_b: usize) -> (usize, Operand) {
+        let modrm = self.fetch_u8();
+        let md = modrm >> 6;
+        let reg = (((modrm >> 3) & 7) as usize) | (rex_r << 3);
+        let rm = (modrm & 7) as usize;
+
+        if md == 3 {
+            return (reg, Operand::Reg(rm | (rex_b << 3)));
+        }
+
+        // Base (+ índice si hay SIB).
+        let (base, index, scale) = if rm == 0b100 {
+            let sib = self.fetch_u8();
+            let idx = (((sib >> 3) & 7) as usize) | (rex_x << 3);
+            let base = ((sib & 7) as usize) | (rex_b << 3);
+            // índice 4 sin REX.X significa "sin índice".
+            let idx = if idx == 4 { None } else { Some(idx) };
+            (base, idx, 1u64 << (sib >> 6))
+        } else {
+            (rm | (rex_b << 3), None, 1)
+        };
+
+        let disp = match md {
+            0 => 0i64,
+            1 => self.fetch_u8() as i8 as i64,
+            2 => self.fetch_u32() as i32 as i64,
+            _ => unreachable!(),
+        };
+
+        let mut addr = (self.regs[base] as i64 + disp) as u64;
+        if let Some(i) = index {
+            addr = addr.wrapping_add(self.regs[i].wrapping_mul(scale));
+        }
+        (reg, Operand::Mem(addr))
+    }
+
+    fn load(&self, op: Operand, wide: bool) -> u64 {
+        match op {
+            Operand::Reg(r) => self.read_reg(r, wide),
+            Operand::Mem(a) => {
+                let v = self.read_u64(a);
+                if wide {
+                    v
+                } else {
+                    v as u32 as u64
+                }
+            }
+        }
+    }
+
+    fn store(&mut self, op: Operand, value: u64, wide: bool) {
+        match op {
+            Operand::Reg(r) => self.write_reg(r, value, wide),
+            Operand::Mem(a) => {
+                if wide {
+                    self.write_u64(a, value);
+                } else {
+                    self.write_u64(a, value as u32 as u64);
+                }
+            }
+        }
     }
 
     fn step(&mut self) {
         let mut byte = self.fetch_u8();
         let mut rex = 0u8;
+        // Prefijos que emitimos: F3 (pause) se trata aparte más abajo.
         if (0x40..=0x4F).contains(&byte) {
             rex = byte;
             byte = self.fetch_u8();
@@ -144,6 +309,17 @@ impl Machine {
         let rex_b = (rex & 1) as usize;
 
         match byte {
+            // push <reg> / pop <reg>
+            0x50..=0x57 => {
+                let r = ((byte & 7) as usize) | (rex_b << 3);
+                let v = self.regs[r];
+                self.push(v);
+            }
+            0x58..=0x5F => {
+                let r = ((byte & 7) as usize) | (rex_b << 3);
+                let v = self.pop();
+                self.regs[r] = v;
+            }
             // mov <reg>, imm
             0xB8..=0xBF => {
                 let reg = ((byte & 7) as usize) | (rex_b << 3);
@@ -154,77 +330,185 @@ impl Machine {
                 };
                 self.write_reg(reg, imm, wide);
             }
-            // ALU r/m, r  (mod=11 siempre en lo que emitimos)
-            0x89 | 0x09 | 0x01 | 0x29 | 0x85 | 0x31 => {
-                let modrm = self.fetch_u8();
-                assert_eq!(modrm & 0xC0, 0xC0, "solo se emite mod=11 aquí");
-                let reg = (((modrm >> 3) & 7) as usize) | (rex_r << 3);
-                let rm = ((modrm & 7) as usize) | (rex_b << 3);
-                let a = self.read_reg(rm, wide);
+            // ALU  r/m, reg
+            0x89 | 0x09 | 0x01 | 0x29 | 0x85 | 0x31 | 0x39 | 0x21 => {
+                let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                let a = self.load(dst, wide);
                 let b = self.read_reg(reg, wide);
                 match byte {
-                    0x89 => self.write_reg(rm, b, wide), // mov
+                    0x89 => self.store(dst, b, wide),
                     0x09 => {
                         let r = a | b;
-                        self.zf = r == 0;
-                        self.write_reg(rm, r, wide);
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
                     }
-                    0x01 => {
-                        let r = a.wrapping_add(b);
-                        self.zf = r == 0;
-                        self.write_reg(rm, r, wide);
-                    }
-                    0x29 => {
-                        let r = a.wrapping_sub(b);
-                        self.zf = r == 0;
-                        self.cf = a < b;
-                        self.write_reg(rm, r, wide);
-                    }
-                    0x85 => {
-                        self.zf = (a & b) == 0;
-                        self.cf = false;
+                    0x21 => {
+                        let r = a & b;
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
                     }
                     0x31 => {
                         let r = a ^ b;
-                        self.zf = r == 0;
-                        self.write_reg(rm, r, wide);
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
                     }
+                    0x01 => {
+                        let r = a.wrapping_add(b);
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
+                    }
+                    0x29 => {
+                        self.flags_sub(a, b);
+                        let r = a.wrapping_sub(b);
+                        self.store(dst, r, wide);
+                    }
+                    0x39 => self.flags_sub(a, b), // cmp
+                    0x85 => self.flags_logic(a & b), // test
                     _ => unreachable!(),
                 }
             }
-            // grupo 1 con imm8: /7 = cmp
+            // ALU  reg, r/m  (dirección contraria)
+            0x8B | 0x0B | 0x03 | 0x2B | 0x3B => {
+                let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                let a = self.read_reg(reg, wide);
+                let b = self.load(src, wide);
+                match byte {
+                    0x8B => self.write_reg(reg, b, wide),
+                    0x0B => {
+                        let r = a | b;
+                        self.flags_logic(r);
+                        self.write_reg(reg, r, wide);
+                    }
+                    0x03 => {
+                        let r = a.wrapping_add(b);
+                        self.flags_logic(r);
+                        self.write_reg(reg, r, wide);
+                    }
+                    0x2B => {
+                        self.flags_sub(a, b);
+                        let r = a.wrapping_sub(b);
+                        self.write_reg(reg, r, wide);
+                    }
+                    0x3B => self.flags_sub(a, b),
+                    _ => unreachable!(),
+                }
+            }
+            // lea reg, [mem]
+            0x8D => {
+                let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                match src {
+                    Operand::Mem(a) => self.write_reg(reg, a, wide),
+                    Operand::Reg(_) => panic!("lea con operando registro es inválido"),
+                }
+            }
+            // grupo 1 con imm8: /0 add, /5 sub, /7 cmp, /4 and
             0x83 => {
-                let modrm = self.fetch_u8();
-                let ext = (modrm >> 3) & 7;
-                let rm = ((modrm & 7) as usize) | (rex_b << 3);
+                let (ext, dst) = self.modrm(0, rex_x, rex_b);
                 let imm = self.fetch_u8() as i8 as i64 as u64;
-                let a = self.read_reg(rm, wide);
-                assert_eq!(ext, 7, "solo se emite CMP de este grupo");
-                let r = a.wrapping_sub(imm);
-                self.zf = r == 0;
-                self.cf = a < imm;
+                let a = self.load(dst, wide);
+                match ext & 7 {
+                    0 => {
+                        let r = a.wrapping_add(imm);
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
+                    }
+                    4 => {
+                        let r = a & imm;
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
+                    }
+                    5 => {
+                        self.flags_sub(a, imm);
+                        let r = a.wrapping_sub(imm);
+                        self.store(dst, r, wide);
+                    }
+                    7 => self.flags_sub(a, imm),
+                    other => panic!("grupo 83 /{other} no emitido por BMO"),
+                }
             }
-            // grupo 5 con imm8: /4 = shl
+            // grupo 1 con imm32
+            0x81 => {
+                let (ext, dst) = self.modrm(0, rex_x, rex_b);
+                let imm = self.fetch_u32() as i32 as i64 as u64;
+                let a = self.load(dst, wide);
+                match ext & 7 {
+                    0 => {
+                        let r = a.wrapping_add(imm);
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
+                    }
+                    5 => {
+                        self.flags_sub(a, imm);
+                        let r = a.wrapping_sub(imm);
+                        self.store(dst, r, wide);
+                    }
+                    7 => self.flags_sub(a, imm),
+                    other => panic!("grupo 81 /{other} no emitido por BMO"),
+                }
+            }
+            // mov r/m, imm32
+            0xC7 => {
+                let (_, dst) = self.modrm(0, rex_x, rex_b);
+                let imm = self.fetch_u32() as i32 as i64 as u64;
+                self.store(dst, imm, wide);
+            }
+            // desplazamientos con imm8: /4 shl, /5 shr, /7 sar
             0xC1 => {
-                let modrm = self.fetch_u8();
-                let ext = (modrm >> 3) & 7;
-                let rm = ((modrm & 7) as usize) | (rex_b << 3);
-                let imm = self.fetch_u8();
-                assert_eq!(ext, 4, "solo se emite SHL de este grupo");
-                let r = self.read_reg(rm, wide) << imm;
-                self.zf = r == 0;
-                self.write_reg(rm, r, wide);
+                let (ext, dst) = self.modrm(0, rex_x, rex_b);
+                let imm = self.fetch_u8() as u32;
+                let a = self.load(dst, wide);
+                let r = match ext & 7 {
+                    4 => a << imm,
+                    5 => a >> imm,
+                    7 => ((a as i64) >> imm) as u64,
+                    other => panic!("grupo C1 /{other} no emitido por BMO"),
+                };
+                self.flags_logic(r);
+                self.store(dst, r, wide);
             }
-            // grupo 3: /1 = dec
+            // grupo 3: /3 neg, /4 mul, /7 idiv
+            0xF7 => {
+                let (ext, src) = self.modrm(0, rex_x, rex_b);
+                let v = self.load(src, wide);
+                match ext & 7 {
+                    3 => {
+                        let r = (self.load(src, wide) as i64).wrapping_neg() as u64;
+                        self.flags_logic(r);
+                        self.store(src, r, wide);
+                    }
+                    7 => {
+                        // idiv: dividendo en rdx:rax; aquí basta rax con signo
+                        // extendido por cqo, que es lo único que emitimos.
+                        let divisor = v as i64;
+                        assert_ne!(divisor, 0, "division por cero en el codigo emitido");
+                        let dividend = self.regs[RAX] as i64;
+                        self.regs[RAX] = dividend.wrapping_div(divisor) as u64;
+                        self.regs[RDX] = dividend.wrapping_rem(divisor) as u64;
+                    }
+                    other => panic!("grupo F7 /{other} no emitido por BMO"),
+                }
+            }
+            // grupo 5: /0 inc, /1 dec
             0xFF => {
-                let modrm = self.fetch_u8();
-                let ext = (modrm >> 3) & 7;
-                let rm = ((modrm & 7) as usize) | (rex_b << 3);
-                assert_eq!(ext, 1, "solo se emite DEC de este grupo");
-                let r = self.read_reg(rm, wide).wrapping_sub(1);
-                self.zf = r == 0;
-                self.write_reg(rm, r, wide);
+                let (ext, dst) = self.modrm(0, rex_x, rex_b);
+                let a = self.load(dst, wide);
+                let r = match ext & 7 {
+                    0 => a.wrapping_add(1),
+                    1 => a.wrapping_sub(1),
+                    other => panic!("grupo FF /{other} no emitido por BMO"),
+                };
+                self.flags_logic(r);
+                self.store(dst, r, wide);
             }
+            // cqo — extiende el signo de rax a rdx
+            0x99 => {
+                self.regs[RDX] = if (self.regs[RAX] as i64) < 0 {
+                    u64::MAX
+                } else {
+                    0
+                };
+            }
+            0x90 => {} // nop
             0xE9 => {
                 let rel = self.fetch_u32() as i32;
                 self.rip = (self.rip as i64 + rel as i64) as usize;
@@ -232,6 +516,13 @@ impl Machine {
             0xEB => {
                 let rel = self.fetch_u8() as i8;
                 self.rip = (self.rip as i64 + rel as i64) as usize;
+            }
+            // jcc rel8
+            0x70..=0x7F => {
+                let rel = self.fetch_u8() as i8;
+                if self.cond(byte & 0x0F) {
+                    self.rip = (self.rip as i64 + rel as i64) as usize;
+                }
             }
             0xF3 => {
                 let nop = self.fetch_u8();
@@ -241,49 +532,77 @@ impl Machine {
                 let second = self.fetch_u8();
                 match second {
                     0x05 => self.do_syscall(),
-                    // movzx r32, byte [base + index]
+                    // movzx reg, r/m8
                     0xB6 => {
-                        let modrm = self.fetch_u8();
-                        assert_eq!(modrm & 0xC0, 0x00, "solo se emite mod=00");
-                        assert_eq!(modrm & 7, 0b100, "solo se emite la forma con SIB");
-                        let dst = (((modrm >> 3) & 7) as usize) | (rex_r << 3);
-                        let sib = self.fetch_u8();
-                        let scale = 1u64 << (sib >> 6);
-                        let index = (((sib >> 3) & 7) as usize) | (rex_x << 3);
-                        let base = ((sib & 7) as usize) | (rex_b << 3);
-                        let addr = self.regs[base] + self.regs[index] * scale;
-                        let value = self.read_u8(addr) as u64;
-                        self.write_reg(dst, value, false);
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = match src {
+                            Operand::Mem(a) => self.read_u8_mem(a) as u64,
+                            Operand::Reg(r) => self.regs[r] & 0xFF,
+                        };
+                        self.write_reg(reg, v, false);
+                    }
+                    // imul reg, r/m
+                    0xAF => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let a = self.read_reg(reg, wide) as i64;
+                        let b = self.load(src, wide) as i64;
+                        let r = a.wrapping_mul(b) as u64;
+                        self.write_reg(reg, r, wide);
                     }
                     // jcc rel32
-                    0x84 | 0x85 | 0x86 => {
+                    0x80..=0x8F => {
                         let rel = self.fetch_u32() as i32;
-                        let taken = match second {
-                            0x84 => self.zf,
-                            0x85 => !self.zf,
-                            0x86 => self.cf || self.zf,
-                            _ => unreachable!(),
-                        };
-                        if taken {
+                        if self.cond(second & 0x0F) {
                             self.rip = (self.rip as i64 + rel as i64) as usize;
                         }
                     }
-                    other => panic!("opcode 0F {other:#04X} no emitido por x86.rs"),
+                    other => panic!("opcode 0F {other:#04X} no emitido por BMO"),
                 }
             }
-            other => panic!("opcode {other:#04X} no emitido por x86.rs"),
+            other => panic!("opcode {other:#04X} no emitido por BMO"),
+        }
+    }
+
+    /// Evalúa el código de condición de un `jcc` (el nibble bajo del opcode).
+    fn cond(&self, cc: u8) -> bool {
+        match cc {
+            0x0 => self.of,
+            0x1 => !self.of,
+            0x2 => self.cf,
+            0x3 => !self.cf,
+            0x4 => self.zf,
+            0x5 => !self.zf,
+            0x6 => self.cf || self.zf,
+            0x7 => !self.cf && !self.zf,
+            0x8 => self.sf,
+            0x9 => !self.sf,
+            0xC => self.sf != self.of,
+            0xD => self.sf == self.of,
+            0xE => self.zf || (self.sf != self.of),
+            0xF => !self.zf && (self.sf == self.of),
+            other => panic!("condicion {other:#x} no emitida por BMO"),
         }
     }
 }
 
-/// Ejecuta hasta caer del final del código o agotar el presupuesto de pasos
-/// (un bucle que no termina es un bug, y colgar el test lo esconde).
+#[derive(Clone, Copy)]
+enum Operand {
+    Reg(usize),
+    Mem(u64),
+}
+
+/// Ejecuta hasta caer del final del código, hasta `EXIT`, o hasta agotar el
+/// presupuesto de pasos (un bucle que no termina es un bug, y colgar el test
+/// lo esconde en vez de reportarlo).
 pub fn run(mut m: Machine, max_steps: usize) -> Machine {
     let mut steps = 0;
-    while m.rip < m.code.len() {
+    while m.rip < m.code.len() && !m.exited {
         m.step();
         steps += 1;
-        assert!(steps < max_steps, "el código emitido no termina");
+        assert!(
+            steps < max_steps,
+            "el codigo emitido no termina (>{max_steps} instrucciones)"
+        );
     }
     m
 }

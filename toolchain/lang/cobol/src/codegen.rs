@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
-use bmo_abi::syscalls::*;
 use bmo_abi::syscalls::surface;
 use bmo_sem_asm::Instructions;
 use bmo_sem_asm::x86_64::{Asm, Reg};
@@ -35,6 +34,20 @@ struct Codegen {
     /// bancaria: un `PIC 9(3)V99` tiene escala 2 → guarda centavos.
     var_scales: HashMap<String, u32>,
     next_label: u32,
+    /// Offset donde quedó fijada cada etiqueta.
+    label_offsets: HashMap<u32, usize>,
+    /// Saltos pendientes: (offset del campo rel32, etiqueta destino).
+    ///
+    /// Esto es lo que faltaba y hacía que el flujo de control fuera una
+    /// mentira: antes se emitían `jcc` con desplazamiento 0 —o sea, "saltar
+    /// a la instrucción siguiente"— y nadie los parcheaba nunca. El `IF`
+    /// ejecutaba las dos ramas y el `PERFORM` no repetía nada, pero el BEF
+    /// compilaba y validaba igual.
+    jump_fixups: Vec<(usize, u32)>,
+    /// Errores detectados durante la emision (expresiones malformadas).
+    /// Se acumulan y se reportan al final en vez de emitir codigo que
+    /// calcula cualquier cosa.
+    errors: Vec<CobolError>,
     stack_size: i32,
     /// Tabla de instrucciones sem-asm (opcodes leídos de la TOML).
     isa: Instructions,
@@ -51,6 +64,9 @@ impl Codegen {
             var_offsets: HashMap::new(),
             var_scales: HashMap::new(),
             next_label: 0,
+            label_offsets: HashMap::new(),
+            jump_fixups: Vec::new(),
+            errors: Vec::new(),
             stack_size: 0,
             isa: Instructions::load_x86_64().expect("tablas sem-asm x86-64 (forge/sem-asm/tables)"),
         }
@@ -96,6 +112,95 @@ impl Codegen {
 
     fn fresh_label(&mut self) -> u32 { let l = self.next_label; self.next_label += 1; l }
 
+    /// Fija una etiqueta en la posición actual del código.
+    fn bind_label(&mut self, label: u32) {
+        let here = self.code.len();
+        self.label_offsets.insert(label, here);
+    }
+
+    /// `jmp <etiqueta>` (rel32, se parchea al final).
+    fn emit_jmp(&mut self, label: u32) {
+        self.code.push(0xE9);
+        self.jump_fixups.push((self.code.len(), label));
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
+    }
+
+    /// `jcc <etiqueta>` con el segundo byte del opcode (`0x84`=je,
+    /// `0x85`=jne, `0x8C`=jl, `0x8D`=jge, `0x8E`=jle, `0x8F`=jg).
+    ///
+    /// Siempre rel32: el cuerpo de un `PERFORM` o de un `IF` puede crecer
+    /// más allá de los 127 bytes de un rel8, y un salto que se desborda en
+    /// silencio es peor que uno largo de más.
+    fn emit_jcc(&mut self, cc: u8, label: u32) {
+        self.code.extend_from_slice(&[0x0F, cc]);
+        self.jump_fixups.push((self.code.len(), label));
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
+    }
+
+    /// Resuelve todos los saltos. Una etiqueta sin fijar es un bug del
+    /// emisor, no del programa COBOL: se aborta en vez de emitir un salto
+    /// a ninguna parte.
+    fn patch_jumps(&mut self) {
+        for (field, label) in std::mem::take(&mut self.jump_fixups) {
+            let target = *self
+                .label_offsets
+                .get(&label)
+                .unwrap_or_else(|| panic!("etiqueta {label} usada pero nunca fijada"));
+            let rel = (target as i64 - (field as i64 + 4)) as i32;
+            self.code[field..field + 4].copy_from_slice(&rel.to_le_bytes());
+        }
+    }
+
+    /// ¿Este nombre es un dato declarado, o un literal?
+    ///
+    /// Es la pregunta que el descenso nunca hacía: todo operando se trataba
+    /// como literal, así que `ADD PRECIO TO TOTAL` sumaba cero (el parseo
+    /// numérico de "PRECIO" fallaba y caía a `unwrap_or(0)`).
+    fn is_variable(&self, name: &str) -> bool {
+        self.var_offsets.contains_key(name)
+    }
+
+    /// Carga un operando en `rax`, reescalado a `scale`.
+    ///
+    /// El reescalado es lo que hace que el decimal siga siendo exacto al
+    /// mezclar datos de distinta PIC: sumar un `PIC 9(3)` (escala 0) a un
+    /// `PIC 9(3)V99` (escala 2) exige multiplicar por 100 primero, si no se
+    /// sumarían centavos con pesos.
+    fn load_operand(&mut self, name: &str, scale: u32) {
+        if self.is_variable(name) {
+            let from = self.var_scale(name);
+            self.load_var(name);
+            self.rescale(from, scale);
+        } else {
+            self.load_scaled_imm(name, scale);
+        }
+    }
+
+    /// Lleva `rax` de la escala `from` a la escala `to`.
+    fn rescale(&mut self, from: u32, to: u32) {
+        if from == to {
+            return;
+        }
+        if to > from {
+            let factor = 10u64.pow(to - from);
+            self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, factor).unwrap(); });
+            self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]); // imul rax, rcx
+        } else {
+            let factor = 10u64.pow(from - to);
+            self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, factor).unwrap(); });
+            self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
+            self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+        }
+    }
+
+    /// Escala común en la que comparar dos operandos: la mayor de las dos,
+    /// para no perder decimales al comparar.
+    fn comparison_scale(&self, a: &str, b: &str) -> u32 {
+        let sa = if self.is_variable(a) { self.var_scale(a) } else { 0 };
+        let sb = if self.is_variable(b) { self.var_scale(b) } else { 0 };
+        sa.max(sb)
+    }
+
     fn emit_program(&mut self, program: &CobolProgram) -> Result<()> {
         self.stack_size = 0;
         for item in &program.data_items {
@@ -136,8 +241,12 @@ impl Codegen {
         let stub_off = self.code.len();
         self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]); // syscall; ret
         self.function_offsets.insert("__bmo_syscall_stub".to_string(), stub_off);
+        self.patch_jumps();
         self.patch_call_relocs();
         self.patch_string_fixups();
+        if let Some(err) = self.errors.first() {
+            return Err(err.clone());
+        }
         Ok(())
     }
 
@@ -214,13 +323,20 @@ impl Codegen {
                 }
             }
             CobolStatement::Display(s) => self.emit_display(s),
-            CobolStatement::Accept(_) => self.emit_mov_eax_syscall(NR_INPUT_POLL_EVENT),
+            CobolStatement::Accept(_) => {
+                self.errors.push(CobolError::new(
+                    0,
+                    "ACCEPT aun no se compila: no hay puerta de entrada en la \
+                     superficie congelada (el teclado USB enumera, pero todavia \
+                     no llega a Ring 3)",
+                ));
+            }
 
             // Decimal EXACTO: el literal se escala a la escala del destino,
             // así $10.05 en un PIC 9(3)V99 se guarda como el entero 1005.
             CobolStatement::Move(src, dst) => {
                 let sc = self.var_scale(dst);
-                self.load_scaled_imm(src, sc);
+                self.load_operand(src, sc);
                 self.store_var(dst);
             }
             // ADD a misma escala: ambos operandos en centavos → `add` es
@@ -229,23 +345,24 @@ impl Codegen {
                 let sc = self.var_scale(dst);
                 self.load_var(dst);
                 self.code.push(0x50);                    // push rax
-                self.load_scaled_imm(src, sc);
+                self.load_operand(src, sc);
                 self.code.push(0x5A);                    // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
                 self.store_var(dst);
             }
+            // SUBTRACT src FROM dst → dst = dst - src.
+            //
+            // La versión anterior cargaba `src` DOS veces y hacía un baile
+            // de push/pop que no restaba lo que decía. Aquí el orden es
+            // explícito: rdx = dst, rax = src, rdx -= rax.
             CobolStatement::Subtract(src, dst) => {
                 let sc = self.var_scale(dst);
                 self.load_var(dst);
-                self.code.push(0x50);
-                self.load_scaled_imm(src, sc);
-                self.code.push(0x5B);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD8]);
-                self.code.push(0x50);
-                self.load_scaled_imm(src, sc);
-                self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x29, 0xC2]);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
+                self.code.push(0x50);                             // push rax (dst)
+                self.load_operand(src, sc);                       // rax = src
+                self.code.push(0x5A);                             // pop rdx (dst)
+                self.code.extend_from_slice(&[0x48, 0x29, 0xC2]); // sub rdx, rax
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
                 self.store_var(dst);
             }
             // MULTIPLY decimal exacto: dst y src están en escala `sc`
@@ -255,7 +372,7 @@ impl Codegen {
                 let sc = self.var_scale(dst);
                 self.load_var(dst);                              // rax = dst_scaled
                 self.code.push(0x50);                            // push rax
-                self.load_scaled_imm(src, sc);                   // rax = src_scaled
+                self.load_operand(src, sc);                      // rax = src_scaled
                 self.code.push(0x5A);                            // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
                 if sc > 0 {
@@ -271,7 +388,7 @@ impl Codegen {
             // resultado quedaría en escala 0). $10.00 / 4 = $2.50.
             CobolStatement::Divide(src, dst) => {
                 let sc = self.var_scale(dst);
-                self.load_scaled_imm(src, sc);                   // rax = src_scaled (divisor)
+                self.load_operand(src, sc);                      // rax = src_scaled (divisor)
                 self.code.push(0x50);                            // push rax
                 self.load_var(dst);                              // rax = dst_scaled (dividendo)
                 if sc > 0 {
@@ -286,66 +403,276 @@ impl Codegen {
             }
             CobolStatement::Compute(dst, expr) => {
                 let sc = self.var_scale(dst);
-                self.load_scaled_imm(expr, sc);
+                self.emit_compute(expr, sc);
                 self.store_var(dst);
             }
+            // IF/ELSE con bifurcación REAL. Las condiciones se conjugan con
+            // AND: la primera que falle salta a ELSE sin evaluar el resto
+            // (cortocircuito, como manda el estándar).
             CobolStatement::If(cond, then_stmts, else_stmts) => {
-                let _else_label = self.fresh_label();
-                let _end_label = self.fresh_label();
-                self.emit_condition(cond);
-                for s in then_stmts { self.emit_statement(s); }
-                self.code.push(0xEB);
-                self.code.push(0x00);
-                for s in else_stmts { self.emit_statement(s); }
-                self.code.extend_from_slice(&[0x90]);
-            }
-            CobolStatement::Perform(n) => {
-                let _loop_lbl = self.fresh_label();
-                for _ in 0..*n {
-                    self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);
+                let else_label = self.fresh_label();
+                let end_label = self.fresh_label();
+
+                for c in cond {
+                    self.emit_jump_if_condition_false(c, else_label);
                 }
+                for s in then_stmts {
+                    self.emit_statement(s);
+                }
+                self.emit_jmp(end_label);
+
+                self.bind_label(else_label);
+                for s in else_stmts {
+                    self.emit_statement(s);
+                }
+                self.bind_label(end_label);
             }
-            CobolStatement::PerformUntil(_, _) => {
-                self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);
+
+            // PERFORM <n> TIMES con un contador REAL en la pila.
+            //
+            // El contador vive en `[rsp]` y no en un registro porque el
+            // cuerpo puede contener cualquier cosa —un DISPLAY hace un
+            // `syscall`, que destruye rcx y r11—. Todos los emisores de
+            // sentencias dejan la pila equilibrada, así que `[rsp]` sigue
+            // apuntando al contador en cada iteración.
+            CobolStatement::PerformTimes(n, body) => {
+                let top = self.fresh_label();
+                let done = self.fresh_label();
+
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rax, *n as u64).unwrap(); });
+                self.code.push(0x50); // push rax → contador
+
+                self.bind_label(top);
+                self.code.extend_from_slice(&[0x48, 0x83, 0x3C, 0x24, 0x00]); // cmp qword [rsp], 0
+                self.emit_jcc(0x8E, done); // jle done
+
+                for s in body {
+                    self.emit_statement(s);
+                }
+
+                self.code.extend_from_slice(&[0x48, 0xFF, 0x0C, 0x24]); // dec qword [rsp]
+                self.emit_jmp(top);
+
+                self.bind_label(done);
+                self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]); // add rsp, 8
             }
-            CobolStatement::Open(_, _) => self.emit_mov_eax_syscall(NR_FS_OPEN),
-            CobolStatement::Close(_) => self.emit_mov_eax_syscall(NR_FS_CLOSE),
-            CobolStatement::Read(_, _) => self.emit_mov_eax_syscall(NR_FS_READ),
-            CobolStatement::Write(_) => self.emit_mov_eax_syscall(NR_FS_WRITE),
+
+            // PERFORM UNTIL <cond>: se prueba ANTES de cada iteración
+            // (`WITH TEST BEFORE`, el default del estándar) y se sale cuando
+            // la condición se cumple.
+            CobolStatement::PerformUntil(cond, body) => {
+                let top = self.fresh_label();
+                let body_label = self.fresh_label();
+                let done = self.fresh_label();
+
+                self.bind_label(top);
+                // Salir exige que TODAS las condiciones sean ciertas: la
+                // primera falsa manda al cuerpo.
+                for c in cond {
+                    self.emit_jump_if_condition_false(c, body_label);
+                }
+                self.emit_jmp(done);
+
+                self.bind_label(body_label);
+                for s in body {
+                    self.emit_statement(s);
+                }
+                self.emit_jmp(top);
+
+                self.bind_label(done);
+            }
+            // E/S de ficheros y ACCEPT: se RECHAZAN en vez de emitir el
+            // `syscall NR_FS_*` / `NR_INPUT_POLL_EVENT` de antes, números
+            // planos que el kernel no despacha. Un programa que "compila" y
+            // cuyo READ no lee nada es peor que uno que no compila: el
+            // fichero se necesita como capability sobre BMO Channel, y esa
+            // capa todavía no existe.
+            CobolStatement::Open(_, _)
+            | CobolStatement::Close(_)
+            | CobolStatement::Read(_, _)
+            | CobolStatement::Write(_) => {
+                self.errors.push(CobolError::new(
+                    0,
+                    "la E/S de ficheros (OPEN/CLOSE/READ/WRITE) aun no se compila: \
+                     necesita una capability de sistema de ficheros sobre BMO Channel, \
+                     que todavia no existe",
+                ));
+            }
             CobolStatement::StopRun => {}
             CobolStatement::Expr(_) => {}
         }
     }
 
-    fn emit_condition(&mut self, cond: &[CobolCondition]) {
-        if cond.is_empty() { return; }
-        let c = &cond[0];
-        match c {
-            CobolCondition::Equal(a, b) => {
-                self.load_var(a); self.code.push(0x50);
-                self.load_var(b); self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x39, 0xD0]);
-                self.code.extend_from_slice(&[0x0F, 0x85]);
-                self.code.extend_from_slice(&[0, 0, 0, 0]);
-            }
-            CobolCondition::Greater(a, b) => {
-                self.load_var(a); self.code.push(0x50);
-                self.load_var(b); self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x39, 0xD0]);
-                self.code.extend_from_slice(&[0x0F, 0x8E]);
-                self.code.extend_from_slice(&[0, 0, 0, 0]);
-            }
-            CobolCondition::Less(a, b) => {
-                self.load_var(a); self.code.push(0x50);
-                self.load_var(b); self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x39, 0xD0]);
-                self.code.extend_from_slice(&[0x0F, 0x8D]);
-                self.code.extend_from_slice(&[0, 0, 0, 0]);
-            }
-            _ => {
-                self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);
+    /// `COMPUTE dst = <expresión>` con precedencia real.
+    ///
+    /// Antes esto llamaba a `load_scaled_imm(expr)`, que intenta parsear la
+    /// expresión ENTERA como un número: `COMPUTE T = A + B` no fallaba, se
+    /// evaluaba a 0 y seguía.
+    ///
+    /// Toda la expresión se evalúa **en la escala del destino**: los
+    /// operandos se cargan reescalados, el producto se divide entre 10^s y
+    /// el dividendo se preescala. Es el mismo criterio que ya usaban
+    /// MULTIPLY y DIVIDE, aplicado de forma uniforme, y es lo que mantiene
+    /// el decimal exacto sin tocar punto flotante.
+    fn emit_compute(&mut self, expr: &str, scale: u32) {
+        let tokens = Self::tokenize_expr(expr);
+        let mut pos = 0usize;
+        self.emit_expr_sum(&tokens, &mut pos, scale);
+        if pos != tokens.len() {
+            self.errors.push(CobolError::new(
+                0,
+                format!("sobra '{}' al final de la expresion COMPUTE", tokens[pos..].join(" ")),
+            ));
+        }
+    }
+
+    /// Parte la expresión en operandos, operadores y paréntesis.
+    fn tokenize_expr(expr: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut current = String::new();
+        for ch in expr.chars() {
+            if "+-*/()".contains(ch) {
+                if !current.trim().is_empty() {
+                    out.push(current.trim().to_string());
+                }
+                current.clear();
+                out.push(ch.to_string());
+            } else if ch.is_whitespace() {
+                if !current.trim().is_empty() {
+                    out.push(current.trim().to_string());
+                }
+                current.clear();
+            } else {
+                current.push(ch);
             }
         }
+        if !current.trim().is_empty() {
+            out.push(current.trim().to_string());
+        }
+        out
+    }
+
+    /// `suma := producto (('+'|'-') producto)*`
+    fn emit_expr_sum(&mut self, tokens: &[String], pos: &mut usize, scale: u32) {
+        self.emit_expr_product(tokens, pos, scale);
+        while *pos < tokens.len() && (tokens[*pos] == "+" || tokens[*pos] == "-") {
+            let op = tokens[*pos].clone();
+            *pos += 1;
+            self.code.push(0x50); // push rax (izquierdo)
+            self.emit_expr_product(tokens, pos, scale);
+            self.code.push(0x5A); // pop rdx (izquierdo)
+            if op == "+" {
+                self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+            } else {
+                self.code.extend_from_slice(&[0x48, 0x29, 0xC2]); // sub rdx, rax
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+            }
+        }
+    }
+
+    /// `producto := factor (('*'|'/') factor)*`
+    fn emit_expr_product(&mut self, tokens: &[String], pos: &mut usize, scale: u32) {
+        self.emit_expr_factor(tokens, pos, scale);
+        while *pos < tokens.len() && (tokens[*pos] == "*" || tokens[*pos] == "/") {
+            let op = tokens[*pos].clone();
+            *pos += 1;
+            self.code.push(0x50); // push rax (izquierdo)
+            self.emit_expr_factor(tokens, pos, scale);
+            self.code.push(0x5A); // pop rdx (izquierdo)
+            if op == "*" {
+                // Ambos vienen en escala s; el producto queda en 2s.
+                self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
+                if scale > 0 {
+                    let p = 10u64.pow(scale);
+                    self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
+                    self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
+                    self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+                }
+            } else {
+                // rax = divisor, rdx = dividendo. Preescalar el dividendo
+                // para que el cociente conserve la escala.
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax (divisor)
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+                if scale > 0 {
+                    let p = 10u64.pow(scale);
+                    self.code.push(0x50); // push rax
+                    self.emit_asm(|a| { a.mov_imm64(Reg::Rax, p).unwrap(); });
+                    self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+                    self.code.push(0x58); // pop rax
+                    self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
+                }
+                self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
+                self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+            }
+        }
+    }
+
+    /// `factor := '(' suma ')' | operando`
+    fn emit_expr_factor(&mut self, tokens: &[String], pos: &mut usize, scale: u32) {
+        let Some(token) = tokens.get(*pos).cloned() else {
+            self.errors.push(CobolError::new(0, "expresion COMPUTE incompleta"));
+            return;
+        };
+        *pos += 1;
+
+        if token == "(" {
+            self.emit_expr_sum(tokens, pos, scale);
+            if tokens.get(*pos).map(String::as_str) == Some(")") {
+                *pos += 1;
+            } else {
+                self.errors
+                    .push(CobolError::new(0, "falta ')' en la expresion COMPUTE"));
+            }
+            return;
+        }
+
+        if token == "-" {
+            // Menos unario.
+            self.emit_expr_factor(tokens, pos, scale);
+            self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); // neg rax
+            return;
+        }
+
+        if !self.is_variable(&token) && token.parse::<f64>().is_err() {
+            self.errors.push(CobolError::new(
+                0,
+                format!("'{token}' no es un dato declarado ni un literal numerico"),
+            ));
+            return;
+        }
+        self.load_operand(&token, scale);
+    }
+
+    /// Compara los dos operandos y salta a `label` si la condición es FALSA.
+    ///
+    /// Es la primitiva de todo el flujo de control: un `IF` salta al `ELSE`
+    /// cuando falla, y un `PERFORM UNTIL` salta al cuerpo cuando la
+    /// condición de salida aún no se cumple.
+    ///
+    /// Deja `rdx` = izquierdo y `rax` = derecho, y compara `rdx - rax`, de
+    /// modo que el código de condición se lee en el mismo orden que el
+    /// COBOL: `A > B` es `jg`. La versión anterior cargaba los operandos
+    /// cruzados y elegía condiciones invertidas a ojo — otra fuente de
+    /// error que aquí desaparece.
+    fn emit_jump_if_condition_false(&mut self, cond: &CobolCondition, label: u32) {
+        let (a, b, cc_when_false) = match cond {
+            CobolCondition::Equal(a, b) => (a, b, 0x85),          // jne
+            CobolCondition::NotEqual(a, b) => (a, b, 0x84),       // je
+            CobolCondition::Greater(a, b) => (a, b, 0x8E),        // jle
+            CobolCondition::Less(a, b) => (a, b, 0x8D),           // jge
+            CobolCondition::GreaterOrEqual(a, b) => (a, b, 0x8C), // jl
+            CobolCondition::LessOrEqual(a, b) => (a, b, 0x8F),    // jg
+        };
+
+        let scale = self.comparison_scale(a, b);
+        let (a, b) = (a.clone(), b.clone());
+
+        self.load_operand(&a, scale);
+        self.code.push(0x50); // push rax (izquierdo)
+        self.load_operand(&b, scale); // rax = derecho
+        self.code.push(0x5A); // pop rdx (izquierdo)
+        self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax
+        self.emit_jcc(cc_when_false, label);
     }
 
     fn emit_mov_eax_syscall(&mut self, nr: u32) {

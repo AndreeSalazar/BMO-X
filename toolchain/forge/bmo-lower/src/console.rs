@@ -240,6 +240,6 @@ mod tests {
         let m = run(m, 100_000);
         // Cada syscall observado tenía capability y operación correctas: lo
         // verifica el emulador en cada `0F 05` (ver emu.rs).
-        assert_eq!(m.syscalls, 1);
+        assert_eq!(m.syscalls.len(), 1);
     }
 }

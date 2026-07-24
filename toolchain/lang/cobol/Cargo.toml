@@ -24,3 +24,9 @@ path = "src/lib.rs"
 [[bin]]
 name = "bmo-cobol-front"
 path = "src/main.rs"
+
+[dev-dependencies]
+# El banco de pruebas: ejecuta el codigo emitido en vez de mirarlo.
+# Un IF que no bifurca se ve igual que uno que si en un volcado de
+# bytes; solo se distinguen corriendolos.
+bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }

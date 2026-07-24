@@ -2,8 +2,15 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::ast::{
-    CobolError, CobolProgram, CobolStatement, DataItem, SyscallDef, SyscallMap,
+    CobolCondition, CobolError, CobolProgram, CobolStatement, DataItem, SyscallDef,
+    SyscallMap,
 };
+
+/// Cabecera de un PERFORM ya analizada, antes de leer el cuerpo.
+enum PerformHeader {
+    Times(u32),
+    Until(Vec<CobolCondition>),
+}
 
 pub struct Parser {
     lines: Vec<(usize, String)>,
@@ -152,7 +159,7 @@ impl Parser {
         Ok(Some(DataItem::new(level, name, pic, value)))
     }
 
-    fn parse_statement(&self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+    fn parse_statement(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let upper = line.trim().to_ascii_uppercase();
 
         if upper.starts_with("SYSCALL ") {
@@ -253,24 +260,9 @@ impl Parser {
         } else if upper.starts_with("IF ") {
             self.parse_if(line, line_no)
         } else if upper.starts_with("PERFORM ") {
-            let rest = line[8..].trim();
-            if let Some(until_pos) = rest.to_ascii_uppercase().find(" UNTIL ") {
-                let until_part = rest[until_pos + 7..].trim().trim_end_matches('.');
-                let cond_parts: Vec<&str> = until_part.splitn(3, |c: char| c.is_whitespace()).collect();
-                if cond_parts.len() >= 3 {
-                    Ok(CobolStatement::PerformUntil(
-                        Self::parse_operand(cond_parts[0]),
-                        cond_parts[1..].join(" "),
-                    ))
-                } else { Ok(CobolStatement::Perform(1)) }
-            } else {
-                let times: u32 = rest.trim().trim_end_matches('.').parse().unwrap_or(1);
-                Ok(CobolStatement::Perform(times))
-            }
+            self.parse_perform(line, line_no)
         } else if upper == "STOP RUN" || upper == "STOP RUN." {
             Ok(CobolStatement::StopRun)
-        } else if upper.contains("END-IF") || upper.contains("END-PERFORM") {
-            Ok(CobolStatement::Expr(line.to_string()))
         } else {
             // Vocabulario COBOL COMPLETO vía las tablas generadas por Python
             // (cobol-gen): el parser distingue un verbo COBOL conocido pero
@@ -295,9 +287,253 @@ impl Parser {
         }
     }
 
-    fn parse_if(&self, line: &str, _line_no: usize) -> Result<CobolStatement, CobolError> {
-        let _rest = line[3..].trim_end_matches('.').trim();
-        Ok(CobolStatement::If(Vec::new(), Vec::new(), Vec::new()))
+    /// `IF <cond> [THEN] … [ELSE …] END-IF`.
+    ///
+    /// Se exige `END-IF` (COBOL-85) en vez de aceptar el alcance por punto
+    /// del COBOL clásico. No es pereza: el alcance por punto es ambiguo de
+    /// leer y es una fuente clásica de bugs silenciosos —justo lo que este
+    /// compilador acaba de dejar de hacer—. Si falta, el error lo dice.
+    fn parse_if(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let head = line[3..].trim();
+        let head = Self::strip_trailing_word(head, "THEN");
+        let conditions = Self::parse_conditions(head, line_no)?;
+
+        let mut then_branch = Vec::new();
+        let mut else_branch = Vec::new();
+        let mut in_else = false;
+
+        loop {
+            let (inner_no, raw) = match self.current() {
+                Some(v) => (v.0, v.1.clone()),
+                None => {
+                    return Err(CobolError::new(
+                        line_no,
+                        "IF sin END-IF: esta implementacion exige el cierre explicito de COBOL-85",
+                    ))
+                }
+            };
+            let inner = Self::strip_comment(&raw).trim().to_string();
+            self.advance();
+            if inner.is_empty() {
+                continue;
+            }
+            let up = inner.trim_end_matches('.').trim().to_ascii_uppercase();
+            if up == "END-IF" {
+                break;
+            }
+            if up == "ELSE" {
+                if in_else {
+                    return Err(CobolError::new(inner_no, "ELSE duplicado en el mismo IF"));
+                }
+                in_else = true;
+                continue;
+            }
+            let stmt = self.parse_statement(inner.trim_end_matches('.').trim(), inner_no)?;
+            if in_else {
+                else_branch.push(stmt);
+            } else {
+                then_branch.push(stmt);
+            }
+        }
+
+        Ok(CobolStatement::If(conditions, then_branch, else_branch))
+    }
+
+    /// `PERFORM <n> TIMES … END-PERFORM` o `PERFORM UNTIL <cond> … END-PERFORM`.
+    fn parse_perform(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let rest = line[8..].trim().trim_end_matches('.').trim();
+        let upper = rest.to_ascii_uppercase();
+
+        let header = if let Some(pos) = upper.find("UNTIL ") {
+            if pos == 0 {
+                PerformHeader::Until(Self::parse_conditions(rest[6..].trim(), line_no)?)
+            } else {
+                return Err(CobolError::new(
+                    line_no,
+                    "solo se compila `PERFORM UNTIL <cond>` o `PERFORM <n> TIMES`",
+                ));
+            }
+        } else {
+            let count_text = Self::strip_trailing_word(rest, "TIMES");
+            match count_text.trim().parse::<u32>() {
+                Ok(n) => PerformHeader::Times(n),
+                Err(_) => {
+                    return Err(CobolError::new(
+                        line_no,
+                        format!(
+                            "PERFORM sin forma compilable: '{rest}'. Hoy se compilan \
+                             `PERFORM <n> TIMES` y `PERFORM UNTIL <cond>`; PERFORM de \
+                             parrafo aun no (no hay parrafos)."
+                        ),
+                    ))
+                }
+            }
+        };
+
+        let mut body = Vec::new();
+        loop {
+            let (inner_no, raw) = match self.current() {
+                Some(v) => (v.0, v.1.clone()),
+                None => {
+                    return Err(CobolError::new(
+                        line_no,
+                        "PERFORM sin END-PERFORM: esta implementacion exige el cierre explicito",
+                    ))
+                }
+            };
+            let inner = Self::strip_comment(&raw).trim().to_string();
+            self.advance();
+            if inner.is_empty() {
+                continue;
+            }
+            if inner.trim_end_matches('.').trim().eq_ignore_ascii_case("END-PERFORM") {
+                break;
+            }
+            body.push(self.parse_statement(inner.trim_end_matches('.').trim(), inner_no)?);
+        }
+
+        Ok(match header {
+            PerformHeader::Times(n) => CobolStatement::PerformTimes(n, body),
+            PerformHeader::Until(c) => CobolStatement::PerformUntil(c, body),
+        })
+    }
+
+    /// Parsea una condición COBOL, con operadores simbólicos y con palabras.
+    ///
+    /// Acepta `A = B`, `A > B`, `A >= B`, `A NOT = B`, y las formas del
+    /// estándar en palabras: `A IS EQUAL TO B`, `A IS GREATER THAN B`,
+    /// `A IS NOT LESS THAN B`… Varias condiciones se unen con `AND`.
+    ///
+    /// `OR` se RECHAZA con un error explícito: mezclar AND y OR necesita un
+    /// árbol de condiciones, y compilarlo como si fuera AND daría un
+    /// programa que corre y decide mal.
+    fn parse_conditions(text: &str, line_no: usize) -> Result<Vec<CobolCondition>, CobolError> {
+        let normalized = Self::normalize_condition_words(text);
+        if normalized.to_ascii_uppercase().split_whitespace().any(|w| w == "OR") {
+            return Err(CobolError::new(
+                line_no,
+                "condiciones con OR aun no se compilan (haria falta un arbol \
+                 AND/OR); reescribela con AND o con IF anidados",
+            ));
+        }
+
+        let mut out = Vec::new();
+        for part in Self::split_on_word(&normalized, "AND") {
+            out.push(Self::parse_one_condition(part.trim(), line_no)?);
+        }
+        if out.is_empty() {
+            return Err(CobolError::new(line_no, "condicion vacia"));
+        }
+        Ok(out)
+    }
+
+    /// Convierte las formas en palabras del estándar al operador simbólico
+    /// equivalente, para que el análisis quede en un solo sitio.
+    fn normalize_condition_words(text: &str) -> String {
+        // El orden importa: las formas largas primero, si no `NOT LESS`
+        // se comería el `LESS` de `NOT LESS THAN`.
+        const REPLACEMENTS: &[(&str, &str)] = &[
+            ("IS NOT GREATER THAN OR EQUAL TO", " < "),
+            ("IS NOT LESS THAN OR EQUAL TO", " > "),
+            ("IS GREATER THAN OR EQUAL TO", " >= "),
+            ("IS LESS THAN OR EQUAL TO", " <= "),
+            ("GREATER THAN OR EQUAL TO", " >= "),
+            ("LESS THAN OR EQUAL TO", " <= "),
+            ("IS NOT GREATER THAN", " <= "),
+            ("IS NOT LESS THAN", " >= "),
+            ("IS NOT EQUAL TO", " <> "),
+            ("IS GREATER THAN", " > "),
+            ("IS LESS THAN", " < "),
+            ("IS EQUAL TO", " = "),
+            ("NOT GREATER THAN", " <= "),
+            ("NOT LESS THAN", " >= "),
+            ("NOT EQUAL TO", " <> "),
+            ("GREATER THAN", " > "),
+            ("LESS THAN", " < "),
+            ("EQUAL TO", " = "),
+            ("IS NOT", " <> "),
+            ("NOT =", " <> "),
+            ("EQUALS", " = "),
+            ("IS ", " "),
+        ];
+
+        let mut result = text.to_string();
+        for (words, symbol) in REPLACEMENTS {
+            loop {
+                let upper = result.to_ascii_uppercase();
+                let Some(pos) = upper.find(words) else { break };
+                result.replace_range(pos..pos + words.len(), symbol);
+            }
+        }
+        result
+    }
+
+    /// Parte por una palabra completa (no por subcadena: `AND` no debe
+    /// cortar un dato llamado `BRANDING`).
+    fn split_on_word<'a>(text: &'a str, word: &str) -> Vec<&'a str> {
+        let mut parts = Vec::new();
+        let mut start = 0usize;
+        let upper = text.to_ascii_uppercase();
+        let bytes = upper.as_bytes();
+        let mut i = 0usize;
+        while i + word.len() <= bytes.len() {
+            let at_word = upper[i..].starts_with(word);
+            let left_ok = i == 0 || bytes[i - 1].is_ascii_whitespace();
+            let after = i + word.len();
+            let right_ok = after == bytes.len() || bytes[after].is_ascii_whitespace();
+            if at_word && left_ok && right_ok {
+                parts.push(&text[start..i]);
+                start = after;
+                i = after;
+            } else {
+                i += 1;
+            }
+        }
+        parts.push(&text[start..]);
+        parts.into_iter().filter(|p| !p.trim().is_empty()).collect()
+    }
+
+    fn parse_one_condition(text: &str, line_no: usize) -> Result<CobolCondition, CobolError> {
+        // Los de dos caracteres primero: `>=` contiene `>`.
+        const OPERATORS: &[&str] = &[">=", "<=", "<>", "!=", "=", ">", "<"];
+        for op in OPERATORS {
+            let Some(pos) = text.find(op) else { continue };
+            let left = Self::parse_operand(&text[..pos]);
+            let right = Self::parse_operand(&text[pos + op.len()..]);
+            if left.is_empty() || right.is_empty() {
+                return Err(CobolError::new(
+                    line_no,
+                    format!("condicion incompleta: '{text}'"),
+                ));
+            }
+            return Ok(match *op {
+                "=" => CobolCondition::Equal(left, right),
+                "<>" | "!=" => CobolCondition::NotEqual(left, right),
+                ">" => CobolCondition::Greater(left, right),
+                "<" => CobolCondition::Less(left, right),
+                ">=" => CobolCondition::GreaterOrEqual(left, right),
+                "<=" => CobolCondition::LessOrEqual(left, right),
+                _ => unreachable!(),
+            });
+        }
+        Err(CobolError::new(
+            line_no,
+            format!("no encuentro operador de comparacion en '{text}'"),
+        ))
+    }
+
+    /// Quita una palabra final (`TIMES`, `THEN`) si está presente.
+    fn strip_trailing_word<'a>(text: &'a str, word: &str) -> &'a str {
+        let trimmed = text.trim();
+        if trimmed.len() >= word.len() {
+            let (head, tail) = trimmed.split_at(trimmed.len() - word.len());
+            if tail.eq_ignore_ascii_case(word)
+                && (head.is_empty() || head.ends_with(char::is_whitespace))
+            {
+                return head.trim();
+            }
+        }
+        trimmed
     }
 
     fn parse_operand(value: &str) -> String {

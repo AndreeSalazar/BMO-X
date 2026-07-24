@@ -193,6 +193,225 @@ STOP RUN.
         assert!(loaded.sections.iter().any(|section| section.kind == bmo_abi::bef::SectionKind::Code));
     }
 
+    // ── Banco de pruebas: EJECUTAR el programa, no mirarlo ──────────────
+    //
+    // El flujo de control de COBOL estuvo fingiendo durante toda la vida
+    // del frontend: `IF` emitía un `jcc` con desplazamiento 0 que nadie
+    // parcheaba (o sea, ejecutaba las DOS ramas) y `PERFORM` emitía
+    // `xor rax,rax` repetido. Compilaba, validaba el BEF y no hacía nada de
+    // lo que decía. Ningún test de bytes lo habría cazado — por eso estos
+    // corren el programa en el emulador de `bmo-lower` y comparan lo que el
+    // kernel habría pintado.
+
+    /// Extrae la sección CODE del BEF para poder ejecutarla.
+    fn code_section(bef: &[u8]) -> Vec<u8> {
+        use bmo_abi::bef::sections::{SectionEntry, SectionKind};
+        let sec_off = u64::from_le_bytes(bef[32..40].try_into().unwrap()) as usize;
+        let hdr = unsafe { &*(bef.as_ptr() as *const bmo_abi::bef::header::BefHeader) };
+        for i in 0..hdr.section_count as usize {
+            let entry = sec_off + i * SectionEntry::SIZE;
+            if bef[entry] == SectionKind::Code as u8 {
+                let off = u64::from_le_bytes(bef[entry + 8..entry + 16].try_into().unwrap()) as usize;
+                let size = u64::from_le_bytes(bef[entry + 16..entry + 24].try_into().unwrap()) as usize;
+                return bef[off..off + size].to_vec();
+            }
+        }
+        panic!("el BEF no tiene seccion CODE");
+    }
+
+    /// Compila y ejecuta, devolviendo lo que el kernel habría mostrado.
+    fn run_cobol(src: &str) -> String {
+        use bmo_lower::emu::{run, Machine};
+        let bef = compile_source_to_bef(src).expect("el programa debe compilar");
+        let machine = run(Machine::new(code_section(&bef)), 200_000);
+        assert!(machine.exited, "el programa debe terminar por INVOKE(EXIT)");
+        machine.console
+    }
+
+    fn program(data: &str, body: &str) -> String {
+        format!(
+            "IDENTIFICATION DIVISION.\nPROGRAM-ID. TEST.\nDATA DIVISION.\n\
+             WORKING-STORAGE SECTION.\n{data}\nPROCEDURE DIVISION.\n{body}\nSTOP RUN.\n"
+        )
+    }
+
+    #[test]
+    fn if_takes_only_the_true_branch() {
+        let out = run_cobol(&program(
+            "01 A PIC 9(3).\n01 B PIC 9(3).",
+            "MOVE 7 TO A.\nMOVE 3 TO B.\n\
+             IF A > B\n  DISPLAY \"MAYOR\"\nELSE\n  DISPLAY \"MENOR\"\nEND-IF.",
+        ));
+        assert_eq!(out, "MAYOR\n");
+    }
+
+    #[test]
+    fn if_takes_only_the_else_branch() {
+        let out = run_cobol(&program(
+            "01 A PIC 9(3).\n01 B PIC 9(3).",
+            "MOVE 2 TO A.\nMOVE 9 TO B.\n\
+             IF A > B\n  DISPLAY \"MAYOR\"\nELSE\n  DISPLAY \"MENOR\"\nEND-IF.",
+        ));
+        assert_eq!(out, "MENOR\n");
+    }
+
+    /// Las condiciones en palabras del estándar deben decidir igual que los
+    /// símbolos.
+    #[test]
+    fn worded_conditions_decide_the_same() {
+        for (cond, expected) in [
+            ("A IS EQUAL TO 5", "SI\n"),
+            ("A IS GREATER THAN 5", "NO\n"),
+            ("A IS NOT EQUAL TO 4", "SI\n"),
+            ("A IS LESS THAN 6", "SI\n"),
+            ("A IS NOT LESS THAN 5", "SI\n"),
+        ] {
+            let out = run_cobol(&program(
+                "01 A PIC 9(3).",
+                &format!("MOVE 5 TO A.\nIF {cond}\n  DISPLAY \"SI\"\nELSE\n  DISPLAY \"NO\"\nEND-IF."),
+            ));
+            assert_eq!(out, expected, "condicion: {cond}");
+        }
+    }
+
+    /// Varias condiciones se conjugan con AND y cortocircuitan.
+    #[test]
+    fn and_conditions_need_all_of_them() {
+        let out = run_cobol(&program(
+            "01 A PIC 9(3).\n01 B PIC 9(3).",
+            "MOVE 5 TO A.\nMOVE 1 TO B.\n\
+             IF A > 3 AND B > 3\n  DISPLAY \"AMBAS\"\nELSE\n  DISPLAY \"NO\"\nEND-IF.",
+        ));
+        assert_eq!(out, "NO\n");
+    }
+
+    #[test]
+    fn perform_times_repeats_exactly_n_times() {
+        let out = run_cobol(&program("01 A PIC 9(3).", "PERFORM 3 TIMES\n  DISPLAY \"X\"\nEND-PERFORM."));
+        assert_eq!(out, "X\nX\nX\n");
+    }
+
+    /// Cero iteraciones también es una respuesta: el contador se prueba
+    /// ANTES de entrar.
+    #[test]
+    fn perform_zero_times_does_not_enter() {
+        let out = run_cobol(&program("01 A PIC 9(3).", "PERFORM 0 TIMES\n  DISPLAY \"X\"\nEND-PERFORM."));
+        assert_eq!(out, "");
+    }
+
+    /// `PERFORM UNTIL` con un contador real: prueba que el bucle avanza y
+    /// que TERMINA (el emulador aborta si no).
+    #[test]
+    fn perform_until_loops_and_terminates() {
+        let out = run_cobol(&program(
+            "01 I PIC 9(3).",
+            "MOVE 0 TO I.\nPERFORM UNTIL I >= 3\n  DISPLAY \"T\"\n  ADD 1 TO I\nEND-PERFORM.",
+        ));
+        assert_eq!(out, "T\nT\nT\n");
+    }
+
+    /// La aritmética tiene que aceptar VARIABLES, no solo literales: antes
+    /// todo operando se parseaba como número y `ADD A TO T` sumaba cero.
+    #[test]
+    fn arithmetic_accepts_variables_as_operands() {
+        let out = run_cobol(&program(
+            "01 A PIC 9(3).\n01 T PIC 9(3).",
+            "MOVE 5 TO A.\nMOVE 0 TO T.\nADD A TO T.\nADD A TO T.\n\
+             IF T = 10\n  DISPLAY \"DIEZ\"\nELSE\n  DISPLAY \"MAL\"\nEND-IF.",
+        ));
+        assert_eq!(out, "DIEZ\n");
+    }
+
+    #[test]
+    fn subtract_computes_dst_minus_src() {
+        let out = run_cobol(&program(
+            "01 A PIC 9(3).\n01 T PIC 9(3).",
+            "MOVE 3 TO A.\nMOVE 10 TO T.\nSUBTRACT A FROM T.\n\
+             IF T = 7\n  DISPLAY \"SIETE\"\nELSE\n  DISPLAY \"MAL\"\nEND-IF.",
+        ));
+        assert_eq!(out, "SIETE\n");
+    }
+
+    /// `COMPUTE` con precedencia real. Antes intentaba parsear la expresión
+    /// entera como un número, fallaba, y guardaba 0 sin decir nada.
+    #[test]
+    fn compute_respects_precedence() {
+        let out = run_cobol(&program(
+            "01 T PIC 9(3).",
+            "COMPUTE T = 2 + 3 * 4.\nIF T = 14\n  DISPLAY \"CATORCE\"\nELSE\n  DISPLAY \"MAL\"\nEND-IF.",
+        ));
+        assert_eq!(out, "CATORCE\n");
+    }
+
+    #[test]
+    fn compute_respects_parentheses() {
+        let out = run_cobol(&program(
+            "01 T PIC 9(3).",
+            "COMPUTE T = (2 + 3) * 4.\nIF T = 20\n  DISPLAY \"VEINTE\"\nELSE\n  DISPLAY \"MAL\"\nEND-IF.",
+        ));
+        assert_eq!(out, "VEINTE\n");
+    }
+
+    /// El alma bancaria: dinero en `PIC 9(3)V99` se opera en centavos, sin
+    /// punto flotante. 10.05 + 0.20 = 10.25 EXACTO.
+    #[test]
+    fn money_arithmetic_stays_exact() {
+        let out = run_cobol(&program(
+            "01 SALDO PIC 9(3)V99.",
+            "MOVE 10.05 TO SALDO.\nADD 0.20 TO SALDO.\n\
+             IF SALDO = 10.25\n  DISPLAY \"EXACTO\"\nELSE\n  DISPLAY \"MAL\"\nEND-IF.",
+        ));
+        assert_eq!(out, "EXACTO\n");
+    }
+
+    /// Mezclar PICs de distinta escala exige reescalar; si no, se sumarían
+    /// pesos con centavos.
+    #[test]
+    fn mixed_scales_rescale_before_operating() {
+        let out = run_cobol(&program(
+            "01 SALDO PIC 9(3)V99.\n01 ENTERO PIC 9(3).",
+            "MOVE 2 TO ENTERO.\nMOVE 1.50 TO SALDO.\nADD ENTERO TO SALDO.\n\
+             IF SALDO = 3.50\n  DISPLAY \"EXACTO\"\nELSE\n  DISPLAY \"MAL\"\nEND-IF.",
+        ));
+        assert_eq!(out, "EXACTO\n");
+    }
+
+    /// Un IF sin END-IF debe fallar con un mensaje claro, no compilar algo
+    /// distinto de lo escrito.
+    #[test]
+    fn unterminated_if_is_an_error() {
+        let src = program("01 A PIC 9(3).", "IF A > 1\n  DISPLAY \"X\"");
+        let err = compile_source_to_bef(&src).unwrap_err();
+        assert!(err.message.contains("END-IF"), "mensaje: {}", err.message);
+    }
+
+    /// `OR` se rechaza en vez de compilarse como si fuera `AND`.
+    #[test]
+    fn or_conditions_are_rejected_not_miscompiled() {
+        let src = program(
+            "01 A PIC 9(3).",
+            "IF A > 1 OR A < 0\n  DISPLAY \"X\"\nEND-IF.",
+        );
+        let err = compile_source_to_bef(&src).unwrap_err();
+        assert!(err.message.contains("OR"), "mensaje: {}", err.message);
+    }
+
+    /// El ejemplo del repositorio, ejecutado. Si alguien vuelve a romper el
+    /// flujo de control, este test lo dice antes de que haga falta flashear
+    /// nada.
+    #[test]
+    fn banco_example_produces_its_documented_output() {
+        let out = run_cobol(include_str!("../examples/banco.cob"));
+        assert_eq!(
+            out,
+            "BMO-X: caja COBOL\n\
+             cobrada una cuota\ncobrada una cuota\ncobrada una cuota\n\
+             total exacto: 59.97\n\
+             recibo emitido\nrecibo emitido\n\
+             dos devoluciones aplicadas\n"
+        );
+    }
+
     /// El puente L2→L1: `DISPLAY "texto"` debe bajar a la puerta de consola
     /// del ABI, con el salto de línea que COBOL exige al final (cada DISPLAY
     /// ocupa su propia fila porque `\n` dispara el flush del kernel).
@@ -286,18 +505,42 @@ STOP RUN.
         assert_eq!(program.statements.len(), 5);
     }
 
+    /// `PERFORM` ahora exige cuerpo y cierre: sin ellos no había nada que
+    /// repetir, y la versión anterior lo aceptaba emitiendo un no-op.
     #[test]
     fn parses_perform() {
         let src = r#"
 IDENTIFICATION DIVISION.
 PROGRAM-ID. LOOP.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-COUNT PIC 9(3).
 PROCEDURE DIVISION.
-PERFORM 5.
-PERFORM UNTIL WS-COUNT > 10.
+PERFORM 5 TIMES
+  ADD 1 TO WS-COUNT
+END-PERFORM.
+PERFORM UNTIL WS-COUNT > 10
+  ADD 1 TO WS-COUNT
+END-PERFORM.
 STOP RUN.
 "#;
         let program = parse(src).unwrap();
         assert!(program.statements.len() >= 2);
+        assert!(matches!(program.statements[0], CobolStatement::PerformTimes(5, _)));
+        assert!(matches!(program.statements[1], CobolStatement::PerformUntil(_, _)));
+    }
+
+    /// El bucle anterior, ejecutado: 5 sumas y luego hasta pasar de 10.
+    #[test]
+    fn nested_loops_reach_the_expected_total() {
+        let out = run_cobol(&program(
+            "01 WS-COUNT PIC 9(3).",
+            "MOVE 0 TO WS-COUNT.\n\
+             PERFORM 5 TIMES\n  ADD 1 TO WS-COUNT\nEND-PERFORM.\n\
+             PERFORM UNTIL WS-COUNT > 10\n  ADD 1 TO WS-COUNT\nEND-PERFORM.\n\
+             IF WS-COUNT = 11\n  DISPLAY \"ONCE\"\nELSE\n  DISPLAY \"MAL\"\nEND-IF.",
+        ));
+        assert_eq!(out, "ONCE\n");
     }
 
     #[test]

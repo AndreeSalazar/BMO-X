@@ -47,8 +47,15 @@ pub mod task;
 
 mod x86;
 
-#[cfg(test)]
-mod emu;
+/// Banco de pruebas: ejecuta el código emitido en vez de comparar bytes.
+///
+/// Vive detrás de la feature `emulator` para no viajar en las builds
+/// normales, y es `pub` para que cada frontend verifique **su propio**
+/// descenso —el flujo de control de COBOL, el de C— con el mismo modelo del
+/// kernel. Un `IF` que no bifurca se ve idéntico a uno que sí en un volcado
+/// de bytes; solo se distinguen ejecutándolos.
+#[cfg(any(test, feature = "emulator"))]
+pub mod emu;
 
 /// Re-export de la superficie para que un frontend que enlaza `bmo-lower`
 /// no tenga que declarar además `bmo-abi` solo para nombrar una operación.
