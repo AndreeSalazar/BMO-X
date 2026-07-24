@@ -10,8 +10,51 @@
 //! A futuro: eventos con severidad/capa (cabina-core::Event) + el buffer de
 //! shared-memory para que Ring 3 aporte su parte (protocolo SHM ya definido).
 
-use cabina_core::TelemetrySnapshot;
+use cabina_core::{TelemetrySnapshot, Event, Severity, Layer, Entity};
 use crate::ring0::core::splash::splash_dashboard_log_color;
+
+// ── Buffer de EVENTOS: el narrador de CABINA ────────────────────────────────
+// Ring de eventos con severidad/capa/entidad. Cuando algo pasa (o no cuadra),
+// se registra aquí con su color. Es el paso previo a la caja negra en SSD:
+// primero narramos en RAM, luego persistimos a disco. cabina-core::Event ya
+// trae severidad(color), capa(from_module), módulo y mensaje.
+
+const EVENT_RING: usize = 24;
+static mut EVENTS: [Event; EVENT_RING] = [Event::ZERO; EVENT_RING];
+static mut EV_WRITE: usize = 0;
+static mut EV_SEQ: u64 = 0;
+static mut EV_TOTAL: u64 = 0;
+
+/// Registra un evento. La capa se infiere del nombre del módulo (Layer::
+/// from_module): "usb"→ring0, "lang"→lang, "cap"→sec, etc.
+pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
+    unsafe {
+        let layer = Layer::from_module(module);
+        let mut ev = Event::new(sev, layer, Entity::Module, module, 0, msg, value);
+        EV_SEQ = EV_SEQ.wrapping_add(1);
+        ev.seq = EV_SEQ;
+        ev.tick_ns = crate::ring0::timer::ticks();
+        let arr = core::ptr::addr_of_mut!(EVENTS) as *mut Event;
+        core::ptr::write(arr.add(EV_WRITE), ev);
+        EV_WRITE = (EV_WRITE + 1) % EVENT_RING;
+        EV_TOTAL = EV_TOTAL.wrapping_add(1);
+    }
+}
+
+/// Atajos por severidad — el vocabulario del narrador.
+pub fn info(module: &str, msg: &str, value: u64)  { record(Severity::Info, module, msg, value); }
+pub fn warn(module: &str, msg: &str, value: u64)  { record(Severity::Warning, module, msg, value); }
+pub fn fault(module: &str, msg: &str, value: u64) { record(Severity::Fault, module, msg, value); }
+
+fn last_event() -> Option<Event> {
+    unsafe {
+        if EV_TOTAL == 0 { return None; }
+        let idx = (EV_WRITE + EVENT_RING - 1) % EVENT_RING;
+        let arr = core::ptr::addr_of!(EVENTS) as *const Event;
+        Some(core::ptr::read(arr.add(idx)))
+    }
+}
+fn event_total() -> u64 { unsafe { EV_TOTAL } }
 
 // Paleta de estado (aviso por color, como pidió el usuario): verde = bien,
 // ámbar = atención, rojo = problema, cyan = info/título, gris = neutro.
@@ -77,6 +120,25 @@ pub fn render_hud() {
     let (rx, ln) = crate::ring0::uconsole::stats();
     let tid = crate::ring0::scheduler::current_tid();
 
+    // ── CABINA NARRA: detecta transiciones y las registra como eventos (una
+    // vez cada una, de-dup por flags). El observador omnisciente escribiendo
+    // su bitácora de "qué pasó y dónde".
+    static mut EV_BOOT: bool = false;
+    static mut EV_KBD: bool = false;
+    static mut EV_MOUSE: bool = false;
+    static mut EV_TYPED: bool = false;
+    static mut EV_STUCK: bool = false;
+    unsafe {
+        if !EV_BOOT { EV_BOOT = true; info("cabina", "observador omnisciente en linea", 0); }
+        if kbd && !EV_KBD { EV_KBD = true; info("usb", "teclado enumero", ks as u64); }
+        if mouse && !EV_MOUSE { EV_MOUSE = true; info("usb", "mouse enumero", ms as u64); }
+        if kev > 0 && !EV_TYPED { EV_TYPED = true; info("usb", "teclado ESCRIBE", kev as u64); }
+        // Falla narrada: teclado enumeró pero no entrega teclas tras un rato.
+        if kbd && kev == 0 && s.cpu.timer_ticks > 0x2000 && !EV_STUCK {
+            EV_STUCK = true; fault("usb", "teclado enumero pero sin teclas", kdci as u64);
+        }
+    }
+
     // Firma de cambio: ticks en bucket grueso (>>8) para no parpardear; el
     // resto son eventos reales. + generación de pantalla para repintar tras clear.
     static mut LAST: u64 = u64::MAX;
@@ -86,7 +148,8 @@ pub fn render_hud() {
         ^ ((s.memory.free_pages & 0xFFFF) << 16)
         ^ ((kev as u64) << 24) ^ ((tev as u64) << 28) ^ ((mev as u64) << 32)
         ^ ((st as u64) << 40) ^ ((kbd as u64) << 48) ^ ((mouse as u64) << 49)
-        ^ ((s.scheduler.processes) << 50) ^ ((rx as u64) << 54);
+        ^ ((s.scheduler.processes) << 50) ^ ((rx as u64) << 54)
+        ^ (event_total() << 58);
     let gen = crate::ring0::core::phase::screen_gen();
     unsafe {
         if LAST == sig && LAST_GEN == gen { return; }
@@ -106,6 +169,7 @@ pub fn render_hud() {
     let mut r = Buf::new();
     r.txt("CABINA omnisciente  up tk=0x"); r.hex(s.cpu.timer_ticks, 6);
     r.txt("  ints="); r.dec(s.cpu.interrupts);
+    r.txt("  ev="); r.dec(event_total());
     splash_dashboard_log_color(9, r.as_str(), C_INFO);
 
     // Fila 10 — memoria + scheduler. Verde si hay RAM holgada; ámbar si escasa.
@@ -143,6 +207,16 @@ pub fn render_hud() {
                     else if kbd && kev == 0 { C_FAULT }
                     else { C_WARN };
     splash_dashboard_log_color(12, r.as_str(), usb_color);
+
+    // Fila 13 — EL NARRADOR: último evento registrado, con el color de su
+    // severidad (cabina-core::Severity::color). "[FAULT|ring0] usb: ..."
+    if let Some(ev) = last_event() {
+        let mut r = Buf::new();
+        r.txt("["); r.txt(ev.severity.name());
+        r.txt("|"); r.txt(ev.layer.name()); r.txt("] ");
+        r.txt(ev.module_str()); r.txt(": "); r.txt(ev.msg_str());
+        splash_dashboard_log_color(13, r.as_str(), ev.severity.color());
+    }
 
     if saved_cr3 != kpml4 { crate::ring0::mm::vmm::switch_to(saved_cr3); }
 }
