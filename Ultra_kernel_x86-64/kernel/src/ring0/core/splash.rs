@@ -626,6 +626,14 @@ pub fn splash_dashboard_init() {
 /// older ones on the same row, so callers can manage a ring of
 /// `DASH_LOG_LINES` rows.
 pub fn splash_dashboard_log(row: usize, msg: &str) {
+    let c = dash_line_color(msg);
+    splash_dashboard_log_color(row, msg, c);
+}
+
+/// Igual que `splash_dashboard_log` pero con COLOR EXPLÍCITO — para que CABINA
+/// pinte cada fila según su estado (verde=bien, ámbar=atención, rojo=problema)
+/// en vez de un solo color plano.
+pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
@@ -639,7 +647,7 @@ pub fn splash_dashboard_log(row: usize, msg: &str) {
     let n = bytes.len().min(buf.len());
     buf[..n].copy_from_slice(&bytes[..n]);
     if let Ok(s) = core::str::from_utf8(&buf[..n]) {
-        draw_str(20, y, s, dash_line_color(s));
+        draw_str(20, y, s, color);
     }
 }
 
