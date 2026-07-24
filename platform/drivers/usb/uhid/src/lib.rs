@@ -91,6 +91,9 @@ impl UsbHidHal {
     /// Slot xHCI del teclado / mouse (0 si ausente) — para diagnóstico.
     pub fn kbd_slot(&self) -> u8 { self.kbd.as_ref().map_or(0, |k| k.slot) }
     pub fn mouse_slot(&self) -> u8 { self.mouse.as_ref().map_or(0, |m| m.slot) }
+    /// DCI (endpoint id) del teclado — para comparar con el endpoint del
+    /// Transfer Event y detectar el desajuste que impide re-encolar.
+    pub fn kbd_dci(&self) -> u8 { self.kbd.as_ref().map_or(0, |k| k.dci) }
 
     // ── Parsing helpers ─────────────────────────────────────
 

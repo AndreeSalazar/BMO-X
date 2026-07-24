@@ -250,23 +250,27 @@ pub(crate) fn dash_usb_status() {
         else { if *o < b.len() { b[*o] = b'+'; *o += 1; } dec(b, o, v as u32); }
     }
 
+    let _ = (mx, my, btn); // (x/y/botones del mouse: cuando enumere, línea aparte)
     let mut b = [0u8; 80];
     let mut o = 0;
-    txt(&mut b, &mut o, "usb kbd=");
+    txt(&mut b, &mut o, "usb k=");
     txt(&mut b, &mut o, if kbd { "OK" } else { "--" });
     txt(&mut b, &mut o, "(s"); dec(&mut b, &mut o, ks as u32); txt(&mut b, &mut o, ")");
-    txt(&mut b, &mut o, " mouse=");
+    txt(&mut b, &mut o, " m=");
     txt(&mut b, &mut o, if mouse { "OK" } else { "--" });
     txt(&mut b, &mut o, "(s"); dec(&mut b, &mut o, ms as u32); txt(&mut b, &mut o, ")");
     txt(&mut b, &mut o, " mev="); dec(&mut b, &mut o, mev);
-    txt(&mut b, &mut o, " x="); sdec(&mut b, &mut o, mx);
-    txt(&mut b, &mut o, " y="); sdec(&mut b, &mut o, my);
-    txt(&mut b, &mut o, " b="); dec(&mut b, &mut o, btn as u32);
     txt(&mut b, &mut o, " kev="); dec(&mut b, &mut o, kev);
-    // Contadores xHC: tev (transfer events del controlador) + hev (eventos HID).
-    // El corte del teclado se lee aqui: tev=0 al teclear => xHC no completa.
+    // El corte del teclado se lee aqui:
     txt(&mut b, &mut o, " tev="); dec(&mut b, &mut o, tev);
     txt(&mut b, &mut o, " hev="); dec(&mut b, &mut o, hev);
+    // dci del kbd vs (slot:ep:cc) del ultimo Transfer Event. Si ep != dci,
+    // el evento no matchea al teclado y no se re-encola => tev pegado.
+    let (kdci, es, ee, ec) = crate::ring0::dev::usb::kbd_debug();
+    txt(&mut b, &mut o, " dci="); dec(&mut b, &mut o, kdci as u32);
+    txt(&mut b, &mut o, " lev="); dec(&mut b, &mut o, es as u32);
+    txt(&mut b, &mut o, ":"); dec(&mut b, &mut o, ee as u32);
+    txt(&mut b, &mut o, ":"); dec(&mut b, &mut o, ec as u32);
 
     if let Ok(s) = core::str::from_utf8(&b[..o]) {
         let cur = crate::ring0::mm::vmm::read_cr3();

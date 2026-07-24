@@ -351,3 +351,15 @@ pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
 pub fn xfer_stats() -> (u32, u32, u32) {
     (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
 }
+
+/// DCI del teclado + último Transfer Event (slot, ep, cc) del xHC. Si el ep del
+/// último evento ≠ dci del teclado, el evento no matchea y no se re-encola →
+/// tev pegado en 1. Ese es el corte que buscamos.
+pub fn kbd_debug() -> (u8, u8, u8, u8) {
+    let dci = unsafe {
+        let hid = &*core::ptr::addr_of!(HID);
+        hid.kbd_dci()
+    };
+    let (s, e, c) = bmo_xhci::last_event();
+    (dci, s, e, c)
+}
