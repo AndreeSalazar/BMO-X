@@ -20,14 +20,16 @@ sin QEMU. Toolchain propio (C/C++/COBOL → BEF → BEX nativo).
 | Ring 3 (userspace) | ✅ ejecuta: hola-mundo CPL3→INVOKE→CPL0→EXIT |
 | Fault isolation (crash R3 mata la tarea, no el kernel) | ✅ implementado |
 | Boot cinemático (logo→RING0→RING3, escenas) | ✅ |
-| Teclado USB (xHCI+HID) | ◐ **enumera** (kbd ready); falta que las teclas lleguen al shell |
-| Mouse USB | ◐ enumera; eventos sin cablear (esperan compositor) |
+| Teclado USB (xHCI+HID) | ◐ **enumera** (slot 2, dci 5) pero su endpoint de interrupción NUNCA completa; teclas no llegan (ver Kernel) |
+| Mouse USB | ◐ NO enumera (usb::init hace UN device; falta multi-device) |
+| **CABINA** (telemetría omnisciente) | ✅ **viva**: cockpit + color semántico + bitácora de eventos (narrador) + detección de disco PCI |
 | Toolchain reorganizado (lang/forge/tools) | ✅ |
-| sem-asm (encoder tabla→bytes) | ✅ C y COBOL lo usan |
+| sem-asm (encoder tabla→bytes + intrínsecos) | ✅ C lo usa; fusión sem-asm↔C hecha |
 | BMO COBOL | ◐ base sólida (~15%); ver abajo |
-| BMO C ("CONTROL ABSOLUTE") | ◐ el más desarrollado (~4500 líneas) |
-| C++ frontend | ◐ mínimo (~900 líneas) |
+| **BMO C ("CONTROL ABSOLUTE")** | ✅ **C esencial ~C11 muy completo** (85 tests); Fase 0/1/2 hechas — ver abajo |
+| C++ frontend | ◐ mínimo (~900 líneas); será barato encima de C |
 | Desktop / compositor (F5) | ⬜ pendiente |
+| Driver de disco (kernel escribe) | ◐ drivers existen (nvme/fat32/ahci) SIN cablear; disco = **NVMe** detectado |
 
 ---
 
@@ -40,9 +42,28 @@ scheduler preemptivo por LAPIC timer, Capability Engine, BMO Channel (IPC),
 CS fantasma UEFI, split-brain de gs, framebuffer bajo CR3 usuario, stacks no
 contiguos.
 
-**Pendiente kernel**: teclado→shell (el USB enumera, falta cablear el stream
-del endpoint de interrupción a `shell_read_line`), demand paging, XSAVE
-(AVX per-task), endpoint RPC (servidores Ring 3), EXIT-reclaim.
+**Teclado USB — diagnóstico HW (2026-07-24, debuggeado a fotos vía CABINA)**:
+el teclado (un **numpad**) ENUMERA en slot 2, endpoint DCI 5 (control transfers
+OK), pero su **endpoint de interrupción NUNCA completa una transferencia** →
+`tev=1` pegado (ruido de slot 1 EP0), `kev=0`, teclas no llegan. Fixes probados:
+mapeo del keypad (translate 0x47-0x53), Max ESIT Payload en el Endpoint Context
+(era 0 → xHC no agendaba; necesario pero NO bastó). Hipótesis viva: el numpad es
+**low/full-speed detrás de un hub interno** (el `slot 1` misterioso) → xHCI los
+agenda distinto (intervalo FS/LS + TT). SIGUIENTE: probar un **teclado USB normal
+en puerto trasero** (aísla numpad-vs-driver), o codificar el intervalo FS/LS.
+Todo el debug vive en CABINA (fila usb: `kev/tev/hev/dci/lev` + evento FAULT).
+
+**CABINA (ring0/cabina.rs)** — telemetría omnisciente, always-on desde el shell
+loop (NO desde el timer IRQ: causaba cuelgue→reset). Da vida a `cabina-core`:
+`snapshot()` desde contadores vivos + `render_hud()` pinta bitácora de 9 líneas
+(eventos con severidad/capa/color) + 3 de telemetría compacta. `record()`/
+`info/warn/fault` = el narrador; ring de 48 eventos. `find_storage()` en dev/pci
+detecta el controlador de disco (NVMe/AHCI). Color: verde=bien, ámbar=atención,
+rojo=problema. Anti-ghosting por change-detection + SCREEN_GEN.
+
+**Pendiente kernel**: teclado→shell (endpoint de interrupción, ver arriba),
+**driver de disco NVMe → CABINA caja negra en SSD**, mouse multi-device, demand
+paging, XSAVE (AVX per-task), endpoint RPC (servidores Ring 3), EXIT-reclaim.
 
 ---
 
@@ -63,7 +84,37 @@ toolchain/
 
 ---
 
-## BMO COBOL (toolchain/lang/cobol/) — el foco reciente
+## BMO C — "CONTROL ABSOLUTE" (toolchain/lang/c/) — MUY completo
+
+C esencial de Ritchie (~C11). **85 tests verdes.** Módulos: `standard.rs`
+(versiones C89..C23, tablas en forge/sem-asm), `lexer.rs`, `parser/mod.rs`,
+`ast/`, `codegen.rs` (el "diccionario" → bytes exactos, sin cerebro intermedio
+tipo LLVM), `module.rs`.
+
+**Fases HECHAS (2026-07-23/24):**
+- **F0 — cimientos honestos**: exterminados ~10 "silencios traicioneros" (bytes
+  MAL sin avisar): offsets `a->b->c` anidados, `int **pp`, sufijos `10UL`,
+  `arr[i]=x` que se descartaba, `TypeSpec::Array(elem,n)` con tamaño real,
+  decls anidadas sin slot (for infinito), subscript array-vs-puntero, stores de
+  campo con tamaño exacto (`pt.x` ya no pisa `pt.y`), casts reales (movsx/movzx),
+  errores con LÍNEA real. Criterio: "un diccionario no adivina".
+- **F1 — LA FUSIÓN sem-asm↔C**: `tables/arch/x86_64/intrinsics.toml` +
+  `__hlt/__pause/__rdtsc/__outb/__inb/__wrmsr/__cpuid`. El compilador emite los
+  BYTES EXACTOS de la tabla (no caja negra tipo `asm()`); agregar instrucción =
+  1 entrada TOML, cero Rust.
+- **F2 — completo**: punteros a función (`int (*op)(int)`, decadencia, call rax
+  indirecto = base de vtables C++), subscript compuesto (`p->arr[i]` = IndexPtr),
+  `(*fp)(args)` (CallPtr), **floats SSE** (ruta xmm paralela: literales, +−×÷,
+  comparaciones comisd, cvtsi2sd/cvttsd2si, retorno en xmm0; float globales y
+  args-de-función = deferido honesto).
+
+**FALTA C**: float args por ABI xmm + printf %f, float globales, preprocesador
+completo, stdlib impl.c. Base sólida para C++ (hereda lexer/tablas/intrínsecos/
+codegen; solo pone RAII + vtables encima).
+
+---
+
+## BMO COBOL (toolchain/lang/cobol/)
 
 Ver `ARCHITECTURE.md` y `cobol.md` en esa carpeta.
 
@@ -132,16 +183,26 @@ py toolchain/tools/cobol-gen/generate.py
 ```
 (Python 3.13 instalado en `%LOCALAPPDATA%\Programs\Python\Python313\`.)
 
-**Tests del frontend COBOL:**
+**Tests de los frontends:**
 ```bash
-cargo test -p bmo-cobol-front
+cargo test -p bmo-c-front       # 85 verdes (C esencial)
+cargo test -p bmo-cobol-front   # 32 verdes (COBOL base)
+cargo test -p bmo-sem-asm -p bmo-verify -p cabina-core
 ```
+
+**Compilar solo el kernel (sin flashear) para verificar cambios:**
+```bash
+cd Ultra_kernel_x86-64; .\build.ps1 -BuildOnly
+```
+(El kernel es bare-metal; `cargo build --workspace` falla al linkear con
+link.exe del host — usar build.ps1. Nota commits: mensajes con `->`/comillas/
+paréntesis rompen el heredoc de PowerShell — usar `git commit -F archivo`.)
 
 ---
 
 ## Docs de referencia
 
-- `BITACORA.md` — bitácora de guerra del debugging en HW (9 episodios).
+- `BITACORA.md` — bitácora de guerra del debugging en HW (11 episodios).
 - `README.md` (raíz) — arquitectura, Subsyscalls, boot path.
 - `toolchain/lang/cobol/ARCHITECTURE.md` — pipeline COBOL completo + roadmap.
 - `toolchain/lang/cobol/cobol.md` — esencia/teoría de COBOL en BMO.
@@ -154,20 +215,24 @@ cargo test -p bmo-cobol-front
 ## Próximos frentes (prioridad)
 
 **Kernel/HW:**
-1. Teclado→shell (cablear el stream USB HID al input) — desbloquea interacción.
-2. Fault isolation: probar con un payload crasher.
+1. **Teclado→shell**: probar teclado USB normal (aísla numpad/hub) o codificar
+   intervalo FS/LS del endpoint de interrupción. CABINA ya narra el diagnóstico.
+2. **Driver de disco NVMe → CABINA caja negra**: cablear crate `nvme` (ya tiene
+   read/write) + HAL DMA/MMIO (como xhci) → montar FAT32 en A: (`create_file_in_dir`
+   existe) → CABINA vuelca sus 48 eventos a un archivo. La visión "caja negra
+   forense" del usuario. Disco confirmado NVMe.
+3. Mouse USB multi-device (usb::init enumera uno solo hoy).
+4. Fault isolation: probar con un payload crasher.
 
-**Lenguajes (C es el MÁS factible; ver nota):**
-3. **BMO C — "CONTROL ABSOLUTE"** (bautizo oficial): el mismo C de Ritchie
-   (esencia hasta C11, sin deriva posterior), devuelto a su hábitat natural:
-   escribir el sistema con privilegio directo al metal. En BMO-X nada se
-   interpone entre C y el hardware — C *es* la capa. El más desarrollado y
-   de menor espec; el camino pragmático a un lenguaje *usable* de verdad
-   (systems + drivers). Nota: el privilegio es del código sobre el hardware;
-   la *autoridad* siempre la acotan las capabilities (3 syscalls congelados).
-4. **COBOL**: la base está; crecer por features (records+OCCURS → IF/EVALUATE →
-   PERFORM VARYING → COMPUTE → edit-masks → File I/O).
-5. **BMO C++ (esencial, ACOTADO)**: NO es "todo C++". Alcance deliberado =
+**Filosofía política grabada (2026-07-24)**: BMO-X = "dictadura absoluta pero
+benevolente" — cero-confianza en el CÓDIGO (capabilities + bmo-verify), soberanía
+del DUEÑO, transparencia total (CABINA lo confiesa todo). Trade-off honesto:
+software que exige opacidad (DRM/anti-cheat de kernel) se auto-excluye. No es
+piratería; es "esta máquina me obedece solo a mí". Consola-con-esteroides + PC.
+
+**Lenguajes:**
+5. **BMO C++ (esencial, ACOTADO)** — SIGUIENTE lenguaje; barato encima de C
+   (hereda todo). NO es "todo C++". Alcance deliberado =
    desde Bjarne (origen) hasta lo ESENCIAL de C++17, sin la bola moderna.
    - DENTRO: clases/structs, ctor/dtor (RAII), referencias, sobrecarga,
      herencia + virtuales (vtables, ya presente), namespaces, templates

@@ -85,6 +85,40 @@ no estaba dispuesto a esperarla.
 **Moraleja**: el hardware real tiene TIEMPOS FÍSICOS. La paciencia no es
 una virtud del CPU: hay que programársela (delays por TSC, no spin-counts).
 
+## Ep. 10 — El endpoint que enumera pero no habla (teclado xHCI)
+**Síntoma**: el teclado USB (un numpad) ENUMERA — CABINA dice `kbd=OK(s2)`,
+control transfers OK — pero al teclear no llega nada: `kev=0`, y el contador
+de transfer events `tev=1` queda pegado (y ese 1 era ruido de otro slot).
+**Culpable (parcial)**: el Endpoint Context del xHCI escribía DW4 solo con
+Average TRB Length, dejando **Max ESIT Payload = 0**. Para un endpoint
+periódico (interrupción), payload 0 = el xHC le asigna **cero ancho de banda**
+→ nunca lo sirve → las teclas jamás completan. Fix: `DW4 = (max_pkt<<16) | 8`.
+Necesario, pero NO bastó: el endpoint del teclado (DCI 5) sigue mudo.
+**Estado**: hipótesis viva — el numpad es **low/full-speed detrás de un hub
+interno** (aparece un `slot 1` misterioso), y xHCI agenda LS/FS con codificación
+de intervalo distinta (+ TT). Pendiente: teclado normal en puerto trasero, o
+codificar el intervalo FS/LS.
+**Moraleja**: "enumera" ≠ "habla". El control endpoint (EP0) puede funcionar
+perfecto mientras el de interrupción nunca arranca — son caminos distintos del
+mismo dispositivo. Y sin un contador que confiese `tev`, esto es invisible: la
+telemetría (CABINA) fue la que hizo el bug legible.
+
+## Ep. 11 — CABINA abre los ojos (de estructuras muertas a observador)
+**Contexto**: debuggear a fotos, panel por panel, era brutal ("brusco y duro").
+La cura estaba dormida en el propio repo: `cabina-core`, una librería de
+telemetría (Event con severidad/capa, TelemetrySnapshot) que **nadie había
+cableado**. Se le dio vida: `ring0/cabina.rs` construye snapshots de los
+contadores vivos y pinta un cockpit omnisciente + una bitácora de eventos con
+color por severidad. CABINA ahora **narra** lo que ve (kernel operativo, disco
+NVMe detectado, teclado sin teclas como FAULT naranja).
+**Trampa**: pintarla desde el timer (IRQ) — switch de CR3 + 4 filas de
+framebuffer por interrupción — colgaba→reset al arranque. **Moraleja**: dibujar
+pesado en contexto de IRQ es veneno; el shell loop (CR3 kernel, sin IRQ) es el
+lugar seguro. CABINA se mantiene always-on desde ahí.
+**Lo que quedó**: el sistema dejó de ser una caja negra — se explica a sí mismo,
+constantemente, con color. Menos adivinar, más ver. El siguiente escalón es que
+esa bitácora se persista al SSD (NVMe) = la caja negra forense de verdad.
+
 ---
 
 ## Las tres leyes que dejó esta guerra
