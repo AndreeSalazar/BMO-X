@@ -315,6 +315,30 @@ mod tests {
         assert!(broken.is_empty(), "\n{}/{} FUNCIONAN. ROTOS:\n{}", total - broken.len(), total, broken.join("\n"));
     }
 
+
+    /// El payload `hola_C.bex` que el kernel EMBEBE, ejecutado.
+    ///
+    /// Si alguien toca el codegen y esta salida cambia, hay que regenerar
+    /// el .bex antes de flashear — si no, el kernel llevaria un binario
+    /// que ya no corresponde a su fuente.
+    ///
+    ///   cargo run -p bmo-c-front -- toolchain/lang/c/examples/hola_C.c     ///       -o Ultra_kernel_x86-64/kernel/src/ring0/hola_C.bex
+    #[test]
+    fn hola_c_payload_output_is_what_the_kernel_will_show() {
+        let out = run_c(include_str!("../examples/hola_C.c"));
+        let esperado = [
+            "hola desde C en el Ryzen",
+            "suma 1..10 = 55",
+            "42-100=-58  100/7=14  100%7=2",
+            "fase: calculo",
+            "cadena=viva hex=beef",
+            "C termino ok",
+        ]
+        .map(|l| format!("{l}\n"))
+        .concat();
+        assert_eq!(out, esperado);
+    }
+
     #[test]
     fn printf_prints_signed_integers() {
         let out = run_c(

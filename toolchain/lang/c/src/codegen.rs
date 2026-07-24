@@ -309,7 +309,39 @@ impl Codegen {
         }
     }
 
+    /// Rellena hasta la siguiente frontera de página con `int3`.
+    ///
+    /// Si el CPU llegara aquí es que se salió del código: `int3` lo detiene
+    /// en seco en vez de deslizarse por ceros hasta cualquier parte.
+    fn pad_to_page(code: &mut Vec<u8>) {
+        const PAGE: usize = 4096;
+        while code.len() % PAGE != 0 {
+            code.push(0xCC);
+        }
+    }
+
+    /// Coloca las cadenas y los globales, y parchea los `lea [rip+disp]`
+    /// que los alcanzan.
+    ///
+    /// # Por qué hay relleno a página
+    ///
+    /// Estos desplazamientos se calculan asumiendo que los datos van
+    /// PEGADOS detrás del código. Pero el cargador del kernel
+    /// (`ring0/proc.rs`) coloca cada sección en la PÁGINA siguiente:
+    /// `va_cursor = va_start + pages * PAGE`. Con el código a 500 bytes, el
+    /// compilador apunta al byte 500 y el cargador pone la cadena en el
+    /// 4096 — un `%s` leería basura EN HARDWARE.
+    ///
+    /// Rellenando cada tramo hasta una página, las dos cuentas coinciden.
+    /// La solución definitiva son relocations en el BEF; esto es el acuerdo
+    /// correcto mientras no existan, y no depende de que el cargador cambie.
+    ///
+    /// NOTA: esto NO lo puede detectar el emulador de pruebas, porque allí
+    /// las secciones se concatenan tal cual. Es un fallo que solo aparece en
+    /// metal — la razón por la que un banco de pruebas localiza bugs pero no
+    /// sustituye a arrancar la máquina.
     fn patch_all_fixups(&mut self) {
+        Self::pad_to_page(&mut self.code);
         let code_end = self.code.len();
         self.instruction_end = code_end;
         // Patch string fixups and append string data
@@ -327,6 +359,7 @@ impl Codegen {
             str_off += s.len() + 1;
         }
         // Patch global fixups and append global data
+        Self::pad_to_page(&mut self.code);
         self.string_data_end = self.code.len();
         let global_base = self.code.len();
         for &(lea_offset, ref name) in &self.global_fixups {
@@ -336,7 +369,10 @@ impl Codegen {
                 self.code[lea_offset..lea_offset + 4].copy_from_slice(&(disp as i32).to_le_bytes());
             }
         }
-        self.code.extend_from_slice(&self.global_data);
+        let globals = core::mem::take(&mut self.global_data);
+        self.code.extend_from_slice(&globals);
+        self.global_data = globals;
+        Self::pad_to_page(&mut self.code);
     }
 
     fn patch_goto_relocs(&mut self) {
@@ -1839,18 +1875,18 @@ impl Codegen {
         let data_bytes = &all[self.string_data_end..];
 
         let mut code_sec = BefSection::code(code_bytes.to_vec());
-        code_sec.alignment = 1;
+        code_sec.alignment = 4096;
         b.add_section(code_sec);
 
         if !rodata_bytes.is_empty() {
             let mut rodata_sec = BefSection::rodata(rodata_bytes.to_vec());
-            rodata_sec.alignment = 1;
+            rodata_sec.alignment = 4096;
             b.add_section(rodata_sec);
         }
 
         if !data_bytes.is_empty() {
             let mut data_sec = BefSection::data(data_bytes.to_vec());
-            data_sec.alignment = 1;
+            data_sec.alignment = 4096;
             b.add_section(data_sec);
         }
 

@@ -42,6 +42,33 @@ pub fn init_status() -> &'static str {
 /// chain on its own — no keyboard, no storage, no external image required.
 static INIT_HELLO_BEX: &[u8] = include_bytes!("init_hello.bex");
 
+/// Programa C compilado por `toolchain/lang/c` (fuente:
+/// `toolchain/lang/c/examples/hola_C.c`).
+static HOLA_C_BEX: &[u8] = include_bytes!("hola_C.bex");
+
+/// Programa COBOL compilado por `toolchain/lang/cobol` (fuente:
+/// `toolchain/lang/cobol/examples/hola_COBOL.cob`).
+static HOLA_COBOL_BEX: &[u8] = include_bytes!("hola_COBOL.bex");
+
+/// Los programas Ring 3 que BMO admite al arrancar cuando la cadena de
+/// arranque no reservo ninguno.
+///
+/// Son TRES procesos separados, con su propio espacio de direcciones y su
+/// propia tabla de capabilities. El primero es el hola-mundo en ensamblador
+/// que valido la cadena CPL3 en su dia; los otros dos salen de los
+/// compiladores de C y COBOL de BMO — es la primera vez que un lenguaje de
+/// alto nivel compilado aqui corre sobre el metal.
+///
+/// Si uno falla al admitirse, se registra y se sigue con los demas: el
+/// aislamiento de fallos existe justo para que un programa malo no se lleve
+/// por delante al sistema.
+/// `(etiqueta corta para el log, nombre legible, imagen BEX)`
+static DEMOS: &[(&str, &str, &[u8])] = &[
+    ("asm", "init_hello (asm)", INIT_HELLO_BEX),
+    ("C", "hola_C (C)", HOLA_C_BEX),
+    ("COBOL", "hola_COBOL (COBOL)", HOLA_COBOL_BEX),
+];
+
 /// Capture the TSS location from the BootContext (identity-mapped).
 pub fn init(ctx: &BootContext) {
     unsafe { TSS_PTR = ctx.tss_ptr };
@@ -69,19 +96,50 @@ fn log(msg: &str) {
 /// reserved by the boot chain. Returns the new TID. With no payload this
 /// is a no-op so boot stays exactly as before.
 pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
-    // Prefer a boot-chain-supplied payload; otherwise fall back to the
-    // kernel-embedded hello-world so the Ring 3 chain always runs.
-    let bytes: &[u8] = if ctx.ring3_payload_phys != 0 && ctx.ring3_payload_size >= 48 {
-        unsafe {
+    // Un payload de la cadena de arranque manda sobre todo lo demás.
+    if ctx.ring3_payload_phys != 0 && ctx.ring3_payload_size >= 48 {
+        let bytes = unsafe {
             core::slice::from_raw_parts(
                 mm::phys_to_virt(ctx.ring3_payload_phys) as *const u8,
                 ctx.ring3_payload_size as usize,
             )
+        };
+        return admit_payload(bytes, 1);
+    }
+
+    // Sin payload externo: los tres programas embebidos, cada uno su
+    // proceso, con su espacio de direcciones y su tabla de capabilities.
+    // Se devuelve el primer tid admitido para que la fase de arranque
+    // tenga algo que anunciar.
+    log("[proc] no boot payload; admitting embedded Ring 3 demos\n");
+    let mut first: Option<u32> = None;
+    let mut index = 0;
+    while index < DEMOS.len() {
+        let (tag, name, bytes) = DEMOS[index];
+        let pid = index as u32 + 1;
+        // El log tiene que decir de quién es cada línea ANTES de que el
+        // proceso escriba la primera.
+        crate::ring0::uconsole::set_tag(pid, tag);
+        match admit_payload(bytes, pid) {
+            Some(tid) => {
+                crate::ring0::cabina::info(name, "programa Ring 3 admitido", tid as u64);
+                if first.is_none() {
+                    first = Some(tid);
+                }
+            }
+            None => {
+                // Que uno no entre no puede tumbar a los demás: el
+                // aislamiento de fallos existe exactamente para esto.
+                crate::ring0::cabina::warn(name, "no se pudo admitir", pid as u64);
+            }
         }
-    } else {
-        log("[proc] no boot payload; admitting embedded init_hello.bex (Ring 3 demo)\n");
-        INIT_HELLO_BEX
-    };
+        index += 1;
+    }
+    first
+}
+
+/// Admite UN programa BEX como proceso Ring 3 con el `pid` indicado.
+fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
     set_status("admitting (alloc/map)");
     let plan = match bex::inspect(bytes) {
         Ok(p) => p,
@@ -166,10 +224,10 @@ pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
     let kstack_top = mm::phys_to_virt(kstack_base) + KERNEL_STACK_PAGES * mm::PAGE;
     let context = unsafe { trap::fabricate(kstack_top, entry_va, 0, true, vmm::USER_STACK_TOP) };
 
-    let tid = scheduler::spawn_user(1, context, kstack_base, KERNEL_STACK_PAGES, kstack_top, aspace, 0)?;
+    let tid = scheduler::spawn_user(pid, context, kstack_base, KERNEL_STACK_PAGES, kstack_top, aspace, 0)?;
     // F3: seed the init process's capability table — one estuary handle
     // per BMO Channel page, discoverable via TASK_OP_CHANNEL_OPEN.
-    crate::ring0::cap::seed_init(1);
+    crate::ring0::cap::seed_init(pid);
     log("[proc] init.bex admitted: Ring 3 entry at 0x");
     crate::ring0::dev::console::serial_write_u64(entry_va, 16);
     log("\n");

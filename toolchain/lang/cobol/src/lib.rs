@@ -275,6 +275,28 @@ STOP RUN.
         assert!(broken.is_empty(), "\n{}/{} FUNCIONAN. ROTOS:\n{}", total - broken.len(), total, broken.join("\n"));
     }
 
+
+    /// El payload `hola_COBOL.bex` que el kernel EMBEBE, ejecutado.
+    ///
+    /// Regenerar tras tocar el codegen:
+    ///   cargo run -p bmo-cobol-front --     ///     toolchain/lang/cobol/examples/hola_COBOL.cob     ///     -o Ultra_kernel_x86-64/kernel/src/ring0/hola_COBOL.bex
+    #[test]
+    fn hola_cobol_payload_output_is_what_the_kernel_will_show() {
+        let out = run_cobol(include_str!("../examples/hola_COBOL.cob"));
+        let esperado = [
+            "hola desde COBOL en el Ryzen",
+            "3 x 19.99 = 59.97 exacto",
+            "cargo entero aplicado bien",
+            "recibo emitido",
+            "recibo emitido",
+            "dos devoluciones aplicadas",
+            "COBOL termino ok",
+        ]
+        .map(|l| format!("{l}\n"))
+        .concat();
+        assert_eq!(out, esperado);
+    }
+
     #[test]
     fn if_takes_only_the_true_branch() {
         let out = run_cobol(&program(

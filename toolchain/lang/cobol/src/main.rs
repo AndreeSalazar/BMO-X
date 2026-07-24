@@ -1,4 +1,4 @@
-﻿use std::env;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -8,10 +8,20 @@ fn main() {
     let program = &args[0];
     let mut asm_paths: Vec<PathBuf> = Vec::new();
     let mut file_path = None;
+    let mut out_override: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--output" | "-o" => {
+                i += 1;
+                if i < args.len() {
+                    out_override = Some(PathBuf::from(&args[i]));
+                } else {
+                    eprintln!("error: -o requires a path");
+                    process::exit(2);
+                }
+            }
             "--asm-path" | "-a" => {
                 i += 1;
                 if i < args.len() {
@@ -29,7 +39,7 @@ fn main() {
     }
 
     let Some(path) = file_path else {
-        eprintln!("usage: {program} [--asm-path <path>] <source.cob>");
+        eprintln!("usage: {program} [-o <salida.bex>] [--asm-path <path>] <source.cob>");
         process::exit(2);
     };
 
@@ -49,7 +59,9 @@ fn main() {
 
     match result {
         Ok(bef_bytes) => {
-            let out_path = Path::new(path).with_extension(bmo_abi::bex::BEX_EXTENSION);
+            let out_path = out_override.unwrap_or_else(|| {
+                Path::new(path).with_extension(bmo_abi::bex::BEX_EXTENSION)
+            });
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
                     println!("ok: wrote {} bytes â†’ {}", bef_bytes.len(), out_path.display());

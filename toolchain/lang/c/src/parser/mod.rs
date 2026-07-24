@@ -968,6 +968,13 @@ impl Parser {
                     self.advance();
                     let val = match self.advance() {
                         Token::IntLit(n) => n,
+                        // Una constante de enum es una constante entera, y
+                        // el estándar la admite como etiqueta de `case`.
+                        // Es el uso más natural de un enum: `switch (fase)`.
+                        Token::Ident(name) if self.enum_constants.contains_key(&name) => {
+                            self.enum_constants[&name]
+                        }
+                        Token::CharLit(c) => c as i64,
                         t => return Err(CError::new(self.line(),format!("expected int in case, got {:?}", t))),
                     };
                     current_val = Some(val);

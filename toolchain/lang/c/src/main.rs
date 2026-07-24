@@ -1,4 +1,4 @@
-﻿use std::env;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -10,6 +10,7 @@ fn main() {
     let mut asm_paths: Vec<PathBuf> = Vec::new();
     let mut standard = bmo_c_front::CStandard::DefaultC;
     let mut file_path = None;
+    let mut out_override: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -29,6 +30,15 @@ fn main() {
                     asm_paths.push(PathBuf::from(&args[i]));
                 } else {
                     eprintln!("error: --asm-path requires a path");
+                    process::exit(2);
+                }
+            }
+            "--output" | "-o" => {
+                i += 1;
+                if i < args.len() {
+                    out_override = Some(PathBuf::from(&args[i]));
+                } else {
+                    eprintln!("error: -o requires a path");
                     process::exit(2);
                 }
             }
@@ -77,7 +87,11 @@ fn main() {
 
     match result {
         Ok(bef_bytes) => {
-            let out_path = Path::new(path).with_extension("bef");
+            // Sin -o la salida es <fuente>.bef. El BEF y el BEX son el
+            // MISMO formato (magic BEF1); `.bex` es la extension de uno
+            // ejecutable, que es lo que el kernel embebe.
+            let out_path = out_override
+                .unwrap_or_else(|| Path::new(path).with_extension("bef"));
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
                     println!("ok: wrote {} bytes -> {}", bef_bytes.len(), out_path.display());
