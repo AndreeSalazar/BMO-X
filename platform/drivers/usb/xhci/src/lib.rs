@@ -711,7 +711,14 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     );
     ep.add(2).write_volatile((dq & 0xFFFF_FFFF) as u32);
     ep.add(3).write_volatile(((dq >> 32) & 0xFFFF_FFFF) as u32);
-    ep.add(4).write_volatile(8);
+    // DW4: Max ESIT Payload Lo (bits 31:16) | Average TRB Length (bits 15:0).
+    // ★ EL BUG DEL TECLADO: sin Max ESIT Payload, el xHC asigna CERO ancho de
+    // banda periodico al endpoint de INTERRUPCION -> nunca lo sirve -> las
+    // teclas jamas completan (tev pegado, kev=0). Para un teclado boot el
+    // payload por intervalo = max_pkt (8 bytes). Con esto el DCI del teclado
+    // deberia empezar a postear Transfer Events al presionar teclas.
+    let max_esit = max_pkt as u32; // interrupt LS/FS/HS boot: 1 paquete por ESIT
+    ep.add(4).write_volatile((max_esit << 16) | 8);
 
     let trb = Trb {
         dw0: (in_phys & 0xFFFF_FFFF) as u32,
