@@ -3,7 +3,7 @@ name = "cabina-core"
 version = "1.0.0"
 edition = "2021"
 description = "BMO CABINA Core â€” diagnostic types shared across Ring 0 and Ring 3"
-license = "MIT"
+license = "Techne"
 
 [features]
 default = []

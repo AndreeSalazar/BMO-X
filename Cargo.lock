@@ -134,6 +134,7 @@ dependencies = [
  "bmo-uhid",
  "bmo-xhci",
  "boot-context",
+ "cabina-core",
 ]
 
 [[package]]
