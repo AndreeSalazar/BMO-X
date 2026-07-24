@@ -193,6 +193,51 @@ STOP RUN.
         assert!(loaded.sections.iter().any(|section| section.kind == bmo_abi::bef::SectionKind::Code));
     }
 
+    /// El puente L2→L1: `DISPLAY "texto"` debe bajar a la puerta de consola
+    /// del ABI, con el salto de línea que COBOL exige al final (cada DISPLAY
+    /// ocupa su propia fila porque `\n` dispara el flush del kernel).
+    ///
+    /// Antes de esto, COBOL emitía `syscall NR_DEBUG_PRINT` con un puntero —
+    /// número que el kernel no despacha y forma que la superficie congelada
+    /// rechaza. En hardware no imprimía nada.
+    #[test]
+    fn display_lowers_to_the_console_door() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. HELLO.
+PROCEDURE DIVISION.
+DISPLAY "HOLA COBOL".
+STOP RUN.
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        let mut door = Vec::new();
+        bmo_lower::console::write_const(&mut door, b"HOLA COBOL\n");
+        assert!(
+            !door.is_empty() && bef.windows(door.len()).any(|w| w == door),
+            "el BEF debe contener la secuencia INVOKE/CONSOLE_WRITE de la puerta"
+        );
+    }
+
+    /// El cierre del programa no puede usar `hlt`: es privilegiada, y en
+    /// Ring 3 provoca el #GP del que pretendía proteger.
+    #[test]
+    fn program_epilogue_has_no_privileged_instruction() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. HELLO.
+PROCEDURE DIVISION.
+DISPLAY "X".
+STOP RUN.
+"#;
+        let bef = compile_source_to_bef(src).unwrap();
+        let mut net = Vec::new();
+        bmo_lower::task::exit(&mut net);
+        assert!(
+            bef.windows(net.len()).any(|w| w == net),
+            "el epílogo debe ser INVOKE(EXIT) + red de pause/jmp"
+        );
+    }
+
     #[test]
     fn emits_valid_bex_image() {
         let src = r#"

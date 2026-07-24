@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "bmo-cobol-front"
 version = "0.1.0"
 edition = "2021"
@@ -10,6 +10,9 @@ bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 # forge: encoder compartido (elegido, no embudo) — sustituye el hardcodeo
 # de bytes (mov imm64/reg, syscall) por la tabla TOML.
 bmo-sem-asm = { path = "../../forge/sem-asm" }
+# forge: L1, la puerta al ABI (INVOKE/subsyscalls). Elegida, no embudo.
+bmo-lower = { path = "../../forge/bmo-lower" }
+
 # NOTA: gnucobol-rs (GPL) ELIMINADO — la PIC ahora la parsea nuestro propio
 # src/pic.rs. El submódulo extern/gnucobol-rs queda solo como oráculo de
 # validación cruzada, jamás enlazado. COBOL 100% BMO.

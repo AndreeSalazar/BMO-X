@@ -1019,7 +1019,15 @@ impl Parser {
         let expr = self.parse_expr()?;
         self.skip_semicolon();
         match &expr {
-            Expr::Call(name, args) if name == "printf" => {
+            // Atajo para `printf("literal")` SIN argumentos variádicos: baja
+            // directo a la puerta de consola, sin runtime ni imports.
+            //
+            // El `args.len() == 1` es la condición que faltaba: antes
+            // `printf("%d\n", x)` también entraba aquí y los argumentos se
+            // DESCARTABAN en silencio — el programa imprimía literalmente
+            // "%d". Con más de un argumento debe seguir por la ruta
+            // variádica, que sí los formatea.
+            Expr::Call(name, args) if name == "printf" && args.len() == 1 => {
                 if let Some(Expr::StringLit(s)) = args.first() {
                     return Ok(if s.ends_with('\n') { let mut t = s.clone(); t.pop(); Stmt::PrintfLn(t) } else { Stmt::Printf(s.clone()) });
                 }

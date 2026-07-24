@@ -122,6 +122,56 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
     }
 
+    /// Busca una subsecuencia de bytes dentro del BEF ya escrito.
+    fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+        !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    /// El puente L2→L1: `printf("literal")` debe bajar a la puerta de
+    /// consola del ABI, byte por byte igual que lo que emite `bmo-lower`.
+    ///
+    /// Antes de esto, C emitía `syscall 0x1F0` con un puntero — número que
+    /// el kernel no despacha y forma que la superficie congelada rechaza.
+    /// Compilaba, validaba, y en hardware no imprimía nada.
+    #[test]
+    fn printf_literal_lowers_to_the_console_door() {
+        let bef = compile_source_to_bef("int main() { printf(\"hola\\n\"); return 0; }").unwrap();
+        let mut door = Vec::new();
+        bmo_lower::console::write_const(&mut door, b"hola\n");
+        assert!(
+            contains_bytes(&bef, &door),
+            "el BEF debe contener la secuencia INVOKE/CONSOLE_WRITE de la puerta"
+        );
+    }
+
+    /// Volver de `main` debe terminar el proceso por la puerta. Si no, la
+    /// ejecución sigue de largo hacia lo que haya después del código.
+    #[test]
+    fn returning_from_main_exits_through_the_door() {
+        let bef = compile_source_to_bef("int main() { return 0; }").unwrap();
+        let mut net = Vec::new();
+        bmo_lower::task::exit(&mut net);
+        assert!(
+            contains_bytes(&bef, &net),
+            "el epílogo de main debe ser INVOKE(EXIT) + red de pause/jmp"
+        );
+    }
+
+    /// `printf` con argumentos NO puede tomar el atajo del literal: hacerlo
+    /// descartaba los argumentos en silencio e imprimía "%d" tal cual.
+    #[test]
+    fn printf_with_arguments_keeps_them() {
+        let program = parse("int main() { int x = 7; printf(\"%d\\n\", x); return 0; }").unwrap();
+        let body = &program.functions[0].body;
+        let has_literal_shortcut = body.iter().any(|s| {
+            matches!(s, Stmt::Printf(_) | Stmt::PrintfLn(_))
+        });
+        assert!(
+            !has_literal_shortcut,
+            "printf variádico no debe degradarse a impresión de literal"
+        );
+    }
+
     #[test]
     fn emits_bef_with_correct_string_offset() {
         use bmo_abi::bef::sections::{SectionEntry, SectionKind};

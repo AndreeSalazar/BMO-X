@@ -1,0 +1,16 @@
+[package]
+name = "bmo-lower"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "L1 — descenso genérico al BMO ABI: la puerta que emite INVOKE/subsyscalls. Compartida por todos los frontends, sin semántica de ningún lenguaje."
+license = "MIT"
+
+[lib]
+name = "bmo_lower"
+path = "src/lib.rs"
+
+[dependencies]
+# La ÚNICA fuente de verdad de la superficie congelada. Nada de números
+# duplicados a mano: si el ABI cambia, esta crate deja de compilar.
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }

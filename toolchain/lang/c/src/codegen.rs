@@ -659,9 +659,15 @@ impl Codegen {
     fn emit_epilogue(&mut self) {
         self.code.extend_from_slice(&[0x48, 0x89, 0xEC, 0x5D]); // mov rsp,rbp; pop rbp
         if self.is_entry_function {
-            self.code.extend_from_slice(&[0xB8]);
-            self.code.extend_from_slice(&0x181u32.to_le_bytes());
-            self.emit_call_to_syscall_stub();
+            // Volver de `main` termina el proceso. Antes esto emitía
+            // `mov eax,0x181; syscall`: otro número plano que el kernel no
+            // despacha — el syscall retornaba error y la ejecución seguía
+            // de largo hacia lo que hubiera después del código de main.
+            //
+            // NOTA: el valor de retorno de `main` se descarta. `TASK_OP_EXIT`
+            // no acepta código de salida hoy (el kernel hace revoke + reap);
+            // cuando lo acepte, se pasa `rax` como argumento aquí.
+            bmo_lower::task::exit(&mut self.code);
         } else {
             self.code.push(0xC3); // ret
         }
@@ -869,15 +875,21 @@ impl Codegen {
             }
         }
     }
+    /// `printf("literal")` — la L2 de C sobre la puerta genérica (L1).
+    ///
+    /// Lo específico de C que se resuelve AQUÍ y en ningún otro sitio: que la
+    /// cadena es un literal ya escapado por el lexer y que `\n` va pegado al
+    /// final. Los bytes resultantes se los entrega a `bmo_lower::console`,
+    /// que no sabe que existe C.
+    ///
+    /// Antes esto emitía `lea rdi,[str]; mov esi,len; syscall 0x1F0`: un
+    /// número plano que el kernel no despacha, pasando además un PUNTERO,
+    /// que la superficie congelada rechaza por diseño. No imprimía nada en
+    /// hardware. La cadena ya no necesita vivir en `.rodata`: viaja como
+    /// inmediatos dentro de las propias instrucciones.
     fn emit_printf(&mut self, s: &str, newline: bool) {
         let text = if newline { let mut t = s.to_string(); t.push('\n'); t } else { s.to_string() };
-        let Some(idx) = self.strings.iter().position(|t| *t == text) else { return };
-        self.code.extend_from_slice(&[0x48, 0x8D, 0x3D]);
-        self.fixups.push(Fixup { lea_offset: self.code.len(), string_idx: idx });
-        self.code.extend_from_slice(&[0, 0, 0, 0]);
-        self.code.extend_from_slice(&[0xBE]);
-        self.code.extend_from_slice(&(text.len() as u32).to_le_bytes());
-        self.emit_mov_eax_syscall(0x1F0);
+        bmo_lower::console::write_const(&mut self.code, text.as_bytes());
     }
 
     // ---- Expression emit ----

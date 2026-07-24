@@ -64,6 +64,8 @@ members = [
     # bmo-lower/bmo-opt: se recrearán CON código real al empezar su fase.
     "toolchain/forge/sem-asm",
     "toolchain/forge/bmo-verify",
+    # bmo-lower: L1, el descenso genérico al ABI (la puerta INVOKE).
+    "toolchain/forge/bmo-lower",
 
     # ── PLATFORM (CPU-aware Ring 0/3 intermediary) ────────────────
     # The only crate in BMO that knows the target CPU. Currently

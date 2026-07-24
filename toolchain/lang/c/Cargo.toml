@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "bmo-c-front"
 version = "0.1.0"
 edition = "2021"
@@ -9,6 +9,9 @@ description = "C frontend for BMO BMO ABI â€” compiles minimal C to BEF"
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 # forge: encoder compartido (elegido, no embudo).
 bmo-sem-asm = { path = "../../forge/sem-asm" }
+# forge: L1, la puerta al ABI (INVOKE/subsyscalls). Elegida, no embudo.
+bmo-lower = { path = "../../forge/bmo-lower" }
+
 
 [lib]
 name = "bmo_c_front"

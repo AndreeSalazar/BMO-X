@@ -123,9 +123,14 @@ impl Codegen {
             self.emit_statement(stmt);
         }
 
-        // Exit
-        self.emit_v2_task_invoke(surface::task_op::EXIT, &[]);
-        self.code.push(0xF4);                              // hlt
+        // STOP RUN implícito al final del programa.
+        //
+        // Antes el cierre era `INVOKE(EXIT)` + `hlt`. Pero `hlt` es una
+        // instrucción PRIVILEGIADA: si EXIT alguna vez retornara, en Ring 3
+        // eso es un #GP inmediato — una "red de seguridad" que provoca
+        // justo el fallo del que protege. La red correcta es girar en
+        // `pause`, que es lo que emite la puerta.
+        bmo_lower::task::exit(&mut self.code);
 
         // Syscall stub
         let stub_off = self.code.len();
@@ -174,16 +179,23 @@ impl Codegen {
         self.emit_asm(|a| { a.mov_imm64(Reg::Rax, num).unwrap(); });
     }
 
+    /// `DISPLAY "literal"` — la L2 de COBOL sobre la puerta genérica (L1).
+    ///
+    /// Lo específico de COBOL que se decide AQUÍ: que `DISPLAY` termina
+    /// siempre en salto de línea (el kernel hace flush de la línea con
+    /// `\n`, así que cada DISPLAY ocupa su propia fila, como manda el
+    /// lenguaje). Cuando llegue `DISPLAY <variable>`, la edición PIC se
+    /// aplicará también aquí y el resultado saldrá por
+    /// `bmo_lower::console::write_buffer` — L1 seguirá sin saber qué es una
+    /// PIC.
+    ///
+    /// Antes esto emitía `lea rdi,[str]; mov esi,len; syscall NR_DEBUG_PRINT`:
+    /// número plano que el kernel ya no despacha, y encima pasando un
+    /// puntero, que la superficie congelada rechaza. No imprimía nada.
     fn emit_display(&mut self, s: &str) {
-        let idx = self.strings.iter().position(|t| *t == *s).unwrap_or(0);
-        // lea rdi, [rip + string_offset]
-        self.code.extend_from_slice(&[0x48, 0x8D, 0x3D]);
-        self.str_fixups.push(StrFixup { lea_offset: self.code.len(), string_idx: idx });
-        self.code.extend_from_slice(&[0, 0, 0, 0]); // placeholder
-        // mov esi, len
-        self.code.extend_from_slice(&[0xBE]);
-        self.code.extend_from_slice(&(s.len() as u32).to_le_bytes());
-        self.emit_mov_eax_syscall(NR_DEBUG_PRINT);
+        let mut text = s.as_bytes().to_vec();
+        text.push(b'\n');
+        bmo_lower::console::write_const(&mut self.code, &text);
     }
 
     fn emit_statement(&mut self, stmt: &CobolStatement) {

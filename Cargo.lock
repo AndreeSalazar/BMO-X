@@ -69,6 +69,7 @@ name = "bmo-c-front"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-lower",
  "bmo-sem-asm",
 ]
 
@@ -81,6 +82,7 @@ name = "bmo-cobol-front"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-lower",
  "bmo-sem-asm",
 ]
 
@@ -135,6 +137,13 @@ dependencies = [
  "bmo-xhci",
  "boot-context",
  "cabina-core",
+]
+
+[[package]]
+name = "bmo-lower"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
 ]
 
 [[package]]
