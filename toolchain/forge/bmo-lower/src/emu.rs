@@ -584,6 +584,14 @@ impl Machine {
             0xFF => {
                 let (ext, dst) = self.modrm(0, rex_x, rex_b);
                 let a = self.load(dst, wide);
+                // /2 = call indirecto (punteros a funcion)
+                if (ext & 7) == 2 {
+                    let target = self.load(dst, true);
+                    let return_to = self.rip as u64;
+                    self.push(return_to);
+                    self.rip = target as usize;
+                    return;
+                }
                 let r = match ext & 7 {
                     0 => a.wrapping_add(1),
                     1 => a.wrapping_sub(1),
@@ -601,6 +609,25 @@ impl Machine {
                 };
             }
             0x90 => {} // nop
+            // call rel32 / ret — las funciones de C se llaman así.
+            0xE8 => {
+                let rel = self.fetch_u32() as i32;
+                let return_to = self.rip as u64;
+                self.push(return_to);
+                self.rip = (self.rip as i64 + rel as i64) as usize;
+            }
+            0xC3 => {
+                let target = self.pop();
+                self.rip = target as usize;
+            }
+            // cdqe/cwde — extiende eax a rax con signo
+            0x98 => {
+                if wide {
+                    self.regs[RAX] = self.regs[RAX] as u32 as i32 as i64 as u64;
+                } else {
+                    self.regs[RAX] = (self.regs[RAX] as u16 as i16 as i32) as u32 as u64;
+                }
+            }
             0xE9 => {
                 let rel = self.fetch_u32() as i32;
                 self.rip = (self.rip as i64 + rel as i64) as usize;
@@ -624,6 +651,23 @@ impl Machine {
                 let second = self.fetch_u8();
                 match second {
                     0x05 => self.do_syscall(),
+                    // movsx reg, r/m8 — carga un char CON signo
+                    0xBE => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = self.load_u8(src) as u8 as i8 as i64 as u64;
+                        self.write_reg(reg, v, wide);
+                    }
+                    // movzx reg, r/m16 / movsx reg, r/m16
+                    0xB7 | 0xBF => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let raw = (self.load(src, false) & 0xFFFF) as u16;
+                        let v = if second == 0xBF {
+                            raw as i16 as i64 as u64
+                        } else {
+                            raw as u64
+                        };
+                        self.write_reg(reg, v, wide);
+                    }
                     // movzx reg, r/m8
                     0xB6 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);

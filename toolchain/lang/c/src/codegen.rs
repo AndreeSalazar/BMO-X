@@ -55,6 +55,8 @@ struct Codegen {
     strings: Vec<String>,
     fixups: Vec<Fixup>,
     labels: u32,
+    /// Offset donde quedo fijada cada etiqueta (para saltos hacia atras).
+    label_offsets: HashMap<u32, usize>,
     pending_relocs: Vec<PendingReloc>,
     call_relocs: Vec<CallReloc>,
     function_offsets: HashMap<String, usize>,
@@ -106,7 +108,7 @@ impl Codegen {
         Self {
             target,
             code: Vec::new(), strings: Vec::new(), fixups: Vec::new(),
-            labels: 0, pending_relocs: Vec::new(), call_relocs: Vec::new(),
+            labels: 0, label_offsets: HashMap::new(), pending_relocs: Vec::new(), call_relocs: Vec::new(),
             function_offsets: HashMap::new(),
             known_functions: std::collections::HashSet::new(),
             func_addr_fixups: Vec::new(),
@@ -194,6 +196,9 @@ impl Codegen {
             self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
             self.function_offsets.insert("__bmo_syscall_stub".to_string(), stub_off);
         }
+        // Saltos hacia atras (bucles): se resuelven aqui, cuando ya se
+        // conocen todas las etiquetas.
+        self.patch_backward_relocs();
         // patch all call relocs
         self.patch_call_relocs();
         self.patch_func_addr_fixups();
@@ -373,16 +378,46 @@ impl Codegen {
         self.func_addr_fixups.push((self.code.len() - 4, name.to_string()));
     }
 
+    /// Fija una etiqueta en la posición actual y resuelve los saltos que ya
+    /// la esperaban.
+    ///
+    /// El `label_offsets` es lo que faltaba: antes esta función SOLO
+    /// parcheaba los saltos pendientes en ese instante, así que un salto
+    /// emitido DESPUÉS de fijar la etiqueta —es decir, todo salto hacia
+    /// atrás— se quedaba con desplazamiento 0 para siempre. Eso significa
+    /// "seguir a la instrucción siguiente": **ningún bucle de C daba más de
+    /// una vuelta**. `while`, `for`, `do-while`, y por tanto `break` y
+    /// `continue`, ejecutaban el cuerpo exactamente una vez y salían. El
+    /// binario compilaba y validaba igual.
+    ///
+    /// Es el mismo defecto que tenía el `IF` de COBOL, en otro lenguaje.
     fn resolve_label(&mut self, label: u32) {
-        let here = self.code.len() as i32;
+        let here = self.code.len();
+        self.label_offsets.insert(label, here);
         let mut i = 0;
         while i < self.pending_relocs.len() {
             if self.pending_relocs[i].target_label == label {
                 let off = self.pending_relocs[i].offset;
-                let disp = here - (off as i32 + 4);
+                let disp = here as i32 - (off as i32 + 4);
                 self.code[off..off + 4].copy_from_slice(&disp.to_le_bytes());
                 self.pending_relocs.swap_remove(i);
             } else { i += 1; }
+        }
+    }
+
+    /// Resuelve los saltos que quedaron pendientes: los que apuntan a una
+    /// etiqueta fijada ANTES de emitirlos (saltos hacia atrás).
+    ///
+    /// Una etiqueta usada y jamás fijada es un bug del emisor: se aborta en
+    /// vez de dejar un salto a ninguna parte.
+    fn patch_backward_relocs(&mut self) {
+        for reloc in std::mem::take(&mut self.pending_relocs) {
+            let target = *self
+                .label_offsets
+                .get(&reloc.target_label)
+                .unwrap_or_else(|| panic!("etiqueta {} usada pero nunca fijada", reloc.target_label));
+            let disp = target as i32 - (reloc.offset as i32 + 4);
+            self.code[reloc.offset..reloc.offset + 4].copy_from_slice(&disp.to_le_bytes());
         }
     }
 
@@ -744,31 +779,47 @@ impl Codegen {
                 self.continue_target.pop();
                 self.break_target.pop();
             }
+            // `switch`: el valor se guarda en un hueco de pila y cada
+            // comparación lo relee de ahí.
+            //
+            // El despacho anterior hacía DOS `pop` habiendo empujado una
+            // sola vez, así que comparaba contra un valor de la pila que no
+            // era suyo: siempre entraba por el primer `case`. Y el
+            // `default:` era inalcanzable — su etiqueta se fijaba DESPUÉS
+            // de todos los cuerpos, o sea al final, saltándose su propio
+            // código.
             Stmt::Switch(expr, cases) => {
                 self.emit_expr(expr);
                 let end = self.fresh_label();
                 self.break_target.push(end);
-                let mut case_labels = Vec::new();
-                for _ in cases { case_labels.push(self.fresh_label()); }
-                let default_lbl = self.fresh_label();
+
+                self.code.push(0x50); // push rax → el valor vive en [rsp]
+
+                let case_labels: Vec<u32> = cases.iter().map(|_| self.fresh_label()).collect();
                 for (i, c) in cases.iter().enumerate() {
                     if let Some(val) = c.value {
-                        self.code.push(0x50);
-                        self.emit_expr(&Expr::Int(val));
-                        self.code.push(0x5A);
-                        self.code.push(0x58);
-                        self.code.extend_from_slice(&[0x48, 0x39, 0xD0]);
+                        self.code.extend_from_slice(&[0x48, 0xBA]); // mov rdx, imm64
+                        self.code.extend_from_slice(&val.to_le_bytes());
+                        self.code.extend_from_slice(&[0x48, 0x8B, 0x04, 0x24]); // mov rax, [rsp]
+                        self.code.extend_from_slice(&[0x48, 0x39, 0xD0]); // cmp rax, rdx
                         self.emit_jz_reloc(case_labels[i]);
-                        self.code.push(0x50);
                     }
                 }
-                self.emit_jmp_reloc(default_lbl);
+                // Sin coincidencia: al `default:` si existe, si no al final.
+                match cases.iter().position(|c| c.value.is_none()) {
+                    Some(i) => self.emit_jmp_reloc(case_labels[i]),
+                    None => self.emit_jmp_reloc(end),
+                }
+
                 for (i, c) in cases.iter().enumerate() {
                     self.resolve_label(case_labels[i]);
                     for s in &c.stmts { self.emit_stmt(s); }
                 }
-                self.resolve_label(default_lbl);
+
+                // `end` va ANTES de liberar el hueco para que un `break`
+                // dentro de un caso también lo libere.
                 self.resolve_label(end);
+                self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]); // add rsp, 8
                 self.break_target.pop();
             }
             Stmt::Break => {
@@ -1088,9 +1139,21 @@ impl Codegen {
                 self.emit_dec_var(name);
                 self.code.push(0x58);
             }
+            // `*p` debe leer el TAMAÑO DEL APUNTADO, no siempre 8 bytes.
+            // Antes `*(p+1)` con `int *p` leía 8 bytes desde la posición
+            // correcta, o sea dos enteros pegados: devolvía 504403158366158848
+            // en vez de 6.
             Expr::Deref(a) => {
-                self.emit_expr(a); // rax = address
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
+                self.emit_expr(a); // rax = dirección
+                match self.pointee_type(a) {
+                    Some(TypeSpec::Char) => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x00]),
+                    Some(TypeSpec::UnsignedChar) => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]),
+                    Some(TypeSpec::Short) => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x00]),
+                    Some(TypeSpec::UnsignedShort) => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0x00]),
+                    Some(TypeSpec::Int) => self.code.extend_from_slice(&[0x48, 0x63, 0x00]),
+                    Some(TypeSpec::UnsignedInt) => self.code.extend_from_slice(&[0x8B, 0x00]),
+                    _ => self.code.extend_from_slice(&[0x48, 0x8B, 0x00]),
+                }
             }
             Expr::AddrOf(inner) => {
                 match inner.as_ref() {
@@ -1164,13 +1227,37 @@ impl Codegen {
             // Tras `emit_binop`: rdx = operando IZQUIERDO, rax = DERECHO.
             // Los operadores conmutativos daban igual; los que no lo son
             // estaban invertidos y nadie lo vio hasta ejecutarlos.
-            Expr::Add(a, b) => self.emit_binop(a, b, &[0x48, 0x01, 0xD0]),
+            // `p + n` con `p` puntero avanza n ELEMENTOS, no n bytes. Antes
+            // sumaba bytes: con `int *p`, `*(p+1)` leía desde el byte 1 en
+            // vez del 4, o sea a caballo entre dos enteros.
+            Expr::Add(a, b) => {
+                if let Some(scale) = self.pointer_scale(a) {
+                    let scaled = Expr::Mul(b.clone(), Box::new(Expr::Int(scale as i64)));
+                    self.emit_binop(a, &scaled, &[0x48, 0x01, 0xD0]);
+                } else if let Some(scale) = self.pointer_scale(b) {
+                    let scaled = Expr::Mul(a.clone(), Box::new(Expr::Int(scale as i64)));
+                    self.emit_binop(&scaled, b, &[0x48, 0x01, 0xD0]);
+                } else {
+                    self.emit_binop(a, b, &[0x48, 0x01, 0xD0]);
+                }
+            }
             // `a - b`. Antes: `sub rax, rdx` = b - a, o sea al reves.
             // `10 - 3` daba -7.
-            Expr::Sub(a, b) => self.emit_binop(a, b, &[
-                0x48, 0x29, 0xC2, // sub rdx, rax   → rdx = a - b
-                0x48, 0x89, 0xD0, // mov rax, rdx
-            ]),
+            Expr::Sub(a, b) => {
+                const SUB: &[u8] = &[
+                    0x48, 0x29, 0xC2, // sub rdx, rax   → rdx = a - b
+                    0x48, 0x89, 0xD0, // mov rax, rdx
+                ];
+                // `p - n` retrocede n ELEMENTOS (la resta puntero-puntero,
+                // que daria un indice, no se deduce aqui).
+                match self.pointer_scale(a) {
+                    Some(scale) if self.pointer_scale(b).is_none() => {
+                        let scaled = Expr::Mul(b.clone(), Box::new(Expr::Int(scale as i64)));
+                        self.emit_binop(a, &scaled, SUB);
+                    }
+                    _ => self.emit_binop(a, b, SUB),
+                }
+            }
             Expr::Mul(a, b) => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
             // `a / b` CON SIGNO. Antes hacia dos `pop` habiendo empujado una
             // sola vez —se llevaba un valor de la pila que no era suyo— y
@@ -1220,6 +1307,9 @@ impl Codegen {
                 0x48, 0x89, 0xD0, // mov rax, rdx
                 0x48, 0xD3, 0xF8, // sar rax, cl
             ]),
+            // `&&` y `||` valen 0 o 1, no "el operando que quedó". Antes
+            // `0 || 3` daba 3: cortocircuitaba bien pero devolvía el valor
+            // crudo, y el estándar dice que el resultado es `int` 0/1.
             Expr::LAnd(a, b) => {
                 let end = self.fresh_label();
                 self.emit_expr(a);
@@ -1227,6 +1317,7 @@ impl Codegen {
                 self.emit_jz_reloc(end);
                 self.emit_expr(b);
                 self.resolve_label(end);
+                self.emit_normalize_bool();
             }
             Expr::LOr(a, b) => {
                 let end = self.fresh_label();
@@ -1235,6 +1326,7 @@ impl Codegen {
                 self.emit_jnz_reloc(end);
                 self.emit_expr(b);
                 self.resolve_label(end);
+                self.emit_normalize_bool();
             }
             Expr::Conditional(c, t, f) => {
                 let else_lbl = self.fresh_label();
@@ -1656,6 +1748,41 @@ impl Codegen {
             }
             _ => self.emit_expr(expr),
         }
+    }
+
+    /// Tipo al que apunta una expresión de dirección, si se puede deducir.
+    ///
+    /// Cubre lo que aparece en la práctica: una variable puntero o array,
+    /// aritmética de punteros (`p + 1`), y un cast explícito. Cuando no se
+    /// puede deducir se devuelve `None` y el `deref` lee 8 bytes, que es el
+    /// comportamiento anterior.
+    fn pointee_type(&self, expr: &Expr) -> Option<TypeSpec> {
+        match expr {
+            Expr::Var(name) => match self.var_type_of(name) {
+                Some(TypeSpec::Ptr(inner)) | Some(TypeSpec::Array(inner, _)) => Some(*inner),
+                _ => None,
+            },
+            Expr::Cast(TypeSpec::Ptr(inner), _) => Some((**inner).clone()),
+            Expr::Add(a, b) | Expr::Sub(a, b) => {
+                self.pointee_type(a).or_else(|| self.pointee_type(b))
+            }
+            _ => None,
+        }
+    }
+
+    /// Cuantos bytes avanza `+1` sobre esta expresion, si es un puntero.
+    /// `None` cuando no lo es o cuando el elemento mide 1 byte (no hace
+    /// falta escalar).
+    fn pointer_scale(&self, expr: &Expr) -> Option<u32> {
+        let size = self.pointee_type(expr)?.stack_size();
+        if size > 1 { Some(size) } else { None }
+    }
+
+    /// Convierte `rax` en 0 o 1, que es lo que valen `&&`, `||` y `!`.
+    fn emit_normalize_bool(&mut self) {
+        self.code.extend_from_slice(&[0x48, 0x85, 0xC0]);       // test rax, rax
+        self.code.extend_from_slice(&[0x0F, 0x95, 0xC0]);       // setne al
+        self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
 
     fn emit_binop(&mut self, a: &Expr, b: &Expr, op: &[u8]) {

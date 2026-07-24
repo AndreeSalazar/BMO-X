@@ -235,6 +235,46 @@ STOP RUN.
         )
     }
 
+
+    /// Matriz de conformidad de COBOL: ejecuta cada verbo y compara.
+    ///
+    /// Misma idea que la de C. Antes de existir, `IF` ejecutaba las dos
+    /// ramas y `PERFORM` no repetía nada — y el BEF validaba.
+    #[test]
+    fn cobol_feature_matrix_runs_correctly() {
+        let cases: &[(&str, &str, &str, &str)] = &[
+            ("MOVE literal", "01 A PIC 9(3).", "MOVE 7 TO A.\nIF A = 7\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("MOVE variable", "01 A PIC 9(3).\n01 B PIC 9(3).", "MOVE 5 TO A.\nMOVE A TO B.\nIF B = 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("ADD", "01 A PIC 9(3).", "MOVE 2 TO A.\nADD 3 TO A.\nIF A = 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("SUBTRACT", "01 A PIC 9(3).", "MOVE 9 TO A.\nSUBTRACT 4 FROM A.\nIF A = 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("MULTIPLY", "01 A PIC 9(3).", "MOVE 3 TO A.\nMULTIPLY 4 BY A.\nIF A = 12\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("DIVIDE", "01 A PIC 9(3).", "MOVE 12 TO A.\nDIVIDE 4 BY A.\nIF A = 3\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("COMPUTE", "01 A PIC 9(3).", "COMPUTE A = 2 + 3 * 4.\nIF A = 14\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("COMPUTE parens", "01 A PIC 9(3).", "COMPUTE A = (2 + 3) * 4.\nIF A = 20\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("COMPUTE vars", "01 A PIC 9(3).\n01 B PIC 9(3).", "MOVE 6 TO A.\nMOVE 7 TO B.\nCOMPUTE A = A * B.\nIF A = 42\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("IF/ELSE", "01 A PIC 9(3).", "MOVE 1 TO A.\nIF A > 5\nDISPLAY \"no\"\nELSE\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("IF anidado", "01 A PIC 9(3).", "MOVE 5 TO A.\nIF A > 1\nIF A < 9\nDISPLAY \"ok\"\nEND-IF\nEND-IF.", "ok\n"),
+            ("IF con AND", "01 A PIC 9(3).", "MOVE 5 TO A.\nIF A > 1 AND A < 9\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("PERFORM TIMES", "01 A PIC 9(3).", "PERFORM 2 TIMES\nDISPLAY \"ok\"\nEND-PERFORM.", "ok\nok\n"),
+            ("PERFORM UNTIL", "01 I PIC 9(3).", "MOVE 0 TO I.\nPERFORM UNTIL I >= 2\nDISPLAY \"ok\"\nADD 1 TO I\nEND-PERFORM.", "ok\nok\n"),
+            ("PERFORM anidado", "01 I PIC 9(3).", "PERFORM 2 TIMES\nPERFORM 2 TIMES\nDISPLAY \"ok\"\nEND-PERFORM\nEND-PERFORM.", "ok\nok\nok\nok\n"),
+            ("decimal exacto", "01 S PIC 9(5)V99.", "MOVE 10.05 TO S.\nADD 0.20 TO S.\nIF S = 10.25\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("escalas mixtas", "01 S PIC 9(5)V99.\n01 N PIC 9(3).", "MOVE 2 TO N.\nMOVE 1.50 TO S.\nADD N TO S.\nIF S = 3.50\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("cond en palabras", "01 A PIC 9(3).", "MOVE 5 TO A.\nIF A IS EQUAL TO 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+        ];
+        let mut broken = Vec::new();
+        for (name, data, body, expected) in cases {
+            let src = program(data, body);
+            let got = std::panic::catch_unwind(|| run_cobol(&src))
+                .unwrap_or_else(|_| "<no ejecuta>".into());
+            if got != *expected {
+                broken.push(format!("  {name:<18} => {got:?}  (esperado {expected:?})"));
+            }
+        }
+        let total = cases.len();
+        assert!(broken.is_empty(), "\n{}/{} FUNCIONAN. ROTOS:\n{}", total - broken.len(), total, broken.join("\n"));
+    }
+
     #[test]
     fn if_takes_only_the_true_branch() {
         let out = run_cobol(&program(
