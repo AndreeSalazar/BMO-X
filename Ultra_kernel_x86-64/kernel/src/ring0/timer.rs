@@ -106,9 +106,11 @@ extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
     // ever reaches the shell poll loop. If this row stops updating, ticks
     // stopped — the hang is running with IF masked (a syscall dispatch or a
     // cli section); if it updates, the counters say where execution lives.
-    if n % 64 == 0 {
-        crate::ring0::cabina::render_hud();
-    }
+    // NOTA: CABINA se pinta desde el loop del shell (bajo CR3 del kernel,
+    // seguro). Pintar desde AQUI (contexto IRQ: switch de CR3 + 4 filas de
+    // framebuffer) era pesado y causaba cuelgue->reset en el arranque. El
+    // shell ya la mantiene always-on, asi que este llamado sobra.
+    let _ = n;
 
     // SAFETY: initialized before vector 48 is installed and only used by the
     // BSP while SMP is disabled.
