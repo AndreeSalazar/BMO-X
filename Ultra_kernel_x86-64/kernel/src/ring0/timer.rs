@@ -107,7 +107,7 @@ extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
     // stopped — the hang is running with IF masked (a syscall dispatch or a
     // cli section); if it updates, the counters say where execution lives.
     if n % 64 == 0 {
-        crate::ring0::core::phase::dash_heartbeat();
+        crate::ring0::cabina::render_hud();
     }
 
     // SAFETY: initialized before vector 48 is installed and only used by the

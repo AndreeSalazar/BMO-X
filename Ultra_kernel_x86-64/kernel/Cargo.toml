@@ -12,6 +12,8 @@ bmo-channel = { path = "../../platform/shared/bmo-channel" }
 bmo-xhci = { path = "../../platform/drivers/usb/xhci" }
 bmo-input = { path = "../../platform/drivers/usb/input" }
 bmo-uhid = { path = "../../platform/drivers/usb/uhid" }
+# CABINA: telemetría omnisciente entre Ring 0 y Ring 3 (el cockpit del sistema).
+cabina-core = { path = "../../platform/services/cabina-core" }
 
 [[bin]]
 name =     "bmo-kernel"

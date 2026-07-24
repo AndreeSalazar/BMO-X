@@ -113,6 +113,10 @@ fn shell_prompt() {
 /// dejaría en blanco para siempre después de limpiar (bug real observado).
 static mut SCREEN_GEN: u32 = 0;
 
+/// Generación de pantalla actual — CABINA la usa para repintar su cockpit tras
+/// un clear (mismo mecanismo anti-ghosting que los paneles fijos).
+pub(crate) fn screen_gen() -> u32 { unsafe { SCREEN_GEN } }
+
 /// Limpia la pantalla y re-dibuja el dashboard vacío (comando `cls` y
 /// auto-limpieza al terminar un proceso). Reinicia el cursor rodante del log
 /// para que el panel arranque de cero, como una terminal recién abierta.
@@ -303,10 +307,10 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         // Update the framebuffer's prompt with the current line
         // (so the screen shows what the user is typing).
         dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
-        // Live Ring 3 heartbeat (row 10): timer/scheduler/console telemetry.
-        dash_heartbeat();
-        // Panel USB detallado (row 12): teclado/mouse + telemetría viva del mouse.
-        dash_usb_status();
+        // CABINA — cockpit omnisciente (filas 9-12): CPU, memoria, scheduler,
+        // Ring 3 y USB en una vista coherente, siempre presente. Consolida los
+        // paneles sueltos de antes (heartbeat/usb).
+        crate::ring0::cabina::render_hud();
         // Accept input from EITHER the serial line (COM1) or the physical
         // PS/2 keyboard, whichever has a byte ready. Lets the user type on
         // the real keyboard even with no serial cable attached.
