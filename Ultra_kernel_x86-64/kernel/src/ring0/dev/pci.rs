@@ -54,6 +54,73 @@ pub struct XhciLoc {
     pub mmio: u64,
 }
 
+/// Tipo de controlador de almacenamiento (clase PCI 0x01).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum StorageKind { Ahci, Nvme, Ide, Raid, Other }
+
+impl StorageKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            StorageKind::Ahci => "SATA/AHCI",
+            StorageKind::Nvme => "NVMe",
+            StorageKind::Ide  => "IDE",
+            StorageKind::Raid => "RAID",
+            StorageKind::Other => "storage",
+        }
+    }
+}
+
+pub struct StorageLoc {
+    pub bus: u8, pub dev: u8, pub func: u8,
+    /// MMIO base: ABAR (BAR5) para AHCI, BAR0 para NVMe.
+    pub mmio: u64,
+    pub kind: StorageKind,
+}
+
+/// Escanea el PCI buscando un controlador de ALMACENAMIENTO (clase 0x01):
+/// subclase 0x06=SATA(AHCI), 0x08=NVMe, 0x01=IDE, 0x04=RAID. Habilita MEM+BME
+/// y devuelve el primero. Primer paso para que el kernel aprenda a leer/escribir
+/// disco (la caja negra de CABINA).
+pub fn find_storage() -> Option<StorageLoc> {
+    for bus in 0u16..=255 {
+        let bus = bus as u8;
+        for dev in 0u8..32 {
+            let vd0 = cfg_read32(bus, dev, 0, 0x00);
+            if vd0 == 0xFFFF_FFFF { continue; }
+            let header0 = (cfg_read32(bus, dev, 0, 0x0C) >> 16) & 0xFF;
+            let max_func = if header0 & 0x80 != 0 { 8 } else { 1 };
+            for func in 0u8..max_func {
+                let vd = cfg_read32(bus, dev, func, 0x00);
+                if vd == 0xFFFF_FFFF { continue; }
+                let class = cfg_read32(bus, dev, func, 0x08);
+                let base = (class >> 24) as u8;
+                let sub = (class >> 16) as u8;
+                if base != 0x01 { continue; } // no es almacenamiento
+                let kind = match sub {
+                    0x06 => StorageKind::Ahci,
+                    0x08 => StorageKind::Nvme,
+                    0x01 => StorageKind::Ide,
+                    0x04 => StorageKind::Raid,
+                    _ => StorageKind::Other,
+                };
+                // Habilitar Memory Space + Bus Master (DMA).
+                let cmd = cfg_read32(bus, dev, func, 0x04);
+                cfg_write32(bus, dev, func, 0x04, cmd | 0x0006);
+                // ABAR: AHCI usa BAR5 (0x24); NVMe usa BAR0 (0x10).
+                let bar_off: u8 = if kind == StorageKind::Ahci { 0x24 } else { 0x10 };
+                let bar = cfg_read32(bus, dev, func, bar_off);
+                let mut mmio = (bar & 0xFFFF_FFF0) as u64;
+                if (bar >> 1) & 0x3 == 0x2 {
+                    let barhi = cfg_read32(bus, dev, func, bar_off + 4);
+                    mmio |= (barhi as u64) << 32;
+                }
+                return Some(StorageLoc { bus, dev, func, mmio, kind });
+            }
+        }
+    }
+    None
+}
+
 /// Escanea todos los buses buscando xHCI (clase 0x0C, subclase 0x03,
 /// prog-if 0x30). Al encontrarlo habilita MEM+BME y devuelve su ubicación.
 /// `skip` permite saltar los primeros N hallazgos (para probar el segundo

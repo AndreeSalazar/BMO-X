@@ -136,6 +136,18 @@ pub fn render_hud() {
             EV_BOOT = true;
             info("cabina", "observador omnisciente en linea", 0);
             info("ring0", "kernel operativo, 3 syscalls congelados", 0);
+            // Primer paso hacia la CAJA NEGRA: ¿qué controlador de disco hay?
+            // Saberlo decide el driver a cablear (AHCI vs NVMe).
+            match crate::ring0::dev::pci::find_storage() {
+                Some(loc) => match loc.kind {
+                    crate::ring0::dev::pci::StorageKind::Nvme =>
+                        info("pci", "disco NVMe detectado (via PCI)", loc.mmio),
+                    crate::ring0::dev::pci::StorageKind::Ahci =>
+                        info("pci", "disco SATA/AHCI detectado (via PCI)", loc.mmio),
+                    _ => info("pci", "controlador de disco detectado", loc.mmio),
+                },
+                None => warn("pci", "sin controlador de disco visible", 0),
+            }
         }
         if kbd && !EV_KBD { EV_KBD = true; info("usb", "teclado enumero", ks as u64); }
         if mouse && !EV_MOUSE { EV_MOUSE = true; info("usb", "mouse enumero", ms as u64); }
