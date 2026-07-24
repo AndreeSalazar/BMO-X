@@ -199,9 +199,10 @@ impl Codegen {
         self.patch_func_addr_fixups();
         self.patch_goto_relocs();
         self.patch_all_fixups();
-        // errores acumulados en la emisión: fallar con claridad, no callar
-        if !self.errors.is_empty() {
-            return Err(CError::new(0, self.errors.join("; ")));
+        // Errores acumulados durante la emisión: fallar con claridad, no
+        // entregar un binario que hace algo distinto de lo escrito.
+        if let Some(message) = self.errors.first() {
+            return Err(CError::new(0, message.clone()));
         }
         Ok(())
     }
@@ -560,7 +561,20 @@ impl Codegen {
                     self.code.extend_from_slice(&(disp as i32).to_le_bytes());
                 }
             }
-            TypeSpec::Int | TypeSpec::UnsignedInt => {
+            // Un `int` con signo debe EXTENDER EL SIGNO al leerse: el resto
+            // del codegen trabaja en 64 bits. Antes usaba `mov eax, [..]`,
+            // que rellena de ceros, así que un `int y = -7;` se releía como
+            // 4294967289. Los tipos más chicos ya lo hacían bien (movsx);
+            // solo `int` se había quedado sin su versión con signo.
+            TypeSpec::Int => {
+                if disp >= -128 && disp <= 127 {
+                    self.code.extend_from_slice(&[0x48, 0x63, 0x45, disp as u8]); // movsxd
+                } else {
+                    self.code.extend_from_slice(&[0x48, 0x63, 0x85]);
+                    self.code.extend_from_slice(&(disp as i32).to_le_bytes());
+                }
+            }
+            TypeSpec::UnsignedInt => {
                 if disp >= -128 && disp <= 127 {
                     self.code.extend_from_slice(&[0x8B, 0x45, disp as u8]);
                 } else {
@@ -830,49 +844,104 @@ impl Codegen {
 
     fn emit_drop(&mut self) {}
 
+    /// `printf(fmt, args…)` — la L2 de C sobre la librería de formateo.
+    ///
+    /// Antes esto empujaba los argumentos a la pila y llamaba a un
+    /// `bmo_printf` **importado de `userland_ring3`**: un símbolo que en BMO
+    /// nadie resuelve, porque no hay enlazado dinámico de una libc. El
+    /// programa compilaba y luego saltaba a una dirección sin parchear.
+    ///
+    /// Ahora el formateo se emite EN LÍNEA: cada trozo literal baja por la
+    /// puerta de consola y cada conversión evalúa su argumento y llama al
+    /// emisor correspondiente de `bmo_lower::fmt`. Sin runtime, sin
+    /// importaciones, sin dependencias del cargador.
+    ///
+    /// Lo específico de C —qué significa `%d`, que `%x` va en minúsculas,
+    /// que `%%` es un porcentaje— se decide aquí. La librería solo sabe
+    /// convertir un número en dígitos.
     fn emit_printf_variadic(&mut self, args: &[Expr]) {
-        // printf(fmt, a1, a2, ...)
-        // Emit: RDI = fmt, push va_args right-to-left, RSI = RSP, RDX = num_va_args, call bmo_printf
-        let va_args = &args[1..];
-        let num_va = va_args.len() as u64;
+        let Expr::StringLit(format) = &args[0] else {
+            self.errors.push(
+                "printf con formato calculado en tiempo de ejecucion no se compila: \
+                 el formato debe ser un literal para poder emitirlo en linea"
+                    .to_string(),
+            );
+            return;
+        };
+        let format = format.clone();
+        let va_args: Vec<Expr> = args[1..].to_vec();
+        let mut next_arg = 0usize;
+        let mut literal: Vec<u8> = Vec::new();
 
-        // Push variadic args right-to-left (so they're in order on stack)
-        for arg in va_args.iter().rev() {
-            self.emit_expr(arg);
-            self.code.push(0x50); // push rax
-        }
-
-        // RDI = format string (first arg)
-        // The format string Expr is either StringLit or Var
-        self.emit_expr(&args[0]);
-        // After emit_expr, value is in RAX. Move to RDI.
-        self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
-
-        // RSI = RSP (pointer to first va_arg on stack)
-        self.code.extend_from_slice(&[0x48, 0x89, 0xE6]); // mov rsi, rsp
-
-        // RDX = number of va_args
-        self.code.extend_from_slice(&[0xBA]); // mov edx, imm32
-        self.code.extend_from_slice(&(num_va as u32).to_le_bytes());
-
-        // Call bmo_printf from userland_ring3
-        self.code.extend_from_slice(&[0xE8]);
-        self.call_relocs.push(CallReloc { offset: self.code.len(), target: "bmo_printf".to_string() });
-        self.code.extend_from_slice(&[0, 0, 0, 0]);
-
-        if self.target == TargetProfile::Ring3App {
-            self.stdlib_imports.insert("bmo_printf".to_string());
-        }
-
-        // Cleanup stack
-        let n = num_va as u32 * 8;
-        if n > 0 {
-            if n <= 127 {
-                self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
-            } else {
-                self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
-                self.code.extend_from_slice(&n.to_le_bytes());
+        let chars: Vec<char> = format.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            if chars[i] != '%' {
+                let mut buf = [0u8; 4];
+                literal.extend_from_slice(chars[i].encode_utf8(&mut buf).as_bytes());
+                i += 1;
+                continue;
             }
+
+            // Saltar los modificadores de longitud: en BMO todo entero viaja
+            // en 64 bits, así que `%ld` y `%d` producen lo mismo.
+            let mut j = i + 1;
+            while j < chars.len() && matches!(chars[j], 'l' | 'h' | 'z' | 'j' | 't') {
+                j += 1;
+            }
+            let Some(&conversion) = chars.get(j) else {
+                self.errors
+                    .push("'%' al final del formato de printf".to_string());
+                return;
+            };
+
+            if conversion == '%' {
+                literal.push(b'%');
+                i = j + 1;
+                continue;
+            }
+
+            // Todo lo literal acumulado sale ANTES de la conversión.
+            if !literal.is_empty() {
+                bmo_lower::console::write_const(&mut self.code, &literal);
+                literal.clear();
+            }
+
+            let Some(arg) = va_args.get(next_arg).cloned() else {
+                self.errors.push(format!(
+                    "printf: '%{conversion}' no tiene argumento correspondiente"
+                ));
+                return;
+            };
+            next_arg += 1;
+            self.emit_expr(&arg); // el valor queda en rax
+
+            match conversion {
+                'd' | 'i' => bmo_lower::fmt::write_i64(&mut self.code),
+                'u' => bmo_lower::fmt::write_u64_radix(&mut self.code, 10),
+                'x' => bmo_lower::fmt::write_u64_radix(&mut self.code, 16),
+                'c' => bmo_lower::fmt::write_char(&mut self.code),
+                's' => bmo_lower::fmt::write_cstr(&mut self.code),
+                other => {
+                    self.errors.push(format!(
+                        "printf: '%{other}' aun no se compila (se compilan \
+                         %d %i %u %x %c %s %%; los flotantes necesitan la ruta SSE)"
+                    ));
+                    return;
+                }
+            }
+            i = j + 1;
+        }
+
+        if !literal.is_empty() {
+            bmo_lower::console::write_const(&mut self.code, &literal);
+        }
+
+        if next_arg < va_args.len() {
+            self.errors.push(format!(
+                "printf: sobran {} argumento(s) para el formato dado",
+                va_args.len() - next_arg
+            ));
         }
     }
     /// `printf("literal")` — la L2 de C sobre la puerta genérica (L1).
@@ -1092,32 +1161,65 @@ impl Codegen {
                     else { self.code.extend_from_slice(&[0x48, 0x81, 0xC4]); self.code.extend_from_slice(&n.to_le_bytes()); }
                 }
             }
+            // Tras `emit_binop`: rdx = operando IZQUIERDO, rax = DERECHO.
+            // Los operadores conmutativos daban igual; los que no lo son
+            // estaban invertidos y nadie lo vio hasta ejecutarlos.
             Expr::Add(a, b) => self.emit_binop(a, b, &[0x48, 0x01, 0xD0]),
-            Expr::Sub(a, b) => self.emit_binop(a, b, &[0x48, 0x29, 0xD0]),
+            // `a - b`. Antes: `sub rax, rdx` = b - a, o sea al reves.
+            // `10 - 3` daba -7.
+            Expr::Sub(a, b) => self.emit_binop(a, b, &[
+                0x48, 0x29, 0xC2, // sub rdx, rax   → rdx = a - b
+                0x48, 0x89, 0xD0, // mov rax, rdx
+            ]),
             Expr::Mul(a, b) => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
-            Expr::Div(a, b) => {
-                self.emit_expr(a); self.code.push(0x50);
-                self.emit_expr(b); self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD6, 0x58, 0x48, 0x31, 0xD2, 0x48, 0xF7, 0xF6]);
-            }
-            Expr::Mod(a, b) => {
-                self.emit_expr(a); self.code.push(0x50);
-                self.emit_expr(b); self.code.push(0x5A);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD6, 0x58, 0x48, 0x31, 0xD2, 0x48, 0xF7, 0xF6, 0x48, 0x89, 0xD0]);
-            }
+            // `a / b` CON SIGNO. Antes hacia dos `pop` habiendo empujado una
+            // sola vez —se llevaba un valor de la pila que no era suyo— y
+            // ademas dividia sin signo. `10 / 3` daba 0.
+            Expr::Div(a, b) => self.emit_binop(a, b, &[
+                0x48, 0x89, 0xC1, // mov rcx, rax   → divisor = b
+                0x48, 0x89, 0xD0, // mov rax, rdx   → dividendo = a
+                0x48, 0x99,       // cqo            → extiende el signo
+                0x48, 0xF7, 0xF9, // idiv rcx
+            ]),
+            // `a % b`: el resto queda en rdx.
+            Expr::Mod(a, b) => self.emit_binop(a, b, &[
+                0x48, 0x89, 0xC1, // mov rcx, rax
+                0x48, 0x89, 0xD0, // mov rax, rdx
+                0x48, 0x99,       // cqo
+                0x48, 0xF7, 0xF9, // idiv rcx
+                0x48, 0x89, 0xD0, // mov rax, rdx  → el resto
+            ]),
             // Comparaciones: si algún operando es float → comisd (setcc unsigned);
             // si no, la comparación entera de siempre.
-            Expr::Eq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x94) } else { self.emit_cmp(a, b, &[0x0F, 0x94, 0xC0]) },
-            Expr::Neq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x95) } else { self.emit_cmp(a, b, &[0x0F, 0x95, 0xC0]) },
-            Expr::Lt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x92) } else { self.emit_cmp(a, b, &[0x0F, 0x9C, 0xC0]) },
-            Expr::Gt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x97) } else { self.emit_cmp_swapped(b, a, &[0x0F, 0x9C, 0xC0]) },
-            Expr::Le(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x96) } else { self.emit_cmp_swapped(b, a, &[0x0F, 0x9E, 0xC0]) },
-            Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) } else { self.emit_cmp(a, b, &[0x0F, 0x9D, 0xC0]) },
+            // Comparaciones enteras: todas comparan `a` contra `b` en ese
+            // orden y usan el setcc que les toca. Antes `<`, `>` y `>=`
+            // comparaban al reves —`1 < 2` daba 0— porque la comparacion se
+            // hacia sobre `b - a` con el setcc de la forma directa.
+            Expr::Eq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x94) } else { self.emit_cmp(a, b, 0x94) },
+            Expr::Neq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x95) } else { self.emit_cmp(a, b, 0x95) },
+            Expr::Lt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x92) } else { self.emit_cmp(a, b, 0x9C) },
+            Expr::Gt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x97) } else { self.emit_cmp(a, b, 0x9F) },
+            Expr::Le(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x96) } else { self.emit_cmp(a, b, 0x9E) },
+            Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) } else { self.emit_cmp(a, b, 0x9D) },
             Expr::BitAnd(a, b) => self.emit_binop(a, b, &[0x48, 0x21, 0xD0]),
             Expr::BitXor(a, b) => self.emit_binop(a, b, &[0x48, 0x31, 0xD0]),
             Expr::BitOr(a, b) => self.emit_binop(a, b, &[0x48, 0x09, 0xD0]),
-            Expr::Shl(a, b) => self.emit_binop(a, b, &[0x48, 0x89, 0xD1, 0x48, 0xD3, 0xE0]),
-            Expr::Shr(a, b) => self.emit_binop(a, b, &[0x48, 0x89, 0xD1, 0x48, 0xD3, 0xE8]),
+            // `a << b` / `a >> b`. Antes desplazaban el operando DERECHO por
+            // el izquierdo: `1 << 3` intentaba `3 << 1`.
+            //
+            // El desplazamiento a la derecha es ARITMETICO (`sar`), que es
+            // lo correcto para `int`. Un tipo sin signo querria `shr`; hoy
+            // el codegen no arrastra esa distincion hasta aqui.
+            Expr::Shl(a, b) => self.emit_binop(a, b, &[
+                0x48, 0x89, 0xC1, // mov rcx, rax   → cuenta = b
+                0x48, 0x89, 0xD0, // mov rax, rdx   → valor  = a
+                0x48, 0xD3, 0xE0, // shl rax, cl
+            ]),
+            Expr::Shr(a, b) => self.emit_binop(a, b, &[
+                0x48, 0x89, 0xC1, // mov rcx, rax
+                0x48, 0x89, 0xD0, // mov rax, rdx
+                0x48, 0xD3, 0xF8, // sar rax, cl
+            ]),
             Expr::LAnd(a, b) => {
                 let end = self.fresh_label();
                 self.emit_expr(a);
@@ -1564,22 +1666,23 @@ impl Codegen {
         self.code.extend_from_slice(op);
     }
 
-    fn emit_cmp(&mut self, a: &Expr, b: &Expr, setcc: &[u8]) {
+    /// Comparación entera `a <op> b` → 0 o 1 en `rax`.
+    ///
+    /// `setcc` es el segundo byte del opcode: `0x94`=sete, `0x95`=setne,
+    /// `0x9C`=setl, `0x9D`=setge, `0x9E`=setle, `0x9F`=setg.
+    ///
+    /// El `movzx` del final NO es decorativo: `setcc` solo escribe `al`, así
+    /// que sin él los 56 bits altos de `rax` conservan el valor del operando
+    /// derecho. Con operandos chicos el resultado parecía correcto de puro
+    /// milagro; `printf("%d", x == y)` con una `x` grande imprimía basura.
+    fn emit_cmp(&mut self, a: &Expr, b: &Expr, setcc: u8) {
         self.emit_expr(a);
-        self.code.push(0x50);
-        self.emit_expr(b);
-        self.code.push(0x5A);
-        self.code.extend_from_slice(&[0x48, 0x39, 0xD0]);
-        self.code.extend_from_slice(setcc);
-    }
-
-    fn emit_cmp_swapped(&mut self, a: &Expr, b: &Expr, setcc: &[u8]) {
-        self.emit_expr(a);
-        self.code.push(0x50);
-        self.emit_expr(b);
-        self.code.push(0x5A);
-        self.code.extend_from_slice(&[0x48, 0x39, 0xD0]);
-        self.code.extend_from_slice(setcc);
+        self.code.push(0x50); // push rax (izquierdo)
+        self.emit_expr(b); // rax = derecho
+        self.code.push(0x5A); // pop rdx (izquierdo)
+        self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax → a - b
+        self.code.extend_from_slice(&[0x0F, setcc, 0xC0]); // setcc al
+        self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
 
     fn emit_mov_eax_syscall(&mut self, nr: u32) {

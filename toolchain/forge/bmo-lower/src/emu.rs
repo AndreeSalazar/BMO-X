@@ -106,12 +106,11 @@ impl Machine {
         addr
     }
 
-    /// Lee 8 bytes de memoria (cero si nunca se escribieron — el kernel
-    /// entrega páginas en cero, así que es el modelo fiel).
+    /// Lee 8 bytes de memoria.
     pub fn read_u64(&self, addr: u64) -> u64 {
         let mut v = 0u64;
         for i in 0..8 {
-            v |= (*self.mem.get(&(addr + i)).unwrap_or(&0) as u64) << (i * 8);
+            v |= (self.read_u8_mem(addr + i) as u64) << (i * 8);
         }
         v
     }
@@ -122,8 +121,18 @@ impl Machine {
         }
     }
 
+    /// Lee un byte de memoria.
+    ///
+    /// Si nadie escribió ahí, cae a la propia imagen: los frontends colocan
+    /// las cadenas y los globales DENTRO de la sección de código, justo
+    /// detrás de las instrucciones, y los alcanzan con `lea [rip+disp]`. Un
+    /// `%s` leería ceros si el emulador no modelara eso. Fuera de la imagen
+    /// devuelve cero, que es lo que hace el kernel con una página nueva.
     fn read_u8_mem(&self, addr: u64) -> u8 {
-        *self.mem.get(&addr).unwrap_or(&0)
+        if let Some(b) = self.mem.get(&addr) {
+            return *b;
+        }
+        self.code.get(addr as usize).copied().unwrap_or(0)
     }
 
     fn fetch_u8(&mut self) -> u8 {
@@ -242,6 +251,17 @@ impl Machine {
             return (reg, Operand::Reg(rm | (rex_b << 3)));
         }
 
+        // mod=00 con rm=101 NO es "[rbp]": en 64 bits es direccionamiento
+        // RELATIVO A RIP con disp32. Es como los frontends alcanzan sus
+        // cadenas y variables globales (`lea rax, [rip+disp]`), así que sin
+        // esto el emulador se comía los 4 bytes del desplazamiento como si
+        // fueran instrucciones y descarrilaba.
+        if md == 0 && rm == 0b101 {
+            let disp = self.fetch_u32() as i32 as i64;
+            let addr = (self.rip as i64 + disp) as u64;
+            return (reg, Operand::Mem(addr));
+        }
+
         // Base (+ índice si hay SIB).
         let (base, index, scale) = if rm == 0b100 {
             let sib = self.fetch_u8();
@@ -278,6 +298,24 @@ impl Machine {
                 } else {
                     v as u32 as u64
                 }
+            }
+        }
+    }
+
+    /// Lee un solo byte del operando. En registro es el byte BAJO — con
+    /// REX presente `dl`/`sil` son eso y no los registros altos heredados.
+    fn load_u8(&self, op: Operand) -> u64 {
+        match op {
+            Operand::Reg(r) => self.regs[r] & 0xFF,
+            Operand::Mem(a) => self.read_u8_mem(a) as u64,
+        }
+    }
+
+    fn store_u8(&mut self, op: Operand, value: u64) {
+        match op {
+            Operand::Reg(r) => self.regs[r] = (self.regs[r] & !0xFF) | (value & 0xFF),
+            Operand::Mem(a) => {
+                self.mem.insert(a, (value & 0xFF) as u8);
             }
         }
     }
@@ -393,6 +431,12 @@ impl Machine {
                     _ => unreachable!(),
                 }
             }
+            // movsxd reg64, r/m32 — carga un int CON SIGNO
+            0x63 => {
+                let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                let v = self.load(src, false) as u32 as i32 as i64 as u64;
+                self.write_reg(reg, v, true);
+            }
             // lea reg, [mem]
             0x8D => {
                 let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
@@ -466,7 +510,43 @@ impl Machine {
                 self.flags_logic(r);
                 self.store(dst, r, wide);
             }
-            // grupo 3: /3 neg, /4 mul, /7 idiv
+            // mov r/m8, r8  — guarda el byte bajo de un registro
+            0x88 => {
+                let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                let v = self.regs[reg] & 0xFF;
+                self.store_u8(dst, v);
+            }
+            // mov r/m8, imm8
+            0xC6 => {
+                let (_, dst) = self.modrm(0, rex_x, rex_b);
+                let imm = self.fetch_u8() as u64;
+                self.store_u8(dst, imm);
+            }
+            // grupo 1 sobre BYTE con imm8: /7 cmp
+            0x80 => {
+                let (ext, dst) = self.modrm(0, rex_x, rex_b);
+                let imm = self.fetch_u8() as u64;
+                let a = self.load_u8(dst);
+                match ext & 7 {
+                    7 => self.flags_sub(a, imm),
+                    other => panic!("grupo 80 /{other} no emitido por BMO"),
+                }
+            }
+            // desplazamientos por `cl`: /4 shl, /5 shr, /7 sar
+            0xD3 => {
+                let (ext, dst) = self.modrm(0, rex_x, rex_b);
+                let count = (self.regs[RCX] & 0x3F) as u32; // el CPU enmascara a 6 bits
+                let a = self.load(dst, wide);
+                let r = match ext & 7 {
+                    4 => a << count,
+                    5 => a >> count,
+                    7 => ((a as i64) >> count) as u64,
+                    other => panic!("grupo D3 /{other} no emitido por BMO"),
+                };
+                self.flags_logic(r);
+                self.store(dst, r, wide);
+            }
+            // grupo 3: /3 neg, /6 div, /7 idiv
             0xF7 => {
                 let (ext, src) = self.modrm(0, rex_x, rex_b);
                 let v = self.load(src, wide);
@@ -475,6 +555,18 @@ impl Machine {
                         let r = (self.load(src, wide) as i64).wrapping_neg() as u64;
                         self.flags_logic(r);
                         self.store(src, r, wide);
+                    }
+                    // div SIN signo: rdx:rax entre el operando. El emisor
+                    // siempre pone rdx=0 antes, así que basta con rax.
+                    6 => {
+                        assert_ne!(v, 0, "division por cero en el codigo emitido");
+                        assert_eq!(
+                            self.regs[RDX], 0,
+                            "div de 128 bits: el emisor debe poner rdx=0 antes"
+                        );
+                        let dividend = self.regs[RAX];
+                        self.regs[RAX] = dividend / v;
+                        self.regs[RDX] = dividend % v;
                     }
                     7 => {
                         // idiv: dividendo en rdx:rax; aquí basta rax con signo
@@ -548,6 +640,12 @@ impl Machine {
                         let b = self.load(src, wide) as i64;
                         let r = a.wrapping_mul(b) as u64;
                         self.write_reg(reg, r, wide);
+                    }
+                    // setcc r/m8 — deja 0 o 1 según la condición
+                    0x90..=0x9F => {
+                        let (_, dst) = self.modrm(0, rex_x, rex_b);
+                        let value = u64::from(self.cond(second & 0x0F));
+                        self.store_u8(dst, value);
                     }
                     // jcc rel32
                     0x80..=0x8F => {

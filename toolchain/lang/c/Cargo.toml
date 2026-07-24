@@ -20,3 +20,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "bmo-c-front"
 path = "src/main.rs"
+
+[dev-dependencies]
+# Banco de pruebas: ejecuta el codigo emitido (ver forge/bmo-lower).
+bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }

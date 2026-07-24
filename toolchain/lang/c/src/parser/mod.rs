@@ -21,6 +21,14 @@ pub(crate) struct Parser {
     field_types: HashMap<(String, String), TypeSpec>,
     usings: Vec<String>,
     typedefs: HashMap<String, TypeSpec>,
+    /// Constantes de `enum` con su VALOR.
+    ///
+    /// Antes el parser calculaba el valor y lo tiraba: registraba el nombre
+    /// como si fuera una variable `int` y nunca guardaba a qué equivalia,
+    /// asi que `enum { ROJO, VERDE }` dejaba `VERDE` como una variable sin
+    /// definir. El aviso `value assigned to val is never read` del propio
+    /// compilador estaba senalando justo este bug.
+    enum_constants: HashMap<String, i64>,
     syscalls: HashMap<String, SyscallDef>,
     pub(crate) features: StandardFeatures,
 }
@@ -36,6 +44,7 @@ impl Parser {
             field_types: HashMap::new(),
             usings: Vec::new(),
             typedefs: HashMap::new(),
+            enum_constants: HashMap::new(),
             syscalls: HashMap::new(),
             features: StandardFeatures::default(),
         }
@@ -285,8 +294,10 @@ impl Parser {
                                 };
                                 val = assigned;
                             }
-                            // Store enum constant as if it were a variable with int type + constant value
+                            // La constante se resuelve a su VALOR al usarla
+                            // (ver parse_primary); el tipo sigue siendo int.
                             self.var_types.insert(en.clone(), TypeSpec::Int);
+                            self.enum_constants.insert(en.clone(), val);
                         }
                         Token::CloseBrace => { break; }
                         t => return Err(CError::new(self.line(),format!("expected enum constant, got {:?}", t))),
@@ -1381,6 +1392,10 @@ impl Parser {
                     } else {
                         Ok(Expr::Call(name, args))
                     }
+                } else if let Some(&value) = self.enum_constants.get(&name) {
+                    // Una constante de enum ES su valor, no una variable: no
+                    // tiene direccion ni hueco en la pila.
+                    Ok(Expr::Int(value))
                 } else {
                     Ok(Expr::Var(name))
                 }

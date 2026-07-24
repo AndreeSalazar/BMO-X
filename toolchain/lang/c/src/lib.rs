@@ -122,6 +122,213 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
     }
 
+    // ── Banco de pruebas: EJECUTAR el programa, no mirarlo ──────────────
+    //
+    // Mismo criterio que en COBOL: un formateo que produce dígitos erróneos
+    // se ve perfectamente sano en un volcado de bytes.
+
+    /// Compila y ejecuta un programa C, devolviendo lo que el kernel habría
+    /// pintado.
+    fn run_c(source: &str) -> String {
+        use bmo_abi::bef::sections::{SectionEntry, SectionKind};
+        use bmo_lower::emu::{run, Machine};
+
+        let bef = compile_source_to_bef(source).expect("el programa debe compilar");
+        let hdr = unsafe { &*(bef.as_ptr() as *const bmo_abi::bef::header::BefHeader) };
+        let entry = hdr.entry_offset as usize;
+        let sec_off = hdr.section_table_offset as usize;
+
+        // La imagen se rearma en el MISMO orden en que el codegen la
+        // dispuso: código, luego rodata, luego data. El `lea rax,[rip+disp]`
+        // con el que se alcanzan las cadenas se calculó asumiendo que van
+        // pegadas detrás del código; cargar solo la sección CODE dejaba esos
+        // punteros apuntando al vacío y un `%s` imprimía cadena vacía.
+        let mut code = Vec::new();
+        for kind in [SectionKind::Code, SectionKind::RoData, SectionKind::Data] {
+            for i in 0..hdr.section_count as usize {
+                let e = sec_off + i * SectionEntry::SIZE;
+                if bef[e] == kind as u8 {
+                    let off = u64::from_le_bytes(bef[e + 8..e + 16].try_into().unwrap()) as usize;
+                    let size = u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize;
+                    code.extend_from_slice(&bef[off..off + size]);
+                }
+            }
+        }
+        assert!(!code.is_empty(), "el BEF no tiene seccion CODE");
+
+        let mut machine = Machine::new(code);
+        machine.rip = entry; // `main` no tiene por que estar al principio
+        let machine = run(machine, 500_000);
+        assert!(machine.exited, "el programa debe terminar por INVOKE(EXIT)");
+        machine.console
+    }
+
+
+
+
+
+    /// El ejemplo del repositorio, ejecutado. Si alguien vuelve a invertir
+    /// un operador, este test lo dice antes de que haga falta flashear nada.
+    #[test]
+    fn hola_example_produces_its_documented_output() {
+        let out = run_c(include_str!("../examples/hola.c"));
+        assert_eq!(
+            out,
+            "BMO-X: hola mundo desde C\n\
+             cuenta=3 total=42 resto=2\n\
+             42 - 100 = -58\n\
+             estado LISTO = 1 de 2\n\
+             hex=beef char=B texto=cadena\n\
+             C -> puerta L1 -> INVOKE -> Ring 0\n"
+        );
+    }
+
+    /// Los operadores NO conmutativos estaban invertidos: se emitían sobre
+    /// `b - a` en vez de `a - b`. Con `+` y `*` no se notaba; con `-`, `/`,
+    /// `%` y los desplazamientos, sí. Nadie lo vio en 1.600 líneas de
+    /// codegen porque ningún test los ejecutaba.
+    #[test]
+    fn non_commutative_operators_respect_operand_order() {
+        for (expr, expected) in [
+            ("10 - 3", "7"),
+            ("3 - 10", "-7"),
+            ("10 / 3", "3"),
+            ("10 % 3", "1"),
+            ("1 << 3", "8"),
+            ("16 >> 2", "4"),
+            ("10 + 3", "13"),
+            ("10 * 3", "30"),
+        ] {
+            let out = run_c(&format!("int main() {{ printf(\"%d\\n\", {expr}); return 0; }}"));
+            assert_eq!(out.trim(), expected, "expresion: {expr}");
+        }
+    }
+
+    /// La división entera es CON SIGNO. Antes dividía sin signo, así que un
+    /// negativo daba un número astronómico.
+    #[test]
+    fn integer_division_is_signed() {
+        let out = run_c("int main() { printf(\"%d %d\\n\", 0 - 10, (0 - 10) / 3); return 0; }");
+        assert_eq!(out, "-10 -3\n");
+    }
+
+    /// Todas las comparaciones, en ambos sentidos. `<`, `>` y `>=` daban el
+    /// resultado contrario.
+    #[test]
+    fn comparisons_answer_in_the_right_direction() {
+        for (expr, expected) in [
+            ("1 < 2", "1"), ("2 < 1", "0"),
+            ("2 > 1", "1"), ("1 > 2", "0"),
+            ("1 <= 1", "1"), ("2 <= 1", "0"),
+            ("1 >= 1", "1"), ("1 >= 2", "0"),
+            ("1 == 1", "1"), ("1 == 2", "0"),
+            ("1 != 2", "1"), ("1 != 1", "0"),
+        ] {
+            let out = run_c(&format!("int main() {{ printf(\"%d\\n\", {expr}); return 0; }}"));
+            assert_eq!(out.trim(), expected, "comparacion: {expr}");
+        }
+    }
+
+    /// `setcc` solo escribe `al`. Sin extender a cero el resto de `rax`, el
+    /// resultado de una comparación arrastraba los bits altos del operando
+    /// derecho: parecía correcto con valores chicos y fallaba con grandes.
+    #[test]
+    fn comparison_result_is_clean_with_large_operands() {
+        let out = run_c(
+            "int main() { long a = 4294967296; long b = 4294967296; printf(\"%d\\n\", a == b); return 0; }",
+        );
+        assert_eq!(out, "1\n");
+    }
+
+    /// Un `int` con signo debe releerse con signo. Antes `mov eax,[..]`
+    /// rellenaba de ceros y `-7` volvía como 4294967289.
+    #[test]
+    fn negative_int_survives_a_round_trip_through_memory() {
+        let out = run_c("int main() { int y = 0 - 7; printf(\"%d\\n\", y); return 0; }");
+        assert_eq!(out, "-7\n");
+    }
+
+    #[test]
+    fn printf_prints_signed_integers() {
+        let out = run_c(
+            "int main() { int x = 42; int y = 0 - 7; printf(\"x=%d y=%d\\n\", x, y); return 0; }",
+        );
+        assert_eq!(out, "x=42 y=-7\n");
+    }
+
+    /// El caso que motivó todo: antes `printf(\"%d\", x)` descartaba `x` en
+    /// el parser e imprimía el literal `%d`.
+    #[test]
+    fn printf_no_longer_prints_the_format_specifier() {
+        let out = run_c("int main() { printf(\"%d\\n\", 5); return 0; }");
+        assert_eq!(out, "5\n");
+        assert!(!out.contains('%'), "no debe salir el especificador crudo");
+    }
+
+    #[test]
+    fn printf_supports_the_common_conversions() {
+        let out = run_c(
+            "int main() { printf(\"[%d][%u][%x][%c][%s][%%]\\n\", 0 - 3, 3, 255, 65, \"hola\"); return 0; }",
+        );
+        assert_eq!(out, "[-3][3][ff][A][hola][%]\n");
+    }
+
+    /// Los modificadores de longitud se aceptan y no cambian nada: en BMO
+    /// todo entero viaja en 64 bits.
+    #[test]
+    fn printf_accepts_length_modifiers() {
+        let out = run_c("int main() { printf(\"%ld\\n\", 123456789); return 0; }");
+        assert_eq!(out, "123456789\n");
+    }
+
+    #[test]
+    fn printf_computes_its_arguments() {
+        let out = run_c("int main() { int a = 6; int b = 7; printf(\"%d\\n\", a * b); return 0; }");
+        assert_eq!(out, "42\n");
+    }
+
+    /// Un formato que aún no se compila debe FALLAR, no imprimir basura.
+    #[test]
+    fn printf_rejects_unsupported_conversions() {
+        let err = compile_source_to_bef("int main() { printf(\"%f\\n\", 1); return 0; }").unwrap_err();
+        assert!(err.message.contains("%f"), "mensaje: {}", err.message);
+    }
+
+    #[test]
+    fn printf_rejects_missing_arguments() {
+        let err = compile_source_to_bef("int main() { printf(\"%d %d\\n\", 1); return 0; }").unwrap_err();
+        assert!(err.message.contains("argumento"), "mensaje: {}", err.message);
+    }
+
+    /// Las constantes de `enum` valen lo que dicen. Antes el parser
+    /// calculaba el valor y lo descartaba.
+    #[test]
+    fn enum_constants_carry_their_value() {
+        let out = run_c(
+            "enum Color { ROJO, VERDE, AZUL }; \
+             int main() { printf(\"%d %d %d\\n\", ROJO, VERDE, AZUL); return 0; }",
+        );
+        assert_eq!(out, "0 1 2\n");
+    }
+
+    #[test]
+    fn enum_explicit_values_continue_from_there() {
+        let out = run_c(
+            "enum E { A = 10, B, C = 100, D }; \
+             int main() { printf(\"%d %d %d %d\\n\", A, B, C, D); return 0; }",
+        );
+        assert_eq!(out, "10 11 100 101\n");
+    }
+
+    #[test]
+    fn enum_constants_work_in_expressions_and_conditions() {
+        let out = run_c(
+            "enum E { UNO = 1, DOS = 2 }; \
+             int main() { if (DOS > UNO) { printf(\"mayor %d\\n\", DOS + UNO); } return 0; }",
+        );
+        assert_eq!(out, "mayor 3\n");
+    }
+
     /// Busca una subsecuencia de bytes dentro del BEF ya escrito.
     fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
         !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)

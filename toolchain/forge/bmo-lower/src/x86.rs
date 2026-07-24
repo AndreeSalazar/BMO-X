@@ -12,6 +12,7 @@
 pub const RAX: u8 = 0;
 pub const RCX: u8 = 1;
 pub const RDX: u8 = 2;
+pub const RSP: u8 = 4;
 pub const RSI: u8 = 6;
 pub const RDI: u8 = 7;
 pub const R8: u8 = 8;
@@ -124,6 +125,119 @@ pub fn movzx_r32_byte_base_index(out: &mut Vec<u8>, dst: u8, base: u8, index: u8
     out.push((index & 7) << 3 | (base & 7)); // scale=1
 }
 
+/// `inc <r64>`.
+pub fn inc_r64(out: &mut Vec<u8>, reg: u8) {
+    out.push(rex_w(0, reg));
+    out.push(0xFF);
+    out.push(0xC0 | (reg & 7)); // /0 = INC
+}
+
+/// `neg <r64>`.
+pub fn neg_r64(out: &mut Vec<u8>, reg: u8) {
+    out.push(rex_w(0, reg));
+    out.push(0xF7);
+    out.push(0xC0 | (3 << 3) | (reg & 7)); // /3 = NEG
+}
+
+/// `add <r64>, imm8` (signo-extendido).
+pub fn add_r64_imm8(out: &mut Vec<u8>, reg: u8, imm: i8) {
+    out.push(rex_w(0, reg));
+    out.push(0x83);
+    out.push(0xC0 | (reg & 7)); // /0 = ADD
+    out.push(imm as u8);
+}
+
+/// `sub <r64>, imm8` (signo-extendido).
+pub fn sub_r64_imm8(out: &mut Vec<u8>, reg: u8, imm: i8) {
+    out.push(rex_w(0, reg));
+    out.push(0x83);
+    out.push(0xC0 | (5 << 3) | (reg & 7)); // /5 = SUB
+    out.push(imm as u8);
+}
+
+/// `cqo` — extiende el signo de `rax` a `rdx:rax`, lo que `idiv` espera.
+pub fn cqo(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[0x48, 0x99]);
+}
+
+/// `idiv <r64>` — divide `rdx:rax` con signo.
+pub fn idiv_r64(out: &mut Vec<u8>, reg: u8) {
+    out.push(rex_w(0, reg));
+    out.push(0xF7);
+    out.push(0xC0 | (7 << 3) | (reg & 7)); // /7 = IDIV
+}
+
+/// `div <r64>` — divide `rdx:rax` SIN signo.
+pub fn div_r64(out: &mut Vec<u8>, reg: u8) {
+    out.push(rex_w(0, reg));
+    out.push(0xF7);
+    out.push(0xC0 | (6 << 3) | (reg & 7)); // /6 = DIV
+}
+
+/// `lea <dst>, [rsp + disp8]`.
+pub fn lea_r64_rsp_disp8(out: &mut Vec<u8>, dst: u8, disp: i8) {
+    out.push(0x48 | (((dst >> 3) & 1) << 2)); // REX.W (+R)
+    out.push(0x8D);
+    out.push(0x40 | ((dst & 7) << 3) | 0b100); // mod=01, rm=100 → SIB
+    out.push(0x24); // SIB: base=rsp, sin índice
+    out.push(disp as u8);
+}
+
+/// Emite el ModRM (+SIB) de `[<base>]` sin desplazamiento, para el campo
+/// `reg`/extensión dado.
+///
+/// Los dos casos que no se pueden escribir "directo", y que hay que tratar
+/// aparte o el CPU decodifica otra cosa:
+/// - `rsp`/`r12` (rm=100) exigen un byte SIB.
+/// - `rbp`/`r13` (rm=101) con mod=00 significan RIP-relativo, así que se
+///   codifican como mod=01 con desplazamiento 0.
+fn modrm_at_base(out: &mut Vec<u8>, reg_field: u8, base: u8) {
+    let rm = base & 7;
+    if rm == 0b100 {
+        out.push((reg_field << 3) | 0b100); // mod=00, rm=100 → SIB
+        out.push(0x24); // SIB: base=rsp/r12, sin índice
+    } else if rm == 0b101 {
+        out.push(0x40 | (reg_field << 3) | rm); // mod=01
+        out.push(0x00); // disp8 = 0
+    } else {
+        out.push((reg_field << 3) | rm); // mod=00
+    }
+}
+
+/// `mov byte [<base>], <src8>` — guarda el byte bajo de un registro.
+pub fn mov_byte_at_reg_from_low(out: &mut Vec<u8>, base: u8, src: u8) {
+    // REX obligatorio si el origen es spl/bpl/sil/dil o r8..r15, para que
+    // `dl`/`sil` no se confundan con los registros altos heredados (ah, ch…).
+    let rex = 0x40 | (((src >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 || src >= 4 {
+        out.push(rex);
+    }
+    out.push(0x88);
+    modrm_at_base(out, src & 7, base);
+}
+
+/// `mov byte [<base>], imm8`.
+pub fn mov_byte_at_reg_imm8(out: &mut Vec<u8>, base: u8, imm: u8) {
+    if base >= 8 {
+        out.push(0x41); // REX.B
+    }
+    out.push(0xC6);
+    modrm_at_base(out, 0, base); // /0
+    out.push(imm);
+}
+
+/// `cmp byte [<base> + <index>], imm8`.
+pub fn cmp_byte_base_index_imm8(out: &mut Vec<u8>, base: u8, index: u8, imm: u8) {
+    let rex = 0x40 | (((index >> 3) & 1) << 1) | ((base >> 3) & 1);
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.push(0x80);
+    out.push((7 << 3) | 0b100); // mod=00, /7 = CMP, rm=100 → SIB
+    out.push((index & 7) << 3 | (base & 7)); // scale=1
+    out.push(imm);
+}
+
 /// `syscall`.
 pub fn syscall(out: &mut Vec<u8>) {
     out.extend_from_slice(&[0x0F, 0x05]);
@@ -139,6 +253,10 @@ pub enum Jump {
     IfNotZero,
     /// `jbe rel32` (sin signo: menor o igual).
     IfBelowOrEqual,
+    /// `jns rel32` (salta si NO hay bit de signo: valor ≥ 0).
+    IfNotSign,
+    /// `jl rel32` (con signo: menor).
+    IfLess,
 }
 
 /// Emite el salto y devuelve el offset del campo rel32, para `patch_jump`.
@@ -153,6 +271,8 @@ pub fn emit_jump(out: &mut Vec<u8>, kind: Jump) -> usize {
         Jump::IfZero => out.extend_from_slice(&[0x0F, 0x84]),
         Jump::IfNotZero => out.extend_from_slice(&[0x0F, 0x85]),
         Jump::IfBelowOrEqual => out.extend_from_slice(&[0x0F, 0x86]),
+        Jump::IfNotSign => out.extend_from_slice(&[0x0F, 0x89]),
+        Jump::IfLess => out.extend_from_slice(&[0x0F, 0x8C]),
     }
     let field = out.len();
     out.extend_from_slice(&[0, 0, 0, 0]);

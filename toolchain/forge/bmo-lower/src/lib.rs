@@ -43,6 +43,9 @@
 //! inmediatos, así que no hay fixup que parchear ni puntero que cruzar.
 
 pub mod console;
+/// Formateo de valores a texto. LIBRERIA compartida, no puerta: ver
+/// la cabecera de `fmt.rs` para por que vive aqui y no en cada frontend.
+pub mod fmt;
 pub mod task;
 
 mod x86;
