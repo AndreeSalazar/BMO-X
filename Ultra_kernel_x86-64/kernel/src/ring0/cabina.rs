@@ -19,7 +19,7 @@ use crate::ring0::core::splash::splash_dashboard_log_color;
 // primero narramos en RAM, luego persistimos a disco. cabina-core::Event ya
 // trae severidad(color), capa(from_module), módulo y mensaje.
 
-const EVENT_RING: usize = 24;
+const EVENT_RING: usize = 48;
 static mut EVENTS: [Event; EVENT_RING] = [Event::ZERO; EVENT_RING];
 static mut EV_WRITE: usize = 0;
 static mut EV_SEQ: u64 = 0;
@@ -192,34 +192,48 @@ pub fn render_hud() {
     let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
     if saved_cr3 != kpml4 { crate::ring0::mm::vmm::switch_to(kpml4); }
 
-    // Fila 9 — cabecera + CPU (cyan: es el título/info)
-    let mut r = Buf::new();
-    r.txt("CABINA omnisciente  up tk=0x"); r.hex(s.cpu.timer_ticks, 6);
-    r.txt("  ints="); r.dec(s.cpu.interrupts);
-    r.txt("  ev="); r.dec(event_total());
-    splash_dashboard_log_color(9, r.as_str(), C_INFO);
+    // ══ BITÁCORA EN TIEMPO REAL: log LARGO de 9 líneas (filas 2-10), el más
+    // nuevo abajo, cada evento con el color de su severidad. Aquí fluye todo
+    // lo que CABINA observa: kernel, disco, teclado, Ring 3... la caja negra
+    // (aún en RAM). Un log de verdad, no un printf suelto.
+    const LOG_ROWS: usize = 9;
+    const LOG_TOP: usize = 2;
+    for slot in 0..LOG_ROWS {
+        let row = LOG_TOP + slot;
+        let n = LOG_ROWS - 1 - slot; // slot 0 arriba = más viejo; abajo = nuevo
+        match event_back(n) {
+            Some(ev) => {
+                let mut r = Buf::new();
+                r.txt("["); r.txt(ev.severity.name());
+                r.txt("|"); r.txt(ev.layer.name()); r.txt("] ");
+                r.txt(ev.module_str()); r.txt(": "); r.txt(ev.msg_str());
+                splash_dashboard_log_color(row, r.as_str(), ev.severity.color());
+            }
+            None => splash_dashboard_log_color(row, "", C_DIM),
+        }
+    }
 
-    // Fila 10 — memoria + scheduler. Verde si hay RAM holgada; ámbar si escasa.
+    // ══ TELEMETRÍA COMPACTA (filas 11-13): salud del sistema de un vistazo.
+    // Fila 11 — cabecera + CPU/mem/scheduler (verde=sano, ámbar=RAM baja).
     let mut r = Buf::new();
-    r.txt("mem free="); r.dec(mib_free); r.txt("MiB");
-    r.txt("  sched sw="); r.dec(s.scheduler.context_switches);
-    r.txt(" task="); r.dec(s.scheduler.processes);
-    r.txt("/"); r.dec(s.scheduler.threads);
+    r.txt("CABINA tk=0x"); r.hex(s.cpu.timer_ticks, 6);
+    r.txt(" ev="); r.dec(event_total());
+    r.txt(" mem="); r.dec(mib_free); r.txt("MiB");
+    r.txt(" sw="); r.dec(s.scheduler.context_switches);
+    r.txt(" task="); r.dec(s.scheduler.processes); r.txt("/"); r.dec(s.scheduler.threads);
     r.txt(" tid="); r.dec(tid as u64);
-    let mem_color = if mib_free < 256 { C_WARN } else { C_OK };
-    splash_dashboard_log_color(10, r.as_str(), mem_color);
+    let health = if mib_free < 256 { C_WARN } else { C_OK };
+    splash_dashboard_log_color(11, r.as_str(), health);
 
-    // Fila 11 — Ring 3. Verde=corriendo, ámbar=terminó/ocioso, cyan=otro.
+    // Fila 12 — Ring 3 (verde=corriendo, gris=terminó, ámbar=bloqueado).
     let mut r = Buf::new();
     r.txt("ring3 st="); r.hex(st as u64, 2);
-    r.txt(" rx="); r.dec(rx as u64);
-    r.txt(" ln="); r.dec(ln as u64);
-    r.txt("   (st: 01Ready 02Run 03Blk 04Exit FFdone)");
+    r.txt(" rx="); r.dec(rx as u64); r.txt(" ln="); r.dec(ln as u64);
+    r.txt("  (01Rdy 02Run 03Blk 04Exit FFdone)");
     let r3_color = match st { 0x02 => C_OK, 0xFF | 0x04 => C_DIM, 0x03 => C_WARN, _ => C_INFO };
-    splash_dashboard_log_color(11, r.as_str(), r3_color);
+    splash_dashboard_log_color(12, r.as_str(), r3_color);
 
-    // Fila 12 — USB. EL AVISO: verde si el teclado ESCRIBE (kev>0); ROJO si
-    // enumeró pero no entrega teclas (kbd=OK, kev=0 = problema); ámbar sin kbd.
+    // Fila 13 — USB. EL AVISO: verde si escribe, ROJO si enumeró sin teclas.
     let mut r = Buf::new();
     r.txt("usb k="); r.txt(if kbd { "OK" } else { "--" });
     r.txt("(s"); r.dec(ks as u64); r.txt(")");
@@ -233,28 +247,7 @@ pub fn render_hud() {
     let usb_color = if kbd && kev > 0 { C_OK }
                     else if kbd && kev == 0 { C_FAULT }
                     else { C_WARN };
-    splash_dashboard_log_color(12, r.as_str(), usb_color);
-
-    // ── EL NARRADOR: HISTORIAL de eventos en las filas 4-8 (5 más recientes,
-    // el más nuevo abajo), cada uno con el color de su severidad. Aquí verás
-    // el evento del disco, del teclado, del kernel — la bitácora de CABINA.
-    const LOG_ROWS: usize = 5;
-    const LOG_TOP: usize = 4;
-    for slot in 0..LOG_ROWS {
-        let row = LOG_TOP + slot;
-        // slot 0 = más antiguo (arriba), slot 4 = más nuevo (abajo).
-        let n = LOG_ROWS - 1 - slot; // n posiciones antes del último
-        match event_back(n) {
-            Some(ev) => {
-                let mut r = Buf::new();
-                r.txt("["); r.txt(ev.severity.name());
-                r.txt("|"); r.txt(ev.layer.name()); r.txt("] ");
-                r.txt(ev.module_str()); r.txt(": "); r.txt(ev.msg_str());
-                splash_dashboard_log_color(row, r.as_str(), ev.severity.color());
-            }
-            None => splash_dashboard_log_color(row, "", C_DIM), // limpia si no hay
-        }
-    }
+    splash_dashboard_log_color(13, r.as_str(), usb_color);
 
     if saved_cr3 != kpml4 { crate::ring0::mm::vmm::switch_to(saved_cr3); }
 }

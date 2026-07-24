@@ -320,16 +320,11 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
             byte = crate::ring0::dev::usb::poll_ascii();
         }
         if byte.is_none() {
-            if let Some((raw, ascii)) = crate::ring0::dev::keyboard::poll_event() {
-                // Raw-scancode monitor: every keyboard byte is surfaced in
-                // the on-screen log ("kbd 0xXX"). Bytes appearing at all
-                // proves the legacy i8042 stream is alive post-EBS; the
-                // values reveal which scancode set the firmware delivers.
-                let mut m = *b"kbd 0x00";
-                const HEX: &[u8; 16] = b"0123456789ABCDEF";
-                m[6] = HEX[(raw >> 4) as usize];
-                m[7] = HEX[(raw & 0xF) as usize];
-                dash_log(core::str::from_utf8(&m).unwrap_or("kbd ??"));
+            // PS/2 i8042 (mudo post-EBS en esta placa: solo ruido 0xFE). Ya no
+            // se loguea cada byte al panel — CABINA cubre el estado del teclado
+            // en su bitácora. Se conserva el poll por si algún día el i8042
+            // reviviera (adaptador PS/2, otra placa).
+            if let Some((_raw, ascii)) = crate::ring0::dev::keyboard::poll_event() {
                 byte = ascii;
             }
         }
