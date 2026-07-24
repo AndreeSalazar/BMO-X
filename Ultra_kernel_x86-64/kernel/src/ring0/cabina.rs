@@ -119,6 +119,7 @@ pub fn render_hud() {
     let st = crate::ring0::scheduler::tid_state(2);
     let (rx, ln) = crate::ring0::uconsole::stats();
     let tid = crate::ring0::scheduler::current_tid();
+    let mib_free = s.memory.free_pages / 256; // 4096 B/página → /256 = MiB
 
     // ── CABINA NARRA: detecta transiciones y las registra como eventos (una
     // vez cada una, de-dup por flags). El observador omnisciente escribiendo
@@ -128,14 +129,28 @@ pub fn render_hud() {
     static mut EV_MOUSE: bool = false;
     static mut EV_TYPED: bool = false;
     static mut EV_STUCK: bool = false;
+    static mut EV_R3EXIT: bool = false;
+    static mut EV_MEMLOW: bool = false;
     unsafe {
-        if !EV_BOOT { EV_BOOT = true; info("cabina", "observador omnisciente en linea", 0); }
+        if !EV_BOOT {
+            EV_BOOT = true;
+            info("cabina", "observador omnisciente en linea", 0);
+            info("ring0", "kernel operativo, 3 syscalls congelados", 0);
+        }
         if kbd && !EV_KBD { EV_KBD = true; info("usb", "teclado enumero", ks as u64); }
         if mouse && !EV_MOUSE { EV_MOUSE = true; info("usb", "mouse enumero", ms as u64); }
-        if kev > 0 && !EV_TYPED { EV_TYPED = true; info("usb", "teclado ESCRIBE", kev as u64); }
+        if kev > 0 && !EV_TYPED { EV_TYPED = true; info("usb", "teclado ESCRIBE por fin", kev as u64); }
         // Falla narrada: teclado enumeró pero no entrega teclas tras un rato.
         if kbd && kev == 0 && s.cpu.timer_ticks > 0x2000 && !EV_STUCK {
             EV_STUCK = true; fault("usb", "teclado enumero pero sin teclas", kdci as u64);
+        }
+        // Ring 3: el hola-mundo corrió y salió (st=FF) — evento de otra capa.
+        if st == 0xFF && !EV_R3EXIT && rx > 0 {
+            EV_R3EXIT = true; info("ring3", "proceso hola-mundo termino ok", rx as u64);
+        }
+        // Memoria baja: aviso preventivo (Warning) — el guardián vigilando RAM.
+        if mib_free < 256 && !EV_MEMLOW {
+            EV_MEMLOW = true; warn("mem", "RAM libre por debajo de 256MiB", mib_free);
         }
     }
 
@@ -155,8 +170,6 @@ pub fn render_hud() {
         if LAST == sig && LAST_GEN == gen { return; }
         LAST = sig; LAST_GEN = gen;
     }
-
-    let mib_free = s.memory.free_pages / 256; // 4096 B/página → /256 = MiB
 
     // CABINA se pinta también desde el timer (que puede correr bajo la CR3 del
     // usuario, cuyo espacio no mapea el framebuffer): pintar bajo la CR3 del

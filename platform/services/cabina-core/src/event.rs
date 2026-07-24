@@ -143,6 +143,8 @@ impl Layer {
         let n = name;
         if n.starts_with("ring0") || n.starts_with("cpu") || n.starts_with("mem")
             || n.starts_with("kbc") || n.starts_with("dev") || n == "boot" || n == "acpi"
+            || n.starts_with("usb") || n.starts_with("xhci") || n.starts_with("hid")
+            || n.starts_with("pci") || n == "timer" || n == "sched" || n == "cabina"
         {
             Self::Ring0
         } else if n.starts_with("ring3") {
