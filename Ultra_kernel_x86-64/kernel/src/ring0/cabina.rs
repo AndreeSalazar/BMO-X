@@ -46,10 +46,12 @@ pub fn info(module: &str, msg: &str, value: u64)  { record(Severity::Info, modul
 pub fn warn(module: &str, msg: &str, value: u64)  { record(Severity::Warning, module, msg, value); }
 pub fn fault(module: &str, msg: &str, value: u64) { record(Severity::Fault, module, msg, value); }
 
-fn last_event() -> Option<Event> {
+/// Evento `n` posiciones antes del más reciente (0 = el último). Para mostrar
+/// el HISTORIAL, no solo la última línea.
+fn event_back(n: usize) -> Option<Event> {
     unsafe {
-        if EV_TOTAL == 0 { return None; }
-        let idx = (EV_WRITE + EVENT_RING - 1) % EVENT_RING;
+        if n as u64 >= EV_TOTAL || n >= EVENT_RING { return None; }
+        let idx = (EV_WRITE + EVENT_RING - 1 - n) % EVENT_RING;
         let arr = core::ptr::addr_of!(EVENTS) as *const Event;
         Some(core::ptr::read(arr.add(idx)))
     }
@@ -233,14 +235,25 @@ pub fn render_hud() {
                     else { C_WARN };
     splash_dashboard_log_color(12, r.as_str(), usb_color);
 
-    // Fila 13 — EL NARRADOR: último evento registrado, con el color de su
-    // severidad (cabina-core::Severity::color). "[FAULT|ring0] usb: ..."
-    if let Some(ev) = last_event() {
-        let mut r = Buf::new();
-        r.txt("["); r.txt(ev.severity.name());
-        r.txt("|"); r.txt(ev.layer.name()); r.txt("] ");
-        r.txt(ev.module_str()); r.txt(": "); r.txt(ev.msg_str());
-        splash_dashboard_log_color(13, r.as_str(), ev.severity.color());
+    // ── EL NARRADOR: HISTORIAL de eventos en las filas 4-8 (5 más recientes,
+    // el más nuevo abajo), cada uno con el color de su severidad. Aquí verás
+    // el evento del disco, del teclado, del kernel — la bitácora de CABINA.
+    const LOG_ROWS: usize = 5;
+    const LOG_TOP: usize = 4;
+    for slot in 0..LOG_ROWS {
+        let row = LOG_TOP + slot;
+        // slot 0 = más antiguo (arriba), slot 4 = más nuevo (abajo).
+        let n = LOG_ROWS - 1 - slot; // n posiciones antes del último
+        match event_back(n) {
+            Some(ev) => {
+                let mut r = Buf::new();
+                r.txt("["); r.txt(ev.severity.name());
+                r.txt("|"); r.txt(ev.layer.name()); r.txt("] ");
+                r.txt(ev.module_str()); r.txt(": "); r.txt(ev.msg_str());
+                splash_dashboard_log_color(row, r.as_str(), ev.severity.color());
+            }
+            None => splash_dashboard_log_color(row, "", C_DIM), // limpia si no hay
+        }
     }
 
     if saved_cr3 != kpml4 { crate::ring0::mm::vmm::switch_to(saved_cr3); }
