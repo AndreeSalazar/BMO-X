@@ -14,6 +14,11 @@ pub trait StorageHal {
     fn phys_to_virt(&self, phys: u64) -> *mut u8;
     /// Log a message for diagnostics.
     fn log(&self, msg: &str);
+    /// Log a message followed by a value in HEX. Los registros de un
+    /// controlador se leen en hexadecimal; obligar a cada driver a fabricar
+    /// la cadena a mano es cómo se acaba sin imprimir el número que hacía
+    /// falta.
+    fn log_hex(&self, msg: &str, value: u64);
 }
 
 /// Static storage for the HAL singleton (set by kernel at boot).

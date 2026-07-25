@@ -98,6 +98,10 @@ impl StorageHal for KernelStorageHal {
     fn log(&self, msg: &str) {
         dlog(msg);
     }
+    fn log_hex(&self, msg: &str, value: u64) {
+        dlog(msg);
+        dlog_u64(value);
+    }
 }
 
 static HAL: KernelStorageHal = KernelStorageHal;
@@ -162,26 +166,26 @@ pub fn init() {
         }
 
         let ctrl = match bmo_ahci::controller() { Some(c) => c, None => continue };
-        // CENSO: el estado CRUDO de cada puerto implementado. Sin este número
-        // "no hay disco" es una conclusión sin pruebas; con él se ve si el
-        // puerto está vacío (DET=0), conectado sin negociar (DET=1) o
-        // enlazado (DET=3).
+        // El estado crudo de cada puerto lo pinta el driver (`probe`). Aquí
+        // solo se cuenta y se elige.
+        //
+        // ★ Se itera por ÍNDICE, no por `p.port_number`. Las entradas vacías
+        // del array llevan port_number = 0, así que filtrar por su campo hacía
+        // que CADA hueco se colara haciéndose pasar por el puerto 0: catorce
+        // líneas idénticas del mismo puerto inexistente, y una espera de
+        // enlace completa concedida a cada fantasma (los 3-4 segundos de
+        // arranque). El índice del array ES el número de puerto; el campo solo
+        // significa algo en las entradas que `probe` llenó.
         let mut active = 0u64;
-        for p in ctrl.ports.iter() {
-            if ctrl.ports_implemented & (1 << p.port_number) == 0 { continue; }
-            dlog("[ahci] p");
-            dlog_u64(p.port_number as u64);
-            dlog(" ssts=");
-            dlog_u64(p.ssts as u64);
-            dlog(" sig=");
-            dlog_u64(p.signature as u64);
-            dlog("\n");
+        for i in 0..32usize {
+            if ctrl.ports_implemented & (1 << i) == 0 { continue; }
+            let p = &ctrl.ports[i];
             if p.state == bmo_ahci::PortState::Active {
                 active += 1;
                 // Firma 0x00000101 = disco duro SATA. Un ATAPI (0xEB140101) es
                 // una unidad óptica: no es donde vive BMO.
                 if chosen == 0xFF && p.signature == bmo_ahci::SIG_SATA_DISK {
-                    chosen = p.port_number;
+                    chosen = i as u8;
                 }
             }
         }

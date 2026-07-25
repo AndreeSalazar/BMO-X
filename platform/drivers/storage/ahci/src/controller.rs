@@ -204,6 +204,28 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     let cap = hba_read(mmio_base, HBA_CAP);
     let port_count = ((cap >> 20) & 0x1F) as u8 + 1;
     let pi = hba_read(mmio_base, HBA_PI);
+    // Los registros del HBA, dichos en voz alta. Si CAP y PI salen 0x0 o
+    // 0xFFFFFFFF, el problema no son los puertos: es que no estamos leyendo
+    // el HBA (BAR equivocada, MMIO sin mapear). Sin estos dos números,
+    // "ningún puerto tiene disco" es una conclusión sin pruebas.
+    hal.log_hex("[ahci] cap=", cap as u64);
+    hal.log_hex(" pi=", pi as u64);
+    hal.log_hex(" ghc=", hba_read(mmio_base, HBA_GHC) as u64);
+    hal.log("\n");
+
+    // Spin-up escalonado: si el HBA lo soporta (CAP.SSS), un puerto no
+    // establece enlace hasta que se le pide arrancar el disco. El firmware lo
+    // hizo para el disco de arranque; nosotros lo pedimos para todos, porque
+    // no sabemos cuál es el nuestro todavía.
+    let sss = cap & (1 << 27) != 0;
+    if sss {
+        for i in 0..32u8 {
+            if pi & (1 << i) == 0 { continue; }
+            let cmd = port_read(mmio_base, i, PORT_CMD);
+            // SUD (bit 1) = Spin-Up Device, POD (bit 2) = Power On Device.
+            port_write(mmio_base, i, PORT_CMD, cmd | (1 << 1) | (1 << 2));
+        }
+    }
 
     let mut ctrl = AhciController {
         mmio_base, port_count, ports_implemented: pi,
@@ -226,6 +248,13 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
             core::hint::spin_loop();
             ssts = port_read(mmio_base, i, PORT_SSTS);
         }
+        // Cada puerto implementado dice su estado CRUDO aquí, en el driver,
+        // que es quien lo tiene delante.
+        hal.log_hex("[ahci] p", i as u64);
+        hal.log_hex(" ssts=", ssts as u64);
+        hal.log_hex(" cmd=", port_read(mmio_base, i, PORT_CMD) as u64);
+        hal.log_hex(" sig=", port_read(mmio_base, i, PORT_SIG) as u64);
+        hal.log("\n");
         // DET=3 es "dispositivo presente y comunicación establecida": el único
         // estado en el que tiene sentido hablarle.
         let state = match ssts & SSTS_DET {
