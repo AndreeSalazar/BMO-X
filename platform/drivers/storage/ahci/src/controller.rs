@@ -110,6 +110,10 @@ pub struct AhciPort {
     /// 3=enlace establecido. Guardarlo permite PINTAR el número en vez de
     /// deducir por qué no aparece el disco.
     pub ssts: u32,
+    /// `PxSCTL` y `PxCMD` crudos, para poder VER si el COMRESET se aplico
+    /// y en que estado quedaron los motores del puerto.
+    pub sctl: u32,
+    pub cmd: u32,
     /// Command List (32 cabeceras × 32 B), física.
     pub command_list_phys: u64,
     /// FIS Receive Area, física.
@@ -216,11 +220,53 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     let mut ctrl = AhciController {
         mmio_base, port_count, ports_implemented: pi,
         ports: [AhciPort {
-            port_number: 0, state: PortState::Empty, signature: 0, ssts: 0,
+            port_number: 0, state: PortState::Empty, signature: 0, ssts: 0, sctl: 0, cmd: 0,
             command_list_phys: 0, fis_phys: 0, cmd_table_phys: 0,
         }; 32],
     };
 
+    // Primer intento: SUAVE. Se respeta lo que dejó el firmware y solo se
+    // renegocia el enlace de los puertos que estén caídos.
+    let mut active = census(&mut ctrl, pi, sss);
+
+    // Segundo intento: EL MARTILLO. Si NINGÚN puerto levantó enlace, la
+    // hipótesis cambia — no es que los discos no estén, es que el firmware
+    // dejó el controlador en un estado del que no sabemos sacarlo puerto a
+    // puerto. Ahí sí toca resetear el HBA entero y rehacer el trabajo, esta
+    // vez esperando de verdad a que los enlaces vuelvan.
+    //
+    // Suave primero y martillo después, nunca al revés: el reset destruye el
+    // trabajo que el firmware ya hizo, y si ese trabajo servía, mejor no
+    // tocarlo.
+    if active == 0 {
+        hal.log("[ahci] ningun enlace: reset completo del HBA y reintento\n");
+        hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_HR);
+        let mut spun = 0u32;
+        while hba_read(mmio_base, HBA_GHC) & GHC_HR != 0 && spun < PORT_TIMEOUT {
+            spun += 1;
+            core::hint::spin_loop();
+        }
+        // El reset apaga AE: sin él, los registros dejan de significar lo que
+        // creemos.
+        hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_AE);
+        hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) & !GHC_IE);
+        hal.delay_ms(100); // que el HBA respire antes de tocarle los puertos
+        active = census(&mut ctrl, pi, sss);
+        hal.log_hex("[ahci] tras reset, puertos con enlace=", active as u64);
+        hal.log("\n");
+    }
+
+    CONTROLLER = Some(ctrl);
+    hal.log("[ahci] HBA listo\n");
+    true
+}
+
+/// Levanta el enlace de cada puerto implementado y anota su estado. Devuelve
+/// cuántos quedaron con enlace vivo.
+unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
+    let hal = storage_hal::hal();
+    let mmio_base = ctrl.mmio_base;
+    let mut active = 0u32;
     for i in 0..32u8 {
         if pi & (1 << i) == 0 { continue; }
         let ssts = port_link_up(mmio_base, i, sss);
@@ -229,24 +275,24 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
         hal.log_hex("[ahci] p", i as u64);
         hal.log_hex(" ssts=", ssts as u64);
         hal.log_hex(" cmd=", port_read(mmio_base, i, PORT_CMD) as u64);
+        hal.log_hex(" sctl=", port_read(mmio_base, i, PORT_SCTL) as u64);
         hal.log_hex(" sig=", port_read(mmio_base, i, PORT_SIG) as u64);
         hal.log("\n");
         // DET=3 es "dispositivo presente y comunicación establecida": el único
         // estado en el que tiene sentido hablarle.
         let state = match ssts & SSTS_DET {
-            0x03 => PortState::Active,
+            0x03 => { active += 1; PortState::Active }
             0x01 => PortState::Present,
             _ => PortState::Empty,
         };
         ctrl.ports[i as usize] = AhciPort {
             port_number: i, state, signature: port_read(mmio_base, i, PORT_SIG), ssts,
+            sctl: port_read(mmio_base, i, PORT_SCTL),
+            cmd: port_read(mmio_base, i, PORT_CMD),
             command_list_phys: 0, fis_phys: 0, cmd_table_phys: 0,
         };
     }
-
-    CONTROLLER = Some(ctrl);
-    hal.log("[ahci] HBA listo\n");
-    true
+    active
 }
 
 /// Levanta el enlace SATA de un puerto y devuelve su `PxSSTS` final.

@@ -187,10 +187,25 @@ pub fn init() {
         // enlace completa concedida a cada fantasma (los 3-4 segundos de
         // arranque). El índice del array ES el número de puerto; el campo solo
         // significa algo en las entradas que `probe` llenó.
+        crate::ring0::cabina::info("ahci", "puertos implementados (PxSSTS abajo)", ctrl.ports_implemented as u64);
         let mut active = 0u64;
         for i in 0..32usize {
             if ctrl.ports_implemented & (1 << i) == 0 { continue; }
             let p = &ctrl.ports[i];
+            // El estado de cada puerto va a la BITÁCORA, no solo al log
+            // rodante: un número que se lleva el desplazamiento antes de que
+            // lo fotografíes es un número que no existe. El valor es el PxSSTS
+            // crudo — su dígito bajo (DET) es 3 si el enlace está vivo.
+            let msg = match p.ssts & 0xF {
+                0x3 => "puerto con enlace vivo (DET=3)",
+                0x1 => "puerto con dispositivo pero SIN enlace (DET=1)",
+                _ => "puerto vacio (DET=0)",
+            };
+            if p.ssts & 0xF == 0x3 {
+                crate::ring0::cabina::info("ahci", msg, p.ssts as u64);
+            } else {
+                crate::ring0::cabina::warn("ahci", msg, p.ssts as u64);
+            }
             if p.state == bmo_ahci::PortState::Active {
                 active += 1;
                 // Firma 0x00000101 = disco duro SATA. Un ATAPI (0xEB140101) es
