@@ -120,6 +120,9 @@ pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
         // El log tiene que decir de quién es cada línea ANTES de que el
         // proceso escriba la primera.
         crate::ring0::uconsole::set_tag(pid, tag);
+        // La entrada del registro se abre ANTES de intentar admitirlo: si el
+        // BEX es rechazado, tiene que aparecer igual en la tabla, marcado.
+        record_open(tag, name, pid, bytes.len() as u32);
         match admit_payload(bytes, pid) {
             Some(tid) => {
                 crate::ring0::cabina::info(name, "programa Ring 3 admitido", tid as u64);
@@ -155,6 +158,7 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
     // section's alignment. entry_offset is relative to the Code section.
     let mut va_cursor = vmm::USER_IMAGE_BASE;
     let mut entry_va: u64 = 0;
+    let mut code_bytes: u32 = 0;
     for i in 0..plan.section_count {
         let s = plan.sections[i];
         let align = s.alignment as u64;
@@ -184,6 +188,7 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
         if s.kind == bex::SECTION_CODE {
             entry_va = va_start + plan.entry_offset;
         }
+        code_bytes = code_bytes.saturating_add(s.mem_size as u32);
         va_cursor = va_start + pages * mm::PAGE;
     }
     if entry_va == 0 {
@@ -232,5 +237,81 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
     crate::ring0::dev::console::serial_write_u64(entry_va, 16);
     log("\n");
     set_status("admitted");
+    // Anotar lo que el BEX declaraba: el registro de programas se llena aquí,
+    // con los datos del plan de carga que acabamos de honrar.
+    unsafe {
+        if let Some(r) = record_mut(pid) {
+            r.tid = tid;
+            r.sections = plan.section_count as u8;
+            r.entry_va = entry_va;
+            r.code_bytes = code_bytes;
+            r.admitted = true;
+        }
+    }
     Some(tid)
+}
+
+// ── Registro de programas ───────────────────────────────────────────────────
+//
+// Qué se admitió, de qué tamaño, dónde entra y con qué pid. El log cuenta la
+// historia según pasa; esto es la FOTO: una tabla que se puede mirar después,
+// cuando las líneas del log ya rodaron y desaparecieron.
+
+/// Un programa BEX que el kernel intentó admitir.
+#[derive(Clone, Copy)]
+pub struct ProgramRecord {
+    /// Etiqueta corta con la que sale en el log ("asm", "C", "COBOL").
+    pub tag: &'static str,
+    /// Nombre legible.
+    pub name: &'static str,
+    pub pid: u32,
+    pub tid: u32,
+    /// Tamaño del archivo .bex embebido.
+    pub image_bytes: u32,
+    /// Bytes de código+datos realmente mapeados en el espacio de usuario.
+    pub code_bytes: u32,
+    pub sections: u8,
+    pub entry_va: u64,
+    /// `false` = el BEX no pasó la admisión (formato, memoria, slots).
+    pub admitted: bool,
+}
+
+const MAX_PROGRAMS: usize = 8;
+const EMPTY_RECORD: ProgramRecord = ProgramRecord {
+    tag: "", name: "", pid: 0, tid: 0,
+    image_bytes: 0, code_bytes: 0, sections: 0, entry_va: 0, admitted: false,
+};
+static mut PROGRAMS: [ProgramRecord; MAX_PROGRAMS] = [EMPTY_RECORD; MAX_PROGRAMS];
+static mut PROGRAM_COUNT: usize = 0;
+
+/// Abre una entrada del registro ANTES de intentar la admisión, para que un
+/// programa rechazado también aparezca — un hueco silencioso no explica nada.
+fn record_open(tag: &'static str, name: &'static str, pid: u32, image_bytes: u32) {
+    unsafe {
+        if PROGRAM_COUNT >= MAX_PROGRAMS { return; }
+        PROGRAMS[PROGRAM_COUNT] = ProgramRecord {
+            tag, name, pid, tid: 0, image_bytes,
+            code_bytes: 0, sections: 0, entry_va: 0, admitted: false,
+        };
+        PROGRAM_COUNT += 1;
+    }
+}
+
+/// La entrada abierta para `pid`, si existe.
+unsafe fn record_mut(pid: u32) -> Option<&'static mut ProgramRecord> {
+    let n = PROGRAM_COUNT;
+    let arr = core::ptr::addr_of_mut!(PROGRAMS) as *mut ProgramRecord;
+    for i in 0..n {
+        let r = &mut *arr.add(i);
+        if r.pid == pid { return Some(r); }
+    }
+    None
+}
+
+/// Todos los programas que el kernel ha intentado ejecutar.
+pub fn programs() -> &'static [ProgramRecord] {
+    unsafe {
+        let arr = core::ptr::addr_of!(PROGRAMS) as *const ProgramRecord;
+        core::slice::from_raw_parts(arr, PROGRAM_COUNT)
+    }
 }

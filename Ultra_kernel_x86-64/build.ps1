@@ -184,40 +184,26 @@ Write-Host '  --------------------------  -----------  ------------' -Foreground
 Write-Host ''
 
 # ── Stage to ESP layout ───────────────────────────────────────────
-# ESP layout:
-#   $stage\BOOTX64.EFI              (UEFI spec, must be here)
-#   $stage\ring0\faggin\s*.bin      (12 pre-kernel stages)
-#   $stage\ring0\kernel.bin         (Ring 0 base)
-#   $stage\ring3\                   (Ring 3 userland — empty for now)
+# ESP layout — UNA SOLA COSA:
+#   $stage\BOOTX64.EFI        el shim unificado; lleva s1_cpu, s2_mem y el
+#                             kernel EMBEBIDOS (include_bytes!), asi que es
+#                             todo el sistema en un archivo
+#   $stage\BMO-MANIFEST.TXT   revision + hash de lo desplegado
+#
+# Antes tambien se copiaban ring0\kernel.bin y ring0\faggin\s*.bin: los
+# MISMOS binarios que el shim ya lleva dentro, ~575 KB de duplicado exacto.
+# Eran el camino de respaldo por sistema de ficheros, que dejo de existir el
+# dia del "EFI unificado" (esta placa no tiene driver FAT UEFI que conectar,
+# por eso se embebio todo). Nadie los leia. Se fueron.
 Step ('Staging to ' + $stage)
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'ring0\faggin') -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'ring0') -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'ring3\services') -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'ring3\drivers') -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'ring3\apps') -Force | Out-Null
-# Marker files so empty dirs survive git/flash
-'# Reserved for future BEF modules. See Ultra_userspace/ for source.' `
-    | Set-Content -LiteralPath (Join-Path $stage 'ring3\README.txt')
 
 Copy-Item $uefi_chain (Join-Path $stage 'BOOTX64.EFI')
 
 $llvmObjcopy = Get-ChildItem -Path "$env:USERPROFILE\.rustup" -Filter 'llvm-objcopy.exe' -Recurse | Select-Object -First 1 -ExpandProperty FullName
 if (-not $llvmObjcopy) { $llvmObjcopy = Get-ChildItem -Path "$env:USERPROFILE\.rustup\toolchains" -Filter 'llvm-objcopy.exe' -Recurse | Select-Object -First 1 -ExpandProperty FullName }
 if ($llvmObjcopy) {
-    foreach ($s in $stages) {
-        $bn = $s -replace '_', '-'
-        $td = Join-Path $target (Join-Path 'faggin' $s)
-        $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' ($bn + '.exe')))
-        if (-not (Test-Path $bin)) { $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' $bn)) }
-        $out = Join-Path $stage (Join-Path 'ring0\faggin' ($s + '.bin'))
-        & $llvmObjcopy -O binary $bin $out
-        if ($LASTEXITCODE -ne 0) { Fail ('objcopy failed for ' + $s) }
-    }
-    & $llvmObjcopy -O binary $kernel (Join-Path $stage 'ring0\kernel.bin')
-    if ($LASTEXITCODE -ne 0) { Fail 'objcopy failed for kernel' }
-
     # Flat binaries have no ELF entry metadata: the entry symbol itself must
     # be the first byte at the fixed load address.
     $llvmNm = Join-Path (Split-Path $llvmObjcopy -Parent) 'llvm-nm.exe'
@@ -251,7 +237,8 @@ if ($llvmObjcopy) {
     Fail 'llvm-objcopy not found; the boot chain requires flat binaries and cannot load ELF files'
 }
 
-$deployFiles = @('BOOTX64.EFI', 'ring0\faggin\s1_cpu.bin', 'ring0\faggin\s2_mem.bin', 'ring0\kernel.bin')
+# Un solo archivo desplegado, un solo hash que verificar.
+$deployFiles = @('BOOTX64.EFI')
 $gitRevision = (& git -C $root rev-parse --short=12 HEAD 2>$null)
 if (-not $gitRevision) { $gitRevision = 'unknown' }
 $manifestLines = @(
@@ -322,10 +309,18 @@ if ($Flash -or $Verify) {
             }
         }
 
-        # Ring 0 is an owned subtree. Ring 3 and unrelated EFI files are preserved.
-        $ring0Dest = Join-Path $efiDest 'ring0'
-        if (Test-Path $ring0Dest) { Remove-Item -LiteralPath $ring0Dest -Recurse -Force }
-        Move-Item -LiteralPath (Join-Path $nextDest 'ring0') -Destination $ring0Dest
+        # LIMPIEZA del destino: los subarboles ring0\ y ring3\ que dejaban las
+        # versiones anteriores ya no se generan (eran el duplicado de lo que
+        # BOOTX64.EFI lleva embebido). Si siguen en el disco, se borran: un
+        # deploy tiene que dejar el destino como el build, no acumular restos
+        # de builds pasados que nadie lee pero que confunden al mirarlos.
+        foreach ($stale in @('ring0', 'ring3')) {
+            $stalePath = Join-Path $efiDest $stale
+            if (Test-Path $stalePath) {
+                Write-Host ('    limpiando resto de deploys viejos: ' + $stale + '\') -ForegroundColor DarkYellow
+                Remove-Item -LiteralPath $stalePath -Recurse -Force
+            }
+        }
         Copy-Item -LiteralPath (Join-Path $nextDest 'BOOTX64.EFI') -Destination (Join-Path $efiDest 'BOOTX64.EFI') -Force
         Copy-Item -LiteralPath (Join-Path $nextDest 'BMO-MANIFEST.TXT') -Destination (Join-Path $efiDest 'BMO-MANIFEST.TXT') -Force
         Remove-Item -LiteralPath $nextDest -Recurse -Force

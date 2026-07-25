@@ -73,6 +73,18 @@ pub fn stats() -> (u64, u64) {
     unsafe { (RX_WORDS, FLUSHED) }
 }
 
+/// Líneas que ha escrito CADA proceso. El contador global dice que Ring 3
+/// habló; este dice QUIÉN habló y cuánto — que es lo que hace falta para
+/// mirar una tabla de programas y saber cuál hizo su trabajo.
+static mut LINES_BY_PID: [u32; MAX_PROCS] = [0; MAX_PROCS];
+
+/// Líneas escritas por `pid` desde el arranque.
+pub fn lines_of(pid: u32) -> u32 {
+    let slot = pid as usize;
+    if slot >= MAX_PROCS { return 0; }
+    unsafe { LINES_BY_PID[slot] }
+}
+
 /// Emit up to 8 bytes packed little-endian in `packed`. A zero byte ends the
 /// word early (lets a short final chunk be zero-padded by the producer).
 pub fn write_packed(packed: u64) {
@@ -125,6 +137,7 @@ fn push(b: u8) {
 fn flush() {
     unsafe { FLUSHED += 1 };
     let slot = slot();
+    unsafe { LINES_BY_PID[slot] = LINES_BY_PID[slot].wrapping_add(1); }
     let len = unsafe { LEN[slot] };
     // La línea se marca con el nombre del proceso: en el log compartido
     // hay que poder ver de quién es cada renglón.

@@ -458,9 +458,71 @@ fn shell_splash() {
     s_log("[splash] done");
 }
 
+/// `bex` — la tabla de programas que este kernel ha ejecutado.
+///
+/// El log cuenta la historia según pasa y se la lleva el desplazamiento; esto
+/// es la FOTO, consultable en cualquier momento: qué se admitió, de qué
+/// tamaño, dónde entra, con qué pid, cómo acabó y cuánto llegó a escribir.
 fn shell_bex() {
-    s_log("[bex] BEX v1 / BEF1 x86-64 admission is enabled");
-    s_log("[bex] next: storage input, Ring 3 pages, then iretq entry");
+    let progs = crate::ring0::proc::programs();
+    if progs.is_empty() {
+        s_log("[bex] ningun programa admitido todavia");
+        return;
+    }
+    s_log("== programas BEX (BEF1 x86-64) ==");
+    s_log(" tag     imagen  secc  entry       pid tid  estado     lineas");
+    // Formateo con columnas de ancho fijo: quietas se leen de un vistazo.
+    fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
+        for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
+    }
+    fn pad(b: &mut [u8; 80], o: &mut usize, t: &str, width: usize) {
+        let n = t.len().min(width);
+        txt(b, o, &t[..n]);
+        for _ in n..width { if *o < b.len() { b[*o] = b' '; *o += 1; } }
+    }
+    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u64, width: usize) {
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        if v == 0 { tmp[0] = b'0'; i = 1; }
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        for _ in i..width { if *o < b.len() { b[*o] = b' '; *o += 1; } }
+        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
+    }
+    fn hex(b: &mut [u8; 80], o: &mut usize, v: u64, digits: usize) {
+        const H: &[u8; 16] = b"0123456789ABCDEF";
+        for i in (0..digits).rev() {
+            if *o < b.len() { b[*o] = H[((v >> (i * 4)) & 0xF) as usize]; *o += 1; }
+        }
+    }
+
+    for p in progs {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, " ");
+        pad(&mut b, &mut o, p.tag, 7);
+        dec(&mut b, &mut o, p.image_bytes as u64, 6);
+        txt(&mut b, &mut o, "B ");
+        dec(&mut b, &mut o, p.sections as u64, 4);
+        txt(&mut b, &mut o, "  0x");
+        hex(&mut b, &mut o, p.entry_va, 8);
+        dec(&mut b, &mut o, p.pid as u64, 4);
+        dec(&mut b, &mut o, p.tid as u64, 4);
+        txt(&mut b, &mut o, "  ");
+        // El estado sale del scheduler AHORA, no de lo que anotamos al
+        // admitirlo: la tabla dice la verdad del momento en que se mira.
+        let estado = if !p.admitted { "RECHAZADO" } else {
+            match crate::ring0::scheduler::tid_state(p.tid) {
+                0x01 => "listo    ",
+                0x02 => "corriendo",
+                0x03 => "bloqueado",
+                0x04 => "saliendo ",
+                _    => "terminado",
+            }
+        };
+        txt(&mut b, &mut o, estado);
+        dec(&mut b, &mut o, crate::ring0::uconsole::lines_of(p.pid) as u64, 7);
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
 }
 
 /// F1 demo task: runs preempted by the timer, parks on a WAIT deadline,
