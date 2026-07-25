@@ -261,18 +261,30 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     true
 }
 
-/// Levanta el enlace de cada puerto implementado y anota su estado. Devuelve
-/// cuántos quedaron con enlace vivo.
+/// Levanta el enlace de cada puerto y anota su estado. Devuelve cuántos
+/// quedaron con enlace vivo.
+///
+/// ★ NO SE CONFÍA EN `PI`. El registro de puertos implementados lo escribe el
+/// firmware, y el firmware se equivoca: hay un caso conocido en Linux (Acer
+/// Switch Alpha 12) donde la BIOS reporta un mapa que hace al driver SALTARSE
+/// justo el puerto donde está el disco, y el arreglo del kernel es ignorar el
+/// registro y forzar el valor bueno a mano. Aquí se recorren TODOS los puertos
+/// que `CAP.NP` dice que existen y se anota si `PI` los declaraba o no;
+/// escribir a un puerto inexistente es inofensivo (el registro no cambia, como
+/// se vio con los puertos 4 y 5), y saltarse el puerto del disco no lo es.
 unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
     let hal = storage_hal::hal();
     let mmio_base = ctrl.mmio_base;
+    let np = ctrl.port_count.min(32);
     let mut active = 0u32;
-    for i in 0..32u8 {
-        if pi & (1 << i) == 0 { continue; }
+    for i in 0..np {
+        let declared = pi & (1 << i) != 0;
         let ssts = port_link_up(mmio_base, i, sss);
-        // Cada puerto implementado dice su estado CRUDO aquí, en el driver,
-        // que es quien lo tiene delante.
-        hal.log_hex("[ahci] p", i as u64);
+        // Cada puerto dice su estado CRUDO aquí, en el driver, que es quien lo
+        // tiene delante. El `!` marca los que `PI` NO declaraba: si uno de
+        // esos trae disco, el firmware estaba mintiendo.
+        hal.log(if declared { "[ahci] p" } else { "[ahci] !p" });
+        hal.log_hex("", i as u64);
         hal.log_hex(" ssts=", ssts as u64);
         hal.log_hex(" cmd=", port_read(mmio_base, i, PORT_CMD) as u64);
         hal.log_hex(" sctl=", port_read(mmio_base, i, PORT_SCTL) as u64);

@@ -195,11 +195,16 @@ pub fn init() {
         // enlace completa concedida a cada fantasma (los 3-4 segundos de
         // arranque). El índice del array ES el número de puerto; el campo solo
         // significa algo en las entradas que `probe` llenó.
-        crate::ring0::cabina::info("ahci", "puertos implementados (PxSSTS abajo)", ctrl.ports_implemented as u64);
+        crate::ring0::cabina::info("ahci", "puertos implementados (PI) segun el firmware", ctrl.ports_implemented as u64);
         let mut active = 0u64;
-        for i in 0..32usize {
-            if ctrl.ports_implemented & (1 << i) == 0 { continue; }
+        // TODOS los puertos que CAP declara, no solo los que PI reconoce: el
+        // firmware puede estar ocultando justo el que lleva el disco.
+        for i in 0..(ctrl.port_count as usize).min(32) {
             let p = &ctrl.ports[i];
+            // Un puerto que ni siquiera acepta escrituras (cmd sigue en 0 tras
+            // pedirle spin-up) no existe físicamente: no merece una línea.
+            let declared = ctrl.ports_implemented & (1 << i) != 0;
+            if !declared && p.cmd == 0 && p.ssts == 0 { continue; }
             // El estado de cada puerto va a la BITÁCORA, no solo al log
             // rodante: un número que se lleva el desplazamiento antes de que
             // lo fotografíes es un número que no existe. El valor es el PxSSTS
