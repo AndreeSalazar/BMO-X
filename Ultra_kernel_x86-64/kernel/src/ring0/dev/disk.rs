@@ -276,12 +276,15 @@ fn identify() {
     }
     let src = mm::phys_to_virt(dma) as *const u8;
     // Las cadenas de IDENTIFY vienen en palabras de 16 bits con los dos bytes
-    // AL REVÉS (convención ATA de toda la vida). Modelo: palabras 27..46.
+    // AL REVÉS (convención ATA de toda la vida): el carácter que va PRIMERO
+    // está en el byte ALTO de la palabra. Leerlas en orden de memoria da
+    // "IKGNTSMOS" donde pone "KINGSTON" — cada par cambiado. Se emite primero
+    // el byte alto (offset impar en little-endian) y después el bajo.
     let mut n = 0usize;
     unsafe {
         for w in 27..47usize {
-            let hi = src.add(w * 2).read_volatile();
-            let lo = src.add(w * 2 + 1).read_volatile();
+            let hi = src.add(w * 2 + 1).read_volatile();
+            let lo = src.add(w * 2).read_volatile();
             for c in [hi, lo] {
                 if n < MODEL.len() && c >= 0x20 && c < 0x7F { MODEL[n] = c; n += 1; }
             }
