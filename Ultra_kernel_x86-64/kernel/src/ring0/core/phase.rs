@@ -327,12 +327,90 @@ fn shell_help() {
     // Compacto por categorías: cabe entero en el panel de 14 filas sin
     // barrer el resto del log, y se lee de un vistazo.
     s_log("== BMO-X shell ==");
-    s_log(" sistema : info  mem  tasks  layout  hist");
+    s_log(" sistema : info  mem  tasks  layout  hist  disk");
     s_log(" edicion : flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L");
     s_log(" video   : fb  splash  cls");
     s_log(" ring3   : bex  ktest");
     s_log(" poder   : reboot  halt  panic");
     s_log(" ayuda   : help");
+}
+
+/// `disk` — qué disco tiene BMO delante y qué hay en él.
+///
+/// La tabla de particiones es cómo el kernel RECONOCE su disco: no se fía del
+/// orden en que el PCI enumere ni de que el firmware repita el mismo orden dos
+/// veces. El disco propio es el que lleva estas particiones y no otras.
+fn shell_disk() {
+    use crate::ring0::dev::disk;
+    if !disk::is_ready() {
+        s_log("[disk] sin disco SATA listo (mira la bitacora de CABINA)");
+        return;
+    }
+    fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
+        for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
+    }
+    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u64, width: usize) {
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        if v == 0 { tmp[0] = b'0'; i = 1; }
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        for _ in i..width { if *o < b.len() { b[*o] = b' '; *o += 1; } }
+        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
+    }
+
+    // Quién es el disco, según él mismo. Con tres discos en la máquina y el
+    // sistema del dueño en uno de ellos, esta línea es la que autoriza (o no)
+    // a escribir algún día.
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[disk] ");
+        txt(&mut b, &mut o, disk::model());
+        txt(&mut b, &mut o, "  ");
+        dec(&mut b, &mut o, disk::total_sectors() >> 21, 1);
+        txt(&mut b, &mut o, " GiB");
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[disk] AHCI mmio=0x");
+        {
+            const H: &[u8; 16] = b"0123456789ABCDEF";
+            for i in (0..8).rev() {
+                if o < b.len() { b[o] = H[((disk::mmio() >> (i * 4)) & 0xF) as usize]; o += 1; }
+            }
+        }
+        txt(&mut b, &mut o, " puerto=");
+        dec(&mut b, &mut o, disk::port() as u64, 1);
+        txt(&mut b, &mut o, "  sectores=");
+        dec(&mut b, &mut o, disk::last_lba(), 1);
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+
+    let parts = disk::partitions();
+    if parts.is_empty() {
+        s_log("[disk] sin tabla de particiones legible");
+        return;
+    }
+    s_log(" #   primer LBA      GiB  tipo      nombre");
+    for p in parts {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, " ");
+        dec(&mut b, &mut o, p.index as u64, 2);
+        dec(&mut b, &mut o, p.first_lba, 12);
+        // Sectores de 512 B → GiB: >>21 es dividir entre 2 Mi sectores.
+        dec(&mut b, &mut o, p.sectors() >> 21, 9);
+        txt(&mut b, &mut o, "  ");
+        let tipo = if p.is_esp() { "ESP/boot " }
+                   else if p.is_basic_data() { "datos    " }
+                   else { "otro     " };
+        txt(&mut b, &mut o, tipo);
+        txt(&mut b, &mut o, p.name_str());
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    s_log("[disk] solo lectura: escribir espera a identificar el disco");
 }
 
 /// `hist` — la lista de comandos ejecutados, numerada. Lo mismo que recorren
@@ -620,6 +698,8 @@ fn run_shell(ctx: &BootContext) -> ! {
 
         if cmd == b"help" {
             shell_help();
+        } else if cmd == b"disk" {
+            shell_disk();
         } else if cmd == b"hist" || cmd == b"history" {
             shell_hist();
         } else if cmd == b"layout" {
@@ -822,6 +902,10 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::cabina::boot_probe();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::dev::usb::init(ctx);
+    // Y el disco: el HBA SATA (no el NVMe — ahi vive el sistema del dueño) y
+    // su tabla de particiones. Solo lectura; ver dev/disk.rs.
+    crate::ring0::dev::disk::init();
+    crate::ring0::dev::disk::scan_partitions();
     dash_log("== RING 0 : hardware al mando ==");
 
     // ── Acto II: RING 3 — el userspace nace ─────────────────────────────

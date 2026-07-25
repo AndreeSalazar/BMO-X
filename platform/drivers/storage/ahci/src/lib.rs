@@ -10,4 +10,4 @@ pub mod storage_hal;
 pub mod controller;
 
 pub use storage_hal::StorageHal;
-pub use controller::{AhciController, PortState, AhciPort, read_sectors, write_sectors, probe, init_port_dma, controller};
+pub use controller::{AhciController, PortState, AhciPort, DiskError, read_sectors_phys, write_sectors_phys, identify_phys, probe, init_port_dma, controller, SIG_SATA_DISK, SECTOR};

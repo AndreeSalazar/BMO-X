@@ -77,6 +77,75 @@ pub struct StorageLoc {
     pub kind: StorageKind,
 }
 
+/// Escanea el PCI buscando un controlador de ALMACENAMIENTO (clase 0x01) de un
+/// TIPO CONCRETO: subclase 0x06=SATA(AHCI), 0x08=NVMe, 0x01=IDE, 0x04=RAID.
+///
+/// ★ POR QUÉ POR TIPO Y NO "EL PRIMERO": en esta máquina el primer controlador
+/// del barrido es el NVMe, y en el NVMe vive WINDOWS. El disco de BMO (A: con
+/// el arranque, y BMO-DATA) cuelga de SATA. Pedir "el primer disco que
+/// encuentres" y escribir en él habría sido escribir en el sistema del dueño.
+/// Un driver de almacenamiento no adivina a quién le habla: se le dice.
+///
+/// `skip` salta los primeros N hallazgos de ese tipo (placas con dos HBA).
+pub fn find_storage_of(kind: StorageKind, skip: usize) -> Option<StorageLoc> {
+    let mut seen = 0usize;
+    let mut index = 0usize;
+    while let Some(loc) = storage_at(index) {
+        index += 1;
+        if loc.kind != kind { continue; }
+        if seen < skip { seen += 1; continue; }
+        enable_mem_bus_master(loc.bus, loc.dev, loc.func);
+        return Some(loc);
+    }
+    None
+}
+
+/// Habilita Memory Space + Bus Master (DMA) en el dispositivo. Sin BME el
+/// controlador no puede leer sus estructuras en RAM y el driver ve silencio.
+fn enable_mem_bus_master(bus: u8, dev: u8, func: u8) {
+    let cmd = cfg_read32(bus, dev, func, 0x04);
+    cfg_write32(bus, dev, func, 0x04, cmd | 0x0006);
+}
+
+/// El controlador de almacenamiento número `index` del barrido, SIN tocar su
+/// configuración. Para hacer censo (mirar) sin habilitar nada (actuar).
+pub fn storage_at(index: usize) -> Option<StorageLoc> {
+    let mut seen = 0usize;
+    for bus in 0u16..=255 {
+        let bus = bus as u8;
+        for dev in 0u8..32 {
+            let vd0 = cfg_read32(bus, dev, 0, 0x00);
+            if vd0 == 0xFFFF_FFFF { continue; }
+            let header0 = (cfg_read32(bus, dev, 0, 0x0C) >> 16) & 0xFF;
+            let max_func = if header0 & 0x80 != 0 { 8 } else { 1 };
+            for func in 0u8..max_func {
+                let vd = cfg_read32(bus, dev, func, 0x00);
+                if vd == 0xFFFF_FFFF { continue; }
+                let class = cfg_read32(bus, dev, func, 0x08);
+                if (class >> 24) as u8 != 0x01 { continue; } // no es almacenamiento
+                let kind = match (class >> 16) as u8 {
+                    0x06 => StorageKind::Ahci,
+                    0x08 => StorageKind::Nvme,
+                    0x01 => StorageKind::Ide,
+                    0x04 => StorageKind::Raid,
+                    _ => StorageKind::Other,
+                };
+                if seen != index { seen += 1; continue; }
+                // ABAR: AHCI usa BAR5 (0x24); el resto BAR0 (0x10).
+                let bar_off: u8 = if kind == StorageKind::Ahci { 0x24 } else { 0x10 };
+                let bar = cfg_read32(bus, dev, func, bar_off);
+                let mut mmio = (bar & 0xFFFF_FFF0) as u64;
+                if (bar >> 1) & 0x3 == 0x2 {
+                    let barhi = cfg_read32(bus, dev, func, bar_off + 4);
+                    mmio |= (barhi as u64) << 32;
+                }
+                return Some(StorageLoc { bus, dev, func, mmio, kind });
+            }
+        }
+    }
+    None
+}
+
 /// Escanea el PCI buscando un controlador de ALMACENAMIENTO (clase 0x01):
 /// subclase 0x06=SATA(AHCI), 0x08=NVMe, 0x01=IDE, 0x04=RAID. Habilita MEM+BME
 /// y devuelve el primero. Primer paso para que el kernel aprenda a leer/escribir

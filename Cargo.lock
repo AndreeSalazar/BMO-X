@@ -24,9 +24,6 @@ dependencies = [
 [[package]]
 name = "bmo-ahci"
 version = "0.1.0"
-dependencies = [
- "bmo-abi",
-]
 
 [[package]]
 name = "bmo-app-launcher"
@@ -131,6 +128,7 @@ version = "0.1.0"
 name = "bmo-kernel"
 version = "2.0.0"
 dependencies = [
+ "bmo-ahci",
  "bmo-channel",
  "bmo-input",
  "bmo-uhid",

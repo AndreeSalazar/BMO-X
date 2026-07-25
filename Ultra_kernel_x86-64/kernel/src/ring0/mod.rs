@@ -13,6 +13,7 @@ pub mod channel;
 pub mod dev {
     pub mod console;
     pub mod framebuffer;
+    pub mod disk;
     pub mod keyboard;
     pub mod pci;
     pub mod usb;

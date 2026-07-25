@@ -12,6 +12,9 @@ bmo-channel = { path = "../../platform/shared/bmo-channel" }
 bmo-xhci = { path = "../../platform/drivers/usb/xhci" }
 bmo-input = { path = "../../platform/drivers/usb/input" }
 bmo-uhid = { path = "../../platform/drivers/usb/uhid" }
+# Disco: AHCI/SATA, que es donde vive el disco de BMO (el NVMe de esta
+# maquina es el de Windows).
+bmo-ahci = { path = "../../platform/drivers/storage/ahci" }
 # CABINA: telemetría omnisciente entre Ring 0 y Ring 3 (el cockpit del sistema).
 cabina-core = { path = "../../platform/services/cabina-core" }
 
