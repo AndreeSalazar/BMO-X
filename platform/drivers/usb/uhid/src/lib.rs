@@ -236,10 +236,17 @@ impl InputHal for UsbHidHal {
                         // SET_CONFIGURATION
                         bmo_xhci::control_transfer(slot, 0x00, 0x09, cfg_val as u16, 0, &mut [], false);
 
-                        // Configure Endpoint in xHCI
+                        // Configure Endpoint in xHCI. `interval` es el
+                        // bInterval CRUDO del descriptor; la conversión al
+                        // exponente que espera el Endpoint Context la hace
+                        // bmo_xhci::encode_interval — el frontend no debe
+                        // adivinar codificaciones del controlador.
+                        h.log_u64(" bInterval=", interval as u64);
                         if !bmo_xhci::configure_endpoint(slot, dci, 7, mps, interval) {
                             h.log("[uhid] cfg_ep FAIL\n"); continue;
                         }
+                        // Lo que dice el xHC, no lo que creemos: 1 = Running.
+                        h.log_u64(" ep_state=", bmo_xhci::ep_state(slot, dci) as u64);
 
                         // HID SET_PROTOCOL(boot)
                         bmo_xhci::control_transfer(slot, 0x21, 0x0B, 0, *iface_num as u16, &mut [], false);

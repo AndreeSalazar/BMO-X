@@ -210,6 +210,13 @@ fn schedule_locked(s: &mut Scheduler) {
             SWITCH_SNAP[1] = ((next_rsp + 512) as *const u64).read_volatile();
             SWITCH_SNAP[2] = mm::vmm::read_cr3();
             SWITCH_SNAP[3] = SWITCH_SNAP[3].wrapping_add(1);
+            // El PRIMER cruce a CPL3 de la vida del sistema. Momento histórico
+            // y, sobre todo, el punto exacto donde antes moríamos: si CABINA lo
+            // graba, el iretq a usuario ocurrió de verdad. Una sola vez — esto
+            // corre dentro del IRQ del timer, no puede ser charlatán.
+            if SWITCH_SNAP[3] == 1 {
+                crate::ring0::cabina::info("sched", "primer switch a CPL3 (userspace corre)", next_task.tid as u64);
+            }
         }
     }
     s.reap();
@@ -397,6 +404,16 @@ pub fn yield_current() {
 pub fn exit_current() {
     let _g = SCHED_LOCK.lock();
     let s = sched();
+    let tid = s.tasks[s.current].tid;
+    let user = s.tasks[s.current].is_user;
+    // Salida VOLUNTARIA (INVOKE EXIT). La distinción con la muerte por fault
+    // (faults.rs) importa en la bitácora: una terminó su trabajo, la otra la
+    // mataron. Antes ambas se veían igual: un contador que bajaba.
+    crate::ring0::cabina::info(
+        if user { "ring3" } else { "sched" },
+        "proceso termino por su cuenta (EXIT)",
+        tid as u64,
+    );
     mark_exit(s);
     schedule_locked(s);
 }

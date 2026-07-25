@@ -124,6 +124,8 @@ static mut MOUSE_X: i32 = 0;        // posición acumulada (relativa) X
 static mut MOUSE_Y: i32 = 0;        // posición acumulada (relativa) Y
 static mut MOUSE_BTN: u8 = 0;       // bitmap de botones actual
 static mut KEY_EVENTS: u32 = 0;     // nº de teclas imprimibles entregadas
+static mut FIRST_KEY: bool = false;   // ¿ya se grabó la primera tecla en CABINA?
+static mut FIRST_MOUSE: bool = false; // ídem para el primer movimiento de mouse
 static mut HID_EVENTS: u32 = 0;     // nº TOTAL de InputEvents de hid.poll (kbd+mouse)
 
 fn log(msg: &str) {
@@ -187,10 +189,13 @@ pub fn init(_ctx: &BootContext) {
         dlog_u64(loc.mmio);
         dlog_push("\n");
 
+        crate::ring0::cabina::info("usb", "controlador xHCI hallado en PCI", loc.mmio);
+
         bmo_xhci::reset_ctrl();
         bmo_xhci::set_mmio(mmio_va);
         if !unsafe { bmo_xhci::init(mmio_va) } {
             dlog_push("[usb] init fallo en este xHC, probando siguiente\n");
+            crate::ring0::cabina::warn("usb", "el xHC no inicializo, probando el siguiente", loc.mmio);
             continue;
         }
         let nports = match bmo_xhci::controller() {
@@ -222,6 +227,7 @@ pub fn init(_ctx: &BootContext) {
         dlog_u64(connected);
         dlog_push("\n");
         if connected > 0 {
+            crate::ring0::cabina::info("usb", "puertos con dispositivo fisico (CCS=1)", connected);
             chosen = true;
             break;
         }
@@ -230,6 +236,7 @@ pub fn init(_ctx: &BootContext) {
 
     if !chosen {
         log("[usb] ningun xHC ve el teclado (probar otro puerto fisico)\n");
+        crate::ring0::cabina::fault("usb", "ningun xHC ve dispositivos (probar otro puerto)", 0);
         return;
     }
 
@@ -254,15 +261,31 @@ pub fn init(_ctx: &BootContext) {
             log("[usb] teclado USB listo (slot ");
             dlog_u64(KBD_SLOT as u64);
             log(")\n");
+            crate::ring0::cabina::info("usb", "teclado enumerado y configurado", KBD_SLOT as u64);
+            // Lo que de verdad decide si el teclado hablará: el estado del
+            // endpoint según el xHC y el intervalo que quedó programado.
+            let (st, bi, iv, _sp, sts) = kbd_ep_debug();
+            crate::ring0::cabina::info("xhci", "kbd bInterval->Interval programado", ((bi as u64) << 8) | iv as u64);
+            if st != 1 {
+                crate::ring0::cabina::fault("xhci", "endpoint del teclado NO quedo Running", st as u64);
+            }
+            // HSE (bit 2) o HCE (bit 12): el controlador se cayó, todo lo demás
+            // que veamos después es ruido.
+            if sts & ((1 << 2) | (1 << 12)) != 0 {
+                crate::ring0::cabina::fault("xhci", "controlador en error (USBSTS HSE/HCE)", sts as u64);
+            }
         } else {
             log("[usb] SIN teclado (no enumero interface kbd)\n");
+            crate::ring0::cabina::warn("usb", "ninguna interface de teclado enumero", 0);
         }
         if MOUSE_RDY {
             log("[usb] mouse USB listo (slot ");
             dlog_u64(MOUSE_SLOT as u64);
             log(")\n");
+            crate::ring0::cabina::info("usb", "mouse enumerado y configurado", MOUSE_SLOT as u64);
         } else {
             log("[usb] SIN mouse (no enumero interface mouse)\n");
+            crate::ring0::cabina::warn("usb", "ninguna interface de mouse enumero", 0);
         }
     }
 }
@@ -305,7 +328,16 @@ pub fn poll_ascii() -> Option<u8> {
                     ev.code, unsafe { SHIFT }, unsafe { CAPS },
                 ) {
                     out = Some(a); // el último gana (typematic ya viene diffeado)
-                    unsafe { KEY_EVENTS = KEY_EVENTS.wrapping_add(1); }
+                    unsafe {
+                        KEY_EVENTS = KEY_EVENTS.wrapping_add(1);
+                        // EL momento que llevamos persiguiendo: la primera tecla
+                        // que cruza de verdad. Se graba en el instante exacto —
+                        // no se deduce después comparando contadores.
+                        if !FIRST_KEY {
+                            FIRST_KEY = true;
+                            crate::ring0::cabina::info("usb", "primera tecla recibida: el teclado ESCRIBE", a as u64);
+                        }
+                    }
                 }
             }
             InputEventKind::KeyUp => {
@@ -320,6 +352,10 @@ pub fn poll_ascii() -> Option<u8> {
                 MOUSE_X = MOUSE_X.saturating_add(ev.mouse_dx() as i32);
                 MOUSE_Y = MOUSE_Y.saturating_add(ev.mouse_dy() as i32);
                 MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
+                if !FIRST_MOUSE {
+                    FIRST_MOUSE = true;
+                    crate::ring0::cabina::info("usb", "primer movimiento de mouse recibido", 0);
+                }
             },
             InputEventKind::MouseButton => unsafe {
                 MOUSE_BTN = ev.mouse_buttons();
@@ -350,6 +386,24 @@ pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
 /// Si HEV sube pero kev no → mapeo (ya no deberia tras el keypad).
 pub fn xfer_stats() -> (u32, u32, u32) {
     (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
+}
+
+/// Salud del endpoint de interrupción del teclado leída DEL HARDWARE, no de
+/// nuestras suposiciones: `(ep_state, bInterval_del_descriptor,
+/// Interval_programado, speed, usbsts)`.
+///
+/// `ep_state` sale del Device Context que mantiene el xHC: 1=Running es lo
+/// único aceptable. 2=Halted, 3=Stopped o 4=Error significan que el endpoint no
+/// está agendado y ningún doorbell lo va a revivir. `bi`/`iv` delatan el bug
+/// clásico del Interval (ver `bmo_xhci::encode_interval`).
+pub fn kbd_ep_debug() -> (u8, u8, u8, u8, u32) {
+    let (slot, dci) = unsafe {
+        let hid = &*core::ptr::addr_of!(HID);
+        (KBD_SLOT, hid.kbd_dci())
+    };
+    let st = unsafe { bmo_xhci::ep_state(slot, dci) };
+    let (bi, iv, sp) = bmo_xhci::last_ep_timing();
+    (st, bi, iv, sp, unsafe { bmo_xhci::usbsts() })
 }
 
 /// DCI del teclado + último Transfer Event (slot, ep, cc) del xHC. Si el ep del

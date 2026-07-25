@@ -549,9 +549,24 @@ pub fn splash_clear() {
 
 const DASH_HEADER_H:  u32 = 40;  // top bar height
 const DASH_FOOTER_H:  u32 = 32;  // bottom prompt bar height
-const DASH_LOG_LINES: usize = 14; // visible log lines
 const DASH_LOG_TOP:   u32 = 60;  // y of first log line
 const DASH_LOG_W:     u32 = 80;  // max chars per line
+const DASH_ROWS_MAX:  usize = 64; // tope duro (protege los buffers de filas)
+
+/// Filas de log que CABEN de verdad en el panel, según el alto REAL del
+/// framebuffer.
+///
+/// Antes esto era una constante de 14. En 1080p (CHAR_H=20) caben ~49: se
+/// desperdiciaban dos tercios del panel y, peor, obligaba al log rodante y a
+/// CABINA a pelearse las mismas filas 2-13 borrándose mutuamente. El reparto
+/// ahora lo decide el hardware, no un número mágico: pregúntale al hardware
+/// los HECHOS, hardcodea solo los CONTRATOS.
+pub fn dash_rows() -> usize {
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if h == 0 { return 0; }
+    let avail = h.saturating_sub(DASH_FOOTER_H + DASH_LOG_TOP + 4);
+    ((avail as usize) / CHAR_H).min(DASH_ROWS_MAX)
+}
 
 const DASH_BG:        u32 = 0xFF0A0F1D;
 const DASH_BAR:       u32 = 0xFF1E293B;
@@ -624,7 +639,7 @@ pub fn splash_dashboard_init() {
 /// Write a single log line into the dashboard's log area at
 /// line `row` (0 = top, growing downward). Newer lines overwrite
 /// older ones on the same row, so callers can manage a ring of
-/// `DASH_LOG_LINES` rows.
+/// `dash_rows()` rows.
 pub fn splash_dashboard_log(row: usize, msg: &str) {
     let c = dash_line_color(msg);
     splash_dashboard_log_color(row, msg, c);
@@ -637,7 +652,7 @@ pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
-    if row >= DASH_LOG_LINES { return; }
+    if row >= dash_rows() { return; }
     let y = DASH_LOG_TOP + (row as u32) * CHAR_H as u32;
     // Clear the row (background)
     fill_rect(20, y, w - 40, CHAR_H as u32, DASH_BG);

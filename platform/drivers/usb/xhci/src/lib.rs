@@ -124,7 +124,16 @@ impl TransferRing {
         r
     }
 
-    /// Enable Toggle Cycle on Link TRB (for event rings where xHC manages cycle).
+    /// Anillo SIN Link TRB — para el **Event Ring**, que no lleva uno: el xHC
+    /// conoce su tamaño por el ERST y da la vuelta solo. Escribirle un Link TRB
+    /// (lo que hacía `new`) dejaba basura en la última entrada que el consumidor
+    /// leía como si fuera un evento real en la primera vuelta.
+    pub unsafe fn new_unlinked(dma_virt: *mut u32, dma_phys: u64) -> Self {
+        Self { dma_virt, dma_phys: dma_phys & !0xF, enqueue: 0, pcs: true }
+    }
+
+    /// Enable Toggle Cycle on the Link TRB: the consumer inverts its cycle
+    /// state when it traverses the link, matching the producer's flip.
     pub unsafe fn enable_toggle_cycle(&mut self) {
         let base = LAST_TRB_IDX * 4;
         let dw3 = self.dma_virt.add(base + 3).read_volatile();
@@ -356,8 +365,8 @@ pub unsafe fn init(mmio: u64) -> bool {
 
     // Build ring wrappers
     let cmd_ring = TransferRing::new(cv, ca & !0x3F);
-    let mut event_ring = TransferRing::new(ev, eo);
-    event_ring.enable_toggle_cycle(); // xHC manages event ring cycle
+    // El event ring NO lleva Link TRB (el xHC lo recorre por tamaño del ERST).
+    let event_ring = TransferRing::new_unlinked(ev, eo);
 
     CTRL = Some(XhciController {
         mmio, op_base, rt_base: rt_off, db_base: db_off,
@@ -665,6 +674,74 @@ fn ep_ring_mut(slot: u8, dci: u8) -> Option<&'static mut EpRing> {
 //  Configure Endpoint
 // ═══════════════════════════════════════════════════════════════════
 
+/// Convierte el `bInterval` del descriptor de endpoint al campo **Interval**
+/// del Endpoint Context.
+///
+/// ★ EL BUG QUE MATABA AL TECLADO: ese campo NO es lineal. El xHC sirve el
+/// endpoint cada `2^Interval × 125 µs`, o sea es un EXPONENTE. Escribíamos el
+/// `bInterval` crudo, que en Low/Full Speed viene en MILISEGUNDOS (10, 24,
+/// 32...). Un teclado que pide 24 ms terminaba programado como 2^24 × 125 µs =
+/// **35 minutos** entre sondeos; con 32, 149 horas. El endpoint queda
+/// "configurado" y el Configure Endpoint devuelve éxito — el xHC sencillamente
+/// no lo consulta jamás. Se ve idéntico a un driver muerto.
+///
+/// Reglas (xHCI 6.2.3.6):
+///   - Low/Full Speed interrupt: `bInterval` en FRAMES de 1 ms (1..255) →
+///     `Interval = 3 + floor(log2(bInterval))` (125 µs × 2^3 = 1 ms).
+///   - High/Super Speed: `bInterval` YA es un exponente (1..16) →
+///     `Interval = bInterval - 1`.
+/// El campo tiene 4 bits útiles: se acota a 0..15.
+pub fn encode_interval(speed: u8, b_interval: u8) -> u8 {
+    match speed {
+        1 | 2 => {
+            // Full (1) / Low (2): milisegundos → exponente de 125 µs.
+            let ms = if b_interval == 0 { 1u32 } else { b_interval as u32 };
+            let mut e = 0u32;
+            while (1u32 << (e + 1)) <= ms { e += 1; } // floor(log2(ms))
+            let v = 3 + e;
+            if v > 15 { 15 } else { v as u8 }
+        }
+        _ => {
+            // High (3) / Super (4+): ya viene como exponente.
+            let b = if b_interval == 0 { 1u8 } else { b_interval };
+            let v = b - 1;
+            if v > 15 { 15 } else { v }
+        }
+    }
+}
+
+// Diagnóstico del último endpoint configurado: qué pidió el descriptor y qué
+// programamos de verdad. Con esto CABINA puede decir "pediste 24 ms, programé
+// exponente 7 (16 ms)" en vez de dejarnos adivinando.
+static mut LAST_EP_BINTERVAL: u8 = 0;
+static mut LAST_EP_INTERVAL: u8 = 0;
+static mut LAST_EP_SPEED: u8 = 0;
+
+/// `(bInterval_del_descriptor, Interval_programado, speed_del_slot)`.
+pub fn last_ep_timing() -> (u8, u8, u8) {
+    unsafe { (LAST_EP_BINTERVAL, LAST_EP_INTERVAL, LAST_EP_SPEED) }
+}
+
+/// Estado del endpoint leído del **Device Context** (el que mantiene el xHC,
+/// no el que le mandamos): 0=Disabled 1=Running 2=Halted 3=Stopped 4=Error.
+/// Si tras configurar no está en Running, el endpoint no está agendado y
+/// ninguna cantidad de doorbells lo va a despertar.
+pub unsafe fn ep_state(slot: u8, dci: u8) -> u8 {
+    let ctrl = match CTRL.as_ref() { Some(c) => c, None => return 0xFF };
+    let cs = ctx_sz(ctrl);
+    let dev_phys = match dcbaa_get(slot) { Some(p) => p, None => return 0xFF };
+    let dev_virt = hal().phys_to_virt(dev_phys) as *const u32;
+    let ep = dev_virt.add((dci as usize) * cs / 4);
+    (ep.read_volatile() & 0x7) as u8
+}
+
+/// USBSTS crudo. Bit 2 = HSE (Host System Error, típicamente un DMA a memoria
+/// que el xHC no puede tocar) y bit 12 = HCE (Host Controller Error). Si
+/// alguno está encendido el controlador está muerto y todo lo demás es ruido.
+pub unsafe fn usbsts() -> u32 {
+    match CTRL.as_ref() { Some(c) => op_r(c.mmio, c.op_base, USBSTS), None => 0 }
+}
+
 pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, interval: u8) -> bool {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return false };
     let h = hal();
@@ -696,7 +773,12 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     let tr_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no ring\n"); return false; } };
     let tr_virt = h.phys_to_virt(tr_phys) as *mut u32;
     core::ptr::write_bytes(tr_virt as *mut u8, 0, 4096);
-    TransferRing::new(tr_virt, tr_phys); // writes Link TRB
+    // El Link TRB del final del anillo necesita **Toggle Cycle**: sin él, al dar
+    // la primera vuelta (255 reportes) el productor invierte su PCS pero el
+    // consumidor no, el ciclo deja de coincidir y el endpoint se congela para
+    // siempre. Una bomba de tiempo a ~255 pulsaciones de tecla.
+    let mut tr = TransferRing::new(tr_virt, tr_phys);
+    tr.enable_toggle_cycle();
     if (slot as usize) < MAX_SLOTS && (dci as usize) < MAX_DCI {
         EP_RINGS[slot as usize][dci as usize] = EpRing {
             valid: true, ring_phys: tr_phys & !0xF, ring_virt: tr_virt, pcs: true, enqueue: 0,
@@ -705,7 +787,15 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
 
     let dq = (tr_phys & !0xF) | 1;
     let ep = in_virt.add((dci as usize + 1) * cs) as *mut u32;
-    ep.add(0).write_volatile((interval as u32) << 16); // DW0: Interval in bits 23:16
+    // La velocidad la sabe el propio Slot Context que acabamos de copiar del
+    // Device Context (bits 23:20) — no hace falta que el caller la adivine ni
+    // arrastrarla por media pila de llamadas: se la preguntamos al hardware.
+    let speed = ((old_dw0 >> 20) & 0xF) as u8;
+    let enc = encode_interval(speed, interval);
+    LAST_EP_BINTERVAL = interval;
+    LAST_EP_INTERVAL = enc;
+    LAST_EP_SPEED = speed;
+    ep.add(0).write_volatile((enc as u32) << 16); // DW0: Interval in bits 23:16
     ep.add(1).write_volatile(
         ((max_pkt as u32) << 16) | ((ep_type as u32) << 3) | (3 << 1)
     );
@@ -749,7 +839,18 @@ pub unsafe fn queue_interrupt_in(slot: u8, dci: u8, buf_phys: u64, len: u16) -> 
     let ctl = (TRB_NORMAL << 10) | (1 << 5); // IOC
     ring.ring_virt.add(b + 3).write_volatile(ctl | if ring.pcs { 1 } else { 0 });
     ring.enqueue = idx + 1;
-    if ring.enqueue >= LAST_TRB_IDX { ring.enqueue = 0; ring.pcs = !ring.pcs; }
+    if ring.enqueue >= LAST_TRB_IDX {
+        // Al dar la vuelta hay que dejar el Link TRB con el ciclo ACTUAL antes
+        // de invertir el nuestro; si no, el xHC llega al Link, ve un ciclo que
+        // no es el suyo, y se detiene ahí para siempre. (El bit Toggle Cycle lo
+        // pusimos al crear el anillo en configure_endpoint.)
+        let lb = LAST_TRB_IDX * 4;
+        let dw3 = ring.ring_virt.add(lb + 3).read_volatile();
+        let dw3 = (dw3 & !1) | if ring.pcs { 1 } else { 0 };
+        ring.ring_virt.add(lb + 3).write_volatile(dw3);
+        ring.enqueue = 0;
+        ring.pcs = !ring.pcs;
+    }
     true
 }
 

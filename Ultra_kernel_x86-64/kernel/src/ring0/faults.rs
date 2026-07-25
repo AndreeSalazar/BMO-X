@@ -200,6 +200,11 @@ extern "C" fn fault_dispatch(
         if crate::info::has_fb() {
             crate::ring0::core::phase::dashboard_log(l.as_str());
         }
+        // Queda GRABADO en el anillo de CABINA, no solo pintado: el aislamiento
+        // de faults sirve precisamente porque la máquina sigue viva después, y
+        // entonces alguien puede leer qué mató a la tarea. `record` es seguro
+        // aquí (guard de reentrancia, sin locks que puedan colgarse).
+        crate::ring0::cabina::fault("ring3", "fault en CPL3: tarea eliminada, BMO sigue vivo", rip);
         let _ = (error, cr2, fault_rsp);
         // schedule() below loads the NEXT task's CR3 itself.
         return crate::ring0::scheduler::kill_current_and_pick();
@@ -274,6 +279,10 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
         14 => "#PF page-fault",
         _ => "#?? exception",
     };
+    // Última entrada de la bitácora antes de detener la máquina. Hoy muere con
+    // la RAM; cuando el volcado a disco exista, ESTE es el registro que
+    // sobrevive al reset y explica por qué se apagó.
+    crate::ring0::cabina::panic_ev("ring0", name, rip);
     let mut l0 = Line::new();
     l0.s("*** CPU FAULT ");
     l0.s(name);

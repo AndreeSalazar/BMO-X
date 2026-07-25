@@ -20,11 +20,7 @@ fn s_log(msg: &str) {
     crate::ring0::dev::console::serial_write(msg);
     crate::ring0::dev::console::serial_write("\n");
     // Mirror to the on-screen log panel (if framebuffer present).
-    if crate::info::has_fb() {
-        let row = unsafe { DASH_LOG_ROW };
-        unsafe { DASH_LOG_ROW = (row + 1) % 14; }
-        splash::splash_dashboard_log(row, msg);
-    }
+    dashboard_log(msg);
 }
 
 fn phase0_fb(ctx: &BootContext) {
@@ -60,8 +56,17 @@ fn phase1_ui(_ctx: &BootContext) {
 // ---------------------------------------------------------------------------
 
 // Rolling index into the dashboard log. Each `dash_log` call
-// advances this and wraps at DASH_LOG_LINES.
+// advances this and wraps at the end of the log BAND.
 static mut DASH_LOG_ROW: usize = 0;
+
+/// Filas del log rodante: el panel entero MENOS la banda inferior que ocupa
+/// CABINA. Sin este reparto los dos escribían en las mismas filas y se
+/// borraban mutuamente (el log se comía la bitácora y viceversa).
+fn log_rows() -> usize {
+    let total = splash::dash_rows();
+    if total == 0 { return 1; }
+    total.saturating_sub(crate::ring0::cabina::band_rows(total)).max(1)
+}
 
 // Mirror the serial output to a line in the dashboard's log
 // area, so the user can see what the kernel is doing without a
@@ -76,8 +81,9 @@ fn dash_log(msg: &str) {
 /// Framebuffer-only; a no-op on a headless (serial) boot.
 pub fn dashboard_log(msg: &str) {
     if !crate::info::has_fb() { return; }
-    let row = unsafe { DASH_LOG_ROW };
-    unsafe { DASH_LOG_ROW = (row + 1) % 14; }
+    let rows = log_rows();
+    let row = unsafe { DASH_LOG_ROW } % rows;
+    unsafe { DASH_LOG_ROW = (row + 1) % rows; }
     splash::splash_dashboard_log(row, msg);
 }
 
@@ -130,160 +136,12 @@ pub(crate) fn clear_screen() {
     }
 }
 
-/// Live Ring 3 heartbeat on FIXED row 10, repainted by the shell's poll loop
-/// whenever a value changes. This is the always-on view the post-mortem
-/// fault reporter cannot give when nothing faults:
-///   tk = timer ticks (counting ⇒ timer alive)
-///   sw = switches into CPL3 (nonzero ⇒ scheduler entered the user task)
-///   st = init task (tid 2) state: 01 Ready, 02 Running, 03 Blocked,
-///        04 Exited, FF reaped/absent (FF after sw>0 ⇒ ran and finished)
-///   rx/ln = CONSOLE_WRITE words / lines received from Ring 3
-pub(crate) fn dash_heartbeat() {
-    if !crate::info::has_fb() {
-        return;
-    }
-    let ticks = crate::ring0::timer::ticks();
-    let sw = crate::ring0::scheduler::user_switches();
-    let st = crate::ring0::scheduler::tid_state(2);
-    let (rx, ln) = crate::ring0::uconsole::stats();
-    static mut LAST: [u64; 4] = [u64::MAX; 4];
-    static mut LAST_GEN: u32 = u32::MAX;
-    // ANTI-GHOSTING (monitor 74 Hz): el disparo de repintado usaba `ticks`
-    // crudo → se repintaba en CADA pulso del timer, y como el clear+draw no
-    // está sincronizado con el refresco, se veía parpadeo/estela. Ahora `tk`
-    // solo dispara cada 256 ticks (bucket) → la pantalla queda ESTABLE y solo
-    // se repinta cuando pasa algo REAL (sw/st/rx/ln) o de tanto en tanto.
-    // El VALOR mostrado sigue siendo el tk completo (abajo).
-    const TK_BUCKET_SHIFT: u32 = 8;
-    let cur = [ticks >> TK_BUCKET_SHIFT, sw, st as u64, (ln << 32) | (rx & 0xFFFF_FFFF)];
-    unsafe {
-        let gen = SCREEN_GEN;
-        let last = &mut *core::ptr::addr_of_mut!(LAST);
-        // Repintar si algo cambió O si hubo un clear (gen distinta).
-        if *last == cur && LAST_GEN == gen {
-            return;
-        }
-        *last = cur;
-        LAST_GEN = gen;
-    }
-    fn hx(b: &mut [u8; 56], o: &mut usize, v: u64, digits: usize) {
-        const HEX: &[u8; 16] = b"0123456789ABCDEF";
-        for i in (0..digits).rev() {
-            if *o < b.len() {
-                b[*o] = HEX[((v >> (i * 4)) & 0xF) as usize];
-                *o += 1;
-            }
-        }
-    }
-    fn txt(b: &mut [u8; 56], o: &mut usize, s: &str) {
-        for &c in s.as_bytes() {
-            if *o < b.len() {
-                b[*o] = c;
-                *o += 1;
-            }
-        }
-    }
-    let mut b = [0u8; 56];
-    let mut o = 0;
-    txt(&mut b, &mut o, "r3hb tk=");
-    hx(&mut b, &mut o, ticks, 6);
-    txt(&mut b, &mut o, " sw=");
-    hx(&mut b, &mut o, sw, 4);
-    txt(&mut b, &mut o, " st=");
-    hx(&mut b, &mut o, st as u64, 2);
-    txt(&mut b, &mut o, " rx=");
-    hx(&mut b, &mut o, rx, 4);
-    txt(&mut b, &mut o, " ln=");
-    hx(&mut b, &mut o, ln, 2);
-    if let Ok(s) = core::str::from_utf8(&b[..o]) {
-        // The timer may call this while the USER CR3 is loaded (its address
-        // space does not map the framebuffer's identity range) — paint under
-        // the kernel CR3 and restore. See uconsole::flush for the full why.
-        let cur = crate::ring0::mm::vmm::read_cr3();
-        let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
-        if cur != kpml4 {
-            crate::ring0::mm::vmm::switch_to(kpml4);
-        }
-        splash::splash_dashboard_log(10, s);
-        if cur != kpml4 {
-            crate::ring0::mm::vmm::switch_to(cur);
-        }
-    }
-}
-
-/// Panel USB DETALLADO en fila fija 12 (sobrevive al auto-clear porque se
-/// repinta en cada iteración del shell). Muestra teclado/mouse por separado y
-/// telemetría VIVA del mouse — mueve el mouse y verás mev/x/y/b cambiar, aunque
-/// el teclado aún no escriba. Pedido del usuario: "llamar al mouse, más
-/// detallado total". Throttled por change-detection para no parpadear.
-pub(crate) fn dash_usb_status() {
-    if !crate::info::has_fb() { return; }
-    let (kbd, mouse, ks, ms, mev, mx, my, btn, kev) = crate::ring0::dev::usb::hid_stats();
-    let (tev, rev, hev) = crate::ring0::dev::usb::xfer_stats();
-    static mut LAST: u64 = u64::MAX;
-    static mut LAST_GEN: u32 = u32::MAX;
-    // Firma de cambio: agrupa lo relevante. mx/my se truncan a 12 bits para que
-    // micro-jitter del mouse no dispare repintados (anti-ghosting).
-    let sig = (kbd as u64) | ((mouse as u64) << 1)
-        | ((mev as u64 & 0xFF) << 8)
-        | ((kev as u64 & 0xFF) << 16)
-        | ((tev as u64 & 0xFFFF) << 24)
-        | ((hev as u64 & 0xFF) << 40)
-        | ((btn as u64) << 48)
-        | (((mx as u64) & 0x3F) << 56);
-    unsafe {
-        let gen = SCREEN_GEN;
-        // Repintar si algo cambió O si hubo un clear (gen distinta) que borró la fila.
-        if LAST == sig && LAST_GEN == gen { return; }
-        LAST = sig;
-        LAST_GEN = gen;
-    }
-    let _ = rev;
-
-    fn txt(b: &mut [u8; 80], o: &mut usize, s: &str) {
-        for &c in s.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
-    }
-    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u32) {
-        if v == 0 { if *o < b.len() { b[*o] = b'0'; *o += 1; } return; }
-        let mut tmp = [0u8; 10]; let mut i = 0;
-        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
-        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
-    }
-    fn sdec(b: &mut [u8; 80], o: &mut usize, v: i32) {
-        if v < 0 { if *o < b.len() { b[*o] = b'-'; *o += 1; } dec(b, o, (-v) as u32); }
-        else { if *o < b.len() { b[*o] = b'+'; *o += 1; } dec(b, o, v as u32); }
-    }
-
-    let _ = (mx, my, btn); // (x/y/botones del mouse: cuando enumere, línea aparte)
-    let mut b = [0u8; 80];
-    let mut o = 0;
-    txt(&mut b, &mut o, "usb k=");
-    txt(&mut b, &mut o, if kbd { "OK" } else { "--" });
-    txt(&mut b, &mut o, "(s"); dec(&mut b, &mut o, ks as u32); txt(&mut b, &mut o, ")");
-    txt(&mut b, &mut o, " m=");
-    txt(&mut b, &mut o, if mouse { "OK" } else { "--" });
-    txt(&mut b, &mut o, "(s"); dec(&mut b, &mut o, ms as u32); txt(&mut b, &mut o, ")");
-    txt(&mut b, &mut o, " mev="); dec(&mut b, &mut o, mev);
-    txt(&mut b, &mut o, " kev="); dec(&mut b, &mut o, kev);
-    // El corte del teclado se lee aqui:
-    txt(&mut b, &mut o, " tev="); dec(&mut b, &mut o, tev);
-    txt(&mut b, &mut o, " hev="); dec(&mut b, &mut o, hev);
-    // dci del kbd vs (slot:ep:cc) del ultimo Transfer Event. Si ep != dci,
-    // el evento no matchea al teclado y no se re-encola => tev pegado.
-    let (kdci, es, ee, ec) = crate::ring0::dev::usb::kbd_debug();
-    txt(&mut b, &mut o, " dci="); dec(&mut b, &mut o, kdci as u32);
-    txt(&mut b, &mut o, " lev="); dec(&mut b, &mut o, es as u32);
-    txt(&mut b, &mut o, ":"); dec(&mut b, &mut o, ee as u32);
-    txt(&mut b, &mut o, ":"); dec(&mut b, &mut o, ec as u32);
-
-    if let Ok(s) = core::str::from_utf8(&b[..o]) {
-        let cur = crate::ring0::mm::vmm::read_cr3();
-        let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
-        if cur != kpml4 { crate::ring0::mm::vmm::switch_to(kpml4); }
-        splash::splash_dashboard_log(12, s);
-        if cur != kpml4 { crate::ring0::mm::vmm::switch_to(cur); }
-    }
-}
+// Los paneles de fila fija `dash_heartbeat` (r3hb, fila 10) y `dash_usb_status`
+// (usb, fila 12) VIVÍAN aquí. CABINA los absorbió: su banda inferior muestra la
+// misma telemetría (ticks/switches/estado de Ring 3/USB detallado) en una vista
+// coherente y con color semántico, y además con la bitácora de eventos que
+// aquellos no tenían. Ya nadie los llamaba — código muerto pintando filas que
+// el log rodante volvía a borrar. Se eliminan: CABINA es el único observador.
 
 /// Último total de tareas visto por el shell, para detectar cuándo un proceso
 /// TERMINÓ (el total baja) y limpiar la pantalla automáticamente.
@@ -588,6 +446,10 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write("[ring0] BootContext OK, version=");
     crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
+    // Primera entrada de la bitácora, ANTES de que exista framebuffer: CABINA
+    // graba desde el minuto cero y lo muestra cuando haya pantalla. Si el
+    // kernel muere entre aquí y el shell, el anillo ya tiene lo que pasó.
+    crate::ring0::cabina::info("ring0", "BootContext valido, kernel arrancando", ctx.version as u64);
 
     // Kernel-init checkpoints live in the empty band starting at row 140
     // (well below the boot bars that end near row 120), so any new bar is
@@ -606,6 +468,7 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write("/");
     crate::ring0::dev::console::serial_write_u64(frames_total, 10);
     crate::ring0::dev::console::serial_write("\n");
+    crate::ring0::cabina::info("mem", "physmap + asignador de frames listos", frames_free);
     crate::ring0::channel::init(ctx);
     crate::ring0::svc::register_all();
     crate::ring0::syscall::init();
@@ -616,8 +479,10 @@ pub fn main(ctx: &mut BootContext) {
     let timer_ready = crate::ring0::timer::init(ctx);
     if timer_ready {
         s_log("[ring0] scheduler + BMO Channel + SYSCALL + LAPIC tick ready (BSP)");
+        crate::ring0::cabina::info("ring0", "scheduler + canal + syscalls + LAPIC armados", 0);
     } else {
         s_log("[ring0] WARNING: LAPIC tick unavailable; scheduler remains cooperative");
+        crate::ring0::cabina::warn("ring0", "sin tick LAPIC: scheduler solo cooperativo", 0);
     }
     kbar!(188, 0xFFFF_FF00u32); // yellow: channel/svc/syscall/timer OK
 
@@ -633,6 +498,7 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write(" ");
     crate::ring0::dev::console::serial_write(cpu_profile.name);
     crate::ring0::dev::console::serial_write("\n");
+    crate::ring0::cabina::info("cpu", cpu_profile.name, 0);
 
     // BEX is the only native executable contract admitted by this kernel.
     // The parser is allocation-free so it is safe before the process allocator.
@@ -648,6 +514,9 @@ pub fn main(ctx: &mut BootContext) {
         crate::ring0::dev::console::serial_write("[ring0] Ring 3 init task ready, tid=");
         crate::ring0::dev::console::serial_write_u64(tid as u64, 10);
         crate::ring0::dev::console::serial_write("\n");
+        crate::ring0::cabina::info("ring3", "proceso init admitido", tid as u64);
+    } else {
+        crate::ring0::cabina::warn("ring3", crate::ring0::proc::init_status(), 0);
     }
     kbar!(224, 0xFFFF_FFFFu32); // white: proc init + Ring 3 spawn OK, before splash
 
@@ -715,6 +584,10 @@ pub fn main(ctx: &mut BootContext) {
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
     s_log("[ring0] scheduler preemptivo + capabilities armados");
+    // CABINA abre los ojos y censa el almacenamiento (scan PCI). Va AQUÍ, en el
+    // acto donde el kernel despierta hardware — antes vivía dentro del render y
+    // clavaba ~65k lecturas de config PCI en el primer frame del cockpit.
+    crate::ring0::cabina::boot_probe();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::dev::usb::init(ctx);
     dash_log("== RING 0 : hardware al mando ==");
