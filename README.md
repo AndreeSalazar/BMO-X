@@ -431,24 +431,50 @@ convierte en biblioteca + operaciones; la puerta sigue siendo `INVOKE`.
 - **Serial**: COM1 115200 baud (debug output)
 - **PCI**: Enumeración por I/O ports (0xCF8/0xCFC)
 - **ACPI**: RSDP/XSDT/MCFG/FADT
+- **Disco**: AHCI/SATA propio (Kingston SA400S37480G, 447 GiB). OJO: el NVMe
+  de esta máquina es el disco de Windows del dueño — el kernel pide el
+  controlador POR TIPO, nunca "el primero del barrido"
 
 ---
 
 ## Próximos pasos
 
-✅ **2026-07-22 — Ring 3 ejecuta en hardware real** (commit `179c19b1`):
-CPL3→INVOKE→CPL0→EXIT→reap completo, scheduler preemptivo por LAPIC timer.
+**Hitos conseguidos en hardware real** (Ryzen 5 5600X + MSI A320M PRO MAX):
 
-1. **Font profesional**: tabla de glifos diseñada (estética 80s-cyberpunk)
-2. **Limpieza de debug**: retirar filas fijas cr3/r3f/gdt (el heartbeat `r3hb` queda)
-3. **Fault isolation**: fault de CPL3 mata la tarea, no el kernel (`faults.rs` → reap + schedule)
-4. **EXIT-reclaim**: listas de frames per-task; liberar todo al morir
-5. **2+ procesos Ring 3**: validar round-robin multi-usuario
-6. **Teclado**: el i8042 entrega bytes (`kbd 0x6D` visto) — traductor Set-2 → shell interactivo
-7. **Endpoint RPC**: servidores Ring 3 (ver `ENDPOINT_RPC.md`) — puerta a drivers/GUI
-8. **Demand paging + NX/SMEP**: el handler #PF unificado (lazy pages / kill)
-9. **Storage AHCI/NVMe + FAT32**: persistencia (partición F: BMO-DATA espera)
-10. **Compositor/desktop**: Win11+Mac elegante, SVG propios, Ring 3 total
+- ✅ **Ring 3 ejecuta** (`179c19b1`): CPL3→INVOKE→CPL0→EXIT→reap, scheduler
+  preemptivo por LAPIC.
+- ✅ **Tres programas Ring 3 a la vez**, escritos en asm, BMO C y BMO COBOL,
+  compilados por el toolchain propio a BEF nativo.
+- ✅ **CABINA**: observador omnisciente que GRABA (no encuesta) — los módulos
+  empujan su evento en el instante del hecho, incluso antes de que exista
+  framebuffer.
+- ✅ **Teclado y mouse USB propios** (xHCI + HID), con distribución española,
+  teclas muertas, AltGr, Ctrl, repetición al mantener, LEDs e historial.
+- ✅ **El kernel lee su disco** (`49d536e3`): AHCI/SATA propio, sectores y
+  tabla GPT del Kingston de 480 GB, verificado sector a sector.
+
+**Lo que sigue, en orden:**
+
+1. **FAT32 sobre A:** — el disco se lee por sectores; falta el sistema de
+   ficheros para leer ARCHIVOS. El primero que abra será su propio
+   `BOOTX64.EFI`. Desbloquea la caja negra de CABINA en disco y sacar los
+   `.bex` de dentro del kernel.
+2. **Gate de identidad antes de escribir** — `IDENTIFY` ya da modelo y serie;
+   falta que sea una comprobación, no una línea informativa. La escritura
+   sigue cerrada hasta entonces.
+3. **XSAVE con bandera en el BEF** — hoy `FXSAVE` no preserva la mitad alta de
+   los YMM: AVX en Ring 3 es corrupción silenciosa. El programa lo declarará
+   en su contenedor y el kernel reservará el área grande solo para esos.
+4. **Endpoint RPC → compositor + mouse** (ver `ENDPOINT_RPC.md`): el momento
+   library-OS de verdad.
+5. **BMO-FS** en BMO-DATA, con el disco ya probado.
+6. **SMP** al final: el código de despertar los APs ya existe en `s1_cpu`, pero
+   el día que corra un segundo núcleo cada `static mut` del kernel es una
+   carrera. Primero el diseño de un núcleo firme.
+
+**Velocidad por arquitectura, no por micro-optimización**: sin cruce de anillos
+(library OS), DMA directo al buffer del llamante, NCQ (el HBA declara 32
+ranuras y se usa 1) e interrupciones MSI en vez de sondeo.
 
 ---
 

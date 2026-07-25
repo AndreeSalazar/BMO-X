@@ -119,6 +119,74 @@ lugar seguro. CABINA se mantiene always-on desde ahí.
 constantemente, con color. Menos adivinar, más ver. El siguiente escalón es que
 esa bitácora se persista al SSD (NVMe) = la caja negra forense de verdad.
 
+## Ep. 12 — El teclado que era una lotería, y el exponente
+
+**Síntoma**: el teclado USB enumeraba y su endpoint de interrupción no
+completaba JAMÁS. `tev` pegado, `kev=0`. Semanas así.
+
+**Causa**: el campo `Interval` del Endpoint Context **no es lineal, es un
+EXPONENTE**: el xHC sirve el endpoint cada `2^Interval × 125 µs`. Se escribía
+el `bInterval` crudo del descriptor, que en Low/Full Speed viene en
+MILISEGUNDOS. Un teclado que pide 24 ms quedaba programado a `2^24 × 125 µs` =
+**35 minutos** entre sondeos. Con 32, 149 horas. Y `Configure Endpoint`
+devolvía ÉXITO — el RGB encendía, todo parecía bien, el xHC simplemente no
+consultaba nunca.
+
+**Bonus del mismo día**: el Link TRB del anillo del endpoint no llevaba Toggle
+Cycle. Habríamos "arreglado" el teclado y se habría muerto a las ~255
+pulsaciones, o sea a los pocos minutos de escribir.
+
+**Y después**: la enumeración resultó ser una LOTERÍA entre arranques — mismo
+binario, tres resultados en tres encendidos. Tres reintentos con 50 ms lo
+estabilizaron. Lo que parecía un bug determinista era un dispositivo que a
+veces no está listo para el primer control transfer.
+
+**Moraleja**: cuando un registro se llama "Interval", léete qué unidad usa
+antes de meterle el número que traía el descriptor. Y un `FAIL` sin código de
+error es un mensaje que no sirve para nada.
+
+---
+
+## Ep. 13 — El disco estaba donde el firmware juraba que no había nada
+
+**Síntoma**: el HBA SATA aparecía en el PCI, sus registros se leían perfectos
+(`cap=0xEF36FF27 pi=0x33`), y los cuatro puertos que `PI` declaraba decían
+`DET=0`: ningún disco. Pero la máquina había ARRANCADO de ese disco.
+
+**Camino** (cada paso destapó el siguiente):
+1. `find_storage()` devolvía "el primero del barrido" — y en esta máquina el
+   primero es el NVMe **con el Windows del dueño**. Se pasó a pedir por TIPO.
+2. El driver AHCI nunca había tocado silicio: escribía la dirección de la
+   command table DENTRO de la propia tabla (dejando la cabecera en ceros, así
+   que el FIS se construía en la **página física 0**), metía el puntero
+   VIRTUAL en el PRDT, no tenía timeouts y no miraba `PxTFD.ERR` ni `PRDBC`.
+   Reescrito contra la especificación.
+3. El `GHC.HR` del arranque **tiraba los enlaces** y se leía `PxSSTS` un
+   microsegundo después. Fuera el reset: el firmware ya los había dejado listos.
+4. El censo inventaba **puertos fantasma** — filtraba por `p.port_number`, que
+   en las entradas vacías del array vale 0, así que cada hueco pasaba haciéndose
+   pasar por el puerto 0. Catorce líneas idénticas, y una espera de enlace
+   concedida a cada fantasma: los 3-4 segundos de arranque de más.
+5. El firmware **PARA los puertos al salir** (`cmd=0x6`, ST y FRE en cero).
+   Encender el disco no basta: hay que renegociar el enlace con un COMRESET
+   por `PxSCTL`, y con esperas de tiempo REAL (contar vueltas de bucle mide la
+   velocidad del CPU, no milisegundos).
+6. **`PI` MIENTE.** Existe un caso conocido en Linux (parche "ahci: Acer
+   SA5-271 SSD Not Detected Fix") donde el mapa de puertos del firmware hace
+   al driver saltarse justo el puerto del disco. Se pasó a barrer los 8
+   puertos que `CAP.NP` declara, marcando con `!` los que `PI` negaba.
+
+**El hallazgo**: `[ahci] !p0x2 ssts=0x133 sig=0x101`. El disco estaba en el
+puerto 2 — uno de los que `PI` decía que no existían. Verificado sector a
+sector contra el anfitrión: 447 GiB, ESP en LBA 2048, 32 GiB en 1230848,
+414 GiB en 68339712. El Kingston de BMO.
+
+**Moraleja**: los registros del hardware son testimonio, no verdad. `PI` es un
+número que escribió un firmware, y un firmware es software de alguien que ya
+se fue. Cuando el testimonio y la realidad no cuadran, se duda del testimonio.
+
+---
+
 ---
 
 ## Las tres leyes que dejó esta guerra

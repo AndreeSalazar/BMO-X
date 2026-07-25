@@ -20,16 +20,16 @@ sin QEMU. Toolchain propio (C/C++/COBOL → BEF → BEX nativo).
 | Ring 3 (userspace) | ✅ ejecuta: hola-mundo CPL3→INVOKE→CPL0→EXIT |
 | Fault isolation (crash R3 mata la tarea, no el kernel) | ✅ implementado |
 | Boot cinemático (logo→RING0→RING3, escenas) | ✅ |
-| Teclado USB (xHCI+HID) | ◐ **enumera** (slot 2, dci 5) pero su endpoint de interrupción NUNCA completa; teclas no llegan (ver Kernel) |
-| Mouse USB | ◐ NO enumera (usb::init hace UN device; falta multi-device) |
+| Teclado USB (xHCI+HID) | ✅ **ESCRIBE en HW** — el Interval del endpoint era un EXPONENTE (2^n x125us) y se escribia el bInterval crudo: un teclado que pedia 24 ms quedaba programado a 35 minutos entre sondeos. Layouts es-latam/es-espana/us, teclas muertas, AltGr, Ctrl, repeticion al mantener, LEDs, historial |
+| Mouse USB | ✅ enumera (falta puntero/scroll: es territorio del compositor F5) |
 | **CABINA** (telemetría omnisciente) | ✅ **viva**: cockpit + color semántico + bitácora de eventos (narrador) + detección de disco PCI |
 | Toolchain reorganizado (lang/forge/tools) | ✅ |
 | sem-asm (encoder tabla→bytes + intrínsecos) | ✅ C lo usa; fusión sem-asm↔C hecha |
 | BMO COBOL | ◐ base sólida (~15%); ver abajo |
 | **BMO C ("CONTROL ABSOLUTE")** | ✅ **C esencial ~C11 muy completo** (85 tests); Fase 0/1/2 hechas — ver abajo |
 | C++ frontend | ◐ mínimo (~900 líneas); será barato encima de C |
-| Desktop / compositor (F5) | ⬜ pendiente |
-| Driver de disco (kernel escribe) | ◐ drivers existen (nvme/fat32/ahci) SIN cablear; disco = **NVMe** detectado |
+| Desktop / compositor (F5) | ⬜ pendiente — es el momento library-OS de verdad (el compositor recibe UNA VEZ la capability del framebuffer y dibuja directo) |
+| **Driver de disco (AHCI/SATA)** | ✅ **BMO-X LEE SU DISCO**: sectores + tabla GPT del Kingston 480 GB, verificado sector a sector. SOLO LECTURA a proposito. El NVMe de esta maquina es el disco de **Windows** — nunca se toca |
 
 ---
 
@@ -214,15 +214,38 @@ paréntesis rompen el heredoc de PowerShell — usar `git commit -F archivo`.)
 
 ## Próximos frentes (prioridad)
 
-**Kernel/HW:**
-1. **Teclado→shell**: probar teclado USB normal (aísla numpad/hub) o codificar
-   intervalo FS/LS del endpoint de interrupción. CABINA ya narra el diagnóstico.
-2. **Driver de disco NVMe → CABINA caja negra**: cablear crate `nvme` (ya tiene
-   read/write) + HAL DMA/MMIO (como xhci) → montar FAT32 en A: (`create_file_in_dir`
-   existe) → CABINA vuelca sus 48 eventos a un archivo. La visión "caja negra
-   forense" del usuario. Disco confirmado NVMe.
-3. Mouse USB multi-device (usb::init enumera uno solo hoy).
-4. Fault isolation: probar con un payload crasher.
+**Kernel/HW (orden acordado 2026-07-25):**
+1. **FAT32 sobre la particion 2 (A: BMO)** — el disco YA se lee por sectores y
+   la GPT esta parseada; falta el sistema de ficheros para leer ARCHIVOS. El
+   primero que abra sera su propio BOOTX64.EFI. Desbloquea: volcado de CABINA a
+   disco (la caja negra forense) y `.bex` fuera del kernel (hoy viajan
+   embebidos con include_bytes!, o sea que añadir un programa exige recompilar
+   BMO-X entero).
+2. **Gate de identidad antes de escribir**: `IDENTIFY` ya da modelo/serie; falta
+   que sea una COMPROBACION y no una linea informativa. Sin eso, la escritura
+   sigue cerrada — con el Windows del dueño en el NVMe de la misma maquina, eso
+   no es paranoia.
+3. **XSAVE con bandera en el BEF**: hoy FXSAVE guarda x87+SSE; la mitad alta de
+   los YMM NO se preserva, asi que AVX en Ring 3 es corrupcion silenciosa. El
+   plan elegido: que el programa DECLARE en su contenedor que usa vectores
+   anchos, y el kernel reserve el area grande solo para esos. Contratos, no
+   adivinanzas.
+4. **Endpoint RPC → compositor + mouse (F5)**: el momento library-OS.
+5. **BMO-FS en BMO-DATA**, con el disco ya probado y sin arriesgar el arranque.
+6. **SMP al final**: el codigo de despertar los APs YA EXISTE en s1_cpu
+   (trampolin, INIT+SIPI, GDT/IDT), pero `smp_startup()` no tiene ni una
+   llamada y `ap_entry64` solo cuenta y hace hlt. Va el ultimo a proposito: el
+   dia que corra un 2o nucleo, cada `static mut` del kernel es una carrera.
+
+**Palancas de velocidad ARQUITECTONICAS (no micro-optimizacion):** sin cruce de
+anillos (library OS), DMA directo al buffer del llamante (hoy hay pagina de
+rebote), NCQ (el HBA declara 32 ranuras, se usa 1) e interrupciones MSI en vez
+de sondeo.
+
+**Sistemas de ficheros ajenos:** leer NTFS es viable HOY — el crate `ntfs` de
+ColinFinck es no_std, MIT/Apache y esta pensado para firmware y drivers de
+kernel. Escribirlo no: no hay nada seguro que enlazar. La decision es del dueño,
+no una imposibilidad tecnica.
 
 **Filosofía política grabada (2026-07-24)**: BMO-X = "dictadura absoluta pero
 benevolente" — cero-confianza en el CÓDIGO (capabilities + bmo-verify), soberanía
