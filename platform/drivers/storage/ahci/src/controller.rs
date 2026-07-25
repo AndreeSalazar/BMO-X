@@ -53,6 +53,7 @@ const PORT_CMD:  usize = 0x18;
 const PORT_TFD:  usize = 0x20;
 const PORT_SIG:  usize = 0x24;
 const PORT_SSTS: usize = 0x28;
+const PORT_SCTL: usize = 0x2C;
 const PORT_SERR: usize = 0x30;
 const PORT_CI:   usize = 0x38;
 
@@ -94,10 +95,7 @@ const CMD_TIMEOUT: u32 = 20_000_000;
 /// Espera para los cambios de estado del puerto (arranque/parada del motor de
 /// comandos), que son inmediatos salvo avería.
 const PORT_TIMEOUT: u32 = 1_000_000;
-/// Espera a que un enlace SATA quede establecido. Negociar velocidad tras un
-/// reset lleva decenas de milisegundos; si el firmware ya lo dejó hecho, el
-/// primer sondeo acierta y esto no cuesta nada.
-const LINK_TIMEOUT: u32 = 5_000_000;
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortState { Empty, Present, Active, Error }
@@ -213,19 +211,7 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     hal.log_hex(" ghc=", hba_read(mmio_base, HBA_GHC) as u64);
     hal.log("\n");
 
-    // Spin-up escalonado: si el HBA lo soporta (CAP.SSS), un puerto no
-    // establece enlace hasta que se le pide arrancar el disco. El firmware lo
-    // hizo para el disco de arranque; nosotros lo pedimos para todos, porque
-    // no sabemos cuál es el nuestro todavía.
     let sss = cap & (1 << 27) != 0;
-    if sss {
-        for i in 0..32u8 {
-            if pi & (1 << i) == 0 { continue; }
-            let cmd = port_read(mmio_base, i, PORT_CMD);
-            // SUD (bit 1) = Spin-Up Device, POD (bit 2) = Power On Device.
-            port_write(mmio_base, i, PORT_CMD, cmd | (1 << 1) | (1 << 2));
-        }
-    }
 
     let mut ctrl = AhciController {
         mmio_base, port_count, ports_implemented: pi,
@@ -237,17 +223,7 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
 
     for i in 0..32u8 {
         if pi & (1 << i) == 0 { continue; }
-        // Darle tiempo al enlace. Si el puerto ya está establecido (lo normal
-        // viniendo del firmware) el primer sondeo acierta y no se espera nada;
-        // si acaba de reiniciarse, aquí es donde se le concede el tiempo que
-        // la negociación necesita en vez de declararlo vacío al instante.
-        let mut ssts = port_read(mmio_base, i, PORT_SSTS);
-        let mut spun = 0u32;
-        while ssts & SSTS_DET != 0x03 && spun < LINK_TIMEOUT {
-            spun += 1;
-            core::hint::spin_loop();
-            ssts = port_read(mmio_base, i, PORT_SSTS);
-        }
+        let ssts = port_link_up(mmio_base, i, sss);
         // Cada puerto implementado dice su estado CRUDO aquí, en el driver,
         // que es quien lo tiene delante.
         hal.log_hex("[ahci] p", i as u64);
@@ -271,6 +247,60 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     CONTROLLER = Some(ctrl);
     hal.log("[ahci] HBA listo\n");
     true
+}
+
+/// Levanta el enlace SATA de un puerto y devuelve su `PxSSTS` final.
+///
+/// ★ POR QUÉ HACE FALTA: el firmware UEFI usó este disco para arrancarnos y
+/// después, al salir, PARÓ los puertos — se ve en `PxCMD` con ST y FRE a
+/// cero. Un enlace parado reporta `DET=0`, que es indistinguible de "aquí no
+/// hay nada". Encender el disco (SUD) no basta: hay que renegociar el enlace,
+/// y eso se pide con un COMRESET por `PxSCTL`.
+///
+/// La secuencia es la de la especificación, y cada espera es de TIEMPO REAL:
+/// contar vueltas de bucle mide la velocidad del CPU, no los milisegundos que
+/// el SATA necesita.
+unsafe fn port_link_up(mmio: u64, port: u8, sss: bool) -> u32 {
+    let hal = storage_hal::hal();
+
+    // 1. Con el motor de comandos andando no se toca el PHY.
+    port_stop(mmio, port);
+
+    // 2. Arrancar el disco si el HBA usa spin-up escalonado (CAP.SSS): con él,
+    //    un puerto no negocia nada hasta que se le pide. SUD = Spin-Up Device,
+    //    POD = Power On Device.
+    if sss {
+        let cmd = port_read(mmio, port, PORT_CMD);
+        port_write(mmio, port, PORT_CMD, cmd | (1 << 1) | (1 << 2));
+        hal.delay_ms(10);
+    }
+
+    // 3. ¿Ya está? Si el enlace vino vivo del firmware, aquí se acaba.
+    let ssts = port_read(mmio, port, PORT_SSTS);
+    if ssts & SSTS_DET == 0x03 {
+        port_write(mmio, port, PORT_SERR, port_read(mmio, port, PORT_SERR));
+        return ssts;
+    }
+
+    // 4. COMRESET: DET=1 fuerza la renegociación, y hay que sostenerlo al
+    //    menos 1 ms antes de soltarlo a 0.
+    let sctl = port_read(mmio, port, PORT_SCTL);
+    port_write(mmio, port, PORT_SCTL, (sctl & !0xF) | 0x1);
+    hal.delay_ms(2);
+    port_write(mmio, port, PORT_SCTL, sctl & !0xF);
+
+    // 5. Esperar el enlace. Un SSD contesta en milisegundos; a un disco
+    //    mecánico dormido se le conceden hasta 1,5 s antes de darlo por vacío.
+    let mut ssts = 0u32;
+    for _ in 0..150 {
+        ssts = port_read(mmio, port, PORT_SSTS);
+        if ssts & SSTS_DET == 0x03 { break; }
+        hal.delay_ms(10);
+    }
+    // 6. La negociación deja errores de estreno en PxSERR: se limpian, o el
+    //    primer comando nacerá con un error que no es suyo.
+    port_write(mmio, port, PORT_SERR, port_read(mmio, port, PORT_SERR));
+    ssts
 }
 
 /// Detiene el motor de comandos del puerto y espera a que pare de verdad.

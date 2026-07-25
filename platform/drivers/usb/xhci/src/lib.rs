@@ -820,8 +820,22 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     ring_doorbell(0, 0);
     let ev = evt_poll_block(ctrl);
     match ev {
-        Some((_, _, dw2, _)) => (dw2 >> 24) & 0xFF == CC_SUCCESS,
-        None => false
+        Some((_, _, dw2, _)) => {
+            let cc = (dw2 >> 24) & 0xFF;
+            if cc != CC_SUCCESS {
+                // El CÓDIGO, no un "FAIL" mudo. Los que importan aquí:
+                // 4=Transaction Error, 8=Bandwidth Error (el intervalo pedido
+                // no cabe en la agenda periódica), 11=Trb Error,
+                // 17=Parameter Error (algún campo del contexto no vale).
+                h.log_u64("[xhci] cfg_ep cc=", cc as u64);
+                h.log("\n");
+            }
+            cc == CC_SUCCESS
+        }
+        None => {
+            h.log("[xhci] cfg_ep sin respuesta del controlador\n");
+            false
+        }
     }
 }
 

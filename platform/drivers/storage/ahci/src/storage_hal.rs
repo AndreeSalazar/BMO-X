@@ -19,6 +19,13 @@ pub trait StorageHal {
     /// la cadena a mano es cómo se acaba sin imprimir el número que hacía
     /// falta.
     fn log_hex(&self, msg: &str, value: u64);
+    /// Espera de tiempo REAL en milisegundos.
+    ///
+    /// Los tiempos del SATA son físicos: un COMRESET dura milisegundos, y
+    /// negociar el enlace o arrancar un disco, decenas o cientos. Contar
+    /// vueltas de bucle mide la velocidad del CPU, no el tiempo — y por eso
+    /// un mismo número funciona en una máquina y falla en otra.
+    fn delay_ms(&self, ms: u64);
 }
 
 /// Static storage for the HAL singleton (set by kernel at boot).

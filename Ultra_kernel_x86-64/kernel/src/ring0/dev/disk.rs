@@ -102,6 +102,17 @@ impl StorageHal for KernelStorageHal {
         dlog(msg);
         dlog_u64(value);
     }
+    fn delay_ms(&self, ms: u64) {
+        // Tiempo REAL por TSC. Los milisegundos del SATA son físicos: contar
+        // vueltas de bucle mide la velocidad del CPU, no el tiempo.
+        let f = crate::ring0::scheduler::tsc_freq();
+        if f == 0 {
+            for _ in 0..ms * 2_000_000 { core::hint::spin_loop(); }
+            return;
+        }
+        let end = crate::ring0::scheduler::rdtsc() + ms * (f / 1000);
+        while crate::ring0::scheduler::rdtsc() < end { core::hint::spin_loop(); }
+    }
 }
 
 static HAL: KernelStorageHal = KernelStorageHal;

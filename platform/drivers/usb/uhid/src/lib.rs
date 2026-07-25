@@ -242,14 +242,30 @@ impl InputHal for UsbHidHal {
 
                 // Read device descriptor (18 bytes)
                 let mut dev_desc = [0u8; 18];
-                let n = bmo_xhci::get_device_descriptor(slot, &mut dev_desc);
+                // CON REINTENTOS: la enumeracion demostro ser inestable entre
+                // arranques — un mismo binario da "no dev desc" en un encendido
+                // y enumera bien en el siguiente. Un dispositivo recien
+                // reseteado puede no estar listo para el primer control
+                // transfer; darle tres oportunidades cuesta milisegundos y
+                // evita perder el teclado hasta el proximo reinicio.
+                let mut n = 0usize;
+                for _ in 0..3 {
+                    n = bmo_xhci::get_device_descriptor(slot, &mut dev_desc);
+                    if n >= 8 { break; }
+                    bmo_xhci::hal().delay_ms(50);
+                }
                 if n < 8 { h.log("[uhid] no dev desc\n"); continue; }
                 let dev_class = dev_desc[4];
                 h.log_u64(" class=", dev_class as u64);
 
                 // Read config descriptor header (9 bytes first for total length)
                 let mut cfg_hdr = [0u8; 9];
-                let n2 = bmo_xhci::get_config_descriptor(slot, 0, &mut cfg_hdr);
+                let mut n2 = 0usize;
+                for _ in 0..3 {
+                    n2 = bmo_xhci::get_config_descriptor(slot, 0, &mut cfg_hdr);
+                    if n2 >= 9 { break; }
+                    bmo_xhci::hal().delay_ms(50);
+                }
                 if n2 < 9 { h.log("[uhid] no cfg hdr\n"); continue; }
                 let total_len = Self::le_u16(&cfg_hdr, 2) as usize;
                 let cfg_val = cfg_hdr[5];
