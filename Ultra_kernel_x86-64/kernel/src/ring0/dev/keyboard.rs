@@ -84,6 +84,52 @@ static mut CAPS: bool = false;
 /// AltGr (Alt derecho) mantenido: el tercer nivel del teclado español, donde
 /// viven @ # \ | { } [ ] ~ — todo lo que hace falta para programar.
 static mut ALTGR: bool = false;
+/// Ctrl mantenido: convierte las letras en códigos de control (Ctrl+A = 0x01),
+/// que es como los terminales han mandado órdenes de edición desde siempre.
+static mut CTRL: bool = false;
+/// Bloq Num. Arranca ENCENDIDO (el teclado numérico escribe dígitos), como
+/// cualquier PC.
+static mut NUMLOCK: bool = true;
+
+// ── Teclas que no son caracteres ────────────────────────────────────────────
+//
+// Van por la misma cola que las letras, con bytes del rango C1 de Latin-1
+// (0x80..0x9F): ese rango no tiene glifo ni significado imprimible, así que el
+// shell los reconoce sin ambigüedad y nunca se dibujan por error.
+
+pub const KEY_UP: u8 = 0x80;
+pub const KEY_DOWN: u8 = 0x81;
+pub const KEY_LEFT: u8 = 0x82;
+pub const KEY_RIGHT: u8 = 0x83;
+pub const KEY_HOME: u8 = 0x84;
+pub const KEY_END: u8 = 0x85;
+pub const KEY_DELETE: u8 = 0x86;
+pub const KEY_PGUP: u8 = 0x87;
+pub const KEY_PGDN: u8 = 0x88;
+
+/// ¿Es una tecla de navegación (no imprimible)?
+pub fn is_nav(b: u8) -> bool { (KEY_UP..=KEY_PGDN).contains(&b) }
+
+// ── LEDs ────────────────────────────────────────────────────────────────────
+
+pub const LED_NUM: u8 = 1 << 0;
+pub const LED_CAPS: u8 = 1 << 1;
+pub const LED_SCROLL: u8 = 1 << 2;
+
+/// Cómo deberían estar las tres lucecitas AHORA. El teclado no lo decide solo:
+/// hay que mandárselo (ver `UsbHidHal::set_leds`).
+pub fn led_mask() -> u8 {
+    let mut m = 0;
+    unsafe {
+        if NUMLOCK { m |= LED_NUM; }
+        if CAPS { m |= LED_CAPS; }
+    }
+    m
+}
+
+/// Estado de los bloqueos para pintarlo en pantalla — que las luces físicas
+/// funcionen o no no debería ser la única forma de saberlo.
+pub fn lock_state() -> (bool, bool) { unsafe { (CAPS, NUMLOCK) } }
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Distribuciones
@@ -200,6 +246,44 @@ fn combine(dead: u8, base: u8) -> Option<u8> {
 /// Procesa UNA tecla pulsada y deja lo que produzca en la cola de salida.
 /// Punto único por el que pasan tanto el teclado USB como el PS/2.
 pub(crate) fn feed(code: u8, shift: bool, altgr: bool, caps: bool) {
+    feed_full(code, shift, altgr, caps, unsafe { CTRL })
+}
+
+/// Igual que `feed` pero con el estado de Ctrl explícito.
+pub(crate) fn feed_full(code: u8, shift: bool, altgr: bool, caps: bool, ctrl: bool) {
+    // Bloq Num: alterna, y de paso mantiene el LED sincronizado.
+    if code == 0x45 {
+        unsafe { NUMLOCK = !NUMLOCK; }
+        return;
+    }
+    // Teclas de navegación: no son caracteres, van tal cual por la cola.
+    if let Some(nav) = nav_key(code) {
+        push_out(nav);
+        return;
+    }
+    // Con Bloq Num APAGADO el teclado numérico es de navegación, como en
+    // cualquier PC — el segundo oficio que tienen impreso esas teclas.
+    if !unsafe { NUMLOCK } {
+        let nav = match code {
+            0x47 => Some(KEY_HOME), 0x48 => Some(KEY_UP),   0x49 => Some(KEY_PGUP),
+            0x4B => Some(KEY_LEFT), 0x4D => Some(KEY_RIGHT),
+            0x4F => Some(KEY_END),  0x50 => Some(KEY_DOWN), 0x51 => Some(KEY_PGDN),
+            0x53 => Some(KEY_DELETE),
+            _ => None,
+        };
+        if let Some(n) = nav { push_out(n); return; }
+    }
+    // Ctrl + letra = código de control ASCII (Ctrl+A = 0x01, Ctrl+U = 0x15...).
+    // Es la convención de toda la vida de los terminales y no necesita un
+    // canal aparte: cabe en el mismo byte que las letras.
+    if ctrl {
+        if let Out::Ch(c) = resolve(code, false, false, false) {
+            if c.is_ascii_alphabetic() {
+                push_out(c.to_ascii_uppercase() - b'A' + 1);
+                return;
+            }
+        }
+    }
     let out = resolve(code, shift, altgr, caps);
     unsafe {
         let pending = DEAD_PENDING;
@@ -256,6 +340,8 @@ pub fn poll_event() -> Option<(u8, Option<u8>)> {
         0xB8 if ext => { unsafe { ALTGR = false; } }
         0x2A | 0x36 => { unsafe { SHIFT = true; } }
         0xAA | 0xB6 => { unsafe { SHIFT = false; } }
+        0x1D => { unsafe { CTRL = true; } }
+        0x9D => { unsafe { CTRL = false; } }
         0x3A => { unsafe { CAPS = !CAPS; } }
         c if c & 0x80 != 0 => {} // cualquier otro release
         c => feed(c, unsafe { SHIFT }, unsafe { ALTGR }, unsafe { CAPS }),
@@ -268,6 +354,23 @@ pub fn poll_event() -> Option<(u8, Option<u8>)> {
 pub fn poll_ascii() -> Option<u8> {
     if let Some(b) = pop_out() { return Some(b); }
     poll_event().and_then(|(_, a)| a)
+}
+
+/// Traduce los scancodes propios de navegación (ver `bmo_uhid`) al byte que
+/// viaja por la cola. `None` si la tecla no es de navegación.
+fn nav_key(code: u8) -> Option<u8> {
+    Some(match code {
+        c if c == bmo_uhid::SC_UP => KEY_UP,
+        c if c == bmo_uhid::SC_DOWN => KEY_DOWN,
+        c if c == bmo_uhid::SC_LEFT => KEY_LEFT,
+        c if c == bmo_uhid::SC_RIGHT => KEY_RIGHT,
+        c if c == bmo_uhid::SC_HOME => KEY_HOME,
+        c if c == bmo_uhid::SC_END => KEY_END,
+        c if c == bmo_uhid::SC_DELETE => KEY_DELETE,
+        c if c == bmo_uhid::SC_PGUP => KEY_PGUP,
+        c if c == bmo_uhid::SC_PGDN => KEY_PGDN,
+        _ => return None,
+    })
 }
 
 /// Resuelve un scancode Set 1 al carácter que le corresponde SEGÚN LA

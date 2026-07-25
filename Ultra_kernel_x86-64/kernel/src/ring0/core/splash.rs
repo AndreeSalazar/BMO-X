@@ -689,32 +689,59 @@ pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
 /// Update the bottom prompt area with the current command being
 /// typed. The caller passes the in-progress line (up to a
 /// reasonable limit). The prompt always starts with "serial > ".
-pub fn splash_dashboard_prompt(line: &str, cursor: bool) {
+pub fn splash_dashboard_prompt(line: &str, cursor: usize, blink: bool) {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
     let y = h - DASH_FOOTER_H + 8;
-    // Clear the whole prompt row
     fill_rect(20, y, w - 40, CHAR_H as u32, DASH_BAR);
-    // Prefix
     draw_str(20, y, "serial > ", DASH_ACCENT);
-    // The current line (clipped to width)
     let max_chars = ((w - 40 - text_width("serial > ")) / CHAR_W as u32) as usize;
     let n = line.len().min(max_chars);
     let prefix_w = text_width("serial > ");
-    // Find the largest char boundary <= n (avoid splitting a UTF-8 codepoint).
-    let mut end = n;
-    while end > 0 && !line.is_char_boundary(end) { end -= 1; }
-    let s = &line[..end];
-    // `draw_str` takes a `&str`; it iterates `.bytes()` internally,
-    // so non-ASCII is dropped (matches the rest of the FONT16 grid).
+    let s = &line[..n];
     draw_str(20 + prefix_w, y, s, DASH_TEXT);
-    // Cursor de bloque parpadeante (estilo terminal). Se pinta al final del
-    // texto cuando `cursor` está activo; el parpadeo lo decide quien llama
-    // (según los ticks) para no repintar constantemente.
-    if cursor {
-        let cx = 20 + prefix_w + text_width(s);
+    // Cursor de bloque parpadeante EN SU POSICION dentro de la linea, no
+    // siempre al final: con las flechas se edita en medio, y el cursor tiene
+    // que estar donde va a caer la siguiente letra. Si tapa un caracter, se
+    // redibuja encima en el color del fondo — video inverso, como una terminal
+    // de verdad.
+    if blink {
+        let cx = 20 + prefix_w + (cursor.min(n) as u32) * CHAR_W as u32;
         fill_rect(cx, y, (CHAR_W as u32) - 2, FONT_H as u32, DASH_ACCENT);
+        if cursor < n {
+            let one = [line.as_bytes()[cursor]];
+            if let Ok(ch) = core::str::from_utf8(&one) {
+                draw_str(cx, y, ch, DASH_BAR);
+            }
+        }
     }
     wc_flush();
+}
+
+
+/// Indicadores de la barra superior: distribucion de teclado activa y estado
+/// de los bloqueos. Las lucecitas fisicas de un teclado pueden no responder
+/// (firmware, emulacion); la pantalla no depende de eso.
+pub fn splash_status_right(layout: &str, caps: bool, num: bool) {
+    let w = unsafe { crate::info::FB_WIDTH };
+    if w == 0 { return; }
+    let mut b = [0u8; 40];
+    let mut o = 0;
+    {
+        let mut put = |t: &str| {
+            for &c in t.as_bytes() { if o < b.len() { b[o] = c; o += 1; } }
+        };
+        put("kbd ");
+        put(layout);
+        if caps { put("  MAYUS"); }
+        if num { put("  NUM"); }
+    }
+    let txt = core::str::from_utf8(&b[..o]).unwrap_or("");
+    // La franja se limpia entera antes de escribir: al apagarse un indicador su
+    // texto tiene que desaparecer, no quedarse pegado.
+    let bar_x = w.saturating_sub(420);
+    fill_rect(bar_x, 12, w.saturating_sub(bar_x + 20), FONT_H as u32, DASH_BAR);
+    let tx = w.saturating_sub(text_width(txt) + 20);
+    draw_str(tx, 12, txt, if caps { DASH_ACCENT } else { DASH_DIM });
 }

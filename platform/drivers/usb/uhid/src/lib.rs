@@ -35,7 +35,12 @@ static HID_TO_PS2: [u8; 104] = [
     0x1C,0x01,0x0E,0x0F,0x39,0x0C,0x0D,0x1A,0x1B,0x2B,0x2B,
     0x27,0x28,0x29,0x33,0x34,0x35,
     0x3A,0x3B,0x3C,0x3D,0x3E,0x3F,0x40,0x41,0x42,0x43,0x44,0x57,0x58,
-    0x37,0x46,0x45,0x52,0x47,0x49,0x53,0x4F,0x51,0x4D,0x4B,0x50,0x48,0x45,
+    // Navegacion (Insert..flechas). Llevaban los MISMOS codigos Set 1 que
+    // el teclado numerico (flecha arriba = 0x48 = KP8), asi que pulsar una
+    // flecha escribia un numero. Set 1 real las distingue con el prefijo
+    // 0xE0, que no cabe en un byte: se les da codigo propio 0x66..0x6F.
+    0x37,0x46,0x45,SC_INSERT,SC_HOME,SC_PGUP,SC_DELETE,SC_END,SC_PGDN,
+    SC_RIGHT,SC_LEFT,SC_DOWN,SC_UP,0x45,
     // El '/' del teclado NUMERICO (usage 0x54) llevaba 0x35, el mismo Set 1
     // que la tecla '/' de la fila principal. En US da igual porque ambas son
     // '/', pero en español esa tecla es '-': el numpad escribia guiones.
@@ -63,6 +68,18 @@ fn hid_to_ps2(usage: u8) -> Option<u8> {
 /// español — @ # \ | { } [ ] — era inalcanzable.
 pub const SC_ALTGR: u8 = 0x63;
 
+// Teclas de navegacion con codigo propio (ver la nota en HID_TO_PS2).
+pub const SC_UP: u8 = 0x66;
+pub const SC_DOWN: u8 = 0x67;
+pub const SC_LEFT: u8 = 0x68;
+pub const SC_RIGHT: u8 = 0x69;
+pub const SC_INSERT: u8 = 0x6A;
+pub const SC_HOME: u8 = 0x6B;
+pub const SC_PGUP: u8 = 0x6C;
+pub const SC_DELETE: u8 = 0x6D;
+pub const SC_END: u8 = 0x6E;
+pub const SC_PGDN: u8 = 0x6F;
+
 const MOD_LCTRL: u8 = 1<<0; const MOD_LSHIFT: u8 = 1<<1;
 const MOD_LALT: u8 = 1<<2; const MOD_LGUI: u8 = 1<<3;
 const MOD_RCTRL: u8 = 1<<4; const MOD_RSHIFT: u8 = 1<<5;
@@ -73,6 +90,9 @@ const MOD_RALT: u8 = 1<<6; const MOD_RGUI: u8 = 1<<7;
 struct KbdDev {
     slot: u8,
     dci: u8,
+    /// Numero de interface HID: lo pide SET_REPORT para encender los
+    /// LEDs (Bloq Mayus / Num) del teclado.
+    iface: u8,
     buf_phys: u64,
     buf_virt: *mut u8,
     prev_mod: u8,
@@ -112,6 +132,23 @@ impl UsbHidHal {
     /// DCI (endpoint id) del teclado — para comparar con el endpoint del
     /// Transfer Event y detectar el desajuste que impide re-encolar.
     pub fn kbd_dci(&self) -> u8 { self.kbd.as_ref().map_or(0, |k| k.dci) }
+
+    /// Enciende/apaga los LEDs del teclado (bit0 Num, bit1 Mayus, bit2 Scroll).
+    ///
+    /// Las lucecitas NO las maneja el teclado por su cuenta: es el HOST quien
+    /// le dice como dejarlas, con un SET_REPORT de tipo Output. Por eso Bloq
+    /// Mayus funcionaba por dentro mientras la luz seguia apagada — nadie se
+    /// lo estaba contando al teclado.
+    pub fn set_leds(&self, leds: u8) -> bool {
+        let k = match self.kbd.as_ref() { Some(k) => k, None => return false };
+        let mut data = [leds];
+        // bmRequestType 0x21 = Host->Device, Class, Interface.
+        // bRequest 0x09 = SET_REPORT; wValue 0x0200 = Output report id 0.
+        let n = unsafe {
+            bmo_xhci::control_transfer(k.slot, 0x21, 0x09, 0x0200, k.iface as u16, &mut data, false)
+        };
+        n > 0
+    }
 
     // ── Parsing helpers ─────────────────────────────────────
 
@@ -282,7 +319,7 @@ impl InputHal for UsbHidHal {
                             bmo_xhci::queue_interrupt_in(slot, dci, buf_phys, buf_size as u16);
                             bmo_xhci::ring_doorbell(slot, dci);
                             self.kbd = Some(KbdDev {
-                                slot, dci, buf_phys, buf_virt,
+                                slot, dci, iface: *iface_num, buf_phys, buf_virt,
                                 prev_mod: 0, prev_keys: [0; 6], queued: true,
                             });
                             found_kbd = true;

@@ -26,6 +26,7 @@ use crate::ring0::dev::console::serial_write;
 use crate::ring0::mm::{self, phys};
 
 use crate::ring0::dev::pci;
+use crate::ring0::dev::keyboard;
 
 // Line buffer for the driver's diagnostic stream. The driver logs in
 // fragments (`log("[uhid] slot=")` then `log_u64(..)` then `log("\n")`), so
@@ -113,6 +114,31 @@ static mut SHIFT: bool = false;
 static mut CAPS: bool = false;
 /// AltGr mantenido (Alt derecho): abre el tercer nivel del teclado español.
 static mut ALTGR: bool = false;
+/// Ctrl mantenido (cualquiera de los dos).
+static mut CTRL: bool = false;
+/// Alt IZQUIERDO mantenido. Windows acepta Ctrl+Alt como AltGr, y quien
+/// aprendió ahí lo tiene en los dedos: aquí también vale.
+static mut LALT: bool = false;
+
+// ── Repetición al mantener (typematic) ──────────────────────────────────────
+//
+// El teclado USB no repite solo: manda un reporte cuando la tecla BAJA y otro
+// cuando SUBE, y entre medias silencio. Repetir es trabajo del host. Sin esto,
+// mantener el retroceso borra UN carácter y se queda mirando.
+
+/// Última tecla que sigue pulsada (0 = ninguna) y su contexto.
+static mut HELD_CODE: u8 = 0;
+static mut HELD_SHIFT: bool = false;
+static mut HELD_ALTGR: bool = false;
+static mut HELD_CTRL: bool = false;
+/// TSC del momento en que se pulsó, y del último disparo automático.
+static mut HELD_SINCE: u64 = 0;
+static mut HELD_LAST: u64 = 0;
+/// Espera antes de empezar a repetir, y periodo entre repeticiones (ms).
+/// Los mismos valores de siempre: medio segundo de gracia, luego ~30 por
+/// segundo — lo bastante rápido para borrar una línea sin pasarse.
+const REPEAT_DELAY_MS: u64 = 500;
+const REPEAT_RATE_MS: u64 = 33;
 static mut PRESENT: bool = false;
 // Diagnóstico DETALLADO del HID (pedido del usuario: "llamar al mouse, más
 // detallado total"). Estado por dispositivo + telemetría viva del mouse, para
@@ -331,6 +357,8 @@ pub fn poll_ascii() -> Option<u8> {
                     unsafe { ALTGR = true };
                     continue;
                 }
+                if ev.code == 0x38 { unsafe { LALT = true }; continue; }
+                if ev.code == 0x1D { unsafe { CTRL = true }; continue; }
                 // Caps Lock (0x3A): toggle al presionar, como Windows.
                 if ev.code == 0x3A {
                     unsafe { CAPS = !CAPS };
@@ -339,17 +367,25 @@ pub fn poll_ascii() -> Option<u8> {
                 // La distribución activa decide qué letra es. Lo que produzca
                 // (0, 1 o 2 caracteres) queda en la cola del teclado: nada se
                 // pierde aunque lleguen varias teclas en el mismo sondeo.
-                crate::ring0::dev::keyboard::feed(
-                    ev.code, unsafe { SHIFT }, unsafe { ALTGR }, unsafe { CAPS },
-                );
+                unsafe {
+                    HELD_CODE = ev.code;
+                    HELD_SHIFT = SHIFT;
+                    HELD_ALTGR = altgr_active();
+                    HELD_CTRL = CTRL;
+                    HELD_SINCE = crate::ring0::scheduler::rdtsc();
+                    HELD_LAST = HELD_SINCE;
+                    keyboard::feed_full(ev.code, SHIFT, altgr_active(), CAPS, CTRL);
+                }
             }
             InputEventKind::KeyUp => {
                 if ev.code == 0x2A || ev.code == 0x36 {
                     unsafe { SHIFT = false };
                 }
-                if ev.code == bmo_uhid::SC_ALTGR {
-                    unsafe { ALTGR = false };
-                }
+                if ev.code == bmo_uhid::SC_ALTGR { unsafe { ALTGR = false }; }
+                if ev.code == 0x38 { unsafe { LALT = false }; }
+                if ev.code == 0x1D { unsafe { CTRL = false }; }
+                // Soltar la tecla corta la repetición.
+                unsafe { if HELD_CODE == ev.code { HELD_CODE = 0; } }
             }
             // MOUSE: antes se descartaba (esperaba el compositor F5). Ahora lo
             // "llamamos": acumulamos posición y botones para el diagnóstico y,
@@ -372,7 +408,50 @@ pub fn poll_ascii() -> Option<u8> {
             },
         }
     }
+
+    // Sincronizar las lucecitas: si el estado de los bloqueos cambió, hay que
+    // DECÍRSELO al teclado. No se encienden solas.
+    sync_leds();
+    // Repetición de la tecla mantenida.
+    repeat_held();
     drain()
+}
+
+/// ¿Está activo el tercer nivel? AltGr, o el Ctrl+Alt al que acostumbra
+/// Windows (y por tanto los dedos de medio mundo).
+fn altgr_active() -> bool {
+    unsafe { ALTGR || (CTRL && LALT) }
+}
+
+/// Manda al teclado el estado de sus LEDs cuando cambia. Un SET_REPORT por
+/// cambio, no por sondeo: es un control transfer y no hace falta más.
+fn sync_leds() {
+    static mut LAST_LEDS: u8 = 0xFF;
+    let want = crate::ring0::dev::keyboard::led_mask();
+    unsafe {
+        if LAST_LEDS == want { return; }
+        LAST_LEDS = want;
+        let hid = &*core::ptr::addr_of!(HID);
+        hid.set_leds(want);
+    }
+}
+
+/// Repite la tecla mantenida: tras `REPEAT_DELAY_MS` empieza a inyectarla
+/// cada `REPEAT_RATE_MS`. El teclado USB solo avisa de bajada y subida —
+/// repetir es trabajo del host, y sin esto mantener el retroceso no borra.
+fn repeat_held() {
+    unsafe {
+        if HELD_CODE == 0 { return; }
+        let hz = crate::ring0::scheduler::tsc_freq();
+        if hz == 0 { return; }
+        let now = crate::ring0::scheduler::rdtsc();
+        let delay = hz / 1000 * REPEAT_DELAY_MS;
+        let period = hz / 1000 * REPEAT_RATE_MS;
+        if now.wrapping_sub(HELD_SINCE) < delay { return; }
+        if now.wrapping_sub(HELD_LAST) < period { return; }
+        HELD_LAST = now;
+        keyboard::feed_full(HELD_CODE, HELD_SHIFT, HELD_ALTGR, CAPS, HELD_CTRL);
+    }
 }
 
 /// Saca un carácter de la cola del teclado y lleva la cuenta. Aquí se graba

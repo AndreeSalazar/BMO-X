@@ -92,25 +92,35 @@ pub fn dashboard_log(msg: &str) {
 // shell (limpiar+dibujar sin cambio) → ese era el ghosting ocasional del
 // prompt. Ahora solo repinta cuando: cambia la línea, parpadea el cursor, o
 // hubo un clear. Pantalla estable + cursor vivo.
-fn dash_prompt(line: &str) {
+fn dash_prompt(line: &str, cursor: usize) {
     if !crate::info::has_fb() { return; }
     let ticks = crate::ring0::timer::ticks();
     let blink = ((ticks >> 6) & 1) == 0; // visible ~mitad del tiempo
     let n = line.len();
     static mut LAST_N: usize = usize::MAX;
+    static mut LAST_CUR: usize = usize::MAX;
     static mut LAST_BLINK: bool = false;
     static mut LAST_GEN: u32 = u32::MAX;
+    static mut LAST_LOCKS: u8 = 0xFF;
+    // El estado de los bloqueos entra en la firma: al pulsar Bloq Mayús la
+    // línea no cambia, pero el indicador sí — y hay que repintarlo.
+    let (caps, num) = crate::ring0::dev::keyboard::lock_state();
+    let locks = (caps as u8) | ((num as u8) << 1);
     unsafe {
         let gen = SCREEN_GEN;
-        if LAST_N == n && LAST_BLINK == blink && LAST_GEN == gen { return; }
-        LAST_N = n; LAST_BLINK = blink; LAST_GEN = gen;
+        if LAST_N == n && LAST_CUR == cursor && LAST_BLINK == blink
+            && LAST_GEN == gen && LAST_LOCKS == locks { return; }
+        LAST_N = n; LAST_CUR = cursor; LAST_BLINK = blink; LAST_GEN = gen; LAST_LOCKS = locks;
     }
-    splash::splash_dashboard_prompt(line, blink);
+    splash::splash_dashboard_prompt(line, cursor, blink);
+    // Indicadores a la derecha de la barra: distribución activa y bloqueos.
+    // Los LEDs físicos de este teclado no responden; la pantalla nunca miente.
+    splash::splash_status_right(crate::ring0::dev::keyboard::layout_name(), caps, num);
 }
 
 fn shell_prompt() {
     crate::ring0::dev::console::serial_write("> ");
-    dash_prompt("");
+    dash_prompt("", 0);
 }
 
 /// Generación de pantalla: se incrementa en cada limpieza. Los paneles de fila
@@ -147,8 +157,72 @@ pub(crate) fn clear_screen() {
 /// TERMINÓ (el total baja) y limpiar la pantalla automáticamente.
 static mut LAST_TASK_TOTAL: usize = 0;
 
+// ── Historial de comandos ───────────────────────────────────────────────────
+//
+// Un anillo de las últimas líneas ejecutadas, recorrible con las flechas
+// arriba/abajo. Sin esto, repetir un comando es volver a teclearlo entero.
+
+const HIST_MAX: usize = 16;
+const HIST_LINE: usize = 64;
+static mut HIST: [[u8; HIST_LINE]; HIST_MAX] = [[0; HIST_LINE]; HIST_MAX];
+static mut HIST_LEN: [usize; HIST_MAX] = [0; HIST_MAX];
+static mut HIST_COUNT: usize = 0; // cuántas líneas hay (tope HIST_MAX)
+static mut HIST_HEAD: usize = 0;  // dónde se escribe la siguiente
+
+/// Guarda una línea en el historial. No repite la inmediatamente anterior:
+/// pulsar Enter tres veces sobre el mismo comando no debería llenar el
+/// historial de copias.
+fn hist_push(line: &[u8]) {
+    if line.is_empty() || line.len() > HIST_LINE { return; }
+    unsafe {
+        if HIST_COUNT > 0 {
+            let last = (HIST_HEAD + HIST_MAX - 1) % HIST_MAX;
+            if HIST_LEN[last] == line.len() && HIST[last][..line.len()] == *line { return; }
+        }
+        HIST[HIST_HEAD][..line.len()].copy_from_slice(line);
+        HIST_LEN[HIST_HEAD] = line.len();
+        HIST_HEAD = (HIST_HEAD + 1) % HIST_MAX;
+        if HIST_COUNT < HIST_MAX { HIST_COUNT += 1; }
+    }
+}
+
+/// Entrada `back` posiciones hacia atrás (1 = la última ejecutada).
+fn hist_get(back: usize) -> Option<&'static [u8]> {
+    unsafe {
+        if back == 0 || back > HIST_COUNT { return None; }
+        let idx = (HIST_HEAD + HIST_MAX - back) % HIST_MAX;
+        Some(&HIST[idx][..HIST_LEN[idx]])
+    }
+}
+
+/// Lee una línea del teclado con edición completa: cursor, historial y los
+/// atajos de Ctrl de toda la vida.
+///
+/// Devuelve `(largo, cancelada)`; cancelada = el usuario pulsó Ctrl+C.
 fn shell_read_line(buf: &mut [u8]) -> usize {
-    let mut n = 0;
+    use crate::ring0::dev::keyboard as kb;
+    let mut n = 0;     // largo de la línea
+    let mut cur = 0;   // posición del cursor dentro de la línea
+    let mut hist_at = 0; // 0 = línea nueva; >0 = navegando el historial
+
+    // Inserta un byte en la posición del cursor, desplazando lo que haya.
+    fn insert(buf: &mut [u8], n: &mut usize, cur: &mut usize, c: u8) {
+        if *n >= buf.len() { return; }
+        let mut i = *n;
+        while i > *cur { buf[i] = buf[i - 1]; i -= 1; }
+        buf[*cur] = c;
+        *cur += 1;
+        *n += 1;
+    }
+    // Borra el byte ANTERIOR al cursor (retroceso).
+    fn erase(buf: &mut [u8], n: &mut usize, cur: &mut usize) {
+        if *cur == 0 { return; }
+        let mut i = *cur;
+        while i < *n { buf[i - 1] = buf[i]; i += 1; }
+        *cur -= 1;
+        *n -= 1;
+    }
+
     loop {
         // Auto-limpieza: si un proceso terminó (el total de tareas bajó) y NO
         // estás escribiendo (línea vacía), limpia la pantalla — como una
@@ -162,52 +236,87 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
             }
             LAST_TASK_TOTAL = total;
         }
-        // Update the framebuffer's prompt with the current line
-        // (so the screen shows what the user is typing).
-        dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
-        // CABINA — cockpit omnisciente (filas 9-12): CPU, memoria, scheduler,
-        // Ring 3 y USB en una vista coherente, siempre presente. Consolida los
-        // paneles sueltos de antes (heartbeat/usb).
+        dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""), cur);
+        // CABINA — cockpit omnisciente en la banda inferior.
         crate::ring0::cabina::render_hud();
-        // Accept input from EITHER the serial line (COM1) or the physical
-        // PS/2 keyboard, whichever has a byte ready. Lets the user type on
-        // the real keyboard even with no serial cable attached.
+
+        // Entrada: serial (COM1), teclado USB o PS/2, lo que tenga un byte.
         let mut byte = crate::ring0::dev::console::serial_read_byte();
-        // USB HID keyboard (xHCI) — the real input path on this board.
         if byte.is_none() {
             byte = crate::ring0::dev::usb::poll_ascii();
         }
         if byte.is_none() {
-            // PS/2 i8042 (mudo post-EBS en esta placa: solo ruido 0xFE). Ya no
-            // se loguea cada byte al panel — CABINA cubre el estado del teclado
-            // en su bitácora. Se conserva el poll por si algún día el i8042
-            // reviviera (adaptador PS/2, otra placa).
-            if let Some((_raw, ascii)) = crate::ring0::dev::keyboard::poll_event() {
+            // PS/2 i8042 (mudo post-EBS en esta placa). Se conserva por si
+            // algún día reviviera (adaptador PS/2, otra placa).
+            if let Some((_raw, ascii)) = kb::poll_event() {
                 byte = ascii;
             }
         }
-        match byte {
-            Some(b'\r') | Some(b'\n') => {
+        let c = match byte { Some(c) => c, None => continue };
+
+        match c {
+            b'\r' | b'\n' => {
                 crate::ring0::dev::console::serial_write("\n");
+                hist_push(&buf[..n]);
                 return n;
             }
-            Some(0x7f) | Some(0x08) => {
-                if n > 0 {
+            0x7f | 0x08 => { // Retroceso
+                erase(buf, &mut n, &mut cur);
+            }
+            kb::KEY_DELETE => { // Suprimir: borra HACIA ADELANTE
+                if cur < n {
+                    let mut i = cur + 1;
+                    while i < n { buf[i - 1] = buf[i]; i += 1; }
                     n -= 1;
-                    crate::ring0::dev::console::serial_write("\x08 \x08");
-                    // Reflect the edit on screen immediately.
-                    dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
                 }
+            }
+            kb::KEY_LEFT  => { if cur > 0 { cur -= 1; } }
+            kb::KEY_RIGHT => { if cur < n { cur += 1; } }
+            kb::KEY_HOME  => { cur = 0; }
+            kb::KEY_END   => { cur = n; }
+            kb::KEY_UP => {
+                // Hacia atrás en el historial.
+                if let Some(h) = hist_get(hist_at + 1) {
+                    hist_at += 1;
+                    n = h.len().min(buf.len());
+                    buf[..n].copy_from_slice(&h[..n]);
+                    cur = n;
+                }
+            }
+            kb::KEY_DOWN => {
+                if hist_at > 1 {
+                    hist_at -= 1;
+                    if let Some(h) = hist_get(hist_at) {
+                        n = h.len().min(buf.len());
+                        buf[..n].copy_from_slice(&h[..n]);
+                        cur = n;
+                    }
+                } else {
+                    // Se acabó el historial: vuelta a la línea en blanco.
+                    hist_at = 0;
+                    n = 0;
+                    cur = 0;
+                }
+            }
+            0x01 => { cur = 0; }              // Ctrl+A: al principio
+            0x05 => { cur = n; }              // Ctrl+E: al final
+            0x03 => {                          // Ctrl+C: cancelar la línea
+                crate::ring0::dev::console::serial_write("^C\n");
+                return 0;
+            }
+            0x0C => { clear_screen(); }        // Ctrl+L: limpiar pantalla
+            0x15 => { n = 0; cur = 0; }        // Ctrl+U: borrar la línea entera
+            0x0B => { n = cur; }               // Ctrl+K: borrar hasta el final
+            0x17 => {                          // Ctrl+W: borrar la palabra
+                while cur > 0 && buf[cur - 1] == b' ' { erase(buf, &mut n, &mut cur); }
+                while cur > 0 && buf[cur - 1] != b' ' { erase(buf, &mut n, &mut cur); }
             }
             // Imprimible = ASCII visible O byte Latin-1 alto (ñ, á, ¿, ...).
             // El teclado español entrega un byte por carácter y el font sabe
             // dibujarlos: dejarlos pasar es todo lo que hace falta.
-            Some(c) if c >= 0x20 && c != 0x7f => {
-                if n < buf.len() {
-                    buf[n] = c;
-                    n += 1;
-                    crate::ring0::dev::console::serial_write_byte(c);
-                }
+            c if c >= 0x20 && c != 0x7f && !kb::is_nav(c) => {
+                insert(buf, &mut n, &mut cur, c);
+                crate::ring0::dev::console::serial_write_byte(c);
             }
             _ => {}
         }
@@ -218,11 +327,36 @@ fn shell_help() {
     // Compacto por categorías: cabe entero en el panel de 14 filas sin
     // barrer el resto del log, y se lee de un vistazo.
     s_log("== BMO-X shell ==");
-    s_log(" sistema : info  mem  tasks  layout");
+    s_log(" sistema : info  mem  tasks  layout  hist");
+    s_log(" edicion : flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L");
     s_log(" video   : fb  splash  cls");
     s_log(" ring3   : bex  ktest");
     s_log(" poder   : reboot  halt  panic");
     s_log(" ayuda   : help");
+}
+
+/// `hist` — la lista de comandos ejecutados, numerada. Lo mismo que recorren
+/// las flechas arriba/abajo, pero de un vistazo.
+fn shell_hist() {
+    let count = unsafe { HIST_COUNT };
+    if count == 0 {
+        s_log("[hist] todavia no has ejecutado nada");
+        return;
+    }
+    s_log("== historial (flechas arriba/abajo para recuperarlos) ==");
+    // Del mas antiguo al mas reciente, que es como se lee una lista.
+    for back in (1..=count).rev() {
+        if let Some(line) = hist_get(back) {
+            let mut b = [0u8; 80];
+            let mut o = 0;
+            let idx = count - back + 1;
+            if idx >= 10 { b[o] = b'0' + (idx / 10) as u8; o += 1; }
+            b[o] = b'0' + (idx % 10) as u8; o += 1;
+            for &c in b"  ".iter() { if o < b.len() { b[o] = c; o += 1; } }
+            for &c in line { if o < b.len() { b[o] = c; o += 1; } }
+            if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+        }
+    }
 }
 
 /// `layout` — muestra o cambia la distribución del teclado EN CALIENTE.
@@ -424,6 +558,8 @@ fn run_shell(ctx: &BootContext) -> ! {
 
         if cmd == b"help" {
             shell_help();
+        } else if cmd == b"hist" || cmd == b"history" {
+            shell_hist();
         } else if cmd == b"layout" {
             shell_layout(b"");
         } else if cmd.len() > 7 && &cmd[..7] == b"layout " {
