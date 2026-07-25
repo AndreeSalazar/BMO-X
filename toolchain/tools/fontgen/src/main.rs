@@ -204,34 +204,169 @@ const ART: [[&str; ROWS]; 95] = [
     ["", "", "", "", ".##..#", "#.##.#", "#..##.", "", "", "", "", "", ""],
 ];
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Glifos ESPAÑOLES (Latin-1) — COMPUESTOS, no dibujados a mano
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// La ñ es la a con una tilde encima; la á es la a con un acento. Dibujar 23
+// mapas de bits a mano sería copiar 23 veces la misma letra con un adorno
+// distinto — y cada copia envejece por su cuenta. El generador los COMPONE:
+// toma el glifo ASCII base y le superpone el signo. Cambiar la 'a' arregla
+// la 'á' sola.
+//
+// Las minúsculas ocupan las filas 4..10 del arte, así que el signo entra
+// arriba sin tocarlas. Las mayúsculas ocupan 0..10: se bajan 2 filas (queda
+// sitio de sobra, las filas 11-12 solo las usan los descendentes p/q/g/y).
+
+const ACUTE:  [&str; 2] = ["...##.", "..##.."]; // ´  sube hacia la derecha
+const DIAER:  [&str; 2] = [".##.##", ".##.##"]; // ¨
+const TILDE:  [&str; 2] = [".##..#", "#..##."]; // ~
+const CEDIL:  [&str; 2] = ["..##..", ".###.."]; // ¸ (debajo)
+
+enum Extra {
+    /// Arte literal: signos que no derivan de ninguna letra.
+    Art([&'static str; ROWS]),
+    /// Letra base + signo ENCIMA, bajando la base `shift` filas.
+    Above(char, [&'static str; 2], usize),
+    /// Igual, pero borrando la cabeza de la base: la 'i' pierde su punto
+    /// antes de recibir el acento (í, no í con dos cosas encima).
+    AboveDotless(char, [&'static str; 2], usize),
+    /// Letra base + signo DEBAJO (cedilla).
+    Below(char, [&'static str; 2]),
+}
+
+/// `(byte Latin-1, receta)`. El byte es la codificación en la que el teclado
+/// entrega el carácter y en la que la consola lo guarda: un byte por letra,
+/// sin UTF-8 en Ring 0.
+const EXTRA: [(u8, Extra); 25] = [
+    (0xA1, Extra::Art(["..##..", "..##..", "", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "", ""])), // ¡
+    (0xBF, Extra::Art(["..##..", "..##..", "", "..##..", "..##..", ".##...", "##....", "##....", "##..##", "##..##", ".####.", "", ""])), // ¿
+    (0xAA, Extra::Art([".####.", "....##", ".#####", "##..##", ".#####", "", "######", "", "", "", "", "", ""])), // ª
+    (0xBA, Extra::Art([".####.", "##..##", "##..##", "##..##", ".####.", "", "######", "", "", "", "", "", ""])), // º
+    (0xB0, Extra::Art([".####.", "##..##", "##..##", ".####.", "", "", "", "", "", "", "", "", ""])),             // °
+    (0xB7, Extra::Art(["", "", "", "", "", "..##..", "..##..", "", "", "", "", "", ""])),                          // ·
+    (0xAC, Extra::Art(["", "", "", "", "######", "....##", "....##", "", "", "", "", "", ""])),                    // ¬
+    (0xF1, Extra::Above('n', TILDE, 0)),        // ñ
+    (0xD1, Extra::Above('N', TILDE, 2)),        // Ñ
+    (0xE1, Extra::Above('a', ACUTE, 0)),        // á
+    (0xE9, Extra::Above('e', ACUTE, 0)),        // é
+    (0xED, Extra::AboveDotless('i', ACUTE, 0)), // í
+    (0xF3, Extra::Above('o', ACUTE, 0)),        // ó
+    (0xFA, Extra::Above('u', ACUTE, 0)),        // ú
+    (0xFC, Extra::Above('u', DIAER, 0)),        // ü
+    (0xC1, Extra::Above('A', ACUTE, 2)),        // Á
+    (0xC9, Extra::Above('E', ACUTE, 2)),        // É
+    (0xCD, Extra::Above('I', ACUTE, 2)),        // Í
+    (0xD3, Extra::Above('O', ACUTE, 2)),        // Ó
+    (0xDA, Extra::Above('U', ACUTE, 2)),        // Ú
+    (0xDC, Extra::Above('U', DIAER, 2)),        // Ü
+    (0xE7, Extra::Below('c', CEDIL)),           // ç
+    (0xC7, Extra::Below('C', CEDIL)),           // Ç
+    // Los dos signos muertos, sueltos: se imprimen cuando el usuario
+    // pulsa el acento y despues algo que no combina (o un espacio).
+    (0xB4, Extra::Art(["...##.", "..##..", "", "", "", "", "", "", "", "", "", "", ""])), // acento agudo
+    (0xA8, Extra::Art([".##.##", ".##.##", "", "", "", "", "", "", "", "", "", "", ""])), // dieresis
+];
+
+fn base_art(ch: char) -> [&'static str; ROWS] {
+    ART[(ch as usize) - 32]
+}
+
+/// Aplica la receta y devuelve el arte final del glifo.
+fn build_extra(e: &Extra) -> [String; ROWS] {
+    let mut out: [String; ROWS] = Default::default();
+    match e {
+        Extra::Art(a) => {
+            for r in 0..ROWS { out[r] = a[r].to_string(); }
+        }
+        Extra::Above(ch, mark, shift) | Extra::AboveDotless(ch, mark, shift) => {
+            let dotless = matches!(e, Extra::AboveDotless(..));
+            let b = base_art(*ch);
+            for r in 0..ROWS {
+                // La base baja `shift` filas; si `dotless`, se descarta todo lo
+                // que la letra tuviera por encima de su cuerpo.
+                if r >= *shift {
+                    let src = r - *shift;
+                    let keep = !dotless || src >= 4;
+                    if keep { out[r] = b[src].to_string(); }
+                }
+            }
+            // El signo va justo ENCIMA del cuerpo, sin pisarlo: se busca la
+            // primera fila con tinta y se colocan las dos filas del signo
+            // arriba. (Escribirlo a mano costó una Ñ decapitada: el signo
+            // sobreescribía las dos primeras filas de la N.)
+            let top = (0..ROWS).find(|r| out[*r].contains('#')).unwrap_or(2);
+            if top >= 2 {
+                out[top - 2] = mark[0].to_string();
+                out[top - 1] = mark[1].to_string();
+            }
+        }
+        Extra::Below(ch, mark) => {
+            let b = base_art(*ch);
+            for r in 0..ROWS { out[r] = b[r].to_string(); }
+            out[ROWS - 2] = mark[0].to_string();
+            out[ROWS - 1] = mark[1].to_string();
+        }
+    }
+    out
+}
+
+fn pack(lines: &[String]) -> [u8; 16] {
+    let mut rows = [0u8; 16];
+    for (r, line) in lines.iter().enumerate().take(ROWS) {
+        let mut byte = 0u8;
+        for (c, px) in line.chars().enumerate().take(8) {
+            if px == '#' {
+                byte |= 0x80 >> c; // bit 7 = columna izquierda (contrato del renderer)
+            }
+        }
+        rows[r + 2] = byte;
+    }
+    rows
+}
+
 fn main() {
     let out = std::env::args().nth(1).unwrap_or_else(|| {
         "Ultra_kernel_x86-64/kernel/src/ring0/core/font16_data.rs".to_string()
     });
-    let mut s = String::from(
+    // El segundo archivo (mismo directorio) lleva los bytes Latin-1 de los
+    // glifos extra, EN EL MISMO ORDEN: el kernel busca ahí para traducir un
+    // byte >= 0xA0 a su índice de glifo.
+    let out_extra = out.replace("font16_data.rs", "font16_extra.rs");
+
+    let mut s = format!(
         "// AUTO-GENERADO por toolchain/tools/fontgen — NO editar a mano.\n\
          // Regenerar: cargo run -p bmo-fontgen\n\
-         // Glifos 8x16 (arte en filas 2..14), trazos 2px nativos, ASCII 32..=126.\n[\n",
+         // Glifos 8x16 (arte en filas 2..14), trazos 2px nativos.\n\
+         // Indices 0..94 = ASCII 32..=126; 95..{} = extras Latin-1 (ver font16_extra.rs).\n[\n",
+        94 + EXTRA.len()
     );
     for (i, art) in ART.iter().enumerate() {
         let ch = (32 + i as u8) as char;
-        let mut rows = [0u8; 16];
-        for (r, line) in art.iter().enumerate() {
-            let mut byte = 0u8;
-            for (c, px) in line.chars().enumerate().take(8) {
-                if px == '#' {
-                    byte |= 0x80 >> c; // bit 7 = columna izquierda (contrato del renderer)
-                }
-            }
-            rows[r + 2] = byte;
-        }
+        let lines: Vec<String> = art.iter().map(|l| l.to_string()).collect();
         s += &format!("    // {:?}\n    [", ch);
-        for b in rows {
-            s += &format!("0x{:02X},", b);
-        }
+        for b in pack(&lines) { s += &format!("0x{:02X},", b); }
+        s += "],\n";
+    }
+    for (code, recipe) in EXTRA.iter() {
+        let lines = build_extra(recipe);
+        s += &format!("    // Latin-1 0x{:02X}\n    [", code);
+        for b in pack(&lines) { s += &format!("0x{:02X},", b); }
         s += "],\n";
     }
     s += "]\n";
     std::fs::write(&out, &s).expect("escribir font16_data.rs");
-    println!("generado {out} ({} glifos)", ART.len());
+
+    let mut e = String::from(
+        "// AUTO-GENERADO por toolchain/tools/fontgen — NO editar a mano.\n\
+         // Byte Latin-1 de cada glifo extra, en el orden en que estan en\n\
+         // font16_data.rs a partir del indice 95.\n[\n    ",
+    );
+    for (code, _) in EXTRA.iter() { e += &format!("0x{:02X},", code); }
+    e += "\n]\n";
+    std::fs::write(&out_extra, &e).expect("escribir font16_extra.rs");
+
+    println!("generado {out} ({} glifos: 95 ASCII + {} Latin-1)", 95 + EXTRA.len(), EXTRA.len());
+    println!("generado {out_extra}");
 }

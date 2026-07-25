@@ -199,7 +199,10 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
                     dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""));
                 }
             }
-            Some(c) if c >= 0x20 && c < 0x7f => {
+            // Imprimible = ASCII visible O byte Latin-1 alto (ñ, á, ¿, ...).
+            // El teclado español entrega un byte por carácter y el font sabe
+            // dibujarlos: dejarlos pasar es todo lo que hace falta.
+            Some(c) if c >= 0x20 && c != 0x7f => {
                 if n < buf.len() {
                     buf[n] = c;
                     n += 1;
@@ -215,11 +218,38 @@ fn shell_help() {
     // Compacto por categorías: cabe entero en el panel de 14 filas sin
     // barrer el resto del log, y se lee de un vistazo.
     s_log("== BMO-X shell ==");
-    s_log(" sistema : info  mem  tasks");
+    s_log(" sistema : info  mem  tasks  layout");
     s_log(" video   : fb  splash  cls");
     s_log(" ring3   : bex  ktest");
     s_log(" poder   : reboot  halt  panic");
     s_log(" ayuda   : help");
+}
+
+/// `layout` — muestra o cambia la distribución del teclado EN CALIENTE.
+/// El scancode dice qué tecla se pulsó, no qué letra es; si lo que sale no
+/// coincide con lo impreso en tus teclas, prueba otra aquí mismo.
+fn shell_layout(arg: &[u8]) {
+    use crate::ring0::dev::keyboard::{self, Layout};
+    let chosen = match arg {
+        b"" => None,
+        b"us" => Some(Layout::Us),
+        b"latam" | b"es-latam" | b"la" => Some(Layout::EsLatam),
+        b"es" | b"espana" | b"es-espana" => Some(Layout::EsSpain),
+        _ => {
+            s_log("[layout] opciones: us | latam | es");
+            return;
+        }
+    };
+    if let Some(l) = chosen {
+        keyboard::set_layout(l);
+        crate::ring0::cabina::info("kbd", keyboard::layout_name(), 0);
+    }
+    let mut b = [0u8; 64];
+    let mut o = 0;
+    for &c in b"[layout] activo: ".iter() { if o < b.len() { b[o] = c; o += 1; } }
+    for &c in keyboard::layout_name().as_bytes() { if o < b.len() { b[o] = c; o += 1; } }
+    for &c in b"  (us | latam | es)".iter() { if o < b.len() { b[o] = c; o += 1; } }
+    if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
 }
 
 fn shell_info(ctx: &BootContext) {
@@ -394,6 +424,10 @@ fn run_shell(ctx: &BootContext) -> ! {
 
         if cmd == b"help" {
             shell_help();
+        } else if cmd == b"layout" {
+            shell_layout(b"");
+        } else if cmd.len() > 7 && &cmd[..7] == b"layout " {
+            shell_layout(&cmd[7..]);
         } else if cmd == b"cls" || cmd == b"clear" {
             clear_screen();
         } else if cmd == b"info" {

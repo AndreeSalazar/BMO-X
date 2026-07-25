@@ -111,6 +111,8 @@ static mut HID: UsbHidHal = UsbHidHal::new();
 static mut READY: bool = false;
 static mut SHIFT: bool = false;
 static mut CAPS: bool = false;
+/// AltGr mantenido (Alt derecho): abre el tercer nivel del teclado español.
+static mut ALTGR: bool = false;
 static mut PRESENT: bool = false;
 // Diagnóstico DETALLADO del HID (pedido del usuario: "llamar al mouse, más
 // detallado total"). Estado por dispositivo + telemetría viva del mouse, para
@@ -304,13 +306,16 @@ pub fn poll_ascii() -> Option<u8> {
     if !unsafe { PRESENT } {
         return None;
     }
+    // Lo que dejó pendiente la pulsación anterior sale primero: una tecla
+    // muerta que no combina produce DOS caracteres (´ + q = ´q).
+    if let Some(b) = drain() { return Some(b); }
+
     let mut evs = [InputEvent::empty(); 16];
     let n = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
         hid.poll(&mut evs)
     };
     unsafe { HID_EVENTS = HID_EVENTS.wrapping_add(n as u32); }
-    let mut out: Option<u8> = None;
     for ev in &evs[..n] {
         match ev.kind {
             InputEventKind::KeyDown => {
@@ -319,30 +324,31 @@ pub fn poll_ascii() -> Option<u8> {
                     unsafe { SHIFT = true };
                     continue;
                 }
+                // AltGr: el tercer nivel del teclado español. Llega con
+                // código propio (ver bmo_uhid::SC_ALTGR) para no confundirse
+                // con el Alt izquierdo.
+                if ev.code == bmo_uhid::SC_ALTGR {
+                    unsafe { ALTGR = true };
+                    continue;
+                }
                 // Caps Lock (0x3A): toggle al presionar, como Windows.
                 if ev.code == 0x3A {
                     unsafe { CAPS = !CAPS };
                     continue;
                 }
-                if let Some(a) = crate::ring0::dev::keyboard::scancode1_to_ascii(
-                    ev.code, unsafe { SHIFT }, unsafe { CAPS },
-                ) {
-                    out = Some(a); // el último gana (typematic ya viene diffeado)
-                    unsafe {
-                        KEY_EVENTS = KEY_EVENTS.wrapping_add(1);
-                        // EL momento que llevamos persiguiendo: la primera tecla
-                        // que cruza de verdad. Se graba en el instante exacto —
-                        // no se deduce después comparando contadores.
-                        if !FIRST_KEY {
-                            FIRST_KEY = true;
-                            crate::ring0::cabina::info("usb", "primera tecla recibida: el teclado ESCRIBE", a as u64);
-                        }
-                    }
-                }
+                // La distribución activa decide qué letra es. Lo que produzca
+                // (0, 1 o 2 caracteres) queda en la cola del teclado: nada se
+                // pierde aunque lleguen varias teclas en el mismo sondeo.
+                crate::ring0::dev::keyboard::feed(
+                    ev.code, unsafe { SHIFT }, unsafe { ALTGR }, unsafe { CAPS },
+                );
             }
             InputEventKind::KeyUp => {
                 if ev.code == 0x2A || ev.code == 0x36 {
                     unsafe { SHIFT = false };
+                }
+                if ev.code == bmo_uhid::SC_ALTGR {
+                    unsafe { ALTGR = false };
                 }
             }
             // MOUSE: antes se descartaba (esperaba el compositor F5). Ahora lo
@@ -366,7 +372,22 @@ pub fn poll_ascii() -> Option<u8> {
             },
         }
     }
-    out
+    drain()
+}
+
+/// Saca un carácter de la cola del teclado y lleva la cuenta. Aquí se graba
+/// la PRIMERA tecla que cruza de verdad — en el instante exacto, no deducida
+/// después comparando contadores.
+fn drain() -> Option<u8> {
+    let b = crate::ring0::dev::keyboard::pop_out()?;
+    unsafe {
+        KEY_EVENTS = KEY_EVENTS.wrapping_add(1);
+        if !FIRST_KEY {
+            FIRST_KEY = true;
+            crate::ring0::cabina::info("usb", "primera tecla recibida: el teclado ESCRIBE", b as u64);
+        }
+    }
+    Some(b)
 }
 
 /// Estado DETALLADO del HID para el panel de diagnóstico (fila fija, sobrevive

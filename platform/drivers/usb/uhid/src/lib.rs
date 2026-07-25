@@ -29,12 +29,23 @@ static HID_TO_PS2: [u8; 104] = [
     0x17,0x24,0x25,0x26,0x32,0x31,0x18,0x19,0x10,0x13,
     0x1F,0x14,0x16,0x2F,0x11,0x2D,0x15,0x2C,
     0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,
-    0x1C,0x01,0x0E,0x0F,0x39,0x0C,0x0D,0x1A,0x1B,0x2B,0,
+    // El indice 50 (usage 0x32, "Non-US # and ~") es la tecla junto al Enter
+    // de los teclados ISO: en español es la de } ] `. Mapea al mismo Set 1
+    // 0x2B que la barra invertida; estaba en 0 = tecla muerta de verdad.
+    0x1C,0x01,0x0E,0x0F,0x39,0x0C,0x0D,0x1A,0x1B,0x2B,0x2B,
     0x27,0x28,0x29,0x33,0x34,0x35,
     0x3A,0x3B,0x3C,0x3D,0x3E,0x3F,0x40,0x41,0x42,0x43,0x44,0x57,0x58,
     0x37,0x46,0x45,0x52,0x47,0x49,0x53,0x4F,0x51,0x4D,0x4B,0x50,0x48,0x45,
-    0x35,0x37,0x4A,0x4E,0x1C,0x4F,0x50,0x51,0x4B,0x4C,0x4D,0x47,0x48,0x49,0x52,0x53,
-    0,0,0,0,
+    // El '/' del teclado NUMERICO (usage 0x54) llevaba 0x35, el mismo Set 1
+    // que la tecla '/' de la fila principal. En US da igual porque ambas son
+    // '/', pero en español esa tecla es '-': el numpad escribia guiones.
+    // Set 1 real es 0xE0 0x35 (dos bytes); 0x62 esta libre y el consumidor lo
+    // resuelve como '/' en cualquier distribucion.
+    0x62,0x37,0x4A,0x4E,0x1C,0x4F,0x50,0x51,0x4B,0x4C,0x4D,0x47,0x48,0x49,0x52,0x53,
+    // 0x64 = la tecla EXTRA de los teclados ISO (la de < > junto al Shift
+    // izquierdo, que los US no tienen): Set 1 la llama 0x56. Estaba en 0 =
+    // ignorada, así que en un teclado español faltaba una tecla entera.
+    0x56,0,0,0,
 ];
 
 fn hid_to_ps2(usage: u8) -> Option<u8> {
@@ -44,6 +55,13 @@ fn hid_to_ps2(usage: u8) -> Option<u8> {
 }
 
 // ── Modifier bits ───────────────────────────────────────────
+
+/// Scancode propio para AltGr (Alt derecho). Set 1 lo expresa como la
+/// secuencia `0xE0 0x38`, imposible de meter en un solo byte de InputEvent;
+/// 0x63 está libre en Set 1 y el consumidor lo trata como AltGr. Sin esto
+/// AltGr llegaba como 0x38 (Alt izquierdo) y el tercer nivel del teclado
+/// español — @ # \ | { } [ ] — era inalcanzable.
+pub const SC_ALTGR: u8 = 0x63;
 
 const MOD_LCTRL: u8 = 1<<0; const MOD_LSHIFT: u8 = 1<<1;
 const MOD_LALT: u8 = 1<<2; const MOD_LGUI: u8 = 1<<3;
@@ -333,7 +351,12 @@ impl InputHal for UsbHidHal {
                             }
                             if mod_chg & MOD_RALT != 0 {
                                 let on = report.modifiers & MOD_RALT != 0;
-                                if count < buf.len() { buf[count] = InputEvent::key(0x38, on); count += 1; }
+                                // AltGr, NO el Alt izquierdo: en las
+                                // distribuciones latinas abre el tercer nivel
+                                // (@ # \ | { } [ ]). Set 1 lo codifica como
+                                // 0xE0 0x38, dos bytes que no caben en un
+                                // InputEvent — de ahí el código propio.
+                                if count < buf.len() { buf[count] = InputEvent::key(SC_ALTGR, on); count += 1; }
                             }
                             if mod_chg & MOD_RGUI != 0 {
                                 let on = report.modifiers & MOD_RGUI != 0;
