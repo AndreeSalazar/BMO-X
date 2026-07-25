@@ -166,16 +166,32 @@ pub fn snapshot() -> TelemetrySnapshot {
 /// bruta (~65k lecturas de config) bloqueaba el primer frame.
 pub fn boot_probe() {
     info("cabina", "observador omnisciente en linea", 0);
-    match crate::ring0::dev::pci::find_storage() {
-        Some(loc) => {
-            let msg = match loc.kind {
-                crate::ring0::dev::pci::StorageKind::Nvme => "disco NVMe detectado (via PCI)",
-                crate::ring0::dev::pci::StorageKind::Ahci => "disco SATA/AHCI detectado (via PCI)",
-                _ => "controlador de disco detectado",
-            };
-            info("pci", msg, loc.mmio);
-        }
-        None => warn("pci", "sin controlador de disco visible", 0),
+    // CENSO COMPLETO, no "el primero". Saber cuántos controladores de
+    // almacenamiento hay y DE QUÉ TIPO es lo que dice dónde buscar un disco.
+    // Si la BIOS tiene el SATA del chipset en modo RAID, ese controlador
+    // aparece con clase RAID y no con clase AHCI — y un buscador que solo
+    // pregunta por AHCI pasa de largo sin enterarse de que existe.
+    let mut index = 0usize;
+    let mut found = 0u64;
+    while let Some(loc) = crate::ring0::dev::pci::storage_at(index) {
+        index += 1;
+        found += 1;
+        let msg = match loc.kind {
+            crate::ring0::dev::pci::StorageKind::Nvme => "controlador NVMe (via PCI)",
+            crate::ring0::dev::pci::StorageKind::Ahci => "controlador SATA/AHCI (via PCI)",
+            crate::ring0::dev::pci::StorageKind::Raid => "controlador en modo RAID (via PCI)",
+            crate::ring0::dev::pci::StorageKind::Ide  => "controlador en modo IDE (via PCI)",
+            _ => "controlador de almacenamiento (via PCI)",
+        };
+        // El valor lleva bus:dev.func empaquetado + el MMIO, para poder
+        // localizarlo después sin volver a barrer el bus.
+        info("pci", msg, loc.mmio);
+        if index >= 8 { break; }
+    }
+    if found == 0 {
+        warn("pci", "sin controlador de almacenamiento visible", 0);
+    } else {
+        info("pci", "controladores de almacenamiento hallados", found);
     }
 }
 

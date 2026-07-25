@@ -162,11 +162,19 @@ pub fn init() {
     // nos enseñó que el teclado estaba en el segundo controlador.
     let mut chosen = 0xFFu8;
     let mut loc_ok = None;
+    // AHCI primero; si ninguno tiene disco, se prueba el que la BIOS declare
+    // en modo RAID. Muchos controladores AMD en "modo RAID" siguen hablando
+    // AHCI por registros — y si no lo hacen, el censo lo dirá con sus propios
+    // números en vez de dejarnos suponiendo que el disco no existe.
+    'busqueda: for kind in [StorageKind::Ahci, StorageKind::Raid] {
     for skip in 0..4usize {
-        let loc = match pci::find_storage_of(StorageKind::Ahci, skip) {
+        let loc = match pci::find_storage_of(kind, skip) {
             Some(l) => l,
             None => break,
         };
+        if kind == StorageKind::Raid {
+            crate::ring0::cabina::warn("disk", "probando un controlador en modo RAID como AHCI", loc.mmio);
+        }
         let mmio_va = if loc.mmio < 0x1_0000_0000 { loc.mmio } else { mm::phys_to_virt(loc.mmio) };
         crate::ring0::cabina::info("disk", "HBA SATA/AHCI hallado en PCI", loc.mmio);
 
@@ -219,8 +227,9 @@ pub fn init() {
         if chosen != 0xFF {
             unsafe { MMIO = loc.mmio; }
             loc_ok = Some(loc);
-            break;
+            break 'busqueda;
         }
+    }
     }
     if chosen == 0xFF || loc_ok.is_none() {
         crate::ring0::cabina::fault("disk", "ningun puerto SATA con disco (mira ssts)", 0);
