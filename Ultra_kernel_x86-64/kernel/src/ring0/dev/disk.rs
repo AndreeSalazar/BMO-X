@@ -59,6 +59,25 @@ fn dlog(s: &str) {
     }
 }
 
+/// Hex compacto al log del driver: los registros se leen en hexadecimal.
+fn dlog_u64(val: u64) {
+    const H: &[u8; 16] = b"0123456789ABCDEF";
+    let mut tmp = [0u8; 18];
+    let mut o = 0;
+    tmp[o] = b'0'; o += 1;
+    tmp[o] = b'x'; o += 1;
+    let mut started = false;
+    for i in (0..16).rev() {
+        let nib = ((val >> (i * 4)) & 0xF) as usize;
+        if nib != 0 || started || i == 0 {
+            tmp[o] = H[nib];
+            o += 1;
+            started = true;
+        }
+    }
+    if let Ok(s) = core::str::from_utf8(&tmp[..o]) { dlog(s); }
+}
+
 /// Lo que `bmo-ahci` necesita del kernel. Nada más que esto.
 struct KernelStorageHal;
 
@@ -123,43 +142,58 @@ pub fn total_sectors() -> u64 { unsafe { TOTAL_SECTORS } }
 pub fn init() {
     storage_hal::init_hal(&HAL);
 
-    let loc = match pci::find_storage_of(StorageKind::Ahci, 0) {
-        Some(l) => l,
-        None => {
-            crate::ring0::cabina::warn("disk", "sin controlador SATA/AHCI en el PCI", 0);
-            return;
-        }
-    };
-    // MMIO virtual: bajo 4 GiB cae en la identidad de s2; más arriba lo cubre
-    // el physmap.
-    let mmio_va = if loc.mmio < 0x1_0000_0000 { loc.mmio } else { mm::phys_to_virt(loc.mmio) };
-    unsafe { MMIO = loc.mmio; }
-    crate::ring0::cabina::info("disk", "HBA SATA/AHCI hallado en PCI", loc.mmio);
-
-    if !unsafe { bmo_ahci::probe(mmio_va) } {
-        crate::ring0::cabina::fault("disk", "el HBA AHCI no inicializo", loc.mmio);
-        return;
-    }
-
-    // Censo de puertos: cuál tiene un disco enlazado de verdad (DET=3).
-    let ctrl = match bmo_ahci::controller() {
-        Some(c) => c,
-        None => return,
-    };
+    // Una placa puede traer más de un HBA SATA. Se prueban en orden hasta dar
+    // con uno que tenga un disco enlazado — el mismo patrón que el USB, que ya
+    // nos enseñó que el teclado estaba en el segundo controlador.
     let mut chosen = 0xFFu8;
-    let mut active = 0u64;
-    for p in ctrl.ports.iter() {
-        if ctrl.ports_implemented & (1 << p.port_number) == 0 { continue; }
-        if p.state == bmo_ahci::PortState::Active {
-            active += 1;
-            // Signature 0x00000101 = disco SATA. Un ATAPI (0xEB140101) es una
-            // unidad óptica: no es donde vive BMO.
-            if chosen == 0xFF && p.signature == 0x0000_0101 { chosen = p.port_number; }
+    let mut loc_ok = None;
+    for skip in 0..4usize {
+        let loc = match pci::find_storage_of(StorageKind::Ahci, skip) {
+            Some(l) => l,
+            None => break,
+        };
+        let mmio_va = if loc.mmio < 0x1_0000_0000 { loc.mmio } else { mm::phys_to_virt(loc.mmio) };
+        crate::ring0::cabina::info("disk", "HBA SATA/AHCI hallado en PCI", loc.mmio);
+
+        bmo_ahci::reset_ctrl();
+        if !unsafe { bmo_ahci::probe(mmio_va) } {
+            crate::ring0::cabina::warn("disk", "el HBA no inicializo, probando el siguiente", loc.mmio);
+            continue;
+        }
+
+        let ctrl = match bmo_ahci::controller() { Some(c) => c, None => continue };
+        // CENSO: el estado CRUDO de cada puerto implementado. Sin este número
+        // "no hay disco" es una conclusión sin pruebas; con él se ve si el
+        // puerto está vacío (DET=0), conectado sin negociar (DET=1) o
+        // enlazado (DET=3).
+        let mut active = 0u64;
+        for p in ctrl.ports.iter() {
+            if ctrl.ports_implemented & (1 << p.port_number) == 0 { continue; }
+            dlog("[ahci] p");
+            dlog_u64(p.port_number as u64);
+            dlog(" ssts=");
+            dlog_u64(p.ssts as u64);
+            dlog(" sig=");
+            dlog_u64(p.signature as u64);
+            dlog("\n");
+            if p.state == bmo_ahci::PortState::Active {
+                active += 1;
+                // Firma 0x00000101 = disco duro SATA. Un ATAPI (0xEB140101) es
+                // una unidad óptica: no es donde vive BMO.
+                if chosen == 0xFF && p.signature == bmo_ahci::SIG_SATA_DISK {
+                    chosen = p.port_number;
+                }
+            }
+        }
+        crate::ring0::cabina::info("disk", "puertos SATA con disco enlazado", active);
+        if chosen != 0xFF {
+            unsafe { MMIO = loc.mmio; }
+            loc_ok = Some(loc);
+            break;
         }
     }
-    crate::ring0::cabina::info("disk", "puertos SATA con disco enlazado", active);
-    if chosen == 0xFF {
-        crate::ring0::cabina::fault("disk", "ningun puerto SATA con disco", active);
+    if chosen == 0xFF || loc_ok.is_none() {
+        crate::ring0::cabina::fault("disk", "ningun puerto SATA con disco (mira ssts)", 0);
         return;
     }
 

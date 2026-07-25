@@ -94,6 +94,10 @@ const CMD_TIMEOUT: u32 = 20_000_000;
 /// Espera para los cambios de estado del puerto (arranque/parada del motor de
 /// comandos), que son inmediatos salvo avería.
 const PORT_TIMEOUT: u32 = 1_000_000;
+/// Espera a que un enlace SATA quede establecido. Negociar velocidad tras un
+/// reset lleva decenas de milisegundos; si el firmware ya lo dejó hecho, el
+/// primer sondeo acierta y esto no cuesta nada.
+const LINK_TIMEOUT: u32 = 5_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortState { Empty, Present, Active, Error }
@@ -103,6 +107,11 @@ pub struct AhciPort {
     pub port_number: u8,
     pub state: PortState,
     pub signature: u32,
+    /// `PxSSTS` crudo tal como lo dejó el censo. DET (bits 3:0) es lo que
+    /// decide si hay disco: 0=nada, 1=algo conectado sin comunicación,
+    /// 3=enlace establecido. Guardarlo permite PINTAR el número en vez de
+    /// deducir por qué no aparece el disco.
+    pub ssts: u32,
     /// Command List (32 cabeceras × 32 B), física.
     pub command_list_phys: u64,
     /// FIS Receive Area, física.
@@ -175,23 +184,20 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     let hal = storage_hal::hal();
     hal.log("[ahci] probing HBA\n");
 
-    // Modo AHCI explícito ANTES de nada: algunas placas dejan el HBA en modo
-    // compatible IDE, y entonces sus registros no significan lo que creemos.
+    // ★ SIN RESET DEL HBA, a propósito.
+    //
+    // La versión anterior hacía `GHC.HR` nada más entrar y leía el estado de
+    // los puertos justo después: cero puertos con disco, siempre. Normal — un
+    // reset del HBA TIRA TODOS LOS ENLACES SATA, y renegociar un enlace lleva
+    // decenas de milisegundos. Era preguntar "¿hay alguien?" un microsegundo
+    // después de colgar el teléfono.
+    //
+    // Y el reset no hacía falta para nada: el firmware UEFI ya arrancó este
+    // HBA y dejó los enlaces establecidos para poder leer el arranque. Lo
+    // único que hay que asegurar es el modo (algunas placas lo dejan en modo
+    // compatible IDE, donde los registros no significan lo que creemos) y
+    // apagar las interrupciones, porque este driver sondea.
     hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_AE);
-
-    // Reset del HBA, con límite. Si no vuelve, se sigue igualmente: un reset
-    // que no completa es información, no motivo para colgarse.
-    hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_HR);
-    let mut spun = 0u32;
-    while hba_read(mmio_base, HBA_GHC) & GHC_HR != 0 && spun < PORT_TIMEOUT {
-        spun += 1;
-        core::hint::spin_loop();
-    }
-    if spun >= PORT_TIMEOUT { hal.log("[ahci] AVISO: el reset del HBA no completo\n"); }
-    // El reset borra AE: hay que volver a encenderlo.
-    hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_AE);
-    // Interrupciones APAGADAS: este driver sondea. Encenderlas sin manejador
-    // instalado sería invitar a una tormenta de IRQ.
     hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) & !GHC_IE);
     hba_write(mmio_base, HBA_IS, hba_read(mmio_base, HBA_IS)); // limpiar pendientes
 
@@ -202,14 +208,24 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     let mut ctrl = AhciController {
         mmio_base, port_count, ports_implemented: pi,
         ports: [AhciPort {
-            port_number: 0, state: PortState::Empty, signature: 0,
+            port_number: 0, state: PortState::Empty, signature: 0, ssts: 0,
             command_list_phys: 0, fis_phys: 0, cmd_table_phys: 0,
         }; 32],
     };
 
     for i in 0..32u8 {
         if pi & (1 << i) == 0 { continue; }
-        let ssts = port_read(mmio_base, i, PORT_SSTS);
+        // Darle tiempo al enlace. Si el puerto ya está establecido (lo normal
+        // viniendo del firmware) el primer sondeo acierta y no se espera nada;
+        // si acaba de reiniciarse, aquí es donde se le concede el tiempo que
+        // la negociación necesita en vez de declararlo vacío al instante.
+        let mut ssts = port_read(mmio_base, i, PORT_SSTS);
+        let mut spun = 0u32;
+        while ssts & SSTS_DET != 0x03 && spun < LINK_TIMEOUT {
+            spun += 1;
+            core::hint::spin_loop();
+            ssts = port_read(mmio_base, i, PORT_SSTS);
+        }
         // DET=3 es "dispositivo presente y comunicación establecida": el único
         // estado en el que tiene sentido hablarle.
         let state = match ssts & SSTS_DET {
@@ -218,7 +234,7 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
             _ => PortState::Empty,
         };
         ctrl.ports[i as usize] = AhciPort {
-            port_number: i, state, signature: port_read(mmio_base, i, PORT_SIG),
+            port_number: i, state, signature: port_read(mmio_base, i, PORT_SIG), ssts,
             command_list_phys: 0, fis_phys: 0, cmd_table_phys: 0,
         };
     }
@@ -465,4 +481,14 @@ pub unsafe fn identify_phys(port_idx: u8, buf_phys: u64) -> Result<u16, DiskErro
 pub fn controller() -> Option<&'static AhciController> {
     #[allow(static_mut_refs)]
     unsafe { CONTROLLER.as_ref() }
+}
+
+/// Olvida el controlador actual para poder probar OTRO.
+///
+/// Una placa puede traer más de un HBA SATA (el del chipset y alguno añadido),
+/// y el disco que buscamos puede estar en el segundo. Sin esto, `probe` se
+/// queda con el primero para siempre por su guarda de inicialización.
+pub fn reset_ctrl() {
+    unsafe { CONTROLLER = None; }
+    INIT_DONE.store(false, Ordering::SeqCst);
 }
