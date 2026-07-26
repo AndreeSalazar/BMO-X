@@ -1,0 +1,14 @@
+[package]
+name = "bmo-estratos"
+version = "0.1.0"
+edition = "2021"
+description = "ESTRATOS — el formato en disco del sistema de ficheros de BMO-X"
+
+[lib]
+
+[dependencies]
+# El mismo BLAKE3 que las firmas del BEF y que bmo-verify. No es una eleccion
+# de conveniencia: el diseno exige un solo hash en todo el sistema.
+bmo-hash = { path = "../../../shared/bmo-hash" }
+# El contrato de bloques: ESTRATOS habla con un dispositivo, no con SATA.
+bmo-block = { path = "../block" }

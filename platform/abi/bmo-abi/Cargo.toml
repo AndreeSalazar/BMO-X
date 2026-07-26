@@ -16,3 +16,6 @@ cpu-epyc-zen3 = ["cpu-x86-64-zen3"]
 
 [dependencies]
 bitflags = "2.13.0"
+# El unico BLAKE3 del sistema. Vivia dentro de esta crate; salio para que el
+# kernel pueda usarlo sin arrastrar `alloc`. Ver src/bef/blake3.rs.
+bmo-hash = { path = "../../shared/bmo-hash" }

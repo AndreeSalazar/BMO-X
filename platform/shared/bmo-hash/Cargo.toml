@@ -1,0 +1,11 @@
+[package]
+name = "bmo-hash"
+version = "0.1.0"
+edition = "2021"
+description = "BMO — BLAKE3 nativo, no_std y sin dependencias. El unico hash del sistema."
+
+[lib]
+
+[dependencies]
+# Ninguna, y es el punto: de esta crate depende Ring 0. Cualquier dependencia
+# que arrastrara `alloc` la haria inservible dentro del kernel.

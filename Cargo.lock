@@ -19,6 +19,7 @@ name = "bmo-abi"
 version = "2.0.0"
 dependencies = [
  "bitflags 2.13.0",
+ "bmo-hash",
 ]
 
 [[package]]
@@ -95,6 +96,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-estratos"
+version = "0.1.0"
+dependencies = [
+ "bmo-block",
+ "bmo-hash",
+]
+
+[[package]]
 name = "bmo-fat32"
 version = "0.1.0"
 
@@ -112,6 +121,10 @@ version = "1.0.0"
 dependencies = [
  "boot-context",
 ]
+
+[[package]]
+name = "bmo-hash"
+version = "0.1.0"
 
 [[package]]
 name = "bmo-hello-bex"

@@ -7,6 +7,9 @@ members = [
     "Ultra_kernel_x86-64/kernel",
 
     # ── SHARED (Ring 0 + Ring 3) ────────────────────────────────────
+    # El unico BLAKE3 del sistema: firmas del BEF, bmo-verify y ESTRATOS
+    # calculan la MISMA suma porque ejecutan el MISMO codigo.
+    "platform/shared/bmo-hash",
     "platform/shared/bmo-hal",
     "platform/shared/hw-profile",
     "platform/shared/nvram-log",
@@ -33,6 +36,9 @@ members = [
     "platform/drivers/storage/block",
     "platform/drivers/storage/ahci",
     "platform/drivers/storage/fat32",
+    # ESTRATOS: el formato en disco del FS propio. Solo el FORMATO — sin E/S,
+    # para poder probarlo entero en el anfitrion antes de tocar un sector.
+    "platform/drivers/storage/estratos",
     "platform/drivers/storage/nvme",
     "platform/drivers/usb/input",
     "platform/drivers/usb/uhid",
