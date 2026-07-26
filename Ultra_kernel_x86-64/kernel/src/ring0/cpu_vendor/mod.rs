@@ -26,5 +26,8 @@
 
 pub mod profile;
 pub mod ryzen_5_5600x;
+/// Estado extendido (XSAVE): se lo pregunta al silicio y contrasta con el
+/// perfil. NO habilita nada — ver la nota de cabecera del módulo.
+pub mod xsave;
 
 pub use profile::{active, CpuProfile};

@@ -27,6 +27,22 @@ pub struct CpuProfile {
     /// workarounds and speculation mitigations. Called once from
     /// `phase::main` on the BSP.
     pub init: fn(),
+
+    // ── Lo que este perfil ESPERA del estado extendido (XSAVE) ────────────
+    //
+    // ★ Esto es una EXPECTATIVA, jamás la fuente de la verdad. El tamaño del
+    // área de XSAVE y qué componentes existen se le preguntan SIEMPRE al
+    // silicio (CPUID hoja 0xD); lo de aquí solo sirve para poder AVISAR
+    // cuando el CPU que hay delante no es el que el perfil creía.
+    //
+    // Es la regla de la casa aplicada al procesador: se hardcodean los
+    // CONTRATOS, se le preguntan los HECHOS al hardware. Un perfil que
+    // dictara el tamaño del área sería un kernel que se rompe —en silencio y
+    // corrompiendo registros— el día que alguien enchufe otro CPU.
+    /// Componentes de XCR0 que se esperan (bit 0 x87, 1 SSE, 2 AVX...).
+    pub xsave_componentes: u64,
+    /// Bytes del área de XSAVE que se esperan para esos componentes.
+    pub xsave_area: u32,
 }
 
 /// The compiled-in profile. Today: Ryzen 5 5600X. On another bench this

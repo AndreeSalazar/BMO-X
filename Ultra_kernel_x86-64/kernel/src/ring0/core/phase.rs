@@ -485,7 +485,7 @@ fn shell_help() {
     // usan `info` y `disk`: antes cada comando alineaba a ojo con espacios
     // contados a mano, y bastaba una palabra más larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
-    row("sistema", |l| l.txt("info  mem  tasks  disk  ls  estratos  cabina  hist"));
+    row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  ls  estratos  cabina  hist"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
@@ -673,6 +673,59 @@ fn shell_ls() {
     } else {
         row("firma", |l| { l.txt("?? no es un PE: revisar la cadena de clusteres"); });
         crate::ring0::cabina::warn("fs", "el archivo se encontro pero no se leyo bien", n as u64);
+    }
+}
+
+/// `cpu` — qué estado extendido tiene este procesador y si el perfil acierta.
+///
+/// La pregunta que responde: **¿hay registros que el cambio de contexto está
+/// perdiendo hoy?** Todos los números salen de `CPUID` hoja 0xD; el perfil solo
+/// sirve para avisar si el silicio no es el que esperaba.
+fn shell_cpu() {
+    use crate::ring0::cpu_vendor::xsave;
+    let inf = xsave::informe();
+    let p = crate::ring0::cpu_vendor::profile::active();
+
+    dashboard_log_color("== CPU : estado extendido ==", SH_TITLE);
+    row("perfil", |l| { l.txt(p.name); l.txt("  "); l.txt(p.microarch); });
+    if !inf.xsave {
+        row("xsave", |l| l.txt("el procesador no lo implementa"));
+        return;
+    }
+    row("xsave", |l| {
+        l.txt("si   guardado: ");
+        if inf.xsavec { l.txt("XSAVEC "); }
+        if inf.xsaveopt { l.txt("XSAVEOPT "); }
+        if inf.xsaves { l.txt("XSAVES"); }
+    });
+    row("soporta", |l| { l.txt("0x"); l.hex(inf.soportado, 4); l.txt("   area "); l.dec(inf.area_maxima as u64); l.txt(" B"); });
+    row("xcr0", |l| {
+        if inf.osxsave { l.txt("0x"); l.hex(inf.xcr0, 4); }
+        else { l.txt("CR4.OSXSAVE apagado — el estado extendido no esta habilitado"); }
+    });
+
+    // Cada componente con su tamaño y su sitio, tal como los declara el CPU.
+    for c in inf.comps() {
+        let mut l = L::new();
+        l.txt("   bit ");
+        l.dec(c.bit as u64);
+        l.col(12);
+        l.txt(c.nombre());
+        l.col(32);
+        l.dec(c.tam as u64); l.txt(" B en +"); l.dec(c.offset as u64);
+        dashboard_log_color(l.as_str(), SH_VALUE);
+        crate::ring0::dev::console::serial_write(l.as_str());
+        crate::ring0::dev::console::serial_write("\n");
+    }
+
+    // El veredicto contra el perfil, y el aviso que justifica todo esto.
+    row("perfil dice", |l| { l.txt("0x"); l.hex(p.xsave_componentes, 4); l.txt("   area "); l.dec(p.xsave_area as u64); l.txt(" B"); });
+    let coincide = inf.soportado == p.xsave_componentes && inf.area_maxima == p.xsave_area;
+    row("veredicto", |l| l.txt(if coincide { "el silicio coincide con el perfil" }
+                                else { "DIFIERE — manda el silicio, el perfil esta desfasado" }));
+    if inf.hay_estado_sin_guardar() {
+        row("aviso", |l| l.txt("FXSAVE (512 B) no cubre todo: AVX aun no es seguro en Ring 3"));
+        row("hara falta", |l| { l.dec(inf.area_necesaria() as u64); l.txt(" B alineados a 64 en el contexto"); });
     }
 }
 
@@ -1203,6 +1256,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_cabina();
         } else if cmd == b"estratos" {
             shell_estratos();
+        } else if cmd == b"cpu" {
+            shell_cpu();
         } else if cmd == b"hist" || cmd == b"history" {
             shell_hist();
         } else if cmd == b"layout" {
@@ -1426,6 +1481,9 @@ pub fn main(ctx: &mut BootContext) {
     // Y ESTRATOS, si alguna partición lleva uno. Solo lectura: el módulo no
     // sabe escribir, así que montarlo no puede estropear nada.
     crate::ring0::estratos::mount();
+    // El estado extendido del CPU: medir y contrastar con el perfil. No
+    // habilita nada; solo deja por escrito qué hay y si el perfil acierta.
+    crate::ring0::cpu_vendor::xsave::init();
     dash_log("== RING 0 : hardware al mando ==");
 
     // ── Acto II: RING 3 — el userspace nace ─────────────────────────────

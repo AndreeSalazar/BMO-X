@@ -30,4 +30,10 @@ pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     name: "Ryzen 5 5600X",
     family_model: "19h/21h",
     init: init_bmo_cpu,
+    // Zen 3: x87 (bit 0) + SSE (bit 1) + AVX/YMM alto (bit 2) = 0b111.
+    // No hay AVX-512 en Vermeer. El area declarada es la que la documentacion
+    // de AMD da para esos tres componentes; si el silicio dice otra cosa, MANDA
+    // EL SILICIO y el verificador lo grita.
+    xsave_componentes: 0b111,
+    xsave_area: 832,
 };
