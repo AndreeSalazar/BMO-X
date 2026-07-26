@@ -272,6 +272,24 @@ pub fn tid_state(tid: u32) -> u8 {
     255
 }
 
+/// El contexto guardado de una tarea (su `xsave_base`), o 0 si no existe.
+///
+/// Lo necesita Endpoint RPC para escribir el resultado de una llamada **en el
+/// frame guardado del llamante**. Un syscall que bloquea no puede calcular su
+/// valor de retorno después de bloquearse: `wait_current_checked` vuelve en el
+/// acto y el cambio de contexto se consuma en el epílogo, así que para cuando
+/// hubiera respuesta ese código ya se ejecutó. La respuesta se deja donde el
+/// epílogo la va a recoger.
+pub fn context_rsp_of(tid: u32) -> u64 {
+    let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
+    for t in &s.tasks {
+        if t.tid == tid && t.state != TaskState::Empty {
+            return t.context_rsp;
+        }
+    }
+    0
+}
+
 /// Timer trap hook: sweep expired WAIT deadlines, account the quantum, and
 /// reschedule when it expires.
 pub fn on_timer() {

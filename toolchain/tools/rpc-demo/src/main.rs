@@ -76,6 +76,18 @@ impl Asm {
     /// `test eax, eax` — pone ZF si el código de estado es 0 (OK).
     fn test_eax(&mut self) { self.c.extend_from_slice(&[0x85, 0xC0]); }
 
+    /// `test rdx, rdx` — ZF si el valor devuelto es 0.
+    fn test_rdx(&mut self) { self.c.extend_from_slice(&[0x48, 0x85, 0xD2]); }
+
+    /// Salto condicional hacia una etiqueta ya emitida.
+    fn jcc_atras(&mut self, cc: u8, destino: usize) {
+        self.c.push(0x0F);
+        self.c.push(cc);
+        let desde = (self.c.len() + 4) as i32;
+        let rel = destino as i32 - desde;
+        self.c.extend_from_slice(&rel.to_le_bytes());
+    }
+
     /// Salto condicional/incondicional de 32 bits, con destino por parchear.
     /// Devuelve la posición del desplazamiento.
     fn jmp_placeholder(&mut self, cond: Option<u8>) -> usize {
@@ -149,7 +161,7 @@ fn servidor() -> Vec<u8> {
     a.invoke_task(OP_ENDPOINT_CREATE, 0);
     a.mov_reg(R::Rbx, R::Rdx); // rbx = endpoint. Sobrevive a los syscall.
 
-    a.imprimir("srv: ventanilla abierta\n");
+    a.imprimir("ventanilla abierta\n");
 
     // ── bucle de atención ──
     let bucle = a.aqui();
@@ -161,6 +173,12 @@ fn servidor() -> Vec<u8> {
     a.syscall();
     a.test_eax();
     let al_final = a.jmp_placeholder(Some(0x85)); // jnz: code != 0 -> se acabó
+    // value = 0 significa "todavia nada, vuelve a preguntar". El kernel deja
+    // la espera puesta y devuelve; quien reintenta es este bucle, desde Ring 3.
+    // Que el reintento viva AQUI y no dentro del kernel es lo que impide el
+    // bucle infinito en Ring 0 que reinicio la maquina la primera vez.
+    a.test_rdx();
+    a.jcc_atras(0x84, bucle); // jz -> otra vez a esperar
 
     // Responder: INVOKE(reply, code=0, value=0xBEEF)
     a.mov_reg(R::Rdi, R::Rdx);
@@ -169,11 +187,13 @@ fn servidor() -> Vec<u8> {
     a.mov_imm32(R::Rax, NR_INVOKE);
     a.syscall();
 
-    a.imprimir("srv: atendida\n");
+    // La etiqueta del proceso ya dice quien habla ("srv>"), asi que el mensaje
+    // no la repite: en pantalla salia "srv> srv: ...".
+    a.imprimir("atendida\n");
     a.saltar_atras(bucle);
 
     a.atar(al_final);
-    a.imprimir("srv: cierro\n");
+    a.imprimir("cierro\n");
     a.salir();
     a.c
 }
@@ -198,7 +218,7 @@ fn cliente() -> Vec<u8> {
     a.atar(conectado);
     a.mov_reg(R::Rbx, R::Rdx); // rbx = handle del endpoint
 
-    a.imprimir("cli: llamando\n");
+    a.imprimir("llamando\n");
 
     // INVOKE(endpoint, op=1, arg0=7). AQUI SE BLOQUEA.
     a.mov_reg(R::Rdi, R::Rbx);
@@ -209,11 +229,11 @@ fn cliente() -> Vec<u8> {
 
     a.test_eax();
     let fallo = a.jmp_placeholder(Some(0x85)); // jnz: code != 0
-    a.imprimir("cli: respondido, viaje completo\n");
+    a.imprimir("respondido, viaje completo\n");
     let fin = a.jmp_placeholder(None);
 
     a.atar(fallo);
-    a.imprimir("cli: la llamada fallo\n");
+    a.imprimir("la llamada fallo\n");
 
     a.atar(fin);
     a.salir();

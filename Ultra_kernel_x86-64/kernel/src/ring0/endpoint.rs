@@ -188,57 +188,79 @@ pub fn llamar(idx: usize, op: u64, args: [u64; 3]) -> Resultado {
         || if resp()[tid as usize].lista { 1 } else { 0 },
     );
 
+    // ★ Lo que se devuelve AQUI es provisional y casi siempre se pisa.
+    //
+    // Esta línea se ejecuta ANTES de que el servidor conteste: el bloqueo no
+    // cambia de contexto en el sitio. `dispatch` escribirá esto en el frame,
+    // y cuando el servidor responda, `escribir_en_frame` lo sobrescribirá con
+    // el resultado de verdad — que es lo que el epílogo restaura cuando esta
+    // tarea vuelve a correr. Si la respuesta YA estaba lista (el servidor
+    // ganó la carrera), se devuelve directamente y no hace falta esperar.
     let r = &mut resp()[tid as usize];
-    let out = Resultado { code: r.code, value: r.value };
-    r.esperando = false;
-    r.lista = false;
-    out
+    if r.lista {
+        let out = Resultado { code: r.code, value: r.value };
+        r.esperando = false;
+        r.lista = false;
+        return out;
+    }
+    Resultado { code: 0, value: 0 }
 }
 
 // ── Esperar (lado servidor) ─────────────────────────────────────────────────
 
 /// `WAIT` sobre un endpoint: entrega la siguiente llamada y devuelve el handle
 /// de respuesta. Si no hay ninguna, bloquea al servidor.
+/// ★ **No hace bucle, y ese es el contrato.**
+///
+/// `wait_current_checked` NO cambia de contexto en el sitio: marca la tarea
+/// como bloqueada y elige la siguiente, pero el cambio se consuma en el
+/// epílogo del trap. O sea que **vuelve**. Un bucle aquí —"me duermo y
+/// recompruebo"— nunca llega al epílogo: re-marca la espera una y otra vez
+/// dentro de Ring 0 hasta que la máquina se reinicia. Eso es exactamente lo
+/// que hizo la primera versión en hardware.
+///
+/// El contrato es el mismo que el del canal: si no hay llamada, se deja la
+/// espera puesta y se devuelve `value = 0`. Quien reintenta es el servidor
+/// desde Ring 3, con otro `WAIT` — y para entonces ya lo habrán despertado.
 pub fn esperar(idx: usize, servidor_pid: u32, deadline_tsc: u64) -> Resultado {
-    loop {
-        let (op, args, caller_tid, canal, gen) = {
-            let e = &mut eps()[idx];
-            if !e.vivo { return Resultado { code: ERROR_ENDPOINT_DEAD, value: 0 }; }
-            if e.n == 0 {
-                let observado = e.seq;
-                let canal_seq = idx;
-                // Dormir hasta que entre una llamada. Mismo guardia que arriba.
-                scheduler::wait_current_checked(
-                    clave_endpoint(idx),
-                    deadline_tsc,
-                    observado,
-                    || eps()[canal_seq].seq,
-                );
-                continue;
-            }
-            let slot = e.cabeza;
-            let ll = e.cola[slot];
-            e.cola[slot] = Llamada::VACIA;
-            e.cabeza = (e.cabeza + 1) % COLA;
-            e.n -= 1;
-            let g = resp()[ll.caller_tid as usize].gen;
-            (ll.op, ll.args, ll.caller_tid, e.canal, g)
-        };
+    let (op, args, caller_tid, canal, gen) = {
+        let e = &mut eps()[idx];
+        if !e.vivo { return Resultado { code: ERROR_ENDPOINT_DEAD, value: 0 }; }
+        if e.n == 0 {
+            let observado = e.seq;
+            // Dormir hasta que entre una llamada. El chequeo va dentro del
+            // lock del scheduler, así que una llamada que llegue entre el
+            // "no hay nada" y el "me duermo" no se pierde.
+            scheduler::wait_current_checked(
+                clave_endpoint(idx),
+                deadline_tsc,
+                observado,
+                || eps()[idx].seq,
+            );
+            // value = 0 significa "nada todavía, vuelve a preguntar".
+            return Resultado { code: 0, value: 0 };
+        }
+        let slot = e.cabeza;
+        let ll = e.cola[slot];
+        e.cola[slot] = Llamada::VACIA;
+        e.cabeza = (e.cabeza + 1) % COLA;
+        e.n -= 1;
+        let g = resp()[ll.caller_tid as usize].gen;
+        (ll.op, ll.args, ll.caller_tid, e.canal, g)
+    };
 
-        // El mensaje, al anillo del estuario del servidor.
-        publicar(canal, op, args);
+    // El mensaje, al anillo del estuario del servidor.
+    publicar(canal, op, args);
 
-        // El derecho a responder ESTA llamada, y solo ésta.
-        let objeto = ((gen as u64) << 48) | ((idx as u64) << 32) | caller_tid as u64;
-        match cap::grant(servidor_pid, cap::KIND_REPLY, cap::RIGHT_WRITE, objeto) {
-            Some(h) => return Resultado { code: 0, value: h },
-            None => {
-                // Sin ranura de capability no hay forma de responder: se
-                // despierta al llamante con el fallo en vez de dejarlo colgado
-                // para siempre.
-                completar(caller_tid, gen, ERROR_BUSY, 0);
-                return Resultado { code: ERROR_BUSY, value: 0 };
-            }
+    // El derecho a responder ESTA llamada, y solo ésta.
+    let objeto = ((gen as u64) << 48) | ((idx as u64) << 32) | caller_tid as u64;
+    match cap::grant(servidor_pid, cap::KIND_REPLY, cap::RIGHT_WRITE, objeto) {
+        Some(h) => Resultado { code: 0, value: h },
+        None => {
+            // Sin ranura de capability no hay forma de responder: se despierta
+            // al llamante con el fallo en vez de dejarlo colgado para siempre.
+            completar(caller_tid, gen, ERROR_BUSY, 0);
+            Resultado { code: ERROR_BUSY, value: 0 }
         }
     }
 }
@@ -280,7 +302,32 @@ fn completar(caller_tid: u32, gen: u32, code: u32, value: u64) {
     r.code = code;
     r.value = value;
     r.lista = true;
+    escribir_en_frame(caller_tid, code, value);
     scheduler::wake_by_key(clave_respuesta(caller_tid));
+}
+
+/// Deja el resultado en el frame GUARDADO del llamante.
+///
+/// ★ Es lo que el diseño llamaba *"copia status al frame del caller"*, y no es
+/// un atajo: es la única forma que funciona. Un syscall que bloquea **no puede
+/// calcular su valor de retorno después de bloquearse** —
+/// `wait_current_checked` vuelve en el acto y el cambio de contexto se consuma
+/// en el epílogo—, así que el código que sigue al bloqueo se ejecuta *antes* de
+/// que haya respuesta. Escribirla aquí la deja justo donde el epílogo la va a
+/// recoger: el `pop rax` / `pop rdx` que restaura la tarea.
+///
+/// El layout es el de `trap.rs`: el back-pointer al bloque de GPR vive al
+/// final del área de XSAVE.
+fn escribir_en_frame(tid: u32, code: u32, value: u64) {
+    let ctx = scheduler::context_rsp_of(tid);
+    if ctx == 0 { return; }
+    unsafe {
+        let gpr_base = ((ctx + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
+        if gpr_base == 0 { return; }
+        let frame = &mut *(gpr_base as *mut crate::ring0::trap::TrapFrame);
+        frame.rax = code as u64;
+        frame.rdx = value;
+    }
 }
 
 // ── Muerte ──────────────────────────────────────────────────────────────────
