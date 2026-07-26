@@ -302,6 +302,17 @@ fn completar(caller_tid: u32, gen: u32, code: u32, value: u64) {
     r.code = code;
     r.value = value;
     r.lista = true;
+    // Dos caminos, y entre los dos cubren el ciclo entero:
+    //
+    // - Si el llamante YA se durmió, su resultado va a su frame guardado, que
+    //   es de donde el epílogo lo recogerá al despertarlo.
+    // - Si todavía no llegó a dormirse (el servidor ganó la carrera),
+    //   `escribir_en_frame` no hace nada —la tarea no está `Blocked`— pero
+    //   `r.lista` queda puesto y `llamar` lo lee en el acto, antes de volver.
+    //
+    // Lo que NO puede pasar es escribir en el contexto de una tarea que está
+    // corriendo: ahí `context_rsp` es de la última vez que salió del CPU, y
+    // esa dirección ya es de otra cosa.
     escribir_en_frame(caller_tid, code, value);
     scheduler::wake_by_key(clave_respuesta(caller_tid));
 }

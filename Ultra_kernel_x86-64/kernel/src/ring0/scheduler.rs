@@ -280,10 +280,19 @@ pub fn tid_state(tid: u32) -> u8 {
 /// acto y el cambio de contexto se consuma en el epílogo, así que para cuando
 /// hubiera respuesta ese código ya se ejecutó. La respuesta se deja donde el
 /// epílogo la va a recoger.
+/// ★ Solo devuelve el contexto de una tarea **bloqueada**.
+///
+/// `context_rsp` es donde quedó guardada la tarea la última vez que salió del
+/// CPU. Para una tarea que está CORRIENDO ese valor es viejo: su estado real
+/// vive en los registros, no en memoria. Escribir ahí no le llega — pisa lo
+/// que haya ahora en esa dirección de pila, que es de otra cosa.
+///
+/// Devolver 0 salvo que esté `Blocked` convierte ese error en un no-op en vez
+/// de en una corrupción silenciosa de otro contexto.
 pub fn context_rsp_of(tid: u32) -> u64 {
     let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
     for t in &s.tasks {
-        if t.tid == tid && t.state != TaskState::Empty {
+        if t.tid == tid && t.state == TaskState::Blocked {
             return t.context_rsp;
         }
     }
