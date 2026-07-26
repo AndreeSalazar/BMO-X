@@ -14,9 +14,32 @@ const BEX_HEADER_SIZE: usize = 48;
 const BEX_SECTION_SIZE: usize = 48;
 const BEX_VERSION_MAJOR: u16 = 1;
 const BEX_ARCH_X86_64: u8 = 0x01;
+const BEX_ENDIAN_LITTLE: u8 = 0x00;
 const BEX_FLAG_EXECUTABLE: u32 = 1 << 0;
 pub const SECTION_CODE: u8 = 0x01;
+pub const SECTION_RODATA: u8 = 0x02;
+pub const SECTION_DATA: u8 = 0x03;
 pub const SECTION_BSS: u8 = 0x04;
+
+/// ¿Esta sección se MAPEA en el espacio del programa?
+///
+/// ★ LA REGLA: solo cuatro tipos son memoria del programa. Todo lo demás
+/// —imports, exports, manifiesto, firma, símbolos, depuración, recursos, y
+/// **cualquier tipo que este kernel no conozca**— es data para OTRO: para el
+/// enlazador, para el verificador, para el runtime de un lenguaje que Ring 0
+/// no tiene por qué saber que existe.
+///
+/// Un tipo desconocido se SALTA, no se rechaza. Es lo que ha mantenido vivo a
+/// ELF treinta años: la sección que no te incumbe no es un error, es data que
+/// no vas a abrir. Así un lenguaje nuevo puede meter sus metadatos en el
+/// contenedor sin pedirle permiso al kernel ni añadirle un campo que entender.
+///
+/// (Antes se mapeaban TODAS: un manifiesto o una tabla de depuración acababan
+/// en el espacio de usuario como memoria escribible. Gasto y superficie de
+/// ataque a cambio de nada.)
+pub fn is_loadable(kind: u8) -> bool {
+    matches!(kind, SECTION_CODE | SECTION_RODATA | SECTION_DATA | SECTION_BSS)
+}
 pub const SECTION_FLAG_EXEC: u32 = 1 << 2;
 pub const SECTION_FLAG_WRITE: u32 = 1 << 1;
 
@@ -46,8 +69,13 @@ const EMPTY_MAPPING: BexMapping = BexMapping {
 pub struct BexLoadPlan {
     /// Offset within the executable Code section; it is not a Ring 0 address.
     pub entry_offset: u64,
+    /// SOLO las secciones que se mapean (ver `is_loadable`).
     pub sections: [BexMapping; MAX_BEX_SECTIONS],
     pub section_count: usize,
+    /// Cuántas secciones se saltaron por no ser memoria del programa
+    /// (manifiesto, firma, depuración… o un tipo que este kernel no conoce).
+    /// Se cuenta para poder DECIRLO, no para decidir nada con ello.
+    pub skipped_sections: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +83,11 @@ pub enum BexError {
     TooSmall,
     InvalidHeader,
     UnsupportedArchitecture,
+    /// La imagen viene en un orden de bytes que este kernel no lee.
+    UnsupportedEndianness,
+    /// La imagen declara usar una extensión de CPU cuyo estado este kernel
+    /// todavía no sabe preservar en un cambio de contexto.
+    UnsupportedCpuFeature,
     AbiMismatch,
     NotExecutable,
     TooManySections,
@@ -77,6 +110,8 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     let version_major = read_u16(bytes, 4).ok_or(BexError::TooSmall)?;
     let flags = read_u32(bytes, 8).ok_or(BexError::TooSmall)?;
     let arch = *bytes.get(12).ok_or(BexError::TooSmall)?;
+    let endianness = *bytes.get(13).ok_or(BexError::TooSmall)?;
+    let cpu_features = read_u16(bytes, 14).ok_or(BexError::TooSmall)?;
     let abi_major = *bytes.get(16).ok_or(BexError::TooSmall)?;
     let abi_minor = *bytes.get(17).ok_or(BexError::TooSmall)?;
     let entry_offset = read_u64(bytes, 24).ok_or(BexError::TooSmall)?;
@@ -87,6 +122,27 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     }
     if arch != BEX_ARCH_X86_64 {
         return Err(BexError::UnsupportedArchitecture);
+    }
+    // Orden de bytes: hoy este kernel solo lee little-endian. Comprobarlo
+    // cuesta una comparación y evita que el día del PowerPC una imagen se
+    // cargue del revés y falle de mil formas raras en vez de una clara.
+    if endianness != BEX_ENDIAN_LITTLE {
+        return Err(BexError::UnsupportedEndianness);
+    }
+    // ★ Extensiones de CPU DECLARADAS por la imagen.
+    //
+    // Un bit que no conozco = una parte del estado del procesador que no sé
+    // que existe y que por tanto NO voy a preservar en el cambio de contexto.
+    // Y hoy `trap.rs` usa FXSAVE, que guarda x87 y SSE pero NO la mitad alta
+    // de los YMM: un programa con AVX se corrompería en silencio a la primera
+    // interrupción del temporizador.
+    //
+    // Así que se RECHAZA, y ese rechazo es la mejora de verdad: convierte una
+    // corrupción silenciosa en un "no" con nombre, HOY, antes de que exista
+    // el XSAVE. Cuando el kernel sepa guardar el estado ancho, esta línea se
+    // relaja — no antes.
+    if cpu_features != 0 {
+        return Err(BexError::UnsupportedCpuFeature);
     }
     let supported_abi = (abi_major == 1 && abi_minor == 0)
         || (abi_major == 2 && abi_minor == 0);
@@ -111,9 +167,12 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     let mut plan = BexLoadPlan {
         entry_offset,
         sections: [EMPTY_MAPPING; MAX_BEX_SECTIONS],
-        section_count: count,
+        section_count: 0,
+        skipped_sections: 0,
     };
     let mut code_size = None;
+    let mut loadable = 0usize;
+    let mut skipped = 0usize;
 
     for index in 0..count {
         let offset = table_start + index * BEX_SECTION_SIZE;
@@ -142,7 +201,14 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
             }
             code_size = Some(mem_size);
         }
-        plan.sections[index] = BexMapping {
+        // ★ Solo lo CARGABLE entra al plan. Lo demás se validó (sus límites
+        // tienen que caber en el archivo: una sección mal formada sigue siendo
+        // un rechazo) pero no se mapea. Ver `is_loadable`.
+        if !is_loadable(kind) {
+            skipped += 1;
+            continue;
+        }
+        plan.sections[loadable] = BexMapping {
             kind,
             flags: section_flags,
             file_offset,
@@ -150,7 +216,11 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
             mem_size,
             alignment,
         };
+        loadable += 1;
     }
+    // El plan solo describe lo que se mapea.
+    plan.section_count = loadable;
+    plan.skipped_sections = skipped;
 
     let code_size = code_size.ok_or(BexError::MissingCode)?;
     if entry_offset >= code_size {

@@ -88,6 +88,30 @@ pub enum BefArch {
     Rv64gc = 0x03,
 }
 
+/// Orden de bytes de la imagen.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BefEndian {
+    Little = 0x00,
+    Big = 0x01,
+}
+
+/// Extensiones de CPU que una imagen puede DECLARAR que usa.
+///
+/// El programa lo sabe porque su compilador lo sabe: BMO C y BMO COBOL son
+/// tuyos y sabe cada uno si emitio una instruccion ancha. Declararlo es un
+/// contrato verificable; adivinarlo en tiempo de ejecucion no lo es.
+pub struct BefCpuFeature;
+impl BefCpuFeature {
+    /// Vectores de 256 bits (AVX/AVX2 en x86-64, SVE en aarch64). Obliga al
+    /// kernel a guardar el estado ancho en cada cambio de contexto.
+    pub const WIDE_VECTORS: u16 = 1 << 0;
+    /// Vectores de 512 bits (AVX-512). Area de estado aun mayor.
+    pub const WIDER_VECTORS: u16 = 1 << 1;
+    /// Bits definidos hoy. Cualquier bit fuera de esta mascara se RECHAZA.
+    pub const KNOWN: u16 = Self::WIDE_VECTORS | Self::WIDER_VECTORS;
+}
+
 /// Header BEF â€” 48 bytes, alineado a 16.
 ///
 /// Campos pequeÃ±os primero (BMO ABI struct layout).
@@ -101,13 +125,31 @@ pub struct BefHeader {
     pub version_minor: bx_u16,
     /// Flags `BefFlags`.
     pub flags: bx_u32,
-    /// Arquitectura `BefArch as u8`, padding 3 bytes.
+    /// Arquitectura `BefArch as u8`.
     pub arch: bx_u8,
-    pub _pad0: [bx_u8; 3],
+    /// **Orden de bytes** de la imagen: 0 = little-endian, 1 = big-endian.
+    ///
+    /// Reservado y CONGELADO aqui aunque hoy solo exista little. El dia que
+    /// haya un objetivo big-endian (PowerPC, un RISC-V configurado asi), este
+    /// byte es la diferencia entre añadir una comprobacion y reescribir todos
+    /// los parsers del sistema. Cuesta cero ahora.
+    pub endianness: bx_u8,
+    /// **Extensiones de CPU que la imagen USA** (mapa de bits, ver
+    /// `BefCpuFeature`). El kernel lo necesita para dimensionar el area de
+    /// estado que guarda en cada cambio de contexto: hoy `FXSAVE` preserva
+    /// x87 y SSE, pero NO la mitad alta de los YMM, asi que un programa que
+    /// use AVX sin declararlo se corrompe en silencio.
+    ///
+    /// Un bit desconocido se RECHAZA, al reves que una seccion desconocida:
+    /// una seccion que no entiendo es data inerte, pero una extension de CPU
+    /// que no entiendo es estado que no voy a saber preservar.
+    pub cpu_features: bx_u16,
     /// VersiÃ³n del BMO ABI esperado (major, minor).
     pub abi_version_major: bx_u8,
     pub abi_version_minor: bx_u8,
-    pub _pad1: [bx_u8; 6],
+    /// Reservado. DEBE ser cero: un productor que escriba basura aqui se
+    /// encontrara con que el campo significa algo en una version futura.
+    pub _reserved: [bx_u8; 6],
     /// Offset del entry point dentro de la secciÃ³n `.code`.
     pub entry_offset: bx_u64,
     /// Offset absoluto del section table.
@@ -130,10 +172,11 @@ impl BefHeader {
             version_minor: BEF_VERSION_MINOR,
             flags: BefFlags::EXECUTABLE.bits() | BefFlags::PIE.bits() | BefFlags::USES_BAREX.bits(),
             arch: BefArch::X86_64 as u8,
-            _pad0: [0; 3],
+            endianness: BefEndian::Little as u8,
+            cpu_features: 0,
             abi_version_major: BMO_ABI_VERSION.0,
             abi_version_minor: BMO_ABI_VERSION.1,
-            _pad1: [0; 6],
+            _reserved: [0; 6],
             entry_offset: 0,
             section_table_offset: 0,
             section_count: 0,
