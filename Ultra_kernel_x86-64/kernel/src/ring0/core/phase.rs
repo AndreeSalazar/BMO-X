@@ -231,7 +231,11 @@ fn row(label: &str, build: impl FnOnce(&mut L)) {
     let mut l = L::new();
     l.txt(" ");
     l.txt(label);
-    l.col(10);
+    // Un espacio SIEMPRE, y luego la columna. Rellenar solo hasta la columna 10
+    // dejaba pegados los valores de las etiquetas de 9 letras: en pantalla
+    // salía "particion3" y "generacion1", que se leen como una sola palabra.
+    l.txt(" ");
+    l.col(12);
     build(&mut l);
     // La etiqueta va en cian y el valor en blanco, pero el panel pinta una
     // línea de un solo color: se elige el del VALOR, que es lo que se lee.
