@@ -698,10 +698,16 @@ fn shell_cpu() {
         if inf.xsaveopt { l.txt("XSAVEOPT "); }
         if inf.xsaves { l.txt("XSAVES"); }
     });
-    row("soporta", |l| { l.txt("0x"); l.hex(inf.soportado, 4); l.txt("   area "); l.dec(inf.area_maxima as u64); l.txt(" B"); });
+    row("soporta", |l| { l.txt("0x"); l.hex(inf.soportado, 4); l.txt("   todo: "); l.dec(inf.area_maxima as u64); l.txt(" B"); });
     row("xcr0", |l| {
-        if inf.osxsave { l.txt("0x"); l.hex(inf.xcr0, 4); }
-        else { l.txt("CR4.OSXSAVE apagado — el estado extendido no esta habilitado"); }
+        if inf.osxsave {
+            l.txt("0x"); l.hex(inf.xcr0, 4);
+            // El area que IMPORTA: la de los componentes habilitados ahora, no
+            // la maxima teorica del CPU.
+            l.txt("   habilitado: "); l.dec(inf.area_actual as u64); l.txt(" B");
+        } else {
+            l.txt("CR4.OSXSAVE apagado — el estado extendido no esta habilitado");
+        }
     });
 
     // Cada componente con su tamaño y su sitio, tal como los declara el CPU.
@@ -723,9 +729,20 @@ fn shell_cpu() {
     let coincide = inf.soportado == p.xsave_componentes && inf.area_maxima == p.xsave_area;
     row("veredicto", |l| l.txt(if coincide { "el silicio coincide con el perfil" }
                                 else { "DIFIERE — manda el silicio, el perfil esta desfasado" }));
+    // Lo que hace el cambio de contexto HOY. Esta linea decia "AVX aun no es
+    // seguro" mucho despues de que dejara de ser cierto: un informe que se
+    // queda contando una etapa anterior es peor que no tener informe, porque
+    // se le cree.
+    row("contexto", |l| {
+        l.txt("XSAVE  reserva "); l.dec(crate::ring0::trap::XSAVE_AREA as u64);
+        l.txt(" B  usa "); l.dec(inf.area_actual as u64); l.txt(" B");
+    });
     if inf.hay_estado_sin_guardar() {
-        row("aviso", |l| l.txt("FXSAVE (512 B) no cubre todo: AVX aun no es seguro en Ring 3"));
-        row("hara falta", |l| { l.dec(inf.area_necesaria() as u64); l.txt(" B alineados a 64 en el contexto"); });
+        row("preserva", |l| {
+            l.txt("mas alla de x87/SSE: 0x");
+            l.hex(inf.soportado & !0b11, 4);
+            l.txt("  (AVX seguro en Ring 3)");
+        });
     }
 }
 
