@@ -84,18 +84,22 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "push rsi", "push rdi", "push r8", "push r9", "push r10",
         "push r11", "push r12", "push r13", "push r14", "push r15",
         "mov rbp, rsp",
-        "sub rsp, 544",
-        "and rsp, -16",
-        "mov [rsp+512], rbp",          // back-pointer to the GPR block
-        "fxsave64 [rsp]",
+        "sub rsp, {reserva}",
+        "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
+        "mov [rsp+{area}], rbp",       // back-pointer to the GPR block
+        // RFBM = -1: guarda lo que XCR0 tenga habilitado, sea lo que sea.
+        // rax y rdx ya estan salvados en el bloque de GPR de arriba.
+        "mov eax, -1", "mov edx, -1",
+        "xsave64 [rsp]",
         "mov gs:[0x10], rsp",          // publish this context
         "cld",
         "mov rdi, rbp",
         "call {dispatch}",
-        // Shared trap epilogue: rax = fxsave-base of the context to run.
+        // Shared trap epilogue: rax = xsave-base of the context to run.
         "mov rsp, rax",
-        "fxrstor64 [rsp]",
-        "mov rsp, [rsp+512]",
+        "mov eax, -1", "mov edx, -1",
+        "xrstor64 [rsp]",
+        "mov rsp, [rsp+{area}]",
         "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
         "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
         "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
@@ -104,6 +108,8 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "swapgs",
         "1: iretq",
         dispatch = sym dispatch,
+        area = const crate::ring0::trap::XSAVE_AREA,
+        reserva = const crate::ring0::trap::XSAVE_RESERVA,
     );
 }
 

@@ -1328,6 +1328,11 @@ pub fn main(ctx: &mut BootContext) {
     // Kernel-init checkpoints live in the empty band starting at row 140
     // (well below the boot bars that end near row 120), so any new bar is
     // unmistakably kernel progress — not a repeat of an s1/s2 color.
+    // ★ ANTES que nada que pueda atrapar. Los stubs de trap guardan el estado
+    // extendido con XSAVE en un área de tamaño FIJO, y el tamaño que este CPU
+    // necesita solo lo sabe él. Si no cabe, hay que enterarse AHORA y no
+    // cuando el primer tick del timer desborde una pila de tarea.
+    crate::ring0::cpu_vendor::xsave::init();
     crate::ring0::percpu::init_bsp();
     kbar!(140, 0xFF00_FF00u32); // green: percpu OK
     crate::ring0::scheduler::init(ctx.tsc_freq);
@@ -1481,9 +1486,6 @@ pub fn main(ctx: &mut BootContext) {
     // Y ESTRATOS, si alguna partición lleva uno. Solo lectura: el módulo no
     // sabe escribir, así que montarlo no puede estropear nada.
     crate::ring0::estratos::mount();
-    // El estado extendido del CPU: medir y contrastar con el perfil. No
-    // habilita nada; solo deja por escrito qué hay y si el perfil acierta.
-    crate::ring0::cpu_vendor::xsave::init();
     dash_log("== RING 0 : hardware al mando ==");
 
     // ── Acto II: RING 3 — el userspace nace ─────────────────────────────

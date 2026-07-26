@@ -231,20 +231,57 @@ pub fn verificar(inf: &Informe) -> Veredicto {
 static mut INFORME: Informe = Informe::VACIO;
 static mut MEDIDO: bool = false;
 
-/// Mide una vez y guarda el resultado.
+/// Mide, verifica y **comprueba que el área reservada da de sí**.
+///
+/// Se llama lo PRIMERO de `phase::main`, antes de percpu, del scheduler y del
+/// timer. La razón es dura: los stubs de trap guardan el estado extendido con
+/// `xsave64` en el área de tamaño fijo `trap::XSAVE_AREA`, y si este CPU
+/// necesitara más, el primer tick del timer escribiría más allá del área y se
+/// llevaría por delante la pila de la tarea. Enterarse de eso *después* sería
+/// enterarse por una corrupción, no por un mensaje.
 pub fn init() {
     let inf = medir();
     unsafe { INFORME = inf; MEDIDO = true; }
     let _ = verificar(&inf);
+
+    if !inf.xsave {
+        // Sin XSAVE los stubs no pueden funcionar: `xsave64` daría #UD en el
+        // primer trap. Cualquier x86-64 con soporte de 64 bits lo tiene desde
+        // hace más de una década, pero suponerlo por escrito es distinto de
+        // suponerlo en silencio.
+        pararse("este CPU no implementa XSAVE y los stubs lo necesitan", 0);
+    }
+
+    // Lo que hace falta AHORA: el área para los componentes que XCR0 tiene
+    // habilitados. No la máxima teórica — esa incluye componentes que este
+    // CPU soporta pero nadie ha encendido.
+    let necesario = inf.area_actual as usize;
+    let reservado = crate::ring0::trap::XSAVE_AREA;
+    if necesario > reservado {
+        pararse("el area de XSAVE reservada se queda corta en este CPU", necesario as u64);
+    }
+    crate::ring0::cabina::info("cpu", "area de contexto suficiente", necesario as u64);
+
     if inf.hay_estado_sin_guardar() {
-        // El aviso que justifica todo el módulo. Hoy no hay daño porque
-        // CR4.OSXSAVE está apagado y esas instrucciones dan #UD; el daño
-        // llegaría el día que se habilite sin arreglar el cambio de contexto.
-        crate::ring0::cabina::warn(
+        // Ya no es un aviso de peligro: es la constancia de QUÉ se está
+        // guardando de más respecto a lo que guardaba FXSAVE.
+        crate::ring0::cabina::info(
             "cpu",
-            "hay estado que FXSAVE no guarda: AVX aun no es seguro en Ring 3",
+            "estado extendido mas alla de x87/SSE: ahora se preserva",
             inf.soportado & !0b11,
         );
+    }
+}
+
+/// Se planta con un motivo legible. Mejor una máquina parada que una que
+/// corrompe pilas de tarea en cada cambio de contexto.
+fn pararse(motivo: &str, valor: u64) -> ! {
+    crate::ring0::cabina::panic_ev("cpu", motivo, valor);
+    crate::ring0::dev::console::serial_write("[cpu] FATAL: ");
+    crate::ring0::dev::console::serial_write(motivo);
+    crate::ring0::dev::console::serial_write("\n");
+    loop {
+        unsafe { core::arch::asm!("cli", "hlt", options(nomem, nostack)); }
     }
 }
 

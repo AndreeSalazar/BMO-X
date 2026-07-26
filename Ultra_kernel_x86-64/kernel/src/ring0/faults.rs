@@ -77,8 +77,11 @@ macro_rules! err_stub_isolating {
                 "jz 3f",
                 // Shared trap epilogue (same shape as timer/syscall).
                 "mov rsp, rax",
-                "fxrstor64 [rsp]",
-                "mov rsp, [rsp + 512]",
+                // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
+                // recuperan de los pops de abajo.
+                "mov eax, -1", "mov edx, -1",
+                "xrstor64 [rsp]",
+                "mov rsp, [rsp + {area}]",
                 "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
                 "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
                 "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
@@ -91,6 +94,7 @@ macro_rules! err_stub_isolating {
                 "jmp 5b",
                 v = const $vec,
                 h = sym fault_dispatch,
+                area = const crate::ring0::trap::XSAVE_AREA,
             );
         }
     };
@@ -116,8 +120,11 @@ macro_rules! noerr_stub_isolating {
                 "test rax, rax",
                 "jz 3f",
                 "mov rsp, rax",
-                "fxrstor64 [rsp]",
-                "mov rsp, [rsp + 512]",
+                // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
+                // recuperan de los pops de abajo.
+                "mov eax, -1", "mov edx, -1",
+                "xrstor64 [rsp]",
+                "mov rsp, [rsp + {area}]",
                 "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
                 "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
                 "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
@@ -130,6 +137,7 @@ macro_rules! noerr_stub_isolating {
                 "jmp 5b",
                 v = const $vec,
                 h = sym fault_dispatch,
+                area = const crate::ring0::trap::XSAVE_AREA,
             );
         }
     };
@@ -321,7 +329,7 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     // dead; b==n==valid ⇒ the epilogue never used this context at all.
     let snap = crate::ring0::scheduler::switch_snap();
     let live = if snap[0] != 0 {
-        unsafe { ((snap[0] + 512) as *const u64).read_volatile() }
+        unsafe { ((snap[0] + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile() }
     } else {
         0
     };

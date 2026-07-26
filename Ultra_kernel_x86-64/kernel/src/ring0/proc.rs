@@ -19,7 +19,21 @@ use crate::ring0::scheduler;
 use crate::ring0::trap;
 
 const USER_STACK_PAGES: u64 = 16; // 64 KiB
-const KERNEL_STACK_PAGES: u64 = 2; // 8 KiB trap/syscall landing
+/// 16 KiB de pila de kernel por tarea.
+///
+/// Eran 8 KiB cuando el contexto guardado ocupaba 720 bytes. Con XSAVE ocupa
+/// ~3,3 KiB —el área de estado extendido es de 3072— y cada trap se lleva eso
+/// de la pila antes de que el despachador de Rust haga nada. Con 8 KiB un
+/// fault anidado sobre un tick de timer se salía. El coste de subirlo son dos
+/// páginas por tarea; el coste de no subirlo es corromper la pila de al lado.
+const KERNEL_STACK_PAGES: u64 = 4;
+
+// Que quepa no es una esperanza: se comprueba al compilar. Si alguien sube
+// XSAVE_AREA sin tocar esto, el build se para aquí y no en el hardware.
+const _: () = assert!(
+    trap::MIN_TASK_STACK <= (KERNEL_STACK_PAGES * mm::PAGE) as usize,
+    "la pila de kernel por tarea no cubre un contexto con XSAVE"
+);
 
 static mut TSS_PTR: u64 = 0;
 

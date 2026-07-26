@@ -18,7 +18,14 @@ use crate::ring0::trap;
 
 pub const MAX_TASKS: usize = 64;
 pub const DEFAULT_QUANTUM_TICKS: u16 = 4;
-const TASK_STACK_PAGES: u64 = 2;
+/// 16 KiB, por el mismo motivo que en `proc.rs`: el contexto con XSAVE ocupa
+/// ~3,3 KiB de pila en cada trap, contra los 720 bytes de cuando eran 8 KiB.
+const TASK_STACK_PAGES: u64 = 4;
+
+const _: () = assert!(
+    crate::ring0::trap::MIN_TASK_STACK <= (TASK_STACK_PAGES * crate::ring0::mm::PAGE) as usize,
+    "la pila de tarea de kernel no cubre un contexto con XSAVE"
+);
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -207,7 +214,7 @@ fn schedule_locked(s: &mut Scheduler) {
         // table entry itself is stale/corrupt. Painted by faults.rs.
         unsafe {
             SWITCH_SNAP[0] = next_rsp;
-            SWITCH_SNAP[1] = ((next_rsp + 512) as *const u64).read_volatile();
+            SWITCH_SNAP[1] = ((next_rsp + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
             SWITCH_SNAP[2] = mm::vmm::read_cr3();
             SWITCH_SNAP[3] = SWITCH_SNAP[3].wrapping_add(1);
             // El PRIMER cruce a CPL3 de la vida del sistema. Momento histórico
