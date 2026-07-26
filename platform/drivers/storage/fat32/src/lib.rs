@@ -2,7 +2,8 @@
 //!
 //! Supports both FAT32 (S: FASTOS-EFI) and exFAT (T: FastOS-Data, X: Commit-Real).
 //! Reads BPB, locates root directory, finds files by 8.3 name,
-//! and reads clusters via the FAT chain. Uses `bmo_ahci::read_sectors/write_sectors`.
+//! and reads clusters via the FAT chain. El almacenamiento entra por el
+//! contrato `BlockReader`/`BlockWriter`: no sabe si debajo hay SATA o NVMe.
 
 #![no_std]
 
@@ -138,8 +139,33 @@ pub struct ExFatNameEntry {
     pub name_string: [u16; 15],  // UTF-16LE filename (up to 15 chars)
 }
 
+/// Lee `count` sectores de 512 B desde `lba` ABSOLUTO del dispositivo.
+///
+/// Es TODO lo que este sistema de ficheros necesita saber del almacenamiento.
+/// No sabe si debajo hay SATA, NVMe o un disco en RAM, y no debe saberlo:
+/// antes estaba soldado a `bmo_ahci` y por tanto no habria podido leer jamas
+/// un NVMe. Un puntero a funcion en vez de un trait porque en Ring 0 no hay
+/// alloc y no hace falta mas.
+pub type BlockReader = fn(lba: u64, count: u16, buf: &mut [u8]) -> bool;
+/// Escribe sectores. `None` al montar = volumen de SOLO LECTURA, y entonces
+/// la imposibilidad de escribir es ESTRUCTURAL, no una promesa.
+pub type BlockWriter = fn(lba: u64, count: u16, data: &[u8]) -> bool;
+
+/// Cual de los dos buffers internos usa una operacion. Existe para que el
+/// prestamo del buffer y el del dispositivo no se pisen: se copia el puntero
+/// a funcion primero y el buffer se toma despues.
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
+enum Buf { buf, fat_cache }
+
 pub struct FatVolume {
-    pub port: u8,
+    read: BlockReader,
+    write: Option<BlockWriter>,
+    /// Primer LBA de la PARTICION dentro del disco. El sistema de ficheros
+    /// piensa en sectores relativos a su volumen y no sabe que existe una
+    /// tabla de particiones; aqui se suma. Sin esto, `mount` leia el sector 0
+    /// del DISCO —la GPT— creyendo que era el arranque del volumen.
+    part_lba: u64,
     pub fs_type: FsType,
     #[allow(dead_code)]
     bytes_per_sector: u16,
@@ -153,17 +179,18 @@ pub struct FatVolume {
     fat_cache: [u8; 512],
 }
 
-/// Detect FAT32 vs exFAT and mount accordingly.
-pub fn mount(port: u8) -> Option<FatVolume> {
+/// Monta el volumen que empieza en `part_lba` del dispositivo.
+///
+/// `write = None` monta en SOLO LECTURA: no es una politica que alguien deba
+/// recordar respetar, es que no hay con que escribir.
+pub fn mount(read: BlockReader, write: Option<BlockWriter>, part_lba: u64) -> Option<FatVolume> {
     let mut buf = [0u8; 512];
-    unsafe {
-        if bmo_ahci::read_sectors(port, 0, 1, buf.as_mut_ptr()) != 1 { return None; }
-    }
+    if !read(part_lba, 1, &mut buf) { return None; }
 
     // Check for exFAT signature ("EXFAT   ") at offset 3
     let fs_name = &buf[3..11];
     if fs_name == b"EXFAT   " {
-        return mount_exfat(port, &buf);
+        return mount_exfat(read, write, part_lba, &buf);
     }
 
     // Otherwise try FAT32
@@ -174,11 +201,11 @@ pub fn mount(port: u8) -> Option<FatVolume> {
     let fat_size_sectors = bpb.fat_size;
     let num_fats = bpb.num_fats;
     let data_start = fat_start + (num_fats as u32) * fat_size_sectors;
-    Some(FatVolume { port, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: bpb.sectors_per_cluster,
+    Some(FatVolume { read, write, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: bpb.sectors_per_cluster,
         num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, buf: [0; 512], fat_cache: [0; 512] })
 }
 
-fn mount_exfat(port: u8, buf: &[u8; 512]) -> Option<FatVolume> {
+fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf: &[u8; 512]) -> Option<FatVolume> {
     let epb = unsafe { &*(buf.as_ptr() as *const ExFatBpb) };
     if epb.boot_signature != 0xAA55 { return None; }
     let bps_shift = epb.bytes_per_sector_shift;
@@ -191,14 +218,46 @@ fn mount_exfat(port: u8, buf: &[u8; 512]) -> Option<FatVolume> {
     let root_cluster = epb.first_cluster_of_root_directory;
     let num_fats = epb.number_of_fats;
 
-    log::info!("[bmo_fat32] exFAT detected: bps={} spc={} data_start={} root_cluster={} fats={}",
-        bytes_per_sector, sectors_per_cluster, data_start, root_cluster, num_fats);
 
-    Some(FatVolume { port, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
+    Some(FatVolume { read, write, part_lba, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
         num_fats, fat_start, fat_size_sectors, data_start, root_cluster, buf: [0; 512], fat_cache: [0; 512] })
 }
 
 impl FatVolume {
+    /// Lee un sector del VOLUMEN a uno de los buffers internos.
+    ///
+    /// El puntero a funcion se copia ANTES de tomar el buffer: si no, seria un
+    /// doble prestamo de `self` y no compilaria.
+    fn read_sector(&mut self, lba: u64, which: Buf) -> bool {
+        let rd = self.read;
+        let abs = self.part_lba + lba;
+        match which {
+            Buf::buf => rd(abs, 1, &mut self.buf),
+            Buf::fat_cache => rd(abs, 1, &mut self.fat_cache),
+        }
+    }
+
+    /// Escribe uno de los buffers internos. `false` si el volumen se monto en
+    /// solo lectura — no hay writer que llamar.
+    fn write_sector(&mut self, lba: u64, which: Buf) -> bool {
+        let wr = match self.write { Some(w) => w, None => return false };
+        let abs = self.part_lba + lba;
+        match which {
+            Buf::buf => wr(abs, 1, &self.buf),
+            Buf::fat_cache => wr(abs, 1, &self.fat_cache),
+        }
+    }
+
+    /// Escribe datos externos (un sector ya armado por el llamante).
+    fn write_from(&mut self, lba: u64, data: &[u8]) -> bool {
+        let wr = match self.write { Some(w) => w, None => return false };
+        wr(self.part_lba + lba, 1, data)
+    }
+
+    /// Primer LBA de la particion montada, por si alguien de arriba lo
+    /// necesita para diagnostico.
+    pub fn partition_lba(&self) -> u64 { self.part_lba }
+
     fn cluster_to_lba(&self, cluster: u32) -> u64 {
         self.data_start as u64 + (cluster as u64 - 2) * self.sectors_per_cluster as u64
     }
@@ -208,7 +267,7 @@ impl FatVolume {
         let fat_sector = self.fat_start + (fat_offset / 512);
         let fat_index = (fat_offset % 512) as usize;
         unsafe {
-            if bmo_ahci::read_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_mut_ptr()) != 1 { return None; }
+            if !self.read_sector(fat_sector as u64, Buf::fat_cache) { return None; }
         }
         let entry = u32::from_le_bytes([self.fat_cache[fat_index], self.fat_cache[fat_index+1],
             self.fat_cache[fat_index+2], self.fat_cache[fat_index+3]]) & 0x0FFF_FFFF;
@@ -233,7 +292,7 @@ impl FatVolume {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
                 unsafe {
-                    if bmo_ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr()) != 1 { continue; }
+                    if !self.read_sector(lba + s, Buf::buf) { continue; }
                 }
                 let entries = self.buf.as_ptr() as *const DirEntry;
                 for i in 0..(512/32) {
@@ -258,7 +317,7 @@ impl FatVolume {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
                 unsafe {
-                    if bmo_ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr()) != 1 { continue; }
+                    if !self.read_sector(lba + s, Buf::buf) { continue; }
                 }
                 // Scan 16 entries per 512-byte sector (each entry = 32 bytes)
                 for i in 0..16 {
@@ -335,7 +394,7 @@ impl FatVolume {
                 let count = end - start;
                 if count > 0 {
                     unsafe {
-                        if bmo_ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr()) == 1 {
+                        if self.read_sector(lba + s, Buf::buf) {
                             dst[start..start+count].copy_from_slice(&self.buf[..count]);
                         }
                     }
@@ -351,7 +410,7 @@ impl FatVolume {
     fn find_free_cluster(&mut self) -> Option<u32> {
         for sector in 0..self.fat_size_sectors {
             unsafe {
-                if bmo_ahci::read_sectors(self.port, (self.fat_start + sector) as u64, 1, self.fat_cache.as_mut_ptr()) != 1 { continue; }
+                if !self.read_sector((self.fat_start + sector) as u64, Buf::fat_cache) { continue; }
             }
             for i in 0..(512/4) {
                 let entry = u32::from_le_bytes([
@@ -378,14 +437,14 @@ impl FatVolume {
         for copy in 0..self.num_fats as u32 {
             let fat_sector = self.fat_start + copy * self.fat_size_sectors + sectors_from_fat_start;
             unsafe {
-                if bmo_ahci::read_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_mut_ptr()) != 1 { ok = false; continue; }
+                if !self.read_sector(fat_sector as u64, Buf::fat_cache) { ok = false; continue; }
             }
             self.fat_cache[fat_index_in_sector] = eoc as u8;
             self.fat_cache[fat_index_in_sector+1] = (eoc >> 8) as u8;
             self.fat_cache[fat_index_in_sector+2] = (eoc >> 16) as u8;
             self.fat_cache[fat_index_in_sector+3] = (eoc >> 24) as u8;
             unsafe {
-                if bmo_ahci::write_sectors(self.port, fat_sector as u64, 1, self.fat_cache.as_ptr()) != 1 { ok = false; }
+                if !self.write_sector(fat_sector as u64, Buf::fat_cache) { ok = false; }
             }
         }
         ok
@@ -407,7 +466,7 @@ impl FatVolume {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
                 unsafe {
-                    if bmo_ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr()) != 1 { continue; }
+                    if !self.read_sector(lba + s, Buf::buf) { continue; }
                 }
                 let entries = self.buf.as_ptr() as *const DirEntry;
                 for i in 0..(512/32) {
@@ -431,7 +490,7 @@ impl FatVolume {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
                 unsafe {
-                    if bmo_ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr()) != 1 { continue; }
+                    if !self.read_sector(lba + s, Buf::buf) { continue; }
                 }
                 // Need 3 consecutive free slots (File=0x85, Stream=0xC0, Name=0xC1)
                 for i in 0..(512/32 - 2) {
@@ -469,7 +528,7 @@ impl FatVolume {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
                 unsafe {
-                    if bmo_ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr()) != 1 { continue; }
+                    if !self.read_sector(lba + s, Buf::buf) { continue; }
                 }
                 let entries = self.buf.as_ptr() as *const DirEntry;
                 for i in 0..(512/32) {
@@ -496,7 +555,7 @@ impl FatVolume {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
                 unsafe {
-                    if bmo_ahci::read_sectors(self.port, lba + s, 1, self.buf.as_mut_ptr()) != 1 { continue; }
+                    if !self.read_sector(lba + s, Buf::buf) { continue; }
                 }
                 for i in 0..16 {
                     let entry_offset = i * 32;
@@ -583,13 +642,13 @@ impl FatVolume {
             let count = core::cmp::min(512, data.len().saturating_sub(off));
             temp[..count].copy_from_slice(&data[off..off + count]);
             unsafe {
-                if bmo_ahci::write_sectors(self.port, lba + s, 1, temp.as_ptr()) != 1 { return false; }
+                if !self.write_from(lba + s, &temp) { return false; }
             }
         }
         // Zero remaining sectors in the cluster
         for s in write_n..spc {
             unsafe {
-                bmo_ahci::write_sectors(self.port, lba + s, 1, temp.as_ptr());
+                let _ = self.write_from(lba + s, &temp);
             }
         }
 
@@ -603,7 +662,7 @@ impl FatVolume {
 
         // Read directory sector
         unsafe {
-            if bmo_ahci::read_sectors(self.port, dir_lba, 1, self.buf.as_mut_ptr()) != 1 { return false; }
+            if !self.read_sector(dir_lba, Buf::buf) { return false; }
         }
 
         // Write directory entry
@@ -622,7 +681,7 @@ impl FatVolume {
         de.file_size = data.len() as u32;
 
         unsafe {
-            bmo_ahci::write_sectors(self.port, dir_lba, 1, self.buf.as_ptr()) == 1
+            self.write_sector(dir_lba, Buf::buf)
         }
     }
 
@@ -644,11 +703,11 @@ impl FatVolume {
             let count = core::cmp::min(512, data.len().saturating_sub(off));
             temp[..count].copy_from_slice(&data[off..off + count]);
             unsafe {
-                if bmo_ahci::write_sectors(self.port, lba + s, 1, temp.as_ptr()) != 1 { return false; }
+                if !self.write_from(lba + s, &temp) { return false; }
             }
         }
         for s in write_n..spc {
-            unsafe { bmo_ahci::write_sectors(self.port, lba + s, 1, temp.as_ptr()); }
+            unsafe { let _ = self.write_from(lba + s, &temp); }
         }
 
         if !self.mark_cluster_eoc(cluster) { return false; }
@@ -660,7 +719,7 @@ impl FatVolume {
 
         // Read directory sector
         unsafe {
-            if bmo_ahci::read_sectors(self.port, dir_lba, 1, self.buf.as_mut_ptr()) != 1 { return false; }
+            if !self.read_sector(dir_lba, Buf::buf) { return false; }
         }
 
         // Convert 8.3 name to UTF-16LE (up to 15 chars)
@@ -724,7 +783,7 @@ impl FatVolume {
         });
 
         unsafe {
-            bmo_ahci::write_sectors(self.port, dir_lba, 1, self.buf.as_ptr()) == 1
+            self.write_sector(dir_lba, Buf::buf)
         }
     }
 }

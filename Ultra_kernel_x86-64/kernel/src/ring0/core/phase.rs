@@ -327,7 +327,7 @@ fn shell_help() {
     // Compacto por categorías: cabe entero en el panel de 14 filas sin
     // barrer el resto del log, y se lee de un vistazo.
     s_log("== BMO-X shell ==");
-    s_log(" sistema : info  mem  tasks  layout  hist  disk");
+    s_log(" sistema : info  mem  tasks  layout  hist  disk  ls");
     s_log(" edicion : flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L");
     s_log(" video   : fb  splash  cls");
     s_log(" ring3   : bex  ktest");
@@ -411,6 +411,85 @@ fn shell_disk() {
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
     s_log("[disk] solo lectura: escribir espera a identificar el disco");
+}
+
+/// `ls` — el primer archivo que BMO-X abre es él mismo.
+///
+/// Busca `EFI\BOOT\BOOTX64.EFI` en la partición de arranque montada y lo lee.
+/// No es una demo elegida al azar: es el binario con el que este kernel
+/// arrancó, así que si los bytes leídos empiezan por la firma de un ejecutable
+/// UEFI ("MZ"), el camino entero —AHCI, GPT, FAT32, cadena de clústeres— está
+/// bien de punta a punta, y lo está contra un archivo cuya identidad conocemos.
+fn shell_ls() {
+    use crate::ring0::fs;
+    if !fs::is_mounted() {
+        s_log("[fs] no hay volumen montado (mira la bitacora de CABINA)");
+        return;
+    }
+    fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
+        for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
+    }
+    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u64) {
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        if v == 0 { tmp[0] = b'0'; i = 1; }
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
+    }
+
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[fs] ");
+        txt(&mut b, &mut o, fs::fs_name());
+        txt(&mut b, &mut o, " montado en LBA ");
+        dec(&mut b, &mut o, fs::mounted_lba());
+        txt(&mut b, &mut o, " (solo lectura)");
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+
+    // Los nombres van en 8.3 crudo: 8 de nombre + 3 de extensión, con
+    // espacios de relleno. Feo, pero es como FAT los guarda en disco.
+    let efi = match fs::find_dir(b"EFI        ") {
+        Some(c) => c,
+        None => { s_log("[fs] no encuentro el directorio EFI"); return; }
+    };
+    let boot = match fs::find_dir_in(b"BOOT       ", efi) {
+        Some(c) => c,
+        None => { s_log("[fs] no encuentro EFI\\BOOT"); return; }
+    };
+    let _ = boot;
+
+    match fs::find(b"BOOTX64 EFI") {
+        Some((cluster, size)) => {
+            let mut b = [0u8; 80];
+            let mut o = 0usize;
+            txt(&mut b, &mut o, "[fs] BOOTX64.EFI  ");
+            dec(&mut b, &mut o, size as u64);
+            txt(&mut b, &mut o, " bytes  cluster ");
+            dec(&mut b, &mut o, cluster as u64);
+            if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+
+            // Leer los primeros bytes y comprobar la firma. Un archivo que se
+            // encuentra pero no se lee no demuestra nada.
+            let mut head = [0u8; 64];
+            let n = fs::read(cluster, 64.min(size), &mut head);
+            let mut b = [0u8; 80];
+            let mut o = 0usize;
+            txt(&mut b, &mut o, "[fs] leidos ");
+            dec(&mut b, &mut o, n as u64);
+            txt(&mut b, &mut o, " bytes, firma=");
+            if n >= 2 && head[0] == b'M' && head[1] == b'Z' {
+                txt(&mut b, &mut o, "MZ  <- es un ejecutable UEFI: SOY YO");
+                crate::ring0::cabina::info("fs", "BMO-X leyo su propio BOOTX64.EFI", size as u64);
+            } else {
+                txt(&mut b, &mut o, "?? (no es un PE: revisar la cadena de clusteres)");
+                crate::ring0::cabina::warn("fs", "el archivo se encontro pero no se leyo bien", n as u64);
+            }
+            if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+        }
+        None => s_log("[fs] BOOTX64.EFI no aparece en la raiz (esta en EFI\\BOOT)"),
+    }
 }
 
 /// `hist` — la lista de comandos ejecutados, numerada. Lo mismo que recorren
@@ -698,6 +777,8 @@ fn run_shell(ctx: &BootContext) -> ! {
 
         if cmd == b"help" {
             shell_help();
+        } else if cmd == b"ls" {
+            shell_ls();
         } else if cmd == b"disk" {
             shell_disk();
         } else if cmd == b"hist" || cmd == b"history" {
@@ -906,6 +987,9 @@ pub fn main(ctx: &mut BootContext) {
     // su tabla de particiones. Solo lectura; ver dev/disk.rs.
     crate::ring0::dev::disk::init();
     crate::ring0::dev::disk::scan_partitions();
+    // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la partición de
+    // arranque, que es donde vive el BOOTX64.EFI con el que arrancamos.
+    crate::ring0::fs::mount();
     dash_log("== RING 0 : hardware al mando ==");
 
     // ── Acto II: RING 3 — el userspace nace ─────────────────────────────

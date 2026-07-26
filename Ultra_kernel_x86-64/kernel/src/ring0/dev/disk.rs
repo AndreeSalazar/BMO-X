@@ -392,6 +392,19 @@ pub fn partitions() -> &'static [Partition] {
 /// Último LBA utilizable que declara la cabecera GPT (0 = sin leer).
 pub fn last_lba() -> u64 { unsafe { LAST_LBA } }
 
+// ── El contrato de bloques ──────────────────────────────────────────────────
+//
+// Lo único que un sistema de ficheros necesita saber del almacenamiento. Es a
+// propósito una función suelta y no un método: así `bmo-fat32` —y mañana
+// ESTRATOS— no dependen de este módulo ni de AHCI, solo de una firma. El día
+// que haya un NVMe cableado, se les pasa OTRA función y ni se enteran.
+
+/// Lector de bloques del disco montado. LBA ABSOLUTO del dispositivo.
+pub fn block_read(lba: u64, count: u16, buf: &mut [u8]) -> bool {
+    if count == 0 || buf.len() < count as usize * SECTOR { return false; }
+    read(lba, count, buf) == count
+}
+
 fn le32(b: &[u8], o: usize) -> u32 {
     (b[o] as u32) | ((b[o+1] as u32) << 8) | ((b[o+2] as u32) << 16) | ((b[o+3] as u32) << 24)
 }

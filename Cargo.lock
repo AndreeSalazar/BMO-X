@@ -93,10 +93,6 @@ dependencies = [
 [[package]]
 name = "bmo-fat32"
 version = "0.1.0"
-dependencies = [
- "bmo-ahci",
- "log",
-]
 
 [[package]]
 name = "bmo-fontgen"
@@ -130,6 +126,7 @@ version = "2.0.0"
 dependencies = [
  "bmo-ahci",
  "bmo-channel",
+ "bmo-fat32",
  "bmo-input",
  "bmo-uhid",
  "bmo-xhci",

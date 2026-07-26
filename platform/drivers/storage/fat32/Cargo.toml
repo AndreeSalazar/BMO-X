@@ -2,10 +2,11 @@
 name = "bmo-fat32"
 version = "0.1.0"
 edition = "2021"
-description = "BMO FAT32 filesystem reader — cluster chain traversal, 8.3 name lookup"
+description = "BMO FAT32/exFAT reader — cadenas de clusteres, nombres 8.3, sobre un contrato de bloques"
 
 [lib]
 
 [dependencies]
-bmo-ahci = { path = "../ahci" }
-log = "0.4"
+# NINGUNA, a proposito. Tenia `bmo-ahci` (soldado a SATA: no habria podido
+# leer un NVMe jamas) y `log` (que en Ring 0 no existe). El almacenamiento
+# entra ahora por punteros a funcion: BlockReader / BlockWriter.

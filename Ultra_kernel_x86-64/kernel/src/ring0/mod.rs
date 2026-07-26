@@ -1,5 +1,6 @@
 pub mod bex;
 pub mod cabina;
+pub mod fs;
 pub mod cap;
 pub mod faults;
 pub mod core {
