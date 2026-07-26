@@ -1,0 +1,12 @@
+[package]
+name = "bmo-rpc-demo"
+version = "0.1.0"
+edition = "2021"
+description = "Genera el par cliente/servidor que prueba Endpoint RPC en Ring 3"
+
+[[bin]]
+name = "rpc-demo"
+path = "src/main.rs"
+
+[dependencies]
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }

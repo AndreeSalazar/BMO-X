@@ -39,6 +39,15 @@ const TASK_OP_CONSOLE_WRITE: u64 = 0x06;
 /// Crea un endpoint atendido por este proceso. arg0 = estuario por el que se
 /// le entregaran las llamadas. Devuelve el handle del endpoint.
 const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
+/// Pide el derecho a LLAMAR al endpoint `arg0`. Devuelve el handle de cliente.
+///
+/// Puerta de descubrimiento provisional, con el mismo aviso que lleva
+/// `TASK_OP_CONSOLE_WRITE`: hoy cualquier proceso puede pedir cualquier
+/// endpoint por su índice, y eso NO es disciplina de capabilities. Existe para
+/// arrancar, y muere cuando haya un servicio de nombres que entregue el handle
+/// a quien deba tenerlo. Se dice aquí para que nadie lo confunda con el
+/// diseño final.
+const TASK_OP_ENDPOINT_CONNECT: u64 = 0x08;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -197,6 +206,12 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
                 None => BmoStatus::err(endpoint::ERROR_BUSY),
             }
         }
+        TASK_OP_ENDPOINT_CONNECT => {
+            match endpoint::conceder_cliente(arg0 as usize, scheduler::current_pid()) {
+                Some(handle) => BmoStatus::ok_value(handle),
+                None => BmoStatus::err(endpoint::ERROR_ENDPOINT_DEAD),
+            }
+        }
         _ => unsupported(),
     }
 }
@@ -222,10 +237,17 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
     if let Ok(r) = cap::resolve(pid, frame.rdi, cap::RIGHT_WRITE) {
         match r.kind {
             cap::KIND_ENDPOINT => {
+                // Argumentos: rdi(cap), rsi(op), rdx, r10, r8.
+                //
+                // ★ NO rcx. En `SYSCALL` el CPU mete ahí el RIP de retorno —
+                // por eso el prólogo hace `push rcx` como RIP de usuario— y
+                // r11 se lleva RFLAGS. Un argumento en rcx no es el dato del
+                // cliente: es la dirección a la que va a volver. Por eso la
+                // convención salta a r10, igual que en Linux.
                 let res = endpoint::llamar(
                     r.object as usize,
                     frame.rsi,
-                    [frame.rdx, frame.rcx, frame.r8],
+                    [frame.rdx, frame.r10, frame.r8],
                 );
                 return BmoStatus { code: res.code, flags: 0, value: res.value };
             }

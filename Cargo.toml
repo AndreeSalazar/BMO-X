@@ -66,6 +66,8 @@ members = [
     "toolchain/tools/fontgen",
     # Formatea un volumen ESTRATOS desde el anfitrion (paso 4c del diseno).
     "toolchain/tools/estratos-fmt",
+    # El par cliente/servidor que prueba Endpoint RPC en Ring 3.
+    "toolchain/tools/rpc-demo",
 
     # ── FORGE (pipeline de compilación) ─────────────────────────────
     # Librerías OPCIONALES que cada frontend elige enlazar (nunca embudos).

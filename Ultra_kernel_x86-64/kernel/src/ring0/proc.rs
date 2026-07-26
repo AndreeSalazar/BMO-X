@@ -63,6 +63,11 @@ static HOLA_C_BEX: &[u8] = include_bytes!("hola_C.bex");
 /// Programa COBOL compilado por `toolchain/lang/cobol` (fuente:
 /// `toolchain/lang/cobol/examples/hola_COBOL.cob`).
 static HOLA_COBOL_BEX: &[u8] = include_bytes!("hola_COBOL.bex");
+/// El par cliente/servidor de Endpoint RPC. Se regeneran con
+/// `cargo run -p bmo-rpc-demo -- <srv> <cli>` y se commitean, igual que los
+/// demas demos.
+static RPC_SRV_BEX: &[u8] = include_bytes!("rpc_srv.bex");
+static RPC_CLI_BEX: &[u8] = include_bytes!("rpc_cli.bex");
 
 /// Los programas Ring 3 que BMO admite al arrancar cuando la cadena de
 /// arranque no reservo ninguno.
@@ -81,6 +86,12 @@ static DEMOS: &[(&str, &str, &[u8])] = &[
     ("asm", "init_hello (asm)", INIT_HELLO_BEX),
     ("C", "hola_C (C)", HOLA_C_BEX),
     ("COBOL", "hola_COBOL (COBOL)", HOLA_COBOL_BEX),
+    // El par que prueba Endpoint RPC. El servidor va PRIMERO para que tenga
+    // el primer turno y cree el endpoint; aun asi el cliente reintenta
+    // cediendo el turno, porque el orden del planificador no es una garantia
+    // sobre la que se pueda construir.
+    ("srv", "rpc_servidor", RPC_SRV_BEX),
+    ("cli", "rpc_cliente", RPC_CLI_BEX),
 ];
 
 /// Capture the TSS location from the BootContext (identity-mapped).
