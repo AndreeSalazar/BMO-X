@@ -269,6 +269,63 @@ fn recorrer(l: &mut Lector, ptr: &BlockPtr, sangria: usize, archivos: &mut usize
     Ok(())
 }
 
+// ── Tomar el volumen (Windows) ──────────────────────────────────────────────
+//
+// Windows no deja escribir sectores crudos de un volumen que tiene montado:
+// el driver de NTFS los considera suyos y la escritura se ignora o falla. Hay
+// que pedirle el volumen formalmente — bloquearlo y desmontarlo — antes de
+// tocarlo. Sin esto, el formateador parece funcionar y no escribe nada.
+
+#[cfg(windows)]
+mod win {
+    use std::fs::File;
+    use std::os::windows::io::AsRawHandle;
+
+    type Handle = *mut core::ffi::c_void;
+
+    extern "system" {
+        fn DeviceIoControl(
+            h: Handle, code: u32,
+            entrada: *mut core::ffi::c_void, n_entrada: u32,
+            salida: *mut core::ffi::c_void, n_salida: u32,
+            devueltos: *mut u32, solapado: *mut core::ffi::c_void,
+        ) -> i32;
+    }
+
+    const FSCTL_LOCK_VOLUME: u32 = 0x0009_0018;
+    const FSCTL_UNLOCK_VOLUME: u32 = 0x0009_001C;
+    const FSCTL_DISMOUNT_VOLUME: u32 = 0x0009_0020;
+
+    fn ctl(f: &File, code: u32) -> bool {
+        let mut devueltos = 0u32;
+        unsafe {
+            DeviceIoControl(
+                f.as_raw_handle() as Handle, code,
+                core::ptr::null_mut(), 0, core::ptr::null_mut(), 0,
+                &mut devueltos, core::ptr::null_mut(),
+            ) != 0
+        }
+    }
+
+    /// Bloquea y desmonta el volumen. El bloqueo falla si alguien tiene
+    /// archivos abiertos ahí, así que se reintenta: normalmente es el
+    /// indexador o el antivirus soltando el volumen.
+    pub fn tomar(f: &File) -> Result<(), String> {
+        for intento in 0..10 {
+            if ctl(f, FSCTL_LOCK_VOLUME) {
+                if ctl(f, FSCTL_DISMOUNT_VOLUME) { return Ok(()); }
+                return Err("se bloqueo el volumen pero no se pudo desmontar".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let _ = intento;
+        }
+        Err("no se pudo bloquear el volumen: alguien lo tiene abierto \
+             (cierra exploradores y terminales apuntando a esa unidad)".into())
+    }
+
+    pub fn soltar(f: &File) { let _ = ctl(f, FSCTL_UNLOCK_VOLUME); }
+}
+
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
 struct Opciones {
@@ -354,6 +411,22 @@ fn main() {
         return;
     }
 
+    // ★ El seguro que de verdad importa. Esta herramienta escribe SIEMPRE
+    // desde el offset 0 de lo que le den, y el offset 0 de un disco físico es
+    // su TABLA DE PARTICIONES. Apuntarla a `\\.\PhysicalDriveN` no formatearía
+    // una partición: se llevaría por delante el mapa del disco entero y con él
+    // todas las demás particiones — incluida la de arranque. Un volumen
+    // (`\\.\F:`) no tiene ese problema: su offset 0 ES el principio de su
+    // partición, y no puede alcanzar a ninguna otra.
+    let destino_txt = o.destino.to_string_lossy().to_ascii_lowercase();
+    if destino_txt.contains("physicaldrive") {
+        eprintln!("estratos-fmt: me niego a escribir sobre un disco FISICO.");
+        eprintln!("              Escribo desde el offset 0, y el offset 0 de un disco es su");
+        eprintln!("              tabla de particiones: se perderian TODAS, no solo esta.");
+        eprintln!("              Apuntame a un volumen concreto, por ejemplo \\\\.\\F:");
+        std::process::exit(1);
+    }
+
     // La barrera. Escribir en un volumen real borra lo que hubiera, y esta
     // herramienta no lo hace por accidente ni por descuido de quien la llama.
     if o.volumen && !o.seguro {
@@ -383,6 +456,18 @@ fn main() {
         if let Err(e) = f.set_len(total_bloques * BLOQUE as u64) {
             eprintln!("estratos-fmt: no se pudo dimensionar la imagen: {}", e);
             std::process::exit(1);
+        }
+    } else {
+        println!("  rango            bytes 0 .. {} del volumen", total_bloques * BLOQUE as u64);
+        #[cfg(windows)]
+        {
+            print!("  desmontando...   ");
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
+            match win::tomar(&f) {
+                Ok(()) => println!("volumen tomado"),
+                Err(e) => { println!("FALLO"); eprintln!("estratos-fmt: {}", e); std::process::exit(1); }
+            }
         }
     }
 
@@ -416,6 +501,8 @@ fn main() {
         f.write_all(&b).expect("escribiendo superbloque");
     }
     f.sync_all().expect("vaciando al disco");
+    #[cfg(windows)]
+    if o.volumen { win::soltar(&f); }
     drop(f);
 
     println!("  escrito          {} bloques de log, cabeza en {}", log.bloques_escritos, cabeza);
