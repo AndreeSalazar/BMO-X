@@ -80,6 +80,19 @@ fn dash_log(msg: &str) {
 /// output in the same panel instead of maintaining a competing row cursor.
 /// Framebuffer-only; a no-op on a headless (serial) boot.
 pub fn dashboard_log(msg: &str) {
+    dashboard_log_impl(msg, None);
+}
+
+/// Igual, pero eligiendo el color a mano.
+///
+/// El color por prefijo sirve para el log del kernel, donde el emisor SE
+/// reconoce. Un informe del shell no tiene emisor: tiene estructura — títulos,
+/// etiquetas y valores — y quien la conoce es quien lo escribe.
+pub fn dashboard_log_color(msg: &str, color: u32) {
+    dashboard_log_impl(msg, Some(color));
+}
+
+fn dashboard_log_impl(msg: &str, color: Option<u32>) {
     if !crate::info::has_fb() { return; }
     let rows = log_rows();
     if rows == 0 { return; }
@@ -120,7 +133,10 @@ pub fn dashboard_log(msg: &str) {
             while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
             while i > 0 { i -= 1; if o < buf.len() { buf[o] = tmp[i]; o += 1; } }
             if let Ok(s) = core::str::from_utf8(&buf[..o]) {
-                splash::splash_dashboard_log(LAST_ROW, s);
+                match color {
+                    Some(c) => splash::splash_dashboard_log_color(LAST_ROW, s, c),
+                    None => splash::splash_dashboard_log(LAST_ROW, s),
+                }
             }
             return;
         }
@@ -131,7 +147,97 @@ pub fn dashboard_log(msg: &str) {
 
     let row = unsafe { DASH_LOG_ROW } % rows;
     unsafe { DASH_LOG_ROW = (row + 1) % rows; LAST_ROW = row; }
-    splash::splash_dashboard_log(row, msg);
+    match color {
+        Some(c) => splash::splash_dashboard_log_color(row, msg, c),
+        None => splash::splash_dashboard_log(row, msg),
+    }
+}
+
+// ── Constructor de líneas del shell ─────────────────────────────────────────
+//
+// Cada comando del shell traía sus propias closures `txt`/`dec` copiadas.
+// Esto es una sola, con lo que hace falta para alinear columnas y para decir
+// un tamaño en la unidad que se entiende.
+
+/// Colores de los informes del shell. Etiqueta apagada, valor claro, título
+/// ámbar: la misma jerarquía en todos los comandos, para que `info` y `disk`
+/// se lean como partes del mismo sistema y no como dos programas distintos.
+const SH_TITLE: u32 = 0xFFF6C445; // ámbar
+const SH_LABEL: u32 = 0xFF00F0FF; // cian
+const SH_VALUE: u32 = 0xFFE6EDF7; // texto
+
+struct L { b: [u8; 96], o: usize }
+
+impl L {
+    fn new() -> Self { Self { b: [0u8; 96], o: 0 } }
+    fn txt(&mut self, s: &str) {
+        for &c in s.as_bytes() { if self.o < self.b.len() { self.b[self.o] = c; self.o += 1; } }
+    }
+    fn dec(&mut self, mut v: u64) {
+        if v == 0 { self.txt("0"); return; }
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        while i > 0 { i -= 1; if self.o < self.b.len() { self.b[self.o] = tmp[i]; self.o += 1; } }
+    }
+    fn hex(&mut self, v: u64, digits: usize) {
+        const H: &[u8; 16] = b"0123456789ABCDEF";
+        for i in (0..digits).rev() {
+            if self.o < self.b.len() { self.b[self.o] = H[((v >> (i * 4)) & 0xF) as usize]; self.o += 1; }
+        }
+    }
+    /// Rellena con espacios hasta la columna `col`. Es lo que mantiene las
+    /// etiquetas alineadas sin contar caracteres a mano en cada línea.
+    fn col(&mut self, col: usize) {
+        while self.o < col && self.o < self.b.len() { self.b[self.o] = b' '; self.o += 1; }
+    }
+    /// Un tamaño en la unidad que se entiende, con dos decimales.
+    ///
+    /// Sin coma flotante: la parte fraccionaria se saca multiplicando el resto
+    /// por 100 antes de dividir. En Ring 0 no hay `f64` que valga — y aunque
+    /// lo hubiera, el estado SSE de la tarea no se preserva todavía.
+    ///
+    /// Unidades binarias (1 KiB = 1024 B) porque es lo que cuenta el
+    /// asignador: sus marcos son de 4096 bytes, no de 4000.
+    fn size(&mut self, bytes: u64) {
+        const K: u64 = 1024;
+        const M: u64 = K * 1024;
+        const G: u64 = M * 1024;
+        let (unit, div) = if bytes >= G { ("GiB", G) }
+                          else if bytes >= M { ("MiB", M) }
+                          else if bytes >= K { ("KiB", K) }
+                          else { ("B", 1) };
+        self.dec(bytes / div);
+        if div > 1 {
+            let frac = (bytes % div) * 100 / div;
+            self.txt(".");
+            if frac < 10 { self.txt("0"); }
+            self.dec(frac);
+        }
+        self.txt(" ");
+        self.txt(unit);
+    }
+    /// Porcentaje entero, sin flotantes.
+    fn pct(&mut self, part: u64, whole: u64) {
+        if whole == 0 { self.txt("0%"); return; }
+        self.dec(part * 100 / whole);
+        self.txt("%");
+    }
+    fn as_str(&self) -> &str { core::str::from_utf8(&self.b[..self.o]).unwrap_or("") }
+}
+
+/// Una fila de informe: etiqueta a la izquierda, valor alineado en la columna 10.
+fn row(label: &str, build: impl FnOnce(&mut L)) {
+    let mut l = L::new();
+    l.txt(" ");
+    l.txt(label);
+    l.col(10);
+    build(&mut l);
+    // La etiqueta va en cian y el valor en blanco, pero el panel pinta una
+    // línea de un solo color: se elige el del VALOR, que es lo que se lee.
+    dashboard_log_color(l.as_str(), SH_VALUE);
+    crate::ring0::dev::console::serial_write(l.as_str());
+    crate::ring0::dev::console::serial_write("\n");
 }
 
 // Mirror the current in-progress shell line to the framebuffer's prompt area,
@@ -371,15 +477,16 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
 }
 
 fn shell_help() {
-    // Compacto por categorías: cabe entero en el panel de 14 filas sin
-    // barrer el resto del log, y se lee de un vistazo.
-    s_log("== BMO-X shell ==");
-    s_log(" sistema : info  mem  tasks  layout  hist  disk  ls  cabina");
-    s_log(" edicion : flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L");
-    s_log(" video   : fb  splash  cls");
-    s_log(" ring3   : bex  ktest");
-    s_log(" poder   : reboot  halt  panic");
-    s_log(" ayuda   : help");
+    // Por categorías y con las columnas alineadas por el mismo constructor que
+    // usan `info` y `disk`: antes cada comando alineaba a ojo con espacios
+    // contados a mano, y bastaba una palabra más larga para torcer la columna.
+    dashboard_log_color("== BMO-X shell ==", SH_TITLE);
+    row("sistema", |l| l.txt("info  mem  tasks  disk  ls  cabina  hist  layout"));
+    row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
+    row("video", |l| l.txt("fb  splash  cls"));
+    row("ring3", |l| l.txt("bex  ktest"));
+    row("poder", |l| l.txt("reboot  halt  panic"));
+    row("ayuda", |l| l.txt("help"));
 }
 
 /// `disk` — qué disco tiene BMO delante y qué hay en él.
@@ -511,40 +618,25 @@ fn shell_cabina() {
     if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
 }
 
-/// `ls` — el primer archivo que BMO-X abre es él mismo.
+/// `ls` — recorre `EFI\BOOT\BOOTX64.EFI` de la partición de arranque y lo lee.
 ///
-/// Busca `EFI\BOOT\BOOTX64.EFI` en la partición de arranque montada y lo lee.
-/// No es una demo elegida al azar: es el binario con el que este kernel
-/// arrancó, así que si los bytes leídos empiezan por la firma de un ejecutable
-/// UEFI ("MZ"), el camino entero —AHCI, GPT, FAT32, cadena de clústeres— está
-/// bien de punta a punta, y lo está contra un archivo cuya identidad conocemos.
+/// Lo que esto demuestra: que el camino entero —AHCI, GPT, FAT32, directorios,
+/// cadena de clústeres— funciona de punta a punta contra un archivo real.
+///
+/// Lo que NO demuestra: que ese archivo sea el nuestro. La versión anterior
+/// remataba con "es un ejecutable UEFI: SOY YO" a partir de la firma `MZ`, que
+/// la lleva CUALQUIER ejecutable de Windows. En este disco la partición de
+/// arranque es la ESP de 0,6 GB que comparte con el sistema del dueño, así que
+/// bien puede ser su cargador. Se dice lo que se sabe.
 fn shell_ls() {
     use crate::ring0::fs;
     if !fs::is_mounted() {
         s_log("[fs] no hay volumen montado (mira la bitacora de CABINA)");
         return;
     }
-    fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
-        for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
-    }
-    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u64) {
-        let mut tmp = [0u8; 20];
-        let mut i = 0;
-        if v == 0 { tmp[0] = b'0'; i = 1; }
-        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
-        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
-    }
 
-    {
-        let mut b = [0u8; 80];
-        let mut o = 0usize;
-        txt(&mut b, &mut o, "[fs] ");
-        txt(&mut b, &mut o, fs::fs_name());
-        txt(&mut b, &mut o, " montado en LBA ");
-        dec(&mut b, &mut o, fs::mounted_lba());
-        txt(&mut b, &mut o, " (solo lectura)");
-        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
-    }
+    dashboard_log_color("== volumen de arranque ==", SH_TITLE);
+    row("formato", |l| { l.txt(fs::fs_name()); l.txt("  LBA "); l.dec(fs::mounted_lba()); l.txt("  solo lectura"); });
 
     // Los nombres van en 8.3 crudo: 8 de nombre + 3 de extensión, con
     // espacios de relleno. Feo, pero es como FAT los guarda en disco.
@@ -559,35 +651,24 @@ fn shell_ls() {
     // ★ Y buscar el archivo DENTRO de `boot`, no en la raiz. El primer
     // intento encontro los dos directorios y luego pregunto por el archivo en
     // la raiz de todas formas: tenia el cluster correcto en la mano y lo tiro.
-    match fs::find_in(b"BOOTX64 EFI", boot) {
-        Some((cluster, size)) => {
-            let mut b = [0u8; 80];
-            let mut o = 0usize;
-            txt(&mut b, &mut o, "[fs] BOOTX64.EFI  ");
-            dec(&mut b, &mut o, size as u64);
-            txt(&mut b, &mut o, " bytes  cluster ");
-            dec(&mut b, &mut o, cluster as u64);
-            if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    let (cluster, size) = match fs::find_in(b"BOOTX64 EFI", boot) {
+        Some(v) => v,
+        None => { s_log("[fs] BOOTX64.EFI no esta en EFI\\BOOT"); return; }
+    };
+    row("archivo", |l| { l.txt("EFI\\BOOT\\BOOTX64.EFI"); });
+    row("tamano", |l| { l.size(size as u64); l.txt("   "); l.dec(size as u64); l.txt(" B   cluster "); l.dec(cluster as u64); });
 
-            // Leer los primeros bytes y comprobar la firma. Un archivo que se
-            // encuentra pero no se lee no demuestra nada.
-            let mut head = [0u8; 64];
-            let n = fs::read(cluster, 64.min(size), &mut head);
-            let mut b = [0u8; 80];
-            let mut o = 0usize;
-            txt(&mut b, &mut o, "[fs] leidos ");
-            dec(&mut b, &mut o, n as u64);
-            txt(&mut b, &mut o, " bytes, firma=");
-            if n >= 2 && head[0] == b'M' && head[1] == b'Z' {
-                txt(&mut b, &mut o, "MZ  <- es un ejecutable UEFI: SOY YO");
-                crate::ring0::cabina::info("fs", "BMO-X leyo su propio BOOTX64.EFI", size as u64);
-            } else {
-                txt(&mut b, &mut o, "?? (no es un PE: revisar la cadena de clusteres)");
-                crate::ring0::cabina::warn("fs", "el archivo se encontro pero no se leyo bien", n as u64);
-            }
-            if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
-        }
-        None => s_log("[fs] BOOTX64.EFI no aparece en la raiz (esta en EFI\\BOOT)"),
+    // Leer los primeros bytes. Un archivo que se encuentra pero no se lee no
+    // demuestra nada.
+    let mut head = [0u8; 64];
+    let n = fs::read(cluster, 64.min(size), &mut head);
+    if n >= 2 && head[0] == b'M' && head[1] == b'Z' {
+        row("firma", |l| { l.txt("MZ  ejecutable PE   "); l.dec(n as u64); l.txt(" bytes leidos"); });
+        row("cadena", |l| { l.txt("AHCI -> GPT -> FAT32 -> directorios -> clusteres  OK"); });
+        crate::ring0::cabina::info("fs", "cadena de lectura verificada contra un PE real", size as u64);
+    } else {
+        row("firma", |l| { l.txt("?? no es un PE: revisar la cadena de clusteres"); });
+        crate::ring0::cabina::warn("fs", "el archivo se encontro pero no se leyo bien", n as u64);
     }
 }
 
@@ -642,32 +723,88 @@ fn shell_layout(arg: &[u8]) {
     if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
 }
 
+/// `info` — el informe completo de la máquina.
+///
+/// Antes escribía TODO al puerto serie y al panel no llegaba nada: en una
+/// máquina sin cable serie el comando parecía no hacer nada. Ahora cada línea
+/// va a los dos sitios.
 fn shell_info(ctx: &BootContext) {
-    s_log("--- BootContext ---");
-    s_log("magic          = FOSCBOOT");
-    crate::ring0::dev::console::serial_write("version         = ");
-    crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
-    crate::ring0::dev::console::serial_write("\n");
-    crate::ring0::dev::console::serial_write("fb_addr         = 0x");
-    crate::ring0::dev::console::serial_write_u64(ctx.fb_addr, 16);
-    crate::ring0::dev::console::serial_write("\n");
-    crate::ring0::dev::console::serial_write("fb_w x fb_h     = ");
-    crate::ring0::dev::console::serial_write_u64(ctx.fb_width as u64, 10);
-    crate::ring0::dev::console::serial_write(" x ");
-    crate::ring0::dev::console::serial_write_u64(ctx.fb_height as u64, 10);
-    crate::ring0::dev::console::serial_write("\n");
-    crate::ring0::dev::console::serial_write("mem map entries = ");
-    crate::ring0::dev::console::serial_write_u64(ctx.memory_map_count as u64, 10);
-    crate::ring0::dev::console::serial_write("\n");
-    crate::ring0::dev::console::serial_write("pml4            = 0x");
-    crate::ring0::dev::console::serial_write_u64(ctx.pml4, 16);
-    crate::ring0::dev::console::serial_write("\n");
-    crate::ring0::dev::console::serial_write("tsc_freq        = ");
-    crate::ring0::dev::console::serial_write_u64_dec(ctx.tsc_freq);
-    crate::ring0::dev::console::serial_write(" Hz\n");
-    crate::ring0::dev::console::serial_write("rsdp            = 0x");
-    crate::ring0::dev::console::serial_write_u64(ctx.rsdp, 16);
-    crate::ring0::dev::console::serial_write("\n");
+    use crate::ring0::mm::phys;
+    const PAGE: u64 = 4096;
+
+    dashboard_log_color("== BMO-X : informe del sistema ==", SH_TITLE);
+
+    // ── CPU ──
+    let p = crate::ring0::cpu_vendor::profile::active();
+    row("cpu", |l| { l.txt(p.vendor); l.txt(" "); l.txt(p.name); });
+    row("uarch", |l| { l.txt(p.microarch); l.txt("  familia "); l.txt(p.family_model); });
+    row("tsc", |l| {
+        // Hz -> GHz con dos decimales, sin flotantes.
+        l.dec(ctx.tsc_freq / 1_000_000_000);
+        l.txt(".");
+        let frac = (ctx.tsc_freq % 1_000_000_000) / 10_000_000;
+        if frac < 10 { l.txt("0"); }
+        l.dec(frac);
+        l.txt(" GHz");
+    });
+
+    // ── MEMORIA: lo que hay, lo que se está comiendo y en qué ──
+    //
+    // `used` es lo que el asignador de marcos NO tiene disponible: la imagen
+    // del kernel, su bitmap, las pilas, las tablas de páginas, los buffers de
+    // DMA y las regiones que el firmware declaró inutilizables. No se desglosa
+    // más porque el asignador no lo sabe, y un desglose inventado sería peor
+    // que ninguno.
+    let (total_frames, free_frames) = phys::stats();
+    let total_b = total_frames * PAGE;
+    let free_b = free_frames * PAGE;
+    let used_b = total_b.saturating_sub(free_b);
+
+    dashboard_log_color("== memoria ==", SH_TITLE);
+    row("total", |l| { l.size(total_b); l.txt("   "); l.dec(total_frames); l.txt(" marcos de 4 KiB"); });
+    row("usada", |l| { l.size(used_b); l.txt("   "); l.pct(used_b, total_b); l.txt("   "); l.dec(total_frames - free_frames); l.txt(" marcos"); });
+    row("libre", |l| { l.size(free_b); l.txt("   "); l.pct(free_b, total_b); l.txt("   "); l.dec(free_frames); l.txt(" marcos"); });
+
+    // El tamaño REAL del kernel en RAM: desde donde lo linkea el script hasta
+    // el final de su .bss (que incluye la pila de 64 KiB). Es un dato medido,
+    // no el tamaño del archivo.
+    extern "C" { static __bss_end: u8; }
+    let kernel_end = unsafe { &__bss_end as *const u8 as u64 };
+    row("kernel", |l| { l.size(kernel_end.saturating_sub(0x400000)); l.txt("   en 0x400000"); });
+
+    if crate::info::has_fb() {
+        let (fw, fh, fs) = unsafe { (crate::info::FB_WIDTH as u64, crate::info::FB_HEIGHT as u64, crate::info::FB_STRIDE as u64) };
+        row("video", |l| { l.size(fs * fh * 4); l.txt("   "); l.dec(fw); l.txt("x"); l.dec(fh); l.txt("x32  fb 0x"); l.hex(unsafe { crate::info::FB_ADDR }, 8); });
+    }
+
+    // ── ALMACENAMIENTO ──
+    {
+        use crate::ring0::dev::disk;
+        dashboard_log_color("== almacenamiento ==", SH_TITLE);
+        if disk::is_ready() {
+            row("disco", |l| { l.txt(disk::model()); l.txt("  puerto "); l.dec(disk::port() as u64); });
+            row("serie", |l| { l.txt(disk::serial()); });
+            row("tamano", |l| { l.size(disk::total_sectors() * 512); l.txt("   "); l.dec(disk::total_sectors()); l.txt(" sectores"); });
+            row("escrit.", |l| { l.txt(if disk::write_armed() { "ARMADA" } else { "cerrada" }); });
+        } else {
+            row("disco", |l| { l.txt("sin disco listo"); });
+        }
+        let fs = crate::ring0::fs::fs_name();
+        row("arranque", |l| { l.txt(fs); l.txt("  LBA "); l.dec(crate::ring0::fs::mounted_lba()); l.txt("  solo lectura"); });
+        if crate::ring0::fs::data_mounted() {
+            row("datos", |l| { l.txt("LBA "); l.dec(crate::ring0::fs::data_lba()); l.txt("  LECTURA/ESCRITURA"); });
+        } else {
+            row("datos", |l| { l.txt("sin montar"); });
+        }
+    }
+
+    // ── PROCESOS Y ARRANQUE ──
+    dashboard_log_color("== sistema ==", SH_TITLE);
+    let (tasks, runnable) = crate::ring0::scheduler::counts();
+    row("tareas", |l| { l.dec(tasks as u64); l.txt(" totales   "); l.dec(runnable as u64); l.txt(" ejecutables"); });
+    row("ticks", |l| { l.txt("0x"); l.hex(crate::ring0::timer::ticks(), 8); });
+    row("boot", |l| { l.txt("BootContext v"); l.dec(ctx.version as u64); l.txt("   "); l.dec(ctx.memory_map_count as u64); l.txt(" entradas de mapa"); });
+    row("pml4", |l| { l.txt("0x"); l.hex(ctx.pml4, 8); l.txt("   rsdp 0x"); l.hex(ctx.rsdp, 8); });
 }
 
 fn shell_fb() {
@@ -824,14 +961,19 @@ fn shell_ktest() {
 
 fn shell_mem() {
     let (total, free) = crate::ring0::mm::phys::stats();
-    crate::ring0::dev::console::serial_write("[mem] frames free=");
-    crate::ring0::dev::console::serial_write_u64(free, 10);
-    crate::ring0::dev::console::serial_write(" total=");
-    crate::ring0::dev::console::serial_write_u64(total, 10);
-    crate::ring0::dev::console::serial_write(" (");
-    crate::ring0::dev::console::serial_write_u64(free * 4096 / (1024 * 1024), 10);
-    crate::ring0::dev::console::serial_write(" MiB free)\n");
-    dash_log("[mem] stats printed on serial");
+    const PAGE: u64 = 4096;
+    let total_b = total * PAGE;
+    let free_b = free * PAGE;
+    let used_b = total_b.saturating_sub(free_b);
+
+    // Antes esto pintaba en el panel la línea "[mem] stats printed on serial",
+    // que es la definición de un comando inútil: te dice que la información
+    // existe en un sitio donde no estás mirando.
+    dashboard_log_color("== memoria ==", SH_TITLE);
+    row("total", |l| { l.size(total_b); l.txt("   "); l.dec(total); l.txt(" marcos"); });
+    row("usada", |l| { l.size(used_b); l.txt("   "); l.pct(used_b, total_b); });
+    row("libre", |l| { l.size(free_b); l.txt("   "); l.pct(free_b, total_b); });
+
     if crate::ring0::mm::vmm::self_test() {
         s_log("[mem] vmm selftest OK (alloc/map/translate/unmap/destroy)");
     } else {
