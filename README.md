@@ -451,14 +451,21 @@ convierte en biblioteca + operaciones; la puerta sigue siendo `INVOKE`.
 - ✅ **Teclado y mouse USB propios** (xHCI + HID), con distribución española,
   teclas muertas, AltGr, Ctrl, repetición al mantener, LEDs e historial.
 - ✅ **El kernel lee su disco** (`49d536e3`): AHCI/SATA propio, sectores y
-  tabla GPT del Kingston de 480 GB, verificado sector a sector.
+  tabla GPT del Kingston de 480 GB, verificado sector a sector. El disco
+  estaba en el puerto 2, que el firmware declaraba inexistente.
+- ✅ **FAT32 montado** (`233edc1b`): la partición de arranque se monta y se
+  recorre. De sectores a ARCHIVOS. El sistema de ficheros entra por un
+  **contrato de bloques** (`BlockReader`/`BlockWriter`) y no sabe si debajo
+  hay SATA o NVMe — el día que haya un NVMe cableado se le pasa otra función
+  y ni se entera. Montado **sin escritor**: la imposibilidad de escribir es
+  estructural, no una promesa.
 
 **Lo que sigue, en orden:**
 
-1. **FAT32 sobre A:** — el disco se lee por sectores; falta el sistema de
-   ficheros para leer ARCHIVOS. El primero que abra será su propio
-   `BOOTX64.EFI`. Desbloquea la caja negra de CABINA en disco y sacar los
-   `.bex` de dentro del kernel.
+1. ~~FAT32 sobre A:~~ ✅ — montado y recorriendo directorios. Queda encima:
+   volcar la bitácora de CABINA a un archivo (la caja negra que sobrevive al
+   apagón) y cargar los `.bex` desde disco, para que añadir un programa deje
+   de exigir recompilar BMO-X entero.
 2. **Gate de identidad antes de escribir** — `IDENTIFY` ya da modelo y serie;
    falta que sea una comprobación, no una línea informativa. La escritura
    sigue cerrada hasta entonces.
@@ -467,7 +474,12 @@ convierte en biblioteca + operaciones; la puerta sigue siendo `INVOKE`.
    en su contenedor y el kernel reservará el área grande solo para esos.
 4. **Endpoint RPC → compositor + mouse** (ver `ENDPOINT_RPC.md`): el momento
    library-OS de verdad.
-5. **BMO-FS** en BMO-DATA, con el disco ya probado.
+5. **ESTRATOS** en BMO-DATA — el sistema de ficheros propio, diseñado en
+   `platform/services/timeback/ESTRATOS.md`: copy-on-write, direccionado por
+   contenido con BLAKE3, atributos con nombre (un `.bex` lleva su código, su
+   firma y su manifiesto de capabilities como flujos del mismo objeto), y el
+   historial como propiedad del suelo en vez de una carpeta aparte —
+   **escribir es commitear, porque nunca se sobreescribe nada**.
 6. **SMP** al final: el código de despertar los APs ya existe en `s1_cpu`, pero
    el día que corra un segundo núcleo cada `static mut` del kernel es una
    carrera. Primero el diseño de un núcleo firme.

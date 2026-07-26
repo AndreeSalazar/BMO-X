@@ -86,6 +86,14 @@ pub fn find(name: &[u8]) -> Option<(u32, u32)> {
     }
 }
 
+/// Busca un archivo DENTRO de un directorio ya localizado.
+pub fn find_in(name: &[u8], dir_cluster: u32) -> Option<(u32, u32)> {
+    unsafe {
+        let v = (*core::ptr::addr_of_mut!(VOLUME)).as_mut()?;
+        v.find_file_in(name, dir_cluster)
+    }
+}
+
 /// Busca un subdirectorio de la raíz y devuelve su cluster.
 pub fn find_dir(name: &[u8]) -> Option<u32> {
     unsafe {

@@ -458,9 +458,10 @@ fn shell_ls() {
         Some(c) => c,
         None => { s_log("[fs] no encuentro EFI\\BOOT"); return; }
     };
-    let _ = boot;
-
-    match fs::find(b"BOOTX64 EFI") {
+    // ★ Y buscar el archivo DENTRO de `boot`, no en la raiz. El primer
+    // intento encontro los dos directorios y luego pregunto por el archivo en
+    // la raiz de todas formas: tenia el cluster correcto en la mano y lo tiro.
+    match fs::find_in(b"BOOTX64 EFI", boot) {
         Some((cluster, size)) => {
             let mut b = [0u8; 80];
             let mut o = 0usize;

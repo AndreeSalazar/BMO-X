@@ -285,8 +285,26 @@ impl FatVolume {
         }
     }
 
+    /// Busca un archivo DENTRO de un directorio ya localizado.
+    ///
+    /// Existe porque `find_file` mira solo la raiz, y en un volumen de
+    /// arranque real lo que interesa vive en `EFI/BOOT`. Encontrar el
+    /// directorio y luego buscar el archivo en la raiz de todas formas es el
+    /// error que se comio el primer intento.
+    pub fn find_file_in(&mut self, name: &[u8], dir_cluster: u32) -> Option<(u32, u32)> {
+        match self.fs_type {
+            FsType::Fat32 => self.find_file_fat32_from(name, dir_cluster),
+            FsType::ExFat => self.find_file_exfat(name),
+        }
+    }
+
     fn find_file_fat32(&mut self, name: &[u8]) -> Option<(u32, u32)> {
-        let mut cluster = self.root_cluster;
+        let root = self.root_cluster;
+        self.find_file_fat32_from(name, root)
+    }
+
+    fn find_file_fat32_from(&mut self, name: &[u8], start_cluster: u32) -> Option<(u32, u32)> {
+        let mut cluster = start_cluster;
         let spc = self.sectors_per_cluster as u64;
         loop {
             let lba = self.cluster_to_lba(cluster);
