@@ -197,14 +197,17 @@ pub fn event_lost() -> u64 { unsafe { EV_LOST } }
 
 // Paleta de estado (aviso por color, como pidió el usuario): verde = bien,
 // ámbar = atención, rojo = problema, cyan = info/título, gris = neutro.
-const C_OK: u32    = 0xFF00E676; // verde neón
-const C_WARN: u32  = 0xFFFFB020; // ámbar
-const C_FAULT: u32 = 0xFFFF4D4D; // rojo
-const C_INFO: u32  = 0xFF00E5FF; // cyan (título)
-const C_DIM: u32   = 0xFF94A3B8; // gris azulado
-const C_TEXT: u32  = 0xFFF1F5F9; // texto normal
-const C_RING3: u32 = 0xFF00E676; // verde — userspace
-const C_FS: u32    = 0xFF818CF8; // índigo — almacenamiento
+// Los valores son los mismos que la paleta del panel (core/splash.rs): CABINA
+// y el log rodante comparten pantalla, y dos verdes distintos a diez píxeles
+// uno del otro se leen como un error de impresión, no como dos capas.
+const C_OK: u32    = 0xFF39FF88; // verde neón
+const C_WARN: u32  = 0xFFF6C445; // ámbar
+const C_FAULT: u32 = 0xFFFF3355; // rojo lacado — SOLO para lo que va mal
+const C_INFO: u32  = 0xFF00F0FF; // cian (título)
+const C_DIM: u32   = 0xFF55647E; // gris azulado
+const C_TEXT: u32  = 0xFFE6EDF7; // texto normal
+const C_RING3: u32 = 0xFF39FF88; // verde — userspace
+const C_FS: u32    = 0xFF2DE2C5; // jade — almacenamiento
 const C_SEC: u32   = 0xFFC084FC; // violeta — capabilities
 
 /// Color de una línea de bitácora. La severidad manda (un fallo es rojo venga
@@ -420,12 +423,14 @@ pub fn render_hud() {
     if saved_cr3 != kpml4 { crate::ring0::mm::vmm::switch_to(kpml4); }
 
     // ══ Cabecera de la banda: identidad + salud del propio registrador.
+    // Va como REGLA, no como una línea más de texto: es la frontera entre el
+    // log rodante y el cockpit, y tiene que verse sin leerla.
     let mut r = Buf::new();
-    r.txt("== CABINA == eventos="); r.dec(event_total());
-    r.txt(" perdidos="); r.dec(event_lost());
-    r.txt(" tk=0x"); r.hex(s.cpu.timer_ticks, 6);
+    r.txt("CABINA  eventos="); r.dec(event_total());
+    r.txt("  perdidos="); r.dec(event_lost());
+    r.txt("  tk=0x"); r.hex(s.cpu.timer_ticks, 6);
     let hdr_color = if event_lost() > 0 { C_WARN } else { C_INFO };
-    splash_dashboard_log_color(top, r.as_str(), hdr_color);
+    crate::ring0::core::splash::splash_dash_rule(top, r.as_str(), hdr_color);
 
     // ══ BITÁCORA EN TIEMPO REAL: el historial, el más nuevo abajo, cada línea
     // con seq y tick (orden y distancia entre hechos = la mitad del valor

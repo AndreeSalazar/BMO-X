@@ -567,9 +567,9 @@ pub fn splash_clear() {
 // the serial (COM1) is echoed on the screen so the user can
 // interact even without a serial terminal attached.
 
-const DASH_HEADER_H:  u32 = 40;  // top bar height
-const DASH_FOOTER_H:  u32 = 32;  // bottom prompt bar height
-const DASH_LOG_TOP:   u32 = 60;  // y of first log line
+const DASH_HEADER_H:  u32 = 44;  // top bar height
+const DASH_FOOTER_H:  u32 = 36;  // bottom prompt bar height
+const DASH_LOG_TOP:   u32 = 72;  // y of first log line
 const DASH_LOG_W:     u32 = 80;  // max chars per line
 const DASH_ROWS_MAX:  usize = 64; // tope duro (protege los buffers de filas)
 
@@ -588,38 +588,138 @@ pub fn dash_rows() -> usize {
     ((avail as usize) / CHAR_H).min(DASH_ROWS_MAX)
 }
 
-const DASH_BG:        u32 = 0xFF0A0F1D;
-const DASH_BAR:       u32 = 0xFF1E293B;
-const DASH_ACCENT:    u32 = 0xFF00E5FF;
-const DASH_TEXT:      u32 = 0xFFF1F5F9;
-const DASH_DIM:       u32 = 0xFF64748B;
+// ── PALETA: neón sobre negro ────────────────────────────────────────────────
+//
+// El fondo baja casi a negro puro a propósito: un neón solo brilla si lo que
+// tiene alrededor está apagado. El slate azulado anterior le robaba fuerza a
+// todos los acentos porque ya era luminoso de por sí.
+//
+// La familia son tres luces frías (cian, jade, violeta) contra tres cálidas
+// (ámbar, oro, magenta), con el rojo lacado reservado EXCLUSIVAMENTE para lo
+// que va mal. Que el rojo no se use de adorno es lo que hace que, cuando
+// aparece, la vista vaya sola.
+
+const VOID:           u32 = 0xFF04060C; // fuera del panel — negro con tinte
+const PANEL:          u32 = 0xFF080B14; // fondo del área de log
+const CHROME:         u32 = 0xFF10151F; // barras superior e inferior
+const EDGE:           u32 = 0xFF1E2738; // bordes apagados
+
+const NEON_CYAN:      u32 = 0xFF00F0FF;
+const NEON_MAGENTA:   u32 = 0xFFFF2D9B;
+const NEON_AMBER:     u32 = 0xFFF6C445; // el amarillo de firma
+const NEON_GOLD:      u32 = 0xFFFFB300;
+const NEON_RED:       u32 = 0xFFFF3355; // solo para faults
+const NEON_GREEN:     u32 = 0xFF39FF88;
+const NEON_VIOLET:    u32 = 0xFFA78BFA;
+const NEON_JADE:      u32 = 0xFF2DE2C5;
+
+const DASH_BG:        u32 = PANEL;
+const DASH_BAR:       u32 = CHROME;
+const DASH_ACCENT:    u32 = NEON_CYAN;
+const DASH_TEXT:      u32 = 0xFFE6EDF7;
+const DASH_DIM:       u32 = 0xFF55647E;
 
 // Colores-filtro por origen de línea (pedido del usuario): quien emite se
-// reconoce por color sin leer el prefijo. Paleta neón sobre el slate oscuro.
-const DASH_RING3:     u32 = 0xFF00E676; // verde neón — salida de Ring 3
-const DASH_TELEMETRY: u32 = 0xFFFFB020; // ámbar — heartbeat r3hb (tablero)
-const DASH_KBD:       u32 = 0xFF818CF8; // índigo — monitor de teclado
-const DASH_FAULT:     u32 = 0xFFFF4D4D; // rojo — reporter de CPU faults
+// reconoce por color sin leer el prefijo.
+const DASH_RING3:     u32 = NEON_GREEN;   // salida de Ring 3
+const DASH_TELEMETRY: u32 = NEON_AMBER;   // heartbeat r3hb (tablero)
+const DASH_KBD:       u32 = NEON_VIOLET;  // entrada — teclado y ratón
+const DASH_FAULT:     u32 = NEON_RED;     // reporter de CPU faults
+const DASH_STORAGE:   u32 = NEON_JADE;    // disco y sistema de ficheros
+const DASH_LANG_C:    u32 = NEON_CYAN;    // programas C
+const DASH_LANG_COB:  u32 = NEON_GOLD;    // programas COBOL
+const DASH_LANG_ASM:  u32 = NEON_MAGENTA; // programas en ensamblador
+const DASH_STAGE:     u32 = NEON_AMBER;   // encabezados de acto
 
 /// Color de una línea del log según su prefijo. Un solo punto de decisión:
-/// TODOS los caminos que pintan al panel (rolling log, heartbeat, faults)
-/// pasan por `splash_dashboard_log`.
+/// TODOS los caminos que pintan al panel (rolling log, CABINA, faults) pasan
+/// por aquí.
+///
+/// La tabla creció con los emisores que ya existían y salían todos en blanco:
+/// los tres lenguajes tenían el mismo color que un mensaje del kernel, así que
+/// la pantalla más impresionante del proyecto —tres programas propios
+/// entrelazándose— se leía como un párrafo plano. Ahora cada voz tiene la suya.
 fn dash_line_color(msg: &str) -> u32 {
     let b = msg.as_bytes();
-    if b.starts_with(b"ring3>") || b.starts_with(b"[ring3]") {
+    // Programas de Ring 3, por lenguaje: cada uno con su luz.
+    if b.starts_with(b"C> ") {
+        DASH_LANG_C
+    } else if b.starts_with(b"COBOL>") {
+        DASH_LANG_COB
+    } else if b.starts_with(b"asm>") {
+        DASH_LANG_ASM
+    } else if b.starts_with(b"ring3>") || b.starts_with(b"[ring3]") {
         DASH_RING3
     } else if b.starts_with(b"==") {
         // Encabezados de etapa del boot ("== RING 0 ... ==") y del shell.
-        DASH_ACCENT
+        DASH_STAGE
     } else if b.starts_with(b"r3hb") {
         DASH_TELEMETRY
-    } else if b.starts_with(b"kbd ") {
+    } else if b.starts_with(b"kbd ") || b.starts_with(b"[usb]") || b.starts_with(b"[xhci]")
+        || b.starts_with(b"[uhid]") {
         DASH_KBD
+    } else if b.starts_with(b"[disk]") || b.starts_with(b"[ahci]") || b.starts_with(b"[fs]")
+        || b.starts_with(b"[cabina]") {
+        DASH_STORAGE
+    } else if b.starts_with(b"[ring0]") || b.starts_with(b"[bex]") {
+        DASH_ACCENT
     } else if b.starts_with(b"***") || b.starts_with(b"vec ") || b.starts_with(b"flt") {
         DASH_FAULT
     } else {
         DASH_TEXT
     }
+}
+
+// ── Cromo: las piezas que dan el look ───────────────────────────────────────
+
+/// Línea horizontal de 1 px con degradado entre dos colores.
+///
+/// Es el truco más barato que existe para que una interfaz deje de parecer un
+/// terminal: una sola fila de píxeles interpolada cuesta un bucle y cambia por
+/// completo la sensación de la barra que subraya.
+fn hline_gradient(x: u32, y: u32, w: u32, c1: u32, c2: u32) {
+    if w == 0 { return; }
+    let (r1, g1, b1) = ((c1 >> 16) & 0xFF, (c1 >> 8) & 0xFF, c1 & 0xFF);
+    let (r2, g2, b2) = ((c2 >> 16) & 0xFF, (c2 >> 8) & 0xFF, c2 & 0xFF);
+    for i in 0..w {
+        // Media ponderada: multiplicar ANTES de dividir. Interpolar por canal
+        // con una resta encadenada se rompe en cuanto el color destino es más
+        // oscuro que el de origen, y el degradado se queda plano sin avisar.
+        let r = (r1 * (w - i) + r2 * i) / w;
+        let g = (g1 * (w - i) + g2 * i) / w;
+        let b = (b1 * (w - i) + b2 * i) / w;
+        put_pix(x + i, y, 0xFF00_0000 | (r << 16) | (g << 8) | b);
+    }
+}
+
+/// Esquinas en L en vez de un marco cerrado.
+///
+/// Es la firma visual del género: el ojo cierra el rectángulo solo y el panel
+/// respira. Un borde continuo encajona; cuatro corchetes sugieren.
+fn corner_brackets(x: u32, y: u32, w: u32, h: u32, len: u32, thick: u32, color: u32) {
+    if w < len * 2 || h < len * 2 { return; }
+    // Superior izquierda
+    fill_rect(x, y, len, thick, color);
+    fill_rect(x, y, thick, len, color);
+    // Superior derecha
+    fill_rect(x + w - len, y, len, thick, color);
+    fill_rect(x + w - thick, y, thick, len, color);
+    // Inferior izquierda
+    fill_rect(x, y + h - thick, len, thick, color);
+    fill_rect(x, y + h - len, thick, len, color);
+    // Inferior derecha
+    fill_rect(x + w - len, y + h - thick, len, thick, color);
+    fill_rect(x + w - thick, y + h - len, thick, len, color);
+}
+
+/// Etiqueta de sección con su bloque de acento delante: `▌ TEXTO`.
+///
+/// El bloque es un rectángulo, no un glifo: la fuente es de 95 caracteres
+/// ASCII más 25 de Latin-1 y no tiene caracteres de dibujo. Pintar el adorno
+/// en vez de escribirlo evita inventar glifos que no existen.
+fn section_label(x: u32, y: u32, text: &str, accent: u32) {
+    fill_rect(x, y + 2, 4, FONT_H as u32 - 4, accent);
+    draw_str(x + 12, y, text, DASH_DIM);
 }
 
 /// Draw the persistent dashboard frame. Called once after the
@@ -630,30 +730,45 @@ pub fn splash_dashboard_init() {
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
 
-    // 1. Full background
-    fill_rect(0, 0, w, h, DASH_BG);
+    // 1. El vacío. Todo lo que no es panel ni barra queda casi negro para que
+    //    el neón tenga contra qué brillar.
+    fill_rect(0, 0, w, h, VOID);
 
-    // 2. Top bar (system identity)
-    fill_rect(0, 0, w, DASH_HEADER_H, DASH_BAR);
-    let title = "BMO-X Ring 0";
-    draw_str(20, 12, title, DASH_ACCENT);
-    let right = "GOP Framebuffer | COM1 Serial Shell";
-    let rx = w.saturating_sub(text_width(right) + 20);
-    draw_str(rx, 12, right, DASH_DIM);
+    // 2. Barra superior: identidad del sistema.
+    fill_rect(0, 0, w, DASH_HEADER_H, CHROME);
+    // Marca de acento a la izquierda — el bloque vertical que ancla el título.
+    fill_rect(0, 0, 5, DASH_HEADER_H, NEON_MAGENTA);
+    // El nombre en dos pesos: la marca en ámbar, el subsistema en magenta.
+    // Separarlos dice de un vistazo QUÉ es y DÓNDE está corriendo.
+    draw_str(22, 14, "BMO-X", NEON_AMBER);
+    let x_after = 22 + text_width("BMO-X") + 12;
+    draw_str(x_after, 14, "// RING 0", NEON_MAGENTA);
+    let x_sub = x_after + text_width("// RING 0") + 16;
+    draw_str(x_sub, 14, "bare metal orchestrator", DASH_DIM);
+    // Subrayado de neón que recorre la barra: cian a la izquierda, magenta a
+    // la derecha. Es la pieza que más cambia la sensación por menos píxeles.
+    hline_gradient(0, DASH_HEADER_H - 2, w, NEON_CYAN, NEON_MAGENTA);
+    hline_gradient(0, DASH_HEADER_H - 1, w, NEON_CYAN, NEON_MAGENTA);
 
-    // 3. Bottom prompt bar
-    fill_rect(0, h - DASH_FOOTER_H, w, DASH_FOOTER_H, DASH_BAR);
-    let prompt_label = "serial > ";
-    draw_str(20, h - DASH_FOOTER_H + 8, prompt_label, DASH_ACCENT);
+    // 3. Barra inferior: el prompt.
+    let fy = h - DASH_FOOTER_H;
+    fill_rect(0, fy, w, DASH_FOOTER_H, CHROME);
+    fill_rect(0, fy, 5, DASH_FOOTER_H, NEON_CYAN);
+    hline_gradient(0, fy, w, NEON_MAGENTA, NEON_CYAN);
 
-    // 4. Section header
-    let sec = "kernel log";
-    draw_str(20, DASH_LOG_TOP - 22, sec, DASH_DIM);
-
-    // 5. Inner panel border around the log area
+    // 4. El panel del log: fondo propio, un punto más claro que el vacío, para
+    //    que se lea como una superficie y no como un agujero.
     let log_y = DASH_LOG_TOP;
     let log_h = h - DASH_FOOTER_H - log_y - 4;
-    draw_rect_outline(8, log_y - 4, w - 16, log_h, 0xFF334155);
+    fill_rect(8, log_y - 6, w - 16, log_h, PANEL);
+    // Bordes tenues + esquinas en L encendidas.
+    draw_rect_outline(8, log_y - 6, w - 16, log_h, EDGE);
+    corner_brackets(8, log_y - 6, w - 16, log_h, 22, 2, NEON_CYAN);
+
+    // 5. Etiqueta de sección, ya fuera de la barra superior. Antes se dibujaba
+    //    a 22 px del borde del log, o sea DENTRO de la cabecera: los dos
+    //    textos se rozaban.
+    section_label(20, DASH_LOG_TOP - 30, "KERNEL LOG", NEON_CYAN);
 }
 
 /// Write a single log line into the dashboard's log area at
@@ -663,6 +778,30 @@ pub fn splash_dashboard_init() {
 pub fn splash_dashboard_log(row: usize, msg: &str) {
     let c = dash_line_color(msg);
     splash_dashboard_log_color(row, msg, c);
+}
+
+/// Regla de separación con etiqueta, a la altura de una fila del panel.
+///
+/// Es lo que separa el log rodante del cockpit de CABINA. Antes las dos zonas
+/// se tocaban y la única pista de dónde acababa una era leer el contenido;
+/// ahora hay una frontera que se ve sin leer. La línea se apaga hacia la
+/// derecha para no competir con el texto que viene debajo.
+///
+/// El texto tiene que ser ASCII: la consola es Latin-1 de un byte por carácter
+/// y un literal Rust con acentos viajaría en UTF-8, o sea dos glifos raros
+/// donde debería haber uno.
+pub fn splash_dash_rule(row: usize, label: &str, accent: u32) {
+    let w = unsafe { crate::info::FB_WIDTH };
+    if w == 0 || row >= dash_rows() { return; }
+    let y = DASH_LOG_TOP + (row as u32) * CHAR_H as u32;
+    fill_rect(20, y, w - 40, CHAR_H as u32, PANEL);
+    fill_rect(20, y + 3, 4, CHAR_H as u32 - 8, accent);
+    draw_str(32, y + 1, label, accent);
+    let lx = 32 + text_width(label) + 14;
+    let right = w.saturating_sub(20);
+    if right > lx {
+        hline_gradient(lx, y + (CHAR_H as u32) / 2, right - lx, accent, PANEL);
+    }
 }
 
 /// Igual que `splash_dashboard_log` pero con COLOR EXPLÍCITO — para que CABINA
@@ -693,12 +832,19 @@ pub fn splash_dashboard_prompt(line: &str, cursor: usize, blink: bool) {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
-    let y = h - DASH_FOOTER_H + 8;
-    fill_rect(20, y, w - 40, CHAR_H as u32, DASH_BAR);
-    draw_str(20, y, "serial > ", DASH_ACCENT);
-    let max_chars = ((w - 40 - text_width("serial > ")) / CHAR_W as u32) as usize;
+    let y = h - DASH_FOOTER_H + 10;
+    fill_rect(20, y, w - 40, CHAR_H as u32, CHROME);
+    // El prompt ya no dice "serial": el teclado USB escribe desde hace tiempo
+    // y la etiqueta se había quedado contando una etapa anterior del proyecto.
+    // La marca en ámbar, el signo en magenta — los mismos dos colores del
+    // título, para que cabecera y pie se lean como el mismo sistema.
+    const PROMPT: &str = "bmo-x";
+    draw_str(20, y, PROMPT, NEON_AMBER);
+    let sign_x = 20 + text_width(PROMPT) + 8;
+    draw_str(sign_x, y, ">", NEON_MAGENTA);
+    let prefix_w = text_width(PROMPT) + 8 + text_width("> ") + 4;
+    let max_chars = ((w - 40 - prefix_w) / CHAR_W as u32) as usize;
     let n = line.len().min(max_chars);
-    let prefix_w = text_width("serial > ");
     let s = &line[..n];
     draw_str(20 + prefix_w, y, s, DASH_TEXT);
     // Cursor de bloque parpadeante EN SU POSICION dentro de la linea, no
@@ -708,11 +854,11 @@ pub fn splash_dashboard_prompt(line: &str, cursor: usize, blink: bool) {
     // de verdad.
     if blink {
         let cx = 20 + prefix_w + (cursor.min(n) as u32) * CHAR_W as u32;
-        fill_rect(cx, y, (CHAR_W as u32) - 2, FONT_H as u32, DASH_ACCENT);
+        fill_rect(cx, y, (CHAR_W as u32) - 2, FONT_H as u32, NEON_MAGENTA);
         if cursor < n {
             let one = [line.as_bytes()[cursor]];
             if let Ok(ch) = core::str::from_utf8(&one) {
-                draw_str(cx, y, ch, DASH_BAR);
+                draw_str(cx, y, ch, CHROME);
             }
         }
     }
@@ -726,22 +872,38 @@ pub fn splash_dashboard_prompt(line: &str, cursor: usize, blink: bool) {
 pub fn splash_status_right(layout: &str, caps: bool, num: bool) {
     let w = unsafe { crate::info::FB_WIDTH };
     if w == 0 { return; }
-    let mut b = [0u8; 40];
-    let mut o = 0;
-    {
-        let mut put = |t: &str| {
-            for &c in t.as_bytes() { if o < b.len() { b[o] = c; o += 1; } }
-        };
-        put("kbd ");
-        put(layout);
-        if caps { put("  MAYUS"); }
-        if num { put("  NUM"); }
-    }
-    let txt = core::str::from_utf8(&b[..o]).unwrap_or("");
+
     // La franja se limpia entera antes de escribir: al apagarse un indicador su
     // texto tiene que desaparecer, no quedarse pegado.
-    let bar_x = w.saturating_sub(420);
-    fill_rect(bar_x, 12, w.saturating_sub(bar_x + 20), FONT_H as u32, DASH_BAR);
-    let tx = w.saturating_sub(text_width(txt) + 20);
-    draw_str(tx, 12, txt, if caps { DASH_ACCENT } else { DASH_DIM });
+    let bar_x = w.saturating_sub(460);
+    fill_rect(bar_x, 8, w.saturating_sub(bar_x + 16), DASH_HEADER_H - 12, CHROME);
+
+    // Los bloqueos dejan de ser texto suelto y pasan a ser PASTILLAS: fondo
+    // encendido y letra oscura. Un estado activo se ve encendido, no escrito —
+    // que es justo lo que un teclado cuyas lucecitas no responden necesita.
+    let caps_w = text_width("MAYUS") + 14;
+    let num_w  = text_width("NUM") + 14;
+    let mut kbd = [0u8; 32];
+    let mut ko = 0usize;
+    for &c in b"kbd ".iter() { if ko < kbd.len() { kbd[ko] = c; ko += 1; } }
+    for &c in layout.as_bytes() { if ko < kbd.len() { kbd[ko] = c; ko += 1; } }
+    let kbd_s = core::str::from_utf8(&kbd[..ko]).unwrap_or("");
+    let kbd_w = text_width(kbd_s);
+
+    let mut total = kbd_w;
+    if caps { total += caps_w + 10; }
+    if num  { total += num_w + 10; }
+    let mut x = w.saturating_sub(total + 20);
+
+    draw_str(x, 14, kbd_s, DASH_DIM);
+    x += kbd_w + 10;
+    if caps {
+        fill_rect(x, 10, caps_w, FONT_H as u32 + 8, NEON_AMBER);
+        draw_str(x + 7, 14, "MAYUS", CHROME);
+        x += caps_w + 10;
+    }
+    if num {
+        fill_rect(x, 10, num_w, FONT_H as u32 + 8, NEON_JADE);
+        draw_str(x + 7, 14, "NUM", CHROME);
+    }
 }
