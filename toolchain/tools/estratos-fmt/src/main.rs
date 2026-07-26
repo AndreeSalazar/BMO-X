@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 
 use bmo_estratos as es;
 use bmo_estratos::objects::{
-    Attr, BlockPtr, Entrada, Nodo, Tipo, ATTR_DATOS, ATTR_ENTRADAS, BLOQUE, ENTRADA_LEN,
+    Attr, BlockPtr, Entrada, Nodo, Tipo, ATTR_DATOS, ATTR_ENTRADAS, ATTR_FIRMA, BLOQUE, ENTRADA_LEN,
     PTRS_POR_BLOQUE, PTR_LEN, RESIDENTE_MAX,
 };
 
@@ -125,7 +125,22 @@ fn escribir_arbol(log: &mut Log, datos: &[u8]) -> std::io::Result<(BlockPtr, u8)
     Ok((nivel[0], niveles))
 }
 
-/// Escribe un archivo como nodo con su `:datos`.
+/// Escribe un archivo como nodo con su `:datos` y su `:firma`.
+///
+/// ## Qué prueba la firma y qué NO
+///
+/// `:firma` es el BLAKE3 del contenido. Con eso, quien abre el archivo puede
+/// comprobar que **los bytes son los que se guardaron**: detecta corrupción
+/// del disco, una escritura a medias o un bloque que se leyó mal.
+///
+/// Lo que NO prueba es autenticidad. Quien pueda escribir en el volumen puede
+/// cambiar el archivo *y* recalcular su hash: no hay clave por medio, así que
+/// no hay nada que un atacante no pueda rehacer. Para eso hace falta firmar el
+/// hash con una clave que el kernel conozca y el atacante no — el esqueleto
+/// está en `bmo-abi/src/bef/signing.rs` y es trabajo aparte.
+///
+/// Se dice aquí porque la diferencia importa: hoy el gate protege de un disco
+/// que miente, no de alguien que quiere colar un binario.
 fn escribir_archivo(log: &mut Log, datos: &[u8]) -> std::io::Result<BlockPtr> {
     let attr = if datos.len() <= RESIDENTE_MAX {
         // Lo pequeño no gasta bloque (decisión 3).
@@ -134,7 +149,13 @@ fn escribir_archivo(log: &mut Log, datos: &[u8]) -> std::io::Result<BlockPtr> {
         let (raiz, niveles) = escribir_arbol(log, datos)?;
         Attr::en_bloques(ATTR_DATOS, datos.len() as u64, niveles, raiz).expect("niveles validos")
     };
-    let nodo = Nodo::nuevo(Tipo::Archivo).con(attr).expect("un solo atributo");
+    // 32 bytes: residente, no gasta bloque. Va en el MISMO nodo que los datos,
+    // que es la idea entera de los atributos con nombre — la firma no puede
+    // separarse del binario al copiarlo, como pasaría con un `.sig` suelto.
+    let firma = bmo_hash::hash(datos);
+    let nodo = Nodo::nuevo(Tipo::Archivo)
+        .con(attr).expect("primer atributo")
+        .con(Attr::residente(ATTR_FIRMA, &firma).expect("32 bytes caben")).expect("segundo atributo");
     log.objeto(&nodo.encode())
 }
 

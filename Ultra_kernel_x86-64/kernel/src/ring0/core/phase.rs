@@ -757,26 +757,77 @@ fn shell_run(arg: &[u8]) {
     }
 
     let buf = unsafe { &mut *core::ptr::addr_of_mut!(IMAGE) };
-    let n = match crate::ring0::fs::load(path, buf) {
-        Ok(n) => n,
-        Err(e) => {
-            // El motivo exacto: "no esta" y "no cabe en 8.3" mandan a hacer
-            // cosas distintas, y un "no se pudo" no manda a ninguna.
-            let mut l = L::new();
-            l.txt("[run] ");
-            l.txt(e.name());
-            l.txt(": ");
-            l.txt(path);
-            dashboard_log_color(l.as_str(), SH_TITLE);
-            crate::ring0::dev::console::serial_write(l.as_str());
-            crate::ring0::dev::console::serial_write("\n");
-            return;
+
+    // ESTRATOS primero: es el sistema de ficheros propio y el ÚNICO donde un
+    // binario puede traer su firma pegada. Si no está ahí, se cae a FAT32,
+    // que sigue siendo de donde arranca la máquina.
+    use crate::ring0::estratos as est;
+    let mut origen = "FAT32";
+    let mut veredicto = est::Firma::Ausente;
+    let n;
+
+    let nodo_est = if est::is_mounted() { est::abrir(path) } else { None };
+    if let Some(nd) = nodo_est {
+        let leidos = match est::leer(&nd, buf) {
+            Some(v) => v,
+            None => { s_log("[run] el nodo esta en ESTRATOS pero no se pudo leer"); return; }
+        };
+        origen = "ESTRATOS";
+        veredicto = est::firma(&nd, &buf[..leidos]);
+        n = leidos;
+    } else {
+        match crate::ring0::fs::load(path, buf) {
+            Ok(v) => n = v,
+            Err(e) => {
+                // El motivo exacto: "no esta" y "no cabe en 8.3" mandan a hacer
+                // cosas distintas, y un "no se pudo" no manda a ninguna.
+                let mut l = L::new();
+                l.txt("[run] ");
+                l.txt(e.name());
+                l.txt(": ");
+                l.txt(path);
+                dashboard_log_color(l.as_str(), SH_TITLE);
+                crate::ring0::dev::console::serial_write(l.as_str());
+                crate::ring0::dev::console::serial_write("\n");
+                return;
+            }
         }
-    };
+    }
 
     dashboard_log_color("== run ==", SH_TITLE);
     row("archivo", |l| { l.txt(path); });
+    row("origen", |l| { l.txt(origen); });
     row("leido", |l| { l.size(n as u64); });
+
+    // ── El gate: sin firma buena no hay ejecución ──
+    //
+    // §7 del diseño de ESTRATOS: `abrir(nodo, EJECUTAR)` comprueba `:firma` y
+    // si no cuadra NO entrega un handle ejecutable. Aquí se aplica antes de
+    // admitir nada, que es el único momento en que sirve de algo.
+    if origen == "ESTRATOS" {
+        match veredicto {
+            est::Firma::Cuadra => {
+                row("firma", |l| l.txt("cuadra con el contenido"));
+            }
+            est::Firma::NoCuadra => {
+                row("firma", |l| l.txt("NO CUADRA: el archivo no es el que se guardo"));
+                row("gate", |l| l.txt("RECHAZADO — no se ejecuta"));
+                crate::ring0::cabina::fault("estratos", "firma mala: ejecucion rechazada", n as u64);
+                return;
+            }
+            est::Firma::Ausente => {
+                row("firma", |l| l.txt("el nodo no lleva :firma"));
+                row("gate", |l| l.txt("RECHAZADO — sin firma no hay ejecucion"));
+                crate::ring0::cabina::warn("estratos", "sin firma: ejecucion rechazada", n as u64);
+                return;
+            }
+        }
+    } else {
+        // Honestidad sobre la asimetría: FAT32 no tiene atributos con nombre,
+        // así que un binario de ahí no PUEDE traer su firma pegada. No es que
+        // no se compruebe por pereza: es que no hay dónde guardarla.
+        row("firma", |l| l.txt("FAT32 no puede llevar firma (sin atributos)"));
+    }
 
     // El nombre del proceso es el último componente de la ruta: es lo que el
     // usuario reconoce en el log, no la ruta entera.

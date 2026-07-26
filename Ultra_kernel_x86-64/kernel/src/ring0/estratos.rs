@@ -266,11 +266,8 @@ fn buscar_en(dir: &Nodo, nombre: &str) -> Option<BlockPtr> {
     None
 }
 
-/// Carga un archivo por ruta: `apps/hola.bex`. Devuelve los bytes leídos.
-///
-/// Mismo contrato que `fs::load` del lado FAT32 — a propósito. Quien llama no
-/// debería tener que saber en qué sistema de ficheros vive lo que pide.
-pub fn load(ruta: &str, dst: &mut [u8]) -> Option<usize> {
+/// Busca un nodo por ruta: `apps/hola.bex`.
+pub fn abrir(ruta: &str) -> Option<Nodo> {
     let (_, mut actual) = raiz()?;
     let mut resto = ruta.trim_start_matches('/');
     loop {
@@ -286,8 +283,50 @@ pub fn load(ruta: &str, dst: &mut [u8]) -> Option<usize> {
         }
     }
     let ptr = buscar_en(&actual, resto)?;
-    let n = nodo(&ptr)?;
+    nodo(&ptr)
+}
+
+/// Lee el `:datos` de un nodo. Devuelve los bytes leídos.
+pub fn leer(n: &Nodo, dst: &mut [u8]) -> Option<usize> {
     if n.tipo != Tipo::Archivo { return None; }
     let a = n.attr(bmo_estratos::objects::ATTR_DATOS)?;
     flujo(a, dst)
+}
+
+/// Qué dijo la firma.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Firma {
+    /// El `:firma` del nodo cuadra con el contenido leído.
+    Cuadra,
+    /// Hay `:firma` y NO cuadra: el archivo no es el que se guardó.
+    NoCuadra,
+    /// El nodo no lleva `:firma`.
+    Ausente,
+}
+
+/// El gate del §7: `abrir(nodo, EJECUTAR)`.
+///
+/// Compara el atributo `:firma` con el BLAKE3 del contenido que se acaba de
+/// leer. **Lo que esto demuestra**: que los bytes son los que se guardaron —
+/// caza corrupción del disco, una escritura a medias o un bloque mal leído.
+///
+/// **Lo que NO demuestra**: autenticidad. Quien pueda escribir en el volumen
+/// puede cambiar el archivo *y* recalcular su hash; no hay clave por medio.
+/// Para eso hace falta firmar el hash con una clave que el kernel conozca y el
+/// atacante no (esqueleto en `bmo-abi/src/bef/signing.rs`). Se dice en vez de
+/// dejar que la palabra "firma" prometa de más.
+///
+/// Y esto es lo que un `.bex` en FAT32 **no puede tener**: un sistema de
+/// ficheros sin atributos con nombre obliga a un `.sig` suelto que se pierde
+/// al copiar. Aquí la firma viaja dentro del mismo nodo que los datos.
+pub fn firma(n: &Nodo, datos: &[u8]) -> Firma {
+    let a = match n.attr(bmo_estratos::objects::ATTR_FIRMA) {
+        Some(a) => a,
+        None => return Firma::Ausente,
+    };
+    let guardada = match a.datos_residentes() {
+        Some(d) if d.len() == 32 => d,
+        _ => return Firma::Ausente,
+    };
+    if bmo_estratos::blake3(datos) == guardada { Firma::Cuadra } else { Firma::NoCuadra }
 }
