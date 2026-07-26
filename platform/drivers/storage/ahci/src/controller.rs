@@ -79,6 +79,10 @@ const FIS_TYPE_REG_H2D: u8 = 0x27;
 const ATA_CMD_READ_DMA_EX:  u8 = 0x25;
 const ATA_CMD_WRITE_DMA_EX: u8 = 0x35;
 const ATA_CMD_IDENTIFY:     u8 = 0xEC;
+/// FLUSH CACHE EXT: obliga al disco a bajar a la superficie lo que aceptó y
+/// tiene todavía en su caché. Un `WRITE DMA` que devuelve OK solo promete que
+/// el disco se quedó con los datos, no que sobrevivan a un corte.
+const ATA_CMD_FLUSH_EXT:    u8 = 0xEA;
 
 /// Firma que deja un disco duro SATA en `PxSIG`. Un 0xEB140101 sería una
 /// unidad óptica (ATAPI) y un 0xFFFF0000, un puerto sin nada.
@@ -460,17 +464,18 @@ unsafe fn wait_ready(mmio: u64, port: u8) -> bool {
     false
 }
 
-/// Arma y ejecuta un comando ATA de DMA sobre la ranura 0.
+/// Arma y ejecuta un comando ATA sobre la ranura 0.
 ///
-/// `buf_phys` es una dirección **FÍSICA**: es el HBA quien va a leerla o
-/// escribirla, y el HBA no conoce el mapa de memoria del kernel.
-unsafe fn run_dma_command(
+/// `data` es `Some((dirección FÍSICA, bytes))` para los comandos que mueven
+/// datos y `None` para los que no mueven ninguno (FLUSH CACHE). La dirección
+/// es física porque es el HBA quien va a leerla o escribirla, y el HBA no
+/// conoce el mapa de memoria del kernel.
+unsafe fn run_command(
     port_idx: u8,
     command: u8,
     lba: u64,
     sector_count: u16,
-    buf_phys: u64,
-    bytes: u32,
+    data: Option<(u64, u32)>,
     write: bool,
 ) -> Result<u16, DiskError> {
     #[allow(static_mut_refs)]
@@ -480,11 +485,13 @@ unsafe fn run_dma_command(
     if port.command_list_phys == 0 || port.cmd_table_phys == 0 {
         return Err(DiskError::NotReady);
     }
-    // Una entrada de PRDT admite 4 MiB; con una sola entrada ese es el techo.
-    if bytes == 0 || bytes > 4 * 1024 * 1024 { return Err(DiskError::BadRequest); }
-    // El buffer de DMA debe estar alineado a 2 bytes. En la práctica siempre
-    // llega alineado a página, pero comprobarlo es gratis.
-    if buf_phys & 1 != 0 { return Err(DiskError::BadRequest); }
+    if let Some((buf_phys, bytes)) = data {
+        // Una entrada de PRDT admite 4 MiB; con una sola entrada ese es el techo.
+        if bytes == 0 || bytes > 4 * 1024 * 1024 { return Err(DiskError::BadRequest); }
+        // El buffer de DMA debe estar alineado a 2 bytes. En la práctica siempre
+        // llega alineado a página, pero comprobarlo es gratis.
+        if buf_phys & 1 != 0 { return Err(DiskError::BadRequest); }
+    }
 
     let mmio = ctrl.mmio_base;
     let hal = storage_hal::hal();
@@ -516,20 +523,26 @@ unsafe fn run_dma_command(
     ct.add(15).write_volatile(0);   // control
 
     // ── PRDT (byte 0x80): a dónde van los datos ──
-    let prdt = ct.add(0x80) as *mut u32;
-    prdt.add(0).write_volatile((buf_phys & 0xFFFF_FFFF) as u32);
-    prdt.add(1).write_volatile((buf_phys >> 32) as u32);
-    prdt.add(2).write_volatile(0);
-    // DBC es el número de bytes MENOS UNO. Poner el número exacto pide un byte
-    // de más — el error clásico de esta estructura.
-    prdt.add(3).write_volatile((bytes - 1) & 0x003F_FFFF);
+    // Un comando sin datos (FLUSH) no lleva ninguna entrada: PRDTL = 0 y aquí
+    // no se escribe nada. Dejar un PRDT con direcciones viejas y decirle al HBA
+    // que hay 0 entradas es correcto, pero dejarlo apuntando a algo Y declarar
+    // una entrada sería mandarle a mover datos que nadie pidió.
+    if let Some((buf_phys, bytes)) = data {
+        let prdt = ct.add(0x80) as *mut u32;
+        prdt.add(0).write_volatile((buf_phys & 0xFFFF_FFFF) as u32);
+        prdt.add(1).write_volatile((buf_phys >> 32) as u32);
+        prdt.add(2).write_volatile(0);
+        // DBC es el número de bytes MENOS UNO. Poner el número exacto pide un
+        // byte de más — el error clásico de esta estructura.
+        prdt.add(3).write_volatile((bytes - 1) & 0x003F_FFFF);
+    }
 
     // ── Cabecera de la ranura 0 ──
     // DW0: CFL (longitud del FIS en dwords) | W (escritura) | PRDTL (entradas)
     let cfl = 20u32 / 4; // el FIS H2D mide 20 bytes = 5 dwords
     let mut dw0 = cfl & 0x1F;
     if write { dw0 |= 1 << 6; }
-    dw0 |= 1 << 16; // PRDTL = 1 entrada
+    if data.is_some() { dw0 |= 1 << 16; } // PRDTL = 1 entrada
     hdr.add(0).write_volatile(dw0);
     hdr.add(1).write_volatile(0); // PRDBC: lo rellena el HBA
 
@@ -557,10 +570,25 @@ unsafe fn run_dma_command(
     let tfd = port_read(mmio, port_idx, PORT_TFD);
     if tfd & TFD_ERR != 0 { return Err(DiskError::Device(tfd)); }
 
+    // Un comando sin datos no mueve sectores y no tiene nada que contar.
+    if data.is_none() { return Ok(0); }
+
     // PRDBC dice cuántos bytes movió DE VERDAD. Devolver "los que pedí" sin
     // mirarlo es la clase de mentira cómoda que este proyecto no admite.
     let moved = hdr.add(1).read_volatile();
-    Ok((moved / SECTOR as u32) as u16)
+    let sectors = (moved / SECTOR as u32) as u16;
+
+    // Matiz honesto de la ESCRITURA: no todos los HBA actualizan PRDBC cuando
+    // los datos van de la memoria AL disco (la spec lo pide, el silicio no
+    // siempre obedece; Linux tampoco se fía de él en ese sentido). Si el disco
+    // no reportó ERROR y el comando terminó, la orden se cumplió: quien manda
+    // aquí es TFD.ERR, no un contador opcional. Se dice en voz alta en vez de
+    // devolver 0 y dejar creer que la escritura falló.
+    if write && sectors == 0 {
+        storage_hal::hal().log("[ahci] el HBA no reporta PRDBC en escritura; vale el estado del disco\n");
+        return Ok(sector_count);
+    }
+    Ok(sectors)
 }
 
 /// Lee `sector_count` sectores desde `lba` al buffer FÍSICO `buf_phys`.
@@ -569,7 +597,7 @@ pub unsafe fn read_sectors_phys(port_idx: u8, lba: u64, sector_count: u16, buf_p
 {
     if sector_count == 0 { return Err(DiskError::BadRequest); }
     let bytes = sector_count as u32 * SECTOR as u32;
-    run_dma_command(port_idx, ATA_CMD_READ_DMA_EX, lba, sector_count, buf_phys, bytes, false)
+    run_command(port_idx, ATA_CMD_READ_DMA_EX, lba, sector_count, Some((buf_phys, bytes)), false)
 }
 
 /// Escribe `sector_count` sectores en `lba` desde el buffer FÍSICO `buf_phys`.
@@ -581,7 +609,18 @@ pub unsafe fn write_sectors_phys(port_idx: u8, lba: u64, sector_count: u16, buf_
 {
     if sector_count == 0 { return Err(DiskError::BadRequest); }
     let bytes = sector_count as u32 * SECTOR as u32;
-    run_dma_command(port_idx, ATA_CMD_WRITE_DMA_EX, lba, sector_count, buf_phys, bytes, true)
+    run_command(port_idx, ATA_CMD_WRITE_DMA_EX, lba, sector_count, Some((buf_phys, bytes)), true)
+}
+
+/// Ordena al disco bajar a la superficie todo lo que aceptó y aún tiene en su
+/// caché. Sin datos: es una orden, no una transferencia.
+///
+/// Un `WRITE DMA` que devuelve OK solo promete que el disco se quedó con los
+/// bytes. Para una caja negra —que existe justamente para sobrevivir al corte
+/// que se está investigando— esa promesa no basta: el punto de no retorno es
+/// este comando.
+pub unsafe fn flush_cache(port_idx: u8) -> Result<(), DiskError> {
+    run_command(port_idx, ATA_CMD_FLUSH_EXT, 0, 0, None, false).map(|_| ())
 }
 
 /// IDENTIFY DEVICE: 512 bytes con el modelo, el número de serie y los sectores
@@ -592,7 +631,7 @@ pub unsafe fn write_sectors_phys(port_idx: u8, lba: u64, sector_count: u16, buf_
 /// dueño en uno de ellos, eso no es un lujo.
 pub unsafe fn identify_phys(port_idx: u8, buf_phys: u64) -> Result<u16, DiskError> {
     // IDENTIFY entrega exactamente un sector y no usa LBA ni contador.
-    run_dma_command(port_idx, ATA_CMD_IDENTIFY, 0, 1, buf_phys, SECTOR as u32, false)
+    run_command(port_idx, ATA_CMD_IDENTIFY, 0, 1, Some((buf_phys, SECTOR as u32)), false)
 }
 
 pub fn controller() -> Option<&'static AhciController> {

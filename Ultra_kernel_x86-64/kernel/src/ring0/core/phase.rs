@@ -327,7 +327,7 @@ fn shell_help() {
     // Compacto por categorías: cabe entero en el panel de 14 filas sin
     // barrer el resto del log, y se lee de un vistazo.
     s_log("== BMO-X shell ==");
-    s_log(" sistema : info  mem  tasks  layout  hist  disk  ls");
+    s_log(" sistema : info  mem  tasks  layout  hist  disk  ls  cabina");
     s_log(" edicion : flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L");
     s_log(" video   : fb  splash  cls");
     s_log(" ring3   : bex  ktest");
@@ -410,7 +410,58 @@ fn shell_disk() {
         txt(&mut b, &mut o, p.name_str());
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
-    s_log("[disk] solo lectura: escribir espera a identificar el disco");
+    // El veredicto del gate, en palabras. Es la línea que decide si este disco
+    // se puede escribir, así que se pinta siempre — diga que sí o que no.
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[disk] ");
+        txt(&mut b, &mut o, disk::gate_reason());
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    if disk::write_armed() {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[disk] serie=");
+        txt(&mut b, &mut o, disk::serial());
+        if let Some(p) = disk::data_partition() {
+            txt(&mut b, &mut o, "  ventana=particion ");
+            dec(&mut b, &mut o, p.index as u64, 1);
+        }
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+}
+
+/// `cabina` — vuelca la bitácora de vuelo a disco.
+///
+/// Es el punto donde todo lo demás cobra sentido: hasta ahora CABINA lo veía
+/// todo y lo olvidaba al apagar. Un registrador que solo existe mientras vuela
+/// el avión no sirve para investigar la caída.
+fn shell_cabina() {
+    use crate::ring0::fs;
+    if !fs::data_mounted() {
+        s_log("[cabina] no hay volumen de datos donde escribir");
+        s_log("[cabina] escribe 'disk' para ver que dijo el gate de identidad");
+        return;
+    }
+    let n = crate::ring0::cabina::dump_to_disk();
+    if n == 0 {
+        s_log("[cabina] no se volco (el motivo esta en la bitacora)");
+        return;
+    }
+    let mut b = [0u8; 80];
+    let mut o = 0usize;
+    for &c in b"[cabina] CABINA.LOG escrito: ".iter() { if o < b.len() { b[o] = c; o += 1; } }
+    {
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        let mut v = n as u64;
+        if v == 0 { tmp[0] = b'0'; i = 1; }
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        while i > 0 { i -= 1; if o < b.len() { b[o] = tmp[i]; o += 1; } }
+    }
+    for &c in b" bytes".iter() { if o < b.len() { b[o] = c; o += 1; } }
+    if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
 }
 
 /// `ls` — el primer archivo que BMO-X abre es él mismo.
@@ -782,6 +833,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_ls();
         } else if cmd == b"disk" {
             shell_disk();
+        } else if cmd == b"cabina" {
+            shell_cabina();
         } else if cmd == b"hist" || cmd == b"history" {
             shell_hist();
         } else if cmd == b"layout" {
@@ -985,12 +1038,19 @@ pub fn main(ctx: &mut BootContext) {
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::dev::usb::init(ctx);
     // Y el disco: el HBA SATA (no el NVMe — ahi vive el sistema del dueño) y
-    // su tabla de particiones. Solo lectura; ver dev/disk.rs.
+    // su tabla de particiones. Ver dev/disk.rs.
     crate::ring0::dev::disk::init();
     crate::ring0::dev::disk::scan_partitions();
     // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la partición de
     // arranque, que es donde vive el BOOTX64.EFI con el que arrancamos.
     crate::ring0::fs::mount();
+    // El gate: el disco tiene que decir QUIÉN ES antes de que se le pueda
+    // escribir. Va DESPUÉS de leer la GPT porque una de las pruebas es que la
+    // tabla cuadre con los sectores que el propio disco declara.
+    crate::ring0::dev::disk::verify_identity();
+    // Y si convenció, el volumen de datos se monta con escritor. La partición
+    // de arranque sigue montada sin él, y así se queda.
+    crate::ring0::fs::mount_data();
     dash_log("== RING 0 : hardware al mando ==");
 
     // ── Acto II: RING 3 — el userspace nace ─────────────────────────────

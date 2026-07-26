@@ -175,8 +175,48 @@ pub struct FatVolume {
     fat_size_sectors: u32,
     data_start: u32,
     root_cluster: u32,
+    /// Ultimo numero de cluster que EXISTE en la zona de datos.
+    ///
+    /// La FAT casi siempre tiene mas entradas que clusters reales: se
+    /// dimensiona en sectores enteros y el final sobra. Ese sobrante esta a
+    /// cero, o sea que parece "libre". Buscar un hueco sin este tope devuelve
+    /// clusters que no existen, y `cluster_to_lba` de un cluster inexistente
+    /// da un LBA FUERA del volumen. Es la diferencia entre "no cabe" y
+    /// "escribir en la particion del vecino".
+    max_cluster: u32,
     buf: [u8; 512],
     fat_cache: [u8; 512],
+}
+
+/// Por que fallo una escritura. Un `false` pelado no dice si el disco esta
+/// lleno, si el volumen es de solo lectura o si el nombre ya existia.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteError {
+    /// El volumen se monto sin `BlockWriter`.
+    ReadOnly,
+    /// Ya hay un archivo con ese nombre en ese directorio.
+    Exists,
+    /// No quedan clusters libres para todos los datos.
+    NoSpace,
+    /// El directorio no tiene entradas libres y no se pudo extender.
+    DirFull,
+    /// El dispositivo fallo al leer o escribir un sector.
+    Io,
+    /// Crear archivos no esta implementado para este formato.
+    Unsupported,
+}
+
+impl WriteError {
+    pub fn name(self) -> &'static str {
+        match self {
+            WriteError::ReadOnly => "el volumen es de solo lectura",
+            WriteError::Exists => "ya existe un archivo con ese nombre",
+            WriteError::NoSpace => "no quedan clusters libres",
+            WriteError::DirFull => "el directorio esta lleno",
+            WriteError::Io => "el disco fallo al leer o escribir",
+            WriteError::Unsupported => "crear archivos no soportado en este formato",
+        }
+    }
 }
 
 /// Monta el volumen que empieza en `part_lba` del dispositivo.
@@ -201,8 +241,16 @@ pub fn mount(read: BlockReader, write: Option<BlockWriter>, part_lba: u64) -> Op
     let fat_size_sectors = bpb.fat_size;
     let num_fats = bpb.num_fats;
     let data_start = fat_start + (num_fats as u32) * fat_size_sectors;
-    Some(FatVolume { read, write, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: bpb.sectors_per_cluster,
-        num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, buf: [0; 512], fat_cache: [0; 512] })
+    let spc = bpb.sectors_per_cluster;
+    if spc == 0 { return None; }
+    // Clusters que EXISTEN de verdad: los sectores de datos divididos entre el
+    // tamano de cluster. La numeracion empieza en 2, asi que el ultimo valido
+    // es cuenta+1.
+    let total = bpb.total_sectors;
+    if total <= data_start { return None; }
+    let max_cluster = (total - data_start) / spc as u32 + 1;
+    Some(FatVolume { read, write, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: spc,
+        num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, max_cluster, buf: [0; 512], fat_cache: [0; 512] })
 }
 
 fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf: &[u8; 512]) -> Option<FatVolume> {
@@ -219,8 +267,10 @@ fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf
     let num_fats = epb.number_of_fats;
 
 
+    // exFAT lo dice en su propio BPB, sin tener que deducirlo.
+    let max_cluster = epb.cluster_count + 1;
     Some(FatVolume { read, write, part_lba, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
-        num_fats, fat_start, fat_size_sectors, data_start, root_cluster, buf: [0; 512], fat_cache: [0; 512] })
+        num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, buf: [0; 512], fat_cache: [0; 512] })
 }
 
 impl FatVolume {
@@ -425,47 +475,92 @@ impl FatVolume {
     }
 
     /// Find a free cluster in the FAT.
+    /// Busca un cluster libre DENTRO de los que existen.
+    ///
+    /// El tope `max_cluster` no es cosmetico: sin el, el relleno a cero del
+    /// final de la FAT se lee como espacio libre y se acaba escribiendo fuera
+    /// del volumen. Ver la nota del campo.
     fn find_free_cluster(&mut self) -> Option<u32> {
         for sector in 0..self.fat_size_sectors {
             unsafe {
                 if !self.read_sector((self.fat_start + sector) as u64, Buf::fat_cache) { continue; }
             }
             for i in 0..(512/4) {
+                let cluster = sector * (512/4) as u32 + i as u32;
+                if cluster < 2 { continue; }
+                if cluster > self.max_cluster { return None; }
                 let entry = u32::from_le_bytes([
                     self.fat_cache[i*4], self.fat_cache[i*4+1],
                     self.fat_cache[i*4+2], self.fat_cache[i*4+3],
                 ]) & 0x0FFF_FFFF;
-                if entry == 0 {
-                    let cluster = sector * (512/4) as u32 + i as u32;
-                    if cluster >= 2 { return Some(cluster); }
-                }
+                if entry == 0 { return Some(cluster); }
             }
         }
         None
     }
 
-    /// Mark a cluster as end-of-chain in ALL FAT copies.
-    fn mark_cluster_eoc(&mut self, cluster: u32) -> bool {
+    /// Lee la entrada de la FAT tal cual, sin interpretar. `read_fat_entry`
+    /// traduce "0" y "fin de cadena" a `None`, que sirve para RECORRER una
+    /// cadena pero no para saber si un cluster esta libre.
+    fn raw_fat_entry(&mut self, cluster: u32) -> Option<u32> {
         let fat_offset = cluster * 4;
-        let fat_index_in_sector = (fat_offset % 512) as usize;
-        let sectors_from_fat_start = fat_offset / 512;
-        let eoc: u32 = 0x0FFF_FFFF;
+        let fat_sector = self.fat_start + (fat_offset / 512);
+        let idx = (fat_offset % 512) as usize;
+        unsafe {
+            if !self.read_sector(fat_sector as u64, Buf::fat_cache) { return None; }
+        }
+        Some(u32::from_le_bytes([self.fat_cache[idx], self.fat_cache[idx+1],
+            self.fat_cache[idx+2], self.fat_cache[idx+3]]) & 0x0FFF_FFFF)
+    }
 
-        let mut ok = true;
+    /// Escribe una entrada de la FAT en TODAS las copias.
+    ///
+    /// Actualizar solo la primera deja el volumen incoherente: cualquier
+    /// sistema que lea la segunda copia —o un chequeo de disco— vera una
+    /// cadena distinta de la real.
+    fn set_fat_entry(&mut self, cluster: u32, value: u32) -> bool {
+        if cluster < 2 || cluster > self.max_cluster { return false; }
+        let fat_offset = cluster * 4;
+        let idx = (fat_offset % 512) as usize;
+        let sectors_from_fat_start = fat_offset / 512;
+        let v = value & 0x0FFF_FFFF;
+
         for copy in 0..self.num_fats as u32 {
             let fat_sector = self.fat_start + copy * self.fat_size_sectors + sectors_from_fat_start;
             unsafe {
-                if !self.read_sector(fat_sector as u64, Buf::fat_cache) { ok = false; continue; }
+                if !self.read_sector(fat_sector as u64, Buf::fat_cache) { return false; }
             }
-            self.fat_cache[fat_index_in_sector] = eoc as u8;
-            self.fat_cache[fat_index_in_sector+1] = (eoc >> 8) as u8;
-            self.fat_cache[fat_index_in_sector+2] = (eoc >> 16) as u8;
-            self.fat_cache[fat_index_in_sector+3] = (eoc >> 24) as u8;
+            self.fat_cache[idx]   = v as u8;
+            self.fat_cache[idx+1] = (v >> 8) as u8;
+            self.fat_cache[idx+2] = (v >> 16) as u8;
+            self.fat_cache[idx+3] = (v >> 24) as u8;
             unsafe {
-                if !self.write_sector(fat_sector as u64, Buf::fat_cache) { ok = false; }
+                if !self.write_sector(fat_sector as u64, Buf::fat_cache) { return false; }
             }
         }
-        ok
+        true
+    }
+
+    /// Marca un cluster como fin de cadena en todas las copias de la FAT.
+    fn mark_cluster_eoc(&mut self, cluster: u32) -> bool {
+        self.set_fat_entry(cluster, 0x0FFF_FFFF)
+    }
+
+    /// Suelta una cadena de clusters entera. Se usa para deshacer una reserva
+    /// a medias: si el disco se llena en mitad de un archivo, lo ya cogido se
+    /// devuelve en vez de quedar perdido para siempre.
+    fn free_chain(&mut self, first: u32) {
+        let mut c = first;
+        let mut guard = 0u32;
+        while c >= 2 && c <= self.max_cluster {
+            let next = self.raw_fat_entry(c).unwrap_or(0);
+            if !self.set_fat_entry(c, 0) { return; }
+            if next < 2 || next >= 0x0FFF_FFF7 { return; }
+            c = next;
+            // Una FAT corrupta puede tener un ciclo; no se gira para siempre.
+            guard += 1;
+            if guard > self.max_cluster { return; }
+        }
     }
 
     /// Find a free directory entry in a directory (by first cluster).
@@ -633,55 +728,106 @@ impl FatVolume {
     /// Get the root directory's first cluster.
     pub fn root_cluster(&self) -> u32 { self.root_cluster }
 
-    /// Create a file in a specific directory (by first cluster).
-    /// `name_8_3` must be an 11-byte space-padded 8.3 name.
-    pub fn create_file_in_dir(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> bool {
+    /// Crea un archivo dentro de un directorio, dado su primer cluster.
+    ///
+    /// `name_8_3` son once bytes: ocho de nombre y tres de extension, rellenos
+    /// con espacios. Es feo y es lo que hay, FAT lo guarda asi.
+    ///
+    /// Devuelve el MOTIVO cuando falla. La version anterior devolvia `bool` y
+    /// ademas mentia: escribia como mucho UN cluster y apuntaba en el
+    /// directorio el tamano completo, asi que cualquier archivo mas grande que
+    /// un cluster quedaba registrado con un tamano que sus datos no
+    /// respaldaban. Eso no es "incompleto", es un archivo corrupto que parece
+    /// bueno hasta que alguien lo lee.
+    pub fn create_file_in_dir(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
+        -> Result<(), WriteError>
+    {
+        if self.write.is_none() { return Err(WriteError::ReadOnly); }
         match self.fs_type {
             FsType::Fat32 => self.create_file_fat32(dir_cluster, name_8_3, data),
-            FsType::ExFat => self.create_file_exfat(dir_cluster, name_8_3, data),
+            // El creador de exFAT arrastra las mismas costuras que tenia el de
+            // FAT32 y no se ha revisado contra la spec. Se dice, no se
+            // disimula: BMO escribe FAT32 hoy.
+            FsType::ExFat => Err(WriteError::Unsupported),
         }
     }
 
-    fn create_file_fat32(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> bool {
-        // Find a free cluster
-        let cluster = match self.find_free_cluster() {
-            Some(c) => c, None => return false,
+    fn create_file_fat32(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
+        -> Result<(), WriteError>
+    {
+        // Un nombre repetido deja dos entradas iguales en el directorio: la
+        // segunda es inalcanzable y sus clusters, perdidos.
+        if self.find_file_in(name_8_3, dir_cluster).is_some() {
+            return Err(WriteError::Exists);
+        }
+
+        let spc = self.sectors_per_cluster as usize;
+        if spc == 0 { return Err(WriteError::Io); }
+        let cluster_bytes = spc * 512;
+        let clusters_needed = if data.is_empty() { 1 } else { data.len().div_ceil(cluster_bytes) };
+
+        // ── Reservar la CADENA entera, escribiendo a la vez ──
+        //
+        // Cada cluster se marca como fin de cadena en cuanto se coge: asi la
+        // siguiente busqueda de hueco ya no lo ve libre y no se entrega dos
+        // veces. Si algo falla a mitad, se suelta lo cogido — un archivo a
+        // medias es un error; unos clusters marcados como ocupados que ya no
+        // pertenecen a nadie son una fuga permanente.
+        let first = match self.find_free_cluster() {
+            Some(c) => c, None => return Err(WriteError::NoSpace),
         };
+        if !self.mark_cluster_eoc(first) { return Err(WriteError::Io); }
 
-        // Write data to the cluster
-        let lba = self.cluster_to_lba(cluster);
-        let spc = self.sectors_per_cluster as u64;
-        let total_sectors = (data.len() as u64 + 511) / 512;
-        let write_n = total_sectors.min(spc);
+        let mut prev = first;
+        for i in 0..clusters_needed {
+            let cluster = if i == 0 { first } else {
+                let c = match self.find_free_cluster() {
+                    Some(c) => c,
+                    None => { self.free_chain(first); return Err(WriteError::NoSpace); }
+                };
+                if !self.mark_cluster_eoc(c) || !self.set_fat_entry(prev, c) {
+                    self.free_chain(first);
+                    return Err(WriteError::Io);
+                }
+                prev = c;
+                c
+            };
 
-        let mut temp = [0u8; 512];
-        for s in 0..write_n {
-            let off = (s * 512) as usize;
-            let count = core::cmp::min(512, data.len().saturating_sub(off));
-            temp[..count].copy_from_slice(&data[off..off + count]);
-            unsafe {
-                if !self.write_from(lba + s, &temp) { return false; }
+            let lba = self.cluster_to_lba(cluster);
+            for s in 0..spc {
+                // El buffer se reinicia a CEROS en cada sector. Reutilizar uno
+                // sucio dejaba la cola del ultimo sector —y el resto del
+                // cluster— llena de los datos anteriores, justo donde el
+                // comentario prometia ceros.
+                let mut temp = [0u8; 512];
+                let off = i * cluster_bytes + s * 512;
+                if off < data.len() {
+                    let n = core::cmp::min(512, data.len() - off);
+                    temp[..n].copy_from_slice(&data[off..off + n]);
+                }
+                if !self.write_from(lba + s as u64, &temp) {
+                    self.free_chain(first);
+                    return Err(WriteError::Io);
+                }
             }
         }
-        // Zero remaining sectors in the cluster
-        for s in write_n..spc {
-            unsafe {
-                let _ = self.write_from(lba + s, &temp);
-            }
-        }
 
-        // Mark cluster as end-of-chain
-        if !self.mark_cluster_eoc(cluster) { return false; }
-
-        // Find a free directory entry
+        // ── La entrada de directorio, lo ultimo ──
+        //
+        // Se apunta cuando los datos YA estan en el disco. Al reves, un corte
+        // entre ambos pasos dejaria un nombre visible apuntando a basura.
         let (dir_lba, dir_off) = match self.find_free_dir_entry_in(dir_cluster) {
-            Some(v) => v, None => return false,
+            Some(v) => v,
+            None => { self.free_chain(first); return Err(WriteError::DirFull); }
         };
 
-        // Read directory sector
         unsafe {
-            if !self.read_sector(dir_lba, Buf::buf) { return false; }
+            if !self.read_sector(dir_lba, Buf::buf) {
+                self.free_chain(first);
+                return Err(WriteError::Io);
+            }
         }
+        let cluster = first;
 
         // Write directory entry
         let de = unsafe { &mut *(self.buf.as_mut_ptr().add(dir_off) as *mut DirEntry) };
@@ -698,12 +844,21 @@ impl FatVolume {
         de.first_cluster_lo = (cluster & 0xFFFF) as u16;
         de.file_size = data.len() as u32;
 
-        unsafe {
-            self.write_sector(dir_lba, Buf::buf)
+        let written = unsafe { self.write_sector(dir_lba, Buf::buf) };
+        if !written {
+            self.free_chain(first);
+            return Err(WriteError::Io);
         }
+        Ok(())
     }
 
     /// exFAT: create file with 3 entries: File(0x85) + Stream(0xC0) + Filename(0xC1)
+    ///
+    /// SIN CABLEAR: `create_file_in_dir` devuelve `Unsupported` para exFAT. Se
+    /// conserva porque la estructura de las tres entradas es trabajo hecho y
+    /// correcto, pero arrastra la misma limitacion de un solo cluster que se
+    /// acaba de corregir en FAT32. Cablearlo = darle el mismo repaso.
+    #[allow(dead_code)]
     fn create_file_exfat(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> bool {
         let cluster = match self.find_free_cluster() {
             Some(c) => c, None => return false,

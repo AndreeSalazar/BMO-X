@@ -107,6 +107,88 @@ fn event_back(n: usize) -> Option<Event> {
     }
 }
 
+// ── La caja negra: el anillo, en el disco ───────────────────────────────────
+//
+// Hasta aquí CABINA lo ve todo y lo olvida al apagar. Un registrador de vuelo
+// que solo existe mientras vuela el avión no sirve para investigar la caída.
+//
+// El buffer es estático y no una variable local: 48 eventos formateados son
+// varios KiB y la pila del kernel no está para eso.
+
+const DUMP_MAX: usize = 8 * 1024;
+static mut DUMP: [u8; DUMP_MAX] = [0u8; DUMP_MAX];
+
+/// Vuelca la bitácora entera a `CABINA.LOG` en el volumen de datos.
+///
+/// Devuelve los bytes escritos, o 0 con el motivo ya narrado. Se escribe el
+/// anillo en orden CRONOLÓGICO (el más viejo primero), al revés de como se
+/// pinta en pantalla: un archivo se lee de arriba abajo.
+pub fn dump_to_disk() -> usize {
+    let mut n = 0usize;
+    {
+        // Cabecera: sin ella, un archivo de líneas sueltas no dice de qué
+        // arranque es ni cuánto se perdió.
+        let mut h = Buf::new();
+        h.txt("BMO-X CABINA — bitacora de vuelo\n");
+        n = append(n, h.as_str());
+        let mut h = Buf::new();
+        h.txt("eventos="); h.dec(event_total());
+        h.txt(" perdidos="); h.dec(event_lost());
+        h.txt(" anillo="); h.dec(EVENT_RING as u64);
+        h.txt("\n");
+        n = append(n, h.as_str());
+        let mut h = Buf::new();
+        h.txt("disco="); h.txt(crate::ring0::dev::disk::model());
+        h.txt(" serie="); h.txt(crate::ring0::dev::disk::serial());
+        h.txt("\n\n");
+        n = append(n, h.as_str());
+    }
+
+    // Del más viejo al más nuevo.
+    let have = (event_total() as usize).min(EVENT_RING);
+    for i in (0..have).rev() {
+        let ev = match event_back(i) { Some(e) => e, None => continue };
+        let mut r = Buf::new();
+        r.dec_pad(ev.seq, 4);
+        r.txt(" t"); r.hex(ev.tick_ns, 5);
+        r.txt(" "); r.pad(ev.severity.name(), 5);
+        r.txt(" "); r.txt(ev.module_str()); r.txt(": ");
+        r.txt(ev.msg_str());
+        if ev.value != 0 { r.txt(" ="); r.hex_min(ev.value); }
+        r.txt("\n");
+        n = append(n, r.as_str());
+    }
+
+    // Sin autoref sobre el puntero crudo: se pide el slice explícitamente, que
+    // es lo mismo que el compilador iba a hacer pero dicho en voz alta.
+    let data = unsafe { core::slice::from_raw_parts(core::ptr::addr_of!(DUMP) as *const u8, n) };
+    match crate::ring0::fs::create(b"CABINA  LOG", data) {
+        Ok(()) => {
+            info("fs", "bitacora volcada a CABINA.LOG", n as u64);
+            n
+        }
+        Err(e) => {
+            // El motivo REAL, no un "no se pudo". "Ya existe" y "disco lleno"
+            // piden cosas distintas de quien lo lee.
+            fault("fs", e.name(), n as u64);
+            0
+        }
+    }
+}
+
+/// Añade texto al buffer de volcado sin desbordarlo. Devuelve el nuevo final.
+fn append(mut n: usize, s: &str) -> usize {
+    unsafe {
+        let buf = &mut *core::ptr::addr_of_mut!(DUMP);
+        for &b in s.as_bytes() {
+            if n >= buf.len() { return n; }
+            buf[n] = b;
+            n += 1;
+        }
+    }
+    n
+}
+
 /// Total de eventos grabados desde el arranque (puede exceder el anillo).
 pub fn event_total() -> u64 { unsafe { EV_TOTAL } }
 /// Eventos perdidos por reentrancia. Debería ser 0; si no lo es, algo faltó
