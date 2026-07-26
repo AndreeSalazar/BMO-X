@@ -18,6 +18,7 @@ use core::arch::{asm, naked_asm};
 
 use crate::ring0::cap;
 use crate::ring0::channel;
+use crate::ring0::endpoint;
 use crate::ring0::percpu;
 use crate::ring0::scheduler;
 use crate::ring0::trap::TrapFrame;
@@ -35,6 +36,9 @@ const TASK_OP_YIELD: u64 = 0x03;
 const TASK_OP_EXIT: u64 = 0x04;
 const TASK_OP_CHANNEL_OPEN: u64 = 0x05;
 const TASK_OP_CONSOLE_WRITE: u64 = 0x06;
+/// Crea un endpoint atendido por este proceso. arg0 = estuario por el que se
+/// le entregaran las llamadas. Devuelve el handle del endpoint.
+const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -187,6 +191,12 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
                 None => cap_err((cap::ERROR_PERMISSION_DENIED, cap::FLAG_NEEDS_CAP)),
             }
         }
+        TASK_OP_ENDPOINT_CREATE => {
+            match endpoint::crear(scheduler::current_pid(), arg0 as usize) {
+                Some(handle) => BmoStatus::ok_value(handle),
+                None => BmoStatus::err(endpoint::ERROR_BUSY),
+            }
+        }
         _ => unsupported(),
     }
 }
@@ -207,6 +217,27 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
         return invoke_current_task(frame.rsi, frame.rdx);
     }
     let pid = scheduler::current_pid();
+    // Un endpoint se resuelve con WRITE (llamar), no con READ: son derechos
+    // distintos y el cliente solo tiene el de llamar.
+    if let Ok(r) = cap::resolve(pid, frame.rdi, cap::RIGHT_WRITE) {
+        match r.kind {
+            cap::KIND_ENDPOINT => {
+                let res = endpoint::llamar(
+                    r.object as usize,
+                    frame.rsi,
+                    [frame.rdx, frame.rcx, frame.r8],
+                );
+                return BmoStatus { code: res.code, flags: 0, value: res.value };
+            }
+            cap::KIND_REPLY => {
+                let res = endpoint::responder(
+                    pid, frame.rdi, r.object, frame.rsi as u32, frame.rdx,
+                );
+                return BmoStatus { code: res.code, flags: 0, value: res.value };
+            }
+            _ => {}
+        }
+    }
     match cap::resolve(pid, frame.rdi, cap::RIGHT_READ) {
         Ok(resolved) => match resolved.kind {
             cap::KIND_CHANNEL => invoke_channel(resolved, frame.rsi),
@@ -248,6 +279,13 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
         return BmoStatus::ok_value(0);
     }
     let pid = scheduler::current_pid();
+    // El servidor esperando llamadas en su endpoint.
+    if let Ok(r) = cap::resolve(pid, frame.rdi, cap::RIGHT_WAIT) {
+        if r.kind == cap::KIND_ENDPOINT {
+            let res = endpoint::esperar(r.object as usize, pid, deadline);
+            return BmoStatus { code: res.code, flags: 0, value: res.value };
+        }
+    }
     match cap::resolve(pid, frame.rdi, cap::RIGHT_WAIT) {
         Ok(resolved) if resolved.kind == cap::KIND_CHANNEL => {
             let index = resolved.object as usize;

@@ -32,9 +32,19 @@ pub const TASK_OP_CHANNEL_OPEN: u64 = 0x05;
 /// console handle once the display server lands.
 pub const TASK_OP_CONSOLE_WRITE: u64 = 0x06;
 
+/// Crea un endpoint atendido por este proceso: `arg0` es el estuario por el
+/// que se le entregaran las llamadas, y devuelve el handle del endpoint.
+///
+/// Es lo unico que Endpoint RPC anade a la superficie. Llamar, atender y
+/// responder NO son operaciones nuevas: son lo que `INVOKE` y `WAIT` ya
+/// significan cuando el handle resuelve a un endpoint o a un reply. La
+/// superficie sigue siendo de tres puertas.
+pub const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
+
 /// Operations accepted by `CURRENT_TASK`.
 pub mod task_op {
     pub const GET_PID: u64 = super::TASK_OP_GET_PID;
+    pub const ENDPOINT_CREATE: u64 = super::TASK_OP_ENDPOINT_CREATE;
     pub const GET_TID: u64 = super::TASK_OP_GET_TID;
     pub const YIELD: u64 = super::TASK_OP_YIELD;
     pub const EXIT: u64 = super::TASK_OP_EXIT;

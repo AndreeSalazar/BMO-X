@@ -2,6 +2,8 @@ pub mod bex;
 pub mod cabina;
 pub mod fs;
 pub mod estratos;
+/// Endpoint RPC: un proceso Ring 3 puede atender a otro.
+pub mod endpoint;
 pub mod cap;
 pub mod faults;
 pub mod core {

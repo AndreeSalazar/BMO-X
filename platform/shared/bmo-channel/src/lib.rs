@@ -81,6 +81,33 @@ impl Channel {
         self.complete_tail.store(0, Ordering::Relaxed);
     }
 
+    /// Publica una entrada en el anillo de completions SIN que venga de una
+    /// submission. `false` si el anillo esta lleno.
+    ///
+    /// Existe para Endpoint RPC: una llamada de otro proceso no entra por el
+    /// anillo de submissions de ESTE servidor —el que la hizo tiene el suyo—,
+    /// pero se le entrega por el mismo camino por el que ya lee todo lo demas.
+    /// Asi el servidor no necesita un segundo mecanismo de recepcion.
+    pub fn ring0_complete(&self, opcode: u64, arg0: u64, arg1: u64, arg2: u64) -> bool {
+        let head = self.complete_head.load(Ordering::Relaxed);
+        let tail = self.complete_tail.load(Ordering::Acquire);
+        // Lleno: se dice que no en vez de pisar una entrada que Ring 3 aun no
+        // ha leido. Perder una llamada en silencio seria peor que rechazarla.
+        if head.wrapping_sub(tail) >= RING_SIZE as u64 { return false; }
+        let idx = (head % RING_SIZE as u64) as usize;
+        unsafe {
+            let e = &self.complete_ring[idx] as *const ChannelEntry as *mut ChannelEntry;
+            (*e).opcode = opcode;
+            (*e).arg0 = arg0;
+            (*e).arg1 = arg1;
+            (*e).arg2 = arg2;
+        }
+        // Release: la entrada tiene que ser visible ANTES que el head que la
+        // anuncia, o Ring 3 puede leer basura de la vuelta anterior.
+        self.complete_head.store(head.wrapping_add(1), Ordering::Release);
+        true
+    }
+
     // ═══ Ring 3 API ═══════════════════════════════════════════════════
 
     /// Ring 3: submit a request. Returns true if there was room.

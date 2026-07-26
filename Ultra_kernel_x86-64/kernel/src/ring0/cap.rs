@@ -26,6 +26,10 @@ pub const SLOTS_PER_PROC: usize = 64;
 
 // HandleKind codes (mirror of bmo-abi handle/kind.rs).
 pub const KIND_CHANNEL: u8 = 0x60;
+/// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
+pub const KIND_ENDPOINT: u8 = 0x70;
+/// Derecho EFIMERO a responder UNA llamada concreta. Se consume al usarlo.
+pub const KIND_REPLY: u8 = 0x71;
 
 // Rights bits (mirror of bmo-abi BmoCap ids: bit N = capability N).
 pub const RIGHT_READ: u64 = 1 << 0;
@@ -189,7 +193,19 @@ pub fn revoke(pid: u32, handle: u64) -> bool {
 
 /// Drop every capability owned by `pid` (process exit). Generations are
 /// preserved so recycled slots keep invalidating stale handles.
+/// Revoca todas las capabilities de `pid`.
+///
+/// Antes de soltar los handles se cierran sus endpoints: si el proceso era
+/// servidor, todo el que estuviera esperando su respuesta tiene que despertar
+/// con `ERROR_ENDPOINT_DEAD`. Sin esto, matar a un servidor deja a sus
+/// clientes bloqueados para siempre — el fallo que hace inservible cualquier
+/// IPC bloqueante.
 pub fn revoke_all(pid: u32) {
+    crate::ring0::endpoint::proceso_muerto(pid);
+    revoke_all_slots(pid)
+}
+
+fn revoke_all_slots(pid: u32) {
     let pid = pid as usize;
     if pid >= MAX_PROCS {
         return;
