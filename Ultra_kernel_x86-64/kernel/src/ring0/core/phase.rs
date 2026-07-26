@@ -481,7 +481,7 @@ fn shell_help() {
     // usan `info` y `disk`: antes cada comando alineaba a ojo con espacios
     // contados a mano, y bastaba una palabra más larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
-    row("sistema", |l| l.txt("info  mem  tasks  disk  ls  cabina  hist  layout"));
+    row("sistema", |l| l.txt("info  mem  tasks  disk  ls  estratos  cabina  hist"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
@@ -669,6 +669,59 @@ fn shell_ls() {
     } else {
         row("firma", |l| { l.txt("?? no es un PE: revisar la cadena de clusteres"); });
         crate::ring0::cabina::warn("fs", "el archivo se encontro pero no se leyo bien", n as u64);
+    }
+}
+
+/// `estratos` — el estado del volumen propio y su raíz.
+///
+/// Es la primera vez que BMO-X lee un sistema de ficheros **suyo**: FAT32 es
+/// un formato prestado que había que entender; ESTRATOS lo escribió él.
+fn shell_estratos() {
+    use crate::ring0::estratos as est;
+    if !est::is_mounted() {
+        s_log("[estratos] ninguna particion tiene un volumen ESTRATOS");
+        s_log("[estratos] se formatea desde el anfitrion con estratos-fmt");
+        return;
+    }
+    let sb = match est::superbloque() { Some(s) => s, None => return };
+
+    dashboard_log_color("== ESTRATOS ==", SH_TITLE);
+    row("particion", |l| { l.dec(est::particion() as u64); l.txt("   LBA "); l.dec(est::base_lba()); });
+    row("generacion", |l| { l.dec(sb.generation); l.txt("   bloques "); l.dec(sb.total_blocks); });
+    row("log", |l| { l.txt("cabeza en el bloque "); l.dec(sb.log_head); });
+    // El gate del diseño: si el volumen no nació aquí, se dice EN ALTO. Hoy
+    // solo se lee, pero el día que se escriba esta línea es la que decide.
+    row("identidad", |l| {
+        l.txt(if est::identidad_ok() { "es de ESTE disco" } else { "NO nacio en este disco (clonado?)" });
+    });
+
+    if let Some(e) = est::estrato() {
+        row("estrato", |l| { l.txt("\""); l.txt(e.motivo_str()); l.txt("\""); });
+    }
+
+    let (_, raiz) = match est::raiz() {
+        Some(v) => v,
+        None => { s_log("[estratos] el volumen no tiene raiz (recien formateado?)"); return; }
+    };
+    let (n, truncado) = match est::entradas(&raiz) {
+        Some(v) => v,
+        None => { s_log("[estratos] no se pudo leer la raiz"); return; }
+    };
+    for i in 0..n {
+        if let Some(e) = est::entrada(i) {
+            let hijo = est::nodo(&e.nodo);
+            let dir = matches!(hijo.map(|h| h.tipo), Some(bmo_estratos::Tipo::Directorio));
+            let mut l = L::new();
+            l.txt("  ");
+            l.txt(e.nombre_str());
+            if dir { l.txt("/"); }
+            dashboard_log_color(l.as_str(), SH_VALUE);
+            crate::ring0::dev::console::serial_write(l.as_str());
+            crate::ring0::dev::console::serial_write("\n");
+        }
+    }
+    if truncado {
+        s_log("[estratos] ...la raiz tiene mas entradas de las que caben en el listado");
     }
 }
 
@@ -1093,6 +1146,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_disk();
         } else if cmd == b"cabina" {
             shell_cabina();
+        } else if cmd == b"estratos" {
+            shell_estratos();
         } else if cmd == b"hist" || cmd == b"history" {
             shell_hist();
         } else if cmd == b"layout" {
@@ -1313,6 +1368,9 @@ pub fn main(ctx: &mut BootContext) {
     // Y si convenció, el volumen de datos se monta con escritor. La partición
     // de arranque sigue montada sin él, y así se queda.
     crate::ring0::fs::mount_data();
+    // Y ESTRATOS, si alguna partición lleva uno. Solo lectura: el módulo no
+    // sabe escribir, así que montarlo no puede estropear nada.
+    crate::ring0::estratos::mount();
     dash_log("== RING 0 : hardware al mando ==");
 
     // ── Acto II: RING 3 — el userspace nace ─────────────────────────────

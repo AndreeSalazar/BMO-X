@@ -152,6 +152,7 @@ dependencies = [
  "bmo-ahci",
  "bmo-block",
  "bmo-channel",
+ "bmo-estratos",
  "bmo-fat32",
  "bmo-input",
  "bmo-uhid",

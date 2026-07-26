@@ -28,7 +28,9 @@
 #![cfg_attr(not(test), no_std)]
 
 pub mod objects;
+pub mod read;
 pub use objects::{Attr, BlockPtr, Entrada, Nodo, Tipo};
+pub use read::{descender, Fuente};
 
 pub use bmo_hash::hash as blake3;
 
@@ -74,6 +76,10 @@ pub enum FormatError {
     BadChecksum,
     /// Un campo tiene un valor imposible.
     BadField,
+    /// El dispositivo no entregó el bloque.
+    Io,
+    /// No hay buffer para bajar otro nivel del árbol.
+    SinScratch,
 }
 
 impl FormatError {
@@ -84,6 +90,8 @@ impl FormatError {
             FormatError::BadVersion => "version de formato desconocida",
             FormatError::BadChecksum => "la suma no cuadra: corrupcion",
             FormatError::BadField => "un campo tiene un valor imposible",
+            FormatError::Io => "el dispositivo no entrego el bloque",
+            FormatError::SinScratch => "sin buffer para bajar otro nivel",
         }
     }
 }

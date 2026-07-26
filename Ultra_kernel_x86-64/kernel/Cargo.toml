@@ -19,6 +19,9 @@ bmo-ahci = { path = "../../platform/drivers/storage/ahci" }
 # Sistema de ficheros: lee FAT32/exFAT sobre el contrato de bloques, sin
 # saber que hay debajo.
 bmo-fat32 = { path = "../../platform/drivers/storage/fat32" }
+# ESTRATOS: el formato propio. Solo lectura por ahora — el modulo del kernel
+# (ring0/estratos.rs) no llama a `write` en ningun sitio.
+bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
 # CABINA: telemetría omnisciente entre Ring 0 y Ring 3 (el cockpit del sistema).
 cabina-core = { path = "../../platform/services/cabina-core" }
 
