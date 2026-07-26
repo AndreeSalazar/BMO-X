@@ -18,11 +18,17 @@
 //!   grabado en el volumen y el contador de generación que decide cuál de las
 //!   dos copias manda.
 //! - ✅ **Estrato**: la raíz. El commit que también es el superbloque.
-//! - ⬜ **Nodos y atributos**: el modelo de objetos (§4 del diseño). Es la
-//!   pieza con decisiones de verdad —cómo se direccionan los bloques, cómo se
-//!   deduplica— y se hace en su propio paso, no de propina.
+//! - ✅ **Nodos y atributos**: el modelo de objetos (§4). Ver [`objects`], que
+//!   documenta las tres decisiones que el diseño dejaba abiertas: el puntero
+//!   lleva dirección Y suma, los archivos crecen por niveles de indirección, y
+//!   lo pequeño vive dentro del atributo sin gastar bloque.
+//! - ⬜ **Formateador** y **montaje**: los dos necesitan E/S, así que viven
+//!   fuera de aquí — en el toolchain y en el kernel.
 
 #![cfg_attr(not(test), no_std)]
+
+pub mod objects;
+pub use objects::{Attr, BlockPtr, Entrada, Nodo, Tipo};
 
 pub use bmo_hash::hash as blake3;
 
