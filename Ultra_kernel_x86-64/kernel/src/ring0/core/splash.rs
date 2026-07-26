@@ -569,7 +569,7 @@ pub fn splash_clear() {
 
 const DASH_HEADER_H:  u32 = 44;  // top bar height
 const DASH_FOOTER_H:  u32 = 36;  // bottom prompt bar height
-const DASH_LOG_TOP:   u32 = 72;  // y of first log line
+const DASH_LOG_TOP:   u32 = 78;  // y of first log line
 const DASH_LOG_W:     u32 = 80;  // max chars per line
 const DASH_ROWS_MAX:  usize = 64; // tope duro (protege los buffers de filas)
 
@@ -677,7 +677,7 @@ fn dash_line_color(msg: &str) -> u32 {
 /// Es el truco más barato que existe para que una interfaz deje de parecer un
 /// terminal: una sola fila de píxeles interpolada cuesta un bucle y cambia por
 /// completo la sensación de la barra que subraya.
-fn hline_gradient(x: u32, y: u32, w: u32, c1: u32, c2: u32) {
+fn hline_gradient(x: u32, y: u32, w: u32, c1: u32, c2: u32, scale: u32) {
     if w == 0 { return; }
     let (r1, g1, b1) = ((c1 >> 16) & 0xFF, (c1 >> 8) & 0xFF, c1 & 0xFF);
     let (r2, g2, b2) = ((c2 >> 16) & 0xFF, (c2 >> 8) & 0xFF, c2 & 0xFF);
@@ -685,11 +685,21 @@ fn hline_gradient(x: u32, y: u32, w: u32, c1: u32, c2: u32) {
         // Media ponderada: multiplicar ANTES de dividir. Interpolar por canal
         // con una resta encadenada se rompe en cuanto el color destino es más
         // oscuro que el de origen, y el degradado se queda plano sin avisar.
-        let r = (r1 * (w - i) + r2 * i) / w;
-        let g = (g1 * (w - i) + g2 * i) / w;
-        let b = (b1 * (w - i) + b2 * i) / w;
+        let r = (r1 * (w - i) + r2 * i) / w * scale / 255;
+        let g = (g1 * (w - i) + g2 * i) / w * scale / 255;
+        let b = (b1 * (w - i) + b2 * i) / w * scale / 255;
         put_pix(x + i, y, 0xFF00_0000 | (r << 16) | (g << 8) | b);
     }
+}
+
+/// Regla de neón: un píxel encendido y otro apagándose debajo.
+///
+/// Dos filas al 100 % se leen como una barra blanca —así salía en la foto del
+/// hardware, porque el brillo satura la cámara y también el ojo—. La caída
+/// abajo es lo que hace que se lea como una LUZ y no como un separador.
+fn neon_rule(x: u32, y: u32, w: u32, c1: u32, c2: u32) {
+    hline_gradient(x, y, w, c1, c2, 255);
+    hline_gradient(x, y + 1, w, c1, c2, 90);
 }
 
 /// Esquinas en L en vez de un marco cerrado.
@@ -747,14 +757,13 @@ pub fn splash_dashboard_init() {
     draw_str(x_sub, 14, "bare metal orchestrator", DASH_DIM);
     // Subrayado de neón que recorre la barra: cian a la izquierda, magenta a
     // la derecha. Es la pieza que más cambia la sensación por menos píxeles.
-    hline_gradient(0, DASH_HEADER_H - 2, w, NEON_CYAN, NEON_MAGENTA);
-    hline_gradient(0, DASH_HEADER_H - 1, w, NEON_CYAN, NEON_MAGENTA);
+    neon_rule(0, DASH_HEADER_H - 2, w, NEON_CYAN, NEON_MAGENTA);
 
     // 3. Barra inferior: el prompt.
     let fy = h - DASH_FOOTER_H;
     fill_rect(0, fy, w, DASH_FOOTER_H, CHROME);
     fill_rect(0, fy, 5, DASH_FOOTER_H, NEON_CYAN);
-    hline_gradient(0, fy, w, NEON_MAGENTA, NEON_CYAN);
+    neon_rule(0, fy, w, NEON_MAGENTA, NEON_CYAN);
 
     // 4. El panel del log: fondo propio, un punto más claro que el vacío, para
     //    que se lea como una superficie y no como un agujero.
@@ -765,10 +774,10 @@ pub fn splash_dashboard_init() {
     draw_rect_outline(8, log_y - 6, w - 16, log_h, EDGE);
     corner_brackets(8, log_y - 6, w - 16, log_h, 22, 2, NEON_CYAN);
 
-    // 5. Etiqueta de sección, ya fuera de la barra superior. Antes se dibujaba
-    //    a 22 px del borde del log, o sea DENTRO de la cabecera: los dos
-    //    textos se rozaban.
-    section_label(20, DASH_LOG_TOP - 30, "KERNEL LOG", NEON_CYAN);
+    // 5. Etiqueta de sección. Va anclada al BORDE DE LA CABECERA, no restando
+    //    del log: calculada hacia atrás desde el log caía justo sobre la regla
+    //    de neón y en el hardware el texto salía montado en la línea.
+    section_label(14, DASH_HEADER_H + 8, "KERNEL LOG", NEON_CYAN);
 }
 
 /// Write a single log line into the dashboard's log area at
@@ -794,13 +803,13 @@ pub fn splash_dash_rule(row: usize, label: &str, accent: u32) {
     let w = unsafe { crate::info::FB_WIDTH };
     if w == 0 || row >= dash_rows() { return; }
     let y = DASH_LOG_TOP + (row as u32) * CHAR_H as u32;
-    fill_rect(20, y, w - 40, CHAR_H as u32, PANEL);
-    fill_rect(20, y + 3, 4, CHAR_H as u32 - 8, accent);
-    draw_str(32, y + 1, label, accent);
-    let lx = 32 + text_width(label) + 14;
+    fill_rect(14, y, w - 28, CHAR_H as u32, PANEL);
+    fill_rect(14, y + 3, 4, CHAR_H as u32 - 8, accent);
+    draw_str(28, y + 1, label, accent);
+    let lx = 28 + text_width(label) + 14;
     let right = w.saturating_sub(20);
     if right > lx {
-        hline_gradient(lx, y + (CHAR_H as u32) / 2, right - lx, accent, PANEL);
+        hline_gradient(lx, y + (CHAR_H as u32) / 2, right - lx, accent, PANEL, 255);
     }
 }
 
@@ -814,14 +823,26 @@ pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
     if row >= dash_rows() { return; }
     let y = DASH_LOG_TOP + (row as u32) * CHAR_H as u32;
     // Clear the row (background)
-    fill_rect(20, y, w - 40, CHAR_H as u32, DASH_BG);
+    fill_rect(14, y, w - 28, CHAR_H as u32, DASH_BG);
+    // Marca de canaleta: una barrita del color de la línea en el margen.
+    //
+    // El color del texto ya dice quién habla, pero hay que LEER la línea para
+    // notarlo. Una columna de marcas alineadas se lee de un vistazo: se ve
+    // cuántas voces distintas hay en pantalla y dónde cambia el turno, sin
+    // leer una sola palabra. Es lo que convierte el log en algo que se OJEA.
+    //
+    // El texto normal no lleva marca: si todo estuviera marcado, la columna no
+    // diría nada. Marcar es distinguir.
+    if color != DASH_TEXT {
+        fill_rect(14, y + 4, 3, CHAR_H as u32 - 8, color);
+    }
     // Draw up to DASH_LOG_W characters
     let mut buf = [0u8; DASH_LOG_W as usize];
     let bytes = msg.as_bytes();
     let n = bytes.len().min(buf.len());
     buf[..n].copy_from_slice(&bytes[..n]);
     if let Ok(s) = core::str::from_utf8(&buf[..n]) {
-        draw_str(20, y, s, color);
+        draw_str(28, y, s, color);
     }
 }
 

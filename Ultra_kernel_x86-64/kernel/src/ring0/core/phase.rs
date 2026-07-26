@@ -82,8 +82,55 @@ fn dash_log(msg: &str) {
 pub fn dashboard_log(msg: &str) {
     if !crate::info::has_fb() { return; }
     let rows = log_rows();
+    if rows == 0 { return; }
+
+    // ── Líneas repetidas: se cuentan, no se apilan ──────────────────────────
+    //
+    // El censo de puertos del AHCI escupe una línea por puerto y la mayoría
+    // son idénticas: catorce `p0x0 ssts=0x0` seguidas se comían medio panel y
+    // barrían el arranque entero fuera de la pantalla. Y el panel es la única
+    // ventana que hay — aquí no se puede hacer scroll hacia atrás.
+    //
+    // Una repetición NO es información nueva; el número de veces SÍ. Así que
+    // la fila se queda donde está y se le añade el contador. Catorce líneas
+    // pasan a ser una que dice `x14`, y las trece filas que ganamos son trece
+    // hechos distintos que antes no cabían.
+    const KEEP: usize = 96;
+    static mut LAST_LINE: [u8; KEEP] = [0u8; KEEP];
+    static mut LAST_LEN: usize = 0;
+    static mut LAST_ROW: usize = usize::MAX;
+    static mut REPEATS: u32 = 0;
+
+    let b = msg.as_bytes();
+    let n = b.len().min(KEEP);
+
+    unsafe {
+        let last = &mut *core::ptr::addr_of_mut!(LAST_LINE);
+        if LAST_LEN == n && LAST_ROW < rows && last[..n] == b[..n] {
+            REPEATS += 1;
+            // Repintar la MISMA fila con la cuenta al final. El prefijo no
+            // cambia, así que el color de la línea sigue siendo el suyo.
+            let mut buf = [0u8; KEEP + 12];
+            let mut o = 0usize;
+            for i in 0..n { buf[o] = b[i]; o += 1; }
+            for &c in b"  x".iter() { if o < buf.len() { buf[o] = c; o += 1; } }
+            let mut v = REPEATS + 1;
+            let mut tmp = [0u8; 10];
+            let mut i = 0usize;
+            while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+            while i > 0 { i -= 1; if o < buf.len() { buf[o] = tmp[i]; o += 1; } }
+            if let Ok(s) = core::str::from_utf8(&buf[..o]) {
+                splash::splash_dashboard_log(LAST_ROW, s);
+            }
+            return;
+        }
+        last[..n].copy_from_slice(&b[..n]);
+        LAST_LEN = n;
+        REPEATS = 0;
+    }
+
     let row = unsafe { DASH_LOG_ROW } % rows;
-    unsafe { DASH_LOG_ROW = (row + 1) % rows; }
+    unsafe { DASH_LOG_ROW = (row + 1) % rows; LAST_ROW = row; }
     splash::splash_dashboard_log(row, msg);
 }
 

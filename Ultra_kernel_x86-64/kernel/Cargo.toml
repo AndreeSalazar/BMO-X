@@ -14,6 +14,7 @@ bmo-input = { path = "../../platform/drivers/usb/input" }
 bmo-uhid = { path = "../../platform/drivers/usb/uhid" }
 # Disco: AHCI/SATA, que es donde vive el disco de BMO (el NVMe de esta
 # maquina es el de Windows).
+bmo-block = { path = "../../platform/drivers/storage/block" }
 bmo-ahci = { path = "../../platform/drivers/storage/ahci" }
 # Sistema de ficheros: lee FAT32/exFAT sobre el contrato de bloques, sin
 # saber que hay debajo.

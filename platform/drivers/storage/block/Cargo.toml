@@ -1,0 +1,12 @@
+[package]
+name = "bmo-block"
+version = "0.1.0"
+edition = "2021"
+description = "BMO — el contrato de bloques: leer, escribir, capacidad, identidad"
+
+[lib]
+
+[dependencies]
+# Sin dependencias, y no es casualidad: esto es un CONTRATO. En cuanto
+# dependiera de un driver concreto dejaria de ser la frontera entre las capas
+# para ser una capa mas.

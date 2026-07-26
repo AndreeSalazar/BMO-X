@@ -289,6 +289,13 @@ pub fn init() {
     crate::ring0::cabina::info("disk", "puerto SATA listo para leer", chosen as u64);
 
     identify();
+
+    // A partir de aquí este disco ES el dispositivo de bloques de BMO. Se
+    // registra UNO, y el que elige cuál es el kernel mirando el tipo de
+    // controlador — nunca un bucle sobre una lista, que es como se acaba
+    // escribiendo en el disco del vecino.
+    bmo_block::register(&AHCI_DISK);
+    crate::ring0::cabina::info("disk", "contrato de bloques registrado", unsafe { TOTAL_SECTORS });
 }
 
 /// Extrae una cadena del buffer de IDENTIFY, de la palabra `first` a `last`.
@@ -593,12 +600,92 @@ pub fn partitions() -> &'static [Partition] {
 /// Último LBA utilizable que declara la cabecera GPT (0 = sin leer).
 pub fn last_lba() -> u64 { unsafe { LAST_LBA } }
 
-// ── El contrato de bloques ──────────────────────────────────────────────────
+// ── El contrato de bloques, implementado ────────────────────────────────────
 //
-// Lo único que un sistema de ficheros necesita saber del almacenamiento. Es a
-// propósito una función suelta y no un método: así `bmo-fat32` —y mañana
-// ESTRATOS— no dependen de este módulo ni de AHCI, solo de una firma. El día
-// que haya un NVMe cableado, se les pasa OTRA función y ni se enteran.
+// `bmo-block` declara la forma (leer / escribir / capacidad / identidad); aquí
+// se dice que el AHCI de esta máquina la cumple. Es el paso 3 del orden de
+// construcción de ESTRATOS: a partir de ahora, lo que hay por encima habla con
+// un dispositivo de bloques y no con SATA.
+
+/// El disco SATA de BMO visto como dispositivo de bloques.
+///
+/// Sin campos: el estado vive en los estáticos del módulo porque hay UN disco
+/// y lo hay durante toda la vida del kernel. Un struct vacío es lo que permite
+/// tener un `&'static dyn BlockDevice` sin reservar memoria, que en Ring 0 no
+/// se puede.
+pub struct AhciDisk;
+static AHCI_DISK: AhciDisk = AhciDisk;
+
+impl bmo_block::BlockDevice for AhciDisk {
+    fn identity(&self) -> bmo_block::DeviceId {
+        let mut id = bmo_block::DeviceId::EMPTY;
+        unsafe {
+            // Slices pedidos explícitamente: tomar `&(*addr_of!(ARR))[..n]`
+            // crea una referencia a la desreferencia de un puntero crudo, que
+            // es justo lo que el compilador rechaza sobre un `static mut`.
+            id.model_len = MODEL_LEN.min(id.model.len());
+            let m = core::slice::from_raw_parts(core::ptr::addr_of!(MODEL) as *const u8, id.model_len);
+            id.model[..id.model_len].copy_from_slice(m);
+            id.serial_len = SERIAL_LEN.min(id.serial.len());
+            let s = core::slice::from_raw_parts(core::ptr::addr_of!(SERIAL) as *const u8, id.serial_len);
+            id.serial[..id.serial_len].copy_from_slice(s);
+            id.blocks = TOTAL_SECTORS;
+        }
+        id.block_size = SECTOR as u32;
+        id
+    }
+
+    fn read(&self, lba: u64, count: u16, buf: &mut [u8]) -> Result<u16, bmo_block::BlockError> {
+        use bmo_block::BlockError as E;
+        if !is_ready() { return Err(E::NotReady); }
+        if count == 0 { return Ok(0); }
+        if buf.len() < count as usize * SECTOR { return Err(E::ShortBuffer); }
+        let end = lba.checked_add(count as u64).ok_or(E::OutOfRange)?;
+        let total = unsafe { TOTAL_SECTORS };
+        if total != 0 && end > total { return Err(E::OutOfRange); }
+        // `read` sin `self.` es la función libre del módulo, no este método.
+        match read(lba, count, buf) {
+            0 => Err(E::Device),
+            n => Ok(n),
+        }
+    }
+
+    fn write(&self, lba: u64, count: u16, data: &[u8]) -> Result<u16, bmo_block::BlockError> {
+        use bmo_block::BlockError as E;
+        if !is_ready() { return Err(E::NotReady); }
+        // El gate primero y con su propio código: "no me han autorizado a
+        // escribir" no es lo mismo que "el disco falló", y quien llama va a
+        // hacer cosas distintas con cada respuesta.
+        if !write_armed() { return Err(E::ReadOnly); }
+        if count == 0 { return Ok(0); }
+        if data.len() < count as usize * SECTOR { return Err(E::ShortBuffer); }
+        let end = lba.checked_add(count as u64).ok_or(E::OutOfRange)?;
+        let total = unsafe { TOTAL_SECTORS };
+        if total != 0 && end > total { return Err(E::OutOfRange); }
+        // La VENTANA sigue mandando por debajo: el contrato de bloques no la
+        // sustituye. Un rango fuera de la partición de datos se rechaza aquí
+        // como ReadOnly, que es exactamente lo que es para ese sector.
+        if write_window(lba, count).is_err() { return Err(E::ReadOnly); }
+        match write(lba, count, data) {
+            0 => Err(E::Device),
+            n => Ok(n),
+        }
+    }
+
+    fn flush(&self) -> Result<(), bmo_block::BlockError> {
+        if !is_ready() { return Err(bmo_block::BlockError::NotReady); }
+        if flush() { Ok(()) } else { Err(bmo_block::BlockError::Device) }
+    }
+
+    fn writable(&self) -> bool { write_armed() }
+}
+
+// ── Las funciones sueltas que consume bmo-fat32 ─────────────────────────────
+//
+// `bmo-fat32` recibe punteros a función, no un objeto de trait, y se queda
+// así: cambiarlo sería tocar un sistema de ficheros que YA funciona en
+// hardware para no ganar nada hoy. Cuando ESTRATOS llegue, hablará con
+// `bmo_block::device()` directamente.
 
 /// Lector de bloques del disco montado. LBA ABSOLUTO del dispositivo.
 pub fn block_read(lba: u64, count: u16, buf: &mut [u8]) -> bool {

@@ -28,6 +28,9 @@ members = [
     # ── DRIVERS (Hardware) ───────────────────────────────────────────
     "platform/drivers/audio",
     "platform/drivers/net",
+    # El contrato de bloques (leer/escribir/capacidad/identidad). Paso 3 del
+    # orden de construcción de ESTRATOS: lo de arriba habla con esto, no con SATA.
+    "platform/drivers/storage/block",
     "platform/drivers/storage/ahci",
     "platform/drivers/storage/fat32",
     "platform/drivers/storage/nvme",
