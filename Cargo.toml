@@ -64,6 +64,8 @@ members = [
     "toolchain/tools/bef-bootstrap",
     "toolchain/tools/hello-bex",
     "toolchain/tools/fontgen",
+    # Formatea un volumen ESTRATOS desde el anfitrion (paso 4c del diseno).
+    "toolchain/tools/estratos-fmt",
 
     # ── FORGE (pipeline de compilación) ─────────────────────────────
     # Librerías OPCIONALES que cada frontend elige enlazar (nunca embudos).

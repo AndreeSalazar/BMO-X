@@ -133,8 +133,14 @@ pub struct Superblock {
     pub log_head: u64,
     /// Quién es el disco donde nació este volumen. Ver [`disk_id`].
     pub disk_id: Hash,
-    /// El estrato más reciente. `NO_HASH` = volumen recién formateado.
-    pub estrato: Hash,
+    /// El estrato más reciente. Nulo = volumen recién formateado.
+    ///
+    /// **Es un puntero, no un hash a secas** — corrección al diseño, que lo
+    /// describía como `Hash`. Con un hash solo no se puede *encontrar* nada:
+    /// haría falta un índice hash→dirección, y la decisión 1 del modelo de
+    /// objetos es justamente que **el que lee no necesita índice**. Un puntero
+    /// lleva las dos cosas: dónde está y qué debe contener.
+    pub estrato: BlockPtr,
 }
 
 // Desplazamientos del sector. Se declaran como constantes en vez de escribirse
@@ -165,7 +171,7 @@ impl Superblock {
             total_blocks,
             log_head: 2,
             disk_id,
-            estrato: NO_HASH,
+            estrato: BlockPtr::NULO,
         }
     }
 
@@ -179,7 +185,7 @@ impl Superblock {
         b[OFF_TOTAL_BLOCKS..OFF_TOTAL_BLOCKS + 8].copy_from_slice(&self.total_blocks.to_le_bytes());
         b[OFF_LOG_HEAD..OFF_LOG_HEAD + 8].copy_from_slice(&self.log_head.to_le_bytes());
         b[OFF_DISK_ID..OFF_DISK_ID + 32].copy_from_slice(&self.disk_id);
-        b[OFF_ESTRATO..OFF_ESTRATO + 32].copy_from_slice(&self.estrato);
+        b[OFF_ESTRATO..OFF_ESTRATO + objects::PTR_LEN].copy_from_slice(&self.estrato.encode());
         let sum = blake3(&b[..OFF_SUPER_SUM]);
         b[OFF_SUPER_SUM..].copy_from_slice(&sum);
         b
@@ -213,8 +219,7 @@ impl Superblock {
         }
         let mut disk_id = NO_HASH;
         disk_id.copy_from_slice(&b[OFF_DISK_ID..OFF_DISK_ID + 32]);
-        let mut estrato = NO_HASH;
-        estrato.copy_from_slice(&b[OFF_ESTRATO..OFF_ESTRATO + 32]);
+        let estrato = BlockPtr::decode(&b[OFF_ESTRATO..OFF_ESTRATO + objects::PTR_LEN])?;
 
         Ok(Self { version, block_size, generation, total_blocks, log_head, disk_id, estrato })
     }
@@ -229,7 +234,7 @@ impl Superblock {
     }
 
     /// ¿Está recién formateado, sin ningún estrato?
-    pub fn is_empty(&self) -> bool { self.estrato == NO_HASH }
+    pub fn is_empty(&self) -> bool { self.estrato.es_nulo() }
 }
 
 /// De las dos copias del superbloque, la que manda.
@@ -262,14 +267,14 @@ pub fn next_super_block(current: u64) -> u64 {
 // ── Estrato ─────────────────────────────────────────────────────────────────
 
 /// Longitud fija de un estrato en disco.
-pub const ESTRATO_LEN: usize = 192;
+pub const ESTRATO_LEN: usize = 224;
 
 const OFF_E_RAIZ: usize = 0;
-const OFF_E_PADRE: usize = 32;
-const OFF_E_TIEMPO: usize = 64;
-const OFF_E_AUTOR: usize = 72;
-const OFF_E_PID: usize = 76;
-const OFF_E_MOTIVO: usize = 80;
+const OFF_E_PADRE: usize = 48;
+const OFF_E_TIEMPO: usize = 96;
+const OFF_E_AUTOR: usize = 104;
+const OFF_E_PID: usize = 108;
+const OFF_E_MOTIVO: usize = 112;
 const MOTIVO_LEN: usize = 64;
 const OFF_E_SUM: usize = ESTRATO_LEN - 32;
 
@@ -296,8 +301,13 @@ impl Autor {
 /// eso no hay código de "restaurar", solo de "montar", y se le pasa otro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Estrato {
-    pub raiz: Hash,
-    pub padre: Hash,
+    /// El nodo raíz del árbol de directorios. Puntero, no hash: ver la nota de
+    /// `Superblock::estrato`.
+    pub raiz: BlockPtr,
+    /// El estrato anterior. Nulo = este es el primero. Recorrer la cadena hacia
+    /// atrás es recorrer la historia, y por eso también tiene que ser un
+    /// puntero: montar un estrato viejo es *encontrarlo*, no reconocerlo.
+    pub padre: BlockPtr,
     pub tiempo: u64,
     pub autor: Autor,
     /// Por qué existe este estrato. Los que llevan motivo escrito a mano son
@@ -306,7 +316,7 @@ pub struct Estrato {
 }
 
 impl Estrato {
-    pub fn new(raiz: Hash, padre: Hash, tiempo: u64, autor: Autor, motivo: &str) -> Self {
+    pub fn new(raiz: BlockPtr, padre: BlockPtr, tiempo: u64, autor: Autor, motivo: &str) -> Self {
         let mut m = [0u8; MOTIVO_LEN];
         let n = motivo.len().min(MOTIVO_LEN);
         m[..n].copy_from_slice(&motivo.as_bytes()[..n]);
@@ -323,8 +333,8 @@ impl Estrato {
 
     pub fn encode(&self) -> [u8; ESTRATO_LEN] {
         let mut b = [0u8; ESTRATO_LEN];
-        b[OFF_E_RAIZ..OFF_E_RAIZ + 32].copy_from_slice(&self.raiz);
-        b[OFF_E_PADRE..OFF_E_PADRE + 32].copy_from_slice(&self.padre);
+        b[OFF_E_RAIZ..OFF_E_RAIZ + objects::PTR_LEN].copy_from_slice(&self.raiz.encode());
+        b[OFF_E_PADRE..OFF_E_PADRE + objects::PTR_LEN].copy_from_slice(&self.padre.encode());
         b[OFF_E_TIEMPO..OFF_E_TIEMPO + 8].copy_from_slice(&self.tiempo.to_le_bytes());
         b[OFF_E_AUTOR..OFF_E_AUTOR + 4].copy_from_slice(&self.autor.code().to_le_bytes());
         b[OFF_E_PID..OFF_E_PID + 4].copy_from_slice(&self.autor.pid().to_le_bytes());
@@ -338,10 +348,8 @@ impl Estrato {
         if b.len() < ESTRATO_LEN { return Err(FormatError::ShortBuffer); }
         let sum = blake3(&b[..OFF_E_SUM]);
         if b[OFF_E_SUM..ESTRATO_LEN] != sum { return Err(FormatError::BadChecksum); }
-        let mut raiz = NO_HASH;
-        raiz.copy_from_slice(&b[OFF_E_RAIZ..OFF_E_RAIZ + 32]);
-        let mut padre = NO_HASH;
-        padre.copy_from_slice(&b[OFF_E_PADRE..OFF_E_PADRE + 32]);
+        let raiz = BlockPtr::decode(&b[OFF_E_RAIZ..OFF_E_RAIZ + objects::PTR_LEN])?;
+        let padre = BlockPtr::decode(&b[OFF_E_PADRE..OFF_E_PADRE + objects::PTR_LEN])?;
         let tiempo = read_u64(b, OFF_E_TIEMPO);
         let autor = Autor::from(read_u32(b, OFF_E_AUTOR), read_u32(b, OFF_E_PID));
         let mut motivo = [0u8; MOTIVO_LEN];
@@ -454,7 +462,8 @@ mod tests {
 
     #[test]
     fn el_estrato_sobrevive_a_la_ida_y_vuelta() {
-        let e = Estrato::new([1u8; 32], NO_HASH, 1_700_000_000, Autor::Herramienta, "formato inicial");
+        let raiz = BlockPtr::nuevo(4, 0, b"nodo raiz");
+        let e = Estrato::new(raiz, BlockPtr::NULO, 1_700_000_000, Autor::Herramienta, "formato inicial");
         let bytes = e.encode();
         assert_eq!(bytes.len(), ESTRATO_LEN);
         let vuelto = Estrato::decode(&bytes).unwrap();
@@ -466,16 +475,18 @@ mod tests {
 
     #[test]
     fn el_estrato_se_identifica_por_su_contenido() {
-        let a = Estrato::new([1u8; 32], NO_HASH, 100, Autor::Kernel, "auto");
-        let b = Estrato::new([1u8; 32], NO_HASH, 100, Autor::Kernel, "auto");
-        let c = Estrato::new([2u8; 32], NO_HASH, 100, Autor::Kernel, "auto");
+        let r1 = BlockPtr::nuevo(4, 0, b"arbol A");
+        let r2 = BlockPtr::nuevo(4, 0, b"arbol B");
+        let a = Estrato::new(r1, BlockPtr::NULO, 100, Autor::Kernel, "auto");
+        let b = Estrato::new(r1, BlockPtr::NULO, 100, Autor::Kernel, "auto");
+        let c = Estrato::new(r2, BlockPtr::NULO, 100, Autor::Kernel, "auto");
         assert_eq!(a.id(), b.id());
         assert_ne!(a.id(), c.id());
     }
 
     #[test]
     fn un_estrato_automatico_no_lleva_nombre() {
-        let e = Estrato::new([1u8; 32], NO_HASH, 100, Autor::Proceso(3), "");
+        let e = Estrato::new(BlockPtr::nuevo(4, 0, b"x"), BlockPtr::NULO, 100, Autor::Proceso(3), "");
         assert!(!e.con_nombre());
         assert_eq!(e.autor, Autor::Proceso(3));
     }

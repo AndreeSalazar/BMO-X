@@ -104,6 +104,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-estratos-fmt"
+version = "0.1.0"
+dependencies = [
+ "bmo-estratos",
+ "bmo-hash",
+]
+
+[[package]]
 name = "bmo-fat32"
 version = "0.1.0"
 

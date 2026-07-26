@@ -1,0 +1,13 @@
+[package]
+name = "bmo-estratos-fmt"
+version = "0.1.0"
+edition = "2021"
+description = "Formatea un volumen ESTRATOS desde el anfitrion (paso 4c)"
+
+[[bin]]
+name = "estratos-fmt"
+path = "src/main.rs"
+
+[dependencies]
+bmo-estratos = { path = "../../../platform/drivers/storage/estratos" }
+bmo-hash = { path = "../../../platform/shared/bmo-hash" }
