@@ -77,13 +77,23 @@ pub const USER_SS: u64 = 0x1B;
 /// Bytes reservados para la imagen de estado extendido en CADA contexto.
 ///
 /// Es constante porque el ensamblador de los stubs necesita el desplazamiento
-/// del back-pointer como inmediato. 3072 cubre de sobra lo que pide cualquier
-/// x86-64 actual sin AMX: este Zen 3 necesita 832 con `XCR0 = 0x7`, y un CPU
-/// con AVX-512 pide ~2696. `cpu_vendor::xsave::init()` comprueba contra CPUID
-/// que de verdad cabe, y lo hace ANTES del primer trap.
+/// del back-pointer como inmediato. Múltiplo de 64, que es lo que `XSAVE`
+/// exige de alineación.
 ///
-/// Múltiplo de 64 porque `XSAVE` exige esa alineación.
-pub const XSAVE_AREA: usize = 3072;
+/// **1024 y no 3072.** La primera versión reservó 3072 "por si acaso", como
+/// previsión para un CPU con AVX-512 que esta máquina no tiene: el `cpu` dice
+/// que con `XCR0 = 0x7` necesita **832**. Esa previsión multiplicó el contexto
+/// por 4,6 de golpe y no era gratis — cada trap se lleva eso de la pila antes
+/// de que el despachador haga nada, y los contextos empezaron a caer donde no
+/// debían.
+///
+/// Reservar de más no es conservador cuando el margen sale de la pila de cada
+/// tarea. Se ajusta a lo que este CPU pide, con holgura, y **el guardia de
+/// arranque es lo que hace que eso sea seguro**: si algún día hay un CPU que
+/// necesita más, `cpu_vendor::xsave::init()` lo ve por CPUID antes del primer
+/// trap y se planta con el motivo, en vez de corromper pilas en silencio.
+/// Subir este número es entonces una decisión informada, no una apuesta.
+pub const XSAVE_AREA: usize = 1024;
 
 /// Área + back-pointer + margen para realinear a 64. Es lo que los stubs
 /// restan de la pila antes del `and rsp, -64`.
