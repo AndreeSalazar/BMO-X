@@ -484,7 +484,7 @@ fn shell_help() {
     row("sistema", |l| l.txt("info  mem  tasks  disk  ls  cabina  hist  layout"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
-    row("ring3", |l| l.txt("bex  ktest"));
+    row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
     row("poder", |l| l.txt("reboot  halt  panic"));
     row("ayuda", |l| l.txt("help"));
 }
@@ -669,6 +669,75 @@ fn shell_ls() {
     } else {
         row("firma", |l| { l.txt("?? no es un PE: revisar la cadena de clusteres"); });
         crate::ring0::cabina::warn("fs", "el archivo se encontro pero no se leyo bien", n as u64);
+    }
+}
+
+/// `run <ruta>` — carga un `.bex` del disco y lo ejecuta.
+///
+/// Es el punto donde el trabajo del disco cobra sentido. Hasta ahora los
+/// programas Ring 3 vivían DENTRO del kernel (`include_bytes!`): cambiar un
+/// "hola mundo" obligaba a recompilar el sistema operativo entero y
+/// reflashear. Ahora se copia el `.bex` a la partición desde el anfitrión y se
+/// escribe `run apps/hola.bex`.
+///
+/// El buffer es estático y no local: un `.bex` son varios KiB y la pila del
+/// kernel son 64 KiB para todo.
+fn shell_run(arg: &[u8]) {
+    const MAX_BEX: usize = 64 * 1024;
+    static mut IMAGE: [u8; MAX_BEX] = [0u8; MAX_BEX];
+
+    let path = match core::str::from_utf8(arg) {
+        Ok(s) => s.trim(),
+        Err(_) => { s_log("[run] la ruta tiene bytes que no son texto"); return; }
+    };
+    if path.is_empty() {
+        s_log("[run] uso: run apps/hola.bex   (o A:/apps/hola.bex)");
+        return;
+    }
+    if !crate::ring0::proc::has_room() {
+        s_log("[run] no quedan huecos de proceso");
+        return;
+    }
+
+    let buf = unsafe { &mut *core::ptr::addr_of_mut!(IMAGE) };
+    let n = match crate::ring0::fs::load(path, buf) {
+        Ok(n) => n,
+        Err(e) => {
+            // El motivo exacto: "no esta" y "no cabe en 8.3" mandan a hacer
+            // cosas distintas, y un "no se pudo" no manda a ninguna.
+            let mut l = L::new();
+            l.txt("[run] ");
+            l.txt(e.name());
+            l.txt(": ");
+            l.txt(path);
+            dashboard_log_color(l.as_str(), SH_TITLE);
+            crate::ring0::dev::console::serial_write(l.as_str());
+            crate::ring0::dev::console::serial_write("\n");
+            return;
+        }
+    };
+
+    dashboard_log_color("== run ==", SH_TITLE);
+    row("archivo", |l| { l.txt(path); });
+    row("leido", |l| { l.size(n as u64); });
+
+    // El nombre del proceso es el último componente de la ruta: es lo que el
+    // usuario reconoce en el log, no la ruta entera.
+    let name = {
+        let b = path.as_bytes();
+        match b.iter().rposition(|&c| c == b'/' || c == b'\\') {
+            Some(i) => &path[i + 1..],
+            None => path,
+        }
+    };
+
+    match crate::ring0::proc::admit_from_disk(name, &buf[..n]) {
+        Some(tid) => {
+            row("admitido", |l| { l.txt("tid "); l.dec(tid as u64); l.txt("   corre en el siguiente tick"); });
+        }
+        None => {
+            row("rechazado", |l| { l.txt("el .bex no paso la admision (mira CABINA)"); });
+        }
     }
 }
 
@@ -1030,6 +1099,10 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_layout(b"");
         } else if cmd.len() > 7 && &cmd[..7] == b"layout " {
             shell_layout(&cmd[7..]);
+        } else if cmd.len() > 4 && &cmd[..4] == b"run " {
+            shell_run(&cmd[4..]);
+        } else if cmd == b"run" {
+            shell_run(b"");
         } else if cmd == b"cls" || cmd == b"clear" {
             clear_screen();
         } else if cmd == b"info" {

@@ -141,6 +141,75 @@ pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
     first
 }
 
+// ── Programas que vienen del DISCO ──────────────────────────────────────────
+
+/// Nombres de los programas cargados de disco.
+///
+/// `ProgramRecord` guarda `&'static str` porque los tres demos son literales
+/// del binario. Un programa que llega del disco trae su nombre en un buffer
+/// prestado que desaparece al volver del comando, así que se copia aquí: un
+/// almacén estático pequeño cuya vida SÍ es la del kernel. Sin `alloc`, esta
+/// es la forma honesta de tener un `&'static str` que no existía al compilar.
+const MAX_DISK_NAMES: usize = 6;
+const DISK_NAME_LEN: usize = 24;
+static mut DISK_NAMES: [[u8; DISK_NAME_LEN]; MAX_DISK_NAMES] = [[0; DISK_NAME_LEN]; MAX_DISK_NAMES];
+static mut DISK_NAME_COUNT: usize = 0;
+
+fn intern_name(s: &str) -> &'static str {
+    unsafe {
+        if DISK_NAME_COUNT >= MAX_DISK_NAMES { return "disco"; }
+        let slot = DISK_NAME_COUNT;
+        DISK_NAME_COUNT += 1;
+        let arr = core::ptr::addr_of_mut!(DISK_NAMES) as *mut [u8; DISK_NAME_LEN];
+        let buf = &mut *arr.add(slot);
+        let n = s.len().min(DISK_NAME_LEN);
+        buf[..n].copy_from_slice(&s.as_bytes()[..n]);
+        let p = buf.as_ptr();
+        core::str::from_utf8(core::slice::from_raw_parts(p, n)).unwrap_or("disco")
+    }
+}
+
+/// El siguiente pid libre.
+///
+/// Antes el pid era el ÍNDICE del demo en su tabla, así que solo podían
+/// existir los tres de siempre y no había forma de añadir un cuarto. Ahora sale
+/// del registro, que es quien sabe cuántos programas se han intentado admitir.
+fn next_pid() -> u32 {
+    unsafe { PROGRAM_COUNT as u32 + 1 }
+}
+
+/// ¿Queda sitio para otro programa?
+pub fn has_room() -> bool {
+    unsafe { PROGRAM_COUNT < MAX_PROGRAMS }
+}
+
+/// Admite un programa BEX que viene de un archivo, no del propio binario.
+///
+/// Es la razón de ser de todo el trabajo de disco: hasta aquí los programas
+/// Ring 3 viajaban dentro del kernel con `include_bytes!` y cambiar una línea
+/// de un `hola mundo` obligaba a recompilar el sistema operativo y reflashear.
+///
+/// Devuelve el tid admitido.
+pub fn admit_from_disk(name: &str, bytes: &[u8]) -> Option<u32> {
+    if !has_room() { return None; }
+    let pid = next_pid();
+    let stored = intern_name(name);
+    // La etiqueta del log ANTES de que el proceso escriba su primera línea,
+    // igual que con los demos: si no, la primera línea sale sin dueño.
+    crate::ring0::uconsole::set_tag(pid, stored);
+    record_open(stored, stored, pid, bytes.len() as u32);
+    match admit_payload(bytes, pid) {
+        Some(tid) => {
+            crate::ring0::cabina::info("proc", "programa admitido DESDE DISCO", tid as u64);
+            Some(tid)
+        }
+        None => {
+            crate::ring0::cabina::warn("proc", "el .bex de disco no paso la admision", pid as u64);
+            None
+        }
+    }
+}
+
 /// Admite UN programa BEX como proceso Ring 3 con el `pid` indicado.
 fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
     set_status("admitting (alloc/map)");

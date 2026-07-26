@@ -168,6 +168,113 @@ pub fn mount_data() {
     }
 }
 
+// ── Rutas: de "apps/hola.bex" a un archivo ──────────────────────────────────
+
+/// Por qué no se pudo cargar una ruta.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadError {
+    /// No hay volumen de datos montado.
+    NoVolume,
+    /// La ruta está vacía o tiene un componente vacío.
+    BadPath,
+    /// Un nombre no cabe en 8.3 (ocho de nombre, tres de extensión).
+    NameTooLong,
+    /// No existe un directorio del camino.
+    DirNotFound,
+    /// El archivo no está.
+    NotFound,
+    /// El archivo no cabe en el buffer del llamante.
+    TooBig,
+}
+
+impl LoadError {
+    pub fn name(self) -> &'static str {
+        match self {
+            LoadError::NoVolume => "no hay volumen de datos montado",
+            LoadError::BadPath => "ruta vacia o mal formada",
+            LoadError::NameTooLong => "un nombre no cabe en 8.3",
+            LoadError::DirNotFound => "no existe una carpeta del camino",
+            LoadError::NotFound => "el archivo no esta",
+            LoadError::TooBig => "el archivo no cabe en el buffer",
+        }
+    }
+}
+
+/// Convierte `hola.bex` en los once bytes que FAT guarda: `"HOLA    BEX"`.
+///
+/// Devuelve error si no cabe en vez de recortar. Un nombre recortado en
+/// silencio abre otro archivo — y "abrir otro archivo" en un cargador de
+/// programas significa ejecutar otro binario.
+fn to_8_3(name: &str) -> Result<[u8; 11], LoadError> {
+    let b = name.as_bytes();
+    if b.is_empty() { return Err(LoadError::BadPath); }
+    let mut out = [b' '; 11];
+    // El punto separa; el ÚLTIMO punto, porque "a.b.c" tiene extensión "c".
+    let dot = b.iter().rposition(|&c| c == b'.');
+    let (stem, ext) = match dot {
+        Some(i) => (&b[..i], &b[i + 1..]),
+        None => (&b[..], &b[0..0]),
+    };
+    if stem.is_empty() || stem.len() > 8 || ext.len() > 3 {
+        return Err(LoadError::NameTooLong);
+    }
+    for (i, &c) in stem.iter().enumerate() { out[i] = upper(c); }
+    for (i, &c) in ext.iter().enumerate() { out[8 + i] = upper(c); }
+    Ok(out)
+}
+
+fn upper(c: u8) -> u8 {
+    if c >= b'a' && c <= b'z' { c - 32 } else { c }
+}
+
+/// Carga un archivo del volumen de DATOS en `dst`. Devuelve los bytes leídos.
+///
+/// Acepta `apps/hola.bex`, `/apps/hola.bex` y `A:/apps/hola.bex` — la letra
+/// es la que Windows le da a esta misma partición, y escribirla es lo que
+/// hace cualquiera que acabe de copiar ahí el archivo desde el anfitrión.
+/// También se aceptan barras invertidas.
+///
+/// Es la pieza que saca los programas de dentro del kernel. Hasta ahora los
+/// `.bex` viajaban con `include_bytes!` y cambiar un "hola mundo" obligaba a
+/// recompilar el sistema operativo entero y reflashear.
+pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return Err(LoadError::NoVolume),
+        }
+    };
+
+    // Quitar la letra de unidad y las barras iniciales.
+    let mut p = path;
+    if p.len() >= 2 && p.as_bytes()[1] == b':' { p = &p[2..]; }
+    while p.starts_with('/') || p.starts_with('\\') { p = &p[1..]; }
+    if p.is_empty() { return Err(LoadError::BadPath); }
+
+    // Bajar por los directorios; el último componente es el archivo.
+    let mut dir = v.root_cluster();
+    let mut rest = p;
+    loop {
+        let cut = rest.as_bytes().iter().position(|&c| c == b'/' || c == b'\\');
+        match cut {
+            Some(i) => {
+                let comp = &rest[..i];
+                if comp.is_empty() { return Err(LoadError::BadPath); }
+                let name = to_8_3(comp)?;
+                dir = v.find_subdir_in(&name, dir).ok_or(LoadError::DirNotFound)?;
+                rest = &rest[i + 1..];
+                if rest.is_empty() { return Err(LoadError::BadPath); }
+            }
+            None => break,
+        }
+    }
+
+    let name = to_8_3(rest)?;
+    let (cluster, size) = v.find_file_in(&name, dir).ok_or(LoadError::NotFound)?;
+    if size as usize > dst.len() { return Err(LoadError::TooBig); }
+    Ok(v.read_file(cluster, size, dst))
+}
+
 /// Crea un archivo en la raíz del volumen de datos.
 ///
 /// `name_8_3` son once bytes tal como FAT los guarda: `b"CABINA  LOG"`.
