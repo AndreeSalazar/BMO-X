@@ -208,7 +208,24 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     hba_write(mmio_base, HBA_IS, hba_read(mmio_base, HBA_IS)); // limpiar pendientes
 
     let cap = hba_read(mmio_base, HBA_CAP);
-    let port_count = ((cap >> 20) & 0x1F) as u8 + 1;
+    // ★ `CAP.NP` son los bits [4:0]. NO los [24:20].
+    //
+    // Esto leía `(cap >> 20) & 0x1F`, que en este HBA (cap=0xEF36FF27) cae
+    // encima de `ISS` —la velocidad de interfaz soportada— y daba 0x13: el
+    // driver se creía 20 puertos en un controlador de 8. Los puertos 8..19 no
+    // existen, y su espacio MMIO **alias-ea sobre los reales**: por eso el
+    // puerto 0x12 reportaba exactamente lo mismo que el 0x2 (ssts=0x133,
+    // sig=0x101). No eran dos discos ni un doble volcado del log — era el
+    // MISMO registro leído dos veces por dos direcciones distintas.
+    //
+    // Y no era solo ruido en pantalla: `port_link_up` ESCRIBE. Cada puerto
+    // fantasma le mandaba un COMRESET por `PxSCTL` a un puerto real que ya
+    // estaba levantado, después del censo. Tirar el enlace del disco justo
+    // después de encontrarlo es una forma perfecta de que "a veces arranca".
+    //
+    // Windows nunca enseña esto porque lee `NP` de donde toca y además solo
+    // toca los puertos que `PI` declara.
+    let port_count = (cap & 0x1F) as u8 + 1;
     let pi = hba_read(mmio_base, HBA_PI);
     // Los registros del HBA, dichos en voz alta. Si CAP y PI salen 0x0 o
     // 0xFFFFFFFF, el problema no son los puertos: es que no estamos leyendo
@@ -217,6 +234,10 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
     hal.log_hex("[ahci] cap=", cap as u64);
     hal.log_hex(" pi=", pi as u64);
     hal.log_hex(" ghc=", hba_read(mmio_base, HBA_GHC) as u64);
+    // `np` explícito: es el número que decide cuántos puertos se tocan, y
+    // haberlo leído mal costó doce puertos fantasma. Si vuelve a salir raro,
+    // sale ANTES que sus consecuencias.
+    hal.log_hex(" np=", port_count as u64);
     hal.log("\n");
 
     let sss = cap & (1 << 27) != 0;
@@ -273,9 +294,16 @@ pub unsafe fn probe(mmio_base: u64) -> bool {
 /// Switch Alpha 12) donde la BIOS reporta un mapa que hace al driver SALTARSE
 /// justo el puerto donde está el disco, y el arreglo del kernel es ignorar el
 /// registro y forzar el valor bueno a mano. Aquí se recorren TODOS los puertos
-/// que `CAP.NP` dice que existen y se anota si `PI` los declaraba o no;
-/// escribir a un puerto inexistente es inofensivo (el registro no cambia, como
-/// se vio con los puertos 4 y 5), y saltarse el puerto del disco no lo es.
+/// que `CAP.NP` dice que existen y se anota si `PI` los declaraba o no:
+/// saltarse el puerto del disco es peor que mirar uno de más. En esta máquina
+/// eso se gana el pan — el disco aparece en el puerto 2, que `PI=0x33` no
+/// declara.
+///
+/// ★ PERO EL LÍMITE ES `CAP.NP`, Y ES UN LÍMITE DURO. Lo que sí es dañino es
+/// pasarse de ahí: el espacio de puertos alias-ea, así que un puerto que no
+/// existe no devuelve ceros, devuelve **otro puerto**, y escribirle es
+/// escribirle a ése. Desconfiar de `PI` es una decisión; desconfiar de `NP`
+/// sería mandarle COMRESET a un disco vivo creyendo que se le habla al vacío.
 unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
     let hal = storage_hal::hal();
     let mmio_base = ctrl.mmio_base;

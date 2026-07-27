@@ -256,7 +256,12 @@ pub fn init() {
     // habilitados. No la máxima teórica — esa incluye componentes que este
     // CPU soporta pero nadie ha encendido.
     let necesario = inf.area_actual as usize;
-    let reservado = crate::ring0::trap::XSAVE_AREA;
+    // Los últimos 16 bytes del área NO son del CPU: ahí va el sello del
+    // contexto (firma + dueño), y el epílogo se niega a restaurar un contexto
+    // sin él. Si un CPU necesitara llegar hasta ahí, el sello sería basura
+    // aleatoria y la máquina se pararía en cada cambio de contexto — mejor
+    // pararla aquí, con el motivo escrito.
+    let reservado = crate::ring0::trap::XSAVE_AREA - 16;
     if necesario > reservado {
         pararse("el area de XSAVE reservada se queda corta en este CPU", necesario as u64);
     }

@@ -68,6 +68,7 @@ unsafe extern "C" fn timer_entry() -> ! {
         "sub rsp, {reserva}",
         "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
         "mov [rsp+{area}], rbp",
+        "mov qword ptr [rsp+{firma}], {magia}",
         // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx ya estan salvados.
         "mov eax, -1", "mov edx, -1",
         "xsave64 [rsp]",
@@ -77,6 +78,8 @@ unsafe extern "C" fn timer_entry() -> ! {
         "call {dispatch}",
         // Shared trap epilogue: rax = xsave-base of the context to run.
         "mov rsp, rax",
+        "cmp qword ptr [rsp+{firma}], {magia}",
+        "jne 3f",
         "mov eax, -1", "mov edx, -1",
         "xrstor64 [rsp]",
         "mov rsp, [rsp+{area}]",
@@ -85,10 +88,21 @@ unsafe extern "C" fn timer_entry() -> ! {
         "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
         "cmp qword ptr [rsp+8], 0x08",
         "je 2f",
+        "cmp qword ptr [rsp+8], 0x23",
+        "jne 4f",
         "swapgs",
         "2: iretq",
+        // Los dos "no restaures esto": sello roto (rsp = base del area) y cs
+        // imposible (rsp = cola del frame). No vuelven.
+        "3: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+        "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym timer_dispatch,
+        podrido = sym crate::ring0::faults::contexto_podrido,
         area = const crate::ring0::trap::XSAVE_AREA,
+        firma = const crate::ring0::trap::SELLO_FIRMA,
+        magia = const crate::ring0::trap::SELLO_MAGIA,
+        m_sello = const crate::ring0::faults::PODRIDO_SELLO,
+        m_cs = const crate::ring0::faults::PODRIDO_CS,
         reserva = const crate::ring0::trap::XSAVE_RESERVA,
     );
 }

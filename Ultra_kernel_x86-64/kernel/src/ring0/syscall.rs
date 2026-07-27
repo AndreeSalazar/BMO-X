@@ -100,6 +100,7 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "sub rsp, {reserva}",
         "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
         "mov [rsp+{area}], rbp",       // back-pointer to the GPR block
+        "mov qword ptr [rsp+{firma}], {magia}", // sello del contexto
         // RFBM = -1: guarda lo que XCR0 tenga habilitado, sea lo que sea.
         // rax y rdx ya estan salvados en el bloque de GPR de arriba.
         "mov eax, -1", "mov edx, -1",
@@ -110,6 +111,8 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "call {dispatch}",
         // Shared trap epilogue: rax = xsave-base of the context to run.
         "mov rsp, rax",
+        "cmp qword ptr [rsp+{firma}], {magia}",
+        "jne 3f",
         "mov eax, -1", "mov edx, -1",
         "xrstor64 [rsp]",
         "mov rsp, [rsp+{area}]",
@@ -118,10 +121,19 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
         "cmp qword ptr [rsp+8], 0x08", // returning to kernel CS?
         "je 1f",
+        "cmp qword ptr [rsp+8], 0x23", // ...o a usuario. Cualquier otra cosa
+        "jne 4f",                      // no es un contexto, es basura.
         "swapgs",
         "1: iretq",
+        "3: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+        "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym dispatch,
+        podrido = sym crate::ring0::faults::contexto_podrido,
         area = const crate::ring0::trap::XSAVE_AREA,
+        firma = const crate::ring0::trap::SELLO_FIRMA,
+        magia = const crate::ring0::trap::SELLO_MAGIA,
+        m_sello = const crate::ring0::faults::PODRIDO_SELLO,
+        m_cs = const crate::ring0::faults::PODRIDO_CS,
         reserva = const crate::ring0::trap::XSAVE_RESERVA,
     );
 }

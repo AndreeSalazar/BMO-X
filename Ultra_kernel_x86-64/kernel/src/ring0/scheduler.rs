@@ -104,17 +104,41 @@ impl Scheduler {
 
     /// Free kernel stacks of exited tasks and recycle their slots.
     /// Never reaps the running task.
+    ///
+    /// ★ NI LA PILA QUE ESTAMOS PISANDO. `current_tid` ya es la tarea
+    /// ENTRANTE cuando esto corre: la que acaba de hacer EXIT pasa el filtro,
+    /// y sus frames volvían al mapa de bits **con RSP todavía dentro de
+    /// ellos**. El epílogo aún tiene que ejecutarse ahí —`mov rsp, rax`, el
+    /// retorno del `call`— sobre memoria que ya es de cualquiera. No revienta
+    /// en el acto: revienta cuando el siguiente `alloc_frames_contig` (una
+    /// pila nueva, un buffer de DMA del AHCI) escribe encima. Ese retraso es
+    /// justo lo que lo hace difícil de encontrar.
+    ///
+    /// La comprobación es directa: si el RSP de ahora cae dentro de la pila de
+    /// esa tarea, no se libera **y la tarea se queda `Exited`**, no se vacía
+    /// el hueco. La recoge la siguiente pasada, ya desde otra pila. Un turno
+    /// de retraso a cambio de no tirar el suelo.
     fn reap(&mut self) {
         let current_tid = self.tasks[self.current].tid;
+        let rsp_ahora: u64;
+        unsafe {
+            core::arch::asm!("mov {}, rsp", out(reg) rsp_ahora, options(nomem, nostack));
+        }
         for task in &mut self.tasks {
-            if task.state == TaskState::Exited && task.tid != current_tid {
-                if task.stack_phys != 0 {
-                    for p in 0..task.stack_pages {
-                        phys::free_frame(task.stack_phys + p * mm::PAGE);
-                    }
-                }
-                *task = Task::EMPTY;
+            if task.state != TaskState::Exited || task.tid == current_tid {
+                continue;
             }
+            if task.stack_phys != 0 {
+                let base = mm::phys_to_virt(task.stack_phys);
+                let top = base + task.stack_pages * mm::PAGE;
+                if rsp_ahora >= base && rsp_ahora < top {
+                    continue; // es el suelo que estamos pisando
+                }
+                for p in 0..task.stack_pages {
+                    phys::free_frame(task.stack_phys + p * mm::PAGE);
+                }
+            }
+            *task = Task::EMPTY;
         }
     }
 }
@@ -164,13 +188,37 @@ pub fn init(tsc_hz: u64) {
     s.next_tid = 2;
 }
 
+/// ¿Hay un contexto saliente que guardar?
+///
+/// `percpu::trap_rsp()` lo publica el stub de entrada de cada trap. Los stubs
+/// de fault (#UD/#GP/#PF) **no publican nada a propósito**: el contexto que se
+/// muere no se guarda. Pero entonces el valor que sigue ahí es el del trap
+/// ANTERIOR —ya consumido por su epílogo, con la pila por encima libre para
+/// que la pise cualquier cosa— y guardarlo como contexto de nadie es sembrar
+/// un `iretq` con basura para dentro de un rato.
+///
+/// Por eso la decisión es un argumento y no una suposición sobre un global.
+#[derive(Clone, Copy, PartialEq)]
+enum Saliente {
+    /// Venimos de un stub que publicó contexto: guardarlo.
+    Publicado,
+    /// Nadie publicó (ruta de fault): la tarea que sale ya está muerta y su
+    /// `context_rsp` no se toca.
+    Ninguno,
+}
+
 /// Commit a context switch if a better task exists. Must run with the lock
 /// held and from a trap boundary only.
-fn schedule_locked(s: &mut Scheduler) {
+fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
     // Capture the outgoing context exactly as the trap stub left it.
     let outgoing = percpu::trap_rsp();
-    if outgoing != 0 {
+    if saliente == Saliente::Publicado && outgoing != 0 {
         s.tasks[s.current].context_rsp = outgoing;
+        // El dueño, en el propio contexto. El stub ya puso la firma en
+        // ensamblador; el tid lo sabe Rust. Con los dos, un epílogo que se
+        // encuentre algo raro puede decir DE QUIÉN era, no solo que estaba
+        // roto.
+        crate::ring0::trap::sellar(outgoing, s.tasks[s.current].tid);
     }
     if s.tasks[s.current].state == TaskState::Running {
         s.tasks[s.current].state = TaskState::Ready;
@@ -203,9 +251,18 @@ fn schedule_locked(s: &mut Scheduler) {
     if next_cr3 != mm::vmm::read_cr3() {
         mm::vmm::switch_to(next_cr3);
     }
-    if next_task.is_user {
+    // Las rampas de aterrizaje de Ring 3 (TSS.RSP0 y la pila de SYSCALL)
+    // siguen a la tarea SIEMPRE que ésta tenga pila propia, no solo cuando es
+    // de usuario. Si solo se actualizan para tareas de usuario, al cambiar a
+    // una tarea de kernel se quedan apuntando a la pila de la última tarea de
+    // usuario — que puede estar ya muerta y liberada. Es un puntero colgando
+    // en el TSS: inofensivo mientras nadie entre por ahí, y catastrófico el
+    // día que alguien entre.
+    if next_task.kernel_stack_top != 0 {
         crate::ring0::proc::set_tss_rsp0(next_task.kernel_stack_top);
         percpu::set_syscall_stack_top(next_task.kernel_stack_top);
+    }
+    if next_task.is_user {
         // Debug capture for the Ring 3 #GP hunt: the context pointer we just
         // published and what its back-pointer slot reads RIGHT NOW, under
         // the user CR3 that is already loaded. If this reads valid here but
@@ -255,7 +312,7 @@ pub fn kill_current_and_pick() -> u64 {
     if s.current != 0 && s.tasks[s.current].state == TaskState::Running {
         s.tasks[s.current].state = TaskState::Exited;
     }
-    schedule_locked(s);
+    schedule_locked(s, Saliente::Ninguno);
     percpu::trap_rsp()
 }
 
@@ -318,7 +375,7 @@ pub fn on_timer() {
         return;
     }
     current.remaining_ticks = DEFAULT_QUANTUM_TICKS;
-    schedule_locked(s);
+    schedule_locked(s, Saliente::Publicado);
 }
 
 /// Wake every task blocked on `key` (BMO Channel sequence change, F2+).
@@ -432,7 +489,7 @@ pub fn yield_current() {
     let _g = SCHED_LOCK.lock();
     let s = sched();
     mark_yield(s);
-    schedule_locked(s);
+    schedule_locked(s, Saliente::Publicado);
 }
 
 pub fn exit_current() {
@@ -449,14 +506,14 @@ pub fn exit_current() {
         tid as u64,
     );
     mark_exit(s);
-    schedule_locked(s);
+    schedule_locked(s, Saliente::Publicado);
 }
 
 pub fn wait_current(key: u64, deadline_tsc: u64) {
     let _g = SCHED_LOCK.lock();
     let s = sched();
     mark_wait(s, key, deadline_tsc);
-    schedule_locked(s);
+    schedule_locked(s, Saliente::Publicado);
 }
 
 /// WAIT with a lost-wakeup guard: `seq()` is sampled *under the scheduler
@@ -476,7 +533,7 @@ pub fn wait_current_checked(
     }
     let s = sched();
     mark_wait(s, key, deadline_tsc);
-    schedule_locked(s);
+    schedule_locked(s, Saliente::Publicado);
     // Still pre-switch on this stack: the context switch commits at the
     // trap epilogue. The value returned here is what the caller sees when
     // resumed, so it is advisory — userland re-reads the shared page.

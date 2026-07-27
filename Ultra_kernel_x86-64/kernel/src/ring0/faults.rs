@@ -77,6 +77,8 @@ macro_rules! err_stub_isolating {
                 "jz 3f",
                 // Shared trap epilogue (same shape as timer/syscall).
                 "mov rsp, rax",
+                "cmp qword ptr [rsp + {firma}], {magia}",
+                "jne 6f",
                 // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
                 // recuperan de los pops de abajo.
                 "mov eax, -1", "mov edx, -1",
@@ -87,14 +89,23 @@ macro_rules! err_stub_isolating {
                 "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
                 "cmp qword ptr [rsp + 8], 0x08",
                 "je 4f",
+                "cmp qword ptr [rsp + 8], 0x23",
+                "jne 7f",
                 "swapgs",
                 "4: iretq",
                 "3: cli",
                 "5: hlt",
                 "jmp 5b",
+                "6: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+                "7: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
                 v = const $vec,
                 h = sym fault_dispatch,
+                podrido = sym contexto_podrido,
                 area = const crate::ring0::trap::XSAVE_AREA,
+                firma = const crate::ring0::trap::SELLO_FIRMA,
+                magia = const crate::ring0::trap::SELLO_MAGIA,
+                m_sello = const PODRIDO_SELLO,
+                m_cs = const PODRIDO_CS,
             );
         }
     };
@@ -120,6 +131,8 @@ macro_rules! noerr_stub_isolating {
                 "test rax, rax",
                 "jz 3f",
                 "mov rsp, rax",
+                "cmp qword ptr [rsp + {firma}], {magia}",
+                "jne 6f",
                 // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
                 // recuperan de los pops de abajo.
                 "mov eax, -1", "mov edx, -1",
@@ -130,14 +143,23 @@ macro_rules! noerr_stub_isolating {
                 "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
                 "cmp qword ptr [rsp + 8], 0x08",
                 "je 4f",
+                "cmp qword ptr [rsp + 8], 0x23",
+                "jne 7f",
                 "swapgs",
                 "4: iretq",
                 "3: cli",
                 "5: hlt",
                 "jmp 5b",
+                "6: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+                "7: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
                 v = const $vec,
                 h = sym fault_dispatch,
+                podrido = sym contexto_podrido,
                 area = const crate::ring0::trap::XSAVE_AREA,
+                firma = const crate::ring0::trap::SELLO_FIRMA,
+                magia = const crate::ring0::trap::SELLO_MAGIA,
+                m_sello = const PODRIDO_SELLO,
+                m_cs = const PODRIDO_CS,
             );
         }
     };
@@ -407,6 +429,139 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
         l6.s(" rfl=");
         l6.hex(irfl, 6);
         paint(12, l6.as_str());
+    }
+}
+
+/// Motivos con los que un epílogo se niega a restaurar un contexto.
+pub const PODRIDO_SELLO: u64 = 1;
+pub const PODRIDO_CS: u64 = 2;
+
+/// El epílogo de trap se planta ANTES de restaurar un contexto que no cuadra.
+///
+/// ## Por qué existe
+///
+/// Un `iretq` con `cs=0` da `#GP(0)` y el reporte que sale de ahí describe el
+/// sitio donde el CPU se enteró, no el sitio donde se rompió: `rip` apunta al
+/// propio `iretq`, y el contexto culpable ya no se puede nombrar. Eso es lo que
+/// costó una foto y una tarde. Dos comparaciones lo convierten en un informe
+/// que dice QUÉ contexto y DE QUIÉN era:
+///
+/// - `PODRIDO_SELLO`: la firma del área no está. Alguien escribió POR DEBAJO
+///   del frame, sobre el área de estado extendido.
+/// - `PODRIDO_CS`: el `cs` guardado no es ni 0x08 ni 0x23. Alguien escribió
+///   ENCIMA, sobre la cola de cinco palabras que consume el `iretq`.
+///
+/// `rsp` es la dirección exacta que el epílogo iba a usar: la base del área
+/// para el sello, el frame para el `cs`. Es terminal a propósito — restaurar
+/// un contexto podrido es exactamente lo que no queremos que pase.
+pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
+    let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
+    if kpml4 != 0 {
+        crate::ring0::mm::vmm::switch_to(kpml4);
+    }
+    let nombre = if motivo == PODRIDO_SELLO {
+        "CONTEXTO PODRIDO: sello roto"
+    } else {
+        "CONTEXTO PODRIDO: cs invalido"
+    };
+    crate::ring0::cabina::panic_ev("ring0", nombre, rsp);
+
+    let mut l0 = Line::new();
+    l0.s("*** ");
+    l0.s(nombre);
+    paint(0, l0.as_str());
+
+    // La dirección que el epílogo iba a usar, y de ahí la base del área: para
+    // el sello `rsp` YA es la base; para el `cs`, el frame está 120 bytes por
+    // encima del bloque de GPR, cuyo back-pointer cuelga del área.
+    let mut l1 = Line::new();
+    l1.s("rsp=0x");
+    l1.hex(rsp, 12);
+    l1.s(" motivo=");
+    l1.hex(motivo, 2);
+    paint(1, l1.as_str());
+
+    // Con el sello, `rsp` YA es la base del área. Con el `cs` hay que llegar a
+    // ella: `rsp` es la cola del frame (gpr_base+120), y el back-pointer —el
+    // único puntero que ata frame y área— vive en `xsave_base+XSAVE_AREA`,
+    // entre 8 y 71 bytes por debajo del bloque de GPR. Se busca ahí el qword
+    // que apunta a `gpr_base`: encontrarlo identifica el área sin adivinar.
+    let base = if motivo == PODRIDO_SELLO {
+        rsp
+    } else {
+        let gpr_base = rsp.wrapping_sub(120);
+        let mut hallada = 0u64;
+        let mut off = 8u64;
+        while off <= 72 {
+            let slot = gpr_base.wrapping_sub(off);
+            if unsafe { (slot as *const u64).read_volatile() } == gpr_base {
+                hallada = slot.wrapping_sub(crate::ring0::trap::XSAVE_AREA as u64);
+                break;
+            }
+            off += 8;
+        }
+        hallada
+    };
+    let (firma, dueno) = crate::ring0::trap::leer_sello(base);
+    let mut l2 = Line::new();
+    l2.s("sello=0x");
+    l2.hex(firma, 8);
+    l2.s(" dueno=");
+    l2.hex(dueno, 4);
+    l2.s(" area=");
+    l2.hex(base, 12);
+    paint(2, l2.as_str());
+
+    // Las cinco palabras que el `iretq` iba a consumir (o los primeros bytes
+    // del área). Si aquí sale 0x37F/0x1F80, lo que hay encima del contexto es
+    // la imagen XSAVE de OTRO contexto: alguien trapeó sobre esta pila.
+    let p = rsp as *const u64;
+    let (w0, w1, w2, w3, w4) = unsafe {
+        (
+            p.read_volatile(),
+            p.add(1).read_volatile(),
+            p.add(2).read_volatile(),
+            p.add(3).read_volatile(),
+            p.add(4).read_volatile(),
+        )
+    };
+    let mut l3 = Line::new();
+    l3.s("w0=");
+    l3.hex(w0, 12);
+    l3.s(" w1=");
+    l3.hex(w1, 4);
+    l3.s(" w2=");
+    l3.hex(w2, 6);
+    paint(3, l3.as_str());
+    let mut l4 = Line::new();
+    l4.s("w3=");
+    l4.hex(w3, 12);
+    l4.s(" w4=");
+    l4.hex(w4, 4);
+    paint(4, l4.as_str());
+
+    let snap = crate::ring0::scheduler::switch_snap();
+    let mut l5 = Line::new();
+    l5.s("sw");
+    l5.hex(snap[3], 2);
+    l5.s(" c=");
+    l5.hex(snap[0], 12);
+    l5.s(" b=");
+    l5.hex(snap[1], 12);
+    paint(5, l5.as_str());
+
+    let ue = crate::ring0::endpoint::ultima_escritura();
+    let mut l6 = Line::new();
+    l6.s("rpc t=");
+    l6.hex(ue[0], 2);
+    l6.s(" ctx=");
+    l6.hex(ue[1], 12);
+    l6.s(" gpr=");
+    l6.hex(ue[2], 12);
+    paint(6, l6.as_str());
+
+    loop {
+        unsafe { core::arch::asm!("cli", "hlt", options(nomem, nostack)) };
     }
 }
 

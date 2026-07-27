@@ -99,6 +99,21 @@ pub const XSAVE_AREA: usize = 1024;
 /// restan de la pila antes del `and rsp, -64`.
 pub const XSAVE_RESERVA: usize = XSAVE_AREA + 8 + 64;
 
+/// Los últimos 64 bytes del área NO los toca el CPU: `xsave64` escribe como
+/// mucho `area_actual` bytes (832 en este Ryzen) y `xrstor64` lee lo mismo.
+/// `cpu_vendor::xsave::init()` se planta al arrancar si algún CPU necesitara
+/// meterse aquí, así que este espacio es nuestro por contrato verificado.
+///
+/// Se usa como SELLO del contexto: una firma fija y el dueño. No es adorno —
+/// es la diferencia entre "el iretq murió con cs=0" y "el contexto del tid 3
+/// lo pisó algo entre que se guardó y que se restauró".
+pub const SELLO_FIRMA: usize = XSAVE_AREA - 16;
+pub const SELLO_DUENO: usize = XSAVE_AREA - 8;
+
+/// Firma del sello. Cabe en un `imm32` con signo, que es lo que admite
+/// `mov qword ptr [mem], imm` en los stubs.
+pub const SELLO_MAGIA: u64 = 0x424D_4F31; // "BMO1"
+
 /// GPR block (15*8) + back-pointer slot (8) + alignment slack (8).
 const FRAME_BYTES_BELOW_TAIL: usize = 15 * 8 + 8 + 8;
 /// Bytes consumed from the stack top: tail (40) + GPRs + back-ptr + xsave
@@ -136,6 +151,7 @@ pub unsafe fn fabricate(
     (xsave_base as *mut u16).write_volatile(0x037F); // FCW
     ((xsave_base + 24) as *mut u32).write_volatile(0x1F80); // MXCSR
     ((xsave_base + XSAVE_AREA as u64) as *mut u64).write_volatile(gpr_base); // back-ptr
+    sellar(xsave_base, 0);
 
     let frame = &mut *(gpr_base as *mut TrapFrame);
     core::ptr::write_bytes(frame as *mut TrapFrame as *mut u8, 0, core::mem::size_of::<TrapFrame>());
@@ -157,3 +173,31 @@ pub unsafe fn fabricate(
 /// Minimum kernel stack size that fits one fabricated context plus working
 /// room for the task's own frames.
 pub const MIN_TASK_STACK: usize = CONTEXT_BYTES + 4096;
+
+/// Pone el sello en un contexto: firma + tid del dueño.
+///
+/// Lo llama `fabricate` al crear el contexto y el planificador cada vez que
+/// guarda uno saliente. Los stubs ponen la firma en ensamblador nada más
+/// publicar el contexto; el dueño lo pone Rust, que es quien sabe de tids.
+pub fn sellar(xsave_base: u64, tid: u32) {
+    if xsave_base == 0 {
+        return;
+    }
+    unsafe {
+        ((xsave_base + SELLO_FIRMA as u64) as *mut u64).write_volatile(SELLO_MAGIA);
+        ((xsave_base + SELLO_DUENO as u64) as *mut u64).write_volatile(tid as u64);
+    }
+}
+
+/// `(firma, dueño)` tal y como están AHORA en un contexto. Para el reporter.
+pub fn leer_sello(xsave_base: u64) -> (u64, u64) {
+    if xsave_base == 0 {
+        return (0, 0);
+    }
+    unsafe {
+        (
+            ((xsave_base + SELLO_FIRMA as u64) as *const u64).read_volatile(),
+            ((xsave_base + SELLO_DUENO as u64) as *const u64).read_volatile(),
+        )
+    }
+}
