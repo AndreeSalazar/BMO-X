@@ -472,6 +472,14 @@ fn drain() -> Option<u8> {
 /// Estado DETALLADO del HID para el panel de diagnóstico (fila fija, sobrevive
 /// al auto-clear). Devuelve: (teclado_listo, mouse_listo, slot_kbd, slot_mouse,
 /// eventos_mouse, x_mouse, y_mouse, botones, eventos_tecla).
+/// El puntero: `(x, y, botones, eventos)`.
+///
+/// Lo que `KIND_INPUT` entrega a Ring 3. Son los deltas del HID ya acumulados;
+/// el recorte al panel lo hace `input.rs`, que es quien sabe de pantallas.
+pub fn puntero() -> (i32, i32, u8, u32) {
+    unsafe { (MOUSE_X, MOUSE_Y, MOUSE_BTN, MOUSE_EVENTS) }
+}
+
 pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
     unsafe {
         (KBD_RDY, MOUSE_RDY, KBD_SLOT, MOUSE_SLOT,

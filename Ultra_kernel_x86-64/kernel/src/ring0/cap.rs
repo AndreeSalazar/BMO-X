@@ -27,6 +27,8 @@ pub const SLOTS_PER_PROC: usize = 64;
 // HandleKind codes (mirror of bmo-abi handle/kind.rs).
 /// La pantalla. Espejo de `bmo_abi::HandleKind::Framebuffer`.
 pub const KIND_FRAMEBUFFER: u8 = 0x0F;
+/// El raton. Espejo de `bmo_abi::HandleKind::InputDevice`.
+pub const KIND_INPUT: u8 = 0x20;
 pub const KIND_CHANNEL: u8 = 0x60;
 /// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
 pub const KIND_ENDPOINT: u8 = 0x70;
@@ -208,6 +210,7 @@ pub fn revoke_all(pid: u32) {
     // salidas —EXIT voluntario y muerte por fault— asi que un compositor que
     // revienta no deja la maquina ciega.
     crate::ring0::fb::proceso_muerto(pid);
+    crate::ring0::input::proceso_muerto(pid);
     revoke_all_slots(pid)
 }
 

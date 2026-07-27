@@ -58,12 +58,17 @@ pub const OP_CONSOLE_WRITE: u32 = 0x06;
 pub const OP_ENDPOINT_CREATE: u32 = 0x07;
 pub const OP_ENDPOINT_CONNECT: u32 = 0x08;
 pub const OP_FRAMEBUFFER_CLAIM: u32 = 0x09;
+pub const OP_INPUT_CLAIM: u32 = 0x0A;
 
 // Operaciones sobre un handle de pantalla (`KIND_FRAMEBUFFER`).
 pub const FB_OP_BASE: u32 = 0x01;
 pub const FB_OP_DIMS: u32 = 0x02;
 pub const FB_OP_STRIDE: u32 = 0x03;
 pub const FB_OP_BYTES: u32 = 0x04;
+
+// Operaciones sobre un handle de ratón (`KIND_INPUT`).
+pub const INPUT_OP_PUNTERO: u32 = 0x01;
+pub const INPUT_OP_EVENTOS: u32 = 0x02;
 
 /// Lo que devuelve un syscall: un código y un valor.
 ///
@@ -251,6 +256,10 @@ impl Pantalla {
     }
 
     /// Rellenar la pantalla entera.
+    ///
+    /// Sólo para el primer pintado. Repetirlo por fotograma sería recorrer
+    /// varios MB de memoria de vídeo sin caché: un pase de diapositivas. Lo
+    /// que se repinta en un bucle es el DAÑO, no la pantalla.
     pub fn limpiar(&self, color: u32) {
         let n = self.pixeles();
         for i in 0..n {
@@ -273,5 +282,50 @@ impl Pantalla {
             }
             fila += 1;
         }
+    }
+}
+
+// ── El ratón ────────────────────────────────────────────────────────────
+
+/// Dónde está el puntero y qué botones tiene pulsados.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Punto {
+    pub x: u32,
+    pub y: u32,
+    pub botones: u8,
+}
+
+/// El ratón, cedido a este proceso.
+///
+/// El kernel lee el HID —transferencias xHCI, endpoints, reintentos— porque
+/// eso es tocar hardware y todavía no hay otro sitio donde pueda vivir. Lo que
+/// entrega son coordenadas ya recortadas al panel y una máscara de botones.
+///
+/// **El cursor no sale de aquí.** Su forma, su color y su contorno son
+/// decisiones de aspecto, y ninguna de ésas tiene nada que hacer en Ring 0.
+pub struct Raton {
+    pub cap: u64,
+}
+
+impl Raton {
+    pub fn reclamar() -> Option<Self> {
+        let cap = invoke(CURRENT_TASK, OP_INPUT_CLAIM, 0, 0, 0).valor()?;
+        Some(Self { cap })
+    }
+
+    /// Una llamada por fotograma: los tres datos vienen empaquetados.
+    pub fn leer(&self) -> Punto {
+        let v = invoke(self.cap, INPUT_OP_PUNTERO, 0, 0, 0).value;
+        Punto {
+            x: (v >> 32) as u32,
+            y: ((v >> 16) & 0xFFFF) as u32,
+            botones: (v & 0xFF) as u8,
+        }
+    }
+
+    /// Cuántos reportes HID se han visto. Distingue "el ratón no se mueve" de
+    /// "el ratón no llega": si esto no sube, el problema está en el USB.
+    pub fn eventos(&self) -> u64 {
+        invoke(self.cap, INPUT_OP_EVENTOS, 0, 0, 0).value
     }
 }

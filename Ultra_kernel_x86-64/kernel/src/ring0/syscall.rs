@@ -52,6 +52,9 @@ const TASK_OP_ENDPOINT_CONNECT: u64 = 0x08;
 /// framebuffer mapeado en el espacio del proceso. Ver `ring0/fb.rs`: a partir
 /// de aquí el kernel deja de dibujar y el proceso escribe píxeles con `mov`.
 const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
+/// Reclamar el raton. Devuelve un handle `KIND_INPUT`: el kernel lee el HID,
+/// Ring 3 decide que hace con las coordenadas. Ver `ring0/input.rs`.
+const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -232,6 +235,13 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
         // está cargado AHORA: durante un SYSCALL desde Ring 3, CR3 sigue
         // siendo el del llamante — el cambio de CR3 sólo ocurre en un cambio
         // de contexto, y aquí todavía no ha habido ninguno.
+        TASK_OP_INPUT_CLAIM => {
+            let _ = arg0;
+            match crate::ring0::input::reclamar(scheduler::current_pid()) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
         TASK_OP_FRAMEBUFFER_CLAIM => {
             let _ = arg0;
             match crate::ring0::fb::reclamar(
@@ -295,6 +305,12 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             cap::KIND_CHANNEL => invoke_channel(resolved, frame.rsi),
             // La pantalla sólo contesta preguntas: dónde está y qué forma
             // tiene. Los píxeles no pasan por aquí — para eso está mapeada.
+            // El raton solo contesta donde esta y que botones tiene. Dibujar
+            // el cursor es una decision de aspecto, y eso no es del kernel.
+            cap::KIND_INPUT => match crate::ring0::input::operacion(frame.rsi) {
+                Some(v) => BmoStatus::ok_value(v),
+                None => unsupported(),
+            },
             cap::KIND_FRAMEBUFFER => {
                 match crate::ring0::fb::operacion(resolved.object, frame.rsi) {
                     Some(v) => BmoStatus::ok_value(v),
