@@ -19,14 +19,14 @@ members = [
     "platform/abi/bmo-abi",
     "platform/abi/bmo-rt",
 
-    # ── USERSPACE (Ring 3 side, x86-64) ────────────────────────────
-    # Sibling of Ultra_kernel_x86-64/, NOT inside it. The whole
-    # workspace builds as `cargo check --workspace` from FastOS/.
-    "Ultra_userspace/userland",
-    "Ultra_userspace/services/gui",
-    "Ultra_userspace/services/input",
-    "Ultra_userspace/apps/launcher",
-    "Ultra_userspace/apps/terminal",
+    # ── USERSPACE (Ring 3, x86-64) ─────────────────────────────────
+    # NO va aquí, y es a propósito. `Ultra_userspace/` es su propio
+    # workspace porque sus crates se compilan a `x86_64-unknown-none`
+    # con SU guion de enlazado (userland/link.ld), que fija la base en
+    # USER_IMAGE_BASE. Meterlos aquí obligaría a este workspace —lleno de
+    # herramientas de build que corren en Windows— a cargar con esos
+    # rustflags. Se construye desde `Ultra_userspace/` y el `.bex` sale
+    # por `bex-link`.
 
     # ── DRIVERS (Hardware) ───────────────────────────────────────────
     "platform/drivers/audio",
@@ -66,10 +66,11 @@ members = [
     "toolchain/tools/fontgen",
     # Formatea un volumen ESTRATOS desde el anfitrion (paso 4c del diseno).
     "toolchain/tools/estratos-fmt",
+    # El eslabon Rust -> .bex: sin el, Ultra_userspace/ no puede producir
+    # nada que el kernel admita, y por eso llevaba meses lleno de stubs.
+    "toolchain/tools/bex-link",
     # El par cliente/servidor que prueba Endpoint RPC en Ring 3.
     "toolchain/tools/rpc-demo",
-    # Genera el programa Ring 3 que reclama la pantalla (KIND_FRAMEBUFFER).
-    "toolchain/tools/fb-demo",
 
     # ── FORGE (pipeline de compilación) ─────────────────────────────
     # Librerías OPCIONALES que cada frontend elige enlazar (nunca embudos).
@@ -97,6 +98,11 @@ exclude = [
     # Push-Locations into this directory to build the EFI binary;
     # see /Ultra_kernel_x86-64/uefi_chain/Cargo.toml).
     "Ultra_kernel_x86-64/uefi_chain",
+
+    # Ring 3. Workspace propio por la misma razon: se compila a
+    # x86_64-unknown-none con userland/link.ld, que fija la base en
+    # USER_IMAGE_BASE. Ver Ultra_userspace/README.md.
+    "Ultra_userspace",
 ]
 
 [profile.dev]

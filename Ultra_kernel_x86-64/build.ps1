@@ -90,6 +90,49 @@ foreach ($s in $stages) {
     $idx++
 }
 
+# ── Build Ring 3 userspace (Ultra_userspace/) ─────────────────────
+#
+# VA ANTES DEL KERNEL a proposito: el kernel embebe el .bex resultante con
+# `include_bytes!`, asi que el archivo tiene que existir y estar al dia cuando
+# el kernel compile. Si esto fallara en silencio, el kernel arrancaria con el
+# compositor de la vez anterior y nadie se enteraria.
+#
+# Ultra_userspace/ es su PROPIO workspace: se compila a x86_64-unknown-none con
+# su guion de enlazado, que fija la base en USER_IMAGE_BASE. `bex-link` traduce
+# el ELF a un contenedor BEF y comprueba, seccion por seccion, que las
+# direcciones que escribio el enlazador son las que el kernel va a mapear.
+Step 'Building Ring 3 userspace (compositor)...'
+$usDir = Join-Path (Split-Path -Parent $root) 'Ultra_userspace'
+if (-not (Test-Path $usDir)) { Fail 'Ultra_userspace/ no existe' }
+Push-Location $usDir
+try {
+    $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+    $out = cargo +nightly build -p bmo-service-gui --release --target x86_64-unknown-none 2>&1
+    $out | ForEach-Object {
+        if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [userspace] ' + $_) -ForegroundColor DarkGray }
+    }
+    if ($LASTEXITCODE -ne 0) { Fail 'userspace build failed' }
+} finally { Pop-Location }
+
+$compositorElf = Join-Path $usDir 'target\x86_64-unknown-none\release\compositor'
+if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
+$compositorBex = Join-Path $root 'kernel\src\ring0\compositor.bex'
+Push-Location (Split-Path -Parent $root)
+try {
+    if (Test-Path $compositorBex) { Remove-Item $compositorBex -Force }
+    $out = cargo run -p bmo-bex-link --quiet -- $compositorElf $compositorBex 2>&1
+    $out | ForEach-Object {
+        $linea = $_.ToString()
+        if ($linea -match '^\s+(\.text|\.rodata|\.data|\.bss|entrada|->)|error|!!') {
+            Write-Host ('    [bex-link] ' + $linea.Trim()) -ForegroundColor DarkGray
+        }
+    }
+    if ($LASTEXITCODE -ne 0) { Fail 'bex-link failed' }
+    # Se borro antes a proposito: si `bex-link` no lo ha vuelto a escribir, el
+    # kernel embeberia el compositor de la vez anterior y el build mentiria.
+    if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo compositor.bex' }
+} finally { Pop-Location }
+
 # ── Build kernel (Ring 0 base) ────────────────────────────────────
 Step 'Building kernel (Ring 0 base)...'
 $stageDir = Join-Path $root 'kernel'

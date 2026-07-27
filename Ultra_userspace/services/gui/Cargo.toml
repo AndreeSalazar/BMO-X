@@ -2,8 +2,11 @@
 name = "bmo-service-gui"
 version = "0.1.0"
 edition = "2021"
-description = "BMO window manager / compositor (Ring 3 service)"
+description = "El compositor de BMO — el proceso Ring 3 que es dueno de la pantalla"
+
+[[bin]]
+name = "compositor"
+path = "src/main.rs"
 
 [dependencies]
 bmo-userland = { path = "../../userland" }
-boot-context = { path = "../../../Ultra_kernel_x86-64/boot_context" }

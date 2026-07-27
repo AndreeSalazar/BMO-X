@@ -6,4 +6,3 @@ description = "BMO app launcher / desktop shell (Ring 3 app)"
 
 [dependencies]
 bmo-userland = { path = "../../userland" }
-boot-context = { path = "../../../Ultra_kernel_x86-64/boot_context" }

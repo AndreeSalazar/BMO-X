@@ -27,22 +27,6 @@ name = "bmo-ahci"
 version = "0.1.0"
 
 [[package]]
-name = "bmo-app-launcher"
-version = "0.1.0"
-dependencies = [
- "bmo-userland",
- "boot-context",
-]
-
-[[package]]
-name = "bmo-app-terminal"
-version = "0.1.0"
-dependencies = [
- "bmo-userland",
- "boot-context",
-]
-
-[[package]]
 name = "bmo-arch"
 version = "0.1.0"
 dependencies = [
@@ -57,6 +41,13 @@ version = "1.0.0"
 
 [[package]]
 name = "bmo-bef-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
+name = "bmo-bex-link"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
@@ -114,13 +105,6 @@ dependencies = [
 [[package]]
 name = "bmo-fat32"
 version = "0.1.0"
-
-[[package]]
-name = "bmo-fb-demo"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
-]
 
 [[package]]
 name = "bmo-fontgen"
@@ -215,34 +199,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "bmo-service-gui"
-version = "0.1.0"
-dependencies = [
- "bmo-userland",
- "boot-context",
-]
-
-[[package]]
-name = "bmo-service-input"
-version = "0.1.0"
-dependencies = [
- "bmo-userland",
- "boot-context",
-]
-
-[[package]]
 name = "bmo-uhid"
 version = "0.1.0"
 dependencies = [
  "bmo-input",
  "bmo-xhci",
-]
-
-[[package]]
-name = "bmo-userland"
-version = "2.0.0"
-dependencies = [
- "boot-context",
 ]
 
 [[package]]

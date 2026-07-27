@@ -2,7 +2,8 @@
 name = "bmo-userland"
 version = "2.0.0"
 edition = "2021"
-description = "BMO userland — Ring 3 syscalls, allocator, panic handler, common types"
+description = "Runtime de Ring 3: los tres syscalls, capabilities y la pantalla"
 
+# Sin dependencias, y eso es el punto: un proceso Ring 3 no comparte structs
+# con el kernel. Habla con el por handles y numeros de operacion, nada mas.
 [dependencies]
-boot-context = { path = "../../Ultra_kernel_x86-64/boot_context" }

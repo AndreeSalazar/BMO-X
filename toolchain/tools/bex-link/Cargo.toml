@@ -1,11 +1,11 @@
 [package]
-name = "bmo-fb-demo"
+name = "bmo-bex-link"
 version = "0.1.0"
 edition = "2021"
-description = "Genera el programa Ring 3 que reclama la pantalla y la pinta"
+description = "Convierte el ELF de un crate Ring 3 en un contenedor BEF (.bex)"
 
 [[bin]]
-name = "fb-demo"
+name = "bex-link"
 path = "src/main.rs"
 
 [dependencies]

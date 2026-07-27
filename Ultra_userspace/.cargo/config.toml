@@ -1,0 +1,15 @@
+# Todo lo que vive aqui es un programa Ring 3 de BMO.
+#
+# `link.ld` no es un detalle de enlazado: reproduce EXACTAMENTE como el kernel
+# coloca las secciones al admitir un `.bex` (ver proc.rs y bex-link). No hay
+# reubicacion — lo que el enlazador escriba como direccion absoluta tiene que
+# caer donde el kernel lo mapee. Los dos lados siguen la misma regla; que
+# coincidan no es suerte, y `bex-link` lo comprueba seccion por seccion.
+[target.x86_64-unknown-none]
+rustflags = [
+  "-C", "link-arg=-T",
+  "-C", "link-arg=userland/link.ld",
+  "-C", "relocation-model=static",
+  "-C", "target-feature=+crt-static",
+  "-C", "linker=rust-lld",
+]

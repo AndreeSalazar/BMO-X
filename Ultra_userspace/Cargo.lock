@@ -7,7 +7,6 @@ name = "bmo-app-launcher"
 version = "0.1.0"
 dependencies = [
  "bmo-userland",
- "boot-context",
 ]
 
 [[package]]
@@ -15,23 +14,6 @@ name = "bmo-app-terminal"
 version = "0.1.0"
 dependencies = [
  "bmo-userland",
- "boot-context",
-]
-
-[[package]]
-name = "bmo-driver-keyboard"
-version = "0.1.0"
-dependencies = [
- "bmo-userland",
- "boot-context",
-]
-
-[[package]]
-name = "bmo-driver-mouse"
-version = "0.1.0"
-dependencies = [
- "bmo-userland",
- "boot-context",
 ]
 
 [[package]]
@@ -39,7 +21,6 @@ name = "bmo-service-gui"
 version = "0.1.0"
 dependencies = [
  "bmo-userland",
- "boot-context",
 ]
 
 [[package]]
@@ -47,16 +28,8 @@ name = "bmo-service-input"
 version = "0.1.0"
 dependencies = [
  "bmo-userland",
- "boot-context",
 ]
 
 [[package]]
 name = "bmo-userland"
-version = "2.0.0"
-dependencies = [
- "boot-context",
-]
-
-[[package]]
-name = "boot-context"
 version = "2.0.0"

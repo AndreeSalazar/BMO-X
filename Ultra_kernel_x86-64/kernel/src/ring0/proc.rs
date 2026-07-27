@@ -69,8 +69,13 @@ static HOLA_COBOL_BEX: &[u8] = include_bytes!("hola_COBOL.bex");
 static RPC_SRV_BEX: &[u8] = include_bytes!("rpc_srv.bex");
 static RPC_CLI_BEX: &[u8] = include_bytes!("rpc_cli.bex");
 
-/// El que reclama la pantalla (`KIND_FRAMEBUFFER`) y la pinta. Se regenera con
-/// `cargo run -p bmo-fb-demo -- <ruta>`.
+/// **El compositor.** Sale de `Ultra_userspace/services/gui`, que es un crate
+/// de Rust de verdad — no un emisor de bytes a mano. `build.ps1` lo compila a
+/// `x86_64-unknown-none` y `bex-link` lo convierte en este `.bex`.
+///
+/// Que exista es lo que convirtió `Ultra_userspace/` de maqueta en código: sin
+/// el paso Rust → `.bex` no había forma de que un crate de allí llegara a
+/// ejecutarse, y por eso llevaba meses lleno de stubs.
 ///
 /// ★ ESTE NO TERMINA. Al reclamar la pantalla el kernel deja de dibujar, y el
 /// programa se queda vivo cediendo el turno para que el escritorio siga ahí:
@@ -79,7 +84,7 @@ static RPC_CLI_BEX: &[u8] = include_bytes!("rpc_cli.bex");
 /// panel del kernel ya no se ve**. Los logs siguen enteros por serie y en
 /// CABINA, y un fault de kernel recupera la pantalla para contarlo. Para
 /// recuperar el panel, quitar su línea de `DEMOS`.
-static ESCRITORIO_BEX: &[u8] = include_bytes!("escritorio.bex");
+static COMPOSITOR_BEX: &[u8] = include_bytes!("compositor.bex");
 
 /// Los programas Ring 3 que BMO admite al arrancar cuando la cadena de
 /// arranque no reservo ninguno.
@@ -106,7 +111,7 @@ static DEMOS: &[(&str, &str, &[u8])] = &[
     ("cli", "rpc_cliente", RPC_CLI_BEX),
     // El ÚLTIMO a propósito: en cuanto reclama la pantalla, el panel del
     // kernel deja de verse. Que los demás hayan hablado antes.
-    ("fb", "escritorio", ESCRITORIO_BEX),
+    ("gui", "compositor", COMPOSITOR_BEX),
 ];
 
 /// Capture the TSS location from the BootContext (identity-mapped).
