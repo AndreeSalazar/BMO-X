@@ -239,11 +239,11 @@ extern "C" fn fault_dispatch(
         // schedule() below loads the NEXT task's CR3 itself.
         return crate::ring0::scheduler::kill_current_and_pick();
     }
-    fault_report(vector, error, rip, cr2, fault_rsp);
-    0
+    fault_report(vector, error, rip, cr2, fault_rsp)
 }
 
 /// Small fixed-capacity line builder (no alloc, exception-context safe).
+#[derive(Clone, Copy)]
 struct Line {
     b: [u8; 80],
     n: usize,
@@ -280,134 +280,97 @@ impl Line {
     }
 }
 
-/// Pinta una línea del informe terminal.
-///
-/// `hay_fb_crudo` y no `has_fb`: si un proceso Ring 3 tenía cedida la
-/// pantalla, un fault de kernel **se la quita**. La máquina se está muriendo y
-/// este informe es lo único que va a quedar; respetar la cesión aquí sería
-/// morir en silencio encima del escritorio de otro.
-fn paint(row: usize, msg: &str) {
-    serial_write("[fault] ");
-    serial_write(msg);
-    serial_write("\n");
-    if crate::info::hay_fb_crudo() {
-        crate::ring0::core::splash::splash_dashboard_log(row, msg);
-    }
-}
 
 /// Terminal fault reporter. Draws to the top of the dashboard log (rows that
 /// stay visible) so a Ring 3 crash is unmistakable instead of a silent hang.
-extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rsp: u64) {
-    // Terminal reporter: force the KERNEL CR3 before painting. A fault taken
-    // under a user CR3 (which does not map the framebuffer identity range)
-    // would otherwise #PF on the first pixel and recurse through this very
-    // handler forever — a frozen screen instead of a report. We never
-    // return, so no need to restore. Guard: before `vmm::init` captures the
-    // boot CR3, kernel_pml4() is 0 — loading that would triple-fault.
+/// Informe terminal de un fallo de Ring 0: pantalla completa, y reinicia.
+///
+/// Antes pintaba quince renglones apretados en las filas del panel y se
+/// quedaba en `hlt` para siempre. Dos problemas: con la pantalla cedida a
+/// Ring 3 el informe quedaba flotando sobre el escritorio de otro, y una
+/// maquina congelada obliga a alguien a levantarse a pulsar el boton — o se
+/// queda muerta hasta que alguien la encuentre.
+extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rsp: u64) -> ! {
+    // Antes de pintar, CR3 del kernel: un fallo tomado bajo un CR3 de usuario
+    // no mapea el framebuffer y el primer pixel daria #PF dentro de este mismo
+    // manejador — recursion infinita y pantalla congelada en vez de informe.
     let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
     if kpml4 != 0 {
         crate::ring0::mm::vmm::switch_to(kpml4);
     }
     let name = match vector {
-        6 => "#UD invalid-op",
-        8 => "#DF double-fault",
-        13 => "#GP protection",
-        14 => "#PF page-fault",
-        _ => "#?? exception",
+        6 => "#UD instruccion invalida",
+        8 => "#DF doble fallo",
+        13 => "#GP violacion de proteccion",
+        14 => "#PF fallo de pagina",
+        _ => "excepcion desconocida",
     };
-    // Última entrada de la bitácora antes de detener la máquina. Hoy muere con
-    // la RAM; cuando el volcado a disco exista, ESTE es el registro que
-    // sobrevive al reset y explica por qué se apagó.
+    // Ultima entrada de la bitacora antes de detener la maquina.
     crate::ring0::cabina::panic_ev("ring0", name, rip);
-    let mut l0 = Line::new();
-    l0.s("*** CPU FAULT ");
-    l0.s(name);
-    paint(0, l0.as_str());
 
-    let mut l1 = Line::new();
-    l1.s("vec=0x");
-    l1.hex(vector, 2);
-    l1.s(" err=0x");
-    l1.hex(error, 8);
-    paint(1, l1.as_str());
+    let mut inf = Informe::nuevo();
 
-    let mut l2 = Line::new();
-    l2.s("rip=0x");
-    l2.hex(rip, 16);
-    paint(2, l2.as_str());
+    let mut l = Line::new();
+    l.s("vec=0x"); l.hex(vector, 2);
+    l.s("  err=0x"); l.hex(error, 8);
+    inf.push(l);
 
-    let mut l3 = Line::new();
-    l3.s("cr2=0x");
-    l3.hex(cr2, 16);
-    paint(3, l3.as_str());
+    let mut l = Line::new();
+    l.s("rip=0x"); l.hex(rip, 16);
+    inf.push(l);
 
-    // ALWAYS show the faulting RSP: it is the stack the faulting instruction
-    // ran on. For the timer iretq entering CPL3 this should be the user task's
-    // high-mem kernel stack; if it is something else, our model is wrong and
-    // this number says exactly where the CPU actually was.
-    let mut l4 = Line::new();
-    l4.s("flt_rsp=0x");
-    l4.hex(fault_rsp, 16);
-    paint(10, l4.as_str());
+    let mut l = Line::new();
+    l.s("cr2=0x"); l.hex(cr2, 16);
+    inf.push(l);
 
-    // Last user-task switch (see scheduler::SWITCH_SNAP): the context the
-    // scheduler handed over, its back-pointer AT the switch instant, and the
-    // same slot re-read NOW under the fault CR3. b valid + n zero ⇒ content
-    // clobbered between switch and epilogue; b zero ⇒ handed over already
-    // dead; b==n==valid ⇒ the epilogue never used this context at all.
+    // El RSP de la instruccion que fallo. Para el iretq que entra en CPL3
+    // deberia ser la pila alta de la tarea; si es otra cosa, este numero dice
+    // donde estaba el CPU de verdad.
+    let mut l = Line::new();
+    l.s("rsp=0x"); l.hex(fault_rsp, 16);
+    inf.push(l);
+
+    // Ultimo cambio a tarea de usuario: el contexto que entrego el
+    // planificador, su back-pointer EN ESE INSTANTE, y la misma ranura releida
+    // AHORA. b valido + n cero => lo pisaron entre el cambio y el epilogo.
     let snap = crate::ring0::scheduler::switch_snap();
     let live = if snap[0] != 0 {
         unsafe { ((snap[0] + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile() }
     } else {
         0
     };
-    let mut l7 = Line::new();
-    l7.s("sw");
-    l7.hex(snap[3], 2);
-    l7.s(" c=");
-    l7.hex(snap[0], 12);
-    l7.s(" b=");
-    l7.hex(snap[1], 12);
-    l7.s(" n=");
-    l7.hex(live, 12);
-    paint(13, l7.as_str());
+    let mut l = Line::new();
+    l.s("sw"); l.hex(snap[3], 2);
+    l.s(" c="); l.hex(snap[0], 12);
+    l.s(" b="); l.hex(snap[1], 12);
+    l.s(" n="); l.hex(live, 12);
+    inf.push(l);
 
-    // La última escritura del RPC en un frame ajeno. Si el contexto que
-    // reventó es el mismo que aparece aquí, la ruta culpable es ésa; si no lo
-    // es, queda descartada de una vez.
+    // La ultima escritura del RPC en un frame ajeno. Si el contexto que
+    // revento es ese, la ruta culpable es esa; si no, queda descartada.
     let ue = crate::ring0::endpoint::ultima_escritura();
-    let mut l8 = Line::new();
-    l8.s("rpc t=");
-    l8.hex(ue[0], 2);
-    l8.s(" ctx=");
-    l8.hex(ue[1], 12);
-    l8.s(" gpr=");
-    l8.hex(ue[2], 12);
-    paint(14, l8.as_str());
+    let mut l = Line::new();
+    l.s("rpc t="); l.hex(ue[0], 2);
+    l.s(" ctx="); l.hex(ue[1], 12);
+    l.s(" gpr="); l.hex(ue[2], 12);
+    inf.push(l);
 
-    // GS split-brain check: the two GS MSRs vs. the PerCpu static address
-    // they are supposed to hold, and the tick count at death. If `b` (live
-    // GS_BASE) differs from `s` (&PER_CPUS[0]), some path moved GS after
-    // init_bsp — the trap stubs then publish the context somewhere the
-    // dispatcher never reads, which restores address 0 (rsp 0x78, cs=0).
+    // GS partido en dos: los MSR contra la direccion del PerCpu que deberian
+    // tener. Si difieren, algun camino movio GS despues de init_bsp.
     let (gsb, kgs, pcaddr) = crate::ring0::percpu::gs_diag();
-    let mut l8 = Line::new();
-    l8.s("gs b=");
-    l8.hex(gsb, 12);
-    l8.s(" k=");
-    l8.hex(kgs, 12);
-    paint(11, l8.as_str());
-    let mut l9 = Line::new();
-    l9.s("pc s=");
-    l9.hex(pcaddr, 12);
-    l9.s(" tk=");
-    l9.hex(crate::ring0::timer::ticks(), 4);
-    paint(12, l9.as_str());
+    let mut l = Line::new();
+    l.s("gs b="); l.hex(gsb, 12);
+    l.s(" k="); l.hex(kgs, 12);
+    l.s(" pc="); l.hex(pcaddr, 12);
+    inf.push(l);
 
-    // If that RSP is in a plausibly-mapped range, read the 5 iretq operands
-    // (rip,cs,rflags,rsp,ss) sitting there — the LIVE values the CPU tried to
-    // load. Compare against the fabricated frame (rows 5-6): match ⇒ the
-    // target/CR3 is at fault; garbage ⇒ the scheduler handed a bad context.
+    let mut l = Line::new();
+    l.s("ticks="); l.hex(crate::ring0::timer::ticks(), 8);
+    inf.push(l);
+
+    // Si ese RSP cae en un rango plausible, los 5 operandos del iretq que el
+    // CPU intento cargar. Basura aqui => el planificador entrego un contexto
+    // podrido; coherentes => el problema es el destino.
     let mapped = fault_rsp >= 0xFFFF_8000_0000_0000
         || (fault_rsp >= 0x1000 && fault_rsp < 0x1_0000_0000);
     if mapped {
@@ -421,21 +384,144 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
                 p.add(4).read_volatile(),
             )
         };
-        let mut l5 = Line::new();
-        l5.s("iq rip=");
-        l5.hex(irip, 12);
-        l5.s(" cs=");
-        l5.hex(ics, 4);
-        l5.s(" ss=");
-        l5.hex(iss, 4);
-        paint(11, l5.as_str());
-        let mut l6 = Line::new();
-        l6.s("iq rsp=");
-        l6.hex(irsp, 12);
-        l6.s(" rfl=");
-        l6.hex(irfl, 6);
-        paint(12, l6.as_str());
+        let mut l = Line::new();
+        l.s("iq rip="); l.hex(irip, 12);
+        l.s(" cs="); l.hex(ics, 4);
+        l.s(" ss="); l.hex(iss, 4);
+        inf.push(l);
+        let mut l = Line::new();
+        l.s("iq rsp="); l.hex(irsp, 12);
+        l.s(" rfl="); l.hex(irfl, 6);
+        inf.push(l);
     }
+
+    pantalla_de_fallo(name, &inf)
+}
+
+// ── La pantalla de fallo ────────────────────────────────────────────────
+
+/// Azul de BMO. No es el de Microsoft ni pretende serlo: una pantalla de
+/// pánico es una pieza de diseño estándar de cualquier sistema operativo, y
+/// ésta lleva la cara de éste. Lo que sí se le copia al mundo entero es la
+/// idea buena — **azul, letra grande, y los números que hacen falta**.
+const FALLO_FONDO: u32 = 0x0011_3A6E;
+const FALLO_TITULO: u32 = 0x00FF_FFFF;
+const FALLO_TEXTO: u32 = 0x00C8_DCF0;
+const FALLO_DATO: u32 = 0x00FF_D2_5A;
+const FALLO_BARRA: u32 = 0x004C_9BE8;
+
+/// Segundos que el informe se queda en pantalla antes de reiniciar.
+///
+/// Bastante para leerlo y, sobre todo, para **fotografiarlo**: aquí la foto es
+/// el depurador. Poco para no dejar la máquina muerta si esto pasa mientras
+/// nadie mira.
+const FALLO_SEGUNDOS: u64 = 20;
+
+/// Filas del informe, en el orden en que se pintan. `faults.rs` las llena.
+struct Informe {
+    lineas: [Line; 12],
+    n: usize,
+}
+
+impl Informe {
+    fn nuevo() -> Self {
+        Self { lineas: [Line::new(); 12], n: 0 }
+    }
+    fn push(&mut self, l: Line) {
+        if self.n < self.lineas.len() {
+            self.lineas[self.n] = l;
+            self.n += 1;
+        }
+        // Todo lo que se pinta va TAMBIÉN por serie, que es lo único que
+        // sobrevive a un reinicio automático.
+        serial_write("[fault] ");
+        serial_write(l.as_str());
+        serial_write("\n");
+    }
+}
+
+/// Pinta el informe a pantalla completa, cuenta atrás, y reinicia.
+///
+/// ★ Usa `hay_fb_crudo`, no `has_fb`: si un proceso Ring 3 tenía cedida la
+/// pantalla, un fallo de kernel **se la quita**. La máquina se está muriendo y
+/// esto es lo único que va a quedar.
+///
+/// ★ Y reinicia en vez de quedarse en `hlt` para siempre. Un kernel congelado
+/// obliga a alguien a levantarse y pulsar el botón; peor aún, si pasa mientras
+/// nadie mira, la máquina se queda muerta hasta que alguien la encuentre.
+fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
+    use crate::ring0::core::splash as sp;
+
+    if !crate::info::hay_fb_crudo() {
+        // Sin pantalla no hay nada que pintar, pero el reinicio sigue siendo
+        // mejor que el congelado.
+        crate::ring0::reinicio::ahora();
+    }
+
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    sp::fallo_fondo(FALLO_FONDO);
+
+    let x = (w / 12).max(48);
+    let mut y = (h / 6).max(60);
+
+    sp::fallo_texto_grande(x, y, "BMO-X se ha detenido", FALLO_TITULO, 2);
+    y += sp::ALTO_LINEA * 3;
+
+    sp::fallo_texto(
+        x,
+        y,
+        "Un fallo en Ring 0 no se puede aislar: el kernel es el suelo",
+        FALLO_TEXTO,
+    );
+    y += sp::ALTO_LINEA;
+    sp::fallo_texto(x, y, "de todo lo demas. Esto es lo que se sabe:", FALLO_TEXTO);
+    y += sp::ALTO_LINEA * 2;
+
+    sp::fallo_texto(x, y, titulo, FALLO_TITULO);
+    y += sp::ALTO_LINEA * 2;
+
+    for i in 0..informe.n {
+        sp::fallo_texto(x, y, informe.lineas[i].as_str(), FALLO_DATO);
+        y += sp::ALTO_LINEA;
+    }
+
+    // ── Cuenta atrás ──
+    let barra_y = h - h / 8;
+    let barra_w = w - x * 2;
+    let alto = 10u32;
+    sp::fallo_texto(
+        x,
+        barra_y - sp::ALTO_LINEA - 8,
+        "Reiniciando. Si quieres la foto, esta es tu ventana.",
+        FALLO_TEXTO,
+    );
+
+    let hz = crate::ring0::scheduler::tsc_freq();
+    if hz == 0 {
+        // Sin TSC calibrado no hay cuenta atrás honesta. Se pinta la barra
+        // llena y se reinicia: mentir con una barra que no mide nada sería
+        // peor que no tenerla.
+        sp::fallo_rect(x, barra_y, barra_w, alto, FALLO_BARRA);
+        for _ in 0..80_000_000u64 {
+            core::hint::spin_loop();
+        }
+        crate::ring0::reinicio::ahora();
+    }
+
+    let inicio = crate::ring0::scheduler::rdtsc();
+    let total = hz * FALLO_SEGUNDOS;
+    loop {
+        let pasado = crate::ring0::scheduler::rdtsc().wrapping_sub(inicio);
+        if pasado >= total {
+            break;
+        }
+        // La barra MENGUA: se ve cuánto queda, no cuánto ha pasado.
+        let restante = ((total - pasado) as u128 * barra_w as u128 / total as u128) as u32;
+        sp::fallo_rect(x, barra_y, barra_w, alto, FALLO_FONDO);
+        sp::fallo_rect(x, barra_y, restante, alto, FALLO_BARRA);
+    }
+    crate::ring0::reinicio::ahora();
 }
 
 /// Motivos con los que un epílogo se niega a restaurar un contexto.
@@ -466,32 +552,23 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
         crate::ring0::mm::vmm::switch_to(kpml4);
     }
     let nombre = if motivo == PODRIDO_SELLO {
-        "CONTEXTO PODRIDO: sello roto"
+        "CONTEXTO PODRIDO: el sello no esta"
     } else {
-        "CONTEXTO PODRIDO: cs invalido"
+        "CONTEXTO PODRIDO: cs imposible"
     };
     crate::ring0::cabina::panic_ev("ring0", nombre, rsp);
 
-    let mut l0 = Line::new();
-    l0.s("*** ");
-    l0.s(nombre);
-    paint(0, l0.as_str());
+    let mut inf = Informe::nuevo();
 
-    // La dirección que el epílogo iba a usar, y de ahí la base del área: para
-    // el sello `rsp` YA es la base; para el `cs`, el frame está 120 bytes por
-    // encima del bloque de GPR, cuyo back-pointer cuelga del área.
-    let mut l1 = Line::new();
-    l1.s("rsp=0x");
-    l1.hex(rsp, 12);
-    l1.s(" motivo=");
-    l1.hex(motivo, 2);
-    paint(1, l1.as_str());
+    let mut l = Line::new();
+    l.s("rsp=0x"); l.hex(rsp, 12);
+    l.s("  motivo="); l.hex(motivo, 2);
+    inf.push(l);
 
-    // Con el sello, `rsp` YA es la base del área. Con el `cs` hay que llegar a
+    // Con el sello, `rsp` YA es la base del area. Con el `cs` hay que llegar a
     // ella: `rsp` es la cola del frame (gpr_base+120), y el back-pointer —el
-    // único puntero que ata frame y área— vive en `xsave_base+XSAVE_AREA`,
-    // entre 8 y 71 bytes por debajo del bloque de GPR. Se busca ahí el qword
-    // que apunta a `gpr_base`: encontrarlo identifica el área sin adivinar.
+    // unico puntero que ata frame y area— vive entre 8 y 71 bytes por debajo
+    // del bloque de GPR. Se busca ahi el qword que apunta a `gpr_base`.
     let base = if motivo == PODRIDO_SELLO {
         rsp
     } else {
@@ -509,18 +586,15 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
         hallada
     };
     let (firma, dueno) = crate::ring0::trap::leer_sello(base);
-    let mut l2 = Line::new();
-    l2.s("sello=0x");
-    l2.hex(firma, 8);
-    l2.s(" dueno=");
-    l2.hex(dueno, 4);
-    l2.s(" area=");
-    l2.hex(base, 12);
-    paint(2, l2.as_str());
+    let mut l = Line::new();
+    l.s("sello=0x"); l.hex(firma, 8);
+    l.s("  dueno=tid "); l.hex(dueno, 4);
+    l.s("  area="); l.hex(base, 12);
+    inf.push(l);
 
-    // Las cinco palabras que el `iretq` iba a consumir (o los primeros bytes
-    // del área). Si aquí sale 0x37F/0x1F80, lo que hay encima del contexto es
-    // la imagen XSAVE de OTRO contexto: alguien trapeó sobre esta pila.
+    // Las cinco palabras que el iretq iba a consumir. Si aqui sale 0x37F y
+    // 0x1F80, lo que hay encima del contexto es la imagen XSAVE de OTRO:
+    // alguien trapeo sobre esta pila.
     let p = rsp as *const u64;
     let (w0, w1, w2, w3, w4) = unsafe {
         (
@@ -531,44 +605,31 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
             p.add(4).read_volatile(),
         )
     };
-    let mut l3 = Line::new();
-    l3.s("w0=");
-    l3.hex(w0, 12);
-    l3.s(" w1=");
-    l3.hex(w1, 4);
-    l3.s(" w2=");
-    l3.hex(w2, 6);
-    paint(3, l3.as_str());
-    let mut l4 = Line::new();
-    l4.s("w3=");
-    l4.hex(w3, 12);
-    l4.s(" w4=");
-    l4.hex(w4, 4);
-    paint(4, l4.as_str());
+    let mut l = Line::new();
+    l.s("w0="); l.hex(w0, 12);
+    l.s(" w1="); l.hex(w1, 4);
+    l.s(" w2="); l.hex(w2, 6);
+    inf.push(l);
+    let mut l = Line::new();
+    l.s("w3="); l.hex(w3, 12);
+    l.s(" w4="); l.hex(w4, 4);
+    inf.push(l);
 
     let snap = crate::ring0::scheduler::switch_snap();
-    let mut l5 = Line::new();
-    l5.s("sw");
-    l5.hex(snap[3], 2);
-    l5.s(" c=");
-    l5.hex(snap[0], 12);
-    l5.s(" b=");
-    l5.hex(snap[1], 12);
-    paint(5, l5.as_str());
+    let mut l = Line::new();
+    l.s("sw"); l.hex(snap[3], 2);
+    l.s(" c="); l.hex(snap[0], 12);
+    l.s(" b="); l.hex(snap[1], 12);
+    inf.push(l);
 
     let ue = crate::ring0::endpoint::ultima_escritura();
-    let mut l6 = Line::new();
-    l6.s("rpc t=");
-    l6.hex(ue[0], 2);
-    l6.s(" ctx=");
-    l6.hex(ue[1], 12);
-    l6.s(" gpr=");
-    l6.hex(ue[2], 12);
-    paint(6, l6.as_str());
+    let mut l = Line::new();
+    l.s("rpc t="); l.hex(ue[0], 2);
+    l.s(" ctx="); l.hex(ue[1], 12);
+    l.s(" gpr="); l.hex(ue[2], 12);
+    inf.push(l);
 
-    loop {
-        unsafe { core::arch::asm!("cli", "hlt", options(nomem, nostack)) };
-    }
+    pantalla_de_fallo(nombre, &inf)
 }
 
 /// Patch the live IDT so #UD/#DF/#GP/#PF report on screen. Uses IST1 (set up

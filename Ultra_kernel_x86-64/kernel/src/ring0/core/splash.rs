@@ -928,3 +928,42 @@ pub fn splash_status_right(layout: &str, caps: bool, num: bool) {
         draw_str(x + 7, 14, "NUM", CHROME);
     }
 }
+
+// ── Pantalla de fallo ───────────────────────────────────────────────────
+//
+// El informe de un fault de Ring 0 se pintaba en las filas del panel, encima
+// de lo que hubiera. Cuando la pantalla esta cedida a Ring 3 eso deja el
+// informe flotando sobre el escritorio de otro; y aunque no lo estuviera, un
+// kernel que se muere merece decirlo con todas las letras y no en tres
+// renglones apretados.
+//
+// Estos cuatro son lo minimo para pintar una pantalla entera desde `faults.rs`
+// sin exponer el resto del splash ni duplicar el dibujado de texto.
+
+/// Alto de una linea de texto, en pixeles. Lo necesita quien decida el layout.
+pub const ALTO_LINEA: u32 = CHAR_H as u32;
+/// Ancho de un caracter. La fuente es de paso fijo.
+pub const ANCHO_CHAR: u32 = CHAR_W as u32;
+
+/// Pinta la pantalla ENTERA de un color.
+pub fn fallo_fondo(color: u32) {
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 { return; }
+    fill_rect(0, 0, w, h, color);
+}
+
+/// Un rectangulo. Para la barra de la cuenta atras.
+pub fn fallo_rect(x: u32, y: u32, w: u32, h: u32, color: u32) {
+    fill_rect(x, y, w, h, color);
+}
+
+/// Texto en una posicion exacta.
+pub fn fallo_texto(x: u32, y: u32, s: &str, color: u32) {
+    draw_str(x, y, s, color);
+}
+
+/// Texto grande, para el titulo.
+pub fn fallo_texto_grande(x: u32, y: u32, s: &str, color: u32, escala: u32) {
+    draw_str_scaled(x, y, s, color, escala);
+}

@@ -57,6 +57,14 @@ const MEDIDA_LADO: u32 = 56;
 const MEDIDA_Y: u32 = BARRA_ALTO + 24;
 const MEDIDA_X: u32 = 24;
 
+/// Pulsómetro del ratón: cuántos reportes HID han llegado. Es un número que
+/// sin fuente no se puede escribir, así que se dice con una barra que crece.
+/// Quieta = el ratón no llega; llena = late.
+const PULSO_X: u32 = 24;
+const PULSO_Y: u32 = MEDIDA_Y + MEDIDA_LADO + 32;
+const PULSO_ANCHO: u32 = 240;
+const PULSO_ALTO: u32 = 14;
+
 /// Qué color le toca a un píxel según la escena. Es el modelo entero del
 /// escritorio, y es lo que permite borrar el cursor sin repintarlo todo:
 /// para restaurar una zona basta con volver a preguntar qué había ahí.
@@ -162,6 +170,14 @@ pub extern "C" fn _start() -> ! {
         i += 1;
     }
 
+    // Marco del pulsómetro del ratón. Sin fuente todavía, así que el dato se
+    // dice con una barra: si NO crece, el HID no está entregando nada y el
+    // problema está en el USB, no aquí. Y si el ratón ni se pudo reclamar, el
+    // marco sale en rojo — dos fallos distintos, dos aspectos distintos.
+    let marco = if raton.is_some() { ACENTO } else { 0x00E0_4040 };
+    p.rect(PULSO_X - 2, PULSO_Y - 2, PULSO_ANCHO + 4, PULSO_ALTO + 4, marco);
+    p.rect(PULSO_X, PULSO_Y, PULSO_ANCHO, PULSO_ALTO, FONDO);
+
     bmo::consola("escritorio pintado\n");
 
     // ── El bucle de vida ──
@@ -171,6 +187,7 @@ pub extern "C" fn _start() -> ! {
     // paso esto ejerce el cambio de contexto miles de veces por segundo, que
     // es justo el camino que costó una foto de madrugada.
     let (mut ax, mut ay) = (u32::MAX, u32::MAX);
+    let mut pulso_previo = 0u32;
     loop {
         if let Some(r) = raton.as_ref() {
             let pos = r.leer();
@@ -182,6 +199,18 @@ pub extern "C" fn _start() -> ! {
                 ax = pos.x;
                 ay = pos.y;
             }
+            // El pulsómetro. Se satura a propósito: interesa "late / no late",
+            // no el valor exacto, y una barra que se sale de la pantalla no
+            // dice nada que no diga una llena.
+            let ev = r.eventos().min(PULSO_ANCHO as u64) as u32;
+            if ev != pulso_previo {
+                p.rect(PULSO_X, PULSO_Y, ev, PULSO_ALTO, ACENTO);
+                pulso_previo = ev;
+            }
+            // Los botones, encima del marco: pulsar debería verse aunque el
+            // movimiento no llegue. Son dos preguntas distintas al mismo HID.
+            let c = if pos.botones != 0 { 0x00FF_FFFF } else { FONDO };
+            p.rect(PULSO_X + PULSO_ANCHO + 16, PULSO_Y, PULSO_ALTO, PULSO_ALTO, c);
         }
         bmo::ceder();
     }

@@ -1234,9 +1234,12 @@ fn shell_panic() -> ! {
 }
 
 fn shell_reboot() -> ! {
-    s_log("[shell] reboot (keyboard reset pulse)");
-    unsafe { core::arch::asm!("out 0x64, al", in("al") 0xFEu8); }
-    loop { unsafe { core::arch::asm!("hlt"); } }
+    // El pulso del 8042 a secas no reiniciaba nada en esta placa —su i8042
+    // solo entrega ruido— asi que el comando se quedaba colgado en el `hlt`
+    // de despues. `reinicio::ahora` prueba 0xCF9, luego el 8042, y si nada
+    // funciona provoca un triple fault, que no depende de ningun chipset.
+    s_log("[shell] reboot");
+    crate::ring0::reinicio::ahora();
 }
 
 fn shell_halt() -> ! {

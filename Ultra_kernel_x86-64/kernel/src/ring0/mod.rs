@@ -27,6 +27,7 @@ pub mod dev {
 pub mod mm;
 pub mod percpu;
 pub mod proc;
+pub mod reinicio;
 pub mod scheduler;
 pub mod spin;
 pub mod svc;
