@@ -120,6 +120,10 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "mov rsp, rax",
         "cmp qword ptr [rsp+{firma}], {magia}",
         "jne 3f",
+        // UN SOLO USO: al restaurarlo se borra el sello. Un contexto que ya
+        // se consumio no puede volver a pasar por bueno — si alguien lo
+        // intenta, se planta con nombre en vez de reventar en el xrstor.
+        "mov qword ptr [rsp+{firma}], 0",
         "mov eax, -1", "mov edx, -1",
         "xrstor64 [rsp]",
         "mov rsp, [rsp+{area}]",

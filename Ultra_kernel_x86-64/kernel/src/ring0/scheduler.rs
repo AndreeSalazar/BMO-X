@@ -209,17 +209,40 @@ enum Saliente {
 
 /// Commit a context switch if a better task exists. Must run with the lock
 /// held and from a trap boundary only.
+///
+/// ★ **UN CONTEXTO SÓLO SE GUARDA SI EL CAMBIO SE CONSUMA.** Esto costó tres
+/// días y tres fotos, así que merece estar escrito entero.
+///
+/// Antes `context_rsp` se guardaba nada más entrar, **antes** de saber si iba a
+/// haber cambio. Cuando no lo había —`next == current`, o el destino sin
+/// contexto— el epílogo restauraba ese mismo contexto en el acto y lo
+/// **consumía**: `xrstor`, `pop`×15, `iretq`, y la ejecución seguía por encima
+/// de él. A partir de ese instante esa dirección es pila libre. Pero en la
+/// tabla seguía anotada como "el contexto de esta tarea".
+///
+/// Con las tareas de usuario no se notaba: entran siempre por `TSS.RSP0`, o sea
+/// por la cima de su pila, así que su contexto cae siempre en el mismo sitio y
+/// una dirección caducada resulta ser la buena por casualidad.
+///
+/// **La tarea 0 no.** Es el shell, corre en la pila de arranque, y el timer la
+/// interrumpe a la profundidad a la que esté en ese momento. Su contexto se
+/// guarda a una profundidad distinta cada vez. Secuencia mortal:
+///
+/// 1. El timer interrumpe a la tarea 0 hondo; se publica el área A y se anota.
+/// 2. No hay otra tarea lista: `next == current`, no hay cambio. El epílogo
+///    restaura A y la tarea 0 sigue — A queda consumida.
+/// 3. La tarea 0 sube por la pila; un trap posterior, más arriba, extiende su
+///    propia área 1256 bytes hacia abajo y **escribe encima de A**.
+/// 4. El compositor cede el turno. El planificador elige la tarea 0 y restaura
+///    A, que ya es basura.
+///
+/// El síntoma exacto de la foto: el `xsave64` del vándalo dejó su `FCW`
+/// (`0x37F`) justo en el `XSTATE_BV` de A. `XSTATE_BV = 0x37F` enciende bits
+/// que `XCR0 = 0x7` no tiene, y eso es `#GP(0)` en `xrstor64` por definición.
+/// Con el compositor cediendo miles de veces por segundo, el paso 4 pasa
+/// constantemente; por eso apareció justo ahora.
 fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
-    // Capture the outgoing context exactly as the trap stub left it.
     let outgoing = percpu::trap_rsp();
-    if saliente == Saliente::Publicado && outgoing != 0 {
-        s.tasks[s.current].context_rsp = outgoing;
-        // El dueño, en el propio contexto. El stub ya puso la firma en
-        // ensamblador; el tid lo sabe Rust. Con los dos, un epílogo que se
-        // encuentre algo raro puede decir DE QUIÉN era, no solo que estaba
-        // roto.
-        crate::ring0::trap::sellar(outgoing, s.tasks[s.current].tid);
-    }
     if s.tasks[s.current].state == TaskState::Running {
         s.tasks[s.current].state = TaskState::Ready;
     }
@@ -238,6 +261,21 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
             s.tasks[s.current].state = TaskState::Running;
         }
         return;
+    }
+    // ── El cambio VA a ocurrir. Ahora, y sólo ahora, se guarda el saliente ──
+    //
+    // A partir de aquí no hay vuelta atrás: el epílogo va a restaurar
+    // `next_rsp`, así que el contexto que entró por este trap NO se consume y
+    // su dirección sigue siendo válida hasta que esta tarea vuelva a entrar.
+    // Guardarlo antes de este punto era anotar como vigente un contexto que un
+    // instante después se restauraba y quedaba caduco.
+    if saliente == Saliente::Publicado && outgoing != 0 {
+        s.tasks[s.current].context_rsp = outgoing;
+        // El dueño, en el propio contexto. El stub ya puso la firma en
+        // ensamblador; el tid lo sabe Rust. Con los dos, un epílogo que se
+        // encuentre algo raro puede decir DE QUIÉN era, no sólo que estaba
+        // roto.
+        crate::ring0::trap::sellar(outgoing, s.tasks[s.current].tid);
     }
     s.tasks[next].state = TaskState::Running;
     s.tasks[next].remaining_ticks = DEFAULT_QUANTUM_TICKS;

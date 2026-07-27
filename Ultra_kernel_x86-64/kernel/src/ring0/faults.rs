@@ -79,6 +79,8 @@ macro_rules! err_stub_isolating {
                 "mov rsp, rax",
                 "cmp qword ptr [rsp + {firma}], {magia}",
                 "jne 6f",
+                // Un solo uso: ver el epilogo del timer.
+                "mov qword ptr [rsp + {firma}], 0",
                 // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
                 // recuperan de los pops de abajo.
                 "mov eax, -1", "mov edx, -1",
@@ -133,6 +135,8 @@ macro_rules! noerr_stub_isolating {
                 "mov rsp, rax",
                 "cmp qword ptr [rsp + {firma}], {magia}",
                 "jne 6f",
+                // Un solo uso: ver el epilogo del timer.
+                "mov qword ptr [rsp + {firma}], 0",
                 // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
                 // recuperan de los pops de abajo.
                 "mov eax, -1", "mov edx, -1",
