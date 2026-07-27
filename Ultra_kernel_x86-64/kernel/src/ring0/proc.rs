@@ -69,6 +69,18 @@ static HOLA_COBOL_BEX: &[u8] = include_bytes!("hola_COBOL.bex");
 static RPC_SRV_BEX: &[u8] = include_bytes!("rpc_srv.bex");
 static RPC_CLI_BEX: &[u8] = include_bytes!("rpc_cli.bex");
 
+/// El que reclama la pantalla (`KIND_FRAMEBUFFER`) y la pinta. Se regenera con
+/// `cargo run -p bmo-fb-demo -- <ruta>`.
+///
+/// ★ ESTE NO TERMINA. Al reclamar la pantalla el kernel deja de dibujar, y el
+/// programa se queda vivo cediendo el turno para que el escritorio siga ahí:
+/// si saliera, `revoke_all` devolvería la pantalla y el panel se repintaría
+/// encima. Consecuencia a tener presente: **después de que este arranque, el
+/// panel del kernel ya no se ve**. Los logs siguen enteros por serie y en
+/// CABINA, y un fault de kernel recupera la pantalla para contarlo. Para
+/// recuperar el panel, quitar su línea de `DEMOS`.
+static ESCRITORIO_BEX: &[u8] = include_bytes!("escritorio.bex");
+
 /// Los programas Ring 3 que BMO admite al arrancar cuando la cadena de
 /// arranque no reservo ninguno.
 ///
@@ -92,6 +104,9 @@ static DEMOS: &[(&str, &str, &[u8])] = &[
     // sobre la que se pueda construir.
     ("srv", "rpc_servidor", RPC_SRV_BEX),
     ("cli", "rpc_cliente", RPC_CLI_BEX),
+    // El ÚLTIMO a propósito: en cuanto reclama la pantalla, el panel del
+    // kernel deja de verse. Que los demás hayan hablado antes.
+    ("fb", "escritorio", ESCRITORIO_BEX),
 ];
 
 /// Capture the TSS location from the BootContext (identity-mapped).

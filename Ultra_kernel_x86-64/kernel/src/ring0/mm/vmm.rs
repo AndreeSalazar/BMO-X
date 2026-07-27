@@ -25,6 +25,10 @@ pub const USER_IMAGE_BASE: u64 = 0x0000_0000_4000_0000;
 pub const USER_STACK_TOP: u64 = 0x0000_0000_8000_0000;
 pub const USER_STACK_SIZE: u64 = 0x10_0000;
 pub const CHANNEL_VA_BASE: u64 = 0x0000_0000_C000_0000;
+/// Donde se mapea el framebuffer en el espacio de quien reclame la pantalla.
+/// Por encima de los estuarios y con sitio de sobra: 4K x 4K x 4 B son 64 MiB
+/// y aqui hay un hueco entero de 1 GiB antes del limite del canonical bajo.
+pub const FRAMEBUFFER_VA_BASE: u64 = 0x0000_0000_D000_0000;
 
 static mut KERNEL_PML4: u64 = 0;
 

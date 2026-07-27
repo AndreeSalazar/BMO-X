@@ -24,6 +24,13 @@ pub enum HandleKind {
     QueryHeap = 0x0C,
     BlasAccelStruct = 0x0D,
     TlasAccelStruct = 0x0E,
+    /// **La pantalla.** El derecho a escribir píxeles directamente: el kernel
+    /// mapea el framebuffer en el espacio del proceso UNA VEZ y a partir de
+    /// ahí no vuelve a tocarlo. No hay syscall por píxel porque no hay
+    /// frontera que cruzar — es el momento library-OS del diseño.
+    ///
+    /// Es exclusiva por construcción: un solo proceso la tiene a la vez.
+    Framebuffer = 0x0F,
 
     // ─── Audio (0x10..0x1F) ──────────────────────────────────────────
     AudioEngine = 0x10,
@@ -100,6 +107,7 @@ impl HandleKind {
             0x0C => Some(Self::QueryHeap),
             0x0D => Some(Self::BlasAccelStruct),
             0x0E => Some(Self::TlasAccelStruct),
+            0x0F => Some(Self::Framebuffer),
             0x10 => Some(Self::AudioEngine),
             0x11 => Some(Self::AudioVoice),
             0x12 => Some(Self::AudioSpatializer),

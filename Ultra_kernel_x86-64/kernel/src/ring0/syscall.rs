@@ -48,6 +48,10 @@ const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
 /// a quien deba tenerlo. Se dice aquí para que nadie lo confunda con el
 /// diseño final.
 const TASK_OP_ENDPOINT_CONNECT: u64 = 0x08;
+/// Reclamar la pantalla. Devuelve un handle `KIND_FRAMEBUFFER` y, con él, el
+/// framebuffer mapeado en el espacio del proceso. Ver `ring0/fb.rs`: a partir
+/// de aquí el kernel deja de dibujar y el proceso escribe píxeles con `mov`.
+const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -224,6 +228,20 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
                 None => BmoStatus::err(endpoint::ERROR_ENDPOINT_DEAD),
             }
         }
+        // La pantalla. El espacio de direcciones en el que se mapea es el que
+        // está cargado AHORA: durante un SYSCALL desde Ring 3, CR3 sigue
+        // siendo el del llamante — el cambio de CR3 sólo ocurre en un cambio
+        // de contexto, y aquí todavía no ha habido ninguno.
+        TASK_OP_FRAMEBUFFER_CLAIM => {
+            let _ = arg0;
+            match crate::ring0::fb::reclamar(
+                scheduler::current_pid(),
+                crate::ring0::mm::vmm::read_cr3(),
+            ) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
         _ => unsupported(),
     }
 }
@@ -275,6 +293,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
     match cap::resolve(pid, frame.rdi, cap::RIGHT_READ) {
         Ok(resolved) => match resolved.kind {
             cap::KIND_CHANNEL => invoke_channel(resolved, frame.rsi),
+            // La pantalla sólo contesta preguntas: dónde está y qué forma
+            // tiene. Los píxeles no pasan por aquí — para eso está mapeada.
+            cap::KIND_FRAMEBUFFER => {
+                match crate::ring0::fb::operacion(resolved.object, frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
             _ => unsupported(),
         },
         Err(err) => cap_err(err),

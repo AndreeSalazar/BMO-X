@@ -280,11 +280,17 @@ impl Line {
     }
 }
 
+/// Pinta una línea del informe terminal.
+///
+/// `hay_fb_crudo` y no `has_fb`: si un proceso Ring 3 tenía cedida la
+/// pantalla, un fault de kernel **se la quita**. La máquina se está muriendo y
+/// este informe es lo único que va a quedar; respetar la cesión aquí sería
+/// morir en silencio encima del escritorio de otro.
 fn paint(row: usize, msg: &str) {
     serial_write("[fault] ");
     serial_write(msg);
     serial_write("\n");
-    if crate::info::has_fb() {
+    if crate::info::hay_fb_crudo() {
         crate::ring0::core::splash::splash_dashboard_log(row, msg);
     }
 }

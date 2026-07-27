@@ -6,6 +6,7 @@ pub mod estratos;
 pub mod endpoint;
 pub mod cap;
 pub mod faults;
+pub mod fb;
 pub mod core {
     pub mod entry;
     pub mod phase;

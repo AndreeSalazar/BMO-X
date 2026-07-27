@@ -29,8 +29,37 @@ pub fn init_from(ctx: &BootContext) {
     }
 }
 
+/// La pantalla está CEDIDA a un proceso Ring 3.
+///
+/// Mientras lo esté, el kernel no dibuja: ni el panel, ni CABINA, ni los logs
+/// de los drivers. No es una optimización, es la definición de haber cedido —
+/// dos dueños pintando el mismo framebuffer no es "compartir", es parpadeo.
+///
+/// La excepción es el reporter de faults, que usa `hay_fb_crudo`: un fault de
+/// kernel es terminal y recuperar la pantalla para contarlo es exactamente lo
+/// que hay que hacer.
+static CEDIDO: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+pub fn ceder_fb(cedido: bool) {
+    CEDIDO.store(cedido, core::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn fb_cedido() -> bool {
+    CEDIDO.load(core::sync::atomic::Ordering::SeqCst)
+}
+
 /// Returns true if a framebuffer is available and the splash should
 /// render. The chain may pass an empty FB if UEFI GOP was not present.
+///
+/// Falso también cuando la pantalla está cedida a Ring 3: **todos** los
+/// caminos de dibujo del kernel ya preguntan por aquí, así que ceder la
+/// pantalla los apaga a todos de una vez, sin tocarlos uno a uno.
 pub fn has_fb() -> bool {
+    hay_fb_crudo() && !fb_cedido()
+}
+
+/// ¿Existe físicamente un framebuffer? Sin mirar quién es su dueño.
+/// Sólo para el reporter de faults y para el propio objeto de capability.
+pub fn hay_fb_crudo() -> bool {
     unsafe { FB_ADDR != 0 && FB_WIDTH != 0 && FB_HEIGHT != 0 }
 }
