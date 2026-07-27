@@ -281,19 +281,34 @@ unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
     let mmio_base = ctrl.mmio_base;
     let np = ctrl.port_count.min(32);
     let mut active = 0u32;
+    let mut vacios = 0u32;
     for i in 0..np {
         let declared = pi & (1 << i) != 0;
         let ssts = port_link_up(mmio_base, i, sss);
         // Cada puerto dice su estado CRUDO aquí, en el driver, que es quien lo
         // tiene delante. El `!` marca los que `PI` NO declaraba: si uno de
         // esos trae disco, el firmware estaba mintiendo.
-        hal.log(if declared { "[ahci] p" } else { "[ahci] !p" });
-        hal.log_hex("", i as u64);
-        hal.log_hex(" ssts=", ssts as u64);
-        hal.log_hex(" cmd=", port_read(mmio_base, i, PORT_CMD) as u64);
-        hal.log_hex(" sctl=", port_read(mmio_base, i, PORT_SCTL) as u64);
-        hal.log_hex(" sig=", port_read(mmio_base, i, PORT_SIG) as u64);
-        hal.log("\n");
+        //
+        // Solo se imprimen los puertos que tienen ALGO que contar. Un HBA con
+        // 32 puertos y un disco escupía treinta líneas de ceros idénticas que
+        // barrían el arranque entero fuera del panel — y el panel es la única
+        // ventana que hay, porque aquí no se puede hacer scroll hacia atrás.
+        // Los vacíos se cuentan y se resumen en una sola línea al final: el
+        // número sigue estando, que es lo que importaba.
+        let algo = ssts != 0
+            || port_read(mmio_base, i, PORT_CMD) != 0
+            || port_read(mmio_base, i, PORT_SIG) != 0;
+        if algo {
+            hal.log(if declared { "[ahci] p" } else { "[ahci] !p" });
+            hal.log_hex("", i as u64);
+            hal.log_hex(" ssts=", ssts as u64);
+            hal.log_hex(" cmd=", port_read(mmio_base, i, PORT_CMD) as u64);
+            hal.log_hex(" sctl=", port_read(mmio_base, i, PORT_SCTL) as u64);
+            hal.log_hex(" sig=", port_read(mmio_base, i, PORT_SIG) as u64);
+            hal.log("\n");
+        } else {
+            vacios += 1;
+        }
         // DET=3 es "dispositivo presente y comunicación establecida": el único
         // estado en el que tiene sentido hablarle.
         let state = match ssts & SSTS_DET {
@@ -307,6 +322,12 @@ unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
             cmd: port_read(mmio_base, i, PORT_CMD),
             command_list_phys: 0, fis_phys: 0, cmd_table_phys: 0,
         };
+    }
+    // El resumen de los callados. El dato no se pierde: si algún día "faltan"
+    // puertos, este número dice cuántos se miraron y estaban en cero.
+    if vacios > 0 {
+        hal.log_hex("[ahci] puertos vacios (no se listan): ", vacios as u64);
+        hal.log("\n");
     }
     active
 }

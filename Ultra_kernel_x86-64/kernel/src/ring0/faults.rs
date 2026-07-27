@@ -344,6 +344,19 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     l7.hex(live, 12);
     paint(13, l7.as_str());
 
+    // La última escritura del RPC en un frame ajeno. Si el contexto que
+    // reventó es el mismo que aparece aquí, la ruta culpable es ésa; si no lo
+    // es, queda descartada de una vez.
+    let ue = crate::ring0::endpoint::ultima_escritura();
+    let mut l8 = Line::new();
+    l8.s("rpc t=");
+    l8.hex(ue[0], 2);
+    l8.s(" ctx=");
+    l8.hex(ue[1], 12);
+    l8.s(" gpr=");
+    l8.hex(ue[2], 12);
+    paint(14, l8.as_str());
+
     // GS split-brain check: the two GS MSRs vs. the PerCpu static address
     // they are supposed to hold, and the tick count at death. If `b` (live
     // GS_BASE) differs from `s` (&PER_CPUS[0]), some path moved GS after

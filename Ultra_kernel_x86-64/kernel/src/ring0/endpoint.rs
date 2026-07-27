@@ -329,12 +329,31 @@ fn completar(caller_tid: u32, gen: u32, code: u32, value: u64) {
 ///
 /// El layout es el de `trap.rs`: el back-pointer al bloque de GPR vive al
 /// final del área de XSAVE.
+/// Huella de la ÚLTIMA escritura en un frame ajeno: `[tid, ctx, gpr_base]`.
+///
+/// El reporter de faults la pinta. Si un contexto se corrompe, esto dice si el
+/// RPC escribió —y DÓNDE— justo antes. Comparar `ctx` con el `c=` del switch y
+/// `gpr_base` con el `b=` responde de una vez si esta ruta es la culpable, en
+/// vez de seguir arreglando a ciegas.
+static mut ULTIMA_ESCRITURA: [u64; 3] = [0; 3];
+
+/// Lo último que el RPC escribió en el frame de otra tarea.
+pub fn ultima_escritura() -> [u64; 3] { unsafe { ULTIMA_ESCRITURA } }
+
 fn escribir_en_frame(tid: u32, code: u32, value: u64) {
     let ctx = scheduler::context_rsp_of(tid);
-    if ctx == 0 { return; }
+    if ctx == 0 {
+        unsafe { ULTIMA_ESCRITURA = [tid as u64, 0, 0]; }
+        return;
+    }
     unsafe {
         let gpr_base = ((ctx + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
+        ULTIMA_ESCRITURA = [tid as u64, ctx, gpr_base];
         if gpr_base == 0 { return; }
+        // Un back-pointer sano SIEMPRE está por encima de su área y a menos de
+        // una pila de distancia. Si no lo está, el que se corrompió fue el
+        // propio back-pointer y escribir ahí solo empeoraría las cosas.
+        if gpr_base <= ctx || gpr_base - ctx > 64 * 1024 { return; }
         let frame = &mut *(gpr_base as *mut crate::ring0::trap::TrapFrame);
         frame.rax = code as u64;
         frame.rdx = value;
