@@ -411,6 +411,8 @@ enum Orden<'a> {
     Lanzar(&'a [u8]),
     Limpiar,
     Ayuda,
+    /// Ensena o esconde la calculadora.
+    Calculadora,
     /// `ls [ruta]` — qué hay en el disco. Antes esto no podía existir: no
     /// había capability de directorio, así que había que saberse los nombres
     /// de memoria y teclearlos enteros.
@@ -487,6 +489,186 @@ impl Historial {
         let k = self.largos[self.cursor];
         dst[..k].copy_from_slice(&self.lineas[self.cursor][..k]);
         Some(k)
+    }
+}
+
+// ── La calculadora ──────────────────────────────────────────────────────
+//
+// La CARA. El cálculo lo hace `apps/calcgui.bex`, en COBOL, con decimal
+// exacto en centavos. Es la separación que Windows no hace —su calculadora
+// lleva el motor dentro de la app— y es la que permite cambiar la una sin
+// tocar la otra: mañana el motor puede ser Ada y esto no se entera.
+
+const CALC_COLS: usize = 4;
+const CALC_ROWS: usize = 5;
+const CALC_BOTON: u32 = 72;
+const CALC_HUECO: u32 = 6;
+const CALC_FONDO: u32 = 0x0018_2434;
+const CALC_TECLA: u32 = 0x002B_3B52;
+const CALC_TECLA_OP: u32 = 0x003A_5878;
+const CALC_TECLA_IGUAL: u32 = 0x004C_9BE8;
+
+/// Las teclas, en el orden en que se dibujan. `\0` = hueco.
+const CALC_TECLAS: [[u8; CALC_COLS]; CALC_ROWS] = [
+    [b'C', b'/', b'*', b'-'],
+    [b'7', b'8', b'9', b'+'],
+    [b'4', b'5', b'6', 0],
+    [b'1', b'2', b'3', b'='],
+    [b'0', b'.', 0, 0],
+];
+
+/// Estado de la calculadora. Los operandos se guardan como TEXTO, no como
+/// número: quien sabe de números aquí es el COBOL, y convertir dos veces sólo
+/// añade sitios donde perder un decimal.
+struct Calc {
+    visible: bool,
+    /// Lo que se está tecleando ahora.
+    entrada: [u8; 20],
+    n: usize,
+    /// El operando de la izquierda, ya cerrado.
+    guardado: [u8; 20],
+    guardado_n: usize,
+    /// 0 = ninguno; 1..4 = + - * /
+    op: u8,
+    /// Se lanzó el motor y se espera su respuesta.
+    esperando: bool,
+}
+
+impl Calc {
+    fn nueva() -> Self {
+        Self {
+            visible: false,
+            entrada: [0; 20],
+            n: 0,
+            guardado: [0; 20],
+            guardado_n: 0,
+            op: 0,
+            esperando: false,
+        }
+    }
+
+    fn meter(&mut self, c: u8) {
+        if self.n < self.entrada.len() {
+            self.entrada[self.n] = c;
+            self.n += 1;
+        }
+    }
+
+    fn limpiar(&mut self) {
+        self.n = 0;
+        self.guardado_n = 0;
+        self.op = 0;
+        self.esperando = false;
+    }
+
+    /// Cierra el operando de la izquierda y anota qué operación viene.
+    fn operador(&mut self, op: u8) {
+        if self.n > 0 {
+            self.guardado[..self.n].copy_from_slice(&self.entrada[..self.n]);
+            self.guardado_n = self.n;
+            self.n = 0;
+        }
+        self.op = op;
+    }
+
+    /// Lo que se enseña en la pantallita: lo que se teclea, o `0` si no hay
+    /// nada — una calculadora en blanco confunde.
+    fn mostrado(&self) -> &[u8] {
+        if self.n == 0 {
+            b"0"
+        } else {
+            &self.entrada[..self.n]
+        }
+    }
+}
+
+/// Geometría del panel, a la derecha de la caja.
+struct CalcCaja {
+    x: u32,
+    y: u32,
+    ancho: u32,
+    alto: u32,
+    pantalla_y: u32,
+    rejilla_y: u32,
+}
+
+impl CalcCaja {
+    fn nueva(c: &Caja) -> Self {
+        let ancho = CALC_COLS as u32 * (CALC_BOTON + CALC_HUECO) + CALC_HUECO;
+        let alto = CALC_ROWS as u32 * (CALC_BOTON + CALC_HUECO) + CALC_HUECO + 56;
+        Self {
+            x: c.x + CAJA_ANCHO + 24,
+            y: c.y,
+            ancho,
+            alto,
+            pantalla_y: c.y + CALC_HUECO,
+            rejilla_y: c.y + CALC_HUECO + 50,
+        }
+    }
+
+    /// Rectángulo de la tecla `(fila, col)`.
+    fn boton(&self, fila: usize, col: usize) -> (u32, u32) {
+        (
+            self.x + CALC_HUECO + col as u32 * (CALC_BOTON + CALC_HUECO),
+            self.rejilla_y + fila as u32 * (CALC_BOTON + CALC_HUECO),
+        )
+    }
+
+    /// Qué tecla hay bajo `(px, py)`, si hay alguna.
+    fn tecla_en(&self, px: u32, py: u32) -> Option<u8> {
+        for fila in 0..CALC_ROWS {
+            for col in 0..CALC_COLS {
+                let t = CALC_TECLAS[fila][col];
+                if t == 0 {
+                    continue;
+                }
+                let (bx, by) = self.boton(fila, col);
+                if px >= bx && px < bx + CALC_BOTON && py >= by && py < by + CALC_BOTON {
+                    return Some(t);
+                }
+            }
+        }
+        None
+    }
+
+    fn contiene(&self, px: u32, py: u32) -> bool {
+        px >= self.x && px < self.x + self.ancho && py >= self.y && py < self.y + self.alto
+    }
+}
+
+fn pintar_calc(p: &bmo::Pantalla, cc: &CalcCaja, c: &Calc) {
+    p.rect(cc.x, cc.y, cc.ancho, cc.alto, CAJA_BORDE);
+    p.rect(cc.x + 2, cc.y + 2, cc.ancho - 4, cc.alto - 4, CALC_FONDO);
+
+    // La pantallita, alineada a la DERECHA como cualquier calculadora: los
+    // números se comparan por la unidad, no por la primera cifra.
+    p.rect(cc.x + CALC_HUECO, cc.pantalla_y, cc.ancho - CALC_HUECO * 2, 40, CAMPO_FONDO);
+    let texto = c.mostrado();
+    let ancho_texto = texto.len() as u32 * bmo::GLIFO_ANCHO;
+    let tx = cc.x + cc.ancho - CALC_HUECO - 8 - ancho_texto;
+    p.texto_bytes(tx, cc.pantalla_y + 12, texto, if c.esperando { TEXTO_TENUE } else { TEXTO });
+
+    for fila in 0..CALC_ROWS {
+        for col in 0..CALC_COLS {
+            let t = CALC_TECLAS[fila][col];
+            if t == 0 {
+                continue;
+            }
+            let (bx, by) = cc.boton(fila, col);
+            let color = match t {
+                b'=' => CALC_TECLA_IGUAL,
+                b'+' | b'-' | b'*' | b'/' | b'C' => CALC_TECLA_OP,
+                _ => CALC_TECLA,
+            };
+            p.rect(bx, by, CALC_BOTON, CALC_BOTON, color);
+            // La etiqueta, centrada.
+            p.glifo(
+                bx + CALC_BOTON / 2 - bmo::GLIFO_ANCHO / 2,
+                by + CALC_BOTON / 2 - bmo::GLIFO_ALTO / 2,
+                t,
+                TEXTO,
+            );
+        }
     }
 }
 
@@ -674,6 +856,7 @@ fn interpretar(linea: &[u8]) -> Orden<'_> {
         b"run" | b"corre" | b"lanza" => {
             if resto.is_empty() { Orden::Ayuda } else { Orden::Lanzar(resto) }
         }
+        b"calc" | b"calculadora" => Orden::Calculadora,
         b"clear" | b"cls" | b"limpia" => Orden::Limpiar,
         b"ls" | b"dir" | b"lista" => Orden::Listar(resto),
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
@@ -794,6 +977,15 @@ pub extern "C" fn _start() -> ! {
     // cursor. Ctrl+ARRIBA / Ctrl+ABAJO hacen lo mismo con las flechas.
     let mut porta = [0u8; RUTA_MAX];
     let mut porta_n = 0usize;
+    let mut calc = Calc::nueva();
+    let calc_caja = CalcCaja::nueva(&caja);
+    // Flanco del botón del ratón: un clic es una BAJADA, no "el botón está
+    // pulsado". Sin esto, mantener pulsado teclearía cien veces por segundo.
+    let mut boton_antes = false;
+    // Mientras el motor no conteste, su salida NO va a la rejilla: es el
+    // resultado, no un mensaje. Se acumula aparte.
+    let mut resp = [0u8; 24];
+    let mut resp_n = 0usize;
     if salida_cap.is_none() {
         salida.texto(b"sin consola: la salida de los programas ira al panel del kernel\n");
     }
@@ -932,6 +1124,25 @@ pub extern "C" fn _start() -> ! {
                                     }
                                 }
                                 n = 0;
+                            }
+                            Orden::Calculadora => {
+                                calc.visible = !calc.visible;
+                                if calc.visible {
+                                    pintar_calc(&p, &calc_caja, &calc);
+                                    salida.texto(b"  calculadora: la cara en Rust, el calculo en COBOL
+");
+                                } else {
+                                    // Devolver esa zona a la escena.
+                                    for f in 0..calc_caja.alto {
+                                        for co in 0..calc_caja.ancho {
+                                            let (px, py) = (calc_caja.x + co, calc_caja.y + f);
+                                            p.punto(px, py, color_escena(&caja, visible, px, py));
+                                        }
+                                    }
+                                }
+                                pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                                n = 0;
+                                cur = 0;
                             }
                             Orden::Limpiar => {
                                 salida.limpiar();
@@ -1145,6 +1356,44 @@ pub extern "C" fn _start() -> ! {
 
             // ── Ratón ──
             let pos = e.puntero();
+            // ── Los botones de la calculadora ──
+            let boton = pos.botones != 0;
+            if calc.visible && boton && !boton_antes && !calc.esperando {
+                if let Some(t) = calc_caja.tecla_en(pos.x, pos.y) {
+                    match t {
+                        b'C' => calc.limpiar(),
+                        b'+' => calc.operador(1),
+                        b'-' => calc.operador(2),
+                        b'*' => calc.operador(3),
+                        b'/' => calc.operador(4),
+                        b'=' => {
+                            if calc.op != 0 && calc.guardado_n > 0 && calc.n > 0 {
+                                // Lanzar el MOTOR y darle los tres datos por su
+                                // consola. Aqui es donde la cara deja de saber
+                                // de aritmetica y empieza a saber COBOL.
+                                let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
+                                if bmo::ejecutar_en(b"apps/calcgui.bex", cap).is_ok() {
+                                    if let Some(cc) = salida_cap.as_ref() {
+                                        cc.escribir(&calc.guardado[..calc.guardado_n]);
+                                        cc.escribir(b"\n");
+                                        cc.escribir(&[b'0' + calc.op]);
+                                        cc.escribir(b"\n");
+                                        cc.escribir(&calc.entrada[..calc.n]);
+                                        cc.escribir(b"\n");
+                                    }
+                                    calc.esperando = true;
+                                    resp_n = 0;
+                                } else {
+                                    pintar_estado(&p, &caja, "falta apps/calcgui.bex", TEXTO_MAL);
+                                }
+                            }
+                        }
+                        d => calc.meter(d),
+                    }
+                    pintar_calc(&p, &calc_caja, &calc);
+                }
+            }
+            boton_antes = boton;
             if pos.x != ax || pos.y != ay {
                 if ax != u32::MAX && borrar_cursor(&p, &caja, visible, ax, ay) {
                     // El cursor pasó por encima de la caja: la escena restauró
@@ -1186,7 +1435,29 @@ pub extern "C" fn _start() -> ! {
                 if leidos == 0 {
                     break;
                 }
-                salida.texto(&buf[..leidos]);
+                if calc.esperando {
+                    // Todo lo que escriba el motor es la respuesta: el
+                    // programa no imprime prompts a proposito.
+                    for &b in &buf[..leidos] {
+                        if b == b'\n' {
+                            if resp_n > 0 {
+                                calc.entrada = [0; 20];
+                                let k = resp_n.min(calc.entrada.len());
+                                calc.entrada[..k].copy_from_slice(&resp[..k]);
+                                calc.n = k;
+                                calc.guardado_n = 0;
+                                calc.op = 0;
+                                calc.esperando = false;
+                                pintar_calc(&p, &calc_caja, &calc);
+                            }
+                        } else if resp_n < resp.len() && b >= 0x20 {
+                            resp[resp_n] = b;
+                            resp_n += 1;
+                        }
+                    }
+                } else {
+                    salida.texto(&buf[..leidos]);
+                }
                 vueltas += 1;
             }
         }
