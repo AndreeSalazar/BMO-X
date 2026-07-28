@@ -279,7 +279,7 @@ cargo test -p bmo-sem-asm -p bmo-verify -p cabina-core
 cd Ultra_kernel_x86-64; .\build.ps1 -Data E
 ```
 El `.bex` del compositor sale a `staging\BMO-DATA\apps\` en cada build y de ahí
-se copia. `RUTA_COMPOSITOR` en `phase.rs` es `apps/compositor.bex` — la ruta de
+se copia. `RUTA_COMPOSITOR` en `phase.rs` es `apps/gui.bex` (8.3: el driver FAT32 no lee nombres largos y no recorta) — la ruta de
 dentro del volumen es el contrato entre el build y el arranque.
 Tres cierres antes de escribir un byte: **nunca el disco del sistema**, tiene que
 ser FAT/FAT32, y hay que teclear `DATA <letra> BMO`. Es el ÚNICO sitio del build
@@ -316,11 +316,11 @@ montado, gate de identidad antes de escribir, XSAVE per-task (y su causa raíz),
 gate de firma.
 
 **Kernel/HW (orden vigente 2026-07-27):**
-1. **ESTRENAR LA CAJA.** Está a una carpeta: falta `apps/compositor.bex` en el
+1. **ESTRENAR LA CAJA.** Está a una carpeta: falta `apps/gui.bex` en el
    volumen de datos. Detrás de eso hay cinco piezas escritas y sin correr (ver
    arriba). Nada nuevo debería empezar antes de esto — construir sobre código
    que nunca se ha ejecutado es cómo se acumulan features que sólo existen en
-   la documentación. Diagnóstico: `disk` y `run apps/compositor.bex`.
+   la documentación. Diagnóstico: `disk` y `run apps/gui.bex`. La letra es **A:** (partición 2, FAT32, label BMO).
 2. **Decidir quién es el terminal.** Hoy el shell de Ring 0 sigue siendo la
    consola principal. Cuando la caja funcione, el shell pasa a ser lo que debe
    ser: la consola de rescate del kernel, no la interfaz del usuario. Es una

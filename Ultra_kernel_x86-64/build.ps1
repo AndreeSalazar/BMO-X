@@ -126,12 +126,16 @@ try {
 $compositorElf = Join-Path $usDir 'target\x86_64-unknown-none\release\compositor'
 if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
 # El .bex sale a staging\BMO-DATA\apps\, que es el espejo de lo que hay que
-# copiar al volumen de datos. La ruta de dentro (apps\compositor.bex) tiene que
-# cuadrar con `RUTA_COMPOSITOR` de phase.rs: es el contrato entre el build y el
-# arranque.
+# copiar al volumen de datos. La ruta de dentro (apps\gui.bex) tiene que cuadrar
+# con `RUTA_COMPOSITOR` de phase.rs: es el contrato entre el build y el arranque.
+#
+# ★ `gui.bex` y no `compositor.bex`: el driver FAT32 del kernel es 8.3 y se
+# NIEGA a recortar nombres (un nombre recortado abre otro archivo, y en un
+# cargador de programas eso es ejecutar otro binario). `compositor` son diez
+# caracteres y no cabe en los ocho del campo.
 $dataStage = Join-Path $root 'staging\BMO-DATA\apps'
 New-Item -ItemType Directory -Path $dataStage -Force | Out-Null
-$compositorBex = Join-Path $dataStage 'compositor.bex'
+$compositorBex = Join-Path $dataStage 'gui.bex'
 Push-Location (Split-Path -Parent $root)
 try {
     if (Test-Path $compositorBex) { Remove-Item $compositorBex -Force }
@@ -145,7 +149,7 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'bex-link failed' }
     # Se borro antes a proposito: si `bex-link` no lo ha vuelto a escribir, se
     # copiaria al disco el compositor de la vez anterior y el build mentiria.
-    if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo compositor.bex' }
+    if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo gui.bex' }
 } finally { Pop-Location }
 
 # ── Build kernel (Ring 0 base) ────────────────────────────────────

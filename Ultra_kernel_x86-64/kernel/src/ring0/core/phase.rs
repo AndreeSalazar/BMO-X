@@ -1224,7 +1224,17 @@ fn shell_halt() -> ! {
 /// Es un CONTRATO, no una constante de conveniencia: quien quiera otro
 /// escritorio deja su `.bex` ahí y arranca. Eso es exactamente lo que NO se
 /// podía hacer mientras el compositor viajaba dentro del kernel.
-const RUTA_COMPOSITOR: &str = "apps/compositor.bex";
+///
+/// ★ `gui` y no `compositor` porque **el nombre tiene que caber en 8.3**. El
+/// driver FAT32 de `fs.rs` no lee nombres largos y se NIEGA a recortar: un
+/// nombre recortado en silencio abre otro archivo, y en un cargador de
+/// programas eso significa ejecutar otro binario. `compositor` son diez
+/// caracteres; no cabía, y el fallo habría salido como `NameTooLong` después
+/// de copiarlo — o sea, después de creer que ya estaba.
+///
+/// `gui` además es el nombre que ya usa el crate (`bmo-service-gui`) y la
+/// etiqueta con la que habla en CABINA. Un nombre, no tres.
+const RUTA_COMPOSITOR: &str = "apps/gui.bex";
 
 /// Arranca el escritorio desde el disco. Va DESPUÉS de montar el volumen de
 /// datos — antes no habría de dónde leerlo.
