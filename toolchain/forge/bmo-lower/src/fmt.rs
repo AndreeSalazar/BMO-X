@@ -27,7 +27,7 @@
 //! aquí habla con el kernel por su cuenta.
 
 use crate::console;
-use crate::x86::{self, Jump, RAX, RCX, RDX, RSP, R10, R8, R9};
+use crate::x86::{self, Jump, RAX, RCX, RDX, RSP, R10, R11, R8, R9};
 
 /// Tamaño del buffer en pila. 20 dígitos (el máximo de un u64) + signo,
 /// redondeado a 32 para mantener la pila alineada.
@@ -61,6 +61,97 @@ pub fn write_i64(code: &mut Vec<u8>) {
     x86::mov_byte_at_reg_imm8(code, R8, b'-');
     x86::inc_r64(code, R9);
     x86::patch_jump(code, no_sign);
+
+    console::write_buffer(code);
+    x86::add_r64_imm8(code, RSP, BUFFER);
+}
+
+/// Emite código que imprime `rax` como **decimal con escala fija**: el entero
+/// lleva `escala` dígitos de parte fraccionaria.
+///
+/// `rax = 5997` con `escala = 2` imprime `59.97`. Es exactamente cómo COBOL
+/// guarda el dinero —centavos en un entero, sin coma flotante— y cómo hay que
+/// devolverlo a la vista de una persona.
+///
+/// ## Por qué vive aquí y no en el frontend de COBOL
+///
+/// Por la regla de la cabecera de este módulo: **librerías, no cerebros**. Un
+/// entero escalado no tiene semántica de ningún lenguaje — el `PIC 9(5)V99` de
+/// COBOL y un punto fijo de C necesitan los mismos dígitos y el mismo punto.
+/// Lo que sí es del lenguaje es *decidir* la escala y, después, aplicarle una
+/// máscara de edición (`ZZ9.99`, `$$$,$$9.99`): eso se queda en COBOL.
+///
+/// ## Cómo
+///
+/// El buffer se escribe **hacia atrás**, así que el orden natural del emisor
+/// es el inverso del texto: primero los decimales, luego el punto, luego la
+/// parte entera y por último el signo. Eso evita tener que reservar hueco y
+/// volver a rellenarlo.
+///
+/// Los decimales salen con **cuenta fija**: `5` con escala 2 es `0.05`, no
+/// `0.5`. Un cero de relleno que falta convierte cinco céntimos en cincuenta,
+/// y ése es el error que este módulo entero existe para no cometer.
+pub fn write_decimal_scaled(code: &mut Vec<u8>, escala: u32) {
+    if escala == 0 {
+        write_i64(code);
+        return;
+    }
+
+    x86::sub_r64_imm8(code, RSP, BUFFER);
+    x86::lea_r64_rsp_disp8(code, R8, BUFFER);
+    x86::zero_r32(code, R9);
+    x86::zero_r32(code, R10);
+
+    // El signo se aparta ya: dividir con signo daría restos negativos y el
+    // dígito saldría del revés.
+    x86::test_r64_r64(code, RAX, RAX);
+    let no_negativo = x86::emit_jump(code, Jump::IfNotSign);
+    x86::mov_r32_imm32(code, R10, 1);
+    x86::neg_r64(code, RAX);
+    x86::patch_jump(code, no_negativo);
+
+    // Partir en entero y fracción: rax = valor / 10^escala, rdx = resto.
+    let potencia = 10u64.pow(escala);
+    x86::mov_r64_imm64(code, RCX, potencia);
+    x86::zero_r32(code, RDX);
+    x86::div_r64(code, RCX);
+    // rax = parte entera, rdx = fracción. La entera se aparta en `r11` —
+    // caller-saved y sin uso fijo en la ABI — y se trabaja con la fracción,
+    // porque el buffer se llena al revés. En un registro y no en la pila: el
+    // `div` de abajo se come rax y rdx, pero r11 sobrevive, y así esta función
+    // no tiene un push que pueda quedarse sin su pop.
+    x86::mov_r64_r64(code, R11, RAX);
+    x86::mov_r64_r64(code, RAX, RDX);
+
+    // Los `escala` dígitos de la fracción, CUENTA FIJA. Sin bucle de
+    // "hasta que el cociente sea cero": eso se comería los ceros de la
+    // izquierda y 0.05 saldría como 0.5.
+    x86::mov_r32_imm32(code, RCX, 10);
+    for _ in 0..escala {
+        x86::zero_r32(code, RDX);
+        x86::div_r64(code, RCX);
+        x86::add_r64_imm8(code, RDX, b'0' as i8);
+        x86::dec_r64(code, R8);
+        x86::mov_byte_at_reg_from_low(code, R8, RDX);
+        x86::inc_r64(code, R9);
+    }
+
+    // El punto.
+    x86::dec_r64(code, R8);
+    x86::mov_byte_at_reg_imm8(code, R8, b'.');
+    x86::inc_r64(code, R9);
+
+    // La parte entera, con al menos un dígito (el `0` de `0.05`).
+    x86::mov_r64_r64(code, RAX, R11);
+    emit_digits(code, 10, true);
+
+    // Y el signo, que va delante del todo en el texto y por eso al final aquí.
+    x86::test_r64_r64(code, R10, R10);
+    let sin_signo = x86::emit_jump(code, Jump::IfZero);
+    x86::dec_r64(code, R8);
+    x86::mov_byte_at_reg_imm8(code, R8, b'-');
+    x86::inc_r64(code, R9);
+    x86::patch_jump(code, sin_signo);
 
     console::write_buffer(code);
     x86::add_r64_imm8(code, RSP, BUFFER);
@@ -172,6 +263,44 @@ mod tests {
             let out = run_with_rax(write_i64, value as u64);
             assert_eq!(out, value.to_string(), "valor {value}");
         }
+    }
+
+    /// El caso del dinero: centavos dentro, importe fuera.
+    #[test]
+    fn decimal_escalado_pone_el_punto_donde_toca() {
+        let casos: &[(i64, u32, &str)] = &[
+            (5997, 2, "59.97"),
+            (5, 2, "0.05"),        // ← el cero de relleno: 5 centavos, no 50
+            (50, 2, "0.50"),
+            (0, 2, "0.00"),
+            (100000, 2, "1000.00"),
+            (-1999, 2, "-19.99"),
+            (-5, 2, "-0.05"),
+            (7, 1, "0.7"),
+            (123456, 3, "123.456"),
+            (42, 0, "42"),          // escala 0 = entero de toda la vida
+        ];
+        for &(valor, escala, esperado) in casos {
+            let mut code = Vec::new();
+            write_decimal_scaled(&mut code, escala);
+            let mut m = Machine::new(code);
+            m.regs[RAX as usize] = valor as u64;
+            assert_eq!(run(m, 200_000).console, esperado, "valor {valor} escala {escala}");
+        }
+    }
+
+    /// La pila tiene que quedar donde estaba tambien en el camino escalado:
+    /// lleva un push/pop en medio y un desequilibrio ahi manda el `ret` a
+    /// cualquier parte.
+    #[test]
+    fn decimal_escalado_deja_la_pila_donde_estaba() {
+        let mut code = Vec::new();
+        write_decimal_scaled(&mut code, 2);
+        let mut m = Machine::new(code);
+        m.regs[RAX as usize] = 5997;
+        let antes = m.regs[RSP as usize];
+        let despues = run(m, 200_000);
+        assert_eq!(despues.regs[RSP as usize], antes);
     }
 
     #[test]

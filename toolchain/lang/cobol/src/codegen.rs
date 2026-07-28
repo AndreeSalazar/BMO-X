@@ -3,7 +3,7 @@ use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::surface;
 use bmo_sem_asm::Instructions;
 use bmo_sem_asm::x86_64::{Asm, Reg};
-use crate::ast::{CobolProgram, CobolStatement, CobolCondition};
+use crate::ast::{CobolProgram, CobolStatement, CobolCondition, DisplayArg};
 use crate::ast::error::CobolError;
 
 type Result<T> = core::result::Result<T, CobolError>;
@@ -252,7 +252,9 @@ impl Codegen {
 
     fn collect_strings(&mut self, p: &CobolProgram) {
         for stmt in &p.statements {
-            if let CobolStatement::Display(s) = stmt {
+            // Solo los literales van a la tabla de cadenas: una variable no
+            // tiene texto que guardar, su texto se fabrica al ejecutar.
+            if let CobolStatement::Display(DisplayArg::Literal(s)) = stmt {
                 if !self.strings.iter().any(|t| *t == *s) {
                     self.strings.push(s.clone());
                 }
@@ -307,6 +309,24 @@ impl Codegen {
         bmo_lower::console::write_const(&mut self.code, &text);
     }
 
+    /// `DISPLAY <variable>` — el valor, formateado EN EJECUCION.
+    ///
+    /// Tiene que ser en ejecucion: el compilador no sabe cuanto vale `SALDO`
+    /// despues de tres `ADD`. Se carga el entero escalado y se llama al
+    /// formateador de `bmo-lower`, que le pone el punto donde dice la PIC.
+    ///
+    /// `PIC 9(5)V99` con 5997 dentro imprime `59.97`. Los centavos nunca han
+    /// dejado de ser un entero; lo unico que cambia es donde va la coma al
+    /// escribirlo.
+    fn emit_display_var(&mut self, nombre: &str) {
+        let escala = self.var_scale(nombre);
+        self.load_var(nombre);
+        bmo_lower::fmt::write_decimal_scaled(&mut self.code, escala);
+        // El salto de linea, aparte: el formateador escribe el numero y nada
+        // mas, que es lo correcto para poder encadenar campos algun dia.
+        bmo_lower::console::write_const(&mut self.code, b"\n");
+    }
+
     fn emit_statement(&mut self, stmt: &CobolStatement) {
         match stmt {
             CobolStatement::Syscall(def, args) => {
@@ -322,7 +342,10 @@ impl Codegen {
                     self.emit_mov_eax_syscall(def.nr);
                 }
             }
-            CobolStatement::Display(s) => self.emit_display(s),
+            CobolStatement::Display(arg) => match arg {
+                DisplayArg::Literal(s) => self.emit_display(s),
+                DisplayArg::Variable(v) => self.emit_display_var(v),
+            },
             CobolStatement::Accept(_) => {
                 self.errors.push(CobolError::new(
                     0,

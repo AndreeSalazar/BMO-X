@@ -1,8 +1,25 @@
 use crate::ast::SyscallDef;
 
+/// Que se imprime en un `DISPLAY`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DisplayArg {
+    /// Entre comillas: sale tal cual.
+    Literal(String),
+    /// Un nombre de la DATA DIVISION: se formatea en EJECUCION con la escala
+    /// de su PIC, porque el valor no se conoce al compilar.
+    Variable(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CobolStatement {
-    Display(String),
+    /// `DISPLAY "texto"` o `DISPLAY VARIABLE`.
+    ///
+    /// Eran lo mismo —una `String` que siempre se imprimia literal— y por eso
+    /// el programa de ejemplo CALCULA 59.97 y luego imprime la cadena
+    /// "total exacto: 59.97" escrita a mano. La aritmetica era de verdad; lo
+    /// que se veia, no. Un `DISPLAY` que no sabe ensenar lo que acaba de
+    /// calcular deja al lenguaje sin salida.
+    Display(DisplayArg),
     Accept(String),
     Move(String, String),
     Add(String, String),

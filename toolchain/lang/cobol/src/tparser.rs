@@ -6,7 +6,7 @@
 //! nada: el codegen decimal exacto sigue igual, solo cambia quién arma el AST.
 
 use crate::ast::error::CobolError;
-use crate::ast::{CobolProgram, CobolStatement, DataItem};
+use crate::ast::{CobolProgram, CobolStatement, DataItem, DisplayArg};
 use crate::lexer::{lex, Tok, Token};
 
 /// Texto fuente de un token — para reensamblar una cláusula PIC que el lexer
@@ -93,7 +93,17 @@ pub fn parse_statement(c: &mut Cursor) -> Result<CobolStatement, CobolError> {
     c.bump(); // consume el verbo
 
     let st = match kw.as_str() {
-        "DISPLAY" => CobolStatement::Display(operand(c, line, "texto")?),
+        // ★ Un literal ENTRE COMILLAS sale tal cual; un IDENTIFICADOR se
+        // formatea en ejecucion. Es el token el que lo dice, no una
+        // heuristica sobre el contenido: `DISPLAY "SALDO"` imprime la palabra
+        // SALDO, y `DISPLAY SALDO` imprime lo que vale. Adivinarlo por el
+        // texto habria hecho imposible imprimir el nombre de una variable.
+        "DISPLAY" => match c.bump() {
+            Some(Tok::Str(s)) => CobolStatement::Display(DisplayArg::Literal(s)),
+            Some(Tok::Ident(id)) => CobolStatement::Display(DisplayArg::Variable(id)),
+            Some(Tok::Number(n)) => CobolStatement::Display(DisplayArg::Literal(n)),
+            _ => return Err(CobolError::new(line, "DISPLAY necesita un texto o una variable")),
+        },
         "MOVE" => {
             let v = operand(c, line, "valor")?;
             if !c.eat_kw("TO") {
@@ -290,7 +300,14 @@ mod tests {
         let src = "DISPLAY \"hola\". MOVE 10.05 TO SALDO. ADD 3.20 TO SALDO. STOP RUN.";
         let sts = parse_statements(src).unwrap();
         assert_eq!(sts.len(), 4);
-        assert_eq!(sts[0], CobolStatement::Display("hola".into()));
+        assert_eq!(sts[0], CobolStatement::Display(DisplayArg::Literal("hola".into())));
+        // Y lo contrario: sin comillas es una VARIABLE, no un texto.
+        let v = parse_statements("DISPLAY SALDO.").unwrap();
+        assert_eq!(v[0], CobolStatement::Display(DisplayArg::Variable("SALDO".into())));
+        // `DISPLAY "SALDO"` tiene que seguir imprimiendo la PALABRA: es el
+        // token el que decide, no el contenido.
+        let l = parse_statements("DISPLAY \"SALDO\".").unwrap();
+        assert_eq!(l[0], CobolStatement::Display(DisplayArg::Literal("SALDO".into())));
         assert_eq!(sts[1], CobolStatement::Move("10.05".into(), "SALDO".into()));
         assert_eq!(sts[2], CobolStatement::Add("3.20".into(), "SALDO".into()));
         assert_eq!(sts[3], CobolStatement::StopRun);

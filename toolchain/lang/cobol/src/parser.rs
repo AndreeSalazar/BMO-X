@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::ast::{
+    DisplayArg,
     CobolCondition, CobolError, CobolProgram, CobolStatement, DataItem, SyscallDef,
     SyscallMap,
 };
@@ -181,8 +182,17 @@ impl Parser {
                 Err(CobolError::new(line_no, format!("unknown syscall: {name}")))
             }
         } else if upper.starts_with("DISPLAY ") {
+            // El parser por-lineas (el viejo) mira si venia entrecomillado:
+            // `parse_operand` ya quita las comillas, asi que hay que
+            // preguntarselo al texto CRUDO antes de que se pierda esa pista.
+            let crudo = line[8..].trim();
             let val = Self::parse_operand(&line[8..]);
-            Ok(CobolStatement::Display(val))
+            let arg = if crudo.starts_with('"') || crudo.starts_with('\'') {
+                DisplayArg::Literal(val)
+            } else {
+                DisplayArg::Variable(val)
+            };
+            Ok(CobolStatement::Display(arg))
         } else if upper.starts_with("ACCEPT ") {
             let name = line[7..].trim().to_string();
             if name.is_empty() { return Err(CobolError::new(line_no, "ACCEPT missing target")); }

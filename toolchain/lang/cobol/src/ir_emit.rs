@@ -2,7 +2,7 @@
 
 use bmo_abi::ir::*;
 use bmo_abi::types::convention::CallingConvention;
-use crate::ast::{CobolProgram, CobolStatement};
+use crate::ast::{CobolProgram, CobolStatement, DisplayArg};
 
 pub fn compile_to_ir(program: &CobolProgram) -> IrModule {
     let mut e = Emitter::new();
@@ -51,7 +51,10 @@ impl Emitter {
 
     fn emit_stmt(&mut self, s: &CobolStatement, block: &mut IrBlock, _func: &mut IrFunction) {
         match s {
-            CobolStatement::Display(msg) => {
+            // El camino de IR solo sabe de literales todavia. Una variable
+            // necesita formateo en ejecucion, que es codigo y no una cadena en
+            // una tabla — se emite por `codegen.rs`, no por aqui.
+            CobolStatement::Display(DisplayArg::Literal(msg)) => {
                 let nr = 0x1F0u32; // NR_DIAG_PRINT
                 let str_idx = self.module.add_string(msg).unwrap_or(0);
                 block.push(IrStmt::Expr(IrExpr::Syscall {

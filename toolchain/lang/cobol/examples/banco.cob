@@ -28,8 +28,15 @@
                DISPLAY "cobrada una cuota"
            END-PERFORM.
 
+      * Hasta aqui el programa CALCULABA 59.97 y luego imprimia la cadena
+      * "total exacto: 59.97" escrita a mano. La aritmetica era de verdad;
+      * lo que se veia, no. Ahora se ensena el VALOR: si el decimal se
+      * hubiera perdido, la pantalla lo diria sola.
+           DISPLAY "saldo tras 3 cuotas:".
+           DISPLAY SALDO.
+
            IF SALDO = 59.97
-               DISPLAY "total exacto: 59.97"
+               DISPLAY "cuadra"
            ELSE
                DISPLAY "el decimal se perdio"
            END-IF.
@@ -41,6 +48,8 @@
            END-PERFORM.
 
            COMPUTE SALDO = SALDO - (CUOTA * 2).
+           DISPLAY "saldo tras 2 devoluciones:".
+           DISPLAY SALDO.
            IF SALDO IS EQUAL TO 19.99
                DISPLAY "dos devoluciones aplicadas"
            ELSE

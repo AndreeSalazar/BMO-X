@@ -18,6 +18,9 @@ pub const RDI: u8 = 7;
 pub const R8: u8 = 8;
 pub const R9: u8 = 9;
 pub const R10: u8 = 10;
+/// Caller-saved y sin uso fijo en la ABI: el sitio natural para guardar algo
+/// que tiene que sobrevivir a un `div`, que se come rax y rdx.
+pub const R11: u8 = 11;
 
 /// `mov <r64>, imm64` — 10 bytes (REX.W + B8+rd + imm64).
 pub fn mov_r64_imm64(out: &mut Vec<u8>, reg: u8, imm: u64) {
