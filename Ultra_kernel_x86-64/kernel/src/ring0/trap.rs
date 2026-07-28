@@ -70,7 +70,22 @@ pub struct TrapFrame {
 pub const RFLAGS_IF: u64 = 1 << 9;
 
 pub const KERNEL_CS: u64 = 0x08;
-pub const KERNEL_SS: u64 = 0x08;
+/// **0x10, no 0x08.** La GDT que monta `s1_cpu` es
+/// `[0]=nulo [1]=codigo0 [2]=datos0 [3]=datos3 [4]=codigo3`, o sea que `0x08`
+/// es el selector de **CÓDIGO** de Ring 0 y el de datos es `0x10`.
+///
+/// Decía `0x08` y eso era un `iretq` condenado: **en modo largo el `iretq` saca
+/// `SS:RSP` siempre**, también cuando vuelve al mismo privilegio, y cargar `SS`
+/// con un descriptor de código da `#GP(selector)`. El informe lo cantaba solo —
+/// `err=0x00000008` es literalmente el selector culpable, dicho por el CPU.
+///
+/// Sólo mordía al arrancar una tarea de KERNEL (`spawn_kernel`, o sea `ktest`):
+/// las de Ring 3 usan `USER_SS = 0x1B`, que sí apunta a datos. Por eso llevaba
+/// aquí sin que nadie lo pisara.
+///
+/// La simetría de abajo es la comprobación: `USER_SS` va a la entrada de datos
+/// y `USER_CS` a la de código. Arriba tenía que ser igual.
+pub const KERNEL_SS: u64 = 0x10;
 pub const USER_CS: u64 = 0x23;
 pub const USER_SS: u64 = 0x1B;
 
