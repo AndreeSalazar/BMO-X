@@ -403,6 +403,77 @@ enum Orden<'a> {
     Desconocida,
 }
 
+/// Historial de lo escrito. Lo que un terminal sin esto obliga a hacer es
+/// reteclear la ruta entera cada vez que te equivocas en una letra — y eso es
+/// justo lo que pasaba: seis intentos de `apps/COBOL.bex` escritos a mano.
+///
+/// Anillo de ocho. No guarda duplicados seguidos: repetir `ls` cinco veces no
+/// debe llenar el historial de `ls`.
+struct Historial {
+    lineas: [[u8; RUTA_MAX]; 8],
+    largos: [usize; 8],
+    /// Cuantas hay guardadas (tope 8).
+    n: usize,
+    /// Por donde va el paseo con las flechas. `n` = "estoy escribiendo algo
+    /// nuevo", que es distinto de "estoy en la mas reciente".
+    cursor: usize,
+}
+
+impl Historial {
+    fn nuevo() -> Self {
+        Self { lineas: [[0u8; RUTA_MAX]; 8], largos: [0; 8], n: 0, cursor: 0 }
+    }
+
+    fn empujar(&mut self, linea: &[u8]) {
+        if linea.is_empty() {
+            return;
+        }
+        if self.n > 0 && &self.lineas[self.n - 1][..self.largos[self.n - 1]] == linea {
+            self.cursor = self.n;
+            return;
+        }
+        if self.n == self.lineas.len() {
+            // Lleno: se va la mas vieja.
+            for i in 1..self.n {
+                self.lineas[i - 1] = self.lineas[i];
+                self.largos[i - 1] = self.largos[i];
+            }
+            self.n -= 1;
+        }
+        let k = linea.len().min(RUTA_MAX);
+        self.lineas[self.n][..k].copy_from_slice(&linea[..k]);
+        self.largos[self.n] = k;
+        self.n += 1;
+        self.cursor = self.n;
+    }
+
+    /// Hacia atras. Devuelve el nuevo largo de la linea, o `None` si no hay.
+    fn atras(&mut self, dst: &mut [u8; RUTA_MAX]) -> Option<usize> {
+        if self.cursor == 0 {
+            return None;
+        }
+        self.cursor -= 1;
+        let k = self.largos[self.cursor];
+        dst[..k].copy_from_slice(&self.lineas[self.cursor][..k]);
+        Some(k)
+    }
+
+    /// Hacia adelante. Al pasar de la mas reciente se vuelve a linea en
+    /// blanco, que es lo que espera cualquiera que haya usado un shell.
+    fn adelante(&mut self, dst: &mut [u8; RUTA_MAX]) -> Option<usize> {
+        if self.cursor + 1 > self.n {
+            return None;
+        }
+        self.cursor += 1;
+        if self.cursor == self.n {
+            return Some(0);
+        }
+        let k = self.largos[self.cursor];
+        dst[..k].copy_from_slice(&self.lineas[self.cursor][..k]);
+        Some(k)
+    }
+}
+
 /// Un `u64` a decimal en `dst`. Sin `alloc` no hay `format!`, y un terminal
 /// que no sabe escribir un número no sirve para mirar un disco.
 fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
@@ -576,16 +647,20 @@ fn interpretar(linea: &[u8]) -> Orden<'_> {
         &resto[i..]
     };
     match verbo {
-        // Castellano primero — este sistema habla castellano. Los de Unix y
-        // DOS se quedan como SINONIMOS, no por nostalgia: son los que los
-        // dedos ya tienen aprendidos, y quitarlos seria pelearse otra vez con
-        // la costumbre del usuario para no ganar nada.
-        b"corre" | b"lanza" | b"run" => {
+        // INGLES de primero, y es una decision del dueno: el castellano limita
+        // — no hay palabra corta para "flush", los verbos se alargan, y medio
+        // mundo del sistema (los campos del hardware, los mensajes de fallo)
+        // ya esta en ingles. El castellano entra cuando el sistema este
+        // maduro y se pueda hacer entero, no a medias.
+        //
+        // Los castellanos se quedan como SINONIMOS: no estorban y ya estaban
+        // escritos.
+        b"run" | b"corre" | b"lanza" => {
             if resto.is_empty() { Orden::Ayuda } else { Orden::Lanzar(resto) }
         }
-        b"limpia" | b"clear" | b"cls" => Orden::Limpiar,
-        b"lista" | b"ls" | b"dir" => Orden::Listar(resto),
-        b"ayuda" | b"help" | b"?" => Orden::Ayuda,
+        b"clear" | b"cls" | b"limpia" => Orden::Limpiar,
+        b"ls" | b"dir" | b"lista" => Orden::Listar(resto),
+        b"help" | b"?" | b"ayuda" => Orden::Ayuda,
         _ if parece_ruta(linea) => Orden::Lanzar(linea),
         _ => Orden::Desconocida,
     }
@@ -694,6 +769,7 @@ pub extern "C" fn _start() -> ! {
     let mut ruta = [0u8; RUTA_MAX];
     let mut n = 0usize;
     let mut salida = Salida::nueva();
+    let mut historial = Historial::nuevo();
     if salida_cap.is_none() {
         salida.texto(b"sin consola: la salida de los programas ira al panel del kernel\n");
     }
@@ -781,6 +857,7 @@ pub extern "C" fn _start() -> ! {
                         // punto medio separa igual de bien y no arrastra la
                         // convencion de otro. Esta en la tabla de extras del
                         // font, asi que se dibuja sin tocar nada mas.
+                        historial.empujar(&ruta[..n]);
                         salida.byte(0xB7);
                         salida.byte(b' ');
                         salida.texto(&ruta[..n]);
@@ -906,12 +983,38 @@ pub extern "C" fn _start() -> ! {
                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                         repintar_campo = true;
                     }
-                    // Las teclas de navegación viajan por la misma cola con
-                    // bytes del rango C1 (0x80..0x9F), que no tienen glifo.
-                    // Esta caja no tiene cursor que mover dentro de la línea,
-                    // así que se ignoran — pero explícitamente, para que no se
-                    // dibujen como basura.
-                    0x80..=0x9F => {}
+                    // Ctrl+U — borra la línea. Ctrl+L — borra la salida.
+                    // Los mismos que el shell de Ring 0, porque los dedos ya
+                    // los tienen y un atajo que cambia entre dos ventanas del
+                    // mismo sistema es peor que no tenerlo.
+                    0x15 => {
+                        n = 0;
+                        repintar_campo = true;
+                    }
+                    0x0C => {
+                        salida.limpiar();
+                        repintar_campo = true;
+                    }
+                    // FLECHA ARRIBA / ABAJO — el historial. Llegan por la misma
+                    // cola que las letras, con bytes del rango C1 (0x80..0x9F)
+                    // que no tienen glifo: el driver los eligió justo para que
+                    // no puedan confundirse con texto.
+                    0x80 => {
+                        if let Some(k) = historial.atras(&mut ruta) {
+                            n = k;
+                            repintar_campo = true;
+                        }
+                    }
+                    0x81 => {
+                        if let Some(k) = historial.adelante(&mut ruta) {
+                            n = k;
+                            repintar_campo = true;
+                        }
+                    }
+                    // El resto de navegación se ignora, pero EXPLÍCITAMENTE:
+                    // esta caja todavía no tiene cursor dentro de la línea, y
+                    // dejarlas caer al `_` las dibujaría como basura.
+                    0x82..=0x9F => {}
                     // Todo lo demás imprimible, incluido el Latin-1 alto: la
                     // `ñ` llega como 0xF1 y la fuente la tiene.
                     c if c >= 0x20 => {
