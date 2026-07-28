@@ -395,8 +395,33 @@ enum Orden<'a> {
     Lanzar(&'a [u8]),
     Limpiar,
     Ayuda,
+    /// `ls [ruta]` — qué hay en el disco. Antes esto no podía existir: no
+    /// había capability de directorio, así que había que saberse los nombres
+    /// de memoria y teclearlos enteros.
+    Listar(&'a [u8]),
     /// Una palabra suelta que no parece una ruta. `reboot`, `ls`, `dir`...
     Desconocida,
+}
+
+/// Un `u64` a decimal en `dst`. Sin `alloc` no hay `format!`, y un terminal
+/// que no sabe escribir un número no sirve para mirar un disco.
+fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
+    if v == 0 {
+        dst[0] = b'0';
+        return 1;
+    }
+    let mut tmp = [0u8; 20];
+    let mut n = 0;
+    while v > 0 && n < tmp.len() {
+        tmp[n] = b'0' + (v % 10) as u8;
+        v /= 10;
+        n += 1;
+    }
+    let cuantos = n.min(dst.len());
+    for i in 0..cuantos {
+        dst[i] = tmp[n - 1 - i];
+    }
+    cuantos
 }
 
 fn parece_ruta(t: &[u8]) -> bool {
@@ -431,6 +456,7 @@ fn interpretar(linea: &[u8]) -> Orden<'_> {
             if resto.is_empty() { Orden::Ayuda } else { Orden::Lanzar(resto) }
         }
         b"clear" | b"cls" => Orden::Limpiar,
+        b"ls" | b"dir" => Orden::Listar(resto),
         b"help" | b"ayuda" | b"?" => Orden::Ayuda,
         _ if parece_ruta(linea) => Orden::Lanzar(linea),
         _ => Orden::Desconocida,
@@ -628,6 +654,48 @@ pub extern "C" fn _start() -> ! {
                         match interpretar(&ruta[..n]) {
                             Orden::Nada => {
                                 pintar_estado(&p, &caja, "escribe algo", TEXTO_TENUE);
+                            }
+                            Orden::Listar(ruta_dir) => {
+                                match bmo::Directorio::abrir(ruta_dir) {
+                                    Ok(d) => {
+                                        let mut cuantas = 0u32;
+                                        // Tope por si un directorio enorme se
+                                        // comiera el fotograma entero.
+                                        while cuantas < 256 {
+                                            let e = match d.siguiente() {
+                                                Some(e) => e,
+                                                None => break,
+                                            };
+                                            let mut nom = [0u8; 12];
+                                            let largo = e.legible(&mut nom);
+                                            salida.texto(b"  ");
+                                            salida.texto(&nom[..largo]);
+                                            // Alinear la columna del tamaño.
+                                            let mut k = largo;
+                                            while k < 14 { salida.byte(b' '); k += 1; }
+                                            if e.es_dir {
+                                                salida.texto(b"<DIR>");
+                                            } else {
+                                                let mut d10 = [0u8; 10];
+                                                let n10 = decimal(e.bytes as u64, &mut d10);
+                                                salida.texto(&d10[..n10]);
+                                            }
+                                            salida.byte(b'\n');
+                                            cuantas += 1;
+                                        }
+                                        if cuantas == 0 {
+                                            salida.texto(b"  (vacio)
+");
+                                        }
+                                        pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                                    }
+                                    Err(_) => {
+                                        salida.texto(b"  no puedo abrir esa carpeta.
+");
+                                        pintar_estado(&p, &caja, "carpeta no encontrada", TEXTO_MAL);
+                                    }
+                                }
+                                n = 0;
                             }
                             Orden::Limpiar => {
                                 salida.limpiar();

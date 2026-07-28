@@ -128,6 +128,63 @@ pub fn read(first_cluster: u32, size: u32, dst: &mut [u8]) -> usize {
 
 // ── El volumen de DATOS: el único que se puede escribir ─────────────────────
 
+/// La entrada `n` de un directorio del volumen de DATOS: `(nombre 8.3,
+/// es_dir, tamano)`. `None` cuando se acaban.
+///
+/// Es lo que faltaba para que Ring 3 pueda PREGUNTAR QUE HAY en vez de tener
+/// que saberse los nombres de memoria. Ver `ring0/directorio.rs`.
+pub fn entrada_datos(dir_cluster: u32, n: usize) -> Option<([u8; 11], bool, u32)> {
+    unsafe {
+        let v = (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut()?;
+        v.entry_at(dir_cluster, n)
+    }
+}
+
+/// Resuelve una ruta de DIRECTORIO a su cluster, en el volumen de datos.
+/// Ruta vacia = la raiz.
+pub fn dir_datos(ruta: &str) -> Option<u32> {
+    unsafe {
+        let v = (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut()?;
+        let mut cluster = v.root_cluster();
+        let mut resto = ruta.trim();
+        if resto.len() >= 2 && resto.as_bytes()[1] == b':' { resto = &resto[2..]; }
+        while resto.starts_with('/') || resto.starts_with('\\') { resto = &resto[1..]; }
+        while !resto.is_empty() {
+            let corte = resto.find(['/', '\\']).unwrap_or(resto.len());
+            let (comp, rest) = resto.split_at(corte);
+            if !comp.is_empty() {
+                let nombre = nombre_8_3(comp)?;
+                cluster = v.find_subdir_in(&nombre, cluster)?;
+            }
+            resto = rest;
+            while resto.starts_with('/') || resto.starts_with('\\') { resto = &resto[1..]; }
+        }
+        Some(cluster)
+    }
+}
+
+/// Nombre a 8.3 crudo (11 bytes, relleno con espacios). `None` si no cabe —
+/// **nunca se recorta**: un nombre recortado en silencio abre otra cosa.
+fn nombre_8_3(s: &str) -> Option<[u8; 11]> {
+    let b = s.as_bytes();
+    let punto = b.iter().rposition(|&c| c == b'.');
+    let (tallo, ext) = match punto {
+        Some(i) => (&b[..i], &b[i + 1..]),
+        None => (&b[..], &b[0..0]),
+    };
+    if tallo.is_empty() || tallo.len() > 8 || ext.len() > 3 {
+        return None;
+    }
+    let mut out = [b' '; 11];
+    for (i, &c) in tallo.iter().enumerate() {
+        out[i] = if c.is_ascii_lowercase() { c - 32 } else { c };
+    }
+    for (i, &c) in ext.iter().enumerate() {
+        out[8 + i] = if c.is_ascii_lowercase() { c - 32 } else { c };
+    }
+    Some(out)
+}
+
 /// ¿Hay volumen de datos montado para escribir?
 pub fn data_mounted() -> bool { unsafe { (*core::ptr::addr_of!(DATA_VOLUME)).is_some() } }
 

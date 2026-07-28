@@ -34,6 +34,10 @@ pub const KIND_INPUT: u8 = 0x20;
 /// terminal de Ring 3 no podia leer lo que imprimia su propio hijo. Ver
 /// `ring0/consola.rs`.
 pub const KIND_CONSOLE: u8 = 0x30;
+/// Un directorio abierto. Preguntar QUE HAY en el disco. Ver
+/// `ring0/directorio.rs`: aqui una ruta abierta no es un nombre que cualquiera
+/// pueda escribir, es un handle que a alguien le concedieron.
+pub const KIND_DIRECTORIO: u8 = 0x40;
 pub const KIND_CHANNEL: u8 = 0x60;
 /// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
 pub const KIND_ENDPOINT: u8 = 0x70;
@@ -219,6 +223,7 @@ pub fn revoke_all(pid: u32) {
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
     crate::ring0::consola::proceso_muerto(pid);
+    crate::ring0::directorio::proceso_muerto(pid);
     revoke_all_slots(pid)
 }
 

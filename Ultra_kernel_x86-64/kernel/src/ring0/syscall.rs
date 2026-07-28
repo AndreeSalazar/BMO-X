@@ -71,6 +71,10 @@ const TASK_OP_EJECUTAR: u64 = 0x0C;
 /// Crea una consola y devuelve su handle de LECTURA. Quien la crea es el
 /// terminal: la consola es suya y la drena a su ritmo. Ver `ring0/consola.rs`.
 const TASK_OP_CONSOLA_CREAR: u64 = 0x0D;
+/// Abre un directorio del volumen de datos y devuelve su handle. La ruta se
+/// acumula antes con `TASK_OP_RUTA` — el MISMO renglon que usa `EJECUTAR`, que
+/// es lo que hace que no haga falta un segundo mecanismo para lo mismo.
+const TASK_OP_DIR_ABRIR: u64 = 0x0E;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -277,6 +281,15 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             }
             BmoStatus::ok_value(0)
         }
+        TASK_OP_DIR_ABRIR => {
+            let _ = arg0;
+            let pid = scheduler::current_pid();
+            let ruta = ruta_tomar(pid);
+            match crate::ring0::directorio::abrir(pid, ruta) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
         TASK_OP_CONSOLA_CREAR => {
             let _ = arg0;
             match crate::ring0::consola::crear(scheduler::current_pid()) {
@@ -478,6 +491,15 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // kernel no empuja, el terminal tira.
             cap::KIND_CONSOLE => {
                 match crate::ring0::consola::operacion(resolved.object, frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
+            // Preguntar que hay en el disco. Solo LEER: crear y borrar seran
+            // operaciones aparte con su propio derecho, no un efecto lateral
+            // de tener el directorio abierto.
+            cap::KIND_DIRECTORIO => {
+                match crate::ring0::directorio::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }

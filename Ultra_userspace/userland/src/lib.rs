@@ -62,6 +62,11 @@ pub const OP_INPUT_CLAIM: u32 = 0x0A;
 pub const OP_RUTA: u32 = 0x0B;
 pub const OP_EJECUTAR: u32 = 0x0C;
 pub const OP_CONSOLA_CREAR: u32 = 0x0D;
+pub const OP_DIR_ABRIR: u32 = 0x0E;
+
+// Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
+pub const DIR_OP_SIGUIENTE: u32 = 0x01;
+pub const DIR_OP_NOMBRE: u32 = 0x02;
 
 // Operaciones sobre un handle de consola (`KIND_CONSOLE`).
 pub const CONSOLA_OP_LEER: u32 = 0x01;
@@ -463,6 +468,91 @@ pub const ERROR_NO_ESTA: u32 = 20;
 pub const ERROR_GATE: u32 = 21;
 pub const ERROR_OCUPADO: u32 = 22;
 pub const ERROR_NO_ADMITIDO: u32 = 23;
+
+// ── El disco ────────────────────────────────────────────────────────────
+
+/// Una entrada de directorio, ya leída.
+///
+/// `EntradaDir` y no `Entrada` porque `Entrada` ya es el ratón+teclado. Dos
+/// cosas distintas no pueden llamarse igual aunque en castellano suenen igual.
+pub struct EntradaDir {
+    /// Nombre 8.3 CRUDO, con sus espacios de relleno: `"COBOL   BEX"`.
+    /// Convertirlo a `COBOL.BEX` es presentación, y eso es cosa de quien pinta.
+    pub nombre: [u8; 11],
+    pub es_dir: bool,
+    pub bytes: u32,
+}
+
+impl EntradaDir {
+    /// El nombre en forma legible, `COBOL.BEX`, escrito en `dst`. Devuelve
+    /// cuántos bytes ocupó.
+    pub fn legible(&self, dst: &mut [u8; 12]) -> usize {
+        let mut n = 0;
+        for i in 0..8 {
+            if self.nombre[i] == b' ' { break; }
+            dst[n] = self.nombre[i];
+            n += 1;
+        }
+        if self.nombre[8] != b' ' {
+            dst[n] = b'.';
+            n += 1;
+            for i in 8..11 {
+                if self.nombre[i] == b' ' { break; }
+                dst[n] = self.nombre[i];
+                n += 1;
+            }
+        }
+        n
+    }
+}
+
+/// Un directorio abierto.
+///
+/// ★ Esto NO es "una ruta que cualquiera puede escribir". Es un handle que te
+/// concedieron: lo que no te hayan dado no existe para este proceso. Es la
+/// misma disciplina que la pantalla y la entrada — un nombre es adivinable, un
+/// permiso no.
+pub struct Directorio {
+    pub cap: u64,
+}
+
+impl Directorio {
+    /// Abre un directorio del volumen de datos. Ruta vacía = la raíz.
+    pub fn abrir(ruta: &[u8]) -> Result<Self, u32> {
+        for trozo in ruta.chunks(8) {
+            let mut w = [0u8; 8];
+            w[..trozo.len()].copy_from_slice(trozo);
+            invoke(CURRENT_TASK, OP_RUTA, u64::from_le_bytes(w), 0, 0);
+        }
+        let st = invoke(CURRENT_TASK, OP_DIR_ABRIR, 0, 0, 0);
+        if st.ok() { Ok(Self { cap: st.value }) } else { Err(st.code) }
+    }
+
+    /// La siguiente entrada, o `None` cuando se acaba.
+    pub fn siguiente(&self) -> Option<EntradaDir> {
+        let v = invoke(self.cap, DIR_OP_SIGUIENTE, 0, 0, 0).value;
+        if v >> 63 == 0 {
+            return None;
+        }
+        let es_dir = (v >> 62) & 1 != 0;
+        let bytes = v as u32;
+        // El nombre viene aparte: son 11 bytes y no caben con lo demás.
+        let mut nombre = [b' '; 11];
+        let mut puesto = 0usize;
+        for desde in [0u64, 7] {
+            let w = invoke(self.cap, DIR_OP_NOMBRE, desde, 0, 0).value;
+            let n = (w >> 56) as usize;
+            let b = w.to_le_bytes();
+            for k in 0..n.min(7) {
+                if puesto < 11 {
+                    nombre[puesto] = b[k];
+                    puesto += 1;
+                }
+            }
+        }
+        Some(EntradaDir { nombre, es_dir, bytes })
+    }
+}
 
 // ── La entrada ──────────────────────────────────────────────────────────
 

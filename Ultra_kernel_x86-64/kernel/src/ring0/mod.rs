@@ -8,6 +8,7 @@ pub mod cap;
 pub mod faults;
 pub mod fb;
 pub mod consola;
+pub mod directorio;
 pub mod input;
 pub mod lanzar;
 pub mod core {
