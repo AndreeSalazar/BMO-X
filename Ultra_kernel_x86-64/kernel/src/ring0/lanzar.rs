@@ -118,7 +118,42 @@ pub fn ruta(path: &str) -> Informe {
     if EN_USO.swap(true, Ordering::Acquire) {
         return vacio(Fallo::Ocupado);
     }
+    // ── CR3 del kernel mientras dure ──
+    //
+    // Leer el disco es tocar MMIO del AHCI (`0xFC680000` en esta placa), y ese
+    // rango está mapeado en el PML4 del kernel y NO en el de una tarea de
+    // usuario. Mientras el único que llamaba aquí era el shell —tarea de
+    // kernel— no se notaba. Desde que la caja de Ring 3 lanza por
+    // `OP_EJECUTAR`, esto se recorre **desde dentro de un SYSCALL**, y en un
+    // SYSCALL el CR3 sigue siendo el del llamante: el cambio de CR3 solo ocurre
+    // en un cambio de contexto y aquí todavía no ha habido ninguno. Daba
+    // `#PF(0)` con `cr2 = 0xFC680320`.
+    //
+    // Es la MISMA mina que ya se pisó con el xHCI en `usb::poll_ascii`, con
+    // otro periférico. La regla no es "el framebuffer necesita CR3 de kernel":
+    // es **cualquier dirección del rango identidad alto tocada desde un
+    // syscall**. Cada capability nueva que llegue a hardware vuelve aquí.
+    //
+    // Se envuelve la carga ENTERA y no cada lectura de sector: un `.bex` son
+    // varios KiB y cambiar el CR3 por sector serían cientos de vaciados de TLB
+    // para leer un archivo. La mitad alta —physmap, pilas, imagen del kernel—
+    // está mapeada igual en los dos espacios, así que todo lo que hace
+    // `con_buffer` (leer, verificar la firma, mapear el proceso nuevo) es
+    // seguro bajo el CR3 del kernel.
+    use crate::ring0::mm::vmm;
+    let kpml4 = vmm::kernel_pml4();
+    let previo = vmm::read_cr3();
+    let cambiado = kpml4 != 0 && previo != kpml4;
+    if cambiado {
+        vmm::switch_to(kpml4);
+    }
     let informe = con_buffer(path);
+    // Se devuelve SIEMPRE y por un solo camino: volver a Ring 3 con el CR3 del
+    // kernel puesto sería mucho peor que el fallo original — la tarea seguiría
+    // corriendo con el espacio de direcciones de otro.
+    if cambiado {
+        vmm::switch_to(previo);
+    }
     EN_USO.store(false, Ordering::Release);
     informe
 }
