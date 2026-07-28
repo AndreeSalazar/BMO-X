@@ -187,9 +187,120 @@ se fue. Cuando el testimonio y la realidad no cuadran, se duda del testimonio.
 
 ---
 
+## Ep. 14 — XSAVE no guarda: hace MERGE
+
+**Síntoma**: `#GP(0)` con `rip=0x4000D0`. Intermitente. A veces a los 8.000
+ticks, a veces al primero. El sello del contexto INTACTO.
+
+**Camino** (cinco sondas, cuatro pantallas azules, y cada instrumento mató
+una hipótesis mía):
+
+1. **Desensamblar el `rip`.** No era un `iretq` como parecía: era el
+   `xrstor64` del epílogo del timer. El kernel se enlaza en `0x400000` — no
+   confundir con `USER_IMAGE_BASE = 0x40000000`, ni con el `linker.ld` de la
+   raíz del repo, que está desfasado.
+2. El sello (`BMO1` en `+1008`) pasaba y el back-pointer (`+1024`) también:
+   el área estaba vigilada por los dos **extremos**, y la cabecera XSAVE
+   (`+512`) quedaba en medio **sin que la mirara nadie**.
+3. **Guardia de cabecera** en los cinco epílogos. Convirtió un `#GP` mudo en
+   `ROTTEN CONTEXT: XSAVE header`, con campo y dueño. Saltó a la primera.
+4. **Anillo de publicaciones** (`pub0..pub3`): mató la hipótesis del solape
+   de áreas — las dos distaban 2624 bytes, no se tocaban.
+5. **`bv0`** (la cabecera al entrar al despachador): mató la hipótesis del
+   planificador. Ya venía podrida antes de que nadie hiciera nada.
+6. **`bvX`/`baseX`**, leídos por el PROPIO STUB una instrucción después del
+   `xsave64`, sin ninguna indirección. Ahí la contradicción quedó desnuda: el
+   `xsave64` corría y dejaba basura en `XSTATE_BV`.
+
+**El hallazgo**: `XSAVE` no inicializa la cabecera. Hace
+
+```text
+XSTATE_BV ← (XSTATE_BV_viejo AND NOT RFBM) OR (XINUSE AND RFBM)
+```
+
+con `RFBM = EDX:EAX AND XCR0`. **Conserva todos los bits fuera de XCR0** del
+valor anterior, y los 48 bytes reservados no los toca en absoluto. Los stubs
+tallaban el área sobre la pila —o sea sobre basura— y esa basura sobrevivía
+al guardado. `XRSTOR` la rechaza con `#GP(0)`. `trap::fabricate` nunca lo
+sufrió porque pone a cero los 1024 bytes antes de nada; los stubs no. Ésa era
+la asimetría.
+
+**La firma que lo delató**: los volcados daban `0x5F0FCB` y `0x37B`, y los
+dos son *el valor viejo con los tres bits bajos puestos a 3* — y 3 es
+exactamente `XINUSE & 7` (x87 y SSE en uso, AVX en estado inicial). Un campo
+corrupto con unos pocos bits bajos coherentes no es corrupción: **es una
+instrucción haciendo merge donde creíamos store.**
+
+**Moraleja**: cuando una instrucción tiene pareja —guardar/restaurar,
+abrir/cerrar— hay que leer en la spec **qué campos escribe cada una y si hace
+merge o store**. Y si un área se talla sobre la pila, alguien tiene que
+ponerla a cero: `sub rsp` no limpia nada.
+
 ---
 
-## Las tres leyes que dejó esta guerra
+## Ep. 15 — Tres minas del mismo tipo, con tres periféricos distintos
+
+El mismo día, tres fallos que parecían no tener relación:
+
+**`#PF` en `cr2=0xFC2004F8`** — el ERDP del xHCI. **`#PF` en
+`cr2=0xFC680320`** — los registros del puerto AHCI. Los dos con `err=0`
+(lectura/escritura sobre página **ausente**, en supervisor).
+
+**Culpable, el mismo**: en un `SYSCALL` desde Ring 3, **el CR3 sigue siendo
+el del llamante**. El espacio de una tarea de usuario mapea el kernel y su
+pila, pero **no el agujero de MMIO**. Mientras el único que tocaba hardware
+era el shell de Ring 0 —tarea de kernel, CR3 de kernel— no se notaba. En
+cuanto `KIND_INPUT` entregó teclas y `OP_EJECUTAR` leyó el disco, los dos
+caminos se recorrieron desde dentro de un syscall.
+
+Ya estaba anotado para el framebuffer en `fault_dispatch` ("el CR3 de usuario
+puede no mapear el rango identidad") — pero como una nota sobre *el
+framebuffer*, no como una regla.
+
+**Y el tercero, `#GP(0x8)` al escribir `ktest`**: `KERNEL_SS` valía `0x08`,
+que en esta GDT es el selector de **CÓDIGO** de Ring 0. En modo largo el
+`iretq` saca `SS:RSP` **siempre**, también al mismo privilegio, y cargar `SS`
+con un descriptor de código da `#GP(selector)`. El informe lo cantó solo:
+`err=0x00000008` **era el selector culpable, dicho por el propio CPU**. Sólo
+mordía al crear una tarea de kernel, y nadie había creado una nunca.
+
+**Moraleja**: la regla no es "el framebuffer necesita CR3 de kernel". Es
+**cualquier dirección del rango identidad alto tocada desde un syscall o un
+ISR**. Cada capability nueva que llegue a hardware vuelve a pisar esta mina —
+y la simetría de las constantes de al lado (`USER_SS` apunta a datos,
+`USER_CS` a código) era la comprobación que faltaba mirar arriba.
+
+---
+
+## Ep. 16 — El teclado que se moría si lo aporreabas al arrancar
+
+**Síntoma**: pulsar teclas *durante el arranque* dejaba el teclado muerto
+toda la sesión. Reiniciar lo "arreglaba". Sin aporrear, nunca pasaba.
+
+**Culpable**: `evt_poll_nb` escribía el `ERDP` así:
+
+```rust
+w32(..., (erdp & 0xFFFF_FFFF) as u32);
+```
+
+y `erdp` va alineado a 16 bytes, o sea que **el bit 3 salía siempre 0**. El
+bit 3 del ERDP es **EHB** (Event Handler Busy), *write-1-to-clear*: lo pone
+el xHC al publicar un evento y el software lo baja escribiéndole un 1. Nunca
+se bajaba. El anillo de eventos se llena, el controlador entra en *Event Ring
+Full* y **deja de publicar eventos para siempre**.
+
+Aporrear el teclado mientras nadie drena el anillo lo llenaba. Sin aporrear,
+nunca se llenaba y el bug era invisible.
+
+**Moraleja**: un bit que el hardware pone y el software tiene que bajar es un
+contrato, no un adorno. Y los bugs que dependen de "cuánto tarda el usuario
+en hacer algo" sólo aparecen cuando alguien hace *justo* eso.
+
+---
+
+---
+
+## Las leyes que dejó esta guerra
 
 1. **QEMU miente por omisión**: sin IRQs vivos, sin tiempos físicos, sin
    memoria con huecos. Todo lo que "funciona en QEMU" es una hipótesis.
@@ -199,6 +310,17 @@ se fue. Cuando el testimonio y la realidad no cuadran, se duda del testimonio.
 3. **La telemetría en pantalla vale más que mil teorías**: cada episodio
    cayó cuando el sistema mismo confesó (filas de diagnóstico, censos,
    heartbeats). Si no puedes verlo, no puedes matarlo.
+4. **Un instrumento que mata tu hipótesis vale más que uno que la
+   confirma** (Ep. 14). Las cinco sondas de XSAVE tumbaron cuatro teorías
+   antes de acertar. Cada "no era eso" recortó el espacio de búsqueda a la
+   mitad; una sonda que sólo hubiera dicho "sí" no habría recortado nada.
+5. **El informe de fallo ya sabe más de lo que se lee.** `err=0x00000008` no
+   era un número: era el selector culpable, dicho por el CPU (Ep. 15). Antes
+   de añadir un campo nuevo, leer entero el que ya está.
+6. **Una regla escrita para un caso concreto no protege del siguiente**
+   (Ep. 15). "El framebuffer necesita CR3 de kernel" era cierto y era
+   inútil: la regla de verdad era *cualquier dirección del rango identidad
+   tocada desde un syscall*, y estaba a un periférico de distancia.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*

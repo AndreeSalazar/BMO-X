@@ -38,14 +38,17 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | Mouse USB | ✅ enumera y entrega puntero+botones por `KIND_INPUT` |
 | **CABINA** (telemetría omnisciente) | ✅ **viva**: cockpit + color semántico + bitácora de eventos (narrador) + detección de disco PCI |
 | **`KIND_FRAMEBUFFER`** (la pantalla es una capability) | ✅ Ring 3 pinta con `mov`; el kernel contesta 4 preguntas y se aparta |
-| **`KIND_INPUT`** (ratón **y teclado** a Ring 3) | ✅ lado kernel en metal; ✍️ el lado Ring 3 (`tecla()`) sin estrenar |
-| **Compositor** (Ultra_userspace/services/gui) | ✅ versión vieja pintó escritorio y cursor en HW · ✍️ la versión con caja de Ejecutar y fuente, sin estrenar |
-| **Caja de Ejecutar** (estilo Win+R, sustituye al terminal) | ✍️ escrita, **nunca ha corrido** |
+| **`KIND_INPUT`** (ratón, teclado **y modificadores**) | ✅ en metal; `Ctrl+Alt` detectado sin romper `AltGr` |
+| **Compositor** (Ultra_userspace/services/gui) | ✅ **se carga de `apps/gui.bex`**, fuera del kernel |
+| **Terminal de Ring 3** (caja Win+R + comandos) | ✅ **corre**: historial, TAB que completa, editor de línea con cursor, portapapeles, `ls`, `Ctrl+Alt` para invocar |
+| **`KIND_CONSOLE`** (la salida es una capability, en LOS DOS sentidos) | ✅ el hijo escribe y el terminal lee; el terminal escribe y el hijo lee (`ACCEPT`) |
+| **`KIND_DIRECTORIO`** (preguntar qué hay en el disco) | ✅ `ls` en el terminal, iteración sin cursor en el driver |
+| **Calculadora con botones** | ✅ cara en Rust, cálculo en BMO COBOL |
 | **`ring0/lanzar.rs`** (buscar+firma+admitir, un solo camino) | ✅ lo usa `run` en metal |
 | **ESTRATOS** | ✅ montado, superbloque leído, **firma verificada antes de ejecutar** |
 | Toolchain reorganizado (lang/forge/tools) | ✅ |
 | sem-asm (encoder tabla→bytes + intrínsecos) | ✅ C lo usa; fusión sem-asm↔C hecha |
-| BMO COBOL | ◐ base sólida (~15%) pero **corre en metal**; ver abajo |
+| BMO COBOL | ◐ base sólida pero **corre en metal**, y ya LEE y ESCRIBE: `DISPLAY <var>` + `ACCEPT`. 66 tests |
 | **BMO C ("CONTROL ABSOLUTE")** | ✅ **C esencial ~C11 muy completo** (85 tests); corre en metal |
 | C++ frontend | ◐ mínimo (~900 líneas); será barato encima de C |
 | **Driver de disco (AHCI/SATA)** | ✅ **LEE Y MONTA**: GPT + FAT32 + volumen de datos con escritor. El NVMe de esta maquina es el disco de **Windows** — nunca se toca |
@@ -75,14 +78,18 @@ Esto no es una lista de intenciones — cada línea salió en pantalla o en CABI
 
 Honestidad primero: esto es lo que hay que estrenar antes de construir encima.
 
-- **La caja de Ejecutar** entera (dibujo, edición de línea, Enter → lanzar).
-- **`tecla()` desde Ring 3** — el kernel recibe teclas, pero ningún proceso de
-  usuario las ha pedido todavía.
-- **La fuente 8x16 dibujando en Ring 3** (`Pantalla::texto`).
-- **`OP_RUTA` / `OP_EJECUTAR`** — lanzar un programa desde userspace.
-- **El compositor cargado desde disco.** Último arranque: `WARN gui: no existe
-  una carpeta del camino` → falta `apps/` en el volumen de datos. **Todo lo de
-  arriba está detrás de esa carpeta.**
+- **La calculadora con botones** (`calc` en el terminal). El motor
+  `apps/calcgui.bex` compila y el panel dibuja, pero nadie ha pulsado `=` en
+  metal todavía.
+- **`ACCEPT` de COBOL** — el canal de entrada de la consola está escrito y
+  probado en el emulador (ida y vuelta: lo que se escribe se vuelve a leer),
+  pero no se ha tecleado un importe en el Ryzen.
+- **El editor de línea completo** (cursor, `Supr`, `Ctrl+C`/`V`) y el
+  historial con flechas.
+
+Lo que SÍ se estrenó: el terminal dibujando, la fuente en Ring 3, `tecla()`,
+`OP_EJECUTAR`, el compositor desde disco, y `KIND_CONSOLE` — la foto del
+`ls` y de los ecos lo demuestra.
 
 ---
 
@@ -134,12 +141,16 @@ loop (NO desde el timer IRQ: causaba cuelgue→reset). Da vida a `cabina-core`:
 detecta el controlador de disco (NVMe/AHCI). Color: verde=bien, ámbar=atención,
 rojo=problema. Anti-ghosting por change-detection + SCREEN_GEN.
 
-**Pendiente kernel**: capability de **directorio** (hoy Ring 3 no puede LISTAR
-un directorio — sin eso no hay iconos de carpetas), modificadores/scancodes en
-`INPUT_OP_TECLA` (hoy llega un byte ya resuelto, así que Ring 3 **no puede ver
-un atajo tipo Win+R**), capability de **memoria que crece** (el portón para
-cualquier lenguaje con GC), CABINA caja negra en disco, demand paging, endpoint
-RPC (servidores Ring 3), EXIT-reclaim.
+**Pendiente kernel**: capability de **memoria** — un proceso recibe su imagen
+y 64 KiB de pila y no puede pedir más. Bloquea DOS cosas a la vez: cualquier
+lenguaje con GC, y las **superficies compartidas** que hacen falta para
+ventanas de verdad (hoy `KIND_FRAMEBUFFER` es exclusivo, un solo proceso es
+dueño de la pantalla). Después: CABINA caja negra en disco, demand paging,
+endpoint RPC (servidores Ring 3), EXIT-reclaim, SMP.
+
+**Hecho desde entonces**: `KIND_DIRECTORIO` (hay `ls`), modificadores en
+`INPUT_OP_MODIFICADORES` (hay `Ctrl+Alt`), `KIND_CONSOLE` en los dos sentidos
+(hay `ACCEPT`).
 
 **Deuda visible**: `services/input` es una carpeta que promete un multiplexor de
 entrada y está vacía — la entrada la reclama el compositor directamente. O se
@@ -192,9 +203,21 @@ tipo LLVM), `module.rs`.
   comparaciones comisd, cvtsi2sd/cvttsd2si, retorno en xmm0; float globales y
   args-de-función = deferido honesto).
 
-**FALTA C**: float args por ABI xmm + printf %f, float globales, preprocesador
-completo, stdlib impl.c. Base sólida para C++ (hereda lexer/tablas/intrínsecos/
-codegen; solo pone RAII + vtables encima).
+**FALTA C** (por orden de lo que más duele):
+
+1. **ENTRADA. No puede leer NADA** — ni `scanf` ni `getchar`. Tiene `printf` y
+   106 tests verdes, o sea que habla y no escucha. Es exactamente el hueco que
+   COBOL tenía hasta el 2026-07-28, y ahora es barato: `console::read_line` y
+   `fmt::parse_decimal_scaled` ya existen en `bmo-lower` y **no son de ningún
+   lenguaje** — se comparten igual que el conversor de enteros.
+2. `printf %f` y float args por ABI xmm; float globales.
+3. Preprocesador completo.
+4. **stdlib (`impl.c`)** — y ésta es la de verdad: *la universalidad de C no
+   viene del lenguaje, viene de libc*. Sin biblioteca estándar, C es un
+   ensamblador portable con llaves. Es lo que `bmo-rt` tiene que llegar a ser.
+
+Base sólida para C++ (hereda lexer/tablas/intrínsecos/codegen; solo pone RAII
++ vtables encima).
 
 ---
 
@@ -315,25 +338,25 @@ montado, gate de identidad antes de escribir, XSAVE per-task (y su causa raíz),
 `.bex` fuera del kernel (el compositor se carga de disco), ESTRATOS montado con
 gate de firma.
 
-**Kernel/HW (orden vigente 2026-07-27):**
-1. **ESTRENAR LA CAJA.** Está a una carpeta: falta `apps/gui.bex` en el
-   volumen de datos. Detrás de eso hay cinco piezas escritas y sin correr (ver
-   arriba). Nada nuevo debería empezar antes de esto — construir sobre código
-   que nunca se ha ejecutado es cómo se acumulan features que sólo existen en
-   la documentación. Diagnóstico: `disk` y `run apps/gui.bex`. La letra es **A:** (partición 2, FAT32, label BMO).
-2. **Decidir quién es el terminal.** Hoy el shell de Ring 0 sigue siendo la
-   consola principal. Cuando la caja funcione, el shell pasa a ser lo que debe
-   ser: la consola de rescate del kernel, no la interfaz del usuario. Es una
-   decisión de política, no un proyecto.
-3. **Modificadores en `INPUT_OP_TECLA`** → `(scancode, mods, byte)` en el mismo
-   `u64`. Sin esto no hay atajo global tipo Win+R: Ring 3 ve una `r`, no
-   `Win+R`. Una llamada, un campo más, el ABI intacto.
-4. **Capability de directorio** — abrir/listar/leer. Es lo que desbloquea
-   iconos de carpetas, y es más decisión de seguridad (qué ve un proceso del
-   disco) que de dibujo.
-5. **Capability de memoria que crece** — el portón para cualquier lenguaje con
-   GC. Hoy un proceso recibe su imagen y 64 KiB de pila y no puede pedir más.
-6. **Endpoint RPC → servicios Ring 3**: el momento library-OS.
+**HECHO desde entonces** (2026-07-28): la caja estrenada, el terminal con
+comandos e historial, modificadores (`Ctrl+Alt`), `KIND_DIRECTORIO` (`ls`),
+`KIND_CONSOLE` en los dos sentidos, `DISPLAY <var>` y `ACCEPT` en COBOL, y la
+calculadora.
+
+**Kernel/HW (orden vigente 2026-07-28):**
+1. **PICTURE de edición en EJECUCIÓN.** El motor está probado
+   (`toolchain/lang/cobol/src/edicion.rs`, 13 tests) pero formatea un valor que
+   el compilador conoce; para `MOVE X TO Y` con `Y` editada hay que emitir el
+   recorrido de la plantilla como código. Es *la* función bancaria.
+2. **Entrada en BMO C** — tiene `printf` y no puede leer nada. Barato ahora:
+   `console::read_line` y `fmt::parse_decimal_scaled` ya existen en `bmo-lower`.
+3. **Capability de MEMORIA.** Un proceso recibe su imagen y 64 KiB de pila.
+   Bloquea DOS cosas: lenguajes con GC, y superficies compartidas.
+4. **Superficies y ventanas** — hoy `KIND_FRAMEBUFFER` es exclusivo. Wayland
+   en pequeño, encima del punto 3. Es lo que saca la calculadora del
+   compositor a su propia ventana **sin tocar el COBOL**.
+5. **Endpoint RPC → servicios Ring 3**: el momento library-OS.
+6. **Ada**, en perfil restringido.
 7. **SMP al final**: el codigo de despertar los APs YA EXISTE en s1_cpu
    (trampolin, INIT+SIPI, GDT/IDT), pero `smp_startup()` no tiene ni una
    llamada y `ap_entry64` solo cuenta y hace hlt. Va el ultimo a proposito: el

@@ -391,9 +391,27 @@ resuelto por el Capability Engine. El sistema crece agregando *kinds* y
 | Task | `YIELD` | 0x03 | estable |
 | Task | `EXIT` | 0x04 | estable |
 | Task | `CHANNEL_OPEN` | 0x05 | estable |
-| Task | `CONSOLE_WRITE` | 0x06 | *bootstrap* → migrará a capability de consola |
+| Task | `CONSOLE_WRITE` | 0x06 | estable — encauza a `KIND_CONSOLE` si el proceso tiene una |
+| Task | `ENDPOINT_CREATE` / `CONNECT` | 0x07 / 0x08 | *bootstrap* — falta servicio de nombres |
+| Task | `FRAMEBUFFER_CLAIM` | 0x09 | estable — exclusivo |
+| Task | `INPUT_CLAIM` | 0x0A | estable — exclusivo, ratón **y** teclado |
+| Task | `RUTA` / `EJECUTAR` | 0x0B / 0x0C | estable — lanzar desde Ring 3, con gate de firma |
+| Task | `CONSOLA_CREAR` | 0x0D | estable |
+| Task | `DIR_ABRIR` | 0x0E | estable |
+| Task | `CONSOLE_READ` | 0x0F | estable — la pareja de `CONSOLE_WRITE` |
 | Channel | `GET_SEQ` | 0x01 | estable |
 | Channel | `GET_INDEX` | 0x02 | estable |
+| Framebuffer | `BASE` / `DIMS` / `STRIDE` / `BYTES` | 0x01–0x04 | estable |
+| Input | `PUNTERO` / `EVENTOS` | 0x01 / 0x02 | estable |
+| Input | `TECLA` / `MODIFICADORES` | 0x03 / 0x04 | estable |
+| Console | `LEER` / `PERDIDOS` | 0x01 / 0x02 | estable |
+| Console | `ESCRIBIR` / `HAY_HIJO` | 0x03 / 0x04 | estable |
+| Directorio | `SIGUIENTE` / `NOMBRE` | 0x01 / 0x02 | estable |
+
+**Cinco kinds, cero puertas nuevas.** Todo lo que se ha añadido —la pantalla,
+la entrada, la consola con sus dos sentidos, los directorios, lanzar
+programas— cabe en `INVOKE`. Eso es la prueba de que el ABI congelado
+aguanta: el sistema creció y la frontera no se movió ni un número.
 
 ### Reglas del contrato
 
@@ -460,35 +478,48 @@ convierte en biblioteca + operaciones; la puerta sigue siendo `INVOKE`.
   y ni se entera. Montado **sin escritor**: la imposibilidad de escribir es
   estructural, no una promesa.
 
+**Conseguido después** (2026-07-27/28):
+
+- ✅ **La pantalla, la entrada y la consola son capabilities.** Ring 3 pinta
+  con `mov` sobre el framebuffer mapeado, recibe teclas y ratón, y tiene su
+  propia consola con **los dos sentidos** — un terminal puede leer lo que
+  imprime su hijo y mandarle lo que se teclea.
+- ✅ **XSAVE per-task, con su causa raíz.** `XSAVE` hace *merge* de la
+  cabecera, no *store* (ver `BITACORA.md` Ep. 14). Los prólogos ponen a cero
+  la cabecera entera y los cinco epílogos la vigilan.
+- ✅ **Escritorio con terminal**: caja estilo `Win+R` con historial, TAB que
+  completa listando candidatos, editor de línea con cursor y portapapeles,
+  `ls`, y `Ctrl+Alt` para invocar la ventana.
+- ✅ **El compositor sale del kernel**: se carga de `apps/gui.bex` en el
+  volumen de datos. Cambiar el escritorio ya no obliga a recompilar Ring 0.
+- ✅ **BMO COBOL lee y escribe**: `DISPLAY <variable>` formatea en ejecución
+  con la escala de su PIC, y `ACCEPT` lee del terminal que lo lanzó — en un
+  proceso que **no tiene** la capability del teclado y no le hace falta.
+- ✅ **Calculadora con botones**: la cara en Rust dentro del compositor, el
+  cálculo en BMO COBOL con decimal exacto en centavos. Windows lleva el motor
+  dentro de la app; aquí es otro proceso, y mañana puede ser Ada.
+
 **Lo que sigue, en orden:**
 
-1. ~~FAT32 sobre A:~~ ✅ — montado y recorriendo directorios. Queda encima:
-   volcar la bitácora de CABINA a un archivo (la caja negra que sobrevive al
-   apagón) y cargar los `.bex` desde disco, para que añadir un programa deje
-   de exigir recompilar BMO-X entero.
-2. **Gate de identidad antes de escribir** — `IDENTIFY` ya da modelo y serie;
-   falta que sea una comprobación, no una línea informativa. La escritura
-   sigue cerrada hasta entonces.
-3. **XSAVE con bandera en el BEF** — hoy `FXSAVE` no preserva la mitad alta de
-   los YMM: AVX en Ring 3 es corrupción silenciosa. El programa lo declarará
-   en su contenedor y el kernel reservará el área grande solo para esos.
-4. **Endpoint RPC → compositor + mouse** (ver `ENDPOINT_RPC.md`): el momento
-   library-OS de verdad.
-5. **ESTRATOS** en BMO-DATA — el sistema de ficheros propio, diseñado en
-   `platform/services/timeback/ESTRATOS.md`: copy-on-write, direccionado por
-   contenido con BLAKE3, atributos con nombre (un `.bex` lleva su código, su
-   firma y su manifiesto de capabilities como flujos del mismo objeto), y el
-   historial como propiedad del suelo en vez de una carpeta aparte —
-   **escribir es commitear, porque nunca se sobreescribe nada**.
-6. **SMP** al final: el código de despertar los APs ya existe en `s1_cpu`, pero
-   el día que corra un segundo núcleo cada `static mut` del kernel es una
-   carrera. Primero el diseño de un núcleo firme.
-
-**Velocidad por arquitectura, no por micro-optimización**: sin cruce de anillos
-(library OS), DMA directo al buffer del llamante, NCQ (el HBA declara 32
-ranuras y se usa 1) e interrupciones MSI en vez de sondeo.
-
----
+1. **PICTURE de edición en ejecución.** El motor de máscaras existe y está
+   probado (`toolchain/lang/cobol/src/edicion.rs`), pero formatea un valor que
+   el compilador conoce. Para `MOVE X TO Y` con `Y` editada hay que emitir el
+   recorrido de la plantilla como código. Es *la* función bancaria:
+   `$$$,$$9.99` con 1234567 tiene que salir `$12,345.67`.
+2. **Entrada en BMO C.** Tiene `printf` y 106 tests, y **no puede leer nada**
+   — ni `scanf` ni `getchar`. Es el hueco que COBOL tenía hasta ayer, y ahora
+   es barato: `console::read_line` y `fmt::parse_decimal_scaled` ya existen en
+   `bmo-lower` y no son de ningún lenguaje.
+3. **Capability de memoria.** Un proceso recibe su imagen y 64 KiB de pila y
+   no puede pedir más. Bloquea dos cosas a la vez: cualquier lenguaje con GC,
+   y las **superficies compartidas** que hacen falta para ventanas de verdad.
+4. **Superficies y ventanas.** Hoy `KIND_FRAMEBUFFER` es exclusivo: un solo
+   proceso es dueño de la pantalla. Wayland en pequeño, sobre el punto 3.
+5. **Ada**, en perfil restringido (Ravenscar o sin runtime). Es el único
+   lenguaje nuevo de verdad y no bloquea nada.
+6. **SMP al final**: el código de despertar los APs ya existe en `s1_cpu`,
+   pero el día que corra un segundo núcleo cada `static mut` del kernel es
+   una carrera.
 
 ## Principios
 
