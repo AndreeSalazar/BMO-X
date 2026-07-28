@@ -484,13 +484,20 @@ pub struct EntradaDir {
 }
 
 impl EntradaDir {
-    /// El nombre en forma legible, `COBOL.BEX`, escrito en `dst`. Devuelve
+    /// El nombre en forma legible, `cobol.bex`, escrito en `dst`. Devuelve
     /// cuántos bytes ocupó.
+    ///
+    /// ★ En MINÚSCULA. FAT32 los guarda en mayúscula porque el formato es de
+    /// 1980 y no distinguía; eso es un detalle del disco, no del nombre. Un
+    /// listado a gritos se lee peor, y el kernel acepta las dos formas al
+    /// abrir — así que no se pierde nada bajándolos aquí, que es donde se
+    /// decide cómo se ve.
     pub fn legible(&self, dst: &mut [u8; 12]) -> usize {
+        let baja = |c: u8| if c.is_ascii_uppercase() { c + 32 } else { c };
         let mut n = 0;
         for i in 0..8 {
             if self.nombre[i] == b' ' { break; }
-            dst[n] = self.nombre[i];
+            dst[n] = baja(self.nombre[i]);
             n += 1;
         }
         if self.nombre[8] != b' ' {
@@ -498,7 +505,7 @@ impl EntradaDir {
             n += 1;
             for i in 8..11 {
                 if self.nombre[i] == b' ' { break; }
-                dst[n] = self.nombre[i];
+                dst[n] = baja(self.nombre[i]);
                 n += 1;
             }
         }
