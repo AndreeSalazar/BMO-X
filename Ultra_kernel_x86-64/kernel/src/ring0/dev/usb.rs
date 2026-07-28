@@ -383,6 +383,23 @@ fn poll_ascii_interno() -> Option<u8> {
     // muerta que no combina produce DOS caracteres (´ + q = ´q).
     if let Some(b) = drain() { return Some(b); }
 
+    // ¿Enchufaron o desenchufaron algo? El xHC lo avisa con un evento de
+    // cambio de puerto, que hasta ahora se descartaba en el driver — por eso
+    // desconectar el teclado y volver a conectarlo no revivía nada.
+    //
+    // Todavía NO se re-enumera: reconstruir el dispositivo es asignar slot,
+    // direccionarlo y configurar endpoints, y eso hay que hacerlo bien o deja
+    // el controlador a medias. Lo que sí hay ya es la CONSTANCIA — y con ella
+    // se puede comprobar en el Ryzen que el aviso llega antes de escribir la
+    // parte que actúa sobre él. Primero ver, luego hacer.
+    if let Some((puerto, conectado)) = bmo_xhci::tomar_cambio_puerto() {
+        if conectado {
+            crate::ring0::cabina::info("usb", "puerto: algo se ENCHUFO (sin re-enumerar aun)", puerto as u64);
+        } else {
+            crate::ring0::cabina::warn("usb", "puerto: algo se DESENCHUFO", puerto as u64);
+        }
+    }
+
     let mut evs = [InputEvent::empty(); 16];
     let n = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);

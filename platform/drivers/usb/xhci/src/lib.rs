@@ -65,7 +65,7 @@ const USBCMD_RS: u32 = 1 << 0; const USBCMD_HCRST: u32 = 1 << 1;
 const USBSTS_HCH: u32 = 1 << 0; const USBSTS_CNR: u32 = 1 << 11;
 const PORTSC_CCS: u32 = 1 << 0; const PORTSC_PED: u32 = 1 << 1;
 const PORTSC_PR: u32 = 1 << 4; const PORTSC_PP: u32 = 1 << 9;
-#[allow(dead_code)] const PORTSC_CSC: u32 = 1 << 17; const PORTSC_PRC: u32 = 1 << 21;
+const PORTSC_CSC: u32 = 1 << 17; const PORTSC_PRC: u32 = 1 << 21;
 const IMAN_IE: u32 = 1 << 1; #[allow(dead_code)] const IMAN_IP: u32 = 1 << 0;
 
 const TRB_NORMAL: u32 = 1;  const TRB_SETUP: u32 = 2;
@@ -911,6 +911,71 @@ pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
             LAST_SLOT = slot; LAST_EP = ep; LAST_CC = cc;
             return Some((slot, ep, cc));
         }
-        if typ == TRB_COMPLETION || typ == TRB_PORT_STATUS { continue; }
+        // ── Cambio de puerto: enchufaron o desenchufaron algo ──
+        //
+        // Esto se estaba DESCARTANDO junto con las compleciones, y por eso no
+        // habia hot-plug: el xHC avisa de que un puerto cambio de estado, y
+        // nadie escuchaba. Al desenchufar el teclado no se enteraba nadie, y al
+        // volver a enchufarlo tampoco.
+        //
+        // El Port ID viene en los bits 31:24 del primer dword del TRB, y es
+        // 1-based (el puerto 1 del xHC es el indice 0 de PORTSC).
+        //
+        // ★ Hay que limpiar CSC SI O SI. Es write-1-to-clear: mientras siga
+        // puesto, el xHC no vuelve a avisar de ese puerto — el segundo
+        // enchufe pasaria en silencio. Se escribe preservando PP y poniendo
+        // SOLO el bit que se quiere limpiar: los demas bits de estado son
+        // RW1C y escribirles un 1 limpiaria cambios que no hemos atendido.
+        if typ == TRB_PORT_STATUS {
+            let port_id = ((ev.0 >> 24) & 0xFF) as u8;
+            if port_id >= 1 {
+                let idx = port_id - 1;
+                if let Some(c) = CTRL.as_ref() {
+                    let pb = c.op_base as u64 + 0x400 + idx as u64 * 0x10;
+                    let sc = r32(c.mmio + pb + PORTSC as u64);
+                    if sc & PORTSC_CSC != 0 {
+                        w32(c.mmio + pb + PORTSC as u64, (sc & PORTSC_PP) | PORTSC_CSC);
+                    }
+                    PORT_EVENTS = PORT_EVENTS.wrapping_add(1);
+                    LAST_PORT = port_id;
+                    LAST_PORT_CCS = sc & PORTSC_CCS != 0;
+                    PORT_PENDIENTE = true;
+                }
+            }
+            continue;
+        }
+        if typ == TRB_COMPLETION { continue; }
+    }
+}
+
+// ── Hot-plug: lo que el driver ve, para que otro decida ──────────────
+//
+// El driver NO re-enumera solo. Reconstruir un dispositivo es asignar slot,
+// direccionarlo y configurar endpoints — decisiones que toma la capa de
+// arriba (`uhid` + `dev::usb`), que es la que sabe si lo que se enchufo es un
+// teclado, un raton o un disco. Aqui solo se anota el hecho.
+
+static mut PORT_EVENTS: u32 = 0;
+static mut LAST_PORT: u8 = 0;
+static mut LAST_PORT_CCS: bool = false;
+static mut PORT_PENDIENTE: bool = false;
+
+/// `(cuantos cambios de puerto, ultimo puerto, hay dispositivo ahora)`.
+/// Para diagnostico: si esto no sube al desenchufar, el xHC no esta avisando.
+pub fn port_stats() -> (u32, u8, bool) {
+    unsafe { (PORT_EVENTS, LAST_PORT, LAST_PORT_CCS) }
+}
+
+/// Consume el aviso: `Some((puerto, conectado))` una sola vez por cambio.
+///
+/// Devuelve `None` si no hay nada nuevo, para que el llamante pueda sondear en
+/// su bucle sin re-enumerar cien veces el mismo enchufe.
+pub fn tomar_cambio_puerto() -> Option<(u8, bool)> {
+    unsafe {
+        if !PORT_PENDIENTE {
+            return None;
+        }
+        PORT_PENDIENTE = false;
+        Some((LAST_PORT, LAST_PORT_CCS))
     }
 }
