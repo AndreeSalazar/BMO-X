@@ -377,6 +377,64 @@ impl Salida {
             self.byte(b);
         }
     }
+
+    fn limpiar(&mut self) {
+        self.celdas = [[b' '; SAL_COLS]; SAL_ROWS];
+        self.fila = 0;
+        self.col = 0;
+        self.sucia = true;
+    }
+}
+
+// ── La línea de comandos ────────────────────────────────────────────────
+
+/// Qué pidió el usuario. Se separa del bucle porque la decisión "esto es un
+/// comando o es una ruta" merece leerse de un vistazo.
+enum Orden<'a> {
+    Nada,
+    Lanzar(&'a [u8]),
+    Limpiar,
+    Ayuda,
+    /// Una palabra suelta que no parece una ruta. `reboot`, `ls`, `dir`...
+    Desconocida,
+}
+
+fn parece_ruta(t: &[u8]) -> bool {
+    t.iter().any(|&c| c == b'/' || c == b'\\' || c == b'.')
+}
+
+/// Parte la línea en verbo y resto.
+///
+/// ★ Acepta `run <ruta>` ADEMÁS de la ruta pelada, y no por capricho: quien usa
+/// esto viene del shell de Ring 0, donde se escribe `run`. Pelearse con la
+/// costumbre del usuario es perder — el que se adapta es el programa. Lo que sí
+/// se hace es DECIRLO cuando la palabra no es ni comando ni ruta, en vez de
+/// contestar "no esta: revisa la ruta" a alguien que escribió `reboot`.
+fn interpretar(linea: &[u8]) -> Orden<'_> {
+    let linea = {
+        let mut i = 0;
+        while i < linea.len() && linea[i] == b' ' { i += 1; }
+        &linea[i..]
+    };
+    if linea.is_empty() {
+        return Orden::Nada;
+    }
+    let corte = linea.iter().position(|&c| c == b' ').unwrap_or(linea.len());
+    let (verbo, resto) = linea.split_at(corte);
+    let resto = {
+        let mut i = 0;
+        while i < resto.len() && resto[i] == b' ' { i += 1; }
+        &resto[i..]
+    };
+    match verbo {
+        b"run" | b"RUN" => {
+            if resto.is_empty() { Orden::Ayuda } else { Orden::Lanzar(resto) }
+        }
+        b"clear" | b"cls" => Orden::Limpiar,
+        b"help" | b"ayuda" | b"?" => Orden::Ayuda,
+        _ if parece_ruta(linea) => Orden::Lanzar(linea),
+        _ => Orden::Desconocida,
+    }
 }
 
 fn pintar_salida(p: &bmo::Pantalla, c: &Caja, s: &Salida) {
@@ -561,38 +619,64 @@ pub extern "C" fn _start() -> ! {
                 }
                 match c {
                     b'\r' | b'\n' => {
-                        if n == 0 {
-                            pintar_estado(&p, &caja, "escribe una ruta primero", TEXTO_TENUE);
-                        } else {
-                            // Eco de lo que se lanza, como cualquier terminal:
-                            // sin él, la salida de dos programas seguidos se
-                            // mezcla sin saber dónde empieza cada uno.
-                            salida.texto(b"> ");
-                            salida.texto(&ruta[..n]);
-                            salida.byte(b'\n');
-                            let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
-                            match bmo::ejecutar_en(&ruta[..n], cap) {
-                                Ok(_) => {
-                                    pintar_estado(&p, &caja, "lanzado", TEXTO_BIEN);
-                                    // El campo se vacía al lanzar, como el
-                                    // Win+R: la caja está para el SIGUIENTE
-                                    // programa, no para admirar el anterior.
-                                    n = 0;
-                                }
-                                Err(bmo::ERROR_NO_ESTA) => {
-                                    pintar_estado(&p, &caja, "no esta: revisa la ruta", TEXTO_MAL)
-                                }
-                                Err(bmo::ERROR_GATE) => pintar_estado(
-                                    &p,
-                                    &caja,
-                                    "rechazado: la firma no cuadra",
-                                    TEXTO_MAL,
-                                ),
-                                Err(bmo::ERROR_OCUPADO) => {
-                                    pintar_estado(&p, &caja, "no hay hueco ahora mismo", TEXTO_MAL)
-                                }
-                                Err(_) => {
-                                    pintar_estado(&p, &caja, "no paso la admision", TEXTO_MAL)
+                        // Eco SIEMPRE, también de lo que no se entiende: un
+                        // terminal que se traga lo que escribiste deja al
+                        // usuario sin saber qué llegó.
+                        salida.texto(b"> ");
+                        salida.texto(&ruta[..n]);
+                        salida.byte(b'\n');
+                        match interpretar(&ruta[..n]) {
+                            Orden::Nada => {
+                                pintar_estado(&p, &caja, "escribe algo", TEXTO_TENUE);
+                            }
+                            Orden::Limpiar => {
+                                salida.limpiar();
+                                pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                                n = 0;
+                            }
+                            Orden::Ayuda => {
+                                salida.texto(b"  <ruta>       lanza un .bex   (apps/COBOL.bex)\n");
+                                salida.texto(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
+                                salida.texto(b"  clear / cls  limpia esta salida\n");
+                                salida.texto(b"  help         esto\n");
+                                salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
+                                pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                                n = 0;
+                            }
+                            Orden::Desconocida => {
+                                // El mensaje honesto. Antes se contestaba "no
+                                // esta: revisa la ruta" a quien escribía
+                                // `reboot`, y eso manda a buscar un archivo que
+                                // nunca existió en vez de decir la verdad.
+                                salida.texto(b"  no es un comando ni una ruta. escribe 'help'.\n");
+                                pintar_estado(&p, &caja, "no lo conozco: prueba help", TEXTO_MAL);
+                                n = 0;
+                            }
+                            Orden::Lanzar(objetivo) => {
+                                let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
+                                match bmo::ejecutar_en(objetivo, cap) {
+                                    Ok(_) => {
+                                        pintar_estado(&p, &caja, "lanzado", TEXTO_BIEN);
+                                        // El campo se vacía al lanzar, como el
+                                        // Win+R: la caja está para el SIGUIENTE
+                                        // programa, no para admirar el anterior.
+                                        n = 0;
+                                    }
+                                    Err(bmo::ERROR_NO_ESTA) => {
+                                        pintar_estado(&p, &caja, "no esta: revisa la ruta", TEXTO_MAL)
+                                    }
+                                    Err(bmo::ERROR_GATE) => pintar_estado(
+                                        &p,
+                                        &caja,
+                                        "rechazado: la firma no cuadra",
+                                        TEXTO_MAL,
+                                    ),
+                                    Err(bmo::ERROR_OCUPADO) => {
+                                        pintar_estado(&p, &caja, "no hay hueco ahora mismo", TEXTO_MAL)
+                                    }
+                                    Err(_) => {
+                                        pintar_estado(&p, &caja, "no paso la admision", TEXTO_MAL)
+                                    }
                                 }
                             }
                         }
