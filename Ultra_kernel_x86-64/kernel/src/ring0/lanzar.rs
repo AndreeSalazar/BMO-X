@@ -87,6 +87,9 @@ pub struct Informe {
     pub bytes: usize,
     /// `None` = no se llegó a leer el archivo.
     pub firma: Option<est::Firma>,
+    /// Pid del proceso admitido. Hace falta para encauzar su salida a la
+    /// consola de quien lo lanzó — el tid identifica al hilo, no al proceso.
+    pub pid: Option<u32>,
     pub res: Result<u32, Fallo>,
 }
 
@@ -106,7 +109,7 @@ static EN_USO: AtomicBool = AtomicBool::new(false);
 
 /// Carga y admite. No pinta, no bloquea, no reintenta.
 pub fn ruta(path: &str) -> Informe {
-    let vacio = |f: Fallo| Informe { origen: "", bytes: 0, firma: None, res: Err(f) };
+    let vacio = |f: Fallo| Informe { origen: "", bytes: 0, firma: None, pid: None, res: Err(f) };
 
     let path = path.trim();
     if path.is_empty() {
@@ -176,6 +179,7 @@ fn con_buffer(path: &str) -> Informe {
                     origen: "ESTRATOS",
                     bytes: 0,
                     firma: None,
+                    pid: None,
                     res: Err(Fallo::NoSePudoLeer),
                 }
             }
@@ -190,6 +194,7 @@ fn con_buffer(path: &str) -> Informe {
                     origen: "FAT32",
                     bytes: 0,
                     firma: None,
+                    pid: None,
                     res: Err(Fallo::NoSeEncuentra(e.name())),
                 }
             }
@@ -213,7 +218,7 @@ fn con_buffer(path: &str) -> Informe {
         };
         if let Some(f) = fallo {
             crate::ring0::cabina::fault("estratos", f.motivo(), n as u64);
-            return Informe { origen, bytes: n, firma: veredicto, res: Err(f) };
+            return Informe { origen, bytes: n, firma: veredicto, pid: None, res: Err(f) };
         }
     }
 
@@ -224,9 +229,9 @@ fn con_buffer(path: &str) -> Informe {
         None => path,
     };
 
-    let res = match crate::ring0::proc::admit_from_disk(nombre, &buf[..n]) {
-        Some(tid) => Ok(tid),
-        None => Err(Fallo::NoAdmitido),
+    let (res, pid) = match crate::ring0::proc::admit_from_disk(nombre, &buf[..n]) {
+        Some((tid, pid)) => (Ok(tid), Some(pid)),
+        None => (Err(Fallo::NoAdmitido), None),
     };
-    Informe { origen, bytes: n, firma: veredicto, res }
+    Informe { origen, bytes: n, firma: veredicto, pid, res }
 }

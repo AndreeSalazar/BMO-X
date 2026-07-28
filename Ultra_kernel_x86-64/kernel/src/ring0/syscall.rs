@@ -68,6 +68,9 @@ const TASK_OP_RUTA: u64 = 0x0B;
 /// Devuelve el tid admitido. Ver `ring0/lanzar.rs` — el gate de firma es el
 /// mismo que el del shell, no una copia.
 const TASK_OP_EJECUTAR: u64 = 0x0C;
+/// Crea una consola y devuelve su handle de LECTURA. Quien la crea es el
+/// terminal: la consola es suya y la drena a su ritmo. Ver `ring0/consola.rs`.
+const TASK_OP_CONSOLA_CREAR: u64 = 0x0D;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -232,7 +235,7 @@ fn cap_err(err: (u32, u32)) -> BmoStatus {
     BmoStatus::err_with_flags(err.0, err.1)
 }
 
-fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
+fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
     match operation {
         TASK_OP_GET_PID => BmoStatus::ok_value(scheduler::current_pid() as u64),
         TASK_OP_GET_TID => BmoStatus::ok_value(scheduler::current_tid() as u64),
@@ -256,9 +259,30 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
         // program draws — the whole point of the CPL3→CPL0 demo. It writes
         // nothing but text and cannot escalate; the caller only ever paints
         // into the kernel-owned console surface.
+        // La salida va a la consola ASIGNADA al proceso, si tiene una — o al
+        // panel del kernel si no, exactamente como antes. Lo nuevo rodea a lo
+        // viejo en vez de romperlo: los cinco demos embebidos siguen hablando
+        // por el panel sin cambiar una linea.
         TASK_OP_CONSOLE_WRITE => {
-            crate::ring0::uconsole::write_packed(arg0);
+            let pid = scheduler::current_pid();
+            match crate::ring0::consola::salida_de(pid) {
+                Some(idx) => {
+                    // Desempaquetar aqui: el anillo guarda bytes, no palabras.
+                    // El cero corta, igual que en la consola del kernel.
+                    let w = arg0.to_le_bytes();
+                    let n = w.iter().position(|&b| b == 0).unwrap_or(8);
+                    crate::ring0::consola::escribir(idx, &w[..n]);
+                }
+                None => crate::ring0::uconsole::write_packed(arg0),
+            }
             BmoStatus::ok_value(0)
+        }
+        TASK_OP_CONSOLA_CREAR => {
+            let _ = arg0;
+            match crate::ring0::consola::crear(scheduler::current_pid()) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
         }
         // Discover the caller's seeded estuary capability for index arg0.
         // The handle is the process's own; nothing new is granted here.
@@ -308,12 +332,32 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
             ruta_push(scheduler::current_pid(), arg0);
             BmoStatus::ok_value(0)
         }
+        // `arg1` = handle de la consola que el llamante entrega al hijo, o 0
+        // para que el hijo escriba en el panel del kernel como siempre. Ese
+        // handle es lo que convierte un lanzador en un TERMINAL: a partir de
+        // aqui la salida del hijo aterriza en el anillo de quien lo lanzo.
         TASK_OP_EJECUTAR => {
             let _ = arg0;
             let pid = scheduler::current_pid();
+            // Se resuelve ANTES de lanzar: si el handle es basura, mejor no
+            // haber creado un proceso que despues habla al vacio.
+            let consola_idx = if arg1 == 0 {
+                None
+            } else {
+                match cap::resolve(pid, arg1, cap::RIGHT_READ) {
+                    Ok(r) if r.kind == cap::KIND_CONSOLE => Some(r.object as usize),
+                    Ok(_) => return BmoStatus::err(cap::ERROR_INVALID_HANDLE),
+                    Err((code, flags)) => return cap_err((code, flags)),
+                }
+            };
             let informe = crate::ring0::lanzar::ruta(ruta_tomar(pid));
             match informe.res {
-                Ok(tid) => BmoStatus::ok_value(tid as u64),
+                Ok(tid) => {
+                    if let (Some(idx), Some(hijo)) = (consola_idx, informe.pid) {
+                        crate::ring0::consola::asignar_salida(hijo, idx);
+                    }
+                    BmoStatus::ok_value(tid as u64)
+                }
                 Err(f) => {
                     crate::ring0::cabina::warn("lanzar", f.motivo(), pid as u64);
                     BmoStatus::err(f.codigo())
@@ -386,7 +430,9 @@ fn invoke_channel(resolved: cap::Resolved, operation: u64) -> BmoStatus {
 /// `INVOKE(capability, operation, a0..a3)` — the single synchronous door.
 fn invoke(frame: &TrapFrame) -> BmoStatus {
     if frame.rdi == CURRENT_TASK {
-        return invoke_current_task(frame.rsi, frame.rdx);
+        // ★ `frame.r10` y no `rcx`: en SYSCALL el CPU mete ahi el RIP de
+        // retorno. Es el mismo motivo por el que el prologo hace `push rcx`.
+        return invoke_current_task(frame.rsi, frame.rdx, frame.r10);
     }
     let pid = scheduler::current_pid();
     // Un endpoint se resuelve con WRITE (llamar), no con READ: son derechos
@@ -428,6 +474,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 Some(v) => BmoStatus::ok_value(v),
                 None => unsupported(),
             },
+            // La salida de los hijos de este proceso. Se drena a su ritmo: el
+            // kernel no empuja, el terminal tira.
+            cap::KIND_CONSOLE => {
+                match crate::ring0::consola::operacion(resolved.object, frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
             cap::KIND_FRAMEBUFFER => {
                 match crate::ring0::fb::operacion(resolved.object, frame.rsi) {
                     Some(v) => BmoStatus::ok_value(v),

@@ -232,8 +232,9 @@ pub fn has_room() -> bool {
 /// Ring 3 viajaban dentro del kernel con `include_bytes!` y cambiar una línea
 /// de un `hola mundo` obligaba a recompilar el sistema operativo y reflashear.
 ///
-/// Devuelve el tid admitido.
-pub fn admit_from_disk(name: &str, bytes: &[u8]) -> Option<u32> {
+/// Devuelve `(tid, pid)`. El pid hace falta para encauzar la salida del
+/// hijo a la consola de quien lo lanzo (ver `ring0/consola.rs`).
+pub fn admit_from_disk(name: &str, bytes: &[u8]) -> Option<(u32, u32)> {
     if !has_room() { return None; }
     let pid = next_pid();
     let stored = intern_name(name);
@@ -244,7 +245,7 @@ pub fn admit_from_disk(name: &str, bytes: &[u8]) -> Option<u32> {
     match admit_payload(bytes, pid) {
         Some(tid) => {
             crate::ring0::cabina::info("proc", "programa admitido DESDE DISCO", tid as u64);
-            Some(tid)
+            Some((tid, pid))
         }
         None => {
             crate::ring0::cabina::warn("proc", "el .bex de disco no paso la admision", pid as u64);

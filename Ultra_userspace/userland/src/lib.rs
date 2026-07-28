@@ -61,6 +61,11 @@ pub const OP_FRAMEBUFFER_CLAIM: u32 = 0x09;
 pub const OP_INPUT_CLAIM: u32 = 0x0A;
 pub const OP_RUTA: u32 = 0x0B;
 pub const OP_EJECUTAR: u32 = 0x0C;
+pub const OP_CONSOLA_CREAR: u32 = 0x0D;
+
+// Operaciones sobre un handle de consola (`KIND_CONSOLE`).
+pub const CONSOLA_OP_LEER: u32 = 0x01;
+pub const CONSOLA_OP_PERDIDOS: u32 = 0x02;
 
 // Operaciones sobre un handle de pantalla (`KIND_FRAMEBUFFER`).
 pub const FB_OP_BASE: u32 = 0x01;
@@ -383,16 +388,63 @@ impl Pantalla {
 /// El gate de firma de ESTRATOS se aplica al otro lado: un binario sin firma
 /// buena no se ejecuta por mucho que se pida desde aquí.
 pub fn ejecutar(ruta: &[u8]) -> Result<u64, u32> {
+    ejecutar_en(ruta, 0)
+}
+
+/// Igual, pero la salida del hijo va a `consola` en vez de al panel del kernel.
+///
+/// Esto es lo que separa un lanzador de un TERMINAL: sin la consola el programa
+/// se ejecuta y su salida cae donde no la ves; con ella, aterriza en un anillo
+/// que tú drenas. `consola = 0` es el comportamiento de siempre.
+pub fn ejecutar_en(ruta: &[u8], consola: u64) -> Result<u64, u32> {
     for trozo in ruta.chunks(8) {
         let mut w = [0u8; 8];
         w[..trozo.len()].copy_from_slice(trozo);
         invoke(CURRENT_TASK, OP_RUTA, u64::from_le_bytes(w), 0, 0);
     }
-    let st = invoke(CURRENT_TASK, OP_EJECUTAR, 0, 0, 0);
+    let st = invoke(CURRENT_TASK, OP_EJECUTAR, 0, consola, 0);
     if st.ok() {
         Ok(st.value)
     } else {
         Err(st.code)
+    }
+}
+
+// ── La consola ──────────────────────────────────────────────────────────
+
+/// La salida de los programas que este proceso lance.
+///
+/// Cierra la última asimetría del sistema: la pantalla y la entrada ya eran
+/// capabilities, y la consola era un global fijo — por eso un terminal no podía
+/// leer lo que imprimía su propio hijo. Ahora la crea quien va a leerla.
+pub struct Consola {
+    pub cap: u64,
+}
+
+impl Consola {
+    pub fn crear() -> Option<Self> {
+        let cap = invoke(CURRENT_TASK, OP_CONSOLA_CREAR, 0, 0, 0).valor()?;
+        Some(Self { cap })
+    }
+
+    /// Hasta **7** bytes de salida. Devuelve cuántos son válidos; `0` = no hay
+    /// nada. **No bloquea**, igual que `tecla()` y por la misma razón: un
+    /// terminal tiene bucle de fotograma y dormirse aquí congelaría el cursor.
+    ///
+    /// Siete y no ocho porque el octavo lleva el contador — ver
+    /// `CONSOLA_OP_LEER` en el kernel.
+    pub fn leer(&self, dst: &mut [u8; 8]) -> usize {
+        let v = invoke(self.cap, CONSOLA_OP_LEER, 0, 0, 0).value;
+        *dst = v.to_le_bytes();
+        let n = (v >> 56) as usize;
+        dst[7] = 0;
+        n.min(7)
+    }
+
+    /// Bytes descartados por anillo lleno. Un terminal que va lento tiene
+    /// derecho a saber que está perdiendo salida en vez de creerse completo.
+    pub fn perdidos(&self) -> u64 {
+        invoke(self.cap, CONSOLA_OP_PERDIDOS, 0, 0, 0).value
     }
 }
 

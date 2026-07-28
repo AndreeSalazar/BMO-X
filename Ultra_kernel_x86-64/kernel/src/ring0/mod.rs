@@ -7,6 +7,7 @@ pub mod endpoint;
 pub mod cap;
 pub mod faults;
 pub mod fb;
+pub mod consola;
 pub mod input;
 pub mod lanzar;
 pub mod core {

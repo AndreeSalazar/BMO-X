@@ -29,6 +29,11 @@ pub const SLOTS_PER_PROC: usize = 64;
 pub const KIND_FRAMEBUFFER: u8 = 0x0F;
 /// El raton. Espejo de `bmo_abi::HandleKind::InputDevice`.
 pub const KIND_INPUT: u8 = 0x20;
+/// La SALIDA de un programa. Cierra la ultima asimetria: la pantalla y la
+/// entrada eran capabilities y la consola era un global fijo, asi que un
+/// terminal de Ring 3 no podia leer lo que imprimia su propio hijo. Ver
+/// `ring0/consola.rs`.
+pub const KIND_CONSOLE: u8 = 0x30;
 pub const KIND_CHANNEL: u8 = 0x60;
 /// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
 pub const KIND_ENDPOINT: u8 = 0x70;
@@ -211,6 +216,9 @@ pub fn revoke_all(pid: u32) {
     // revienta no deja la maquina ciega.
     crate::ring0::fb::proceso_muerto(pid);
     crate::ring0::input::proceso_muerto(pid);
+    // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
+    // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
+    crate::ring0::consola::proceso_muerto(pid);
     revoke_all_slots(pid)
 }
 
