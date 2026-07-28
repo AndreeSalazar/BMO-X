@@ -60,6 +60,20 @@ const USBCMD: u32 = 0x00; const USBSTS: u32 = 0x04;
 const RT_IMAN: u32 = 0x20; #[allow(dead_code)] const RT_IMOD: u32 = 0x24;
 const RT_ERSTSZ: u32 = 0x28; const RT_ERSTBA: u32 = 0x30;
 const RT_ERDP: u32 = 0x38;
+/// `ERDP` bit 3 — **EHB, Event Handler Busy**. Lo pone el xHC al publicar un
+/// evento y es *write-1-to-clear*: el software lo baja escribiéndole un 1 al
+/// actualizar el ERDP.
+///
+/// ★ No bajarlo NO es un detalle cosmético: el xHC considera que el manejador
+/// sigue ocupado, el anillo de eventos se llena, entra en **Event Ring Full**
+/// y **deja de publicar eventos para siempre**. El síntoma en esta máquina era
+/// exacto: aporrear el teclado mientras arranca (cuando todavía nadie drena el
+/// anillo) lo llenaba, y a partir de ahí el teclado estaba muerto hasta
+/// reiniciar. Sin aporrear, el anillo nunca se llenaba y no se notaba.
+///
+/// Como `erdp` va alineado a 16 bytes, el bit 3 salía siempre 0 — o sea que
+/// se escribía "EHB sigue ocupado" en cada vuelta.
+const ERDP_EHB: u64 = 1 << 3;
 const PORTSC: u32 = 0x00;
 const USBCMD_RS: u32 = 1 << 0; const USBCMD_HCRST: u32 = 1 << 1;
 const USBSTS_HCH: u32 = 1 << 0; const USBSTS_CNR: u32 = 1 << 11;
@@ -250,8 +264,16 @@ unsafe fn evt_poll_nb(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)>
         let ndq = if dq + 1 >= RING_SIZE as u32 { 0 } else { dq + 1 };
         let ncy = if ndq == 0 { ctrl.evt_cycle ^ 1 } else { ctrl.evt_cycle };
         let erdp = ctrl.erst_phys + (ndq as u64) * (TRB_SIZE as u64);
-        w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64, (erdp & 0xFFFF_FFFF) as u32);
+        // ★ La mitad ALTA primero, la baja después. La baja es la que lleva el
+        // EHB y la que el xHC toma como "ya está": escribir primero la baja
+        // dejaría, durante unos ciclos, una dirección con la mitad nueva y la
+        // mitad vieja. Aquí casi nunca cambia la alta, pero el orden correcto
+        // no cuesta nada y el incorrecto sólo falla el día que el anillo cruce
+        // una frontera de 4 GiB.
         w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4, ((erdp >> 32) & 0xFFFF_FFFF) as u32);
+        // Y con EHB puesto, que es lo que lo BAJA (RW1C). Ver `ERDP_EHB`: sin
+        // esto el anillo se llena y el xHC deja de publicar eventos.
+        w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64, ((erdp | ERDP_EHB) & 0xFFFF_FFFF) as u32);
         ctrl.evt_dequeue = ndq; ctrl.evt_cycle = ncy;
         Some((dw0, dw1, dw2, dw3))
     } else { None }
