@@ -165,7 +165,7 @@ impl Caja {
 ///
 /// Sabe de rectángulos, no de letras. Por eso `borrar_cursor` avisa cuando ha
 /// pasado por encima de la caja: el texto hay que volver a escribirlo.
-fn color_escena(c: &Caja, x: u32, y: u32) -> u32 {
+fn color_escena(c: &Caja, visible: bool, x: u32, y: u32) -> u32 {
     if y < BARRA_ALTO {
         // La marca de referencia dentro de la barra.
         if x >= 16 && x < 32 && y >= 14 && y < 30 {
@@ -173,7 +173,7 @@ fn color_escena(c: &Caja, x: u32, y: u32) -> u32 {
         }
         return BARRA;
     }
-    if c.contiene(x, y) {
+    if visible && c.contiene(x, y) {
         // Borde de 2 px.
         let en_borde = x < c.x + 2
             || x >= c.x + CAJA_ANCHO - 2
@@ -245,15 +245,15 @@ fn dibujar_cursor(p: &bmo::Pantalla, x: u32, y: u32) {
 /// Restaura de la escena el rectángulo donde estaba el cursor. Devuelve `true`
 /// si ese rectángulo tocaba la caja — y entonces hay letras que reescribir,
 /// porque la escena sabe de rectángulos pero no de glifos.
-fn borrar_cursor(p: &bmo::Pantalla, c: &Caja, x: u32, y: u32) -> bool {
+fn borrar_cursor(p: &bmo::Pantalla, c: &Caja, visible: bool, x: u32, y: u32) -> bool {
     let mut toco = false;
     for fila in 0..CUR_ALTO as u32 {
         for col in 0..CUR_ANCHO as u32 {
             let (px, py) = (x + col, y + fila);
-            if c.contiene(px, py) {
+            if visible && c.contiene(px, py) {
                 toco = true;
             }
-            p.punto(px, py, color_escena(c, px, py));
+            p.punto(px, py, color_escena(c, visible, px, py));
         }
     }
     toco
@@ -269,7 +269,7 @@ fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
     p.texto(
         c.x + 18,
         c.y + 34,
-        "Escribe la ruta de un .bex y pulsa Enter.",
+        "Escribe la ruta de un .bex y pulsa Enter.   Ctrl+Alt esconde/invoca.",
         TEXTO_TENUE,
     );
     p.rect(c.campo_x, c.campo_y, c.campo_ancho, c.campo_alto, CAMPO_FONDO);
@@ -402,6 +402,22 @@ fn pintar_salida(p: &bmo::Pantalla, c: &Caja, s: &Salida) {
     }
 }
 
+/// Borra la caja devolviendo cada píxel a lo que la escena dice que hay
+/// debajo. Es el precio de que la ventana se pueda invocar y esconder.
+///
+/// Recorre el rectángulo entero — unos 325k píxeles sobre memoria de vídeo sin
+/// caché, que no es gratis. Pero pasa UNA vez por pulsación de atajo, no por
+/// fotograma, y la alternativa (guardar lo que había debajo) sería un buffer de
+/// 1,3 MB en un proceso con 64 KiB de pila.
+fn borrar_caja(p: &bmo::Pantalla, c: &Caja) {
+    for fila in 0..CAJA_ALTO {
+        for col in 0..CAJA_ANCHO {
+            let (x, y) = (c.x + col, c.y + fila);
+            p.punto(x, y, color_escena(c, false, x, y));
+        }
+    }
+}
+
 fn pintar_estado(p: &bmo::Pantalla, c: &Caja, msg: &str, color: u32) {
     // Ancho fijo de limpieza: el mensaje anterior puede ser más largo que el
     // nuevo, y media frase vieja detrás de una nueva es peor que ninguna.
@@ -491,18 +507,58 @@ pub extern "C" fn _start() -> ! {
     let mut pulso_previo = 0u32;
     let mut vueltas = 0u32;
     let mut caret = true;
+    // ── El atajo: un TOQUE de Ctrl+Alt ──
+    //
+    // Se dispara al SOLTAR, y sólo si no llegó ningún carácter mientras
+    // estaban pulsados. No es una floritura: en la distribución española
+    // `Ctrl+Alt` **es** `AltGr` —lo que produce `@`, `#`, `[`, `]`, `\`, `|`
+    // y `€`— así que disparar al pulsarlos rompería escribir todos esos
+    // caracteres. Con el toque, `Ctrl+Alt` a secas invoca la ventana y
+    // `Ctrl+Alt+2` sigue dando `@`.
+    let mut combo_antes = false;
+    let mut hubo_tecla_en_combo = false;
+    let mut visible = true;
 
     loop {
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
 
         if let Some(e) = entrada.as_ref() {
+            // ── El atajo, ANTES de leer teclas ──
+            let m = e.modificadores();
+            let combo = m & bmo::MOD_CTRL != 0 && m & bmo::MOD_ALT != 0;
+            if combo && !combo_antes {
+                hubo_tecla_en_combo = false;
+            }
+            if !combo && combo_antes && !hubo_tecla_en_combo {
+                visible = !visible;
+                if visible {
+                    pintar_caja(&p, &caja);
+                    repintar_campo = true;
+                    salida.sucia = true;
+                    pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                } else {
+                    borrar_caja(&p, &caja);
+                }
+            }
+            combo_antes = combo;
+
             // ── Teclado ──
             //
             // Se drena hasta vaciar, no una tecla por fotograma: escribiendo
             // rápido llegan varias entre vuelta y vuelta, y quedarse con una
             // sería perder letras de forma que parecería un teclado malo.
             while let Some(c) = e.tecla() {
+                // Cualquier tecla durante el combo lo convierte en AltGr y
+                // cancela el toque: el usuario estaba escribiendo, no llamando.
+                if combo {
+                    hubo_tecla_en_combo = true;
+                }
+                // Con la ventana escondida las teclas no se editan en ningún
+                // sitio: se descartan. Volverán cuando se invoque.
+                if !visible {
+                    continue;
+                }
                 match c {
                     b'\r' | b'\n' => {
                         if n == 0 {
@@ -577,7 +633,7 @@ pub extern "C" fn _start() -> ! {
             // ── Ratón ──
             let pos = e.puntero();
             if pos.x != ax || pos.y != ay {
-                if ax != u32::MAX && borrar_cursor(&p, &caja, ax, ay) {
+                if ax != u32::MAX && borrar_cursor(&p, &caja, visible, ax, ay) {
                     // El cursor pasó por encima de la caja: la escena restauró
                     // los rectángulos, pero no las letras — ni las del campo ni
                     // las de la salida.
@@ -622,7 +678,11 @@ pub extern "C" fn _start() -> ! {
             }
         }
         if salida.sucia {
-            pintar_salida(&p, &caja, &salida);
+            // Se pinta sólo si se ve; el contenido sigue acumulándose oculto,
+            // así que al invocar la ventana está todo lo que pasó mientras.
+            if visible {
+                pintar_salida(&p, &caja, &salida);
+            }
             salida.sucia = false;
         }
 
@@ -633,7 +693,7 @@ pub extern "C" fn _start() -> ! {
             caret = !caret;
             repintar_campo = true;
         }
-        if repintar_campo {
+        if repintar_campo && visible {
             pintar_campo(&p, &caja, &ruta[..n], caret);
         }
 

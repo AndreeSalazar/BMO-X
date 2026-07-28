@@ -483,6 +483,36 @@ fn poll_ascii_interno() -> Option<u8> {
 
 /// ¿Está activo el tercer nivel? AltGr, o el Ctrl+Alt al que acostumbra
 /// Windows (y por tanto los dedos de medio mundo).
+/// Máscara de modificadores VIVA, para Ring 3.
+///
+/// El byte que entrega `INPUT_OP_TECLA` viene ya resuelto —la `ñ` es `0xF1`—
+/// y eso es lo correcto para escribir, pero deja fuera los atajos: un
+/// compositor no puede distinguir `Ctrl+Alt` de nada porque `Ctrl+Alt` sin
+/// otra tecla no produce carácter. Esto lo abre sin tocar el camino de
+/// escritura.
+pub const MOD_SHIFT: u8 = 1 << 0;
+pub const MOD_CTRL: u8 = 1 << 1;
+pub const MOD_ALT: u8 = 1 << 2;
+pub const MOD_ALTGR: u8 = 1 << 3;
+pub const MOD_CAPS: u8 = 1 << 4;
+
+pub fn modificadores() -> u8 {
+    unsafe {
+        let mut m = 0;
+        if SHIFT { m |= MOD_SHIFT; }
+        if CTRL { m |= MOD_CTRL; }
+        if LALT { m |= MOD_ALT; }
+        if ALTGR { m |= MOD_ALTGR; }
+        if CAPS { m |= MOD_CAPS; }
+        m
+    }
+}
+
+/// ★ OJO al usar esto para atajos: en la distribucion espanola `Ctrl+Alt` ES
+/// `AltGr` — es lo que produce `@`, `#`, `[`, `]`, `\`, `|` y `EUR`. Un atajo
+/// que dispare al PULSAR `Ctrl+Alt` rompe escribir todos esos caracteres. Ver
+/// como lo resuelve el compositor: dispara al SOLTAR, y solo si no se escribio
+/// nada mientras estaban pulsados.
 fn altgr_active() -> bool {
     unsafe { ALTGR || (CTRL && LALT) }
 }

@@ -68,6 +68,17 @@ pub const INPUT_OP_EVENTOS: u64 = 0x02;
 /// está para preguntar.
 pub const INPUT_OP_TECLA: u64 = 0x03;
 
+/// La máscara de modificadores AHORA MISMO, sin consumir nada.
+///
+/// Hace falta porque `INPUT_OP_TECLA` entrega un byte ya resuelto, y hay
+/// combinaciones que **no producen carácter**: `Ctrl+Alt` a secas no es
+/// ninguna letra. Sin esto, Ring 3 no puede tener atajos — vería una `r`, no
+/// un `Ctrl+Alt+R`.
+///
+/// No consume: es estado, no evento. Se puede leer una vez por fotograma sin
+/// robarle teclas a nadie.
+pub const INPUT_OP_MODIFICADORES: u64 = 0x04;
+
 /// ¿La tiene un proceso de Ring 3?
 ///
 /// Lo pregunta el shell de Ring 0 antes de leer el teclado. Sin esto los dos
@@ -129,6 +140,7 @@ pub fn operacion(operacion: u64) -> Option<u64> {
             Some(b) => Some(0x100 | b as u64),
             None => Some(0),
         },
+        INPUT_OP_MODIFICADORES => Some(crate::ring0::dev::usb::modificadores() as u64),
         _ => None,
     }
 }

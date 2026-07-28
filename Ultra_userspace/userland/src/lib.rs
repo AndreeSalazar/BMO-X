@@ -77,6 +77,14 @@ pub const FB_OP_BYTES: u32 = 0x04;
 pub const INPUT_OP_PUNTERO: u32 = 0x01;
 pub const INPUT_OP_EVENTOS: u32 = 0x02;
 pub const INPUT_OP_TECLA: u32 = 0x03;
+pub const INPUT_OP_MODIFICADORES: u32 = 0x04;
+
+/// Bits de la máscara de modificadores.
+pub const MOD_SHIFT: u8 = 1 << 0;
+pub const MOD_CTRL: u8 = 1 << 1;
+pub const MOD_ALT: u8 = 1 << 2;
+pub const MOD_ALTGR: u8 = 1 << 3;
+pub const MOD_CAPS: u8 = 1 << 4;
 
 /// Lo que devuelve un syscall: un código y un valor.
 ///
@@ -516,6 +524,19 @@ impl Entrada {
     ///
     /// El byte es **Latin-1**: la `ñ` llega como `0xF1`, que es justo el índice
     /// que entiende la fuente. Sin decodificador de por medio.
+    /// Qué modificadores están pulsados AHORA. No consume nada: es estado.
+    ///
+    /// Existe porque `tecla()` da un byte ya resuelto y hay combinaciones que
+    /// no producen carácter — `Ctrl+Alt` a secas no es ninguna letra.
+    ///
+    /// ★ En la distribución española `Ctrl+Alt` **es** `AltGr`: lo que produce
+    /// `@`, `#`, `[`, `]`, `\`, `|` y `€`. Un atajo que dispare al PULSARLOS
+    /// rompe escribir todo eso. Si lo usas como atajo, dispara al SOLTAR y sólo
+    /// si no llegó ningún carácter mientras estaban pulsados.
+    pub fn modificadores(&self) -> u8 {
+        invoke(self.cap, INPUT_OP_MODIFICADORES, 0, 0, 0).value as u8
+    }
+
     pub fn tecla(&self) -> Option<u8> {
         let v = invoke(self.cap, INPUT_OP_TECLA, 0, 0, 0).value;
         if v & 0x100 != 0 {
