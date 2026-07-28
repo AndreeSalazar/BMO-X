@@ -75,8 +75,18 @@ const PULSO_ALTO: u32 = 14;
 
 // ── La caja ─────────────────────────────────────────────────────────────
 
-const CAJA_ANCHO: u32 = 560;
-const CAJA_ALTO: u32 = 140;
+const CAJA_ANCHO: u32 = 760;
+const CAJA_ALTO: u32 = 428;
+
+/// La rejilla de SALIDA: lo que imprimen los programas que se lanzan desde
+/// aquí. Antes no existía y no era un olvido — **no había dónde leerlo**:
+/// `OP_CONSOLE_WRITE` iba siempre al panel del kernel, así que un terminal de
+/// Ring 3 no podía ver lo que escribía su propio hijo. Con `KIND_CONSOLE` la
+/// salida tiene dueño, y el dueño es este proceso.
+const SAL_COLS: usize = 88;
+const SAL_ROWS: usize = 16;
+const SAL_TEXTO: u32 = 0x00C8_D8E8;
+const SAL_ECO: u32 = 0x0079_C4F2;
 const CAJA_FONDO: u32 = 0x001E_2A40;
 const CAJA_BORDE: u32 = 0x004C_9BE8;
 const CAMPO_FONDO: u32 = 0x000C_1220;
@@ -101,6 +111,8 @@ struct Caja {
     texto_x: u32,
     texto_y: u32,
     estado_y: u32,
+    salida_x: u32,
+    salida_y: u32,
 }
 
 impl Caja {
@@ -122,8 +134,18 @@ impl Caja {
             campo_alto,
             texto_x: campo_x + 6,
             texto_y: campo_y + 6,
-            estado_y: y + CAJA_ALTO - 30,
+            // El estado va JUSTO debajo del campo, no al fondo de la caja: el
+            // fondo es ahora la salida, y un mensaje de error a veinte líneas
+            // de distancia de la línea que lo causó no lo lee nadie.
+            estado_y: campo_y + campo_alto + 10,
+            salida_x: x + 18,
+            salida_y: campo_y + campo_alto + 40,
         }
+    }
+
+    /// Alto de la rejilla de salida, en píxeles.
+    fn salida_alto(&self) -> u32 {
+        SAL_ROWS as u32 * bmo::GLIFO_ALTO
     }
 
     /// Cuántos caracteres caben en el campo. El resto se recorta al pintar —
@@ -277,6 +299,109 @@ fn pintar_campo(p: &bmo::Pantalla, c: &Caja, ruta: &[u8], caret: bool) {
     }
 }
 
+// ── La salida ───────────────────────────────────────────────────────────
+
+/// Rejilla de caracteres con desplazamiento. Es lo mínimo que se puede llamar
+/// terminal: sin colores por celda, sin secuencias de escape, sin scrollback
+/// más allá de lo que se ve.
+///
+/// Deliberado. Un emulador de terminal completo —ANSI, cursor direccionable,
+/// regiones— es una pila entera, y hoy lo único que hay al otro lado son
+/// programas que escriben líneas. Cuando algo pida más, se añade; adivinarlo
+/// ahora sería escribir código que nadie ejercita.
+struct Salida {
+    celdas: [[u8; SAL_COLS]; SAL_ROWS],
+    fila: usize,
+    col: usize,
+    /// Hay algo nuevo que pintar. Repintar la rejilla entera cada fotograma
+    /// serían 88x16 glifos por vuelta sobre memoria de vídeo sin caché.
+    sucia: bool,
+}
+
+impl Salida {
+    fn nueva() -> Self {
+        Self { celdas: [[b' '; SAL_COLS]; SAL_ROWS], fila: 0, col: 0, sucia: true }
+    }
+
+    /// Sube todo una línea y deja la última en blanco.
+    fn desplazar(&mut self) {
+        for f in 1..SAL_ROWS {
+            self.celdas[f - 1] = self.celdas[f];
+        }
+        self.celdas[SAL_ROWS - 1] = [b' '; SAL_COLS];
+    }
+
+    fn salto(&mut self) {
+        self.col = 0;
+        if self.fila + 1 >= SAL_ROWS {
+            self.desplazar();
+        } else {
+            self.fila += 1;
+        }
+        self.sucia = true;
+    }
+
+    fn byte(&mut self, b: u8) {
+        match b {
+            b'\n' => self.salto(),
+            // El retorno de carro solo, sin avance: se ignora. Un programa que
+            // escribe "\r\n" no debe producir dos saltos.
+            b'\r' => {}
+            // Tabulador a la siguiente parada de 8.
+            b'\t' => {
+                let siguiente = (self.col / 8 + 1) * 8;
+                while self.col < siguiente.min(SAL_COLS) {
+                    self.celdas[self.fila][self.col] = b' ';
+                    self.col += 1;
+                }
+                if self.col >= SAL_COLS {
+                    self.salto();
+                }
+                self.sucia = true;
+            }
+            // Los no imprimibles se tiran en vez de dibujarse como basura.
+            c if c < 0x20 => {}
+            c => {
+                if self.col >= SAL_COLS {
+                    self.salto();
+                }
+                self.celdas[self.fila][self.col] = c;
+                self.col += 1;
+                self.sucia = true;
+            }
+        }
+    }
+
+    fn texto(&mut self, s: &[u8]) {
+        for &b in s {
+            self.byte(b);
+        }
+    }
+}
+
+fn pintar_salida(p: &bmo::Pantalla, c: &Caja, s: &Salida) {
+    // Fondo entero de la rejilla y encima las filas. Es un rectángulo de
+    // 704x256 px: nada comparado con la pantalla, y evita tener que llevar la
+    // cuenta de qué celda cambió.
+    p.rect(
+        c.salida_x,
+        c.salida_y,
+        SAL_COLS as u32 * bmo::GLIFO_ANCHO,
+        c.salida_alto(),
+        CAJA_FONDO,
+    );
+    for (f, fila) in s.celdas.iter().enumerate() {
+        // La última línea escrita en otro color: es la que acabas de provocar.
+        let color = if f == s.fila { SAL_ECO } else { SAL_TEXTO };
+        p.texto_bytes(
+            c.salida_x,
+            c.salida_y + f as u32 * bmo::GLIFO_ALTO,
+            fila,
+            color,
+        );
+    }
+}
+
 fn pintar_estado(p: &bmo::Pantalla, c: &Caja, msg: &str, color: u32) {
     // Ancho fijo de limpieza: el mensaje anterior puede ser más largo que el
     // nuevo, y media frase vieja detrás de una nueva es peor que ninguna.
@@ -308,6 +433,11 @@ pub extern "C" fn _start() -> ! {
     // periférico es un compositor que no arranca el día que el periférico falla.
     let entrada = bmo::Entrada::reclamar();
 
+    // La consola de este terminal. Desde aquí, todo lo que lance escribe en
+    // ESTE anillo y no en el panel del kernel — que es lo único que separaba
+    // una caja de lanzar de un terminal de verdad.
+    let salida_cap = bmo::Consola::crear();
+
     let caja = Caja::nueva(p.ancho, p.alto);
 
     // Fondo entero de una pasada, y encima la escena.
@@ -335,7 +465,12 @@ pub extern "C" fn _start() -> ! {
     pintar_caja(&p, &caja);
     let mut ruta = [0u8; RUTA_MAX];
     let mut n = 0usize;
+    let mut salida = Salida::nueva();
+    if salida_cap.is_none() {
+        salida.texto(b"sin consola: la salida de los programas ira al panel del kernel\n");
+    }
     pintar_campo(&p, &caja, &ruta[..n], true);
+    pintar_salida(&p, &caja, &salida);
     if entrada.is_some() {
         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
     } else {
@@ -373,7 +508,14 @@ pub extern "C" fn _start() -> ! {
                         if n == 0 {
                             pintar_estado(&p, &caja, "escribe una ruta primero", TEXTO_TENUE);
                         } else {
-                            match bmo::ejecutar(&ruta[..n]) {
+                            // Eco de lo que se lanza, como cualquier terminal:
+                            // sin él, la salida de dos programas seguidos se
+                            // mezcla sin saber dónde empieza cada uno.
+                            salida.texto(b"> ");
+                            salida.texto(&ruta[..n]);
+                            salida.byte(b'\n');
+                            let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
+                            match bmo::ejecutar_en(&ruta[..n], cap) {
                                 Ok(_) => {
                                     pintar_estado(&p, &caja, "lanzado", TEXTO_BIEN);
                                     // El campo se vacía al lanzar, como el
@@ -437,8 +579,10 @@ pub extern "C" fn _start() -> ! {
             if pos.x != ax || pos.y != ay {
                 if ax != u32::MAX && borrar_cursor(&p, &caja, ax, ay) {
                     // El cursor pasó por encima de la caja: la escena restauró
-                    // los rectángulos, pero no las letras.
+                    // los rectángulos, pero no las letras — ni las del campo ni
+                    // las de la salida.
                     repintar_campo = true;
+                    salida.sucia = true;
                 }
                 dibujar_cursor(&p, pos.x, pos.y);
                 ax = pos.x;
@@ -457,6 +601,29 @@ pub extern "C" fn _start() -> ! {
             // movimiento no llegue. Son dos preguntas distintas al mismo HID.
             let col = if pos.botones != 0 { 0x00FF_FFFF } else { FONDO };
             p.rect(PULSO_X + PULSO_ANCHO + 16, PULSO_Y, PULSO_ALTO, PULSO_ALTO, col);
+        }
+
+        // ── Drenar la salida de los hijos ──
+        //
+        // Con tope por fotograma. Un programa que escupe sin parar podría
+        // quedarse con el bucle entero y congelar el cursor: es preferible que
+        // la salida vaya un poco por detrás a que el escritorio deje de
+        // responder. Lo que no se lea ahora sigue en el anillo del kernel.
+        if let Some(c) = salida_cap.as_ref() {
+            let mut buf = [0u8; 8];
+            let mut vueltas = 0;
+            while vueltas < 64 {
+                let leidos = c.leer(&mut buf);
+                if leidos == 0 {
+                    break;
+                }
+                salida.texto(&buf[..leidos]);
+                vueltas += 1;
+            }
+        }
+        if salida.sucia {
+            pintar_salida(&p, &caja, &salida);
+            salida.sucia = false;
         }
 
         // El parpadeo del cursor de escritura. Sólo repinta cuando cambia de
