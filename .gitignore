@@ -32,3 +32,8 @@ Thumbs.db
 # ── Debug logs ───────────────────────────────────────────────────
 wlog*.txt
 *.log
+
+# El compositor ya no se embebe: sale a staging/BMO-DATA/apps/ en cada build
+# y se copia al volumen de datos. Un binario que se regenera siempre no se
+# versiona — lo que se versiona es el crate que lo produce.
+Ultra_kernel_x86-64/staging/

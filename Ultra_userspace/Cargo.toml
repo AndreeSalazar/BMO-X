@@ -3,7 +3,6 @@ members = [
     "userland",
     "services/gui",
     "services/input",
-    "apps/terminal",
     "apps/launcher",
 ]
 resolver = "2"

@@ -198,6 +198,23 @@ pub enum Veredicto {
     Difiere,
 }
 
+/// ¿El silicio es el que el perfil describía? Sin narrar nada.
+///
+/// Existe separada porque hay DOS sitios que hacen esta pregunta: `verificar()`
+/// al arrancar (que además la cuenta en CABINA) y el comando `cpu` del shell
+/// (que la pinta cada vez que se escribe). Cuando cada uno tenía su propia
+/// comparación, añadir `XCR0` a una habría dejado a la otra contestando distinto
+/// a la misma pregunta — y el shell es justo donde alguien va a mirar para
+/// confirmar lo que dijo el arranque.
+pub fn coincide(inf: &Informe) -> bool {
+    let p = super::profile::active();
+    inf.soportado == p.xsave_componentes
+        && inf.area_maxima == p.xsave_area
+        // Sin `OSXSAVE` no hay `XGETBV`: el cero del informe significa "no lo
+        // sé", no "nada habilitado". No se compara lo que nadie midió.
+        && (!inf.osxsave || inf.xcr0 == p.xsave_xcr0)
+}
+
 /// Contrasta el informe con lo que el perfil activo esperaba, y lo narra.
 ///
 /// Cuando llegue otro CPU —cualquiera— esto es lo que avisa. No se rompe: usa
@@ -211,15 +228,25 @@ pub fn verificar(inf: &Informe) -> Veredicto {
         return Veredicto::SinXsave;
     }
     let p = super::profile::active();
-    let mismos = inf.soportado == p.xsave_componentes;
-    let misma_area = inf.area_maxima == p.xsave_area;
-
-    if mismos && misma_area {
+    if coincide(inf) {
         cabina::info("cpu", "XSAVE coincide con el perfil del CPU", inf.area_maxima as u64);
         return Veredicto::Coincide;
     }
+    // Ya se sabe que algo no cuadra; ahora se dice QUÉ, campo por campo.
+    let mismos = inf.soportado == p.xsave_componentes;
+    let misma_area = inf.area_maxima == p.xsave_area;
+    let mismo_xcr0 = !inf.osxsave || inf.xcr0 == p.xsave_xcr0;
     if !mismos {
         cabina::warn("cpu", "el perfil esperaba otros componentes de XSAVE", inf.soportado);
+    }
+    if !mismo_xcr0 {
+        // El aviso que faltaba. `XCR0` lo deja puesto el firmware, no el
+        // kernel, así que puede moverse por debajo —una actualización de BIOS,
+        // otra placa— cambiando el tamaño del área de contexto y la máscara con
+        // la que los epílogos vigilan la cabecera. Que salga en ámbar es la
+        // diferencia entre enterarse aquí y enterarse por un #GP tres semanas
+        // después.
+        cabina::warn("cpu", "XCR0 no es el que el perfil esperaba habilitado", inf.xcr0);
     }
     if !misma_area {
         cabina::warn("cpu", "el area de XSAVE no es la que el perfil decia", inf.area_maxima as u64);
@@ -266,6 +293,35 @@ pub fn init() {
         pararse("el area de XSAVE reservada se queda corta en este CPU", necesario as u64);
     }
     crate::ring0::cabina::info("cpu", "area de contexto suficiente", necesario as u64);
+
+    // Armar la guardia de cabecera de los epílogos. Hasta esta línea está
+    // inerte, que es lo que debe estar mientras no se sepa contra qué comparar.
+    // A partir de aquí, un `XSTATE_BV` que encienda un componente que este CPU
+    // no tiene habilitado se para con nombre en vez de dar `#GP` dentro del
+    // `xrstor64` — donde el informe sólo puede decir dónde se enteró el CPU.
+    //
+    // ★ SÓLO con `osxsave`. `xcr0` únicamente se puede leer con `XGETBV`, y
+    // `XGETBV` necesita `CR4.OSXSAVE`; sin él el informe trae `xcr0 = 0`, y un
+    // cero aquí no significa "ningún componente habilitado", significa **no lo
+    // pude leer**. Armar con eso pondría `!0` en la máscara y la guardia
+    // saltaría en el primer trap contra cualquier `XSTATE_BV` legítimo,
+    // acusando a la cabecera de estar podrida cuando lo que pasa es que falta
+    // un bit de CR4. Una máquina muerta con el motivo equivocado es peor que
+    // una muerta sin motivo: manda a arreglar lo que no está roto.
+    //
+    // (Sin `OSXSAVE` el `xsave64` de los stubs daría `#UD` de todos modos, así
+    // que la máquina no arranca igual. Lo que esto protege no es el arranque:
+    // es la HONESTIDAD del informe con el que alguien va a depurar.)
+    if inf.osxsave {
+        crate::ring0::trap::armar_guardia_cabecera(inf.xcr0);
+        crate::ring0::cabina::info("cpu", "guardia de cabecera XSAVE armada", inf.xcr0);
+    } else {
+        crate::ring0::cabina::warn(
+            "cpu",
+            "sin OSXSAVE no se puede leer XCR0: guardia de cabecera INERTE",
+            0,
+        );
+    }
 
     if inf.hay_estado_sin_guardar() {
         // Ya no es un aviso de peligro: es la constancia de QUÉ se está

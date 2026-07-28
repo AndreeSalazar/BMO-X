@@ -4,6 +4,10 @@ param(
     [switch]$Verify,
     [switch]$BuildOnly,
     [string]$Drive = 'D',
+    # Letra del volumen de DATOS (BMO-DATA) al que copiar los programas de
+    # Ring 3. Vacio = no se toca ningun disco, que es el valor por defecto y la
+    # postura de este build: escribir en discos esta cerrado salvo que se pida.
+    [string]$Data = '',
     [switch]$Yes
 )
 
@@ -92,10 +96,15 @@ foreach ($s in $stages) {
 
 # ── Build Ring 3 userspace (Ultra_userspace/) ─────────────────────
 #
-# VA ANTES DEL KERNEL a proposito: el kernel embebe el .bex resultante con
-# `include_bytes!`, asi que el archivo tiene que existir y estar al dia cuando
-# el kernel compile. Si esto fallara en silencio, el kernel arrancaria con el
-# compositor de la vez anterior y nadie se enteraria.
+# ★ El kernel YA NO EMBEBE el compositor. Antes lo metia con `include_bytes!` y
+# este paso tenia que ir antes del kernel para que el blob estuviera al dia;
+# ademas dejaba un binario de 24 KiB dentro de kernel/src/ que se reescribia en
+# cada build y ensuciaba el repositorio en cada commit.
+#
+# Ahora sale a staging\BMO-DATA\apps\ y se COPIA al volumen de datos, igual que
+# cualquier otro programa. El kernel lo arranca con `lanzar::ruta` despues de
+# montar el disco (ver `phase::arrancar_escritorio`). Cambiar el escritorio ya
+# no obliga a recompilar Ring 0.
 #
 # Ultra_userspace/ es su PROPIO workspace: se compila a x86_64-unknown-none con
 # su guion de enlazado, que fija la base en USER_IMAGE_BASE. `bex-link` traduce
@@ -116,7 +125,13 @@ try {
 
 $compositorElf = Join-Path $usDir 'target\x86_64-unknown-none\release\compositor'
 if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
-$compositorBex = Join-Path $root 'kernel\src\ring0\compositor.bex'
+# El .bex sale a staging\BMO-DATA\apps\, que es el espejo de lo que hay que
+# copiar al volumen de datos. La ruta de dentro (apps\compositor.bex) tiene que
+# cuadrar con `RUTA_COMPOSITOR` de phase.rs: es el contrato entre el build y el
+# arranque.
+$dataStage = Join-Path $root 'staging\BMO-DATA\apps'
+New-Item -ItemType Directory -Path $dataStage -Force | Out-Null
+$compositorBex = Join-Path $dataStage 'compositor.bex'
 Push-Location (Split-Path -Parent $root)
 try {
     if (Test-Path $compositorBex) { Remove-Item $compositorBex -Force }
@@ -128,8 +143,8 @@ try {
         }
     }
     if ($LASTEXITCODE -ne 0) { Fail 'bex-link failed' }
-    # Se borro antes a proposito: si `bex-link` no lo ha vuelto a escribir, el
-    # kernel embeberia el compositor de la vez anterior y el build mentiria.
+    # Se borro antes a proposito: si `bex-link` no lo ha vuelto a escribir, se
+    # copiaria al disco el compositor de la vez anterior y el build mentiria.
     if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo compositor.bex' }
 } finally { Pop-Location }
 
@@ -384,5 +399,76 @@ if ($Flash -or $Verify) {
     Write-Host ''
     Write-Host '  === BMO RING 0 SSD VERIFIED ===' -ForegroundColor Green
     if ($Flash) { Write-Host '  Reboot from the SSD to test the new kernel.' -ForegroundColor White }
+    Write-Host ''
+}
+
+# ── Data: los programas de Ring 3 al volumen de datos ─────────────
+#
+# Separado de -Flash a proposito. Son dos discos distintos con dos riesgos
+# distintos: -Flash toca la ESP de arranque, esto toca BMO-DATA. Que compartan
+# bandera invitaria a escribir en uno cuando se queria el otro.
+#
+# ★ Este es el UNICO sitio del build que escribe fuera del arbol del proyecto.
+# Por eso lleva tres cierres antes de copiar un byte: no puede ser el disco del
+# sistema, tiene que ser FAT/FAT32, y hay que teclear la frase entera. El NVMe
+# de esta maquina lleva un Windows que no es de BMO.
+if ($Data) {
+    $dataLetter = $Data.TrimEnd([char]':',[char]'\').ToUpper()
+    if ($dataLetter.Length -ne 1) { Fail ('-Data espera UNA letra de unidad, no: ' + $Data) }
+    $dataRoot = $dataLetter + ':\'
+
+    # Cierre 1: nunca el disco del sistema. Es el que tiene el Windows del
+    # dueno de la maquina, y una copia ahi no es un error recuperable.
+    $sistema = ($env:SystemDrive).TrimEnd([char]':').ToUpper()
+    if ($dataLetter -eq $sistema) {
+        Fail ('NO: ' + $dataLetter + ': es el disco del sistema (' + $env:SystemDrive + '). BMO no escribe ahi.')
+    }
+    if (-not (Test-Path $dataRoot)) { Fail ('no existe la unidad ' + $dataRoot) }
+
+    # Cierre 2: tiene que ser el tipo de volumen correcto, y se ENSENA cual es
+    # antes de preguntar. Una confirmacion a ciegas no es una confirmacion.
+    $dataVol = Get-Volume -DriveLetter $dataLetter -ErrorAction SilentlyContinue
+    if ($dataVol) {
+        $dSize = [math]::Round($dataVol.Size / 1GB, 1)
+        Write-Host ''
+        Write-Host ('  Destino de datos: {0}: label="{1}" filesystem={2} size={3} GiB' -f `
+            $dataLetter, $dataVol.FileSystemLabel, $dataVol.FileSystem, $dSize) -ForegroundColor Yellow
+        if ($dataVol.FileSystem -notin @('FAT', 'FAT32')) {
+            Fail ('el volumen de datos de BMO es FAT32; ' + $dataLetter + ': es ' + $dataVol.FileSystem)
+        }
+    }
+
+    # Cierre 3: la frase, igual que -Flash. Con la letra dentro, para que
+    # copiar-pegar la de otra sesion no valga.
+    if (-not $Yes) {
+        $esperado = 'DATA ' + $dataLetter + ' BMO'
+        $conf = Read-Host ('  Escribe "' + $esperado + '" para copiar los programas de Ring 3')
+        if ($conf -ne $esperado) { Write-Host '  Abortado.'; exit 0 }
+    }
+
+    Step ('Copiando programas de Ring 3 a ' + $dataLetter + ':\apps')
+    $dataSrc = Join-Path $root 'staging\BMO-DATA'
+    if (-not (Test-Path $dataSrc)) { Fail 'no hay staging\BMO-DATA (ejecuta el build primero)' }
+
+    # Se copia SOLO lo que este build produjo, archivo a archivo. Nada de
+    # borrar el destino: en BMO-DATA puede haber cosas que no salen de aqui, y
+    # un deploy no tiene derecho a decidir sobre ellas.
+    $copiados = 0
+    foreach ($f in Get-ChildItem -Path $dataSrc -Recurse -File) {
+        $rel = $f.FullName.Substring($dataSrc.Length).TrimStart([char]'\')
+        $dst = Join-Path $dataRoot $rel
+        New-Item -ItemType Directory -Path (Split-Path -Parent $dst) -Force | Out-Null
+        Copy-Item -LiteralPath $f.FullName -Destination $dst -Force
+        # Verificado por hash, como Ring 0. Un .bex a medio copiar no falla al
+        # arrancar: falla en la admision BEX, y ese mensaje manda a buscar el
+        # bug al compilador en vez de al cable.
+        if ((Hash256 $dst) -ne (Hash256 $f.FullName)) { Fail ('copia corrupta: ' + $rel) }
+        Write-Host ('    SHA-256 OK  ' + $rel) -ForegroundColor Green
+        $copiados++
+    }
+    if ($copiados -eq 0) { Fail 'staging\BMO-DATA esta vacio' }
+
+    Write-Host ''
+    Write-Host ('  === BMO-DATA VERIFICADO (' + $copiados + ' archivos) ===') -ForegroundColor Green
     Write-Host ''
 }

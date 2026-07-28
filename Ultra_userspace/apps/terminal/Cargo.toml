@@ -1,8 +1,0 @@
-[package]
-name = "bmo-app-terminal"
-version = "0.1.0"
-edition = "2021"
-description = "BMO terminal emulator (Ring 3 app)"
-
-[dependencies]
-bmo-userland = { path = "../../userland" }

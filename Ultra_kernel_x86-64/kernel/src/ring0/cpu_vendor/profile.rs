@@ -39,8 +39,29 @@ pub struct CpuProfile {
     // CONTRATOS, se le preguntan los HECHOS al hardware. Un perfil que
     // dictara el tamaño del área sería un kernel que se rompe —en silencio y
     // corrompiendo registros— el día que alguien enchufe otro CPU.
-    /// Componentes de XCR0 que se esperan (bit 0 x87, 1 SSE, 2 AVX...).
+    /// Componentes que se espera que el CPU **soporte** (bit 0 x87, 1 SSE,
+    /// 2 AVX...). Se contrasta con `CPUID.D.0:EDX:EAX`.
     pub xsave_componentes: u64,
+    /// Componentes que se espera que estén **HABILITADOS** en `XCR0`.
+    ///
+    /// ★ No es lo mismo que `xsave_componentes`, y confundirlos se paga caro:
+    /// *soportado* es lo que el silicio sabe hacer, *habilitado* es lo que
+    /// alguien encendió. Soportado ⊇ habilitado, siempre.
+    ///
+    /// Este campo existe porque **`XCR0` no lo decide el kernel**. En esta
+    /// máquina el firmware ya lo dejó puesto antes de que BMO arrancara (ver
+    /// la cabecera de `trap.rs`: AVX venía habilitado de fábrica). O sea que es
+    /// un número que llega de fuera, que cambia el tamaño del área de contexto,
+    /// y que hasta ahora no vigilaba nadie — una actualización de BIOS podía
+    /// moverlo sin que saliera una sola línea.
+    ///
+    /// Y desde que existe la guardia de cabecera de los epílogos, `XCR0` además
+    /// **sostiene una comprobación en el camino más caliente del kernel**. Un
+    /// dato con ese peso no puede ser el único del perfil que nadie contrasta.
+    ///
+    /// Sigue siendo EXPECTATIVA, como los otros dos: si el silicio dice otra
+    /// cosa, manda el silicio y el verificador lo grita.
+    pub xsave_xcr0: u64,
     /// Bytes del área de XSAVE que se esperan para esos componentes.
     pub xsave_area: u32,
 }

@@ -55,6 +55,19 @@ const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
 /// Reclamar el raton. Devuelve un handle `KIND_INPUT`: el kernel lee el HID,
 /// Ring 3 decide que hace con las coordenadas. Ver `ring0/input.rs`.
 const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
+/// Acumula 8 bytes de ruta (LE, el cero corta) en el renglón del proceso.
+///
+/// Mismo formato que `TASK_OP_CONSOLE_WRITE`, y por la misma razón: los
+/// argumentos van en registros y aquí no hay `copy_from_user`. Pasar un puntero
+/// de Ring 3 obligaría al kernel a traducirlo contra el espacio del llamante y
+/// a validar que el rango entero es suyo — infraestructura que no existe todavía
+/// y que no se va a improvisar en el camino de lanzar un programa. Ocho bytes
+/// por llamada es feo y es seguro; lo segundo importa más.
+const TASK_OP_RUTA: u64 = 0x0B;
+/// Lanza lo que se haya acumulado con `TASK_OP_RUTA` y vacía el renglón.
+/// Devuelve el tid admitido. Ver `ring0/lanzar.rs` — el gate de firma es el
+/// mismo que el del shell, no una copia.
+const TASK_OP_EJECUTAR: u64 = 0x0C;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -106,6 +119,22 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "mov rbp, rsp",
         "sub rsp, {reserva}",
         "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
+        // La cabecera a cero ANTES del xsave64: ver el prologo del timer. En
+        // corto: `XSAVE` no escribe los 48 bytes reservados de la cabecera y
+        // `XRSTOR` da #GP(0) si no son cero. El area se talla sobre la pila,
+        // asi que sin esto hereda la basura de lo que hubiera debajo.
+        //
+        // Incluye el XSTATE_BV de +512: `XSAVE` CONSERVA los bits que caen
+        // fuera de `RFBM = EDX:EAX AND XCR0`, asi que la basura de ahi
+        // sobrevive al guardado. Ver el prologo del timer.
+        "mov qword ptr [rsp+{bv}], 0",
+        "mov qword ptr [rsp+{cero}], 0",
+        "mov qword ptr [rsp+{cero}+8], 0",
+        "mov qword ptr [rsp+{cero}+16], 0",
+        "mov qword ptr [rsp+{cero}+24], 0",
+        "mov qword ptr [rsp+{cero}+32], 0",
+        "mov qword ptr [rsp+{cero}+40], 0",
+        "mov qword ptr [rsp+{cero}+48], 0",
         "mov [rsp+{area}], rbp",       // back-pointer to the GPR block
         "mov qword ptr [rsp+{firma}], {magia}", // sello del contexto
         // RFBM = -1: guarda lo que XCR0 tenga habilitado, sea lo que sea.
@@ -120,6 +149,20 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "mov rsp, rax",
         "cmp qword ptr [rsp+{firma}], {magia}",
         "jne 3f",
+        // La CABECERA, antes de borrar el sello: asi el informe la lee intacta
+        // y puede decir de quien era el contexto. rax/rdx se pueden pisar aqui
+        // — los recuperan los pops de abajo.
+        "mov rdx, qword ptr [rsp+{bv}]",
+        "and rdx, qword ptr [rip+{no_xcr0}]",
+        "jnz 8f",
+        "mov rax, qword ptr [rsp+{cero}]",
+        "or rax, qword ptr [rsp+{cero}+8]",
+        "or rax, qword ptr [rsp+{cero}+16]",
+        "or rax, qword ptr [rsp+{cero}+24]",
+        "or rax, qword ptr [rsp+{cero}+32]",
+        "or rax, qword ptr [rsp+{cero}+40]",
+        "or rax, qword ptr [rsp+{cero}+48]",
+        "jnz 8f",
         // UN SOLO USO: al restaurarlo se borra el sello. Un contexto que ya
         // se consumio no puede volver a pasar por bueno — si alguien lo
         // intenta, se planta con nombre en vez de reventar en el xrstor.
@@ -138,13 +181,18 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "1: iretq",
         "3: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+        "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym dispatch,
         podrido = sym crate::ring0::faults::contexto_podrido,
+        no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
         area = const crate::ring0::trap::XSAVE_AREA,
         firma = const crate::ring0::trap::SELLO_FIRMA,
         magia = const crate::ring0::trap::SELLO_MAGIA,
+        bv = const crate::ring0::trap::XSAVE_BV,
+        cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
         m_sello = const crate::ring0::faults::PODRIDO_SELLO,
         m_cs = const crate::ring0::faults::PODRIDO_CS,
+        m_cab = const crate::ring0::faults::PODRIDO_CABECERA,
         reserva = const crate::ring0::trap::XSAVE_RESERVA,
     );
 }
@@ -256,7 +304,72 @@ fn invoke_current_task(operation: u64, arg0: u64) -> BmoStatus {
                 Err(code) => BmoStatus::err(code),
             }
         }
+        TASK_OP_RUTA => {
+            ruta_push(scheduler::current_pid(), arg0);
+            BmoStatus::ok_value(0)
+        }
+        TASK_OP_EJECUTAR => {
+            let _ = arg0;
+            let pid = scheduler::current_pid();
+            let informe = crate::ring0::lanzar::ruta(ruta_tomar(pid));
+            match informe.res {
+                Ok(tid) => BmoStatus::ok_value(tid as u64),
+                Err(f) => {
+                    crate::ring0::cabina::warn("lanzar", f.motivo(), pid as u64);
+                    BmoStatus::err(f.codigo())
+                }
+            }
+        }
         _ => unsupported(),
+    }
+}
+
+// ── El renglón de ruta ──────────────────────────────────────────────────
+//
+// Una ruta se arma a trozos de 8 bytes y se consume entera en `EJECUTAR`. El
+// renglón es UNO y lleva el pid de quien lo está llenando: si empieza a
+// escribir otro proceso, lo que hubiera a medias se descarta en vez de
+// mezclarse. Dos procesos lanzando a la vez es un caso que hoy no existe —sólo
+// el compositor tiene la caja— y cuando exista, media ruta de cada uno sería un
+// fallo mucho peor que un lanzamiento perdido.
+
+const RUTA_MAX: usize = 128;
+static mut RUTA_BUF: [u8; RUTA_MAX] = [0; RUTA_MAX];
+static mut RUTA_N: usize = 0;
+static mut RUTA_PID: u32 = u32::MAX;
+
+fn ruta_push(pid: u32, empaquetado: u64) {
+    unsafe {
+        if RUTA_PID != pid {
+            RUTA_PID = pid;
+            RUTA_N = 0;
+        }
+        let buf = &mut *core::ptr::addr_of_mut!(RUTA_BUF);
+        for b in empaquetado.to_le_bytes() {
+            if b == 0 {
+                break;
+            }
+            if RUTA_N >= RUTA_MAX {
+                break;
+            }
+            buf[RUTA_N] = b;
+            RUTA_N += 1;
+        }
+    }
+}
+
+/// La ruta acumulada, y el renglón queda vacío. Devuelve `""` si el que llama
+/// no es el que la escribió — no se lanza la ruta de otro.
+fn ruta_tomar(pid: u32) -> &'static str {
+    unsafe {
+        if RUTA_PID != pid {
+            return "";
+        }
+        let n = RUTA_N;
+        RUTA_N = 0;
+        RUTA_PID = u32::MAX;
+        let buf = &*core::ptr::addr_of!(RUTA_BUF);
+        core::str::from_utf8(&buf[..n]).unwrap_or("")
     }
 }
 
@@ -385,6 +498,13 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
 
 #[unsafe(no_mangle)]
 extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
+    // Igual que el timer: dónde talló su área este trap y para quién. Un
+    // SYSCALL de Ring 3 aterriza en la pila que le haya puesto el planificador,
+    // así que si esa rampa apuntara donde no debe, esto lo enseña.
+    crate::ring0::trap::registrar_publicacion(
+        crate::ring0::percpu::trap_rsp(),
+        scheduler::current_tid(),
+    );
     let status = match frame.rax as u32 {
         NR_INVOKE => invoke(frame),
         NR_CHANNEL_KICK => channel_kick(frame),

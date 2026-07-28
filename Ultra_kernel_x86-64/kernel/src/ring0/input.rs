@@ -48,6 +48,36 @@ pub const INPUT_OP_PUNTERO: u64 = 0x01;
 /// no en el compositor.
 pub const INPUT_OP_EVENTOS: u64 = 0x02;
 
+/// Una tecla, si hay alguna esperando. **No bloquea.**
+///
+/// Devuelve `0` cuando no hay nada, y `0x100 | byte` cuando sí. El bit 8 existe
+/// porque el byte 0 es un byte legítimo y "no hay tecla" tenía que poder
+/// distinguirse de él sin gastar el código de error del `Status` — que aquí
+/// significa "esta operación no existe", que es otra cosa.
+///
+/// El byte es **Latin-1, no UTF-8**: un carácter es un byte, igual que en el
+/// teclado, en el shell y en la fuente. Así los cuatro hablan el mismo idioma
+/// sin un decodificador de por medio.
+///
+/// ## Por qué no bloquea
+///
+/// Un compositor tiene un bucle de fotograma y ya cede el turno al final de
+/// cada vuelta. Bloquearlo en el teclado congelaría el cursor entre tecla y
+/// tecla — el ratón dejaría de moverse mientras nadie escribe, que es
+/// exactamente al revés de lo que uno quiere. `WAIT` está para bloquearse; esto
+/// está para preguntar.
+pub const INPUT_OP_TECLA: u64 = 0x03;
+
+/// ¿La tiene un proceso de Ring 3?
+///
+/// Lo pregunta el shell de Ring 0 antes de leer el teclado. Sin esto los dos
+/// drenan la MISMA cola y se reparten las letras al azar: escribes "run" en la
+/// caja y al shell le llega la "u". Cedido es cedido, también para el que la
+/// cedió.
+pub fn cedido() -> bool {
+    DUENO.load(Ordering::SeqCst) != SIN_DUENO
+}
+
 pub fn reclamar(pid: u32) -> Result<u64, u32> {
     if DUENO
         .compare_exchange(SIN_DUENO, pid, Ordering::SeqCst, Ordering::SeqCst)
@@ -92,6 +122,13 @@ pub fn operacion(operacion: u64) -> Option<u64> {
             Some((cx << 32) | (cy << 16) | botones as u64)
         }
         INPUT_OP_EVENTOS => Some(eventos as u64),
+        // Misma fuente que alimentaba al shell (`poll_ascii` drena el puente
+        // USB HID y, si no hay, el i8042). No se duplica la cola: se cambia
+        // quién la vacía.
+        INPUT_OP_TECLA => match crate::ring0::dev::usb::poll_ascii() {
+            Some(b) => Some(0x100 | b as u64),
+            None => Some(0),
+        },
         _ => None,
     }
 }

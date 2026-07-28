@@ -30,10 +30,28 @@ pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     name: "Ryzen 5 5600X",
     family_model: "19h/21h",
     init: init_bmo_cpu,
-    // Zen 3: x87 (bit 0) + SSE (bit 1) + AVX/YMM alto (bit 2) = 0b111.
-    // No hay AVX-512 en Vermeer. El area declarada es la que la documentacion
-    // de AMD da para esos tres componentes; si el silicio dice otra cosa, MANDA
-    // EL SILICIO y el verificador lo grita.
-    xsave_componentes: 0b111,
-    xsave_area: 832,
+    // Lo que este CPU SOPORTA, medido con CPUID hoja 0xD en el propio Ryzen el
+    // 2026-07-27: x87 (bit 0) + SSE (bit 1) + AVX/YMM alto (bit 2) + PKRU
+    // (bit 9) = 0x207. No hay AVX-512 en Vermeer.
+    //
+    // ★ Antes decia 0b111 y el area 832, que son los numeros de lo HABILITADO,
+    // no de lo soportado. El verificador cantaba DIFIERE en cada arranque — y
+    // un aviso ambar que sale siempre deja de ser un aviso: es ruido que
+    // enseña a ignorar la linea justo el dia que importe. Los dos campos se
+    // contrastan contra cosas distintas y hay que darles los numeros de cada
+    // una: `xsave_componentes` contra CPUID.D.0:EDX:EAX, `xsave_area` contra
+    // CPUID.D.0:ECX (el area con TODO habilitado), y `xsave_xcr0` contra lo
+    // que el firmware dejo puesto.
+    xsave_componentes: 0x207,
+    // Y los tres HABILITADOS, que aqui coincide con lo soportado — pero por una
+    // razon que no es del CPU sino del firmware: esta placa deja XCR0 = 0x7
+    // puesto antes de que BMO arranque. Se declara aparte precisamente porque
+    // el dia que coincidan por casualidad y luego dejen de coincidir, esto es
+    // lo unico que lo va a ver.
+    xsave_xcr0: 0b111,
+    // El area con TODO lo soportado habilitado (CPUID.D.0:ECX), no la de los
+    // componentes de hoy. Con XCR0 = 0x7 el CPU usa 832; si alguien encendiera
+    // PKRU harian falta 2440. Reservamos 1024, que cubre lo primero con holgura
+    // — y `xsave::init` se planta al arrancar si algun dia no cubriera.
+    xsave_area: 2440,
 };

@@ -67,11 +67,52 @@ unsafe extern "C" fn timer_entry() -> ! {
         "mov rbp, rsp",
         "sub rsp, {reserva}",
         "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
+        // La CABECERA a cero ANTES del xsave64. No es precaucion: `XSAVE` NO
+        // escribe los 48 bytes reservados de la cabecera (528..575) — escribe
+        // XSTATE_BV, pone XCOMP_BV a cero, y el resto lo deja COMO ESTABA. Y
+        // `XRSTOR` da #GP(0) si no son todos cero.
+        //
+        // El area se talla en la pila con un `sub`+`and`, o sea sobre lo que
+        // hubiera ahi. Sin esto, la basura que trajera la pila en esos 48 bytes
+        // sobrevivia al guardado y reventaba en el `xrstor64` del epilogo —
+        // intermitente, y peor en la pila de arranque, donde lo que hay debajo
+        // cambia. `trap::fabricate` ya lo hacia bien (pone a cero los 1024); los
+        // stubs no. Esta era la asimetria.
+        //
+        // ★ Y EL XSTATE_BV TAMBIEN, que es la mitad que faltaba.
+        //
+        // `XSAVE` no escribe XSTATE_BV entero. Lo que hace es:
+        //
+        //     XSTATE_BV <- (XSTATE_BV_viejo AND NOT RFBM) OR (XINUSE AND RFBM)
+        //
+        // y `RFBM = EDX:EAX AND XCR0 = 0x7`. O sea que **conserva todos los
+        // bits fuera de XCR0** del valor que hubiera antes. Si el area se talla
+        // sobre basura, esa basura sobrevive al guardado en los bits altos y
+        // `XRSTOR` da #GP(0) por encender componentes que este CPU no tiene.
+        //
+        // La firma que lo delato: los dos volcados dieron 0x5F0FCB y 0x37B, y
+        // los dos son "el valor viejo con los tres bits bajos puestos a 3" —
+        // 3 es justo XINUSE&7 (x87 y SSE en uso, AVX en estado inicial).
+        "mov qword ptr [rsp+{bv}], 0",
+        // Se ponen a cero LAS MISMAS siete palabras que el epilogo comprueba.
+        "mov qword ptr [rsp+{cero}], 0",
+        "mov qword ptr [rsp+{cero}+8], 0",
+        "mov qword ptr [rsp+{cero}+16], 0",
+        "mov qword ptr [rsp+{cero}+24], 0",
+        "mov qword ptr [rsp+{cero}+32], 0",
+        "mov qword ptr [rsp+{cero}+40], 0",
+        "mov qword ptr [rsp+{cero}+48], 0",
         "mov [rsp+{area}], rbp",
         "mov qword ptr [rsp+{firma}], {magia}",
         // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx ya estan salvados.
         "mov eax, -1", "mov edx, -1",
         "xsave64 [rsp]",
+        // La cabecera Y la base, leidas AQUI mismo, sin nadie en medio. Ver
+        // `trap::tras_xsave`: es lo que dice si el xsave64 escribio la cabecera
+        // donde creemos, o si hay dos direcciones en juego.
+        "mov rax, qword ptr [rsp+{bv}]",
+        "mov qword ptr [rip+{bv_x}], rax",
+        "mov qword ptr [rip+{base_x}], rsp",
         "mov gs:[0x10], rsp",
         "cld",
         "mov rdi, rbp",
@@ -80,6 +121,20 @@ unsafe extern "C" fn timer_entry() -> ! {
         "mov rsp, rax",
         "cmp qword ptr [rsp+{firma}], {magia}",
         "jne 3f",
+        // La CABECERA, antes de borrar el sello: asi el informe la lee intacta
+        // y puede decir de quien era el contexto. rax/rdx se pueden pisar aqui
+        // — los recuperan los pops de abajo.
+        "mov rdx, qword ptr [rsp+{bv}]",
+        "and rdx, qword ptr [rip+{no_xcr0}]",
+        "jnz 8f",
+        "mov rax, qword ptr [rsp+{cero}]",
+        "or rax, qword ptr [rsp+{cero}+8]",
+        "or rax, qword ptr [rsp+{cero}+16]",
+        "or rax, qword ptr [rsp+{cero}+24]",
+        "or rax, qword ptr [rsp+{cero}+32]",
+        "or rax, qword ptr [rsp+{cero}+40]",
+        "or rax, qword ptr [rsp+{cero}+48]",
+        "jnz 8f",
         // UN SOLO USO: al restaurarlo se borra el sello. Un contexto que ya
         // se consumio no puede volver a pasar por bueno — si alguien lo
         // intenta, se planta con nombre en vez de reventar en el xrstor.
@@ -100,13 +155,20 @@ unsafe extern "C" fn timer_entry() -> ! {
         // imposible (rsp = cola del frame). No vuelven.
         "3: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+        "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym timer_dispatch,
         podrido = sym crate::ring0::faults::contexto_podrido,
+        no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
+        bv_x = sym crate::ring0::trap::BV_TRAS_XSAVE,
+        base_x = sym crate::ring0::trap::BASE_TRAS_XSAVE,
         area = const crate::ring0::trap::XSAVE_AREA,
         firma = const crate::ring0::trap::SELLO_FIRMA,
         magia = const crate::ring0::trap::SELLO_MAGIA,
+        bv = const crate::ring0::trap::XSAVE_BV,
+        cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
         m_sello = const crate::ring0::faults::PODRIDO_SELLO,
         m_cs = const crate::ring0::faults::PODRIDO_CS,
+        m_cab = const crate::ring0::faults::PODRIDO_CABECERA,
         reserva = const crate::ring0::trap::XSAVE_RESERVA,
     );
 }
@@ -119,6 +181,13 @@ unsafe extern "C" fn spurious_entry() -> ! {
 
 #[unsafe(no_mangle)]
 extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
+    // Dónde talló su área este trap, y para quién. Ver `trap::publicaciones`:
+    // es lo que permite ver DOS áreas solapadas en la misma pila cuando un
+    // contexto aparece pisado con el sello intacto.
+    crate::ring0::trap::registrar_publicacion(
+        crate::ring0::percpu::trap_rsp(),
+        crate::ring0::scheduler::current_tid(),
+    );
     let n = TICKS.fetch_add(1, Ordering::Relaxed) + 1;
     // Budgeted estuary service before the scheduler decision: pending
     // submissions become completions and their WAITers wake this tick.

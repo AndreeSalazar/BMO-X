@@ -59,6 +59,8 @@ pub const OP_ENDPOINT_CREATE: u32 = 0x07;
 pub const OP_ENDPOINT_CONNECT: u32 = 0x08;
 pub const OP_FRAMEBUFFER_CLAIM: u32 = 0x09;
 pub const OP_INPUT_CLAIM: u32 = 0x0A;
+pub const OP_RUTA: u32 = 0x0B;
+pub const OP_EJECUTAR: u32 = 0x0C;
 
 // Operaciones sobre un handle de pantalla (`KIND_FRAMEBUFFER`).
 pub const FB_OP_BASE: u32 = 0x01;
@@ -66,9 +68,10 @@ pub const FB_OP_DIMS: u32 = 0x02;
 pub const FB_OP_STRIDE: u32 = 0x03;
 pub const FB_OP_BYTES: u32 = 0x04;
 
-// Operaciones sobre un handle de ratón (`KIND_INPUT`).
+// Operaciones sobre un handle de entrada (`KIND_INPUT`).
 pub const INPUT_OP_PUNTERO: u32 = 0x01;
 pub const INPUT_OP_EVENTOS: u32 = 0x02;
+pub const INPUT_OP_TECLA: u32 = 0x03;
 
 /// Lo que devuelve un syscall: un código y un valor.
 ///
@@ -285,7 +288,123 @@ impl Pantalla {
     }
 }
 
-// ── El ratón ────────────────────────────────────────────────────────────
+// ── Las letras ──────────────────────────────────────────────────────────
+
+/// La fuente 8x16 de BMO, la MISMA que pinta el kernel.
+///
+/// ## Por qué está copiada aquí y no se pide por syscall
+///
+/// La alternativa era una operación `DIBUJAR_TEXTO` sobre el framebuffer, y
+/// eso es exactamente la línea que `KIND_FRAMEBUFFER` existe para no cruzar: el
+/// kernel contesta cuatro preguntas y se aparta. Si Ring 0 dibujara letras
+/// tendría que saber de tipografía, de kerning y de colores — decisiones de
+/// aspecto, ninguna suya. Es el mismo argumento que dejó el cursor en Ring 3.
+///
+/// Así que aquí hay 4 KiB de tabla duplicada. Sale del mismo generador
+/// (`toolchain/tools/fontgen`), así que no son dos fuentes que puedan
+/// divergir: son dos copias de una, y regenerar actualiza las dos.
+static FONT16: [[u8; 16]; 120] = include!("font16_data.rs");
+static FONT_EXTRA: [u8; 25] = include!("font16_extra.rs");
+const ASCII_GLYPHS: usize = 95;
+
+/// Ancho y alto de un glifo, en píxeles. El avance horizontal ES el ancho: la
+/// fuente ya trae su propio espaciado dentro del mapa de bits.
+pub const GLIFO_ANCHO: u32 = 8;
+pub const GLIFO_ALTO: u32 = 16;
+
+/// Byte → índice de glifo. ASCII directo; para el español (ñ, á, ¿...) se
+/// busca el byte Latin-1 en la tabla de extras.
+///
+/// **Latin-1 y no UTF-8, igual que en Ring 0.** Un carácter es UN byte, así el
+/// teclado, la caja y la fuente hablan el mismo idioma sin decodificador de por
+/// medio. Un `&str` de Rust es UTF-8, así que una `ñ` escrita en el código
+/// fuente llega como dos bytes y no se dibuja: para eso están `texto_bytes` y
+/// el hecho de que lo que se teclea ya viene en Latin-1 del kernel.
+fn indice_glifo(c: u8) -> Option<usize> {
+    if (32..=126).contains(&c) {
+        return Some(c as usize - 32);
+    }
+    let mut i = 0;
+    while i < FONT_EXTRA.len() {
+        if FONT_EXTRA[i] == c {
+            return Some(ASCII_GLYPHS + i);
+        }
+        i += 1;
+    }
+    None
+}
+
+impl Pantalla {
+    /// Un carácter. Sólo pinta los píxeles encendidos: el fondo se respeta,
+    /// que es lo que permite escribir encima de lo que ya hay sin recuadros.
+    pub fn glifo(&self, x: u32, y: u32, c: u8, color: u32) {
+        let idx = match indice_glifo(c) {
+            Some(i) => i,
+            None => return,
+        };
+        let g = &FONT16[idx];
+        for (fila, &bits) in g.iter().enumerate() {
+            if bits == 0 {
+                continue;
+            }
+            for col in 0..8u32 {
+                if bits & (0x80 >> col) != 0 {
+                    self.punto(x + col, y + fila as u32, color);
+                }
+            }
+        }
+    }
+
+    /// Una tira de bytes Latin-1. Devuelve la x donde acabó, para encadenar.
+    pub fn texto_bytes(&self, x: u32, y: u32, s: &[u8], color: u32) -> u32 {
+        let mut cx = x;
+        for &c in s {
+            self.glifo(cx, y, c, color);
+            cx += GLIFO_ANCHO;
+        }
+        cx
+    }
+
+    /// Un `&str`. Los bytes que no sean ASCII se saltan en vez de salir como
+    /// basura: un literal con acentos viene en UTF-8 y esta fuente es Latin-1.
+    pub fn texto(&self, x: u32, y: u32, s: &str, color: u32) -> u32 {
+        self.texto_bytes(x, y, s.as_bytes(), color)
+    }
+}
+
+// ── Lanzar un programa ──────────────────────────────────────────────────
+
+/// Lanza el `.bex` que hay en `ruta`. Devuelve el tid, o el código del fallo.
+///
+/// La ruta viaja en trozos de 8 bytes, igual que la consola y por la misma
+/// razón: los argumentos van en registros y el kernel no tiene todavía forma de
+/// leer un puntero de Ring 3 con seguridad. Ver `TASK_OP_RUTA` en el kernel.
+///
+/// El gate de firma de ESTRATOS se aplica al otro lado: un binario sin firma
+/// buena no se ejecuta por mucho que se pida desde aquí.
+pub fn ejecutar(ruta: &[u8]) -> Result<u64, u32> {
+    for trozo in ruta.chunks(8) {
+        let mut w = [0u8; 8];
+        w[..trozo.len()].copy_from_slice(trozo);
+        invoke(CURRENT_TASK, OP_RUTA, u64::from_le_bytes(w), 0, 0);
+    }
+    let st = invoke(CURRENT_TASK, OP_EJECUTAR, 0, 0, 0);
+    if st.ok() {
+        Ok(st.value)
+    } else {
+        Err(st.code)
+    }
+}
+
+/// Los códigos que devuelve `ejecutar`. Son pocos a propósito: un proceso no
+/// necesita saber de FAT32, pero sí distinguir las tres cosas que le hacen
+/// cambiar de conducta.
+pub const ERROR_NO_ESTA: u32 = 20;
+pub const ERROR_GATE: u32 = 21;
+pub const ERROR_OCUPADO: u32 = 22;
+pub const ERROR_NO_ADMITIDO: u32 = 23;
+
+// ── La entrada ──────────────────────────────────────────────────────────
 
 /// Dónde está el puntero y qué botones tiene pulsados.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -295,26 +414,32 @@ pub struct Punto {
     pub botones: u8,
 }
 
-/// El ratón, cedido a este proceso.
+/// La entrada —ratón **y teclado**— cedida a este proceso.
 ///
 /// El kernel lee el HID —transferencias xHCI, endpoints, reintentos— porque
 /// eso es tocar hardware y todavía no hay otro sitio donde pueda vivir. Lo que
-/// entrega son coordenadas ya recortadas al panel y una máscara de botones.
+/// entrega son coordenadas ya recortadas al panel, una máscara de botones y los
+/// bytes que van saliendo del teclado.
 ///
-/// **El cursor no sale de aquí.** Su forma, su color y su contorno son
-/// decisiones de aspecto, y ninguna de ésas tiene nada que hacer en Ring 0.
-pub struct Raton {
+/// **El cursor no sale de aquí, y las letras tampoco.** Su forma, su color y su
+/// contorno son decisiones de aspecto, y ninguna de ésas tiene nada que hacer
+/// en Ring 0.
+///
+/// ★ Reclamarla es EXCLUSIVO y tiene consecuencia: mientras este proceso la
+/// tenga, el shell de Ring 0 deja de leer el teclado físico. No es un reparto,
+/// es una cesión — si los dos leyeran la misma cola se repartirían las letras.
+pub struct Entrada {
     pub cap: u64,
 }
 
-impl Raton {
+impl Entrada {
     pub fn reclamar() -> Option<Self> {
         let cap = invoke(CURRENT_TASK, OP_INPUT_CLAIM, 0, 0, 0).valor()?;
         Some(Self { cap })
     }
 
     /// Una llamada por fotograma: los tres datos vienen empaquetados.
-    pub fn leer(&self) -> Punto {
+    pub fn puntero(&self) -> Punto {
         let v = invoke(self.cap, INPUT_OP_PUNTERO, 0, 0, 0).value;
         Punto {
             x: (v >> 32) as u32,
@@ -327,5 +452,24 @@ impl Raton {
     /// "el ratón no llega": si esto no sube, el problema está en el USB.
     pub fn eventos(&self) -> u64 {
         invoke(self.cap, INPUT_OP_EVENTOS, 0, 0, 0).value
+    }
+
+    /// La siguiente tecla, si hay alguna. **No bloquea**: devuelve `None`
+    /// cuando no hay nada esperando.
+    ///
+    /// No bloquea a propósito. Un compositor tiene un bucle de fotograma; si
+    /// se durmiera en el teclado, el cursor se congelaría entre tecla y tecla —
+    /// el ratón dejaría de moverse mientras nadie escribe, que es exactamente
+    /// al revés de lo que uno quiere.
+    ///
+    /// El byte es **Latin-1**: la `ñ` llega como `0xF1`, que es justo el índice
+    /// que entiende la fuente. Sin decodificador de por medio.
+    pub fn tecla(&self) -> Option<u8> {
+        let v = invoke(self.cap, INPUT_OP_TECLA, 0, 0, 0).value;
+        if v & 0x100 != 0 {
+            Some((v & 0xFF) as u8)
+        } else {
+            None
+        }
     }
 }

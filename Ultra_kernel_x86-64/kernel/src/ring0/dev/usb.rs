@@ -326,7 +326,54 @@ pub fn is_ready() -> bool {
 /// Poll no bloqueante: drena eventos HID y devuelve UN ascii si hubo una
 /// tecla imprimible (o Enter/Backspace/Tab). Mantiene el estado de Shift.
 /// Alimenta `shell_read_line` igual que `keyboard::poll_ascii`.
+///
+/// ## Por qué esto se envuelve en un cambio de CR3
+///
+/// Tocar el xHCI es **escribir MMIO**: el `ERDP` del interrupter 0 vive en
+/// `base + RTSOFF + 0x38`, que en esta placa cae en `0xFC2004F8`. Ese rango está
+/// mapeado en el PML4 del kernel y **no** en el de una tarea de usuario.
+///
+/// Mientras el único que llamaba aquí era el shell de Ring 0 —una tarea de
+/// kernel, con el CR3 del kernel cargado— eso no se notaba. Pero desde que
+/// `KIND_INPUT` entrega teclas, este camino se recorre **desde dentro de un
+/// SYSCALL**, y en un SYSCALL desde Ring 3 el CR3 sigue siendo el del llamante:
+/// el cambio de CR3 solo ocurre en un cambio de contexto, y ahí todavía no ha
+/// habido ninguno. El resultado fue un `#PF` de escritura sobre página ausente
+/// en Ring 0 —`err=0x2`, `cr2=0xFC2004F8`— a los 144 ticks: en cuanto el
+/// compositor pidió su primera tecla.
+///
+/// Es la misma trampa que ya está anotada en `fault_dispatch` para el
+/// framebuffer ("el CR3 de usuario puede no mapear el rango identidad"). Aquí
+/// la respuesta es la misma: ponerse el CR3 del kernel para tocar el hardware y
+/// devolverlo al salir.
+///
+/// ★ No es gratis: dos escrituras de CR3 son dos vaciados de TLB, y esto se
+/// llama una vez por fotograma. La solución barata de verdad sería mapear el
+/// agujero de MMIO en todo espacio de direcciones —es memoria de supervisor,
+/// así que Ring 3 no la vería igualmente— y eso ahorraría los dos vaciados. Se
+/// deja anotado y no hecho: primero que funcione y esté aislado en un sitio.
 pub fn poll_ascii() -> Option<u8> {
+    use crate::ring0::mm::vmm;
+    let kpml4 = vmm::kernel_pml4();
+    let previo = vmm::read_cr3();
+    // `kpml4 == 0` = todavía no hay PML4 de kernel publicado (arranque muy
+    // temprano). Entonces el CR3 que hay ES el bueno y no se toca nada.
+    let cambiado = kpml4 != 0 && previo != kpml4;
+    if cambiado {
+        vmm::switch_to(kpml4);
+    }
+    let r = poll_ascii_interno();
+    // Se devuelve SIEMPRE, por un solo camino. `poll_ascii_interno` tiene
+    // varios `return` y dejar el CR3 del kernel puesto al volver a Ring 3 sería
+    // mucho peor que el fallo original: la tarea seguiría corriendo con el
+    // espacio de direcciones de otro.
+    if cambiado {
+        vmm::switch_to(previo);
+    }
+    r
+}
+
+fn poll_ascii_interno() -> Option<u8> {
     // Correr si hay CUALQUIER dispositivo enumerado (no solo teclado): así el
     // mouse late en el diagnóstico aunque el teclado no haya enumerado.
     if !unsafe { PRESENT } {

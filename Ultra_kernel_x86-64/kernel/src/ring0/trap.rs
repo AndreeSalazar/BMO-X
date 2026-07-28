@@ -114,6 +114,201 @@ pub const SELLO_DUENO: usize = XSAVE_AREA - 8;
 /// `mov qword ptr [mem], imm` en los stubs.
 pub const SELLO_MAGIA: u64 = 0x424D_4F31; // "BMO1"
 
+// ── La cabecera XSAVE, y por qué también se vigila ──────────────────────
+//
+// El sello cubre el final del área (`+1008`/`+1016`) y el back-pointer cubre
+// `+1024`. Los dos EXTREMOS. En medio, en `+512`, está la cabecera XSAVE — y
+// no la miraba nadie.
+//
+// Ese hueco se cobró una foto: `#GP(0)` en el `xrstor64` del epílogo del timer
+// con el sello intacto. `XRSTOR64` da `#GP(0)` por cuatro motivos, y quitando
+// la alineación (que el `and rsp, -64` garantiza), los otros tres viven todos
+// aquí dentro. El informe salía describiendo el sitio donde el CPU se enteró,
+// no el sitio donde se rompió — exactamente lo mismo que ya pasaba con el
+// `iretq` de `cs=0` antes de que existiera `contexto_podrido`.
+//
+// Tres comparaciones lo convierten en un informe con nombre.
+
+/// `XSTATE_BV`: qué componentes trae la imagen. `XRSTOR` da `#GP` si enciende
+/// alguno que `XCR0` no tenga habilitado.
+///
+/// ★ **`XSAVE` NO lo escribe entero, y ésa fue la causa raíz.** Lo que hace es
+///
+/// ```text
+///     XSTATE_BV ← (XSTATE_BV_viejo AND NOT RFBM) OR (XINUSE AND RFBM)
+/// ```
+///
+/// con `RFBM = EDX:EAX AND XCR0`. Los stubs pasan `EDX:EAX = -1`, así que
+/// `RFBM = XCR0 = 0x7` en este CPU — y **todos los bits fuera de `XCR0` se
+/// conservan del valor anterior**. Un área tallada sobre basura hereda esa
+/// basura en los bits altos, sobrevive al guardado, y `XRSTOR` la rechaza con
+/// `#GP(0)` por declarar componentes que el CPU no tiene habilitados.
+///
+/// La firma en los volcados: `0x5F0FCB` y `0x37B`, los dos "el valor viejo con
+/// los tres bits bajos puestos a 3" — y 3 es exactamente `XINUSE & 7` (x87 y
+/// SSE en uso, AVX en estado inicial). Dos fotos, el mismo patrón.
+///
+/// Por eso los prólogos ponen a cero **la cabecera entera** (512..575), no sólo
+/// los reservados: ni `XSTATE_BV` ni los reservados los inicializa el CPU.
+pub const XSAVE_BV: usize = 512;
+/// `XCOMP_BV` y los 48 bytes reservados que le siguen: `520..=575`. **Siete
+/// palabras que valen cero siempre.**
+///
+/// ★ **`XSAVE` NO las escribe todas, y eso costó dos pantallas azules.**
+/// `XSAVE` escribe `XSTATE_BV`, pone `XCOMP_BV` a cero, y **deja los 48 bytes
+/// reservados (528..575) como estaban**. `XRSTOR`, en cambio, da `#GP(0)` si no
+/// son todos cero. O sea que ponerlos a cero es deber del SOFTWARE, una vez, al
+/// crear el área.
+///
+/// `fabricate` siempre lo hizo bien —pone a cero los 1024 bytes antes de nada—
+/// pero los **stubs de entrada** tallan su área en la pila con `sub`+`and`, o
+/// sea encima de lo que hubiera ahí, y hacían `xsave64` directamente. La basura
+/// que trajera la pila en esos 48 bytes sobrevivía al guardado y reventaba en el
+/// `xrstor64` del epílogo. Intermitente, y peor en la pila de arranque, donde lo
+/// que hay debajo cambia en cada vuelta. Ésa era la asimetría.
+///
+/// Ahora los prólogos ponen a cero **exactamente estas siete palabras**, que son
+/// exactamente las que el epílogo verifica. Un valor distinto de cero aquí ya no
+/// puede venir de la pila: sólo de que alguien haya escrito encima del área. Por
+/// eso la comprobación no tiene un solo falso positivo posible.
+pub const XSAVE_CERO_DESDE: usize = 520;
+pub const XSAVE_CERO_PALABRAS: usize = 7;
+
+/// El complemento de `XCR0` tal y como estaba al arrancar: `!xcr0`.
+///
+/// Guardado del revés a propósito. El epílogo sólo necesita `XSTATE_BV & !XCR0`
+/// y comparar contra cero; precalcular el `not` aquí ahorra una instrucción en
+/// **el camino más caliente del kernel**, que es el que recorre cada cambio de
+/// contexto.
+///
+/// ★ Empieza en 0, y eso es lo correcto: `algo & 0 == 0`, así que hasta que
+/// `cpu_vendor::xsave::init()` lo rellene, la guardia está **inerte**. Un
+/// guardián que se dispara antes de saber contra qué compara no protege nada:
+/// para la máquina en cada trap por un motivo inventado.
+///
+/// ★ Y sale de `XGETBV`, no de una constante. Escribir aquí `!0x7` habría sido
+/// meter un número de este Ryzen concreto en el camino crítico del kernel, que
+/// es justo lo que se evitó con `RFBM = -1`.
+#[unsafe(no_mangle)]
+pub static mut XSAVE_NO_XCR0: u64 = 0;
+
+/// Lo llama `cpu_vendor::xsave::init()` cuando ya ha leído `XCR0`, y sólo esa
+/// vez: después de aquí los epílogos empiezan a mirar la cabecera.
+pub fn armar_guardia_cabecera(xcr0: u64) {
+    unsafe {
+        core::ptr::addr_of_mut!(XSAVE_NO_XCR0).write_volatile(!xcr0);
+    }
+}
+
+// ── Quién talla áreas, y dónde ──────────────────────────────────────────
+//
+// La guardia de cabecera dice QUÉ contexto se rompió y DE QUIÉN era. Lo que no
+// puede decir es **quién escribió encima**, y ésa es justo la pregunta que
+// queda cuando el sello aparece intacto: un sello sin consumir significa que el
+// contexto se guardó bien y que el vándalo llegó después, mientras su dueño
+// estaba descolocado.
+//
+// Cada stub de entrada talla su área en la pila y la publica. Anotando las
+// últimas, el informe puede enseñar si dos áreas se solapan — y de qué tarea es
+// cada una. Dos bases separadas por menos de `XSAVE_AREA` en la misma pila es
+// la respuesta entera, sin interpretación.
+//
+// Es un anillo de cuatro y sin lock: se escribe desde el despachador de cada
+// trap, con las interrupciones ya apagadas, y se lee sólo desde un informe de
+// fallo terminal. Un dato de diagnóstico que se pierda no rompe nada; uno que
+// se cuelgue tomando un lock dentro de un manejador de fallos, sí.
+
+pub const PUBLICACIONES: usize = 4;
+static mut PUB_BASE: [u64; PUBLICACIONES] = [0; PUBLICACIONES];
+static mut PUB_TID: [u32; PUBLICACIONES] = [0; PUBLICACIONES];
+static mut PUB_N: usize = 0;
+
+/// `XSTATE_BV` tal y como estaba al ENTRAR en el despachador.
+///
+/// Parte en dos la ventana entre el `xsave64` del prólogo y la guardia del
+/// epílogo, que es donde ahora se sabe que ocurre la corrupción:
+///
+/// - si esto ya viene podrido, el vándalo está en las cuatro instrucciones
+///   entre el `xsave64` y el `call` — o sea, el `xsave64` no escribió lo que
+///   creemos, o la base no es la que creemos;
+/// - si viene sano y el epílogo lo encuentra roto, el vándalo está DENTRO del
+///   despachador, y hay que mirar qué toca el planificador y el servicio de
+///   estuarios.
+///
+/// Una comparación en el informe que descarta la mitad del código, sea cual sea
+/// el resultado. Es más barato que seguir razonando sobre el volcado.
+static mut CAB_AL_ENTRAR: u64 = 0;
+
+/// La cabecera y la base leídas **por el propio stub, en la instrucción
+/// siguiente al `xsave64`**.
+///
+/// Última capa de indirección que queda por quitar. `bv0` ya demostró que la
+/// cabecera viene podrida al entrar al despachador, pero para llegar a ese dato
+/// se pasa por `percpu::trap_rsp()` y por el `rax` que devuelve el
+/// despachador — dos sitios donde una dirección podría no ser la que creemos.
+///
+/// Esto lo lee el ensamblador del propio `rsp` que acaba de usar `xsave64`, sin
+/// nadie en medio. Con las dos juntas la pregunta queda contestada sin
+/// interpretación posible:
+///
+/// - `bv_x` con bits fuera de `XCR0` y `base_x` == el área del informe → el
+///   `xsave64` NO está escribiendo la cabecera donde creemos. El problema es la
+///   instrucción o la base, no el planificador.
+/// - `base_x` distinta del área del informe → hay dos direcciones en juego y el
+///   contexto que se guarda no es el que se restaura.
+///
+/// `rax`/`rdx` están muertos ahí (valían -1 para el RFBM y los pops los
+/// recuperan), así que se pueden usar sin salvar nada.
+#[unsafe(no_mangle)]
+pub static mut BV_TRAS_XSAVE: u64 = 0;
+#[unsafe(no_mangle)]
+pub static mut BASE_TRAS_XSAVE: u64 = 0;
+
+pub fn tras_xsave() -> (u64, u64) {
+    unsafe {
+        (
+            core::ptr::addr_of!(BV_TRAS_XSAVE).read_volatile(),
+            core::ptr::addr_of!(BASE_TRAS_XSAVE).read_volatile(),
+        )
+    }
+}
+
+pub fn cabecera_al_entrar() -> u64 {
+    unsafe { core::ptr::addr_of!(CAB_AL_ENTRAR).read_volatile() }
+}
+
+/// Anota que este trap talló su área en `base`, para la tarea `tid`, y toma la
+/// foto de la cabecera antes de que el despachador haga nada.
+pub fn registrar_publicacion(base: u64, tid: u32) {
+    if base == 0 {
+        return;
+    }
+    unsafe {
+        let i = PUB_N % PUBLICACIONES;
+        core::ptr::addr_of_mut!(PUB_BASE).cast::<u64>().add(i).write_volatile(base);
+        core::ptr::addr_of_mut!(PUB_TID).cast::<u32>().add(i).write_volatile(tid);
+        PUB_N = PUB_N.wrapping_add(1);
+        let bv = ((base + XSAVE_BV as u64) as *const u64).read_volatile();
+        core::ptr::addr_of_mut!(CAB_AL_ENTRAR).write_volatile(bv);
+    }
+}
+
+/// Las últimas áreas publicadas, de la más reciente a la más antigua.
+pub fn publicaciones() -> [(u64, u32); PUBLICACIONES] {
+    let mut r = [(0u64, 0u32); PUBLICACIONES];
+    unsafe {
+        for k in 0..PUBLICACIONES {
+            // `PUB_N - 1` es la última escrita; se va hacia atrás.
+            let i = PUB_N.wrapping_sub(1).wrapping_sub(k) % PUBLICACIONES;
+            r[k] = (
+                core::ptr::addr_of!(PUB_BASE).cast::<u64>().add(i).read_volatile(),
+                core::ptr::addr_of!(PUB_TID).cast::<u32>().add(i).read_volatile(),
+            );
+        }
+    }
+    r
+}
+
 /// GPR block (15*8) + back-pointer slot (8) + alignment slack (8).
 const FRAME_BYTES_BELOW_TAIL: usize = 15 * 8 + 8 + 8;
 /// Bytes consumed from the stack top: tail (40) + GPRs + back-ptr + xsave

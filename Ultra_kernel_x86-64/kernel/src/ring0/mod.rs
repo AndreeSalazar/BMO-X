@@ -8,6 +8,7 @@ pub mod cap;
 pub mod faults;
 pub mod fb;
 pub mod input;
+pub mod lanzar;
 pub mod core {
     pub mod entry;
     pub mod phase;

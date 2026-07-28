@@ -10,13 +10,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bmo-app-terminal"
-version = "0.1.0"
-dependencies = [
- "bmo-userland",
-]
-
-[[package]]
 name = "bmo-service-gui"
 version = "0.1.0"
 dependencies = [

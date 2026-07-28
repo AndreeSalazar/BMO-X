@@ -398,15 +398,23 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         crate::ring0::cabina::render_hud();
 
         // Entrada: serial (COM1), teclado USB o PS/2, lo que tenga un byte.
+        //
+        // ★ El SERIAL nunca se cede. Es el cable del que depura, y sigue
+        // hablando aunque Ring 3 sea dueño de la pantalla y del teclado — que
+        // es justo cuando más falta hace.
         let mut byte = crate::ring0::dev::console::serial_read_byte();
-        if byte.is_none() {
+        // ★ El teclado FÍSICO sí. Si un proceso reclamó `KIND_INPUT`, las
+        // teclas son suyas y este shell no las toca: los dos drenan la MISMA
+        // cola, así que leer aquí no sería "leer también", sería robarle letras
+        // sueltas a la caja. Cedido es cedido, también para el que la cedió.
+        if byte.is_none() && !crate::ring0::input::cedido() {
             byte = crate::ring0::dev::usb::poll_ascii();
-        }
-        if byte.is_none() {
-            // PS/2 i8042 (mudo post-EBS en esta placa). Se conserva por si
-            // algún día reviviera (adaptador PS/2, otra placa).
-            if let Some((_raw, ascii)) = kb::poll_event() {
-                byte = ascii;
+            if byte.is_none() {
+                // PS/2 i8042 (mudo post-EBS en esta placa). Se conserva por si
+                // algún día reviviera (adaptador PS/2, otra placa).
+                if let Some((_raw, ascii)) = kb::poll_event() {
+                    byte = ascii;
+                }
             }
         }
         let c = match byte { Some(c) => c, None => continue };
@@ -726,7 +734,12 @@ fn shell_cpu() {
 
     // El veredicto contra el perfil, y el aviso que justifica todo esto.
     row("perfil dice", |l| { l.txt("0x"); l.hex(p.xsave_componentes, 4); l.txt("   area "); l.dec(p.xsave_area as u64); l.txt(" B"); });
-    let coincide = inf.soportado == p.xsave_componentes && inf.area_maxima == p.xsave_area;
+    // XCR0 aparte: lo habilitado no es lo soportado, y este lo pone el firmware,
+    // no el kernel — es el unico de los tres que puede moverse por debajo.
+    row("perfil xcr0", |l| { l.txt("0x"); l.hex(p.xsave_xcr0, 4); l.txt("   habilitado que se espera"); });
+    // El MISMO veredicto que dio el arranque. Antes esta linea tenia su propia
+    // comparacion y contestaba distinto a la misma pregunta.
+    let coincide = xsave::coincide(&inf);
     row("veredicto", |l| l.txt(if coincide { "el silicio coincide con el perfil" }
                                 else { "DIFIERE — manda el silicio, el perfil esta desfasado" }));
     // Lo que hace el cambio de contexto HOY. Esta linea decia "AVX aun no es
@@ -810,111 +823,70 @@ fn shell_estratos() {
 /// El buffer es estático y no local: un `.bex` son varios KiB y la pila del
 /// kernel son 64 KiB para todo.
 fn shell_run(arg: &[u8]) {
-    const MAX_BEX: usize = 64 * 1024;
-    static mut IMAGE: [u8; MAX_BEX] = [0u8; MAX_BEX];
+    use crate::ring0::estratos as est;
+    use crate::ring0::lanzar;
 
     let path = match core::str::from_utf8(arg) {
         Ok(s) => s.trim(),
         Err(_) => { s_log("[run] la ruta tiene bytes que no son texto"); return; }
     };
-    if path.is_empty() {
+
+    // Buscar el archivo, comprobar la firma y admitirlo ya NO se hace aquí: lo
+    // hace `lanzar::ruta`, que es EL MISMO camino que usa la caja de Ring 3.
+    // Tener dos versiones del gate de firma era tener dos versiones que se
+    // separan en cuanto alguien toque una. Al shell le queda lo suyo, que es
+    // contarlo en filas.
+    let inf = lanzar::ruta(path);
+
+    if inf.res == Err(lanzar::Fallo::RutaVacia) {
         s_log("[run] uso: run apps/hola.bex   (o A:/apps/hola.bex)");
         return;
     }
-    if !crate::ring0::proc::has_room() {
-        s_log("[run] no quedan huecos de proceso");
+    if let Err(lanzar::Fallo::NoSeEncuentra(e)) = inf.res {
+        // El motivo exacto: "no esta" y "no cabe en 8.3" mandan a hacer cosas
+        // distintas, y un "no se pudo" no manda a ninguna.
+        let mut l = L::new();
+        l.txt("[run] ");
+        l.txt(e);
+        l.txt(": ");
+        l.txt(path);
+        dashboard_log_color(l.as_str(), SH_TITLE);
+        crate::ring0::dev::console::serial_write(l.as_str());
+        crate::ring0::dev::console::serial_write("\n");
         return;
-    }
-
-    let buf = unsafe { &mut *core::ptr::addr_of_mut!(IMAGE) };
-
-    // ESTRATOS primero: es el sistema de ficheros propio y el ÚNICO donde un
-    // binario puede traer su firma pegada. Si no está ahí, se cae a FAT32,
-    // que sigue siendo de donde arranca la máquina.
-    use crate::ring0::estratos as est;
-    let mut origen = "FAT32";
-    let mut veredicto = est::Firma::Ausente;
-    let n;
-
-    let nodo_est = if est::is_mounted() { est::abrir(path) } else { None };
-    if let Some(nd) = nodo_est {
-        let leidos = match est::leer(&nd, buf) {
-            Some(v) => v,
-            None => { s_log("[run] el nodo esta en ESTRATOS pero no se pudo leer"); return; }
-        };
-        origen = "ESTRATOS";
-        veredicto = est::firma(&nd, &buf[..leidos]);
-        n = leidos;
-    } else {
-        match crate::ring0::fs::load(path, buf) {
-            Ok(v) => n = v,
-            Err(e) => {
-                // El motivo exacto: "no esta" y "no cabe en 8.3" mandan a hacer
-                // cosas distintas, y un "no se pudo" no manda a ninguna.
-                let mut l = L::new();
-                l.txt("[run] ");
-                l.txt(e.name());
-                l.txt(": ");
-                l.txt(path);
-                dashboard_log_color(l.as_str(), SH_TITLE);
-                crate::ring0::dev::console::serial_write(l.as_str());
-                crate::ring0::dev::console::serial_write("\n");
-                return;
-            }
-        }
     }
 
     dashboard_log_color("== run ==", SH_TITLE);
     row("archivo", |l| { l.txt(path); });
-    row("origen", |l| { l.txt(origen); });
-    row("leido", |l| { l.size(n as u64); });
 
-    // ── El gate: sin firma buena no hay ejecución ──
-    //
-    // §7 del diseño de ESTRATOS: `abrir(nodo, EJECUTAR)` comprueba `:firma` y
-    // si no cuadra NO entrega un handle ejecutable. Aquí se aplica antes de
-    // admitir nada, que es el único momento en que sirve de algo.
-    if origen == "ESTRATOS" {
-        match veredicto {
-            est::Firma::Cuadra => {
-                row("firma", |l| l.txt("cuadra con el contenido"));
-            }
-            est::Firma::NoCuadra => {
-                row("firma", |l| l.txt("NO CUADRA: el archivo no es el que se guardo"));
-                row("gate", |l| l.txt("RECHAZADO — no se ejecuta"));
-                crate::ring0::cabina::fault("estratos", "firma mala: ejecucion rechazada", n as u64);
-                return;
-            }
-            est::Firma::Ausente => {
-                row("firma", |l| l.txt("el nodo no lleva :firma"));
-                row("gate", |l| l.txt("RECHAZADO — sin firma no hay ejecucion"));
-                crate::ring0::cabina::warn("estratos", "sin firma: ejecucion rechazada", n as u64);
-                return;
-            }
+    // Origen, tamaño y firma sólo si se llegó a LEER el archivo. Con
+    // `SinHueco` u `Ocupado` no se abrió nada, y pintar entonces "FAT32 no
+    // puede llevar firma" sería contestar una pregunta que no se hizo — el
+    // informe hablaría de un archivo que nadie miró.
+    if inf.bytes > 0 {
+        row("origen", |l| { l.txt(inf.origen); });
+        row("leido", |l| { l.size(inf.bytes as u64); });
+        match inf.firma {
+            Some(est::Firma::Cuadra) => row("firma", |l| l.txt("cuadra con el contenido")),
+            Some(est::Firma::NoCuadra) => row("firma", |l| l.txt("NO CUADRA: el archivo no es el que se guardo")),
+            Some(est::Firma::Ausente) => row("firma", |l| l.txt("el nodo no lleva :firma")),
+            // Honestidad sobre la asimetría: FAT32 no tiene atributos con
+            // nombre, así que un binario de ahí no PUEDE traer su firma
+            // pegada. No es que no se compruebe por pereza: es que no hay
+            // dónde guardarla.
+            None => row("firma", |l| l.txt("FAT32 no puede llevar firma (sin atributos)")),
         }
-    } else {
-        // Honestidad sobre la asimetría: FAT32 no tiene atributos con nombre,
-        // así que un binario de ahí no PUEDE traer su firma pegada. No es que
-        // no se compruebe por pereza: es que no hay dónde guardarla.
-        row("firma", |l| l.txt("FAT32 no puede llevar firma (sin atributos)"));
     }
 
-    // El nombre del proceso es el último componente de la ruta: es lo que el
-    // usuario reconoce en el log, no la ruta entera.
-    let name = {
-        let b = path.as_bytes();
-        match b.iter().rposition(|&c| c == b'/' || c == b'\\') {
-            Some(i) => &path[i + 1..],
-            None => path,
-        }
-    };
-
-    match crate::ring0::proc::admit_from_disk(name, &buf[..n]) {
-        Some(tid) => {
+    match inf.res {
+        Ok(tid) => {
             row("admitido", |l| { l.txt("tid "); l.dec(tid as u64); l.txt("   corre en el siguiente tick"); });
         }
-        None => {
-            row("rechazado", |l| { l.txt("el .bex no paso la admision (mira CABINA)"); });
+        Err(f @ (lanzar::Fallo::FirmaMala | lanzar::Fallo::SinFirma)) => {
+            row("gate", |l| { l.txt("RECHAZADO — "); l.txt(f.motivo()); });
+        }
+        Err(f) => {
+            row("rechazado", |l| { l.txt(f.motivo()); });
         }
     }
 }
@@ -1247,6 +1219,48 @@ fn shell_halt() -> ! {
     loop { unsafe { core::arch::asm!("sti; hlt"); } }
 }
 
+/// Dónde vive el escritorio en el volumen de datos.
+///
+/// Es un CONTRATO, no una constante de conveniencia: quien quiera otro
+/// escritorio deja su `.bex` ahí y arranca. Eso es exactamente lo que NO se
+/// podía hacer mientras el compositor viajaba dentro del kernel.
+const RUTA_COMPOSITOR: &str = "apps/compositor.bex";
+
+/// Arranca el escritorio desde el disco. Va DESPUÉS de montar el volumen de
+/// datos — antes no habría de dónde leerlo.
+///
+/// ★ Si arranca, el panel del kernel deja de verse: al reclamar la pantalla el
+/// kernel deja de dibujar, y el compositor no termina nunca (si terminara,
+/// `revoke_all` devolvería la pantalla y el panel se repintaría encima). Los
+/// logs siguen enteros por serie y en CABINA, y un fault de kernel recupera la
+/// pantalla para contarlo.
+///
+/// ★ Si NO arranca, no pasa nada malo: queda el panel y el shell de Ring 0, que
+/// es un sistema perfectamente usable. Por eso esto no se planta ni reintenta —
+/// pero lo DICE, y dice qué hacer. Un escritorio que no sale sin explicar por
+/// qué manda a alguien a leer código.
+fn arrancar_escritorio() {
+    use crate::ring0::lanzar;
+
+    let inf = lanzar::ruta(RUTA_COMPOSITOR);
+    match inf.res {
+        Ok(tid) => {
+            row("escritorio", |l| {
+                l.txt(RUTA_COMPOSITOR);
+                l.txt("   tid ");
+                l.dec(tid as u64);
+            });
+            crate::ring0::cabina::info("gui", "escritorio admitido desde disco", tid as u64);
+        }
+        Err(f) => {
+            row("escritorio", |l| { l.txt("NO ARRANCA: "); l.txt(f.motivo()); });
+            row("   copia", |l| { l.txt(RUTA_COMPOSITOR); l.txt(" al volumen de datos"); });
+            row("   o bien", |l| { l.txt("run "); l.txt(RUTA_COMPOSITOR); l.txt("   desde este shell"); });
+            crate::ring0::cabina::warn("gui", f.motivo(), 0);
+        }
+    }
+}
+
 fn run_shell(ctx: &BootContext) -> ! {
     // Normalize the i8042 (translation → Set 1, re-enable scanning) so the
     // physical keyboard reaches shell_read_line. No-op if the controller is
@@ -1526,6 +1540,12 @@ pub fn main(ctx: &mut BootContext) {
         }
         if let Ok(s) = core::str::from_utf8(&summary[..off]) { s_log(s); }
     }
+
+    // Y el escritorio, que ya NO viaja dentro del kernel. Va aquí y no en
+    // `spawn_init` por una razón dura: `spawn_init` corre en el Acto I, cuando
+    // el HBA SATA ni se ha tocado. Este es el primer punto del arranque en el
+    // que existe un volumen de datos del que leerlo.
+    arrancar_escritorio();
 
     // FINAL checkpoint: bright green at row 236 = kernel finished ALL of
     // phase::main and is entering the shell. If this shows, Ring 0 fully

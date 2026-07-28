@@ -79,6 +79,18 @@ macro_rules! err_stub_isolating {
                 "mov rsp, rax",
                 "cmp qword ptr [rsp + {firma}], {magia}",
                 "jne 6f",
+                // La cabecera XSAVE: ver el epilogo del timer.
+                "mov rdx, qword ptr [rsp + {bv}]",
+                "and rdx, qword ptr [rip + {no_xcr0}]",
+                "jnz 8f",
+                "mov rax, qword ptr [rsp + {cero}]",
+                "or rax, qword ptr [rsp + {cero} + 8]",
+                "or rax, qword ptr [rsp + {cero} + 16]",
+                "or rax, qword ptr [rsp + {cero} + 24]",
+                "or rax, qword ptr [rsp + {cero} + 32]",
+                "or rax, qword ptr [rsp + {cero} + 40]",
+                "or rax, qword ptr [rsp + {cero} + 48]",
+                "jnz 8f",
                 // Un solo uso: ver el epilogo del timer.
                 "mov qword ptr [rsp + {firma}], 0",
                 // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
@@ -100,14 +112,19 @@ macro_rules! err_stub_isolating {
                 "jmp 5b",
                 "6: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
                 "7: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+                "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
                 v = const $vec,
                 h = sym fault_dispatch,
                 podrido = sym contexto_podrido,
+                no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
                 area = const crate::ring0::trap::XSAVE_AREA,
                 firma = const crate::ring0::trap::SELLO_FIRMA,
                 magia = const crate::ring0::trap::SELLO_MAGIA,
+                bv = const crate::ring0::trap::XSAVE_BV,
+                cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
                 m_sello = const PODRIDO_SELLO,
                 m_cs = const PODRIDO_CS,
+                m_cab = const PODRIDO_CABECERA,
             );
         }
     };
@@ -135,6 +152,18 @@ macro_rules! noerr_stub_isolating {
                 "mov rsp, rax",
                 "cmp qword ptr [rsp + {firma}], {magia}",
                 "jne 6f",
+                // La cabecera XSAVE: ver el epilogo del timer.
+                "mov rdx, qword ptr [rsp + {bv}]",
+                "and rdx, qword ptr [rip + {no_xcr0}]",
+                "jnz 8f",
+                "mov rax, qword ptr [rsp + {cero}]",
+                "or rax, qword ptr [rsp + {cero} + 8]",
+                "or rax, qword ptr [rsp + {cero} + 16]",
+                "or rax, qword ptr [rsp + {cero} + 24]",
+                "or rax, qword ptr [rsp + {cero} + 32]",
+                "or rax, qword ptr [rsp + {cero} + 40]",
+                "or rax, qword ptr [rsp + {cero} + 48]",
+                "jnz 8f",
                 // Un solo uso: ver el epilogo del timer.
                 "mov qword ptr [rsp + {firma}], 0",
                 // RFBM = -1: lo que XCR0 tenga habilitado. rax/rdx se
@@ -156,14 +185,19 @@ macro_rules! noerr_stub_isolating {
                 "jmp 5b",
                 "6: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
                 "7: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
+                "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
                 v = const $vec,
                 h = sym fault_dispatch,
                 podrido = sym contexto_podrido,
+                no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
                 area = const crate::ring0::trap::XSAVE_AREA,
                 firma = const crate::ring0::trap::SELLO_FIRMA,
                 magia = const crate::ring0::trap::SELLO_MAGIA,
+                bv = const crate::ring0::trap::XSAVE_BV,
+                cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
                 m_sello = const PODRIDO_SELLO,
                 m_cs = const PODRIDO_CS,
+                m_cab = const PODRIDO_CABECERA,
             );
         }
     };
@@ -302,12 +336,26 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     if kpml4 != 0 {
         crate::ring0::mm::vmm::switch_to(kpml4);
     }
+    // ── En INGLES, y solo ASCII ──
+    //
+    // No es una preferencia de estilo. Esta pantalla se lee EN UNA FOTO, y su
+    // trabajo entero es que un caracter no se confunda con otro. El espanol
+    // mete tildes y enye, y esos glifos viven en la tabla de extras Latin-1 del
+    // font: son los que peor se distinguen a 8 px y los primeros que se rompen
+    // si algo va mal con la fuente. El ingles cabe en ASCII puro.
+    //
+    // Ademas los campos que van debajo (vec, err, rip, cr2, rsp) ya son ingles
+    // por ser los nombres del hardware, asi que la pantalla deja de estar a
+    // medias en dos idiomas.
+    //
+    // El resto del sistema sigue en espanol: comentarios, CABINA, el shell. Lo
+    // que cambia es SOLO lo que se fotografia.
     let name = match vector {
-        6 => "#UD instruccion invalida",
-        8 => "#DF doble fallo",
-        13 => "#GP violacion de proteccion",
-        14 => "#PF fallo de pagina",
-        _ => "excepcion desconocida",
+        6 => "#UD invalid opcode",
+        8 => "#DF double fault",
+        13 => "#GP general protection",
+        14 => "#PF page fault",
+        _ => "unknown exception",
     };
     // Ultima entrada de la bitacora antes de detener la maquina.
     crate::ring0::cabina::panic_ev("ring0", name, rip);
@@ -423,13 +471,18 @@ const FALLO_SEGUNDOS: u64 = 20;
 
 /// Filas del informe, en el orden en que se pintan. `faults.rs` las llena.
 struct Informe {
-    lineas: [Line; 12],
+    /// ★ 16 y no 12. Los dos informes llegaron a llenar las doce EXACTAS, y
+    /// `push` descarta en silencio a partir del tope: la siguiente fila que
+    /// alguien añadiera se perdería sin un solo aviso, justo en la herramienta
+    /// que usamos para depurar cuando no hay otra. Un margen de cuatro cuesta
+    /// 352 bytes de una pila que ya no va a servir para nada más.
+    lineas: [Line; 16],
     n: usize,
 }
 
 impl Informe {
     fn nuevo() -> Self {
-        Self { lineas: [Line::new(); 12], n: 0 }
+        Self { lineas: [Line::new(); 16], n: 0 }
     }
     fn push(&mut self, l: Line) {
         if self.n < self.lineas.len() {
@@ -469,17 +522,17 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
     let x = (w / 12).max(48);
     let mut y = (h / 6).max(60);
 
-    sp::fallo_texto_grande(x, y, "BMO-X se ha detenido", FALLO_TITULO, 2);
+    sp::fallo_texto_grande(x, y, "BMO-X has stopped", FALLO_TITULO, 2);
     y += sp::ALTO_LINEA * 3;
 
     sp::fallo_texto(
         x,
         y,
-        "Un fallo en Ring 0 no se puede aislar: el kernel es el suelo",
+        "A Ring 0 fault cannot be isolated: the kernel is the floor",
         FALLO_TEXTO,
     );
     y += sp::ALTO_LINEA;
-    sp::fallo_texto(x, y, "de todo lo demas. Esto es lo que se sabe:", FALLO_TEXTO);
+    sp::fallo_texto(x, y, "everything else stands on. This is what is known:", FALLO_TEXTO);
     y += sp::ALTO_LINEA * 2;
 
     sp::fallo_texto(x, y, titulo, FALLO_TITULO);
@@ -497,7 +550,7 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
     sp::fallo_texto(
         x,
         barra_y - sp::ALTO_LINEA - 8,
-        "Reiniciando. Si quieres la foto, esta es tu ventana.",
+        "Rebooting. If you want the photo, this is your window.",
         FALLO_TEXTO,
     );
 
@@ -515,6 +568,9 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
 
     let inicio = crate::ring0::scheduler::rdtsc();
     let total = hz * FALLO_SEGUNDOS;
+    // La barra llena, UNA vez. A partir de aquí sólo se borra lo que mengua.
+    sp::fallo_rect(x, barra_y, barra_w, alto, FALLO_BARRA);
+    let mut anterior = barra_w;
     loop {
         let pasado = crate::ring0::scheduler::rdtsc().wrapping_sub(inicio);
         if pasado >= total {
@@ -522,8 +578,25 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
         }
         // La barra MENGUA: se ve cuánto queda, no cuánto ha pasado.
         let restante = ((total - pasado) as u128 * barra_w as u128 / total as u128) as u32;
-        sp::fallo_rect(x, barra_y, barra_w, alto, FALLO_FONDO);
-        sp::fallo_rect(x, barra_y, restante, alto, FALLO_BARRA);
+        // ★ Repintar por DAÑO, no la barra entera.
+        //
+        // Antes este bucle borraba y redibujaba los ~1200 px de la barra en
+        // CADA vuelta, tan rápido como el CPU pudiera: decenas de miles de
+        // pasadas por segundo sobre memoria de vídeo sin caché y sin ninguna
+        // sincronización con el refresco del panel. Lo que se ve entonces no es
+        // que el framebuffer sea débil: es que el panel captura la barra a
+        // medio reescribir, y muestra una banda de la pasada anterior mezclada
+        // con la nueva. Un LCD refresca 60 veces por segundo; escribirle 40.000
+        // no lo hace ir más rápido, lo hace enseñar basura.
+        //
+        // Ahora sólo se borra la tira que acaba de desaparecer, y sólo cuando
+        // el ancho cambia de píxel entero. Es el mismo principio que el cursor
+        // del compositor —repintar el daño, no la escena— y aquí se nota más
+        // porque no hay nada más en pantalla que lo disimule.
+        if restante < anterior {
+            sp::fallo_rect(x + restante, barra_y, anterior - restante, alto, FALLO_FONDO);
+            anterior = restante;
+        }
     }
     crate::ring0::reinicio::ahora();
 }
@@ -531,6 +604,7 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
 /// Motivos con los que un epílogo se niega a restaurar un contexto.
 pub const PODRIDO_SELLO: u64 = 1;
 pub const PODRIDO_CS: u64 = 2;
+pub const PODRIDO_CABECERA: u64 = 3;
 
 /// El epílogo de trap se planta ANTES de restaurar un contexto que no cuadra.
 ///
@@ -546,19 +620,28 @@ pub const PODRIDO_CS: u64 = 2;
 ///   del frame, sobre el área de estado extendido.
 /// - `PODRIDO_CS`: el `cs` guardado no es ni 0x08 ni 0x23. Alguien escribió
 ///   ENCIMA, sobre la cola de cinco palabras que consume el `iretq`.
+/// - `PODRIDO_CABECERA`: la cabecera XSAVE (`+512`) no es una cabecera. Alguien
+///   escribió EN MEDIO — entre el área de registros y el sello.
+///
+/// El tercero cerró el hueco que dejaban los otros dos. El sello vigila el
+/// final del área y el back-pointer el borde de arriba: los dos EXTREMOS. Un
+/// `#GP(0)` en el propio `xrstor64`, con el sello intacto, describía el sitio
+/// donde el CPU se enteró y no el sitio donde se rompió — exactamente el mismo
+/// problema que el `iretq` con `cs=0` antes de que existiera esta función.
 ///
 /// `rsp` es la dirección exacta que el epílogo iba a usar: la base del área
-/// para el sello, el frame para el `cs`. Es terminal a propósito — restaurar
-/// un contexto podrido es exactamente lo que no queremos que pase.
+/// para el sello y para la cabecera, el frame para el `cs`. Es terminal a
+/// propósito — restaurar un contexto podrido es exactamente lo que no queremos
+/// que pase.
 pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
     if kpml4 != 0 {
         crate::ring0::mm::vmm::switch_to(kpml4);
     }
-    let nombre = if motivo == PODRIDO_SELLO {
-        "CONTEXTO PODRIDO: el sello no esta"
-    } else {
-        "CONTEXTO PODRIDO: cs imposible"
+    let nombre = match motivo {
+        PODRIDO_SELLO => "ROTTEN CONTEXT: the seal is gone",
+        PODRIDO_CABECERA => "ROTTEN CONTEXT: XSAVE header",
+        _ => "ROTTEN CONTEXT: impossible cs",
     };
     crate::ring0::cabina::panic_ev("ring0", nombre, rsp);
 
@@ -573,7 +656,10 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     // ella: `rsp` es la cola del frame (gpr_base+120), y el back-pointer —el
     // unico puntero que ata frame y area— vive entre 8 y 71 bytes por debajo
     // del bloque de GPR. Se busca ahi el qword que apunta a `gpr_base`.
-    let base = if motivo == PODRIDO_SELLO {
+    // Con el sello y con la cabecera, `rsp` YA es la base del area — las dos
+    // guardias se disparan antes de que el epilogo salte al frame. Solo el `cs`
+    // se comprueba despues, y por eso solo ese caso tiene que buscarla.
+    let base = if motivo != PODRIDO_CS {
         rsp
     } else {
         let gpr_base = rsp.wrapping_sub(120);
@@ -595,6 +681,54 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     l.s("  dueno=tid "); l.hex(dueno, 4);
     l.s("  area="); l.hex(base, 12);
     inf.push(l);
+
+    // La cabecera XSAVE, la parte del area que nadie miraba. Se pinta en los
+    // tres motivos: cuando la guardia de cabecera es la que salta dice QUE
+    // campo esta mal, y en los otros dos dice si ademas estaba tocada.
+    //
+    // `bv` contra `noxcr0`: si su AND no es cero, la imagen dice traer un
+    // componente que este CPU no tiene habilitado. `cmp` y `rsv` valen cero
+    // siempre —los escribe `xsave64` en cada guardado— asi que cualquier otra
+    // cosa ahi es corrupcion, sin interpretacion posible.
+    if base != 0 {
+        use crate::ring0::trap as t;
+        let (bv, cmpbv) = unsafe {
+            (
+                ((base + t::XSAVE_BV as u64) as *const u64).read_volatile(),
+                ((base + t::XSAVE_CERO_DESDE as u64) as *const u64).read_volatile(),
+            )
+        };
+        let mut rsv = 0u64;
+        for i in 1..t::XSAVE_CERO_PALABRAS as u64 {
+            rsv |= unsafe {
+                ((base + t::XSAVE_CERO_DESDE as u64 + i * 8) as *const u64).read_volatile()
+            };
+        }
+        let noxcr0 = unsafe { core::ptr::addr_of!(t::XSAVE_NO_XCR0).read_volatile() };
+        let mut l = Line::new();
+        l.s("cab bv="); l.hex(bv, 12);
+        l.s(" cmp="); l.hex(cmpbv, 8);
+        inf.push(l);
+        let mut l = Line::new();
+        l.s("rsv="); l.hex(rsv, 12);
+        l.s("  noxcr0="); l.hex(noxcr0, 12);
+        inf.push(l);
+        // `bv0` es el MISMO campo leido al entrar en el despachador. Si bv0 ya
+        // esta podrido, el culpable esta entre el xsave64 y el call; si bv0
+        // esta sano, esta dentro del despachador. Una linea que parte el codigo
+        // sospechoso por la mitad.
+        let mut l = Line::new();
+        l.s("bv0="); l.hex(t::cabecera_al_entrar(), 12);
+        l.s("  (dispatch)");
+        inf.push(l);
+        // Y la version SIN indirecciones: leida por el stub justo despues del
+        // xsave64, del rsp que la propia instruccion uso.
+        let (bvx, basex) = t::tras_xsave();
+        let mut l = Line::new();
+        l.s("bvX="); l.hex(bvx, 12);
+        l.s(" baseX="); l.hex(basex, 12);
+        inf.push(l);
+    }
 
     // Las cinco palabras que el iretq iba a consumir. Si aqui sale 0x37F y
     // 0x1F80, lo que hay encima del contexto es la imagen XSAVE de OTRO:
@@ -624,6 +758,26 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     l.s("sw"); l.hex(snap[3], 2);
     l.s(" c="); l.hex(snap[0], 12);
     l.s(" b="); l.hex(snap[1], 12);
+    inf.push(l);
+
+    // Las ultimas areas talladas, de la mas reciente hacia atras, con su tarea.
+    //
+    // Aqui esta la respuesta a "quien escribio encima". Si dos de estas bases
+    // distan menos de XSAVE_AREA y estan en la misma pila, se solapan — y el
+    // tid de cada una dice de quien es cada trozo. Con el sello intacto, como
+    // en la foto del 27, el vandalo tiene que estar en esta lista.
+    let pubs = crate::ring0::trap::publicaciones();
+    let mut l = Line::new();
+    l.s("pub0="); l.hex(pubs[0].0, 12);
+    l.s(" t"); l.hex(pubs[0].1 as u64, 2);
+    l.s("  pub1="); l.hex(pubs[1].0, 12);
+    l.s(" t"); l.hex(pubs[1].1 as u64, 2);
+    inf.push(l);
+    let mut l = Line::new();
+    l.s("pub2="); l.hex(pubs[2].0, 12);
+    l.s(" t"); l.hex(pubs[2].1 as u64, 2);
+    l.s("  pub3="); l.hex(pubs[3].0, 12);
+    l.s(" t"); l.hex(pubs[3].1 as u64, 2);
     inf.push(l);
 
     let ue = crate::ring0::endpoint::ultima_escritura();
