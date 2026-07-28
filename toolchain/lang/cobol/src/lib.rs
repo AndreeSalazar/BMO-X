@@ -1,6 +1,7 @@
 ﻿pub mod ast;
 pub mod codegen;
 pub mod dialect;
+pub mod edicion;
 pub mod ir_emit;
 pub mod lexer;
 pub mod parser;
