@@ -63,6 +63,7 @@ pub const OP_RUTA: u32 = 0x0B;
 pub const OP_EJECUTAR: u32 = 0x0C;
 pub const OP_CONSOLA_CREAR: u32 = 0x0D;
 pub const OP_DIR_ABRIR: u32 = 0x0E;
+pub const OP_CONSOLE_READ: u32 = 0x0F;
 
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;
@@ -71,6 +72,8 @@ pub const DIR_OP_NOMBRE: u32 = 0x02;
 // Operaciones sobre un handle de consola (`KIND_CONSOLE`).
 pub const CONSOLA_OP_LEER: u32 = 0x01;
 pub const CONSOLA_OP_PERDIDOS: u32 = 0x02;
+pub const CONSOLA_OP_ESCRIBIR: u32 = 0x03;
+pub const CONSOLA_OP_HAY_HIJO: u32 = 0x04;
 
 // Operaciones sobre un handle de pantalla (`KIND_FRAMEBUFFER`).
 pub const FB_OP_BASE: u32 = 0x01;
@@ -454,6 +457,22 @@ impl Consola {
         n.min(7)
     }
 
+    /// Mete texto en la ENTRADA de esta consola: lo que el terminal teclea
+    /// PARA su hijo. El otro sentido del canal.
+    pub fn escribir(&self, texto: &[u8]) {
+        for trozo in texto.chunks(8) {
+            let mut w = [0u8; 8];
+            w[..trozo.len()].copy_from_slice(trozo);
+            invoke(self.cap, CONSOLA_OP_ESCRIBIR, u64::from_le_bytes(w), 0, 0);
+        }
+    }
+
+    /// ¿Hay un proceso vivo escribiendo aquí? El terminal lo pregunta para
+    /// saber si lo que se teclea es un comando suyo o entrada para el hijo.
+    pub fn hay_hijo(&self) -> bool {
+        invoke(self.cap, CONSOLA_OP_HAY_HIJO, 0, 0, 0).value != 0
+    }
+
     /// Bytes descartados por anillo lleno. Un terminal que va lento tiene
     /// derecho a saber que está perdiendo salida en vez de creerse completo.
     pub fn perdidos(&self) -> u64 {
@@ -468,6 +487,22 @@ pub const ERROR_NO_ESTA: u32 = 20;
 pub const ERROR_GATE: u32 = 21;
 pub const ERROR_OCUPADO: u32 = 22;
 pub const ERROR_NO_ADMITIDO: u32 = 23;
+
+/// Lee de la consola de ESTE proceso — lo que el terminal le manda.
+///
+/// Hasta 7 bytes; `0` = no hay nada. **No bloquea**: un programa que espera
+/// entrada cede el turno entre intentos en vez de quedarse con el CPU.
+///
+/// Es la pareja de `consola()`: se escribe por una y se escucha por la otra,
+/// sobre el mismo objeto. Es lo que permite un `ACCEPT` en un proceso que no
+/// tiene —ni debe tener— la capability del teclado.
+pub fn leer_consola(dst: &mut [u8; 8]) -> usize {
+    let v = invoke(CURRENT_TASK, OP_CONSOLE_READ, 0, 0, 0).value;
+    *dst = v.to_le_bytes();
+    let n = (v >> 56) as usize;
+    dst[7] = 0;
+    n.min(7)
+}
 
 // ── El disco ────────────────────────────────────────────────────────────
 

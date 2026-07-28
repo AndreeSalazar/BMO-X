@@ -27,7 +27,7 @@
 //! aquí habla con el kernel por su cuenta.
 
 use crate::console;
-use crate::x86::{self, Jump, RAX, RCX, RDX, RSP, R10, R11, R8, R9};
+use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI, RSP, R10, R11, R8, R9};
 
 /// Tamaño del buffer en pila. 20 dígitos (el máximo de un u64) + signo,
 /// redondeado a 32 para mantener la pila alineada.
@@ -179,6 +179,96 @@ pub fn write_u64_radix(code: &mut Vec<u8>, radix: u8) {
 ///
 /// Un `do…while`, no un `while`: el cero tiene que imprimir "0", y un bucle
 /// que comprueba antes no imprimiría nada.
+/// Emite código que LEE un decimal con escala de un buffer (`r8` = puntero,
+/// `r9` = longitud) y deja el entero escalado en `rax`.
+///
+/// `"19.99"` con escala 2 da `1999`. Es la pareja exacta de
+/// [`write_decimal_scaled`] y vive aquí por lo mismo: leer dígitos no tiene
+/// semántica de ningún lenguaje.
+///
+/// ## Lo que hace y lo que NO
+///
+/// - Se salta lo que no sea dígito, signo o punto. Un `ACCEPT` recibe lo que
+///   una persona teclee, y una persona mete espacios.
+/// - **Trunca** los decimales que sobren: `19.999` en escala 2 es `1999`. La
+///   misma regla que al escribir, y la misma razón — COBOL no redondea sin que
+///   se lo pidan.
+/// - **Rellena** los que falten: `19.9` en escala 2 es `1990`, no `199`. Éste
+///   es el que convierte 19,90 € en 1,99 € si se olvida.
+///
+/// Registros que ensucia: `rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r10`, `r11`.
+pub fn parse_decimal_scaled(code: &mut Vec<u8>, escala: u32) {
+    x86::zero_r32(code, RAX); // acumulador
+    x86::zero_r32(code, RCX); // índice
+    x86::zero_r32(code, R10); // ¿negativo?
+    x86::zero_r32(code, R11); // ¿ya pasamos el punto?
+    x86::mov_r32_imm32(code, RSI, escala); // decimales que faltan por leer
+    x86::mov_r32_imm32(code, RDI, 10); // la base, para el imul
+
+    let top = code.len();
+    x86::cmp_r64_r64(code, RCX, R9);
+    let fin = x86::emit_jump(code, Jump::IfAboveOrEqual);
+    x86::movzx_r32_byte_base_index(code, RDX, R8, RCX);
+    x86::inc_r64(code, RCX);
+
+    // Signo.
+    x86::cmp_r64_imm8(code, RDX, b'-' as i8);
+    let es_menos = x86::emit_jump(code, Jump::IfEqual);
+    // Punto decimal.
+    x86::cmp_r64_imm8(code, RDX, b'.' as i8);
+    let es_punto = x86::emit_jump(code, Jump::IfEqual);
+
+    // ¿Dígito? `c - '0' > 9` sin signo lo resuelve con UNA comparación: las
+    // letras y los espacios se van por arriba al restar.
+    x86::sub_r64_imm8(code, RDX, b'0' as i8);
+    x86::cmp_r64_imm8(code, RDX, 9);
+    let no_es_digito = x86::emit_jump(code, Jump::IfAbove);
+    x86::patch_jump_to(code, no_es_digito, top);
+
+    // Si ya estamos en la fracción y no queda sitio, se TRUNCA.
+    x86::test_r64_r64(code, R11, R11);
+    let en_entero = x86::emit_jump(code, Jump::IfZero);
+    x86::test_r64_r64(code, RSI, RSI);
+    let sin_sitio = x86::emit_jump(code, Jump::IfZero);
+    x86::patch_jump_to(code, sin_sitio, top);
+    x86::dec_r64(code, RSI);
+    x86::patch_jump(code, en_entero);
+
+    // acumulador = acumulador * 10 + dígito
+    x86::imul_r64_r64(code, RAX, RDI);
+    x86::add_r64_r64(code, RAX, RDX);
+    let sigue = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, sigue, top);
+
+    x86::patch_jump(code, es_menos);
+    x86::mov_r32_imm32(code, R10, 1);
+    let tras_menos = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, tras_menos, top);
+
+    x86::patch_jump(code, es_punto);
+    x86::mov_r32_imm32(code, R11, 1);
+    let tras_punto = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, tras_punto, top);
+
+    x86::patch_jump(code, fin);
+
+    // Los decimales que NO llegaron: `19.9` en escala 2 tiene que valer 1990.
+    let relleno = code.len();
+    x86::test_r64_r64(code, RSI, RSI);
+    let ya_esta = x86::emit_jump(code, Jump::IfZero);
+    x86::imul_r64_r64(code, RAX, RDI);
+    x86::dec_r64(code, RSI);
+    let otra = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, otra, relleno);
+    x86::patch_jump(code, ya_esta);
+
+    // Y el signo, al final: negar antes habría estropeado el acumulado.
+    x86::test_r64_r64(code, R10, R10);
+    let positivo = x86::emit_jump(code, Jump::IfZero);
+    x86::neg_r64(code, RAX);
+    x86::patch_jump(code, positivo);
+}
+
 fn emit_digits(code: &mut Vec<u8>, radix: u8, unsigned: bool) {
     x86::mov_r32_imm32(code, RCX, radix as u32);
 
@@ -332,6 +422,59 @@ mod tests {
         let addr = m.load_data(b"hola\0basura que no debe salir");
         m.regs[RAX as usize] = addr;
         assert_eq!(run(m, 200_000).console, "hola");
+    }
+
+    /// Leer es la vuelta de escribir, y tiene que cuadrar con ella.
+    #[test]
+    fn leer_decimal_escalado() {
+        let casos: &[(&str, u32, i64)] = &[
+            ("19.99", 2, 1999),
+            ("0.05", 2, 5),
+            ("59.97", 2, 5997),
+            ("-19.99", 2, -1999),
+            ("100", 2, 10000),      // sin punto: los decimales se rellenan
+            ("19.9", 2, 1990),      // ← el que convierte 19,90 en 1,99 si falta
+            ("19.999", 2, 1999),    // sobra un decimal: se TRUNCA, no redondea
+            ("  42  ", 0, 42),      // espacios: los mete una persona
+            ("7", 1, 70),
+            ("0", 2, 0),
+        ];
+        for &(texto, escala, esperado) in casos {
+            let mut code = Vec::new();
+            parse_decimal_scaled(&mut code, escala);
+            // Devolver rax por la consola para poder comprobarlo.
+            write_i64(&mut code);
+            let mut m = Machine::new(code);
+            let addr = m.load_data(texto.as_bytes());
+            m.regs[R8 as usize] = addr;
+            m.regs[R9 as usize] = texto.len() as u64;
+            assert_eq!(
+                run(m, 200_000).console,
+                esperado.to_string(),
+                "texto {texto:?} escala {escala}"
+            );
+        }
+    }
+
+    /// Ida y vuelta: lo que se escribe se tiene que poder volver a leer.
+    #[test]
+    fn escribir_y_leer_cuadran() {
+        for valor in [0i64, 5, 1999, 5997, 100000, -1999, -5] {
+            let mut code = Vec::new();
+            write_decimal_scaled(&mut code, 2);
+            let mut m = Machine::new(code);
+            m.regs[RAX as usize] = valor as u64;
+            let texto = run(m, 200_000).console;
+
+            let mut code2 = Vec::new();
+            parse_decimal_scaled(&mut code2, 2);
+            write_i64(&mut code2);
+            let mut m2 = Machine::new(code2);
+            let addr = m2.load_data(texto.as_bytes());
+            m2.regs[R8 as usize] = addr;
+            m2.regs[R9 as usize] = texto.len() as u64;
+            assert_eq!(run(m2, 200_000).console, valor.to_string(), "ida y vuelta de {valor}");
+        }
     }
 
     /// La pila debe quedar donde estaba: si no, el `ret` de la función que

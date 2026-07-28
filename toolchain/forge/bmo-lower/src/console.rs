@@ -22,9 +22,9 @@
 //! resto, que para texto es lo correcto y lo predecible. Si algún día hace
 //! falta emitir binario crudo, será otra puerta, no un parche a esta.
 
-use bmo_abi::syscalls::surface::{CURRENT_TASK, NR_INVOKE, TASK_OP_CONSOLE_WRITE};
+use bmo_abi::syscalls::surface::{CURRENT_TASK, NR_INVOKE, TASK_OP_CONSOLE_READ, TASK_OP_CONSOLE_WRITE};
 
-use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI, R10, R8, R9};
+use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI, R10, R11, R8, R9};
 
 /// Carga el número de syscall en `rax`.
 ///
@@ -146,6 +146,71 @@ pub fn write_buffer(code: &mut Vec<u8>) {
     x86::patch_jump_to(code, back, loop_top);
 
     x86::patch_jump(code, done);
+}
+
+/// Emite código que lee UNA LÍNEA de la consola del proceso a `r8`, y deja su
+/// longitud (sin el salto) en `r9`.
+///
+/// `r8` tiene que apuntar a un buffer del llamante y `rcx` traer su tamaño.
+///
+/// ## Por qué cede el turno y no bloquea
+///
+/// La puerta no bloquea: devuelve `0` cuando no hay nada. Un bucle que
+/// insistiera sin ceder se comería el quantum entero y el terminal —que es
+/// quien tiene que ESCRIBIR lo que esperamos— no correría nunca. El programa
+/// se quedaría esperando algo que él mismo impide que llegue.
+///
+/// Registros que ensucia: `rax`, `rcx`, `rdx`, `rdi`, `rsi`, `r9`, `r10`,
+/// `r11`. `r8` avanza hasta el final de lo leído.
+pub fn read_line(code: &mut Vec<u8>) {
+    // r11 = tope (el buffer no crece), r10 = base para volver a empezar.
+    x86::mov_r64_r64(code, R11, RCX);
+    x86::zero_r32(code, R9);
+
+    let otra_vez = code.len();
+
+    // INVOKE(CURRENT_TASK, CONSOLE_READ) -> rdx = (n << 56) | bytes
+    x86::mov_r64_imm64(code, RDI, CURRENT_TASK);
+    x86::mov_r32_imm32(code, RSI, TASK_OP_CONSOLE_READ as u32);
+    x86::mov_r32_imm32(code, RAX, NR_INVOKE);
+    x86::syscall(code);
+
+    // rcx = cuántos bytes trae (bits 56..63).
+    x86::mov_r64_r64(code, RCX, RDX);
+    x86::shr_r64_imm8(code, RCX, 56);
+    x86::test_r64_r64(code, RCX, RCX);
+    let hay_algo = x86::emit_jump(code, Jump::IfNotZero);
+    // Nada todavía: ceder el turno y volver a preguntar.
+    crate::task::yield_now(code);
+    let reintenta = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, reintenta, otra_vez);
+    x86::patch_jump(code, hay_algo);
+
+    // Desempaquetar byte a byte: el primero está en el byte BAJO.
+    let byte_loop = code.len();
+    x86::mov_r64_r64(code, R10, RDX);
+    x86::and_r64_imm32(code, R10, 0xFF);
+    // ¿Es el salto de línea? Entonces la línea está completa.
+    x86::cmp_r64_imm8(code, R10, b'\n' as i8);
+    let fin = x86::emit_jump(code, Jump::IfEqual);
+    // Guardar si cabe (si no cabe se descarta: recortar en silencio es peor).
+    x86::cmp_r64_r64(code, R9, R11);
+    let lleno = x86::emit_jump(code, Jump::IfAboveOrEqual);
+    x86::mov_byte_at_reg_from_low(code, R8, R10);
+    x86::inc_r64(code, R8);
+    x86::inc_r64(code, R9);
+    x86::patch_jump(code, lleno);
+    // Siguiente byte del paquete.
+    x86::shr_r64_imm8(code, RDX, 8);
+    x86::dec_r64(code, RCX);
+    x86::test_r64_r64(code, RCX, RCX);
+    let mas_bytes = x86::emit_jump(code, Jump::IfNotZero);
+    x86::patch_jump_to(code, mas_bytes, byte_loop);
+    // Paquete agotado sin ver el salto: pedir otro.
+    let sigue = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, sigue, otra_vez);
+
+    x86::patch_jump(code, fin);
 }
 
 #[cfg(test)]

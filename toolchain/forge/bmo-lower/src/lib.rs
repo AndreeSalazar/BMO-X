@@ -48,7 +48,12 @@ pub mod console;
 pub mod fmt;
 pub mod task;
 
-mod x86;
+/// El emisor de instrucciones, PUBLICO desde que hay frontends que necesitan
+/// abrir hueco en la pila antes de llamar a `console::read_line`.
+///
+/// Sigue siendo un emisor, no un cerebro: sabe poner bytes de una instruccion
+/// y nada mas. Quien decide QUE instrucciones y en que orden es el lenguaje.
+pub mod x86;
 
 /// Banco de pruebas: ejecuta el código emitido en vez de comparar bytes.
 ///

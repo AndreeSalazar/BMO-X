@@ -469,10 +469,17 @@ STOP RUN.
         let out = run_cobol(include_str!("../examples/banco.cob"));
         assert_eq!(
             out,
+            // ★ `59.97` y `19.99` NO son literales del programa: son el
+            // contenido de SALDO formateado en ejecución por el código que
+            // emite `emit_display_var`. Antes el ejemplo imprimía una cadena
+            // escrita a mano que decía el resultado — la aritmética era real
+            // pero lo que se veía no lo demostraba. Ahora sí: si el decimal se
+            // perdiera, este test lo cazaría solo.
             "BMO-X: caja COBOL\n\
              cobrada una cuota\ncobrada una cuota\ncobrada una cuota\n\
-             total exacto: 59.97\n\
+             saldo tras 3 cuotas:\n59.97\ncuadra\n\
              recibo emitido\nrecibo emitido\n\
+             saldo tras 2 devoluciones:\n19.99\n\
              dos devoluciones aplicadas\n"
         );
     }

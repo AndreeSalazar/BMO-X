@@ -41,6 +41,15 @@ pub const TASK_OP_CONSOLE_WRITE: u64 = 0x06;
 /// superficie sigue siendo de tres puertas.
 pub const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
 
+/// LEE de la consola asignada al proceso. La PAREJA de `CONSOLE_WRITE`.
+///
+/// Sin esto un programa lanzado desde un terminal no puede recibir nada: la
+/// capability del teclado la tiene el compositor, y darsela a cada hijo seria
+/// romper la exclusividad que hace que la entrada tenga un solo dueno. El
+/// terminal que lo lanzo le pasa lo que se teclea, por el mismo objeto que ya
+/// usa para hablar.
+pub const TASK_OP_CONSOLE_READ: u64 = 0x0F;
+
 /// Operations accepted by `CURRENT_TASK`.
 pub mod task_op {
     pub const GET_PID: u64 = super::TASK_OP_GET_PID;
@@ -50,6 +59,7 @@ pub mod task_op {
     pub const EXIT: u64 = super::TASK_OP_EXIT;
     pub const CHANNEL_OPEN: u64 = super::TASK_OP_CHANNEL_OPEN;
     pub const CONSOLE_WRITE: u64 = super::TASK_OP_CONSOLE_WRITE;
+    pub const CONSOLE_READ: u64 = super::TASK_OP_CONSOLE_READ;
 }
 
 /// `INVOKE` operations accepted by a channel (estuary) capability.

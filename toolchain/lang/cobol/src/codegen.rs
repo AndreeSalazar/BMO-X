@@ -3,6 +3,7 @@ use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::surface;
 use bmo_sem_asm::Instructions;
 use bmo_sem_asm::x86_64::{Asm, Reg};
+use bmo_lower::x86;
 use crate::ast::{CobolProgram, CobolStatement, CobolCondition, DisplayArg};
 use crate::ast::error::CobolError;
 
@@ -327,6 +328,26 @@ impl Codegen {
         bmo_lower::console::write_const(&mut self.code, b"\n");
     }
 
+    /// `ACCEPT <variable>` — lee una linea y la guarda con la escala de su PIC.
+    ///
+    /// El buffer vive en la pila del programa: 64 bytes, que es mas de lo que
+    /// nadie teclea en un importe y menos de lo que estorba.
+    fn emit_accept(&mut self, destino: &str) {
+        const BUF: i8 = 64;
+        let escala = self.var_scale(destino);
+        // Hueco en la pila y r8 = principio del buffer.
+        x86::sub_r64_imm8(&mut self.code, x86::RSP, BUF);
+        x86::lea_r64_rsp_disp8(&mut self.code, x86::R8, 0);
+        x86::mov_r32_imm32(&mut self.code, x86::RCX, BUF as u32);
+        // La linea entra en el buffer; r9 queda con su largo. `r8` avanza al
+        // final, asi que hay que devolverlo al principio para leerlo.
+        bmo_lower::console::read_line(&mut self.code);
+        x86::sub_r64_r64(&mut self.code, x86::R8, x86::R9);
+        bmo_lower::fmt::parse_decimal_scaled(&mut self.code, escala);
+        x86::add_r64_imm8(&mut self.code, x86::RSP, BUF);
+        self.store_var(destino);
+    }
+
     fn emit_statement(&mut self, stmt: &CobolStatement) {
         match stmt {
             CobolStatement::Syscall(def, args) => {
@@ -346,14 +367,14 @@ impl Codegen {
                 DisplayArg::Literal(s) => self.emit_display(s),
                 DisplayArg::Variable(v) => self.emit_display_var(v),
             },
-            CobolStatement::Accept(_) => {
-                self.errors.push(CobolError::new(
-                    0,
-                    "ACCEPT aun no se compila: no hay puerta de entrada en la \
-                     superficie congelada (el teclado USB enumera, pero todavia \
-                     no llega a Ring 3)",
-                ));
-            }
+            // ★ ACCEPT YA SE COMPILA.
+            //
+            // El error que habia aqui —"no hay puerta de entrada en la
+            // superficie congelada"— dejo de ser verdad: `TASK_OP_CONSOLE_READ`
+            // existe y el terminal que lanza el programa le pasa lo que se
+            // teclea. Un mensaje de error que se queda cuando el motivo se ha
+            // arreglado es peor que no tenerlo: manda a no intentarlo.
+            CobolStatement::Accept(destino) => self.emit_accept(destino),
 
             // Decimal EXACTO: el literal se escala a la escala del destino,
             // así $10.05 en un PIC 9(3)V99 se guarda como el entero 1005.

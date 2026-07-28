@@ -113,6 +113,38 @@ pub fn shl_r64_imm8(out: &mut Vec<u8>, reg: u8, imm: u8) {
     out.push(imm);
 }
 
+/// `shr <reg>, <imm>` — desplazamiento a la DERECHA sin signo. Es el que saca
+/// campos empaquetados de una palabra: el contador de bytes vive en los bits
+/// altos y hay que bajarlo sin arrastrar el signo.
+pub fn shr_r64_imm8(out: &mut Vec<u8>, reg: u8, imm: u8) {
+    out.push(rex_w(0, reg));
+    out.push(0xC1);
+    out.push(0xC0 | (5 << 3) | (reg & 7)); // /5 = SHR
+    out.push(imm);
+}
+
+/// `and <reg>, <imm32>` — quedarse con los bits bajos.
+pub fn and_r64_imm32(out: &mut Vec<u8>, reg: u8, imm: u32) {
+    out.push(rex_w(0, reg));
+    out.push(0x81);
+    out.push(0xC0 | (4 << 3) | (reg & 7)); // /4 = AND
+    out.extend_from_slice(&imm.to_le_bytes());
+}
+
+/// `imul <dst>, <src>` — producto con signo entre registros.
+pub fn imul_r64_r64(out: &mut Vec<u8>, dst: u8, src: u8) {
+    out.push(rex_w(dst, src));
+    out.extend_from_slice(&[0x0F, 0xAF]);
+    out.push(0xC0 | ((dst & 7) << 3) | (src & 7));
+}
+
+/// `cmp <a>, <b>` entre registros.
+pub fn cmp_r64_r64(out: &mut Vec<u8>, a: u8, b: u8) {
+    out.push(rex_w(b, a));
+    out.push(0x39);
+    out.push(0xC0 | ((b & 7) << 3) | (a & 7));
+}
+
 /// `movzx <dst32>, byte [<base> + <index>]` — carga un byte del buffer sin
 /// arrastrar basura en los bits altos.
 pub fn movzx_r32_byte_base_index(out: &mut Vec<u8>, dst: u8, base: u8, index: u8) {
@@ -260,6 +292,14 @@ pub enum Jump {
     IfNotSign,
     /// `jl rel32` (con signo: menor).
     IfLess,
+    /// `je rel32` (salta si iguales — el mismo ZF que `IfZero`, con otro
+    /// nombre porque leer `IfZero` tras un `cmp` confunde).
+    IfEqual,
+    /// `jae rel32` (sin signo: mayor o igual).
+    IfAboveOrEqual,
+    /// `ja rel32` (sin signo: mayor). El truco de `c - '0' > 9` para saber si
+    /// un byte es un digito con UNA comparacion en vez de dos.
+    IfAbove,
 }
 
 /// Emite el salto y devuelve el offset del campo rel32, para `patch_jump`.
@@ -276,6 +316,9 @@ pub fn emit_jump(out: &mut Vec<u8>, kind: Jump) -> usize {
         Jump::IfBelowOrEqual => out.extend_from_slice(&[0x0F, 0x86]),
         Jump::IfNotSign => out.extend_from_slice(&[0x0F, 0x89]),
         Jump::IfLess => out.extend_from_slice(&[0x0F, 0x8C]),
+        Jump::IfEqual => out.extend_from_slice(&[0x0F, 0x84]),
+        Jump::IfAboveOrEqual => out.extend_from_slice(&[0x0F, 0x83]),
+        Jump::IfAbove => out.extend_from_slice(&[0x0F, 0x87]),
     }
     let field = out.len();
     out.extend_from_slice(&[0, 0, 0, 0]);

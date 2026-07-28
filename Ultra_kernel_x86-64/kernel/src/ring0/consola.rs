@@ -59,6 +59,28 @@ pub const CONSOLA_OP_LEER: u64 = 0x01;
 /// tiene derecho a saber que está perdiendo salida en vez de creerse completo.
 pub const CONSOLA_OP_PERDIDOS: u64 = 0x02;
 
+/// El TERMINAL mete 8 bytes (LE, el cero corta) en el anillo de ENTRADA.
+///
+/// Es el segundo sentido del canal, y sin el no puede haber `ACCEPT`: un
+/// programa lanzado desde la caja no puede reclamar `KIND_INPUT` —la tiene el
+/// compositor— asi que su unica via para recibir teclas es por el mismo objeto
+/// que ya usa para hablar. Un canal de un solo sentido deja al hijo mudo de
+/// oido.
+pub const CONSOLA_OP_ESCRIBIR: u64 = 0x03;
+/// ¿Hay algun proceso escribiendo a esta consola ahora mismo?
+///
+/// Lo pregunta el terminal para saber a donde mandar lo que se teclea: si hay
+/// hijo vivo, la linea es PARA EL; si no, es un comando. Sin esto habria que
+/// inventar un prefijo o un modo, y las dos cosas se olvidan.
+pub const CONSOLA_OP_HAY_HIJO: u64 = 0x04;
+
+/// Anillo de ENTRADA, mucho mas pequeño que el de salida: aqui cabe lo que una
+/// persona teclea, no lo que un programa escupe.
+const ENTRADA: usize = 256;
+static mut IN_BUF: [[u8; ENTRADA]; MAX_CONSOLAS] = [[0; ENTRADA]; MAX_CONSOLAS];
+static mut IN_LEE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
+static mut IN_ESCRIBE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
+
 static mut BUF: [[u8; ANILLO]; MAX_CONSOLAS] = [[0; ANILLO]; MAX_CONSOLAS];
 static mut LEE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 static mut ESCRIBE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
@@ -189,12 +211,63 @@ pub fn perdidos(idx: usize) -> u64 {
     unsafe { PERDIDOS[idx] as u64 }
 }
 
+/// Mete bytes en el anillo de ENTRADA. Si esta lleno se descartan los NUEVOS
+/// —al reves que la salida— porque aqui el orden es el que tecleo una persona:
+/// tirar lo viejo dejaria media linea sin principio.
+pub fn escribir_entrada(idx: usize, datos: &[u8]) {
+    if idx >= MAX_CONSOLAS {
+        return;
+    }
+    unsafe {
+        for &b in datos {
+            let sig = (IN_ESCRIBE[idx] + 1) % ENTRADA;
+            if sig == IN_LEE[idx] {
+                return;
+            }
+            IN_BUF[idx][IN_ESCRIBE[idx]] = b;
+            IN_ESCRIBE[idx] = sig;
+        }
+    }
+}
+
+/// Saca hasta 7 bytes de la ENTRADA: `(n << 56) | empaquetado_LE`.
+pub fn leer_entrada(idx: usize) -> u64 {
+    if idx >= MAX_CONSOLAS {
+        return 0;
+    }
+    unsafe {
+        let mut w = [0u8; 8];
+        let mut n = 0usize;
+        while n < 7 && IN_LEE[idx] != IN_ESCRIBE[idx] {
+            w[n] = IN_BUF[idx][IN_LEE[idx]];
+            IN_LEE[idx] = (IN_LEE[idx] + 1) % ENTRADA;
+            n += 1;
+        }
+        ((n as u64) << 56) | u64::from_le_bytes(w)
+    }
+}
+
+/// ¿Hay algun proceso cuya salida vaya a esta consola?
+pub fn hay_hijo(idx: usize) -> bool {
+    unsafe {
+        let tabla = &*core::ptr::addr_of!(SALIDA);
+        tabla.iter().any(|e| e.0 != SIN_DUENO && e.1 == idx)
+    }
+}
+
 /// Despacho de las operaciones sobre un handle de consola.
-pub fn operacion(idx: u64, operacion: u64) -> Option<u64> {
+pub fn operacion(idx: u64, operacion: u64, arg0: u64) -> Option<u64> {
     let i = idx as usize;
     match operacion {
         CONSOLA_OP_LEER => Some(leer(i)),
         CONSOLA_OP_PERDIDOS => Some(perdidos(i)),
+        CONSOLA_OP_ESCRIBIR => {
+            let w = arg0.to_le_bytes();
+            let n = w.iter().position(|&b| b == 0).unwrap_or(8);
+            escribir_entrada(i, &w[..n]);
+            Some(0)
+        }
+        CONSOLA_OP_HAY_HIJO => Some(hay_hijo(i) as u64),
         _ => None,
     }
 }
@@ -210,6 +283,8 @@ pub fn proceso_muerto(pid: u32) {
                 LECTOR[i] = SIN_DUENO;
                 LEE[i] = 0;
                 ESCRIBE[i] = 0;
+                IN_LEE[i] = 0;
+                IN_ESCRIBE[i] = 0;
             }
         }
         let tabla = &mut *core::ptr::addr_of_mut!(SALIDA);

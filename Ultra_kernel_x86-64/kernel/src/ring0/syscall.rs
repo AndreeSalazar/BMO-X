@@ -75,6 +75,13 @@ const TASK_OP_CONSOLA_CREAR: u64 = 0x0D;
 /// acumula antes con `TASK_OP_RUTA` — el MISMO renglon que usa `EJECUTAR`, que
 /// es lo que hace que no haga falta un segundo mecanismo para lo mismo.
 const TASK_OP_DIR_ABRIR: u64 = 0x0E;
+/// LEE de la consola asignada a este proceso. Devuelve `(n << 56) | bytes`.
+///
+/// La pareja de `TASK_OP_CONSOLE_WRITE`: el hijo escribe por una y escucha por
+/// la otra, sobre el MISMO objeto. Es lo que permite un `ACCEPT` en un proceso
+/// que no tiene —ni debe tener— la capability del teclado: el terminal que lo
+/// lanzo le pasa lo que se teclea.
+const TASK_OP_CONSOLE_READ: u64 = 0x0F;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -280,6 +287,16 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 None => crate::ring0::uconsole::write_packed(arg0),
             }
             BmoStatus::ok_value(0)
+        }
+        TASK_OP_CONSOLE_READ => {
+            let _ = arg0;
+            let pid = scheduler::current_pid();
+            match crate::ring0::consola::salida_de(pid) {
+                Some(idx) => BmoStatus::ok_value(crate::ring0::consola::leer_entrada(idx)),
+                // Sin consola asignada no hay de donde leer. Cero = "nada", no
+                // error: un programa que sondea no debe morir por preguntar.
+                None => BmoStatus::ok_value(0),
+            }
         }
         TASK_OP_DIR_ABRIR => {
             let _ = arg0;
@@ -490,7 +507,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // La salida de los hijos de este proceso. Se drena a su ritmo: el
             // kernel no empuja, el terminal tira.
             cap::KIND_CONSOLE => {
-                match crate::ring0::consola::operacion(resolved.object, frame.rsi) {
+                match crate::ring0::consola::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
