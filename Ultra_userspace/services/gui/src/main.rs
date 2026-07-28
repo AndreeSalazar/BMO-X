@@ -280,22 +280,38 @@ fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
 /// Repinta el fondo del campo entero antes de escribir. Es un rectángulo de
 /// unos 500x28 px —nada— y evita el clásico de borrar un carácter y que quede
 /// medio glifo del anterior porque el nuevo es más estrecho.
-fn pintar_campo(p: &bmo::Pantalla, c: &Caja, ruta: &[u8], caret: bool) {
+fn pintar_campo(p: &bmo::Pantalla, c: &Caja, ruta: &[u8], cur: usize, caret: bool) {
     p.rect(c.campo_x, c.campo_y, c.campo_ancho, c.campo_alto, CAMPO_FONDO);
 
-    // Si la ruta no cabe, se ve el FINAL: es donde está el cursor y donde uno
-    // mira mientras escribe. Ver el principio de una ruta que ya no estás
-    // tocando no ayuda a nadie.
+    // La ventana visible se calcula alrededor del CURSOR, no del final.
+    //
+    // Antes se enseñaba siempre la cola, que valía mientras sólo se podía
+    // escribir al final. Con el cursor moviéndose, eso deja de valer: si te
+    // vas al principio de una ruta larga, el cursor se sale por la izquierda y
+    // editas a ciegas. La regla es sencilla y es la de cualquier editor —
+    // **el cursor SIEMPRE se ve**, y la ventana se desplaza lo mínimo para
+    // que así sea.
     let cabe = c.visibles();
-    let visible = if ruta.len() > cabe {
-        &ruta[ruta.len() - cabe..]
+    let desde = if ruta.len() <= cabe {
+        0
+    } else if cur >= cabe {
+        // El cursor se salió por la derecha: pegarlo al borde derecho.
+        (cur + 1).saturating_sub(cabe).min(ruta.len() - cabe)
     } else {
-        ruta
+        0
     };
-    let fin = p.texto_bytes(c.texto_x, c.texto_y, visible, TEXTO);
+    let hasta = (desde + cabe).min(ruta.len());
+    p.texto_bytes(c.texto_x, c.texto_y, &ruta[desde..hasta], TEXTO);
 
     if caret {
-        p.rect(fin, c.texto_y, 2, bmo::GLIFO_ALTO, ACENTO);
+        let col = cur.saturating_sub(desde) as u32;
+        p.rect(
+            c.texto_x + col * bmo::GLIFO_ANCHO,
+            c.texto_y,
+            2,
+            bmo::GLIFO_ALTO,
+            ACENTO,
+        );
     }
 }
 
@@ -770,10 +786,18 @@ pub extern "C" fn _start() -> ! {
     let mut n = 0usize;
     let mut salida = Salida::nueva();
     let mut historial = Historial::nuevo();
+    // Posicion del cursor DENTRO de la linea. Sin esto solo se puede escribir
+    // al final y borrar desde el final: equivocarte en la tercera letra de una
+    // ruta larga obliga a borrarlo todo hasta ahi.
+    let mut cur = 0usize;
+    // Portapapeles. Ctrl+C copia la linea entera, Ctrl+V la pega donde este el
+    // cursor. Ctrl+ARRIBA / Ctrl+ABAJO hacen lo mismo con las flechas.
+    let mut porta = [0u8; RUTA_MAX];
+    let mut porta_n = 0usize;
     if salida_cap.is_none() {
         salida.texto(b"sin consola: la salida de los programas ira al panel del kernel\n");
     }
-    pintar_campo(&p, &caja, &ruta[..n], true);
+    pintar_campo(&p, &caja, &ruta[..n], cur, true);
     pintar_salida(&p, &caja, &salida);
     if entrada.is_some() {
         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
@@ -814,7 +838,8 @@ pub extern "C" fn _start() -> ! {
         if let Some(e) = entrada.as_ref() {
             // ── El atajo, ANTES de leer teclas ──
             let m = e.modificadores();
-            let combo = m & bmo::MOD_CTRL != 0 && m & bmo::MOD_ALT != 0;
+            let ctrl = m & bmo::MOD_CTRL != 0;
+            let combo = ctrl && m & bmo::MOD_ALT != 0;
             if combo && !combo_antes {
                 hubo_tecla_en_combo = false;
             }
@@ -965,6 +990,7 @@ pub extern "C" fn _start() -> ! {
                     b'\t' => {
                         let antes = n;
                         n = completar(&mut ruta, n, &mut salida);
+                        cur = n;
                         if n == antes {
                             pintar_estado(&p, &caja, "nada que completar", TEXTO_TENUE);
                         }
@@ -972,7 +998,13 @@ pub extern "C" fn _start() -> ! {
                     }
                     // Retroceso.
                     0x08 | 0x7F => {
-                        if n > 0 {
+                        if cur > 0 {
+                            let mut k = cur;
+                            while k < n {
+                                ruta[k - 1] = ruta[k];
+                                k += 1;
+                            }
+                            cur -= 1;
                             n -= 1;
                             repintar_campo = true;
                         }
@@ -980,8 +1012,38 @@ pub extern "C" fn _start() -> ! {
                     // Escape: borrar la línea entera, igual que en el Win+R.
                     0x1B => {
                         n = 0;
+                        cur = 0;
                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                         repintar_campo = true;
+                    }
+                    // ── El portapapeles ──
+                    //
+                    // Ctrl+C copia la línea entera; Ctrl+V la pega donde esté
+                    // el cursor. No es un lujo: la mitad de lo que se teclea en
+                    // un terminal es una variación de lo anterior, y sin copiar
+                    // hay que reescribirlo todo.
+                    //
+                    // Ctrl+C para copiar y no para interrumpir, que es lo que
+                    // significa en Unix. Aquí no hay señales que mandar, y el
+                    // dedo que ya sabe Ctrl+C sabe copiar — no interrumpir.
+                    0x03 => {
+                        porta_n = n;
+                        porta[..n].copy_from_slice(&ruta[..n]);
+                        pintar_estado(&p, &caja, "copiado", TEXTO_TENUE);
+                    }
+                    0x16 => {
+                        if porta_n > 0 && n + porta_n <= RUTA_MAX {
+                            // Hueco del tamaño del pegado, y meterlo.
+                            let mut k = n;
+                            while k > cur {
+                                ruta[k + porta_n - 1] = ruta[k - 1];
+                                k -= 1;
+                            }
+                            ruta[cur..cur + porta_n].copy_from_slice(&porta[..porta_n]);
+                            cur += porta_n;
+                            n += porta_n;
+                            repintar_campo = true;
+                        }
                     }
                     // Ctrl+U — borra la línea. Ctrl+L — borra la salida.
                     // Los mismos que el shell de Ring 0, porque los dedos ya
@@ -989,6 +1051,7 @@ pub extern "C" fn _start() -> ! {
                     // mismo sistema es peor que no tenerlo.
                     0x15 => {
                         n = 0;
+                        cur = 0;
                         repintar_campo = true;
                     }
                     0x0C => {
@@ -999,27 +1062,79 @@ pub extern "C" fn _start() -> ! {
                     // cola que las letras, con bytes del rango C1 (0x80..0x9F)
                     // que no tienen glifo: el driver los eligió justo para que
                     // no puedan confundirse con texto.
+                    // Ctrl+ARRIBA copia, Ctrl+ABAJO pega. Lo mismo que
+                    // Ctrl+C / Ctrl+V, con las flechas — porque los dedos que
+                    // ya andan por el historial no tienen que irse a buscar
+                    // otra tecla para copiar lo que acaban de recuperar.
+                    0x80 if ctrl => {
+                        porta_n = n;
+                        porta[..n].copy_from_slice(&ruta[..n]);
+                        pintar_estado(&p, &caja, "copiado", TEXTO_TENUE);
+                    }
+                    0x81 if ctrl => {
+                        if porta_n > 0 && n + porta_n <= RUTA_MAX {
+                            let mut k = n;
+                            while k > cur {
+                                ruta[k + porta_n - 1] = ruta[k - 1];
+                                k -= 1;
+                            }
+                            ruta[cur..cur + porta_n].copy_from_slice(&porta[..porta_n]);
+                            cur += porta_n;
+                            n += porta_n;
+                            repintar_campo = true;
+                        }
+                    }
                     0x80 => {
                         if let Some(k) = historial.atras(&mut ruta) {
                             n = k;
+                            cur = k;
                             repintar_campo = true;
                         }
                     }
                     0x81 => {
                         if let Some(k) = historial.adelante(&mut ruta) {
                             n = k;
+                            cur = k;
                             repintar_campo = true;
                         }
                     }
-                    // El resto de navegación se ignora, pero EXPLÍCITAMENTE:
-                    // esta caja todavía no tiene cursor dentro de la línea, y
-                    // dejarlas caer al `_` las dibujaría como basura.
-                    0x82..=0x9F => {}
+                    // IZQUIERDA / DERECHA — mover el cursor.
+                    0x82 => {
+                        if cur > 0 { cur -= 1; repintar_campo = true; }
+                    }
+                    0x83 => {
+                        if cur < n { cur += 1; repintar_campo = true; }
+                    }
+                    // INICIO / FIN.
+                    0x84 => { cur = 0; repintar_campo = true; }
+                    0x85 => { cur = n; repintar_campo = true; }
+                    // SUPRIMIR — borra HACIA ADELANTE, al reves que el
+                    // retroceso. Son dos teclas porque son dos intenciones.
+                    0x86 => {
+                        if cur < n {
+                            let mut k = cur + 1;
+                            while k < n { ruta[k - 1] = ruta[k]; k += 1; }
+                            n -= 1;
+                            repintar_campo = true;
+                        }
+                    }
+                    // El resto de navegación (PgUp/PgDn) se ignora, pero
+                    // EXPLÍCITAMENTE: dejarlas caer al comodín las dibujaría
+                    // como basura.
+                    0x87..=0x9F => {}
                     // Todo lo demás imprimible, incluido el Latin-1 alto: la
                     // `ñ` llega como 0xF1 y la fuente la tiene.
                     c if c >= 0x20 => {
                         if n < RUTA_MAX {
-                            ruta[n] = c;
+                            // Hueco en el cursor y meter ahi: escribir en
+                            // medio de una linea es lo normal, no un caso raro.
+                            let mut k = n;
+                            while k > cur {
+                                ruta[k] = ruta[k - 1];
+                                k -= 1;
+                            }
+                            ruta[cur] = c;
+                            cur += 1;
                             n += 1;
                             repintar_campo = true;
                         }
@@ -1092,7 +1207,7 @@ pub extern "C" fn _start() -> ! {
             repintar_campo = true;
         }
         if repintar_campo && visible {
-            pintar_campo(&p, &caja, &ruta[..n], caret);
+            pintar_campo(&p, &caja, &ruta[..n], cur, caret);
         }
 
         bmo::ceder();
