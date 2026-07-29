@@ -105,6 +105,15 @@ Lo que sí desaparece: antes, añadir una característica exigía tocar **tres
 sitios de Rust** (el campo del struct, su `Default` y el `match` del lector).
 Ése era el trámite de comité en miniatura, y ya no está.
 
+## Auditar lo que sale de aquí
+
+Si cualquiera puede escribir un dialecto, **el binario ya no basta**: dos
+`.bex` iguales por fuera pueden venir de tablas distintas. La respuesta no es
+prohibir mods, es que el binario lleve encima de qué tablas salió.
+
+Eso es lo que necesita un banco, y está planteado —no hecho— en
+[AUDITORIA.md](AUDITORIA.md).
+
 ## Qué cubre y qué no
 
 | | |
