@@ -57,10 +57,15 @@ pub const ERROR_SIN_HUECO: u32 = 27;
 pub const ERROR_NO_ESTA: u32 = 28;
 /// El archivo no cabe en el buffer. Se dice en vez de entregar un trozo.
 pub const ERROR_DEMASIADO_GRANDE: u32 = 29;
-/// El nombre no es un 8.3 válido, o la ruta no lleva a un directorio.
+/// El nombre no cabe en 8.3 (ocho de nombre, tres de extensión).
 pub const ERROR_NOMBRE: u32 = 30;
 /// No hay volumen de datos montado con escritor.
 pub const ERROR_SOLO_LECTURA: u32 = 31;
+/// La CARPETA de la ruta no existe. Distinto de que falte el archivo: manda a
+/// mirar otra cosa, y un mensaje que no los separa manda a buscar donde no es.
+pub const ERROR_CARPETA: u32 = 32;
+/// La ruta no nombra un archivo — acaba en barra, o es un directorio.
+pub const ERROR_ES_CARPETA: u32 = 33;
 
 /// Saca hasta 7 bytes: `(n << 56) | bytes_LE`. `n == 0` = se acabó.
 ///
@@ -112,9 +117,17 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
     };
     let leidos = unsafe {
         let dst = &mut (*core::ptr::addr_of_mut!(BUF))[i];
+        // Cada motivo manda a hacer algo distinto, y por eso no se aplanan
+        // todos a "no esta": quien escribe `lee apps/` tiene que enterarse de
+        // que eso es una carpeta, no ponerse a buscar un archivo que nunca
+        // existio.
+        use crate::ring0::fsys::fs::LoadError;
         match crate::ring0::fsys::fs::load(ruta, dst) {
             Ok(n) => n,
-            Err(crate::ring0::fsys::fs::LoadError::TooBig) => return Err(ERROR_DEMASIADO_GRANDE),
+            Err(LoadError::TooBig) => return Err(ERROR_DEMASIADO_GRANDE),
+            Err(LoadError::BadPath) => return Err(ERROR_ES_CARPETA),
+            Err(LoadError::NameTooLong) => return Err(ERROR_NOMBRE),
+            Err(LoadError::DirNotFound) => return Err(ERROR_CARPETA),
             Err(_) => return Err(ERROR_NO_ESTA),
         }
     };
@@ -167,7 +180,10 @@ pub fn crear(pid: u32, ruta: &str) -> Result<u64, u32> {
     };
     let dir = match crate::ring0::fsys::fs::dir_datos(carpeta) {
         Some(c) => c,
-        None => return Err(ERROR_NO_ESTA),
+        // La carpeta, no el archivo. `escribe datos/x.txt` cuando no hay
+        // `datos/` tiene que decir que falta la CARPETA: el archivo es
+        // justamente lo que se venia a crear.
+        None => return Err(ERROR_CARPETA),
     };
 
     let i = match hueco() {

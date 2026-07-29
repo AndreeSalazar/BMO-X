@@ -491,6 +491,19 @@ impl Consola {
 /// Los códigos que devuelve `ejecutar`. Son pocos a propósito: un proceso no
 /// necesita saber de FAT32, pero sí distinguir las tres cosas que le hacen
 /// cambiar de conducta.
+/// Los motivos por los que no se pudo abrir o crear un archivo.
+///
+/// Son varios y no uno porque cada uno manda a hacer algo DISTINTO: crear la
+/// carpeta, acortar el nombre, o mirar si te equivocaste de sitio. Un unico
+/// "no se pudo" manda a buscar donde no es.
+pub const ERROR_ARCH_SIN_HUECO: u32 = 27;
+pub const ERROR_ARCH_NO_ESTA: u32 = 28;
+pub const ERROR_ARCH_GRANDE: u32 = 29;
+pub const ERROR_ARCH_NOMBRE: u32 = 30;
+pub const ERROR_ARCH_SOLO_LECTURA: u32 = 31;
+pub const ERROR_ARCH_CARPETA: u32 = 32;
+pub const ERROR_ARCH_ES_CARPETA: u32 = 33;
+
 pub const ERROR_NO_ESTA: u32 = 20;
 pub const ERROR_GATE: u32 = 21;
 pub const ERROR_OCUPADO: u32 = 22;

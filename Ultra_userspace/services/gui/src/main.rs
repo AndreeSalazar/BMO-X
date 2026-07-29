@@ -829,6 +829,24 @@ fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida) -> usize 
     fin
 }
 
+/// El motivo, en una línea que dice qué hacer.
+///
+/// Antes los siete casos se aplanaban en "no puedo crear ahi (nombre 8.3?
+/// carpeta?)" — un mensaje que le pasa la pregunta al usuario en vez de
+/// contestarla. El kernel SÍ sabe cuál de los dos fue.
+fn motivo_archivo(e: u32) -> &'static [u8] {
+    match e {
+        bmo::ERROR_ARCH_CARPETA => b"esa carpeta no existe.",
+        bmo::ERROR_ARCH_ES_CARPETA => b"eso es una carpeta, no un archivo: prueba ls.",
+        bmo::ERROR_ARCH_NOMBRE => b"el nombre no cabe en 8.3 (8 letras + 3 de extension).",
+        bmo::ERROR_ARCH_NO_ESTA => b"ese archivo no esta.",
+        bmo::ERROR_ARCH_GRANDE => b"el archivo pasa de 4 KiB: hoy no cabe.",
+        bmo::ERROR_ARCH_SOLO_LECTURA => b"el volumen de datos no se puede escribir.",
+        bmo::ERROR_ARCH_SIN_HUECO => b"hay demasiados archivos abiertos.",
+        _ => b"no se pudo.",
+    }
+}
+
 fn parece_ruta(t: &[u8]) -> bool {
     t.iter().any(|&c| c == b'/' || c == b'\\' || c == b'.')
 }
@@ -1260,9 +1278,11 @@ pub extern "C" fn _start() -> ! {
                                         a.cerrar();
                                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                                     }
-                                    Err(_) => {
-                                        salida.texto(b"  no puedo abrir ese archivo.\n");
-                                        pintar_estado(&p, &caja, "archivo no encontrado", TEXTO_MAL);
+                                    Err(e) => {
+                                        salida.texto(b"  ");
+                                        salida.texto(motivo_archivo(e));
+                                        salida.byte(b'\n');
+                                        pintar_estado(&p, &caja, "no se pudo leer", TEXTO_MAL);
                                     }
                                 }
                                 n = 0;
@@ -1295,8 +1315,10 @@ pub extern "C" fn _start() -> ! {
                                             pintar_estado(&p, &caja, "no se pudo guardar", TEXTO_MAL);
                                         }
                                     }
-                                    Err(_) => {
-                                        salida.texto(b"  no puedo crear ahi (nombre 8.3? carpeta?)\n");
+                                    Err(e) => {
+                                        salida.texto(b"  ");
+                                        salida.texto(motivo_archivo(e));
+                                        salida.byte(b'\n');
                                         pintar_estado(&p, &caja, "no se pudo crear", TEXTO_MAL);
                                     }
                                 }
@@ -1329,8 +1351,8 @@ pub extern "C" fn _start() -> ! {
                             Orden::Ayuda => {
                                 salida.texto(b"  <ruta>       lanza un .bex   (apps/COBOL.bex)\n");
                                 salida.texto(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
-                                salida.texto(b"  lee <ruta>   ensena lo que hay dentro\n");
-                                salida.texto(b"  escribe <ruta> <texto>   lo guarda\n");
+                                salida.texto(b"  cat <ruta>   ensena lo que hay dentro\n");
+                                salida.texto(b"  write <ruta> <texto>     lo guarda\n");
                                 salida.texto(b"  clear / cls  limpia esta salida\n");
                                 salida.texto(b"  help         esto\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
@@ -1342,7 +1364,7 @@ pub extern "C" fn _start() -> ! {
                             // manda a buscar un permiso que no hace falta.
                             Orden::NoEsPrograma(r) => {
                                 salida.texto(b"  eso no es un programa (solo .bex se lanza).\n");
-                                salida.texto(b"  para verlo:  lee ");
+                                salida.texto(b"  para verlo:  cat ");
                                 salida.texto(r);
                                 salida.byte(b'\n');
                                 pintar_estado(&p, &caja, "no es un programa: prueba lee", TEXTO_TENUE);

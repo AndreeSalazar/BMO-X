@@ -152,6 +152,37 @@ try {
     if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo gui.bex' }
 } finally { Pop-Location }
 
+# ── Programas COBOL de ejemplo ───────────────────────────────────
+#
+# Se compilan AQUI y salen al mismo staging que el compositor. Antes se
+# generaban a mano dentro de toolchain/lang/cobol/examples/ y nunca llegaban al
+# disco: `run apps/extracto.bex` contestaba "no esta: revisa la ruta" y parecia
+# un fallo del cargador cuando el archivo sencillamente no se habia copiado.
+#
+# El nombre destino se recorta a 8.3 a proposito y de forma explicita: el
+# driver FAT32 del kernel se NIEGA a recortar (un nombre recortado abre otro
+# archivo), asi que el que no quepa se dice aqui y no en el arranque.
+Step 'Building COBOL example programs...'
+$cobolEjemplos = @(
+    @{ src = 'toolchain\lang\cobol\examples\extracto.cob'; out = 'extracto.bex' },
+    @{ src = 'toolchain\lang\cobol\examples\calc.cob';     out = 'calc.bex'     }
+)
+$repo = Split-Path -Parent $root
+Push-Location $repo
+try {
+    foreach ($e in $cobolEjemplos) {
+        $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
+        if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
+        $dst = Join-Path $dataStage $e.out
+        $out = cargo run -p bmo-cobol-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
+        $out | ForEach-Object {
+            if ($_ -match 'ok:|error') { Write-Host ('    [cobol] ' + $_) -ForegroundColor DarkGray }
+        }
+        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
+        if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
+    }
+} finally { Pop-Location }
+
 # ── Build kernel (Ring 0 base) ────────────────────────────────────
 Step 'Building kernel (Ring 0 base)...'
 $stageDir = Join-Path $root 'kernel'
