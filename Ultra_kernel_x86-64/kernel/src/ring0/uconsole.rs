@@ -41,7 +41,7 @@ static mut TAG_LEN: [usize; MAX_PROCS] = [0usize; MAX_PROCS];
 
 /// Slot de línea del proceso que está ejecutando el syscall.
 fn slot() -> usize {
-    let pid = crate::ring0::scheduler::current_pid() as usize;
+    let pid = crate::ring0::task::scheduler::current_pid() as usize;
     if pid < MAX_PROCS { pid } else { 0 }
 }
 

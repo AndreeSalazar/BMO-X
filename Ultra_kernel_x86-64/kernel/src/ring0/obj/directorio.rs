@@ -34,7 +34,7 @@
 //! `COBOL.BEX` es presentación, y la presentación es de Ring 3 — la misma línea
 //! que deja el cursor del ratón fuera del kernel.
 
-use crate::ring0::cap;
+use crate::ring0::obj::cap;
 
 /// Cuántos directorios pueden estar abiertos a la vez.
 pub const MAX_ABIERTOS: usize = 8;
@@ -66,7 +66,7 @@ static mut DUENO: [u32; MAX_ABIERTOS] = [SIN_DUENO; MAX_ABIERTOS];
 /// Abre un directorio del volumen de datos y entrega su handle a `pid`.
 /// Ruta vacía = la raíz.
 pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
-    let cluster = match crate::ring0::fs::dir_datos(ruta) {
+    let cluster = match crate::ring0::fsys::fs::dir_datos(ruta) {
         Some(c) => c,
         None => return Err(ERROR_NO_ESTA),
     };
@@ -100,7 +100,7 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
 fn siguiente(i: usize) -> u64 {
     unsafe {
         let n = INDICE[i].wrapping_add(1);
-        match crate::ring0::fs::entrada_datos(CLUSTER[i], n) {
+        match crate::ring0::fsys::fs::entrada_datos(CLUSTER[i], n) {
             Some((nombre, es_dir, tam)) => {
                 INDICE[i] = n;
                 NOMBRE[i] = nombre;

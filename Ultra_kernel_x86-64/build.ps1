@@ -51,7 +51,7 @@ foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_
 }
 # The kernel's capability-engine mirror (cap.rs) must match bmo-abi too:
 # handle-kind codes and rights bits are part of the frozen contract.
-$kernelCap = Get-Content (Join-Path $root 'kernel\src\ring0\cap.rs') -Raw
+$kernelCap = Get-Content (Join-Path $root 'kernel\src\ring0\obj\cap.rs') -Raw
 if (-not ($kernelCap -match 'KIND_CHANNEL:\s*u8\s*=\s*0x60')) {
     Fail 'capability contract mismatch: KIND_CHANNEL must be 0x60 (bmo-abi HandleKind::Channel)'
 }

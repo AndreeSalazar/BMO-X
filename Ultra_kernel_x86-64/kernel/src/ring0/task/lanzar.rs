@@ -19,7 +19,7 @@
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use crate::ring0::estratos as est;
+use crate::ring0::fsys::estratos as est;
 
 /// Por qué no se lanzó. Cada uno manda a hacer algo distinto — que es la razón
 /// de que sean variantes y no un booleano.
@@ -115,7 +115,7 @@ pub fn ruta(path: &str) -> Informe {
     if path.is_empty() {
         return vacio(Fallo::RutaVacia);
     }
-    if !crate::ring0::proc::has_room() {
+    if !crate::ring0::task::proc::has_room() {
         return vacio(Fallo::SinHueco);
     }
     if EN_USO.swap(true, Ordering::Acquire) {
@@ -187,7 +187,7 @@ fn con_buffer(path: &str) -> Informe {
         let v = est::firma(&nd, &buf[..leidos]);
         ("ESTRATOS", leidos, Some(v))
     } else {
-        match crate::ring0::fs::load(path, buf) {
+        match crate::ring0::fsys::fs::load(path, buf) {
             Ok(v) => ("FAT32", v, None),
             Err(e) => {
                 return Informe {
@@ -229,7 +229,7 @@ fn con_buffer(path: &str) -> Informe {
         None => path,
     };
 
-    let (res, pid) = match crate::ring0::proc::admit_from_disk(nombre, &buf[..n]) {
+    let (res, pid) = match crate::ring0::task::proc::admit_from_disk(nombre, &buf[..n]) {
         Some((tid, pid)) => (Ok(tid), Some(pid)),
         None => (Err(Fallo::NoAdmitido), None),
     };

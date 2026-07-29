@@ -32,7 +32,9 @@
 //! veces a la misma llamada —despertando a un proceso que ya siguió su
 //! camino— y nadie que no fuera el servidor podría ser distinguido de él.
 
-use crate::ring0::{cap, channel, mm, scheduler};
+use crate::ring0::mm;
+use crate::ring0::obj::{cap, channel};
+use crate::ring0::task::scheduler;
 
 /// Endpoints simultáneos. Ocho es de sobra para el compositor, el servidor de
 /// entrada y un par de drivers; subirlo es cambiar este número.
@@ -347,14 +349,14 @@ fn escribir_en_frame(tid: u32, code: u32, value: u64) {
         return;
     }
     unsafe {
-        let gpr_base = ((ctx + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
+        let gpr_base = ((ctx + crate::ring0::plat::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
         ULTIMA_ESCRITURA = [tid as u64, ctx, gpr_base];
         if gpr_base == 0 { return; }
         // Un back-pointer sano SIEMPRE está por encima de su área y a menos de
         // una pila de distancia. Si no lo está, el que se corrompió fue el
         // propio back-pointer y escribir ahí solo empeoraría las cosas.
         if gpr_base <= ctx || gpr_base - ctx > 64 * 1024 { return; }
-        let frame = &mut *(gpr_base as *mut crate::ring0::trap::TrapFrame);
+        let frame = &mut *(gpr_base as *mut crate::ring0::plat::trap::TrapFrame);
         frame.rax = code as u64;
         frame.rdx = value;
     }

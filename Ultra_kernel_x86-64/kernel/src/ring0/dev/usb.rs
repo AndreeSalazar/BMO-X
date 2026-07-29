@@ -168,15 +168,15 @@ fn log(msg: &str) {
 /// spin-counts heredados de QEMU duran microsegundos y en hardware real los
 /// puertos aún no reportan CCS cuando el driver pregunta.
 fn delay_ms(ms: u64) {
-    let f = crate::ring0::scheduler::tsc_freq();
+    let f = crate::ring0::task::scheduler::tsc_freq();
     if f == 0 {
         for _ in 0..ms * 2_000_000 {
             core::hint::spin_loop();
         }
         return;
     }
-    let end = crate::ring0::scheduler::rdtsc() + ms * (f / 1000);
-    while crate::ring0::scheduler::rdtsc() < end {
+    let end = crate::ring0::task::scheduler::rdtsc() + ms * (f / 1000);
+    while crate::ring0::task::scheduler::rdtsc() < end {
         core::hint::spin_loop();
     }
 }
@@ -436,7 +436,7 @@ fn poll_ascii_interno() -> Option<u8> {
                     HELD_SHIFT = SHIFT;
                     HELD_ALTGR = altgr_active();
                     HELD_CTRL = CTRL;
-                    HELD_SINCE = crate::ring0::scheduler::rdtsc();
+                    HELD_SINCE = crate::ring0::task::scheduler::rdtsc();
                     HELD_LAST = HELD_SINCE;
                     keyboard::feed_full(ev.code, SHIFT, altgr_active(), CAPS, CTRL);
                 }
@@ -536,9 +536,9 @@ fn sync_leds() {
 fn repeat_held() {
     unsafe {
         if HELD_CODE == 0 { return; }
-        let hz = crate::ring0::scheduler::tsc_freq();
+        let hz = crate::ring0::task::scheduler::tsc_freq();
         if hz == 0 { return; }
-        let now = crate::ring0::scheduler::rdtsc();
+        let now = crate::ring0::task::scheduler::rdtsc();
         let delay = hz / 1000 * REPEAT_DELAY_MS;
         let period = hz / 1000 * REPEAT_RATE_MS;
         if now.wrapping_sub(HELD_SINCE) < delay { return; }

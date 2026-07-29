@@ -16,12 +16,12 @@
 
 use core::arch::{asm, naked_asm};
 
-use crate::ring0::cap;
-use crate::ring0::channel;
-use crate::ring0::endpoint;
-use crate::ring0::percpu;
-use crate::ring0::scheduler;
-use crate::ring0::trap::TrapFrame;
+use crate::ring0::obj::cap;
+use crate::ring0::obj::channel;
+use crate::ring0::obj::endpoint;
+use crate::ring0::task::percpu;
+use crate::ring0::task::scheduler;
+use crate::ring0::plat::trap::TrapFrame;
 
 // Minimal no-alloc view of the canonical bmo-abi v2 contract. Keeping
 // these values here avoids linking the full alloc-using ABI implementation
@@ -206,17 +206,17 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym dispatch,
-        podrido = sym crate::ring0::faults::contexto_podrido,
-        no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
-        area = const crate::ring0::trap::XSAVE_AREA,
-        firma = const crate::ring0::trap::SELLO_FIRMA,
-        magia = const crate::ring0::trap::SELLO_MAGIA,
-        bv = const crate::ring0::trap::XSAVE_BV,
-        cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
-        m_sello = const crate::ring0::faults::PODRIDO_SELLO,
-        m_cs = const crate::ring0::faults::PODRIDO_CS,
-        m_cab = const crate::ring0::faults::PODRIDO_CABECERA,
-        reserva = const crate::ring0::trap::XSAVE_RESERVA,
+        podrido = sym crate::ring0::plat::faults::contexto_podrido,
+        no_xcr0 = sym crate::ring0::plat::trap::XSAVE_NO_XCR0,
+        area = const crate::ring0::plat::trap::XSAVE_AREA,
+        firma = const crate::ring0::plat::trap::SELLO_FIRMA,
+        magia = const crate::ring0::plat::trap::SELLO_MAGIA,
+        bv = const crate::ring0::plat::trap::XSAVE_BV,
+        cero = const crate::ring0::plat::trap::XSAVE_CERO_DESDE,
+        m_sello = const crate::ring0::plat::faults::PODRIDO_SELLO,
+        m_cs = const crate::ring0::plat::faults::PODRIDO_CS,
+        m_cab = const crate::ring0::plat::faults::PODRIDO_CABECERA,
+        reserva = const crate::ring0::plat::trap::XSAVE_RESERVA,
     );
 }
 
@@ -285,13 +285,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // por el panel sin cambiar una linea.
         TASK_OP_CONSOLE_WRITE => {
             let pid = scheduler::current_pid();
-            match crate::ring0::consola::salida_de(pid) {
+            match crate::ring0::obj::consola::salida_de(pid) {
                 Some(idx) => {
                     // Desempaquetar aqui: el anillo guarda bytes, no palabras.
                     // El cero corta, igual que en la consola del kernel.
                     let w = arg0.to_le_bytes();
                     let n = w.iter().position(|&b| b == 0).unwrap_or(8);
-                    crate::ring0::consola::escribir(idx, &w[..n]);
+                    crate::ring0::obj::consola::escribir(idx, &w[..n]);
                 }
                 None => crate::ring0::uconsole::write_packed(arg0),
             }
@@ -300,8 +300,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_CONSOLE_READ => {
             let _ = arg0;
             let pid = scheduler::current_pid();
-            match crate::ring0::consola::salida_de(pid) {
-                Some(idx) => BmoStatus::ok_value(crate::ring0::consola::leer_entrada(idx)),
+            match crate::ring0::obj::consola::salida_de(pid) {
+                Some(idx) => BmoStatus::ok_value(crate::ring0::obj::consola::leer_entrada(idx)),
                 // Sin consola asignada no hay de donde leer. Cero = "nada", no
                 // error: un programa que sondea no debe morir por preguntar.
                 None => BmoStatus::ok_value(0),
@@ -311,7 +311,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::directorio::abrir(pid, ruta) {
+            match crate::ring0::obj::directorio::abrir(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -322,7 +322,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::archivo::abrir(pid, ruta) {
+            match crate::ring0::obj::archivo::abrir(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -331,14 +331,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::archivo::crear(pid, ruta) {
+            match crate::ring0::obj::archivo::crear(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
         }
         TASK_OP_CONSOLA_CREAR => {
             let _ = arg0;
-            match crate::ring0::consola::crear(scheduler::current_pid()) {
+            match crate::ring0::obj::consola::crear(scheduler::current_pid()) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -372,14 +372,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // de contexto, y aquí todavía no ha habido ninguno.
         TASK_OP_INPUT_CLAIM => {
             let _ = arg0;
-            match crate::ring0::input::reclamar(scheduler::current_pid()) {
+            match crate::ring0::obj::input::reclamar(scheduler::current_pid()) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
         }
         TASK_OP_FRAMEBUFFER_CLAIM => {
             let _ = arg0;
-            match crate::ring0::fb::reclamar(
+            match crate::ring0::obj::fb::reclamar(
                 scheduler::current_pid(),
                 crate::ring0::mm::vmm::read_cr3(),
             ) {
@@ -409,11 +409,11 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     Err((code, flags)) => return cap_err((code, flags)),
                 }
             };
-            let informe = crate::ring0::lanzar::ruta(ruta_tomar(pid));
+            let informe = crate::ring0::task::lanzar::ruta(ruta_tomar(pid));
             match informe.res {
                 Ok(tid) => {
                     if let (Some(idx), Some(hijo)) = (consola_idx, informe.pid) {
-                        crate::ring0::consola::asignar_salida(hijo, idx);
+                        crate::ring0::obj::consola::asignar_salida(hijo, idx);
                     }
                     BmoStatus::ok_value(tid as u64)
                 }
@@ -529,14 +529,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // tiene. Los píxeles no pasan por aquí — para eso está mapeada.
             // El raton solo contesta donde esta y que botones tiene. Dibujar
             // el cursor es una decision de aspecto, y eso no es del kernel.
-            cap::KIND_INPUT => match crate::ring0::input::operacion(frame.rsi) {
+            cap::KIND_INPUT => match crate::ring0::obj::input::operacion(frame.rsi) {
                 Some(v) => BmoStatus::ok_value(v),
                 None => unsupported(),
             },
             // La salida de los hijos de este proceso. Se drena a su ritmo: el
             // kernel no empuja, el terminal tira.
             cap::KIND_CONSOLE => {
-                match crate::ring0::consola::operacion(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::consola::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
@@ -545,7 +545,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // operaciones aparte con su propio derecho, no un efecto lateral
             // de tener el directorio abierto.
             cap::KIND_DIRECTORIO => {
-                match crate::ring0::directorio::operacion(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::directorio::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
@@ -555,13 +555,13 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // escritura no es un error de permisos, es una pregunta que ese
             // objeto no responde.
             cap::KIND_ARCHIVO => {
-                match crate::ring0::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
             }
             cap::KIND_FRAMEBUFFER => {
-                match crate::ring0::fb::operacion(resolved.object, frame.rsi) {
+                match crate::ring0::obj::fb::operacion(resolved.object, frame.rsi) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
@@ -633,8 +633,8 @@ extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
     // Igual que el timer: dónde talló su área este trap y para quién. Un
     // SYSCALL de Ring 3 aterriza en la pila que le haya puesto el planificador,
     // así que si esa rampa apuntara donde no debe, esto lo enseña.
-    crate::ring0::trap::registrar_publicacion(
-        crate::ring0::percpu::trap_rsp(),
+    crate::ring0::plat::trap::registrar_publicacion(
+        crate::ring0::task::percpu::trap_rsp(),
         scheduler::current_tid(),
     );
     let status = match frame.rax as u32 {

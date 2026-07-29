@@ -34,7 +34,7 @@
 //! sobreviva a que su terminal se cierre. Cuando el RPC de endpoints esté
 //! rodado, esto se muda; el contrato de fuera no cambia.
 
-use crate::ring0::cap;
+use crate::ring0::obj::cap;
 
 /// Cuántas consolas pueden existir a la vez. Una por terminal abierto.
 pub const MAX_CONSOLAS: usize = 4;

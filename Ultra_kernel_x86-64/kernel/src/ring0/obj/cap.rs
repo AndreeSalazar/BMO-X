@@ -19,7 +19,7 @@
 //!   bits 39..0    : index      (40 bits — slot en la tabla del proceso)
 //! ```
 
-use crate::ring0::spin::SpinLock;
+use crate::ring0::plat::spin::SpinLock;
 
 pub const MAX_PROCS: usize = 16;
 pub const SLOTS_PER_PROC: usize = 64;
@@ -223,20 +223,20 @@ pub fn revoke(pid: u32, handle: u64) -> bool {
 /// clientes bloqueados para siempre — el fallo que hace inservible cualquier
 /// IPC bloqueante.
 pub fn revoke_all(pid: u32) {
-    crate::ring0::endpoint::proceso_muerto(pid);
+    crate::ring0::obj::endpoint::proceso_muerto(pid);
     // Si tenia la pantalla, el kernel la recupera aqui. Corre en TODAS las
     // salidas —EXIT voluntario y muerte por fault— asi que un compositor que
     // revienta no deja la maquina ciega.
-    crate::ring0::fb::proceso_muerto(pid);
-    crate::ring0::input::proceso_muerto(pid);
+    crate::ring0::obj::fb::proceso_muerto(pid);
+    crate::ring0::obj::input::proceso_muerto(pid);
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
-    crate::ring0::consola::proceso_muerto(pid);
-    crate::ring0::directorio::proceso_muerto(pid);
+    crate::ring0::obj::consola::proceso_muerto(pid);
+    crate::ring0::obj::directorio::proceso_muerto(pid);
     // Un archivo de ESCRITURA a medias se descarta: lo acumulado no llega al
     // disco. Guardarlo seria inventar un archivo que su autor nunca dio por
     // terminado, y medio fichero de movimientos es peor que ninguno.
-    crate::ring0::archivo::proceso_muerto(pid);
+    crate::ring0::obj::archivo::proceso_muerto(pid);
     revoke_all_slots(pid)
 }
 

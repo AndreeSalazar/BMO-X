@@ -12,11 +12,11 @@
 
 use boot_context::BootContext;
 
-use crate::ring0::bex;
-use crate::ring0::channel;
+use crate::ring0::task::bex;
+use crate::ring0::obj::channel;
 use crate::ring0::mm::{self, phys, vmm};
-use crate::ring0::scheduler;
-use crate::ring0::trap;
+use crate::ring0::task::scheduler;
+use crate::ring0::plat::trap;
 
 const USER_STACK_PAGES: u64 = 16; // 64 KiB
 /// 16 KiB de pila de kernel por tarea.
@@ -54,24 +54,24 @@ pub fn init_status() -> &'static str {
 /// When the boot chain reserves no Ring 3 payload, this is admitted as the
 /// init process so BMO always demonstrates the full CPL3 → INVOKE → CPL0
 /// chain on its own — no keyboard, no storage, no external image required.
-static INIT_HELLO_BEX: &[u8] = include_bytes!("init_hello.bex");
+static INIT_HELLO_BEX: &[u8] = include_bytes!("../init_hello.bex");
 
 /// Programa C compilado por `toolchain/lang/c` (fuente:
 /// `toolchain/lang/c/examples/hola_C.c`).
-static HOLA_C_BEX: &[u8] = include_bytes!("hola_C.bex");
+static HOLA_C_BEX: &[u8] = include_bytes!("../hola_C.bex");
 
 /// Programa COBOL compilado por `toolchain/lang/cobol` (fuente:
 /// `toolchain/lang/cobol/examples/hola_COBOL.cob`).
-static HOLA_COBOL_BEX: &[u8] = include_bytes!("hola_COBOL.bex");
+static HOLA_COBOL_BEX: &[u8] = include_bytes!("../hola_COBOL.bex");
 /// El par cliente/servidor de Endpoint RPC. Se regeneran con
 /// `cargo run -p bmo-rpc-demo -- <srv> <cli>` y se commitean, igual que los
 /// demas demos.
-static RPC_SRV_BEX: &[u8] = include_bytes!("rpc_srv.bex");
-static RPC_CLI_BEX: &[u8] = include_bytes!("rpc_cli.bex");
+static RPC_SRV_BEX: &[u8] = include_bytes!("../rpc_srv.bex");
+static RPC_CLI_BEX: &[u8] = include_bytes!("../rpc_cli.bex");
 
 // ★ EL COMPOSITOR YA NO ESTÁ AQUÍ.
 //
-// Vivía en esta lista como `include_bytes!("compositor.bex")`, y eso era la
+// Vivía en esta lista como `include_bytes!("../compositor.bex")`, y eso era la
 // deuda que `fs.rs` lleva describiendo desde que existe: un binario de Ring 3
 // dentro del binario de Ring 0. Cambiar un píxel del escritorio obligaba a
 // recompilar el sistema operativo entero y reflashear — y además metía en el
@@ -345,7 +345,7 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
     let tid = scheduler::spawn_user(pid, context, kstack_base, KERNEL_STACK_PAGES, kstack_top, aspace, 0)?;
     // F3: seed the init process's capability table — one estuary handle
     // per BMO Channel page, discoverable via TASK_OP_CHANNEL_OPEN.
-    crate::ring0::cap::seed_init(pid);
+    crate::ring0::obj::cap::seed_init(pid);
     log("[proc] init.bex admitted: Ring 3 entry at 0x");
     crate::ring0::dev::console::serial_write_u64(entry_va, 16);
     log("\n");

@@ -42,7 +42,7 @@ unsafe fn inb(puerto: u16) -> u8 {
 /// hay temporizador que valga: contar vueltas de bucle mediría la velocidad
 /// del CPU, no el tiempo.
 fn esperar_us(us: u64) {
-    let hz = crate::ring0::scheduler::tsc_freq();
+    let hz = crate::ring0::task::scheduler::tsc_freq();
     if hz == 0 {
         // Sin TSC calibrado, unas cuantas vueltas y a otra cosa. Aquí el
         // objetivo es dar aire al chipset, no medir nada.
@@ -51,8 +51,8 @@ fn esperar_us(us: u64) {
         }
         return;
     }
-    let hasta = crate::ring0::scheduler::rdtsc() + (hz / 1_000_000) * us;
-    while crate::ring0::scheduler::rdtsc() < hasta {
+    let hasta = crate::ring0::task::scheduler::rdtsc() + (hz / 1_000_000) * us;
+    while crate::ring0::task::scheduler::rdtsc() < hasta {
         core::hint::spin_loop();
     }
 }

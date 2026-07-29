@@ -14,5 +14,5 @@ pub const ESTUARY_SYSTEM: usize = 0;
 
 /// Bind every built-in Ring 0 service. Boot-time only (pre-timer).
 pub fn register_all() {
-    crate::ring0::channel::register_service(ESTUARY_SYSTEM, system::handle);
+    crate::ring0::obj::channel::register_service(ESTUARY_SYSTEM, system::handle);
 }

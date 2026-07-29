@@ -12,9 +12,9 @@
 //! which the trap epilogue restores.
 
 use crate::ring0::mm::{self, phys};
-use crate::ring0::percpu;
-use crate::ring0::spin::SpinLock;
-use crate::ring0::trap;
+use crate::ring0::task::percpu;
+use crate::ring0::plat::spin::SpinLock;
+use crate::ring0::plat::trap;
 
 pub const MAX_TASKS: usize = 64;
 pub const DEFAULT_QUANTUM_TICKS: u16 = 4;
@@ -23,7 +23,7 @@ pub const DEFAULT_QUANTUM_TICKS: u16 = 4;
 const TASK_STACK_PAGES: u64 = 4;
 
 const _: () = assert!(
-    crate::ring0::trap::MIN_TASK_STACK <= (TASK_STACK_PAGES * crate::ring0::mm::PAGE) as usize,
+    crate::ring0::plat::trap::MIN_TASK_STACK <= (TASK_STACK_PAGES * crate::ring0::mm::PAGE) as usize,
     "la pila de tarea de kernel no cubre un contexto con XSAVE"
 );
 
@@ -275,7 +275,7 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
         // ensamblador; el tid lo sabe Rust. Con los dos, un epílogo que se
         // encuentre algo raro puede decir DE QUIÉN era, no sólo que estaba
         // roto.
-        crate::ring0::trap::sellar(outgoing, s.tasks[s.current].tid);
+        crate::ring0::plat::trap::sellar(outgoing, s.tasks[s.current].tid);
     }
     s.tasks[next].state = TaskState::Running;
     s.tasks[next].remaining_ticks = DEFAULT_QUANTUM_TICKS;
@@ -297,7 +297,7 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
     // en el TSS: inofensivo mientras nadie entre por ahí, y catastrófico el
     // día que alguien entre.
     if next_task.kernel_stack_top != 0 {
-        crate::ring0::proc::set_tss_rsp0(next_task.kernel_stack_top);
+        crate::ring0::task::proc::set_tss_rsp0(next_task.kernel_stack_top);
         percpu::set_syscall_stack_top(next_task.kernel_stack_top);
     }
     if next_task.is_user {
@@ -309,7 +309,7 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
         // table entry itself is stale/corrupt. Painted by faults.rs.
         unsafe {
             SWITCH_SNAP[0] = next_rsp;
-            SWITCH_SNAP[1] = ((next_rsp + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
+            SWITCH_SNAP[1] = ((next_rsp + crate::ring0::plat::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
             SWITCH_SNAP[2] = mm::vmm::read_cr3();
             SWITCH_SNAP[3] = SWITCH_SNAP[3].wrapping_add(1);
             // El PRIMER cruce a CPL3 de la vida del sistema. Momento histórico

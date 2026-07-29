@@ -1,17 +1,68 @@
-pub mod bex;
-pub mod cabina;
-pub mod fs;
-pub mod estratos;
-/// Endpoint RPC: un proceso Ring 3 puede atender a otro.
-pub mod endpoint;
-pub mod cap;
-pub mod faults;
-pub mod fb;
-pub mod archivo;
-pub mod consola;
-pub mod directorio;
-pub mod input;
-pub mod lanzar;
+//! Ring 0 — el suelo sobre el que se apoya todo lo demás.
+//!
+//! ## Cómo está repartido, y por qué así
+//!
+//! Esto eran **24 archivos sueltos** en un solo directorio. No es que fuera
+//! monolítico —cada uno hace lo suyo— pero un listado plano de 24 nombres no
+//! dice de qué va el sistema, y hay que leerlos todos para saber cuál importa.
+//! Las carpetas son las familias que ya existían sin estar dibujadas:
+//!
+//! | | Qué vive ahí |
+//! |---|---|
+//! | `obj/` | **Los objetos que Ring 3 puede tener.** Cada uno es un `KIND_` con sus operaciones. Si algo se pide con una capability, está aquí. |
+//! | `task/` | Procesos: admitir, planificar, lanzar desde disco. |
+//! | `fsys/` | Almacenamiento LÓGICO: de sectores a archivos. El disco como hardware es `dev/disk.rs`. |
+//! | `plat/` | La plataforma bajo el sistema: fallos, trampas, reloj, reinicio, cerrojos. |
+//! | `dev/` | Hardware de verdad: PCI, AHCI, xHCI, framebuffer. |
+//! | `mm/`, `cpu/`, `cpu_vendor/`, `svc/`, `core/` | Memoria, CPU, servicios y arranque. Ya estaban. |
+//!
+//! En la raíz quedan **cuatro** archivos a propósito, y son los que hay que
+//! leer primero: `syscall.rs` (la superficie congelada — las tres puertas),
+//! `cabina.rs` y `uconsole.rs` (lo que el sistema confiesa de sí mismo), y
+//! este `mod.rs`.
+//!
+//! La frontera que más se nota: **`obj/` es lo que Ring 3 puede pedir; `dev/`
+//! es lo que sólo Ring 0 toca.** Un archivo que cruce esa línea está en el
+//! sitio equivocado.
+
+/// Los objetos que Ring 3 puede tener, uno por `KIND_`. Un nombre es
+/// adivinable; un handle concedido no.
+pub mod obj {
+    pub mod archivo;
+    pub mod cap;
+    pub mod channel;
+    pub mod consola;
+    pub mod directorio;
+    pub mod endpoint;
+    pub mod fb;
+    pub mod input;
+}
+
+/// Procesos: admitirlos, planificarlos, lanzarlos desde el disco.
+pub mod task {
+    pub mod bex;
+    pub mod lanzar;
+    pub mod percpu;
+    pub mod proc;
+    pub mod scheduler;
+}
+
+/// Almacenamiento lógico: de sectores a ARCHIVOS. El disco como hardware vive
+/// en `dev/disk.rs`; la diferencia es la misma que entre un sector y un nombre.
+pub mod fsys {
+    pub mod estratos;
+    pub mod fs;
+}
+
+/// La plataforma que sostiene al kernel: fallos, trampas, reloj y cerrojos.
+pub mod plat {
+    pub mod faults;
+    pub mod reinicio;
+    pub mod spin;
+    pub mod timer;
+    pub mod trap;
+}
+
 pub mod core {
     pub mod entry;
     pub mod phase;
@@ -19,23 +70,20 @@ pub mod core {
 }
 pub mod cpu;
 pub mod cpu_vendor;
-pub mod channel;
 pub mod dev {
     pub mod console;
-    pub mod framebuffer;
     pub mod disk;
+    pub mod framebuffer;
     pub mod keyboard;
     pub mod pci;
     pub mod usb;
 }
 pub mod mm;
-pub mod percpu;
-pub mod proc;
-pub mod reinicio;
-pub mod scheduler;
-pub mod spin;
 pub mod svc;
+
+// ── La raíz: lo que hay que leer primero ────────────────────────────────
+/// La superficie congelada. Tres puertas y ni una más.
 pub mod syscall;
-pub mod timer;
+/// La caja negra: lo que el sistema confiesa de sí mismo.
+pub mod cabina;
 pub mod uconsole;
-pub mod trap;

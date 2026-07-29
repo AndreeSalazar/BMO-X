@@ -1,6 +1,6 @@
 //! `KIND_ARCHIVO` — **leer y escribir lo que hay dentro**, como capability.
 //!
-//! Hermano de [`crate::ring0::directorio`]. Aquel deja PREGUNTAR qué hay en el
+//! Hermano de [`crate::ring0::obj::directorio`]. Aquel deja PREGUNTAR qué hay en el
 //! disco; éste deja abrir uno de esos nombres y mover sus bytes.
 //!
 //! Hasta ahora el kernel sabía leer archivos (`fs::load`, con el que se carga
@@ -40,7 +40,7 @@
 //! movimientos eso es lo correcto — un extracto truncado se parece demasiado a
 //! uno completo.
 
-use crate::ring0::cap;
+use crate::ring0::obj::cap;
 
 /// Cuántos archivos pueden estar abiertos a la vez, en todo el sistema.
 pub const MAX_ABIERTOS: usize = 4;
@@ -112,9 +112,9 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
     };
     let leidos = unsafe {
         let dst = &mut (*core::ptr::addr_of_mut!(BUF))[i];
-        match crate::ring0::fs::load(ruta, dst) {
+        match crate::ring0::fsys::fs::load(ruta, dst) {
             Ok(n) => n,
-            Err(crate::ring0::fs::LoadError::TooBig) => return Err(ERROR_DEMASIADO_GRANDE),
+            Err(crate::ring0::fsys::fs::LoadError::TooBig) => return Err(ERROR_DEMASIADO_GRANDE),
             Err(_) => return Err(ERROR_NO_ESTA),
         }
     };
@@ -143,7 +143,7 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
 /// escriba nada hasta cerrar. Descubrir al final que la carpeta no existía
 /// significaría haber dejado a un programa acumulando bytes para nada.
 pub fn crear(pid: u32, ruta: &str) -> Result<u64, u32> {
-    if !crate::ring0::fs::data_mounted() {
+    if !crate::ring0::fsys::fs::data_mounted() {
         return Err(ERROR_SOLO_LECTURA);
     }
     // Partir la ruta en carpeta + nombre por la ÚLTIMA barra.
@@ -161,11 +161,11 @@ pub fn crear(pid: u32, ruta: &str) -> Result<u64, u32> {
     if nombre_txt.is_empty() {
         return Err(ERROR_NOMBRE);
     }
-    let nombre = match crate::ring0::fs::nombre_8_3_pub(nombre_txt) {
+    let nombre = match crate::ring0::fsys::fs::nombre_8_3_pub(nombre_txt) {
         Some(n) => n,
         None => return Err(ERROR_NOMBRE),
     };
-    let dir = match crate::ring0::fs::dir_datos(carpeta) {
+    let dir = match crate::ring0::fsys::fs::dir_datos(carpeta) {
         Some(c) => c,
         None => return Err(ERROR_NO_ESTA),
     };
@@ -248,7 +248,7 @@ fn cerrar(i: usize) -> u64 {
                 // prohibe — y con razon, porque esconde de donde sale.
                 let fila = &(*core::ptr::addr_of!(BUF))[i];
                 let datos = &fila[..LARGO[i]];
-                match crate::ring0::fs::crear_en(DIRECTORIO[i], &NOMBRE[i], datos) {
+                match crate::ring0::fsys::fs::crear_en(DIRECTORIO[i], &NOMBRE[i], datos) {
                     Ok(()) => {
                         crate::ring0::cabina::info("arch", "archivo guardado", LARGO[i] as u64);
                         true

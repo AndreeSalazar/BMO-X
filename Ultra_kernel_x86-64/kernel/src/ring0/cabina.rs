@@ -77,7 +77,7 @@ pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
         let mut ev = Event::new(sev, layer, Entity::Module, module, 0, msg, value);
         EV_SEQ = EV_SEQ.wrapping_add(1);
         ev.seq = EV_SEQ;
-        ev.tick_ns = crate::ring0::timer::ticks();
+        ev.tick_ns = crate::ring0::plat::timer::ticks();
         let arr = core::ptr::addr_of_mut!(EVENTS) as *mut Event;
         core::ptr::write(arr.add(EV_WRITE), ev);
         EV_WRITE = (EV_WRITE + 1) % EVENT_RING;
@@ -162,7 +162,7 @@ pub fn dump_to_disk() -> usize {
     // Sin autoref sobre el puntero crudo: se pide el slice explícitamente, que
     // es lo mismo que el compilador iba a hacer pero dicho en voz alta.
     let data = unsafe { core::slice::from_raw_parts(core::ptr::addr_of!(DUMP) as *const u8, n) };
-    match crate::ring0::fs::create(b"CABINA  LOG", data) {
+    match crate::ring0::fsys::fs::create(b"CABINA  LOG", data) {
         Ok(()) => {
             info("fs", "bitacora volcada a CABINA.LOG", n as u64);
             n
@@ -232,11 +232,11 @@ fn ev_color(ev: &Event) -> u32 {
 /// deja de ser estructuras muertas y empieza a respirar.
 pub fn snapshot() -> TelemetrySnapshot {
     let mut s = TelemetrySnapshot::zero();
-    s.cpu.timer_ticks = crate::ring0::timer::ticks();
+    s.cpu.timer_ticks = crate::ring0::plat::timer::ticks();
     let (_total, free) = crate::ring0::mm::phys::stats();
     s.memory.free_pages = free;
-    s.scheduler.context_switches = crate::ring0::scheduler::user_switches();
-    let (tasks, runnable) = crate::ring0::scheduler::counts();
+    s.scheduler.context_switches = crate::ring0::task::scheduler::user_switches();
+    let (tasks, runnable) = crate::ring0::task::scheduler::counts();
     s.scheduler.processes = tasks as u64;
     s.scheduler.threads = runnable as u64;
     s.uptime_ns = s.cpu.timer_ticks; // proxy hasta tener ns reales del TSC
@@ -388,9 +388,9 @@ pub fn render_hud() {
     let (tev, rev, hev) = crate::ring0::dev::usb::xfer_stats();
     let (kdci, es, ee, ec) = crate::ring0::dev::usb::kbd_debug();
     let (kst, kbi, kiv, _ksp, ksts) = crate::ring0::dev::usb::kbd_ep_debug();
-    let st = crate::ring0::scheduler::tid_state(2);
+    let st = crate::ring0::task::scheduler::tid_state(2);
     let (rx, ln) = crate::ring0::uconsole::stats();
-    let tid = crate::ring0::scheduler::current_tid();
+    let tid = crate::ring0::task::scheduler::current_tid();
     let mib_free = s.memory.free_pages / 256; // 4096 B/página → /256 = MiB
 
     watch(&s, mib_free);

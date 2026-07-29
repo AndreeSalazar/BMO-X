@@ -9,8 +9,8 @@ use boot_context::BootContext;
 use core::arch::{asm, naked_asm};
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::ring0::percpu;
-use crate::ring0::trap::TrapFrame;
+use crate::ring0::task::percpu;
+use crate::ring0::plat::trap::TrapFrame;
 
 const TIMER_VECTOR: usize = 48;
 const SPURIOUS_VECTOR: usize = 0xFF;
@@ -157,19 +157,19 @@ unsafe extern "C" fn timer_entry() -> ! {
         "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym timer_dispatch,
-        podrido = sym crate::ring0::faults::contexto_podrido,
-        no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
-        bv_x = sym crate::ring0::trap::BV_TRAS_XSAVE,
-        base_x = sym crate::ring0::trap::BASE_TRAS_XSAVE,
-        area = const crate::ring0::trap::XSAVE_AREA,
-        firma = const crate::ring0::trap::SELLO_FIRMA,
-        magia = const crate::ring0::trap::SELLO_MAGIA,
-        bv = const crate::ring0::trap::XSAVE_BV,
-        cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
-        m_sello = const crate::ring0::faults::PODRIDO_SELLO,
-        m_cs = const crate::ring0::faults::PODRIDO_CS,
-        m_cab = const crate::ring0::faults::PODRIDO_CABECERA,
-        reserva = const crate::ring0::trap::XSAVE_RESERVA,
+        podrido = sym crate::ring0::plat::faults::contexto_podrido,
+        no_xcr0 = sym crate::ring0::plat::trap::XSAVE_NO_XCR0,
+        bv_x = sym crate::ring0::plat::trap::BV_TRAS_XSAVE,
+        base_x = sym crate::ring0::plat::trap::BASE_TRAS_XSAVE,
+        area = const crate::ring0::plat::trap::XSAVE_AREA,
+        firma = const crate::ring0::plat::trap::SELLO_FIRMA,
+        magia = const crate::ring0::plat::trap::SELLO_MAGIA,
+        bv = const crate::ring0::plat::trap::XSAVE_BV,
+        cero = const crate::ring0::plat::trap::XSAVE_CERO_DESDE,
+        m_sello = const crate::ring0::plat::faults::PODRIDO_SELLO,
+        m_cs = const crate::ring0::plat::faults::PODRIDO_CS,
+        m_cab = const crate::ring0::plat::faults::PODRIDO_CABECERA,
+        reserva = const crate::ring0::plat::trap::XSAVE_RESERVA,
     );
 }
 
@@ -184,16 +184,16 @@ extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
     // Dónde talló su área este trap, y para quién. Ver `trap::publicaciones`:
     // es lo que permite ver DOS áreas solapadas en la misma pila cuando un
     // contexto aparece pisado con el sello intacto.
-    crate::ring0::trap::registrar_publicacion(
-        crate::ring0::percpu::trap_rsp(),
-        crate::ring0::scheduler::current_tid(),
+    crate::ring0::plat::trap::registrar_publicacion(
+        crate::ring0::task::percpu::trap_rsp(),
+        crate::ring0::task::scheduler::current_tid(),
     );
     let n = TICKS.fetch_add(1, Ordering::Relaxed) + 1;
     // Budgeted estuary service before the scheduler decision: pending
     // submissions become completions and their WAITers wake this tick.
     // Must run before on_timer so no scheduler lock is held here.
-    crate::ring0::channel::service_all();
-    crate::ring0::scheduler::on_timer();
+    crate::ring0::obj::channel::service_all();
+    crate::ring0::task::scheduler::on_timer();
     // Heartbeat from IRQ context every 64 ticks: paints even when no task
     // ever reaches the shell poll loop. If this row stops updating, ticks
     // stopped — the hang is running with IF masked (a syscall dispatch or a

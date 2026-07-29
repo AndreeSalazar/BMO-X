@@ -28,7 +28,7 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use crate::ring0::cap;
+use crate::ring0::obj::cap;
 
 const SIN_DUENO: u32 = u32::MAX;
 static DUENO: AtomicU32 = AtomicU32::new(SIN_DUENO);

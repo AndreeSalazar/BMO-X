@@ -89,7 +89,7 @@ pub fn service(index: usize) -> usize {
         }),
     };
     if processed > 0 {
-        crate::ring0::scheduler::wake_by_key(wait_key(index));
+        crate::ring0::task::scheduler::wake_by_key(wait_key(index));
     }
     processed
 }

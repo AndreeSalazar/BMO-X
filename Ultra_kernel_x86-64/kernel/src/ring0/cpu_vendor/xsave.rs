@@ -288,7 +288,7 @@ pub fn init() {
     // sin él. Si un CPU necesitara llegar hasta ahí, el sello sería basura
     // aleatoria y la máquina se pararía en cada cambio de contexto — mejor
     // pararla aquí, con el motivo escrito.
-    let reservado = crate::ring0::trap::XSAVE_AREA - 16;
+    let reservado = crate::ring0::plat::trap::XSAVE_AREA - 16;
     if necesario > reservado {
         pararse("el area de XSAVE reservada se queda corta en este CPU", necesario as u64);
     }
@@ -313,7 +313,7 @@ pub fn init() {
     // que la máquina no arranca igual. Lo que esto protege no es el arranque:
     // es la HONESTIDAD del informe con el que alguien va a depurar.)
     if inf.osxsave {
-        crate::ring0::trap::armar_guardia_cabecera(inf.xcr0);
+        crate::ring0::plat::trap::armar_guardia_cabecera(inf.xcr0);
         crate::ring0::cabina::info("cpu", "guardia de cabecera XSAVE armada", inf.xcr0);
     } else {
         crate::ring0::cabina::warn(

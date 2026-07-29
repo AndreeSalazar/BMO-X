@@ -338,7 +338,7 @@ fn draw_str_fadein(x: u32, y: u32, s: &str, color: u32) {
 /// Espera de `ms` milisegundos reales (usa la frecuencia TSC ya calibrada;
 /// si aún no existe, aproxima a ~3 GHz).
 fn hold_ms(ms: u64) {
-    let f = crate::ring0::scheduler::tsc_freq();
+    let f = crate::ring0::task::scheduler::tsc_freq();
     let cycles = if f == 0 { ms * 3_000_000 } else { ms * (f / 1000) };
     let start = tsc_read();
     while tsc_read().wrapping_sub(start) < cycles {

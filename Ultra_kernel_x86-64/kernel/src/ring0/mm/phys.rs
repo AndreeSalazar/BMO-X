@@ -17,7 +17,7 @@
 use boot_context::BootContext;
 
 use super::{phys_to_virt, PAGE};
-use crate::ring0::spin::SpinLock;
+use crate::ring0::plat::spin::SpinLock;
 
 const MAX_PHYS: u64 = super::PHYSMAP_SIZE; // 16 GiB — capped by the physmap
 const FRAME_SLOTS: usize = (MAX_PHYS / PAGE) as usize / 64; // 65536 words

@@ -251,7 +251,7 @@ fn row(label: &str, build: impl FnOnce(&mut L)) {
 // hubo un clear. Pantalla estable + cursor vivo.
 fn dash_prompt(line: &str, cursor: usize) {
     if !crate::info::has_fb() { return; }
-    let ticks = crate::ring0::timer::ticks();
+    let ticks = crate::ring0::plat::timer::ticks();
     let blink = ((ticks >> 6) & 1) == 0; // visible ~mitad del tiempo
     let n = line.len();
     static mut LAST_N: usize = usize::MAX;
@@ -385,7 +385,7 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         // estás escribiendo (línea vacía), limpia la pantalla — como una
         // terminal que se refresca al acabar el programa. Nunca borra a media
         // escritura (solo con n==0).
-        let (total, _) = crate::ring0::scheduler::counts();
+        let (total, _) = crate::ring0::task::scheduler::counts();
         unsafe {
             if n == 0 && total < LAST_TASK_TOTAL {
                 clear_screen();
@@ -407,7 +407,7 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         // teclas son suyas y este shell no las toca: los dos drenan la MISMA
         // cola, así que leer aquí no sería "leer también", sería robarle letras
         // sueltas a la caja. Cedido es cedido, también para el que la cedió.
-        if byte.is_none() && !crate::ring0::input::cedido() {
+        if byte.is_none() && !crate::ring0::obj::input::cedido() {
             byte = crate::ring0::dev::usb::poll_ascii();
             if byte.is_none() {
                 // PS/2 i8042 (mudo post-EBS en esta placa). Se conserva por si
@@ -604,7 +604,7 @@ fn shell_disk() {
 /// todo y lo olvidaba al apagar. Un registrador que solo existe mientras vuela
 /// el avión no sirve para investigar la caída.
 fn shell_cabina() {
-    use crate::ring0::fs;
+    use crate::ring0::fsys::fs;
     if !fs::data_mounted() {
         s_log("[cabina] no hay volumen de datos donde escribir");
         s_log("[cabina] escribe 'disk' para ver que dijo el gate de identidad");
@@ -641,7 +641,7 @@ fn shell_cabina() {
 /// arranque es la ESP de 0,6 GB que comparte con el sistema del dueño, así que
 /// bien puede ser su cargador. Se dice lo que se sabe.
 fn shell_ls() {
-    use crate::ring0::fs;
+    use crate::ring0::fsys::fs;
     if !fs::is_mounted() {
         s_log("[fs] no hay volumen montado (mira la bitacora de CABINA)");
         return;
@@ -747,7 +747,7 @@ fn shell_cpu() {
     // queda contando una etapa anterior es peor que no tener informe, porque
     // se le cree.
     row("contexto", |l| {
-        l.txt("XSAVE  reserva "); l.dec(crate::ring0::trap::XSAVE_AREA as u64);
+        l.txt("XSAVE  reserva "); l.dec(crate::ring0::plat::trap::XSAVE_AREA as u64);
         l.txt(" B  usa "); l.dec(inf.area_actual as u64); l.txt(" B");
     });
     if inf.hay_estado_sin_guardar() {
@@ -764,7 +764,7 @@ fn shell_cpu() {
 /// Es la primera vez que BMO-X lee un sistema de ficheros **suyo**: FAT32 es
 /// un formato prestado que había que entender; ESTRATOS lo escribió él.
 fn shell_estratos() {
-    use crate::ring0::estratos as est;
+    use crate::ring0::fsys::estratos as est;
     if !est::is_mounted() {
         s_log("[estratos] ninguna particion tiene un volumen ESTRATOS");
         s_log("[estratos] se formatea desde el anfitrion con estratos-fmt");
@@ -823,8 +823,8 @@ fn shell_estratos() {
 /// El buffer es estático y no local: un `.bex` son varios KiB y la pila del
 /// kernel son 64 KiB para todo.
 fn shell_run(arg: &[u8]) {
-    use crate::ring0::estratos as est;
-    use crate::ring0::lanzar;
+    use crate::ring0::fsys::estratos as est;
+    use crate::ring0::task::lanzar;
 
     let path = match core::str::from_utf8(arg) {
         Ok(s) => s.trim(),
@@ -1008,10 +1008,10 @@ fn shell_info(ctx: &BootContext) {
         } else {
             row("disco", |l| { l.txt("sin disco listo"); });
         }
-        let fs = crate::ring0::fs::fs_name();
-        row("arranque", |l| { l.txt(fs); l.txt("  LBA "); l.dec(crate::ring0::fs::mounted_lba()); l.txt("  solo lectura"); });
-        if crate::ring0::fs::data_mounted() {
-            row("datos", |l| { l.txt("LBA "); l.dec(crate::ring0::fs::data_lba()); l.txt("  LECTURA/ESCRITURA"); });
+        let fs = crate::ring0::fsys::fs::fs_name();
+        row("arranque", |l| { l.txt(fs); l.txt("  LBA "); l.dec(crate::ring0::fsys::fs::mounted_lba()); l.txt("  solo lectura"); });
+        if crate::ring0::fsys::fs::data_mounted() {
+            row("datos", |l| { l.txt("LBA "); l.dec(crate::ring0::fsys::fs::data_lba()); l.txt("  LECTURA/ESCRITURA"); });
         } else {
             row("datos", |l| { l.txt("sin montar"); });
         }
@@ -1019,9 +1019,9 @@ fn shell_info(ctx: &BootContext) {
 
     // ── PROCESOS Y ARRANQUE ──
     dashboard_log_color("== sistema ==", SH_TITLE);
-    let (tasks, runnable) = crate::ring0::scheduler::counts();
+    let (tasks, runnable) = crate::ring0::task::scheduler::counts();
     row("tareas", |l| { l.dec(tasks as u64); l.txt(" totales   "); l.dec(runnable as u64); l.txt(" ejecutables"); });
-    row("ticks", |l| { l.txt("0x"); l.hex(crate::ring0::timer::ticks(), 8); });
+    row("ticks", |l| { l.txt("0x"); l.hex(crate::ring0::plat::timer::ticks(), 8); });
     row("boot", |l| { l.txt("BootContext v"); l.dec(ctx.version as u64); l.txt("   "); l.dec(ctx.memory_map_count as u64); l.txt(" entradas de mapa"); });
     row("pml4", |l| { l.txt("0x"); l.hex(ctx.pml4, 8); l.txt("   rsdp 0x"); l.hex(ctx.rsdp, 8); });
 }
@@ -1043,18 +1043,18 @@ fn shell_fb() {
 }
 
 fn shell_tasks() {
-    let (total, runnable) = crate::ring0::scheduler::counts();
+    let (total, runnable) = crate::ring0::task::scheduler::counts();
     crate::ring0::dev::console::serial_write("[tasks] total=");
     crate::ring0::dev::console::serial_write_u64(total as u64, 10);
     crate::ring0::dev::console::serial_write(" runnable=");
     crate::ring0::dev::console::serial_write_u64(runnable as u64, 10);
     crate::ring0::dev::console::serial_write(" current_tid=");
     crate::ring0::dev::console::serial_write_u64(
-        crate::ring0::scheduler::current_tid() as u64,
+        crate::ring0::task::scheduler::current_tid() as u64,
         10,
     );
     crate::ring0::dev::console::serial_write(" ticks=");
-    crate::ring0::dev::console::serial_write_u64(crate::ring0::timer::ticks(), 10);
+    crate::ring0::dev::console::serial_write_u64(crate::ring0::plat::timer::ticks(), 10);
     crate::ring0::dev::console::serial_write("\n");
 }
 
@@ -1076,7 +1076,7 @@ fn shell_splash() {
 /// es la FOTO, consultable en cualquier momento: qué se admitió, de qué
 /// tamaño, dónde entra, con qué pid, cómo acabó y cuánto llegó a escribir.
 fn shell_bex() {
-    let progs = crate::ring0::proc::programs();
+    let progs = crate::ring0::task::proc::programs();
     if progs.is_empty() {
         s_log("[bex] ningun programa admitido todavia");
         return;
@@ -1123,7 +1123,7 @@ fn shell_bex() {
         // El estado sale del scheduler AHORA, no de lo que anotamos al
         // admitirlo: la tabla dice la verdad del momento en que se mira.
         let estado = if !p.admitted { "RECHAZADO" } else {
-            match crate::ring0::scheduler::tid_state(p.tid) {
+            match crate::ring0::task::scheduler::tid_state(p.tid) {
                 0x01 => "listo    ",
                 0x02 => "corriendo",
                 0x03 => "bloqueado",
@@ -1143,7 +1143,7 @@ fn shell_bex() {
 extern "C" fn ktest_main(arg: u64) -> ! {
     use crate::ring0::dev::console::{serial_write, serial_write_u64};
     serial_write("[ktest] start tid=");
-    serial_write_u64(crate::ring0::scheduler::current_tid() as u64, 10);
+    serial_write_u64(crate::ring0::task::scheduler::current_tid() as u64, 10);
     serial_write(" arg=");
     serial_write_u64(arg, 10);
     serial_write("\n");
@@ -1153,22 +1153,22 @@ extern "C" fn ktest_main(arg: u64) -> ! {
         serial_write("\n");
         // Busy window ~250 ms so the timer preempts us several times and
         // the shell task runs in between (look for the '>' echoes).
-        let start = crate::ring0::scheduler::rdtsc();
-        let span = crate::ring0::scheduler::tsc_freq() / 4;
-        while crate::ring0::scheduler::rdtsc().wrapping_sub(start) < span {
+        let start = crate::ring0::task::scheduler::rdtsc();
+        let span = crate::ring0::task::scheduler::tsc_freq() / 4;
+        while crate::ring0::task::scheduler::rdtsc().wrapping_sub(start) < span {
             core::hint::spin_loop();
         }
     }
     serial_write("[ktest] park 2000 ms (WAIT deadline)\n");
-    let deadline = crate::ring0::scheduler::rdtsc()
-        + crate::ring0::scheduler::ns_to_tsc(2_000_000_000);
-    crate::ring0::scheduler::park_until(deadline);
+    let deadline = crate::ring0::task::scheduler::rdtsc()
+        + crate::ring0::task::scheduler::ns_to_tsc(2_000_000_000);
+    crate::ring0::task::scheduler::park_until(deadline);
     serial_write("[ktest] woke; exit via reaper\n");
-    crate::ring0::scheduler::exit_and_park();
+    crate::ring0::task::scheduler::exit_and_park();
 }
 
 fn shell_ktest() {
-    match crate::ring0::scheduler::spawn_kernel(ktest_main as usize as u64, 0xB0, 1) {
+    match crate::ring0::task::scheduler::spawn_kernel(ktest_main as usize as u64, 0xB0, 1) {
         Some(tid) => {
             crate::ring0::dev::console::serial_write("[ktest] spawned tid=");
             crate::ring0::dev::console::serial_write_u64(tid as u64, 10);
@@ -1211,7 +1211,7 @@ fn shell_reboot() -> ! {
     // de despues. `reinicio::ahora` prueba 0xCF9, luego el 8042, y si nada
     // funciona provoca un triple fault, que no depende de ningun chipset.
     s_log("[shell] reboot");
-    crate::ring0::reinicio::ahora();
+    crate::ring0::plat::reinicio::ahora();
 }
 
 fn shell_halt() -> ! {
@@ -1250,7 +1250,7 @@ const RUTA_COMPOSITOR: &str = "apps/gui.bex";
 /// pero lo DICE, y dice qué hacer. Un escritorio que no sale sin explicar por
 /// qué manda a alguien a leer código.
 fn arrancar_escritorio() {
-    use crate::ring0::lanzar;
+    use crate::ring0::task::lanzar;
 
     let inf = lanzar::ruta(RUTA_COMPOSITOR);
     match inf.res {
@@ -1377,9 +1377,9 @@ pub fn main(ctx: &mut BootContext) {
     // necesita solo lo sabe él. Si no cabe, hay que enterarse AHORA y no
     // cuando el primer tick del timer desborde una pila de tarea.
     crate::ring0::cpu_vendor::xsave::init();
-    crate::ring0::percpu::init_bsp();
+    crate::ring0::task::percpu::init_bsp();
     kbar!(140, 0xFF00_FF00u32); // green: percpu OK
-    crate::ring0::scheduler::init(ctx.tsc_freq);
+    crate::ring0::task::scheduler::init(ctx.tsc_freq);
     kbar!(152, 0xFFFF_FFFFu32); // white: scheduler OK
     crate::ring0::mm::phys::init(ctx);
     kbar!(164, 0xFFFF_0000u32); // red: phys::init OK
@@ -1392,14 +1392,14 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write_u64(frames_total, 10);
     crate::ring0::dev::console::serial_write("\n");
     crate::ring0::cabina::info("mem", "physmap + asignador de frames listos", frames_free);
-    crate::ring0::channel::init(ctx);
+    crate::ring0::obj::channel::init(ctx);
     crate::ring0::svc::register_all();
     crate::ring0::syscall::init();
     // Arm the on-screen fault reporter before anything can enter Ring 3, so a
     // CPL3 crash paints its vector/RIP/CR2 instead of the silent serial-halt
     // the boot stage installs.
-    crate::ring0::faults::init(ctx);
-    let timer_ready = crate::ring0::timer::init(ctx);
+    crate::ring0::plat::faults::init(ctx);
+    let timer_ready = crate::ring0::plat::timer::init(ctx);
     if timer_ready {
         s_log("[ring0] scheduler + BMO Channel + SYSCALL + LAPIC tick ready (BSP)");
         crate::ring0::cabina::info("ring0", "scheduler + canal + syscalls + LAPIC armados", 0);
@@ -1425,21 +1425,21 @@ pub fn main(ctx: &mut BootContext) {
 
     // BEX is the only native executable contract admitted by this kernel.
     // The parser is allocation-free so it is safe before the process allocator.
-    crate::ring0::bex::announce();
+    crate::ring0::task::bex::announce();
     kbar!(212, 0xFF00_FFFFu32); // aqua: bex announce OK, before proc::spawn_init
 
     // F2: if the boot chain reserved a Ring 3 payload, admit it as the
     // init process. With no payload this is a no-op and the boot flow is
     // exactly the Ring 0 shell as before.
-    crate::ring0::proc::init(ctx);
-    let ring3_tid = crate::ring0::proc::spawn_init(ctx);
+    crate::ring0::task::proc::init(ctx);
+    let ring3_tid = crate::ring0::task::proc::spawn_init(ctx);
     if let Some(tid) = ring3_tid {
         crate::ring0::dev::console::serial_write("[ring0] Ring 3 init task ready, tid=");
         crate::ring0::dev::console::serial_write_u64(tid as u64, 10);
         crate::ring0::dev::console::serial_write("\n");
         crate::ring0::cabina::info("ring3", "proceso init admitido", tid as u64);
     } else {
-        crate::ring0::cabina::warn("ring3", crate::ring0::proc::init_status(), 0);
+        crate::ring0::cabina::warn("ring3", crate::ring0::task::proc::init_status(), 0);
     }
     kbar!(224, 0xFFFF_FFFFu32); // white: proc init + Ring 3 spawn OK, before splash
 
@@ -1519,17 +1519,17 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::disk::scan_partitions();
     // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la partición de
     // arranque, que es donde vive el BOOTX64.EFI con el que arrancamos.
-    crate::ring0::fs::mount();
+    crate::ring0::fsys::fs::mount();
     // El gate: el disco tiene que decir QUIÉN ES antes de que se le pueda
     // escribir. Va DESPUÉS de leer la GPT porque una de las pruebas es que la
     // tabla cuadre con los sectores que el propio disco declara.
     crate::ring0::dev::disk::verify_identity();
     // Y si convenció, el volumen de datos se monta con escritor. La partición
     // de arranque sigue montada sin él, y así se queda.
-    crate::ring0::fs::mount_data();
+    crate::ring0::fsys::fs::mount_data();
     // Y ESTRATOS, si alguna partición lleva uno. Solo lectura: el módulo no
     // sabe escribir, así que montarlo no puede estropear nada.
-    crate::ring0::estratos::mount();
+    crate::ring0::fsys::estratos::mount();
     dash_log("== RING 0 : hardware al mando ==");
 
     // ── Acto II: RING 3 — el userspace nace ─────────────────────────────
@@ -1540,7 +1540,7 @@ pub fn main(ctx: &mut BootContext) {
     {
         let mut summary = [0u8; 64];
         let head = b"[ring3] ";
-        let status = crate::ring0::proc::init_status();
+        let status = crate::ring0::task::proc::init_status();
         let mut off = 0;
         for &b in head { if off < summary.len() { summary[off] = b; off += 1; } }
         for &b in status.as_bytes() { if off < summary.len() { summary[off] = b; off += 1; } }
@@ -1563,7 +1563,7 @@ pub fn main(ctx: &mut BootContext) {
     kbar!(236, 0xFF00_FF00u32);
 
     if timer_ready {
-        crate::ring0::timer::enable();
+        crate::ring0::plat::timer::enable();
     }
 
     run_shell(ctx);

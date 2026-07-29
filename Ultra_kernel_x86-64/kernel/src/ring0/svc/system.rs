@@ -20,15 +20,15 @@ const ERROR_UNSUPPORTED: u64 = 10;
 pub fn handle(opcode: u64, a0: u64, a1: u64, a2: u64) -> Option<(u64, u64, u64, u64)> {
     match opcode {
         OP_PING => Some((OP_PING, a0, a1, a2)),
-        OP_TICKS => Some((OP_TICKS, crate::ring0::timer::ticks(), 0, 0)),
+        OP_TICKS => Some((OP_TICKS, crate::ring0::plat::timer::ticks(), 0, 0)),
         OP_TSC => Some((
             OP_TSC,
-            crate::ring0::scheduler::rdtsc(),
-            crate::ring0::scheduler::tsc_freq(),
+            crate::ring0::task::scheduler::rdtsc(),
+            crate::ring0::task::scheduler::tsc_freq(),
             0,
         )),
         OP_TASKS => {
-            let (total, runnable) = crate::ring0::scheduler::counts();
+            let (total, runnable) = crate::ring0::task::scheduler::counts();
             Some((OP_TASKS, total as u64, runnable as u64, 0))
         }
         _ => Some((opcode, ERROR_UNSUPPORTED, 0, 0)),

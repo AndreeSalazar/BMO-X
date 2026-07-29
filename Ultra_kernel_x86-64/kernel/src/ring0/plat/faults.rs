@@ -116,12 +116,12 @@ macro_rules! err_stub_isolating {
                 v = const $vec,
                 h = sym fault_dispatch,
                 podrido = sym contexto_podrido,
-                no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
-                area = const crate::ring0::trap::XSAVE_AREA,
-                firma = const crate::ring0::trap::SELLO_FIRMA,
-                magia = const crate::ring0::trap::SELLO_MAGIA,
-                bv = const crate::ring0::trap::XSAVE_BV,
-                cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
+                no_xcr0 = sym crate::ring0::plat::trap::XSAVE_NO_XCR0,
+                area = const crate::ring0::plat::trap::XSAVE_AREA,
+                firma = const crate::ring0::plat::trap::SELLO_FIRMA,
+                magia = const crate::ring0::plat::trap::SELLO_MAGIA,
+                bv = const crate::ring0::plat::trap::XSAVE_BV,
+                cero = const crate::ring0::plat::trap::XSAVE_CERO_DESDE,
                 m_sello = const PODRIDO_SELLO,
                 m_cs = const PODRIDO_CS,
                 m_cab = const PODRIDO_CABECERA,
@@ -189,12 +189,12 @@ macro_rules! noerr_stub_isolating {
                 v = const $vec,
                 h = sym fault_dispatch,
                 podrido = sym contexto_podrido,
-                no_xcr0 = sym crate::ring0::trap::XSAVE_NO_XCR0,
-                area = const crate::ring0::trap::XSAVE_AREA,
-                firma = const crate::ring0::trap::SELLO_FIRMA,
-                magia = const crate::ring0::trap::SELLO_MAGIA,
-                bv = const crate::ring0::trap::XSAVE_BV,
-                cero = const crate::ring0::trap::XSAVE_CERO_DESDE,
+                no_xcr0 = sym crate::ring0::plat::trap::XSAVE_NO_XCR0,
+                area = const crate::ring0::plat::trap::XSAVE_AREA,
+                firma = const crate::ring0::plat::trap::SELLO_FIRMA,
+                magia = const crate::ring0::plat::trap::SELLO_MAGIA,
+                bv = const crate::ring0::plat::trap::XSAVE_BV,
+                cero = const crate::ring0::plat::trap::XSAVE_CERO_DESDE,
                 m_sello = const PODRIDO_SELLO,
                 m_cs = const PODRIDO_CS,
                 m_cab = const PODRIDO_CABECERA,
@@ -242,11 +242,11 @@ extern "C" fn fault_dispatch(
     fault_rsp: u64,
 ) -> u64 {
     if cs & 3 == 3 {
-        let pid = crate::ring0::scheduler::current_pid();
-        let tid = crate::ring0::scheduler::current_tid();
+        let pid = crate::ring0::task::scheduler::current_pid();
+        let tid = crate::ring0::task::scheduler::current_tid();
         // Capabilities die with the process (same order as EXIT: revoke
         // completes before the final switch — no lock nesting).
-        crate::ring0::cap::revoke_all(pid);
+        crate::ring0::obj::cap::revoke_all(pid);
         // One red line in the rolling log, painted under the kernel CR3
         // (the user CR3 may not map the framebuffer identity range).
         let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
@@ -275,7 +275,7 @@ extern "C" fn fault_dispatch(
         crate::ring0::cabina::fault("ring3", "fault en CPL3: tarea eliminada, BMO sigue vivo", rip);
         let _ = (error, cr2, fault_rsp);
         // schedule() below loads the NEXT task's CR3 itself.
-        return crate::ring0::scheduler::kill_current_and_pick();
+        return crate::ring0::task::scheduler::kill_current_and_pick();
     }
     fault_report(vector, error, rip, cr2, fault_rsp)
 }
@@ -385,9 +385,9 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     // Ultimo cambio a tarea de usuario: el contexto que entrego el
     // planificador, su back-pointer EN ESE INSTANTE, y la misma ranura releida
     // AHORA. b valido + n cero => lo pisaron entre el cambio y el epilogo.
-    let snap = crate::ring0::scheduler::switch_snap();
+    let snap = crate::ring0::task::scheduler::switch_snap();
     let live = if snap[0] != 0 {
-        unsafe { ((snap[0] + crate::ring0::trap::XSAVE_AREA as u64) as *const u64).read_volatile() }
+        unsafe { ((snap[0] + crate::ring0::plat::trap::XSAVE_AREA as u64) as *const u64).read_volatile() }
     } else {
         0
     };
@@ -400,7 +400,7 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
 
     // La ultima escritura del RPC en un frame ajeno. Si el contexto que
     // revento es ese, la ruta culpable es esa; si no, queda descartada.
-    let ue = crate::ring0::endpoint::ultima_escritura();
+    let ue = crate::ring0::obj::endpoint::ultima_escritura();
     let mut l = Line::new();
     l.s("rpc t="); l.hex(ue[0], 2);
     l.s(" ctx="); l.hex(ue[1], 12);
@@ -409,7 +409,7 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
 
     // GS partido en dos: los MSR contra la direccion del PerCpu que deberian
     // tener. Si difieren, algun camino movio GS despues de init_bsp.
-    let (gsb, kgs, pcaddr) = crate::ring0::percpu::gs_diag();
+    let (gsb, kgs, pcaddr) = crate::ring0::task::percpu::gs_diag();
     let mut l = Line::new();
     l.s("gs b="); l.hex(gsb, 12);
     l.s(" k="); l.hex(kgs, 12);
@@ -417,7 +417,7 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     inf.push(l);
 
     let mut l = Line::new();
-    l.s("ticks="); l.hex(crate::ring0::timer::ticks(), 8);
+    l.s("ticks="); l.hex(crate::ring0::plat::timer::ticks(), 8);
     inf.push(l);
 
     // Si ese RSP cae en un rango plausible, los 5 operandos del iretq que el
@@ -512,7 +512,7 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
     if !crate::info::hay_fb_crudo() {
         // Sin pantalla no hay nada que pintar, pero el reinicio sigue siendo
         // mejor que el congelado.
-        crate::ring0::reinicio::ahora();
+        crate::ring0::plat::reinicio::ahora();
     }
 
     let w = unsafe { crate::info::FB_WIDTH };
@@ -554,7 +554,7 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
         FALLO_TEXTO,
     );
 
-    let hz = crate::ring0::scheduler::tsc_freq();
+    let hz = crate::ring0::task::scheduler::tsc_freq();
     if hz == 0 {
         // Sin TSC calibrado no hay cuenta atrás honesta. Se pinta la barra
         // llena y se reinicia: mentir con una barra que no mide nada sería
@@ -563,16 +563,16 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
         for _ in 0..80_000_000u64 {
             core::hint::spin_loop();
         }
-        crate::ring0::reinicio::ahora();
+        crate::ring0::plat::reinicio::ahora();
     }
 
-    let inicio = crate::ring0::scheduler::rdtsc();
+    let inicio = crate::ring0::task::scheduler::rdtsc();
     let total = hz * FALLO_SEGUNDOS;
     // La barra llena, UNA vez. A partir de aquí sólo se borra lo que mengua.
     sp::fallo_rect(x, barra_y, barra_w, alto, FALLO_BARRA);
     let mut anterior = barra_w;
     loop {
-        let pasado = crate::ring0::scheduler::rdtsc().wrapping_sub(inicio);
+        let pasado = crate::ring0::task::scheduler::rdtsc().wrapping_sub(inicio);
         if pasado >= total {
             break;
         }
@@ -598,7 +598,7 @@ fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
             anterior = restante;
         }
     }
-    crate::ring0::reinicio::ahora();
+    crate::ring0::plat::reinicio::ahora();
 }
 
 /// Motivos con los que un epílogo se niega a restaurar un contexto.
@@ -668,14 +668,14 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
         while off <= 72 {
             let slot = gpr_base.wrapping_sub(off);
             if unsafe { (slot as *const u64).read_volatile() } == gpr_base {
-                hallada = slot.wrapping_sub(crate::ring0::trap::XSAVE_AREA as u64);
+                hallada = slot.wrapping_sub(crate::ring0::plat::trap::XSAVE_AREA as u64);
                 break;
             }
             off += 8;
         }
         hallada
     };
-    let (firma, dueno) = crate::ring0::trap::leer_sello(base);
+    let (firma, dueno) = crate::ring0::plat::trap::leer_sello(base);
     let mut l = Line::new();
     l.s("sello=0x"); l.hex(firma, 8);
     l.s("  dueno=tid "); l.hex(dueno, 4);
@@ -691,7 +691,7 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     // siempre —los escribe `xsave64` en cada guardado— asi que cualquier otra
     // cosa ahi es corrupcion, sin interpretacion posible.
     if base != 0 {
-        use crate::ring0::trap as t;
+        use crate::ring0::plat::trap as t;
         let (bv, cmpbv) = unsafe {
             (
                 ((base + t::XSAVE_BV as u64) as *const u64).read_volatile(),
@@ -753,7 +753,7 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     l.s(" w4="); l.hex(w4, 4);
     inf.push(l);
 
-    let snap = crate::ring0::scheduler::switch_snap();
+    let snap = crate::ring0::task::scheduler::switch_snap();
     let mut l = Line::new();
     l.s("sw"); l.hex(snap[3], 2);
     l.s(" c="); l.hex(snap[0], 12);
@@ -766,7 +766,7 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     // distan menos de XSAVE_AREA y estan en la misma pila, se solapan — y el
     // tid de cada una dice de quien es cada trozo. Con el sello intacto, como
     // en la foto del 27, el vandalo tiene que estar en esta lista.
-    let pubs = crate::ring0::trap::publicaciones();
+    let pubs = crate::ring0::plat::trap::publicaciones();
     let mut l = Line::new();
     l.s("pub0="); l.hex(pubs[0].0, 12);
     l.s(" t"); l.hex(pubs[0].1 as u64, 2);
@@ -780,7 +780,7 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     l.s(" t"); l.hex(pubs[3].1 as u64, 2);
     inf.push(l);
 
-    let ue = crate::ring0::endpoint::ultima_escritura();
+    let ue = crate::ring0::obj::endpoint::ultima_escritura();
     let mut l = Line::new();
     l.s("rpc t="); l.hex(ue[0], 2);
     l.s(" ctx="); l.hex(ue[1], 12);

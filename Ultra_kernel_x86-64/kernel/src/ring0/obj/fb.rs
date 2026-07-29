@@ -38,7 +38,7 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use crate::ring0::cap;
+use crate::ring0::obj::cap;
 use crate::ring0::mm::{self, vmm};
 
 /// Nadie la tiene. Los pid válidos son 0..MAX_PROCS, así que hace falta un
