@@ -58,6 +58,21 @@ pub struct ObservedSyscall {
     pub arg0: u64,
 }
 
+/// Un archivo abierto dentro del emulador.
+///
+/// Modela lo mismo que `ring0/archivo.rs`, **incluido que lo escrito no llega
+/// al disco hasta cerrar**. Si el emulador guardara sobre la marcha, un
+/// programa que se olvida del `CLOSE` pasaría los tests y perdería el fichero
+/// en la máquina real — que es exactamente la clase de mentira que este módulo
+/// existe para no contar.
+struct Abierto {
+    ruta: String,
+    datos: Vec<u8>,
+    cursor: usize,
+    escribe: bool,
+    vivo: bool,
+}
+
 pub struct Machine {
     pub regs: [u64; 16],
     pub code: Vec<u8>,
@@ -68,6 +83,23 @@ pub struct Machine {
     pub syscalls: Vec<ObservedSyscall>,
     /// True cuando el programa invocó `TASK_OP_EXIT`.
     pub exited: bool,
+    /// El disco, modelado: ruta → contenido.
+    ///
+    /// Sin esto el File I/O de COBOL no se podría probar de ninguna forma —
+    /// `OPEN`/`READ`/`WRITE` sólo se distinguen de un no-op **ejecutándolos**,
+    /// que es la lección entera de este módulo. Las pruebas siembran los
+    /// archivos con [`Machine::poner_archivo`] y leen lo escrito con
+    /// [`Machine::archivo`].
+    pub archivos: HashMap<String, Vec<u8>>,
+    /// Lo que el terminal habría tecleado para este proceso. Lo siembra
+    /// [`Machine::poner_entrada`] y lo drena `TASK_OP_CONSOLE_READ`.
+    entrada: Vec<u8>,
+    entrada_cursor: usize,
+    /// El renglón donde se acumula una ruta byte a byte (`TASK_OP_RUTA`),
+    /// igual que en el kernel: la superficie no acepta punteros.
+    ruta: Vec<u8>,
+    /// Archivos abiertos: `(ruta, contenido, cursor, escribe)`.
+    abiertos: Vec<Abierto>,
     mem: HashMap<u64, u8>,
     data_len: u64,
     zf: bool,
@@ -85,6 +117,11 @@ impl Machine {
             console: String::new(),
             syscalls: Vec::new(),
             exited: false,
+            archivos: HashMap::new(),
+            entrada: Vec::new(),
+            entrada_cursor: 0,
+            ruta: Vec::new(),
+            abiertos: Vec::new(),
             mem: HashMap::new(),
             data_len: 0,
             zf: false,
@@ -104,6 +141,13 @@ impl Machine {
         }
         self.data_len += bytes.len() as u64;
         addr
+    }
+
+    /// Un byte de memoria, para que los tests puedan mirar si el emisor
+    /// escribió donde no debía. Sin esto, un desbordamiento de buffer sólo se
+    /// ve cuando ya ha corrompido otra cosa.
+    pub fn read_u8_pub(&self, addr: u64) -> u8 {
+        self.read_u8_mem(addr)
     }
 
     /// Lee 8 bytes de memoria.
@@ -198,10 +242,112 @@ impl Machine {
         self.of = false;
     }
 
+    /// Siembra lo que el terminal habría tecleado. El `\n` final hace falta:
+    /// `read_line` espera verlo para dar la línea por cerrada, exactamente
+    /// igual que en la máquina.
+    pub fn poner_entrada(&mut self, texto: &str) {
+        self.entrada.extend_from_slice(texto.as_bytes());
+    }
+
+    /// Siembra un archivo antes de ejecutar. Es el disco de la prueba.
+    pub fn poner_archivo(&mut self, ruta: &str, datos: &[u8]) {
+        self.archivos.insert(ruta.to_string(), datos.to_vec());
+    }
+
+    /// Lo que hay en el disco al terminar. `None` si ese archivo no existe —
+    /// que es distinto de existir vacío, y en un batch bancario esa diferencia
+    /// es la que separa "no se escribió" de "se escribió cero registros".
+    pub fn archivo(&self, ruta: &str) -> Option<&[u8]> {
+        self.archivos.get(ruta).map(|v| v.as_slice())
+    }
+
+    /// Igual, pero como texto. Comodidad para los tests.
+    pub fn archivo_texto(&self, ruta: &str) -> Option<String> {
+        self.archivo(ruta).map(|b| String::from_utf8_lossy(b).into_owned())
+    }
+
+    /// Abre o crea. Devuelve el handle (el índice + 1, para que 0 no sea uno
+    /// válido) o 0 si no se pudo.
+    fn archivo_abrir(&mut self, escribe: bool) -> u64 {
+        let ruta = String::from_utf8_lossy(&self.ruta).into_owned();
+        self.ruta.clear();
+        if ruta.is_empty() {
+            return 0;
+        }
+        let datos = if escribe {
+            Vec::new()
+        } else {
+            match self.archivos.get(&ruta) {
+                Some(d) => d.clone(),
+                // Abrir para leer lo que no existe FALLA. En el kernel es
+                // `ERROR_NO_ESTA`; aquí es un handle nulo. Devolver uno vacío
+                // haría que un `READ` de un fichero que falta pareciera un
+                // fichero sin registros.
+                None => return 0,
+            }
+        };
+        self.abiertos.push(Abierto { ruta, datos, cursor: 0, escribe, vivo: true });
+        self.abiertos.len() as u64
+    }
+
+    fn archivo_op(&mut self, handle: u64, op: u64, arg0: u64) -> u64 {
+        use bmo_abi::syscalls::surface::{
+            ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER, ARCH_OP_TAMANO,
+        };
+        let i = match (handle as usize).checked_sub(1) {
+            Some(i) if i < self.abiertos.len() => i,
+            _ => return 0,
+        };
+        if !self.abiertos[i].vivo {
+            return 0;
+        }
+        match op {
+            ARCH_OP_LEER if !self.abiertos[i].escribe => {
+                let a = &mut self.abiertos[i];
+                let mut w = [0u8; 8];
+                let mut n = 0usize;
+                while n < 7 && a.cursor < a.datos.len() {
+                    w[n] = a.datos[a.cursor];
+                    a.cursor += 1;
+                    n += 1;
+                }
+                ((n as u64) << 56) | u64::from_le_bytes(w)
+            }
+            ARCH_OP_ESCRIBIR if self.abiertos[i].escribe => {
+                let n = (((arg0 >> 56) & 0xFF) as usize).min(7);
+                let b = arg0.to_le_bytes();
+                let a = &mut self.abiertos[i];
+                for k in 0..n {
+                    a.datos.push(b[k]);
+                }
+                n as u64
+            }
+            ARCH_OP_TAMANO => {
+                let a = &self.abiertos[i];
+                if a.escribe { a.datos.len() as u64 } else { (a.datos.len() - a.cursor) as u64 }
+            }
+            ARCH_OP_CERRAR => {
+                let a = &mut self.abiertos[i];
+                a.vivo = false;
+                if a.escribe {
+                    // ★ AQUI es donde llega al disco, y sólo aquí. Igual que
+                    // en el kernel.
+                    let (ruta, datos) = (a.ruta.clone(), a.datos.clone());
+                    self.archivos.insert(ruta, datos);
+                }
+                1
+            }
+            // El modo manda: pedirle bytes a uno de escritura no es un error
+            // de permisos, es una pregunta que ese objeto no responde.
+            _ => 0,
+        }
+    }
+
     /// La puerta del kernel, modelada.
     fn do_syscall(&mut self) {
         use bmo_abi::syscalls::surface::{
-            CURRENT_TASK, NR_INVOKE, TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT,
+            CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
+            TASK_OP_CONSOLE_READ, TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_RUTA,
         };
 
         let call = ObservedSyscall {
@@ -230,14 +376,73 @@ impl Machine {
                     }
                 }
                 op if op == TASK_OP_EXIT => self.exited = true,
+                // La ruta se acumula de 8 en 8 y se corta en el primer cero,
+                // igual que en el kernel: un chunk final corto viene relleno.
+                op if op == TASK_OP_RUTA => {
+                    for i in 0..8 {
+                        let b = ((call.arg0 >> (i * 8)) & 0xFF) as u8;
+                        if b == 0 {
+                            break;
+                        }
+                        self.ruta.push(b);
+                    }
+                }
+                // La consola AL REVES: lo que el terminal habria tecleado. Se
+                // siembra con `poner_entrada` y sale de 7 en 7, como en el
+                // kernel. Es lo que hace testeable el `ACCEPT` de COBOL.
+                op if op == TASK_OP_CONSOLE_READ => {
+                    let mut w = [0u8; 8];
+                    let mut n = 0usize;
+                    while n < 7 && self.entrada_cursor < self.entrada.len() {
+                        w[n] = self.entrada[self.entrada_cursor];
+                        self.entrada_cursor += 1;
+                        n += 1;
+                    }
+                    let v = ((n as u64) << 56) | u64::from_le_bytes(w);
+                    self.finalizar_syscall(v);
+                    return;
+                }
+                op if op == TASK_OP_ARCHIVO_ABRIR => {
+                    let h = self.archivo_abrir(false);
+                    self.finalizar_syscall(h);
+                    return;
+                }
+                op if op == TASK_OP_ARCHIVO_CREAR => {
+                    let h = self.archivo_abrir(true);
+                    self.finalizar_syscall(h);
+                    return;
+                }
                 _ => {}
             }
+        } else if call.capability != 0 {
+            // Cualquier otro handle: aqui solo existen los de archivo. El
+            // emulador no modela la pantalla ni el raton porque ningun codigo
+            // EMITIDO los toca — los usa el compositor, que es Rust normal.
+            let v = self.archivo_op(call.capability, call.operation, call.arg0);
+            self.finalizar_syscall(v);
+            return;
         }
 
+        self.finalizar_syscall(0);
+    }
+
+    /// El epílogo comun de toda llamada.
+    ///
+    /// ★ El valor vuelve en **rdx**, no en rax. `BmoStatus` es
+    /// `{code, flags, value}`: rax trae el codigo y las banderas, rdx trae el
+    /// valor. Se puede leer en el stub de `userland::syscall`.
+    ///
+    /// Esto estaba MAL modelado: el emulador ponia `rax = 0` y no tocaba rdx,
+    /// asi que ahi seguia el argumento de entrada. Por eso `console::read_line`
+    /// —la puerta de `ACCEPT`— no tiene ni un test: en el emulador habria
+    /// visto siempre "no hay nada" y girado para siempre. El emulador mentia
+    /// sobre la puerta, que es justo lo que no puede hacer.
+    fn finalizar_syscall(&mut self, valor: u64) {
         // El silicio destruye estos dos.
         self.regs[RCX] = POISON;
         self.regs[R11] = POISON;
-        self.regs[RAX] = 0;
+        self.regs[RAX] = 0; // code = 0 (ok), flags = 0
+        self.regs[RDX] = valor;
     }
 
     /// Decodifica un ModRM y devuelve `(reg, destino)`.
@@ -478,6 +683,15 @@ impl Machine {
                 match ext & 7 {
                     0 => {
                         let r = a.wrapping_add(imm);
+                        self.flags_logic(r);
+                        self.store(dst, r, wide);
+                    }
+                    // AND. Lo emite `and_r64_imm32`, que usa `read_line` para
+                    // quedarse con el byte bajo del paquete. Faltaba, y esa
+                    // ausencia es la prueba de que `read_line` nunca se habia
+                    // EJECUTADO aqui — solo emitido.
+                    4 => {
+                        let r = a & imm;
                         self.flags_logic(r);
                         self.store(dst, r, wide);
                     }

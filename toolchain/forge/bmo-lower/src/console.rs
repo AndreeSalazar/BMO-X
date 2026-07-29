@@ -151,7 +151,23 @@ pub fn write_buffer(code: &mut Vec<u8>) {
 /// Emite código que lee UNA LÍNEA de la consola del proceso a `r8`, y deja su
 /// longitud (sin el salto) en `r9`.
 ///
-/// `r8` tiene que apuntar a un buffer del llamante y `rcx` traer su tamaño.
+/// `r8` tiene que apuntar a un buffer del llamante y `tope` es su tamaño.
+///
+/// ## El tope es un INMEDIATO, y ésa es la corrección
+///
+/// Antes llegaba en `rcx` y se copiaba a `r11` una vez, ANTES del bucle. Pero
+/// **`syscall` destruye `r11`**: el silicio guarda ahí RFLAGS. Desde la primera
+/// vuelta, la comparación de límite se hacía contra RFLAGS (~0x246 = 582), o
+/// sea que el guarda del buffer estaba MUERTO — una línea de más de 64
+/// caracteres tecleada en un `ACCEPT` se salía del buffer de pila.
+///
+/// No se ve en un volcado de bytes y no se veía ejecutando, porque el
+/// emulador tampoco modelaba el valor de vuelta (lo ponía en `rax` cuando la
+/// puerta lo devuelve en `rdx`), así que esta función **no tenía ni un test**.
+/// Dos mentiras que se tapaban la una a la otra.
+///
+/// El tope lo sabe el compilador —el buffer lo reserva él—, así que va como
+/// inmediato y no ocupa registro que nadie pueda pisar.
 ///
 /// ## Por qué cede el turno y no bloquea
 ///
@@ -162,9 +178,11 @@ pub fn write_buffer(code: &mut Vec<u8>) {
 ///
 /// Registros que ensucia: `rax`, `rcx`, `rdx`, `rdi`, `rsi`, `r9`, `r10`,
 /// `r11`. `r8` avanza hasta el final de lo leído.
-pub fn read_line(code: &mut Vec<u8>) {
-    // r11 = tope (el buffer no crece), r10 = base para volver a empezar.
-    x86::mov_r64_r64(code, R11, RCX);
+pub fn read_line(code: &mut Vec<u8>, tope: u8) {
+    // El tope cabe en un imm8 con signo: un buffer de linea de mas de 127
+    // bytes no es una linea, es otro problema. Se recorta al emitir en vez de
+    // emitir una comparacion que compara otra cosa.
+    let tope = tope.min(127) as i8;
     x86::zero_r32(code, R9);
 
     let otra_vez = code.len();
@@ -194,7 +212,9 @@ pub fn read_line(code: &mut Vec<u8>) {
     x86::cmp_r64_imm8(code, R10, b'\n' as i8);
     let fin = x86::emit_jump(code, Jump::IfEqual);
     // Guardar si cabe (si no cabe se descarta: recortar en silencio es peor).
-    x86::cmp_r64_r64(code, R9, R11);
+    // Contra un INMEDIATO, no contra `r11` — que el `syscall` de arriba pisa
+    // con RFLAGS en cada vuelta. Ver la nota de la cabecera.
+    x86::cmp_r64_imm8(code, R9, tope);
     let lleno = x86::emit_jump(code, Jump::IfAboveOrEqual);
     x86::mov_byte_at_reg_from_low(code, R8, R10);
     x86::inc_r64(code, R8);
@@ -291,6 +311,80 @@ mod tests {
             let m = run(m, 100_000);
             assert_eq!(m.console, text, "falló con longitud {len}");
             assert_eq!(m.regs[R9 as usize], 0, "el bucle debe consumir r9");
+        }
+    }
+
+    /// Ejecuta `read_line` sobre una entrada sembrada y devuelve `(bytes
+    /// leidos, contenido del buffer entero)`. El buffer se rodea de centinelas
+    /// para poder ver si el emisor escribió fuera.
+    fn leer_linea(entrada: &str, tope: u8, hueco: usize) -> (u64, Vec<u8>) {
+        const CENTINELA: u8 = 0xAA;
+        let mut code = Vec::new();
+        read_line(&mut code, tope);
+
+        let mut m = Machine::new(code);
+        // Buffer + 16 bytes de centinela detras.
+        let relleno = vec![0u8; hueco];
+        let base = m.load_data(&relleno);
+        let cent = m.load_data(&[CENTINELA; 16]);
+        assert_eq!(cent, base + hueco as u64, "el centinela va justo detras");
+
+        m.poner_entrada(entrada);
+        m.regs[R8 as usize] = base;
+        let m = run(m, 500_000);
+
+        let mut visto = Vec::new();
+        for i in 0..(hueco + 16) {
+            visto.push(m.read_u8_pub(base + i as u64));
+        }
+        (m.regs[R9 as usize], visto)
+    }
+
+    /// La puerta de `ACCEPT`, EJECUTADA. Hasta ahora no tenia ni un test: el
+    /// emulador ponia el valor de vuelta en `rax` cuando la puerta lo devuelve
+    /// en `rdx`, asi que esto habria girado para siempre.
+    #[test]
+    fn read_line_reads_what_the_terminal_typed() {
+        let (n, buf) = leer_linea("19.99\n", 64, 64);
+        assert_eq!(n, 5);
+        assert_eq!(&buf[..5], b"19.99");
+    }
+
+    /// Para en el salto de linea y no se lleva lo de despues: dos `ACCEPT`
+    /// seguidos tienen que ver dos valores distintos.
+    #[test]
+    fn read_line_stops_at_the_newline() {
+        let (n, buf) = leer_linea("12\n34\n", 64, 64);
+        assert_eq!(n, 2);
+        assert_eq!(&buf[..2], b"12");
+    }
+
+    /// Una linea vacia es una linea, no "no hay nada". Un `ACCEPT` al que le
+    /// dan un Enter a secas tiene que volver, no colgarse.
+    #[test]
+    fn read_line_accepts_an_empty_line() {
+        let (n, _) = leer_linea("\n", 64, 64);
+        assert_eq!(n, 0);
+    }
+
+    /// ★ El guarda del buffer, que estaba MUERTO.
+    ///
+    /// El tope se copiaba a `r11` antes del bucle y `syscall` pisa `r11` con
+    /// RFLAGS, asi que desde la primera vuelta se comparaba contra ~582. Con
+    /// un tope de 8 y una linea de 40 caracteres, la version anterior escribia
+    /// los 40 — 32 bytes fuera del buffer de pila que reserva `ACCEPT`.
+    ///
+    /// Aqui se comprueba sobre los CENTINELAS: si alguno cambia, el emisor
+    /// escribio donde no debia.
+    #[test]
+    fn read_line_never_writes_past_the_buffer() {
+        const CENTINELA: u8 = 0xAA;
+        let larga = "0123456789012345678901234567890123456789\n";
+        let (n, buf) = leer_linea(larga, 8, 8);
+        assert_eq!(n, 8, "se guardan 8 y el resto se descarta");
+        assert_eq!(&buf[..8], b"01234567");
+        for (i, &b) in buf[8..].iter().enumerate() {
+            assert_eq!(b, CENTINELA, "byte {i} DETRAS del buffer pisado");
         }
     }
 

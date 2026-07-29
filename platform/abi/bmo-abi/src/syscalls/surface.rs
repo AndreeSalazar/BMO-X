@@ -50,6 +50,43 @@ pub const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
 /// usa para hablar.
 pub const TASK_OP_CONSOLE_READ: u64 = 0x0F;
 
+/// Acumula hasta 8 bytes de una RUTA en el renglon del proceso.
+///
+/// La superficie congelada no acepta punteros, asi que una ruta viaja de 8 en
+/// 8 y la consume la siguiente operacion que necesite una. **Un solo renglon**
+/// para `EJECUTAR`, `DIR_ABRIR` y los dos de archivo: inventar un mecanismo
+/// por cada consumidor seria tener cuatro sitios donde se pierde un byte.
+pub const TASK_OP_RUTA: u64 = 0x0B;
+
+/// Abre un archivo del volumen de datos para LEER. La ruta viene del renglon.
+pub const TASK_OP_ARCHIVO_ABRIR: u64 = 0x10;
+
+/// Abre un archivo del volumen de datos para ESCRIBIR (lo crea).
+///
+/// Son dos operaciones y no un argumento de modo porque crear puede fallar por
+/// motivos que abrir no tiene —volumen de solo lectura, nombre que no es 8.3—
+/// y mezclarlas obligaria a devolver errores que no aplican a la mitad de las
+/// llamadas.
+pub const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
+
+// ── Operaciones sobre un handle de archivo (`KIND_ARCHIVO`) ──────────────
+//
+// Viven aqui y no en el kernel porque las emite `bmo-lower` y las ejecuta el
+// emulador: tres sitios que tienen que decir el mismo numero. Ver
+// `Ultra_kernel_x86-64/kernel/src/ring0/archivo.rs`.
+
+/// Saca hasta 7 bytes: `(n << 56) | bytes_LE`. `n == 0` = se acabo.
+///
+/// La cuenta va en el byte alto y NO se corta en el primer cero, al reves que
+/// la consola: un archivo no es texto y un `\0` en medio es un dato.
+pub const ARCH_OP_LEER: u64 = 0x01;
+/// Mete hasta 7 bytes: `arg0 = (n << 56) | bytes_LE`. Devuelve los aceptados.
+pub const ARCH_OP_ESCRIBIR: u64 = 0x02;
+/// Bytes que quedan por leer, o los acumulados si es de escritura.
+pub const ARCH_OP_TAMANO: u64 = 0x03;
+/// Cierra. En uno de escritura **es donde el contenido llega al disco**.
+pub const ARCH_OP_CERRAR: u64 = 0x04;
+
 /// Operations accepted by `CURRENT_TASK`.
 pub mod task_op {
     pub const GET_PID: u64 = super::TASK_OP_GET_PID;

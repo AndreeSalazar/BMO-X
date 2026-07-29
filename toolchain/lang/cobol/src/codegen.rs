@@ -372,10 +372,12 @@ impl Codegen {
         // Hueco en la pila y r8 = principio del buffer.
         x86::sub_r64_imm8(&mut self.code, x86::RSP, BUF);
         x86::lea_r64_rsp_disp8(&mut self.code, x86::R8, 0);
-        x86::mov_r32_imm32(&mut self.code, x86::RCX, BUF as u32);
+        // El tope va como INMEDIATO. Antes viajaba en `rcx` y `read_line` lo
+        // guardaba en `r11`, que el `syscall` pisa con RFLAGS: el guarda del
+        // buffer estaba muerto y una linea larga se salia de estos 64 bytes.
         // La linea entra en el buffer; r9 queda con su largo. `r8` avanza al
         // final, asi que hay que devolverlo al principio para leerlo.
-        bmo_lower::console::read_line(&mut self.code);
+        bmo_lower::console::read_line(&mut self.code, BUF as u8);
         x86::sub_r64_r64(&mut self.code, x86::R8, x86::R9);
         bmo_lower::fmt::parse_decimal_scaled(&mut self.code, escala);
         x86::add_r64_imm8(&mut self.code, x86::RSP, BUF);
