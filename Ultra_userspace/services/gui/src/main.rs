@@ -1074,11 +1074,45 @@ pub extern "C" fn _start() -> ! {
                         // punto medio separa igual de bien y no arrastra la
                         // convencion de otro. Esta en la tabla de extras del
                         // font, asi que se dibuja sin tocar nada mas.
-                        historial.empujar(&ruta[..n]);
                         salida.byte(0xB7);
                         salida.byte(b' ');
                         salida.texto(&ruta[..n]);
                         salida.byte(b'\n');
+
+                        // ¿Hay un programa vivo escuchando en esta consola?
+                        // Entonces la linea NO es un comando: es SUYA. Es lo
+                        // que hace cualquier shell, y sin esto un `ACCEPT` de
+                        // COBOL no puede recibir nada nunca — el terminal se
+                        // come la respuesta y contesta "no lo conozco".
+                        //
+                        // La calculadora se excluye a proposito: mientras
+                        // espera al motor, ese hijo es SUYO y ya recibio sus
+                        // tres lineas. Colar una mas ahi le cambiaria la
+                        // cuenta a alguien que no la pidio.
+                        let del_hijo = !calc.esperando
+                            && salida_cap.as_ref().map(|cc| cc.hay_hijo()).unwrap_or(false);
+
+                        if del_hijo {
+                            if let Some(cc) = salida_cap.as_ref() {
+                                cc.escribir(&ruta[..n]);
+                                // El salto va aparte y SIEMPRE: `read_line`
+                                // espera a verlo para dar la linea por
+                                // cerrada. Sin el, el programa sigue
+                                // esperando algo que ya escribiste.
+                                cc.escribir(b"\n");
+                            }
+                            pintar_estado(&p, &caja, "para el programa", TEXTO_TENUE);
+                            n = 0;
+                            cur = 0;
+                            repintar_campo = true;
+                            continue;
+                        }
+
+                        // Al historial va lo que es un COMANDO. Un importe
+                        // tecleado para un `ACCEPT` es un dato, y mezclarlo
+                        // con las rutas ensucia la flecha arriba justo cuando
+                        // hace falta repetir el comando de verdad.
+                        historial.empujar(&ruta[..n]);
                         match interpretar(&ruta[..n]) {
                             Orden::Nada => {
                                 pintar_estado(&p, &caja, "escribe algo", TEXTO_TENUE);
@@ -1195,6 +1229,16 @@ pub extern "C" fn _start() -> ! {
                                 }
                             }
                         }
+                        // El cursor detras de la linea, SIEMPRE. Las ramas que
+                        // vacian el campo ponian `n = 0` y dejaban `cur` donde
+                        // estaba: la tecla siguiente se escribia en `ruta[cur]`
+                        // —fuera de lo que se dibuja— y el campo ensenaba los
+                        // bytes VIEJOS del comando anterior. Escribir `2` tras
+                        // `run apps/calc.bex` mostraba una `r`. Las ramas de
+                        // error conservan la ruta a proposito para poder
+                        // corregirla, y ahi `cur` no se mueve: por eso es un
+                        // `min` y no un cero.
+                        cur = cur.min(n);
                         repintar_campo = true;
                     }
                     // TAB: completar.
