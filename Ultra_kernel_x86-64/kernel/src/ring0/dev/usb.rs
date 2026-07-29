@@ -200,13 +200,13 @@ pub fn init(_ctx: &BootContext) {
             Some(l) => l,
             None => break,
         };
-        // MMIO virtual: < 4 GiB cae en la identidad de s2; más arriba lo
-        // cubre el physmap.
-        let mmio_va = if loc.mmio < 0x1_0000_0000 {
-            loc.mmio
-        } else {
-            mm::phys_to_virt(loc.mmio)
-        };
+        // MMIO virtual: SIEMPRE por el physmap. La identidad de s2 vive en
+        // PML4[0] y un espacio de Ring 3 sólo hereda su primer GiB, así que
+        // tocar un BAR de ~4 GiB bajo el CR3 de un proceso es un #PF en Ring 0.
+        // Aquí no se notaba porque el sondeo del xHC corre en una tarea de
+        // Ring 0; el mismo fallo SÍ mataba al disco. Ver la nota larga en
+        // `dev/disk.rs`.
+        let mmio_va = mm::phys_to_virt(loc.mmio);
         dlog_push("[usb] xHC pci ");
         dlog_u64(loc.bus as u64);
         dlog_push(":");

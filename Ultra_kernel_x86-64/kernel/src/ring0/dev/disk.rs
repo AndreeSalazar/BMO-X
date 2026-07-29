@@ -207,7 +207,23 @@ pub fn init() {
         if kind == StorageKind::Raid {
             crate::ring0::cabina::warn("disk", "probando un controlador en modo RAID como AHCI", loc.mmio);
         }
-        let mmio_va = if loc.mmio < 0x1_0000_0000 { loc.mmio } else { mm::phys_to_virt(loc.mmio) };
+        // ★ SIEMPRE por el physmap, nunca por la identidad.
+        //
+        // La identidad 0..4 GiB que monta s2_mem vive en PML4[0], y un espacio
+        // de Ring 3 sólo hereda de ahí la PRIMERA entrada del PDPT — el primer
+        // GiB (ver `vmm::new_address_space`, y no puede heredar más: la imagen
+        // del proceso vive justo en PDPT[1], `USER_IMAGE_BASE = 0x4000_0000`).
+        //
+        // El ABAR del AHCI cae en `0xFC68_0000`, o sea PDPT[3]. Bajo el CR3 de
+        // un proceso esa entrada NO EXISTE, así que cualquier syscall de Ring 3
+        // que llegara al disco hacía **#PF en Ring 0** dentro de
+        // `bmo_ahci::controller::run_command`. Desde el shell de Ring 0 no
+        // pasaba —ahí manda el PML4 del kernel— y por eso parecía funcionar.
+        //
+        // El physmap (0..16 GiB en `HIGH_MEM_BASE`) está en el MEDIO-KERNEL,
+        // que todo espacio comparte por construcción. Misma memoria, mismo
+        // caché, y alcanzable bajo cualquier CR3.
+        let mmio_va = mm::phys_to_virt(loc.mmio);
         crate::ring0::cabina::info("disk", "HBA SATA/AHCI hallado en PCI", loc.mmio);
 
         bmo_ahci::reset_ctrl();
