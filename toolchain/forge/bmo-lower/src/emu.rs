@@ -292,7 +292,7 @@ impl Machine {
 
     fn archivo_op(&mut self, handle: u64, op: u64, arg0: u64) -> u64 {
         use bmo_abi::syscalls::surface::{
-            ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER, ARCH_OP_TAMANO,
+            ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER, ARCH_OP_LEER_LINEA, ARCH_OP_TAMANO,
         };
         let i = match (handle as usize).checked_sub(1) {
             Some(i) if i < self.abiertos.len() => i,
@@ -312,6 +312,27 @@ impl Machine {
                     n += 1;
                 }
                 ((n as u64) << 56) | u64::from_le_bytes(w)
+            }
+            // Se para en el salto y lo consume. Modela EXACTAMENTE lo que
+            // hace `ring0/archivo.rs`: si el emulador entregara los bytes de
+            // detras del salto, un fichero de varios registros pasaria los
+            // tests y daria basura en la maquina.
+            ARCH_OP_LEER_LINEA if !self.abiertos[i].escribe => {
+                let a = &mut self.abiertos[i];
+                let mut w = [0u8; 8];
+                let mut n = 0usize;
+                let mut fin = 0u64;
+                while n < 7 && a.cursor < a.datos.len() {
+                    let b = a.datos[a.cursor];
+                    a.cursor += 1;
+                    if b == b'\n' {
+                        fin = 1;
+                        break;
+                    }
+                    w[n] = b;
+                    n += 1;
+                }
+                (fin << 63) | ((n as u64) << 56) | u64::from_le_bytes(w)
             }
             ARCH_OP_ESCRIBIR if self.abiertos[i].escribe => {
                 let n = (((arg0 >> 56) & 0xFF) as usize).min(7);

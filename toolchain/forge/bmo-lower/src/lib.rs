@@ -42,6 +42,9 @@
 //! `.rodata` — el texto viaja **dentro de las instrucciones**, como
 //! inmediatos, así que no hay fixup que parchear ni puntero que cruzar.
 
+/// La puerta de ARCHIVOS. Hermana de `console`: mueve bytes sobre
+/// `KIND_ARCHIVO` y no sabe qué es un registro ni una PICTURE.
+pub mod archivo;
 pub mod console;
 /// Formateo de valores a texto. LIBRERIA compartida, no puerta: ver
 /// la cabecera de `fmt.rs` para por que vive aqui y no en cada frontend.

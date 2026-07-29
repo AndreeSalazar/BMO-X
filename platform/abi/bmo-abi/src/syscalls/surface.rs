@@ -80,6 +80,20 @@ pub const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
 /// La cuenta va en el byte alto y NO se corta en el primer cero, al reves que
 /// la consola: un archivo no es texto y un `\0` en medio es un dato.
 pub const ARCH_OP_LEER: u64 = 0x01;
+/// Saca hasta 7 bytes **sin pasar del salto de linea**:
+/// `(fin << 63) | (n << 56) | bytes_LE`.
+///
+/// - `fin = 1` — se llego al salto, que se CONSUME. El registro esta completo.
+/// - `n = 0` y `fin = 0` — se acabo el archivo.
+///
+/// Existe porque `ARCH_OP_LEER` no sirve para leer registros: devuelve siete
+/// bytes y avanza el cursor siete, asi que si el salto cae en medio del
+/// paquete, lo que venia detras **se pierde**. Un fichero de movimientos
+/// leido asi da bien el primer registro y basura los demas.
+///
+/// El corte lo hace el kernel y no el llamante porque el cursor es del kernel:
+/// nadie de fuera puede devolverle los bytes que ya le dio.
+pub const ARCH_OP_LEER_LINEA: u64 = 0x05;
 /// Mete hasta 7 bytes: `arg0 = (n << 56) | bytes_LE`. Devuelve los aceptados.
 pub const ARCH_OP_ESCRIBIR: u64 = 0x02;
 /// Bytes que quedan por leer, o los acumulados si es de escritura.

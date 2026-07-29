@@ -86,6 +86,19 @@ pub const ARCH_OP_TAMANO: u64 = 0x03;
 /// devuelve `1` si se guardó, `0` si no. En uno de lectura devuelve `1`.
 pub const ARCH_OP_CERRAR: u64 = 0x04;
 
+/// Saca hasta 7 bytes **sin pasar del salto de línea**:
+/// `(fin << 63) | (n << 56) | bytes_LE`.
+///
+/// ★ Existe porque `ARCH_OP_LEER` **no sirve para leer registros**. Aquel
+/// devuelve siete bytes y avanza el cursor siete; si el salto cae en medio del
+/// paquete, lo que venía detrás se pierde — el cursor ya pasó por encima y
+/// nadie de fuera puede devolvérselo. Un fichero de movimientos leído así da
+/// bien el primer registro y basura todos los demás.
+///
+/// El corte lo hace el kernel porque **el cursor es del kernel**. Es la misma
+/// razón por la que `siguiente` vive en `directorio.rs` y no en Ring 3.
+pub const ARCH_OP_LEER_LINEA: u64 = 0x05;
+
 static mut BUF: [[u8; BUFFER]; MAX_ABIERTOS] = [[0; BUFFER]; MAX_ABIERTOS];
 /// Bytes válidos: lo leído del disco, o lo acumulado para escribir.
 static mut LARGO: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
@@ -227,6 +240,28 @@ fn leer(i: usize) -> u64 {
     }
 }
 
+/// Como `leer`, pero se para en el salto de línea y lo consume.
+fn leer_linea(i: usize) -> u64 {
+    unsafe {
+        let mut w = [0u8; 8];
+        let mut n = 0usize;
+        let mut fin = 0u64;
+        while n < 7 && CURSOR[i] < LARGO[i] {
+            let b = BUF[i][CURSOR[i]];
+            CURSOR[i] += 1;
+            if b == b'\n' {
+                // Se consume y NO se entrega: el salto separa registros, no
+                // forma parte de ninguno.
+                fin = 1;
+                break;
+            }
+            w[n] = b;
+            n += 1;
+        }
+        (fin << 63) | ((n as u64) << 56) | u64::from_le_bytes(w)
+    }
+}
+
 fn escribir(i: usize, palabra: u64) -> u64 {
     let n = ((palabra >> 56) & 0xFF) as usize;
     let n = n.min(7);
@@ -304,6 +339,7 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
         // El modo manda. Pedirle bytes a un archivo de escritura no es un
         // error de permisos: es una pregunta que ese objeto no responde.
         ARCH_OP_LEER if !escribe => Some(leer(i)),
+        ARCH_OP_LEER_LINEA if !escribe => Some(leer_linea(i)),
         ARCH_OP_ESCRIBIR if escribe => Some(escribir(i, arg0)),
         ARCH_OP_TAMANO => Some(unsafe {
             if escribe { LARGO[i] as u64 } else { (LARGO[i] - CURSOR[i]) as u64 }
