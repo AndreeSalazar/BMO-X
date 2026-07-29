@@ -325,8 +325,42 @@ fn pintar_campo(p: &bmo::Pantalla, c: &Caja, ruta: &[u8], cur: usize, caret: boo
 /// regiones— es una pila entera, y hoy lo único que hay al otro lado son
 /// programas que escriben líneas. Cuando algo pida más, se añade; adivinarlo
 /// ahora sería escribir código que nadie ejercita.
+// ── La tinta ────────────────────────────────────────────────────────────
+//
+// El color va POR LÍNEA y no por celda. Una rejilla de atributos costaría
+// 88x16 bytes para decir dieciséis veces lo mismo: este terminal escribe
+// líneas enteras —el eco de un comando, un mensaje de error, la salida de un
+// programa— y nunca media línea de un color y media de otro.
+//
+// Antes el único color lo daba `f == s.fila`, o sea "la fila donde está el
+// cursor". Eso pinta de otro color la ÚLTIMA línea escrita, que casi nunca es
+// la que te interesa: si un programa imprime diez líneas, la marcada es la
+// décima y no el comando que lo lanzó.
+
+/// Salida corriente de un programa.
+const TINTA_NORMAL: u8 = 0;
+/// El comando que escribiste. Es el ancla para leer hacia abajo.
+const TINTA_ECO: u8 = 1;
+/// Algo salió mal.
+const TINTA_MAL: u8 = 2;
+/// Algo salió bien y merece verse.
+const TINTA_BIEN: u8 = 3;
+
+fn color_tinta(t: u8) -> u32 {
+    match t {
+        TINTA_ECO => SAL_ECO,
+        TINTA_MAL => TEXTO_MAL,
+        TINTA_BIEN => TEXTO_BIEN,
+        _ => SAL_TEXTO,
+    }
+}
+
 struct Salida {
     celdas: [[u8; SAL_COLS]; SAL_ROWS],
+    /// Con qué color se pinta cada fila.
+    tinta: [u8; SAL_ROWS],
+    /// Con qué color se escribe a partir de ahora.
+    tinta_actual: u8,
     fila: usize,
     col: usize,
     /// Hay algo nuevo que pintar. Repintar la rejilla entera cada fotograma
@@ -336,15 +370,34 @@ struct Salida {
 
 impl Salida {
     fn nueva() -> Self {
-        Self { celdas: [[b' '; SAL_COLS]; SAL_ROWS], fila: 0, col: 0, sucia: true }
+        Self {
+            celdas: [[b' '; SAL_COLS]; SAL_ROWS],
+            tinta: [TINTA_NORMAL; SAL_ROWS],
+            tinta_actual: TINTA_NORMAL,
+            fila: 0,
+            col: 0,
+            sucia: true,
+        }
     }
 
-    /// Sube todo una línea y deja la última en blanco.
+    /// A partir de aquí se escribe con esta tinta. La fila en curso se marca
+    /// ya: quien cambia el color antes de escribir espera que valga para lo
+    /// que va a escribir, no para lo siguiente.
+    fn con_tinta(&mut self, t: u8) {
+        self.tinta_actual = t;
+        self.tinta[self.fila] = t;
+    }
+
+    /// Sube todo una línea y deja la última en blanco. La tinta viaja con su
+    /// línea: si no, al desplazarse el color se quedaría marcando la fila de
+    /// otro.
     fn desplazar(&mut self) {
         for f in 1..SAL_ROWS {
             self.celdas[f - 1] = self.celdas[f];
+            self.tinta[f - 1] = self.tinta[f];
         }
         self.celdas[SAL_ROWS - 1] = [b' '; SAL_COLS];
+        self.tinta[SAL_ROWS - 1] = self.tinta_actual;
     }
 
     fn salto(&mut self) {
@@ -354,6 +407,7 @@ impl Salida {
         } else {
             self.fila += 1;
         }
+        self.tinta[self.fila] = self.tinta_actual;
         self.sucia = true;
     }
 
@@ -396,6 +450,8 @@ impl Salida {
 
     fn limpiar(&mut self) {
         self.celdas = [[b' '; SAL_COLS]; SAL_ROWS];
+        self.tinta = [TINTA_NORMAL; SAL_ROWS];
+        self.tinta_actual = TINTA_NORMAL;
         self.fila = 0;
         self.col = 0;
         self.sucia = true;
@@ -719,6 +775,16 @@ fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
 ///
 /// Si el unico candidato es una carpeta, se anade la barra — porque lo
 /// siguiente que vas a escribir es lo de dentro.
+/// ¿Es la entrada `.` o `..`?
+///
+/// FAT las guarda como entradas de verdad y `entry_at` las devuelve. Aquí no
+/// sirven para nada —este terminal no tiene "carpeta actual" a la que volver—
+/// y estorban en los dos sitios donde aparecen: envenenan el prefijo común del
+/// TAB y ensucian el `ls`.
+fn es_punto(nombre: &[u8]) -> bool {
+    nombre == b"." || nombre == b".."
+}
+
 fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida) -> usize {
     // El ultimo token: lo que hay tras el ultimo espacio. Asi `corre app<TAB>`
     // completa la ruta y no el verbo.
@@ -768,6 +834,12 @@ fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida) -> usize 
         vueltas += 1;
         let mut nom = [0u8; 12];
         let largo = e.legible(&mut nom);
+        // ★ `.` y `..` FUERA. Eran el motivo de que el TAB no completara
+        // NUNCA dentro de una carpeta: entran como candidatos, y el prefijo
+        // comun de `.`, `..` y `gui.bex` es la cadena vacia. El TAB listaba
+        // todo y no avanzaba ni una letra, que parecia "no busca referencias"
+        // cuando lo que hacia era buscarlas y anularse solo.
+        if es_punto(&nom[..largo]) { continue; }
         if largo < prefijo.len() { continue; }
         let mut cuadra = true;
         for k in 0..prefijo.len() {
@@ -956,8 +1028,7 @@ fn pintar_salida(p: &bmo::Pantalla, c: &Caja, s: &Salida) {
         CAJA_FONDO,
     );
     for (f, fila) in s.celdas.iter().enumerate() {
-        // La última línea escrita en otro color: es la que acabas de provocar.
-        let color = if f == s.fila { SAL_ECO } else { SAL_TEXTO };
+        let color = color_tinta(s.tinta[f]);
         p.texto_bytes(
             c.salida_x,
             c.salida_y + f as u32 * bmo::GLIFO_ALTO,
@@ -1090,6 +1161,9 @@ pub extern "C" fn _start() -> ! {
     let mut pulso_previo = 0u32;
     let mut vueltas = 0u32;
     let mut caret = true;
+    // Vueltas desde la última tecla. Se reinicia al escribir para que el
+    // cursor esté SIEMPRE encendido mientras se teclea.
+    let mut desde_tecla: u32 = 0;
     // ── El atajo: un TOQUE de Ctrl+Alt ──
     //
     // Se dispara al SOLTAR, y sólo si no llegó ningún carácter mientras
@@ -1143,6 +1217,10 @@ pub extern "C" fn _start() -> ! {
                 if !visible {
                     continue;
                 }
+                // Cualquier tecla enciende el cursor y reinicia el parpadeo.
+                caret = true;
+                desde_tecla = 0;
+                repintar_campo = true;
                 match c {
                     b'\r' | b'\n' => {
                         // Eco SIEMPRE, también de lo que no se entiende: un
@@ -1153,10 +1231,15 @@ pub extern "C" fn _start() -> ! {
                         // punto medio separa igual de bien y no arrastra la
                         // convencion de otro. Esta en la tabla de extras del
                         // font, asi que se dibuja sin tocar nada mas.
+                        // El eco en su tinta y la respuesta en la normal: al
+                        // mirar la rejilla, los comandos son las anclas y todo
+                        // lo de debajo es lo que contestaron.
+                        salida.con_tinta(TINTA_ECO);
                         salida.byte(0xB7);
                         salida.byte(b' ');
                         salida.texto(&ruta[..n]);
                         salida.byte(b'\n');
+                        salida.con_tinta(TINTA_NORMAL);
 
                         // ¿Hay un programa vivo escuchando en esta consola?
                         // Entonces la linea NO es un comando: es SUYA. Es lo
@@ -1209,6 +1292,10 @@ pub extern "C" fn _start() -> ! {
                                             };
                                             let mut nom = [0u8; 12];
                                             let largo = e.legible(&mut nom);
+                                            // `.` y `..` no se enseñan: aqui
+                                            // no hay carpeta actual a la que
+                                            // volver, asi que son ruido.
+                                            if es_punto(&nom[..largo]) { continue; }
                                             salida.texto(b"  ");
                                             salida.texto(&nom[..largo]);
                                             // Alinear la columna del tamaño.
@@ -1279,9 +1366,11 @@ pub extern "C" fn _start() -> ! {
                                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                                     }
                                     Err(e) => {
+                                        salida.con_tinta(TINTA_MAL);
                                         salida.texto(b"  ");
                                         salida.texto(motivo_archivo(e));
                                         salida.byte(b'\n');
+                                        salida.con_tinta(TINTA_NORMAL);
                                         pintar_estado(&p, &caja, "no se pudo leer", TEXTO_MAL);
                                     }
                                 }
@@ -1316,9 +1405,11 @@ pub extern "C" fn _start() -> ! {
                                         }
                                     }
                                     Err(e) => {
+                                        salida.con_tinta(TINTA_MAL);
                                         salida.texto(b"  ");
                                         salida.texto(motivo_archivo(e));
                                         salida.byte(b'\n');
+                                        salida.con_tinta(TINTA_NORMAL);
                                         pintar_estado(&p, &caja, "no se pudo crear", TEXTO_MAL);
                                     }
                                 }
@@ -1354,6 +1445,9 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(b"  cat <ruta>   ensena lo que hay dentro\n");
                                 salida.texto(b"  write <ruta> <texto>     lo guarda\n");
                                 salida.texto(b"  clear / cls  limpia esta salida\n");
+                                salida.texto(b"  TAB          completa   Ctrl+A/E inicio/fin\n");
+                                salida.texto(b"  Ctrl+K corta al final    Ctrl+W borra palabra\n");
+                                salida.texto(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
                                 salida.texto(b"  help         esto\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
                                 pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
@@ -1363,10 +1457,12 @@ pub extern "C" fn _start() -> ! {
                             // que se abre — un mensaje sobre la FIRMA aqui
                             // manda a buscar un permiso que no hace falta.
                             Orden::NoEsPrograma(r) => {
+                                salida.con_tinta(TINTA_MAL);
                                 salida.texto(b"  eso no es un programa (solo .bex se lanza).\n");
                                 salida.texto(b"  para verlo:  cat ");
                                 salida.texto(r);
                                 salida.byte(b'\n');
+                                salida.con_tinta(TINTA_NORMAL);
                                 pintar_estado(&p, &caja, "no es un programa: prueba lee", TEXTO_TENUE);
                                 n = 0;
                             }
@@ -1541,6 +1637,41 @@ pub extern "C" fn _start() -> ! {
                     // INICIO / FIN.
                     0x84 => { cur = 0; repintar_campo = true; }
                     0x85 => { cur = n; repintar_campo = true; }
+                    // ── Los atajos de edicion de linea ──
+                    //
+                    // Los de toda la vida en una consola: Ctrl+A al principio,
+                    // Ctrl+E al final, Ctrl+K corta hasta el final, Ctrl+W
+                    // borra la palabra de atras. Van ADEMAS de Inicio/Fin, que
+                    // ya estaban: los dedos que vienen de un terminal buscan
+                    // estos, y los que vienen de Windows buscan aquellos.
+                    // Atender a los dos cuesta cuatro lineas.
+                    0x01 => { cur = 0; repintar_campo = true; }
+                    0x05 => { cur = n; repintar_campo = true; }
+                    // Ctrl+K: tirar lo que hay del cursor al final.
+                    0x0B => {
+                        n = cur;
+                        repintar_campo = true;
+                    }
+                    // Ctrl+W: borrar la palabra de atras. Primero se comen los
+                    // espacios y luego las letras, que es lo que espera
+                    // cualquiera que lo haya usado — si no, borrar tras un
+                    // espacio no haria nada.
+                    0x17 => {
+                        let mut k = cur;
+                        while k > 0 && ruta[k - 1] == b' ' { k -= 1; }
+                        while k > 0 && ruta[k - 1] != b' ' { k -= 1; }
+                        let quitados = cur - k;
+                        if quitados > 0 {
+                            let mut i = cur;
+                            while i < n {
+                                ruta[i - quitados] = ruta[i];
+                                i += 1;
+                            }
+                            n -= quitados;
+                            cur = k;
+                            repintar_campo = true;
+                        }
+                    }
                     // SUPRIMIR — borra HACIA ADELANTE, al reves que el
                     // retroceso. Son dos teclas porque son dos intenciones.
                     0x86 => {
@@ -1695,7 +1826,16 @@ pub extern "C" fn _start() -> ! {
         // El parpadeo del cursor de escritura. Sólo repinta cuando cambia de
         // estado — repintar el campo cada vuelta sería reescribir la ruta
         // miles de veces por segundo para que se vea igual.
-        if vueltas % PARPADEO == 0 {
+        //
+        // ★ El contador se REINICIA con cada tecla (ver el manejador). Antes
+        // era `vueltas % PARPADEO`, un reloj que corría solo: si te ponías a
+        // escribir justo cuando tocaba apagarlo, el cursor desaparecía a mitad
+        // de la palabra y no volvía hasta la siguiente vuelta entera. Un
+        // cursor que se esconde mientras escribes es lo contrario de lo que
+        // un cursor existe para decir.
+        desde_tecla = desde_tecla.wrapping_add(1);
+        if desde_tecla >= PARPADEO {
+            desde_tecla = 0;
             caret = !caret;
             repintar_campo = true;
         }
