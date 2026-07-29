@@ -1,4 +1,5 @@
 use crate::ast::error::CobolError;
+use crate::edicion::Plantilla;
 use crate::pic::{parse_pic, PicField, Usage};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,8 +8,40 @@ pub struct DataItem {
     pub name: String,
     pub pic: Option<String>,
     pub pic_field: Option<PicField>,
+    /// La plantilla de edición, si la PIC es de PRESENTACIÓN
+    /// (`$$$,$$9.99`) en vez de de cálculo (`S9(7)V99`). Lo que la lleva no
+    /// se guarda distinto —sigue siendo un entero escalado— pero al
+    /// enseñarlo no se escribe el número: se escribe la máscara.
+    pub edicion: Option<Plantilla>,
     pub value: Option<String>,
     pub usage: Usage,
+}
+
+/// Analiza una PIC decidiendo primero de cuál de las dos familias es.
+///
+/// Son dos gramáticas distintas y por eso hay dos analizadores: `parse_pic`
+/// sabe de `9`, `S` y `V` —cuántos dígitos y dónde cae la coma— y se atraganta
+/// con un `$`. Mandarle una PIC editada devolvía error, y como el error se
+/// tragaba con `.ok()`, el dato acababa con escala 0: `MOVE 19.99` guardaba
+/// 19 y los centavos desaparecían sin que nadie dijera nada.
+fn analizar_pic(pic: &str, usage: Usage) -> Result<(PicField, Option<Plantilla>), String> {
+    if !Plantilla::es_editada(pic) {
+        return Ok((parse_pic(pic, usage)?, None));
+    }
+    let plantilla = Plantilla::parse(pic)?;
+    let escala = plantilla.escala;
+    let campo = PicField {
+        integer_digits: plantilla.digitos() as u32 - escala,
+        scale: escala,
+        // Una PIC editada puede enseñar signo (`-`, `CR`, `DB`), así que el
+        // dato que la alimenta se guarda con signo. Al revés —guardarlo sin
+        // signo— un saldo en rojo saldría en verde.
+        signed: true,
+        numeric: true,
+        char_count: 0,
+        usage,
+    };
+    Ok((campo, Some(plantilla)))
 }
 
 impl DataItem {
@@ -23,8 +56,11 @@ impl DataItem {
         value: Option<String>,
         usage: Usage,
     ) -> Self {
-        let pic_field = pic.as_deref().and_then(|p| parse_pic(p, usage).ok());
-        DataItem { level, name, pic, pic_field, value, usage }
+        let (pic_field, edicion) = match pic.as_deref().map(|p| analizar_pic(p, usage)) {
+            Some(Ok((campo, plantilla))) => (Some(campo), plantilla),
+            _ => (None, None),
+        };
+        DataItem { level, name, pic, pic_field, edicion, value, usage }
     }
 
     /// Bytes de almacenamiento del item (mínimo 8, alineado por el codegen).
@@ -51,8 +87,11 @@ impl DataItem {
         let mut item = DataItem::new(level, name, pic, val);
 
         if let Some(p) = pic_str {
-            match parse_pic(p, Usage::Display) {
-                Ok(field) => item.pic_field = Some(field),
+            match analizar_pic(p, Usage::Display) {
+                Ok((field, plantilla)) => {
+                    item.pic_field = Some(field);
+                    item.edicion = plantilla;
+                }
                 Err(e) => return Err(CobolError::new(0, format!("invalid PIC '{p}': {e}"))),
             }
         }

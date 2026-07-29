@@ -262,6 +262,23 @@ STOP RUN.
             ("decimal exacto", "01 S PIC 9(5)V99.", "MOVE 10.05 TO S.\nADD 0.20 TO S.\nIF S = 10.25\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
             ("escalas mixtas", "01 S PIC 9(5)V99.\n01 N PIC 9(3).", "MOVE 2 TO N.\nMOVE 1.50 TO S.\nADD N TO S.\nIF S = 3.50\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
             ("cond en palabras", "01 A PIC 9(3).", "MOVE 5 TO A.\nIF A IS EQUAL TO 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // ── PICTURE de edición, EN EJECUCIÓN ──
+            //
+            // La línea del extracto. El dato sigue siendo un entero de
+            // centavos; lo que cambia es que al enseñarlo se recorre la
+            // máscara, y ese recorrido son instrucciones dentro del .bex.
+            ("PIC moneda", "01 L PIC $$$,$$9.99.", "MOVE 12345.67 TO L.\nDISPLAY L.", "$12,345.67\n"),
+            ("PIC moneda pequena", "01 L PIC $$$,$$9.99.", "MOVE 0.45 TO L.\nDISPLAY L.", "     $0.45\n"),
+            ("PIC cheque", "01 L PIC **,**9.99.", "MOVE 0.45 TO L.\nDISPLAY L.", "*****0.45\n"),
+            ("PIC saldo en rojo", "01 L PIC Z,ZZ9.99CR.", "MOVE -120.00 TO L.\nDISPLAY L.", "  120.00CR\n"),
+            ("PIC saldo en verde", "01 L PIC Z,ZZ9.99CR.", "MOVE 120.00 TO L.\nDISPLAY L.", "  120.00  \n"),
+            ("PIC supresion", "01 L PIC Z,ZZ9.", "MOVE 7 TO L.\nDISPLAY L.", "    7\n"),
+            ("PIC signo flotante", "01 L PIC ---9.", "MOVE -7 TO L.\nDISPLAY L.", "  -7\n"),
+            // La edición no toca la aritmética: el campo se totaliza como
+            // cualquier otro y sólo al final se enseña con su máscara.
+            ("PIC se puede sumar", "01 L PIC $$$,$$9.99.", "MOVE 10.05 TO L.\nADD 0.20 TO L.\nDISPLAY L.", "    $10.25\n"),
+            // Y el signo del literal sobrevive al camino entero.
+            ("literal negativo", "01 A PIC S9(3)V99.", "MOVE -1.50 TO A.\nIF A < 0\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         ];
         let mut broken = Vec::new();
         for (name, data, body, expected) in cases {
@@ -299,6 +316,32 @@ STOP RUN.
     }
 
 
+
+    /// El extracto entero, ejecutado. Es la prueba de que la cadena completa
+    /// —fuente COBOL, parser, codegen, BEF, CPU— produce la linea que un
+    /// banco imprimiria, y no una aproximacion.
+    ///
+    /// Cada columna esta alineada porque cada campo mide lo que su PIC
+    /// declara. Si alguien rompe el ancho, este test lo dice antes de que un
+    /// informe salga descuadrado.
+    #[test]
+    fn el_extracto_imprime_las_lineas_de_un_banco() {
+        let out = run_cobol(include_str!("../examples/extracto.cob"));
+        let esperado = [
+            "BANCO BMO - EXTRACTO DE CUENTA",
+            "-----------------------------",
+            "saldo disponible:",
+            "$12,345.67",
+            "talon a cobrar:",
+            "*****0.45",
+            "balance final:",
+            "  120.00CR",
+            "cuenta en descubierto",
+        ]
+        .map(|l| format!("{l}\n"))
+        .concat();
+        assert_eq!(out, esperado);
+    }
 
     #[test]
     fn if_takes_only_the_true_branch() {

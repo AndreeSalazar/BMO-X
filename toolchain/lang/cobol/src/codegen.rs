@@ -6,6 +6,7 @@ use bmo_sem_asm::x86_64::{Asm, Reg};
 use bmo_lower::x86;
 use crate::ast::{CobolProgram, CobolStatement, CobolCondition, DisplayArg};
 use crate::ast::error::CobolError;
+use crate::edicion::Plantilla;
 
 type Result<T> = core::result::Result<T, CobolError>;
 
@@ -34,6 +35,10 @@ struct Codegen {
     /// Escala decimal por variable (dígitos tras la V del PIC). El alma
     /// bancaria: un `PIC 9(3)V99` tiene escala 2 → guarda centavos.
     var_scales: HashMap<String, u32>,
+    /// Plantilla de edición por variable, para las PIC de PRESENTACIÓN.
+    /// Sólo cambia cómo se ESCRIBE: el dato sigue siendo el mismo entero
+    /// escalado y la aritmética no se entera de que existe.
+    var_edicion: HashMap<String, Plantilla>,
     next_label: u32,
     /// Offset donde quedó fijada cada etiqueta.
     label_offsets: HashMap<u32, usize>,
@@ -64,6 +69,7 @@ impl Codegen {
             function_offsets: HashMap::new(),
             var_offsets: HashMap::new(),
             var_scales: HashMap::new(),
+            var_edicion: HashMap::new(),
             next_label: 0,
             label_offsets: HashMap::new(),
             jump_fixups: Vec::new(),
@@ -82,8 +88,15 @@ impl Codegen {
     /// corazón del decimal exacto: `"10.05"` con escala 2 → `1005` centavos;
     /// `"3.2"` → `320`; `"7"` → `700`. Trunca los decimales sobrantes (el
     /// default de COBOL sin `ROUNDED`). Un entero con escala 0 queda igual.
+    ///
+    /// El signo se aplica al final. Antes se quitaba con `trim_start_matches`
+    /// y no se volvía a poner nunca: `MOVE -120.00 TO SALDO` guardaba +12000
+    /// y un descubierto aparecía en verde. La aritmética de abajo ya es con
+    /// signo (`idiv`, `jl`/`jg`), así que el complemento a dos vale tal cual.
     fn scaled_imm(lit: &str, scale: u32) -> u64 {
-        let s = lit.trim().trim_start_matches(['+', '-']);
+        let t = lit.trim();
+        let negativo = t.starts_with('-');
+        let s = t.trim_start_matches(['+', '-']);
         let (int_part, frac_part) = s.split_once('.').unwrap_or((s, ""));
         let int_val: u64 = int_part.parse().unwrap_or(0);
         let mut frac = frac_part.to_string();
@@ -95,7 +108,12 @@ impl Codegen {
         } else {
             frac[..scale as usize].parse().unwrap_or(0)
         };
-        int_val * 10u64.pow(scale) + frac_val
+        let magnitud = int_val * 10u64.pow(scale) + frac_val;
+        if negativo {
+            (magnitud as i64).wrapping_neg() as u64
+        } else {
+            magnitud
+        }
     }
 
     /// `mov rax, <literal escalado a `scale`>`.
@@ -211,6 +229,9 @@ impl Codegen {
             self.var_offsets.insert(item.name.clone(), -(self.stack_size));
             // Recuerda la escala decimal del PIC para la aritmética exacta.
             self.var_scales.insert(item.name.clone(), item.scale());
+            if let Some(p) = &item.edicion {
+                self.var_edicion.insert(item.name.clone(), p.clone());
+            }
         }
         self.collect_strings(program);
 
@@ -322,7 +343,20 @@ impl Codegen {
     fn emit_display_var(&mut self, nombre: &str) {
         let escala = self.var_scale(nombre);
         self.load_var(nombre);
-        bmo_lower::fmt::write_decimal_scaled(&mut self.code, escala);
+        // ★ Si el dato lleva PIC de EDICION, lo que sale no es el numero: es
+        // la mascara. `12345.67` deja de ser "12345.67" y pasa a ser
+        // "$12,345.67" — que es la linea de un extracto, no un volcado.
+        //
+        // La plantilla se consume AQUI, al compilar: lo que va al `.bex` es
+        // el recorrido convertido en instrucciones, no la plantilla ni un
+        // interprete que la lea.
+        if let Some(p) = self.var_edicion.get(nombre).cloned() {
+            if let Err(e) = p.emitir(&mut self.code) {
+                self.errors.push(CobolError::new(0, e));
+            }
+        } else {
+            bmo_lower::fmt::write_decimal_scaled(&mut self.code, escala);
+        }
         // El salto de linea, aparte: el formateador escribe el numero y nada
         // mas, que es lo correcto para poder encadenar campos algun dia.
         bmo_lower::console::write_const(&mut self.code, b"\n");
@@ -814,5 +848,16 @@ mod tests {
     fn truncates_extra_decimals() {
         // COBOL sin ROUNDED trunca (no redondea).
         assert_eq!(Codegen::scaled_imm("1.999", 2), 199);
+    }
+
+    /// Un literal negativo tiene que llegar negativo. Sin esto, `MOVE -120.00`
+    /// guardaba +12000 y el `CR` de un extracto no salía nunca.
+    #[test]
+    fn negative_literals_keep_their_sign() {
+        assert_eq!(Codegen::scaled_imm("-120.00", 2) as i64, -12_000);
+        assert_eq!(Codegen::scaled_imm("-7", 0) as i64, -7);
+        assert_eq!(Codegen::scaled_imm("-0.05", 2) as i64, -5);
+        // El `+` explícito sigue siendo positivo.
+        assert_eq!(Codegen::scaled_imm("+120.00", 2) as i64, 12_000);
     }
 }

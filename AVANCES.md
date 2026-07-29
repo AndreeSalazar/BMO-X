@@ -225,26 +225,46 @@ Base sólida para C++ (hereda lexer/tablas/intrínsecos/codegen; solo pone RAII
 
 Ver `ARCHITECTURE.md` y `cobol.md` en esa carpeta.
 
-**HECHO** (la base, ~15%):
+> **Aquí no se pone un porcentaje, y es a propósito.** "COBOL al 15%" da a
+> entender que existe un 100% — un denominador. No existe: el estándar sigue
+> creciendo y ningún compilador del mundo lo implementa entero. Medirse contra
+> un infinito no informa de nada y sólo sirve para sentirse pequeño. Lo que sí
+> se puede afirmar y comprobar es **qué corre**, y cada línea de abajo tiene su
+> fila en la matriz de conformidad, que EJECUTA lo que dice soportar.
+
+**CORRE** (verificado ejecutando, no leyendo bytes):
 - **Lexer** (`lexer.rs`): Source→Tokens; `.` decimal vs terminador; usa tablas.
 - **Parser de tokens** (`tparser.rs`): sentencias + DATA DIVISION + programa
   completo → AST. Camino paralelo al `parser.rs` por-líneas (aún el principal).
 - **PIC propio** (`pic.rs`): 100% BMO, sin gnucobol-rs (GPL). Da la escala.
 - **Decimal EXACTO** (`codegen.rs`): ADD/SUB/MUL/DIV escalan por el PIC →
-  centavos sin float. **El alma bancaria de Grace Hopper.**
+  centavos sin float. **El alma bancaria de Grace Hopper.** Confirmado en el
+  Ryzen: `3 × 19.99 = 59.97`.
+- **Flujo de control real**: IF/ELSE anidado y con AND, PERFORM TIMES,
+  PERFORM UNTIL, COMPUTE con precedencia y paréntesis.
+- **DISPLAY** de literal y de variable, **ACCEPT** por el anillo de entrada
+  de la consola.
+- **PICTURE de edición EN EJECUCIÓN** (`edicion.rs`): `$$$,$$9.99`,
+  `**,**9.99`, `Z,ZZ9.99CR`, `DB`, signos fijos y flotantes, `99/99/99`.
+  El recorrido de la plantilla se emite como INSTRUCCIONES: en el `.bex` no
+  queda ni la máscara ni un intérprete que la lea. Atado a `formatear` por
+  238 casos ejecutados en el emulador. Ver `examples/extracto.cob`.
 - **Fábrica Python** (`tools/cobol-gen/`): genera `generated/words.rs` (556
   reservadas separadas ESENCIA vs VENDOR, 55 intrínsecas). Organizada en
   `defs/{words,verbs,intrinsics,grammar}.py`.
 - Pipeline end-to-end probado: Source→lexer→tparser→AST→codegen→BEF (magic BEF1).
-- **32 tests verdes.**
+- **71 tests verdes.**
 
-**FALTA** (~85%, honesto):
+**NO CORRE** (y se dice, en vez de fingirlo):
+- **File I/O** (`SELECT`/`FD`/`OPEN`/`READ`/`WRITE`/`CLOSE`) — se RECHAZA con
+  su motivo en vez de compilar un READ que no lee. **El siguiente grande**: sin
+  ficheros no hay batch, y debajo ya están el disco, FAT32 y el gate.
 - DATA: records anidados (grupos 01/05/10), OCCURS, REDEFINES, nivel 88/66,
-  **PICTURE de edición** (`$$,$$9.99`/Z/CR/DB — motor de máscaras), COMP-3 real.
-- ~44 verbos: IF/EVALUATE con condiciones, PERFORM VARYING, STRING/UNSTRING,
-  INSPECT, SEARCH, CALL, File I/O (OPEN/READ/WRITE…), SORT, ACCEPT.
-- Expresiones (COMPUTE con precedencia), variable+variable, subíndices.
-- 55 intrínsecas (0 implementadas), runtime (bmo-rt), COPY, formato fijo/libre.
+  COMP-3 real.
+- Verbos: EVALUATE, PERFORM VARYING, STRING/UNSTRING, INSPECT, SEARCH, CALL,
+  SORT.
+- Subíndices, 55 intrínsecas (0 implementadas), runtime (bmo-rt), COPY,
+  formato fijo/libre.
 - Cablear `tparser::parse_program` como principal (jubilar `parser.rs`).
 
 **Regla de la esencia**: "el encoder puede ser compartido; la aritmética de

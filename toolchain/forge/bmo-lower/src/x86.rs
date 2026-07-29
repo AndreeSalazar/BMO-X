@@ -160,6 +160,21 @@ pub fn movzx_r32_byte_base_index(out: &mut Vec<u8>, dst: u8, base: u8, index: u8
     out.push((index & 7) << 3 | (base & 7)); // scale=1
 }
 
+/// `movzx <dst32>, byte [<base>]` — la variante sin índice.
+///
+/// Existe aparte de `movzx_r32_byte_base_index` porque recorrer un buffer con
+/// un puntero que avanza es distinto de indexarlo: no hay registro de índice
+/// que reservar, y forzar uno a cero sólo para poder usar el SIB gasta un
+/// registro en un emisor que no tiene de sobra.
+pub fn movzx_r32_byte_at_reg(out: &mut Vec<u8>, dst: u8, base: u8) {
+    let rex = 0x40 | (((dst >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.extend_from_slice(&[0x0F, 0xB6]);
+    modrm_at_base(out, dst & 7, base);
+}
+
 /// `inc <r64>`.
 pub fn inc_r64(out: &mut Vec<u8>, reg: u8) {
     out.push(rex_w(0, reg));

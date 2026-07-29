@@ -81,6 +81,13 @@ impl Plantilla {
             .sum()
     }
 
+    /// Posiciones que consumen dígito. Es el tamaño del número que cabe, y no
+    /// coincide con el ancho: `$$$,$$9.99` mide 10 caracteres y guarda 7
+    /// dígitos.
+    pub fn digitos(&self) -> usize {
+        self.digitos
+    }
+
     /// ¿Esta PIC lleva algún símbolo de edición? Si no, es una PIC de cálculo
     /// y la debe analizar `pic::parse_pic`, no esto.
     pub fn es_editada(pic: &str) -> bool {
@@ -392,6 +399,250 @@ impl Plantilla {
     }
 }
 
+/// El símbolo flotante que toca escribir en el hueco, o `None` si la plantilla
+/// no tiene ninguno. Se toma el ÚLTIMO, que es lo que hace `formatear` al
+/// sobrescribir `simbolo_flotante` en cada posición flotante que recorre.
+fn simbolo_flotante(sim: &[Sim]) -> Option<char> {
+    sim.iter()
+        .rev()
+        .find_map(|s| if let Sim::Flotante(c) = s { Some(*c) } else { None })
+}
+
+/// Los dos caracteres que puede escribir un símbolo de signo: `(positivo,
+/// negativo)`. Es la única regla de signo de COBOL y está en un solo sitio
+/// para que `formatear` y el emisor no puedan discrepar.
+fn par_de_signo(c: char) -> (u8, u8) {
+    match c {
+        '$' => (b'$', b'$'),
+        '+' => (b'+', b'-'),
+        _ => (b' ', b'-'),
+    }
+}
+
+// ── El emisor ───────────────────────────────────────────────────────────
+//
+// Hasta aquí `formatear` es Rust que corre en el compilador: sirve para los
+// tests y para un valor que se conozca al compilar. Un informe de banco no es
+// eso. `MOVE SALDO TO LINEA-EXTRACTO` tiene que editar el número que haya en
+// `SALDO` cuando el programa CORRA, y el compilador no sabe cuánto vale
+// después de tres `ADD`.
+//
+// La salida de aquí no es un intérprete de plantillas: es el recorrido de ESTA
+// plantilla convertido en instrucciones. La plantilla se consume en tiempo de
+// compilación y no queda ni un byte de ella en el `.bex` — lo que queda es el
+// código que hace exactamente lo que ella decía. Es la misma idea que
+// `write_const`, que mete el texto como inmediatos en vez de en una sección de
+// datos.
+
+/// Registros vivos durante el recorrido. Ninguno es argumento de la puerta de
+/// consola y no hay `syscall` en medio, así que sobreviven sin salvarse.
+mod reg {
+    use bmo_lower::x86;
+    /// Puntero de escritura en el buffer de salida. Avanza.
+    pub const SALIDA: u8 = x86::R8;
+    /// Dirección del hueco del símbolo flotante, o 0 si no hay.
+    pub const HUECO: u8 = x86::R9;
+    /// Puntero de lectura de los dígitos. Avanza.
+    pub const DIGITOS: u8 = x86::R10;
+    /// ¿Seguimos en la zona de ceros suprimidos? 1 = sí.
+    pub const SUPRIMIENDO: u8 = x86::R11;
+    /// Signo del valor: 0 = positivo, 1 = negativo.
+    pub const NEGATIVO: u8 = x86::RSI;
+}
+
+impl Plantilla {
+    /// Emite el código que edita `rax` según esta plantilla y lo ESCRIBE por
+    /// la consola.
+    ///
+    /// Contrato de entrada: `rax` trae el valor como entero con signo, ya en
+    /// la escala de la plantilla (`self.escala`). Eso lo garantiza el
+    /// almacenamiento: un dato con PIC editada guarda su escala como
+    /// cualquier otro, así que `MOVE` y la aritmética ya dejan el entero
+    /// correcto sin saber nada de edición.
+    ///
+    /// Al terminar la pila queda como estaba. Ensucia todos los registros
+    /// caller-saved; ninguno vale nada después de un `DISPLAY`.
+    pub fn emitir(&self, code: &mut Vec<u8>) -> Result<(), String> {
+        use bmo_lower::x86::{self, Jump, RAX, RCX, RDX, RSP};
+
+        let ancho = self.ancho();
+        let dig = self.digitos;
+        // Dos zonas alineadas a 8: la línea editada y los dígitos sueltos.
+        let zona_salida = (ancho + 7) & !7;
+        let total = zona_salida + ((dig + 7) & !7);
+        // El hueco se abre con `sub rsp, imm8`. Pasado ese límite haría falta
+        // la forma imm32 y todos los `lea` con disp32: se dice en vez de
+        // emitir una plantilla que escribe fuera de su sitio.
+        if total > 127 {
+            return Err(format!(
+                "PIC editada demasiado ancha ({ancho} caracteres, {dig} digitos): \
+                 no cabe en el hueco de pila de un desplazamiento de 8 bits"
+            ));
+        }
+
+        x86::sub_r64_imm8(code, RSP, total as i8);
+        x86::lea_r64_rsp_disp8(code, reg::SALIDA, 0);
+        // Los dígitos se llenan de atrás hacia adelante —dividir entre 10 da
+        // el último primero—, así que el puntero empieza UNA posición pasado
+        // el final y retrocede antes de cada escritura. Al acabar queda justo
+        // en el primero, que es donde el recorrido lo necesita.
+        x86::lea_r64_rsp_disp8(code, reg::DIGITOS, (zona_salida + dig) as i8);
+
+        // ── Signo y magnitud ──
+        //
+        // El signo se aparta ANTES de trocear el número. Dividir un negativo
+        // entre 10 da restos negativos, y `resto + '0'` con resto -7 no es un
+        // dígito: es el byte 0x29.
+        x86::zero_r32(code, reg::NEGATIVO);
+        x86::test_r64_r64(code, RAX, RAX);
+        let es_positivo = x86::emit_jump(code, Jump::IfNotSign);
+        x86::mov_r32_imm32(code, reg::NEGATIVO, 1);
+        x86::neg_r64(code, RAX);
+        x86::patch_jump(code, es_positivo);
+
+        // ── Los dígitos ──
+        //
+        // Desenrollado: la cuenta la sabe el compilador. Lo que sobre por
+        // arriba se queda en `rax` y se ignora, que es justo lo que hace
+        // COBOL — un importe que no cabe en su PIC pierde las cifras altas.
+        for _ in 0..dig {
+            x86::zero_r32(code, RDX);
+            x86::mov_r32_imm32(code, RCX, 10);
+            x86::div_r64(code, RCX);
+            x86::add_r64_imm8(code, RDX, b'0' as i8);
+            x86::dec_r64(code, reg::DIGITOS);
+            x86::mov_byte_at_reg_from_low(code, reg::DIGITOS, RDX);
+        }
+
+        // ── El recorrido ──
+        x86::mov_r32_imm32(code, reg::SUPRIMIENDO, 1);
+        x86::zero_r32(code, reg::HUECO);
+        for s in &self.sim {
+            self.emitir_simbolo(code, *s);
+        }
+
+        // ── El remate del símbolo flotante ──
+        //
+        // Va al final y no sobre la marcha: el sitio del `$` es la ÚLTIMA
+        // posición suprimida, y eso no se sabe hasta haber pasado por ella.
+        if let Some(sim) = simbolo_flotante(&self.sim) {
+            let (pos, neg) = par_de_signo(sim);
+            x86::test_r64_r64(code, reg::HUECO, reg::HUECO);
+            let sin_hueco = x86::emit_jump(code, Jump::IfZero);
+            x86::mov_byte_at_reg_imm8(code, reg::HUECO, pos);
+            x86::test_r64_r64(code, reg::NEGATIVO, reg::NEGATIVO);
+            let era_positivo = x86::emit_jump(code, Jump::IfZero);
+            x86::mov_byte_at_reg_imm8(code, reg::HUECO, neg);
+            x86::patch_jump(code, era_positivo);
+            x86::patch_jump(code, sin_hueco);
+        }
+
+        // ── A la consola ──
+        //
+        // `write_buffer` quiere el puntero al PRINCIPIO, y el del recorrido
+        // acabó al final. Se vuelve a calcular en vez de restarle el ancho:
+        // el `lea` es la misma verdad que al empezar, y una resta sería una
+        // segunda copia del ancho que alguien tendría que mantener a mano.
+        x86::lea_r64_rsp_disp8(code, x86::R8, 0);
+        x86::mov_r32_imm32(code, x86::R9, ancho as u32);
+        bmo_lower::console::write_buffer(code);
+        x86::add_r64_imm8(code, RSP, total as i8);
+        Ok(())
+    }
+
+    /// Una posición de la plantilla. Cada rama es la traducción literal de su
+    /// gemela en `formatear`; si una cambia, la otra miente.
+    fn emitir_simbolo(&self, code: &mut Vec<u8>, s: Sim) {
+        use bmo_lower::x86::{self, Jump, RDX};
+
+        match s {
+            // `9`: se escribe siempre, y corta la supresión.
+            Sim::Digito => {
+                x86::zero_r32(code, reg::SUPRIMIENDO);
+                x86::movzx_r32_byte_at_reg(code, RDX, reg::DIGITOS);
+                x86::inc_r64(code, reg::DIGITOS);
+                x86::mov_byte_at_reg_from_low(code, reg::SALIDA, RDX);
+                x86::inc_r64(code, reg::SALIDA);
+            }
+            // `Z`, `*` y las posiciones flotantes: dígito CON supresión.
+            Sim::CeroEspacio | Sim::CeroAsterisco | Sim::Flotante(_) => {
+                let relleno = if matches!(s, Sim::CeroAsterisco) { b'*' } else { self.relleno as u8 };
+                x86::movzx_r32_byte_at_reg(code, RDX, reg::DIGITOS);
+                x86::inc_r64(code, reg::DIGITOS);
+                // ¿Sigue suprimido? Sólo si veníamos suprimiendo Y es un cero.
+                x86::test_r64_r64(code, reg::SUPRIMIENDO, reg::SUPRIMIENDO);
+                let escribe_digito = x86::emit_jump(code, Jump::IfZero);
+                x86::cmp_r64_imm8(code, RDX, b'0' as i8);
+                let no_es_cero = x86::emit_jump(code, Jump::IfNotZero);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, relleno);
+                if matches!(s, Sim::Flotante(_)) {
+                    // Sitio candidato para el símbolo: el último gana.
+                    x86::mov_r64_r64(code, reg::HUECO, reg::SALIDA);
+                }
+                let hecho = x86::emit_jump(code, Jump::Always);
+                x86::patch_jump(code, escribe_digito);
+                x86::patch_jump(code, no_es_cero);
+                x86::zero_r32(code, reg::SUPRIMIENDO);
+                x86::mov_byte_at_reg_from_low(code, reg::SALIDA, RDX);
+                x86::patch_jump(code, hecho);
+                x86::inc_r64(code, reg::SALIDA);
+            }
+            // El hueco del primer símbolo de un grupo flotante: no consume
+            // dígito, sólo reserva el sitio.
+            Sim::Insercion('\u{0}') => {
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, self.relleno as u8);
+                x86::mov_r64_r64(code, reg::HUECO, reg::SALIDA);
+                x86::inc_r64(code, reg::SALIDA);
+            }
+            // El punto siempre se escribe y corta la supresión: a partir de
+            // ahí los ceros son significativos (`0.05`).
+            Sim::Insercion('.') => {
+                x86::zero_r32(code, reg::SUPRIMIENDO);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, b'.');
+                x86::inc_r64(code, reg::SALIDA);
+            }
+            // Un separador dentro de la zona suprimida se va con ella.
+            Sim::Insercion(c) => {
+                x86::test_r64_r64(code, reg::SUPRIMIENDO, reg::SUPRIMIENDO);
+                let normal = x86::emit_jump(code, Jump::IfZero);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, self.relleno as u8);
+                let hecho = x86::emit_jump(code, Jump::Always);
+                x86::patch_jump(code, normal);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, c as u8);
+                x86::patch_jump(code, hecho);
+                x86::inc_r64(code, reg::SALIDA);
+            }
+            // Signo en posición fija: sólo mira el signo, nunca la supresión.
+            Sim::Fijo(c) => {
+                let (pos, neg) = par_de_signo(c);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, pos);
+                x86::test_r64_r64(code, reg::NEGATIVO, reg::NEGATIVO);
+                let era_positivo = x86::emit_jump(code, Jump::IfZero);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, neg);
+                x86::patch_jump(code, era_positivo);
+                x86::inc_r64(code, reg::SALIDA);
+            }
+            // `CR`/`DB`: dos caracteres, y en positivo son dos espacios para
+            // que la columna del listado no se descuadre.
+            Sim::Credito(es_cr) => {
+                let (a, b) = if es_cr { (b'C', b'R') } else { (b'D', b'B') };
+                x86::test_r64_r64(code, reg::NEGATIVO, reg::NEGATIVO);
+                let era_positivo = x86::emit_jump(code, Jump::IfZero);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, a);
+                x86::inc_r64(code, reg::SALIDA);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, b);
+                let hecho = x86::emit_jump(code, Jump::Always);
+                x86::patch_jump(code, era_positivo);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, b' ');
+                x86::inc_r64(code, reg::SALIDA);
+                x86::mov_byte_at_reg_imm8(code, reg::SALIDA, b' ');
+                x86::patch_jump(code, hecho);
+                x86::inc_r64(code, reg::SALIDA);
+            }
+        }
+    }
+}
+
 fn es_insercion(c: char) -> bool {
     matches!(c, ',' | '.' | 'B' | '0' | '/')
 }
@@ -414,6 +665,98 @@ fn dentro_de_parentesis(b: &[u8], i: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Las plantillas que se ejercitan enteras. Cubren cada símbolo que el
+    /// emisor sabe emitir: `9`, `Z`, `*`, moneda flotante, signo flotante,
+    /// signo fijo, `CR`, `DB`, punto, coma, barra y blanco.
+    const BANCO: &[&str] = &[
+        "$$$,$$9.99",
+        "**,**9.99",
+        "Z,ZZ9.99CR",
+        "Z,ZZ9.99DB",
+        "9(4).99DB",
+        "ZZZ.99",
+        "+999",
+        "-999",
+        "---9",
+        "99/99/99",
+        "99B99B99",
+        "ZZ9.99",
+        "9.9",
+        "Z,ZZ9",
+    ];
+
+    /// Los valores que rompen cosas: el cero (¿campo en blanco o `0.00`?), el
+    /// uno (supresión hasta el final), los negativos (signo y `CR`), y uno que
+    /// no cabe (COBOL tira las cifras altas, no falla).
+    const VALORES: &[i128] = &[
+        0, 1, 5, 7, 45, 199, 1234, 12_000, 281_026, 1_234_567, 99_999_999_999,
+        -1, -5, -45, -1234, -12_000, -1_234_567,
+    ];
+
+    /// Ejecuta el código emitido y devuelve lo que el kernel habría pintado.
+    ///
+    /// El valor entra por `rax` porque ése es el contrato de `emitir`: en un
+    /// programa de verdad lo deja ahí `load_var`.
+    fn editar_en_maquina(p: &Plantilla, valor: i128) -> String {
+        use bmo_lower::emu::{run, Machine};
+        let mut code = Vec::new();
+        bmo_lower::x86::mov_r64_imm64(&mut code, bmo_lower::x86::RAX, valor as i64 as u64);
+        p.emitir(&mut code).expect("la plantilla cabe");
+        run(Machine::new(code), 500_000).console
+    }
+
+    /// ★ La prueba que hace real la edición: lo que EJECUTA el x86 emitido
+    /// tiene que ser carácter por carácter lo que devuelve `formatear`.
+    ///
+    /// `formatear` es Rust corriendo en el compilador y está probado abajo
+    /// contra casos escritos a mano. Esto ata el emisor a él, así que los dos
+    /// caminos no pueden separarse en silencio: si alguien toca una rama de
+    /// `formatear` y se olvida de su gemela en `emitir_simbolo`, esto se cae.
+    ///
+    /// Y no compara bytes contra bytes escritos a mano —eso sólo dice que el
+    /// emisor no ha cambiado, no que esté bien—: ejecuta.
+    #[test]
+    fn lo_emitido_da_lo_mismo_que_lo_calculado() {
+        for pic in BANCO {
+            let p = Plantilla::parse(pic).unwrap();
+            for &v in VALORES {
+                let esperado = p.formatear(v, p.escala);
+                let obtenido = editar_en_maquina(&p, v);
+                assert_eq!(
+                    obtenido, esperado,
+                    "PIC {pic} con valor {v}: el codigo emitido no coincide con el motor"
+                );
+            }
+        }
+    }
+
+    /// El ancho es la promesa de un listado: si una fila mide un carácter de
+    /// más, la columna de al lado se descuadra hasta el final del informe.
+    /// Aquí se comprueba sobre lo EJECUTADO, no sobre lo calculado.
+    #[test]
+    fn lo_emitido_mide_siempre_el_ancho_declarado() {
+        for pic in BANCO {
+            let p = Plantilla::parse(pic).unwrap();
+            for &v in VALORES {
+                assert_eq!(
+                    editar_en_maquina(&p, v).chars().count(),
+                    p.ancho(),
+                    "PIC {pic} con valor {v}"
+                );
+            }
+        }
+    }
+
+    /// Una plantilla que no cabe en el hueco de pila se RECHAZA con su
+    /// motivo. Emitirla de todos modos daría un programa que escribe fuera de
+    /// su buffer — y eso no se ve hasta que corrompe otra cosa.
+    #[test]
+    fn una_plantilla_gigante_se_rechaza_en_vez_de_desbordar() {
+        let p = Plantilla::parse("Z(70).99").unwrap();
+        let mut code = Vec::new();
+        assert!(p.emitir(&mut code).is_err());
+    }
 
     /// El caso del recibo: moneda flotante, millares y centavos.
     #[test]
