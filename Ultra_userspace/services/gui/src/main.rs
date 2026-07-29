@@ -426,6 +426,9 @@ enum Orden<'a> {
     /// aparecía en el disco lo había puesto el anfitrión al flashear, o el
     /// kernel con su caja negra; un programa no tenía con qué.
     Escribir(&'a [u8], &'a [u8]),
+    /// Parece un archivo, pero no es un `.bex`. No se intenta lanzar: se dice
+    /// qué es y con qué se abre.
+    NoEsPrograma(&'a [u8]),
     /// Una palabra suelta que no parece una ruta. `reboot`, `ls`, `dir`...
     Desconocida,
 }
@@ -830,6 +833,32 @@ fn parece_ruta(t: &[u8]) -> bool {
     t.iter().any(|&c| c == b'/' || c == b'\\' || c == b'.')
 }
 
+/// ¿Esto es un PROGRAMA, o sea algo que tenga sentido lanzar?
+///
+/// ★ Antes bastaba con que llevara un punto o una barra, y por eso escribir
+/// `leeme.txt` a pelo intentaba EJECUTARLO. El kernel contestaba "sin firma no
+/// hay ejecucion" —que es exactamente lo correcto— y el usuario se quedaba
+/// creyendo que el sistema le pedia un permiso especial para LEER un fichero
+/// de texto. No se lo pedia: es que nadie le habia dicho que queria leerlo.
+///
+/// La conclusion de la que hay que huir es "hace falta un modo administrador".
+/// Aqui no se afloja ninguna guardia: se deja de adivinar. Solo un `.bex` es
+/// un programa; lo demas son datos, y a los datos se los lee.
+///
+/// `run <ruta>` sigue intentandolo con lo que sea: si alguien lo escribe
+/// explicitamente, la respuesta la da el gate y no esta heuristica.
+fn parece_programa(t: &[u8]) -> bool {
+    let n = t.len();
+    if n < 4 {
+        return false;
+    }
+    let cola = &t[n - 4..];
+    cola[0] == b'.'
+        && (cola[1] | 32) == b'b'
+        && (cola[2] | 32) == b'e'
+        && (cola[3] | 32) == b'x'
+}
+
 /// Parte la línea en verbo y resto.
 ///
 /// ★ Acepta `run <ruta>` ADEMÁS de la ruta pelada, y no por capricho: quien usa
@@ -887,7 +916,12 @@ fn interpretar(linea: &[u8]) -> Orden<'_> {
             }
         }
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
-        _ if parece_ruta(linea) => Orden::Lanzar(linea),
+        _ if parece_programa(linea) => Orden::Lanzar(linea),
+        // Parece un archivo pero no es un programa. Antes esto caia en
+        // `Lanzar` y el kernel contestaba "sin firma no hay ejecucion" — un
+        // mensaje CORRECTO que en este sitio se lee como si el sistema pidiera
+        // permisos para abrir un .txt.
+        _ if parece_ruta(linea) => Orden::NoEsPrograma(linea),
         _ => Orden::Desconocida,
     }
 }
@@ -1301,6 +1335,17 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(b"  help         esto\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
                                 pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                                n = 0;
+                            }
+                            // Ni se intenta lanzar. Se dice lo que es y con
+                            // que se abre — un mensaje sobre la FIRMA aqui
+                            // manda a buscar un permiso que no hace falta.
+                            Orden::NoEsPrograma(r) => {
+                                salida.texto(b"  eso no es un programa (solo .bex se lanza).\n");
+                                salida.texto(b"  para verlo:  lee ");
+                                salida.texto(r);
+                                salida.byte(b'\n');
+                                pintar_estado(&p, &caja, "no es un programa: prueba lee", TEXTO_TENUE);
                                 n = 0;
                             }
                             Orden::Desconocida => {
