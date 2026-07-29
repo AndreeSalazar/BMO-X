@@ -163,6 +163,15 @@ pub fn dir_datos(ruta: &str) -> Option<u32> {
     }
 }
 
+/// La misma conversión, para quien está fuera de este módulo.
+///
+/// La necesita `archivo::crear`, que tiene que validar el nombre ANTES de
+/// aceptar un archivo de escritura: descubrir al final que no era un 8.3
+/// válido significaría haber dejado a un programa acumulando bytes para nada.
+pub fn nombre_8_3_pub(s: &str) -> Option<[u8; 11]> {
+    nombre_8_3(s)
+}
+
 /// Nombre a 8.3 crudo (11 bytes, relleno con espacios). `None` si no cabe —
 /// **nunca se recorta**: un nombre recortado en silencio abre otra cosa.
 fn nombre_8_3(s: &str) -> Option<[u8; 11]> {
@@ -338,14 +347,32 @@ pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
 /// Devuelve el motivo cuando falla — el disco lleno, un nombre repetido y un
 /// volumen de solo lectura son tres problemas distintos y se distinguen.
 pub fn create(name_8_3: &[u8; 11], data: &[u8]) -> Result<(), WriteError> {
+    let root = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v.root_cluster(),
+            None => return Err(WriteError::ReadOnly),
+        }
+    };
+    crear_en(root, name_8_3, data)
+}
+
+/// Crea un archivo en un directorio CONCRETO del volumen de datos.
+///
+/// `create` es esto con la raíz. Se separan porque un programa de Ring 3
+/// escribe donde le dijeron —`datos/movim.dat`—, y obligarle a dejarlo todo en
+/// la raíz convertiría el volumen en un cajón: es justo lo que hace ilegible un
+/// disco a los seis meses.
+///
+/// El `dir_cluster` sale de `dir_datos`, que ya recorrió la ruta. Aquí no se
+/// vuelve a interpretar texto: quien llama trae el directorio resuelto.
+pub fn crear_en(dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> Result<(), WriteError> {
     let v = unsafe {
         match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
             Some(v) => v,
             None => return Err(WriteError::ReadOnly),
         }
     };
-    let root = v.root_cluster();
-    let r = v.create_file_in_dir(root, name_8_3, data);
+    let r = v.create_file_in_dir(dir_cluster, name_8_3, data);
     if r.is_ok() {
         // El punto de no retorno: hasta que el disco vacíe su caché, lo escrito
         // vive en un chip que un corte se lleva por delante.

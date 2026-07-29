@@ -417,6 +417,15 @@ enum Orden<'a> {
     /// había capability de directorio, así que había que saberse los nombres
     /// de memoria y teclearlos enteros.
     Listar(&'a [u8]),
+    /// `lee <ruta>` — enseña lo que hay DENTRO de un archivo. Es el hermano
+    /// de `ls`: aquel dice qué archivos hay, éste los abre.
+    Leer(&'a [u8]),
+    /// `escribe <ruta> <texto>` — crea un archivo con ese texto.
+    ///
+    /// Es la primera vez que Ring 3 GUARDA algo. Hasta ahora todo lo que
+    /// aparecía en el disco lo había puesto el anfitrión al flashear, o el
+    /// kernel con su caja negra; un programa no tenía con qué.
+    Escribir(&'a [u8], &'a [u8]),
     /// Una palabra suelta que no parece una ruta. `reboot`, `ls`, `dir`...
     Desconocida,
 }
@@ -859,6 +868,24 @@ fn interpretar(linea: &[u8]) -> Orden<'_> {
         b"calc" | b"calculadora" => Orden::Calculadora,
         b"clear" | b"cls" | b"limpia" => Orden::Limpiar,
         b"ls" | b"dir" | b"lista" => Orden::Listar(resto),
+        b"cat" | b"lee" => {
+            if resto.is_empty() { Orden::Ayuda } else { Orden::Leer(resto) }
+        }
+        // `escribe <ruta> <texto>`: la ruta es la PRIMERA palabra y el texto
+        // es todo lo demas, espacios incluidos. Partir por la ultima palabra
+        // obligaria a escribir el texto sin espacios, que no es escribir.
+        b"escribe" | b"write" => {
+            let k = resto.iter().position(|&c| c == b' ');
+            match k {
+                Some(k) => {
+                    let (ruta, texto) = resto.split_at(k);
+                    let mut j = 0;
+                    while j < texto.len() && texto[j] == b' ' { j += 1; }
+                    Orden::Escribir(ruta, &texto[j..])
+                }
+                None => Orden::Ayuda,
+            }
+        }
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
         _ if parece_ruta(linea) => Orden::Lanzar(linea),
         _ => Orden::Desconocida,
@@ -1159,6 +1186,88 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
+                            // ── Leer un archivo ──
+                            //
+                            // El hermano de `ls`: aquel dice QUE hay, este
+                            // enseña lo de DENTRO. Es la primera vez que un
+                            // programa de Ring 3 abre un archivo del disco.
+                            Orden::Leer(ruta_arch) => {
+                                match bmo::Archivo::leer_de(ruta_arch) {
+                                    Ok(a) => {
+                                        let mut trozo = [0u8; 256];
+                                        let mut total = 0usize;
+                                        // El ultimo byte se guarda segun pasa:
+                                        // reconstruirlo al final obligaria a
+                                        // saber en que trozo cayo, y el buffer
+                                        // ya se ha reutilizado.
+                                        let mut ultimo = 0u8;
+                                        // De 256 en 256 y con tope: un archivo
+                                        // que no sea texto llenaria la rejilla
+                                        // de basura y se comeria el fotograma.
+                                        loop {
+                                            let n = a.leer(&mut trozo);
+                                            if n == 0 { break; }
+                                            salida.texto(&trozo[..n]);
+                                            ultimo = trozo[n - 1];
+                                            total += n;
+                                            if total >= 2048 {
+                                                salida.texto(b"\n  ...(cortado)\n");
+                                                ultimo = b'\n';
+                                                break;
+                                            }
+                                        }
+                                        if total == 0 {
+                                            salida.texto(b"  (vacio)\n");
+                                        } else if ultimo != b'\n' {
+                                            // Sin esto, el proximo mensaje se
+                                            // pega al final del archivo.
+                                            salida.byte(b'\n');
+                                        }
+                                        a.cerrar();
+                                        pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                                    }
+                                    Err(_) => {
+                                        salida.texto(b"  no puedo abrir ese archivo.\n");
+                                        pintar_estado(&p, &caja, "archivo no encontrado", TEXTO_MAL);
+                                    }
+                                }
+                                n = 0;
+                            }
+                            // ── Escribir un archivo ──
+                            //
+                            // Lo que NUNCA habia pasado: un programa de Ring 3
+                            // dejando algo en el disco. Hasta hoy todo lo que
+                            // habia ahi lo puso el anfitrion al flashear o el
+                            // kernel con su caja negra.
+                            Orden::Escribir(ruta_arch, texto) => {
+                                match bmo::Archivo::crear(ruta_arch) {
+                                    Ok(a) => {
+                                        let puestos = a.escribir(texto);
+                                        // El salto final: un archivo de texto
+                                        // sin el ultimo salto es el clasico
+                                        // que descuadra al siguiente que lo lee.
+                                        a.escribir(b"\n");
+                                        // ★ Aqui es donde llega al disco. Antes
+                                        // de esto no hay nada escrito.
+                                        if a.cerrar() {
+                                            salida.texto(b"  guardado: ");
+                                            let mut d10 = [0u8; 10];
+                                            let n10 = decimal(puestos as u64 + 1, &mut d10);
+                                            salida.texto(&d10[..n10]);
+                                            salida.texto(b" bytes\n");
+                                            pintar_estado(&p, &caja, "guardado", TEXTO_BIEN);
+                                        } else {
+                                            salida.texto(b"  no se guardo nada.\n");
+                                            pintar_estado(&p, &caja, "no se pudo guardar", TEXTO_MAL);
+                                        }
+                                    }
+                                    Err(_) => {
+                                        salida.texto(b"  no puedo crear ahi (nombre 8.3? carpeta?)\n");
+                                        pintar_estado(&p, &caja, "no se pudo crear", TEXTO_MAL);
+                                    }
+                                }
+                                n = 0;
+                            }
                             Orden::Calculadora => {
                                 calc.visible = !calc.visible;
                                 if calc.visible {
@@ -1186,6 +1295,8 @@ pub extern "C" fn _start() -> ! {
                             Orden::Ayuda => {
                                 salida.texto(b"  <ruta>       lanza un .bex   (apps/COBOL.bex)\n");
                                 salida.texto(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
+                                salida.texto(b"  lee <ruta>   ensena lo que hay dentro\n");
+                                salida.texto(b"  escribe <ruta> <texto>   lo guarda\n");
                                 salida.texto(b"  clear / cls  limpia esta salida\n");
                                 salida.texto(b"  help         esto\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");

@@ -7,6 +7,7 @@ pub mod endpoint;
 pub mod cap;
 pub mod faults;
 pub mod fb;
+pub mod archivo;
 pub mod consola;
 pub mod directorio;
 pub mod input;

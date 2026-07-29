@@ -82,6 +82,15 @@ const TASK_OP_DIR_ABRIR: u64 = 0x0E;
 /// que no tiene —ni debe tener— la capability del teclado: el terminal que lo
 /// lanzo le pasa lo que se teclea.
 const TASK_OP_CONSOLE_READ: u64 = 0x0F;
+/// Abre un archivo del volumen de datos para LEER. La ruta se acumula antes
+/// con `TASK_OP_RUTA` — el MISMO renglon que `EJECUTAR` y que `DIR_ABRIR`.
+/// Ver `ring0/archivo.rs`.
+const TASK_OP_ARCHIVO_ABRIR: u64 = 0x10;
+/// Igual, pero para ESCRIBIR. Son dos operaciones y no un argumento de modo
+/// porque abrir para escribir puede fallar por motivos que abrir para leer no
+/// tiene —volumen de solo lectura, nombre que no es 8.3— y mezclarlas
+/// obligaria a devolver errores que no aplican a la mitad de las llamadas.
+const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -307,6 +316,26 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Err(code) => BmoStatus::err(code),
             }
         }
+        // El eslabon que faltaba: el kernel sabia leer y escribir archivos y
+        // Ring 3 no tenia con que pedirselo.
+        TASK_OP_ARCHIVO_ABRIR => {
+            let _ = arg0;
+            let pid = scheduler::current_pid();
+            let ruta = ruta_tomar(pid);
+            match crate::ring0::archivo::abrir(pid, ruta) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
+        TASK_OP_ARCHIVO_CREAR => {
+            let _ = arg0;
+            let pid = scheduler::current_pid();
+            let ruta = ruta_tomar(pid);
+            match crate::ring0::archivo::crear(pid, ruta) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
         TASK_OP_CONSOLA_CREAR => {
             let _ = arg0;
             match crate::ring0::consola::crear(scheduler::current_pid()) {
@@ -517,6 +546,16 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // de tener el directorio abierto.
             cap::KIND_DIRECTORIO => {
                 match crate::ring0::directorio::operacion(resolved.object, frame.rsi, frame.rdx) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
+            // Mover los bytes de dentro. El MODO (leer o escribir) se fijo al
+            // abrir y no es un argumento aqui: pedirle bytes a un archivo de
+            // escritura no es un error de permisos, es una pregunta que ese
+            // objeto no responde.
+            cap::KIND_ARCHIVO => {
+                match crate::ring0::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }

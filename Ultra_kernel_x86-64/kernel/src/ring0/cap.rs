@@ -38,6 +38,15 @@ pub const KIND_CONSOLE: u8 = 0x30;
 /// `ring0/directorio.rs`: aqui una ruta abierta no es un nombre que cualquiera
 /// pueda escribir, es un handle que a alguien le concedieron.
 pub const KIND_DIRECTORIO: u8 = 0x40;
+/// Un archivo abierto del volumen de datos. Es el hermano de
+/// `KIND_DIRECTORIO`: aquel deja PREGUNTAR que hay, este deja LEER y ESCRIBIR
+/// lo que hay dentro. Ver `ring0/archivo.rs`.
+///
+/// Lectura y escritura NO son dos kinds: son dos modos del mismo objeto, y el
+/// modo se fija AL ABRIR. Un handle abierto para leer no escribe aunque se le
+/// pida — no por una comprobacion de permisos, sino porque en ese modo el
+/// objeto no tiene donde escribir.
+pub const KIND_ARCHIVO: u8 = 0x41;
 pub const KIND_CHANNEL: u8 = 0x60;
 /// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
 pub const KIND_ENDPOINT: u8 = 0x70;
@@ -224,6 +233,10 @@ pub fn revoke_all(pid: u32) {
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
     crate::ring0::consola::proceso_muerto(pid);
     crate::ring0::directorio::proceso_muerto(pid);
+    // Un archivo de ESCRITURA a medias se descarta: lo acumulado no llega al
+    // disco. Guardarlo seria inventar un archivo que su autor nunca dio por
+    // terminado, y medio fichero de movimientos es peor que ninguno.
+    crate::ring0::archivo::proceso_muerto(pid);
     revoke_all_slots(pid)
 }
 

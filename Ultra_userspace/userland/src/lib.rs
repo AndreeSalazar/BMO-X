@@ -64,10 +64,18 @@ pub const OP_EJECUTAR: u32 = 0x0C;
 pub const OP_CONSOLA_CREAR: u32 = 0x0D;
 pub const OP_DIR_ABRIR: u32 = 0x0E;
 pub const OP_CONSOLE_READ: u32 = 0x0F;
+pub const OP_ARCHIVO_ABRIR: u32 = 0x10;
+pub const OP_ARCHIVO_CREAR: u32 = 0x11;
 
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;
 pub const DIR_OP_NOMBRE: u32 = 0x02;
+
+// Operaciones sobre un handle de archivo (`KIND_ARCHIVO`).
+pub const ARCH_OP_LEER: u32 = 0x01;
+pub const ARCH_OP_ESCRIBIR: u32 = 0x02;
+pub const ARCH_OP_TAMANO: u32 = 0x03;
+pub const ARCH_OP_CERRAR: u32 = 0x04;
 
 // Operaciones sobre un handle de consola (`KIND_CONSOLE`).
 pub const CONSOLA_OP_LEER: u32 = 0x01;
@@ -593,6 +601,116 @@ impl Directorio {
             }
         }
         Some(EntradaDir { nombre, es_dir, bytes })
+    }
+}
+
+// ── Un archivo ──────────────────────────────────────────────────────────
+
+/// Un archivo abierto del volumen de datos.
+///
+/// Hermano de [`Directorio`]: aquel deja PREGUNTAR qué hay, éste deja mover
+/// los bytes de dentro. Y la misma disciplina — no es una ruta que cualquiera
+/// escriba, es un handle que te concedieron.
+///
+/// El MODO se fija al abrir: [`Archivo::leer_de`] da uno de lectura y
+/// [`Archivo::crear`] uno de escritura. Pedirle bytes a uno de escritura no
+/// devuelve un error de permisos: devuelve que esa pregunta no existe para ese
+/// objeto.
+///
+/// **Límite de hoy**: 4 KiB por archivo. Los bytes cruzan de 7 en 7 (la
+/// superficie congelada no acepta punteros) y hace falta un buffer en el
+/// kernel donde juntarlos. Ver `ring0/archivo.rs`; lo que lo quitará es un
+/// escritor por sectores en `bmo_fat32`, que es otra pieza.
+pub struct Archivo {
+    pub cap: u64,
+    escribe: bool,
+}
+
+impl Archivo {
+    fn con_ruta(ruta: &[u8], op: u32, escribe: bool) -> Result<Self, u32> {
+        // El mismo renglón que usan `ejecutar` y `Directorio::abrir`. No hay
+        // un segundo mecanismo para lo mismo.
+        for trozo in ruta.chunks(8) {
+            let mut w = [0u8; 8];
+            w[..trozo.len()].copy_from_slice(trozo);
+            invoke(CURRENT_TASK, OP_RUTA, u64::from_le_bytes(w), 0, 0);
+        }
+        let st = invoke(CURRENT_TASK, op, 0, 0, 0);
+        if st.ok() { Ok(Self { cap: st.value, escribe }) } else { Err(st.code) }
+    }
+
+    /// Abre un archivo para LEER. Se trae entero al abrir, así que a partir de
+    /// aquí una lectura no puede fallar a mitad por un error de disco.
+    pub fn leer_de(ruta: &[u8]) -> Result<Self, u32> {
+        Self::con_ruta(ruta, OP_ARCHIVO_ABRIR, false)
+    }
+
+    /// Abre un archivo para ESCRIBIR. Acepta subdirectorios
+    /// (`datos/movim.dat`); el nombre tiene que ser un 8.3 válido.
+    ///
+    /// **Nada llega al disco hasta [`Archivo::cerrar`]**. Un proceso que muere
+    /// a medias no deja un archivo a medias: no deja nada.
+    pub fn crear(ruta: &[u8]) -> Result<Self, u32> {
+        Self::con_ruta(ruta, OP_ARCHIVO_CREAR, true)
+    }
+
+    /// Llena `dst` con lo que quede. Devuelve cuántos bytes se leyeron; `0` =
+    /// se acabó el archivo.
+    pub fn leer(&self, dst: &mut [u8]) -> usize {
+        if self.escribe {
+            return 0;
+        }
+        let mut puestos = 0usize;
+        while puestos < dst.len() {
+            let v = invoke(self.cap, ARCH_OP_LEER, 0, 0, 0).value;
+            let n = (v >> 56) as usize;
+            if n == 0 {
+                break;
+            }
+            let b = v.to_le_bytes();
+            for k in 0..n.min(7) {
+                if puestos < dst.len() {
+                    dst[puestos] = b[k];
+                    puestos += 1;
+                }
+            }
+        }
+        puestos
+    }
+
+    /// Añade bytes. Devuelve cuántos se aceptaron — menos de los pedidos
+    /// significa que se llenó, y entonces `cerrar` devolverá `false`.
+    ///
+    /// Los bytes viajan de 7 en 7 con su cuenta en el byte alto, no cortando
+    /// en el primer cero: un archivo no es texto y un `\0` en medio es un dato
+    /// como cualquier otro.
+    pub fn escribir(&self, datos: &[u8]) -> usize {
+        if !self.escribe {
+            return 0;
+        }
+        let mut puestos = 0usize;
+        for trozo in datos.chunks(7) {
+            let mut w = [0u8; 8];
+            w[..trozo.len()].copy_from_slice(trozo);
+            w[7] = trozo.len() as u8;
+            let n = invoke(self.cap, ARCH_OP_ESCRIBIR, u64::from_le_bytes(w), 0, 0).value;
+            puestos += n as usize;
+            if (n as usize) < trozo.len() {
+                break;
+            }
+        }
+        puestos
+    }
+
+    /// Bytes que quedan por leer, o bytes acumulados si es de escritura.
+    pub fn tamano(&self) -> u64 {
+        invoke(self.cap, ARCH_OP_TAMANO, 0, 0, 0).value
+    }
+
+    /// Cierra. En uno de escritura es **donde el contenido llega al disco**:
+    /// `false` significa que no se guardó nada, no que se guardara a medias.
+    pub fn cerrar(self) -> bool {
+        invoke(self.cap, ARCH_OP_CERRAR, 0, 0, 0).value != 0
     }
 }
 
