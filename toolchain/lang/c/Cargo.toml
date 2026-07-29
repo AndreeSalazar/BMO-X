@@ -11,6 +11,9 @@ bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 bmo-sem-asm = { path = "../../forge/sem-asm" }
 # forge: L1, la puerta al ABI (INVOKE/subsyscalls). Elegida, no embudo.
 bmo-lower = { path = "../../forge/bmo-lower" }
+# forge: el contrato de tablas y manifiestos. Sustituye a los dos lectores
+# de TOML hechos a mano que habia en standard.rs y module.rs.
+bmo-mods = { path = "../../forge/bmo-mods" }
 
 
 [lib]

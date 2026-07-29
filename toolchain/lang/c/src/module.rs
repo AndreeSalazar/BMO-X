@@ -18,36 +18,25 @@ pub struct ModuleResolver {
     pub base_paths: Vec<PathBuf>,
 }
 
-/// Descubre las tablas sem-asm (forge/sem-asm/tables): stdlib/ + standards/C.
-/// NOTA: antes buscaba "Semantic_ASM/" — directorio muerto tras la
-/// reorganización; el descubrimiento fallaba en silencio.
+/// Descubre dónde viven los módulos: las raíces de `bmo_mods` más
+/// `standards/C`, que se añade aparte porque `use "c11"` se escribe sin
+/// prefijo de directorio.
+///
+/// NOTA HISTÓRICA: esto tenía copiada a mano la misma lista de cinco rutas
+/// candidatas que `standard.rs`. Buscaba "Semantic_ASM/" —directorio muerto
+/// tras la reorganización— y el descubrimiento fallaba **en silencio**, que
+/// se parece demasiado a "no hacía falta". Una lista copiada en dos sitios se
+/// queda vieja en uno de los dos; ahora vive en `bmo_mods::Roots`, y de paso
+/// `$BMO_MODS` entra por aquí sin tocar nada.
 pub fn discover_include_paths() -> Vec<PathBuf> {
+    let roots = bmo_mods::Roots::find();
     let mut paths = Vec::new();
-    let candidates = &[
-        "toolchain/forge/sem-asm/tables",
-        "forge/sem-asm/tables",
-        "../forge/sem-asm/tables",
-        "../../forge/sem-asm/tables",
-        "../toolchain/forge/sem-asm/tables",
-    ];
-    for c in candidates {
-        let p = PathBuf::from(c);
-        if p.join("stdlib").is_dir() {
-            // Add standards/C too
-            let std_path = p.join("standards").join("C");
-            if std_path.is_dir() { paths.push(std_path); }
-            paths.push(p);
-            break;
+    for r in roots.paths() {
+        let std_c = r.join("standards").join("C");
+        if std_c.is_dir() {
+            paths.push(std_c);
         }
-    }
-    // relativo a la crate (toolchain/lang/c → ../../forge/sem-asm/tables)
-    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        let asm_path = PathBuf::from(&manifest_dir).join("../../forge/sem-asm/tables");
-        if asm_path.join("stdlib").is_dir() {
-            let std_path = asm_path.join("standards").join("C");
-            if std_path.is_dir() { paths.push(std_path); }
-            paths.push(asm_path);
-        }
+        paths.push(r.clone());
     }
     paths
 }
@@ -85,58 +74,21 @@ impl ModuleResolver {
         std::path::PathBuf::from(name)
     }
 
-    /// Parse a BMO.toml file
+    /// Lee un `BMO.toml`.
+    ///
+    /// El FORMATO lo entiende `bmo_mods` —un parser de TOML de verdad, no
+    /// `split_once('=')`—; lo que queda aquí es POLÍTICA de este frontend:
+    /// que un módulo sin `[sources]` compila los `.c` de su carpeta. Esa
+    /// regla es de C y no tiene por qué valer para COBOL o Ada, así que no
+    /// baja al contrato compartido.
     fn parse_manifest(path: &Path) -> Result<ModuleManifest, CError> {
-        let text = fs::read_to_string(path)
-            .map_err(|e| CError::new(0, format!("cannot read {}: {e}", path.display())))?;
-        let mut name = String::new();
-        let mut version = String::new();
-        let mut exports = Vec::new();
-        let mut source_files = Vec::new();
-        let mut current_section = String::new();
+        let m = bmo_mods::Manifest::load(path)
+            .map_err(|e| CError::new(0, format!("{e}")))?;
+        let name = m.name;
+        let version = m.version;
+        let exports: Vec<String> = m.exports.into_iter().map(|e| e.name).collect();
+        let mut source_files = m.sources;
 
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
-            if line.starts_with('[') && line.ends_with(']') {
-                current_section = line[1..line.len()-1].trim().to_lowercase();
-                continue;
-            }
-            if let Some((key, val)) = line.split_once('=') {
-                let key = key.trim();
-                let val = val.trim().trim_matches('"');
-                match current_section.as_str() {
-                    "module" => {
-                        match key { "name" => name = val.to_string(), "version" => version = val.to_string(), _ => {} }
-                    }
-                    "exports" => {
-                        // Support two formats:
-                        //   functions = "name1, name2, ..."    (list of names)
-                        //   funcname = "signature"              (name is the key itself)
-                        if key == "functions" {
-                            for f in val.split(',').map(|s| s.trim().trim_matches('"')) {
-                                if !f.is_empty() { exports.push(f.to_string()); }
-                            }
-                        } else {
-                            // Treat the key as the exported function name
-                            exports.push(key.to_string());
-                        }
-                    }
-                    "sources" => {
-                        if key == "files" {
-                            for f in val.split(',').map(|s| s.trim().trim_matches('"')) {
-                                if !f.is_empty() { source_files.push(f.to_string()); }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        if name.is_empty() {
-            name = path.parent().and_then(|p| p.file_name()).map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        }
         if source_files.is_empty() {
             // auto-detect .c files in module dir
             if let Some(dir) = path.parent() {

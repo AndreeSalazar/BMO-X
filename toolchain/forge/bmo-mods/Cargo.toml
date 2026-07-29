@@ -1,0 +1,10 @@
+[package]
+name = "bmo-mods"
+version = "0.1.0"
+edition = "2021"
+description = "El contrato de los mods de BMO: manifiestos, tablas y descubrimiento. Formato, nunca cerebro."
+
+[dependencies]
+# El mismo parser que ya usa sem-asm. Tres sitios del repo leian TOML con
+# `split_once('=')` y ninguno era un parser de TOML: se comian las secciones.
+toml = "0.8"

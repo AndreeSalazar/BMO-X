@@ -80,6 +80,9 @@ members = [
     # bmo-lower/bmo-opt: se recrearán CON código real al empezar su fase.
     "toolchain/forge/sem-asm",
     "toolchain/forge/bmo-verify",
+    # bmo-mods: el contrato de las tablas y los manifiestos. Un solo formato
+    # y un solo descubrimiento, donde antes habia tres lectores hechos a mano.
+    "toolchain/forge/bmo-mods",
     # bmo-lower: L1, el descenso genérico al ABI (la puerta INVOKE).
     "toolchain/forge/bmo-lower",
 

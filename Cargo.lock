@@ -63,6 +63,7 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
  "bmo-lower",
+ "bmo-mods",
  "bmo-sem-asm",
 ]
 
@@ -157,6 +158,13 @@ name = "bmo-lower"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+]
+
+[[package]]
+name = "bmo-mods"
+version = "0.1.0"
+dependencies = [
+ "toml",
 ]
 
 [[package]]
