@@ -509,10 +509,10 @@ STOP RUN.
     /// El payload `hola_COBOL.bex` que el kernel EMBEBE, ejecutado.
     ///
     /// Regenerar tras tocar el codegen:
-    ///   cargo run -p bmo-cobol-front --     ///     toolchain/lang/cobol/examples/hola_COBOL.cob     ///     -o Ultra_kernel_x86-64/kernel/src/ring0/hola_COBOL.bex
+    ///   cargo run -p bmo-cobol-front --     ///     toolchain/lang/cobol/examples/2-decimal/hola_COBOL.cob     ///     -o Ultra_kernel_x86-64/kernel/src/ring0/hola_COBOL.bex
     #[test]
     fn hola_cobol_payload_output_is_what_the_kernel_will_show() {
-        let out = run_cobol(include_str!("../examples/hola_COBOL.cob"));
+        let out = run_cobol(include_str!("../examples/2-decimal/hola_COBOL.cob"));
         let esperado = [
             "hola desde COBOL en el Ryzen",
             "3 x 19.99 = 59.97 exacto",
@@ -538,7 +538,7 @@ STOP RUN.
     /// informe salga descuadrado.
     #[test]
     fn el_extracto_imprime_las_lineas_de_un_banco() {
-        let out = run_cobol(include_str!("../examples/extracto.cob"));
+        let out = run_cobol(include_str!("../examples/3-presentacion/extracto.cob"));
         let esperado = [
             "BANCO BMO - EXTRACTO DE CUENTA",
             "-----------------------------",
@@ -563,7 +563,7 @@ STOP RUN.
     #[test]
     fn el_batch_totaliza_un_fichero_y_escribe_el_cierre() {
         let (salida, m) = run_cobol_con_disco(
-            include_str!("../examples/batch.cob"),
+            include_str!("../examples/4-ficheros/batch.cob"),
             // Cuatro movimientos. 1000.00 + 234.56 + 0.44 + (-100.00).
             &[("apps/movim.txt", "1000.00\n234.56\n0.44\n-100.00\n")],
         );
@@ -585,7 +585,7 @@ STOP RUN.
     /// la diferencia entre "hoy no hubo movimientos" y una caída.
     #[test]
     fn un_fichero_que_falta_da_cero_y_no_revienta() {
-        let (salida, m) = run_cobol_con_disco(include_str!("../examples/batch.cob"), &[]);
+        let (salida, m) = run_cobol_con_disco(include_str!("../examples/4-ficheros/batch.cob"), &[]);
         assert!(salida.contains("total del dia:"), "{salida}");
         assert!(salida.contains("     $0.00"), "{salida}");
         assert_eq!(m.archivo_texto("apps/cierre.txt").as_deref(), Some("0.00\n"));
@@ -596,7 +596,7 @@ STOP RUN.
     #[test]
     fn el_ultimo_registro_cuenta_sin_salto_final() {
         let (salida, _) = run_cobol_con_disco(
-            include_str!("../examples/batch.cob"),
+            include_str!("../examples/4-ficheros/batch.cob"),
             &[("apps/movim.txt", "10.00\n5.50")],
         );
         assert!(salida.contains("    $15.50"), "{salida}");
@@ -607,7 +607,7 @@ STOP RUN.
     #[test]
     fn el_batch_aguanta_los_finales_de_windows() {
         let (salida, _) = run_cobol_con_disco(
-            include_str!("../examples/batch.cob"),
+            include_str!("../examples/4-ficheros/batch.cob"),
             &[("apps/movim.txt", "1000.00\r\n234.56\r\n")],
         );
         assert!(salida.contains(" $1,234.56"), "{salida}");
@@ -624,7 +624,7 @@ STOP RUN.
     #[test]
     fn el_cierre_por_concepto_totaliza_en_su_casilla() {
         let (salida, _) = run_cobol_con_disco(
-            include_str!("../examples/conceptos.cob"),
+            include_str!("../examples/5-tablas/conceptos.cob"),
             &[
                 ("apps/concs.txt", "1\n3\n2\n3\n1\n"),
                 ("apps/imps.txt", "100.00\n50.00\n25.50\n10.00\n5.00\n"),
@@ -649,7 +649,7 @@ STOP RUN.
     #[test]
     fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
         let (salida, _) = run_cobol_con_disco(
-            include_str!("../examples/conceptos.cob"),
+            include_str!("../examples/5-tablas/conceptos.cob"),
             &[("apps/concs.txt", "1\n7\n"), ("apps/imps.txt", "100.00\n50.00\n")],
         );
         assert!(
@@ -930,7 +930,7 @@ STOP RUN.
     /// nada.
     #[test]
     fn banco_example_produces_its_documented_output() {
-        let out = run_cobol(include_str!("../examples/banco.cob"));
+        let out = run_cobol(include_str!("../examples/2-decimal/banco.cob"));
         assert_eq!(
             out,
             // ★ `59.97` y `19.99` NO son literales del programa: son el
