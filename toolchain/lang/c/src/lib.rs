@@ -130,10 +130,22 @@ mod tests {
     /// Compila y ejecuta un programa C, devolviendo lo que el kernel habría
     /// pintado.
     fn run_c(source: &str) -> String {
+        let bef = compile_source_to_bef(source).expect("el programa debe compilar");
+        ejecutar_bef(&bef)
+    }
+
+    /// Igual, pero pasando ANTES por el preprocesador — que es lo que hace la
+    /// linea de ordenes y lo que el camino de biblioteca NO hace.
+    fn run_c_con_pp(source: &str) -> String {
+        let bef = compile_with_preprocessor(source, std::path::Path::new("prueba.c"), CStandard::C11)
+            .expect("con preprocesador debe compilar");
+        ejecutar_bef(&bef)
+    }
+
+    fn ejecutar_bef(bef: &[u8]) -> String {
         use bmo_abi::bef::sections::{SectionEntry, SectionKind};
         use bmo_lower::emu::{run, Machine};
 
-        let bef = compile_source_to_bef(source).expect("el programa debe compilar");
         let hdr = unsafe { &*(bef.as_ptr() as *const bmo_abi::bef::header::BefHeader) };
         let entry = hdr.entry_offset as usize;
         let sec_off = hdr.section_table_offset as usize;
@@ -258,6 +270,44 @@ mod tests {
     ///
     /// Si añades una característica al codegen, añádele aquí su fila. Es la
     /// única forma de que "soportado" signifique algo.
+
+    /// `#define` SUSTITUYE de verdad — no se traga la linea y sigue.
+    ///
+    /// La pregunta no es si COMPILA (tragarse una linea tambien compila) sino
+    /// si el valor LLEGA. Este test lo fija ejecutandolo: si algun dia el
+    /// preprocesador deja de expandir, aqui sale `0` en vez de `5`.
+    ///
+    /// Y de paso documenta una asimetria real: el preprocesador SOLO corre en
+    /// `compile_with_preprocessor`, que es lo que usa la linea de ordenes. El
+    /// camino de biblioteca (`compile_source_to_bef`) no lo llama.
+    #[test]
+    fn el_define_sustituye_de_verdad() {
+        let salida = run_c_con_pp("#define CINCO 5
+int main(void){ printf(\"%d\", CINCO); return 0; }");
+        assert_eq!(salida, "5", "el #define tiene que SUSTITUIR, no ignorarse");
+    }
+
+    /// ★ Y sin preprocesador, una directiva se RECHAZA en vez de ignorarse.
+    ///
+    /// Esto es lo que estaba mal: el catch-all del lexer se tragaba el `#`, asi
+    /// que un `#define` dentro de una funcion **compilaba y no hacia nada** —
+    /// el programa corria con la constante sin sustituir y nadie decia una
+    /// palabra. Al principio del fichero daba un "expected type, got
+    /// Ident(define)", que manda a mirar donde no es.
+    #[test]
+    fn una_directiva_sin_preprocesador_se_rechaza() {
+        // Dentro de una funcion: era el caso silencioso.
+        let e = compile_source_to_bef("int main(void){
+#define X 5
+ return 0; }")
+            .unwrap_err();
+        assert!(format!("{e:?}").contains("no hay preprocesador"), "{e:?}");
+        // Y al principio del fichero, con el mismo mensaje.
+        let e = compile_source_to_bef("#define X 5
+int main(void){ return 0; }").unwrap_err();
+        assert!(format!("{e:?}").contains("no hay preprocesador"), "{e:?}");
+    }
+
     #[test]
     fn c_feature_matrix_runs_correctly() {
         let cases: &[(&str, &str, &str)] = &[
@@ -1613,3 +1663,4 @@ int main() {
         assert!(has_data, "global vars should create Data section");
     }
 }
+

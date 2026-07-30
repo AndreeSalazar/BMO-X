@@ -10,6 +10,15 @@ pub(crate) enum Token {
     Const, Volatile, Extern,
     OpenParen, CloseParen, OpenBrace, CloseBrace, OpenBracket, CloseBracket,
     Semicolon, Comma, Colon, Question,
+    /// `#` — una directiva del preprocesador.
+    ///
+    /// Tiene token PROPIO aunque no haya preprocesador, y ahi esta el motivo:
+    /// el catch-all del lexer se tragaba cualquier caracter desconocido, asi
+    /// que un `#define X 5` dentro de una funcion **compilaba y se ignoraba en
+    /// silencio**. Al principio del fichero daba un "expected type, got
+    /// Ident(define)", que manda a mirar donde no es. Con token propio, el
+    /// analisis puede decir la verdad: aqui no hay preprocesador todavia.
+    Hash,
     Plus, Minus, Star, Slash, Percent,
     PlusPlus, MinusMinus,
     EqEq, Neq, Lt, Gt, Le, Ge,
@@ -234,6 +243,7 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>) {
                     _ => t.push(Token::Ident(id)),
                 }
             }
+            '#' => { t.push(Token::Hash); i += 1; }
             _ => { i += 1; }
         }
     }

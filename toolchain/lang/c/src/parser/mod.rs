@@ -236,6 +236,17 @@ impl Parser {
         let mut globals = Vec::new();
         let mut functions = Vec::new();
         while *self.peek() != Token::Eof {
+        // ★ Una directiva del preprocesador. No hay preprocesador, y hasta
+        // ahora eso no se decia: el `#` se lo tragaba el lexer, asi que un
+        // `#define X 5` dentro de una funcion compilaba **y se ignoraba en
+        // silencio** — el programa corria con X sin sustituir. Un no-op
+        // callado es peor que un "no".
+        if *self.peek() == Token::Hash {
+            return Err(CError::new(
+                self.line(),
+                "aqui no hay preprocesador todavia: '#define', '#include' y '#ifdef' no se procesan. Usa 'const int' o 'enum' para las constantes",
+            ));
+        }
             if *self.peek() == Token::Struct || *self.peek() == Token::Union {
                 let is_union = *self.peek() == Token::Union;
                 self.advance();
@@ -839,6 +850,13 @@ impl Parser {
 
     // ---- Statements ----
     fn parse_stmt(&mut self) -> Result<Stmt, CError> {
+        // Lo mismo DENTRO de una funcion, que es donde se colaba callado.
+        if *self.peek() == Token::Hash {
+            return Err(CError::new(
+                self.line(),
+                "aqui no hay preprocesador todavia: '#define', '#include' y '#ifdef' no se procesan. Usa 'const int' o 'enum' para las constantes",
+            ));
+        }
         match self.peek() {
             Token::If => self.parse_if(),
             Token::While => self.parse_while(),
@@ -1008,6 +1026,19 @@ impl Parser {
             match self.peek() {
                 Token::CloseBrace => { self.advance(); break; }
                 Token::Eof => return Err(CError::new(self.line(),"unexpected eof in block")),
+                // ★ La directiva se caza AQUI, antes que nada. Es donde se
+                // colaba: `try_parse_decl` miraba el `#`, decia "esto no es una
+                // declaracion" y devolvia None sin consumirlo, y el bucle
+                // seguia adelante — asi que un `#define X 5` dentro de una
+                // funcion compilaba y se ignoraba EN SILENCIO. El programa
+                // corria con la X sin sustituir y nadie decia nada.
+                Token::Hash => {
+                    return Err(CError::new(
+                        self.line(),
+                        "aqui no hay preprocesador todavia: '#define', '#include' y '#ifdef' \
+                         no se procesan. Usa 'const int' o 'enum' para las constantes",
+                    ))
+                }
                 _ => {
                     // check for label: ident followed by colon
                     if let Token::Ident(name) = self.peek().clone() {
