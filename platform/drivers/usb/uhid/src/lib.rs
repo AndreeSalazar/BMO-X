@@ -114,12 +114,16 @@ struct MouseDev {
 pub struct UsbHidHal {
     kbd: Option<KbdDev>,
     mouse: Option<MouseDev>,
+    /// El ratón que tenemos vino de la interfaz de ratón de un TECLADO, no de
+    /// un ratón dedicado. Se guarda porque un teclado se enumera antes y no se
+    /// puede saber, en ese momento, si más adelante habrá uno de verdad.
+    mouse_provisional: bool,
     initialized: bool,
 }
 
 impl UsbHidHal {
     pub const fn new() -> Self {
-        Self { kbd: None, mouse: None, initialized: false }
+        Self { kbd: None, mouse: None, mouse_provisional: false, initialized: false }
     }
 
     /// ¿Enumeró un teclado? (interface HID subclass 1 / protocol 1)
@@ -285,6 +289,28 @@ impl InputHal for UsbHidHal {
                 let mut found_kbd = false;
                 let mut found_mouse = false;
 
+                // ── ¿Este aparato es un TECLADO que además dice tener ratón? ──
+                //
+                // ★ Aquí estaba el bug del ratón muerto. Muchos teclados —el
+                // SEISA de esta máquina, entre ellos— exponen una SEGUNDA
+                // interfaz HID con protocolo de ratón (protocol=2) para sus
+                // teclas de medios. Como el teclado se enumera primero, esa
+                // interfaz se llevaba el puesto de "el ratón", y el ratón de
+                // verdad —que se enumera después— se saltaba entero por el
+                // `self.mouse.is_none()`. Sintomas exactos: `m=OK` en el mismo
+                // slot que el teclado, cero eventos para siempre, y el ratón
+                // fisico sin configurar (por eso ni se le encienden las luces).
+                //
+                // La regla: **un ratón dedicado gana a la interfaz de ratón de
+                // un teclado.** Un aparato que trae las dos es un teclado
+                // compuesto; uno que sólo trae la de ratón es un ratón.
+                let compuesto = if_buf[..n_ifs]
+                    .iter()
+                    .any(|(_, c, s, p)| *c == 3 && *s == 1 && *p == 1)
+                    && if_buf[..n_ifs]
+                        .iter()
+                        .any(|(_, c, s, p)| *c == 3 && *s == 1 && *p == 2);
+
                 for (iface_num, class, subclass, protocol) in &if_buf[..n_ifs] {
                     // HID class = 3
                     if *class != 3 { continue; }
@@ -292,7 +318,11 @@ impl InputHal for UsbHidHal {
                     // Keyboard: subclass=1, protocol=1
                     // Mouse: subclass=1, protocol=2
                     let is_kbd = *subclass == 1 && *protocol == 1 && self.kbd.is_none();
-                    let is_mouse = *subclass == 1 && *protocol == 2 && self.mouse.is_none();
+                    // El ratón de un teclado compuesto sólo se coge si NO hay
+                    // otro, y aun así se marca como provisional: si más tarde
+                    // aparece un ratón dedicado, lo reemplaza.
+                    let mouse_libre = self.mouse.is_none() || (self.mouse_provisional && !compuesto);
+                    let is_mouse = *subclass == 1 && *protocol == 2 && mouse_libre;
 
                     if !is_kbd && !is_mouse { continue; }
 
@@ -343,6 +373,12 @@ impl InputHal for UsbHidHal {
                         } else {
                             bmo_xhci::queue_interrupt_in(slot, dci, buf_phys, buf_size as u16);
                             bmo_xhci::ring_doorbell(slot, dci);
+                            // Provisional si viene de un teclado compuesto: un
+                            // ratón dedicado que aparezca después lo sustituye.
+                            self.mouse_provisional = compuesto;
+                            if compuesto {
+                                h.log("[uhid] iface de raton en un TECLADO: provisional\n");
+                            }
                             self.mouse = Some(MouseDev {
                                 slot, dci, buf_phys, buf_virt,
                                 prev_buttons: 0, queued: true,

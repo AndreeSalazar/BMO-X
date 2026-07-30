@@ -535,6 +535,11 @@ pub fn render_hud() {
     r.txt(" x="); if mx < 0 { r.txt("-"); } r.dec(mx.unsigned_abs() as u64);
     r.txt(" y="); if my < 0 { r.txt("-"); } r.dec(my.unsigned_abs() as u64);
     r.txt(" bot=0b"); r.hex(btn as u64, 2);
+    // El SLOT, que es lo que destapo el bug: si el raton sale en el MISMO
+    // slot que el teclado, no es un raton — es la interfaz de medios del
+    // teclado haciendose pasar por uno.
+    r.txt(" slot="); r.dec(ms as u64);
+    if ms != 0 && ms == ks { r.txt("(=kbd!)"); }
     r.txt("  (ev=0 -> USB · ev sube y x/y quietos -> formato del informe)");
     let raton_color = if !mouse { C_DIM } else if mev > 0 { C_OK } else { C_FAULT };
     splash_dashboard_log_color(total - 1, r.as_str(), raton_color);
