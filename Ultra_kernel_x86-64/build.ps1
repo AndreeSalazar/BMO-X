@@ -33,7 +33,11 @@ Write-Host ''
 
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'
-$kernelSyscalls = Get-Content (Join-Path $root 'kernel\src\ring0\syscall.rs') -Raw
+# Las operaciones del kernel no viven todas en `syscall.rs`: las de un objeto
+# estan con su objeto (`ARCH_OP_*` en `obj\archivo.rs`), que es donde deben
+# estar. Se leen los dos y se comparan contra el MISMO surface.
+$kernelSyscalls = (Get-Content (Join-Path $root 'kernel\src\ring0\syscall.rs') -Raw) + "`n" +
+                  (Get-Content (Join-Path $root 'kernel\src\ring0\obj\archivo.rs') -Raw)
 $abiSurface = Get-Content (Join-Path $root '..\platform\abi\bmo-abi\src\syscalls\surface.rs') -Raw
 foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
@@ -42,7 +46,12 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
         Fail ('BMO ABI surface syscall contract mismatch: ' + $name)
     }
 }
-foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'TASK_OP_CONSOLE_WRITE', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
+# La lista lleva TODAS las operaciones, no solo las seis primeras. Se habia
+# quedado congelada en las del principio, asi que las que se anadieron despues
+# —EJECUTAR, CONSOLA_CREAR, DIR_ABRIR, las de archivo, REINICIAR e INFO— se
+# escribian en el kernel y nadie comprobaba que coincidieran con el ABI. Un
+# guardian que solo mira la mitad da una tranquilidad que no ha ganado.
+foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'TASK_OP_CONSOLE_WRITE', 'TASK_OP_ENDPOINT_CREATE', 'TASK_OP_RUTA', 'TASK_OP_EJECUTAR', 'TASK_OP_CONSOLA_CREAR', 'TASK_OP_DIR_ABRIR', 'TASK_OP_CONSOLE_READ', 'TASK_OP_ARCHIVO_ABRIR', 'TASK_OP_ARCHIVO_CREAR', 'TASK_OP_REINICIAR', 'TASK_OP_INFO', 'TASK_OP_INFO_TEXTO', 'ARCH_OP_LEER', 'ARCH_OP_ESCRIBIR', 'ARCH_OP_TAMANO', 'ARCH_OP_CERRAR', 'ARCH_OP_LEER_LINEA', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
@@ -163,9 +172,19 @@ try {
 # driver FAT32 del kernel se NIEGA a recortar (un nombre recortado abre otro
 # archivo), asi que el que no quepa se dice aqui y no en el arranque.
 Step 'Building COBOL example programs...'
+# Las rutas llevan el NIVEL delante: los ejemplos estan en escalera (1-basico,
+# 2-decimal, 3-presentacion, 4-ficheros, 5-tablas), ordenados por cuanto COBOL
+# hace falta que el compilador sepa. Ver examples\README.md.
 $cobolEjemplos = @(
-    @{ src = 'toolchain\lang\cobol\examples\extracto.cob'; out = 'extracto.bex' },
-    @{ src = 'toolchain\lang\cobol\examples\calc.cob';     out = 'calc.bex'     }
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\banco.cob';        out = 'banco.bex'    },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calc.cob';         out = 'calc.bex'     },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calcgui.cob';      out = 'calcgui.bex'  },
+    @{ src = 'toolchain\lang\cobol\examples\3-presentacion\extracto.cob'; out = 'extracto.bex' },
+    @{ src = 'toolchain\lang\cobol\examples\4-ficheros\batch.cob';       out = 'batch.bex'    },
+    # `conceptos` son nueve letras y el driver FAT32 se NIEGA a recortar, asi
+    # que el destino es `concep`. La comprobacion de 8.3 de abajo lo cazaria
+    # igual, pero mejor no llegar a que la cace.
+    @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';     out = 'concep.bex'   }
 )
 $repo = Split-Path -Parent $root
 Push-Location $repo

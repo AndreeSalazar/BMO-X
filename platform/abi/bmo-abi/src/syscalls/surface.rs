@@ -57,6 +57,19 @@ pub const TASK_OP_CONSOLE_READ: u64 = 0x0F;
 /// para `EJECUTAR`, `DIR_ABRIR` y los dos de archivo: inventar un mecanismo
 /// por cada consumidor seria tener cuatro sitios donde se pierde un byte.
 pub const TASK_OP_RUTA: u64 = 0x0B;
+/// Lanza lo acumulado con [`TASK_OP_RUTA`] y vacía el renglón. Devuelve el tid.
+///
+/// ★ Estas tres (`0x0C`–`0x0E`) vivían **sólo dentro del kernel**: se añadieron
+/// a `ring0/syscall.rs` y nunca subieron aquí, así que el guardián de deriva de
+/// `build.ps1` no las miraba — no puede comparar lo que en un lado no existe.
+/// La superficie es el contrato; el kernel es una implementación suya.
+pub const TASK_OP_EJECUTAR: u64 = 0x0C;
+/// Crea una consola y devuelve su handle de LECTURA. Quien la crea es el
+/// terminal: la consola es suya y la drena a su ritmo.
+pub const TASK_OP_CONSOLA_CREAR: u64 = 0x0D;
+/// Abre un directorio del volumen de datos. La ruta se acumula antes con
+/// [`TASK_OP_RUTA`] — el mismo renglón que usa `EJECUTAR`.
+pub const TASK_OP_DIR_ABRIR: u64 = 0x0E;
 
 /// Abre un archivo del volumen de datos para LEER. La ruta viene del renglon.
 pub const TASK_OP_ARCHIVO_ABRIR: u64 = 0x10;
@@ -79,6 +92,14 @@ pub const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
 ///
 /// La cuenta va en el byte alto y NO se corta en el primer cero, al reves que
 /// la consola: un archivo no es texto y un `\0` en medio es un dato.
+/// Reinicia la máquina. No vuelve.
+///
+/// Reiniciar es tocar puertos de E/S (`0xCF9`, el 8042), que Ring 3 no puede
+/// —ni debe— hacer; por eso es una operación y no un permiso ambiental.
+/// **Hoy no está atada a una capability**, igual que `EJECUTAR`: las dos
+/// quieren la misma el día que exista.
+pub const TASK_OP_REINICIAR: u64 = 0x12;
+
 // ── INFORME DEL SISTEMA ─────────────────────────────────────────────────
 //
 // Leer cuánta RAM hay no es un privilegio: es una PREGUNTA. El shell de Ring 0
