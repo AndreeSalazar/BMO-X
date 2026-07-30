@@ -37,6 +37,8 @@ impl Parser {
     pub fn parse_program(&mut self) -> Result<CobolProgram, CobolError> {
         let mut program = CobolProgram::new(String::from("DEFAULT"));
         let mut in_data = false;
+        // El `FD` cuyo registro todavia no ha aparecido.
+        let mut fd_abierto = String::new();
 
         loop {
             let (line_no, raw) = match self.current() {
@@ -66,11 +68,50 @@ impl Parser {
                 break;
             }
 
+            // `SELECT <nombre> ASSIGN TO "<ruta>"`. Vive en FILE-CONTROL, que
+            // esta en la ENVIRONMENT DIVISION — antes de la DATA, asi que se
+            // reconoce fuera del bloque de datos.
+            if upper.starts_with("SELECT ") {
+                program.files.push(Self::parse_select(&normalized, line_no)?);
+                continue;
+            }
+
             if in_data {
-                if upper.contains("SECTION") || upper.starts_with("FD ") || upper.starts_with("FD.") {
+                if upper.starts_with("FD ") || upper.starts_with("FD.") {
+                    // El `01` que venga DESPUES es el registro de este
+                    // fichero. Se apunta el nombre y el siguiente dato lo
+                    // reclama: es como COBOL lo escribe, y asi no hace falta
+                    // una sintaxis nueva para decir "este 01 es de aquel FD".
+                    fd_abierto = normalized[2..]
+                        .trim()
+                        .trim_end_matches('.')
+                        .trim()
+                        .to_ascii_uppercase();
+                    continue;
+                }
+                if upper.contains("SECTION") {
+                    // Cambiar de seccion cierra el FD: un `01` de
+                    // WORKING-STORAGE no es el registro de nadie.
+                    fd_abierto.clear();
                     continue;
                 }
                 if let Some(item) = self.parse_data_item(&normalized, line_no)? {
+                    if !fd_abierto.is_empty() {
+                        let nombre = item.name.clone();
+                        match program.files.iter_mut().find(|f| f.name == fd_abierto) {
+                            Some(f) => f.record = nombre,
+                            None => {
+                                return Err(CobolError::new(
+                                    line_no,
+                                    format!(
+                                        "FD {fd_abierto} sin su SELECT: declara \
+                                         `SELECT {fd_abierto} ASSIGN TO \"ruta\"` en FILE-CONTROL"
+                                    ),
+                                ))
+                            }
+                        }
+                        fd_abierto.clear();
+                    }
                     program.add_data_item(item);
                 }
                 continue;
@@ -258,13 +299,7 @@ impl Parser {
         } else if upper.starts_with("CLOSE ") {
             Ok(CobolStatement::Close(line[6..].trim().trim_end_matches('.').to_string()))
         } else if upper.starts_with("READ ") {
-            let rest = line[5..].trim().trim_end_matches('.');
-            let parts: Vec<&str> = if let Some(into_pos) = rest.to_ascii_uppercase().find(" INTO ") {
-                let file = rest[..into_pos].trim();
-                let into = rest[into_pos + 6..].trim();
-                vec![file, into]
-            } else { vec![rest, ""] };
-            Ok(CobolStatement::Read(parts[0].to_string(), parts.get(1).unwrap_or(&"").to_string()))
+            self.parse_read(line, line_no)
         } else if upper.starts_with("WRITE ") {
             Ok(CobolStatement::Write(line[6..].trim().trim_end_matches('.').to_string()))
         } else if upper.starts_with("IF ") {
@@ -303,6 +338,132 @@ impl Parser {
     /// del COBOL clásico. No es pereza: el alcance por punto es ambiguo de
     /// leer y es una fuente clásica de bugs silenciosos —justo lo que este
     /// compilador acaba de dejar de hacer—. Si falta, el error lo dice.
+    /// `SELECT <nombre> ASSIGN TO "<ruta>"`.
+    ///
+    /// La ruta va entre comillas y es un literal: se resuelve al COMPILAR y
+    /// viaja dentro del `.bex` como inmediatos. Un `ASSIGN TO` a una variable
+    /// exigiría pasar la ruta byte a byte en ejecución, y eso es otra puerta.
+    fn parse_select(line: &str, line_no: usize) -> Result<crate::ast::CobolFile, CobolError> {
+        let resto = line[6..].trim().trim_end_matches('.').trim();
+        let arriba = resto.to_ascii_uppercase();
+        let corte = arriba.find("ASSIGN").ok_or_else(|| {
+            CobolError::new(line_no, "SELECT sin ASSIGN TO: falta decir a que ruta")
+        })?;
+        let name = resto[..corte].trim().to_ascii_uppercase();
+        if name.is_empty() {
+            return Err(CobolError::new(line_no, "SELECT sin nombre de fichero"));
+        }
+        // Tras `ASSIGN` puede venir `TO` o no; el estándar lo permite.
+        let cola = resto[corte + 6..].trim();
+        let cola = Self::strip_leading_word(cola, "TO");
+        let path = cola.trim().trim_matches('"').trim_matches('\'').to_string();
+        if path.is_empty() {
+            return Err(CobolError::new(
+                line_no,
+                "ASSIGN TO sin ruta: escribe `ASSIGN TO \"datos/movim.txt\"`",
+            ));
+        }
+        Ok(crate::ast::CobolFile { name, path, record: String::new() })
+    }
+
+    fn strip_leading_word<'a>(s: &'a str, word: &str) -> &'a str {
+        let arriba = s.to_ascii_uppercase();
+        if arriba.starts_with(word) && arriba[word.len()..].starts_with(' ') {
+            s[word.len()..].trim_start()
+        } else {
+            s
+        }
+    }
+
+    /// `READ <fichero> AT END <stmts> [NOT AT END <stmts>] END-READ`.
+    ///
+    /// El `AT END` es OBLIGATORIO y no por rigor: es lo único que puede parar
+    /// un `PERFORM UNTIL` sobre un fichero. Un `READ` sin él compila a un
+    /// bucle infinito, y eso es peor que no compilar.
+    fn parse_read(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let resto = line[4..].trim().trim_end_matches('.').trim();
+        // El nombre es la primera palabra; lo que siga en la MISMA línea se
+        // trata como si fuera la línea siguiente.
+        let corte = resto.find(char::is_whitespace).unwrap_or(resto.len());
+        let fichero = resto[..corte].trim().to_ascii_uppercase();
+        if fichero.is_empty() {
+            return Err(CobolError::new(line_no, "READ sin nombre de fichero"));
+        }
+        let mut cola = resto[corte..].trim().to_string();
+
+        let mut al_final = Vec::new();
+        let mut si_hay = Vec::new();
+        // 0 = todavía no se ha visto ninguna cláusula.
+        let mut rama = 0u8;
+        let mut visto_at_end = false;
+
+        loop {
+            let (inner_no, texto) = if !cola.is_empty() {
+                let t = core::mem::take(&mut cola);
+                (line_no, t)
+            } else {
+                let (no, raw) = match self.current() {
+                    Some(v) => (v.0, v.1.clone()),
+                    None => {
+                        return Err(CobolError::new(
+                            line_no,
+                            "READ sin END-READ: esta implementacion exige el cierre explicito",
+                        ))
+                    }
+                };
+                self.advance();
+                (no, Self::strip_comment(&raw).trim().to_string())
+            };
+            if texto.is_empty() {
+                continue;
+            }
+            let up = texto.trim_end_matches('.').trim().to_ascii_uppercase();
+            if up == "END-READ" {
+                break;
+            }
+            // Las cláusulas pueden traer su primera sentencia pegada:
+            // `AT END MOVE 1 TO FIN`.
+            let (etiqueta, sobra) = if up.starts_with("NOT AT END") {
+                (2u8, texto.trim()[10..].trim().to_string())
+            } else if up.starts_with("AT END") {
+                (1u8, texto.trim()[6..].trim().to_string())
+            } else {
+                (0u8, String::new())
+            };
+            if etiqueta != 0 {
+                rama = etiqueta;
+                if etiqueta == 1 {
+                    visto_at_end = true;
+                }
+                if sobra.is_empty() {
+                    continue;
+                }
+                cola = sobra;
+                continue;
+            }
+            if rama == 0 {
+                return Err(CobolError::new(
+                    inner_no,
+                    "en un READ, lo primero tiene que ser AT END o NOT AT END",
+                ));
+            }
+            let stmt = self.parse_statement(texto.trim_end_matches('.').trim(), inner_no)?;
+            if rama == 1 {
+                al_final.push(stmt);
+            } else {
+                si_hay.push(stmt);
+            }
+        }
+
+        if !visto_at_end {
+            return Err(CobolError::new(
+                line_no,
+                "READ sin AT END: sin el, un PERFORM UNTIL sobre este fichero no termina nunca",
+            ));
+        }
+        Ok(CobolStatement::Read(fichero, al_final, si_hay))
+    }
+
     fn parse_if(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let head = line[3..].trim();
         let head = Self::strip_trailing_word(head, "THEN");

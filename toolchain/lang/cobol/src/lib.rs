@@ -229,6 +229,40 @@ STOP RUN.
         machine.console
     }
 
+    /// Compila y ejecuta CON DISCO: se siembran los ficheros de entrada y se
+    /// devuelve `(consola, maquina)` para poder mirar lo que quedó escrito.
+    ///
+    /// Sin esto, `OPEN`/`READ`/`WRITE` sólo se distinguirían de un no-op
+    /// leyendo el ensamblador — que es exactamente lo que este banco de
+    /// pruebas existe para no tener que hacer.
+    fn run_cobol_con_disco(
+        src: &str,
+        entrada: &[(&str, &str)],
+    ) -> (String, bmo_lower::emu::Machine) {
+        use bmo_lower::emu::{run, Machine};
+        let bef = compile_source_to_bef(src).expect("el programa debe compilar");
+        let mut m = Machine::new(code_section(&bef));
+        for (ruta, datos) in entrada {
+            m.poner_archivo(ruta, datos.as_bytes());
+        }
+        let m = run(m, 2_000_000);
+        assert!(m.exited, "el programa debe terminar por INVOKE(EXIT)");
+        (m.console.clone(), m)
+    }
+
+    /// Un programa con DOS ficheros ya declarados: `ENTRADA` (`d/e.txt`) y
+    /// `SALIDA` (`d/s.txt`). Cada caso escribe su propia `FILE SECTION` porque
+    /// el PIC del registro es justo lo que cambia de un caso a otro.
+    fn programa_con_ficheros(decls: &str, body: &str) -> String {
+        format!(
+            "IDENTIFICATION DIVISION.\nPROGRAM-ID. TEST.\n\
+             ENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\n\
+             SELECT ENTRADA ASSIGN TO \"d/e.txt\".\n\
+             SELECT SALIDA ASSIGN TO \"d/s.txt\".\n\
+             DATA DIVISION.\n{decls}\nPROCEDURE DIVISION.\n{body}\nSTOP RUN.\n"
+        )
+    }
+
     fn program(data: &str, body: &str) -> String {
         format!(
             "IDENTIFICATION DIVISION.\nPROGRAM-ID. TEST.\nDATA DIVISION.\n\
@@ -289,7 +323,155 @@ STOP RUN.
                 broken.push(format!("  {name:<18} => {got:?}  (esperado {expected:?})"));
             }
         }
-        let total = cases.len();
+
+        // ── E/S DE FICHEROS ─────────────────────────────────────────────
+        //
+        // Estos casos necesitan DISCO, así que van con su propio banco: se
+        // siembra `d/e.txt`, se ejecuta, y se mira la consola Y lo que quedó
+        // en `d/s.txt`. Mirar sólo la consola dejaría pasar un `WRITE` que no
+        // escribe, y mirar sólo el fichero dejaría pasar un `AT END` que nunca
+        // salta.
+        //
+        // Campos: nombre, declaraciones, cuerpo, lo sembrado, consola
+        // esperada, y el fichero esperado (`None` = no debe existir).
+        let discos: &[(&str, &str, &str, &str, &str, Option<&str>)] = &[
+            (
+                "OPEN/READ/CLOSE",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).",
+                "OPEN INPUT ENTRADA.\nREAD ENTRADA\nAT END DISPLAY \"vacio\"\nNOT AT END DISPLAY R\nEND-READ.\nCLOSE ENTRADA.",
+                "42\n",
+                "42\n",
+                None,
+            ),
+            (
+                "AT END salta",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).",
+                "OPEN INPUT ENTRADA.\nREAD ENTRADA\nAT END DISPLAY \"ok\"\nEND-READ.\nCLOSE ENTRADA.",
+                "",
+                "ok\n",
+                None,
+            ),
+            // El bucle del batch: leer hasta el final y totalizar. Es LA forma
+            // del proceso por lotes, y sin `AT END` no terminaría nunca.
+            (
+                "PERFORM sobre fichero",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC S9(7)V99.\nWORKING-STORAGE SECTION.\n01 T PIC S9(7)V99.\n01 F PIC 9.",
+                "MOVE 0 TO T.\nMOVE 0 TO F.\nOPEN INPUT ENTRADA.\nPERFORM UNTIL F = 1\nREAD ENTRADA\nAT END MOVE 1 TO F\nNOT AT END ADD R TO T\nEND-READ\nEND-PERFORM.\nCLOSE ENTRADA.\nIF T = 1235.00\nDISPLAY \"ok\"\nEND-IF.",
+                "1000.00\n234.56\n0.44\n",
+                "ok\n",
+                None,
+            ),
+            // Un registro leído es un decimal EXACTO, no un float: cinco
+            // céntimos no pueden convertirse en cincuenta al cruzar el disco.
+            (
+                "READ decimal exacto",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC S9(7)V99.",
+                "OPEN INPUT ENTRADA.\nREAD ENTRADA\nAT END DISPLAY \"no\"\nNOT AT END IF R = 0.05\nDISPLAY \"ok\"\nEND-IF\nEND-READ.\nCLOSE ENTRADA.",
+                "0.05\n",
+                "ok\n",
+                None,
+            ),
+            (
+                "READ negativo",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC S9(7)V99.",
+                "OPEN INPUT ENTRADA.\nREAD ENTRADA\nAT END DISPLAY \"no\"\nNOT AT END IF R < 0\nDISPLAY \"ok\"\nEND-IF\nEND-READ.\nCLOSE ENTRADA.",
+                "-100.00\n",
+                "ok\n",
+                None,
+            ),
+            // El fichero viene del anfitrión con `\r\n`. Ese `\r` dentro del
+            // número lo convertiría en otro.
+            (
+                "READ con CRLF",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).",
+                "OPEN INPUT ENTRADA.\nREAD ENTRADA\nAT END DISPLAY \"no\"\nNOT AT END IF R = 77\nDISPLAY \"ok\"\nEND-IF\nEND-READ.\nCLOSE ENTRADA.",
+                "77\r\n",
+                "ok\n",
+                None,
+            ),
+            // El clásico que se come el movimiento de más valor: el último.
+            (
+                "READ sin salto final",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).",
+                "OPEN INPUT ENTRADA.\nREAD ENTRADA\nAT END DISPLAY \"no\"\nNOT AT END IF R = 9\nDISPLAY \"ok\"\nEND-IF\nEND-READ.\nCLOSE ENTRADA.",
+                "9",
+                "ok\n",
+                None,
+            ),
+            (
+                "OPEN OUTPUT/WRITE",
+                "FILE SECTION.\nFD SALIDA.\n01 S PIC S9(7)V99.",
+                "MOVE 1135.00 TO S.\nOPEN OUTPUT SALIDA.\nWRITE S.\nCLOSE SALIDA.",
+                "",
+                "",
+                Some("1135.00\n"),
+            ),
+            // ★ El registro con PIC editada escribe su LINEA, no su número:
+            // eso es un informe bancario. Antes de `emitir_en_buffer` esto
+            // habría escrito `10.25` callando que había máscara.
+            (
+                "WRITE PIC editada",
+                "FILE SECTION.\nFD SALIDA.\n01 S PIC $$$,$$9.99.",
+                "MOVE 10.05 TO S.\nADD 0.20 TO S.\nOPEN OUTPUT SALIDA.\nWRITE S.\nCLOSE SALIDA.",
+                "",
+                "",
+                Some("    $10.25\n"),
+            ),
+            (
+                "WRITE varias lineas",
+                "FILE SECTION.\nFD SALIDA.\n01 S PIC 9(3).",
+                "OPEN OUTPUT SALIDA.\nMOVE 1 TO S.\nWRITE S.\nMOVE 2 TO S.\nWRITE S.\nCLOSE SALIDA.",
+                "",
+                "",
+                Some("1\n2\n"),
+            ),
+            // Sin CLOSE no se guarda NADA. No medio fichero: ninguno. Un
+            // extracto truncado se parece demasiado a uno completo.
+            (
+                "sin CLOSE no se guarda",
+                "FILE SECTION.\nFD SALIDA.\n01 S PIC 9(3).",
+                "MOVE 7 TO S.\nOPEN OUTPUT SALIDA.\nWRITE S.",
+                "",
+                "",
+                None,
+            ),
+            // Y la vuelta entera: lo escrito se puede volver a leer. Es el
+            // contrato entre `WRITE` y `leer_linea` — un registro por línea.
+            (
+                "lo escrito se relee",
+                "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).\nFD SALIDA.\n01 S PIC 9(5).",
+                "MOVE 314 TO S.\nOPEN OUTPUT SALIDA.\nWRITE S.\nCLOSE SALIDA.\nOPEN INPUT ENTRADA.\nREAD ENTRADA\nAT END DISPLAY \"no\"\nNOT AT END IF R = 314\nDISPLAY \"ok\"\nEND-IF\nEND-READ.\nCLOSE ENTRADA.",
+                "314\n",
+                "ok\n",
+                Some("314\n"),
+            ),
+        ];
+        for (name, decls, body, entrada, esperado, fichero) in discos {
+            let src = programa_con_ficheros(decls, body);
+            let sembrado: Vec<(&str, &str)> =
+                if entrada.is_empty() { vec![] } else { vec![("d/e.txt", entrada)] };
+            let got = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let (consola, m) = run_cobol_con_disco(&src, &sembrado);
+                (consola, m.archivo_texto("d/s.txt"))
+            }));
+            match got {
+                Err(_) => broken.push(format!("  {name:<22} => <no ejecuta>")),
+                Ok((consola, en_disco)) => {
+                    if consola != *esperado {
+                        broken.push(format!(
+                            "  {name:<22} => consola {consola:?}  (esperado {esperado:?})"
+                        ));
+                    }
+                    if en_disco.as_deref() != *fichero {
+                        broken.push(format!(
+                            "  {name:<22} => disco {en_disco:?}  (esperado {fichero:?})"
+                        ));
+                    }
+                }
+            }
+        }
+
+        let total = cases.len() + discos.len();
         assert!(broken.is_empty(), "\n{}/{} FUNCIONAN. ROTOS:\n{}", total - broken.len(), total, broken.join("\n"));
     }
 
@@ -341,6 +523,89 @@ STOP RUN.
         .map(|l| format!("{l}\n"))
         .concat();
         assert_eq!(out, esperado);
+    }
+
+    /// ★ EL BATCH. Lee un fichero de movimientos, los totaliza en decimal
+    /// exacto y escribe el cierre en otro fichero.
+    ///
+    /// Es el programa que justifica todo lo demás: hasta ahora BMO COBOL sabía
+    /// calcular y sabía presentar, y no tenía de dónde sacar los datos.
+    #[test]
+    fn el_batch_totaliza_un_fichero_y_escribe_el_cierre() {
+        let (salida, m) = run_cobol_con_disco(
+            include_str!("../examples/batch.cob"),
+            // Cuatro movimientos. 1000.00 + 234.56 + 0.44 + (-100.00).
+            &[("apps/movim.txt", "1000.00\n234.56\n0.44\n-100.00\n")],
+        );
+        let esperado = [
+            "BATCH DE CIERRE - BANCO BMO",
+            "total del dia:",
+            " $1,135.00",
+            "cierre escrito en apps/cierre.txt",
+        ]
+        .map(|l| format!("{l}\n"))
+        .concat();
+        assert_eq!(salida, esperado);
+        // Y en el disco queda el total, no un fichero vacío ni a medias.
+        assert_eq!(m.archivo_texto("apps/cierre.txt").as_deref(), Some("1135.00\n"));
+    }
+
+    /// Un fichero que no existe NO es un fichero vacío: el `AT END` salta a la
+    /// primera y el total es cero, sin reventar. En un batch nocturno eso es
+    /// la diferencia entre "hoy no hubo movimientos" y una caída.
+    #[test]
+    fn un_fichero_que_falta_da_cero_y_no_revienta() {
+        let (salida, m) = run_cobol_con_disco(include_str!("../examples/batch.cob"), &[]);
+        assert!(salida.contains("total del dia:"), "{salida}");
+        assert!(salida.contains("     $0.00"), "{salida}");
+        assert_eq!(m.archivo_texto("apps/cierre.txt").as_deref(), Some("0.00\n"));
+    }
+
+    /// El último registro cuenta aunque el fichero no acabe en salto de línea.
+    /// Es el clásico que se come el movimiento de más valor: el último.
+    #[test]
+    fn el_ultimo_registro_cuenta_sin_salto_final() {
+        let (salida, _) = run_cobol_con_disco(
+            include_str!("../examples/batch.cob"),
+            &[("apps/movim.txt", "10.00\n5.50")],
+        );
+        assert!(salida.contains("    $15.50"), "{salida}");
+    }
+
+    /// Los ficheros escritos desde el anfitrión traen `\r\n`. Ese `\r` dentro
+    /// del número lo convertiría en otro.
+    #[test]
+    fn el_batch_aguanta_los_finales_de_windows() {
+        let (salida, _) = run_cobol_con_disco(
+            include_str!("../examples/batch.cob"),
+            &[("apps/movim.txt", "1000.00\r\n234.56\r\n")],
+        );
+        assert!(salida.contains(" $1,234.56"), "{salida}");
+    }
+
+    /// Un `READ` sin `AT END` se RECHAZA. Compilaría a un `PERFORM UNTIL` que
+    /// no termina nunca, y eso es peor que no compilar.
+    #[test]
+    fn un_read_sin_at_end_se_rechaza() {
+        let src = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\
+                   ENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\n\
+                   SELECT F ASSIGN TO \"a.txt\".\n\
+                   DATA DIVISION.\nFILE SECTION.\nFD F.\n01 R PIC 9(3).\n\
+                   PROCEDURE DIVISION.\nOPEN INPUT F.\nREAD F END-READ.\nCLOSE F.\nSTOP RUN.\n";
+        let e = compile_source_to_bef(src).unwrap_err();
+        assert!(format!("{e:?}").contains("AT END"), "{e:?}");
+    }
+
+    /// Usar un fichero que nadie declaró se rechaza con el `SELECT` que falta,
+    /// no con un "no se pudo".
+    #[test]
+    fn un_fichero_sin_select_se_rechaza_diciendo_cual() {
+        let src = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\
+                   DATA DIVISION.\nWORKING-STORAGE SECTION.\n01 A PIC 9(3).\n\
+                   PROCEDURE DIVISION.\nOPEN INPUT NADIE.\nSTOP RUN.\n";
+        let e = compile_source_to_bef(src).unwrap_err();
+        let t = format!("{e:?}");
+        assert!(t.contains("NADIE") && t.contains("SELECT"), "{t}");
     }
 
     #[test]
@@ -604,20 +869,51 @@ STOP RUN.
         assert!(program.statements.len() >= 6);
     }
 
+    /// La E/S de ficheros, tal y como se escribe de verdad: el `SELECT` le da
+    /// la ruta, el `FD` le da el registro y el `READ` lleva su `AT END`.
+    ///
+    /// Este test decía antes `READ INFILE INTO WS-REC.` sin `SELECT`, sin `FD`
+    /// y sin `AT END`, y pasaba — porque el parser guardaba dos cadenas y el
+    /// codegen las tiraba. Ahora un fichero es un fichero: si le falta la ruta
+    /// o el registro, no compila.
     #[test]
     fn parses_open_read_write_close() {
         let src = r#"
 IDENTIFICATION DIVISION.
 PROGRAM-ID. FILEIO.
+ENVIRONMENT DIVISION.
+INPUT-OUTPUT SECTION.
+FILE-CONTROL.
+    SELECT INFILE ASSIGN TO "datos/mov.txt".
+DATA DIVISION.
+FILE SECTION.
+FD INFILE.
+01 WS-REC PIC 9(5).
 PROCEDURE DIVISION.
 OPEN INPUT INFILE.
-READ INFILE INTO WS-REC.
-WRITE OUTFILE.
+READ INFILE
+    AT END DISPLAY "fin"
+    NOT AT END DISPLAY WS-REC
+END-READ.
+WRITE WS-REC.
 CLOSE INFILE.
 STOP RUN.
 "#;
         let program = parse(src).unwrap();
         assert_eq!(program.statements.len(), 5);
+        // La ruta y el registro llegan al AST: sin los dos no hay E/S.
+        let f = program.file("INFILE").expect("el SELECT declara INFILE");
+        assert_eq!(f.path, "datos/mov.txt");
+        assert_eq!(f.record, "WS-REC");
+        // Y el READ se queda con sus DOS ramas, no con una cadena.
+        match &program.statements[1] {
+            CobolStatement::Read(nombre, al_final, si_hay) => {
+                assert_eq!(nombre, "INFILE");
+                assert_eq!(al_final.len(), 1);
+                assert_eq!(si_hay.len(), 1);
+            }
+            otro => panic!("se esperaba un READ, no {otro:?}"),
+        }
     }
 
     /// `PERFORM` ahora exige cuerpo y cierre: sin ellos no había nada que

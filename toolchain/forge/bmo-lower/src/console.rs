@@ -24,7 +24,7 @@
 
 use bmo_abi::syscalls::surface::{CURRENT_TASK, NR_INVOKE, TASK_OP_CONSOLE_READ, TASK_OP_CONSOLE_WRITE};
 
-use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI, R10, R11, R8, R9};
+use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI, R10, R8, R9};
 
 /// Carga el número de syscall en `rax`.
 ///

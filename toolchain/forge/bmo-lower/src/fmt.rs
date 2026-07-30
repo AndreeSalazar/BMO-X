@@ -31,13 +31,29 @@ use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI, RSP, R10, R11, R8, R9};
 
 /// Tamaño del buffer en pila. 20 dígitos (el máximo de un u64) + signo,
 /// redondeado a 32 para mantener la pila alineada.
-const BUFFER: i8 = 32;
+pub const BUFFER: i8 = 32;
 
 /// Emite código que imprime `rax` como **entero decimal con signo**.
 ///
 /// Registros que ensucia: los mismos que la puerta, más `r10`. La pila queda
 /// como estaba.
 pub fn write_i64(code: &mut Vec<u8>) {
+    formatear_i64(code);
+    console::write_buffer(code);
+    x86::add_r64_imm8(code, RSP, BUFFER);
+}
+
+/// Igual, pero deja el texto en un buffer de PILA en vez de imprimirlo.
+///
+/// - Salida: `r8` = puntero al primer carácter, `r9` = largo.
+/// - **El llamante DEBE devolver la pila** con `add rsp, `[`BUFFER`].
+///
+/// Existe porque un número no siempre va a la consola. `WRITE` de COBOL lo
+/// manda al disco por otra puerta, y sin esto habría que reescribir el
+/// formateador entero para cambiar sólo su último paso — que es justo el
+/// reparto que este módulo dice tener: formatear es una cosa y publicar es
+/// otra.
+pub fn formatear_i64(code: &mut Vec<u8>) {
     x86::sub_r64_imm8(code, RSP, BUFFER);
 
     // r8 apunta UNO MÁS ALLÁ del final: los dígitos salen al revés, así que
@@ -61,9 +77,6 @@ pub fn write_i64(code: &mut Vec<u8>) {
     x86::mov_byte_at_reg_imm8(code, R8, b'-');
     x86::inc_r64(code, R9);
     x86::patch_jump(code, no_sign);
-
-    console::write_buffer(code);
-    x86::add_r64_imm8(code, RSP, BUFFER);
 }
 
 /// Emite código que imprime `rax` como **decimal con escala fija**: el entero
@@ -92,8 +105,20 @@ pub fn write_i64(code: &mut Vec<u8>) {
 /// `0.5`. Un cero de relleno que falta convierte cinco céntimos en cincuenta,
 /// y ése es el error que este módulo entero existe para no cometer.
 pub fn write_decimal_scaled(code: &mut Vec<u8>, escala: u32) {
+    formatear_decimal_scaled(code, escala);
+    console::write_buffer(code);
+    x86::add_r64_imm8(code, RSP, BUFFER);
+}
+
+/// Igual, pero deja el texto en un buffer de PILA en vez de imprimirlo.
+///
+/// - Salida: `r8` = puntero al primer carácter, `r9` = largo.
+/// - **El llamante DEBE devolver la pila** con `add rsp, `[`BUFFER`].
+///
+/// Es lo que usa `WRITE` de COBOL: el mismo número, otra puerta.
+pub fn formatear_decimal_scaled(code: &mut Vec<u8>, escala: u32) {
     if escala == 0 {
-        write_i64(code);
+        formatear_i64(code);
         return;
     }
 
@@ -152,9 +177,6 @@ pub fn write_decimal_scaled(code: &mut Vec<u8>, escala: u32) {
     x86::mov_byte_at_reg_imm8(code, R8, b'-');
     x86::inc_r64(code, R9);
     x86::patch_jump(code, sin_signo);
-
-    console::write_buffer(code);
-    x86::add_r64_imm8(code, RSP, BUFFER);
 }
 
 /// Emite código que imprime `rax` como entero **sin signo** en la base dada.

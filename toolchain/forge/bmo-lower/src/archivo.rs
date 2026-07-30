@@ -86,10 +86,6 @@ pub fn abrir_const(code: &mut Vec<u8>, ruta: &[u8], escribe: bool) {
 pub fn leer_linea(code: &mut Vec<u8>, tope: u8) {
     let tope = tope.min(127) as i8;
     x86::zero_r32(code, R9);
-    // `r11` lleva el "hubo registro". Se pisa en cada `syscall` con RFLAGS
-    // —por eso NO puede llevar un límite, como enseñó `console::read_line`—
-    // pero aquí se vuelve a poner después de cada llamada, así que sirve.
-    x86::zero_r32(code, x86::R11);
 
     let otra_vez = code.len();
     x86::mov_r64_r64(code, RDI, R10);
@@ -120,11 +116,9 @@ pub fn leer_linea(code: &mut Vec<u8>, tope: u8) {
     let fin_de_archivo = x86::emit_jump(code, Jump::Always);
 
     x86::patch_jump(code, fin_de_linea_vacia);
-    x86::mov_r32_imm32(code, x86::R11, 1);
     let fin_linea_a = x86::emit_jump(code, Jump::Always);
 
     x86::patch_jump(code, hay_bytes);
-    x86::mov_r32_imm32(code, x86::R11, 1);
 
     // Desempaquetar byte a byte; el primero está en el byte BAJO. Aquí NO hay
     // que buscar el salto: el kernel ya no lo entrega.
@@ -158,18 +152,31 @@ pub fn leer_linea(code: &mut Vec<u8>, tope: u8) {
     let sigue = x86::emit_jump(code, Jump::Always);
     x86::patch_jump_to(code, sigue, otra_vez);
 
-    // `rax` = 1 si esto fue un registro, 0 si el archivo se acabó.
+    // `rax` = 1 si esto fue un registro, 0 si el archivo se acabó. A estos dos
+    // caminos se llega sabiendo que SÍ lo fue: por uno porque el kernel marcó
+    // el fin de línea, por el otro porque trajo bytes.
     x86::patch_jump(code, acabo);
     x86::patch_jump(code, fin_linea_a);
-    x86::mov_r64_r64(code, RAX, x86::R11);
+    x86::mov_r32_imm32(code, RAX, 1);
     let listo = x86::emit_jump(code, Jump::Always);
 
-    // El fin de archivo pone el CERO a mano y no pasa por `r11`: a ese camino
-    // se llega justo despues de un `syscall`, y el silicio deja ahi RFLAGS.
-    // Leerlo devolveria un numero enorme que se lee como "si hubo registro" —
-    // y un `PERFORM UNTIL FIN` no terminaria jamas.
+    // ── Fin de archivo, y el ÚLTIMO RENGLÓN ──
+    //
+    // Aquí se llega cuando el kernel no trajo bytes y tampoco marcó fin de
+    // línea. Eso NO siempre es "no hubo registro": si `r9` ya trae bytes, son
+    // los del último renglón de un fichero que acaba SIN salto — y ése es el
+    // clásico que se come el movimiento de más valor, el último.
+    //
+    // La cuenta se saca de `r9` y no de una bandera guardada en `r11`, porque
+    // a este camino se llega justo después de un `syscall` y el silicio deja
+    // ahí RFLAGS: la bandera estaba muerta antes de leerla. `r9` es la misma
+    // verdad y nadie la pisa.
     x86::patch_jump(code, fin_de_archivo);
     x86::zero_r32(code, RAX);
+    x86::test_r64_r64(code, R9, R9);
+    let sin_nada = x86::emit_jump(code, Jump::IfZero);
+    x86::mov_r32_imm32(code, RAX, 1);
+    x86::patch_jump(code, sin_nada);
     x86::patch_jump(code, listo);
 }
 
@@ -290,6 +297,44 @@ mod tests {
         let (hubo, n, _) = leer_una("\n1050\n", 32);
         assert_eq!(hubo, 1);
         assert_eq!(n, 0);
+    }
+
+    /// ★ El ÚLTIMO renglón cuenta aunque el archivo no acabe en salto de
+    /// línea. Es el clásico que se come el movimiento de más valor: el último.
+    ///
+    /// El kernel sólo marca "fin de línea" cuando encuentra el `\n`, así que en
+    /// esta lectura no lo marca y tampoco trae bytes en el último paquete: la
+    /// única prueba de que hubo registro es que `r9` ya trae los bytes de la
+    /// línea. Cuando esto lo llevaba una bandera en `r11`, el `syscall` la
+    /// mataba y el registro se perdía en silencio.
+    #[test]
+    fn el_ultimo_renglon_sin_salto_es_un_registro() {
+        let (hubo, n, b) = leer_una("2075", 32);
+        assert_eq!(hubo, 1, "un renglon sin salto final SIGUE siendo un registro");
+        assert_eq!(n, 4);
+        assert_eq!(b, b"2075");
+    }
+
+    /// Y el de después sí es fin de archivo: el renglón sin salto se entrega
+    /// UNA vez, no en cada vuelta. Si se repitiera, un `PERFORM UNTIL` sumaría
+    /// el mismo importe para siempre.
+    #[test]
+    fn tras_el_ultimo_renglon_sin_salto_se_acaba() {
+        let mut code = Vec::new();
+        abrir_const(&mut code, b"datos/mov.txt", false);
+        x86::mov_r64_r64(&mut code, R10, RAX);
+        leer_linea(&mut code, 32);
+        // La primera lectura se tira; sólo interesa la SEGUNDA. `r8` acabó al
+        // final de lo leído, así que se devuelve al principio del buffer.
+        x86::sub_r64_r64(&mut code, R8, R9);
+        leer_linea(&mut code, 32);
+
+        let mut m = Machine::new(code);
+        m.poner_archivo("datos/mov.txt", b"2075");
+        let base = m.load_data(&vec![0u8; 64]);
+        m.regs[R8 as usize] = base;
+        let m = run(m, 500_000);
+        assert_eq!(m.regs[RAX as usize], 0, "el renglon sin salto no se entrega dos veces");
     }
 
     /// El `\r` de un archivo escrito desde Windows no entra en el registro:

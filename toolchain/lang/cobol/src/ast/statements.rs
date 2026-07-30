@@ -36,9 +36,20 @@ pub enum CobolStatement {
     /// `PERFORM UNTIL <cond> ... END-PERFORM`. Prueba ANTES de cada
     /// iteración (`WITH TEST BEFORE`, el default del estándar).
     PerformUntil(Vec<CobolCondition>, Vec<CobolStatement>),
+    /// `OPEN INPUT|OUTPUT <fichero>`. El modo decide si se abre para leer o
+    /// se CREA para escribir, y son dos puertas distintas del kernel.
     Open(String, String),
+    /// `CLOSE <fichero>`. En un fichero de salida **es donde el contenido
+    /// llega al disco**: sin esto no se guarda nada.
     Close(String),
-    Read(String, String),
+    /// `READ <fichero> AT END <stmts> [NOT AT END <stmts>] END-READ`.
+    ///
+    /// `AT END` no es un adorno de sintaxis: es la ÚNICA forma de que un
+    /// `PERFORM UNTIL` sobre un fichero termine. Un `READ` que no lo lleva
+    /// compilaba antes a un error explícito, y ahora compila a un bucle que no
+    /// para — así que el parser lo exige.
+    Read(String, Vec<CobolStatement>, Vec<CobolStatement>),
+    /// `WRITE <registro>`. Escribe el valor del registro como una línea.
     Write(String),
     StopRun,
     Syscall(SyscallDef, Vec<String>),

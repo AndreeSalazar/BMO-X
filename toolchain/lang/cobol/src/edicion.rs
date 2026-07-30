@@ -463,6 +463,31 @@ impl Plantilla {
     /// Al terminar la pila queda como estaba. Ensucia todos los registros
     /// caller-saved; ninguno vale nada después de un `DISPLAY`.
     pub fn emitir(&self, code: &mut Vec<u8>) -> Result<(), String> {
+        use bmo_lower::x86::{self, RSP};
+
+        let total = self.emitir_en_buffer(code)?;
+        bmo_lower::console::write_buffer(code);
+        x86::add_r64_imm8(code, RSP, total);
+        Ok(())
+    }
+
+    /// Igual, pero deja la línea editada en un buffer de PILA en vez de
+    /// imprimirla.
+    ///
+    /// - Salida: `r8` = primer carácter, `r9` = ancho declarado de la máscara.
+    /// - Devuelve los bytes de pila que **el llamante DEBE devolver** con
+    ///   `add rsp, n`.
+    ///
+    /// Es el mismo reparto que hizo `bmo_lower::fmt`: editar es una cosa y
+    /// publicar es otra. Existe porque la línea de un extracto no siempre va a
+    /// la consola — `WRITE` la manda al disco por otra puerta, y sin esto
+    /// habría que duplicar el recorrido de la plantilla para cambiar sólo su
+    /// último paso.
+    ///
+    /// Ojo con el orden: esto ensucia `r10` (es `reg::DIGITOS`), que es
+    /// justamente donde `archivo::escribir_buffer` quiere el handle. El handle
+    /// se carga DESPUÉS de editar, nunca antes.
+    pub fn emitir_en_buffer(&self, code: &mut Vec<u8>) -> Result<i8, String> {
         use bmo_lower::x86::{self, Jump, RAX, RCX, RDX, RSP};
 
         let ancho = self.ancho();
@@ -537,17 +562,15 @@ impl Plantilla {
             x86::patch_jump(code, sin_hueco);
         }
 
-        // ── A la consola ──
+        // ── El buffer, listo para publicar ──
         //
-        // `write_buffer` quiere el puntero al PRINCIPIO, y el del recorrido
+        // Quien escribe quiere el puntero al PRINCIPIO, y el del recorrido
         // acabó al final. Se vuelve a calcular en vez de restarle el ancho:
         // el `lea` es la misma verdad que al empezar, y una resta sería una
         // segunda copia del ancho que alguien tendría que mantener a mano.
         x86::lea_r64_rsp_disp8(code, x86::R8, 0);
         x86::mov_r32_imm32(code, x86::R9, ancho as u32);
-        bmo_lower::console::write_buffer(code);
-        x86::add_r64_imm8(code, RSP, total as i8);
-        Ok(())
+        Ok(total as i8)
     }
 
     /// Una posición de la plantilla. Cada rama es la traducción literal de su

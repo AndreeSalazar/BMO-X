@@ -39,6 +39,25 @@ struct Codegen {
     /// Sólo cambia cómo se ESCRIBE: el dato sigue siendo el mismo entero
     /// escalado y la aritmética no se entera de que existe.
     var_edicion: HashMap<String, Plantilla>,
+    /// Los ficheros de `FILE-CONTROL`, por nombre.
+    files: HashMap<String, crate::ast::CobolFile>,
+    /// Dónde vive el handle de cada fichero: una ranura de pila sin nombre en
+    /// COBOL. Entre el `OPEN` y el `CLOSE` pasa el programa entero, y
+    /// cualquier `DISPLAY` hace un `syscall` que destruye medio banco de
+    /// registros — así que un registro no vale.
+    file_handles: HashMap<String, i32>,
+    /// Y su ESTADO: la ranura donde el último `READ` dejó "hubo registro".
+    ///
+    /// Va en la pila por la misma razón que el handle, y con una razón de más:
+    /// entre leer y decidir la rama pasa la conversión del registro, y
+    /// `fmt::parse_decimal_scaled` usa `r10` y `r11` para su propio recuento.
+    /// Guardar la bandera en un registro caller-saved daba un `AT END` que
+    /// saltaba con el fichero LLENO — y sólo se notaba si la PIC no tenía
+    /// decimales, porque con `V99` el `r11` acababa valiendo 1 de casualidad.
+    file_estado: HashMap<String, i32>,
+    /// De qué fichero es cada registro. Es lo que hace que `WRITE SALDO` sepa
+    /// a dónde va sin que nadie se lo diga.
+    record_owner: HashMap<String, i32>,
     next_label: u32,
     /// Offset donde quedó fijada cada etiqueta.
     label_offsets: HashMap<u32, usize>,
@@ -70,6 +89,10 @@ impl Codegen {
             var_offsets: HashMap::new(),
             var_scales: HashMap::new(),
             var_edicion: HashMap::new(),
+            files: HashMap::new(),
+            file_handles: HashMap::new(),
+            file_estado: HashMap::new(),
+            record_owner: HashMap::new(),
             next_label: 0,
             label_offsets: HashMap::new(),
             jump_fixups: Vec::new(),
@@ -233,6 +256,20 @@ impl Codegen {
                 self.var_edicion.insert(item.name.clone(), p.clone());
             }
         }
+        // Dos ranuras de pila por fichero: su handle y su estado. Van DESPUÉS
+        // de los datos y con el mismo mecanismo: son variables que COBOL no
+        // nombra.
+        for f in &program.files {
+            self.stack_size += 8;
+            let off = -(self.stack_size);
+            self.stack_size += 8;
+            self.file_estado.insert(f.name.clone(), -(self.stack_size));
+            self.file_handles.insert(f.name.clone(), off);
+            self.files.insert(f.name.clone(), f.clone());
+            if !f.record.is_empty() {
+                self.record_owner.insert(f.record.to_ascii_uppercase(), off);
+            }
+        }
         self.collect_strings(program);
 
         // Function prologue
@@ -382,6 +419,217 @@ impl Codegen {
         bmo_lower::fmt::parse_decimal_scaled(&mut self.code, escala);
         x86::add_r64_imm8(&mut self.code, x86::RSP, BUF);
         self.store_var(destino);
+    }
+
+    // ── E/S de ficheros ─────────────────────────────────────────────────
+    //
+    // El HANDLE de cada fichero vive en una ranura de la pila, como una
+    // variable mas — solo que sin nombre en COBOL. Va en la pila y no en un
+    // registro porque entre el `OPEN` y el `CLOSE` pasa el programa entero:
+    // cualquier `DISPLAY` hace un `syscall`, y eso destruye medio banco de
+    // registros.
+
+    /// La ranura del handle de este fichero, o un error si no se declaro.
+    fn file_slot(&mut self, fichero: &str) -> Option<i32> {
+        match self.file_handles.get(&fichero.to_ascii_uppercase()) {
+            Some(&off) => Some(off),
+            None => {
+                self.errors.push(CobolError::new(
+                    0,
+                    format!(
+                        "'{fichero}' no esta declarado: falta su \
+                         `SELECT {fichero} ASSIGN TO \"ruta\"` en FILE-CONTROL"
+                    ),
+                ));
+                None
+            }
+        }
+    }
+
+    fn store_slot(&mut self, off: i32) {
+        if off >= -128 && off <= 127 {
+            self.code.extend_from_slice(&[0x48, 0x89, 0x45, off as u8]);
+        } else {
+            self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+            self.code.extend_from_slice(&off.to_le_bytes());
+        }
+    }
+
+    fn load_slot(&mut self, off: i32) {
+        if off >= -128 && off <= 127 {
+            self.code.extend_from_slice(&[0x48, 0x8B, 0x45, off as u8]);
+        } else {
+            self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
+            self.code.extend_from_slice(&off.to_le_bytes());
+        }
+    }
+
+    /// `OPEN INPUT|OUTPUT <fichero>`.
+    fn emit_open(&mut self, modo: &str, fichero: &str) {
+        let Some(off) = self.file_slot(fichero) else { return };
+        let Some(f) = self.files.get(&fichero.to_ascii_uppercase()).cloned() else { return };
+        let m = modo.trim().to_ascii_uppercase();
+        let escribe = match m.as_str() {
+            "INPUT" => false,
+            "OUTPUT" => true,
+            // `EXTEND` es AÑADIR al final, y la puerta que hay abre con
+            // `TASK_OP_ARCHIVO_CREAR`: crea de cero. Compilarlo como OUTPUT
+            // BORRARIA el historico entero y el programa parecería funcionar
+            // —el fichero existe, tiene lineas nuevas— hasta que alguien
+            // buscara el mes pasado. Se rechaza.
+            "EXTEND" => {
+                self.errors.push(CobolError::new(
+                    0,
+                    format!(
+                        "OPEN EXTEND {fichero}: la puerta de archivos abre creando de cero, \
+                         asi que esto BORRARIA lo que ya hay. Falta el modo anadir en \
+                         `KIND_ARCHIVO`; usa OPEN OUTPUT si de verdad quieres reescribirlo"
+                    ),
+                ));
+                return;
+            }
+            otro => {
+                // I-O queda fuera a proposito: leer y escribir a la vez sobre
+                // el mismo handle no lo soporta `KIND_ARCHIVO`, que fija el
+                // modo AL ABRIR. Se dice en vez de abrir en uno de los dos y
+                // que el otro falle en ejecucion.
+                self.errors.push(CobolError::new(
+                    0,
+                    format!("OPEN {otro}: solo INPUT y OUTPUT. I-O necesita un handle que lea y escriba, y el modo se fija al abrir"),
+                ));
+                return;
+            }
+        };
+        bmo_lower::archivo::abrir_const(&mut self.code, f.path.as_bytes(), escribe);
+        self.store_slot(off);
+    }
+
+    /// `CLOSE <fichero>`. En uno de salida, **aqui es donde llega al disco**.
+    fn emit_close(&mut self, fichero: &str) {
+        let Some(off) = self.file_slot(fichero) else { return };
+        self.load_slot(off);
+        self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
+        bmo_lower::archivo::cerrar(&mut self.code);
+    }
+
+    /// `READ <f> AT END … NOT AT END … END-READ`.
+    ///
+    /// Lee una linea a un buffer de pila, la convierte al entero escalado del
+    /// REGISTRO del fichero y lo guarda ahi. La conversion usa la misma
+    /// pareja que `ACCEPT` — `parse_decimal_scaled` — porque un registro de
+    /// texto y una linea tecleada son el mismo problema.
+    fn emit_read(
+        &mut self,
+        fichero: &str,
+        al_final: &[CobolStatement],
+        si_hay: &[CobolStatement],
+    ) {
+        const BUF: i8 = 64;
+        let Some(off) = self.file_slot(fichero) else { return };
+        let Some(f) = self.files.get(&fichero.to_ascii_uppercase()).cloned() else { return };
+        if f.record.is_empty() {
+            self.errors.push(CobolError::new(
+                0,
+                format!("{fichero} no tiene registro: falta el `FD {fichero}` con su 01 debajo"),
+            ));
+            return;
+        }
+        let escala = self.var_scale(&f.record);
+
+        self.load_slot(off);
+        self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
+        x86::sub_r64_imm8(&mut self.code, x86::RSP, BUF);
+        x86::lea_r64_rsp_disp8(&mut self.code, x86::R8, 0);
+        bmo_lower::archivo::leer_linea(&mut self.code, BUF as u8);
+        // `rax` = 1 si hubo registro. Se guarda en la RANURA del fichero antes
+        // de tocar nada: el parseo de abajo se lleva por delante `r10` y `r11`.
+        let estado = self.file_estado[&fichero.to_ascii_uppercase()];
+        self.store_slot(estado);
+        // `r8` acabo al final de lo leido; se devuelve al principio.
+        x86::sub_r64_r64(&mut self.code, x86::R8, x86::R9);
+        bmo_lower::fmt::parse_decimal_scaled(&mut self.code, escala);
+        x86::add_r64_imm8(&mut self.code, x86::RSP, BUF);
+        self.store_var(&f.record);
+
+        // Si no hubo registro, la rama de AT END. El valor parseado de un
+        // buffer vacio es 0 y no se usa: quien escribe `AT END` sabe que ahi
+        // no hay dato.
+        let al_end = self.fresh_label();
+        let fin = self.fresh_label();
+        self.load_slot(estado);
+        self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
+        self.emit_jcc(0x84, al_end); // je → se acabo
+        for s in si_hay {
+            self.emit_statement(s);
+        }
+        self.emit_jmp(fin);
+        self.bind_label(al_end);
+        for s in al_final {
+            self.emit_statement(s);
+        }
+        self.bind_label(fin);
+    }
+
+    /// `WRITE <registro>` — el valor del registro como una linea.
+    fn emit_write(&mut self, registro: &str) {
+        let reg = registro.trim().to_ascii_uppercase();
+        // `WRITE X FROM Y` todavia no: se dice en vez de escribir X callando
+        // que se ignoro el FROM.
+        if reg.contains(' ') {
+            self.errors.push(CobolError::new(
+                0,
+                format!("WRITE {registro}: solo `WRITE <registro>` por ahora (sin FROM)"),
+            ));
+            return;
+        }
+        let Some(&off) = self.record_owner.get(&reg) else {
+            self.errors.push(CobolError::new(
+                0,
+                format!("'{registro}' no es el registro de ningun FD: WRITE no sabe a que fichero va"),
+            ));
+            return;
+        };
+        let escala = self.var_scale(&reg);
+        let plantilla = self.var_edicion.get(&reg).cloned();
+        self.load_var(&reg);
+        // El texto al buffer de pila. Dos formas del MISMO reparto: editar (o
+        // formatear) es una cosa y publicar es otra.
+        //
+        // Un registro con PIC editada escribe su LINEA, no su numero: eso es un
+        // informe bancario, y es la razon de que exista `emitir_en_buffer`.
+        // Escribir aqui el numero crudo callando que habia mascara seria
+        // exactamente el fallo que este compilador no comete.
+        //
+        // El numero sin mascara se llena HACIA ATRAS desde el tope, asi que
+        // `r8 + r9` cae justo en el final del hueco reservado: escribir ahi el
+        // salto de linea seria un byte FUERA, sobre la pila del llamante. El
+        // salto va en una segunda escritura, usando la parte baja del mismo
+        // buffer —que esta libre porque un numero nunca lo llena entero.
+        let pila = match &plantilla {
+            Some(p) => match p.emitir_en_buffer(&mut self.code) {
+                Ok(total) => total,
+                Err(e) => {
+                    self.errors.push(CobolError::new(0, format!("WRITE {registro}: {e}")));
+                    return;
+                }
+            },
+            None => {
+                bmo_lower::fmt::formatear_decimal_scaled(&mut self.code, escala);
+                bmo_lower::fmt::BUFFER
+            }
+        };
+        // El handle DESPUES de editar y nunca antes: `emitir_en_buffer` usa
+        // `r10` para recorrer los digitos, y ahi es donde va el handle.
+        self.load_slot(off);
+        self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
+        bmo_lower::archivo::escribir_buffer(&mut self.code);
+        // El salto, aparte: un registro por linea es lo que `leer_linea` sabe
+        // deshacer.
+        x86::lea_r64_rsp_disp8(&mut self.code, x86::R8, 0);
+        x86::mov_byte_at_reg_imm8(&mut self.code, x86::R8, b'\n');
+        x86::mov_r32_imm32(&mut self.code, x86::R9, 1);
+        bmo_lower::archivo::escribir_buffer(&mut self.code);
+        x86::add_r64_imm8(&mut self.code, x86::RSP, pila);
     }
 
     fn emit_statement(&mut self, stmt: &CobolStatement) {
@@ -567,17 +815,16 @@ impl Codegen {
             // cuyo READ no lee nada es peor que uno que no compila: el
             // fichero se necesita como capability sobre BMO Channel, y esa
             // capa todavía no existe.
-            CobolStatement::Open(_, _)
-            | CobolStatement::Close(_)
-            | CobolStatement::Read(_, _)
-            | CobolStatement::Write(_) => {
-                self.errors.push(CobolError::new(
-                    0,
-                    "la E/S de ficheros (OPEN/CLOSE/READ/WRITE) aun no se compila: \
-                     necesita una capability de sistema de ficheros sobre BMO Channel, \
-                     que todavia no existe",
-                ));
+            // ★ E/S DE FICHEROS. El error que habia aqui —"necesita una
+            // capability de sistema de ficheros que todavia no existe"— dejo
+            // de ser verdad: `KIND_ARCHIVO` existe y `bmo-lower::archivo` es
+            // su puerta.
+            CobolStatement::Open(modo, fichero) => self.emit_open(modo, fichero),
+            CobolStatement::Close(fichero) => self.emit_close(fichero),
+            CobolStatement::Read(fichero, al_final, si_hay) => {
+                self.emit_read(fichero, al_final, si_hay)
             }
+            CobolStatement::Write(registro) => self.emit_write(registro),
             CobolStatement::StopRun => {}
             CobolStatement::Expr(_) => {}
         }
