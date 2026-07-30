@@ -184,7 +184,8 @@ $cobolEjemplos = @(
     # `conceptos` son nueve letras y el driver FAT32 se NIEGA a recortar, asi
     # que el destino es `concep`. La comprobacion de 8.3 de abajo lo cazaria
     # igual, pero mejor no llegar a que la cace.
-    @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';     out = 'concep.bex'   }
+    @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';     out = 'concep.bex'   },
+    @{ src = 'toolchain\lang\cobol\examples\6-condiciones\cartera.cob';  out = 'carter.bex'   }
 )
 $repo = Split-Path -Parent $root
 Push-Location $repo
