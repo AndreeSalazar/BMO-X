@@ -235,12 +235,29 @@ impl InputHal for UsbHidHal {
                 bmo_xhci::port_power_on(port);
                 // Additional settling time after power-on (AMD chipset)
                 for _ in 0..50000 { core::hint::spin_loop(); }
-                if !bmo_xhci::port_reset(port) { continue; }
+                // ★ Los tres `continue` de aqui abajo eran MUDOS, y por eso
+                // hicieron falta tres rondas de fotos para entender por que el
+                // raton no aparecia: un puerto que falla al resetear, uno vacio
+                // y uno que no acepta direccion se veian todos igual, o sea
+                // nada. Ahora cada puerto dice que le pasa. Es una linea por
+                // puerto en el arranque, y a cambio la proxima foto contesta.
+                if !bmo_xhci::port_reset(port) {
+                    h.log_u64("[uhid] puerto sin reset: ", port as u64);
+                    continue;
+                }
                 let speed = bmo_xhci::port_speed(port);
-                if speed == 0 { continue; }
+                if speed == 0 {
+                    // Vacio no es un fallo: es que ahi no hay nada enchufado.
+                    continue;
+                }
+                h.log_u64("[uhid] puerto con algo: ", port as u64);
 
                 let slot = match bmo_xhci::address_device(port, speed) {
-                    Some(s) => s, None => continue,
+                    Some(s) => s,
+                    None => {
+                        h.log_u64("[uhid] NO acepta direccion, puerto ", port as u64);
+                        continue;
+                    }
                 };
                 h.log_u64("[uhid] slot=", slot as u64);
 
@@ -389,7 +406,26 @@ impl InputHal for UsbHidHal {
                     }
                 }
 
-                if found_kbd && found_mouse { break; }
+                // ★★ AQUI ESTABA EL RATON MUERTO, y no en el parseo del informe.
+                //
+                // Esto era `if found_kbd && found_mouse { break; }`. El teclado
+                // trae DOS interfaces HID —la suya y una de protocolo de raton
+                // para las teclas de medios—, asi que al enumerarlo se marcaban
+                // las dos banderas y el bucle **CORTABA AQUI**. El puerto donde
+                // esta el raton de verdad no se visitaba nunca.
+                //
+                // De ahi los tres sintomas a la vez: `m=OK` en el mismo slot que
+                // el teclado, cero eventos para siempre, y —el que lo confirma—
+                // **el raton fisico sin luces**: un dispositivo USB al que nadie
+                // le manda SET_CONFIGURATION no arranca su firmware.
+                //
+                // Ahora solo se corta con un raton DEDICADO. Si el que hay vino
+                // de un teclado compuesto, se sigue buscando: puede haber uno de
+                // verdad en un puerto de mas adelante, y si no lo hay, nos
+                // quedamos con el provisional sin perder nada.
+                if found_kbd && found_mouse && !self.mouse_provisional {
+                    break;
+                }
             }
         }
 
