@@ -304,6 +304,35 @@ fn upper(c: u8) -> u8 {
 /// `.bex` viajaban con `include_bytes!` y cambiar un "hola mundo" obligaba a
 /// recompilar el sistema operativo entero y reflashear.
 pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
+    let (cluster, size) = resolver(path)?;
+    if size as usize > dst.len() {
+        return Err(LoadError::TooBig);
+    }
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return Err(LoadError::NoVolume),
+        }
+    };
+    Ok(v.read_file(cluster, size, dst))
+}
+
+/// Cuántos bytes mide el archivo, SIN leerlo.
+///
+/// Existe para poder reservar el buffer del tamaño justo antes de traerlo:
+/// hasta ahora un archivo abierto se copiaba a una fila estática de 4 KiB, y
+/// ese número era el techo de lo que un programa podía leer. Preguntar primero
+/// convierte el techo en "lo que quepa en la RAM".
+pub fn tamano(path: &str) -> Result<u32, LoadError> {
+    resolver(path).map(|(_, size)| size)
+}
+
+/// Recorre la ruta y devuelve `(cluster, tamaño)` del archivo.
+///
+/// Lo comparten `load` y `tamano` a propósito: dos copias del recorrido de
+/// directorios es la forma clásica de que una acepte una ruta que la otra
+/// rechaza.
+fn resolver(path: &str) -> Result<(u32, u32), LoadError> {
     let v = unsafe {
         match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
             Some(v) => v,
@@ -336,9 +365,7 @@ pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
     }
 
     let name = to_8_3(rest)?;
-    let (cluster, size) = v.find_file_in(&name, dir).ok_or(LoadError::NotFound)?;
-    if size as usize > dst.len() { return Err(LoadError::TooBig); }
-    Ok(v.read_file(cluster, size, dst))
+    v.find_file_in(&name, dir).ok_or(LoadError::NotFound)
 }
 
 /// Crea un archivo en la raíz del volumen de datos.
