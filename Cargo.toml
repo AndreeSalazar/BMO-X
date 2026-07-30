@@ -57,6 +57,10 @@ members = [
     # are now sourced from crates.io where possible.
 
     # ── TOOLCHAIN (Build-time: language frontends → BEF → BEX) ─────
+    # Ada: crate PROPIO y sin dependencia de los demás frontends. Cada
+    # lenguaje es un pipeline individual y completo — lo único compartido son
+    # contratos (BEF, los 3 syscalls) y librerías opcionales (bmo-lower).
+    "toolchain/lang/ada",
     "toolchain/lang/cobol",
     "toolchain/lang/cpp",
     "toolchain/lang/c",

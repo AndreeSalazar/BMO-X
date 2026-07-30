@@ -187,6 +187,16 @@ $cobolEjemplos = @(
     @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';     out = 'concep.bex'   },
     @{ src = 'toolchain\lang\cobol\examples\6-condiciones\cartera.cob';  out = 'carter.bex'   }
 )
+# ── Programas ADA de ejemplo ─────────────────────────────────────
+#
+# Crate PROPIO (`bmo-ada-front`), sin dependencia de los otros frontends. El
+# decimal exacto es el mismo que el de COBOL y no por copia: el Annex F de Ada
+# copio las reglas de COBOL, asi que dos lenguajes que dicen lo mismo acaban en
+# la misma aritmetica de enteros escalados.
+$adaEjemplos = @(
+    @{ src = 'toolchain\lang\ada\examples\1-basico\cierre.adb'; out = 'cierre.bex' }
+)
+
 $repo = Split-Path -Parent $root
 Push-Location $repo
 try {
@@ -197,6 +207,19 @@ try {
         $out = cargo run -p bmo-cobol-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
         $out | ForEach-Object {
             if ($_ -match 'ok:|error') { Write-Host ('    [cobol] ' + $_) -ForegroundColor DarkGray }
+        }
+        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
+        if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
+    }
+
+    Step 'Building ADA example programs...'
+    foreach ($e in $adaEjemplos) {
+        $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
+        if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
+        $dst = Join-Path $dataStage $e.out
+        $out = cargo run -p bmo-ada-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
+        $out | ForEach-Object {
+            if ($_ -match 'ok:|error|linea') { Write-Host ('    [ada] ' + $_) -ForegroundColor DarkGray }
         }
         if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
         if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }

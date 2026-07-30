@@ -1,0 +1,38 @@
+[package]
+name = "bmo-ada-front"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO Ada frontend — compila Ada a ejecutables BEX nativos, sin runtime"
+
+# ── Lo que enlaza, y lo que NO ───────────────────────────────────
+#
+# NO depende de `bmo-cobol-front`, y es una decisión, no un descuido: cada
+# lenguaje es un pipeline individual y completo (regla 2 del proyecto —
+# "contratos y formatos, NUNCA cerebros"). Ada mantiene su esencia de principio
+# a fin, con su propio lexer, su propio análisis y su propio emisor.
+#
+# Lo único compartido son CONTRATOS y librerías OPCIONALES que el frontend
+# elige enlazar:
+#   bmo-abi     el contenedor BEF y la superficie congelada de 3 syscalls
+#   bmo-lower   L1, la puerta al ABI (consola, formateo, archivos)
+#
+# El día que Ada necesite el `PICTURE` de Annex F —que el estándar copió de
+# COBOL— la salida NO es importar `lang/cobol`: es promover ese motor a
+# `forge/` como librería opcional que los dos elijan enlazar.
+[dependencies]
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }
+bmo-lower = { path = "../../forge/bmo-lower" }
+
+[lib]
+name = "bmo_ada_front"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bmo-ada-front"
+path = "src/main.rs"
+
+[dev-dependencies]
+# El banco de pruebas EJECUTA los bytes emitidos. Un `if` que no bifurca se ve
+# igual que uno que sí en un volcado; sólo se distinguen corriéndolos.
+bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }
