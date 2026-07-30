@@ -378,13 +378,18 @@ pub fn render_hud() {
     let total = crate::ring0::core::splash::dash_rows();
     if total == 0 { return; }
     let rows = band_rows(total);
-    // El cockpit necesita cabecera + al menos 1 línea de bitácora + 4 de
-    // telemetría. Menos que eso no es un cockpit, es ruido: mejor no pintar.
-    if rows < 6 { return; }
+    // El cockpit necesita cabecera + al menos 1 línea de bitácora + CINCO de
+    // telemetría (sys, ring3, usb, kbd y raton). Menos que eso no es un
+    // cockpit, es ruido: mejor no pintar.
+    if rows < 7 { return; }
     let top = total - rows;
 
     let s = snapshot();
-    let (kbd, mouse, ks, ms, mev, _mx, _my, _btn, kev) = crate::ring0::dev::usb::hid_stats();
+    // ★ `mx`, `my` y `btn` llegaban aquí y se tiraban con un guion bajo, igual
+    // que el `_info` del pánico del compositor. CABINA sabía dónde estaba el
+    // ratón y no lo decía, así que "el ratón no va" no se podía repartir entre
+    // tres culpables muy distintos. Ahora se enseñan.
+    let (kbd, mouse, ks, ms, mev, mx, my, btn, kev) = crate::ring0::dev::usb::hid_stats();
     let (tev, rev, hev) = crate::ring0::dev::usb::xfer_stats();
     let (kdci, es, ee, ec) = crate::ring0::dev::usb::kbd_debug();
     let (kst, kbi, kiv, _ksp, ksts) = crate::ring0::dev::usb::kbd_ep_debug();
@@ -466,7 +471,7 @@ pub fn render_hud() {
     r.txt(" task="); r.dec(s.scheduler.processes); r.txt("/"); r.dec(s.scheduler.threads);
     r.txt(" tid="); r.dec(tid as u64);
     let health = if mib_free < 256 { C_WARN } else { C_OK };
-    splash_dashboard_log_color(total - 4, r.as_str(), health);
+    splash_dashboard_log_color(total - 5, r.as_str(), health);
 
     // Ring 3 — verde = corriendo, gris = terminó, ámbar = bloqueado.
     let mut r = Buf::new();
@@ -474,7 +479,7 @@ pub fn render_hud() {
     r.txt(" rx="); r.dec(rx as u64); r.txt(" ln="); r.dec(ln as u64);
     r.txt("  (01Rdy 02Run 03Blk 04Exit FFdone)");
     let r3_color = match st { 0x02 => C_OK, 0xFF | 0x04 => C_DIM, 0x03 => C_WARN, _ => C_INFO };
-    splash_dashboard_log_color(total - 3, r.as_str(), r3_color);
+    splash_dashboard_log_color(total - 4, r.as_str(), r3_color);
 
     // USB — EL AVISO: verde si escribe, ROJO si enumeró sin teclas.
     let mut r = Buf::new();
@@ -494,7 +499,7 @@ pub fn render_hud() {
     let usb_color = if kbd && kev > 0 { C_OK }
                     else if kbd && kev == 0 { C_FAULT }
                     else { C_WARN };
-    splash_dashboard_log_color(total - 2, r.as_str(), usb_color);
+    splash_dashboard_log_color(total - 3, r.as_str(), usb_color);
 
     // Última fila — el ENDPOINT del teclado según el xHC. `ep` debe ser 1
     // (Running); `bi`→`iv` muestra el bInterval del descriptor y el exponente
@@ -509,7 +514,30 @@ pub fn render_hud() {
     let ep_color = if !kbd { C_DIM }
                    else if kst == 1 && ksts & ((1 << 2) | (1 << 12)) == 0 { C_OK }
                    else { C_FAULT };
-    splash_dashboard_log_color(total - 1, r.as_str(), ep_color);
+    splash_dashboard_log_color(total - 2, r.as_str(), ep_color);
+
+    // ── El RATÓN, con los tres números que reparten la culpa ──
+    //
+    // Con una foto de esta línea se sabe cuál de los tres es, y son problemas
+    // en sitios muy distintos:
+    //
+    //   mev = 0                → el HID no entrega NADA. Es el USB: endpoint,
+    //                            ring o timbre. Ni el kernel ni el compositor.
+    //   mev sube, x/y quietos  → llegan informes pero los deltas salen cero:
+    //                            el formato del informe no es el que leemos
+    //                            (protocolo boot vs report, o un report ID
+    //                            delante que corre todos los campos uno).
+    //   x/y se mueven          → el kernel lo tiene y el cursor no se pinta:
+    //                            entonces es del compositor, y ahí sí es
+    //                            dibujo.
+    let mut r = Buf::new();
+    r.txt("raton ev="); r.dec(mev as u64);
+    r.txt(" x="); if mx < 0 { r.txt("-"); } r.dec(mx.unsigned_abs() as u64);
+    r.txt(" y="); if my < 0 { r.txt("-"); } r.dec(my.unsigned_abs() as u64);
+    r.txt(" bot=0b"); r.hex(btn as u64, 2);
+    r.txt("  (ev=0 -> USB · ev sube y x/y quietos -> formato del informe)");
+    let raton_color = if !mouse { C_DIM } else if mev > 0 { C_OK } else { C_FAULT };
+    splash_dashboard_log_color(total - 1, r.as_str(), raton_color);
 
     if saved_cr3 != kpml4 { crate::ring0::mm::vmm::switch_to(saved_cr3); }
 }
