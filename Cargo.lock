@@ -23,6 +23,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-ada-front"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+ "bmo-lower",
+]
+
+[[package]]
 name = "bmo-ahci"
 version = "0.1.0"
 
