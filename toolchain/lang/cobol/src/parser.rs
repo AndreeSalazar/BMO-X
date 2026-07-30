@@ -167,7 +167,7 @@ impl Parser {
         }
     }
 
-    fn parse_data_item(&self, line: &str, _line_no: usize) -> Result<Option<DataItem>, CobolError> {
+    fn parse_data_item(&self, line: &str, line_no: usize) -> Result<Option<DataItem>, CobolError> {
         let trimmed = line.trim();
         let first = trimmed.split_whitespace().next().unwrap_or("");
         let level: u32 = first.parse().unwrap_or(77);
@@ -181,6 +181,7 @@ impl Parser {
 
         let mut pic = None;
         let mut value = None;
+        let mut occurs = None;
         let mut i = 1;
         while i < parts.len() {
             let uw = parts[i].to_ascii_uppercase();
@@ -194,11 +195,59 @@ impl Parser {
                     i += 1;
                     value = Some(parts[i].trim_matches('"').trim_matches('\'').to_string());
                 }
+            } else if uw == "OCCURS" {
+                // `OCCURS <n> [TIMES]`. El `TIMES` es opcional en el estandar y
+                // aqui tambien: lo que hace falta es el numero.
+                let n = parts.get(i + 1).map(|s| s.trim_end_matches('.'));
+                let n: u32 = match n.and_then(|s| s.parse().ok()) {
+                    Some(n) if n > 0 => n,
+                    _ => {
+                        return Err(CobolError::new(
+                            line_no,
+                            format!(
+                                "OCCURS de {name} sin cuantas veces: escribe \
+                                 `OCCURS 12 TIMES`. Un OCCURS variable \
+                                 (DEPENDING ON) todavia no se compila"
+                            ),
+                        ))
+                    }
+                };
+                occurs = Some(n);
+                i += 1;
             }
             i += 1;
         }
 
-        Ok(Some(DataItem::new(level, name, pic, value)))
+        let mut item = DataItem::new(level, name, pic, value);
+        if let Some(n) = occurs {
+            // Donde el estandar NO deja OCCURS: 01 (y 66/77/88). No es rigor
+            // por rigor — un `01` es el registro entero, y repetir el registro
+            // es otra cosa que repetir un campo de dentro. La forma buena es
+            // el grupo, y es la que un banco escribe.
+            if matches!(item.level, 1 | 66 | 77 | 88) {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "OCCURS en el nivel {:02} ({}) no existe: mete el campo en un grupo\n\
+                         \x20      01 TABLA.\n\
+                         \x20          05 {} PIC ... OCCURS {} TIMES.",
+                        item.level, item.name, item.name, n
+                    ),
+                ));
+            }
+            if item.pic.is_none() {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "OCCURS de {} sin PIC: una tabla de grupos (cada elemento \
+                         con varios campos) todavia no se compila",
+                        item.name
+                    ),
+                ));
+            }
+            item.occurs = Some(n);
+        }
+        Ok(Some(item))
     }
 
     fn parse_statement(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {

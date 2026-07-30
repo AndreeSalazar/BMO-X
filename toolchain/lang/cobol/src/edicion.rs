@@ -339,6 +339,18 @@ impl Plantilla {
                     // Un separador dentro de la zona suprimida se sustituye
                     // por el relleno: `Z,ZZ9` con 7 da "    7", no "   ,7".
                     salida.push(if suprimiendo { self.relleno } else { c });
+                    // ★ Y ADEMÁS es sitio candidato para el símbolo flotante.
+                    //
+                    // El estándar dice que los separadores que caen DENTRO del
+                    // grupo flotante son parte del grupo, así que el `$` puede
+                    // aterrizar en la posición de la coma. Sin esto,
+                    // `$$$,$$9.99` con 105.00 daba `  $ 105.00` —el símbolo una
+                    // casilla antes y un hueco en medio— en vez de
+                    // `   $105.00`. Se veía en el importe, no en el total: pasa
+                    // sólo cuando la supresión muere justo después de la coma.
+                    if suprimiendo {
+                        hueco_flotante = Some(salida.len() - 1);
+                    }
                 }
                 Sim::Fijo(c) => {
                     salida.push(match c {
@@ -624,11 +636,15 @@ impl Plantilla {
                 x86::mov_byte_at_reg_imm8(code, reg::SALIDA, b'.');
                 x86::inc_r64(code, reg::SALIDA);
             }
-            // Un separador dentro de la zona suprimida se va con ella.
+            // Un separador dentro de la zona suprimida se va con ella — y su
+            // posición queda como candidata para el símbolo flotante, porque
+            // los separadores de dentro del grupo son parte del grupo. Ver la
+            // nota de su gemela en `formatear`.
             Sim::Insercion(c) => {
                 x86::test_r64_r64(code, reg::SUPRIMIENDO, reg::SUPRIMIENDO);
                 let normal = x86::emit_jump(code, Jump::IfZero);
                 x86::mov_byte_at_reg_imm8(code, reg::SALIDA, self.relleno as u8);
+                x86::mov_r64_r64(code, reg::HUECO, reg::SALIDA);
                 let hecho = x86::emit_jump(code, Jump::Always);
                 x86::patch_jump(code, normal);
                 x86::mov_byte_at_reg_imm8(code, reg::SALIDA, c as u8);

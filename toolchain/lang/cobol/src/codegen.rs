@@ -58,6 +58,18 @@ struct Codegen {
     /// De qué fichero es cada registro. Es lo que hace que `WRITE SALDO` sepa
     /// a dónde va sin que nadie se lo diga.
     record_owner: HashMap<String, i32>,
+    /// Las TABLAS (`OCCURS`): cuántos elementos y cuántos bytes ocupa cada uno.
+    ///
+    /// El paso es el mismo hueco alineado que se le daría al dato suelto, así
+    /// la regla de reparto de la pila es UNA: cada elemento vive donde viviría
+    /// él solo. Un elemento y un dato suelto se cargan con el mismo `mov`.
+    tablas: HashMap<String, (u32, i32)>,
+    /// La etiqueta del bloque "subíndice fuera de rango" de cada tabla.
+    ///
+    /// Uno por tabla y no uno por acceso: el bloque termina el programa, así
+    /// que se llega por `jmp` y nadie vuelve. Cada acceso cuesta doce bytes
+    /// (un `cmp` y un `jae`) en vez de arrastrar el mensaje entero.
+    oob_labels: HashMap<String, u32>,
     next_label: u32,
     /// Offset donde quedó fijada cada etiqueta.
     label_offsets: HashMap<u32, usize>,
@@ -93,6 +105,8 @@ impl Codegen {
             file_handles: HashMap::new(),
             file_estado: HashMap::new(),
             record_owner: HashMap::new(),
+            tablas: HashMap::new(),
+            oob_labels: HashMap::new(),
             next_label: 0,
             label_offsets: HashMap::new(),
             jump_fixups: Vec::new(),
@@ -103,8 +117,10 @@ impl Codegen {
     }
 
     /// Escala decimal de una variable (0 = entero / no declarada).
+    /// La escala de un dato — y de un elemento de tabla es la de su tabla: el
+    /// `OCCURS` repite el campo, no cambia dónde cae la coma.
     fn var_scale(&self, name: &str) -> u32 {
-        *self.var_scales.get(name).unwrap_or(&0)
+        *self.var_scales.get(&Self::nombre_base(name)).unwrap_or(&0)
     }
 
     /// Convierte un literal COBOL a su ENTERO escalado por `scale`. Es el
@@ -199,7 +215,152 @@ impl Codegen {
     /// como literal, así que `ADD PRECIO TO TOTAL` sumaba cero (el parseo
     /// numérico de "PRECIO" fallaba y caía a `unwrap_or(0)`).
     fn is_variable(&self, name: &str) -> bool {
-        self.var_offsets.contains_key(name)
+        match Self::subindice(name) {
+            Some((base, _)) => self.var_offsets.contains_key(&base),
+            None => self.var_offsets.contains_key(name),
+        }
+    }
+
+    // ── TABLAS (`OCCURS`) ────────────────────────────────────────────────
+    //
+    // Un elemento de tabla se escribe `TOTAL(I)` y se guarda como cualquier
+    // otro dato: un entero escalado en un hueco de la pila. Lo único que
+    // cambia es que la DIRECCIÓN se calcula, y por eso todo pasa por los
+    // mismos cuatro sitios que un dato suelto (`is_variable`, `var_scale`,
+    // `load_var`, `store_var`). Así `MOVE`, `ADD`, `IF` y `DISPLAY` heredan los
+    // subíndices sin tocar ni una línea de sus emisores.
+
+    /// Parte `TOTAL(I)` en `("TOTAL", "I")`. `None` si no lleva subíndice.
+    ///
+    /// El subíndice puede ser un literal o el nombre de un dato — que es como
+    /// COBOL recorre una tabla, con la variable del bucle.
+    fn subindice(name: &str) -> Option<(String, String)> {
+        let abre = name.find('(')?;
+        let cierra = name.rfind(')')?;
+        if cierra < abre {
+            return None;
+        }
+        let base = name[..abre].trim().to_string();
+        let idx = name[abre + 1..cierra].trim().to_string();
+        if base.is_empty() || idx.is_empty() {
+            return None;
+        }
+        Some((base, idx))
+    }
+
+    /// El nombre sin subíndice — para preguntar por la escala o la edición, que
+    /// son de la tabla entera y no de un elemento.
+    fn nombre_base(name: &str) -> String {
+        Self::subindice(name).map(|(b, _)| b).unwrap_or_else(|| name.to_string())
+    }
+
+    /// La plantilla de edición del dato, mirando por su nombre base.
+    fn edicion_de(&self, name: &str) -> Option<Plantilla> {
+        self.var_edicion.get(&Self::nombre_base(name)).cloned()
+    }
+
+    /// Deja en `rcx` la DIRECCIÓN del elemento, o `None` si algo no cuadra.
+    ///
+    /// Ensucia `rax`, `rcx` y `rdx`. Los llamantes que traigan un valor vivo en
+    /// `rax` lo apilan antes: eso es cosa de `store_var`.
+    fn emit_direccion_elemento(&mut self, base: &str, idx: &str) -> Option<()> {
+        let Some(&off) = self.var_offsets.get(base) else {
+            self.errors
+                .push(CobolError::new(0, format!("'{base}' no esta declarado en el DATA DIVISION")));
+            return None;
+        };
+        let Some(&(n, paso)) = self.tablas.get(base) else {
+            self.errors.push(CobolError::new(
+                0,
+                format!("'{base}' no es una tabla: solo se le puede poner subindice a un OCCURS"),
+            ));
+            return None;
+        };
+
+        // ── El subíndice literal se resuelve al COMPILAR ──
+        //
+        // Es el caso corriente (`TOTAL(1)`) y sale gratis: ni multiplicación ni
+        // comprobación en ejecución. Y si se sale de la tabla, no compila: un
+        // `TOTAL(13)` sobre doce elementos es un error del programa, no una
+        // desgracia que descubrir de noche.
+        if let Ok(fijo) = idx.parse::<i64>() {
+            if fijo < 1 || fijo > n as i64 {
+                self.errors.push(CobolError::new(
+                    0,
+                    format!(
+                        "{base}({fijo}) se sale: la tabla tiene {n} elementos, \
+                         asi que el subindice va de 1 a {n}"
+                    ),
+                ));
+                return None;
+            }
+            let elem = off + (fijo as i32 - 1) * paso;
+            // lea rcx, [rbp + elem]
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x8D]);
+            self.code.extend_from_slice(&elem.to_le_bytes());
+            return Some(());
+        }
+
+        // ── El subíndice variable se resuelve en EJECUCIÓN ──
+        let escala = self.var_scale(idx);
+        if escala != 0 {
+            self.errors.push(CobolError::new(
+                0,
+                format!(
+                    "el subindice {idx} tiene decimales (escala {escala}): \
+                     un elemento de tabla se cuenta con enteros"
+                ),
+            ));
+            return None;
+        }
+        self.load_operand(idx, 0); // rax = el subindice, base 1
+        self.code.extend_from_slice(&[0x48, 0xFF, 0xC8]); // dec rax → base 0
+
+        // El guarda. `jae` (SIN signo) coge los dos lados con UNA comparacion:
+        // el subindice 0 se convirtio en -1, que sin signo es enorme.
+        let fuera = *self
+            .oob_labels
+            .entry(base.to_string())
+            .or_insert_with(|| {
+                let l = self.next_label;
+                self.next_label += 1;
+                l
+            });
+        // `cmp r/m64, imm32` (grupo 81 /7) y no la forma corta `3D`: es la que
+        // ya emite el resto del sistema, o sea la que el emulador EJECUTA. Un
+        // opcode nuevo aqui seria una forma mas que mantener en dos sitios.
+        self.code.extend_from_slice(&[0x48, 0x81, 0xF8]);
+        self.code.extend_from_slice(&(n as i32).to_le_bytes());
+        self.emit_jcc(0x83, fuera); // jae (SIN signo) → fuera de rango
+
+        // rax *= paso, por `mov rcx, paso` + `imul rax, rcx` — la misma pareja
+        // que usa `rescale`, en vez de un `imul rax, imm32` que nadie mas emite.
+        self.emit_asm(|a| {
+            a.mov_imm64(Reg::Rcx, paso as u64).unwrap();
+        });
+        self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]); // imul rax, rcx
+        // lea rcx,[rbp+off] ; add rcx, rax
+        self.code.extend_from_slice(&[0x48, 0x8D, 0x8D]);
+        self.code.extend_from_slice(&off.to_le_bytes());
+        self.code.extend_from_slice(&[0x48, 0x01, 0xC1]);
+        Some(())
+    }
+
+    /// Los bloques de "subindice fuera de rango", uno por tabla.
+    ///
+    /// Termina el programa DICIENDO qué tabla fue. La alternativa era seguir
+    /// con una direccion inventada: en un batch eso escribe encima del campo
+    /// de al lado y el descuadre aparece semanas despues, en otro sitio. Un
+    /// proceso bancario que se para y lo cuenta es infinitamente mejor que uno
+    /// que sigue con la memoria de otro.
+    fn emit_bloques_fuera_de_rango(&mut self) {
+        for (base, label) in std::mem::take(&mut self.oob_labels) {
+            let (n, _) = self.tablas[&base];
+            self.bind_label(label);
+            let msg = format!("SUBINDICE FUERA DE RANGO EN {base} (1..{n})\n");
+            bmo_lower::console::write_const(&mut self.code, msg.as_bytes());
+            bmo_lower::task::exit(&mut self.code);
+        }
     }
 
     /// Carga un operando en `rax`, reescalado a `scale`.
@@ -248,7 +409,15 @@ impl Codegen {
         for item in &program.data_items {
             let size = item.storage_size();
             let aligned = (size as i32 + 7) & !7;
-            self.stack_size += aligned;
+            // Una tabla son `n` huecos seguidos. El offset que se guarda es el
+            // del PRIMER elemento, así que se reserva todo y se apunta al
+            // principio: los offsets crecen hacia abajo (`-stack_size`) y el
+            // subíndice suma hacia arriba.
+            let n = item.elementos();
+            self.stack_size += aligned * n as i32;
+            if item.occurs.is_some() {
+                self.tablas.insert(item.name.clone(), (n, aligned));
+            }
             self.var_offsets.insert(item.name.clone(), -(self.stack_size));
             // Recuerda la escala decimal del PIC para la aritmética exacta.
             self.var_scales.insert(item.name.clone(), item.scale());
@@ -296,6 +465,11 @@ impl Codegen {
         // `pause`, que es lo que emite la puerta.
         bmo_lower::task::exit(&mut self.code);
 
+        // Los bloques de subindice fuera de rango van DESPUES del final: son
+        // camino de no volver, no estorban al codigo que corre, y se comparten
+        // entre todos los accesos a la misma tabla.
+        self.emit_bloques_fuera_de_rango();
+
         // Syscall stub
         let stub_off = self.code.len();
         self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]); // syscall; ret
@@ -321,25 +495,70 @@ impl Codegen {
         }
     }
 
-    fn load_var(&mut self, name: &str) {
-        if let Some(&off) = self.var_offsets.get(name) {
-            if off >= -128 && off <= 127 {
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x45, off as u8]);
-            } else {
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
-                self.code.extend_from_slice(&off.to_le_bytes());
+    /// Antes, un nombre que no existía hacía que estas dos funciones no
+    /// emitieran NADA: `DISPLAY PEPE` imprimía lo que hubiera en `rax` y
+    /// `MOVE 1 TO PEPE` se perdía. Ahora falta el dato o falta el subíndice, y
+    /// las dos cosas se dicen.
+    fn exige_declarado(&mut self, name: &str) -> Option<i32> {
+        match self.var_offsets.get(name) {
+            Some(&off) if !self.tablas.contains_key(name) => Some(off),
+            Some(_) => {
+                let n = self.tablas[name].0;
+                self.errors.push(CobolError::new(
+                    0,
+                    format!(
+                        "'{name}' es una tabla de {n}: hace falta el subindice, \
+                         `{name}(I)`. Sin el no se sabe de que elemento se habla"
+                    ),
+                ));
+                None
+            }
+            None => {
+                self.errors.push(CobolError::new(
+                    0,
+                    format!("'{name}' no esta declarado en el DATA DIVISION"),
+                ));
+                None
             }
         }
     }
 
-    fn store_var(&mut self, name: &str) {
-        if let Some(&off) = self.var_offsets.get(name) {
-            if off >= -128 && off <= 127 {
-                self.code.extend_from_slice(&[0x48, 0x89, 0x45, off as u8]);
-            } else {
-                self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
-                self.code.extend_from_slice(&off.to_le_bytes());
+    fn load_var(&mut self, name: &str) {
+        if let Some((base, idx)) = Self::subindice(name) {
+            if self.emit_direccion_elemento(&base, &idx).is_some() {
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x01]); // mov rax, [rcx]
             }
+            return;
+        }
+        let Some(off) = self.exige_declarado(name) else { return };
+        if off >= -128 && off <= 127 {
+            self.code.extend_from_slice(&[0x48, 0x8B, 0x45, off as u8]);
+        } else {
+            self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
+            self.code.extend_from_slice(&off.to_le_bytes());
+        }
+    }
+
+    fn store_var(&mut self, name: &str) {
+        if let Some((base, idx)) = Self::subindice(name) {
+            // El valor que hay que guardar viene en `rax`, y calcular la
+            // direccion lo destruye: se aparta en la pila. Apilar y no en otro
+            // registro porque el subindice puede ser OTRO elemento de tabla, y
+            // ese calculo vuelve a usar los mismos tres registros.
+            self.code.push(0x50); // push rax
+            let ok = self.emit_direccion_elemento(&base, &idx).is_some();
+            self.code.push(0x58); // pop rax
+            if ok {
+                self.code.extend_from_slice(&[0x48, 0x89, 0x01]); // mov [rcx], rax
+            }
+            return;
+        }
+        let Some(off) = self.exige_declarado(name) else { return };
+        if off >= -128 && off <= 127 {
+            self.code.extend_from_slice(&[0x48, 0x89, 0x45, off as u8]);
+        } else {
+            self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+            self.code.extend_from_slice(&off.to_le_bytes());
         }
     }
 
@@ -387,7 +606,7 @@ impl Codegen {
         // La plantilla se consume AQUI, al compilar: lo que va al `.bex` es
         // el recorrido convertido en instrucciones, no la plantilla ni un
         // interprete que la lea.
-        if let Some(p) = self.var_edicion.get(nombre).cloned() {
+        if let Some(p) = self.edicion_de(nombre) {
             if let Err(e) = p.emitir(&mut self.code) {
                 self.errors.push(CobolError::new(0, e));
             }
@@ -590,7 +809,7 @@ impl Codegen {
             return;
         };
         let escala = self.var_scale(&reg);
-        let plantilla = self.var_edicion.get(&reg).cloned();
+        let plantilla = self.edicion_de(&reg);
         self.load_var(&reg);
         // El texto al buffer de pila. Dos formas del MISMO reparto: editar (o
         // formatear) es una cosa y publicar es otra.
@@ -842,6 +1061,24 @@ impl Codegen {
     /// MULTIPLY y DIVIDE, aplicado de forma uniforme, y es lo que mantiene
     /// el decimal exacto sin tocar punto flotante.
     fn emit_compute(&mut self, expr: &str, scale: u32) {
+        // Un subindice DENTRO de la expresion no se puede leer aqui: para este
+        // tokenizador un `(` abre un grupo de precedencia, asi que `TOTAL(I)`
+        // seria "la tabla TOTAL" y luego "(I)" aparte. Se dice, en vez de
+        // calcular otra cosa: la forma que si corre es sacarlo con un MOVE.
+        for tabla in self.tablas.keys() {
+            let aguja = format!("{tabla}(");
+            if expr.to_ascii_uppercase().replace(' ', "").contains(&aguja) {
+                self.errors.push(CobolError::new(
+                    0,
+                    format!(
+                        "COMPUTE no admite subindices todavia ({tabla}(...)): para este \
+                         analizador el parentesis es de precedencia. Saca el elemento \
+                         antes con `MOVE {tabla}(I) TO <aux>` y usa el auxiliar"
+                    ),
+                ));
+                return;
+            }
+        }
         let tokens = Self::tokenize_expr(expr);
         let mut pos = 0usize;
         self.emit_expr_sum(&tokens, &mut pos, scale);

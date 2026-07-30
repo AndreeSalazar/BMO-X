@@ -15,6 +15,13 @@ pub struct DataItem {
     pub edicion: Option<Plantilla>,
     pub value: Option<String>,
     pub usage: Usage,
+    /// `OCCURS <n> TIMES` — cuántas veces se repite el dato.
+    ///
+    /// `None` = un dato suelto. `Some(n)` = una TABLA de `n` elementos, y
+    /// entonces el nombre **exige subíndice**: `TOTAL(I)`. Un `MOVE 0 TO
+    /// TOTAL` sobre una tabla no es "el primero", es una pregunta sin
+    /// respuesta, y se rechaza.
+    pub occurs: Option<u32>,
 }
 
 /// Analiza una PIC decidiendo primero de cuál de las dos familias es.
@@ -60,12 +67,17 @@ impl DataItem {
             Some(Ok((campo, plantilla))) => (Some(campo), plantilla),
             _ => (None, None),
         };
-        DataItem { level, name, pic, pic_field, edicion, value, usage }
+        DataItem { level, name, pic, pic_field, edicion, value, usage, occurs: None }
     }
 
     /// Bytes de almacenamiento del item (mínimo 8, alineado por el codegen).
     pub fn storage_size(&self) -> usize {
         self.pic_field.as_ref().map(|p| p.size()).unwrap_or(8)
+    }
+
+    /// Cuántos elementos tiene. Un dato suelto es una tabla de uno.
+    pub fn elementos(&self) -> u32 {
+        self.occurs.unwrap_or(1)
     }
 
     /// Escala decimal (dígitos tras la V). 0 = entero. Es la llave del

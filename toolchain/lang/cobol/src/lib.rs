@@ -303,6 +303,13 @@ STOP RUN.
             // máscara, y ese recorrido son instrucciones dentro del .bex.
             ("PIC moneda", "01 L PIC $$$,$$9.99.", "MOVE 12345.67 TO L.\nDISPLAY L.", "$12,345.67\n"),
             ("PIC moneda pequena", "01 L PIC $$$,$$9.99.", "MOVE 0.45 TO L.\nDISPLAY L.", "     $0.45\n"),
+            // ★ El símbolo flotante cuando la supresión muere JUSTO tras la
+            // coma: el `$` va en la casilla de la coma, porque los separadores
+            // de dentro del grupo flotante son parte del grupo. Daba
+            // `  $ 105.00` —con un hueco en medio— y los 238 casos de
+            // `edicion.rs` no lo veían porque comparan las dos
+            // implementaciones entre sí, y las dos se equivocaban igual.
+            ("PIC moneda tras coma", "01 L PIC $$$,$$9.99.", "MOVE 105.00 TO L.\nDISPLAY L.", "   $105.00\n"),
             ("PIC cheque", "01 L PIC **,**9.99.", "MOVE 0.45 TO L.\nDISPLAY L.", "*****0.45\n"),
             ("PIC saldo en rojo", "01 L PIC Z,ZZ9.99CR.", "MOVE -120.00 TO L.\nDISPLAY L.", "  120.00CR\n"),
             ("PIC saldo en verde", "01 L PIC Z,ZZ9.99CR.", "MOVE 120.00 TO L.\nDISPLAY L.", "  120.00  \n"),
@@ -313,6 +320,29 @@ STOP RUN.
             ("PIC se puede sumar", "01 L PIC $$$,$$9.99.", "MOVE 10.05 TO L.\nADD 0.20 TO L.\nDISPLAY L.", "    $10.25\n"),
             // Y el signo del literal sobrevive al camino entero.
             ("literal negativo", "01 A PIC S9(3)V99.", "MOVE -1.50 TO A.\nIF A < 0\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // ── OCCURS: tablas ──
+            //
+            // El subindice literal se resuelve al compilar (sin multiplicar y
+            // sin comprobar nada en ejecucion); el variable, con su guarda.
+            ("OCCURS literal", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.", "MOVE 5 TO E(1).\nIF E(1) = 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("OCCURS variable", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 I PIC 9(3).", "MOVE 2 TO I.\nMOVE 7 TO E(I).\nIF E(I) = 7\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // Cada elemento es SUYO. Si el paso estuviera mal, escribir en el
+            // segundo se vería en el primero — y un total por concepto saldría
+            // sumado en la casilla del vecino.
+            ("OCCURS no se pisan", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.", "MOVE 1 TO E(1).\nMOVE 2 TO E(2).\nMOVE 3 TO E(3).\nIF E(1) = 1 AND E(2) = 2 AND E(3) = 3\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // ★ Para lo que existe OCCURS: recorrer la tabla y totalizar.
+            ("OCCURS totaliza", "01 T.\n05 E PIC S9(7)V99 OCCURS 3 TIMES.\n01 I PIC 9(3).\n01 TOT PIC S9(7)V99.", "MOVE 10.05 TO E(1).\nMOVE 0.20 TO E(2).\nMOVE 1.75 TO E(3).\nMOVE 0 TO TOT.\nMOVE 1 TO I.\nPERFORM UNTIL I > 3\nADD E(I) TO TOT\nADD 1 TO I\nEND-PERFORM.\nIF TOT = 12.00\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // Un elemento con PIC editada enseña su mascara, como cualquier
+            // otro dato: la edicion es de la tabla, no de la casilla.
+            ("OCCURS PIC editada", "01 T.\n05 L PIC $$$,$$9.99 OCCURS 2 TIMES.", "MOVE 10.05 TO L(2).\nDISPLAY L(2).", "    $10.05\n"),
+            // El subindice puede ser OTRO elemento de tabla. Es lo que prueba
+            // que el valor a guardar sobrevive al calculo de la direccion.
+            ("OCCURS subindice de tabla", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 X.\n05 IDX PIC 9(3) OCCURS 2 TIMES.", "MOVE 3 TO IDX(1).\nMOVE 9 TO E(IDX(1)).\nIF E(3) = 9\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // ★ Y el subindice que se sale PARA el programa diciendo cual.
+            // Seguir con una direccion inventada escribiria encima del campo de
+            // al lado, y el descuadre apareceria semanas despues en otro sitio.
+            ("OCCURS fuera de rango", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 I PIC 9(3).", "MOVE 4 TO I.\nMOVE 1 TO E(I).\nDISPLAY \"no deberia llegar\".", "SUBINDICE FUERA DE RANGO EN E (1..3)\n"),
+            ("OCCURS subindice cero", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 I PIC 9(3).", "MOVE 0 TO I.\nMOVE 1 TO E(I).\nDISPLAY \"no deberia llegar\".", "SUBINDICE FUERA DE RANGO EN E (1..3)\n"),
         ];
         let mut broken = Vec::new();
         for (name, data, body, expected) in cases {
@@ -583,6 +613,52 @@ STOP RUN.
         assert!(salida.contains(" $1,234.56"), "{salida}");
     }
 
+    /// ★ EL CIERRE POR CONCEPTO. `OCCURS` y File I/O juntos: dos ficheros en
+    /// paralelo, cada importe a la casilla de su concepto, y el informe con
+    /// máscara.
+    ///
+    /// Es para esto que existe `OCCURS`: sin él harían falta `TOTAL-1`…
+    /// `TOTAL-4` y el mismo `IF` cuatro veces. Y el subíndice viene **de un
+    /// fichero**, o sea que la comprobación de rango no es teórica: la decide
+    /// el dato, no el programador.
+    #[test]
+    fn el_cierre_por_concepto_totaliza_en_su_casilla() {
+        let (salida, _) = run_cobol_con_disco(
+            include_str!("../examples/conceptos.cob"),
+            &[
+                ("apps/concs.txt", "1\n3\n2\n3\n1\n"),
+                ("apps/imps.txt", "100.00\n50.00\n25.50\n10.00\n5.00\n"),
+            ],
+        );
+        let esperado = [
+            "CIERRE POR CONCEPTO - BANCO BMO",
+            "totales por concepto:",
+            // 100.00 + 5.00 · 25.50 · 50.00 + 10.00 · nada
+            "   $105.00",
+            "    $25.50",
+            "    $60.00",
+            "     $0.00",
+        ]
+        .map(|l| format!("{l}\n"))
+        .concat();
+        assert_eq!(salida, esperado);
+    }
+
+    /// Y si el concepto que trae el fichero se sale de la tabla, el programa
+    /// **para diciendo cuál** en vez de sumar en la casilla del vecino.
+    #[test]
+    fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
+        let (salida, _) = run_cobol_con_disco(
+            include_str!("../examples/conceptos.cob"),
+            &[("apps/concs.txt", "1\n7\n"), ("apps/imps.txt", "100.00\n50.00\n")],
+        );
+        assert!(
+            salida.contains("SUBINDICE FUERA DE RANGO EN TOTAL-CONCEPTO (1..4)"),
+            "{salida}"
+        );
+        assert!(!salida.contains("totales por concepto"), "no debe seguir: {salida}");
+    }
+
     /// Un `READ` sin `AT END` se RECHAZA. Compilaría a un `PERFORM UNTIL` que
     /// no termina nunca, y eso es peor que no compilar.
     #[test]
@@ -606,6 +682,58 @@ STOP RUN.
         let e = compile_source_to_bef(src).unwrap_err();
         let t = format!("{e:?}");
         assert!(t.contains("NADIE") && t.contains("SELECT"), "{t}");
+    }
+
+    // ── OCCURS: lo que se RECHAZA, y diciendo qué hacer ─────────────────
+
+    /// Un `OCCURS` en el nivel 01 no existe en el estándar. Se dice, y se
+    /// enseña la forma buena: el grupo.
+    #[test]
+    fn occurs_en_nivel_01_se_rechaza_ensenando_el_grupo() {
+        let src = program("01 E PIC 9(3) OCCURS 3 TIMES.", "MOVE 1 TO E(1).");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("OCCURS en el nivel 01"), "{t}");
+        assert!(t.contains("05 E PIC"), "el error tiene que ensenar el grupo: {t}");
+    }
+
+    /// Una tabla sin subíndice no es "el primer elemento": es una pregunta sin
+    /// respuesta. Antes esto compilaba a un acceso al primero.
+    #[test]
+    fn una_tabla_sin_subindice_se_rechaza() {
+        let src = program("01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.", "MOVE 1 TO E.");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("es una tabla") && t.contains("E(I)"), "{t}");
+    }
+
+    /// Un subíndice literal que se sale NO compila. Es un error del programa,
+    /// no una desgracia que descubrir de noche.
+    #[test]
+    fn un_subindice_literal_fuera_de_rango_no_compila() {
+        let src = program("01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.", "MOVE 1 TO E(4).");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("se sale") && t.contains("de 1 a 3"), "{t}");
+    }
+
+    /// `COMPUTE` con subíndice se rechaza porque su tokenizador lee el
+    /// paréntesis como precedencia. Se dice, y se da la salida.
+    #[test]
+    fn compute_con_subindice_se_rechaza_dando_la_salida() {
+        let src = program(
+            "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 A PIC 9(3).",
+            "COMPUTE A = E(1) + 1.",
+        );
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("COMPUTE no admite subindices") && t.contains("MOVE"), "{t}");
+    }
+
+    /// Un dato que nadie declaró se rechaza. Antes `load_var`/`store_var` no
+    /// emitían NADA: `DISPLAY PEPE` imprimía lo que hubiera en `rax` y
+    /// `MOVE 1 TO PEPE` se perdía sin una palabra.
+    #[test]
+    fn un_dato_sin_declarar_se_rechaza() {
+        let src = program("01 A PIC 9(3).", "MOVE 1 TO PEPE.");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("PEPE") && t.contains("no esta declarado"), "{t}");
     }
 
     #[test]
