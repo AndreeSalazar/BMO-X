@@ -15,6 +15,7 @@ comprueba primero que el 1 sigue vivo.
 | 3 | `3-presentacion/` | `PICTURE` de **edición** emitida como instrucciones | emulador + Ryzen |
 | 4 | `4-ficheros/` | `SELECT`/`ASSIGN`, `FD`, `OPEN`/`READ … AT END`/`WRITE`/`CLOSE` | emulador + Ryzen |
 | 5 | `5-tablas/` | `OCCURS` con subíndice literal y variable, con guarda de rango | emulador + Ryzen |
+| 6 | `6-condiciones/` | Nivel **88**: nombres de condición | emulador |
 
 ## Qué hay en cada escalón
 
@@ -44,12 +45,20 @@ lo único que puede parar un `PERFORM UNTIL` sobre un fichero.
 casilla de su concepto. El subíndice **viene del fichero**, así que el rango no
 lo decide el programador; si se sale, el programa para diciendo qué tabla.
 
+**6 — `cartera.cob`.** El mismo batch escrito con NOMBRES: `PERFORM UNTIL
+SE-ACABO` en vez de `UNTIL FIN = 1`, `IF NO-HUBO-NADA` en vez de `IF CUANTOS =
+0`. Un 88 **no reserva ni un byte** — hay un test que lo comprueba comparando
+el tamaño del código con y sin ellos. Le pone nombre a una comparación, y ése
+es todo su trabajo: que quien audite el programa no tenga que acordarse de qué
+significaba el 1.
+
 ## El escalón que todavía no existe
 
-Un "nivel 6" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
-nivel `88` (nombres de condición), `EVALUATE`, `PERFORM VARYING`, `STRING`,
-`INSPECT`, `SEARCH`, `CALL`, `SORT`, `COMP-3` real y los records anidados.
-Cuando uno de ésos entre, entra con su carpeta y con su fila en
+Un "nivel 7" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
+`EVALUATE`, `PERFORM VARYING`, `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`,
+`COMP-3` real, los records anidados — y el `OR` en las condiciones, que es lo
+que hoy impide un `88` con `THRU` o con varios valores. Cuando uno de ésos
+entre, entra con su carpeta y con su fila en
 `cobol_feature_matrix_runs_correctly`.
 
 ## Los `.bex`

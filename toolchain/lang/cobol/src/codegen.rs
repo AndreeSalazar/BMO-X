@@ -64,6 +64,10 @@ struct Codegen {
     /// la regla de reparto de la pila es UNA: cada elemento vive donde viviría
     /// él solo. Un elemento y un dato suelto se cargan con el mismo `mov`.
     tablas: HashMap<String, (u32, i32)>,
+    /// Los NOMBRES DE CONDICIÓN (nivel 88): apodo → (dato del que cuelga,
+    /// valor con el que se compara). No ocupan memoria: son una comparación
+    /// con nombre, y por eso viven en un mapa y no en la pila.
+    cond_88: HashMap<String, (String, String)>,
     /// La etiqueta del bloque "subíndice fuera de rango" de cada tabla.
     ///
     /// Uno por tabla y no uno por acceso: el bloque termina el programa, así
@@ -106,6 +110,7 @@ impl Codegen {
             file_estado: HashMap::new(),
             record_owner: HashMap::new(),
             tablas: HashMap::new(),
+            cond_88: HashMap::new(),
             oob_labels: HashMap::new(),
             next_label: 0,
             label_offsets: HashMap::new(),
@@ -407,6 +412,17 @@ impl Codegen {
     fn emit_program(&mut self, program: &CobolProgram) -> Result<()> {
         self.stack_size = 0;
         for item in &program.data_items {
+            // ★ Un 88 NO es un dato: no se le reserva ni un byte. Es el apodo
+            // de una comparación sobre el campo del que cuelga.
+            if item.level == 88 {
+                if let (Some(padre), Some(valor)) = (&item.padre, &item.value) {
+                    self.cond_88.insert(
+                        item.name.to_ascii_uppercase(),
+                        (padre.clone(), valor.clone()),
+                    );
+                }
+                continue;
+            }
             let size = item.storage_size();
             let aligned = (size as i32 + 7) & !7;
             // Una tabla son `n` huecos seguidos. El offset que se guarda es el
@@ -1219,7 +1235,32 @@ impl Codegen {
     /// cruzados y elegía condiciones invertidas a ojo — otra fuente de
     /// error que aquí desaparece.
     fn emit_jump_if_condition_false(&mut self, cond: &CobolCondition, label: u32) {
+        // ── Un nombre de condición se expande AQUÍ ──
+        //
+        // `IF FIN-DE-FICHERO` es `IF FIN = 1` con otro nombre, y el otro nombre
+        // es el que se lee. La expansión vive en el codegen y no en el parser
+        // porque sólo aquí se sabe qué datos existen — y por tanto sólo aquí se
+        // puede decir "eso no es ningún 88" en vez de tratarlo como una
+        // variable que no existe y comparar contra basura.
+        if let CobolCondition::Nombre(n) = cond {
+            let Some((padre, valor)) = self.cond_88.get(n).cloned() else {
+                self.errors.push(CobolError::new(
+                    0,
+                    format!(
+                        "'{n}' no es un nombre de condicion: declaralo con un nivel 88 debajo \
+                         de su dato, o escribe la comparacion entera"
+                    ),
+                ));
+                return;
+            };
+            let expandida = CobolCondition::Equal(padre, valor);
+            self.emit_jump_if_condition_false(&expandida, label);
+            return;
+        }
+
         let (a, b, cc_when_false) = match cond {
+            // Ya se resolvió arriba; llegar aquí sería un bug del emisor.
+            CobolCondition::Nombre(_) => return,
             CobolCondition::Equal(a, b) => (a, b, 0x85),          // jne
             CobolCondition::NotEqual(a, b) => (a, b, 0x84),       // je
             CobolCondition::Greater(a, b) => (a, b, 0x8E),        // jle

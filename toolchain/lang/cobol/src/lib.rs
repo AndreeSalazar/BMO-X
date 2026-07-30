@@ -320,6 +320,23 @@ STOP RUN.
             ("PIC se puede sumar", "01 L PIC $$$,$$9.99.", "MOVE 10.05 TO L.\nADD 0.20 TO L.\nDISPLAY L.", "    $10.25\n"),
             // Y el signo del literal sobrevive al camino entero.
             ("literal negativo", "01 A PIC S9(3)V99.", "MOVE -1.50 TO A.\nIF A < 0\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // ── NIVEL 88: nombres de condición ──
+            //
+            // Un 88 no ocupa memoria: le pone nombre a una comparación. Es lo
+            // que convierte `PERFORM UNTIL FIN = 1` en
+            // `PERFORM UNTIL FIN-DE-FICHERO`, que es COBOL bancario del que se
+            // lee en voz alta.
+            ("88 verdadero", "01 F PIC 9.\n88 FIN VALUE 1.", "MOVE 1 TO F.\nIF FIN\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("88 falso", "01 F PIC 9.\n88 FIN VALUE 1.", "MOVE 0 TO F.\nIF FIN\nDISPLAY \"no\"\nELSE\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // ★ Para lo que existe: el bucle del batch, legible.
+            ("88 en PERFORM UNTIL", "01 F PIC 9.\n88 SE-ACABO VALUE 1.\n01 I PIC 9(3).", "MOVE 0 TO F.\nMOVE 0 TO I.\nPERFORM UNTIL SE-ACABO\nADD 1 TO I\nIF I >= 3\nMOVE 1 TO F\nEND-IF\nEND-PERFORM.\nIF I = 3\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // Varios 88 sobre el MISMO dato, que es como se usa de verdad.
+            ("88 varios sobre uno", "01 E PIC 9.\n88 ACTIVO VALUE 1.\n88 CERRADO VALUE 2.", "MOVE 2 TO E.\nIF CERRADO\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // El 88 cuelga del dato de ARRIBA, no del primero del programa.
+            ("88 cuelga del de arriba", "01 A PIC 9.\n01 B PIC 9.\n88 B-ES-CINCO VALUE 5.", "MOVE 5 TO A.\nMOVE 5 TO B.\nIF B-ES-CINCO\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            // Con decimales: el valor se escala como cualquier literal.
+            ("88 con decimales", "01 S PIC S9(5)V99.\n88 SALDADO VALUE 0.00.", "MOVE 0 TO S.\nIF SALDADO\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("88 y AND", "01 F PIC 9.\n88 FIN VALUE 1.\n01 N PIC 9(3).", "MOVE 1 TO F.\nMOVE 7 TO N.\nIF FIN AND N = 7\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
             // ── OCCURS: tablas ──
             //
             // El subindice literal se resuelve al compilar (sin multiplicar y
@@ -659,6 +676,44 @@ STOP RUN.
         assert!(!salida.contains("totales por concepto"), "no debe seguir: {salida}");
     }
 
+    /// ★ LA CARTERA. El mismo batch escrito con nombres en vez de números:
+    /// `PERFORM UNTIL SE-ACABO` y `IF NO-HUBO-NADA`.
+    ///
+    /// Es el nivel 88 haciendo lo único que hace: que la condición se lea en
+    /// voz alta. Quien audite esto no tiene que acordarse de qué significaba
+    /// el 1.
+    #[test]
+    fn la_cartera_reparte_cobros_y_devoluciones() {
+        let (salida, _) = run_cobol_con_disco(
+            include_str!("../examples/6-condiciones/cartera.cob"),
+            &[("apps/movim.txt", "1000.00\n234.56\n-100.00\n0.44\n-50.00\n")],
+        );
+        let esperado = [
+            "CARTERA DEL DIA - BANCO BMO",
+            "cobros:",
+            " $1,235.00",
+            "devoluciones:",
+            // `CR` y no un menos: una máscara sin signo se come el negativo —
+            // correcto según el estándar, y mentira en un informe. Escribirlo
+            // así fue el error de quien montó este test, no del compilador.
+            "   $150.00CR",
+        ]
+        .map(|l| format!("{l}\n"))
+        .concat();
+        assert_eq!(salida, esperado);
+    }
+
+    /// Y sin movimientos lo DICE, en vez de imprimir ceros callando. En un
+    /// cierre nocturno, un fichero vacío y uno que no se pudo leer se parecen
+    /// demasiado si los dos dan cero.
+    #[test]
+    fn la_cartera_sin_movimientos_lo_dice_con_su_nombre() {
+        let (salida, _) =
+            run_cobol_con_disco(include_str!("../examples/6-condiciones/cartera.cob"), &[]);
+        assert!(salida.contains("sin movimientos hoy"), "{salida}");
+        assert!(!salida.contains("cobros:"), "no debe imprimir el informe: {salida}");
+    }
+
     /// Un `READ` sin `AT END` se RECHAZA. Compilaría a un `PERFORM UNTIL` que
     /// no termina nunca, y eso es peor que no compilar.
     #[test]
@@ -710,6 +765,76 @@ STOP RUN.
         let e = compile_source_to_bef(src).unwrap_err();
         let t = format!("{e:?}");
         assert!(t.contains("NADIE") && t.contains("SELECT"), "{t}");
+    }
+
+    // ── NIVEL 88: lo que se RECHAZA ─────────────────────────────────────
+
+    /// Un `88` con `PIC` no es un 88: es alguien que cree estar declarando un
+    /// dato. Se dice qué es un nombre de condición.
+    #[test]
+    fn un_88_con_pic_se_rechaza() {
+        let src = program("01 F PIC 9.\n88 FIN PIC 9 VALUE 1.", "MOVE 1 TO F.");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("nombre de condicion") && t.contains("no lleva PIC"), "{t}");
+    }
+
+    /// Sin `VALUE` no compara nada. Antes de existir el 88, esto habría sido un
+    /// dato sin PIC con un nombre suelto.
+    #[test]
+    fn un_88_sin_value_se_rechaza() {
+        let src = program("01 F PIC 9.\n88 FIN.", "MOVE 1 TO F.");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("necesita su VALUE"), "{t}");
+    }
+
+    /// Un `88` es el apodo de una comparación sobre el dato de arriba. Si no
+    /// hay nadie arriba, no hay de qué colgarlo.
+    #[test]
+    fn un_88_sin_dato_encima_se_rechaza() {
+        let src = program("88 FIN VALUE 1.", "STOP RUN.");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("no hay ningun dato encima"), "{t}");
+    }
+
+    /// `THRU` y varios valores piden un `OR`, que este analizador de
+    /// condiciones no tiene. Se dice, en vez de comparar con el primero y
+    /// callar los demás — que daría un `IF` que a veces acierta.
+    #[test]
+    fn un_88_con_rango_o_con_varios_valores_se_rechaza() {
+        let rango = program("01 E PIC 9.\n88 MEDIO VALUE 3 THRU 5.", "MOVE 4 TO E.");
+        let t = format!("{:?}", compile_source_to_bef(&rango).unwrap_err());
+        assert!(t.contains("THRU") && t.contains("OR"), "{t}");
+
+        let varios = program("01 E PIC 9.\n88 MALO VALUE 3, 4.", "MOVE 4 TO E.");
+        let t = format!("{:?}", compile_source_to_bef(&varios).unwrap_err());
+        assert!(t.contains("OR") && t.contains("un 88 por valor"), "{t}");
+    }
+
+    /// Una palabra suelta en un `IF` que no es ningún 88 se rechaza diciendo
+    /// las dos salidas. Antes, `IF LO-QUE-SEA` no encontraba operador y el
+    /// mensaje mandaba a buscar un `=` que nadie quería escribir.
+    #[test]
+    fn un_nombre_de_condicion_que_no_existe_se_rechaza() {
+        let src = program("01 F PIC 9.", "MOVE 1 TO F.\nIF PEPE\nDISPLAY \"x\"\nEND-IF.");
+        let t = format!("{:?}", compile_source_to_bef(&src).unwrap_err());
+        assert!(t.contains("PEPE") && t.contains("nivel 88"), "{t}");
+    }
+
+    /// Y un `88` no ocupa memoria: declarar veinte no mueve ni un byte el marco
+    /// de pila. Es la prueba de que es un apodo y no un dato.
+    #[test]
+    fn los_88_no_ocupan_memoria() {
+        let sin = compile_source_to_bef(&program("01 F PIC 9.", "MOVE 1 TO F.")).unwrap();
+        let con = compile_source_to_bef(&program(
+            "01 F PIC 9.\n88 A VALUE 1.\n88 B VALUE 2.\n88 C VALUE 3.",
+            "MOVE 1 TO F.",
+        ))
+        .unwrap();
+        assert_eq!(
+            code_section(&sin).len(),
+            code_section(&con).len(),
+            "tres nombres de condicion no deben cambiar ni un byte del codigo"
+        );
     }
 
     // ── OCCURS: lo que se RECHAZA, y diciendo qué hacer ─────────────────

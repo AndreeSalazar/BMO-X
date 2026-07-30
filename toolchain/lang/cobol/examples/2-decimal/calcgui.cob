@@ -24,25 +24,40 @@
        01 DOS    PIC S9(9)V99.
        01 COD    PIC 9.
        01 RES    PIC S9(9)V99.
+       01 VALE   PIC 9.
        PROCEDURE DIVISION.
            ACCEPT UNO.
            ACCEPT COD.
            ACCEPT DOS.
 
            MOVE 0 TO RES.
+      *    Nadie ha reconocido todavia el codigo. Si nadie lo hace, se dice.
+           MOVE 0 TO VALE.
 
            IF COD = 1
                COMPUTE RES = UNO + DOS
+               MOVE 1 TO VALE
            END-IF.
            IF COD = 2
                COMPUTE RES = UNO - DOS
+               MOVE 1 TO VALE
            END-IF.
            IF COD = 3
                COMPUTE RES = UNO * DOS
+               MOVE 1 TO VALE
            END-IF.
            IF COD = 4
                COMPUTE RES = UNO / DOS
+               MOVE 1 TO VALE
            END-IF.
 
-           DISPLAY RES.
+      *    ★ Un codigo que no es ninguno de los cuatro NO es cero: es una
+      *    pregunta que este programa no sabe contestar. Antes salia 0.00 y
+      *    quien lo leia no tenia forma de distinguir "no se" de "da cero" —
+      *    que en una calculadora de dinero son cosas muy distintas.
+           IF VALE = 1
+               DISPLAY RES
+           ELSE
+               DISPLAY "codigo no valido: 1 sumar 2 restar 3 por 4 entre"
+           END-IF.
            STOP RUN.

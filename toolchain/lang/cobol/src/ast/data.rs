@@ -15,6 +15,10 @@ pub struct DataItem {
     pub edicion: Option<Plantilla>,
     pub value: Option<String>,
     pub usage: Usage,
+    /// De quién es este `88`. Un nombre de condición no es un dato: es un
+    /// APODO de una comparación sobre el dato que lo precede. `None` en todo
+    /// lo que no sea nivel 88.
+    pub padre: Option<String>,
     /// `OCCURS <n> TIMES` — cuántas veces se repite el dato.
     ///
     /// `None` = un dato suelto. `Some(n)` = una TABLA de `n` elementos, y
@@ -67,7 +71,7 @@ impl DataItem {
             Some(Ok((campo, plantilla))) => (Some(campo), plantilla),
             _ => (None, None),
         };
-        DataItem { level, name, pic, pic_field, edicion, value, usage, occurs: None }
+        DataItem { level, name, pic, pic_field, edicion, value, usage, padre: None, occurs: None }
     }
 
     /// Bytes de almacenamiento del item (mínimo 8, alineado por el codegen).

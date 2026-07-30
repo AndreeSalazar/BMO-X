@@ -95,7 +95,26 @@ impl Parser {
                     fd_abierto.clear();
                     continue;
                 }
-                if let Some(item) = self.parse_data_item(&normalized, line_no)? {
+                if let Some(mut item) = self.parse_data_item(&normalized, line_no)? {
+                    // Un 88 se ata al dato que lo precede. Es lo que dice el
+                    // estandar y lo que uno lee al mirarlo: el nombre de
+                    // condicion cuelga del campo de arriba.
+                    if item.level == 88 {
+                        match program.data_items.iter().rev().find(|d| d.level != 88) {
+                            Some(p) => item.padre = Some(p.name.clone()),
+                            None => {
+                                return Err(CobolError::new(
+                                    line_no,
+                                    format!(
+                                        "{} es un nivel 88 y no hay ningun dato encima del que colgar",
+                                        item.name
+                                    ),
+                                ))
+                            }
+                        }
+                        program.add_data_item(item);
+                        continue;
+                    }
                     if !fd_abierto.is_empty() {
                         let nombre = item.name.clone();
                         match program.files.iter_mut().find(|f| f.name == fd_abierto) {
@@ -219,6 +238,49 @@ impl Parser {
         }
 
         let mut item = DataItem::new(level, name, pic, value);
+
+        // ── Nivel 88: un NOMBRE DE CONDICIÓN, que no es un dato ──
+        //
+        // `88 FIN-DE-FICHERO VALUE 1.` no reserva memoria: le pone nombre a la
+        // comparación `<el dato de arriba> = 1`. Es lo que convierte
+        // `PERFORM UNTIL FIN = 1` en `PERFORM UNTIL FIN-DE-FICHERO`, y es COBOL
+        // bancario idiomático puro: la condición se lee, no se descifra.
+        if item.level == 88 {
+            if item.pic.is_some() {
+                return Err(CobolError::new(
+                    line_no,
+                    format!("{} es un nivel 88: es un nombre de condicion, no un dato, y no lleva PIC", item.name),
+                ));
+            }
+            if item.value.is_none() {
+                return Err(CobolError::new(
+                    line_no,
+                    format!("{} necesita su VALUE: un nombre de condicion sin valor no compara nada", item.name),
+                ));
+            }
+            // `THRU` y varios valores piden un OR, y este analizador de
+            // condiciones no lo tiene todavía. Se dice en vez de comparar sólo
+            // con el primero y callar los demás.
+            let arriba = rest.to_ascii_uppercase();
+            if arriba.contains(" THRU ") || arriba.contains(" THROUGH ") {
+                return Err(CobolError::new(
+                    line_no,
+                    format!("{}: VALUE ... THRU ... necesita un OR, que este compilador todavia no tiene", item.name),
+                ));
+            }
+            if rest.contains(',') {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "{}: varios valores en un 88 necesitan un OR, que este compilador todavia no tiene. \
+                         Declara un 88 por valor",
+                        item.name
+                    ),
+                ));
+            }
+            return Ok(Some(item));
+        }
+
         if let Some(n) = occurs {
             // Donde el estandar NO deja OCCURS: 01 (y 66/77/88). No es rigor
             // por rigor — un `01` es el registro entero, y repetir el registro
@@ -774,6 +836,14 @@ impl Parser {
                 "<=" => CobolCondition::LessOrEqual(left, right),
                 _ => unreachable!(),
             });
+        }
+        // Sin operador: puede ser un NOMBRE DE CONDICIÓN (`IF FIN-DE-FICHERO`).
+        // Aquí no se puede saber —el parser no conoce los datos—, así que se
+        // pasa por nombre y lo resuelve el codegen, que sí sabe de quién cuelga
+        // y puede decir "eso no es ningún 88" cuando no existe.
+        let limpio = text.trim();
+        if !limpio.is_empty() && !limpio.contains(char::is_whitespace) {
+            return Ok(CobolCondition::Nombre(limpio.to_ascii_uppercase()));
         }
         Err(CobolError::new(
             line_no,

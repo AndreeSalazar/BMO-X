@@ -64,6 +64,11 @@ pub enum CobolStatement {
 /// mirando si está declarado en la DATA DIVISION.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CobolCondition {
+    /// Un NOMBRE DE CONDICIÓN a secas (`IF FIN-DE-FICHERO`), declarado con un
+    /// nivel 88. El parser no puede resolverlo —no conoce los datos—, así que
+    /// lo pasa por nombre y lo expande el codegen, que sí sabe de quién es y
+    /// puede decirlo cuando no existe.
+    Nombre(String),
     Equal(String, String),
     NotEqual(String, String),
     Greater(String, String),
