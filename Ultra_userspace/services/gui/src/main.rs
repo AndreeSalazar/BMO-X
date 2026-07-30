@@ -2199,8 +2199,48 @@ pub extern "C" fn _start() -> ! {
 /// Un pánico aquí no puede tumbar nada más que a este proceso: lo dice y sale
 /// por la puerta normal. El kernel revoca sus capabilities —incluidas la
 /// pantalla y la entrada— y sigue vivo.
+///
+/// ★ **Y DICE DÓNDE.** Esto era `_info` —el guion bajo delata el bug— y
+/// escribía "panico en el compositor" y nada más. El escritorio se moría al
+/// arrancar, dejaba la máquina en el shell de Ring 0, y el único que sabía el
+/// archivo y la línea era este manejador, que los tiraba.
+///
+/// Se escribe en la consola del KERNEL a propósito: cuando esto corre, la
+/// pantalla puede estar reclamada por nosotros y a medio pintar, así que el
+/// único sitio donde el mensaje sobrevive es el panel del kernel — que es
+/// justo donde se queda la máquina cuando el escritorio no arranca.
 #[panic_handler]
-fn panico(_info: &core::panic::PanicInfo) -> ! {
+fn panico(info: &core::panic::PanicInfo) -> ! {
     bmo::consola("panico en el compositor\n");
+    if let Some(l) = info.location() {
+        bmo::consola("  en ");
+        bmo::consola(l.file());
+        bmo::consola(":");
+        // El número a mano: aquí no hay `format!` ni asignador.
+        let mut buf = [0u8; 12];
+        let mut n = 0usize;
+        let mut v = l.line();
+        if v == 0 {
+            buf[0] = b'0';
+            n = 1;
+        } else {
+            let mut d = [0u8; 12];
+            let mut k = 0;
+            while v > 0 {
+                d[k] = b'0' + (v % 10) as u8;
+                v /= 10;
+                k += 1;
+            }
+            while k > 0 {
+                k -= 1;
+                buf[n] = d[k];
+                n += 1;
+            }
+        }
+        if let Ok(s) = core::str::from_utf8(&buf[..n]) {
+            bmo::consola(s);
+        }
+        bmo::consola("\n");
+    }
     bmo::salir()
 }

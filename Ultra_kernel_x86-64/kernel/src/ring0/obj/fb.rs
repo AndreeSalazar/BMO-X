@@ -150,7 +150,16 @@ pub fn proceso_muerto(pid: u32) {
         .is_ok()
     {
         crate::info::ceder_fb(false);
-        crate::ring0::cabina::info("fb", "pantalla devuelta al kernel", pid as u64);
+        // WARN y no INFO: el que suelta la pantalla es el que la estaba
+        // pintando, o sea el escritorio. Que muera NO es rutina — es la
+        // diferencia entre acabar en la ventana o acabar en el shell de Ring 0
+        // sin saber por qué. En verde entre veinte líneas verdes no se ve; en
+        // ámbar, en una foto de CABINA, sí.
+        crate::ring0::cabina::warn(
+            "fb",
+            "el dueño de la pantalla MURIO: se vuelve al panel del kernel",
+            pid as u64,
+        );
     }
 }
 

@@ -1249,12 +1249,27 @@ const RUTA_COMPOSITOR: &str = "apps/gui.bex";
 /// es un sistema perfectamente usable. Por eso esto no se planta ni reintenta —
 /// pero lo DICE, y dice qué hacer. Un escritorio que no sale sin explicar por
 /// qué manda a alguien a leer código.
+/// El tid del escritorio, para poder preguntar después si sigue vivo.
+/// `0` = no se admitió.
+static mut ESCRITORIO_TID: u32 = 0;
+
+/// ¿Se admitió el escritorio y ya no está?
+///
+/// Admitir no es arrancar: el compositor puede morirse a los pocos ticks —y se
+/// ha muerto— dejando la máquina en el panel del kernel. Hasta ahora eso no lo
+/// decía nadie y había que deducirlo de que la ventana no salía.
+fn escritorio_murio() -> bool {
+    let tid = unsafe { ESCRITORIO_TID };
+    tid != 0 && !crate::ring0::task::scheduler::vive(tid)
+}
+
 fn arrancar_escritorio() {
     use crate::ring0::task::lanzar;
 
     let inf = lanzar::ruta(RUTA_COMPOSITOR);
     match inf.res {
         Ok(tid) => {
+            unsafe { ESCRITORIO_TID = tid };
             row("escritorio", |l| {
                 l.txt(RUTA_COMPOSITOR);
                 l.txt("   tid ");
@@ -1277,6 +1292,14 @@ fn run_shell(ctx: &BootContext) -> ! {
     // dead/absent (bounded timeouts inside). El stack USB real (xHCI+HID)
     // ya despertó en el Acto I de main().
     crate::ring0::dev::keyboard::init();
+    // ★ Si el escritorio se admitió y ya no está, DECIRLO aquí y decir qué
+    // hacer. Estar en este shell después de haber lanzado el compositor no es
+    // lo normal: significa que se murió, y quien lo mira sólo ve un shell.
+    if escritorio_murio() {
+        row("escritorio", |l| { l.txt("MURIO tras arrancar — mira el panico en el log de arriba"); });
+        row("   relanzar", |l| { l.txt("run "); l.txt(RUTA_COMPOSITOR); });
+        crate::ring0::cabina::warn("gui", "el escritorio murio tras arrancar", unsafe { ESCRITORIO_TID } as u64);
+    }
     dash_log("== BMO-X operativo : escribe help ==");
     // Serial-only banner: keep the rolling dashboard rows untouched so the
     // fixed-row Ring 3 diagnostics painted just before timer::enable survive.

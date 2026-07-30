@@ -642,6 +642,18 @@ pub fn current_pid() -> u32 {
     s.tasks[s.current].pid
 }
 
+/// ¿Sigue viva la tarea `tid`?
+///
+/// Existe para poder comprobar si el ESCRITORIO sigue en pie. Cuando el
+/// compositor se muere al arrancar, la máquina se queda en el panel del kernel
+/// y hasta ahora no lo decía nadie: había que deducirlo de que la ventana no
+/// salía. Un sistema que sabe algo y no lo cuenta obliga a adivinarlo.
+pub fn vive(tid: u32) -> bool {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks.iter().any(|t| t.tid == tid && t.state != TaskState::Empty)
+}
+
 pub fn counts() -> (usize, usize) {
     let _g = SCHED_LOCK.lock();
     let s = sched();
