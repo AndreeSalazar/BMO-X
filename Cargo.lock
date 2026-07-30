@@ -27,15 +27,6 @@ name = "bmo-ahci"
 version = "0.1.0"
 
 [[package]]
-name = "bmo-arch"
-version = "0.1.0"
-dependencies = [
- "bmo-abi",
- "bmo-channel",
- "boot-context",
-]
-
-[[package]]
 name = "bmo-audio"
 version = "1.0.0"
 

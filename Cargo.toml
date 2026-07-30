@@ -86,11 +86,14 @@ members = [
     # bmo-lower: L1, el descenso genérico al ABI (la puerta INVOKE).
     "toolchain/forge/bmo-lower",
 
-    # ── PLATFORM (CPU-aware Ring 0/3 intermediary) ────────────────
-    # The only crate in BMO that knows the target CPU. Currently
-    # x86-64 only; ports will add Ultra_kernel_<arch>/ trees and
-    # aarch64/riscv64 features here.
-    "bmo-arch",
+    # ── Nota sobre el intermediario "CPU-aware" ───────────────────
+    # Aqui vivia `bmo-arch`: 1147 lineas de capa de abstraccion de CPU
+    # con CERO usuarios, que ademas abstraia un `syscall(nr, [u64;6])`
+    # que la superficie congelada de 3 syscalls no tiene. Se borro
+    # (regla: o funciona, o se elimina y el diseno queda en un README).
+    # El plan de portado vive en `platform/README.md`, y quien de
+    # verdad separa CPU de contrato es la pareja
+    # `Ultra_kernel_<arch>/` + `platform/`.
 ]
 
 exclude = [
