@@ -200,6 +200,21 @@ static mut DISK_NAME_COUNT: usize = 0;
 
 fn intern_name(s: &str) -> &'static str {
     unsafe {
+        // Si ya está guardado, se reusa. Lanzar `apps/batch.bex` cinco veces
+        // gastaba cinco ranuras de seis, y a la séptima todos los programas se
+        // llamaban "disco" en la bitácora — que es justamente cuando hace falta
+        // saber cuál era.
+        let arr_ro = core::ptr::addr_of!(DISK_NAMES) as *const [u8; DISK_NAME_LEN];
+        for i in 0..DISK_NAME_COUNT {
+            let buf = &*arr_ro.add(i);
+            let n = s.len().min(DISK_NAME_LEN);
+            if buf[..n] == s.as_bytes()[..n] && (n == DISK_NAME_LEN || buf[n] == 0) {
+                let p = buf.as_ptr();
+                if let Ok(t) = core::str::from_utf8(core::slice::from_raw_parts(p, n)) {
+                    return t;
+                }
+            }
+        }
         if DISK_NAME_COUNT >= MAX_DISK_NAMES { return "disco"; }
         let slot = DISK_NAME_COUNT;
         DISK_NAME_COUNT += 1;
@@ -218,12 +233,28 @@ fn intern_name(s: &str) -> &'static str {
 /// existir los tres de siempre y no había forma de añadir un cuarto. Ahora sale
 /// del registro, que es quien sabe cuántos programas se han intentado admitir.
 fn next_pid() -> u32 {
-    unsafe { PROGRAM_COUNT as u32 + 1 }
+    unsafe {
+        let p = NEXT_PID;
+        NEXT_PID = NEXT_PID.wrapping_add(1).max(1);
+        p
+    }
 }
 
-/// ¿Queda sitio para otro programa?
+/// ¿Queda sitio para otro programa? **Se lo pregunta al planificador.**
+///
+/// ★ Aquí vivía el bug que dejaba la máquina sin poder lanzar nada. Esto era
+/// `PROGRAM_COUNT < MAX_PROGRAMS`, o sea la longitud del REGISTRO HISTÓRICO de
+/// abajo — una bitácora de ocho entradas que a propósito no baja nunca, porque
+/// apunta también los programas que se rechazaron. El arranque gasta seis
+/// (cinco demos más el compositor), así que al tercer `run` la máquina decía
+/// "sin hueco" y no volvía a admitir un programa hasta reiniciar. Y no era
+/// mentira a medias: había 58 ranuras de tarea libres.
+///
+/// La capacidad viva la tiene el planificador, que recicla la ranura cuando
+/// `reap` recoge una tarea terminada. Un registro cuenta lo que PASÓ; sólo el
+/// planificador sabe lo que HAY.
 pub fn has_room() -> bool {
-    unsafe { PROGRAM_COUNT < MAX_PROGRAMS }
+    crate::ring0::task::scheduler::hay_hueco()
 }
 
 /// Admite un programa BEX que viene de un archivo, no del propio binario.
@@ -396,18 +427,46 @@ const EMPTY_RECORD: ProgramRecord = ProgramRecord {
 };
 static mut PROGRAMS: [ProgramRecord; MAX_PROGRAMS] = [EMPTY_RECORD; MAX_PROGRAMS];
 static mut PROGRAM_COUNT: usize = 0;
+/// Cuántas entradas se cayeron del registro por el principio. Se cuenta para
+/// que la tabla de CABINA no diga "ocho programas" cuando van veinte.
+static mut PROGRAMS_OLVIDADOS: usize = 0;
+/// El siguiente pid. Monótono y SUYO.
+///
+/// Antes salía de `PROGRAM_COUNT`: un pid derivado de la longitud de una
+/// bitácora. Cuando la bitácora se llenaba dejaba de crecer, así que el
+/// siguiente pid se repetía — y el pid es lo que encauza la salida de un hijo a
+/// la consola de quien lo lanzó. Dos procesos con el mismo pid se habrían
+/// mezclado la salida.
+static mut NEXT_PID: u32 = 1;
 
 /// Abre una entrada del registro ANTES de intentar la admisión, para que un
 /// programa rechazado también aparezca — un hueco silencioso no explica nada.
+///
+/// Cuando se llena, tira la MÁS VIEJA y corre el resto. Antes se descartaba la
+/// nueva, o sea que la bitácora se congelaba en los demos del arranque justo
+/// cuando lo que hacía falta era ver el último `run`. En una tabla de ocho el
+/// corrimiento es gratis, y a cambio la foto de CABINA habla del presente.
 fn record_open(tag: &'static str, name: &'static str, pid: u32, image_bytes: u32) {
     unsafe {
-        if PROGRAM_COUNT >= MAX_PROGRAMS { return; }
+        if PROGRAM_COUNT >= MAX_PROGRAMS {
+            let arr = core::ptr::addr_of_mut!(PROGRAMS) as *mut ProgramRecord;
+            for i in 1..MAX_PROGRAMS {
+                *arr.add(i - 1) = *arr.add(i);
+            }
+            PROGRAM_COUNT = MAX_PROGRAMS - 1;
+            PROGRAMS_OLVIDADOS += 1;
+        }
         PROGRAMS[PROGRAM_COUNT] = ProgramRecord {
             tag, name, pid, tid: 0, image_bytes,
             code_bytes: 0, sections: 0, entry_va: 0, admitted: false,
         };
         PROGRAM_COUNT += 1;
     }
+}
+
+/// Programas que ya no están en el registro por falta de sitio.
+pub fn programas_olvidados() -> usize {
+    unsafe { PROGRAMS_OLVIDADOS }
 }
 
 /// La entrada abierta para `pid`, si existe.

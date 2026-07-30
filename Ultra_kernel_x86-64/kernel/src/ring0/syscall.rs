@@ -91,6 +91,19 @@ const TASK_OP_ARCHIVO_ABRIR: u64 = 0x10;
 /// tiene —volumen de solo lectura, nombre que no es 8.3— y mezclarlas
 /// obligaria a devolver errores que no aplican a la mitad de las llamadas.
 const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
+/// Reinicia la máquina. No vuelve.
+///
+/// El reinicio de tres pasos (`0xCF9` → 8042 → triple fault) ya existía y sólo
+/// lo tenía el shell del kernel: la caja de Ring 3 contestaba "no lo conozco" a
+/// `reboot`, y la única salida era el botón. Reiniciar es tocar puertos de E/S,
+/// que Ring 3 no puede —ni debe— hacer; por eso es una operación y no un
+/// permiso ambiental.
+///
+/// **Limitación declarada**: hoy no está atada a una capability, igual que
+/// `EJECUTAR`. Cualquier tarea de Ring 3 puede llamarla. Se apunta en CABINA
+/// antes de reiniciar para que nunca sea silenciosa, y las dos operaciones
+/// quieren la misma capability el día que exista.
+const TASK_OP_REINICIAR: u64 = 0x12;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -390,6 +403,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_RUTA => {
             ruta_push(scheduler::current_pid(), arg0);
             BmoStatus::ok_value(0)
+        }
+        TASK_OP_REINICIAR => {
+            crate::ring0::cabina::warn(
+                "ring3",
+                "reinicio pedido por un proceso de Ring 3",
+                scheduler::current_pid() as u64,
+            );
+            crate::ring0::plat::reinicio::ahora();
         }
         // `arg1` = handle de la consola que el llamante entrega al hijo, o 0
         // para que el hijo escriba en el panel del kernel como siempre. Ese

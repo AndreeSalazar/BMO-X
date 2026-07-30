@@ -66,6 +66,8 @@ pub const OP_DIR_ABRIR: u32 = 0x0E;
 pub const OP_CONSOLE_READ: u32 = 0x0F;
 pub const OP_ARCHIVO_ABRIR: u32 = 0x10;
 pub const OP_ARCHIVO_CREAR: u32 = 0x11;
+/// Reiniciar la máquina. No vuelve. Ver [`reiniciar`].
+pub const OP_REINICIAR: u32 = 0x12;
 
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;
@@ -201,6 +203,19 @@ pub fn salir() -> ! {
     invoke(CURRENT_TASK, OP_EXIT, 0, 0, 0);
     // Si el kernel nos devolviera el control, seguir ejecutando sería peor
     // que quedarse quieto.
+    loop {
+        ceder();
+    }
+}
+
+/// Reiniciar la máquina. No vuelve.
+///
+/// Reiniciar es tocar puertos de E/S (`0xCF9`, el 8042) y Ring 3 no puede
+/// hacerlo: se le pide al kernel, que ya tenía el reinicio de tres pasos para
+/// su propio shell. Si volviera —no debería— se cede el turno en vez de seguir
+/// como si nada, por la misma razón que en [`salir`].
+pub fn reiniciar() -> ! {
+    invoke(CURRENT_TASK, OP_REINICIAR, 0, 0, 0);
     loop {
         ceder();
     }

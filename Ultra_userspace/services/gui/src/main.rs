@@ -485,7 +485,14 @@ enum Orden<'a> {
     /// Parece un archivo, pero no es un `.bex`. No se intenta lanzar: se dice
     /// qué es y con qué se abre.
     NoEsPrograma(&'a [u8]),
-    /// Una palabra suelta que no parece una ruta. `reboot`, `ls`, `dir`...
+    /// `reboot` — reinicia la máquina y no vuelve.
+    ///
+    /// Estaba en el shell del kernel desde siempre y aquí contestaba "no lo
+    /// conozco", así que la única forma de reiniciar era el botón de la caja.
+    /// Reiniciar es tocar puertos de E/S, que Ring 3 no puede hacer: va por
+    /// `OP_REINICIAR`, una operación más dentro de `INVOKE`.
+    Reiniciar,
+    /// Una palabra suelta que no parece una ruta.
     Desconocida,
 }
 
@@ -1005,6 +1012,7 @@ fn interpretar(linea: &[u8]) -> Orden<'_> {
                 None => Orden::Ayuda,
             }
         }
+        b"reboot" | b"reinicia" | b"reiniciar" => Orden::Reiniciar,
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
         _ if parece_programa(linea) => Orden::Lanzar(linea),
         // Parece un archivo pero no es un programa. Antes esto caia en
@@ -1449,6 +1457,7 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(b"  Ctrl+K corta al final    Ctrl+W borra palabra\n");
                                 salida.texto(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
                                 salida.texto(b"  help         esto\n");
+                                salida.texto(b"  reboot       reinicia la maquina\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
                                 pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                                 n = 0;
@@ -1465,6 +1474,17 @@ pub extern "C" fn _start() -> ! {
                                 salida.con_tinta(TINTA_NORMAL);
                                 pintar_estado(&p, &caja, "no es un programa: prueba lee", TEXTO_TENUE);
                                 n = 0;
+                            }
+                            // Se pinta ANTES de pedirlo: la llamada no vuelve,
+                            // asi que un mensaje despues no lo veria nadie. Y
+                            // que quede escrito distingue "reinicio pedido" de
+                            // "se colgo" en la foto. `Pantalla` escribe directo
+                            // al framebuffer, asi que al volver de `texto` ya
+                            // esta en el cristal: no hay nada que vaciar.
+                            Orden::Reiniciar => {
+                                salida.texto(b"  reiniciando...\n");
+                                pintar_estado(&p, &caja, "reiniciando", TEXTO_TENUE);
+                                bmo::reiniciar();
                             }
                             Orden::Desconocida => {
                                 // El mensaje honesto. Antes se contestaba "no

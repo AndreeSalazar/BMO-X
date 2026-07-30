@@ -431,6 +431,29 @@ pub fn wake_by_key(key: u64) {
 
 /// Spawn a kernel task running `entry(arg)` on its own 8 KiB stack.
 /// Returns the new TID.
+/// ¿Queda una ranura de tarea libre?
+///
+/// Es la ÚNICA respuesta honesta a "¿cabe otro programa?": las ranuras se
+/// reciclan cuando `reap` recoge una tarea que terminó, así que la capacidad
+/// es la de AHORA y no la de todo lo que se ha lanzado desde el arranque.
+///
+/// Nació de un bug de esa forma exacta: `proc::has_room` miraba la longitud de
+/// un registro histórico de ocho entradas, y como ese registro no baja nunca,
+/// tras ocho lanzamientos —cinco de ellos los demos del arranque— la máquina no
+/// admitía un programa más hasta reiniciar.
+pub fn hay_hueco() -> bool {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks.iter().any(|t| t.state == TaskState::Empty)
+}
+
+/// Cuántas ranuras están libres, para contarlo en CABINA.
+pub fn huecos_libres() -> usize {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks.iter().filter(|t| t.state == TaskState::Empty).count()
+}
+
 pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
     // Contiguous: the stack is addressed linearly through the physmap, and
     // `reap` frees it as `stack_phys + p*PAGE` — both are only sound when

@@ -93,7 +93,20 @@ pub struct Informe {
     pub res: Result<u32, Fallo>,
 }
 
-const MAX_BEX: usize = 64 * 1024;
+/// Tope de una imagen `.bex`. **256 KiB.**
+///
+/// Eran 64 KiB, elegidos cuando el `.bex` más grande del sistema eran cinco de
+/// COBOL. El compositor había llegado a **61.6 KiB** —el 94% del tope— y una
+/// sola línea nueva lo pasó a 82 KiB de golpe: con `lto` y un `match` grande,
+/// LLVM cruza un umbral de inlining y el binario da un salto de veinte KiB.
+/// A partir de ahí el escritorio no cargaba y la máquina se quedaba en el
+/// panel del kernel, sin decir por qué salvo una línea de "no cabe".
+///
+/// El coste es RAM, no tamaño de la imagen EFI: esto es `.bss`, y `.bss` no
+/// viaja en el fichero — lo pone a cero `entry.rs` al arrancar. 192 KiB más de
+/// RAM en una máquina con 16 GiB, a cambio de un margen de 3× sobre el binario
+/// de Ring 3 más grande que existe.
+const MAX_BEX: usize = 256 * 1024;
 static mut IMAGE: [u8; MAX_BEX] = [0u8; MAX_BEX];
 
 /// El buffer de imagen es UNO y estático: un `.bex` son varios KiB y la pila
