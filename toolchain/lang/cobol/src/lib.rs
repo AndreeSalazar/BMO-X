@@ -672,6 +672,34 @@ STOP RUN.
         assert!(format!("{e:?}").contains("AT END"), "{e:?}");
     }
 
+    /// Una ruta que no cabe en 8.3 se rechaza AL COMPILAR.
+    ///
+    /// En la máquina, `apps/movimientos.txt` daría handle nulo, y COBOL lee un
+    /// handle nulo como "fin de fichero desde el principio": un cierre a cero
+    /// sin una sola queja. El nombre se sabe al compilar, así que se dice al
+    /// compilar.
+    #[test]
+    fn una_ruta_que_no_cabe_en_8_3_se_rechaza_al_compilar() {
+        let src = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\
+                   ENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\n\
+                   SELECT F ASSIGN TO \"apps/movimientos.txt\".\n\
+                   DATA DIVISION.\nFILE SECTION.\nFD F.\n01 R PIC 9(3).\n\
+                   PROCEDURE DIVISION.\nSTOP RUN.\n";
+        let t = format!("{:?}", compile_source_to_bef(src).unwrap_err());
+        assert!(t.contains("no cabe en 8.3") && t.contains("movimientos.txt"), "{t}");
+    }
+
+    /// Y las rutas que sí caben siguen pasando, incluida la letra de unidad.
+    #[test]
+    fn las_rutas_de_8_3_con_letra_de_unidad_pasan() {
+        let src = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\
+                   ENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\n\
+                   SELECT F ASSIGN TO \"A:/apps/movim.txt\".\n\
+                   DATA DIVISION.\nFILE SECTION.\nFD F.\n01 R PIC 9(3).\n\
+                   PROCEDURE DIVISION.\nSTOP RUN.\n";
+        assert!(compile_source_to_bef(src).is_ok(), "A:/apps/movim.txt tiene que valer");
+    }
+
     /// Usar un fichero que nadie declaró se rechaza con el `SELECT` que falta,
     /// no con un "no se pudo".
     #[test]

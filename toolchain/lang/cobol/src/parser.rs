@@ -412,7 +412,46 @@ impl Parser {
                 "ASSIGN TO sin ruta: escribe `ASSIGN TO \"datos/movim.txt\"`",
             ));
         }
+        // La ruta se comprueba AQUI y no en ejecucion. El volumen de datos es
+        // FAT32 y su tabla guarda nombres 8.3: `apps/movimientos.txt` abriria
+        // un handle nulo en la maquina, y COBOL lo leeria como "fichero vacio"
+        // — o sea, un cierre a cero sin una sola queja. Es exactamente el fallo
+        // que este compilador no comete: el nombre lo sabe al compilar, asi que
+        // lo dice al compilar.
+        if let Err(motivo) = Self::cabe_en_8_3(&path) {
+            return Err(CobolError::new(line_no, format!("ASSIGN TO \"{path}\": {motivo}")));
+        }
         Ok(crate::ast::CobolFile { name, path, record: String::new() })
+    }
+
+    /// ¿Cada tramo de la ruta cabe en un nombre 8.3 de FAT32?
+    ///
+    /// Ocho de nombre y tres de extension, por tramo. Es limite del volumen de
+    /// hoy, no del lenguaje: cuando ESTRATOS acepte escritura y nombres largos,
+    /// esta comprobacion se relaja — y hasta entonces mentir sale mas caro.
+    fn cabe_en_8_3(ruta: &str) -> Result<(), String> {
+        for tramo in ruta.split(['/', '\\']) {
+            // La letra de unidad (`A:`) y los tramos vacios de `//` no cuentan.
+            if tramo.is_empty() || tramo.ends_with(':') {
+                continue;
+            }
+            let (base, ext) = match tramo.rfind('.') {
+                Some(i) => (&tramo[..i], &tramo[i + 1..]),
+                None => (tramo, ""),
+            };
+            if base.is_empty() {
+                return Err(format!("el tramo '{tramo}' no tiene nombre"));
+            }
+            if base.len() > 8 || ext.len() > 3 {
+                return Err(format!(
+                    "'{tramo}' no cabe en 8.3 (FAT32): {} letras de nombre y {} de extension, \
+                     el maximo es 8 y 3",
+                    base.len(),
+                    ext.len()
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn strip_leading_word<'a>(s: &'a str, word: &str) -> &'a str {
