@@ -79,6 +79,65 @@ pub const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
 ///
 /// La cuenta va en el byte alto y NO se corta en el primer cero, al reves que
 /// la consola: un archivo no es texto y un `\0` en medio es un dato.
+// ── INFORME DEL SISTEMA ─────────────────────────────────────────────────
+//
+// Leer cuánta RAM hay no es un privilegio: es una PREGUNTA. El shell de Ring 0
+// tenía `info`, `cpu` y `mem` sólo porque los datos estaban a su alcance, no
+// porque hiciera falta estar en Ring 0 para contarlos. Con estas dos
+// operaciones el privilegio se queda con lo que de verdad lo necesita —tocar
+// puertos, reiniciar, mapear páginas— y la información baja a Ring 3, que es
+// donde se pinta.
+//
+// Dos operaciones y una TABLA de campos, en vez de una operación por dato: así
+// añadir "cuántos programas se han lanzado" es una fila, no un número de
+// syscall nuevo. Es la misma forma que tienen las tablas de `sem-asm`.
+
+/// Un dato numérico del sistema. `arg0` = campo (`INFO_*`). Devuelve el valor.
+pub const TASK_OP_INFO: u64 = 0x13;
+/// Un dato de TEXTO. `arg0` = campo (`INFO_TXT_*`), `arg1` = qué trozo.
+///
+/// Devuelve 8 bytes empaquetados en little-endian, el cero corta — el mismo
+/// formato que `TASK_OP_RUTA` y `TASK_OP_CONSOLE_WRITE`, y por la misma razón:
+/// aquí no hay `copy_to_user`, así que el texto viaja por valor.
+pub const TASK_OP_INFO_TEXTO: u64 = 0x14;
+
+/// Bytes de RAM que el asignador de marcos gobierna.
+pub const INFO_RAM_TOTAL: u64 = 0x01;
+/// Bytes libres AHORA.
+pub const INFO_RAM_LIBRE: u64 = 0x02;
+/// Marcos totales de 4 KiB.
+pub const INFO_RAM_MARCOS: u64 = 0x03;
+/// Marcos libres.
+pub const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
+/// Frecuencia del TSC en Hz. Es la que mide el tiempo de verdad en esta
+/// máquina, no un número nominal de la etiqueta.
+pub const INFO_TSC_HZ: u64 = 0x05;
+/// Hilos lógicos y núcleos físicos que el CPU declara.
+pub const INFO_CPU_HILOS: u64 = 0x06;
+pub const INFO_CPU_NUCLEOS: u64 = 0x07;
+/// Tareas: ranuras ocupadas, listas para correr, y libres.
+pub const INFO_TAREAS_TOTAL: u64 = 0x08;
+pub const INFO_TAREAS_LISTAS: u64 = 0x09;
+pub const INFO_TAREAS_LIBRES: u64 = 0x0A;
+/// Ticks del temporizador desde el arranque.
+pub const INFO_TICKS: u64 = 0x0B;
+/// Bytes que ocupa el kernel en RAM, medidos (hasta el final de su `.bss`,
+/// pila incluida). No es el tamaño del archivo.
+pub const INFO_KERNEL_BYTES: u64 = 0x0C;
+/// Programas que se han intentado admitir, y los que ya no caben en la
+/// bitácora. La suma es el total de verdad.
+pub const INFO_PROGRAMAS: u64 = 0x0D;
+pub const INFO_PROGRAMAS_OLVIDADOS: u64 = 0x0E;
+/// ¿Hay disco listo? ¿Está montado el volumen de datos para escribir?
+pub const INFO_DISCO_LISTO: u64 = 0x0F;
+pub const INFO_DATOS_MONTADO: u64 = 0x10;
+
+/// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
+pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
+pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
+pub const INFO_TXT_UARCH: u64 = 0x03;
+pub const INFO_TXT_FAMILIA: u64 = 0x04;
+
 pub const ARCH_OP_LEER: u64 = 0x01;
 /// Saca hasta 7 bytes **sin pasar del salto de linea**:
 /// `(fin << 63) | (n << 56) | bytes_LE`.

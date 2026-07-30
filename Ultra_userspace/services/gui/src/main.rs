@@ -262,16 +262,53 @@ fn borrar_cursor(p: &bmo::Pantalla, c: &Caja, visible: bool, x: u32, y: u32) -> 
 // ── Pintar la caja ──────────────────────────────────────────────────────
 
 /// El marco entero. Se pinta UNA vez; después sólo se repinta el campo.
+/// La caja, con algo de forma.
+///
+/// Era un rectángulo con un borde de 2 px y el título escrito encima del mismo
+/// fondo: plano, y con las cuatro esquinas en pico. Cinco cosas lo arreglan sin
+/// salir de `rect` y `texto`, que es todo lo que tiene esta pantalla:
+///
+/// 1. **Sombra** desplazada — un rectángulo oscuro detrás. Es lo que despega la
+///    caja del fondo y lo que más se nota en una foto.
+/// 2. **Barra de título** con su propio fondo, en vez de texto suelto.
+/// 3. **Línea de acento** bajo la barra: separa sin dibujar un borde entero.
+/// 4. **Esquinas biseladas** — se repinta el color de fondo en el píxel de cada
+///    esquina. Cuatro rectángulos de 1x1 y deja de parecer un cuadro de diálogo
+///    de hace treinta años.
+/// 5. El campo de entrada con **marco propio** y un `>` de aviso, para que se
+///    vea que ahí se escribe.
 fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
+    const SOMBRA: u32 = 0x0008_0D16;
+    const TITULO_FONDO: u32 = 0x0026_3550;
+
+    // 1. La sombra, primero y desplazada.
+    p.rect(c.x + 6, c.y + 6, CAJA_ANCHO, CAJA_ALTO, SOMBRA);
+
+    // El marco y el relleno.
     p.rect(c.x, c.y, CAJA_ANCHO, CAJA_ALTO, CAJA_BORDE);
-    p.rect(c.x + 2, c.y + 2, CAJA_ANCHO - 4, CAJA_ALTO - 4, CAJA_FONDO);
-    p.texto(c.x + 18, c.y + 16, "Ejecutar", TEXTO);
+    p.rect(c.x + 1, c.y + 1, CAJA_ANCHO - 2, CAJA_ALTO - 2, CAJA_FONDO);
+
+    // 4. Biselar: el píxel de cada esquina vuelve al fondo de la pantalla.
+    p.rect(c.x, c.y, 1, 1, FONDO);
+    p.rect(c.x + CAJA_ANCHO - 1, c.y, 1, 1, FONDO);
+    p.rect(c.x, c.y + CAJA_ALTO - 1, 1, 1, FONDO);
+    p.rect(c.x + CAJA_ANCHO - 1, c.y + CAJA_ALTO - 1, 1, 1, FONDO);
+
+    // 2 y 3. La barra de título y su acento.
+    p.rect(c.x + 1, c.y + 1, CAJA_ANCHO - 2, 26, TITULO_FONDO);
+    p.rect(c.x + 1, c.y + 27, CAJA_ANCHO - 2, 1, ACENTO);
+    p.texto(c.x + 18, c.y + 6, "BMO-X", ACENTO);
+    p.texto(c.x + 82, c.y + 6, "Ejecutar", TEXTO);
+
     p.texto(
         c.x + 18,
-        c.y + 34,
-        "Escribe la ruta de un .bex y pulsa Enter.   Ctrl+Alt esconde/invoca.",
+        c.y + 36,
+        "ruta de un .bex y Enter.  info / cpu / mem / ls / lee / reboot.",
         TEXTO_TENUE,
     );
+
+    // 5. El campo, con marco y con su aviso.
+    p.rect(c.campo_x - 1, c.campo_y - 1, c.campo_ancho + 2, c.campo_alto + 2, ACENTO);
     p.rect(c.campo_x, c.campo_y, c.campo_ancho, c.campo_alto, CAMPO_FONDO);
 }
 
@@ -456,6 +493,269 @@ impl Salida {
         self.col = 0;
         self.sucia = true;
     }
+
+    // ── Lo que hace falta para PINTAR un informe ────────────────────────
+    //
+    // Todo esto es de Ring 3 a propósito. El kernel contesta enteros crudos y
+    // no sabe nada de KiB, de porcentajes ni de barras: un kernel que decide
+    // cómo se ve un número es un kernel con opiniones sobre la interfaz.
+
+    /// Un entero en decimal.
+    fn dec(&mut self, mut v: u64) {
+        if v == 0 {
+            self.byte(b'0');
+            return;
+        }
+        let mut d = [0u8; 20];
+        let mut n = 0;
+        while v > 0 {
+            d[n] = b'0' + (v % 10) as u8;
+            v /= 10;
+            n += 1;
+        }
+        while n > 0 {
+            n -= 1;
+            self.byte(d[n]);
+        }
+    }
+
+    /// Un entero alineado a la DERECHA en `ancho` columnas. Es lo que hace que
+    /// una columna de números se lea de un vistazo en vez de bailar.
+    fn dec_der(&mut self, v: u64, ancho: usize) {
+        let mut cifras = 1;
+        let mut t = v;
+        while t >= 10 {
+            t /= 10;
+            cifras += 1;
+        }
+        for _ in cifras..ancho {
+            self.byte(b' ');
+        }
+        self.dec(v);
+    }
+
+    /// Bytes en la unidad que toca, con un decimal: `15.9 GiB`.
+    ///
+    /// Se hace con enteros, dividiendo y sacando el resto — igual que el
+    /// decimal de COBOL. Aquí no hay coma flotante y no hace falta.
+    fn tamano(&mut self, bytes: u64) {
+        const U: [&[u8]; 5] = [b"B", b"KiB", b"MiB", b"GiB", b"TiB"];
+        let mut i = 0;
+        let mut v = bytes;
+        while v >= 1024 && i < 4 {
+            v /= 1024;
+            i += 1;
+        }
+        // El primer decimal, sin flotantes: el resto de la última división.
+        let frac = if i == 0 {
+            0
+        } else {
+            let divisor = 1u64 << (10 * i);
+            ((bytes % divisor) * 10 / divisor) % 10
+        };
+        self.dec(v);
+        if i > 0 {
+            self.byte(b'.');
+            self.byte(b'0' + frac as u8);
+        }
+        self.byte(b' ');
+        self.texto(U[i]);
+    }
+
+    /// Un porcentaje entero, sin dividir por cero.
+    fn pct(&mut self, parte: u64, total: u64) {
+        if total == 0 {
+            self.texto(b"--");
+        } else {
+            self.dec(parte.saturating_mul(100) / total);
+        }
+        self.byte(b'%');
+    }
+
+    /// Una barra de ocupación de `ancho` columnas: `[####------]`.
+    ///
+    /// Con caracteres y no con píxeles porque la salida ES una rejilla de
+    /// caracteres: una barra dibujada aparte se quedaría quieta cuando el log
+    /// desplaza, y una barra que miente de sitio es peor que no tenerla.
+    fn barra(&mut self, parte: u64, total: u64, ancho: usize) {
+        let llenas = if total == 0 {
+            0
+        } else {
+            (parte.saturating_mul(ancho as u64) / total) as usize
+        };
+        self.byte(b'[');
+        for i in 0..ancho {
+            self.byte(if i < llenas { b'#' } else { b'-' });
+        }
+        self.byte(b']');
+    }
+}
+
+// ── Los informes del sistema ────────────────────────────────────────────
+//
+// Se pintan aquí, en Ring 3, con datos que el kernel contesta por `OP_INFO`.
+// El kernel da enteros; las unidades, los porcentajes, las barras y el color
+// son de este lado.
+
+/// Un rótulo de sección, para que el informe no sea un muro de renglones.
+fn seccion(s: &mut Salida, titulo: &[u8]) {
+    s.con_tinta(TINTA_ECO);
+    s.texto(b"  ");
+    s.texto(titulo);
+    s.byte(b' ');
+    // Una regla hasta el margen: cuesta nada y separa de verdad.
+    let usado = 3 + titulo.len();
+    for _ in usado..SAL_COLS.saturating_sub(2) {
+        s.byte(b'-');
+    }
+    s.byte(b'\n');
+    s.con_tinta(TINTA_NORMAL);
+}
+
+/// Un renglón `etiqueta ....... valor`, con la etiqueta a ancho fijo.
+fn etiqueta(s: &mut Salida, nombre: &[u8]) {
+    s.texto(b"    ");
+    s.texto(nombre);
+    for _ in nombre.len()..14 {
+        s.byte(b' ');
+    }
+}
+
+fn informe_cpu(s: &mut Salida) {
+    let mut buf = [0u8; 64];
+
+    seccion(s, b"procesador");
+    let n = bmo::info_texto(bmo::INFO_TXT_CPU_VENDOR, &mut buf);
+    etiqueta(s, b"fabricante");
+    s.texto(&buf[..n]);
+    s.byte(b'\n');
+
+    let n = bmo::info_texto(bmo::INFO_TXT_CPU_NOMBRE, &mut buf);
+    etiqueta(s, b"modelo");
+    s.texto(&buf[..n]);
+    s.byte(b'\n');
+
+    let n = bmo::info_texto(bmo::INFO_TXT_UARCH, &mut buf);
+    etiqueta(s, b"uarch");
+    s.texto(&buf[..n]);
+    let n2 = bmo::info_texto(bmo::INFO_TXT_FAMILIA, &mut buf);
+    if n2 > 0 {
+        s.texto(b"   familia ");
+        s.texto(&buf[..n2]);
+    }
+    s.byte(b'\n');
+
+    etiqueta(s, b"nucleos");
+    s.dec(bmo::info(bmo::INFO_CPU_NUCLEOS));
+    s.texto(b" fisicos / ");
+    s.dec(bmo::info(bmo::INFO_CPU_HILOS));
+    s.texto(b" hilos\n");
+
+    // Hz -> GHz con dos decimales, con enteros. El TSC es la frecuencia MEDIDA
+    // en el arranque, no el numero de la etiqueta de la caja.
+    let hz = bmo::info(bmo::INFO_TSC_HZ);
+    etiqueta(s, b"tsc");
+    s.dec(hz / 1_000_000_000);
+    s.byte(b'.');
+    let frac = (hz % 1_000_000_000) / 10_000_000;
+    if frac < 10 {
+        s.byte(b'0');
+    }
+    s.dec(frac);
+    s.texto(b" GHz   (medido)\n");
+}
+
+fn informe_memoria(s: &mut Salida) {
+    let total = bmo::info(bmo::INFO_RAM_TOTAL);
+    let libre = bmo::info(bmo::INFO_RAM_LIBRE);
+    let usada = total.saturating_sub(libre);
+
+    seccion(s, b"memoria");
+    etiqueta(s, b"total");
+    s.tamano(total);
+    s.texto(b"   ");
+    s.dec_der(bmo::info(bmo::INFO_RAM_MARCOS), 8);
+    s.texto(b" marcos de 4 KiB\n");
+
+    etiqueta(s, b"usada");
+    s.tamano(usada);
+    s.texto(b"   ");
+    s.barra(usada, total, 24);
+    s.byte(b' ');
+    s.pct(usada, total);
+    s.byte(b'\n');
+
+    etiqueta(s, b"libre");
+    s.tamano(libre);
+    s.texto(b"   ");
+    s.dec_der(bmo::info(bmo::INFO_RAM_MARCOS_LIBRES), 8);
+    s.texto(b" marcos\n");
+
+    // El tamano REAL del kernel en RAM, medido hasta el final de su .bss.
+    etiqueta(s, b"kernel");
+    s.tamano(bmo::info(bmo::INFO_KERNEL_BYTES));
+    s.texto(b"   en 0x400000\n");
+}
+
+fn informe_sistema(s: &mut Salida) {
+    s.con_tinta(TINTA_ECO);
+    s.texto(b"  BMO-X - informe del sistema\n");
+    s.con_tinta(TINTA_NORMAL);
+
+    informe_cpu(s);
+    informe_memoria(s);
+
+    seccion(s, b"tareas");
+    let total = bmo::info(bmo::INFO_TAREAS_TOTAL);
+    let libres = bmo::info(bmo::INFO_TAREAS_LIBRES);
+    let ranuras = total + libres;
+    etiqueta(s, b"ranuras");
+    s.dec(total);
+    s.texto(b" en uso de ");
+    s.dec(ranuras);
+    s.texto(b"   ");
+    s.barra(total, ranuras, 24);
+    s.byte(b'\n');
+    etiqueta(s, b"listas");
+    s.dec(bmo::info(bmo::INFO_TAREAS_LISTAS));
+    s.texto(b"   ticks ");
+    s.dec(bmo::info(bmo::INFO_TICKS));
+    s.byte(b'\n');
+    etiqueta(s, b"programas");
+    let vistos = bmo::info(bmo::INFO_PROGRAMAS);
+    let olvidados = bmo::info(bmo::INFO_PROGRAMAS_OLVIDADOS);
+    s.dec(vistos + olvidados);
+    s.texto(b" lanzados");
+    if olvidados > 0 {
+        s.texto(b"   (");
+        s.dec(olvidados);
+        s.texto(b" ya no caben en la bitacora)");
+    }
+    s.byte(b'\n');
+
+    seccion(s, b"disco");
+    etiqueta(s, b"disco");
+    if bmo::info(bmo::INFO_DISCO_LISTO) != 0 {
+        s.con_tinta(TINTA_BIEN);
+        s.texto(b"listo");
+    } else {
+        s.con_tinta(TINTA_MAL);
+        s.texto(b"sin disco");
+    }
+    s.con_tinta(TINTA_NORMAL);
+    s.byte(b'\n');
+    etiqueta(s, b"datos");
+    if bmo::info(bmo::INFO_DATOS_MONTADO) != 0 {
+        s.con_tinta(TINTA_BIEN);
+        s.texto(b"montado para escritura");
+    } else {
+        // La linea que decide si el File I/O de COBOL puede funcionar. Decirlo
+        // aqui ahorra buscar el fallo en el programa.
+        s.con_tinta(TINTA_MAL);
+        s.texto(b"NO montado: sin esto no hay OPEN ni WRITE");
+    }
+    s.con_tinta(TINTA_NORMAL);
+    s.byte(b'\n');
 }
 
 // ── La línea de comandos ────────────────────────────────────────────────
@@ -485,6 +785,15 @@ enum Orden<'a> {
     /// Parece un archivo, pero no es un `.bex`. No se intenta lanzar: se dice
     /// qué es y con qué se abre.
     NoEsPrograma(&'a [u8]),
+    /// `info` — el informe del sistema. `cpu` y `mem` son las dos mitades.
+    ///
+    /// ★ Esto vivía SOLO en el shell de Ring 0, y no porque hiciera falta el
+    /// privilegio: porque los datos estaban a su alcance. Contar RAM no ejerce
+    /// ningún poder. Ahora bajan por `OP_INFO` y se pintan aquí, que es donde
+    /// está la pantalla.
+    Informe,
+    Cpu,
+    Memoria,
     /// `reboot` — reinicia la máquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aquí contestaba "no lo
@@ -1012,6 +1321,9 @@ fn interpretar(linea: &[u8]) -> Orden<'_> {
                 None => Orden::Ayuda,
             }
         }
+        b"info" | b"sistema" => Orden::Informe,
+        b"cpu" | b"procesador" => Orden::Cpu,
+        b"mem" | b"ram" | b"memoria" => Orden::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Orden::Reiniciar,
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
         _ if parece_programa(linea) => Orden::Lanzar(linea),
@@ -1456,6 +1768,8 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(b"  TAB          completa   Ctrl+A/E inicio/fin\n");
                                 salida.texto(b"  Ctrl+K corta al final    Ctrl+W borra palabra\n");
                                 salida.texto(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
+                                salida.texto(b"  info         RAM, CPU, tareas y disco\n");
+                                salida.texto(b"  cpu / mem    solo esa parte del informe\n");
                                 salida.texto(b"  help         esto\n");
                                 salida.texto(b"  reboot       reinicia la maquina\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
@@ -1473,6 +1787,21 @@ pub extern "C" fn _start() -> ! {
                                 salida.byte(b'\n');
                                 salida.con_tinta(TINTA_NORMAL);
                                 pintar_estado(&p, &caja, "no es un programa: prueba lee", TEXTO_TENUE);
+                                n = 0;
+                            }
+                            Orden::Informe => {
+                                informe_sistema(&mut salida);
+                                pintar_estado(&p, &caja, "informe del sistema", TEXTO_TENUE);
+                                n = 0;
+                            }
+                            Orden::Cpu => {
+                                informe_cpu(&mut salida);
+                                pintar_estado(&p, &caja, "procesador", TEXTO_TENUE);
+                                n = 0;
+                            }
+                            Orden::Memoria => {
+                                informe_memoria(&mut salida);
+                                pintar_estado(&p, &caja, "memoria", TEXTO_TENUE);
                                 n = 0;
                             }
                             // Se pinta ANTES de pedirlo: la llamada no vuelve,

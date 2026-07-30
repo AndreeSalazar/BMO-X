@@ -104,6 +104,11 @@ const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
 /// antes de reiniciar para que nunca sea silenciosa, y las dos operaciones
 /// quieren la misma capability el día que exista.
 const TASK_OP_REINICIAR: u64 = 0x12;
+/// Un dato numérico del sistema (`arg0` = campo) y uno de texto (`arg0` =
+/// campo, `arg1` = trozo de 8 bytes). Ver `ring0/core/informe.rs`: leer cuánta
+/// RAM hay no es un privilegio, es una pregunta.
+const TASK_OP_INFO: u64 = 0x13;
+const TASK_OP_INFO_TEXTO: u64 = 0x14;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -403,6 +408,12 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_RUTA => {
             ruta_push(scheduler::current_pid(), arg0);
             BmoStatus::ok_value(0)
+        }
+        TASK_OP_INFO => {
+            BmoStatus::ok_value(crate::ring0::core::informe::campo(arg0))
+        }
+        TASK_OP_INFO_TEXTO => {
+            BmoStatus::ok_value(crate::ring0::core::informe::texto(arg0, arg1))
         }
         TASK_OP_REINICIAR => {
             crate::ring0::cabina::warn(

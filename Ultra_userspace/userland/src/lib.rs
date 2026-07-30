@@ -68,6 +68,34 @@ pub const OP_ARCHIVO_ABRIR: u32 = 0x10;
 pub const OP_ARCHIVO_CREAR: u32 = 0x11;
 /// Reiniciar la máquina. No vuelve. Ver [`reiniciar`].
 pub const OP_REINICIAR: u32 = 0x12;
+/// Un dato del sistema. Ver [`info`] y [`info_texto`].
+pub const OP_INFO: u32 = 0x13;
+pub const OP_INFO_TEXTO: u32 = 0x14;
+
+// Campos de `OP_INFO`. Son una TABLA: añadir un dato es una fila, no una
+// operación nueva.
+pub const INFO_RAM_TOTAL: u64 = 0x01;
+pub const INFO_RAM_LIBRE: u64 = 0x02;
+pub const INFO_RAM_MARCOS: u64 = 0x03;
+pub const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
+pub const INFO_TSC_HZ: u64 = 0x05;
+pub const INFO_CPU_HILOS: u64 = 0x06;
+pub const INFO_CPU_NUCLEOS: u64 = 0x07;
+pub const INFO_TAREAS_TOTAL: u64 = 0x08;
+pub const INFO_TAREAS_LISTAS: u64 = 0x09;
+pub const INFO_TAREAS_LIBRES: u64 = 0x0A;
+pub const INFO_TICKS: u64 = 0x0B;
+pub const INFO_KERNEL_BYTES: u64 = 0x0C;
+pub const INFO_PROGRAMAS: u64 = 0x0D;
+pub const INFO_PROGRAMAS_OLVIDADOS: u64 = 0x0E;
+pub const INFO_DISCO_LISTO: u64 = 0x0F;
+pub const INFO_DATOS_MONTADO: u64 = 0x10;
+
+// Campos de `OP_INFO_TEXTO`.
+pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
+pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
+pub const INFO_TXT_UARCH: u64 = 0x03;
+pub const INFO_TXT_FAMILIA: u64 = 0x04;
 
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;
@@ -206,6 +234,42 @@ pub fn salir() -> ! {
     loop {
         ceder();
     }
+}
+
+/// Un dato numérico del sistema. `0` si el kernel no sabe contestar ese campo.
+///
+/// Cuánta RAM hay, cuántos hilos tiene el CPU, cuántas ranuras de tarea quedan.
+/// Esto vivía **sólo** en el shell de Ring 0 —`info`, `cpu`, `mem`— y no porque
+/// hiciera falta el privilegio: porque los datos estaban a su alcance. Leer un
+/// contador no ejerce ningún poder.
+#[inline]
+pub fn info(campo: u64) -> u64 {
+    invoke(CURRENT_TASK, OP_INFO, campo, 0, 0).value
+}
+
+/// Un campo de TEXTO en `dst`. Devuelve cuántos bytes se escribieron.
+///
+/// Viaja de 8 en 8 con el cero como final, igual que la ruta de `ejecutar`: en
+/// esta superficie no hay punteros de Ring 3 hacia el kernel.
+pub fn info_texto(campo: u64, dst: &mut [u8]) -> usize {
+    let mut n = 0usize;
+    let mut trozo = 0u64;
+    while n < dst.len() {
+        let w = invoke(CURRENT_TASK, OP_INFO_TEXTO, campo, trozo, 0).value;
+        if w == 0 {
+            break;
+        }
+        for k in 0..8 {
+            let b = ((w >> (k * 8)) & 0xFF) as u8;
+            if b == 0 || n >= dst.len() {
+                return n;
+            }
+            dst[n] = b;
+            n += 1;
+        }
+        trozo += 1;
+    }
+    n
 }
 
 /// Reiniciar la máquina. No vuelve.

@@ -65,6 +65,11 @@ pub mod plat {
 
 pub mod core {
     pub mod entry;
+    /// El informe del sistema que Ring 3 pide por `TASK_OP_INFO`. Está aquí y
+    /// no en `obj/` porque no es un objeto con handle: son datos que el kernel
+    /// ya tiene y contesta sin conceder nada. Leer cuánta RAM hay no es un
+    /// privilegio, es una pregunta.
+    pub mod informe;
     pub mod phase;
     pub mod splash;
 }
