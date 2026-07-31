@@ -194,7 +194,30 @@ impl Preprocessor {
                     features: self.features.clone(),
                     line: 0,
                 };
-                sub.preprocess(&content, &p)
+                let texto = sub.preprocess(&content, &p)?;
+                // ★ Lo que la cabecera DEFINIÓ se queda.
+                //
+                // Antes no: el sub-preprocesador nacía con una copia de las
+                // macros, expandía el fichero incluido y **se moría con sus
+                // `#define` dentro**. O sea, una cabecera podía traer funciones
+                // pero no constantes — que es justo para lo que sirve una
+                // cabecera.
+                //
+                // Y no fallaba: la directiva se consumía, así que
+                // `BMO_TECLA_REPAG` seguía en el texto como un identificador
+                // suelto y el parser lo tomaba por una variable. Dos constantes
+                // distintas se volvían la MISMA variable inventada, así que
+                // `if (t == REPAG)` era cierto también para AvPag. Comparaba
+                // basura contra la misma basura y parecía que funcionaba.
+                //
+                // Se conserva lo que ya había en caso de choque: un `#define`
+                // del fichero que incluye manda sobre el de la cabecera, que es
+                // lo que espera quien escribe el `#define` antes del `#include`
+                // para configurarla.
+                for (nombre, cuerpo) in sub.defines {
+                    self.defines.entry(nombre).or_insert(cuerpo);
+                }
+                Ok(texto)
             }
             None => Err(CError::new(self.line,
                 format!("#include: file not found: {}", path_str))),

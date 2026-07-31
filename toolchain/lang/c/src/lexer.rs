@@ -36,6 +36,11 @@ struct TokStream {
     toks: Vec<Token>,
     lines: Vec<usize>,
     cur_line: usize,
+    /// Lo que salió mal AQUÍ, con su línea. El lexer no puede cortar —tiene
+    /// que seguir hasta el final para que el parser reciba un vector— así que
+    /// los guarda y el parser se niega a seguir al verlos. Sin esto, la única
+    /// salida era un valor inventado.
+    errores: Vec<crate::CError>,
 }
 
 impl TokStream {
@@ -45,8 +50,8 @@ impl TokStream {
     }
 }
 
-pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>) {
-    let mut t = TokStream { toks: Vec::new(), lines: Vec::new(), cur_line: 1 };
+pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CError>) {
+    let mut t = TokStream { toks: Vec::new(), lines: Vec::new(), cur_line: 1, errores: Vec::new() };
     let c: Vec<char> = source.chars().collect();
     let mut i = 0;
     while i < c.len() {
@@ -201,7 +206,31 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>) {
                 if d == '0' && i + 1 < c.len() && (c[i+1] == 'x' || c[i+1] == 'X') {
                     n.push_str("0x"); i += 2;
                     while i < c.len() && c[i].is_ascii_hexdigit() { n.push(c[i]); i += 1; }
-                    t.push(Token::IntLit(i64::from_str_radix(&n[2..], 16).unwrap_or(0)));
+                    // ★ Por `u64` y no por `i64`. Un hexadecimal es un PATRÓN DE
+                    // BITS, no un número con signo: `0xFFFFFFFFFFFFFFFE` no cabe
+                    // en un `i64` y `i64::from_str_radix` fallaba, así que el
+                    // `unwrap_or(0)` lo convertía en **cero, en silencio**.
+                    //
+                    // Eso dejaba fuera del lenguaje toda la mitad alta de 64
+                    // bits — empezando por `CURRENT_TASK` (0xFF..FE), que es el
+                    // pseudo-handle con el que un programa se nombra a sí mismo.
+                    // Escribir la constante correcta compilaba y llamaba a la
+                    // capability 0.
+                    let bits = u64::from_str_radix(&n[2..], 16)
+                        .or_else(|_| i64::from_str_radix(&n[2..], 16).map(|v| v as u64));
+                    match bits {
+                        Ok(v) => t.push(Token::IntLit(v as i64)),
+                        // Más de 16 dígitos no es un entero de esta máquina.
+                        // Callarlo sería repetir el mismo error con otro valor.
+                        Err(_) => {
+                            let linea = t.cur_line;
+                            t.errores.push(crate::CError::new(
+                                linea,
+                                format!("literal hexadecimal fuera de 64 bits: {n}"),
+                            ));
+                            t.push(Token::IntLit(0));
+                        }
+                    }
                 } else {
                     while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
                     // literal float: 1.5, 3.14f — antes "1.5" se partía en 1 . 5
@@ -248,5 +277,5 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>) {
         }
     }
     t.push(Token::Eof);
-    (t.toks, t.lines)
+    (t.toks, t.lines, t.errores)
 }

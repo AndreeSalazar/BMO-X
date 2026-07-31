@@ -41,6 +41,11 @@ pub const STACK_TOP: u64 = 0x7000_0000;
 
 const POISON: u64 = 0xDEAD_BEEF_DEAD_BEEF;
 
+/// El handle que devuelve `TASK_OP_INPUT_CLAIM` aquí dentro. Lejos del rango
+/// de los archivos (1..n) a propósito: un programa que confunda los dos
+/// handles tiene que fallar en la prueba, no acertar por casualidad.
+const CAP_ENTRADA: u64 = 0x0001_0001;
+
 const RAX: usize = 0;
 const RCX: usize = 1;
 const RDX: usize = 2;
@@ -100,6 +105,39 @@ pub struct Machine {
     ruta: Vec<u8>,
     /// Archivos abiertos: `(ruta, contenido, cursor, escribe)`.
     abiertos: Vec<Abierto>,
+    /// ── La entrada, modelada ────────────────────────────────────────────
+    ///
+    /// Esto no estaba, y el comentario que lo justificaba —"ningún código
+    /// emitido toca el ratón, lo usa el compositor, que es Rust normal"— dejó
+    /// de ser verdad en cuanto un frontend pudo emitir la puerta. Mientras no
+    /// estuvo, **la rueda sólo se podía probar en el Ryzen**: un `INPUT_OP_RUEDA`
+    /// que devuelve siempre lo mismo se ve idéntico a uno que consume, y ésa
+    /// es justo la diferencia que decide si un scroll se mueve solo.
+    ///
+    /// El ratón se declara AUSENTE por defecto (`entrada_cedida = false`), que
+    /// es lo que ve un programa cuando otro proceso ya reclamó la entrada.
+    entrada_cedida: bool,
+    /// Teclas pendientes, en orden. Las siembra [`Machine::poner_teclas`] y
+    /// las drena `INPUT_OP_TECLA`, una por llamada.
+    teclas: Vec<u8>,
+    teclas_cursor: usize,
+    /// Teclas que aún no han LLEGADO: un lote por fotograma.
+    ///
+    /// Sin esto, todo lo sembrado está disponible en la primera vuelta del
+    /// bucle, y un programa que drena el teclado hasta vaciarlo —que es lo
+    /// correcto— ve la sesión entera de golpe. Un ESC al final de la lista
+    /// mata el programa antes de que llegue a reaccionar a nada.
+    ///
+    /// El reloj es `YIELD`, y no es una convención inventada: un bucle de
+    /// fotograma que no cede se come el quantum, así que ceder **es** el borde
+    /// del fotograma. Ver [`Machine::poner_teclas_por_fotograma`].
+    lotes: Vec<Vec<u8>>,
+    /// Muescas de rueda acumuladas. **Leerlas las vacía**, igual que el kernel.
+    rueda: i32,
+    /// `(x, y, botones)` y el pulsómetro de informes HID.
+    puntero: (u32, u32, u8),
+    eventos_hid: u64,
+    modificadores: u8,
     mem: HashMap<u64, u8>,
     data_len: u64,
     zf: bool,
@@ -122,6 +160,14 @@ impl Machine {
             entrada_cursor: 0,
             ruta: Vec::new(),
             abiertos: Vec::new(),
+            entrada_cedida: false,
+            teclas: Vec::new(),
+            teclas_cursor: 0,
+            lotes: Vec::new(),
+            rueda: 0,
+            puntero: (0, 0, 0),
+            eventos_hid: 0,
+            modificadores: 0,
             mem: HashMap::new(),
             data_len: 0,
             zf: false,
@@ -266,6 +312,103 @@ impl Machine {
         self.archivo(ruta).map(|b| String::from_utf8_lossy(b).into_owned())
     }
 
+    // ── Sembrar la entrada ──────────────────────────────────────────────
+
+    /// Concede la entrada: a partir de aquí `TASK_OP_INPUT_CLAIM` funciona.
+    ///
+    /// Hay que pedirlo a propósito porque la entrada es **exclusiva**: sin
+    /// esto, la prueba ve lo mismo que un programa lanzado mientras el
+    /// compositor la tiene tomada, que es el caso que más se equivoca al
+    /// escribirlo.
+    pub fn ceder_entrada(&mut self) {
+        self.entrada_cedida = true;
+    }
+
+    /// Teclas que el programa irá recogiendo con `INPUT_OP_TECLA`, una por
+    /// llamada. Los bytes son Latin-1 ya resueltos; para las que no tienen
+    /// glifo, las constantes `TECLA_*` de `bmo_abi::syscalls::surface`.
+    pub fn poner_teclas(&mut self, teclas: &[u8]) {
+        self.teclas.extend_from_slice(teclas);
+    }
+
+    /// Teclas repartidas EN EL TIEMPO: un lote por fotograma, entendiendo por
+    /// fotograma cada `YIELD` que haga el programa.
+    ///
+    /// Es la diferencia entre probar un programa interactivo y probar una
+    /// ráfaga: con todo disponible de golpe, un bucle que drena el teclado ve
+    /// la sesión entera en la primera vuelta y nunca llega a repintar entre
+    /// pulsación y pulsación — que es justo la conducta que se quiere mirar.
+    ///
+    /// El primer lote llega tras el primer `YIELD`; lo que deba estar ahí
+    /// desde el principio va en [`Machine::poner_teclas`].
+    pub fn poner_teclas_por_fotograma(&mut self, lotes: &[&[u8]]) {
+        // Se guardan al revés para poder sacar el siguiente por el final, que
+        // es O(1). El orden que ve el programa es el de la lista.
+        for lote in lotes.iter().rev() {
+            self.lotes.push(lote.to_vec());
+        }
+    }
+
+    /// Suma muescas de rueda. Positivo = hacia arriba. Se acumulan hasta que
+    /// alguien las lea, y leerlas las vacía.
+    pub fn poner_rueda(&mut self, muescas: i32) {
+        self.rueda += muescas;
+        self.eventos_hid += muescas.unsigned_abs() as u64;
+    }
+
+    /// Coloca el puntero y sube el pulsómetro de informes HID.
+    pub fn poner_puntero(&mut self, x: u32, y: u32, botones: u8) {
+        self.puntero = (x, y, botones);
+        self.eventos_hid += 1;
+    }
+
+    /// Modificadores pulsados AHORA (`MOD_SHIFT`, `MOD_CTRL`…). Es estado: se
+    /// queda puesto hasta que se cambie.
+    pub fn poner_modificadores(&mut self, mascara: u8) {
+        self.modificadores = mascara;
+    }
+
+    /// Muescas de rueda que quedan sin leer. Un programa que se olvida de
+    /// drenarla las deja aquí, y la prueba puede decirlo.
+    pub fn rueda_pendiente(&self) -> i32 {
+        self.rueda
+    }
+
+    /// Despacho de la capability de entrada. Copia la semántica de
+    /// `ring0/obj/input.rs` — sobre todo la que se nota: la rueda CONSUME.
+    fn entrada_op(&mut self, op: u64) -> u64 {
+        use bmo_abi::syscalls::surface::{
+            INPUT_OP_EVENTOS, INPUT_OP_MODIFICADORES, INPUT_OP_PUNTERO, INPUT_OP_RUEDA,
+            INPUT_OP_TECLA,
+        };
+        match op {
+            INPUT_OP_PUNTERO => {
+                let (x, y, b) = self.puntero;
+                ((x as u64) << 32) | ((y as u64) << 16) | b as u64
+            }
+            INPUT_OP_EVENTOS => self.eventos_hid,
+            // `0x100 | byte` cuando hay una; `0` cuando no. El bit 8 es lo que
+            // distingue "llegó el byte 0" de "no llegó nada".
+            INPUT_OP_TECLA => {
+                if self.teclas_cursor < self.teclas.len() {
+                    let b = self.teclas[self.teclas_cursor];
+                    self.teclas_cursor += 1;
+                    0x100 | b as u64
+                } else {
+                    0
+                }
+            }
+            INPUT_OP_MODIFICADORES => self.modificadores as u64,
+            // ★ Consume. Dos lecturas seguidas sin girar dan cero la segunda.
+            INPUT_OP_RUEDA => {
+                let v = self.rueda;
+                self.rueda = 0;
+                v as i64 as u64
+            }
+            _ => 0,
+        }
+    }
+
     /// Abre o crea. Devuelve el handle (el índice + 1, para que 0 no sea uno
     /// válido) o 0 si no se pudo.
     fn archivo_abrir(&mut self, escribe: bool) -> u64 {
@@ -368,7 +511,8 @@ impl Machine {
     fn do_syscall(&mut self) {
         use bmo_abi::syscalls::surface::{
             CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
-            TASK_OP_CONSOLE_READ, TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_RUTA,
+            TASK_OP_CONSOLE_READ, TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM,
+            TASK_OP_RUTA, TASK_OP_YIELD,
         };
 
         let call = ObservedSyscall {
@@ -433,8 +577,27 @@ impl Machine {
                     self.finalizar_syscall(h);
                     return;
                 }
+                // Reclamar la entrada. Sin `ceder_entrada()` devuelve 0, que
+                // es el handle nulo: exactamente lo que ve un programa cuando
+                // otro proceso la tiene tomada.
+                op if op == TASK_OP_INPUT_CLAIM => {
+                    let h = if self.entrada_cedida { CAP_ENTRADA } else { 0 };
+                    self.finalizar_syscall(h);
+                    return;
+                }
+                // Ceder el turno es el borde del fotograma: aquí es donde
+                // "llega" lo que el usuario tecleó mientras tanto.
+                op if op == TASK_OP_YIELD => {
+                    if let Some(lote) = self.lotes.pop() {
+                        self.teclas.extend_from_slice(&lote);
+                    }
+                }
                 _ => {}
             }
+        } else if call.capability == CAP_ENTRADA {
+            let v = self.entrada_op(call.operation);
+            self.finalizar_syscall(v);
+            return;
         } else if call.capability != 0 {
             // Cualquier otro handle: aqui solo existen los de archivo. El
             // emulador no modela la pantalla ni el raton porque ningun codigo

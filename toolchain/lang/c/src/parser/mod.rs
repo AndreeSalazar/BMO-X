@@ -30,14 +30,18 @@ pub(crate) struct Parser {
     /// compilador estaba senalando justo este bug.
     enum_constants: HashMap<String, i64>,
     syscalls: HashMap<String, SyscallDef>,
+    /// Lo que el LEXER no pudo leer. Se comprueba antes de parsear: seguir
+    /// con un token inventado produce un programa que compila y no dice lo
+    /// que está escrito.
+    lex_errores: Vec<CError>,
     pub(crate) features: StandardFeatures,
 }
 
 impl Parser {
     pub(crate) fn new(source: &str) -> Self {
-        let (tokens, token_lines) = crate::lexer::tokenize(source);
+        let (tokens, token_lines, lex_errores) = crate::lexer::tokenize(source);
         Self {
-            tokens, token_lines, pos: 0,
+            tokens, token_lines, pos: 0, lex_errores,
             var_types: HashMap::new(),
             struct_fields: HashMap::new(),
             struct_sizes: HashMap::new(),
@@ -233,6 +237,9 @@ impl Parser {
 
     // ---- Program ----
     pub(crate) fn parse_program(&mut self) -> Result<Program, CError> {
+        if let Some(e) = self.lex_errores.first() {
+            return Err(e.clone());
+        }
         let mut globals = Vec::new();
         let mut functions = Vec::new();
         while *self.peek() != Token::Eof {

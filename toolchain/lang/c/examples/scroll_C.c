@@ -1,0 +1,161 @@
+/* scroll_C.bex — ver y hacer scroll, escrito en BMO C.
+ *
+ * ══ Qué prueba esto ══
+ *
+ * El compositor ya guarda 200 filas y las recorre con la rueda y con
+ * RePag/AvPag. Eso está en Rust. Este programa hace lo mismo en C, y no es una
+ * copia por gusto: es la prueba de que la rueda y las teclas sin glifo son
+ * parte del **contrato** y no de un privilegio del compositor. Si sólo se
+ * pudiera leer la rueda desde Rust, no sería un sistema operativo — sería un
+ * programa con un sistema alrededor.
+ *
+ * Cada pieza que toca estaba rota o no existía hasta hoy:
+ *
+ *   - `#include <bmo/...>`  las cabeceras tiraban sus `#define`, así que una
+ *                           constante de cabecera llegaba sin expandir y el
+ *                           codegen la ponía a CERO en silencio
+ *   - `0xFFFFFFFFFFFFFFFE`  no cabía en un i64 y valía cero: la capability de
+ *                           uno mismo no se podía nombrar
+ *   - `__syscall(...)`      no existía: C no podía cruzar a Ring 0 más que por
+ *                           `printf`
+ *   - la rueda              el kernel la tenía y la tiraba (no había lector)
+ *
+ * ══ Cómo se usa en la máquina ══
+ *
+ *   rueda arriba / RePag  →  hacia el pasado
+ *   rueda abajo  / AvPag  →  hacia lo último
+ *   Inicio / Fin          →  a los extremos de una vez
+ *   ESC                   →  salir
+ *
+ * ★ Si el compositor está corriendo, la entrada es SUYA y esto dirá que no la
+ *   pudo reclamar. No es un fallo: es la cesión funcionando. Para probarlo,
+ *   lánzalo desde el shell de Ring 0.
+ *
+ * Compilar:
+ *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/scroll_C.c \
+ *       -o Ultra_kernel_x86-64/kernel/src/ring0/scroll_C.bex
+ */
+#include <bmo/scroll.h>
+
+#define FILAS 60
+#define COLS 24
+#define VISIBLES 8
+#define ESC 27
+
+/* El historial. Vive aquí y no en un heap porque no hay heap: 60 filas de 24
+ * columnas son 1440 bytes de datos estáticos, y el tamaño se sabe al compilar.
+ * Un `malloc` aquí sería pedirle al sistema algo que el programa ya tiene. */
+char hist[1440];
+
+/* Escribe "fila NNN" en la fila `f`, con el cero al final para que `%s` sepa
+ * dónde parar. El resto se rellena de ceros: una fila con basura detrás se
+ * imprimiría hasta el primer cero que hubiera por ahí. */
+void poner(int f, int n) {
+    int base;
+    int i;
+    base = f * COLS;
+    hist[base] = 'f';
+    hist[base + 1] = 'i';
+    hist[base + 2] = 'l';
+    hist[base + 3] = 'a';
+    hist[base + 4] = ' ';
+    hist[base + 5] = '0' + (n / 100) % 10;
+    hist[base + 6] = '0' + (n / 10) % 10;
+    hist[base + 7] = '0' + n % 10;
+    i = 8;
+    while (i < COLS) {
+        hist[base + i] = 0;
+        i = i + 1;
+    }
+}
+
+/* Pinta la ventana: `VISIBLES` filas a partir de la que toque según `vista`.
+ *
+ * El aviso de "historial" no es un adorno. Una ventana que enseña el pasado sin
+ * decirlo se confunde con una que se ha colgado, y la reacción normal a eso es
+ * reiniciar la máquina — que en un sistema que arranca desde un USB cuesta un
+ * minuto y la sesión entera. */
+void pintar(int vista) {
+    int primera;
+    int i;
+    char *p;
+    primera = bmo_scroll_primera(vista, FILAS, VISIBLES);
+    printf("---- filas %d..%d ", primera, primera + VISIBLES - 1);
+    if (bmo_scroll_en_historial(vista)) {
+        printf("[historial] ----\n");
+    } else {
+        printf("[al dia] ----\n");
+    }
+    i = 0;
+    while (i < VISIBLES) {
+        p = hist + (primera + i) * COLS;
+        printf("  %s\n", p);
+        i = i + 1;
+    }
+}
+
+int main() {
+    unsigned long long ent;
+    int vista;
+    int giro;
+    int tecla;
+    int nueva;
+    int i;
+
+    i = 0;
+    while (i < FILAS) {
+        poner(i, i);
+        i = i + 1;
+    }
+
+    ent = bmo_entrada_reclamar();
+    if (ent == 0) {
+        /* El caso NORMAL cuando el compositor está vivo. Decirlo y salir es
+         * mejor que quedarse en un bucle leyendo ceros: eso se ve igual que un
+         * ratón roto, y manda a depurar el USB sin motivo. */
+        printf("la entrada es de otro proceso: no hay scroll que hacer.\n");
+        return 0;
+    }
+
+    vista = 0;
+    pintar(vista);
+
+    for (;;) {
+        nueva = vista;
+
+        /* La rueda primero. Consume: lo que se lee aquí ya no vuelve, así que
+         * no hace falta guardar el valor anterior y restar — que es donde se
+         * cuela el scroll que se mueve solo. */
+        giro = bmo_entrada_rueda(ent);
+        if (giro != 0) {
+            nueva = bmo_scroll_rueda(nueva, giro, FILAS, VISIBLES);
+        }
+
+        /* Las teclas se drenan hasta vaciar, no una por vuelta: pulsando
+         * rápido llegan varias entre fotograma y fotograma, y quedarse con una
+         * sería perder pulsaciones de forma que parecería un teclado malo. */
+        for (;;) {
+            tecla = bmo_entrada_tecla(ent);
+            if (tecla < 0) {
+                break;
+            }
+            if (tecla == ESC) {
+                printf("hasta luego.\n");
+                return 0;
+            }
+            nueva = bmo_scroll_tecla(nueva, tecla, FILAS, VISIBLES);
+        }
+
+        /* Repintar sólo cuando algo se movió. Repintar por fotograma llenaría
+         * la consola de copias de lo mismo y haría ilegible justo lo que este
+         * programa existe para dejar leer. */
+        if (nueva != vista) {
+            vista = nueva;
+            pintar(vista);
+        }
+
+        /* Ceder es obligatorio, no cortesía: nada de lo de arriba bloquea, así
+         * que sin esto el bucle se come el quantum entero girando en vacío. */
+        bmo_ceder();
+    }
+}

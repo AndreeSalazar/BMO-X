@@ -181,6 +181,66 @@ pub const ARCH_OP_TAMANO: u64 = 0x03;
 /// Cierra. En uno de escritura **es donde el contenido llega al disco**.
 pub const ARCH_OP_CERRAR: u64 = 0x04;
 
+// ── La entrada: ratón y teclado ─────────────────────────────────────────
+//
+// ★ Estas constantes vivían en DOS sitios —`ring0/obj/input.rs` y el userland
+// de Rust— y en ninguno de los dos que fuera el contrato. Mientras el único
+// cliente fue un compositor escrito en Rust eso se notaba poco; en cuanto un
+// segundo lenguaje quiso leer la rueda, se vio lo que era: un contrato que no
+// estaba publicado no lo puede cumplir nadie más. Aquí no hay lógica nueva,
+// hay un sitio del que copiar en vez de dos de los que adivinar.
+
+/// Reclama ratón + teclado. **Exclusivo**: mientras un proceso lo tenga, el
+/// shell de Ring 0 deja de leer el teclado físico. No es un reparto — dos
+/// lectores de la misma cola se robarían las letras.
+pub const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
+/// Reclama la pantalla. También exclusivo.
+pub const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
+
+/// Dónde está el puntero y qué botones tiene: `(x << 32) | (y << 16) | botones`.
+/// Ya viene recortado al panel: el kernel es quien sabe de qué tamaño es.
+pub const INPUT_OP_PUNTERO: u64 = 0x01;
+/// Cuántos informes HID se han visto desde el arranque. Distingue "el ratón no
+/// se mueve" de "el ratón no llega": si esto no sube, el problema está en el USB.
+pub const INPUT_OP_EVENTOS: u64 = 0x02;
+/// La siguiente tecla: `0x100 | byte`, o `0` si no hay ninguna esperando.
+/// **No bloquea.** El byte es Latin-1 ya resuelto (la `ñ` es `0xF1`).
+pub const INPUT_OP_TECLA: u64 = 0x03;
+/// Máscara de modificadores pulsados AHORA. Es estado, no consume nada.
+pub const INPUT_OP_MODIFICADORES: u64 = 0x04;
+/// Las muescas de rueda **desde la última vez**, como `i32` en complemento a
+/// dos dentro del `u64`. Positivo = hacia arriba.
+///
+/// ★ **Consume**: dos lecturas seguidas sin girar dan cero la segunda. Devolver
+/// un acumulado desde el arranque obligaría a cada llamante a guardar el
+/// anterior y restar, y el primero que lo olvide tiene un scroll que se mueve
+/// solo.
+pub const INPUT_OP_RUEDA: u64 = 0x05;
+
+/// Bits de la máscara de [`INPUT_OP_MODIFICADORES`].
+pub const MOD_SHIFT: u8 = 1 << 0;
+pub const MOD_CTRL: u8 = 1 << 1;
+pub const MOD_ALT: u8 = 1 << 2;
+pub const MOD_ALTGR: u8 = 1 << 3;
+pub const MOD_CAPS: u8 = 1 << 4;
+
+/// Las teclas sin glifo, en el rango C1 (0x80..0x9F) que eligió el driver.
+///
+/// No son ASCII y no lo pretenden: son bytes que ninguna distribución produce
+/// como carácter, así que un programa puede distinguirlas de lo que se escribe
+/// sin un segundo canal.
+/// Son los mismos bytes que `ring0::dev::keyboard::KEY_*`, y esa igualdad es
+/// el contrato: si divergen, un programa lee flechas donde hay páginas.
+pub const TECLA_ARRIBA: u8 = 0x80;
+pub const TECLA_ABAJO: u8 = 0x81;
+pub const TECLA_IZQUIERDA: u8 = 0x82;
+pub const TECLA_DERECHA: u8 = 0x83;
+pub const TECLA_INICIO: u8 = 0x84;
+pub const TECLA_FIN: u8 = 0x85;
+pub const TECLA_SUPR: u8 = 0x86;
+pub const TECLA_REPAG: u8 = 0x87;
+pub const TECLA_AVPAG: u8 = 0x88;
+
 /// Operations accepted by `CURRENT_TASK`.
 pub mod task_op {
     pub const GET_PID: u64 = super::TASK_OP_GET_PID;

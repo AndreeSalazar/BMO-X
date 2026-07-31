@@ -384,13 +384,38 @@ impl Codegen {
         }
     }
 
+    /// Escribe el destino de cada `call rel32`.
+    ///
+    /// ★ Una llamada sin destino es un ERROR, no un hueco.
+    ///
+    /// Antes el `if let` no tenía `else`: el desplazamiento se quedaba en 0, y
+    /// `E8 00000000` es "llama a la instrucción siguiente" — o sea, un `call`
+    /// que empuja una dirección de retorno, no hace nada y vuelve. Un nombre mal
+    /// escrito, o una macro con parámetros que este preprocesador todavía no
+    /// expande, producía un programa que compilaba y **se saltaba la llamada en
+    /// silencio**.
+    ///
+    /// Aquí no hay enlazado que pueda rellenarlo más tarde: no existe tabla de
+    /// importaciones en la salida de este codegen, así que todo lo que se llama
+    /// tiene que estar en esta misma unidad. La prueba de que era un descuido y
+    /// no una decisión está tres funciones más abajo: `patch_func_addr_fixups`
+    /// ya reportaba exactamente este caso para los punteros a función.
     fn patch_call_relocs(&mut self) {
+        let mut faltan: Vec<String> = Vec::new();
         for reloc in &self.call_relocs {
             if let Some(&target_offset) = self.function_offsets.get(&reloc.target) {
                 let off = reloc.offset;
                 let disp = target_offset as i32 - (off as i32 + 4);
                 self.code[off..off + 4].copy_from_slice(&disp.to_le_bytes());
+            } else if !faltan.contains(&reloc.target) {
+                faltan.push(reloc.target.clone());
             }
+        }
+        for nombre in faltan {
+            self.errors.push(format!(
+                "no existe la funcion '{nombre}' que se llama (aqui no hay enlazado: \
+                 todo lo que se llama tiene que estar en esta unidad)"
+            ));
         }
     }
 
@@ -675,6 +700,22 @@ impl Codegen {
                 _ => self.code.extend_from_slice(&[0x48, 0x8B, 0x00]),
             }
         } else {
+            // ★ Un nombre que no es variable, ni global, ni constante de enum,
+            // ni función, NO VALE CERO: no existe.
+            //
+            // Esto era un `xor eax,eax` mudo, y es lo que escondió que
+            // `#include` tiraba los `#define` de la cabecera: `BMO_TECLA_REPAG`
+            // y `BMO_TECLA_AVPAG` llegaban sin expandir, el codegen los ponía a
+            // cero **a los dos**, y `if (t == REPAG)` era cierto para AvPag.
+            // Comparaba cero contra cero y el programa parecía correcto.
+            //
+            // Un cero inventado es la peor respuesta posible a "no sé qué es
+            // esto": es un valor legítimo en cualquier expresión, así que el
+            // error viaja hasta donde ya no se puede rastrear.
+            self.errors.push(format!(
+                "'{name}' no esta declarado (ni variable, ni global, ni constante de enum, \
+                 ni funcion). Si venia de un #define, la cabecera no llego a expandirse."
+            ));
             self.emit_xor_eax();
         }
     }
@@ -1581,11 +1622,26 @@ impl Codegen {
     }
 
     /// Saca el tope de la pila al registro destino de un argumento.
+    ///
+    /// Los nombres de 64 bits (`rdi`, `rsi`, `r10`, `r8`) no estaban, y esa
+    /// ausencia era justo la que dejaba `syscall` fuera del lenguaje: la
+    /// convención de la puerta congelada pasa los argumentos por ahí, así que
+    /// sin estos registros no había forma de escribir la llamada en C. Sólo
+    /// existían los de los puertos de E/S (`dx`, `al`) y los de `rdmsr`.
     fn emit_pop_to_reg(&mut self, reg: &str) {
         match reg {
-            "eax" | "ax" | "al" => self.code.push(0x58),          // pop rax
-            "ecx" | "cx" | "cl" => self.code.push(0x59),          // pop rcx
-            "edx" | "dx"        => self.code.push(0x5A),          // pop rdx
+            "rax" | "eax" | "ax" | "al" => self.code.push(0x58),  // pop rax
+            "rcx" | "ecx" | "cx" | "cl" => self.code.push(0x59),  // pop rcx
+            "rdx" | "edx" | "dx"        => self.code.push(0x5A),  // pop rdx
+            "rbx" => self.code.push(0x5B),
+            "rsi" | "esi" | "si" => self.code.push(0x5E),
+            "rdi" | "edi" | "di" => self.code.push(0x5F),
+            // r8..r11 llevan REX.B: el `pop` corto sólo alcanza los ocho
+            // registros clásicos.
+            "r8"  => self.code.extend_from_slice(&[0x41, 0x58]),
+            "r9"  => self.code.extend_from_slice(&[0x41, 0x59]),
+            "r10" => self.code.extend_from_slice(&[0x41, 0x5A]),
+            "r11" => self.code.extend_from_slice(&[0x41, 0x5B]),
             "u64_edx_eax" => {
                 // valor de 64 bits en rax → edx:eax (para wrmsr)
                 self.code.push(0x58);                              // pop rax
@@ -1605,6 +1661,10 @@ impl Codegen {
             }
             Some("al") => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]), // movzx rax, al
             Some("ax") => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0xC0]), // movzx rax, ax
+            // La puerta devuelve DOS cosas: el código en rax y el valor en
+            // rdx. Quien pide el valor se lleva rdx a rax, que es donde este
+            // codegen espera todo resultado.
+            Some("rdx") => self.code.extend_from_slice(&[0x48, 0x89, 0xD0]), // mov rax, rdx
             // "eax": escribir eax en modo 64-bit ya deja rax con el alto en cero
             _ => {}
         }

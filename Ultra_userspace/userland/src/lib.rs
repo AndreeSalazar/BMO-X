@@ -857,6 +857,28 @@ impl Entrada {
         invoke(self.cap, INPUT_OP_EVENTOS, 0, 0, 0).value
     }
 
+    /// Las vueltas de rueda desde la última vez. Positivo = hacia arriba.
+    ///
+    /// **Consume**: dos llamadas seguidas sin girar dan cero la segunda. Así el
+    /// llamante no tiene que guardar el valor anterior y restar — que es donde
+    /// se cuela el scroll que se mueve solo.
+    pub fn rueda(&self) -> i32 {
+        invoke(self.cap, INPUT_OP_RUEDA, 0, 0, 0).value as i32
+    }
+
+    /// Qué modificadores están pulsados AHORA. No consume nada: es estado.
+    ///
+    /// Existe porque `tecla()` da un byte ya resuelto y hay combinaciones que
+    /// no producen carácter — `Ctrl+Alt` a secas no es ninguna letra.
+    ///
+    /// ★ En la distribución española `Ctrl+Alt` **es** `AltGr`: lo que produce
+    /// `@`, `#`, `[`, `]`, `\`, `|` y `€`. Un atajo que dispare al PULSARLOS
+    /// rompe escribir todo eso. Si lo usas como atajo, dispara al SOLTAR y sólo
+    /// si no llegó ningún carácter mientras estaban pulsados.
+    pub fn modificadores(&self) -> u8 {
+        invoke(self.cap, INPUT_OP_MODIFICADORES, 0, 0, 0).value as u8
+    }
+
     /// La siguiente tecla, si hay alguna. **No bloquea**: devuelve `None`
     /// cuando no hay nada esperando.
     ///
@@ -867,28 +889,6 @@ impl Entrada {
     ///
     /// El byte es **Latin-1**: la `ñ` llega como `0xF1`, que es justo el índice
     /// que entiende la fuente. Sin decodificador de por medio.
-    /// Qué modificadores están pulsados AHORA. No consume nada: es estado.
-    ///
-    /// Existe porque `tecla()` da un byte ya resuelto y hay combinaciones que
-    /// no producen carácter — `Ctrl+Alt` a secas no es ninguna letra.
-    ///
-    /// ★ En la distribución española `Ctrl+Alt` **es** `AltGr`: lo que produce
-    /// `@`, `#`, `[`, `]`, `\`, `|` y `€`. Un atajo que dispare al PULSARLOS
-    /// rompe escribir todo eso. Si lo usas como atajo, dispara al SOLTAR y sólo
-    /// si no llegó ningún carácter mientras estaban pulsados.
-    /// Las vueltas de rueda desde la ultima vez. Positivo = hacia arriba.
-    ///
-    /// **Consume**: dos llamadas seguidas sin girar dan cero la segunda. Asi el
-    /// llamante no tiene que guardar el valor anterior y restar — que es donde
-    /// se cuela el scroll que se mueve solo.
-    pub fn rueda(&self) -> i32 {
-        invoke(self.cap, INPUT_OP_RUEDA, 0, 0, 0).value as i32
-    }
-
-    pub fn modificadores(&self) -> u8 {
-        invoke(self.cap, INPUT_OP_MODIFICADORES, 0, 0, 0).value as u8
-    }
-
     pub fn tecla(&self) -> Option<u8> {
         let v = invoke(self.cap, INPUT_OP_TECLA, 0, 0, 0).value;
         if v & 0x100 != 0 {

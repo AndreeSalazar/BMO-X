@@ -111,3 +111,31 @@ description = "CPUID hoja en eax -> devuelve eax (los otros 3 regs: pendiente)"
 bytes = [0x0F, 0xA2]
 args = ["eax"]
 returns = "eax"
+
+# === La puerta: lo unico que cruza de Ring 3 a Ring 0 ===
+#
+# `syscall` es una instruccion como `outb` o `hlt`, asi que vive aqui y no en
+# un mecanismo aparte. La diferencia con las de arriba es que la CONVENCION la
+# fija BMO y no el CPU: rax = numero de llamada, argumentos en
+# rdi, rsi, rdx, r10, r8.
+#
+# ★ `r10` y no `rcx`: el propio CPU mete en rcx el RIP de retorno y en r11 las
+#   RFLAGS. Un argumento en rcx no seria el dato de nadie, seria la direccion a
+#   la que volver. Ver la cabecera de `Ultra_userspace/userland/src/lib.rs`.
+#
+# De vuelta el kernel devuelve DOS cosas: rax = codigo | (flags << 32), y
+# rdx = el valor. Por eso hay dos filas con los MISMOS bytes: no son dos
+# instrucciones, es la misma instruccion leida por dos sitios. Fundirlas
+# obligaria a devolver un par, y en C un par no cabe en un registro.
+
+[syscall]
+description = "La puerta: __syscall(nr, cap, op, a0, a1, a2) -> el CODIGO (0 = bien)"
+bytes = [0x0F, 0x05]
+args = ["rax", "rdi", "rsi", "rdx", "r10", "r8"]
+returns = "rax"
+
+[syscall_valor]
+description = "La MISMA puerta, recogiendo el VALOR (rdx) en vez del codigo"
+bytes = [0x0F, 0x05]
+args = ["rax", "rdi", "rsi", "rdx", "r10", "r8"]
+returns = "rdx"

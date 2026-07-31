@@ -196,6 +196,21 @@ $cobolEjemplos = @(
 $adaEjemplos = @(
     @{ src = 'toolchain\lang\ada\examples\1-basico\cierre.adb'; out = 'cierre.bex' }
 )
+# ── Programas C de ejemplo ───────────────────────────────────────
+#
+# ★ Este paso NO EXISTIA. COBOL y Ada llegaban al disco y C no, asi que los
+# ejemplos de C solo se podian ejecutar si alguien los embebia a mano en el
+# kernel — y `scroll_C.bex` no llegaba al Kingston por eso, no por un fallo del
+# compilador. Un lenguaje que compila y cuyo binario no se despliega esta a
+# medias.
+#
+# `hola_C.c` prueba lo basico (bucles, %d, resta con signo, switch, %s).
+# `scroll_C.c` usa las cabeceras `<bmo/...>`: la puerta de syscalls desde C, la
+# capability de entrada y el modelo de scroll.
+$cEjemplos = @(
+    @{ src = 'toolchain\lang\c\examples\hola_C.c';   out = 'holac.bex'  },
+    @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' }
+)
 
 $repo = Split-Path -Parent $root
 Push-Location $repo
@@ -220,6 +235,22 @@ try {
         $out = cargo run -p bmo-ada-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
         $out | ForEach-Object {
             if ($_ -match 'ok:|error|linea') { Write-Host ('    [ada] ' + $_) -ForegroundColor DarkGray }
+        }
+        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
+        if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
+    }
+
+    Step 'Building C example programs...'
+    foreach ($e in $cEjemplos) {
+        $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
+        if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
+        $dst = Join-Path $dataStage $e.out
+        # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo
+        # que resuelve `#include <bmo/...>`. Con ellos se toma el camino de
+        # modulos, que no lo llama.
+        $out = cargo run -p bmo-c-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
+        $out | ForEach-Object {
+            if ($_ -match 'ok:|error') { Write-Host ('    [c] ' + $_) -ForegroundColor DarkGray }
         }
         if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
         if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
