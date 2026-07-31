@@ -286,8 +286,24 @@ impl Parser {
                         globals.push(GlobalDecl::Struct(name, members));
                     }
                 } else {
-                    // struct name var; â€” handled as type+name below
+                    // `struct P nombre` — o una variable global, o una función
+                    // que DEVUELVE el struct.
                     if let Token::Ident(vname) = self.advance() {
+                        // ★ Devolver un agregado por valor es un mecanismo
+                        // aparte (puntero oculto) y todavía no está. Decirlo
+                        // AQUÍ y con el nombre delante: si se deja caer, el
+                        // parser encuentra el `(` donde esperaba un `;` y suelta
+                        // "expected type, got OpenParen", que manda a mirar el
+                        // tipo — y el tipo está perfectamente.
+                        if *self.peek() == Token::OpenParen {
+                            return Err(CError::new(
+                                self.line(),
+                                format!(
+                                    "'{vname}' devuelve un struct por valor, y eso aun no se \
+                                     compila: pasa un puntero al destino como parametro"
+                                ),
+                            ));
+                        }
                         let typ = if is_union { TypeSpec::UnionRef(name) } else { TypeSpec::StructRef(name) };
                         self.skip_semicolon();
                         globals.push(GlobalDecl::Var(typ.clone(), vname.clone(), None));
@@ -651,6 +667,17 @@ impl Parser {
                 Token::Ident(n) => n,
                 t => return Err(CError::new(self.line(),format!("expected param name, got {:?}", t))),
             };
+            // ★ El tipo de un PARÁMETRO también se registra.
+            //
+            // Sólo se guardaba el de las variables locales, así que dentro de
+            // `int suma(struct P p)` el parser no sabía que `p` era un struct:
+            // `p.x` salía como un campo de offset 0 y tipo `long`, y los tres
+            // campos leían **la misma dirección y ocho bytes**. Daba
+            // `0x200000001` — las dos primeras `int` juntas — en vez de 1.
+            //
+            // Mientras un parámetro sólo pudo ser un escalar esto no se notaba:
+            // ningún escalar tiene campos que consultar.
+            self.var_types.insert(pname.clone(), ptype.clone());
             params.push(Param { typ: ptype, name: pname });
             if *self.peek() == Token::Comma { self.advance(); }
         }

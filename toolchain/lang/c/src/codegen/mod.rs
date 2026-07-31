@@ -3,6 +3,10 @@ use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use crate::ast::*;
 use crate::CError;
 
+/// Structs y uniones POR VALOR, en su propio fichero. Ver su cabecera para
+/// la ABI de agregados de BMO y para que hacen SysV y Win64 con esto mismo.
+mod agregados;
+
 type Result<T> = core::result::Result<T, CError>;
 
 /// Target execution environment.
@@ -64,6 +68,14 @@ struct Codegen {
     /// llamada directa de una indirecta por puntero, y la decadencia
     /// función→dirección).
     known_functions: std::collections::HashSet<String>,
+    /// Los TIPOS de los parametros y del retorno de cada funcion.
+    ///
+    /// Hacia falta desde que un argumento puede no caber en un registro: el
+    /// llamante tiene que saber cuantas ranuras empuja, y eso lo dice el
+    /// PARAMETRO, no la expresion que se le pasa. Antes solo se guardaban los
+    /// nombres, asi que pasar un struct empujaba una palabra y la funcion
+    /// recibia el primer campo y basura detras — sin una palabra de aviso.
+    firmas: std::collections::HashMap<String, (Vec<TypeSpec>, TypeSpec)>,
     /// Sitios donde hay que escribir la dirección (rip-relativa) de una
     /// función: `lea rax, [rip+func]`. Habilita punteros a función.
     func_addr_fixups: Vec<(usize, String)>,
@@ -111,6 +123,7 @@ impl Codegen {
             labels: 0, label_offsets: HashMap::new(), pending_relocs: Vec::new(), call_relocs: Vec::new(),
             function_offsets: HashMap::new(),
             known_functions: std::collections::HashSet::new(),
+            firmas: std::collections::HashMap::new(),
             func_addr_fixups: Vec::new(),
             break_target: Vec::new(),
             continue_target: Vec::new(), var_offsets: HashMap::new(),
@@ -180,6 +193,13 @@ impl Codegen {
         // puede referir a una función definida más abajo (forward reference).
         for func in &program.functions {
             self.known_functions.insert(func.name.clone());
+            self.firmas.insert(
+                func.name.clone(),
+                (
+                    func.params.iter().map(|p| p.typ.clone()).collect(),
+                    func.ret_type.clone(),
+                ),
+            );
         }
         // emit all functions, tracking entry point
         for func in &program.functions {
@@ -528,10 +548,20 @@ impl Codegen {
 
     fn build_var_map(&mut self, params: &[Param], var_names: &[String], func: &Function) {
         self.var_offsets.clear();
-        // parámetros: slots de 8 en [rbp+16+i*8] (convención de llamada propia)
-        for (i, p) in params.iter().enumerate() {
-            let off = 16 + i as i32 * 8;
+        // ── Los parámetros, en la pila del llamante ──
+        //
+        // Empiezan en `[rbp+16]` (detrás de la dirección de retorno y del `rbp`
+        // guardado) y avanzan por RANURAS, no de ocho en ocho: un agregado de
+        // 12 bytes ocupa dos y corre el que viene detrás.
+        //
+        // Era `16 + i*8` fijo. Mientras todo cupo en un registro daba lo mismo;
+        // el día que entró un struct por valor, el segundo parámetro empezaba a
+        // leerse desde la mitad del primero.
+        let mut off = 16i32;
+        for p in params.iter() {
             self.var_offsets.insert(p.name.clone(), (off, p.typ.clone()));
+            let bytes = self.type_stack_size(&p.typ);
+            off += agregados::ranuras(bytes) as i32 * 8;
         }
         // locales: tamaño REAL del tipo (arrays y structs incluidos), alineado a 8
         let mut decls = Vec::new();
@@ -795,28 +825,38 @@ impl Codegen {
         self.build_var_map(&func.params, &func.var_names, func);
         // prologue
         self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]); // push rbp; mov rbp, rsp
-        // copy params from incoming stack to local slots
+        // Copiar los parámetros a su ranura local. Hoy es un no-op —
+        // `build_var_map` los deja donde ya están— y se conserva por si algún
+        // día un parámetro necesita hueco propio. El offset se recalcula igual
+        // que allí: por ranuras, no `i*8`.
         let param_count = func.params.len();
-        for (i, p) in func.params.iter().enumerate() {
-            // param is at [rbp + 16 + i*8]
-            let src_off = 16 + i as i32 * 8;
+        let mut src_off = 16i32;
+        for p in func.params.iter() {
+            let avance = agregados::ranuras(self.type_stack_size(&p.typ)) as i32 * 8;
+            // Un agregado no se copia con un `mov` de 8 bytes: ya está en su
+            // sitio, y "copiarlo" así se llevaría sólo su primera palabra.
+            if self.es_agregado(&p.typ) {
+                src_off += avance;
+                continue;
+            }
             if src_off >= -128 && src_off <= 127 {
                 self.code.extend_from_slice(&[0x48, 0x8B, 0x45, src_off as u8]);
             } else {
                 self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
                 self.code.extend_from_slice(&(src_off as i32).to_le_bytes());
             }
-            // store to local slot if it differs
-                    if let Some(&(local_off, _)) = self.var_offsets.get(&p.name) {
-                        if local_off != src_off {
-                            if local_off >= -128 && local_off <= 127 {
-                                self.code.extend_from_slice(&[0x48, 0x89, 0x45, local_off as u8]);
-                            } else {
-                                self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
-                                self.code.extend_from_slice(&(local_off as i32).to_le_bytes());
-                            }
-                        }
+            // A su ranura local, si es otra.
+            if let Some(&(local_off, _)) = self.var_offsets.get(&p.name) {
+                if local_off != src_off {
+                    if (-128..=127).contains(&local_off) {
+                        self.code.extend_from_slice(&[0x48, 0x89, 0x45, local_off as u8]);
+                    } else {
+                        self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
+                        self.code.extend_from_slice(&local_off.to_le_bytes());
                     }
+                }
+            }
+            src_off += avance;
         }
         // allocate local var space — tamaño REAL calculado por build_var_map
         // (antes: var_count*8, y los arrays/structs pisaban a sus vecinos)
@@ -1207,10 +1247,43 @@ impl Codegen {
                 let is_indirect = !self.known_functions.contains(name)
                     && (self.var_offsets.contains_key(name) || self.global_offsets.contains_key(name));
 
-                // push args right-to-left
-                for arg in args.iter().rev() {
-                    self.emit_expr(arg);
-                    self.code.push(0x50); // push rax
+                // ── Los argumentos, de derecha a izquierda ──
+                //
+                // Cuántas ranuras ocupa cada uno lo dice el PARÁMETRO, no la
+                // expresión: un `struct` de 12 bytes ocupa dos aunque quien lo
+                // pase sea una variable. Si no hay firma —llamada indirecta por
+                // puntero— se supone una ranura, que es lo que era antes.
+                let tipos_param: Vec<TypeSpec> = self
+                    .firmas
+                    .get(name)
+                    .map(|(p, _)| p.clone())
+                    .unwrap_or_default();
+                let mut ranuras_total = 0u32;
+                for (i, arg) in args.iter().enumerate().rev() {
+                    match tipos_param.get(i) {
+                        Some(t) if self.es_agregado(t) => {
+                            let bytes = self.type_stack_size(t);
+                            ranuras_total += agregados::ranuras(bytes);
+                            self.emit_empuja_agregado(arg, bytes);
+                        }
+                        _ => {
+                            ranuras_total += 1;
+                            self.emit_expr(arg);
+                            self.code.push(0x50); // push rax
+                        }
+                    }
+                }
+                // Devolver un agregado es un tercer mecanismo (puntero oculto)
+                // y todavía no está. Se dice: devolver ocho bytes de un struct
+                // de doce sería la clase de mentira que este compilador no
+                // cuenta.
+                if let Some((_, ret)) = self.firmas.get(name) {
+                    if self.es_agregado(&ret.clone()) {
+                        self.errors.push(format!(
+                            "'{name}' devuelve un struct por valor, y eso aun no se compila \
+                             (pasa un puntero al destino como parametro)"
+                        ));
+                    }
                 }
                 if is_indirect {
                     self.emit_load_var(name);                 // rax = dirección
@@ -1225,8 +1298,9 @@ impl Codegen {
                         self.stdlib_imports.insert(name.clone());
                     }
                 }
-                // cleanup stack (args * 8 bytes)
-                let n = args.len() as u32 * 8;
+                // Se quita de la pila lo que se PUSO, que ya no es una ranura
+                // por argumento.
+                let n = ranuras_total * 8;
                 if n > 0 {
                     if n <= 127 {
                         self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
@@ -1256,6 +1330,19 @@ impl Codegen {
                 self.emit_call_to_syscall_stub();
             }
             Expr::Assign(name, val) => {
+                // `p = q` con `p` agregado: se copian sus BYTES, todos.
+                //
+                // Antes caía al camino normal —`mov rax,[q]` + `mov [p],rax`—
+                // que se lleva ocho y deja el resto con lo que hubiera. Un
+                // struct de 12 se copiaba a medias, en silencio.
+                if let Some(t) = self.var_type_of(name) {
+                    if self.es_agregado(&t) {
+                        let bytes = self.type_stack_size(&t);
+                        let destino = Expr::Var(name.clone());
+                        self.emit_asigna_agregado(&destino, val, bytes);
+                        return;
+                    }
+                }
                 // Asignación a variable float/double → ruta SSE.
                 if self.var_type_of(name).map_or(false, |t| Self::is_float_ty(&t)) {
                     self.emit_fexpr_operand(val);
