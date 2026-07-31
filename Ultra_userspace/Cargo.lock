@@ -10,9 +10,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-input"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-service-gui"
 version = "0.1.0"
 dependencies = [
+ "bmo-input",
  "bmo-userland",
 ]
 

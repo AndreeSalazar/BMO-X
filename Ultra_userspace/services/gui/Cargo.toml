@@ -10,3 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 bmo-userland = { path = "../../userland" }
+# La politica de FOCO (quien recibe las teclas) vive en el subsistema de
+# entrada, no aqui: es el oficio de ese crate y ademas alli se puede PROBAR —
+# este binario es `no_main` para un target sin sistema operativo y no corre un
+# test. Aqui solo se pinta lo que la politica ya decidio.
+bmo-input = { path = "../../../platform/drivers/usb/input", default-features = false }

@@ -192,6 +192,22 @@ pub extern "C" fn _start() -> ! {
     let caja_datos = escena::datos::CajaDatos::nueva(&p);
     let mut datos_visible = false;
 
+    // ── El FOCO ──
+    //
+    // Quien recibe las teclas cuando hay mas de una ventana. La politica vive
+    // en `bmo_input::foco` y se prueba ALLI (12 tests); aqui solo se le
+    // pregunta y se pinta lo que decidio.
+    //
+    // Hacia falta ya: hasta ahora F12 se atendia arriba del todo y **todo lo
+    // demas caia en Ejecutar** aunque Datos estuviera abierta. Con una tercera
+    // ventana, chocan.
+    const V_EJECUTAR: u8 = 0;
+    const V_DATOS: u8 = 1;
+    let mut foco = bmo_input::Foco::nuevo();
+    foco.abrir(V_EJECUTAR);
+    let mut alt_antes = false;
+    let mut conmutador_pintado = false;
+
     loop {
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
@@ -201,6 +217,39 @@ pub extern "C" fn _start() -> ! {
             let m = e.modificadores();
             let ctrl = m & bmo::MOD_CTRL != 0;
             let combo = ctrl && m & bmo::MOD_ALT != 0;
+
+            // ── Alt+Tab: el conmutador ──
+            //
+            // ★ Alt SOLO, sin Ctrl. La distincion no es cosmetica: `Ctrl+Alt`
+            // **es AltGr** en espanol, y ya tiene dueno (invocar la ventana).
+            // El driver ademas da el Alt DERECHO como `SC_ALTGR` con codigo
+            // propio, asi que `MOD_ALT` es el izquierdo — el de Alt+Tab de toda
+            // la vida.
+            //
+            // La pila se reordena al SOLTAR, no en cada Tab: eso es lo que hace
+            // que pulsarlo dos veces te devuelva a donde estabas. Ver
+            // `bmo_input::foco`.
+            let alt_solo = m & bmo::MOD_ALT != 0 && !ctrl;
+            if !alt_solo && alt_antes && foco.conmutando() {
+                foco.soltar_conmutador();
+                let (bx, by, ba, bh) = escena::conmutador::area(&p, foco.abiertas());
+                for fy in 0..bh {
+                    for fx in 0..ba {
+                        let (x, y) = (bx + fx, by + fy);
+                        p.punto(x, y, color_escena(&caja, visible, x, y));
+                    }
+                }
+                conmutador_pintado = false;
+                // Lo que tapaba vuelve a pintarse entero.
+                if datos_visible {
+                    escena::datos::pintar(&p, &caja_datos);
+                } else if visible {
+                    pintar_caja(&p, &caja);
+                    repintar_campo = true;
+                    salida.sucia = true;
+                }
+            }
+            alt_antes = alt_solo;
             if combo && !combo_antes {
                 hubo_tecla_en_combo = false;
             }
@@ -223,6 +272,23 @@ pub extern "C" fn _start() -> ! {
             // rápido llegan varias entre vuelta y vuelta, y quedarse con una
             // sería perder letras de forma que parecería un teclado malo.
             while let Some(c) = e.tecla() {
+                // Tab con Alto pulsado NO llega a ninguna ventana: es del
+                // conmutador. Shift lo recorre al reves.
+                if alt_solo && c == 0x09 {
+                    if m & bmo::MOD_SHIFT != 0 {
+                        foco.conmutar_atras();
+                    } else {
+                        foco.conmutar();
+                    }
+                    let sen = foco
+                        .lista()
+                        .iter()
+                        .position(|&v| Some(v) == foco.actual())
+                        .unwrap_or(0);
+                    escena::conmutador::pintar(&p, foco.lista(), sen, foco.modo().nombre());
+                    conmutador_pintado = true;
+                    continue;
+                }
                 // Cualquier tecla durante el combo lo convierte en AltGr y
                 // cancela el toque: el usuario estaba escribiendo, no llamando.
                 if combo {
@@ -749,10 +815,12 @@ pub extern "C" fn _start() -> ! {
                     0x94 => {
                         datos_visible = !datos_visible;
                         if datos_visible {
+                            foco.abrir(V_DATOS);
                             escena::datos::pintar(&p, &caja_datos);
                         } else {
                             // Al cerrarla hay que devolver el fondo Y repintar
                             // lo que tapaba: la caja de Ejecutar esta debajo.
+                            foco.cerrar(V_DATOS);
                             borrar_datos(&p, &caja, &caja_datos, visible);
                             if visible {
                                 pintar_caja(&p, &caja);
@@ -911,7 +979,7 @@ pub extern "C" fn _start() -> ! {
             // dibujaría encima de la ventana de datos, dejándola a trozos. La
             // salida no se pierde: `sucia` se queda puesto y se pinta entera
             // al cerrar.
-            if visible && !datos_visible {
+            if visible && !datos_visible && !conmutador_pintado {
                 pintar_salida(&p, &caja, &salida);
                 salida.sucia = false;
             } else if !visible {
@@ -935,7 +1003,7 @@ pub extern "C" fn _start() -> ! {
             caret = !caret;
             repintar_campo = true;
         }
-        if repintar_campo && visible && !datos_visible {
+        if repintar_campo && visible && !datos_visible && !conmutador_pintado {
             pintar_campo(&p, &caja, &ruta[..n], cur, caret);
         }
 

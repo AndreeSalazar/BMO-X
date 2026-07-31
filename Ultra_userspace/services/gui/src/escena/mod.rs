@@ -6,6 +6,7 @@
 use bmo_userland as bmo;
 
 pub(crate) mod calc;
+pub(crate) mod conmutador;
 pub(crate) mod datos;
 pub(crate) mod cursor;
 pub(crate) mod salida;
