@@ -776,6 +776,42 @@ fn shell_estratos() {
     row("particion", |l| { l.dec(est::particion() as u64); l.txt("   LBA "); l.dec(est::base_lba()); });
     row("generacion", |l| { l.dec(sb.generation); l.txt("   bloques "); l.dec(sb.total_blocks); });
     row("log", |l| { l.txt("cabeza en el bloque "); l.dec(sb.log_head); });
+
+    // ── El espacio, que es lo que decide si se puede escribir ──
+    //
+    // Un FS que no sobreescribe se llena AUNQUE nadie cree un archivo: cada
+    // version se queda. Por eso esto no es un adorno del panel — es la
+    // condicion previa al paso 5 del diseno, y el aviso que impide que el
+    // volumen se llene por sorpresa (§9).
+    if let Some(oc) = est::ocupacion() {
+        row("espacio", |l| {
+            l.size(oc.bytes_usados());
+            l.txt(" usados de ");
+            l.size(oc.bytes_usados() + oc.bytes_libres());
+            l.txt("   (");
+            l.dec(oc.por_ciento() as u64);
+            l.txt("%)");
+        });
+        row("libre", |l| {
+            l.size(oc.bytes_libres());
+            l.txt("   ");
+            l.txt(oc.nivel().nombre());
+        });
+        // Lo que de verdad contesta "¿cuando hara falta el recolector?": no un
+        // porcentaje, sino cuantas VERSIONES mas caben. Con 414 GiB la
+        // respuesta son millones, y por eso el GC es "algun dia".
+        row("caben", |l| {
+            l.dec(oc.caben_de(20 * 1024));
+            l.txt(" objetos mas de 20 KiB (un .bex de C)");
+        });
+        if !oc.nivel().admite_escritura() {
+            crate::ring0::cabina::fault(
+                "estratos",
+                "volumen al 95%: SOLO LECTURA hasta que se libere sitio",
+                oc.por_ciento() as u64,
+            );
+        }
+    }
     // El gate del diseño: si el volumen no nació aquí, se dice EN ALTO. Hoy
     // solo se lee, pero el día que se escriba esta línea es la que decide.
     row("identidad", |l| {

@@ -27,8 +27,13 @@
 
 #![cfg_attr(not(test), no_std)]
 
+/// La contabilidad del espacio y los avisos de la §9. Va aparte porque es lo
+/// unico de esta crate que es POLITICA y no formato: los umbrales salen del
+/// diseno, no del disco.
+pub mod espacio;
 pub mod objects;
 pub mod read;
+pub use espacio::{Nivel, Ocupacion};
 pub use objects::{Attr, BlockPtr, Entrada, Nodo, Tipo};
 pub use read::{descender, Fuente};
 

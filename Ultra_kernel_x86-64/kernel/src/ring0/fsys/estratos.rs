@@ -49,6 +49,22 @@ pub fn base_lba() -> u64 { unsafe { BASE_LBA } }
 pub fn identidad_ok() -> bool { unsafe { IDENTIDAD_OK } }
 pub fn superbloque() -> Option<es::Superblock> { unsafe { SUPER } }
 
+/// Cuánto del volumen está usado, y en qué nivel de aviso está.
+///
+/// ★ La cuenta es una resta porque ESTRATOS reserva con un puntero que **sólo
+/// avanza**: `log_head` es el primer bloque libre, así que todo lo de debajo
+/// está usado. No hay mapa de bits ni fragmentación que medir, y eso es
+/// consecuencia directa de no sobreescribir nunca.
+///
+/// La política —dónde caen el ámbar, el rojo y el solo-lectura— vive en
+/// `bmo_estratos::espacio` y **se prueba en el anfitrión**. Aquí sólo se le
+/// pasan los dos números que tiene el superbloque: un umbral escrito a mano en
+/// el kernel es un umbral que nadie puede ejecutar en un test.
+pub fn ocupacion() -> Option<es::Ocupacion> {
+    let sb = unsafe { SUPER }?;
+    Some(es::Ocupacion::de(sb.log_head, sb.total_blocks, sb.block_size))
+}
+
 /// Lee un bloque de ESTRATOS del volumen montado.
 fn leer_bloque(bloque: u64, dst: &mut [u8; BLOQUE]) -> bool {
     let dev = match bmo_block::device() { Some(d) => d, None => return false };
