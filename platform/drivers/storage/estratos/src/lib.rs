@@ -30,9 +30,14 @@
 /// La contabilidad del espacio y los avisos de la §9. Va aparte porque es lo
 /// unico de esta crate que es POLITICA y no formato: los umbrales salen del
 /// diseno, no del disco.
+/// El LOG de escritura: la maquina de estados de una transaccion. Aqui no se
+/// escribe un sector — se decide el ORDEN, que es lo que cuesta datos si se
+/// equivoca, y por eso se prueba en el anfitrion.
+pub mod escritura;
 pub mod espacio;
 pub mod objects;
 pub mod read;
+pub use escritura::{Fase, Rechazo, Transaccion};
 pub use espacio::{Nivel, Ocupacion};
 pub use objects::{Attr, BlockPtr, Entrada, Nodo, Tipo};
 pub use read::{descender, Fuente};

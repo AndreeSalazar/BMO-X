@@ -163,6 +163,44 @@ El punto de no retorno es el paso 5, y es **un solo sector**. Antes de él, el
 sistema es exactamente el de antes. Después, el nuevo. No hay estado
 intermedio observable — que es la definición de una transacción.
 
+
+### ⏳ La transacción, hecha (2026-07-31) — pero sin tocar el disco
+
+`bmo_estratos::escritura` — `Transaccion`, `Fase`, `Rechazo`. **Aquí no se
+escribe un sector**: es la máquina de estados que decide el ORDEN, y el orden es
+lo que cuesta datos si se equivoca. La E/S la hará el kernel.
+
+Esa separación es lo que permite **probar en el anfitrión la parte peligrosa**,
+sin un disco delante. Hay 12 tests.
+
+**Es una máquina de estados y no una lista de escrituras** porque la crate es
+`no_std` sin `alloc`: un plan son varios KiB por bloque y no hay `Vec` que
+devolver. Y la restricción mejoró el diseño — una lista se puede reordenar por
+accidente; **una máquina de estados no deja**: `commit()` antes de
+`barrera_hecha()` devuelve `FueraDeOrden`, no depende de que nadie se acuerde.
+
+Lo que la máquina garantiza, cada uno con su test:
+
+- el commit **no puede adelantarse a la barrera**;
+- el superbloque nuevo va **siempre a la copia alterna** — pisar la que manda
+  deja el volumen sin ningún superbloque válido si el corte llega a mitad;
+- no se reserva después de cerrar los datos;
+- el límite se comprueba en **cada** reserva, no sólo al abrir: una transacción
+  puede empezar cabiendo y dejar de caber a mitad, y pasarse es escribir fuera
+  de la partición;
+- una reserva absurda no da la vuelta al contador;
+- el gate de identidad y el 95 % rechazan **al abrir**;
+- abandonar no deshace nada y no hace falta: los bloques quedan sin que nada
+  los apunte y el volumen sigue entero. Es el regalo de no sobreescribir;
+- ★ **el commit conserva el `disk_id`**. Construir el superbloque de cero lo
+  dejaba en ceros, y el síntoma sería de los peores: se escribe bien *una vez*,
+  y al siguiente arranque el gate de identidad da falso y ESTRATOS se monta en
+  solo lectura **para siempre**, sin que nada lo explique.
+
+**Lo que falta para escribir de verdad**: cablearlo al dispositivo (`write` +
+`FLUSH CACHE` de verdad), construir los nodos y el estrato, y decidir el mando
+que lo dispara. Nada de eso se ha tocado, y la escritura al disco sigue cerrada.
+
 ---
 
 ## 6. Nombres y rutas
