@@ -266,7 +266,7 @@ fn buscar_en(dir: &Nodo, nombre: &str) -> Option<BlockPtr> {
     None
 }
 
-/// Busca un nodo por ruta: `apps/hola.bex`.
+/// Busca un nodo por ruta: `c/holac.bex`.
 pub fn abrir(ruta: &str) -> Option<Nodo> {
     let (_, mut actual) = raiz()?;
     let mut resto = ruta.trim_start_matches('/');

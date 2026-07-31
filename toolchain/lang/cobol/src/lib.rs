@@ -582,19 +582,19 @@ STOP RUN.
         let (salida, m) = run_cobol_con_disco(
             include_str!("../examples/4-ficheros/batch.cob"),
             // Cuatro movimientos. 1000.00 + 234.56 + 0.44 + (-100.00).
-            &[("apps/movim.txt", "1000.00\n234.56\n0.44\n-100.00\n")],
+            &[("datos/movim.txt", "1000.00\n234.56\n0.44\n-100.00\n")],
         );
         let esperado = [
             "BATCH DE CIERRE - BANCO BMO",
             "total del dia:",
             " $1,135.00",
-            "cierre escrito en apps/cierre.txt",
+            "cierre escrito en datos/cierre.txt",
         ]
         .map(|l| format!("{l}\n"))
         .concat();
         assert_eq!(salida, esperado);
         // Y en el disco queda el total, no un fichero vacío ni a medias.
-        assert_eq!(m.archivo_texto("apps/cierre.txt").as_deref(), Some("1135.00\n"));
+        assert_eq!(m.archivo_texto("datos/cierre.txt").as_deref(), Some("1135.00\n"));
     }
 
     /// Un fichero que no existe NO es un fichero vacío: el `AT END` salta a la
@@ -605,7 +605,7 @@ STOP RUN.
         let (salida, m) = run_cobol_con_disco(include_str!("../examples/4-ficheros/batch.cob"), &[]);
         assert!(salida.contains("total del dia:"), "{salida}");
         assert!(salida.contains("     $0.00"), "{salida}");
-        assert_eq!(m.archivo_texto("apps/cierre.txt").as_deref(), Some("0.00\n"));
+        assert_eq!(m.archivo_texto("datos/cierre.txt").as_deref(), Some("0.00\n"));
     }
 
     /// El último registro cuenta aunque el fichero no acabe en salto de línea.
@@ -614,7 +614,7 @@ STOP RUN.
     fn el_ultimo_registro_cuenta_sin_salto_final() {
         let (salida, _) = run_cobol_con_disco(
             include_str!("../examples/4-ficheros/batch.cob"),
-            &[("apps/movim.txt", "10.00\n5.50")],
+            &[("datos/movim.txt", "10.00\n5.50")],
         );
         assert!(salida.contains("    $15.50"), "{salida}");
     }
@@ -625,7 +625,7 @@ STOP RUN.
     fn el_batch_aguanta_los_finales_de_windows() {
         let (salida, _) = run_cobol_con_disco(
             include_str!("../examples/4-ficheros/batch.cob"),
-            &[("apps/movim.txt", "1000.00\r\n234.56\r\n")],
+            &[("datos/movim.txt", "1000.00\r\n234.56\r\n")],
         );
         assert!(salida.contains(" $1,234.56"), "{salida}");
     }
@@ -643,8 +643,8 @@ STOP RUN.
         let (salida, _) = run_cobol_con_disco(
             include_str!("../examples/5-tablas/conceptos.cob"),
             &[
-                ("apps/concs.txt", "1\n3\n2\n3\n1\n"),
-                ("apps/imps.txt", "100.00\n50.00\n25.50\n10.00\n5.00\n"),
+                ("datos/concs.txt", "1\n3\n2\n3\n1\n"),
+                ("datos/imps.txt", "100.00\n50.00\n25.50\n10.00\n5.00\n"),
             ],
         );
         let esperado = [
@@ -667,7 +667,7 @@ STOP RUN.
     fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
         let (salida, _) = run_cobol_con_disco(
             include_str!("../examples/5-tablas/conceptos.cob"),
-            &[("apps/concs.txt", "1\n7\n"), ("apps/imps.txt", "100.00\n50.00\n")],
+            &[("datos/concs.txt", "1\n7\n"), ("datos/imps.txt", "100.00\n50.00\n")],
         );
         assert!(
             salida.contains("SUBINDICE FUERA DE RANGO EN TOTAL-CONCEPTO (1..4)"),
@@ -686,7 +686,7 @@ STOP RUN.
     fn la_cartera_reparte_cobros_y_devoluciones() {
         let (salida, _) = run_cobol_con_disco(
             include_str!("../examples/6-condiciones/cartera.cob"),
-            &[("apps/movim.txt", "1000.00\n234.56\n-100.00\n0.44\n-50.00\n")],
+            &[("datos/movim.txt", "1000.00\n234.56\n-100.00\n0.44\n-50.00\n")],
         );
         let esperado = [
             "CARTERA DEL DIA - BANCO BMO",

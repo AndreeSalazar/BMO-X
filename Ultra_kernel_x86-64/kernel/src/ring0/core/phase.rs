@@ -818,7 +818,7 @@ fn shell_estratos() {
 /// programas Ring 3 vivían DENTRO del kernel (`include_bytes!`): cambiar un
 /// "hola mundo" obligaba a recompilar el sistema operativo entero y
 /// reflashear. Ahora se copia el `.bex` a la partición desde el anfitrión y se
-/// escribe `run apps/hola.bex`.
+/// escribe `run c/holac.bex`.
 ///
 /// El buffer es estático y no local: un `.bex` son varios KiB y la pila del
 /// kernel son 64 KiB para todo.
@@ -839,7 +839,7 @@ fn shell_run(arg: &[u8]) {
     let inf = lanzar::ruta(path);
 
     if inf.res == Err(lanzar::Fallo::RutaVacia) {
-        s_log("[run] uso: run apps/hola.bex   (o A:/apps/hola.bex)");
+        s_log("[run] uso: run c/holac.bex   (o A:/c/holac.bex)");
         return;
     }
     if let Err(lanzar::Fallo::NoSeEncuentra(e)) = inf.res {
@@ -1234,7 +1234,7 @@ fn shell_halt() -> ! {
 ///
 /// `gui` además es el nombre que ya usa el crate (`bmo-service-gui`) y la
 /// etiqueta con la que habla en CABINA. Un nombre, no tres.
-const RUTA_COMPOSITOR: &str = "apps/gui.bex";
+const RUTA_COMPOSITOR: &str = "sys/gui.bex";
 
 /// Arranca el escritorio desde el disco. Va DESPUÉS de montar el volumen de
 /// datos — antes no habría de dónde leerlo.

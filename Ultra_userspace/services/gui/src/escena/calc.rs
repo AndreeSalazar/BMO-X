@@ -9,7 +9,7 @@ use super::*;
 
 // ── La calculadora ──────────────────────────────────────────────────────
 //
-// La CARA. El cálculo lo hace `apps/calcgui.bex`, en COBOL, con decimal
+// La CARA. El cálculo lo hace `cobol/calcgui.bex`, en COBOL, con decimal
 // exacto en centavos. Es la separación que Windows no hace —su calculadora
 // lleva el motor dentro de la app— y es la que permite cambiar la una sin
 // tocar la otra: mañana el motor puede ser Ada y esto no se entera.

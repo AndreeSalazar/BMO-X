@@ -449,7 +449,7 @@ pub extern "C" fn _start() -> ! {
                                 n = 0;
                             }
                             Orden::Ayuda => {
-                                salida.texto(b"  <ruta>       lanza un .bex   (apps/COBOL.bex)\n");
+                                salida.texto(b"  <ruta>       lanza un .bex   (cobol/banco.bex)\n");
                                 salida.texto(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
                                 salida.texto(b"  cat <ruta>   ensena lo que hay dentro\n");
                                 salida.texto(b"  write <ruta> <texto>     lo guarda\n");
@@ -784,7 +784,7 @@ pub extern "C" fn _start() -> ! {
                                 // consola. Aqui es donde la cara deja de saber
                                 // de aritmetica y empieza a saber COBOL.
                                 let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
-                                if bmo::ejecutar_en(b"apps/calcgui.bex", cap).is_ok() {
+                                if bmo::ejecutar_en(b"cobol/calcgui.bex", cap).is_ok() {
                                     if let Some(cc) = salida_cap.as_ref() {
                                         cc.escribir(&calc.guardado[..calc.guardado_n]);
                                         cc.escribir(b"\n");
@@ -796,7 +796,7 @@ pub extern "C" fn _start() -> ! {
                                     calc.esperando = true;
                                     resp_n = 0;
                                 } else {
-                                    pintar_estado(&p, &caja, "falta apps/calcgui.bex", TEXTO_MAL);
+                                    pintar_estado(&p, &caja, "falta cobol/calcgui.bex", TEXTO_MAL);
                                 }
                             }
                         }

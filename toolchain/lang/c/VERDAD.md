@@ -32,7 +32,7 @@ falta el hardware. **`⏳` no es "probablemente bien"**: es "nadie lo ha visto".
 
 ## 1. Lo básico — confirmado en el Ryzen
 
-Esto salió en la foto del 2026-07-31, ejecutando `apps/holac.bex` desde el shell
+Esto salió en la foto del 2026-07-31, ejecutando `c/holac.bex` desde el shell
 de Ring 0. Es la referencia: si algún día cambia, algo se rompió.
 
 ```
@@ -63,7 +63,7 @@ holac.bex> C termino ok
 | `__syscall` vs `__syscall_valor` | código en `rax`, valor en `rdx` | La puerta contesta dos cosas y en C un par no cabe en un registro de retorno | `syscall_valor…` ⏳ metal |
 
 **Pendiente de metal:** ningún `.bex` de C ha ejecutado todavía un `__syscall`.
-`apps/scrollc.bex` es el primero. Lanzarlo **desde el shell de Ring 0** (desde el
+`c/scrollc.bex` es el primero. Lanzarlo **desde el shell de Ring 0** (desde el
 compositor dirá `la entrada es de otro proceso`, que es correcto).
 
 Debe salir, con la entrada libre:
@@ -189,10 +189,10 @@ suposiciones.
 
 ## Para la próxima foto del Ryzen
 
-1. `run apps/holac.bex` → las seis líneas de la sección 1, exactas.
-2. `run apps/scrollc.bex` **desde Ring 0** → la ventana de la sección 2, y que
+1. `run c/holac.bex` → las seis líneas de la sección 1, exactas.
+2. `run c/scrollc.bex` **desde Ring 0** → la ventana de la sección 2, y que
    RePag/AvPag muevan. **Es el primer `__syscall` de C en silicio.**
-3. `apps/pregc.bex` **desde la caja del compositor** — y luego se escribe EN LA
+3. `c/pregc.bex` **desde la caja del compositor** — y luego se escribe EN LA
    CAJA y se pulsa Enter. Debe preguntar tres veces y contestar:
 
    ```

@@ -142,9 +142,29 @@ if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
 # NIEGA a recortar nombres (un nombre recortado abre otro archivo, y en un
 # cargador de programas eso es ejecutar otro binario). `compositor` son diez
 # caracteres y no cabe en los ocho del campo.
-$dataStage = Join-Path $root 'staging\BMO-DATA\apps'
-New-Item -ItemType Directory -Path $dataStage -Force | Out-Null
-$compositorBex = Join-Path $dataStage 'gui.bex'
+# ── El volumen de datos, POR CATEGORIAS ───────────────────────────
+#
+# Antes todo caia en un solo `apps\`: los siete .bex de COBOL, los de C, el de
+# Ada, el compositor y los .txt de entrada, revueltos. Un `ls` daba diecisiete
+# lineas sin orden, y para lanzar algo habia que acordarse del nombre exacto.
+#
+# La primera division es **programa o dato**; dentro de los programas, por quien
+# los compila:
+#
+#     sys\     el sistema: lo que arranca solo (gui.bex)
+#     cobol\  c\  ada\      los ejemplos, por lenguaje
+#     datos\   lo que los programas LEEN y ESCRIBEN
+#
+# ★ Y se teclea MENOS que antes: `cobol/banco.bex` es mas corto que
+#   `apps/banco.bex`. Ordenar no ha costado tecleo, lo ha ahorrado.
+#
+# Los nombres de carpeta tambien son 8.3: el driver FAT32 del kernel se NIEGA a
+# recortar, y una carpeta recortada manda a otro sitio igual que un fichero.
+$dataBase = Join-Path $root 'staging\BMO-DATA'
+foreach ($d in @('sys', 'cobol', 'c', 'ada', 'datos')) {
+    New-Item -ItemType Directory -Path (Join-Path $dataBase $d) -Force | Out-Null
+}
+$compositorBex = Join-Path $dataBase 'sys\gui.bex'
 Push-Location (Split-Path -Parent $root)
 try {
     if (Test-Path $compositorBex) { Remove-Item $compositorBex -Force }
@@ -176,16 +196,16 @@ Step 'Building COBOL example programs...'
 # 2-decimal, 3-presentacion, 4-ficheros, 5-tablas), ordenados por cuanto COBOL
 # hace falta que el compilador sepa. Ver examples\README.md.
 $cobolEjemplos = @(
-    @{ src = 'toolchain\lang\cobol\examples\2-decimal\banco.cob';        out = 'banco.bex'    },
-    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calc.cob';         out = 'calc.bex'     },
-    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calcgui.cob';      out = 'calcgui.bex'  },
-    @{ src = 'toolchain\lang\cobol\examples\3-presentacion\extracto.cob'; out = 'extracto.bex' },
-    @{ src = 'toolchain\lang\cobol\examples\4-ficheros\batch.cob';       out = 'batch.bex'    },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\banco.cob';        out = 'banco.bex'    ; dir = 'cobol' },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calc.cob';         out = 'calc.bex'     ; dir = 'cobol' },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calcgui.cob';      out = 'calcgui.bex'  ; dir = 'cobol' },
+    @{ src = 'toolchain\lang\cobol\examples\3-presentacion\extracto.cob'; out = 'extracto.bex' ; dir = 'cobol' },
+    @{ src = 'toolchain\lang\cobol\examples\4-ficheros\batch.cob';       out = 'batch.bex'    ; dir = 'cobol' },
     # `conceptos` son nueve letras y el driver FAT32 se NIEGA a recortar, asi
     # que el destino es `concep`. La comprobacion de 8.3 de abajo lo cazaria
     # igual, pero mejor no llegar a que la cace.
-    @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';     out = 'concep.bex'   },
-    @{ src = 'toolchain\lang\cobol\examples\6-condiciones\cartera.cob';  out = 'carter.bex'   }
+    @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';     out = 'concep.bex'   ; dir = 'cobol' },
+    @{ src = 'toolchain\lang\cobol\examples\6-condiciones\cartera.cob';  out = 'carter.bex'   ; dir = 'cobol' }
 )
 # ── Programas ADA de ejemplo ─────────────────────────────────────
 #
@@ -194,7 +214,7 @@ $cobolEjemplos = @(
 # copio las reglas de COBOL, asi que dos lenguajes que dicen lo mismo acaban en
 # la misma aritmetica de enteros escalados.
 $adaEjemplos = @(
-    @{ src = 'toolchain\lang\ada\examples\1-basico\cierre.adb'; out = 'cierre.bex' }
+    @{ src = 'toolchain\lang\ada\examples\1-basico\cierre.adb'; out = 'cierre.bex' ; dir = 'ada' }
 )
 # ── Programas C de ejemplo ───────────────────────────────────────
 #
@@ -208,9 +228,9 @@ $adaEjemplos = @(
 # `scroll_C.c` usa las cabeceras `<bmo/...>`: la puerta de syscalls desde C, la
 # capability de entrada y el modelo de scroll.
 $cEjemplos = @(
-    @{ src = 'toolchain\lang\c\examples\hola_C.c';   out = 'holac.bex'  },
-    @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' },
-    @{ src = 'toolchain\lang\c\examples\pregunta_C.c'; out = 'pregc.bex'  }
+    @{ src = 'toolchain\lang\c\examples\hola_C.c';   out = 'holac.bex'  ; dir = 'c' },
+    @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' ; dir = 'c' },
+    @{ src = 'toolchain\lang\c\examples\pregunta_C.c'; out = 'pregc.bex'  ; dir = 'c' }
 )
 
 $repo = Split-Path -Parent $root
@@ -219,7 +239,7 @@ try {
     foreach ($e in $cobolEjemplos) {
         $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
         if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
-        $dst = Join-Path $dataStage $e.out
+        $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
         $out = cargo run -p bmo-cobol-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
         $out | ForEach-Object {
             if ($_ -match 'ok:|error') { Write-Host ('    [cobol] ' + $_) -ForegroundColor DarkGray }
@@ -232,7 +252,7 @@ try {
     foreach ($e in $adaEjemplos) {
         $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
         if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
-        $dst = Join-Path $dataStage $e.out
+        $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
         $out = cargo run -p bmo-ada-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
         $out | ForEach-Object {
             if ($_ -match 'ok:|error|linea') { Write-Host ('    [ada] ' + $_) -ForegroundColor DarkGray }
@@ -245,7 +265,7 @@ try {
     foreach ($e in $cEjemplos) {
         $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
         if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
-        $dst = Join-Path $dataStage $e.out
+        $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
         # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo
         # que resuelve `#include <bmo/...>`. Con ellos se toma el camino de
         # modulos, que no lo llama.
@@ -255,6 +275,24 @@ try {
         }
         if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
         if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
+    }
+
+    # ── Los DATOS de los ejemplos ─────────────────────────────────
+    #
+    # ★ Este paso tampoco existia, y era peor que el de C: los .txt que leen
+    # `batch`, `conceptos` y `cartera` vivian SOLO en staging\, que esta en el
+    # .gitignore. O sea, no eran del repositorio. Un `-Clean` o un disco nuevo
+    # los borraba y **no habia forma de regenerarlos**: los ejemplos de ficheros
+    # quedaban sin entrada y sin nadie que supiera que debian contener.
+    #
+    # Ahora viven en toolchain\lang\cobol\examples\datos\ y se despliegan como
+    # se despliega un .bex.
+    Step 'Staging example data...'
+    $datosSrc = Join-Path $repo 'toolchain\lang\cobol\examples\datos'
+    $datosDst = Join-Path $dataBase 'datos'
+    foreach ($d in (Get-ChildItem -LiteralPath $datosSrc -Filter '*.txt')) {
+        Copy-Item -LiteralPath $d.FullName -Destination (Join-Path $datosDst $d.Name) -Force
+        Write-Host ('    [datos] ' + $d.Name + ' (' + $d.Length + ' B)') -ForegroundColor DarkGray
     }
 } finally { Pop-Location }
 
@@ -556,7 +594,12 @@ if ($Data) {
         if ($conf -ne $esperado) { Write-Host '  Abortado.'; exit 0 }
     }
 
-    Step ('Copiando programas de Ring 3 a ' + $dataLetter + ':\apps')
+    # ★ Ya no es una sola carpeta: van a sys\ cobol\ c\ ada\ datos\. El bucle de
+    # abajo copia recursivo y crea los directorios que falten, asi que no hay
+    # nada que cambiar aqui salvo el mensaje — pero **la vieja `apps\` del disco
+    # NO se borra**: este deploy no borra nada que no haya puesto el. Hay que
+    # quitarla a mano una vez, o quedan dos copias de cada programa.
+    Step ('Copiando programas de Ring 3 a ' + $dataLetter + ':\  (sys, cobol, c, ada, datos)')
     $dataSrc = Join-Path $root 'staging\BMO-DATA'
     if (-not (Test-Path $dataSrc)) { Fail 'no hay staging\BMO-DATA (ejecuta el build primero)' }
 

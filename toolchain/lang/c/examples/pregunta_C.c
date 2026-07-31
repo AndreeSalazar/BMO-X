@@ -7,7 +7,7 @@
  *
  * ══ Cómo se lanza ══
  *
- * Desde la caja del compositor:  apps/pregc.bex
+ * Desde la caja del compositor:  c/pregc.bex
  *
  * Y entonces se escribe EN LA CAJA y se pulsa Enter: lo que se teclea llega a
  * este programa por su consola. Ése es el circuito entero —el terminal escribe

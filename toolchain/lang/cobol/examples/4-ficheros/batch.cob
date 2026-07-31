@@ -30,8 +30,8 @@
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT MOVIM ASSIGN TO "apps/movim.txt".
-           SELECT CIERRE ASSIGN TO "apps/cierre.txt".
+           SELECT MOVIM ASSIGN TO "datos/movim.txt".
+           SELECT CIERRE ASSIGN TO "datos/cierre.txt".
        DATA DIVISION.
        FILE SECTION.
        FD MOVIM.
@@ -71,5 +71,5 @@
            WRITE TOTAL-F.
            CLOSE CIERRE.
 
-           DISPLAY "cierre escrito en apps/cierre.txt".
+           DISPLAY "cierre escrito en datos/cierre.txt".
            STOP RUN.

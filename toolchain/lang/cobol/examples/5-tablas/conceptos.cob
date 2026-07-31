@@ -29,8 +29,8 @@
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT CONCS ASSIGN TO "apps/concs.txt".
-           SELECT IMPS  ASSIGN TO "apps/imps.txt".
+           SELECT CONCS ASSIGN TO "datos/concs.txt".
+           SELECT IMPS  ASSIGN TO "datos/imps.txt".
        DATA DIVISION.
        FILE SECTION.
        FD CONCS.

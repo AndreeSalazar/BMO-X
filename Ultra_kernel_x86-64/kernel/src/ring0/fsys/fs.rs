@@ -234,7 +234,7 @@ pub fn mount_data() {
     }
 }
 
-// ── Rutas: de "apps/hola.bex" a un archivo ──────────────────────────────────
+// ── Rutas: de "c/holac.bex" a un archivo ──────────────────────────────────
 
 /// Por qué no se pudo cargar una ruta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -295,7 +295,7 @@ fn upper(c: u8) -> u8 {
 
 /// Carga un archivo del volumen de DATOS en `dst`. Devuelve los bytes leídos.
 ///
-/// Acepta `apps/hola.bex`, `/apps/hola.bex` y `A:/apps/hola.bex` — la letra
+/// Acepta `c/holac.bex`, `/c/holac.bex` y `A:/c/holac.bex` — la letra
 /// es la que Windows le da a esta misma partición, y escribirla es lo que
 /// hace cualquiera que acabe de copiar ahí el archivo desde el anfitrión.
 /// También se aceptan barras invertidas.
