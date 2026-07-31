@@ -68,6 +68,15 @@ impl InputEvent {
         }
     }
 
+    /// El giro de la rueda de un evento `MouseWheel`.
+    ///
+    /// Existia el constructor `mouse_wheel(delta)` y NO el lector: el valor se
+    /// empaquetaba y no habia forma de sacarlo, asi que el consumidor solo
+    /// podia contar eventos. Un dato que entra y no sale es un dato perdido.
+    pub fn mouse_wheel_delta(&self) -> i8 {
+        (self.value & 0xFF) as u8 as i8
+    }
+
     pub fn mouse_dx(&self) -> i16 {
         (self.value & 0xFFFF) as i16
     }

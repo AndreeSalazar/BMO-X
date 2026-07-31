@@ -124,6 +124,7 @@ pub const INPUT_OP_PUNTERO: u32 = 0x01;
 pub const INPUT_OP_EVENTOS: u32 = 0x02;
 pub const INPUT_OP_TECLA: u32 = 0x03;
 pub const INPUT_OP_MODIFICADORES: u32 = 0x04;
+pub const INPUT_OP_RUEDA: u32 = 0x05;
 
 /// Bits de la máscara de modificadores.
 pub const MOD_SHIFT: u8 = 1 << 0;
@@ -875,6 +876,15 @@ impl Entrada {
     /// `@`, `#`, `[`, `]`, `\`, `|` y `€`. Un atajo que dispare al PULSARLOS
     /// rompe escribir todo eso. Si lo usas como atajo, dispara al SOLTAR y sólo
     /// si no llegó ningún carácter mientras estaban pulsados.
+    /// Las vueltas de rueda desde la ultima vez. Positivo = hacia arriba.
+    ///
+    /// **Consume**: dos llamadas seguidas sin girar dan cero la segunda. Asi el
+    /// llamante no tiene que guardar el valor anterior y restar — que es donde
+    /// se cuela el scroll que se mueve solo.
+    pub fn rueda(&self) -> i32 {
+        invoke(self.cap, INPUT_OP_RUEDA, 0, 0, 0).value as i32
+    }
+
     pub fn modificadores(&self) -> u8 {
         invoke(self.cap, INPUT_OP_MODIFICADORES, 0, 0, 0).value as u8
     }

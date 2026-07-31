@@ -154,6 +154,8 @@ static mut MOUSE_BTN: u8 = 0;       // bitmap de botones actual
 static mut KEY_EVENTS: u32 = 0;     // nº de teclas imprimibles entregadas
 static mut FIRST_KEY: bool = false;   // ¿ya se grabó la primera tecla en CABINA?
 static mut FIRST_MOUSE: bool = false; // ídem para el primer movimiento de mouse
+/// Vueltas de rueda acumuladas desde la ultima lectura. Se vacia al leerlo.
+static mut MOUSE_WHEEL: i32 = 0;
 static mut HID_EVENTS: u32 = 0;     // nº TOTAL de InputEvents de hid.poll (kbd+mouse)
 
 fn log(msg: &str) {
@@ -467,7 +469,11 @@ fn poll_ascii_interno() -> Option<u8> {
                 MOUSE_BTN = ev.mouse_buttons();
                 MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
             },
+            // ★ El delta de la rueda se TIRABA: solo se contaba el evento.
+            // Otro valor que el sistema tenia y no decia. Se acumula y se
+            // entrega al leerlo, que es como se consume un evento.
             InputEventKind::MouseWheel => unsafe {
+                MOUSE_WHEEL = MOUSE_WHEEL.saturating_add(ev.mouse_wheel_delta() as i32);
                 MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
             },
         }
@@ -572,6 +578,20 @@ fn drain() -> Option<u8> {
 /// el recorte al panel lo hace `input.rs`, que es quien sabe de pantallas.
 pub fn puntero() -> (i32, i32, u8, u32) {
     unsafe { (MOUSE_X, MOUSE_Y, MOUSE_BTN, MOUSE_EVENTS) }
+}
+
+/// Las vueltas de rueda desde la ultima vez, y las pone a cero.
+///
+/// Consumir al leer y no dar un acumulado: quien pregunta quiere saber cuanto
+/// se ha girado DESDE QUE MIRO, no desde el arranque. Un acumulado obligaria a
+/// cada llamante a guardar el anterior y restar, y el primero que lo olvidara
+/// tendria un scroll que se va solo.
+pub fn rueda() -> i32 {
+    unsafe {
+        let v = MOUSE_WHEEL;
+        MOUSE_WHEEL = 0;
+        v
+    }
 }
 
 pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {

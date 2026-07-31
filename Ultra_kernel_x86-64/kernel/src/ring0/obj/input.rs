@@ -79,6 +79,13 @@ pub const INPUT_OP_TECLA: u64 = 0x03;
 /// robarle teclas a nadie.
 pub const INPUT_OP_MODIFICADORES: u64 = 0x04;
 
+/// Las vueltas de rueda desde la ultima lectura. **Consume**: leerla la vacia.
+///
+/// Quien pregunta quiere saber cuanto se ha girado DESDE QUE MIRO. Un acumulado
+/// desde el arranque obligaria a cada llamante a guardar el anterior y restar,
+/// y el primero que lo olvidara tendria un scroll que se va solo.
+pub const INPUT_OP_RUEDA: u64 = 0x05;
+
 /// ¿La tiene un proceso de Ring 3?
 ///
 /// Lo pregunta el shell de Ring 0 antes de leer el teclado. Sin esto los dos
@@ -141,6 +148,9 @@ pub fn operacion(operacion: u64) -> Option<u64> {
             None => Some(0),
         },
         INPUT_OP_MODIFICADORES => Some(crate::ring0::dev::usb::modificadores() as u64),
+        // Se devuelve como i32 en complemento a dos dentro del u64: girar hacia
+        // atras es negativo, y el llamante lo recupera con un `as i32`.
+        INPUT_OP_RUEDA => Some(crate::ring0::dev::usb::rueda() as i64 as u64),
         _ => None,
     }
 }

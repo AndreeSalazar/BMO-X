@@ -85,6 +85,15 @@ const CAJA_ALTO: u32 = 428;
 /// salida tiene dueño, y el dueño es este proceso.
 const SAL_COLS: usize = 88;
 const SAL_ROWS: usize = 16;
+/// Cuántas filas se GUARDAN, aunque sólo se vean [`SAL_ROWS`].
+///
+/// ★ Antes lo que salía por arriba se perdía para siempre: `desplazar` movía
+/// las filas y la de arriba se tiraba. Un `ls` largo o la salida de un batch se
+/// iban sin que hubiera forma de volver a mirarlas — y eso en una máquina donde
+/// depurar es hacer una foto de la pantalla duele el doble.
+///
+/// 200 filas de 88 columnas son 17 KiB. La pantalla es de 8 MiB.
+const SAL_HIST: usize = 200;
 const SAL_TEXTO: u32 = 0x00C8_D8E8;
 const SAL_ECO: u32 = 0x0079_C4F2;
 const CAJA_FONDO: u32 = 0x001E_2A40;
@@ -393,13 +402,18 @@ fn color_tinta(t: u8) -> u32 {
 }
 
 struct Salida {
-    celdas: [[u8; SAL_COLS]; SAL_ROWS],
+    /// El historial entero. Se ESCRIBE aquí; la ventana visible es un trozo.
+    celdas: [[u8; SAL_COLS]; SAL_HIST],
     /// Con qué color se pinta cada fila.
-    tinta: [u8; SAL_ROWS],
+    tinta: [u8; SAL_HIST],
     /// Con qué color se escribe a partir de ahora.
     tinta_actual: u8,
     fila: usize,
     col: usize,
+    /// Cuántas filas se ha subido el usuario. 0 = pegado abajo, viendo lo
+    /// último. Escribir algo nuevo vuelve abajo, como cualquier terminal: si no,
+    /// el programa hablaría y nadie lo vería.
+    vista: usize,
     /// Hay algo nuevo que pintar. Repintar la rejilla entera cada fotograma
     /// serían 88x16 glifos por vuelta sobre memoria de vídeo sin caché.
     sucia: bool,
@@ -408,8 +422,9 @@ struct Salida {
 impl Salida {
     fn nueva() -> Self {
         Self {
-            celdas: [[b' '; SAL_COLS]; SAL_ROWS],
-            tinta: [TINTA_NORMAL; SAL_ROWS],
+            celdas: [[b' '; SAL_COLS]; SAL_HIST],
+            tinta: [TINTA_NORMAL; SAL_HIST],
+            vista: 0,
             tinta_actual: TINTA_NORMAL,
             fila: 0,
             col: 0,
@@ -429,17 +444,34 @@ impl Salida {
     /// línea: si no, al desplazarse el color se quedaría marcando la fila de
     /// otro.
     fn desplazar(&mut self) {
-        for f in 1..SAL_ROWS {
+        for f in 1..SAL_HIST {
             self.celdas[f - 1] = self.celdas[f];
             self.tinta[f - 1] = self.tinta[f];
         }
-        self.celdas[SAL_ROWS - 1] = [b' '; SAL_COLS];
-        self.tinta[SAL_ROWS - 1] = self.tinta_actual;
+        self.celdas[SAL_HIST - 1] = [b' '; SAL_COLS];
+        self.tinta[SAL_HIST - 1] = self.tinta_actual;
+    }
+
+    /// Sube o baja la ventana. Positivo = hacia atrás en el tiempo.
+    ///
+    /// Se topa sola en los dos extremos: no se puede subir más allá de lo
+    /// guardado ni bajar más allá de lo último. Un scroll que se sale enseña
+    /// filas en blanco y parece que se ha perdido todo.
+    fn mover_vista(&mut self, filas: i32) {
+        let tope = SAL_HIST - SAL_ROWS;
+        let nueva = (self.vista as i32 + filas).clamp(0, tope as i32) as usize;
+        if nueva != self.vista {
+            self.vista = nueva;
+            self.sucia = true;
+        }
     }
 
     fn salto(&mut self) {
         self.col = 0;
-        if self.fila + 1 >= SAL_ROWS {
+        // Escribir devuelve la vista abajo: si no, el programa hablaria y el
+        // usuario seguiria mirando el pasado sin enterarse.
+        self.vista = 0;
+        if self.fila + 1 >= SAL_HIST {
             self.desplazar();
         } else {
             self.fila += 1;
@@ -486,8 +518,9 @@ impl Salida {
     }
 
     fn limpiar(&mut self) {
-        self.celdas = [[b' '; SAL_COLS]; SAL_ROWS];
-        self.tinta = [TINTA_NORMAL; SAL_ROWS];
+        self.celdas = [[b' '; SAL_COLS]; SAL_HIST];
+        self.tinta = [TINTA_NORMAL; SAL_HIST];
+        self.vista = 0;
         self.tinta_actual = TINTA_NORMAL;
         self.fila = 0;
         self.col = 0;
@@ -1347,14 +1380,22 @@ fn pintar_salida(p: &bmo::Pantalla, c: &Caja, s: &Salida) {
         c.salida_alto(),
         CAJA_FONDO,
     );
-    for (f, fila) in s.celdas.iter().enumerate() {
-        let color = color_tinta(s.tinta[f]);
+    // La ventana: las ultimas SAL_ROWS filas, corridas hacia atras por `vista`.
+    let base = SAL_HIST - SAL_ROWS - s.vista;
+    for f in 0..SAL_ROWS {
+        let color = color_tinta(s.tinta[base + f]);
         p.texto_bytes(
             c.salida_x,
             c.salida_y + f as u32 * bmo::GLIFO_ALTO,
-            fila,
+            &s.celdas[base + f],
             color,
         );
+    }
+    // Y si se ha subido, DECIRLO. Una ventana que ensena el pasado sin avisar
+    // se confunde con una que se quedo colgada.
+    if s.vista > 0 {
+        let x = c.salida_x + (SAL_COLS as u32 - 18) * bmo::GLIFO_ANCHO;
+        p.texto(x, c.salida_y, "-- historial --", ACENTO);
     }
 }
 
@@ -2031,10 +2072,22 @@ pub extern "C" fn _start() -> ! {
                             repintar_campo = true;
                         }
                     }
-                    // El resto de navegación (PgUp/PgDn) se ignora, pero
-                    // EXPLÍCITAMENTE: dejarlas caer al comodín las dibujaría
-                    // como basura.
-                    0x87..=0x9F => {}
+                    // ★ PgUp / PgDn — el historial de la salida.
+                    //
+                    // Estaban ignoradas "explicitamente", que era honesto pero
+                    // inutil: lo que salia por arriba se perdia para siempre, y
+                    // en una maquina donde depurar es fotografiar la pantalla,
+                    // perder la salida de un batch cuesta un arranque entero.
+                    // Ahora suben y bajan la ventana sobre 200 filas guardadas.
+                    0x87 => {
+                        salida.mover_vista(SAL_ROWS as i32 - 1);
+                    }
+                    0x88 => {
+                        salida.mover_vista(-(SAL_ROWS as i32 - 1));
+                    }
+                    // El resto de navegación se ignora, pero EXPLÍCITAMENTE:
+                    // dejarlas caer al comodín las dibujaría como basura.
+                    0x89..=0x9F => {}
                     // Todo lo demás imprimible, incluido el Latin-1 alto: la
                     // `ñ` llega como 0xF1 y la fuente la tiene.
                     c if c >= 0x20 => {
@@ -2057,6 +2110,15 @@ pub extern "C" fn _start() -> ! {
             }
 
             // ── Ratón ──
+            // La rueda, primero: mueve el historial de la salida. Es lo que
+            // pidio Eddi —"ver y scrollear"— y funciona con la rueda o con
+            // PgUp/PgDn, porque un teclado siempre hay.
+            let giro = e.rueda();
+            if giro != 0 {
+                // Tres filas por muesca: una sola se queda corta y una pagina
+                // entera se pasa. Es el paso de cualquier terminal.
+                salida.mover_vista(giro * 3);
+            }
             let pos = e.puntero();
             // ── Los botones de la calculadora ──
             let boton = pos.botones != 0;
