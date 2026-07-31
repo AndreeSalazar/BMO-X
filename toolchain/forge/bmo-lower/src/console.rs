@@ -402,3 +402,76 @@ mod tests {
         assert_eq!(m.syscalls.len(), 1);
     }
 }
+
+/// Emite código que lee **UN byte** de la consola, bloqueando hasta que llegue.
+///
+/// Precondición: `rdi` apunta a un buffer de **9 bytes** que pertenece al
+/// llamante y que sobrevive entre llamadas. Deja el byte en `rax`.
+///
+/// ## Por qué hace falta un buffer, y por qué es del llamante
+///
+/// La puerta entrega **hasta 7 bytes de una vez** y los CONSUME: lo que no se
+/// guarde se pierde. Escribiendo rápido llegan varios en el mismo paquete, así
+/// que un lector de un byte sin buffer se comería seis de cada siete
+/// pulsaciones — y parecería un teclado que pierde letras.
+///
+/// El buffer lo pone el llamante porque L1 no tiene memoria propia: no sabe de
+/// secciones ni de `.data`. Es la misma disciplina que [`read_line`], que
+/// recibe el suyo en `r8`.
+///
+/// Disposición: `[0..8]` los bytes pendientes empaquetados, `[8]` cuántos
+/// quedan. Lo pone a cero quien lo reserva.
+///
+/// ## Por qué cede el turno
+///
+/// La puerta no bloquea: devuelve `0` si no hay nada. Insistir sin ceder se
+/// come el quantum y el terminal —que es quien tiene que ESCRIBIR lo que
+/// esperamos— no correría nunca. El programa esperaría algo que él mismo
+/// impide que llegue.
+///
+/// Registros que ensucia: `rax`, `rcx`, `rdx`, `rsi`, `r10`, `r11`. `rdi` se
+/// conserva.
+pub fn read_char(code: &mut Vec<u8>) {
+    // rcx = pendientes del paquete anterior.
+    x86::movzx_r32_byte_at_reg_disp(code, RCX, RDI, 8);
+    x86::test_r64_r64(code, RCX, RCX);
+    let hay_guardados = x86::emit_jump(code, Jump::IfNotZero);
+
+    // ── Pedir un paquete nuevo ──
+    let pide = code.len();
+    // `rdi` lleva el buffer y la puerta lo necesita: se aparca.
+    x86::push_r64(code, RDI);
+    x86::mov_r64_imm64(code, RDI, CURRENT_TASK);
+    x86::mov_r32_imm32(code, RSI, TASK_OP_CONSOLE_READ as u32);
+    load_syscall_nr(code);
+    x86::syscall(code);
+    x86::pop_r64(code, RDI);
+
+    x86::mov_r64_r64(code, RCX, RDX);
+    x86::shr_r64_imm8(code, RCX, 56);
+    x86::test_r64_r64(code, RCX, RCX);
+    let llego = x86::emit_jump(code, Jump::IfNotZero);
+    crate::task::yield_now(code);
+    let reintenta = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, reintenta, pide);
+    x86::patch_jump(code, llego);
+
+    // Guardar el paquete. El contador viaja en el byte alto de `rdx` y se
+    // quita: si se dejara, al llegar al séptimo desplazamiento saldría como si
+    // fuera texto tecleado.
+    x86::shl_r64_imm8(code, RDX, 8);
+    x86::shr_r64_imm8(code, RDX, 8);
+    x86::mov_at_reg_from_r64(code, RDI, RDX);
+    x86::mov_byte_at_reg_disp_from_low(code, RDI, 8, RCX);
+
+    x86::patch_jump(code, hay_guardados);
+
+    // ── Sacar el primero ──
+    x86::movzx_r32_byte_at_reg(code, RAX, RDI);
+    x86::mov_r64_at_reg(code, RDX, RDI);
+    x86::shr_r64_imm8(code, RDX, 8);
+    x86::mov_at_reg_from_r64(code, RDI, RDX);
+    x86::movzx_r32_byte_at_reg_disp(code, RCX, RDI, 8);
+    x86::dec_r64(code, RCX);
+    x86::mov_byte_at_reg_disp_from_low(code, RDI, 8, RCX);
+}

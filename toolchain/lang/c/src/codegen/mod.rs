@@ -6,6 +6,10 @@ use crate::CError;
 /// Structs y uniones POR VALOR, en su propio fichero. Ver su cabecera para
 /// la ABI de agregados de BMO y para que hacen SysV y Win64 con esto mismo.
 mod agregados;
+/// La ENTRADA de C (`getchar`, `scanf`), tambien aparte. Escribir es empujar
+/// bytes; leer es ESPERAR, guardar lo que sobra y decidir que significa lo que
+/// alguien tecleo. Tres problemas que la salida no tiene.
+mod entrada;
 
 type Result<T> = core::result::Result<T, CError>;
 
@@ -1240,6 +1244,16 @@ impl Codegen {
                 // Special case: printf → emit bmo_printf from userland_ring3
                 if name == "printf" && !args.is_empty() {
                     self.emit_printf_variadic(args);
+                    return;
+                }
+                // La pareja de `printf`: se emiten EN LINEA por lo mismo — aqui
+                // no hay libc que enlazar ni simbolo que nadie resuelva.
+                if name == "getchar" && args.is_empty() {
+                    self.emit_getchar();
+                    return;
+                }
+                if name == "scanf" && !args.is_empty() {
+                    self.emit_scanf(args);
                     return;
                 }
                 // ¿Llamada INDIRECTA? El nombre no es una función pero SÍ una

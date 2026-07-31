@@ -137,6 +137,26 @@ de SysV porque aquí no hay registros de argumento que repartir.
 
 ---
 
+## 7. La entrada — `getchar` y `scanf`
+
+Emitidos **en línea** como `printf`: aquí no hay libc que enlazar.
+
+| Se escribe | Debe salir | Por qué | Dónde |
+|---|---|---|---|
+| `getchar()` en bucle sobre `"hola\n"` | `[h][o][l][a]` | Un byte cada vez, en orden | `getchar_entrega…` ⏳ metal |
+| 13 bytes tecleados de golpe | `13`, no `7` | La puerta entrega **hasta 7 de una vez y los CONSUME**. Sin buffer se perderían seis de cada siete y parecería un teclado malo | `getchar_no_pierde…` ⏳ metal |
+| Dos `getchar()` en sitios distintos | `xy` | El buffer es **uno** (global oculta). Si cada sitio tuviera el suyo, el segundo empezaría de cero | `dos_getchar…` ⏳ metal |
+| `scanf("%d", &x)` con `-5` | `-5` | Sin el signo, la cuenta sale al revés sin una palabra | `scanf_lee_un_entero_negativo` ⏳ metal |
+| `scanf("%s", s)` con `mundo` | `<mundo>` | Lleva su **cero final**: en C una cadena sin terminador no es una cadena | `scanf_lee_una_cadena…` ⏳ metal |
+| `scanf("%d %d", &a, &b)` | **error** | Un `scanf` que ignora la mitad de su formato lee mal en silencio | `scanf_con_dos…` |
+
+★ `getchar()` **nunca devuelve `EOF`**: una consola de BMO no se acaba, se
+queda esperando. `while ((c = getchar()) != EOF)` gira para siempre — hay que
+cortar con `'\n'`. Es una desviación real del C alojado, y está aquí porque es
+justo la que hace colgarse un programa portado sin mirar.
+
+---
+
 ## Mentiras del emulador (histórico)
 
 Cada una hizo **fallar código correcto** o **pasar código roto**. Se apuntan
@@ -160,8 +180,8 @@ suposiciones.
 
 | Qué | Qué se espera | Por qué importa |
 |---|---|---|
-| **Entrada** (`getchar`/`scanf`) | Leer una línea de la consola del proceso | Es lo único que la hoja de ruta pide para cerrar C. Sin ella un programa de C no puede preguntar nada |
 | **Devolver structs** | `q = haz()` con el puntero oculto en `rdi` | Hoy se rechaza con motivo |
+| **`scanf` de varias conversiones** | `%d %d` de una línea | Hoy se rechaza pidiendo partirlo |
 | **Floats globales** y como argumento | Ruta `xmm` en los bordes | Diferido con error honesto |
 | **Invocación de macro en varias líneas** | Juntar las líneas antes de expandir | Hoy se dice, no se adivina |
 
@@ -172,5 +192,19 @@ suposiciones.
 1. `run apps/holac.bex` → las seis líneas de la sección 1, exactas.
 2. `run apps/scrollc.bex` **desde Ring 0** → la ventana de la sección 2, y que
    RePag/AvPag muevan. **Es el primer `__syscall` de C en silicio.**
-3. La fila `raton` de CABINA: `bmb=k+r+`, `apk=…:0:0`, y `kev=` y `raton ev=`
+3. `apps/pregc.bex` **desde la caja del compositor** — y luego se escribe EN LA
+   CAJA y se pulsa Enter. Debe preguntar tres veces y contestar:
+
+   ```
+   como te llamas? … hola, <lo que escribiste>
+   cuantos anos tienes? … en 10 anos tendras <n+10>
+   escribe algo y cuento sus letras: … <n> letras
+   listo.
+   ```
+
+   Es el circuito entero —el terminal escribe en la consola del hijo, el hijo la
+   lee— recorrido **por primera vez desde C**. Si el contador de letras sale
+   corto, el buffer de `getchar` está perdiendo los seis que sobran de cada
+   paquete.
+4. La fila `raton` de CABINA: `bmb=k+r+`, `apk=…:0:0`, y `kev=` y `raton ev=`
    subiendo **en el mismo arranque**.

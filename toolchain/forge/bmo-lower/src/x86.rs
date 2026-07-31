@@ -353,3 +353,73 @@ pub fn patch_jump_to(out: &mut [u8], field: usize, target: usize) {
     let rel = (target as i64 - next_insn as i64) as i32;
     out[field..field + 4].copy_from_slice(&rel.to_le_bytes());
 }
+
+// ── Acceso a un buffer con desplazamiento constante ────────────────────────
+//
+// Los emisores de arriba direccionan `[base]` a secas, que basta para recorrer
+// un buffer con un puntero que avanza. Un buffer con CAMPOS —bytes por un lado,
+// contador por otro— necesita `[base+disp]`, y falsearlo sumando al puntero
+// obligaría a restar después: dos instrucciones y un estado más que recordar.
+
+/// El ModRM de `[<base>+disp8]`. `rsp`/`r12` necesitan SIB también aquí.
+fn modrm_base_disp8(out: &mut Vec<u8>, reg_field: u8, base: u8, disp: u8) {
+    let rm = base & 7;
+    out.push(0x40 | (reg_field << 3) | rm); // mod=01
+    if rm == 0b100 {
+        out.push(0x24); // SIB: base=rsp/r12, sin índice
+    }
+    out.push(disp);
+}
+
+/// `movzx <dst32>, byte [<base>+disp8]`.
+pub fn movzx_r32_byte_at_reg_disp(out: &mut Vec<u8>, dst: u8, base: u8, disp: u8) {
+    let rex = 0x40 | (((dst >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.extend_from_slice(&[0x0F, 0xB6]);
+    modrm_base_disp8(out, dst & 7, base, disp);
+}
+
+/// `mov byte [<base>+disp8], <src_low8>`.
+pub fn mov_byte_at_reg_disp_from_low(out: &mut Vec<u8>, base: u8, disp: u8, src: u8) {
+    // ★ El REX hace falta AUNQUE los dos registros sean bajos cuando la fuente
+    // es `sil`, `dil`, `spl` o `bpl`: sin él, `88 /r` con reg=110 significa
+    // `dh`, no `sil`. Es la trampa clásica de los bytes altos heredados del
+    // 8086, y produce un valor de otro registro sin ningún aviso.
+    let rex = 0x40 | (((src >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 || matches!(src, 4..=7) {
+        out.push(rex);
+    }
+    out.push(0x88);
+    modrm_base_disp8(out, src & 7, base, disp);
+}
+
+/// `mov <dst64>, [<base>]`.
+pub fn mov_r64_at_reg(out: &mut Vec<u8>, dst: u8, base: u8) {
+    out.push(rex_w(dst, base));
+    out.push(0x8B);
+    modrm_at_base(out, dst & 7, base);
+}
+
+/// `mov [<base>], <src64>`.
+pub fn mov_at_reg_from_r64(out: &mut Vec<u8>, base: u8, src: u8) {
+    out.push(rex_w(src, base));
+    out.push(0x89);
+    modrm_at_base(out, src & 7, base);
+}
+
+/// `push <r64>` / `pop <r64>`.
+pub fn push_r64(out: &mut Vec<u8>, reg: u8) {
+    if reg >= 8 {
+        out.push(0x41);
+    }
+    out.push(0x50 | (reg & 7));
+}
+
+pub fn pop_r64(out: &mut Vec<u8>, reg: u8) {
+    if reg >= 8 {
+        out.push(0x41);
+    }
+    out.push(0x58 | (reg & 7));
+}

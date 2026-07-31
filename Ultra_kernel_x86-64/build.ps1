@@ -209,7 +209,8 @@ $adaEjemplos = @(
 # capability de entrada y el modelo de scroll.
 $cEjemplos = @(
     @{ src = 'toolchain\lang\c\examples\hola_C.c';   out = 'holac.bex'  },
-    @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' }
+    @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' },
+    @{ src = 'toolchain\lang\c\examples\pregunta_C.c'; out = 'pregc.bex'  }
 )
 
 $repo = Split-Path -Parent $root
