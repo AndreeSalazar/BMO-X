@@ -1,0 +1,177 @@
+//! `info`, `cpu`, `mem` — los datos del sistema, escritos a la rejilla.
+//!
+//! Leer un contador no ejerce ningun poder, asi que esto vive en Ring 3 y pide
+//! los datos por `OP_INFO` como cualquier otro proceso.
+
+use bmo_userland as bmo;
+
+use crate::escena::salida::{Salida, TINTA_BIEN, TINTA_ECO, TINTA_MAL, TINTA_NORMAL};
+use crate::escena::SAL_COLS;
+
+// ── Los informes del sistema ────────────────────────────────────────────
+//
+// Se pintan aquí, en Ring 3, con datos que el kernel contesta por `OP_INFO`.
+// El kernel da enteros; las unidades, los porcentajes, las barras y el color
+// son de este lado.
+
+/// Un rótulo de sección, para que el informe no sea un muro de renglones.
+pub(crate) fn seccion(s: &mut Salida, titulo: &[u8]) {
+    s.con_tinta(TINTA_ECO);
+    s.texto(b"  ");
+    s.texto(titulo);
+    s.byte(b' ');
+    // Una regla hasta el margen: cuesta nada y separa de verdad.
+    let usado = 3 + titulo.len();
+    for _ in usado..SAL_COLS.saturating_sub(2) {
+        s.byte(b'-');
+    }
+    s.byte(b'\n');
+    s.con_tinta(TINTA_NORMAL);
+}
+
+/// Un renglón `etiqueta ....... valor`, con la etiqueta a ancho fijo.
+pub(crate) fn etiqueta(s: &mut Salida, nombre: &[u8]) {
+    s.texto(b"    ");
+    s.texto(nombre);
+    for _ in nombre.len()..14 {
+        s.byte(b' ');
+    }
+}
+
+pub(crate) fn informe_cpu(s: &mut Salida) {
+    let mut buf = [0u8; 64];
+
+    seccion(s, b"procesador");
+    let n = bmo::info_texto(bmo::INFO_TXT_CPU_VENDOR, &mut buf);
+    etiqueta(s, b"fabricante");
+    s.texto(&buf[..n]);
+    s.byte(b'\n');
+
+    let n = bmo::info_texto(bmo::INFO_TXT_CPU_NOMBRE, &mut buf);
+    etiqueta(s, b"modelo");
+    s.texto(&buf[..n]);
+    s.byte(b'\n');
+
+    let n = bmo::info_texto(bmo::INFO_TXT_UARCH, &mut buf);
+    etiqueta(s, b"uarch");
+    s.texto(&buf[..n]);
+    let n2 = bmo::info_texto(bmo::INFO_TXT_FAMILIA, &mut buf);
+    if n2 > 0 {
+        s.texto(b"   familia ");
+        s.texto(&buf[..n2]);
+    }
+    s.byte(b'\n');
+
+    etiqueta(s, b"nucleos");
+    s.dec(bmo::info(bmo::INFO_CPU_NUCLEOS));
+    s.texto(b" fisicos / ");
+    s.dec(bmo::info(bmo::INFO_CPU_HILOS));
+    s.texto(b" hilos\n");
+
+    // Hz -> GHz con dos decimales, con enteros. El TSC es la frecuencia MEDIDA
+    // en el arranque, no el numero de la etiqueta de la caja.
+    let hz = bmo::info(bmo::INFO_TSC_HZ);
+    etiqueta(s, b"tsc");
+    s.dec(hz / 1_000_000_000);
+    s.byte(b'.');
+    let frac = (hz % 1_000_000_000) / 10_000_000;
+    if frac < 10 {
+        s.byte(b'0');
+    }
+    s.dec(frac);
+    s.texto(b" GHz   (medido)\n");
+}
+
+pub(crate) fn informe_memoria(s: &mut Salida) {
+    let total = bmo::info(bmo::INFO_RAM_TOTAL);
+    let libre = bmo::info(bmo::INFO_RAM_LIBRE);
+    let usada = total.saturating_sub(libre);
+
+    seccion(s, b"memoria");
+    etiqueta(s, b"total");
+    s.tamano(total);
+    s.texto(b"   ");
+    s.dec_der(bmo::info(bmo::INFO_RAM_MARCOS), 8);
+    s.texto(b" marcos de 4 KiB\n");
+
+    etiqueta(s, b"usada");
+    s.tamano(usada);
+    s.texto(b"   ");
+    s.barra(usada, total, 24);
+    s.byte(b' ');
+    s.pct(usada, total);
+    s.byte(b'\n');
+
+    etiqueta(s, b"libre");
+    s.tamano(libre);
+    s.texto(b"   ");
+    s.dec_der(bmo::info(bmo::INFO_RAM_MARCOS_LIBRES), 8);
+    s.texto(b" marcos\n");
+
+    // El tamano REAL del kernel en RAM, medido hasta el final de su .bss.
+    etiqueta(s, b"kernel");
+    s.tamano(bmo::info(bmo::INFO_KERNEL_BYTES));
+    s.texto(b"   en 0x400000\n");
+}
+
+pub(crate) fn informe_sistema(s: &mut Salida) {
+    s.con_tinta(TINTA_ECO);
+    s.texto(b"  BMO-X - informe del sistema\n");
+    s.con_tinta(TINTA_NORMAL);
+
+    informe_cpu(s);
+    informe_memoria(s);
+
+    seccion(s, b"tareas");
+    let total = bmo::info(bmo::INFO_TAREAS_TOTAL);
+    let libres = bmo::info(bmo::INFO_TAREAS_LIBRES);
+    let ranuras = total + libres;
+    etiqueta(s, b"ranuras");
+    s.dec(total);
+    s.texto(b" en uso de ");
+    s.dec(ranuras);
+    s.texto(b"   ");
+    s.barra(total, ranuras, 24);
+    s.byte(b'\n');
+    etiqueta(s, b"listas");
+    s.dec(bmo::info(bmo::INFO_TAREAS_LISTAS));
+    s.texto(b"   ticks ");
+    s.dec(bmo::info(bmo::INFO_TICKS));
+    s.byte(b'\n');
+    etiqueta(s, b"programas");
+    let vistos = bmo::info(bmo::INFO_PROGRAMAS);
+    let olvidados = bmo::info(bmo::INFO_PROGRAMAS_OLVIDADOS);
+    s.dec(vistos + olvidados);
+    s.texto(b" lanzados");
+    if olvidados > 0 {
+        s.texto(b"   (");
+        s.dec(olvidados);
+        s.texto(b" ya no caben en la bitacora)");
+    }
+    s.byte(b'\n');
+
+    seccion(s, b"disco");
+    etiqueta(s, b"disco");
+    if bmo::info(bmo::INFO_DISCO_LISTO) != 0 {
+        s.con_tinta(TINTA_BIEN);
+        s.texto(b"listo");
+    } else {
+        s.con_tinta(TINTA_MAL);
+        s.texto(b"sin disco");
+    }
+    s.con_tinta(TINTA_NORMAL);
+    s.byte(b'\n');
+    etiqueta(s, b"datos");
+    if bmo::info(bmo::INFO_DATOS_MONTADO) != 0 {
+        s.con_tinta(TINTA_BIEN);
+        s.texto(b"montado para escritura");
+    } else {
+        // La linea que decide si el File I/O de COBOL puede funcionar. Decirlo
+        // aqui ahorra buscar el fallo en el programa.
+        s.con_tinta(TINTA_MAL);
+        s.texto(b"NO montado: sin esto no hay OPEN ni WRITE");
+    }
+    s.con_tinta(TINTA_NORMAL);
+    s.byte(b'\n');
+}
+
