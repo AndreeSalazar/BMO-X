@@ -709,14 +709,27 @@ impl Machine {
         }
     }
 
-    fn store(&mut self, op: Operand, value: u64, wide: bool) {
+    /// ★ Un `mov [mem], eax` escribe **CUATRO** bytes, no ocho.
+    ///
+    /// Esto hacía `write_u64(a, value as u32 as u64)`: los cuatro bytes de
+    /// arriba se ponían a CERO. En un registro eso es correcto —escribir un
+    /// registro de 32 bits en modo largo sí borra la mitad alta— pero en
+    /// **memoria** es destruir lo de al lado.
+    ///
+    /// Lo pagó el primer struct con dos `int`: `{.x = 1, .y = 2, .x = 9}` daba
+    /// `x=9, y=0`, porque la última escritura de `x` borraba la `y` que hay
+    /// justo detrás. Y llevaba ahí desde siempre — sólo que ningún test tenía
+    /// dos campos de 4 bytes seguidos donde el segundo se escribiera ANTES que
+    /// el primero.
+    ///
+    /// Es el peor tipo de mentira de un emulador: la que hace fallar código
+    /// correcto, porque manda a buscar el bug al sitio equivocado.
+    fn store(&mut self, op: Operand, value: u64, bytes: usize) {
         match op {
-            Operand::Reg(r) => self.write_reg(r, value, wide),
+            Operand::Reg(r) => self.write_reg(r, value, bytes == 8),
             Operand::Mem(a) => {
-                if wide {
-                    self.write_u64(a, value);
-                } else {
-                    self.write_u64(a, value as u32 as u64);
+                for i in 0..bytes as u64 {
+                    self.mem.insert(a + i, ((value >> (i * 8)) & 0xFF) as u8);
                 }
             }
         }
@@ -724,6 +737,18 @@ impl Machine {
 
     fn step(&mut self) {
         let mut byte = self.fetch_u8();
+        // ★ `0x66` — anular el tamaño de operando: la instrucción trabaja a 16
+        // bits. Va ANTES del REX, que es el orden que manda el manual.
+        //
+        // No estaba, así que el emulador reventaba con "opcode 0x66 no emitido
+        // por BMO" en cuanto alguien guardara un `short`. Era una mina: el
+        // codegen SÍ emite `66 89` para los campos de 16 bits desde que existen
+        // los structs, y no había ni un test que guardara uno.
+        let mut op16 = false;
+        while byte == 0x66 {
+            op16 = true;
+            byte = self.fetch_u8();
+        }
         let mut rex = 0u8;
         // Prefijos que emitimos: F3 (pause) se trata aparte más abajo.
         if (0x40..=0x4F).contains(&byte) {
@@ -731,6 +756,14 @@ impl Machine {
             byte = self.fetch_u8();
         }
         let wide = rex & 0x08 != 0;
+        // Cuantos bytes toca la instruccion. REX.W manda sobre 0x66.
+        let ancho: usize = if wide {
+            8
+        } else if op16 {
+            2
+        } else {
+            4
+        };
         let rex_r = ((rex >> 2) & 1) as usize;
         let rex_x = ((rex >> 1) & 1) as usize;
         let rex_b = (rex & 1) as usize;
@@ -763,31 +796,31 @@ impl Machine {
                 let a = self.load(dst, wide);
                 let b = self.read_reg(reg, wide);
                 match byte {
-                    0x89 => self.store(dst, b, wide),
+                    0x89 => self.store(dst, b, ancho),
                     0x09 => {
                         let r = a | b;
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     0x21 => {
                         let r = a & b;
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     0x31 => {
                         let r = a ^ b;
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     0x01 => {
                         let r = a.wrapping_add(b);
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     0x29 => {
                         self.flags_sub(a, b);
                         let r = a.wrapping_sub(b);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     0x39 => self.flags_sub(a, b), // cmp
                     0x85 => self.flags_logic(a & b), // test
@@ -843,17 +876,17 @@ impl Machine {
                     0 => {
                         let r = a.wrapping_add(imm);
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     4 => {
                         let r = a & imm;
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     5 => {
                         self.flags_sub(a, imm);
                         let r = a.wrapping_sub(imm);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     7 => self.flags_sub(a, imm),
                     other => panic!("grupo 83 /{other} no emitido por BMO"),
@@ -868,7 +901,7 @@ impl Machine {
                     0 => {
                         let r = a.wrapping_add(imm);
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     // AND. Lo emite `and_r64_imm32`, que usa `read_line` para
                     // quedarse con el byte bajo del paquete. Faltaba, y esa
@@ -877,12 +910,12 @@ impl Machine {
                     4 => {
                         let r = a & imm;
                         self.flags_logic(r);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     5 => {
                         self.flags_sub(a, imm);
                         let r = a.wrapping_sub(imm);
-                        self.store(dst, r, wide);
+                        self.store(dst, r, ancho);
                     }
                     7 => self.flags_sub(a, imm),
                     other => panic!("grupo 81 /{other} no emitido por BMO"),
@@ -892,7 +925,7 @@ impl Machine {
             0xC7 => {
                 let (_, dst) = self.modrm(0, rex_x, rex_b);
                 let imm = self.fetch_u32() as i32 as i64 as u64;
-                self.store(dst, imm, wide);
+                self.store(dst, imm, ancho);
             }
             // desplazamientos con imm8: /4 shl, /5 shr, /7 sar
             0xC1 => {
@@ -906,7 +939,7 @@ impl Machine {
                     other => panic!("grupo C1 /{other} no emitido por BMO"),
                 };
                 self.flags_logic(r);
-                self.store(dst, r, wide);
+                self.store(dst, r, ancho);
             }
             // mov r/m8, r8  — guarda el byte bajo de un registro
             0x88 => {
@@ -942,7 +975,7 @@ impl Machine {
                     other => panic!("grupo D3 /{other} no emitido por BMO"),
                 };
                 self.flags_logic(r);
-                self.store(dst, r, wide);
+                self.store(dst, r, ancho);
             }
             // grupo 3: /3 neg, /6 div, /7 idiv
             0xF7 => {
@@ -952,7 +985,7 @@ impl Machine {
                     3 => {
                         let r = (self.load(src, wide) as i64).wrapping_neg() as u64;
                         self.flags_logic(r);
-                        self.store(src, r, wide);
+                        self.store(src, r, ancho);
                     }
                     // div SIN signo: rdx:rax entre el operando. El emisor
                     // siempre pone rdx=0 antes, así que basta con rax.
@@ -996,7 +1029,7 @@ impl Machine {
                     other => panic!("grupo FF /{other} no emitido por BMO"),
                 };
                 self.flags_logic(r);
-                self.store(dst, r, wide);
+                self.store(dst, r, ancho);
             }
             // cqo — extiende el signo de rax a rdx
             0x99 => {

@@ -1,6 +1,9 @@
 //! C Parser -- tokens a AST (gramatica completa) + preprocesador.
 
 pub mod preprocessor;
+/// Las listas `{ … }`, en su propio fichero. Ver su cabecera para el porqué del
+/// reparto y para qué hicieron GCC, Clang, chibicc, TCC y MSVC con esto mismo.
+mod inicializador;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -482,6 +485,7 @@ impl Parser {
             Stmt::Block(stmts) => Self::check_syscall_args_in_stmt_slice(stmts, line)?,
             Stmt::Expr(e) | Stmt::Return(Some(e)) => Self::check_syscall_args_in_expr(e, line)?,
             Stmt::DeclAssign(_, _, Some(e)) => Self::check_syscall_args_in_expr(e, line)?,
+            Stmt::DeclInit(_, _, es) => { for e in es { Self::check_syscall_args_in_expr(&e.valor, line)?; } }
             _ => {}
         }
         Ok(())
@@ -573,6 +577,7 @@ impl Parser {
             Stmt::Block(stmts) => Self::resolve_syscalls_in_stmt_slice(syscalls, stmts),
             Stmt::Expr(e) | Stmt::Return(Some(e)) => Self::resolve_syscalls_in_expr(syscalls, e),
             Stmt::DeclAssign(_, _, Some(e)) => Self::resolve_syscalls_in_expr(syscalls, e),
+            Stmt::DeclInit(_, _, es) => { for e in es { Self::resolve_syscalls_in_expr(syscalls, &mut e.valor); } }
             _ => {}
         }
     }
@@ -673,10 +678,7 @@ impl Parser {
                     if let Some((typ, name)) = self.try_parse_decl()? {
                         var_count += 1;
                         var_names.push(name.clone());
-                        let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
-                        self.skip_semicolon();
-                        self.var_types.insert(name.clone(), typ.clone());
-                        body.push(Stmt::DeclAssign(typ, name, init));
+                        body.push(self.terminar_declaracion(typ, name)?);
                     } else {
                         body.push(self.parse_stmt()?);
                     }
@@ -888,9 +890,7 @@ impl Parser {
                 // Try to parse as declaration if it starts with a type keyword
                 if self.peek_is_type_start() {
                     if let Some((typ, name)) = self.try_parse_decl()? {
-                        let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
-                        self.skip_semicolon();
-                        return Ok(Stmt::DeclAssign(typ, name, init));
+                        return self.terminar_declaracion(typ, name);
                     }
                 }
                 self.parse_expr_stmt()
@@ -1057,10 +1057,7 @@ impl Parser {
                         }
                     }
                     if let Some((typ, name)) = self.try_parse_decl()? {
-                        let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
-                        self.skip_semicolon();
-                        self.var_types.insert(name.clone(), typ.clone());
-                        stmts.push(Stmt::DeclAssign(typ, name, init));
+                        stmts.push(self.terminar_declaracion(typ, name)?);
                         continue;
                     } else {
                         stmts.push(self.parse_stmt()?);

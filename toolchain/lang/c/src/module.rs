@@ -153,6 +153,9 @@ fn collect_callees(stmts: &[Stmt], callees: &mut Vec<String>) {
             Stmt::Block(stmts) => collect_callees(stmts, callees),
             Stmt::Expr(e) | Stmt::Return(Some(e)) => collect_expr_callees(e, callees),
             Stmt::DeclAssign(_, _, Some(e)) => collect_expr_callees(e, callees),
+            // Alcanzabilidad: una funcion llamada SOLO desde una lista de
+            // inicializacion se habria podado del binario.
+            Stmt::DeclInit(_, _, es) => { for e in es { collect_expr_callees(&e.valor, callees); } }
             _ => {}
         }
     }

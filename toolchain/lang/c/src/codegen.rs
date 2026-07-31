@@ -278,6 +278,9 @@ impl Codegen {
             Stmt::Block(stmts) => { for s in stmts { self.collect_stmt_strings(s); } }
             Stmt::Expr(e) | Stmt::Return(Some(e)) => { self.collect_expr_strings(e); }
             Stmt::DeclAssign(_, _, Some(e)) => { self.collect_expr_strings(e); }
+            // Sin esto, un `%s` dentro de una lista de inicializacion
+            // apuntaria a una cadena que nunca se puso en .rodata.
+            Stmt::DeclInit(_, _, es) => { for e in es { self.collect_expr_strings(&e.valor); } }
             _ => {}
         }
     }
@@ -508,6 +511,10 @@ impl Codegen {
     fn collect_decls_stmt<'a>(s: &'a Stmt, out: &mut Vec<(&'a String, &'a TypeSpec)>) {
         match s {
             Stmt::DeclAssign(t, n, _) => out.push((n, t)),
+            // El hueco en la pila. Sin esta linea la variable caia al
+            // reparto de legado (8 bytes, tipo Long) y un struct de 16
+            // habria escrito sobre la de al lado.
+            Stmt::DeclInit(t, n, _) => out.push((n, t)),
             Stmt::Block(v) => for x in v { Self::collect_decls_stmt(x, out); },
             Stmt::If(_, a, b) => {
                 Self::collect_decls_stmt(a, out);
@@ -545,6 +552,51 @@ impl Codegen {
             }
         }
         self.frame_size = -cur;
+    }
+
+    /// Guarda `rax` en `[rbp+disp]` con el tamaño EXACTO de `tipo`.
+    ///
+    /// La pareja de `emit_store_var`, pero por offset en vez de por nombre: una
+    /// lista de inicialización escribe **dentro** de una variable, no sobre
+    /// ella. Escribir siempre 8 bytes pisaría el campo siguiente — es el mismo
+    /// bug que ya se pagó con `pt.x = 10` cuando `x` era `int`.
+    fn emit_store_rbp(&mut self, disp: i32, tipo: &TypeSpec) {
+        let corto = (-128..=127).contains(&disp);
+        let modrm = if corto { 0x45 } else { 0x85 };
+        let opcode: &[u8] = match tipo {
+            TypeSpec::Char | TypeSpec::UnsignedChar => &[0x88],
+            TypeSpec::Short | TypeSpec::UnsignedShort => &[0x66, 0x89],
+            TypeSpec::Int | TypeSpec::UnsignedInt | TypeSpec::Float => &[0x89],
+            _ => &[0x48, 0x89],
+        };
+        self.code.extend_from_slice(opcode);
+        self.code.push(modrm);
+        if corto {
+            self.code.push(disp as u8);
+        } else {
+            self.code.extend_from_slice(&disp.to_le_bytes());
+        }
+    }
+
+    /// Pone a cero `bytes` bytes a partir de `[rbp+base]`.
+    ///
+    /// De ocho en ocho mientras quepa, y el resto byte a byte. Sin memset:
+    /// aquí no hay libc, y para los tamaños de un struct local un bucle
+    /// desenrollado es más corto que la llamada que no existe.
+    fn emit_cero_local(&mut self, base: i32, bytes: u32) {
+        if bytes == 0 {
+            return;
+        }
+        self.emit_xor_eax();
+        let mut hecho = 0u32;
+        while bytes - hecho >= 8 {
+            self.emit_store_rbp(base + hecho as i32, &TypeSpec::Long);
+            hecho += 8;
+        }
+        while hecho < bytes {
+            self.emit_store_rbp(base + hecho as i32, &TypeSpec::Char);
+            hecho += 1;
+        }
     }
 
     fn emit_store_var(&mut self, name: &str) {
@@ -929,6 +981,25 @@ impl Codegen {
                 } else {
                     if let Some(e) = init { self.emit_expr(e); } else { self.emit_expr(&Expr::Int(0)); }
                     self.emit_store_var(name);
+                }
+            }
+            // `T x = { … }` — la lista ya viene APLANADA a escrituras por
+            // `parser/inicializador.rs`. Aquí no se sabe qué es un designador:
+            // sólo "en el byte N va este valor, de este tamaño".
+            Stmt::DeclInit(typ, name, escrituras) => {
+                let Some(&(base, _)) = self.var_offsets.get(name) else {
+                    self.errors.push(format!("'{name}' no tiene hueco en la pila"));
+                    return;
+                };
+                // ★ C99 §6.7.9/21: lo NO mencionado vale cero. Se borra el
+                // objeto entero ANTES de escribir, y por eso `{.y = 2}` deja la
+                // `x` en 0 en vez de en lo que hubiera en la pila — que sería
+                // basura distinta en cada llamada y un bug imposible de repetir.
+                let bytes = self.type_stack_size(typ);
+                self.emit_cero_local(base, bytes);
+                for e in escrituras {
+                    self.emit_expr(&e.valor);
+                    self.emit_store_rbp(base + e.offset as i32, &e.tipo);
                 }
             }
             Stmt::Expr(e) => {
