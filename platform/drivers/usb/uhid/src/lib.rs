@@ -145,6 +145,144 @@ impl UsbHidHal {
             Some(m) => m.es_provisional() && !de_un_compuesto,
         }
     }
+
+    /// ¿El ratón que hay es de verdad, o la interfaz de medios de un teclado?
+    fn raton_dedicado(&self) -> bool {
+        self.raton.as_ref().is_some_and(|m| !m.es_provisional())
+    }
+
+    /// ¿Ya no hace falta mirar más? Teclado **y** ratón dedicado.
+    ///
+    /// Es la pregunta que decide si merece la pena tocar el bus. Re-enumerar
+    /// cuando no falta nada cuesta control transfers sobre un controlador con
+    /// dos aparatos ya bombeando, y eso es exactamente lo que no se quiere
+    /// hacer sin motivo.
+    pub fn completo(&self) -> bool {
+        self.teclado.is_some() && self.raton_dedicado()
+    }
+
+    /// Enumera UN puerto e instala lo que falte. El camino compartido por el
+    /// arranque y por el enchufe en caliente: uno solo, así no pueden divergir.
+    ///
+    /// # Safety
+    /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
+    unsafe fn cosechar_puerto(&mut self, port: u8) -> Cosecha {
+        let h = bmo_xhci::hal();
+        let mut cosecha = Cosecha { teclado: false, raton: false };
+
+        let slot = match enumera::direccionar_puerto(port) {
+            Some(s) => s,
+            None => return cosecha,
+        };
+        let mut cfg = [0u8; enumera::MAX_CFG];
+        let (cfg_val, largo) = match enumera::leer_descriptores(slot, &mut cfg) {
+            Some(v) => v,
+            None => return cosecha,
+        };
+        let cfg = &cfg[..largo];
+
+        let mut ifaces = [(0u8, 0u8, 0u8, 0u8); enumera::MAX_IFACES];
+        let n_ifs = enumera::interfaces(cfg, &mut ifaces);
+        let compuesto = enumera::es_compuesto(&ifaces[..n_ifs]);
+
+        for (iface, clase, subclase, proto) in &ifaces[..n_ifs] {
+            if *clase != enumera::CLASE_HID || *subclase != enumera::SUBCLASE_BOOT {
+                continue;
+            }
+            let es_teclado = *proto == enumera::PROTO_TECLADO && self.teclado.is_none();
+            let es_raton = *proto == enumera::PROTO_RATON && self.raton_libre(compuesto);
+            if !es_teclado && !es_raton {
+                continue;
+            }
+
+            let (_addr, mps, interval, dci) = match enumera::intr_in(cfg, *iface) {
+                Some(e) => e,
+                None => continue,
+            };
+            let (buf_phys, buf_virt) =
+                match enumera::preparar_endpoint(slot, dci, mps, interval, *iface, cfg_val) {
+                    Some(b) => b,
+                    None => continue,
+                };
+
+            let direccion = Direccion::nueva(slot, dci);
+            if es_teclado {
+                self.teclado = Some(Teclado::nuevo(direccion, *iface, buf_phys, buf_virt));
+                cosecha.teclado = true;
+                h.log("[uhid] teclado listo\n");
+            } else {
+                if compuesto {
+                    h.log("[uhid] iface de raton en un TECLADO: provisional\n");
+                }
+                if self.instalar_raton(Raton::nuevo(direccion, buf_phys, buf_virt, compuesto)) {
+                    cosecha.raton = true;
+                    h.log("[uhid] raton listo\n");
+                }
+            }
+        }
+        cosecha
+    }
+
+    /// Enciende las bombas de lo que esté instalado y todavía parado.
+    ///
+    /// Se llama al final de la enumeración y tras cada adopción. El guardia
+    /// `bombeando()` no es cosmético: encolar dos veces en el mismo endpoint
+    /// deja dos TRB vivos y el segundo informe llega a un buffer que ya nadie
+    /// espera.
+    fn arrancar_bombas(&mut self) {
+        let h = bmo_xhci::hal();
+        if let Some(k) = self.teclado.as_mut() {
+            if !k.bombeando() && !k.arrancar() {
+                // Sin anillo no hay transferencia, y sin transferencia el
+                // teclado enmudece para siempre. Callarlo fue lo que costó las
+                // fotos.
+                h.log("[uhid] teclado SIN anillo: no se pudo encolar\n");
+            }
+        }
+        if let Some(m) = self.raton.as_mut() {
+            if !m.bombeando() && !m.arrancar() {
+                h.log("[uhid] raton SIN anillo: no se pudo encolar\n");
+            }
+        }
+    }
+
+    /// **Algo se enchufó en `port`: adóptalo.**
+    ///
+    /// ★ Ésta es la mitad que faltaba. El aviso de cambio de puerto ya llegaba
+    /// —la foto lo enseñó, `usb: puerto: algo se ENCHUFO (sin re-enumerar aun)`—
+    /// y **nadie hacía nada con él**. El comentario decía "primero ver, luego
+    /// hacer"; ya se vio.
+    ///
+    /// Sin esto, la enumeración era una carrera de un solo intento contra el
+    /// arranque: un aparato que tarda en engancharse —un ratón con firmware RGB
+    /// tarda— se perdía **hasta el siguiente reinicio**. De ahí el síntoma que
+    /// no encajaba con nada: unas veces arrancaba el teclado y otras el ratón,
+    /// nunca los dos, sin tocar una línea de código entre arranque y arranque.
+    /// No era intermitencia del hardware: era quién llegaba a tiempo.
+    ///
+    /// Devuelve `true` si se instaló algo nuevo.
+    ///
+    /// # Safety
+    /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
+    pub unsafe fn adoptar_puerto(&mut self, port: u8) -> bool {
+        // Si no falta nada, no se toca el bus. Re-enumerar por gusto mete
+        // control transfers en un controlador con dos aparatos bombeando.
+        if self.completo() {
+            return false;
+        }
+        let cosecha = self.cosechar_puerto(port);
+        if cosecha.teclado || cosecha.raton {
+            self.arrancar_bombas();
+            return true;
+        }
+        false
+    }
+}
+
+/// Qué se instaló al mirar un puerto.
+struct Cosecha {
+    teclado: bool,
+    raton: bool,
 }
 
 impl InputHal for UsbHidHal {
@@ -162,74 +300,13 @@ impl InputHal for UsbHidHal {
 
         // ── Recorrer los puertos ──────────────────────────────────────────
         for port in 0..ctrl.max_ports {
-            unsafe {
-                let slot = match enumera::direccionar_puerto(port) {
-                    Some(s) => s,
-                    None => continue,
-                };
-                let mut cfg = [0u8; enumera::MAX_CFG];
-                let (cfg_val, largo) = match enumera::leer_descriptores(slot, &mut cfg) {
-                    Some(v) => v,
-                    None => continue,
-                };
-                let cfg = &cfg[..largo];
+            let cosecha = unsafe { self.cosechar_puerto(port) };
 
-                let mut ifaces = [(0u8, 0u8, 0u8, 0u8); enumera::MAX_IFACES];
-                let n_ifs = enumera::interfaces(cfg, &mut ifaces);
-                let compuesto = enumera::es_compuesto(&ifaces[..n_ifs]);
-
-                let mut hay_teclado = false;
-                let mut hay_raton = false;
-
-                for (iface, clase, subclase, proto) in &ifaces[..n_ifs] {
-                    if *clase != enumera::CLASE_HID || *subclase != enumera::SUBCLASE_BOOT {
-                        continue;
-                    }
-                    let es_teclado = *proto == enumera::PROTO_TECLADO && self.teclado.is_none();
-                    let es_raton =
-                        *proto == enumera::PROTO_RATON && self.raton_libre(compuesto);
-                    if !es_teclado && !es_raton {
-                        continue;
-                    }
-
-                    let (_addr, mps, interval, dci) = match enumera::intr_in(cfg, *iface) {
-                        Some(e) => e,
-                        None => continue,
-                    };
-                    let (buf_phys, buf_virt) = match enumera::preparar_endpoint(
-                        slot, dci, mps, interval, *iface, cfg_val,
-                    ) {
-                        Some(b) => b,
-                        None => continue,
-                    };
-
-                    let direccion = Direccion::nueva(slot, dci);
-                    if es_teclado {
-                        self.teclado =
-                            Some(Teclado::nuevo(direccion, *iface, buf_phys, buf_virt));
-                        hay_teclado = true;
-                        h.log("[uhid] teclado listo\n");
-                    } else {
-                        if compuesto {
-                            h.log("[uhid] iface de raton en un TECLADO: provisional\n");
-                        }
-                        if self.instalar_raton(Raton::nuevo(
-                            direccion, buf_phys, buf_virt, compuesto,
-                        )) {
-                            hay_raton = true;
-                            h.log("[uhid] raton listo\n");
-                        }
-                    }
-                }
-
-                // Sólo se corta con un ratón DEDICADO. Un teclado compuesto
-                // marca las dos banderas —su interfaz de medios cuenta como
-                // ratón— y cortar ahí dejaba el puerto del ratón de verdad sin
-                // visitar jamás.
-                let dedicado = self.raton.as_ref().is_some_and(|m| !m.es_provisional());
-                if hay_teclado && hay_raton && dedicado {
-                    break;
-                }
+            // Sólo se corta con un ratón DEDICADO. Un teclado compuesto marca
+            // las dos banderas —su interfaz de medios cuenta como ratón— y
+            // cortar ahí dejaba el puerto del ratón de verdad sin visitar jamás.
+            if cosecha.teclado && cosecha.raton && self.raton_dedicado() {
+                break;
             }
         }
 
@@ -244,23 +321,8 @@ impl InputHal for UsbHidHal {
         // Y un segundo motivo: el ratón PROVISIONAL de un teclado compuesto se
         // arrancaba y luego se sustituía por el dedicado, dejando una
         // transferencia viva en un endpoint que ya no lee nadie.
-        if let Some(k) = self.teclado.as_mut() {
-            if k.arrancar() {
-                h.log("[uhid] teclado bombeando\n");
-            } else {
-                // Sin anillo no hay transferencia, y sin transferencia el
-                // teclado enmudece para siempre. Callarlo fue lo que costó las
-                // fotos.
-                h.log("[uhid] teclado SIN anillo: no se pudo encolar\n");
-            }
-        }
-        if let Some(m) = self.raton.as_mut() {
-            if m.arrancar() {
-                h.log("[uhid] raton bombeando\n");
-            } else {
-                h.log("[uhid] raton SIN anillo: no se pudo encolar\n");
-            }
-        }
+        self.arrancar_bombas();
+        let _ = h;
 
         self.inicializado = true;
         self.teclado.is_some()

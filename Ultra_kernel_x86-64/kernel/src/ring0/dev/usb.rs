@@ -273,12 +273,7 @@ pub fn init(_ctx: &BootContext) {
     let ok = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
         let r = hid.init();
-        // Estado por dispositivo (teclado y mouse son interfaces separadas, o
-        // dispositivos separados): registramos ambos aunque READY mire al kbd.
-        KBD_RDY = hid.has_kbd();
-        MOUSE_RDY = hid.has_mouse();
-        KBD_SLOT = hid.kbd_slot();
-        MOUSE_SLOT = hid.mouse_slot();
+        refrescar_presencia();
         r
     };
     unsafe {
@@ -385,18 +380,52 @@ fn poll_ascii_interno() -> Option<u8> {
     // muerta que no combina produce DOS caracteres (´ + q = ´q).
     if let Some(b) = drain() { return Some(b); }
 
-    // ¿Enchufaron o desenchufaron algo? El xHC lo avisa con un evento de
-    // cambio de puerto, que hasta ahora se descartaba en el driver — por eso
-    // desconectar el teclado y volver a conectarlo no revivía nada.
+    // ── ¿Enchufaron algo? Adoptarlo ─────────────────────────────────────
     //
-    // Todavía NO se re-enumera: reconstruir el dispositivo es asignar slot,
-    // direccionarlo y configurar endpoints, y eso hay que hacerlo bien o deja
-    // el controlador a medias. Lo que sí hay ya es la CONSTANCIA — y con ella
-    // se puede comprobar en el Ryzen que el aviso llega antes de escribir la
-    // parte que actúa sobre él. Primero ver, luego hacer.
+    // ★ La enumeración del arranque era una carrera de UN SOLO INTENTO. El
+    // bucle recorre los puertos una vez y lo que no estuviera listo en ese
+    // instante se perdía **hasta el siguiente reinicio** — y un ratón con
+    // firmware RGB tarda en engancharse más que un teclado.
+    //
+    // De ahí el síntoma que no encajaba con nada: unas veces arrancaba el
+    // teclado y otras el ratón, nunca los dos, sin cambiar una línea entre
+    // arranque y arranque. No era hardware intermitente: era quién llegaba a
+    // tiempo. La foto lo dijo entero —`k=OK(s2) m=OK(s2)`, o sea el ratón era
+    // otra vez la interfaz de medios del teclado, y tres líneas más arriba
+    // `puerto: algo se ENCHUFO (sin re-enumerar aun) =3`: el ratón de verdad
+    // anunciándose en el puerto 3 **después** de que el bucle ya hubiera
+    // pasado, y nadie recogiéndolo.
+    //
+    // El aviso ya llegaba desde el commit anterior; lo que faltaba era actuar.
+    // Y actuar aquí es seguro por dos cosas que ya están puestas: este camino
+    // corre con el CR3 del kernel (ver la cabecera de `poll_ascii`), y los
+    // informes del aparato que YA bombea no se pierden mientras se enumera el
+    // nuevo porque el aparcadero de `bmo_xhci` los guarda.
+    //
+    // ★ Lo que SÍ cuesta, dicho claro: enumerar lleva esperas (hasta seis
+    // reintentos de 50 ms), y esto se recorre desde dentro de un syscall. Un
+    // enchufe puede congelar al que pidió la tecla casi un tercio de segundo.
+    // Se acepta porque ocurre **una vez por enchufe** —`tomar_cambio_puerto`
+    // consume el aviso— y porque la alternativa era no tener nunca los dos
+    // aparatos. Cuando haya un hilo de kernel para el bus, esto se muda ahí.
     if let Some((puerto, conectado)) = bmo_xhci::tomar_cambio_puerto() {
         if conectado {
-            crate::ring0::cabina::info("usb", "puerto: algo se ENCHUFO (sin re-enumerar aun)", puerto as u64);
+            let adoptado = unsafe {
+                let hid = &mut *core::ptr::addr_of_mut!(HID);
+                // `port_reset` y compañía trabajan en índice 0-based; el Port
+                // ID del evento es 1-based. Restar aquí y no en el driver: el
+                // que traduce es el que conoce las dos convenciones.
+                hid.adoptar_puerto(puerto.saturating_sub(1))
+            };
+            if adoptado {
+                crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y adoptado", puerto as u64);
+                unsafe { refrescar_presencia() };
+            } else {
+                // No es un fallo: puede que ya no faltara nada, o que lo
+                // enchufado no sea un HID. Decirlo distingue "no hacía falta"
+                // de "se intentó y no salió".
+                crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, nada que adoptar", puerto as u64);
+            }
         } else {
             crate::ring0::cabina::warn("usb", "puerto: algo se DESENCHUFO", puerto as u64);
         }
@@ -608,6 +637,24 @@ pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
 /// Si HEV sube pero kev no → mapeo (ya no deberia tras el keypad).
 pub fn xfer_stats() -> (u32, u32, u32) {
     (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
+}
+
+/// Vuelve a leer del driver quién hay y en qué slot.
+///
+/// Se llama tras enumerar Y tras cada adopción en caliente. Antes esto estaba
+/// copiado en línea dentro de `init` y por eso no existía la posibilidad de
+/// actualizarlo: un ratón adoptado más tarde habría seguido saliendo como
+/// ausente en el panel aunque estuviera bombeando, y la fila del diagnóstico
+/// habría mentido justo cuando por fin decía la verdad.
+///
+/// # Safety
+/// Toca los estáticos del módulo; sólo desde el camino de USB.
+unsafe fn refrescar_presencia() {
+    let hid = &*core::ptr::addr_of!(HID);
+    KBD_RDY = hid.has_kbd();
+    MOUSE_RDY = hid.has_mouse();
+    KBD_SLOT = hid.kbd_slot();
+    MOUSE_SLOT = hid.mouse_slot();
 }
 
 /// El reparto de informes: `(bombea el teclado, bombea el raton, huerfanos)`.
