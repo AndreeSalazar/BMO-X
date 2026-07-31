@@ -6,6 +6,7 @@
 use bmo_userland as bmo;
 
 pub(crate) mod calc;
+pub(crate) mod datos;
 pub(crate) mod cursor;
 pub(crate) mod salida;
 
@@ -284,6 +285,29 @@ pub(crate) fn borrar_caja(p: &bmo::Pantalla, c: &Caja) {
         for col in 0..CAJA_ANCHO {
             let (x, y) = (c.x + col, c.y + fila);
             p.punto(x, y, color_escena(c, false, x, y));
+        }
+    }
+}
+
+/// Borra la consola de datos devolviendo cada píxel a lo que hay debajo.
+///
+/// ★ `visible` es si la caja de Ejecutar está abierta, y hace falta: la consola
+/// de datos se pinta ENCIMA de ella. `color_escena` sabe devolver el color de
+/// la caja cuando el píxel cae dentro, así que pasarle `false` aquí dejaría un
+/// agujero con el fondo del escritorio en medio de la ventana de abajo.
+///
+/// Quien llama repinta después el texto de la caja: esto devuelve el fondo, no
+/// las letras.
+pub(crate) fn borrar_datos(
+    p: &bmo::Pantalla,
+    c: &Caja,
+    d: &datos::CajaDatos,
+    visible: bool,
+) {
+    for fila in 0..d.alto {
+        for col in 0..d.ancho {
+            let (x, y) = (d.x + col, d.y + fila);
+            p.punto(x, y, color_escena(c, visible, x, y));
         }
     }
 }

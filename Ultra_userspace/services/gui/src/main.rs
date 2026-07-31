@@ -184,6 +184,13 @@ pub extern "C" fn _start() -> ! {
     let mut combo_antes = false;
     let mut hubo_tecla_en_combo = false;
     let mut visible = true;
+    // ── La consola de DATOS (F12) ──
+    //
+    // Una tecla de funcion no produce caracter en NINGUNA distribucion, asi que
+    // no puede chocar con escribir. Es lo unico que importa en un atajo del
+    // sistema, y es lo que `Ctrl+Alt` no puede ofrecer: en espanol ES AltGr.
+    let caja_datos = escena::datos::CajaDatos::nueva(&p);
+    let mut datos_visible = false;
 
     loop {
         vueltas = vueltas.wrapping_add(1);
@@ -733,6 +740,28 @@ pub extern "C" fn _start() -> ! {
                     0x88 => {
                         salida.mover_vista(-(SAL_ROWS as i32 - 1));
                     }
+                    // ★ F12 — la consola de DATOS.
+                    //
+                    // Se conmuta al PULSAR y no al soltar, al reves que
+                    // `Ctrl+Alt`: aquella tenia que esperar porque es AltGr y
+                    // podia estar a mitad de un `@`. Una tecla de funcion no
+                    // esta a mitad de nada.
+                    0x94 => {
+                        datos_visible = !datos_visible;
+                        if datos_visible {
+                            escena::datos::pintar(&p, &caja_datos);
+                        } else {
+                            // Al cerrarla hay que devolver el fondo Y repintar
+                            // lo que tapaba: la caja de Ejecutar esta debajo.
+                            borrar_datos(&p, &caja, &caja_datos, visible);
+                            if visible {
+                                pintar_caja(&p, &caja);
+                                repintar_campo = true;
+                                salida.sucia = true;
+                            }
+                        }
+                        continue;
+                    }
                     // El resto de navegación se ignora, pero EXPLÍCITAMENTE:
                     // dejarlas caer al comodín las dibujaría como basura.
                     0x89..=0x9F => {}
@@ -876,10 +905,18 @@ pub extern "C" fn _start() -> ! {
         if salida.sucia {
             // Se pinta sólo si se ve; el contenido sigue acumulándose oculto,
             // así que al invocar la ventana está todo lo que pasó mientras.
-            if visible {
+            //
+            // ★ Y NO si la consola de datos está encima. Sin este guardia, el
+            // fotograma siguiente repintaría la rejilla POR DEBAJO y la
+            // dibujaría encima de la ventana de datos, dejándola a trozos. La
+            // salida no se pierde: `sucia` se queda puesto y se pinta entera
+            // al cerrar.
+            if visible && !datos_visible {
                 pintar_salida(&p, &caja, &salida);
+                salida.sucia = false;
+            } else if !visible {
+                salida.sucia = false;
             }
-            salida.sucia = false;
         }
 
         // El parpadeo del cursor de escritura. Sólo repinta cuando cambia de
@@ -898,7 +935,7 @@ pub extern "C" fn _start() -> ! {
             caret = !caret;
             repintar_campo = true;
         }
-        if repintar_campo && visible {
+        if repintar_campo && visible && !datos_visible {
             pintar_campo(&p, &caja, &ruta[..n], cur, caret);
         }
 

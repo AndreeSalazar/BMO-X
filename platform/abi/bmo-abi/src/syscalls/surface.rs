@@ -152,6 +152,23 @@ pub const INFO_PROGRAMAS_OLVIDADOS: u64 = 0x0E;
 /// ¿Hay disco listo? ¿Está montado el volumen de datos para escribir?
 pub const INFO_DISCO_LISTO: u64 = 0x0F;
 pub const INFO_DATOS_MONTADO: u64 = 0x10;
+/// ── ESTRATOS ──────────────────────────────────────────────────────
+///
+/// El volumen de datos grande. Ring 3 los necesita para poder ENSENAR el estado
+/// del almacen sin cruzar a Ring 0 por cada dato: son una fila mas de la tabla
+/// de `OP_INFO`, que es como crece esta superficie sin tocar el ABI.
+pub const INFO_ES_MONTADO: u64 = 0x11;
+/// Generacion del superbloque: cuantas transacciones lleva el volumen.
+pub const INFO_ES_GENERACION: u64 = 0x12;
+pub const INFO_ES_BLOQUES: u64 = 0x13;
+pub const INFO_ES_USADOS: u64 = 0x14;
+pub const INFO_ES_BLOQUE_TAM: u64 = 0x15;
+/// 0 holgado, 1 ambar, 2 rojo, 3 solo lectura. Ver `bmo_estratos::espacio`.
+pub const INFO_ES_NIVEL: u64 = 0x16;
+/// El gate del §5: 1 si el volumen nacio en ESTE disco.
+pub const INFO_ES_IDENTIDAD: u64 = 0x17;
+/// 1 si hoy se puede escribir. Hoy siempre 0: falta cablear la E/S.
+pub const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
@@ -240,6 +257,24 @@ pub const TECLA_FIN: u8 = 0x85;
 pub const TECLA_SUPR: u8 = 0x86;
 pub const TECLA_REPAG: u8 = 0x87;
 pub const TECLA_AVPAG: u8 = 0x88;
+
+/// Las teclas de función, detrás de la navegación en el mismo rango C1.
+///
+/// ★ Son el sitio correcto para un atajo del sistema porque **no producen
+/// carácter en ninguna distribución**: no pueden chocar con escribir. Una
+/// combinación con `Ctrl+Alt` sí puede — en español `Ctrl+Alt` *es* AltGr.
+pub const TECLA_F1: u8 = 0x89;
+pub const TECLA_F2: u8 = 0x8A;
+pub const TECLA_F3: u8 = 0x8B;
+pub const TECLA_F4: u8 = 0x8C;
+pub const TECLA_F5: u8 = 0x8D;
+pub const TECLA_F6: u8 = 0x8E;
+pub const TECLA_F7: u8 = 0x8F;
+pub const TECLA_F8: u8 = 0x90;
+pub const TECLA_F9: u8 = 0x91;
+pub const TECLA_F10: u8 = 0x92;
+pub const TECLA_F11: u8 = 0x93;
+pub const TECLA_F12: u8 = 0x94;
 
 /// Operations accepted by `CURRENT_TASK`.
 pub mod task_op {

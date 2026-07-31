@@ -67,6 +67,26 @@
 #define BMO_TECLA_REPAG 0x87
 #define BMO_TECLA_AVPAG 0x88
 
+/* Las teclas de FUNCION, detras de la navegacion en el mismo rango C1.
+ *
+ * ★ Son el sitio correcto para un atajo del sistema porque **no producen
+ *   caracter en ninguna distribucion**: no pueden chocar con escribir. Una
+ *   combinacion con Ctrl+Alt si puede — en espanol Ctrl+Alt ES AltGr.
+ *
+ * F12 abre la consola de datos del compositor. */
+#define BMO_TECLA_F1 0x89
+#define BMO_TECLA_F2 0x8A
+#define BMO_TECLA_F3 0x8B
+#define BMO_TECLA_F4 0x8C
+#define BMO_TECLA_F5 0x8D
+#define BMO_TECLA_F6 0x8E
+#define BMO_TECLA_F7 0x8F
+#define BMO_TECLA_F8 0x90
+#define BMO_TECLA_F9 0x91
+#define BMO_TECLA_F10 0x92
+#define BMO_TECLA_F11 0x93
+#define BMO_TECLA_F12 0x94
+
 /* Reclama raton + teclado. Devuelve el handle, o **0 si no se pudo**.
  *
  * Comprobar el 0 no es opcional: es el caso normal cuando el compositor esta

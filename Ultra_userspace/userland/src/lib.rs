@@ -90,6 +90,23 @@ pub const INFO_PROGRAMAS: u64 = 0x0D;
 pub const INFO_PROGRAMAS_OLVIDADOS: u64 = 0x0E;
 pub const INFO_DISCO_LISTO: u64 = 0x0F;
 pub const INFO_DATOS_MONTADO: u64 = 0x10;
+/// ── ESTRATOS ──────────────────────────────────────────────────────
+///
+/// El volumen de datos grande. Ring 3 los necesita para poder ENSENAR el estado
+/// del almacen sin cruzar a Ring 0 por cada dato: son una fila mas de la tabla
+/// de `OP_INFO`, que es como crece esta superficie sin tocar el ABI.
+pub const INFO_ES_MONTADO: u64 = 0x11;
+/// Generacion del superbloque: cuantas transacciones lleva el volumen.
+pub const INFO_ES_GENERACION: u64 = 0x12;
+pub const INFO_ES_BLOQUES: u64 = 0x13;
+pub const INFO_ES_USADOS: u64 = 0x14;
+pub const INFO_ES_BLOQUE_TAM: u64 = 0x15;
+/// 0 holgado, 1 ambar, 2 rojo, 3 solo lectura. Ver `bmo_estratos::espacio`.
+pub const INFO_ES_NIVEL: u64 = 0x16;
+/// El gate del §5: 1 si el volumen nacio en ESTE disco.
+pub const INFO_ES_IDENTIDAD: u64 = 0x17;
+/// 1 si hoy se puede escribir. Hoy siempre 0: falta cablear la E/S.
+pub const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 
 // Campos de `OP_INFO_TEXTO`.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;

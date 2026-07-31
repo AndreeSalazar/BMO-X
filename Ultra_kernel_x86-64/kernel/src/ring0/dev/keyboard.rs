@@ -107,8 +107,39 @@ pub const KEY_DELETE: u8 = 0x86;
 pub const KEY_PGUP: u8 = 0x87;
 pub const KEY_PGDN: u8 = 0x88;
 
+// ── Las teclas de función ───────────────────────────────────────────────────
+//
+// Set 1 les da 0x3B..0x44 más 0x57 y 0x58, pero **no producían nada**: la
+// distribución no las resolvía a ningún byte, así que llegaban al kernel y
+// morían ahí. Un hueco limpio, y el mejor sitio del teclado para un atajo del
+// sistema por una razón concreta:
+//
+// ★ **Una tecla de función no produce carácter en NINGUNA distribución.** No
+//   puede chocar con escribir. Cualquier combinación con `Ctrl+Alt` sí puede —
+//   en español `Ctrl+Alt` *es* AltGr, lo que da `@ # [ ] \ | €`, y el
+//   compositor ya lleva una danza entera (disparar al soltar, y sólo si no
+//   llegó ningún carácter mientras tanto) para que su atajo no rompa nada.
+//   Encadenar otro combo encima empeoraría justo lo que costó arreglar.
+//
+// Van en el mismo rango C1 que la navegación, detrás de ella.
+pub const KEY_F1: u8 = 0x89;
+pub const KEY_F2: u8 = 0x8A;
+pub const KEY_F3: u8 = 0x8B;
+pub const KEY_F4: u8 = 0x8C;
+pub const KEY_F5: u8 = 0x8D;
+pub const KEY_F6: u8 = 0x8E;
+pub const KEY_F7: u8 = 0x8F;
+pub const KEY_F8: u8 = 0x90;
+pub const KEY_F9: u8 = 0x91;
+pub const KEY_F10: u8 = 0x92;
+pub const KEY_F11: u8 = 0x93;
+pub const KEY_F12: u8 = 0x94;
+
 /// ¿Es una tecla de navegación (no imprimible)?
 pub fn is_nav(b: u8) -> bool { (KEY_UP..=KEY_PGDN).contains(&b) }
+
+/// ¿Es una tecla de función?
+pub fn is_funcion(b: u8) -> bool { (KEY_F1..=KEY_F12).contains(&b) }
 
 // ── LEDs ────────────────────────────────────────────────────────────────────
 
@@ -369,6 +400,20 @@ fn nav_key(code: u8) -> Option<u8> {
         c if c == bmo_uhid::SC_DELETE => KEY_DELETE,
         c if c == bmo_uhid::SC_PGUP => KEY_PGUP,
         c if c == bmo_uhid::SC_PGDN => KEY_PGDN,
+        // Las de función traen su scancode Set 1 de siempre: `hid_to_ps2` ya
+        // las traducía y aquí se caían por el `_ => None`.
+        0x3B => KEY_F1,
+        0x3C => KEY_F2,
+        0x3D => KEY_F3,
+        0x3E => KEY_F4,
+        0x3F => KEY_F5,
+        0x40 => KEY_F6,
+        0x41 => KEY_F7,
+        0x42 => KEY_F8,
+        0x43 => KEY_F9,
+        0x44 => KEY_F10,
+        0x57 => KEY_F11,
+        0x58 => KEY_F12,
         _ => return None,
     })
 }

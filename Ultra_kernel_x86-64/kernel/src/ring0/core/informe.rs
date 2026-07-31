@@ -46,6 +46,18 @@ const INFO_PROGRAMAS: u64 = 0x0D;
 const INFO_PROGRAMAS_OLVIDADOS: u64 = 0x0E;
 const INFO_DISCO_LISTO: u64 = 0x0F;
 const INFO_DATOS_MONTADO: u64 = 0x10;
+// ── ESTRATOS ──
+//
+// El volumen grande. Ring 3 los necesita para poder ENSENAR el estado del
+// almacen; anadirlos es una fila cada uno, no una operacion nueva.
+const INFO_ES_MONTADO: u64 = 0x11;
+const INFO_ES_GENERACION: u64 = 0x12;
+const INFO_ES_BLOQUES: u64 = 0x13;
+const INFO_ES_USADOS: u64 = 0x14;
+const INFO_ES_BLOQUE_TAM: u64 = 0x15;
+const INFO_ES_NIVEL: u64 = 0x16;
+const INFO_ES_IDENTIDAD: u64 = 0x17;
+const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 
 const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
@@ -88,6 +100,34 @@ pub fn campo(n: u64) -> u64 {
         INFO_PROGRAMAS_OLVIDADOS => crate::ring0::task::proc::programas_olvidados() as u64,
         INFO_DISCO_LISTO => crate::ring0::dev::disk::is_ready() as u64,
         INFO_DATOS_MONTADO => crate::ring0::fsys::fs::data_mounted() as u64,
+        INFO_ES_MONTADO => crate::ring0::fsys::estratos::is_mounted() as u64,
+        INFO_ES_IDENTIDAD => crate::ring0::fsys::estratos::identidad_ok() as u64,
+        INFO_ES_GENERACION => {
+            crate::ring0::fsys::estratos::superbloque().map_or(0, |sb| sb.generation)
+        }
+        INFO_ES_BLOQUES => {
+            crate::ring0::fsys::estratos::ocupacion().map_or(0, |o| o.totales)
+        }
+        INFO_ES_USADOS => {
+            crate::ring0::fsys::estratos::ocupacion().map_or(0, |o| o.usados)
+        }
+        INFO_ES_BLOQUE_TAM => {
+            crate::ring0::fsys::estratos::superbloque().map_or(0, |sb| sb.block_size as u64)
+        }
+        INFO_ES_NIVEL => crate::ring0::fsys::estratos::ocupacion().map_or(0, |o| {
+            match o.nivel() {
+                bmo_estratos::Nivel::Holgado => 0,
+                bmo_estratos::Nivel::Ambar => 1,
+                bmo_estratos::Nivel::Rojo => 2,
+                bmo_estratos::Nivel::SoloLectura => 3,
+            }
+        }),
+        // ★ Hoy SIEMPRE cero, y a proposito. La maquina de estados de la
+        // transaccion existe y esta probada, pero **nadie la ha cableado al
+        // dispositivo**: no hay `write` ni `FLUSH CACHE`. Contestar 1 aqui
+        // seria prometer una escritura que no ocurre — y en un almacen, una
+        // promesa de escritura que no ocurre es como se pierde el trabajo.
+        INFO_ES_ESCRIBIBLE => 0,
         _ => 0,
     }
 }
