@@ -157,6 +157,42 @@ justo la que hace colgarse un programa portado sin mirar.
 
 ---
 
+## 8. Los intrínsecos y la librería `semantic/`
+
+62 filas en `intrinsics.toml`. Cada una es una instrucción con sus bytes
+exactos; `semantic/*.h` les pone tipo, nombre y manual encima.
+
+**Hay una prueba que compila una llamada a CADA fila**
+(`cada_intrinseco_de_la_tabla_compila`). No comprueba que los bytes sean los
+correctos —eso lo dice el manual de Intel y está en la fila— sino que la fila es
+**emitible**: un nombre de registro mal escrito falla ahí y no en metal.
+
+### Lo que el emulador SÍ puede contestar
+
+| Se escribe | Debe salir | Por qué |
+|---|---|---|
+| `atomico_xchg(&c, 42)` con `c=7` | `7 42` | Devuelve **lo que había**, no lo que se puso. Es lo que se escribe al revés sin notarlo |
+| `atomico_cas(&c, 5, 9)` con `c=5`, luego `cas(&c,5,77)` | `5 9 9 9` | Cuando no cuadra **deja el valor y devuelve el de verdad** — por eso se puede reintentar sin releer |
+| `xadd` dos veces sobre `100` | `100 101 102` | Entrega el ANTERIOR: un contador que no da el mismo número dos veces |
+| `bits_ceros_derecha(0)` | `32` | `tzcnt` está DEFINIDO en cero; `bsf` no |
+| `bytes_al_reves(0x11223344)` | `44332211` | La red habla big-endian |
+
+★ **Un no-op no siempre es mentira.** Una barrera en un intérprete de un solo
+hilo que ejecuta en orden **es** un no-op de verdad: lo que ordena ya estaba
+ordenado. Por eso `0F AE` se modela.
+
+### Lo que SÓLO el metal puede contestar
+
+`cr0` `cr2` `cr3` `cr4` `rdmsr` `wrmsr` `invlpg` `lgdt` `lidt` `ltr` `xgetbv`
+`rdrand` `cpuid` `rdtsc` `monitor/mwait` `wbinvd`.
+
+El emulador **da panic** con estas a propósito. Devolver `0` como si fuera el
+valor de un MSR sería inventarse un dato — y un emulador que inventa datos es
+peor que uno que no los tiene. Se compilan (la matriz lo comprueba) y se
+verifican en el Ryzen o no se verifican.
+
+---
+
 ## Mentiras del emulador (histórico)
 
 Cada una hizo **fallar código correcto** o **pasar código roto**. Se apuntan

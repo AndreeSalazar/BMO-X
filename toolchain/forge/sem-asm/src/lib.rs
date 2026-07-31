@@ -129,6 +129,19 @@ impl Intrinsics {
         self.map.get(name)
     }
 
+    /// Todos los nombres de la tabla, ordenados.
+    ///
+    /// Existe para que un frontend pueda montar una **matriz de conformidad**:
+    /// compilar una llamada a cada intrínseco y comprobar que sale. Sin poder
+    /// recorrerla, una fila con el nombre de un registro mal escrito no falla
+    /// hasta que alguien la usa — y "alguien la usa" en una tabla de driver
+    /// puede ser dentro de seis meses y en metal.
+    pub fn names(&self) -> Vec<&str> {
+        let mut v: Vec<&str> = self.map.keys().map(|s| s.as_str()).collect();
+        v.sort_unstable();
+        v
+    }
+
     pub fn len(&self) -> usize { self.map.len() }
     pub fn is_empty(&self) -> bool { self.map.is_empty() }
 }

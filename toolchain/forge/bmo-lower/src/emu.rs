@@ -745,12 +745,31 @@ impl Machine {
         // codegen SÍ emite `66 89` para los campos de 16 bits desde que existen
         // los structs, y no había ni un test que guardara uno.
         let mut op16 = false;
-        while byte == 0x66 {
-            op16 = true;
+        // `F0` (LOCK) y `F3` (REP/obligatorio) son prefijos de grupo, igual que
+        // `66`, y pueden venir en cualquier orden delante del REX.
+        //
+        // ★ LOCK se acepta y **no cambia nada aquí**: con un solo núcleo emulado
+        // toda instrucción es atómica por construcción. Lo que sí se puede
+        // probar —y es lo que se equivoca— es la SEMANTICA: que `xchg` y
+        // `cmpxchg` devuelvan **lo que había** y no lo que se puso. Eso no se ve
+        // en un volcado de bytes.
+        //
+        // `F3` era "sólo puede ser PAUSE" y hacía `assert`. Desde que la tabla
+        // tiene `popcnt`, `tzcnt` y `lzcnt` —que lo llevan como prefijo
+        // obligatorio— eso reventaba en cuanto alguien contara bits.
+        let mut lock = false;
+        let mut f3 = false;
+        loop {
+            match byte {
+                0x66 => op16 = true,
+                0xF0 => lock = true,
+                0xF3 => f3 = true,
+                _ => break,
+            }
             byte = self.fetch_u8();
         }
+        let _ = lock;
         let mut rex = 0u8;
-        // Prefijos que emitimos: F3 (pause) se trata aparte más abajo.
         if (0x40..=0x4F).contains(&byte) {
             rex = byte;
             byte = self.fetch_u8();
@@ -1074,9 +1093,15 @@ impl Machine {
                     self.rip = (self.rip as i64 + rel as i64) as usize;
                 }
             }
-            0xF3 => {
-                let nop = self.fetch_u8();
-                assert_eq!(nop, 0x90, "solo se emite PAUSE con prefijo F3");
+            // `xchg r/m, r` — intercambia y devuelve lo que habia. Sobre
+            // memoria lleva LOCK implicito, y por eso es el cerrojo mas simple
+            // que existe.
+            0x87 => {
+                let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                let a = self.load(dst, wide);
+                let b = self.read_reg(reg, wide);
+                self.store(dst, b, ancho);
+                self.write_reg(reg, a, wide);
             }
             0x0F => {
                 let second = self.fetch_u8();
@@ -1107,6 +1132,104 @@ impl Machine {
                             Operand::Reg(r) => self.regs[r] & 0xFF,
                         };
                         self.write_reg(reg, v, false);
+                    }
+                    // ── Los atomicos: lo que se prueba es que devuelvan lo de
+                    //    ANTES, que es lo que se escribe al reves sin notarlo ──
+                    //
+                    // `cmpxchg r/m, r`: compara rax con el destino. Si son
+                    // iguales, mete el registro fuente; si no, **rax se queda
+                    // con lo que habia**. Ese detalle —que en el caso de fallo
+                    // rax cambia— es justo el que permite reintentar sin releer.
+                    0xB1 => {
+                        let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                        let actual = self.load(dst, wide);
+                        let esperado = self.read_reg(RAX, wide);
+                        if actual == esperado {
+                            let nuevo = self.read_reg(reg, wide);
+                            self.store(dst, nuevo, ancho);
+                            self.zf = true;
+                        } else {
+                            self.zf = false;
+                        }
+                        // En los dos casos rax acaba con lo que habia.
+                        self.write_reg(RAX, actual, wide);
+                    }
+                    // `xadd r/m, r`: suma y deja en el REGISTRO lo anterior.
+                    0xC1 => {
+                        let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                        let antes = self.load(dst, wide);
+                        let suma = self.read_reg(reg, wide);
+                        self.store(dst, antes.wrapping_add(suma), ancho);
+                        self.write_reg(reg, antes, wide);
+                    }
+                    // ── Bits ──
+                    //
+                    // `popcnt` lleva F3 obligatorio; `bsf`/`bsr` no lo llevan, y
+                    // con el pasan a ser `tzcnt`/`lzcnt`. El mismo opcode con
+                    // dos significados segun el prefijo: por eso hace falta
+                    // saber si venia `f3`.
+                    0xB8 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = self.load(src, wide);
+                        self.write_reg(reg, v.count_ones() as u64, wide);
+                    }
+                    0xBC | 0xBD => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = if wide { self.load(src, true) } else { self.load(src, false) & 0xFFFF_FFFF };
+                        let anchura = if wide { 64 } else { 32 };
+                        let r = match (second, f3) {
+                            // tzcnt / lzcnt: DEFINIDOS en cero, dan la anchura.
+                            (0xBC, true) => v.trailing_zeros().min(anchura) as u64,
+                            (0xBD, true) => {
+                                if wide { v.leading_zeros() as u64 }
+                                else { (v as u32).leading_zeros() as u64 }
+                            }
+                            // bsf / bsr: INDEFINIDOS en cero. Aqui se deja el
+                            // destino intacto, que es lo que hace el silicio —
+                            // asi un mapa de bits lleno pasado sin comprobar da
+                            // el indice de la busqueda ANTERIOR, igual que en
+                            // metal, y el test lo puede ver.
+                            (0xBC, false) => {
+                                if v == 0 { self.read_reg(reg, wide) } else { v.trailing_zeros() as u64 }
+                            }
+                            _ => {
+                                if v == 0 { self.read_reg(reg, wide) }
+                                else { (anchura - 1 - if wide { v.leading_zeros() } else { (v as u32).leading_zeros() }) as u64 }
+                            }
+                        };
+                        self.zf = v == 0;
+                        self.write_reg(reg, r, wide);
+                    }
+                    // `bswap r` — el registro va DENTRO del opcode.
+                    0xC8..=0xCF => {
+                        let r = ((second & 7) as usize) | (rex_b << 3);
+                        let v = self.read_reg(r, wide);
+                        let dado_la_vuelta = if wide {
+                            v.swap_bytes()
+                        } else {
+                            (v as u32).swap_bytes() as u64
+                        };
+                        self.write_reg(r, dado_la_vuelta, wide);
+                    }
+                    // `0F AE` — barreras (mfence/lfence/sfence) y `clflush`.
+                    //
+                    // ★ Aqui un no-op NO es mentir, y esa distincion importa:
+                    // una barrera en un interprete de un solo hilo que ejecuta
+                    // en orden **es** un no-op de verdad, no una simplificacion.
+                    // Lo que ordena ya estaba ordenado.
+                    //
+                    // Por eso este opcode se modela y `rdmsr` o `mov rax, cr0`
+                    // siguen dando panic: devolver 0 como si fuera el valor de
+                    // un MSR seria inventarse un dato, y eso el emulador no lo
+                    // hace. Ver VERDAD.md — hay intrinsecos que solo el metal
+                    // puede contestar.
+                    0xAE => {
+                        let modrm = self.code[self.rip];
+                        if modrm >> 6 == 3 {
+                            self.rip += 1; // fence: el ModRM es la variante
+                        } else {
+                            let _ = self.modrm(rex_r, rex_x, rex_b); // clflush
+                        }
                     }
                     // imul reg, r/m
                     0xAF => {

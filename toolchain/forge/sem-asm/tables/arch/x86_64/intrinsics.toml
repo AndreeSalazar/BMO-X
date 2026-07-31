@@ -139,3 +139,261 @@ description = "La MISMA puerta, recogiendo el VALOR (rdx) en vez del codigo"
 bytes = [0x0F, 0x05]
 args = ["rax", "rdi", "rsi", "rdx", "r10", "r8"]
 returns = "rdx"
+
+# ═══════════════════════════════════════════════════════════════════
+#  Lo que un DRIVER necesita de verdad
+# ═══════════════════════════════════════════════════════════════════
+#
+# Hasta aqui la tabla tenia doce instrucciones y servia para un hola-mundo con
+# puertos. Un driver de verdad —xHCI, AHCI, PCI— pide registros de control,
+# barreras de TLB, atomicos y cuenta de bits.
+#
+# Cada una de estas es una FILA, y ese es el punto entero: en GCC y Clang los
+# intrinsecos estan cableados en C++ dentro del compilador (`BuiltinsX86.def`,
+# miles de lineas). Aqui anadir una instruccion no toca Rust.
+#
+# ── Como se leen los operandos ──
+#
+# El mecanismo emite BYTES FIJOS, asi que el registro va dentro del opcode o del
+# ModRM y esta ELEGIDO aqui. `args` dice a que registro va cada argumento y el
+# codegen lo vuelca justo antes. Por eso una instruccion que en ensamblador
+# acepta cualquier registro, aqui acepta uno: esto es una tabla, no un
+# asignador de registros.
+
+# ── Registros de control ──────────────────────────────────────────
+#
+# `mov rax, cr0` no lleva REX.W: en modo largo estos movimientos son de 64 bits
+# siempre. El numero de CR va en el campo `reg` del ModRM.
+
+[cr0]
+description = "Lee CR0 (Ring 0)"
+bytes = [0x0F, 0x20, 0xC0]
+returns = "rax"
+
+[set_cr0]
+description = "Escribe CR0: __set_cr0(v) (Ring 0)"
+bytes = [0x0F, 0x22, 0xC0]
+args = ["rax"]
+
+[cr2]
+description = "Lee CR2 — la direccion que causo el ultimo #PF (Ring 0)"
+bytes = [0x0F, 0x20, 0xD0]
+returns = "rax"
+
+[cr3]
+description = "Lee CR3 — la raiz de las tablas de paginas (Ring 0)"
+bytes = [0x0F, 0x20, 0xD8]
+returns = "rax"
+
+[set_cr3]
+description = "Escribe CR3: cambia de espacio de direcciones Y VACIA el TLB (Ring 0)"
+bytes = [0x0F, 0x22, 0xD8]
+args = ["rax"]
+
+[cr4]
+description = "Lee CR4 (Ring 0)"
+bytes = [0x0F, 0x20, 0xE0]
+returns = "rax"
+
+[set_cr4]
+description = "Escribe CR4 — aqui viven OSXSAVE, PGE y SMEP (Ring 0)"
+bytes = [0x0F, 0x22, 0xE0]
+args = ["rax"]
+
+# ── TLB y caches ──────────────────────────────────────────────────
+
+[invlpg]
+description = "Invalida UNA pagina del TLB: __invlpg(dir) (Ring 0)"
+bytes = [0x0F, 0x01, 0x38]
+args = ["rax"]
+
+[clflush]
+description = "Expulsa de todos los niveles de cache la linea de esa direccion"
+bytes = [0x0F, 0xAE, 0x38]
+args = ["rax"]
+
+[invd]
+description = "Invalida caches SIN escribir lo sucio. Casi siempre es un error: pierde datos (Ring 0)"
+bytes = [0x0F, 0x08]
+
+# ── Descriptores del sistema ──────────────────────────────────────
+#
+# Todos toman la direccion de un pseudo-descriptor de 10 bytes (limite de 2 +
+# base de 8). Construirlo es cosa del llamante.
+
+[lgdt]
+description = "Carga GDTR desde [rax] (Ring 0)"
+bytes = [0x0F, 0x01, 0x10]
+args = ["rax"]
+
+[lidt]
+description = "Carga IDTR desde [rax] (Ring 0)"
+bytes = [0x0F, 0x01, 0x18]
+args = ["rax"]
+
+[sgdt]
+description = "Guarda GDTR en [rax]"
+bytes = [0x0F, 0x01, 0x00]
+args = ["rax"]
+
+[sidt]
+description = "Guarda IDTR en [rax]"
+bytes = [0x0F, 0x01, 0x08]
+args = ["rax"]
+
+[ltr]
+description = "Carga el Task Register con un selector: __ltr(sel) (Ring 0)"
+bytes = [0x0F, 0x00, 0xD8]
+args = ["ax"]
+
+[lldt]
+description = "Carga LDTR con un selector (Ring 0)"
+bytes = [0x0F, 0x00, 0xD0]
+args = ["ax"]
+
+# ── Tiempo y estado extendido ─────────────────────────────────────
+
+[rdtscp]
+description = "Como rdtsc pero SERIALIZA: nada de antes se adelanta. Ademas deja el id del CPU en ecx"
+bytes = [0x0F, 0x01, 0xF9]
+returns = "u64_edx_eax"
+
+[xgetbv]
+description = "Lee un registro de control extendido: __xgetbv(indice). XCR0 es el 0"
+bytes = [0x0F, 0x01, 0xD0]
+args = ["ecx"]
+returns = "u64_edx_eax"
+
+[xsetbv]
+description = "Escribe uno: __xsetbv(indice, valor) (Ring 0)"
+bytes = [0x0F, 0x01, 0xD1]
+args = ["ecx", "u64_edx_eax"]
+
+# ── RFLAGS ────────────────────────────────────────────────────────
+#
+# Dos instrucciones en una sola fila: no existe `mov rax, rflags`. Es legitimo
+# —la tabla emite BYTES, no instrucciones sueltas— y es la unica forma de leerlas.
+
+[flags]
+description = "Lee RFLAGS (pushfq + pop rax). Con esto se sabe si las interrupciones estaban activas"
+bytes = [0x9C, 0x58]
+returns = "rax"
+
+[set_flags]
+description = "Escribe RFLAGS (push rax + popfq): __set_flags(v)"
+bytes = [0x50, 0x9D]
+args = ["rax"]
+
+# ── Atomicos ──────────────────────────────────────────────────────
+#
+# La direccion va en `rdi` y el valor en `rax`, y el prefijo `F0` (LOCK) es
+# parte de los bytes: sin el, en cuanto haya mas de un nucleo esto deja de ser
+# atomico y el fallo sale una vez cada mil arranques.
+#
+# ★ `xchg` sobre memoria lleva LOCK IMPLICITO —el manual dice que el prefijo se
+#   asume— y por eso es la unica de este bloque sin `F0` delante.
+
+[xchg]
+description = "Intercambia [rdi] con rax y devuelve lo que habia. El cerrojo mas simple que existe"
+bytes = [0x48, 0x87, 0x07]
+args = ["rdi", "rax"]
+returns = "rax"
+
+[cmpxchg]
+description = "Compara-e-intercambia: __cmpxchg(dir, esperado, nuevo) da lo que HABIA. Si coincide con esperado, el cambio ocurrio"
+bytes = [0xF0, 0x48, 0x0F, 0xB1, 0x37]
+args = ["rdi", "rax", "rsi"]
+returns = "rax"
+
+[xadd]
+description = "Suma y devuelve lo ANTERIOR: __xadd(dir, cuanto). Un contador atomico"
+bytes = [0xF0, 0x48, 0x0F, 0xC1, 0x07]
+args = ["rdi", "rax"]
+returns = "rax"
+
+[lock_add]
+description = "Suma atomica sin devolver nada: __lock_add(dir, cuanto)"
+bytes = [0xF0, 0x48, 0x01, 0x07]
+args = ["rdi", "rax"]
+
+[lock_or]
+description = "OR atomico: enciende bits sin perder los que otro encienda a la vez"
+bytes = [0xF0, 0x48, 0x09, 0x07]
+args = ["rdi", "rax"]
+
+[lock_and]
+description = "AND atomico: apaga bits sin pisar los cambios de otro"
+bytes = [0xF0, 0x48, 0x21, 0x07]
+args = ["rdi", "rax"]
+
+# ── Bits ──────────────────────────────────────────────────────────
+#
+# Un mapa de bits de marcos de memoria vive de estas: sin `bsf` hay que
+# recorrer bit a bit, y son cuatro millones de bits en 16 GiB.
+
+[popcnt]
+description = "Cuantos bits hay a uno: __popcnt(v)"
+bytes = [0xF3, 0x0F, 0xB8, 0xC0]
+args = ["eax"]
+returns = "eax"
+
+[bsf]
+description = "Indice del bit BAJO puesto a uno. INDEFINIDO si v es 0 — hay que mirarlo antes"
+bytes = [0x0F, 0xBC, 0xC0]
+args = ["eax"]
+returns = "eax"
+
+[bsr]
+description = "Indice del bit ALTO puesto a uno. INDEFINIDO si v es 0"
+bytes = [0x0F, 0xBD, 0xC0]
+args = ["eax"]
+returns = "eax"
+
+[tzcnt]
+description = "Ceros a la derecha. Como bsf pero da 32 cuando v es 0 (pide BMI1)"
+bytes = [0xF3, 0x0F, 0xBC, 0xC0]
+args = ["eax"]
+returns = "eax"
+
+[lzcnt]
+description = "Ceros a la izquierda, definido tambien en 0 (pide LZCNT)"
+bytes = [0xF3, 0x0F, 0xBD, 0xC0]
+args = ["eax"]
+returns = "eax"
+
+[bswap]
+description = "Da la vuelta a los bytes de 32 bits: little-endian a big-endian. La red habla big-endian"
+bytes = [0x0F, 0xC8]
+args = ["eax"]
+returns = "eax"
+
+[bswap64]
+description = "Igual con 64 bits"
+bytes = [0x48, 0x0F, 0xC8]
+args = ["rax"]
+returns = "rax"
+
+# ── Azar y parada ─────────────────────────────────────────────────
+
+[rdrand]
+description = "Numero del generador del CPU. Pone CF=1 si vale; sin leer CF, comprobar al menos que no sale siempre lo mismo"
+bytes = [0x0F, 0xC7, 0xF0]
+returns = "eax"
+
+[rdseed]
+description = "Semilla de entropia cruda. Mas lenta que rdrand y falla mas a menudo"
+bytes = [0x0F, 0xC7, 0xF8]
+returns = "eax"
+
+[monitor]
+description = "Arma la vigilancia de una direccion: rax=dir (Ring 0)"
+bytes = [0x0F, 0x01, 0xC8]
+args = ["rax"]
+
+[mwait]
+description = "Duerme el nucleo hasta que escriban en lo vigilado. Mejor que un bucle: no gasta (Ring 0)"
+bytes = [0x0F, 0x01, 0xC9]
+
+[ud2]
+description = "Instruccion invalida A PROPOSITO: dispara #UD. Asi se marca aqui-no-se-debe-llegar"
+bytes = [0x0F, 0x0B]
