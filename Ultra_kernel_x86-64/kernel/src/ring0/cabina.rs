@@ -496,7 +496,19 @@ pub fn render_hud() {
     r.txt(" hev="); r.dec(hev as u64);
     r.txt(" dci="); r.dec(kdci as u64);
     r.txt(" lev="); r.dec(es as u64); r.txt(":"); r.dec(ee as u64); r.txt(":"); r.dec(ec as u64);
-    let usb_color = if kbd && kev > 0 { C_OK }
+    // El APARCADERO de eventos: `total:perdidos:ahora`.
+    //
+    // Un evento que llega mientras la enumeración espera otra cosa ya no se
+    // tira — se aparca. `perdidos` tiene que ser **0**: si sube, el aparcadero
+    // se llenó y se perdió un informe, que es como enmudece un endpoint. Es el
+    // número que antes no existía y por el que el teclado se apagó sin decir
+    // nada.
+    let (apk_tot, apk_perd, apk_hoy) = crate::ring0::dev::usb::park_stats();
+    r.txt(" apk="); r.dec(apk_tot as u64);
+    r.txt(":"); r.dec(apk_perd as u64);
+    r.txt(":"); r.dec(apk_hoy as u64);
+    let usb_color = if apk_perd > 0 { C_FAULT }
+                    else if kbd && kev > 0 { C_OK }
                     else if kbd && kev == 0 { C_FAULT }
                     else { C_WARN };
     splash_dashboard_log_color(total - 3, r.as_str(), usb_color);
@@ -540,6 +552,21 @@ pub fn render_hud() {
     // teclado haciendose pasar por uno.
     r.txt(" slot="); r.dec(ms as u64);
     if ms != 0 && ms == ks { r.txt("(=kbd!)"); }
+    // ── Las dos cosas que el reparto por fin deja ver ──
+    //
+    // `bmb` = ¿tiene cada uno una transferencia ENCOLADA? Un periférico que
+    // deja de bombear queda enumerado, con el endpoint en `Running`, y mudo
+    // para siempre — nadie le vuelve a pedir nada. `k-` o `r-` aquí es
+    // exactamente eso, y antes no se podía ver de ninguna forma.
+    //
+    // `hu` = Transfer Events que no eran de NADIE. Unos pocos al arrancar son
+    // normales (restos de la enumeración); si sube **mientras se teclea**, el
+    // informe llega con una dirección distinta de la que creemos y por eso
+    // nadie rearma.
+    let (bomba_k, bomba_r, huerfanos) = crate::ring0::dev::usb::reparto_stats();
+    r.txt(" bmb="); r.txt(if bomba_k { "k+" } else { "k-" });
+    r.txt(if bomba_r { "r+" } else { "r-" });
+    r.txt(" hu="); r.dec(huerfanos as u64);
     r.txt("  (ev=0 -> USB · ev sube y x/y quietos -> formato del informe)");
     let raton_color = if !mouse { C_DIM } else if mev > 0 { C_OK } else { C_FAULT };
     splash_dashboard_log_color(total - 1, r.as_str(), raton_color);

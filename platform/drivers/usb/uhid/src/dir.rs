@@ -1,0 +1,49 @@
+//! La DIRECCIÓN de un periférico dentro del controlador.
+//!
+//! ## Por qué esto es un tipo y no dos `u8` sueltos
+//!
+//! Un aparato USB, para el xHC, es el par `(slot, dci)`: el slot lo asigna el
+//! controlador al direccionar el dispositivo, y el DCI identifica uno de sus
+//! endpoints. Todo Transfer Event trae ese par, y **es lo único que dice de
+//! quién es el informe**.
+//!
+//! Mientras fueron dos campos sueltos repetidos en cada struct, la comparación
+//! se escribía a mano en cada sitio (`ev_slot == k.slot && ev_ep == k.dci`), y
+//! **nada impedía que dos periféricos llevaran el mismo par**. No es teórico:
+//! con el bug de enumeración del teclado compuesto, el ratón y el teclado
+//! acabaron los dos en el slot 2 con el mismo DCI — y como el despacho probaba
+//! las dos ramas con `if` independientes, **el mismo informe de 8 bytes se leía
+//! como teclado Y como ratón a la vez**.
+//!
+//! Con un tipo propio, "¿son el mismo aparato?" es una pregunta que se hace una
+//! vez y se responde igual en todas partes. Ver [`Direccion::choca_con`].
+
+/// El par `(slot, dci)` que identifica un endpoint concreto de un aparato.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Direccion {
+    pub slot: u8,
+    pub dci: u8,
+}
+
+impl Direccion {
+    pub const fn nueva(slot: u8, dci: u8) -> Self {
+        Self { slot, dci }
+    }
+
+    /// ¿Este Transfer Event es de este endpoint?
+    #[inline]
+    pub fn es_mio(&self, slot: u8, ep: u8) -> bool {
+        self.slot == slot && self.dci == ep
+    }
+
+    /// ¿Dos periféricos estarían compartiendo el mismo endpoint?
+    ///
+    /// Si esto es cierto, uno de los dos está mal enumerado: dos aparatos
+    /// distintos no pueden tener la misma dirección. Aceptarlo hace que cada
+    /// informe se decodifique dos veces, con dos formatos distintos, y ninguno
+    /// de los dos resultados significa nada.
+    #[inline]
+    pub fn choca_con(&self, otra: Direccion) -> bool {
+        *self == otra
+    }
+}

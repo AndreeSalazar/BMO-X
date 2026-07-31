@@ -231,24 +231,164 @@ fn ctx_sz(c: &XhciController) -> usize { if c.ctx_size != 0 { 64 } else { 32 } }
 //  Event ring consumer
 // ═══════════════════════════════════════════════════════════════════
 
-unsafe fn evt_poll_block(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)> {
-    let base = hal().phys_to_virt(ctrl.erst_phys) as *const u32;
-    let mut dq = ctrl.evt_dequeue;
-    let mut cy = ctrl.evt_cycle;
-    for _ in 0..500000 {
-        let dw3 = base.add((dq as usize) * 4 + 3).read_volatile();
-        if (dw3 & 1) == cy {
-            let dw0 = base.add((dq as usize) * 4).read_volatile();
-            let dw1 = base.add((dq as usize) * 4 + 1).read_volatile();
-            let dw2 = base.add((dq as usize) * 4 + 2).read_volatile();
-            dq += 1; if dq >= RING_SIZE as u32 { dq = 0; cy ^= 1; }
-            let erdp = ctrl.erst_phys + (dq as u64) * (TRB_SIZE as u64);
-            w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64, (erdp & 0xFFFF_FFFF) as u32);
-            w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4, ((erdp >> 32) & 0xFFFF_FFFF) as u32);
-            ctrl.evt_dequeue = dq; ctrl.evt_cycle = cy;
-            return Some((dw0, dw1, dw2, dw3));
+/// Qué evento espera quien se bloquea.
+///
+/// **El anillo de eventos es UNO para todo el controlador.** Un teclado, un
+/// ratón, una compleción de comando y un cambio de puerto salen todos por el
+/// mismo sitio, en el orden en que el xHC los postea. Por eso quien espera
+/// tiene que decir QUÉ espera: coger el primero que pase es coger el de otro.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Espera {
+    /// Una compleción de comando. El anillo de comandos se usa de uno en uno,
+    /// así que no hace falta distinguir cuál.
+    Comando,
+    /// Un Transfer Event de un endpoint CONCRETO.
+    Transferencia { slot: u8, ep: u8 },
+}
+
+fn cuadra(ev: &(u32, u32, u32, u32), esp: Espera) -> bool {
+    let typ = (ev.3 >> 10) & 0x3F;
+    match esp {
+        Espera::Comando => typ == TRB_COMPLETION,
+        Espera::Transferencia { slot, ep } => {
+            typ == TRB_TRANSFER
+                && ((ev.3 >> 24) & 0xFF) as u8 == slot
+                && ((ev.3 >> 16) & 0x1F) as u8 == ep
         }
-        core::hint::spin_loop();
+    }
+}
+
+// ── El aparcadero de eventos ────────────────────────────────────────
+//
+// ★ ESTA ES LA PIEZA QUE FALTABA, y costó el teclado entero.
+//
+// Antes, esperar bloqueando sacaba del anillo **el primer evento de cualquier
+// tipo** y lo daba por bueno; los tres bucles que sí miraban el tipo
+// (`send_cmd`, `control_transfer`) **descartaban** lo que no era suyo, y
+// `address_device` y `configure_endpoint` ni siquiera miraban el tipo: leían
+// el `cc` de lo que hubiera. Como un Transfer Event correcto también trae
+// `cc=1`, un informe del ratón se leía como "el comando salió bien".
+//
+// Mientras nada estuviera bombeando durante la enumeración, no se notaba. En
+// cuanto un endpoint de interrupción quedó vivo **mientras se enumeraba el
+// siguiente puerto**, cada control transfer del teclado se comía un informe
+// del ratón: el evento desaparecía, `uhid::poll` no lo veía nunca, y sin ese
+// evento **nadie vuelve a encolar la transferencia**. La bomba no arranca, el
+// endpoint se queda en `Running` para siempre y el aparato enmudece sin un
+// solo error. Los dos, ratón y teclado, por el mismo camino.
+//
+// La regla ahora: **un evento que no es mío se APARCA, jamás se tira.**
+const APARCADOS_MAX: usize = 64;
+static mut APARCADOS: [(u32, u32, u32, u32); APARCADOS_MAX] = [(0, 0, 0, 0); APARCADOS_MAX];
+static mut APARCADOS_N: usize = 0;
+/// Cuántos se han aparcado en total y cuántos se han PERDIDO por aparcadero
+/// lleno. Lo segundo tiene que ser cero; si un día no lo es, hay que subir el
+/// tope — y se verá, que es justo lo que no pasaba antes.
+static mut APARCADOS_TOTAL: u32 = 0;
+static mut APARCADOS_PERDIDOS: u32 = 0;
+
+/// `(aparcados en total, perdidos por lleno, aparcados ahora mismo)`.
+pub fn evt_park_stats() -> (u32, u32, u32) {
+    unsafe { (APARCADOS_TOTAL, APARCADOS_PERDIDOS, APARCADOS_N as u32) }
+}
+
+unsafe fn aparcar(ev: (u32, u32, u32, u32)) {
+    if APARCADOS_N >= APARCADOS_MAX {
+        // Perder uno aquí vuelve a matar un endpoint. Se cuenta para que se
+        // vea en CABINA en vez de repetir el silencio de antes.
+        APARCADOS_PERDIDOS = APARCADOS_PERDIDOS.wrapping_add(1);
+        return;
+    }
+    APARCADOS[APARCADOS_N] = ev;
+    APARCADOS_N += 1;
+    APARCADOS_TOTAL = APARCADOS_TOTAL.wrapping_add(1);
+}
+
+/// Saca del aparcadero el primero que cuadre con lo que se espera, si lo hay.
+///
+/// Hace falta porque una espera anterior pudo aparcar justo lo que ahora se
+/// busca: una compleción de comando aparcada mientras un control transfer
+/// esperaba su Transfer Event.
+unsafe fn desaparcar_que_cuadre(esp: Espera) -> Option<(u32, u32, u32, u32)> {
+    let mut i = 0;
+    while i < APARCADOS_N {
+        if cuadra(&APARCADOS[i], esp) {
+            let ev = APARCADOS[i];
+            let mut j = i;
+            while j + 1 < APARCADOS_N {
+                APARCADOS[j] = APARCADOS[j + 1];
+                j += 1;
+            }
+            APARCADOS_N -= 1;
+            return Some(ev);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// El más viejo del aparcadero, sea de quien sea. Lo drena el bucle de sondeo.
+unsafe fn desaparcar_cualquiera() -> Option<(u32, u32, u32, u32)> {
+    if APARCADOS_N == 0 {
+        return None;
+    }
+    let ev = APARCADOS[0];
+    let mut j = 0;
+    while j + 1 < APARCADOS_N {
+        APARCADOS[j] = APARCADOS[j + 1];
+        j += 1;
+    }
+    APARCADOS_N -= 1;
+    Some(ev)
+}
+
+/// Saca un TRB del anillo y avanza el ERDP. No filtra: es la boca del anillo.
+unsafe fn evt_ring_pop(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)> {
+    let base = hal().phys_to_virt(ctrl.erst_phys) as *const u32;
+    let dq = ctrl.evt_dequeue;
+    let cy = ctrl.evt_cycle;
+    let dw3 = base.add((dq as usize) * 4 + 3).read_volatile();
+    if (dw3 & 1) != cy {
+        return None;
+    }
+    let dw0 = base.add((dq as usize) * 4).read_volatile();
+    let dw1 = base.add((dq as usize) * 4 + 1).read_volatile();
+    let dw2 = base.add((dq as usize) * 4 + 2).read_volatile();
+    let mut ndq = dq + 1;
+    let mut ncy = cy;
+    if ndq >= RING_SIZE as u32 {
+        ndq = 0;
+        ncy ^= 1;
+    }
+    let erdp = ctrl.erst_phys + (ndq as u64) * (TRB_SIZE as u64);
+    w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64, (erdp & 0xFFFF_FFFF) as u32);
+    w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4, ((erdp >> 32) & 0xFFFF_FFFF) as u32);
+    ctrl.evt_dequeue = ndq;
+    ctrl.evt_cycle = ncy;
+    Some((dw0, dw1, dw2, dw3))
+}
+
+/// Espera **lo que se le pide**, aparcando todo lo demás.
+///
+/// Devuelve `None` sólo si se agota el plazo sin que llegue: eso sí es un
+/// fallo del controlador, y ahora se distingue de "llegó lo de otro".
+unsafe fn evt_poll_block(
+    ctrl: &mut XhciController,
+    esp: Espera,
+) -> Option<(u32, u32, u32, u32)> {
+    for _ in 0..500000 {
+        if let Some(ev) = desaparcar_que_cuadre(esp) {
+            return Some(ev);
+        }
+        match evt_ring_pop(ctrl) {
+            Some(ev) => {
+                if cuadra(&ev, esp) {
+                    return Some(ev);
+                }
+                aparcar(ev);
+            }
+            None => core::hint::spin_loop(),
+        }
     }
     None
 }
@@ -294,15 +434,13 @@ unsafe fn send_cmd(trb: Trb) -> Option<(u32, u32, u32, u32)> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
     ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
-    loop {
-        let ev = evt_poll_block(ctrl)?;
-        let typ = (ev.3 >> 10) & 0x3F;
-        if typ == TRB_COMPLETION {
-            let cc = (ev.2 >> 24) & 0xFF;
-            if cc == CC_SUCCESS || cc == CC_SHORT { return Some(ev); }
-            return None;
-        }
-    }
+    // El bucle que había aquí descartaba en silencio todo lo que no fuera una
+    // compleción. Ahora la selección la hace `evt_poll_block`, que además lo
+    // aparca en vez de tirarlo.
+    let ev = evt_poll_block(ctrl, Espera::Comando)?;
+    let cc = (ev.2 >> 24) & 0xFF;
+    if cc == CC_SUCCESS || cc == CC_SHORT { return Some(ev); }
+    None
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -548,7 +686,11 @@ pub unsafe fn address_device(port: u8, speed: u8) -> Option<u8> {
     };
     ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
-    let ev = evt_poll_block(ctrl)?;
+    // ★ Esto tomaba el primer evento SIN MIRAR EL TIPO y le leía el `cc`. Un
+    // Transfer Event correcto también trae `cc=1`, así que un informe del
+    // ratón se leía como "el Address Device salió bien" — y de paso ese
+    // informe desaparecía.
+    let ev = evt_poll_block(ctrl, Espera::Comando)?;
     let cc = (ev.2 >> 24) & 0xFF;
     h.log_u64(" addr_dev cc=", cc as u64);
     if cc != CC_SUCCESS { return None; }
@@ -635,31 +777,28 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     // Ring EP0 doorbell
     ring_doorbell(slot, 1);
 
-    // Wait for Transfer Event
-    loop {
-        let ev = evt_poll_block(ctrl);
-        if ev.is_none() { return 0; }
-        let (_, _, dw2, dw3) = ev.unwrap();
-        let typ = (dw3 >> 10) & 0x3F;
-        if typ == TRB_TRANSFER {
-            let eslot = ((dw3 >> 24) & 0xFF) as u8;
-            let eepid = ((dw3 >> 16) & 0x1F) as u8;
-            if eslot == slot && eepid == 1 {
-                let cc = (dw2 >> 24) & 0xFF;
-                if cc == CC_SUCCESS || cc == CC_SHORT {
-                    let rem = dw2 & 0xFFFFFF;
-                    let xfer = buf.len().saturating_sub(rem as usize);
-                    if data_in && has_data && data_page != 0 {
-                        let dv = h.phys_to_virt(data_page);
-                        for i in 0..xfer.min(buf.len()) { buf[i] = dv.add(i).read_volatile(); }
-                    }
-                    return xfer;
-                }
-                h.log_u64(" ctrl_xfer cc=", cc as u64);
-                return 0;
-            }
-        }
+    // Espera el Transfer Event de ESTE EP0 y de nadie más.
+    //
+    // El bucle de antes descartaba todo lo que no fuera suyo — incluidos los
+    // informes de interrupción de un ratón ya enumerado, que es exactamente el
+    // camino por el que el teclado y el ratón se quedaban mudos los dos.
+    let ev = match evt_poll_block(ctrl, Espera::Transferencia { slot, ep: 1 }) {
+        Some(e) => e,
+        None => return 0,
+    };
+    let dw2 = ev.2;
+    let cc = (dw2 >> 24) & 0xFF;
+    if cc != CC_SUCCESS && cc != CC_SHORT {
+        h.log_u64(" ctrl_xfer cc=", cc as u64);
+        return 0;
     }
+    let rem = dw2 & 0xFFFFFF;
+    let xfer = buf.len().saturating_sub(rem as usize);
+    if data_in && has_data && data_page != 0 {
+        let dv = h.phys_to_virt(data_page);
+        for i in 0..xfer.min(buf.len()) { buf[i] = dv.add(i).read_volatile(); }
+    }
+    xfer
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -840,7 +979,10 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     };
     ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
-    let ev = evt_poll_block(ctrl);
+    // Igual que en `address_device`: esto tomaba el primer evento sin mirar el
+    // tipo, así que podía dar por configurado un endpoint leyendo el `cc` del
+    // informe de otro aparato.
+    let ev = evt_poll_block(ctrl, Espera::Comando);
     match ev {
         Some((_, _, dw2, _)) => {
             let cc = (dw2 >> 24) & 0xFF;
@@ -922,7 +1064,17 @@ pub fn last_event() -> (u8, u8, u8) { unsafe { (LAST_SLOT, LAST_EP, LAST_CC) } }
 pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
     loop {
-        let ev = evt_poll_nb(ctrl)?;
+        // ★ Lo APARCADO primero, y en orden.
+        //
+        // Un evento que llegó mientras la enumeración esperaba otra cosa es
+        // tan válido como uno recién posteado — y es justamente el primer
+        // informe de cada aparato, el que arranca la bomba. Si el aparcadero
+        // no se drenara aquí, se habría cambiado tirar eventos por guardarlos
+        // donde nadie los mira, que es el mismo silencio con otra cara.
+        let ev = match desaparcar_cualquiera() {
+            Some(e) => e,
+            None => evt_poll_nb(ctrl)?,
+        };
         RAW_EVENTS = RAW_EVENTS.wrapping_add(1);
         let typ = (ev.3 >> 10) & 0x3F;
         if typ == TRB_TRANSFER {

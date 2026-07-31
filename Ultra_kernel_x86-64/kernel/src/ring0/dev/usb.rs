@@ -610,6 +610,31 @@ pub fn xfer_stats() -> (u32, u32, u32) {
     (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
 }
 
+/// El reparto de informes: `(bombea el teclado, bombea el raton, huerfanos)`.
+///
+/// Los dos primeros son la pregunta que no se podia hacer: un periferico sin
+/// transferencia encolada esta enumerado, con el endpoint en `Running`, y mudo
+/// para siempre. El tercero cuenta los Transfer Events que no eran de ningun
+/// periferico conocido — antes se descartaban sin dejar rastro.
+pub fn reparto_stats() -> (bool, bool, u32) {
+    unsafe {
+        let hid = &*core::ptr::addr_of!(HID);
+        let (k, r) = hid.bombeando();
+        (k, r, hid.huerfanos())
+    }
+}
+
+/// El aparcadero de eventos del xHC: `(aparcados en total, PERDIDOS, ahora)`.
+///
+/// El anillo de eventos es uno para todo el controlador, así que quien espera
+/// una compleción de comando se cruza con los informes de los aparatos que ya
+/// están bombeando. Antes los descartaba, y descartar el primer informe de un
+/// endpoint lo deja mudo para siempre — nadie vuelve a encolar la
+/// transferencia. Ahora se aparcan; `PERDIDOS` es lo que hay que vigilar.
+pub fn park_stats() -> (u32, u32, u32) {
+    bmo_xhci::evt_park_stats()
+}
+
 /// Salud del endpoint de interrupción del teclado leída DEL HARDWARE, no de
 /// nuestras suposiciones: `(ep_state, bInterval_del_descriptor,
 /// Interval_programado, speed, usbsts)`.
