@@ -190,7 +190,13 @@ pub extern "C" fn _start() -> ! {
     // no puede chocar con escribir. Es lo unico que importa en un atajo del
     // sistema, y es lo que `Ctrl+Alt` no puede ofrecer: en espanol ES AltGr.
     let caja_datos = escena::datos::CajaDatos::nueva(&p);
-    let mut datos_visible = false;
+    // ★ ABIERTA no es lo mismo que ARRIBA. Abierta es "existe y esta dibujada";
+    // arriba es "es la que tapa a la otra". Se separan porque aqui no hay
+    // recorte: las ventanas se pintan enteras una encima de otra, y la ultima
+    // que se pinta gana. Sin la distincion, Alt+Tab podria dejar el teclado en
+    // Ejecutar con Datos delante — escribiendo en una linea que no se ve, que
+    // es el mismo fallo de antes al reves.
+    let mut datos_abierta = false;
 
     // ── El FOCO ──
     //
@@ -207,6 +213,10 @@ pub extern "C" fn _start() -> ! {
     foco.abrir(V_EJECUTAR);
     let mut alt_antes = false;
     let mut conmutador_pintado = false;
+    // Quién tapaba a quién en la vuelta anterior, para pintar sólo cuando
+    // cambia. `datos_abierta && foco.es_para(V_DATOS)` es la cuenta entera:
+    // **la que tiene el teclado es la que se ve**.
+    let mut arriba_antes = V_EJECUTAR;
 
     // Lo que hay DEBAJO del cursor del ratón. Ver `escena::cursor::Bajo`: se
     // quita al principio del fotograma y se pone al final, y en medio se pinta.
@@ -289,14 +299,26 @@ pub extern "C" fn _start() -> ! {
                     }
                 }
                 conmutador_pintado = false;
-                // Lo que tapaba vuelve a pintarse entero.
-                if datos_visible {
+                // Lo que tapaba vuelve a pintarse entero, **de abajo arriba**:
+                // es el unico orden que deja la pantalla como estaba. Y quien
+                // va arriba lo acaba de decidir el Alt que se solto.
+                let datos_arriba = datos_abierta && foco.es_para(V_DATOS);
+                if datos_arriba {
+                    if visible {
+                        pintar_caja(&p, &caja);
+                    }
                     escena::datos::pintar(&p, &caja_datos);
-                } else if visible {
-                    pintar_caja(&p, &caja);
-                    repintar_campo = true;
-                    salida.sucia = true;
+                } else {
+                    if datos_abierta {
+                        escena::datos::pintar(&p, &caja_datos);
+                    }
+                    if visible {
+                        pintar_caja(&p, &caja);
+                        repintar_campo = true;
+                        salida.sucia = true;
+                    }
                 }
+                arriba_antes = if datos_arriba { V_DATOS } else { V_EJECUTAR };
             }
             alt_antes = alt_solo;
             if combo && !combo_antes {
@@ -386,22 +408,34 @@ pub extern "C" fn _start() -> ! {
                 // partes. En Ejecutar ESC sigue borrando la linea: son dos
                 // ventanas distintas y cada una contesta lo suyo.
                 let conmutar_datos = if c == 0x94 {
-                    Some(!datos_visible)
-                } else if c == 0x1B && datos_visible && foco.es_para(V_DATOS) {
+                    Some(!datos_abierta)
+                } else if c == 0x1B && datos_abierta && foco.es_para(V_DATOS) {
                     Some(false)
                 } else {
                     None
                 };
                 if let Some(abrir) = conmutar_datos {
-                    datos_visible = abrir;
+                    datos_abierta = abrir;
                     if abrir {
+                        // Abrir es decirselo al foco y ya: en modo `Fijo` la
+                        // ventana aparece y NO se lleva el teclado, y quien
+                        // decide eso es la politica, no esta tecla.
                         foco.abrir(V_DATOS);
                         escena::datos::pintar(&p, &caja_datos);
+                        arriba_antes = if foco.es_para(V_DATOS) { V_DATOS } else { V_EJECUTAR };
+                        // En `Fijo` se ha pintado encima de una caja que sigue
+                        // teniendo el teclado: hay que devolverla arriba.
+                        if arriba_antes == V_EJECUTAR && visible {
+                            pintar_caja(&p, &caja);
+                            repintar_campo = true;
+                            salida.sucia = true;
+                        }
                     } else {
                         // Al cerrarla hay que devolver el fondo Y repintar
                         // lo que tapaba: la caja de Ejecutar esta debajo.
                         foco.cerrar(V_DATOS);
                         borrar_datos(&p, &caja, &caja_datos, visible);
+                        arriba_antes = V_EJECUTAR;
                         if visible {
                             pintar_caja(&p, &caja);
                             repintar_campo = true;
@@ -1016,10 +1050,18 @@ pub extern "C" fn _start() -> ! {
             // ENCIMA de Ejecutar, asi que se pregunta primero, y un clic en la
             // zona compartida es de la de arriba. `bmo_input::foco` no sabe que
             // ventana tapa a cual y no tiene por que: eso lo sabe el que pinta.
-            let bajo_el_puntero = if datos_visible && caja_datos.contiene(pos.x, pos.y) {
-                Some(V_DATOS)
+            let bajo_el_puntero = if arriba_antes == V_DATOS {
+                if datos_abierta && caja_datos.contiene(pos.x, pos.y) {
+                    Some(V_DATOS)
+                } else if visible && caja.contiene(pos.x, pos.y) {
+                    Some(V_EJECUTAR)
+                } else {
+                    None
+                }
             } else if visible && caja.contiene(pos.x, pos.y) {
                 Some(V_EJECUTAR)
+            } else if datos_abierta && caja_datos.contiene(pos.x, pos.y) {
+                Some(V_DATOS)
             } else {
                 None
             };
@@ -1038,6 +1080,33 @@ pub extern "C" fn _start() -> ! {
                 }
             }
             boton_antes = boton;
+
+            // ── ★ El foco arrastra el Z-order ──
+            //
+            // Levantar una ventana no da el teclado —eso es mezclar dos cosas y
+            // es el error clasico de un gestor de ventanas—, pero **al reves si
+            // vale**: la que tiene el teclado tiene que verse. Aqui no hay
+            // recorte, asi que "verse" es pintarse la ultima.
+            //
+            // Sin esto, Alt+Tab a Ejecutar con Datos delante dejaria el teclado
+            // en una linea tapada: escribirias sin ver nada. Es exactamente el
+            // fallo que se acaba de arreglar, del reves.
+            let arriba = if datos_abierta && foco.es_para(V_DATOS) {
+                V_DATOS
+            } else {
+                V_EJECUTAR
+            };
+            if arriba != arriba_antes {
+                if arriba == V_DATOS {
+                    escena::datos::pintar(&p, &caja_datos);
+                } else if visible {
+                    pintar_caja(&p, &caja);
+                    repintar_campo = true;
+                    salida.sucia = true;
+                }
+                arriba_antes = arriba;
+            }
+
             // El cursor ya no se borra aquí: se pone al final del fotograma y
             // se quita al principio del siguiente, con lo que había debajo
             // guardado. Aquí sólo se apunta dónde está.
@@ -1113,12 +1182,15 @@ pub extern "C" fn _start() -> ! {
             // Se pinta sólo si se ve; el contenido sigue acumulándose oculto,
             // así que al invocar la ventana está todo lo que pasó mientras.
             //
-            // ★ Y NO si la consola de datos está encima. Sin este guardia, el
+            // ★ Y NO si la consola de datos está ARRIBA. Sin este guardia, el
             // fotograma siguiente repintaría la rejilla POR DEBAJO y la
             // dibujaría encima de la ventana de datos, dejándola a trozos. La
             // salida no se pierde: `sucia` se queda puesto y se pinta entera
-            // al cerrar.
-            if visible && !datos_visible && !conmutador_pintado {
+            // cuando esta ventana vuelva a estar arriba.
+            //
+            // Y es ARRIBA, no ABIERTA: con Datos abierta pero detrás, la
+            // rejilla se ve y tiene que seguir escribiéndose.
+            if visible && arriba_antes != V_DATOS && !conmutador_pintado {
                 pintar_salida(&p, &caja, &salida);
                 salida.sucia = false;
             } else if !visible {
@@ -1142,7 +1214,12 @@ pub extern "C" fn _start() -> ! {
             caret = !caret;
             repintar_campo = true;
         }
-        if repintar_campo && va_a_pintar && visible && !datos_visible && !conmutador_pintado {
+        if repintar_campo
+            && va_a_pintar
+            && visible
+            && arriba_antes != V_DATOS
+            && !conmutador_pintado
+        {
             pintar_campo(&p, &caja, &ruta[..n], cur, caret);
         }
 

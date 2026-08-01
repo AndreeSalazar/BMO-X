@@ -208,6 +208,8 @@ sabría qué esperar.
 | ESC con Datos abierta | La cierra. Con Ejecutar delante, ESC sigue **borrando la línea** | Dos ventanas, dos respuestas a la misma tecla — eso es tener foco | ⏳ metal |
 | **Alt+M** | El modo cambia y **se dice** (en la ventanita, o en la línea de estado) | Sin tecla, `Fijo` y `Puntero` eran inalcanzables: tres modos y sólo uno vivo | ⏳ metal |
 | Clic en una ventana | Le da el teclado, **también en modo Fijo** | `click-to-focus`. Fijo impide que se lo TOMEN, no que se lo des | ⏳ metal |
+| Alt+Tab **a Ejecutar con Datos abierta** | La caja **se pone delante** y se escribe viendo lo que se escribe | El foco arrastra el Z-order (nunca al revés). Sin esto, enrutar bien las teclas las mandaría a una línea tapada — el mismo fallo del revés | ⏳ metal |
+| F12 en modo **Fijo** | La ventana aparece **detrás** y el teclado se queda en Ejecutar | Es la prueba de que abrir ≠ enfocar, y de que `arriba` se calcula del foco y no de "la última que se pintó" | ⏳ metal |
 | **Mover el ratón por encima de Datos** | La ventana queda **intacta**: ni un agujero | Era real y se veía: el cursor se borraba repintando `color_escena`, que no sabe de ventanas nuevas y contestaba con el fondo del escritorio. Ahora se guarda lo de debajo (*save-under*, 640 B) | ⏳ metal |
 | Ctrl+Alt esconde Ejecutar y luego Alt+Tab | **No** se puede ir a la escondida | Esconder es cerrar para el foco. Si no, escribes en algo invisible | ⏳ metal |
 
