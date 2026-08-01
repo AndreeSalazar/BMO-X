@@ -42,12 +42,17 @@
 
 pub mod dir;
 pub mod enumera;
+/// La contabilidad de puertos: a cuál se puede tocar y a cuál no. Es la única
+/// parte del driver que se puede probar sin un xHC delante — y era la que
+/// estaba mal.
+pub mod puertos;
 pub mod raton;
 pub mod teclado;
 
 use bmo_input::event::InputEvent;
 use bmo_input::hal::{InputHal, PointerMode};
 use dir::Direccion;
+use puertos::Puertos;
 use raton::Raton;
 use teclado::Teclado;
 
@@ -70,6 +75,10 @@ pub struct UsbHidHal {
     /// llegando con una dirección que no es la que creemos y por eso nadie
     /// rearma. Antes se descartaban sin contarlos.
     huerfanos: u32,
+    /// Qué puertos ya dieron un aparato y cuántas veces se ha intentado cada
+    /// uno. Ver [`puertos`]: sin esto, la re-enumeración reactiva se comía a sí
+    /// misma reseteando el puerto del teclado que ya estaba funcionando.
+    puertos: Puertos,
 }
 
 impl Default for UsbHidHal {
@@ -80,7 +89,24 @@ impl Default for UsbHidHal {
 
 impl UsbHidHal {
     pub const fn new() -> Self {
-        Self { teclado: None, raton: None, inicializado: false, huerfanos: 0 }
+        Self {
+            teclado: None,
+            raton: None,
+            inicializado: false,
+            huerfanos: 0,
+            puertos: Puertos::nuevo(),
+        }
+    }
+
+    /// Se desenchufó algo del puerto: queda libre y con los intentos devueltos.
+    /// Lo llama el kernel al recibir el aviso de desconexión.
+    pub fn soltar_puerto(&mut self, port: u8) {
+        self.puertos.soltar(port);
+    }
+
+    /// Para el panel: `(puertos tomados, intentos gastados en el ultimo)`.
+    pub fn puertos(&self) -> &Puertos {
+        &self.puertos
     }
 
     /// ¿Enumeró un teclado? (interface HID subclass 1 / protocol 1)
@@ -220,6 +246,31 @@ impl UsbHidHal {
                 }
             }
         }
+
+        if cosecha.teclado || cosecha.raton {
+            // De aquí salió algo que funciona: este puerto no se vuelve a
+            // tocar. Resetearlo sólo podría matarlo.
+            self.puertos.tomar(port);
+        } else {
+            // ★ Y si no salió nada, **el slot se devuelve**. El aparato quedó
+            // direccionado y nadie lo va a leer; dejar el slot pedido es lo que
+            // agotó los 64 del controlador en el arranque del 2026-07-31, con
+            // el registro contándolo a la vista: 0x30, 0x31, … 0x40, y después
+            // `cc=0x9` para siempre.
+            //
+            // Con un seguro: **jamás el slot de un aparato instalado**. Un
+            // teclado compuesto puede volver a ofrecer su interfaz de ratón,
+            // que se rechaza por chocar de dirección — y entonces "no se adoptó
+            // nada" sería cierto y devolver el slot mataría al teclado que está
+            // escribiendo en él. Devolver un recurso que otro está usando es
+            // peor que no devolverlo.
+            if slot == self.kbd_slot() || slot == self.mouse_slot() {
+                h.log_u64("[uhid] no devuelvo el slot: lo usa un aparato vivo, ", slot as u64);
+            } else {
+                h.log_u64("[uhid] nada que adoptar, devuelvo el slot ", slot as u64);
+                bmo_xhci::disable_slot(slot);
+            }
+        }
         cosecha
     }
 
@@ -270,6 +321,18 @@ impl UsbHidHal {
         if self.completo() {
             return false;
         }
+        // ★ Y aunque falte algo: **a este puerto en concreto, ¿se le puede
+        // tocar?** Esto es lo que faltaba, y sin ello la adopción reactiva se
+        // comía a sí misma — resetear un puerto ES un cambio de puerto, así que
+        // el aviso que la dispara lo genera ella misma, para siempre. Peor: el
+        // puerto que giraba era el del teclado ya enumerado, que moría con el
+        // primer reset. Ver [`puertos`].
+        if !self.puertos.se_puede_intentar(port) {
+            return false;
+        }
+        // Contar ANTES de tocar el bus: si la enumeración se va por otro
+        // camino, el intento ya está gastado.
+        self.puertos.anotar_intento(port);
         let cosecha = self.cosechar_puerto(port);
         if cosecha.teclado || cosecha.raton {
             self.arrancar_bombas();

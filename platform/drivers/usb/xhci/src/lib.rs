@@ -85,6 +85,7 @@ const IMAN_IE: u32 = 1 << 1; #[allow(dead_code)] const IMAN_IP: u32 = 1 << 0;
 const TRB_NORMAL: u32 = 1;  const TRB_SETUP: u32 = 2;
 const TRB_DATA: u32 = 3;    const TRB_STATUS: u32 = 4;
 const TRB_LINK: u32 = 6;    const TRB_ENABLE: u32 = 9;
+const TRB_DISABLE: u32 = 10;
 const TRB_ADDRESS_DEV: u32 = 11; const TRB_CONFIGURE: u32 = 12;
 #[allow(dead_code)] const TRB_EVAL_CTX: u32 = 13;
 const TRB_TRANSFER: u32 = 32; const TRB_COMPLETION: u32 = 33;
@@ -606,6 +607,44 @@ pub unsafe fn enable_slot() -> Option<u8> {
     if cc != CC_SUCCESS || slot == 0 { None } else { Some(slot) }
 }
 
+/// **Devolver un slot al controlador.** La pareja de `enable_slot`, y sin ella
+/// el controlador se queda sin slots.
+///
+/// ★ Esto faltaba, y se vio en la primera foto: los slots subían `0x30`,
+/// `0x31`, … `0x40` en el registro de arranque. Cada intento de adopción que
+/// no acababa en un aparato instalado se llevaba un slot **para siempre**;
+/// al llegar a los 64 que declara este xHC, el `Address Device` empezó a
+/// contestar `cc=0x9` — *No Slots Available* — y a partir de ahí no se pudo
+/// enumerar nada más en toda la sesión.
+///
+/// Un recurso que se pide en un camino que puede fallar necesita su
+/// devolución **en el mismo sitio**, no en el camino feliz.
+///
+/// Lo que NO devuelve: las páginas DMA del anillo EP0 y del contexto de
+/// dispositivo. El HAL no tiene `free_dma_pages` todavía, así que eso sigue
+/// siendo una fuga — acotada, porque ahora los intentos están contados.
+pub unsafe fn disable_slot(slot: u8) -> bool {
+    if slot == 0 { return false; }
+    let ok = send_cmd(Trb {
+        dw0: 0, dw1: 0, dw2: 0,
+        dw3: ((slot as u32) << 24) | (TRB_DISABLE << 10),
+    })
+    .is_some();
+    hal().log_u64("[xhci] disable_slot ", slot as u64);
+    hal().log(if ok { " ok\n" } else { " FALLO\n" });
+    // El puntero del contexto de dispositivo se retira SIEMPRE, salga bien el
+    // comando o no: dejarlo puesto apuntando a un slot que el xHC ya no cree
+    // suyo es peor que retirarlo de más.
+    if let Some(c) = CTRL.as_ref() {
+        let dcbaa = hal().phys_to_virt(c.dcbaa_phys) as *mut u64;
+        dcbaa.add(slot as usize).write_volatile(0);
+    }
+    if (slot as usize) < MAX_SLOTS {
+        EP0_RINGS[slot as usize].valid = false;
+    }
+    ok
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Per-slot EP0 ring storage
 // ═══════════════════════════════════════════════════════════════════
@@ -629,10 +668,27 @@ fn ep0_mut(slot: u8) -> Option<&'static mut Ep0Info> {
 //  Address Device
 // ═══════════════════════════════════════════════════════════════════
 
+/// Pide un slot y direcciona el aparato del puerto.
+///
+/// ★ **Si algo falla después de tener el slot, el slot se DEVUELVE.** Antes se
+/// salía por cinco sitios distintos con un `?` o un `return None` y el slot se
+/// quedaba pedido para siempre; el bucle de adopción del arranque los fue
+/// gastando de uno en uno hasta agotar los 64 del controlador. La pareja
+/// pedir/devolver tiene que estar en la misma función o no está.
 pub unsafe fn address_device(port: u8, speed: u8) -> Option<u8> {
+    let slot = enable_slot()?;
+    match direccionar_en_slot(port, speed, slot) {
+        Some(s) => Some(s),
+        None => {
+            disable_slot(slot);
+            None
+        }
+    }
+}
+
+unsafe fn direccionar_en_slot(port: u8, speed: u8, slot: u8) -> Option<u8> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
     let h = hal();
-    let slot = enable_slot()?;
     let cs = ctx_sz(ctrl);
 
     let ep0_phys = h.alloc_dma_pages(1)?;

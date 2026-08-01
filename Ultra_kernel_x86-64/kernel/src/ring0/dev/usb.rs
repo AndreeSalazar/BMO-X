@@ -421,12 +421,21 @@ fn poll_ascii_interno() -> Option<u8> {
                 crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y adoptado", puerto as u64);
                 unsafe { refrescar_presencia() };
             } else {
-                // No es un fallo: puede que ya no faltara nada, o que lo
-                // enchufado no sea un HID. Decirlo distingue "no hacía falta"
-                // de "se intentó y no salió".
+                // No es un fallo: puede que ya no faltara nada, que lo
+                // enchufado no sea un HID, o que a ese puerto ya no se le
+                // toque (ver `bmo_uhid::puertos`). Decirlo distingue "no hacía
+                // falta" de "se intentó y no salió".
                 crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, nada que adoptar", puerto as u64);
             }
         } else {
+            // ★ Desenchufar LIBERA el puerto y le devuelve los intentos. Sin
+            // esto, enchufar y desenchufar tres veces dejaría un puerto
+            // inservible hasta el siguiente reinicio: los intentos son para
+            // "este aparato tarda", no para "este puerto está prohibido".
+            unsafe {
+                let hid = &mut *core::ptr::addr_of_mut!(HID);
+                hid.soltar_puerto(puerto.saturating_sub(1));
+            }
             crate::ring0::cabina::warn("usb", "puerto: algo se DESENCHUFO", puerto as u64);
         }
     }
