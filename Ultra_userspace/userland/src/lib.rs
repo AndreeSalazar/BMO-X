@@ -504,6 +504,50 @@ impl Pantalla {
         }
     }
 
+    /// Un carácter AMPLIADO por un entero: cada píxel del glifo pasa a ser un
+    /// cuadrado de `escala`.
+    ///
+    /// Entero y con `rect`, no interpolado: ampliar por 4 un glifo de 8x16 da
+    /// bloques limpios de 32x64, y esa estética es la que tiene esta máquina.
+    /// Una interpolación pediría coma flotante, un buffer intermedio y un gusto
+    /// que no es el de aquí — y con la misma fuente que ya está cargada.
+    pub fn glifo_escala(&self, x: u32, y: u32, c: u8, color: u32, escala: u32) {
+        if escala <= 1 {
+            self.glifo(x, y, c, color);
+            return;
+        }
+        let idx = match indice_glifo(c) {
+            Some(i) => i,
+            None => return,
+        };
+        let g = &FONT16[idx];
+        for (fila, &bits) in g.iter().enumerate() {
+            if bits == 0 {
+                continue;
+            }
+            for col in 0..8u32 {
+                if bits & (0x80 >> col) != 0 {
+                    self.rect(x + col * escala, y + fila as u32 * escala, escala, escala, color);
+                }
+            }
+        }
+    }
+
+    /// Un `&str` ampliado. Devuelve la x donde acabó.
+    pub fn texto_escala(&self, x: u32, y: u32, s: &str, color: u32, escala: u32) -> u32 {
+        let mut cx = x;
+        for &c in s.as_bytes() {
+            self.glifo_escala(cx, y, c, color, escala);
+            cx += GLIFO_ANCHO * escala;
+        }
+        cx
+    }
+
+    /// Lo que ocupa un texto ampliado, para poder centrarlo sin adivinar.
+    pub fn ancho_escala(s: &str, escala: u32) -> u32 {
+        s.len() as u32 * GLIFO_ANCHO * escala
+    }
+
     /// Una tira de bytes Latin-1. Devuelve la x donde acabó, para encadenar.
     pub fn texto_bytes(&self, x: u32, y: u32, s: &[u8], color: u32) -> u32 {
         let mut cx = x;

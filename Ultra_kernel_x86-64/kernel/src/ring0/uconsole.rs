@@ -85,6 +85,72 @@ pub fn lines_of(pid: u32) -> u32 {
     unsafe { LINES_BY_PID[slot] }
 }
 
+// ── ★ LAS ÚLTIMAS PALABRAS ──────────────────────────────────────────────
+//
+// Lo que cada proceso dijo justo antes de morir, guardado para DESPUÉS de que
+// muera.
+//
+// El compositor se moría al arrancar y su manejador de pánico decía el archivo
+// y la línea exactos... **al log del kernel**, que sigue corriendo. Para cuando
+// se miraba la pantalla, ese mensaje ya había subido y salido, y lo único que
+// quedaba era un shell donde debería haber un escritorio. Tres arranques
+// seguidos con la respuesta delante y nadie pudo leerla.
+//
+// Un registrador de vuelo que borra la caja negra al aterrizar no es un
+// registrador de vuelo. Estas cuatro líneas por proceso sobreviven a su dueño y
+// se imprimen cuando hace falta — que es justo cuando ya no se le puede
+// preguntar a él.
+const ULTIMAS: usize = 4;
+static mut COLA: [[[u8; LINE_MAX]; ULTIMAS]; MAX_PROCS] = [[[0u8; LINE_MAX]; ULTIMAS]; MAX_PROCS];
+static mut COLA_LEN: [[usize; ULTIMAS]; MAX_PROCS] = [[0usize; ULTIMAS]; MAX_PROCS];
+/// Dónde va la siguiente. Es un anillo: se queda con las ÚLTIMAS, que son las
+/// que dicen por qué se murió — las primeras dicen que arrancó, y eso ya se vio.
+static mut COLA_PUNTA: [usize; MAX_PROCS] = [0; MAX_PROCS];
+
+fn recordar(slot: usize, linea: &[u8]) {
+    unsafe {
+        let punta = COLA_PUNTA[slot];
+        let n = if linea.len() > LINE_MAX { LINE_MAX } else { linea.len() };
+        COLA[slot][punta][..n].copy_from_slice(&linea[..n]);
+        COLA_LEN[slot][punta] = n;
+        COLA_PUNTA[slot] = (punta + 1) % ULTIMAS;
+    }
+}
+
+/// Las últimas líneas que dijo `pid`, de la más vieja a la más nueva.
+///
+/// Se entrega por callback y no como slice para no prestar un `static mut`:
+/// quien las lee las pinta y se acabó.
+pub fn ultimas_palabras(pid: u32, mut pinta: impl FnMut(&str)) {
+    let slot = pid as usize;
+    if slot >= MAX_PROCS {
+        return;
+    }
+    unsafe {
+        let punta = COLA_PUNTA[slot];
+        for i in 0..ULTIMAS {
+            let idx = (punta + i) % ULTIMAS;
+            let n = COLA_LEN[slot][idx];
+            if n == 0 {
+                continue;
+            }
+            if let Ok(s) = core::str::from_utf8(&COLA[slot][idx][..n]) {
+                pinta(s);
+            }
+        }
+    }
+}
+
+/// ¿Dijo algo este proceso alguna vez? Distingue "murió callado" —que ya es un
+/// dato— de "no hay nada guardado".
+pub fn hubo_palabras(pid: u32) -> bool {
+    let slot = pid as usize;
+    if slot >= MAX_PROCS {
+        return false;
+    }
+    unsafe { COLA_LEN[slot].iter().any(|&n| n > 0) }
+}
+
 /// Emit up to 8 bytes packed little-endian in `packed`. A zero byte ends the
 /// word early (lets a short final chunk be zero-padded by the producer).
 pub fn write_packed(packed: u64) {
@@ -155,6 +221,9 @@ fn flush() {
     let head = head + 2;
     let body = unsafe { &LINE[slot][..len] };
     tagged[head..head + len].copy_from_slice(body);
+    // Guardar la línea CRUDA (sin la etiqueta) antes de pintarla: si este
+    // proceso se muere, esto es lo único que quedará de lo que dijo.
+    recordar(slot, body);
     if let Ok(s) = core::str::from_utf8(&tagged[..head + len]) {
         // Paint under the KERNEL CR3. This flush runs inside the syscall
         // dispatch of a Ring 3 caller, i.e. under the USER CR3 — whose

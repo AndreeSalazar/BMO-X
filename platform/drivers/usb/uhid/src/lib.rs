@@ -163,12 +163,20 @@ impl UsbHidHal {
 
     /// ¿Podemos quedarnos con esta interfaz de ratón?
     ///
-    /// Sí si no hay ninguno, o si el que hay es el provisional de un teclado
-    /// compuesto y éste viene de un aparato que NO es un teclado.
-    fn raton_libre(&self, de_un_compuesto: bool) -> bool {
+    /// Sí si no hay ninguno, o si el que hay es el provisional del teclado y
+    /// éste sale de **otro aparato**.
+    ///
+    /// ★ El parámetro es un HECHO, no una adivinanza. Antes se le pasaba
+    /// `es_compuesto` —"este aparato trae interfaz de teclado y de ratón"— y
+    /// eso describe igual de bien a un teclado con teclas de medios que a un
+    /// **ratón de juego con teclas de macro**. El de esta máquina las tiene:
+    /// se le miraba, se le clasificaba de "teclado compuesto" y se le
+    /// descartaba, dejando puesto el ratón provisional del teclado de verdad.
+    /// En la foto: `raton ev=0 slot=2(=kbd!)` y "nada que adoptar" tres veces.
+    fn raton_libre(&self, sale_del_teclado: bool) -> bool {
         match self.raton.as_ref() {
             None => true,
-            Some(m) => m.es_provisional() && !de_un_compuesto,
+            Some(m) => m.es_provisional() && !sale_del_teclado,
         }
     }
 
@@ -211,15 +219,45 @@ impl UsbHidHal {
         let n_ifs = enumera::interfaces(cfg, &mut ifaces);
         let compuesto = enumera::es_compuesto(&ifaces[..n_ifs]);
 
+        // ★ ¿Sale este aparato del MISMO sitio que mi teclado? Es la pregunta
+        // exacta que `es_compuesto` intentaba adivinar contando interfaces, y
+        // que fallaba con un ratón de macros. Aquí se compara el slot, que es
+        // la identidad del aparato en el bus: dos interfaces del mismo aparato
+        // comparten slot y las de aparatos distintos no.
+        //
+        // El segundo término cubre el orden inverso: si la interfaz de ratón
+        // del teclado se mira ANTES que la de teclado, todavía no hay slot con
+        // el que comparar y hay que fiarse de la forma del aparato.
+        let sale_del_teclado = self.teclado.as_ref().is_some_and(|k| k.slot() == slot)
+            || (self.teclado.is_none() && compuesto);
+
         for (iface, clase, subclase, proto) in &ifaces[..n_ifs] {
-            if *clase != enumera::CLASE_HID || *subclase != enumera::SUBCLASE_BOOT {
+            // Toda interfaz se DICE antes de juzgarla. Sin esto, un aparato
+            // descartado y un aparato ausente se ven exactamente igual —que es
+            // lo que costó esta ronda de fotos.
+            h.log_u64("[uhid] iface=", *iface as u64);
+            h.log_u64(" clase=", *clase as u64);
+            h.log_u64(" sub=", *subclase as u64);
+            h.log_u64(" proto=", *proto as u64);
+            if *clase != enumera::CLASE_HID {
+                h.log(" (no es HID)\n");
+                continue;
+            }
+            if *subclase != enumera::SUBCLASE_BOOT {
+                // Un HID sin protocolo de arranque manda sus informes en el
+                // formato que describa su Report Descriptor, y eso este driver
+                // todavía no lo lee. Decirlo por su nombre: si el ratón acaba
+                // aquí, el arreglo es leer el descriptor, no tocar el reparto.
+                h.log(" (HID sin subclase BOOT: no se leerlo)\n");
                 continue;
             }
             let es_teclado = *proto == enumera::PROTO_TECLADO && self.teclado.is_none();
-            let es_raton = *proto == enumera::PROTO_RATON && self.raton_libre(compuesto);
+            let es_raton = *proto == enumera::PROTO_RATON && self.raton_libre(sale_del_teclado);
             if !es_teclado && !es_raton {
+                h.log(" (ya cubierto)\n");
                 continue;
             }
+            h.log(" -> lo tomo\n");
 
             let (_addr, mps, interval, dci) = match enumera::intr_in(cfg, *iface) {
                 Some(e) => e,
@@ -237,10 +275,15 @@ impl UsbHidHal {
                 cosecha.teclado = true;
                 h.log("[uhid] teclado listo\n");
             } else {
-                if compuesto {
-                    h.log("[uhid] iface de raton en un TECLADO: provisional\n");
+                if sale_del_teclado {
+                    h.log("[uhid] iface de raton en MI TECLADO: provisional\n");
                 }
-                if self.instalar_raton(Raton::nuevo(direccion, buf_phys, buf_virt, compuesto)) {
+                if self.instalar_raton(Raton::nuevo(
+                    direccion,
+                    buf_phys,
+                    buf_virt,
+                    sale_del_teclado,
+                )) {
                     cosecha.raton = true;
                     h.log("[uhid] raton listo\n");
                 }

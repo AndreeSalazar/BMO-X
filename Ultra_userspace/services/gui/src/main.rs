@@ -101,6 +101,18 @@ pub extern "C" fn _start() -> ! {
 
     let caja = Caja::nueva(p.ancho, p.alto);
 
+    // ── LA ENTRADA A RING 3 ──
+    //
+    // Antes de dibujar nada del escritorio, decir lo que acaba de pasar: el
+    // userspace tiene la máquina. Hasta hoy este paso era invisible y por eso
+    // un compositor muerto y un compositor que no pinta se veían igual — un
+    // shell donde debía haber un escritorio.
+    //
+    // Y lleva las dos capabilities OPCIONALES escritas en la cara, que es lo
+    // que distingue "no funciona" de "no me la dieron".
+    escena::entrada::pintar(&p, entrada.is_some(), salida_cap.is_some());
+    bmo::consola("entrada a Ring 3 pintada\n");
+
     // Fondo entero de una pasada, y encima la escena.
     p.limpiar(FONDO);
     p.rect(0, 0, p.ancho, BARRA_ALTO, BARRA);

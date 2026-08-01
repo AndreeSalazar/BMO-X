@@ -1288,6 +1288,11 @@ const RUTA_COMPOSITOR: &str = "sys/gui.bex";
 /// El tid del escritorio, para poder preguntar después si sigue vivo.
 /// `0` = no se admitió.
 static mut ESCRITORIO_TID: u32 = 0;
+/// ★ Y su PID, que **no es el mismo número**. `vive()` pregunta por tid (el
+/// hilo) y `uconsole` guarda las líneas por pid (el proceso). Confundirlos aquí
+/// haría que el informe de defunción leyera las últimas palabras de otro — o de
+/// nadie, que es peor, porque parecería que se murió callado.
+static mut ESCRITORIO_PID: u32 = 0;
 
 /// ¿Se admitió el escritorio y ya no está?
 ///
@@ -1299,17 +1304,34 @@ fn escritorio_murio() -> bool {
     tid != 0 && !crate::ring0::task::scheduler::vive(tid)
 }
 
+/// Cuántas veces se ha intentado levantar el escritorio.
+static mut ESCRITORIO_INTENTOS: u32 = 0;
+/// Tope de relanzamientos automáticos.
+///
+/// Dos y no infinitos: un compositor que muere por una condición de carrera del
+/// arranque se levanta al segundo intento, y uno que muere por un bug lo hará
+/// las veces que se le pida. Reintentar sin tope convertiría un fallo visible
+/// en una máquina que parpadea para siempre — y encima borrando su propio log
+/// en cada vuelta. Es la misma lección que los puertos USB.
+const ESCRITORIO_MAX_INTENTOS: u32 = 2;
+
 fn arrancar_escritorio() {
     use crate::ring0::task::lanzar;
 
+    unsafe { ESCRITORIO_INTENTOS += 1 };
     let inf = lanzar::ruta(RUTA_COMPOSITOR);
     match inf.res {
         Ok(tid) => {
-            unsafe { ESCRITORIO_TID = tid };
+            unsafe {
+                ESCRITORIO_TID = tid;
+                ESCRITORIO_PID = inf.pid.unwrap_or(0);
+            }
             row("escritorio", |l| {
                 l.txt(RUTA_COMPOSITOR);
                 l.txt("   tid ");
                 l.dec(tid as u64);
+                l.txt("  pid ");
+                l.dec(inf.pid.unwrap_or(0) as u64);
             });
             crate::ring0::cabina::info("gui", "escritorio admitido desde disco", tid as u64);
         }
@@ -1322,6 +1344,39 @@ fn arrancar_escritorio() {
     }
 }
 
+/// **El informe de defunción del escritorio.**
+///
+/// ★ Antes esto decía *"mira el panico en el log de arriba"*. Y el pánico SÍ
+/// estaba: el manejador del compositor imprime archivo y línea exactos. Sólo que
+/// el log del kernel sigue corriendo, así que para cuando se mira la pantalla
+/// esa línea ya subió y salió — tres arranques seguidos con la respuesta
+/// delante y sin poder leerla.
+///
+/// Ahora se reimprimen **sus últimas palabras**, guardadas por `uconsole`
+/// mientras aún vivía. Un registrador de vuelo que borra la caja negra al
+/// aterrizar no es un registrador de vuelo.
+fn informe_de_defuncion() {
+    let tid = unsafe { ESCRITORIO_TID };
+    // ★ Por PID, no por tid. Ver la nota de `ESCRITORIO_PID`.
+    let pid = unsafe { ESCRITORIO_PID };
+    row("escritorio", |l| {
+        l.txt("MURIO tras arrancar, tid ");
+        l.dec(tid as u64);
+        l.txt(" — esto es lo ULTIMO que dijo:");
+    });
+    if crate::ring0::uconsole::hubo_palabras(pid) {
+        crate::ring0::uconsole::ultimas_palabras(pid, |linea| {
+            row("   |", |l| { l.txt(linea); });
+        });
+    } else {
+        // Que no dijera nada TAMBIÉN es un dato: significa que se murió antes
+        // de llegar a su primer mensaje, o que ni siquiera entró a CPL3.
+        row("   |", |l| { l.txt("(nada: murio antes de decir una sola linea)"); });
+    }
+    row("   relanzar", |l| { l.txt("run "); l.txt(RUTA_COMPOSITOR); });
+    crate::ring0::cabina::warn("gui", "el escritorio murio tras arrancar", tid as u64);
+}
+
 fn run_shell(ctx: &BootContext) -> ! {
     // Normalize the i8042 (translation → Set 1, re-enable scanning) so the
     // physical keyboard reaches shell_read_line. No-op if the controller is
@@ -1332,9 +1387,29 @@ fn run_shell(ctx: &BootContext) -> ! {
     // hacer. Estar en este shell después de haber lanzado el compositor no es
     // lo normal: significa que se murió, y quien lo mira sólo ve un shell.
     if escritorio_murio() {
-        row("escritorio", |l| { l.txt("MURIO tras arrancar — mira el panico en el log de arriba"); });
-        row("   relanzar", |l| { l.txt("run "); l.txt(RUTA_COMPOSITOR); });
-        crate::ring0::cabina::warn("gui", "el escritorio murio tras arrancar", unsafe { ESCRITORIO_TID } as u64);
+        informe_de_defuncion();
+        // ★ Y se vuelve a intentar UNA vez. La entrada a Ring 3 es el estado
+        // normal de esta máquina: quedarse en el shell de Ring 0 porque el
+        // primer intento se cruzó con algo del arranque es conformarse.
+        // Con tope, y diciéndolo — un relanzamiento silencioso convierte un
+        // fallo en un misterio.
+        if unsafe { ESCRITORIO_INTENTOS } < ESCRITORIO_MAX_INTENTOS {
+            row("   reintento", |l| {
+                l.txt("levantando el escritorio otra vez (");
+                l.dec(unsafe { ESCRITORIO_INTENTOS } as u64 + 1);
+                l.txt(" de ");
+                l.dec(ESCRITORIO_MAX_INTENTOS as u64);
+                l.txt(")");
+            });
+            crate::ring0::cabina::info("gui", "relanzando el escritorio", unsafe {
+                ESCRITORIO_INTENTOS
+            } as u64);
+            arrancar_escritorio();
+        } else {
+            row("   basta", |l| {
+                l.txt("no se relanza mas: dos veces es un bug, no una carrera");
+            });
+        }
     }
     dash_log("== BMO-X operativo : escribe help ==");
     // Serial-only banner: keep the rolling dashboard rows untouched so the
@@ -1614,6 +1689,16 @@ pub fn main(ctx: &mut BootContext) {
     // `spawn_init` por una razón dura: `spawn_init` corre en el Acto I, cuando
     // el HBA SATA ni se ha tocado. Este es el primer punto del arranque en el
     // que existe un volumen de datos del que leerlo.
+    //
+    // ★ Y se ANUNCIA. El paso de Ring 0 a Ring 3 era invisible: el kernel
+    // dejaba de pintar y o aparecía un escritorio o no aparecía nada, sin
+    // forma de saber cuál de los dos lados había fallado. Decir qué se cede y
+    // a quién convierte ese silencio en un acto con testigos.
+    dash_log("== RING 3 : LA ENTREGA ==");
+    row("se cede", |l| {
+        l.txt("la PANTALLA, la ENTRADA y una CONSOLA — y Ring 0 deja de pintar");
+    });
+    row("a", |l| { l.txt(RUTA_COMPOSITOR); l.txt("   desde el volumen de datos, con su firma"); });
     arrancar_escritorio();
 
     // FINAL checkpoint: bright green at row 236 = kernel finished ALL of

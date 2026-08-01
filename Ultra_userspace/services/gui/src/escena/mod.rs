@@ -9,6 +9,8 @@ pub(crate) mod calc;
 pub(crate) mod conmutador;
 pub(crate) mod datos;
 pub(crate) mod cursor;
+/// La ENTRADA a Ring 3: lo que se ve cuando el userspace toma la máquina.
+pub(crate) mod entrada;
 pub(crate) mod salida;
 
 
