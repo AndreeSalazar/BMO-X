@@ -61,6 +61,18 @@ impl Modo {
         }
     }
 
+    /// El nombre con lo que hace puesto detrás, para una línea de estado.
+    ///
+    /// Es texto de PANTALLA y por eso es Latin-1 puro: la consola de BMO es de
+    /// un byte por carácter a propósito, y un guión largo saldría de basura.
+    pub fn nombre_largo(self) -> &'static str {
+        match self {
+            Modo::Normal => "foco: normal - Alt+Tab recorre las ventanas",
+            Modo::Fijo => "foco: fijo - ninguna ventana nueva roba el teclado",
+            Modo::Puntero => "foco: sigue al puntero - pasar por encima basta",
+        }
+    }
+
     /// El siguiente, para conmutar con una tecla.
     pub fn siguiente(self) -> Modo {
         match self {
@@ -128,13 +140,32 @@ impl Foco {
 
     /// Quién tiene el foco, o `None` si no hay ninguna abierta.
     ///
-    /// Mientras se conmuta con Alt pulsado, devuelve **la señalada**: lo que se
-    /// ve resaltado es lo que va a recibir las teclas si sueltas ahora.
+    /// ★ **Esto NO cambia mientras conmutas.** Con Alt pulsado, lo resaltado es
+    /// una *propuesta* —[`Foco::señalada`]— y el teclado sigue yendo a donde
+    /// iba hasta que sueltas. Son dos preguntas distintas y mezclarlas se nota:
+    /// una tecla escrita a mitad de un Alt+Tab acabaría en una ventana que
+    /// todavía no habías elegido.
     pub fn actual(&self) -> Option<u8> {
         if self.n == 0 {
             return None;
         }
-        Some(self.orden[self.señalando.unwrap_or(0)])
+        Some(self.orden[0])
+    }
+
+    /// La que está resaltada en el conmutador: la que RECIBIRÁ el foco si
+    /// sueltas Alt ahora. Sin conmutar es la que ya lo tiene.
+    pub fn señalada(&self) -> Option<u8> {
+        if self.n == 0 {
+            return None;
+        }
+        Some(self.orden[self.indice_señalado()])
+    }
+
+    /// Su posición en la lista, que es lo que el conmutador necesita para
+    /// resaltar una fila. Se da hecho: calcularlo fuera obliga a buscar el id
+    /// en la lista, y dos ventanas con el mismo id resaltarían la que no es.
+    pub fn indice_señalado(&self) -> usize {
+        self.señalando.unwrap_or(0)
     }
 
     /// ¿Es de esta ventana la tecla que acaba de llegar?
@@ -148,6 +179,17 @@ impl Foco {
 
     fn posicion(&self, ventana: u8) -> Option<usize> {
         self.orden[..self.n].iter().position(|&v| v == ventana)
+    }
+
+    /// Se acabó la conmutación sin elegir.
+    ///
+    /// ★ Hace falta en TODO lo que mueve la lista —abrir, cerrar, un clic— y no
+    /// es cosmético: `señalando` es un **índice**, no un id. Insertar o quitar
+    /// una ventana desplaza las filas por debajo del resaltado, así que un
+    /// índice que sobrevive a un cambio de lista señala a otra ventana. Es el
+    /// clásico de guardar una posición en vez de una identidad.
+    pub fn cancelar_conmutacion(&mut self) {
+        self.señalando = None;
     }
 
     /// Abre una ventana. Si ya estaba, no se duplica.
@@ -165,6 +207,7 @@ impl Foco {
         if self.n >= MAX_VENTANAS {
             return;
         }
+        self.cancelar_conmutacion();
         // Hueco al principio y la nueva delante.
         let destino = if self.modo == Modo::Fijo && self.n > 0 { 1 } else { 0 };
         let mut i = self.n;
@@ -184,10 +227,13 @@ impl Foco {
             self.orden[i] = self.orden[i + 1];
         }
         self.n -= 1;
-        self.señalando = None;
+        self.cancelar_conmutacion();
     }
 
     fn al_frente(&mut self, p: usize) {
+        // Traer una al frente es elegir: lo que el conmutador estuviera
+        // proponiendo deja de valer.
+        self.cancelar_conmutacion();
         if p == 0 {
             return;
         }
@@ -330,13 +376,31 @@ mod tests {
         f.abrir(TERCERA); // MRU: TERCERA, DATOS, EJECUTAR
 
         f.conmutar();
-        assert_eq!(f.actual(), Some(DATOS));
+        assert_eq!(f.señalada(), Some(DATOS));
         f.conmutar();
-        assert_eq!(f.actual(), Some(EJECUTAR));
+        assert_eq!(f.señalada(), Some(EJECUTAR));
         f.conmutar();
-        assert_eq!(f.actual(), Some(TERCERA), "da la vuelta");
+        assert_eq!(f.señalada(), Some(TERCERA), "da la vuelta");
         f.soltar_conmutador();
         assert_eq!(f.lista(), &[TERCERA, DATOS, EJECUTAR], "la MRU no cambio");
+    }
+
+    /// ★ Lo resaltado es una PROPUESTA. Mientras Alt sigue pulsado, una tecla
+    /// suelta va a la ventana de siempre — no a la que estás mirando y todavía
+    /// no has elegido.
+    #[test]
+    fn mientras_conmutas_las_teclas_siguen_yendo_a_la_de_antes() {
+        let mut f = Foco::nuevo();
+        f.abrir(EJECUTAR);
+        f.abrir(DATOS); // el foco esta en DATOS
+
+        f.conmutar();
+        assert_eq!(f.señalada(), Some(EJECUTAR), "eso es lo que se resalta");
+        assert_eq!(f.actual(), Some(DATOS), "y esto es lo que recibe la tecla");
+        assert!(f.es_para(DATOS));
+
+        f.soltar_conmutador();
+        assert_eq!(f.actual(), Some(EJECUTAR), "ahora si");
     }
 
     #[test]
@@ -346,7 +410,64 @@ mod tests {
         f.abrir(DATOS);
         f.abrir(TERCERA);
         f.conmutar_atras();
-        assert_eq!(f.actual(), Some(EJECUTAR), "la ultima de la pila");
+        assert_eq!(f.señalada(), Some(EJECUTAR), "la ultima de la pila");
+    }
+
+    /// ★ `señalando` es un ÍNDICE, no un id: abrir una ventana desplaza las
+    /// filas y el resaltado se quedaría apuntando a otra. Abrir cancela la
+    /// conmutación, y entonces soltar Alt no puede llevarte a una ventana que
+    /// no elegiste.
+    #[test]
+    fn abrir_una_ventana_mientras_conmutas_no_deja_el_indice_colgado() {
+        let mut f = Foco::nuevo();
+        f.abrir(EJECUTAR);
+        f.abrir(DATOS);
+        f.conmutar();
+        assert!(f.conmutando());
+
+        f.abrir(TERCERA);
+        assert!(!f.conmutando(), "la conmutacion se cancela");
+        assert_eq!(f.actual(), Some(TERCERA));
+        f.soltar_conmutador();
+        assert_eq!(f.actual(), Some(TERCERA), "soltar Alt ya no mueve nada");
+    }
+
+    /// Un clic es elegir a mano, y elegir cancela lo que el conmutador
+    /// estuviera proponiendo.
+    #[test]
+    fn un_clic_cancela_la_conmutacion() {
+        let mut f = Foco::nuevo();
+        f.abrir(EJECUTAR);
+        f.abrir(DATOS);
+        f.abrir(TERCERA);
+        f.conmutar();
+        f.clic_en(EJECUTAR);
+        assert!(!f.conmutando());
+        assert_eq!(f.actual(), Some(EJECUTAR));
+    }
+
+    /// Cerrar la última no deja un foco fantasma: sin ventanas, ninguna tecla
+    /// es de nadie.
+    #[test]
+    fn cerrar_la_ultima_deja_el_escritorio_sin_foco() {
+        let mut f = Foco::nuevo();
+        f.abrir(EJECUTAR);
+        f.cerrar(EJECUTAR);
+        assert_eq!(f.abiertas(), 0);
+        assert_eq!(f.actual(), None);
+        assert_eq!(f.señalada(), None);
+        assert!(!f.es_para(EJECUTAR));
+    }
+
+    /// Y esconder la que tiene el foco lo pasa a la otra: es lo que hace que
+    /// `Ctrl+Alt` con Datos abierta deje el teclado en Datos y no en el vacío.
+    #[test]
+    fn esconder_la_del_foco_se_lo_pasa_a_la_que_queda() {
+        let mut f = Foco::nuevo();
+        f.abrir(DATOS);
+        f.abrir(EJECUTAR);
+        f.cerrar(EJECUTAR);
+        assert_eq!(f.actual(), Some(DATOS));
     }
 
     /// Con una sola ventana no hay nada que conmutar, y sobre todo no se puede

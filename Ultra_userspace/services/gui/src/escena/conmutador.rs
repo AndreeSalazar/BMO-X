@@ -66,9 +66,11 @@ pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], señalada: usize, modo: &s
     }
 
     // El modo, abajo: sin esto no hay forma de saber por qué el foco se
-    // comporta distinto de lo que esperabas.
+    // comporta distinto de lo que esperabas. Y con él la tecla que lo cambia:
+    // un modo que se lee pero no se toca invita a pensar que está averiado.
     let mx = p.texto(x + 14, fy + 4, "modo: ", TEXTO_TENUE);
-    p.texto(mx, fy + 4, modo, ACENTO);
+    let mx = p.texto(mx, fy + 4, modo, ACENTO);
+    p.texto(mx, fy + 4, "   (Alt+M)", TEXTO_TENUE);
 }
 
 /// Qué rectángulo ocupó, para poder borrarlo después.

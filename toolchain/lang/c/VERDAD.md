@@ -193,6 +193,35 @@ verifican en el Ryzen o no se verifican.
 
 ---
 
+## 9. El COMPOSITOR — lo que no es C pero se verifica igual
+
+Esto no es del lenguaje, pero se mira en la misma foto y sin fila aquí nadie
+sabría qué esperar.
+
+| Se hace | Debe salir | Por qué | Estado |
+|---|---|---|---|
+| **F12** | Ventana verde `ESTRATOS // centro de datos` | Las teclas de función no producían nada: `hid_to_ps2` las traducía y se caían por el `_ => None` de `nav_key` | ⏳ metal |
+| F12 otra vez | Se cierra y **lo de debajo vuelve entero** | La consola se pinta encima de la caja; borrarla ignorándolo dejaría un agujero con el fondo del escritorio | ⏳ metal |
+| **Alt+Tab** (Alt izquierdo) | La ventanita con la lista y una señalada | `Ctrl+Alt` no vale: **es AltGr** y ya tiene dueño | ⏳ metal |
+| Alt+Tab dos veces | Vuelve a donde estabas | La pila MRU se reordena **al soltar Alt**, no en cada Tab. Es lo que más se implementa mal | ⏳ metal, 17 tests en `bmo_input::foco` |
+| Escribir con Datos abierta | Las teclas van a **Datos**: la línea de Ejecutar **no cambia** | Se calculaba el foco y **nadie lo leía**: `es_para` no se llamaba ni una vez, así que todo seguía cayendo en Ejecutar | ⏳ metal |
+| ESC con Datos abierta | La cierra. Con Ejecutar delante, ESC sigue **borrando la línea** | Dos ventanas, dos respuestas a la misma tecla — eso es tener foco | ⏳ metal |
+| **Alt+M** | El modo cambia y **se dice** (en la ventanita, o en la línea de estado) | Sin tecla, `Fijo` y `Puntero` eran inalcanzables: tres modos y sólo uno vivo | ⏳ metal |
+| Clic en una ventana | Le da el teclado, **también en modo Fijo** | `click-to-focus`. Fijo impide que se lo TOMEN, no que se lo des | ⏳ metal |
+| **Mover el ratón por encima de Datos** | La ventana queda **intacta**: ni un agujero | Era real y se veía: el cursor se borraba repintando `color_escena`, que no sabe de ventanas nuevas y contestaba con el fondo del escritorio. Ahora se guarda lo de debajo (*save-under*, 640 B) | ⏳ metal |
+| Ctrl+Alt esconde Ejecutar y luego Alt+Tab | **No** se puede ir a la escondida | Esconder es cerrar para el foco. Si no, escribes en algo invisible | ⏳ metal |
+
+★ La ventana de datos dice **`escritura: CERRADA`** en rojo, y tiene que decirlo:
+la transacción existe y está probada, pero nadie la ha cableado al dispositivo.
+Si algún día aparece en verde sin que se haya cableado, eso es el bug.
+
+★ **Lo que hay que mirar y no tiene fila propia**: que el puntero **no parpadee
+ni se vea pálido**. Se quita al principio del fotograma y se pone al final, así
+que se dibujan sólo los fotogramas que pintan algo — si esa cuenta estuviera mal,
+el cursor estaría ausente la mitad del tiempo y se notaría antes que nada.
+
+---
+
 ## Mentiras del emulador (histórico)
 
 Cada una hizo **fallar código correcto** o **pasar código roto**. Se apuntan

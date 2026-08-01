@@ -60,7 +60,7 @@ mod ordenes;
 mod texto;
 
 use escena::calc::{pintar_calc, Calc, CalcCaja};
-use escena::cursor::{borrar_cursor, dibujar_cursor};
+use escena::cursor::Bajo;
 use escena::salida::{pintar_salida, Salida, TINTA_ECO, TINTA_MAL, TINTA_NORMAL};
 use escena::*;
 use ordenes::completar::{completar, motivo_archivo};
@@ -208,28 +208,77 @@ pub extern "C" fn _start() -> ! {
     let mut alt_antes = false;
     let mut conmutador_pintado = false;
 
+    // Lo que hay DEBAJO del cursor del ratón. Ver `escena::cursor::Bajo`: se
+    // quita al principio del fotograma y se pone al final, y en medio se pinta.
+    let mut bajo = Bajo::nuevo();
+    // Estado anterior de los botones EN PANTALLA, para no repintar el testigo
+    // del pulsómetro sesenta veces por segundo con el mismo color.
+    let mut col_boton = FONDO;
+
     loop {
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
+
+        // ── ¿Va a pintar algo este fotograma? ──
+        //
+        // Hay que saberlo ANTES de pintar, porque el cursor del ratón se quita
+        // al principio y se pone al final: hacerlo en todos los fotogramas
+        // dejaría el puntero ausente la mitad del tiempo y en pantalla se vería
+        // pálido y parpadeante. Y como leer una tecla la CONSUME, "¿hay
+        // teclas?" obliga a tenerlas ya en la mano.
+        //
+        // Lo que se lee aquí no se interpreta aquí: esto sólo recoge.
+        let mut va_a_pintar = salida.sucia || desde_tecla + 1 >= PARPADEO;
 
         if let Some(e) = entrada.as_ref() {
             // ── El atajo, ANTES de leer teclas ──
             let m = e.modificadores();
             let ctrl = m & bmo::MOD_CTRL != 0;
             let combo = ctrl && m & bmo::MOD_ALT != 0;
-
-            // ── Alt+Tab: el conmutador ──
-            //
             // ★ Alt SOLO, sin Ctrl. La distincion no es cosmetica: `Ctrl+Alt`
             // **es AltGr** en espanol, y ya tiene dueno (invocar la ventana).
             // El driver ademas da el Alt DERECHO como `SC_ALTGR` con codigo
             // propio, asi que `MOD_ALT` es el izquierdo — el de Alt+Tab de toda
             // la vida.
+            let alt_solo = m & bmo::MOD_ALT != 0 && !ctrl;
+
+            // El tope no descarta: lo que no quepa se queda en el anillo del
+            // kernel y llega en el fotograma siguiente. Drenar sin tope y tirar
+            // el sobrante sería perder letras justo cuando se escribe rápido.
+            let mut teclas = [0u8; 64];
+            let mut nt = 0usize;
+            while nt < teclas.len() {
+                match e.tecla() {
+                    Some(c) => {
+                        teclas[nt] = c;
+                        nt += 1;
+                    }
+                    None => break,
+                }
+            }
+            let pos = e.puntero();
+            let giro = e.rueda();
+            let ev_raton = e.eventos().min(PULSO_ANCHO as u64) as u32;
+
+            va_a_pintar |= nt > 0
+                || giro != 0
+                || pos.x != ax
+                || pos.y != ay
+                || (pos.botones != 0) != boton_antes
+                || ev_raton != pulso_previo
+                || alt_solo != alt_antes
+                || combo != combo_antes;
+
+            // A partir de aquí se PINTA, así que el cursor se aparta.
+            if va_a_pintar {
+                bajo.quitar(&p);
+            }
+
+            // ── Alt+Tab: el conmutador ──
             //
             // La pila se reordena al SOLTAR, no en cada Tab: eso es lo que hace
             // que pulsarlo dos veces te devuelva a donde estabas. Ver
             // `bmo_input::foco`.
-            let alt_solo = m & bmo::MOD_ALT != 0 && !ctrl;
             if !alt_solo && alt_antes && foco.conmutando() {
                 foco.soltar_conmutador();
                 let (bx, by, ba, bh) = escena::conmutador::area(&p, foco.abiertas());
@@ -256,11 +305,17 @@ pub extern "C" fn _start() -> ! {
             if !combo && combo_antes && !hubo_tecla_en_combo {
                 visible = !visible;
                 if visible {
+                    // Esconderla y volver a invocarla es cerrarla y abrirla
+                    // para el foco. Sin esto, Alt+Tab llevaria el teclado a una
+                    // ventana que no esta en la pantalla: escribirias en algo
+                    // invisible, que es la peor forma de perder una linea.
+                    foco.abrir(V_EJECUTAR);
                     pintar_caja(&p, &caja);
                     repintar_campo = true;
                     salida.sucia = true;
                     pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                 } else {
+                    foco.cerrar(V_EJECUTAR);
                     borrar_caja(&p, &caja);
                 }
             }
@@ -268,10 +323,11 @@ pub extern "C" fn _start() -> ! {
 
             // ── Teclado ──
             //
-            // Se drena hasta vaciar, no una tecla por fotograma: escribiendo
-            // rápido llegan varias entre vuelta y vuelta, y quedarse con una
-            // sería perder letras de forma que parecería un teclado malo.
-            while let Some(c) = e.tecla() {
+            // Se atienden TODAS las de la vuelta, no una por fotograma:
+            // escribiendo rápido llegan varias entre vuelta y vuelta, y
+            // quedarse con una sería perder letras de forma que parecería un
+            // teclado malo. Ya están recogidas arriba.
+            for &c in &teclas[..nt] {
                 // Tab con Alto pulsado NO llega a ninguna ventana: es del
                 // conmutador. Shift lo recorre al reves.
                 if alt_solo && c == 0x09 {
@@ -280,13 +336,37 @@ pub extern "C" fn _start() -> ! {
                     } else {
                         foco.conmutar();
                     }
-                    let sen = foco
-                        .lista()
-                        .iter()
-                        .position(|&v| Some(v) == foco.actual())
-                        .unwrap_or(0);
-                    escena::conmutador::pintar(&p, foco.lista(), sen, foco.modo().nombre());
+                    escena::conmutador::pintar(
+                        &p,
+                        foco.lista(),
+                        foco.indice_señalado(),
+                        foco.modo().nombre(),
+                    );
                     conmutador_pintado = true;
+                    continue;
+                }
+                // ── Alt+M: cambiar el MODO del foco ──
+                //
+                // Sin una tecla, los tres modos son decoracion: `Fijo` y
+                // `Puntero` existirian sin forma de llegar a ellos. Va con Alt
+                // por lo mismo que el Tab —`Alt` solo no produce caracter en
+                // ninguna distribucion, `Ctrl+Alt` SI (es AltGr)— y se anuncia
+                // en la propia ventanita, que es donde se lee el modo.
+                if alt_solo && (c == b'm' || c == b'M') {
+                    foco.poner_modo(foco.modo().siguiente());
+                    if conmutador_pintado {
+                        escena::conmutador::pintar(
+                            &p,
+                            foco.lista(),
+                            foco.indice_señalado(),
+                            foco.modo().nombre(),
+                        );
+                    } else if visible {
+                        // Cambiarlo sin el conmutador abierto tambien tiene que
+                        // verse: un modo que cambia en silencio se descubre
+                        // cuando el teclado ya se fue a otra ventana.
+                        pintar_estado(&p, &caja, foco.modo().nombre_largo(), ACENTO);
+                    }
                     continue;
                 }
                 // Cualquier tecla durante el combo lo convierte en AltGr y
@@ -294,11 +374,57 @@ pub extern "C" fn _start() -> ! {
                 if combo {
                     hubo_tecla_en_combo = true;
                 }
-                // Con la ventana escondida las teclas no se editan en ningún
-                // sitio: se descartan. Volverán cuando se invoque.
-                if !visible {
+
+                // ── F12 es del SISTEMA, no de una ventana ──
+                //
+                // Se atiende ANTES de preguntar por el foco, y tiene que ser
+                // asi: un atajo que solo funciona si ya estas en la ventana que
+                // abre no sirve para abrirla — y peor, no sirve para cerrarla,
+                // porque para entonces el foco ya es suyo.
+                //
+                // ESC cierra la de arriba, que es lo que hace ESC en todas
+                // partes. En Ejecutar ESC sigue borrando la linea: son dos
+                // ventanas distintas y cada una contesta lo suyo.
+                let conmutar_datos = if c == 0x94 {
+                    Some(!datos_visible)
+                } else if c == 0x1B && datos_visible && foco.es_para(V_DATOS) {
+                    Some(false)
+                } else {
+                    None
+                };
+                if let Some(abrir) = conmutar_datos {
+                    datos_visible = abrir;
+                    if abrir {
+                        foco.abrir(V_DATOS);
+                        escena::datos::pintar(&p, &caja_datos);
+                    } else {
+                        // Al cerrarla hay que devolver el fondo Y repintar
+                        // lo que tapaba: la caja de Ejecutar esta debajo.
+                        foco.cerrar(V_DATOS);
+                        borrar_datos(&p, &caja, &caja_datos, visible);
+                        if visible {
+                            pintar_caja(&p, &caja);
+                            repintar_campo = true;
+                            salida.sucia = true;
+                        }
+                    }
                     continue;
                 }
+
+                // ── ★ ¿DE QUIEN es esta tecla? ──
+                //
+                // La pregunta que faltaba, y la razon de que exista
+                // `bmo_input::foco`. Hasta ahora TODA tecla se editaba en la
+                // linea de Ejecutar aunque la consola de datos estuviera
+                // encima: escribias en una ventana tapada, sin verlo. Con una
+                // tercera, chocan.
+                //
+                // Ninguna abierta —todas escondidas— tampoco es "Ejecutar por
+                // defecto": las teclas se descartan y vuelven al invocarla.
+                if !foco.es_para(V_EJECUTAR) {
+                    continue;
+                }
+                debug_assert!(visible, "el foco de una ventana escondida es un bug");
                 // Cualquier tecla enciende el cursor y reinicia el parpadeo.
                 caret = true;
                 desde_tecla = 0;
@@ -806,30 +932,10 @@ pub extern "C" fn _start() -> ! {
                     0x88 => {
                         salida.mover_vista(-(SAL_ROWS as i32 - 1));
                     }
-                    // ★ F12 — la consola de DATOS.
+                    // ★ F12 (0x94) NO esta aqui: se atiende arriba, antes de
+                    // preguntar por el foco, porque es del sistema y no de esta
+                    // ventana. Ver la conmutacion de la consola de datos.
                     //
-                    // Se conmuta al PULSAR y no al soltar, al reves que
-                    // `Ctrl+Alt`: aquella tenia que esperar porque es AltGr y
-                    // podia estar a mitad de un `@`. Una tecla de funcion no
-                    // esta a mitad de nada.
-                    0x94 => {
-                        datos_visible = !datos_visible;
-                        if datos_visible {
-                            foco.abrir(V_DATOS);
-                            escena::datos::pintar(&p, &caja_datos);
-                        } else {
-                            // Al cerrarla hay que devolver el fondo Y repintar
-                            // lo que tapaba: la caja de Ejecutar esta debajo.
-                            foco.cerrar(V_DATOS);
-                            borrar_datos(&p, &caja, &caja_datos, visible);
-                            if visible {
-                                pintar_caja(&p, &caja);
-                                repintar_campo = true;
-                                salida.sucia = true;
-                            }
-                        }
-                        continue;
-                    }
                     // El resto de navegación se ignora, pero EXPLÍCITAMENTE:
                     // dejarlas caer al comodín las dibujaría como basura.
                     0x89..=0x9F => {}
@@ -858,13 +964,11 @@ pub extern "C" fn _start() -> ! {
             // La rueda, primero: mueve el historial de la salida. Es lo que
             // pidio Eddi —"ver y scrollear"— y funciona con la rueda o con
             // PgUp/PgDn, porque un teclado siempre hay.
-            let giro = e.rueda();
             if giro != 0 {
                 // Tres filas por muesca: una sola se queda corta y una pagina
                 // entera se pasa. Es el paso de cualquier terminal.
                 salida.mover_vista(giro * 3);
             }
-            let pos = e.puntero();
             // ── Los botones de la calculadora ──
             let boton = pos.botones != 0;
             if calc.visible && boton && !boton_antes && !calc.esperando {
@@ -902,32 +1006,62 @@ pub extern "C" fn _start() -> ! {
                     pintar_calc(&p, &calc_caja, &calc);
                 }
             }
-            boton_antes = boton;
-            if pos.x != ax || pos.y != ay {
-                if ax != u32::MAX && borrar_cursor(&p, &caja, visible, ax, ay) {
-                    // El cursor pasó por encima de la caja: la escena restauró
-                    // los rectángulos, pero no las letras — ni las del campo ni
-                    // las de la salida.
-                    repintar_campo = true;
-                    salida.sucia = true;
+            // ── El raton tambien manda en el foco ──
+            //
+            // Sin esto, dos de los tres modos son decoracion: `click-to-focus`
+            // no existiria y `focus-follows-mouse` no tendria quien le dijera
+            // por donde va el puntero.
+            //
+            // ★ El orden de estas dos preguntas ES el Z-order: Datos se pinta
+            // ENCIMA de Ejecutar, asi que se pregunta primero, y un clic en la
+            // zona compartida es de la de arriba. `bmo_input::foco` no sabe que
+            // ventana tapa a cual y no tiene por que: eso lo sabe el que pinta.
+            let bajo_el_puntero = if datos_visible && caja_datos.contiene(pos.x, pos.y) {
+                Some(V_DATOS)
+            } else if visible && caja.contiene(pos.x, pos.y) {
+                Some(V_EJECUTAR)
+            } else {
+                None
+            };
+            if let Some(v) = bajo_el_puntero {
+                // Pasar por encima: solo hace algo en modo `Puntero`, y la
+                // guarda esta DENTRO de la politica — aqui solo se cuenta lo
+                // que pasa, no se decide lo que significa.
+                if pos.x != ax || pos.y != ay {
+                    foco.puntero_en(v);
                 }
-                dibujar_cursor(&p, pos.x, pos.y);
-                ax = pos.x;
-                ay = pos.y;
+                // Un clic lo pide en CUALQUIER modo, incluido `Fijo`: lo que
+                // ese modo impide es que una ventana se lo tome sin que nadie
+                // se lo pida, no que tu se lo des.
+                if boton && !boton_antes {
+                    foco.clic_en(v);
+                }
             }
+            boton_antes = boton;
+            // El cursor ya no se borra aquí: se pone al final del fotograma y
+            // se quita al principio del siguiente, con lo que había debajo
+            // guardado. Aquí sólo se apunta dónde está.
+            ax = pos.x;
+            ay = pos.y;
 
             // El pulsómetro. Se satura a propósito: interesa "late / no late",
             // no el valor exacto, y una barra que se sale de la pantalla no
             // dice nada que no diga una llena.
-            let ev = e.eventos().min(PULSO_ANCHO as u64) as u32;
-            if ev != pulso_previo {
-                p.rect(PULSO_X, PULSO_Y, ev, PULSO_ALTO, ACENTO);
-                pulso_previo = ev;
+            if ev_raton != pulso_previo {
+                p.rect(PULSO_X, PULSO_Y, ev_raton, PULSO_ALTO, ACENTO);
+                pulso_previo = ev_raton;
             }
             // Los botones, encima del marco: pulsar debería verse aunque el
             // movimiento no llegue. Son dos preguntas distintas al mismo HID.
+            //
+            // Sólo cuando CAMBIA: repintarlo cada vuelta son 256 píxeles de
+            // memoria de vídeo sin caché por fotograma para dejarlo igual, y
+            // además pisaría el cursor si el puntero pasara por encima.
             let col = if pos.botones != 0 { 0x00FF_FFFF } else { FONDO };
-            p.rect(PULSO_X + PULSO_ANCHO + 16, PULSO_Y, PULSO_ALTO, PULSO_ALTO, col);
+            if col != col_boton {
+                p.rect(PULSO_X + PULSO_ANCHO + 16, PULSO_Y, PULSO_ALTO, PULSO_ALTO, col);
+                col_boton = col;
+            }
         }
 
         // ── Drenar la salida de los hijos ──
@@ -970,7 +1104,12 @@ pub extern "C" fn _start() -> ! {
                 vueltas += 1;
             }
         }
-        if salida.sucia {
+        // ★ Y sólo en un fotograma que haya apartado el cursor. Un hijo que
+        // escribe no es motivo suficiente: pintar aquí dejaría el puntero
+        // enterrado bajo la rejilla y, al quitarlo, devolvería píxeles viejos
+        // encima de lo recién escrito. `sucia` se queda puesto y la vuelta
+        // siguiente ya empieza sabiendo que hay que pintar.
+        if salida.sucia && va_a_pintar {
             // Se pinta sólo si se ve; el contenido sigue acumulándose oculto,
             // así que al invocar la ventana está todo lo que pasó mientras.
             //
@@ -1003,8 +1142,18 @@ pub extern "C" fn _start() -> ! {
             caret = !caret;
             repintar_campo = true;
         }
-        if repintar_campo && visible && !datos_visible && !conmutador_pintado {
+        if repintar_campo && va_a_pintar && visible && !datos_visible && !conmutador_pintado {
             pintar_campo(&p, &caja, &ruta[..n], cur, caret);
+        }
+
+        // ── El cursor del ratón, ENCIMA de todo y lo último ──
+        //
+        // Aquí ya no queda nada por pintar en este fotograma, así que lo que se
+        // guarda debajo es lo definitivo. Ponerlo antes obligaría a que cada
+        // ventana supiera esquivarlo — que es justo lo que no se puede pedir a
+        // una ventana que todavía no existe.
+        if ax != u32::MAX {
+            bajo.poner(&p, ax, ay);
         }
 
         bmo::ceder();

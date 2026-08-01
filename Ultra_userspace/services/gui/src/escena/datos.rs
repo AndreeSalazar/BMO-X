@@ -175,7 +175,12 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
     }
 
     ty += bmo::GLIFO_ALTO + 10;
-    p.texto(tx, ty, "F12 cierra.   leer: ls / lee en la caja de Ejecutar.", TEXTO_TENUE);
+    p.texto(tx, ty, "F12 o ESC cierran.   leer: ls / lee en Ejecutar.", TEXTO_TENUE);
+    ty += bmo::GLIFO_ALTO + 2;
+    // ★ Decirlo aquí evita el susto: con esta ventana delante el teclado es
+    // SUYO, así que teclear no escribe en la caja de abajo. Antes sí escribía
+    // —en una ventana tapada, sin verlo—, y eso era el fallo.
+    p.texto(tx, ty, "mientras este abierta, el teclado es de esta ventana.", TEXTO_TENUE);
 }
 
 /// Un número de bytes con su unidad. Devuelve la x donde acabó.

@@ -396,6 +396,29 @@ impl Pantalla {
         }
     }
 
+    /// Qué hay AHORA en un píxel. Fuera de la pantalla, negro.
+    ///
+    /// ★ El framebuffer es memoria de este proceso, así que se puede leer — y
+    /// eso es lo que permite dibujar el cursor del ratón **encima de cualquier
+    /// cosa**: se guarda lo que había debajo y se devuelve al moverlo. Sin
+    /// esto hay que preguntarle a un modelo de la escena qué debería haber, y
+    /// ese modelo se queda corto en cuanto aparece una ventana que no conoce:
+    /// el cursor deja agujeros con el color del fondo por donde pasa.
+    ///
+    /// Leer memoria de vídeo es caro (no está cacheada), así que esto es para
+    /// puñados de píxeles —un cursor son 160—, no para copiar regiones.
+    #[inline]
+    pub fn leer(&self, x: u32, y: u32) -> u32 {
+        if x >= self.ancho || y >= self.alto {
+            return 0;
+        }
+        unsafe {
+            self.base
+                .add((y as usize) * (self.stride as usize) + x as usize)
+                .read_volatile()
+        }
+    }
+
     /// Un rectángulo, recortado a la pantalla. Es la única primitiva de dibujo
     /// que hay, y con ella se hace un escritorio entero: fondo, barra,
     /// ventanas, bordes. Lo demás son estas mismas llamadas puestas en orden.
