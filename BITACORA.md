@@ -298,6 +298,87 @@ en hacer algo" sólo aparecen cuando alguien hace *justo* eso.
 
 ---
 
+## Ep. 17 — El ratón que enumeraba y nunca era
+
+**Síntoma**: el ratón se detectaba (`m=OK`), pero `ev=0` para siempre y el RGB
+del propio ratón **apagado**. Meses culpando al parseo del informe HID.
+
+**Culpable**: una línea del bucle de puertos de `uhid`:
+
+```rust
+if found_kbd && found_mouse { break; }
+```
+
+El teclado trae **dos** interfaces HID —la suya y una de protocolo de ratón
+para las teclas de medios—, así que al enumerarlo se marcaban las dos banderas
+y el bucle **cortaba antes de llegar al puerto del ratón**. A un dispositivo
+sin `SET_CONFIGURATION` no le arranca ni el firmware: por eso el RGB apagado
+era el mejor diagnóstico de todos y estaba a la vista.
+
+**Moraleja**: un `break` de "ya tengo lo que buscaba" asume que **un aparato
+es un dispositivo**, y en USB no lo es. Y cuando algo se enumera pero no habla,
+mirar lo que el propio aparato dice de sí mismo (una luz) antes que el
+software: el hardware confiesa gratis.
+
+---
+
+## Ep. 18 — El anillo de eventos compartido, o cómo un arreglo dejó mudos a los dos
+
+**Síntoma**: tras arreglar el Ep. 17, teclado y ratón **los dos mudos**.
+`k=OK(s3) m=OK(s2)` (slots distintos ✅, RGB encendido ✅) y sin embargo
+`kev=0`, `raton ev=0`, y el último Transfer Event venía del **slot 1, EP0** —
+de ninguno de los dos. Y `kbd ep=Running`: el endpoint agendado y sin llegar
+nada.
+
+**Culpable**: el anillo de eventos del xHC es **uno para todo el controlador**.
+`evt_poll_block` devolvía el primero que pasara. `send_cmd` y
+`control_transfer` al menos descartaban lo ajeno; `address_device` y
+`configure_endpoint` **ni miraban el tipo** y le leían el `cc` — y un Transfer
+Event correcto también trae `cc=1`, así que **un informe del ratón se leía como
+"el comando salió bien"**.
+
+Llevaba meses dormido porque nada bombeaba mientras se enumeraba. Lo despertó
+**quitar el `break` del Ep. 17**: por primera vez un endpoint quedó vivo
+mientras se enumeraba el puerto siguiente. Y aquí está lo letal: en un endpoint
+de interrupción **el evento ES el permiso para volver a encolar**. Perder uno
+no pierde una pulsación: **para la bomba para siempre**, sin un solo error.
+
+**El arreglo**: `Espera::{Comando, Transferencia{slot,ep}}`, un **aparcadero**
+de 64 eventos (lo que no es mío se aparca, **jamás se tira**), y las bombas de
+interrupción se arrancan **al final** de la enumeración, no al reconocer cada
+aparato.
+
+**Moraleja**: ante una cola compartida, la pregunta no es "¿leo bien?" sino
+**"¿qué hago con lo que saco y no es mío?"**. Sólo hay una respuesta: aparcarlo
+y contar los que se pierden. Y no enciendas una bomba mientras todavía estás
+enumerando.
+
+---
+
+## Ep. 19 — La política que nadie consultaba (sin foto, y por eso duele)
+
+**Síntoma**: ninguno. Compilaba, 461 tests en verde, el commit describía tres
+modos de foco y una ventanita de Alt+Tab que se pintaba de verdad en pantalla.
+
+**Culpable**: `grep es_para main.rs` → **nada**. La política de foco se había
+escrito entera con sus tests, se le notificaba qué ventana se abría y cuál se
+cerraba, se pintaba lo que decidía… y **ninguna tecla se enrutaba con ella**.
+Todas seguían cayendo en la caja de Ejecutar aunque la consola de datos
+estuviera encima: se escribía en una ventana tapada, sin verlo.
+
+Es el módulo nuevo apareciendo en el diff **escribiendo** (se le notifica, se
+le pinta) y nunca **respondiendo**.
+
+**Moraleja**: cuando se añada algo que DECIDE, buscar su función de consulta en
+todo el repo antes de dar el trabajo por hecho. Si sus únicos llamantes están
+en sus propios tests, **no está cableado: está escrito**. Y da igual cuántos
+tests tenga, porque prueban la política, no que alguien la obedezca.
+
+El corolario cuesta más de tragar: este episodio **no necesitó una foto**.
+Bastó con desconfiar del commit anterior en vez de creérselo. Las fotos
+encuentran lo que el hardware hace mal; esto lo encuentra leer lo que el
+código **no hace**.
+
 ---
 
 ## Las leyes que dejó esta guerra
@@ -321,6 +402,15 @@ en hacer algo" sólo aparecen cuando alguien hace *justo* eso.
    (Ep. 15). "El framebuffer necesita CR3 de kernel" era cierto y era
    inútil: la regla de verdad era *cualquier dirección del rango identidad
    tocada desde un syscall*, y estaba a un periférico de distancia.
+7. **Arreglar un bug despierta a los que dormían debajo** (Ep. 17 → 18). El
+   `break` de más tapaba un anillo de eventos mal repartido desde el primer
+   día; quitarlo no rompió nada nuevo, **destapó** lo que llevaba meses
+   escrito y nunca ejercido. Un arreglo que hace aparecer un fallo peor suele
+   ser el arreglo correcto.
+8. **Verde no es cableado** (Ep. 19). Un módulo puede compilar, pasar todos
+   sus tests, aparecer en el commit y no ser consultado por nadie. Los tests
+   prueban la política; no prueban que alguien la obedezca. La comprobación
+   dura dos segundos: buscar quién LLAMA a la función que contesta.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*

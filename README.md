@@ -2,7 +2,9 @@
 
 Sistema operativo bare metal escrito en Rust, con un kernel de **capabilities y superficie de 3 syscalls congelada**. GPU por UEFI GOP (framebuffer). Sin dependencias de drivers propietarios.
 
-**Estado**: ✅ **Arranca en hardware real** — Ring 0 completo con UI en framebuffer (bench: MSI A320M PRO MAX / AMD Ryzen 5 5600X, Zen 3). Boot chain: UEFI unificado (BOOTX64.EFI con las etapas embebidas) → s1_cpu → s2_mem → kernel.
+**Estado**: ✅ **Arranca en hardware real** y llega hasta arriba — Ring 0 completo, escritorio en Ring 3 y **tres lenguajes propios ejecutando en silicio** (BMO C, BMO COBOL y Ada), compilados por el toolchain de la casa. Banco de pruebas: MSI A320M PRO MAX / AMD Ryzen 5 5600X (Zen 3), sin QEMU. Boot chain: UEFI unificado (BOOTX64.EFI con las etapas embebidas) → s1_cpu → s2_mem → kernel.
+
+**El número que lo resume**: BMO-X ocupa **5.4 MiB de 14.8 GiB** de RAM en la máquina de pruebas.
 
 **Superficie ABI**: `INVOKE` · `CHANNEL_KICK` · `WAIT` (congelada) + Capability Engine en Ring 0.
 
@@ -102,55 +104,49 @@ alloc_pages_contiguous() / free_pages()   ← public API (unchanged)
 - **LLFree** (opt-in): 204 lines adapter + 2199 lines `llfree` crate (safe Rust), boots clean on Ryzen 5600X with identical behavior — no crashes, no regressions. Same binary footprint +25 KB.
 - **Per-CPU pagesets** sit above both: each core caches 16 pages × 5 orders before touching the backing allocator. Zero lock contention on the hot path regardless of backing.
 
-### Funciona (real en hardware)
-- **Boot UEFI** → BOOTX64.EFI → kernel.elf → GOP framebuffer 1920x1080
-- **GDT + TSS** con Ring 0 / Ring 3, IST1 para excepciones
-- **IDT** con 256 entradas, ISR stubs naked, handlers para #GP/#PF/#UD/#NM/#MF/#XM/#DE/#DF
-- **SYSCALL/SYSRET** (IA32_LSTAR/STAR/FMASK) con dispatcher ~25 syscalls
-- **Page allocator**: buddy system (orders 0..11, 4 KiB..8 MiB) + per-CPU pagesets (orders 0..4) — replaces original bitmap
-  - **LLFree** (lock-free, USENIX ATC '23) available as opt-in backing allocator via `--features alloc-llfree`; compiles, links, and boots clean on Ryzen 5600X
-- **Heap** slab caches (16 sizes: 16 B..3 KiB) + buddy fallback — replaces original free-list
-- **VMM** 4 niveles (PML4/PDPT/PD/PT), demand paging + CoW
-- **Local APIC** con calibración PIT (timer periódico, deshabilitado temporalmente)
-- **MTRR + PAT** para framebuffer Write-Combining
-- **Performance counters** (3 fixed counters)
-- **ACPI** RSDP/XSDT/MCFG/FADT parsing
-- **PCI** enumeración por I/O ports (ECAM deshabilitado)
-- **GOP Framebuffer** con backbuffer, primitivas gráficas completas
-- **Serial COM1** 115200 baud con timeout guard
-- **Round-robin scheduler** (cooperativo, sin preempción)
-- **Ring 0 → Ring 3** transición via iretq con user page tables
-- **BMO Language** compilador AOT x86-64 (lexer, parser, sema, codegen)
-- **Cabina** sistema de diagnóstico con eventos, overlay HUD, telemetría
-- **Desktop** welcome screen + render + wallpaper + input
-- **BMO API v2.0** 256 syscalls + Window Manager + Paint Compositor
-- **AMD Zen 3** detección CPUID, errata workarounds, TSC calibration
+> **Tres estados, y confundirlos es lo que hace perder el hilo:**
+> **✅ corre en metal** (se ha visto en el Ryzen, con foto o con línea de
+> CABINA) · **✍️ escrito sin estrenar** (compila, enlaza, pasa sus tests… y
+> ningún CPU lo ha ejecutado) · **⬜ diseño**. Sólo lo primero cuenta como
+> hecho. La lista de lo que espera un arranque vive en `AVANCES.md`.
 
-### Parcial / Stub
-- **BEF nativo**: Formato, validación, secciones, imports/exports, relocaciones y TLS en evolución
-- **Linux Devour**: Módulo ELF64 experimental; analiza `PT_LOAD` y genera un contenedor BEF, pero todavía no ofrece una personalidad Linux/POSIX ejecutable
-- **Wine Devour**: Módulo PE64 experimental; analiza secciones y genera BEF, pero todavía no resuelve el entorno Win32, DLLs ni Wine
-- **ByteDefender**: Solo validación de headers BEF (sin análisis heurístico)
-- **Restaurer/TimeBack**: API existe pero capture retorna zeros, rollback no hace nada
-- **FPU lazy switching**: `init_fpu()` funciona, pero #NM mata el proceso (sin save/restore per-task)
-- **PCI**: Código completo pero deshabilitado (I/O ports bloquea CPU, ECAM causa #PF)
-- **SMP**: Detección de topology funciona, AP startup removido en v1.8.7
-- **BMO GPU**: RDNA4 skeleton sin driver real
-- **Shader BSF**: Loader/validator existe, BLAKE3 es placeholder
+### ✅ Funciona en hardware real
+- **Boot UEFI unificado** → `BOOTX64.EFI` con s1_cpu + s2_mem + kernel embebidos → GOP 1920x1080. Cero dependencia del lector FAT del firmware
+- **GDT + TSS** Ring 0 / Ring 3 con IST1, e **IDT** de 256 entradas (#GP/#PF/#UD/#NM/#MF/#XM/#DE/#DF)
+- **Tres syscalls congelados** — `INVOKE` · `CHANNEL_KICK` · `WAIT`. Todo lo demás son **subsyscalls**: operaciones sobre una capability, no puertas nuevas
+- **Capability Engine**: 16 procesos × 64 ranuras, handles con generación anti-UAF; `revoke_all` al morir
+- **Scheduler PREEMPTIVO** por timer del LAPIC, con switch real Ring 0 ↔ Ring 3 (`iretq` → CPL3 → `INVOKE` → CPL0 → `EXIT` → reap)
+- **XSAVE per-task** — con su causa raíz pagada: `XSAVE` hace *merge* de la cabecera, no *store* (`BITACORA.md` Ep. 14)
+- **Aislamiento de fallos**: un fault en CPL3 mata la tarea y BMO sigue
+- **Page allocator** buddy (orders 0..11) + pagesets por CPU; **LLFree** (USENIX ATC '23) opcional con `--features alloc-llfree`
+- **Heap** slab (16 tamaños) + **VMM** de 4 niveles con demand paging y CoW
+- **Teclado USB propio** (xHCI + HID): layouts es-latam / es-españa / us en caliente, teclas muertas, AltGr real, edición estilo readline, repetición al mantener, LEDs, historial
+- **Disco AHCI/SATA propio** + **GPT** + **FAT32**: el kernel lee y monta su disco. El volumen de datos se monta **para escritura**; el de arranque, nunca
+- **ESTRATOS montado** con el superbloque leído y **la firma verificada antes de ejecutar**
+- **La pantalla, la entrada, la consola, el directorio y los archivos son capabilities** (`KIND_FRAMEBUFFER` / `INPUT` / `CONSOLE` / `DIRECTORIO` / `ARCHIVO`): Ring 3 pinta con `mov` y el kernel se aparta
+- **Endpoint RPC** (`KIND_ENDPOINT` + `KIND_REPLY`): dos procesos de Ring 3 hablándose a través del kernel, sin tocar los 3 syscalls
+- **Compositor en Ring 3**, cargado de `sys/gui.bex` — cambiar el escritorio no recompila el kernel
+- **Tres lenguajes propios en silicio**: BMO C, BMO COBOL (decimal exacto, File I/O, OCCURS) y **Ada** (ZFP + Annex F)
+- **CABINA**: telemetría que GRABA en el instante del hecho (IRQ-safe), no encuesta
+- **AMD Zen 3**: CPUID, erratas, calibración del TSC
 
-### No existe (removido o nunca implementado)
-- ~~NVMe driver~~ — Este proyecto usa solo SATA/AHCI
-- ~~AHCI driver~~ — Solo check de PCI class
-- ~~RTL8168 NIC~~ — Sin código en todo el codebase
-- ~~USB/xHCI~~ — Solo check de PCI class
-- ~~I/O APIC~~ — Solo mención en comentarios
-- ~~SMP AP startup~~ — Removido en v1.8.7
-- ~~EDF scheduler~~ — Removido en v1.8.7
-- ~~FAT32~~ — Removido en v1.8.8
-- ~~BMOasm assembler~~ — No existe
-- ~~nexo-sh-tool~~ — No existe
-- ~~BareX network stack~~ — Sin código
-- ~~BareX audio hardware~~ — Solo beep()
+### ✍️ Escrito y sin estrenar / parcial
+- **Ratón USB**: enumera y entrega puntero y botones, pero el arreglo del **anillo de eventos compartido** (`BITACORA.md` Ep. 18) espera foto
+- **Escritura de ESTRATOS**: la máquina de estados de la transacción existe y está probada; **nadie la ha cableado al dispositivo**. La ventana de datos lo dice en rojo, y tiene que decirlo
+- **BEF nativo**: formato, validación, secciones, imports/exports; relocaciones y TLS en evolución
+- **Linux Devour / Wine Devour**: leen ELF64 / PE64 y generan un contenedor BEF. No hay personalidad POSIX ni entorno Win32 — y **no está en la hoja de ruta** (ver "Estado de Linux y Wine")
+- **ByteDefender**: sólo cabeceras BEF, sin heurística
+- **TimeBack**: la API existe; captura y rollback no hacen nada todavía
+- **C++**: frontend mínimo (~900 líneas), barato encima de C cuando toque
+- **SMP**: el código de despertar los APs **existe** en `s1_cpu` (trampolín, INIT+SIPI, percpu) y **nadie lo llama**. Va el último a propósito: el día que corra un 2º núcleo, cada `static mut` del kernel es una carrera
+- **BMO GPU**: esqueleto RDNA4 sin driver
+- **Write-combining del framebuffer** (PAT): pendiente, y se notará — hoy cada píxel es una escritura sin caché
+
+### ⬜ No existe, y varias a propósito
+- **NVMe**: hay carpeta y no se usa. El NVMe de esta máquina lleva el **Windows del dueño**; el kernel pide el controlador **por TIPO**, nunca "el primero del barrido"
+- **Red y audio**: sin pila de red; audio sólo `beep()`
+- **I/O APIC**, **EDF scheduler**: no implementados
+- **libc completa, ventanas con superficies compartidas, Vulkan/GPU, Wine**: descartados **de esta fase** a propósito — ver "Próximos pasos"
 
 ---
 
@@ -212,8 +208,27 @@ compatibilidad Linux/Wine en el futuro.
 
 ## Estructura del proyecto
 
+> ⚠️ **Este árbol es de FastOS, el proyecto anterior, y ya no existe así.** Se
+> deja abajo como arqueología de lo que se devoró. **El layout vigente está al
+> principio de este documento** ("Layout (multi-arch from day one)"), y el mapa
+> de dentro del kernel es éste:
+>
+> ```
+> Ultra_kernel_x86-64/kernel/src/ring0/
+>   core/    entry.rs (_start), phase.rs (el arranque por fases), informe.rs, splash, font
+>   cpu/  cpu_vendor/   GDT/IDT/TSS, XSAVE, Zen 3: CPUID, cachés, TSC, erratas
+>   mm/      phys (frames), vmm (4 niveles), physmap de 16 GiB
+>   task/    scheduler preemptivo, percpu, proc, el registro de programas
+>   obj/     las capabilities: channel, input, framebuffer, console, archivo, endpoint
+>   dev/     pci, usb (xHCI), disk (AHCI), console/serial, framebuffer, keyboard
+>   fsys/    fat32 + el gate de identidad y la ventana de escritura
+>   svc/     los servicios de Ring 0 registrados en el estuario 0
+>   plat/    faults, timer (LAPIC)
+>   cabina.rs   la telemetría que graba en el instante del hecho
+> ```
+
 ```
-FastOS/
+FastOS/                      # ⚠️ HISTÓRICO — no es la estructura actual
 ├── bootloader/              # UEFI bootloader (Rust, x86_64-unknown-uefi)
 │   └── src/main.rs          # ELF loader, GOP, RSDP, memory map, jump to kernel
 ├── boot_protocol/           # BootInfo struct compartido bootloader ↔ kernel
@@ -305,63 +320,78 @@ FastOS/
 
 ## Build
 
+El guion vive en `Ultra_kernel_x86-64/build.ps1`.
+
 ```powershell
-# Build completo + flash SSD
-powershell -ExecutionPolicy Bypass -File .\build_uefi.ps1 -Flash
+# Compilar y validar, sin tocar ningun disco (es el valor por defecto)
+.\build.ps1 -BuildOnly
 
-# Solo compilar (sin flash)
-.\build_uefi.ps1 -BuildOnly
+# Ring 0 al volumen de arranque, y los programas al volumen de datos
+.\build.ps1 -Flash -Drive A -Data A -Yes
+```
 
-# Solo flashear (ya compilado)
-.\build_uefi.ps1 -FlashOnly
+**Las dos banderas están separadas a propósito**: `-Flash` toca la ESP de
+arranque y `-Data` toca el volumen de programas. Que compartieran bandera
+invitaría a escribir en uno cuando se quería el otro.
 
-# Limpiar artefactos
-.\build_uefi.ps1 -Clean
+Y **nada se escribe fuera del árbol del proyecto sin tres cierres**: no puede
+ser el disco del sistema, tiene que ser FAT/FAT32, y hay que teclear la frase
+entera con la letra dentro (`-Yes` la salta, y es cosa del que lo teclea).
+Todo lo copiado se verifica por **SHA-256** en el destino: un `.bex` a medio
+copiar no falla al arrancar, falla en la admisión BEX — y ese mensaje manda a
+buscar el bug al compilador en vez de al cable.
+
+Lo que se despliega:
+
+```
+EFI\BOOT\    BOOTX64.EFI (848 KB, con las etapas y el kernel dentro) + BMO-MANIFEST.TXT
+sys\         gui.bex          el compositor
+cobol\ c\ ada\                los programas de ejemplo, por lenguaje
+datos\       los .txt que leen esos programas
 ```
 
 Requisitos:
-- Rust **stable** (kernel) + **nightly** (bootloader)
-- UEFI con Secure Boot desactivado
-- SSD conectado (S:)
+- Rust **nightly** (el userspace se compila a `x86_64-unknown-none` con su
+  propio guion de enlazado)
+- UEFI con **Secure Boot desactivado**
+- El disco de BMO montado con letra. En esta máquina es **A: (KINGSTON
+  SA400S37480G SATA)**. ⚠️ El NVMe es el Windows del dueño y no se toca
 
-El script build_uefi.ps1 ejecuta:
-1. Build bootloader (nightly, `x86_64-unknown-uefi`) → `fastos-bootloader.efi`
-2. Build kernel (stable, `x86_64-unknown-none`) → `fastos-kernel` ELF (~706 KB)
-3. Crea staging `EFI/BOOT/` con BOOTX64.EFI + kernel.elf
-4. Copia a SSD + verifica SHA256
+El guion, en orden: valida el **contrato de syscalls** (drift guard) → s1_cpu →
+s2_mem → **compositor de Ring 3** (`bex-link` traduce el ELF a `.bex` y fija las
+direcciones) → los ejemplos de COBOL, Ada y C con los frontends propios →
+kernel → `uefi_chain` que lo embebe todo → staging → despliegue verificado.
 
 ---
 
 ## Boot path
 
+**No se lee ni un archivo del firmware.** `BOOTX64.EFI` lleva las dos etapas y
+el kernel dentro (`include_bytes!`) y el kernel se copia a su dirección
+**después** de `ExitBootServices` — el patrón del EFI stub de Linux. Es la
+respuesta a la placa que nunca conectó un driver FAT (`BITACORA.md` Ep. 1).
+
 ```
 UEFI Firmware
-  → BOOTX64.EFI (bootloader)
-    1. Leer kernel.elf del ESP (SimpleFileSystem)
-    2. Parsear ELF64, cargar segments (PT_LOAD)
-    3. Query GOP (1920x1080 BGR preferido)
-    4. Buscar RSDP (ACPI 2.0/1.0)
-    5. Allocate stack (4 MiB) + BootInfo
-    6. Exit boot services
-    7. Jump to kernel (RSP=stack_top, RDI=boot_info_ptr)
-  → _start (kernel entry)
-    1. Save RDI → R12 (antes de BSS zero)
-    2. Zero-init BSS
-    3. Restore RDI, call kernel_main_real()
-  → coordinator::main()
-    Phase 0 (p0_arch):  GDT + IDT + SYSCALL MSRs + CPU init (FPU/MTRR/PAT/TSC)
-    Phase 1 (p1_mem):   Page allocator + 32 MB heap + smoke test
-    Phase 2 (p2_dev):   ACPI MCFG + PCI (IO ports, ECAM deshabilitado)
-    Phase 3 (p3_display): GOP framebuffer init
-    Phase 4 (p4_bmo):   Process tables (cooperativo, sin APIC/interrupts)
-    → init_fastos_cpu():  AMD Zen 3: CPUID, cache, TSC, errata
-    → init_acpi():        ACPI tables
-    → bmo_core::coord::init(): Cabina + Defense + TimeBack + FS + GPU + BEF + API + Desktop
-    → bmo_core::coord::enter():
-      1. Clear splash
-      2. Init bmo_audio
-      3. Play logon chime
-      4. welcome::run() ← no retorna
+  → BOOTX64.EFI (uefi_chain: s1_cpu + s2_mem + kernel embebidos)
+    1. Query GOP (1920x1080), memory map, RSDP
+    2. ExitBootServices  ← aquí se acaban las mercedes del firmware
+    3. Copiar las etapas y el kernel a sus direcciones y saltar
+  → s1_cpu @0x100000   CPU: cli + enmascarar el PIC ANTES de tocar la GDT
+                       (el firmware entrega con interrupciones ON, Ep. 2)
+  → s2_mem @0x200000   memoria: mapa, physmap, handoff verificado por magic
+  → kernel  @0x400000  ring0::core::entry::_start → phase::main(ctx)
+    1. Validar BootContext (magic + version). Si no cuadra, se DICE en rojo
+    2. xsave::init()      ← antes que nada que pueda atrapar: el área es fija
+                            y el tamaño sólo lo sabe este CPU
+    3. percpu + scheduler + mm (phys, vmm) + channel + servicios + syscall
+    4. faults::init()     ← el reporte en pantalla ARMADO antes de que nada
+                            pueda entrar a Ring 3
+    5. timer::init()      ← tick del LAPIC: el scheduler pasa a preemptivo
+    6. PCI → xHCI (teclado y ratón) → AHCI → GPT → FAT32 → ESTRATOS
+    7. lanzar::ruta("sys/gui.bex")  ← el compositor, desde el DISCO
+  → Ring 3: el escritorio. Si no arranca, la máquina se queda en el shell del
+    kernel y CABINA dice por qué.
 ```
 
 ---
@@ -490,7 +520,7 @@ convierte en biblioteca + operaciones; la puerta sigue siendo `INVOKE`.
 - ✅ **Escritorio con terminal**: caja estilo `Win+R` con historial, TAB que
   completa listando candidatos, editor de línea con cursor y portapapeles,
   `ls`, y `Ctrl+Alt` para invocar la ventana.
-- ✅ **El compositor sale del kernel**: se carga de `apps/gui.bex` en el
+- ✅ **El compositor sale del kernel**: se carga de `sys/gui.bex` en el
   volumen de datos. Cambiar el escritorio ya no obliga a recompilar Ring 0.
 - ✅ **BMO COBOL lee y escribe**: `DISPLAY <variable>` formatea en ejecución
   con la escala de su PIC, y `ACCEPT` lee del terminal que lo lanzó — en un
@@ -499,27 +529,54 @@ convierte en biblioteca + operaciones; la puerta sigue siendo `INVOKE`.
   cálculo en BMO COBOL con decimal exacto en centavos. Windows lleva el motor
   dentro de la app; aquí es otro proceso, y mañana puede ser Ada.
 
+**Conseguido después** (2026-07-29/31):
+
+- ✅ **PICTURE de edición en ejecución**, con foto: `$12,345.67`, `*****0.45` y
+  `  120.00CR` alineados. La cadena entera —fuente COBOL → parser → codegen →
+  BEF → CPU real— produce la línea de un banco.
+- ✅ **File I/O de COBOL**: `SELECT`/`FD`/`OPEN`/`READ … AT END`/`WRITE`/`CLOSE`.
+  `batch.bex` lee movimientos, totaliza en centavos y escribe el cierre en el
+  disco. **Y OCCURS**, con guarda de rango que para el programa en vez de leer
+  memoria ajena.
+- ✅ **ADA EN SILICIO** — tercer lenguaje, el mismo día que nació su compilador.
+  Perfil **ZFP secuencial + Annex F**: el hallazgo es que Annex F copió el
+  `PICTURE` de COBOL, así que el decimal exacto ya estaba pagado.
+- ✅ **Entrada en BMO C** (`getchar`/`scanf`), y el banco de pruebas de C
+  ejecuta los programas en vez de mirarlos: **185 tests**.
+- ✅ **El volumen de datos por categorías** (`sys/ cobol/ c/ ada/ datos/`) y
+  el contador de programas arreglado: la máquina lanzaba tres y decía "sin
+  hueco" con 58 ranuras libres — miraba una bitácora histórica de 8 entradas.
+- ✅ **`info` / `cpu` / `mem` desde Ring 3**: 14.8 GiB totales, **BMO-X ocupa
+  5.4 MiB**, TSC medido 3.70 GHz. Dos subsyscalls y una tabla de 20 campos:
+  añadir un dato es una fila.
+- ✍️ **El escritorio con foco de verdad**: F12 abre la consola de datos de
+  ESTRATOS, **Alt+Tab** recorre la pila MRU con su ventanita, y hay tres modos
+  (`normal` / `fijo` / `sigue al puntero`). La política vive en `bmo_input::foco`
+  —donde se puede PROBAR—, y el compositor sólo pinta lo que decidió. Espera
+  arranque.
+
 **Lo que sigue, en orden:**
 
-1. **PICTURE de edición en ejecución.** El motor de máscaras existe y está
-   probado (`toolchain/lang/cobol/src/edicion.rs`), pero formatea un valor que
-   el compilador conoce. Para `MOVE X TO Y` con `Y` editada hay que emitir el
-   recorrido de la plantilla como código. Es *la* función bancaria:
-   `$$$,$$9.99` con 1234567 tiene que salir `$12,345.67`.
-2. **Entrada en BMO C.** Tiene `printf` y 106 tests, y **no puede leer nada**
-   — ni `scanf` ni `getchar`. Es el hueco que COBOL tenía hasta ayer, y ahora
-   es barato: `console::read_line` y `fmt::parse_decimal_scaled` ya existen en
-   `bmo-lower` y no son de ningún lenguaje.
-3. **Capability de memoria.** Un proceso recibe su imagen y 64 KiB de pila y
+1. **Cablear la escritura de ESTRATOS al dispositivo.** Es lo único que separa
+   "un almacén que se lee" de "un almacén". La transacción ya está escrita y
+   probada; falta el `write` y el `FLUSH CACHE` de verdad.
+2. **Capability de memoria.** Un proceso recibe su imagen y 64 KiB de pila y
    no puede pedir más. Bloquea dos cosas a la vez: cualquier lenguaje con GC,
    y las **superficies compartidas** que hacen falta para ventanas de verdad.
-4. **Superficies y ventanas.** Hoy `KIND_FRAMEBUFFER` es exclusivo: un solo
-   proceso es dueño de la pantalla. Wayland en pequeño, sobre el punto 3.
-5. **Ada**, en perfil restringido (Ravenscar o sin runtime). Es el único
-   lenguaje nuevo de verdad y no bloquea nada.
+3. **Write-combining del framebuffer** (PAT). Barato, y se nota en cada píxel.
+4. **Ada, hacia ACATS** como matriz de conformidad — el estándar tiene su
+   propio banco de pruebas y es la forma honesta de medir cuánto Ada hay.
+5. **Superficies y ventanas.** Hoy `KIND_FRAMEBUFFER` es exclusivo: un solo
+   proceso es dueño de la pantalla. Wayland en pequeño, sobre el punto 2.
 6. **SMP al final**: el código de despertar los APs ya existe en `s1_cpu`,
    pero el día que corra un segundo núcleo cada `static mut` del kernel es
-   una carrera.
+   una carrera. El trampolín es el 10%; auditar el estado compartido es el 90%.
+
+**Y lo que este objetivo DESCARTA**, que vale tanto como lo que exige: Vulkan
+y GPU (otro proyecto del tamaño de éste), Wine (treinta años de trabajo para
+una compatibilidad que este objetivo no usa), y una libc completa — prometer
+compatibilidad que no existe es exactamente el fallo que hundió al proyecto
+anterior. Son descartes **de esta fase**, no renuncias.
 
 ## Principios
 

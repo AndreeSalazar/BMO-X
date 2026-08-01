@@ -7,7 +7,13 @@
 **BMO-X** = sistema operativo bare-metal en Rust: microkernel de **capabilities**
 con **superficie congelada de 3 syscalls** (`INVOKE`/`CHANNEL_KICK`/`WAIT`) +
 subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
-sin QEMU. Toolchain propio (C/C++/COBOL → BEF → BEX nativo).
+sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
+tres primeros **ya han ejecutado en el Ryzen**.
+
+> **Al 2026-07-31**: 515 tests en verde, BMO-X ocupa **5.4 MiB de 14.8 GiB**, y
+> el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
+> Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
+> es lo que hace el proyecto **terminable**.
 
 ---
 
@@ -39,7 +45,7 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | **CABINA** (telemetría omnisciente) | ✅ **viva**: cockpit + color semántico + bitácora de eventos (narrador) + detección de disco PCI |
 | **`KIND_FRAMEBUFFER`** (la pantalla es una capability) | ✅ Ring 3 pinta con `mov`; el kernel contesta 4 preguntas y se aparta |
 | **`KIND_INPUT`** (ratón, teclado **y modificadores**) | ✅ en metal; `Ctrl+Alt` detectado sin romper `AltGr` |
-| **Compositor** (Ultra_userspace/services/gui) | ✅ **se carga de `apps/gui.bex`**, fuera del kernel |
+| **Compositor** (Ultra_userspace/services/gui) | ✅ **se carga de `sys/gui.bex`**, fuera del kernel (123 KiB; el tope son 256) |
 | **Terminal de Ring 3** (caja Win+R + comandos) | ✅ **corre**: historial, TAB que completa, editor de línea con cursor, portapapeles, `ls`, `Ctrl+Alt` para invocar |
 | **`KIND_CONSOLE`** (la salida es una capability, en LOS DOS sentidos) | ✅ el hijo escribe y el terminal lee; el terminal escribe y el hijo lee (`ACCEPT`) |
 | **`KIND_DIRECTORIO`** (preguntar qué hay en el disco) | ✅ `ls` en el terminal, iteración sin cursor en el driver |
@@ -48,9 +54,11 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | **ESTRATOS** | ✅ montado, superbloque leído, **firma verificada antes de ejecutar** |
 | Toolchain reorganizado (lang/forge/tools) | ✅ |
 | sem-asm (encoder tabla→bytes + intrínsecos) | ✅ C lo usa; fusión sem-asm↔C hecha |
-| BMO COBOL | ◐ base sólida pero **corre en metal**, y ya LEE y ESCRIBE: `DISPLAY <var>` + `ACCEPT`. 66 tests |
-| **BMO C ("CONTROL ABSOLUTE")** | ✅ **C esencial ~C11 muy completo** (85 tests); corre en metal |
+| BMO COBOL | ✅ **banca cerrada en su alcance**: PICTURE de edición en ejecución, File I/O secuencial, OCCURS con guarda de rango, nivel 88. `batch.bex` y `concep.bex` verificados en el Ryzen |
+| **BMO C ("CONTROL ABSOLUTE")** | ✅ **C esencial ~C11 muy completo** (185 tests, que EJECUTAN el programa); corre en metal |
+| **BMO Ada** | ✅ **verificado en el Ryzen el 2026-07-30**, el mismo día que nació el compilador. Perfil ZFP + Annex F: Annex F copió el `PICTURE` de COBOL, así que el decimal ya estaba pagado |
 | C++ frontend | ◐ mínimo (~900 líneas); será barato encima de C |
+| **El FOCO del escritorio** (`bmo_input::foco`) | ✍️ Alt+Tab con pila MRU, tres modos, F12 para la consola de datos, el foco arrastra el Z-order. 17 tests; **espera arranque** |
 | **Driver de disco (AHCI/SATA)** | ✅ **LEE Y MONTA**: GPT + FAT32 + volumen de datos con escritor. El NVMe de esta maquina es el disco de **Windows** — nunca se toca |
 | **XSAVE per-task** | ✅ **resuelto y confirmado en metal** (ver abajo: la causa raíz) |
 
@@ -74,22 +82,47 @@ Esto no es una lista de intenciones — cada línea salió en pantalla o en CABI
   `leeme.t` marcado **RECHAZADO**: la admisión BEX rechaza lo que no es un
   programa en vez de saltar al vacío.
 
+## Verificado en el Ryzen después (2026-07-30, con fotos)
+
+La sesión que cerró dos días de trabajo:
+
+- **`batch.bex`** — `BATCH DE CIERRE - BANCO BMO`, `total del dia: $1,135.00`,
+  `cierre escrito en apps/cierre.txt`. **File I/O de COBOL en silicio**: leer un
+  fichero, totalizar en decimal exacto, escribir el cierre y cerrarlo.
+- **`concep.bex`** — `$105.00 / $25.50 / $60.00 / $0.00`: **OCCURS funciona**.
+- **`extracto.bex`** — `$12,345.67`, `*****0.45` y `  120.00CR` alineados:
+  **PICTURE de edición en ejecución**, la línea de un banco de punta a punta.
+- **`cierre.bex` en ADA** — `CIERRE EN ADA - BANCO BMO`, `59.97`, `39.98`.
+  **Tercer lenguaje en silicio real.**
+- **El contador de programas**: `info` dijo *17 lanzados* con *ranuras 4 en uso
+  de 64*. Antes moría al tercero — `has_room()` miraba una bitácora histórica
+  de 8 entradas en vez de preguntarle al planificador.
+- **`info` entero**: Zen 3 (Vermeer) 19h/21h, 6 físicos / 12 hilos, TSC medido
+  3.70 GHz, **14.8 GiB totales y 5.4 MiB usados**, kernel 2.1 MiB.
+
 ## Lo que está escrito y NUNCA ha corrido
 
 Honestidad primero: esto es lo que hay que estrenar antes de construir encima.
+La lista completa, con **cómo se comprueba cada cosa**, vive en la memoria de
+pendientes de hardware; aquí va el resumen.
 
-- **La calculadora con botones** (`calc` en el terminal). El motor
-  `apps/calcgui.bex` compila y el panel dibuja, pero nadie ha pulsado `=` en
-  metal todavía.
-- **`ACCEPT` de COBOL** — el canal de entrada de la consola está escrito y
-  probado en el emulador (ida y vuelta: lo que se escribe se vuelve a leer),
-  pero no se ha tecleado un importe en el Ryzen.
-- **El editor de línea completo** (cursor, `Supr`, `Ctrl+C`/`V`) y el
-  historial con flechas.
+- **El ratón, otra vez.** Enumera y da puntero y botones, pero el arreglo del
+  **anillo de eventos compartido** (`BITACORA.md` Ep. 18) espera foto. Lo que
+  hay que mirar: `apk=total:perdidos:ahora` con **perdidos en 0**, `kev=`
+  subiendo al teclear y `raton ev=` subiendo al mover.
+- **El escritorio con foco** (`d29ad7c6`, `9d3f4943`, `345acfc5`): F12 abre la
+  consola de datos de ESTRATOS, **Alt+Tab** recorre la MRU con su ventanita,
+  **Alt+M** rota el modo, el clic da el teclado y **el foco arrastra el
+  Z-order**. Y el cursor del ratón ya no agujerea las ventanas (*save-under*).
+- **La escritura de ESTRATOS**: la transacción está escrita y probada (12
+  tests) y **nadie la ha cableado al dispositivo**. La ventana de datos lo
+  dice en rojo — si algún día aparece en verde sin cablearla, eso es el bug.
+- **La calculadora con botones**: el motor `cobol/calcgui.bex` compila y el
+  panel dibuja, pero nadie ha pulsado `=` en metal.
 
 Lo que SÍ se estrenó: el terminal dibujando, la fuente en Ring 3, `tecla()`,
-`OP_EJECUTAR`, el compositor desde disco, y `KIND_CONSOLE` — la foto del
-`ls` y de los ecos lo demuestra.
+`OP_EJECUTAR`, el compositor desde disco, `KIND_CONSOLE`, `ACCEPT` de COBOL con
+un importe tecleado, y los tres lenguajes.
 
 ---
 
@@ -293,13 +326,16 @@ de vendor. **COBOL devorado → BMO COBOL.**
 
 ## Flujo de trabajo
 
-**Compilar el kernel + flashear a hardware:**
+**Compilar + desplegar a hardware (Ring 0 Y los programas, de una vez):**
 ```bash
 cd C:\Users\Salazar\Documents\BMO\Ultra_kernel_x86-64
-.\build.ps1 -Flash -Drive A -Yes
+.\build.ps1 -Flash -Drive A -Data A -Yes
 bcdedit /set "{fwbootmgr}" bootsequence "{57cb1744-7f84-11f1-930d-c3a2d7ca848a}"
 shutdown /r /t 5
 ```
+En esta máquina el volumen de arranque y el de programas son **el mismo** (A:,
+la partición 2 del Kingston SATA), así que las dos banderas llevan la misma
+letra — pero siguen siendo dos banderas, porque son dos riesgos.
 (El one-shot arranca BMO-X una vez y vuelve a Windows. Si el video del firmware
 falla: **apagado completo** re-inicializa el VBIOS. F11 tapado por Windows
 Boot Manager primero en BootOrder.)
@@ -310,20 +346,28 @@ py toolchain/tools/cobol-gen/generate.py
 ```
 (Python 3.13 instalado en `%LOCALAPPDATA%\Programs\Python\Python313\`.)
 
-**Tests de los frontends:**
+**Tests:**
 ```bash
-cargo test -p bmo-c-front       # 85 verdes (C esencial)
-cargo test -p bmo-cobol-front   # 32 verdes (COBOL base)
-cargo test -p bmo-sem-asm -p bmo-verify -p cabina-core
+cargo test -p bmo-c-front       # 185 verdes: EJECUTAN el programa, no lo miran
+cargo test -p bmo-cobol-front   # COBOL, con el banco de matriz
+cargo test -p bmo-input         # 17 del FOCO (Alt+Tab, modos, Z-order)
+cargo test --workspace --exclude bmo-kernel --exclude boot_context --exclude byte-defender --exclude bmo-rt
 ```
+Lo último son **515 verdes**. Las cuatro exclusiones no son cosmética: el
+kernel y `boot_context` son `no_std` y `cargo test` les mete `std` encima
+(`duplicate lang item panic_impl`); `byte-defender` y `bmo-rt` están rotos
+desde hace tiempo y son parte de la deuda técnica anotada.
 
-**Copiar los programas de Ring 3 al volumen de datos (BMO-DATA):**
+**Copiar los programas de Ring 3 al volumen de datos:**
 ```bash
-cd Ultra_kernel_x86-64; .\build.ps1 -Data E
+cd Ultra_kernel_x86-64; .\build.ps1 -Data A
 ```
-El `.bex` del compositor sale a `staging\BMO-DATA\apps\` en cada build y de ahí
-se copia. `RUTA_COMPOSITOR` en `phase.rs` es `apps/gui.bex` (8.3: el driver FAT32 no lee nombres largos y no recorta) — la ruta de
-dentro del volumen es el contrato entre el build y el arranque.
+El `.bex` del compositor sale a `staging\BMO-DATA\sys\gui.bex` en cada build y
+de ahí se copia. `RUTA_COMPOSITOR` en `phase.rs` es `sys/gui.bex` (8.3: el
+driver FAT32 no lee nombres largos y no recorta) — la ruta de dentro del
+volumen es el contrato entre el build y el arranque, y el resto va por
+categorías: `cobol/ c/ ada/ datos/`. El mapa completo, en
+`Ultra_kernel_x86-64/VOLUMEN.md`.
 Tres cierres antes de escribir un byte: **nunca el disco del sistema**, tiene que
 ser FAT/FAT32, y hay que teclear `DATA <letra> BMO`. Es el ÚNICO sitio del build
 que escribe fuera del árbol del proyecto. `-Flash` es aparte y es para Ring 0:
@@ -363,20 +407,30 @@ comandos e historial, modificadores (`Ctrl+Alt`), `KIND_DIRECTORIO` (`ls`),
 `KIND_CONSOLE` en los dos sentidos, `DISPLAY <var>` y `ACCEPT` en COBOL, y la
 calculadora.
 
-**Kernel/HW (orden vigente 2026-07-28):**
-1. **PICTURE de edición en EJECUCIÓN.** El motor está probado
-   (`toolchain/lang/cobol/src/edicion.rs`, 13 tests) pero formatea un valor que
-   el compilador conoce; para `MOVE X TO Y` con `Y` editada hay que emitir el
-   recorrido de la plantilla como código. Es *la* función bancaria.
-2. **Entrada en BMO C** — tiene `printf` y no puede leer nada. Barato ahora:
-   `console::read_line` y `fmt::parse_decimal_scaled` ya existen en `bmo-lower`.
-3. **Capability de MEMORIA.** Un proceso recibe su imagen y 64 KiB de pila.
+**HECHO desde entonces** (2026-07-29/31), y con eso **COBOL para banca queda
+cerrado en su alcance declarado**: PICTURE de edición en ejecución, File I/O
+secuencial, OCCURS con guarda de rango, nivel 88, entrada en BMO C
+(`getchar`/`scanf`), **Ada verificada en el Ryzen**, el volumen de datos por
+categorías, `info`/`cpu`/`mem` desde Ring 3, el historial con scroll, y el
+escritorio con foco (F12, Alt+Tab, Alt+M). Lo que le queda a COBOL —`EVALUATE`,
+`STRING`, `SEARCH`, `CALL`, `SORT`, COMP-3— es **cola larga del estándar, no
+banca**.
+
+**Kernel/HW (orden vigente 2026-07-31):**
+1. **Cablear la escritura de ESTRATOS al dispositivo.** La transacción existe y
+   está probada (12 tests); faltan el `write` y el `FLUSH CACHE` de verdad. Es
+   lo único que separa "un almacén que se lee" de un almacén.
+2. **Capability de MEMORIA.** Un proceso recibe su imagen y 64 KiB de pila.
    Bloquea DOS cosas: lenguajes con GC, y superficies compartidas.
-4. **Superficies y ventanas** — hoy `KIND_FRAMEBUFFER` es exclusivo. Wayland
-   en pequeño, encima del punto 3. Es lo que saca la calculadora del
-   compositor a su propia ventana **sin tocar el COBOL**.
-5. **Endpoint RPC → servicios Ring 3**: el momento library-OS.
-6. **Ada**, en perfil restringido.
+3. **Write-combining del framebuffer** (PAT). Barato y se nota: hoy cada píxel
+   es una escritura a memoria sin caché, y el compositor pinta ventanas enteras.
+4. **Ada hacia ACATS** — el estándar trae su propio banco de conformidad, que
+   es la forma honesta de medir cuánto Ada hay de verdad.
+5. **Superficies y ventanas** — hoy `KIND_FRAMEBUFFER` es exclusivo. Wayland
+   en pequeño, encima del punto 2. Es lo que saca la calculadora del
+   compositor a su propia ventana **sin tocar el COBOL**. La política de foco
+   ya está escrita y probada, así que ese día no hay que inventarla.
+6. **Endpoint RPC → servicios Ring 3**: el momento library-OS.
 7. **SMP al final**: el codigo de despertar los APs YA EXISTE en s1_cpu
    (trampolin, INIT+SIPI, GDT/IDT), pero `smp_startup()` no tiene ni una
    llamada y `ap_entry64` solo cuenta y hace hlt. Va el ultimo a proposito: el
