@@ -150,11 +150,41 @@ pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
         return admit_payload(bytes, 1);
     }
 
-    // Sin payload externo: los tres programas embebidos, cada uno su
-    // proceso, con su espacio de direcciones y su tabla de capabilities.
-    // Se devuelve el primer tid admitido para que la fase de arranque
-    // tenga algo que anunciar.
-    log("[proc] no boot payload; admitting embedded Ring 3 demos\n");
+    // ★ SIN PAYLOAD EXTERNO NO SE ARRANCA NADA.
+    //
+    // Aquí se admitían cinco programas de ejemplo en cada arranque: el hola
+    // mundo en ensamblador, el de C, el de COBOL y el par de RPC. Su trabajo
+    // era demostrar que Ring 3 existía, que un `.bex` de cada lenguaje corría
+    // y que dos procesos podían hablarse. **Los tres están demostrados y
+    // fotografiados**, así que a partir de aquí no demuestran: estorban.
+    //
+    // Y estorbaban de verdad, no en abstracto. `init_hello` **reclama la
+    // pantalla** para enseñar que Ring 3 puede pintarla; arrancaba a la vez
+    // que el escritorio, ganaba, pintaba tres líneas, terminaba — y al morir
+    // el kernel recuperaba la pantalla y repintaba su panel encima del
+    // escritorio recién nacido. Eso es lo que salía en cada foto y lo que
+    // llevó a acusar tres veces al compositor de morirse.
+    //
+    // Un arranque no es una demostración: es arrancar. Lo que se enseña es la
+    // presentación de Ring 3 y el escritorio, y punto.
+    //
+    // Y no se pierde nada, porque **los ejemplos viven en el disco**: se
+    // lanzan a mano con `run c/holac.bex`, `run cobol/banco.bex`,
+    // `run ada/cierre.bex`. Ésos son además los de verdad — los compilados por
+    // el toolchain en cada build, no las copias congeladas dentro del kernel.
+    //
+    // ★ Al dejar de arrancarlos, los `.bex` embebidos pasaron a ser código
+    // muerto y el enlazador se los llevó: **el kernel adelgazó 37 KB**. Ése es
+    // el precio real que se estaba pagando por una demostración ya hecha.
+    log("[proc] sin payload de arranque: no se admite nada (los ejemplos van a mano)\n");
+    crate::ring0::cabina::info("ring3", "sin payload: el escritorio es el unico Ring 3", 0);
+    None
+}
+
+/// Los ejemplos embebidos, para lanzarlos **a mano**. Ver [`spawn_init`]: ya no
+/// se arrancan solos.
+#[allow(dead_code)]
+fn admitir_ejemplos() -> Option<u32> {
     let mut first: Option<u32> = None;
     let mut index = 0;
     while index < DEMOS.len() {

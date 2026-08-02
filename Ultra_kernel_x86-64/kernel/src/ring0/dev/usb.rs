@@ -234,8 +234,14 @@ pub fn init(_ctx: &BootContext) {
         };
         // Power a todos los puertos y settle REAL (el uhid hace su propio
         // power+reset después; para entonces CCS ya estará latcheado).
+        // ★ Encender los ocho y esperar UNA vez, no ocho.
+        //
+        // La estabilización de VBUS es un tiempo físico del puerto y los
+        // puertos se estabilizan en paralelo. Antes cada `port_power_on`
+        // esperaba sus 20 ms por su cuenta: ocho puertos por dos controladores
+        // eran 320 ms de arranque comprando exactamente nada.
         for p in 0..nports {
-            unsafe { bmo_xhci::port_power_on(p) };
+            unsafe { bmo_xhci::port_power_solo(p) };
         }
         delay_ms(200);
         // Censo: qué puertos tienen un dispositivo físico (PORTSC.CCS).

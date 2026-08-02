@@ -558,12 +558,26 @@ pub unsafe fn port_peek(port: u8) -> u32 {
     r32(c.mmio + pb + PORTSC as u64)
 }
 
+/// Enciende la corriente del puerto **y espera** la estabilización de VBUS.
+/// Para encender UNO. Quien encienda varios debe usar [`port_power_solo`] y
+/// esperar una sola vez al final — ver ahí por qué.
 pub unsafe fn port_power_on(port: u8) {
+    port_power_solo(port);
+    // Spec: >=20 ms de estabilización de VBUS antes de confiar en CCS.
+    hal().delay_ms(20);
+}
+
+/// Enciende la corriente y **no espera**.
+///
+/// ★ La espera de VBUS es un tiempo FÍSICO del puerto, y los puertos se
+/// estabilizan **en paralelo**: encender ocho y esperar 20 ms una vez es tan
+/// correcto como esperar 20 ms ocho veces, y tarda 160 ms menos. Con dos
+/// controladores en esta placa, eso es un tercio de segundo de arranque que no
+/// compraba nada.
+pub unsafe fn port_power_solo(port: u8) {
     let c = match CTRL.as_mut() { Some(c) => c, None => return };
     let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
     w32(c.mmio + pb + PORTSC as u64, r32(c.mmio + pb + PORTSC as u64) | PORTSC_PP);
-    // Spec: >=20 ms de estabilización de VBUS antes de confiar en CCS.
-    hal().delay_ms(20);
 }
 
 /// Reset del puerto con TIEMPOS REALES. Un reset USB2 tarda ~10-50 ms; el
