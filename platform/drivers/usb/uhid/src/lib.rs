@@ -3,6 +3,7 @@
 //! ```text
 //!   dir.rs      la DIRECCION (slot, dci): quien es quien en el bus
 //!   enumera.rs  el BUS: puertos, descriptores, dejar un endpoint listo
+//!   formato.rs  el REPORT DESCRIPTOR: donde esta cada campo, y de cuantos bits
 //!   teclado.rs  el TECLADO: su informe, su tabla de scancodes, sus LEDs
 //!   raton.rs    el RATON: su informe, sus botones, su rueda
 //!   lib.rs      esto: cableado y reparto. Nada mas.
@@ -42,6 +43,9 @@
 
 pub mod dir;
 pub mod enumera;
+/// El Report Descriptor, leído. Es lo que convierte "¿8 o 16 bits?" de una
+/// discusión sobre una foto en una pregunta que contesta el aparato.
+pub mod formato;
 /// La contabilidad de puertos: a cuál se puede tocar y a cuál no. Es la única
 /// parte del driver que se puede probar sin un xHC delante — y era la que
 /// estaba mal.
@@ -245,10 +249,16 @@ impl UsbHidHal {
             }
             if *subclase != enumera::SUBCLASE_BOOT {
                 // Un HID sin protocolo de arranque manda sus informes en el
-                // formato que describa su Report Descriptor, y eso este driver
-                // todavía no lo lee. Decirlo por su nombre: si el ratón acaba
-                // aquí, el arreglo es leer el descriptor, no tocar el reparto.
-                h.log(" (HID sin subclase BOOT: no se leerlo)\n");
+                // formato que describa su Report Descriptor.
+                //
+                // ★ Y ese descriptor **ya se sabe leer** ([`formato`]), así que
+                // el motivo original de este rechazo ha caducado: hoy la puerta
+                // se podría abrir cambiando esta condición por "que su
+                // descriptor declare X e Y". No se hace todavía a propósito —
+                // eso cambia QUÉ aparatos se adoptan en el arranque, y ningún
+                // CPU lo ha ejecutado. Primero se confirma en el Ryzen que el
+                // descriptor del ratón actual se lee bien; después se ensancha.
+                h.log(" (HID sin subclase BOOT: no lo adopto todavia)\n");
                 continue;
             }
             let es_teclado = *proto == enumera::PROTO_TECLADO && self.teclado.is_none();
@@ -282,15 +292,25 @@ impl UsbHidHal {
                 // pedirle menos de lo que puede mandar es un babble, y así fue
                 // como este ratón se paró nada más adoptarlo. Ver `Raton::largo`.
                 //
-                // Y el PROTOCOLO en el que se quedó de verdad, que decide si su
-                // informe lleva un Report ID delante — ver `Raton::nuevo`.
+                // Y su FORMATO, sacado del Report Descriptor: qué bit es cada
+                // campo y de cuántos bits. Antes se le pasaba el protocolo a
+                // secas y el ratón deducía una sola cosa —si había un Report ID
+                // delante—, que arreglaba el corrimiento y dejaba abierto el
+                // ancho de los ejes.
+                //
+                // Si el descriptor no se puede leer o no se entiende, se cae al
+                // formato BOOT **conservando el salto del Report ID**, que es lo
+                // que ya funciona en el Ryzen. Un reserva que pierde lo
+                // aprendido sería una regresión disfrazada de prudencia.
+                let formato = enumera::leer_formato_raton(slot, *iface, cfg)
+                    .unwrap_or_else(|| formato::Formato::boot_con_id(protocolo == 1));
                 if self.instalar_raton(Raton::nuevo(
                     direccion,
                     buf_phys,
                     buf_virt,
                     sale_del_teclado,
                     mps,
-                    protocolo,
+                    formato,
                 )) {
                     cosecha.raton = true;
                     h.log("[uhid] raton listo\n");

@@ -4,31 +4,29 @@
 //! atender, rearmar) y **cero conocimiento del otro**. Lo único que comparten
 //! es la forma, no el estado.
 //!
-//! ## El informe de un ratón boot
+//! ## El informe de un ratón
 //!
-//! Cuatro bytes: botones, dx, dy, rueda. `dx`/`dy` son **relativos y con
-//! signo** — un ratón no dice dónde está, dice cuánto se ha movido; quién lleva
-//! la posición absoluta y la recorta a la pantalla es el kernel, que es el que
-//! sabe de qué tamaño es el panel.
+//! Botones, dx, dy y rueda. `dx`/`dy` son **relativos y con signo** — un ratón
+//! no dice dónde está, dice cuánto se ha movido; quién lleva la posición
+//! absoluta y la recorta a la pantalla es el kernel, que es el que sabe de qué
+//! tamaño es el panel.
 //!
-//! ★ El cuarto byte, la rueda, es opcional en el informe boot estricto. Se lee
-//! igual porque todos los ratones reales lo mandan, y porque `queue_interrupt_in`
-//! pide 4 bytes: si el ratón sólo manda 3, el Transfer Event llega con `cc=13`
-//! (Short Packet) y el cuarto byte se queda a cero, que es "no giró". Por eso
+//! ★ **Dónde cae cada uno lo dice el aparato**, no este archivo. El formato
+//! sale de su Report Descriptor ([`crate::formato`]) y llega ya resuelto: qué
+//! bit, cuántos bits y si hay un Report ID delante. Antes se suponía el informe
+//! BOOT —cuatro bytes de 8 bits— y este ratón no lo cumple: ignoró el
+//! `SET_PROTOCOL` y manda ejes que pueden ser de 16 bits, con lo que el byte
+//! que se leía como `dy` era la mitad alta de `dx`.
+//!
+//! ★ La rueda es opcional en el informe boot estricto. Se lee igual porque
+//! todos los ratones reales la mandan, y porque `queue_interrupt_in` pide el
+//! paquete entero: si el ratón manda menos, el Transfer Event llega con `cc=13`
+//! (Short Packet) y lo que falte se queda a cero, que es "no giró". Por eso
 //! `cc=13` se trata como bueno y no como error.
 
 use crate::dir::Direccion;
+use crate::formato::Formato;
 use bmo_input::event::InputEvent;
-
-/// El informe del protocolo BOOT de un ratón.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct Informe {
-    botones: u8,
-    dx: i8,
-    dy: i8,
-    rueda: i8,
-}
 
 /// Cuántos bytes ocupa el informe BOOT de un ratón: botones, dx, dy, rueda.
 ///
@@ -56,13 +54,12 @@ pub struct Raton {
     mps: u16,
     /// Cuántas veces el xHC contestó con un error de transferencia.
     errores: u32,
-    /// ★ Cuántos bytes hay que saltarse al principio del informe.
+    /// **Dónde está cada campo del informe**, dicho por el aparato.
     ///
-    /// Cero en protocolo BOOT, que es el trato: `[botones, dx, dy, rueda]`.
-    /// **Uno** si el aparato se quedó en protocolo de INFORME, porque entonces
-    /// el primer byte es el Report ID y todo lo demás va corrido — que es como
-    /// un ratón acaba moviéndose al hacer clic en vez de al moverlo.
-    desplazamiento: usize,
+    /// Antes esto era un solo `usize`: cuántos bytes saltarse. Servía para el
+    /// Report ID y para nada más — no sabía de anchos, así que un ratón con
+    /// ejes de 16 bits seguía leyéndose mal aunque el salto fuera correcto.
+    formato: Formato,
     /// Informes vistos. Los primeros se enseñan crudos: un formato que no se
     /// entiende no se arregla razonando, se arregla mirándolo.
     vistos: u32,
@@ -75,7 +72,7 @@ impl Raton {
         buf_virt: *mut u8,
         provisional: bool,
         mps: u16,
-        protocolo: u8,
+        formato: Formato,
     ) -> Self {
         Self {
             dir,
@@ -86,10 +83,35 @@ impl Raton {
             bombeando: false,
             mps,
             errores: 0,
-            // 1 = protocolo de INFORME: hay Report ID delante. Cualquier otra
-            // cosa (0 = boot, 0xFF = no contestó) se trata como boot, que es lo
-            // que se pidió y lo que cumple la inmensa mayoría.
-            desplazamiento: if protocolo == 1 { 1 } else { 0 },
+            formato,
+            vistos: 0,
+        }
+    }
+
+    /// El formato con el que se está descifrando. Para el panel: si el puntero
+    /// se mueve mal, lo primero que hay que ver es con qué reglas se lee.
+    pub fn formato(&self) -> Formato {
+        self.formato
+    }
+
+    /// Un ratón sin bus detrás, para probar el DESCIFRADO.
+    ///
+    /// `descifrar` no toca el buffer de DMA —recibe los bytes ya copiados—, así
+    /// que se puede ejercer entero sin un xHC delante. Sin esto, la conversión
+    /// de informe a eventos sólo se podía probar en el Ryzen, que es donde
+    /// menos falta hace tener dudas.
+    #[cfg(test)]
+    fn para_pruebas(formato: Formato) -> Self {
+        Self {
+            dir: Direccion::nueva(0, 0),
+            buf_phys: 0,
+            buf_virt: core::ptr::null_mut(),
+            botones_previos: 0,
+            provisional: false,
+            bombeando: false,
+            mps: 8,
+            errores: 0,
+            formato,
             vistos: 0,
         }
     }
@@ -139,20 +161,12 @@ impl Raton {
         self.bombeando = false;
 
         if cc == 1 || cc == 13 {
-            // Los tres primeros informes, CRUDOS. Cuatro bytes bastan para ver
-            // si el primero es un Report ID constante o unos botones que
-            // cambian, y eso es lo que zanja la discusión del formato.
-            // ★ OCHO bytes, no cuatro.
+            // Los tres primeros informes, CRUDOS.
             //
-            // Con cuatro se vio el Report ID (`01`) y se confirmó el
-            // desplazamiento — pero no se puede decidir lo siguiente: si los
-            // desplazamientos son de **8 o de 16 bits**. Un ratón de juego en
-            // protocolo de informe manda a menudo `dx` y `dy` de 16 bits, y
-            // entonces el byte que se está leyendo como `dy` es en realidad la
-            // mitad alta de `dx` — el eje Y se movería solo al mover en X.
-            //
-            // Con ocho se ve entero: si los bytes 4..7 traen datos, son 16
-            // bits; si están a cero, son 8. Un byte de log zanja una teoría.
+            // Se quedan aunque ya no haya nada que adivinar: son la única forma
+            // de comprobar que el formato leído del descriptor CORRESPONDE con
+            // lo que el aparato manda de verdad. Un parser correcto sobre un
+            // descriptor que miente da bytes mal con toda la razón del mundo.
             if self.vistos < 3 {
                 let h = bmo_xhci::hal();
                 h.log("[uhid] raton informe:");
@@ -160,13 +174,20 @@ impl Raton {
                     let b = unsafe { core::ptr::read_volatile(self.buf_virt.add(i)) };
                     h.log_u64(" ", b as u64);
                 }
-                h.log_u64("   (desplazamiento=", self.desplazamiento as u64);
-                h.log(")\n");
+                h.log_u64("   (id=", self.formato.report_id as u64);
+                h.log_u64(" ejes de ", self.formato.x.map_or(0, |c| c.bits) as u64);
+                h.log(" bits)\n");
                 self.vistos += 1;
             }
-            let informe = unsafe {
-                core::ptr::read_volatile(self.buf_virt.add(self.desplazamiento) as *const Informe)
-            };
+            // El informe se copia a la pila ENTERO y desde ahí se descifra. No
+            // se puede seguir leyéndolo como un `struct` de cuatro bytes: los
+            // campos ya no están en posiciones fijas ni tienen tamaño fijo, que
+            // es justo lo que este cambio arregla.
+            let mut informe = [0u8; MAX_INFORME];
+            let salto = self.formato.desplazamiento();
+            for (i, b) in informe.iter_mut().enumerate() {
+                *b = unsafe { core::ptr::read_volatile(self.buf_virt.add(salto + i)) };
+            }
             n = self.descifrar(&informe, salida);
         } else {
             // Un `cc` que no es éxito ni "corto" es un error del bus, y los tres
@@ -195,30 +216,170 @@ impl Raton {
         }
     }
 
-    /// El informe → eventos de mover, pulsar y girar.
+    /// El informe → eventos de mover, pulsar y girar, **según su formato**.
     ///
     /// Los tres van por separado a propósito: un movimiento sin cambio de
     /// botón no debe generar un evento de botón, o el consumidor vería un
     /// clic sostenido en cada informe.
-    fn descifrar(&mut self, informe: &Informe, salida: &mut [InputEvent]) -> usize {
+    fn descifrar(&mut self, informe: &[u8], salida: &mut [InputEvent]) -> usize {
         let mut n = 0usize;
 
-        if (informe.dx != 0 || informe.dy != 0) && n < salida.len() {
-            salida[n] = InputEvent::mouse_move(informe.dx as i16, informe.dy as i16);
+        let dx = self.formato.x.map_or(0, |c| c.leer_con_signo(informe));
+        let dy = self.formato.y.map_or(0, |c| c.leer_con_signo(informe));
+        if (dx != 0 || dy != 0) && n < salida.len() {
+            // Se recorta a `i16` porque es lo que lleva el evento. Un
+            // desplazamiento que no cabe en 16 bits no es un movimiento de
+            // mano: es un informe mal leído, y saturar deja el puntero pegado
+            // al borde en vez de teletransportarlo al otro lado.
+            salida[n] = InputEvent::mouse_move(recortar(dx), recortar(dy));
             n += 1;
         }
         // Sólo el CAMBIO. Un ratón manda su informe muchas veces por segundo
         // con los botones tal como estén.
-        if informe.botones != self.botones_previos && n < salida.len() {
-            salida[n] = InputEvent::mouse_button(informe.botones);
-            self.botones_previos = informe.botones;
+        let botones = self.formato.botones.map_or(0, |c| c.leer_crudo(informe) as u8);
+        if botones != self.botones_previos && n < salida.len() {
+            salida[n] = InputEvent::mouse_button(botones);
+            self.botones_previos = botones;
             n += 1;
         }
-        if informe.rueda != 0 && n < salida.len() {
-            salida[n] = InputEvent::mouse_wheel(informe.rueda);
+        let rueda = self.formato.rueda.map_or(0, |c| c.leer_con_signo(informe));
+        if rueda != 0 && n < salida.len() {
+            // El evento lleva la rueda en `i8`, así que aquí se SATURA en vez
+            // de truncar: un `as i8` sobre 256 muescas daría 0, o sea "no
+            // giró" — el silencio con aire de dato.
+            salida[n] = InputEvent::mouse_wheel(rueda.clamp(-128, 127) as i8);
             n += 1;
         }
 
         n
+    }
+}
+
+/// Cuántos bytes del informe se descifran. Ocho cubren el peor caso real —
+/// cinco botones, dos ejes de 16 bits y rueda son seis— y son los mismos ocho
+/// que se registran crudos.
+const MAX_INFORME: usize = 8;
+
+fn recortar(v: i32) -> i16 {
+    if v > i16::MAX as i32 {
+        i16::MAX
+    } else if v < i16::MIN as i32 {
+        i16::MIN
+    } else {
+        v as i16
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::formato::Campo;
+    use bmo_input::event::InputEventKind;
+
+    fn vacia() -> [InputEvent; 4] {
+        [InputEvent::mouse_move(0, 0); 4]
+    }
+
+    /// El formato del ratón que motivó todo: Report ID delante y ejes de 16
+    /// bits. Los bits van sin el Report ID, que ya se salta el llamante.
+    fn formato_16() -> Formato {
+        Formato {
+            report_id: 1,
+            botones: Some(Campo { bit: 0, bits: 5 }),
+            x: Some(Campo { bit: 8, bits: 16 }),
+            y: Some(Campo { bit: 24, bits: 16 }),
+            rueda: Some(Campo { bit: 40, bits: 8 }),
+            bits: 48,
+        }
+    }
+
+    /// **El bug entero, en un test.**
+    ///
+    /// Con el formato BOOT, este informe —`dx = 300`— se leía como `dx = 44`
+    /// (el byte bajo) y `dy = 1` (el alto). O sea: mover en horizontal movía
+    /// también en vertical. Con el formato del aparato sale `dx=300, dy=0`.
+    #[test]
+    fn un_eje_de_16_bits_no_se_derrama_en_el_otro() {
+        let mut r = Raton::para_pruebas(formato_16());
+        let mut ev = vacia();
+        // botones=0, dx=300 (0x012C), dy=0, rueda=0
+        let n = r.descifrar(&[0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0, 0], &mut ev);
+        assert_eq!(n, 1);
+        assert_eq!(ev[0].kind, InputEventKind::MouseMove);
+        assert_eq!(ev[0].mouse_dx(), 300);
+        assert_eq!(ev[0].mouse_dy(), 0, "mover en X no puede mover en Y");
+
+        // Y lo que el formato BOOT habria leido del MISMO informe, para que se
+        // vea que no es una diferencia teorica.
+        let mut b = Raton::para_pruebas(Formato::boot());
+        let mut ev2 = vacia();
+        b.descifrar(&[0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0, 0], &mut ev2);
+        assert_eq!(ev2[0].mouse_dx(), 44);
+        assert_eq!(ev2[0].mouse_dy(), 1);
+    }
+
+    /// Los desplazamientos son con signo, también a 16 bits.
+    #[test]
+    fn el_movimiento_negativo_es_negativo() {
+        let mut r = Raton::para_pruebas(formato_16());
+        let mut ev = vacia();
+        // dx = -1 (0xFFFF), dy = -300 (0xFED4)
+        r.descifrar(&[0x00, 0xFF, 0xFF, 0xD4, 0xFE, 0x00, 0, 0], &mut ev);
+        assert_eq!(ev[0].mouse_dx(), -1);
+        assert_eq!(ev[0].mouse_dy(), -300);
+    }
+
+    /// Sólo el CAMBIO de botones genera evento. Un ratón manda su informe
+    /// cientos de veces por segundo con los botones tal como estén: si cada uno
+    /// generara evento, un botón pulsado sería un clic sostenido.
+    #[test]
+    fn los_botones_solo_hablan_cuando_cambian() {
+        let mut r = Raton::para_pruebas(formato_16());
+        let mut ev = vacia();
+        let pulsado = [0x01, 0, 0, 0, 0, 0, 0, 0];
+
+        assert_eq!(r.descifrar(&pulsado, &mut ev), 1, "el primero es un cambio");
+        assert_eq!(ev[0].kind, InputEventKind::MouseButton);
+        assert_eq!(ev[0].mouse_buttons(), 1);
+
+        assert_eq!(r.descifrar(&pulsado, &mut ev), 0, "sostenido no es un clic");
+        assert_eq!(r.descifrar(&[0; 8], &mut ev), 1, "soltarlo si lo es");
+        assert_eq!(ev[0].mouse_buttons(), 0);
+    }
+
+    /// Un informe quieto no genera nada. Con `SET_IDLE(0)` no debería llegar,
+    /// pero un aparato que lo ignore no puede inundar la cola de eventos.
+    #[test]
+    fn un_informe_quieto_no_genera_eventos() {
+        let mut r = Raton::para_pruebas(formato_16());
+        let mut ev = vacia();
+        assert_eq!(r.descifrar(&[0; 8], &mut ev), 0);
+    }
+
+    /// Un ratón sin rueda declarada no inventa muescas. `None` es "este aparato
+    /// no lo manda", y leer ceros de un campo que no existe daría lo mismo por
+    /// casualidad — hasta el día que ahí caiga otro dato.
+    #[test]
+    fn sin_rueda_declarada_no_hay_rueda() {
+        let mut f = formato_16();
+        f.rueda = None;
+        let mut r = Raton::para_pruebas(f);
+        let mut ev = vacia();
+        // Byte 5 a 0x7F: donde estaría la rueda si la hubiera.
+        let n = r.descifrar(&[0x00, 0, 0, 0, 0, 0x7F, 0, 0], &mut ev);
+        assert_eq!(n, 0);
+    }
+
+    /// Mover y pulsar a la vez son DOS eventos, y en ese orden.
+    #[test]
+    fn mover_y_pulsar_a_la_vez_son_dos_eventos() {
+        let mut r = Raton::para_pruebas(formato_16());
+        let mut ev = vacia();
+        let n = r.descifrar(&[0x02, 0x05, 0x00, 0x03, 0x00, 0x00, 0, 0], &mut ev);
+        assert_eq!(n, 2);
+        assert_eq!(ev[0].kind, InputEventKind::MouseMove);
+        assert_eq!(ev[0].mouse_dx(), 5);
+        assert_eq!(ev[1].kind, InputEventKind::MouseButton);
+        assert_eq!(ev[1].mouse_buttons(), 2);
     }
 }

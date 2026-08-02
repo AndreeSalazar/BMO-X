@@ -82,6 +82,48 @@ pub fn intr_in(cfg: &[u8], iface_num: u8) -> Option<(u8, u16, u8, u8)> {
     None
 }
 
+/// **Cuánto mide el Report Descriptor de una interfaz**, según su descriptor
+/// HID.
+///
+/// Detrás de cada interfaz HID viene un descriptor de clase (`bDescriptorType`
+/// = 0x21) que dice qué descriptores subordinados tiene y de qué tamaño. Sin
+/// leer esa longitud no se puede pedir el Report Descriptor: a un
+/// `GET_DESCRIPTOR` hay que decirle cuántos bytes se esperan, y pedir de más a
+/// un endpoint de control no es gratis en todos los aparatos.
+///
+/// Se busca **dentro de la interfaz pedida**, no el primero que aparezca: un
+/// teclado compuesto trae dos descriptores HID y el de su interfaz de medios no
+/// describe el mismo informe.
+pub fn hid_report_len(cfg: &[u8], iface_num: u8) -> Option<u16> {
+    let total = if cfg.len() >= 2 { le_u16(cfg, 2) as usize } else { 0 };
+    let limit = if total > 0 && total <= cfg.len() { total } else { cfg.len() };
+    let mut off = if !cfg.is_empty() { cfg[0] as usize } else { 9 };
+    let mut iface_actual = 0xFFu8;
+    while off + 3 <= limit {
+        let len = cfg[off] as usize;
+        let dtype = cfg[off + 1];
+        if len < 2 || off + len > limit {
+            break;
+        }
+        if dtype == 4 && len >= 9 {
+            iface_actual = cfg[off + 2];
+        }
+        // 0x21 = HID. Su cabecera son 6 bytes y luego pares
+        // `(bDescriptorType, wDescriptorLength)`; 0x22 es el Report Descriptor.
+        if dtype == 0x21 && iface_actual == iface_num && len >= 9 {
+            let mut i = 6;
+            while i + 3 <= len {
+                if cfg[off + i] == 0x22 {
+                    return Some(le_u16(cfg, off + i + 1));
+                }
+                i += 3;
+            }
+        }
+        off += len;
+    }
+    None
+}
+
 /// ¿Este aparato trae interfaz de teclado **y** de ratón?
 ///
 /// Un aparato con las dos es un teclado compuesto: la de ratón son sus teclas
@@ -170,6 +212,77 @@ pub unsafe fn preparar_endpoint(
     core::ptr::write_bytes(buf_virt, 0, 4096);
     Some((buf_phys, buf_virt, protocolo))
 }
+
+/// **Le pide al aparato su Report Descriptor** y lo descifra.
+///
+/// Es la respuesta a la pregunta que se quedó abierta cuando el ratón confesó
+/// `protocolo=0x1`: *¿los desplazamientos son de 8 o de 16 bits?*. Se contestaba
+/// mirando ocho bytes crudos en un log y decidiendo a ojo. Aquí se pregunta.
+///
+/// `None` con su motivo dicho en cada salida. El llamante vuelve al formato
+/// BOOT, que es un formato **correcto** para un aparato que respeta el
+/// protocolo — lo que no era correcto es aplicarlo sin preguntar.
+///
+/// # Safety
+/// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
+pub unsafe fn leer_formato_raton(
+    slot: u8,
+    iface: u8,
+    cfg: &[u8],
+) -> Option<crate::formato::Formato> {
+    let h = bmo_xhci::hal();
+
+    let largo = match hid_report_len(cfg, iface) {
+        Some(l) if l as usize <= MAX_REPORT => l as usize,
+        Some(l) => {
+            h.log_u64("[uhid] report desc demasiado grande: ", l as u64);
+            h.log("\n");
+            return None;
+        }
+        None => {
+            h.log("[uhid] la interfaz no declara Report Descriptor\n");
+            return None;
+        }
+    };
+
+    let mut desc = [0u8; MAX_REPORT];
+    // GET_DESCRIPTOR estándar a la INTERFAZ (0x81), tipo 0x22 = Report.
+    let n = bmo_xhci::control_transfer(slot, 0x81, 0x06, 0x2200, iface as u16, &mut desc[..largo], true);
+    if n < largo {
+        h.log_u64("[uhid] report desc corto: ", n as u64);
+        h.log_u64(" de ", largo as u64);
+        h.log("\n");
+        return None;
+    }
+
+    match crate::formato::raton(&desc[..largo]) {
+        Some(f) => {
+            // Lo que decide el reparto de bytes, dicho en el arranque: si esto
+            // no cuadra con lo que hace el puntero, la culpa es del parser y no
+            // hay que volver a mirar el bus.
+            h.log_u64("[uhid] formato del raton: id=", f.report_id as u64);
+            h.log_u64(" x=bit", f.x.map_or(0, |c| c.bit) as u64);
+            h.log_u64("/", f.x.map_or(0, |c| c.bits) as u64);
+            h.log_u64("b  y=bit", f.y.map_or(0, |c| c.bit) as u64);
+            h.log_u64("/", f.y.map_or(0, |c| c.bits) as u64);
+            h.log_u64("b  informe=", f.bits as u64);
+            h.log(" bits\n");
+            if f.ejes_anchos() {
+                h.log("[uhid] EJES DE MAS DE 8 BITS: el formato BOOT habria leido dy dentro de dx\n");
+            }
+            Some(f)
+        }
+        None => {
+            h.log("[uhid] no entiendo su Report Descriptor: me quedo con el BOOT\n");
+            None
+        }
+    }
+}
+
+/// Tope del Report Descriptor que se acepta. Los de ratón rondan los 60-200
+/// bytes; 512 cubre cualquiera con macros sin dejar que un descriptor absurdo
+/// se lleve la pila de Ring 0.
+pub const MAX_REPORT: usize = 512;
 
 /// Lee los descriptores de un dispositivo recién direccionado.
 ///
