@@ -1,0 +1,601 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║                       T E C H N E   L I C E N S E                    ║
+║                           Version 2.0, 2026                          ║
+║                                                                      ║
+║              τέχνη — "el arte de crear con maestria"                 ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+    Copyright (C) 2026 Eddi Andree Salazar Matos
+    Lima, Republica del Peru
+
+    Software cubierto:  BMO-X y todos sus componentes
+                        ADead-BIB, PyDead-BIB, FastOS
+    Contacto:           eddi.salazar.dev@gmail.com
+    Repositorio:        github.com/AndreeSalazar
+
+    Esta version 2.0 reemplaza a la Techne License v1.0 para todo el
+    Software cubierto. Las licencias ya concedidas bajo la v1.0 siguen
+    validas hasta su renovacion.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                            P R E A M B U L O
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La palabra griega (Techne) significa el arte, la habilidad y la
+maestria en la creacion de algo. Este software representa la expresion
+de ese arte: un sistema bare-metal y sus compiladores nativos
+construidos desde cero, sin LLVM, sin GCC, sin dependencias externas,
+con filosofia propia, desde Lima, Peru.
+
+BMO-X no es un sistema operativo de proposito general y no aspira a
+serlo. No compite en compatibilidad: existe para PERFILAR — correr una
+cosa, de forma exacta, y poder demostrarlo. Su valor esta en que un
+solo sistema, con una superficie congelada de tres syscalls y un unico
+formato binario (BEF), ejecuta C, COBOL y Ada de forma nativa.
+
+Esta licencia reconoce tres cosas a la vez:
+
+    1.  Que el conocimiento debe ser libre para quien aprende.
+    2.  Que quien construye sobre este arte para ganar dinero debe
+        reconocimiento y compensacion justa.
+    3.  Que un sistema que aspira a sectores criticos debe poder ser
+        AUDITADO por quien lo usa. Por eso el codigo fuente es
+        PUBLICO. Cualquiera puede leerlo, compilarlo y verificarlo,
+        sin pedir permiso y sin firmar nada. Lo que requiere licencia
+        no es mirar: es cobrar.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 1 — DEFINICIONES
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    1.1  "Autor" es Eddi Andree Salazar Matos, creador original y
+         titular exclusivo de todos los derechos sobre el Software.
+
+    1.2  "Software" es la totalidad de BMO-X y de las obras del Autor
+         listadas en la portada, incluyendo sin limitarse a:
+
+              a)  EL SISTEMA — el kernel Ring 0, la cadena de arranque,
+                  los drivers, los servicios de plataforma y el
+                  userspace.
+              b)  EL TOOLCHAIN — los frontends nativos de C, COBOL,
+                  Ada y C++, el pipeline compartido (forge), sem-asm,
+                  y los generadores de tablas.
+              c)  ESTRATOS — el sistema de ficheros direccionado por
+                  contenido y su formateador.
+              d)  BEF / BEX — el formato binario y sus reglas de
+                  extension.
+              e)  CABINA — la telemetria del sistema.
+              f)  Toda tabla, especificacion, documento de diseno y
+                  matriz de conformidad que acompane a lo anterior.
+
+    1.3  "BEF" es el formato binario unico del Software. Es el motivo
+         por el que los tres lenguajes son UN solo producto y no tres:
+         C, COBOL y Ada compilan al mismo formato y la puerta del
+         sistema no pregunta de que lenguaje viene el binario.
+
+    1.4  "LA BASE" es la parte del Software declarada inmutable en el
+         Articulo 5: la superficie de tres syscalls, el formato BEF y
+         el kernel. Es el suelo sobre el que todo lo demas se apoya.
+
+    1.5  "Federado" es toda persona o entidad a la que el Autor
+         concede acceso al codigo fuente bajo un acuerdo escrito.
+
+    1.6  "Uso Personal" es el uso por un individuo con fines no
+         comerciales.
+
+    1.7  "Uso Comercial" es cualquier uso del Software en un producto,
+         servicio o proceso que genere ingresos directa o
+         indirectamente.
+
+    1.8  "Producto Embarcado" es todo producto, dispositivo, aparato,
+         imagen de sistema o servicio en cuya ejecucion participe
+         cualquier parte del Software definida en 1.2 (a), (c), (d)
+         o (e). Es decir: el Software CORRE dentro del producto.
+
+    1.9  "Uso de Herramienta" es el uso exclusivo del toolchain
+         (1.2 b) para producir binarios que NO embarcan el Software.
+         El binario producido es enteramente del licenciatario y el
+         Autor no reclama nada sobre el.
+
+    1.10 "Precio de Venta" es el importe total facturado al cliente
+         final por una unidad de Producto Embarcado, sin impuestos
+         indirectos ni gastos de envio. En servicios recurrentes, es
+         el importe facturado por periodo.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 2 — USOS PERMITIDOS SIN COSTO
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Los siguientes usos no generan pago alguno. El acceso al codigo
+    fuente sigue rigiendose por el Articulo 6.
+
+    2.1  USO PERSONAL
+         Cualquier individuo puede usar y modificar el Software para
+         propositos personales no comerciales.
+
+    2.2  EDUCACION E INVESTIGACION
+         Universidades, escuelas, institutos de investigacion y
+         estudiantes pueden usar el Software libremente para
+         ensenanza, aprendizaje e investigacion academica, incluida
+         la publicacion de resultados.
+
+    2.3  PROYECTOS DE CODIGO ABIERTO
+         Proyectos cuyo codigo fuente completo sea publicamente
+         accesible bajo una licencia aprobada por OSI pueden usar el
+         Software sin costo, con atribucion segun el Articulo 7.
+
+    2.4  ORGANIZACIONES SIN FINES DE LUCRO
+         Organizaciones registradas sin fines de lucro pueden usar el
+         Software libremente para su mision institucional.
+
+    2.5  ETAPA TEMPRANA
+         Toda entidad con ingresos anuales globales inferiores a
+         USD $1,000,000 (un millon de dolares) usa el Software sin
+         costo, con la obligacion de notificar al Autor al superar
+         dicho umbral.
+
+    2.6  EVALUACION
+         Doce (12) meses de evaluacion sin costo para cualquier
+         entidad, con notificacion previa al Autor. Durante la
+         evaluacion no se puede vender ni distribuir un Producto
+         Embarcado.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 3 — USO COMERCIAL: LOS DOS CASOS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Superado el umbral del Articulo 2.5, el Uso Comercial se paga de
+    una de dos formas, segun lo que el licenciatario realmente use.
+    Nunca ambas por el mismo producto.
+
+    ─────────────────────────────────────────────────────────────────
+    3.1  CASO A — PRODUCTO EMBARCADO  (el Software corre dentro)
+    ─────────────────────────────────────────────────────────────────
+
+         Royalty del SIETE POR CIENTO (7%) del Precio de Venta de
+         cada unidad de Producto Embarcado vendida.
+
+         EL PORCENTAJE SE APLICA UNA SOLA VEZ, DIRECTAMENTE SOBRE EL
+         PRECIO DE VENTA. No existe ninguna base intermedia, ninguna
+         "porcion atribuible" ni ningun segundo porcentaje.
+
+         Ejemplos, para que no haya duda:
+
+              Unidad vendida a USD  1,000.00  ->  royalty USD   70.00
+              Unidad vendida a USD    250.00  ->  royalty USD   17.50
+              Servicio a USD 10,000.00 / mes  ->  royalty USD  700.00
+
+         Si el Producto Embarcado se entrega sin precio (gratuito,
+         interno o promocional) y aun asi genera ingresos indirectos,
+         las partes acuerdan por escrito una base equivalente antes
+         de la distribucion.
+
+    ─────────────────────────────────────────────────────────────────
+    3.2  CASO B — USO DE HERRAMIENTA  (solo compilan con el toolchain)
+    ─────────────────────────────────────────────────────────────────
+
+         Royalty: CERO POR CIENTO (0%).
+
+         Lo que el licenciatario compila es suyo. El Autor no reclama
+         derechos sobre los binarios producidos ni sobre el codigo
+         fuente que el licenciatario escriba.
+
+         Se paga, en su lugar, una suscripcion anual por puesto de
+         desarrollador que utilice el toolchain. La tarifa vigente se
+         solicita al Autor.
+
+    ─────────────────────────────────────────────────────────────────
+    3.3  TODO ES NEGOCIABLE POR ESCRITO
+    ─────────────────────────────────────────────────────────────────
+
+         Las cifras de este articulo son la tarifa publicada, no un
+         ultimatum. El Autor puede acordar por escrito:
+
+              a)  Un porcentaje distinto por volumen o por sector.
+              b)  Una cantidad fija por unidad en lugar del
+                  porcentaje.
+              c)  Un minimo anual garantizado.
+              d)  Un pago unico (buyout) por uso perpetuo.
+              e)  Acuerdos de partnership, co-desarrollo o licencia
+                  enterprise con terminos propios.
+
+         Para negociar:  eddi.salazar.dev@gmail.com
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 4 — PAGO, REPORTE Y AUDITORIA RECIPROCA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    4.1  Los pagos son trimestrales, dentro de los 30 dias siguientes
+         al cierre de cada trimestre.
+
+    4.2  El licenciatario entrega cada trimestre un reporte con las
+         unidades vendidas, el Precio de Venta aplicado y el royalty
+         calculado. Un trimestre sin ventas se reporta igualmente,
+         declarando cero.
+
+    4.3  AUDITORIA RECIPROCA. Esta licencia concede derecho de
+         auditoria EN AMBAS DIRECCIONES, y esa simetria es
+         deliberada:
+
+              a)  El licenciatario puede auditar el Software entero,
+                  segun el Articulo 6.
+              b)  El Autor puede auditar los registros de ventas y
+                  unidades del licenciatario, con 30 dias de aviso,
+                  no mas de una vez al ano, a su costa.
+              c)  Si una auditoria revela una diferencia superior al
+                  cinco por ciento (5%) en contra del Autor, el coste
+                  de esa auditoria lo asume el licenciatario.
+
+    4.4  Los importes se expresan en dolares de los Estados Unidos.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 5 — LA BASE ES INMUTABLE (el suelo no se bifurca)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Este articulo es el corazon tecnico de la licencia.
+
+    5.1  QUE ES LA BASE
+         La Base la componen:
+
+              a)  La superficie congelada de tres syscalls.
+              b)  El formato BEF y sus reglas de extension.
+              c)  El kernel Ring 0 y su modelo de capabilities.
+
+    5.2  LA BASE NO SE MODIFICA
+         Ningun licenciatario puede alterar, sustituir, extender ni
+         bifurcar la Base. BMO-X no es un kernel para modificar: es
+         un suelo sobre el que apoyarse.
+
+    5.3  POR QUE — Y ESTO NO ES CAPRICHO
+         Si cada licenciatario bifurca la Base, ninguna auditoria
+         sirve para el siguiente y el valor de la federacion
+         desaparece. Con la Base fija, UNA auditoria vale para todos.
+         La estabilidad del suelo es lo que hace que la confianza se
+         acumule en vez de fragmentarse.
+
+    5.4  LO QUE SI SE PUEDE HACER — Y ES MUCHO
+         El Software es modular a proposito. Sobre la Base intacta,
+         el licenciatario puede libremente:
+
+              a)  Escribir aplicaciones y servicios propios.
+              b)  Escribir drivers propios.
+              c)  Anadir mods por tabla, sin bifurcar nada.
+              d)  Anadir instrucciones y intrinsecos por tabla.
+              e)  Anadir vocabulario y caracteristicas de lenguaje a
+                  los frontends.
+              f)  Definir sus propios perfiles y sus propias imagenes
+                  de sistema.
+
+    5.5  OTRAS ARQUITECTURAS
+         Se admite portar el Software a arquitecturas distintas de
+         x86-64. El puerto debe respetar la Base tal como esta: la
+         misma superficie de tres syscalls y el mismo formato BEF.
+         Un puerto que cambie la Base no es un puerto y no queda
+         cubierto por esta licencia.
+
+    5.6  Toda excepcion a este articulo requiere acuerdo escrito y
+         firmado del Autor.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 6 — FEDERACION, CODIGO FUENTE Y CONTINUIDAD
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    6.1  EL CODIGO FUENTE ES PUBLICO
+         El codigo fuente completo del Software se publica y esta
+         disponible para cualquiera, sin acuerdo previo, sin registro
+         y sin coste.
+
+         Publico NO significa de dominio publico, ni open source en el
+         sentido de la OSI: el Autor conserva todos los derechos y el
+         uso comercial sigue sujeto al Articulo 3. Se puede LEER sin
+         permiso; para COBRAR hace falta licencia.
+
+    6.2  DERECHO DE AUDITORIA TOTAL
+         El Software se publica COMPLETO — sin partes ocultas, sin
+         binarios sin fuente, sin modulos reservados. Cualquiera, sea
+         o no licenciatario, tiene derecho a:
+
+              a)  Leerlo, analizarlo y revisarlo en su totalidad.
+              b)  Compilarlo el mismo y verificar que cualquier
+                  binario distribuido corresponde a ese codigo.
+              c)  Someterlo a auditoria de terceros, y publicar el
+                  resultado de esa auditoria.
+              d)  Ejecutar las matrices de conformidad y comprobar
+                  por si mismo lo que el Software declara soportar.
+
+         Este derecho no se puede reducir en acuerdos posteriores, ni
+         siquiera con el consentimiento del propio licenciatario.
+
+    6.3  POR QUE PUBLICO
+         Un sistema que aspira a banca y a sectores criticos no puede
+         pedir que se confie en el. Tiene que poder demostrarse. Y la
+         proteccion del Autor no depende del secreto: depende de esta
+         licencia y del derecho de autor, que rigen igual con el
+         codigo a la vista.
+
+         Consecuencia deliberada: si el Autor desaparece, el Software
+         no desaparece con el. Ver 6.5.
+
+    6.4  CONTRIBUCIONES
+         El Autor puede aceptar contribuciones de terceros. Toda
+         contribucion exige la cesion previa y por escrito de los
+         derechos al Autor (acuerdo de contribucion).
+
+         El motivo es explicito: mientras el Autor sea titular unico,
+         puede corregir, mejorar o relicenciar esta licencia el dia
+         que haga falta. Una titularidad repartida la congela para
+         siempre, y esta licencia es demasiado joven para congelarse.
+
+    6.5  CONTINUIDAD
+         Si el Autor fallece, queda incapacitado o cesa toda
+         actividad de mantenimiento por mas de veinticuatro (24)
+         meses consecutivos:
+
+              a)  Las licencias vigentes continuan en vigor de forma
+                  perpetua e irrevocable.
+              b)  Cada licenciatario conserva el derecho de uso,
+                  modificacion y mantenimiento del Software para sus
+                  propios productos.
+              c)  La obligacion de royalty subsiste a favor de los
+                  herederos del Autor.
+
+         Esta clausula existe para que la continuidad del negocio de
+         un licenciatario no dependa de la salud de una sola persona.
+         El Articulo 6.1 la refuerza: el codigo ya esta en manos de
+         todos, asi que nadie se queda sin nada que mantener.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 7 — ATRIBUCION REQUERIDA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    7.1  Todo uso del Software, comercial o no, requiere atribucion
+         visible en la documentacion del producto y, cuando exista
+         interfaz, en su pantalla de informacion:
+
+         ┌──────────────────────────────────────────────────┐
+         │  "Powered by BMO-X"                              │
+         │  "Created by Eddi Andree Salazar Matos"          │
+         │  "Lima, Peru — Licensed under Techne v2.0"       │
+         └──────────────────────────────────────────────────┘
+
+    7.2  No se permite remover, ocultar ni alterar los avisos de
+         copyright y atribucion del Software.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 8 — DISTRIBUCION Y OBRAS DERIVADAS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    8.1  Se permite distribuir el Software en forma binaria como
+         parte de un Producto Embarcado, siempre que:
+
+              a)  Se incluya esta licencia completa.
+              b)  Se mantenga la atribucion del Articulo 7.
+              c)  Se respete integramente el Articulo 5.
+
+    8.2  Las obras derivadas quedan sujetas a esta misma licencia.
+         No se puede cambiar la licencia ni sublicenciar bajo
+         terminos mas permisivos.
+
+    8.3  Las obras derivadas comerciales quedan sujetas al mismo
+         royalty del Articulo 3.
+
+    8.4  No se permite redistribuir el Software, ni una obra derivada
+         de el, como producto propio bajo otro nombre, ni presentarlo
+         como creacion de un tercero.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 9 — PATENTES
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    9.1  CONCESION
+         El Autor concede a todo licenciatario en regla una licencia
+         de patente mundial, no exclusiva y libre de regalias sobre
+         las patentes del Autor que sean necesarias para usar el
+         Software conforme a esta licencia.
+
+    9.2  REPRESALIA
+         Si un licenciatario inicia accion legal por infraccion de
+         patente contra el Autor o contra otro licenciatario, alegando
+         que el Software infringe una patente, la licencia de patente
+         del Articulo 9.1 y la licencia de uso terminan de inmediato
+         para quien inicia la accion.
+
+    9.3  El licenciatario no puede solicitar patentes sobre las
+         invenciones divulgadas en el codigo fuente del Software al
+         que accede en virtud del Articulo 6.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 10 — MARCAS Y ORIGEN
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    10.1 Son marcas del Autor: "BMO-X", "ESTRATOS", "BEF", "BEX",
+         "CABINA", "Techne", "Binary Is Binary" y "BIB", ademas de
+         "ADead-BIB", "PyDead-BIB" y "FastOS". Su uso en productos
+         comerciales requiere autorizacion escrita.
+
+    10.2 ORIGEN
+         El origen peruano del Software es parte de su identidad. No
+         se puede eliminar la mencion "Lima, Peru" de ninguna
+         distribucion oficial.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 11 — GARANTIAS Y RESPONSABILIDAD
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    11.1 EL SOFTWARE SE PROVEE "TAL CUAL" (AS IS), SIN GARANTIA DE
+         NINGUN TIPO, EXPRESA O IMPLICITA, INCLUIDAS LAS DE
+         COMERCIABILIDAD E IDONEIDAD PARA UN FIN DETERMINADO.
+
+    11.2 EL AUTOR NO ES RESPONSABLE POR DANOS DIRECTOS, INDIRECTOS,
+         INCIDENTALES O CONSECUENTES DERIVADOS DEL USO DEL SOFTWARE.
+
+    11.3 EL LICENCIATARIO ASUME TODA RESPONSABILIDAD POR EL USO DEL
+         SOFTWARE EN PRODUCCION. El derecho de auditoria del
+         Articulo 6 existe precisamente para que pueda asumirla con
+         conocimiento de causa.
+
+    11.4 El Software no se entrega certificado bajo ninguna norma de
+         seguridad funcional. Cualquier certificacion es
+         responsabilidad del licenciatario, y el Autor puede
+         colaborar en ella bajo acuerdo aparte.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 12 — TERMINACION
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    12.1 Esta licencia termina si el licenciatario:
+
+              a)  Viola cualquier termino y no lo subsana en 30 dias
+                  desde el aviso escrito del Autor.
+              b)  No paga royalties adeudados por mas de 90 dias.
+              c)  Modifica o bifurca la Base (Articulo 5).
+
+    12.2 Terminada la licencia, el licenciatario debe cesar todo Uso
+         Comercial, retirar de la venta los Productos Embarcados y
+         pagar lo adeudado.
+
+         No se le exige destruir copias del codigo fuente: el codigo
+         es publico (Articulo 6.1) y exigirlo seria teatro. Lo que
+         termina es el derecho a ganar dinero con el.
+
+    12.3 El Articulo 6.5 (Continuidad) sobrevive a la terminacion de
+         la actividad del Autor, no a la terminacion por
+         incumplimiento del licenciatario.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ARTICULO 13 — LEY APLICABLE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Esta licencia se rige por las leyes de la Republica del Peru.
+    Cualquier disputa se resolvera en los tribunales de Lima, Peru,
+    salvo que un acuerdo escrito entre las partes designe arbitraje.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    RESUMEN PARA HUMANOS
+              (no es parte legal, solo orientacion)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │                                                              │
+    │   Eres dev individual?         GRATIS                        │
+    │   Eres estudiante?             GRATIS                        │
+    │   Proyecto open source?        GRATIS                        │
+    │   ONG / nonprofit?             GRATIS                        │
+    │   Empresa < $1M/ano?           GRATIS                        │
+    │   Estas evaluando?             GRATIS 12 meses               │
+    │                                                              │
+    ├──────────────────────────────────────────────────────────────┤
+    │                                                              │
+    │   Vendes un aparato o servicio                               │
+    │   con BMO-X CORRIENDO dentro?  7% del precio de venta        │
+    │                                (una sola vez, sobre el       │
+    │                                 precio; nada de porcentajes  │
+    │                                 sobre porcentajes)           │
+    │                                                              │
+    │   Solo compilas con el                                       │
+    │   toolchain y no embarcas      0% de royalty                 │
+    │   BMO-X?                       Suscripcion por puesto        │
+    │                                Lo que compilas es TUYO       │
+    │                                                              │
+    ├──────────────────────────────────────────────────────────────┤
+    │                                                              │
+    │   Puedes ver el codigo?        SI, ENTERO Y EN PUBLICO. Sin  │
+    │                                pedir permiso, sin firmar     │
+    │                                nada, sin pagar. Lo lees, lo  │
+    │                                compilas y lo verificas tu.   │
+    │                                Mirar es gratis; cobrar no.   │
+    │                                                              │
+    │   Entonces es open source?     NO. El codigo esta a la       │
+    │                                vista, los derechos son de    │
+    │                                Eddi, y el uso comercial      │
+    │                                paga. Como MariaDB o Elastic. │
+    │                                                              │
+    │   Puedes tocar el kernel?      NO. La Base es el suelo.      │
+    │                                Encima construyes lo que      │
+    │                                quieras: apps, drivers,       │
+    │                                mods, tablas, lenguajes.      │
+    │                                                              │
+    │   Y si a Eddi le pasa algo?    Tu licencia sigue viva, y el  │
+    │                                codigo ya lo tienes: es       │
+    │                                publico. (Articulo 6.5)       │
+    │                                                              │
+    │   El 7% es negociable?         SI. Es tarifa publicada,      │
+    │                                no un ultimatum.              │
+    │                                                              │
+    │   Quieres comprar los          escribeme:                    │
+    │   derechos?                    eddi.salazar.dev@gmail.com    │
+    │                                                              │
+    └──────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                        INFORMACION DE CONTACTO
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    Autor:       Eddi Andree Salazar Matos
+    Email:       eddi.salazar.dev@gmail.com
+    GitHub:      github.com/AndreeSalazar
+    Ubicacion:   Lima, Peru
+
+
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║   "El arte pertenece al artesano.                                    ║
+║    Su uso da frutos que deben compartirse."                          ║
+║                                                                      ║
+║                    Techne License v2.0                               ║
+║              Binary Is Binary  --  BIB                               ║
+║                                                                      ║
+║          Eddi Andree Salazar Matos                                   ║
+║          Lima, Peru  --  2026                                        ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝

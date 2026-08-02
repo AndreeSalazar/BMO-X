@@ -1,6 +1,6 @@
 # Ultra_kernel_x86-64
 
-**The x86-64 port of the FastOS/BMO kernel.**
+**The x86-64 kernel tree of BMO-X.**
 
 This directory is the **CPU-specific** kernel tree for the `x86_64` (AMD64 / Intel 64) architecture.
 Everything in this tree — the bootloader, the 2 consolidated faggin stages, the Ring 0 base, and
