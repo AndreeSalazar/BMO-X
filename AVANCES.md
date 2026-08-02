@@ -10,10 +10,36 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-07-31**: 515 tests en verde, BMO-X ocupa **5.4 MiB de 14.8 GiB**, y
+> **Al 2026-08-02**: **553 tests en verde**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
 > el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
+
+## ★ Lo último que pasó (2026-08-02) — leer esto primero
+
+El día en que **el escritorio dejó de ser una demostración y pasó a ser el
+arranque**. Verificado en el Ryzen con fotos:
+
+- **Arranca limpio al escritorio**, sin panel del kernel encima. Los cinco
+  programas de ejemplo ya **no se lanzan solos**: `init_hello` reclamaba la
+  pantalla, moría, y el kernel repintaba su panel sobre el escritorio recién
+  nacido. Eso costó tres arranques culpando al compositor de morirse — y el
+  compositor **nunca estuvo muriéndose**. El kernel adelgazó 37 KB al irse.
+- **Teclear pinta al momento.** Faltaba un `sfence`: con write-combining el CPU
+  retiene los píxeles hasta que el búfer se llena, y mover el ratón era lo que
+  lo llenaba. *"Tengo que apuntar bien para que me pinte las escrituras"* era
+  eso. **WC sin barrera no es rápido: es incorrecto.**
+- **Write-combining** por PAT (`MSR_PAT` llevaba declarado y **nunca se
+  escribía**), y −320 ms de esperas de VBUS en el arranque.
+- **El ratón lo confesó él mismo**: `protocolo=0x1 (INFORME: el aparato ignoró
+  el BOOT)`. Su informe lleva Report ID, por eso iba corrido un byte y se movía
+  al hacer clic. Falta decidir 8 vs 16 bits de desplazamiento — el driver ya
+  registra ocho bytes crudos.
+
+Y en el toolchain: **C completo para lo que DOOM pide** (32/32 sondas),
+`static`, prototipos, varargs, arrays en agregados, `int a,b;`, y la libc
+esencial en L1. Más `KIND_MEMORIA`, que **ningún programa ha llamado aún en
+metal**.
 
 ---
 
@@ -41,7 +67,7 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | Fault isolation (crash R3 mata la tarea, no el kernel) | ✅ implementado |
 | Boot cinemático (logo→RING0→RING3, escenas) | ✅ |
 | Teclado USB (xHCI+HID) | ✅ **ESCRIBE en HW** — el Interval del endpoint era un EXPONENTE (2^n x125us) y se escribia el bInterval crudo: un teclado que pedia 24 ms quedaba programado a 35 minutos entre sondeos. Layouts es-latam/es-espana/us, teclas muertas, AltGr, Ctrl, repeticion al mantener, LEDs, historial |
-| Mouse USB | ✅ enumera y entrega puntero+botones por `KIND_INPUT` |
+| Mouse USB | ◐ **enumera y bombea** (slot propio, `ev` subiendo), pero **los ejes van cruzados**: su informe lleva Report ID (`protocolo=0x1`) y falta decidir 8 vs 16 bits |
 | **CABINA** (telemetría omnisciente) | ✅ **viva**: cockpit + color semántico + bitácora de eventos (narrador) + detección de disco PCI |
 | **`KIND_FRAMEBUFFER`** (la pantalla es una capability) | ✅ Ring 3 pinta con `mov`; el kernel contesta 4 preguntas y se aparta |
 | **`KIND_INPUT`** (ratón, teclado **y modificadores**) | ✅ en metal; `Ctrl+Alt` detectado sin romper `AltGr` |
@@ -55,10 +81,13 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | Toolchain reorganizado (lang/forge/tools) | ✅ |
 | sem-asm (encoder tabla→bytes + intrínsecos) | ✅ C lo usa; fusión sem-asm↔C hecha |
 | BMO COBOL | ✅ **banca cerrada en su alcance**: PICTURE de edición en ejecución, File I/O secuencial, OCCURS con guarda de rango, nivel 88. `batch.bex` y `concep.bex` verificados en el Ryzen |
-| **BMO C ("CONTROL ABSOLUTE")** | ✅ **C esencial ~C11 muy completo** (185 tests, que EJECUTAN el programa); corre en metal |
+| **BMO C ("CONTROL ABSOLUTE")** | ✅ **32 de 32 sondas del lenguaje** — completo para lo que DOOM pide. 216 tests que EJECUTAN. `static`, prototipos, varargs, arrays en agregados, `int a,b;`. libc 11/15 |
 | **BMO Ada** | ✅ **verificado en el Ryzen el 2026-07-30**, el mismo día que nació el compilador. Perfil ZFP + Annex F: Annex F copió el `PICTURE` de COBOL, así que el decimal ya estaba pagado |
-| C++ frontend | ◐ mínimo (~900 líneas); será barato encima de C |
-| **El FOCO del escritorio** (`bmo_input::foco`) | ✍️ Alt+Tab con pila MRU, tres modos, F12 para la consola de datos, el foco arrastra el Z-order. 17 tests; **espera arranque** |
+| C++ frontend | ◐ ~900 líneas y **desborda la pila con una clase de dos métodos**. Alcance escrito en `lang/cpp/BRECHA.md` |
+| **El FOCO del escritorio** (`bmo_input::foco`) | ✍️ Alt+Tab con pila MRU, tres modos, F12, el foco arrastra el Z-order. 17 tests; **espera que alguien lo pulse en metal** |
+| **`KIND_MEMORIA`** (un proceso pide memoria) | ✍️ cableada de punta a punta (kernel + userland + `malloc` en C); **ningún programa la ha llamado en metal** |
+| **Write-combining del framebuffer** | ✅ PAT programado + `sfence` por fotograma. Sin la barrera, lo pintado se quedaba en el búfer |
+| **c-gen** (la fábrica que mide el compilador) | ✅ sondas que COMPILAN, censo de 91 elementos de C (25 fuera) y 49 de C++ (17 fuera) |
 | **Driver de disco (AHCI/SATA)** | ✅ **LEE Y MONTA**: GPT + FAT32 + volumen de datos con escritor. El NVMe de esta maquina es el disco de **Windows** — nunca se toca |
 | **XSAVE per-task** | ✅ **resuelto y confirmado en metal** (ver abajo: la causa raíz) |
 

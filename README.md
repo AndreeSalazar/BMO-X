@@ -14,7 +14,7 @@ Written from scratch in Rust — the boot chain, the kernel, the drivers, the
 filesystem, and three native compilers. It boots on an AMD Ryzen 5 5600X and
 occupies **5.4 MiB of 14.8 GiB of RAM**.
 
-**942 commits · 486 files · 17 April – 31 July 2026 · one developer.**
+**950+ commits · 490+ files · 17 April – 2 August 2026 · one developer.**
 
 ---
 
@@ -187,6 +187,16 @@ explicitly handed.
   function-parameter macros, SSE floats, `getchar`/`scanf`
 - Ada: ZFP profile, `delta`/`digits` decimal types, real operator precedence
 
+**The desktop is the boot.** As of 2 August it starts straight into the Ring 3
+compositor — no demo programs in the way. Its own command box lists the disk,
+launches `.bex` files and reboots the machine. Typing paints immediately, which
+sounds trivial and was not: the framebuffer is write-combined, and without an
+`sfence` per frame the pixels sit in the buffer until something else flushes
+them.
+
+**Framebuffer write-combining** (PAT) — `MSR_PAT` had been declared in the boot
+stage and never written, so every pixel was its own bus transaction.
+
 **And the number that matters:** `19.99 × 3 = 59.97`, exact, computed in
 integer scale and confirmed on silicon.
 
@@ -198,12 +208,22 @@ Listed here rather than above, because the difference is the entire point.
 
 - **ESTRATOS writes** — the transaction state machine exists and is tested;
   nothing has wired it to the device yet
-- **Framebuffer write-combining** (PAT) — cheap, and every pixel will feel it
+- **Memory capability** (`KIND_MEMORIA`) — a process can ask for a large
+  contiguous block, wired end to end through kernel, userland and C's `malloc`.
+  **No program has called it on metal yet.** It is not an allocator and does not
+  pretend to be: the kernel hands out pages, the process decides what to do with
+  them
+- **Window focus** — Alt+Tab over an MRU stack, three focus modes, focus drags
+  the Z-order, save-under mouse cursor. 17 tests. Nobody has pressed the key on
+  real hardware
 - **SMP** — the code to wake the other cores exists and nothing calls it.
-  Deliberately last: the day a second core runs, every `static mut` in the
-  kernel is a race
-- **Mouse event ring** — enumerates and delivers, the shared ring fix is
-  waiting on a photo
+  Deliberately last, and now with a number: the kernel has **194 `static mut`
+  and 3 spinlocks**. The trampoline is 10% of the work; auditing the other 191
+  is the rest
+- **Mouse axes** — it enumerates, pumps and moves, but the axes are crossed.
+  The device answered `GET_PROTOCOL` with *report protocol*: its report carries
+  a leading Report ID, so everything was shifted by one byte and clicking moved
+  the pointer. Whether the deltas are 8 or 16 bits is the open question
 
 ---
 
@@ -211,8 +231,9 @@ Listed here rather than above, because the difference is the entire point.
 
 - ESTRATOS garbage collector — policy is written: the owner decides, named
   strata are never released, read-only at 95% rather than lose data
-- Memory capability — unlocks garbage-collected languages and shared surfaces
-  at the same time
+- Shared surfaces and real windows — `KIND_FRAMEBUFFER` is exclusive today. The
+  focus policy is already written and tested, so that day does not start from
+  zero
 - Windows with shared surfaces
 
 ---

@@ -222,6 +222,23 @@ ni se vea pálido**. Se quita al principio del fotograma y se pone al final, as�
 que se dibujan sólo los fotogramas que pintan algo — si esa cuenta estuviera mal,
 el cursor estaría ausente la mitad del tiempo y se notaría antes que nada.
 
+## 10. Lo VERIFICADO en el Ryzen el 2026-08-02
+
+| Se hizo | Salió | Lo que demuestra |
+|---|---|---|
+| Arrancar | **Escritorio limpio, sin panel del kernel encima** | Los demos ya no compiten por la pantalla. `init_hello` la reclamaba y al morir el kernel repintaba su panel sobre el escritorio |
+| Teclear `ls` y Enter | La lista de directorios, **al momento** | ★ El `sfence`. Antes había que mover el ratón para que apareciera lo tecleado: el write-combining retenía los píxeles hasta que algo llenaba el búfer |
+| El log de arranque | `protocolo=0x0` (teclado) · `protocolo=0x1 (INFORME: el aparato ignoró el BOOT)` (ratón) | ★ El `GET_PROTOCOL` contesta y **confirma** por qué el ratón iba corrido un byte: está en protocolo de informe y su informe lleva Report ID |
+| `apk=N:0:0` | Perdidos en **0** | El aparcadero de eventos del xHC no pierde ninguno |
+| `kev` subiendo, `ep=Running` | El teclado escribe y no se muere | El bucle de re-enumeración que lo mataba está cerrado |
+| `reboot` desde la caja | Reinicia | La operación de Ring 3 llega al puerto de E/S |
+
+**Lo que sigue sin verificar y por qué**: el ratón se mueve pero con los ejes
+cruzados (`x` deriva sola) — falta decidir si sus desplazamientos son de 8 o de
+16 bits, y para eso el driver ya registra **ocho bytes** del informe crudo. Y
+`KIND_MEMORIA`: está cableada de punta a punta pero **ningún programa la ha
+llamado todavía** en metal.
+
 ---
 
 ## Mentiras del emulador (histórico)

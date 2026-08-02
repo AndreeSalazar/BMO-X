@@ -381,6 +381,77 @@ código **no hace**.
 
 ---
 
+## Ep. 20 — El write-combining a medias, o "tengo que apuntar bien para que me pinte"
+
+**Síntoma**, dicho por quien lo sufría: *"cuando muevo el ratón tengo que
+apuntar bien para que me pinte las escrituras, y eso no tenía sentido"*.
+Tecleabas y no aparecía nada; movías el ratón y aparecía de golpe.
+
+**Culpable**: el write-combining del framebuffer, puesto **el día anterior** y
+sin su otra mitad. Con memoria WC el CPU acumula las escrituras en un búfer y
+las suelta cuando se llena. El escáner de vídeo lee **la memoria**, no el búfer.
+Así que lo tecleado se quedaba esperando — y mover el ratón generaba las
+escrituras que llenaban el búfer y lo empujaban todo a la vez.
+
+Buscar `sfence` en todo el userspace daba **cero resultados**.
+
+**Moraleja**: una optimización que cambia *cuándo* se ve un dato no está
+terminada hasta que alguien decide *cuándo tiene que verse*. WC sin barrera no
+es más rápido: es otra cosa. Y el corolario incómodo — el síntoma no se parecía
+en nada a la causa: hablaba del ratón, y el ratón no tenía culpa de nada.
+
+---
+
+## Ep. 21 — Tres arranques culpando al compositor de algo que hacía un demo
+
+**Síntoma**: en cada arranque, CABINA decía `fb: el dueño de la pantalla MURIO`
+y el panel del kernel aparecía pintado **encima** del escritorio. Conclusión
+evidente y equivocada: *el compositor se muere al arrancar*.
+
+Se construyó un instrumento para cazarlo — guardar las **últimas palabras** de
+un proceso y reimprimirlas al morir. Funcionó a la primera. Y lo que dijeron no
+era lo que nadie esperaba:
+
+```
+gui: BMO-X: hola mundo desde Ring 3
+gui: CPL3 -> ¡reclamo pantalla y entrada!
+```
+
+**Culpable**: `init_hello.bex`, el demo en ensamblador. Reclamaba la pantalla
+para demostrar que Ring 3 podía pintarla, imprimía sus tres líneas y terminaba
+— **y terminar es exactamente lo que tenía que hacer**. Al morir, el kernel
+recuperaba la pantalla y repintaba su panel sobre el escritorio recién nacido.
+El compositor estaba vivo todo el rato.
+
+**Moraleja**: el instrumento acertó; la teoría era del que lo construyó. Cuando
+un aviso dice "murió el dueño de X", la primera pregunta no es *por qué murió*,
+es **quién era el dueño**. Y la de fondo: los programas de ejemplo que se
+arrancan solos dejan de ser ejemplos y pasan a ser **participantes** — compiten
+por los mismos recursos que lo de verdad. Se quitaron del arranque, y el kernel
+adelgazó 37 KB.
+
+---
+
+## Ep. 22 — El ratón que se movía al hacer clic
+
+**Síntoma**: *"muevo y no funciona, pero al hacer click cualquiera, se mueven"*.
+
+**Culpable**: tres números del panel lo decían entero. `bot=0b01` fijo (nunca
+cambiaba), `x=0` al mover, `y` derivando sola. El aparato **ignoró el
+`SET_PROTOCOL(boot)`** y seguía mandando su informe de protocolo de informe,
+que empieza por un **Report ID**. Todo corrido un byte: donde el driver leía el
+desplazamiento en X caían los **botones**, y por eso pulsar movía el puntero.
+
+`SET_PROTOCOL` se mandaba y **nadie miraba si había servido**. Con
+`GET_PROTOCOL` detrás, el aparato lo confesó solo: `protocolo=0x1 (INFORME: el
+aparato ignoró el BOOT)`.
+
+**Moraleja**: a un dispositivo se le PREGUNTA en qué estado quedó; no se supone
+que obedeció. Un `set` sin su `get` es una carta enviada sin acuse de recibo — y
+en un bus donde el otro extremo tiene su propio firmware, eso es optimismo.
+
+---
+
 ## Las leyes que dejó esta guerra
 
 1. **QEMU miente por omisión**: sin IRQs vivos, sin tiempos físicos, sin
@@ -411,6 +482,17 @@ código **no hace**.
    sus tests, aparecer en el commit y no ser consultado por nadie. Los tests
    prueban la política; no prueban que alguien la obedezca. La comprobación
    dura dos segundos: buscar quién LLAMA a la función que contesta.
+
+9. **Un aviso correcto no implica una teoría correcta** (Ep. 21). "Murió el
+   dueño de la pantalla" era cierto tres arranques seguidos, y la conclusión
+   que se sacó era falsa. Antes de preguntar *por qué pasó*, preguntar **a
+   quién le pasó**.
+10. **Una optimización que cambia CUÁNDO se ve algo no está terminada**
+   (Ep. 20) hasta que alguien decide cuándo tiene que verse. El
+   write-combining sin `sfence` no era rápido: era incorrecto.
+11. **A un dispositivo se le pregunta, no se le supone** (Ep. 22). Un `set`
+   sin su `get` es una carta sin acuse de recibo, y al otro lado hay un
+   firmware con sus propias ideas.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*
