@@ -383,19 +383,69 @@ pub fn consola(texto: &str) {
 /// La pantalla, ya mapeada en este proceso.
 ///
 /// No hay un `dibujar()` que cruce el anillo, y no lo va a haber: el
-/// framebuffer **es memoria de este proceso**. `base` es un puntero de verdad
+/// framebuffer **es memoria de este proceso**. `lienzo` es un puntero de verdad
 /// y escribir en él es un `mov`. Ése es el trato entero de `KIND_FRAMEBUFFER`
 /// — el kernel contesta cuatro preguntas al arrancar y después se aparta.
+///
+/// ═══ ★ EL DOBLE BÚFER ═══
+///
+/// Se dibuja en **`lienzo`** y se vuelca a **`panel`**. Sin doble búfer los dos
+/// punteros son el mismo y todo funciona como siempre; con él, `lienzo` es RAM
+/// normal pedida con [`Memoria`] y `panel` es la memoria de vídeo.
+///
+/// **Por qué**, en orden de lo que más dolía:
+///
+/// 1. **Mata el ghosting por construcción.** El framebuffer está en
+///    write-combining, y leer memoria WC no devuelve lo que acabas de escribir
+///    (Ep. 25 de `BITACORA.md`). El *save-under* del cursor es una lectura, y
+///    era la única del programa. Leyendo del lienzo el problema **no existe**:
+///    es RAM normal, cacheada y coherente consigo misma. Un `sfence` bien puesto
+///    lo arregla; esto lo hace imposible.
+/// 2. **Mata el tearing.** El escáner de vídeo ya no ve un fotograma a medio
+///    pintar: ve el anterior hasta que llega el volcado.
+/// 3. **Pintar es más rápido.** Escribir en RAM cacheada no se parece a escribir
+///    en memoria de vídeo, ni con WC. El coste se paga una vez, en el volcado, y
+///    en la forma que al bus le gusta: ráfagas seguidas.
+/// 4. **Es el prerequisito de las superficies.** El día que una ventana sea de
+///    otro proceso, lo que ese proceso pinta va a un búfer y alguien lo compone.
+///    Esto es esa pieza, con un solo cliente todavía.
+///
+/// **Y sólo es posible desde que existe `KIND_MEMORIA`**: hasta entonces un
+/// proceso recibía su imagen y 64 KiB de pila, y un búfer de pantalla son ~8 MB.
+///
+/// ═══ Lo sucio, y por qué una caja y no la pantalla entera ═══
+///
+/// Volcar 8 MB por fotograma contradiría la regla que ya estaba escrita aquí:
+/// *lo que se repinta en un bucle es el DAÑO, no la pantalla*. Así que se lleva
+/// la **caja envolvente** de todo lo escrito desde el último volcado y sólo se
+/// copia eso.
+///
+/// El precio, dicho: una caja **no** son varias regiones. Tocar la esquina de
+/// arriba y la de abajo da una caja que las contiene a las dos, o sea casi todo.
+/// Es el caso peor y sigue siendo mucho mejor que volcar siempre entero; si
+/// algún día se nota, lo que toca es una lista corta de rectángulos, no
+/// abandonar la caja.
 pub struct Pantalla {
     /// Handle de la capability. Hace falta para preguntarle cosas.
     pub cap: u64,
-    pub base: *mut u32,
+    /// **Donde se DIBUJA.** Con doble búfer es RAM normal; sin él, el panel.
+    pub lienzo: *mut u32,
+    /// **El framebuffer de verdad.** Igual que `lienzo` si no hay doble búfer.
+    pub panel: *mut u32,
     pub ancho: u32,
     pub alto: u32,
     /// En PÍXELES, no en bytes: es el mismo número que usa el kernel.
     pub stride: u32,
     pub formato: u32,
     pub bytes: u64,
+    /// Caja envolvente de lo escrito desde el último volcado, `(x0,y0,x1,y1)`
+    /// con `x1`/`y1` exclusivos. Vacía cuando `x0 >= x1`.
+    ///
+    /// Es una `Cell` porque dibujar toma `&self` en todo el compositor y
+    /// cambiarlo a `&mut self` obligaría a reescribir cada llamada para ganar
+    /// nada: esto es un programa de un solo hilo y `Cell` es exactamente la
+    /// herramienta para eso.
+    sucio: core::cell::Cell<(u32, u32, u32, u32)>,
 }
 
 impl Pantalla {
@@ -409,13 +459,50 @@ impl Pantalla {
         let bytes = invoke(cap, FB_OP_BYTES, 0, 0, 0).valor()?;
         Some(Self {
             cap,
-            base: base as *mut u32,
+            lienzo: base as *mut u32,
+            panel: base as *mut u32,
             ancho: (dims >> 32) as u32,
             alto: dims as u32,
             stride: (stride >> 32) as u32,
             formato: stride as u32,
             bytes,
+            sucio: core::cell::Cell::new(VACIO),
         })
+    }
+
+    /// **Pide el búfer de fondo y empieza a dibujar en él.**
+    ///
+    /// Devuelve `false` si no lo consigue, y entonces **no pasa nada**: se
+    /// sigue dibujando directamente en el panel, que es lo que se hacía antes.
+    /// Eso no es un adorno defensivo — el bloque son ~8 MB de RAM **contigua en
+    /// físico**, y si la memoria está fragmentada el kernel lo rechaza con su
+    /// motivo. Un compositor que se cayera por no conseguir una optimización
+    /// sería peor que uno sin la optimización.
+    ///
+    /// Quien llama decide si lo dice por la consola. Aquí no se decide eso.
+    pub fn activar_doble_bufer(&mut self) -> bool {
+        if self.lienzo != self.panel {
+            return true; // ya está
+        }
+        // El lienzo tiene el MISMO stride que el panel, no el mismo ancho: así
+        // el índice `y*stride + x` vale para los dos y no hay dos aritméticas
+        // que mantener en paralelo. Que sobren unos píxeles por fila es más
+        // barato que una segunda forma de calcular la misma dirección.
+        let bytes = (self.stride as u64) * (self.alto as u64) * 4;
+        let Some(m) = Memoria::pedir(bytes) else {
+            return false;
+        };
+        self.lienzo = m.base() as *mut u32;
+        // Lo que hay en el panel ahora mismo no está en el lienzo: hasta el
+        // primer volcado completo, los dos no dicen lo mismo. Se marca la
+        // pantalla entera para que el primer `vaciar` los iguale.
+        self.marcar(0, 0, self.ancho, self.alto);
+        true
+    }
+
+    /// ¿Se está dibujando fuera de la pantalla de vídeo?
+    pub fn tiene_doble_bufer(&self) -> bool {
+        self.lienzo != self.panel
     }
 
     /// Píxeles que caben en el área mapeada.
@@ -424,14 +511,40 @@ impl Pantalla {
         (self.bytes / 4) as usize
     }
 
+    /// **Apunta que esta región ha cambiado.** Sin esto, lo pintado se queda en
+    /// el lienzo y no llega nunca al panel.
+    ///
+    /// Las primitivas de dibujo de aquí lo hacen solas. Es público porque
+    /// [`Self::punto_sin_comprobar`] no marca —es el camino caliente y no va a
+    /// llevar esto dentro—, así que quien la use tiene que marcar él.
+    #[inline]
+    pub fn marcar(&self, x: u32, y: u32, ancho: u32, alto: u32) {
+        if ancho == 0 || alto == 0 {
+            return;
+        }
+        let (x0, y0, x1, y1) = self.sucio.get();
+        let nx1 = (x + ancho).min(self.ancho);
+        let ny1 = (y + alto).min(self.alto);
+        if x >= nx1 || y >= ny1 {
+            return;
+        }
+        self.sucio.set(if x0 >= x1 {
+            (x, y, nx1, ny1)
+        } else {
+            (x0.min(x), y0.min(y), x1.max(nx1), y1.max(ny1))
+        });
+    }
+
     /// Un píxel, sin comprobar nada. Es el camino caliente de un compositor y
     /// no va a llevar una rama dentro.
     ///
     /// # Safety
-    /// `x < stride` y `y < alto`.
+    /// `x < stride`, `y < alto`, y **quien llame tiene que marcar la región**
+    /// con [`Self::marcar`] o lo pintado no llegará al panel. Las primitivas de
+    /// aquí lo hacen; de fuera no lo llama nadie.
     #[inline(always)]
     pub unsafe fn punto_sin_comprobar(&self, x: u32, y: u32, color: u32) {
-        self.base
+        self.lienzo
             .add((y as usize) * (self.stride as usize) + x as usize)
             .write_volatile(color);
     }
@@ -441,19 +554,33 @@ impl Pantalla {
     pub fn punto(&self, x: u32, y: u32, color: u32) {
         if x < self.ancho && y < self.alto {
             unsafe { self.punto_sin_comprobar(x, y, color) };
+            self.marcar(x, y, 1, 1);
         }
     }
 
     /// Rellenar la pantalla entera.
     ///
     /// Sólo para el primer pintado. Repetirlo por fotograma sería recorrer
-    /// varios MB de memoria de vídeo sin caché: un pase de diapositivas. Lo
-    /// que se repinta en un bucle es el DAÑO, no la pantalla.
+    /// varios MB de memoria sin caché: un pase de diapositivas. Lo que se
+    /// repinta en un bucle es el DAÑO, no la pantalla.
     pub fn limpiar(&self, color: u32) {
-        let n = self.pixeles();
+        // ★ El tope es el MENOR de los dos, y esto no es prudencia de más.
+        //
+        // `pixeles()` mide el área que mapeó el KERNEL, que puede ser más
+        // grande que `stride × alto` (redondeos, padding del firmware). El
+        // lienzo mide exactamente `stride × alto`. Recorrer el primero
+        // escribiendo en el segundo se sale del bloque de `KIND_MEMORIA` y pisa
+        // lo que haya detrás — y como el bloque se pidió contiguo y el
+        // asignador da lo siguiente que encuentre, "lo que haya detrás" es
+        // memoria de alguien.
+        //
+        // El mínimo protege en los dos sentidos, que es la razón de que sea un
+        // mínimo y no un caso especial.
+        let n = self.pixeles().min((self.stride as usize) * (self.alto as usize));
         for i in 0..n {
-            unsafe { self.base.add(i).write_volatile(color) };
+            unsafe { self.lienzo.add(i).write_volatile(color) };
         }
+        self.marcar(0, 0, self.ancho, self.alto);
     }
 
     /// **Empuja a la pantalla lo que se acaba de pintar.**
@@ -475,29 +602,83 @@ impl Pantalla {
     /// `sfence` ordena: nada de lo de después se ve antes que lo de antes. Es
     /// una instrucción, se hace **una vez por fotograma**, y convierte el WC en
     /// lo que promete.
+    ///
+    /// ★ Con doble búfer esto **además vuelca**: primero la copia del lienzo al
+    /// panel, después la barrera. Ese orden es el único que sirve — la barrera
+    /// tiene que cerrar las escrituras del volcado, no las de antes.
     #[inline]
     pub fn vaciar(&self) {
+        self.volcar();
         unsafe { core::arch::asm!("sfence", options(nostack, preserves_flags)) };
+    }
+
+    /// **Copia al panel lo sucio del lienzo**, y deja la caja vacía.
+    ///
+    /// Sin doble búfer no hay nada que copiar: lo pintado ya está en el panel.
+    /// Igual se limpia la caja, porque llevarla puesta sin volcar sería mentir
+    /// sobre lo que queda pendiente.
+    pub fn volcar(&self) {
+        let (x0, y0, x1, y1) = self.sucio.replace(VACIO);
+        if self.lienzo == self.panel || x0 >= x1 || y0 >= y1 {
+            return;
+        }
+        let stride = self.stride as usize;
+        let ancho = (x1 - x0) as usize;
+        let mut fila = y0 as usize;
+        while fila < y1 as usize {
+            let off = fila * stride + x0 as usize;
+            let mut i = 0usize;
+            // Fila a fila y seguido: es la forma que el write-combining sabe
+            // juntar en ráfagas de 64 bytes. Copiar en zigzag o por columnas
+            // daría el mismo resultado y desperdiciaría el bus entero.
+            while i < ancho {
+                unsafe {
+                    let v = self.lienzo.add(off + i).read();
+                    self.panel.add(off + i).write_volatile(v);
+                }
+                i += 1;
+            }
+            fila += 1;
+        }
+    }
+
+    /// **Asegura que lo escrito se puede LEER.** Llamar antes de [`Self::leer`].
+    ///
+    /// ★ Existe por el Ep. 25, y hace dos cosas distintas según dónde se dibuje:
+    ///
+    /// - **Con doble búfer**: nada. El lienzo es RAM normal y cacheada, así que
+    ///   una lectura ve lo que se acaba de escribir. El problema no existe.
+    /// - **Sin doble búfer**: `sfence`. Se está leyendo memoria WC, y una
+    ///   lectura de WC **no está ordenada** contra las escrituras pendientes en
+    ///   el búfer: sin barrera devuelve la pantalla de hace un fotograma.
+    ///
+    /// Que sea un no-op en el camino bueno es justo la gracia: el doble búfer no
+    /// arregla el ghosting, lo hace **imposible**.
+    #[inline]
+    pub fn sincronizar_lectura(&self) {
+        if self.lienzo == self.panel {
+            unsafe { core::arch::asm!("sfence", options(nostack, preserves_flags)) };
+        }
     }
 
     /// Qué hay AHORA en un píxel. Fuera de la pantalla, negro.
     ///
-    /// ★ El framebuffer es memoria de este proceso, así que se puede leer — y
-    /// eso es lo que permite dibujar el cursor del ratón **encima de cualquier
-    /// cosa**: se guarda lo que había debajo y se devuelve al moverlo. Sin
-    /// esto hay que preguntarle a un modelo de la escena qué debería haber, y
-    /// ese modelo se queda corto en cuanto aparece una ventana que no conoce:
-    /// el cursor deja agujeros con el color del fondo por donde pasa.
+    /// ★ Se lee del LIENZO, que es donde se ha dibujado. Eso es lo que permite
+    /// dibujar el cursor del ratón **encima de cualquier cosa**: se guarda lo
+    /// que había debajo y se devuelve al moverlo. Sin esto hay que preguntarle a
+    /// un modelo de la escena qué debería haber, y ese modelo se queda corto en
+    /// cuanto aparece una ventana que no conoce: el cursor deja agujeros con el
+    /// color del fondo por donde pasa.
     ///
-    /// Leer memoria de vídeo es caro (no está cacheada), así que esto es para
-    /// puñados de píxeles —un cursor son 160—, no para copiar regiones.
+    /// Sin doble búfer esto lee memoria de vídeo, que es cara y además exige
+    /// [`Self::sincronizar_lectura`] antes. Con doble búfer es RAM normal.
     #[inline]
     pub fn leer(&self, x: u32, y: u32) -> u32 {
         if x >= self.ancho || y >= self.alto {
             return 0;
         }
         unsafe {
-            self.base
+            self.lienzo
                 .add((y as usize) * (self.stride as usize) + x as usize)
                 .read_volatile()
         }
@@ -509,6 +690,12 @@ impl Pantalla {
     pub fn rect(&self, x: u32, y: u32, ancho: u32, alto: u32, color: u32) {
         let x1 = (x.saturating_add(ancho)).min(self.ancho);
         let y1 = (y.saturating_add(alto)).min(self.alto);
+        // Se marca UNA vez, con las medidas ya recortadas, en vez de un píxel
+        // por vuelta: un rectángulo de pantalla completa son millones de
+        // llamadas a `marcar` que darían exactamente la misma caja.
+        if x < x1 && y < y1 {
+            self.marcar(x, y, x1 - x, y1 - y);
+        }
         let mut fila = y;
         while fila < y1 {
             let mut col = x;
@@ -520,6 +707,9 @@ impl Pantalla {
         }
     }
 }
+
+/// La caja vacía: `x0 >= x1`, así que no hay nada que volcar.
+const VACIO: (u32, u32, u32, u32) = (u32::MAX, u32::MAX, 0, 0);
 
 // ── Las letras ──────────────────────────────────────────────────────────
 

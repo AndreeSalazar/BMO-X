@@ -88,12 +88,16 @@ impl Bajo {
 
     /// Guarda lo que hay y dibuja el cursor encima. Al FINAL del fotograma.
     ///
-    /// ★★ **EL `sfence` DE ANTES DE LEER, Y POR QUÉ FALTABA.**
+    /// ★★ **LA SINCRONIZACIÓN DE ANTES DE LEER, Y POR QUÉ FALTABA.**
     ///
-    /// Este es el único sitio de todo el compositor que **lee** el framebuffer.
-    /// Y desde que el framebuffer se mapea en **write-combining** (`952681c7`),
+    /// Este es el único sitio de todo el compositor que **lee** la pantalla. Y
+    /// desde que el framebuffer se mapea en **write-combining** (`952681c7`),
     /// leerlo sin barrera no devuelve lo que acabas de pintar: devuelve lo que
     /// había **antes**.
+    ///
+    /// ★ Con el doble búfer activo, `sincronizar_lectura` **no hace nada** — y
+    /// eso es lo mejor que le puede pasar a esta línea. Se lee del lienzo, que
+    /// es RAM normal y cacheada: el problema no se arregla, deja de existir.
     ///
     /// Con WC el CPU acumula las escrituras en un búfer y las suelta cuando se
     /// llena. Una lectura de memoria WC **no está ordenada** contra esas
@@ -120,7 +124,7 @@ impl Bajo {
         if self.puesto {
             return;
         }
-        p.vaciar();
+        p.sincronizar_lectura();
         for fila in 0..CUR_ALTO {
             for col in 0..CUR_ANCHO {
                 self.px[fila * CUR_ANCHO + col] = p.leer(x + col as u32, y + fila as u32);

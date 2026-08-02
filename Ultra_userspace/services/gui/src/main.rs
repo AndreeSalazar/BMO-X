@@ -85,10 +85,26 @@ pub extern "C" fn _start() -> ! {
     // deja de dibujar y nada de lo que se imprima después llega al panel.
     bmo::consola("reclamo pantalla y entrada\n");
 
-    let Some(p) = bmo::Pantalla::reclamar() else {
+    let Some(mut p) = bmo::Pantalla::reclamar() else {
         bmo::consola("sin pantalla que reclamar\n");
         bmo::salir()
     };
+
+    // ── ★ EL DOBLE BÚFER ──
+    //
+    // Se pide ANTES de pintar nada, que es cuando la RAM está menos
+    // fragmentada: el bloque tiene que ser contiguo en físico y son ~8 MB.
+    //
+    // Y se dice en los dos casos. Que no haya doble búfer **no impide arrancar**
+    // —se dibuja en el panel, como siempre—, pero cambia dos cosas que se notan:
+    // vuelve el riesgo de tearing y el cursor tiene que poner una barrera antes
+    // de leer. Un escritorio que se degrada en silencio es un escritorio del que
+    // no se puede diagnosticar nada.
+    if p.activar_doble_bufer() {
+        bmo::consola("doble bufer: pintando fuera de la pantalla\n");
+    } else {
+        bmo::consola("SIN doble bufer: no hubo bloque, pinto directo al panel\n");
+    }
     // La entrada es opcional a propósito: sin ella hay escritorio, sólo que
     // quieto y mudo. Un compositor que se niega a arrancar porque falta un
     // periférico es un compositor que no arranca el día que el periférico falla.

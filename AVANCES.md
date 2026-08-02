@@ -42,7 +42,15 @@ un CPU todavía: es lo que hay que llevar al Ryzen en el arranque siguiente.
   X, Y y rueda con su bit y su ancho. La pregunta de "8 o 16 bits" la contesta
   el aparato, no una foto. Con reserva al formato BOOT si no se entiende, **y
   dicho**.
-- **★ EL GHOSTING TIENE CAUSA** (Ep. 25). El *save-under* del cursor es el
+- **★★ DOBLE BÚFER**, y es el primer cliente de verdad de `KIND_MEMORIA`. El
+  compositor pide `stride × alto × 4` (~8 MiB) y **dibuja en RAM normal**,
+  volcando al panel una vez por fotograma y **sólo la caja de lo sucio** — que
+  la regla de esta casa sigue siendo *repintar el daño, no la pantalla*. Mata
+  el ghosting **por construcción** (nunca se lee memoria WC), mata el tearing,
+  pintar pasa a ser en RAM cacheada, y es la pieza que hacía falta para las
+  superficies. Si no hay bloque, se dibuja en el panel como siempre **y se
+  dice**.
+- **★ EL GHOSTING TENÍA CAUSA** (Ep. 25). El *save-under* del cursor es el
   **único** sitio que LEE el framebuffer en todo el compositor, y lo hacía
   justo antes del único `sfence` del fotograma: con write-combining, leer sin
   barrera devuelve la pantalla de **hace un fotograma**. Guardaba píxeles
@@ -181,12 +189,17 @@ pendientes de hardware; aquí va el resumen.
   `[uhid] formato del raton: id=N x=bitN/Nb y=bitN/Nb informe=N bits`. Si sale
   `no entiendo su Report Descriptor`, el parser tiene un caso sin cubrir y los
   ocho bytes crudos del log dicen cuál.
-- **`KIND_MEMORIA` en metal.** `run c/memc.bex` desde la caja del escritorio.
-  Tiene que imprimir sus nueve líneas y acabar en `MEMORIA: las cuatro pruebas
-  pasan`; la primera dirección debe ser `0xe0000000`. Y después, `info`: la
-  fila **`a Ring 3`** de la sección de memoria tiene que decir 76 KiB (no
-  "ningún programa ha pedido memoria"). Ese número lo da el KERNEL — es la
-  confirmación desde el otro lado.
+- **`KIND_MEMORIA` en metal.** Y ahora hay **dos** pruebas, porque el doble
+  búfer la ejerce en el arranque:
+  1. **En el log de arranque**: `doble bufer: pintando fuera de la pantalla`.
+     Si sale `SIN doble bufer: no hubo bloque, pinto directo al panel`, la
+     capability falló al primer cliente de verdad y el motivo está en CABINA.
+  2. `run c/memc.bex` desde la caja: nueve líneas, la primera dirección
+     `0xe0000000`, y acaba en `MEMORIA: las cuatro pruebas pasan`.
+  3. `info`, fila **`a Ring 3`**: nada más arrancar tiene que marcar **≈8 MiB**
+     (el búfer del compositor, `stride × alto × 4`), y **≈76 KiB más** después
+     de `memc.bex`. Ese número lo da el KERNEL, no el programa — es la
+     confirmación desde el otro lado.
 - **El escritorio con foco** (`d29ad7c6`, `9d3f4943`, `345acfc5`): F12 abre la
   consola de datos de ESTRATOS, **Alt+Tab** recorre la MRU con su ventanita,
   **Alt+M** rota el modo, el clic da el teclado y **el foco arrastra el
