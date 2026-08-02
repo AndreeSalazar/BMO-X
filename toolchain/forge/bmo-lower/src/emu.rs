@@ -633,11 +633,16 @@ impl Machine {
 
     /// `TASK_OP_MEMORIA_PEDIR` — el bloque, o el motivo por el que no.
     ///
-    /// Los tres rechazos son los mismos que los del kernel y **con sus mismos
-    /// códigos**: pedir cero o pasarse del tope, y pedir una quinta vez. El de
-    /// "no hay RAM contigua" no se modela porque aquí no hay RAM que
-    /// fragmentar — y fingirlo sería inventarse un fallo que este emulador no
-    /// puede reproducir de forma repetible.
+    /// Los dos rechazos que un programa puede provocar SOLO son los mismos que
+    /// los del kernel y **con sus mismos códigos**: pedir cero o pasarse del
+    /// tope (`0xE001`), y pedir una quinta vez (`0xE003`).
+    ///
+    /// Los otros dos no se modelan, y por el mismo motivo los dos: **aquí sólo
+    /// corre un proceso y la memoria es infinita**. `ERROR_SIN_RAM` necesitaría
+    /// RAM que fragmentar y `ERROR_SIN_RANURA` necesitaría 16 procesos vivos a
+    /// la vez. Fingirlos sería inventarse fallos que este emulador no puede
+    /// reproducir de forma repetible — y son exactamente el tipo de cosa que el
+    /// eje 2 de la sección FIDELIDAD dice que hay que probar en el Ryzen.
     fn memoria_pedir(&mut self, bytes: u64) -> Result<u64, u64> {
         const ERROR_DEMASIADO: u64 = 0xE001;
         const ERROR_DEMASIADAS: u64 = 0xE003;

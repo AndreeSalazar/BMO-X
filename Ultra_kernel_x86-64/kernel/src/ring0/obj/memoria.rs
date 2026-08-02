@@ -70,26 +70,93 @@ pub const MEM_OP_BYTES: u64 = 0x02;
 pub const ERROR_DEMASIADO: u32 = 0xE001;
 pub const ERROR_SIN_RAM: u32 = 0xE002;
 pub const ERROR_DEMASIADAS: u32 = 0xE003;
+/// No queda ranura en la tabla de contabilidad: ya hay [`MAX_PROCS`] procesos
+/// con memoria pedida. **Es un motivo distinto de `ERROR_DEMASIADAS`** y por eso
+/// tiene código propio — uno dice "tú has pedido demasiado", el otro "el sistema
+/// está lleno", y confundirlos manda a buscar el fallo al programa equivocado.
+pub const ERROR_SIN_RANURA: u32 = 0xE004;
 
+/// Cuántos procesos pueden tener memoria pedida **a la vez**.
+///
+/// ★ Y "a la vez" es la corrección entera. Esto era el tope de *pids* — la
+/// tabla se indexaba con `pid as usize` y se rechazaba `pid >= 16`. Pero el pid
+/// es un **contador que sólo sube y nunca se reutiliza** (`proc::next_pid`), así
+/// que a partir del programa número 16 de un arranque **ningún proceso podía
+/// volver a pedir memoria jamás**, y encima con el motivo equivocado:
+/// `ERROR_DEMASIADAS`, que quiere decir "has pedido demasiadas veces".
+///
+/// No era teórico: en la foto del 2026-07-30, `info` decía **17 lanzados** en
+/// una sola sesión.
+///
+/// Es el **patrón 17** otra vez —indexar algo VIVO con un contador HISTÓRICO—,
+/// el mismo que dejó la máquina sin poder lanzar nada cuando `has_room()`
+/// miraba una bitácora de ocho entradas. Ahora la tabla es de ranuras, se busca
+/// por pid y **se libera al morir el proceso**: el tope vuelve a ser lo que
+/// dice ser, un límite de recursos concurrentes.
 const MAX_PROCS: usize = 16;
 
-/// Dónde va el próximo bloque de cada proceso. Empieza en
-/// [`vmm::MEMORIA_VA_BASE`] y avanza; así dos peticiones del mismo proceso no
-/// se pisan y cada una tiene su rango propio.
-static mut CURSOR: [u64; MAX_PROCS] = [0; MAX_PROCS];
-static mut PETICIONES: [usize; MAX_PROCS] = [0; MAX_PROCS];
+/// La contabilidad de un proceso que tiene memoria pedida.
+#[derive(Clone, Copy)]
+struct Cuenta {
+    /// `0` = ranura libre. El pid 0 no existe: `NEXT_PID` empieza en 1.
+    pid: u32,
+    /// Dónde va el próximo bloque. Empieza en [`vmm::MEMORIA_VA_BASE`] y
+    /// avanza; así dos peticiones del mismo proceso no se pisan.
+    cursor: u64,
+    peticiones: usize,
+    /// Bytes entregados. Para el panel: la memoria que un proceso pidió es la
+    /// única que el kernel no puede deducir mirando su imagen.
+    entregados: u64,
+}
 
-/// Bytes entregados a cada proceso. Para el panel: la memoria que un proceso
-/// pidió es la única que el kernel no puede deducir mirando su imagen.
-static mut ENTREGADOS: [u64; MAX_PROCS] = [0; MAX_PROCS];
+const LIBRE: Cuenta = Cuenta { pid: 0, cursor: 0, peticiones: 0, entregados: 0 };
 
-/// Total entregado desde el arranque, para `info`.
+static mut CUENTAS: [Cuenta; MAX_PROCS] = [LIBRE; MAX_PROCS];
+
+/// Total entregado desde el arranque, para `info`. **No baja al morir un
+/// proceso**, y es a propósito: es "cuánta memoria ha pedido Ring 3 en esta
+/// sesión", no "cuánta hay pedida ahora". Un contador histórico dicho como tal
+/// no engaña a nadie; el problema es usarlo como índice.
 static mut TOTAL: u64 = 0;
 
+/// La ranura de este proceso, si tiene una.
+fn ranura(pid: u32) -> Option<usize> {
+    unsafe {
+        let t = &*core::ptr::addr_of!(CUENTAS);
+        t.iter().position(|c| c.pid == pid && pid != 0)
+    }
+}
+
+/// La ranura de este proceso, tomando una libre si aún no tiene.
+fn ranura_o_nueva(pid: u32) -> Option<usize> {
+    if pid == 0 {
+        return None;
+    }
+    if let Some(i) = ranura(pid) {
+        return Some(i);
+    }
+    unsafe {
+        let t = &mut *core::ptr::addr_of_mut!(CUENTAS);
+        let i = t.iter().position(|c| c.pid == 0)?;
+        t[i] = Cuenta { pid, ..LIBRE };
+        Some(i)
+    }
+}
+
 pub fn entregado_por(pid: u32) -> u64 {
-    let s = pid as usize;
-    if s >= MAX_PROCS { return 0; }
-    unsafe { ENTREGADOS[s] }
+    match ranura(pid) {
+        Some(i) => unsafe { (*core::ptr::addr_of!(CUENTAS))[i].entregados },
+        None => 0,
+    }
+}
+
+/// Cuántos procesos tienen memoria pedida ahora mismo. Para el panel y para
+/// que "no queda ranura" se pueda distinguir de "has pedido demasiadas veces".
+pub fn procesos_con_memoria() -> usize {
+    unsafe {
+        let t = &*core::ptr::addr_of!(CUENTAS);
+        t.iter().filter(|c| c.pid != 0).count()
+    }
 }
 
 pub fn total_entregado() -> u64 {
@@ -107,12 +174,23 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
     if bytes == 0 || bytes > MAX_BYTES {
         return Err(ERROR_DEMASIADO);
     }
-    let slot = pid as usize;
-    if slot >= MAX_PROCS {
-        return Err(ERROR_DEMASIADAS);
-    }
+    // La ranura se toma AQUÍ, después de validar el tamaño: una petición
+    // absurda no debe gastar una ranura de la tabla. Sin ranura libre el motivo
+    // es otro y se dice con su nombre — antes esto contestaba
+    // `ERROR_DEMASIADAS` a un proceso que no había pedido nunca nada.
+    let slot = match ranura_o_nueva(pid) {
+        Some(s) => s,
+        None => {
+            crate::ring0::cabina::warn(
+                "mem",
+                "no queda ranura de contabilidad para otro proceso",
+                MAX_PROCS as u64,
+            );
+            return Err(ERROR_SIN_RANURA);
+        }
+    };
     unsafe {
-        if PETICIONES[slot] >= MAX_PETICIONES {
+        if (*core::ptr::addr_of!(CUENTAS))[slot].peticiones >= MAX_PETICIONES {
             return Err(ERROR_DEMASIADAS);
         }
     }
@@ -129,10 +207,11 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
     };
 
     let base = unsafe {
-        if CURSOR[slot] == 0 {
-            CURSOR[slot] = vmm::MEMORIA_VA_BASE;
+        let c = &mut (*core::ptr::addr_of_mut!(CUENTAS))[slot];
+        if c.cursor == 0 {
+            c.cursor = vmm::MEMORIA_VA_BASE;
         }
-        CURSOR[slot]
+        c.cursor
     };
 
     let mut off = 0u64;
@@ -169,30 +248,29 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
     };
 
     unsafe {
-        CURSOR[slot] = base + paginas * mm::PAGE;
-        PETICIONES[slot] += 1;
-        ENTREGADOS[slot] += paginas * mm::PAGE;
+        let c = &mut (*core::ptr::addr_of_mut!(CUENTAS))[slot];
+        c.cursor = base + paginas * mm::PAGE;
+        c.peticiones += 1;
+        c.entregados += paginas * mm::PAGE;
         TOTAL += paginas * mm::PAGE;
     }
     crate::ring0::cabina::info("mem", "bloque entregado a Ring 3", paginas * mm::PAGE);
     Ok(handle)
 }
 
-/// El proceso murió: sus cuentas vuelven a cero.
+/// El proceso murió: **su ranura vuelve a estar libre.**
 ///
 /// No se desmapea nada — el espacio de direcciones entero se destruye con el
 /// proceso, y desmapear páginas de un CR3 que está a punto de morir es trabajo
-/// para nadie. Lo que sí hay que soltar es el CONTADOR: sin esto, un pid
-/// reutilizado heredaría las peticiones del muerto y no podría pedir nada.
+/// para nadie. Lo que sí hay que soltar es la RANURA, y ahora esa palabra
+/// significa algo: mientras la tabla se indexaba por pid, esto sólo ponía tres
+/// contadores a cero y la ranura número `pid` seguía siendo suya para siempre.
+/// Con `MAX_PROCS` ranuras y pids que sólo suben, eso agotaba la tabla en el
+/// programa 16 del arranque.
 pub fn proceso_muerto(pid: u32) {
-    let slot = pid as usize;
-    if slot >= MAX_PROCS {
-        return;
-    }
+    let Some(slot) = ranura(pid) else { return };
     unsafe {
-        CURSOR[slot] = 0;
-        PETICIONES[slot] = 0;
-        ENTREGADOS[slot] = 0;
+        (*core::ptr::addr_of_mut!(CUENTAS))[slot] = LIBRE;
     }
 }
 
