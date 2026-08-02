@@ -278,3 +278,38 @@ fn un_literal_en_una_condicion_apunta_a_su_cadena_y_no_a_la_primera() {
                   printf(\"fin\"); return 0; }";
     assert_eq!(run_c(fuente), "hola,if,fin");
 }
+
+// ── Declaradores multiples: `int a, b;` ───────────────────────────────
+
+#[test]
+fn se_pueden_declarar_varias_variables_en_una_linea() {
+    let fuente = "int main(){ int a, b, c; a=1; b=2; c=3; \
+                  printf(\"%d%d%d\", a, b, c); return 0; }";
+    assert_eq!(run_c(fuente), "123");
+}
+
+/// Con inicializador cada uno por su cuenta.
+#[test]
+fn cada_declarador_lleva_su_propio_inicializador() {
+    let fuente = "int main(){ int a = 20, b = 22; printf(\"%d\", a + b); return 0; }";
+    assert_eq!(run_c(fuente), "42");
+}
+
+/// ★ El detalle de C que mas se salta al implementarlo: en `int *a, b;` la
+/// `b` es un **int**, NO un puntero. El asterisco es del DECLARADOR, no del
+/// tipo. Quien lo trate al reves compila el programa y le cambia el
+/// significado — que es peor que no compilarlo.
+#[test]
+fn el_asterisco_es_del_declarador_y_no_del_tipo() {
+    let fuente = "int main(){ int n; int *p, b; n = 7; p = &n; b = 35; \
+                  printf(\"%d\", *p + b); return 0; }";
+    assert_eq!(run_c(fuente), "42");
+}
+
+/// Y el `[n]` tambien es de cada uno.
+#[test]
+fn cada_declarador_lleva_su_propio_array() {
+    let fuente = "int main(){ char a[4], b; a[0]=40; b=2; \
+                  printf(\"%d\", a[0] + b); return 0; }";
+    assert_eq!(run_c(fuente), "42");
+}

@@ -59,6 +59,9 @@ pub(crate) struct Parser {
     /// Se vacía al empezar cada función: ese ámbito es justo lo que este mapa
     /// representa.
     static_alias: HashMap<String, String>,
+    /// Tipo base del ultimo declarador parseado, para los que vengan detras de
+    /// una coma. Ver `declaradores_tras_coma`.
+    base_del_declarador: TypeSpec,
     /// Globales que una función ha ido creando al declarar sus `static`.
     /// `parse_program` las recoge al terminar cada función.
     globales_pendientes: Vec<GlobalDecl>,
@@ -83,6 +86,7 @@ impl Parser {
             typedefs: HashMap::new(),
             enum_constants: HashMap::new(),
             static_alias: HashMap::new(),
+            base_del_declarador: TypeSpec::Int,
             globales_pendientes: Vec::new(),
             syscalls: HashMap::new(),
             features: StandardFeatures::default(),
@@ -871,9 +875,19 @@ impl Parser {
                         continue;
                     }
                     if let Some((typ, name)) = self.try_parse_decl()? {
+                        let base = self.base_del_declarador.clone();
                         var_count += 1;
                         var_names.push(name.clone());
                         body.push(self.terminar_declaracion(typ, name)?);
+                        // `int a, b;` — los de detras de la coma comparten el
+                        // tipo BASE y traen su propio `*` y su propio `[n]`.
+                        let mut mas = Vec::new();
+                        self.declaradores_tras_coma(&base, &mut mas)?;
+                        for (t2, n2) in mas {
+                            var_count += 1;
+                            var_names.push(n2.clone());
+                            body.push(self.terminar_declaracion(t2, n2)?);
+                        }
                     } else {
                         body.push(self.parse_stmt()?);
                     }
@@ -919,6 +933,42 @@ impl Parser {
         Ok(())
     }
 
+    /// Los declaradores que van detrás de una coma: `int a, *b, c[4];`.
+    ///
+    /// ★ Cada uno tiene su propio `*` y su propio `[n]`, y **comparte sólo el
+    /// tipo BASE**. Es el detalle de C que más se salta al implementarlo: en
+    /// `int *a, b;` la `b` es un `int`, **no** un puntero. El asterisco es del
+    /// declarador, no del tipo — y quien lo trate al revés compila el programa
+    /// y le cambia el significado.
+    fn declaradores_tras_coma(
+        &mut self,
+        base: &TypeSpec,
+        salida: &mut Vec<(TypeSpec, String)>,
+    ) -> Result<(), CError> {
+        while *self.peek() == Token::Comma {
+            self.advance();
+            let mut typ = base.clone();
+            while *self.peek() == Token::Star {
+                self.advance();
+                typ = TypeSpec::Ptr(Box::new(typ));
+            }
+            let Token::Ident(nombre) = self.peek().clone() else {
+                return Err(CError::new(self.line(),
+                    "esperaba otro nombre despues de la coma en la declaracion"));
+            };
+            self.advance();
+            if *self.peek() == Token::OpenBracket {
+                self.advance();
+                let medida = self.parse_expr()?;
+                self.expect(&Token::CloseBracket)?;
+                let n = match medida { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
+                typ = TypeSpec::Array(Box::new(typ), n);
+            }
+            salida.push((typ, nombre));
+        }
+        Ok(())
+    }
+
     fn try_parse_decl(&mut self) -> Result<Option<(TypeSpec, String)>, CError> {
         let save = self.pos;
         if !self.peek_is_type_start() {
@@ -956,7 +1006,16 @@ impl Parser {
             let n = match size_expr { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
             typ = TypeSpec::Array(Box::new(typ), n);
         }
-        if *self.peek() != Token::Semicolon && *self.peek() != Token::Assign {
+        // ★ La COMA también cierra un declarador: `int a, b;`.
+        //
+        // Antes sólo valían `;` y `=`, así que `int a, b;` no se reconocía como
+        // declaración y caía al camino de las expresiones — donde `b` no existe
+        // todavía. Lo destapó una sonda de `memcpy` que declaraba
+        // `char a[4],b[4];` y acusaba a `memcpy`, que estaba perfecto.
+        if *self.peek() != Token::Semicolon
+            && *self.peek() != Token::Assign
+            && *self.peek() != Token::Comma
+        {
             self.pos = save; return Ok(None);
         }
         Ok(Some((typ, name)))
@@ -1079,6 +1138,10 @@ impl Parser {
             }
             t => return Err(CError::new(self.line(),format!("expected type, got {:?}", t))),
         };
+        // ★ El tipo BASE, **antes** de los asteriscos. Lo necesitan los
+        // declaradores que vengan detras de una coma: en `int *a, b;` la `b`
+        // es un `int`, no un puntero — el asterisco es del DECLARADOR.
+        self.base_del_declarador = base.clone();
         // punteros multinivel: int **pp, char ***ppp, ...
         let mut typ = base;
         while *self.peek() == Token::Star {

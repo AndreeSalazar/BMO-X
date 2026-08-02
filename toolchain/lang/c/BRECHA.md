@@ -22,19 +22,12 @@ Medido el **2026-08-02**.
 
 ## El numero
 
-**31 de 32** sondas del lenguaje compilan.
-
-Lo que falta, con lo que cuesta que falte:
-
-| Falta | Era | Por que importa | Lo que dice BMO C |
-|---|---|---|---|
-| **declaradores multiples** | C89 | `int a, b;` — DOOM lo usa en cada fichero | `error:1: unexpected token: Int` |
+**32 de 32** sondas del lenguaje compilan.
 
 ## El lenguaje, sonda a sonda
 
 | Caracteristica | Era | ¿Compila? | Para que |
 |---|---|---|---|
-| declaradores multiples | C89 | **NO** | `int a, b;` — DOOM lo usa en cada fichero |
 | #define con argumentos | C89 | **si** | DOOM: FixedMul, MAXPLAYERS... por todas partes |
 | #if aritmetico | C89 | **si** | DOOM: #if defined(NORMALUNIX) |
 | #include propio | C89 | **si** | DOOM son ~50 ficheros con sus cabeceras |
@@ -45,6 +38,7 @@ Lo que falta, con lo que cuesta que falte:
 | array dentro de union | C89 | **si** | DOOM: la union de datos del WAD |
 | auto | C89 | **si** | redundante desde 1978; en C23 cambio de significado |
 | bitfields | C89 | **si** | poco usado en DOOM; caro de emitir |
+| declaradores multiples | C89 | **si** | `int a, b;` — DOOM lo usa en cada fichero |
 | enum | C89 | **si** | esencial |
 | extern | C89 | **si** | declarar sin definir; obligatorio si hay varios ficheros |
 | for con declaracion | C99 | **si** | comodidad; DOOM es C89 y no lo necesita |

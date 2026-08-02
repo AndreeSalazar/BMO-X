@@ -115,7 +115,16 @@ impl Parser {
             self.skip_semicolon();
             return Ok(Stmt::DeclInit(typ, name, escrituras));
         }
-        let valor = self.parse_expr()?;
+        // ★ `parse_assign`, no `parse_expr`. Y esto es gramática de C, no un
+        // atajo: el inicializador de un declarador es una
+        // *assignment-expression*, **no** una *expression* — precisamente para
+        // que la coma pueda separar declaradores.
+        //
+        // Con `parse_expr` aquí, `int a = 20, b = 22;` se leía como
+        // `a = (20, b = 22)` usando el operador coma: la `a` acababa valiendo
+        // 22 y `b` no se declaraba nunca. La gramática del estándar tiene ese
+        // escalón exactamente por este motivo.
+        let valor = self.parse_assign()?;
         self.skip_semicolon();
         Ok(Stmt::DeclAssign(typ, name, Some(valor)))
     }
