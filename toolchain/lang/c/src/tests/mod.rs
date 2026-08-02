@@ -1227,6 +1227,90 @@ fn float_f32_narrows_on_store() {
     assert!(bef.windows(3).any(|w| w == [0xF3, 0x0F, 0x11]), "falta movss store");
 }
 
+/// ★ **El ladrillo de las vtables, probado en C.**
+///
+/// Una tabla de punteros a función en una global, rellenada en ejecución y
+/// llamada por índice. Es EXACTAMENTE la forma que una función virtual de C++
+/// necesita, y por eso se prueba aquí: si esto no corre, el paso 5 de C++ no
+/// tiene dónde apoyarse.
+///
+/// Se rellena en ejecución y no con un inicializador estático porque las
+/// globales de BMO C sólo admiten `Expr::Int` — una dirección de función no se
+/// conoce hasta que se emite el código.
+#[test]
+fn una_tabla_de_punteros_a_funcion_en_una_global() {
+    let src = r#"
+long tabla[2];
+long doble(long x) { return x * 2; }
+long mitad(long x) { return x / 2; }
+int main() {
+    tabla[0] = doble;
+    tabla[1] = mitad;
+    long (*f)(long) = tabla[0];
+    long (*g)(long) = tabla[1];
+    printf("%d %d", f(21), g(84));
+    return 0;
+}
+"#;
+    assert_eq!(run_c(src).trim(), "42 42");
+}
+
+/// Y con el índice calculado en EJECUCIÓN, que es lo que hace un despacho
+/// virtual de verdad: la ranura sale del tipo dinámico, no de una constante.
+#[test]
+fn la_tabla_se_indexa_con_un_indice_de_ejecucion() {
+    let src = r#"
+long tabla[2];
+long doble(long x) { return x * 2; }
+long mitad(long x) { return x / 2; }
+int main() {
+    tabla[0] = doble;
+    tabla[1] = mitad;
+    int i = 0;
+    long (*f)(long) = tabla[i];
+    i = i + 1;
+    long (*g)(long) = tabla[i];
+    printf("%d %d", f(21), g(84));
+    return 0;
+}
+"#;
+    assert_eq!(run_c(src).trim(), "42 42");
+}
+
+/// ★★ **El despacho virtual entero, escrito en C.**
+///
+/// Dos objetos del mismo tipo estático con tablas distintas: la misma línea de
+/// código llama a funciones distintas según lo que haya en el `vptr`. Eso es
+/// una función virtual, y no hace falta nada más que esto.
+///
+/// Se prueba en C —y no sólo en C++— porque es el suelo sobre el que el paso 5
+/// se apoya: si esta forma no corre, la vtable de C++ no tiene dónde pisar. Es
+/// lo mismo que se escribiría a mano en C para hacer polimorfismo, que es la
+/// razón por la que Bjarne pudo implementarlo como una traducción.
+#[test]
+fn el_despacho_virtual_entero_en_c() {
+    let src = r#"
+struct Animal { long vptr; long edad; };
+long tabla_perro[1];
+long tabla_gato[1];
+long perro_habla(struct Animal *self) { return self->edad * 2; }
+long gato_habla(struct Animal *self) { return self->edad + 100; }
+int main() {
+    tabla_perro[0] = perro_habla;
+    tabla_gato[0] = gato_habla;
+    struct Animal a; a.vptr = tabla_perro; a.edad = 21;
+    struct Animal b; b.vptr = tabla_gato;  b.edad = 21;
+    long *tp = a.vptr;
+    long *tg = b.vptr;
+    long (*f)(struct Animal*) = tp[0];
+    long (*g)(struct Animal*) = tg[0];
+    printf("%d %d", f(&a), g(&b));
+    return 0;
+}
+"#;
+    assert_eq!(run_c(src).trim(), "42 121");
+}
+
 /// ★ **Sin `main` no hay programa.**
 ///
 /// Un fichero vacío producía un BEF de 8 240 bytes con `entry_offset = 0`, o

@@ -50,10 +50,62 @@ métodos es indistinguible de un `struct`.
 - Cada uno se alinea a `min(tamaño, 8)`, mínimo 1.
 - El total se redondea al alineado del miembro más grande.
 
-**Aún no hay `vptr`** — las funciones virtuales llegan en el paso 5. Cuando
-lleguen irá en el **offset 0**, no en medio de la tabla como en Itanium: el
-*offset-to-top* y la ranura de RTTI sólo hacen falta con herencia múltiple y
-RTTI, y las dos están descartadas con motivo en `BRECHA.md`.
+### El `vptr` y la herencia (paso 5)
+
+★ **El `vptr` va en el offset 0**, y ocupa 8 bytes. No en medio de la tabla como
+en Itanium: el *offset-to-top* y la ranura de RTTI sólo hacen falta con herencia
+múltiple y RTTI, y las dos están descartadas con motivo en `BRECHA.md`. Al
+principio es lo que se escribiría a mano en C, y hace que el despacho sea una
+indirección y no una resta.
+
+Sólo lo llevan las clases con métodos virtuales, propios o heredados. El campo
+se llama `vptr.` — con un punto, ilegal en C++, para que no choque con nada
+escrito a mano.
+
+**Un derivado empieza por la base ENTERA**, campos incluidos y en los mismos
+offsets; los suyos van detrás. Ése es todo el mecanismo de la herencia simple:
+**un `B*` vale como `A*` sin ajustar nada.**
+
+```text
+  class A { int x; virtual f(); }      class B : public A { int y; }
+  ┌──────────┬──────────┐              ┌──────────┬──────────┬──────────┐
+  │ vptr.  0 │ x      8 │              │ vptr.  0 │ x      8 │ y     12 │
+  └──────────┴──────────┘              └──────────┴──────────┴──────────┘
+```
+
+### La vtabla
+
+Una global por clase, `vtabla.<Clase>`, de `n` ranuras de 8 bytes. **El orden
+es la tabla**: un derivado copia la del padre, un `override` **sustituye** su
+ranura y un virtual nuevo se **añade** al final. Por eso las primeras ranuras
+significan lo mismo en la base y en el derivado.
+
+⚠ **Se rellena en ejecución, al principio de `main`**, y no con un
+inicializador estático. No es una preferencia: **las globales de BMO C sólo
+admiten un entero como inicializador**, y la dirección de una función no se
+conoce hasta emitir el código. `main` es el único sitio por el que pasa todo
+programa antes de construir nada.
+
+El `vptr` de un objeto se apunta a su tabla **antes** de llamar al constructor:
+un constructor puede llamar a un método virtual de sí mismo, y con la tabla sin
+poner llamaría a la nada.
+
+### El despacho
+
+```text
+   objeto->vptr.        la tabla del tipo REAL, no del estático
+   tabla[ranura]        la ranura la fijó el compilador
+   (…)(objeto, args)    llamada por puntero, con `this` de primer parámetro
+```
+
+Es exactamente lo que se escribiría a mano en C — y hay un test **en C**
+(`el_despacho_virtual_entero_en_c`) que fija esa forma, porque es el suelo
+sobre el que esto se apoya.
+
+★ Y una llamada a un método propio **sin `this->`** despacha igual de
+virtualmente. Es el caso que más se olvida: `int doble() { return f() * 2; }`
+con `f` virtual tiene que llamar a la `f` del objeto real, no a la de la clase
+donde está escrito `doble`.
 
 ## 2. Paso de parámetros
 

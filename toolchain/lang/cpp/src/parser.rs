@@ -38,6 +38,13 @@ use crate::lexer::{tokenizar, Token};
 use crate::CppError;
 use std::collections::{HashMap, HashSet};
 
+/// El nombre del puntero a la vtabla dentro del objeto.
+///
+/// Lleva un punto —ilegal en C++— para que no pueda chocar con un campo que
+/// alguien escriba. Mismo truco que el mangling y que el `funcion.variable` de
+/// BMO C.
+pub const VPTR: &str = "vptr.";
+
 pub fn parse(fuente: &str) -> Result<Program, CppError> {
     let lex = tokenizar(fuente);
     if let Some(e) = lex.errores.into_iter().next() {
@@ -82,6 +89,21 @@ struct Clase {
     /// Los constructores, que son una sobrecarga más — sólo que el nombre lo
     /// pone el lenguaje y la llamada es implícita.
     constructores: Vec<Firma>,
+    /// La clase base, si la hay. **Simple**: la múltiple y la virtual están
+    /// descartadas con motivo en `BRECHA.md`.
+    base: Option<String>,
+    /// ★ **La vtabla: una ranura por método virtual, y el ORDEN es la tabla.**
+    ///
+    /// Un derivado empieza copiando la del padre; un `override` **sustituye**
+    /// su ranura y un virtual nuevo se **añade** al final. Por eso un puntero
+    /// a la base sirve tal cual sobre un derivado: las primeras ranuras
+    /// significan lo mismo en los dos.
+    vtabla: Vec<String>,
+    /// Nombre de método → ranura. Es lo que convierte una llamada en un
+    /// despacho: si el nombre está aquí, la llamada es virtual.
+    ranura_de: HashMap<String, usize>,
+    /// Tamaño total, que el derivado necesita para colocar sus campos detrás.
+    tam: u32,
     // El TAMAÑO no está aquí a propósito: el parser no lo necesita para nada
     // —resolver `p.x` sólo pide offset y tipo— y viaja en `Class::size`, que
     // es donde lo leerá `new P()` en el paso 3. Guardar una copia que nadie
@@ -442,8 +464,33 @@ impl Parser {
             Token::Ident(n) => n,
             otro => return Err(self.err(format!("se esperaba el nombre de la clase y vino {otro:?}"))),
         };
+        // ── La herencia, simple ──
+        //
+        // `class B : public A` — el derivado **empieza por** la base entera.
+        // Eso es todo el mecanismo: un `B*` vale como `A*` sin ajustar nada,
+        // porque los campos de `A` están en los mismos offsets. La herencia
+        // MÚLTIPLE necesitaría ajustar el `this` al llamar (thunks) y la
+        // VIRTUAL localizar la base compartida en ejecución; las dos están
+        // descartadas con motivo en `BRECHA.md`.
+        let mut base = None;
         if self.come(&Token::Colon) {
-            return Err(self.pendiente("la herencia", 5));
+            self.come(&Token::Public);
+            if self.come(&Token::Private) || self.come(&Token::Protected) {
+                return Err(self.pendiente("la herencia privada o protegida", 6));
+            }
+            self.come(&Token::Virtual);
+            let n = match self.avanzar() {
+                Token::Ident(n) => n,
+                otro => return Err(self.err(format!(
+                    "se esperaba el nombre de la clase base y vino {otro:?}"))),
+            };
+            if !self.clases.contains_key(&n) {
+                return Err(self.err(format!("la clase base `{n}` no esta definida")));
+            }
+            if *self.peek() == Token::Comma {
+                return Err(self.pendiente("la herencia multiple", 6));
+            }
+            base = Some(n);
         }
         self.exige(&Token::OpenBrace)?;
 
@@ -453,6 +500,7 @@ impl Parser {
         let mut ctores: Vec<(usize, Method)> = Vec::new();
         let mut dtor: Option<(usize, Method)> = None;
         let mut acceso = if es_struct { Access::Public } else { Access::Private };
+        let mut virtual_ahora = false;
 
         while *self.peek() != Token::CloseBrace {
             match self.peek().clone() {
@@ -461,7 +509,7 @@ impl Parser {
                 Token::Private => { self.avanzar(); self.exige(&Token::Colon)?; acceso = Access::Private; continue; }
                 Token::Protected => { self.avanzar(); self.exige(&Token::Colon)?; acceso = Access::Protected; continue; }
                 Token::Semicolon => { self.avanzar(); continue; }
-                Token::Virtual => return Err(self.pendiente("las funciones virtuales", 5)),
+                Token::Virtual => { self.avanzar(); virtual_ahora = true; continue; }
                 Token::Friend => return Err(self.pendiente("`friend`", 4)),
                 Token::Static => return Err(self.pendiente("los miembros `static`", 4)),
                 Token::Operator => return Err(self.pendiente("la sobrecarga de operadores", 4)),
@@ -533,6 +581,12 @@ impl Parser {
                 let params = self.parametros()?;
                 self.exige(&Token::CloseParen)?;
                 let es_const = self.come(&Token::Const);
+                let es_override = self.come(&Token::Override);
+                // `virtual int f() = 0;` — una pura. Pide una clase abstracta
+                // y una ranura que nadie rellena; llega despues.
+                if *self.peek() == Token::Assign {
+                    return Err(self.pendiente("las funciones virtuales PURAS (`= 0`)", 6));
+                }
                 if self.come(&Token::Semicolon) {
                     return Err(self.pendiente("declarar un metodo y definirlo fuera de la clase", 4));
                 }
@@ -542,11 +596,15 @@ impl Parser {
                 self.saltar_bloque()?;
                 cuerpos.push((inicio, Method {
                     name: miembro, ret_type: tipo, params, body: Vec::new(),
-                    is_virtual: false, is_override: false, is_const: es_const,
+                    is_virtual: virtual_ahora, is_override: es_override, is_const: es_const,
                     access: acceso, class_name: nombre.clone(),
                 }));
+                virtual_ahora = false;
             } else {
                 self.exige(&Token::Semicolon)?;
+                if virtual_ahora {
+                    return Err(self.err("`virtual` sobre un campo no significa nada"));
+                }
                 campos.push(MemberVar { typ: tipo, name: miembro, offset: 0, access: acceso });
             }
         }
@@ -565,8 +623,31 @@ impl Parser {
         // que el codegen recalcula por su cuenta: si algún día las dos
         // llamadas dieran cosas distintas, la fila `clase-disposicion` de la
         // matriz se pone roja en vez de pasar muda.
+        let padre = base.as_ref().and_then(|b| self.clases.get(b)).cloned();
+        let hay_virtuales = cuerpos.iter().any(|(_, m)| m.is_virtual)
+            || padre.as_ref().map_or(false, |p| !p.vtabla.is_empty());
+
         let mut layout = Vec::new();
         let mut d = bmo_abi::types::Disposicion::nueva();
+
+        if let Some(p) = &padre {
+            // ★ El derivado **empieza por la base entera**, campos incluidos y
+            // en los MISMOS offsets. Ése es todo el mecanismo de la herencia
+            // simple: un `B*` vale como `A*` sin ajustar nada.
+            for (n, off, t) in &p.campos {
+                layout.push((n.clone(), *off, t.clone()));
+            }
+            for _ in 0..p.tam { d.coloca(1); }
+        } else if hay_virtuales {
+            // ★ **El `vptr` va en el offset 0**, no en medio de la tabla como
+            // en Itanium: el *offset-to-top* y la ranura de RTTI sólo hacen
+            // falta con herencia múltiple y RTTI, y las dos están descartadas.
+            // Al principio es lo que se escribiría a mano en C — y es lo que
+            // hace que el despacho sea una indirección y no una resta.
+            let vptr = TypeSpec::Ptr(Box::new(TypeSpec::Void));
+            layout.push((VPTR.to_string(), d.coloca(vptr.size()), vptr));
+        }
+
         for m in &campos {
             layout.push((m.name.clone(), d.coloca(m.typ.size()), m.typ.clone()));
         }
@@ -599,7 +680,41 @@ impl Parser {
                 params: tipos, ret: TypeSpec::Void, simbolo: simbolo.clone() });
             self.retornos.insert(simbolo, TypeSpec::Void);
         }
-        let info = Clase { campos: layout.clone(), metodos, constructores };
+        // ── La vtabla ──
+        //
+        // Se parte de la del padre. Un `override` **sustituye** su ranura; un
+        // virtual nuevo se **añade** al final. Ése es el motivo por el que un
+        // puntero a la base sirve sobre un derivado sin tocar nada: las
+        // primeras ranuras significan lo mismo en los dos.
+        let mut vtabla = padre.as_ref().map(|p| p.vtabla.clone()).unwrap_or_default();
+        let mut ranura_de = padre.as_ref().map(|p| p.ranura_de.clone()).unwrap_or_default();
+        for (_, m) in &cuerpos {
+            let heredada = ranura_de.get(&m.name).copied();
+            if !m.is_virtual && heredada.is_none() { continue; }
+            if m.is_override && heredada.is_none() {
+                return Err(self.err(format!(
+                    "`{}::{}` dice `override` pero no hay ningun metodo virtual con ese \
+                     nombre en la base", nombre, m.name)));
+            }
+            let tipos: Vec<TypeSpec> = m.params.iter().map(|p| p.typ.clone()).collect();
+            let simbolo = crate::mangling::metodo(&self.espacios, &nombre, &m.name, &tipos);
+            match heredada {
+                Some(r) => vtabla[r] = simbolo,
+                None => { ranura_de.insert(m.name.clone(), vtabla.len()); vtabla.push(simbolo); }
+            }
+        }
+        // Los métodos del padre que el hijo NO redefine se heredan tal cual:
+        // sus firmas siguen valiendo, y su ranura ya está puesta arriba.
+        if let Some(p) = &padre {
+            for (n, fs) in &p.metodos {
+                metodos.entry(n.clone()).or_insert_with(|| fs.clone());
+            }
+        }
+
+        let info = Clase {
+            campos: layout.clone(), metodos, constructores,
+            base: base.clone(), vtabla: vtabla.clone(), ranura_de, tam,
+        };
         self.clases.insert(nombre.clone(), info);
 
         // ── Vuelta 2: los cuerpos, con la clase ya registrada ──
@@ -631,14 +746,37 @@ impl Parser {
         };
         self.pos = vuelta;
 
+        // ★ Los miembros del AST salen de `layout`, **no de `campos`**, porque
+        // un derivado tiene que llevar también los campos de la base: el
+        // `struct` que verá el codegen de C es el objeto ENTERO. Antes se
+        // emparejaban `campos` (sólo los propios) con `layout` (base incluida)
+        // y el resultado era un struct al que le faltaban los heredados — y
+        // además con los offsets corridos, porque el emparejado se desalineaba.
+        //
+        // El `vptr` se salta: lo añade el descenso, que es quien decide cómo
+        // se llama el campo del lado de C.
+        let acceso_de: HashMap<&str, Access> =
+            campos.iter().map(|m| (m.name.as_str(), m.access)).collect();
         let mut miembros = Vec::new();
-        for (m, (_, o, _)) in campos.into_iter().zip(layout.iter()) {
-            miembros.push(MemberVar { offset: *o, ..m });
+        for (n, off, t) in &layout {
+            if n == VPTR { continue; }
+            miembros.push(MemberVar {
+                typ: t.clone(),
+                name: n.clone(),
+                offset: *off,
+                access: acceso_de.get(n.as_str()).copied().unwrap_or(Access::Public),
+            });
         }
 
         Ok(Class {
-            name: nombre, bases: Vec::new(), members: miembros, methods: metodos,
-            constructors, destructor, vtable: false, size: tam,
+            name: nombre,
+            bases: base.into_iter().collect(),
+            members: miembros,
+            methods: metodos,
+            constructors, destructor,
+            vtable: !vtabla.is_empty(),
+            vtabla,
+            size: tam,
         })
     }
 
@@ -1317,16 +1455,30 @@ impl Parser {
                     // con un método `abs` haría que `abs(x)` llamara al método
                     // desde fuera de la clase.
                     let propio = self.clase_actual.clone().and_then(|c| {
-                        self.clases.get(&c)
-                            .and_then(|i| i.metodos.get(&n))
-                            .map(|f| (c.clone(), f.clone()))
+                        self.clases.get(&c).and_then(|i| {
+                            i.metodos.get(&n).map(|f| {
+                                (c.clone(), f.clone(), i.ranura_de.get(&n).copied())
+                            })
+                        })
                     });
                     e = match propio {
-                        Some((cls, firmas)) => {
+                        Some((cls, firmas, ranura)) => {
                             let tipos = self.tipos_de(&args, &n)?;
                             let s = self.resolver(&format!("{cls}::{n}"), &firmas, &tipos)?
                                 .simbolo.clone();
-                            Expr::MethodCall(Box::new(Expr::This), cls, s, args)
+                            // ★ Un método propio llamado a secas **también
+                            // despacha virtualmente**. Es el caso que más se
+                            // olvida: `int doble() { return f() * 2; }` con `f`
+                            // virtual tiene que llamar a la `f` del objeto
+                            // REAL, no a la de la clase donde está escrito
+                            // `doble`. Un compilador que lo resuelve estático
+                            // devuelve el resultado de la base y nadie sabe por
+                            // qué.
+                            match ranura {
+                                Some(r) => Expr::VirtualCall(
+                                    Box::new(Expr::This), n, r as u32, args),
+                                None => Expr::MethodCall(Box::new(Expr::This), cls, s, args),
+                            }
                         }
                         None => {
                             // ★ Un nombre que no está en la tabla de C++ pasa
@@ -1385,7 +1537,17 @@ impl Parser {
                         // pondrá de primer parámetro. Con `->` la base YA es
                         // un puntero; con `.` hay que tomarle la dirección.
                         let objeto = if flecha { e } else { Expr::AddrOf(Box::new(e)) };
-                        e = Expr::MethodCall(Box::new(objeto), cls, simbolo, args);
+                        // ★ Si el método tiene ranura, la llamada es VIRTUAL:
+                        // no va al símbolo que dice el tipo estático, va al que
+                        // haya en esa ranura de la tabla que el objeto lleva
+                        // dentro. Es la única diferencia entre las dos, y está
+                        // decidida aquí, en el parser, que es quien sabe si el
+                        // método es virtual.
+                        e = match info.ranura_de.get(&miembro) {
+                            Some(&r) => Expr::VirtualCall(
+                                Box::new(objeto), miembro, r as u32, args),
+                            None => Expr::MethodCall(Box::new(objeto), cls, simbolo, args),
+                        };
                     } else {
                         let (_, off, ft) = info.campo(&miembro).cloned().ok_or_else(|| {
                             self.err(format!("`{cls}` no tiene el campo `{miembro}`"))

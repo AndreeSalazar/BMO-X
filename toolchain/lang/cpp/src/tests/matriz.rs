@@ -168,6 +168,22 @@ fn matriz_cpp_ejecuta_correctamente() {
         ("ctor-con-dos-args", "@FULL@class P { public: int x; P(int a, int b) { x = a + b; } }; int main() { P p(20, 22); printf(\"%d\", p.x); return 0; }", "42"),
         ("ctor-elegido-por-tipo", "@FULL@class P { public: int x; P(int n) { x = 1; } P(char c) { x = 2; } }; int main() { P a(5); P b('z'); printf(\"%d %d\", a.x, b.x); return 0; }", "1 2"),
 
+        // ── Herencia simple y virtuales (paso 5) ──
+        ("herencia-campos", "@FULL@class A { public: int x; }; class B : public A { public: int y; }; int main() { B b; b.x = 20; b.y = 22; printf(\"%d\", b.x + b.y); return 0; }", "42"),
+        ("herencia-metodo-heredado", "@FULL@class A { public: int x; int doble() { return x * 2; } }; class B : public A { }; int main() { B b; b.x = 21; printf(\"%d\", b.doble()); return 0; }", "42"),
+        ("virtual-una-clase", "@FULL@class A { public: int x; virtual int f() { return x * 2; } }; int main() { A a; a.x = 21; printf(\"%d\", a.f()); return 0; }", "42"),
+        // ★★ LA fila del paso 5: la MISMA línea llama a funciones distintas
+        // según el tipo dinámico. Eso es una función virtual, y es lo único
+        // que hay que demostrar.
+        ("virtual-despacha-por-el-objeto", "@FULL@class Animal { public: int edad; virtual int habla() { return edad; } }; class Perro : public Animal { public: int habla() override { return edad * 2; } }; int main() { Animal a; a.edad = 21; Perro p; p.edad = 21; printf(\"%d %d\", a.habla(), p.habla()); return 0; }", "21 42"),
+        // ★ Y por PUNTERO A LA BASE, que es donde el polimorfismo sirve de
+        // algo: el tipo estático es `Animal*` en los dos casos.
+        ("virtual-por-puntero-a-base", "@FULL@class Animal { public: int edad; virtual int habla() { return edad; } }; class Perro : public Animal { public: int habla() override { return edad * 2; } }; int main() { Animal a; a.edad = 21; Perro p; p.edad = 21; Animal *x = &a; Animal *y = &p; printf(\"%d %d\", x->habla(), y->habla()); return 0; }", "21 42"),
+        ("virtual-no-redefinida-se-hereda", "@FULL@class A { public: int x; virtual int f() { return x; } }; class B : public A { }; int main() { B b; b.x = 42; A *p = &b; printf(\"%d\", p->f()); return 0; }", "42"),
+        ("virtual-dos-ranuras", "@FULL@class A { public: int x; virtual int uno() { return 1; } virtual int dos() { return 2; } }; class B : public A { public: int dos() override { return 40; } }; int main() { B b; b.x = 0; A *p = &b; printf(\"%d\", p->uno() + p->dos() + 1); return 0; }", "42"),
+        ("virtual-desde-un-metodo", "@FULL@class A { public: int x; virtual int f() { return x; } int doble() { return f() * 2; } }; class B : public A { public: int f() override { return x + 1; } }; int main() { B b; b.x = 20; A *p = &b; printf(\"%d\", p->doble()); return 0; }", "42"),
+        ("virtual-y-raii", "@FULL@class A { public: virtual int f() { return 1; } ~A() { printf(\"~\"); } }; int main() { { A a; printf(\"%d\", a.f()); } printf(\"|\"); return 0; }", "1~|"),
+
         // ★ Integración: una fila que COMPONE varias características. Las
         // demás prueban cada pieza suelta, y una pieza suelta puede estar bien
         // y romperse al lado de otra — el `for` con declaración envuelve en un
@@ -308,8 +324,9 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
         ("operador", "@FULL@class P { public: int operator+(int a) { return a; } };\nint main(){return 0;}", 4),
         ("friend", "@FULL@class P { friend int f(); };\nint main(){return 0;}", 4),
         ("metodo-fuera", "@FULL@class P { public: int f(); };\nint main(){return 0;}", 4),
-        ("herencia", "@FULL@class A { public: int x; }; class B : public A { };\nint main(){return 0;}", 5),
-        ("virtual", "@FULL@class P { public: virtual int f() { return 1; } };\nint main(){return 0;}", 5),
+        ("herencia-multiple", "@FULL@class A { public: int x; }; class B { public: int y; }; class C : public A, public B { };\nint main(){return 0;}", 6),
+        ("virtual-pura", "@FULL@class P { public: virtual int f() = 0; };\nint main(){return 0;}", 6),
+        ("herencia-privada", "@FULL@class A { public: int x; }; class B : private A { };\nint main(){return 0;}", 6),
         ("namespace", "@FULL@namespace n { }\nint main(){return 0;}", 4),
         ("cualificado", "int x = n::y;", 4),
         ("variadica", "@FULL@int f(int a, ...) { return a; } int main(){return 0;}", 4),

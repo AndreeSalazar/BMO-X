@@ -88,6 +88,10 @@ struct Ambito {
 struct Info {
     ctor: bool,
     dtor: bool,
+    /// ¿Los objetos de esta clase llevan `vptr`? Si sí, hay que apuntarlo a su
+    /// tabla al construir — y **antes** de llamar al constructor, porque el
+    /// constructor puede llamar a un método virtual de sí mismo.
+    vtabla: bool,
 }
 
 // Los nombres emitidos salen de `crate::mangling`, que es el ÚNICO sitio del
@@ -95,6 +99,12 @@ struct Info {
 // (`P.P`, `P.~P`) y coincidían con los del mangling por casualidad: ahora
 // coinciden porque son la misma función.
 use crate::mangling;
+
+/// El nombre de la global que guarda la vtabla de una clase.
+///
+/// Lleva un punto —ilegal en C++— para que no pueda chocar con una variable
+/// del programa, igual que todo lo demás que genera este crate.
+fn nombre_vtabla(clase: &str) -> String { format!("vtabla.{clase}") }
 
 /// Baja el cuerpo de una función insertando construcciones y destrucciones.
 struct Cuerpo<'a> {
@@ -189,14 +199,26 @@ impl<'a> Cuerpo<'a> {
             // sobrecarga. Aquí sólo se emite — se reserva el hueco y se llama
             // con `&objeto` de primer parámetro.
             S::DeclObj { clase, nombre, ctor, args } => {
+                let info = self.clases.get(clase).copied().unwrap_or_default();
                 let mut out = vec![c::Stmt::DeclAssign(
                     c::TypeSpec::StructRef(clase.clone()), nombre.clone(), None)];
+                // ★ El `vptr` se apunta ANTES de llamar al constructor: un
+                // constructor puede llamar a un metodo virtual de si mismo, y
+                // si la tabla no estuviera puesta llamaria a la nada.
+                if info.vtabla {
+                    out.push(c::Stmt::Expr(c::Expr::AssignField(
+                        Box::new(c::Expr::Var(nombre.clone())),
+                        crate::parser::VPTR.into(), 0,
+                        c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)),
+                        Box::new(c::Expr::Var(nombre_vtabla(clase))),
+                    )));
+                }
                 if let Some(simbolo) = ctor {
                     let mut a = vec![c::Expr::AddrOf(Box::new(c::Expr::Var(nombre.clone())))];
                     for x in args { a.push(expr(x)?); }
                     out.push(c::Stmt::Expr(c::Expr::Call(simbolo.clone(), a)));
                 }
-                if self.clases.get(clase).copied().unwrap_or_default().dtor {
+                if info.dtor {
                     self.pila.last_mut().unwrap().objetos.push((nombre.clone(), clase.clone()));
                 }
                 out
@@ -309,11 +331,46 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
         info.insert(cl.name.clone(), Info {
             ctor: !cl.constructors.is_empty(),
             dtor: cl.destructor.is_some(),
+            vtabla: !cl.vtabla.is_empty(),
         });
+    }
+
+    // Las tablas virtuales: una global de `n` ranuras por clase con virtuales,
+    // y las instrucciones que la rellenan. No se pueden emitir como un
+    // inicializador estático porque **las globales de BMO C sólo admiten un
+    // entero**, y la dirección de una función no se conoce hasta emitir el
+    // código. Se rellenan al principio de `main`, que es el único sitio por el
+    // que pasa todo programa antes de construir nada.
+    let mut relleno: Vec<c::Stmt> = Vec::new();
+    for cl in &p.classes {
+        if cl.vtabla.is_empty() { continue; }
+        let n = cl.vtabla.len() as u32;
+        out.globals.push(c::GlobalDecl::Var(
+            c::TypeSpec::Array(Box::new(c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void))), n),
+            nombre_vtabla(&cl.name),
+            None,
+        ));
+        for (i, simbolo) in cl.vtabla.iter().enumerate() {
+            relleno.push(c::Stmt::Expr(c::Expr::AssignSubscript(
+                nombre_vtabla(&cl.name),
+                Box::new(c::Expr::Int(i as i64)),
+                8,
+                Box::new(c::Expr::Var(simbolo.clone())),
+            )));
+        }
     }
 
     for cl in &p.classes {
         let mut miembros = Vec::new();
+        // El `vptr` es un campo más, y va el PRIMERO. El parser ya lo colocó
+        // en el offset 0; aquí sólo hay que declararlo para que el codegen de
+        // C le reserve su sitio.
+        if !cl.vtabla.is_empty() {
+            miembros.push(c::StructMember {
+                typ: c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)),
+                name: crate::parser::VPTR.into(),
+            });
+        }
         for m in &cl.members {
             miembros.push(c::StructMember { typ: tipo(&m.typ)?, name: m.name.clone() });
         }
@@ -360,9 +417,15 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     // test y su fila en la matriz DE C, no de rebote desde aquí. Que C++ se
     // defienda de su lado no toca a nadie; arreglarlo dentro de C sería
     // combinarlos.
-    if !out.functions.iter().any(|f| f.name == "main") {
+    let Some(main) = out.functions.iter_mut().find(|f| f.name == "main") else {
         return Err(CppError::new(0,
             "no hay `main`: un programa sin punto de entrada no es un programa"));
+    };
+    // Las tablas se rellenan lo PRIMERO de todo, antes de cualquier sentencia
+    // del programa: construir un objeto ya necesita que su tabla exista.
+    if !relleno.is_empty() {
+        relleno.extend(std::mem::take(&mut main.body));
+        main.body = relleno;
     }
 
     Ok(out)
@@ -571,8 +634,28 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         }
 
         // ── Rechazos con el paso donde llegan ──
-        E::VirtualCall(_, m, _, _) => return Err(pendiente(&format!("la llamada virtual `{m}`"), 5,
-            "la vtable")),
+        // ★ **El despacho virtual, entero.**
+        //
+        //   objeto->vptr        el objeto lleva dentro la tabla de SU tipo
+        //   tabla[ranura]       la ranura la fijó el parser
+        //   (…)(objeto, args)   y se llama por el puntero que salga
+        //
+        // Es exactamente lo que se escribiría a mano en C, y por eso Bjarne
+        // pudo implementarlo como una traducción. Dos objetos del mismo tipo
+        // estático con tablas distintas ejecutan funciones distintas en la
+        // misma línea de código: eso es una función virtual y no hace falta
+        // nada más.
+        E::VirtualCall(objeto, _, ranura, args) => {
+            let obj = expr(objeto)?;
+            let tabla = c::Expr::Arrow(
+                Box::new(obj.clone()), crate::parser::VPTR.into(), 0,
+                c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)));
+            let destino = c::Expr::IndexPtr(
+                Box::new(tabla), Box::new(c::Expr::Int(*ranura as i64)), c::TypeSpec::Long);
+            let mut a = vec![obj];
+            for x in args { a.push(expr(x)?); }
+            c::Expr::CallPtr(Box::new(destino), a)
+        }
         E::New(cl, _) => return Err(pendiente(&format!("`new {cl}`"), 3,
             "el constructor, y encima la capability de memoria")),
         E::TemplateCall(n, _, _) => return Err(pendiente(&format!("la plantilla `{n}`"), 6,

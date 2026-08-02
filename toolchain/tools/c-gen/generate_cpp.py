@@ -163,8 +163,16 @@ fichero vacío.
    ⏳ Fuera del alcance con motivo: ADL, conversiones definidas por el usuario
    y plantillas en la resolución — las tres cosas que hacen enorme a
    `gcc/cp/call.cc`.
-5. **Virtuales y vtable** — con la herencia virtual y múltiple descartadas, es
-   una tabla de punteros a función y un `vptr` en el offset 0.
+5. ✅ **HECHO — herencia simple, virtuales y vtable.** Un derivado empieza por
+   la base ENTERA, así que un `B*` vale como `A*` sin ajustar nada; el `vptr`
+   va en el **offset 0** y la vtabla es una global de `n` ranuras que se rellena
+   al principio de `main` — las globales de BMO C sólo admiten un entero como
+   inicializador, y la dirección de una función no se sabe hasta emitir.
+   ★ Un `override` **sustituye** su ranura y un virtual nuevo se **añade**: por
+   eso las primeras ranuras significan lo mismo en la base y en el derivado.
+   Y una llamada a método propio **sin `this->`** despacha igual de virtual —
+   es el caso que más se olvida.
+   El ABI, actualizado el mismo día en [`CPP_ABI.md`](CPP_ABI.md).
 6. **Plantillas básicas** por monomorfización, que es donde C++ deja de ser C
    con azúcar.
 

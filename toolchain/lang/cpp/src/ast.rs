@@ -33,6 +33,10 @@ pub struct Class {
     pub constructors: Vec<Method>,
     pub destructor: Option<Method>,
     pub vtable: bool, // true if any method is virtual
+    /// La vtabla ya resuelta: **una ranura por metodo virtual, y el ORDEN es
+    /// la tabla**. Cada entrada es el simbolo manglado que va en esa ranura.
+    /// La calcula el parser, que es quien tiene delante la jerarquia.
+    pub vtabla: Vec<String>,
     /// Tamaño total, ya alineado. Lo calcula el parser.
     pub size: u32,
 }
