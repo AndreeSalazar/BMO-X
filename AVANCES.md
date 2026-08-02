@@ -10,12 +10,42 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-02**: **553 tests en verde**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
+> **Al 2026-08-02**: **574 tests en verde**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
 > el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
 
-## ★ Lo último que pasó (2026-08-02) — leer esto primero
+## ★ Lo último que pasó (2026-08-02, segunda tanda) — leer esto primero
+
+Tres frentes, y los tres eran "escrito y sin estrenar". Nada de esto ha tocado
+un CPU todavía: es lo que hay que llevar al Ryzen en el arranque siguiente.
+
+- **`KIND_MEMORIA` tiene por fin quien la llame**: `c/memc.bex`
+  (`toolchain/lang/c/examples/memoria_C.c`) pide, escribe y relee 1024 bytes,
+  marca las dieciséis páginas de un bloque de 64 KiB, y **agota el tope de
+  cuatro peticiones** para ver que la quinta devuelve 0.
+- **Y al escribirlo salió que el tope no se cumplía.** El `malloc` del codegen
+  emitía sus saltos con desplazamientos contados a mano y el de la rama de
+  fallo se quedaba **seis bytes corto**: cuando el kernel rechazaba, el CPU
+  seguía a media instrucción. La rama buena estaba bien, que es lo que lo hacía
+  invisible. Ahora van por etiqueta. (Ep. 23 de `BITACORA.md`.)
+- **El emulador modela la capability de memoria.** Antes `TASK_OP_MEMORIA_PEDIR`
+  caía en el `_ => {}` del despacho y salía por el epílogo de ÉXITO con el
+  valor a cero: contestaba "toma tu bloque" y entregaba el puntero nulo.
+- **El contador de memoria entregada se lee.** `total_entregado()` existía y
+  **no lo consultaba nadie** (patrón 19). Ahora es `INFO_MEM_ENTREGADA` y sale
+  en `info` como `a Ring 3`. Importa porque **la línea de CABINA `mem: bloque
+  entregado a Ring 3` no se puede ver desde el escritorio**: mientras el
+  compositor tiene la pantalla, el panel del kernel no se pinta.
+- **El ratón ya no adivina su formato: lo lee.** Se le pide el Report
+  Descriptor (`GET_DESCRIPTOR` tipo 0x22) y `bmo_uhid::formato` saca botones,
+  X, Y y rueda con su bit y su ancho. La pregunta de "8 o 16 bits" la contesta
+  el aparato, no una foto. Con reserva al formato BOOT si no se entiende, **y
+  dicho**.
+
+---
+
+## ★ Lo anterior (2026-08-02, primera tanda)
 
 El día en que **el escritorio dejó de ser una demostración y pasó a ser el
 arranque**. Verificado en el Ryzen con fotos:
@@ -67,7 +97,7 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | Fault isolation (crash R3 mata la tarea, no el kernel) | ✅ implementado |
 | Boot cinemático (logo→RING0→RING3, escenas) | ✅ |
 | Teclado USB (xHCI+HID) | ✅ **ESCRIBE en HW** — el Interval del endpoint era un EXPONENTE (2^n x125us) y se escribia el bInterval crudo: un teclado que pedia 24 ms quedaba programado a 35 minutos entre sondeos. Layouts es-latam/es-espana/us, teclas muertas, AltGr, Ctrl, repeticion al mantener, LEDs, historial |
-| Mouse USB | ◐ **enumera y bombea** (slot propio, `ev` subiendo), pero **los ejes van cruzados**: su informe lleva Report ID (`protocolo=0x1`) y falta decidir 8 vs 16 bits |
+| Mouse USB | ◐ **enumera y bombea** (slot propio, `ev` subiendo). Los ejes iban cruzados; ahora el driver **lee su Report Descriptor** y saca bit y ancho de cada campo en vez de suponerlos — ✍️ sin estrenar |
 | **CABINA** (telemetría omnisciente) | ✅ **viva**: cockpit + color semántico + bitácora de eventos (narrador) + detección de disco PCI |
 | **`KIND_FRAMEBUFFER`** (la pantalla es una capability) | ✅ Ring 3 pinta con `mov`; el kernel contesta 4 preguntas y se aparta |
 | **`KIND_INPUT`** (ratón, teclado **y modificadores**) | ✅ en metal; `Ctrl+Alt` detectado sin romper `AltGr` |
@@ -85,7 +115,7 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | **BMO Ada** | ✅ **verificado en el Ryzen el 2026-07-30**, el mismo día que nació el compilador. Perfil ZFP + Annex F: Annex F copió el `PICTURE` de COBOL, así que el decimal ya estaba pagado |
 | C++ frontend | ◐ ~900 líneas y **desborda la pila con una clase de dos métodos**. Alcance escrito en `lang/cpp/BRECHA.md` |
 | **El FOCO del escritorio** (`bmo_input::foco`) | ✍️ Alt+Tab con pila MRU, tres modos, F12, el foco arrastra el Z-order. 17 tests; **espera que alguien lo pulse en metal** |
-| **`KIND_MEMORIA`** (un proceso pide memoria) | ✍️ cableada de punta a punta (kernel + userland + `malloc` en C); **ningún programa la ha llamado en metal** |
+| **`KIND_MEMORIA`** (un proceso pide memoria) | ✍️ cableada de punta a punta (kernel + userland + `malloc` en C) **y con su programa**: `c/memc.bex` la ejerce entera, 7 tests que EJECUTAN. Ningún CPU la ha llamado todavía |
 | **Write-combining del framebuffer** | ✅ PAT programado + `sfence` por fotograma. Sin la barrera, lo pintado se quedaba en el búfer |
 | **c-gen** (la fábrica que mide el compilador) | ✅ sondas que COMPILAN, censo de 91 elementos de C (25 fuera) y 49 de C++ (17 fuera) |
 | **Driver de disco (AHCI/SATA)** | ✅ **LEE Y MONTA**: GPT + FAT32 + volumen de datos con escritor. El NVMe de esta maquina es el disco de **Windows** — nunca se toca |
@@ -139,6 +169,16 @@ pendientes de hardware; aquí va el resumen.
   **anillo de eventos compartido** (`BITACORA.md` Ep. 18) espera foto. Lo que
   hay que mirar: `apk=total:perdidos:ahora` con **perdidos en 0**, `kev=`
   subiendo al teclear y `raton ev=` subiendo al mover.
+  Y ahora también **su formato**: en el arranque tiene que salir
+  `[uhid] formato del raton: id=N x=bitN/Nb y=bitN/Nb informe=N bits`. Si sale
+  `no entiendo su Report Descriptor`, el parser tiene un caso sin cubrir y los
+  ocho bytes crudos del log dicen cuál.
+- **`KIND_MEMORIA` en metal.** `run c/memc.bex` desde la caja del escritorio.
+  Tiene que imprimir sus nueve líneas y acabar en `MEMORIA: las cuatro pruebas
+  pasan`; la primera dirección debe ser `0xe0000000`. Y después, `info`: la
+  fila **`a Ring 3`** de la sección de memoria tiene que decir 76 KiB (no
+  "ningún programa ha pedido memoria"). Ese número lo da el KERNEL — es la
+  confirmación desde el otro lado.
 - **El escritorio con foco** (`d29ad7c6`, `9d3f4943`, `345acfc5`): F12 abre la
   consola de datos de ESTRATOS, **Alt+Tab** recorre la MRU con su ventanita,
   **Alt+M** rota el modo, el clic da el teclado y **el foco arrastra el
@@ -377,12 +417,13 @@ py toolchain/tools/cobol-gen/generate.py
 
 **Tests:**
 ```bash
-cargo test -p bmo-c-front       # 185 verdes: EJECUTAN el programa, no lo miran
+cargo test -p bmo-c-front       # 223 verdes: EJECUTAN el programa, no lo miran
 cargo test -p bmo-cobol-front   # COBOL, con el banco de matriz
 cargo test -p bmo-input         # 17 del FOCO (Alt+Tab, modos, Z-order)
+cargo test -p bmo-uhid          # 21: el Report Descriptor y el descifrado del raton
 cargo test --workspace --exclude bmo-kernel --exclude boot_context --exclude byte-defender --exclude bmo-rt
 ```
-Lo último son **515 verdes**. Las cuatro exclusiones no son cosmética: el
+Lo último son **574 verdes**. Las cuatro exclusiones no son cosmética: el
 kernel y `boot_context` son `no_std` y `cargo test` les mete `std` encima
 (`duplicate lang item panic_impl`); `byte-defender` y `bmo-rt` están rotos
 desde hace tiempo y son parte de la deuda técnica anotada.
@@ -445,18 +486,28 @@ escritorio con foco (F12, Alt+Tab, Alt+M). Lo que le queda a COBOL —`EVALUATE`
 `STRING`, `SEARCH`, `CALL`, `SORT`, COMP-3— es **cola larga del estándar, no
 banca**.
 
-**Kernel/HW (orden vigente 2026-07-31):**
-1. **Cablear la escritura de ESTRATOS al dispositivo.** La transacción existe y
+**Kernel/HW (orden vigente 2026-08-02):**
+
+**Antes que nada: EL ARRANQUE PENDIENTE.** Hay tres cosas escritas y sin
+estrenar, y cada una tiene su prueba exacta arriba. Cuanto más crezca la pila
+sin verificar, más difícil es saber cuál de las tres rompió algo si falla:
+el foco entero (F12, Alt+Tab, Alt+M, clic), `run c/memc.bex` + `info`, y el
+formato del ratón en el log de arranque.
+
+1. ~~**Capability de MEMORIA**~~ — **HECHA** (`a9ccd4f8`), con su programa y
+   su contador en `info`. Falta la foto.
+2. **Cablear la escritura de ESTRATOS al dispositivo.** La transacción existe y
    está probada (12 tests); faltan el `write` y el `FLUSH CACHE` de verdad. Es
-   lo único que separa "un almacén que se lee" de un almacén.
-2. **Capability de MEMORIA.** Un proceso recibe su imagen y 64 KiB de pila.
-   Bloquea DOS cosas: lenguajes con GC, y superficies compartidas.
-3. **Write-combining del framebuffer** (PAT). Barato y se nota: hoy cada píxel
-   es una escritura a memoria sin caché, y el compositor pinta ventanas enteras.
+   lo único que separa "un almacén que se lee" de un almacén. **Es el frente
+   grande que queda.**
+3. ~~**Write-combining del framebuffer**~~ — **HECHO y verificado** (`952681c7`
+   + el `sfence` de `3409ea8e`).
 4. **Ada hacia ACATS** — el estándar trae su propio banco de conformidad, que
    es la forma honesta de medir cuánto Ada hay de verdad.
 5. **Superficies y ventanas** — hoy `KIND_FRAMEBUFFER` es exclusivo. Wayland
-   en pequeño, encima del punto 2. Es lo que saca la calculadora del
+   en pequeño, y ahora **ya tiene debajo lo que le faltaba**: la memoria
+   compartida entre procesos se pide con `KIND_MEMORIA`. Es lo que saca la
+   calculadora del
    compositor a su propia ventana **sin tocar el COBOL**. La política de foco
    ya está escrita y probada, así que ese día no hay que inventarla.
 6. **Endpoint RPC → servicios Ring 3**: el momento library-OS.

@@ -452,6 +452,71 @@ en un bus donde el otro extremo tiene su propio firmware, eso es optimismo.
 
 ---
 
+## Ep. 23 — El `malloc` que sólo descarrilaba al fallar
+
+**Síntoma**: ninguno. Ésa es la gracia. `KIND_MEMORIA` se cableó de punta a
+punta, compiló, pasó el drift guard y se documentó con su límite declarado —
+*"un quinto `malloc` devuelve 0, que es lo que un programa de C ya sabe
+comprobar"*. Y era mentira.
+
+Lo destapó escribir el programa que la estrenaba. El emulador dijo:
+
+```
+opcode 0x05 no emitido por BMO
+```
+
+**Culpable**: el codegen de `malloc` emitía sus dos saltos con
+desplazamientos **contados a mano**, y el primero se quedó seis bytes corto —
+`jnz +0x1D` cuando el camino hasta el `xor rax, rax` mide 35. O sea que cuando
+el kernel RECHAZABA la petición, el salto caía dentro del `jnz` siguiente y el
+CPU seguía leyendo a media instrucción. En el Ryzen eso no habría devuelto 0:
+habría matado el proceso.
+
+Lo que lo hacía invisible: **la rama buena estaba bien**. Un `malloc` que
+funciona cuatro veces y descarrila a la quinta pasa por correcto en cualquier
+prueba que no llegue a la quinta — y ninguna llegaba, porque el emulador
+tampoco modelaba la petición y todo `malloc` devolvía 0 en silencio. Dos
+agujeros tapándose el uno al otro.
+
+**Moraleja**: contar bytes a mano es escribir un enlazador en la cabeza cada
+vez que alguien mete una instrucción en medio. Las etiquetas ya estaban en el
+codegen; sólo había que usarlas. Y la de fondo: **una rama de error que nadie
+ejecuta no está escrita, está redactada.** El límite de cuatro peticiones
+existía en la documentación y en el kernel; el camino de vuelta al programa,
+no.
+
+---
+
+## Ep. 24 — Ocho bytes de log para una pregunta que contesta el aparato
+
+**Síntoma**: `raton x=-4332` — un desplazamiento que ninguna mano hace.
+
+Después de que el ratón confesara `protocolo=0x1` (Ep. 22) quedó abierto si
+sus ejes eran de 8 o de 16 bits. Si eran de 16, el byte que el driver leía
+como `dy` era la mitad alta de `dx`: mover en horizontal movería en vertical.
+El plan era registrar **ocho bytes crudos** del informe y decidir mirando la
+foto: si los bytes 4..7 traen datos, son 16 bits.
+
+**El plan estaba mal**, y no por el instrumento. Un formato no se decide
+mirando datos: se pregunta. Todo HID lleva su **Report Descriptor**, que dice
+literalmente qué bit es cada campo y de cuántos bits — y este driver nunca se
+lo había pedido a nadie porque el protocolo BOOT le ahorraba el parser. En
+cuanto un aparato ignoró el BOOT, ese ahorro pasó a ser el problema.
+
+Se le pide (`GET_DESCRIPTOR`, tipo 0x22) y se lee. El parser saca cuatro
+campos —botones, X, Y, rueda— con su posición en bits y su tamaño, respetando
+lo que de verdad cuesta hacer bien: `Report Size`/`Report Count` en bits, el
+desplazamiento acumulado **por Report ID**, el relleno (`Input (Cnst)`) que
+ocupa sitio y no significa nada, y el reparto de usages por lista o por rango.
+
+**Moraleja**: es el Ep. 22 otra vez, un nivel más arriba. Allí la lección fue
+*a un dispositivo se le pregunta en qué estado quedó*; aquí es **a un
+dispositivo se le pregunta qué formato habla**. Los ocho bytes crudos se
+quedan en el log, pero ya no para adivinar: para comprobar que lo que el
+descriptor promete es lo que el aparato manda.
+
+---
+
 ## Las leyes que dejó esta guerra
 
 1. **QEMU miente por omisión**: sin IRQs vivos, sin tiempos físicos, sin
@@ -490,9 +555,16 @@ en un bus donde el otro extremo tiene su propio firmware, eso es optimismo.
 10. **Una optimización que cambia CUÁNDO se ve algo no está terminada**
    (Ep. 20) hasta que alguien decide cuándo tiene que verse. El
    write-combining sin `sfence` no era rápido: era incorrecto.
-11. **A un dispositivo se le pregunta, no se le supone** (Ep. 22). Un `set`
-   sin su `get` es una carta sin acuse de recibo, y al otro lado hay un
-   firmware con sus propias ideas.
+11. **A un dispositivo se le pregunta, no se le supone** (Ep. 22 y 24). Un
+   `set` sin su `get` es una carta sin acuse de recibo, y al otro lado hay un
+   firmware con sus propias ideas. La versión fuerte: tampoco se le supone el
+   **formato** — el Report Descriptor está ahí para eso, y adivinarlo mirando
+   bytes crudos es leerlo en la variable equivocada.
+12. **Una rama de error que nadie ejecuta no está escrita, está redactada**
+   (Ep. 23). El camino bueno de `malloc` funcionaba y el de fallo saltaba a
+   media instrucción; el límite existía en el kernel y en la documentación, y
+   el programa nunca llegaba a verlo. Escribir el programa que ejerce el
+   límite es parte de implementar el límite.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*
