@@ -12,6 +12,11 @@ Todo lo compartido está un piso más abajo, en [`../forge/`](../forge/).
   mismo, eso se promueve a `forge/` como librería opcional — nunca se importa
   `lang/cobol` desde `lang/ada`.
 
+> ★ **Antes de añadir nada a cualquiera de estos frontends**, leer
+> [`PROPOSITO.md`](PROPOSITO.md): para qué existe cada lenguaje, y por qué eso
+> —y no el estándar— decide qué entra. Incluye el caso de Itanium, que es la
+> razón de que una promesa al optimizador no cuente como trabajo pendiente.
+
 ## Los cuatro
 
 | Directorio | Estado | Qué corre |
