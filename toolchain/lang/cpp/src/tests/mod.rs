@@ -151,9 +151,9 @@ fn los_errores_llevan_la_linea_real() {
 #[test]
 fn lo_que_falta_se_rechaza_diciendo_el_paso() {
     let casos: &[(&str, &str)] = &[
-        ("class P { public: int x; };\nint main(){ return 0; }", "PASO 2"),
-        ("namespace n { }\nint main(){ return 0; }", "PASO 4"),
         ("#include \"algo.h\"\nint main(){ return 0; }", "PASO 1"),
+        ("class P { public: virtual int f() { return 1; } };\nint main(){ return 0; }", "PASO 5"),
+        ("namespace n { }\nint main(){ return 0; }", "PASO 4"),
     ];
     for (fuente, paso) in casos {
         let e = compile_source_to_bef(fuente)

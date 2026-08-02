@@ -203,7 +203,16 @@ fichero vacío.
    `MAESTROS.md`), y el punto de decisión ya existe aunque el conjunto de
    plantillas esté vacío hasta el paso 6.
    ⏳ **Falta el preprocesador** (`#include`, `#define`): se rechaza con motivo.
-2. **Clase con métodos** — el desazucarado `P::doble()` → `P.doble(P* this)`.
+2. ✅ **HECHO — clase con métodos.** El desazucarado de Cfront: clase →
+   `struct`, método → función libre con `this` de primer parámetro
+   (`P.doble(P* this)`, y el punto es ilegal en C, así que no choca). Corren
+   campos públicos y privados, métodos con argumentos, `this` explícito e
+   implícito, métodos `const`, acceso por puntero (`p->x`, `p->f()`), un
+   método llamando a otro, y un campo usado antes de declararse — que es legal
+   en C++ y obliga a parsear la clase en **dos vueltas**.
+   ★ Aquí apareció la primera ambigüedad de verdad: **`P *q` es una
+   declaración o una multiplicación, y sólo la tabla de símbolos lo sabe**. Es
+   el hermano pequeño de `a<b>(c)`, y llegó sin necesidad de plantillas.
 3. **Constructor y destructor (RAII)**, que es la razón de existir del lenguaje:
    una lista de limpieza por ámbito, recorrida al revés en **cada** salida.
 4. **Mangling**, en cuanto haya sobrecarga. Y el ABI se escribe **el mismo día**

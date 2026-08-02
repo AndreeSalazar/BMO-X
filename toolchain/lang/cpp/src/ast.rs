@@ -31,6 +31,8 @@ pub struct Class {
     pub constructor: Option<Method>,
     pub destructor: Option<Method>,
     pub vtable: bool, // true if any method is virtual
+    /// Tamaño total, ya alineado. Lo calcula el parser.
+    pub size: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +51,9 @@ pub struct Method {
     pub body: Vec<Stmt>,
     pub is_virtual: bool,
     pub is_override: bool,
+    /// Método `const`. **Cuesta cero al emitir**: es comprobación del
+    /// frontend y punto. Por eso está en el AST y no llega al descenso.
+    pub is_const: bool,
     pub access: Access,
     pub class_name: String,
 }
@@ -156,12 +161,26 @@ pub enum Expr {
     BoolLit(bool),
     Var(String),
     Call(String, Vec<Expr>),
-    MethodCall(Box<Expr>, String, Vec<Expr>),
+    /// `objeto.metodo(args)` — *(objeto, clase, método, argumentos)*.
+    ///
+    /// **La clase viaja en el nodo** porque quien la sabía era el parser, que
+    /// tenía delante el tipo del objeto. El descenso sólo desazucara:
+    /// `P.metodo(&objeto, args…)`. Si tuviera que resolver la clase otra vez,
+    /// sabría de tipos por segunda vez — y dos copias de una resolución
+    /// divergen, que es la misma lección que los offsets.
+    MethodCall(Box<Expr>, String, String, Vec<Expr>),
     VirtualCall(Box<Expr>, String, u32, Vec<Expr>), // this, method_name, vtable_offset, args
     New(String, Vec<Expr>),
     Assign(String, Box<Expr>),
-    MemberAccess(Box<Expr>, String, u32), // object, field, offset
-    Arrow(Box<Expr>, String, u32), // ptr, field, offset
+    /// `base.campo` — *(base, nombre, offset, TIPO del campo)*.
+    ///
+    /// El tipo viaja para que el codegen cargue y guarde el tamaño EXACTO. Es
+    /// literalmente el bug que BMO C ya pagó: `pt.x = 10` con `x:int` escribía
+    /// ocho bytes y pisaba el campo siguiente.
+    MemberAccess(Box<Expr>, String, u32, TypeSpec),
+    Arrow(Box<Expr>, String, u32, TypeSpec),
+    AssignMember(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
+    AssignArrow(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),

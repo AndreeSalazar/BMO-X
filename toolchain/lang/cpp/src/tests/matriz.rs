@@ -103,6 +103,29 @@ fn matriz_cpp_ejecuta_correctamente() {
         ("prototipo", "@FULL@int par(int n); int impar(int n) { if (n == 0) return 0; return par(n - 1); } int par(int n) { if (n == 0) return 1; return impar(n - 1); } int main() { printf(\"%d\", par(10)); return 0; }", "1"),
         ("parametro-sin-nombre", "@FULL@int siempre(int) { return 42; } int main() { printf(\"%d\", siempre(7)); return 0; }", "42"),
 
+        // ── Clases (paso 2) ──
+        ("clase-campo", "@FULL@class P { public: int x; }; int main() { P p; p.x = 42; printf(\"%d\", p.x); return 0; }", "42"),
+        ("clase-metodo", "@FULL@class P { public: int x; int doble() { return x * 2; } }; int main() { P p; p.x = 21; printf(\"%d\", p.doble()); return 0; }", "42"),
+        ("clase-metodo-con-args", "@FULL@class P { public: int base; int mas(int n) { return base + n; } }; int main() { P p; p.base = 40; printf(\"%d\", p.mas(2)); return 0; }", "42"),
+        ("clase-this-explicito", "@FULL@class P { public: int x; int leer() { return this->x; } }; int main() { P p; p.x = 42; printf(\"%d\", p.leer()); return 0; }", "42"),
+        ("clase-this-escribe", "@FULL@class P { public: int x; void poner(int n) { this->x = n; } }; int main() { P p; p.poner(42); printf(\"%d\", p.x); return 0; }", "42"),
+        ("clase-campo-a-secas", "@FULL@class P { public: int x; void poner(int n) { x = n; } }; int main() { P p; p.poner(42); printf(\"%d\", p.x); return 0; }", "42"),
+        // ★ Un parámetro TAPA al campo del mismo nombre. Las dos versiones
+        // compilan, así que si el orden de resolución estuviera al revés el
+        // bug sería mudo: leería el campo en vez del argumento.
+        ("clase-parametro-tapa-campo", "@FULL@class P { public: int x; int f(int x) { return x; } }; int main() { P p; p.x = 1; printf(\"%d\", p.f(42)); return 0; }", "42"),
+        ("clase-por-puntero", "@FULL@class P { public: int x; }; int main() { P p; P *q = &p; q->x = 42; printf(\"%d\", p.x); return 0; }", "42"),
+        ("clase-metodo-por-puntero", "@FULL@class P { public: int x; int doble() { return x * 2; } }; int main() { P p; p.x = 21; P *q = &p; printf(\"%d\", q->doble()); return 0; }", "42"),
+        ("clase-metodo-llama-metodo", "@FULL@class P { public: int x; int doble() { return x * 2; } int cuadruple() { return doble() * 2; } }; int main() { P p; p.x = 10; printf(\"%d\", p.cuadruple() + 2); return 0; }", "42"),
+        ("clase-metodo-const", "@FULL@class P { public: int x; int leer() const { return x; } }; int main() { P p; p.x = 42; printf(\"%d\", p.leer()); return 0; }", "42"),
+        ("struct-es-publico", "@FULL@struct P { int x; }; int main() { P p; p.x = 42; printf(\"%d\", p.x); return 0; }", "42"),
+        ("clase-campo-usado-antes", "@FULL@class P { public: int doble() { return x * 2; } int x; }; int main() { P p; p.x = 21; printf(\"%d\", p.doble()); return 0; }", "42"),
+        // ★ La disposición: dos campos de tamaños distintos. Si la regla de
+        // alineado del parser de C++ y la del codegen de C divergieran, este
+        // valor saldría mal — es la red de la que habla `descenso.rs`.
+        ("clase-disposicion", "@FULL@class P { public: char c; int n; }; int main() { P p; p.c = 'A'; p.n = 41; printf(\"%d %c\", p.n + 1, p.c); return 0; }", "42 A"),
+        ("clase-privado-por-metodo", "@FULL@class P { int secreto; public: void poner(int n) { secreto = n; } int leer() { return secreto; } }; int main() { P p; p.poner(42); printf(\"%d\", p.leer()); return 0; }", "42"),
+
         // ★ Integración: una fila que COMPONE varias características. Las
         // demás prueban cada pieza suelta, y una pieza suelta puede estar bien
         // y romperse al lado de otra — el `for` con declaración envuelve en un
@@ -116,6 +139,27 @@ fn matriz_cpp_ejecuta_correctamente() {
                 printf(\"total=%d ok=%d\", total, ok);\n\
                 return 0;\n\
             }", "total=30 ok=1"),
+
+        // ★ Integración de clases: campo privado, cuatro métodos, uno `const`,
+        // uno que llama a otro, y acceso por puntero. Es el programa de
+        // `p2.cpp` que se compila desde la línea de órdenes.
+        ("clase-completa", "@FULL@\
+            class Contador {\n\
+                int n;\n\
+            public:\n\
+                void reiniciar()       { n = 0; }\n\
+                void sumar(int cuanto) { n = n + cuanto; }\n\
+                int  valor() const     { return n; }\n\
+                int  doble()           { return valor() * 2; }\n\
+            };\n\
+            int main() {\n\
+                Contador c;\n\
+                c.reiniciar();\n\
+                for (int i = 1; i <= 6; i++) { c.sumar(i); }\n\
+                Contador *p = &c;\n\
+                printf(\"valor=%d doble=%d via_ptr=%d\", c.valor(), c.doble(), p->valor());\n\
+                return 0;\n\
+            }", "valor=21 doble=42 via_ptr=21"),
     ];
 
     let total = casos.len();
@@ -148,17 +192,19 @@ fn matriz_cpp_ejecuta_correctamente() {
 fn matriz_cpp_rechaza_con_el_paso_escrito() {
     let casos: &[(&str, &str, u8)] = &[
         ("preprocesador", "@FULL@#include \"x.h\"\nint main(){return 0;}", 1),
-        ("clase", "@FULL@class P { public: int x; };\nint main(){return 0;}", 2),
-        ("struct", "@FULL@struct P { int x; };\nint main(){return 0;}", 2),
-        ("tipo-de-usuario", "P p;", 2),
-        ("this", "return this;", 2),
-        ("punto", "int a = 0; a = a.x;", 2),
-        ("flecha", "int a = 0; a = a->x;", 2),
         ("auto", "auto x = 1;", 2),
         ("sizeof", "printf(\"%d\", sizeof(int));", 2),
         ("referencia", "@FULL@int f(int &r) { return r; } int main(){return 0;}", 2),
+        ("constructor", "@FULL@class P { public: P() {} };\nint main(){return 0;}", 3),
+        ("destructor", "@FULL@class P { public: ~P() {} };\nint main(){return 0;}", 3),
         ("new", "int *p = new P();", 3),
         ("delete", "int *p = 0; delete p;", 3),
+        ("miembro-static", "@FULL@class P { public: static int n; };\nint main(){return 0;}", 4),
+        ("operador", "@FULL@class P { public: int operator+(int a) { return a; } };\nint main(){return 0;}", 4),
+        ("friend", "@FULL@class P { friend int f(); };\nint main(){return 0;}", 4),
+        ("metodo-fuera", "@FULL@class P { public: int f(); };\nint main(){return 0;}", 4),
+        ("herencia", "@FULL@class A { public: int x; }; class B : public A { };\nint main(){return 0;}", 5),
+        ("virtual", "@FULL@class P { public: virtual int f() { return 1; } };\nint main(){return 0;}", 5),
         ("namespace", "@FULL@namespace n { }\nint main(){return 0;}", 4),
         ("cualificado", "int x = n::y;", 4),
         ("variadica", "@FULL@int f(int a, ...) { return a; } int main(){return 0;}", 4),

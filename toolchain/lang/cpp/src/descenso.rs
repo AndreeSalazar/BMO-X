@@ -50,14 +50,32 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     if !p.includes.is_empty() {
         return Err(pendiente("#include", 1, "el preprocesador de C++"));
     }
-    if !p.classes.is_empty() {
-        return Err(pendiente("las clases", 2, "el desazucarado a struct + `this`"));
-    }
     if !p.namespaces.is_empty() {
         return Err(pendiente("los namespaces", 4, "el mangling"));
     }
 
     let mut out = c::Program::new();
+
+    // ── Las clases: un `struct` y una función suelta por método ──
+    //
+    // ★ Es Cfront, literalmente. Y el `struct` se emite con sus miembros
+    // **sin offsets**, para que el codegen de C recalcule la disposición con
+    // SU regla. El parser de C++ ya la calculó para poder poner el offset
+    // dentro de cada `Field`; emitir aquí los offsets en vez de los miembros
+    // haría que la única copia que manda fuera la de C++, y el día que las
+    // dos reglas divergieran nadie se enteraría. Así, si divergen, el valor
+    // sale mal y la matriz se pone roja.
+    for cl in &p.classes {
+        let mut miembros = Vec::new();
+        for m in &cl.members {
+            miembros.push(c::StructMember { typ: tipo(&m.typ)?, name: m.name.clone() });
+        }
+        out.globals.push(c::GlobalDecl::Struct(cl.name.clone(), miembros));
+
+        for m in &cl.methods {
+            out.functions.push(metodo(cl, m)?);
+        }
+    }
 
     for g in &p.globals {
         let cpp::GlobalDecl::Var(ts, nombre, init) = g;
@@ -87,6 +105,34 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     }
 
     Ok(out)
+}
+
+/// **El desazucarado que define C++**: un método es una función libre cuyo
+/// primer parámetro es `this`.
+///
+/// El nombre lleva un punto —`P.doble`— que es **ilegal en C** y por tanto no
+/// puede chocar con ninguna función que alguien escriba. Es el mismo truco que
+/// BMO C ya usa para promover una `static` de función a global
+/// (`funcion.variable`). El mangling de verdad llega en el paso 4, cuando haya
+/// sobrecarga y dos métodos distintos necesiten símbolos distintos.
+pub fn nombre_de_metodo(clase: &str, metodo: &str) -> String {
+    format!("{clase}.{metodo}")
+}
+
+fn metodo(cl: &cpp::Class, m: &cpp::Method) -> Result<c::Function, CppError> {
+    let this = c::Param {
+        typ: c::TypeSpec::Ptr(Box::new(c::TypeSpec::StructRef(cl.name.clone()))),
+        name: "this".into(),
+    };
+    let mut f = funcion(&cpp::Function {
+        ret_type: m.ret_type.clone(),
+        name: nombre_de_metodo(&cl.name, &m.name),
+        params: m.params.clone(),
+        body: m.body.clone(),
+    })?;
+    f.params.insert(0, this.clone());
+    f.var_names.insert(0, this.name);
+    Ok(f)
 }
 
 fn funcion(f: &cpp::Function) -> Result<c::Function, CppError> {
@@ -161,8 +207,7 @@ fn tipo(t: &cpp::TypeSpec) -> Result<c::TypeSpec, CppError> {
         // compilar.
         T::Ref(_) => return Err(pendiente("las referencias `T&`", 2,
             "la indirección automática en cada uso")),
-        T::ClassRef(n) => return Err(pendiente(&format!("el tipo de clase `{n}`"), 2,
-            "la disposición de las clases")),
+        T::ClassRef(n) => c::TypeSpec::StructRef(n.clone()),
         T::Template(n, _) => return Err(pendiente(&format!("la plantilla `{n}`"), 6,
             "la monomorfización")),
         T::Auto => return Err(pendiente("`auto`", 1,
@@ -289,15 +334,31 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
             Box::new(expr(c_)?), Box::new(expr(a)?), Box::new(expr(b)?),
         ),
 
+        // ── Clases (paso 2) ──
+        //
+        // `this` es un parámetro más, así que baja a una variable con ese
+        // nombre. Ahí acaba toda la magia del puntero implícito de C++.
+        E::This => c::Expr::Var("this".into()),
+        E::MemberAccess(b, n, off, t) =>
+            c::Expr::Field(Box::new(expr(b)?), n.clone(), *off, tipo(t)?),
+        E::Arrow(b, n, off, t) =>
+            c::Expr::Arrow(Box::new(expr(b)?), n.clone(), *off, tipo(t)?),
+        E::AssignMember(b, n, off, t, v) =>
+            c::Expr::AssignField(Box::new(expr(b)?), n.clone(), *off, tipo(t)?, Box::new(expr(v)?)),
+        E::AssignArrow(b, n, off, t, v) =>
+            c::Expr::AssignArrow(Box::new(expr(b)?), n.clone(), *off, tipo(t)?, Box::new(expr(v)?)),
+        // `objeto.metodo(a, b)` → `Clase.metodo(&objeto, a, b)`. El parser ya
+        // puso el `&` (o lo omitió si la base venía de `->`), así que aquí no
+        // se decide nada: se ordenan los argumentos.
+        E::MethodCall(objeto, cls, m, args) => {
+            let mut a = vec![expr(objeto)?];
+            for x in args { a.push(expr(x)?); }
+            c::Expr::Call(nombre_de_metodo(cls, m), a)
+        }
+
         // ── Rechazos con el paso donde llegan ──
-        E::This => return Err(pendiente("`this`", 2, "los métodos")),
-        E::MethodCall(_, m, _) => return Err(pendiente(&format!("la llamada a método `{m}`"), 2,
-            "el desazucarado a función con `this`")),
         E::VirtualCall(_, m, _, _) => return Err(pendiente(&format!("la llamada virtual `{m}`"), 5,
             "la vtable")),
-        E::MemberAccess(_, campo, _) | E::Arrow(_, campo, _) =>
-            return Err(pendiente(&format!("el acceso al miembro `{campo}`"), 2,
-                "la disposición de las clases")),
         E::New(cl, _) => return Err(pendiente(&format!("`new {cl}`"), 3,
             "el constructor, y encima la capability de memoria")),
         E::TemplateCall(n, _, _) => return Err(pendiente(&format!("la plantilla `{n}`"), 6,

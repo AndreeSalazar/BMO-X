@@ -71,6 +71,25 @@ impl Ambitos {
 
 // ── El parser ───────────────────────────────────────────────────────
 
+/// Lo que el parser sabe de una clase: es lo que hace falta para resolver
+/// `p.x` sin volver a mirar la declaración.
+#[derive(Clone)]
+struct Clase {
+    /// *(nombre, offset, tipo)* en orden de declaración.
+    campos: Vec<(String, u32, TypeSpec)>,
+    metodos: HashSet<String>,
+    // El TAMAÑO no está aquí a propósito: el parser no lo necesita para nada
+    // —resolver `p.x` sólo pide offset y tipo— y viaja en `Class::size`, que
+    // es donde lo leerá `new P()` en el paso 3. Guardar una copia que nadie
+    // lee es exactamente la clase de dato que se queda obsoleto en silencio.
+}
+
+impl Clase {
+    fn campo(&self, n: &str) -> Option<&(String, u32, TypeSpec)> {
+        self.campos.iter().find(|(c, _, _)| c == n)
+    }
+}
+
 struct Parser {
     toks: Vec<Token>,
     lineas: Vec<usize>,
@@ -82,6 +101,11 @@ struct Parser {
     /// ★ Nombres de plantilla. **Vacío hasta el paso 6** — y mientras esté
     /// vacío, todo `<` es una comparación. Ver [`Parser::es_plantilla`].
     plantillas: HashSet<String>,
+    /// Las clases vistas. Es lo que hace que `P` sea un tipo y no un nombre.
+    clases: HashMap<String, Clase>,
+    /// La clase cuyo método se está parseando, si alguno. Es lo que le da
+    /// sentido a `this` y a un campo nombrado a secas dentro de un método.
+    clase_actual: Option<String>,
 }
 
 impl Parser {
@@ -91,6 +115,8 @@ impl Parser {
             ambitos: Ambitos::default(),
             funciones: HashSet::new(),
             plantillas: HashSet::new(),
+            clases: HashMap::new(),
+            clase_actual: None,
         };
         p.ambitos.entrar(); // ámbito de fichero
         p
@@ -139,7 +165,10 @@ impl Parser {
                 Token::Eof => break,
                 Token::Hash => return Err(self.pendiente(
                     "las directivas del preprocesador (`#include`, `#define`)", 1)),
-                Token::Class | Token::Struct => return Err(self.pendiente("las clases", 2)),
+                Token::Class | Token::Struct => {
+                    let c = self.clase()?;
+                    p.classes.push(c);
+                }
                 Token::Namespace => return Err(self.pendiente("los namespaces", 4)),
                 Token::Template => return Err(self.pendiente("las plantillas", 6)),
                 Token::Using => return Err(self.pendiente("`using`", 4)),
@@ -188,6 +217,187 @@ impl Parser {
         self.ambitos.declarar(&nombre, tipo.clone());
         p.globals.push(GlobalDecl::Var(tipo, nombre, init));
         Ok(())
+    }
+
+    // ── Clases ──────────────────────────────────────────────────────
+
+    /// `class P { public: int x; int doble() { … } };`
+    ///
+    /// ★ Se parsea en **dos vueltas**, y no por gusto: un método puede usar un
+    /// campo declarado **más abajo** en la clase —eso es legal en C++ y no lo
+    /// es en C— así que la disposición tiene que estar completa antes de mirar
+    /// un solo cuerpo. Primero se recogen las firmas y los campos; después se
+    /// parsean los cuerpos con la clase ya registrada.
+    fn clase(&mut self) -> Result<Class, CppError> {
+        let es_struct = *self.peek() == Token::Struct;
+        self.avanzar();
+        let nombre = match self.avanzar() {
+            Token::Ident(n) => n,
+            otro => return Err(self.err(format!("se esperaba el nombre de la clase y vino {otro:?}"))),
+        };
+        if self.come(&Token::Colon) {
+            return Err(self.pendiente("la herencia", 5));
+        }
+        self.exige(&Token::OpenBrace)?;
+
+        // ── Vuelta 1: campos y firmas ──
+        let mut campos: Vec<MemberVar> = Vec::new();
+        let mut cuerpos: Vec<(usize, Method)> = Vec::new(); // (posición del `{`, firma)
+        let mut acceso = if es_struct { Access::Public } else { Access::Private };
+
+        while *self.peek() != Token::CloseBrace {
+            match self.peek().clone() {
+                Token::Eof => return Err(self.err("se acabo el fichero dentro de una clase")),
+                Token::Public => { self.avanzar(); self.exige(&Token::Colon)?; acceso = Access::Public; continue; }
+                Token::Private => { self.avanzar(); self.exige(&Token::Colon)?; acceso = Access::Private; continue; }
+                Token::Protected => { self.avanzar(); self.exige(&Token::Colon)?; acceso = Access::Protected; continue; }
+                Token::Semicolon => { self.avanzar(); continue; }
+                Token::Virtual => return Err(self.pendiente("las funciones virtuales", 5)),
+                Token::Tilde => return Err(self.pendiente("el destructor", 3)),
+                Token::Friend => return Err(self.pendiente("`friend`", 4)),
+                Token::Static => return Err(self.pendiente("los miembros `static`", 4)),
+                Token::Operator => return Err(self.pendiente("la sobrecarga de operadores", 4)),
+                // El constructor es `P(` — el nombre de la clase seguido de
+                // paréntesis. Se reconoce aquí para poder decir el paso.
+                Token::Ident(n) if n == nombre && *self.peek_en(1) == Token::OpenParen =>
+                    return Err(self.pendiente("el constructor", 3)),
+                _ => {}
+            }
+
+            let base = self.tipo_base()?;
+            // `int operator+(int)` — el `operator` viene DETRÁS del tipo, así
+            // que no lo caza la criba de arriba.
+            if *self.peek() == Token::Operator {
+                return Err(self.pendiente("la sobrecarga de operadores", 4));
+            }
+            let (tipo, miembro) = self.declarador(base)?;
+
+            if *self.peek() == Token::OpenParen {
+                self.avanzar();
+                let params = self.parametros()?;
+                self.exige(&Token::CloseParen)?;
+                let es_const = self.come(&Token::Const);
+                if self.come(&Token::Semicolon) {
+                    return Err(self.pendiente("declarar un metodo y definirlo fuera de la clase", 4));
+                }
+                // Se anota dónde empieza el cuerpo y se salta: se parseará en
+                // la vuelta 2, cuando la disposición esté completa.
+                let inicio = self.pos;
+                self.saltar_bloque()?;
+                cuerpos.push((inicio, Method {
+                    name: miembro, ret_type: tipo, params, body: Vec::new(),
+                    is_virtual: false, is_override: false, is_const: es_const,
+                    access: acceso, class_name: nombre.clone(),
+                }));
+            } else {
+                self.exige(&Token::Semicolon)?;
+                campos.push(MemberVar { typ: tipo, name: miembro, offset: 0, access: acceso });
+            }
+        }
+        self.avanzar(); // `}`
+        self.exige(&Token::Semicolon)?;
+
+        // ── La disposición ──
+        //
+        // ⚠ La regla de alineado está escrita **por tercera vez** en el
+        // proyecto: `c::parser::compute_struct_layout` y
+        // `c::codegen::build_struct_layout` ya la tienen, idéntica. Aquí hace
+        // falta una tercera porque los nodos `Field` de C llevan el offset
+        // dentro, así que el parser de C++ tiene que saberlo. Es exactamente
+        // el riesgo que avisa la cabecera de `inicializador.rs` —dos copias de
+        // un cálculo de offsets divergen— y por eso el descenso emite el
+        // `Struct` y deja que el codegen recalcule: si algún día divergen, la
+        // fila `clase-disposicion` de la matriz se pone roja.
+        let mut layout = Vec::new();
+        let mut off = 0u32;
+        for m in &campos {
+            let sz = m.typ.size();
+            let align = sz.min(8).max(1);
+            off = (off + align - 1) / align * align;
+            layout.push((m.name.clone(), off, m.typ.clone()));
+            off += sz;
+        }
+        let max_align = campos.iter().map(|m| m.typ.size().min(8).max(1)).max().unwrap_or(1);
+        let tam = (off + max_align - 1) / max_align * max_align;
+
+        let info = Clase {
+            campos: layout.clone(),
+            metodos: cuerpos.iter().map(|(_, m)| m.name.clone()).collect(),
+        };
+        self.clases.insert(nombre.clone(), info);
+
+        // ── Vuelta 2: los cuerpos, con la clase ya registrada ──
+        let vuelta = self.pos;
+        let mut metodos = Vec::new();
+        for (inicio, mut m) in cuerpos {
+            self.pos = inicio;
+            self.clase_actual = Some(nombre.clone());
+            self.ambitos.entrar();
+            self.ambitos.declarar("this", TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(nombre.clone()))));
+            for p in &m.params { self.ambitos.declarar(&p.name, p.typ.clone()); }
+            m.body = self.bloque()?;
+            self.ambitos.salir();
+            self.clase_actual = None;
+            metodos.push(m);
+        }
+        self.pos = vuelta;
+
+        let mut miembros = Vec::new();
+        for (m, (_, o, _)) in campos.into_iter().zip(layout.iter()) {
+            miembros.push(MemberVar { offset: *o, ..m });
+        }
+
+        Ok(Class {
+            name: nombre, bases: Vec::new(), members: miembros, methods: metodos,
+            constructor: None, destructor: None, vtable: false, size: tam,
+        })
+    }
+
+    /// Salta un bloque `{ … }` contando llaves, sin interpretarlo.
+    fn saltar_bloque(&mut self) -> Result<(), CppError> {
+        self.exige(&Token::OpenBrace)?;
+        let mut hondo = 1;
+        while hondo > 0 {
+            match self.avanzar() {
+                Token::OpenBrace => hondo += 1,
+                Token::CloseBrace => hondo -= 1,
+                Token::Eof => return Err(self.err("se acabo el fichero dentro de un metodo")),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// El tipo de una expresión, para resolver `.` y `->`.
+    ///
+    /// Sólo cubre lo que puede estar a la izquierda de un punto — que es poco
+    /// a propósito: en cuanto cubriera de más, sería un comprobador de tipos, y
+    /// eso no es lo que el paso 2 promete.
+    fn tipo_de(&self, e: &Expr) -> Option<TypeSpec> {
+        match e {
+            Expr::Var(n) => self.ambitos.tipo(n).cloned(),
+            Expr::This => self.clase_actual.clone()
+                .map(|c| TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(c)))),
+            Expr::MemberAccess(_, _, _, t) | Expr::Arrow(_, _, _, t) => Some(t.clone()),
+            Expr::Deref(b) => match self.tipo_de(b)? {
+                TypeSpec::Ptr(t) => Some(*t),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// La clase a la que se le puede pedir un campo, dado el tipo de la base
+    /// y si el acceso fue con `.` o con `->`.
+    fn clase_de(&self, t: &TypeSpec, flecha: bool) -> Option<String> {
+        match (t, flecha) {
+            (TypeSpec::ClassRef(n), false) => Some(n.clone()),
+            (TypeSpec::Ptr(b), true) => match &**b {
+                TypeSpec::ClassRef(n) => Some(n.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     fn parametros(&mut self) -> Result<Vec<Param>, CppError> {
@@ -243,10 +453,8 @@ impl Parser {
             Token::Unsigned => { self.avanzar(); self.tipo_sin_signo(true)? }
             Token::Auto => return Err(self.pendiente("`auto`", 2)),
             Token::Ident(n) => {
-                // Un identificador en posición de tipo sólo puede ser una
-                // clase; y las clases llegan en el paso 2. Decirlo así es más
-                // útil que "se esperaba un tipo".
-                return Err(self.pendiente(&format!("el tipo `{n}` (definido por el usuario)"), 2));
+                if self.clases.contains_key(&n) { self.avanzar(); TypeSpec::ClassRef(n) }
+                else { return Err(self.err(format!("`{n}` no es un tipo conocido"))); }
             }
             otro => return Err(self.err(format!("se esperaba un tipo y vino {otro:?}"))),
         };
@@ -323,15 +531,27 @@ impl Parser {
         {
             return true;
         }
-        // ★ Dos identificadores seguidos sólo pueden ser `Tipo nombre`.
+        // ★★ **`P *q` es una declaración o una multiplicación, y sólo la
+        // tabla de símbolos lo sabe.**
         //
-        // Hoy eso no compila —el tipo tendría que ser una clase, y las clases
-        // llegan en el paso 2— pero **hay que reconocerlo igual**: sin esta
-        // rama, `P p;` se lee como la expresión `P` y el error sale
-        // *"se esperaba `;` y vino `p`"*, que manda a mirar la puntuación en
-        // vez de decir lo que pasa. Reconocerlo aquí hace que `tipo_base`
-        // conteste lo cierto: **el tipo `P` llega en el paso 2**.
-        matches!((self.peek(), self.peek_en(1)), (Token::Ident(_), Token::Ident(_)))
+        // Éste es el caso que justifica, él solo, que el parser y la tabla se
+        // hablen. `P * q` con `P` desconocida es el producto de dos variables;
+        // con `P` declarada como clase es *"puntero a P llamado q"*. La misma
+        // secuencia de tokens, dos árboles distintos, y **las dos compilan**:
+        // si se elige mal, el programa hace otra cosa sin quejarse.
+        //
+        // Es el hermano pequeño de `a<b>(c)` (ver `MAESTROS.md`), y llegó en
+        // cuanto existieron las clases — antes de lo previsto, porque no hace
+        // falta una plantilla para que C++ muerda.
+        let Token::Ident(n) = self.peek() else { return false };
+        if !self.clases.contains_key(n) {
+            // Dos identificadores seguidos sólo pueden ser `Tipo nombre`. Se
+            // reconoce aunque el tipo no exista, para que el error sea
+            // *"`P` no es un tipo conocido"* y no *"se esperaba `;`"*, que
+            // manda a mirar la puntuación.
+            return matches!(self.peek_en(1), Token::Ident(_));
+        }
+        matches!(self.peek_en(1), Token::Ident(_) | Token::Star | Token::And)
     }
 
     // ── Sentencias ──────────────────────────────────────────────────
@@ -583,8 +803,14 @@ impl Parser {
                 let lhs = Expr::Deref(p.clone());
                 Ok(Expr::AssignDeref(p, Box::new(valor(lhs))))
             }
-            Expr::MemberAccess(..) | Expr::Arrow(..) =>
-                Err(self.pendiente("asignar a un miembro", 2)),
+            Expr::MemberAccess(b, n, off, t) => {
+                let lhs = Expr::MemberAccess(b.clone(), n.clone(), off, t.clone());
+                Ok(Expr::AssignMember(b, n, off, t, Box::new(valor(lhs))))
+            }
+            Expr::Arrow(b, n, off, t) => {
+                let lhs = Expr::Arrow(b.clone(), n.clone(), off, t.clone());
+                Ok(Expr::AssignArrow(b, n, off, t, Box::new(valor(lhs))))
+            }
             otro => Err(self.err(format!("esto no se puede asignar: {otro:?}"))),
         }
     }
@@ -715,17 +941,63 @@ impl Parser {
                     let Expr::Var(n) = e else {
                         return Err(self.pendiente("llamar a algo que no es un nombre", 2));
                     };
-                    e = Expr::Call(n, args);
+                    // ★ Un método propio llamado a secas ES `this->metodo(…)`.
+                    //
+                    // El mismo caso que un campo a secas, y con el mismo
+                    // desempate: una función libre del mismo nombre tapa al
+                    // método sólo si el método no existe. Al revés, una clase
+                    // con un método `abs` haría que `abs(x)` llamara al método
+                    // desde fuera de la clase.
+                    let propio = self.clase_actual.as_ref()
+                        .and_then(|c| self.clases.get(c).map(|i| (c.clone(), i.metodos.contains(&n))));
+                    e = match propio {
+                        Some((cls, true)) => Expr::MethodCall(Box::new(Expr::This), cls, n, args),
+                        _ => Expr::Call(n, args),
+                    };
                 }
-                Token::Dot => {
+                Token::Dot | Token::Arrow => {
+                    let flecha = *self.peek() == Token::Arrow;
                     self.avanzar();
-                    let _ = self.avanzar();
-                    return Err(self.pendiente("el acceso a miembro con `.`", 2));
-                }
-                Token::Arrow => {
-                    self.avanzar();
-                    let _ = self.avanzar();
-                    return Err(self.pendiente("el acceso a miembro con `->`", 2));
+                    let miembro = match self.avanzar() {
+                        Token::Ident(n) => n,
+                        otro => return Err(self.err(format!(
+                            "se esperaba el nombre de un miembro y vino {otro:?}"))),
+                    };
+                    let t = self.tipo_de(&e).ok_or_else(|| self.err(
+                        "no se sabe de que tipo es lo que hay antes del punto"))?;
+                    let signo = if flecha { "->" } else { "." };
+                    let cls = self.clase_de(&t, flecha).ok_or_else(|| self.err(format!(
+                        "`{signo}` sobre algo que no es una clase: {t:?}")))?;
+                    let info = self.clases.get(&cls).cloned()
+                        .ok_or_else(|| self.err(format!("la clase `{cls}` no esta definida")))?;
+
+                    // ¿Método o campo? Se decide con el paréntesis, y el
+                    // parser ya sabe cuál de los dos nombres existe.
+                    if *self.peek() == Token::OpenParen {
+                        if !info.metodos.contains(&miembro) {
+                            return Err(self.err(format!("`{cls}` no tiene el metodo `{miembro}`")));
+                        }
+                        self.avanzar();
+                        let mut args = Vec::new();
+                        if *self.peek() != Token::CloseParen {
+                            loop {
+                                args.push(self.asignacion()?);
+                                if !self.come(&Token::Comma) { break; }
+                            }
+                        }
+                        self.exige(&Token::CloseParen)?;
+                        // El objeto viaja como el `this` que el descenso
+                        // pondrá de primer parámetro. Con `->` la base YA es
+                        // un puntero; con `.` hay que tomarle la dirección.
+                        let objeto = if flecha { e } else { Expr::AddrOf(Box::new(e)) };
+                        e = Expr::MethodCall(Box::new(objeto), cls, miembro, args);
+                    } else {
+                        let (_, off, ft) = info.campo(&miembro).cloned().ok_or_else(|| {
+                            self.err(format!("`{cls}` no tiene el campo `{miembro}`"))
+                        })?;
+                        e = if flecha { Expr::Arrow(Box::new(e), miembro, off, ft) }
+                            else { Expr::MemberAccess(Box::new(e), miembro, off, ft) };
+                    }
                 }
                 Token::ColonColon => return Err(self.pendiente("los nombres cualificados con `::`", 4)),
                 Token::PlusPlus => { self.avanzar(); match e {
@@ -757,10 +1029,28 @@ impl Parser {
             Token::True => Ok(Expr::BoolLit(true)),
             Token::False => Ok(Expr::BoolLit(false)),
             Token::Nullptr => Ok(Expr::NullPtr),
-            Token::This => Err(CppError::new(l,
-                "`this`: llega en el PASO 2. El orden completo esta en \
-                 toolchain/lang/cpp/BRECHA.md")),
-            Token::Ident(n) => Ok(Expr::Var(n)),
+            Token::This => match &self.clase_actual {
+                Some(_) => Ok(Expr::This),
+                None => Err(CppError::new(l, "`this` fuera de un metodo")),
+            },
+            // ★ Un campo nombrado a secas dentro de un método ES `this->campo`.
+            //
+            // Y el orden importa: primero se mira el ámbito local, porque un
+            // parámetro o una local **tapan** al campo. Al revés, `int doble(int x)`
+            // leería el campo `x` en vez del argumento — y las dos versiones
+            // compilan, así que el bug sería mudo.
+            Token::Ident(n) => {
+                if self.ambitos.tipo(&n).is_none() {
+                    if let Some(cls) = self.clase_actual.clone() {
+                        if let Some((_, off, t)) = self.clases.get(&cls)
+                            .and_then(|c| c.campo(&n)).cloned()
+                        {
+                            return Ok(Expr::Arrow(Box::new(Expr::This), n, off, t));
+                        }
+                    }
+                }
+                Ok(Expr::Var(n))
+            }
             Token::OpenParen => {
                 let e = self.expresion()?;
                 self.exige(&Token::CloseParen)?;
