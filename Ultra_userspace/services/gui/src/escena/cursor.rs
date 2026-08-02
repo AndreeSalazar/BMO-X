@@ -87,10 +87,40 @@ impl Bajo {
     }
 
     /// Guarda lo que hay y dibuja el cursor encima. Al FINAL del fotograma.
+    ///
+    /// ★★ **EL `sfence` DE ANTES DE LEER, Y POR QUÉ FALTABA.**
+    ///
+    /// Este es el único sitio de todo el compositor que **lee** el framebuffer.
+    /// Y desde que el framebuffer se mapea en **write-combining** (`952681c7`),
+    /// leerlo sin barrera no devuelve lo que acabas de pintar: devuelve lo que
+    /// había **antes**.
+    ///
+    /// Con WC el CPU acumula las escrituras en un búfer y las suelta cuando se
+    /// llena. Una lectura de memoria WC **no está ordenada** contra esas
+    /// escrituras pendientes — el manual lo dice y no hay forma de saltárselo.
+    /// Así que la secuencia del fotograma era:
+    ///
+    /// ```text
+    ///   1. quitar        -> escribe (al bufer)
+    ///   2. pintar todo   -> escribe (al bufer)
+    ///   3. poner: LEER   -> ve la pantalla de HACE UN FOTOGRAMA
+    ///   4. vaciar        -> sfence, ahora sí llega todo
+    /// ```
+    ///
+    /// El paso 3 guardaba píxeles caducados, y el `quitar` del fotograma
+    /// siguiente los devolvía **encima de lo nuevo**: un rectángulo de 10×16
+    /// con contenido viejo persiguiendo al puntero. Eso es el ghosting.
+    ///
+    /// Es el Ep. 20 otra vez y por el otro lado. Allí se descubrió que **la
+    /// pantalla** no veía nuestras escrituras sin `sfence`; lo que nadie miró es
+    /// que **nosotros** tampoco las vemos. La barrera hace falta en los dos
+    /// sentidos, y va aquí dentro y no en quien llama: la invariante es de la
+    /// lectura, no del sitio desde donde se pide.
     pub(crate) fn poner(&mut self, p: &bmo::Pantalla, x: u32, y: u32) {
         if self.puesto {
             return;
         }
+        p.vaciar();
         for fila in 0..CUR_ALTO {
             for col in 0..CUR_ANCHO {
                 self.px[fila * CUR_ANCHO + col] = p.leer(x + col as u32, y + fila as u32);

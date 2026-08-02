@@ -1172,6 +1172,23 @@ pub extern "C" fn _start() -> ! {
                                 calc.guardado_n = 0;
                                 calc.op = 0;
                                 calc.esperando = false;
+                                // ★ El cursor SE APARTA antes de pintar aquí.
+                                //
+                                // Éste es el único pintado del bucle que no
+                                // dispara la ENTRADA: lo dispara el HIJO al
+                                // contestar. Así que puede caer en un fotograma
+                                // con `va_a_pintar` en falso — o sea con el
+                                // puntero todavía en pantalla y lo que hay
+                                // debajo ya guardado. Pintar encima **caduca**
+                                // ese guardado, y el `quitar` de la vuelta
+                                // siguiente devolvería los píxeles viejos
+                                // encima del resultado recién escrito: un
+                                // rectángulo fantasma sobre la calculadora.
+                                //
+                                // `quitar` es idempotente —si no está puesto no
+                                // hace nada—, así que llamarlo aquí no cuesta
+                                // nada en los fotogramas que ya lo apartaron.
+                                bajo.quitar(&p);
                                 pintar_calc(&p, &calc_caja, &calc);
                             }
                         } else if resp_n < resp.len() && b >= 0x20 {

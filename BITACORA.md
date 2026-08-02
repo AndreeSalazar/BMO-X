@@ -517,6 +517,50 @@ descriptor promete es lo que el aparato manda.
 
 ---
 
+## Ep. 25 — El write-combining, otra vez, y por el lado que nadie miró (sin foto todavía)
+
+**Síntoma**, dicho por el dueño: *"que no me salgan ghosting"* — un rastro que
+sigue al puntero.
+
+El Ep. 20 dejó cerrado que **la pantalla** no ve nuestras escrituras sin
+`sfence`. Lo que nadie se preguntó es lo simétrico: **¿las vemos nosotros?**
+
+El compositor lee el framebuffer en **un solo sitio** de todo el programa: el
+*save-under* del cursor, que guarda los 160 píxeles de debajo para devolverlos
+al moverse. Y lo hace **al final del fotograma, justo antes del único
+`sfence`**:
+
+```text
+  1. quitar        -> escribe (al bufer WC)
+  2. pintar todo   -> escribe (al bufer WC)
+  3. poner: LEER   <- ve la pantalla de HACE UN FOTOGRAMA
+  4. vaciar        -> sfence: ahora sí llega todo
+```
+
+**Culpable**: una lectura de memoria WC no está ordenada contra las escrituras
+pendientes en el búfer. Así que el paso 3 guardaba píxeles **caducados**, y el
+`quitar` de la vuelta siguiente los devolvía **encima de lo nuevo**. Un
+rectángulo de 10×16 con contenido viejo persiguiendo al ratón: eso es
+exactamente el ghosting.
+
+El comentario de `Pantalla::leer` lo decía sin saberlo — *"el framebuffer es
+memoria de este proceso, así que se puede leer"*. Era cierto cuando se escribió.
+Dejó de serlo el día que esa memoria pasó a WC, dos días antes, y **nadie
+revisó a los lectores** porque el cambio se pensó como una optimización de
+escritura.
+
+Y de paso salió un segundo: `pintar_calc` es **el único pintado del bucle que no
+dispara la entrada** —lo dispara el hijo al contestar—, así que puede caer en un
+fotograma con el cursor todavía puesto. Pintar ahí caduca el guardado igual.
+
+**Moraleja**: cambiar el tipo de memoria de una región no es un cambio local, es
+un cambio de **contrato**, y hay que ir a buscar a todos los que lo usaban con
+el contrato viejo — incluidos los que sólo leen. La pregunta que lo habría
+cazado en el minuto uno es de una línea: *¿quién LEE esto?*. En este programa la
+respuesta cabía en un `grep` y daba un solo resultado.
+
+---
+
 ## Las leyes que dejó esta guerra
 
 1. **QEMU miente por omisión**: sin IRQs vivos, sin tiempos físicos, sin
@@ -560,7 +604,11 @@ descriptor promete es lo que el aparato manda.
    firmware con sus propias ideas. La versión fuerte: tampoco se le supone el
    **formato** — el Report Descriptor está ahí para eso, y adivinarlo mirando
    bytes crudos es leerlo en la variable equivocada.
-12. **Una rama de error que nadie ejecuta no está escrita, está redactada**
+12. **Cambiar el tipo de memoria de una región es cambiar un CONTRATO**
+   (Ep. 25), no hacer una optimización local. Hay que ir a buscar a todos los
+   que la usaban con el contrato viejo — **y los lectores cuentan**. El WC se
+   pensó como un cambio de escritura y rompió la única lectura que había.
+13. **Una rama de error que nadie ejecuta no está escrita, está redactada**
    (Ep. 23). El camino bueno de `malloc` funcionaba y el de fallo saltaba a
    media instrucción; el límite existía en el kernel y en la documentación, y
    el programa nunca llegaba a verlo. Escribir el programa que ejerce el
