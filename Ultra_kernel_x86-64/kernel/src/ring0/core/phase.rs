@@ -1377,6 +1377,29 @@ fn informe_de_defuncion() {
     crate::ring0::cabina::warn("gui", "el escritorio murio tras arrancar", tid as u64);
 }
 
+/// Espera a que los programas de ejemplo de Ring 3 terminen.
+///
+/// Con tope de tiempo: uno que se cuelgue no puede impedir que arranque el
+/// escritorio. Y con `hlt` en el bucle — girar en vacío aquí sería quitarle al
+/// planificador el CPU que necesita justo para que esos programas avancen.
+fn esperar_a_los_demos() {
+    use crate::ring0::plat::timer;
+    let limite = timer::ticks() + 400; // ~400 ms si el tick es de 1 ms
+    loop {
+        let (_total, listos) = crate::ring0::task::scheduler::counts();
+        // 1 = sólo queda la tarea del kernel. Los demos han acabado.
+        if listos <= 1 {
+            break;
+        }
+        if timer::ticks() > limite {
+            crate::ring0::cabina::warn(
+                "ring3", "los demos no acabaron a tiempo: se sigue igual", listos as u64);
+            break;
+        }
+        unsafe { core::arch::asm!("hlt") };
+    }
+}
+
 fn run_shell(ctx: &BootContext) -> ! {
     // Normalize the i8042 (translation → Set 1, re-enable scanning) so the
     // physical keyboard reaches shell_read_line. No-op if the controller is
@@ -1694,6 +1717,27 @@ pub fn main(ctx: &mut BootContext) {
     // dejaba de pintar y o aparecía un escritorio o no aparecía nada, sin
     // forma de saber cuál de los dos lados había fallado. Decir qué se cede y
     // a quién convierte ese silencio en un acto con testigos.
+    // ★ PRIMERO que acaben los demos, LUEGO la entrega.
+    //
+    // Los demos de Ring 3 y el escritorio se admitían todos antes de encender
+    // el timer, así que arrancaban **a la vez** — y `init_hello` reclama la
+    // pantalla para demostrar que Ring 3 puede. Ganaba él, pintaba sus tres
+    // líneas, terminaba, y al morir el kernel recuperaba la pantalla y
+    // repintaba su panel... encima del escritorio que acababa de nacer.
+    //
+    // De ahí las dos cosas que se veían y nadie explicaba: el aviso de "el
+    // dueño de la pantalla MURIO" en cada arranque (era el demo, no el
+    // compositor) y el panel del kernel dibujado sobre la ventana.
+    //
+    // Los demos ya demostraron lo suyo. Ahora se les deja terminar antes de
+    // entregar la pantalla, con tope: si uno se cuelga, el escritorio arranca
+    // igual — esperar para siempre a un programa de ejemplo sería cambiar un
+    // arranque feo por uno que no llega.
+    if timer_ready {
+        crate::ring0::plat::timer::enable();
+        esperar_a_los_demos();
+    }
+
     dash_log("== RING 3 : LA ENTREGA ==");
     row("se cede", |l| {
         l.txt("la PANTALLA, la ENTRADA y una CONSOLA — y Ring 0 deja de pintar");
@@ -1705,10 +1749,6 @@ pub fn main(ctx: &mut BootContext) {
     // phase::main and is entering the shell. If this shows, Ring 0 fully
     // booted on real hardware.
     kbar!(236, 0xFF00_FF00u32);
-
-    if timer_ready {
-        crate::ring0::plat::timer::enable();
-    }
 
     run_shell(ctx);
 }

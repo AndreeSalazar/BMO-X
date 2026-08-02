@@ -453,6 +453,30 @@ impl Pantalla {
         }
     }
 
+    /// **Empuja a la pantalla lo que se acaba de pintar.**
+    ///
+    /// ★ Esto es la otra mitad del write-combining, y sin ella el WC no es una
+    /// optimización: es un bug.
+    ///
+    /// Con memoria WC el CPU **acumula** las escrituras en un búfer y las suelta
+    /// cuando se llena o cuando algo le obliga. Eso es lo que hace que pintar
+    /// sea rápido — y también lo que hace que lo pintado **no llegue** al panel
+    /// si el fotograma acaba con el búfer a medias. El escáner de vídeo lee la
+    /// memoria, no el búfer.
+    ///
+    /// El síntoma, dicho por quien lo sufrió: *"cuando muevo el ratón tengo que
+    /// apuntar bien para que me pinte las escrituras"*. No era el ratón: era que
+    /// mover el ratón genera más escrituras, el búfer se llenaba, y al vaciarse
+    /// aparecía de golpe el texto que se había tecleado antes.
+    ///
+    /// `sfence` ordena: nada de lo de después se ve antes que lo de antes. Es
+    /// una instrucción, se hace **una vez por fotograma**, y convierte el WC en
+    /// lo que promete.
+    #[inline]
+    pub fn vaciar(&self) {
+        unsafe { core::arch::asm!("sfence", options(nostack, preserves_flags)) };
+    }
+
     /// Qué hay AHORA en un píxel. Fuera de la pantalla, negro.
     ///
     /// ★ El framebuffer es memoria de este proceso, así que se puede leer — y

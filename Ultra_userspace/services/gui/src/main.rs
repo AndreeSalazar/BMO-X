@@ -1260,6 +1260,19 @@ pub extern "C" fn _start() -> ! {
             bajo.poner(&p, ax, ay);
         }
 
+        // ★ Y ahora EMPUJARLO a la pantalla.
+        //
+        // El framebuffer está mapeado en write-combining: el CPU acumula las
+        // escrituras y las suelta cuando el búfer se llena. Sin esta línea, lo
+        // pintado en este fotograma se queda esperando a que alguien escriba
+        // más — y el síntoma es exactamente el que apareció en el Ryzen:
+        // teclear no pintaba nada hasta que se movía el ratón, porque mover el
+        // ratón era lo que llenaba el búfer.
+        //
+        // Una instrucción, una vez por fotograma, al final de todo. Ver
+        // `Pantalla::vaciar`.
+        p.vaciar();
+
         bmo::ceder();
     }
 }

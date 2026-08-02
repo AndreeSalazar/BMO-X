@@ -142,10 +142,21 @@ impl Raton {
             // Los tres primeros informes, CRUDOS. Cuatro bytes bastan para ver
             // si el primero es un Report ID constante o unos botones que
             // cambian, y eso es lo que zanja la discusión del formato.
+            // ★ OCHO bytes, no cuatro.
+            //
+            // Con cuatro se vio el Report ID (`01`) y se confirmó el
+            // desplazamiento — pero no se puede decidir lo siguiente: si los
+            // desplazamientos son de **8 o de 16 bits**. Un ratón de juego en
+            // protocolo de informe manda a menudo `dx` y `dy` de 16 bits, y
+            // entonces el byte que se está leyendo como `dy` es en realidad la
+            // mitad alta de `dx` — el eje Y se movería solo al mover en X.
+            //
+            // Con ocho se ve entero: si los bytes 4..7 traen datos, son 16
+            // bits; si están a cero, son 8. Un byte de log zanja una teoría.
             if self.vistos < 3 {
                 let h = bmo_xhci::hal();
                 h.log("[uhid] raton informe:");
-                for i in 0..4usize {
+                for i in 0..8usize {
                     let b = unsafe { core::ptr::read_volatile(self.buf_virt.add(i)) };
                     h.log_u64(" ", b as u64);
                 }

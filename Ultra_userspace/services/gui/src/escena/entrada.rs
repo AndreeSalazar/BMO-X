@@ -182,6 +182,11 @@ pub(crate) fn pintar(p: &bmo::Pantalla, hay_entrada: bool, hay_consola: bool) {
     y += bmo::GLIFO_ALTO + 4;
     p.texto(x, y, "esto no es una API prestada: es la maquina obedeciendo.", ENT_TENUE);
 
+    // ★ Empujar ANTES de esperar. Sin esto la intro se pintaría en el búfer de
+    // write-combining y se quedaría ahí los 1100 ms enteros — o sea que la
+    // pantalla que existe para ser leída sería justo la que no se ve.
+    p.vaciar();
+
     // Se deja leer. Ver la cabecera: es tiempo REAL, no vueltas de bucle.
     esperar_ms(1100);
 }
