@@ -301,6 +301,13 @@ fn c_feature_matrix_runs_correctly() {
         ("unsigned", "unsigned int u = 4294967295; printf(\"%u\", u);", "4294967295"),
         ("long", "long l = 9000000000; printf(\"%d\", l);", "9000000000"),
         ("bitops", "printf(\"%d %d %d\", 12 & 10, 12 | 3, 12 ^ 10);", "8 15 6"),
+        // ★ Dos filas que faltaban de siempre, y el hueco era invisible: el
+        // codegen emitía `~` y los desplazamientos BIEN —el .bef se escribe
+        // sin quejarse— pero el emulador no decodificaba el grupo F7 /2, así
+        // que no había forma de EJECUTARLOS y nadie les puso fila. Lo destapó
+        // C++ al escribir su matriz desde cero (fix en `bmo-lower::emu`).
+        ("bitnot", "printf(\"%d %d\", ~0, ~5);", "-1 -6"),
+        ("shifts", "printf(\"%d %d\", 21 << 1, 84 >> 1);", "42 42"),
         ("neg-unary", "int x=5; printf(\"%d\", -x);", "-5"),
         ("not", "printf(\"%d %d\", !0, !5);", "1 0"),
     ];

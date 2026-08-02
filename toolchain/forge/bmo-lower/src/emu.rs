@@ -1227,11 +1227,27 @@ impl Machine {
                 self.flags_logic(r);
                 self.store(dst, r, ancho);
             }
-            // grupo 3: /3 neg, /6 div, /7 idiv
+            // grupo 3: /2 not, /3 neg, /6 div, /7 idiv
             0xF7 => {
                 let (ext, src) = self.modrm(0, rex_x, rex_b);
                 let v = self.load(src, wide);
                 match ext & 7 {
+                    // `~x`. Faltaba, y el hueco era invisible: el codegen de C
+                    // lo emitía BIEN desde siempre —un `.bef` con `~0` se
+                    // escribe sin quejarse— pero **ninguna matriz lo podía
+                    // ejecutar**, así que ni C ni COBOL tenían una fila con
+                    // `~`. Lo destapó C++ al escribir la suya desde cero.
+                    //
+                    // ★ A diferencia de `neg`, `not` **no toca las banderas**
+                    // en x86-64. Llamar a `flags_logic` aquí sería un no-op
+                    // silencioso el 99% de las veces y una mentira el 1%: un
+                    // `~x` seguido de un salto condicional decidiría por el
+                    // resultado del `not` en vez de por la comparación de
+                    // antes, que es lo que el silicio conserva.
+                    2 => {
+                        let r = !v;
+                        self.store(src, r, ancho);
+                    }
                     3 => {
                         let r = (self.load(src, wide) as i64).wrapping_neg() as u64;
                         self.flags_logic(r);
