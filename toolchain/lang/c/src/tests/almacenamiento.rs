@@ -134,3 +134,39 @@ fn auto_y_register_se_aceptan_y_no_cambian_el_resultado() {
     assert_eq!(run_c(con), "42");
     assert_eq!(run_c(con), run_c(sin));
 }
+
+// ── varargs: los argumentos que no tienen nombre ──────────────────────
+
+/// Declarar `...` y usar los parametros CON nombre. Es la mitad barata, y sin
+/// ella ni siquiera compila una cabecera que declare `printf`.
+#[test]
+fn una_funcion_variadica_compila_y_usa_sus_parametros_con_nombre() {
+    let fuente = "int cuantos(int n, ...) { return n; } \
+                  int main() { printf(\"%d\", cuantos(3, 10, 20, 30)); return 0; }";
+    assert_eq!(run_c(fuente), "3");
+}
+
+/// ★ Y LEERLOS, que es la mitad que importa.
+///
+/// `__va_arg(i)` da el variadico numero `i`. Funciona porque BMO C pasa los
+/// argumentos **por la pila** de derecha a izquierda: los que no tienen nombre
+/// estan seguidos justo detras de los que si. En la convencion de registros de
+/// SysV esto pediria volcar seis registros en el prologo y llevar dos
+/// cursores; aqui es una suma.
+#[test]
+fn una_funcion_variadica_lee_sus_argumentos_sin_nombre() {
+    let fuente = "int suma(int n, ...) { int t; int i; t = 0; \
+                  for (i = 0; i < n; i = i + 1) { t = t + __va_arg(i); } return t; } \
+                  int main() { printf(\"%d\", suma(3, 10, 20, 30)); return 0; }";
+    assert_eq!(run_c(fuente), "60");
+}
+
+/// El indice es de EJECUCION, no una constante: sin eso no se puede recorrer
+/// los argumentos en un bucle — que es exactamente lo que hace un `vsprintf`,
+/// y `vsprintf` es lo que pide `I_Error(fmt, ...)`.
+#[test]
+fn el_indice_de_va_arg_puede_ser_una_variable() {
+    let fuente = "int elige(int cual, ...) { return __va_arg(cual); } \
+                  int main() { printf(\"%d,%d\", elige(0, 7, 9), elige(1, 7, 9)); return 0; }";
+    assert_eq!(run_c(fuente), "7,9");
+}

@@ -305,6 +305,52 @@ impl Parser {
                             Token::Ident(n) => n,
                             t => return Err(CError::new(self.line(),format!("expected member name, got {:?}", t))),
                         };
+                        // ★ `char nombre[8];` — un ARRAY como miembro.
+                        //
+                        // Faltaba, y el error que salía —"expected type, got
+                        // OpenBracket"— mandaba a mirar el tipo, que estaba
+                        // perfecto. La sonda lo encontró en la union, pero
+                        // fallaba **igual en un struct**: es el declarador, no
+                        // el agregado.
+                        //
+                        // El tamaño y el alineado salen solos: `stack_size()`
+                        // de un `Array(t,n)` ya es `t*n`, y el reparto de
+                        // offsets se calcula con eso.
+                        let mtype = if *self.peek() == Token::OpenBracket {
+                            self.advance();
+                            let n = match self.advance() {
+                                Token::IntLit(v) if v > 0 => v as u32,
+                                t => return Err(CError::new(self.line(), format!(
+                                    "'{mname}[]': la medida de un array dentro de un agregado \
+                                     tiene que ser un numero positivo, no {t:?}"))),
+                            };
+                            self.expect(&Token::CloseBracket)?;
+                            TypeSpec::Array(Box::new(mtype), n)
+                        } else {
+                            mtype
+                        };
+                        // ★ Campo de bits: `unsigned a:3;`.
+                        //
+                        // Se ACEPTA la sintaxis y se le da al campo su tipo
+                        // entero entero — **sin empaquetar**. Y se dice aquí
+                        // por qué, porque es una decisión y no un descuido:
+                        // empaquetar de verdad obliga a que cada lectura lleve
+                        // su desplazamiento y su máscara, y cada escritura sea
+                        // leer-modificar-escribir. Eso es correcto sólo si se
+                        // hace entero; a medias da campos que se pisan.
+                        //
+                        // Mientras no esté, un `unsigned a:3` ocupa sus cuatro
+                        // bytes y **guarda lo que le metas**: el programa hace
+                        // lo que dice, sólo que la estructura mide más. Lo que
+                        // NO vale es un layout binario ajeno — ver BRECHA.md.
+                        if *self.peek() == Token::Colon {
+                            self.advance();
+                            match self.advance() {
+                                Token::IntLit(_) => {}
+                                t => return Err(CError::new(self.line(), format!(
+                                    "'{mname}:': la anchura de un campo de bits es un numero, no {t:?}"))),
+                            }
+                        }
                         self.skip_semicolon();
                         members.push(StructMember { typ: mtype, name: mname });
                     }
@@ -725,7 +771,17 @@ impl Parser {
         self.advance();
         let mut params = Vec::new();
         let mut anonimos = 0usize;
+        let mut variadica = false;
         while *self.peek() != Token::CloseParen && *self.peek() != Token::Eof {
+            // ★ `...` — el resto de los argumentos, sin nombre ni tipo.
+            //
+            // Va SIEMPRE al final, y por eso se corta el bucle aquí: lo que
+            // viniera detrás no sería un parámetro de nadie.
+            if *self.peek() == Token::Puntos {
+                self.advance();
+                variadica = true;
+                break;
+            }
             if *self.peek() == Token::Void && (self.pos + 1 >= self.tokens.len() || self.tokens[self.pos + 1] == Token::CloseParen) {
                 self.advance(); break;
             }
@@ -824,7 +880,7 @@ impl Parser {
                 }
             }
         }
-        Ok(Tope::Funcion(Function { ret_type, name, params, var_count, var_names, body, line: start_line }))
+        Ok(Tope::Funcion(Function { ret_type, name, params, var_count, var_names, body, line: start_line, variadica }))
     }
 
     /// **Una `static` dentro de una función.**

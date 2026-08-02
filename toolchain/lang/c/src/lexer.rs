@@ -29,6 +29,8 @@ pub(crate) enum Token {
     LAnd, LOr,
     Shl, Shr,
     Arrow, Dot,
+    /// `...` — el resto de los argumentos.
+    Puntos,
     Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign,
     ShlAssign, ShrAssign, AndAssign, XorAssign, OrAssign,
     Eof,
@@ -125,7 +127,13 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                 } else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::Ge); i += 2; }
                 else { t.push(Token::Gt); i += 1; }
             }
-            '.' => { t.push(Token::Dot); i += 1; }
+            // `...` antes que `.`: el más largo primero, o `...` saldría como
+            // tres accesos a campo y el error hablaría de un campo sin nombre.
+            '.' => {
+                if i + 2 < c.len() && c[i+1] == '.' && c[i+2] == '.' {
+                    t.push(Token::Puntos); i += 3;
+                } else { t.push(Token::Dot); i += 1; }
+            }
             '=' => {
                 if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::EqEq); i += 2; } else { t.push(Token::Assign); i += 1; }
             }

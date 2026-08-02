@@ -22,30 +22,22 @@ Medido el **2026-08-02**.
 
 ## El numero
 
-**26 de 29** sondas del lenguaje compilan.
-
-Lo que falta, con lo que cuesta que falte:
-
-| Falta | Era | Por que importa | Lo que dice BMO C |
-|---|---|---|---|
-| **array dentro de union** | C89 | DOOM: la union de datos del WAD | `error:1: expected type, got OpenBracket` |
-| **bitfields** | C89 | poco usado en DOOM; caro de emitir | `error:1: expected type, got Colon` |
-| **varargs (...)** | C89 | DOOM: I_Error(fmt, ...). Es el hueco conocido | `error:1: expected type, got Dot` |
+**31 de 31** sondas del lenguaje compilan.
 
 ## El lenguaje, sonda a sonda
 
 | Caracteristica | Era | ¿Compila? | Para que |
 |---|---|---|---|
-| array dentro de union | C89 | **NO** | DOOM: la union de datos del WAD |
-| bitfields | C89 | **NO** | poco usado en DOOM; caro de emitir |
-| varargs (...) | C89 | **NO** | DOOM: I_Error(fmt, ...). Es el hueco conocido |
 | #define con argumentos | C89 | **si** | DOOM: FixedMul, MAXPLAYERS... por todas partes |
 | #if aritmetico | C89 | **si** | DOOM: #if defined(NORMALUNIX) |
 | #include propio | C89 | **si** | DOOM son ~50 ficheros con sus cabeceras |
 | aritmetica de punteros | C89 | **si** | DOOM: recorre el framebuffer con punteros |
 | array de char inicializado | C89 | **si** | DOOM: tablas de nombres de sprite |
 | array de struct | C89 | **si** | DOOM: tablas de estados, sprites, sectores |
+| array dentro de struct | C89 | **si** | DOOM: `char nombre[8]` en cada lump del WAD |
+| array dentro de union | C89 | **si** | DOOM: la union de datos del WAD |
 | auto | C89 | **si** | redundante desde 1978; en C23 cambio de significado |
+| bitfields | C89 | **si** | poco usado en DOOM; caro de emitir |
 | enum | C89 | **si** | esencial |
 | extern | C89 | **si** | declarar sin definir; obligatorio si hay varios ficheros |
 | for con declaracion | C99 | **si** | comodidad; DOOM es C89 y no lo necesita |
@@ -65,6 +57,8 @@ Lo que falta, con lo que cuesta que falte:
 | typedef | C89 | **si** | DOOM define fixed_t, mobj_t... todo pasa por aqui |
 | union | C89 | **si** | DOOM la usa en sus thinkers |
 | unsigned char | C89 | **si** | DOOM: el framebuffer es byte[] |
+| varargs: declarar (...) | C89 | **si** | DOOM: I_Error(fmt, ...) |
+| varargs: leerlos | C89 | **si** | sin esto, `...` compila y no sirve para nada |
 
 ## libc — y el destinatario de cada funcion
 

@@ -88,6 +88,11 @@ struct Codegen {
     var_offsets: HashMap<String, (i32, TypeSpec)>,
     // bytes de stack locales de la función actual (arrays/structs con tamaño REAL)
     frame_size: i32,
+    /// ¿La función que se está emitiendo declara `...`?
+    es_variadica: bool,
+    /// Ranuras que ocupan sus parámetros CON NOMBRE. Justo detrás empiezan los
+    /// variádicos, porque los argumentos van seguidos en la pila.
+    ranuras_con_nombre: i32,
     struct_layouts: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
     label_positions: HashMap<String, usize>,
@@ -132,6 +137,8 @@ impl Codegen {
             break_target: Vec::new(),
             continue_target: Vec::new(), var_offsets: HashMap::new(),
             frame_size: 0,
+            es_variadica: false,
+            ranuras_con_nombre: 0,
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
             label_positions: HashMap::new(), goto_relocs: Vec::new(),
             entry_offset: 0, is_entry_function: false,
@@ -827,6 +834,14 @@ impl Codegen {
     // ---- Function emit ----
     fn emit_function(&mut self, func: &Function) {
         self.build_var_map(&func.params, &func.var_names, func);
+        // Lo que `__va_arg` necesita saber, y sólo se sabe aquí: si esta
+        // función admite variádicos y dónde acaban los que tienen nombre.
+        self.es_variadica = func.variadica;
+        self.ranuras_con_nombre = func
+            .params
+            .iter()
+            .map(|p| agregados::ranuras(self.type_stack_size(&p.typ)) as i32)
+            .sum();
         // prologue
         self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]); // push rbp; mov rbp, rsp
         // Copiar los parámetros a su ranura local. Hoy es un no-op —
@@ -1761,6 +1776,44 @@ impl Codegen {
     /// la tabla justo antes de los bytes de la instrucción. Bytes EXACTOS,
     /// sin caja negra: si el nombre o la aridad no cuadran → error, no adivina.
     fn emit_intrinsic(&mut self, name: &str, args: &[Expr]) {
+        // ★ `__va_arg(i)` — el argumento variádico número `i`, contando desde 0
+        // después de los que tienen nombre.
+        //
+        // No sale de la tabla de sem-asm porque no es una instrucción del CPU:
+        // es aritmética sobre el marco de pila, y depende de CUÁNTOS parámetros
+        // con nombre tiene la función que lo pregunta.
+        //
+        // Y es aritmética y no ABI porque BMO C pasa los argumentos **por la
+        // pila**, de derecha a izquierda. En la convención de registros de
+        // SysV esto obligaría a volcar seis registros en el prólogo y a llevar
+        // dos cursores (registros y pila); aquí los argumentos ya están
+        // seguidos en memoria y el número `i` es un desplazamiento. La
+        // convención más vieja resultó ser la que hace los varargs triviales.
+        //
+        // El índice es de EJECUCIÓN, no una constante: sin eso no se puede
+        // recorrer los argumentos en un bucle, que es justo lo que hace un
+        // `vsprintf` — y un `vsprintf` es lo que pide `I_Error(fmt, ...)`.
+        if name == "va_arg" {
+            if args.len() != 1 {
+                self.errors.push(
+                    "__va_arg(i) espera UN argumento: el indice del variadico".into());
+                return;
+            }
+            if !self.es_variadica {
+                self.errors.push(
+                    "__va_arg() en una funcion que no declara '...': no hay argumentos \
+                     variadicos que leer".into());
+                return;
+            }
+            self.emit_expr(&args[0]);                       // rax = i
+            let base = 16 + self.ranuras_con_nombre * 8;    // primer variádico
+            // lea rdx, [rbp + base]
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x95]);
+            self.code.extend_from_slice(&base.to_le_bytes());
+            // mov rax, [rdx + rax*8]
+            self.code.extend_from_slice(&[0x48, 0x8B, 0x04, 0xC2]);
+            return;
+        }
         let Some(def) = self.intrinsics.get(name) else {
             self.errors.push(format!(
                 "intrinsic __{name}() no existe en la tabla sem-asm (tables/arch/x86_64/intrinsics.toml)"));

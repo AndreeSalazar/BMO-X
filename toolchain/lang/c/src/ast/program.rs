@@ -26,6 +26,9 @@ pub struct Function {
     pub var_names: Vec<String>,
     pub body: Vec<Stmt>,
     pub line: usize,
+    /// ¿Declara `...`? Lo necesita el codegen para saber si `__va_arg()` tiene
+    /// algo que leer — y para poder DECIRLO cuando no lo tiene.
+    pub variadica: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

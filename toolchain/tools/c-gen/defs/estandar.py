@@ -93,8 +93,19 @@ SONDAS = {
     # existe la cabecera. Aqui se pregunta solo por la SINTAXIS del `...`, que
     # es lo que el compilador tiene que aceptar antes de que la cabecera tenga
     # sentido siquiera.
-    "varargs (...)": ("C89", "DOOM: I_Error(fmt, ...). Es el hueco conocido",
-                      "int suma(int n,...){return n;}\nint main(){return suma(1,2);}"),
+    "varargs: declarar (...)": ("C89", "DOOM: I_Error(fmt, ...)",
+                                "int suma(int n,...){return n;}\nint main(){return suma(1,2);}"),
+    # ★ Declararlos y LEERLOS son dos sondas, y hacen falta las dos. Aceptar
+    # `...` sin poder leer los argumentos compilaria media libc y no haria
+    # ninguna: la sonda de arriba se pondria verde y el informe estaria
+    # exagerando lo que hay.
+    "varargs: leerlos": ("C89", "sin esto, `...` compila y no sirve para nada",
+                         "int suma(int n,...){int t;int i;t=0;"
+                         "for(i=0;i<n;i=i+1){t=t+__va_arg(i);}return t;}"
+                         "\nint main(){return suma(2,3,4);}"),
+    "array dentro de struct": ("C89", "DOOM: `char nombre[8]` en cada lump del WAD",
+                               "struct S{int i;char c[4];};"
+                               "\nint main(){struct S s;s.c[0]=7;return s.c[0];}"),
     # Y estas dos separadas: un prototipo con el parametro SIN nombre es legal
     # en C y es como los escribe DOOM, pero si falla hay que saber si lo que
     # falta es el prototipo o el nombre que falta.

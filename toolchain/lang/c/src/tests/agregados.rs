@@ -74,3 +74,44 @@ fn devolver_un_struct_por_valor_se_rechaza_con_motivo() {
     .expect_err("devolver un struct todavia no se compila");
     assert!(err.message.contains("haz"), "mensaje: {}", err.message);
 }
+
+// ── Arrays DENTRO de un agregado ──────────────────────────────────────
+//
+// La sonda de c-gen los encontro en una `union`, pero fallaban **igual en un
+// struct**: no era el agregado, era el declarador. Un `char nombre[8]` dentro
+// de una estructura es lo primero que trae cualquier formato de fichero — DOOM
+// nombra asi cada lump de su WAD.
+
+/// El array convive con los otros campos y **no los pisa**: es lo que prueba
+/// que el reparto de offsets contó su tamaño entero y no el de un elemento.
+#[test]
+fn un_struct_puede_llevar_un_array_dentro() {
+    let fuente = "struct S { int i; char c[4]; int z; }; \
+                  int main() { struct S s; s.i = 11; s.z = 22; \
+                  s.c[0] = 7; s.c[3] = 9; \
+                  printf(\"%d,%d,%d,%d\", s.i, s.c[0], s.c[3], s.z); return 0; }";
+    assert_eq!(run_c(fuente), "11,7,9,22");
+}
+
+/// Y en una union, donde el array **comparte** el sitio con lo demas: escribir
+/// el entero se tiene que ver por los bytes. Es la razon de existir de una
+/// union, y lo que un test de compilacion no mira.
+#[test]
+fn una_union_reparte_el_mismo_sitio_entre_el_entero_y_los_bytes() {
+    let fuente = "union U { int i; char c[4]; }; \
+                  int main() { union U u; u.i = 0; u.c[0] = 65; \
+                  printf(\"%d\", u.i); return 0; }";
+    assert_eq!(run_c(fuente), "65");
+}
+
+/// Un campo de bits se ACEPTA y **guarda lo que le metas**. No esta
+/// empaquetado —la estructura mide mas de lo que mediria en GCC— y eso esta
+/// dicho en BRECHA.md: lo que no vale es un layout binario ajeno, no el
+/// programa.
+#[test]
+fn un_campo_de_bits_se_acepta_y_guarda_su_valor() {
+    let fuente = "struct F { unsigned a:3; unsigned b:5; }; \
+                  int main() { struct F f; f.a = 5; f.b = 17; \
+                  printf(\"%d,%d\", f.a, f.b); return 0; }";
+    assert_eq!(run_c(fuente), "5,17");
+}
