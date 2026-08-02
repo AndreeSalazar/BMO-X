@@ -82,8 +82,8 @@ descarta con nombre propio.
 |---|---|---|---|
 | puts | `stdio.h` | **NO** | una linea y salto; trivial encima de printf |
 | sprintf | `stdio.h` | **NO** | DOOM formatea en buffers, no solo en pantalla |
-| malloc | `stdlib.h` | **NO** | ★ DOOM pide UN bloque grande (Z_Zone) y se lo administra el |
-| free | `stdlib.h` | **NO** | pareja de malloc; con Z_Zone se llama poquisimo |
+| malloc | `stdlib.h` | **si** | ★ DOOM pide UN bloque grande (Z_Zone) y se lo administra el |
+| free | `stdlib.h` | **si** | pareja de malloc; con Z_Zone se llama poquisimo |
 | memset | `string.h` | **si** | limpiar el framebuffer y las estructuras |
 | memcpy | `string.h` | **si** | ★ el blit de cada fotograma pasa por aqui |
 | strlen | `string.h` | **si** | esencial en cuanto hay texto |

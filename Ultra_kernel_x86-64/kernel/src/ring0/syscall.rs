@@ -86,6 +86,9 @@ const TASK_OP_CONSOLE_READ: u64 = 0x0F;
 /// con `TASK_OP_RUTA` — el MISMO renglon que `EJECUTAR` y que `DIR_ABRIR`.
 /// Ver `ring0/archivo.rs`.
 const TASK_OP_ARCHIVO_ABRIR: u64 = 0x10;
+/// Pedir un bloque de memoria. Espejo de `bmo_abi::…::TASK_OP_MEMORIA_PEDIR`
+/// — el drift guard del build comprueba que los dos digan lo mismo.
+const TASK_OP_MEMORIA_PEDIR: u64 = 0x15;
 /// Igual, pero para ESCRIBIR. Son dos operaciones y no un argumento de modo
 /// porque abrir para escribir puede fallar por motivos que abrir para leer no
 /// tiene —volumen de solo lectura, nombre que no es 8.3— y mezclarlas
@@ -405,6 +408,19 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Err(code) => BmoStatus::err(code),
             }
         }
+        // ★ Pedir memoria. Mismo comentario de CR3 que el framebuffer: durante
+        // el syscall sigue cargado el espacio del llamante, que es justo donde
+        // hay que mapear.
+        TASK_OP_MEMORIA_PEDIR => {
+            match crate::ring0::obj::memoria::pedir(
+                scheduler::current_pid(),
+                crate::ring0::mm::vmm::read_cr3(),
+                arg0,
+            ) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
         TASK_OP_RUTA => {
             ruta_push(scheduler::current_pid(), arg0);
             BmoStatus::ok_value(0)
@@ -588,6 +604,19 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // objeto no responde.
             cap::KIND_ARCHIVO => {
                 match crate::ring0::obj::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
+            // Un bloque de memoria sólo contesta dos cosas: dónde está y
+            // cuánto es. Escribir en él no pasa por aquí — está MAPEADO, así
+            // que el proceso escribe con un `mov` y el kernel no se entera.
+            // Ése es el punto: un syscall por byte sería justo lo contrario
+            // de entregar memoria.
+            cap::KIND_MEMORIA => {
+                match crate::ring0::obj::memoria::operacion(
+                    resolved.object, frame.rsi, scheduler::current_pid(),
+                ) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }

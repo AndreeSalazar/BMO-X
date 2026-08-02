@@ -29,6 +29,13 @@ pub const CHANNEL_VA_BASE: u64 = 0x0000_0000_C000_0000;
 /// Por encima de los estuarios y con sitio de sobra: 4K x 4K x 4 B son 64 MiB
 /// y aqui hay un hueco entero de 1 GiB antes del limite del canonical bajo.
 pub const FRAMEBUFFER_VA_BASE: u64 = 0x0000_0000_D000_0000;
+/// Donde empiezan los bloques que un proceso PIDE (`KIND_MEMORIA`).
+///
+/// Detrás del framebuffer y con 256 MiB de hueco antes: el tope por petición
+/// son 64 MiB y hay cuatro peticiones, así que el peor caso cabe entero sin
+/// acercarse a nada. Cada proceso avanza su propio cursor desde aquí — dos
+/// bloques del mismo proceso no se pisan y cada uno tiene su rango.
+pub const MEMORIA_VA_BASE: u64 = 0x0000_0000_E000_0000;
 
 static mut KERNEL_PML4: u64 = 0;
 

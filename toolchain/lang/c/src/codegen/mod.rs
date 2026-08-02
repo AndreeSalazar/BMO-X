@@ -1208,6 +1208,63 @@ impl Codegen {
                 memoria::absoluto(&mut self.code);
                 Some(())
             }
+            // ── malloc / free ────────────────────────────────────────
+            //
+            // ★ Cada `malloc` es **una petición al kernel**, no un trozo de un
+            // montón. Y eso NO es un atajo: es lo que hay hoy, dicho como es.
+            //
+            // El kernel entrega bloques enteros y no sabe repartirlos — a
+            // propósito, porque el asignador es política y la política vive en
+            // Ring 3. Un montón de verdad (bump + listas libres) se escribe
+            // encima de `bmo::Memoria`, y ése es el siguiente paso.
+            //
+            // **Límite declarado**: el kernel acepta CUATRO peticiones por
+            // proceso, porque no hay forma de devolver memoria y ese número es
+            // el de fugas posibles. Un quinto `malloc` devuelve **0**, que es
+            // lo que un programa de C ya sabe comprobar. Falla pronto y con
+            // un valor que significa algo, en vez de agotar la RAM callando.
+            //
+            // Para el caso que motivó todo esto —DOOM pide su bloque UNA vez y
+            // se lo administra con `Z_Zone`— esto es exactamente suficiente.
+            ("malloc", 1) => {
+                use bmo_sem_asm::x86_64::Reg;
+                self.emit_expr(&args[0]);                          // rax = bytes
+                self.emit_asm(|a| { a.mov_reg(Reg::Rdx, Reg::Rax).unwrap(); });
+                // rdi = CURRENT_TASK, rsi = OP_MEMORIA_PEDIR
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rdi, 0xFFFF_FFFF_FFFF_FFFE).unwrap(); });
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rsi, 0x15).unwrap(); });
+                self.code.extend_from_slice(&[0xB8, 0, 0, 0, 0]);  // mov eax, NR_INVOKE(0)
+                self.emit_call_to_syscall_stub();
+                // El handle vuelve en rdx (`value`); rax lleva el código.
+                // Si el código no es 0, no hay bloque: se devuelve 0.
+                self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
+                self.code.extend_from_slice(&[0x75, 0x1D]);        // jnz -> devolver 0
+                // Segunda llamada: MEM_OP_BASE sobre el handle.
+                self.emit_asm(|a| { a.mov_reg(Reg::Rdi, Reg::Rdx).unwrap(); });
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rsi, 0x01).unwrap(); });
+                self.code.extend_from_slice(&[0x48, 0x31, 0xD2]);  // xor rdx, rdx
+                self.code.extend_from_slice(&[0xB8, 0, 0, 0, 0]);  // mov eax, NR_INVOKE
+                self.emit_call_to_syscall_stub();
+                self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
+                self.code.extend_from_slice(&[0x75, 0x05]);        // jnz -> 0
+                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);  // mov rax, rdx (la base)
+                self.code.extend_from_slice(&[0xEB, 0x03]);        // jmp fin
+                self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);  // xor rax, rax
+                Some(())
+            }
+            // `free` NO devuelve nada al kernel — no hay forma, y decirlo aquí
+            // vale más que emitir una llamada que no haría nada. El bloque vive
+            // hasta que el proceso muere, y entonces se destruye su espacio de
+            // direcciones entero.
+            //
+            // Se acepta porque el código ajeno lo llama y quitarlo a mano de
+            // 35.000 líneas no es una opción. Evalúa su argumento, por si tiene
+            // efectos secundarios.
+            ("free", 1) => {
+                self.emit_expr(&args[0]);
+                self.emit_xor_eax();
+                Some(())
+            }
             _ => None,
         }
     }

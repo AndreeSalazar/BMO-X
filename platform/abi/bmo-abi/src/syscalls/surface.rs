@@ -214,6 +214,20 @@ pub const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
 /// Reclama la pantalla. También exclusivo.
 pub const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
 
+/// **Pide un bloque de memoria.** `arg0` = bytes. Devuelve el handle de una
+/// capability `KIND_MEMORIA`; la dirección se pregunta con `MEM_OP_BASE`.
+///
+/// ★ NO es un `malloc`: entrega **un bloque grande, entero y contiguo**, y no
+/// hay forma de devolverlo. El asignador no es trabajo del kernel — se escribe
+/// encima, en Ring 3, con la política que quiera cada lenguaje. El caso que lo
+/// decidió es DOOM: pide ~8 MiB una vez y se los administra él.
+pub const TASK_OP_MEMORIA_PEDIR: u64 = 0x15;
+
+/// Dónde empieza el bloque, en el espacio del proceso que lo pidió.
+pub const MEM_OP_BASE: u64 = 0x01;
+/// Cuántos bytes se le han entregado en total a este proceso.
+pub const MEM_OP_BYTES: u64 = 0x02;
+
 /// Dónde está el puntero y qué botones tiene: `(x << 32) | (y << 16) | botones`.
 /// Ya viene recortado al panel: el kernel es quien sabe de qué tamaño es.
 pub const INPUT_OP_PUNTERO: u64 = 0x01;

@@ -47,6 +47,9 @@ pub const KIND_DIRECTORIO: u8 = 0x40;
 /// pida — no por una comprobacion de permisos, sino porque en ese modo el
 /// objeto no tiene donde escribir.
 pub const KIND_ARCHIVO: u8 = 0x41;
+/// Un bloque de memoria que el proceso PIDIO. Ver `obj::memoria`: es memoria
+/// entregada entera, no un asignador.
+pub const KIND_MEMORIA: u8 = 0x50;
 pub const KIND_CHANNEL: u8 = 0x60;
 /// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
 pub const KIND_ENDPOINT: u8 = 0x70;
@@ -229,6 +232,10 @@ pub fn revoke_all(pid: u32) {
     // revienta no deja la maquina ciega.
     crate::ring0::obj::fb::proceso_muerto(pid);
     crate::ring0::obj::input::proceso_muerto(pid);
+    // Sus bloques de memoria no hay que desmapearlos —el espacio entero se
+    // destruye—, pero SÍ hay que soltar el contador de peticiones: sin esto un
+    // pid reutilizado heredaría las del muerto y no podría pedir nada.
+    crate::ring0::obj::memoria::proceso_muerto(pid);
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
     crate::ring0::obj::consola::proceso_muerto(pid);

@@ -36,6 +36,9 @@ pub mod obj {
     pub mod endpoint;
     pub mod fb;
     pub mod input;
+    /// `KIND_MEMORIA`: bloques que un proceso PIDE. No es un asignador — ver
+    /// la cabecera del módulo.
+    pub mod memoria;
 }
 
 /// Procesos: admitirlos, planificarlos, lanzarlos desde el disco.
