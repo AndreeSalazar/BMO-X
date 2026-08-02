@@ -182,20 +182,27 @@ Y una honestidad sobre el navegador, que es la razón por la que C++ interesa:
 O sea que C++ no es el camino al navegador: es el camino a **escribir cosas
 grandes sin que se hagan ingobernables**. Que es otra cosa, y también vale.
 
+★ El censo completo de **qué aplicación desbloquea qué pieza del sistema** —con
+la superficie de BMO-X medida, y por qué las palancas que más desbloquean no
+piden C++— está en [`docs/QUE_DESBLOQUEA.md`](../../../docs/QUE_DESBLOQUEA.md).
+
 ## El orden
 
 Empieza en **0**, y el 0 no es el que estaba escrito aquí antes. "Que compile
 una clase" no puede ser el primer paso de algo que no emite bytes para un
 fichero vacío.
 
-0. ★ **Que emita un byte.** Tirar `ir_emit.rs` y `IrModule`, y enchufar la
-   salida a `bmo_c_front::ast::Program` → `codegen::compile_to_bef_bytes`.
-   Prueba de vida: `int main(){return 42;}` **corriendo** en el emulador.
-   Sin esto no hay nada que medir y toda sonda diría "NO" por el mismo motivo.
-1. **Lexer y parser de verdad** — tokens, precedencia, y **rechazo con motivo**
-   en lugar del `pos += 1` silencioso de hoy. Aquí se decide de una vez que el
-   parser y la tabla de símbolos se hablan: sin eso, `a<b>(c)` no se puede
-   desambiguar (ver `MAESTROS.md`).
+0. ✅ **HECHO — que emita un byte.** Tirados `ir_emit.rs` y `IrModule`; la
+   salida va a `bmo_c_front::ast::Program` → `codegen::compile_to_bef_bytes`.
+   El test que lo sostiene: **el BEF de C++ es byte a byte idéntico al de BMO
+   C** para la misma fuente. Si divergen, o dejó de heredar o se combinaron.
+1. ✅ **HECHO (la mitad) — lexer y parser de verdad.** Tokens con línea real,
+   la escalera completa de precedencia, ámbitos anidados, y **ninguna rama que
+   descarte tokens**. La decisión cara quedó tomada: **el parser y la tabla de
+   símbolos se hablan** — sin eso `a<b>(c)` no se desambigua (ver
+   `MAESTROS.md`), y el punto de decisión ya existe aunque el conjunto de
+   plantillas esté vacío hasta el paso 6.
+   ⏳ **Falta el preprocesador** (`#include`, `#define`): se rechaza con motivo.
 2. **Clase con métodos** — el desazucarado `P::doble()` → `P.doble(P* this)`.
 3. **Constructor y destructor (RAII)**, que es la razón de existir del lenguaje:
    una lista de limpieza por ámbito, recorrida al revés en **cada** salida.
