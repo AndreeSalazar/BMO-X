@@ -1,11 +1,12 @@
 """Escribe `toolchain/lang/cpp/BRECHA.md`: el alcance de BMO C++.
 
 Hermano de `generate.py`, y a propósito **sin sondas**: el frontend de C++ de
-hoy son ~900 líneas que no sobreviven a una clase con dos métodos (desborda la
-pila). Sondearlo daría una tabla de "NO" sin información.
+hoy no emite un solo byte para NINGUNA entrada, ni siquiera un fichero vacío
+(ver el diagnóstico medido en la cabecera del documento). Sondearlo daría una
+tabla de "NO" sin información.
 
 Lo que sí aporta hoy es el **alcance**: qué entra, qué no, y por qué. Cuando el
-frontend aguante una clase, este guion crece con sondas como el de C.
+frontend emita bytes, este guion crece con sondas como el de C.
 
 Uso:
     py toolchain/tools/c-gen/generate_cpp.py
@@ -29,17 +30,50 @@ CABECERA = """# BRECHA — el alcance de BMO C++
 
 ## De dónde se parte, dicho sin adornos
 
-El frontend de C++ de hoy son **~900 líneas** y **desborda la pila** con esto:
+★ **Diagnóstico corregido el 2026-08-02.** Antes aquí ponía que el frontend
+"desborda la pila con una clase con dos métodos", lo que apuntaba al parser.
+**No es el parser.** Medido:
 
-```cpp
-class P { public: int x; int doble() { return x * 2; } };
-int main() { P p; p.x = 21; return p.doble(); }
+```
+$ bmo-cpp-front vacio.cpp        # cero bytes de entrada
+thread 'main' has overflowed its stack
 ```
 
-Eso no es un defecto que ocultar: es el punto de partida. Y explica por qué
-este documento **no lleva sondas** todavía, al revés que el de C — sondear un
-frontend que no compila una clase daría una tabla de "NO" sin información.
-Cuando aguante una clase, este guion crece con sondas.
+Desborda con un fichero **vacío**, con `class P{};` y con
+`int main(){return 1;}`. La causa está medida y es otra:
+
+| | bytes |
+|---|---|
+| `IrStmt` | 24 |
+| `IrBlock` (256 sentencias en array fijo) | 6 152 |
+| `IrFunction` (32 bloques) | 198 480 |
+| **`IrModule` (64 funciones)** | **12 711 184 = 12,12 MB** |
+
+`Emitter::new()` construye **12 MB en la pila**, por valor, antes de mirar el
+AST. Son arrays de tamaño fijo diseñados para `no_std` en Ring 0, instanciados
+en una herramienta que corre en el anfitrión.
+
+★ **Y arreglarlo no serviría de nada, que es lo grave**: `IrModule` **no tiene
+un solo consumidor en todo el repo**. Nada lo convierte en bytes. En C y COBOL
+`compile_to_ir` es vestigial —su camino real es `codegen::compile_to_bef_bytes`—
+pero en C++ es el **único** camino. Se ve en el manifiesto: `cpp/Cargo.toml`
+depende sólo de `bmo-abi`, ni de `bmo-sem-asm` ni de `bmo-lower`. **No hay
+emisor porque no se enchufó ninguno.**
+
+Estado real: **1 099 líneas** (C: 10 115), **0 tests** (C: 216), **0 ficheros
+`.cpp`** en el repo, **0 bytes emitidos jamás**. El parser además es carácter a
+carácter sin lexer, sin precedencia de operadores, y `parse_body` **se salta en
+silencio** todo lo que no reconoce — lo que viola de frente la regla de BMO:
+*nada que compile y no haga lo que dice*.
+
+Eso no es un defecto que ocultar: es el punto de partida honesto. Y explica por
+qué este documento **no lleva sondas** todavía, al revés que el de C — sondear
+un frontend que no emite bytes daría una tabla de "NO" sin información. Cuando
+emita, este guion crece con sondas.
+
+El estudio de cómo resuelven esto Cfront, GCC, LLVM y MSVC está en
+[`MAESTROS.md`](MAESTROS.md); el contrato con BMO C, en
+[`HERENCIA.md`](HERENCIA.md).
 
 ## La pregunta que decide cada fila
 
@@ -74,17 +108,36 @@ Y una honestidad sobre el navegador, que es la razón por la que C++ interesa:
 O sea que C++ no es el camino al navegador: es el camino a **escribir cosas
 grandes sin que se hagan ingobernables**. Que es otra cosa, y también vale.
 
-## El orden si algún día se retoma
+## El orden
 
-1. **Que compile una clase con métodos** — hoy desborda la pila. Todo lo demás
-   depende de esto.
-2. **Constructor y destructor (RAII)**, que es la razón de existir del lenguaje.
-3. **Mangling**, en cuanto haya sobrecarga: dos funciones distintas necesitan
-   símbolos distintos y no hay forma de esquivarlo.
-4. **Virtuales y vtable** — el AST ya las conoce.
-5. **Plantillas básicas**, que es donde C++ deja de ser C con azúcar.
+Empieza en **0**, y el 0 no es el que estaba escrito aquí antes. "Que compile
+una clase" no puede ser el primer paso de algo que no emite bytes para un
+fichero vacío.
 
-`new`/`delete` esperan a la **capability de memoria**, igual que `malloc`.
+0. ★ **Que emita un byte.** Tirar `ir_emit.rs` y `IrModule`, y enchufar la
+   salida a `bmo_c_front::ast::Program` → `codegen::compile_to_bef_bytes`.
+   Prueba de vida: `int main(){return 42;}` **corriendo** en el emulador.
+   Sin esto no hay nada que medir y toda sonda diría "NO" por el mismo motivo.
+1. **Lexer y parser de verdad** — tokens, precedencia, y **rechazo con motivo**
+   en lugar del `pos += 1` silencioso de hoy. Aquí se decide de una vez que el
+   parser y la tabla de símbolos se hablan: sin eso, `a<b>(c)` no se puede
+   desambiguar (ver `MAESTROS.md`).
+2. **Clase con métodos** — el desazucarado `P::doble()` → `P.doble(P* this)`.
+3. **Constructor y destructor (RAII)**, que es la razón de existir del lenguaje:
+   una lista de limpieza por ámbito, recorrida al revés en **cada** salida.
+4. **Mangling**, en cuanto haya sobrecarga. Y el ABI se escribe **el mismo día**
+   — la lección de MSVC.
+5. **Virtuales y vtable** — con la herencia virtual y múltiple descartadas, es
+   una tabla de punteros a función y un `vptr` en el offset 0.
+6. **Plantillas básicas** por monomorfización, que es donde C++ deja de ser C
+   con azúcar.
+
+Y desde el paso 0, **una matriz de conformidad de C++** sobre `bmo_lower::emu`,
+con la misma regla que la de C: *al añadir una característica al codegen, se le
+añade su fila*. Si no ejecuta lo que dice soportar, no lo soporta.
+
+`new`/`delete` esperan a la **capability de memoria**, igual que `malloc`. Y
+devolver objetos por valor espera al `sret`, que es deuda de **C**, no de C++.
 """
 
 
