@@ -221,6 +221,26 @@ impl Codegen {
             self.emit_function(func);
         }
         self.is_entry_function = false;
+        // ★ Sin `main` no hay programa.
+        //
+        // Antes, un fichero vacío —o uno con funciones pero sin punto de
+        // entrada— producía un BEF de 8 240 bytes con `entry_offset = 0`, o
+        // sea apuntando a lo primero que hubiera en la sección de código. Se
+        // escribía sin quejarse. Un binario con un punto de entrada inventado
+        // es peor que no tener binario: falla en el metal y no en la
+        // compilación, que es donde se puede leer el motivo.
+        //
+        // Ring 0 se exceptúa porque un módulo de kernel puede no tener `main`
+        // — hoy nadie construye ese perfil, pero la puerta se deja abierta
+        // con su motivo en vez de cerrada por accidente.
+        if self.target == TargetProfile::Ring3App
+            && !program.functions.iter().any(|f| f.name == "main")
+        {
+            self.errors.push(
+                "no hay funcion 'main': un programa de Ring 3 necesita punto de entrada"
+                    .to_string(),
+            );
+        }
         // Emit syscall stub only for Ring 3 (Ring 0 uses inline syscall)
         if self.target == TargetProfile::Ring3App {
             let stub_off = self.code.len();
@@ -859,6 +879,36 @@ impl Codegen {
 
     // ---- Function emit ----
     fn emit_function(&mut self, func: &Function) {
+        // ★ Un parámetro de coma flotante NO se puede pasar todavía, y hasta
+        // hoy se aceptaba EN SILENCIO.
+        //
+        // BMO C evalúa floats por la ruta paralela de xmm, pero **los
+        // argumentos van por la pila como enteros**: `g(1.5)` empujaba los
+        // bits del double en una ranura y el prólogo los leía como si fueran
+        // un `long`. Compilaba, escribía un `.bef`, y devolvía basura.
+        //
+        // Los floats GLOBALES ya se rechazaban con motivo desde el principio
+        // (ver `load_float_var`); esta puerta se quedó abierta porque nadie
+        // había escrito una función que tomara un `double` — lo destapó C++ al
+        // probar una sobrecarga `f(int)` / `f(double)`.
+        //
+        // Un cero inventado o unos bits mal leídos son la peor respuesta a "no
+        // sé hacer esto": son valores legítimos y el error viaja hasta donde ya
+        // no se puede rastrear. Mientras la ABI de xmm no exista, se DICE.
+        for p in &func.params {
+            if Self::is_float_ty(&p.typ) {
+                self.errors.push(format!(
+                    "el parametro '{}' de '{}' es de coma flotante, y BMO C todavia no PASA \
+                     floats como argumento (los evalua en xmm, pero la ABI de argumentos xmm \
+                     esta pendiente). Pasa el valor por puntero, o usa un entero escalado.",
+                    p.name, func.name,
+                ));
+            }
+        }
+        // El RETORNO de coma flotante sí funciona —el valor queda en xmm0, y
+        // hay un test que lo fija (`double_return_value_in_xmm0`)—, así que no
+        // se toca. La asimetría es real y conviene tenerla escrita: **devolver
+        // un double se puede, pasarlo no.**
         self.build_var_map(&func.params, &func.var_names, func);
         // Lo que `__va_arg` necesita saber, y sólo se sabe aquí: si esta
         // función admite variádicos y dónde acaban los que tienen nombre.
@@ -1346,6 +1396,31 @@ impl Codegen {
         let mut next_arg = 0usize;
         let mut literal: Vec<u8> = Vec::new();
 
+        // ★ **TODOS los argumentos se evalúan ANTES de escribir un solo byte.**
+        //
+        // Antes no: el emisor recorría la plantilla y evaluaba cada argumento
+        // al llegar a su `%`, intercalado con la salida de los literales. Con
+        // argumentos sin efectos daba igual, pero `printf("[%d]", f())` con `f`
+        // imprimiendo sacaba `[` **antes** que lo de `f` — y en C estándar
+        // todos los argumentos se evalúan antes de entrar en la llamada.
+        //
+        // Lo destapó la matriz de C++ al probar RAII: un destructor que
+        // imprime es justo un argumento con efectos. Es la clase de diferencia
+        // que sólo aparece al portar código de otro, y entonces ya no se sabe
+        // de dónde viene.
+        //
+        // Se guardan en la PILA y no en ranuras del marco a propósito: los
+        // ayudantes de `bmo_lower::fmt` y `console` están **equilibrados en
+        // rsp** (cada `sub rsp` tiene su `add rsp`), así que un offset
+        // relativo a rsp sigue valiendo entre una conversión y la siguiente.
+        // Y así no hay que reservar sitio en el prólogo para algo que sólo
+        // vive dentro de un `printf`.
+        let n = va_args.len();
+        for a in &va_args {
+            self.emit_expr(a);
+            self.code.push(0x50); // push rax
+        }
+
         let chars: Vec<char> = format.chars().collect();
         let mut i = 0usize;
         while i < chars.len() {
@@ -1380,14 +1455,16 @@ impl Codegen {
                 literal.clear();
             }
 
-            let Some(arg) = va_args.get(next_arg).cloned() else {
+            if next_arg >= n {
                 self.errors.push(format!(
                     "printf: '%{conversion}' no tiene argumento correspondiente"
                 ));
                 return;
-            };
+            }
+            // El valor ya está calculado en la pila: el primero empujado es el
+            // que queda más arriba, así que el i-ésimo está en `n-1-i`.
+            self.emit_cargar_de_pila(n - 1 - next_arg);
             next_arg += 1;
-            self.emit_expr(&arg); // el valor queda en rax
 
             match conversion {
                 'd' | 'i' => bmo_lower::fmt::write_i64(&mut self.code),
@@ -1410,11 +1487,40 @@ impl Codegen {
             bmo_lower::console::write_const(&mut self.code, &literal);
         }
 
-        if next_arg < va_args.len() {
+        // Devolver la pila. Va DESPUÉS del último literal, no antes: entre
+        // medias todavía se leen ranuras relativas a rsp.
+        self.emit_soltar_pila(n);
+
+        if next_arg < n {
             self.errors.push(format!(
                 "printf: sobran {} argumento(s) para el formato dado",
-                va_args.len() - next_arg
+                n - next_arg
             ));
+        }
+    }
+
+    /// `mov rax, [rsp + ranura*8]` — lee un argumento ya calculado.
+    fn emit_cargar_de_pila(&mut self, ranura: usize) {
+        let disp = (ranura * 8) as i64;
+        if disp <= 127 {
+            // 48 8B 44 24 disp8
+            self.code.extend_from_slice(&[0x48, 0x8B, 0x44, 0x24, disp as u8]);
+        } else {
+            // 48 8B 84 24 disp32
+            self.code.extend_from_slice(&[0x48, 0x8B, 0x84, 0x24]);
+            self.code.extend_from_slice(&(disp as u32).to_le_bytes());
+        }
+    }
+
+    /// `add rsp, ranuras*8` — suelta los argumentos guardados.
+    fn emit_soltar_pila(&mut self, ranuras: usize) {
+        if ranuras == 0 { return; }
+        let bytes = (ranuras * 8) as i64;
+        if bytes <= 127 {
+            self.code.extend_from_slice(&[0x48, 0x83, 0xC4, bytes as u8]);
+        } else {
+            self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
+            self.code.extend_from_slice(&(bytes as u32).to_le_bytes());
         }
     }
     /// `printf("literal")` — la L2 de C sobre la puerta genérica (L1).

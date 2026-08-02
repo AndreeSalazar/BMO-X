@@ -212,14 +212,15 @@ fn matriz_cpp_ejecuta_correctamente() {
         //   i=2 → `break`                       → ~2
         //   `return` → destruye c y luego a     → ~3 ~1
         //
-        // ⚠ Y el `[` sale ANTES que los `~`, que en C estándar no pasaría.
-        // No es cosa de C++: **el `printf` de BMO C formatea EN LÍNEA**, o sea
-        // que va escribiendo el literal según recorre la plantilla y evalúa
-        // cada argumento cuando le toca. En C estándar todos los argumentos se
-        // evalúan ANTES de llamar, así que `printf("[%d]", f())` con `f`
-        // imprimiendo daría `~2 … [99]` en GCC y da `[~2 … 99]` aquí.
-        // Sólo se nota con un argumento que tenga efectos, y esta fila es el
-        // sitio donde queda registrado.
+        // ★ El `[` sale DESPUÉS de los `~`, como en C estándar — y esta fila
+        // es la que destapó que no era así.
+        //
+        // El `printf` de BMO C formateaba **en línea**: escribía el literal
+        // según recorría la plantilla y evaluaba cada argumento al llegar a su
+        // `%`. Con argumentos sin efectos daba igual; con un destructor que
+        // imprime, no. Arreglado en el codegen de C (ahora todos los
+        // argumentos se calculan antes de escribir un byte), y esta fila es su
+        // testigo desde el otro lado.
         ("raii-las-cuatro-salidas", "@FULL@\
             class Traza {\n\
             public:\n\
@@ -237,7 +238,7 @@ fn matriz_cpp_ejecuta_correctamente() {
                 return 99;\n\
             }\n\
             int main() { printf(\"[%d]\", trabajo(5)); return 0; }",
-            "[~2 ~2 ~2 ~3 ~1 99]"),
+            "~2 ~2 ~2 ~3 ~1 [99]"),
 
         // ★ Integración del paso 4: tres constructores, dos métodos con el
         // mismo nombre, y dos funciones libres sobrecargadas — todo en un

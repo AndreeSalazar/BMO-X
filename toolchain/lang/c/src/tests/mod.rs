@@ -1227,6 +1227,79 @@ fn float_f32_narrows_on_store() {
     assert!(bef.windows(3).any(|w| w == [0xF3, 0x0F, 0x11]), "falta movss store");
 }
 
+/// ★ **Sin `main` no hay programa.**
+///
+/// Un fichero vacío producía un BEF de 8 240 bytes con `entry_offset = 0`, o
+/// sea apuntando a lo primero que hubiera en la sección de código, y se
+/// escribía sin quejarse. Un binario con punto de entrada inventado falla en
+/// el metal y no en la compilación — que es donde se puede leer el motivo.
+#[test]
+fn sin_main_no_hay_programa() {
+    for fuente in ["", "int suma(int a, int b) { return a + b; }"] {
+        let e = compile_source_to_bef(fuente)
+            .expect_err("sin punto de entrada no se puede escribir un .bef");
+        assert!(e.message.contains("main"), "el error tiene que nombrar `main`: {}", e.message);
+    }
+}
+
+/// ★ **Los argumentos de `printf` se evalúan ANTES de escribir un byte.**
+///
+/// Antes no: el emisor recorría la plantilla y evaluaba cada argumento al
+/// llegar a su `%`, intercalado con la salida de los literales. Con argumentos
+/// sin efectos daba igual — por eso ninguna fila de la matriz lo cazó— pero
+/// `printf("[%d]", f())` con `f` imprimiendo sacaba `[` **antes** que lo de
+/// `f`, y en C estándar todos los argumentos se evalúan antes de la llamada.
+///
+/// Lo destapó la matriz de **C++** al probar RAII: un destructor que imprime
+/// es justo un argumento con efectos.
+#[test]
+fn los_argumentos_de_printf_se_evaluan_antes_de_imprimir() {
+    let src = r#"
+int ruido(int n) { printf("(%d)", n); return n; }
+int main() { printf("[%d]", ruido(7)); return 0; }
+"#;
+    assert_eq!(run_c(src).trim(), "(7)[7]",
+        "el argumento tiene que ejecutarse ENTERO antes de que salga el `[`");
+}
+
+/// Y con varios argumentos, el orden entre ellos también es el de evaluación.
+#[test]
+fn printf_evalua_todos_sus_argumentos_en_orden() {
+    let src = r#"
+int ruido(int n) { printf("<%d>", n); return n; }
+int main() { printf("a%db%dc", ruido(1), ruido(2)); return 0; }
+"#;
+    assert_eq!(run_c(src).trim(), "<1><2>a1b2c");
+}
+
+/// ★ **Un `double` como PARÁMETRO se rechaza con motivo.**
+///
+/// Antes compilaba en silencio y devolvía basura: BMO C evalúa floats por la
+/// ruta paralela de xmm, pero **los argumentos van por la pila como enteros**,
+/// así que `g(1.5)` empujaba los bits del double en una ranura y el prólogo
+/// los leía como si fueran un `long`.
+///
+/// Los floats GLOBALES ya se rechazaban desde el principio; esta puerta se
+/// quedó abierta porque nadie había escrito una función que tomara un
+/// `double`. Lo destapó **C++** al probar una sobrecarga `f(int)`/`f(double)`,
+/// que es lo que pasa cuando un lenguaje nuevo se apoya en el mismo backend.
+#[test]
+fn un_parametro_double_se_rechaza_con_motivo() {
+    let e = compile_source_to_bef("int g(double a) { return 1; } int main() { return 0; }")
+        .expect_err("un parametro de coma flotante no se puede pasar todavia");
+    assert!(
+        e.message.contains("coma flotante"),
+        "el error tiene que decir que es de coma flotante: {}", e.message,
+    );
+    assert!(
+        e.message.contains("xmm"),
+        "y decir QUE falta (la ABI de xmm), no solo que no se puede: {}", e.message,
+    );
+}
+
+/// La asimetría, fijada a propósito: **devolver** un double sí se puede.
+/// Si algún día se rechazara, este test lo dice antes de que alguien lo
+/// descubra con un programa.
 #[test]
 fn double_return_value_in_xmm0() {
     // double f() { return d; } — el valor de retorno queda en xmm0.
