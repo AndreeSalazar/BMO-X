@@ -15,6 +15,42 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
 
+## ★★ VERIFICADO EN EL RYZEN (2026-08-02, tercera tanda) — con fotos
+
+**El ratón FUNCIONA.** Es el hito de la sesión: el puntero se mueve donde se
+mueve la mano, y los ejes ya no van cruzados. **El arreglo de leer el Report
+Descriptor (`7ffc4955`) queda CONFIRMADO** — la pregunta de "8 o 16 bits" la
+contestó el aparato, y acertó. Tres arranques y dos meses de episodios de USB se
+cierran aquí (Ep. 17, 18, 19, 22, 24 de `BITACORA.md`).
+
+También confirmado en las mismas fotos:
+
+- **Arranca directo al escritorio** con el doble búfer desplegado, o sea que
+  **el compositor no murió** pidiendo 8 MB. La caja `Ejecutar` se dibuja entera:
+  marco, barra de título, línea de pista y campo.
+- **El testigo de botones responde**: pulsar cualquier botón del ratón enciende
+  el cuadro de 16×16 al final de la barra de pulso. Es lo que tiene que hacer.
+- El log de Ring 0 llega hasta `[usb] mouse USB listo`, AHCI con
+  `!p0x2 sig=0x101` (el Kingston SATA) y xHCI con `max_slots=0x40`.
+
+### ⚠️ ABIERTO, y es lo siguiente: **no se dibujan las letras que se teclean**
+
+El campo de la caja se queda vacío mientras se escribe. El resto de la ventana
+—marco, título, la línea de pista, el cursor— **sí se dibuja**, así que no es
+que el compositor esté muerto ni que el texto no sepa pintarse.
+
+**Lo que hay que averiguar primero, y es UNA línea del log de arranque**:
+`doble bufer: pintando fuera de la pantalla` o `SIN doble bufer`. Decide entre
+dos culpables muy distintos, y hasta saberlo cualquier teoría es teoría (ley 9:
+un aviso correcto no implica una teoría correcta).
+
+**El discriminador de 30 segundos**, si es más rápido que buscar la línea:
+`git checkout 7f6d1085 -- Ultra_userspace/` deja el compositor **justo antes**
+del doble búfer, con el arreglo del ghosting puesto. Si teclear vuelve a
+pintar, el culpable es el doble búfer y está acotado a un commit.
+
+---
+
 ## ★ Lo último que pasó (2026-08-02, segunda tanda) — leer esto primero
 
 Tres frentes, y los tres eran "escrito y sin estrenar". Nada de esto ha tocado
@@ -113,7 +149,7 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | Fault isolation (crash R3 mata la tarea, no el kernel) | ✅ implementado |
 | Boot cinemático (logo→RING0→RING3, escenas) | ✅ |
 | Teclado USB (xHCI+HID) | ✅ **ESCRIBE en HW** — el Interval del endpoint era un EXPONENTE (2^n x125us) y se escribia el bInterval crudo: un teclado que pedia 24 ms quedaba programado a 35 minutos entre sondeos. Layouts es-latam/es-espana/us, teclas muertas, AltGr, Ctrl, repeticion al mantener, LEDs, historial |
-| Mouse USB | ◐ **enumera y bombea** (slot propio, `ev` subiendo). Los ejes iban cruzados; ahora el driver **lee su Report Descriptor** y saca bit y ancho de cada campo en vez de suponerlos — ✍️ sin estrenar |
+| Mouse USB | ✅ **FUNCIONA EN METAL** (2026-08-02, con foto): el puntero va donde va la mano y los botones responden. El driver **lee su Report Descriptor** y saca bit y ancho de cada campo en vez de suponerlos |
 | **CABINA** (telemetría omnisciente) | ✅ **viva**: cockpit + color semántico + bitácora de eventos (narrador) + detección de disco PCI |
 | **`KIND_FRAMEBUFFER`** (la pantalla es una capability) | ✅ Ring 3 pinta con `mov`; el kernel contesta 4 preguntas y se aparta |
 | **`KIND_INPUT`** (ratón, teclado **y modificadores**) | ✅ en metal; `Ctrl+Alt` detectado sin romper `AltGr` |
