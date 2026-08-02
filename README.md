@@ -16,8 +16,40 @@ occupies **5.4 MiB of 14.8 GiB of RAM**.
 
 **942 commits · 486 files · 17 April – 31 July 2026 · one developer.**
 
-<!-- TODO Eddi: enlace al video -->
-▶ **[Watch it boot and run a banking batch job (90s)](VIDEO_URL_AQUI)**
+---
+
+## Proof, before anything else
+
+Photographs of the machine, not screen captures — the claim is that this is not
+an emulator, and a screen capture cannot prove that.
+
+**It is a boot entry on real firmware**, next to Windows, on physical disks:
+
+![UEFI boot menu](docs/evidencia/01-uefi-bmo-x-arranque.jpg)
+
+**A COBOL banking batch: reads transactions, totals them, writes the close to a
+file — and reads the file back:**
+
+![COBOL batch](docs/evidencia/08-cobol-batch-escribe-y-relee.jpg)
+
+```
+BATCH DE CIERRE - BANCO BMO
+total del dia:
+ $1,135.00                      ← edited PICTURE, emitted as instructions
+cierre escrito en apps/cierre.txt
+lee apps/cierre.txt
+ 1135.00                        ← it really landed on disk
+```
+
+**And the same exact decimal from Ada — `19.99 × 3 = 59.97`, in integer scale,
+no floating point anywhere:**
+
+![Ada](docs/evidencia/09-ada-cierre-decimal-exacto.jpg)
+
+**More, including C, the desktop, the system report and fault recovery caught as
+it happened: [docs/evidencia/](docs/evidencia/)**
+
+<!-- TODO Eddi: enlace al video en YouTube -->
 
 ---
 
