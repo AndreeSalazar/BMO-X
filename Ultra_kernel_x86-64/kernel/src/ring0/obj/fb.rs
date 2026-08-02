@@ -199,9 +199,18 @@ pub fn proceso_muerto(pid: u32) {
                 if let Ok(s) = core::str::from_utf8(&buf[..cabeza.len() + n]) {
                     crate::ring0::core::phase::dashboard_log(s);
                 }
+                // ★ Y a CABINA, que es lo que de verdad sobrevive.
+                //
+                // El log del kernel lo tapa el escritorio siguiente en cuanto
+                // se relanza: el mensaje se pinta, y dos segundos después hay
+                // un escritorio entero encima. CABINA tiene anillo propio y su
+                // panel se sigue viendo con el escritorio puesto — en la última
+                // foto se leía perfectamente por debajo de la ventana.
+                crate::ring0::cabina::warn("gui", linea, pid as u64);
             });
         } else {
             crate::ring0::core::phase::dashboard_log("  | (nada: murio sin decir una sola linea)");
+            crate::ring0::cabina::warn("gui", "murio sin decir una sola linea", pid as u64);
         }
         if cur != kpml4 {
             crate::ring0::mm::vmm::switch_to(cur);

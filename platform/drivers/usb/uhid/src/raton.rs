@@ -56,6 +56,16 @@ pub struct Raton {
     mps: u16,
     /// Cuántas veces el xHC contestó con un error de transferencia.
     errores: u32,
+    /// ★ Cuántos bytes hay que saltarse al principio del informe.
+    ///
+    /// Cero en protocolo BOOT, que es el trato: `[botones, dx, dy, rueda]`.
+    /// **Uno** si el aparato se quedó en protocolo de INFORME, porque entonces
+    /// el primer byte es el Report ID y todo lo demás va corrido — que es como
+    /// un ratón acaba moviéndose al hacer clic en vez de al moverlo.
+    desplazamiento: usize,
+    /// Informes vistos. Los primeros se enseñan crudos: un formato que no se
+    /// entiende no se arregla razonando, se arregla mirándolo.
+    vistos: u32,
 }
 
 impl Raton {
@@ -65,6 +75,7 @@ impl Raton {
         buf_virt: *mut u8,
         provisional: bool,
         mps: u16,
+        protocolo: u8,
     ) -> Self {
         Self {
             dir,
@@ -75,6 +86,11 @@ impl Raton {
             bombeando: false,
             mps,
             errores: 0,
+            // 1 = protocolo de INFORME: hay Report ID delante. Cualquier otra
+            // cosa (0 = boot, 0xFF = no contestó) se trata como boot, que es lo
+            // que se pidió y lo que cumple la inmensa mayoría.
+            desplazamiento: if protocolo == 1 { 1 } else { 0 },
+            vistos: 0,
         }
     }
 
@@ -123,7 +139,23 @@ impl Raton {
         self.bombeando = false;
 
         if cc == 1 || cc == 13 {
-            let informe = unsafe { core::ptr::read_volatile(self.buf_virt as *const Informe) };
+            // Los tres primeros informes, CRUDOS. Cuatro bytes bastan para ver
+            // si el primero es un Report ID constante o unos botones que
+            // cambian, y eso es lo que zanja la discusión del formato.
+            if self.vistos < 3 {
+                let h = bmo_xhci::hal();
+                h.log("[uhid] raton informe:");
+                for i in 0..4usize {
+                    let b = unsafe { core::ptr::read_volatile(self.buf_virt.add(i)) };
+                    h.log_u64(" ", b as u64);
+                }
+                h.log_u64("   (desplazamiento=", self.desplazamiento as u64);
+                h.log(")\n");
+                self.vistos += 1;
+            }
+            let informe = unsafe {
+                core::ptr::read_volatile(self.buf_virt.add(self.desplazamiento) as *const Informe)
+            };
             n = self.descifrar(&informe, salida);
         } else {
             // Un `cc` que no es éxito ni "corto" es un error del bus, y los tres

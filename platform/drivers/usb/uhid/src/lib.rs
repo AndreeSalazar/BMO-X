@@ -263,7 +263,7 @@ impl UsbHidHal {
                 Some(e) => e,
                 None => continue,
             };
-            let (buf_phys, buf_virt) =
+            let (buf_phys, buf_virt, protocolo) =
                 match enumera::preparar_endpoint(slot, dci, mps, interval, *iface, cfg_val) {
                     Some(b) => b,
                     None => continue,
@@ -281,12 +281,16 @@ impl UsbHidHal {
                 // ★ Se le pasa el `mps` del ENDPOINT, no el tamaño del informe:
                 // pedirle menos de lo que puede mandar es un babble, y así fue
                 // como este ratón se paró nada más adoptarlo. Ver `Raton::largo`.
+                //
+                // Y el PROTOCOLO en el que se quedó de verdad, que decide si su
+                // informe lleva un Report ID delante — ver `Raton::nuevo`.
                 if self.instalar_raton(Raton::nuevo(
                     direccion,
                     buf_phys,
                     buf_virt,
                     sale_del_teclado,
                     mps,
+                    protocolo,
                 )) {
                     cosecha.raton = true;
                     h.log("[uhid] raton listo\n");

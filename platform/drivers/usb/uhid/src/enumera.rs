@@ -112,7 +112,7 @@ pub unsafe fn preparar_endpoint(
     interval: u8,
     iface: u8,
     cfg_val: u8,
-) -> Option<(u64, *mut u8)> {
+) -> Option<(u64, *mut u8, u8)> {
     let h = bmo_xhci::hal();
 
     h.log_u64(" dci=", dci as u64);
@@ -140,10 +140,35 @@ pub unsafe fn preparar_endpoint(
     // SET_IDLE(0): que sólo informe cuando algo CAMBIE, no periódicamente.
     bmo_xhci::control_transfer(slot, 0x21, 0x0A, 0, iface as u16, &mut [], false);
 
+    // ★ Y AHORA SE LE PREGUNTA EN QUÉ PROTOCOLO SE QUEDÓ.
+    //
+    // `SET_PROTOCOL` se mandaba y **nadie miraba si sirvió de algo**. Un aparato
+    // que lo ignora sigue mandando su informe de protocolo de INFORME, que
+    // empieza por un byte de Report ID — y entonces todo va corrido una
+    // posición: los botones caen donde el driver espera el desplazamiento en X.
+    //
+    // Eso es exactamente lo que se vio en el Ryzen: `bot=0b01` fijo (el Report
+    // ID, que nunca cambia), `x=0` (los botones, cero mientras no pulses) y la
+    // `y` derivando sola al mover en horizontal. Y el síntoma que lo delató, en
+    // palabras del dueño: *"muevo y no funciona, pero al hacer clic se mueve"* —
+    // porque el byte de botones caía en el campo del movimiento.
+    //
+    // `GET_PROTOCOL` (0xA1, 0x03) devuelve 0 = Boot, 1 = Informe. Preguntarlo
+    // cuesta un control transfer al arrancar y convierte una suposición en un
+    // dato. Si el aparato no contesta, `0xFF`: quien decide qué hacer con eso
+    // es el que descifra, no el que enumera.
+    let mut prot = [0u8; 1];
+    let n = bmo_xhci::control_transfer(slot, 0xA1, 0x03, 0, iface as u16, &mut prot, true);
+    let protocolo = if n >= 1 { prot[0] } else { 0xFF };
+    h.log_u64(" protocolo=", protocolo as u64);
+    if protocolo == 1 {
+        h.log(" (INFORME: el aparato ignoro el BOOT)");
+    }
+
     let buf_phys = h.alloc_dma_pages(1)?;
     let buf_virt = h.phys_to_virt(buf_phys);
     core::ptr::write_bytes(buf_virt, 0, 4096);
-    Some((buf_phys, buf_virt))
+    Some((buf_phys, buf_virt, protocolo))
 }
 
 /// Lee los descriptores de un dispositivo recién direccionado.
