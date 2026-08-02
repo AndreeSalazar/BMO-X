@@ -49,6 +49,9 @@ pub mod console;
 /// Formateo de valores a texto. LIBRERIA compartida, no puerta: ver
 /// la cabecera de `fmt.rs` para por que vive aqui y no en cada frontend.
 pub mod fmt;
+/// Bloques de bytes: copiar, rellenar, comparar, medir. Lo que C escribe
+/// `memcpy` y COBOL escribe `MOVE` de un grupo: **la misma emisión**.
+pub mod memoria;
 pub mod task;
 
 /// El emisor de instrucciones, PUBLICO desde que hay frontends que necesitan

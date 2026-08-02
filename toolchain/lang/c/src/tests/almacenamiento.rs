@@ -170,3 +170,111 @@ fn el_indice_de_va_arg_puede_ser_una_variable() {
                   int main() { printf(\"%d,%d\", elige(0, 7, 9), elige(1, 7, 9)); return 0; }";
     assert_eq!(run_c(fuente), "7,9");
 }
+
+// ── La biblioteca que se emite EN LINEA ───────────────────────────────
+//
+// No hay libreria que enlazar, y eso NO es una carencia: es el modelo. Un
+// `.bex` es una imagen entera y BEF no resuelve relocaciones contra un `.so`.
+// El bucle cuesta treinta bytes y ahorra un enlazador, un formato de libreria
+// y un cargador dinamico.
+
+/// ★ `memcpy` — por aqui pasa el blit de cada fotograma de DOOM.
+#[test]
+fn memcpy_mueve_los_bytes_y_devuelve_el_destino() {
+    let fuente = "int main() { char a[8]; char b[8]; \
+                  b[0]=7; b[1]=8; b[2]=9; \
+                  memcpy(a, b, 3); \
+                  printf(\"%d%d%d\", a[0], a[1], a[2]); return 0; }";
+    assert_eq!(run_c(fuente), "789");
+}
+
+/// Copiar CERO bytes es valido y frecuente (un bucle que acaba de vaciarse).
+/// Si el guardia no estuviera, el contador daria la vuelta y copiaria 2^64.
+#[test]
+fn memcpy_de_cero_bytes_no_toca_nada() {
+    let fuente = "int main() { char a[4]; a[0]=5; \
+                  memcpy(a, a, 0); printf(\"%d\", a[0]); return 0; }";
+    assert_eq!(run_c(fuente), "5");
+}
+
+#[test]
+fn memset_rellena_el_bloque() {
+    let fuente = "int main() { char b[8]; b[0]=1; b[1]=1; b[2]=1; \
+                  memset(b, 65, 3); \
+                  printf(\"%d,%d,%d\", b[0], b[1], b[2]); return 0; }";
+    assert_eq!(run_c(fuente), "65,65,65");
+}
+
+/// El terminador NO se cuenta — que es lo que dice `strlen` y lo que mas se
+/// equivoca al reimplementarlo.
+#[test]
+fn strlen_no_cuenta_el_terminador() {
+    let fuente = "int main() { printf(\"%d\", strlen(\"hola\")); return 0; }";
+    assert_eq!(run_c(fuente), "4");
+}
+
+#[test]
+fn strlen_de_la_cadena_vacia_es_cero() {
+    let fuente = "int main() { printf(\"%d\", strlen(\"\")); return 0; }";
+    assert_eq!(run_c(fuente), "0");
+}
+
+/// ★ `strcmp` devuelve la DIFERENCIA con signo, no un si/no. Un `comparar`
+/// que solo dijera "iguales o distintas" pareceria suficiente hasta el dia
+/// que alguien ordene una lista con el.
+#[test]
+fn strcmp_devuelve_cero_igual_y_el_signo_correcto() {
+    let fuente = "int main() { \
+                  printf(\"%d,\", strcmp(\"abc\", \"abc\")); \
+                  if (strcmp(\"abc\", \"abd\") < 0) printf(\"menor,\"); \
+                  if (strcmp(\"abd\", \"abc\") > 0) printf(\"mayor\"); \
+                  return 0; }";
+    assert_eq!(run_c(fuente), "0,menor,mayor");
+}
+
+/// Una cadena que es prefijo de otra es MENOR: el terminador vale cero y
+/// cualquier byte real es mayor.
+#[test]
+fn strcmp_un_prefijo_es_menor_que_la_cadena_larga() {
+    let fuente = "int main() { if (strcmp(\"ab\", \"abc\") < 0) printf(\"si\"); return 0; }";
+    assert_eq!(run_c(fuente), "si");
+}
+
+/// `strcpy` copia **con** el terminador: si no, la cadena destino no acabaria
+/// nunca y el siguiente `strlen` leeria memoria ajena.
+#[test]
+fn strcpy_copia_con_el_terminador() {
+    let fuente = "int main() { char d[8]; d[5]=88; \
+                  strcpy(d, \"hola\"); \
+                  printf(\"%d,%d\", strlen(d), d[4]); return 0; }";
+    assert_eq!(run_c(fuente), "4,0");
+}
+
+#[test]
+fn abs_da_el_valor_absoluto() {
+    let fuente = "int main() { printf(\"%d,%d,%d\", abs(-3), abs(3), abs(0)); return 0; }";
+    assert_eq!(run_c(fuente), "3,3,0");
+}
+
+/// ★ Un literal DENTRO de una condicion apunta a la cadena correcta.
+///
+/// Este test no es sobre cadenas: es sobre un fallo que llevaba ahi desde
+/// siempre. `collect_strings` recorria las ramas de un `if` y **tiraba la
+/// condicion**, asi que un literal escrito ahi nunca entraba en la tabla y el
+/// `unwrap_or(0)` del emisor lo hacia apuntar a **la primera cadena del
+/// programa**. No fallaba: apuntaba a otro sitio.
+///
+/// No se vio nunca porque hacia falta poder escribir algo como
+/// `if (strcmp(s, "salir") == 0)` — y `strcmp` no existia hasta hoy. Lo cazo
+/// el primer test que lo piso, comparando "abc" contra el formato de un
+/// `printf` anterior.
+///
+/// Las condiciones de `while`, `do-while`, `for` y `switch` estaban igual.
+#[test]
+fn un_literal_en_una_condicion_apunta_a_su_cadena_y_no_a_la_primera() {
+    let fuente = "int main(){ printf(\"hola,\"); \
+                  if (strcmp(\"abc\", \"abd\") < 0) printf(\"if,\"); \
+                  while (strcmp(\"x\", \"x\") != 0) { printf(\"nunca\"); } \
+                  printf(\"fin\"); return 0; }";
+    assert_eq!(run_c(fuente), "hola,if,fin");
+}

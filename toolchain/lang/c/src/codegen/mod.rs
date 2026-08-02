@@ -301,11 +301,37 @@ impl Codegen {
             Stmt::Printf(s) | Stmt::PrintfLn(s) => {
                 if !self.strings.iter().any(|t| *t == *s) { self.strings.push(s.clone()); }
             }
-            Stmt::If(_, t, e) => { self.collect_stmt_strings(t); if let Some(el) = e { self.collect_stmt_strings(el); } }
-            Stmt::While(_, b) => self.collect_stmt_strings(b),
-            Stmt::DoWhile(b, _) => self.collect_stmt_strings(b),
-            Stmt::For(_, _, _, b) => self.collect_stmt_strings(b),
-            Stmt::Switch(_, cases) => { for c in cases { for s in &c.stmts { self.collect_stmt_strings(s); } } }
+            // ★ LAS CONDICIONES TAMBIÉN. Estaban descartadas —el `_` de cada
+            // una— así que un literal dentro de una condición nunca entraba en
+            // la tabla, y al emitirlo el `unwrap_or(0)` lo hacía apuntar **a la
+            // primera cadena del programa**.
+            //
+            // Llevaba ahí desde siempre y no se veía porque hasta hoy no había
+            // forma de poner un literal en una condición: hacía falta algo como
+            // `if (strcmp(s, "salir") == 0)`, y `strcmp` no existía. El primer
+            // test que lo pisó decía `menor` y no imprimía nada — comparando
+            // "abc" contra el formato de un `printf` anterior.
+            //
+            // Un `unwrap_or(0)` sobre una tabla de direcciones es exactamente
+            // la clase de fallo silencioso que este compilador no cuenta: no
+            // falla, apunta a otro sitio.
+            Stmt::If(c, t, e) => {
+                self.collect_expr_strings(c);
+                self.collect_stmt_strings(t);
+                if let Some(el) = e { self.collect_stmt_strings(el); }
+            }
+            Stmt::While(c, b) => { self.collect_expr_strings(c); self.collect_stmt_strings(b); }
+            Stmt::DoWhile(b, c) => { self.collect_stmt_strings(b); self.collect_expr_strings(c); }
+            Stmt::For(ini, cond, paso, b) => {
+                if let Some(e) = ini { self.collect_expr_strings(e); }
+                if let Some(e) = cond { self.collect_expr_strings(e); }
+                if let Some(e) = paso { self.collect_expr_strings(e); }
+                self.collect_stmt_strings(b);
+            }
+            Stmt::Switch(c, cases) => {
+                self.collect_expr_strings(c);
+                for c in cases { for s in &c.stmts { self.collect_stmt_strings(s); } }
+            }
             Stmt::Block(stmts) => { for s in stmts { self.collect_stmt_strings(s); } }
             Stmt::Expr(e) | Stmt::Return(Some(e)) => { self.collect_expr_strings(e); }
             Stmt::DeclAssign(_, _, Some(e)) => { self.collect_expr_strings(e); }
@@ -1117,6 +1143,116 @@ impl Codegen {
     /// Lo específico de C —qué significa `%d`, que `%x` va en minúsculas,
     /// que `%%` es un porcentaje— se decide aquí. La librería solo sabe
     /// convertir un número en dígitos.
+    /// **La superficie de biblioteca que se emite en línea.**
+    ///
+    /// Devuelve `Some(())` si `name` era una de ellas y ya se emitió.
+    ///
+    /// ★ Cada una carga sus argumentos en registros y llama al emisor de L1.
+    /// El orden importa: se evalúa el último primero y se apila, porque
+    /// evaluar el segundo argumento puede machacar el registro donde estaba el
+    /// primero — un `memcpy(a, f(x), n)` con `f` llamando a otra cosa es el
+    /// caso que lo destapa, y no se destapa en las pruebas fáciles.
+    fn emitir_biblioteca(&mut self, name: &str, args: &[Expr]) -> Option<()> {
+        use bmo_lower::memoria;
+        use bmo_lower::x86;
+        match (name, args.len()) {
+            ("memcpy", 3) | ("memmove", 3) => {
+                self.cargar_tres(args, x86::RDI, x86::RSI, x86::RCX);
+                memoria::copiar(&mut self.code);
+                // `memcpy` devuelve el destino, que sigue en la pila porque el
+                // bucle se llevó rdi por delante.
+                self.soltar_tres();
+                Some(())
+            }
+            ("memset", 3) => {
+                self.cargar_tres(args, x86::RDI, x86::RAX, x86::RCX);
+                memoria::rellenar(&mut self.code);
+                self.soltar_tres();
+                Some(())
+            }
+            ("strlen", 1) => {
+                self.emit_expr(&args[0]);
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+                memoria::largo(&mut self.code);
+                Some(())
+            }
+            ("strcmp", 2) => {
+                self.emit_expr(&args[1]);
+                self.code.push(0x50); // push
+                self.emit_expr(&args[0]);
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+                self.code.extend_from_slice(&[0x5E]);             // pop rsi
+                memoria::comparar(&mut self.code);
+                Some(())
+            }
+            ("strcpy", 2) => {
+                // `strcpy` es `copiar` con la medida sacada del origen: se mide
+                // primero y se copia el terminador también (de ahí el +1).
+                self.emit_expr(&args[1]);
+                self.code.push(0x50);                             // push src
+                self.emit_expr(&args[0]);
+                self.code.push(0x50);                             // push dst
+                self.code.extend_from_slice(&[0x48, 0x8B, 0x7C, 0x24, 0x08]); // mov rdi,[rsp+8]
+                memoria::largo(&mut self.code);                   // rax = largo(src)
+                self.code.extend_from_slice(&[0x48, 0xFF, 0xC0]); // inc rax (el cero)
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+                self.code.extend_from_slice(&[0x5F]);             // pop rdi (dst)
+                self.code.extend_from_slice(&[0x5E]);             // pop rsi (src)
+                self.code.push(0x57);                             // push rdi (para devolverlo)
+                memoria::copiar(&mut self.code);
+                self.code.extend_from_slice(&[0x58]);             // pop rax
+                Some(())
+            }
+            ("abs", 1) => {
+                self.emit_expr(&args[0]);
+                memoria::absoluto(&mut self.code);
+                Some(())
+            }
+            _ => None,
+        }
+    }
+
+    /// Tres argumentos a tres registros, evaluando de derecha a izquierda.
+    ///
+    /// ★ Los tres se dejan EN LA PILA y los registros se cargan **leyendo**,
+    /// no sacando. La primera versión los sacaba con `pop` y apilaba el
+    /// destino dos veces para poder devolverlo — y eso desalineaba los tres
+    /// `pop`: `memset` acababa con el valor de relleno en el registro del
+    /// contador. Salió como `-16,-16,-16` donde tenía que salir `65,65,65`.
+    ///
+    /// Leyendo con desplazamiento no hay orden que cuadrar: cada argumento
+    /// está donde se puso. Y quien llama limpia con [`Self::soltar_tres`], que
+    /// es lo que faltaba también — la versión de `pop` dejaba dos valores
+    /// vivos en la pila por cada `memcpy`, y eso no se ve hasta que un bucle
+    /// hace mil.
+    fn cargar_tres(&mut self, args: &[Expr], r0: u8, r1: u8, r2: u8) {
+        self.emit_expr(&args[2]);
+        self.code.push(0x50); // push n        -> [rsp+16]
+        self.emit_expr(&args[1]);
+        self.code.push(0x50); // push src      -> [rsp+8]
+        self.emit_expr(&args[0]);
+        self.code.push(0x50); // push dst      -> [rsp]
+        self.mov_desde_pila(r0, 0);
+        self.mov_desde_pila(r1, 8);
+        self.mov_desde_pila(r2, 16);
+    }
+
+    /// Recupera el destino en `rax` y tira los otros dos. Cierra a
+    /// [`Self::cargar_tres`].
+    fn soltar_tres(&mut self) {
+        self.code.push(0x58);                               // pop rax (dst)
+        self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 16]); // add rsp, 16
+    }
+
+    /// `mov <r64>, [rsp+disp8]`.
+    fn mov_desde_pila(&mut self, reg: u8, disp: u8) {
+        self.code.push(0x48 | if reg >= 8 { 0x04 } else { 0 }); // REX.W (+R)
+        self.code.push(0x8B);
+        self.code.push(0x44 | ((reg & 7) << 3)); // modrm: [SIB + disp8]
+        self.code.push(0x24);                    // SIB: base = rsp
+        self.code.push(disp);
+    }
+
     fn emit_printf_variadic(&mut self, args: &[Expr]) {
         let Expr::StringLit(format) = &args[0] else {
             self.errors.push(
@@ -1256,6 +1392,22 @@ impl Codegen {
                 self.emit_load_var(name);
             }
             Expr::Call(name, args) => {
+                // ★ Las funciones de biblioteca que se emiten EN LÍNEA.
+                //
+                // No hay librería que enlazar, y no es una carencia: es el
+                // modelo. Un `.bex` es una imagen entera y BEF no resuelve
+                // relocaciones contra un `.so`. Emitir el bucle cuesta treinta
+                // bytes y ahorra un enlazador, un formato de librería y un
+                // cargador dinámico.
+                //
+                // Lo que se emite vive en `bmo_lower::memoria` (L1) porque
+                // "mueve estos bytes" no tiene semántica de lenguaje: COBOL
+                // mueve grupos y Ada asigna arrays con la misma emisión. Aquí
+                // sólo se pone el nombre que usa C.
+                if let Some(n) = self.emitir_biblioteca(name, args) {
+                    let _ = n;
+                    return;
+                }
                 // Special case: printf → emit bmo_printf from userland_ring3
                 if name == "printf" && !args.is_empty() {
                     self.emit_printf_variadic(args);

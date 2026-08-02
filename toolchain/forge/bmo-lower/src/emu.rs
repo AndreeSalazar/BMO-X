@@ -966,6 +966,29 @@ impl Machine {
                 let v = self.regs[reg] & 0xFF;
                 self.store_u8(dst, v);
             }
+            // ★ mov r8, r/m8 — CARGA un byte. La pareja de `0x88`, y faltaba.
+            //
+            // Sin ella, todo lo que recorre bytes de uno en uno —`memcpy`,
+            // `strlen`, `strcmp`— moría en el emulador con "opcode 0x8A no
+            // emitido por BMO". El emulador no mentía: es que nadie había
+            // emitido un bucle de bytes hasta ahora. Es el límite honesto de
+            // un emulador escrito a medida — cubre lo que se emite, y crece
+            // cuando el codegen aprende algo nuevo.
+            //
+            // Sólo toca el byte bajo del destino: el resto del registro se
+            // queda como estaba, que es lo que hace el silicio.
+            0x8A => {
+                let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                let v = self.load_u8(src) & 0xFF;
+                self.regs[reg] = (self.regs[reg] & !0xFF) | v;
+            }
+            // test r/m8, r8 — la versión de un byte de `0x85`.
+            0x84 => {
+                let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                let a = self.load_u8(dst) & 0xFF;
+                let b = self.regs[reg] & 0xFF;
+                self.flags_logic(a & b);
+            }
             // mov r/m8, imm8
             0xC6 => {
                 let (_, dst) = self.modrm(0, rex_x, rex_b);

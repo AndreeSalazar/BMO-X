@@ -22,12 +22,19 @@ Medido el **2026-08-02**.
 
 ## El numero
 
-**31 de 31** sondas del lenguaje compilan.
+**31 de 32** sondas del lenguaje compilan.
+
+Lo que falta, con lo que cuesta que falte:
+
+| Falta | Era | Por que importa | Lo que dice BMO C |
+|---|---|---|---|
+| **declaradores multiples** | C89 | `int a, b;` — DOOM lo usa en cada fichero | `error:1: unexpected token: Int` |
 
 ## El lenguaje, sonda a sonda
 
 | Caracteristica | Era | ¿Compila? | Para que |
 |---|---|---|---|
+| declaradores multiples | C89 | **NO** | `int a, b;` — DOOM lo usa en cada fichero |
 | #define con argumentos | C89 | **si** | DOOM: FixedMul, MAXPLAYERS... por todas partes |
 | #if aritmetico | C89 | **si** | DOOM: #if defined(NORMALUNIX) |
 | #include propio | C89 | **si** | DOOM son ~50 ficheros con sus cabeceras |
@@ -83,12 +90,12 @@ descarta con nombre propio.
 | sprintf | `stdio.h` | **NO** | DOOM formatea en buffers, no solo en pantalla |
 | malloc | `stdlib.h` | **NO** | ★ DOOM pide UN bloque grande (Z_Zone) y se lo administra el |
 | free | `stdlib.h` | **NO** | pareja de malloc; con Z_Zone se llama poquisimo |
-| memset | `string.h` | **NO** | limpiar el framebuffer y las estructuras |
-| memcpy | `string.h` | **NO** | ★ el blit de cada fotograma pasa por aqui |
-| strlen | `string.h` | **NO** | esencial en cuanto hay texto |
-| strcmp | `string.h` | **NO** | DOOM busca lumps del WAD por nombre |
-| strcpy | `string.h` | **NO** | pareja obligada de strcmp |
-| abs | `stdlib.h` | **NO** | el render lo usa a manos llenas |
+| memset | `string.h` | **si** | limpiar el framebuffer y las estructuras |
+| memcpy | `string.h` | **si** | ★ el blit de cada fotograma pasa por aqui |
+| strlen | `string.h` | **si** | esencial en cuanto hay texto |
+| strcmp | `string.h` | **si** | DOOM busca lumps del WAD por nombre |
+| strcpy | `string.h` | **si** | pareja obligada de strcmp |
+| abs | `stdlib.h` | **si** | el render lo usa a manos llenas |
 | atoi | `stdlib.h` | **NO** | parametros de linea de ordenes |
 | fopen/fread | `stdio.h` | — | ★ el WAD son 4 MB. BMO ya tiene KIND_ARCHIVO |
 | exit | `stdlib.h` | **NO** | I_Quit. BMO ya sale por la puerta normal |

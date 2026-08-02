@@ -103,6 +103,10 @@ SONDAS = {
                          "int suma(int n,...){int t;int i;t=0;"
                          "for(i=0;i<n;i=i+1){t=t+__va_arg(i);}return t;}"
                          "\nint main(){return suma(2,3,4);}"),
+    # Lo destapó una sonda de libc que declaraba `char a[4],b[4];` y decía que
+    # faltaba `memcpy`. Faltaba esto.
+    "declaradores multiples": ("C89", "`int a, b;` — DOOM lo usa en cada fichero",
+                               "int main(){int a, b;a=1;b=2;return a+b;}"),
     "array dentro de struct": ("C89", "DOOM: `char nombre[8]` en cada lump del WAD",
                                "struct S{int i;char c[4];};"
                                "\nint main(){struct S s;s.c[0]=7;return s.c[0];}"),

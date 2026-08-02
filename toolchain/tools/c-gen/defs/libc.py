@@ -33,8 +33,12 @@ FUNCIONES = [
      "int main(){char*p=malloc(4);free(p);return 0;}"),
     ("memset", "string.h", "DOOM", "limpiar el framebuffer y las estructuras",
      "int main(){char b[4];memset(b,0,4);return b[0];}"),
+    # ★ Esta sonda decia "NO" y `memcpy` funcionaba: declaraba `char a[4],b[4];`
+    # —DOS declaradores en una linea— y lo que faltaba era eso, no memcpy. Una
+    # sonda que pregunta dos cosas acusa a la que no es. Los declaradores
+    # multiples tienen sonda propia en `estandar.py`.
     ("memcpy", "string.h", "DOOM", "★ el blit de cada fotograma pasa por aqui",
-     "int main(){char a[4],b[4];memcpy(a,b,4);return a[0];}"),
+     "int main(){char a[4];char b[4];b[0]=7;memcpy(a,b,4);return a[0];}"),
 
     # ── Cadenas ──
     ("strlen", "string.h", "DOOM", "esencial en cuanto hay texto",
