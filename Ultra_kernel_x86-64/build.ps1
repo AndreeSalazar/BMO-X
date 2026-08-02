@@ -227,10 +227,13 @@ $adaEjemplos = @(
 # `hola_C.c` prueba lo basico (bucles, %d, resta con signo, switch, %s).
 # `scroll_C.c` usa las cabeceras `<bmo/...>`: la puerta de syscalls desde C, la
 # capability de entrada y el modelo de scroll.
+# `memoria_C.c` ESTRENA `KIND_MEMORIA`: pide, escribe, relee y agota el tope de
+# cuatro peticiones. Es el unico programa que ejerce la capability de memoria.
 $cEjemplos = @(
     @{ src = 'toolchain\lang\c\examples\hola_C.c';   out = 'holac.bex'  ; dir = 'c' },
     @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' ; dir = 'c' },
-    @{ src = 'toolchain\lang\c\examples\pregunta_C.c'; out = 'pregc.bex'  ; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\pregunta_C.c'; out = 'pregc.bex'  ; dir = 'c' },
+    @{ src = 'toolchain\lang\c\examples\memoria_C.c'; out = 'memc.bex'   ; dir = 'c' }
 )
 
 $repo = Split-Path -Parent $root

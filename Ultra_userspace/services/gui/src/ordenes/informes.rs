@@ -112,6 +112,22 @@ pub(crate) fn informe_memoria(s: &mut Salida) {
     etiqueta(s, b"kernel");
     s.tamano(bmo::info(bmo::INFO_KERNEL_BYTES));
     s.texto(b"   en 0x400000\n");
+
+    // ★ Lo que Ring 3 ha PEDIDO. Las cuatro filas de arriba las sabe el kernel
+    // porque la memoria la reparte el; esta solo se mueve si un programa
+    // ejercio `KIND_MEMORIA`. Por eso vale como prueba: es el kernel diciendo
+    // que entrego, no el programa diciendo que recibio.
+    //
+    // En cero se dice EXPRESAMENTE que nadie ha pedido, en vez de pintar un
+    // `0 B` que se lee igual que "no lo se".
+    let pedida = bmo::info(bmo::INFO_MEM_ENTREGADA);
+    etiqueta(s, b"a Ring 3");
+    if pedida == 0 {
+        s.texto(b"ningun programa ha pedido memoria\n");
+    } else {
+        s.tamano(pedida);
+        s.texto(b"   pedida con KIND_MEMORIA\n");
+    }
 }
 
 pub(crate) fn informe_sistema(s: &mut Salida) {

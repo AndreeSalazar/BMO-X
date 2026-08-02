@@ -113,6 +113,9 @@ pub const INFO_ES_NIVEL: u64 = 0x16;
 pub const INFO_ES_IDENTIDAD: u64 = 0x17;
 /// 1 si hoy se puede escribir. Hoy siempre 0: falta cablear la E/S.
 pub const INFO_ES_ESCRIBIBLE: u64 = 0x18;
+/// Bytes que Ring 3 ha PEDIDO con `KIND_MEMORIA` desde el arranque. Es lo
+/// único del informe que sólo se mueve si alguien ejerció la capability.
+pub const INFO_MEM_ENTREGADA: u64 = 0x19;
 
 // Campos de `OP_INFO_TEXTO`.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;

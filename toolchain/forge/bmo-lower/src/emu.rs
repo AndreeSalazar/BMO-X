@@ -39,12 +39,34 @@ pub const DATA_BASE: u64 = 0x1_0000;
 /// Tope de pila inicial. Alineado a 64 como pide el contrato de BMO.
 pub const STACK_TOP: u64 = 0x7000_0000;
 
+/// Donde cae el primer bloque de `KIND_MEMORIA`.
+///
+/// Espejo de `vmm::MEMORIA_VA_BASE`, **que es la fuente de verdad** — el kernel
+/// no enlaza este crate ni al revés. Se copia el número por lo mismo que lo
+/// copia `ring0/core/informe.rs`: si los dos se separan, el que está mal es
+/// éste. Un test que compruebe la dirección exacta está comprobando el
+/// contrato, y por eso vale la pena que sea un número y no "lo que salga".
+pub const MEMORIA_VA_BASE: u64 = 0xE000_0000;
+
+/// Cuánto puede pedir un proceso de una vez, y cuántas veces.
+/// Espejo de `ring0::obj::memoria::{MAX_BYTES, MAX_PETICIONES}`.
+pub const MEMORIA_MAX_BYTES: u64 = 64 * 1024 * 1024;
+pub const MEMORIA_MAX_PETICIONES: usize = 4;
+
+/// Página de 4 KiB: el bloque se redondea hacia ARRIBA, igual que el kernel.
+const MEMORIA_PAGE: u64 = 4096;
+
 const POISON: u64 = 0xDEAD_BEEF_DEAD_BEEF;
 
 /// El handle que devuelve `TASK_OP_INPUT_CLAIM` aquí dentro. Lejos del rango
 /// de los archivos (1..n) a propósito: un programa que confunda los dos
 /// handles tiene que fallar en la prueba, no acertar por casualidad.
 const CAP_ENTRADA: u64 = 0x0001_0001;
+
+/// Primer handle de `KIND_MEMORIA`. Por encima del de entrada y muy por encima
+/// de los de archivo (1..n), por el mismo motivo: un programa que confunda dos
+/// handles tiene que fallar aquí, no acertar por casualidad.
+const CAP_MEMORIA: u64 = 0x0002_0001;
 
 const RAX: usize = 0;
 const RCX: usize = 1;
@@ -138,6 +160,26 @@ pub struct Machine {
     puntero: (u32, u32, u8),
     eventos_hid: u64,
     modificadores: u8,
+    /// ── `KIND_MEMORIA`, modelada ────────────────────────────────────────
+    ///
+    /// Sin esto, `TASK_OP_MEMORIA_PEDIR` caía en el `_ => {}` del despacho y
+    /// salía por `finalizar_syscall(0)`: **código 0 (éxito) con handle 0**. O
+    /// sea que el emulador contestaba "toma tu bloque" y entregaba el puntero
+    /// nulo, y todo `malloc` devolvía 0 sin que nadie pudiera distinguir eso de
+    /// un kernel que rechaza. Un modelo que dice que sí y no da nada es peor
+    /// que ninguno.
+    ///
+    /// Se modelan las DOS cosas que un programa puede notar: que cada bloque
+    /// cae en un rango propio (el cursor avanza) y que **el tope existe**.
+    /// Lo que no se modela es la física —marcos contiguos, aliasing de
+    /// páginas—, y no se puede: aquí la memoria es un mapa disperso, así que
+    /// toda dirección funciona. Eso se prueba en el Ryzen y en ningún otro
+    /// sitio.
+    mem_cursor: u64,
+    mem_peticiones: usize,
+    mem_entregados: u64,
+    /// Base de cada handle concedido, en orden de concesión.
+    mem_bloques: Vec<u64>,
     mem: HashMap<u64, u8>,
     data_len: u64,
     zf: bool,
@@ -168,6 +210,10 @@ impl Machine {
             puntero: (0, 0, 0),
             eventos_hid: 0,
             modificadores: 0,
+            mem_cursor: MEMORIA_VA_BASE,
+            mem_peticiones: 0,
+            mem_entregados: 0,
+            mem_bloques: Vec::new(),
             mem: HashMap::new(),
             data_len: 0,
             zf: false,
@@ -507,12 +553,61 @@ impl Machine {
         }
     }
 
+    /// `TASK_OP_MEMORIA_PEDIR` — el bloque, o el motivo por el que no.
+    ///
+    /// Los tres rechazos son los mismos que los del kernel y **con sus mismos
+    /// códigos**: pedir cero o pasarse del tope, y pedir una quinta vez. El de
+    /// "no hay RAM contigua" no se modela porque aquí no hay RAM que
+    /// fragmentar — y fingirlo sería inventarse un fallo que este emulador no
+    /// puede reproducir de forma repetible.
+    fn memoria_pedir(&mut self, bytes: u64) -> Result<u64, u64> {
+        const ERROR_DEMASIADO: u64 = 0xE001;
+        const ERROR_DEMASIADAS: u64 = 0xE003;
+
+        if bytes == 0 || bytes > MEMORIA_MAX_BYTES {
+            return Err(ERROR_DEMASIADO);
+        }
+        if self.mem_peticiones >= MEMORIA_MAX_PETICIONES {
+            return Err(ERROR_DEMASIADAS);
+        }
+        // Redondeo a páginas ARRIBA: pedir 1024 bytes entrega 4096, y el
+        // siguiente bloque empieza detrás de los 4096. Si esto redondeara hacia
+        // abajo, dos bloques se solaparían y el emulador —memoria dispersa— no
+        // se quejaría nunca. Por eso el programa de prueba compara las bases.
+        let paginas = (bytes + MEMORIA_PAGE - 1) / MEMORIA_PAGE;
+        let base = self.mem_cursor;
+        self.mem_cursor += paginas * MEMORIA_PAGE;
+        self.mem_entregados += paginas * MEMORIA_PAGE;
+        self.mem_peticiones += 1;
+        self.mem_bloques.push(base);
+        Ok(CAP_MEMORIA + (self.mem_bloques.len() as u64 - 1))
+    }
+
+    /// Las dos preguntas que responde un handle de memoria.
+    fn memoria_op(&self, handle: u64, op: u64) -> u64 {
+        use bmo_abi::syscalls::surface::{MEM_OP_BASE, MEM_OP_BYTES};
+        let i = (handle - CAP_MEMORIA) as usize;
+        match op {
+            MEM_OP_BASE => self.mem_bloques.get(i).copied().unwrap_or(0),
+            // Lo entregado al PROCESO entero, no a este bloque: es lo que
+            // contesta el kernel, que lleva la cuenta por pid.
+            MEM_OP_BYTES => self.mem_entregados,
+            _ => 0,
+        }
+    }
+
+    /// Cuántos bytes de `KIND_MEMORIA` se han entregado. Para que un test pueda
+    /// comprobar lo que el programa pidió sin creerse lo que el programa dice.
+    pub fn memoria_entregada(&self) -> u64 {
+        self.mem_entregados
+    }
+
     /// La puerta del kernel, modelada.
     fn do_syscall(&mut self) {
         use bmo_abi::syscalls::surface::{
             CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
             TASK_OP_CONSOLE_READ, TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM,
-            TASK_OP_RUTA, TASK_OP_YIELD,
+            TASK_OP_MEMORIA_PEDIR, TASK_OP_RUTA, TASK_OP_YIELD,
         };
 
         let call = ObservedSyscall {
@@ -585,6 +680,18 @@ impl Machine {
                     self.finalizar_syscall(h);
                     return;
                 }
+                // Pedir memoria. Un rechazo NO es "handle 0": es un **código de
+                // error en rax**, y ésa es la diferencia que el emulador tiene
+                // que respetar. `malloc` mira `rax` primero (`test eax,eax`), y
+                // un modelo que devolviera siempre código 0 dejaría sin probar
+                // justo la rama que decide si el tope se cumple.
+                op if op == TASK_OP_MEMORIA_PEDIR => {
+                    match self.memoria_pedir(call.arg0) {
+                        Ok(h) => self.finalizar_syscall(h),
+                        Err(code) => self.fallar_syscall(code),
+                    }
+                    return;
+                }
                 // Ceder el turno es el borde del fotograma: aquí es donde
                 // "llega" lo que el usuario tecleó mientras tanto.
                 op if op == TASK_OP_YIELD => {
@@ -596,6 +703,10 @@ impl Machine {
             }
         } else if call.capability == CAP_ENTRADA {
             let v = self.entrada_op(call.operation);
+            self.finalizar_syscall(v);
+            return;
+        } else if call.capability >= CAP_MEMORIA {
+            let v = self.memoria_op(call.capability, call.operation);
             self.finalizar_syscall(v);
             return;
         } else if call.capability != 0 {
@@ -627,6 +738,20 @@ impl Machine {
         self.regs[R11] = POISON;
         self.regs[RAX] = 0; // code = 0 (ok), flags = 0
         self.regs[RDX] = valor;
+    }
+
+    /// El epílogo de una llamada que el kernel RECHAZA: código en `rax` y
+    /// **valor envenenado** en `rdx`.
+    ///
+    /// Lo segundo es a propósito. Un programa que se salta la comprobación del
+    /// código y usa el valor igual tiene que estropearse aquí, en un test, y no
+    /// en el Ryzen — donde `rdx` traería lo que hubiera quedado y funcionaría
+    /// por casualidad las primeras veces.
+    fn fallar_syscall(&mut self, code: u64) {
+        self.regs[RCX] = POISON;
+        self.regs[R11] = POISON;
+        self.regs[RAX] = code;
+        self.regs[RDX] = POISON;
     }
 
     /// Decodifica un ModRM y devuelve `(reg, destino)`.

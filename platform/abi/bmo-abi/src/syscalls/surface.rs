@@ -170,6 +170,19 @@ pub const INFO_ES_IDENTIDAD: u64 = 0x17;
 /// 1 si hoy se puede escribir. Hoy siempre 0: falta cablear la E/S.
 pub const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 
+/// **Bytes que Ring 3 ha PEDIDO** con `KIND_MEMORIA`, desde el arranque.
+///
+/// Es el único dato de memoria que el kernel no puede deducir mirando lo que
+/// cargó: la imagen y la pila de un proceso las puso él, pero un bloque pedido
+/// sólo existe porque alguien lo pidió. Y es la confirmación **desde el otro
+/// lado** de que la capability funciona — el programa dice que le dieron
+/// memoria; esto lo dice el kernel.
+///
+/// Contador que ya existía en `ring0::obj::memoria::total_entregado()` y que
+/// **no leía nadie**. Un contador que nadie consulta no es telemetría: es una
+/// variable.
+pub const INFO_MEM_ENTREGADA: u64 = 0x19;
+
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;

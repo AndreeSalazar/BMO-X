@@ -19,6 +19,7 @@ mod inicializadores;
 mod agregados;
 mod almacenamiento;
 mod entrada;
+mod memoria;
 mod semantic;
 
 #[test]
@@ -72,10 +73,31 @@ fn ejecutar_bef(bef: &[u8]) -> String {
     ejecutar_bef_con(bef, |_| {})
 }
 
+/// Igual que [`run_c`], pero devuelve **la máquina entera**.
+///
+/// Para lo que un programa no puede contarse a sí mismo: cuánta memoria le
+/// entregó el kernel, qué llamadas cruzaron la puerta y en qué orden. Un
+/// programa que imprime "todo bien" es un testigo, no una prueba.
+fn run_c_maquina(source: &str) -> bmo_lower::emu::Machine {
+    let bef = compile_source_to_bef(source).expect("el programa debe compilar");
+    maquina_de_bef(&bef)
+}
+
 fn ejecutar_bef_con(
     bef: &[u8],
     sembrar: impl FnOnce(&mut bmo_lower::emu::Machine),
 ) -> String {
+    maquina_de_bef_con(bef, sembrar).console
+}
+
+fn maquina_de_bef(bef: &[u8]) -> bmo_lower::emu::Machine {
+    maquina_de_bef_con(bef, |_| {})
+}
+
+fn maquina_de_bef_con(
+    bef: &[u8],
+    sembrar: impl FnOnce(&mut bmo_lower::emu::Machine),
+) -> bmo_lower::emu::Machine {
     use bmo_abi::bef::sections::{SectionEntry, SectionKind};
     use bmo_lower::emu::{run, Machine};
 
@@ -106,7 +128,7 @@ fn ejecutar_bef_con(
     sembrar(&mut machine);
     let machine = run(machine, 500_000);
     assert!(machine.exited, "el programa debe terminar por INVOKE(EXIT)");
-    machine.console
+    machine
 }
 
 

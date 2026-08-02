@@ -58,6 +58,8 @@ const INFO_ES_BLOQUE_TAM: u64 = 0x15;
 const INFO_ES_NIVEL: u64 = 0x16;
 const INFO_ES_IDENTIDAD: u64 = 0x17;
 const INFO_ES_ESCRIBIBLE: u64 = 0x18;
+/// Lo que Ring 3 ha pedido con `KIND_MEMORIA`. Ver `surface.rs`.
+const INFO_MEM_ENTREGADA: u64 = 0x19;
 
 const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
@@ -128,6 +130,10 @@ pub fn campo(n: u64) -> u64 {
         // seria prometer una escritura que no ocurre — y en un almacen, una
         // promesa de escritura que no ocurre es como se pierde el trabajo.
         INFO_ES_ESCRIBIBLE => 0,
+        // Lo que Ring 3 ha PEDIDO. Cero hasta que un programa llame a
+        // `KIND_MEMORIA` — y por eso vale: es la única fila del informe que
+        // sólo se mueve si alguien ejerció la capability.
+        INFO_MEM_ENTREGADA => crate::ring0::obj::memoria::total_entregado(),
         _ => 0,
     }
 }

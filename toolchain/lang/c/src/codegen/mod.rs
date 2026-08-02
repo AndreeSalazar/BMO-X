@@ -1226,8 +1226,28 @@ impl Codegen {
             //
             // Para el caso que motivó todo esto —DOOM pide su bloque UNA vez y
             // se lo administra con `Z_Zone`— esto es exactamente suficiente.
+            // ★ Los dos saltos de aquí van por ETIQUETA, y no es cosmética.
+            //
+            // La primera versión los emitió con desplazamientos contados a
+            // mano, y el primero se quedó **seis bytes corto**: `jnz +0x1D`
+            // cuando el camino hasta el `xor rax,rax` mide 35. O sea que
+            // cuando el kernel RECHAZABA la petición —la quinta, o una
+            // demasiado grande— el salto caía **dentro** del `jnz` siguiente y
+            // el CPU seguía por la mitad de una instrucción.
+            //
+            // Y el detalle que lo hace peor: la rama buena estaba bien. Un
+            // `malloc` que funciona cuatro veces y descarrila a la quinta pasa
+            // por "el tope se cumple" en cualquier prueba que no llegue a la
+            // quinta. Lo cazó el emulador con `opcode 0x05 no emitido por BMO`
+            // — que es la firma de haber aterrizado a media instrucción.
+            //
+            // Contar bytes a mano es escribir un enlazador en la cabeza cada
+            // vez que alguien añade una instrucción en medio. Las etiquetas ya
+            // estaban aquí; sólo había que usarlas.
             ("malloc", 1) => {
                 use bmo_sem_asm::x86_64::Reg;
+                let sin_bloque = self.fresh_label();
+                let fin = self.fresh_label();
                 self.emit_expr(&args[0]);                          // rax = bytes
                 self.emit_asm(|a| { a.mov_reg(Reg::Rdx, Reg::Rax).unwrap(); });
                 // rdi = CURRENT_TASK, rsi = OP_MEMORIA_PEDIR
@@ -1238,7 +1258,7 @@ impl Codegen {
                 // El handle vuelve en rdx (`value`); rax lleva el código.
                 // Si el código no es 0, no hay bloque: se devuelve 0.
                 self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
-                self.code.extend_from_slice(&[0x75, 0x1D]);        // jnz -> devolver 0
+                self.emit_jnz_reloc(sin_bloque);
                 // Segunda llamada: MEM_OP_BASE sobre el handle.
                 self.emit_asm(|a| { a.mov_reg(Reg::Rdi, Reg::Rdx).unwrap(); });
                 self.emit_asm(|a| { a.mov_imm64(Reg::Rsi, 0x01).unwrap(); });
@@ -1246,10 +1266,12 @@ impl Codegen {
                 self.code.extend_from_slice(&[0xB8, 0, 0, 0, 0]);  // mov eax, NR_INVOKE
                 self.emit_call_to_syscall_stub();
                 self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
-                self.code.extend_from_slice(&[0x75, 0x05]);        // jnz -> 0
+                self.emit_jnz_reloc(sin_bloque);
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);  // mov rax, rdx (la base)
-                self.code.extend_from_slice(&[0xEB, 0x03]);        // jmp fin
+                self.emit_jmp_reloc(fin);
+                self.resolve_label(sin_bloque);
                 self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);  // xor rax, rax
+                self.resolve_label(fin);
                 Some(())
             }
             // `free` NO devuelve nada al kernel — no hay forma, y decirlo aquí
