@@ -139,8 +139,17 @@ fichero vacío.
    ★ Aquí apareció la primera ambigüedad de verdad: **`P *q` es una
    declaración o una multiplicación, y sólo la tabla de símbolos lo sabe**. Es
    el hermano pequeño de `a<b>(c)`, y llegó sin necesidad de plantillas.
-3. **Constructor y destructor (RAII)**, que es la razón de existir del lenguaje:
-   una lista de limpieza por ámbito, recorrida al revés en **cada** salida.
+3. ✅ **HECHO — constructor y destructor (RAII)**, que es la razón de existir
+   del lenguaje. Son **funciones normales con `this`**; lo único especial es
+   quién las llama y cuándo. La pila de limpieza es la de Clang (`EHScopeStack`)
+   **sin la rama de desenrollado**: sin excepciones colapsa a una lista por
+   ámbito recorrida al revés, y las salidas son cuatro y están todas a la
+   vista — final de las llaves, `return`, `break` y `continue`.
+   ★ El valor del `return` se calcula **antes** de destruir (si no, `return
+   p.leer()` devolvería lo que quedara en la pila), y `break` y `continue` no
+   destruyen lo mismo: un `switch` para al primero y no al segundo.
+   ⏳ Esperan al paso 4: la lista de inicialización (`P() : x(0)`), varios
+   constructores, y el de copia. `new`/`delete` esperan a que haya asignador.
 4. **Mangling**, en cuanto haya sobrecarga. Y el ABI se escribe **el mismo día**
    — la lección de MSVC.
 5. **Virtuales y vtable** — con la herencia virtual y múltiple descartadas, es

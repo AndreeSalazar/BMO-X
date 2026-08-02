@@ -44,6 +44,245 @@
 use bmo_c_front::ast as c;
 use crate::ast as cpp;
 use crate::CppError;
+use std::collections::HashMap;
+
+// ── RAII: la pila de limpieza ───────────────────────────────────────
+//
+// ═══ Cómo lo hace Clang, y qué se le quita ═══
+//
+// `CGClass.cpp` lleva una pila de *cleanups* por ámbito (`EHScopeStack`) y la
+// ejecuta en cada salida. **Con excepciones** eso se bifurca en dos caminos
+// —el normal y el de desenrollado— y ahí es donde se vuelve caro: cada ámbito
+// necesita una tabla que diga qué hay vivo para poder destruirlo desde un
+// `throw` que venga de cualquier profundidad.
+//
+// ★ **Sin excepciones colapsa a una lista por ámbito que se recorre al revés
+// en cada salida**, y las salidas son cuatro y están todas a la vista:
+// el final de las llaves, `return`, `break` y `continue`. Eso es lo que se
+// implementa aquí, y cabe en una pantalla.
+//
+// El orden inverso no es una preferencia: es el lenguaje. Si `a` se construyó
+// antes que `b`, `b` puede depender de `a`, así que `b` se destruye primero.
+
+/// A qué salida corta un `break` o un `continue`.
+#[derive(Clone, Copy, PartialEq)]
+enum Corte {
+    /// Un bloque normal: ni `break` ni `continue` paran aquí.
+    Ninguno,
+    /// Un bucle: paran los dos.
+    Bucle,
+    /// Un `switch`: para `break`, **no** `continue`. Ésa es justo la
+    /// diferencia entre los dos, y meterlos en el mismo saco haría que un
+    /// `continue` dentro de un `switch` dentro de un bucle destruyera de menos.
+    Switch,
+}
+
+struct Ambito {
+    /// *(variable, clase)* en orden de construcción.
+    objetos: Vec<(String, String)>,
+    corte: Corte,
+}
+
+/// Lo que el descenso necesita saber de una clase para insertar llamadas.
+#[derive(Default, Clone, Copy)]
+struct Info {
+    ctor: bool,
+    dtor: bool,
+}
+
+/// El nombre del constructor emitido: `P.P`.
+///
+/// No puede chocar con un método: dentro de la clase `P`, un miembro llamado
+/// `P` **es** el constructor, así que el nombre está reservado por el propio
+/// lenguaje. Y el destructor lleva `~`, que no es legal en un identificador.
+fn nombre_ctor(clase: &str) -> String { format!("{clase}.{clase}") }
+fn nombre_dtor(clase: &str) -> String { format!("{clase}.~{clase}") }
+
+/// Baja el cuerpo de una función insertando construcciones y destrucciones.
+struct Cuerpo<'a> {
+    clases: &'a HashMap<String, Info>,
+    pila: Vec<Ambito>,
+    /// Contador de temporales. El nombre lleva un punto —ilegal en C++— para
+    /// que no pueda chocar con una variable del programa.
+    temp: u32,
+    /// El tipo que devuelve la función, para poder declarar el temporal del
+    /// `return` cuando haya destructores que ejecutar antes de salir.
+    ret: cpp::TypeSpec,
+}
+
+impl<'a> Cuerpo<'a> {
+    fn nuevo(clases: &'a HashMap<String, Info>, ret: cpp::TypeSpec) -> Self {
+        Self { clases, pila: Vec::new(), temp: 0, ret }
+    }
+
+    /// Las destrucciones de un ámbito, **en orden inverso al de construcción**.
+    fn destruir(a: &Ambito) -> Vec<c::Stmt> {
+        a.objetos.iter().rev().map(|(v, cl)| {
+            c::Stmt::Expr(c::Expr::Call(
+                nombre_dtor(cl),
+                vec![c::Expr::AddrOf(Box::new(c::Expr::Var(v.clone())))],
+            ))
+        }).collect()
+    }
+
+    /// Las destrucciones desde el ámbito actual hasta `hasta` (incluido),
+    /// contando desde dentro hacia fuera.
+    fn destruir_hasta(&self, hasta: usize) -> Vec<c::Stmt> {
+        let mut out = Vec::new();
+        for a in self.pila[hasta..].iter().rev() {
+            out.extend(Self::destruir(a));
+        }
+        out
+    }
+
+    /// El ámbito donde para un `break` (bucle o `switch`) o un `continue`
+    /// (sólo bucle). `None` si no hay ninguno — lo que significa un `break`
+    /// suelto, que el codegen de C ya rechaza por su cuenta.
+    fn objetivo(&self, solo_bucle: bool) -> Option<usize> {
+        self.pila.iter().rposition(|a| match a.corte {
+            Corte::Bucle => true,
+            Corte::Switch => !solo_bucle,
+            Corte::Ninguno => false,
+        })
+    }
+
+    /// Un bloque completo: entra en un ámbito, baja las sentencias, y si no
+    /// se salió por la puerta de atrás, destruye lo que quede vivo.
+    fn bloque(&mut self, ss: &[cpp::Stmt], corte: Corte) -> Result<Vec<c::Stmt>, CppError> {
+        self.pila.push(Ambito { objetos: Vec::new(), corte });
+        let mut out = Vec::new();
+        let mut cortado = false;
+        for s in ss {
+            if cortado {
+                // Código detrás de un `return`/`break`/`continue`. No se emite
+                // —nunca se ejecutaría— pero tampoco se calla: emitirlo
+                // pondría destrucciones detrás de la salida.
+                return Err(CppError::new(0,
+                    "hay sentencias detras de un `return`, `break` o `continue`: \
+                     nunca se ejecutarian"));
+            }
+            cortado = matches!(s, cpp::Stmt::Return(_) | cpp::Stmt::Break | cpp::Stmt::Continue);
+            out.extend(self.stmt(s)?);
+        }
+        if !cortado {
+            let a = self.pila.last().unwrap();
+            out.extend(Self::destruir(a));
+        }
+        self.pila.pop();
+        Ok(out)
+    }
+
+    /// Un ámbito de una sola sentencia (el cuerpo de un `if` sin llaves, por
+    /// ejemplo). Se envuelve igual para que las reglas sean las mismas.
+    fn anidado(&mut self, s: &cpp::Stmt, corte: Corte) -> Result<c::Stmt, CppError> {
+        match s {
+            cpp::Stmt::Block(v) => Ok(c::Stmt::Block(self.bloque(v, corte)?)),
+            otro => Ok(c::Stmt::Block(self.bloque(std::slice::from_ref(otro), corte)?)),
+        }
+    }
+
+    fn stmt(&mut self, s: &cpp::Stmt) -> Result<Vec<c::Stmt>, CppError> {
+        use cpp::Stmt as S;
+        Ok(match s {
+            // ── La construcción ──
+            S::DeclVar(cpp::TypeSpec::ClassRef(cl), nombre, init) => {
+                if init.is_some() {
+                    return Err(pendiente("inicializar un objeto con `=` (constructor de copia)", 4,
+                        "el constructor de copia"));
+                }
+                let info = self.clases.get(cl).copied().unwrap_or_default();
+                let mut out = vec![c::Stmt::DeclAssign(
+                    c::TypeSpec::StructRef(cl.clone()), nombre.clone(), None)];
+                if info.ctor {
+                    out.push(c::Stmt::Expr(c::Expr::Call(
+                        nombre_ctor(cl),
+                        vec![c::Expr::AddrOf(Box::new(c::Expr::Var(nombre.clone())))],
+                    )));
+                }
+                if info.dtor {
+                    self.pila.last_mut().unwrap().objetos.push((nombre.clone(), cl.clone()));
+                }
+                out
+            }
+
+            // ── Las salidas ──
+            S::Return(v) => {
+                let limpieza = self.destruir_hasta(0);
+                match (v, limpieza.is_empty()) {
+                    (_, true) => vec![c::Stmt::Return(match v {
+                        Some(e) => Some(expr(e)?), None => None,
+                    })],
+                    (None, false) => {
+                        let mut out = limpieza;
+                        out.push(c::Stmt::Return(None));
+                        out
+                    }
+                    // ★ El valor se calcula ANTES de destruir. `return
+                    // p.valor();` con `p` a punto de morir tiene que leer el
+                    // objeto vivo — si el destructor corriera primero, se
+                    // devolvería lo que quedara en la pila.
+                    (Some(e), false) => {
+                        self.temp += 1;
+                        let t = format!("ret.{}", self.temp);
+                        let mut out = vec![c::Stmt::DeclAssign(
+                            tipo(&self.ret)?, t.clone(), Some(expr(e)?))];
+                        out.extend(limpieza);
+                        out.push(c::Stmt::Return(Some(c::Expr::Var(t))));
+                        out
+                    }
+                }
+            }
+            S::Break | S::Continue => {
+                let solo_bucle = matches!(s, S::Continue);
+                let mut out = match self.objetivo(solo_bucle) {
+                    Some(i) => self.destruir_hasta(i),
+                    None => Vec::new(),
+                };
+                out.push(if solo_bucle { c::Stmt::Continue } else { c::Stmt::Break });
+                out
+            }
+
+            // ── Lo que abre ámbito ──
+            S::Block(v) => vec![c::Stmt::Block(self.bloque(v, Corte::Ninguno)?)],
+            S::If(c_, t, e) => vec![c::Stmt::If(
+                expr(c_)?,
+                Box::new(self.anidado(t, Corte::Ninguno)?),
+                match e { Some(x) => Some(Box::new(self.anidado(x, Corte::Ninguno)?)), None => None },
+            )],
+            S::While(c_, b) => vec![c::Stmt::While(
+                expr(c_)?, Box::new(self.anidado(b, Corte::Bucle)?))],
+            S::DoWhile(b, c_) => vec![c::Stmt::DoWhile(
+                Box::new(self.anidado(b, Corte::Bucle)?), expr(c_)?)],
+            S::For(a, b, c_, cuerpo) => vec![c::Stmt::For(
+                opt_expr(a)?, opt_expr(b)?, opt_expr(c_)?,
+                Box::new(self.anidado(cuerpo, Corte::Bucle)?),
+            )],
+            S::Switch(sujeto, casos) => {
+                let sujeto = expr(sujeto)?;
+                self.pila.push(Ambito { objetos: Vec::new(), corte: Corte::Switch });
+                let mut out = Vec::new();
+                for k in casos {
+                    let mut cuerpo = Vec::new();
+                    for s in &k.stmts { cuerpo.extend(self.stmt(s)?); }
+                    out.push(c::Case { value: k.value, stmts: cuerpo });
+                }
+                self.pila.pop();
+                vec![c::Stmt::Switch(sujeto, out)]
+            }
+
+            // ── Lo demás, tal cual ──
+            S::Expr(e) => vec![c::Stmt::Expr(expr(e)?)],
+            S::DeclVar(t, n, init) => {
+                let v = match init { Some(e) => Some(expr(e)?), None => None };
+                vec![c::Stmt::DeclAssign(tipo(t)?, n.clone(), v)]
+            }
+            S::Assign(n, e) => vec![c::Stmt::Expr(
+                c::Expr::Assign(n.clone(), Box::new(expr(e)?)))],
+            S::Delete(_) => return Err(pendiente("`delete`", 3,
+                "un asignador de memoria sobre `KIND_MEMORIA`, que todavia no existe")),
+        })
+    }
+}
 
 /// Traduce un programa de C++ al `Program` de BMO C que el codegen entiende.
 pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
@@ -65,6 +304,17 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     // haría que la única copia que manda fuera la de C++, y el día que las
     // dos reglas divergieran nadie se enteraría. Así, si divergen, el valor
     // sale mal y la matriz se pone roja.
+    // Quién tiene constructor y quién destructor. Se recoge ANTES de bajar
+    // ningún cuerpo, porque una clase puede usarse en un método de otra que se
+    // declaró antes.
+    let mut info: HashMap<String, Info> = HashMap::new();
+    for cl in &p.classes {
+        info.insert(cl.name.clone(), Info {
+            ctor: cl.constructor.is_some(),
+            dtor: cl.destructor.is_some(),
+        });
+    }
+
     for cl in &p.classes {
         let mut miembros = Vec::new();
         for m in &cl.members {
@@ -73,7 +323,20 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
         out.globals.push(c::GlobalDecl::Struct(cl.name.clone(), miembros));
 
         for m in &cl.methods {
-            out.functions.push(metodo(cl, m)?);
+            out.functions.push(metodo(cl, m, &info)?);
+        }
+        // El constructor y el destructor son **funciones normales** con `this`.
+        // Ahí acaba toda la magia: lo único especial de ellos es QUIÉN las
+        // llama y CUÁNDO, y eso lo decide `Cuerpo`.
+        if let Some(ctor) = &cl.constructor {
+            let mut f = metodo(cl, ctor, &info)?;
+            f.name = nombre_ctor(&cl.name);
+            out.functions.push(f);
+        }
+        if let Some(dtor) = &cl.destructor {
+            let mut f = metodo(cl, dtor, &info)?;
+            f.name = nombre_dtor(&cl.name);
+            out.functions.push(f);
         }
     }
 
@@ -88,7 +351,7 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     }
 
     for f in &p.functions {
-        out.functions.push(funcion(f)?);
+        out.functions.push(funcion(f, &info)?);
     }
 
     // ★ Un programa sin `main` no es un programa.
@@ -119,7 +382,9 @@ pub fn nombre_de_metodo(clase: &str, metodo: &str) -> String {
     format!("{clase}.{metodo}")
 }
 
-fn metodo(cl: &cpp::Class, m: &cpp::Method) -> Result<c::Function, CppError> {
+fn metodo(cl: &cpp::Class, m: &cpp::Method, info: &HashMap<String, Info>)
+    -> Result<c::Function, CppError>
+{
     let this = c::Param {
         typ: c::TypeSpec::Ptr(Box::new(c::TypeSpec::StructRef(cl.name.clone()))),
         name: "this".into(),
@@ -129,13 +394,13 @@ fn metodo(cl: &cpp::Class, m: &cpp::Method) -> Result<c::Function, CppError> {
         name: nombre_de_metodo(&cl.name, &m.name),
         params: m.params.clone(),
         body: m.body.clone(),
-    })?;
+    }, info)?;
     f.params.insert(0, this.clone());
     f.var_names.insert(0, this.name);
     Ok(f)
 }
 
-fn funcion(f: &cpp::Function) -> Result<c::Function, CppError> {
+fn funcion(f: &cpp::Function, info: &HashMap<String, Info>) -> Result<c::Function, CppError> {
     let mut params = Vec::new();
     for pa in &f.params {
         if pa.default.is_some() {
@@ -144,10 +409,10 @@ fn funcion(f: &cpp::Function) -> Result<c::Function, CppError> {
         params.push(c::Param { typ: tipo(&pa.typ)?, name: pa.name.clone() });
     }
 
-    let mut cuerpo = Vec::new();
-    for s in &f.body {
-        cuerpo.push(stmt(s)?);
-    }
+    // El cuerpo entero es un ámbito: lo que se declare aquí se destruye al
+    // salir, y `Cuerpo` se encarga de que también se destruya en cada `return`.
+    let mut cu = Cuerpo::nuevo(info, f.ret_type.clone());
+    let cuerpo = cu.bloque(&f.body, Corte::Ninguno)?;
 
     // `var_names` es el camino LEGADO de C: `build_var_map` saca las locales
     // recorriendo el cuerpo (`collect_decls_stmt`), que es donde está el tipo
@@ -215,50 +480,11 @@ fn tipo(t: &cpp::TypeSpec) -> Result<c::TypeSpec, CppError> {
     })
 }
 
-// ── Sentencias ──────────────────────────────────────────────────────
-
-fn stmt(s: &cpp::Stmt) -> Result<c::Stmt, CppError> {
-    use cpp::Stmt as S;
-    Ok(match s {
-        S::Expr(e) => c::Stmt::Expr(expr(e)?),
-        S::Return(None) => c::Stmt::Return(None),
-        S::Return(Some(e)) => c::Stmt::Return(Some(expr(e)?)),
-        S::DeclVar(t, n, init) => {
-            let v = match init { Some(e) => Some(expr(e)?), None => None };
-            c::Stmt::DeclAssign(tipo(t)?, n.clone(), v)
-        }
-        S::Assign(n, e) => c::Stmt::Expr(c::Expr::Assign(n.clone(), Box::new(expr(e)?))),
-        S::If(c_, t, e) => c::Stmt::If(
-            expr(c_)?,
-            Box::new(stmt(t)?),
-            match e { Some(x) => Some(Box::new(stmt(x)?)), None => None },
-        ),
-        S::While(c_, b) => c::Stmt::While(expr(c_)?, Box::new(stmt(b)?)),
-        S::DoWhile(b, c_) => c::Stmt::DoWhile(Box::new(stmt(b)?), expr(c_)?),
-        S::Switch(sujeto, casos) => {
-            let mut out = Vec::new();
-            for k in casos {
-                let mut cuerpo = Vec::new();
-                for s in &k.stmts { cuerpo.push(stmt(s)?); }
-                out.push(c::Case { value: k.value, stmts: cuerpo });
-            }
-            c::Stmt::Switch(expr(sujeto)?, out)
-        }
-        S::For(a, b, c_, cuerpo) => c::Stmt::For(
-            opt_expr(a)?, opt_expr(b)?, opt_expr(c_)?, Box::new(stmt(cuerpo)?),
-        ),
-        S::Block(v) => {
-            let mut out = Vec::new();
-            for x in v { out.push(stmt(x)?); }
-            c::Stmt::Block(out)
-        }
-        S::Break => c::Stmt::Break,
-        S::Continue => c::Stmt::Continue,
-
-        S::Delete(_) => return Err(pendiente("`delete`", 3,
-            "el destructor, y encima la capability de memoria")),
-    })
-}
+// ── Sentencias sueltas ──────────────────────────────────────────────
+//
+// El descenso de sentencias vive en `Cuerpo`, arriba: desde el paso 3 una
+// sentencia puede convertirse en VARIAS (declarar + construir, destruir +
+// salir), y una funcion que devuelve un solo `Stmt` ya no puede expresarlo.
 
 fn opt_expr(e: &Option<cpp::Expr>) -> Result<Option<c::Expr>, CppError> {
     match e { Some(x) => Ok(Some(expr(x)?)), None => Ok(None) }

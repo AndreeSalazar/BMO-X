@@ -126,6 +126,26 @@ fn matriz_cpp_ejecuta_correctamente() {
         ("clase-disposicion", "@FULL@class P { public: char c; int n; }; int main() { P p; p.c = 'A'; p.n = 41; printf(\"%d %c\", p.n + 1, p.c); return 0; }", "42 A"),
         ("clase-privado-por-metodo", "@FULL@class P { int secreto; public: void poner(int n) { secreto = n; } int leer() { return secreto; } }; int main() { P p; p.poner(42); printf(\"%d\", p.leer()); return 0; }", "42"),
 
+        // ── RAII: constructor y destructor (paso 3) ──
+        ("ctor-corre", "@FULL@class P { public: int x; P() { x = 42; } }; int main() { P p; printf(\"%d\", p.x); return 0; }", "42"),
+        ("ctor-con-args-no-hay", "@FULL@class P { public: int x; P() { x = 40; } int mas(int n) { return x + n; } }; int main() { P p; printf(\"%d\", p.mas(2)); return 0; }", "42"),
+        ("dtor-al-salir-del-bloque", "@FULL@class P { public: P() { printf(\"nace \"); } ~P() { printf(\"muere\"); } }; int main() { { P p; } return 0; }", "nace muere"),
+        ("dtor-al-final-de-main", "@FULL@class P { public: ~P() { printf(\"fin\"); } }; int main() { P p; return 0; }", "fin"),
+        // ★ El orden INVERSO no es una preferencia, es el lenguaje: si `a` se
+        // construyó antes que `b`, `b` puede depender de `a`.
+        ("dtor-en-orden-inverso", "@FULL@class A { public: ~A() { printf(\"A\"); } }; class B { public: ~B() { printf(\"B\"); } }; int main() { A a; B b; return 0; }", "BA"),
+        // ★ El valor del `return` se calcula ANTES de destruir. Si el
+        // destructor corriera primero, se devolvería lo que quedara en la pila.
+        ("dtor-tras-calcular-el-return", "@FULL@class P { public: int x; P() { x = 42; } ~P() { x = 0; } int leer() { return x; } }; int f() { P p; return p.leer(); } int main() { printf(\"%d\", f()); return 0; }", "42"),
+        ("dtor-en-return-temprano", "@FULL@class P { public: ~P() { printf(\"muere \"); } }; int f(int n) { P p; if (n > 0) { return 1; } return 0; } int main() { printf(\"%d\", f(1)); return 0; }", "muere 1"),
+        ("dtor-anidado", "@FULL@class P { public: int n; P() { n = 0; } ~P() { printf(\"x\"); } }; int main() { P a; { P b; { P c; } } printf(\"|\"); return 0; }", "xx|x"),
+        ("dtor-en-cada-vuelta-del-bucle", "@FULL@class P { public: ~P() { printf(\".\"); } }; int main() { for (int i = 0; i < 3; i++) { P p; } printf(\"|\"); return 0; }", "...|"),
+        ("dtor-con-break", "@FULL@class P { public: ~P() { printf(\".\"); } }; int main() { for (int i = 0; i < 9; i++) { P p; if (i == 2) { break; } } printf(\"|\"); return 0; }", "...|"),
+        ("dtor-con-continue", "@FULL@class P { public: ~P() { printf(\".\"); } }; int main() { for (int i = 0; i < 3; i++) { P p; if (i == 1) { continue; } } printf(\"|\"); return 0; }", "...|"),
+        ("solo-ctor-sin-dtor", "@FULL@class P { public: int x; P() { x = 42; } }; int main() { P p; printf(\"%d\", p.x); return 0; }", "42"),
+        ("solo-dtor-sin-ctor", "@FULL@class P { public: int x; ~P() { printf(\"%d\", x); } }; int main() { P p; p.x = 42; return 0; }", "42"),
+        ("ctor-usa-metodo", "@FULL@class P { public: int x; void poner() { x = 42; } P() { poner(); } }; int main() { P p; printf(\"%d\", p.x); return 0; }", "42"),
+
         // ★ Integración: una fila que COMPONE varias características. Las
         // demás prueban cada pieza suelta, y una pieza suelta puede estar bien
         // y romperse al lado de otra — el `for` con declaración envuelve en un
@@ -160,6 +180,42 @@ fn matriz_cpp_ejecuta_correctamente() {
                 printf(\"valor=%d doble=%d via_ptr=%d\", c.valor(), c.doble(), p->valor());\n\
                 return 0;\n\
             }", "valor=21 doble=42 via_ptr=21"),
+
+        // ★ Integración de RAII: las CUATRO salidas de ámbito en un programa,
+        // con objetos vivos en dos niveles a la vez. Es el que se compila a
+        // mano en `p3.cpp`.
+        //
+        //   i=0 → final del cuerpo del bucle   → ~2
+        //   i=1 → `continue`                    → ~2
+        //   i=2 → `break`                       → ~2
+        //   `return` → destruye c y luego a     → ~3 ~1
+        //
+        // ⚠ Y el `[` sale ANTES que los `~`, que en C estándar no pasaría.
+        // No es cosa de C++: **el `printf` de BMO C formatea EN LÍNEA**, o sea
+        // que va escribiendo el literal según recorre la plantilla y evalúa
+        // cada argumento cuando le toca. En C estándar todos los argumentos se
+        // evalúan ANTES de llamar, así que `printf("[%d]", f())` con `f`
+        // imprimiendo daría `~2 … [99]` en GCC y da `[~2 … 99]` aquí.
+        // Sólo se nota con un argumento que tenga efectos, y esta fila es el
+        // sitio donde queda registrado.
+        ("raii-las-cuatro-salidas", "@FULL@\
+            class Traza {\n\
+            public:\n\
+                int id;\n\
+                ~Traza() { printf(\"~%d \", id); }\n\
+            };\n\
+            int trabajo(int n) {\n\
+                Traza a; a.id = 1;\n\
+                for (int i = 0; i < n; i++) {\n\
+                    Traza b; b.id = 2;\n\
+                    if (i == 1) { continue; }\n\
+                    if (i == 2) { break; }\n\
+                }\n\
+                Traza c; c.id = 3;\n\
+                return 99;\n\
+            }\n\
+            int main() { printf(\"[%d]\", trabajo(5)); return 0; }",
+            "[~2 ~2 ~2 ~3 ~1 99]"),
     ];
 
     let total = casos.len();
@@ -195,8 +251,9 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
         ("auto", "auto x = 1;", 2),
         ("sizeof", "printf(\"%d\", sizeof(int));", 2),
         ("referencia", "@FULL@int f(int &r) { return r; } int main(){return 0;}", 2),
-        ("constructor", "@FULL@class P { public: P() {} };\nint main(){return 0;}", 3),
-        ("destructor", "@FULL@class P { public: ~P() {} };\nint main(){return 0;}", 3),
+        ("lista-de-inicializacion", "@FULL@class P { int x; public: P() : x(0) {} };\nint main(){return 0;}", 4),
+        ("dos-constructores", "@FULL@class P { public: P() {} P(int n) {} };\nint main(){return 0;}", 4),
+        ("copia", "@FULL@class P { public: int x; }; int main(){ P a; P b = a; return 0; }", 4),
         ("new", "int *p = new P();", 3),
         ("delete", "int *p = 0; delete p;", 3),
         ("miembro-static", "@FULL@class P { public: static int n; };\nint main(){return 0;}", 4),

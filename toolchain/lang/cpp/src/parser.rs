@@ -243,6 +243,8 @@ impl Parser {
         // ── Vuelta 1: campos y firmas ──
         let mut campos: Vec<MemberVar> = Vec::new();
         let mut cuerpos: Vec<(usize, Method)> = Vec::new(); // (posición del `{`, firma)
+        let mut ctor: Option<(usize, Method)> = None;
+        let mut dtor: Option<(usize, Method)> = None;
         let mut acceso = if es_struct { Access::Public } else { Access::Private };
 
         while *self.peek() != Token::CloseBrace {
@@ -253,14 +255,65 @@ impl Parser {
                 Token::Protected => { self.avanzar(); self.exige(&Token::Colon)?; acceso = Access::Protected; continue; }
                 Token::Semicolon => { self.avanzar(); continue; }
                 Token::Virtual => return Err(self.pendiente("las funciones virtuales", 5)),
-                Token::Tilde => return Err(self.pendiente("el destructor", 3)),
                 Token::Friend => return Err(self.pendiente("`friend`", 4)),
                 Token::Static => return Err(self.pendiente("los miembros `static`", 4)),
                 Token::Operator => return Err(self.pendiente("la sobrecarga de operadores", 4)),
-                // El constructor es `P(` — el nombre de la clase seguido de
-                // paréntesis. Se reconoce aquí para poder decir el paso.
-                Token::Ident(n) if n == nombre && *self.peek_en(1) == Token::OpenParen =>
-                    return Err(self.pendiente("el constructor", 3)),
+
+                // ── Destructor: `~P() { … }` ──
+                Token::Tilde => {
+                    self.avanzar();
+                    match self.avanzar() {
+                        Token::Ident(n) if n == nombre => {}
+                        otro => return Err(self.err(format!(
+                            "el destructor de `{nombre}` se llama `~{nombre}`, no {otro:?}"))),
+                    }
+                    self.exige(&Token::OpenParen)?;
+                    if *self.peek() != Token::CloseParen {
+                        return Err(self.err("un destructor no lleva parametros"));
+                    }
+                    self.avanzar();
+                    if dtor.is_some() {
+                        return Err(self.err(format!("`{nombre}` ya tiene destructor")));
+                    }
+                    let inicio = self.pos;
+                    self.saltar_bloque()?;
+                    dtor = Some((inicio, Method {
+                        name: format!("~{nombre}"), ret_type: TypeSpec::Void, params: vec![],
+                        body: Vec::new(), is_virtual: false, is_override: false,
+                        is_const: false, access: Access::Public, class_name: nombre.clone(),
+                    }));
+                    continue;
+                }
+
+                // ── Constructor: `P(…) { … }` — el nombre de la clase
+                //    seguido de paréntesis, y SIN tipo de retorno delante.
+                Token::Ident(n) if n == nombre && *self.peek_en(1) == Token::OpenParen => {
+                    self.avanzar();
+                    self.avanzar();
+                    let params = self.parametros()?;
+                    self.exige(&Token::CloseParen)?;
+                    // `P() : x(0) {}` — la lista de inicialización de miembros.
+                    // No entra todavía: pide resolver un inicializador POR
+                    // MIEMBRO en el orden de declaración (que no es el orden en
+                    // que se escriben), y ése es trabajo del paso 4. Mientras
+                    // tanto el cuerpo `{ x = 0; }` hace lo mismo.
+                    if *self.peek() == Token::Colon {
+                        return Err(self.pendiente(
+                            "la lista de inicializacion de miembros (`P() : x(0)`)", 4));
+                    }
+                    if ctor.is_some() {
+                        return Err(self.pendiente(
+                            "mas de un constructor (sobrecarga)", 4));
+                    }
+                    let inicio = self.pos;
+                    self.saltar_bloque()?;
+                    ctor = Some((inicio, Method {
+                        name: nombre.clone(), ret_type: TypeSpec::Void, params,
+                        body: Vec::new(), is_virtual: false, is_override: false,
+                        is_const: false, access: acceso, class_name: nombre.clone(),
+                    }));
+                    continue;
+                }
                 _ => {}
             }
 
@@ -324,18 +377,30 @@ impl Parser {
 
         // ── Vuelta 2: los cuerpos, con la clase ya registrada ──
         let vuelta = self.pos;
+        let mut cuerpo_de = |p: &mut Self, inicio: usize, m: &mut Method| -> Result<(), CppError> {
+            p.pos = inicio;
+            p.clase_actual = Some(nombre.clone());
+            p.ambitos.entrar();
+            p.ambitos.declarar("this", TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(nombre.clone()))));
+            for pa in &m.params { p.ambitos.declarar(&pa.name, pa.typ.clone()); }
+            m.body = p.bloque()?;
+            p.ambitos.salir();
+            p.clase_actual = None;
+            Ok(())
+        };
         let mut metodos = Vec::new();
         for (inicio, mut m) in cuerpos {
-            self.pos = inicio;
-            self.clase_actual = Some(nombre.clone());
-            self.ambitos.entrar();
-            self.ambitos.declarar("this", TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(nombre.clone()))));
-            for p in &m.params { self.ambitos.declarar(&p.name, p.typ.clone()); }
-            m.body = self.bloque()?;
-            self.ambitos.salir();
-            self.clase_actual = None;
+            cuerpo_de(self, inicio, &mut m)?;
             metodos.push(m);
         }
+        let constructor = match ctor {
+            Some((inicio, mut m)) => { cuerpo_de(self, inicio, &mut m)?; Some(m) }
+            None => None,
+        };
+        let destructor = match dtor {
+            Some((inicio, mut m)) => { cuerpo_de(self, inicio, &mut m)?; Some(m) }
+            None => None,
+        };
         self.pos = vuelta;
 
         let mut miembros = Vec::new();
@@ -345,7 +410,7 @@ impl Parser {
 
         Ok(Class {
             name: nombre, bases: Vec::new(), members: miembros, methods: metodos,
-            constructor: None, destructor: None, vtable: false, size: tam,
+            constructor, destructor, vtable: false, size: tam,
         })
     }
 
