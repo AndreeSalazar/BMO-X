@@ -233,34 +233,33 @@ impl Parser {
         } else { 8 }
     }
 
+    /// La regla de disposición **ya no está aquí**: vive una sola vez en
+    /// `bmo_abi::types::disposicion`. Estaba copiada a mano en tres sitios
+    /// —este, `codegen::build_struct_layout` y el parser de C++— y una
+    /// divergencia entre ellas no da un error: da un programa que escribe en
+    /// el campo de al lado.
     fn compute_struct_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
-        let mut offset = 0u32;
+        let mut d = bmo_abi::types::Disposicion::nueva();
         for m in members {
             let sz = m.typ.stack_size();
-            let align = sz.min(8).max(1);
-            offset = (offset + align - 1) / align * align;
-            layout.push((m.name.clone(), offset, sz));
+            layout.push((m.name.clone(), d.coloca(sz), sz));
             self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
-            offset += sz;
         }
-        let max_align = members.iter().map(|m| m.typ.stack_size().min(8).max(1)).max().unwrap_or(1);
-        let total = (offset + max_align - 1) / max_align * max_align;
         self.struct_fields.insert(name.to_string(), layout);
-        self.struct_sizes.insert(name.to_string(), total);
+        self.struct_sizes.insert(name.to_string(), d.total());
     }
 
     fn compute_union_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
-        let mut max_sz = 0u32;
+        let mut d = bmo_abi::types::DisposicionUnion::nueva();
         for m in members {
             let sz = m.typ.stack_size();
-            layout.push((m.name.clone(), 0u32, sz));
+            layout.push((m.name.clone(), d.coloca(sz), sz));
             self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
-            if sz > max_sz { max_sz = sz; }
         }
         self.struct_fields.insert(name.to_string(), layout);
-        self.struct_sizes.insert(name.to_string(), max_sz);
+        self.struct_sizes.insert(name.to_string(), d.total());
     }
 
     fn expect(&mut self, expected: &Token) -> Result<Token, CError> {

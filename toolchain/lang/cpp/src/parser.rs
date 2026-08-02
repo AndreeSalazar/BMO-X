@@ -299,26 +299,22 @@ impl Parser {
 
         // ── La disposición ──
         //
-        // ⚠ La regla de alineado está escrita **por tercera vez** en el
-        // proyecto: `c::parser::compute_struct_layout` y
-        // `c::codegen::build_struct_layout` ya la tienen, idéntica. Aquí hace
-        // falta una tercera porque los nodos `Field` de C llevan el offset
-        // dentro, así que el parser de C++ tiene que saberlo. Es exactamente
-        // el riesgo que avisa la cabecera de `inicializador.rs` —dos copias de
-        // un cálculo de offsets divergen— y por eso el descenso emite el
-        // `Struct` y deja que el codegen recalcule: si algún día divergen, la
-        // fila `clase-disposicion` de la matriz se pone roja.
+        // La regla NO está escrita aquí: vive una sola vez en
+        // `bmo_abi::types::disposicion`, con sus tests. El parser de C++ tiene
+        // que calcularla igualmente —los nodos `Field` de C llevan el offset
+        // dentro— pero calcula con la MISMA regla que el codegen de C, que es
+        // lo que importa.
+        //
+        // Y el descenso emite el `struct` con miembros y no con offsets, así
+        // que el codegen recalcula por su cuenta: si algún día las dos
+        // llamadas dieran cosas distintas, la fila `clase-disposicion` de la
+        // matriz se pone roja en vez de pasar muda.
         let mut layout = Vec::new();
-        let mut off = 0u32;
+        let mut d = bmo_abi::types::Disposicion::nueva();
         for m in &campos {
-            let sz = m.typ.size();
-            let align = sz.min(8).max(1);
-            off = (off + align - 1) / align * align;
-            layout.push((m.name.clone(), off, m.typ.clone()));
-            off += sz;
+            layout.push((m.name.clone(), d.coloca(m.typ.size()), m.typ.clone()));
         }
-        let max_align = campos.iter().map(|m| m.typ.size().min(8).max(1)).max().unwrap_or(1);
-        let tam = (off + max_align - 1) / max_align * max_align;
+        let tam = d.total();
 
         let info = Clase {
             campos: layout.clone(),

@@ -24,9 +24,15 @@
 //! - Debug symbol resolution
 
 pub mod convention;
+/// La regla de disposición de agregados — dónde cae cada miembro y cuánto
+/// mide el conjunto. **Una sola copia**, compartida por los frontends: estaba
+/// escrita tres veces y una divergencia no da un error, da un programa que
+/// escribe en el campo de al lado.
+pub mod disposicion;
 pub mod field;
 pub mod signature;
 
 pub use convention::*;
+pub use disposicion::{alinear, alineado_de, Disposicion, DisposicionUnion};
 pub use field::*;
 pub use signature::*;

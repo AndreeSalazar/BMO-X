@@ -243,34 +243,34 @@ impl Codegen {
         Ok(())
     }
 
+    /// Segunda de las tres copias que había de la regla de disposición. Ahora
+    /// las tres llaman a `bmo_abi::types::disposicion`, que es donde está
+    /// escrita — y con sus tests.
+    ///
+    /// Que el codegen la recalcule en vez de recibirla del parser **no es
+    /// duplicación**: es lo que hace que un frontend distinto (C++) que ya
+    /// calculó offsets para sus nodos `Field` no pueda imponer una
+    /// disposición propia sin que se note.
     fn build_struct_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
-        let mut offset = 0u32;
+        let mut d = bmo_abi::types::Disposicion::nueva();
         for m in members {
             let sz = self.type_stack_size(&m.typ);
-            // align to member size (max 8)
-            let align = sz.min(8).max(1);
-            offset = (offset + align - 1) / align * align;
-            layout.push((m.name.clone(), offset, sz));
-            offset += sz;
+            layout.push((m.name.clone(), d.coloca(sz), sz));
         }
-        // total struct size aligns to largest member
-        let max_align = members.iter().map(|m| self.type_stack_size(&m.typ).min(8).max(1)).max().unwrap_or(1);
-        let total = (offset + max_align - 1) / max_align * max_align;
         self.struct_layouts.insert(name.to_string(), layout);
-        self.struct_sizes.insert(name.to_string(), total);
+        self.struct_sizes.insert(name.to_string(), d.total());
     }
 
     fn build_union_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
-        let mut max_sz = 0u32;
+        let mut d = bmo_abi::types::DisposicionUnion::nueva();
         for m in members {
             let sz = self.type_stack_size(&m.typ);
-            layout.push((m.name.clone(), 0u32, sz));
-            if sz > max_sz { max_sz = sz; }
+            layout.push((m.name.clone(), d.coloca(sz), sz));
         }
         self.struct_layouts.insert(name.to_string(), layout);
-        self.struct_sizes.insert(name.to_string(), max_sz);
+        self.struct_sizes.insert(name.to_string(), d.total());
     }
 
     fn type_stack_size(&self, typ: &TypeSpec) -> u32 {
