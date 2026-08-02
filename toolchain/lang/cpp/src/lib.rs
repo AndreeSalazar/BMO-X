@@ -37,6 +37,7 @@
 pub mod ast;
 pub mod descenso;
 pub mod lexer;
+pub mod mangling;
 pub mod parser;
 
 use ast::*;

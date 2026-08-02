@@ -150,8 +150,19 @@ fichero vacío.
    destruyen lo mismo: un `switch` para al primero y no al segundo.
    ⏳ Esperan al paso 4: la lista de inicialización (`P() : x(0)`), varios
    constructores, y el de copia. `new`/`delete` esperan a que haya asignador.
-4. **Mangling**, en cuanto haya sobrecarga. Y el ABI se escribe **el mismo día**
-   — la lección de MSVC.
+4. ✅ **HECHO — mangling y sobrecarga.** Esquema propio y **no el de Itanium**:
+   éste existe para enlazar objetos de compiladores distintos, y BMO no enlaza
+   nada de nadie. Se heredan sus **propiedades** —determinista, sin colisiones,
+   reversible a ojo— con `P.doble#i` en vez de `_ZN1P5dobleEv`.
+   Corren: sobrecarga por aridad y por tipo, métodos sobrecargados,
+   constructores sobrecargados con `P p(1,2)`, y el ranking de tres escalones
+   (exacto > promoción > conversión) con el **empate como error**.
+   ★ Y el ABI está escrito **el mismo día**, en [`CPP_ABI.md`](CPP_ABI.md) —
+   que es la lección de MSVC, cuyo ABI nunca se publicó y Clang tuvo que
+   ingeniería-inversar.
+   ⏳ Fuera del alcance con motivo: ADL, conversiones definidas por el usuario
+   y plantillas en la resolución — las tres cosas que hacen enorme a
+   `gcc/cp/call.cc`.
 5. **Virtuales y vtable** — con la herencia virtual y múltiple descartadas, es
    una tabla de punteros a función y un `vptr` en el offset 0.
 6. **Plantillas básicas** por monomorfización, que es donde C++ deja de ser C

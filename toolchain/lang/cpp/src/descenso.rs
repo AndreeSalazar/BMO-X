@@ -90,13 +90,11 @@ struct Info {
     dtor: bool,
 }
 
-/// El nombre del constructor emitido: `P.P`.
-///
-/// No puede chocar con un método: dentro de la clase `P`, un miembro llamado
-/// `P` **es** el constructor, así que el nombre está reservado por el propio
-/// lenguaje. Y el destructor lleva `~`, que no es legal en un identificador.
-fn nombre_ctor(clase: &str) -> String { format!("{clase}.{clase}") }
-fn nombre_dtor(clase: &str) -> String { format!("{clase}.~{clase}") }
+// Los nombres emitidos salen de `crate::mangling`, que es el ÚNICO sitio del
+// crate donde se decide cómo se llama un símbolo. Antes estaban aquí a mano
+// (`P.P`, `P.~P`) y coincidían con los del mangling por casualidad: ahora
+// coinciden porque son la misma función.
+use crate::mangling;
 
 /// Baja el cuerpo de una función insertando construcciones y destrucciones.
 struct Cuerpo<'a> {
@@ -119,7 +117,7 @@ impl<'a> Cuerpo<'a> {
     fn destruir(a: &Ambito) -> Vec<c::Stmt> {
         a.objetos.iter().rev().map(|(v, cl)| {
             c::Stmt::Expr(c::Expr::Call(
-                nombre_dtor(cl),
+                mangling::destructor(&[], cl),
                 vec![c::Expr::AddrOf(Box::new(c::Expr::Var(v.clone())))],
             ))
         }).collect()
@@ -185,22 +183,21 @@ impl<'a> Cuerpo<'a> {
         use cpp::Stmt as S;
         Ok(match s {
             // ── La construcción ──
-            S::DeclVar(cpp::TypeSpec::ClassRef(cl), nombre, init) => {
-                if init.is_some() {
-                    return Err(pendiente("inicializar un objeto con `=` (constructor de copia)", 4,
-                        "el constructor de copia"));
-                }
-                let info = self.clases.get(cl).copied().unwrap_or_default();
+            //
+            // El parser ya eligió QUÉ constructor: tenía delante los tipos de
+            // los argumentos, que es lo que hace falta para resolver la
+            // sobrecarga. Aquí sólo se emite — se reserva el hueco y se llama
+            // con `&objeto` de primer parámetro.
+            S::DeclObj { clase, nombre, ctor, args } => {
                 let mut out = vec![c::Stmt::DeclAssign(
-                    c::TypeSpec::StructRef(cl.clone()), nombre.clone(), None)];
-                if info.ctor {
-                    out.push(c::Stmt::Expr(c::Expr::Call(
-                        nombre_ctor(cl),
-                        vec![c::Expr::AddrOf(Box::new(c::Expr::Var(nombre.clone())))],
-                    )));
+                    c::TypeSpec::StructRef(clase.clone()), nombre.clone(), None)];
+                if let Some(simbolo) = ctor {
+                    let mut a = vec![c::Expr::AddrOf(Box::new(c::Expr::Var(nombre.clone())))];
+                    for x in args { a.push(expr(x)?); }
+                    out.push(c::Stmt::Expr(c::Expr::Call(simbolo.clone(), a)));
                 }
-                if info.dtor {
-                    self.pila.last_mut().unwrap().objetos.push((nombre.clone(), cl.clone()));
+                if self.clases.get(clase).copied().unwrap_or_default().dtor {
+                    self.pila.last_mut().unwrap().objetos.push((nombre.clone(), clase.clone()));
                 }
                 out
             }
@@ -310,7 +307,7 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     let mut info: HashMap<String, Info> = HashMap::new();
     for cl in &p.classes {
         info.insert(cl.name.clone(), Info {
-            ctor: cl.constructor.is_some(),
+            ctor: !cl.constructors.is_empty(),
             dtor: cl.destructor.is_some(),
         });
     }
@@ -328,14 +325,15 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
         // El constructor y el destructor son **funciones normales** con `this`.
         // Ahí acaba toda la magia: lo único especial de ellos es QUIÉN las
         // llama y CUÁNDO, y eso lo decide `Cuerpo`.
-        if let Some(ctor) = &cl.constructor {
+        for ctor in &cl.constructors {
             let mut f = metodo(cl, ctor, &info)?;
-            f.name = nombre_ctor(&cl.name);
+            f.name = mangling::constructor(&[], &cl.name,
+                &ctor.params.iter().map(|p| p.typ.clone()).collect::<Vec<_>>());
             out.functions.push(f);
         }
         if let Some(dtor) = &cl.destructor {
             let mut f = metodo(cl, dtor, &info)?;
-            f.name = nombre_dtor(&cl.name);
+            f.name = mangling::destructor(&[], &cl.name);
             out.functions.push(f);
         }
     }
@@ -370,18 +368,6 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     Ok(out)
 }
 
-/// **El desazucarado que define C++**: un método es una función libre cuyo
-/// primer parámetro es `this`.
-///
-/// El nombre lleva un punto —`P.doble`— que es **ilegal en C** y por tanto no
-/// puede chocar con ninguna función que alguien escriba. Es el mismo truco que
-/// BMO C ya usa para promover una `static` de función a global
-/// (`funcion.variable`). El mangling de verdad llega en el paso 4, cuando haya
-/// sobrecarga y dos métodos distintos necesiten símbolos distintos.
-pub fn nombre_de_metodo(clase: &str, metodo: &str) -> String {
-    format!("{clase}.{metodo}")
-}
-
 fn metodo(cl: &cpp::Class, m: &cpp::Method, info: &HashMap<String, Info>)
     -> Result<c::Function, CppError>
 {
@@ -391,7 +377,8 @@ fn metodo(cl: &cpp::Class, m: &cpp::Method, info: &HashMap<String, Info>)
     };
     let mut f = funcion(&cpp::Function {
         ret_type: m.ret_type.clone(),
-        name: nombre_de_metodo(&cl.name, &m.name),
+        name: mangling::metodo(&[], &cl.name, &m.name,
+            &m.params.iter().map(|p| p.typ.clone()).collect::<Vec<_>>()),
         params: m.params.clone(),
         body: m.body.clone(),
     }, info)?;
@@ -579,7 +566,8 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         E::MethodCall(objeto, cls, m, args) => {
             let mut a = vec![expr(objeto)?];
             for x in args { a.push(expr(x)?); }
-            c::Expr::Call(nombre_de_metodo(cls, m), a)
+            let _ = cls;
+            c::Expr::Call(m.clone(), a)
         }
 
         // ── Rechazos con el paso donde llegan ──

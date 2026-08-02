@@ -28,7 +28,9 @@ pub struct Class {
     pub bases: Vec<String>,
     pub members: Vec<MemberVar>,
     pub methods: Vec<Method>,
-    pub constructor: Option<Method>,
+    /// Los constructores. Varios es una sobrecarga como cualquier otra: el
+    /// parser resuelve CUAL en cada declaracion y guarda su simbolo.
+    pub constructors: Vec<Method>,
     pub destructor: Option<Method>,
     pub vtable: bool, // true if any method is virtual
     /// Tamaño total, ya alineado. Lo calcula el parser.
@@ -130,6 +132,13 @@ pub enum Stmt {
     Expr(Expr),
     Return(Option<Expr>),
     DeclVar(TypeSpec, String, Option<Expr>),
+    /// `P p;` o `P p(1, 2);` — declarar un objeto de clase.
+    ///
+    /// Variante propia y no un `DeclVar` con un inicializador raro: construir
+    /// **no es asignar**. El parser ya resolvio QUE constructor (`ctor`, el
+    /// simbolo manglado, o `None` si la clase no tiene ninguno) y el descenso
+    /// solo emite la llamada.
+    DeclObj { clase: String, nombre: String, ctor: Option<String>, args: Vec<Expr> },
     Assign(String, Expr),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),

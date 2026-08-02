@@ -146,6 +146,28 @@ fn matriz_cpp_ejecuta_correctamente() {
         ("solo-dtor-sin-ctor", "@FULL@class P { public: int x; ~P() { printf(\"%d\", x); } }; int main() { P p; p.x = 42; return 0; }", "42"),
         ("ctor-usa-metodo", "@FULL@class P { public: int x; void poner() { x = 42; } P() { poner(); } }; int main() { P p; printf(\"%d\", p.x); return 0; }", "42"),
 
+        // ── Sobrecarga y mangling (paso 4) ──
+        ("sobrecarga-por-aridad", "@FULL@int f(int a) { return a; } int f(int a, int b) { return a + b; } int main() { printf(\"%d %d\", f(42), f(20, 22)); return 0; }", "42 42"),
+        ("sobrecarga-por-tipo", "@FULL@int f(int a) { return 1; } int f(char a) { return 2; } int main() { int n = 5; char c = 'x'; printf(\"%d %d\", f(n), f(c)); return 0; }", "1 2"),
+        ("sobrecarga-por-puntero", "@FULL@int f(int a) { return 1; } int f(int *a) { return 2; } int main() { int n = 0; printf(\"%d %d\", f(n), f(&n)); return 0; }", "1 2"),
+        // ★ El exacto gana al promocionado, y la promoción a la conversión.
+        // Con `f(int)` y `f(long)`, un `char` va al `int` (promoción) y no al
+        // `long` (conversión); un `long` va al `long` (exacto).
+        ("gana-la-promocion-sobre-la-conversion", "@FULL@int f(int a) { return 1; } int f(long a) { return 2; } int main() { char c = 'x'; printf(\"%d\", f(c)); return 0; }", "1"),
+        ("exacto-gana-a-todo", "@FULL@int f(int a) { return 1; } int f(long a) { return 2; } int main() { long l = 5; printf(\"%d\", f(l)); return 0; }", "2"),
+        ("metodos-sobrecargados", "@FULL@class P { public: int f(int a) { return 1; } int f(int a, int b) { return 2; } }; int main() { P p; printf(\"%d %d\", p.f(1), p.f(1, 2)); return 0; }", "1 2"),
+        // Dos clases con el mismo método no chocan: el símbolo lleva la clase.
+        ("mismo-metodo-en-dos-clases", "@FULL@class A { public: int f() { return 40; } }; class B { public: int f() { return 2; } }; int main() { A a; B b; printf(\"%d\", a.f() + b.f()); return 0; }", "42"),
+        // ★ `printf` NO se mangla: no está en la tabla de C++, así que pasa
+        // tal cual. Es el puente con lo de C, que es lo que `extern \"C\"`
+        // nombra en el estándar.
+        ("las-funciones-de-c-pasan-sin-manglar", "printf(\"%d\", 42);", "42"),
+
+        // ── Constructores sobrecargados (paso 4) ──
+        ("dos-constructores", "@FULL@class P { public: int x; P() { x = 1; } P(int n) { x = n; } }; int main() { P a; P b(42); printf(\"%d %d\", a.x, b.x); return 0; }", "1 42"),
+        ("ctor-con-dos-args", "@FULL@class P { public: int x; P(int a, int b) { x = a + b; } }; int main() { P p(20, 22); printf(\"%d\", p.x); return 0; }", "42"),
+        ("ctor-elegido-por-tipo", "@FULL@class P { public: int x; P(int n) { x = 1; } P(char c) { x = 2; } }; int main() { P a(5); P b('z'); printf(\"%d %d\", a.x, b.x); return 0; }", "1 2"),
+
         // ★ Integración: una fila que COMPONE varias características. Las
         // demás prueban cada pieza suelta, y una pieza suelta puede estar bien
         // y romperse al lado de otra — el `for` con declaración envuelve en un
@@ -216,6 +238,32 @@ fn matriz_cpp_ejecuta_correctamente() {
             }\n\
             int main() { printf(\"[%d]\", trabajo(5)); return 0; }",
             "[~2 ~2 ~2 ~3 ~1 99]"),
+
+        // ★ Integración del paso 4: tres constructores, dos métodos con el
+        // mismo nombre, y dos funciones libres sobrecargadas — todo en un
+        // programa. Cada llamada tiene que ir a un símbolo distinto.
+        ("sobrecarga-completa", "@FULL@\
+            class Punto {\n\
+            public:\n\
+                int x; int y;\n\
+                Punto()             { x = 0;  y = 0; }\n\
+                Punto(int n)        { x = n;  y = n; }\n\
+                Punto(int a, int b) { x = a;  y = b; }\n\
+                int suma() const    { return x + y; }\n\
+                int suma(int extra) { return x + y + extra; }\n\
+            };\n\
+            int doble(int n)        { return n * 2; }\n\
+            int doble(int a, int b) { return (a + b) * 2; }\n\
+            int main() {\n\
+                Punto o;\n\
+                Punto u(7);\n\
+                Punto d(20, 22);\n\
+                printf(\"%d %d %d | %d %d | %d %d\",\n\
+                       o.suma(), u.suma(), d.suma(),\n\
+                       d.suma(0), d.suma(8),\n\
+                       doble(21), doble(10, 11));\n\
+                return 0;\n\
+            }", "0 14 42 | 42 50 | 42 42"),
     ];
 
     let total = casos.len();
@@ -252,8 +300,7 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
         ("sizeof", "printf(\"%d\", sizeof(int));", 2),
         ("referencia", "@FULL@int f(int &r) { return r; } int main(){return 0;}", 2),
         ("lista-de-inicializacion", "@FULL@class P { int x; public: P() : x(0) {} };\nint main(){return 0;}", 4),
-        ("dos-constructores", "@FULL@class P { public: P() {} P(int n) {} };\nint main(){return 0;}", 4),
-        ("copia", "@FULL@class P { public: int x; }; int main(){ P a; P b = a; return 0; }", 4),
+        ("copia", "@FULL@class P { public: int x; }; int main(){ P a; P b = a; return 0; }", 5),
         ("new", "int *p = new P();", 3),
         ("delete", "int *p = 0; delete p;", 3),
         ("miembro-static", "@FULL@class P { public: static int n; };\nint main(){return 0;}", 4),
@@ -279,6 +326,58 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
             Ok(_) => rotos.push(format!("  {nombre:<24} COMPILO, y no deberia")),
             Err(e) if !e.message.contains(&format!("PASO {paso}")) =>
                 rotos.push(format!("  {nombre:<24} no dijo PASO {paso}: {}", e.message)),
+            Err(_) => {}
+        }
+    }
+    assert!(rotos.is_empty(), "\nROTOS:\n{}", rotos.join("\n"));
+}
+
+/// **Lo que está MAL escrito, y que el error lo explique.**
+///
+/// Distinto de la tabla de arriba: eso son cosas que llegarán en un paso, y
+/// esto son cosas que no llegarán nunca porque están mal. Un compilador que
+/// las acepta deja pasar el bug; uno que las rechaza sin explicar manda a
+/// mirar donde no es. Cada fila comprueba que el mensaje **dice qué pasa**.
+#[test]
+fn matriz_cpp_explica_lo_que_esta_mal() {
+    let casos: &[(&str, &str, &str)] = &[
+        // ★ El *most vexing parse*. `P p();` declara una FUNCIÓN, y un
+        // compilador que lo acepta como objeto deja uno sin construir.
+        ("most-vexing-parse",
+         "@FULL@class P { public: P() {} }; int main() { P p(); return 0; }",
+         "most vexing parse"),
+        // Una ambigüedad resuelta sola —"gana el primero"— haría que añadir
+        // una sobrecarga cambiara a dónde va una llamada existente, en silencio.
+        ("ambiguedad",
+         "@FULL@int f(int a, long b) { return 1; } int f(long a, int b) { return 2; } \
+          int main() { char c = 'x'; return f(c, c); }",
+         "ambigua"),
+        ("ninguna-version-acepta",
+         "@FULL@int f(int a) { return a; } int main() { P q; return f(q); }",
+         "no es un tipo conocido"),
+        ("aridad-que-no-existe",
+         "@FULL@int f(int a) { return a; } int main() { return f(1, 2); }",
+         "argumento"),
+        // ⚠ Deuda de C: acepta `int g(double)` en silencio y no funciona.
+        ("float-como-parametro",
+         "@FULL@int f(double a) { return 1; } int main() { return 0; }",
+         "coma flotante"),
+        ("sobrecargar-por-retorno",
+         "@FULL@int f(int a); char f(int a); int main() { return 0; }",
+         "tipo de retorno"),
+        ("dos-metodos-iguales",
+         "@FULL@class P { public: int f() { return 1; } int f() { return 2; } }; \
+          int main() { return 0; }",
+         "dos veces"),
+    ];
+
+    let mut rotos = Vec::new();
+    for (nombre, fuente, aguja) in casos {
+        let src = fuente.strip_prefix("@FULL@").unwrap_or(fuente).to_string();
+        match compile_source_to_bef(&src) {
+            Ok(_) => rotos.push(format!("  {nombre:<24} COMPILO, y no deberia")),
+            Err(e) if !e.message.contains(aguja) =>
+                rotos.push(format!("  {nombre:<24} no dijo {aguja:?}: {}", e.message)),
             Err(_) => {}
         }
     }

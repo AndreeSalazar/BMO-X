@@ -77,7 +77,11 @@ impl Ambitos {
 struct Clase {
     /// *(nombre, offset, tipo)* en orden de declaración.
     campos: Vec<(String, u32, TypeSpec)>,
-    metodos: HashSet<String>,
+    /// Los métodos por nombre simple; varias firmas es una sobrecarga.
+    metodos: HashMap<String, Vec<Firma>>,
+    /// Los constructores, que son una sobrecarga más — sólo que el nombre lo
+    /// pone el lenguaje y la llamada es implícita.
+    constructores: Vec<Firma>,
     // El TAMAÑO no está aquí a propósito: el parser no lo necesita para nada
     // —resolver `p.x` sólo pide offset y tipo— y viaja en `Class::size`, que
     // es donde lo leerá `new P()` en el paso 3. Guardar una copia que nadie
@@ -90,14 +94,58 @@ impl Clase {
     }
 }
 
+/// Una declaración de función o método, con su símbolo ya manglado.
+///
+/// Es lo que la resolución de sobrecarga compara. El **retorno** viaja aquí y
+/// no en el símbolo (C++ no sobrecarga por retorno) porque hace falta para
+/// saber de qué tipo es una llamada cuando es argumento de otra.
+#[derive(Clone)]
+struct Firma {
+    params: Vec<TypeSpec>,
+    ret: TypeSpec,
+    simbolo: String,
+}
+
+/// Lo bien que encaja un argumento en un parámetro. **Menos es mejor.**
+///
+/// ═══ Cómo lo hace GCC, y qué se le quita ═══
+///
+/// `gcc/cp/call.cc` —uno de los ficheros más grandes del frontend de C++, y
+/// sorprende que lo sea— construye para cada argumento una *secuencia de
+/// conversión implícita* con hasta tres eslabones (lvalue, promoción,
+/// cualificación) y luego ordena secuencias parcialmente. Eso es lo que hace
+/// falta para resolver contra plantillas, conversiones definidas por el
+/// usuario y ADL.
+///
+/// BMO no tiene ninguna de las tres, así que el orden colapsa a **tres
+/// escalones** que se comparan sumando. Es lo que `MAESTROS.md` fijó como
+/// alcance: *ranking mínimo — exacto > promoción > conversión*.
+#[derive(PartialEq, PartialOrd, Clone, Copy)]
+enum Encaje {
+    Exacto,
+    /// `char`/`short` → `int`, `float` → `double`. No pierde información.
+    Promocion,
+    /// Cualquier aritmético a cualquier aritmético. **Puede perder**, y por eso
+    /// es el último escalón: si hay una alternativa mejor, gana la otra.
+    Conversion,
+}
+
 struct Parser {
     toks: Vec<Token>,
     lineas: Vec<usize>,
     pos: usize,
     ambitos: Ambitos,
-    /// Nombres de función conocidos. Sólo informativo hoy; el paso 4 lo usa
-    /// para la resolución de sobrecarga.
-    funciones: HashSet<String>,
+    /// Las funciones declaradas, por nombre **simple**. Un nombre con varias
+    /// firmas es una sobrecarga, y ahí entra [`Parser::resolver`].
+    ///
+    /// Se consulta con lo declarado **hasta ese punto**, que es la regla de C:
+    /// para llamar a algo definido más abajo hace falta un prototipo. Es lo
+    /// que ya desbloqueaba la recursión mutua en el paso 1.
+    funciones: HashMap<String, Vec<Firma>>,
+    /// El símbolo de cada función, para saber su retorno al tipar una llamada.
+    retornos: HashMap<String, TypeSpec>,
+    /// Los espacios de nombres abiertos ahora mismo.
+    espacios: Vec<String>,
     /// ★ Nombres de plantilla. **Vacío hasta el paso 6** — y mientras esté
     /// vacío, todo `<` es una comparación. Ver [`Parser::es_plantilla`].
     plantillas: HashSet<String>,
@@ -113,7 +161,9 @@ impl Parser {
         let mut p = Self {
             toks, lineas, pos: 0,
             ambitos: Ambitos::default(),
-            funciones: HashSet::new(),
+            funciones: HashMap::new(),
+            retornos: HashMap::new(),
+            espacios: Vec::new(),
             plantillas: HashSet::new(),
             clases: HashMap::new(),
             clase_actual: None,
@@ -156,6 +206,158 @@ impl Parser {
         self.plantillas.contains(nombre)
     }
 
+    // ── Resolución de sobrecarga ────────────────────────────────────
+
+    /// ¿Es un tipo con el que se puede hacer aritmética?
+    fn es_numero(t: &TypeSpec) -> bool {
+        use TypeSpec as T;
+        matches!(t, T::Bool | T::Char | T::UnsignedChar | T::Short | T::UnsignedShort
+            | T::Int | T::UnsignedInt | T::Long | T::UnsignedLong
+            | T::LongLong | T::UnsignedLongLong | T::Float | T::Double)
+    }
+
+    /// Lo bien que un argumento de tipo `dado` encaja en un parámetro `quiere`.
+    fn encaje(dado: &TypeSpec, quiere: &TypeSpec) -> Option<Encaje> {
+        use TypeSpec as T;
+        if dado == quiere { return Some(Encaje::Exacto); }
+        // Una referencia se ata al valor: `f(int&)` acepta un `int`. Encaja
+        // exacto porque no hay conversión ninguna — sólo se pasa la dirección.
+        if let T::Ref(d) = quiere {
+            if &**d == dado { return Some(Encaje::Exacto); }
+        }
+        // Un array decae a puntero a su elemento, que es lo que C hace en toda
+        // llamada. Sin esto, `f(char*)` no aceptaría un `char[8]`.
+        if let (T::Array(e, _), T::Ptr(p)) = (dado, quiere) {
+            if e == p { return Some(Encaje::Exacto); }
+        }
+        if !Self::es_numero(dado) || !Self::es_numero(quiere) { return None; }
+        // La promoción entera y la de coma flotante: NO pierden información.
+        let promociona = matches!(
+            (dado, quiere),
+            (T::Char | T::UnsignedChar | T::Short | T::UnsignedShort | T::Bool, T::Int)
+            | (T::Float, T::Double)
+        );
+        Some(if promociona { Encaje::Promocion } else { Encaje::Conversion })
+    }
+
+    /// Elige la firma que mejor encaja, o dice por qué no puede.
+    ///
+    /// El criterio es la **suma** de los escalones de cada argumento, y el
+    /// empate es un error con los dos candidatos escritos. Una ambigüedad que
+    /// se resolviera sola —eligiendo "el primero", por ejemplo— haría que
+    /// añadir una sobrecarga cambiara a qué función va una llamada existente,
+    /// en silencio.
+    fn resolver<'f>(&self, que: &str, firmas: &'f [Firma], args: &[TypeSpec])
+        -> Result<&'f Firma, CppError>
+    {
+        let mut mejor: Option<(u32, &Firma)> = None;
+        let mut empate = false;
+        let mut hubo_aridad = false;
+
+        for f in firmas {
+            if f.params.len() != args.len() { continue; }
+            hubo_aridad = true;
+            let mut coste = 0u32;
+            let mut vale = true;
+            for (a, p) in args.iter().zip(f.params.iter()) {
+                match Self::encaje(a, p) {
+                    Some(e) => coste += e as u32,
+                    None => { vale = false; break; }
+                }
+            }
+            if !vale { continue; }
+            match mejor {
+                None => mejor = Some((coste, f)),
+                Some((c, _)) if coste < c => { mejor = Some((coste, f)); empate = false; }
+                Some((c, _)) if coste == c => empate = true,
+                _ => {}
+            }
+        }
+
+        if empate {
+            let opciones: Vec<String> = firmas.iter()
+                .filter(|f| f.params.len() == args.len())
+                .map(|f| f.simbolo.clone()).collect();
+            return Err(self.err(format!(
+                "la llamada a `{que}` es ambigua entre {}: ninguna encaja mejor que la otra",
+                opciones.join(" y "))));
+        }
+        match mejor {
+            Some((_, f)) => Ok(f),
+            None if hubo_aridad => Err(self.err(format!(
+                "ninguna version de `{que}` acepta esos tipos de argumento"))),
+            None => Err(self.err(format!(
+                "`{que}` no tiene ninguna version con {} argumento(s)", args.len()))),
+        }
+    }
+
+    /// El tipo de una expresión. Se usa para resolver `.` y para tipar los
+    /// argumentos de una llamada.
+    ///
+    /// Cubre poco a propósito: en cuanto cubriera de más sería un comprobador
+    /// de tipos, y eso no es lo que este paso promete. Lo que no sabe tipar
+    /// lo dice, en vez de suponer `int`.
+    fn tipo_de(&self, e: &Expr) -> Option<TypeSpec> {
+        use TypeSpec as T;
+        Some(match e {
+            Expr::Int(_) => T::Int,
+            Expr::FloatLit(_) => T::Double,
+            Expr::CharLit(_) => T::Char,
+            Expr::BoolLit(_) => T::Bool,
+            Expr::StringLit(_) => T::Ptr(Box::new(T::Char)),
+            Expr::NullPtr => T::Ptr(Box::new(T::Void)),
+            Expr::Var(n) => self.ambitos.tipo(n)?.clone(),
+            Expr::This => T::Ptr(Box::new(T::ClassRef(self.clase_actual.clone()?))),
+            Expr::MemberAccess(_, _, _, t) | Expr::Arrow(_, _, _, t) => t.clone(),
+            Expr::AssignMember(_, _, _, t, _) | Expr::AssignArrow(_, _, _, t, _) => t.clone(),
+            Expr::Cast(t, _) => t.clone(),
+            Expr::Call(simbolo, _) => self.retornos.get(simbolo)?.clone(),
+            Expr::MethodCall(_, _, simbolo, _) => self.retornos.get(simbolo)?.clone(),
+            Expr::Deref(b) => match self.tipo_de(b)? {
+                T::Ptr(t) | T::Array(t, _) => *t,
+                _ => return None,
+            },
+            Expr::AddrOf(b) => T::Ptr(Box::new(self.tipo_de(b)?)),
+            Expr::Subscript(n, _, _) => match self.ambitos.tipo(n)? {
+                T::Ptr(t) | T::Array(t, _) => (**t).clone(),
+                _ => return None,
+            },
+            Expr::Assign(n, _) => self.ambitos.tipo(n)?.clone(),
+            Expr::Neg(b) | Expr::BitNot(b) => self.tipo_de(b)?,
+            Expr::PreInc(n) | Expr::PreDec(n) | Expr::PostInc(n) | Expr::PostDec(n) =>
+                self.ambitos.tipo(n)?.clone(),
+            // Comparaciones y lógicos dan un entero, como en C.
+            Expr::Eq(..) | Expr::Neq(..) | Expr::Lt(..) | Expr::Gt(..) | Expr::Le(..)
+            | Expr::Ge(..) | Expr::And(..) | Expr::Or(..) | Expr::Not(_) => T::Int,
+            // Las conversiones aritméticas al uso, recortadas: si alguno es
+            // `double`, el resultado es `double`; si no, `int`. Sin esto, un
+            // `f(1 + 2.0)` elegiría la sobrecarga entera.
+            Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) => {
+                let (ta, tb) = (self.tipo_de(a)?, self.tipo_de(b)?);
+                // La aritmética de punteros conserva el puntero.
+                if matches!(ta, T::Ptr(_) | T::Array(..)) { ta }
+                else if matches!(tb, T::Ptr(_) | T::Array(..)) { tb }
+                else if ta == T::Double || tb == T::Double { T::Double }
+                else { T::Int }
+            }
+            Expr::Mod(..) | Expr::BitAnd(..) | Expr::BitOr(..) | Expr::BitXor(..)
+            | Expr::Shl(..) | Expr::Shr(..) => T::Int,
+            Expr::Conditional(_, a, _) => self.tipo_de(a)?,
+            _ => return None,
+        })
+    }
+
+    /// Los tipos de una lista de argumentos, o un error que dice cuál no se
+    /// supo tipar.
+    fn tipos_de(&self, args: &[Expr], que: &str) -> Result<Vec<TypeSpec>, CppError> {
+        let mut out = Vec::new();
+        for (i, a) in args.iter().enumerate() {
+            out.push(self.tipo_de(a).ok_or_else(|| self.err(format!(
+                "no se sabe de que tipo es el argumento {} de `{que}`", i + 1)))?);
+        }
+        Ok(out)
+    }
+
     // ── Nivel de fichero ────────────────────────────────────────────
 
     fn programa(&mut self) -> Result<Program, CppError> {
@@ -194,20 +396,25 @@ impl Parser {
             self.exige(&Token::CloseParen)?;
             self.come(&Token::Const);
 
+            let simbolo = self.declarar_funcion(&nombre, &params, &tipo)?;
+
             if self.come(&Token::Semicolon) {
-                // Prototipo. Se registra el nombre y no se emite nada: sirve
-                // para que una llamada anterior a la definición no parezca una
-                // variable, que es lo que desbloquea la recursión mutua.
-                self.funciones.insert(nombre);
+                // Prototipo. Se registra la firma y no se emite nada: sirve
+                // para que una llamada anterior a la definición se pueda
+                // resolver, que es lo que desbloquea la recursión mutua.
                 return Ok(());
             }
 
-            self.funciones.insert(nombre.clone());
             self.ambitos.entrar();
             for pa in &params { self.ambitos.declarar(&pa.name, pa.typ.clone()); }
             let cuerpo = self.bloque()?;
             self.ambitos.salir();
-            p.functions.push(Function { ret_type: tipo, name: nombre, params, body: cuerpo });
+            // ★ `main` NO se mangla. Es el punto de entrada que el codegen de C
+            // busca por nombre, y manglarlo dejaría un `.bef` sin `main`.
+            let emitido = if nombre == "main" && self.espacios.is_empty() {
+                "main".to_string()
+            } else { simbolo };
+            p.functions.push(Function { ret_type: tipo, name: emitido, params, body: cuerpo });
             return Ok(());
         }
 
@@ -243,7 +450,7 @@ impl Parser {
         // ── Vuelta 1: campos y firmas ──
         let mut campos: Vec<MemberVar> = Vec::new();
         let mut cuerpos: Vec<(usize, Method)> = Vec::new(); // (posición del `{`, firma)
-        let mut ctor: Option<(usize, Method)> = None;
+        let mut ctores: Vec<(usize, Method)> = Vec::new();
         let mut dtor: Option<(usize, Method)> = None;
         let mut acceso = if es_struct { Access::Public } else { Access::Private };
 
@@ -301,13 +508,9 @@ impl Parser {
                         return Err(self.pendiente(
                             "la lista de inicializacion de miembros (`P() : x(0)`)", 4));
                     }
-                    if ctor.is_some() {
-                        return Err(self.pendiente(
-                            "mas de un constructor (sobrecarga)", 4));
-                    }
                     let inicio = self.pos;
                     self.saltar_bloque()?;
-                    ctor = Some((inicio, Method {
+                    ctores.push((inicio, Method {
                         name: nombre.clone(), ret_type: TypeSpec::Void, params,
                         body: Vec::new(), is_virtual: false, is_override: false,
                         is_const: false, access: acceso, class_name: nombre.clone(),
@@ -369,10 +572,34 @@ impl Parser {
         }
         let tam = d.total();
 
-        let info = Clase {
-            campos: layout.clone(),
-            metodos: cuerpos.iter().map(|(_, m)| m.name.clone()).collect(),
-        };
+        // Las firmas de los métodos, con su símbolo. Se registran ANTES de
+        // bajar ningún cuerpo, que es lo que permite que un método llame a otro
+        // declarado más abajo — y a sí mismo.
+        let mut metodos: HashMap<String, Vec<Firma>> = HashMap::new();
+        for (_, m) in &cuerpos {
+            let tipos: Vec<TypeSpec> = m.params.iter().map(|p| p.typ.clone()).collect();
+            let simbolo = crate::mangling::metodo(&self.espacios, &nombre, &m.name, &tipos);
+            let lista = metodos.entry(m.name.clone()).or_default();
+            if lista.iter().any(|f| f.simbolo == simbolo) {
+                return Err(self.err(format!(
+                    "`{nombre}::{}` esta declarado dos veces con los mismos parametros", m.name)));
+            }
+            lista.push(Firma { params: tipos, ret: m.ret_type.clone(), simbolo: simbolo.clone() });
+            self.retornos.insert(simbolo, m.ret_type.clone());
+        }
+        let mut constructores: Vec<Firma> = Vec::new();
+        for (_, m) in &ctores {
+            let tipos: Vec<TypeSpec> = m.params.iter().map(|p| p.typ.clone()).collect();
+            let simbolo = crate::mangling::constructor(&self.espacios, &nombre, &tipos);
+            if constructores.iter().any(|f| f.simbolo == simbolo) {
+                return Err(self.err(format!(
+                    "`{nombre}` tiene dos constructores con los mismos parametros")));
+            }
+            constructores.push(Firma {
+                params: tipos, ret: TypeSpec::Void, simbolo: simbolo.clone() });
+            self.retornos.insert(simbolo, TypeSpec::Void);
+        }
+        let info = Clase { campos: layout.clone(), metodos, constructores };
         self.clases.insert(nombre.clone(), info);
 
         // ── Vuelta 2: los cuerpos, con la clase ya registrada ──
@@ -393,10 +620,11 @@ impl Parser {
             cuerpo_de(self, inicio, &mut m)?;
             metodos.push(m);
         }
-        let constructor = match ctor {
-            Some((inicio, mut m)) => { cuerpo_de(self, inicio, &mut m)?; Some(m) }
-            None => None,
-        };
+        let mut constructors = Vec::new();
+        for (inicio, mut m) in ctores {
+            cuerpo_de(self, inicio, &mut m)?;
+            constructors.push(m);
+        }
         let destructor = match dtor {
             Some((inicio, mut m)) => { cuerpo_de(self, inicio, &mut m)?; Some(m) }
             None => None,
@@ -410,7 +638,7 @@ impl Parser {
 
         Ok(Class {
             name: nombre, bases: Vec::new(), members: miembros, methods: metodos,
-            constructor, destructor, vtable: false, size: tam,
+            constructors, destructor, vtable: false, size: tam,
         })
     }
 
@@ -429,25 +657,6 @@ impl Parser {
         Ok(())
     }
 
-    /// El tipo de una expresión, para resolver `.` y `->`.
-    ///
-    /// Sólo cubre lo que puede estar a la izquierda de un punto — que es poco
-    /// a propósito: en cuanto cubriera de más, sería un comprobador de tipos, y
-    /// eso no es lo que el paso 2 promete.
-    fn tipo_de(&self, e: &Expr) -> Option<TypeSpec> {
-        match e {
-            Expr::Var(n) => self.ambitos.tipo(n).cloned(),
-            Expr::This => self.clase_actual.clone()
-                .map(|c| TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(c)))),
-            Expr::MemberAccess(_, _, _, t) | Expr::Arrow(_, _, _, t) => Some(t.clone()),
-            Expr::Deref(b) => match self.tipo_de(b)? {
-                TypeSpec::Ptr(t) => Some(*t),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
     /// La clase a la que se le puede pedir un campo, dado el tipo de la base
     /// y si el acceso fue con `.` o con `->`.
     fn clase_de(&self, t: &TypeSpec, flecha: bool) -> Option<String> {
@@ -459,6 +668,55 @@ impl Parser {
             },
             _ => None,
         }
+    }
+
+    /// Elige el constructor de `cls` para estos argumentos.
+    ///
+    /// `None` significa *"esta clase no tiene constructor"*, que es legal y
+    /// deja el objeto sin inicializar — igual que un `struct` de C. Pedir
+    /// argumentos a una clase sin constructor sí es error.
+    fn resolver_ctor(&self, cls: &str, args: &[Expr]) -> Result<Option<String>, CppError> {
+        let Some(info) = self.clases.get(cls) else {
+            return Err(self.err(format!("la clase `{cls}` no esta definida")));
+        };
+        if info.constructores.is_empty() {
+            if !args.is_empty() {
+                return Err(self.err(format!(
+                    "`{cls}` no tiene constructor, asi que no acepta argumentos")));
+            }
+            return Ok(None);
+        }
+        let firmas = info.constructores.clone();
+        let tipos = self.tipos_de(args, cls)?;
+        Ok(Some(self.resolver(cls, &firmas, &tipos)?.simbolo.clone()))
+    }
+
+    /// Registra una función y devuelve su símbolo.
+    ///
+    /// Rechaza redeclarar la MISMA firma con otro retorno, que es lo que C++
+    /// prohíbe: no se puede sobrecargar por retorno, así que dos `f(int)` con
+    /// retornos distintos son la misma función declarada dos veces mal.
+    fn declarar_funcion(&mut self, nombre: &str, params: &[Param], ret: &TypeSpec)
+        -> Result<String, CppError>
+    {
+        let tipos: Vec<TypeSpec> = params.iter().map(|p| p.typ.clone()).collect();
+        let simbolo = if nombre == "main" && self.espacios.is_empty() {
+            "main".to_string()
+        } else {
+            crate::mangling::funcion(&self.espacios, nombre, &tipos)
+        };
+        let lista = self.funciones.entry(nombre.to_string()).or_default();
+        if let Some(ya) = lista.iter().find(|f| f.simbolo == simbolo) {
+            if &ya.ret != ret {
+                return Err(self.err(format!(
+                    "`{nombre}` ya esta declarada con los mismos parametros y otro retorno: \
+                     C++ no permite sobrecargar por el tipo de retorno")));
+            }
+        } else {
+            lista.push(Firma { params: tipos, ret: ret.clone(), simbolo: simbolo.clone() });
+        }
+        self.retornos.insert(simbolo.clone(), ret.clone());
+        Ok(simbolo)
     }
 
     fn parametros(&mut self) -> Result<Vec<Param>, CppError> {
@@ -486,6 +744,18 @@ impl Parser {
             let defecto = if self.come(&Token::Assign) {
                 return Err(self.pendiente("los argumentos por defecto", 4));
             } else { None };
+            // ⚠ Un parámetro de coma flotante NO se puede pasar todavía: BMO C
+            // evalúa floats por la ruta SSE pero **no los pasa como
+            // argumento** (falta la ABI de xmm), y lo peor es que los acepta
+            // en silencio — `int g(double a)` compila y no hace lo que dice.
+            // Es deuda de C; mientras exista, C++ no la emite.
+            if matches!(tipo, TypeSpec::Float | TypeSpec::Double) {
+                return Err(self.err(format!(
+                    "`{}` es un parametro de coma flotante, y BMO C todavia no los PASA \
+                     (evalua floats en xmm, pero la ABI de argumentos xmm esta pendiente). \
+                     Se rechaza aqui a proposito: C lo acepta en silencio y no funciona",
+                    if nombre.is_empty() { "<sin nombre>" } else { &nombre })));
+            }
             out.push(Param { typ: tipo, name: nombre, default: defecto });
             if !self.come(&Token::Comma) { break; }
         }
@@ -680,6 +950,43 @@ impl Parser {
         let mut decls = Vec::new();
         loop {
             let (tipo, nombre) = self.declarador(base.clone())?;
+            // ── Declarar un objeto de clase ──
+            if let TypeSpec::ClassRef(cls) = &tipo {
+                let cls = cls.clone();
+                let args = if *self.peek() == Token::OpenParen {
+                    self.avanzar();
+                    // ★★ **El *most vexing parse*, aquí mismo.**
+                    //
+                    // `P p();` NO declara un objeto: declara una FUNCIÓN `p`
+                    // que no toma nada y devuelve `P`. El estándar zanja que
+                    // si algo puede leerse como declaración, es declaración —
+                    // y esto puede. Es el error que todo el mundo comete una
+                    // vez, y el compilador que lo acepta en silencio deja un
+                    // objeto sin construir.
+                    if *self.peek() == Token::CloseParen {
+                        return Err(self.err(format!(
+                            "`{cls} {nombre}();` declara una FUNCION que devuelve `{cls}`, \
+                             no un objeto (el *most vexing parse*). Para construir con el \
+                             constructor por defecto se escribe `{cls} {nombre};`")));
+                    }
+                    let mut a = Vec::new();
+                    loop {
+                        a.push(self.asignacion()?);
+                        if !self.come(&Token::Comma) { break; }
+                    }
+                    self.exige(&Token::CloseParen)?;
+                    a
+                } else if *self.peek() == Token::Assign {
+                    return Err(self.pendiente("el constructor de copia (`P b = a;`)", 5));
+                } else {
+                    Vec::new()
+                };
+                let ctor = self.resolver_ctor(&cls, &args)?;
+                self.ambitos.declarar(&nombre, tipo.clone());
+                decls.push(Stmt::DeclObj { clase: cls, nombre, ctor, args });
+                if self.come(&Token::Comma) { continue; }
+                break;
+            }
             // ★ El inicializador es una `assignment-expression`, NO una
             // `expression`. Con la coma completa, `int a = 20, b = 22;` se
             // leería `a = (20, b = 22)` usando el operador coma. El escalón de
@@ -1009,11 +1316,35 @@ impl Parser {
                     // método sólo si el método no existe. Al revés, una clase
                     // con un método `abs` haría que `abs(x)` llamara al método
                     // desde fuera de la clase.
-                    let propio = self.clase_actual.as_ref()
-                        .and_then(|c| self.clases.get(c).map(|i| (c.clone(), i.metodos.contains(&n))));
+                    let propio = self.clase_actual.clone().and_then(|c| {
+                        self.clases.get(&c)
+                            .and_then(|i| i.metodos.get(&n))
+                            .map(|f| (c.clone(), f.clone()))
+                    });
                     e = match propio {
-                        Some((cls, true)) => Expr::MethodCall(Box::new(Expr::This), cls, n, args),
-                        _ => Expr::Call(n, args),
+                        Some((cls, firmas)) => {
+                            let tipos = self.tipos_de(&args, &n)?;
+                            let s = self.resolver(&format!("{cls}::{n}"), &firmas, &tipos)?
+                                .simbolo.clone();
+                            Expr::MethodCall(Box::new(Expr::This), cls, s, args)
+                        }
+                        None => {
+                            // ★ Un nombre que no está en la tabla de C++ pasa
+                            // TAL CUAL, sin manglar. Es el puente con lo de C
+                            // —`printf`, `getchar`, los intrínsecos— y es lo
+                            // que `extern "C"` nombra en el estándar: una
+                            // función de C tiene el símbolo que tiene, porque
+                            // el que la escribió no sabía que C++ existía.
+                            match self.funciones.get(&n) {
+                                Some(firmas) => {
+                                    let firmas = firmas.clone();
+                                    let tipos = self.tipos_de(&args, &n)?;
+                                    let s = self.resolver(&n, &firmas, &tipos)?.simbolo.clone();
+                                    Expr::Call(s, args)
+                                }
+                                None => Expr::Call(n, args),
+                            }
+                        }
                     };
                 }
                 Token::Dot | Token::Arrow => {
@@ -1035,9 +1366,9 @@ impl Parser {
                     // ¿Método o campo? Se decide con el paréntesis, y el
                     // parser ya sabe cuál de los dos nombres existe.
                     if *self.peek() == Token::OpenParen {
-                        if !info.metodos.contains(&miembro) {
+                        let Some(firmas) = info.metodos.get(&miembro) else {
                             return Err(self.err(format!("`{cls}` no tiene el metodo `{miembro}`")));
-                        }
+                        };
                         self.avanzar();
                         let mut args = Vec::new();
                         if *self.peek() != Token::CloseParen {
@@ -1047,11 +1378,14 @@ impl Parser {
                             }
                         }
                         self.exige(&Token::CloseParen)?;
+                        let tipos = self.tipos_de(&args, &miembro)?;
+                        let simbolo = self.resolver(
+                            &format!("{cls}::{miembro}"), firmas, &tipos)?.simbolo.clone();
                         // El objeto viaja como el `this` que el descenso
                         // pondrá de primer parámetro. Con `->` la base YA es
                         // un puntero; con `.` hay que tomarle la dirección.
                         let objeto = if flecha { e } else { Expr::AddrOf(Box::new(e)) };
-                        e = Expr::MethodCall(Box::new(objeto), cls, miembro, args);
+                        e = Expr::MethodCall(Box::new(objeto), cls, simbolo, args);
                     } else {
                         let (_, off, ft) = info.campo(&miembro).cloned().ok_or_else(|| {
                             self.err(format!("`{cls}` no tiene el campo `{miembro}`"))
