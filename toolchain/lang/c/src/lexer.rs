@@ -8,6 +8,9 @@ pub(crate) enum Token {
     Float, Double,
     Return, Sizeof, Struct, Union, Typedef, Enum, Goto, Use,
     Const, Volatile, Extern,
+    /// `static`. Ver `parser::mod` — significa DOS cosas distintas según dónde
+    /// esté, y ésa es la mitad del trabajo de implementarla.
+    Static,
     OpenParen, CloseParen, OpenBrace, CloseBrace, OpenBracket, CloseBracket,
     Semicolon, Comma, Colon, Question,
     /// `#` — una directiva del preprocesador.
@@ -265,6 +268,15 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                     "const" => t.push(Token::Const),
                     "volatile" => t.push(Token::Volatile),
                     "extern" => t.push(Token::Extern),
+                    "static" => t.push(Token::Static),
+                    // `auto` y `register` se ACEPTAN Y SE TIRAN. No es pereza:
+                    // `register` es una sugerencia que todos los compiladores
+                    // del mundo ignoran desde hace treinta años, y `auto` es
+                    // redundante desde 1978 (una local ya es automática). No
+                    // cambian lo que el programa HACE, así que emitir algo por
+                    // ellas sería emitir ruido. Se comen aquí para que el
+                    // código ajeno que las trae compile sin tocarlo.
+                    "auto" | "register" => {}
                     "float" => t.push(Token::Float),
                     "double" => t.push(Token::Double),
                     "struct" => t.push(Token::Struct), "union" => t.push(Token::Union), "typedef" => t.push(Token::Typedef),

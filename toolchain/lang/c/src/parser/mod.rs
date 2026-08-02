@@ -12,6 +12,22 @@ use crate::lexer::Token;
 use crate::module;
 use crate::{CError, StandardFeatures};
 
+/// Lo que puede haber en el nivel de fichero cuando algo empieza como una
+/// función.
+///
+/// Eran dos casos (`Some`/`None`) y hacen falta **tres**: un prototipo no es
+/// una función —no tiene cuerpo que emitir— pero tampoco es "esto no era una
+/// función", porque sus tokens ya se han consumido. Devolver `None` ahí hacía
+/// que el llamante rebobinara y lo intentara leer como una variable global,
+/// y el error que salía acusaba de lo que no era.
+enum Tope {
+    Funcion(Function),
+    /// `int f(int);` — declarada, no definida. Consumida.
+    Prototipo,
+    /// No era una función. Los tokens están rebobinados.
+    NoEsFuncion,
+}
+
 pub(crate) struct Parser {
     tokens: Vec<Token>,
     token_lines: Vec<usize>,
@@ -32,6 +48,20 @@ pub(crate) struct Parser {
     /// definir. El aviso `value assigned to val is never read` del propio
     /// compilador estaba senalando justo este bug.
     enum_constants: HashMap<String, i64>,
+    /// ★ Locales `static`: nombre visible → nombre real de la global.
+    ///
+    /// Una `static` dentro de una función **no es una local**: sobrevive entre
+    /// llamadas, así que vive donde viven las globales. Pero su NOMBRE sólo se
+    /// ve dentro de su función, y dos funciones pueden tener cada una su
+    /// `static int n`. Se resuelve renombrando en la declaración y traduciendo
+    /// en el único sitio donde un identificador se vuelve variable.
+    ///
+    /// Se vacía al empezar cada función: ese ámbito es justo lo que este mapa
+    /// representa.
+    static_alias: HashMap<String, String>,
+    /// Globales que una función ha ido creando al declarar sus `static`.
+    /// `parse_program` las recoge al terminar cada función.
+    globales_pendientes: Vec<GlobalDecl>,
     syscalls: HashMap<String, SyscallDef>,
     /// Lo que el LEXER no pudo leer. Se comprueba antes de parsear: seguir
     /// con un token inventado produce un programa que compila y no dice lo
@@ -52,6 +82,8 @@ impl Parser {
             usings: Vec::new(),
             typedefs: HashMap::new(),
             enum_constants: HashMap::new(),
+            static_alias: HashMap::new(),
+            globales_pendientes: Vec::new(),
             syscalls: HashMap::new(),
             features: StandardFeatures::default(),
         }
@@ -363,6 +395,24 @@ impl Parser {
                 globals.push(GlobalDecl::Var(typ, name, None));
                 continue;
             }
+            // ★ `static` EN EL NIVEL DE FICHERO: se acepta y se sigue de largo.
+            //
+            // Ahí `static` significa "este nombre no sale de esta unidad de
+            // traducción" — enlace interno. BMO C compila **una** unidad, así
+            // que no hay nadie de quien esconderse: una global static y una
+            // global normal se comportan exactamente igual.
+            //
+            // No es tragárselo por comodidad: es que aquí no cambia lo que el
+            // programa hace, y emitir algo distinto sería inventarse una
+            // diferencia. El día que haya compilación separada, esta línea es
+            // el sitio donde ponerle el enlace interno de verdad.
+            //
+            // Dentro de una función es OTRA COSA y sí cambia el programa: ver
+            // `terminar_declaracion_static`.
+            if *self.peek() == Token::Static {
+                self.advance();
+                continue;
+            }
             if *self.peek() == Token::Typedef {
                 self.advance();
                 let typ = self.parse_type_spec()?;
@@ -374,9 +424,20 @@ impl Parser {
                 self.typedefs.insert(name, typ);
                 continue;
             }
-            if let Some(f) = self.try_parse_function()? {
-                functions.push(f);
-            } else {
+            match self.try_parse_function()? {
+                Tope::Funcion(f) => {
+                    functions.push(f);
+                    // Las `static` que esa función haya declarado ya no son
+                    // suyas: son globales con nombre propio.
+                    globals.append(&mut self.globales_pendientes);
+                    continue;
+                }
+                // Un PROTOTIPO: `int f(int);`. No emite nada — sólo dice que
+                // esa función existirá. Ya se consumió, así que se sigue.
+                Tope::Prototipo => continue,
+                Tope::NoEsFuncion => {}
+            }
+            {
                 let (typ, name) = self.parse_type_and_name()?;
                 let init = if *self.peek() == Token::Assign {
                     self.advance();
@@ -646,25 +707,46 @@ impl Parser {
         }
     }
 
-    fn try_parse_function(&mut self) -> Result<Option<Function>, CError> {
+    fn try_parse_function(&mut self) -> Result<Tope, CError> {
         let save = self.pos;
         let start_line = self.line();
+        // `static int f(){...}` — el `static` de una función es enlace interno,
+        // y aquí sólo hay una unidad de traducción. Se acepta y se sigue.
+        if *self.peek() == Token::Static {
+            self.advance();
+        }
         let ret_type = match self.parse_type_spec() {
             Ok(t) => t,
-            Err(_) => { self.pos = save; return Ok(None); }
+            Err(_) => { self.pos = save; return Ok(Tope::NoEsFuncion); }
         };
-        let Token::Ident(name) = self.peek().clone() else { self.pos = save; return Ok(None); };
+        let Token::Ident(name) = self.peek().clone() else { self.pos = save; return Ok(Tope::NoEsFuncion); };
         self.advance();
-        if *self.peek() != Token::OpenParen { self.pos = save; return Ok(None); }
+        if *self.peek() != Token::OpenParen { self.pos = save; return Ok(Tope::NoEsFuncion); }
         self.advance();
         let mut params = Vec::new();
+        let mut anonimos = 0usize;
         while *self.peek() != Token::CloseParen && *self.peek() != Token::Eof {
             if *self.peek() == Token::Void && (self.pos + 1 >= self.tokens.len() || self.tokens[self.pos + 1] == Token::CloseParen) {
                 self.advance(); break;
             }
             let ptype = self.parse_type_spec()?;
-            let pname = match self.advance() {
-                Token::Ident(n) => n,
+            // ★ El nombre del parámetro es OPCIONAL.
+            //
+            // `int f(int);` es C legal y es como se escriben los prototipos en
+            // las cabeceras de cualquier programa de verdad — DOOM incluido.
+            // Aquí se exigía nombre siempre, así que un prototipo moría con
+            // "expected param name, got CloseParen": un mensaje que acusa al
+            // programa de algo que el estándar permite.
+            //
+            // Sin nombre no se puede referenciar dentro del cuerpo, y por eso
+            // sólo aparece en declaraciones. Se le pone uno inventado para que
+            // el resto del compilador no tenga que saber que puede faltar.
+            let pname = match self.peek().clone() {
+                Token::Ident(n) => { self.advance(); n }
+                Token::Comma | Token::CloseParen => {
+                    anonimos += 1;
+                    format!("_anon{}", anonimos)
+                }
                 t => return Err(CError::new(self.line(),format!("expected param name, got {:?}", t))),
             };
             // ★ El tipo de un PARÁMETRO también se registra.
@@ -682,9 +764,28 @@ impl Parser {
             if *self.peek() == Token::Comma { self.advance(); }
         }
         self.expect(&Token::CloseParen)?;
+        // ★ PROTOTIPO: `int f(int a);` — declarar sin definir.
+        //
+        // Sin esto no se puede llamar a una función antes de escribirla, y eso
+        // no es una comodidad: **la recursión mutua es imposible sin ella**. Un
+        // programa de cincuenta ficheros —DOOM son unos cincuenta— está lleno
+        // de funciones que se llaman en círculo, y ninguna puede ir "antes" de
+        // todas las demás. Era el hueco más caro de los que quedaban, y no se
+        // sabía que estaba: el lexer no tiene la culpa de nada aquí.
+        //
+        // No emite código. Lo único que deja es el tipo de retorno anotado,
+        // para que una llamada anterior a la definición sepa qué recibe.
+        if *self.peek() == Token::Semicolon {
+            self.advance();
+            self.var_types.insert(name.clone(), ret_type);
+            return Ok(Tope::Prototipo);
+        }
         // After expect advances past ), pos should be at {
-        if self.pos >= self.tokens.len() || *self.peek() != Token::OpenBrace { self.pos = save; return Ok(None); }
+        if self.pos >= self.tokens.len() || *self.peek() != Token::OpenBrace { self.pos = save; return Ok(Tope::NoEsFuncion); }
         self.advance();
+        // Cada función empieza sin `static` heredadas de la anterior: el mapa
+        // ES el ámbito.
+        self.static_alias.clear();
         let mut var_count = 0u32;
         let mut var_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
         let mut body = Vec::new();
@@ -702,6 +803,17 @@ impl Parser {
                             continue;
                         }
                     }
+                    // ★ Una local `static` NO es una local: se va a las
+                    // globales y aquí no queda nada.
+                    if *self.peek() == Token::Static {
+                        self.advance();
+                        let Some((typ, vname)) = self.try_parse_decl()? else {
+                            return Err(CError::new(self.line(),
+                                "static: esperaba una declaracion de variable"));
+                        };
+                        self.declarar_static_local(&name, typ, vname)?;
+                        continue;
+                    }
                     if let Some((typ, name)) = self.try_parse_decl()? {
                         var_count += 1;
                         var_names.push(name.clone());
@@ -712,7 +824,43 @@ impl Parser {
                 }
             }
         }
-        Ok(Some(Function { ret_type, name, params, var_count, var_names, body, line: start_line }))
+        Ok(Tope::Funcion(Function { ret_type, name, params, var_count, var_names, body, line: start_line }))
+    }
+
+    /// **Una `static` dentro de una función.**
+    ///
+    /// Aquí `static` sí cambia lo que el programa hace, y en dos cosas a la vez:
+    ///
+    /// 1. **Sobrevive entre llamadas.** No puede vivir en la pila, que se
+    ///    deshace al volver: vive donde viven las globales.
+    /// 2. **Su inicializador corre UNA vez**, no en cada llamada. Por eso el
+    ///    valor viaja con la global y **no se emite ninguna sentencia** en el
+    ///    cuerpo — si se emitiera una asignación, un contador `static int n=0`
+    ///    se pondría a cero en cada llamada y parecería que no cuenta nada.
+    ///
+    /// Lo que NO cambia es su ámbito: el nombre sólo se ve dentro de su
+    /// función, y dos funciones pueden tener cada una su `static int n`. De ahí
+    /// el renombrado: la global se llama `funcion.variable` —con un punto, que
+    /// un identificador de C no puede contener, así que no puede chocar con
+    /// nada que el programa escriba— y el mapa de alias traduce.
+    fn declarar_static_local(
+        &mut self,
+        funcion: &str,
+        typ: TypeSpec,
+        nombre: String,
+    ) -> Result<(), CError> {
+        let real = format!("{}.{}", funcion, nombre);
+        let init = if *self.peek() == Token::Assign {
+            self.advance();
+            Some(self.parse_assign()?)
+        } else {
+            None
+        };
+        self.skip_semicolon();
+        self.var_types.insert(real.clone(), typ.clone());
+        self.static_alias.insert(nombre, real.clone());
+        self.globales_pendientes.push(GlobalDecl::Var(typ, real, init));
+        Ok(())
     }
 
     fn try_parse_decl(&mut self) -> Result<Option<(TypeSpec, String)>, CError> {
@@ -1465,6 +1613,13 @@ impl Parser {
                     // Una constante de enum ES su valor, no una variable: no
                     // tiene direccion ni hueco en la pila.
                     Ok(Expr::Int(value))
+                } else if let Some(real) = self.static_alias.get(&name) {
+                    // ★ El ÚNICO sitio donde un identificador se vuelve
+                    // variable, y por eso el único que hace falta tocar para
+                    // que las `static` locales funcionen. Si hubiera dos
+                    // caminos, uno se quedaría sin traducir y el bug sería
+                    // "a veces la static es la global de otro".
+                    Ok(Expr::Var(real.clone()))
                 } else {
                     Ok(Expr::Var(name))
                 }

@@ -17,6 +17,7 @@ mod silencios;
 mod preprocesador;
 mod inicializadores;
 mod agregados;
+mod almacenamiento;
 mod entrada;
 mod semantic;
 

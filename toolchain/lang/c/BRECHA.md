@@ -22,34 +22,22 @@ Medido el **2026-08-02**.
 
 ## El numero
 
-**20 de 29** sondas del lenguaje compilan.
+**26 de 29** sondas del lenguaje compilan.
 
 Lo que falta, con lo que cuesta que falte:
 
 | Falta | Era | Por que importa | Lo que dice BMO C |
 |---|---|---|---|
-| **static (local)** | C89 | DOOM lo usa en casi cada funcion | `error: 'static' no esta declarado (ni variable, ni global, ni constante de enum, ni funcion). Si venia de un #define, la cabecera no llego a expandirs` |
-| **static (global)** | C89 | DOOM: una global por fichero, ocultada al enlazador | `error:1: expected type, got Ident("static")` |
-| **register** | C89 | hoy no aporta nada: todos los compiladores lo ignoran | `error: 'register' no esta declarado (ni variable, ni global, ni constante de enum, ni funcion). Si venia de un #define, la cabecera no llego a expandi` |
-| **auto** | C89 | redundante desde 1978; en C23 cambio de significado | `error: 'auto' no esta declarado (ni variable, ni global, ni constante de enum, ni funcion). Si venia de un #define, la cabecera no llego a expandirse.` |
 | **array dentro de union** | C89 | DOOM: la union de datos del WAD | `error:1: expected type, got OpenBracket` |
 | **bitfields** | C89 | poco usado en DOOM; caro de emitir | `error:1: expected type, got Colon` |
 | **varargs (...)** | C89 | DOOM: I_Error(fmt, ...). Es el hueco conocido | `error:1: expected type, got Dot` |
-| **prototipo (param con nombre)** | C89 | obligatorio para llamar antes de definir | `error:1: expected type, got OpenParen` |
-| **prototipo (param sin nombre)** | C89 | asi los escribe DOOM en sus cabeceras | `error:1: expected param name, got CloseParen` |
 
 ## El lenguaje, sonda a sonda
 
 | Caracteristica | Era | ¿Compila? | Para que |
 |---|---|---|---|
 | array dentro de union | C89 | **NO** | DOOM: la union de datos del WAD |
-| auto | C89 | **NO** | redundante desde 1978; en C23 cambio de significado |
 | bitfields | C89 | **NO** | poco usado en DOOM; caro de emitir |
-| prototipo (param con nombre) | C89 | **NO** | obligatorio para llamar antes de definir |
-| prototipo (param sin nombre) | C89 | **NO** | asi los escribe DOOM en sus cabeceras |
-| register | C89 | **NO** | hoy no aporta nada: todos los compiladores lo ignoran |
-| static (global) | C89 | **NO** | DOOM: una global por fichero, ocultada al enlazador |
-| static (local) | C89 | **NO** | DOOM lo usa en casi cada funcion |
 | varargs (...) | C89 | **NO** | DOOM: I_Error(fmt, ...). Es el hueco conocido |
 | #define con argumentos | C89 | **si** | DOOM: FixedMul, MAXPLAYERS... por todas partes |
 | #if aritmetico | C89 | **si** | DOOM: #if defined(NORMALUNIX) |
@@ -57,6 +45,7 @@ Lo que falta, con lo que cuesta que falte:
 | aritmetica de punteros | C89 | **si** | DOOM: recorre el framebuffer con punteros |
 | array de char inicializado | C89 | **si** | DOOM: tablas de nombres de sprite |
 | array de struct | C89 | **si** | DOOM: tablas de estados, sprites, sectores |
+| auto | C89 | **si** | redundante desde 1978; en C23 cambio de significado |
 | enum | C89 | **si** | esencial |
 | extern | C89 | **si** | declarar sin definir; obligatorio si hay varios ficheros |
 | for con declaracion | C99 | **si** | comodidad; DOOM es C89 y no lo necesita |
@@ -64,8 +53,13 @@ Lo que falta, con lo que cuesta que falte:
 | literal de cadena | C89 | **si** | esencial |
 | long long | C99 | **si** | no lo pide DOOM; util para contadores |
 | operador ternario | C89 | **si** | esencial |
+| prototipo (param con nombre) | C89 | **si** | obligatorio para llamar antes de definir |
+| prototipo (param sin nombre) | C89 | **si** | asi los escribe DOOM en sus cabeceras |
 | puntero a funcion | C89 | **si** | DOOM: think_t, actionf_t — el corazon de sus actores |
 | recursion | C89 | **si** | esencial |
+| register | C89 | **si** | hoy no aporta nada: todos los compiladores lo ignoran |
+| static (global) | C89 | **si** | DOOM: una global por fichero, ocultada al enlazador |
+| static (local) | C89 | **si** | DOOM lo usa en casi cada funcion |
 | struct | C89 | **si** | esencial |
 | switch con fallthrough | C89 | **si** | esencial |
 | typedef | C89 | **si** | DOOM define fixed_t, mobj_t... todo pasa por aqui |
