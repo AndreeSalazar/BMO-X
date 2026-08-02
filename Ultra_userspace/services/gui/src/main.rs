@@ -1235,6 +1235,21 @@ pub extern "C" fn _start() -> ! {
             pintar_campo(&p, &caja, &ruta[..n], cur, caret);
         }
 
+        // ★ UNA sola vez, al cerrar el primer fotograma entero. Con esto, las
+        // últimas palabras que guarda el kernel dicen DÓNDE murió sin tener que
+        // adivinarlo:
+        //
+        //   "reclamo pantalla y entrada"  -> murió en el arranque o en la intro
+        //   "escritorio pintado"          -> murió sin cerrar el primer cuadro
+        //   "primer fotograma completo"   -> murió ya en el bucle
+        //
+        // Tres mensajes que ya existían más éste, y el diagnóstico deja de ser
+        // una teoría. Cuesta una línea en el log y se dice una vez en la vida
+        // del proceso.
+        if vueltas == 1 {
+            bmo::consola("primer fotograma completo\n");
+        }
+
         // ── El cursor del ratón, ENCIMA de todo y lo último ──
         //
         // Aquí ya no queda nada por pintar en este fotograma, así que lo que se

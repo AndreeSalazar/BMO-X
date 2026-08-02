@@ -271,18 +271,22 @@ impl UsbHidHal {
 
             let direccion = Direccion::nueva(slot, dci);
             if es_teclado {
-                self.teclado = Some(Teclado::nuevo(direccion, *iface, buf_phys, buf_virt));
+                self.teclado = Some(Teclado::nuevo(direccion, *iface, buf_phys, buf_virt, mps));
                 cosecha.teclado = true;
                 h.log("[uhid] teclado listo\n");
             } else {
                 if sale_del_teclado {
                     h.log("[uhid] iface de raton en MI TECLADO: provisional\n");
                 }
+                // ★ Se le pasa el `mps` del ENDPOINT, no el tamaño del informe:
+                // pedirle menos de lo que puede mandar es un babble, y así fue
+                // como este ratón se paró nada más adoptarlo. Ver `Raton::largo`.
                 if self.instalar_raton(Raton::nuevo(
                     direccion,
                     buf_phys,
                     buf_virt,
                     sale_del_teclado,
+                    mps,
                 )) {
                     cosecha.raton = true;
                     h.log("[uhid] raton listo\n");

@@ -160,6 +160,52 @@ pub fn proceso_muerto(pid: u32) {
             "el dueño de la pantalla MURIO: se vuelve al panel del kernel",
             pid as u64,
         );
+        // ★ Y SUS ÚLTIMAS PALABRAS, aquí y ahora.
+        //
+        // El manejador de pánico del compositor dice el archivo y la línea
+        // exactos... por la consola del kernel, que **mientras él tenía la
+        // pantalla no se pintaba** (`has_fb()` estaba en falso porque la
+        // pantalla era suya). O sea que el único mensaje capaz de explicar la
+        // muerte se escribía justo en el intervalo en el que nadie podía
+        // leerlo.
+        //
+        // Este es el instante exacto en que la pantalla vuelve a ser del
+        // kernel, así que es el primer momento en que se puede pintar — y el
+        // último en que alguien se acuerda de preguntar. Guardarlo para el
+        // arranque del shell no bastaba: quien relanza a mano el escritorio no
+        // pasa por ahí.
+        //
+        // ⚠️ **Bajo la CR3 del KERNEL.** Esto corre dentro de `revoke_all`, o
+        // sea dentro del syscall del proceso que se está muriendo: la CR3 en
+        // vigor es la SUYA, y su espacio comparte identidad sólo en 0..1 GiB.
+        // El framebuffer vive a ~3,5 GiB: pintar aquí sin cambiar de CR3 sería
+        // un #PF, y el reporte de faults también pinta → #PF recursivo en IST1
+        // → congelación total y silenciosa. Es la mina que ya costó dos
+        // sesiones (ver el patrón del rango identidad alto), y la misma danza
+        // que hace `uconsole::flush` por la misma razón.
+        let cur = crate::ring0::mm::vmm::read_cr3();
+        let kpml4 = crate::ring0::mm::vmm::kernel_pml4();
+        if cur != kpml4 {
+            crate::ring0::mm::vmm::switch_to(kpml4);
+        }
+        crate::ring0::core::phase::dashboard_log("  -- lo ULTIMO que dijo el dueno de la pantalla --");
+        if crate::ring0::uconsole::hubo_palabras(pid) {
+            crate::ring0::uconsole::ultimas_palabras(pid, |linea| {
+                let mut buf = [0u8; 128];
+                let cabeza = b"  | ";
+                let n = linea.len().min(buf.len() - cabeza.len());
+                buf[..cabeza.len()].copy_from_slice(cabeza);
+                buf[cabeza.len()..cabeza.len() + n].copy_from_slice(&linea.as_bytes()[..n]);
+                if let Ok(s) = core::str::from_utf8(&buf[..cabeza.len() + n]) {
+                    crate::ring0::core::phase::dashboard_log(s);
+                }
+            });
+        } else {
+            crate::ring0::core::phase::dashboard_log("  | (nada: murio sin decir una sola linea)");
+        }
+        if cur != kpml4 {
+            crate::ring0::mm::vmm::switch_to(cur);
+        }
     }
 }
 

@@ -137,10 +137,12 @@ pub struct Teclado {
     /// **Si esto se queda en `false`, el teclado enmudece para siempre**: el
     /// endpoint sigue en `Running` y nadie vuelve a pedirle nada.
     bombeando: bool,
+    /// Lo que el ENDPOINT dice que puede mandar de una vez.
+    mps: u16,
 }
 
 impl Teclado {
-    pub fn nuevo(dir: Direccion, iface: u8, buf_phys: u64, buf_virt: *mut u8) -> Self {
+    pub fn nuevo(dir: Direccion, iface: u8, buf_phys: u64, buf_virt: *mut u8, mps: u16) -> Self {
         Self {
             dir,
             iface,
@@ -149,7 +151,18 @@ impl Teclado {
             previo_mod: 0,
             previas: [0; 6],
             bombeando: false,
+            mps,
         }
+    }
+
+    /// Cuántos bytes se le piden al bus.
+    ///
+    /// Aquí siempre habían coincidido —el informe boot de un teclado mide 8 y
+    /// su `mps` es 8—, y por eso este camino nunca falló mientras el del ratón
+    /// sí. Se pone igual: una regla que sólo se cumple por casualidad en la
+    /// mitad de los sitios es una trampa esperando al aparato siguiente.
+    fn largo(&self) -> u16 {
+        if self.mps == 0 { INFORME_BYTES } else { self.mps }
     }
 
     pub fn direccion(&self) -> Direccion { self.dir }
@@ -165,8 +178,9 @@ impl Teclado {
     /// siguiente mete sus eventos en medio de los control transfers del otro
     /// aparato.
     pub fn arrancar(&mut self) -> bool {
+        let largo = self.largo();
         self.bombeando = unsafe {
-            bmo_xhci::queue_interrupt_in(self.dir.slot, self.dir.dci, self.buf_phys, INFORME_BYTES)
+            bmo_xhci::queue_interrupt_in(self.dir.slot, self.dir.dci, self.buf_phys, largo)
         };
         if self.bombeando {
             unsafe { bmo_xhci::ring_doorbell(self.dir.slot, self.dir.dci) };
@@ -199,10 +213,9 @@ impl Teclado {
 
     /// Vuelve a encolar. Es lo que mantiene viva la bomba.
     fn rearmar(&mut self) {
+        let largo = self.largo();
         unsafe {
-            if bmo_xhci::queue_interrupt_in(
-                self.dir.slot, self.dir.dci, self.buf_phys, INFORME_BYTES,
-            ) {
+            if bmo_xhci::queue_interrupt_in(self.dir.slot, self.dir.dci, self.buf_phys, largo) {
                 bmo_xhci::ring_doorbell(self.dir.slot, self.dir.dci);
                 self.bombeando = true;
             }
