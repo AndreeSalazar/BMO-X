@@ -84,6 +84,8 @@ name = "bmo-cpp-front"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-c-front",
+ "bmo-lower",
 ]
 
 [[package]]

@@ -88,6 +88,8 @@ pub enum TypeSpec {
     Float, Double, Bool,
     Ptr(Box<TypeSpec>),
     Ref(Box<TypeSpec>),
+    /// `T v[n]` — un array de verdad: ocupa `n * tam(T)`, no ocho bytes.
+    Array(Box<TypeSpec>, u32),
     ClassRef(String),
     Template(String, Vec<TypeSpec>),
     Auto,
@@ -103,11 +105,19 @@ impl TypeSpec {
             TypeSpec::Long | TypeSpec::UnsignedLong | TypeSpec::LongLong
             | TypeSpec::UnsignedLongLong | TypeSpec::Double => 8,
             TypeSpec::Ptr(_) | TypeSpec::Ref(_) => 8,
+            TypeSpec::Array(t, n) => t.size() * n,
             TypeSpec::ClassRef(_) => 8, // pointer to class in BMO
             TypeSpec::Template(_, _) => 0,
             TypeSpec::Auto => 0,
         }
     }
+}
+
+/// Una rama de un `switch`. `value: None` es el `default`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Case {
+    pub value: Option<i64>,
+    pub stmts: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -118,7 +128,12 @@ pub enum Stmt {
     Assign(String, Expr),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
+    DoWhile(Box<Stmt>, Expr),
+    /// `for(init; cond; inc) cuerpo`. Una **declaración** en el init no cabe
+    /// aquí (init es una expresión): el parser la desazucara a
+    /// `{ T i = …; for(; cond; inc) cuerpo }`, igual que hace el de C.
     For(Option<Expr>, Option<Expr>, Option<Expr>, Box<Stmt>),
+    Switch(Expr, Vec<Case>),
     Block(Vec<Stmt>),
     Break,
     Continue,
@@ -160,6 +175,24 @@ pub enum Expr {
     Ge(Box<Expr>, Box<Expr>),
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
+    BitAnd(Box<Expr>, Box<Expr>),
+    BitOr(Box<Expr>, Box<Expr>),
+    BitXor(Box<Expr>, Box<Expr>),
+    Shl(Box<Expr>, Box<Expr>),
+    Shr(Box<Expr>, Box<Expr>),
+    /// `v[i]` sobre una variable, con el **tamaño del elemento** ya resuelto.
+    ///
+    /// La escala viaja en el AST porque quien tenía delante el tipo era el
+    /// parser, no el emisor — mismo reparto que `Field` en C. Un codegen que
+    /// tuviera que deducirla otra vez sabría de disposiciones **dos veces**, y
+    /// dos copias de un cálculo de offsets divergen.
+    Subscript(String, Box<Expr>, u8),
+    /// `v[i] = valor`.
+    AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
+    /// `*p = valor`.
+    AssignDeref(Box<Expr>, Box<Expr>),
+    /// `(T)e` — conversión de verdad: trunca o extiende.
+    Cast(TypeSpec, Box<Expr>),
     Not(Box<Expr>),
     Neg(Box<Expr>),
     BitNot(Box<Expr>),

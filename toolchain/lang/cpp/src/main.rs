@@ -1,33 +1,44 @@
-//! bmo-cpp-front — C++ to BEF compiler.
+//! `bmo-cpp-front` — compila C++ a BEF.
+//!
+//! Antes imprimía los contadores de un `IrModule` que nadie consumía: decía
+//! "OK: compiled" sin haber producido un solo byte ejecutable. Ahora escribe
+//! el `.bef` o falla diciendo por qué.
 
 use std::env;
 use std::fs;
-use bmo_cpp_front::compile_to_ir;
+use std::path::PathBuf;
+use bmo_cpp_front::compile_source_to_bef;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: bmo-cpp-front <file.cpp>");
+        eprintln!("Uso: bmo-cpp-front <fichero.cpp> [salida.bef]");
         std::process::exit(1);
     }
 
-    let path = &args[1];
-    let source = match fs::read_to_string(path) {
+    let entrada = PathBuf::from(&args[1]);
+    let fuente = match fs::read_to_string(&entrada) {
         Ok(s) => s,
-        Err(e) => { eprintln!("Error reading {}: {}", path, e); std::process::exit(1); }
+        Err(e) => { eprintln!("no se pudo leer {}: {e}", entrada.display()); std::process::exit(1); }
     };
 
-    match compile_to_ir(&source) {
-        Ok(ir) => {
-            println!("OK: compiled to IrModule");
-            println!("  functions: {}", ir.function_count);
-            println!("  types:     {}", ir.type_count);
-            println!("  strings:   {}", ir.string_count);
-            println!("  globals:   {}", ir.global_count);
-        }
+    let bef = match compile_source_to_bef(&fuente) {
+        Ok(b) => b,
         Err(e) => {
-            eprintln!("Error line {}: {}", e.line, e.message);
+            if e.line > 0 { eprintln!("error en la linea {}: {}", e.line, e.message); }
+            else { eprintln!("error: {}", e.message); }
             std::process::exit(1);
         }
+    };
+
+    let salida = if args.len() > 2 {
+        PathBuf::from(&args[2])
+    } else {
+        entrada.with_extension("bef")
+    };
+
+    match fs::write(&salida, &bef) {
+        Ok(()) => println!("{} — {} bytes", salida.display(), bef.len()),
+        Err(e) => { eprintln!("no se pudo escribir {}: {e}", salida.display()); std::process::exit(1); }
     }
 }

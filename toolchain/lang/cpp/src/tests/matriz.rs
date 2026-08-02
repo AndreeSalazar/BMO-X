@@ -1,0 +1,201 @@
+//! **La matriz de conformidad de BMO C++.**
+//!
+//! Misma regla que las de C y COBOL: *al añadir una característica, se le añade
+//! su fila* — y la fila **ejecuta**, no inspecciona. Un codegen que produce
+//! números erróneos se ve sanísimo en un volcado hexadecimal.
+//!
+//! ═══ Qué cambió con el paso 1 ═══
+//!
+//! Estas filas **se conducen desde fuente de C++**. En el paso 0 la mitad
+//! construía el AST a mano, porque el parser provisional sólo sabía leer
+//! `return` y una matriz desde texto habría tenido una sola fila. Ahora hay
+//! lexer y parser de verdad, así que la matriz prueba lo mismo que probará
+//! siempre: **texto de C++ que entra, comportamiento que sale**.
+
+use super::*;
+
+/// El envoltorio por defecto, igual que en la matriz de C: el cuerpo va dentro
+/// de un `main`. Con el prefijo `@FULL@` la fuente se usa tal cual, que hace
+/// falta para las globales y para las funciones sueltas.
+fn correr(fuente: &str) -> String {
+    run_cpp(fuente).trim().to_string()
+}
+
+#[test]
+fn matriz_cpp_ejecuta_correctamente() {
+    let casos: &[(&str, &str, &str)] = &[
+        // ── Aritmética y literales ──
+        ("literal", "printf(\"%d\", 42);", "42"),
+        ("cadena", "printf(\"HOLA C++\");", "HOLA C++"),
+        ("suma", "printf(\"%d\", 20 + 22);", "42"),
+        ("precedencia", "printf(\"%d\", 2 + 5 * 8);", "42"),
+        ("parentesis", "printf(\"%d\", (2 + 5) * 6);", "42"),
+        ("division", "printf(\"%d\", 84 / 2);", "42"),
+        ("modulo", "printf(\"%d\", 142 % 100);", "42"),
+        ("negacion", "printf(\"%d\", -42);", "-42"),
+        ("hex", "printf(\"%d\", 0x2A);", "42"),
+        ("charlit", "char c = 'A'; printf(\"%c\", c);", "A"),
+        ("escape", "printf(\"a\\tb\");", "a\tb"),
+
+        // ── Declaraciones ──
+        ("declarar", "int x = 42; printf(\"%d\", x);", "42"),
+        // ★ `int a = 20, b = 22;` con `parse_expr` en el inicializador se
+        // leería `a = (20, b = 22)` por el operador coma. El escalón de la
+        // gramática existe justo para esto.
+        ("coma-en-declaracion", "int a = 20, b = 22; printf(\"%d\", a + b);", "42"),
+        // ★ El asterisco es del DECLARADOR: en `int *p, q;` la `q` es un `int`.
+        ("asterisco-del-declarador", "int x = 42; int *p = &x, q = 7; printf(\"%d %d\", *p, q);", "42 7"),
+        ("asignar", "int x = 1; x = 42; printf(\"%d\", x);", "42"),
+        ("asignacion-derecha", "int a = 0; int b = 0; a = b = 42; printf(\"%d %d\", a, b);", "42 42"),
+        ("compuesta", "int x = 10; x += 5; x -= 2; x *= 2; printf(\"%d\", x);", "26"),
+        ("incdec", "int x = 5; x++; ++x; x--; printf(\"%d\", x);", "6"),
+        ("post-vs-pre", "int x = 5; int a = x++; printf(\"%d %d\", a, x);", "5 6"),
+
+        // ── Comparaciones y lógica ──
+        ("menor", "printf(\"%d\", 1 < 2);", "1"),
+        ("igual", "printf(\"%d\", 2 == 2);", "1"),
+        ("distinto", "printf(\"%d\", 2 != 2);", "0"),
+        ("logico-and", "printf(\"%d\", 1 && 0);", "0"),
+        ("logico-or", "printf(\"%d\", 0 || 3);", "1"),
+        ("no", "printf(\"%d %d\", !0, !5);", "1 0"),
+        ("ternario", "int x = 5; printf(\"%d\", x > 3 ? 42 : 0);", "42"),
+
+        // ── Bits ──
+        ("bitops", "printf(\"%d %d %d\", 12 & 10, 12 | 3, 12 ^ 10);", "8 15 6"),
+        ("desplazar", "printf(\"%d %d\", 21 << 1, 84 >> 1);", "42 42"),
+        ("complemento", "printf(\"%d\", ~0);", "-1"),
+
+        // ── C++ propio ──
+        ("bool-true", "bool b = true; printf(\"%d\", b);", "1"),
+        ("bool-false", "printf(\"%d\", false);", "0"),
+        ("nullptr-es-cero", "printf(\"%d\", nullptr);", "0"),
+        ("comentario-linea", "// nada\nprintf(\"42\"); // tampoco\n", "42"),
+        ("comentario-bloque", "/* nada\n de nada */ printf(\"42\");", "42"),
+
+        // ── Control ──
+        ("if-entonces", "int x = 0; if (1 < 2) x = 42; printf(\"%d\", x);", "42"),
+        ("if-si-no", "int x = 0; if (1 > 2) x = 1; else x = 42; printf(\"%d\", x);", "42"),
+        ("while", "int s = 6; int k = 0; while (k < 9) { s = s + k; k = k + 1; } printf(\"%d\", s);", "42"),
+        ("do-while", "int i = 0; int s = 0; do { s = s + 1; i = i + 1; } while (i < 3); printf(\"%d\", s);", "3"),
+        ("for", "int s = 0; for (int i = 0; i < 6; i++) { s += 7; } printf(\"%d\", s);", "42"),
+        ("for-anidado", "int s = 0; for (int i = 0; i < 3; i++) { for (int j = 0; j < 3; j++) { s++; } } printf(\"%d\", s);", "9"),
+        ("break", "int s = 0; for (int i = 0; i < 100; i++) { if (i == 3) break; s++; } printf(\"%d\", s);", "3"),
+        ("continue", "int s = 0; for (int i = 0; i < 5; i++) { if (i == 2) continue; s++; } printf(\"%d\", s);", "4"),
+        ("switch", "int x = 2; switch (x) { case 1: printf(\"uno\"); break; case 2: printf(\"dos\"); break; default: printf(\"otro\"); }", "dos"),
+        ("switch-default", "int x = 9; switch (x) { case 1: printf(\"uno\"); break; default: printf(\"otro\"); }", "otro"),
+
+        // ── Punteros y arrays ──
+        ("ptr-deref", "int x = 42; int *p = &x; printf(\"%d\", *p);", "42"),
+        ("ptr-escribir", "int x = 1; int *p = &x; *p = 42; printf(\"%d\", x);", "42"),
+        ("array-rw", "int a[3]; a[0] = 10; a[1] = 20; a[2] = 12; printf(\"%d\", a[0] + a[1] + a[2]);", "42"),
+        ("array-indice-variable", "int a[3]; a[0] = 1; a[1] = 2; a[2] = 3; int s = 0; for (int i = 0; i < 3; i++) { s += a[i]; } printf(\"%d\", s);", "6"),
+        ("cadena-indexada", "char *s = \"ABC\"; printf(\"%c\", s[1]);", "B"),
+
+        // ── Tipos ──
+        ("cast-char", "int x = 321; printf(\"%d\", (char)x);", "65"),
+        ("unsigned", "unsigned int u = 4294967295; printf(\"%u\", u);", "4294967295"),
+        ("long", "long l = 9000000000; printf(\"%d\", l);", "9000000000"),
+
+        // ── Programa completo ──
+        ("global", "@FULL@int g = 42; int main() { printf(\"%d\", g); return 0; }", "42"),
+        ("funcion", "@FULL@int suma(int a, int b) { return a + b; } int main() { printf(\"%d\", suma(20, 22)); return 0; }", "42"),
+        ("recursion", "@FULL@int f(int n) { if (n <= 1) return 1; return n * f(n - 1); } int main() { printf(\"%d\", f(5)); return 0; }", "120"),
+        ("prototipo", "@FULL@int par(int n); int impar(int n) { if (n == 0) return 0; return par(n - 1); } int par(int n) { if (n == 0) return 1; return impar(n - 1); } int main() { printf(\"%d\", par(10)); return 0; }", "1"),
+        ("parametro-sin-nombre", "@FULL@int siempre(int) { return 42; } int main() { printf(\"%d\", siempre(7)); return 0; }", "42"),
+
+        // ★ Integración: una fila que COMPONE varias características. Las
+        // demás prueban cada pieza suelta, y una pieza suelta puede estar bien
+        // y romperse al lado de otra — el `for` con declaración envuelve en un
+        // bloque, y el bloque cambia dónde caen las ranuras de pila.
+        ("programa-completo", "@FULL@\
+            int suma(int a, int b) { return a + b; }\n\
+            int main() {\n\
+                int total = 0;\n\
+                for (int i = 0; i < 6; i++) { total += suma(i, i); }\n\
+                bool ok = total > 0;\n\
+                printf(\"total=%d ok=%d\", total, ok);\n\
+                return 0;\n\
+            }", "total=30 ok=1"),
+    ];
+
+    let total = casos.len();
+    let mut rotos = Vec::new();
+    for (nombre, fuente, esperado) in casos {
+        let src = match fuente.strip_prefix("@FULL@") {
+            Some(f) => f.to_string(),
+            None => format!("int main() {{ {fuente} return 0; }}"),
+        };
+        let got = std::panic::catch_unwind(|| correr(&src))
+            .unwrap_or_else(|_| "<no ejecuta>".into());
+        if got != *esperado {
+            rotos.push(format!("  {nombre:<26} => {got:?}  (esperado {esperado:?})"));
+        }
+    }
+    assert!(
+        rotos.is_empty(),
+        "\n{}/{} FUNCIONAN. ROTOS:\n{}",
+        total - rotos.len(), total, rotos.join("\n"),
+    );
+}
+
+/// La otra mitad de la matriz: **lo que no se sabe hacer, y que lo diga.**
+///
+/// Una matriz que sólo mira lo que funciona deja pasar el fallo peor de todos
+/// —hacer algo a medias y en silencio— porque ese caso no aparece en ninguna
+/// fila verde. Cada fila comprueba que el rechazo **nombra el paso** en el que
+/// eso llega, para que el mensaje sea una ruta y no un muro.
+#[test]
+fn matriz_cpp_rechaza_con_el_paso_escrito() {
+    let casos: &[(&str, &str, u8)] = &[
+        ("preprocesador", "@FULL@#include \"x.h\"\nint main(){return 0;}", 1),
+        ("clase", "@FULL@class P { public: int x; };\nint main(){return 0;}", 2),
+        ("struct", "@FULL@struct P { int x; };\nint main(){return 0;}", 2),
+        ("tipo-de-usuario", "P p;", 2),
+        ("this", "return this;", 2),
+        ("punto", "int a = 0; a = a.x;", 2),
+        ("flecha", "int a = 0; a = a->x;", 2),
+        ("auto", "auto x = 1;", 2),
+        ("sizeof", "printf(\"%d\", sizeof(int));", 2),
+        ("referencia", "@FULL@int f(int &r) { return r; } int main(){return 0;}", 2),
+        ("new", "int *p = new P();", 3),
+        ("delete", "int *p = 0; delete p;", 3),
+        ("namespace", "@FULL@namespace n { }\nint main(){return 0;}", 4),
+        ("cualificado", "int x = n::y;", 4),
+        ("variadica", "@FULL@int f(int a, ...) { return a; } int main(){return 0;}", 4),
+        ("argumento-por-defecto", "@FULL@int f(int a = 1) { return a; } int main(){return 0;}", 4),
+        ("plantilla", "@FULL@template<class T> T f(T x) { return x; } int main(){return 0;}", 6),
+    ];
+
+    let mut rotos = Vec::new();
+    for (nombre, fuente, paso) in casos {
+        let src = match fuente.strip_prefix("@FULL@") {
+            Some(f) => f.to_string(),
+            None => format!("int main() {{ {fuente} return 0; }}"),
+        };
+        match compile_source_to_bef(&src) {
+            Ok(_) => rotos.push(format!("  {nombre:<24} COMPILO, y no deberia")),
+            Err(e) if !e.message.contains(&format!("PASO {paso}")) =>
+                rotos.push(format!("  {nombre:<24} no dijo PASO {paso}: {}", e.message)),
+            Err(_) => {}
+        }
+    }
+    assert!(rotos.is_empty(), "\nROTOS:\n{}", rotos.join("\n"));
+}
+
+/// ★ **El pecado que el paso 1 vino a matar, con su test.**
+///
+/// El parser anterior hacía `pos += 1` con lo que no reconocía. Estas dos
+/// fuentes son las que más barato salían antes: la primera perdía el cuerpo
+/// entero, la segunda leía `x` como un número hexadecimal.
+#[test]
+fn ya_no_se_traga_nada_en_silencio() {
+    // Antes: compilaba, no imprimía, y no se quejaba.
+    assert_eq!(correr("int main() { printf(\"42\"); return 0; }"), "42");
+    // Antes: el bucle de dígitos aceptaba `x`, así que `x * 2` entraba por la
+    // rama numérica antes de ser un nombre.
+    assert_eq!(correr("int main() { int x = 21; printf(\"%d\", x * 2); return 0; }"), "42");
+    // Y una basura de verdad tiene que dar error CON LINEA, no desaparecer.
+    let e = compile_source_to_bef("int main() {\n  @@@;\n  return 0;\n}")
+        .expect_err("esto no puede compilar");
+    assert_eq!(e.line, 2, "el error tiene que llevar la linea real: {e:?}");
+}
