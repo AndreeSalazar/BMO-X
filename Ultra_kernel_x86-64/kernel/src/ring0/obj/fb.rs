@@ -100,7 +100,11 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
     let bytes = bytes_mapeados();
     let mut off = 0u64;
     while off < bytes {
-        if vmm::map_page(aspace, vmm::FRAMEBUFFER_VA_BASE + off, fisica + off, true, true).is_err()
+        // ★ WC y no normal: aquí se escriben millones de píxeles seguidos, y
+        // juntar las escrituras es lo que separa repintar una ventana en
+        // milisegundos de hacerlo en decenas. Ver `s1_cpu::init_pat`.
+        if vmm::map_page_wc(aspace, vmm::FRAMEBUFFER_VA_BASE + off, fisica + off, true, true)
+            .is_err()
         {
             // Mapeo a medias = páginas de pantalla sueltas en un espacio de
             // usuario. Se deshace lo hecho antes de devolver el error: quedarse

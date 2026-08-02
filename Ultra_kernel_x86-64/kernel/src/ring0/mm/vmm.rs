@@ -19,6 +19,14 @@ pub const PTE_PRESENT: u64 = 1 << 0;
 pub const PTE_WRITABLE: u64 = 1 << 1;
 pub const PTE_USER: u64 = 1 << 2;
 pub const PTE_HUGE: u64 = 1 << 7;
+/// ★ En una PTE de 4 KiB el bit 7 **no** es "página grande": es el bit alto
+/// del índice de PAT. Con `PWT`(3) y `PCD`(4) a cero, ponerlo selecciona la
+/// entrada **4** de la tabla — la que `s1_cpu` deja en Write-Combining.
+///
+/// El mismo número significa dos cosas distintas según el nivel de tabla, y
+/// por eso lleva nombre propio: en una PDE sería `PS` y convertiría la entrada
+/// en una página de 2 MiB.
+pub const PTE_PAT_4K: u64 = 1 << 7;
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
 
 pub const USER_IMAGE_BASE: u64 = 0x0000_0000_4000_0000;
@@ -158,6 +166,27 @@ fn get_or_create(t: &mut [u64; 512], idx: usize, flags: u64) -> Result<u64, ()> 
 /// controls the leaf's R/W bit. Fails on misalignment or a huge-page
 /// collision (which would mean the VA overlaps the kernel identity map).
 pub fn map_page(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Result<(), ()> {
+    map_page_tipo(pml4, va, pa, user, writable, false)
+}
+
+/// Igual, pero eligiendo **Write-Combining** para esta página.
+///
+/// Se usa para el framebuffer y nada más: es donde se escriben millones de
+/// píxeles seguidos y donde juntar las escrituras cambia el orden de magnitud.
+/// Para memoria normal sería lo contrario de lo que se quiere — WC no garantiza
+/// el orden de las escrituras, y eso en una estructura de datos es un bug.
+pub fn map_page_wc(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Result<(), ()> {
+    map_page_tipo(pml4, va, pa, user, writable, true)
+}
+
+fn map_page_tipo(
+    pml4: u64,
+    va: u64,
+    pa: u64,
+    user: bool,
+    writable: bool,
+    combinar_escrituras: bool,
+) -> Result<(), ()> {
     if va % PAGE != 0 || pa % PAGE != 0 {
         return Err(());
     }
@@ -183,6 +212,9 @@ pub fn map_page(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Resu
     }
     if user {
         entry |= PTE_USER;
+    }
+    if combinar_escrituras {
+        entry |= PTE_PAT_4K;
     }
     let old = pt[i1];
     pt[i1] = entry;

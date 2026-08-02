@@ -591,6 +591,88 @@ unsafe fn init_cr0_cr4() {
         asm!("xsetbv", in("ecx") 0u32, in("eax") xcr0, in("edx") 0u32);
     }
     ser_print!("[s1_cpu] CR0/CR4/XCR0 set for Zen 3\n");
+    init_pat();
+}
+
+/// **PAT: dejar una entrada en Write-Combining** para el framebuffer.
+///
+/// ═══ Qué arregla ═══
+///
+/// El framebuffer es un BAR de PCIe y los MTRR del firmware lo dejan en **UC**:
+/// cada escritura de píxel es una transacción de bus por su cuenta, sin
+/// juntarse con la de al lado. Con Write-Combining el CPU **acumula** escrituras
+/// seguidas en un búfer y las suelta de golpe. Para un compositor que pinta
+/// ventanas enteras eso no es una micro-optimización: es la diferencia entre
+/// repintar una caja en milisegundos o en decenas.
+///
+/// ═══ Por qué PAT y no MTRR ═══
+///
+/// Cambiar los MTRR es tocar un reparto global del mapa físico que el firmware
+/// ya dejó montado, y equivocarse ahí afecta a **todo** el sistema. PAT deja
+/// elegir el tipo **por página**, que es exactamente el grano que hace falta:
+/// sólo las páginas del framebuffer, y sólo para quien las mapee así.
+///
+/// Y sobre la combinación: con el MTRR diciendo UC y el PAT diciendo WC, el
+/// tipo efectivo es **WC**. Es el mismo camino que usa `ioremap_wc()` de Linux
+/// para framebuffers cuyo MTRR es UC, y por eso no hace falta tocar los MTRR.
+///
+/// ═══ La secuencia, que NO es opcional ═══
+///
+/// Escribir el MSR de PAT con las cachés vivas y los MTRR armados es como
+/// cambiarle las ruedas a un coche en marcha. El manual pide un orden exacto y
+/// aquí está entero: apagar caché sin write-back, vaciarla, desarmar MTRR,
+/// tirar el TLB, escribir PAT, tirar el TLB otra vez, rearmar MTRR, vaciar y
+/// volver a encender. Saltarse un paso no da un error: da una máquina que se
+/// cuelga o que corrompe memoria más tarde.
+///
+/// ═══ Si falla ═══
+///
+/// Si el CPU no declara PAT, no se toca nada y se dice. El modo de fallo del
+/// camino entero es **quedarse como está** (UC), que es lo de hoy: lento, no
+/// roto.
+unsafe fn init_pat() {
+    // ¿Hay PAT? CPUID.01H:EDX[16]. Sin esto no se toca el MSR.
+    let (_, _, _, edx1) = cpuid(1, 0);
+    if edx1 & (1 << 16) == 0 {
+        ser_print!("[s1_cpu] sin PAT: el framebuffer se queda en UC\n");
+        return;
+    }
+
+    // La tabla que se quiere. Sólo se cambia la entrada 4; las cuatro
+    // primeras se dejan como el reset las deja, porque son las que usa todo
+    // lo demás del sistema y cambiarlas sería cambiarle el tipo de memoria a
+    // código que no lo pidió.
+    //
+    //   PA0 = 06 WB    PA1 = 04 WT    PA2 = 07 UC-   PA3 = 00 UC
+    //   PA4 = 01 WC ←  PA5 = 04 WT    PA6 = 07 UC-   PA7 = 00 UC
+    const PAT_DESEADO: u64 = 0x0007_0401_0007_0406;
+
+    // 1. Caché apagada SIN write-back (CD=1, NW=0) y vaciada.
+    let cr0: u64;
+    asm!("mov {}, cr0", out(reg) cr0);
+    let cr0_sin_cache = (cr0 | (1 << 30)) & !(1 << 29); // CD=1, NW=0
+    asm!("mov cr0, {}", in(reg) cr0_sin_cache);
+    asm!("wbinvd");
+
+    // 2. Desarmar los MTRR mientras se toca la tabla (MTRRdefType.E = bit 11).
+    let deftype = rdmsr(MSR_MTRR_DEF_TYPE);
+    wrmsr(MSR_MTRR_DEF_TYPE, deftype & !(1 << 11));
+
+    // 3. Tirar el TLB: CR3 a sí mismo.
+    let cr3: u64;
+    asm!("mov {}, cr3", out(reg) cr3);
+    asm!("mov cr3, {}", in(reg) cr3);
+
+    // 4. La tabla.
+    wrmsr(MSR_PAT, PAT_DESEADO);
+
+    // 5. Y deshacer el andamio en orden inverso.
+    asm!("mov cr3, {}", in(reg) cr3);
+    wrmsr(MSR_MTRR_DEF_TYPE, deftype);
+    asm!("wbinvd");
+    asm!("mov cr0, {}", in(reg) cr0);
+
+    ser_print!("[s1_cpu] PAT: entrada 4 = Write-Combining (framebuffer)\n");
 }
 
 unsafe fn init_fpu() {
