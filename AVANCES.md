@@ -273,6 +273,33 @@ toolchain/
   tools/   generadores: bef-bootstrap, hello-bex, fontgen, bmo-linker, cobol-gen(Python)
 ```
 
+### ★ El emulador, y hasta dónde llega (auditado 2026-08-02)
+
+`bmo-lower::emu` es lo que hace que los tests del toolchain **ejecuten** en vez
+de mirar bytes, y es la razón de que 574 pruebas signifiquen algo. Pero su
+cobertura **no está repartida — está concentrada**, y confundir eso es cómo se
+acumulan cosas verdes que nunca han corrido. El detalle entero vive en la
+cabecera de `toolchain/forge/bmo-lower/src/emu.rs`, sección **FIDELIDAD**; el
+resumen:
+
+| Eje | Cobertura | Por qué |
+|---|---|---|
+| ¿los bytes calculan lo que dice la fuente? | **alto** | es para lo que se construyó; cazó el salto corto de `malloc` |
+| ¿el kernel hace lo que el modelo dice? | **cero** | **no ejecuta el kernel: lo imita**. Si los dos se separan, los dos parecen sanos |
+| lo físico (paginación, anillos, XSAVE, IRQs, DMA, WC, USB, tiempos) | **cero** | por construcción. Los 24 episodios de `BITACORA.md` son de aquí |
+
+**Los agujeros con nombre**: no hay SSE (y por eso los 9 tests de float no
+ejecutan ninguno), la memoria es un mapa disperso (toda dirección funciona: sin
+fallos de página ni aliasing), no hay tope de pila (el proceso real tiene 64
+KiB), y **no hay cargador** — el banco rearma las secciones a mano, así que el
+cargador del kernel y la admisión de `bmo-verify` no se ejercen.
+
+**La regla de reparto**: lo que se puede equivocar en la aritmética o en el
+flujo, en el emulador; lo que depende del silicio o del kernel, en el Ryzen, y
+**con su número escrito antes de arrancar**. El valor del emulador no es un
+porcentaje: es el coste por bug — segundos aquí, contra flashear + reiniciar +
+fotografiar + una teoría que puede estar mal.
+
 - **sem-asm** ✅: motor que lee `forge/sem-asm/tables/*.toml` y encodea
   instrucciones→bytes. C y COBOL migrados a usarlo (fuera bytes hardcodeados).
 - **bmo-verify**: gate que valida el BEF (delega en `bmo-abi::bef::validator`,
@@ -304,6 +331,13 @@ tipo LLVM), `module.rs`.
   `(*fp)(args)` (CallPtr), **floats SSE** (ruta xmm paralela: literales, +−×÷,
   comparaciones comisd, cvtsi2sd/cvttsd2si, retorno en xmm0; float globales y
   args-de-función = deferido honesto).
+  ⚠️ **Con una salvedad medida el 2026-08-02**: de los **9 tests de coma
+  flotante, 0 EJECUTAN** — los nueve comparan ventanas de bytes
+  (`bef.windows(3).any(...)`), que es el método que el propio emulador declara
+  insuficiente en su cabecera. El emulador **no tiene SSE**, así que esa ruta
+  entera compila, da verde y **ningún CPU la ha ejecutado**. Es la misma forma
+  que tenía el bug de `malloc` (Ep. 23). Lo que lo arregla es meter `xmm` al
+  emulador, no escribir más tests de bytes.
 
 **FALTA C** (por orden de lo que más duele):
 
@@ -533,6 +567,11 @@ software que exige opacidad (DRM/anti-cheat de kernel) se auto-excluye. No es
 piratería; es "esta máquina me obedece solo a mí". Consola-con-esteroides + PC.
 
 **Lenguajes:**
+0. **SSE en el emulador** — y va delante de C++ a propósito, porque es barato y
+   tapa un agujero que YA existe en vez de abrir uno nuevo: hoy la ruta de coma
+   flotante de BMO C tiene 9 tests y **ninguno la ejecuta**. Además C++ hereda
+   esa ruta entera, así que construir encima sin ejecutarla es apilar sobre algo
+   que nadie ha visto funcionar.
 5. **BMO C++ (esencial, ACOTADO)** — SIGUIENTE lenguaje; barato encima de C
    (hereda todo). NO es "todo C++". Alcance deliberado =
    desde Bjarne (origen) hasta lo ESENCIAL de C++17, sin la bola moderna.

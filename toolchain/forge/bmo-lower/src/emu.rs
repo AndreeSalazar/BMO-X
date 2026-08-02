@@ -24,13 +24,91 @@
 //! Cubre el subconjunto que emiten los frontends de BMO: movimientos,
 //! aritmética entera con signo, `imul`/`idiv`, pila, direccionamiento
 //! `[rbp+disp]` y `[rsp]`, comparaciones, saltos condicionales e
-//! incondicionales, y `syscall`. **No** es un emulador general: ante un
-//! opcode que ningún emisor de BMO produce hace panic con el byte, que es
-//! la respuesta correcta — significa que alguien emitió algo sin pensar en
-//! cómo lo iba a verificar.
+//! incondicionales, y `syscall`. Son 58 opcodes de un byte más los grupos
+//! ModRM (`80`/`81`/`83`/`C1`/`D3`/`F7`/`FF`) y unos pocos de dos bytes.
+//! **No** es un emulador general: ante un opcode que ningún emisor de BMO
+//! produce hace panic con el byte, que es la respuesta correcta — significa
+//! que alguien emitió algo sin pensar en cómo lo iba a verificar.
 //!
 //! Se activa con la feature `emulator` para que no viaje en las builds
 //! normales del toolchain.
+//!
+//! # ★ FIDELIDAD: qué prueba esto y qué NO puede probar
+//!
+//! Esta sección existe porque la pregunta *"¿cuánto se parece esto al Ryzen?"*
+//! tiene una respuesta útil y una engañosa. La engañosa es un porcentaje. La
+//! útil es que **la cobertura no está repartida: está concentrada en un eje y
+//! es cero en los otros dos.**
+//!
+//! Y no es teoría de sobremesa: la lista de abajo salió de auditar este módulo
+//! contra `BITACORA.md`, y explica por qué los 24 episodios de aquella —todos—
+//! se cazaron en hardware y ninguno aquí.
+//!
+//! ## Eje 1 — "¿los bytes que emití calculan lo que dice la fuente?" → ALTO
+//!
+//! Es para lo que se construyó y donde vale su peso. Aritmética, flujo de
+//! control, marcos de pila, agregados, cadenas, `printf`, File I/O, consola,
+//! entrada. Ejemplo del 2026-08-02: `malloc` emitía su salto de la rama de
+//! fallo **seis bytes corto** y aquí salió como `opcode 0x05 no emitido por
+//! BMO`, que es la firma de aterrizar a media instrucción. En el Ryzen habría
+//! sido un proceso muerto sin explicación, un flasheo y una foto.
+//!
+//! ## Eje 2 — "¿el sistema de debajo hace lo que el modelo dice?" → CERO
+//!
+//! **Este módulo no ejecuta el kernel: lo imita.** De ahí sale la trampa más
+//! fea que tiene, y conviene tenerla escrita: si el modelo y el kernel se
+//! separan, **los dos parecen sanos** y nada avisa.
+//!
+//! Ocurrió el mismo día: `TASK_OP_MEMORIA_PEDIR` no estaba modelado, caía en el
+//! `_ => {}` del despacho y salía por el epílogo de ÉXITO con el valor a cero —
+//! o sea "toma tu bloque" con el puntero nulo—, mientras el kernel de verdad
+//! contesta con un código de error en `rax`. Dos comportamientos incompatibles,
+//! cero tests en rojo.
+//!
+//! La regla que deja: **un contrato modelado necesita su prueba en metal
+//! igual**, y el modelo no la sustituye. Lo que sí hace es acotar dónde mirar
+//! cuando falle.
+//!
+//! ## Eje 3 — lo FÍSICO → CERO, y por construcción
+//!
+//! Paginación y CR3, el cruce de anillos, XSAVE, la preempción por temporizador,
+//! DMA, el write-combining y las barreras, los tiempos reales, el USB, el
+//! framebuffer, la memoria con huecos. La ley 1 de la bitácora dice que *"QEMU
+//! miente por omisión"*; esto está bastante por debajo de QEMU.
+//!
+//! ## Los agujeros concretos, con nombre (auditado 2026-08-02)
+//!
+//! - **No hay SSE. Ni un `xmm`.** Y la consecuencia se puede medir: de los 9
+//!   tests de coma flotante de BMO C, **0 ejecutan** — los nueve comparan
+//!   ventanas de bytes (`bef.windows(3).any(...)`), que es exactamente el
+//!   método que la cabecera de este archivo declara insuficiente. La ruta de
+//!   floats compila, tiene tests verdes y **ningún CPU la ha ejecutado nunca**.
+//!   Es la misma forma que tenía el bug de `malloc`. **Es la palanca de mayor
+//!   valor para subir la fidelidad hoy.**
+//! - **La memoria es un mapa disperso**: toda dirección funciona. No hay fallo
+//!   de página, ni aliasing, ni marcos no contiguos, así que `KIND_MEMORIA`
+//!   puede probar aquí sus límites y sus rangos, pero **no su física**. Por eso
+//!   la prueba de las 16 páginas vive en `examples/memoria_C.c` y no sólo en un
+//!   test: ahí sólo puede fallar en el Ryzen.
+//! - **No hay tope de pila.** El proceso real recibe 64 KiB; una recursión
+//!   profunda pasa aquí y muere allí.
+//! - **No hay cargador.** El banco de pruebas rearma las secciones a mano
+//!   (Code + RoData + Data) y salta a la entrada. El cargador del kernel, la
+//!   alineación a página y la admisión de `bmo-verify` **no se ejercen**.
+//! - **El presupuesto de instrucciones** (`run(m, N)`) convierte un bucle
+//!   infinito en un test que falla; en el Ryzen es una máquina colgada. Aquí es
+//!   una ventaja, pero significa que "termina" no quiere decir lo mismo.
+//!
+//! ## Cómo usar esto sin engañarse
+//!
+//! El valor de este módulo no es un porcentaje: es el **coste por bug**. Uno
+//! cazado aquí cuesta segundos; el mismo en el Ryzen cuesta flashear, reiniciar,
+//! fotografiar y una teoría que puede estar equivocada — el Ep. 21 costó tres
+//! arranques culpando al compositor de algo que hacía un programa de ejemplo.
+//!
+//! Así que la regla de reparto es: **lo que se puede equivocar en la aritmética
+//! o en el flujo, aquí; lo que depende del silicio o del kernel, allí, y con su
+//! número escrito antes de arrancar.**
 
 use std::collections::HashMap;
 
