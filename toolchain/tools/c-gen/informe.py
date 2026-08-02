@@ -138,6 +138,39 @@ def escribir(lenguaje, libc_res, testigos):
                         p.append(f"| `{m}` | `{t['macros'][m]}` |")
                 p.append("")
 
+    # ── El censo entero de C ──
+    from defs import censo
+    p.append("## ★ El censo de C, entero — y qué se DESCARTA\n")
+    p.append("Un compilador acotado no se define por lo que tiene: se define por")
+    p.append("**lo que deja fuera a propósito**. Una lista de características sin")
+    p.append("veredicto es una lista de deberes; con veredicto es un *alcance* — y")
+    p.append("un alcance es lo que hace que esto se pueda terminar.\n")
+    total = len(censo.CENSO)
+    esencia = len(censo.por_veredicto("ESENCIA"))
+    util = len(censo.por_veredicto("UTIL"))
+    fuera = len(censo.por_veredicto("DESCARTAR"))
+    p.append(f"**{total} elementos** en el censo:\n")
+    p.append("| Veredicto | Cuántos | Qué significa |")
+    p.append("|---|---|---|")
+    p.append(f"| **ESENCIA** | {esencia} | sin esto no es C. Entra, tarde o temprano |")
+    p.append(f"| **UTIL** | {util} | aporta a lo que BMO hace. Entra cuando toque |")
+    p.append(f"| **DESCARTAR** | {fuera} | existe en C y **no entra**, con su motivo |")
+    p.append("")
+    pct = (fuera * 100) // total if total else 0
+    p.append(f"O sea: **{pct} de cada 100 elementos de C se quedan fuera**, y cada")
+    p.append("uno con un motivo que se puede discutir. `DESCARTAR` no es *nunca*: es")
+    p.append("*no en este alcance*. El día que el motivo caduque, la fila cambia.\n")
+
+    for cat in censo.categorias():
+        filas = [f for f in censo.CENSO if f[0] == cat]
+        p.append(f"### {cat}\n")
+        p.append("| Elemento | Era | Veredicto | Motivo |")
+        p.append("|---|---|---|---|")
+        for _c, elem, era, ver, motivo in filas:
+            marca = {"ESENCIA": "**ESENCIA**", "UTIL": "UTIL", "DESCARTAR": "~~FUERA~~"}[ver]
+            p.append(f"| {elem} | {era} | {marca} | {motivo} |")
+        p.append("")
+
     # ── El cierre ──
     p.append("## Lo que este documento NO dice\n")
     p.append("Que una sonda compile **no** significa que el programa haga lo")

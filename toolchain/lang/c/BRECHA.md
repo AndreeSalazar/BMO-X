@@ -147,6 +147,161 @@ emulador.
 Para que este apartado se llene:
 `winget install LLVM.LLVM` (Clang trae `-dM -E`, que es lo que se usa).
 
+## ★ El censo de C, entero — y qué se DESCARTA
+
+Un compilador acotado no se define por lo que tiene: se define por
+**lo que deja fuera a propósito**. Una lista de características sin
+veredicto es una lista de deberes; con veredicto es un *alcance* — y
+un alcance es lo que hace que esto se pueda terminar.
+
+**91 elementos** en el censo:
+
+| Veredicto | Cuántos | Qué significa |
+|---|---|---|
+| **ESENCIA** | 47 | sin esto no es C. Entra, tarde o temprano |
+| **UTIL** | 19 | aporta a lo que BMO hace. Entra cuando toque |
+| **DESCARTAR** | 25 | existe en C y **no entra**, con su motivo |
+
+O sea: **27 de cada 100 elementos de C se quedan fuera**, y cada
+uno con un motivo que se puede discutir. `DESCARTAR` no es *nunca*: es
+*no en este alcance*. El día que el motivo caduque, la fila cambia.
+
+### tipos
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| void | C89 | **ESENCIA** | el tipo de lo que no devuelve nada |
+| char / signed / unsigned char | C89 | **ESENCIA** | el byte |
+| short / unsigned short | C89 | **ESENCIA** | 16 bits |
+| int / unsigned int | C89 | **ESENCIA** | el entero por defecto |
+| long / unsigned long | C89 | **ESENCIA** | 64 bits en este ABI |
+| long long | C99 | UTIL | ya está; en x86-64 coincide con long |
+| float | C89 | UTIL | está; la banca NO lo usa (decimal exacto) |
+| double | C89 | UTIL | está; ídem |
+| long double (80 bits) | C89 | ~~FUERA~~ | el x87 de 80 bits es una rareza de Intel; el decimal exacto ya lo dan COBOL y Ada |
+| _Bool | C99 | UTIL | un int de 0/1; barato |
+| _Complex / _Imaginary | C99 | ~~FUERA~~ | números complejos en un SO de banca: nadie los ha pedido nunca |
+
+### calificadores
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| const | C89 | **ESENCIA** | está |
+| volatile | C89 | **ESENCIA** | está; obligatorio para MMIO |
+| restrict | C99 | ~~FUERA~~ | es una promesa al OPTIMIZADOR. No cambia lo que el programa hace |
+| _Atomic | C11 | ~~FUERA~~ | no hay hilos de usuario. Cuando haya SMP se vuelve a mirar |
+
+### almacenamiento
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| auto | C89 | UTIL | aceptado y tirado: redundante desde 1978 |
+| register | C89 | UTIL | aceptado y tirado: todos lo ignoran |
+| static | C89 | **ESENCIA** | HECHO 2026-08-02 |
+| extern | C89 | **ESENCIA** | está |
+| _Thread_local | C11 | ~~FUERA~~ | no hay hilos de usuario |
+
+### derivados
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| punteros (multinivel) | C89 | **ESENCIA** | está |
+| arrays | C89 | **ESENCIA** | está, también dentro de agregados |
+| punteros a función | C89 | **ESENCIA** | está; DOOM vive de ellos |
+| struct / union / enum | C89 | **ESENCIA** | están |
+| campos de bits | C89 | UTIL | se aceptan SIN empaquetar; empaquetar es máscara y RMW en cada acceso |
+| miembro de array flexible | C99 | UTIL | el `t x[]` final de un struct |
+| VLA (array de longitud variable) | C99 | ~~FUERA~~ | pide reservar en la pila en ejecución; C11 ya lo hizo opcional y casi nadie lo usa |
+
+### funciones
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| prototipos | C89 | **ESENCIA** | HECHO 2026-08-02: sin esto no hay recursión mutua |
+| varargs (...) | C89 | **ESENCIA** | HECHO 2026-08-02, con `__va_arg(i)` |
+| inline | C99 | ~~FUERA~~ | sugerencia al optimizador |
+| _Noreturn | C11 | ~~FUERA~~ | ídem |
+| K&R (parámetros sin tipo) | C89 | ~~FUERA~~ | sintaxis obsoleta desde 1989; ni DOOM la usa |
+
+### operadores
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| aritméticos + - * / % | C89 | **ESENCIA** | están |
+| incremento/decremento ++ -- | C89 | **ESENCIA** | están (pre y post) |
+| relacionales == != < > <= >= | C89 | **ESENCIA** | están |
+| lógicos && || ! | C89 | **ESENCIA** | están, con cortocircuito |
+| de bits & | ^ ~ << >> | C89 | **ESENCIA** | están |
+| asignación compuesta (11) | C89 | **ESENCIA** | están |
+| acceso . -> [] () | C89 | **ESENCIA** | están |
+| &direccion / *indireccion | C89 | **ESENCIA** | están |
+| ternario ?: | C89 | **ESENCIA** | está |
+| coma | C89 | **ESENCIA** | está |
+| sizeof | C89 | **ESENCIA** | está |
+| cast | C89 | **ESENCIA** | está, y trunca de verdad |
+| _Alignof / _Alignas | C11 | ~~FUERA~~ | el alineado lo decide el layout |
+| _Generic | C11 | ~~FUERA~~ | selección por tipo en macros. Es lo que C++ resuelve con sobrecarga |
+| literales compuestos | C99 | UTIL | `(struct P){1,2}` — azúcar útil |
+
+### sentencias
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| expresión y bloque | C89 | **ESENCIA** | están |
+| if / else | C89 | **ESENCIA** | están |
+| switch / case / default | C89 | **ESENCIA** | están, con fallthrough |
+| while / do-while / for | C89 | **ESENCIA** | están |
+| break / continue | C89 | **ESENCIA** | están |
+| return | C89 | **ESENCIA** | está |
+| goto y etiquetas | C89 | **ESENCIA** | están |
+| sentencia vacía | C89 | **ESENCIA** | está |
+| declaración mezclada con código | C99 | UTIL | está |
+
+### preprocesador
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| #define objeto | C89 | **ESENCIA** | está |
+| #define función | C89 | **ESENCIA** | está |
+| #define variádica | C99 | UTIL | está |
+| #include | C89 | **ESENCIA** | está |
+| #if / #ifdef / #ifndef / #elif / #else / #endif | C89 | **ESENCIA** | están |
+| #undef | C89 | **ESENCIA** | está |
+| #error | C89 | **ESENCIA** | está |
+| #pragma | C89 | UTIL | se ignora; `#pragma once` sí conviene |
+| # (stringize) y ## (pegado) | C89 | UTIL | los usa cualquier cabecera con macros serias |
+| #line | C89 | ~~FUERA~~ | sólo cambia los números de error |
+| __FILE__ / __LINE__ | C89 | UTIL | un `assert` de verdad los pide |
+
+### biblioteca
+
+| Elemento | Era | Veredicto | Motivo |
+|---|---|---|---|
+| <stdio.h> | C89 | **ESENCIA** | printf/getchar/scanf están; faltan puts/sprintf/ficheros |
+| <string.h> | C89 | **ESENCIA** | memcpy/memset/strlen/strcmp/strcpy HECHOS |
+| <stdlib.h> | C89 | **ESENCIA** | abs HECHO; malloc/free piden la capability de memoria |
+| <stddef.h> | C89 | **ESENCIA** | size_t, NULL, offsetof — tipos, no código |
+| <stdint.h> | C99 | **ESENCIA** | int32_t y compañía: puro typedef |
+| <limits.h> / <float.h> | C89 | **ESENCIA** | constantes |
+| <stdbool.h> | C99 | UTIL | tres macros |
+| <stdarg.h> | C89 | UTIL | va_list sobre `__va_arg` |
+| <ctype.h> | C89 | UTIL | isdigit y compañía: una tabla de 256 |
+| <assert.h> | C89 | UTIL | con __FILE__/__LINE__ |
+| <time.h> | C89 | UTIL | hay TSC; falta calendario |
+| <math.h> | C89 | ~~FUERA~~ | DOOM no usa coma flotante en el render; el decimal exacto ya está en COBOL y Ada |
+| <errno.h> | C89 | ~~FUERA~~ | un global de error es justo lo contrario de devolver el fallo |
+| <signal.h> | C89 | ~~FUERA~~ | no hay señales: aquí un fallo mata la tarea y lo DICE |
+| <setjmp.h> | C89 | ~~FUERA~~ | pide guardar el marco entero; nadie lo pide |
+| <locale.h> | C89 | ~~FUERA~~ | una libc de verdad empieza aquí y no acaba |
+| <wchar.h> / <wctype.h> / <uchar.h> | C89 | ~~FUERA~~ | la consola de BMO es de un byte por carácter a propósito |
+| <threads.h> | C11 | ~~FUERA~~ | no hay hilos de usuario |
+| <stdatomic.h> | C11 | ~~FUERA~~ | ídem |
+| <complex.h> / <tgmath.h> | C99 | ~~FUERA~~ | números complejos |
+| <fenv.h> | C99 | ~~FUERA~~ | modos de redondeo del x87 |
+| <inttypes.h> | C99 | ~~FUERA~~ | sólo macros de formato para printf |
+| <iso646.h> | C89 | ~~FUERA~~ | alias de `&&` para teclados sin `&`. 1995 |
+| <stdalign.h> / <stdnoreturn.h> | C11 | ~~FUERA~~ | envoltorio de lo ya descartado |
+
 ## Lo que este documento NO dice
 
 Que una sonda compile **no** significa que el programa haga lo
