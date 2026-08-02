@@ -33,6 +33,6 @@ pub mod field;
 pub mod signature;
 
 pub use convention::*;
-pub use disposicion::{alinear, alineado_de, Disposicion, DisposicionUnion};
+pub use disposicion::{alinear, alineado_de, ranuras, Disposicion, DisposicionUnion};
 pub use field::*;
 pub use signature::*;

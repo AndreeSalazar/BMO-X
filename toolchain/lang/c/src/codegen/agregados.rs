@@ -67,9 +67,12 @@ use super::Codegen;
 ///
 /// Uno siempre, aunque el tipo sea de un byte: la pila se mueve de 8 en 8 y
 /// romper esa regla desalinearía todo lo de detrás.
-pub(super) fn ranuras(bytes: u32) -> u32 {
-    if bytes <= 8 { 1 } else { bytes.div_ceil(8) }
-}
+/// La regla vive en `bmo_abi::types::disposicion::ranuras`: **es la convencion
+/// de llamada de BMO**, no una decision de C. Estaba aqui como `pub(super)` y a
+/// la vez documentada como ABI en `lang/cpp/CPP_ABI.md` — y una regla que un
+/// documento llama ABI y el arbol guarda dentro de un lenguaje es una regla que
+/// el segundo lenguaje copia.
+pub(super) use bmo_abi::types::ranuras;
 
 impl Codegen {
     /// ¿Este tipo viaja por valor como agregado (no cabe en un registro)?

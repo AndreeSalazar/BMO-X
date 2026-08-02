@@ -57,9 +57,20 @@ RTTI, y las dos están descartadas con motivo en `BRECHA.md`.
 
 ## 2. Paso de parámetros
 
-**El de BMO C, sin cambios**: por la pila, derecha a izquierda, en ranuras de
-8 bytes; un agregado ocupa `techo(tamaño/8)` ranuras. No hay clasificación por
-*eightbytes* de SysV porque BMO no pasa argumentos en registros.
+Por la pila, derecha a izquierda, en ranuras de 8 bytes; un agregado ocupa
+`techo(tamaño/8)` ranuras. No hay clasificación por *eightbytes* de SysV porque
+**BMO no pasa argumentos en registros**.
+
+La regla vive en **`bmo_abi::types::disposicion::ranuras`**, con sus tests — no
+en ningún frontend. Estuvo escondida en `lang/c/codegen/agregados.rs` como
+`pub(super)` mientras este documento ya la llamaba ABI, y una regla que un
+documento llama ABI y el árbol guarda dentro de un lenguaje es una regla que el
+segundo lenguaje copia.
+
+★ Un agregado de 8 bytes o menos **también** ocupa una ranura entera: podría
+caber en un registro, pero tratarlo distinto obligaría al llamante y a la
+función a ponerse de acuerdo sobre el tamaño, y ése es justo el desacuerdo que
+produce basura silenciosa.
 
 `this` es **un parámetro más**, y va **el primero**. Ahí acaba toda la magia
 del puntero implícito.

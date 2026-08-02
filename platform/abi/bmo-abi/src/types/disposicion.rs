@@ -68,6 +68,28 @@ pub const fn alinear(v: u32, a: u32) -> u32 {
     (v + a - 1) / a * a
 }
 
+/// **Cuántas ranuras de pila ocupa un argumento de `bytes` bytes.**
+///
+/// Ésta es *la convención de llamada de BMO*, y por eso vive aquí y no dentro
+/// de un frontend: BMO **no pasa argumentos en registros**, los pasa por la
+/// pila en ranuras de 8 bytes, derecha a izquierda. Un agregado ocupa
+/// `techo(tamaño/8)` ranuras.
+///
+/// Estaba escondida en `lang/c/codegen/agregados.rs` como `pub(super)`, y a la
+/// vez **documentada como ABI** en `lang/cpp/CPP_ABI.md`. Una regla que un
+/// documento llama ABI y el árbol guarda dentro de un lenguaje es una regla
+/// que el segundo lenguaje copia — y ahí empieza la divergencia.
+///
+/// ★ Un agregado de 8 bytes o menos **también** ocupa una ranura entera. Podría
+/// caber en un registro, pero tratarlo distinto obligaría al llamante y a la
+/// función a ponerse de acuerdo sobre el tamaño, y ése es justo el desacuerdo
+/// que produce basura silenciosa. Una regla, sin casos de esquina — al
+/// contrario que la clasificación por *eightbytes* de SysV, que existe porque
+/// SysV sí usa registros.
+pub const fn ranuras(bytes: u32) -> u32 {
+    if bytes <= 8 { 1 } else { (bytes + 7) / 8 }
+}
+
 /// Cursor que coloca miembros uno detrás de otro, respetando el alineado.
 ///
 /// Vale para `struct`, para una clase de C++ y para un registro de COBOL: no
@@ -200,6 +222,23 @@ mod tests {
         assert_eq!(u.coloca(1), 0);
         assert_eq!(u.coloca(8), 0);
         assert_eq!(u.total(), 8);
+    }
+
+    /// ★ Un agregado pequeño ocupa una ranura ENTERA. Si los de 8 bytes o
+    /// menos fueran por registro, el llamante y la función tendrían que
+    /// ponerse de acuerdo sobre el tamaño — y ese desacuerdo produce basura
+    /// silenciosa. Una regla, sin casos de esquina.
+    #[test]
+    fn un_agregado_pequeno_ocupa_una_ranura_entera() {
+        assert_eq!(ranuras(1), 1);
+        assert_eq!(ranuras(8), 1);
+        assert_eq!(ranuras(9), 2);
+        assert_eq!(ranuras(12), 2);
+        assert_eq!(ranuras(16), 2);
+        assert_eq!(ranuras(17), 3);
+        // Un tipo de tamaño cero sigue ocupando su sitio: cero ranuras
+        // desalinearía todo lo que venga detrás.
+        assert_eq!(ranuras(0), 1);
     }
 
     #[test]

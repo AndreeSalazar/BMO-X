@@ -17,6 +17,27 @@ type Result<T> = core::result::Result<T, CobolError>;
 const ARG_REGS: [Reg; 6] = [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
 
 pub fn compile_to_bef_bytes(program: &CobolProgram) -> Result<Vec<u8>> {
+    // ★ Sin PROCEDURE DIVISION no hay programa.
+    //
+    // Antes, un fichero VACÍO —o uno con sólo WORKING-STORAGE— producía un
+    // `.bex` de 4 192 bytes que se escribía sin quejarse. El punto de entrada
+    // apuntaba al principio de una sección de código vacía.
+    //
+    // Es la misma clase de fallo que tenía C (un fichero vacío daba un BEF de
+    // 8 240 bytes sin `main`) y se arregla por el mismo motivo: un binario con
+    // punto de entrada inventado falla en el metal y no en la compilación, que
+    // es donde se puede leer el porqué.
+    //
+    // Se comprueba aquí y no en el parser a propósito: el parser puede leer
+    // legítimamente un programa sin sentencias mientras construye; quien no
+    // puede entregar un binario vacío es el que lo escribe.
+    if program.statements.is_empty() {
+        return Err(CobolError::new(0, format!(
+            "'{}' no tiene PROCEDURE DIVISION con sentencias: un programa sin nada \
+             que ejecutar no puede producir un binario",
+            if program.program_id.is_empty() { "el programa" } else { &program.program_id },
+        )));
+    }
     let mut cg = Codegen::new();
     cg.emit_program(program)?;
     Ok(cg.build_bef())
