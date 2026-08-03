@@ -176,7 +176,7 @@ un intérprete. Si alguien porta CPython a BMO, el GIL es problema de CPython.
 
 ## 7. Relación con ESTRATOS
 
-En el sistema de ficheros propio (`platform/services/timeback/ESTRATOS.md`)
+En el sistema de ficheros propio (`platform/drivers/storage/estratos/`)
 esta misma idea aparece un piso más arriba: un `.bex` no es un chorro de bytes
 sino un nodo con flujos con nombre —`:datos`, `:firma`, `:manifiesto`,
 `:origen`— y el kernel solo abre los que le incumben.

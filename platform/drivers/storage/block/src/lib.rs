@@ -2,7 +2,7 @@
 //! del almacenamiento.
 //!
 //! Es el **paso 3** del orden de construcción de ESTRATOS
-//! (`platform/services/timeback/ESTRATOS.md`, §10): *"el contrato único
+//! (la especificacion de ESTRATOS, §10): *"el contrato único
 //! leer / escribir / capacidad / identidad, con AHCI y NVMe debajo. ESTRATOS
 //! habla con eso, no con SATA."*
 //!

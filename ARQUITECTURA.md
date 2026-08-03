@@ -54,7 +54,7 @@ BMO/
 │   ├── abi/                  bmo-abi (surface, capability, handle, BEF/BEX), bmo-rt
 │   ├── shared/               bmo-hal, bmo-channel, bmo-hash, hw-profile
 │   ├── drivers/              xhci, ahci, nvme, fat32, estratos, input, uhid, gpu
-│   └── services/             cabina-core, byte-defender, timeback
+│   └── services/             cabina-core
 ├── toolchain/                build-time: language frontends → BEF → linker → BEX
 │   ├── lang/                 C, C++, COBOL, Ada → BEF
 │   ├── forge/                shared pipeline: bmo-lower, sem-asm, bmo-verify
