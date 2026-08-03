@@ -271,12 +271,13 @@ and it isn't — **games are the harder test, and banking inherits the result**:
 frontend called it; since 2 August none of the four can emit a `.bex` that
 hasn't been validated.
 
-- **COBOL — closed within its declared scope, which is banking.** Edited
-  `PICTURE` emitted *as instructions* (no mask and no interpreter survive in
-  the `.bex`), sequential file I/O, `OCCURS` with range guards, level 88,
-  `ACCEPT`, exact decimal in integer scale. What it still lacks — `EVALUATE`,
-  `STRING`, `SEARCH`, `CALL`, `SORT`, COMP-3 — is **the long tail of the
-  standard, not banking**
+- **COBOL — closed within its declared scope, which is banking arithmetic.**
+  Edited `PICTURE` emitted *as instructions* (no mask and no interpreter
+  survive in the `.bex`), sequential file I/O, `OCCURS` with range guards,
+  level 88, `ACCEPT`, exact decimal in integer scale. What it still lacks —
+  `EVALUATE`, `STRING`, `SEARCH`, `CALL`, `SORT`, COMP-3 — is **the long tail
+  of the standard, not banking arithmetic**. What it is *not* is a mainframe
+  migration path; see [below](#and-one-boundary-worth-stating-before-anyone-assumes-otherwise)
 - **C: through roughly C11** — pointers, structs by value, initializer lists,
   function-parameter macros, `getchar`/`scanf`, and 32 of 32 language probes
   for what DOOM asks for. **Its SSE path executes** as of 2 August: before
@@ -500,6 +501,25 @@ previous attempt died.
 These are decisions, not gaps. They are decisions **of this phase** — the day
 games come back, the unlock is already on the roadmap: memory capability →
 shared surfaces → windows.
+
+### And one boundary worth stating before anyone assumes otherwise
+
+**This COBOL is not a mainframe migration target, and does not try to be.**
+
+Moving a bank off z/OS is not a compiler problem. That code needs **CICS** for
+transactions, **JCL** for its batch scheduling, **VSAM** for its files, and four
+decades of IBM vendor extensions it was written against. None of that is here,
+and none of it is planned.
+
+What is here is the other thing: **exact decimal, verifiable end to end, on
+commodity hardware.** That serves systems being written *now*, and small ones —
+a credit union, a municipal fund, a fiscal device, a settlement process that
+today runs on a spreadsheet or on `double` and a prayer.
+
+The distinction matters commercially. Against IBM in its own market this would
+lose, and should not be sold there. In the market IBM was never in — the one
+that could never afford a mainframe in the first place — **it is not competing
+with anyone.** It is a first option where there was none.
 
 ---
 
