@@ -148,3 +148,28 @@ fn el_ejemplo_de_memoria_pasa_sus_cuatro_pruebas() {
     // bytes pedidos y una página entregada.
     assert_eq!(m.memoria_entregada(), 4096 + 65536 + 4096 + 4096);
 }
+
+/// **Compilar C para Ring 0 se RECHAZA, y con su motivo.**
+///
+/// Emitía `syscall; ret` en línea, y ese `ret` retornaba de la función entera
+/// en cuanto volvía el syscall — el stub es un *llamable* y ponerlo en línea se
+/// come el `call` y deja el `ret`. No lo cazó nadie porque nada construye este
+/// perfil; un camino muerto que emite bytes incorrectos es peor que uno que no
+/// existe.
+#[test]
+fn compilar_para_ring0_se_rechaza_diciendo_por_que() {
+    use crate::codegen::{compile_with_target, TargetProfile};
+    let p = parse("int main() { char *q = malloc(64); return 0; }").unwrap();
+    let r = compile_with_target(&p, TargetProfile::Ring0Kernel);
+    let e = r.expect_err("Ring 0 no se compila");
+    let texto = alloc_fmt(&e);
+    assert!(texto.contains("Ring 0"), "el motivo tiene que nombrar Ring 0: {texto}");
+    assert!(
+        texto.contains("llama") || texto.contains("LLAMADA"),
+        "y decir que la salida es la llamada directa: {texto}"
+    );
+}
+
+fn alloc_fmt(e: &CError) -> String {
+    format!("{e:?}")
+}

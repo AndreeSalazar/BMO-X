@@ -16,6 +16,30 @@ pub const X86_64_SYSCALL_ARG_REGISTERS: &[&str] =
 pub const X86_64_SYSCALL_RETURN_REGISTERS: &[&str] = &["rax", "rdx"];
 
 /// Red zone size in bytes below RSP.
+///
+/// ═══ ★ AUDITED 2026-08-02 — declared, and deliberately NOT used ═══
+///
+/// 256 bytes, twice System V's 128. That is free performance for a leaf
+/// function in Ring 3 — and a **hazard everywhere else**, because the red zone
+/// is memory below RSP that anything pushing onto that stack overwrites: an
+/// interrupt, a fault handler, a context switch.
+///
+/// **Nothing in BMO uses it today, and that was checked, not assumed:**
+///
+/// - **BMO C** always emits `sub rsp, frame_size` in its prologue and addresses
+///   locals as `[rbp+disp]` *inside* the frame. It never writes below RSP.
+/// - **The Rust kernel** builds for `x86_64-unknown-none`, a bare-metal target
+///   that disables the red zone by definition.
+///
+/// So this constant describes a permission the ABI grants and no code takes.
+///
+/// ⚠️ **Before using it, read this.** The obvious optimisation — "a leaf
+/// function with a small frame can skip the `sub rsp`" — is exactly the change
+/// that turns this number into a bug, and only in code that runs with
+/// interrupts enabled. It would work in every test and fail once every few
+/// thousand boots, when the timer lands in the wrong microsecond. If that
+/// optimisation is ever wanted, it needs a per-profile switch: **on in Ring 3,
+/// off anywhere an interrupt can land on the same stack.**
 pub const RED_ZONE_BYTES: u32 = 256;
 
 /// Required stack alignment before a call.

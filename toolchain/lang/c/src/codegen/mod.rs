@@ -16,7 +16,14 @@ type Result<T> = core::result::Result<T, CError>;
 /// Target execution environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetProfile {
-    /// Ring 0: inline `syscall` instruction, no stub needed.
+    /// Ring 0. **NO COMPILA, y se dice por qué** — ver
+    /// [`Codegen::emit_call_to_syscall_stub`].
+    ///
+    /// Se conserva la variante en vez de borrarla porque la pregunta *"¿puedo
+    /// compilar C para Ring 0?"* se la va a hacer alguien otra vez, y un
+    /// rechazo con su motivo contesta mejor que un enum donde la opción no
+    /// aparece. Es la misma decisión que tomó COBOL con el File I/O antes de
+    /// tenerlo: rechazar diciéndolo, en vez de compilar un `READ` que no lee.
     Ring0Kernel,
     /// Ring 3: emit `__bmo_syscall_stub` and call through it.
     Ring3App,
@@ -2476,10 +2483,35 @@ impl Codegen {
         self.emit_call_to_syscall_stub();
     }
 
+    /// La puerta del kernel desde el código emitido.
+    ///
+    /// ═══ ★ Por qué `Ring0Kernel` NO compila, y lo que emitía ═══
+    ///
+    /// Emitía `0F 05 C3` — `syscall; ret` — con el comentario *"los mismos 3
+    /// bytes, sin relocación"*. Y era falso de una forma que no se ve leyendo:
+    /// el stub de Ring 3 es un **llamable** (`syscall; ret` al que se llega con
+    /// un `call`, y el `ret` devuelve al llamante). Poniéndolo en línea se
+    /// quita el `call` y **se queda el `ret`**: la función entera retorna en
+    /// cuanto vuelve el syscall, y todo lo que hubiera detrás no se ejecuta.
+    ///
+    /// Y hay una segunda razón, más de fondo: **`syscall` desde Ring 0 no tiene
+    /// sentido**. Carga CS y SS de `IA32_STAR` y salta a `LSTAR`; desde CPL0 eso
+    /// es reentrar en el manejador del kernel con la pila del kernel. Código de
+    /// Ring 0 no pide servicios — los llama.
+    ///
+    /// No lo cazó nadie porque **nadie construye este perfil**: es alcanzable
+    /// sólo por `compile_with_target`, y en todo el árbol nada lo pasa. Un
+    /// camino muerto que emite bytes incorrectos es peor que uno que no existe,
+    /// porque el día que alguien lo use el fallo no se parecerá a su causa.
     fn emit_call_to_syscall_stub(&mut self) {
         if self.target == TargetProfile::Ring0Kernel {
-            // Ring 0: inline syscall + ret (same 3 bytes, no call relocation needed)
-            self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
+            self.errors.push(
+                "no se compila C para Ring 0: `syscall` desde CPL0 reentra en el \
+                 manejador del kernel, y el codigo de Ring 0 no pide servicios, \
+                 los llama. Si algun dia hace falta, lo que toca es emitir la \
+                 LLAMADA DIRECTA a la funcion del kernel, no la puerta"
+                    .to_string(),
+            );
         } else {
             // Ring 3: call __bmo_syscall_stub via E8 rel32
             self.code.extend_from_slice(&[0xE8]);
