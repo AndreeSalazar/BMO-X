@@ -577,7 +577,11 @@ impl Codegen {
             if !campo.es_grupo || campo.bytes == 0 {
                 continue;
             }
-            let bytes = ((campo.bytes as i32) + 7) & !7;
+            // ★ El área lleva 16 bytes DETRÁS: son el resto de la última tirada
+            // de siete que `archivo::leer_bytes` guarda para el registro
+            // siguiente. Sin ellos, un fichero de registros de 5 bytes daría
+            // bien el primero y basura todos los demás.
+            let bytes = ((campo.bytes as i32) + 16 + 7) & !7;
             self.stack_size += bytes;
             self.areas.insert(raiz.clone(), -(self.stack_size));
         }
@@ -1350,6 +1354,53 @@ impl Codegen {
             ));
             return;
         }
+        // ★ REGISTRO BINARIO DE LARGO FIJO — el camino de un fichero de verdad.
+        //
+        // Si el `01` del `FD` es un GRUPO, el fichero no es texto: son
+        // registros de largo fijo con los campos en su byte. Se leen los bytes
+        // crudos al ÁREA y se desempaqueta cada campo a su ranura de trabajo.
+        // El de texto (una línea, un número) se queda para los ficheros que ya
+        // existían — y son dos cosas distintas, no dos modos del mismo.
+        if self.disposicion.es_grupo(&f.record) {
+            let Some(campo) = self.disposicion.campo(&f.record).cloned() else { return };
+            let Some(&area) = self.areas.get(&f.record.to_ascii_uppercase()) else { return };
+            let estado = self.file_estado[&fichero.to_ascii_uppercase()];
+
+            self.load_slot(off);
+            self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
+            // r8 = el área. `leer_bytes` busca el resto pendiente en `r8+n`.
+            self.code.extend_from_slice(&[0x4C, 0x8D, 0x85]); // lea r8, [rbp+disp32]
+            self.code.extend_from_slice(&area.to_le_bytes());
+            bmo_lower::archivo::leer_bytes(&mut self.code, campo.bytes);
+            self.store_slot(estado);
+
+            // Del área a las ranuras, y sólo si hubo registro: desempaquetar
+            // basura llenaría los campos con lo que hubiera antes.
+            let sin_registro = self.fresh_label();
+            self.load_slot(estado);
+            self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
+            self.emit_jcc(0x84, sin_registro); // je
+            let registro = f.record.clone();
+            self.emit_desempaquetar_area(&registro);
+            self.bind_label(sin_registro);
+
+            let al_end = self.fresh_label();
+            let fin = self.fresh_label();
+            self.load_slot(estado);
+            self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
+            self.emit_jcc(0x84, al_end);
+            for s in si_hay {
+                self.emit_statement(s);
+            }
+            self.emit_jmp(fin);
+            self.bind_label(al_end);
+            for s in al_final {
+                self.emit_statement(s);
+            }
+            self.bind_label(fin);
+            return;
+        }
+
         let escala = self.var_scale(&f.record);
 
         self.load_slot(off);
@@ -1405,6 +1456,23 @@ impl Codegen {
             ));
             return;
         };
+        // ★ Y el WRITE de un registro BINARIO: empaquetar las ranuras al área y
+        // sacar sus bytes tal cual. **Sin salto de línea** — un registro de
+        // largo fijo no lleva separador: el que lo lea ya sabe cuánto mide, y
+        // meterle un `\n` correría todo lo de detrás un byte.
+        if self.disposicion.es_grupo(&reg) {
+            let Some(campo) = self.disposicion.campo(&reg).cloned() else { return };
+            let Some(&area) = self.areas.get(&reg) else { return };
+            self.emit_empaquetar_area(&reg);
+            self.code.extend_from_slice(&[0x4C, 0x8D, 0x85]); // lea r8, [rbp+disp32]
+            self.code.extend_from_slice(&area.to_le_bytes());
+            x86::mov_r32_imm32(&mut self.code, x86::R9, campo.bytes);
+            self.load_slot(off);
+            self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
+            bmo_lower::archivo::escribir_buffer(&mut self.code);
+            return;
+        }
+
         let escala = self.var_scale(&reg);
         let plantilla = self.edicion_de(&reg);
         self.load_var(&reg);

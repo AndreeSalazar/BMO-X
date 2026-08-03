@@ -238,20 +238,31 @@ que ya existe.**
       que se quiera truncamiento en WORKING-STORAGE — y ese día será por eso, no
       por poder leer un fichero.
 
-- [ ] **1.1 ★ Registro BINARIO de longitud fija** — M
-      ✅ **DESBLOQUEADO en la revisión 2.** La revisión 1 decía "⛔ necesita
-      posicionar por byte (3.3)" y **es falso**: leer un registro de largo fijo
-      **secuencialmente** no necesita seek ninguno.
-      `ARCH_OP_LEER` (0x01) ya existe, saca **7 bytes crudos sin cortar por el
-      salto de línea**, y está implementado en el kernel (`ring0/obj/archivo.rs`)
-      **y** en el emulador. Un registro de 40 bytes son seis llamadas.
-      Lo que falta es de esta casa: un `leer_bytes` en `bmo_lower::archivo`
-      (hermano de `leer_linea`) y `RECORD CONTAINS n CHARACTERS` en el parser.
-      ⛔ Sólo depende de **1.0** y **0.5**.
+- [x] **1.1 ★ Registro BINARIO de longitud fija** — ✅ 2026-08-03
+      La revisión 2 acertó: **no necesitaba seek**. `ARCH_OP_LEER` ya saca bytes
+      crudos y el cursor avanza **exactamente lo que devuelve** — comprobado en
+      `ring0/obj/archivo.rs`, no supuesto.
+      ★ **Pero había un detalle que sólo se ve escribiéndolo**: el paquete son
+      SIETE bytes y un registro de banca mide 5, o 16, o 47. La última tirada de
+      cada registro trae bytes de más **que son del registro siguiente**, y no se
+      pueden devolver porque el cursor es del kernel.
+      Por eso el área lleva **16 bytes detrás** con el resto pendiente, y el
+      registro de después lo gasta antes de pedir nada. Sin eso, un fichero de
+      registros de 5 bytes daría bien el primero y basura todos los demás — el
+      fallo que no revienta y descuadra.
+      El test que lo caza lee **tres** seguidos y mira el tercero, que es donde
+      el error ya se acumuló dos veces.
 
-- [ ] **1.2 · Campos posicionales dentro del registro** — M ⛔ (1.0, 0.5)
-      Cada `05` en su offset, mezclando `COMP-3`, `DISPLAY` y `PIC X` en el mismo
-      registro. Es lo que convierte 1.1 en algo útil.
+- [x] **1.2 · Campos posicionales dentro del registro** — ✅ 2026-08-03
+      Cada `05` en su offset, mezclando `COMP-3` y `DISPLAY` en el mismo
+      registro. Entró **con** `1.1`, porque separados no sirven de nada: leer
+      bytes crudos sin campos es un `memcpy`, y campos sin bytes es memoria.
+      ★ El `READ`/`WRITE` mira si el `01` del `FD` es un GRUPO: si lo es, el
+      fichero **no es texto** y va por el área. El camino de texto —una línea, un
+      número— se queda para los ficheros que ya existían. **Son dos cosas
+      distintas, no dos modos de la misma.**
+      ★ Un registro binario se escribe **sin salto de línea**: mide lo que dice
+      su copybook y un separador correría todo lo de detrás un byte.
 
 - [x] **1.3 · `MOVE` de grupo** — ✅ 2026-08-03
       Entró **con** `0.5`, porque es su primer consumidor: sin él la disposición
@@ -547,8 +558,10 @@ HECHO   2.1 EVALUATE (las dos formas) · 2.6 ROUNDED (los seis modos)
 
 HECHO   0.5 RECORDS + el AREA + 1.3 MOVE de grupo + bmo-lower::zoned
 
-AHORA   1.2 CAMPOS POSICIONALES en un FD ──→ 1.1 REGISTRO BINARIO
-        con el area hecha, esto es enchufarla al READ y al WRITE
+HECHO   1.1 + 1.2 REGISTROS BINARIOS ── LEER LO QUE YA EXISTE
+        un fichero de largo fijo, campos en su byte, importes empaquetados
+
+AHORA   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -565,9 +578,9 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
-~~`0.5`~~ → ~~`1.3`~~ → **`1.2`** → `1.1` → `0.7` → `1.7` → `2.6b` → `0.6` →
-`2.2` → `2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el kernel**:
-`3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
+~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → **`0.7`** → `1.7` → `2.6b` →
+`0.6` → `2.2` → `2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el
+kernel**: `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
 ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
@@ -607,3 +620,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | ★ **1.0 decidido** — camino B: área de registro con empaquetado en la frontera | este documento, §FASE 1 |
 | 2026-08-03 | ★★ **0.5 + 1.3** — grupos con cada campo en su byte, el ÁREA DE REGISTRO funcionando, y `MOVE` de grupo por bytes | `cobol/registro.rs` + `bmo-lower::zoned` + `codegen.rs` |
 | 2026-08-03 | ★ **El COPYBOOK** (`--copybook`) — el byte exacto de cada campo, sacado de la MISMA tabla que emite el `READ` | `registro::Disposicion::copybook` |
+| 2026-08-03 | ★★★ **1.1 + 1.2 REGISTROS BINARIOS** — largo fijo, campos en su byte, y el resto de siete bytes bien llevado | `bmo-lower::archivo::leer_bytes` + `codegen::emit_read/emit_write` |

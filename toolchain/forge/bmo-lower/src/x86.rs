@@ -395,6 +395,41 @@ pub fn mov_byte_at_reg_disp_from_low(out: &mut Vec<u8>, base: u8, disp: u8, src:
     modrm_base_disp8(out, src & 7, base, disp);
 }
 
+/// El ModRM de `[<base>+disp32]`. Como el de `disp8` pero con mod=10, para
+/// cuando el desplazamiento no cabe en un byte con signo — que es el caso en
+/// cuanto un registro pasa de 127 bytes.
+fn modrm_base_disp32(out: &mut Vec<u8>, reg_field: u8, base: u8, disp: i32) {
+    let rm = base & 7;
+    out.push(0x80 | (reg_field << 3) | rm); // mod=10
+    if rm == 0b100 {
+        out.push(0x24); // SIB: base=rsp/r12, sin índice
+    }
+    out.extend_from_slice(&disp.to_le_bytes());
+}
+
+/// `mov <dst64>, [<base>+disp32]`.
+pub fn mov_r64_at_reg_disp32(out: &mut Vec<u8>, dst: u8, base: u8, disp: i32) {
+    out.push(rex_w(dst, base));
+    out.push(0x8B);
+    modrm_base_disp32(out, dst & 7, base, disp);
+}
+
+/// `mov [<base>+disp32], <src64>`.
+pub fn mov_at_reg_disp32_from_r64(out: &mut Vec<u8>, base: u8, disp: i32, src: u8) {
+    out.push(rex_w(src, base));
+    out.push(0x89);
+    modrm_base_disp32(out, src & 7, base, disp);
+}
+
+/// `cmp <reg64>, imm32`. La hermana de [`cmp_r64_imm8`] para cuando el número
+/// no cabe en un byte — el tamaño de un registro, por ejemplo.
+pub fn cmp_r64_imm32(out: &mut Vec<u8>, reg: u8, imm: i32) {
+    out.push(rex_w(0, reg));
+    out.push(0x81);
+    out.push(0xF8 | (reg & 7)); // /7 = cmp, mod=11
+    out.extend_from_slice(&imm.to_le_bytes());
+}
+
 /// `mov <dst64>, [<base>]`.
 pub fn mov_r64_at_reg(out: &mut Vec<u8>, dst: u8, base: u8) {
     out.push(rex_w(dst, base));

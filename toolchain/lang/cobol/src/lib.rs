@@ -272,6 +272,24 @@ STOP RUN.
         (m.console.clone(), m)
     }
 
+    /// Igual, pero sembrando BYTES CRUDOS. Hace falta desde que un fichero
+    /// puede no ser texto: un registro binario tiene nibbles dentro, y pasarlo
+    /// por un `&str` lo destrozaría.
+    fn run_cobol_con_disco_bytes(
+        src: &str,
+        entrada: &[(&str, &[u8])],
+    ) -> (String, bmo_lower::emu::Machine) {
+        use bmo_lower::emu::{run, Machine};
+        let bef = compile_source_to_bef(src).expect("el programa debe compilar");
+        let mut m = Machine::new(code_section(&bef));
+        for (ruta, datos) in entrada {
+            m.poner_archivo(ruta, datos);
+        }
+        let m = run(m, 2_000_000);
+        assert!(m.exited, "el programa debe terminar por INVOKE(EXIT)");
+        (m.console.clone(), m)
+    }
+
     /// Un programa con DOS ficheros ya declarados: `ENTRADA` (`d/e.txt`) y
     /// `SALIDA` (`d/s.txt`). Cada caso escribe su propia `FILE SECTION` porque
     /// el PIC del registro es justo lo que cambia de un caso a otro.
@@ -693,6 +711,99 @@ STOP RUN.
         );
         let err = compile_source_to_bef(&src).unwrap_err().to_string();
         assert!(err.contains("uno es un GRUPO"), "{err}");
+    }
+
+    // ── REGISTROS BINARIOS: leer lo que ya existe ───────────────────────
+    //
+    // Hasta aquí el fichero era TEXTO: una línea, un número. Un banco no da
+    // eso — da registros de largo fijo con los campos en su byte y los importes
+    // empaquetados. Esto es `1.1` + `1.2` del plan.
+
+    /// ★ EL VIAJE COMPLETO: escribir un registro binario y volver a leerlo.
+    ///
+    /// El fichero que queda **no es texto**: son 16 bytes por registro, sin
+    /// salto de línea, con el número zonado y el importe en nibbles. Que salga
+    /// y vuelva igual es lo que prueba que las dos mitades —empaquetar y
+    /// desempaquetar— dicen lo mismo.
+    #[test]
+    fn un_registro_binario_va_al_disco_y_vuelve() {
+        let src = programa_con_ficheros(
+            "FILE SECTION.\n\
+             FD SALIDA.\n\
+             01 REG-OUT.\n\
+             05 O-NUM PIC 9(10).\n\
+             05 O-IMP PIC S9(7)V99 COMP-3.\n\
+             05 O-EST PIC 9.\n\
+             FD ENTRADA.\n\
+             01 REG-IN.\n\
+             05 I-NUM PIC 9(10).\n\
+             05 I-IMP PIC S9(7)V99 COMP-3.\n\
+             05 I-EST PIC 9.\n\
+             WORKING-STORAGE SECTION.\n01 FIN PIC 9 VALUE ZERO.",
+            "MOVE 4471998200 TO O-NUM.\nMOVE -1234.56 TO O-IMP.\nMOVE 7 TO O-EST.\n\
+             OPEN OUTPUT SALIDA.\nWRITE REG-OUT.\nCLOSE SALIDA.",
+        );
+        let (_, m) = run_cobol_con_disco(&src, &[]);
+        let bytes = m.archivo("d/s.txt").expect("tiene que haber fichero").to_vec();
+
+        // ★ 16 bytes EXACTOS y ni uno más: 10 zonados + 5 empaquetados + 1.
+        // Un salto de línea aquí correría todo lo de detrás.
+        assert_eq!(bytes.len(), 16, "el registro no mide lo que dice su copybook");
+        assert_eq!(&bytes[0..10], b"4471998200", "el numero no salio zonado");
+        // -1234.56 en centavos = -123456, en 5 bytes: 00 01 23 45 6D
+        assert_eq!(&bytes[10..15], &[0x00, 0x01, 0x23, 0x45, 0x6D]);
+        assert_eq!(bytes[15], b'7');
+    }
+
+    /// Y el otro sentido, con **varios registros seguidos** — que es donde el
+    /// resto de siete bytes de la puerta se nota. Con registros de 16 bytes, el
+    /// primero deja sobra y el segundo la tiene que gastar antes de pedir más.
+    #[test]
+    fn un_batch_lee_registros_binarios_seguidos() {
+        // Tres registros de 16: número zonado, importe empaquetado, estado.
+        let mut datos: Vec<u8> = Vec::new();
+        for (num, cent) in [(1u64, 1000_00i64), (2, 234_56), (3, -100_00)] {
+            datos.extend_from_slice(format!("{num:010}").as_bytes());
+            // El empaquetado a mano, para no probar el código con el código.
+            let neg = cent < 0;
+            let mut d = format!("{:09}", cent.abs());
+            d.push(if neg { 'd' } else { 'c' });
+            for par in d.as_bytes().chunks(2) {
+                let alto = (par[0] - b'0') << 4;
+                let bajo = if par[1] == b'c' { 0x0C } else if par[1] == b'd' { 0x0D }
+                           else { par[1] - b'0' };
+                datos.push(alto | bajo);
+            }
+            datos.push(b'0');
+        }
+
+        let src = programa_con_ficheros(
+            "FILE SECTION.\n\
+             FD ENTRADA.\n\
+             01 REG-IN.\n\
+             05 I-NUM PIC 9(10).\n\
+             05 I-IMP PIC S9(7)V99 COMP-3.\n\
+             05 I-EST PIC 9.\n\
+             WORKING-STORAGE SECTION.\n\
+             01 TOTAL PIC S9(9)V99 COMP-3 VALUE ZERO.\n\
+             01 CUANTOS PIC 9(3) VALUE ZERO.\n\
+             01 ULTIMO PIC 9(10) VALUE ZERO.\n\
+             01 FIN PIC 9 VALUE ZERO.\n88 SE-ACABO VALUE 1.",
+            "OPEN INPUT ENTRADA.\n\
+             PERFORM UNTIL SE-ACABO\n\
+             READ ENTRADA\n\
+             AT END MOVE 1 TO FIN\n\
+             NOT AT END ADD I-IMP TO TOTAL\n\
+             ADD 1 TO CUANTOS\n\
+             MOVE I-NUM TO ULTIMO\n\
+             END-READ\n\
+             END-PERFORM.\n\
+             CLOSE ENTRADA.\n\
+             DISPLAY CUANTOS.\nDISPLAY TOTAL.\nDISPLAY ULTIMO.",
+        );
+        let (consola, _) = run_cobol_con_disco_bytes(&src, &[("d/e.txt", &datos)]);
+        // 1000.00 + 234.56 - 100.00 = 1134.56, y el último número es el 3.
+        assert_eq!(consola, "3\n1134.56\n3\n", "los registros se corrieron o se perdio alguno");
     }
 
     // ── ROUNDED: el redondeo es una decisión LEGAL ──────────────────────

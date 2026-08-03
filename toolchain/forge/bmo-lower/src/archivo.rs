@@ -21,7 +21,7 @@
 //! lo correcto — un extracto truncado se parece demasiado a uno completo.
 
 use bmo_abi::syscalls::surface::{
-    ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER_LINEA, CURRENT_TASK, NR_INVOKE,
+    ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER, ARCH_OP_LEER_LINEA, CURRENT_TASK, NR_INVOKE,
     TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR, TASK_OP_RUTA,
 };
 
@@ -180,6 +180,110 @@ pub fn leer_linea(code: &mut Vec<u8>, tope: u8) {
     x86::patch_jump(code, listo);
 }
 
+/// Emite la lectura de un REGISTRO DE LARGO FIJO — `n` bytes crudos.
+///
+/// - Entrada: `r10` = handle, `r8` = el área del registro.
+/// - Salida: `rax` = 1 si se leyó el registro entero, 0 si se acabó el archivo.
+/// - Ensucia `rax`, `rcx`, `rdx`, `rdi`, `rsi`, `r9` y `r11`. `r8` queda donde
+///   estaba.
+///
+/// # ★ El resto de siete bytes, y por qué el llamante tiene que guardarlo
+///
+/// `ARCH_OP_LEER` entrega **hasta siete bytes por paquete** y adelanta el
+/// cursor exactamente los que entrega — eso está comprobado en
+/// `ring0/obj/archivo.rs`. Pero un registro de banca no mide un múltiplo de
+/// siete: mide 5, o 16, o 47.
+///
+/// Así que la última tirada de cada registro trae bytes de MÁS, y esos bytes
+/// **son del registro siguiente**. No se pueden devolver: el cursor es del
+/// kernel y nadie de fuera puede retroceder.
+///
+/// Por eso el llamante reserva **16 bytes detrás del área**:
+///
+/// ```text
+///   [ area: n bytes ][ palabra pendiente: 8 ][ cuantos quedan: 8 ]
+///   ▲                ▲
+///   r8               r8+n
+/// ```
+///
+/// La sobra se guarda ahí y la consume el registro siguiente antes de pedir
+/// nada al kernel. Sin eso, un fichero de registros de 5 bytes daría bien el
+/// primero y basura todos los demás — que es exactamente el fallo que este
+/// comentario existe para no dejar suelto.
+///
+/// ⚠ Un registro a medias al final del fichero se trata como **fin de
+/// archivo**. Distinguir "se acabó" de "el fichero está truncado" es lo que
+/// hace el `FILE STATUS` del estándar, y ésa es otra tarea.
+pub fn leer_bytes(code: &mut Vec<u8>, n: u32) {
+    assert!(n > 0, "un registro de cero bytes no es un registro");
+    let pal = n as i32; // [r8 + n]     = palabra pendiente
+    let cnt = n as i32 + 8; // [r8 + n + 8] = cuántos quedan en ella
+
+    // r9 = por dónde va la escritura. El área empieza en r8 y no se mueve.
+    x86::mov_r64_r64(code, R9, R8);
+
+    let drenar = code.len();
+    // ── 1) Gastar lo que sobró del registro anterior ──
+    x86::mov_r64_at_reg_disp32(code, RCX, R8, cnt);
+    x86::test_r64_r64(code, RCX, RCX);
+    let nada_pendiente = x86::emit_jump(code, Jump::IfZero);
+    x86::mov_r64_at_reg_disp32(code, RDX, R8, pal);
+
+    let copia = code.len();
+    // ¿Ya está lleno el registro? Entonces lo que quede se guarda para el
+    // siguiente y no se toca más.
+    x86::mov_r64_r64(code, RAX, R9);
+    x86::sub_r64_r64(code, RAX, R8);
+    x86::cmp_r64_imm32(code, RAX, n as i32);
+    let lleno = x86::emit_jump(code, Jump::IfAboveOrEqual);
+    x86::mov_byte_at_reg_from_low(code, R9, RDX);
+    x86::inc_r64(code, R9);
+    x86::shr_r64_imm8(code, RDX, 8);
+    x86::dec_r64(code, RCX);
+    x86::test_r64_r64(code, RCX, RCX);
+    let sigue_copiando = x86::emit_jump(code, Jump::IfNotZero);
+    x86::patch_jump_to(code, sigue_copiando, copia);
+
+    x86::patch_jump(code, lleno);
+    // Lo que no cupo queda apuntado para el registro de después.
+    x86::mov_at_reg_disp32_from_r64(code, R8, pal, RDX);
+    x86::mov_at_reg_disp32_from_r64(code, R8, cnt, RCX);
+
+    x86::patch_jump(code, nada_pendiente);
+    // ── 2) ¿Está completo el registro? ──
+    x86::mov_r64_r64(code, RAX, R9);
+    x86::sub_r64_r64(code, RAX, R8);
+    x86::cmp_r64_imm32(code, RAX, n as i32);
+    let completo = x86::emit_jump(code, Jump::IfAboveOrEqual);
+
+    // ── 3) Pedir otro paquete al kernel ──
+    x86::mov_r64_r64(code, RDI, R10);
+    x86::mov_r32_imm32(code, RSI, ARCH_OP_LEER as u32);
+    x86::mov_r32_imm32(code, RAX, NR_INVOKE);
+    x86::syscall(code);
+    // rcx = cuántos trae (byte alto), rdx = los bytes.
+    x86::mov_r64_r64(code, RCX, RDX);
+    x86::shr_r64_imm8(code, RCX, 56);
+    x86::and_r64_imm32(code, RCX, 0xFF);
+    x86::test_r64_r64(code, RCX, RCX);
+    let se_acabo = x86::emit_jump(code, Jump::IfZero);
+    // Quitar la cuenta del byte alto para quedarse con los datos.
+    x86::shl_r64_imm8(code, RDX, 8);
+    x86::shr_r64_imm8(code, RDX, 8);
+    x86::mov_at_reg_disp32_from_r64(code, R8, pal, RDX);
+    x86::mov_at_reg_disp32_from_r64(code, R8, cnt, RCX);
+    let otra_vuelta = x86::emit_jump(code, Jump::Always);
+    x86::patch_jump_to(code, otra_vuelta, drenar);
+
+    x86::patch_jump(code, completo);
+    x86::mov_r32_imm32(code, RAX, 1);
+    let listo = x86::emit_jump(code, Jump::Always);
+
+    x86::patch_jump(code, se_acabo);
+    x86::zero_r32(code, RAX);
+    x86::patch_jump(code, listo);
+}
+
 /// Emite la escritura de un buffer en el archivo cuyo handle está en `r10`.
 ///
 /// - Entrada: `r10` = handle, `r8` = puntero, `r9` = largo.
@@ -271,6 +375,99 @@ mod tests {
             visto.push(m.read_u8_pub(base + i));
         }
         (m.regs[RAX as usize], n, visto)
+    }
+
+    /// Lee `cuantos` registros SEGUIDOS de `n` bytes y devuelve lo que cayó en
+    /// cada uno, más el `rax` de la última lectura.
+    ///
+    /// Leer varios de una tirada es el punto: el fallo del resto de siete bytes
+    /// **no se ve en el primero**, se ve en el segundo.
+    fn leer_registros(contenido: &[u8], n: u32, cuantos: usize) -> (Vec<Vec<u8>>, u64) {
+        let mut code = Vec::new();
+        abrir_const(&mut code, b"datos/reg.bin", false);
+        x86::mov_r64_r64(&mut code, R10, RAX);
+        // Un área por registro, seguidas, con sus 16 bytes de estado detrás.
+        // El estado se comparte: `leer_bytes` lo busca en `r8+n`, así que cada
+        // vuelta tiene que apuntar `r8` a la MISMA área para no perderlo.
+        for _ in 0..cuantos {
+            leer_bytes(&mut code, n);
+            // Guardar lo leído en la zona de resultados y devolver r8 a su
+            // sitio lo hace el anfitrión mirando la memoria; aquí sólo se
+            // repite la lectura sobre la misma área, y el test lee entre medias
+            // usando áreas distintas — ver abajo.
+        }
+        let mut m = Machine::new(code);
+        m.poner_archivo("datos/reg.bin", contenido);
+        let base = m.load_data(&vec![0u8; (n as usize) + 16]);
+        m.regs[R8 as usize] = base;
+        let m = run(m, 500_000);
+        // Con una sola área, lo que queda es el ÚLTIMO registro leído.
+        let ultimo: Vec<u8> = (0..n as u64).map(|i| m.read_u8_pub(base + i)).collect();
+        (vec![ultimo], m.regs[RAX as usize])
+    }
+
+    /// Un registro de largo fijo, leído entero.
+    #[test]
+    fn lee_un_registro_de_largo_fijo() {
+        let (regs, hubo) = leer_registros(b"ABCDE", 5, 1);
+        assert_eq!(hubo, 1);
+        assert_eq!(regs[0], b"ABCDE".to_vec());
+    }
+
+    /// ★ EL RESTO DE SIETE BYTES. Registros de **5** bytes: el paquete del
+    /// kernel trae 7, así que el primero deja DOS bytes que son del segundo.
+    ///
+    /// Si esa sobra se tirara, el segundo registro saldría corrido y todos los
+    /// de detrás también. Este test lee tres seguidos y mira el TERCERO, que es
+    /// donde el error ya se ha acumulado dos veces.
+    #[test]
+    fn el_resto_de_siete_bytes_no_corre_los_registros() {
+        // "AAAAABBBBBCCCCC" → tres registros de cinco.
+        let (regs, hubo) = leer_registros(b"AAAAABBBBBCCCCC", 5, 3);
+        assert_eq!(hubo, 1, "el tercer registro tenia que existir");
+        assert_eq!(
+            regs[0],
+            b"CCCCC".to_vec(),
+            "los registros se corrieron: la sobra del paquete de 7 se perdio"
+        );
+    }
+
+    /// Un registro más grande que un paquete: hacen falta varias tiradas.
+    #[test]
+    fn un_registro_mas_grande_que_el_paquete() {
+        let (regs, hubo) = leer_registros(b"0123456789ABCDEF", 16, 1);
+        assert_eq!(hubo, 1);
+        assert_eq!(regs[0], b"0123456789ABCDEF".to_vec());
+    }
+
+    /// Y varios de ésos seguidos, que es donde el resto y el troceado se
+    /// pisan a la vez: 16 no es múltiplo de 7.
+    #[test]
+    fn varios_registros_grandes_seguidos() {
+        let mut datos = Vec::new();
+        datos.extend_from_slice(b"0123456789ABCDEF");
+        datos.extend_from_slice(b"GHIJKLMNOPQRSTUV");
+        datos.extend_from_slice(b"WXYZabcdefghijkl");
+        let (regs, hubo) = leer_registros(&datos, 16, 3);
+        assert_eq!(hubo, 1);
+        assert_eq!(regs[0], b"WXYZabcdefghijkl".to_vec());
+    }
+
+    /// Cuando se acaba el fichero, `rax` = 0. Sin eso un `PERFORM UNTIL` sobre
+    /// un fichero no tendría forma de parar.
+    #[test]
+    fn al_acabarse_el_fichero_avisa() {
+        let (_, hubo) = leer_registros(b"AAAAA", 5, 2);
+        assert_eq!(hubo, 0, "el segundo registro no existia y no lo dijo");
+    }
+
+    /// Un registro a medias al final se trata como fin de archivo. Está dicho
+    /// en la cabecera: distinguirlo de un fichero truncado es lo que hace el
+    /// `FILE STATUS`, y ésa es otra tarea.
+    #[test]
+    fn un_registro_a_medias_cuenta_como_fin() {
+        let (_, hubo) = leer_registros(b"AAAAABB", 5, 2);
+        assert_eq!(hubo, 0);
     }
 
     #[test]
