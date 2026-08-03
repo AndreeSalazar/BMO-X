@@ -31,6 +31,32 @@
 //! pantalla en vez de ofrecer un botón que no hace nada — en un almacén, una
 //! promesa de escritura que no ocurre es como se pierde el trabajo de alguien.
 
+//! ═══ ★ LO QUE ESTA VENTANA TIENE QUE LLEGAR A SER (spec del dueño) ═══
+//!
+//! Hoy enseña **números del volumen**: generación, espacio, identidad, nivel.
+//! Eso contesta *"¿cómo está el almacén?"* y no contesta *"¿qué hay dentro?"*.
+//!
+//! Lo que falta es el **árbol de nodos**, y la referencia que puso el dueño es
+//! buena y concreta: **un grafo tipo n8n** — cajas con título y nombre, unidas
+//! por líneas, con color por clase. No una lista con sangrías.
+//!
+//! El porqué es el de siempre en este proyecto: **ESTRATOS no es un árbol de
+//! carpetas, es un grafo de objetos** (nodos, atributos, flujos, estratos) que
+//! se apuntan entre sí y **nunca se sobreescriben**. Dibujarlo como una lista
+//! indentada obliga a imaginarse las aristas; dibujarlo como lo que es se
+//! entiende sin explicación. Cada commit añade nodos y deja los viejos en pie —
+//! y eso, en un grafo, **se ve**: es la historia del volumen dibujada.
+//!
+//! Lo que hace falta, en orden:
+//!
+//! 1. Exponer a Ring 3 lo que el kernel ya sabe leer (`raiz`, `nodo`,
+//!    `entradas`, `entrada`): hoy son funciones de Ring 0 sin superficie.
+//! 2. Un color por clase de objeto, y el mismo en toda la ventana.
+//! 3. Caja con **título** (qué es) y **nombre** (cuál es), que es lo que el
+//!    dueño pidió: *"con títulos y nombres para facilitar"*.
+//! 4. Navegar con el teclado **y con el ratón** — la rueda ya está enrutada a
+//!    la ventana de debajo, así que el desplazamiento entra sin inventar nada.
+
 use bmo_userland as bmo;
 
 use super::*;
