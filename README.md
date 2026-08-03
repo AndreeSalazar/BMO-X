@@ -177,6 +177,9 @@ explicitly handed.
 **Drivers, all written from scratch**
 - USB keyboard (xHCI + HID) — Spanish and US layouts, dead keys, AltGr, key
   repeat, LEDs, history
+- USB mouse — and it **reads the device's Report Descriptor** instead of
+  assuming the boot format, which is how the axes stopped being crossed. The
+  hardware then confirmed the diagnosis in its own words
 - AHCI/SATA, GPT, FAT32 — the kernel reads and mounts its own disk
 - The boot volume is mounted read-only. That is structural, not a promise
 
@@ -197,8 +200,36 @@ them.
 **Framebuffer write-combining** (PAT) — `MSR_PAT` had been declared in the boot
 stage and never written, so every pixel was its own bus transaction.
 
+**Three windows that coexist** — the command box, the ESTRATOS data console
+(F12) and the kernel console (F11), with Z-order, focus and a mouse that says
+what it is pointing at: arrow, text bar over a field, hand over something
+clickable. The wheel goes to the window under the pointer, which is what every
+system does and what the hand expects without thinking about it.
+
 **And the number that matters:** `19.99 × 3 = 59.97`, exact, computed in
-integer scale and confirmed on silicon.
+integer scale and confirmed on silicon — and now launched from the desktop
+itself, in COBOL and in Ada.
+
+---
+
+### Verified on 2026-08-02, with photographs
+
+A batch that emptied the "written, never executed" list:
+
+- **Memory capability** (`KIND_MEMORIA`) — confirmed **from both sides**. `info`
+  reports `a Ring 3   8.4 MiB   pedida con KIND_MEMORIA`, and that number comes
+  from the *kernel*, not from the program claiming it. Its first real client is
+  the compositor's back buffer
+- **Double buffering** — the desktop paints into ~8 MiB of ordinary RAM and
+  blits only the dirty box once per frame. Kills ghosting *by construction*: it
+  never reads write-combining memory again
+- **Window focus** — Alt+Tab with its switcher, MRU stack, `modo: normal
+  (Alt+M)`, focus drags the Z-order
+- **The mouse reads its own Report Descriptor** — and the hardware confirmed the
+  diagnosis word for word: `EJES DE MAS DE 8 BITS: el formato BOOT habria leido
+  dy dentro de dx`. On a second device the fallback also fired: `no entiendo su
+  Report Descriptor: me quedo con el BOOT`
+- **Ring 0's log, readable from Ring 3** (F11) — see below
 
 ---
 
@@ -206,24 +237,30 @@ integer scale and confirmed on silicon.
 
 Listed here rather than above, because the difference is the entire point.
 
-- **ESTRATOS writes** — the transaction state machine exists and is tested;
-  nothing has wired it to the device yet
-- **Memory capability** (`KIND_MEMORIA`) — a process can ask for a large
-  contiguous block, wired end to end through kernel, userland and C's `malloc`.
-  **No program has called it on metal yet.** It is not an allocator and does not
-  pretend to be: the kernel hands out pages, the process decides what to do with
-  them
-- **Window focus** — Alt+Tab over an MRU stack, three focus modes, focus drags
-  the Z-order, save-under mouse cursor. 17 tests. Nobody has pressed the key on
-  real hardware
+- **ESTRATOS writes** — now wired to the device, with the smallest transaction
+  that exists (`estratos sellar`: no data, same stratum, commit onto the
+  superblock copy that is *not* in use). Nothing has run it yet
 - **SMP** — the code to wake the other cores exists and nothing calls it.
-  Deliberately last, and now with a number: the kernel has **194 `static mut`
-  and 3 spinlocks**. The trampoline is 10% of the work; auditing the other 191
-  is the rest
-- **Mouse axes** — it enumerates, pumps and moves, but the axes are crossed.
-  The device answered `GET_PROTOCOL` with *report protocol*: its report carries
-  a leading Report ID, so everything was shifted by one byte and clicking moved
-  the pointer. Whether the deltas are 8 or 16 bits is the open question
+  Deliberately last, and with a number: the kernel has **195 `static mut` and 3
+  spinlocks**. The trampoline is 10% of the work; auditing the other 192 is the
+  rest
+
+---
+
+## 👁 Seeing Ring 0 from Ring 3 — and why that is *not* privilege
+
+Once the desktop *became* the boot, the kernel panel stopped being painted and
+the whole story of how the machine came up became unreadable. **F11** fixes
+that: the kernel keeps its log in a ring, and Ring 3 asks for it by line number.
+
+This matters as a design statement. The compositor is still an ordinary Ring 3
+process with counted capabilities — it *asks*, and the kernel answers text and
+grants nothing. In a capability system **seeing and doing are separate things**,
+and a "privileged terminal" that actually executed in Ring 0 would throw the
+model away to obtain something you can have without breaking anything: looking.
+
+Being able to see everything while being able to touch nothing is the
+interesting half of total transparency.
 
 ---
 
@@ -231,10 +268,17 @@ Listed here rather than above, because the difference is the entire point.
 
 - ESTRATOS garbage collector — policy is written: the owner decides, named
   strata are never released, read-only at 95% rather than lose data
-- Shared surfaces and real windows — `KIND_FRAMEBUFFER` is exclusive today. The
-  focus policy is already written and tested, so that day does not start from
-  zero
-- Windows with shared surfaces
+- **Shared surfaces** (`KIND_SUPERFICIE`) — `KIND_FRAMEBUFFER` is exclusive
+  today, so the desktop's "windows" are boxes the compositor draws for itself.
+  This is the single unlock that turns them into real windows owned by other
+  processes. The focus policy is already written, tested and now verified, so
+  that day does not start from zero — and `KIND_MEMORIA` already provides the
+  buffers
+- **The ESTRATOS node graph** — F12 shows volume numbers, not objects. ESTRATOS
+  is not a folder tree, it is a graph of objects that point at each other and
+  are never overwritten; drawn as a graph it explains itself, and because every
+  commit adds nodes and leaves the old ones standing, that graph *is* the
+  volume's history
 
 ---
 
@@ -251,7 +295,26 @@ Git had to live on top with a `.git/` that duplicates everything.
 BLAKE3 checksums live in the *pointer*, not the block, so the Merkle tree comes
 free. Signatures are verified before a binary becomes executable.
 
-🟢 mounts and reads on real hardware · 🟡 writing is the next step
+🟢 mounts and reads on real hardware · 🟡 the write path is now wired to the
+device and has not run yet
+
+The first transaction is deliberately the smallest one that exists: no data, the
+same stratum, and the commit lands on **the superblock copy that is not in
+use**. It walks the whole path — close data, `FLUSH CACHE`, barrier, commit,
+flush again — and cannot lose anything if it fails. If it works, the write path
+is alive and everything after it is just putting data in the middle. If it does
+not, the failure is exact and there is nothing to regret.
+
+Two guards stand in front of it, and they are separate on purpose: the disk
+identity gate ("is this my disk?") and a **named write window per volume** ("is
+this my volume?"). A cloned volume mounts and reads and **cannot write**, even
+on an armed disk. The EFI system partition — where the loader that booted the
+machine lives, and on this machine the owner's Windows loader too — is in
+neither window.
+
+And the commit is **one sector**, because that is the unit a disk guarantees
+atomic. Writing the 4 KiB block that contains it would have turned one atomic
+operation into eight.
 
 ---
 
@@ -300,13 +363,86 @@ shared surfaces → windows.
 
 ## Roadmap
 
-1. **Wire ESTRATOS writes to the device** — the only thing between "a store you
-   can read" and "a store"
-2. **COMP-3 (packed decimal)** — the format real bank data is actually stored in
-3. **Range checks in Ada** — without them it is Ada syntax with C safety
-4. **Memory capability** — unlocks GC languages and shared surfaces at once
-5. **Framebuffer write-combining**
-6. **SMP, last** — the trampoline is 10%; auditing shared state is the other 90%
+Ordered, and the order is the argument. Each phase exists because the one before
+it removes a blocker — not because the items are grouped by topic.
+
+### Phase A — Finish stabilising what already runs
+
+The cheapest work there is, and it comes first because everything later is built
+on top of it.
+
+1. **Run `estratos sellar` on metal.** Then F12, then *reboot*, then F12 again.
+   Only the last step proves the commit reached the platter instead of the SSD's
+   cache. Nothing else in ESTRATOS should be built until that is a photograph
+2. **Audit every "who returns this?" resource.** Two of these have already bitten
+   in a single day — memory accounting indexed by a pid that only counts up, and
+   directory slots freed only when the process dies, with a client (the desktop)
+   that never dies. The remaining suspects are `KIND_ARCHIVO` (4 slots),
+   consoles, and what `EXIT` actually reclaims
+3. **Check the red zone in Ring 0.** BMO's ABI reserves 256 bytes below RSP,
+   twice System V's. That is free performance in Ring 3 and a hazard in an
+   interrupt handler. BMO C has a `Ring0Kernel` profile — does its codegen know
+   there is no red zone there?
+4. **SSE in the emulator.** Of BMO C's 9 floating-point tests, **zero execute** —
+   all nine compare byte windows, the method the emulator's own header calls
+   insufficient. That whole path compiles, passes, and has never run
+
+### Phase B — ESTRATOS becomes a store
+
+5. **Write a real object** — data, attribute, node, directory entry, stratum,
+   barrier, commit. The state machine and the device path already exist; this is
+   putting data between them
+6. **The node graph view** (F12) — surface the kernel's existing readers to
+   Ring 3 and draw the graph: boxes with a title and a name, colour per class,
+   edges between them
+7. **Garbage collector** — the policy is written; nothing implements it
+
+### Phase C — A desktop, not three panels
+
+8. **`KIND_SUPERFICIE`** — the unlock. Each process asks for its own buffer with
+   `KIND_MEMORIA` and paints into it; the compositor composes. Until this
+   exists, "windows" are boxes one program draws for itself
+9. **Windows moved with the mouse.** Wanted by the owner, and worth stating what
+   it costs: overlapping movable windows are exactly what forces Z-order,
+   damage tracking and save-under — the bug class that a tiling layout removes
+   by construction. The honest middle is *tiling by default, moving allowed*:
+   the geometry stays predictable and dragging is a deliberate act, not the only
+   way to arrange anything
+10. **Appearance** — typography rhythm, a palette that means something, and
+    anti-aliased primitives (rounded rectangles, circles, lines). This is where
+    most of "it looks good" actually lives
+11. **Vector drawing.** The goal is crisp graphics at any size. Full SVG is not
+    the way to get there: an XML parser plus a path rasteriser with béziers,
+    fills, strokes, transforms and text is enormous, has no GPU under it, and
+    every byte competes with a 1 MiB image limit. The BMO-shaped answer is a
+    **small vector format described by tables** — the same decision that made
+    `sem-asm` a TOML file instead of thousands of lines of C++. SVG can be
+    *converted* to it on the host, where there is a real machine to do the work
+
+### Phase D — Programs worth running
+
+12. **libc for DOOM** — `fopen`, a real `malloc` on top of the memory block,
+    complete `printf`. This is what is left; the language is already there
+13. **DOOM.** It is a software renderer: it needs no GPU, no shaders, no Vulkan.
+    It is the first heavy program this system can honestly run
+14. **C++ continues** — inheritance and virtuals landed; the scope stays frozen
+    at essential C++17
+15. **COMP-3 (packed decimal)** — the format real bank data is stored in
+16. **Range checks in Ada** — without them it is Ada syntax with C safety
+
+### Phase E — Architecture
+
+17. **Endpoint RPC → Ring 3 services** — the library-OS moment
+18. **Speed levers that are architectural, not micro-optimisation** — DMA
+    straight into the caller's buffer instead of a bounce page, NCQ (the HBA
+    declares 32 slots and one is used), MSI instead of polling
+19. **GPU, and only the blit.** Skip the display engine entirely: the firmware
+    already programmed it. What is needed is one engine — the copy engine —
+    behind the `Volcador` seam that already exists. Measure with `perf` first:
+    the dirty box may well have made a card unnecessary
+20. **SMP, last, and deliberately** — the trampoline is 10% of the work.
+    Auditing 195 `static mut` is the rest, and the day a second core runs, every
+    one of them is a race
 
 ---
 
