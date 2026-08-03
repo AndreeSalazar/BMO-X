@@ -23,6 +23,14 @@ pub struct CobolFile {
     pub path: String,
     /// El `01` que va debajo del `FD`. Vacío si no se declaró.
     pub record: String,
+    /// El campo de `FILE STATUS IS`, si lo hay.
+    ///
+    /// ★ **Todo programa de banca lo mira después de cada operación.** No es un
+    /// extra: es cómo COBOL dice si el `OPEN` encontró el fichero, si el `READ`
+    /// llegó al final o si algo falló — sin abortar, para que el programa
+    /// decida. Un batch nocturno que revienta es peor que uno que escribe
+    /// "no pude abrir el maestro" y para ordenadamente.
+    pub estado: Option<String>,
 }
 
 /// Un PÁRRAFO de la PROCEDURE DIVISION: un nombre y lo que hace.

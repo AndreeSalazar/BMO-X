@@ -748,6 +748,134 @@ STOP RUN.
         assert!(err.contains("uno es un GRUPO"), "{err}");
     }
 
+    // ── FILE STATUS: lo que un batch mira después de CADA operación ─────
+    //
+    // No es ceremonia: un batch nocturno que revienta es peor que uno que
+    // escribe "no pude abrir el maestro" y para ordenadamente.
+
+    /// Un programa con UN fichero y su `FILE STATUS` declarado. El ayudante
+    /// general no sirve: sus `SELECT` no lo llevan, y ése es justo el trozo que
+    /// se está probando.
+    fn programa_con_estado(decls: &str, body: &str) -> String {
+        format!(
+            "IDENTIFICATION DIVISION.
+PROGRAM-ID. T.
+             ENVIRONMENT DIVISION.
+INPUT-OUTPUT SECTION.
+FILE-CONTROL.
+             SELECT ENTRADA ASSIGN TO \"d/e.txt\" FILE STATUS IS ST.
+             DATA DIVISION.
+{decls}
+PROCEDURE DIVISION.
+{body}
+STOP RUN.
+"
+        )
+    }
+
+    /// ★ `35` — el fichero no existe. Es el caso que más se da y el único
+    /// motivo que la puerta permite distinguir hoy.
+    #[test]
+    fn file_status_dice_35_cuando_el_fichero_no_esta() {
+        let src = programa_con_estado(
+            "FILE SECTION.
+FD ENTRADA.
+01 R PIC 9(4).
+             WORKING-STORAGE SECTION.
+01 ST PIC XX VALUE \"??\".",
+            "OPEN INPUT ENTRADA.
+             IF ST = \"00\"
+DISPLAY \"abierto\"
+ELSE
+DISPLAY ST
+END-IF.",
+        );
+        // Sin sembrar el fichero: no existe.
+        let (consola, _) = run_cobol_con_disco(&src, &[]);
+        assert_eq!(consola, "35
+");
+    }
+
+    /// Y `00` cuando sí está.
+    #[test]
+    fn file_status_dice_00_cuando_abre() {
+        let src = programa_con_estado(
+            "FILE SECTION.
+FD ENTRADA.
+01 R PIC 9(4).
+             WORKING-STORAGE SECTION.
+01 ST PIC XX VALUE \"??\".",
+            "OPEN INPUT ENTRADA.
+DISPLAY ST.",
+        );
+        let (consola, _) = run_cobol_con_disco(&src, &[("d/e.txt", "1234
+")]);
+        assert_eq!(consola, "00
+");
+    }
+
+    /// ★ `10` — fin de fichero. Es la forma del estándar de escribir un bucle
+    /// de batch: se lee hasta que el estado deja de ser `00`.
+    #[test]
+    fn file_status_dice_10_al_acabarse_el_fichero() {
+        let src = programa_con_estado(
+            "FILE SECTION.
+FD ENTRADA.
+01 IMPORTE PIC S9(7)V99.
+             WORKING-STORAGE SECTION.
+             01 ST PIC XX VALUE \"??\".
+             01 TOTAL PIC S9(9)V99 VALUE ZERO.
+             01 CUANTOS PIC 9(3) VALUE ZERO.",
+            "OPEN INPUT ENTRADA.
+             PERFORM UNTIL ST NOT = \"00\"
+             READ ENTRADA
+             AT END CONTINUE
+             NOT AT END ADD IMPORTE TO TOTAL
+             ADD 1 TO CUANTOS
+             END-READ
+             END-PERFORM.
+             CLOSE ENTRADA.
+             DISPLAY CUANTOS.
+DISPLAY TOTAL.
+DISPLAY ST.",
+        );
+        let (consola, _) = run_cobol_con_disco(&src, &[("d/e.txt", "100.00
+25.50
+0.50
+")]);
+        // Tres registros, y el bucle paró POR EL ESTADO y no por una bandera
+        // puesta a mano. El CLOSE lo devuelve a `00`.
+        assert_eq!(consola, "3
+126.00
+00
+");
+    }
+
+    /// El campo tiene que existir y medir DOS letras. Si no, el programa
+    /// compararía contra basura y decidiría por ella — `IF ST = "00"` daría
+    /// falso siempre y el batch se pararía cada noche sin motivo.
+    #[test]
+    fn un_file_status_mal_declarado_se_rechaza() {
+        let casos: &[(&str, &str)] = &[
+            ("WORKING-STORAGE SECTION.\n01 OTRO PIC XX.", "no esta declarado"),
+            ("WORKING-STORAGE SECTION.\n01 ST PIC X(5).", "tiene que ser `PIC XX`"),
+            ("WORKING-STORAGE SECTION.\n01 ST PIC 99.", "tiene que ser `PIC XX`"),
+        ];
+        for (decls, pista) in casos {
+            let src = format!(
+                "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\
+                 ENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\n\
+                 SELECT ENTRADA ASSIGN TO \"d/e.txt\" FILE STATUS IS ST.\n\
+                 DATA DIVISION.\nFILE SECTION.\nFD ENTRADA.\n01 R PIC 9(4).\n\
+                 {decls}\nPROCEDURE DIVISION.\nOPEN INPUT ENTRADA.\nSTOP RUN.\n"
+            );
+            let err = compile_source_to_bef(&src)
+                .expect_err(&format!("deberia rechazarse: {decls}"))
+                .to_string();
+            assert!(err.contains(pista), "{decls}\n => {err:?}");
+        }
+    }
+
     // ── TEXTO: `PIC X(n)` con caracteres de verdad ──────────────────────
     //
     // Hasta aquí un `PIC X` reservaba sitio y se cargaba como un entero de 64

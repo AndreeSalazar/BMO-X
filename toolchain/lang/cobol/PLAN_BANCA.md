@@ -322,7 +322,20 @@ que ya existe.**
       tabla y no un cerebro**; va en `bmo-lower` junto a `packed`, por el mismo
       motivo: no es semántica de ningún lenguaje.
 
-- [ ] **1.7 · `FILE STATUS`** — S
+- [~] **1.7 · `FILE STATUS`** — ✅ 2026-08-03, **con los códigos que se pueden
+      dar de verdad y sólo ésos**
+      `SELECT … FILE STATUS IS <campo>`, y el código de dos letras se deja
+      después de `OPEN`, `READ`, `WRITE` y `CLOSE`.
+      ★ Sólo se ponen **`00`, `10` y `35`**, que son los que la puerta permite
+      distinguir: el `OPEN` contesta con un handle o un cero, y el `READ` con un
+      sí o un no. Los demás (`30` error de E/S, `37` modo incompatible, `41`/`42`
+      doble apertura o cierre) **no se pueden separar todavía** — de un cero no
+      se saca el motivo. Inventarlos mandaría a arreglar lo que no está roto.
+      El día que `KIND_ARCHIVO` traiga un código, aquí sólo hay que ampliar la
+      tabla; por eso queda `[~]` y no `[x]`.
+      ★ Se comprueba que el campo **existe y mide dos letras**: si no, el
+      programa compararía contra basura y `IF ST = "00"` daría falso siempre —
+      un batch que se para cada noche sin motivo.
       El código de dos dígitos (`00` bien, `10` fin de fichero, `23` no
       encontrado, `35` no existe…). **Todo programa de banca lo mira después de
       cada operación.**
@@ -586,7 +599,9 @@ HECHO   1.1 + 1.2 REGISTROS BINARIOS ── LEER LO QUE YA EXISTE
 
 HECHO   0.7 TEXTO ── PIC X con caracteres, sin limite de ancho
 
-AHORA   1.7 FILE STATUS ── ya no tiene candado, y todo programa de banca lo mira
+HECHO   1.7 FILE STATUS ── 00, 10 y 35: los que se pueden dar de verdad
+
+AHORA   2.3 STRING · 2.4 INSPECT ── el texto ya existe, estos son los que faltan
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -603,9 +618,9 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
-~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → ~~`0.7`~~ → **`1.7`** → `2.6b` →
-`0.6` → `2.3` → `2.4` → `2.2` → `2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `0.2` →
-**luego el kernel**: `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
+~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → ~~`0.7`~~ → ~~`1.7`~~ →
+**`2.3`** → `2.4` → `2.6b` → `0.6` → `2.2` → `2.7` → `2.8` → `5.1` → `1.6` →
+`2.9` → `0.2` → **luego el kernel**: `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
 ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
@@ -648,3 +663,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | ★★★ **1.1 + 1.2 REGISTROS BINARIOS** — largo fijo, campos en su byte, y el resto de siete bytes bien llevado | `bmo-lower::archivo::leer_bytes` + `codegen::emit_read/emit_write` |
 | 2026-08-03 | ★ **El VISOR** (`--ver`) — decodifica un fichero binario con el copybook, y sus lectores están atados a los emitidos | `registro::Disposicion::ver` + `*::*_en_rust` |
 | 2026-08-03 | ★ **0.7 TEXTO** — `PIC X(n)` con caracteres de verdad, sin límite de ancho; desbloquea FILE STATUS, STRING e INSPECT | `codegen.rs` (camino de dirección+largo) |
+| 2026-08-03 | **1.7 `FILE STATUS`** — `00`/`10`/`35`, los que la puerta permite distinguir, y sólo ésos | `codegen::emit_estado*` |

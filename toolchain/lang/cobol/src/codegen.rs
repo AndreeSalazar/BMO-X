@@ -610,7 +610,36 @@ impl Codegen {
             self.file_handles.insert(f.name.clone(), off);
             self.files.insert(f.name.clone(), f.clone());
             if !f.record.is_empty() {
-                self.record_owner.insert(f.record.to_ascii_uppercase(), off);
+                // ★ El campo de FILE STATUS tiene que existir y medir DOS letras.
+            // Si no, el programa compararía contra basura y decidiría por ella:
+            // `IF ST = "00"` daría falso siempre y el batch se pararía cada
+            // noche sin motivo. Se comprueba aquí, que es donde se sabe qué
+            // datos hay.
+            if let Some(campo) = &f.estado {
+                match self.pic_fields.get(&campo.to_ascii_uppercase()) {
+                    None => self.errors.push(CobolError::new(
+                        0,
+                        format!(
+                            "SELECT {}: el FILE STATUS {campo} no esta declarado. \
+                             Declaralo como `01 {campo} PIC XX.`",
+                            f.name
+                        ),
+                    )),
+                    Some(pf) if pf.numeric || pf.char_count != 2 => {
+                        self.errors.push(CobolError::new(
+                            0,
+                            format!(
+                                "SELECT {}: el FILE STATUS {campo} tiene que ser `PIC XX` \
+                                 (dos caracteres). Los codigos del estandar son de dos \
+                                 letras y se comparan como texto: `IF {campo} = \"00\"`",
+                                f.name
+                            ),
+                        ))
+                    }
+                    Some(_) => {}
+                }
+            }
+            self.record_owner.insert(f.record.to_ascii_uppercase(), off);
             }
         }
         self.collect_strings(program);
@@ -1416,6 +1445,72 @@ impl Codegen {
     // cualquier `DISPLAY` hace un `syscall`, y eso destruye medio banco de
     // registros.
 
+    // ── FILE STATUS ─────────────────────────────────────────────────────
+    //
+    // El código de dos letras que COBOL deja después de CADA operación de
+    // fichero. Todo programa de banca lo mira, y por una razón que no es
+    // ceremonia: **un batch nocturno que revienta es peor que uno que escribe
+    // "no pude abrir el maestro" y para ordenadamente**.
+    //
+    // ## Qué códigos se pueden dar DE VERDAD, y cuáles no
+    //
+    // El estándar define decenas. Aquí sólo se ponen los que la puerta permite
+    // distinguir, porque inventar el resto sería peor que no darlos:
+    //
+    // ```text
+    //   00  la operacion fue bien
+    //   10  fin de fichero            <- lo dice `rax = 0` del READ
+    //   35  el fichero no existe      <- lo dice el handle 0 del OPEN
+    // ```
+    //
+    // Los demás (`30` error de E/S, `37` modo incompatible, `39` conflicto de
+    // atributos, `41`/`42` doble apertura o cierre) **no se pueden separar
+    // todavía**: `KIND_ARCHIVO` devuelve un handle o cero, y de un cero no se
+    // saca el motivo. El día que la puerta traiga un código, aquí sólo hay que
+    // ampliar la tabla — y hasta entonces, un `37` inventado mandaría a
+    // arreglar lo que no está roto.
+    const EST_OK: &'static str = "00";
+    const EST_FIN: &'static str = "10";
+    const EST_NO_EXISTE: &'static str = "35";
+
+    /// De qué fichero es este `01`. `WRITE` nombra el registro, no el fichero.
+    fn fichero_de_registro(&self, registro: &str) -> String {
+        self.files
+            .values()
+            .find(|f| f.record.eq_ignore_ascii_case(registro))
+            .map(|f| f.name.clone())
+            .unwrap_or_default()
+    }
+
+    /// Deja el código de dos letras en el campo de `FILE STATUS`, si lo hay.
+    fn emit_estado(&mut self, fichero: &str, codigo: &str) {
+        let Some(f) = self.files.get(&fichero.to_ascii_uppercase()).cloned() else { return };
+        let Some(campo) = f.estado else { return };
+        let Some(off) = self.exige_declarado(&campo) else { return };
+        self.emit_store_texto_literal(off, codigo, 2);
+    }
+
+    /// Igual, pero eligiendo entre dos códigos según `rax`: cero = el malo.
+    ///
+    /// Se usa justo después de abrir o de leer, que son las dos operaciones que
+    /// contestan con un sí o un no en `rax` y las únicas de las que hoy se puede
+    /// sacar un motivo.
+    fn emit_estado_segun_rax(&mut self, fichero: &str, si_hay: &str, si_cero: &str) {
+        let Some(f) = self.files.get(&fichero.to_ascii_uppercase()).cloned() else { return };
+        let Some(campo) = f.estado else { return };
+        let Some(off) = self.exige_declarado(&campo) else { return };
+
+        let malo = self.fresh_label();
+        let fin = self.fresh_label();
+        self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
+        self.emit_jcc(0x84, malo); // je → el camino malo
+        self.emit_store_texto_literal(off, si_hay, 2);
+        self.emit_jmp(fin);
+        self.bind_label(malo);
+        self.emit_store_texto_literal(off, si_cero, 2);
+        self.bind_label(fin);
+    }
+
     /// La ranura del handle de este fichero, o un error si no se declaro.
     fn file_slot(&mut self, fichero: &str) -> Option<i32> {
         match self.file_handles.get(&fichero.to_ascii_uppercase()) {
@@ -1489,6 +1584,12 @@ impl Codegen {
         };
         bmo_lower::archivo::abrir_const(&mut self.code, f.path.as_bytes(), escribe);
         self.store_slot(off);
+        // Handle cero = no se pudo abrir. Es el unico motivo que la puerta
+        // permite distinguir hoy, y es justo el que mas se da: el fichero no
+        // esta donde dice el ASSIGN.
+        self.load_slot(off);
+        let fichero_s = fichero.to_string();
+        self.emit_estado_segun_rax(&fichero_s, Self::EST_OK, Self::EST_NO_EXISTE);
     }
 
     /// `CLOSE <fichero>`. En uno de salida, **aqui es donde llega al disco**.
@@ -1497,6 +1598,8 @@ impl Codegen {
         self.load_slot(off);
         self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
         bmo_lower::archivo::cerrar(&mut self.code);
+        let fichero_s = fichero.to_string();
+        self.emit_estado(&fichero_s, Self::EST_OK);
     }
 
     /// `READ <f> AT END … NOT AT END … END-READ`.
@@ -1540,6 +1643,9 @@ impl Codegen {
             self.code.extend_from_slice(&area.to_le_bytes());
             bmo_lower::archivo::leer_bytes(&mut self.code, campo.bytes);
             self.store_slot(estado);
+            // `rax` sigue siendo 1/0: es el mismo si-o-no que el AT END.
+            let fichero_s = fichero.to_string();
+            self.emit_estado_segun_rax(&fichero_s, Self::EST_OK, Self::EST_FIN);
 
             // Del área a las ranuras, y sólo si hubo registro: desempaquetar
             // basura llenaría los campos con lo que hubiera antes.
@@ -1579,6 +1685,8 @@ impl Codegen {
         // de tocar nada: el parseo de abajo se lleva por delante `r10` y `r11`.
         let estado = self.file_estado[&fichero.to_ascii_uppercase()];
         self.store_slot(estado);
+        let fichero_s = fichero.to_string();
+        self.emit_estado_segun_rax(&fichero_s, Self::EST_OK, Self::EST_FIN);
         // `r8` acabo al final de lo leido; se devuelve al principio.
         x86::sub_r64_r64(&mut self.code, x86::R8, x86::R9);
         bmo_lower::fmt::parse_decimal_scaled(&mut self.code, escala);
@@ -1637,6 +1745,11 @@ impl Codegen {
             self.load_slot(off);
             self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
             bmo_lower::archivo::escribir_buffer(&mut self.code);
+            // La puerta no dice si la escritura fue bien -nada llega al disco
+            // hasta el CLOSE-, asi que aqui solo cabe el `00`. Poner otra cosa
+            // seria inventarse un motivo que nadie ha comprobado.
+            let duenio = self.fichero_de_registro(&reg);
+            self.emit_estado(&duenio, Self::EST_OK);
             return;
         }
 
@@ -1681,6 +1794,8 @@ impl Codegen {
         x86::mov_r32_imm32(&mut self.code, x86::R9, 1);
         bmo_lower::archivo::escribir_buffer(&mut self.code);
         x86::add_r64_imm8(&mut self.code, x86::RSP, pila);
+        let duenio = self.fichero_de_registro(&reg);
+        self.emit_estado(&duenio, Self::EST_OK);
     }
 
     fn emit_statement(&mut self, stmt: &CobolStatement) {

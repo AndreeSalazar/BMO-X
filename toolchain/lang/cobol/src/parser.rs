@@ -906,6 +906,27 @@ impl Parser {
         // Tras `ASSIGN` puede venir `TO` o no; el estándar lo permite.
         let cola = resto[corte + 6..].trim();
         let cola = Self::strip_leading_word(cola, "TO");
+
+        // ★ `FILE STATUS IS <campo>` — el campo donde el sistema deja el
+        // resultado de cada operación. Se recorta ANTES de leer la ruta, porque
+        // viene detrás de ella y si no acabaría dentro del nombre del fichero.
+        let arriba_cola = cola.to_ascii_uppercase();
+        let (cola, estado) = match Self::pos_palabra(&arriba_cola, "FILE") {
+            Some(i) if arriba_cola[i..].starts_with("FILE STATUS") => {
+                let tras = cola[i + 11..].trim();
+                let tras = Self::strip_leading_word(tras, "IS");
+                let campo = tras.trim().trim_end_matches('.').trim().to_ascii_uppercase();
+                if campo.is_empty() || campo.split_whitespace().count() != 1 {
+                    return Err(CobolError::new(
+                        line_no,
+                        format!("SELECT {name}: `FILE STATUS IS` necesita UN campo"),
+                    ));
+                }
+                (cola[..i].trim(), Some(campo))
+            }
+            _ => (cola, None),
+        };
+
         let path = cola.trim().trim_matches('"').trim_matches('\'').to_string();
         if path.is_empty() {
             return Err(CobolError::new(
@@ -922,7 +943,7 @@ impl Parser {
         if let Err(motivo) = Self::cabe_en_8_3(&path) {
             return Err(CobolError::new(line_no, format!("ASSIGN TO \"{path}\": {motivo}")));
         }
-        Ok(crate::ast::CobolFile { name, path, record: String::new() })
+        Ok(crate::ast::CobolFile { name, path, record: String::new(), estado })
     }
 
     /// ¿Cada tramo de la ruta cabe en un nombre 8.3 de FAT32?
