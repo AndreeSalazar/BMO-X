@@ -116,28 +116,28 @@ pub fn parse_statement(c: &mut Cursor) -> Result<CobolStatement, CobolError> {
             if !c.eat_kw("TO") {
                 return Err(CobolError::new(line, "ADD requiere `TO`"));
             }
-            CobolStatement::Add(v, operand(c, line, "destino")?)
+            crate::ast::CobolStatement::Add(v, operand(c, line, "destino")?, crate::ast::Redondeo::Truncar)
         }
         "SUBTRACT" => {
             let v = operand(c, line, "valor")?;
             if !c.eat_kw("FROM") {
                 return Err(CobolError::new(line, "SUBTRACT requiere `FROM`"));
             }
-            CobolStatement::Subtract(v, operand(c, line, "destino")?)
+            CobolStatement::Subtract(v, operand(c, line, "destino")?, crate::ast::Redondeo::Truncar)
         }
         "MULTIPLY" => {
             let v = operand(c, line, "valor")?;
             if !c.eat_kw("BY") {
                 return Err(CobolError::new(line, "MULTIPLY requiere `BY`"));
             }
-            CobolStatement::Multiply(v, operand(c, line, "destino")?)
+            CobolStatement::Multiply(v, operand(c, line, "destino")?, crate::ast::Redondeo::Truncar)
         }
         "DIVIDE" => {
             let v = operand(c, line, "valor")?;
             if !c.eat_kw("BY") {
                 return Err(CobolError::new(line, "DIVIDE requiere `BY`"));
             }
-            CobolStatement::Divide(v, operand(c, line, "destino")?)
+            CobolStatement::Divide(v, operand(c, line, "destino")?, crate::ast::Redondeo::Truncar)
         }
         "STOP" => {
             c.eat_kw("RUN");
@@ -309,7 +309,7 @@ mod tests {
         let l = parse_statements("DISPLAY \"SALDO\".").unwrap();
         assert_eq!(l[0], CobolStatement::Display(DisplayArg::Literal("SALDO".into())));
         assert_eq!(sts[1], CobolStatement::Move("10.05".into(), "SALDO".into()));
-        assert_eq!(sts[2], CobolStatement::Add("3.20".into(), "SALDO".into()));
+        assert_eq!(sts[2], CobolStatement::Add("3.20".into(), "SALDO".into(), crate::ast::Redondeo::Truncar));
         assert_eq!(sts[3], CobolStatement::StopRun);
     }
 
@@ -317,8 +317,8 @@ mod tests {
     fn multiline_and_decimal_period_disambiguation() {
         let src = "MULTIPLY 3 BY SALDO.\nDIVIDE 4 BY SALDO.\n";
         let sts = parse_statements(src).unwrap();
-        assert_eq!(sts[0], CobolStatement::Multiply("3".into(), "SALDO".into()));
-        assert_eq!(sts[1], CobolStatement::Divide("4".into(), "SALDO".into()));
+        assert_eq!(sts[0], CobolStatement::Multiply("3".into(), "SALDO".into(), crate::ast::Redondeo::Truncar));
+        assert_eq!(sts[1], CobolStatement::Divide("4".into(), "SALDO".into(), crate::ast::Redondeo::Truncar));
     }
 
     #[test]

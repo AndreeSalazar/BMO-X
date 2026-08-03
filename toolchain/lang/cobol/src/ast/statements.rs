@@ -1,5 +1,19 @@
 use crate::ast::{SyscallDef, Valor88};
 
+/// Cómo se resuelve el último dígito de una operación aritmética.
+///
+/// **En un banco esto es una decisión legal**, no un detalle de formato: medio
+/// céntimo repetido cuatro millones de veces es dinero, y hay jurisdicciones
+/// que obligan al redondeo del banquero precisamente porque el clásico tiene
+/// sesgo. Por eso van todos los modos del estándar con su nombre, y no "el
+/// redondeo" a secas.
+///
+/// Es un tipo de COBOL —lo dice la cláusula `ROUNDED`— que se traduce al
+/// `bmo_lower::redondeo::Modo` en el codegen. Los dos existen a propósito: uno
+/// es la palabra del lenguaje y el otro la aritmética compartida, y el día que
+/// Ada pida sus modos del Annex F no tendrá que hablar de COBOL.
+pub type Redondeo = bmo_lower::redondeo::Modo;
+
 /// Que se imprime en un `DISPLAY`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayArg {
@@ -22,11 +36,17 @@ pub enum CobolStatement {
     Display(DisplayArg),
     Accept(String),
     Move(String, String),
-    Add(String, String),
-    Subtract(String, String),
-    Multiply(String, String),
-    Divide(String, String),
-    Compute(String, String),
+    // ── Las cinco aritméticas, cada una con su REDONDEO ──
+    //
+    // La cláusula `ROUNDED` viaja en la sentencia y no en el dato porque es de
+    // la OPERACIÓN: el mismo campo se redondea en una línea y se trunca en la
+    // de abajo, y eso es deliberado — el interés se redondea y el desglose de
+    // un asiento se trunca para que la suma cuadre con el total.
+    Add(String, String, Redondeo),
+    Subtract(String, String, Redondeo),
+    Multiply(String, String, Redondeo),
+    Divide(String, String, Redondeo),
+    Compute(String, String, Redondeo),
     /// `IF <cond> ... [ELSE ...] END-IF`. Ver [`Condicion`] para cómo se
     /// combinan con `AND` y `OR`.
     If(Condicion, Vec<CobolStatement>, Vec<CobolStatement>),

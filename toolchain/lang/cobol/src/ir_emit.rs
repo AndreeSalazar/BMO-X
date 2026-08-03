@@ -81,12 +81,12 @@ impl Emitter {
                 let _s = self.module.add_string(src);
                 block.push(IrStmt::Assign(0, IrExpr::ConstI64(0)));
             }
-            CobolStatement::Add(src, dst) => {
+            CobolStatement::Add(src, dst, _) => {
                 let _s = self.module.add_string(src);
                 let _d = self.module.add_string(dst);
                 block.push(IrStmt::Assign(0, IrExpr::ConstI64(0)));
             }
-            CobolStatement::Compute(target, expr) => {
+            CobolStatement::Compute(target, expr, _) => {
                 let _t = self.module.add_string(target);
                 let _e = self.module.add_string(expr);
                 block.push(IrStmt::Assign(0, IrExpr::ConstI64(0)));

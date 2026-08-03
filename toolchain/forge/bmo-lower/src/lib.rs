@@ -56,6 +56,11 @@ pub mod memoria;
 /// `fmt`: los nibbles del `COMP-3` de COBOL, del `Decimal` de Ada y del
 /// `FIXED DECIMAL` de PL/I son los mismos. Ver la cabecera de `packed.rs`.
 pub mod packed;
+/// Redondeo decimal. LIBRERIA compartida por la misma razon que `fmt` y
+/// `packed`: partir un entero y decidir el ultimo digito es aritmetica, no la
+/// semantica de un lenguaje. Ver la cabecera de `redondeo.rs` para por que van
+/// los SEIS modos y no uno.
+pub mod redondeo;
 pub mod task;
 
 /// El emisor de instrucciones, PUBLICO desde que hay frontends que necesitan

@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 use crate::ast::{
     DisplayArg,
-    CobolCondition, CobolError, CobolProgram, CobolStatement, Condicion, DataItem, SyscallDef,
+    CobolCondition, CobolError, CobolProgram, CobolStatement, Condicion, DataItem, Redondeo,
+    SyscallDef,
     SyscallMap,
 };
 
@@ -770,8 +771,8 @@ impl Parser {
                 return Err(CobolError::new(line_no, "ADD requires `TO`"));
             };
             let val = Self::parse_operand(&rest[..to_pos]);
-            let target = rest[to_pos + 4..].trim().to_string();
-            Ok(CobolStatement::Add(val, target))
+            let (target, redondeo) = Self::partir_rounded(&rest[to_pos + 4..], line_no)?;
+            Ok(CobolStatement::Add(val, target, redondeo))
         } else if upper.starts_with("SUBTRACT ") {
             let rest = line[9..].trim();
             let up = rest.to_ascii_uppercase();
@@ -779,8 +780,8 @@ impl Parser {
                 return Err(CobolError::new(line_no, "SUBTRACT requires `FROM`"));
             };
             let val = Self::parse_operand(&rest[..from_pos]);
-            let target = rest[from_pos + 6..].trim().to_string();
-            Ok(CobolStatement::Subtract(val, target))
+            let (target, redondeo) = Self::partir_rounded(&rest[from_pos + 6..], line_no)?;
+            Ok(CobolStatement::Subtract(val, target, redondeo))
         } else if upper.starts_with("MULTIPLY ") {
             let rest = line[9..].trim();
             let up = rest.to_ascii_uppercase();
@@ -788,8 +789,8 @@ impl Parser {
                 return Err(CobolError::new(line_no, "MULTIPLY requires `BY`"));
             };
             let val = Self::parse_operand(&rest[..by_pos]);
-            let target = rest[by_pos + 4..].trim().to_string();
-            Ok(CobolStatement::Multiply(val, target))
+            let (target, redondeo) = Self::partir_rounded(&rest[by_pos + 4..], line_no)?;
+            Ok(CobolStatement::Multiply(val, target, redondeo))
         } else if upper.starts_with("DIVIDE ") {
             let rest = line[7..].trim();
             let up = rest.to_ascii_uppercase();
@@ -797,15 +798,15 @@ impl Parser {
                 return Err(CobolError::new(line_no, "DIVIDE requires `BY`"));
             };
             let val = Self::parse_operand(&rest[..by_pos]);
-            let target = rest[by_pos + 4..].trim().to_string();
-            Ok(CobolStatement::Divide(val, target))
+            let (target, redondeo) = Self::partir_rounded(&rest[by_pos + 4..], line_no)?;
+            Ok(CobolStatement::Divide(val, target, redondeo))
         } else if upper.starts_with("COMPUTE ") {
             let rest = line[8..].trim();
             let eq_pos = rest.find('=').unwrap_or(0);
             if eq_pos == 0 { return Err(CobolError::new(line_no, "COMPUTE requires `=`")); }
-            let target = rest[..eq_pos].trim().to_string();
+            let (target, redondeo) = Self::partir_rounded(&rest[..eq_pos], line_no)?;
             let expr = rest[eq_pos + 1..].trim().to_string();
-            Ok(CobolStatement::Compute(target, expr))
+            Ok(CobolStatement::Compute(target, expr, redondeo))
         } else if upper.starts_with("OPEN ") {
             let rest = line[5..].trim();
             let parts: Vec<&str> = rest.splitn(2, |c: char| c.is_whitespace()).collect();
@@ -1072,6 +1073,73 @@ impl Parser {
         }
 
         Ok(CobolStatement::If(conditions, then_branch, else_branch))
+    }
+
+    /// Separa el destino de una aritmética de su cláusula `ROUNDED`.
+    ///
+    /// ```text
+    ///   SALDO                                → truncar (el default de COBOL)
+    ///   SALDO ROUNDED                        → NEAREST-AWAY-FROM-ZERO
+    ///   SALDO ROUNDED MODE IS NEAREST-EVEN   → el redondeo del banquero
+    /// ```
+    ///
+    /// ★ **El default sin `ROUNDED` es TRUNCAR, y eso no es un descuido del
+    /// estándar**: en un desglose de asiento hay que truncar para que la suma
+    /// de las partes cuadre con el total, y en un interés hay que redondear.
+    /// Por eso la cláusula va en la OPERACIÓN y no en el dato: el mismo campo
+    /// hace las dos cosas en dos líneas seguidas.
+    ///
+    /// Y `ROUNDED` a secas es `NEAREST-AWAY-FROM-ZERO` porque es lo que dice el
+    /// estándar y lo que espera cualquiera que lo escriba sin pensar. El del
+    /// banquero **hay que pedirlo**: cambia el resultado y no puede colarse.
+    fn partir_rounded(texto: &str, line_no: usize) -> Result<(String, Redondeo), CobolError> {
+        let t = texto.trim().trim_end_matches('.').trim();
+        let arriba = t.to_ascii_uppercase();
+        let Some(i) = Self::pos_palabra(&arriba, "ROUNDED") else {
+            return Ok((t.to_string(), Redondeo::Truncar));
+        };
+        let destino = t[..i].trim().to_string();
+        if destino.is_empty() {
+            return Err(CobolError::new(line_no, "ROUNDED sin campo al que aplicarse"));
+        }
+        let cola = t[i + 7..].trim();
+        let cola = Self::strip_leading_word(cola, "MODE");
+        let cola = Self::strip_leading_word(cola.trim(), "IS");
+        let cola = cola.trim();
+        if cola.is_empty() {
+            return Ok((destino, Redondeo::MasCercanoLejosDeCero));
+        }
+        let modo = match cola.to_ascii_uppercase().as_str() {
+            "NEAREST-AWAY-FROM-ZERO" => Redondeo::MasCercanoLejosDeCero,
+            "NEAREST-EVEN" => Redondeo::MasCercanoPar,
+            "NEAREST-TOWARD-ZERO" => Redondeo::MasCercanoHaciaCero,
+            "TOWARD-GREATER" => Redondeo::HaciaArriba,
+            "TOWARD-LESSER" => Redondeo::HaciaAbajo,
+            "TRUNCATION" => Redondeo::Truncar,
+            // `PROHIBITED` obliga a que la operación sea exacta y a fallar si
+            // no lo es. Eso no es un modo de redondeo: es un `ON SIZE ERROR`
+            // sobre la parte decimal, y necesita a dónde saltar cuando pasa.
+            "PROHIBITED" => {
+                return Err(CobolError::new(
+                    line_no,
+                    "ROUNDED MODE IS PROHIBITED no se compila: exige fallar cuando la \
+                     operacion no es exacta, y eso necesita el ON SIZE ERROR que \
+                     todavia no existe",
+                ))
+            }
+            otro => {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "ROUNDED MODE IS {otro}: no es un modo del estandar. Son \
+                         NEAREST-AWAY-FROM-ZERO (el de `ROUNDED` a secas), NEAREST-EVEN \
+                         (el del banquero), NEAREST-TOWARD-ZERO, TOWARD-GREATER, \
+                         TOWARD-LESSER y TRUNCATION"
+                    ),
+                ))
+            }
+        };
+        Ok((destino, modo))
     }
 
     /// ★ `EVALUATE … WHEN … END-EVALUATE` — el `switch` de COBOL.

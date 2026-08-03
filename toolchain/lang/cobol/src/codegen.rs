@@ -4,7 +4,7 @@ use bmo_abi::syscalls::surface;
 use bmo_sem_asm::Instructions;
 use bmo_sem_asm::x86_64::{Asm, Reg};
 use bmo_lower::x86;
-use crate::ast::{CobolProgram, CobolStatement, CobolCondition, Condicion, DisplayArg};
+use crate::ast::{CobolProgram, CobolStatement, CobolCondition, Condicion, DisplayArg, Redondeo};
 use crate::ast::error::CobolError;
 use crate::edicion::Plantilla;
 
@@ -209,7 +209,27 @@ impl Codegen {
 
     /// `mov rax, <literal escalado a `scale`>`.
     fn load_scaled_imm(&mut self, lit: &str, scale: u32) {
-        let v = Self::scaled_imm(lit, scale);
+        self.load_scaled_imm_redondeado(lit, scale, Redondeo::Truncar);
+    }
+
+    /// Igual, pero aplicando el modo a los decimales que no caben.
+    ///
+    /// Se resuelve **al compilar**, con la misma regla que el código emitido:
+    /// `bmo_lower::redondeo::dividir_en_rust` es la hermana de `dividir`, y hay
+    /// un test que las compara valor a valor. Un literal nunca llega a
+    /// ejecutarse — se convierte en un inmediato antes— así que si las dos
+    /// reglas divergieran, `ADD 1.005` daría una cosa y `ADD IMPORTE` otra con
+    /// el mismo número dentro.
+    fn load_scaled_imm_redondeado(&mut self, lit: &str, scale: u32, redondeo: Redondeo) {
+        let v = if redondeo == Redondeo::Truncar {
+            Self::scaled_imm(lit, scale)
+        } else {
+            // Un dígito de más, y luego la regla. Es la única forma de saber si
+            // había que subir: con la escala justa, el dígito que lo decide ya
+            // se tiró.
+            let con_uno_mas = Self::scaled_imm(lit, scale + 1) as i64;
+            bmo_lower::redondeo::dividir_en_rust(con_uno_mas, 10, redondeo) as u64
+        };
         self.emit_asm(|a| { a.mov_imm64(Reg::Rax, v).unwrap(); });
     }
 
@@ -422,29 +442,57 @@ impl Codegen {
     /// `PIC 9(3)V99` (escala 2) exige multiplicar por 100 primero, si no se
     /// sumarían centavos con pesos.
     fn load_operand(&mut self, name: &str, scale: u32) {
+        self.load_operand_redondeado(name, scale, Redondeo::Truncar);
+    }
+
+    /// La escala DECIMAL de un operando, sea dato o literal.
+    ///
+    /// Hace falta para elegir la escala en la que se calcula: **la operación se
+    /// hace donde no se pierde nada, y se redondea AL FINAL**. Cargar un
+    /// `1.005` en un campo de dos decimales antes de sumarlo redondearía el
+    /// OPERANDO en vez del RESULTADO, y con los modos asimétricos eso da otro
+    /// número — el techo de `-9.995` es `-9.99`, pero si primero se redondea el
+    /// `9.995` a `10.00` sale `-10.00`.
+    fn escala_operando(&self, name: &str) -> u32 {
+        if self.is_variable(name) {
+            return self.var_scale(name);
+        }
+        name.trim()
+            .split_once('.')
+            .map(|(_, frac)| frac.chars().take_while(|c| c.is_ascii_digit()).count() as u32)
+            .unwrap_or(0)
+    }
+
+    /// Igual, pero diciendo qué hacer con los decimales que no caben.
+    fn load_operand_redondeado(&mut self, name: &str, scale: u32, redondeo: Redondeo) {
         if self.is_variable(name) {
             let from = self.var_scale(name);
             self.load_var(name);
-            self.rescale(from, scale);
+            self.rescale_redondeado(from, scale, redondeo);
         } else {
-            self.load_scaled_imm(name, scale);
+            self.load_scaled_imm_redondeado(name, scale, redondeo);
         }
     }
 
-    /// Lleva `rax` de la escala `from` a la escala `to`.
+    /// Lleva `rax` de la escala `from` a la escala `to`, truncando lo que sobre.
     fn rescale(&mut self, from: u32, to: u32) {
+        self.rescale_redondeado(from, to, Redondeo::Truncar);
+    }
+
+    fn rescale_redondeado(&mut self, from: u32, to: u32, redondeo: Redondeo) {
         if from == to {
             return;
         }
         if to > from {
+            // Subir de escala es EXACTO: multiplicar por una potencia de diez no
+            // pierde nada, así que aquí no hay nada que redondear.
             let factor = 10u64.pow(to - from);
             self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, factor).unwrap(); });
             self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]); // imul rax, rcx
         } else {
             let factor = 10u64.pow(from - to);
             self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, factor).unwrap(); });
-            self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
-            self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+            bmo_lower::redondeo::dividir(&mut self.code, redondeo);
         }
     }
 
@@ -1277,69 +1325,85 @@ impl Codegen {
             }
             // ADD a misma escala: ambos operandos en centavos → `add` es
             // suma decimal exacta (sin float, sin redondeo). El alma bancaria.
-            CobolStatement::Add(src, dst) => {
+            // ★ La suma se hace en la escala MAYOR de las dos y se redondea AL
+            // FINAL. Subir de escala es exacto —multiplicar por diez no pierde
+            // nada—, así que no se tira ningún dígito antes de tiempo.
+            //
+            // Ésa es la diferencia entre redondear el RESULTADO y redondear un
+            // OPERANDO, y con los modos asimétricos **no dan lo mismo**: el
+            // techo de `-9.995` es `-9.99`, pero si primero se redondea el
+            // `9.995` a `10.00` y luego se resta, sale `-10.00`.
+            CobolStatement::Add(src, dst, redondeo) => {
                 let sc = self.var_scale(dst);
+                let calc = sc.max(self.escala_operando(src));
                 self.load_var(dst);
+                self.rescale(sc, calc);                  // exacto: hacia arriba
                 self.code.push(0x50);                    // push rax
-                self.load_operand(src, sc);
+                self.load_operand(src, calc);            // exacto: su escala o más
                 self.code.push(0x5A);                    // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+                self.rescale_redondeado(calc, sc, *redondeo);
                 self.store_var(dst);
             }
-            // SUBTRACT src FROM dst → dst = dst - src.
-            //
-            // La versión anterior cargaba `src` DOS veces y hacía un baile
-            // de push/pop que no restaba lo que decía. Aquí el orden es
-            // explícito: rdx = dst, rax = src, rdx -= rax.
-            CobolStatement::Subtract(src, dst) => {
+            // SUBTRACT src FROM dst → dst = dst - src. Misma regla de escala
+            // que el ADD: se calcula donde no se pierde nada y se redondea al
+            // final.
+            CobolStatement::Subtract(src, dst, redondeo) => {
                 let sc = self.var_scale(dst);
+                let calc = sc.max(self.escala_operando(src));
                 self.load_var(dst);
+                self.rescale(sc, calc);                           // exacto
                 self.code.push(0x50);                             // push rax (dst)
-                self.load_operand(src, sc);                       // rax = src
+                self.load_operand(src, calc);                     // exacto
                 self.code.push(0x5A);                             // pop rdx (dst)
                 self.code.extend_from_slice(&[0x48, 0x29, 0xC2]); // sub rdx, rax
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+                self.rescale_redondeado(calc, sc, *redondeo);
                 self.store_var(dst);
             }
-            // MULTIPLY decimal exacto: dst y src están en escala `sc`
-            // (centavos). El producto queda en escala 2·sc → se REESCALA
-            // dividiendo entre 10^sc para volver a `sc`. $2.00 × 3 = $6.00.
-            CobolStatement::Multiply(src, dst) => {
-                let sc = self.var_scale(dst);
-                self.load_var(dst);                              // rax = dst_scaled
+            // ★ El multiplicando se carga EN SU PROPIA ESCALA, no en la del
+            // destino: así el producto no pierde ni un dígito antes de tiempo.
+            // `3.003 × 3.33` con destino de dos decimales se calcula entero y
+            // se redondea UNA vez; cargando el `3.003` en dos decimales primero
+            // se estaría multiplicando por `3.00`.
+            CobolStatement::Multiply(src, dst, redondeo) => {
+                let so = self.escala_operando(src);
+                self.load_var(dst);                              // escala del destino
                 self.code.push(0x50);                            // push rax
-                self.load_operand(src, sc);                      // rax = src_scaled
+                self.load_operand(src, so);                      // su escala: exacto
                 self.code.push(0x5A);                            // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
-                if sc > 0 {
-                    let p = 10u64.pow(sc);
-                    self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); }); // mov rcx, 10^sc
-                    self.code.extend_from_slice(&[0x48, 0x99]);         // cqo
-                    self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]);   // idiv rcx
+                // El producto quedó en escala sc+so. Volver a sc es dividir
+                // entre 10^so, y AHÍ es donde manda la cláusula ROUNDED.
+                if so > 0 {
+                    let p = 10u64.pow(so);
+                    self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
+                    bmo_lower::redondeo::dividir(&mut self.code, *redondeo);
                 }
                 self.store_var(dst);
             }
-            // DIVIDE decimal exacto: dst / src. Para conservar la escala, el
-            // dividendo se PREESCALA ×10^sc antes de dividir (si no, el
-            // resultado quedaría en escala 0). $10.00 / 4 = $2.50.
-            CobolStatement::Divide(src, dst) => {
-                let sc = self.var_scale(dst);
-                self.load_operand(src, sc);                      // rax = src_scaled (divisor)
+            // El divisor tambien va en SU escala: el dividendo se preescala
+            // por 10^so, no por 10^sc, y asi el cociente sale en la escala del
+            // destino sea cual sea la del divisor.
+            CobolStatement::Divide(src, dst, redondeo) => {
+                let so = self.escala_operando(src);
+                self.load_operand(src, so);                      // divisor, exacto
                 self.code.push(0x50);                            // push rax
-                self.load_var(dst);                              // rax = dst_scaled (dividendo)
-                if sc > 0 {
-                    let p = 10u64.pow(sc);
-                    self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); }); // mov rcx, 10^sc
+                self.load_var(dst);                              // dividendo, escala sc
+                if so > 0 {
+                    let p = 10u64.pow(so);
+                    self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
                     self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]);    // imul rax, rcx
                 }
                 self.code.push(0x59);                            // pop rcx (divisor)
-                self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
-                self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+                // Una division casi nunca es exacta, asi que este es el sitio
+                // donde ROUNDED cambia el numero mas a menudo: `100.00 / 3`.
+                bmo_lower::redondeo::dividir(&mut self.code, *redondeo);
                 self.store_var(dst);
             }
-            CobolStatement::Compute(dst, expr) => {
+            CobolStatement::Compute(dst, expr, redondeo) => {
                 let sc = self.var_scale(dst);
-                self.emit_compute(expr, sc);
+                self.emit_compute(expr, sc, *redondeo);
                 self.store_var(dst);
             }
             // IF/ELSE con bifurcación REAL. Las condiciones se conjugan con
@@ -1504,12 +1568,23 @@ impl Codegen {
     /// expresión ENTERA como un número: `COMPUTE T = A + B` no fallaba, se
     /// evaluaba a 0 y seguía.
     ///
-    /// Toda la expresión se evalúa **en la escala del destino**: los
-    /// operandos se cargan reescalados, el producto se divide entre 10^s y
-    /// el dividendo se preescala. Es el mismo criterio que ya usaban
-    /// MULTIPLY y DIVIDE, aplicado de forma uniforme, y es lo que mantiene
-    /// el decimal exacto sin tocar punto flotante.
-    fn emit_compute(&mut self, expr: &str, scale: u32) {
+    /// ## En qué escala se calcula, y por qué no en la del destino
+    ///
+    /// Se evalúa en la escala **más alta que aparezca** —la del destino o la
+    /// del operando que más decimales traiga— y se baja a la del destino
+    /// **una sola vez, al final**, aplicando ahí la cláusula `ROUNDED`.
+    ///
+    /// Antes se evaluaba directamente en la del destino, y eso tenía un fallo
+    /// que no se veía: `COMPUTE R = BASE * 0.075` con `R PIC V99` cargaba el
+    /// literal en dos decimales, o sea **multiplicaba por `0.07`**. El
+    /// resultado salía mal en el tercer decimal y ningún `ROUNDED` podía
+    /// arreglarlo, porque para cuando llegaba, el dígito ya no estaba.
+    ///
+    /// ⚠ **Dónde sigue sin llegar al estándar**: COBOL manda que los
+    /// intermedios lleven precisión de sobra, no la del operando más largo. Con
+    /// una división en medio (`A / 3 * 3`) eso se nota. Está dicho aquí para
+    /// que no se descubra en un cuadre.
+    fn emit_compute(&mut self, expr: &str, scale: u32, redondeo: Redondeo) {
         // Un subindice DENTRO de la expresion no se puede leer aqui: para este
         // tokenizador un `(` abre un grupo de precedencia, asi que `TOTAL(I)`
         // seria "la tabla TOTAL" y luego "(I)" aparte. Se dice, en vez de
@@ -1529,8 +1604,17 @@ impl Codegen {
             }
         }
         let tokens = Self::tokenize_expr(expr);
+        // La escala de trabajo: la del destino o la del operando más largo.
+        // Subir de escala es exacto, así que calcular arriba nunca empeora.
+        let calc = tokens
+            .iter()
+            .filter(|t| !matches!(t.as_str(), "+" | "-" | "*" | "/" | "(" | ")"))
+            .map(|t| self.escala_operando(t))
+            .fold(scale, u32::max);
         let mut pos = 0usize;
-        self.emit_expr_sum(&tokens, &mut pos, scale);
+        self.emit_expr_sum(&tokens, &mut pos, calc, redondeo);
+        // Y la bajada a la escala del destino, una sola vez y con la cláusula.
+        self.rescale_redondeado(calc, scale, redondeo);
         if pos != tokens.len() {
             self.errors.push(CobolError::new(
                 0,
@@ -1566,13 +1650,13 @@ impl Codegen {
     }
 
     /// `suma := producto (('+'|'-') producto)*`
-    fn emit_expr_sum(&mut self, tokens: &[String], pos: &mut usize, scale: u32) {
-        self.emit_expr_product(tokens, pos, scale);
+    fn emit_expr_sum(&mut self, tokens: &[String], pos: &mut usize, scale: u32, redondeo: Redondeo) {
+        self.emit_expr_product(tokens, pos, scale, redondeo);
         while *pos < tokens.len() && (tokens[*pos] == "+" || tokens[*pos] == "-") {
             let op = tokens[*pos].clone();
             *pos += 1;
             self.code.push(0x50); // push rax (izquierdo)
-            self.emit_expr_product(tokens, pos, scale);
+            self.emit_expr_product(tokens, pos, scale, redondeo);
             self.code.push(0x5A); // pop rdx (izquierdo)
             if op == "+" {
                 self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
@@ -1584,13 +1668,13 @@ impl Codegen {
     }
 
     /// `producto := factor (('*'|'/') factor)*`
-    fn emit_expr_product(&mut self, tokens: &[String], pos: &mut usize, scale: u32) {
-        self.emit_expr_factor(tokens, pos, scale);
+    fn emit_expr_product(&mut self, tokens: &[String], pos: &mut usize, scale: u32, redondeo: Redondeo) {
+        self.emit_expr_factor(tokens, pos, scale, redondeo);
         while *pos < tokens.len() && (tokens[*pos] == "*" || tokens[*pos] == "/") {
             let op = tokens[*pos].clone();
             *pos += 1;
             self.code.push(0x50); // push rax (izquierdo)
-            self.emit_expr_factor(tokens, pos, scale);
+            self.emit_expr_factor(tokens, pos, scale, redondeo);
             self.code.push(0x5A); // pop rdx (izquierdo)
             if op == "*" {
                 // Ambos vienen en escala s; el producto queda en 2s.
@@ -1598,8 +1682,7 @@ impl Codegen {
                 if scale > 0 {
                     let p = 10u64.pow(scale);
                     self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
-                    self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
-                    self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+                    bmo_lower::redondeo::dividir(&mut self.code, redondeo);
                 }
             } else {
                 // rax = divisor, rdx = dividendo. Preescalar el dividendo
@@ -1614,14 +1697,13 @@ impl Codegen {
                     self.code.push(0x58); // pop rax
                     self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
                 }
-                self.code.extend_from_slice(&[0x48, 0x99]);       // cqo
-                self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+                bmo_lower::redondeo::dividir(&mut self.code, redondeo);
             }
         }
     }
 
     /// `factor := '(' suma ')' | operando`
-    fn emit_expr_factor(&mut self, tokens: &[String], pos: &mut usize, scale: u32) {
+    fn emit_expr_factor(&mut self, tokens: &[String], pos: &mut usize, scale: u32, redondeo: Redondeo) {
         let Some(token) = tokens.get(*pos).cloned() else {
             self.errors.push(CobolError::new(0, "expresion COMPUTE incompleta"));
             return;
@@ -1629,7 +1711,7 @@ impl Codegen {
         *pos += 1;
 
         if token == "(" {
-            self.emit_expr_sum(tokens, pos, scale);
+            self.emit_expr_sum(tokens, pos, scale, redondeo);
             if tokens.get(*pos).map(String::as_str) == Some(")") {
                 *pos += 1;
             } else {
@@ -1641,7 +1723,7 @@ impl Codegen {
 
         if token == "-" {
             // Menos unario.
-            self.emit_expr_factor(tokens, pos, scale);
+            self.emit_expr_factor(tokens, pos, scale, redondeo);
             self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); // neg rax
             return;
         }

@@ -1,10 +1,13 @@
 # El plan largo: de "BMO COBOL compila" a "BMO COBOL lleva un banco"
 
 > Escrito el 2026-08-03, el día que entró `COMP-3`.
-> **Revisión 2 — 2026-08-03 por la tarde: verificado contra el código, línea por
-> línea, y reordenado por lo que se midió.** Tres de las dependencias de la
-> primera versión eran falsas y una faltaba. Ver *[Lo que cambió en la revisión
+> **Revisión 2 — verificado contra el código, línea por línea, y reordenado por
+> lo que se midió.** Tres de las dependencias de la primera versión eran falsas
+> y una faltaba. Ver *[Lo que cambió en la revisión
 > 2](#lo-que-cambió-en-la-revisión-2-y-por-qué)*.
+> **Revisión 3 — la decisión `1.0` está TOMADA (camino B) y `2.6 ROUNDED`
+> hecho.** Con `1.0` decidida, el camino a *leer lo que ya existe* se queda sin
+> candados y `0.5` pasa a ser lo siguiente.
 >
 > Es la lista de tareas de [`BANCA_REAL.md`](BANCA_REAL.md): aquel documento dice
 > **qué falta y por qué**; éste dice **en qué orden, qué bloquea a qué, y cómo se
@@ -118,8 +121,35 @@ registros de longitud fija con campos empaquetados dentro.
 **Sin esta fase, BMO COBOL escribe programas nuevos y no puede leer nada de lo
 que ya existe.**
 
-- [ ] **1.0 ★⚠ LA DECISIÓN: dónde vive un campo de un registro** — ⚠ decisión
-      Hay que tomarla antes de 0.5, 1.1 y 1.2, y decide el tamaño de la fase.
+- [x] **1.0 ★ LA DECISIÓN: dónde vive un campo de un registro** — ✅ **TOMADA
+      el 2026-08-03 por Eddi: CAMINO B.**
+
+      > **El `FD` tiene un ÁREA DE REGISTRO —un buffer de bytes del largo del
+      > registro— y cada campo conserva su ranura de trabajo de 64 bits *y*
+      > apunta a su posición dentro del buffer. `READ` llena el buffer y
+      > DESEMPAQUETA cada campo a su ranura; `WRITE` EMPAQUETA al revés.**
+
+      Los motivos, para que no haya que reconstruirlos dentro de seis meses:
+
+      1. **Es lo que dice COBOL, no un rodeo.** El área de registro sólo vale
+         entre un `READ` y el siguiente; el estándar lo dice con esas palabras.
+         Empaquetar en la frontera no imita el modelo: *es* el modelo.
+      2. **Media pieza ya está hecha.** `bmo_lower::packed` desempaqueta desde
+         un puntero desde el 2026-08-03, que es exactamente lo que hace falta
+         para un campo `COMP-3` dentro del buffer.
+      3. **No toca nada de lo que corre en el Ryzen.** El camino A cambia cómo
+         se guarda CADA dato del programa; éste sólo añade una capa en los dos
+         sitios donde el registro cruza al disco.
+      4. **El truncamiento no se cuela de tapadillo.** Con A, los `DISPLAY` de
+         WORKING-STORAGE empezarían a truncar de un día para otro y la salida de
+         programas que ya funcionan cambiaría. Con B eso sigue siendo una
+         decisión aparte (1.5), tomable el día que se quiera y no como efecto
+         secundario de querer leer un fichero.
+
+      **Lo que se paga, dicho:** `REDEFINES` (1.4) sobre un registro **no
+      aliasa de verdad** — dos vistas del mismo espacio serían dos juegos de
+      ranuras. Cuando llegue 1.4 hay que rechazarlo con motivo o darle su
+      propio mecanismo, y no fingir que funciona.
 
       **El problema, medido**: en `codegen.rs` el reparto de la pila hace
       `let aligned = (size + 7) & !7` **por dato**, y `load_var`/`store_var`
@@ -143,9 +173,9 @@ que ya existe.**
         y hay que decidir si se rechaza o se hace aparte.
       - **Coste**: una fracción de A.
 
-      **Recomendación escrita: B**, y A sólo el día que se quiera truncamiento en
-      WORKING-STORAGE. Pero **la decisión es de Eddi y va escrita antes de la
-      primera línea.**
+      **Elegido: B.** Ver los motivos arriba. `A` queda como 1.5, para el día
+      que se quiera truncamiento en WORKING-STORAGE — y ese día será por eso, no
+      por poder leer un fichero.
 
 - [ ] **1.1 ★ Registro BINARIO de longitud fija** — M
       ✅ **DESBLOQUEADO en la revisión 2.** La revisión 1 decía "⛔ necesita
@@ -229,12 +259,33 @@ desbloquea por hora de trabajo.
       `FROM`/`BY`/`UNTIL` y `AFTER` para recorrer tablas de dos dimensiones.
       Misma forma de línea que el `PERFORM UNTIL` que ya compila.
 
-- [ ] **2.6 ★ `ROUNDED` / `ON SIZE ERROR`** — M
-      **No son cláusulas de sintaxis: son de banca.** El redondeo es una decisión
-      legal y un desbordamiento silencioso en un importe es el fallo que no se
-      puede permitir. Con los modos del estándar, no con uno inventado.
-      Va alto porque es lo único de esta fase que cambia el **número**, no la
-      comodidad de escribirlo.
+- [x] **2.6 ★ `ROUNDED`** — ✅ 2026-08-03
+      **Los SEIS modos del estándar**, en las cinco aritméticas, con
+      `ROUNDED MODE IS <modo>`. El emisor vive en `bmo_lower::redondeo` por la
+      misma razón que `packed` y `fmt`: partir un entero y decidir el último
+      dígito es aritmética, no la semántica de un lenguaje.
+      ★ Van **todos** y no sólo el clásico porque el redondeo es una **decisión
+      legal**: hay jurisdicciones que obligan al del banquero (`NEAREST-EVEN`)
+      precisamente porque el clásico tiene sesgo — en una muestra grande los
+      empates siempre suben. Hay un test que lo enseña con cuatro empates
+      seguidos: el clásico inventa dos céntimos y el del banquero cuadra.
+      ★ **Se redondea el RESULTADO, no los operandos**: la operación se hace en
+      la escala más alta que aparezca y se baja una sola vez. Con los modos
+      asimétricos no es lo mismo — el techo de `-9.995` es `-9.99`, pero
+      redondeando el `9.995` primero sale `-10.00`.
+      ★ Y hay **dos implementaciones de la misma regla** —la emitida y una en
+      Rust para los literales— con un test que las compara valor a valor en
+      todo el rango. Dos que tienen que coincidir prueban más que una comparada
+      contra una tabla escrita a mano.
+
+- [ ] **2.6b · `ON SIZE ERROR`** — M
+      Se separó de `ROUNDED` al hacerlo: son dos cosas distintas y la segunda
+      necesita **a dónde saltar** cuando el resultado no cabe en la PICTURE del
+      destino, o sea un cuerpo de sentencias y un `END-ADD`/`END-COMPUTE`.
+      Un desbordamiento silencioso en un importe es el fallo que no se puede
+      permitir, así que esto no se queda sin hacer — sólo se hace aparte.
+      Desbloquea además `ROUNDED MODE IS PROHIBITED`, que hoy se rechaza
+      diciendo justo esto.
 
 - [ ] **2.5 · `INITIALIZE`** — S ⛔ (0.5 para grupos)
       Sobre un dato suelto se puede hoy. `bmo_lower::memoria::rellenar` ya está.
@@ -412,13 +463,14 @@ reparto de pila de hoy**, pero ahora hay dos caminos y no uno (ver `1.0`).
 ```
 HECHO   0.1 VALUE · 0.3 OR (+ los 88 con THRU) · 0.4 PARRAFOS · COMP-3
 
-HECHO   2.1 EVALUATE (las dos formas, con THRU y listas)
+HECHO   2.1 EVALUATE (las dos formas) · 2.6 ROUNDED (los seis modos)
+        1.0 LA DECISION ── TOMADA: camino B, area de registro
 
-AHORA   2.6 ROUNDED / ON SIZE ERROR ── lo unico que cambia el NUMERO
-        0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH · 2.8 COPY
+AHORA   0.5 RECORDS (con el camino B) ──→ 1.2 ──→ 1.1 BINARIO
+        ese es el camino a LEER LO QUE YA EXISTE, y ya no tiene candados
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
-        1.0 LA DECISION ──→ 0.5 RECORDS ──→ 1.2 ──→ 1.1 BINARIO
+        2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
 
 KERNEL  3.1 EXTEND · 3.2 I-O · 3.3 POSICIONAR · 3.4 ESTRATOS ESCRIBE
                           └──→ FASE 4 (VSAM) ──→ FASE 7 (despachador)
@@ -427,8 +479,13 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 ```
 
 **Si hay que elegir UNA cosa por sesión**:
-~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → **`2.6`** → `0.6` → `0.7` →
-`1.7` → `2.2` → `2.7` → `1.0` → `0.5` → `1.2` → `1.1` → `3.1` → `3.3` → …
+~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
+**`0.5`** → `1.2` → `1.1` → `0.7` → `1.7` → `2.6b` → `0.6` → `2.2` → `2.7` →
+`3.1` → `3.3` → …
+
+★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
+ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
+que es lo que separa "COBOL que compila" de "COBOL que sirve para un banco".
 
 ---
 
@@ -453,3 +510,6 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | **0.3 `OR`** — la condición es un árbol con cortocircuito; caen los `88` con `THRU` y con varios valores | `ast::Condicion` + `codegen::emit_jump_if_true/false` |
 | 2026-08-03 | ★ **0.4 PÁRRAFOS** y las cuatro formas del `PERFORM` fuera de línea; `STOP RUN` termina de verdad | `codegen::emit_parrafos` · ejemplo `8-parrafos/` |
 | 2026-08-03 | ★ **2.1 `EVALUATE`** — con sujeto y `EVALUATE TRUE`; `THRU` y listas compartidos con el nivel 88 | `parser::parse_evaluate` + `Condicion::de_valores` |
+| 2026-08-03 | ★ **2.6 `ROUNDED`** — los seis modos del estándar en las cinco aritméticas; se redondea el RESULTADO | `bmo-lower::redondeo` + `codegen.rs` |
+| 2026-08-03 | **Bug de precisión** que destapó `ROUNDED`: `COMPUTE` recortaba los operandos ANTES de operar | `codegen::emit_compute` (escala de trabajo) |
+| 2026-08-03 | ★ **1.0 decidido** — camino B: área de registro con empaquetado en la frontera | este documento, §FASE 1 |

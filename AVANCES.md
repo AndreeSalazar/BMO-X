@@ -10,7 +10,7 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-03**: **678 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
+> **Al 2026-08-03**: **692 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
 > el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
@@ -95,13 +95,47 @@ el **mismo árbol**, el emisor son cinco líneas y heredan cortocircuito y
 precedencia gratis. *Cuando el codegen de una característica sale así de corto,
 es señal de que el parser hizo bien su trabajo.*
 
-**⚠ El hallazgo de por la mañana sigue en pie, pero con dos caminos**: `0.5`
-(campos en su offset) no se puede hacer con el reparto de pila de hoy. La
-revisión 2 añade la tarea **`1.0`** con los dos medidos — zoned decimal de verdad
-(caro, toca lo que corre en el Ryzen) frente a **área de registro con
-empaquetado en la frontera** (recomendado: no toca nada y `bmo_lower::packed` ya
-tiene media pieza hecha). **La decisión es de Eddi y va escrita antes de la
-primera línea.**
+### ★★ `ROUNDED` con los seis modos, y la decisión `1.0` TOMADA
+
+**El redondeo es una decisión LEGAL**, no una cláusula de sintaxis. Medio
+céntimo repetido cuatro millones de veces es dinero, y hay jurisdicciones que
+obligan al **redondeo del banquero** (`NEAREST-EVEN`) precisamente porque el
+clásico tiene **sesgo**: en una muestra grande los empates siempre suben. Por eso
+van **los seis modos del estándar** con su nombre, en las cinco aritméticas, y
+no "el redondeo" a secas. Hay un test que enseña el sesgo con cuatro empates
+seguidos: el clásico inventa dos céntimos y el del banquero cuadra con la suma
+exacta.
+
+★ **Se redondea el RESULTADO, no los operandos.** La operación se hace en la
+escala más alta que aparezca y se baja **una sola vez**. Con los modos
+asimétricos no es lo mismo: el techo de `-9.995` es `-9.99`, pero redondeando el
+`9.995` primero sale `-10.00`. La primera versión lo hacía mal y lo cazó el test
+del signo.
+
+★ **Y hay DOS implementaciones de la misma regla** —la emitida y una en Rust
+para los literales, que se resuelven al compilar— con un test que las compara
+valor a valor en todo el rango alrededor de cada frontera. Dos que tienen que
+coincidir prueban más que una comparada contra una tabla escrita a mano, porque
+la tabla la escribe el mismo que se pudo equivocar en las dos.
+
+★ **Y destapó un bug de precisión que no era de `ROUNDED`**: `COMPUTE` evaluaba
+todo en la escala del destino, así que `COMPUTE R = BASE * 0.075` con `R PIC V99`
+**multiplicaba por `0.07`**. El resultado salía mal en el tercer decimal y ningún
+redondeo podía arreglarlo, porque para cuando llegaba el dígito ya no estaba.
+Ahora se calcula en la escala más alta que aparezca. `ON SIZE ERROR` se separó a
+la tarea `2.6b`: necesita a dónde saltar, y eso es un cuerpo de sentencias.
+
+**★ Y la decisión `1.0` está TOMADA: camino B** — el `FD` tiene un **área de
+registro** (un buffer del largo del registro) y cada campo conserva su ranura de
+trabajo *y* apunta a su posición dentro del buffer; `READ` desempaqueta y `WRITE`
+empaqueta. Los motivos escritos en el plan: es lo que dice el estándar (el área
+sólo vale entre un `READ` y el siguiente), `bmo_lower::packed` ya tiene media
+pieza, no toca nada de lo que corre en el Ryzen, y el truncamiento de los
+`DISPLAY` sigue siendo una decisión aparte en vez de un efecto secundario. Lo que
+se paga, dicho: `REDEFINES` no aliasará de verdad.
+
+**Con `1.0` decidida, `0.5` (records con posiciones) se queda sin candados y es
+lo siguiente** — el primer eslabón de *leer lo que ya existe*.
 
 **Tres cosas comprobadas que los documentos decían al revés:**
 - ✅ **`bmo-verify` SÍ está cableado** — los cuatro frontends lo llaman **antes**

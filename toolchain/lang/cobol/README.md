@@ -67,6 +67,11 @@ that does not exist.
 - `COMPUTE` with real operator precedence
 - `MOVE`, `ADD`, and edited-picture output generated as instructions —
   no interpreter and no mask survive into the binary
+- **`ROUNDED`, with all six standard modes** — `ROUNDED MODE IS NEAREST-EVEN`
+  is banker's rounding, and it is there because rounding is a **legal
+  decision**: the classic mode is biased (ties always go up), and some
+  jurisdictions require the unbiased one. The **result** is rounded, not the
+  operands — with the asymmetric modes those are not the same thing
 - `USAGE COMP-3` (packed decimal) — **the format real bank data is stored in**.
   Two digits per byte, sign in the last nibble, and the field occupies exactly
   what its PICTURE says, so it truncates like the standard requires. The BCD
