@@ -4,7 +4,7 @@ use bmo_abi::syscalls::surface;
 use bmo_sem_asm::Instructions;
 use bmo_sem_asm::x86_64::{Asm, Reg};
 use bmo_lower::x86;
-use crate::ast::{CobolProgram, CobolStatement, CobolCondition, DisplayArg};
+use crate::ast::{CobolProgram, CobolStatement, CobolCondition, Condicion, DisplayArg};
 use crate::ast::error::CobolError;
 use crate::edicion::Plantilla;
 
@@ -97,7 +97,7 @@ struct Codegen {
     /// Los NOMBRES DE CONDICIÓN (nivel 88): apodo → (dato del que cuelga,
     /// valor con el que se compara). No ocupan memoria: son una comparación
     /// con nombre, y por eso viven en un mapa y no en la pila.
-    cond_88: HashMap<String, (String, String)>,
+    cond_88: HashMap<String, (String, Vec<crate::ast::Valor88>)>,
     /// La etiqueta del bloque "subíndice fuera de rango" de cada tabla.
     ///
     /// Uno por tabla y no uno por acceso: el bloque termina el programa, así
@@ -446,10 +446,10 @@ impl Codegen {
             // ★ Un 88 NO es un dato: no se le reserva ni un byte. Es el apodo
             // de una comparación sobre el campo del que cuelga.
             if item.level == 88 {
-                if let (Some(padre), Some(valor)) = (&item.padre, &item.value) {
+                if let Some(padre) = &item.padre {
                     self.cond_88.insert(
                         item.name.to_ascii_uppercase(),
-                        (padre.clone(), valor.clone()),
+                        (padre.clone(), item.valores.clone()),
                     );
                 }
                 continue;
@@ -505,6 +505,12 @@ impl Codegen {
         self.code.extend_from_slice(&((self.stack_size as u32) + 63).to_le_bytes());
         self.code.extend_from_slice(&[0x48, 0x83, 0xE4, 0xC0]); // and rsp, -64
 
+        // ★ Los VALUE, antes de la primera sentencia y despues de repartir la
+        // pila: el valor inicial de un dato tiene que estar puesto ANTES de que
+        // el programa mire nada, y la direccion donde ponerlo no existe hasta
+        // que el reparto esta hecho.
+        self.emit_valores_iniciales(program);
+
         // Emit COBOL statements
         for stmt in &program.statements {
             self.emit_statement(stmt);
@@ -535,6 +541,41 @@ impl Codegen {
             return Err(err.clone());
         }
         Ok(())
+    }
+
+    /// `VALUE` — el valor con el que arranca cada dato.
+    ///
+    /// Se emite como una tanda de `MOVE` implicitos al principio del programa,
+    /// y **pasa por `store_var`** a proposito: es la unica puerta a la memoria
+    /// de una variable, asi que un campo `COMP-3` se inicializa EMPAQUETADO sin
+    /// que esta funcion tenga que saber que existen los nibbles.
+    ///
+    /// Un `VALUE` sobre una tabla inicializa **todos** los elementos, que es lo
+    /// que dice el estandar. Se emite un `store` por casilla en vez de un bucle
+    /// porque el numero se sabe al compilar y una tabla de banca son doce meses
+    /// o cuatro conceptos, no un millon.
+    fn emit_valores_iniciales(&mut self, program: &CobolProgram) {
+        for item in &program.data_items {
+            // Un 88 no es un dato: su VALUE es el valor con el que COMPARA, no
+            // uno que guardar. No tiene memoria donde ponerlo.
+            if item.level == 88 {
+                continue;
+            }
+            let Some(valor) = item.value.clone() else { continue };
+            let escala = item.scale();
+            match item.occurs {
+                None => {
+                    self.load_scaled_imm(&valor, escala);
+                    self.store_var(&item.name);
+                }
+                Some(n) => {
+                    for i in 1..=n {
+                        self.load_scaled_imm(&valor, escala);
+                        self.store_var(&format!("{}({})", item.name, i));
+                    }
+                }
+            }
+        }
     }
 
     fn collect_strings(&mut self, p: &CobolProgram) {
@@ -1052,9 +1093,8 @@ impl Codegen {
                 let else_label = self.fresh_label();
                 let end_label = self.fresh_label();
 
-                for c in cond {
-                    self.emit_jump_if_condition_false(c, else_label);
-                }
+                let cond = cond.clone();
+                self.emit_jump_if_false(&cond, else_label);
                 for s in then_stmts {
                     self.emit_statement(s);
                 }
@@ -1105,11 +1145,13 @@ impl Codegen {
                 let done = self.fresh_label();
 
                 self.bind_label(top);
-                // Salir exige que TODAS las condiciones sean ciertas: la
-                // primera falsa manda al cuerpo.
-                for c in cond {
-                    self.emit_jump_if_condition_false(c, body_label);
-                }
+                // Se SALE cuando la condición se cumple, así que mientras sea
+                // falsa se va al cuerpo. La condición compuesta se emite
+                // entera: `UNTIL FIN = 1 OR ERROR = 1` para con cualquiera de
+                // las dos, y ese `OR` es la forma en la que un batch de verdad
+                // dice "hasta que se acabe o hasta que algo vaya mal".
+                let cond = cond.clone();
+                self.emit_jump_if_false(&cond, body_label);
                 self.emit_jmp(done);
 
                 self.bind_label(body_label);
@@ -1310,7 +1352,125 @@ impl Codegen {
     /// COBOL: `A > B` es `jg`. La versión anterior cargaba los operandos
     /// cruzados y elegía condiciones invertidas a ojo — otra fuente de
     /// error que aquí desaparece.
+    /// Salta a `label` si la condición COMPUESTA es **falsa**.
+    ///
+    /// Es la primitiva que usan `IF` (salta al `ELSE`) y `PERFORM UNTIL`.
+    ///
+    /// ## El cortocircuito no es una optimización
+    ///
+    /// `A AND B` salta al primer fallo sin evaluar `B`, y `A OR B` deja de
+    /// mirar en cuanto una acierta. Se emite así porque es lo que dice el
+    /// estándar, y porque evaluar de más en COBOL no es gratis: un operando
+    /// puede ser un elemento de tabla, y ahí la evaluación lleva **guarda de
+    /// rango** — un `IF I <= 12 AND TOTAL(I) > 0` con `I = 13` tiene que parar
+    /// en la primera, no reventar en la segunda.
+    fn emit_jump_if_false(&mut self, cond: &Condicion, label: u32) {
+        match cond {
+            Condicion::Simple(c) => {
+                let c = c.clone();
+                self.emit_jump_if_condition_false(&c, label);
+            }
+            // Las dos tienen que valer: cualquiera que falle manda al mismo
+            // sitio, y la segunda ni se mira si la primera ya falló.
+            Condicion::Y(izq, der) => {
+                self.emit_jump_if_false(izq, label);
+                self.emit_jump_if_false(der, label);
+            }
+            // Basta una. Si la primera acierta se salta POR ENCIMA de la
+            // segunda; si falla, se cae en ella y decide sola.
+            Condicion::O(izq, der) => {
+                let vale = self.fresh_label();
+                self.emit_jump_if_true(izq, vale);
+                self.emit_jump_if_false(der, label);
+                self.bind_label(vale);
+            }
+        }
+    }
+
+    /// La otra mitad: salta a `label` si la condición es **verdadera**.
+    ///
+    /// Hace falta por el `OR`, y con ella el emisor queda simétrico — no hay
+    /// forma de tener una rama del árbol sin su contraria.
+    fn emit_jump_if_true(&mut self, cond: &Condicion, label: u32) {
+        match cond {
+            Condicion::Simple(c) => {
+                let c = c.clone();
+                self.emit_jump_if_condition_true(&c, label);
+            }
+            // Para que un AND sea verdad tienen que serlo las dos: se salta
+            // fuera al primer fallo, y sólo se llega al salto final si ninguna
+            // falló.
+            Condicion::Y(izq, der) => {
+                let falla = self.fresh_label();
+                self.emit_jump_if_false(izq, falla);
+                self.emit_jump_if_false(der, falla);
+                self.emit_jmp(label);
+                self.bind_label(falla);
+            }
+            Condicion::O(izq, der) => {
+                self.emit_jump_if_true(izq, label);
+                self.emit_jump_if_true(der, label);
+            }
+        }
+    }
+
+    /// Un nivel 88 convertido en la condición que de verdad es.
+    ///
+    /// ```text
+    ///   88 SOLTERO   VALUE 1.          →  ESTADO = 1
+    ///   88 LABORABLE VALUE 1 THRU 5.   →  DIA >= 1 AND DIA <= 5
+    ///   88 FESTIVO   VALUE 6, 7.       →  DIA = 6 OR DIA = 7
+    /// ```
+    ///
+    /// Un rango son los dos extremos INCLUIDOS, que es lo que dice el estándar
+    /// y lo que espera quien escribe `VALUE 1 THRU 5` pensando en cinco días.
+    fn expandir_88(padre: &str, valores: &[crate::ast::Valor88]) -> Condicion {
+        use crate::ast::Valor88;
+        let mut acc: Option<Condicion> = None;
+        for v in valores {
+            let c = match v {
+                Valor88::Uno(x) => {
+                    Condicion::Simple(CobolCondition::Equal(padre.to_string(), x.clone()))
+                }
+                Valor88::Rango(desde, hasta) => Condicion::y(
+                    Condicion::Simple(CobolCondition::GreaterOrEqual(
+                        padre.to_string(),
+                        desde.clone(),
+                    )),
+                    Condicion::Simple(CobolCondition::LessOrEqual(
+                        padre.to_string(),
+                        hasta.clone(),
+                    )),
+                ),
+            };
+            acc = Some(match acc {
+                None => c,
+                Some(izq) => Condicion::o(izq, c),
+            });
+        }
+        // Un 88 sin valores no llega hasta aquí: el parser lo rechaza. Si
+        // llegara, comparar contra nada es falso, no verdadero.
+        acc.unwrap_or_else(|| {
+            Condicion::Simple(CobolCondition::NotEqual("0".to_string(), "0".to_string()))
+        })
+    }
+
+    /// Salta si una comparación SIMPLE es verdadera.
+    ///
+    /// Comparte con su contraria la carga de operandos y la expansión de los
+    /// nombres de condición; lo único que cambia es el código de condición del
+    /// `jcc`, y por eso viven en la misma función con un interruptor en vez de
+    /// duplicadas — dos copias del reparto `push`/`pop` es donde se cuela un
+    /// operando cruzado.
+    fn emit_jump_if_condition_true(&mut self, cond: &CobolCondition, label: u32) {
+        self.emit_comparacion(cond, label, true);
+    }
+
     fn emit_jump_if_condition_false(&mut self, cond: &CobolCondition, label: u32) {
+        self.emit_comparacion(cond, label, false);
+    }
+
+    fn emit_comparacion(&mut self, cond: &CobolCondition, label: u32, salta_si_cierta: bool) {
         // ── Un nombre de condición se expande AQUÍ ──
         //
         // `IF FIN-DE-FICHERO` es `IF FIN = 1` con otro nombre, y el otro nombre
@@ -1319,7 +1479,7 @@ impl Codegen {
         // puede decir "eso no es ningún 88" en vez de tratarlo como una
         // variable que no existe y comparar contra basura.
         if let CobolCondition::Nombre(n) = cond {
-            let Some((padre, valor)) = self.cond_88.get(n).cloned() else {
+            let Some((padre, valores)) = self.cond_88.get(n).cloned() else {
                 self.errors.push(CobolError::new(
                     0,
                     format!(
@@ -1329,20 +1489,32 @@ impl Codegen {
                 ));
                 return;
             };
-            let expandida = CobolCondition::Equal(padre, valor);
-            self.emit_jump_if_condition_false(&expandida, label);
+            // ★ Un 88 con varios valores es un OR, y uno con THRU es un AND de
+            // dos comparaciones. Los dos se expanden AQUÍ y bajan por el mismo
+            // emisor de árboles que un `IF A > 1 OR B = 2` escrito a mano: no
+            // hay un camino especial para los 88, y por eso heredan el
+            // cortocircuito gratis.
+            let expandida = Self::expandir_88(&padre, &valores);
+            if salta_si_cierta {
+                self.emit_jump_if_true(&expandida, label);
+            } else {
+                self.emit_jump_if_false(&expandida, label);
+            }
             return;
         }
 
-        let (a, b, cc_when_false) = match cond {
+        // `cc_falsa` salta cuando la comparación NO se cumple; `cc_cierta`
+        // cuando sí. Van en pareja para que no haya forma de escribir una sin
+        // su contraria y que se despareen con el tiempo.
+        let (a, b, cc_falsa, cc_cierta) = match cond {
             // Ya se resolvió arriba; llegar aquí sería un bug del emisor.
             CobolCondition::Nombre(_) => return,
-            CobolCondition::Equal(a, b) => (a, b, 0x85),          // jne
-            CobolCondition::NotEqual(a, b) => (a, b, 0x84),       // je
-            CobolCondition::Greater(a, b) => (a, b, 0x8E),        // jle
-            CobolCondition::Less(a, b) => (a, b, 0x8D),           // jge
-            CobolCondition::GreaterOrEqual(a, b) => (a, b, 0x8C), // jl
-            CobolCondition::LessOrEqual(a, b) => (a, b, 0x8F),    // jg
+            CobolCondition::Equal(a, b) => (a, b, 0x85, 0x84),          // jne / je
+            CobolCondition::NotEqual(a, b) => (a, b, 0x84, 0x85),       // je  / jne
+            CobolCondition::Greater(a, b) => (a, b, 0x8E, 0x8F),        // jle / jg
+            CobolCondition::Less(a, b) => (a, b, 0x8D, 0x8C),           // jge / jl
+            CobolCondition::GreaterOrEqual(a, b) => (a, b, 0x8C, 0x8D), // jl  / jge
+            CobolCondition::LessOrEqual(a, b) => (a, b, 0x8F, 0x8E),    // jg  / jle
         };
 
         let scale = self.comparison_scale(a, b);
@@ -1353,7 +1525,7 @@ impl Codegen {
         self.load_operand(&b, scale); // rax = derecho
         self.code.push(0x5A); // pop rdx (izquierdo)
         self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax
-        self.emit_jcc(cc_when_false, label);
+        self.emit_jcc(if salta_si_cierta { cc_cierta } else { cc_falsa }, label);
     }
 
     fn emit_mov_eax_syscall(&mut self, nr: u32) {

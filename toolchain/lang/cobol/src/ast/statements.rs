@@ -27,15 +27,15 @@ pub enum CobolStatement {
     Multiply(String, String),
     Divide(String, String),
     Compute(String, String),
-    /// `IF <cond> ... [ELSE ...] END-IF`. Las condiciones se conjugan con
-    /// AND (ver `CobolCondition`).
-    If(Vec<CobolCondition>, Vec<CobolStatement>, Vec<CobolStatement>),
+    /// `IF <cond> ... [ELSE ...] END-IF`. Ver [`Condicion`] para cómo se
+    /// combinan con `AND` y `OR`.
+    If(Condicion, Vec<CobolStatement>, Vec<CobolStatement>),
     /// `PERFORM <n> TIMES ... END-PERFORM` — el cuerpo va en el AST, no
     /// como una cuenta suelta: sin cuerpo no hay nada que repetir.
     PerformTimes(u32, Vec<CobolStatement>),
     /// `PERFORM UNTIL <cond> ... END-PERFORM`. Prueba ANTES de cada
     /// iteración (`WITH TEST BEFORE`, el default del estándar).
-    PerformUntil(Vec<CobolCondition>, Vec<CobolStatement>),
+    PerformUntil(Condicion, Vec<CobolStatement>),
     /// `OPEN INPUT|OUTPUT <fichero>`. El modo decide si se abre para leer o
     /// se CREA para escribir, y son dos puertas distintas del kernel.
     Open(String, String),
@@ -56,9 +56,40 @@ pub enum CobolStatement {
     Expr(String),
 }
 
-/// Una comparación simple. Una lista de ellas se evalúa como **AND**: es lo
-/// que hoy sabe compilar el descenso. `OR` se rechaza en el parser con un
-/// error explícito en vez de compilarse mal en silencio.
+/// Una condición COMPUESTA: comparaciones unidas con `AND` y `OR`.
+///
+/// Era una `Vec<CobolCondition>` conjugada siempre con AND, y el `OR` se
+/// rechazaba con un error explícito. Eso bloqueaba tres cosas de golpe: un `88`
+/// con `THRU`, un `88` con varios valores, y el `WHEN a, b, c` de `EVALUATE`.
+///
+/// Es un ÁRBOL y no una lista porque `A OR B AND C` no significa lo mismo que
+/// `(A OR B) AND C`: **`AND` liga más fuerte que `OR`**, como en el estándar y
+/// como en cualquier lenguaje. Una lista plana no puede representar esa
+/// diferencia, y elegir mal cambia a qué rama va el programa sin que nada
+/// avise.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Condicion {
+    Simple(CobolCondition),
+    /// Las dos. Se evalúa en **cortocircuito**: si la primera falla, la segunda
+    /// ni se calcula.
+    Y(Box<Condicion>, Box<Condicion>),
+    /// Cualquiera de las dos, también en cortocircuito.
+    O(Box<Condicion>, Box<Condicion>),
+}
+
+impl Condicion {
+    /// Une con `AND`, que es lo que hace un `Vec` de comparaciones.
+    pub fn y(izq: Condicion, der: Condicion) -> Condicion {
+        Condicion::Y(Box::new(izq), Box::new(der))
+    }
+
+    pub fn o(izq: Condicion, der: Condicion) -> Condicion {
+        Condicion::O(Box::new(izq), Box::new(der))
+    }
+}
+
+/// Una comparación simple: el operando de la izquierda, el de la derecha, y qué
+/// se pregunta.
 ///
 /// Cada operando es un nombre de dato o un literal; el codegen lo resuelve
 /// mirando si está declarado en la DATA DIVISION.

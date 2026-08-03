@@ -522,6 +522,91 @@ STOP RUN.
         assert!(broken.is_empty(), "\n{}/{} FUNCIONAN. ROTOS:\n{}", total - broken.len(), total, broken.join("\n"));
     }
 
+    // ── VALUE: el valor con el que arranca un dato ──────────────────────
+    //
+    // Se parseaba desde siempre y no se emitía nunca. Un campo declarado con
+    // VALUE arrancaba con lo que hubiera en la pila, y ningún ejemplo lo
+    // destapaba porque todos inicializan a mano con MOVE.
+
+    /// Sin un solo `MOVE`: el dato ya vale lo que dice su declaración.
+    #[test]
+    fn value_inicializa_el_dato() {
+        let src = program(
+            "01 SALDO PIC S9(7)V99 VALUE 100.50.\n01 CUANTOS PIC 9(3) VALUE 7.",
+            "DISPLAY SALDO.\nDISPLAY CUANTOS.",
+        );
+        assert_eq!(run_cobol(&src), "100.50\n7\n");
+    }
+
+    /// El signo del valor inicial. Una cuenta que arranca en descubierto no
+    /// puede arrancar en verde.
+    #[test]
+    fn value_conserva_el_signo() {
+        let src = program("01 A PIC S9(5)V99 VALUE -1234.56.", "DISPLAY A.");
+        assert_eq!(run_cobol(&src), "-1234.56\n");
+    }
+
+    /// `ZERO` / `ZEROS` / `ZEROES` es lo que escribe todo el mundo, y `VALUE 0`
+    /// casi nadie. Las tres son la misma cosa.
+    #[test]
+    fn value_acepta_las_figurativas_del_cero() {
+        for forma in ["ZERO", "ZEROS", "ZEROES", "0"] {
+            let src = program(
+                &format!("01 A PIC S9(5)V99 VALUE {forma}."),
+                "ADD 1.25 TO A.\nDISPLAY A.",
+            );
+            assert_eq!(run_cobol(&src), "1.25\n", "forma {forma}");
+        }
+    }
+
+    /// ★ Un `VALUE` sobre un `COMP-3` tiene que quedar EMPAQUETADO, no como un
+    /// entero crudo en el hueco. Se ve porque el campo trunca a su PICTURE: si
+    /// la inicialización se hubiera saltado el empaquetado, saldrían los cinco
+    /// dígitos.
+    #[test]
+    fn value_sobre_comp3_queda_empaquetado() {
+        let src = program("01 A PIC 9(3) COMP-3 VALUE 12345.", "DISPLAY A.");
+        assert_eq!(run_cobol(&src), "345\n");
+    }
+
+    /// El estándar dice que un `VALUE` sobre una tabla llena **todas** las
+    /// casillas, no la primera.
+    #[test]
+    fn value_sobre_una_tabla_llena_todas_las_casillas() {
+        let src = program(
+            "01 TABLA.\n05 T PIC S9(5)V99 VALUE 9.99 OCCURS 3 TIMES.",
+            "DISPLAY T(1).\nDISPLAY T(2).\nDISPLAY T(3).",
+        );
+        assert_eq!(run_cobol(&src), "9.99\n9.99\n9.99\n");
+    }
+
+    /// El `VALUE` se pone ANTES de la primera sentencia, así que un `MOVE`
+    /// posterior manda. Al revés —inicializar al final— borraría lo que el
+    /// programa acaba de calcular.
+    #[test]
+    fn un_move_posterior_gana_al_value() {
+        let src = program("01 A PIC 9(5) VALUE 111.", "MOVE 222 TO A.\nDISPLAY A.");
+        assert_eq!(run_cobol(&src), "222\n");
+    }
+
+    /// Lo que no se puede guardar se dice, en vez de guardar otra cosa.
+    #[test]
+    fn los_value_que_no_se_pueden_guardar_se_rechazan() {
+        let casos: &[(&str, &str)] = &[
+            ("01 A PIC X(10) VALUE \"HOLA\".", "VALUE de TEXTO"),
+            ("01 A PIC 9(3) VALUE \"HOLA\".", "eso no es un numero"),
+            ("01 A PIC 9(3) VALUE SPACES.", "eso no es un numero"),
+            ("01 A VALUE 5.", "VALUE sin PIC"),
+        ];
+        for (decl, pista) in casos {
+            let src = program(decl, "DISPLAY \"x\".");
+            let err = compile_source_to_bef(&src)
+                .expect_err(&format!("{decl} deberia rechazarse"))
+                .to_string();
+            assert!(err.contains(pista), "{decl} => {err:?}\n  (se esperaba {pista:?})");
+        }
+    }
+
     // ── COMP-3: el formato en el que están los datos de un banco ────────
     //
     // La trampa de esta característica es que se puede fingir entera: guardar
@@ -982,18 +1067,100 @@ STOP RUN.
         assert!(t.contains("no hay ningun dato encima"), "{t}");
     }
 
-    /// `THRU` y varios valores piden un `OR`, que este analizador de
-    /// condiciones no tiene. Se dice, en vez de comparar con el primero y
-    /// callar los demás — que daría un `IF` que a veces acierta.
+    /// ★ `88 … VALUE 1 THRU 5` — los dos extremos INCLUIDOS.
+    ///
+    /// Estaba rechazado porque expandirlo pide un `OR`. Ya hay `OR`, así que se
+    /// expande a `DIA >= 1 AND DIA <= 5` y baja por el mismo emisor de árboles
+    /// que una condición escrita a mano.
+    ///
+    /// Se recorre el rango entero y **los dos vecinos de fuera**: un `>` donde
+    /// va un `>=` sólo se ve en el extremo, y ahí es donde vive el error de
+    /// "el día 1 no era laborable".
     #[test]
-    fn un_88_con_rango_o_con_varios_valores_se_rechaza() {
-        let rango = program("01 E PIC 9.\n88 MEDIO VALUE 3 THRU 5.", "MOVE 4 TO E.");
-        let t = format!("{:?}", compile_source_to_bef(&rango).unwrap_err());
-        assert!(t.contains("THRU") && t.contains("OR"), "{t}");
+    fn un_88_con_rango_compara_el_rango_entero() {
+        for dia in 0..=7 {
+            let esperado = if (1..=5).contains(&dia) { "labor\n" } else { "fiesta\n" };
+            let src = program(
+                "01 DIA PIC 9.\n88 LABORABLE VALUE 1 THRU 5.",
+                &format!(
+                    "MOVE {dia} TO DIA.\n\
+                     IF LABORABLE\nDISPLAY \"labor\"\nELSE\nDISPLAY \"fiesta\"\nEND-IF."
+                ),
+            );
+            assert_eq!(run_cobol(&src), esperado, "dia {dia}");
+        }
+    }
 
-        let varios = program("01 E PIC 9.\n88 MALO VALUE 3, 4.", "MOVE 4 TO E.");
-        let t = format!("{:?}", compile_source_to_bef(&varios).unwrap_err());
-        assert!(t.contains("OR") && t.contains("un 88 por valor"), "{t}");
+    /// Y varios valores sueltos, que es un `OR`. `THROUGH` es el sinónimo largo
+    /// de `THRU` y tiene que valer igual.
+    #[test]
+    fn un_88_con_varios_valores_es_un_or() {
+        for dia in 1..=7 {
+            let esperado = if dia == 6 || dia == 7 { "fin\n" } else { "no\n" };
+            let src = program(
+                "01 DIA PIC 9.\n88 FIN-DE-SEMANA VALUE 6, 7.",
+                &format!(
+                    "MOVE {dia} TO DIA.\n\
+                     IF FIN-DE-SEMANA\nDISPLAY \"fin\"\nELSE\nDISPLAY \"no\"\nEND-IF."
+                ),
+            );
+            assert_eq!(run_cobol(&src), esperado, "dia {dia}");
+        }
+
+        let src = program(
+            "01 D PIC 9.\n88 R VALUE 2 THROUGH 4.",
+            "MOVE 3 TO D.\nIF R\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "si\n", "THROUGH no vale lo mismo que THRU");
+    }
+
+    /// Mezclando las dos formas, que es como se escribe una tabla de códigos de
+    /// verdad: unos sueltos y un tramo.
+    #[test]
+    fn un_88_mezcla_rangos_y_valores_sueltos() {
+        for c in 0..=9 {
+            let esperado = if c == 0 || (3..=5).contains(&c) || c == 9 { "si\n" } else { "no\n" };
+            let src = program(
+                "01 C PIC 9.\n88 VALIDO VALUE 0, 3 THRU 5, 9.",
+                &format!("MOVE {c} TO C.\nIF VALIDO\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF."),
+            );
+            assert_eq!(run_cobol(&src), esperado, "codigo {c}");
+        }
+    }
+
+    /// Un `88` con decimales: el rango se compara en la escala del padre, no en
+    /// enteros. Un `9.99` que se leyera como `9` daría un rango de más.
+    #[test]
+    fn un_88_con_rango_respeta_la_escala_del_padre() {
+        let casos: &[(&str, &str)] = &[
+            ("9.98", "fuera\n"),
+            ("9.99", "dentro\n"),
+            ("15.00", "dentro\n"),
+            ("20.00", "dentro\n"),
+            ("20.01", "fuera\n"),
+        ];
+        for (importe, esperado) in casos {
+            let src = program(
+                "01 IMPORTE PIC S9(5)V99.\n88 EN-TRAMO VALUE 9.99 THRU 20.00.",
+                &format!(
+                    "MOVE {importe} TO IMPORTE.\n\
+                     IF EN-TRAMO\nDISPLAY \"dentro\"\nELSE\nDISPLAY \"fuera\"\nEND-IF."
+                ),
+            );
+            assert_eq!(run_cobol(&src), *esperado, "importe {importe}");
+        }
+    }
+
+    /// Un `88` dentro de una condición compuesta: se combina con lo demás como
+    /// cualquier comparación, porque baja por el mismo árbol.
+    #[test]
+    fn un_88_se_combina_con_otras_condiciones() {
+        let src = program(
+            "01 D PIC 9.\n88 LABORABLE VALUE 1 THRU 5.\n01 SALDO PIC S9(5)V99.",
+            "MOVE 3 TO D.\nMOVE 100.00 TO SALDO.\n\
+             IF LABORABLE AND SALDO > 50.00\nDISPLAY \"abre\"\nELSE\nDISPLAY \"cierra\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "abre\n");
     }
 
     /// Una palabra suelta en un `IF` que no es ningún 88 se rechaza diciendo
@@ -1225,15 +1392,155 @@ STOP RUN.
         assert!(err.message.contains("END-IF"), "mensaje: {}", err.message);
     }
 
-    /// `OR` se rechaza en vez de compilarse como si fuera `AND`.
+    // ── AND / OR: la condición dejó de ser una lista ────────────────────
+    //
+    // Era una `Vec` conjugada siempre con AND, y el `OR` se rechazaba con su
+    // motivo. Ahora es un ÁRBOL, y lo que hay que probar no es que compile:
+    // es que **decida bien**, incluida la precedencia y el cortocircuito.
+
+    /// Las cuatro combinaciones de un `OR`, ejecutadas. Un emisor que colapsara
+    /// el OR en un AND fallaría en las dos de en medio.
     #[test]
-    fn or_conditions_are_rejected_not_miscompiled() {
+    fn el_or_decide_por_las_cuatro_esquinas() {
+        let casos: &[(u32, u32, &str)] = &[
+            (5, 5, "si\n"), // las dos ciertas
+            (5, 0, "si\n"), // sólo la primera
+            (0, 5, "si\n"), // sólo la segunda
+            (0, 0, "no\n"), // ninguna
+        ];
+        for &(a, b, esperado) in casos {
+            let src = program(
+                "01 A PIC 9(3).\n01 B PIC 9(3).",
+                &format!(
+                    "MOVE {a} TO A.\nMOVE {b} TO B.\n\
+                     IF A > 1 OR B > 1\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF."
+                ),
+            );
+            assert_eq!(run_cobol(&src), esperado, "A={a} B={b}");
+        }
+    }
+
+    /// Y las del `AND`, que antes funcionaba pero por otro camino: ahora pasa
+    /// por el mismo árbol y hay que volver a ganárselo.
+    #[test]
+    fn el_and_sigue_decidiendo_por_las_cuatro_esquinas() {
+        let casos: &[(u32, u32, &str)] = &[
+            (5, 5, "si\n"),
+            (5, 0, "no\n"),
+            (0, 5, "no\n"),
+            (0, 0, "no\n"),
+        ];
+        for &(a, b, esperado) in casos {
+            let src = program(
+                "01 A PIC 9(3).\n01 B PIC 9(3).",
+                &format!(
+                    "MOVE {a} TO A.\nMOVE {b} TO B.\n\
+                     IF A > 1 AND B > 1\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF."
+                ),
+            );
+            assert_eq!(run_cobol(&src), esperado, "A={a} B={b}");
+        }
+    }
+
+    /// ★ LA PRECEDENCIA. `AND` liga más fuerte que `OR`, así que
+    /// `A OR B AND C` es `A OR (B AND C)` y **no** `(A OR B) AND C`.
+    ///
+    /// Con `A` cierta y `C` falsa las dos lecturas discrepan: la buena dice sí
+    /// (porque `A` sola basta), la mala dice no. Es exactamente el caso que un
+    /// árbol mal montado compila sin quejarse y manda a la otra rama.
+    #[test]
+    fn and_liga_mas_fuerte_que_or() {
+        let src = program(
+            "01 A PIC 9(3).\n01 B PIC 9(3).\n01 C PIC 9(3).",
+            "MOVE 5 TO A.\nMOVE 5 TO B.\nMOVE 0 TO C.\n\
+             IF A > 1 OR B > 1 AND C > 1\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "si\n", "se leyo (A OR B) AND C en vez de A OR (B AND C)");
+
+        // Y la de al lado, para que no pase por casualidad: con A falsa, el
+        // resultado tiene que venir del AND entero.
+        let src = program(
+            "01 A PIC 9(3).\n01 B PIC 9(3).\n01 C PIC 9(3).",
+            "MOVE 0 TO A.\nMOVE 5 TO B.\nMOVE 0 TO C.\n\
+             IF A > 1 OR B > 1 AND C > 1\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "no\n");
+    }
+
+    /// Tres o más unidas, y mezcladas. Un fold que se dejara la última daría
+    /// verde en los casos de dos y fallaría aquí.
+    #[test]
+    fn se_encadenan_mas_de_dos() {
+        let src = program(
+            "01 A PIC 9(3).\n01 B PIC 9(3).\n01 C PIC 9(3).",
+            "MOVE 0 TO A.\nMOVE 0 TO B.\nMOVE 7 TO C.\n\
+             IF A = 9 OR B = 9 OR C = 7\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "si\n");
+
+        let src = program(
+            "01 A PIC 9(3).\n01 B PIC 9(3).\n01 C PIC 9(3).",
+            "MOVE 1 TO A.\nMOVE 2 TO B.\nMOVE 3 TO C.\n\
+             IF A = 1 AND B = 2 AND C = 3\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "si\n");
+    }
+
+    /// ★ El `OR` dentro de un `PERFORM UNTIL` — que es donde vive de verdad en
+    /// un batch: *"hasta que se acabe el fichero **o** hasta que algo vaya
+    /// mal"*. Sin él, un proceso nocturno no puede pararse por error.
+    #[test]
+    fn un_perform_until_para_con_cualquiera_de_las_dos() {
+        let src = program(
+            "01 I PIC 9(3).\n01 ERROR-SW PIC 9.",
+            "MOVE 0 TO I.\nMOVE 0 TO ERROR-SW.\n\
+             PERFORM UNTIL I = 10 OR ERROR-SW = 1\n\
+             ADD 1 TO I\n\
+             IF I = 4\nMOVE 1 TO ERROR-SW\nEND-IF\n\
+             END-PERFORM.\nDISPLAY I.",
+        );
+        assert_eq!(run_cobol(&src), "4\n", "el bucle no paro por la segunda condicion");
+    }
+
+    /// ★ EL CORTOCIRCUITO, y no como optimización: si la primera falla, la
+    /// segunda **no se evalúa**. Aquí se ve porque la segunda lleva un
+    /// subíndice fuera de rango, y evaluarla mataría el programa con
+    /// `SUBINDICE FUERA DE RANGO`.
+    ///
+    /// Es el patrón que un programa de banca escribe todo el rato: comprobar
+    /// que el índice vale ANTES de usarlo.
+    #[test]
+    fn el_and_corta_antes_de_evaluar_la_segunda() {
+        let src = program(
+            "01 TABLA.\n05 T PIC 9(3) OCCURS 3 TIMES.\n01 I PIC 9(3).",
+            "MOVE 9 TO I.\n\
+             IF I <= 3 AND T(I) > 0\nDISPLAY \"dentro\"\nELSE\nDISPLAY \"fuera\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "fuera\n", "se evaluo T(9) y no debia");
+    }
+
+    /// El mismo corte por el otro lado: si la primera de un `OR` acierta, la
+    /// segunda no se mira.
+    #[test]
+    fn el_or_corta_cuando_la_primera_acierta() {
+        let src = program(
+            "01 TABLA.\n05 T PIC 9(3) OCCURS 3 TIMES.\n01 I PIC 9(3).",
+            "MOVE 9 TO I.\n\
+             IF I > 3 OR T(I) > 0\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF.",
+        );
+        assert_eq!(run_cobol(&src), "si\n", "se evaluo T(9) y no debia");
+    }
+
+    /// Un `OR` dentro de una comparación en palabras no es un `OR` lógico:
+    /// `IS GREATER THAN OR EQUAL TO` lleva uno dentro. Partir por `OR` antes de
+    /// normalizar cortaría la comparación por la mitad.
+    #[test]
+    fn el_or_de_greater_than_or_equal_no_es_un_or() {
         let src = program(
             "01 A PIC 9(3).",
-            "IF A > 1 OR A < 0\n  DISPLAY \"X\"\nEND-IF.",
+            "MOVE 5 TO A.\nIF A IS GREATER THAN OR EQUAL TO 5\nDISPLAY \"si\"\nELSE\nDISPLAY \"no\"\nEND-IF.",
         );
-        let err = compile_source_to_bef(&src).unwrap_err();
-        assert!(err.message.contains("OR"), "mensaje: {}", err.message);
+        assert_eq!(run_cobol(&src), "si\n");
     }
 
     /// El ejemplo del repositorio, ejecutado. Si alguien vuelve a romper el

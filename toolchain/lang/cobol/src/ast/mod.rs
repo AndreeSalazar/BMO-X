@@ -3,10 +3,10 @@ pub mod error;
 pub mod program;
 pub mod statements;
 
-pub use data::DataItem;
+pub use data::{DataItem, Valor88};
 pub use error::CobolError;
 pub use program::SyscallDef;
-pub use statements::{CobolCondition, CobolStatement, DisplayArg};
+pub use statements::{CobolCondition, CobolStatement, Condicion, DisplayArg};
 
 use std::collections::HashMap;
 

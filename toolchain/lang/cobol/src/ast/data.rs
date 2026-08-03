@@ -2,6 +2,19 @@ use crate::ast::error::CobolError;
 use crate::edicion::Plantilla;
 use crate::pic::{parse_pic, PicField, Usage};
 
+/// Uno de los valores de un nivel 88.
+///
+/// Un nombre de condición no compara con UN valor: compara con un conjunto.
+/// `88 LABORABLE VALUE 1 THRU 5.` y `88 FESTIVO VALUE 6, 7.` son las dos formas
+/// que escribe todo el mundo, y las dos estaban rechazadas porque expandirlas
+/// pide un `OR` que el analizador de condiciones no tenía.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Valor88 {
+    Uno(String),
+    /// `VALUE 1 THRU 5` — los dos extremos INCLUIDOS, como manda el estándar.
+    Rango(String, String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DataItem {
     pub level: u32,
@@ -19,6 +32,13 @@ pub struct DataItem {
     /// APODO de una comparación sobre el dato que lo precede. `None` en todo
     /// lo que no sea nivel 88.
     pub padre: Option<String>,
+    /// Los valores con los que compara un nivel 88. Vacío en todo lo demás.
+    ///
+    /// Va aparte de `value` porque un 88 puede tener varios y `value` es uno
+    /// solo: dejarlo ahí obligaría a que cada consumidor volviera a partir el
+    /// texto, y el que se olvidara compararía sólo con el primero **en
+    /// silencio** — que es como estaba antes de rechazarlo.
+    pub valores: Vec<Valor88>,
     /// `OCCURS <n> TIMES` — cuántas veces se repite el dato.
     ///
     /// `None` = un dato suelto. `Some(n)` = una TABLA de `n` elementos, y
@@ -71,7 +91,10 @@ impl DataItem {
             Some(Ok((campo, plantilla))) => (Some(campo), plantilla),
             _ => (None, None),
         };
-        DataItem { level, name, pic, pic_field, edicion, value, usage, padre: None, occurs: None }
+        DataItem {
+            level, name, pic, pic_field, edicion, value, usage,
+            padre: None, valores: Vec::new(), occurs: None,
+        }
     }
 
     /// Bytes de almacenamiento del item (mínimo 8, alineado por el codegen).

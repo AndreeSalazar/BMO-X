@@ -3,14 +3,14 @@ use std::path::PathBuf;
 
 use crate::ast::{
     DisplayArg,
-    CobolCondition, CobolError, CobolProgram, CobolStatement, DataItem, SyscallDef,
+    CobolCondition, CobolError, CobolProgram, CobolStatement, Condicion, DataItem, SyscallDef,
     SyscallMap,
 };
 
 /// Cabecera de un PERFORM ya analizada, antes de leer el cuerpo.
 enum PerformHeader {
     Times(u32),
-    Until(Vec<CobolCondition>),
+    Until(Condicion),
 }
 
 pub struct Parser {
@@ -186,6 +186,103 @@ impl Parser {
         }
     }
 
+    /// Los valores de un `88`, tal cual los escribió quien lo declaró.
+    ///
+    /// `rest` es la línea entera sin el nivel: `NOMBRE VALUE 1 THRU 5` o
+    /// `NOMBRE VALUES 6, 7`. Se busca el `VALUE`/`VALUES` y se parte lo que
+    /// venga detrás por comas; cada trozo puede ser un valor o un rango.
+    ///
+    /// La coma es separador Y puede ser parte de un número en algunas
+    /// convenciones — aquí no: BMO COBOL usa el punto decimal, así que una coma
+    /// separa siempre. Está dicho para que nadie lo descubra por su cuenta.
+    fn parse_valores_88(
+        rest: &str,
+        name: &str,
+        line_no: usize,
+    ) -> Result<Vec<crate::ast::Valor88>, CobolError> {
+        use crate::ast::Valor88;
+
+        let arriba = rest.to_ascii_uppercase();
+        let corte = ["VALUES", "VALUE"]
+            .iter()
+            .find_map(|p| arriba.find(p).map(|i| i + p.len()))
+            .ok_or_else(|| {
+                CobolError::new(line_no, format!("{name}: falta el VALUE del nombre de condicion"))
+            })?;
+        let cola = rest[corte..].trim().trim_end_matches('.').trim();
+        // `VALUE IS 1` es legal y el `IS` sobra.
+        let cola = Self::strip_leading_word(cola, "IS");
+
+        let mut out = Vec::new();
+        for trozo in cola.split(',') {
+            let t = trozo.trim();
+            if t.is_empty() {
+                continue;
+            }
+            let arriba = t.to_ascii_uppercase();
+            // El rango: `1 THRU 5`, con los dos extremos incluidos.
+            let separador = ["THROUGH", "THRU"]
+                .iter()
+                .find_map(|p| arriba.find(&format!(" {p} ")).map(|i| (i, p.len() + 2)));
+            match separador {
+                Some((i, largo)) => {
+                    let desde = Self::normalizar_figurativa(t[..i].trim());
+                    let hasta = Self::normalizar_figurativa(t[i + largo..].trim());
+                    if desde.is_empty() || hasta.is_empty() {
+                        return Err(CobolError::new(
+                            line_no,
+                            format!("{name}: un THRU necesita los dos extremos"),
+                        ));
+                    }
+                    out.push(Valor88::Rango(desde, hasta));
+                }
+                None => out.push(Valor88::Uno(Self::normalizar_figurativa(t))),
+            }
+        }
+        if out.is_empty() {
+            return Err(CobolError::new(
+                line_no,
+                format!("{name}: el VALUE esta vacio y no compara nada"),
+            ));
+        }
+        Ok(out)
+    }
+
+    /// Las constantes figurativas que hoy tienen sentido en un campo numerico.
+    ///
+    /// `SPACE`, `HIGH-VALUE`, `LOW-VALUE` y `QUOTE` se dejan pasar TAL CUAL a
+    /// proposito: son de texto, y el sitio donde se rechazan es la comprobacion
+    /// de "esto no es un numero", que da un mensaje mejor —dice cuales SI
+    /// valen— que uno generico de aqui.
+    fn normalizar_figurativa(v: &str) -> String {
+        match v.trim().to_ascii_uppercase().as_str() {
+            "ZERO" | "ZEROS" | "ZEROES" => "0".to_string(),
+            _ => v.to_string(),
+        }
+    }
+
+    /// ¿Es un literal numerico de COBOL? Signo opcional, digitos, y como mucho
+    /// un punto decimal.
+    fn es_numero_cobol(v: &str) -> bool {
+        let s = v.trim().trim_start_matches(['+', '-']);
+        if s.is_empty() {
+            return false;
+        }
+        let mut puntos = 0;
+        for c in s.chars() {
+            if c == '.' {
+                puntos += 1;
+                if puntos > 1 {
+                    return false;
+                }
+            } else if !c.is_ascii_digit() {
+                return false;
+            }
+        }
+        // Un punto solo no es un numero, y `9.` tampoco lo es en COBOL.
+        s.chars().any(|c| c.is_ascii_digit()) && !s.ends_with('.')
+    }
+
     /// ¿Esta palabra es un `USAGE` escrito sin la palabra `USAGE` delante?
     ///
     /// Incluye las que NO se compilan, y a proposito: reconocerlas aqui es lo
@@ -306,6 +403,11 @@ impl Parser {
         }
 
         let usage = usage.unwrap_or(crate::pic::Usage::Display);
+        // Las CONSTANTES FIGURATIVAS son parte del idioma, no azucar: `VALUE
+        // ZERO` es lo que escribe todo el mundo y `VALUE 0` casi nadie. Se
+        // traducen aqui, una sola vez, en vez de que cada consumidor del AST
+        // tenga que acordarse de las tres formas de escribir el cero.
+        let value = value.map(|v| Self::normalizar_figurativa(&v));
         let mut item = DataItem::new_with_usage(level, name, pic, value, usage);
 
         // ── Donde un COMP-3 no tiene sentido ──
@@ -370,27 +472,55 @@ impl Parser {
                     format!("{} necesita su VALUE: un nombre de condicion sin valor no compara nada", item.name),
                 ));
             }
-            // `THRU` y varios valores piden un OR, y este analizador de
-            // condiciones no lo tiene todavía. Se dice en vez de comparar sólo
-            // con el primero y callar los demás.
-            let arriba = rest.to_ascii_uppercase();
-            if arriba.contains(" THRU ") || arriba.contains(" THROUGH ") {
-                return Err(CobolError::new(
-                    line_no,
-                    format!("{}: VALUE ... THRU ... necesita un OR, que este compilador todavia no tiene", item.name),
-                ));
-            }
-            if rest.contains(',') {
+            // ★ `VALUE 1 THRU 5` y `VALUE 6, 7` — las dos formas que escribe
+            // todo el mundo, y que estaban rechazadas porque expandirlas pide un
+            // OR. Ya hay OR.
+            item.valores = Self::parse_valores_88(rest, &item.name, line_no)?;
+            return Ok(Some(item));
+        }
+
+        // ── `VALUE` en un dato: el valor con el que ARRANCA ──
+        //
+        // Se parseaba desde siempre y **no se emitia nunca**: `codegen.rs` solo
+        // miraba `item.value` para los 88, asi que `01 SALDO PIC 9(5)V99 VALUE
+        // 100.00.` compilaba y SALDO arrancaba con lo que hubiera en la pila.
+        // Ningun ejemplo lo destapaba porque todos inicializan con `MOVE`.
+        //
+        // Aqui se comprueba lo que el codegen no puede decir con numero de
+        // linea; el que emite es `emit_valores_iniciales`.
+        if let Some(v) = item.value.clone() {
+            let Some(campo) = item.pic_field.clone() else {
                 return Err(CobolError::new(
                     line_no,
                     format!(
-                        "{}: varios valores en un 88 necesitan un OR, que este compilador todavia no tiene. \
-                         Declara un 88 por valor",
+                        "{}: VALUE sin PIC. Un valor inicial necesita saber en que cabe: \
+                         cuantos digitos y donde cae la coma",
+                        item.name
+                    ),
+                ));
+            };
+            if !campo.numeric {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "{} PIC {}: un VALUE de TEXTO todavia no se guarda. Los campos \
+                         alfanumericos no se almacenan como caracteres aun, asi que \
+                         aceptarlo guardaria un numero donde pusiste letras",
+                        item.name,
+                        item.pic.as_deref().unwrap_or("?")
+                    ),
+                ));
+            }
+            if !Self::es_numero_cobol(&v) {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "{} VALUE {v}: eso no es un numero. En un campo numerico valen \
+                         un literal (`100.00`, `-5`) y las figurativas ZERO / ZEROS / ZEROES",
                         item.name
                     ),
                 ));
             }
-            return Ok(Some(item));
         }
 
         if let Some(n) = occurs {
@@ -729,7 +859,7 @@ impl Parser {
     fn parse_if(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let head = line[3..].trim();
         let head = Self::strip_trailing_word(head, "THEN");
-        let conditions = Self::parse_conditions(head, line_no)?;
+        let conditions = Self::parse_condicion(head, line_no)?;
 
         let mut then_branch = Vec::new();
         let mut else_branch = Vec::new();
@@ -779,7 +909,7 @@ impl Parser {
 
         let header = if let Some(pos) = upper.find("UNTIL ") {
             if pos == 0 {
-                PerformHeader::Until(Self::parse_conditions(rest[6..].trim(), line_no)?)
+                PerformHeader::Until(Self::parse_condicion(rest[6..].trim(), line_no)?)
             } else {
                 return Err(CobolError::new(
                     line_no,
@@ -837,27 +967,45 @@ impl Parser {
     /// estándar en palabras: `A IS EQUAL TO B`, `A IS GREATER THAN B`,
     /// `A IS NOT LESS THAN B`… Varias condiciones se unen con `AND`.
     ///
-    /// `OR` se RECHAZA con un error explícito: mezclar AND y OR necesita un
-    /// árbol de condiciones, y compilarlo como si fuera AND daría un
-    /// programa que corre y decide mal.
-    fn parse_conditions(text: &str, line_no: usize) -> Result<Vec<CobolCondition>, CobolError> {
+    /// Se combinan con `AND` y con `OR`, y **`AND` liga más fuerte**: por eso
+    /// hay dos niveles de análisis y no una lista plana. `A OR B AND C` es
+    /// `A OR (B AND C)`, como manda el estándar — leerlo al revés manda el
+    /// programa a la otra rama sin que nada avise.
+    ///
+    /// La normalización de las formas en palabras corre PRIMERO, y eso no es
+    /// casualidad: `IS GREATER THAN OR EQUAL TO` lleva un `OR` dentro que no es
+    /// un `OR` lógico. Partir antes de normalizar lo cortaría por la mitad.
+    fn parse_condicion(text: &str, line_no: usize) -> Result<Condicion, CobolError> {
         let normalized = Self::normalize_condition_words(text);
-        if normalized.to_ascii_uppercase().split_whitespace().any(|w| w == "OR") {
-            return Err(CobolError::new(
-                line_no,
-                "condiciones con OR aun no se compilan (haria falta un arbol \
-                 AND/OR); reescribela con AND o con IF anidados",
-            ));
-        }
+        Self::parse_condicion_o(&normalized, line_no)
+    }
 
-        let mut out = Vec::new();
-        for part in Self::split_on_word(&normalized, "AND") {
-            out.push(Self::parse_one_condition(part.trim(), line_no)?);
+    /// El nivel de menos fuerza: `OR`.
+    fn parse_condicion_o(text: &str, line_no: usize) -> Result<Condicion, CobolError> {
+        let partes = Self::split_on_word(text, "OR");
+        let mut acc: Option<Condicion> = None;
+        for parte in partes {
+            let c = Self::parse_condicion_y(parte, line_no)?;
+            acc = Some(match acc {
+                None => c,
+                Some(izq) => Condicion::o(izq, c),
+            });
         }
-        if out.is_empty() {
-            return Err(CobolError::new(line_no, "condicion vacia"));
+        acc.ok_or_else(|| CobolError::new(line_no, "condicion vacia"))
+    }
+
+    /// El nivel de más fuerza: `AND`.
+    fn parse_condicion_y(text: &str, line_no: usize) -> Result<Condicion, CobolError> {
+        let partes = Self::split_on_word(text, "AND");
+        let mut acc: Option<Condicion> = None;
+        for parte in partes {
+            let c = Condicion::Simple(Self::parse_one_condition(parte.trim(), line_no)?);
+            acc = Some(match acc {
+                None => c,
+                Some(izq) => Condicion::y(izq, c),
+            });
         }
-        Ok(out)
+        acc.ok_or_else(|| CobolError::new(line_no, "condicion vacia"))
     }
 
     /// Convierte las formas en palabras del estándar al operador simbólico
