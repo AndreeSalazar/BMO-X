@@ -242,6 +242,14 @@ pub extern "C" fn _start() -> ! {
     // respuestas de por qué algo no arrancó.
     let mut klog_desplazamiento = 0u64;
 
+    /// Qué tecla de la calculadora tiene el puntero encima, si alguna.
+    ///
+    /// Se lleva como estado porque el realce sólo se repinta **cuando cambia**:
+    /// repintar la calculadora entera en cada fotograma que el ratón se mueva
+    /// un píxel serían veinte rectángulos y veinte glifos por vuelta para
+    /// enseñar exactamente lo mismo.
+    let mut calc_encima: Option<u8> = None;
+
     // ── El FOCO ──
     //
     // Quien recibe las teclas cuando hay mas de una ventana. La politica vive
@@ -857,7 +865,7 @@ pub extern "C" fn _start() -> ! {
                             Orden::Calculadora => {
                                 calc.visible = !calc.visible;
                                 if calc.visible {
-                                    pintar_calc(&p, &calc_caja, &calc);
+                                    pintar_calc(&p, &calc_caja, &calc, calc_encima);
                                     salida.texto(b"  calculadora: la cara en Rust, el calculo en COBOL
 ");
                                 } else {
@@ -1197,11 +1205,12 @@ pub extern "C" fn _start() -> ! {
             // La rueda, primero: mueve el historial de la salida. Es lo que
             // pidio Eddi —"ver y scrollear"— y funciona con la rueda o con
             // PgUp/PgDn, porque un teclado siempre hay.
-            if giro != 0 {
-                // Tres filas por muesca: una sola se queda corta y una pagina
-                // entera se pasa. Es el paso de cualquier terminal.
-                salida.mover_vista(giro * 3);
-            }
+            // ★ La rueda se atiende MAS ABAJO, cuando ya se sabe sobre que
+            // ventana esta el puntero. Antes se atendia aqui y siempre movia el
+            // historial de salida: con la consola del kernel abierta y encima,
+            // girar la rueda desplazaba una rejilla que ni siquiera se veia.
+            //
+            // Ver `bajo_el_puntero`.
             // ── Los botones de la calculadora ──
             let boton = pos.botones != 0;
             if calc.visible && boton && !boton_antes && !calc.esperando {
@@ -1236,7 +1245,7 @@ pub extern "C" fn _start() -> ! {
                         }
                         d => calc.meter(d),
                     }
-                    pintar_calc(&p, &calc_caja, &calc);
+                    pintar_calc(&p, &calc_caja, &calc, calc_encima);
                 }
             }
             // ── El raton tambien manda en el foco ──
@@ -1266,6 +1275,60 @@ pub extern "C" fn _start() -> ! {
                     .into_iter()
                     .find(|&v| v != arriba_antes && en(v))
             };
+            // ── ★ LA RUEDA VA A LA VENTANA QUE HAY DEBAJO ──
+            //
+            // Es lo que hace cualquier sistema y lo que la mano espera sin
+            // pensarlo: se gira donde se mira. Antes iba SIEMPRE al historial
+            // de salida, así que con la consola del kernel delante la rueda
+            // movía una rejilla tapada — el gesto no hacía nada visible y
+            // parecía que la rueda no funcionaba.
+            //
+            // Sin ventana debajo no se hace nada, y eso también es una
+            // decisión: mandar el giro a la ventana con el foco cuando el
+            // puntero está en el escritorio mueve cosas que no se están
+            // mirando.
+            if giro != 0 {
+                match bajo_el_puntero {
+                    Some(V_KLOG) => {
+                        // Positivo es hacia arriba, y en un log "arriba" es
+                        // hacia ATRÁS en el tiempo: el desplazamiento cuenta
+                        // líneas hacia el pasado, así que suma.
+                        let hay = bmo::klog_lineas();
+                        let paso = (giro * 3) as i64;
+                        let nuevo = klog_desplazamiento as i64 + paso;
+                        klog_desplazamiento =
+                            nuevo.clamp(0, hay.saturating_sub(1) as i64) as u64;
+                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
+                    }
+                    Some(V_EJECUTAR) => {
+                        // Tres filas por muesca: una sola se queda corta y una
+                        // página entera se pasa. Es el paso de un terminal.
+                        salida.mover_vista(giro * 3);
+                    }
+                    // La consola de datos no tiene nada que desplazar todavía:
+                    // cabe entera. Cuando enseñe el árbol de nodos, aquí entra.
+                    _ => {}
+                }
+            }
+
+            // ── El realce de la calculadora ──
+            //
+            // Sólo cuando CAMBIA la tecla señalada, y sólo si la calculadora se
+            // ve y no está tapada. Al salir de ella el realce se apaga, que es
+            // la mitad que se olvida siempre: un botón que se queda encendido
+            // cuando ya no lo señalas miente sobre dónde está el ratón.
+            let encima_ahora = if calc.visible && arriba_antes == V_EJECUTAR {
+                calc_caja.tecla_en(pos.x, pos.y)
+            } else {
+                None
+            };
+            if encima_ahora != calc_encima {
+                calc_encima = encima_ahora;
+                if calc.visible {
+                    pintar_calc(&p, &calc_caja, &calc, calc_encima);
+                }
+            }
+
             if let Some(v) = bajo_el_puntero {
                 // Pasar por encima: solo hace algo en modo `Puntero`, y la
                 // guarda esta DENTRO de la politica — aqui solo se cuenta lo
@@ -1383,7 +1446,7 @@ pub extern "C" fn _start() -> ! {
                                 // hace nada—, así que llamarlo aquí no cuesta
                                 // nada en los fotogramas que ya lo apartaron.
                                 bajo.quitar(&p);
-                                pintar_calc(&p, &calc_caja, &calc);
+                                pintar_calc(&p, &calc_caja, &calc, calc_encima);
                             }
                         } else if resp_n < resp.len() && b >= 0x20 {
                             resp[resp_n] = b;
@@ -1468,7 +1531,27 @@ pub extern "C" fn _start() -> ! {
         // ventana supiera esquivarlo — que es justo lo que no se puede pedir a
         // una ventana que todavía no existe.
         if ax != u32::MAX {
-            bajo.poner(&p, ax, ay);
+            // ★ QUÉ ESTÁ DICIENDO EL PUNTERO.
+            //
+            // Se decide aquí, al final del fotograma, porque es aquí donde ya
+            // se sabe todo lo que pasó en él: qué ventana quedó arriba, dónde
+            // acabó el ratón y si la calculadora está abierta.
+            //
+            // El orden de las preguntas es el Z-order otra vez: lo que está
+            // encima manda. Un botón de la calculadora tapado por la consola
+            // del kernel no puede pedir la mano — señalaría algo que no se
+            // puede pulsar, que es peor que no señalar nada.
+            let forma = if calc.visible
+                && arriba_antes == V_EJECUTAR
+                && calc_caja.tecla_en(ax, ay).is_some()
+            {
+                escena::cursor::Forma::Mano
+            } else if visible && arriba_antes == V_EJECUTAR && caja.en_campo(ax, ay) {
+                escena::cursor::Forma::Texto
+            } else {
+                escena::cursor::Forma::Flecha
+            };
+            bajo.poner(&p, ax, ay, forma);
         }
 
         // ★ Y ahora EMPUJARLO a la pantalla.

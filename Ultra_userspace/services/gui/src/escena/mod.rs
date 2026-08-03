@@ -141,6 +141,19 @@ impl Caja {
     pub(crate) fn contiene(&self, x: u32, y: u32) -> bool {
         x >= self.x && x < self.x + CAJA_ANCHO && y >= self.y && y < self.y + CAJA_ALTO
     }
+
+    /// ¿Este píxel cae DENTRO del campo donde se escribe?
+    ///
+    /// Lo usa el puntero para cambiar a la barra de texto. Es la misma cuenta
+    /// que ya hacía `color_escena` para saber qué color devolver, dicha una vez
+    /// y con nombre: dos copias de la misma geometría se separan en cuanto
+    /// alguien mueve el campo dos píxeles.
+    pub(crate) fn en_campo(&self, x: u32, y: u32) -> bool {
+        x >= self.campo_x
+            && x < self.campo_x + self.campo_ancho
+            && y >= self.campo_y
+            && y < self.campo_y + self.campo_alto
+    }
 }
 
 /// Qué color le toca a un píxel según la escena. Es el modelo entero del

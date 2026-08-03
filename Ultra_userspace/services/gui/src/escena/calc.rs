@@ -151,7 +151,26 @@ impl CalcCaja {
     }
 }
 
-pub(crate) fn pintar_calc(p: &bmo::Pantalla, cc: &CalcCaja, c: &Calc) {
+/// Cuánto se aclara un botón cuando el puntero está encima.
+///
+/// ★ El realce va por SUMA y no por un color aparte, y es a propósito: cada
+/// clase de tecla tiene el suyo —igual, operador, dígito— y una tabla de
+/// colores "de encima" sería el doble de constantes que mantener sincronizadas.
+/// Sumar conserva la familia del botón y sólo dice "éste".
+const REALCE: u32 = 0x0020_2830;
+
+fn aclarar(color: u32) -> u32 {
+    // Canal a canal y con tope: sumar sobre el `u32` entero desbordaría de un
+    // componente al siguiente y un botón azul se volvería verde al pasar por
+    // encima.
+    let r = ((color >> 16) & 0xFF).min(0xFF - ((REALCE >> 16) & 0xFF)) + ((REALCE >> 16) & 0xFF);
+    let g = ((color >> 8) & 0xFF).min(0xFF - ((REALCE >> 8) & 0xFF)) + ((REALCE >> 8) & 0xFF);
+    let b = (color & 0xFF).min(0xFF - (REALCE & 0xFF)) + (REALCE & 0xFF);
+    (r << 16) | (g << 8) | b
+}
+
+/// Pinta la calculadora. `encima` es la tecla que tiene el puntero encima.
+pub(crate) fn pintar_calc(p: &bmo::Pantalla, cc: &CalcCaja, c: &Calc, encima: Option<u8>) {
     p.rect(cc.x, cc.y, cc.ancho, cc.alto, CAJA_BORDE);
     p.rect(cc.x + 2, cc.y + 2, cc.ancho - 4, cc.alto - 4, CALC_FONDO);
 
@@ -170,11 +189,14 @@ pub(crate) fn pintar_calc(p: &bmo::Pantalla, cc: &CalcCaja, c: &Calc) {
                 continue;
             }
             let (bx, by) = cc.boton(fila, col);
-            let color = match t {
+            let base = match t {
                 b'=' => CALC_TECLA_IGUAL,
                 b'+' | b'-' | b'*' | b'/' | b'C' => CALC_TECLA_OP,
                 _ => CALC_TECLA,
             };
+            // El botón bajo el puntero se aclara. Es la otra mitad de la mano:
+            // el cursor dice "aquí se pulsa" y esto dice "esto de aquí".
+            let color = if encima == Some(t) { aclarar(base) } else { base };
             p.rect(bx, by, CALC_BOTON, CALC_BOTON, color);
             // La etiqueta, centrada.
             p.glifo(
