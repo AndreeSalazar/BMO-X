@@ -137,6 +137,28 @@ se paga, dicho: `REDEFINES` no aliasará de verdad.
 **Con `1.0` decidida, `0.5` (records con posiciones) se queda sin candados y es
 lo siguiente** — el primer eslabón de *leer lo que ya existe*.
 
+### ★ LA ESTRATEGIA, decidida el 2026-08-03: primero lo que no depende del sistema
+
+Está escrita arriba del todo en `PLAN_BANCA.md`, con las dos listas separadas.
+
+**Va primero TODO lo que es sólo compilador** —`0.5`, `1.1`, `1.2`, el texto,
+`FILE STATUS`, `STRING`, `INSPECT`, `SEARCH`, `COPY`, `SORT`, las intrínsecas—
+por tres razones:
+
+1. **Ahí está el salto más grande que queda y no tiene candado.** Leer
+   **registros binarios de verdad** es lo que separa *"COBOL nuevo"* de *"COBOL
+   que abre los datos que ya tienes"*, y se comprobó que **no necesita seek**.
+2. El trabajo de kernel **no se pone más difícil por esperar**.
+3. Cada sesión de compilador **entrega algo que corre**; una de kernel no toca
+   un `.cob` hasta que están la superficie, el kernel y el emulador.
+
+**⚠ Y el techo, dicho:** con sólo eso se llega al **batch** —leer, calcular,
+escribir— que es el 80 % del COBOL que existe, pero **no** a buscar una cuenta
+sin recorrer el fichero, ni a `REWRITE`, ni a varios usuarios. Eso son **tres
+operaciones de `KIND_ARCHIVO`** (`EXTEND`, `I-O`, posicionar) y `3.4`. No son una
+montaña, pero no se pueden saltar — y por eso están en la lista, al final, no
+descartadas.
+
 **Tres cosas comprobadas que los documentos decían al revés:**
 - ✅ **`bmo-verify` SÍ está cableado** — los cuatro frontends lo llaman **antes**
   de escribir el `.bex`. Lo que sigue sin usarlo es el **kernel**.

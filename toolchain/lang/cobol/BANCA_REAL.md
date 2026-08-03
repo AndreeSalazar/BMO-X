@@ -24,6 +24,14 @@ EXT.   extensiones de IBM            -> COMP-3 ✅ · CALL, EVALUATE, STRING, SO
 > [`PLAN_BANCA.md`](PLAN_BANCA.md).** Este documento dice **qué falta y por
 > qué**; aquél dice **en qué orden, qué bloquea a qué, y cómo se sabe que una
 > pieza está hecha**. Si vienes a trabajar, ve allí.
+>
+> **La estrategia, decidida el 2026-08-03: primero TODO lo que no depende del
+> sistema.** Lo que queda de compilador es mucho y ahí está el salto grande que
+> falta —leer registros binarios de verdad, que se comprobó que **no necesita
+> nada del kernel**—. Lo de abajo sigue haciendo falta y no se descarta: son
+> **tres operaciones pequeñas** (`EXTEND`, `I-O`, posicionar) y sin ellas **el
+> techo es el batch**. Pero no se ponen más difíciles por esperar, y cada sesión
+> de compilador entrega algo que corre.
 
 **No se clona nada de esto.** Hace falta la **capacidad**, no la **forma**. Un
 `EXEC CICS` con la sintaxis de 1968 no aporta nada; lo que aporta es que la

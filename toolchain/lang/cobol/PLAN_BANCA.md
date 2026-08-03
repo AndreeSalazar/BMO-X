@@ -48,6 +48,57 @@ citarlo.
 
 ---
 
+# ★ LA ESTRATEGIA: primero todo lo que no depende del sistema
+
+**Decidido el 2026-08-03 por Eddi.** Está aquí arriba y no al final porque es lo
+que decide qué se toca en cada sesión.
+
+## Las dos listas, separadas
+
+Toda tarea de este plan cae en una de dos, y hay que saber en cuál antes de
+empezarla:
+
+| | |
+|---|---|
+| **SIN candado** — sólo `toolchain/lang/cobol` y `toolchain/forge` | `0.5` records · `1.1` registro binario · `1.2` campos posicionales · `1.3` MOVE de grupo · `0.7` texto · `1.7` FILE STATUS · `1.6` EBCDIC · `2.2` PERFORM VARYING · `2.3` STRING · `2.4` INSPECT · `2.5` INITIALIZE · `2.6b` ON SIZE ERROR · `2.7` SEARCH · `2.8` COPY · `2.9` intrínsecas · `0.6` GO TO · `0.2` parser de tokens · `5.1` SORT |
+| **CON candado** — pide kernel, ESTRATOS o una decisión de arquitectura | `3.1` EXTEND · `3.2` I-O · `3.3` posicionar · `3.4` ESTRATOS escribe · toda la **fase 4** (VSAM) · toda la **fase 7** (despachador) · `6.1` el enlazador y con él `6.2`–`6.6` |
+
+## La regla, y por qué
+
+> **Se hace primero TODO lo de la columna izquierda.**
+
+1. **Ahí está el salto más grande que queda, y no tiene candado.** Leer
+   **registros binarios de verdad** —campos en su sitio, importes empaquetados—
+   es lo que separa *"COBOL nuevo"* de *"COBOL que abre los datos que ya
+   tienes"*, y se comprobó que **no necesita seek**: `ARCH_OP_LEER` ya saca
+   bytes crudos y está en el kernel y en el emulador. Es puro compilador.
+2. **El trabajo de sistema no se pone más difícil por esperar.** Las tres
+   operaciones que faltan son pequeñas y están descritas; el orden entre ellas y
+   COBOL no cambia lo que cuestan.
+3. **Cada sesión de COBOL entrega algo que corre.** Una de kernel no: hay que
+   cambiar la superficie, el kernel y el emulador antes de que un `.cob` note
+   nada.
+
+## ⚠ Y el TECHO, dicho antes de que nadie lo suponga
+
+**Haciendo sólo la columna izquierda se llega hasta el BATCH y no más.** Leer un
+fichero, calcular, escribir otro — que es exactamente lo que un banco hace de
+noche, y no es poco: es el 80 % del COBOL que hay escrito en el mundo.
+
+Lo que **no** se alcanza sin la columna derecha:
+
+- **Buscar una cuenta sin leer el fichero entero.** *"Dame la 4471-9982"* con
+  cuatro millones de registros. Eso es el índice, y el índice pide `3.2` y `3.3`.
+- **Modificar un registro en su sitio.** `REWRITE` y `DELETE` necesitan un
+  handle que lea y escriba, y hoy el modo se fija al abrir.
+- **Transacciones y varios usuarios a la vez.** Fase 7.
+
+**Tres operaciones de kernel bloquean la pieza más grande del proyecto.** No son
+una montaña — pero no se pueden saltar, y por eso están escritas aquí y no
+escondidas en la fase 3.
+
+---
+
 # FASE 0 — El suelo
 
 - [x] **0.1 · `VALUE` inicializa de verdad** — ✅ 2026-08-03
@@ -466,14 +517,20 @@ HECHO   0.1 VALUE · 0.3 OR (+ los 88 con THRU) · 0.4 PARRAFOS · COMP-3
 HECHO   2.1 EVALUATE (las dos formas) · 2.6 ROUNDED (los seis modos)
         1.0 LA DECISION ── TOMADA: camino B, area de registro
 
+        ══════ SIN CANDADO: todo esto es COBOL y va PRIMERO ══════
+
 AHORA   0.5 RECORDS (con el camino B) ──→ 1.2 ──→ 1.1 BINARIO
-        ese es el camino a LEER LO QUE YA EXISTE, y ya no tiene candados
+        ese es el camino a LEER LO QUE YA EXISTE
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
+        2.8 COPY · 2.9 intrinsecas · 5.1 SORT · 0.2 parser de tokens
+
+        ══════ hasta aqui se llega al BATCH, y ahi esta el TECHO ══════
 
 KERNEL  3.1 EXTEND · 3.2 I-O · 3.3 POSICIONAR · 3.4 ESTRATOS ESCRIBE
                           └──→ FASE 4 (VSAM) ──→ FASE 7 (despachador)
+        tres operaciones pequenas, y sin ellas no hay INDICE ni consulta viva
 
 APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 ```
@@ -481,11 +538,18 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
 **`0.5`** → `1.2` → `1.1` → `0.7` → `1.7` → `2.6b` → `0.6` → `2.2` → `2.7` →
-`3.1` → `3.3` → …
+`2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el kernel**: `3.1` → `3.3` →
+`3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
 ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
 que es lo que separa "COBOL que compila" de "COBOL que sirve para un banco".
+
+★ **Y el kernel va al final de la lista de COBOL, no al principio**, por la
+[estrategia de arriba](#-la-estrategia-primero-todo-lo-que-no-depende-del-sistema):
+ahí está el salto que queda sin candado, y las tres operaciones que faltan no se
+ponen más difíciles por esperar. Pero **están en la lista**, no descartadas:
+sin ellas el techo es el batch.
 
 ---
 
