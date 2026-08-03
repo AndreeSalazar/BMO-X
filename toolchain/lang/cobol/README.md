@@ -178,6 +178,35 @@ The document does not describe the format — it *is* the format.
 
 ---
 
+## And it can read the file back
+
+Once a `COMP-3` field reaches disk, the file **stops being readable** — packed
+nibbles are not text, and `cat` shows garbage. So the compiler decodes it:
+
+```bash
+bmo-cobol --ver datos/ctas.bin cuentas.cob
+```
+
+```
+* 48 bytes = 3 registro(s) de 16, segun REG-CUENTA
+
+#1    byte 0
+  CTA-NUMERO        4471998200   34 34 37 31 39 39 38 32 30 30
+  CTA-SALDO           15234.75   00 15 23 47 5C
+  CTA-ESTADO                 1   31
+```
+
+The decoded value *and* the raw bytes, side by side. And the viewer reads with
+**the same rule the program wrote with** — its decoders are checked against the
+emitted ones over every two-byte pattern, so it cannot show one amount while the
+program reads another.
+
+If the file size is not a multiple of the record, it says so and shows the
+leftover: that is the classic symptom of the wrong copybook, and staying quiet
+about it would leave you believing the last record is just odd.
+
+---
+
 ## The road to real banking
 
 Having COBOL is not having a banking system. A mainframe one leans on four

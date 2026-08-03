@@ -145,6 +145,28 @@ pub fn leer(code: &mut Vec<u8>, digitos: u32) {
     x86::patch_jump(code, positivo);
 }
 
+/// La MISMA lectura, resuelta en el anfitrión. Hermana de
+/// [`crate::packed::desempaquetar_en_rust`] y por el mismo motivo: una
+/// herramienta que mire un fichero sin ejecutarlo tiene que leer los mismos
+/// bytes que el programa.
+pub fn leer_en_rust(bruto: &[u8]) -> i64 {
+    let mut v: i64 = 0;
+    let mut negativo = false;
+    let n = bruto.len();
+    for (i, b) in bruto.iter().enumerate() {
+        v = v * 10 + (b & 0x0F) as i64;
+        if i + 1 == n {
+            // Sólo la banda de las letras es negativa; la del `+` explícito no.
+            negativo = (b & 0xF0) as u32 == NEGATIVO_BASE;
+        }
+    }
+    if negativo {
+        -v
+    } else {
+        v
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +255,19 @@ mod tests {
         let m = run(m, 200_000);
         assert_eq!(m.read_u8_pub(dir + 3), 0x5A, "escribio un byte de mas");
         assert_eq!(m.read_u8_pub(dir + 4), 0x5A);
+    }
+
+    /// ★ La lectura emitida y la del anfitrión, byte a byte sobre todos los
+    /// patrones de dos bytes — incluidas las zonas altas que ningún emisor de
+    /// aquí escribe. Ahí es donde un visor y un programa se separarían.
+    #[test]
+    fn la_lectura_emitida_y_la_del_anfitrion_dicen_lo_mismo() {
+        for a in 0u8..=255 {
+            for b in 0u8..=255 {
+                let bruto = [a, b];
+                assert_eq!(lee(&bruto), leer_en_rust(&bruto), "bruto {bruto:02X?}");
+            }
+        }
     }
 
     /// El ancho es el de la PICTURE: la `S` **no ocupa**, y ésa es la diferencia

@@ -273,6 +273,111 @@ impl Disposicion {
     }
 }
 
+/// Un entero escalado, escrito con su coma.
+///
+/// `-123456` con escala 2 es `-1234.56`. Es la misma regla que emite
+/// `bmo_lower::fmt::formatear_decimal_scaled`, pero resuelta aquí: el visor
+/// mira un fichero **sin ejecutar nada**, así que no puede pedirle el número a
+/// un emisor de instrucciones.
+fn con_coma(v: i64, escala: u32) -> String {
+    if escala == 0 {
+        return v.to_string();
+    }
+    let signo = if v < 0 { "-" } else { "" };
+    let m = v.unsigned_abs();
+    let div = 10u64.pow(escala);
+    format!("{signo}{}.{:0ancho$}", m / div, m % div, ancho = escala as usize)
+}
+
+impl Disposicion {
+    /// ★ EL VISOR: un fichero de registros binarios, DECODIFICADO.
+    ///
+    /// # Por qué esto hace falta desde hoy
+    ///
+    /// En cuanto un `COMP-3` sale al disco, el fichero **deja de poderse
+    /// mirar**: los nibbles no son texto y un `cat` enseña basura. El copybook
+    /// dice qué hay dentro, pero no lo *enseña*.
+    ///
+    /// Y hay una cosa que este visor sí puede prometer y una herramienta de
+    /// fuera no: **lee con la misma regla que escribió el programa**. Los
+    /// decodificadores son `packed::desempaquetar_en_rust` y
+    /// `zoned::leer_en_rust`, y hay tests que los comparan contra los EMITIDOS
+    /// sobre todos los patrones de dos bytes. Si divergieran, el visor
+    /// enseñaría un importe y el programa leería otro — que es peor que no
+    /// tener visor.
+    ///
+    /// # El tamaño que no cuadra
+    ///
+    /// Si el fichero no es múltiplo del registro, se dice y se enseña lo que
+    /// sobra. Ése es **el síntoma clásico de un copybook equivocado**, y callarlo
+    /// dejaría al que mira creyendo que el último registro es raro.
+    pub fn ver(&self, raiz: &str, datos: &[u8], max: usize) -> String {
+        let raiz = raiz.to_ascii_uppercase();
+        let Some(cab) = self.campos.get(&raiz) else {
+            return format!("no hay ningun registro llamado {raiz}\n");
+        };
+        let n = cab.bytes as usize;
+        if n == 0 {
+            return format!("{raiz} no mide nada: no es un registro\n");
+        }
+        let enteros = datos.len() / n;
+        let sobra = datos.len() % n;
+
+        let mut s = String::new();
+        s.push_str(&format!(
+            "* {} bytes = {enteros} registro(s) de {n}, segun {raiz}\n",
+            datos.len()
+        ));
+        if sobra != 0 {
+            s.push_str(&format!(
+                "* ⚠ SOBRAN {sobra} BYTES. O el fichero esta truncado, o este no es\n\
+                 *   su copybook. Un registro de largo fijo divide exacto.\n"
+            ));
+        }
+
+        let hojas = self.hojas_de(&raiz);
+        let ancho = hojas.iter().map(|(n, _)| n.len()).max().unwrap_or(8);
+
+        for i in 0..enteros.min(max) {
+            let reg = &datos[i * n..(i + 1) * n];
+            s.push_str(&format!("\n#{:<4} byte {}\n", i + 1, i * n));
+            for (nombre, c) in &hojas {
+                let trozo = &reg[c.offset as usize..(c.offset + c.bytes) as usize];
+                let valor = match c.codificacion {
+                    Codificacion::Empaquetado => {
+                        con_coma(bmo_lower::packed::desempaquetar_en_rust(trozo), c.escala)
+                    }
+                    Codificacion::Zonado => {
+                        con_coma(bmo_lower::zoned::leer_en_rust(trozo), c.escala)
+                    }
+                    // Lo que no se sabe decodificar se enseña TAL CUAL en vez de
+                    // inventarle un número. Un visor que adivina es peor que uno
+                    // que dice "no sé".
+                    _ => trozo.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" "),
+                };
+                let crudo: String =
+                    trozo.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
+                s.push_str(&format!(
+                    "  {nombre:<ancho$}  {valor:>16}   {crudo}\n",
+                    ancho = ancho
+                ));
+            }
+        }
+        if enteros > max {
+            s.push_str(&format!("\n… y {} registro(s) mas\n", enteros - max));
+        }
+        if sobra != 0 {
+            let cola: String = datos[enteros * n..]
+                .iter()
+                .map(|b| format!("{b:02X}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            s.push_str(&format!("\nLO QUE SOBRA ({sobra} bytes):  {cola}\n"));
+        }
+        s
+    }
+}
+
 /// Calcula la disposición de todos los datos, en orden de declaración.
 ///
 /// ## Cómo se cierra un grupo

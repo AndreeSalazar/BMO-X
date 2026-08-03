@@ -285,6 +285,21 @@ que ya existe.**
       cuáles son de WORKING-STORAGE, y distingue una PIC de **edición** como lo
       que es: una máscara de presentación, no almacenamiento.
 
+- [x] **1.3c ★ El VISOR de registros (`--ver`)** — ✅ 2026-08-03
+      Desde que un `COMP-3` sale al disco, el fichero **deja de poderse mirar**:
+      los nibbles no son texto y un `cat` enseña basura. El compilador lo decodifica
+      con el copybook de su propio programa, y enseña **el valor y los bytes
+      crudos al lado**.
+      ★ Lo que ninguna herramienta de fuera puede prometer: **lee con la misma
+      regla con la que el programa escribió**. Los decodificadores del anfitrión
+      (`packed::desempaquetar_en_rust`, `zoned::leer_en_rust`) están comparados
+      contra los EMITIDOS sobre **todos** los patrones de dos bytes — 65 536
+      comparaciones cada uno. Si divergieran, el visor enseñaría un importe y el
+      programa leería otro, que es peor que no tener visor.
+      ★ Si el fichero no es múltiplo del registro, **lo dice y enseña lo que
+      sobra**: es el síntoma clásico del copybook equivocado.
+      Comprobado con un fichero generado desde **Python**, no desde BMO.
+
 - [ ] **1.4 · `REDEFINES`** — M ⚠ (depende de qué salga en 1.0)
       Dos vistas del mismo espacio. Con el camino B hay que decidir: rechazarlo
       con motivo, o darle su propio mecanismo.
@@ -621,3 +636,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | ★★ **0.5 + 1.3** — grupos con cada campo en su byte, el ÁREA DE REGISTRO funcionando, y `MOVE` de grupo por bytes | `cobol/registro.rs` + `bmo-lower::zoned` + `codegen.rs` |
 | 2026-08-03 | ★ **El COPYBOOK** (`--copybook`) — el byte exacto de cada campo, sacado de la MISMA tabla que emite el `READ` | `registro::Disposicion::copybook` |
 | 2026-08-03 | ★★★ **1.1 + 1.2 REGISTROS BINARIOS** — largo fijo, campos en su byte, y el resto de siete bytes bien llevado | `bmo-lower::archivo::leer_bytes` + `codegen::emit_read/emit_write` |
+| 2026-08-03 | ★ **El VISOR** (`--ver`) — decodifica un fichero binario con el copybook, y sus lectores están atados a los emitidos | `registro::Disposicion::ver` + `*::*_en_rust` |

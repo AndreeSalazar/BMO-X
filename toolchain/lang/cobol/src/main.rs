@@ -10,6 +10,8 @@ fn main() {
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
     let mut solo_copybook = false;
+    let mut ver_datos: Option<PathBuf> = None;
+    let mut ver_registro: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -28,6 +30,27 @@ fn main() {
             // formato del fichero y se va.
             "--copybook" => {
                 solo_copybook = true;
+            }
+            // ★ El VISOR: enseña un fichero de registros binarios decodificado
+            // con el copybook de este programa. Desde que un COMP-3 sale al
+            // disco, ese fichero no se puede mirar con un `cat`.
+            "--ver" => {
+                i += 1;
+                if i < args.len() {
+                    ver_datos = Some(PathBuf::from(&args[i]));
+                } else {
+                    eprintln!("error: --ver necesita el fichero de datos");
+                    process::exit(2);
+                }
+            }
+            "--registro" => {
+                i += 1;
+                if i < args.len() {
+                    ver_registro = Some(args[i].clone());
+                } else {
+                    eprintln!("error: --registro necesita un nombre");
+                    process::exit(2);
+                }
             }
             "--asm-path" | "-a" => {
                 i += 1;
@@ -63,6 +86,27 @@ fn main() {
     // ★ El copybook sale del PARSER, no del binario: enseña el formato aunque
     // el programa todavía no compile entero. Quien tiene que acordar un fichero
     // con otro equipo no puede esperar a que el batch esté terminado.
+    if let Some(datos_path) = ver_datos {
+        let datos = match fs::read(&datos_path) {
+            Ok(d) => d,
+            Err(err) => {
+                eprintln!("error: no se puede leer {}: {err}", datos_path.display());
+                process::exit(1);
+            }
+        };
+        match bmo_cobol_front::ver_registros(&source, &datos, ver_registro.as_deref(), 50) {
+            Ok(texto) => {
+                println!("* {}", datos_path.display());
+                print!("{texto}");
+                return;
+            }
+            Err(err) => {
+                eprintln!("error: {}", err.message);
+                process::exit(1);
+            }
+        }
+    }
+
     if solo_copybook {
         match bmo_cobol_front::copybook_de(&source) {
             Ok(texto) => {

@@ -115,6 +115,41 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
     compile_source_to_bex(source)
 }
 
+/// ★ EL VISOR: un fichero de registros binarios, decodificado con el copybook
+/// del programa que lo escribió.
+///
+/// `registro` elige cuál de los `01` se usa; si es `None`, se coge el primero
+/// que cuelgue de un `FD` — que es el que de verdad cruza al disco.
+///
+/// Lee con **la misma regla** que escribió el programa: los decodificadores son
+/// los de `bmo-lower`, y hay tests que los comparan contra los EMITIDOS sobre
+/// todos los patrones de dos bytes.
+pub fn ver_registros(
+    source: &str,
+    datos: &[u8],
+    registro: Option<&str>,
+    max: usize,
+) -> Result<String, CobolError> {
+    let program = parser::Parser::new(source).parse_program()?;
+    let d = registro::calcular(&program.data_items)?;
+    let elegido = match registro {
+        Some(r) => r.to_string(),
+        None => program
+            .files
+            .iter()
+            .map(|f| f.record.clone())
+            .find(|r| !r.is_empty())
+            .ok_or_else(|| {
+                CobolError::new(
+                    0,
+                    "este programa no tiene ningun FD con registro: di cual mirar con \
+                     `--registro <nombre>`",
+                )
+            })?,
+    };
+    Ok(d.ver(&elegido, datos, max))
+}
+
 /// ★ El COPYBOOK de un programa: el byte exacto de cada campo de cada registro.
 ///
 /// Sale del PARSER y no del binario a propósito: quien tiene que acordar el
@@ -804,6 +839,70 @@ STOP RUN.
         let (consola, _) = run_cobol_con_disco_bytes(&src, &[("d/e.txt", &datos)]);
         // 1000.00 + 234.56 - 100.00 = 1134.56, y el último número es el 3.
         assert_eq!(consola, "3\n1134.56\n3\n", "los registros se corrieron o se perdio alguno");
+    }
+
+    /// ★★ EL VIAJE ENTERO: un programa COBOL escribe un fichero binario, y el
+    /// VISOR lo lee y lo enseña.
+    ///
+    /// Es la prueba de que el visor **no puede mentir sobre lo que el programa
+    /// escribió**: los dos usan la misma disposición, y los decodificadores del
+    /// visor están comparados contra los emitidos en `bmo-lower`.
+    ///
+    /// Si alguien cambia el empaquetado sin tocar el visor, o al revés, este
+    /// test lo dice — que es exactamente lo que un copybook mantenido a mano no
+    /// puede hacer.
+    #[test]
+    fn el_visor_lee_lo_que_el_programa_escribio() {
+        let src = programa_con_ficheros(
+            "FILE SECTION.\n\
+             FD SALIDA.\n\
+             01 REG-CUENTA.\n\
+             05 CTA-NUMERO PIC 9(10).\n\
+             05 CTA-SALDO  PIC S9(7)V99 COMP-3.\n\
+             05 CTA-ESTADO PIC 9.\n\
+             WORKING-STORAGE SECTION.\n01 X PIC 9.",
+            "OPEN OUTPUT SALIDA.\n\
+             MOVE 4471998200 TO CTA-NUMERO.\nMOVE 15234.75 TO CTA-SALDO.\n\
+             MOVE 1 TO CTA-ESTADO.\nWRITE REG-CUENTA.\n\
+             MOVE 4471998201 TO CTA-NUMERO.\nMOVE -890.10 TO CTA-SALDO.\n\
+             MOVE 2 TO CTA-ESTADO.\nWRITE REG-CUENTA.\n\
+             CLOSE SALIDA.",
+        );
+        let (_, m) = run_cobol_con_disco(&src, &[]);
+        let bytes = m.archivo("d/s.txt").expect("tiene que haber fichero").to_vec();
+        assert_eq!(bytes.len(), 32, "dos registros de 16");
+
+        let visto = ver_registros(&src, &bytes, Some("REG-CUENTA"), 10).unwrap();
+
+        // Los importes, decodificados y con su coma puesta.
+        assert!(visto.contains("2 registro(s) de 16"), "{visto}");
+        assert!(visto.contains("4471998200"), "{visto}");
+        assert!(visto.contains("15234.75"), "el saldo empaquetado no se leyo:\n{visto}");
+        assert!(visto.contains("-890.10"), "el signo del segundo no se leyo:\n{visto}");
+        // Y los bytes crudos al lado, que es lo que hace de esto un visor y no
+        // un volcado de variables.
+        // 15234.75 → 1523475 centavos → nueve dígitos `001523475` + signo `C`.
+        assert!(visto.contains("00 15 23 47 5C"), "faltan los bytes crudos:\n{visto}");
+    }
+
+    /// ★ Un fichero que NO cuadra con el copybook. Es el síntoma clásico de
+    /// estar mirando el formato equivocado, y callarlo dejaría al que mira
+    /// creyendo que el último registro es raro.
+    #[test]
+    fn el_visor_avisa_cuando_el_fichero_no_cuadra() {
+        let src = programa_con_ficheros(
+            "FILE SECTION.\nFD ENTRADA.\n01 REG.\n05 A PIC 9(4).\n05 B PIC 9(4).\n\
+             WORKING-STORAGE SECTION.\n01 X PIC 9.",
+            "DISPLAY \"x\".",
+        );
+        // 20 bytes con registros de 8: sobran 4.
+        let datos: Vec<u8> = b"1111222233334444abcd".to_vec();
+        let visto = ver_registros(&src, &datos, None, 10).unwrap();
+        assert!(visto.contains("SOBRAN 4 BYTES"), "{visto}");
+        assert!(visto.contains("no es"), "{visto}");
+        assert!(visto.contains("LO QUE SOBRA"), "{visto}");
+        // Y aun así enseña los dos que sí cuadran.
+        assert!(visto.contains("1111"), "{visto}");
     }
 
     // ── ROUNDED: el redondeo es una decisión LEGAL ──────────────────────

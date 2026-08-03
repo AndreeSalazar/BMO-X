@@ -166,6 +166,33 @@ pub fn desempaquetar(code: &mut Vec<u8>, bytes: usize) {
     x86::patch_jump(code, positivo);
 }
 
+/// La MISMA lectura, resuelta en el anfitrión.
+///
+/// Hace falta para las herramientas que miran un fichero **sin ejecutarlo**: un
+/// visor de registros tiene que decodificar los mismos nibbles que el programa,
+/// y si las dos reglas divergieran, el visor enseñaría un importe y el programa
+/// leería otro — que es peor que no tener visor.
+///
+/// ★ Hay un test que compara ésta con la emitida, byte a byte, sobre todos los
+/// patrones. Es la misma pareja que `redondeo::dividir` / `dividir_en_rust`, y
+/// por el mismo motivo: dos implementaciones que **tienen** que coincidir
+/// prueban más que una comparada contra una tabla escrita a mano.
+pub fn desempaquetar_en_rust(bruto: &[u8]) -> i64 {
+    let mut v: i64 = 0;
+    let n = bruto.len();
+    for (i, b) in bruto.iter().enumerate() {
+        let alto = (b >> 4) as i64;
+        let bajo = (b & 0x0F) as i64;
+        v = v * 10 + alto;
+        if i + 1 == n {
+            // El nibble bajo del último byte es el SIGNO, no un dígito.
+            return if bajo == 0x0D || bajo == 0x0B { -v } else { v };
+        }
+        v = v * 10 + bajo;
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +299,36 @@ mod tests {
         let m = run(m, 200_000);
         assert_eq!(m.read_u8_pub(dir + 3), 0x5A, "escribio un byte de mas");
         assert_eq!(m.read_u8_pub(dir + 4), 0x5A);
+    }
+
+    /// ★ La lectura emitida y la del anfitrión tienen que decir lo mismo.
+    ///
+    /// Se barren **todos** los patrones de 2 y 3 bytes, incluidos los nibbles
+    /// que ningún emisor de aquí escribe (`A`, `E`, `B`): los datos de fuera los
+    /// traen, y ahí es donde un visor y un programa se separarían.
+    #[test]
+    fn la_lectura_emitida_y_la_del_anfitrion_dicen_lo_mismo() {
+        for a in 0u8..=255 {
+            for b in 0u8..=255 {
+                let bruto = [a, b];
+                assert_eq!(
+                    desempaqueta(&bruto),
+                    desempaquetar_en_rust(&bruto),
+                    "bruto {bruto:02X?}"
+                );
+            }
+        }
+        // Y una muestra de tres bytes con los signos raros incluidos.
+        for signo in [0x0Au8, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F] {
+            for alto in [0x00u8, 0x12, 0x99] {
+                let bruto = [alto, 0x34, 0x50 | signo];
+                assert_eq!(
+                    desempaqueta(&bruto),
+                    desempaquetar_en_rust(&bruto),
+                    "bruto {bruto:02X?}"
+                );
+            }
+        }
     }
 
     #[test]
