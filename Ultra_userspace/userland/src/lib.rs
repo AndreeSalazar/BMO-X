@@ -131,6 +131,8 @@ pub const INFO_TXT_FAMILIA: u64 = 0x04;
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;
 pub const DIR_OP_NOMBRE: u32 = 0x02;
+/// Cierra el directorio y devuelve su ranura. Lo llama `Drop`, no tú.
+pub const DIR_OP_CERRAR: u32 = 0x03;
 
 // Operaciones sobre un handle de archivo (`KIND_ARCHIVO`).
 pub const ARCH_OP_LEER: u32 = 0x01;
@@ -1216,6 +1218,30 @@ impl Directorio {
             }
         }
         Some(EntradaDir { nombre, es_dir, bytes })
+    }
+}
+
+/// **Cerrar es del `Drop`, no de quien llama.**
+///
+/// ═══ El bug que esto arregla ═══
+///
+/// No había forma de cerrar un directorio, y la tabla del kernel son OCHO
+/// ranuras que sólo se liberaban al **morir el proceso**. El cliente es el
+/// compositor, que **no muere nunca** — es el escritorio.
+///
+/// Así que cada `ls` se quedaba una ranura para siempre y al noveno la tabla
+/// estaba llena: `ls` empezaba a contestar *"no puedo abrir esa carpeta"* y ya
+/// no se recuperaba hasta reiniciar. Un fallo que aparece **después de un rato
+/// de uso normal** y no se puede reproducir recién arrancado, que es de los
+/// peores de encontrar.
+///
+/// Y va en `Drop` y no en un método `cerrar()` a propósito: un cierre que hay
+/// que acordarse de llamar es un cierre que un día no se llama. Aquí el
+/// compositor no cambia ni una línea — el `Directorio` sale de ámbito al
+/// terminar el `ls` y la ranura vuelve sola.
+impl Drop for Directorio {
+    fn drop(&mut self) {
+        invoke(self.cap, DIR_OP_CERRAR, 0, 0, 0);
     }
 }
 

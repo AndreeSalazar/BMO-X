@@ -695,10 +695,36 @@ pub extern "C" fn _start() -> ! {
                                         }
                                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                                     }
-                                    Err(_) => {
-                                        salida.texto(b"  no puedo abrir esa carpeta.
-");
-                                        pintar_estado(&p, &caja, "carpeta no encontrada", TEXTO_MAL);
+                                    // ★ El MOTIVO, no un "no pude" para todo.
+                                    //
+                                    // Esto tiraba el código con `Err(_)` y
+                                    // decía siempre "no puedo abrir esa
+                                    // carpeta". Cuando la tabla de directorios
+                                    // del kernel se llenó, eso fue una mentira
+                                    // exacta: la carpeta estaba ahí, lo que no
+                                    // había era ranura. Y mandó a buscar el
+                                    // fallo al disco, que estaba perfecto.
+                                    //
+                                    // Un error que no distingue sus causas es
+                                    // un error que manda a mirar donde no es.
+                                    Err(cod) => {
+                                        // 25 = sin hueco, 26 = no está. Ver
+                                        // `ring0/obj/directorio.rs`.
+                                        let (linea, estado): (&[u8], &str) = if cod == 25 {
+                                            (
+                                                b"  no queda ranura de directorio en el kernel.\n",
+                                                "sin ranura libre",
+                                            )
+                                        } else {
+                                            (
+                                                b"  no puedo abrir esa carpeta.\n",
+                                                "carpeta no encontrada",
+                                            )
+                                        };
+                                        salida.con_tinta(TINTA_MAL);
+                                        salida.texto(linea);
+                                        salida.con_tinta(TINTA_NORMAL);
+                                        pintar_estado(&p, &caja, estado, TEXTO_MAL);
                                     }
                                 }
                                 n = 0;

@@ -57,6 +57,28 @@ pub const DIR_OP_SIGUIENTE: u64 = 0x01;
 /// Los 11 bytes del nombre 8.3 de la entrada ACTUAL, de 7 en 7.
 /// `arg0` = desplazamiento (0 o 7). Devuelve `(n << 56) | bytes_LE`.
 pub const DIR_OP_NOMBRE: u64 = 0x02;
+/// **Cerrar. Devuelve la ranura.**
+///
+/// ═══ Por qué faltaba, y lo que costó ═══
+///
+/// No existía, así que la ÚNICA forma de liberar una ranura era
+/// [`proceso_muerto`] — o sea, que el proceso se muriera. Y el cliente de esto
+/// es **el compositor, que no muere nunca**: es el escritorio.
+///
+/// Resultado: cada `ls` se quedaba una ranura para siempre, y al noveno la
+/// tabla estaba llena. A partir de ahí `ls` contestaba **"no puedo abrir esa
+/// carpeta"** — un mensaje falso, porque la carpeta estaba perfectamente ahí.
+/// Lo que no había era sitio para abrirla.
+///
+/// `KIND_ARCHIVO` sí tenía su `ARCH_OP_CERRAR` desde el principio. Ésta es la
+/// misma clase de recurso y se quedó sin él; la asimetría no se ve leyendo
+/// ninguno de los dos archivos por separado.
+///
+/// Es el **patrón 17** de nuevo —una tabla de recursos vivos que sólo se libera
+/// con un evento que no ocurre— y ya se pagó hoy en `KIND_MEMORIA`, donde el
+/// contador se indexaba por un pid que sólo sube. La pregunta que lo caza en
+/// los dos casos es la misma: **¿quién devuelve esto, y ocurre alguna vez?**
+pub const DIR_OP_CERRAR: u64 = 0x03;
 
 static mut CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut INDICE: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
@@ -132,6 +154,14 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
     match op {
         DIR_OP_SIGUIENTE => Some(siguiente(i)),
         DIR_OP_NOMBRE => Some(nombre(i, arg0 as usize)),
+        DIR_OP_CERRAR => {
+            unsafe {
+                DUENO[i] = SIN_DUENO;
+                CLUSTER[i] = 0;
+                INDICE[i] = usize::MAX;
+            }
+            Some(1)
+        }
         _ => None,
     }
 }
