@@ -73,6 +73,11 @@ pub mod core {
     /// ya tiene y contesta sin conceder nada. Leer cuánta RAM hay no es un
     /// privilegio, es una pregunta.
     pub mod informe;
+    /// El log del kernel GUARDADO, para que Ring 3 pueda leerlo. Mismo
+    /// criterio que `informe`: no concede nada, contesta texto. Hace falta
+    /// desde que el escritorio es el arranque y el panel del kernel ya no se
+    /// pinta — el relato de cómo arrancó la máquina se estaba perdiendo.
+    pub mod klog;
     pub mod phase;
     pub mod splash;
 }

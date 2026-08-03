@@ -33,6 +33,24 @@ También confirmado en las mismas fotos:
 - El log de Ring 0 llega hasta `[usb] mouse USB listo`, AHCI con
   `!p0x2 sig=0x101` (el Kingston SATA) y xHCI con `max_slots=0x40`.
 
+### ★ Y por eso existe ahora **F11: la consola del KERNEL**
+
+Lo que bloqueó el diagnóstico no fue la falta de una teoría: fue que **la línea
+que decidía no se podía leer**. Desde que el escritorio es el arranque, el panel
+del kernel deja de pintarse en cuanto el compositor reclama la pantalla, y con
+él desaparecía el relato entero de cómo arrancó la máquina.
+
+- **`ring0/core/klog.rs`**: el log del kernel se GUARDA en un anillo de 64
+  líneas. Se guarda **antes** de los `return` que exigen framebuffer — que son
+  razones para no pintar, no para no recordar.
+- **`TASK_OP_KLOG_INFO` (0x16) y `TASK_OP_KLOG_TEXTO` (0x17)**, calcadas de
+  `INFO`/`INFO_TEXTO`. **No dan privilegio, dan vista**: Ring 3 pide texto por
+  su número y recibe bytes. En un sistema de capabilities *ver* y *poder* son
+  cosas separadas, y juntarlas es como se acaba con un "modo administrador".
+- **La ventana (F11)**, con color por emisor y RePág/AvPág para llegar al
+  principio del arranque. Y F11 en vez de un comando por una razón de hoy:
+  **no hace falta teclear nada para abrirla** — que es justo lo que falla.
+
 ### ⚠️ ABIERTO, y es lo siguiente: **no se dibujan las letras que se teclean**
 
 El campo de la caja se queda vacío mientras se escribe. El resto de la ventana
@@ -44,7 +62,11 @@ que el compositor esté muerto ni que el texto no sepa pintarse.
 dos culpables muy distintos, y hasta saberlo cualquier teoría es teoría (ley 9:
 un aviso correcto no implica una teoría correcta).
 
-**El discriminador de 30 segundos**, si es más rápido que buscar la línea:
+**Y ahora esa línea se puede leer sin serie ni cámara: se pulsa F11.** Ésa es la
+prueba de fuego de la ventana nueva — si al abrirla sale el arranque entero, el
+instrumento funciona y el diagnóstico deja de depender de una foto.
+
+**El discriminador de 30 segundos**, si el F11 tampoco dijera nada:
 `git checkout 7f6d1085 -- Ultra_userspace/` deja el compositor **justo antes**
 del doble búfer, con el arreglo del ghosting puesto. Si teclear vuelve a
 pintar, el culpable es el doble búfer y está acotado a un commit.

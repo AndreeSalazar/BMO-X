@@ -112,6 +112,15 @@ const TASK_OP_REINICIAR: u64 = 0x12;
 /// RAM hay no es un privilegio, es una pregunta.
 const TASK_OP_INFO: u64 = 0x13;
 const TASK_OP_INFO_TEXTO: u64 = 0x14;
+/// El log del kernel, LEÍDO desde Ring 3. `KLOG_INFO` cuántas hay
+/// (`arg0` = 0 disponibles, 1 total), `KLOG_TEXTO` ocho bytes de una línea
+/// (`arg0` = línea, **0 es la más reciente**; `arg1` = trozo).
+///
+/// Mismo criterio que `INFO`: contesta texto y no concede nada. Ver
+/// `ring0/core/klog.rs` — existe porque desde que el escritorio es el arranque,
+/// el panel del kernel no se pinta y el log no lo podía leer nadie.
+const TASK_OP_KLOG_INFO: u64 = 0x16;
+const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -430,6 +439,17 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         }
         TASK_OP_INFO_TEXTO => {
             BmoStatus::ok_value(crate::ring0::core::informe::texto(arg0, arg1))
+        }
+        TASK_OP_KLOG_INFO => {
+            use crate::ring0::core::klog;
+            BmoStatus::ok_value(match arg0 {
+                0 => klog::disponibles(),
+                1 => klog::total(),
+                _ => 0,
+            })
+        }
+        TASK_OP_KLOG_TEXTO => {
+            BmoStatus::ok_value(crate::ring0::core::klog::texto(arg0, arg1))
         }
         TASK_OP_REINICIAR => {
             crate::ring0::cabina::warn(

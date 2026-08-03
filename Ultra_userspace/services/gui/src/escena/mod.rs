@@ -11,6 +11,9 @@ pub(crate) mod datos;
 pub(crate) mod cursor;
 /// La ENTRADA a Ring 3: lo que se ve cuando el userspace toma la máquina.
 pub(crate) mod entrada;
+/// La consola del KERNEL (F11): lo que dice Ring 0, leído desde Ring 3. No da
+/// privilegio, da vista — ver la cabecera del módulo.
+pub(crate) mod klog;
 pub(crate) mod salida;
 
 
@@ -229,6 +232,15 @@ pub(crate) fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
         "ruta de un .bex y Enter.  info / cpu / mem / ls / lee / reboot.",
         TEXTO_TENUE,
     );
+    // ★ Las dos ventanas del sistema, DICHAS. Un atajo que no está escrito en
+    // ninguna parte es un atajo que sólo conoce quien lo programó — y F11 existe
+    // precisamente para los días en que esta caja no responde.
+    p.texto(
+        c.x + 18,
+        c.y + 36 + bmo::GLIFO_ALTO + 2,
+        "F11 kernel (Ring 0)   F12 datos (ESTRATOS)   ESC cierra",
+        TEXTO_TENUE,
+    );
 
     // 5. El campo, con marco y con su aviso.
     p.rect(c.campo_x - 1, c.campo_y - 1, c.campo_ancho + 2, c.campo_alto + 2, ACENTO);
@@ -301,15 +313,23 @@ pub(crate) fn borrar_caja(p: &bmo::Pantalla, c: &Caja) {
 ///
 /// Quien llama repinta después el texto de la caja: esto devuelve el fondo, no
 /// las letras.
-pub(crate) fn borrar_datos(
+/// ★ Toma un RECTÁNGULO y no una ventana concreta.
+///
+/// Era `borrar_datos(&datos::CajaDatos)`, atado al tipo de una ventana — y con
+/// eso, añadir la segunda ventana obligaba a copiar la función. Lo que esto
+/// hace no depende de qué ventana se cierra: devuelve el fondo de un área.
+pub(crate) fn borrar_ventana(
     p: &bmo::Pantalla,
     c: &Caja,
-    d: &datos::CajaDatos,
+    x0: u32,
+    y0: u32,
+    ancho: u32,
+    alto: u32,
     visible: bool,
 ) {
-    for fila in 0..d.alto {
-        for col in 0..d.ancho {
-            let (x, y) = (d.x + col, d.y + fila);
+    for fila in 0..alto {
+        for col in 0..ancho {
+            let (x, y) = (x0 + col, y0 + fila);
             p.punto(x, y, color_escena(c, visible, x, y));
         }
     }

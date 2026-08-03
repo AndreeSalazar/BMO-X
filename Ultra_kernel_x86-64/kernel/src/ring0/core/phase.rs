@@ -93,6 +93,19 @@ pub fn dashboard_log_color(msg: &str, color: u32) {
 }
 
 fn dashboard_log_impl(msg: &str, color: Option<u32>) {
+    // ★ GUARDAR VA PRIMERO, antes de cualquier `return`.
+    //
+    // Y el orden es el punto entero de que esto exista. Debajo hay dos salidas
+    // tempranas —sin framebuffer, sin filas— que son razones para no PINTAR, no
+    // para no RECORDAR. Guardar después de ellas dejaría sin log justo los dos
+    // casos en los que un log hace más falta: el arranque antes de que haya
+    // pantalla, y la máquina que ya cedió la pantalla a Ring 3.
+    //
+    // Ese segundo caso es el de todos los días desde que el escritorio es el
+    // arranque: el panel del kernel no se pinta, así que sin esto el relato de
+    // cómo arrancó la máquina no existía en ninguna parte.
+    crate::ring0::core::klog::guardar(msg);
+
     if !crate::info::has_fb() { return; }
     let rows = log_rows();
     if rows == 0 { return; }

@@ -226,6 +226,22 @@ pub extern "C" fn _start() -> ! {
     // es el mismo fallo de antes al reves.
     let mut datos_abierta = false;
 
+    // ── La consola del KERNEL (F11) ──
+    //
+    // Lo que dice Ring 0, leído desde aquí. **No es "ir a Ring 0"**: este
+    // proceso sigue en Ring 3 con sus capabilities contadas y lo único que hace
+    // es preguntar (`TASK_OP_KLOG_*`). Ver `escena::klog`.
+    //
+    // Y F11 en vez de un comando por una razón de hoy: **no hace falta teclear
+    // nada para abrirla**. Cuando lo que falla es el campo donde se escribe, un
+    // diagnóstico que exige escribir un comando no sirve de nada.
+    let caja_klog = escena::klog::CajaKlog::nueva(&p);
+    let mut klog_abierta = false;
+    // Cuántas líneas hacia atrás empieza la ventana. RePág/AvPág la mueven, que
+    // es lo que permite llegar al PRINCIPIO del arranque — donde están las
+    // respuestas de por qué algo no arrancó.
+    let mut klog_desplazamiento = 0u64;
+
     // ── El FOCO ──
     //
     // Quien recibe las teclas cuando hay mas de una ventana. La politica vive
@@ -237,6 +253,7 @@ pub extern "C" fn _start() -> ! {
     // ventana, chocan.
     const V_EJECUTAR: u8 = 0;
     const V_DATOS: u8 = 1;
+    const V_KLOG: u8 = 2;
     let mut foco = bmo_input::Foco::nuevo();
     foco.abrir(V_EJECUTAR);
     let mut alt_antes = false;
@@ -330,23 +347,39 @@ pub extern "C" fn _start() -> ! {
                 // Lo que tapaba vuelve a pintarse entero, **de abajo arriba**:
                 // es el unico orden que deja la pantalla como estaba. Y quien
                 // va arriba lo acaba de decidir el Alt que se solto.
-                let datos_arriba = datos_abierta && foco.es_para(V_DATOS);
-                if datos_arriba {
-                    if visible {
-                        pintar_caja(&p, &caja);
-                    }
-                    escena::datos::pintar(&p, &caja_datos);
+                //
+                // ★ Con tres ventanas esto se escribe como lo que es: pintar
+                // TODAS las abiertas, y la que tiene el foco la ÚLTIMA. La
+                // versión de dos ventanas enumeraba los casos a mano, y con
+                // tres eso son seis ramas que dicen una sola regla.
+                let arriba_ahora = if klog_abierta && foco.es_para(V_KLOG) {
+                    V_KLOG
+                } else if datos_abierta && foco.es_para(V_DATOS) {
+                    V_DATOS
                 } else {
-                    if datos_abierta {
-                        escena::datos::pintar(&p, &caja_datos);
+                    V_EJECUTAR
+                };
+                let mut pintar_una = |v: u8, repintar: &mut bool, sal: &mut escena::salida::Salida| {
+                    match v {
+                        V_KLOG if klog_abierta => {
+                            escena::klog::pintar(&p, &caja_klog, klog_desplazamiento)
+                        }
+                        V_DATOS if datos_abierta => escena::datos::pintar(&p, &caja_datos),
+                        V_EJECUTAR if visible => {
+                            pintar_caja(&p, &caja);
+                            *repintar = true;
+                            sal.sucia = true;
+                        }
+                        _ => {}
                     }
-                    if visible {
-                        pintar_caja(&p, &caja);
-                        repintar_campo = true;
-                        salida.sucia = true;
+                };
+                for v in [V_EJECUTAR, V_DATOS, V_KLOG] {
+                    if v != arriba_ahora {
+                        pintar_una(v, &mut repintar_campo, &mut salida);
                     }
                 }
-                arriba_antes = if datos_arriba { V_DATOS } else { V_EJECUTAR };
+                pintar_una(arriba_ahora, &mut repintar_campo, &mut salida);
+                arriba_antes = arriba_ahora;
             }
             alt_antes = alt_solo;
             if combo && !combo_antes {
@@ -462,7 +495,10 @@ pub extern "C" fn _start() -> ! {
                         // Al cerrarla hay que devolver el fondo Y repintar
                         // lo que tapaba: la caja de Ejecutar esta debajo.
                         foco.cerrar(V_DATOS);
-                        borrar_datos(&p, &caja, &caja_datos, visible);
+                        borrar_ventana(
+                            &p, &caja, caja_datos.x, caja_datos.y,
+                            caja_datos.ancho, caja_datos.alto, visible,
+                        );
                         arriba_antes = V_EJECUTAR;
                         if visible {
                             pintar_caja(&p, &caja);
@@ -470,6 +506,70 @@ pub extern "C" fn _start() -> ! {
                             salida.sucia = true;
                         }
                     }
+                    continue;
+                }
+
+                // ── F11: la consola del KERNEL ──
+                //
+                // Calcada de F12 y por los mismos motivos: se atiende ANTES de
+                // preguntar por el foco, porque un atajo que sólo funciona si ya
+                // estás dentro de la ventana no sirve para abrirla.
+                let conmutar_klog = if c == 0x93 {
+                    Some(!klog_abierta)
+                } else if c == 0x1B && klog_abierta && foco.es_para(V_KLOG) {
+                    Some(false)
+                } else {
+                    None
+                };
+                if let Some(abrir) = conmutar_klog {
+                    klog_abierta = abrir;
+                    if abrir {
+                        // Se abre SIEMPRE por lo último, que es lo que se quiere
+                        // ver el 90% de las veces. Para ir al arranque están
+                        // RePág/AvPág.
+                        klog_desplazamiento = 0;
+                        foco.abrir(V_KLOG);
+                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
+                        arriba_antes = if foco.es_para(V_KLOG) { V_KLOG } else { V_EJECUTAR };
+                        if arriba_antes == V_EJECUTAR && visible {
+                            pintar_caja(&p, &caja);
+                            repintar_campo = true;
+                            salida.sucia = true;
+                        }
+                    } else {
+                        foco.cerrar(V_KLOG);
+                        borrar_ventana(
+                            &p, &caja, caja_klog.x, caja_klog.y,
+                            caja_klog.ancho, caja_klog.alto, visible,
+                        );
+                        arriba_antes = V_EJECUTAR;
+                        if visible {
+                            pintar_caja(&p, &caja);
+                            repintar_campo = true;
+                            salida.sucia = true;
+                        }
+                        // Si Datos estaba abierta debajo, vuelve a verse.
+                        if datos_abierta {
+                            escena::datos::pintar(&p, &caja_datos);
+                        }
+                    }
+                    continue;
+                }
+
+                // RePág/AvPág dentro de la consola del kernel: recorrer el log.
+                //
+                // Va aquí y no en el editor de línea porque **es de esta
+                // ventana**: con el foco en el kernel, esas teclas no tienen
+                // nada que ver con el historial de salida de Ejecutar.
+                if klog_abierta && foco.es_para(V_KLOG) && (c == 0x87 || c == 0x88) {
+                    let hay = bmo::klog_lineas();
+                    if c == 0x87 {
+                        // Hacia atrás en el tiempo, sin pasarse del principio.
+                        klog_desplazamiento = (klog_desplazamiento + 8).min(hay.saturating_sub(1));
+                    } else {
+                        klog_desplazamiento = klog_desplazamiento.saturating_sub(8);
+                    }
+                    escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
                     continue;
                 }
 
@@ -1078,20 +1178,22 @@ pub extern "C" fn _start() -> ! {
             // ENCIMA de Ejecutar, asi que se pregunta primero, y un clic en la
             // zona compartida es de la de arriba. `bmo_input::foco` no sabe que
             // ventana tapa a cual y no tiene por que: eso lo sabe el que pinta.
-            let bajo_el_puntero = if arriba_antes == V_DATOS {
-                if datos_abierta && caja_datos.contiene(pos.x, pos.y) {
-                    Some(V_DATOS)
-                } else if visible && caja.contiene(pos.x, pos.y) {
-                    Some(V_EJECUTAR)
-                } else {
-                    None
-                }
-            } else if visible && caja.contiene(pos.x, pos.y) {
-                Some(V_EJECUTAR)
-            } else if datos_abierta && caja_datos.contiene(pos.x, pos.y) {
-                Some(V_DATOS)
+            // ★ Con TRES ventanas, el orden de las preguntas deja de caber en
+            // un `if/else` escrito a mano por pares. Se pregunta primero por la
+            // que está ARRIBA —sea cual sea— y después por las demás: un clic
+            // en la zona compartida es siempre de la de encima, y eso es una
+            // regla, no una lista de casos.
+            let en = |v: u8| match v {
+                V_DATOS => datos_abierta && caja_datos.contiene(pos.x, pos.y),
+                V_KLOG => klog_abierta && caja_klog.contiene(pos.x, pos.y),
+                _ => visible && caja.contiene(pos.x, pos.y),
+            };
+            let bajo_el_puntero = if en(arriba_antes) {
+                Some(arriba_antes)
             } else {
-                None
+                [V_KLOG, V_DATOS, V_EJECUTAR]
+                    .into_iter()
+                    .find(|&v| v != arriba_antes && en(v))
             };
             if let Some(v) = bajo_el_puntero {
                 // Pasar por encima: solo hace algo en modo `Puntero`, y la
@@ -1119,18 +1221,23 @@ pub extern "C" fn _start() -> ! {
             // Sin esto, Alt+Tab a Ejecutar con Datos delante dejaria el teclado
             // en una linea tapada: escribirias sin ver nada. Es exactamente el
             // fallo que se acaba de arreglar, del reves.
-            let arriba = if datos_abierta && foco.es_para(V_DATOS) {
+            let arriba = if klog_abierta && foco.es_para(V_KLOG) {
+                V_KLOG
+            } else if datos_abierta && foco.es_para(V_DATOS) {
                 V_DATOS
             } else {
                 V_EJECUTAR
             };
             if arriba != arriba_antes {
-                if arriba == V_DATOS {
-                    escena::datos::pintar(&p, &caja_datos);
-                } else if visible {
-                    pintar_caja(&p, &caja);
-                    repintar_campo = true;
-                    salida.sucia = true;
+                match arriba {
+                    V_KLOG => escena::klog::pintar(&p, &caja_klog, klog_desplazamiento),
+                    V_DATOS => escena::datos::pintar(&p, &caja_datos),
+                    _ if visible => {
+                        pintar_caja(&p, &caja);
+                        repintar_campo = true;
+                        salida.sucia = true;
+                    }
+                    _ => {}
                 }
                 arriba_antes = arriba;
             }

@@ -236,6 +236,28 @@ pub const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
 /// decidió es DOOM: pide ~8 MiB una vez y se los administra él.
 pub const TASK_OP_MEMORIA_PEDIR: u64 = 0x15;
 
+/// **Cuántas líneas del log del kernel se pueden leer.** `arg0` elige el dato:
+/// 0 = disponibles ahora, 1 = escritas desde el arranque (la resta son las que
+/// se cayeron por el borde del anillo).
+///
+/// ★ Esto **no da privilegio, da vista**. Ring 3 no ejecuta nada en Ring 0:
+/// pide texto por su número y recibe bytes, igual que `TASK_OP_INFO`. En un
+/// sistema de capabilities *ver* y *poder* son cosas separadas, y juntarlas es
+/// como se acaba teniendo un "modo administrador".
+///
+/// Hace falta desde que **el escritorio es el arranque**: mientras el
+/// compositor tiene la pantalla, el panel del kernel no se pinta, y con él
+/// desaparecía el relato entero de cómo arrancó la máquina.
+pub const TASK_OP_KLOG_INFO: u64 = 0x16;
+/// **Ocho bytes de una línea del log.** `arg0` = línea (**0 es la más
+/// reciente**), `arg1` = trozo de 8 en 8. Cero = se acabó, igual que
+/// `TASK_OP_INFO_TEXTO`.
+pub const TASK_OP_KLOG_TEXTO: u64 = 0x17;
+
+/// Campos de [`TASK_OP_KLOG_INFO`].
+pub const KLOG_DISPONIBLES: u64 = 0x00;
+pub const KLOG_TOTAL: u64 = 0x01;
+
 /// Dónde empieza el bloque, en el espacio del proceso que lo pidió.
 pub const MEM_OP_BASE: u64 = 0x01;
 /// Cuántos bytes se le han entregado en total a este proceso.

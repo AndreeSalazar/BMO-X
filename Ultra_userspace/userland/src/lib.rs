@@ -73,6 +73,9 @@ pub const OP_INFO: u32 = 0x13;
 pub const OP_INFO_TEXTO: u32 = 0x14;
 /// Pedir un bloque de memoria. Ver [`Memoria`].
 pub const OP_MEMORIA_PEDIR: u32 = 0x15;
+/// El log del kernel, leído desde Ring 3. Ver `klog_lineas`/`klog_texto`.
+pub const OP_KLOG_INFO: u32 = 0x16;
+pub const OP_KLOG_TEXTO: u32 = 0x17;
 
 /// Dónde empieza el bloque, y cuánto se ha entregado a este proceso.
 pub const MEM_OP_BASE: u32 = 0x01;
@@ -272,6 +275,47 @@ pub fn salir() -> ! {
 #[inline]
 pub fn info(campo: u64) -> u64 {
     invoke(CURRENT_TASK, OP_INFO, campo, 0, 0).value
+}
+
+// ── El log del kernel, leído desde aquí ─────────────────────────────────
+//
+// ★ Esto NO es un salto a Ring 0, y la diferencia importa: no se ejecuta nada
+// privilegiado, se piden bytes de texto. El kernel contesta y no cede nada,
+// igual que con `info`. Ver `ring0/core/klog.rs`.
+
+/// Cuántas líneas del log del kernel se pueden leer ahora mismo.
+pub fn klog_lineas() -> u64 {
+    invoke(CURRENT_TASK, OP_KLOG_INFO, 0, 0, 0).value
+}
+
+/// Cuántas ha escrito el kernel desde el arranque. La resta con
+/// [`klog_lineas`] son las que se cayeron por el borde del anillo — y decirlo
+/// es lo que separa "no pasó nada más" de "no cabía".
+pub fn klog_total() -> u64 {
+    invoke(CURRENT_TASK, OP_KLOG_INFO, 1, 0, 0).value
+}
+
+/// Una línea del log en `dst`. **`n = 0` es la más reciente.** Devuelve cuántos
+/// bytes se escribieron.
+pub fn klog_texto(n: u64, dst: &mut [u8]) -> usize {
+    let mut escritos = 0usize;
+    let mut trozo = 0u64;
+    while escritos < dst.len() {
+        let w = invoke(CURRENT_TASK, OP_KLOG_TEXTO, n, trozo, 0).value;
+        if w == 0 {
+            break;
+        }
+        for k in 0..8 {
+            let b = ((w >> (k * 8)) & 0xFF) as u8;
+            if b == 0 || escritos >= dst.len() {
+                return escritos;
+            }
+            dst[escritos] = b;
+            escritos += 1;
+        }
+        trozo += 1;
+    }
+    escritos
 }
 
 /// **Un bloque de memoria pedido al kernel.**
