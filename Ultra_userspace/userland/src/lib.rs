@@ -1351,7 +1351,37 @@ impl Archivo {
     /// Cierra. En uno de escritura es **donde el contenido llega al disco**:
     /// `false` significa que no se guardó nada, no que se guardara a medias.
     pub fn cerrar(self) -> bool {
-        invoke(self.cap, ARCH_OP_CERRAR, 0, 0, 0).value != 0
+        let ok = invoke(self.cap, ARCH_OP_CERRAR, 0, 0, 0).value != 0;
+        // ★ Y NO se deja caer el `Drop` encima.
+        //
+        // `Drop` cierra lo que se olvidaron de cerrar; éste ya está cerrado, y
+        // cerrarlo dos veces mandaría un `ARCH_OP_CERRAR` sobre un handle que
+        // el kernel acaba de revocar. No rompe nada —contestaría "handle
+        // inválido"— pero es una llamada que miente sobre lo que está pasando,
+        // y las que mienten son las que confunden un log.
+        //
+        // `forget` es gratis aquí: esto son un `u64` y un `bool`, no hay nada
+        // que liberar en Ring 3.
+        core::mem::forget(self);
+        ok
+    }
+}
+
+/// **Cerrar es del `Drop` cuando nadie se acordó.**
+///
+/// `cerrar()` sigue existiendo y sigue siendo la forma correcta de cerrar un
+/// archivo de ESCRITURA: es donde el contenido llega al disco, y **devuelve si
+/// salió bien**. Un `Drop` no puede devolver nada, así que soltar la escritura
+/// en el `Drop` sería tirar la única señal de que se guardó.
+///
+/// Lo que hace esto es tapar el otro caso: el archivo que se abrió, se leyó, y
+/// alguien se fue por un `return` en medio. Hoy el compositor cierra bien en
+/// los dos caminos — pero eso es **disciplina, no construcción**, y la
+/// disciplina se rompe el día que se añade un comando nuevo con una rama de
+/// error más. La tabla son 16 ranuras y los handles 64 por proceso.
+impl Drop for Archivo {
+    fn drop(&mut self) {
+        invoke(self.cap, ARCH_OP_CERRAR, 0, 0, 0);
     }
 }
 

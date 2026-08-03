@@ -635,7 +635,25 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // de tener el directorio abierto.
             cap::KIND_DIRECTORIO => {
                 match crate::ring0::obj::directorio::operacion(resolved.object, frame.rsi, frame.rdx) {
-                    Some(v) => BmoStatus::ok_value(v),
+                    Some(v) => {
+                        // ★★ CERRAR DEVUELVE DOS RECURSOS, NO UNO.
+                        //
+                        // La ranura del objeto la suelta el módulo; **el handle
+                        // lo tiene que soltar aquí**, que es el único sitio que
+                        // lo conoce — `operacion` recibe el índice del objeto,
+                        // no el handle con el que se pidió.
+                        //
+                        // Sin esto el arreglo de la fuga de directorios quedaba
+                        // a medias y de la peor manera: las 8 ranuras de
+                        // directorio volvían, y los **64 handles por proceso**
+                        // no. O sea, el mismo fallo con el contador ocho veces
+                        // más largo — el tipo de bug que parece arreglado
+                        // porque tarda ocho veces más en aparecer.
+                        if frame.rsi == crate::ring0::obj::directorio::DIR_OP_CERRAR {
+                            cap::revoke(pid, frame.rdi);
+                        }
+                        BmoStatus::ok_value(v)
+                    }
                     None => unsupported(),
                 }
             }
@@ -645,7 +663,17 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // objeto no responde.
             cap::KIND_ARCHIVO => {
                 match crate::ring0::obj::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
-                    Some(v) => BmoStatus::ok_value(v),
+                    Some(v) => {
+                        // Lo mismo que el directorio, y aquí llevaba desde el
+                        // principio: `ARCH_OP_CERRAR` soltaba la ranura de las
+                        // 16 y dejaba el handle vivo. El compositor cierra
+                        // bien, así que no se notaba — se notaría a los 64
+                        // archivos de una sesión.
+                        if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_CERRAR {
+                            cap::revoke(pid, frame.rdi);
+                        }
+                        BmoStatus::ok_value(v)
+                    }
                     None => unsupported(),
                 }
             }
