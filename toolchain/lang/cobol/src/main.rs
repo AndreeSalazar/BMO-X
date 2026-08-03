@@ -9,6 +9,7 @@ fn main() {
     let mut asm_paths: Vec<PathBuf> = Vec::new();
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
+    let mut solo_copybook = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -21,6 +22,12 @@ fn main() {
                     eprintln!("error: -o requires a path");
                     process::exit(2);
                 }
+            }
+            // ★ El COPYBOOK: el byte exacto de cada campo, sacado de la MISMA
+            // tabla que emite el READ y el WRITE. No compila nada — enseña el
+            // formato del fichero y se va.
+            "--copybook" => {
+                solo_copybook = true;
             }
             "--asm-path" | "-a" => {
                 i += 1;
@@ -39,7 +46,9 @@ fn main() {
     }
 
     let Some(path) = file_path else {
-        eprintln!("usage: {program} [-o <salida.bex>] [--asm-path <path>] <source.cob>");
+        eprintln!(
+            "usage: {program} [-o <salida.bex>] [--copybook] [--asm-path <path>] <source.cob>"
+        );
         process::exit(2);
     };
 
@@ -50,6 +59,26 @@ fn main() {
             process::exit(1);
         }
     };
+
+    // ★ El copybook sale del PARSER, no del binario: enseña el formato aunque
+    // el programa todavía no compile entero. Quien tiene que acordar un fichero
+    // con otro equipo no puede esperar a que el batch esté terminado.
+    if solo_copybook {
+        match bmo_cobol_front::copybook_de(&source) {
+            Ok(texto) => {
+                print!("{texto}");
+                return;
+            }
+            Err(err) => {
+                if err.line == 0 {
+                    eprintln!("error: {}", err.message);
+                } else {
+                    eprintln!("error:{}: {}", err.line, err.message);
+                }
+                process::exit(1);
+            }
+        }
+    }
 
     let result = if asm_paths.is_empty() {
         bmo_cobol_front::compile_source_to_bex(&source)

@@ -261,6 +261,19 @@ que ya existe.**
       registro. Se rechaza con motivo mezclar un grupo con un campo suelto: pide
       relleno con espacios, y eso necesita `0.7`.
 
+- [x] **1.3b ★ El COPYBOOK (`--copybook`)** — ✅ 2026-08-03
+      El compilador escupe el byte exacto de cada campo de cada registro, con su
+      codificación y cómo se lee el signo. En banca ese documento es lo que se
+      intercambia para que dos sistemas lean el mismo fichero, y **el que se
+      mantiene a mano siempre acaba mintiendo**.
+      ★ Éste no puede: sale de **la misma tabla que usa el codegen** para emitir
+      el `READ` y el `WRITE`, así que no hay dos sitios donde pueda divergir. Es
+      *tablas y no cerebros* aplicado a la documentación — el documento no
+      describe el formato, **es** el formato.
+      Marca cuáles cruzan de verdad (`[FICHERO]`, los que cuelgan de un `FD`) y
+      cuáles son de WORKING-STORAGE, y distingue una PIC de **edición** como lo
+      que es: una máscara de presentación, no almacenamiento.
+
 - [ ] **1.4 · `REDEFINES`** — M ⚠ (depende de qué salga en 1.0)
       Dos vistas del mismo espacio. Con el camino B hay que decidir: rechazarlo
       con motivo, o darle su propio mecanismo.
@@ -593,3 +606,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | **Bug de precisión** que destapó `ROUNDED`: `COMPUTE` recortaba los operandos ANTES de operar | `codegen::emit_compute` (escala de trabajo) |
 | 2026-08-03 | ★ **1.0 decidido** — camino B: área de registro con empaquetado en la frontera | este documento, §FASE 1 |
 | 2026-08-03 | ★★ **0.5 + 1.3** — grupos con cada campo en su byte, el ÁREA DE REGISTRO funcionando, y `MOVE` de grupo por bytes | `cobol/registro.rs` + `bmo-lower::zoned` + `codegen.rs` |
+| 2026-08-03 | ★ **El COPYBOOK** (`--copybook`) — el byte exacto de cada campo, sacado de la MISMA tabla que emite el `READ` | `registro::Disposicion::copybook` |

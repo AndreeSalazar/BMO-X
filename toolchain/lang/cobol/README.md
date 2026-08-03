@@ -153,6 +153,31 @@ actually is.
 
 ---
 
+## The compiler prints your file format
+
+```bash
+bmo-cobol --copybook cierre.cob
+```
+
+```
+IMPORTE   (5 bytes)  [FICHERO]
+  desde  hasta  bytes  nivel  campo        como     PICTURE
+      0      5      5      1  IMPORTE      PACKED   S9(7)V99
+
+  PACKED  dos digitos por byte. El ULTIMO nibble es el signo:
+          C positivo, D negativo, F sin signo.
+```
+
+In banking, that document is called a **copybook**, and it is what two systems
+exchange so they can read the same file. The one kept by hand **always ends up
+lying** — the code changes and the document does not.
+
+This one cannot. It comes out of **the same table the code generator uses** to
+emit the `READ` and the `WRITE`, so there is nowhere for the two to drift apart.
+The document does not describe the format — it *is* the format.
+
+---
+
 ## The road to real banking
 
 Having COBOL is not having a banking system. A mainframe one leans on four

@@ -115,6 +115,19 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
     compile_source_to_bex(source)
 }
 
+/// ★ El COPYBOOK de un programa: el byte exacto de cada campo de cada registro.
+///
+/// Sale del PARSER y no del binario a propósito: quien tiene que acordar el
+/// formato de un fichero con otro equipo no puede esperar a que el batch esté
+/// terminado. Y sale de **la misma tabla que usa el codegen** para emitir el
+/// `READ` y el `WRITE`, así que no hay dos sitios donde pueda divergir.
+pub fn copybook_de(source: &str) -> Result<String, CobolError> {
+    let program = parser::Parser::new(source).parse_program()?;
+    let d = registro::calcular(&program.data_items)?;
+    let registros: Vec<String> = program.files.iter().map(|f| f.record.clone()).collect();
+    Ok(d.copybook(&program.program_id, &registros))
+}
+
 /// Compile COBOL source into a native BMO executable image.
 ///
 /// BEX v1 uses the validated BEF1 wire format defined by `bmo-abi`.

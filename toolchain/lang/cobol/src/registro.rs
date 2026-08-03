@@ -15,13 +15,16 @@
 //! # El modelo, y qué decide (camino B de `PLAN_BANCA.md` §1.0)
 //!
 //! ```text
-//!   01 REG-CUENTA.                    offset  bytes
-//!       05 CTA-NUMERO  PIC 9(10).          0     10
-//!       05 CTA-SALDO   PIC S9(7)V99 COMP-3. 10      6
-//!       05 CTA-ESTADO  PIC 9.              16      1
-//!                                          ─────────
-//!                              REG-CUENTA:  0     17
+//!   01 REG-CUENTA.                          offset  bytes
+//!       05 CTA-NUMERO PIC 9(10).                 0     10
+//!       05 CTA-SALDO  PIC S9(7)V99 COMP-3.      10      5
+//!       05 CTA-ESTADO PIC 9.                    15      1
+//!                                              ─────────
+//!                                REG-CUENTA:    0     16
 //! ```
+//!
+//! Los 5 bytes del saldo salen de sus **nueve** dígitos (7 enteros + 2
+//! decimales): `9/2 + 1`. La `V` no ocupa y el signo va en el último nibble.
 //!
 //! Cada `01` que es un GRUPO tiene un **área de registro** de ese tamaño, y
 //! cada campo de dentro **conserva además su ranura de trabajo** de 64 bits. El
@@ -35,14 +38,46 @@
 //! # El tamaño de un campo lo decide su USAGE
 //!
 //! Y ahí ya no hay nada que inventar: `PicField::size()` lo sabe desde que
-//! entró `COMP-3`. Un `PIC S9(7)V99 COMP-3` mide 6 bytes en el disco de un
-//! mainframe y mide 6 aquí.
+//! entró `COMP-3`. Un `PIC S9(7)V99 COMP-3` mide 5 bytes en el disco de un
+//! mainframe y mide 5 aquí.
 
 use std::collections::HashMap;
 
 use crate::ast::{CobolError, DataItem};
 
-/// Dónde vive un campo dentro de su registro.
+/// Cómo está escrito un campo **en el área**, o sea en el disco.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Codificacion {
+    /// No es un campo: es el nombre de lo que hay debajo.
+    Grupo,
+    /// `DISPLAY` — un byte por dígito, signo sobrepunzado en el último.
+    Zonado,
+    /// `COMP-3` — dos dígitos por byte, signo en el último nibble.
+    Empaquetado,
+    /// `PIC X` — bytes tal cual. Todavía no se guarda como texto (tarea 0.7).
+    Texto,
+    /// PIC de **EDICIÓN** (`$$$,$$9.99`, `ZZ9.99`, `120.00CR`).
+    ///
+    /// ★ No es una codificación de almacenamiento: es una MÁSCARA de
+    /// presentación. Un campo así no va a un fichero de intercambio — va a un
+    /// informe. Decir que es "zonado de 7 bytes" sería mentir en el sitio donde
+    /// menos se puede: quien lea el copybook creería que ahí hay siete dígitos.
+    Editado,
+}
+
+impl Codificacion {
+    pub fn nombre(self) -> &'static str {
+        match self {
+            Codificacion::Grupo => "GRUPO",
+            Codificacion::Zonado => "ZONED",
+            Codificacion::Empaquetado => "PACKED",
+            Codificacion::Texto => "TEXTO",
+            Codificacion::Editado => "EDITADO",
+        }
+    }
+}
+
+/// Dónde vive un campo dentro de su registro, y **cómo está escrito**.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Campo {
     /// El `01` al que pertenece. Un dato suelto es su propia raíz.
@@ -56,6 +91,20 @@ pub struct Campo {
     /// Nivel con el que se declaró. Se guarda para poder decir el porqué en los
     /// errores sin volver a buscar el dato.
     pub nivel: u32,
+    /// Cómo se escribe en el área. Va aquí y no en el codegen porque **es parte
+    /// de la disposición**: dos campos en el mismo byte con distinta
+    /// codificación son dos ficheros distintos.
+    pub codificacion: Codificacion,
+    /// Dígitos que declara la PIC. Un grupo no tiene.
+    pub digitos: u32,
+    /// Dígitos tras la coma implícita.
+    pub escala: u32,
+    /// Lleva `S`.
+    pub con_signo: bool,
+    /// El texto de la PIC tal cual se escribió, para el copybook.
+    pub pic: Option<String>,
+    /// `OCCURS n` — cuántas veces se repite.
+    pub veces: u32,
 }
 
 /// La disposición de todos los datos de un programa.
@@ -96,6 +145,131 @@ impl Disposicion {
             .collect();
         v.sort_by_key(|(_, c)| c.offset);
         v
+    }
+}
+
+impl Disposicion {
+    /// ★ EL COPYBOOK: el byte exacto de cada campo, escrito para una persona.
+    ///
+    /// # Por qué esto vale más de lo que parece
+    ///
+    /// En banca, el documento que dice *"el registro de cuentas mide 16 bytes y
+    /// el saldo empieza en el 10, empaquetado, con dos decimales"* se llama
+    /// **copybook**, y es lo que se intercambia para que dos sistemas lean el
+    /// mismo fichero. Normalmente lo mantiene alguien a mano, y **siempre acaba
+    /// mintiendo**: el código cambia y el documento no.
+    ///
+    /// Éste no puede mentir. Sale de **la misma tabla que usa el codegen** para
+    /// emitir el `READ` y el `WRITE`. Si el layout cambia, el copybook cambia
+    /// solo, porque no hay dos sitios donde pueda divergir.
+    ///
+    /// Es la regla de la casa —**tablas y no cerebros**— aplicada a la
+    /// documentación: el documento no describe el formato, *es* el formato.
+    /// `de_fichero` son los `01` que cuelgan de un `FD`. Se marcan porque **son
+    /// los únicos que se intercambian de verdad**: un `01` de WORKING-STORAGE
+    /// tiene disposición, pero nunca cruza a otro sistema. Mezclarlos sin decir
+    /// cuál es cuál convertiría el documento en una lista de variables.
+    pub fn copybook(&self, program_id: &str, de_fichero: &[String]) -> String {
+        let es_de_fichero =
+            |n: &str| de_fichero.iter().any(|r| r.eq_ignore_ascii_case(n));
+        let mut s = String::new();
+        s.push_str(&format!("* COPYBOOK de {program_id}\n"));
+        s.push_str("* Generado por BMO COBOL desde la MISMA tabla que emite el READ y el\n");
+        s.push_str("* WRITE. Si esto y el codigo no cuadran, es que este fichero es viejo.\n");
+        s.push_str("*\n* Los offsets son BYTES desde el principio de su 01, sin relleno:\n");
+        s.push_str("* un registro COBOL va pegado, porque esto es el formato del fichero.\n");
+        s.push_str("*\n* Solo los marcados [FICHERO] cruzan a otro sistema. Los demas son\n");
+        s.push_str("* de WORKING-STORAGE: tienen disposicion, pero no salen de aqui.\n");
+
+        for raiz in &self.raices {
+            let Some(cab) = self.campos.get(raiz) else { continue };
+            let marca = if es_de_fichero(raiz) { "  [FICHERO]" } else { "" };
+            let bytes = cab.bytes.max(1);
+            let plural = if bytes == 1 { "byte" } else { "bytes" };
+            s.push_str(&format!("\n{raiz}   ({bytes} {plural}){marca}\n"));
+
+            // Todos los campos de esta raíz, en orden de byte y luego de nivel:
+            // así un grupo sale ANTES que lo que contiene, que empieza en su
+            // mismo offset.
+            let mut campos: Vec<(&String, &Campo)> =
+                self.campos.iter().filter(|(_, c)| c.raiz == *raiz).collect();
+            campos.sort_by_key(|(_, c)| (c.offset, c.nivel));
+
+            s.push_str("  desde  hasta  bytes  nivel  campo                 como     PICTURE\n");
+            s.push_str("  -----  -----  -----  -----  --------------------  -------  -------------\n");
+            for (nombre, c) in campos {
+                if nombre == raiz && self.raices.contains(nombre) && c.es_grupo {
+                    continue; // la cabecera ya lo dijo
+                }
+                let sangria = " ".repeat(((c.nivel.saturating_sub(1) / 4) as usize).min(4));
+                let veces = if c.veces > 1 { format!(" x{}", c.veces) } else { String::new() };
+                s.push_str(&format!(
+                    "  {:>5}  {:>5}  {:>5}  {:>5}  {:<20}  {:<7}  {}{}\n",
+                    c.offset,
+                    c.offset + c.bytes,
+                    c.bytes,
+                    c.nivel,
+                    format!("{sangria}{nombre}"),
+                    c.codificacion.nombre(),
+                    c.pic.as_deref().unwrap_or("-"),
+                    veces,
+                ));
+            }
+
+            // Y la leyenda de lo que un lector de fuera necesita saber para
+            // interpretar los bytes sin adivinar.
+            let hay_packed = self
+                .campos
+                .values()
+                .any(|c| c.raiz == *raiz && c.codificacion == Codificacion::Empaquetado);
+            let hay_zoned = self
+                .campos
+                .values()
+                .any(|c| c.raiz == *raiz && c.codificacion == Codificacion::Zonado);
+            if hay_zoned {
+                s.push_str(
+                    "\n  ZONED   un byte ASCII por digito. Con signo, el ULTIMO byte lleva\n\
+                     \x20         la banda 0x70-0x79 ('p'..'y') si es negativo. La S no ocupa.\n",
+                );
+            }
+            if hay_packed {
+                s.push_str(
+                    "\n  PACKED  dos digitos por byte. El ULTIMO nibble es el signo:\n\
+                     \x20         C positivo, D negativo, F sin signo. Al leer, B tambien\n\
+                     \x20         es negativo.\n",
+                );
+            }
+            let con_escala: Vec<_> = {
+                let mut v: Vec<_> = self
+                    .campos
+                    .iter()
+                    .filter(|(_, c)| c.raiz == *raiz && c.escala > 0)
+                    .collect();
+                v.sort_by_key(|(_, c)| c.offset);
+                v
+            };
+            if !con_escala.is_empty() {
+                s.push_str("\n  La coma es IMPLICITA y no ocupa byte:\n");
+                for (nombre, c) in con_escala {
+                    s.push_str(&format!(
+                        "\x20         {nombre}: {} decimales\n",
+                        c.escala
+                    ));
+                }
+            }
+            if self
+                .campos
+                .values()
+                .any(|c| c.raiz == *raiz && c.codificacion == Codificacion::Editado)
+            {
+                s.push_str(
+                    "\n  EDITADO es una MASCARA de presentacion, no almacenamiento. Un campo\n\
+                     \x20         asi va a un informe, NO a un fichero de intercambio: los\n\
+                     \x20         bytes que salen son la mascara aplicada, no sus digitos.\n",
+                );
+            }
+        }
+        s
     }
 }
 
@@ -149,9 +323,40 @@ pub fn calcular(items: &[DataItem]) -> Result<Disposicion, CobolError> {
 
         let offset = cursor;
         let es_grupo = item.pic.is_none();
+        // La codificación sale del USAGE y de la PIC, que es donde vive. Un
+        // campo no numérico es texto aunque su USAGE diga otra cosa: el parser
+        // ya rechaza un `COMP-3` sobre una `PIC X`.
+        let codificacion = match (&item.pic_field, es_grupo) {
+            (_, true) => Codificacion::Grupo,
+            // La edición va PRIMERO: un `$$$,$$9.99` es numérico y no es
+            // almacenamiento, y confundirlo con uno es el error que este
+            // documento existe para no cometer.
+            _ if item.edicion.is_some() => Codificacion::Editado,
+            (Some(f), _) if !f.numeric => Codificacion::Texto,
+            (Some(_), _) if item.usage == crate::pic::Usage::Comp3 => Codificacion::Empaquetado,
+            (Some(_), _) => Codificacion::Zonado,
+            (None, _) => Codificacion::Texto,
+        };
+        let (digitos, escala, con_signo) = item
+            .pic_field
+            .as_ref()
+            .map(|f| (f.total_digits(), f.scale, f.signed))
+            .unwrap_or((0, 0, false));
         d.campos.insert(
             nombre.clone(),
-            Campo { raiz: raiz.clone(), offset, bytes: 0, es_grupo, nivel: item.level },
+            Campo {
+                raiz: raiz.clone(),
+                offset,
+                bytes: 0,
+                es_grupo,
+                nivel: item.level,
+                codificacion,
+                digitos,
+                escala,
+                con_signo,
+                pic: item.pic.clone(),
+                veces: item.elementos(),
+            },
         );
 
         if es_grupo {
@@ -312,6 +517,54 @@ mod tests {
         let d = calcular(&items).unwrap();
         let nombres: Vec<&str> = d.hojas_de("REG").iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(nombres, vec!["A", "B", "C"]);
+    }
+
+    /// ★ El copybook dice los bytes EXACTOS, y sale de la misma tabla que emite
+    /// el `READ`. Este test es lo que impide que se separen.
+    #[test]
+    fn el_copybook_dice_donde_esta_cada_byte() {
+        let items = vec![
+            dato(1, "REG-CUENTA", None),
+            dato(5, "CTA-NUMERO", Some("9(10)")),
+            comp3(5, "CTA-SALDO", "S9(7)V99"),
+            dato(5, "CTA-ESTADO", Some("9")),
+        ];
+        let d = calcular(&items).unwrap();
+        let cb = d.copybook("CUENTAS", &["REG-CUENTA".to_string()]);
+
+        assert!(cb.contains("REG-CUENTA   (16 bytes)"), "{cb}");
+        // Los tres campos con su tramo de bytes.
+        assert!(cb.contains("0     10     10"), "falta CTA-NUMERO:\n{cb}");
+        assert!(cb.contains("10     15      5"), "falta CTA-SALDO:\n{cb}");
+        assert!(cb.contains("15     16      1"), "falta CTA-ESTADO:\n{cb}");
+        // Y la codificación de cada uno, que es lo que un lector de fuera
+        // necesita para no adivinar.
+        assert!(cb.contains("PACKED"), "{cb}");
+        assert!(cb.contains("ZONED"), "{cb}");
+        // La leyenda del signo, sin la cual los bytes no se pueden interpretar.
+        assert!(cb.contains("0x70-0x79"), "falta como se lee el signo zonado");
+        assert!(cb.contains("C positivo, D negativo"), "falta el nibble de signo");
+        // Y la coma implícita, que no ocupa byte y se pierde si no se dice.
+        assert!(cb.contains("CTA-SALDO: 2 decimales"), "{cb}");
+    }
+
+    /// La codificación sale del `USAGE`, y es parte de la disposición: dos
+    /// campos en el mismo byte con distinta codificación son dos ficheros.
+    #[test]
+    fn la_codificacion_va_en_la_disposicion() {
+        let items = vec![
+            dato(1, "R", None),
+            dato(5, "A", Some("9(4)")),
+            comp3(5, "B", "S9(5)"),
+            dato(5, "C", Some("X(4)")),
+        ];
+        let d = calcular(&items).unwrap();
+        assert_eq!(d.campo("A").unwrap().codificacion, Codificacion::Zonado);
+        assert_eq!(d.campo("B").unwrap().codificacion, Codificacion::Empaquetado);
+        assert_eq!(d.campo("C").unwrap().codificacion, Codificacion::Texto);
+        assert_eq!(d.campo("R").unwrap().codificacion, Codificacion::Grupo);
+        assert!(d.campo("B").unwrap().con_signo);
+        assert!(!d.campo("A").unwrap().con_signo);
     }
 
     /// Dos campos con el mismo nombre no se pueden distinguir en un `MOVE`. En
