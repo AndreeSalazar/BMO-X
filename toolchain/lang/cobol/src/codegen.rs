@@ -74,6 +74,10 @@ struct Codegen {
     /// se entera nadie más. La aritmética sigue viendo el entero escalado de
     /// siempre, que es lo que la mantiene exacta y ajena a la representación.
     var_packed: HashMap<String, (usize, bool)>,
+    /// La PIC ya analizada de cada dato. La necesita el ÁREA: para escribir un
+    /// campo zonado hay que saber cuántos dígitos declara y si lleva `S`, y eso
+    /// no se puede sacar de la escala.
+    pic_fields: HashMap<String, crate::pic::PicField>,
     /// Los ficheros de `FILE-CONTROL`, por nombre.
     files: HashMap<String, crate::ast::CobolFile>,
     /// Dónde vive el handle de cada fichero: una ranura de pila sin nombre en
@@ -125,6 +129,18 @@ struct Codegen {
     /// `None` = el programa no tiene párrafos y no se reserva nada. Ver
     /// `emit_parrafos` para por qué un número en memoria y no un `ret` a secas.
     perform_exit: Option<i32>,
+    /// La disposición de los registros: qué byte ocupa cada campo dentro de su
+    /// `01`. Ver `registro.rs`.
+    disposicion: crate::registro::Disposicion,
+    /// El ÁREA DE REGISTRO de cada `01` que es un grupo: la ranura de pila
+    /// donde viven sus bytes.
+    ///
+    /// Es el camino B de `PLAN_BANCA.md` §1.0: el área es la representación
+    /// EXTERNA —lo que va y viene del disco— y cada campo conserva además su
+    /// ranura de trabajo de 64 bits. La traducción entre las dos vive
+    /// exactamente en los puntos donde el registro cruza, que es lo que dice
+    /// COBOL: el área sólo vale entre un `READ` y el siguiente.
+    areas: HashMap<String, i32>,
     /// Los párrafos por nombre → su número de orden (1..n). El **orden manda**:
     /// un `PERFORM A THRU B` ejecuta todo lo que hay entre los dos, así que
     /// comparar índices es lo que dice si el rango tiene sentido.
@@ -150,6 +166,7 @@ impl Codegen {
             var_scales: HashMap::new(),
             var_edicion: HashMap::new(),
             var_packed: HashMap::new(),
+            pic_fields: HashMap::new(),
             files: HashMap::new(),
             file_handles: HashMap::new(),
             file_estado: HashMap::new(),
@@ -161,6 +178,8 @@ impl Codegen {
             label_offsets: HashMap::new(),
             jump_fixups: Vec::new(),
             perform_exit: None,
+            disposicion: Default::default(),
+            areas: HashMap::new(),
             parrafos: HashMap::new(),
             errors: Vec::new(),
             stack_size: 0,
@@ -506,6 +525,10 @@ impl Codegen {
 
     fn emit_program(&mut self, program: &CobolProgram) -> Result<()> {
         self.stack_size = 0;
+        // ★ La disposición ANTES de repartir la pila: dice qué grupos hay y
+        // cuánto mide el área de cada uno. Y de paso caza los nombres
+        // duplicados, que sin ella se resolvían quedándose con uno de los dos.
+        self.disposicion = crate::registro::calcular(&program.data_items)?;
         for item in &program.data_items {
             // ★ Un 88 NO es un dato: no se le reserva ni un byte. Es el apodo
             // de una comparación sobre el campo del que cuelga.
@@ -542,7 +565,23 @@ impl Codegen {
                     self.var_packed.insert(item.name.clone(), (campo.size(), campo.signed));
                 }
             }
+            if let Some(campo) = &item.pic_field {
+                self.pic_fields.insert(item.name.to_ascii_uppercase(), campo.clone());
+            }
         }
+        // ★ El ÁREA DE REGISTRO de cada `01` que es un grupo. Va DESPUÉS de los
+        // datos y con el mismo mecanismo: es una variable más, sólo que su
+        // contenido son los bytes tal cual irían al disco.
+        for raiz in self.disposicion.raices().to_vec() {
+            let Some(campo) = self.disposicion.campo(&raiz) else { continue };
+            if !campo.es_grupo || campo.bytes == 0 {
+                continue;
+            }
+            let bytes = ((campo.bytes as i32) + 7) & !7;
+            self.stack_size += bytes;
+            self.areas.insert(raiz.clone(), -(self.stack_size));
+        }
+
         // ★ La ranura del PERFORM: en qué párrafo tiene que volver el que está
         // corriendo ahora. Vive en la pila y no en un registro por la razón de
         // siempre — entre el `call` y el `ret` pasa el párrafo entero, y
@@ -845,6 +884,127 @@ impl Codegen {
                 ));
             }
         }
+    }
+
+    // ── EL ÁREA DE REGISTRO ─────────────────────────────────────────────
+    //
+    // Camino B de `PLAN_BANCA.md` §1.0. Un grupo tiene DOS representaciones:
+    //
+    //   las RANURAS de trabajo   un entero escalado de 64 bits por campo,
+    //                            que es donde se calcula
+    //   el ÁREA                  los bytes tal cual irían al disco: zonado
+    //                            para un DISPLAY, nibbles para un COMP-3
+    //
+    // Y la traducción entre las dos vive **sólo** donde el registro cruza:
+    // empaquetar antes de sacarlo, desempaquetar después de traerlo. Eso no es
+    // un rodeo — es lo que dice COBOL, que el área de registro sólo vale entre
+    // un `READ` y el siguiente.
+    //
+    // Lo que se paga, dicho en el plan: un `REDEFINES` no aliasa de verdad,
+    // porque dos vistas del mismo espacio serían dos juegos de ranuras.
+
+    /// `lea rcx, [rbp + area(raiz) + offset]` — dónde vive un campo dentro de
+    /// su área.
+    fn emit_direccion_en_area(&mut self, raiz: &str, offset: u32) -> Option<()> {
+        let base = *self.areas.get(raiz)?;
+        self.emit_direccion_dato(base + offset as i32);
+        Some(())
+    }
+
+    /// Vuelca las ranuras de trabajo del grupo a su área, campo por campo.
+    fn emit_empaquetar_area(&mut self, raiz: &str) {
+        let hojas: Vec<(String, crate::registro::Campo)> = self
+            .disposicion
+            .hojas_de(raiz)
+            .into_iter()
+            .map(|(n, c)| (n.clone(), c.clone()))
+            .collect();
+        for (nombre, campo) in hojas {
+            self.load_var(&nombre);
+            if self.emit_direccion_en_area(raiz, campo.offset).is_none() {
+                return;
+            }
+            match self.packed_de(&nombre) {
+                Some((bytes, signo)) => {
+                    bmo_lower::packed::empaquetar(&mut self.code, bytes, signo)
+                }
+                // Un `DISPLAY` en el área es ZONADO: un byte por dígito y el
+                // signo sobrepunzado en el último. Dentro sigue siendo el mismo
+                // entero escalado de siempre.
+                None => {
+                    let (digitos, signo) = self.digitos_de(&nombre);
+                    bmo_lower::zoned::escribir(&mut self.code, digitos, signo);
+                }
+            }
+        }
+    }
+
+    /// Y al revés: del área a las ranuras.
+    fn emit_desempaquetar_area(&mut self, raiz: &str) {
+        let hojas: Vec<(String, crate::registro::Campo)> = self
+            .disposicion
+            .hojas_de(raiz)
+            .into_iter()
+            .map(|(n, c)| (n.clone(), c.clone()))
+            .collect();
+        for (nombre, campo) in hojas {
+            if self.emit_direccion_en_area(raiz, campo.offset).is_none() {
+                return;
+            }
+            match self.packed_de(&nombre) {
+                Some((bytes, _)) => bmo_lower::packed::desempaquetar(&mut self.code, bytes),
+                None => {
+                    let (digitos, _) = self.digitos_de(&nombre);
+                    bmo_lower::zoned::leer(&mut self.code, digitos);
+                }
+            }
+            self.store_var(&nombre);
+        }
+    }
+
+    /// Cuántos dígitos declara la PIC de un campo, y si lleva `S`.
+    fn digitos_de(&self, nombre: &str) -> (u32, bool) {
+        self.pic_fields
+            .get(&Self::nombre_base(nombre))
+            .map(|f| (f.total_digits(), f.signed))
+            .unwrap_or((1, false))
+    }
+
+    /// `MOVE <grupo> TO <grupo>` — **una copia de BYTES**, no campo a campo.
+    ///
+    /// Y eso importa: el estándar dice que un `MOVE` de grupo mueve el área tal
+    /// cual, sin mirar qué hay dentro. Hacerlo campo a campo daría otra cosa en
+    /// cuanto los dos grupos no tuvieran la misma forma — que es justo el caso
+    /// en el que un programa de banca lo usa, para reinterpretar un registro.
+    fn emit_move_grupo(&mut self, origen: &str, destino: &str) {
+        let (o, d) = (origen.to_ascii_uppercase(), destino.to_ascii_uppercase());
+        let (Some(co), Some(cd)) = (
+            self.disposicion.campo(&o).cloned(),
+            self.disposicion.campo(&d).cloned(),
+        ) else {
+            return;
+        };
+        // Se mueve lo que quepa en el destino, que es lo que manda el estándar:
+        // si el origen es más corto, lo que sobra del destino se queda como
+        // estaba (rellenar con espacios pide el texto, que es la tarea 0.7).
+        let n = co.bytes.min(cd.bytes);
+        let (Some(&base_o), Some(&base_d)) = (self.areas.get(&o), self.areas.get(&d)) else {
+            self.errors.push(CobolError::new(
+                0,
+                format!("MOVE {origen} TO {destino}: alguno de los dos no tiene area de registro"),
+            ));
+            return;
+        };
+
+        self.emit_empaquetar_area(&o);
+        // rdi = destino, rsi = origen, rcx = cuántos. El contrato de `copiar`.
+        self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi, [rbp+disp32]
+        self.code.extend_from_slice(&base_d.to_le_bytes());
+        self.code.extend_from_slice(&[0x48, 0x8D, 0xB5]); // lea rsi, [rbp+disp32]
+        self.code.extend_from_slice(&base_o.to_le_bytes());
+        self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, n as u64).unwrap(); });
+        bmo_lower::memoria::copiar(&mut self.code);
+        self.emit_desempaquetar_area(&d);
     }
 
     /// `VALUE` — el valor con el que arranca cada dato.
@@ -1319,6 +1479,25 @@ impl Codegen {
             // Decimal EXACTO: el literal se escala a la escala del destino,
             // así $10.05 en un PIC 9(3)V99 se guarda como el entero 1005.
             CobolStatement::Move(src, dst) => {
+                // ★ Un MOVE de GRUPO no es un MOVE de campo con otro nombre:
+                // mueve el ÁREA tal cual, sin mirar qué hay dentro. Se
+                // distingue aquí porque sólo el codegen sabe quién es grupo.
+                if self.disposicion.es_grupo(src) && self.disposicion.es_grupo(dst) {
+                    let (src, dst) = (src.clone(), dst.clone());
+                    self.emit_move_grupo(&src, &dst);
+                    return;
+                }
+                if self.disposicion.es_grupo(src) || self.disposicion.es_grupo(dst) {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!(
+                            "MOVE {src} TO {dst}: uno es un GRUPO y el otro un campo. \
+                             Mezclarlos pide relleno con espacios, y eso necesita que \
+                             exista el texto (PIC X)"
+                        ),
+                    ));
+                    return;
+                }
                 let sc = self.var_scale(dst);
                 self.load_operand(src, sc);
                 self.store_var(dst);

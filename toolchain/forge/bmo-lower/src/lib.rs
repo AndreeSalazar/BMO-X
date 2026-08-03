@@ -62,6 +62,10 @@ pub mod packed;
 /// los SEIS modos y no uno.
 pub mod redondeo;
 pub mod task;
+/// Decimal ZONADO (`DISPLAY`): un byte por digito y el signo sobrepunzado en el
+/// ultimo. La otra mitad de `packed` — las dos son como un numero vive en un
+/// FICHERO. Ver la cabecera de `zoned.rs`.
+pub mod zoned;
 
 /// El emisor de instrucciones, PUBLICO desde que hay frontends que necesitan
 /// abrir hueco en la pila antes de llamar a `console::read_line`.

@@ -140,10 +140,20 @@ escondidas en la fase 3.
       ⚠ La decisión sigue en pie: jubilar `parser.rs` de golpe (mover las 136
       pruebas a la vez) o convivir.
 
-- [ ] **0.5 · Records anidados con posiciones fijas** — M
-      Grupos `01`/`05`/`10` con cada campo en su sitio dentro del registro.
-      ⚠ **Su dependencia cambió DOS veces**; ver 1.0. La forma que lo desbloquea
-      sin pagar 1.5 es el **área de registro con empaquetado en la frontera**.
+- [x] **0.5 · Records anidados con posiciones fijas** — ✅ 2026-08-03
+      Grupos `01`/`05`/`10` con **cada campo en su byte, sin relleno** — porque
+      la disposición de un registro *es el formato del fichero*, y un byte de
+      padding es un byte que aparece en el disco. Vive en `registro.rs` y **NO
+      reutiliza `bmo_abi::types::disposicion`** a propósito: aquélla alinea, que
+      es lo correcto para C y veneno aquí. Es la excepción que confirma la regla
+      de la casa — se comparte la REGLA cuando es la misma, y ésta no lo es.
+      ★ **El ÁREA DE REGISTRO del camino B ya funciona**: un grupo tiene sus
+      ranuras de trabajo *y* su área de bytes, y la traducción vive sólo donde el
+      registro cruza. La otra mitad entró con esto: `bmo_lower::zoned`, donde un
+      `DISPLAY` es **un byte por dígito con el signo sobrepunzado en el último**
+      — que es por lo que un `PIC S9(5)` mide cinco bytes y no seis.
+      ★ La prueba que no se puede fingir: un grupo con un `PIC 9(6)` movido a
+      otro con dos `PIC 9(3)` da `123` y `456`. Campo a campo eso es imposible.
 
 - [ ] **0.6 · `GO TO` dentro de un párrafo** — S
       Salió faltando al escribir el ejemplo del nivel 8: sin `GO TO`, el descarte
@@ -243,10 +253,13 @@ que ya existe.**
       Cada `05` en su offset, mezclando `COMP-3`, `DISPLAY` y `PIC X` en el mismo
       registro. Es lo que convierte 1.1 en algo útil.
 
-- [ ] **1.3 · `MOVE` de grupo** — S ⛔ (0.5)
-      Mover un `01` entero a otro. **La emisión ya existe**: `bmo_lower::memoria`
-      tiene `copiar`, `rellenar`, `largo`, `comparar` y `absoluto`. En
-      `lang/cobol` sólo falta el nombre.
+- [x] **1.3 · `MOVE` de grupo** — ✅ 2026-08-03
+      Entró **con** `0.5`, porque es su primer consumidor: sin él la disposición
+      sería código sin usuario, que es justo lo que este repo no permite.
+      Es una copia de **bytes** con `bmo_lower::memoria::copiar`, no campo a
+      campo — que es lo que dice el estándar y lo que permite reinterpretar un
+      registro. Se rechaza con motivo mezclar un grupo con un campo suelto: pide
+      relleno con espacios, y eso necesita `0.7`.
 
 - [ ] **1.4 · `REDEFINES`** — M ⚠ (depende de qué salga en 1.0)
       Dos vistas del mismo espacio. Con el camino B hay que decidir: rechazarlo
@@ -519,8 +532,10 @@ HECHO   2.1 EVALUATE (las dos formas) · 2.6 ROUNDED (los seis modos)
 
         ══════ SIN CANDADO: todo esto es COBOL y va PRIMERO ══════
 
-AHORA   0.5 RECORDS (con el camino B) ──→ 1.2 ──→ 1.1 BINARIO
-        ese es el camino a LEER LO QUE YA EXISTE
+HECHO   0.5 RECORDS + el AREA + 1.3 MOVE de grupo + bmo-lower::zoned
+
+AHORA   1.2 CAMPOS POSICIONALES en un FD ──→ 1.1 REGISTRO BINARIO
+        con el area hecha, esto es enchufarla al READ y al WRITE
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -537,9 +552,9 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
-**`0.5`** → `1.2` → `1.1` → `0.7` → `1.7` → `2.6b` → `0.6` → `2.2` → `2.7` →
-`2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el kernel**: `3.1` → `3.3` →
-`3.2` → `3.4` → fase 4 …
+~~`0.5`~~ → ~~`1.3`~~ → **`1.2`** → `1.1` → `0.7` → `1.7` → `2.6b` → `0.6` →
+`2.2` → `2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el kernel**:
+`3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
 ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
@@ -577,3 +592,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | ★ **2.6 `ROUNDED`** — los seis modos del estándar en las cinco aritméticas; se redondea el RESULTADO | `bmo-lower::redondeo` + `codegen.rs` |
 | 2026-08-03 | **Bug de precisión** que destapó `ROUNDED`: `COMPUTE` recortaba los operandos ANTES de operar | `codegen::emit_compute` (escala de trabajo) |
 | 2026-08-03 | ★ **1.0 decidido** — camino B: área de registro con empaquetado en la frontera | este documento, §FASE 1 |
+| 2026-08-03 | ★★ **0.5 + 1.3** — grupos con cada campo en su byte, el ÁREA DE REGISTRO funcionando, y `MOVE` de grupo por bytes | `cobol/registro.rs` + `bmo-lower::zoned` + `codegen.rs` |
