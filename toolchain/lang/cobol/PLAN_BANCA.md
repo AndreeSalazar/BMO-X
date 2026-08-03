@@ -39,13 +39,13 @@ ninguno, la prueba no probaba nada.
 Nada grande de las fases siguientes entra limpio sin esto. Son baratas y
 desbloquean mucho: hacerlas después significa hacer dos veces lo de en medio.
 
-- [ ] **0.1 · `VALUE` inicializa de verdad** — S
-      Hoy se parsea y **se ignora en silencio** salvo en los niveles 88:
-      `codegen.rs` sólo lee `item.value` para los 88. `01 SALDO PIC 9(5)V99
-      VALUE 100.00.` compila y SALDO arranca con basura. Los ejemplos no lo
-      notan porque todos inicializan con `MOVE`.
-      → Emitir en el prólogo, **pasando por `store_var`** para que un `COMP-3`
-      se inicialice empaquetado. O rechazarlo con motivo, como `OPEN EXTEND`.
+- [x] **0.1 · `VALUE` inicializa de verdad** — ✅ 2026-08-03
+      Se emite al principio, después de repartir la pila y antes de la primera
+      sentencia, **pasando por `store_var`** — así un `COMP-3` se inicializa
+      empaquetado sin que el emisor de valores sepa que existen los nibbles.
+      Sobre una tabla llena todas las casillas. Figurativas `ZERO`/`ZEROS`/
+      `ZEROES`. Se rechaza con motivo: `VALUE` de texto, `VALUE` que no es un
+      número, y `VALUE` sin PIC.
 
 - [ ] **0.2 ★ El parser sobre TOKENS como principal** — L ⚠
       `tparser.rs` ya parsea un programa entero hasta BEF, pero **`compile_source`
@@ -59,17 +59,27 @@ desbloquean mucho: hacerlas después significa hacer dos veces lo de en medio.
       dos gramáticas que mantener; de golpe hay que mover **las 105 pruebas** a
       la vez. Escribir la decisión antes de tocar nada.
 
-- [ ] **0.3 · `OR` en las condiciones** — S
-      Hoy `parse_conditions` **rechaza `OR` con un error explícito** y la lista
-      se conjuga siempre con AND. Bloquea tres cosas: un `88` con `THRU`, un
-      `88` con varios valores, y el `WHEN a, b, c` de `EVALUATE`.
+- [x] **0.3 · `OR` en las condiciones** — ✅ 2026-08-03
+      La condición dejó de ser una `Vec` y es un **árbol** `Simple/Y/O`, porque
+      `AND` liga más fuerte que `OR` y una lista plana no puede representar esa
+      diferencia. Con **cortocircuito**, que no es una optimización: un operando
+      puede ser un elemento de tabla y ahí la evaluación lleva guarda de rango.
+      Cayeron con él los dos rechazos que dependían de él: **`88 … VALUE 1 THRU
+      5`** y **`88 … VALUE 6, 7`**, que se expanden y bajan por el mismo emisor.
+      Sigue faltando el `WHEN a, b, c` porque falta `EVALUATE` (2.1).
 
-- [ ] **0.4 · Párrafos y `PERFORM <párrafo>`** — M
-      **Es la estructura de todo COBOL real** y hoy no existe: el programa es
-      una lista plana de sentencias. Un programa de banca es párrafos con
-      nombre y `PERFORM 1000-LEER THRU 1000-SALIR`.
-      Trae detrás: `GO TO` (dentro de párrafo), `PERFORM … THRU`, y el orden de
-      caída de un párrafo al siguiente.
+- [x] **0.4 · Párrafos y `PERFORM <párrafo>`** — ✅ 2026-08-03
+      Un nombre de párrafo es una palabra sola con punto. Compilan
+      `PERFORM <p>`, `PERFORM <p> THRU <q>`, `PERFORM <p> <n> TIMES` y
+      `PERFORM <p> UNTIL <cond>`, más `EXIT`/`CONTINUE`.
+      ★ El retorno se decide **en ejecución** (una ranura de pila con "en qué
+      párrafo hay que volver"), no con un `ret` fijo: el mismo párrafo puede ser
+      el final de un rango en una línea y estar en medio de otro en la de abajo.
+      ⚠ **Falta `GO TO`**, y sin él el descarte dentro de un rango se escribe
+      con un interruptor. Está dicho en el ejemplo en vez de fingirse.
+      ★ De paso salió que **`STOP RUN` no emitía nada** — colaba por ser siempre
+      la última línea, y ya estaba mal antes: un `STOP RUN` dentro de un `IF`
+      se ignoraba en silencio.
 
 - [ ] **0.5 · Records anidados con posiciones fijas** — M
       Grupos `01`/`05`/`10` donde cada campo cae en **su offset dentro del
@@ -347,3 +357,6 @@ assumes otherwise"*.
 | Fecha | Qué entró | Dónde |
 |---|---|---|
 | 2026-08-03 | ★ **`COMP-3` real** — el dato vive en nibbles, del ancho que dice su PICTURE | `bmo-lower::packed` + `codegen.rs` · ejemplo `7-empaquetado/` |
+| 2026-08-03 | **0.1 `VALUE`** inicializa de verdad (se parseaba y no se emitía nunca) | `codegen::emit_valores_iniciales` |
+| 2026-08-03 | **0.3 `OR`** — la condición es un árbol con cortocircuito; caen los `88` con `THRU` y con varios valores | `ast::Condicion` + `codegen::emit_jump_if_true/false` |
+| 2026-08-03 | ★ **0.4 PÁRRAFOS** y las cuatro formas del `PERFORM` fuera de línea; `STOP RUN` termina de verdad | `codegen::emit_parrafos` · ejemplo `8-parrafos/` |

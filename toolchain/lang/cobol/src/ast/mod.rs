@@ -25,13 +25,33 @@ pub struct CobolFile {
     pub record: String,
 }
 
+/// Un PÁRRAFO de la PROCEDURE DIVISION: un nombre y lo que hace.
+///
+/// Es la unidad en la que se escribe COBOL de verdad. Un batch bancario tiene
+/// un cuerpo principal de cinco `PERFORM` legibles y el trabajo repartido en
+/// `1000-INICIO`, `2000-PROCESO`, `3000-CIERRE`. Sin párrafos, un programa es
+/// una lista plana de sentencias y no hay forma de escribir eso.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parrafo {
+    pub nombre: String,
+    pub statements: Vec<CobolStatement>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CobolProgram {
     pub program_id: String,
     pub data_items: Vec<DataItem>,
     /// Los ficheros de `FILE-CONTROL`, en orden de declaración.
     pub files: Vec<CobolFile>,
+    /// El CUERPO PRINCIPAL: lo que hay antes del primer nombre de párrafo.
+    ///
+    /// Si está vacío —porque el programa empieza directamente con un párrafo—
+    /// el codegen arranca ejecutando el primero. Es la otra forma de escribir
+    /// lo mismo y las dos son corrientes.
     pub statements: Vec<CobolStatement>,
+    /// Los párrafos, **en el orden en que se escribieron**. El orden manda: un
+    /// `PERFORM A THRU B` ejecuta todo lo que hay entre los dos.
+    pub parrafos: Vec<Parrafo>,
 }
 
 impl CobolProgram {
@@ -41,7 +61,13 @@ impl CobolProgram {
             data_items: Vec::new(),
             files: Vec::new(),
             statements: Vec::new(),
+            parrafos: Vec::new(),
         }
+    }
+
+    /// El índice del párrafo con ese nombre, si existe.
+    pub fn parrafo(&self, nombre: &str) -> Option<usize> {
+        self.parrafos.iter().position(|p| p.nombre.eq_ignore_ascii_case(nombre))
     }
 
     /// El fichero declarado con ese nombre, si lo hay.
@@ -53,8 +79,17 @@ impl CobolProgram {
         self.data_items.push(item);
     }
 
+    /// Añade al sitio que toca: al párrafo abierto, o al cuerpo principal si
+    /// todavía no hay ninguno.
     pub fn add_statement(&mut self, stmt: CobolStatement) {
-        self.statements.push(stmt);
+        match self.parrafos.last_mut() {
+            Some(p) => p.statements.push(stmt),
+            None => self.statements.push(stmt),
+        }
+    }
+
+    pub fn abrir_parrafo(&mut self, nombre: String) {
+        self.parrafos.push(Parrafo { nombre, statements: Vec::new() });
     }
 }
 

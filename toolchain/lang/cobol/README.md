@@ -75,8 +75,13 @@ that does not exist.
 
 **Control flow**
 - `IF` / `ELSE` — real branching
-- `PERFORM` — real loops
-- Level `88` condition names
+- Conditions combined with `AND` and `OR`, as a tree with correct precedence
+  and **short-circuit** evaluation
+- **Paragraphs**, and every out-of-line `PERFORM`: `PERFORM p`,
+  `PERFORM p THRU q`, `PERFORM p n TIMES`, `PERFORM p UNTIL cond`. This is how
+  real COBOL is structured — a readable main body and the work in named steps
+- `PERFORM` — real loops, in-line and out-of-line
+- Level `88` condition names, including `VALUE 1 THRU 5` and `VALUE 6, 7`
 
 **Tables**
 - `OCCURS n TIMES`, literal and variable subscripts
@@ -100,9 +105,9 @@ separate from vendor extensions.
 Every unsupported construct is **rejected with a reason**. Nothing is
 silently ignored, and nothing is stubbed out to look like it works.
 
-Not implemented yet: `EVALUATE`, `OR` in conditions, `STRING`, `INSPECT`,
-`SEARCH`, `CALL`, `SORT`, `REDEFINES`, nested records beyond group level, and
-the intrinsic function library.
+Not implemented yet: `EVALUATE`, `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`,
+`GO TO`, `REDEFINES`, nested records beyond group level, and the intrinsic
+function library.
 
 Deliberately rejected with an explanation rather than guessed at:
 - `READ` without `AT END` — it would compile into a loop that never ends
@@ -132,6 +137,7 @@ Real programs, each one compiled and executed by the test suite:
 | `examples/5-tablas/conceptos.cob` | Per-concept close over two parallel files |
 | `examples/6-condiciones/cartera.cob` | Level 88 condition names |
 | `examples/7-empaquetado/cuentas.cob` | `COMP-3` packed decimal — the storage real bank data uses |
+| `examples/8-parrafos/cierre.cob` | An end-of-day close written the way real COBOL is: paragraphs |
 
 `batch.cob` is the one to read first. It is an ordinary end-of-day batch:
 read a file, compute, write a report. That is what banking software

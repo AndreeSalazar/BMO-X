@@ -33,6 +33,27 @@ pub enum CobolStatement {
     /// `PERFORM <n> TIMES ... END-PERFORM` — el cuerpo va en el AST, no
     /// como una cuenta suelta: sin cuerpo no hay nada que repetir.
     PerformTimes(u32, Vec<CobolStatement>),
+    /// ★ `PERFORM <párrafo> [THRU <párrafo>] [<n> TIMES | UNTIL <cond>]`.
+    ///
+    /// El **PERFORM fuera de línea**, que es como se escribe COBOL de verdad:
+    /// el programa principal es una lista de `PERFORM` y el trabajo vive en
+    /// párrafos con nombre. Un batch bancario entero cabe en cinco líneas
+    /// legibles y luego se lee cada paso por separado.
+    PerformFuera {
+        desde: String,
+        /// `THRU <otro>` — ejecuta desde uno hasta otro, los dos incluidos.
+        hasta: Option<String>,
+        /// `<n> TIMES`.
+        veces: Option<u32>,
+        /// `UNTIL <cond>` — se prueba ANTES de cada vuelta.
+        hasta_que: Option<Condicion>,
+    },
+    /// `EXIT` — no hace nada, y ese es su trabajo.
+    ///
+    /// Es el destino de un `PERFORM … THRU X-SALIR`: un párrafo vacío al que
+    /// saltar cuando hay que salir antes de tiempo. Emitir "nada" es correcto;
+    /// rechazarlo obligaría a inventar una sentencia de mentira.
+    Exit,
     /// `PERFORM UNTIL <cond> ... END-PERFORM`. Prueba ANTES de cada
     /// iteración (`WITH TEST BEFORE`, el default del estándar).
     PerformUntil(Condicion, Vec<CobolStatement>),

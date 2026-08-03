@@ -31,7 +31,12 @@ pub fn compile_to_bef_bytes(program: &CobolProgram) -> Result<Vec<u8>> {
     // Se comprueba aquí y no en el parser a propósito: el parser puede leer
     // legítimamente un programa sin sentencias mientras construye; quien no
     // puede entregar un binario vacío es el que lo escribe.
-    if program.statements.is_empty() {
+    // ★ "Sin nada que ejecutar" son las DOS listas vacías, no sólo la primera:
+    // desde que hay párrafos, un programa puede tener el cuerpo principal vacío
+    // y todo el trabajo dentro de ellos — que es una de las dos formas
+    // corrientes de escribirlo.
+    let sin_parrafos_con_algo = program.parrafos.iter().all(|p| p.statements.is_empty());
+    if program.statements.is_empty() && sin_parrafos_con_algo {
         return Err(CobolError::new(0, format!(
             "'{}' no tiene PROCEDURE DIVISION con sentencias: un programa sin nada \
              que ejecutar no puede producir un binario",
@@ -115,6 +120,15 @@ struct Codegen {
     /// ejecutaba las dos ramas y el `PERFORM` no repetía nada, pero el BEF
     /// compilaba y validaba igual.
     jump_fixups: Vec<(usize, u32)>,
+    /// La ranura de pila donde vive "en qué párrafo hay que volver".
+    ///
+    /// `None` = el programa no tiene párrafos y no se reserva nada. Ver
+    /// `emit_parrafos` para por qué un número en memoria y no un `ret` a secas.
+    perform_exit: Option<i32>,
+    /// Los párrafos por nombre → su número de orden (1..n). El **orden manda**:
+    /// un `PERFORM A THRU B` ejecuta todo lo que hay entre los dos, así que
+    /// comparar índices es lo que dice si el rango tiene sentido.
+    parrafos: HashMap<String, u32>,
     /// Errores detectados durante la emision (expresiones malformadas).
     /// Se acumulan y se reportan al final en vez de emitir codigo que
     /// calcula cualquier cosa.
@@ -146,6 +160,8 @@ impl Codegen {
             next_label: 0,
             label_offsets: HashMap::new(),
             jump_fixups: Vec::new(),
+            perform_exit: None,
+            parrafos: HashMap::new(),
             errors: Vec::new(),
             stack_size: 0,
             isa: Instructions::load_x86_64().expect("tablas sem-asm x86-64 (forge/sem-asm/tables)"),
@@ -479,6 +495,19 @@ impl Codegen {
                 }
             }
         }
+        // ★ La ranura del PERFORM: en qué párrafo tiene que volver el que está
+        // corriendo ahora. Vive en la pila y no en un registro por la razón de
+        // siempre — entre el `call` y el `ret` pasa el párrafo entero, y
+        // cualquier `DISPLAY` de dentro hace un `syscall` que destruye medio
+        // banco de registros.
+        if !program.parrafos.is_empty() {
+            self.stack_size += 8;
+            self.perform_exit = Some(-(self.stack_size));
+            for (i, p) in program.parrafos.iter().enumerate() {
+                self.parrafos.insert(p.nombre.to_ascii_uppercase(), (i + 1) as u32);
+            }
+        }
+
         // Dos ranuras de pila por fichero: su handle y su estado. Van DESPUÉS
         // de los datos y con el mismo mecanismo: son variables que COBOL no
         // nombra.
@@ -511,7 +540,22 @@ impl Codegen {
         // que el reparto esta hecho.
         self.emit_valores_iniciales(program);
 
-        // Emit COBOL statements
+        // ── El CUERPO PRINCIPAL ──
+        //
+        // Si el programa empieza directamente con un párrafo (la otra forma
+        // corriente de escribirlo), el cuerpo principal está vacío y arrancar
+        // seria salir sin hacer nada. En ese caso se ejecuta el PRIMER párrafo,
+        // que es lo que dice el estándar: la PROCEDURE DIVISION se recorre de
+        // arriba abajo.
+        if program.statements.is_empty() && !program.parrafos.is_empty() {
+            let primero = program.parrafos[0].nombre.clone();
+            self.emit_statement(&CobolStatement::PerformFuera {
+                desde: primero,
+                hasta: program.parrafos.last().map(|p| p.nombre.clone()),
+                veces: None,
+                hasta_que: None,
+            });
+        }
         for stmt in &program.statements {
             self.emit_statement(stmt);
         }
@@ -524,6 +568,9 @@ impl Codegen {
         // justo el fallo del que protege. La red correcta es girar en
         // `pause`, que es lo que emite la puerta.
         bmo_lower::task::exit(&mut self.code);
+
+        // ★ Los PÁRRAFOS, después del final del cuerpo principal.
+        self.emit_parrafos(program);
 
         // Los bloques de subindice fuera de rango van DESPUES del final: son
         // camino de no volver, no estorban al codigo que corre, y se comparten
@@ -541,6 +588,215 @@ impl Codegen {
             return Err(err.clone());
         }
         Ok(())
+    }
+
+    // ── PÁRRAFOS ────────────────────────────────────────────────────────
+    //
+    // ## Por qué un número en memoria y no un `ret` a secas
+    //
+    // Si cada párrafo terminara en `ret`, `PERFORM A` funcionaría y
+    // `PERFORM A THRU C` no: al acabar `A` volvería en vez de seguir por `B`.
+    // Y no se puede decidir al compilar cuál de las dos cosas hace `A`, porque
+    // el MISMO párrafo puede ser el final de un rango en una línea y estar en
+    // medio de otro en la de abajo.
+    //
+    // Así que la decisión se toma en EJECUCIÓN, con una pregunta de dos
+    // instrucciones al final de cada párrafo:
+    //
+    // ```text
+    //   PERFORM A THRU C:                    fin de cada parrafo P:
+    //     push [salida]      guardar           cmp [salida], <id de P>
+    //     mov  [salida], id(C)                 jne (caer al siguiente)
+    //     call A                               ret
+    //     pop  [salida]      restaurar
+    // ```
+    //
+    // El `push`/`pop` alrededor es lo que deja que un párrafo llame a otro: la
+    // salida del de fuera se guarda en la pila de máquina, debajo de la
+    // dirección de retorno, y vuelve a su sitio al terminar. Sin eso, un
+    // `PERFORM` anidado se comería la salida del que lo contiene y el de fuera
+    // no volvería nunca.
+    //
+    // Es la misma forma que usa GnuCOBOL, y por el mismo motivo.
+
+    /// El nombre con el que un párrafo entra en `function_offsets`.
+    fn simbolo_parrafo(nombre: &str) -> String {
+        // El `:` es ilegal en un nombre de COBOL, así que un párrafo llamado
+        // como un símbolo interno no puede chocar. Mismo truco que el punto de
+        // `funcion.variable` en BMO C.
+        format!("parrafo:{}", nombre.to_ascii_uppercase())
+    }
+
+    /// `push qword [rbp+off]`.
+    fn emit_push_mem(&mut self, off: i32) {
+        self.code.extend_from_slice(&[0xFF, 0xB5]);
+        self.code.extend_from_slice(&off.to_le_bytes());
+    }
+
+    /// `pop qword [rbp+off]`.
+    fn emit_pop_mem(&mut self, off: i32) {
+        self.code.extend_from_slice(&[0x8F, 0x85]);
+        self.code.extend_from_slice(&off.to_le_bytes());
+    }
+
+    /// `mov qword [rbp+off], imm32`.
+    fn emit_store_imm_mem(&mut self, off: i32, valor: u32) {
+        self.code.extend_from_slice(&[0x48, 0xC7, 0x85]);
+        self.code.extend_from_slice(&off.to_le_bytes());
+        self.code.extend_from_slice(&valor.to_le_bytes());
+    }
+
+    /// `cmp qword [rbp+off], imm32`.
+    fn emit_cmp_mem_imm(&mut self, off: i32, valor: u32) {
+        self.code.extend_from_slice(&[0x48, 0x81, 0xBD]);
+        self.code.extend_from_slice(&off.to_le_bytes());
+        self.code.extend_from_slice(&valor.to_le_bytes());
+    }
+
+    /// Los párrafos, en el orden en que se escribieron.
+    ///
+    /// El orden no es estético: un `PERFORM A THRU C` **cae** de `A` a `B` y de
+    /// `B` a `C` porque están seguidos en el código. Reordenarlos cambiaría lo
+    /// que hace el programa.
+    fn emit_parrafos(&mut self, program: &CobolProgram) {
+        let Some(salida) = self.perform_exit else { return };
+        for (i, p) in program.parrafos.iter().enumerate() {
+            let id = (i + 1) as u32;
+            let off = self.code.len();
+            self.function_offsets.insert(Self::simbolo_parrafo(&p.nombre), off);
+            for s in &p.statements {
+                self.emit_statement(s);
+            }
+            // El epílogo: ¿es aquí donde había que volver?
+            let sigue = self.fresh_label();
+            self.emit_cmp_mem_imm(salida, id);
+            self.emit_jcc(0x85, sigue); // jne → cae al párrafo siguiente
+            self.code.push(0xC3); // ret
+            self.bind_label(sigue);
+        }
+        // Detrás del último no hay párrafo al que caer. Llegar aquí querría
+        // decir que la salida apuntaba a uno que ya pasó; el `ret` devuelve el
+        // control a quien llamara, que es lo menos malo y no inventa un salto.
+        self.code.push(0xC3);
+    }
+
+    /// `PERFORM <párrafo> [THRU <otro>] [<n> TIMES | UNTIL <cond>]`.
+    fn emit_perform_fuera(
+        &mut self,
+        desde: &str,
+        hasta: Option<&str>,
+        veces: Option<u32>,
+        hasta_que: Option<&Condicion>,
+    ) {
+        let Some(salida) = self.perform_exit else {
+            self.errors.push(CobolError::new(
+                0,
+                format!("PERFORM {desde}: este programa no tiene ningun parrafo"),
+            ));
+            return;
+        };
+        let Some(&i_desde) = self.parrafos.get(&desde.to_ascii_uppercase()) else {
+            self.errors.push(CobolError::new(
+                0,
+                format!(
+                    "PERFORM {desde}: no hay ningun parrafo con ese nombre. Un parrafo se \
+                     declara escribiendo su nombre solo y con punto, en su propia linea"
+                ),
+            ));
+            return;
+        };
+        let i_hasta = match hasta {
+            None => i_desde,
+            Some(h) => match self.parrafos.get(&h.to_ascii_uppercase()) {
+                Some(&i) => i,
+                None => {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!("PERFORM {desde} THRU {h}: no hay ningun parrafo llamado {h}"),
+                    ));
+                    return;
+                }
+            },
+        };
+        // Un rango al reves no es un rango. El estandar lo deja "indefinido", y
+        // aqui indefinido significa que el programa se sale de los parrafos y
+        // ejecuta lo que haya detras — asi que se dice.
+        if i_hasta < i_desde {
+            self.errors.push(CobolError::new(
+                0,
+                format!(
+                    "PERFORM {desde} THRU {}: el final esta ANTES del principio. Un rango \
+                     va hacia abajo, en el orden en que estan escritos los parrafos",
+                    hasta.unwrap_or("")
+                ),
+            ));
+            return;
+        }
+
+        // El cuerpo: guardar la salida de fuera, fijar la nuestra, llamar, y
+        // devolverla. Va en un cierre para poder envolverlo en el bucle que
+        // toque sin repetirlo tres veces.
+        let simbolo = Self::simbolo_parrafo(desde);
+        macro_rules! llamada {
+            ($yo:expr) => {{
+                $yo.emit_push_mem(salida);
+                $yo.emit_store_imm_mem(salida, i_hasta);
+                $yo.code.push(0xE8); // call rel32
+                $yo.call_relocs
+                    .push(CallReloc { offset: $yo.code.len(), target: simbolo.clone() });
+                $yo.code.extend_from_slice(&[0, 0, 0, 0]);
+                $yo.emit_pop_mem(salida);
+            }};
+        }
+
+        match (veces, hasta_que) {
+            (None, None) => llamada!(self),
+
+            // `PERFORM P <n> TIMES` — el contador en la pila, igual que el
+            // PERFORM en línea, y por el mismo motivo: el párrafo de dentro
+            // puede hacer un `syscall` y llevarse los registros por delante.
+            (Some(n), None) => {
+                let top = self.fresh_label();
+                let done = self.fresh_label();
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rax, n as u64).unwrap(); });
+                self.code.push(0x50); // push rax → contador
+                self.bind_label(top);
+                self.code.extend_from_slice(&[0x48, 0x83, 0x3C, 0x24, 0x00]); // cmp qword [rsp], 0
+                self.emit_jcc(0x8E, done); // jle
+                llamada!(self);
+                self.code.extend_from_slice(&[0x48, 0xFF, 0x0C, 0x24]); // dec qword [rsp]
+                self.emit_jmp(top);
+                self.bind_label(done);
+                self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]); // add rsp, 8
+            }
+
+            // `PERFORM P UNTIL <cond>` — se prueba ANTES de cada vuelta
+            // (`WITH TEST BEFORE`, el default). Es EL bucle de un batch: el
+            // párrafo lee un registro y el UNTIL mira si se acabó.
+            (None, Some(cond)) => {
+                let top = self.fresh_label();
+                let cuerpo = self.fresh_label();
+                let done = self.fresh_label();
+                self.bind_label(top);
+                let cond = cond.clone();
+                self.emit_jump_if_false(&cond, cuerpo);
+                self.emit_jmp(done);
+                self.bind_label(cuerpo);
+                llamada!(self);
+                self.emit_jmp(top);
+                self.bind_label(done);
+            }
+
+            (Some(_), Some(_)) => {
+                self.errors.push(CobolError::new(
+                    0,
+                    format!(
+                        "PERFORM {desde}: `<n> TIMES` y `UNTIL` a la vez no se compila. \
+                         Son dos formas de decir cuando parar y hay que elegir una"
+                    ),
+                ));
+            }
+        }
     }
 
     /// `VALUE` — el valor con el que arranca cada dato.
@@ -1139,6 +1395,17 @@ impl Codegen {
             // PERFORM UNTIL <cond>: se prueba ANTES de cada iteración
             // (`WITH TEST BEFORE`, el default del estándar) y se sale cuando
             // la condición se cumple.
+            CobolStatement::PerformFuera { desde, hasta, veces, hasta_que } => {
+                let (desde, hasta, veces, hasta_que) =
+                    (desde.clone(), hasta.clone(), *veces, hasta_que.clone());
+                self.emit_perform_fuera(&desde, hasta.as_deref(), veces, hasta_que.as_ref());
+            }
+
+            // `EXIT` y `CONTINUE` no emiten nada, y eso es lo correcto: son el
+            // hueco explícito. El destino de un `PERFORM … THRU X-SALIR` tiene
+            // que existir como párrafo, no como instrucción.
+            CobolStatement::Exit => {}
+
             CobolStatement::PerformUntil(cond, body) => {
                 let top = self.fresh_label();
                 let body_label = self.fresh_label();
@@ -1178,7 +1445,20 @@ impl Codegen {
                 self.emit_read(fichero, al_final, si_hay)
             }
             CobolStatement::Write(registro) => self.emit_write(registro),
-            CobolStatement::StopRun => {}
+            // ★ `STOP RUN` TERMINA EL PROGRAMA, y hasta hoy no emitía nada.
+            //
+            // Colaba porque siempre era la última línea y detrás venía el
+            // `exit` implícito del final. En cuanto hay párrafos deja de colar:
+            // el `STOP RUN` del cuerpo principal tiene los párrafos DETRÁS, así
+            // que no emitir nada significaba caerse dentro del primero y
+            // ejecutarlo por segunda vez.
+            //
+            // Y ya estaba mal antes: un `STOP RUN` dentro de un `IF` —la forma
+            // normal de abortar un batch cuando algo no cuadra— se ignoraba en
+            // silencio y el proceso seguía.
+            CobolStatement::StopRun => {
+                bmo_lower::task::exit(&mut self.code);
+            }
             CobolStatement::Expr(_) => {}
         }
     }

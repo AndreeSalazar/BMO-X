@@ -151,6 +151,22 @@ impl Parser {
 
             if !self.in_procedure { continue; }
 
+            // ★ Un NOMBRE DE PÁRRAFO abre uno nuevo. Todo lo que venga detrás
+            // es suyo hasta el siguiente nombre.
+            if let Some(nombre) = Self::nombre_de_parrafo(&line) {
+                if program.parrafo(&nombre).is_some() {
+                    return Err(CobolError::new(
+                        line_no,
+                        format!(
+                            "el parrafo {nombre} ya existe: dos parrafos con el mismo nombre \
+                             hacen que un PERFORM no sepa a cual va"
+                        ),
+                    ));
+                }
+                program.abrir_parrafo(nombre);
+                continue;
+            }
+
             let stmt = self.parse_statement(&normalized, line_no)?;
             program.add_statement(stmt);
         }
@@ -184,6 +200,137 @@ impl Parser {
         } else {
             Ok(id)
         }
+    }
+
+    /// `PERFORM <parrafo> [THRU <otro>] [<n> TIMES | UNTIL <cond>]`.
+    ///
+    /// El orden en el que se recorta importa: primero el `UNTIL`, que se lleva
+    /// todo lo que queda a su derecha, y después el `THRU`. Al revés, un
+    /// nombre de párrafo con la palabra dentro se partiría mal.
+    fn parse_perform_fuera(rest: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let upper = rest.to_ascii_uppercase();
+
+        // El `UNTIL` se lleva la cola entera.
+        let (cabeza, hasta_que) = match Self::pos_palabra(&upper, "UNTIL") {
+            Some(i) => {
+                let cond = rest[i + 5..].trim();
+                if cond.is_empty() {
+                    return Err(CobolError::new(line_no, "PERFORM … UNTIL sin condicion"));
+                }
+                (rest[..i].trim(), Some(Self::parse_condicion(cond, line_no)?))
+            }
+            None => (rest, None),
+        };
+
+        // `<n> TIMES` al final de lo que queda.
+        let upper_cabeza = cabeza.to_ascii_uppercase();
+        let (cabeza, veces) = match Self::pos_palabra(&upper_cabeza, "TIMES") {
+            Some(i) => {
+                let antes = cabeza[..i].trim();
+                let (resto, n) = antes.rsplit_once(char::is_whitespace).unwrap_or(("", antes));
+                let n: u32 = n.trim().parse().map_err(|_| {
+                    CobolError::new(
+                        line_no,
+                        format!("PERFORM … {n} TIMES: '{n}' no es un numero de veces"),
+                    )
+                })?;
+                (resto.trim(), Some(n))
+            }
+            None => (cabeza, None),
+        };
+
+        // Y por fin `<parrafo> [THRU <otro>]`.
+        let upper_cabeza = cabeza.to_ascii_uppercase();
+        let (desde, hasta) = match Self::pos_palabra(&upper_cabeza, "THRU")
+            .map(|i| (i, 4))
+            .or_else(|| Self::pos_palabra(&upper_cabeza, "THROUGH").map(|i| (i, 7)))
+        {
+            Some((i, largo)) => {
+                let a = cabeza[i + largo..].trim().to_ascii_uppercase();
+                if a.is_empty() {
+                    return Err(CobolError::new(line_no, "PERFORM … THRU sin el parrafo final"));
+                }
+                (cabeza[..i].trim().to_ascii_uppercase(), Some(a))
+            }
+            None => (cabeza.trim().to_ascii_uppercase(), None),
+        };
+
+        if desde.is_empty() || desde.split_whitespace().count() != 1 {
+            return Err(CobolError::new(
+                line_no,
+                format!(
+                    "PERFORM {desde}: se esperaba UN nombre de parrafo. Las formas que se \
+                     compilan son `PERFORM <p>`, `PERFORM <p> THRU <q>`, `PERFORM <p> <n> TIMES` \
+                     y `PERFORM <p> UNTIL <cond>`"
+                ),
+            ));
+        }
+
+        Ok(CobolStatement::PerformFuera { desde, hasta, veces, hasta_que })
+    }
+
+    /// Dónde empieza una palabra COMPLETA dentro de un texto ya en mayúsculas.
+    ///
+    /// Palabra completa y no subcadena: un párrafo llamado `9000-TIMES-UP` no
+    /// puede activar el recorte del `TIMES`.
+    fn pos_palabra(upper: &str, palabra: &str) -> Option<usize> {
+        let bytes = upper.as_bytes();
+        let mut i = 0usize;
+        while i + palabra.len() <= bytes.len() {
+            if upper[i..].starts_with(palabra) {
+                let izq_ok = i == 0 || bytes[i - 1].is_ascii_whitespace();
+                let fin = i + palabra.len();
+                let der_ok = fin == bytes.len() || bytes[fin].is_ascii_whitespace();
+                if izq_ok && der_ok {
+                    return Some(i);
+                }
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// ¿Esta línea de la PROCEDURE DIVISION es un NOMBRE DE PÁRRAFO?
+    ///
+    /// Un párrafo es **una palabra sola terminada en punto**, y ahí está toda
+    /// la regla: `1000-INICIO.` lo es y `MOVE 0 TO A.` no, porque tiene cuatro.
+    /// El punto es obligatorio —sin él no hay forma de distinguir un nombre de
+    /// párrafo de un verbo mal escrito— y por eso se mira la línea CRUDA, antes
+    /// de que el analizador de arriba se lo quite.
+    ///
+    /// Y no puede ser una palabra reservada: `EXIT.` es el verbo, no un
+    /// párrafo llamado EXIT. Sin esa comprobación, un `EXIT.` suelto abriría un
+    /// párrafo fantasma y se tragaría el resto del programa.
+    ///
+    /// `<nombre> SECTION.` se acepta como si fuera un párrafo: para lo que hoy
+    /// hace falta —ser el destino de un `PERFORM`— una sección es un párrafo
+    /// con otro nombre, y fingir lo contrario sería rechazar programas que
+    /// funcionarían igual.
+    fn nombre_de_parrafo(linea: &str) -> Option<String> {
+        let t = linea.trim();
+        if !t.ends_with('.') {
+            return None;
+        }
+        let cuerpo = t.trim_end_matches('.').trim();
+        let palabras: Vec<&str> = cuerpo.split_whitespace().collect();
+        let nombre = match palabras.as_slice() {
+            [uno] => *uno,
+            [uno, dos] if dos.eq_ignore_ascii_case("SECTION") => *uno,
+            _ => return None,
+        };
+        if nombre.is_empty() {
+            return None;
+        }
+        let arriba = nombre.to_ascii_uppercase();
+        if crate::generated::words::is_reserved(&arriba) {
+            return None;
+        }
+        // Un nombre de COBOL: letras, dígitos y guiones. Sin esto, un `.` de
+        // más en cualquier sitio abriría un párrafo.
+        if !nombre.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return None;
+        }
+        Some(arriba)
     }
 
     /// Los valores de un `88`, tal cual los escribió quien lo declaró.
@@ -661,6 +808,14 @@ impl Parser {
             self.parse_perform(line, line_no)
         } else if upper == "STOP RUN" || upper == "STOP RUN." {
             Ok(CobolStatement::StopRun)
+        } else if upper == "EXIT" || upper == "EXIT." {
+            // `EXIT` no hace nada, y ese es su trabajo: es el destino de un
+            // `PERFORM … THRU X-SALIR`. Emitir nada es lo correcto.
+            Ok(CobolStatement::Exit)
+        } else if upper == "CONTINUE" || upper == "CONTINUE." {
+            // Igual que EXIT pero en medio de una sentencia: el hueco explícito
+            // de una rama del `IF` que no hace nada.
+            Ok(CobolStatement::Exit)
         } else {
             // Vocabulario COBOL COMPLETO vía las tablas generadas por Python
             // (cobol-gen): el parser distingue un verbo COBOL conocido pero
@@ -902,10 +1057,38 @@ impl Parser {
         Ok(CobolStatement::If(conditions, then_branch, else_branch))
     }
 
-    /// `PERFORM <n> TIMES … END-PERFORM` o `PERFORM UNTIL <cond> … END-PERFORM`.
+    /// Todas las formas del `PERFORM`.
+    ///
+    /// ```text
+    ///   EN LINEA (el cuerpo va entre PERFORM y END-PERFORM)
+    ///     PERFORM <n> TIMES … END-PERFORM
+    ///     PERFORM UNTIL <cond> … END-PERFORM
+    ///
+    ///   FUERA DE LINEA (el cuerpo es un parrafo con nombre)
+    ///     PERFORM <parrafo>
+    ///     PERFORM <parrafo> THRU <parrafo>
+    ///     PERFORM <parrafo> <n> TIMES
+    ///     PERFORM <parrafo> UNTIL <cond>
+    ///     PERFORM <parrafo> THRU <parrafo> UNTIL <cond>
+    /// ```
+    ///
+    /// Se distinguen por lo PRIMERO que viene detrás de `PERFORM`: si es
+    /// `UNTIL` o un número, el cuerpo viene abajo; si es un nombre, el cuerpo
+    /// es ese párrafo. No hace falta mirar más lejos, y eso es lo que hace que
+    /// la regla se pueda explicar en una frase.
     fn parse_perform(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let rest = line[8..].trim().trim_end_matches('.').trim();
         let upper = rest.to_ascii_uppercase();
+
+        // ── El PERFORM fuera de línea ──
+        let primera = upper.split_whitespace().next().unwrap_or("");
+        let es_fuera_de_linea = !primera.is_empty()
+            && primera != "UNTIL"
+            && primera.parse::<u32>().is_err()
+            && !crate::generated::words::is_reserved(primera);
+        if es_fuera_de_linea {
+            return Self::parse_perform_fuera(rest, line_no);
+        }
 
         let header = if let Some(pos) = upper.find("UNTIL ") {
             if pos == 0 {

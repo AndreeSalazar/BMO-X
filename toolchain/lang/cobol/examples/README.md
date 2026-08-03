@@ -17,6 +17,7 @@ comprueba primero que el 1 sigue vivo.
 | 5 | `5-tablas/` | `OCCURS` con subíndice literal y variable, con guarda de rango | emulador + Ryzen |
 | 6 | `6-condiciones/` | Nivel **88**: nombres de condición | emulador |
 | 7 | `7-empaquetado/` | `USAGE COMP-3`: el dato guardado en **nibbles**, del ancho que dice su PIC | emulador |
+| 8 | `8-parrafos/` | **Párrafos** y las cuatro formas del `PERFORM` fuera de línea, `VALUE`, `OR` | emulador |
 
 ## Qué hay en cada escalón
 
@@ -68,14 +69,41 @@ Lo que este escalón todavía no trae: el fichero sigue siendo **texto**. Leer
 bytes empaquetados tal cual vienen de un mainframe pide un registro binario con
 varios campos, y eso es el escalón siguiente.
 
+**8 — `cierre.cob`.** El primer ejemplo escrito **como se escribe COBOL de
+verdad**: un cuerpo principal de cuatro `PERFORM` que se lee en voz alta, y el
+trabajo repartido en párrafos con nombre y número.
+
+```cobol
+PERFORM 1000-INICIO.
+PERFORM 2000-PROCESO UNTIL SE-ACABO.
+PERFORM 3000-CIERRE.
+STOP RUN.
+```
+
+Eso de arriba es el programa entero. **Esa es la razón por la que COBOL se lee:
+no es el inglés, son los párrafos** — quien audite el cierre puede mirar sólo el
+paso que le interesa.
+
+Lo que hace falta que el compilador sepa, y que hasta el 2026-08-03 no sabía:
+nombres de párrafo, `PERFORM` que llama **y vuelve**, `PERFORM … THRU` sobre un
+rango de tres, `PERFORM … UNTIL` con un `88`, `VALUE` que inicializa, `OR` en
+las condiciones, y un `STOP RUN` que de verdad termina.
+
+★ El descarte de un movimiento se hace con un **interruptor y no con un
+`GO TO`**, porque `GO TO` todavía no existe. Está dicho dentro del ejemplo:
+fingirlo con un `PERFORM` del párrafo de salida sería mentir, porque un `PERFORM`
+lo ejecuta y **vuelve**.
+
 ## El escalón que todavía no existe
 
-Un "nivel 8" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
+Un "nivel 9" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
 `EVALUATE`, `PERFORM VARYING`, `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`,
-los records anidados con campos en posiciones fijas — y el `OR` en las
-condiciones, que es lo que hoy impide un `88` con `THRU` o con varios valores.
-Cuando uno de ésos entre, entra con su carpeta y con su fila en
+`GO TO`, y los records anidados con campos en posiciones fijas. Cuando uno de
+ésos entre, entra con su carpeta y con su fila en
 `cobol_feature_matrix_runs_correctly`.
+
+El orden en que entran, y qué bloquea a qué, está en
+[`../PLAN_BANCA.md`](../PLAN_BANCA.md).
 
 ## Los `.bex`
 

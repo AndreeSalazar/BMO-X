@@ -1050,6 +1050,20 @@ impl Machine {
                 let v = self.pop();
                 self.regs[r] = v;
             }
+            // ★ `pop qword [mem]` (8F /0). Sin pareja en `0x58`: ese saca a un
+            // REGISTRO y éste a memoria. Lo emite el PERFORM de párrafo de
+            // COBOL para devolver a su sitio la salida del PERFORM de fuera.
+            //
+            // El orden importa y es el del manual: se saca de la pila ANTES de
+            // calcular la dirección, porque `pop [rsp+8]` es legal y usa el
+            // `rsp` ya subido. Aquí las direcciones son `[rbp+disp]`, así que no
+            // se nota — pero hacerlo al revés sería una trampa esperando.
+            0x8F => {
+                let v = self.pop();
+                let (ext, dst) = self.modrm(0, rex_x, rex_b);
+                assert_eq!(ext & 7, 0, "8F /{} no existe", ext & 7);
+                self.store(dst, v, ancho);
+            }
             // mov <reg>, imm
             0xB8..=0xBF => {
                 let reg = ((byte & 7) as usize) | (rex_b << 3);
@@ -1330,6 +1344,13 @@ impl Machine {
                     let return_to = self.rip as u64;
                     self.push(return_to);
                     self.rip = target as usize;
+                    return;
+                }
+                // ★ /6 = `push qword [mem]`. No calcula nada y no toca
+                // banderas, así que sale antes del tronco de inc/dec.
+                if (ext & 7) == 6 {
+                    let v = self.load(dst, true);
+                    self.push(v);
                     return;
                 }
                 let r = match ext & 7 {
