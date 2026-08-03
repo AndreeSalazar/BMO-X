@@ -18,6 +18,11 @@ pub(crate) enum Orden<'a> {
     Ayuda,
     /// Ensena o esconde la calculadora.
     Calculadora,
+    /// `estratos sellar` — **cierra una transacción vacía. ESCRIBE EN EL DISCO.**
+    ///
+    /// La primera orden del escritorio que cambia el almacén. Pide dos palabras
+    /// a propósito: ver el analizador.
+    EstratosSellar,
     /// `perf` — **lo que cuesta pintar**, medido.
     ///
     /// Existe para poder contestar con un número la pregunta "¿hace falta una
@@ -129,6 +134,18 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         b"calc" | b"calculadora" => Orden::Calculadora,
         // ★ El número que decide si hace falta una GPU. Ver `Volcado`.
         b"perf" | b"pinta" => Orden::Pintado,
+        // ★ `estratos sellar` — DOS PALABRAS, y es la única defensa que hay.
+        //
+        // Es lo primero del sistema que escribe en el disco, así que no puede
+        // ser un verbo suelto: `sellar` a secas se teclea sin querer, lo
+        // completa el TAB, y sale del historial con una flecha. Exigir el
+        // sustantivo delante hace falta escribirlo **queriendo**.
+        //
+        // Cualquier otra cosa detrás de `estratos` es la ayuda, no el sellado:
+        // un verbo mal escrito no puede caer por defecto en el que escribe.
+        b"estratos" => {
+            if resto == b"sellar" { Orden::EstratosSellar } else { Orden::Ayuda }
+        }
         b"clear" | b"cls" | b"limpia" => Orden::Limpiar,
         b"ls" | b"dir" | b"lista" => Orden::Listar(resto),
         b"cat" | b"lee" => {

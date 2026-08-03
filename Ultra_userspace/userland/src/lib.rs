@@ -76,6 +76,8 @@ pub const OP_MEMORIA_PEDIR: u32 = 0x15;
 /// El log del kernel, leído desde Ring 3. Ver `klog_lineas`/`klog_texto`.
 pub const OP_KLOG_INFO: u32 = 0x16;
 pub const OP_KLOG_TEXTO: u32 = 0x17;
+/// **Escribe en el disco.** Ver [`estratos_sellar`].
+pub const OP_ESTRATOS_SELLAR: u32 = 0x18;
 
 /// Dónde empieza el bloque, y cuánto se ha entregado a este proceso.
 pub const MEM_OP_BASE: u32 = 0x01;
@@ -293,6 +295,21 @@ pub fn klog_lineas() -> u64 {
 /// es lo que separa "no pasó nada más" de "no cabía".
 pub fn klog_total() -> u64 {
     invoke(CURRENT_TASK, OP_KLOG_INFO, 1, 0, 0).value
+}
+
+/// **Cierra una transacción vacía en ESTRATOS.** Devuelve la generación nueva,
+/// o **0** si no se pudo.
+///
+/// ★ Es la primera llamada de todo el userland que **ESCRIBE EN EL DISCO**, y
+/// lo hace de la forma más pequeña que existe: sin datos, apuntando al mismo
+/// estrato, y sobre la copia del superbloque que no manda. Si sale mal, el
+/// volumen es exactamente el de antes.
+///
+/// El motivo del fallo no vuelve por aquí — vuelve por CABINA y se lee con
+/// **F11**. Es a propósito: caben más motivos en una línea de log que en un
+/// código de retorno, y el que la llama ya tiene la ventana para leerlos.
+pub fn estratos_sellar() -> u64 {
+    invoke(CURRENT_TASK, OP_ESTRATOS_SELLAR, 0, 0, 0).value
 }
 
 /// Una línea del log en `dst`. **`n = 0` es la más reciente.** Devuelve cuántos

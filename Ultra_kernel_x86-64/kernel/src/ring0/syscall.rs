@@ -121,6 +121,10 @@ const TASK_OP_INFO_TEXTO: u64 = 0x14;
 /// el panel del kernel no se pinta y el log no lo podía leer nadie.
 const TASK_OP_KLOG_INFO: u64 = 0x16;
 const TASK_OP_KLOG_TEXTO: u64 = 0x17;
+/// **La primera operación de la superficie que ESCRIBE EN EL DISCO.** Cierra
+/// una transacción vacía en ESTRATOS y devuelve la generación nueva, o 0.
+/// Ver `ring0/fsys/estratos.rs::sellar`.
+const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -450,6 +454,23 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         }
         TASK_OP_KLOG_TEXTO => {
             BmoStatus::ok_value(crate::ring0::core::klog::texto(arg0, arg1))
+        }
+        // ★ Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
+        // que pase: la primera operacion que cambia el almacen no puede ser
+        // silenciosa ni cuando funciona.
+        TASK_OP_ESTRATOS_SELLAR => {
+            crate::ring0::cabina::info(
+                "estratos",
+                "sellado pedido por un proceso de Ring 3",
+                scheduler::current_pid() as u64,
+            );
+            match crate::ring0::fsys::estratos::sellar() {
+                Ok(g) => BmoStatus::ok_value(g),
+                Err(e) => {
+                    crate::ring0::cabina::warn("estratos", e.nombre(), 0);
+                    BmoStatus::ok_value(0)
+                }
+            }
         }
         TASK_OP_REINICIAR => {
             crate::ring0::cabina::warn(

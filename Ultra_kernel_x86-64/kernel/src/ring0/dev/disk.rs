@@ -181,6 +181,44 @@ pub fn serial() -> &'static str {
 pub fn total_sectors() -> u64 { unsafe { TOTAL_SECTORS } }
 /// ¿Está abierta la puerta de escritura?
 pub fn write_armed() -> bool { unsafe { WRITE_ARMED } }
+
+/// ★ **La segunda ventana de escritura: la de ESTRATOS.**
+///
+/// `write_window` sólo admitía la partición de datos (la FAT32 donde viven los
+/// `.bex`), y eso era correcto mientras ESTRATOS no escribiera. Pero ESTRATOS
+/// **vive en otra partición**, así que su primera escritura habría sido
+/// rechazada con `fuera de la particion de datos` — un mensaje correcto y
+/// desconcertante.
+///
+/// La tentación es ensanchar la ventana existente. **No.** Ensanchar un
+/// guardián es quitarlo: la ventana de datos protege de que un bug del sistema
+/// de ficheros se coma la ESP —donde vive el `BOOTX64.EFI` con el que arrancó
+/// la máquina, y en una máquina con Windows también el cargador del dueño— y
+/// eso tiene que seguir protegido aunque ESTRATOS escriba.
+///
+/// Así que hay DOS ventanas con nombre propio, y ésta se registra sólo cuando
+/// se cumplen las dos condiciones: el volumen está montado **y el gate de
+/// identidad del §5 dijo que nació en este disco**. Un volumen clonado no
+/// registra ventana y por tanto **no puede escribir**, aunque el disco esté
+/// armado.
+static mut VENTANA_ES: Option<(u64, u64)> = None;
+
+/// Registra la ventana de ESTRATOS. La llama `fsys::estratos::mount`.
+///
+/// # Safety
+/// Se llama una vez al montar, con las interrupciones donde ya están.
+pub fn armar_ventana_estratos(primer_lba: u64, ultimo_lba: u64) {
+    unsafe { VENTANA_ES = Some((primer_lba, ultimo_lba)) };
+    crate::ring0::cabina::info("estratos", "ventana de escritura armada en", primer_lba);
+}
+
+/// Quita la ventana. Se llama al empezar a montar: si el montaje falla o la
+/// identidad no cuadra, **no queda ventana de la vez anterior**.
+pub fn desarmar_ventana_estratos() {
+    unsafe { VENTANA_ES = None };
+}
+
+pub fn ventana_estratos() -> Option<(u64, u64)> { unsafe { VENTANA_ES } }
 /// Qué dictaminó el gate de identidad, en palabras.
 pub fn gate_reason() -> &'static str { unsafe { GATE_REASON } }
 
@@ -494,20 +532,31 @@ fn write_window(lba: u64, count: u16) -> Result<(), &'static str> {
     if !is_ready() { return Err("sin disco"); }
     if !write_armed() { return Err("la escritura no esta armada (gate de identidad)"); }
     if count == 0 { return Err("cero sectores"); }
-    let win = match data_partition() {
-        Some(p) => p,
-        None => return Err("no hay particion de datos"),
-    };
     // Sin `checked_add` un LBA cerca del máximo daría la vuelta y el rango
     // parecería diminuto y válido.
     let end = match lba.checked_add(count as u64) {
         Some(e) => e,
         None => return Err("el rango de LBA desborda"),
     };
-    if lba < win.first_lba || end > win.last_lba + 1 {
-        return Err("fuera de la particion de datos");
+
+    // ── Ventana 1: la partición de datos (FAT32, los `.bex`) ──
+    if let Some(w) = data_partition() {
+        if lba >= w.first_lba && end <= w.last_lba + 1 {
+            return Ok(());
+        }
     }
-    Ok(())
+    // ── Ventana 2: el volumen ESTRATOS ──
+    //
+    // Sólo existe si el volumen está montado Y nació en este disco. Son dos
+    // ventanas y no una ensanchada: la ESP —donde vive el `BOOTX64.EFI` con el
+    // que arrancó la máquina— no está en ninguna de las dos, y ésa es la
+    // propiedad que hay que conservar mientras el resto crece.
+    if let Some((primero, ultimo)) = ventana_estratos() {
+        if lba >= primero && end <= ultimo + 1 {
+            return Ok(());
+        }
+    }
+    Err("fuera de las ventanas de escritura (datos / ESTRATOS)")
 }
 
 /// Escribe `count` sectores en `lba`. Devuelve los sectores escritos.

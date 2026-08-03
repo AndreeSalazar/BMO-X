@@ -79,9 +79,170 @@ fn leer_bloque_de(base: u64, bloque: u64, dst: &mut [u8; BLOQUE]) -> bool {
     matches!(dev.read(lba, SECTORES_POR_BLOQUE, dst), Ok(n) if n == SECTORES_POR_BLOQUE)
 }
 
+/// **Escribe un bloque de ESTRATOS.** El espejo exacto de [`leer_bloque_de`].
+///
+/// El índice es de BLOQUE, no de sector: la conversión vive aquí y en un solo
+/// sitio, porque mezclar las dos unidades es como se escribe ocho veces más
+/// lejos de donde se quería.
+///
+/// Delante hay dos guardianes que este archivo **no** implementa y de los que
+/// depende: el gate de identidad del disco (`disk::write_armed`) y la ventana
+/// de la partición (`disk::write_window`). Aquí no se repiten — repetir un
+/// guardián es tener dos sitios donde relajarlo.
+fn escribir_bloque(bloque: u64, src: &[u8; BLOQUE]) -> bool {
+    let base = unsafe { BASE_LBA };
+    let lba = base + bloque * SECTORES_POR_BLOQUE as u64;
+    disk::write(lba, SECTORES_POR_BLOQUE, src) == SECTORES_POR_BLOQUE
+}
+
+/// Por qué no se pudo cerrar una transacción. Cada una manda a mirar otra cosa.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FalloEscritura {
+    /// No hay volumen montado.
+    SinVolumen,
+    /// La máquina de estados dijo que no. Trae su motivo.
+    Rechazada(es::escritura::Rechazo),
+    /// El disco no aceptó los sectores del superbloque.
+    NoEscribio,
+    /// **El `FLUSH CACHE` falló**, y por eso NO se hizo el commit.
+    SinBarrera,
+}
+
+impl FalloEscritura {
+    pub fn nombre(self) -> &'static str {
+        match self {
+            FalloEscritura::SinVolumen => "no hay volumen ESTRATOS montado",
+            FalloEscritura::Rechazada(r) => r.nombre(),
+            FalloEscritura::NoEscribio => "el disco no acepto el superbloque",
+            FalloEscritura::SinBarrera => "el FLUSH CACHE fallo: NO se hizo commit",
+        }
+    }
+}
+
+/// **SELLAR: la transacción más pequeña que existe, y la que estrena el camino.**
+///
+/// ═══ Qué hace ═══
+///
+/// Una transacción **sin datos**: no reserva ni un bloque, no toca ni un
+/// objeto, y hace el commit apuntando **al mismo estrato que ya había**. Lo
+/// único que cambia en el volumen es el número de generación, y se escribe en
+/// **la copia del superbloque que NO está en uso**.
+///
+/// ═══ Por qué esto primero, y no crear un archivo ═══
+///
+/// Porque recorre el camino ENTERO —reservar, cerrar, `FLUSH CACHE`, barrera,
+/// commit, escribir el superbloque alterno, volver a vaciar— y **no puede
+/// perder un dato aunque salga mal**:
+///
+/// - Si falla antes del commit, el volumen es exactamente el de antes.
+/// - Si falla escribiendo el superbloque nuevo, se estropea **la copia que no
+///   manda**; la que manda sigue entera y el volumen monta igual.
+/// - Y como el estrato es el mismo, no hay ningún objeto nuevo al que apuntar
+///   mal.
+///
+/// Es el instrumento antes que la teoría: si esto funciona, el camino de
+/// escritura está vivo y lo siguiente es sólo poner datos dentro. Si no
+/// funciona, se sabe **exactamente** dónde falla y no hay nada que lamentar.
+///
+/// ═══ La comprobación, y es preciosa ═══
+///
+/// Después de sellar, `F12` tiene que decir **`generacion 2`**. Y después de
+/// **reiniciar**, tiene que seguir diciendo 2 — eso último es lo que prueba que
+/// llegó al plato y no se quedó en la caché del SSD.
+pub fn sellar() -> Result<u64, FalloEscritura> {
+    let sb = match superbloque() {
+        Some(s) => s,
+        None => return Err(FalloEscritura::SinVolumen),
+    };
+    // Cuál de las dos copias mandó al montar. `pick_superblock` eligió la de
+    // generación más alta; aquí se deduce igual para no guardar otro estado que
+    // pueda separarse del primero.
+    let copia = copia_en_uso();
+
+    let mut t = es::escritura::Transaccion::abrir(&sb, copia, identidad_ok())
+        .map_err(FalloEscritura::Rechazada)?;
+
+    // Sin datos: se cierra la fase inmediatamente. `reservar(0)` no haría falta
+    // y se omite a propósito — una llamada que no hace nada en el camino que
+    // estrena el disco es una llamada que confunde al leer el log.
+    t.cerrar_datos().map_err(FalloEscritura::Rechazada)?;
+
+    // ★ LA BARRERA. No es opcional y no se puede fingir.
+    //
+    // Aquí no hay nada escrito todavía, así que este `flush` no protege ningún
+    // dato — protege el ORDEN, y sobre todo prueba que el disco **sabe hacer la
+    // barrera**. El día que haya datos delante, este mismo `flush` es lo único
+    // que separa un commit honesto de un superbloque que apunta a bloques que
+    // no llegaron al plato.
+    if !disk::flush() {
+        t.abandonar();
+        return Err(FalloEscritura::SinBarrera);
+    }
+    t.barrera_hecha().map_err(FalloEscritura::Rechazada)?;
+
+    let (destino, nuevo) = t.commit(sb.estrato).map_err(FalloEscritura::Rechazada)?;
+
+    // El superbloque, serializado en un bloque a cero. Lo que no es el
+    // superbloque tiene que ser CERO y no basura de un scratch anterior: un
+    // bloque medio lleno de restos se lee igual de bien hoy y es una mina el
+    // día que el formato crezca de tamaño.
+    let buf = unsafe { &mut (*core::ptr::addr_of_mut!(SCRATCH))[0] };
+    *buf = [0u8; BLOQUE];
+    buf[..es::SUPER_LEN].copy_from_slice(&nuevo.encode());
+
+    if !escribir_bloque(destino, buf) {
+        // El commit no ocurrió. La copia que manda sigue siendo la de antes, y
+        // el volumen entero también.
+        crate::ring0::cabina::fault("estratos", "no se pudo escribir el superbloque", destino);
+        return Err(FalloEscritura::NoEscribio);
+    }
+
+    // ★ Y VACIAR OTRA VEZ. El commit tampoco vale si se queda en la caché.
+    //
+    // Sin esto, apagar la máquina justo después de "sellado" dejaría el volumen
+    // en la generación vieja — y el mensaje en pantalla habría mentido. Un
+    // commit que no se puede confirmar no es un commit, es una intención.
+    if !disk::flush() {
+        crate::ring0::cabina::warn("estratos", "el commit no se pudo vaciar al plato", destino);
+        return Err(FalloEscritura::SinBarrera);
+    }
+
+    unsafe { SUPER = Some(nuevo) };
+    crate::ring0::cabina::info("estratos", "COMMIT: generacion nueva", nuevo.generation);
+    Ok(nuevo.generation)
+}
+
+/// Cuál de las dos copias del superbloque manda ahora mismo.
+///
+/// Se recalcula leyendo, en vez de guardarse al montar: dos fuentes de la misma
+/// verdad se separan, y ésta decide **dónde se escribe el commit**. Equivocarse
+/// aquí es pisar la copia buena.
+fn copia_en_uso() -> u64 {
+    let (a, b) = unsafe {
+        let s = &mut *core::ptr::addr_of_mut!(SCRATCH);
+        let (x, y) = s.split_at_mut(1);
+        (&mut x[0], &mut y[0])
+    };
+    let base = unsafe { BASE_LBA };
+    if !leer_bloque_de(base, es::SUPER_A_BLOCK, a) || !leer_bloque_de(base, es::SUPER_B_BLOCK, b) {
+        return es::SUPER_A_BLOCK;
+    }
+    match es::pick_superblock(&a[..es::SUPER_LEN], &b[..es::SUPER_LEN]) {
+        Ok((_, copia)) => copia,
+        Err(_) => es::SUPER_A_BLOCK,
+    }
+}
+
 /// Busca un volumen ESTRATOS entre las particiones del disco y lo monta.
 pub fn mount() {
     unsafe { MONTADO = false; IDENTIDAD_OK = false; SUPER = None; }
+    // ★ La ventana se quita ANTES de nada.
+    //
+    // Si este montaje falla, o encuentra otro volumen, o la identidad no
+    // cuadra, no puede quedar en pie la ventana del montaje anterior. Una
+    // autorización que sobrevive a la razón que la concedió es exactamente
+    // cómo se escribe donde no se debe.
+    disk::desarmar_ventana_estratos();
     if bmo_block::device().is_none() {
         crate::ring0::cabina::warn("estratos", "sin dispositivo de bloques", 0);
         return;
@@ -128,6 +289,14 @@ pub fn mount() {
         unsafe { IDENTIDAD_OK = ok; }
         if ok {
             crate::ring0::cabina::info("estratos", "volumen montado y es de este disco", p.first_lba);
+            // ★ Y AQUI, y sólo aquí, se abre la puerta de escribir.
+            //
+            // Las dos condiciones juntas: hay volumen y **nació en este
+            // disco**. Un volumen clonado se monta y se lee, pero no registra
+            // ventana — así que sus escrituras las para `write_window` aunque
+            // el disco esté armado. Dos cerrojos distintos para dos preguntas
+            // distintas: "¿es mi disco?" y "¿es mi volumen?".
+            disk::armar_ventana_estratos(p.first_lba, p.last_lba);
         } else {
             crate::ring0::cabina::warn("estratos", "el volumen NO nacio en este disco (clonado?)", p.first_lba);
         }

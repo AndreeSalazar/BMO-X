@@ -258,6 +258,20 @@ pub const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 pub const KLOG_DISPONIBLES: u64 = 0x00;
 pub const KLOG_TOTAL: u64 = 0x01;
 
+/// **SELLAR: cierra una transacción vacía en ESTRATOS.** Devuelve la generación
+/// nueva, o 0 si no se pudo.
+///
+/// ★ **Es la primera operación de la superficie que ESCRIBE EN EL DISCO**, y
+/// por eso lleva su propia operación en vez de esconderse detrás de un campo de
+/// otra: lo que cambia el estado del almacén se pide por su nombre.
+///
+/// Lo que hace es deliberadamente lo más pequeño posible: ni un bloque de
+/// datos, el mismo estrato, y el commit va a **la copia del superbloque que no
+/// manda**. Recorre el camino entero —`FLUSH CACHE`, barrera, commit, vaciar
+/// otra vez— sin poder perder nada aunque salga mal. Ver
+/// `ring0/fsys/estratos.rs::sellar`.
+pub const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
+
 /// Dónde empieza el bloque, en el espacio del proceso que lo pidió.
 pub const MEM_OP_BASE: u64 = 0x01;
 /// Cuántos bytes se le han entregado en total a este proceso.

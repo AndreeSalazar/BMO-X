@@ -61,7 +61,7 @@ mod texto;
 
 use escena::calc::{pintar_calc, Calc, CalcCaja};
 use escena::cursor::Bajo;
-use escena::salida::{pintar_salida, Salida, TINTA_ECO, TINTA_MAL, TINTA_NORMAL};
+use escena::salida::{pintar_salida, Salida, TINTA_BIEN, TINTA_ECO, TINTA_MAL, TINTA_NORMAL};
 use escena::*;
 use ordenes::completar::{completar, motivo_archivo};
 use ordenes::historial::Historial;
@@ -785,6 +785,33 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
+                            // ★ La primera orden del escritorio que ESCRIBE EN
+                            // EL DISCO. Ver `bmo::estratos_sellar`.
+                            Orden::EstratosSellar => {
+                                let g = bmo::estratos_sellar();
+                                if g == 0 {
+                                    salida.con_tinta(TINTA_MAL);
+                                    salida.texto(b"  el sellado NO se hizo. el volumen sigue igual.\n");
+                                    salida.con_tinta(TINTA_NORMAL);
+                                    salida.texto(b"  el motivo esta en F11 (consola del kernel).\n");
+                                    pintar_estado(&p, &caja, "no se sello", TEXTO_MAL);
+                                } else {
+                                    salida.con_tinta(TINTA_BIEN);
+                                    salida.texto(b"  COMMIT. generacion ");
+                                    let mut d = [0u8; 10];
+                                    let k = decimal(g, &mut d);
+                                    salida.texto(&d[..k]);
+                                    salida.byte(b'\n');
+                                    salida.con_tinta(TINTA_NORMAL);
+                                    // La prueba de verdad no es este mensaje.
+                                    salida.texto(b"  ESTRATOS acaba de escribir en el disco.\n");
+                                    salida.texto(b"  F12 debe decir esa misma generacion.\n");
+                                    salida.texto(b"  y tras REINICIAR debe seguir diciendola:\n");
+                                    salida.texto(b"  eso es lo que prueba que llego al plato.\n");
+                                    pintar_estado(&p, &caja, "sellado", TEXTO_BIEN);
+                                }
+                                n = 0;
+                            }
                             // ★ `perf` — el número antes que la tarjeta.
                             //
                             // Se pinta ANTES de leer los contadores no: se leen
@@ -863,6 +890,7 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(b"  info         RAM, CPU, tareas y disco\n");
                                 salida.texto(b"  cpu / mem    solo esa parte del informe\n");
                                 salida.texto(b"  perf         lo que cuesta pintar, medido\n");
+                                salida.texto(b"  estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
                                 salida.texto(b"  help         esto\n");
                                 salida.texto(b"  reboot       reinicia la maquina\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
