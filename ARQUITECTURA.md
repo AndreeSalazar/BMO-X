@@ -439,9 +439,10 @@ fixes the addresses) → the COBOL, Ada and C examples with the in-house fronten
 1. **Wire ESTRATOS writes to the device.** The only thing separating "a store
    you can read" from "a store". The transaction is written and tested; what is
    missing is the real `write` and `FLUSH CACHE`
-2. **COMP-3 (packed decimal)** in COBOL. Not a verb — the format real bank data
-   is stored in. Without it the compiler can run programs you write, but cannot
-   read the files they give you
+2. ~~**COMP-3 (packed decimal)** in COBOL.~~ ✅ **done 2026-08-03** — a
+   `COMP-3` field is stored as nibbles, exactly as wide as its PICTURE says.
+   What remains is the other half: **binary records**, so the compiler can read
+   the packed bytes of a file as they come instead of one text number per line
 3. **Range checks in Ada.** Without them it is Ada syntax with C safety, which
    is the worst of both
 4. **Memory capability.** Unlocks GC languages and shared surfaces at once

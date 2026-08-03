@@ -60,6 +60,15 @@ struct Codegen {
     /// Sólo cambia cómo se ESCRIBE: el dato sigue siendo el mismo entero
     /// escalado y la aritmética no se entera de que existe.
     var_edicion: HashMap<String, Plantilla>,
+    /// Las variables `COMP-3`: cuántos bytes ocupa el empaquetado y si su PIC
+    /// llevaba `S`.
+    ///
+    /// A diferencia de la edición, esto SÍ cambia el dato: el campo no guarda
+    /// un entero de 64 bits, guarda nibbles. Por eso lo miran `load_var` y
+    /// `store_var` —las dos únicas puertas a la memoria de una variable— y no
+    /// se entera nadie más. La aritmética sigue viendo el entero escalado de
+    /// siempre, que es lo que la mantiene exacta y ajena a la representación.
+    var_packed: HashMap<String, (usize, bool)>,
     /// Los ficheros de `FILE-CONTROL`, por nombre.
     files: HashMap<String, crate::ast::CobolFile>,
     /// Dónde vive el handle de cada fichero: una ranura de pila sin nombre en
@@ -126,6 +135,7 @@ impl Codegen {
             var_offsets: HashMap::new(),
             var_scales: HashMap::new(),
             var_edicion: HashMap::new(),
+            var_packed: HashMap::new(),
             files: HashMap::new(),
             file_handles: HashMap::new(),
             file_estado: HashMap::new(),
@@ -461,6 +471,13 @@ impl Codegen {
             if let Some(p) = &item.edicion {
                 self.var_edicion.insert(item.name.clone(), p.clone());
             }
+            // ★ COMP-3: el hueco reservado ya es el del empaquetado (lo da
+            // `storage_size`), y aqui se apunta COMO se lee y se escribe.
+            if item.usage == crate::pic::Usage::Comp3 {
+                if let Some(campo) = &item.pic_field {
+                    self.var_packed.insert(item.name.clone(), (campo.size(), campo.signed));
+                }
+            }
         }
         // Dos ranuras de pila por fichero: su handle y su estado. Van DESPUÉS
         // de los datos y con el mismo mecanismo: son variables que COBOL no
@@ -560,14 +577,39 @@ impl Codegen {
         }
     }
 
+    /// El empaquetado de esta variable, si lo tiene: (bytes, con signo).
+    fn packed_de(&self, name: &str) -> Option<(usize, bool)> {
+        self.var_packed.get(&Self::nombre_base(name)).copied()
+    }
+
+    /// `lea rcx, [rbp + off]` — la dirección de un dato suelto.
+    ///
+    /// Un dato normal no necesita su dirección: se lee y se escribe con `mov`
+    /// sobre `[rbp+off]` directamente. Un COMP-3 sí, porque el emisor de
+    /// nibbles trabaja sobre un puntero — el mismo que ya le da
+    /// `emit_direccion_elemento` a un elemento de tabla.
+    fn emit_direccion_dato(&mut self, off: i32) {
+        self.code.extend_from_slice(&[0x48, 0x8D, 0x8D]);
+        self.code.extend_from_slice(&off.to_le_bytes());
+    }
+
     fn load_var(&mut self, name: &str) {
+        let packed = self.packed_de(name);
         if let Some((base, idx)) = Self::subindice(name) {
             if self.emit_direccion_elemento(&base, &idx).is_some() {
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x01]); // mov rax, [rcx]
+                match packed {
+                    Some((bytes, _)) => bmo_lower::packed::desempaquetar(&mut self.code, bytes),
+                    None => self.code.extend_from_slice(&[0x48, 0x8B, 0x01]), // mov rax, [rcx]
+                }
             }
             return;
         }
         let Some(off) = self.exige_declarado(name) else { return };
+        if let Some((bytes, _)) = packed {
+            self.emit_direccion_dato(off);
+            bmo_lower::packed::desempaquetar(&mut self.code, bytes);
+            return;
+        }
         if off >= -128 && off <= 127 {
             self.code.extend_from_slice(&[0x48, 0x8B, 0x45, off as u8]);
         } else {
@@ -577,6 +619,7 @@ impl Codegen {
     }
 
     fn store_var(&mut self, name: &str) {
+        let packed = self.packed_de(name);
         if let Some((base, idx)) = Self::subindice(name) {
             // El valor que hay que guardar viene en `rax`, y calcular la
             // direccion lo destruye: se aparta en la pila. Apilar y no en otro
@@ -586,11 +629,23 @@ impl Codegen {
             let ok = self.emit_direccion_elemento(&base, &idx).is_some();
             self.code.push(0x58); // pop rax
             if ok {
-                self.code.extend_from_slice(&[0x48, 0x89, 0x01]); // mov [rcx], rax
+                match packed {
+                    Some((bytes, signo)) => {
+                        bmo_lower::packed::empaquetar(&mut self.code, bytes, signo)
+                    }
+                    None => self.code.extend_from_slice(&[0x48, 0x89, 0x01]), // mov [rcx], rax
+                }
             }
             return;
         }
         let Some(off) = self.exige_declarado(name) else { return };
+        if let Some((bytes, signo)) = packed {
+            // La direccion se calcula en `rcx`, que el emisor de nibbles NO
+            // toca — asi el valor sigue en `rax` sin apilar nada.
+            self.emit_direccion_dato(off);
+            bmo_lower::packed::empaquetar(&mut self.code, bytes, signo);
+            return;
+        }
         if off >= -128 && off <= 127 {
             self.code.extend_from_slice(&[0x48, 0x89, 0x45, off as u8]);
         } else {

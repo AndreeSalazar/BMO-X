@@ -49,6 +49,21 @@ Leyenda: ✅ hecho · ◐ funciona en un subconjunto, crece · ⬜ pendiente.
 | `src/dialect.rs` | Dialectos (85/2002/2014/2023) | ✅ perfiles |
 | `src/generated/words.rs` | Vocabulario | ✅ **GENERADO por Python** (217 reservadas, 55 intrínsecas) |
 
+### Lo que NO es de COBOL, y por eso no vive aquí
+
+`USAGE COMP-3` lo decide la PICTURE —eso es de COBOL— pero **empaquetar dos
+dígitos en un byte no lo es**: es una representación, y los mismos nibbles en el
+mismo orden los piden el `Decimal` del Annex F de Ada y el `FIXED DECIMAL` de
+PL/I. Por eso los dos emisores viven en **`bmo-lower::packed`**, al lado de
+`fmt` y por la misma razón que él: se comparten **contratos y librerías, nunca
+cerebros**.
+
+Del lado de COBOL sólo quedan tres cosas, y todas son del lenguaje: quién es
+COMP-3, cuántos dígitos tiene y si lleva `S`. En `codegen.rs` lo miran
+**únicamente `load_var` y `store_var`** — las dos puertas a la memoria de una
+variable— así que la aritmética sigue viendo el entero escalado de siempre y no
+se entera de cómo se guarda. Ese reparto es lo que mantiene exacto el decimal.
+
 ## Lo que genera Python (la fábrica cobol-gen)
 
 `toolchain/tools/cobol-gen/definition.py` (compacto) → `generate.py` →
@@ -101,5 +116,9 @@ GnuCOBOL.
 3. **Variables como operandos**: hoy la aritmética es literal+variable;
    falta variable+variable y expresiones en COMPUTE.
 4. **ROUNDED / ON SIZE ERROR**: cláusulas de la aritmética decimal.
-5. **Packed decimal (COMP-3)** real en almacenamiento.
+5. ~~**Packed decimal (COMP-3)** real en almacenamiento.~~ ✅ **hecho el
+   2026-08-03.** Lo que falta ahora es su segunda mitad: el **registro
+   BINARIO**, o sea leer del fichero los bytes empaquetados tal cual vienen en
+   vez de una línea de texto por registro. Eso pide un `01` con varios campos y
+   posiciones fijas, que es el punto 6.
 6. **Records anidados / OCCURS** (tablas).

@@ -274,9 +274,12 @@ hasn't been validated.
 - **COBOL — closed within its declared scope, which is banking arithmetic.**
   Edited `PICTURE` emitted *as instructions* (no mask and no interpreter
   survive in the `.bex`), sequential file I/O, `OCCURS` with range guards,
-  level 88, `ACCEPT`, exact decimal in integer scale. What it still lacks —
-  `EVALUATE`, `STRING`, `SEARCH`, `CALL`, `SORT`, COMP-3 — is **the long tail
-  of the standard, not banking arithmetic**. What it is *not* is a mainframe
+  level 88, `ACCEPT`, exact decimal in integer scale, and **`COMP-3` packed
+  decimal** as of 3 August — a field stored in nibbles, exactly as wide as its
+  PICTURE. What it still lacks — `EVALUATE`, `STRING`, `SEARCH`, `CALL`,
+  `SORT` — is **the long tail of the standard, not banking arithmetic**. What
+  it *does* still lack on the banking side is binary records and an indexed
+  file; see `toolchain/lang/cobol/BANCA_REAL.md`. What it is *not* is a mainframe
   migration path; see [below](#and-one-boundary-worth-stating-before-anyone-assumes-otherwise)
 - **C: through roughly C11** — pointers, structs by value, initializer lists,
   function-parameter macros, `getchar`/`scanf`, and 32 of 32 language probes
@@ -591,7 +594,8 @@ on top of it.
     It is the first heavy program this system can honestly run
 14. **C++ continues** — inheritance and virtuals landed; the scope stays frozen
     at essential C++17
-15. **COMP-3 (packed decimal)** — the format real bank data is stored in
+15. ~~**COMP-3 (packed decimal)**~~ — ✅ **done 2026-08-03.** What remains is
+    **binary records**: reading a file's packed bytes as they come
 16. **Range checks in Ada** — without them it is Ada syntax with C safety
 
 ### Phase E — Architecture

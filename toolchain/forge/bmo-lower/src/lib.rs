@@ -52,6 +52,10 @@ pub mod fmt;
 /// Bloques de bytes: copiar, rellenar, comparar, medir. Lo que C escribe
 /// `memcpy` y COBOL escribe `MOVE` de un grupo: **la misma emisión**.
 pub mod memoria;
+/// Decimal EMPAQUETADO (BCD). LIBRERIA compartida por la misma razon que
+/// `fmt`: los nibbles del `COMP-3` de COBOL, del `Decimal` de Ada y del
+/// `FIXED DECIMAL` de PL/I son los mismos. Ver la cabecera de `packed.rs`.
+pub mod packed;
 pub mod task;
 
 /// El emisor de instrucciones, PUBLICO desde que hay frontends que necesitan

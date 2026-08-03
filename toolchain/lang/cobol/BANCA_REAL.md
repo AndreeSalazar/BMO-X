@@ -13,8 +13,12 @@
 CICS   el monitor de transacciones   -> ★ LO DIFICIL YA ESTA HECHO (ESTRATOS)
 JCL    el batch                      -> sustituir, no clonar. Una tarde.
 VSAM   ficheros indexados            -> ★★ EL HUECO REAL. B-tree sobre ESTRATOS
-EXT.   extensiones de IBM            -> COMP-3, CALL, EVALUATE, STRING, SORT
+EXT.   extensiones de IBM            -> COMP-3 ✅ · CALL, EVALUATE, STRING, SORT
 ```
+
+> **Lo hecho desde que se escribió esto** — 2026-08-03: **`COMP-3` funciona de
+> verdad**. Punto 1 de la lista del final. Ver [§4](#4-las-extensiones-de-ibm--la-lista-larga)
+> y el ejemplo `examples/7-empaquetado/cuentas.cob`.
 
 **No se clona nada de esto.** Hace falta la **capacidad**, no la **forma**. Un
 `EXEC CICS` con la sintaxis de 1968 no aporta nada; lo que aporta es que la
@@ -140,7 +144,25 @@ sumas BLAKE3. Un índice sobre ESTRATOS hereda tres cosas gratis:
 
 Eso es lo que un VSAM sobre z/OS **no** te da, y es lo que un auditor quiere.
 
-**Trabajo estimado**: es la pieza grande de esta lista, y la de mayor valor.
+### ⚠️ Dos bloqueos que no son del compilador (comprobados el 2026-08-03)
+
+Antes de escribir una línea de B-tree hay que saber esto, porque ninguna de las
+dos cosas se arregla en `lang/cobol`:
+
+1. **`OPEN I-O` es imposible hoy.** `KIND_ARCHIVO` **fija el modo al abrir**, así
+   que no existe un handle que lea y escriba (`codegen.rs`, `emit_open`, lo
+   rechaza diciéndolo). Y `REWRITE` y `DELETE` —los verbos que hacen que un KSDS
+   sea un KSDS y no un listado ordenado— necesitan justamente eso. **Es un
+   cambio de kernel, y va primero.**
+2. **ESTRATOS todavía no crea objetos.** Monta, lee y sabe commitear (`sellar()`
+   en `ring0/fsys/estratos.rs`, y la máquina de estados de la transacción está
+   probada en el anfitrión). Un índice encima necesita escritura de verdad.
+   Mientras tanto sólo cabe ponerlo sobre `KIND_ARCHIVO` — y ahí se pierden
+   exactamente las tres cosas que esta sección vende como gratis: el
+   copy-on-write, la transaccionalidad y la auditoría.
+
+**Trabajo estimado**: es la pieza grande de esta lista, y la de mayor valor —
+pero el camino empieza por esos dos, no por el árbol.
 
 ---
 
@@ -148,7 +170,7 @@ Eso es lo que un VSAM sobre z/OS **no** te da, y es lo que un auditor quiere.
 
 | Extensión | Qué es | Veredicto |
 |---|---|---|
-| **`COMP-3`** (packed decimal) | 2 dígitos por byte + signo. **El formato en el que están los datos reales de un banco** | 🔴 **imprescindible** |
+| **`COMP-3`** (packed decimal) | 2 dígitos por byte + signo. **El formato en el que están los datos reales de un banco** | ✅ **HECHO** (2026-08-03) — ver abajo |
 | **`CALL`** | llamar a otro programa, estático o dinámico | 🔴 imprescindible — **depende de la decisión del enlazador** (ver `forge/README.md`) |
 | **`EVALUATE`** | el `switch` de COBOL, con `WHEN ... ALSO` | 🟠 muy usado |
 | **`STRING` / `UNSTRING` / `INSPECT`** | manejo de cadenas | 🟠 muy usado |
@@ -165,13 +187,52 @@ Eso es lo que un VSAM sobre z/OS **no** te da, y es lo que un auditor quiere.
 | LE (Language Environment) | el runtime de IBM | ⚪ es el suyo; BMO tiene el propio |
 | DBCS / `NATIONAL` (UTF-16) | japonés, chino | ⚪ fuera de alcance |
 
+### ✅ `COMP-3` — hecho el 2026-08-03
+
+Un campo declarado `COMP-3` / `COMPUTATIONAL-3` / `PACKED-DECIMAL` **guarda
+nibbles**, no un entero de 64 bits con otro nombre:
+
+```cobol
+01 SALDO   PIC S9(7)V99 COMP-3.        *> 6 bytes, signo en el último nibble
+01 CORTO   PIC 9(3)     COMP-3.        *> 2 bytes, y TRUNCA a 3 dígitos
+```
+
+Lo que se decidió, y por qué:
+
+- **La conversión BCD vive en `bmo-lower::packed`, no en COBOL.** Empaquetar es
+  una REPRESENTACIÓN, no la semántica de un lenguaje: los mismos nibbles en el
+  mismo orden los pide el `Decimal` del Annex F de Ada y el `FIXED DECIMAL` de
+  PL/I. Se comparten librerías, nunca cerebros. Lo que se queda en COBOL es
+  *quién* es COMP-3, y eso lo dice la PICTURE.
+- **Sólo lo miran `load_var` y `store_var`.** La aritmética sigue viendo el
+  entero escalado de siempre — el decimal exacto no se entera de la
+  representación, que es exactamente el reparto que lo mantiene exacto.
+- **Se emite DESENROLLADO.** El ancho se conoce al compilar, así que no hay
+  bucle ni salto hacia atrás: un campo de 18 dígitos son diez pasos.
+- **El `S` decide el nibble**: `C` positivo, `D` negativo, `F` sin signo. Un
+  campo sin `S` guarda el **valor absoluto**, como manda el estándar. Al LEER se
+  acepta además `B` como negativo, porque viene en los datos de fuera y tomarlo
+  por positivo convierte un cargo en un abono sin que salte nada.
+- **`COMP` / `BINARY` / `COMP-5` se RECHAZAN diciendo por qué**, en vez de
+  aceptarse y guardar exactamente lo mismo que un `DISPLAY`. `COMP-1` / `COMP-2`
+  se rechazan porque son coma flotante y la banca no la usa.
+
+**Lo que esto todavía NO es:** el fichero sigue siendo **texto**, un número por
+línea. Leer los bytes empaquetados *tal cual vienen del mainframe* pide un
+**registro binario con varios campos**, y eso es otro paso — el que de verdad
+cierra "leer los datos que ya existen".
+
 ---
 
 ## El orden en que yo lo haría
 
-1. **`COMP-3`** — sin él no se pueden *leer* los datos que ya existen
+1. ~~**`COMP-3`**~~ — ✅ **hecho el 2026-08-03**. Falta su segunda mitad: el
+   **registro binario**, que es lo que permite leer un fichero empaquetado de
+   fuera en vez de sólo guardar así en memoria
 2. **`EVALUATE`, `STRING`, `INSPECT`** — verbos, baratos, y desbloquean código
-   real que hoy no compila
+   real que hoy no compila. ⚠️ **Piden antes el parser sobre tokens**: son
+   sentencias multi-cláusula, y meterlas en el analizador por líneas de hoy
+   (`upper.starts_with("MOVE ")`) es construir deuda para rehacerla después
 3. **`SORT`** — sin ordenación no hay batch de verdad
 4. **KSDS (índice)** — la pieza grande, y la que convierte listados en banca
 5. **El despachador de transacciones** sobre ESTRATOS

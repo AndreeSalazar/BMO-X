@@ -186,6 +186,58 @@ impl Parser {
         }
     }
 
+    /// ¿Esta palabra es un `USAGE` escrito sin la palabra `USAGE` delante?
+    ///
+    /// Incluye las que NO se compilan, y a proposito: reconocerlas aqui es lo
+    /// que permite decir "COMP-1 es coma flotante y la banca no lo usa" en vez
+    /// de "no es COBOL reconocido", que manda a buscar donde no es.
+    fn es_palabra_de_usage(w: &str) -> bool {
+        matches!(
+            w,
+            "COMP-3" | "COMPUTATIONAL-3" | "PACKED-DECIMAL" | "DISPLAY"
+                | "COMP" | "COMPUTATIONAL" | "COMP-4" | "COMPUTATIONAL-4" | "BINARY"
+                | "COMP-5" | "COMPUTATIONAL-5"
+                | "COMP-1" | "COMPUTATIONAL-1" | "COMP-2" | "COMPUTATIONAL-2"
+                | "INDEX" | "POINTER"
+        )
+    }
+
+    /// Traduce la palabra a la representacion, o dice por que no.
+    ///
+    /// Solo hay DOS que se compilan: `DISPLAY` (lo de siempre) y el
+    /// empaquetado. Las demas se rechazan CON SU MOTIVO — aceptar `COMP` y
+    /// guardar exactamente lo mismo que un `DISPLAY` seria compilar una palabra
+    /// que promete un formato y no lo da, que es el fallo que este compilador
+    /// no comete.
+    fn parse_usage(w: &str, name: &str, line_no: usize) -> Result<crate::pic::Usage, CobolError> {
+        let w = w.trim_end_matches('.').to_ascii_uppercase();
+        match w.as_str() {
+            "DISPLAY" => Ok(crate::pic::Usage::Display),
+            "COMP-3" | "COMPUTATIONAL-3" | "PACKED-DECIMAL" => Ok(crate::pic::Usage::Comp3),
+            "COMP-1" | "COMPUTATIONAL-1" | "COMP-2" | "COMPUTATIONAL-2" => Err(CobolError::new(
+                line_no,
+                format!(
+                    "{name} {w}: eso es COMA FLOTANTE, y no se compila a proposito. \
+                     Un importe en binario flotante no puede representar 19.99, y de ahi \
+                     salen los descuadres de un centimo. Usa PIC con V y COMP-3"
+                ),
+            )),
+            "COMP" | "COMPUTATIONAL" | "COMP-4" | "COMPUTATIONAL-4" | "BINARY" | "COMP-5"
+            | "COMPUTATIONAL-5" => Err(CobolError::new(
+                line_no,
+                format!(
+                    "{name} {w}: el binario todavia no se guarda distinto de un DISPLAY. \
+                     Se dice en vez de aceptarlo y guardar otra cosa; hoy quita el {w} \
+                     o usa COMP-3, que si empaqueta de verdad"
+                ),
+            )),
+            otro => Err(CobolError::new(
+                line_no,
+                format!("{name} USAGE {otro}: todavia no se compila"),
+            )),
+        }
+    }
+
     fn parse_data_item(&self, line: &str, line_no: usize) -> Result<Option<DataItem>, CobolError> {
         let trimmed = line.trim();
         let first = trimmed.split_whitespace().next().unwrap_or("");
@@ -201,10 +253,26 @@ impl Parser {
         let mut pic = None;
         let mut value = None;
         let mut occurs = None;
+        let mut usage = None;
         let mut i = 1;
         while i < parts.len() {
             let uw = parts[i].to_ascii_uppercase();
-            if uw == "PIC" || uw == "PICTURE" {
+            let uw = uw.trim_end_matches('.');
+            // `USAGE [IS] <cual>` y tambien el `<cual>` a secas, que es como lo
+            // escribe todo el mundo: `05 IMPORTE PIC S9(7)V99 COMP-3.`
+            if uw == "USAGE" {
+                let mut j = i + 1;
+                if parts.get(j).map(|s| s.trim_end_matches('.').eq_ignore_ascii_case("IS")) == Some(true) {
+                    j += 1;
+                }
+                let Some(cual) = parts.get(j) else {
+                    return Err(CobolError::new(line_no, format!("{name}: USAGE sin decir cual")));
+                };
+                usage = Some(Self::parse_usage(cual, &name, line_no)?);
+                i = j;
+            } else if Self::es_palabra_de_usage(uw) {
+                usage = Some(Self::parse_usage(uw, &name, line_no)?);
+            } else if uw == "PIC" || uw == "PICTURE" {
                 if i + 1 < parts.len() {
                     i += 1;
                     pic = Some(parts[i].trim_end_matches('.').to_string());
@@ -237,7 +305,51 @@ impl Parser {
             i += 1;
         }
 
-        let mut item = DataItem::new(level, name, pic, value);
+        let usage = usage.unwrap_or(crate::pic::Usage::Display);
+        let mut item = DataItem::new_with_usage(level, name, pic, value, usage);
+
+        // ── Donde un COMP-3 no tiene sentido ──
+        //
+        // Empaquetar son DIGITOS: dos por byte y un nibble de signo. Sin PIC no
+        // se sabe cuantos, y sobre una PIC X no hay digitos que empaquetar. Las
+        // dos cosas se dicen en vez de reservar un tamano inventado.
+        if item.usage == crate::pic::Usage::Comp3 {
+            match &item.pic_field {
+                None => {
+                    return Err(CobolError::new(
+                        line_no,
+                        format!(
+                            "{}: COMP-3 sin PIC. Empaquetar es meter DIGITOS de dos en dos, \
+                             y sin PICTURE no se sabe cuantos hay",
+                            item.name
+                        ),
+                    ))
+                }
+                Some(campo) if !campo.numeric => {
+                    return Err(CobolError::new(
+                        line_no,
+                        format!(
+                            "{} es COMP-3 con PIC {}: solo se empaqueta lo numerico (9/S/V). \
+                             Un campo de texto se guarda tal cual",
+                            item.name,
+                            item.pic.as_deref().unwrap_or("?")
+                        ),
+                    ))
+                }
+                Some(_) => {}
+            }
+            if item.edicion.is_some() {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "{}: una PIC de EDICION ({}) es para ENSENAR, y COMP-3 es como se GUARDA. \
+                         Guarda en un COMP-3 y muevelo a un campo editado para el informe",
+                        item.name,
+                        item.pic.as_deref().unwrap_or("?")
+                    ),
+                ));
+            }
+        }
 
         // ── Nivel 88: un NOMBRE DE CONDICIÓN, que no es un dato ──
         //

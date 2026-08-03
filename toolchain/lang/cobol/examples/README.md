@@ -16,6 +16,7 @@ comprueba primero que el 1 sigue vivo.
 | 4 | `4-ficheros/` | `SELECT`/`ASSIGN`, `FD`, `OPEN`/`READ … AT END`/`WRITE`/`CLOSE` | emulador + Ryzen |
 | 5 | `5-tablas/` | `OCCURS` con subíndice literal y variable, con guarda de rango | emulador + Ryzen |
 | 6 | `6-condiciones/` | Nivel **88**: nombres de condición | emulador |
+| 7 | `7-empaquetado/` | `USAGE COMP-3`: el dato guardado en **nibbles**, del ancho que dice su PIC | emulador |
 
 ## Qué hay en cada escalón
 
@@ -52,13 +53,28 @@ el tamaño del código con y sin ellos. Le pone nombre a una comparación, y és
 es todo su trabajo: que quien audite el programa no tenga que acordarse de qué
 significaba el 1.
 
+**7 — `cuentas.cob`.** El primer escalón que cambia **cómo se guarda** el dato y
+no qué se hace con él. Un `COMP-3` vive en nibbles —dos dígitos por byte, el
+signo en el último— y ocupa **lo que dice su PICTURE**, así que lo que no cabe
+se pierde por arriba, como manda el estándar.
+
+Y por eso el programa imprime el mismo `12345` dos veces: en un `PIC 9(3)
+COMP-3` sale `345` y en un `PIC 9(3)` a secas sale `12345`. Ésa es la línea que
+**no se puede fingir** — el día que las dos salgan iguales, el `COMP-3` volvió a
+ser un entero con otro nombre. Los bytes exactos se prueban aparte, en
+`bmo_lower::packed`.
+
+Lo que este escalón todavía no trae: el fichero sigue siendo **texto**. Leer
+bytes empaquetados tal cual vienen de un mainframe pide un registro binario con
+varios campos, y eso es el escalón siguiente.
+
 ## El escalón que todavía no existe
 
-Un "nivel 7" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
+Un "nivel 8" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
 `EVALUATE`, `PERFORM VARYING`, `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`,
-`COMP-3` real, los records anidados — y el `OR` en las condiciones, que es lo
-que hoy impide un `88` con `THRU` o con varios valores. Cuando uno de ésos
-entre, entra con su carpeta y con su fila en
+los records anidados con campos en posiciones fijas — y el `OR` en las
+condiciones, que es lo que hoy impide un `88` con `THRU` o con varios valores.
+Cuando uno de ésos entre, entra con su carpeta y con su fila en
 `cobol_feature_matrix_runs_correctly`.
 
 ## Los `.bex`

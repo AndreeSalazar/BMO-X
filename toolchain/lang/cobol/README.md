@@ -67,6 +67,11 @@ that does not exist.
 - `COMPUTE` with real operator precedence
 - `MOVE`, `ADD`, and edited-picture output generated as instructions —
   no interpreter and no mask survive into the binary
+- `USAGE COMP-3` (packed decimal) — **the format real bank data is stored in**.
+  Two digits per byte, sign in the last nibble, and the field occupies exactly
+  what its PICTURE says, so it truncates like the standard requires. The BCD
+  emitters live in `bmo-lower::packed`, because packing is a representation and
+  not any language's semantics
 
 **Control flow**
 - `IF` / `ELSE` — real branching
@@ -96,13 +101,18 @@ Every unsupported construct is **rejected with a reason**. Nothing is
 silently ignored, and nothing is stubbed out to look like it works.
 
 Not implemented yet: `EVALUATE`, `OR` in conditions, `STRING`, `INSPECT`,
-`SEARCH`, `CALL`, `SORT`, `COMP-3`, `REDEFINES`, nested records beyond
-group level, and the intrinsic function library.
+`SEARCH`, `CALL`, `SORT`, `REDEFINES`, nested records beyond group level, and
+the intrinsic function library.
 
 Deliberately rejected with an explanation rather than guessed at:
 - `READ` without `AT END` — it would compile into a loop that never ends
 - `OPEN EXTEND` — the underlying gate creates files from scratch, so this
   would silently destroy history
+- `USAGE COMP` / `BINARY` / `COMP-5` — the binary layout is not stored
+  differently from `DISPLAY` yet, and accepting the word would promise a format
+  it does not deliver. `COMP-3` **is** implemented and does store packed
+- `USAGE COMP-1` / `COMP-2` — binary floating point cannot represent `19.99`,
+  and that is where one-cent discrepancies come from
 - `OCCURS` on an `01` level — the error shows the correct group form
 
 A compiler that quietly accepts what it cannot do is worse than one that

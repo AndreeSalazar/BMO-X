@@ -15,8 +15,19 @@
 //! llave del decimal exacto: un `PIC 9(3)V99` guarda $10.05 como el entero
 //! 1005 (centavos), y sumar centavos con `add` es suma decimal exacta.
 
-/// Representación en memoria del dato (por ahora DISPLAY; COMP/COMP-3 =
-/// packed decimal vendrán después, sin cambiar esta interfaz).
+/// Representación en memoria del dato.
+///
+/// Sólo dos se compilan, y el parser rechaza el resto **diciendo por qué**:
+///
+/// - [`Usage::Display`] — lo de siempre. El dato vive como un entero escalado
+///   de 64 bits, así que hoy NO trunca al ancho de su PIC.
+/// - [`Usage::Comp3`] — empaquetado (BCD): dos dígitos por byte y el signo en
+///   el último nibble. Ocupa **exactamente** lo que dice su PICTURE, y por eso
+///   sí trunca. Los emisores viven en `bmo_lower::packed`, porque empaquetar es
+///   una representación y no la semántica de un lenguaje.
+/// - [`Usage::Comp`] — binario. Se reconoce y se calcula su tamaño, pero **no
+///   se compila**: guardar lo mismo que un `DISPLAY` sería aceptar una palabra
+///   que promete un formato y no lo da.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Usage {
     Display,

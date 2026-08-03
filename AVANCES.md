@@ -665,8 +665,10 @@ secuencial, OCCURS con guarda de rango, nivel 88, entrada en BMO C
 (`getchar`/`scanf`), **Ada verificada en el Ryzen**, el volumen de datos por
 categorías, `info`/`cpu`/`mem` desde Ring 3, el historial con scroll, y el
 escritorio con foco (F12, Alt+Tab, Alt+M). Lo que le queda a COBOL —`EVALUATE`,
-`STRING`, `SEARCH`, `CALL`, `SORT`, COMP-3— es **cola larga del estándar, no
-banca**.
+`STRING`, `SEARCH`, `CALL`, `SORT`— es **cola larga del estándar, no banca**.
+**COMP-3 ya no está en esa lista: entró el 2026-08-03** y guarda nibbles de
+verdad. Lo que sí sigue siendo banca y falta son los **registros binarios** y el
+**índice por clave**; ver `toolchain/lang/cobol/BANCA_REAL.md`.
 
 **Kernel/HW (orden vigente 2026-08-02):**
 
