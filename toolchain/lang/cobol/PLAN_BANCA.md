@@ -1,20 +1,24 @@
 # El plan largo: de "BMO COBOL compila" a "BMO COBOL lleva un banco"
 
-> Escrito el 2026-08-03, el día que entró `COMP-3`. Es la lista de tareas de
-> [`BANCA_REAL.md`](BANCA_REAL.md): aquel documento dice **qué falta y por qué**;
-> éste dice **en qué orden, qué bloquea a qué, y cómo se sabe que una está
-> hecha**.
+> Escrito el 2026-08-03, el día que entró `COMP-3`.
+> **Revisión 2 — 2026-08-03 por la tarde: verificado contra el código, línea por
+> línea, y reordenado por lo que se midió.** Tres de las dependencias de la
+> primera versión eran falsas y una faltaba. Ver *[Lo que cambió en la revisión
+> 2](#lo-que-cambió-en-la-revisión-2-y-por-qué)*.
+>
+> Es la lista de tareas de [`BANCA_REAL.md`](BANCA_REAL.md): aquel documento dice
+> **qué falta y por qué**; éste dice **en qué orden, qué bloquea a qué, y cómo se
+> sabe que una está hecha**.
 >
 > Está hecho para avanzar **poco a poco**: cada casilla es una pieza que se
 > puede entregar sola, con su prueba, sin dejar el compilador roto entre medias.
-> Ninguna sesión debería tener que abrir dos fases a la vez.
 
 ## Cómo se lee esto
 
 ```
 [ ]  pendiente        [~]  a medias, y se dice cuánto        [x]  hecho, con fecha
 ★    la pieza que decide su fase
-⛔   BLOQUEADO por algo que NO es el compilador
+⛔   BLOQUEADO, y por QUÉ — comprobado en el código, no supuesto
 ⚠    tiene una decisión dentro que hay que tomar antes de escribir código
 ```
 
@@ -32,12 +36,16 @@ sale `345` y en un `PIC 9(3)` sale `12345`. Se comprueba mutando la
 característica a no-operación y viendo **cuántos tests caen**. Si no cae
 ninguno, la prueba no probaba nada.
 
+## Y la regla de este documento
+
+**Un ⛔ se gana midiendo.** La revisión 2 existe porque tres tareas estaban
+marcadas como bloqueadas por razonamiento y no por lectura del código, y las
+tres resultaron ser falsas. Antes de poner un ⛔ hay que abrir el fichero y
+citarlo.
+
 ---
 
 # FASE 0 — El suelo
-
-Nada grande de las fases siguientes entra limpio sin esto. Son baratas y
-desbloquean mucho: hacerlas después significa hacer dos veces lo de en medio.
 
 - [x] **0.1 · `VALUE` inicializa de verdad** — ✅ 2026-08-03
       Se emite al principio, después de repartir la pila y antes de la primera
@@ -47,26 +55,13 @@ desbloquean mucho: hacerlas después significa hacer dos veces lo de en medio.
       `ZEROES`. Se rechaza con motivo: `VALUE` de texto, `VALUE` que no es un
       número, y `VALUE` sin PIC.
 
-- [ ] **0.2 ★ El parser sobre TOKENS como principal** — L ⚠
-      `tparser.rs` ya parsea un programa entero hasta BEF, pero **`compile_source`
-      sigue usando `parser.rs`**, el analizador por líneas que decide con
-      `upper.starts_with("MOVE ")`.
-      Esto no es limpieza: es el **techo** de la fase 2 entera. `EVALUATE … WHEN
-      … ALSO`, `STRING … DELIMITED BY … INTO` e `INSPECT … REPLACING` son
-      sentencias multi-cláusula, y meterlas en el analizador de hoy es escribir
-      deuda para rehacerla después.
-      ⚠ La decisión: se jubila `parser.rs` de golpe o conviven. Conviviendo hay
-      dos gramáticas que mantener; de golpe hay que mover **las 105 pruebas** a
-      la vez. Escribir la decisión antes de tocar nada.
-
 - [x] **0.3 · `OR` en las condiciones** — ✅ 2026-08-03
       La condición dejó de ser una `Vec` y es un **árbol** `Simple/Y/O`, porque
       `AND` liga más fuerte que `OR` y una lista plana no puede representar esa
       diferencia. Con **cortocircuito**, que no es una optimización: un operando
       puede ser un elemento de tabla y ahí la evaluación lleva guarda de rango.
       Cayeron con él los dos rechazos que dependían de él: **`88 … VALUE 1 THRU
-      5`** y **`88 … VALUE 6, 7`**, que se expanden y bajan por el mismo emisor.
-      Sigue faltando el `WHEN a, b, c` porque falta `EVALUATE` (2.1).
+      5`** y **`88 … VALUE 6, 7`**.
 
 - [x] **0.4 · Párrafos y `PERFORM <párrafo>`** — ✅ 2026-08-03
       Un nombre de párrafo es una palabra sola con punto. Compilan
@@ -75,160 +70,221 @@ desbloquean mucho: hacerlas después significa hacer dos veces lo de en medio.
       ★ El retorno se decide **en ejecución** (una ranura de pila con "en qué
       párrafo hay que volver"), no con un `ret` fijo: el mismo párrafo puede ser
       el final de un rango en una línea y estar en medio de otro en la de abajo.
-      ⚠ **Falta `GO TO`**, y sin él el descarte dentro de un rango se escribe
-      con un interruptor. Está dicho en el ejemplo en vez de fingirse.
       ★ De paso salió que **`STOP RUN` no emitía nada** — colaba por ser siempre
       la última línea, y ya estaba mal antes: un `STOP RUN` dentro de un `IF`
       se ignoraba en silencio.
 
-- [ ] **0.5 · Records anidados con posiciones fijas** — M
-      ⛔ **MOVIDA A LA FASE 1: depende de 1.5, y eso se descubrió midiendo el
-      2026-08-03.** Ver el aviso de abajo. Sigue aquí sólo para que quede el
-      rastro de por qué se movió.
-      Grupos `01`/`05`/`10` donde cada campo cae en **su offset dentro del
-      registro**. Hoy sólo existe el grupo `01` + `05` que usa `OCCURS`, y el
-      registro de un fichero es **un solo campo**.
+- [ ] **0.2 · El parser sobre TOKENS como principal** — L ⚠
+      **DEGRADADO A DEUDA, NO A BLOQUEO** (revisión 2). `tparser.rs` ya parsea un
+      programa entero, pero `compile_source` sigue usando `parser.rs`, el
+      analizador por líneas.
+      Lo que la revisión 1 decía —que la fase 2 entera depende de esto— **es
+      falso**: `parser.rs` ya consume varias líneas para `IF … END-IF` y
+      `PERFORM … END-PERFORM`, y `EVALUATE … WHEN … END-EVALUATE` tiene
+      exactamente esa forma. Los verbos de la fase 2 se pueden hacer hoy.
+      Sigue mereciendo la pena, pero por calidad: **una gramática y no dos**.
+      ⚠ La decisión sigue en pie: jubilar `parser.rs` de golpe (mover las 136
+      pruebas a la vez) o convivir.
 
-> ## ⚠ Lo que se descubrió al llegar a 0.5, y que reordena el plan
->
-> **Un campo no puede caer en su offset mientras cada dato ocupe su propia
-> ranura de ocho bytes.** Medido en `codegen.rs`: el reparto de la pila hace
-> `let aligned = (size + 7) & !7` **por dato**, y `load_var`/`store_var` mueven
-> con `mov rax, [rbp+off]` de 64 bits. Un `PIC 9(3)` contiguo mide tres bytes, y
-> escribirlo con un `mov` de ocho **se lleva por delante al vecino**.
->
-> O sea que "cada campo en su offset" y "un `DISPLAY` es un entero de 64 bits"
-> son incompatibles, y **1.5 va primero**. Eso convierte a 1.5 —que estaba
-> aparcada como *la decisión cara*— en la llave de toda la fase 1, no en un
-> extra.
->
-> El orden bueno pasa a ser: **1.5 → 0.5 → 1.2 → 1.1**.
->
-> Y hay una consecuencia que conviene ver antes de empezar: el día que un
-> `DISPLAY` mida lo que dice su PICTURE, **empezará a truncar**, igual que ya
-> hace el `COMP-3`. Eso cambia el resultado de programas que hoy corren en el
-> Ryzen. No es una regresión, es el estándar — pero hay que verlo venir, tener
-> el ejemplo del nivel 7 delante (que enseña justo esa diferencia) y decidirlo a
-> propósito.
+- [ ] **0.5 · Records anidados con posiciones fijas** — M
+      Grupos `01`/`05`/`10` con cada campo en su sitio dentro del registro.
+      ⚠ **Su dependencia cambió DOS veces**; ver 1.0. La forma que lo desbloquea
+      sin pagar 1.5 es el **área de registro con empaquetado en la frontera**.
+
+- [ ] **0.6 · `GO TO` dentro de un párrafo** — S
+      Salió faltando al escribir el ejemplo del nivel 8: sin `GO TO`, el descarte
+      dentro de un rango `PERFORM … THRU` se escribe con un interruptor. Es
+      COBOL legítimo y su destino ya existe (las etiquetas de párrafo).
+
+- [ ] **0.7 · Texto de verdad: `PIC X(n)` con contenido** — M ⚠
+      Hoy un `PIC X` reserva sitio pero **se carga y guarda como un entero de 64
+      bits**, así que no hay campos de texto: por eso `VALUE "HOLA"` se rechaza.
+      Lo piden `FILE STATUS` (que es `PIC XX`), los literales de comparación
+      (`IF ST = "00"`), `STRING`/`UNSTRING`/`INSPECT` y cualquier registro con
+      un nombre dentro.
+      ⚠ Decisión: hasta 8 caracteres caben en la ranura de 64 bits que ya hay
+      (el mismo empaquetado que usa `console::write_const`); más de 8 pide un
+      buffer aparte. Empezar por ≤ 8 es honesto y cubre `FILE STATUS`, códigos y
+      claves cortas — pero hay que **decir dónde está el límite**.
 
 ---
 
 # FASE 1 — Leer los datos que ya existen
 
-La segunda mitad de `COMP-3`. Hoy un campo empaquetado vive bien **en memoria**,
-pero el fichero sigue siendo **texto, un número por línea**. Un banco no da eso:
-da registros de longitud fija con campos empaquetados dentro.
+La segunda mitad de `COMP-3`. Un campo empaquetado vive bien **en memoria**, pero
+el fichero sigue siendo **texto, un número por línea**. Un banco no da eso: da
+registros de longitud fija con campos empaquetados dentro.
 
 **Sin esta fase, BMO COBOL escribe programas nuevos y no puede leer nada de lo
-que ya existe.** Es la fase que decide si esto sirve para migrar datos o sólo
-para empezar de cero.
+que ya existe.**
 
-- [ ] **1.1 ★ Registro BINARIO de longitud fija** — L ⛔ (necesita 3.3)
-      `RECORD CONTAINS n CHARACTERS`. Leer **n bytes crudos** en vez de una
-      línea hasta el `\n`. Hoy `emit_read` llama a `leer_linea` y convierte con
-      `parse_decimal_scaled`: eso es un registro de texto y no hay forma de
-      pedirle otra cosa.
-      ⛔ Pide posicionar por byte, que es 3.3 y es del kernel.
+- [ ] **1.0 ★⚠ LA DECISIÓN: dónde vive un campo de un registro** — ⚠ decisión
+      Hay que tomarla antes de 0.5, 1.1 y 1.2, y decide el tamaño de la fase.
 
-- [ ] **1.2 · Campos posicionales dentro del registro** — M
-      Cada `05` en su offset, mezclando `COMP-3`, `DISPLAY` y `PIC X` en el
-      mismo registro. Es 0.5 aplicado a un `FD`.
+      **El problema, medido**: en `codegen.rs` el reparto de la pila hace
+      `let aligned = (size + 7) & !7` **por dato**, y `load_var`/`store_var`
+      mueven con `mov rax, [rbp+off]` de 64 bits. Un `PIC 9(3)` contiguo mide
+      tres bytes: escribirlo con un `mov` de ocho **se lleva al vecino**.
 
-- [ ] **1.3 · `MOVE` de grupo** — S
-      Mover un `01` entero a otro. La emisión ya existe: `bmo_lower::memoria`
-      tiene `copiar`. En `lang/cobol` sólo falta el nombre.
+      **Camino A — zoned decimal de verdad (1.5).** Cada dato pasa a medir lo que
+      dice su PICTURE. Es lo correcto y es COBOL. Cuesta caro: toca todo lo que
+      corre hoy en el Ryzen, y los `DISPLAY` **empezarán a truncar** como ya hace
+      el `COMP-3`.
 
-- [ ] **1.4 · `REDEFINES`** — M
-      Dos vistas del mismo espacio. Es como un banco lee un registro cuyo
-      formato depende de un campo de tipo — el patrón está en todos lados y hoy
-      se rechaza.
+      **Camino B — área de registro + empaquetado en la frontera.** El `FD` tiene
+      un **buffer de bytes** del largo del registro; cada campo conserva su
+      ranura de trabajo de 64 bits *y* apunta a su posición dentro del buffer.
+      `READ` llena el buffer y **desempaqueta** cada campo a su ranura; `WRITE`
+      **empaqueta** al revés. Eso es exactamente lo que dice COBOL: el área de
+      registro sólo vale entre un `READ` y el siguiente.
+      - **A favor**: no toca nada de lo que ya funciona, y el `COMP-3` ya tiene
+        media pieza hecha (`bmo_lower::packed` desempaqueta desde un puntero).
+      - **En contra**: `REDEFINES` sobre un registro (1.4) no aliasa de verdad,
+        y hay que decidir si se rechaza o se hace aparte.
+      - **Coste**: una fracción de A.
 
-- [ ] **1.5 ★⚠ `DISPLAY` como ZONED DECIMAL real — LA LLAVE DE ESTA FASE** — L ⚠
-      Hoy un campo `DISPLAY` es un **entero de 64 bits** con la escala de su
-      PIC, así que **no trunca al ancho de su PICTURE** — por eso `PIC 9(3)`
-      guarda `12345`. En COBOL de verdad es *un byte por dígito*, con el signo
-      sobrepunzado en el último.
-      ★ **Va la PRIMERA de la fase**, no la quinta: mientras cada dato ocupe su
-      ranura de ocho bytes, ningún campo puede caer en su offset dentro de un
-      registro (ver el aviso al final de la fase 0). Sin esto no hay 0.5, y sin
-      0.5 no hay 1.1 ni 1.2 — o sea, no hay forma de leer un fichero de fuera.
-      ⚠ **Es la decisión más cara de la lista.** Toca todo lo que ya funciona y
-      ejecuta en el Ryzen, y el día que entre los campos **empezarán a truncar**
-      igual que ya hace el `COMP-3`. Eso es el estándar, no una regresión, pero
-      cambia la salida de programas que hoy corren. **Escribir la decisión antes
-      de tocar una línea**, con el ejemplo del nivel 7 delante.
+      **Recomendación escrita: B**, y A sólo el día que se quiera truncamiento en
+      WORKING-STORAGE. Pero **la decisión es de Eddi y va escrita antes de la
+      primera línea.**
 
-- [ ] **1.6 · EBCDIC ↔ ASCII al leer** — M
-      Los datos de fuera vienen en EBCDIC. Una tabla de 256 entradas, que en
-      esta casa significa **una tabla y no un cerebro** — el sitio natural es
-      `bmo-lower`, junto a `packed`, por el mismo motivo: no es semántica de
-      ningún lenguaje.
+- [ ] **1.1 ★ Registro BINARIO de longitud fija** — M
+      ✅ **DESBLOQUEADO en la revisión 2.** La revisión 1 decía "⛔ necesita
+      posicionar por byte (3.3)" y **es falso**: leer un registro de largo fijo
+      **secuencialmente** no necesita seek ninguno.
+      `ARCH_OP_LEER` (0x01) ya existe, saca **7 bytes crudos sin cortar por el
+      salto de línea**, y está implementado en el kernel (`ring0/obj/archivo.rs`)
+      **y** en el emulador. Un registro de 40 bytes son seis llamadas.
+      Lo que falta es de esta casa: un `leer_bytes` en `bmo_lower::archivo`
+      (hermano de `leer_linea`) y `RECORD CONTAINS n CHARACTERS` en el parser.
+      ⛔ Sólo depende de **1.0** y **0.5**.
 
-- [ ] **1.7 · `FILE STATUS`** — S
+- [ ] **1.2 · Campos posicionales dentro del registro** — M ⛔ (1.0, 0.5)
+      Cada `05` en su offset, mezclando `COMP-3`, `DISPLAY` y `PIC X` en el mismo
+      registro. Es lo que convierte 1.1 en algo útil.
+
+- [ ] **1.3 · `MOVE` de grupo** — S ⛔ (0.5)
+      Mover un `01` entero a otro. **La emisión ya existe**: `bmo_lower::memoria`
+      tiene `copiar`, `rellenar`, `largo`, `comparar` y `absoluto`. En
+      `lang/cobol` sólo falta el nombre.
+
+- [ ] **1.4 · `REDEFINES`** — M ⚠ (depende de qué salga en 1.0)
+      Dos vistas del mismo espacio. Con el camino B hay que decidir: rechazarlo
+      con motivo, o darle su propio mecanismo.
+
+- [ ] **1.5 ⚠ `DISPLAY` como ZONED DECIMAL real** — L ⚠
+      El camino A de 1.0. Deja de ser obligatorio si se elige B, pero sigue
+      siendo lo correcto a largo plazo y lo único que hace truncar a un
+      `DISPLAY` de WORKING-STORAGE.
+
+- [ ] **1.6 · EBCDIC ↔ ASCII al leer** — M ⛔ (0.7)
+      Los datos de fuera vienen en EBCDIC. Una tabla de 256 entradas → **una
+      tabla y no un cerebro**; va en `bmo-lower` junto a `packed`, por el mismo
+      motivo: no es semántica de ningún lenguaje.
+
+- [ ] **1.7 · `FILE STATUS`** — S ⛔ (0.7)
       El código de dos dígitos (`00` bien, `10` fin de fichero, `23` no
       encontrado, `35` no existe…). **Todo programa de banca lo mira después de
-      cada operación**, y hoy no hay ninguno. Va antes de la fase 4 porque el
-      acceso por clave sin `FILE STATUS` no se puede programar.
+      cada operación.**
+      ✅ **El dato ya está ahí**: `archivo::abrir_const` deja el handle en `rax`
+      y **cero si no se pudo abrir**, y `leer_linea` deja `rax = 0` al acabarse
+      el fichero. No hace falta nada del kernel — falta el campo donde ponerlo,
+      y eso es 0.7, porque `FILE STATUS` es un `PIC XX`.
 
 ---
 
 # FASE 2 — Los verbos que el código real usa
 
-Baratos uno a uno, y desbloquean código que hoy **se rechaza con su motivo**
-—que está bien, pero no compila—. Todos dependen de 0.2.
+★ **DESBLOQUEADA EN LA REVISIÓN 2.** La revisión 1 decía "todos dependen de
+0.2 (el parser sobre tokens)". **Es falso.** `parser.rs` ya consume varias líneas
+para `IF … END-IF` y `PERFORM … END-PERFORM`, y las sentencias de esta fase
+tienen la misma forma. Se pueden hacer **hoy**, y son lo que más código real
+desbloquea por hora de trabajo.
 
-- [ ] **2.1 · `EVALUATE`** — M ⛔ (necesita 0.2, y 0.3 para el `WHEN a, b`)
-      El `switch` de COBOL, con `WHEN … ALSO` y `WHEN OTHER`. El más usado de
-      los que faltan.
-- [ ] **2.2 · `PERFORM VARYING` completo** — M ⛔ (0.2)
-      Con `FROM`/`BY`/`UNTIL` y `AFTER` para recorrer tablas de dos dimensiones.
-- [ ] **2.3 · `STRING` / `UNSTRING`** — M ⛔ (0.2)
-      Componer y partir cadenas. `DELIMITED BY`, `POINTER`, `ON OVERFLOW`.
-- [ ] **2.4 · `INSPECT`** — M ⛔ (0.2)
-      `TALLYING` y `REPLACING`. Es como COBOL limpia un campo antes de usarlo.
-- [ ] **2.5 · `INITIALIZE`** — S
-      Poner un grupo entero a su valor neutro. Barato una vez esté 1.3.
+- [ ] **2.1 ★ `EVALUATE`** — M
+      **El verbo que más falta hace.** Dos formas, las dos corrientes en banca:
+      ```cobol
+      EVALUATE TIPO-MOV              EVALUATE TRUE
+          WHEN 1 …                       WHEN SALDO > 1000.00 …
+          WHEN 2 THRU 5 …                WHEN SALDO > 100.00 …
+          WHEN 6, 7 …                    WHEN OTHER …
+          WHEN OTHER …               END-EVALUATE
+      END-EVALUATE
+      ```
+      La segunda es **la tabla de decisión**, y es como un banco escribe un
+      escalado de comisiones. Las dos caen sobre el árbol de condiciones que
+      entró con 0.3: `WHEN a THRU b` y `WHEN a, b` son exactamente la expansión
+      que ya hace un nivel 88.
+      `WHEN … ALSO` (varios sujetos) puede esperar y se rechaza con motivo.
+
+- [ ] **2.2 · `PERFORM VARYING` completo** — M
+      `FROM`/`BY`/`UNTIL` y `AFTER` para recorrer tablas de dos dimensiones.
+      Misma forma de línea que el `PERFORM UNTIL` que ya compila.
+
 - [ ] **2.6 ★ `ROUNDED` / `ON SIZE ERROR`** — M
-      **No son cláusulas de sintaxis: son de banca.** El redondeo es una
-      decisión legal, y un desbordamiento silencioso en un importe es el fallo
-      que no se puede permitir. Van con los cinco modos del estándar
-      (`NEAREST-AWAY-FROM-ZERO` y compañía), no con uno inventado.
+      **No son cláusulas de sintaxis: son de banca.** El redondeo es una decisión
+      legal y un desbordamiento silencioso en un importe es el fallo que no se
+      puede permitir. Con los modos del estándar, no con uno inventado.
+      Va alto porque es lo único de esta fase que cambia el **número**, no la
+      comodidad de escribirlo.
+
+- [ ] **2.5 · `INITIALIZE`** — S ⛔ (0.5 para grupos)
+      Sobre un dato suelto se puede hoy. `bmo_lower::memoria::rellenar` ya está.
+
 - [ ] **2.7 · `SEARCH` / `SEARCH ALL`** — M
       Búsqueda lineal y binaria en tabla. `SEARCH ALL` pide `ASCENDING KEY`.
+      Es el sustituto barato de un índice **dentro de memoria**, y tapa parte de
+      lo que la fase 4 no puede dar todavía.
+
+- [ ] **2.3 · `STRING` / `UNSTRING`** — M ⛔ (0.7)
+- [ ] **2.4 · `INSPECT`** — M ⛔ (0.7)
+      Los dos son manejo de texto y necesitan que exista el texto.
+
 - [ ] **2.8 · `COPY … REPLACING`** — M
       **Así se comparten los layouts de registro entre programas.** Sin esto,
       cada programa reescribe el `01` del fichero a mano y se descuadran solos.
+      No depende de nadie: es inclusión de texto antes de analizar.
+
 - [ ] **2.9 · Las intrínsecas que importan (~15 de 55)** — M
       `NUMVAL`, `NUMVAL-C`, `CURRENT-DATE`, `INTEGER-OF-DATE`,
       `DATE-OF-INTEGER`, `LENGTH`, `MAX`, `MIN`, `MOD`, `REM`, `UPPER-CASE`,
-      `LOWER-CASE`, `TRIM`, `ORD`, `WHEN-COMPILED`. Las otras 40 son cola larga.
+      `LOWER-CASE`, `TRIM`, `ORD`, `WHEN-COMPILED`. La tabla `INTRINSIC[]` ya
+      está generada; falta la semántica de cada una.
+      ⚠ `CURRENT-DATE` necesita **reloj**, y hoy la superficie sólo da TSC.
 
 ---
 
 # FASE 3 — El sistema debajo
 
-⛔ **Nada de esto se arregla en `lang/cobol`.** Son cambios de kernel y de
-ESTRATOS, y la fase 4 entera está detrás de ellos. Comprobado el 2026-08-03.
+⛔ **Nada de esto se arregla en `lang/cobol`.** Comprobado en
+`platform/abi/bmo-abi/src/syscalls/surface.rs` y en
+`Ultra_kernel_x86-64/kernel/src/ring0/obj/archivo.rs`.
+
+Lo que la puerta **ya da**: `TASK_OP_ARCHIVO_ABRIR` (0x10) y `_CREAR` (0x11);
+sobre el handle, `ARCH_OP_LEER` (7 bytes crudos), `ARCH_OP_LEER_LINEA`,
+`ARCH_OP_ESCRIBIR`, `ARCH_OP_TAMANO` y `ARCH_OP_CERRAR`.
 
 - [ ] **3.1 · `KIND_ARCHIVO`: modo EXTEND** — S ⛔ kernel
-      Añadir al final. Hoy `OPEN EXTEND` **se rechaza a propósito**: la puerta
-      abre creando de cero, así que compilarlo como `OUTPUT` borraría el
-      histórico entero y el programa parecería funcionar hasta que alguien
-      buscara el mes pasado.
+      Añadir al final. Hoy `OPEN EXTEND` se rechaza a propósito: sólo hay
+      `_CREAR`, que crea de cero, así que compilarlo como `OUTPUT` borraría el
+      histórico y el programa parecería funcionar hasta que alguien buscara el
+      mes pasado.
+
 - [ ] **3.2 ★ `KIND_ARCHIVO`: modo I-O** — M ⛔ kernel
-      Un handle que **lea y escriba**. Hoy el modo se fija al abrir, y por eso
-      `OPEN I-O` se rechaza con ese motivo escrito en `emit_open`.
-      Es lo que bloquea `REWRITE` y `DELETE`, o sea **lo que hace que un KSDS
-      sea un KSDS y no un listado ordenado**.
+      Un handle que **lea y escriba**. Hoy el modo se fija al abrir — son dos
+      operaciones distintas, no un argumento. Es lo que bloquea `REWRITE` y
+      `DELETE`, o sea **lo que hace que un KSDS sea un KSDS y no un listado
+      ordenado**.
+
 - [ ] **3.3 ★ `KIND_ARCHIVO`: posicionar por byte** — M ⛔ kernel
-      Sin esto no hay acceso directo a nada: ni RRDS, ni un B-tree, ni un
-      registro de longitud fija leído por número.
+      No existe ninguna operación de cursor: `ARCH_OP_LEER` avanza y ya. Sin
+      esto no hay acceso **directo** a nada. (Pero sí hay acceso **secuencial**
+      binario — ver 1.1.)
+
 - [ ] **3.4 ★ ESTRATOS: crear objetos y ESCRIBIR** — XL ⛔ ESTRATOS
-      Hoy monta, lee y sabe commitear (`sellar()`), y la máquina de estados de
-      la transacción está probada en el anfitrión. **Lo que falta es crear.**
-      Mientras no esté, un índice sólo cabe sobre `KIND_ARCHIVO` — y ahí se
-      pierden exactamente las tres cosas que hacen que este índice sea mejor que
-      el de z/OS: copy-on-write, transaccionalidad y auditoría.
+      Hoy monta, lee y sabe commitear (`sellar()` en `ring0/fsys/estratos.rs`, y
+      la máquina de estados de la transacción probada en el anfitrión). **Falta
+      crear.** Sin esto, un índice sólo cabe sobre `KIND_ARCHIVO` — y ahí se
+      pierden las tres cosas que hacen que este índice sea mejor que el de z/OS.
 
 ---
 
@@ -238,138 +294,131 @@ ESTRATOS, y la fase 4 entera está detrás de ellos. Comprobado el 2026-08-03.
 cuatro millones de registros. **Sin índice no hay banca, hay listados.**
 
 - [ ] **4.1 · RRDS — registros por número** — M ⛔ (3.3)
-      `ORGANIZATION RELATIVE`, `ACCESS MODE RANDOM`, `RELATIVE KEY`. Es lo más
-      barato que ya es acceso directo, y sirve de banco de pruebas de 3.3.
 - [ ] **4.2 · ESDS — secuencial de sólo añadir** — S ⛔ (3.1)
-      Casi hecho: es el File I/O de hoy más el modo `EXTEND`.
 - [ ] **4.3 ★ KSDS, la LECTURA** — XL ⛔ (3.2, 3.3)
       El B-tree. `RECORD KEY`, `READ … KEY IS`, `START`, `READ NEXT`.
-      Un KSDS **es** un B-tree, y sobre ESTRATOS hereda tres cosas gratis que
-      z/OS no da (ver `BANCA_REAL.md`).
 - [ ] **4.4 · KSDS, la ESCRITURA** — L ⛔ (3.2, 4.3)
-      Insertar sin destruir el árbol anterior, `REWRITE`, `DELETE`.
 - [ ] **4.5 · `ALTERNATE RECORD KEY … WITH DUPLICATES`** — L ⛔ (4.4)
-      El índice por DNI además del de número de cuenta. Es lo que un banco
-      pregunta todo el rato.
+      El índice por DNI además del de número de cuenta.
 - [ ] **4.6 ★ El índice SOBRE ESTRATOS** — XL ⛔ (3.4, 4.4)
-      Copy-on-write (una inserción no destruye el árbol anterior), transaccional
-      (el índice nuevo sólo existe al commitear: **no hay índice a medias**) y
-      auditable (la versión anterior sigue ahí).
-      **Esto es lo que un auditor quiere y VSAM sobre z/OS no le da.**
+      Copy-on-write, transaccional (**no hay índice a medias**) y auditable.
+      **Es lo que un auditor quiere y VSAM sobre z/OS no le da.**
 
 ---
 
 # FASE 5 — SORT
 
-Sin ordenación externa no hay batch de verdad: un cierre ordena antes de
-totalizar, y el fichero no cabe en memoria.
-
-- [ ] **5.1 · `SORT` externo** — L ⛔ (3.1)
-      Mezcla por tramos sobre ficheros. `ON ASCENDING/DESCENDING KEY`.
+- [ ] **5.1 · `SORT` externo** — L
+      ✅ **Menos bloqueado de lo que decía la revisión 1.** No hace falta
+      `EXTEND`: una mezcla por tramos puede escribir **cada pasada a un fichero
+      nuevo** con `TASK_OP_ARCHIVO_CREAR`, que ya existe. Cuesta E/S de más y es
+      perfectamente honesto para empezar.
 - [ ] **5.2 · `MERGE`** — M ⛔ (5.1)
-- [ ] **5.3 · `INPUT PROCEDURE` / `OUTPUT PROCEDURE`** — M ⛔ (0.4, 5.1)
-      Con `RELEASE` y `RETURN`. Es como un batch filtra mientras ordena, y pide
-      párrafos (0.4).
+- [ ] **5.3 · `INPUT PROCEDURE` / `OUTPUT PROCEDURE`** — M ⛔ (5.1)
+      Con `RELEASE` y `RETURN`. Los párrafos que necesita ya están (0.4).
 
 ---
 
 # FASE 6 — Programas que se llaman, y el batch (JCL sustituido)
 
 - [ ] **6.1 ★⚠ LA DECISIÓN DEL ENLAZADOR** — ⚠ decisión, no código
-      Está **escrita y sin tomar** en `toolchain/forge/README.md`.
+      Escrita y sin tomar en `toolchain/forge/README.md`, con los dos caminos
+      medidos: **A** enlazador de verdad (semanas; `bex-link` produce imágenes ya
+      enlazadas a base fija y dos de ésas no se concatenan) y **B** funciones
+      sintetizadas (una sesión; el mecanismo ya corre en metal con
+      `__bmo_syscall_stub`).
       **Una decisión, tres desbloqueos**: `CALL` de COBOL, la libc de C, y C++
-      con unidades de traducción separadas. No es casualidad — es la misma
-      pregunta las tres veces.
-      **Va antes que 6.2, y no se empieza 6.2 sin ella tomada.**
+      con unidades separadas.
 - [ ] **6.2 · `CALL` estático** — L ⛔ (6.1)
-      Llamar a otro programa COBOL. Imprescindible: un banco no tiene un
-      programa, tiene mil que se llaman.
 - [ ] **6.3 · `LINKAGE SECTION` / `PROCEDURE DIVISION USING`** — M ⛔ (6.2)
-      Cómo se pasan los datos. Va pegado a 6.2.
 - [ ] **6.4 · `CALL` dinámico y `CANCEL`** — L ⛔ (6.1)
-      Resolver el nombre en ejecución. Es lo que permite sustituir un programa
-      sin recompilar los mil que lo llaman.
-- [ ] **6.5 · `RETURN-CODE`** — S ⛔ (6.2)
-      El registro especial. Sin él, el planificador de 6.6 no puede decidir.
-      ⚠ Hoy `TASK_OP_EXIT` **no acepta código de salida** (el kernel hace
-      revoke+reap): esto toca la superficie, no sólo COBOL.
+- [ ] **6.5 · `RETURN-CODE`** — S ⛔ superficie
+      ⚠ Comprobado: `bmo_lower::task::exit` **no acepta código de salida** y
+      `TASK_OP_EXIT` tampoco lo lleva (el kernel hace revoke+reap). Esto toca la
+      superficie congelada, no sólo COBOL.
 - [ ] **6.6 · El batch declarativo que sustituye a JCL** — M ⛔ (6.5)
-      **Sustituir, no clonar.** Debajo de la sintaxis de JCL hay tres cosas
-      razonables —planificador con dependencias, asignación de recursos y manejo
-      de códigos de retorno— y clonar la forma sería importar sesenta años de
-      accidentes para no ganar nada. Un TOML dice lo mismo y se lee.
+      **Sustituir, no clonar**: planificador con dependencias, asignación de
+      recursos y códigos de retorno, en un TOML que se lee.
 
 ---
 
 # FASE 7 — El despachador (CICS sustituido)
 
-★ **Aquí BMO-X sale ganando por una razón estructural**: CICS pasó cincuenta
-años atornillando transacciones sobre un sistema de ficheros que no las tenía.
-ESTRATOS las tiene en el fondo. **Lo que falta no es la transaccionalidad — es
-el despachador.**
+★ CICS pasó cincuenta años atornillando transacciones sobre un sistema de
+ficheros que no las tenía. ESTRATOS las tiene en el fondo. **Lo que falta no es
+la transaccionalidad — es el despachador.**
 
 - [ ] **7.1 ★ El despachador de transacciones** — L ⛔ (3.4, 6.2)
-      Recibir una petición, entregarle sus capabilities, ejecutar, y commitear o
-      abandonar. Es pequeño; lo caro estaba debajo y ya está.
 - [ ] **7.2 · `SYNCPOINT` / `ROLLBACK` desde COBOL** — M ⛔ (7.1)
-      El `SYNCPOINT` es el superbloque alterno; el `ROLLBACK` es **no hacer el
-      commit**. No hace falta journal de recuperación porque nada se
-      sobreescribe.
+      El `SYNCPOINT` es el superbloque alterno; el `ROLLBACK` es **no commitear**.
 - [ ] **7.3 · Modelo pseudo-conversacional** — L ⛔ (7.1)
-      El programa corre, termina, y su estado se guarda entre pantallas. **No
-      hay un proceso vivo por usuario** — que es lo que deja a un mainframe
+      **No hay un proceso vivo por usuario** — eso es lo que deja a un mainframe
       llevar miles de terminales.
 - [ ] **7.4 · Seguridad por capabilities (sustituye a RACF)** — M ⛔ (7.1)
-      Una transacción recibe **las capabilities que necesita y ninguna más**.
-      Esto es lo que BMO-X ya sabe hacer y RACF simula con listas.
 - [ ] **7.5 ⚠ Bloqueo de registro / concurrencia** — L ⚠ ⛔ (4.4, 7.1)
-      Dos transacciones sobre la misma cuenta. ⚠ Copy-on-write da aislamiento de
-      lectura gratis pero **no resuelve la escritura concurrente**: hay que
-      decidir entre bloqueo pesimista y detección de conflicto al commitear.
-      Escribir la decisión antes de escribir código.
+      ⚠ Copy-on-write da aislamiento de lectura gratis pero **no resuelve la
+      escritura concurrente**: hay que elegir entre bloqueo pesimista y detección
+      de conflicto al commitear.
 
 ---
 
 # FASE 8 — Lo que hace que sea un BANCO y no un programa
 
 - [ ] **8.1 · Auditoría de verdad** — M ⛔ (4.6)
-      La versión anterior sigue ahí. ESTRATOS lo da gratis; lo que falta es
-      **poder preguntarlo**: cómo estaba esta cuenta el martes.
+      La versión anterior sigue ahí; falta **poder preguntarla**.
 - [ ] **8.2 · Cierre contable y cuadre** — L ⛔ (5.1, 6.6)
-      El proceso nocturno completo, con su descuadre detectado y dicho.
 - [ ] **8.3 ★ Un banco pequeño, de punta a punta** — XL
       Alta de cuenta, movimiento, consulta por número **y por DNI**, extracto,
       cierre diario. **En el Ryzen, no en el emulador.**
-      Es la única prueba que vale de que las siete fases de arriba se sostienen
-      juntas.
 
 ---
 
-## El orden corto, para no leer todo
+## Lo que cambió en la revisión 2, y por qué
+
+Cuatro correcciones, todas por abrir el fichero en vez de razonar sobre él.
+
+**1. La FASE 2 no estaba bloqueada por el parser de tokens.** `parser.rs` ya
+consume varias líneas (`parse_if`, `parse_perform`), y `EVALUATE … WHEN …
+END-EVALUATE` tiene la misma forma. Eso mueve la fase entera de "después de una
+L" a "se puede empezar hoy", y con ella el verbo que más falta hace.
+
+**2. `1.1` (registro binario) no necesita seek.** `ARCH_OP_LEER` ya saca bytes
+crudos sin cortar por el salto de línea, y está en el kernel y en el emulador.
+Leer un registro de largo fijo **en secuencia** es repetirlo. El seek hace falta
+para el acceso **directo** (fase 4), no para leer un fichero de principio a fin.
+
+**3. Apareció una tarea que no estaba: `0.7`, el texto.** `FILE STATUS` es un
+`PIC XX`, y hoy un `PIC X` no guarda caracteres. La revisión 1 daba `1.7` por
+barata y sin dependencias; lo es, pero cuelga de que exista el texto. Con ella
+cuelgan también `STRING`, `INSPECT` y `EBCDIC`.
+
+**4. `SORT` no necesita `EXTEND`.** Cada pasada de la mezcla puede escribir a un
+fichero nuevo con la operación de crear que ya existe.
+
+Y una que sigue en pie de la revisión 1: **`0.5` no se puede hacer con el
+reparto de pila de hoy**, pero ahora hay dos caminos y no uno (ver `1.0`).
+
+## El orden corto
 
 ```
- 0.1 VALUE ✅
- 0.3 OR ✅  ──→ (cayeron con el los 88 con THRU y con varios valores)
- 0.4 PARRAFOS ✅ ──→ 5.3, 6.x
- 0.2 PARSER ──→ FASE 2 (los verbos)
- 1.5 ZONED ──→ 0.5 RECORDS ──→ 1.2 ──→ 1.1 (leer ficheros de fuera)
+HECHO   0.1 VALUE · 0.3 OR (+ los 88 con THRU) · 0.4 PARRAFOS · COMP-3
 
- 3.1/3.2/3.3 KIND_ARCHIVO ──→ 1.1, FASE 4, FASE 5
- 3.4 ESTRATOS ESCRIBE ──────→ 4.6, FASE 7
+AHORA   2.1 EVALUATE ── el verbo que mas falta, y ya no esta bloqueado
+        2.6 ROUNDED / ON SIZE ERROR ── lo unico que cambia el NUMERO
+        0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH · 2.8 COPY
 
- 6.1 EL ENLAZADOR ──────────→ 6.2..6.6, y de paso la libc y C++
+LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
+        1.0 LA DECISION ──→ 0.5 RECORDS ──→ 1.2 ──→ 1.1 BINARIO
+
+KERNEL  3.1 EXTEND · 3.2 I-O · 3.3 POSICIONAR · 3.4 ESTRATOS ESCRIBE
+                          └──→ FASE 4 (VSAM) ──→ FASE 7 (despachador)
+
+APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 ```
 
-**Si hay que elegir UNA cosa por sesión**, el orden que menos trabajo tira
-(tachado lo hecho el 2026-08-03):
-
-~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → **`0.2`** → `1.7` → `2.1` → `2.6` → `1.5` →
-`0.5` → `3.1` → `3.3` → `1.2` → `1.1` → `3.2` → `4.1` → `4.3` → …
-
-Cambió respecto de la primera versión por dos hallazgos: **1.5 subió** (sin ella
-no hay records con posiciones fijas, y sin eso no hay fase 1), y **1.7 bajó** —
-`FILE STATUS` es barato, no depende de nadie y hace falta en cuanto se toque
-E/S de verdad.
+**Si hay que elegir UNA cosa por sesión**:
+~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → **`2.1`** → `2.6` → `0.6` → `0.7` → `1.7` →
+`2.2` → `2.7` → `1.0` → `0.5` → `1.2` → `1.1` → `3.1` → `3.3` → …
 
 ---
 
@@ -380,11 +429,8 @@ z/OS**. Ese código lleva cuarenta años escrito contra CICS, JCL, VSAM y las
 extensiones de IBM *tal cual son*, no contra equivalentes mejores.
 
 Esto es para **sistemas que se escriben ahora**, y pequeños. Lo que esta lista sí
-consigue, si se termina, es que un banco pequeño pueda funcionar encima —
-con auditoría que z/OS no da, y sin pagar licencia a nadie.
-
-Ver el README raíz, sección *"And one boundary worth stating before anyone
-assumes otherwise"*.
+consigue, si se termina, es que un banco pequeño pueda funcionar encima — con
+auditoría que z/OS no da, y sin pagar licencia a nadie.
 
 ---
 
