@@ -107,6 +107,44 @@
 //! 4. **El objeto licencia**: su formato, y si es transferible. Que lo sea o no
 //!    es política del vendedor, no del sistema — y el sistema debe poder
 //!    expresar las dos.
+//!
+//! ### ★ El factor físico (USB), y la trampa que tiene
+//!
+//! La idea de un aparato USB como segundo factor es correcta, pero **hay dos
+//! versiones y sólo una vale**:
+//!
+//! ```text
+//!   HASH GUARDADO EN EL USB   el sistema LEE un secreto del aparato
+//!                             -> quien lea el USB lo copia. Es una
+//!                                contrasena en un palito.
+//!
+//!   EL USB FIRMA UN RETO      el sistema manda un numero aleatorio y el
+//!                             aparato devuelve una FIRMA. La clave privada
+//!                             NUNCA sale.
+//!                             -> copiar el trafico no sirve de nada.
+//! ```
+//!
+//! La segunda es la que usan los bancos, y en BMO-X necesita un driver de la
+//! clase **CCID** de USB — otra clase distinta de HID, que es la que hay hoy.
+//! Mientras eso no exista, un USB de almacenamiento con un fichero de clave es
+//! el intermedio honesto: **es "algo que tienes", y es copiable**. Sirve, y hay
+//! que llamarlo por su nombre en vez de venderlo como lo otro.
+//!
+//! ### ★ Y lo que de verdad vende esto no es la firma
+//!
+//! Es la **jerarquía**, y en BMO-X no es una funcionalidad: es la forma del
+//! sistema. Un cajero no es que no tenga *permiso* para autorizar una
+//! transferencia grande — **no tiene el handle**, así que la operación no le
+//! existe. No hay comprobación que saltarse porque no hay comprobación.
+//!
+//! Sobre eso, las prácticas que un banco ya tiene se escriben solas: cuatro
+//! ojos son **dos handles en dos procesos**, la segregación de funciones es
+//! que **ninguno tenga los dos**, y la pista de auditoría inmutable **ya
+//! existe** — ESTRATOS no sobreescribe nada, así que el auditor no tiene que
+//! fiarse de que nadie borró: desciende por los estratos y lo ve.
+//!
+//! Ver el README, sección *"Why a capability system is what a bank actually
+//! wants"*, donde está el argumento entero.
 
 #![allow(dead_code)]
 

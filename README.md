@@ -181,6 +181,71 @@ security role a central IR would have played, without any of the coupling.
 
 ---
 
+## 🏦 Why a capability system is what a bank actually wants
+
+Not a feature list — a structural difference. A bank's controls are usually
+bolted **on top of** an operating system that already grants everything to
+`root`. Here there is no `root` to bolt anything onto.
+
+### A role isn't a permission check. It's an absence.
+
+In a conventional OS, "the teller cannot authorise a large transfer" means
+*some code checks a permission before allowing it*. That check is a thing that
+can be bypassed, mis-configured, or escalated around.
+
+In BMO-X the teller's process **does not hold the handle**. The operation does
+not exist for it. There is no check to bypass, because there is no check —
+it is the difference between a locked door and a wall.
+
+### Banking bureaucracy is already written in capabilities
+
+What sounds like red tape maps onto this model exactly, and mostly for free:
+
+| Banking practice | In BMO-X |
+|---|---|
+| **Four-eyes principle** (two people authorise) | the operation requires **two handles**, held by two different processes |
+| **Segregation of duties** | no single process holds both — structural, not policy |
+| **Immutable audit trail** | **ESTRATOS**: nothing is overwritten; every commit leaves a generation |
+| **Who did what, and when** | CABINA records it, and Ring 3 can read it (F11) |
+
+The third row is the one that is hard to buy elsewhere. Banks pay a great deal
+for WORM storage (write-once, read-many) to satisfy regulators. Here it was not
+added as a feature — **it fell out of copy-on-write**. An auditor does not have
+to trust that nothing was deleted; they can descend through the strata and see.
+
+### And the signature is the receipt, not a lock
+
+The per-owner signing model (designed in `platform/abi/bmo-abi/src/bef/signing.rs`)
+proves **provenance** and **attribution** at zero runtime cost, and deliberately
+does *not* try to prevent copying — that would require the machine to keep a
+secret from its owner, which this system cannot do and does not want to.
+
+For a bank that trade is not a loss. *"I can prove exactly what is running"* is
+worth more to a regulator than any anti-piracy scheme, and it is the one thing
+an auditable-by-construction system can offer that almost nothing else can.
+
+### Why the games detour is not a detour
+
+The stated motive for this project is games. That looks unrelated to banking,
+and it isn't — **games are the harder test, and banking inherits the result**:
+
+- **They force completeness.** To run a game you need libc, files, memory,
+  timing, input, a framebuffer, sound. Banking needs a subset. Build for games
+  and banking falls out; build only for banking and you never grow a libc.
+- **They stress what batch work never touches.** A banking batch reads a file
+  and writes a file. A game hammers memory, input and the framebuffer for
+  hours. Every bug found on 2 August — the crossed mouse axes, the ghosting,
+  the leaked directory slots — came from *interactive* use. None would have
+  surfaced from a batch.
+- **They produce users, and users produce credibility.** Nobody buys an
+  operating system with no users. *"It runs DOOM"* is a credential;
+  *"it computes 59.97 exactly"* is a demo.
+
+> **Games are not the goal. They are the hardest test bench available — and
+> what survives it is what a bank buys.**
+
+---
+
 ## 🟢 Running on real hardware
 
 **Kernel**
