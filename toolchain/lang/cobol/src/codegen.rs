@@ -1395,6 +1395,41 @@ impl Codegen {
             // PERFORM UNTIL <cond>: se prueba ANTES de cada iteración
             // (`WITH TEST BEFORE`, el default del estándar) y se sale cuando
             // la condición se cumple.
+            // ★ `EVALUATE` — la primera rama que acierta gana, y las de abajo
+            // ni se prueban.
+            //
+            // Que se emita en cinco líneas es la prueba de que la forma del AST
+            // es la buena: las dos sintaxis —con sujeto y `EVALUATE TRUE`— ya
+            // llegan aquí como el MISMO árbol de condiciones, así que heredan el
+            // cortocircuito y la precedencia sin una línea de más. Si el codegen
+            // tuviera que distinguirlas, el parser habría hecho mal su trabajo.
+            CobolStatement::Evaluate(ramas) => {
+                let ramas = ramas.clone();
+                let fin = self.fresh_label();
+                for (cond, cuerpo) in &ramas {
+                    match cond {
+                        Some(c) => {
+                            let siguiente = self.fresh_label();
+                            self.emit_jump_if_false(c, siguiente);
+                            for s in cuerpo {
+                                self.emit_statement(s);
+                            }
+                            self.emit_jmp(fin);
+                            self.bind_label(siguiente);
+                        }
+                        // `WHEN OTHER`: no compara, y el parser ya garantiza que
+                        // es el último.
+                        None => {
+                            for s in cuerpo {
+                                self.emit_statement(s);
+                            }
+                            self.emit_jmp(fin);
+                        }
+                    }
+                }
+                self.bind_label(fin);
+            }
+
             CobolStatement::PerformFuera { desde, hasta, veces, hasta_que } => {
                 let (desde, hasta, veces, hasta_que) =
                     (desde.clone(), hasta.clone(), *veces, hasta_que.clone());
@@ -1696,41 +1731,14 @@ impl Codegen {
 
     /// Un nivel 88 convertido en la condición que de verdad es.
     ///
-    /// ```text
-    ///   88 SOLTERO   VALUE 1.          →  ESTADO = 1
-    ///   88 LABORABLE VALUE 1 THRU 5.   →  DIA >= 1 AND DIA <= 5
-    ///   88 FESTIVO   VALUE 6, 7.       →  DIA = 6 OR DIA = 7
-    /// ```
-    ///
-    /// Un rango son los dos extremos INCLUIDOS, que es lo que dice el estándar
-    /// y lo que espera quien escribe `VALUE 1 THRU 5` pensando en cinco días.
+    /// La expansión la hace [`Condicion::de_valores`], compartida con el `WHEN`
+    /// de un `EVALUATE` con sujeto: son la misma pregunta —"¿está este campo en
+    /// este conjunto?"— y tenerla dos veces sería copiar el mismo error de
+    /// extremo abierto en dos sitios.
     fn expandir_88(padre: &str, valores: &[crate::ast::Valor88]) -> Condicion {
-        use crate::ast::Valor88;
-        let mut acc: Option<Condicion> = None;
-        for v in valores {
-            let c = match v {
-                Valor88::Uno(x) => {
-                    Condicion::Simple(CobolCondition::Equal(padre.to_string(), x.clone()))
-                }
-                Valor88::Rango(desde, hasta) => Condicion::y(
-                    Condicion::Simple(CobolCondition::GreaterOrEqual(
-                        padre.to_string(),
-                        desde.clone(),
-                    )),
-                    Condicion::Simple(CobolCondition::LessOrEqual(
-                        padre.to_string(),
-                        hasta.clone(),
-                    )),
-                ),
-            };
-            acc = Some(match acc {
-                None => c,
-                Some(izq) => Condicion::o(izq, c),
-            });
-        }
         // Un 88 sin valores no llega hasta aquí: el parser lo rechaza. Si
         // llegara, comparar contra nada es falso, no verdadero.
-        acc.unwrap_or_else(|| {
+        Condicion::de_valores(padre, valores).unwrap_or_else(|| {
             Condicion::Simple(CobolCondition::NotEqual("0".to_string(), "0".to_string()))
         })
     }

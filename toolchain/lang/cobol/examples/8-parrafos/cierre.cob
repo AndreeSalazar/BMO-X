@@ -36,6 +36,11 @@
       *   6. OR en las condiciones, y con el los 88 con THRU y con varios
       *      valores: `88 GRANDE VALUE 500.00 THRU 99999.99`.
       *
+      *   6b. EVALUATE TRUE, la TABLA DE DECISION. Cada rama es una condicion
+      *       entera y la primera que acierta gana. Es como se escribe un
+      *       escalado de comisiones, y con IF anidados dice lo mismo pero no
+      *       se lee.
+      *
       *   7. STOP RUN, que ahora TERMINA. Antes no emitia nada y colaba porque
       *      siempre era la ultima linea; con parrafos detras, no emitir nada
       *      significaba caerse dentro del primero y ejecutarlo otra vez.
@@ -100,15 +105,16 @@
            IF ES-BUENO
                ADD IMPORTE TO TOTAL
                ADD 1 TO CUANTOS
-      *        El OR: un movimiento llama la atencion por ser GRANDE o por ser
-      *        un ABONO. Sin OR, esto son dos IF y la condicion deja de leerse.
-               IF IMPORTE > 500.00 OR IMPORTE < 0
-                   IF IMPORTE < 0
+      *        ★ LA TABLA DE DECISION. `EVALUATE TRUE` con una condicion
+      *        entera por rama es como un banco escribe un escalado, y se lee
+      *        de arriba abajo: LA PRIMERA QUE ACIERTA GANA y las de abajo ni
+      *        se prueban. Escrito con IF anidados dice lo mismo y no se lee.
+               EVALUATE TRUE
+                   WHEN IMPORTE < 0
                        ADD 1 TO ABONOS
-                   ELSE
+                   WHEN IMPORTE > 500.00
                        ADD 1 TO GRANDES
-                   END-IF
-               END-IF
+               END-EVALUATE
            END-IF.
 
        4000-SALIR.

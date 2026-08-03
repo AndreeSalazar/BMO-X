@@ -75,6 +75,9 @@ that does not exist.
 
 **Control flow**
 - `IF` / `ELSE` — real branching
+- `EVALUATE` — both forms: with a subject (`WHEN 1`, `WHEN 2 THRU 5`,
+  `WHEN 6, 7`, `WHEN OTHER`) and `EVALUATE TRUE`, the **decision table** a bank
+  writes a fee tier with. First branch that matches wins; the rest are not tested
 - Conditions combined with `AND` and `OR`, as a tree with correct precedence
   and **short-circuit** evaluation
 - **Paragraphs**, and every out-of-line `PERFORM`: `PERFORM p`,
@@ -105,9 +108,9 @@ separate from vendor extensions.
 Every unsupported construct is **rejected with a reason**. Nothing is
 silently ignored, and nothing is stubbed out to look like it works.
 
-Not implemented yet: `EVALUATE`, `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`,
-`GO TO`, `REDEFINES`, nested records beyond group level, and the intrinsic
-function library.
+Not implemented yet: `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`, `GO TO`,
+`REDEFINES`, `PIC X` fields with actual text, nested records beyond group level,
+and the intrinsic function library.
 
 Deliberately rejected with an explanation rather than guessed at:
 - `READ` without `AT END` — it would compile into a loop that never ends

@@ -360,8 +360,29 @@ impl Parser {
         // `VALUE IS 1` es legal y el `IS` sobra.
         let cola = Self::strip_leading_word(cola, "IS");
 
+        let out = Self::partir_valores(cola, line_no)?;
+        if out.is_empty() {
+            return Err(CobolError::new(
+                line_no,
+                format!("{name}: el VALUE esta vacio y no compara nada"),
+            ));
+        }
+        Ok(out)
+    }
+
+    /// Una lista de valores separados por comas, cada uno suelto o un rango.
+    ///
+    /// La comparten el `VALUE` de un nivel 88 y el `WHEN` de un `EVALUATE` con
+    /// sujeto. Son **la misma lista**: `1, 3 THRU 5, 9` significa lo mismo en
+    /// los dos sitios, y tenerla dos veces sería tener dos gramáticas para una
+    /// coma.
+    ///
+    /// La coma separa SIEMPRE: BMO COBOL usa el punto decimal, así que nunca
+    /// forma parte de un número. Está dicho para que nadie lo descubra solo.
+    fn partir_valores(texto: &str, line_no: usize) -> Result<Vec<crate::ast::Valor88>, CobolError> {
+        use crate::ast::Valor88;
         let mut out = Vec::new();
-        for trozo in cola.split(',') {
+        for trozo in texto.split(',') {
             let t = trozo.trim();
             if t.is_empty() {
                 continue;
@@ -378,19 +399,13 @@ impl Parser {
                     if desde.is_empty() || hasta.is_empty() {
                         return Err(CobolError::new(
                             line_no,
-                            format!("{name}: un THRU necesita los dos extremos"),
+                            "un THRU necesita los dos extremos",
                         ));
                     }
                     out.push(Valor88::Rango(desde, hasta));
                 }
                 None => out.push(Valor88::Uno(Self::normalizar_figurativa(t))),
             }
-        }
-        if out.is_empty() {
-            return Err(CobolError::new(
-                line_no,
-                format!("{name}: el VALUE esta vacio y no compara nada"),
-            ));
         }
         Ok(out)
     }
@@ -802,6 +817,8 @@ impl Parser {
             self.parse_read(line, line_no)
         } else if upper.starts_with("WRITE ") {
             Ok(CobolStatement::Write(line[6..].trim().trim_end_matches('.').to_string()))
+        } else if upper.starts_with("EVALUATE ") {
+            self.parse_evaluate(line, line_no)
         } else if upper.starts_with("IF ") {
             self.parse_if(line, line_no)
         } else if upper.starts_with("PERFORM ") {
@@ -1055,6 +1072,136 @@ impl Parser {
         }
 
         Ok(CobolStatement::If(conditions, then_branch, else_branch))
+    }
+
+    /// ★ `EVALUATE … WHEN … END-EVALUATE` — el `switch` de COBOL.
+    ///
+    /// Dos formas, las dos corrientes en banca y las dos aquí:
+    ///
+    /// ```text
+    ///   EVALUATE TIPO-MOV              EVALUATE TRUE
+    ///       WHEN 1                         WHEN SALDO > 1000.00
+    ///           ...                            ...
+    ///       WHEN 2 THRU 5                  WHEN SALDO > 100.00
+    ///           ...                            ...
+    ///       WHEN 6, 7                      WHEN OTHER
+    ///           ...                            ...
+    ///       WHEN OTHER                 END-EVALUATE
+    ///           ...
+    ///   END-EVALUATE
+    /// ```
+    ///
+    /// La de la derecha es **la tabla de decisión**, y es como un banco escribe
+    /// un escalado de comisiones: cada `WHEN` es una condición entera. La de la
+    /// izquierda es el `switch` clásico, y sus `WHEN` se traducen **aquí** a
+    /// comparaciones contra el sujeto, con la misma expansión que usa un nivel
+    /// 88 — `THRU` es un rango cerrado y la coma es un `OR`.
+    ///
+    /// Las sentencias van en las líneas de DEBAJO de su `WHEN`. La forma de
+    /// meterlas en la misma línea existe en el estándar y se rechaza con su
+    /// motivo: separar "el valor" de "la sentencia" sin tokens es adivinar, y
+    /// adivinar mal manda el programa a otra rama.
+    fn parse_evaluate(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let sujeto = line[9..].trim().trim_end_matches('.').trim().to_string();
+        if sujeto.is_empty() {
+            return Err(CobolError::new(line_no, "EVALUATE sin sujeto"));
+        }
+        // `EVALUATE TRUE` no compara con nada: cada WHEN trae su condición.
+        let por_condicion = sujeto.eq_ignore_ascii_case("TRUE");
+        if sujeto.eq_ignore_ascii_case("FALSE") {
+            return Err(CobolError::new(
+                line_no,
+                "EVALUATE FALSE no se compila: invierte las condiciones y usa EVALUATE TRUE",
+            ));
+        }
+        if !por_condicion && sujeto.split_whitespace().count() != 1 {
+            return Err(CobolError::new(
+                line_no,
+                format!(
+                    "EVALUATE {sujeto}: se esperaba UN campo o `TRUE`. Varios sujetos \
+                     (`EVALUATE A ALSO B`) todavia no se compilan"
+                ),
+            ));
+        }
+
+        let mut ramas: Vec<(Option<Condicion>, Vec<CobolStatement>)> = Vec::new();
+        let mut hubo_other = false;
+        loop {
+            let (inner_no, raw) = match self.current() {
+                Some(v) => (v.0, v.1.clone()),
+                None => {
+                    return Err(CobolError::new(
+                        line_no,
+                        "EVALUATE sin END-EVALUATE: esta implementacion exige el cierre explicito",
+                    ))
+                }
+            };
+            let inner = Self::strip_comment(&raw).trim().to_string();
+            self.advance();
+            if inner.is_empty() {
+                continue;
+            }
+            let limpio = inner.trim_end_matches('.').trim().to_string();
+            let arriba = limpio.to_ascii_uppercase();
+
+            if arriba == "END-EVALUATE" {
+                break;
+            }
+
+            if arriba == "WHEN OTHER" {
+                if hubo_other {
+                    return Err(CobolError::new(inner_no, "dos WHEN OTHER en el mismo EVALUATE"));
+                }
+                hubo_other = true;
+                ramas.push((None, Vec::new()));
+                continue;
+            }
+
+            if let Some(resto) = arriba.strip_prefix("WHEN ") {
+                if hubo_other {
+                    return Err(CobolError::new(
+                        inner_no,
+                        "un WHEN despues del WHEN OTHER no se alcanza nunca: \
+                         el OTHER va el ultimo",
+                    ));
+                }
+                let texto = limpio[5..].trim();
+                if resto.trim().is_empty() {
+                    return Err(CobolError::new(inner_no, "WHEN sin valor"));
+                }
+                let cond = if por_condicion {
+                    Self::parse_condicion(texto, inner_no)?
+                } else {
+                    // La MISMA expansión que un nivel 88, y por eso `THRU` y la
+                    // coma funcionan aquí sin escribir nada nuevo.
+                    let valores = Self::partir_valores(texto, inner_no)?;
+                    Condicion::de_valores(&sujeto, &valores).ok_or_else(|| {
+                        CobolError::new(inner_no, "WHEN sin ningun valor con el que comparar")
+                    })?
+                };
+                ramas.push((Some(cond), Vec::new()));
+                continue;
+            }
+
+            // Una sentencia: es del último WHEN abierto.
+            let Some((_, cuerpo)) = ramas.last_mut() else {
+                return Err(CobolError::new(
+                    inner_no,
+                    format!(
+                        "'{limpio}' esta entre el EVALUATE y el primer WHEN, y ahi no se \
+                         ejecuta nada. Ponlo antes del EVALUATE o debajo de un WHEN"
+                    ),
+                ));
+            };
+            let _ = cuerpo;
+            let stmt = self.parse_statement(&limpio, inner_no)?;
+            ramas.last_mut().unwrap().1.push(stmt);
+        }
+
+        if ramas.is_empty() {
+            return Err(CobolError::new(line_no, "EVALUATE sin ningun WHEN"));
+        }
+        Ok(CobolStatement::Evaluate(ramas))
     }
 
     /// Todas las formas del `PERFORM`.

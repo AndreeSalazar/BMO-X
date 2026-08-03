@@ -200,8 +200,17 @@ para `IF … END-IF` y `PERFORM … END-PERFORM`, y las sentencias de esta fase
 tienen la misma forma. Se pueden hacer **hoy**, y son lo que más código real
 desbloquea por hora de trabajo.
 
-- [ ] **2.1 ★ `EVALUATE`** — M
-      **El verbo que más falta hace.** Dos formas, las dos corrientes en banca:
+- [x] **2.1 ★ `EVALUATE`** — ✅ 2026-08-03
+      Las dos formas compilan, con `WHEN OTHER`, `WHEN a THRU b` y `WHEN a, b`.
+      ★ El `THRU` y la coma **no costaron una línea de gramática nueva**: la
+      expansión "¿está este campo en este conjunto?" se sacó a
+      `Condicion::de_valores` y la comparten el nivel 88 y el `WHEN`. Y como las
+      dos sintaxis llegan al codegen como el MISMO árbol, el emisor son cinco
+      líneas y heredan cortocircuito y precedencia gratis.
+      Se rechaza con motivo: `EVALUATE FALSE`, varios sujetos (`ALSO`), un `WHEN`
+      después del `OTHER` (no se alcanza nunca), sentencias entre el `EVALUATE` y
+      el primer `WHEN`, y las sentencias en la misma línea que su `WHEN`.
+      Dos formas, las dos corrientes en banca:
       ```cobol
       EVALUATE TIPO-MOV              EVALUATE TRUE
           WHEN 1 …                       WHEN SALDO > 1000.00 …
@@ -403,8 +412,9 @@ reparto de pila de hoy**, pero ahora hay dos caminos y no uno (ver `1.0`).
 ```
 HECHO   0.1 VALUE · 0.3 OR (+ los 88 con THRU) · 0.4 PARRAFOS · COMP-3
 
-AHORA   2.1 EVALUATE ── el verbo que mas falta, y ya no esta bloqueado
-        2.6 ROUNDED / ON SIZE ERROR ── lo unico que cambia el NUMERO
+HECHO   2.1 EVALUATE (las dos formas, con THRU y listas)
+
+AHORA   2.6 ROUNDED / ON SIZE ERROR ── lo unico que cambia el NUMERO
         0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH · 2.8 COPY
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
@@ -417,8 +427,8 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 ```
 
 **Si hay que elegir UNA cosa por sesión**:
-~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → **`2.1`** → `2.6` → `0.6` → `0.7` → `1.7` →
-`2.2` → `2.7` → `1.0` → `0.5` → `1.2` → `1.1` → `3.1` → `3.3` → …
+~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → **`2.6`** → `0.6` → `0.7` →
+`1.7` → `2.2` → `2.7` → `1.0` → `0.5` → `1.2` → `1.1` → `3.1` → `3.3` → …
 
 ---
 
@@ -442,3 +452,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | **0.1 `VALUE`** inicializa de verdad (se parseaba y no se emitía nunca) | `codegen::emit_valores_iniciales` |
 | 2026-08-03 | **0.3 `OR`** — la condición es un árbol con cortocircuito; caen los `88` con `THRU` y con varios valores | `ast::Condicion` + `codegen::emit_jump_if_true/false` |
 | 2026-08-03 | ★ **0.4 PÁRRAFOS** y las cuatro formas del `PERFORM` fuera de línea; `STOP RUN` termina de verdad | `codegen::emit_parrafos` · ejemplo `8-parrafos/` |
+| 2026-08-03 | ★ **2.1 `EVALUATE`** — con sujeto y `EVALUATE TRUE`; `THRU` y listas compartidos con el nivel 88 | `parser::parse_evaluate` + `Condicion::de_valores` |

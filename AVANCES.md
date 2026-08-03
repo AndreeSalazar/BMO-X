@@ -10,7 +10,7 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-03**: **669 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
+> **Al 2026-08-03**: **678 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
 > el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
@@ -66,11 +66,42 @@ orden y quién depende de quién.
 - Al emulador le faltaban `push`/`pop` sobre memoria (`FF /6`, `8F /0`). Nadie
   los había emitido nunca.
 
-**⚠ Y un hallazgo que REORDENA el plan**: `0.5` (campos en su offset dentro del
-registro) **no se puede hacer** mientras cada dato ocupe su ranura de ocho bytes
-— un `PIC 9(3)` contiguo mide tres y un `mov` de 64 bits se lleva al vecino. O
-sea que **1.5 (`DISPLAY` como zoned decimal) sube a primera de la fase 1** y pasa
-de ser "la decisión cara aparcada" a ser la llave de leer ficheros de fuera.
+### ★ `EVALUATE`, y la revisión 2 del plan (misma sesión, por la tarde)
+
+**Se verificó el plan entero contra el código, y tres bloqueos eran falsos.**
+
+1. **La fase 2 no dependía del parser de tokens.** `parser.rs` ya consume varias
+   líneas (`parse_if`, `parse_perform`) y `EVALUATE … WHEN … END-EVALUATE` tiene
+   la misma forma. `0.2` baja de bloqueo a **deuda**.
+2. **El registro binario no necesita seek.** `ARCH_OP_LEER` ya saca 7 bytes
+   crudos sin cortar por el salto, y está en el kernel *y* en el emulador. El
+   seek hace falta para el acceso **directo** (fase 4), no para leer un fichero
+   entero.
+3. **`SORT` no necesita `EXTEND`**: cada pasada puede escribir a un fichero
+   nuevo con la operación de crear que ya existe.
+
+Y apareció una tarea que no estaba: **`0.7`, el texto**. `FILE STATUS` es un
+`PIC XX` y hoy un `PIC X` no guarda caracteres; de ahí cuelgan también `STRING`,
+`INSPECT` y EBCDIC.
+
+**★ Y con la fase 2 desbloqueada entró `EVALUATE`**, el verbo que más falta
+hacía. Las dos formas: con sujeto (`WHEN 1`, `WHEN 2 THRU 5`, `WHEN 6, 7`,
+`WHEN OTHER`) y **`EVALUATE TRUE`**, que es la *tabla de decisión* con la que un
+banco escribe un escalado de comisiones.
+★ El `THRU` y la coma **no costaron una línea de gramática nueva**: la pregunta
+"¿está este campo en este conjunto?" se sacó a `Condicion::de_valores` y ahora la
+comparten el nivel 88 y el `WHEN`. Y como las dos sintaxis llegan al codegen como
+el **mismo árbol**, el emisor son cinco líneas y heredan cortocircuito y
+precedencia gratis. *Cuando el codegen de una característica sale así de corto,
+es señal de que el parser hizo bien su trabajo.*
+
+**⚠ El hallazgo de por la mañana sigue en pie, pero con dos caminos**: `0.5`
+(campos en su offset) no se puede hacer con el reparto de pila de hoy. La
+revisión 2 añade la tarea **`1.0`** con los dos medidos — zoned decimal de verdad
+(caro, toca lo que corre en el Ryzen) frente a **área de registro con
+empaquetado en la frontera** (recomendado: no toca nada y `bmo_lower::packed` ya
+tiene media pieza hecha). **La decisión es de Eddi y va escrita antes de la
+primera línea.**
 
 **Tres cosas comprobadas que los documentos decían al revés:**
 - ✅ **`bmo-verify` SÍ está cableado** — los cuatro frontends lo llaman **antes**

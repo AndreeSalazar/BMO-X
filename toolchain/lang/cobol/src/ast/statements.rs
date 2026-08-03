@@ -1,4 +1,4 @@
-use crate::ast::SyscallDef;
+use crate::ast::{SyscallDef, Valor88};
 
 /// Que se imprime en un `DISPLAY`.
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +48,17 @@ pub enum CobolStatement {
         /// `UNTIL <cond>` — se prueba ANTES de cada vuelta.
         hasta_que: Option<Condicion>,
     },
+    /// ★ `EVALUATE … WHEN … END-EVALUATE` — el `switch` de COBOL.
+    ///
+    /// Cada rama lleva la condición **ya construida**: la forma con sujeto
+    /// (`EVALUATE TIPO / WHEN 1`) se traduce a `TIPO = 1` en el parser, porque
+    /// el sujeto se conoce ahí. `None` es el `WHEN OTHER`, que no compara nada.
+    ///
+    /// Que las dos formas —con sujeto y `EVALUATE TRUE`— acaben en el mismo
+    /// `Condicion` no es una casualidad de implementación: **son la misma cosa**
+    /// dicha de dos maneras, y por eso las dos heredan el cortocircuito y la
+    /// precedencia sin una línea de más en el codegen.
+    Evaluate(Vec<(Option<Condicion>, Vec<CobolStatement>)>),
     /// `EXIT` — no hace nada, y ese es su trabajo.
     ///
     /// Es el destino de un `PERFORM … THRU X-SALIR`: un párrafo vacío al que
@@ -106,6 +117,46 @@ impl Condicion {
 
     pub fn o(izq: Condicion, der: Condicion) -> Condicion {
         Condicion::O(Box::new(izq), Box::new(der))
+    }
+
+    /// ★ Un conjunto de valores comparado contra UN campo, convertido en la
+    /// condición que de verdad es.
+    ///
+    /// ```text
+    ///   VALUE 1.          →  X = 1
+    ///   VALUE 1 THRU 5.   →  X >= 1 AND X <= 5
+    ///   VALUE 6, 7.       →  X = 6 OR X = 7
+    /// ```
+    ///
+    /// Vive aquí y no en el codegen porque **la usan dos sitios que no se
+    /// conocen**: los nombres de condición del nivel 88 y el `WHEN` de un
+    /// `EVALUATE` con sujeto. Son la misma pregunta —"¿está este campo en este
+    /// conjunto?"— y tenerla dos veces sería copiar el mismo error de extremo
+    /// abierto en dos gramáticas distintas.
+    ///
+    /// Un rango lleva los dos extremos INCLUIDOS, que es lo que dice el
+    /// estándar y lo que espera quien escribe `1 THRU 5` pensando en cinco.
+    pub fn de_valores(campo: &str, valores: &[Valor88]) -> Option<Condicion> {
+        let mut acc: Option<Condicion> = None;
+        for v in valores {
+            let c = match v {
+                Valor88::Uno(x) => {
+                    Condicion::Simple(CobolCondition::Equal(campo.to_string(), x.clone()))
+                }
+                Valor88::Rango(desde, hasta) => Condicion::y(
+                    Condicion::Simple(CobolCondition::GreaterOrEqual(
+                        campo.to_string(),
+                        desde.clone(),
+                    )),
+                    Condicion::Simple(CobolCondition::LessOrEqual(campo.to_string(), hasta.clone())),
+                ),
+            };
+            acc = Some(match acc {
+                None => c,
+                Some(izq) => Condicion::o(izq, c),
+            });
+        }
+        acc
     }
 }
 
