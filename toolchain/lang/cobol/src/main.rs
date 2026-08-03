@@ -62,6 +62,21 @@ fn main() {
             let out_path = out_override.unwrap_or_else(|| {
                 Path::new(path).with_extension(bmo_abi::bex::BEX_EXTENSION)
             });
+                        // ── ★ EL GATE, ANTES DE ESCRIBIR ──────────────────────────
+            //
+            // `bmo-verify` es el "unico checkpoint comun" de la filosofia: el
+            // papel de seguridad que tendria un IR central, pero como CONTRATO
+            // — cada lenguaje emite su BEF por su cuenta y el verificador lo
+            // revisa por separado. Hasta hoy no lo llamaba ningun frontend.
+            //
+            // Va ANTES del `write` a proposito: verificar despues dejaria un
+            // fichero malo en el disco con un mensaje al lado, y quien lo
+            // encuentre manana vera el `.bex`, no el mensaje.
+            if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify(&bef_bytes) {
+                eprintln!("error: el BEF no pasa el gate de verificacion:");
+                for r in &razones { eprintln!("  - {r}"); }
+                std::process::exit(1);
+            }
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
                     println!("ok: wrote {} bytes â†’ {}", bef_bytes.len(), out_path.display());

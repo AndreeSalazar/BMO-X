@@ -21,6 +21,9 @@ description = "BMO Ada frontend — compila Ada a ejecutables BEX nativos, sin r
 # COBOL— la salida NO es importar `lang/cobol`: es promover ese motor a
 # `forge/` como librería opcional que los dos elijan enlazar.
 [dependencies]
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui — es el
+# "unico checkpoint comun" de la filosofia.
+bmo-verify = { path = "../../forge/bmo-verify" }
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 bmo-lower = { path = "../../forge/bmo-lower" }
 

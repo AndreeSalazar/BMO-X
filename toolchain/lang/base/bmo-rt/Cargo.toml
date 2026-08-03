@@ -1,0 +1,8 @@
+[package]
+name = "bmo-rt"
+version = "0.1.0"
+edition = "2021"
+description = "BMO Runtime — la libc de BMO: crt0, heap, string y printf enlazables"
+
+[dependencies]
+bmo-abi = { path = "../../../../platform/abi/bmo-abi" }

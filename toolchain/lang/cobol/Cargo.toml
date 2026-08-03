@@ -6,6 +6,9 @@ authors = ["BMO Project"]
 description = "BMO COBOL frontend — parses COBOL and compiles native BEX executables"
 
 [dependencies]
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui — es el
+# "unico checkpoint comun" de la filosofia.
+bmo-verify = { path = "../../forge/bmo-verify" }
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 # forge: encoder compartido (elegido, no embudo) — sustituye el hardcodeo
 # de bytes (mov imm64/reg, syscall) por la tabla TOML.

@@ -6,6 +6,9 @@ authors = ["BMO Project"]
 description = "C++ frontend for BMO ABI — desazucara C++ sobre el AST de BMO C"
 
 [dependencies]
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui — es el
+# "unico checkpoint comun" de la filosofia.
+bmo-verify = { path = "../../forge/bmo-verify" }
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 # ── LA HERENCIA ────────────────────────────────────────────────────────
 # C++ hereda el DESCENSO de BMO C (`ast::Program` → BEF), NO su frontend.

@@ -92,6 +92,31 @@ fn main() {
             // ejecutable, que es lo que el kernel embebe.
             let out_path = out_override
                 .unwrap_or_else(|| Path::new(path).with_extension("bef"));
+
+            // ── ★ EL GATE, ANTES DE ESCRIBIR ──────────────────────────
+            //
+            // `bmo-verify` es lo que la filosofía llama **el ÚNICO checkpoint
+            // común**: lo que reemplaza al rol de seguridad de un IR central,
+            // pero como CONTRATO y no como embudo — cada lenguaje emite su BEF
+            // por su cuenta y el verificador lo revisa por separado.
+            //
+            // Y hasta hoy **no lo llamaba nadie**. El crate existía, delegaba
+            // en el validador real de `bmo_abi::bef::validator` (15 tests), y
+            // ningún frontend lo consultaba: el gate estaba escrito y abierto.
+            //
+            // Va ANTES del `write` a propósito. Verificar después dejaría un
+            // fichero malo en el disco con un mensaje de error al lado, y el
+            // que lo encuentre mañana verá el `.bex` y no el mensaje. Un gate
+            // que avisa cuando el daño ya está hecho es un informe, no un gate.
+            if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify(&bef_bytes) {
+                eprintln!("error: el BEF no pasa el gate de verificacion:");
+                for r in &razones {
+                    eprintln!("  - {r}");
+                }
+                eprintln!("  (no se ha escrito {})", out_path.display());
+                std::process::exit(1);
+            }
+
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
                     println!("ok: wrote {} bytes -> {}", bef_bytes.len(), out_path.display());

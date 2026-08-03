@@ -14,7 +14,6 @@ members = [
 
     # ── ABI (Foundation) ────────────────────────────────────────────
     "platform/abi/bmo-abi",
-    "platform/abi/bmo-rt",
 
     # ── USERSPACE (Ring 3, x86-64) ─────────────────────────────────
     # NO va aquí, y es a propósito. `Ultra_userspace/` es su propio
@@ -81,6 +80,18 @@ members = [
     "toolchain/lang/cobol",
     "toolchain/lang/cpp",
     "toolchain/lang/c",
+    # ── LA LIBC, junto a los lenguajes que la consumen ──────────────
+    #
+    # `lang/base/` ya era la biblioteca base: ahí viven los módulos en C
+    # (`lib/printf`, `bmo/core`, `bmo/pci`) que el sistema de módulos del
+    # frontend enlaza. `bmo-rt` es **la otra mitad de eso, en Rust**: lo que
+    # exporta símbolos con nombre C para que un `.bex` los enlace.
+    #
+    # Estaba en `platform/abi/`, y eso era un error de categoría: `abi/` guarda
+    # CONTRATOS —lo que dos partes acuerdan— y una libc es una
+    # IMPLEMENTACIÓN. Tenerla ahí hacía que `abi/` significara dos cosas, y la
+    # ponía lejos de la mitad en C con la que tiene que crecer a la vez.
+    "toolchain/lang/base/bmo-rt",
     # ── TOOLS (generadores build-time) ─────────────────────────────
     "toolchain/tools/bef-bootstrap",
     "toolchain/tools/hello-bex",

@@ -14,6 +14,10 @@ bmo-lower = { path = "../../forge/bmo-lower" }
 # forge: el contrato de tablas y manifiestos. Sustituye a los dos lectores
 # de TOML hechos a mano que habia en standard.rs y module.rs.
 bmo-mods = { path = "../../forge/bmo-mods" }
+# forge: EL GATE. Ningun `.bex` se escribe sin pasar por aqui. Es el "unico
+# checkpoint comun" de la filosofia — el papel de seguridad que tendria un IR
+# central, pero como CONTRATO: cada lenguaje emite lo suyo y esto lo revisa.
+bmo-verify = { path = "../../forge/bmo-verify" }
 
 
 [lib]
