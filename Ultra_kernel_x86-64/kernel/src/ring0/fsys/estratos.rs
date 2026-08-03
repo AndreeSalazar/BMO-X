@@ -89,10 +89,42 @@ fn leer_bloque_de(base: u64, bloque: u64, dst: &mut [u8; BLOQUE]) -> bool {
 /// depende: el gate de identidad del disco (`disk::write_armed`) y la ventana
 /// de la partición (`disk::write_window`). Aquí no se repiten — repetir un
 /// guardián es tener dos sitios donde relajarlo.
+#[allow(dead_code)] // lo estrena el primer objeto con datos
 fn escribir_bloque(bloque: u64, src: &[u8; BLOQUE]) -> bool {
     let base = unsafe { BASE_LBA };
     let lba = base + bloque * SECTORES_POR_BLOQUE as u64;
     disk::write(lba, SECTORES_POR_BLOQUE, src) == SECTORES_POR_BLOQUE
+}
+
+/// **Escribe el superbloque: UN SOLO SECTOR.** Y ése es el punto entero.
+///
+/// ═══ Por qué no se reutiliza [`escribir_bloque`] ═══
+///
+/// Porque escribiría **ocho sectores**, y con eso se cae la única garantía
+/// sobre la que está construido ESTRATOS. La cabecera de
+/// `bmo_estratos::escritura` lo dice sin ambigüedad:
+///
+/// > *el punto de no retorno cabe en **un solo sector**, que es la unidad que
+/// > el disco garantiza atómica.*
+///
+/// Un `Superblock` mide [`es::SUPER_LEN`] = **512 bytes**, o sea exactamente un
+/// sector. Escribir el bloque de 4 KiB que lo contiene convierte el commit en
+/// una escritura de ocho sectores: si el corte llega a mitad, el disco puede
+/// haber puesto unos sí y otros no. Los siete de relleno no importan — pero
+/// **el commit deja de ser una operación atómica y pasa a ser ocho**, y toda la
+/// transacción se apoyaba en que no lo fuera.
+///
+/// Y hay un segundo motivo, más silencioso: escribir el bloque entero **pone a
+/// cero los 3.5 KiB restantes**. Hoy ahí no hay nada, así que no se nota; el
+/// día que el formato guarde algo detrás del superbloque, esto se lo comería
+/// sin decir una palabra.
+///
+/// La regla que deja: **la unidad de escritura la decide la garantía que hace
+/// falta, no el tamaño del buffer que hay a mano.**
+fn escribir_superbloque(bloque: u64, sb: &[u8; es::SUPER_LEN]) -> bool {
+    let base = unsafe { BASE_LBA };
+    let lba = base + bloque * SECTORES_POR_BLOQUE as u64;
+    disk::write(lba, 1, sb) == 1
 }
 
 /// Por qué no se pudo cerrar una transacción. Cada una manda a mirar otra cosa.
@@ -182,15 +214,12 @@ pub fn sellar() -> Result<u64, FalloEscritura> {
 
     let (destino, nuevo) = t.commit(sb.estrato).map_err(FalloEscritura::Rechazada)?;
 
-    // El superbloque, serializado en un bloque a cero. Lo que no es el
-    // superbloque tiene que ser CERO y no basura de un scratch anterior: un
-    // bloque medio lleno de restos se lee igual de bien hoy y es una mina el
-    // día que el formato crezca de tamaño.
-    let buf = unsafe { &mut (*core::ptr::addr_of_mut!(SCRATCH))[0] };
-    *buf = [0u8; BLOQUE];
-    buf[..es::SUPER_LEN].copy_from_slice(&nuevo.encode());
+    // El superbloque serializado: 512 bytes, o sea UN SECTOR. Ver
+    // `escribir_superbloque` — el tamaño de esta escritura es la garantía de
+    // atomicidad, no un detalle de implementación.
+    let sector = nuevo.encode();
 
-    if !escribir_bloque(destino, buf) {
+    if !escribir_superbloque(destino, &sector) {
         // El commit no ocurrió. La copia que manda sigue siendo la de antes, y
         // el volumen entero también.
         crate::ring0::cabina::fault("estratos", "no se pudo escribir el superbloque", destino);
