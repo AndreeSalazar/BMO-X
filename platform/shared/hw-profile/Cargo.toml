@@ -1,9 +1,0 @@
-[package]
-name = "hw-profile"
-version = "0.1.0"
-edition = "2021"
-description = "BMO hardware profile — compile-time constants for the target CPU/GPU/platform"
-
-[lib]
-
-[dependencies]

@@ -1,9 +1,0 @@
-[package]
-name = "byte-defender"
-version = "0.1.0"
-edition = "2021"
-description = "ByteDefender — BMO pre-execution security scanner and runtime capability guard"
-
-[lib]
-
-[dependencies]

@@ -598,7 +598,7 @@ cargo test -p bmo-c-front       # 223 verdes: EJECUTAN el programa, no lo miran
 cargo test -p bmo-cobol-front   # COBOL, con el banco de matriz
 cargo test -p bmo-input         # 17 del FOCO (Alt+Tab, modos, Z-order)
 cargo test -p bmo-uhid          # 21: el Report Descriptor y el descifrado del raton
-cargo test --workspace --exclude bmo-kernel --exclude boot-context --exclude byte-defender --exclude bmo-rt
+cargo test --workspace --exclude bmo-kernel --exclude boot-context --exclude bmo-rt
 ```
 Lo último son **620 verdes y CERO rojos**.
 

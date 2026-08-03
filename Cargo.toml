@@ -10,9 +10,6 @@ members = [
     # El unico BLAKE3 del sistema: firmas del BEF, bmo-verify y ESTRATOS
     # calculan la MISMA suma porque ejecutan el MISMO codigo.
     "platform/shared/bmo-hash",
-    "platform/shared/bmo-hal",
-    "platform/shared/hw-profile",
-    "platform/shared/nvram-log",
     "platform/shared/bmo-channel",
 
     # ── ABI (Foundation) ────────────────────────────────────────────
@@ -39,7 +36,6 @@ members = [
     # ESTRATOS: el formato en disco del FS propio. Solo el FORMATO — sin E/S,
     # para poder probarlo entero en el anfitrion antes de tocar un sector.
     "platform/drivers/storage/estratos",
-    "platform/drivers/storage/nvme",
     "platform/drivers/usb/input",
     "platform/drivers/usb/uhid",
     "platform/drivers/usb/xhci",
@@ -48,8 +44,29 @@ members = [
 
     # ── SERVICES (System) ──────────────────────────────────────────
     "platform/services/cabina-core",
-    "platform/services/byte-defender",
-    "platform/services/timeback",
+
+    # ── BORRADOS el 2026-08-02, por decision del dueno ──────────────
+    #
+    # Seis librerias sin un solo dependiente, todas compilando y ninguna
+    # cableada. La regla de esta casa es "cablear o borrar", y llevaban desde
+    # julio sin moverse. El diseno de cada una vive en el commit que las quita;
+    # git no olvida y el arbol deja de mentir sobre lo que hay montado.
+    #
+    #   timeback (1649)       ESTRATOS hace su trabajo: copy-on-write donde
+    #                         escribir ES commitear, y ya monta y escribe
+    #   byte-defender (577)   las capabilities cubren el modelo declarado
+    #                         (cero-confianza en el CODIGO) y la firma BLAKE3
+    #                         cubre la admision. Sus tests ni compilaban
+    #   nvme (402)            el UNICO NVMe de este banco es el disco de
+    #                         Windows del dueno, que no se toca jamas
+    #   bmo-hal (290)         una tabla de punteros a funcion Ring 0 -> Ring 3
+    #                         para un sistema donde Ring 3 habla por
+    #                         CAPABILITIES. `bmo-abi` ya es ese contrato
+    #   nvram-log (275)       el log por variables UEFI dio un falso positivo
+    #                         y no se volvio a usar. CABINA + el anillo del
+    #                         klog cubren el diagnostico
+    #   hw-profile (181)      la maquina ya esta perfilada en
+    #                         `cpu_vendor/ryzen_5_5600x`
 
     # ── PLUGINS (Vendored third-party) ──────────────────────────────
     # Removed: crates_Personal/plugins/* were legacy and have been
