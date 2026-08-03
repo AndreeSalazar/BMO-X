@@ -10,7 +10,7 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-02**: **574 tests en verde**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
+> **Al 2026-08-02**: **620 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
 > el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
@@ -598,9 +598,14 @@ cargo test -p bmo-c-front       # 223 verdes: EJECUTAN el programa, no lo miran
 cargo test -p bmo-cobol-front   # COBOL, con el banco de matriz
 cargo test -p bmo-input         # 17 del FOCO (Alt+Tab, modos, Z-order)
 cargo test -p bmo-uhid          # 21: el Report Descriptor y el descifrado del raton
-cargo test --workspace --exclude bmo-kernel --exclude boot_context --exclude byte-defender --exclude bmo-rt
+cargo test --workspace --exclude bmo-kernel --exclude boot-context --exclude byte-defender --exclude bmo-rt
 ```
-Lo último son **574 verdes**. Las cuatro exclusiones no son cosmética: el
+Lo último son **620 verdes y CERO rojos**.
+
+★ **`boot-context` con GUION.** Estaba escrito `boot_context` con guion bajo, que
+no es el nombre de ningún paquete — cargo se lo tragaba en silencio y ese crate
+llevaba entrando en la suite todo el tiempo. Una exclusión que no excluye nada
+es peor que ninguna: hace creer que algo está apartado cuando no lo está. Las cuatro exclusiones no son cosmética: el
 kernel y `boot_context` son `no_std` y `cargo test` les mete `std` encima
 (`duplicate lang item panic_impl`); `byte-defender` y `bmo-rt` están rotos
 desde hace tiempo y son parte de la deuda técnica anotada.

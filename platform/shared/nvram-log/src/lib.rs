@@ -6,11 +6,21 @@
 //!
 //! ## Usage
 //!
-//! ```rust
+//! ```text
 //! nvram_log::init(system_table);
 //! nvram_log::write_boot_stage("phase_0_to_4");
 //! nvram_log::log("APIC timer configured");
 //! ```
+//!
+//! ★ El bloque va marcado `text` y no `rust` a proposito: es una ILUSTRACION,
+//! no un ejemplo ejecutable. `system_table` es un puntero que solo existe
+//! dentro del arranque UEFI, asi que no hay forma de escribirlo aqui.
+//!
+//! Como `rust` era un doctest que fallaba a compilar en CADA
+//! `cargo test --workspace`, y llevaba asi lo suficiente como para que el rojo
+//! formara parte del paisaje. Un fallo permanente que nadie va a arreglar
+//! entrena a no mirar los fallos, que es justo lo contrario de para lo que
+//! existe una suite.
 
 #![no_std]
 
