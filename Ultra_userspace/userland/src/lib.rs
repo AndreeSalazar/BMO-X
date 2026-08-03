@@ -490,6 +490,9 @@ pub struct Pantalla {
     /// nada: esto es un programa de un solo hilo y `Cell` es exactamente la
     /// herramienta para eso.
     sucio: core::cell::Cell<(u32, u32, u32, u32)>,
+    /// Lo que ha costado mover píxeles. Ver [`Volcado`]: es el número que
+    /// decide si una GPU compra algo o sólo cuesta un año.
+    volcado: core::cell::Cell<Volcado>,
 }
 
 impl Pantalla {
@@ -511,6 +514,12 @@ impl Pantalla {
             formato: stride as u32,
             bytes,
             sucio: core::cell::Cell::new(VACIO),
+            volcado: core::cell::Cell::new(Volcado {
+                fotogramas: 0,
+                bytes: 0,
+                peor: 0,
+                modo: Volcador::Ninguno,
+            }),
         })
     }
 
@@ -671,19 +680,50 @@ impl Pantalla {
         let mut fila = y0 as usize;
         while fila < y1 as usize {
             let off = fila * stride + x0 as usize;
+            // ★ De DOS píxeles por escritura cuando se puede.
+            //
+            // El panel es write-combining: el CPU junta escrituras seguidas en
+            // ráfagas de 64 bytes, y le cuesta menos juntar ocho de 8 bytes que
+            // dieciséis de 4. Es la misma cantidad de datos con la mitad de
+            // operaciones, y no necesita SSE ni alineación especial más allá de
+            // la que ya tiene un framebuffer (base de página, píxeles de 4 B).
+            //
+            // El píxel suelto del final se copia como siempre. Un bucle que
+            // "casi" cubre el ancho es peor que uno que lo cubre.
             let mut i = 0usize;
-            // Fila a fila y seguido: es la forma que el write-combining sabe
-            // juntar en ráfagas de 64 bytes. Copiar en zigzag o por columnas
-            // daría el mismo resultado y desperdiciaría el bus entero.
-            while i < ancho {
-                unsafe {
+            unsafe {
+                while i + 1 < ancho {
+                    let a = self.lienzo.add(off + i).read() as u64;
+                    let b = self.lienzo.add(off + i + 1).read() as u64;
+                    (self.panel.add(off + i) as *mut u64).write_volatile(a | (b << 32));
+                    i += 2;
+                }
+                while i < ancho {
                     let v = self.lienzo.add(off + i).read();
                     self.panel.add(off + i).write_volatile(v);
+                    i += 1;
                 }
-                i += 1;
             }
             fila += 1;
         }
+
+        // La cuenta, para poder contestar "¿hace falta una GPU?" con un número
+        // en vez de con una intuición.
+        let bytes = (ancho as u64) * ((y1 - y0) as u64) * 4;
+        let v = self.volcado.get();
+        self.volcado.set(Volcado {
+            fotogramas: v.fotogramas + 1,
+            bytes: v.bytes + bytes,
+            peor: v.peor.max(bytes),
+            modo: v.modo,
+        });
+    }
+
+    /// Lo que lleva costado el volcado. Ver [`Volcado`] y [`Volcador`].
+    pub fn volcado(&self) -> Volcado {
+        let mut v = self.volcado.get();
+        v.modo = if self.lienzo == self.panel { Volcador::Ninguno } else { Volcador::Directo };
+        v
     }
 
     /// **Asegura que lo escrito se puede LEER.** Llamar antes de [`Self::leer`].
@@ -754,6 +794,69 @@ impl Pantalla {
 
 /// La caja vacía: `x0 >= x1`, así que no hay nada que volcar.
 const VACIO: (u32, u32, u32, u32) = (u32::MAX, u32::MAX, 0, 0);
+
+/// **Cómo llegan los píxeles del lienzo al panel.**
+///
+/// ═══ ★ Ésta es la costura donde entra una GPU ═══
+///
+/// La idea que la motivó era partir el compositor en `gui_CPU.bex` y
+/// `gui_GPU.bex`. Eso sería **bifurcar antes de que exista la segunda
+/// implementación**: cada arreglo habría que hacerlo dos veces, que es
+/// exactamente el problema que resolvió `refactor(abi): la disposición de
+/// agregados estaba escrita TRES veces`.
+///
+/// El corte correcto es por CAPA, y hay tres:
+///
+/// ```text
+///   POLITICA     que ventana existe, donde va, quien tiene el foco
+///                -> no cambia NUNCA con una GPU. Vive en el compositor.
+///   DIBUJO       llenar el lienzo: punto, rect, texto
+///                -> es CPU SIEMPRE. Una app que pinta su superficie en RAM
+///                   la pinta con el CPU, tenga GPU o no.
+///   VOLCADO      mover el rectangulo sucio del lienzo al panel
+///                -> AQUI, y solo aqui, una GPU cambia algo.
+/// ```
+///
+/// Por eso el contrato es esto y no un trait `Lienzo` entero: `punto` está en
+/// el camino caliente y meterle una llamada indirecta costaría en cada píxel
+/// para no ganar nada. `volcar` se llama **una vez por fotograma**, así que
+/// aquí una rama no se nota — y es donde está el coste de verdad.
+///
+/// ═══ Y antes de comprar una tarjeta, MEDIR ═══
+///
+/// La caja de sucio ya evita casi todo el trabajo: escribir una letra vuelca
+/// unos pocos KiB, no la pantalla. Ver [`Pantalla::volcado`] — el número va
+/// primero, la tarjeta después.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Volcador {
+    /// No hay doble búfer: lo pintado ya está en el panel. No hay nada que
+    /// mover, y decirlo con su nombre vale más que un `if` suelto.
+    Ninguno,
+    /// Copia con escrituras normales, de 8 en 8 bytes cuando se puede.
+    ///
+    /// Es lo que hay hoy y lo que corre en el Ryzen. Dos píxeles por
+    /// escritura: el framebuffer es write-combining y agrupa mejor cuantas
+    /// menos escrituras sueltas reciba.
+    Directo,
+}
+
+/// Lo que ha costado el volcado, para poder **perfilar antes de comprar nada**.
+///
+/// No es telemetría de adorno: la pregunta "¿hace falta una GPU?" sólo se puede
+/// contestar con estos dos números. Si los bytes por fotograma son pocos, una
+/// tarjeta no compra nada y cuesta un año de trabajo.
+#[derive(Clone, Copy)]
+pub struct Volcado {
+    /// Fotogramas con algo que volcar. Los que no cambian nada no cuentan:
+    /// promediar con ellos escondería el caso caro.
+    pub fotogramas: u64,
+    /// Bytes movidos del lienzo al panel, en total.
+    pub bytes: u64,
+    /// El fotograma más caro visto. **El peor caso importa más que la media**:
+    /// un tirón se nota, y una media buena lo esconde.
+    pub peor: u64,
+    pub modo: Volcador,
+}
 
 // ── Las letras ──────────────────────────────────────────────────────────
 

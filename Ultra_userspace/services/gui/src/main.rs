@@ -785,6 +785,48 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
+                            // ★ `perf` — el número antes que la tarjeta.
+                            //
+                            // Se pinta ANTES de leer los contadores no: se leen
+                            // aquí y se imprimen, y el fotograma que los pinta
+                            // sumará el suyo. Da igual: lo que interesa es el
+                            // orden de magnitud y el peor caso, no un dígito.
+                            Orden::Pintado => {
+                                let v = p.volcado();
+                                salida.texto(b"  pintado\n");
+                                salida.texto(b"    modo        ");
+                                salida.texto(match v.modo {
+                                    bmo::Volcador::Ninguno => b"directo al panel (SIN doble bufer)\n" as &[u8],
+                                    bmo::Volcador::Directo => b"doble bufer, volcado por CPU\n",
+                                });
+                                salida.texto(b"    fotogramas  ");
+                                let mut d = [0u8; 10];
+                                let k = decimal(v.fotogramas, &mut d);
+                                salida.texto(&d[..k]);
+                                salida.texto(b"   con algo que mover\n");
+                                if v.fotogramas > 0 {
+                                    salida.texto(b"    medio      ");
+                                    let k = decimal(v.bytes / v.fotogramas / 1024, &mut d);
+                                    salida.texto(&d[..k]);
+                                    salida.texto(b" KiB por fotograma\n");
+                                    // El PEOR caso va aparte y a propósito: un
+                                    // tirón se nota y una media buena lo tapa.
+                                    salida.texto(b"    peor       ");
+                                    let k = decimal(v.peor / 1024, &mut d);
+                                    salida.texto(&d[..k]);
+                                    salida.texto(b" KiB en un fotograma\n");
+                                    salida.texto(b"    total      ");
+                                    let k = decimal(v.bytes / 1024 / 1024, &mut d);
+                                    salida.texto(&d[..k]);
+                                    salida.texto(b" MiB movidos desde el arranque\n");
+                                }
+                                salida.con_tinta(TINTA_ECO);
+                                salida.texto(b"    la caja de sucio ya recorta esto: una GPU solo\n");
+                                salida.texto(b"    compra algo si estos numeros son grandes.\n");
+                                salida.con_tinta(TINTA_NORMAL);
+                                pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
+                                n = 0;
+                            }
                             Orden::Calculadora => {
                                 calc.visible = !calc.visible;
                                 if calc.visible {
@@ -820,6 +862,7 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
                                 salida.texto(b"  info         RAM, CPU, tareas y disco\n");
                                 salida.texto(b"  cpu / mem    solo esa parte del informe\n");
+                                salida.texto(b"  perf         lo que cuesta pintar, medido\n");
                                 salida.texto(b"  help         esto\n");
                                 salida.texto(b"  reboot       reinicia la maquina\n");
                                 salida.texto(b"  Ctrl+Alt     esconde o invoca esta ventana\n");

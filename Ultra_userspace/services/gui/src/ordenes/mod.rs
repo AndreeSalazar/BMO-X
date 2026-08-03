@@ -18,6 +18,12 @@ pub(crate) enum Orden<'a> {
     Ayuda,
     /// Ensena o esconde la calculadora.
     Calculadora,
+    /// `perf` — **lo que cuesta pintar**, medido.
+    ///
+    /// Existe para poder contestar con un número la pregunta "¿hace falta una
+    /// GPU?". La caja de sucio ya evita casi todo el trabajo, así que la
+    /// respuesta puede perfectamente ser que no — y eso sólo se sabe mirando.
+    Pintado,
     /// `ls [ruta]` — qué hay en el disco. Antes esto no podía existir: no
     /// había capability de directorio, así que había que saberse los nombres
     /// de memoria y teclearlos enteros.
@@ -121,6 +127,8 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
             if resto.is_empty() { Orden::Ayuda } else { Orden::Lanzar(resto) }
         }
         b"calc" | b"calculadora" => Orden::Calculadora,
+        // ★ El número que decide si hace falta una GPU. Ver `Volcado`.
+        b"perf" | b"pinta" => Orden::Pintado,
         b"clear" | b"cls" | b"limpia" => Orden::Limpiar,
         b"ls" | b"dir" | b"lista" => Orden::Listar(resto),
         b"cat" | b"lee" => {
