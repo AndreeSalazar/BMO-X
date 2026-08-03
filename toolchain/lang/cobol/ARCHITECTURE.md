@@ -84,6 +84,16 @@ GnuCOBOL.
 
 ## Lo que falta (roadmap del frontend)
 
+> ⚠️ **Esta lista es del COMPILADOR.** Lo que le falta al *sistema* para banca
+> de verdad es más grande y vive en **[`BANCA_REAL.md`](BANCA_REAL.md)**: los
+> ficheros indexados (VSAM/KSDS), el despachador de transacciones (CICS), el
+> batch declarativo (JCL) y qué extensiones de IBM valen la pena.
+>
+> El resumen de allí: de las cuatro piezas, **la más difícil ya está hecha** —
+> ESTRATOS es transaccional en el fondo, que es lo que a CICS le costó cincuenta
+> años atornillar. Y **el hueco real es el índice por clave**: hoy hay File I/O
+> secuencial, y sin índice no hay banca, hay listados.
+
 1. **Parser sobre tokens**: migrar `parser.rs` del modo por-líneas al flujo
    de tokens del lexer (parser recursivo-descendente) → más COBOL, mejor.
 2. **Más verbos con codegen**: EVALUATE, INITIALIZE, STRING/UNSTRING, PERFORM
