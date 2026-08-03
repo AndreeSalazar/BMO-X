@@ -1,23 +1,46 @@
-# Los ejemplos, por nivel
+# Los ejemplos, por NIVEL
 
 No están ordenados por tema sino por **cuánto COBOL hace falta que el
 compilador sepa** para que corran. Subir un escalón es una característica nueva
 en el codegen, no un ejemplo más largo.
 
-Sirve para dos cosas: ver de un vistazo hasta dónde llega BMO COBOL hoy, y
-tener un orden por el que romper cosas cuando algo se rompa — si falla el 4,
-comprueba primero que el 1 sigue vivo.
+Sirve para tres cosas:
 
-| Nivel | Carpeta | Qué hace falta que el compilador sepa | Se ejecuta en |
+1. Ver de un vistazo **hasta dónde llega BMO COBOL hoy**.
+2. Tener un orden por el que romper cosas: **si falla el 10, comprueba primero
+   que el 1 sigue vivo**.
+3. **Verificar en el Ryzen de uno en uno.** En el volumen de datos cada nivel
+   tiene su carpeta, así que se sube la escalera a mano:
+
+```
+run cobol/1/hola.bex        y si eso va, subir
+run cobol/2/banco.bex       y si eso va, subir
+...
+run cobol/10/maestro.bex
+```
+
+## La escalera
+
+| Nivel | Carpeta | En el disco | Qué hace falta que el compilador sepa |
 |---|---|---|---|
-| 1 | `1-basico/` | `DISPLAY` de literal, `STOP RUN` | emulador + Ryzen |
-| 2 | `2-decimal/` | `PIC` con escala, `MOVE`, las cinco operaciones, `IF`/`ELSE`, `PERFORM`, `COMPUTE` con precedencia, `ACCEPT` | emulador + Ryzen |
-| 3 | `3-presentacion/` | `PICTURE` de **edición** emitida como instrucciones | emulador + Ryzen |
-| 4 | `4-ficheros/` | `SELECT`/`ASSIGN`, `FD`, `OPEN`/`READ … AT END`/`WRITE`/`CLOSE` | emulador + Ryzen |
-| 5 | `5-tablas/` | `OCCURS` con subíndice literal y variable, con guarda de rango | emulador + Ryzen |
-| 6 | `6-condiciones/` | Nivel **88**: nombres de condición | emulador |
-| 7 | `7-empaquetado/` | `USAGE COMP-3`: el dato guardado en **nibbles**, del ancho que dice su PIC | emulador |
-| 8 | `8-parrafos/` | **Párrafos** y las cuatro formas del `PERFORM` fuera de línea, `VALUE`, `OR` | emulador |
+| 1 | `1-basico/` | `cobol/1/hola.bex` | `DISPLAY` de literal, `STOP RUN` |
+| 2 | `2-decimal/` | `cobol/2/banco.bex` `calc.bex` `calcgui.bex` | `PIC` con escala, `MOVE`, las cinco operaciones, `IF`/`ELSE`, `PERFORM`, `COMPUTE` con precedencia, `ACCEPT` |
+| 3 | `3-presentacion/` | `cobol/3/extracto.bex` | `PICTURE` de **edición** emitida como instrucciones |
+| 4 | `4-ficheros/` | `cobol/4/batch.bex` | `SELECT`/`ASSIGN`, `FD`, `OPEN`/`READ … AT END`/`WRITE`/`CLOSE` |
+| 5 | `5-tablas/` | `cobol/5/concep.bex` | `OCCURS` con subíndice literal y variable, con guarda de rango |
+| 6 | `6-condiciones/` | `cobol/6/carter.bex` | Nivel **88**: nombres de condición |
+| 7 | `7-empaquetado/` | `cobol/7/cuentas.bex` | `USAGE COMP-3`: el dato guardado en **nibbles**, del ancho de su PIC |
+| 8 | `8-parrafos/` | `cobol/8/cierre.bex` | **Párrafos** y las cuatro formas del `PERFORM` fuera de línea, `VALUE`, `OR` |
+| 9 | `9-decision/` | `cobol/9/comisio.bex` | `EVALUATE TRUE` y **`ROUNDED` con sus modos** |
+| 10 | `10-binario/` | `cobol/10/maestro.bex` | **Registros binarios de largo fijo** con los campos en su byte |
+
+Los diez corren en el emulador y tienen su test. Del 1 al 6, además,
+**verificados en el Ryzen**.
+
+> ⚠ La carpeta del disco es el **número a secas** y no el nombre largo. No es
+> pereza: el driver FAT32 del kernel **se niega a recortar**, y
+> `3-presentacion` son trece letras. El nombre del nivel vive aquí, que es
+> donde se lee.
 
 ## Qué hay en cada escalón
 
@@ -48,26 +71,16 @@ casilla de su concepto. El subíndice **viene del fichero**, así que el rango n
 lo decide el programador; si se sale, el programa para diciendo qué tabla.
 
 **6 — `cartera.cob`.** El mismo batch escrito con NOMBRES: `PERFORM UNTIL
-SE-ACABO` en vez de `UNTIL FIN = 1`, `IF NO-HUBO-NADA` en vez de `IF CUANTOS =
-0`. Un 88 **no reserva ni un byte** — hay un test que lo comprueba comparando
-el tamaño del código con y sin ellos. Le pone nombre a una comparación, y ése
-es todo su trabajo: que quien audite el programa no tenga que acordarse de qué
-significaba el 1.
+SE-ACABO` en vez de `UNTIL FIN = 1`. Un 88 **no reserva ni un byte** — hay un
+test que lo comprueba comparando el tamaño del código con y sin ellos.
 
 **7 — `cuentas.cob`.** El primer escalón que cambia **cómo se guarda** el dato y
-no qué se hace con él. Un `COMP-3` vive en nibbles —dos dígitos por byte, el
-signo en el último— y ocupa **lo que dice su PICTURE**, así que lo que no cabe
-se pierde por arriba, como manda el estándar.
+no qué se hace con él. Un `COMP-3` vive en nibbles y ocupa **lo que dice su
+PICTURE**, así que lo que no cabe se pierde por arriba.
 
-Y por eso el programa imprime el mismo `12345` dos veces: en un `PIC 9(3)
-COMP-3` sale `345` y en un `PIC 9(3)` a secas sale `12345`. Ésa es la línea que
-**no se puede fingir** — el día que las dos salgan iguales, el `COMP-3` volvió a
-ser un entero con otro nombre. Los bytes exactos se prueban aparte, en
-`bmo_lower::packed`.
-
-Lo que este escalón todavía no trae: el fichero sigue siendo **texto**. Leer
-bytes empaquetados tal cual vienen de un mainframe pide un registro binario con
-varios campos, y eso es el escalón siguiente.
+Por eso el programa imprime el mismo `12345` dos veces: en un `PIC 9(3) COMP-3`
+sale `345` y en un `PIC 9(3)` a secas sale `12345`. Ésa es la línea que **no se
+puede fingir**.
 
 **8 — `cierre.cob`.** El primer ejemplo escrito **como se escribe COBOL de
 verdad**: un cuerpo principal de cuatro `PERFORM` que se lee en voz alta, y el
@@ -80,42 +93,65 @@ PERFORM 3000-CIERRE.
 STOP RUN.
 ```
 
-Eso de arriba es el programa entero. **Esa es la razón por la que COBOL se lee:
-no es el inglés, son los párrafos** — quien audite el cierre puede mirar sólo el
-paso que le interesa.
+**Ésa es la razón por la que COBOL se lee: no es el inglés, son los párrafos.**
 
-Lo que hace falta que el compilador sepa, y que hasta el 2026-08-03 no sabía:
-nombres de párrafo, `PERFORM` que llama **y vuelve**, `PERFORM … THRU` sobre un
-rango de tres, `PERFORM … UNTIL` con un `88`, `VALUE` que inicializa, `OR` en
-las condiciones, y un `STOP RUN` que de verdad termina.
+**9 — `comision.cob`.** Lo que un **banco** tiene que decidir, que no es lo
+mismo que lo que un compilador tiene que saber.
 
-★ El descarte de un movimiento se hace con un **interruptor y no con un
-`GO TO`**, porque `GO TO` todavía no existe. Está dicho dentro del ejemplo:
-fingirlo con un `PERFORM` del párrafo de salida sería mentir, porque un `PERFORM`
-lo ejecuta y **vuelve**.
+- `EVALUATE TRUE` es la **tabla de decisión**: un escalado de comisiones donde
+  cada rama es una condición entera y la primera que acierta gana.
+- Y **el redondeo es una decisión legal**. El programa suma cuatro empates por
+  los dos modos: el clásico da `0.10` —dos céntimos de la nada— y el del
+  banquero da `0.08`, que cuadra con la suma exacta. Cuatro empates no son nada;
+  cuatro millones son dinero.
+
+**10 — `maestro.cob`.** El **fichero de un banco en su formato de verdad**:
+registros de largo fijo, campos en su byte, importes empaquetados, sin
+separador. Escribe tres cuentas y las vuelve a leer.
+
+Y trae las dos herramientas que van con eso:
+
+```bash
+bmo-cobol --copybook maestro.cob        # el byte exacto de cada campo
+bmo-cobol --ver datos/ctas.bin maestro.cob   # el fichero DECODIFICADO
+```
+
+★ La máscara del informe lleva `CR` **a propósito**: con `$$$,$$9.99` a secas,
+un saldo de `-890,10` se imprime como `$890.10` y el extracto dice que la cuenta
+está en verde. Un campo editado sin símbolo de signo **no enseña el signo**.
 
 ## El escalón que todavía no existe
 
-Un "nivel 9" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
-`EVALUATE`, `PERFORM VARYING`, `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`,
-`GO TO`, y los records anidados con campos en posiciones fijas. Cuando uno de
-ésos entre, entra con su carpeta y con su fila en
-`cobol_feature_matrix_runs_correctly`.
+Un "nivel 11" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
+`STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`, `GO TO`, `REDEFINES`, `PIC X` con
+texto de verdad, y `FILE STATUS`. Cuando uno de ésos entre, entra con su carpeta
+y con su fila en `cobol_feature_matrix_runs_correctly`.
 
 El orden en que entran, y qué bloquea a qué, está en
 [`../PLAN_BANCA.md`](../PLAN_BANCA.md).
 
 ## Los `.bex`
 
-`bex/` son binarios **generados**, no fuentes. Se regeneran así, y **hay que
-regenerarlos y volver a commitearlos cada vez que se toca el codegen** — los
-tests fijan la salida exacta que verá el kernel:
+**No se guardan en el repositorio.** Los genera el build a `staging\BMO-DATA\`,
+en la carpeta de su nivel:
 
 ```
+Ultra_kernel_x86-64\build.ps1 -Flash -Drive A -Data A
+```
+
+Había una carpeta `bex/` con cuatro binarios commiteados; se borró el
+2026-08-03. Eran del 30 de julio, o sea **anteriores a COMP-3, a los párrafos, a
+`EVALUATE` y a `ROUNDED`** — y un binario viejo al lado de su fuente nueva es
+una trampa: el que lo flashea ve el comportamiento de antes y busca el fallo
+donde no está.
+
+Para compilar uno suelto a mano:
+
+```bash
 cargo run -p bmo-cobol-front -- toolchain/lang/cobol/examples/<nivel>/<x>.cob -o <destino>.bex
 ```
 
 Ojo con el nombre de salida: el volumen es FAT32 y el kernel **rechaza** un
-nombre de más de ocho letras. Por eso `conceptos.cob` se compila a
-`concep.bex`. El compilador ya comprueba esa regla en las rutas del `ASSIGN TO`,
-pero el nombre del `.bex` lo eliges tú.
+nombre de más de ocho letras. Por eso `conceptos.cob` se compila a `concep.bex`.
+El compilador ya comprueba esa regla en las rutas del `ASSIGN TO`, y el build la
+comprueba en el nombre del `.bex`.

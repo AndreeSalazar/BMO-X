@@ -1551,6 +1551,50 @@ STOP RUN.
         assert_eq!(salida, esperado);
     }
 
+    /// ★ EL NIVEL 9, ejecutado: la tabla de decisión y el redondeo legal.
+    #[test]
+    fn el_ejemplo_de_decision_calcula_las_comisiones() {
+        let salida = run_cobol(include_str!("../examples/9-decision/comision.cob"));
+        // Tres clientes, tres tramos. 1500 × 0,25 % = 3,75 exacto.
+        assert!(salida.contains(" $1,500.00"), "{salida}");
+        assert!(salida.contains("     $3.75"), "el tramo preferente:\n{salida}");
+        // 500 × 0,50 % = 2,50 exacto.
+        assert!(salida.contains("     $2.50"), "{salida}");
+        // 50 × 0,75 % = 0,375 → redondeado, 0,38. Truncado sería 0,37.
+        assert!(salida.contains("     $0.38"), "el ROUNDED del tercer tramo:\n{salida}");
+        // ★ Y el sesgo: el clásico inventa dos céntimos, el banquero cuadra.
+        assert!(salida.contains("0.10"), "el clasico tenia que subir los cuatro:\n{salida}");
+        assert!(salida.contains("0.08"), "el del banquero tenia que cuadrar:\n{salida}");
+    }
+
+    /// ★★ EL NIVEL 10: escribe el maestro binario y lo vuelve a leer.
+    ///
+    /// Que los importes salgan iguales prueba que empaquetar y desempaquetar
+    /// dicen lo mismo. Y el fichero que queda mide 48 bytes exactos: tres
+    /// registros de dieciséis, sin separador.
+    #[test]
+    fn el_ejemplo_binario_escribe_el_maestro_y_lo_relee() {
+        let (salida, m) = run_cobol_con_disco(
+            include_str!("../examples/10-binario/maestro.cob"),
+            &[],
+        );
+        let bytes = m.archivo("datos/ctas.bin").expect("tiene que haber maestro");
+        assert_eq!(bytes.len(), 48, "tres registros de 16, sin salto de linea");
+
+        assert!(salida.contains("escritas 3 cuentas"), "{salida}");
+        // Los tres saldos, releídos del disco: los importes empaquetados
+        // vuelven iguales que como se escribieron.
+        assert!(salida.contains("15,234.75"), "{salida}");
+        assert!(salida.contains("3,105.40"), "{salida}");
+        // ★ Y el que está en rojo sale con su `CR`. Con una máscara sin símbolo
+        // de signo saldría `890.10` a secas y el extracto diría que la cuenta
+        // está en verde — el fallo que este ejemplo existe para no cometer.
+        assert!(salida.contains("890.10CR"), "el descubierto salio SIN signo:\n{salida}");
+        // El cuadre: 15234.75 - 890.10 + 3105.40 = 17450.05
+        assert!(salida.contains("17,450.05"), "el total no cuadra:\n{salida}");
+        assert!(salida.contains("en descubierto:\n1\n"), "{salida}");
+    }
+
     /// Lo que no cuadra se dice, en vez de saltar a cualquier parte.
     #[test]
     fn los_perform_de_parrafo_imposibles_se_rechazan() {

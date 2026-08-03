@@ -164,6 +164,11 @@ $dataBase = Join-Path $root 'staging\BMO-DATA'
 foreach ($d in @('sys', 'cobol', 'c', 'ada', 'datos')) {
     New-Item -ItemType Directory -Path (Join-Path $dataBase $d) -Force | Out-Null
 }
+# ★ Y dentro de cobol\, un nivel por carpeta. Ver el bloque de $cobolEjemplos
+# para por que el nombre es el numero a secas.
+foreach ($n in 1..10) {
+    New-Item -ItemType Directory -Path (Join-Path $dataBase ('cobol\' + $n)) -Force | Out-Null
+}
 $compositorBex = Join-Path $dataBase 'sys\gui.bex'
 Push-Location (Split-Path -Parent $root)
 try {
@@ -195,17 +200,37 @@ Step 'Building COBOL example programs...'
 # Las rutas llevan el NIVEL delante: los ejemplos estan en escalera (1-basico,
 # 2-decimal, 3-presentacion, 4-ficheros, 5-tablas), ordenados por cuanto COBOL
 # hace falta que el compilador sepa. Ver examples\README.md.
+# ★ POR NIVELES, y no en un monton. Los ejemplos estan en ESCALERA -cada uno
+# pide una cosa mas que el anterior- y esa escalera se pierde si en el disco
+# caen todos revueltos. Con niveles se puede VERIFICAR de uno en uno:
+#
+#     run cobol/1/hola.bex     y si eso va, subir
+#     run cobol/2/banco.bex    y si eso va, subir
+#     ...
+#
+# Y cuando algo se rompa, el orden dice por donde empezar a mirar: si falla el
+# 10, comprobar primero que el 1 sigue vivo.
+#
+# ⚠ La carpeta es el NUMERO a secas y no el nombre largo. No es pereza: el
+# driver FAT32 del kernel se NIEGA a recortar, y `3-presentacion` son trece
+# letras. Un `n3presen` seria feo y no diria mas que un `3`; el nombre del nivel
+# vive en examples\README.md, que es donde se lee.
 $cobolEjemplos = @(
-    @{ src = 'toolchain\lang\cobol\examples\2-decimal\banco.cob';        out = 'banco.bex'    ; dir = 'cobol' },
-    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calc.cob';         out = 'calc.bex'     ; dir = 'cobol' },
-    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calcgui.cob';      out = 'calcgui.bex'  ; dir = 'cobol' },
-    @{ src = 'toolchain\lang\cobol\examples\3-presentacion\extracto.cob'; out = 'extracto.bex' ; dir = 'cobol' },
-    @{ src = 'toolchain\lang\cobol\examples\4-ficheros\batch.cob';       out = 'batch.bex'    ; dir = 'cobol' },
+    @{ src = 'toolchain\lang\cobol\examples\1-basico\hola.cob';           out = 'hola.bex'     ; dir = 'cobol\1' },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\banco.cob';         out = 'banco.bex'    ; dir = 'cobol\2' },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calc.cob';          out = 'calc.bex'     ; dir = 'cobol\2' },
+    @{ src = 'toolchain\lang\cobol\examples\2-decimal\calcgui.cob';       out = 'calcgui.bex'  ; dir = 'cobol\2' },
+    @{ src = 'toolchain\lang\cobol\examples\3-presentacion\extracto.cob'; out = 'extracto.bex' ; dir = 'cobol\3' },
+    @{ src = 'toolchain\lang\cobol\examples\4-ficheros\batch.cob';        out = 'batch.bex'    ; dir = 'cobol\4' },
     # `conceptos` son nueve letras y el driver FAT32 se NIEGA a recortar, asi
     # que el destino es `concep`. La comprobacion de 8.3 de abajo lo cazaria
     # igual, pero mejor no llegar a que la cace.
-    @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';     out = 'concep.bex'   ; dir = 'cobol' },
-    @{ src = 'toolchain\lang\cobol\examples\6-condiciones\cartera.cob';  out = 'carter.bex'   ; dir = 'cobol' }
+    @{ src = 'toolchain\lang\cobol\examples\5-tablas\conceptos.cob';      out = 'concep.bex'   ; dir = 'cobol\5' },
+    @{ src = 'toolchain\lang\cobol\examples\6-condiciones\cartera.cob';   out = 'carter.bex'   ; dir = 'cobol\6' },
+    @{ src = 'toolchain\lang\cobol\examples\7-empaquetado\cuentas.cob';   out = 'cuentas.bex'  ; dir = 'cobol\7' },
+    @{ src = 'toolchain\lang\cobol\examples\8-parrafos\cierre.cob';       out = 'cierre.bex'   ; dir = 'cobol\8' },
+    @{ src = 'toolchain\lang\cobol\examples\9-decision\comision.cob';     out = 'comisio.bex'  ; dir = 'cobol\9' },
+    @{ src = 'toolchain\lang\cobol\examples\10-binario\maestro.cob';      out = 'maestro.bex'  ; dir = 'cobol\10' }
 )
 # ── Programas ADA de ejemplo ─────────────────────────────────────
 #
