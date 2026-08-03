@@ -131,10 +131,34 @@ Real programs, each one compiled and executed by the test suite:
 | `examples/4-ficheros/batch.cob` | Reads transactions, totals in cents, writes the close |
 | `examples/5-tablas/conceptos.cob` | Per-concept close over two parallel files |
 | `examples/6-condiciones/cartera.cob` | Level 88 condition names |
+| `examples/7-empaquetado/cuentas.cob` | `COMP-3` packed decimal — the storage real bank data uses |
 
 `batch.cob` is the one to read first. It is an ordinary end-of-day batch:
 read a file, compute, write a report. That is what banking software
 actually is.
+
+---
+
+## The road to real banking
+
+Having COBOL is not having a banking system. A mainframe one leans on four
+things *besides* the compiler — transaction dispatch, batch scheduling,
+**indexed files**, and IBM's extensions — and until each is named one by one,
+"COBOL" promises more than it delivers.
+
+- **[`BANCA_REAL.md`](BANCA_REAL.md)** *(Spanish)* — what is actually missing
+  and why, with a verdict on each piece. Short version: the hardest part is
+  already done, because ESTRATOS is transactional at the bottom, which is what
+  took CICS fifty years to bolt on. The real gap is **the key index** — today
+  there is sequential file I/O, and without an index you have listings, not
+  banking.
+- **[`PLAN_BANCA.md`](PLAN_BANCA.md)** *(Spanish)* — the task list: nine phases
+  with checkboxes, from the compiler's own floor to a small bank running
+  end-to-end on real hardware. Every item says what blocks it and how you know
+  it is done.
+
+This is **not** a migration target for z/OS code, and that boundary is stated in
+both documents rather than left for someone to assume.
 
 ---
 

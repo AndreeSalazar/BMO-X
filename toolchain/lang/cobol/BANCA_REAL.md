@@ -19,6 +19,11 @@ EXT.   extensiones de IBM            -> COMP-3 ✅ · CALL, EVALUATE, STRING, SO
 > **Lo hecho desde que se escribió esto** — 2026-08-03: **`COMP-3` funciona de
 > verdad**. Punto 1 de la lista del final. Ver [§4](#4-las-extensiones-de-ibm--la-lista-larga)
 > y el ejemplo `examples/7-empaquetado/cuentas.cob`.
+>
+> ★ **Y las TAREAS de todo esto, con su orden y sus dependencias, viven en
+> [`PLAN_BANCA.md`](PLAN_BANCA.md).** Este documento dice **qué falta y por
+> qué**; aquél dice **en qué orden, qué bloquea a qué, y cómo se sabe que una
+> pieza está hecha**. Si vienes a trabajar, ve allí.
 
 **No se clona nada de esto.** Hace falta la **capacidad**, no la **forma**. Un
 `EXEC CICS` con la sintaxis de 1968 no aporta nada; lo que aporta es que la

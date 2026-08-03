@@ -108,6 +108,11 @@ GnuCOBOL.
 > ESTRATOS es transaccional en el fondo, que es lo que a CICS le costó cincuenta
 > años atornillar. Y **el hueco real es el índice por clave**: hoy hay File I/O
 > secuencial, y sin índice no hay banca, hay listados.
+>
+> ★ **Y las TAREAS de todo, ordenadas y con sus dependencias, en
+> [`PLAN_BANCA.md`](PLAN_BANCA.md)** — nueve fases con casillas, de "el suelo
+> del compilador" a "un banco pequeño de punta a punta en el Ryzen". La lista de
+> aquí abajo es la fase 0 y la fase 2 de aquel plan, vistas desde el compilador.
 
 1. **Parser sobre tokens**: migrar `parser.rs` del modo por-líneas al flujo
    de tokens del lexer (parser recursivo-descendente) → más COBOL, mejor.

@@ -10,10 +10,52 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-02**: **620 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
+> **Al 2026-08-03**: **638 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
 > el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
+
+## ★★★ 2026-08-03 — COMP-3, y el plan largo de banca ESCRITO
+
+**`COMP-3` funciona de verdad** (`9c812537`). No es una palabra aceptada: el dato
+vive en **nibbles**, dos dígitos por byte y el signo en el último, y el campo
+ocupa **exactamente** lo que dice su PICTURE.
+
+★ **La conversión BCD vive en `bmo-lower::packed`, NO en COBOL.** Empaquetar es
+una REPRESENTACIÓN, no la semántica de un lenguaje: los mismos nibbles en el
+mismo orden los piden el `Decimal` del Annex F de Ada y el `FIXED DECIMAL` de
+PL/I. Es el mismo argumento que la cabecera de `fmt.rs` usa para sí misma —
+**contratos y librerías, nunca cerebros**. De COBOL sólo queda quién es COMP-3,
+cuántos dígitos y si lleva `S`; en `codegen.rs` lo miran **sólo `load_var` y
+`store_var`**, así que la aritmética sigue viendo el entero escalado y el decimal
+exacto no se entera de la representación.
+
+★ **La prueba que no se puede fingir**: el mismo `12345` da `345` en un
+`PIC 9(3) COMP-3` y `12345` en un `PIC 9(3)` (que hoy sigue siendo un i64).
+Comprobado **mutando la característica a no-operación**: caen 3 tests. Los otros
+seis pasan igual porque miden equivalencia y no representación — valen de
+regresión, pero no prueban que sea real. *Ese método de verificación es el que
+hay que repetir cada vez que algo cambie cómo se GUARDA un dato.*
+
+Se rechaza con motivo: `COMP`/`BINARY`/`COMP-5` (guardarían lo mismo que un
+DISPLAY), `COMP-1`/`COMP-2` (flotante, y no representa 19.99), COMP-3 sin PIC,
+sobre PIC X y sobre PIC editada. Ejemplo nuevo: `examples/7-empaquetado/`.
+
+**★★ Y el plan largo, escrito: [`toolchain/lang/cobol/PLAN_BANCA.md`](toolchain/lang/cobol/PLAN_BANCA.md).**
+Nueve fases con casillas, de "el suelo del compilador" a "un banco pequeño de
+punta a punta en el Ryzen". Cada tarea dice **qué la bloquea** y **cómo se sabe
+que está hecha**. `BANCA_REAL.md` dice qué falta y por qué; el plan dice en qué
+orden y quién depende de quién.
+
+**Tres cosas comprobadas que los documentos decían al revés:**
+- ✅ **`bmo-verify` SÍ está cableado** — los cuatro frontends lo llaman **antes**
+  de escribir el `.bex`. Lo que sigue sin usarlo es el **kernel**.
+- ⛔ **`OPEN I-O` y el índice por clave están bloqueados por el SISTEMA, no por
+  el compilador**: `KIND_ARCHIVO` fija el modo al abrir y ESTRATOS todavía no
+  crea objetos. O sea que el camino a VSAM **no empieza por el B-tree**.
+- ⚠️ **`VALUE` en un dato que no sea nivel 88 se ignora en silencio.** Se parsea
+  y nunca se emite; los ejemplos no lo notan porque todos inicializan con
+  `MOVE`. Es la tarea 0.1 del plan.
 
 ## ★★★★ 2026-08-02, QUINTA tanda — LA LISTA DE PENDIENTES SE VACIÓ
 
