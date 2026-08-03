@@ -419,9 +419,30 @@ desbloquea por hora de trabajo.
       Es el sustituto barato de un índice **dentro de memoria**, y tapa parte de
       lo que la fase 4 no puede dar todavía.
 
-- [ ] **2.3 · `STRING` / `UNSTRING`** — M
-- [ ] **2.4 · `INSPECT`** — M
-      Los dos son manejo de texto, y **el texto ya existe** desde `0.7`.
+- [~] **2.3 · `STRING`** — ✅ 2026-08-03, **`UNSTRING` no**
+      `STRING <fuentes> DELIMITED BY SIZE INTO <destino>`, leído en varias
+      líneas —que es como se escribe— y **resuelto entero al compilar**: cada
+      fuente tiene un ancho conocido, así que el destino se llena por trozos sin
+      un puntero que avance en ejecución.
+      El destino se pone a espacios ANTES, para que lo que no se llene no se
+      quede con lo del `STRING` de antes.
+      ⛔ `DELIMITED BY SPACE` o por un carácter cortan por un largo que sólo se
+      sabe en ejecución: es otro emisor y se rechaza con ese motivo. Y
+      `UNSTRING` —partir uno en varios— es la mitad que falta.
+
+- [x] **2.4 · `INSPECT`** — ✅ 2026-08-03
+      `TALLYING <n> FOR ALL "<c>"` y `REPLACING {ALL|LEADING} "<a>" BY "<b>"`,
+      con las figurativas `SPACE` y `ZERO`.
+      ★ `ALL` y `LEADING` son **dos formas y no una con una opción**, porque
+      sobre un importe dan números distintos: `"  12 34"` con `LEADING " " BY
+      "0"` da `"0012 34"` y con `ALL` daría `"0012034"`.
+      Los emisores viven en **`bmo_lower::texto`**, hermana de `memoria`:
+      aquélla trae los verbos de C (`memcpy`, `memset`) y ésta los que COBOL
+      escribe `INSPECT` y Ada `Index`/`Replace_Slice`. Y con la misma frontera —
+      **el largo va explícito, aquí no hay NUL que buscar**, que es la
+      diferencia entre un campo de COBOL y una cadena de C.
+      ⛔ Buscar o sustituir una CADENA es búsqueda de subcadena y se rechaza:
+      aceptarlo mirando sólo la primera letra contaría de más.
 
 - [ ] **2.8 · `COPY … REPLACING`** — M
       **Así se comparten los layouts de registro entre programas.** Sin esto,
@@ -601,7 +622,9 @@ HECHO   0.7 TEXTO ── PIC X con caracteres, sin limite de ancho
 
 HECHO   1.7 FILE STATUS ── 00, 10 y 35: los que se pueden dar de verdad
 
-AHORA   2.3 STRING · 2.4 INSPECT ── el texto ya existe, estos son los que faltan
+HECHO   2.4 INSPECT · 2.3 STRING (falta UNSTRING)
+
+AHORA   2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -619,8 +642,9 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
 ~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → ~~`0.7`~~ → ~~`1.7`~~ →
-**`2.3`** → `2.4` → `2.6b` → `0.6` → `2.2` → `2.7` → `2.8` → `5.1` → `1.6` →
-`2.9` → `0.2` → **luego el kernel**: `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
+~~`2.4`~~ → ~~`2.3`~~ (falta `UNSTRING`) → **`2.6b`** → `0.6` → `2.2` → `2.7` →
+`2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el kernel**: `3.1` → `3.3` →
+`3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
 ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
@@ -664,3 +688,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | ★ **El VISOR** (`--ver`) — decodifica un fichero binario con el copybook, y sus lectores están atados a los emitidos | `registro::Disposicion::ver` + `*::*_en_rust` |
 | 2026-08-03 | ★ **0.7 TEXTO** — `PIC X(n)` con caracteres de verdad, sin límite de ancho; desbloquea FILE STATUS, STRING e INSPECT | `codegen.rs` (camino de dirección+largo) |
 | 2026-08-03 | **1.7 `FILE STATUS`** — `00`/`10`/`35`, los que la puerta permite distinguir, y sólo ésos | `codegen::emit_estado*` |
+| 2026-08-03 | **2.4 `INSPECT`** (`TALLYING`, `REPLACING ALL`/`LEADING`) y **2.3 `STRING`** | `bmo-lower::texto` + `codegen.rs` |

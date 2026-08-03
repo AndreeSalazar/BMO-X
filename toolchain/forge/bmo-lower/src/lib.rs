@@ -62,6 +62,10 @@ pub mod packed;
 /// los SEIS modos y no uno.
 pub mod redondeo;
 pub mod task;
+/// Operaciones sobre bloques de TEXTO: contar, sustituir. Hermana de `memoria`
+/// -aquello son los verbos de C, esto los que COBOL escribe `INSPECT`- y con la
+/// misma frontera: el largo va explicito, aqui no hay NUL que buscar.
+pub mod texto;
 /// Decimal ZONADO (`DISPLAY`): un byte por digito y el signo sobrepunzado en el
 /// ultimo. La otra mitad de `packed` — las dos son como un numero vive en un
 /// FICHERO. Ver la cabecera de `zoned.rs`.

@@ -2020,6 +2020,119 @@ impl Codegen {
             // llegan aquí como el MISMO árbol de condiciones, así que heredan el
             // cortocircuito y la precedencia sin una línea de más. Si el codegen
             // tuviera que distinguirlas, el parser habría hecho mal su trabajo.
+            // ── INSPECT ──
+            //
+            // El campo se recorre por su ancho DECLARADO, no por el alineado:
+            // los bytes de relleno de detrás no son del programa y contarlos
+            // daría espacios que nadie escribió.
+            CobolStatement::InspectContar { campo, contador, buscado } => {
+                let (campo, contador, buscado) = (campo.clone(), contador.clone(), *buscado);
+                let Some(chars) = self.texto_de(&campo) else {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!("INSPECT {campo}: solo se inspecciona un campo de TEXTO (PIC X)"),
+                    ));
+                    return;
+                };
+                let Some(off) = self.exige_declarado(&Self::nombre_base(&campo)) else { return };
+                self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi, [rbp+disp32]
+                self.code.extend_from_slice(&off.to_le_bytes());
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, chars as u64).unwrap(); });
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rdx, buscado as u64).unwrap(); });
+                bmo_lower::texto::contar_byte(&mut self.code);
+                // El contador es NUMÉRICO: la cuenta entra por la puerta de
+                // siempre, reescalada a su PIC.
+                let escala = self.var_scale(&contador);
+                self.rescale(0, escala);
+                self.store_var(&contador);
+            }
+            CobolStatement::InspectReemplazar { campo, viejo, nuevo, solo_delante } => {
+                let (campo, viejo, nuevo, delante) =
+                    (campo.clone(), *viejo, *nuevo, *solo_delante);
+                let Some(chars) = self.texto_de(&campo) else {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!("INSPECT {campo}: solo se inspecciona un campo de TEXTO (PIC X)"),
+                    ));
+                    return;
+                };
+                let Some(off) = self.exige_declarado(&Self::nombre_base(&campo)) else { return };
+                self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi, [rbp+disp32]
+                self.code.extend_from_slice(&off.to_le_bytes());
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, chars as u64).unwrap(); });
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rdx, viejo as u64).unwrap(); });
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rsi, nuevo as u64).unwrap(); });
+                if delante {
+                    bmo_lower::texto::reemplazar_delante(&mut self.code);
+                } else {
+                    bmo_lower::texto::reemplazar_byte(&mut self.code);
+                }
+            }
+
+            // ── STRING … DELIMITED BY SIZE ──
+            //
+            // ★ Se resuelve ENTERO al compilar. Cada fuente tiene un ancho
+            // conocido —el de su PICTURE, o el del literal— así que el destino
+            // se llena por trozos con `mov` de inmediato y copias de largo fijo.
+            // No hay puntero que avance ni cuenta que llevar en ejecución.
+            CobolStatement::StringInto { fuentes, destino } => {
+                let (fuentes, destino) = (fuentes.clone(), destino.clone());
+                let Some(ancho) = self.texto_de(&destino) else {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!("STRING … INTO {destino}: el destino tiene que ser PIC X"),
+                    ));
+                    return;
+                };
+                let Some(dst_off) = self.exige_declarado(&Self::nombre_base(&destino)) else {
+                    return;
+                };
+                // El destino entero a espacios primero: lo que no se llene no
+                // puede quedarse con lo del `STRING` anterior.
+                self.emit_store_texto_literal(dst_off, " ", ancho);
+
+                let mut cursor = 0u32;
+                for f in &fuentes {
+                    if cursor >= ancho {
+                        break; // lo que no cabe se descarta, como manda el estándar
+                    }
+                    let hueco = ancho - cursor;
+                    match self.texto_de(f) {
+                        // Un campo: copia de largo fijo.
+                        Some(n) => {
+                            let Some(src_off) =
+                                self.var_offsets.get(&Self::nombre_base(f)).copied()
+                            else {
+                                continue;
+                            };
+                            let cuantos = n.min(hueco);
+                            let d = dst_off + cursor as i32;
+                            self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi
+                            self.code.extend_from_slice(&d.to_le_bytes());
+                            self.code.extend_from_slice(&[0x48, 0x8D, 0xB5]); // lea rsi
+                            self.code.extend_from_slice(&src_off.to_le_bytes());
+                            self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, cuantos as u64).unwrap(); });
+                            bmo_lower::memoria::copiar(&mut self.code);
+                            cursor += cuantos;
+                        }
+                        // Un literal: sus bytes, uno a uno como inmediatos.
+                        None => {
+                            let lit = f.trim().trim_matches('"').trim_matches('\'').to_string();
+                            for (i, b) in lit.bytes().enumerate() {
+                                if cursor + i as u32 >= ancho {
+                                    break;
+                                }
+                                let d = dst_off + (cursor + i as u32) as i32;
+                                self.code.extend_from_slice(&[0x48, 0x8D, 0x85]); // lea rax
+                                self.code.extend_from_slice(&d.to_le_bytes());
+                                x86::mov_byte_at_reg_imm8(&mut self.code, x86::RAX, b);
+                            }
+                            cursor += (lit.len() as u32).min(hueco);
+                        }
+                    }
+                }
+            }
+
             CobolStatement::Evaluate(ramas) => {
                 let ramas = ramas.clone();
                 let fin = self.fresh_label();

@@ -539,37 +539,33 @@ impl Parser {
                 }
             } else if uw == "VALUE" {
                 if i + 1 < parts.len() {
-                    i += 1;
-                    let primero = parts[i];
-                    // ★ Un literal ENTRECOMILLADO puede llevar espacios, y el
-                    // troceado por espacios ya lo partió. Se vuelven a juntar
-                    // hasta la comilla de cierre. Sin esto, `VALUE "SIN SALDO"`
-                    // guardaba `SIN` y el resto se leía como cláusulas sueltas.
-                    let comilla = primero.chars().next().filter(|c| *c == '"' || *c == '\'');
-                    match comilla {
-                        Some(q) if !(primero.len() > 1 && primero.ends_with(q)) => {
-                            let mut texto = String::from(&primero[1..]);
-                            while i + 1 < parts.len() {
-                                i += 1;
-                                texto.push(' ');
-                                let t = parts[i];
-                                if let Some(fin) = t.find(q) {
-                                    texto.push_str(&t[..fin]);
-                                    break;
-                                }
-                                texto.push_str(t);
-                            }
-                            value = Some(texto);
+                    // ★ Un literal ENTRECOMILLADO se saca de la LÍNEA CRUDA, no
+                    // de los trozos: el troceado es por espacios, así que
+                    // `VALUE "  12 34"` ya venía sin los dos de delante y sin
+                    // saber cuántos había en medio.
+                    //
+                    // No es un detalle: en un `PIC X` los espacios son datos.
+                    // Un `INSPECT … REPLACING LEADING SPACE BY ZERO` sobre un
+                    // campo al que le faltan espacios da otro número.
+                    if let Some(t) = Self::literal_entrecomillado(rest) {
+                        value = Some(t);
+                        // Saltar los trozos que formaban el literal.
+                        while i + 1 < parts.len()
+                            && !parts[i].ends_with('"')
+                            && !parts[i].ends_with("\".")
+                            && !parts[i].ends_with('\'')
+                        {
+                            i += 1;
                         }
-                        _ => {
-                            value = Some(
-                                primero
-                                    .trim_end_matches('.')
-                                    .trim_matches('"')
-                                    .trim_matches('\'')
-                                    .to_string(),
-                            );
-                        }
+                    } else {
+                        i += 1;
+                        value = Some(
+                            parts[i]
+                                .trim_end_matches('.')
+                                .trim_matches('"')
+                                .trim_matches('\'')
+                                .to_string(),
+                        );
                     }
                 }
             } else if uw == "OCCURS" {
@@ -842,6 +838,10 @@ impl Parser {
             self.parse_read(line, line_no)
         } else if upper.starts_with("WRITE ") {
             Ok(CobolStatement::Write(line[6..].trim().trim_end_matches('.').to_string()))
+        } else if upper.starts_with("INSPECT ") {
+            Self::parse_inspect(line, line_no)
+        } else if upper.starts_with("STRING ") {
+            self.parse_string(line, line_no)
         } else if upper.starts_with("EVALUATE ") {
             self.parse_evaluate(line, line_no)
         } else if upper.starts_with("IF ") {
@@ -1185,6 +1185,194 @@ impl Parser {
             }
         };
         Ok((destino, modo))
+    }
+
+    /// El literal entre comillas de una línea, **con sus espacios intactos**.
+    ///
+    /// Devuelve `None` si no hay comillas — entonces el `VALUE` es un número o
+    /// una figurativa y el troceado por espacios vale.
+    fn literal_entrecomillado(linea: &str) -> Option<String> {
+        let bytes = linea.as_bytes();
+        let abre = bytes.iter().position(|b| *b == b'"' || *b == b'\'')?;
+        let q = bytes[abre];
+        let cierra = bytes[abre + 1..].iter().position(|b| *b == q)? + abre + 1;
+        Some(linea[abre + 1..cierra].to_string())
+    }
+
+    /// Un literal de UN carácter entre comillas, o la figurativa `SPACE`.
+    ///
+    /// Sólo un carácter: buscar o sustituir una CADENA es búsqueda de
+    /// subcadena, que es otra cosa y bastante más grande. Se dice en vez de
+    /// mirar sólo la primera letra y callar el resto — eso contaría de más y
+    /// sustituiría donde no toca.
+    fn un_caracter(texto: &str, que: &str, line_no: usize) -> Result<char, CobolError> {
+        let t = texto.trim();
+        let arriba = t.to_ascii_uppercase();
+        if arriba == "SPACE" || arriba == "SPACES" {
+            return Ok(' ');
+        }
+        if arriba == "ZERO" || arriba == "ZEROS" || arriba == "ZEROES" {
+            return Ok('0');
+        }
+        let sin = t.trim_matches('"').trim_matches('\'');
+        let mut cs = sin.chars();
+        match (cs.next(), cs.next()) {
+            (Some(c), None) => Ok(c),
+            _ => Err(CobolError::new(
+                line_no,
+                format!(
+                    "{que} '{t}': aqui solo vale UN caracter (o SPACE / ZERO). Buscar una \
+                     CADENA es busqueda de subcadena, y eso todavia no se compila — \
+                     aceptarlo mirando solo la primera letra contaria de mas"
+                ),
+            )),
+        }
+    }
+
+    /// `INSPECT <campo> TALLYING <n> FOR ALL "<c>"`
+    /// `INSPECT <campo> REPLACING {ALL|LEADING} "<a>" BY "<b>"`
+    fn parse_inspect(line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let resto = line[8..].trim().trim_end_matches('.').trim();
+        let arriba = resto.to_ascii_uppercase();
+
+        if let Some(i) = Self::pos_palabra(&arriba, "TALLYING") {
+            let campo = resto[..i].trim().to_ascii_uppercase();
+            let cola = resto[i + 8..].trim();
+            let arriba_cola = cola.to_ascii_uppercase();
+            let Some(j) = Self::pos_palabra(&arriba_cola, "FOR") else {
+                return Err(CobolError::new(line_no, "INSPECT … TALLYING sin FOR"));
+            };
+            let contador = cola[..j].trim().to_ascii_uppercase();
+            let tras = cola[j + 3..].trim();
+            let tras = Self::strip_leading_word(tras, "ALL");
+            let buscado = Self::un_caracter(tras, "INSPECT … FOR ALL", line_no)?;
+            if campo.is_empty() || contador.is_empty() {
+                return Err(CobolError::new(line_no, "INSPECT … TALLYING: falta el campo o el contador"));
+            }
+            return Ok(CobolStatement::InspectContar { campo, contador, buscado });
+        }
+
+        if let Some(i) = Self::pos_palabra(&arriba, "REPLACING") {
+            let campo = resto[..i].trim().to_ascii_uppercase();
+            let cola = resto[i + 9..].trim();
+            let arriba_cola = cola.to_ascii_uppercase();
+            let (cola, solo_delante) = match Self::pos_palabra(&arriba_cola, "LEADING") {
+                Some(0) => (cola[7..].trim(), true),
+                _ => (Self::strip_leading_word(cola, "ALL").trim(), false),
+            };
+            let arriba_cola = cola.to_ascii_uppercase();
+            let Some(j) = Self::pos_palabra(&arriba_cola, "BY") else {
+                return Err(CobolError::new(line_no, "INSPECT … REPLACING sin BY"));
+            };
+            let viejo = Self::un_caracter(&cola[..j], "INSPECT … REPLACING", line_no)?;
+            let nuevo = Self::un_caracter(&cola[j + 2..], "INSPECT … BY", line_no)?;
+            if campo.is_empty() {
+                return Err(CobolError::new(line_no, "INSPECT sin campo"));
+            }
+            return Ok(CobolStatement::InspectReemplazar { campo, viejo, nuevo, solo_delante });
+        }
+
+        Err(CobolError::new(
+            line_no,
+            "INSPECT: hoy se compilan `TALLYING <n> FOR ALL \"<c>\"` y \
+             `REPLACING {ALL|LEADING} \"<a>\" BY \"<b>\"`. Las formas con \
+             CHARACTERS, BEFORE y AFTER todavia no",
+        ))
+    }
+
+    /// `STRING <fuentes> DELIMITED BY SIZE INTO <destino>`.
+    ///
+    /// Sólo `DELIMITED BY SIZE`: cada fuente entra con TODO su ancho. Las otras
+    /// formas —`DELIMITED BY SPACE` o por un carácter— cortan por un largo que
+    /// sólo se sabe en ejecución, y eso es otro emisor. Se dice.
+    ///
+    /// ★ Se lee en VARIAS LÍNEAS, porque así se escribe siempre: una fuente por
+    /// renglón. Se sigue leyendo hasta el `INTO`, y ahí acaba — con `END-STRING`
+    /// detrás o sin él, que las dos formas son legales.
+    fn parse_string(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
+        let mut junto = line[7..].trim().trim_end_matches('.').trim().to_string();
+        while Self::pos_palabra(&junto.to_ascii_uppercase(), "INTO").is_none() {
+            let Some((_, raw)) = self.current().cloned() else {
+                return Err(CobolError::new(line_no, "STRING sin INTO: falta decir donde va"));
+            };
+            self.advance();
+            let siguiente = Self::strip_comment(&raw).trim().to_string();
+            if siguiente.is_empty() {
+                continue;
+            }
+            junto.push(' ');
+            junto.push_str(siguiente.trim_end_matches('.').trim());
+        }
+        // Un `END-STRING` detrás del destino es legal y aquí sobra.
+        let junto = junto.trim().to_string();
+        let junto = match Self::pos_palabra(&junto.to_ascii_uppercase(), "END-STRING") {
+            Some(i) => junto[..i].trim().to_string(),
+            None => junto,
+        };
+        let resto = junto.as_str();
+        let arriba = resto.to_ascii_uppercase();
+        let Some(i) = Self::pos_palabra(&arriba, "INTO") else {
+            return Err(CobolError::new(line_no, "STRING sin INTO: falta decir donde va"));
+        };
+        let destino = resto[i + 4..].trim().to_ascii_uppercase();
+        if destino.is_empty() || destino.split_whitespace().count() != 1 {
+            return Err(CobolError::new(line_no, "STRING … INTO necesita UN campo"));
+        }
+
+        // Las fuentes van separadas por sus `DELIMITED BY SIZE`.
+        let cabeza = &resto[..i];
+        let mut fuentes = Vec::new();
+        // La forma es `<f1> DELIMITED BY SIZE <f2> DELIMITED BY SIZE …`, así que
+        // partir por `DELIMITED` deja el primer trozo limpio y los demás con su
+        // `BY SIZE` delante.
+        //
+        // ★ Se quitan por TOKENS y no recortando texto: `strip_leading_word` no
+        // corta una palabra que esté al final de la cadena, y un `SIZE` que
+        // sobrevivía a eso se colaba como si fuera un campo. Sus dos primeras
+        // letras acababan escritas dentro del destino — un fallo que compila,
+        // no avisa, y mete basura en un registro.
+        for trozo in Self::split_on_word(cabeza, "DELIMITED") {
+            let mut tokens: Vec<&str> = trozo.split_whitespace().collect();
+            while matches!(
+                tokens.first().map(|t| t.to_ascii_uppercase()).as_deref(),
+                Some("BY")
+            ) {
+                tokens.remove(0);
+            }
+            if let Some(primero) = tokens.first().map(|t| t.to_ascii_uppercase()) {
+                match primero.as_str() {
+                    "SIZE" => {
+                        tokens.remove(0);
+                    }
+                    "SPACE" | "SPACES" => {
+                        return Err(CobolError::new(
+                            line_no,
+                            "STRING: hoy solo `DELIMITED BY SIZE`. Cortar por un espacio o \
+                             por un caracter necesita un largo que solo se sabe en ejecucion",
+                        ))
+                    }
+                    _ => {}
+                }
+            }
+            if tokens.is_empty() {
+                continue;
+            }
+            if tokens.len() > 1 {
+                return Err(CobolError::new(
+                    line_no,
+                    format!(
+                        "STRING: '{}' no es UNA fuente. Cada una lleva su \
+                         `DELIMITED BY SIZE` detras",
+                        tokens.join(" ")
+                    ),
+                ));
+            }
+            fuentes.push(tokens[0].to_string());
+        }
+        if fuentes.is_empty() {
+            return Err(CobolError::new(line_no, "STRING sin nada que pegar"));
+        }
+        Ok(CobolStatement::StringInto { fuentes, destino })
     }
 
     /// ★ `EVALUATE … WHEN … END-EVALUATE` — el `switch` de COBOL.

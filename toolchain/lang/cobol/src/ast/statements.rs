@@ -79,6 +79,22 @@ pub enum CobolStatement {
     /// dicha de dos maneras, y por eso las dos heredan el cortocircuito y la
     /// precedencia sin una línea de más en el codegen.
     Evaluate(Vec<(Option<Condicion>, Vec<CobolStatement>)>),
+    /// `INSPECT <campo> TALLYING <n> FOR ALL "<c>"`.
+    ///
+    /// Contar apariciones de un carácter. En banca lo más corriente es contar
+    /// espacios para saber cuánto mide de verdad un campo que viene rellenado.
+    InspectContar { campo: String, contador: String, buscado: char },
+    /// `INSPECT <campo> REPLACING {ALL|LEADING} "<a>" BY "<b>"`.
+    ///
+    /// ★ `ALL` y `LEADING` no son lo mismo y la diferencia cambia un número:
+    /// sobre `"  12 34"`, `LEADING " " BY "0"` da `"0012 34"` y `ALL` daría
+    /// `"0012034"`. Por eso son dos formas y no una con una opción.
+    InspectReemplazar { campo: String, viejo: char, nuevo: char, solo_delante: bool },
+    /// `STRING <fuentes> DELIMITED BY SIZE INTO <destino>`.
+    ///
+    /// Las fuentes son literales o campos, y se pegan **en orden** hasta llenar
+    /// el destino.
+    StringInto { fuentes: Vec<String>, destino: String },
     /// `EXIT` — no hace nada, y ese es su trabajo.
     ///
     /// Es el destino de un `PERFORM … THRU X-SALIR`: un párrafo vacío al que
