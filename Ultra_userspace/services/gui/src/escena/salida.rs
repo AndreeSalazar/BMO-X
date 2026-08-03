@@ -72,7 +72,30 @@ impl Salida {
             tinta: [TINTA_NORMAL; SAL_HIST],
             vista: 0,
             tinta_actual: TINTA_NORMAL,
-            fila: 0,
+            // ★★ SE ESCRIBE EN LA ÚLTIMA FILA, no en la primera.
+            //
+            // Aquí vivía el bug que hacía que `ls` "no mostrara nada": el
+            // ESCRITOR empezaba arriba (`fila = 0`) y el LECTOR
+            // (`pintar_salida`) enseña **las últimas** `SAL_ROWS` filas del
+            // historial, o sea `celdas[184..200]`. Los dos miraban extremos
+            // opuestos del mismo buffer.
+            //
+            // Consecuencia exacta: las **184 primeras líneas que escribiera
+            // cualquier programa eran invisibles**. `ls` escupe una docena, así
+            // que no llegaba ni de lejos — el comando corría, la línea de
+            // estado decía `listo`, y la rejilla se quedaba en blanco. Un fallo
+            // que se ve como "no hace nada" y en realidad es "lo hace donde no
+            // se mira".
+            //
+            // Llegó con el historial con scroll (`8ee091e2`): la ventana pasó a
+            // ser un trozo de 200 filas y **el escritor se quedó donde estaba**,
+            // que era correcto cuando la rejilla eran 16 filas y punto.
+            //
+            // Con `fila` en la última, `salto()` siempre entra por la rama de
+            // `desplazar()`: la línea nueva está SIEMPRE abajo del todo y
+            // siempre dentro de la ventana. Que es como se comporta cualquier
+            // terminal.
+            fila: SAL_HIST - 1,
             col: 0,
             sucia: true,
         }
@@ -168,7 +191,11 @@ impl Salida {
         self.tinta = [TINTA_NORMAL; SAL_HIST];
         self.vista = 0;
         self.tinta_actual = TINTA_NORMAL;
-        self.fila = 0;
+        // La misma fila que en `nueva`, y por el mismo motivo: si `clear`
+        // devolviera el cursor arriba, el bug volvería sólo después de limpiar
+        // — que es la clase de fallo que aparece una vez cada mil y no se
+        // reproduce nunca.
+        self.fila = SAL_HIST - 1;
         self.col = 0;
         self.sucia = true;
     }

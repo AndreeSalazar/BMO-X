@@ -561,6 +561,50 @@ respuesta cabía en un `grep` y daba un solo resultado.
 
 ---
 
+## Ep. 26 — El escritor y el lector miraban extremos opuestos del mismo buffer
+
+**Síntoma**, dicho por quien lo sufría: *"el `ls` ya ejecuté normal pero no
+muestra nada"*.
+
+Y era literal: el comando corría, la línea de estado ponía `listo`, y la rejilla
+de salida se quedaba en blanco. Ni un error, ni un cuelgue. La forma más
+incómoda de fallo — la que se parece a "no hace nada" y en realidad es **"lo
+hace donde nadie mira"**.
+
+**Culpable**, en dos líneas que están a 220 de distancia en el mismo archivo:
+
+```rust
+Salida::nueva()  ->  fila: 0                          // el ESCRITOR empieza arriba
+pintar_salida()  ->  base = SAL_HIST - SAL_ROWS       // el LECTOR enseña abajo
+```
+
+`SAL_HIST` son 200 filas y `SAL_ROWS` son 16, así que la ventana visible es
+`celdas[184..200]` y el primer texto se escribía en `celdas[0]`. **Las 184
+primeras líneas de cualquier programa eran invisibles.** `ls` escupe una docena.
+
+Lo trajo el historial con scroll (`8ee091e2`): antes la rejilla eran 16 filas y
+escribir desde la 0 era exactamente lo correcto. Ese commit convirtió la rejilla
+en una **ventana sobre 200 filas** y movió al lector al final del buffer — y
+dejó al escritor donde siempre había estado. Nadie miró al otro extremo porque
+el que se estaba tocando funcionaba.
+
+**Y por qué no lo cazó nadie antes**: el arreglo del scroll traía su prueba
+escrita —*"llenar la salida con `ls`, subir con PgUp"*— y esa prueba nunca se
+ejecutó en metal. Estuvo meses en la lista de pendientes de hardware.
+
+**Moraleja**: cuando un cambio mueve un **extremo** de una estructura
+compartida, hay exactamente dos sitios que revisar, y el segundo es el que no se
+está tocando. Un buffer con escritor y lector tiene dos contratos, no uno. Y el
+corolario: **una prueba escrita y no ejecutada no protege de nada** — es la
+misma ley 13, otra vez, sobre otro código.
+
+*Nota de método*: esto se encontró **leyendo**, no adivinando, y sólo porque la
+foto traía el dato que discriminaba (`listo` pintado + rejilla vacía = el
+comando corrió y la salida se perdió). Sin esa distinción, la teoría fácil era
+"el `ls` falla" y se habría buscado en el driver de directorio.
+
+---
+
 ## Las leyes que dejó esta guerra
 
 1. **QEMU miente por omisión**: sin IRQs vivos, sin tiempos físicos, sin
@@ -608,7 +652,12 @@ respuesta cabía en un `grep` y daba un solo resultado.
    (Ep. 25), no hacer una optimización local. Hay que ir a buscar a todos los
    que la usaban con el contrato viejo — **y los lectores cuentan**. El WC se
    pensó como un cambio de escritura y rompió la única lectura que había.
-13. **Una rama de error que nadie ejecuta no está escrita, está redactada**
+13. **Un buffer compartido tiene DOS contratos, no uno** (Ep. 26). Cuando un
+   cambio mueve un extremo —dónde empieza a leer, dónde empieza a escribir—, el
+   sitio que hay que revisar es **el que no estás tocando**. El escritor
+   empezaba arriba y el lector enseñaba abajo, y las dos líneas eran correctas
+   por separado.
+14. **Una rama de error que nadie ejecuta no está escrita, está redactada**
    (Ep. 23). El camino bueno de `malloc` funcionaba y el de fallo saltaba a
    media instrucción; el límite existía en el kernel y en la documentación, y
    el programa nunca llegaba a verlo. Escribir el programa que ejerce el

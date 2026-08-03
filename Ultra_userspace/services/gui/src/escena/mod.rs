@@ -235,9 +235,14 @@ pub(crate) fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
     // ★ Las dos ventanas del sistema, DICHAS. Un atajo que no está escrito en
     // ninguna parte es un atajo que sólo conoce quien lo programó — y F11 existe
     // precisamente para los días en que esta caja no responde.
+    //
+    // Va al PIE de la caja, no debajo de la pista: ahí lo puse primero y
+    // `campo_y` es exactamente `y + 54`, así que el marco del campo lo pintaba
+    // encima y la línea no se veía. Se cazó en la foto — el texto se emitía y
+    // desaparecía en la instrucción siguiente.
     p.texto(
         c.x + 18,
-        c.y + 36 + bmo::GLIFO_ALTO + 2,
+        c.y + CAJA_ALTO - 22,
         "F11 kernel (Ring 0)   F12 datos (ESTRATOS)   ESC cierra",
         TEXTO_TENUE,
     );

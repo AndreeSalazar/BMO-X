@@ -15,6 +15,41 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
 
+## ★★★ VERIFICADO EN EL RYZEN (2026-08-02, cuarta tanda) — la tanda grande
+
+Cinco de las seis cosas que estaban escritas y sin estrenar quedan **cerradas
+con foto**, y la sexta la destapó el instrumento nuevo.
+
+- **★ F11 FUNCIONA.** La ventana `RING 0 // lo que dice el kernel` sale con
+  `guardadas 61 de 61` y el arranque entero legible **desde el escritorio**. Es
+  la primera vez que Ring 3 puede leer lo que dijo Ring 0.
+- **★★ EL DOBLE BÚFER FUNCIONA, y lo dijo él mismo**: en esa ventana se lee
+  `gui.bex> doble bufer: pintando fuera de la pantalla`. Como el búfer son
+  **~8 MB contiguos pedidos con `KIND_MEMORIA`**, esa línea es también la
+  **verificación en metal de la capability de memoria**: el kernel entregó el
+  bloque, el compositor pinta dentro y sigue en pie.
+- **★ F12 / ESTRATOS FUNCIONA**: generación 1, `96.00 KiB de 414.54 GiB`,
+  estado holgado, **`identidad: nacio en ESTE disco`**, y `escritura: CERRADA`
+  diciendo por qué. El gate de identidad del §5, en pantalla.
+- **Las letras se dibujan.** El campo pinta lo que se teclea (`ls` en la foto).
+- **El ratón**, confirmado otra vez, y la barra de pulso se llena al moverlo —
+  que es lo que esa barra existe para decir.
+
+### ⚠️ Y lo que el instrumento nuevo destapó: `ls` corría y no enseñaba nada
+
+`ls` ejecutaba (la línea de estado decía `listo`) y la rejilla se quedaba en
+blanco. **El escritor y el lector del buffer de salida miraban extremos
+opuestos**: `Salida::nueva` empezaba a escribir en `fila = 0` y `pintar_salida`
+enseña **las últimas 16 filas de 200** (`celdas[184..200]`).
+
+O sea que **las 184 primeras líneas que escribiera cualquier programa eran
+invisibles**. `ls` escupe una docena: no llegaba ni de lejos. Llegó con el
+historial con scroll (`8ee091e2`), que movió la ventana del lector y dejó al
+escritor donde estaba — correcto cuando la rejilla eran 16 filas y punto.
+Arreglado escribiendo siempre en la última fila. Ep. 26 de `BITACORA.md`.
+
+---
+
 ## ★★ VERIFICADO EN EL RYZEN (2026-08-02, tercera tanda) — con fotos
 
 **El ratón FUNCIONA.** Es el hito de la sesión: el puntero se mueve donde se
