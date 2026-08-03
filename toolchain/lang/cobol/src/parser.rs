@@ -540,7 +540,37 @@ impl Parser {
             } else if uw == "VALUE" {
                 if i + 1 < parts.len() {
                     i += 1;
-                    value = Some(parts[i].trim_matches('"').trim_matches('\'').to_string());
+                    let primero = parts[i];
+                    // ★ Un literal ENTRECOMILLADO puede llevar espacios, y el
+                    // troceado por espacios ya lo partió. Se vuelven a juntar
+                    // hasta la comilla de cierre. Sin esto, `VALUE "SIN SALDO"`
+                    // guardaba `SIN` y el resto se leía como cláusulas sueltas.
+                    let comilla = primero.chars().next().filter(|c| *c == '"' || *c == '\'');
+                    match comilla {
+                        Some(q) if !(primero.len() > 1 && primero.ends_with(q)) => {
+                            let mut texto = String::from(&primero[1..]);
+                            while i + 1 < parts.len() {
+                                i += 1;
+                                texto.push(' ');
+                                let t = parts[i];
+                                if let Some(fin) = t.find(q) {
+                                    texto.push_str(&t[..fin]);
+                                    break;
+                                }
+                                texto.push_str(t);
+                            }
+                            value = Some(texto);
+                        }
+                        _ => {
+                            value = Some(
+                                primero
+                                    .trim_end_matches('.')
+                                    .trim_matches('"')
+                                    .trim_matches('\'')
+                                    .to_string(),
+                            );
+                        }
+                    }
                 }
             } else if uw == "OCCURS" {
                 // `OCCURS <n> [TIMES]`. El `TIMES` es opcional en el estandar y
@@ -662,17 +692,11 @@ impl Parser {
                     ),
                 ));
             };
+            // ★ Un campo alfanumérico guarda su VALUE como CARACTERES, y por eso
+            // no pasa por la comprobación de "esto es un número". `VALUE "00"`
+            // en un `PIC XX` es exactamente lo que escribe un `FILE STATUS`.
             if !campo.numeric {
-                return Err(CobolError::new(
-                    line_no,
-                    format!(
-                        "{} PIC {}: un VALUE de TEXTO todavia no se guarda. Los campos \
-                         alfanumericos no se almacenan como caracteres aun, asi que \
-                         aceptarlo guardaria un numero donde pusiste letras",
-                        item.name,
-                        item.pic.as_deref().unwrap_or("?")
-                    ),
-                ));
+                return Ok(Some(item));
             }
             if !Self::es_numero_cobol(&v) {
                 return Err(CobolError::new(

@@ -160,16 +160,24 @@ escondidas en la fase 3.
       dentro de un rango `PERFORM … THRU` se escribe con un interruptor. Es
       COBOL legítimo y su destino ya existe (las etiquetas de párrafo).
 
-- [ ] **0.7 · Texto de verdad: `PIC X(n)` con contenido** — M ⚠
-      Hoy un `PIC X` reserva sitio pero **se carga y guarda como un entero de 64
-      bits**, así que no hay campos de texto: por eso `VALUE "HOLA"` se rechaza.
-      Lo piden `FILE STATUS` (que es `PIC XX`), los literales de comparación
-      (`IF ST = "00"`), `STRING`/`UNSTRING`/`INSPECT` y cualquier registro con
-      un nombre dentro.
-      ⚠ Decisión: hasta 8 caracteres caben en la ranura de 64 bits que ya hay
-      (el mismo empaquetado que usa `console::write_const`); más de 8 pide un
-      buffer aparte. Empezar por ≤ 8 es honesto y cubre `FILE STATUS`, códigos y
-      claves cortas — pero hay que **decir dónde está el límite**.
+- [x] **0.7 · Texto de verdad: `PIC X(n)` con contenido** — ✅ 2026-08-03
+      ★ **Sin el límite de 8 caracteres que temía la revisión 2.** El texto no
+      pasa por `rax` como todo lo demás: tiene su propio camino, que trabaja con
+      **dirección y largo**. Así el ancho es el que diga la PICTURE y no el de un
+      registro.
+      Compilan: `VALUE "TEXTO"` (con espacios dentro), `MOVE` de literal y de
+      campo a campo, `=` y `NOT =` contra literal o contra otro campo, y
+      `DISPLAY`.
+      ★ Todo **DESENROLLADO** cuando el otro lado es un literal: mover `"00"` a
+      un campo son dos `mov` de inmediato, no un bucle. El texto viaja dentro de
+      las instrucciones, como `console::write_const`.
+      ★ **El relleno con espacios no es cosmético**: el campo se llena ENTERO
+      cada vez que se escribe, así que un `MOVE` corto detrás de uno largo no
+      deja cola. Hay un test para eso — un `FILE STATUS` que arrastra la letra de
+      la operación anterior es peor que uno vacío.
+      Se rechaza con motivo: comparar cadenas por ORDEN (`>`, `<`) porque depende
+      del juego de caracteres, y mover texto a un campo numérico (eso es
+      `FUNCTION NUMVAL`).
 
 ---
 
@@ -309,12 +317,12 @@ que ya existe.**
       siendo lo correcto a largo plazo y lo único que hace truncar a un
       `DISPLAY` de WORKING-STORAGE.
 
-- [ ] **1.6 · EBCDIC ↔ ASCII al leer** — M ⛔ (0.7)
+- [ ] **1.6 · EBCDIC ↔ ASCII al leer** — M
       Los datos de fuera vienen en EBCDIC. Una tabla de 256 entradas → **una
       tabla y no un cerebro**; va en `bmo-lower` junto a `packed`, por el mismo
       motivo: no es semántica de ningún lenguaje.
 
-- [ ] **1.7 · `FILE STATUS`** — S ⛔ (0.7)
+- [ ] **1.7 · `FILE STATUS`** — S
       El código de dos dígitos (`00` bien, `10` fin de fichero, `23` no
       encontrado, `35` no existe…). **Todo programa de banca lo mira después de
       cada operación.**
@@ -398,9 +406,9 @@ desbloquea por hora de trabajo.
       Es el sustituto barato de un índice **dentro de memoria**, y tapa parte de
       lo que la fase 4 no puede dar todavía.
 
-- [ ] **2.3 · `STRING` / `UNSTRING`** — M ⛔ (0.7)
-- [ ] **2.4 · `INSPECT`** — M ⛔ (0.7)
-      Los dos son manejo de texto y necesitan que exista el texto.
+- [ ] **2.3 · `STRING` / `UNSTRING`** — M
+- [ ] **2.4 · `INSPECT`** — M
+      Los dos son manejo de texto, y **el texto ya existe** desde `0.7`.
 
 - [ ] **2.8 · `COPY … REPLACING`** — M
       **Así se comparten los layouts de registro entre programas.** Sin esto,
@@ -576,7 +584,9 @@ HECHO   0.5 RECORDS + el AREA + 1.3 MOVE de grupo + bmo-lower::zoned
 HECHO   1.1 + 1.2 REGISTROS BINARIOS ── LEER LO QUE YA EXISTE
         un fichero de largo fijo, campos en su byte, importes empaquetados
 
-AHORA   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT
+HECHO   0.7 TEXTO ── PIC X con caracteres, sin limite de ancho
+
+AHORA   1.7 FILE STATUS ── ya no tiene candado, y todo programa de banca lo mira
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -593,9 +603,9 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
-~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → **`0.7`** → `1.7` → `2.6b` →
-`0.6` → `2.2` → `2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el
-kernel**: `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
+~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → ~~`0.7`~~ → **`1.7`** → `2.6b` →
+`0.6` → `2.3` → `2.4` → `2.2` → `2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `0.2` →
+**luego el kernel**: `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
 ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
@@ -637,3 +647,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | ★ **El COPYBOOK** (`--copybook`) — el byte exacto de cada campo, sacado de la MISMA tabla que emite el `READ` | `registro::Disposicion::copybook` |
 | 2026-08-03 | ★★★ **1.1 + 1.2 REGISTROS BINARIOS** — largo fijo, campos en su byte, y el resto de siete bytes bien llevado | `bmo-lower::archivo::leer_bytes` + `codegen::emit_read/emit_write` |
 | 2026-08-03 | ★ **El VISOR** (`--ver`) — decodifica un fichero binario con el copybook, y sus lectores están atados a los emitidos | `registro::Disposicion::ver` + `*::*_en_rust` |
+| 2026-08-03 | ★ **0.7 TEXTO** — `PIC X(n)` con caracteres de verdad, sin límite de ancho; desbloquea FILE STATUS, STRING e INSPECT | `codegen.rs` (camino de dirección+largo) |

@@ -62,6 +62,15 @@ pub fn mov_r64_r64(out: &mut Vec<u8>, dst: u8, src: u8) {
 }
 
 /// `or <dst>, <src>` (64 bits).
+/// `xor <dst64>, <src64>`. Lo usa la comparación de TEXTO: dos trozos iguales
+/// dan cero, y acumulando con `or` se sabe si toda la cadena coincide sin un
+/// solo salto por dentro.
+pub fn xor_r64_r64(out: &mut Vec<u8>, dst: u8, src: u8) {
+    out.push(rex_w(src, dst));
+    out.push(0x31);
+    out.push(0xC0 | ((src & 7) << 3) | (dst & 7));
+}
+
 pub fn or_r64_r64(out: &mut Vec<u8>, dst: u8, src: u8) {
     alu_rm_r(out, 0x09, dst, src);
 }

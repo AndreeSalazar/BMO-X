@@ -1011,6 +1011,156 @@ impl Codegen {
         self.emit_desempaquetar_area(&d);
     }
 
+    // ── TEXTO (`PIC X(n)`) ──────────────────────────────────────────────
+    //
+    // ## Por qué el texto no pasa por `rax`
+    //
+    // Todo lo demás de este codegen vive en un registro: un importe es un entero
+    // escalado, y `load_var`/`store_var` lo llevan y lo traen. El texto no cabe
+    // en esa forma — un `PIC X(30)` son treinta bytes— así que tiene su propio
+    // camino, que trabaja con **dirección y largo** en vez de con un valor.
+    //
+    // ## Y por qué está DESENROLLADO
+    //
+    // Un literal se conoce al compilar, así que mover `"00"` a un campo no es un
+    // bucle de copia: son dos `mov` de inmediato. Igual la comparación. Sólo el
+    // caso variable-a-variable necesita el copiador de `bmo_lower::memoria`.
+    //
+    // Es la misma decisión que `console::write_const`: el texto viaja DENTRO de
+    // las instrucciones, sin sección de datos y sin relocations.
+    //
+    // ## El relleno con ESPACIOS no es cosmético
+    //
+    // COBOL rellena un campo alfanumérico con espacios, y compara rellenando. Un
+    // `FILE STATUS` de dos letras comparado contra `"00"` tiene que dar igual, y
+    // si el hueco llevara ceros o basura no lo daría. Por eso el campo se llena
+    // ENTERO —hasta su ancho alineado— cada vez que se escribe: así comparar es
+    // mirar los mismos bytes por los dos lados.
+
+    /// Cuántos caracteres declara un `PIC X(n)`, si el dato es de texto.
+    fn texto_de(&self, nombre: &str) -> Option<u32> {
+        self.pic_fields
+            .get(&Self::nombre_base(nombre))
+            .filter(|f| !f.numeric)
+            .map(|f| f.char_count.max(1))
+    }
+
+    /// El hueco que ocupa de verdad: los caracteres redondeados a ocho.
+    ///
+    /// Se compara y se rellena sobre ESTE ancho y no sobre el declarado, para
+    /// que los bytes de sobra estén siempre a espacios y nunca decidan una
+    /// comparación con basura.
+    fn ancho_alineado(chars: u32) -> u32 {
+        (chars + 7) & !7
+    }
+
+    /// Los trozos de ocho bytes de un literal, rellenado con espacios.
+    fn trozos_de_texto(texto: &str, ancho: u32) -> Vec<u64> {
+        let mut bytes: Vec<u8> = texto.as_bytes().to_vec();
+        bytes.truncate(ancho as usize);
+        bytes.resize(ancho as usize, b' ');
+        bytes
+            .chunks(8)
+            .map(|c| {
+                let mut w = [b' '; 8];
+                w[..c.len()].copy_from_slice(c);
+                u64::from_le_bytes(w)
+            })
+            .collect()
+    }
+
+    /// `MOVE "literal" TO <campo de texto>` — sin bucle: el literal se conoce
+    /// al compilar, así que son `mov` de inmediato y ya.
+    fn emit_store_texto_literal(&mut self, off: i32, texto: &str, chars: u32) {
+        let ancho = Self::ancho_alineado(chars);
+        for (i, w) in Self::trozos_de_texto(texto, ancho).into_iter().enumerate() {
+            self.emit_asm(|a| { a.mov_imm64(Reg::Rax, w).unwrap(); });
+            let d = off + (i as i32) * 8;
+            self.code.extend_from_slice(&[0x48, 0x89, 0x85]); // mov [rbp+disp32], rax
+            self.code.extend_from_slice(&d.to_le_bytes());
+        }
+    }
+
+    /// `MOVE <texto> TO <texto>` — copia lo que quepa y rellena con espacios.
+    ///
+    /// Rellenar es obligatorio: si el origen es más corto, lo que quedara del
+    /// destino sería del MOVE anterior, y un `FILE STATUS` que arrastra la letra
+    /// de la operación de antes es peor que uno vacío.
+    fn emit_move_texto_var(&mut self, dst: &str, src: &str) {
+        let (Some(dst_chars), Some(src_chars)) = (self.texto_de(dst), self.texto_de(src)) else {
+            return;
+        };
+        let (Some(dst_off), Some(src_off)) = (
+            self.var_offsets.get(&Self::nombre_base(dst)).copied(),
+            self.var_offsets.get(&Self::nombre_base(src)).copied(),
+        ) else {
+            return;
+        };
+        let ancho = Self::ancho_alineado(dst_chars);
+        let n = dst_chars.min(src_chars);
+
+        // Primero el relleno ENTERO, y luego encima lo que se copia. Al revés
+        // —copiar y luego rellenar la cola— haría falta calcular dos
+        // direcciones y una resta; así es una regla y no dos.
+        self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi, [rbp+disp32]
+        self.code.extend_from_slice(&dst_off.to_le_bytes());
+        self.emit_asm(|a| { a.mov_imm64(Reg::Rax, b' ' as u64).unwrap(); });
+        self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, ancho as u64).unwrap(); });
+        bmo_lower::memoria::rellenar(&mut self.code);
+
+        self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi, [rbp+disp32]
+        self.code.extend_from_slice(&dst_off.to_le_bytes());
+        self.code.extend_from_slice(&[0x48, 0x8D, 0xB5]); // lea rsi, [rbp+disp32]
+        self.code.extend_from_slice(&src_off.to_le_bytes());
+        self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, n as u64).unwrap(); });
+        bmo_lower::memoria::copiar(&mut self.code);
+    }
+
+    /// `DISPLAY <campo de texto>` — los bytes tal cual, y su salto de línea.
+    fn emit_display_texto(&mut self, nombre: &str, chars: u32) {
+        let Some(off) = self.exige_declarado(&Self::nombre_base(nombre)) else { return };
+        self.code.extend_from_slice(&[0x4C, 0x8D, 0x85]); // lea r8, [rbp+disp32]
+        self.code.extend_from_slice(&off.to_le_bytes());
+        x86::mov_r32_imm32(&mut self.code, x86::R9, chars);
+        bmo_lower::console::write_buffer(&mut self.code);
+        bmo_lower::console::write_const(&mut self.code, b"\n");
+    }
+
+    /// Deja en `rax` **cero si el campo es igual** al otro operando.
+    ///
+    /// Cero-es-igual y no uno-es-igual porque así la comparación se acumula con
+    /// un `or`: se van juntando las diferencias de cada trozo y al final basta
+    /// un `test`. Un booleano por trozo pediría un salto por trozo.
+    fn emit_texto_diferencia(&mut self, campo: &str, otro: &str) -> Option<()> {
+        let chars = self.texto_de(campo)?;
+        let ancho = Self::ancho_alineado(chars);
+        let off = self.var_offsets.get(&Self::nombre_base(campo)).copied()?;
+
+        // El otro lado: otro campo de texto, o un literal ya conocido.
+        let derecha: Vec<u64> = match self.texto_de(otro) {
+            Some(_) => Vec::new(), // se resuelve leyendo memoria, abajo
+            None => Self::trozos_de_texto(otro, ancho),
+        };
+        let otro_off = self.var_offsets.get(&Self::nombre_base(otro)).copied();
+        let es_var = self.texto_de(otro).is_some() && otro_off.is_some();
+
+        x86::zero_r32(&mut self.code, x86::RAX);
+        for i in 0..(ancho / 8) {
+            let d = off + (i as i32) * 8;
+            x86::mov_r64_at_reg_disp32(&mut self.code, x86::RDX, 5 /* rbp */, d);
+            if es_var {
+                let od = otro_off.unwrap() + (i as i32) * 8;
+                x86::mov_r64_at_reg_disp32(&mut self.code, x86::RCX, 5, od);
+            } else {
+                let w = derecha.get(i as usize).copied().unwrap_or(u64::from_le_bytes([b' '; 8]));
+                self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, w).unwrap(); });
+            }
+            x86::xor_r64_r64(&mut self.code, x86::RDX, x86::RCX);
+            x86::or_r64_r64(&mut self.code, x86::RAX, x86::RDX);
+        }
+        Some(())
+    }
+
     /// `VALUE` — el valor con el que arranca cada dato.
     ///
     /// Se emite como una tanda de `MOVE` implicitos al principio del programa,
@@ -1030,6 +1180,15 @@ impl Codegen {
                 continue;
             }
             let Some(valor) = item.value.clone() else { continue };
+            // Un `VALUE "TEXTO"` se guarda como caracteres, rellenando el campo
+            // entero con espacios. Sin el relleno, comparar contra `"00"` daría
+            // distinto por lo que hubiera detrás.
+            if let Some(chars) = self.texto_de(&item.name) {
+                if let Some(off) = self.exige_declarado(&item.name) {
+                    self.emit_store_texto_literal(off, &valor, chars);
+                }
+                continue;
+            }
             let escala = item.scale();
             match item.occurs {
                 None => {
@@ -1198,6 +1357,14 @@ impl Codegen {
     /// dejado de ser un entero; lo unico que cambia es donde va la coma al
     /// escribirlo.
     fn emit_display_var(&mut self, nombre: &str) {
+        // Un campo de texto se enseña TAL CUAL: sus bytes. Pasarlo por el
+        // formateador decimal imprimiría el número que forman, que no es lo que
+        // hay escrito.
+        if let Some(chars) = self.texto_de(nombre) {
+            let nombre = nombre.to_string();
+            self.emit_display_texto(&nombre, chars);
+            return;
+        }
         let escala = self.var_scale(nombre);
         self.load_var(nombre);
         // ★ Si el dato lleva PIC de EDICION, lo que sale no es el numero: es
@@ -1562,6 +1729,30 @@ impl Codegen {
                             "MOVE {src} TO {dst}: uno es un GRUPO y el otro un campo. \
                              Mezclarlos pide relleno con espacios, y eso necesita que \
                              exista el texto (PIC X)"
+                        ),
+                    ));
+                    return;
+                }
+                // ── TEXTO ──
+                if let Some(chars) = self.texto_de(dst) {
+                    let (src, dst) = (src.clone(), dst.clone());
+                    if self.texto_de(&src).is_some() {
+                        self.emit_move_texto_var(&dst, &src);
+                    } else if let Some(off) = self.exige_declarado(&Self::nombre_base(&dst)) {
+                        // Un literal, o un número que se mueve a un campo de
+                        // texto: en los dos casos lo que entra son sus
+                        // caracteres, que es lo que dice el estándar.
+                        self.emit_store_texto_literal(off, &src, chars);
+                    }
+                    return;
+                }
+                if self.texto_de(src).is_some() {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!(
+                            "MOVE {src} TO {dst}: {src} es de TEXTO y {dst} es numerico. \
+                             Convertir texto a numero es `FUNCTION NUMVAL`, que todavia \
+                             no existe"
                         ),
                     ));
                     return;
@@ -2117,6 +2308,50 @@ impl Codegen {
             } else {
                 self.emit_jump_if_false(&expandida, label);
             }
+            return;
+        }
+
+        // ── Comparación de TEXTO ──
+        //
+        // Se detecta aquí y no en el parser porque sólo el codegen sabe qué
+        // datos existen y cuál de ellos es alfanumérico. Sólo `=` y `NOT =`:
+        // un `>` entre cadenas es orden de COLACIÓN, y eso depende del juego de
+        // caracteres — decidirlo por ASCII a la callada daría un orden que no es
+        // el de un mainframe.
+        let (izq, der) = match cond {
+            CobolCondition::Equal(a, b) | CobolCondition::NotEqual(a, b) => (a.clone(), b.clone()),
+            CobolCondition::Greater(a, b)
+            | CobolCondition::Less(a, b)
+            | CobolCondition::GreaterOrEqual(a, b)
+            | CobolCondition::LessOrEqual(a, b) => {
+                if self.texto_de(a).is_some() || self.texto_de(b).is_some() {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!(
+                            "comparar {a} con {b} por orden: son de TEXTO, y el orden entre \
+                             cadenas depende del juego de caracteres. Hoy solo valen `=` y \
+                             `NOT =`"
+                        ),
+                    ));
+                    return;
+                }
+                (String::new(), String::new())
+            }
+            CobolCondition::Nombre(_) => (String::new(), String::new()),
+        };
+        if self.texto_de(&izq).is_some() || self.texto_de(&der).is_some() {
+            // El campo de texto va a la izquierda; el otro lado puede ser otro
+            // campo o un literal.
+            let (campo, otro) =
+                if self.texto_de(&izq).is_some() { (izq, der) } else { (der, izq) };
+            if self.emit_texto_diferencia(&campo, &otro).is_none() {
+                return;
+            }
+            x86::test_r64_r64(&mut self.code, x86::RAX, x86::RAX);
+            let iguales = matches!(cond, CobolCondition::Equal(_, _));
+            // rax == 0 quiere decir IGUALES.
+            let cc = if iguales == salta_si_cierta { 0x84 } else { 0x85 };
+            self.emit_jcc(cc, label);
             return;
         }
 
