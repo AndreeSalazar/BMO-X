@@ -473,8 +473,9 @@ tipo LLVM), `module.rs`.
   `(*fp)(args)` (CallPtr), **floats SSE** (ruta xmm paralela: literales, +−×÷,
   comparaciones comisd, cvtsi2sd/cvttsd2si, retorno en xmm0; float globales y
   args-de-función = deferido honesto).
-  ⚠️ **Con una salvedad medida el 2026-08-02**: de los **9 tests de coma
-  flotante, 0 EJECUTAN** — los nueve comparan ventanas de bytes
+  ✅ **Y desde el 2026-08-02 la ruta SSE EJECUTA**: el emulador modela las
+  quince instrucciones escalares que emite BMO C, y hay 7 tests que corren de
+  verdad. Antes: de los **9 tests de coma flotante, 0 EJECUTABAN** — los nueve comparan ventanas de bytes
   (`bef.windows(3).any(...)`), que es el método que el propio emulador declara
   insuficiente en su cabecera. El emulador **no tiene SSE**, así que esa ruta
   entera compila, da verde y **ningún CPU la ha ejecutado**. Es la misma forma

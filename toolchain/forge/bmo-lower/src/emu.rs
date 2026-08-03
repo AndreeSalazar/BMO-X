@@ -78,13 +78,14 @@
 //!
 //! ## Los agujeros concretos, con nombre (auditado 2026-08-02)
 //!
-//! - **No hay SSE. Ni un `xmm`.** Y la consecuencia se puede medir: de los 9
-//!   tests de coma flotante de BMO C, **0 ejecutan** — los nueve comparan
-//!   ventanas de bytes (`bef.windows(3).any(...)`), que es exactamente el
-//!   método que la cabecera de este archivo declara insuficiente. La ruta de
-//!   floats compila, tiene tests verdes y **ningún CPU la ha ejecutado nunca**.
-//!   Es la misma forma que tenía el bug de `malloc`. **Es la palanca de mayor
-//!   valor para subir la fidelidad hoy.**
+//! - ~~**No hay SSE**~~ — **TAPADO el 2026-08-02.** Se modelan las quince
+//!   instrucciones escalares que BMO C emite (`movsd`/`movss`, las cuatro
+//!   aritméticas, `comisd`, `xorpd`, `cvtsi2sd`, `cvttsd2si`, `cvtsd2ss`,
+//!   `cvtss2sd`, `movq xmm,r64`), y con ellas la ruta de coma flotante
+//!   **se ejecuta por primera vez**: 7 tests que corren donde antes había 9
+//!   que sólo miraban bytes. Lo que sigue sin modelarse es SSE **empaquetado**
+//!   — y el `panic` por opcode desconocido lo dirá el día que alguien lo
+//!   emita, que es la respuesta correcta.
 //! - **La memoria es un mapa disperso**: toda dirección funciona. No hay fallo
 //!   de página, ni aliasing, ni marcos no contiguos, así que `KIND_MEMORIA`
 //!   puede probar aquí sus límites y sus rangos, pero **no su física**. Por eso
@@ -180,6 +181,26 @@ struct Abierto {
 
 pub struct Machine {
     pub regs: [u64; 16],
+    /// **Los registros SSE, mitad baja.**
+    ///
+    /// ═══ Por qué sólo la mitad baja ═══
+    ///
+    /// Un `xmm` son 128 bits, y aquí se guardan 64. No es un atajo: **todo lo
+    /// que BMO emite es SSE ESCALAR** — `movsd`, `addsd`, `comisd`,
+    /// `cvtsi2sd`. Ninguna de esas instrucciones toca la mitad alta salvo para
+    /// dejarla como estaba, y nada en el toolchain emite una operación
+    /// empaquetada.
+    ///
+    /// Modelar 128 bits para que 64 estén siempre a cero sería un emulador más
+    /// grande que dice exactamente lo mismo. El día que alguien emita
+    /// `addpd`, el `panic` por opcode desconocido lo dirá — que es la
+    /// respuesta correcta y la razón de que este emulador reviente en vez de
+    /// adivinar.
+    ///
+    /// ★ La única excepción es `xorpd xmm,xmm`, que sí borra los 128. Como
+    /// sólo se emite consigo mismo (para hacer 0.0), poner la mitad baja a
+    /// cero es exactamente correcto.
+    pub xmm: [u64; 16],
     pub code: Vec<u8>,
     pub rip: usize,
     /// Texto que el kernel habría pintado.
@@ -270,6 +291,7 @@ impl Machine {
     pub fn new(code: Vec<u8>) -> Self {
         let mut m = Self {
             regs: [0; 16],
+            xmm: [0; 16],
             code,
             rip: 0,
             console: String::new(),
@@ -901,6 +923,19 @@ impl Machine {
 
     /// Lee un solo byte del operando. En registro es el byte BAJO — con
     /// REX presente `dl`/`sil` son eso y no los registros altos heredados.
+    /// El operando de una instrucción SSE: registro `xmm` o 64 bits de memoria.
+    ///
+    /// Existe porque [`Self::load`] resuelve `Operand::Reg` contra los enteros,
+    /// y aquí el mismo número significa otro banco de registros. Confundirlos
+    /// da un `addsd` que suma el valor de `rax` interpretado como double — un
+    /// número enorme y sin sentido, del que costaría volver hasta aquí.
+    fn leer_xmm(&self, op: Operand) -> u64 {
+        match op {
+            Operand::Reg(r) => self.xmm[r],
+            Operand::Mem(a) => self.read_u64(a),
+        }
+    }
+
     fn load_u8(&self, op: Operand) -> u64 {
         match op {
             Operand::Reg(r) => self.regs[r] & 0xFF,
@@ -967,11 +1002,19 @@ impl Machine {
         // obligatorio— eso reventaba en cuanto alguien contara bits.
         let mut lock = false;
         let mut f3 = false;
+        // ★ `F2` — el prefijo del ESCALAR DOBLE, y no estaba.
+        //
+        // Sin él, el primer `movsd` reventaba el emulador con "opcode 0xF2 no
+        // emitido por BMO" — que era mentira: BMO lo emite desde que C tiene
+        // `double`. Lo que pasaba es que **ningún test ejecutaba coma
+        // flotante**, así que el prefijo nunca llegaba hasta aquí.
+        let mut f2 = false;
         loop {
             match byte {
                 0x66 => op16 = true,
                 0xF0 => lock = true,
                 0xF3 => f3 = true,
+                0xF2 => f2 = true,
                 _ => break,
             }
             byte = self.fetch_u8();
@@ -1354,6 +1397,145 @@ impl Machine {
                 let second = self.fetch_u8();
                 match second {
                     0x05 => self.do_syscall(),
+
+                    // ══ SSE ESCALAR ══════════════════════════════════════
+                    //
+                    // Las catorce que BMO C emite para `float` y `double`, y
+                    // ni una más. Hasta hoy **ninguna se ejecutaba**: los 9
+                    // tests de coma flotante comparaban ventanas de bytes, que
+                    // es el método que la cabecera de este archivo declara
+                    // insuficiente. La ruta compilaba, daba verde, y ningún
+                    // CPU la había corrido.
+                    //
+                    // El prefijo decide el ancho, que es como funciona SSE:
+                    // `F2` escalar doble, `F3` escalar simple, `66` entero
+                    // empaquetado o comparación ordenada.
+
+                    // movsd/movss xmm, r/m — CARGA
+                    0x10 if f2 || f3 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = match src {
+                            Operand::Reg(r) => self.xmm[r],
+                            Operand::Mem(a) => {
+                                if f3 {
+                                    // `movss` carga 32 bits y **pone a cero el
+                                    // resto** cuando viene de memoria. Desde
+                                    // otro registro no lo haría; aquí sólo se
+                                    // emite desde memoria.
+                                    (self.read_u64(a) & 0xFFFF_FFFF) as u32 as u64
+                                } else {
+                                    self.read_u64(a)
+                                }
+                            }
+                        };
+                        self.xmm[reg] = v;
+                    }
+                    // movsd/movss r/m, xmm — ALMACENA
+                    0x11 if f2 || f3 => {
+                        let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = self.xmm[reg];
+                        match dst {
+                            Operand::Reg(r) => self.xmm[r] = v,
+                            // ★ El ancho importa: `movss` escribe CUATRO
+                            // bytes. Escribir ocho pisaría el vecino, que es
+                            // exactamente el bug que este emulador ya se comió
+                            // una vez con `mov [mem], eax`.
+                            Operand::Mem(a) => self.store(Operand::Mem(a), v, if f3 { 4 } else { 8 }),
+                        }
+                    }
+                    // addsd / mulsd / subsd / divsd
+                    0x58 | 0x59 | 0x5C | 0x5E if f2 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let b = f64::from_bits(self.leer_xmm(src));
+                        let a = f64::from_bits(self.xmm[reg]);
+                        // El orden NO es conmutativo en dos de las cuatro, y
+                        // ése fue el bug que el banco de pruebas ya cazó una
+                        // vez en los enteros: el destino es el operando
+                        // IZQUIERDO.
+                        let r = match second {
+                            0x58 => a + b,
+                            0x59 => a * b,
+                            0x5C => a - b,
+                            _ => a / b,
+                        };
+                        self.xmm[reg] = r.to_bits();
+                    }
+                    // cvtsd2ss (F2) / cvtss2sd (F3) — cambiar de precisión
+                    0x5A if f2 || f3 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = self.leer_xmm(src);
+                        self.xmm[reg] = if f2 {
+                            // double -> float: **se pierde precisión aquí**, y
+                            // tiene que perderse. Guardar el double en un
+                            // `float` y leerlo daría más dígitos de los que
+                            // caben, y el test no vería lo que ve el silicio.
+                            (f64::from_bits(v) as f32).to_bits() as u64
+                        } else {
+                            (f32::from_bits(v as u32) as f64).to_bits()
+                        };
+                    }
+                    // comisd — comparar y dejar el resultado en las BANDERAS
+                    0x2F if op16 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let b = f64::from_bits(self.leer_xmm(src));
+                        let a = f64::from_bits(self.xmm[reg]);
+                        // ★ `comisd` pone ZF/CF/PF, **no** SF ni OF, y por eso
+                        // los saltos que le siguen son los SIN SIGNO (`ja`,
+                        // `jb`), no `jg`/`jl`. Modelarlo con SF sería hacer
+                        // pasar código que en el silicio salta al revés.
+                        //
+                        // No-ordenado (algún NaN) pone las tres a 1. No pasa
+                        // hoy, y está dicho para que el día que pase no
+                        // parezca "menor que".
+                        if a.is_nan() || b.is_nan() {
+                            self.zf = true;
+                            self.cf = true;
+                        } else {
+                            self.zf = a == b;
+                            self.cf = a < b;
+                        }
+                        self.sf = false;
+                        self.of = false;
+                    }
+                    // xorpd xmm, xmm — el cero de la coma flotante
+                    0x57 if op16 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = self.leer_xmm(src);
+                        self.xmm[reg] ^= v;
+                    }
+                    // movq xmm, r64 — los BITS de un entero, tal cual
+                    //
+                    // ★ NO es una conversión: es cómo BMO C mete un literal
+                    // `double` en un registro SSE. El compilador pone los bits
+                    // del número en `rax` con un `mov imm64` y los mueve aquí
+                    // sin tocarlos. Confundir esto con `cvtsi2sd` daría
+                    // `4614256656552045848.0` donde tiene que haber `3.14`.
+                    //
+                    // También lo usa la NEGACIÓN, que en coma flotante es un
+                    // `xor` con el bit de signo — no una resta contra cero,
+                    // que daría `-0.0` mal para el cero.
+                    0x6E if op16 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = self.load(src, wide);
+                        self.xmm[reg] = if wide { v } else { v & 0xFFFF_FFFF };
+                    }
+                    // cvtsi2sd xmm, r64 — entero con signo a double
+                    0x2A if f2 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        // CON SIGNO: `-1` tiene que dar `-1.0` y no
+                        // 18446744073709551615.0.
+                        let v = self.load(src, true) as i64;
+                        self.xmm[reg] = (v as f64).to_bits();
+                    }
+                    // cvttsd2si r64, xmm — double a entero, TRUNCANDO
+                    0x2C if f2 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = f64::from_bits(self.leer_xmm(src));
+                        // `cvtt` trunca hacia cero; `cvt` (0x2D) redondearía.
+                        // BMO sólo emite el que trunca, que es lo que manda C
+                        // para un cast a entero: `(int)2.7` son 2.
+                        self.write_reg(reg, (v as i64) as u64, true);
+                    }
                     // movsx reg, r/m8 — carga un char CON signo
                     0xBE => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);

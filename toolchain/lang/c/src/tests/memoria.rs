@@ -173,3 +173,91 @@ fn compilar_para_ring0_se_rechaza_diciendo_por_que() {
 fn alloc_fmt(e: &CError) -> String {
     format!("{e:?}")
 }
+
+// ══ COMA FLOTANTE, EJECUTADA ══════════════════════════════════════════
+//
+// De los 9 tests de `float`/`double` que ya existían, **ninguno ejecutaba**:
+// los nueve comparaban ventanas de bytes (`bef.windows(3).any(...)`), que es
+// exactamente el método que la cabecera de `bmo_lower::emu` declara
+// insuficiente — «si el autor entendió mal una codificación, el test la repite
+// y pasa igual de mal».
+//
+// Estos corren. Es la primera vez que la ruta SSE de BMO C se ejecuta en algún
+// sitio.
+
+/// Suma y resta de doubles, impresas como entero para no depender de `%f`
+/// (que todavía no se compila).
+#[test]
+fn los_doubles_suman_y_restan() {
+    let out = run_c(
+        "int main() { double a; double b; a = 2.5; b = 1.25; \
+         printf(\"%d %d\n\", (int)(a + b), (int)(a - b)); return 0; }",
+    );
+    assert_eq!(out, "3 1\n");
+}
+
+/// **El orden importa en las NO conmutativas.**
+///
+/// Es el mismo fallo que el banco ya cazó una vez en los enteros: se emitían
+/// sobre `b - a`. Con `+` y `*` no se nota; con `-` y `/`, sí.
+#[test]
+fn las_no_conmutativas_respetan_el_orden() {
+    let out = run_c(
+        "int main() { double a; double b; a = 10.0; b = 4.0; \
+         printf(\"%d %d\n\", (int)(a - b), (int)(a / b)); return 0; }",
+    );
+    assert_eq!(out, "6 2\n");
+}
+
+/// `cvtsi2sd` es **con signo**: −7 tiene que dar −7.0, no 1.8e19.
+#[test]
+fn el_entero_negativo_a_double_conserva_el_signo() {
+    let out = run_c(
+        "int main() { int n; double d; n = 0 - 7; d = n; \
+         printf(\"%d\n\", (int)(d * 2.0)); return 0; }",
+    );
+    assert_eq!(out, "-14\n");
+}
+
+/// `cvttsd2si` **trunca hacia cero**, no redondea. `(int)2.9` son 2.
+#[test]
+fn el_cast_a_entero_trunca_no_redondea() {
+    let out = run_c(
+        "int main() { printf(\"%d %d\n\", (int)2.9, (int)(0.0 - 2.9)); return 0; }",
+    );
+    assert_eq!(out, "2 -2\n");
+}
+
+/// `comisd` deja el resultado en ZF/CF, y los saltos que le siguen son los
+/// SIN signo. Si el emulador lo modelara con SF, esto saltaría al revés.
+#[test]
+fn las_comparaciones_de_double_deciden_bien() {
+    let out = run_c(
+        "int main() { double a; double b; a = 1.5; b = 2.5;\n\
+         if (a < b) { printf(\"menor\n\"); } else { printf(\"MAL\n\"); }\n\
+         if (b > a) { printf(\"mayor\n\"); } else { printf(\"MAL\n\"); }\n\
+         if (a == a) { printf(\"igual\n\"); } else { printf(\"MAL\n\"); }\n\
+         return 0; }",
+    );
+    assert_eq!(out, "menor\nmayor\nigual\n");
+}
+
+/// Un `float` guarda MENOS precisión que un `double`, y tiene que perderla.
+/// Si `cvtsd2ss` no recortara, el test vería más dígitos que el silicio.
+#[test]
+fn un_float_pierde_precision_y_eso_se_ve() {
+    let out = run_c(
+        "int main() { float f; double d; d = 1.0 / 3.0; f = d;\n\
+         printf(\"%d\n\", (int)((d - f) != 0.0)); return 0; }",
+    );
+    assert_eq!(out, "1\n", "guardar en float y volver NO puede dar el mismo numero");
+}
+
+/// El cero de la coma flotante se hace con `xorpd`, y tiene que ser cero.
+#[test]
+fn un_double_sin_inicializar_vale_cero() {
+    let out = run_c(
+        "int main() { double d; printf(\"%d\n\", (int)(d + 5.0)); return 0; }",
+    );
+    assert_eq!(out, "5\n");
+}
