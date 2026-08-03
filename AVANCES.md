@@ -15,6 +15,34 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
 
+## ★★★★ 2026-08-02, QUINTA tanda — LA LISTA DE PENDIENTES SE VACIÓ
+
+No queda **nada** escrito-sin-estrenar de las seis cosas que abrieron el día.
+Todo con foto:
+
+- **`ls` enseña**, con `-- historial --` al subir con RePág. El arreglo del
+  escritor/lector (Ep. 26) confirmado.
+- **★ EL FOCO ENTERO**: el conmutador de **Alt+Tab** sale con su ventanita
+  (`> Ejecutar` / `Datos (ESTRATOS)`) y el modo escrito debajo
+  (`modo: normal (Alt+M)`). 17 tests que llevaban desde el 2026-08-02 sin que
+  nadie pulsara esas teclas — pulsadas y correctas.
+- **★★ `KIND_MEMORIA`, VERIFICADA POR LOS DOS LADOS.** `info` dice
+  **`a Ring 3   8.4 MiB   pedida con KIND_MEMORIA`**. Eso no lo dice el
+  programa: lo dice el KERNEL, con el contador que no leía nadie
+  (`INFO_MEM_ENTREGADA`). 8.4 MiB = el doble búfer del compositor.
+- **★ Ada corriendo desde el escritorio**: `run ada/cierre.bex` →
+  `CIERRE EN ADA - BANCO BMO`, `59.97`, `39.98`. Tercer lenguaje, lanzado desde
+  Ring 3 y con su salida en la rejilla.
+- **`info` entero**: 6 físicos / 12 hilos, TSC 3.70 GHz medido, 14.8 GiB,
+  kernel 2.1 MiB, 2 ranuras de 64, disco listo, datos montado para escritura.
+- **Las tres ventanas conviven**: Ejecutar + Datos + kernel, con Z-order y foco.
+
+**Estado real del sistema**: el escritorio arranca, lanza los tres lenguajes,
+lee el disco, enseña el almacén, deja leer el log de Ring 0, y responde al
+teclado y al ratón. **Eso es un sistema operativo usable, no una demo.**
+
+---
+
 ## ★★★ VERIFICADO EN EL RYZEN (2026-08-02, cuarta tanda) — la tanda grande
 
 Cinco de las seis cosas que estaban escritas y sin estrenar quedan **cerradas
@@ -223,8 +251,8 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | **BMO C ("CONTROL ABSOLUTE")** | ✅ **32 de 32 sondas del lenguaje** — completo para lo que DOOM pide. 216 tests que EJECUTAN. `static`, prototipos, varargs, arrays en agregados, `int a,b;`. libc 11/15 |
 | **BMO Ada** | ✅ **verificado en el Ryzen el 2026-07-30**, el mismo día que nació el compilador. Perfil ZFP + Annex F: Annex F copió el `PICTURE` de COBOL, así que el decimal ya estaba pagado |
 | C++ frontend | ◐ ~900 líneas y **desborda la pila con una clase de dos métodos**. Alcance escrito en `lang/cpp/BRECHA.md` |
-| **El FOCO del escritorio** (`bmo_input::foco`) | ✍️ Alt+Tab con pila MRU, tres modos, F12, el foco arrastra el Z-order. 17 tests; **espera que alguien lo pulse en metal** |
-| **`KIND_MEMORIA`** (un proceso pide memoria) | ✍️ cableada de punta a punta (kernel + userland + `malloc` en C) **y con su programa**: `c/memc.bex` la ejerce entera, 7 tests que EJECUTAN. Ningún CPU la ha llamado todavía |
+| **El FOCO del escritorio** (`bmo_input::foco`) | ✅ **EN METAL** (2026-08-02): Alt+Tab con su conmutador, pila MRU, `modo: normal (Alt+M)`, el foco arrastra el Z-order. 17 tests y la foto |
+| **`KIND_MEMORIA`** (un proceso pide memoria) | ✅ **EN METAL, por los dos lados**: `info` dice `a Ring 3  8.4 MiB  pedida con KIND_MEMORIA` — lo dice el KERNEL. Su primer cliente es el doble búfer del compositor. Más `c/memc.bex` y 7 tests que EJECUTAN |
 | **Write-combining del framebuffer** | ✅ PAT programado + `sfence` por fotograma. Sin la barrera, lo pintado se quedaba en el búfer |
 | **c-gen** (la fábrica que mide el compilador) | ✅ sondas que COMPILAN, censo de 91 elementos de C (25 fuera) y 49 de C++ (17 fuera) |
 | **Driver de disco (AHCI/SATA)** | ✅ **LEE Y MONTA**: GPT + FAT32 + volumen de datos con escritor. El NVMe de esta maquina es el disco de **Windows** — nunca se toca |
