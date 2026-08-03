@@ -82,10 +82,34 @@ desbloquean mucho: hacerlas después significa hacer dos veces lo de en medio.
       se ignoraba en silencio.
 
 - [ ] **0.5 · Records anidados con posiciones fijas** — M
+      ⛔ **MOVIDA A LA FASE 1: depende de 1.5, y eso se descubrió midiendo el
+      2026-08-03.** Ver el aviso de abajo. Sigue aquí sólo para que quede el
+      rastro de por qué se movió.
       Grupos `01`/`05`/`10` donde cada campo cae en **su offset dentro del
       registro**. Hoy sólo existe el grupo `01` + `05` que usa `OCCURS`, y el
       registro de un fichero es **un solo campo**.
-      Es el requisito directo de toda la fase 1.
+
+> ## ⚠ Lo que se descubrió al llegar a 0.5, y que reordena el plan
+>
+> **Un campo no puede caer en su offset mientras cada dato ocupe su propia
+> ranura de ocho bytes.** Medido en `codegen.rs`: el reparto de la pila hace
+> `let aligned = (size + 7) & !7` **por dato**, y `load_var`/`store_var` mueven
+> con `mov rax, [rbp+off]` de 64 bits. Un `PIC 9(3)` contiguo mide tres bytes, y
+> escribirlo con un `mov` de ocho **se lleva por delante al vecino**.
+>
+> O sea que "cada campo en su offset" y "un `DISPLAY` es un entero de 64 bits"
+> son incompatibles, y **1.5 va primero**. Eso convierte a 1.5 —que estaba
+> aparcada como *la decisión cara*— en la llave de toda la fase 1, no en un
+> extra.
+>
+> El orden bueno pasa a ser: **1.5 → 0.5 → 1.2 → 1.1**.
+>
+> Y hay una consecuencia que conviene ver antes de empezar: el día que un
+> `DISPLAY` mida lo que dice su PICTURE, **empezará a truncar**, igual que ya
+> hace el `COMP-3`. Eso cambia el resultado de programas que hoy corren en el
+> Ryzen. No es una regresión, es el estándar — pero hay que verlo venir, tener
+> el ejemplo del nivel 7 delante (que enseña justo esa diferencia) y decidirlo a
+> propósito.
 
 ---
 
@@ -119,15 +143,20 @@ para empezar de cero.
       formato depende de un campo de tipo — el patrón está en todos lados y hoy
       se rechaza.
 
-- [ ] **1.5 ⚠ `DISPLAY` como ZONED DECIMAL real** — L ⚠
+- [ ] **1.5 ★⚠ `DISPLAY` como ZONED DECIMAL real — LA LLAVE DE ESTA FASE** — L ⚠
       Hoy un campo `DISPLAY` es un **entero de 64 bits** con la escala de su
       PIC, así que **no trunca al ancho de su PICTURE** — por eso `PIC 9(3)`
       guarda `12345`. En COBOL de verdad es *un byte por dígito*, con el signo
       sobrepunzado en el último.
-      ⚠ **La decisión más cara de esta lista**, y por eso no está antes:
-      cambiarlo toca **todo** lo que ya funciona y ejecuta en el Ryzen. La
-      alternativa honesta es dejarlo escrito como límite conocido y hacerlo sólo
-      cuando 1.1 lo obligue. **Escribir la decisión antes de tocar una línea.**
+      ★ **Va la PRIMERA de la fase**, no la quinta: mientras cada dato ocupe su
+      ranura de ocho bytes, ningún campo puede caer en su offset dentro de un
+      registro (ver el aviso al final de la fase 0). Sin esto no hay 0.5, y sin
+      0.5 no hay 1.1 ni 1.2 — o sea, no hay forma de leer un fichero de fuera.
+      ⚠ **Es la decisión más cara de la lista.** Toca todo lo que ya funciona y
+      ejecuta en el Ryzen, y el día que entre los campos **empezarán a truncar**
+      igual que ya hace el `COMP-3`. Eso es el estándar, no una regresión, pero
+      cambia la salida de programas que hoy corren. **Escribir la decisión antes
+      de tocar una línea**, con el ejemplo del nivel 7 delante.
 
 - [ ] **1.6 · EBCDIC ↔ ASCII al leer** — M
       Los datos de fuera vienen en EBCDIC. Una tabla de 256 entradas, que en
@@ -319,11 +348,11 @@ el despachador.**
 ## El orden corto, para no leer todo
 
 ```
- 0.1 VALUE ──┐
- 0.2 PARSER ─┼─→ FASE 2 (los verbos)
- 0.3 OR ─────┘
- 0.4 PARRAFOS ──→ 5.3, 6.x
- 0.5 RECORDS ───→ FASE 1 (leer datos reales)
+ 0.1 VALUE ✅
+ 0.3 OR ✅  ──→ (cayeron con el los 88 con THRU y con varios valores)
+ 0.4 PARRAFOS ✅ ──→ 5.3, 6.x
+ 0.2 PARSER ──→ FASE 2 (los verbos)
+ 1.5 ZONED ──→ 0.5 RECORDS ──→ 1.2 ──→ 1.1 (leer ficheros de fuera)
 
  3.1/3.2/3.3 KIND_ARCHIVO ──→ 1.1, FASE 4, FASE 5
  3.4 ESTRATOS ESCRIBE ──────→ 4.6, FASE 7
@@ -331,9 +360,16 @@ el despachador.**
  6.1 EL ENLAZADOR ──────────→ 6.2..6.6, y de paso la libc y C++
 ```
 
-**Si hay que elegir UNA cosa por sesión**, el orden que menos trabajo tira:
-`0.1` → `0.3` → `0.2` → `0.4` → `0.5` → `2.1` → `2.6` → `1.7` → `3.1` → `3.3` →
-`1.1` → `3.2` → `4.1` → `4.3` → …
+**Si hay que elegir UNA cosa por sesión**, el orden que menos trabajo tira
+(tachado lo hecho el 2026-08-03):
+
+~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → **`0.2`** → `1.7` → `2.1` → `2.6` → `1.5` →
+`0.5` → `3.1` → `3.3` → `1.2` → `1.1` → `3.2` → `4.1` → `4.3` → …
+
+Cambió respecto de la primera versión por dos hallazgos: **1.5 subió** (sin ella
+no hay records con posiciones fijas, y sin eso no hay fase 1), y **1.7 bajó** —
+`FILE STATUS` es barato, no depende de nadie y hace falta en cuanto se toque
+E/S de verdad.
 
 ---
 

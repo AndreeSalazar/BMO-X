@@ -10,7 +10,7 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-03**: **638 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
+> **Al 2026-08-03**: **669 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
 > el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
 > Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
 > es lo que hace el proyecto **terminable**.
@@ -46,6 +46,31 @@ Nueve fases con casillas, de "el suelo del compilador" a "un banco pequeño de
 punta a punta en el Ryzen". Cada tarea dice **qué la bloquea** y **cómo se sabe
 que está hecha**. `BANCA_REAL.md` dice qué falta y por qué; el plan dice en qué
 orden y quién depende de quién.
+
+### La FASE 0 del plan, hecha entera menos el parser (misma sesión)
+
+- **0.1 `VALUE` inicializa.** Se parseaba desde siempre y **no se emitía nunca**
+  salvo en los 88: un campo declarado con `VALUE` arrancaba con basura y nadie
+  avisaba. Pasa por `store_var`, así que un `COMP-3` se inicializa empaquetado.
+- **0.3 `OR`.** La condición dejó de ser una `Vec` conjugada con AND y es un
+  **árbol** con precedencia (`AND` liga más fuerte) y **cortocircuito** — que no
+  es una optimización: un operando puede ser un elemento de tabla y ahí la
+  evaluación lleva guarda de rango. Cayeron con él **los `88` con `THRU` y con
+  varios valores**, que estaban rechazados exactamente por eso.
+- **★ 0.4 PÁRRAFOS.** La estructura de todo COBOL real, y no existía. Las cuatro
+  formas del `PERFORM` fuera de línea. El retorno se decide **en ejecución**
+  (una ranura con "en qué párrafo hay que volver") porque el mismo párrafo puede
+  ser el final de un rango en una línea y estar en medio de otro en la de abajo.
+  ★ Y de paso salió que **`STOP RUN` no emitía nada**: colaba por ser siempre la
+  última línea, y un `STOP RUN` dentro de un `IF` se ignoraba en silencio.
+- Al emulador le faltaban `push`/`pop` sobre memoria (`FF /6`, `8F /0`). Nadie
+  los había emitido nunca.
+
+**⚠ Y un hallazgo que REORDENA el plan**: `0.5` (campos en su offset dentro del
+registro) **no se puede hacer** mientras cada dato ocupe su ranura de ocho bytes
+— un `PIC 9(3)` contiguo mide tres y un `mov` de 64 bits se lleva al vecino. O
+sea que **1.5 (`DISPLAY` como zoned decimal) sube a primera de la fase 1** y pasa
+de ser "la decisión cara aparcada" a ser la llave de leer ficheros de fuera.
 
 **Tres cosas comprobadas que los documentos decían al revés:**
 - ✅ **`bmo-verify` SÍ está cableado** — los cuatro frontends lo llaman **antes**
