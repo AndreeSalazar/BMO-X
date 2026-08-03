@@ -46,6 +46,11 @@ no floating point anywhere:**
 
 ![Ada](docs/evidencia/09-ada-cierre-decimal-exacto.jpg)
 
+**And on 2 August 2026 those same programs were launched from the desktop
+itself** — `run cobol/banco.bex` and `run ada/cierre.bex`, typed into the Ring 3
+command box, with their output landing in its grid. The languages stopped being
+something the kernel embedded and became something the operating system runs.
+
 **More, including C, the desktop, the system report and fault recovery caught as
 it happened: [docs/evidencia/](docs/evidencia/)**
 
@@ -130,7 +135,9 @@ graph TD
         COB["COBOL<br/>PICTURE · decimal scale"]
         C["C<br/>printf · intrinsics"]
         ADA["Ada<br/>ZFP · Annex F"]
+        CPP["C++<br/>RAII · vtables · mangling"]
     end
+    GATE["bmo-verify<br/>the only common checkpoint"]
     subgraph L1["L1 — shared, one only"]
         LOWER["bmo-lower<br/>console · files · task"]
         ASM["sem-asm<br/>x86-64 encoder from TOML tables"]
@@ -147,6 +154,11 @@ graph TD
     COB --> LOWER
     C --> LOWER
     ADA --> LOWER
+    CPP --> LOWER
+    COB --> GATE
+    C --> GATE
+    ADA --> GATE
+    CPP --> GATE
     LOWER --> ASM
     LOWER --> SYS
     SYS --> CAP
@@ -157,9 +169,15 @@ graph TD
 
 **Three doors, and never a fourth.** Everything else is a *subsyscall*: an
 operation on a capability. The screen, keyboard, console, directories, files,
-RPC endpoints and program launching were all added without opening a new door.
-No root, no ambient authority, no `chmod` — a process touches only what it was
-explicitly handed.
+memory, the kernel's own log, RPC endpoints and program launching were all added
+without opening a new door. No root, no ambient authority, no `chmod` — a
+process touches only what it was explicitly handed.
+
+**And `bmo-verify` is the one place every language passes through.** Not a
+funnel — each frontend emits its own BEF, its own way, sharing no intermediate
+representation. What they share is a *contract* and a checkpoint: nothing
+becomes a `.bex` without being validated. That checkpoint is what replaces the
+security role a central IR would have played, without any of the coupling.
 
 ---
 
@@ -183,12 +201,27 @@ explicitly handed.
 - AHCI/SATA, GPT, FAT32 — the kernel reads and mounts its own disk
 - The boot volume is mounted read-only. That is structural, not a promise
 
-**Compilers**
-- COBOL: `PICTURE` editing emitted as instructions, file I/O, `OCCURS` with
-  range guards, level 88
-- C: through roughly C11 — pointers, structs by value, initializer lists,
-  function-parameter macros, SSE floats, `getchar`/`scanf`
-- Ada: ZFP profile, `delta`/`digits` decimal types, real operator precedence
+**Compilers** — and every one of them now passes its output through
+`bmo-verify` **before writing the file**. The gate existed for months and no
+frontend called it; since 2 August none of the four can emit a `.bex` that
+hasn't been validated.
+
+- **COBOL — closed within its declared scope, which is banking.** Edited
+  `PICTURE` emitted *as instructions* (no mask and no interpreter survive in
+  the `.bex`), sequential file I/O, `OCCURS` with range guards, level 88,
+  `ACCEPT`, exact decimal in integer scale. What it still lacks — `EVALUATE`,
+  `STRING`, `SEARCH`, `CALL`, `SORT`, COMP-3 — is **the long tail of the
+  standard, not banking**
+- **C: through roughly C11** — pointers, structs by value, initializer lists,
+  function-parameter macros, `getchar`/`scanf`, and 32 of 32 language probes
+  for what DOOM asks for. **Its SSE path executes** as of 2 August: before
+  that, all nine floating-point tests compared byte windows and none of them
+  ran
+- **Ada** — ZFP profile, `delta`/`digits` decimal types, real operator
+  precedence. Annex F copied COBOL's `PICTURE`, so the exact decimal was
+  already paid for
+- **C++** — classes, RAII, mangling, overloading, single inheritance and
+  virtual functions. Frozen at essential C++17 on purpose
 
 **The desktop is the boot.** As of 2 August it starts straight into the Ring 3
 compositor — no demo programs in the way. Its own command box lists the disk,
@@ -280,6 +313,29 @@ interesting half of total transparency.
   commit adds nodes and leaves the old ones standing, that graph *is* the
   volume's history
 
+### ⚖️ And one thing that is not designed yet, because it costs weeks
+
+**BMO has no linker.** The C code generator says so itself when a symbol is
+missing: *"here there is no linking: everything you call has to be in this
+unit."*
+
+The format is ready — BEF carries import and export tables — and the tooling is
+not: `bex-link` turns a whole ELF into a `.bex`, and `bmo-linker` emits a symbol
+registry, but nothing resolves a call between two separate units.
+
+The consequence is concrete: **`lang/base/bmo-rt` — the libc: `crt0`, heap,
+strings, `printf` — cannot be used.** Not because code is missing, but because
+no `.bex` can call it. And it is why `malloc` today is *one syscall per call*
+with a hard limit of four per process: enough for a program that asks for one
+big block, not for one that then carves thousands of small ones out of it.
+
+Two roads, deliberately **left undecided** with the reasoning written down in
+[`toolchain/forge/README.md`](toolchain/forge/README.md): a real linker (weeks,
+and the only thing that also unlocks separate compilation units for C++), or
+functions synthesised into the image (one session, uses a mechanism that
+*already runs on metal*, and unblocks DOOM). The question that decides it is
+not technical: which arrives first, a large foreign program or DOOM?
+
 ---
 
 ## ESTRATOS — writing *is* committing
@@ -338,6 +394,27 @@ the COBOL standard doesn't have one.
 When the emulator and the hardware disagree, *the emulator gets fixed*. That
 rule caught a broken `lea [rip+disp]` that passed green in simulation and would
 have read garbage on real silicon.
+
+**620 tests, zero failures.** And the zero is recent: the suite carried a
+permanent red — a doctest marked `rust` that was pseudocode and could never
+compile. A failure nobody is going to fix trains you not to look at failures,
+which is the opposite of what a suite is for.
+
+### What the test bench cannot prove, stated plainly
+
+The emulator's coverage is **not evenly distributed — it is concentrated**, and
+confusing that is how green code accumulates that has never run:
+
+| Axis | Coverage | Why |
+|---|---|---|
+| do the emitted bytes compute what the source says? | **high** | it is what it was built for |
+| does the kernel do what the model says? | **zero** | it does not execute the kernel — it *imitates* it. If the two drift apart, both look healthy |
+| the physical (paging, rings, XSAVE, IRQs, DMA, write-combining, USB, timing) | **zero** | by construction. Every episode in the war log came from here |
+
+That middle row is not theoretical. On 2 August the emulator answered a memory
+request with *success and a null handle* while the real kernel answers with an
+error code — two incompatible behaviours, zero tests red. The full audit lives
+in the header of `toolchain/forge/bmo-lower/src/emu.rs`.
 
 Unimplemented features are **rejected with a reason**, never stubbed to look
 like they work.
@@ -422,7 +499,9 @@ on top of it.
 ### Phase D — Programs worth running
 
 12. **libc for DOOM** — `fopen`, a real `malloc` on top of the memory block,
-    complete `printf`. This is what is left; the language is already there
+    complete `printf`. The language is already there; **what is missing first
+    is the decision above** — a libc nobody can call is not a libc, it is a
+    plan. See `toolchain/forge/README.md`
 13. **DOOM.** It is a software renderer: it needs no GPU, no shaders, no Vulkan.
     It is the first heavy program this system can honestly run
 14. **C++ continues** — inheritance and virtuals landed; the scope stays frozen
