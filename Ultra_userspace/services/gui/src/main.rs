@@ -79,6 +79,50 @@ use texto::{decimal, es_punto};
 /// velocidad de la máquina, y para decir "aquí se escribe" eso basta.
 const PARPADEO: u32 = 12_000;
 
+/// Dónde va el volcado cuando nadie dice otra cosa.
+///
+/// ★ En `datos/`, que vive en la partición **FAT32** — la misma que se enchufa
+/// a un Windows y se abre con el bloc de notas. Ése es el motivo entero de que
+/// esto exista: hasta hoy, saber qué había hecho una corrida de BMO-X era
+/// hacerle una foto a la pantalla. Una foto no se compara con la de ayer, no se
+/// busca dentro, y no se le puede enseñar a nadie que no esté delante.
+///
+/// **No va a ESTRATOS aunque ESTRATOS sea el sistema de ficheros bueno**, y no
+/// es una concesión: ningún otro sistema operativo sabe leerlo. Un volcado que
+/// sólo BMO puede abrir no resuelve el problema para el que se escribió.
+///
+/// `SALIDA.TXT` es 8.3 — el driver FAT32 del kernel se niega a recortar.
+pub(crate) const VOLCADO_POR_DEFECTO: &[u8] = b"datos/salida.txt";
+
+/// Escribe las filas `[desde..=hasta]` del historial en un archivo de texto.
+///
+/// Devuelve `Ok(bytes)` o el motivo. **Nada llega al disco hasta `cerrar`**, y
+/// por eso el resultado de `cerrar` es el que se mira: es el único que sabe si
+/// el archivo existe de verdad. Que se guarde encima de uno anterior es
+/// deliberado — un volcado que fallara la segunda vez obligaría a inventar
+/// nombres, y un `salida1.txt`, `salida2.txt`… es exactamente el desorden que
+/// este archivo viene a evitar.
+fn volcar_salida(salida: &Salida, ruta: &[u8], desde: usize, hasta: usize) -> Result<usize, u32> {
+    let a = bmo::Archivo::crear(ruta)?;
+    let mut bytes = 0usize;
+    for f in desde..=hasta {
+        let linea = salida.linea(f);
+        bytes += a.escribir(linea);
+        // `\r\n` y no `\n`: esto lo va a abrir el bloc de notas de Windows, y
+        // el Notepad viejo enseña un archivo con saltos de Unix como una sola
+        // línea kilométrica. Aquí el destinatario manda sobre la elegancia.
+        bytes += a.escribir(b"\r\n");
+    }
+    if a.cerrar() {
+        Ok(bytes)
+    } else {
+        // El kernel no dice el motivo — se queda en la CABINA (F11). Lo que sí
+        // se sabe con certeza es que en el disco NO hay nada, y eso es lo que
+        // el que mira la pantalla necesita saber.
+        Err(0)
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     // El aviso va ANTES de reclamar: en cuanto la cesión se consuma, el kernel
@@ -278,7 +322,56 @@ pub extern "C" fn _start() -> ! {
     // del pulsómetro sesenta veces por segundo con el mismo color.
     let mut col_boton = FONDO;
 
+    // ── ★ EL VIGILANTE DE LA CORRIDA ──
+    //
+    // Cuando se lanza un programa se apunta aquí dónde empieza su salida; en
+    // cuanto muere, lo que escribió se vuelca solo a `datos/salida.txt`.
+    //
+    // ═══ Por qué hace falta el `visto` ═══
+    //
+    // `ejecutar_en` vuelve en cuanto el hijo arranca, y **`hay_hijo()` puede
+    // contestar `false` en el fotograma siguiente sin que el programa haya
+    // terminado**: todavía no se ha puesto a escribir en la consola. Sin la
+    // bandera, cada lanzamiento volcaría un archivo vacío en el acto y luego
+    // no volcaría el de verdad.
+    //
+    // Con ella, el volcado sólo ocurre en el flanco `vivo → muerto`, que es lo
+    // único que significa "terminó".
+    struct Corrida {
+        marca: usize,
+        visto: bool,
+    }
+    let mut corrida: Option<Corrida> = None;
+
     loop {
+        // ── ¿Terminó el programa que se lanzó? Entonces, a guardarlo ──
+        if let Some(c) = corrida.as_mut() {
+            let vivo = salida_cap.as_ref().map(|cc| cc.hay_hijo()).unwrap_or(false);
+            if vivo {
+                c.visto = true;
+            } else if c.visto {
+                let (desde, hasta) = salida.filas_desde(c.marca);
+                match volcar_salida(&salida, VOLCADO_POR_DEFECTO, desde, hasta) {
+                    Ok(_) => {
+                        salida.con_tinta(TINTA_BIEN);
+                        salida.texto(b"  [salida guardada en ");
+                        salida.texto(VOLCADO_POR_DEFECTO);
+                        salida.texto(b"]\n");
+                        salida.con_tinta(TINTA_NORMAL);
+                    }
+                    // Se dice y no se calla. Un volcado que falla en silencio
+                    // deja mirando un archivo viejo creyendo que es el nuevo,
+                    // que es el fallo que este volcado existe para evitar.
+                    Err(_) => {
+                        salida.con_tinta(TINTA_MAL);
+                        salida.texto(b"  [NO se pudo guardar la salida. F11 dice por que]\n");
+                        salida.con_tinta(TINTA_NORMAL);
+                    }
+                }
+                corrida = None;
+            }
+        }
+
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
 
@@ -819,6 +912,53 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
+                            // ── Volcar el historial a un .txt ──
+                            //
+                            // El hermano manual del volcado automático: aquél
+                            // guarda lo de UNA corrida, éste guarda todo lo que
+                            // quede en el historial, que es lo que hace falta
+                            // cuando lo interesante son tres comandos juntos.
+                            Orden::Guardar(arg) => {
+                                let destino = if arg.is_empty() { VOLCADO_POR_DEFECTO } else { arg };
+                                // El rango se toma ANTES de escribir nada:
+                                // los mensajes de abajo son de esta orden, no
+                                // de lo que se estaba guardando, y colarlos
+                                // dentro haría que el archivo hablara de sí
+                                // mismo.
+                                let (desde, hasta) = salida.filas_todas();
+                                match volcar_salida(&salida, destino, desde, hasta) {
+                                    Ok(bytes) => {
+                                        salida.con_tinta(TINTA_BIEN);
+                                        salida.texto(b"  guardado en ");
+                                        salida.texto(destino);
+                                        salida.texto(b": ");
+                                        let mut d = [0u8; 10];
+                                        let k = decimal(bytes as u64, &mut d);
+                                        salida.texto(&d[..k]);
+                                        salida.texto(b" bytes, ");
+                                        let k = decimal((hasta - desde + 1) as u64, &mut d);
+                                        salida.texto(&d[..k]);
+                                        salida.texto(b" lineas\n");
+                                        salida.con_tinta(TINTA_NORMAL);
+                                        pintar_estado(&p, &caja, "volcado", TEXTO_BIEN);
+                                    }
+                                    Err(0) => {
+                                        salida.con_tinta(TINTA_MAL);
+                                        salida.texto(b"  no se guardo nada. el motivo esta en F11.\n");
+                                        salida.con_tinta(TINTA_NORMAL);
+                                        pintar_estado(&p, &caja, "no se pudo guardar", TEXTO_MAL);
+                                    }
+                                    Err(e) => {
+                                        salida.con_tinta(TINTA_MAL);
+                                        salida.texto(b"  ");
+                                        salida.texto(motivo_archivo(e));
+                                        salida.byte(b'\n');
+                                        salida.con_tinta(TINTA_NORMAL);
+                                        pintar_estado(&p, &caja, "no se pudo crear", TEXTO_MAL);
+                                    }
+                                }
+                                n = 0;
+                            }
                             // ★ La primera orden del escritorio que ESCRIBE EN
                             // EL DISCO. Ver `bmo::estratos_sellar`.
                             Orden::EstratosSellar => {
@@ -917,6 +1057,9 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
                                 salida.texto(b"  cat <ruta>   ensena lo que hay dentro\n");
                                 salida.texto(b"  write <ruta> <texto>     lo guarda\n");
+                                salida.texto(b"  guarda [ruta]  vuelca esta salida a un .txt\n");
+                                salida.texto(b"               (por defecto datos/salida.txt, y cada\n");
+                                salida.texto(b"                programa que corre lo deja solo ahi)\n");
                                 salida.texto(b"  clear / cls  limpia esta salida\n");
                                 salida.texto(b"  TAB          completa   Ctrl+A/E inicio/fin\n");
                                 salida.texto(b"  Ctrl+K corta al final    Ctrl+W borra palabra\n");
@@ -984,6 +1127,25 @@ pub extern "C" fn _start() -> ! {
                                 match bmo::ejecutar_en(objetivo, cap) {
                                     Ok(_) => {
                                         pintar_estado(&p, &caja, "lanzado", TEXTO_BIEN);
+                                        // ★ Se apunta DÓNDE empieza esta
+                                        // corrida. El volcado no puede hacerse
+                                        // aquí: `ejecutar_en` vuelve en cuanto
+                                        // el hijo arranca y todavía no ha
+                                        // escrito ni una letra. Lo que se
+                                        // guarda es la marca, y el volcado
+                                        // ocurre cuando el hijo MUERE — ver el
+                                        // vigilante del bucle principal.
+                                        // `-1` para que el ECO entre en el
+                                        // volcado. El archivo se sobreescribe
+                                        // en cada corrida, así que sin la
+                                        // línea del comando dentro no hay
+                                        // forma de saber QUÉ lo produjo — y un
+                                        // volcado anónimo es la mitad de un
+                                        // volcado.
+                                        corrida = Some(Corrida {
+                                            marca: salida.marca().saturating_sub(1),
+                                            visto: false,
+                                        });
                                         // El campo se vacía al lanzar, como el
                                         // Win+R: la caja está para el SIGUIENTE
                                         // programa, no para admirar el anterior.

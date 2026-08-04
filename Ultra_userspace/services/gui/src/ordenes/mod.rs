@@ -42,6 +42,27 @@ pub(crate) enum Orden<'a> {
     /// aparecía en el disco lo había puesto el anfitrión al flashear, o el
     /// kernel con su caja negra; un programa no tenía con qué.
     Escribir(&'a [u8], &'a [u8]),
+    /// `guarda [ruta]` — **vuelca el historial de la salida a un `.txt`**.
+    ///
+    /// ═══ Para qué existe ═══
+    ///
+    /// Depurar BMO-X era *flashear y hacerle una foto a la pantalla*. Eso vale
+    /// para ver si algo arranca; no vale para comparar dos corridas, ni para
+    /// leer doscientas líneas, ni para que nadie que no esté delante de la
+    /// máquina sepa qué pasó. Y una foto no se puede diferenciar contra la de
+    /// ayer.
+    ///
+    /// Con esto la corrida deja un archivo en `datos/`, que está en la
+    /// **partición FAT32**: se enchufa el disco a un Windows y se abre con el
+    /// bloc de notas. Eso convierte "cuéntame qué salió" en "mira el fichero".
+    ///
+    /// ★ Y por eso va a FAT32 y no a ESTRATOS, aunque ESTRATOS sea el sistema
+    /// de ficheros bueno: **ningún otro sistema operativo sabe leer ESTRATOS**.
+    /// Un volcado que sólo BMO puede abrir no resuelve el problema que este
+    /// comando existe para resolver.
+    ///
+    /// Sin ruta, va a [`crate::VOLCADO_POR_DEFECTO`].
+    Guardar(&'a [u8]),
     /// Parece un archivo, pero no es un `.bex`. No se intenta lanzar: se dice
     /// qué es y con qué se abre.
     NoEsPrograma(&'a [u8]),
@@ -166,6 +187,9 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
                 None => Orden::Ayuda,
             }
         }
+        // `guarda` sin nada vuelca al fichero de siempre; con una ruta, ahí.
+        // No pide texto como `escribe`: lo que guarda ya está en la pantalla.
+        b"guarda" | b"volcar" | b"dump" => Orden::Guardar(resto),
         b"info" | b"sistema" => Orden::Informe,
         b"cpu" | b"procesador" => Orden::Cpu,
         b"mem" | b"ram" | b"memoria" => Orden::Memoria,

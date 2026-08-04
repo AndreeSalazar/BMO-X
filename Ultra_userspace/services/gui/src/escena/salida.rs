@@ -63,6 +63,26 @@ pub(crate) struct Salida {
     /// Hay algo nuevo que pintar. Repintar la rejilla entera cada fotograma
     /// serían 88x16 glifos por vuelta sobre memoria de vídeo sin caché.
     pub(crate) sucia: bool,
+    /// Cuántas líneas se han CERRADO desde que arrancó el terminal. Sólo sube.
+    ///
+    /// ★ El índice de fila no sirve para acordarse de un sitio: en cuanto el
+    /// historial se llena, `fila` se queda clavada en la última y las de
+    /// debajo se van desplazando. Guardar "empecé en la fila 187" y volver a
+    /// mirar ahí un minuto después señala a otra línea.
+    ///
+    /// Un contador que sólo sube sí sirve: la diferencia entre dos marcas es
+    /// **cuántas líneas se escribieron entre medias**, y eso no se mueve
+    /// aunque el historial se desplace veinte veces.
+    pub(crate) escritas: usize,
+    /// Cuántas filas del historial tienen CONTENIDO ahora mismo, contando la
+    /// que se está escribiendo. Nunca pasa de [`SAL_HIST`].
+    ///
+    /// Es distinto de `escritas` y hacen falta las dos: aquél dice *cuánto se
+    /// ha escrito nunca* —y por eso sirve de marca—, ésta dice *cuánto queda
+    /// guardado*. Un `clear` no puede tocar el primero sin que las marcas
+    /// viejas se vuelvan del futuro, pero sí tiene que poner el segundo a cero
+    /// — si no, volcar el historial escupiría doscientas líneas en blanco.
+    vivas: usize,
 }
 
 impl Salida {
@@ -98,7 +118,47 @@ impl Salida {
             fila: SAL_HIST - 1,
             col: 0,
             sucia: true,
+            escritas: 0,
+            // La línea en curso ya cuenta: está vacía, pero es una fila del
+            // historial y no un hueco.
+            vivas: 1,
         }
+    }
+
+    /// Dónde estamos ahora, para poder volver. Ver [`Salida::escritas`].
+    pub(crate) fn marca(&self) -> usize {
+        self.escritas
+    }
+
+    /// Las filas del historial escritas **desde una marca**, como rango
+    /// inclusivo de índices en `celdas`.
+    ///
+    /// Se recorta a lo que de verdad queda guardado: si desde la marca han
+    /// pasado más de [`SAL_HIST`] líneas —o si hubo un `clear` en medio—, esas
+    /// líneas ya no están y se devuelven sólo las que hay. Prometer un rango
+    /// más largo daría filas en blanco que parecerían salida vacía del
+    /// programa, que es justo la conclusión equivocada.
+    pub(crate) fn filas_desde(&self, marca: usize) -> (usize, usize) {
+        // +1 por la línea en curso, que aún no ha cerrado pero ya tiene texto.
+        let cerradas = self.escritas.saturating_sub(marca);
+        let cuantas = (cerradas + 1).min(self.vivas);
+        (self.fila + 1 - cuantas, self.fila)
+    }
+
+    /// Todo lo que queda guardado, sin las filas en blanco de arriba.
+    pub(crate) fn filas_todas(&self) -> (usize, usize) {
+        (self.fila + 1 - self.vivas, self.fila)
+    }
+
+    /// Una fila **sin la cola de espacios**. Un volcado con las 88 columnas
+    /// rellenas es ilegible y pesa cuatro veces más de lo que dice.
+    pub(crate) fn linea(&self, f: usize) -> &[u8] {
+        let fila = &self.celdas[f];
+        let mut n = fila.len();
+        while n > 0 && fila[n - 1] == b' ' {
+            n -= 1;
+        }
+        &fila[..n]
     }
 
     /// A partir de aquí se escribe con esta tinta. La fila en curso se marca
@@ -136,6 +196,8 @@ impl Salida {
     }
 
     pub(crate) fn salto(&mut self) {
+        self.escritas += 1;
+        self.vivas = (self.vivas + 1).min(SAL_HIST);
         self.col = 0;
         // Escribir devuelve la vista abajo: si no, el programa hablaria y el
         // usuario seguiria mirando el pasado sin enterarse.
@@ -198,6 +260,14 @@ impl Salida {
         self.fila = SAL_HIST - 1;
         self.col = 0;
         self.sucia = true;
+        // `escritas` NO se reinicia: sigue contando desde que arrancó el
+        // terminal. Ponerlo a cero haría que una marca tomada antes del `clear`
+        // pareciera del futuro y la resta se diera la vuelta. Lo que sí se
+        // reinicia es `vivas` — ya no queda nada guardado — y así un volcado
+        // justo después de limpiar escribe un archivo vacío y no doscientas
+        // líneas de espacios.
+        self.escritas += 1;
+        self.vivas = 1;
     }
 
     // ── Lo que hace falta para PINTAR un informe ────────────────────────
