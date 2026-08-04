@@ -14,6 +14,21 @@ use crate::ast::{SyscallDef, Valor88};
 /// Ada pida sus modos del Annex F no tendrá que hablar de COBOL.
 pub type Redondeo = bmo_lower::redondeo::Modo;
 
+/// Un control de `PERFORM VARYING`: la variable, por dónde empieza, cuánto
+/// suma y cuándo para.
+///
+/// ⚠ La condición dice cuándo **PARAR**, no cuándo seguir. `UNTIL I > 12`
+/// recorre del 1 al 12, no al 13. Es al revés que el `while` de casi todo lo
+/// demás, y confundirlo da una vuelta de más o de menos — que sobre una tabla
+/// es un subíndice fuera de rango.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ControlBucle {
+    pub variable: String,
+    pub desde: String,
+    pub paso: String,
+    pub hasta_que: Condicion,
+}
+
 /// Las cláusulas que acompañan a una operación aritmética.
 ///
 /// ★ Las dos son **de banca**, no de sintaxis:
@@ -129,6 +144,23 @@ pub enum CobolStatement {
     /// Las fuentes son literales o campos, y se pegan **en orden** hasta llenar
     /// el destino.
     StringInto { fuentes: Vec<String>, destino: String },
+    /// ★ `PERFORM VARYING <v> FROM <x> BY <y> UNTIL <cond> … END-PERFORM`.
+    ///
+    /// El bucle CON ÍNDICE, que es como se recorre una tabla. Con `AFTER`
+    /// encadenado se recorren varias dimensiones:
+    ///
+    /// ```text
+    ///   PERFORM VARYING I FROM 1 BY 1 UNTIL I > 3
+    ///           AFTER   J FROM 1 BY 1 UNTIL J > 4
+    /// ```
+    ///
+    /// ★ Los controles van en UNA LISTA y no anidados en el AST porque la
+    /// diferencia entre `VARYING` y `AFTER` es sólo la posición: el segundo se
+    /// **reinicia** cada vez que el primero avanza, y eso lo da el orden.
+    ///
+    /// El `PERFORM <párrafo> VARYING …` no necesita otra variante: el parser lo
+    /// deja como un `PerformVarying` cuyo cuerpo es un `PERFORM` del párrafo.
+    PerformVarying { controles: Vec<ControlBucle>, cuerpo: Vec<CobolStatement> },
     /// `GO TO <párrafo>` — un salto, sin vuelta.
     ///
     /// Es la otra mitad de `PERFORM … THRU X-SALIR`: el descarte. Sin él, saltar

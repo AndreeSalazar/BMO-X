@@ -390,9 +390,19 @@ desbloquea por hora de trabajo.
       que ya hace un nivel 88.
       `WHEN … ALSO` (varios sujetos) puede esperar y se rechaza con motivo.
 
-- [ ] **2.2 · `PERFORM VARYING` completo** — M
-      `FROM`/`BY`/`UNTIL` y `AFTER` para recorrer tablas de dos dimensiones.
-      Misma forma de línea que el `PERFORM UNTIL` que ya compila.
+- [x] **2.2 · `PERFORM VARYING` completo** — ✅ 2026-08-03
+      `FROM`/`BY`/`UNTIL`, en línea y de párrafo, con **cuantos `AFTER` haga
+      falta** (probado con tres).
+      ★ El codegen es **recursivo sobre los controles**, y de ahí sale gratis lo
+      que de verdad define un `AFTER`: **el de dentro se reinicia cada vez que el
+      de fuera avanza**. Escrito como un bucle plano habría que acordarse de
+      reiniciar a mano, y olvidarlo recorre la tabla en diagonal — la primera
+      fila entera y de las demás sólo la última columna.
+      El paso puede ser negativo, y con `WITH TEST BEFORE` un bucle cuya
+      condición ya se cumple **no da ni una vuelta**.
+      ⚠ Queda dicho en el AST: `UNTIL` dice cuándo **PARAR**, no cuándo seguir.
+      Al revés que el `while` de casi todo lo demás, y confundirlo sobre una
+      tabla es un subíndice fuera de rango.
 
 - [x] **2.6 ★ `ROUNDED`** — ✅ 2026-08-03
       **Los SEIS modos del estándar**, en las cinco aritméticas, con
@@ -648,7 +658,9 @@ HECHO   2.6b ON SIZE ERROR ── y dividir entre cero deja de matar el proceso
 
 HECHO   0.6 GO TO ── y el ejemplo del nivel 8 ya no necesita el interruptor
 
-AHORA   2.2 PERFORM VARYING · 2.7 SEARCH · 2.8 COPY · 2.9 intrinsecas
+HECHO   2.2 PERFORM VARYING ── con AFTER, y el reinicio sale de la recursion
+
+AHORA   2.7 SEARCH · 2.8 COPY · 2.9 intrinsecas · UNSTRING · 5.1 SORT
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -666,8 +678,8 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
 ~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → ~~`0.7`~~ → ~~`1.7`~~ →
-~~`2.4`~~ → ~~`2.3`~~ (falta `UNSTRING`) → ~~`2.6b`~~ → ~~`0.6`~~ → **`2.2`** →
-`2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `1.5` → `0.2` → **luego el kernel**:
+~~`2.4`~~ → ~~`2.3`~~ (falta `UNSTRING`) → ~~`2.6b`~~ → ~~`0.6`~~ → ~~`2.2`~~ →
+**`2.7`** → `2.8` → `5.1` → `1.6` → `2.9` → `1.5` → `0.2` → **luego el kernel**:
 `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
@@ -715,3 +727,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | **2.4 `INSPECT`** (`TALLYING`, `REPLACING ALL`/`LEADING`) y **2.3 `STRING`** | `bmo-lower::texto` + `codegen.rs` |
 | 2026-08-03 | **2.6b `ON SIZE ERROR`** — el destino no se toca cuando no cabe, y dividir entre cero deja de matar el proceso | `codegen::emit_guardar_con_desborde` |
 | 2026-08-03 | **0.6 `GO TO`** — el descarte dentro de un rango, con el mismo símbolo que usa `PERFORM` | `codegen.rs` · ejemplo `8-parrafos/` actualizado |
+| 2026-08-03 | **2.2 `PERFORM VARYING`** con `AFTER` — el reinicio del interior sale de la recursión | `codegen::emit_varying` |

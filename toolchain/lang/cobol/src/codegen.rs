@@ -809,6 +809,64 @@ impl Codegen {
         self.code.push(0xC3);
     }
 
+    /// `PERFORM VARYING`, un control cada vez.
+    ///
+    /// ## Por qué es recursivo, y qué sale gratis de serlo
+    ///
+    /// Cada control monta su bucle y **dentro** llama al siguiente. Eso hace
+    /// que un `AFTER` se **reinicie** cada vez que el de fuera avanza — que es
+    /// exactamente lo que dice el estándar— sin escribir nada para ello: el
+    /// `MOVE <desde> TO <v>` del interior queda dentro del bucle exterior
+    /// porque ahí es donde lo pone la recursión.
+    ///
+    /// Escrito como un bucle plano habría que acordarse de reiniciar a mano, y
+    /// olvidarlo da una tabla recorrida en diagonal: la primera fila entera y
+    /// de las demás sólo la última columna.
+    ///
+    /// ## `WITH TEST BEFORE`
+    ///
+    /// La condición se prueba **antes** de cada vuelta, que es el default del
+    /// estándar. Un `UNTIL I > 12` con `I` empezando en 13 no ejecuta el cuerpo
+    /// ni una vez, y eso es lo correcto: el bucle no tiene por qué correr.
+    fn emit_varying(&mut self, controles: &[crate::ast::ControlBucle], cuerpo: &[CobolStatement]) {
+        let Some((c, resto)) = controles.split_first() else {
+            for s in cuerpo {
+                self.emit_statement(s);
+            }
+            return;
+        };
+
+        // `MOVE <desde> TO <v>` — por la puerta de siempre, así que el índice
+        // puede ser un `COMP-3` y nadie se entera.
+        let escala = self.var_scale(&c.variable);
+        self.load_operand(&c.desde, escala);
+        self.store_var(&c.variable);
+
+        let top = self.fresh_label();
+        let cuerpo_lbl = self.fresh_label();
+        let fin = self.fresh_label();
+
+        self.bind_label(top);
+        // ⚠ La condición dice cuándo PARAR, no cuándo seguir: mientras sea
+        // FALSA se ejecuta. Al revés que el `while` de casi todo lo demás.
+        self.emit_jump_if_false(&c.hasta_que, cuerpo_lbl);
+        self.emit_jmp(fin);
+
+        self.bind_label(cuerpo_lbl);
+        self.emit_varying(resto, cuerpo);
+
+        // `ADD <paso> TO <v>`.
+        self.load_var(&c.variable);
+        self.code.push(0x50); // push rax
+        self.load_operand(&c.paso, escala);
+        self.code.push(0x5A); // pop rdx
+        self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+        self.store_var(&c.variable);
+        self.emit_jmp(top);
+
+        self.bind_label(fin);
+    }
+
     /// `PERFORM <párrafo> [THRU <otro>] [<n> TIMES | UNTIL <cond>]`.
     fn emit_perform_fuera(
         &mut self,
@@ -2270,6 +2328,12 @@ impl Codegen {
             // `EXIT` y `CONTINUE` no emiten nada, y eso es lo correcto: son el
             // hueco explícito. El destino de un `PERFORM … THRU X-SALIR` tiene
             // que existir como párrafo, no como instrucción.
+            // ★ `PERFORM VARYING … [AFTER …]` — el bucle con índice.
+            CobolStatement::PerformVarying { controles, cuerpo } => {
+                let (controles, cuerpo) = (controles.clone(), cuerpo.clone());
+                self.emit_varying(&controles, &cuerpo);
+            }
+
             // ★ `GO TO` — un salto a un párrafo, sin vuelta.
             //
             // Se emite como un `jmp rel32` al mismo símbolo al que `PERFORM`

@@ -203,6 +203,127 @@ impl Parser {
         }
     }
 
+    /// `PERFORM [<párrafo>] VARYING <v> FROM <x> BY <y> UNTIL <cond>`,
+    /// con cero o más `AFTER` detrás.
+    ///
+    /// ★ La cabecera sigue mientras la línea siguiente **empiece por `AFTER`**.
+    /// Ésa es la regla entera, y es la que se escribe: un `AFTER` por renglón,
+    /// alineado bajo el `VARYING`. Sin una regla así habría que adivinar dónde
+    /// acaba la cabecera y empieza el cuerpo.
+    ///
+    /// Si delante del `VARYING` hay un nombre, es el párrafo que hace de cuerpo
+    /// — y entonces no hay `END-PERFORM` que leer.
+    fn parse_perform_varying(
+        &mut self,
+        rest: &str,
+        i_varying: usize,
+        line_no: usize,
+    ) -> Result<CobolStatement, CobolError> {
+        let cabeza = rest[..i_varying].trim();
+        let parrafo = if cabeza.is_empty() {
+            None
+        } else {
+            let p = cabeza.to_ascii_uppercase();
+            if p.split_whitespace().count() != 1 {
+                return Err(CobolError::new(
+                    line_no,
+                    format!("PERFORM {cabeza} VARYING …: delante del VARYING solo cabe UN parrafo"),
+                ));
+            }
+            Some(p)
+        };
+
+        let mut controles = vec![Self::parse_control(&rest[i_varying + 7..], line_no)?];
+        // Los `AFTER` que vengan detrás, uno por línea.
+        loop {
+            let Some((_, raw)) = self.current().cloned() else { break };
+            let linea = Self::strip_comment(&raw).trim().to_string();
+            if linea.is_empty() {
+                self.advance();
+                continue;
+            }
+            let arriba = linea.to_ascii_uppercase();
+            if !arriba.starts_with("AFTER ") {
+                break;
+            }
+            self.advance();
+            controles.push(Self::parse_control(&linea[6..], line_no)?);
+        }
+
+        // El cuerpo: el párrafo, o las líneas hasta `END-PERFORM`.
+        let cuerpo = match &parrafo {
+            Some(p) => vec![CobolStatement::PerformFuera {
+                desde: p.clone(),
+                hasta: None,
+                veces: None,
+                hasta_que: None,
+            }],
+            None => {
+                let mut v = Vec::new();
+                loop {
+                    let Some((inner_no, raw)) = self.current().cloned() else {
+                        return Err(CobolError::new(
+                            line_no,
+                            "PERFORM VARYING sin END-PERFORM: esta implementacion exige el \
+                             cierre explicito",
+                        ));
+                    };
+                    self.advance();
+                    let linea = Self::strip_comment(&raw).trim().to_string();
+                    if linea.is_empty() {
+                        continue;
+                    }
+                    let limpio = linea.trim_end_matches('.').trim().to_string();
+                    if limpio.eq_ignore_ascii_case("END-PERFORM") {
+                        break;
+                    }
+                    v.push(self.parse_statement(&limpio, inner_no)?);
+                }
+                v
+            }
+        };
+
+        Ok(CobolStatement::PerformVarying { controles, cuerpo })
+    }
+
+    /// `<v> FROM <x> BY <y> UNTIL <cond>`.
+    fn parse_control(
+        texto: &str,
+        line_no: usize,
+    ) -> Result<crate::ast::ControlBucle, CobolError> {
+        let t = texto.trim().trim_end_matches('.').trim();
+        let arriba = t.to_ascii_uppercase();
+        let (Some(f), Some(b), Some(u)) = (
+            Self::pos_palabra(&arriba, "FROM"),
+            Self::pos_palabra(&arriba, "BY"),
+            Self::pos_palabra(&arriba, "UNTIL"),
+        ) else {
+            return Err(CobolError::new(
+                line_no,
+                format!(
+                    "'{t}': un VARYING necesita las tres partes — \
+                     `<v> FROM <x> BY <y> UNTIL <cond>`"
+                ),
+            ));
+        };
+        if !(f < b && b < u) {
+            return Err(CobolError::new(
+                line_no,
+                format!("'{t}': el orden es FROM, luego BY, luego UNTIL"),
+            ));
+        }
+        let variable = t[..f].trim().to_string();
+        if variable.is_empty() || variable.split_whitespace().count() != 1 {
+            return Err(CobolError::new(line_no, format!("'{t}': falta la variable del VARYING")));
+        }
+        Ok(crate::ast::ControlBucle {
+            variable,
+            desde: Self::parse_operand(&t[f + 4..b]),
+            paso: Self::parse_operand(&t[b + 2..u]),
+            hasta_que: Self::parse_condicion(&t[u + 5..], line_no)?,
+        })
+    }
+
     /// `PERFORM <parrafo> [THRU <otro>] [<n> TIMES | UNTIL <cond>]`.
     ///
     /// El orden en el que se recorta importa: primero el `UNTIL`, que se lleva
@@ -1644,6 +1765,11 @@ impl Parser {
     fn parse_perform(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let rest = line[8..].trim().trim_end_matches('.').trim();
         let upper = rest.to_ascii_uppercase();
+
+        // ── `PERFORM [<párrafo>] VARYING … [AFTER …] ──
+        if let Some(i) = Self::pos_palabra(&upper, "VARYING") {
+            return self.parse_perform_varying(rest, i, line_no);
+        }
 
         // ── El PERFORM fuera de línea ──
         let primera = upper.split_whitespace().next().unwrap_or("");

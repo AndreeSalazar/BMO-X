@@ -7,7 +7,8 @@ pub use data::{DataItem, Valor88};
 pub use error::CobolError;
 pub use program::SyscallDef;
 pub use statements::{
-    Aritmetica, CobolCondition, CobolStatement, Condicion, DisplayArg, Redondeo,
+    Aritmetica, CobolCondition, CobolStatement, Condicion, ControlBucle, DisplayArg,
+    Redondeo,
 };
 
 use std::collections::HashMap;

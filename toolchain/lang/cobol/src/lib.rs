@@ -400,6 +400,14 @@ STOP RUN.
             ("OR en IF", "01 A PIC 9(3).", "MOVE 0 TO A.\nIF A = 9 OR A = 0\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
             ("88 con THRU", "01 D PIC 9.\n88 LABORABLE VALUE 1 THRU 5.", "MOVE 3 TO D.\nIF LABORABLE\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
             ("VALUE inicial", "01 A PIC S9(5)V99 VALUE 12.34.", "DISPLAY A.", "12.34\n"),
+            ("PERFORM VARYING", "01 I PIC 9(3).\n01 S PIC 9(5) VALUE ZERO.", "PERFORM VARYING I FROM 1 BY 1 UNTIL I > 4\nADD I TO S\nEND-PERFORM.\nDISPLAY S.", "10\n"),
+            ("VARYING AFTER", "01 I PIC 9(3).\n01 J PIC 9(3).\n01 N PIC 9(4) VALUE ZERO.", "PERFORM VARYING I FROM 1 BY 1 UNTIL I > 2\nAFTER J FROM 1 BY 1 UNTIL J > 3\nADD 1 TO N\nEND-PERFORM.\nDISPLAY N.", "6\n"),
+            ("ROUNDED", "01 A PIC S9(5)V99 VALUE 10.00.", "DIVIDE 7 BY A ROUNDED.\nDISPLAY A.", "1.43\n"),
+            ("ON SIZE ERROR", "01 A PIC 9(3) VALUE 999.", "ADD 999 TO A ON SIZE ERROR\nDISPLAY \"no cabe\"\nEND-ADD.\nDISPLAY A.", "no cabe\n999\n"),
+            ("PIC X", "01 T PIC X(6) VALUE \"HOLA\".", "DISPLAY T.", "HOLA  \n"),
+            ("texto compara", "01 T PIC XX VALUE \"00\".", "IF T = \"00\"\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
+            ("INSPECT", "01 T PIC X(7) VALUE \"  12 34\".", "INSPECT T REPLACING LEADING SPACE BY ZERO.\nDISPLAY T.", "0012 34\n"),
+            ("STRING", "01 A PIC X(2) VALUE \"AB\".\n01 C PIC X(5).", "STRING A DELIMITED BY SIZE \"-\" DELIMITED BY SIZE A DELIMITED BY SIZE INTO C.\nDISPLAY C.", "AB-AB\n"),
             ("PERFORM anidado", "01 I PIC 9(3).", "PERFORM 2 TIMES\nPERFORM 2 TIMES\nDISPLAY \"ok\"\nEND-PERFORM\nEND-PERFORM.", "ok\nok\nok\nok\n"),
             ("decimal exacto", "01 S PIC 9(5)V99.", "MOVE 10.05 TO S.\nADD 0.20 TO S.\nIF S = 10.25\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
             ("escalas mixtas", "01 S PIC 9(5)V99.\n01 N PIC 9(3).", "MOVE 2 TO N.\nMOVE 1.50 TO S.\nADD N TO S.\nIF S = 3.50\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
@@ -746,6 +754,144 @@ STOP RUN.
         );
         let err = compile_source_to_bef(&src).unwrap_err().to_string();
         assert!(err.contains("uno es un GRUPO"), "{err}");
+    }
+
+    // ── PERFORM VARYING: el bucle CON ÍNDICE ────────────────────────────
+
+    /// Lo mínimo, y con el índice usable dentro del cuerpo.
+    #[test]
+    fn perform_varying_recorre_con_indice() {
+        let src = program(
+            "01 I PIC 9(3).\n01 SUMA PIC 9(5) VALUE ZERO.",
+            "PERFORM VARYING I FROM 1 BY 1 UNTIL I > 5\n\
+             ADD I TO SUMA\n\
+             END-PERFORM.\n\
+             DISPLAY SUMA.\nDISPLAY I.",
+        );
+        // 1+2+3+4+5 = 15, y al salir I vale 6 — la vuelta que hizo fallar la
+        // condición también incrementó.
+        assert_eq!(run_cobol(&src), "15\n6\n");
+    }
+
+    /// ⚠ `UNTIL` dice cuándo **PARAR**, no cuándo seguir. Es al revés que el
+    /// `while` de casi todo lo demás, y confundirlo da una vuelta de más o de
+    /// menos — que sobre una tabla es un subíndice fuera de rango.
+    #[test]
+    fn el_until_dice_cuando_parar() {
+        // `UNTIL I > 3` recorre 1,2,3 — no llega al 4.
+        let src = program(
+            "01 I PIC 9(3).\n01 T PIC X(8) VALUE SPACES.",
+            "PERFORM VARYING I FROM 1 BY 1 UNTIL I > 3\n\
+             DISPLAY I\n\
+             END-PERFORM.",
+        );
+        assert_eq!(run_cobol(&src), "1\n2\n3\n");
+    }
+
+    /// `WITH TEST BEFORE`: si la condición ya se cumple al entrar, el cuerpo
+    /// **no corre ni una vez**.
+    #[test]
+    fn si_ya_se_cumple_no_da_ni_una_vuelta() {
+        let src = program(
+            "01 I PIC 9(3).",
+            "PERFORM VARYING I FROM 9 BY 1 UNTIL I > 3\n\
+             DISPLAY \"no deberia\"\n\
+             END-PERFORM.\nDISPLAY \"fin\".",
+        );
+        assert_eq!(run_cobol(&src), "fin\n");
+    }
+
+    /// El paso puede ser distinto de uno, y **hacia atrás**.
+    #[test]
+    fn el_paso_puede_ir_hacia_atras() {
+        let src = program(
+            "01 I PIC S9(3).",
+            "PERFORM VARYING I FROM 10 BY -3 UNTIL I < 1\n\
+             DISPLAY I\n\
+             END-PERFORM.",
+        );
+        assert_eq!(run_cobol(&src), "10\n7\n4\n1\n");
+    }
+
+    /// ★ `AFTER` — y lo que de verdad prueba: el de dentro **se reinicia** cada
+    /// vez que el de fuera avanza.
+    ///
+    /// Sin ese reinicio la tabla se recorre en diagonal: la primera fila entera
+    /// y de las demás sólo la última columna. Por eso el test cuenta las
+    /// vueltas: tienen que ser 3 × 4, no 3 + 4.
+    #[test]
+    fn el_after_se_reinicia_en_cada_vuelta_de_fuera() {
+        let src = program(
+            "01 I PIC 9(3).\n01 J PIC 9(3).\n01 N PIC 9(4) VALUE ZERO.",
+            "PERFORM VARYING I FROM 1 BY 1 UNTIL I > 3\n\
+             AFTER J FROM 1 BY 1 UNTIL J > 4\n\
+             ADD 1 TO N\n\
+             END-PERFORM.\n\
+             DISPLAY N.",
+        );
+        assert_eq!(run_cobol(&src), "12\n", "el AFTER no se reinicio: la tabla se recorrio mal");
+    }
+
+    /// Tres niveles, para que no pase por casualidad con dos.
+    #[test]
+    fn se_pueden_encadenar_tres() {
+        let src = program(
+            "01 I PIC 9(3).\n01 J PIC 9(3).\n01 K PIC 9(3).\n01 N PIC 9(4) VALUE ZERO.",
+            "PERFORM VARYING I FROM 1 BY 1 UNTIL I > 2\n\
+             AFTER J FROM 1 BY 1 UNTIL J > 3\n\
+             AFTER K FROM 1 BY 1 UNTIL K > 5\n\
+             ADD 1 TO N\n\
+             END-PERFORM.\n\
+             DISPLAY N.",
+        );
+        assert_eq!(run_cobol(&src), "30\n"); // 2 × 3 × 5
+    }
+
+    /// ★ EL CASO POR EL QUE EXISTE: recorrer una tabla con `OCCURS`.
+    #[test]
+    fn perform_varying_recorre_una_tabla() {
+        let src = program(
+            "01 TABLA.\n05 T PIC S9(5)V99 OCCURS 4 TIMES.\n\
+             01 I PIC 9(3).\n01 TOTAL PIC S9(7)V99 VALUE ZERO.",
+            "MOVE 10.01 TO T(1).\nMOVE 20.02 TO T(2).\n\
+             MOVE 30.03 TO T(3).\nMOVE 40.04 TO T(4).\n\
+             PERFORM VARYING I FROM 1 BY 1 UNTIL I > 4\n\
+             ADD T(I) TO TOTAL\n\
+             END-PERFORM.\n\
+             DISPLAY TOTAL.",
+        );
+        assert_eq!(run_cobol(&src), "100.10\n");
+    }
+
+    /// La forma FUERA DE LÍNEA: el cuerpo es un párrafo.
+    #[test]
+    fn perform_varying_de_parrafo() {
+        let src = programa_con_parrafos(
+            "01 I PIC 9(3).\n01 SUMA PIC 9(5) VALUE ZERO.",
+            "PERFORM 1000-SUMA VARYING I FROM 1 BY 1 UNTIL I > 4.\n\
+             DISPLAY SUMA.\n\
+             STOP RUN.\n\
+             1000-SUMA.\n\
+             ADD I TO SUMA.",
+        );
+        assert_eq!(run_cobol(&src), "10\n"); // 1+2+3+4
+    }
+
+    /// Lo que falta se dice.
+    #[test]
+    fn los_varying_incompletos_se_rechazan() {
+        let casos: &[(&str, &str)] = &[
+            ("PERFORM VARYING I FROM 1 UNTIL I > 3\nDISPLAY I\nEND-PERFORM.", "las tres partes"),
+            ("PERFORM VARYING I BY 1 FROM 1 UNTIL I > 3\nDISPLAY I\nEND-PERFORM.", "el orden es FROM"),
+            ("PERFORM VARYING I FROM 1 BY 1 UNTIL I > 3\nDISPLAY I.", "END-PERFORM"),
+        ];
+        for (body, pista) in casos {
+            let src = program("01 I PIC 9(3).", body);
+            let err = compile_source_to_bef(&src)
+                .expect_err(&format!("deberia rechazarse: {body}"))
+                .to_string();
+            assert!(err.contains(pista), "{body}\n => {err:?}");
+        }
     }
 
     // ── GO TO: el descarte dentro de un rango ───────────────────────────
