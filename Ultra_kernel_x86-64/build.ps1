@@ -8,8 +8,28 @@ param(
     # Ring 3. Vacio = no se toca ningun disco, que es el valor por defecto y la
     # postura de este build: escribir en discos esta cerrado salvo que se pida.
     [string]$Data = '',
+    # ★ Las DOS mitades del despliegue a la misma unidad, que es el caso normal
+    # en esta maquina. Equivale a `-Flash -Data <la misma letra de -Drive>`.
+    #
+    # Existe porque `-Flash` y `-Data` separados tienen una trampa silenciosa:
+    # `-Flash` actualiza el ARRANQUE y `-Data` los PROGRAMAS, y quien olvida el
+    # segundo arranca un kernel nuevo con un `sys\gui.bex` viejo. No falla nada:
+    # simplemente estas probando el build de antes y no lo sabes. Paso una tarde
+    # el 2026-08-04.
+    #
+    # Las dos banderas SIGUEN existiendo por separado a proposito -son dos
+    # discos logicos con dos riesgos distintos-, pero el camino corto es el
+    # correcto y por eso tiene nombre.
+    [switch]$Todo,
     [switch]$Yes
 )
+
+# `-Todo` se resuelve a las dos banderas de siempre ANTES de nada, para que
+# todo lo de abajo no tenga que saber que existe.
+if ($Todo) {
+    $Flash = $true
+    if (-not $Data) { $Data = $Drive }
+}
 
 $root = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
@@ -17,6 +37,67 @@ if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 function Step { param($m) Write-Host ('  => ' + $m) -ForegroundColor Cyan }
 function Fail { param($m) Write-Host ('  [X] ' + $m) -ForegroundColor Red; exit 1 }
 function Hash256 { param($p) (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() }
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  EL ESPEJO: lo que hay EN EL DISCO contra lo que acaba de salir del build
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ★★ Esto existe por un fallo concreto y caro: el 2026-08-04 se desplego con
+# `-Flash` y sin `-Data`, o sea que se actualizo el ARRANQUE y no los
+# PROGRAMAS. La maquina arranco un kernel nuevo con un `sys\gui.bex` de dos
+# commits antes. **No fallo nada** — simplemente se estuvo probando el build de
+# ayer, y las conclusiones de esa tarde eran sobre codigo que ya no existia.
+#
+# Un deploy incompleto que no dice nada es peor que uno que revienta: el que
+# revienta se arregla en un minuto; este manda a depurar un fantasma.
+#
+# Solo LEE el disco. No copia, no borra y no puede fallar el build por lo que
+# encuentre: informa. Si la unidad no esta puesta, se calla.
+function Espejo {
+    param([string]$letra)
+    if (-not $letra) { return }
+    if ($letra -and (Test-Path ($letra + ':\'))) {
+        $espejoSrc = Join-Path $root 'staging\BMO-DATA'
+        if (Test-Path $espejoSrc) {
+            Write-Host ('  === ESPEJO: ' + $letra + ':\ contra este build ===') -ForegroundColor Cyan
+            $viejos = 0
+            $faltan = 0
+            $aldia  = 0
+            foreach ($f in Get-ChildItem -Path $espejoSrc -Recurse -File) {
+                $rel = $f.FullName.Substring($espejoSrc.Length).TrimStart([char]'\')
+                $enDisco = Join-Path ($letra + ':\') $rel
+                if (-not (Test-Path -LiteralPath $enDisco)) {
+                    Write-Host ('    FALTA    ' + $rel) -ForegroundColor Red
+                    $faltan++
+                } elseif ((Hash256 $enDisco) -ne (Hash256 $f.FullName)) {
+                    # El tamano se ensena porque es lo que se compara a ojo cuando
+                    # uno mira el disco desde fuera.
+                    $dl = (Get-Item -LiteralPath $enDisco).Length
+                    $sl = $f.Length
+                    Write-Host ('    VIEJO    {0}   disco {1} B / build {2} B' -f $rel, $dl, $sl) -ForegroundColor Red
+                    $viejos++
+                } else {
+                    $aldia++
+                }
+            }
+            Write-Host ''
+            if ($viejos -eq 0 -and $faltan -eq 0) {
+                Write-Host ('  EL DISCO ESTA AL DIA (' + $aldia + ' archivos)') -ForegroundColor Green
+            } else {
+                # En rojo y con el comando dentro. Un aviso que no dice como
+                # arreglarlo obliga a recordar la bandera que uno acaba de olvidar.
+                Write-Host '  *********************************************************' -ForegroundColor Red
+                Write-Host ('  *  EL DISCO NO TIENE ESTE BUILD: {0} viejos, {1} sin copiar' -f $viejos, $faltan) -ForegroundColor Red
+                Write-Host '  *' -ForegroundColor Red
+                Write-Host '  *  Lo que arranques NO es lo que acabas de compilar.' -ForegroundColor Red
+                Write-Host ('  *  Arreglo:  .\Ultra_kernel_x86-64\build.ps1 -Todo -Drive ' + $letra + ' -Yes') -ForegroundColor Yellow
+                Write-Host '  *********************************************************' -ForegroundColor Red
+            }
+            Write-Host ''
+        }
+    }
+}
+
 
 $target = Join-Path $root 'target'
 $stage  = Join-Path $root (Join-Path 'staging' 'EFI\BOOT')
@@ -498,7 +579,19 @@ Write-Host '  2 stages + kernel (Ring 0)' -ForegroundColor Cyan
 Write-Host '  s1_cpu@0x100000 s2_mem@0x200000 kernel@0x400000' -ForegroundColor Cyan
 Write-Host ''
 
-if ($BuildOnly) { exit 0 }
+
+# A que unidad se le hace el espejo. `-Data` manda; luego `-Flash`; y si solo
+# se compilo, la que se haya ESCRITO en `-Drive` -no vale el valor por defecto,
+# o el espejo saldria contra una unidad que nadie nombro.
+$espejoLetra = ''
+if ($Data)                                       { $espejoLetra = $Data.TrimEnd([char]':',[char]'\').ToUpper() }
+elseif ($Flash -or $Verify)                      { $espejoLetra = $Drive.TrimEnd([char]':',[char]'\').ToUpper() }
+elseif ($PSBoundParameters.ContainsKey('Drive')) { $espejoLetra = $Drive.TrimEnd([char]':',[char]'\').ToUpper() }
+
+if ($BuildOnly) {
+    Espejo $espejoLetra
+    exit 0
+}
 
 # ── Flash ────────────────────────────────────────────────────────
 if ($Flash -or $Verify) {
@@ -653,3 +746,5 @@ if ($Data) {
     Write-Host ('  === BMO-DATA VERIFICADO (' + $copiados + ' archivos) ===') -ForegroundColor Green
     Write-Host ''
 }
+
+Espejo $espejoLetra
