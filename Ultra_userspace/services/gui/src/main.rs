@@ -261,7 +261,7 @@ pub extern "C" fn _start() -> ! {
     // Una tecla de funcion no produce caracter en NINGUNA distribucion, asi que
     // no puede chocar con escribir. Es lo unico que importa en un atajo del
     // sistema, y es lo que `Ctrl+Alt` no puede ofrecer: en espanol ES AltGr.
-    let caja_datos = escena::datos::CajaDatos::nueva(&p);
+    let mut caja_datos = escena::datos::CajaDatos::nueva(&p);
     // ★ ABIERTA no es lo mismo que ARRIBA. Abierta es "existe y esta dibujada";
     // arriba es "es la que tapa a la otra". Se separan porque aqui no hay
     // recorte: las ventanas se pintan enteras una encima de otra, y la ultima
@@ -672,6 +672,60 @@ pub extern "C" fn _start() -> ! {
                     }
                     escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
                     continue;
+                }
+
+                // ── ★ La consola de DATOS: cambiar de vista y recorrer el árbol ──
+                //
+                // Va aquí, junto al bloque del klog y por el mismo motivo: son
+                // teclas DE ESTA VENTANA. Con Datos delante, las flechas no
+                // tienen nada que ver con el historial de comandos de Ejecutar,
+                // y hasta hoy iban allí — se navegaba una ventana tapada.
+                if datos_abierta && foco.es_para(V_DATOS) {
+                    use escena::datos::Vista;
+                    let mut atendida = true;
+                    match c {
+                        // TAB: números ⇄ nodos. Es la misma tecla que cambia de
+                        // pestaña en todas partes.
+                        b'\t' => {
+                            caja_datos.vista = match caja_datos.vista {
+                                Vista::Numeros => {
+                                    // Al entrar en el árbol se empieza por la
+                                    // raíz. Conservar el sitio de la última vez
+                                    // enseñaría un directorio que ya no se sabe
+                                    // cuál es.
+                                    bmo::estratos::a_la_raiz();
+                                    caja_datos.al_principio();
+                                    Vista::Nodos
+                                }
+                                Vista::Nodos => Vista::Numeros,
+                            };
+                        }
+                        _ if caja_datos.vista == Vista::Numeros => atendida = false,
+                        // ARRIBA / ABAJO por la lista de hijos.
+                        0x80 => caja_datos.mover_sel(-1, bmo::estratos::hijos() as usize),
+                        0x81 => caja_datos.mover_sel(1, bmo::estratos::hijos() as usize),
+                        0x87 => caja_datos.mover_sel(-5, bmo::estratos::hijos() as usize),
+                        0x88 => caja_datos.mover_sel(5, bmo::estratos::hijos() as usize),
+                        // ENTRAR / DERECHA: bajar al hijo señalado. `entrar`
+                        // dice que no si es un archivo, y entonces no pasa nada
+                        // — que es lo correcto: un archivo no tiene dentro.
+                        b'\r' | b'\n' | 0x83 => {
+                            if bmo::estratos::entrar(caja_datos.sel as u64) {
+                                caja_datos.al_principio();
+                            }
+                        }
+                        // RETROCESO / IZQUIERDA: subir al padre.
+                        0x08 | 0x82 => {
+                            if bmo::estratos::subir() {
+                                caja_datos.al_principio();
+                            }
+                        }
+                        _ => atendida = false,
+                    }
+                    if atendida {
+                        escena::datos::pintar(&p, &caja_datos);
+                        continue;
+                    }
                 }
 
                 // ── ★ ¿DE QUIEN es esta tecla? ──
@@ -1493,8 +1547,15 @@ pub extern "C" fn _start() -> ! {
                         // página entera se pasa. Es el paso de un terminal.
                         salida.mover_vista(giro * 3);
                     }
-                    // La consola de datos no tiene nada que desplazar todavía:
-                    // cabe entera. Cuando enseñe el árbol de nodos, aquí entra.
+                    // La rueda sobre el árbol de nodos mueve la selección. En la
+                    // pestaña de números no hay nada que desplazar: cabe entera.
+                    Some(V_DATOS) if caja_datos.vista == escena::datos::Vista::Nodos => {
+                        // Girar hacia arriba sube por la lista: `giro` positivo
+                        // es hacia arriba y la selección de arriba es la menor.
+                        let cuantos = bmo::estratos::hijos() as usize;
+                        caja_datos.mover_sel(-giro, cuantos);
+                        escena::datos::pintar(&p, &caja_datos);
+                    }
                     _ => {}
                 }
             }
@@ -1529,6 +1590,35 @@ pub extern "C" fn _start() -> ! {
                 // se lo pida, no que tu se lo des.
                 if boton && !boton_antes {
                     foco.clic_en(v);
+                }
+            }
+
+            // ── ★ ARRASTRAR la ventana de Datos ──
+            //
+            // Sólo por su barra de título. Si se arrastrara desde cualquier
+            // parte, no se podría pulsar nada de dentro — que es el motivo por
+            // el que todas las ventanas del mundo tienen asa.
+            if datos_abierta {
+                if boton && !boton_antes {
+                    caja_datos.agarrar(pos.x, pos.y);
+                } else if !boton && caja_datos.arrastrando() {
+                    caja_datos.soltar();
+                } else if boton && caja_datos.arrastrando() {
+                    // El sitio VIEJO hay que borrarlo antes de mover. Si no, la
+                    // ventana deja un rastro de copias de sí misma: aquí no hay
+                    // recorte ni compositor que repinte lo de debajo solo.
+                    let (vx, vy, va, vl) =
+                        (caja_datos.x, caja_datos.y, caja_datos.ancho, caja_datos.alto);
+                    if caja_datos.arrastrar_a(&p, pos.x, pos.y) {
+                        borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                        if visible {
+                            pintar_caja(&p, &caja);
+                            repintar_campo = true;
+                            salida.sucia = true;
+                        }
+                        escena::datos::pintar(&p, &caja_datos);
+                        arriba_antes = V_DATOS;
+                    }
                 }
             }
             boton_antes = boton;
