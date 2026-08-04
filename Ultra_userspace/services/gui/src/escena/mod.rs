@@ -115,11 +115,28 @@ pub(crate) fn rect_redondeado(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32,
 /// Sin canal alfa no hay difuminado, pero dos anillos de oscuridad distinta
 /// engañan bastante bien al ojo — que es lo único que se le pide a una sombra.
 /// Una sola capa se ve como lo que es: un rectángulo negro detrás.
+/// ★★ Cuánto SOBRESALE la sombra de su ventana, por la derecha y por abajo.
+///
+/// No son números decorativos: **son los que tiene que borrar quien quite la
+/// ventana**. Y ahí estuvo el fallo que se vio en el Ryzen el 2026-08-04 —
+/// cerrar una ventana dejaba una huella en forma de L, porque la sombra se
+/// pintaba 8 px a la derecha y 10 abajo y el borrado sólo cubría el rectángulo
+/// de la ventana. Ocho por diez píxeles de un tono más oscuro, que en una foto
+/// parecen una raya y en la pantalla parecen suciedad.
+///
+/// Por eso viven aquí y no dentro de `sombra`: quien dibuja y quien borra
+/// **leen la misma constante**. Dos números que tienen que cuadrar y viven en
+/// dos sitios son dos números que un día no cuadran.
+pub(crate) const SOMBRA_DER: u32 = 8;
+pub(crate) const SOMBRA_ABAJO: u32 = 10;
+
 pub(crate) fn sombra(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32) {
     const LEJOS: u32 = 0x000A_0D14;
     const CERCA: u32 = 0x0006_0810;
-    rect_redondeado(p, x + 2, y + 4, w + 6, h + 6, LEJOS);
-    rect_redondeado(p, x + 3, y + 5, w + 3, h + 3, CERCA);
+    // Las medidas salen de las constantes de arriba: el borde derecho cae en
+    // `x + w + SOMBRA_DER` y el de abajo en `y + h + SOMBRA_ABAJO`.
+    rect_redondeado(p, x + 2, y + 4, w + SOMBRA_DER - 2, h + SOMBRA_ABAJO - 4, LEJOS);
+    rect_redondeado(p, x + 3, y + 5, w + SOMBRA_DER - 5, h + SOMBRA_ABAJO - 7, CERCA);
 }
 
 /// El color del escritorio en la fila `y`. El degradado, dicho una sola vez.
@@ -541,8 +558,10 @@ pub(crate) fn pintar_campo(p: &bmo::Pantalla, c: &Caja, ruta: &[u8], cur: usize,
 /// fotograma, y la alternativa (guardar lo que había debajo) sería un buffer de
 /// 1,3 MB en un proceso con 64 KiB de pila.
 pub(crate) fn borrar_caja(p: &bmo::Pantalla, c: &Caja) {
-    for fila in 0..CAJA_ALTO {
-        for col in 0..CAJA_ANCHO {
+    // Su sombra tambien, por el mismo motivo que en `borrar_ventana`:
+    // esconder con Ctrl+Alt dejaba la misma huella en L.
+    for fila in 0..CAJA_ALTO + SOMBRA_ABAJO {
+        for col in 0..CAJA_ANCHO + SOMBRA_DER {
             let (x, y) = (c.x + col, c.y + fila);
             p.punto(x, y, color_escena(c, false, x, y, p.alto));
         }
@@ -572,6 +591,15 @@ pub(crate) fn borrar_ventana(
     alto: u32,
     visible: bool,
 ) {
+    // ★ Se borra la ventana **Y SU SOMBRA**. Sin esto, cerrar deja una huella
+    // en forma de L abajo a la derecha: los píxeles que la sombra pintó fuera
+    // del rectángulo no los cubre nadie. Se vio en el Ryzen y es el motivo de
+    // que `SOMBRA_DER`/`SOMBRA_ABAJO` sean constantes compartidas.
+    //
+    // `punto` recorta solo contra el panel, así que pasarse por la derecha o
+    // por abajo no hay que comprobarlo aquí.
+    let alto = alto + SOMBRA_ABAJO;
+    let ancho = ancho + SOMBRA_DER;
     for fila in 0..alto {
         for col in 0..ancho {
             let (x, y) = (x0 + col, y0 + fila);

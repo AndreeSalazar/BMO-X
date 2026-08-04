@@ -517,12 +517,24 @@ pub extern "C" fn _start() -> ! {
                         salida.texto(b"]\n");
                         salida.con_tinta(TINTA_NORMAL);
                     }
-                    // Se dice y no se calla. Un volcado que falla en silencio
-                    // deja mirando un archivo viejo creyendo que es el nuevo,
-                    // que es el fallo que este volcado existe para evitar.
-                    Err(_) => {
+                    // Se dice y no se calla, **y se dice QUÉ y POR QUÉ**. La
+                    // primera versión ponía "no se pudo guardar, F11 dice por
+                    // qué", y eso obliga a abrir otra ventana para saber lo que
+                    // el mensaje ya tenía en la mano. Un error que manda a otro
+                    // sitio a buscar el motivo es medio error.
+                    Err(e) => {
                         salida.con_tinta(TINTA_MAL);
-                        salida.texto(b"  [NO se pudo guardar la salida. F11 dice por que]\n");
+                        salida.texto(b"  [NO se guardo ");
+                        salida.texto(&destino.0[..destino.1]);
+                        salida.texto(b": ");
+                        if e == 0 {
+                            // El cero es el `cerrar` que contesta que no. El
+                            // kernel no dice más, y eso también se dice.
+                            salida.texto(b"el cierre fallo (disco lleno? no cabe?)");
+                        } else {
+                            salida.texto(motivo_archivo(e));
+                        }
+                        salida.texto(b"]\n");
                         salida.con_tinta(TINTA_NORMAL);
                     }
                 }
