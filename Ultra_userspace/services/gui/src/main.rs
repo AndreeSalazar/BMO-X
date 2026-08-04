@@ -114,7 +114,8 @@ fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
         Some(i) => &objetivo[i + 1..],
         None => objetivo,
     };
-    let base = match ruta.iter().rposition(|&c| c == b'/' || c == b'\\') {
+    let corte = ruta.iter().rposition(|&c| c == b'/' || c == b'\\');
+    let base = match corte {
         Some(i) => &ruta[i + 1..],
         None => ruta,
     };
@@ -122,20 +123,45 @@ fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
         Some(i) => &base[..i],
         None => base,
     };
+    // ★★ LA CARPETA VA DELANTE, y esto no es adorno.
+    //
+    // Con sólo el nombre del programa, `cobol/8/cierre.bex` y `ada/cierre.bex`
+    // escribían **los dos en `datos/cierre.txt`**: el segundo se comía al
+    // primero sin decir nada. Correr la escalera entera y perder un resultado
+    // por el camino es justo lo que este volcado existe para impedir.
+    //
+    // Con la carpeta delante quedan `8cierre` y `adacierr`, y de paso el
+    // número del nivel se lee en el nombre: `2banco`, `10maestr`, `9comisio`.
+    let carpeta: &[u8] = match corte {
+        Some(i) => {
+            let arriba = &ruta[..i];
+            match arriba.iter().rposition(|&c| c == b'/' || c == b'\\') {
+                Some(j) => &arriba[j + 1..],
+                None => arriba,
+            }
+        }
+        None => b"",
+    };
     let mut n = 0usize;
     for &b in b"datos/" {
         dst[n] = b;
         n += 1;
     }
-    if tallo.is_empty() {
-        // Sin nombre que sacar, el de siempre. Mejor un archivo con un nombre
-        // soso que ninguno.
-        for &b in b"salida" {
-            dst[n] = b;
-            n += 1;
+    // Ocho letras y ni una más: el driver FAT32 del kernel **se niega a
+    // recortar**, así que un nombre largo no fallaría al crear — fallaría al
+    // cerrar, que es donde ya sabemos que duele.
+    let inicio = n;
+    for &b in carpeta.iter().chain(tallo.iter()) {
+        if n - inicio >= 8 {
+            break;
         }
-    } else {
-        for &b in tallo.iter().take(8) {
+        dst[n] = b;
+        n += 1;
+    }
+    if n == inicio {
+        // Ni carpeta ni nombre: mejor un archivo con un nombre soso que
+        // ninguno.
+        for &b in b"salida" {
             dst[n] = b;
             n += 1;
         }
