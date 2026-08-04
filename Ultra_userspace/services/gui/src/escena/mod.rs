@@ -14,6 +14,9 @@ pub(crate) mod entrada;
 /// La consola del KERNEL (F11): lo que dice Ring 0, leído desde Ring 3. No da
 /// privilegio, da vista — ver la cabecera del módulo.
 pub(crate) mod klog;
+/// El MARCO compartido: geometría, arrastre, estirar, maximizar y los tres
+/// botones. Lo que toda ventana tiene y ninguna debería escribir dos veces.
+pub(crate) mod marco;
 pub(crate) mod salida;
 
 
@@ -145,6 +148,69 @@ pub(crate) fn fondo_en(y: u32, alto: u32) -> u32 {
     mezcla(FONDO_ARRIBA, FONDO_ABAJO, 16)
         | mezcla(FONDO_ARRIBA, FONDO_ABAJO, 8)
         | mezcla(FONDO_ARRIBA, FONDO_ABAJO, 0)
+}
+
+// ── Las FICHAS de la barra ──────────────────────────────────────────────
+//
+// ★★ Sin esto, minimizar es un botón de "desaparece para siempre".
+//
+// Una ventana minimizada sigue abierta —conserva su sitio, su tamaño y lo que
+// estuvieras mirando— pero no se ve. Si no hay dónde encontrarla, ese estado no
+// se distingue de haberla cerrado, y el botón miente sobre lo que hace.
+//
+// La barra de arriba lleva una ficha por ventana abierta: la activa realzada,
+// la minimizada apagada. Un clic la trae. Es lo que hacen Windows 11 y GNOME, y
+// es lo que convierte tres ventanas sueltas en un escritorio.
+
+pub(crate) const FICHA_ALTO: u32 = 24;
+pub(crate) const FICHA_ANCHO: u32 = 128;
+/// Dónde empiezan, dejando sitio al logotipo de la izquierda.
+pub(crate) const FICHA_X: u32 = 120;
+
+/// El rectángulo de la ficha número `i`.
+pub(crate) fn ficha_caja(i: u32) -> (u32, u32, u32, u32) {
+    (FICHA_X + i * (FICHA_ANCHO + 8), (BARRA_ALTO - FICHA_ALTO) / 2, FICHA_ANCHO, FICHA_ALTO)
+}
+
+/// Sobre qué ficha está el puntero, si sobre alguna. `cuantas` es cuántas hay.
+pub(crate) fn ficha_en(px: u32, py: u32, cuantas: u32) -> Option<u32> {
+    for i in 0..cuantas {
+        let (x, y, w, h) = ficha_caja(i);
+        if px >= x && px < x + w && py >= y && py < y + h {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Pinta una ficha. `color` es el de su ventana — el mismo idioma que el punto
+/// de su barra de título, para que se sepa cuál es sin leerla.
+pub(crate) fn pintar_ficha(
+    p: &bmo::Pantalla,
+    i: u32,
+    nombre: &str,
+    color: u32,
+    activa: bool,
+    minimizada: bool,
+) {
+    let (x, y, w, h) = ficha_caja(i);
+    // Tres estados y tres aspectos. Dos que se vieran igual serían dos que no
+    // se pueden distinguir de un vistazo, que es para lo que está la barra.
+    let fondo = if activa { 0x001F_2838 } else { BARRA };
+    p.rect(x, y, w, h, fondo);
+    if activa {
+        // La activa lleva su subrayado, como las pestañas de Datos. Mismo
+        // idioma en toda la pantalla.
+        p.rect(x, y + h - 2, w, 2, color);
+    }
+    // El punto de color se apaga si está minimizada: es la señal de "está ahí
+    // pero no se ve", y se lee sin texto.
+    let punto = if minimizada { TEXTO_TENUE } else { color };
+    p.rect(x + 8, y + (h - 8) / 2, 8, 8, punto);
+    let tinta = if minimizada { TEXTO_TENUE } else { TEXTO };
+    let cabe = ((w - 26) / bmo::GLIFO_ANCHO) as usize;
+    let n = nombre.len().min(cabe);
+    p.texto(x + 22, y + (h - bmo::GLIFO_ALTO) / 2, &nombre[..n], tinta);
 }
 
 /// Pinta el escritorio entero: degradado y barra.

@@ -243,6 +243,10 @@ pub extern "C" fn _start() -> ! {
     pintar_fondo(&p);
     p.rect(16, 13, 14, 14, ACENTO);
     p.texto(38, 14, "BMO-X", TEXTO);
+    // Las fichas se pintan en el bucle: dependen de qué esté abierto y de
+    // quién tenga el foco, y las dos cosas cambian.
+    let mut barra_sucia = true;
+    let mut estado_barra_antes = (false, 0u8, false, false);
 
     // Lo que SÍ era información y no instrumento: si la entrada no se pudo
     // reclamar hay que decirlo, y ahora se dice con palabras en la barra en vez
@@ -688,8 +692,8 @@ pub extern "C" fn _start() -> ! {
                         // lo que tapaba: la caja de Ejecutar esta debajo.
                         foco.cerrar(V_DATOS);
                         borrar_ventana(
-                            &p, &caja, caja_datos.x, caja_datos.y,
-                            caja_datos.ancho, caja_datos.alto, visible,
+                            &p, &caja, caja_datos.x(), caja_datos.y(),
+                            caja_datos.ancho(), caja_datos.alto(), visible,
                         );
                         arriba_antes = V_EJECUTAR;
                         if visible {
@@ -1688,17 +1692,86 @@ pub extern "C" fn _start() -> ! {
                 }
             }
 
-            // ── ★ ARRASTRAR la ventana de Datos ──
+            // ── ★ EL RATÓN SOBRE LA VENTANA DE DATOS ──
             //
-            // Sólo por su barra de título. Si se arrastrara desde cualquier
-            // parte, no se podría pulsar nada de dentro — que es el motivo por
-            // el que todas las ventanas del mundo tienen asa.
-            if datos_abierta {
+            // Tres gestos que comparten estructura: los BOTONES de la barra,
+            // ARRASTRAR por el asa y ESTIRAR por la esquina. Quién decide cuál
+            // es el marco, no esto: aquí sólo se le cuenta lo que pasó.
+            if datos_abierta && !caja_datos.marco.minimizada {
+                use escena::marco::Boton;
+
+                // El realce de los botones. Sólo cuando CAMBIA — repintarlo
+                // cada fotograma serían 1.700 píxeles de memoria de vídeo sin
+                // caché para dejarlo igual, y además pisaría el cursor.
+                let encima_ahora = caja_datos.marco.boton_en(pos.x, pos.y);
+                if encima_ahora != caja_datos.marco.encima {
+                    caja_datos.marco.encima = encima_ahora;
+                    escena::datos::pintar(&p, &caja_datos);
+                    arriba_antes = V_DATOS;
+                }
+
                 if boton && !boton_antes {
-                    caja_datos.agarrar(pos.x, pos.y);
-                } else if !boton && caja_datos.arrastrando() {
-                    caja_datos.soltar();
-                } else if boton && caja_datos.arrastrando() {
+                    // Un botón se dispara al PULSAR y no al soltar. Es lo que
+                    // hace todo el mundo, y con `cerrar` importa: soltar fuera
+                    // para arrepentirse no funciona en ningún escritorio, así
+                    // que fingirlo aquí sería inventarse una costumbre.
+                    match caja_datos.marco.boton_en(pos.x, pos.y) {
+                        Some(Boton::Cerrar) => {
+                            datos_abierta = false;
+                            foco.cerrar(V_DATOS);
+                            borrar_ventana(
+                                &p, &caja, caja_datos.x(), caja_datos.y(),
+                                caja_datos.ancho(), caja_datos.alto(), visible,
+                            );
+                            arriba_antes = V_EJECUTAR;
+                            if visible {
+                                pintar_caja(&p, &caja);
+                                repintar_campo = true;
+                                salida.sucia = true;
+                            }
+                        }
+                        Some(Boton::Minimizar) => {
+                            // Minimizar NO es cerrar: la ventana sigue abierta
+                            // y conserva su sitio, su tamaño y lo que estuviera
+                            // mirando. Se va a su ficha de la barra.
+                            let (vx, vy, va, vl) = (
+                                caja_datos.x(), caja_datos.y(),
+                                caja_datos.ancho(), caja_datos.alto(),
+                            );
+                            caja_datos.marco.minimizada = true;
+                            foco.cerrar(V_DATOS);
+                            borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                            arriba_antes = V_EJECUTAR;
+                            if visible {
+                                pintar_caja(&p, &caja);
+                                repintar_campo = true;
+                                salida.sucia = true;
+                            }
+                            barra_sucia = true;
+                        }
+                        Some(Boton::Maximizar) => {
+                            let (vx, vy, va, vl) = caja_datos.marco.alternar_maximizada(&p);
+                            // Al restaurar, el hueco que deja hay que
+                            // devolvérselo al escritorio; al maximizar no sobra
+                            // nada, pero borrar el rectángulo viejo entero
+                            // cubre los dos casos con una sola regla.
+                            borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                            if visible {
+                                pintar_caja(&p, &caja);
+                                repintar_campo = true;
+                                salida.sucia = true;
+                            }
+                            caja_datos.recolocar();
+                            escena::datos::pintar(&p, &caja_datos);
+                            arriba_antes = V_DATOS;
+                        }
+                        None => {
+                            caja_datos.marco.agarrar(pos.x, pos.y);
+                        }
+                    }
+                } else if !boton && caja_datos.marco.agarrado() {
+                    caja_datos.marco.soltar();
+                } else if boton && caja_datos.marco.agarrado() {
                     // El sitio VIEJO hay que borrarlo antes de mover. Si no, la
                     // ventana deja un rastro de copias de sí misma: aquí no hay
                     // recorte ni compositor que repinte lo de debajo solo.
@@ -1706,19 +1779,46 @@ pub extern "C" fn _start() -> ! {
                     // Al ESTIRAR pasa lo mismo pero sólo al encoger; borrar el
                     // rectángulo viejo entero cubre los dos casos con una regla
                     // en vez de con dos.
-                    let (vx, vy, va, vl) =
-                        (caja_datos.x, caja_datos.y, caja_datos.ancho, caja_datos.alto);
-                    let cambio = caja_datos.arrastrar_a(&p, pos.x, pos.y)
-                        || caja_datos.estirar_a(&p, pos.x, pos.y);
-                    if cambio {
+                    let (vx, vy, va, vl) = (
+                        caja_datos.x(), caja_datos.y(),
+                        caja_datos.ancho(), caja_datos.alto(),
+                    );
+                    if caja_datos.marco.seguir_al_puntero(&p, pos.x, pos.y) {
                         borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
                         if visible {
                             pintar_caja(&p, &caja);
                             repintar_campo = true;
                             salida.sucia = true;
                         }
+                        caja_datos.recolocar();
                         escena::datos::pintar(&p, &caja_datos);
                         arriba_antes = V_DATOS;
+                    }
+                }
+            }
+
+            // ── Clic en una FICHA de la barra: traer esa ventana ──
+            //
+            // Es la mitad que hace que minimizar signifique algo. Sin esto, el
+            // botón de minimizar sería uno de "desaparece para siempre".
+            if boton && !boton_antes && pos.y < BARRA_ALTO {
+                if let Some(i) = escena::ficha_en(pos.x, pos.y, 2) {
+                    if i == 1 && datos_abierta {
+                        caja_datos.marco.minimizada = false;
+                        caja_datos.marco.encajar(&p);
+                        foco.abrir(V_DATOS);
+                        foco.clic_en(V_DATOS);
+                        caja_datos.recolocar();
+                        escena::datos::pintar(&p, &caja_datos);
+                        arriba_antes = V_DATOS;
+                        barra_sucia = true;
+                    } else if i == 0 && !visible {
+                        // Ejecutar escondida con Ctrl+Alt: su ficha la trae.
+                        visible = true;
+                        pintar_caja(&p, &caja);
+                        repintar_campo = true;
+                        salida.sucia = true;
+                        barra_sucia = true;
                     }
                 }
             }
@@ -1847,6 +1947,37 @@ pub extern "C" fn _start() -> ! {
             } else if !visible {
                 salida.sucia = false;
             }
+        }
+
+        // ── Las FICHAS de la barra ──
+        //
+        // Se repintan sólo cuando algo cambia de estado. Son la lista de lo que
+        // hay abierto, y la única forma de volver a una ventana minimizada.
+        //
+        // ★ Lo que las ensucia se calcula AQUÍ, comparando el estado con el del
+        // fotograma anterior, en vez de poner `barra_sucia = true` en los seis
+        // sitios que cambian algo. Un `sucio` que hay que acordarse de poner es
+        // un `sucio` que un día no se pone, y entonces la barra enseña un
+        // estado viejo sin que nada falle — el peor tipo de fallo de interfaz.
+        let estado_barra = (visible, arriba_antes, datos_abierta, caja_datos.marco.minimizada);
+        if estado_barra != estado_barra_antes {
+            estado_barra_antes = estado_barra;
+            barra_sucia = true;
+        }
+        if barra_sucia && va_a_pintar {
+            escena::pintar_ficha(&p, 0, "Ejecutar", ACENTO, visible && arriba_antes == V_EJECUTAR, !visible);
+            if datos_abierta {
+                escena::pintar_ficha(
+                    &p, 1, "ESTRATOS", 0x0034_D399,
+                    arriba_antes == V_DATOS, caja_datos.marco.minimizada,
+                );
+            } else {
+                // Cerrada: su hueco vuelve al color de la barra. Una ficha que
+                // se queda tras cerrar la ventana promete algo que ya no está.
+                let (fx, fy, fw, fh) = escena::ficha_caja(1);
+                p.rect(fx, fy, fw, fh, BARRA);
+            }
+            barra_sucia = false;
         }
 
         // El parpadeo del cursor de escritura. Sólo repinta cuando cambia de
