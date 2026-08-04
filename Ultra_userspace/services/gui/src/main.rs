@@ -603,7 +603,19 @@ pub extern "C" fn _start() -> ! {
             // La pila se reordena al SOLTAR, no en cada Tab: eso es lo que hace
             // que pulsarlo dos veces te devuelva a donde estabas. Ver
             // `bmo_input::foco`.
-            if !alt_solo && alt_antes && foco.conmutando() {
+            // ★★ La guarda es `conmutador_pintado`, NO `foco.conmutando()`.
+            //
+            // Eran dos estados distintos gobernando la misma cosa: uno dice
+            // *qué hay dibujado en la pantalla* y el otro *qué cree la política
+            // de foco*. Mientras coincidan, bien; el día que no —y en el Ryzen
+            // no coincidieron— el conmutador se queda pintado para siempre,
+            // porque el único que sabía borrarlo estaba esperando permiso del
+            // que no lo pintó.
+            //
+            // Lo que hay que borrar lo decide quien lo pintó. `soltar_conmutador`
+            // se llama igual: pedirle a la política que se suelte no puede
+            // depender de que ella misma diga que estaba conmutando.
+            if !alt_solo && alt_antes && conmutador_pintado {
                 foco.soltar_conmutador();
                 let (bx, by, ba, bh) = escena::conmutador::area(&p, foco.abiertas());
                 for fy in 0..bh {
@@ -1893,9 +1905,19 @@ pub extern "C" fn _start() -> ! {
             //
             // Es la mitad que hace que minimizar signifique algo. Sin esto, el
             // botón de minimizar sería uno de "desaparece para siempre".
+            // ★ Una ficha hace SIEMPRE lo mismo: **trae su ventana y le da el
+            // foco**, esté minimizada, escondida o simplemente detrás.
+            //
+            // La primera versión sólo actuaba `si estaba minimizada` o `si
+            // estaba escondida`, y por eso pulsar la ficha de una ventana que
+            // ya se veía no hacía nada. En el Ryzen eso se lee como *"la barra
+            // se olvida de mis clics"*, y con razón: un control que a veces
+            // responde y a veces no es peor que uno que no está.
             if boton && !boton_antes && pos.y < BARRA_ALTO {
                 if let Some(i) = escena::ficha_en(pos.x, pos.y, 2) {
                     if i == 1 && datos_abierta {
+                        // Estaba minimizada o no, da igual: acaba visible,
+                        // encajada, con el foco y delante.
                         caja_datos.marco.minimizada = false;
                         caja_datos.marco.encajar(&p);
                         foco.abrir(V_DATOS);
@@ -1904,10 +1926,14 @@ pub extern "C" fn _start() -> ! {
                         escena::datos::pintar(&p, &caja_datos);
                         arriba_antes = V_DATOS;
                         barra_sucia = true;
-                    } else if i == 0 && !visible {
-                        // Ejecutar escondida con Ctrl+Alt: su ficha la trae.
-                        visible = true;
+                    } else if i == 0 {
+                        if !visible {
+                            visible = true;
+                        }
+                        foco.abrir(V_EJECUTAR);
+                        foco.clic_en(V_EJECUTAR);
                         destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                        arriba_antes = V_EJECUTAR;
                         barra_sucia = true;
                     }
                 }
