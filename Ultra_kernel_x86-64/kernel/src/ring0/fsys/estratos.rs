@@ -453,14 +453,26 @@ pub fn estrato() -> Option<es::Estrato> {
     es::Estrato::decode(d).ok()
 }
 
-/// Lee las entradas de un directorio al buffer estático.
-/// Devuelve `(cuantas, si_se_trunco)`.
-pub fn entradas(dir: &Nodo) -> Option<(usize, bool)> {
+/// Lee las entradas de un directorio a UN buffer cualquiera.
+///
+/// Existe separada de [`entradas`] porque hay dos listados en vuelo a la vez y
+/// **no pueden compartir buffer**: el de `abrir()`, que recorre una ruta y lo
+/// pisa entero en cada tramo, y el del cursor de Ring 3, que tiene que seguir
+/// siendo válido entre dos preguntas del panel. Con un solo buffer, lanzar un
+/// programa mientras la ventana de Datos está abierta le cambiaba los nombres
+/// bajo los pies.
+fn listar_en(dir: &Nodo, buf: &mut [u8]) -> Option<(usize, bool)> {
     let a = dir.attr(bmo_estratos::objects::ATTR_ENTRADAS)?;
-    let buf = unsafe { &mut *core::ptr::addr_of_mut!(DIR_BUF) };
     let cabe_todo = a.size as usize <= buf.len();
     let n = flujo(a, buf)?;
     Some((n / ENTRADA_LEN, !cabe_todo))
+}
+
+/// Lee las entradas de un directorio al buffer estático.
+/// Devuelve `(cuantas, si_se_trunco)`.
+pub fn entradas(dir: &Nodo) -> Option<(usize, bool)> {
+    let buf = unsafe { &mut *core::ptr::addr_of_mut!(DIR_BUF) };
+    listar_en(dir, buf)
 }
 
 /// La entrada número `i` del último `entradas()`.
@@ -468,6 +480,178 @@ pub fn entrada(i: usize) -> Option<Entrada> {
     if i >= ENTRADAS_MAX { return None; }
     let buf = unsafe { &*core::ptr::addr_of!(DIR_BUF) };
     Entrada::decode(&buf[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN]).ok()
+}
+
+// ── El CURSOR: ESTRATOS recorrido desde Ring 3 ──────────────────────────────
+//
+// ═══ Por qué un cursor y no un handle por nodo ═══
+//
+// Un `KIND_ESTRATOS_NODO` con su capability por cada nodo abierto sería lo
+// ortodoxo, y es exactamente lo que no hace falta: la ventana de Datos mira UN
+// sitio a la vez y lo que quiere es *bajar, subir y listar*. Un handle por nodo
+// pediría tabla, ciclo de vida y revocación para modelar un puntero que se
+// mueve — y un puntero que se mueve es un cursor.
+//
+// ═══ Por qué esto no concede nada ═══
+//
+// Es el mismo trato que `OP_INFO` y que el klog: **contesta, no autoriza**.
+// Leer los nombres de un directorio no ejerce ningún poder que Ring 3 no tenga
+// ya —`ls` sobre FAT32 hace justo eso—, y ESCRIBIR sigue sin existir aquí: el
+// cursor no tiene ninguna operación que cambie el volumen.
+//
+// ═══ Lo que faltaba, dicho ═══
+//
+// `raiz`, `nodo`, `entradas` y `entrada` llevaban desde el principio siendo
+// funciones de Ring 0 sin puerta. La ventana F12 podía enseñar los NÚMEROS del
+// volumen —generación, ocupación, nivel— y no podía enseñar **qué hay dentro**,
+// porque no tenía de dónde sacarlo. Esto es esa puerta.
+pub mod cursor {
+    use super::*;
+
+    /// Cuánto se puede bajar. Dieciséis niveles de directorio es más de lo que
+    /// tiene ningún volumen razonable, y un tope explícito es mejor que una
+    /// pila que crece hasta que algo se rompe.
+    pub const HONDO_MAX: usize = 16;
+
+    /// El buffer del cursor, SUYO. Ver [`super::listar_en`].
+    static mut BUF: [u8; ENTRADAS_MAX * ENTRADA_LEN] = [0u8; ENTRADAS_MAX * ENTRADA_LEN];
+    /// La ruta desde la raíz: `PILA[0]` es la raíz y `PILA[HONDO]` el actual.
+    static mut PILA: [Option<BlockPtr>; HONDO_MAX] = [None; HONDO_MAX];
+    static mut HONDO: usize = 0;
+    static mut ACTUAL: Option<Nodo> = None;
+    static mut CUANTAS: usize = 0;
+    static mut TRUNCADO: bool = false;
+
+    /// Relista el nodo actual. Todo lo que mueve el cursor acaba aquí.
+    fn relistar() -> bool {
+        unsafe {
+            let Some(n) = ACTUAL else {
+                CUANTAS = 0;
+                TRUNCADO = false;
+                return false;
+            };
+            let buf = &mut *core::ptr::addr_of_mut!(BUF);
+            match listar_en(&n, buf) {
+                Some((c, t)) => {
+                    CUANTAS = c.min(ENTRADAS_MAX);
+                    TRUNCADO = t;
+                    true
+                }
+                // Un archivo no tiene `:entradas`, y eso no es un fallo: es que
+                // no tiene hijos. Se contesta cero y se sigue.
+                None => {
+                    CUANTAS = 0;
+                    TRUNCADO = false;
+                    true
+                }
+            }
+        }
+    }
+
+    /// Pone el cursor en la raíz del volumen. `false` si no hay volumen.
+    pub fn a_la_raiz() -> bool {
+        let Some((ptr, n)) = super::raiz() else {
+            unsafe { ACTUAL = None; HONDO = 0; CUANTAS = 0; }
+            return false;
+        };
+        unsafe {
+            PILA[0] = Some(ptr);
+            HONDO = 0;
+            ACTUAL = Some(n);
+        }
+        relistar()
+    }
+
+    /// Cuántos hijos tiene el nodo actual.
+    pub fn hijos() -> u64 {
+        unsafe { CUANTAS as u64 }
+    }
+
+    /// 1 si el listado no cabía entero. **Se dice en vez de callarse**: un
+    /// directorio truncado en silencio se ve igual que uno corto.
+    pub fn truncado() -> u64 {
+        unsafe { TRUNCADO as u64 }
+    }
+
+    /// Cuántos niveles se ha bajado desde la raíz.
+    pub fn hondo() -> u64 {
+        unsafe { HONDO as u64 }
+    }
+
+    /// El tipo del nodo actual: 0 archivo, 1 directorio, 2 no hay nada.
+    pub fn tipo() -> u64 {
+        unsafe {
+            match ACTUAL {
+                Some(n) => if n.tipo == Tipo::Directorio { 1 } else { 0 },
+                None => 2,
+            }
+        }
+    }
+
+    fn entrada_i(i: usize) -> Option<bmo_estratos::objects::Entrada> {
+        unsafe {
+            if i >= CUANTAS { return None; }
+            let buf = &*core::ptr::addr_of!(BUF);
+            bmo_estratos::objects::Entrada::decode(&buf[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN]).ok()
+        }
+    }
+
+    /// El tipo del hijo `i`: 0 archivo, 1 directorio, 2 no se pudo leer.
+    ///
+    /// Cuesta un salto al disco porque el tipo vive en el NODO y la entrada
+    /// sólo guarda el nombre y a dónde apunta. Es lo que hay: meter el tipo en
+    /// la entrada sería duplicar un dato que el nodo ya tiene, y dos copias de
+    /// un dato es una que puede mentir.
+    pub fn hijo_tipo(i: usize) -> u64 {
+        let Some(e) = entrada_i(i) else { return 2 };
+        match super::nodo(&e.nodo) {
+            Some(n) => if n.tipo == Tipo::Directorio { 1 } else { 0 },
+            None => 2,
+        }
+    }
+
+    /// Ocho bytes del nombre del hijo `i`, empaquetados en LE. `trozo` los
+    /// numera. Es el mismo trato que `klog_texto`: la superficie no acepta
+    /// punteros, así que un nombre viaja de ocho en ocho.
+    pub fn hijo_nombre(i: usize, trozo: usize) -> u64 {
+        let Some(e) = entrada_i(i) else { return 0 };
+        let nombre = e.nombre_str().as_bytes();
+        let ini = trozo * 8;
+        if ini >= nombre.len() { return 0; }
+        let fin = (ini + 8).min(nombre.len());
+        let mut w = [0u8; 8];
+        w[..fin - ini].copy_from_slice(&nombre[ini..fin]);
+        u64::from_le_bytes(w)
+    }
+
+    /// Baja al hijo `i`. `false` si no existe, si no es directorio, o si ya no
+    /// se puede bajar más.
+    pub fn entrar(i: usize) -> bool {
+        let Some(e) = entrada_i(i) else { return false };
+        unsafe {
+            if HONDO + 1 >= HONDO_MAX { return false; }
+        }
+        let Some(n) = super::nodo(&e.nodo) else { return false };
+        if n.tipo != Tipo::Directorio { return false; }
+        unsafe {
+            HONDO += 1;
+            PILA[HONDO] = Some(e.nodo);
+            ACTUAL = Some(n);
+        }
+        relistar()
+    }
+
+    /// Vuelve al padre. `false` si ya se está en la raíz.
+    pub fn subir() -> bool {
+        unsafe {
+            if HONDO == 0 { return false; }
+            HONDO -= 1;
+            let Some(ptr) = PILA[HONDO] else { return false };
+            let Some(n) = super::nodo(&ptr) else { return false };
+            ACTUAL = Some(n);
+        }
+        relistar()
+    }
 }
 
 /// Busca un hijo por nombre dentro de un directorio, sin distinguir mayúsculas.

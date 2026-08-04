@@ -170,6 +170,38 @@ pub const INFO_ES_IDENTIDAD: u64 = 0x17;
 /// 1 si hoy se puede escribir. Hoy siempre 0: falta cablear la E/S.
 pub const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 
+/// ── El CURSOR de ESTRATOS ─────────────────────────────────────────────
+///
+/// `INFO_ES_*` contesta *cómo está* el almacén: generación, ocupación, nivel.
+/// **No contesta qué hay dentro**, y por eso la ventana de Datos podía pintar
+/// números y no un árbol: `raiz`, `nodo`, `entradas` y `entrada` eran funciones
+/// de Ring 0 sin puerta.
+///
+/// Esto es esa puerta, y son **DOS operaciones y no diez**: un cursor que se
+/// mueve (`TASK_OP_ES_NODO`, con la pregunta en `arg0` y su argumento en
+/// `arg1`) y los nombres (`TASK_OP_ES_TEXTO`, de ocho en ocho). La superficie
+/// crece por su tabla, no por sus puertas — el mismo trato que el klog.
+///
+/// ★ **No concede nada.** Contesta, igual que `OP_INFO`: leer los nombres de un
+/// directorio no ejerce ningún poder, y aquí no hay ni una operación que
+/// escriba.
+pub const ES_NODO_RAIZ: u64 = 0x00;
+/// Cuántos hijos tiene el nodo donde está el cursor.
+pub const ES_NODO_HIJOS: u64 = 0x01;
+/// 1 si el listado NO cabía entero. Se pregunta y se dice: un directorio
+/// truncado en silencio se ve igual que uno corto.
+pub const ES_NODO_TRUNCADO: u64 = 0x02;
+/// Cuántos niveles se ha bajado desde la raíz.
+pub const ES_NODO_HONDO: u64 = 0x03;
+/// Tipo del nodo actual: 0 archivo, 1 directorio, 2 no hay nada.
+pub const ES_NODO_TIPO: u64 = 0x04;
+/// Tipo del hijo `arg1`. Mismos códigos que [`ES_NODO_TIPO`].
+pub const ES_NODO_HIJO_TIPO: u64 = 0x05;
+/// Baja al hijo `arg1`. 1 si se pudo.
+pub const ES_NODO_ENTRAR: u64 = 0x06;
+/// Vuelve al padre. 1 si se pudo, 0 si ya estaba en la raíz.
+pub const ES_NODO_SUBIR: u64 = 0x07;
+
 /// **Bytes que Ring 3 ha PEDIDO** con `KIND_MEMORIA`, desde el arranque.
 ///
 /// Es el único dato de memoria que el kernel no puede deducir mirando lo que
@@ -271,6 +303,16 @@ pub const KLOG_TOTAL: u64 = 0x01;
 /// otra vez— sin poder perder nada aunque salga mal. Ver
 /// `ring0/fsys/estratos.rs::sellar`.
 pub const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
+
+/// El cursor de ESTRATOS: `arg0` es la pregunta ([`ES_NODO_RAIZ`] y compañía),
+/// `arg1` su argumento cuando lo lleva.
+pub const TASK_OP_ES_NODO: u64 = 0x19;
+/// Ocho bytes del nombre del hijo `arg0`; `arg1` numera el trozo.
+///
+/// De ocho en ocho porque la superficie congelada no acepta punteros, y es el
+/// mismo mecanismo que `KLOG_TEXTO` y `DIR_OP_NOMBRE` — inventar uno nuevo por
+/// cada cosa que devuelve texto sería tener tres sitios donde se pierde un byte.
+pub const TASK_OP_ES_TEXTO: u64 = 0x1A;
 
 /// Dónde empieza el bloque, en el espacio del proceso que lo pidió.
 pub const MEM_OP_BASE: u64 = 0x01;

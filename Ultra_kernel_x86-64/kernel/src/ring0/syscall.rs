@@ -125,6 +125,25 @@ const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 /// una transacción vacía en ESTRATOS y devuelve la generación nueva, o 0.
 /// Ver `ring0/fsys/estratos.rs::sellar`.
 const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
+/// El CURSOR de ESTRATOS: `arg0` la pregunta, `arg1` su argumento. Y los
+/// nombres, de ocho en ocho.
+///
+/// Dos operaciones y no diez. `INFO_ES_*` ya contestaba *cómo está* el almacén;
+/// esto contesta **qué hay dentro**, que es lo que la ventana de Datos no podía
+/// enseñar porque `raiz`, `nodo`, `entradas` y `entrada` eran funciones de
+/// Ring 0 sin puerta. Mismo criterio que `INFO` y que el klog: contesta y no
+/// concede — aquí no hay una sola operación que escriba.
+const TASK_OP_ES_NODO: u64 = 0x19;
+const TASK_OP_ES_TEXTO: u64 = 0x1A;
+/// Las preguntas del cursor. Espejo de `bmo_abi::…::ES_NODO_*`.
+const ES_NODO_RAIZ: u64 = 0x00;
+const ES_NODO_HIJOS: u64 = 0x01;
+const ES_NODO_TRUNCADO: u64 = 0x02;
+const ES_NODO_HONDO: u64 = 0x03;
+const ES_NODO_TIPO: u64 = 0x04;
+const ES_NODO_HIJO_TIPO: u64 = 0x05;
+const ES_NODO_ENTRAR: u64 = 0x06;
+const ES_NODO_SUBIR: u64 = 0x07;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -471,6 +490,34 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     BmoStatus::ok_value(0)
                 }
             }
+        }
+        // ── El cursor de ESTRATOS ──
+        //
+        // CONTESTA, no autoriza — el mismo trato que `INFO` y que el klog.
+        // Ninguna de estas preguntas cambia el volumen: no hay aquí una sola
+        // operacion que escriba, y por eso no piden capability propia.
+        TASK_OP_ES_NODO => {
+            use crate::ring0::fsys::estratos::cursor;
+            BmoStatus::ok_value(match arg0 {
+                ES_NODO_RAIZ => cursor::a_la_raiz() as u64,
+                ES_NODO_HIJOS => cursor::hijos(),
+                ES_NODO_TRUNCADO => cursor::truncado(),
+                ES_NODO_HONDO => cursor::hondo(),
+                ES_NODO_TIPO => cursor::tipo(),
+                ES_NODO_HIJO_TIPO => cursor::hijo_tipo(arg1 as usize),
+                ES_NODO_ENTRAR => cursor::entrar(arg1 as usize) as u64,
+                ES_NODO_SUBIR => cursor::subir() as u64,
+                // Una pregunta que no existe se contesta con cero y no con un
+                // fallo: quien pregunte de mas se entera igual, y un `unsupported`
+                // aqui obligaria al panel a distinguir dos formas de "nada".
+                _ => 0,
+            })
+        }
+        TASK_OP_ES_TEXTO => {
+            BmoStatus::ok_value(crate::ring0::fsys::estratos::cursor::hijo_nombre(
+                arg0 as usize,
+                arg1 as usize,
+            ))
         }
         TASK_OP_REINICIAR => {
             crate::ring0::cabina::warn(
