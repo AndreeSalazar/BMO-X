@@ -45,9 +45,13 @@ use crate::texto::decimal;
 pub(crate) const KLOG_ANCHO: u32 = 900;
 pub(crate) const KLOG_ALTO: u32 = 420;
 
-const KLOG_FONDO: u32 = 0x0009_1420;
-const KLOG_BORDE: u32 = 0x0037_86C8;
-const KLOG_TITULO: u32 = 0x0080_C8FF;
+// El azul es de esta ventana igual que el verde es de ESTRATOS: el color dice
+// cuál es antes de leer el título. Sólo se rebajó el tono — un borde de neón
+// alrededor de novecientos píxeles era lo que más cansaba de mirar.
+const KLOG_FONDO: u32 = 0x000E_1520;
+const KLOG_TITULO_FONDO: u32 = 0x0016_2030;
+const KLOG_BORDE: u32 = 0x002B_3A50;
+const KLOG_TITULO: u32 = 0x0060_A5FA;
 
 /// Cuánto mide la línea más larga que se enseña. El anillo del kernel guarda 96
 /// bytes; aquí se recorta a lo que cabe en la ventana.
@@ -110,13 +114,24 @@ fn color_de(linea: &[u8]) -> u32 {
 /// se ve lo último; subiéndolo se llega al principio del arranque, que es donde
 /// están las respuestas de por qué algo no arrancó.
 pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaKlog, desplazamiento: u64) {
-    p.rect(c.x, c.y, c.ancho, c.alto, KLOG_BORDE);
-    p.rect(c.x + 2, c.y + 2, c.ancho - 4, c.alto - 4, KLOG_FONDO);
+    sombra(p, c.x, c.y, c.ancho, c.alto);
+    rect_redondeado(p, c.x, c.y, c.ancho, c.alto, KLOG_BORDE);
+    rect_redondeado(p, c.x + 1, c.y + 1, c.ancho - 2, c.alto - 2, KLOG_FONDO);
+
+    // La barra de título, con la misma curva que la ventana.
+    for i in 0..RADIO {
+        let s = super::curva(i);
+        p.rect(c.x + s, c.y + 1 + i, c.ancho - 2 * s, 1, KLOG_TITULO_FONDO);
+    }
+    p.rect(c.x + 1, c.y + 1 + RADIO, c.ancho - 2, TITULO_ALTO - 2 - RADIO, KLOG_TITULO_FONDO);
+    p.rect(c.x + 1, c.y + TITULO_ALTO - 1, c.ancho - 2, 1, KLOG_TITULO);
 
     let tx = c.x + 16;
-    let mut ty = c.y + 14;
-    p.texto(tx, ty, "RING 0 // lo que dice el kernel", KLOG_TITULO);
-    ty += bmo::GLIFO_ALTO + 8;
+    p.rect(tx, c.y + 9, 8, 8, KLOG_TITULO);
+    let px = p.texto(tx + 16, c.y + 8, "Ring 0", TEXTO);
+    p.texto(px + 2 * bmo::GLIFO_ANCHO, c.y + 8, "lo que dice el kernel", TEXTO_TENUE);
+
+    let mut ty = c.y + TITULO_ALTO + 8;
 
     let hay = bmo::klog_lineas();
     let total = bmo::klog_total();

@@ -19,39 +19,158 @@ pub(crate) mod salida;
 
 // ── La escena ───────────────────────────────────────────────────────────
 
-pub(crate) const FONDO: u32 = 0x0014_1C2B;
-pub(crate) const BARRA: u32 = 0x0028_3448;
-pub(crate) const ACENTO: u32 = 0x004C_9BE8;
+// ═══ La paleta ═══════════════════════════════════════════════════════════
+//
+// ★ Se rehízo entera el 2026-08-04. La de antes venía del bring-up: colores
+// escogidos para VERSE, no para mirarse una hora seguida. Ahora es un gris
+// azulado oscuro con un acento y poco más, que es lo que hacen tanto Windows 11
+// como cualquier escritorio de Linux moderno — y por el mismo motivo: en una
+// pantalla con ventanas, el color es para SEPARAR planos, no para decorar.
+//
+// La regla que ordena la paleta: **cuanto más cerca de ti, más claro.** El
+// escritorio es lo más oscuro, la ventana está por encima, y su barra de título
+// por encima de ella. El ojo lee la profundidad sin que nadie se la explique.
 
-pub(crate) const BARRA_ALTO: u32 = 44;
+/// El fondo del escritorio, arriba y abajo. Es un DEGRADADO, no un color.
+///
+/// Cuesta una franja de `rect` cada ocho filas —nada— y quita de golpe el
+/// aspecto de "pantalla de arranque": un plano liso enorme es lo que hace que
+/// algo parezca un panel de diagnóstico y no un escritorio.
+pub(crate) const FONDO_ARRIBA: u32 = 0x001B_2233;
+pub(crate) const FONDO_ABAJO: u32 = 0x000C_0F17;
+/// El color de referencia cuando hace falta uno solo (bordes de mezcla).
+pub(crate) const FONDO: u32 = 0x0014_1A28;
+/// La barra de arriba. Más oscura que el escritorio a propósito: una barra de
+/// sistema se lee como un borde de la pantalla, no como una ventana.
+pub(crate) const BARRA: u32 = 0x000F_131D;
+/// El pelo de luz bajo la barra. Un borde entero sería una raya; esto separa.
+pub(crate) const BARRA_LINEA: u32 = 0x0026_2F42;
+pub(crate) const ACENTO: u32 = 0x0060_A5FA;
 
-/// Los seis parches de medida, con sus valores EXACTOS. No son decorativos:
-/// cada uno responde una pregunta distinta sobre el formato.
-pub(crate) const MEDIDA: [u32; 6] = [
-    0x00FF_0000, // ¿rojo o azul? -> orden de canales
-    0x0000_FF00, // verde: el canal de en medio no cambia con el orden
-    0x0000_00FF, // el complementario del primero
-    0x00FF_FFFF, // blanco: el techo
-    0x0080_8080, // gris medio: la mitad
-    0x0020_2020, // casi negro: si esto sale claro, no es orden, es intensidad
-];
-pub(crate) const MEDIDA_LADO: u32 = 56;
-pub(crate) const MEDIDA_Y: u32 = BARRA_ALTO + 24;
-pub(crate) const MEDIDA_X: u32 = 24;
+pub(crate) const BARRA_ALTO: u32 = 40;
 
-/// Pulsómetro del ratón: cuántos reportes HID han llegado. Quieto = el ratón no
-/// llega; creciendo = late. Ahora que hay fuente podría escribirse el número,
-/// pero una barra se lee de un vistazo desde el otro lado del cuarto, que es
-/// desde donde se mira una máquina que está arrancando.
-pub(crate) const PULSO_X: u32 = 24;
-pub(crate) const PULSO_Y: u32 = MEDIDA_Y + MEDIDA_LADO + 32;
-pub(crate) const PULSO_ANCHO: u32 = 240;
-pub(crate) const PULSO_ALTO: u32 = 14;
+// ── Esquinas redondeadas ────────────────────────────────────────────────
+//
+// No hay primitiva de círculo ni la va a haber. Un cuarto de círculo son ocho
+// sangrías, y una tabla de ocho números es más honesta que una raíz cuadrada en
+// coma flotante que este sistema no tiene.
+
+pub(crate) const RADIO: u32 = 8;
+/// Cuánto se mete cada fila del extremo. Es un cuarto de círculo de radio 8
+/// tabulado: `CURVA[0]` es la fila del borde y `CURVA[7]` ya no se mete.
+const CURVA: [u32; RADIO as usize] = [8, 5, 3, 2, 1, 1, 0, 0];
+
+/// ¿Está `(x, y)` DENTRO de un rectángulo de esquinas redondeadas?
+///
+/// La necesita el borrado tanto como el pintado: si el modelo de la escena
+/// creyera que la ventana es cuadrada, al cerrarla quedarían cuatro pellizcos
+/// del color de la ventana en las esquinas. Un redondeo que sólo sabe pintar
+/// deja basura al desaparecer.
+pub(crate) fn dentro_redondeado(x: u32, y: u32, rx: u32, ry: u32, w: u32, h: u32) -> bool {
+    if x < rx || x >= rx + w || y < ry || y >= ry + h {
+        return false;
+    }
+    let dy = y - ry;
+    let desde_borde = if dy < RADIO {
+        Some(dy)
+    } else if dy >= h - RADIO {
+        Some(h - 1 - dy)
+    } else {
+        None
+    };
+    match desde_borde {
+        None => true,
+        Some(i) => {
+            let s = CURVA[i as usize];
+            x >= rx + s && x < rx + w - s
+        }
+    }
+}
+
+/// La sangría de la fila `i` de una esquina. Para quien redondee a mano una
+/// barra de título: tiene que usar LA MISMA curva que su ventana o asomará.
+pub(crate) fn curva(i: u32) -> u32 {
+    CURVA[(i as usize).min(CURVA.len() - 1)]
+}
+
+/// Un rectángulo con las esquinas comidas. Diecisiete `rect` y ya.
+pub(crate) fn rect_redondeado(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32, color: u32) {
+    if w <= 2 * RADIO || h <= 2 * RADIO {
+        p.rect(x, y, w, h, color);
+        return;
+    }
+    for i in 0..RADIO {
+        let s = CURVA[i as usize];
+        p.rect(x + s, y + i, w - 2 * s, 1, color);
+        p.rect(x + s, y + h - 1 - i, w - 2 * s, 1, color);
+    }
+    p.rect(x, y + RADIO, w, h - 2 * RADIO, color);
+}
+
+/// La sombra de una ventana: **dos capas**, no una.
+///
+/// Sin canal alfa no hay difuminado, pero dos anillos de oscuridad distinta
+/// engañan bastante bien al ojo — que es lo único que se le pide a una sombra.
+/// Una sola capa se ve como lo que es: un rectángulo negro detrás.
+pub(crate) fn sombra(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32) {
+    const LEJOS: u32 = 0x000A_0D14;
+    const CERCA: u32 = 0x0006_0810;
+    rect_redondeado(p, x + 2, y + 4, w + 6, h + 6, LEJOS);
+    rect_redondeado(p, x + 3, y + 5, w + 3, h + 3, CERCA);
+}
+
+/// El color del escritorio en la fila `y`. El degradado, dicho una sola vez.
+///
+/// Vive aquí y no en quien pinta porque lo consultan DOS: el que dibuja el
+/// fondo y el que lo restaura al cerrar una ventana. Dos copias de un degradado
+/// es una franja que no cuadra justo donde estaba la ventana.
+pub(crate) fn fondo_en(y: u32, alto: u32) -> u32 {
+    if alto == 0 {
+        return FONDO;
+    }
+    // La interpolación va en los DOS sentidos. Con `saturating_sub` a secas,
+    // un canal que baja de arriba a abajo daría cero y el degradado se comería
+    // el color: aquí baja siempre, así que ese error habría dejado la pantalla
+    // de un solo tono y nadie habría sabido por qué.
+    let mezcla = |a: u32, b: u32, desp: u32| -> u32 {
+        let (ca, cb) = ((a >> desp) & 0xFF, (b >> desp) & 0xFF);
+        let t = y.min(alto);
+        let c = if cb >= ca {
+            ca + (cb - ca) * t / alto
+        } else {
+            ca - (ca - cb) * t / alto
+        };
+        c << desp
+    };
+    mezcla(FONDO_ARRIBA, FONDO_ABAJO, 16)
+        | mezcla(FONDO_ARRIBA, FONDO_ABAJO, 8)
+        | mezcla(FONDO_ARRIBA, FONDO_ABAJO, 0)
+}
+
+/// Pinta el escritorio entero: degradado y barra.
+pub(crate) fn pintar_fondo(p: &bmo::Pantalla) {
+    // De ocho en ocho filas. A un píxel serían mil `rect` para una diferencia
+    // que no se ve; a treinta y dos se notarían los escalones.
+    let mut y = 0;
+    while y < p.alto {
+        let alto = 8.min(p.alto - y);
+        p.rect(0, y, p.ancho, alto, fondo_en(y, p.alto));
+        y += alto;
+    }
+    p.rect(0, 0, p.ancho, BARRA_ALTO, BARRA);
+    p.rect(0, BARRA_ALTO - 1, p.ancho, 1, BARRA_LINEA);
+}
 
 // ── La caja ─────────────────────────────────────────────────────────────
 
 pub(crate) const CAJA_ANCHO: u32 = 760;
 pub(crate) const CAJA_ALTO: u32 = 428;
+
+/// Alto de la barra de título de la caja. Antes era un `26` suelto repetido en
+/// cuatro sitios; ahora se llama por su nombre, que es lo que impide que el
+/// modelo de la escena y el que pinta se separen dos píxeles y nadie sepa por
+/// qué queda una raya.
+pub(crate) const TITULO_ALTO: u32 = 28;
 
 /// La rejilla de SALIDA: lo que imprimen los programas que se lanzan desde
 /// aquí. Antes no existía y no era un olvido — **no había dónde leerlo**:
@@ -69,11 +188,21 @@ pub(crate) const SAL_ROWS: usize = 16;
 ///
 /// 200 filas de 88 columnas son 17 KiB. La pantalla es de 8 MiB.
 pub(crate) const SAL_HIST: usize = 200;
-pub(crate) const SAL_TEXTO: u32 = 0x00C8_D8E8;
-pub(crate) const SAL_ECO: u32 = 0x0079_C4F2;
-pub(crate) const CAJA_FONDO: u32 = 0x001E_2A40;
-pub(crate) const CAJA_BORDE: u32 = 0x004C_9BE8;
-pub(crate) const CAMPO_FONDO: u32 = 0x000C_1220;
+pub(crate) const SAL_TEXTO: u32 = 0x00C5_CEDC;
+pub(crate) const SAL_ECO: u32 = 0x0060_A5FA;
+/// El cuerpo de una ventana. Más claro que el escritorio: es lo que la pone
+/// delante sin necesidad de dibujarle un marco grueso.
+pub(crate) const CAJA_FONDO: u32 = 0x001E_2534;
+/// El borde. **Discreto a propósito**: era el mismo azul del acento, o sea un
+/// marco de neón alrededor de todo. Un borde grita cuando debería susurrar —
+/// lo que separa la ventana del fondo es la sombra y el salto de tono, no una
+/// raya de color.
+pub(crate) const CAJA_BORDE: u32 = 0x0033_3D52;
+/// La barra de título: un peldaño MÁS claro que el cuerpo.
+pub(crate) const CAJA_TITULO: u32 = 0x0027_3040;
+/// Los campos donde se escribe van hacia abajo, no hacia arriba: un hueco se
+/// lee como hundido y ahí es donde se mete texto.
+pub(crate) const CAMPO_FONDO: u32 = 0x0016_1C28;
 pub(crate) const TEXTO: u32 = 0x00E6_EDF6;
 pub(crate) const TEXTO_TENUE: u32 = 0x008A_9BB4;
 pub(crate) const TEXTO_MAL: u32 = 0x00FF_8A7A;
@@ -102,7 +231,8 @@ pub(crate) struct Caja {
 impl Caja {
     pub(crate) fn nueva(ancho: u32, alto: u32) -> Self {
         // Centrada horizontalmente; algo por encima del centro vertical, que es
-        // donde el ojo la busca y donde no pisa la tira de medida.
+        // donde el ojo la busca. (Antes había además una tira de parches de
+        // medida que esquivar; se quitó el 2026-08-04 — ver el escritorio.)
         let x = ancho.saturating_sub(CAJA_ANCHO) / 2;
         let y = alto / 2;
         let campo_x = x + 18;
@@ -162,22 +292,31 @@ impl Caja {
 ///
 /// Sabe de rectángulos, no de letras. Por eso `borrar_cursor` avisa cuando ha
 /// pasado por encima de la caja: el texto hay que volver a escribirlo.
-pub(crate) fn color_escena(c: &Caja, visible: bool, x: u32, y: u32) -> u32 {
+pub(crate) fn color_escena(c: &Caja, visible: bool, x: u32, y: u32, alto: u32) -> u32 {
     if y < BARRA_ALTO {
+        if y == BARRA_ALTO - 1 {
+            return BARRA_LINEA;
+        }
         // La marca de referencia dentro de la barra.
-        if x >= 16 && x < 32 && y >= 14 && y < 30 {
+        if x >= 16 && x < 30 && y >= 13 && y < 27 {
             return ACENTO;
         }
         return BARRA;
     }
-    if visible && c.contiene(x, y) {
-        // Borde de 2 px.
-        let en_borde = x < c.x + 2
-            || x >= c.x + CAJA_ANCHO - 2
-            || y < c.y + 2
-            || y >= c.y + CAJA_ALTO - 2;
+    // ★ Se pregunta por el rectángulo REDONDEADO y no por `contiene`. Si el
+    // modelo creyera que la caja es cuadrada, al taparla y destaparla quedarían
+    // cuatro pellizcos de su color en las esquinas — un redondeo que sólo sabe
+    // pintar deja basura al desaparecer.
+    if visible && dentro_redondeado(x, y, c.x, c.y, CAJA_ANCHO, CAJA_ALTO) {
+        let en_borde = !dentro_redondeado(x, y, c.x + 1, c.y + 1, CAJA_ANCHO - 2, CAJA_ALTO - 2);
         if en_borde {
             return CAJA_BORDE;
+        }
+        if y < c.y + TITULO_ALTO {
+            return CAJA_TITULO;
+        }
+        if y == c.y + TITULO_ALTO {
+            return ACENTO;
         }
         if x >= c.campo_x
             && x < c.campo_x + c.campo_ancho
@@ -188,13 +327,7 @@ pub(crate) fn color_escena(c: &Caja, visible: bool, x: u32, y: u32) -> u32 {
         }
         return CAJA_FONDO;
     }
-    if y >= MEDIDA_Y && y < MEDIDA_Y + MEDIDA_LADO && x >= MEDIDA_X {
-        let i = (x - MEDIDA_X) / MEDIDA_LADO;
-        if (i as usize) < MEDIDA.len() {
-            return MEDIDA[i as usize];
-        }
-    }
-    FONDO
+    fondo_en(y, alto)
 }
 
 
@@ -217,27 +350,29 @@ pub(crate) fn color_escena(c: &Caja, visible: bool, x: u32, y: u32) -> u32 {
 /// 5. El campo de entrada con **marco propio** y un `>` de aviso, para que se
 ///    vea que ahí se escribe.
 pub(crate) fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
-    const SOMBRA: u32 = 0x0008_0D16;
-    const TITULO_FONDO: u32 = 0x0026_3550;
+    // 1. La sombra, primero y en dos capas.
+    sombra(p, c.x, c.y, CAJA_ANCHO, CAJA_ALTO);
 
-    // 1. La sombra, primero y desplazada.
-    p.rect(c.x + 6, c.y + 6, CAJA_ANCHO, CAJA_ALTO, SOMBRA);
+    // El marco y el relleno, ya redondos. Las esquinas no hay que biselarlas a
+    // mano: `rect_redondeado` no pinta lo que sobra, así que por ahí se sigue
+    // viendo el escritorio.
+    rect_redondeado(p, c.x, c.y, CAJA_ANCHO, CAJA_ALTO, CAJA_BORDE);
+    rect_redondeado(p, c.x + 1, c.y + 1, CAJA_ANCHO - 2, CAJA_ALTO - 2, CAJA_FONDO);
 
-    // El marco y el relleno.
-    p.rect(c.x, c.y, CAJA_ANCHO, CAJA_ALTO, CAJA_BORDE);
-    p.rect(c.x + 1, c.y + 1, CAJA_ANCHO - 2, CAJA_ALTO - 2, CAJA_FONDO);
+    // 2 y 3. La barra de título y su acento. La barra también va redondeada
+    // por arriba, o asomaría por fuera de las esquinas de la ventana.
+    for i in 0..RADIO {
+        let s = CURVA[i as usize];
+        p.rect(c.x + s, c.y + 1 + i, CAJA_ANCHO - 2 * s, 1, CAJA_TITULO);
+    }
+    p.rect(c.x + 1, c.y + 1 + RADIO, CAJA_ANCHO - 2, TITULO_ALTO - 1 - RADIO, CAJA_TITULO);
+    p.rect(c.x + 1, c.y + TITULO_ALTO, CAJA_ANCHO - 2, 1, ACENTO);
 
-    // 4. Biselar: el píxel de cada esquina vuelve al fondo de la pantalla.
-    p.rect(c.x, c.y, 1, 1, FONDO);
-    p.rect(c.x + CAJA_ANCHO - 1, c.y, 1, 1, FONDO);
-    p.rect(c.x, c.y + CAJA_ALTO - 1, 1, 1, FONDO);
-    p.rect(c.x + CAJA_ANCHO - 1, c.y + CAJA_ALTO - 1, 1, 1, FONDO);
-
-    // 2 y 3. La barra de título y su acento.
-    p.rect(c.x + 1, c.y + 1, CAJA_ANCHO - 2, 26, TITULO_FONDO);
-    p.rect(c.x + 1, c.y + 27, CAJA_ANCHO - 2, 1, ACENTO);
-    p.texto(c.x + 18, c.y + 6, "BMO-X", ACENTO);
-    p.texto(c.x + 82, c.y + 6, "Ejecutar", TEXTO);
+    // El punto de la izquierda: el mismo lenguaje que la marca de la barra de
+    // arriba. Dos sitios, un solo idioma.
+    p.rect(c.x + 16, c.y + 10, 8, 8, ACENTO);
+    p.texto(c.x + 32, c.y + 7, "Ejecutar", TEXTO);
+    p.texto(c.x + 32 + 10 * bmo::GLIFO_ANCHO, c.y + 7, "BMO-X", TEXTO_TENUE);
 
     p.texto(
         c.x + 18,
@@ -260,9 +395,16 @@ pub(crate) fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
         TEXTO_TENUE,
     );
 
-    // 5. El campo, con marco y con su aviso.
-    p.rect(c.campo_x - 1, c.campo_y - 1, c.campo_ancho + 2, c.campo_alto + 2, ACENTO);
+    // 5. El campo. **El acento va SÓLO en la línea de abajo**, no rodeándolo.
+    //
+    // Un marco entero del color del sistema alrededor de la caja de texto es lo
+    // que hacía que pareciera un cuadro de diálogo de hace treinta años: el
+    // acento pasa a ser un marco y deja de señalar. Una raya bajo el campo dice
+    // "aquí se escribe" con un cuarto de la tinta — es lo que hacen Windows 11
+    // y todos los escritorios de Linux modernos, y por este motivo.
+    p.rect(c.campo_x - 1, c.campo_y - 1, c.campo_ancho + 2, c.campo_alto + 2, CAJA_BORDE);
     p.rect(c.campo_x, c.campo_y, c.campo_ancho, c.campo_alto, CAMPO_FONDO);
+    p.rect(c.campo_x, c.campo_y + c.campo_alto, c.campo_ancho, 2, ACENTO);
 }
 
 /// El contenido del campo: la ruta y el cursor de escritura.
@@ -317,7 +459,7 @@ pub(crate) fn borrar_caja(p: &bmo::Pantalla, c: &Caja) {
     for fila in 0..CAJA_ALTO {
         for col in 0..CAJA_ANCHO {
             let (x, y) = (c.x + col, c.y + fila);
-            p.punto(x, y, color_escena(c, false, x, y));
+            p.punto(x, y, color_escena(c, false, x, y, p.alto));
         }
     }
 }
@@ -348,7 +490,7 @@ pub(crate) fn borrar_ventana(
     for fila in 0..alto {
         for col in 0..ancho {
             let (x, y) = (x0 + col, y0 + fila);
-            p.punto(x, y, color_escena(c, visible, x, y));
+            p.punto(x, y, color_escena(c, visible, x, y, p.alto));
         }
     }
 }

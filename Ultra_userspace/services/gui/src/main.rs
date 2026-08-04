@@ -173,27 +173,36 @@ pub extern "C" fn _start() -> ! {
     escena::entrada::pintar(&p, entrada.is_some(), salida_cap.is_some());
     bmo::consola("entrada a Ring 3 pintada\n");
 
-    // Fondo entero de una pasada, y encima la escena.
-    p.limpiar(FONDO);
-    p.rect(0, 0, p.ancho, BARRA_ALTO, BARRA);
-    p.rect(16, 14, 16, 16, ACENTO);
-    let mut i = 0u32;
-    while (i as usize) < MEDIDA.len() {
-        p.rect(
-            MEDIDA_X + i * MEDIDA_LADO,
-            MEDIDA_Y,
-            MEDIDA_LADO,
-            MEDIDA_LADO,
-            MEDIDA[i as usize],
-        );
-        i += 1;
-    }
+    // ── El escritorio ──
+    //
+    // ★ Aquí vivían los SEIS PARCHES DE MEDIDA y el PULSÓMETRO del ratón, y se
+    // han quitado el 2026-08-04. No eran decoración: los parches contestaban
+    // "¿el orden de canales es el que creo?" y la barra contestaba "¿llegan
+    // informes del ratón?". **Las dos preguntas están contestadas** — los
+    // colores salen bien desde hace semanas y el puntero se mueve donde se
+    // mueve la mano, o sea que el propio cursor ES el pulsómetro.
+    //
+    // Un instrumento que ya no mide nada deja de ser un instrumento y pasa a
+    // ser ruido: seis cuadrados de colores puros y una barra en mitad del
+    // escritorio son lo que hacía que esto pareciera un panel de pruebas y no
+    // una máquina. Si algún día hay que volver a medir el formato del
+    // framebuffer, el `git log` tiene los valores exactos con su porqué.
+    pintar_fondo(&p);
+    p.rect(16, 13, 14, 14, ACENTO);
+    p.texto(38, 14, "BMO-X", TEXTO);
 
-    // Marco del pulsómetro. Si la entrada ni se pudo reclamar, sale en rojo:
-    // dos fallos distintos, dos aspectos distintos.
-    let marco = if entrada.is_some() { ACENTO } else { 0x00E0_4040 };
-    p.rect(PULSO_X - 2, PULSO_Y - 2, PULSO_ANCHO + 4, PULSO_ALTO + 4, marco);
-    p.rect(PULSO_X, PULSO_Y, PULSO_ANCHO, PULSO_ALTO, FONDO);
+    // Lo que SÍ era información y no instrumento: si la entrada no se pudo
+    // reclamar hay que decirlo, y ahora se dice con palabras en la barra en vez
+    // de con el color de un marco. Un rojo sin texto obliga a saberse el
+    // código de colores.
+    if entrada.is_none() {
+        // El aviso se coloca por su LARGO REAL y no por un número a ojo: son
+        // cuarenta letras, y con un hueco puesto a mano de treinta y cuatro se
+        // saldría por la derecha justo el día que haga falta leerlo.
+        const AVISO: &str = "SIN ENTRADA: teclado y raton son de otro";
+        let ancho = bmo::Pantalla::ancho_escala(AVISO, 1);
+        p.texto(p.ancho.saturating_sub(ancho + 16), 14, AVISO, TEXTO_MAL);
+    }
 
     pintar_caja(&p, &caja);
     let mut ruta = [0u8; RUTA_MAX];
@@ -239,7 +248,6 @@ pub extern "C" fn _start() -> ! {
     // paso esto ejerce el cambio de contexto miles de veces por segundo, que es
     // justo el camino que costó una foto de madrugada.
     let (mut ax, mut ay) = (u32::MAX, u32::MAX);
-    let mut pulso_previo = 0u32;
     let mut vueltas = 0u32;
     let mut caret = true;
     // Vueltas desde la última tecla. Se reinicia al escribir para que el
@@ -320,7 +328,6 @@ pub extern "C" fn _start() -> ! {
     let mut bajo = Bajo::nuevo();
     // Estado anterior de los botones EN PANTALLA, para no repintar el testigo
     // del pulsómetro sesenta veces por segundo con el mismo color.
-    let mut col_boton = FONDO;
 
     // ── ★ EL VIGILANTE DE LA CORRIDA ──
     //
@@ -414,14 +421,12 @@ pub extern "C" fn _start() -> ! {
             }
             let pos = e.puntero();
             let giro = e.rueda();
-            let ev_raton = e.eventos().min(PULSO_ANCHO as u64) as u32;
 
             va_a_pintar |= nt > 0
                 || giro != 0
                 || pos.x != ax
                 || pos.y != ay
                 || (pos.botones != 0) != boton_antes
-                || ev_raton != pulso_previo
                 || alt_solo != alt_antes
                 || combo != combo_antes;
 
@@ -441,7 +446,7 @@ pub extern "C" fn _start() -> ! {
                 for fy in 0..bh {
                     for fx in 0..ba {
                         let (x, y) = (bx + fx, by + fy);
-                        p.punto(x, y, color_escena(&caja, visible, x, y));
+                        p.punto(x, y, color_escena(&caja, visible, x, y, p.alto));
                     }
                 }
                 conmutador_pintado = false;
@@ -1093,7 +1098,7 @@ pub extern "C" fn _start() -> ! {
                                     for f in 0..calc_caja.alto {
                                         for co in 0..calc_caja.ancho {
                                             let (px, py) = (calc_caja.x + co, calc_caja.y + f);
-                                            p.punto(px, py, color_escena(&caja, visible, px, py));
+                                            p.punto(px, py, color_escena(&caja, visible, px, py, p.alto));
                                         }
                                     }
                                 }
@@ -1660,24 +1665,10 @@ pub extern "C" fn _start() -> ! {
             ax = pos.x;
             ay = pos.y;
 
-            // El pulsómetro. Se satura a propósito: interesa "late / no late",
-            // no el valor exacto, y una barra que se sale de la pantalla no
-            // dice nada que no diga una llena.
-            if ev_raton != pulso_previo {
-                p.rect(PULSO_X, PULSO_Y, ev_raton, PULSO_ALTO, ACENTO);
-                pulso_previo = ev_raton;
-            }
-            // Los botones, encima del marco: pulsar debería verse aunque el
-            // movimiento no llegue. Son dos preguntas distintas al mismo HID.
-            //
-            // Sólo cuando CAMBIA: repintarlo cada vuelta son 256 píxeles de
-            // memoria de vídeo sin caché por fotograma para dejarlo igual, y
-            // además pisaría el cursor si el puntero pasara por encima.
-            let col = if pos.botones != 0 { 0x00FF_FFFF } else { FONDO };
-            if col != col_boton {
-                p.rect(PULSO_X + PULSO_ANCHO + 16, PULSO_Y, PULSO_ALTO, PULSO_ALTO, col);
-                col_boton = col;
-            }
+            // ★ Aquí se pintaban el PULSÓMETRO y el testigo de botones. Fuera
+            // el 2026-08-04, con los seis parches de medida: contestaban
+            // "¿llegan informes del ratón?" y esa pregunta la contesta ya el
+            // propio puntero moviéndose. Ver la nota del escritorio.
         }
 
         // ── Drenar la salida de los hijos ──

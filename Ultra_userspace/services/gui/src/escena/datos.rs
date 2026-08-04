@@ -78,9 +78,16 @@ use crate::texto::decimal;
 pub(crate) const DATOS_ANCHO: u32 = 640;
 pub(crate) const DATOS_ALTO: u32 = 330;
 
-const DATOS_FONDO: u32 = 0x0012_2418;
-const DATOS_BORDE: u32 = 0x0037_C871;
-const DATOS_TITULO: u32 = 0x008F_F0B8;
+// La ventana de Datos es VERDE porque es ESTRATOS, y eso se queda: el color
+// dice de qué ventana estás hablando antes de leer su título. Lo que cambia es
+// el tono — el verde de antes era de rotulador, escogido para verse en una foto
+// de una pantalla que a lo mejor ni arrancaba.
+const DATOS_FONDO: u32 = 0x0013_1C18;
+const DATOS_TITULO_FONDO: u32 = 0x001B_2622;
+/// El borde, discreto. Lo que separa la ventana del fondo es la sombra.
+const DATOS_BORDE: u32 = 0x002C_4038;
+/// Y el acento verde, que sí puede ser vivo: es una línea, no un marco.
+const DATOS_TITULO: u32 = 0x0034_D399;
 
 /// Los cuatro niveles de `bmo_estratos::espacio`, con su color.
 ///
@@ -126,10 +133,9 @@ pub(crate) enum Vista {
     Nodos,
 }
 
-/// Alto de la barra de título. Es la zona por la que se arrastra — como en
-/// cualquier ventana, y por el mismo motivo: si se arrastrara desde cualquier
-/// parte, no se podría pulsar nada de dentro.
-const TITULO_ALTO: u32 = 26;
+// El alto de la barra de título —que es el asa— sale de `super::TITULO_ALTO`:
+// el mismo que la caja de Ejecutar. Dos ventanas del mismo sistema con barras
+// de distinta altura se ven como dos programas de distinta época.
 
 impl CajaDatos {
     pub(crate) fn nueva(p: &bmo::Pantalla) -> Self {
@@ -235,8 +241,13 @@ impl CajaDatos {
 // aristas; dibujarlo como lo que es se entiende sin explicación.
 
 const CAJA_NODO_ANCHO: u32 = 190;
-const CAJA_NODO_ALTO: u32 = 34;
+const CAJA_NODO_ALTO: u32 = 36;
 const CAJA_NODO_HUECO: u32 = 10;
+/// El cuerpo de una caja del grafo: un peldaño por encima de la ventana, que es
+/// la misma regla que separa la ventana del escritorio.
+const CAJA_NODO_FONDO: u32 = 0x001B_2622;
+/// Y la señalada, otro peldaño más. La profundidad se lee sola.
+const CAJA_NODO_SEL: u32 = 0x0024_332C;
 
 /// **Un color por clase, y el mismo en toda la ventana.** Es el punto 2 de la
 /// spec: si el verde significara una cosa en el padre y otra en los hijos, el
@@ -263,13 +274,21 @@ fn caja_nodo(
     señalada: bool,
 ) {
     let (titulo, color) = color_clase(tipo);
-    let borde = if señalada { 0x00FF_FFFF } else { color };
-    p.rect(x, y, CAJA_NODO_ANCHO, CAJA_NODO_ALTO, borde);
-    p.rect(x + 1, y + 1, CAJA_NODO_ANCHO - 2, CAJA_NODO_ALTO - 2, DATOS_FONDO);
+    // La señalada lleva el borde del acento y un cuerpo un punto más claro. Un
+    // borde blanco a secas se lee como "esto está roto"; el realce de una
+    // selección tiene que ser el color del sistema, no una alarma.
+    let (borde, cuerpo) = if señalada {
+        (color, CAJA_NODO_SEL)
+    } else {
+        (DATOS_BORDE, CAJA_NODO_FONDO)
+    };
+    rect_redondeado(p, x, y, CAJA_NODO_ANCHO, CAJA_NODO_ALTO, borde);
+    rect_redondeado(p, x + 1, y + 1, CAJA_NODO_ANCHO - 2, CAJA_NODO_ALTO - 2, cuerpo);
     // La pestaña de color a la izquierda: se ve la clase de un vistazo aunque
-    // el título quede tapado por un nombre largo.
-    p.rect(x + 1, y + 1, 3, CAJA_NODO_ALTO - 2, color);
-    p.texto(x + 9, y + 4, titulo, color);
+    // el título quede tapado por un nombre largo. Va DENTRO de la curva, o
+    // sobresaldría por la esquina.
+    p.rect(x + 2, y + 4, 3, CAJA_NODO_ALTO - 8, color);
+    p.texto(x + 12, y + 4, titulo, color);
     let mut n = nombre.len();
     // Recortar por el final y no por el principio: los nombres de un volumen
     // se distinguen por delante (`maestro.bex`, `movim.txt`), no por detrás.
@@ -384,26 +403,46 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
 /// sobre memoria de vídeo sin caché sesenta veces por segundo para enseñar los
 /// mismos dígitos es tirar el fotograma.
 pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
-    p.rect(c.x, c.y, c.ancho, c.alto, DATOS_BORDE);
-    p.rect(c.x + 2, c.y + 2, c.ancho - 4, c.alto - 4, DATOS_FONDO);
+    sombra(p, c.x, c.y, c.ancho, c.alto);
+    rect_redondeado(p, c.x, c.y, c.ancho, c.alto, DATOS_BORDE);
+    rect_redondeado(p, c.x + 1, c.y + 1, c.ancho - 2, c.alto - 2, DATOS_FONDO);
 
     // ── La barra de título: el asa, y las dos pestañas ──
+    //
+    // Redondeada por arriba con la misma curva que la ventana, o asomaría por
+    // fuera de sus esquinas.
+    for i in 0..RADIO {
+        let s = super::curva(i);
+        p.rect(c.x + s, c.y + 1 + i, c.ancho - 2 * s, 1, DATOS_TITULO_FONDO);
+    }
+    p.rect(c.x + 1, c.y + 1 + RADIO, c.ancho - 2, TITULO_ALTO - 2 - RADIO, DATOS_TITULO_FONDO);
+    p.rect(c.x + 1, c.y + TITULO_ALTO - 1, c.ancho - 2, 1, DATOS_TITULO);
+
     let tx = c.x + 16;
-    p.texto(tx, c.y + 8, "ESTRATOS", DATOS_TITULO);
-    let px = tx + 10 * bmo::GLIFO_ANCHO;
+    // El punto de color, como en Ejecutar: mismo idioma en las dos ventanas.
+    p.rect(tx, c.y + 9, 8, 8, DATOS_TITULO);
+    let px = p.texto(tx + 16, c.y + 8, "ESTRATOS", TEXTO);
+    let px = px + 2 * bmo::GLIFO_ANCHO;
+    // Las pestañas: la activa lleva su subrayado. Un corchete pintado de otro
+    // color se pierde en una foto; una línea debajo no.
     let (c1, c2) = match c.vista {
-        Vista::Numeros => (DATOS_TITULO, TEXTO_TENUE),
-        Vista::Nodos => (TEXTO_TENUE, DATOS_TITULO),
+        Vista::Numeros => (TEXTO, TEXTO_TENUE),
+        Vista::Nodos => (TEXTO_TENUE, TEXTO),
     };
-    let px = p.texto(px, c.y + 8, "[numeros]", c1);
-    p.texto(px + bmo::GLIFO_ANCHO, c.y + 8, "[nodos]", c2);
+    let fin1 = p.texto(px, c.y + 8, "numeros", c1);
+    let px2 = fin1 + 2 * bmo::GLIFO_ANCHO;
+    let fin2 = p.texto(px2, c.y + 8, "nodos", c2);
+    let (sx, sw) = match c.vista {
+        Vista::Numeros => (px, fin1 - px),
+        Vista::Nodos => (px2, fin2 - px2),
+    };
+    p.rect(sx, c.y + 8 + bmo::GLIFO_ALTO + 2, sw, 2, DATOS_TITULO);
     p.texto(
         c.x + c.ancho - 22 * bmo::GLIFO_ANCHO,
         c.y + 8,
         "TAB cambia  arrastra",
         TEXTO_TENUE,
     );
-    p.rect(c.x + 2, c.y + TITULO_ALTO - 2, c.ancho - 4, 1, DATOS_BORDE);
 
     if c.vista == Vista::Nodos {
         pintar_nodos(p, c);
