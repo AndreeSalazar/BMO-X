@@ -407,3 +407,36 @@ pub fn crear_en(dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> Result<()
     }
     r
 }
+
+/// **Guarda un archivo, exista o no.** Si el nombre ya está, lo REEMPLAZA.
+///
+/// ═══ Por qué existe, y qué tapaba no tenerlo ═══
+///
+/// `crear_en` rechaza con `Exists`, que es lo correcto para *crear*. Pero
+/// `OPEN OUTPUT` de COBOL —y un `>` de cualquier shell— no quieren decir
+/// "créalo": quieren decir **"que quede esto"**. Mientras la única puerta fue
+/// `crear_en`, un programa que escribía su salida sólo funcionaba **la primera
+/// vez que se corría**: a partir de la segunda, `cerrar` fallaba y no guardaba
+/// nada.
+///
+/// Y el fallo no se veía. Si el programa releía lo que creía haber escrito,
+/// leía lo de la corrida anterior y todo parecía normal — el nivel 10 de los
+/// ejemplos de COBOL hace exactamente eso. Un fallo que se parece a funcionar
+/// es peor que uno que revienta.
+///
+/// La seguridad del reemplazo la pone `save_file_in_dir` en el driver: la
+/// cadena nueva se escribe entera **antes** de apuntar el nombre, y la vieja se
+/// suelta **después**. En ningún instante hay un archivo a medias.
+pub fn guardar_en(dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> Result<(), WriteError> {
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return Err(WriteError::ReadOnly),
+        }
+    };
+    let r = v.save_file_in_dir(dir_cluster, name_8_3, data);
+    if r.is_ok() {
+        disk::flush();
+    }
+    r
+}

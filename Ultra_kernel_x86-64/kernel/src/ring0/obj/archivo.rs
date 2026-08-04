@@ -441,7 +441,12 @@ fn cerrar(i: usize) -> u64 {
                 // prohibe — y con razon, porque esconde de donde sale.
                 let fila = buf(i);
                 let datos = &fila[..LARGO[i].min(fila.len())];
-                match crate::ring0::fsys::fs::crear_en(DIRECTORIO[i], &NOMBRE[i], datos) {
+                // `guardar_en` y no `crear_en`: si el archivo ya existe, se
+                // REEMPLAZA. `crear_en` contestaba `Exists` y aquí eso se
+                // convertía en un `warn` a la CABINA y un `0` que casi nadie
+                // miraba — o sea que un programa que escribía su salida sólo
+                // era honesto la primera vez que se corría.
+                match crate::ring0::fsys::fs::guardar_en(DIRECTORIO[i], &NOMBRE[i], datos) {
                     Ok(()) => {
                         crate::ring0::cabina::info("arch", "archivo guardado", LARGO[i] as u64);
                         true

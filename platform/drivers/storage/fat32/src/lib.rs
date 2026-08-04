@@ -5,7 +5,11 @@
 //! and reads clusters via the FAT chain. El almacenamiento entra por el
 //! contrato `BlockReader`/`BlockWriter`: no sabe si debajo hay SATA o NVMe.
 
-#![no_std]
+// `no_std` en la maquina, `std` en las pruebas. Es el mismo patron que
+// `bmo-estratos`, y existe porque un driver que escribe en el disco de alguien
+// **tiene que poder probarse en el anfitrion**: la alternativa era verificarlo
+// flasheando, o sea arriesgando el volumen para saber si el codigo lo respeta.
+#![cfg_attr(not(test), no_std)]
 
 /// Filesystem type detected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +94,23 @@ pub struct DirEntry {
     pub write_date: u16,
     pub first_cluster_lo: u16,
     pub file_size: u32,
+}
+
+/// Una entrada de directorio YA LOCALIZADA: dónde están sus 32 bytes en el
+/// disco, además de lo que dicen.
+///
+/// No es un `DirEntry`: aquel son los bytes del formato, éste es *el sitio*.
+/// La diferencia importa al reemplazar — para apuntar un nombre a otra cadena
+/// hay que reescribir el sector donde vive, y eso sólo se sabe habiéndolo
+/// encontrado.
+#[derive(Debug, Clone, Copy)]
+pub struct EntradaDir {
+    /// LBA relativo a la partición del sector que la contiene.
+    pub lba: u64,
+    /// Byte de esa entrada dentro del sector. Siempre múltiplo de 32.
+    pub offset: usize,
+    pub first_cluster: u32,
+    pub size: u32,
 }
 
 /// exFAT File Directory Entry (type 0x85)
@@ -354,6 +375,19 @@ impl FatVolume {
     }
 
     fn find_file_fat32_from(&mut self, name: &[u8], start_cluster: u32) -> Option<(u32, u32)> {
+        self.find_entry_fat32_from(name, start_cluster).map(|e| (e.first_cluster, e.size))
+    }
+
+    /// Igual que [`Self::find_file_fat32_from`], pero devolviendo **dónde vive
+    /// la entrada de directorio**, no sólo lo que dice.
+    ///
+    /// ★ Hace falta para REEMPLAZAR. Buscar el archivo por su nombre contesta
+    /// "empieza en el cluster N y mide M"; para apuntarlo a otra cadena hay que
+    /// volver a escribir esos 32 bytes, y para eso hay que saber en qué sector
+    /// están. La versión que sólo devuelve el par obliga a recorrer el
+    /// directorio **dos veces** y a esperar que la segunda pasada encuentre lo
+    /// mismo que la primera.
+    fn find_entry_fat32_from(&mut self, name: &[u8], start_cluster: u32) -> Option<EntradaDir> {
         let mut cluster = start_cluster;
         let spc = self.sectors_per_cluster as u64;
         loop {
@@ -368,8 +402,13 @@ impl FatVolume {
                     if de.name[0] == 0 { return None; }
                     if de.name[0] == 0xE5 { continue; }
                     if name_match(&de.name, name) {
-                        let fc = (de.first_cluster_hi as u32) << 16 | de.first_cluster_lo as u32;
-                        return Some((fc, de.file_size));
+                        return Some(EntradaDir {
+                            lba: lba + s,
+                            offset: i * 32,
+                            first_cluster: (de.first_cluster_hi as u32) << 16
+                                | de.first_cluster_lo as u32,
+                            size: de.file_size,
+                        });
                     }
                 }
             }
@@ -801,27 +840,118 @@ impl FatVolume {
         }
     }
 
-    fn create_file_fat32(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
+    /// **Guarda, exista o no**: crea si el nombre está libre y REEMPLAZA si ya
+    /// está. Es lo que significa `OPEN OUTPUT` y lo que hace un `>` de shell.
+    ///
+    /// ═══ Por qué no es `create_file_in_dir` con un flag ═══
+    ///
+    /// Porque son dos operaciones con riesgos distintos y quien llama tiene
+    /// derecho a elegir. Crear un archivo nuevo no puede destruir nada;
+    /// reemplazar SÍ — se lleva por delante lo que hubiera. Un `bool` al final
+    /// de la lista de argumentos es la forma clásica de borrar un fichero
+    /// creyendo que lo estabas creando.
+    ///
+    /// `create_file_in_dir` sigue rechazando con `Exists`, y quien quiera
+    /// pisar tiene que decirlo llamando aquí.
+    pub fn save_file_in_dir(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
         -> Result<(), WriteError>
     {
-        // Un nombre repetido deja dos entradas iguales en el directorio: la
-        // segunda es inalcanzable y sus clusters, perdidos.
-        if self.find_file_in(name_8_3, dir_cluster).is_some() {
-            return Err(WriteError::Exists);
+        if self.write.is_none() { return Err(WriteError::ReadOnly); }
+        match self.fs_type {
+            FsType::Fat32 => match self.find_entry_fat32_from(name_8_3, dir_cluster) {
+                Some(vieja) => self.replace_file_fat32(vieja, data),
+                None => self.create_file_fat32(dir_cluster, name_8_3, data),
+            },
+            FsType::ExFat => Err(WriteError::Unsupported),
+        }
+    }
+
+    /// Apunta una entrada que YA EXISTE a un contenido nuevo.
+    ///
+    /// ═══ ★ El ORDEN, que es lo único que importa aquí ═══
+    ///
+    /// Reemplazar tiene tres pasos y **sólo un orden es seguro**:
+    ///
+    /// 1. Escribir la cadena NUEVA entera, sin tocar la vieja.
+    /// 2. Apuntar la entrada de directorio a la nueva (**un solo sector**).
+    /// 3. Y AHORA soltar la cadena vieja.
+    ///
+    /// Un corte de corriente entre 1 y 2 deja unos clusters marcados como
+    /// ocupados que no son de nadie —una fuga, molesta y recuperable— y el
+    /// archivo **sigue entero con su contenido de antes**. Un corte entre 2 y 3
+    /// deja la fuga al revés, con el contenido nuevo ya en pie. En ningún
+    /// instante hay un nombre apuntando a datos a medias.
+    ///
+    /// El orden tentador —soltar lo viejo primero para tener sitio— es el que
+    /// convierte un corte de luz en un archivo perdido. **Escribir encima de la
+    /// cadena vieja es peor todavía**: durante la escritura el archivo no es ni
+    /// el de antes ni el de ahora, y si falla a mitad no queda ninguno de los
+    /// dos.
+    ///
+    /// ═══ Lo que esto CUESTA, dicho ═══
+    ///
+    /// Durante el paso 1 el volumen aguanta **las dos copias a la vez**.
+    /// Reemplazar un archivo de 1 GiB pide 1 GiB libre aunque el archivo final
+    /// mida lo mismo que el que sustituye. Es el precio de no poder perderlo, y
+    /// se paga a gusto: la alternativa barata es la que pierde datos.
+    fn replace_file_fat32(&mut self, vieja: EntradaDir, data: &[u8]) -> Result<(), WriteError> {
+        // 1. La cadena nueva, entera y antes de tocar nada.
+        let nueva = self.escribir_cadena(data)?;
+
+        // 2. La entrada, de un solo sector. Se relee para no pisar a los
+        //    vecinos con lo que hubiera quedado en el buffer.
+        // Se RELEE el sector aunque `find_entry_fat32_from` lo dejara en `buf`
+        // hace un momento. Apoyarse en eso seria un acoplamiento invisible:
+        // `escribir_cadena` no tiene ninguna obligacion de respetar `buf` —hoy
+        // usa `fat_cache`, y el dia que eso cambie el reemplazo escribiria en
+        // el directorio lo que hubiera quedado en el buffer. Releer cuesta un
+        // sector; el fallo que evita se lleva a los quince archivos vecinos.
+        unsafe {
+            if !self.read_sector(vieja.lba, Buf::buf) {
+                self.free_chain(nueva);
+                return Err(WriteError::Io);
+            }
+        }
+        // Sólo cambian el puntero y el tamaño: el nombre y los atributos son
+        // los que ya había, y reescribirlos sería inventarse una entrada nueva
+        // encima de una que ya estaba bien.
+        let de = unsafe { &mut *(self.buf.as_mut_ptr().add(vieja.offset) as *mut DirEntry) };
+        de.first_cluster_hi = (nueva >> 16) as u16;
+        de.first_cluster_lo = (nueva & 0xFFFF) as u16;
+        de.file_size = data.len() as u32;
+
+        if !unsafe { self.write_sector(vieja.lba, Buf::buf) } {
+            // El directorio sigue apuntando a lo viejo, que sigue entero. Lo
+            // nuevo se suelta y no ha pasado nada.
+            self.free_chain(nueva);
+            return Err(WriteError::Io);
         }
 
+        // 3. Y ahora sí. Si esto falla a medias es una fuga de clusters, no una
+        //    perdida de datos: el archivo ya es el nuevo y esta completo.
+        if vieja.first_cluster >= 2 {
+            self.free_chain(vieja.first_cluster);
+        }
+        Ok(())
+    }
+
+    /// Reserva y escribe la cadena de clusters de `data`. Devuelve el primero.
+    ///
+    /// Cada cluster se marca como fin de cadena en cuanto se coge: asi la
+    /// siguiente busqueda de hueco ya no lo ve libre y no se entrega dos veces.
+    /// Si algo falla a mitad, se suelta lo cogido — un archivo a medias es un
+    /// error; unos clusters marcados como ocupados que ya no pertenecen a nadie
+    /// son una fuga permanente.
+    ///
+    /// **No toca el directorio.** Quien llama decide si el nombre que va a
+    /// apuntar aqui es uno nuevo (`create`) o uno que ya existia (`replace`), y
+    /// esa diferencia es toda la que hay entre las dos.
+    fn escribir_cadena(&mut self, data: &[u8]) -> Result<u32, WriteError> {
         let spc = self.sectors_per_cluster as usize;
         if spc == 0 { return Err(WriteError::Io); }
         let cluster_bytes = spc * 512;
         let clusters_needed = if data.is_empty() { 1 } else { data.len().div_ceil(cluster_bytes) };
 
-        // ── Reservar la CADENA entera, escribiendo a la vez ──
-        //
-        // Cada cluster se marca como fin de cadena en cuanto se coge: asi la
-        // siguiente busqueda de hueco ya no lo ve libre y no se entrega dos
-        // veces. Si algo falla a mitad, se suelta lo cogido — un archivo a
-        // medias es un error; unos clusters marcados como ocupados que ya no
-        // pertenecen a nadie son una fuga permanente.
         let first = match self.find_free_cluster() {
             Some(c) => c, None => return Err(WriteError::NoSpace),
         };
@@ -860,6 +990,19 @@ impl FatVolume {
                 }
             }
         }
+        Ok(first)
+    }
+
+    fn create_file_fat32(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
+        -> Result<(), WriteError>
+    {
+        // Un nombre repetido deja dos entradas iguales en el directorio: la
+        // segunda es inalcanzable y sus clusters, perdidos.
+        if self.find_file_in(name_8_3, dir_cluster).is_some() {
+            return Err(WriteError::Exists);
+        }
+
+        let first = self.escribir_cadena(data)?;
 
         // ── La entrada de directorio, lo ultimo ──
         //
@@ -1021,4 +1164,275 @@ fn name_match(entry: &[u8; 11], query: &[u8]) -> bool {
         if entry[i] != 0x20 && entry[i] != 0 { return false; }
     }
     true
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRUEBAS — sobre un volumen FAT32 de mentira, en RAM
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ★ Este modulo no existia, y era el agujero mas caro del arbol: el unico
+// codigo de BMO que ESCRIBE en un disco de verdad era tambien el unico sin una
+// sola prueba. Se verificaba flasheando y mirando la pantalla — o sea,
+// arriesgando el volumen para averiguar si el driver lo respetaba.
+//
+// El contrato de bloques (`BlockReader`/`BlockWriter`) son punteros a funcion
+// sin estado, asi que el disco de mentira vive en un `static mut` y cada
+// prueba lo formatea entera antes de empezar.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Un volumen minusculo pero REAL: 512 sectores de 512 bytes = 256 KiB.
+    ///
+    /// Un cluster = un sector, a proposito. Asi un archivo de 600 bytes ya son
+    /// DOS clusters encadenados, y el camino de la cadena se pisa con datos de
+    /// juguete en vez de necesitar megabytes.
+    const SECTORES: usize = 512;
+    const RESERVADOS: u32 = 1;
+    const FAT_SECTORES: u32 = 4;
+
+    static mut DISCO: [u8; SECTORES * 512] = [0u8; SECTORES * 512];
+
+    /// El disco de mentira es UNO, y `cargo test` corre en paralelo.
+    ///
+    /// No es un detalle de infraestructura: sin esto, una prueba lee el
+    /// volumen que otra acababa de formatear y falla **con un mensaje que
+    /// apunta al driver**. Se pierde media tarde buscando un fallo de FAT32
+    /// que estaba en el banco de pruebas.
+    ///
+    /// El candado lo toma [`volumen`] y lo devuelve al terminar la prueba, asi
+    /// que no hay forma de olvidarse: quien quiere el volumen se lleva el
+    /// turno con el.
+    static CANDADO: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// El disco entero como rebanada. Se construye desde el puntero crudo y no
+    /// desreferenciando el `static mut`: encadenarlo crearia una referencia a
+    /// la desreferencia del puntero, que es lo que el lint prohibe — y con
+    /// razon, porque esconde de donde sale. Mismo trato que en
+    /// `ring0/obj/archivo.rs`.
+    fn disco() -> &'static mut [u8] {
+        unsafe {
+            core::slice::from_raw_parts_mut(core::ptr::addr_of_mut!(DISCO) as *mut u8, SECTORES * 512)
+        }
+    }
+
+    fn leer(lba: u64, count: u16, buf: &mut [u8]) -> bool {
+        let off = lba as usize * 512;
+        let n = count as usize * 512;
+        if off + n > SECTORES * 512 || buf.len() < n { return false; }
+        buf[..n].copy_from_slice(&disco()[off..off + n]);
+        true
+    }
+
+    fn escribir(lba: u64, count: u16, data: &[u8]) -> bool {
+        let off = lba as usize * 512;
+        let n = count as usize * 512;
+        if off + n > SECTORES * 512 || data.len() < n { return false; }
+        disco()[off..off + n].copy_from_slice(&data[..n]);
+        true
+    }
+
+    /// Formatea el disco de mentira y lo monta. Cada prueba empieza de cero.
+    ///
+    /// Devuelve el TURNO junto con el volumen: mientras la prueba tenga el
+    /// guardia vivo, ninguna otra toca el disco. Un `let _ = volumen()` lo
+    /// soltaria en el acto, y por eso las pruebas lo atan a un nombre.
+    fn volumen() -> (std::sync::MutexGuard<'static, ()>, FatVolume) {
+        // `into_inner` y no `unwrap`: si una prueba anterior revento con el
+        // candado en la mano, el resto tiene que poder seguir. El disco se
+        // formatea entero aqui abajo, asi que lo que dejara no importa —
+        // envenenar la tanda entera solo escondaria el fallo de verdad.
+        let turno = CANDADO.lock().unwrap_or_else(|e| e.into_inner());
+        disco().fill(0);
+        let mut sector0 = [0u8; 512];
+        {
+            let bpb = unsafe { &mut *(sector0.as_mut_ptr() as *mut FatBpb) };
+            bpb.bytes_per_sector = 512;
+            bpb.sectors_per_cluster = 1;
+            bpb.reserved_sectors = RESERVADOS as u16;
+            bpb.num_fats = 1;
+            bpb.total_sectors = SECTORES as u32;
+            bpb.fat_size = FAT_SECTORES;
+            bpb.root_cluster = 2;
+            bpb.boot_sig = 0x29;
+        }
+        assert!(escribir(0, 1, &sector0));
+
+        // El cluster 2 es la raiz y esta OCUPADO: la FAT tiene que decirlo, o
+        // el primer archivo que se cree se llevara el directorio por delante.
+        let mut fat = [0u8; 512];
+        fat[0..4].copy_from_slice(&0x0FFF_FFF8u32.to_le_bytes()); // media
+        fat[4..8].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes()); // reservada
+        fat[8..12].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes()); // la raiz: EOC
+        assert!(escribir(RESERVADOS as u64, 1, &fat));
+
+        let v = mount(leer, Some(escribir), 0).expect("el volumen de mentira debe montar");
+        (turno, v)
+    }
+
+    fn nombre(n: &str) -> [u8; 11] {
+        let mut r = [b' '; 11];
+        let b = n.as_bytes();
+        r[..b.len()].copy_from_slice(b);
+        r
+    }
+
+    /// Lee un archivo entero por su nombre. `None` si no esta.
+    fn leer_archivo(v: &mut FatVolume, n: &str, dst: &mut [u8]) -> Option<usize> {
+        let (primero, tam) = v.find_file(&nombre(n))?;
+        let leidos = v.read_file(primero, tam, dst);
+        Some(leidos.min(tam as usize))
+    }
+
+    /// Cuantos clusters hay OCUPADOS ahora mismo. Es el detector de fugas: si
+    /// reemplazar no suelta la cadena vieja, este numero sube y no baja, y el
+    /// volumen se llena archivo a archivo sin que nada lo diga.
+    fn ocupados(v: &mut FatVolume) -> usize {
+        let mut n = 0;
+        for c in 2..=v.max_cluster {
+            if v.raw_fat_entry(c).unwrap_or(0) != 0 { n += 1; }
+        }
+        n
+    }
+
+    #[test]
+    fn crear_y_leer_da_lo_mismo() {
+        let (_turno, mut v) = volumen();
+        let datos = b"BANCO BMO";
+        v.create_file_in_dir(2, &nombre("CTAS    BIN"), datos).expect("debe crear");
+        let mut dst = [0u8; 512];
+        let n = leer_archivo(&mut v, "CTAS    BIN", &mut dst).expect("debe estar");
+        assert_eq!(&dst[..n], datos);
+    }
+
+    /// El comportamiento de ANTES, que se conserva: `create` no pisa.
+    #[test]
+    fn crear_sobre_uno_que_existe_sigue_dando_exists() {
+        let (_turno, mut v) = volumen();
+        v.create_file_in_dir(2, &nombre("CTAS    BIN"), b"viejo").expect("debe crear");
+        let r = v.create_file_in_dir(2, &nombre("CTAS    BIN"), b"nuevo");
+        assert!(matches!(r, Err(WriteError::Exists)), "crear NO puede pisar: {r:?}");
+    }
+
+    /// ★★ LA PRUEBA QUE JUSTIFICA TODO ESTO.
+    ///
+    /// Es el nivel 10 de COBOL corrido dos veces: la segunda escritura tiene
+    /// que ganar. Antes daba `Exists`, el `CLOSE` devolvia `0`, y en el disco
+    /// se quedaba el contenido de la primera corrida.
+    #[test]
+    fn guardar_dos_veces_deja_lo_segundo() {
+        let (_turno, mut v) = volumen();
+        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"primera").expect("1a");
+        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"SEGUNDA").expect("2a");
+        let mut dst = [0u8; 512];
+        let n = leer_archivo(&mut v, "CTAS    BIN", &mut dst).expect("debe estar");
+        assert_eq!(&dst[..n], b"SEGUNDA");
+    }
+
+    /// Y sin dejar UNA sola entrada de mas en el directorio.
+    ///
+    /// Reemplazar anadiendo otra entrada dejaria dos nombres iguales: el
+    /// segundo inalcanzable y sus clusters perdidos para siempre. Es justo el
+    /// motivo por el que `create` rechaza los repetidos.
+    #[test]
+    fn guardar_dos_veces_no_duplica_la_entrada() {
+        let (_turno, mut v) = volumen();
+        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"primera").expect("1a");
+        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"SEGUNDA").expect("2a");
+
+        let mut buf = [0u8; 512];
+        assert!(leer(v.cluster_to_lba(2), 1, &mut buf));
+        let mut cuantas = 0;
+        for i in 0..(512 / 32) {
+            let de = unsafe { &*(buf.as_ptr().add(i * 32) as *const DirEntry) };
+            if de.name[0] == 0 { break; }
+            if de.name[0] == 0xE5 { continue; }
+            if name_match(&de.name, &nombre("CTAS    BIN")) { cuantas += 1; }
+        }
+        assert_eq!(cuantas, 1, "reemplazar no puede dejar dos entradas con el mismo nombre");
+    }
+
+    /// ★ Y sin FUGAR clusters: la cadena vieja tiene que quedar suelta.
+    ///
+    /// Un reemplazo que no libera lo anterior no rompe nada visible —el
+    /// archivo se lee bien— pero el volumen se llena solo, y el dia que se
+    /// llene el motivo llevara meses enterrado.
+    #[test]
+    fn reemplazar_suelta_la_cadena_vieja() {
+        let (_turno, mut v) = volumen();
+        // 1200 bytes con clusters de 512 son TRES clusters.
+        let grande = [b'A'; 1200];
+        v.save_file_in_dir(2, &nombre("GRANDE  BIN"), &grande).expect("1a");
+        assert_eq!(ocupados(&mut v), 1 + 3, "raiz + tres clusters de datos");
+
+        // Y ahora uno pequeno en su sitio: tiene que BAJAR a un solo cluster.
+        v.save_file_in_dir(2, &nombre("GRANDE  BIN"), b"corto").expect("2a");
+        let quedan = ocupados(&mut v);
+        assert_eq!(quedan, 1 + 1, "los tres clusters viejos tenian que soltarse: quedan {quedan}");
+    }
+
+    /// Al reves tambien: crecer reserva la cadena entera y el archivo se lee
+    /// completo. Un reemplazo que solo escribiera el primer cluster daria un
+    /// archivo del tamano nuevo con la cola del viejo dentro.
+    #[test]
+    fn reemplazar_por_uno_mas_grande_lo_lee_entero() {
+        let (_turno, mut v) = volumen();
+        v.save_file_in_dir(2, &nombre("CRECE   BIN"), b"corto").expect("1a");
+        let mut grande = [0u8; 1500];
+        for (i, b) in grande.iter_mut().enumerate() { *b = (i % 251) as u8; }
+        v.save_file_in_dir(2, &nombre("CRECE   BIN"), &grande).expect("2a");
+
+        let mut dst = [0u8; 2048];
+        let n = leer_archivo(&mut v, "CRECE   BIN", &mut dst).expect("debe estar");
+        assert_eq!(n, grande.len(), "el tamano de la entrada tiene que ser el nuevo");
+        assert_eq!(&dst[..n], &grande[..], "y los bytes, los nuevos de punta a punta");
+    }
+
+    /// `save` sobre un nombre que NO existe es crear, sin sorpresas.
+    #[test]
+    fn guardar_lo_que_no_existe_es_crear() {
+        let (_turno, mut v) = volumen();
+        v.save_file_in_dir(2, &nombre("NUEVO   TXT"), b"hola").expect("debe crear");
+        let mut dst = [0u8; 512];
+        let n = leer_archivo(&mut v, "NUEVO   TXT", &mut dst).expect("debe estar");
+        assert_eq!(&dst[..n], b"hola");
+    }
+
+    /// ★ Reemplazar NO puede tocar al archivo de al lado.
+    ///
+    /// Es el fallo silencioso que mas miedo da de esta operacion: la entrada
+    /// de directorio se reescribe dentro de un sector que comparte con otras
+    /// quince, y escribir ese sector con un buffer que no sea el suyo se lleva
+    /// a los vecinos por delante.
+    ///
+    /// ⚠ Y hay que decir lo que esta prueba NO demuestra hoy: quitar el
+    /// `read_sector` de `replace_file_fat32` **no la hace caer**, porque `buf`
+    /// resulta que todavia conserva ese sector de cuando se busco la entrada.
+    /// Eso es un accidente del orden de las llamadas, no una garantia — se
+    /// comprobo mutandolo. La relectura se queda por eso mismo, y esta prueba
+    /// vale como red para la implementacion que venga despues, no como
+    /// demostracion de la de ahora.
+    #[test]
+    fn reemplazar_no_toca_al_vecino() {
+        let (_turno, mut v) = volumen();
+        v.save_file_in_dir(2, &nombre("UNO     TXT"), b"el primero").expect("uno");
+        v.save_file_in_dir(2, &nombre("DOS     TXT"), b"el segundo").expect("dos");
+        v.save_file_in_dir(2, &nombre("UNO     TXT"), b"PISADO").expect("uno otra vez");
+
+        let mut dst = [0u8; 512];
+        let n = leer_archivo(&mut v, "DOS     TXT", &mut dst).expect("el vecino debe seguir ahi");
+        assert_eq!(&dst[..n], b"el segundo", "el vecino no puede cambiar");
+        let n = leer_archivo(&mut v, "UNO     TXT", &mut dst).unwrap();
+        assert_eq!(&dst[..n], b"PISADO");
+    }
+
+    /// Un volumen montado sin escritor no escribe. No es una politica que
+    /// alguien tenga que recordar respetar: no hay con que.
+    #[test]
+    fn sin_escritor_no_se_guarda() {
+        let (_turno, _) = volumen();
+        let mut v = mount(leer, None, 0).expect("debe montar en solo lectura");
+        let r = v.save_file_in_dir(2, &nombre("NOPE    TXT"), b"x");
+        assert!(matches!(r, Err(WriteError::ReadOnly)), "{r:?}");
+    }
 }

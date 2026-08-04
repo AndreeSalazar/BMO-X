@@ -546,11 +546,25 @@ el primer cluster y el tamaño en la entrada de directorio.
 **Por eso `3.0` va delante de las otras tres y ninguna se puede entregar sin
 ella.**
 
-- [ ] **3.0 ★ FAT32: reemplazar un fichero que ya existe** — M ⛔ kernel
-      El bloqueante común de `3.1`, `3.2` y `3.3`, y además lo que hace que un
-      programa se pueda correr dos veces sin mentir. Su prueba no es que
-      compile: es **correr el nivel 10 dos veces con un saldo cambiado y ver el
-      nuevo**.
+- [~] **3.0 ★ FAT32: reemplazar un fichero que ya existe** — ✅ 2026-08-03 en
+      el código, **⏳ sin verificar en el Ryzen**
+      `save_file_in_dir` en el driver (crea si no está, reemplaza si está),
+      `guardar_en` en `fs.rs`, y `archivo::cerrar` pasa por ahí. `create_file_in_dir`
+      **sigue rechazando con `Exists`**: pisar hay que pedirlo, no heredarlo de
+      un flag al final de la lista de argumentos.
+      ★ El orden es lo único que importa: cadena nueva entera → apuntar la
+      entrada (un solo sector) → soltar la vieja. Así un corte de corriente deja
+      una fuga de clusters, nunca un archivo perdido ni un nombre apuntando a
+      datos a medias. Cuesta aguantar **las dos copias a la vez** durante la
+      escritura, y se paga a gusto.
+      ★★ Y trajo lo que faltaba desde el principio: **el driver de FAT32 no
+      tenía UNA sola prueba**. Era el único código de BMO que escribe en un
+      disco de verdad y se verificaba flasheando. Ahora son 9, sobre un volumen
+      de mentira en RAM, con detector de fugas de clusters incluido. Mutado
+      —quitando el `free_chain`— cae la que toca.
+      Queda `[~]` hasta la prueba de verdad: **correr el nivel 10, cambiar un
+      saldo en el fuente, recompilar y volver a correrlo en el Ryzen**. Tiene
+      que salir el nuevo.
 
 - [ ] **3.1 · `KIND_ARCHIVO`: modo EXTEND** — S ⛔ (3.0)
       Añadir al final. Hoy `OPEN EXTEND` se rechaza a propósito: sólo hay

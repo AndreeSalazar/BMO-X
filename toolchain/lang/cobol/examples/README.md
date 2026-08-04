@@ -64,13 +64,20 @@ Con `890.10CR` impreso con su marca de signo. Eso es COMP-3 empaquetando a
 nibbles, cruzando FAT32 hasta el Kingston y desempaquetando **sin perder un
 céntimo** — el ciclo entero de E/S de COBOL en hardware real.
 
-> ⚠ **Y una trampa que el nivel 10 no puede ver.** `OPEN OUTPUT` baja a
-> `TASK_OP_ARCHIVO_CREAR`, y el FAT32 del kernel **no sabe reemplazar un
-> fichero que ya existe**: a partir de la segunda corrida el `CLOSE` falla y no
-> guarda nada. Como el programa vuelve a leer el mismo fichero con los mismos
-> valores, **la pantalla sale idéntica**. Si cambias un saldo en el fuente y la
-> corrida enseña el de antes, es esto y no el compilador. Se arregla en la
-> tarea `3.x` de [`../PLAN_BANCA.md`](../PLAN_BANCA.md).
+> ⚠ **La trampa que estas fotos NO podían enseñar, y que ya está arreglada en
+> el código.** Hasta el 2026-08-03, `OPEN OUTPUT` bajaba a
+> `TASK_OP_ARCHIVO_CREAR` y el FAT32 del kernel **no sabía reemplazar un
+> fichero que ya existía**: a partir de la segunda corrida el `CLOSE` fallaba y
+> no guardaba nada. Como el programa vuelve a leer el mismo fichero con los
+> mismos valores, **la pantalla salía idéntica**. Por eso no se puede saber si
+> estas fotos son de la primera corrida o de la quinta: desde la pantalla no se
+> distingue, y ése era el problema.
+>
+> Arreglado con `save_file_in_dir` en el driver y `guardar_en` en `fs.rs`, y el
+> `CLOSE` de COBOL ahora deja `30` en el `FILE STATUS` cuando no se guardó.
+> **Pendiente de verificar en el Ryzen**: la prueba es correr el nivel 10, tocar
+> un saldo en el fuente, recompilar y volver a correrlo — tiene que salir el
+> nuevo.
 
 > ⚠ La carpeta del disco es el **número a secas** y no el nombre largo. No es
 > pereza: el driver FAT32 del kernel **se niega a recortar**, y
