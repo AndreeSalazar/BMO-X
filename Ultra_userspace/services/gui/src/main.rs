@@ -176,6 +176,41 @@ fn volcar_salida(salida: &Salida, ruta: &[u8], desde: usize, hasta: usize) -> Re
     }
 }
 
+/// **Devuelve la caja de Ejecutar a la pantalla** tras haberla tapado.
+///
+/// ═══ Por qué es una función y no tres líneas ═══
+///
+/// Porque eran tres líneas **trece veces**, y no idénticas: unas llevaban
+/// `borrar_ventana` delante, otras `arriba_antes` detrás, y en alguna faltaba
+/// `salida.sucia`. Esa última variación no da un error de compilación — da una
+/// rejilla de salida que se queda en blanco hasta que algo *no relacionado*
+/// vuelve a ensuciarla, y entonces se busca el fallo en el terminal cuando
+/// estaba en el gestor de ventanas.
+///
+/// Trece copias de una secuencia no son un estilo: son doce oportunidades de
+/// que una se quede atrás. Aquí sólo se puede olvidar en un sitio.
+///
+/// El `arriba_antes` se queda FUERA a propósito: eso es el orden de las
+/// ventanas, otra pregunta. Meterlo dentro haría que esta función mintiera
+/// sobre lo que hace.
+fn destapar(
+    p: &bmo::Pantalla,
+    caja: &Caja,
+    visible: bool,
+    salida: &mut Salida,
+    repintar_campo: &mut bool,
+) {
+    if !visible {
+        return;
+    }
+    pintar_caja(p, caja);
+    *repintar_campo = true;
+    // La rejilla se marca sucia y NO se pinta aquí: pintarla ahora la dibujaría
+    // por debajo de una ventana que a lo mejor sigue encima. Quien decide eso es
+    // el bloque de pintado, que sabe quién está arriba.
+    salida.sucia = true;
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     // El aviso va ANTES de reclamar: en cuanto la cesión se consuma, el kernel
@@ -561,11 +596,7 @@ pub extern "C" fn _start() -> ! {
                             escena::klog::pintar(&p, &caja_klog, klog_desplazamiento)
                         }
                         V_DATOS if datos_abierta => escena::datos::pintar(&p, &caja_datos),
-                        V_EJECUTAR if visible => {
-                            pintar_caja(&p, &caja);
-                            *repintar = true;
-                            sal.sucia = true;
-                        }
+                        V_EJECUTAR => destapar(&p, &caja, visible, sal, repintar),
                         _ => {}
                     }
                 };
@@ -589,9 +620,7 @@ pub extern "C" fn _start() -> ! {
                     // ventana que no esta en la pantalla: escribirias en algo
                     // invisible, que es la peor forma de perder una linea.
                     foco.abrir(V_EJECUTAR);
-                    pintar_caja(&p, &caja);
-                    repintar_campo = true;
-                    salida.sucia = true;
+                    destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                     pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                 } else {
                     foco.cerrar(V_EJECUTAR);
@@ -682,10 +711,8 @@ pub extern "C" fn _start() -> ! {
                         arriba_antes = if foco.es_para(V_DATOS) { V_DATOS } else { V_EJECUTAR };
                         // En `Fijo` se ha pintado encima de una caja que sigue
                         // teniendo el teclado: hay que devolverla arriba.
-                        if arriba_antes == V_EJECUTAR && visible {
-                            pintar_caja(&p, &caja);
-                            repintar_campo = true;
-                            salida.sucia = true;
+                        if arriba_antes == V_EJECUTAR {
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         }
                     } else {
                         // Al cerrarla hay que devolver el fondo Y repintar
@@ -696,11 +723,7 @@ pub extern "C" fn _start() -> ! {
                             caja_datos.ancho(), caja_datos.alto(), visible,
                         );
                         arriba_antes = V_EJECUTAR;
-                        if visible {
-                            pintar_caja(&p, &caja);
-                            repintar_campo = true;
-                            salida.sucia = true;
-                        }
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                     }
                     continue;
                 }
@@ -727,10 +750,8 @@ pub extern "C" fn _start() -> ! {
                         foco.abrir(V_KLOG);
                         escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
                         arriba_antes = if foco.es_para(V_KLOG) { V_KLOG } else { V_EJECUTAR };
-                        if arriba_antes == V_EJECUTAR && visible {
-                            pintar_caja(&p, &caja);
-                            repintar_campo = true;
-                            salida.sucia = true;
+                        if arriba_antes == V_EJECUTAR {
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         }
                     } else {
                         foco.cerrar(V_KLOG);
@@ -739,11 +760,7 @@ pub extern "C" fn _start() -> ! {
                             caja_klog.ancho, caja_klog.alto, visible,
                         );
                         arriba_antes = V_EJECUTAR;
-                        if visible {
-                            pintar_caja(&p, &caja);
-                            repintar_campo = true;
-                            salida.sucia = true;
-                        }
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         // Si Datos estaba abierta debajo, vuelve a verse.
                         if datos_abierta {
                             escena::datos::pintar(&p, &caja_datos);
@@ -1739,11 +1756,7 @@ pub extern "C" fn _start() -> ! {
                                 caja_datos.ancho(), caja_datos.alto(), visible,
                             );
                             arriba_antes = V_EJECUTAR;
-                            if visible {
-                                pintar_caja(&p, &caja);
-                                repintar_campo = true;
-                                salida.sucia = true;
-                            }
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         }
                         Some(Boton::Minimizar) => {
                             // Minimizar NO es cerrar: la ventana sigue abierta
@@ -1757,11 +1770,7 @@ pub extern "C" fn _start() -> ! {
                             foco.cerrar(V_DATOS);
                             borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
                             arriba_antes = V_EJECUTAR;
-                            if visible {
-                                pintar_caja(&p, &caja);
-                                repintar_campo = true;
-                                salida.sucia = true;
-                            }
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                             barra_sucia = true;
                         }
                         Some(Boton::Maximizar) => {
@@ -1771,11 +1780,7 @@ pub extern "C" fn _start() -> ! {
                             // nada, pero borrar el rectángulo viejo entero
                             // cubre los dos casos con una sola regla.
                             borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
-                            if visible {
-                                pintar_caja(&p, &caja);
-                                repintar_campo = true;
-                                salida.sucia = true;
-                            }
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                             caja_datos.recolocar();
                             escena::datos::pintar(&p, &caja_datos);
                             arriba_antes = V_DATOS;
@@ -1838,11 +1843,7 @@ pub extern "C" fn _start() -> ! {
                     );
                     if caja_datos.marco.seguir_al_puntero(&p, pos.x, pos.y) {
                         borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
-                        if visible {
-                            pintar_caja(&p, &caja);
-                            repintar_campo = true;
-                            salida.sucia = true;
-                        }
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         caja_datos.recolocar();
                         escena::datos::pintar(&p, &caja_datos);
                         arriba_antes = V_DATOS;
@@ -1868,9 +1869,7 @@ pub extern "C" fn _start() -> ! {
                     } else if i == 0 && !visible {
                         // Ejecutar escondida con Ctrl+Alt: su ficha la trae.
                         visible = true;
-                        pintar_caja(&p, &caja);
-                        repintar_campo = true;
-                        salida.sucia = true;
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         barra_sucia = true;
                     }
                 }
@@ -1898,12 +1897,10 @@ pub extern "C" fn _start() -> ! {
                 match arriba {
                     V_KLOG => escena::klog::pintar(&p, &caja_klog, klog_desplazamiento),
                     V_DATOS => escena::datos::pintar(&p, &caja_datos),
-                    _ if visible => {
-                        pintar_caja(&p, &caja);
-                        repintar_campo = true;
-                        salida.sucia = true;
-                    }
-                    _ => {}
+                    // Sin guarda de `visible`: `destapar` ya no hace nada si
+                    // la caja esta escondida, y una guarda repetida es una que
+                    // puede quedarse desincronizada de la funcion.
+                    _ => destapar(&p, &caja, visible, &mut salida, &mut repintar_campo),
                 }
                 arriba_antes = arriba;
             }
