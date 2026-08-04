@@ -114,6 +114,12 @@ pub(crate) struct CajaDatos {
     pub(crate) sel: usize,
     /// Primer hijo visible: la lista es más larga que la ventana.
     pub(crate) desde: usize,
+    /// Lo que dijo la última verificación de firma, si se pidió alguna.
+    ///
+    /// `None` es "no se ha preguntado", y **no es lo mismo que "sin firma"**:
+    /// enseñar `sin firma` sin haber mirado sería contestar por el disco.
+    /// Se borra al cambiar de nodo — el resultado es de UN archivo.
+    pub(crate) verificado: Option<u64>,
 }
 
 /// Lo que se puede encoger sin que deje de servir. Por debajo de esto el grafo
@@ -154,7 +160,53 @@ impl CajaDatos {
             vista: Vista::Numeros,
             sel: 0,
             desde: 0,
+            verificado: None,
         }
+    }
+
+    /// ★ **Sobre qué caja del grafo está el puntero**, si sobre alguna.
+    ///
+    /// `None` es "en ninguna" y `Some(usize::MAX)` es **la caja del padre**, la
+    /// de la izquierda: pulsarla sube un nivel, que es el gesto que la mano
+    /// busca sola cuando ya se ha bajado.
+    ///
+    /// La geometría se calcula IGUAL que en `pintar_nodos` y ése es el riesgo
+    /// de este método: si una de las dos cambia y la otra no, se pulsa una caja
+    /// y se selecciona otra. Las dos usan las mismas constantes y el mismo
+    /// reparto del ancho a propósito.
+    pub(crate) fn caja_en(&self, px: u32, py: u32, cuantos: usize) -> Option<usize> {
+        if self.vista != Vista::Nodos || self.marco.minimizada {
+            return None;
+        }
+        let (tx, ancho_caja, hijos_x, primera_y) = self.geometria_grafo();
+        // ¿La del padre?
+        if px >= tx && px < tx + ancho_caja && py >= primera_y && py < primera_y + CAJA_NODO_ALTO {
+            return Some(usize::MAX);
+        }
+        if px < hijos_x || px >= hijos_x + ancho_caja || py < primera_y {
+            return None;
+        }
+        let paso = CAJA_NODO_ALTO + CAJA_NODO_HUECO;
+        let fila = ((py - primera_y) / paso) as usize;
+        // El hueco ENTRE dos cajas no es ninguna de las dos. Sin esta guarda,
+        // pulsar en el aire seleccionaría la de arriba.
+        if (py - primera_y) % paso >= CAJA_NODO_ALTO {
+            return None;
+        }
+        let i = self.desde + fila;
+        if i < cuantos && fila < self.caben() { Some(i) } else { None }
+    }
+
+    /// El reparto del grafo: `(x del padre, ancho de caja, x de los hijos, y de
+    /// la primera fila)`. **Lo comparten quien pinta y quien acierta.**
+    fn geometria_grafo(&self) -> (u32, u32, u32, u32) {
+        const CANAL: u32 = 44;
+        let tx = self.marco.x + 16;
+        let util = self.marco.ancho.saturating_sub(32);
+        let ancho_caja = ((util.saturating_sub(CANAL)) / 2).max(CAJA_NODO_MIN);
+        let hijos_x = tx + ancho_caja + CANAL;
+        let primera_y = self.marco.y + TITULO_ALTO + 6 + bmo::GLIFO_ALTO + 10 + 4;
+        (tx, ancho_caja, hijos_x, primera_y)
     }
 
     // Los atajos de siempre, para no escribir `.marco.` en cada uso. Son
@@ -327,20 +379,36 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     let hondo = bmo::estratos::hondo();
     let cuantos = bmo::estratos::hijos() as usize;
 
-    // La miga de pan: a qué profundidad estamos. Sin esto, dos directorios con
-    // los mismos nombres dentro se ven idénticos.
+    // ── ★ LA MIGA DE PAN, con nombres de verdad ──
+    //
+    // Antes ponía `profundidad 2`, y eso no dice DÓNDE estás: dos carpetas
+    // distintas con los mismos nombres dentro se veían idénticas. Ahora es
+    // `/ > cobol > 10`, que es la única forma de saber qué estás mirando.
+    //
+    // Los nombres los guarda el cursor AL BAJAR, porque después ya no se
+    // saben: un nodo no sabe cómo se llama — el nombre vive en la entrada de
+    // su padre.
     {
+        let mut x = p.texto(tx, ty, "/", DATOS_TITULO);
+        let mut nivel = 1u64;
+        while nivel <= hondo {
+            let mut nom = [0u8; 40];
+            let n = bmo::estratos::nombre_nivel(nivel, &mut nom);
+            x = p.texto(x + 2, ty, " > ", TEXTO_TENUE);
+            // El último tramo en blanco y los de antes apagados: se lee de un
+            // vistazo dónde estás sin perder de dónde vienes.
+            let tinta = if nivel == hondo { TEXTO } else { TEXTO_TENUE };
+            x = p.texto_bytes(x, ty, &nom[..n], tinta);
+            nivel += 1;
+        }
         let mut b = [0u8; 10];
-        let x = p.texto(tx, ty, "profundidad ", TEXTO_TENUE);
-        let n = decimal(hondo, &mut b);
-        let x = p.texto_bytes(x, ty, &b[..n], TEXTO);
-        let x = p.texto(x, ty, "   hijos ", TEXTO_TENUE);
+        let x = p.texto(x + 3 * bmo::GLIFO_ANCHO, ty, "hijos ", TEXTO_TENUE);
         let n = decimal(cuantos as u64, &mut b);
         let x = p.texto_bytes(x, ty, &b[..n], TEXTO);
         if bmo::estratos::truncado() {
             // Se DICE. Un listado recortado en silencio se ve igual que un
             // directorio con pocos archivos, y esa confusión cuesta horas.
-            p.texto(x, ty, "   (RECORTADO: no cabian todos)", TEXTO_MAL);
+            p.texto(x, ty, "  (RECORTADO)", TEXTO_MAL);
         }
     }
     ty += bmo::GLIFO_ALTO + 10;
@@ -349,20 +417,33 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     //
     // Las cajas ya no miden lo mismo pase lo que pase: el ancho útil se parte
     // entre las dos columnas y el canal de las ramas. Estirar la ventana hace
-    // que quepan nombres más largos, que es para lo que uno la estira. Una caja
-    // de tamaño fijo dentro de una ventana elástica deja un desierto a la
-    // derecha y sigue cortando los nombres.
-    const CANAL: u32 = 44; // lo que ocupan la espina y sus codos
-    let util = c.marco.ancho.saturating_sub(32);
-    let ancho_caja = ((util.saturating_sub(CANAL)) / 2).max(CAJA_NODO_MIN);
+    // que quepan nombres más largos, que es para lo que uno la estira.
+    //
+    // ★★ Y sale de `geometria_grafo`, **la misma que usa el acierto del
+    // ratón**. Tenerlo dos veces era garantizar que un día se pulsara una caja
+    // y se seleccionara otra: dos copias de una geometría se separan solas.
+    let (_, ancho_caja, hijos_x, primera_y) = c.geometria_grafo();
+    let espina_x = hijos_x - 22;
 
     // ── El nodo actual, a la izquierda ──
-    let padre_y = ty + 4;
-    let nombre_actual: &[u8] = if hondo == 0 { b"/" } else { b"(aqui)" };
-    caja_nodo(p, tx, padre_y, ancho_caja, bmo::estratos::tipo(), nombre_actual, false);
+    let padre_y = primera_y;
+    // El nombre del padre: en la raíz `/`, y si no, el último tramo de la ruta.
+    let mut nom_padre = [0u8; 40];
+    let np = if hondo == 0 {
+        nom_padre[0] = b'/';
+        1
+    } else {
+        bmo::estratos::nombre_nivel(hondo, &mut nom_padre)
+    };
+    caja_nodo(p, tx, padre_y, ancho_caja, bmo::estratos::tipo(), &nom_padre[..np], false);
+    if hondo > 0 {
+        // Se dice que se puede subir, y cómo. Un gesto que existe y no está
+        // escrito lo conoce sólo quien lo programó.
+        p.texto(tx, padre_y + CAJA_NODO_ALTO + 6, "clic aqui SUBE", TEXTO_TENUE);
+    }
 
     if cuantos == 0 {
-        p.texto(tx, padre_y + CAJA_NODO_ALTO + 16, "esta vacio.", TEXTO_TENUE);
+        p.texto(tx, padre_y + CAJA_NODO_ALTO + 22, "esta vacio.", TEXTO_TENUE);
         return;
     }
 
@@ -370,12 +451,9 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     //
     // Sin primitiva de línea: un rectángulo de un píxel de ancho ES una línea,
     // y para un grafo de codos —que es como pinta n8n— no hace falta más.
-    let espina_x = tx + ancho_caja + CANAL / 2;
-    let hijos_x = tx + ancho_caja + CANAL;
     let caben = c.caben();
     let ultimo = (c.desde + caben).min(cuantos);
 
-    let primera_y = ty + 4;
     let mut hy = primera_y;
     for i in c.desde..ultimo {
         let centro = hy + CAJA_NODO_ALTO / 2;
@@ -403,6 +481,52 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     if salida_y != arriba {
         let (a, b) = if salida_y < arriba { (salida_y, arriba) } else { (arriba, salida_y) };
         p.rect(espina_x, a, 2, b - a + 2, DATOS_ARISTA);
+    }
+
+    // ── ★ EL PANEL DE DETALLE del nodo señalado ──
+    //
+    // Un grafo que sólo enseña nombres contesta *qué hay*; no contesta *qué es
+    // esto*. Va al PIE y en una línea: es información de apoyo, y un panel
+    // lateral se comería el ancho que las cajas necesitan para sus nombres.
+    if c.sel < cuantos {
+        let dy = c.marco.y + c.marco.alto - TITULO_ALTO - bmo::GLIFO_ALTO - 2;
+        p.rect(c.marco.x + 1, dy - 6, c.marco.ancho - 2, 1, DATOS_BORDE);
+        let mut b = [0u8; 10];
+        let x = p.texto(tx, dy, "sel: ", TEXTO_TENUE);
+        let n = decimal(bmo::estratos::hijo_bytes(c.sel as u64), &mut b);
+        let x = p.texto_bytes(x, dy, &b[..n], TEXTO);
+        let x = p.texto(x, dy, " B   atributos ", TEXTO_TENUE);
+        let n = decimal(bmo::estratos::hijo_atributos(c.sel as u64), &mut b);
+        let x = p.texto_bytes(x, dy, &b[..n], TEXTO);
+        // La firma. **Se dice si la LLEVA; que CUADRE se pide con V** — leer el
+        // archivo entero y hacerle el BLAKE3 en cada repintado convertiría un
+        // panel en un martillo sobre el disco.
+        let x = p.texto(x, dy, "   firma ", TEXTO_TENUE);
+        let x = if bmo::estratos::hijo_firmado(c.sel as u64) {
+            p.texto(x, dy, "SI", TEXTO_BIEN)
+        } else {
+            p.texto(x, dy, "no", TEXTO_TENUE)
+        };
+        // Y el resultado de la última verificación, si se pidió.
+        match c.verificado {
+            None => {
+                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "V comprueba", TEXTO_TENUE);
+            }
+            Some(bmo::estratos::FIRMA_CUADRA) => {
+                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "CUADRA", TEXTO_BIEN);
+            }
+            Some(bmo::estratos::FIRMA_NO_CUADRA) => {
+                // El único mensaje de esta ventana que significa "hay un
+                // problema en el disco". Por eso es el único en rojo.
+                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "NO CUADRA", TEXTO_MAL);
+            }
+            Some(bmo::estratos::FIRMA_AUSENTE) => {
+                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "sin firma", TEXTO_TENUE);
+            }
+            _ => {
+                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "no se pudo leer", TEXTO_MAL);
+            }
+        }
     }
 
     // Si la lista no cabe entera, decirlo con números y no con puntos

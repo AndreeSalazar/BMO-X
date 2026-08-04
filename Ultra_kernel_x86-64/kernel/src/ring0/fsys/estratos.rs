@@ -512,11 +512,26 @@ pub mod cursor {
     /// tiene ningún volumen razonable, y un tope explícito es mejor que una
     /// pila que crece hasta que algo se rompe.
     pub const HONDO_MAX: usize = 16;
+    /// Lo que se guarda del nombre de cada nivel de la ruta. Un nombre más
+    /// largo se recorta **y se dice** — ver `nombre_nivel`.
+    pub const NOMBRE_NIVEL: usize = 32;
 
     /// El buffer del cursor, SUYO. Ver [`super::listar_en`].
     static mut BUF: [u8; ENTRADAS_MAX * ENTRADA_LEN] = [0u8; ENTRADAS_MAX * ENTRADA_LEN];
     /// La ruta desde la raíz: `PILA[0]` es la raíz y `PILA[HONDO]` el actual.
     static mut PILA: [Option<BlockPtr>; HONDO_MAX] = [None; HONDO_MAX];
+    /// El NOMBRE de cada nivel, para poder enseñar la ruta de verdad.
+    ///
+    /// ★ Se guarda al bajar y no se reconstruye después, y ése es el motivo de
+    /// que exista: un `BlockPtr` sabe DÓNDE está un nodo y **no sabe cómo se
+    /// llama** — el nombre vive en la entrada del padre, no en el hijo. Para
+    /// sacarlo a posteriori habría que releer el directorio de arriba y buscar
+    /// qué entrada apunta aquí. Anotarlo al pasar cuesta 64 bytes por nivel.
+    ///
+    /// Sin esto, la ventana sólo puede decir `profundidad 2`, y dos carpetas
+    /// distintas con los mismos nombres dentro se ven idénticas.
+    static mut NOMBRES: [[u8; NOMBRE_NIVEL]; HONDO_MAX] = [[0; NOMBRE_NIVEL]; HONDO_MAX];
+    static mut NOMBRES_LEN: [usize; HONDO_MAX] = [0; HONDO_MAX];
     static mut HONDO: usize = 0;
     static mut ACTUAL: Option<Nodo> = None;
     static mut CUANTAS: usize = 0;
@@ -636,9 +651,121 @@ pub mod cursor {
         unsafe {
             HONDO += 1;
             PILA[HONDO] = Some(e.nodo);
+            // El nombre se anota AL PASAR. Después ya no se sabe: la entrada
+            // que lo lleva es del padre y aquí ya no la tenemos delante.
+            let b = e.nombre_str().as_bytes();
+            let k = b.len().min(NOMBRE_NIVEL);
+            NOMBRES[HONDO][..k].copy_from_slice(&b[..k]);
+            NOMBRES_LEN[HONDO] = k;
             ACTUAL = Some(n);
         }
         relistar()
+    }
+
+    /// Ocho bytes del nombre del nivel `nivel` de la ruta. `nivel = 0` es la
+    /// raíz, que no tiene nombre y contesta vacío — la ventana pinta `/`.
+    pub fn nombre_nivel(nivel: usize, trozo: usize) -> u64 {
+        unsafe {
+            if nivel == 0 || nivel > HONDO || nivel >= HONDO_MAX {
+                return 0;
+            }
+            let n = NOMBRES_LEN[nivel];
+            let ini = trozo * 8;
+            if ini >= n {
+                return 0;
+            }
+            let fin = (ini + 8).min(n);
+            let mut w = [0u8; 8];
+            w[..fin - ini].copy_from_slice(&NOMBRES[nivel][ini..fin]);
+            u64::from_le_bytes(w)
+        }
+    }
+
+    // ── El DETALLE de un hijo ───────────────────────────────────────────
+    //
+    // ★ Un grafo que sólo enseña nombres contesta *qué hay*; no contesta *qué
+    // es esto*. Lo de abajo es lo que el nodo ya lleva dentro y la ventana no
+    // podía pedir: cuánto mide, cuántos atributos tiene y si va firmado.
+
+    /// Bytes del contenido del hijo `i`. Un directorio contesta el tamaño de su
+    /// lista de entradas, que también es un dato: dice cuánto ocupa el propio
+    /// directorio, no lo que hay dentro.
+    pub fn hijo_bytes(i: usize) -> u64 {
+        let Some(e) = entrada_i(i) else { return 0 };
+        let Some(n) = super::nodo(&e.nodo) else { return 0 };
+        let cual = if n.tipo == Tipo::Directorio {
+            bmo_estratos::objects::ATTR_ENTRADAS
+        } else {
+            bmo_estratos::objects::ATTR_DATOS
+        };
+        n.attr(cual).map(|a| a.size).unwrap_or(0)
+    }
+
+    /// Cuántos atributos lleva el hijo `i`.
+    ///
+    /// Es el número que dice que ESTRATOS no es un sistema de archivos de
+    /// carpetas: un nodo es **un conjunto de atributos**, y la diferencia entre
+    /// un archivo y un directorio es cuál lleva, no dos estructuras distintas.
+    pub fn hijo_atributos(i: usize) -> u64 {
+        let Some(e) = entrada_i(i) else { return 0 };
+        let Some(n) = super::nodo(&e.nodo) else { return 0 };
+        n.attrs().count() as u64
+    }
+
+    /// ¿Lleva `:firma` el hijo `i`? `1` sí, `0` no.
+    ///
+    /// **Sólo dice si LA LLEVA, no si cuadra.** Comprobarlo exige leer el
+    /// contenido entero y hacerle el BLAKE3, y eso no puede pasar en cada
+    /// repintado de una ventana. Para eso está [`verificar`], que se pide.
+    pub fn hijo_firmado(i: usize) -> u64 {
+        let Some(e) = entrada_i(i) else { return 0 };
+        let Some(n) = super::nodo(&e.nodo) else { return 0 };
+        n.attr(bmo_estratos::objects::ATTR_FIRMA).is_some() as u64
+    }
+
+    /// El buffer donde se lee un archivo para verificarlo. Un tope honesto:
+    /// más grande que esto no se puede comprobar y **se dice** en vez de
+    /// contestar "no cuadra", que mandaría a buscar una corrupción que no hay.
+    const VERIFICA_MAX: usize = 256 * 1024;
+    static mut VERIFICA_BUF: [u8; VERIFICA_MAX] = [0u8; VERIFICA_MAX];
+
+    /// **Lee el hijo `i` y compara su BLAKE3 con su `:firma`.**
+    ///
+    /// `0` no lleva firma · `1` CUADRA · `2` NO CUADRA · `3` no se pudo leer
+    /// o no cabe en el buffer.
+    ///
+    /// Se pide a mano y no se calcula al pintar: leer un archivo entero y
+    /// hacerle un hash sesenta veces por segundo convertiría un panel en un
+    /// martillo sobre el disco.
+    ///
+    /// ⚠ Lo que esto demuestra y lo que no, dicho aquí como en `super::firma`:
+    /// demuestra que **los bytes son los que se guardaron** —caza corrupción,
+    /// una escritura a medias, un bloque mal leído—. NO demuestra
+    /// autenticidad: quien pueda escribir en el volumen puede cambiar el
+    /// archivo *y* recalcular su hash.
+    pub fn verificar(i: usize) -> u64 {
+        let Some(e) = entrada_i(i) else { return 3 };
+        let Some(n) = super::nodo(&e.nodo) else { return 3 };
+        if n.attr(bmo_estratos::objects::ATTR_FIRMA).is_none() {
+            return 0;
+        }
+        let a = match n.attr(bmo_estratos::objects::ATTR_DATOS) {
+            Some(a) => a,
+            None => return 3,
+        };
+        if a.size as usize > VERIFICA_MAX {
+            return 3;
+        }
+        let buf = unsafe { &mut *core::ptr::addr_of_mut!(VERIFICA_BUF) };
+        let leidos = match super::flujo(a, buf) {
+            Some(k) => k,
+            None => return 3,
+        };
+        match super::firma(&n, &buf[..leidos]) {
+            super::Firma::Cuadra => 1,
+            super::Firma::NoCuadra => 2,
+            super::Firma::Ausente => 0,
+        }
     }
 
     /// Vuelve al padre. `false` si ya se está en la raíz.

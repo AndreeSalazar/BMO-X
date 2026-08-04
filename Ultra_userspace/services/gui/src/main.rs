@@ -797,8 +797,11 @@ pub extern "C" fn _start() -> ! {
                         }
                         _ if caja_datos.vista == Vista::Numeros => atendida = false,
                         // ARRIBA / ABAJO por la lista de hijos.
-                        0x80 => caja_datos.mover_sel(-1, bmo::estratos::hijos() as usize),
-                        0x81 => caja_datos.mover_sel(1, bmo::estratos::hijos() as usize),
+                        // Al cambiar de caja se borra la verificacion: es de
+                        // UN archivo, y un `CUADRA` viejo bajo el nombre de
+                        // otro es peor que no decir nada.
+                        0x80 => { caja_datos.mover_sel(-1, bmo::estratos::hijos() as usize); caja_datos.verificado = None; }
+                        0x81 => { caja_datos.mover_sel(1, bmo::estratos::hijos() as usize); caja_datos.verificado = None; }
                         0x87 => caja_datos.mover_sel(-5, bmo::estratos::hijos() as usize),
                         0x88 => caja_datos.mover_sel(5, bmo::estratos::hijos() as usize),
                         // ENTRAR / DERECHA: bajar al hijo señalado. `entrar`
@@ -807,13 +810,25 @@ pub extern "C" fn _start() -> ! {
                         b'\r' | b'\n' | 0x83 => {
                             if bmo::estratos::entrar(caja_datos.sel as u64) {
                                 caja_datos.al_principio();
+                                caja_datos.verificado = None;
                             }
                         }
                         // RETROCESO / IZQUIERDA: subir al padre.
                         0x08 | 0x82 => {
                             if bmo::estratos::subir() {
                                 caja_datos.al_principio();
+                                caja_datos.verificado = None;
                             }
+                        }
+                        // ★ V: COMPROBAR LA FIRMA del nodo señalado.
+                        //
+                        // Se pide a mano y no se calcula al pintar: lee el
+                        // archivo entero y le hace el BLAKE3, y hacer eso
+                        // sesenta veces por segundo convertiría este panel en
+                        // un martillo sobre el disco.
+                        b'v' | b'V' => {
+                            caja_datos.verificado =
+                                Some(bmo::estratos::verificar(caja_datos.sel as u64));
                         }
                         _ => atendida = false,
                     }
@@ -1766,7 +1781,45 @@ pub extern "C" fn _start() -> ! {
                             arriba_antes = V_DATOS;
                         }
                         None => {
-                            caja_datos.marco.agarrar(pos.x, pos.y);
+                            // ── ★ CLIC DENTRO DEL GRAFO ──
+                            //
+                            // El gesto que faltaba: hasta ahora el ratón sólo
+                            // servía para mover la ventana, y una ventana llena
+                            // de cajas en la que no se puede pulsar ninguna es
+                            // una ventana que parece interactiva y no lo es.
+                            let cuantos = bmo::estratos::hijos() as usize;
+                            match caja_datos.caja_en(pos.x, pos.y, cuantos) {
+                                // La caja del PADRE: sube un nivel. Es el gesto
+                                // que la mano busca sola cuando ya has bajado.
+                                Some(i) if i == usize::MAX => {
+                                    if bmo::estratos::subir() {
+                                        caja_datos.al_principio();
+                                        caja_datos.verificado = None;
+                                        escena::datos::pintar(&p, &caja_datos);
+                                        arriba_antes = V_DATOS;
+                                    }
+                                }
+                                Some(i) => {
+                                    caja_datos.sel = i;
+                                    // El resultado de una verificación es de UN
+                                    // archivo: al cambiar de caja se borra. Si
+                                    // no, un `CUADRA` viejo se quedaría debajo
+                                    // del nombre de otro.
+                                    caja_datos.verificado = None;
+                                    // ★ Ctrl+clic BAJA de una vez, sin tener que
+                                    // señalar y pulsar ENTRAR. El clic a secas
+                                    // sólo señala, porque señalar tiene que
+                                    // poder hacerse sin miedo a moverte de sitio.
+                                    if ctrl && bmo::estratos::entrar(i as u64) {
+                                        caja_datos.al_principio();
+                                    }
+                                    escena::datos::pintar(&p, &caja_datos);
+                                    arriba_antes = V_DATOS;
+                                }
+                                None => {
+                                    caja_datos.marco.agarrar(pos.x, pos.y);
+                                }
+                            }
                         }
                     }
                 } else if !boton && caja_datos.marco.agarrado() {

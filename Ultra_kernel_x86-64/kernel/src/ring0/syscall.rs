@@ -144,6 +144,13 @@ const ES_NODO_TIPO: u64 = 0x04;
 const ES_NODO_HIJO_TIPO: u64 = 0x05;
 const ES_NODO_ENTRAR: u64 = 0x06;
 const ES_NODO_SUBIR: u64 = 0x07;
+const ES_NODO_HIJO_BYTES: u64 = 0x08;
+const ES_NODO_HIJO_ATRIBUTOS: u64 = 0x09;
+const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
+const ES_NODO_VERIFICAR: u64 = 0x0B;
+/// Qué texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
+/// `bmo_abi::…::ES_TXT_*`.
+const ES_TXT_RUTA: u64 = 1;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
@@ -507,17 +514,30 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 ES_NODO_HIJO_TIPO => cursor::hijo_tipo(arg1 as usize),
                 ES_NODO_ENTRAR => cursor::entrar(arg1 as usize) as u64,
                 ES_NODO_SUBIR => cursor::subir() as u64,
+                ES_NODO_HIJO_BYTES => cursor::hijo_bytes(arg1 as usize),
+                ES_NODO_HIJO_ATRIBUTOS => cursor::hijo_atributos(arg1 as usize),
+                ES_NODO_HIJO_FIRMADO => cursor::hijo_firmado(arg1 as usize),
+                // ★ La UNICA de la tabla que hace trabajo de verdad: lee el
+                // archivo entero y le hace el BLAKE3. Por eso se pide a mano y
+                // no se calcula al pintar.
+                ES_NODO_VERIFICAR => cursor::verificar(arg1 as usize),
                 // Una pregunta que no existe se contesta con cero y no con un
                 // fallo: quien pregunte de mas se entera igual, y un `unsupported`
                 // aqui obligaria al panel a distinguir dos formas de "nada".
                 _ => 0,
             })
         }
+        // `arg0` lleva DOS cosas: el índice en los 32 bits bajos y qué texto se
+        // pide en los altos. Se reparte el argumento en vez de añadir otra
+        // operación porque son el mismo mecanismo —sacar un nombre de ocho en
+        // ocho— pidiendo dos cosas distintas.
         TASK_OP_ES_TEXTO => {
-            BmoStatus::ok_value(crate::ring0::fsys::estratos::cursor::hijo_nombre(
-                arg0 as usize,
-                arg1 as usize,
-            ))
+            use crate::ring0::fsys::estratos::cursor;
+            let i = (arg0 & 0xFFFF_FFFF) as usize;
+            BmoStatus::ok_value(match arg0 >> 32 {
+                ES_TXT_RUTA => cursor::nombre_nivel(i, arg1 as usize),
+                _ => cursor::hijo_nombre(i, arg1 as usize),
+            })
         }
         TASK_OP_REINICIAR => {
             crate::ring0::cabina::warn(

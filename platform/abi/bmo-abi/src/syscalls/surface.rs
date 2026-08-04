@@ -201,6 +201,39 @@ pub const ES_NODO_HIJO_TIPO: u64 = 0x05;
 pub const ES_NODO_ENTRAR: u64 = 0x06;
 /// Vuelve al padre. 1 si se pudo, 0 si ya estaba en la raíz.
 pub const ES_NODO_SUBIR: u64 = 0x07;
+/// ── El DETALLE del hijo `arg1` ────────────────────────────────────────
+///
+/// Un grafo que sólo enseña nombres contesta *qué hay*; no contesta *qué es
+/// esto*. Esto es lo que el nodo ya lleva dentro y la ventana no podía pedir.
+///
+/// Bytes de su contenido. Un directorio contesta lo que ocupa su lista de
+/// entradas — que también es un dato, y distinto de lo que hay dentro.
+pub const ES_NODO_HIJO_BYTES: u64 = 0x08;
+/// Cuántos atributos lleva. Es el número que dice que ESTRATOS no es un
+/// sistema de carpetas: un nodo **es un conjunto de atributos**, y un archivo
+/// y un directorio se diferencian en cuál llevan, no en su estructura.
+pub const ES_NODO_HIJO_ATRIBUTOS: u64 = 0x09;
+/// 1 si lleva `:firma`. **Sólo si la lleva, no si cuadra** — comprobarlo exige
+/// leer el contenido entero, y eso no puede pasar en cada repintado.
+pub const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
+/// ★ **Lee el hijo y compara su BLAKE3 con su `:firma`.** Se pide a mano.
+///
+/// `0` no lleva · `1` CUADRA · `2` NO CUADRA · `3` no se pudo leer.
+///
+/// ⚠ Demuestra que los bytes son los que se guardaron —caza corrupción y
+/// escrituras a medias—. **No demuestra autenticidad**: quien pueda escribir
+/// en el volumen puede cambiar el archivo *y* recalcular su hash.
+pub const ES_NODO_VERIFICAR: u64 = 0x0B;
+
+/// Qué texto pide [`TASK_OP_ES_TEXTO`], en los bits altos de `arg0`.
+///
+/// Los bajos siguen siendo el índice. Se reparte el argumento en vez de añadir
+/// una operación porque **son el mismo mecanismo** —sacar un nombre de ocho en
+/// ocho— pidiendo dos cosas distintas, y una puerta por cada texto que devuelva
+/// el sistema es como una superficie de tres syscalls acaba teniendo treinta.
+pub const ES_TXT_HIJO: u64 = 0;
+/// El nombre del nivel `índice` de la ruta. `0` es la raíz y contesta vacío.
+pub const ES_TXT_RUTA: u64 = 1;
 
 /// **Bytes que Ring 3 ha PEDIDO** con `KIND_MEMORIA`, desde el arranque.
 ///

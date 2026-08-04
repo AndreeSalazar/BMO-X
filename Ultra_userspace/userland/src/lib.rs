@@ -382,16 +382,68 @@ pub mod estratos {
         pregunta(0x07, 0) != 0
     }
 
+    // ── El DETALLE del hijo `i` ─────────────────────────────────────────
+
+    /// Bytes de su contenido. Un directorio contesta lo que ocupa su LISTA de
+    /// entradas, que es un dato distinto de lo que hay dentro.
+    pub fn hijo_bytes(i: u64) -> u64 {
+        pregunta(0x08, i)
+    }
+    /// Cuántos atributos lleva. Es el número que dice que un nodo de ESTRATOS
+    /// **es un conjunto de atributos** y no una carpeta con cosas.
+    pub fn hijo_atributos(i: u64) -> u64 {
+        pregunta(0x09, i)
+    }
+    /// ¿Lleva `:firma`? **Sólo si la lleva, no si cuadra.**
+    pub fn hijo_firmado(i: u64) -> bool {
+        pregunta(0x0A, i) != 0
+    }
+
+    /// Lo que contesta [`verificar`].
+    pub const FIRMA_AUSENTE: u64 = 0;
+    pub const FIRMA_CUADRA: u64 = 1;
+    pub const FIRMA_NO_CUADRA: u64 = 2;
+    pub const FIRMA_ILEGIBLE: u64 = 3;
+
+    /// ★ Lee el hijo entero y compara su BLAKE3 con su `:firma`.
+    ///
+    /// **Se pide a mano**: leer un archivo y hacerle un hash sesenta veces por
+    /// segundo convertiría un panel en un martillo sobre el disco.
+    ///
+    /// ⚠ Demuestra que los bytes son los que se guardaron. **No demuestra
+    /// autenticidad** — quien pueda escribir en el volumen puede cambiar el
+    /// archivo *y* recalcular su hash.
+    pub fn verificar(i: u64) -> u64 {
+        pregunta(0x0B, i)
+    }
+
+    /// El nombre del nivel `nivel` de la ruta en `dst`. `0` es la raíz y
+    /// contesta vacío — quien pinta escribe `/`.
+    ///
+    /// Va por la misma puerta que [`hijo_nombre`] con un `1` en los bits altos:
+    /// es el mismo mecanismo pidiendo otra cosa, y una puerta por cada texto
+    /// que devuelva el sistema es como una superficie de tres syscalls acaba
+    /// teniendo treinta.
+    pub fn nombre_nivel(nivel: u64, dst: &mut [u8]) -> usize {
+        texto_de(nivel | (1u64 << 32), dst)
+    }
+
     /// El nombre del hijo `i` en `dst`. Devuelve cuántos bytes se escribieron.
     ///
     /// Viaja de ocho en ocho, igual que el klog: la superficie congelada no
     /// acepta punteros. Se para en el primer trozo vacío o cuando `dst` se
     /// llena — lo que pase antes.
     pub fn hijo_nombre(i: u64, dst: &mut [u8]) -> usize {
+        texto_de(i, dst)
+    }
+
+    /// El motor de los dos: saca un texto de ocho en ocho hasta que se acabe o
+    /// hasta que `dst` se llene, lo que pase antes.
+    fn texto_de(que: u64, dst: &mut [u8]) -> usize {
         let mut escritos = 0usize;
         let mut trozo = 0u64;
         while escritos < dst.len() {
-            let w = invoke(CURRENT_TASK, OP_ES_TEXTO, i, trozo, 0).value;
+            let w = invoke(CURRENT_TASK, OP_ES_TEXTO, que, trozo, 0).value;
             if w == 0 {
                 break;
             }
