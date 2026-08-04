@@ -1601,17 +1601,25 @@ impl Codegen {
     // ```text
     //   00  la operacion fue bien
     //   10  fin de fichero            <- lo dice `rax = 0` del READ
+    //   30  no se pudo guardar        <- lo dice `rax = 0` del CLOSE
     //   35  el fichero no existe      <- lo dice el handle 0 del OPEN
     // ```
     //
-    // Los demás (`30` error de E/S, `37` modo incompatible, `39` conflicto de
-    // atributos, `41`/`42` doble apertura o cierre) **no se pueden separar
-    // todavía**: `KIND_ARCHIVO` devuelve un handle o cero, y de un cero no se
-    // saca el motivo. El día que la puerta traiga un código, aquí sólo hay que
-    // ampliar la tabla — y hasta entonces, un `37` inventado mandaría a
-    // arreglar lo que no está roto.
+    // Los demás (`37` modo incompatible, `39` conflicto de atributos, `41`/`42`
+    // doble apertura o cierre) **no se pueden separar todavía**: `KIND_ARCHIVO`
+    // devuelve un handle o cero, y de un cero no se saca el motivo. El día que
+    // la puerta traiga un código, aquí sólo hay que ampliar la tabla — y hasta
+    // entonces, un `37` inventado mandaría a arreglar lo que no está roto.
     const EST_OK: &'static str = "00";
     const EST_FIN: &'static str = "10";
+    /// Error permanente de E/S. **Es el del `CLOSE` que no guardó.**
+    ///
+    /// El estándar lo define como *error permanente, sin más detalle*, y aquí
+    /// eso es exactamente lo que se sabe: `ARCH_OP_CERRAR` contesta `1` si el
+    /// contenido llegó al disco y `0` si no, sin decir por qué. El motivo queda
+    /// en la CABINA (`F11`); el programa se entera de que **no se guardó**, que
+    /// es lo que necesita para no seguir como si tal cosa.
+    const EST_ERROR_E_S: &'static str = "30";
     const EST_NO_EXISTE: &'static str = "35";
 
     /// De qué fichero es este `01`. `WRITE` nombra el registro, no el fichero.
@@ -1734,13 +1742,27 @@ impl Codegen {
     }
 
     /// `CLOSE <fichero>`. En uno de salida, **aqui es donde llega al disco**.
+    ///
+    /// ★ Y por eso es la operacion cuyo `FILE STATUS` mas importa: hasta el
+    /// `CLOSE` no hay nada escrito. Esto ponia `"00"` a pelo, sin mirar `rax`,
+    /// asi que un programa que declaraba `FILE STATUS` —y por tanto se habia
+    /// molestado en preguntar— recibia "todo bien" con el fichero sin guardar.
+    ///
+    /// Pasa DE VERDAD, y no en un caso raro: `TASK_OP_ARCHIVO_CREAR` no puede
+    /// reemplazar un fichero que ya existe, asi que la SEGUNDA corrida de
+    /// cualquier programa que escriba su salida falla aqui. Y si el programa
+    /// vuelve a leer lo que creia haber escrito, lee lo de la corrida anterior
+    /// y no nota nada.
     fn emit_close(&mut self, fichero: &str) {
         let Some(off) = self.file_slot(fichero) else { return };
         self.load_slot(off);
         self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
         bmo_lower::archivo::cerrar(&mut self.code);
+        // `cerrar` deja en `rax` lo que contesto la puerta: 1 si el contenido
+        // llego al disco, 0 si no. Un fichero de lectura contesta 1 siempre,
+        // asi que esto no puede dar un falso `30` al cerrar una entrada.
         let fichero_s = fichero.to_string();
-        self.emit_estado(&fichero_s, Self::EST_OK);
+        self.emit_estado_segun_rax(&fichero_s, Self::EST_OK, Self::EST_ERROR_E_S);
     }
 
     /// `READ <f> AT END … NOT AT END … END-READ`.

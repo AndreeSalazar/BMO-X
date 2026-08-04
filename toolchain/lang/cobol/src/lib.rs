@@ -307,6 +307,31 @@ STOP RUN.
         (m.console.clone(), m)
     }
 
+    /// Igual, pero con el disco NEGÁNDOSE a guardar las rutas que se le digan.
+    ///
+    /// Es el único ayudante que puede probar el camino del `CLOSE` que falla, y
+    /// hace falta porque ese camino **no se puede provocar desde COBOL**: el
+    /// programa hace lo mismo en los dos casos y es el disco el que decide. Sin
+    /// esto, `emit_close` podía escribir `"00"` a pelo y ninguna prueba lo veía.
+    fn run_cobol_sin_poder_guardar(
+        src: &str,
+        entrada: &[(&str, &str)],
+        no_guardables: &[&str],
+    ) -> (String, bmo_lower::emu::Machine) {
+        use bmo_lower::emu::{run, Machine};
+        let bef = compile_source_to_bef(src).expect("el programa debe compilar");
+        let mut m = Machine::new(code_section(&bef));
+        for (ruta, datos) in entrada {
+            m.poner_archivo(ruta, datos.as_bytes());
+        }
+        for ruta in no_guardables {
+            m.fallar_al_guardar(ruta);
+        }
+        let m = run(m, 2_000_000);
+        assert!(m.exited, "el programa debe terminar por INVOKE(EXIT)");
+        (m.console.clone(), m)
+    }
+
     /// Igual, pero sembrando BYTES CRUDOS. Hace falta desde que un fichero
     /// puede no ser texto: un registro binario tiene nibbles dentro, y pasarlo
     /// por un `&str` lo destrozaría.
@@ -1303,6 +1328,72 @@ DISPLAY ST.",
 126.00
 00
 ");
+    }
+
+    /// Un programa que ESCRIBE `d/s.txt` y mira su estado después del `CLOSE`.
+    fn programa_que_guarda(body: &str) -> String {
+        format!(
+            "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\
+             ENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\n\
+             SELECT SALIDA ASSIGN TO \"d/s.txt\" FILE STATUS IS ST.\n\
+             DATA DIVISION.\nFILE SECTION.\nFD SALIDA.\n01 R PIC 9(4).\n\
+             WORKING-STORAGE SECTION.\n01 ST PIC XX VALUE \"??\".\n\
+             PROCEDURE DIVISION.\n{body}\nSTOP RUN.\n"
+        )
+    }
+
+    /// ★★ `30` — **el `CLOSE` que no guardó**, que es el estado que más
+    /// importa de todos.
+    ///
+    /// Hasta el `CLOSE` no hay nada en el disco: escribir es un acto de dos
+    /// pasos y el segundo es éste. `emit_close` ponía `"00"` a pelo sin mirar
+    /// lo que contestaba la puerta, así que un programa que se había molestado
+    /// en declarar `FILE STATUS` —o sea, uno que preguntaba— recibía "todo
+    /// bien" con el fichero sin escribir.
+    ///
+    /// Y no es un caso de laboratorio: hoy `TASK_OP_ARCHIVO_CREAR` **no puede
+    /// reemplazar un fichero que ya existe**, así que la SEGUNDA corrida de
+    /// cualquier programa que escriba su salida cae exactamente aquí.
+    #[test]
+    fn file_status_dice_30_cuando_el_close_no_guarda() {
+        let src = programa_que_guarda(
+            "OPEN OUTPUT SALIDA.\nMOVE 1234 TO R.\nWRITE R.\nCLOSE SALIDA.\nDISPLAY ST.",
+        );
+        let (consola, m) = run_cobol_sin_poder_guardar(&src, &[], &["d/s.txt"]);
+        assert_eq!(consola, "30\n", "el programa tiene que ENTERARSE de que no se guardo");
+        // Y que no quede a medias: o entero o nada.
+        assert_eq!(m.archivo("d/s.txt"), None, "no se puede guardar un trozo");
+    }
+
+    /// Y `00` con el mismo programa cuando el disco sí acepta.
+    ///
+    /// Es la mitad que impide que el arreglo de arriba sea "poner `30` siempre":
+    /// las dos pruebas juntas dicen que el estado **depende de lo que pasó**.
+    #[test]
+    fn file_status_dice_00_cuando_el_close_guarda() {
+        let src = programa_que_guarda(
+            "OPEN OUTPUT SALIDA.\nMOVE 1234 TO R.\nWRITE R.\nCLOSE SALIDA.\nDISPLAY ST.",
+        );
+        let (consola, m) = run_cobol_sin_poder_guardar(&src, &[], &[]);
+        assert_eq!(consola, "00\n");
+        assert!(m.archivo("d/s.txt").is_some(), "esta vez si tiene que estar en el disco");
+    }
+
+    /// ★ Cerrar una ENTRADA no puede dar `30` por accidente.
+    ///
+    /// La puerta contesta `1` al cerrar un fichero de lectura porque no hay
+    /// nada que guardar. Si eso se leyera como fallo, todo batch que cierre su
+    /// fichero de entrada —o sea, todos— se pararía creyendo que el disco está
+    /// roto. Ésta es la prueba de que el arreglo no se pasó de listo.
+    #[test]
+    fn cerrar_una_entrada_sigue_dando_00() {
+        let src = programa_con_estado(
+            "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(4).\n\
+             WORKING-STORAGE SECTION.\n01 ST PIC XX VALUE \"??\".",
+            "OPEN INPUT ENTRADA.\nCLOSE ENTRADA.\nDISPLAY ST.",
+        );
+        let (consola, _) = run_cobol_con_disco(&src, &[("d/e.txt", "1234\n")]);
+        assert_eq!(consola, "00\n");
     }
 
     /// El campo tiene que existir y medir DOS letras. Si no, el programa

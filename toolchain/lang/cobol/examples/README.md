@@ -21,21 +21,56 @@ run cobol/10/maestro.bex
 
 ## La escalera
 
-| Nivel | Carpeta | En el disco | Qué hace falta que el compilador sepa |
-|---|---|---|---|
-| 1 | `1-basico/` | `cobol/1/hola.bex` | `DISPLAY` de literal, `STOP RUN` |
-| 2 | `2-decimal/` | `cobol/2/banco.bex` `calc.bex` `calcgui.bex` | `PIC` con escala, `MOVE`, las cinco operaciones, `IF`/`ELSE`, `PERFORM`, `COMPUTE` con precedencia, `ACCEPT` |
-| 3 | `3-presentacion/` | `cobol/3/extracto.bex` | `PICTURE` de **edición** emitida como instrucciones |
-| 4 | `4-ficheros/` | `cobol/4/batch.bex` | `SELECT`/`ASSIGN`, `FD`, `OPEN`/`READ … AT END`/`WRITE`/`CLOSE` |
-| 5 | `5-tablas/` | `cobol/5/concep.bex` | `OCCURS` con subíndice literal y variable, con guarda de rango |
-| 6 | `6-condiciones/` | `cobol/6/carter.bex` | Nivel **88**: nombres de condición |
-| 7 | `7-empaquetado/` | `cobol/7/cuentas.bex` | `USAGE COMP-3`: el dato guardado en **nibbles**, del ancho de su PIC |
-| 8 | `8-parrafos/` | `cobol/8/cierre.bex` | **Párrafos** y las cuatro formas del `PERFORM` fuera de línea, `VALUE`, `OR` |
-| 9 | `9-decision/` | `cobol/9/comisio.bex` | `EVALUATE TRUE` y **`ROUNDED` con sus modos** |
-| 10 | `10-binario/` | `cobol/10/maestro.bex` | **Registros binarios de largo fijo** con los campos en su byte |
+La columna **Ryzen** no es decorativa: un test en el emulador dice que el
+codegen es coherente consigo mismo; una foto de la pantalla dice que el CPU
+real hizo lo que el fuente promete. No son la misma afirmación.
 
-Los diez corren en el emulador y tienen su test. Del 1 al 6, además,
-**verificados en el Ryzen**.
+| Nivel | Carpeta | En el disco | Ryzen | Qué hace falta que el compilador sepa |
+|---|---|---|---|---|
+| 1 | `1-basico/` | `cobol/1/hola.bex` | ✅ | `DISPLAY` de literal, `STOP RUN` |
+| 2 | `2-decimal/` | `cobol/2/banco.bex` `calc.bex` `calcgui.bex` | ✅ | `PIC` con escala, `MOVE`, las cinco operaciones, `IF`/`ELSE`, `PERFORM`, `COMPUTE` con precedencia, `ACCEPT` |
+| 3 | `3-presentacion/` | `cobol/3/extracto.bex` | ✅ | `PICTURE` de **edición** emitida como instrucciones |
+| 4 | `4-ficheros/` | `cobol/4/batch.bex` | ✅ | `SELECT`/`ASSIGN`, `FD`, `OPEN`/`READ … AT END`/`WRITE`/`CLOSE` |
+| 5 | `5-tablas/` | `cobol/5/concep.bex` | ✅ | `OCCURS` con subíndice literal y variable, con guarda de rango |
+| 6 | `6-condiciones/` | `cobol/6/carter.bex` | ✅ | Nivel **88**: nombres de condición |
+| 7 | `7-empaquetado/` | `cobol/7/cuentas.bex` | — | `USAGE COMP-3`: el dato guardado en **nibbles**, del ancho de su PIC |
+| 8 | `8-parrafos/` | `cobol/8/cierre.bex` | — | **Párrafos** y las cuatro formas del `PERFORM` fuera de línea, `VALUE`, `OR` |
+| 9 | `9-decision/` | `cobol/9/comisio.bex` | ✅ **2026-08-03** | `EVALUATE TRUE` y **`ROUNDED` con sus modos** |
+| 10 | `10-binario/` | `cobol/10/maestro.bex` | ✅ **2026-08-03** | **Registros binarios de largo fijo** con los campos en su byte |
+
+Los diez corren en el emulador y tienen su test.
+
+### Lo que se vio en el Ryzen el 2026-08-03
+
+Los dos escalones de arriba se verificaron **antes** que el 7 y el 8, que
+siguen sin estrenar. Se dice así y no "del 1 al 10" porque un hueco declarado
+se puede cerrar y uno tapado no.
+
+**Nivel 9 — los dos redondeos divergen en metal.** El clásico dio `0.10` y el
+del banquero `0.08` sobre los mismos cuatro empates. Son los números exactos
+que el fuente promete en su comentario, y **es la línea que no se puede
+fingir**: si `MODE IS NEAREST-EVEN` se hubiera compilado como el redondeo de
+siempre, las dos cifras saldrían iguales y nadie lo notaría hasta el cuadre.
+
+**Nivel 10 — el ida y vuelta por el disco cuadra.** Escribió tres registros de
+16 bytes a `datos/ctas.bin`, los releyó, y salió:
+
+```
+15.234,75  −  890,10  +  3.105,40  =  17.450,05
+                    en descubierto: 1
+```
+
+Con `890.10CR` impreso con su marca de signo. Eso es COMP-3 empaquetando a
+nibbles, cruzando FAT32 hasta el Kingston y desempaquetando **sin perder un
+céntimo** — el ciclo entero de E/S de COBOL en hardware real.
+
+> ⚠ **Y una trampa que el nivel 10 no puede ver.** `OPEN OUTPUT` baja a
+> `TASK_OP_ARCHIVO_CREAR`, y el FAT32 del kernel **no sabe reemplazar un
+> fichero que ya existe**: a partir de la segunda corrida el `CLOSE` falla y no
+> guarda nada. Como el programa vuelve a leer el mismo fichero con los mismos
+> valores, **la pantalla sale idéntica**. Si cambias un saldo en el fuente y la
+> corrida enseña el de antes, es esto y no el compilador. Se arregla en la
+> tarea `3.x` de [`../PLAN_BANCA.md`](../PLAN_BANCA.md).
 
 > ⚠ La carpeta del disco es el **número a secas** y no el nombre largo. No es
 > pereza: el driver FAT32 del kernel **se niega a recortar**, y
@@ -122,13 +157,28 @@ está en verde. Un campo editado sin símbolo de signo **no enseña el signo**.
 
 ## El escalón que todavía no existe
 
-Un "nivel 11" pediría lo que hoy se rechaza **con su motivo**, no en silencio:
-`STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`, `GO TO`, `REDEFINES`, `PIC X` con
-texto de verdad, y `FILE STATUS`. Cuando uno de ésos entre, entra con su carpeta
-y con su fila en `cobol_feature_matrix_runs_correctly`.
+Esta lista eran **nueve** cosas que el compilador rechazaba con su motivo. El
+2026-08-03 entraron cinco, y ninguna trajo carpeta propia: se metieron en los
+escalones que ya había, que es lo correcto — un nivel nuevo se gana cuando hace
+falta **una forma distinta de escribir**, no cuando entra un verbo más.
 
-El orden en que entran, y qué bloquea a qué, está en
-[`../PLAN_BANCA.md`](../PLAN_BANCA.md).
+| | Estado |
+|---|---|
+| `GO TO` dentro de un párrafo | ✅ y el nivel 8 dejó de fingirlo |
+| `PIC X(n)` con texto de verdad | ✅ sin límite de ancho |
+| `STRING` | ✅ — **`UNSTRING` no** |
+| `INSPECT` | ✅ |
+| `FILE STATUS` | ✅ con los códigos que se pueden dar de verdad |
+| `SEARCH` / `SEARCH ALL` | ❌ pendiente |
+| `REDEFINES` | ❌ pendiente |
+| `SORT` | ❌ pendiente |
+| `CALL` | ⛔ **bloqueado por la decisión del enlazador** — no es COBOL, es que BMO no tiene enlazado |
+
+Lo que queda entra igual que entró lo de arriba: con su fila en
+`cobol_feature_matrix_runs_correctly`, que **ejecuta** el programa en vez de
+mirarle los bytes.
+
+El orden, y qué bloquea a qué, está en [`../PLAN_BANCA.md`](../PLAN_BANCA.md).
 
 ## Los `.bex`
 

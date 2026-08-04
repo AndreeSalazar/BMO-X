@@ -8,6 +8,11 @@
 > **Revisión 3 — la decisión `1.0` está TOMADA (camino B) y `2.6 ROUNDED`
 > hecho.** Con `1.0` decidida, el camino a *leer lo que ya existe* se queda sin
 > candados y `0.5` pasa a ser lo siguiente.
+> **Revisión 4 — la FASE 3 estaba mal medida, y a favor.** Sus tres primeras
+> tareas (S + M + M) resultan ser **una sola**, `3.0`: el cursor ya existe en el
+> kernel y el fichero entero ya vive en RAM. Lo único que falta de verdad es que
+> FAT32 sepa **reemplazar**, y de paso eso arregla un fallo que ya está en el
+> disco — ver *[FASE 3](#fase-3--el-sistema-debajo)*.
 >
 > Es la lista de tareas de [`BANCA_REAL.md`](BANCA_REAL.md): aquel documento dice
 > **qué falta y por qué**; éste dice **en qué orden, qué bloquea a qué, y cómo se
@@ -337,13 +342,26 @@ que ya existe.**
       dar de verdad y sólo ésos**
       `SELECT … FILE STATUS IS <campo>`, y el código de dos letras se deja
       después de `OPEN`, `READ`, `WRITE` y `CLOSE`.
-      ★ Sólo se ponen **`00`, `10` y `35`**, que son los que la puerta permite
-      distinguir: el `OPEN` contesta con un handle o un cero, y el `READ` con un
-      sí o un no. Los demás (`30` error de E/S, `37` modo incompatible, `41`/`42`
-      doble apertura o cierre) **no se pueden separar todavía** — de un cero no
-      se saca el motivo. Inventarlos mandaría a arreglar lo que no está roto.
-      El día que `KIND_ARCHIVO` traiga un código, aquí sólo hay que ampliar la
-      tabla; por eso queda `[~]` y no `[x]`.
+      ★ Sólo se ponen **`00`, `10`, `30` y `35`**, que son los que la puerta
+      permite distinguir: el `OPEN` contesta con un handle o un cero, el `READ`
+      con un sí o un no, y el `CLOSE` con un guardó o no guardó. Los demás
+      (`37` modo incompatible, `41`/`42` doble apertura o cierre) **no se pueden
+      separar todavía** — de un cero no se saca el motivo. Inventarlos mandaría
+      a arreglar lo que no está roto. El día que `KIND_ARCHIVO` traiga un
+      código, aquí sólo hay que ampliar la tabla; por eso queda `[~]` y no `[x]`.
+
+      ★★ **El `30` del `CLOSE` entró el 2026-08-03, y tapaba un fallo grave.**
+      `emit_close` escribía `"00"` **a pelo, sin mirar `rax`**, así que el único
+      momento en el que un fichero llega al disco era también el único que no
+      se comprobaba: un programa que se había molestado en declarar `FILE
+      STATUS` recibía "todo bien" con el fichero sin guardar. Y pasa de verdad —
+      hoy `CREAR` no puede reemplazar un fichero existente, o sea que la segunda
+      corrida de cualquier programa que escriba su salida caía por ahí. Ver
+      `3.0`.
+      Para poder probarlo hizo falta que el emulador supiera **fingir un disco
+      que dice que no** (`Machine::fallar_al_guardar`): mientras `CERRAR`
+      contestó `1` siempre, el camino del fallo era código que ninguna prueba
+      podía pisar.
       ★ Se comprueba que el campo **existe y mide dos letras**: si no, el
       programa compararía contra basura y `IF ST = "00"` daría falso siempre —
       un batch que se para cada noche sin motivo.
@@ -498,22 +516,58 @@ Lo que la puerta **ya da**: `TASK_OP_ARCHIVO_ABRIR` (0x10) y `_CREAR` (0x11);
 sobre el handle, `ARCH_OP_LEER` (7 bytes crudos), `ARCH_OP_LEER_LINEA`,
 `ARCH_OP_ESCRIBIR`, `ARCH_OP_TAMANO` y `ARCH_OP_CERRAR`.
 
-- [ ] **3.1 · `KIND_ARCHIVO`: modo EXTEND** — S ⛔ kernel
+## ★ Revisión 4 (2026-08-03): las tres primeras son UNA, y no la que se creía
+
+Medido en el código, no supuesto. Las tres tareas de abajo se escribieron
+como S + M + M **suponiendo que faltaban tres mecanismos distintos**. Faltan
+dos cosas, y sólo una es de verdad:
+
+| Lo que decía el plan | Lo que hay en el código |
+|---|---|
+| *"No existe ninguna operación de cursor"* | **Existe**: `CURSOR[i]` en `obj/archivo.rs`, uno por ranura, y `leer`/`leer_linea` ya lo mueven. `3.3` es exponerlo con una guarda de rango — decenas de líneas, no una M |
+| *"Un handle que lea y escriba"* | El fichero **entero vive ya en RAM** por ranura (marcos contiguos que se doblan al llenarse) y `cerrar` lo vuelca de una vez. Leer-y-escribir no pide modelo nuevo: pide que `abrir` deje `ESCRIBE = true` y que `escribir` respete el cursor en vez de añadir al final |
+| *"Añadir al final"* | Cae solo con lo anterior: `CURSOR = LARGO` al abrir |
+
+★ **Lo que falta de verdad es que FAT32 sepa REEMPLAZAR.**
+`create_file_in_dir` devuelve `WriteError::Exists` si el nombre ya está, y
+`archivo::crear()` **no lo comprueba al abrir**: el fallo aparece en `cerrar()`,
+que devuelve `0` y sólo deja un `warn` en la CABINA.
+
+La consecuencia se ve hoy y no es teórica: **un programa que escriba su fichero
+sólo es honesto la primera vez que se corre.** El nivel 10 de los ejemplos
+escribe tres cuentas, las relee y las imprime; en la segunda corrida no guarda
+nada, y como relee el mismo fichero con los mismos valores **la pantalla sale
+idéntica**. Es la peor forma de un fallo: la que se parece a funcionar.
+
+Las piezas para arreglarlo están puestas — `free_chain` y `mark_cluster_eoc` ya
+viven en el driver. Es liberar la cadena vieja, escribir la nueva y reescribir
+el primer cluster y el tamaño en la entrada de directorio.
+
+**Por eso `3.0` va delante de las otras tres y ninguna se puede entregar sin
+ella.**
+
+- [ ] **3.0 ★ FAT32: reemplazar un fichero que ya existe** — M ⛔ kernel
+      El bloqueante común de `3.1`, `3.2` y `3.3`, y además lo que hace que un
+      programa se pueda correr dos veces sin mentir. Su prueba no es que
+      compile: es **correr el nivel 10 dos veces con un saldo cambiado y ver el
+      nuevo**.
+
+- [ ] **3.1 · `KIND_ARCHIVO`: modo EXTEND** — S ⛔ (3.0)
       Añadir al final. Hoy `OPEN EXTEND` se rechaza a propósito: sólo hay
       `_CREAR`, que crea de cero, así que compilarlo como `OUTPUT` borraría el
       histórico y el programa parecería funcionar hasta que alguien buscara el
       mes pasado.
 
-- [ ] **3.2 ★ `KIND_ARCHIVO`: modo I-O** — M ⛔ kernel
-      Un handle que **lea y escriba**. Hoy el modo se fija al abrir — son dos
-      operaciones distintas, no un argumento. Es lo que bloquea `REWRITE` y
-      `DELETE`, o sea **lo que hace que un KSDS sea un KSDS y no un listado
-      ordenado**.
+- [ ] **3.2 ★ `KIND_ARCHIVO`: modo I-O** — S ⛔ (3.0)
+      Un handle que **lea y escriba**. Es lo que bloquea `REWRITE` y `DELETE`,
+      o sea **lo que hace que un KSDS sea un KSDS y no un listado ordenado**.
+      Baja de M a S por la revisión 4: el buffer completo en RAM ya da la
+      semántica; lo que falta es el modo y el volcado, que es `3.0`.
 
-- [ ] **3.3 ★ `KIND_ARCHIVO`: posicionar por byte** — M ⛔ kernel
-      No existe ninguna operación de cursor: `ARCH_OP_LEER` avanza y ya. Sin
-      esto no hay acceso **directo** a nada. (Pero sí hay acceso **secuencial**
-      binario — ver 1.1.)
+- [ ] **3.3 ★ `KIND_ARCHIVO`: posicionar por byte** — S ⛔ (3.0)
+      Exponer el `CURSOR` que ya existe. Sin esto no hay acceso **directo** a
+      nada. (Pero sí hay acceso **secuencial** binario — ver 1.1.)
+      Baja de M a S por la revisión 4.
 
 - [ ] **3.4 ★ ESTRATOS: crear objetos y ESCRIBIR** — XL ⛔ ESTRATOS
       Hoy monta, lee y sabe commitear (`sellar()` en `ring0/fsys/estratos.rs`, y

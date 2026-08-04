@@ -111,7 +111,7 @@
 //! o en el flujo, aquí; lo que depende del silicio o del kernel, allí, y con su
 //! número escrito antes de arrancar.**
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Dirección base del área de datos que carga el test.
 pub const DATA_BASE: u64 = 0x1_0000;
@@ -217,6 +217,19 @@ pub struct Machine {
     /// archivos con [`Machine::poner_archivo`] y leen lo escrito con
     /// [`Machine::archivo`].
     pub archivos: HashMap<String, Vec<u8>>,
+    /// Rutas cuyo `CERRAR` va a decir que **no se guardó**.
+    ///
+    /// ★ Existe porque guardar puede fallar y hasta hoy el emulador no sabía
+    /// fingirlo: `ARCH_OP_CERRAR` devolvía `1` siempre, así que el camino del
+    /// fallo —el que pone `FILE STATUS` a `30`— era código que ninguna prueba
+    /// podía pisar. Y no es un caso raro: hoy `TASK_OP_ARCHIVO_CREAR` **no
+    /// puede reemplazar un fichero que ya existe**, o sea que la segunda
+    /// corrida de cualquier programa que escriba su salida cae por aquí.
+    ///
+    /// Modela el `0` del kernel y nada más: no se escribe el archivo y se
+    /// contesta que no. El motivo (sin sitio, no se pudo reemplazar, desbordó)
+    /// **el kernel tampoco lo distingue** — se queda en la CABINA.
+    fallo_al_guardar: HashSet<String>,
     /// Lo que el terminal habría tecleado para este proceso. Lo siembra
     /// [`Machine::poner_entrada`] y lo drena `TASK_OP_CONSOLE_READ`.
     entrada: Vec<u8>,
@@ -298,6 +311,7 @@ impl Machine {
             syscalls: Vec::new(),
             exited: false,
             archivos: HashMap::new(),
+            fallo_al_guardar: HashSet::new(),
             entrada: Vec::new(),
             entrada_cursor: 0,
             ruta: Vec::new(),
@@ -444,6 +458,17 @@ impl Machine {
     /// Siembra un archivo antes de ejecutar. Es el disco de la prueba.
     pub fn poner_archivo(&mut self, ruta: &str, datos: &[u8]) {
         self.archivos.insert(ruta.to_string(), datos.to_vec());
+    }
+
+    /// Hace que guardar ESA ruta falle: el `CLOSE` contestará `0` y en el disco
+    /// no quedará nada.
+    ///
+    /// Es el disco diciendo que no, que es lo único que un programa puede
+    /// observar. Sirve para probar que el programa **se entera** — un `CLOSE`
+    /// que siempre dice que sí deja el camino del fallo sin pisar, y ése es
+    /// justo el que decide si un fichero se perdió en silencio.
+    pub fn fallar_al_guardar(&mut self, ruta: &str) {
+        self.fallo_al_guardar.insert(ruta.to_string());
     }
 
     /// Lo que hay en el disco al terminar. `None` si ese archivo no existe —
@@ -640,9 +665,16 @@ impl Machine {
                 let a = &mut self.abiertos[i];
                 a.vivo = false;
                 if a.escribe {
+                    let (ruta, datos) = (a.ruta.clone(), a.datos.clone());
+                    // El disco dice que no: no se escribe NADA y se contesta
+                    // `0`. No se guarda un trozo — un archivo a medias se
+                    // parece demasiado a uno entero, que es la misma regla que
+                    // sigue `cerrar` en `ring0/archivo.rs`.
+                    if self.fallo_al_guardar.contains(&ruta) {
+                        return 0;
+                    }
                     // ★ AQUI es donde llega al disco, y sólo aquí. Igual que
                     // en el kernel.
-                    let (ruta, datos) = (a.ruta.clone(), a.datos.clone());
                     self.archivos.insert(ruta, datos);
                 }
                 1
