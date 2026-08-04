@@ -28,6 +28,7 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
  "bmo-lower",
+ "bmo-verify",
 ]
 
 [[package]]
@@ -64,6 +65,7 @@ dependencies = [
  "bmo-lower",
  "bmo-mods",
  "bmo-sem-asm",
+ "bmo-verify",
 ]
 
 [[package]]
@@ -77,6 +79,7 @@ dependencies = [
  "bmo-abi",
  "bmo-lower",
  "bmo-sem-asm",
+ "bmo-verify",
 ]
 
 [[package]]
@@ -86,6 +89,7 @@ dependencies = [
  "bmo-abi",
  "bmo-c-front",
  "bmo-lower",
+ "bmo-verify",
 ]
 
 [[package]]
@@ -115,13 +119,6 @@ version = "0.1.0"
 [[package]]
 name = "bmo-gpu-rdna4"
 version = "0.1.0"
-
-[[package]]
-name = "bmo-hal"
-version = "1.0.0"
-dependencies = [
- "boot-context",
-]
 
 [[package]]
 name = "bmo-hash"
@@ -178,14 +175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bmo-nvme"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.0",
- "volatile",
-]
-
-[[package]]
 name = "bmo-rpc-demo"
 version = "0.1.0"
 dependencies = [
@@ -229,10 +218,6 @@ version = "0.1.0"
 [[package]]
 name = "boot-context"
 version = "2.0.0"
-
-[[package]]
-name = "byte-defender"
-version = "0.1.0"
 
 [[package]]
 name = "byteorder"
@@ -322,10 +307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hw-profile"
-version = "0.1.0"
-
-[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -333,15 +314,6 @@ checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
  "hashbrown",
-]
-
-[[package]]
-name = "lock_api"
-version = "0.4.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
-dependencies = [
- "scopeguard",
 ]
 
 [[package]]
@@ -363,10 +335,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "nvram-log"
-version = "0.2.0"
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -383,12 +351,6 @@ checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
 dependencies = [
  "proc-macro2",
 ]
-
-[[package]]
-name = "scopeguard"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "serde"
@@ -445,15 +407,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-dependencies = [
- "lock_api",
-]
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -499,13 +452,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
-]
-
-[[package]]
-name = "timeback"
-version = "0.1.0"
-dependencies = [
- "spin",
 ]
 
 [[package]]
