@@ -94,6 +94,59 @@ const PARPADEO: u32 = 12_000;
 /// `SALIDA.TXT` es 8.3 — el driver FAT32 del kernel se niega a recortar.
 pub(crate) const VOLCADO_POR_DEFECTO: &[u8] = b"datos/salida.txt";
 
+/// Monta `datos/<programa>.txt` a partir de la ruta que se lanzó.
+///
+/// ═══ Por qué un archivo POR PROGRAMA y no siempre el mismo ═══
+///
+/// Porque la forma de trabajar es *"corre los doce ejemplos y mírame el
+/// disco"*. Con un `salida.txt` único, correr los doce deja **uno**: el del
+/// último. Con el nombre del programa dentro, deja doce, y se pueden comparar
+/// entre sí y con los de ayer.
+///
+/// De `cobol/10/maestro.bex` sale `datos/maestro.txt`: se coge lo que hay tras
+/// la última barra y se corta en el punto. **Ocho letras como mucho**, porque
+/// el driver FAT32 del kernel se niega a recortar y un nombre largo no crearía
+/// el archivo — fallaría al cerrar, en silencio, que es justo lo que se acaba
+/// de arreglar.
+fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
+    // El verbo `run` delante, si lo lleva: `run cobol/1/hola.bex`.
+    let ruta = match objetivo.iter().rposition(|&c| c == b' ') {
+        Some(i) => &objetivo[i + 1..],
+        None => objetivo,
+    };
+    let base = match ruta.iter().rposition(|&c| c == b'/' || c == b'\\') {
+        Some(i) => &ruta[i + 1..],
+        None => ruta,
+    };
+    let tallo = match base.iter().position(|&c| c == b'.') {
+        Some(i) => &base[..i],
+        None => base,
+    };
+    let mut n = 0usize;
+    for &b in b"datos/" {
+        dst[n] = b;
+        n += 1;
+    }
+    if tallo.is_empty() {
+        // Sin nombre que sacar, el de siempre. Mejor un archivo con un nombre
+        // soso que ninguno.
+        for &b in b"salida" {
+            dst[n] = b;
+            n += 1;
+        }
+    } else {
+        for &b in tallo.iter().take(8) {
+            dst[n] = b;
+            n += 1;
+        }
+    }
+    for &b in b".txt" {
+        dst[n] = b;
+        n += 1;
+    }
+    n
+}
+
 /// Escribe las filas `[desde..=hasta]` del historial en un archivo de texto.
 ///
 /// Devuelve `Ok(bytes)` o el motivo. **Nada llega al disco hasta `cerrar`**, y
@@ -347,6 +400,9 @@ pub extern "C" fn _start() -> ! {
     struct Corrida {
         marca: usize,
         visto: bool,
+        /// `datos/<programa>.txt`, ya montada al lanzar.
+        destino: [u8; 32],
+        destino_n: usize,
     }
     let mut corrida: Option<Corrida> = None;
 
@@ -357,12 +413,42 @@ pub extern "C" fn _start() -> ! {
             if vivo {
                 c.visto = true;
             } else if c.visto {
+                // ★★ SE DRENA ANTES DE GUARDAR, y esto lo enseñó el disco.
+                //
+                // El primer `salida.txt` que llegó a Windows tenía las cuatro
+                // líneas del ECO y **ni una del programa**. El motivo: este
+                // vigilante corre al principio del fotograma y el drenado de la
+                // consola del hijo está mucho más abajo. Cuando `hay_hijo()`
+                // dice que no, lo último que escribió el programa **sigue en el
+                // anillo del kernel** — se guardaba un archivo de lo que el
+                // terminal había dicho, no de lo que había contestado.
+                //
+                // Aquí se vacía el anillo entero antes de tocar el disco. El
+                // tope es alto pero existe: un programa que muere dejando
+                // megabytes no puede quedarse con el bucle.
+                if let Some(cc) = salida_cap.as_ref() {
+                    let mut buf = [0u8; 8];
+                    let mut vueltas = 0u32;
+                    while vueltas < 8192 {
+                        let leidos = cc.leer(&mut buf);
+                        if leidos == 0 {
+                            break;
+                        }
+                        salida.texto(&buf[..leidos]);
+                        vueltas += 1;
+                    }
+                }
+                let destino = {
+                    let d = c.destino;
+                    let n = c.destino_n;
+                    (d, n)
+                };
                 let (desde, hasta) = salida.filas_desde(c.marca);
-                match volcar_salida(&salida, VOLCADO_POR_DEFECTO, desde, hasta) {
+                match volcar_salida(&salida, &destino.0[..destino.1], desde, hasta) {
                     Ok(_) => {
                         salida.con_tinta(TINTA_BIEN);
                         salida.texto(b"  [salida guardada en ");
-                        salida.texto(VOLCADO_POR_DEFECTO);
+                        salida.texto(&destino.0[..destino.1]);
                         salida.texto(b"]\n");
                         salida.con_tinta(TINTA_NORMAL);
                     }
@@ -1201,9 +1287,13 @@ pub extern "C" fn _start() -> ! {
                                         // forma de saber QUÉ lo produjo — y un
                                         // volcado anónimo es la mitad de un
                                         // volcado.
+                                        let mut destino = [0u8; 32];
+                                        let destino_n = nombre_volcado(objetivo, &mut destino);
                                         corrida = Some(Corrida {
                                             marca: salida.marca().saturating_sub(1),
                                             visto: false,
+                                            destino,
+                                            destino_n,
                                         });
                                         // El campo se vacía al lanzar, como el
                                         // Win+R: la caja está para el SIGUIENTE
@@ -1612,9 +1702,15 @@ pub extern "C" fn _start() -> ! {
                     // El sitio VIEJO hay que borrarlo antes de mover. Si no, la
                     // ventana deja un rastro de copias de sí misma: aquí no hay
                     // recorte ni compositor que repinte lo de debajo solo.
+                    //
+                    // Al ESTIRAR pasa lo mismo pero sólo al encoger; borrar el
+                    // rectángulo viejo entero cubre los dos casos con una regla
+                    // en vez de con dos.
                     let (vx, vy, va, vl) =
                         (caja_datos.x, caja_datos.y, caja_datos.ancho, caja_datos.alto);
-                    if caja_datos.arrastrar_a(&p, pos.x, pos.y) {
+                    let cambio = caja_datos.arrastrar_a(&p, pos.x, pos.y)
+                        || caja_datos.estirar_a(&p, pos.x, pos.y);
+                    if cambio {
                         borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
                         if visible {
                             pintar_caja(&p, &caja);

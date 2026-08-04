@@ -120,7 +120,22 @@ pub(crate) struct CajaDatos {
     /// pega un salto al empezar a arrastrar: se colocaría con su esquina bajo
     /// el puntero en vez de quedarse donde la cogiste.
     arrastre: Option<(u32, u32)>,
+    /// Se está ESTIRANDO por la esquina de abajo a la derecha.
+    ///
+    /// Es una bandera aparte y no un modo del arrastre porque las dos cosas se
+    /// agarran distinto y se topan distinto: mover mira que el asa no salga de
+    /// la pantalla, estirar mira que la ventana no baje de un mínimo legible.
+    estirando: bool,
 }
+
+/// Lo que se puede encoger la ventana sin que deje de servir. Por debajo de
+/// esto el grafo no cabe y los números se cortan — una ventana que se puede
+/// dejar inservible con el ratón es una trampa, no una libertad.
+pub(crate) const DATOS_MIN_ANCHO: u32 = 420;
+pub(crate) const DATOS_MIN_ALTO: u32 = 200;
+/// El lado del agarre de la esquina. Doce píxeles se aciertan con el ratón sin
+/// mirar; seis obligan a apuntar.
+const ASA_ESQUINA: u32 = 14;
 
 /// Las dos caras de esta ventana.
 ///
@@ -150,6 +165,7 @@ impl CajaDatos {
             sel: 0,
             desde: 0,
             arrastre: None,
+            estirando: false,
         }
     }
 
@@ -163,8 +179,24 @@ impl CajaDatos {
         self.contiene(px, py) && py < self.y + TITULO_ALTO
     }
 
-    /// Empieza a arrastrar desde `(px, py)`. Sólo agarra por el asa.
+    /// ¿Cae en la esquina de ESTIRAR, la de abajo a la derecha?
+    pub(crate) fn en_la_esquina(&self, px: u32, py: u32) -> bool {
+        px + ASA_ESQUINA >= self.x + self.ancho
+            && px < self.x + self.ancho
+            && py + ASA_ESQUINA >= self.y + self.alto
+            && py < self.y + self.alto
+    }
+
+    /// Empieza a arrastrar o a estirar desde `(px, py)`.
+    ///
+    /// La esquina se mira ANTES que el asa: si se solaparan —una ventana muy
+    /// baja—, la de estirar gana, porque es la más pequeña de las dos y la que
+    /// no se puede acertar de otra forma.
     pub(crate) fn agarrar(&mut self, px: u32, py: u32) -> bool {
+        if self.en_la_esquina(px, py) {
+            self.estirando = true;
+            return true;
+        }
         if !self.en_el_asa(px, py) {
             return false;
         }
@@ -174,10 +206,39 @@ impl CajaDatos {
 
     pub(crate) fn soltar(&mut self) {
         self.arrastre = None;
+        self.estirando = false;
     }
 
     pub(crate) fn arrastrando(&self) -> bool {
-        self.arrastre.is_some()
+        self.arrastre.is_some() || self.estirando
+    }
+
+    /// Estira la ventana hasta el puntero. `true` si cambió de tamaño.
+    ///
+    /// Se topa por los dos lados: no baja del mínimo legible ni se sale del
+    /// panel. Y al encogerse, la selección puede quedar fuera de la lista
+    /// visible, así que la ventana de scroll se recoloca sola — si no, encoger
+    /// dejaría el cursor señalando una caja que ya no se pinta.
+    pub(crate) fn estirar_a(&mut self, p: &bmo::Pantalla, px: u32, py: u32) -> bool {
+        if !self.estirando {
+            return false;
+        }
+        let na = (px.saturating_sub(self.x) + 1)
+            .max(DATOS_MIN_ANCHO)
+            .min(p.ancho.saturating_sub(self.x));
+        let nl = (py.saturating_sub(self.y) + 1)
+            .max(DATOS_MIN_ALTO)
+            .min(p.alto.saturating_sub(self.y));
+        if na == self.ancho && nl == self.alto {
+            return false;
+        }
+        self.ancho = na;
+        self.alto = nl;
+        let caben = self.caben();
+        if self.sel >= self.desde + caben {
+            self.desde = self.sel + 1 - caben;
+        }
+        true
     }
 
     /// Lleva la ventana bajo el puntero. Devuelve `true` si se movió de verdad
@@ -240,9 +301,17 @@ impl CajaDatos {
 // sobreescriben. Dibujarlo como una lista indentada obliga a imaginarse las
 // aristas; dibujarlo como lo que es se entiende sin explicación.
 
-const CAJA_NODO_ANCHO: u32 = 190;
-const CAJA_NODO_ALTO: u32 = 36;
-const CAJA_NODO_HUECO: u32 = 10;
+/// Ancho MÍNIMO de una caja. El de verdad sale del ancho de la ventana: al
+/// estirarla, las cajas crecen y caben nombres más largos. Una caja de tamaño
+/// fijo dentro de una ventana que se estira deja un desierto a la derecha.
+const CAJA_NODO_MIN: u32 = 170;
+const CAJA_NODO_ALTO: u32 = 40;
+const CAJA_NODO_HUECO: u32 = 12;
+const SOMBRA_NODO: u32 = 0x000B_100E;
+/// Las aristas del grafo. Más claras que el borde de la ventana **a propósito**:
+/// son lo que hay que seguir con la vista, y una línea del mismo tono que el
+/// marco se pierde entre los marcos.
+const DATOS_ARISTA: u32 = 0x0045_6B5C;
 /// El cuerpo de una caja del grafo: un peldaño por encima de la ventana, que es
 /// la misma regla que separa la ventana del escritorio.
 const CAJA_NODO_FONDO: u32 = 0x001B_2622;
@@ -269,6 +338,7 @@ fn caja_nodo(
     p: &bmo::Pantalla,
     x: u32,
     y: u32,
+    ancho: u32,
     tipo: u64,
     nombre: &[u8],
     señalada: bool,
@@ -282,21 +352,39 @@ fn caja_nodo(
     } else {
         (DATOS_BORDE, CAJA_NODO_FONDO)
     };
-    rect_redondeado(p, x, y, CAJA_NODO_ANCHO, CAJA_NODO_ALTO, borde);
-    rect_redondeado(p, x + 1, y + 1, CAJA_NODO_ANCHO - 2, CAJA_NODO_ALTO - 2, cuerpo);
-    // La pestaña de color a la izquierda: se ve la clase de un vistazo aunque
-    // el título quede tapado por un nombre largo. Va DENTRO de la curva, o
-    // sobresaldría por la esquina.
-    p.rect(x + 2, y + 4, 3, CAJA_NODO_ALTO - 8, color);
-    p.texto(x + 12, y + 4, titulo, color);
-    let mut n = nombre.len();
+    // Sombra propia. Es lo que separa las cajas del fondo de la ventana y lo
+    // que hace que un grafo parezca un grafo y no una lista con marcos.
+    rect_redondeado(p, x + 2, y + 3, ancho, CAJA_NODO_ALTO, SOMBRA_NODO);
+    rect_redondeado(p, x, y, ancho, CAJA_NODO_ALTO, borde);
+    rect_redondeado(p, x + 1, y + 1, ancho - 2, CAJA_NODO_ALTO - 2, cuerpo);
+
+    // ★ El PUNTO de clase, no una pestaña lateral.
+    //
+    // La barra pegada al borde peleaba con la curva de la esquina y se veía
+    // como un defecto. Un punto delante del título es el mismo idioma que usan
+    // la barra del sistema y las dos ventanas: se lee la clase de un vistazo y
+    // no depende de que el título quepa.
+    p.rect(x + 11, y + 7, 7, 7, color);
+    p.texto(x + 24, y + 5, titulo, color);
+
+    // El nombre, en su propia línea y en blanco. El título dice QUÉ es y el
+    // nombre CUÁL es; ponerlos del mismo color obliga a leer los dos para
+    // saber cuál es cuál.
+    let cabe = ((ancho.saturating_sub(28)) / bmo::GLIFO_ANCHO) as usize;
     // Recortar por el final y no por el principio: los nombres de un volumen
     // se distinguen por delante (`maestro.bex`, `movim.txt`), no por detrás.
-    let cabe = ((CAJA_NODO_ANCHO - 14) / bmo::GLIFO_ANCHO) as usize;
-    if n > cabe {
-        n = cabe;
+    let n = nombre.len().min(cabe);
+    p.texto_bytes(x + 24, y + 5 + bmo::GLIFO_ALTO + 3, &nombre[..n], TEXTO);
+    // Si no cupo entero se dice con un punto, no cortando a lo bruto: una
+    // ventana estrecha no puede hacer que dos archivos parezcan el mismo.
+    if n < nombre.len() {
+        p.texto(
+            x + 24 + n as u32 * bmo::GLIFO_ANCHO,
+            y + 5 + bmo::GLIFO_ALTO + 3,
+            "~",
+            TEXTO_TENUE,
+        );
     }
-    p.texto_bytes(x + 9, y + 4 + bmo::GLIFO_ALTO + 2, &nombre[..n], TEXTO);
 }
 
 /// La vista de NODOS: el nodo actual a la izquierda y sus hijos a la derecha,
@@ -337,13 +425,24 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     }
     ty += bmo::GLIFO_ALTO + 10;
 
+    // ── ★ EL REPARTO DEL ANCHO ──
+    //
+    // Las cajas ya no miden lo mismo pase lo que pase: el ancho útil se parte
+    // entre las dos columnas y el canal de las ramas. Estirar la ventana hace
+    // que quepan nombres más largos, que es para lo que uno la estira. Una caja
+    // de tamaño fijo dentro de una ventana elástica deja un desierto a la
+    // derecha y sigue cortando los nombres.
+    const CANAL: u32 = 44; // lo que ocupan la espina y sus codos
+    let util = c.ancho.saturating_sub(32);
+    let ancho_caja = ((util.saturating_sub(CANAL)) / 2).max(CAJA_NODO_MIN);
+
     // ── El nodo actual, a la izquierda ──
     let padre_y = ty + 4;
     let nombre_actual: &[u8] = if hondo == 0 { b"/" } else { b"(aqui)" };
-    caja_nodo(p, tx, padre_y, bmo::estratos::tipo(), nombre_actual, false);
+    caja_nodo(p, tx, padre_y, ancho_caja, bmo::estratos::tipo(), nombre_actual, false);
 
     if cuantos == 0 {
-        p.texto(tx, padre_y + CAJA_NODO_ALTO + 14, "sin hijos.", TEXTO_TENUE);
+        p.texto(tx, padre_y + CAJA_NODO_ALTO + 16, "esta vacio.", TEXTO_TENUE);
         return;
     }
 
@@ -351,8 +450,8 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     //
     // Sin primitiva de línea: un rectángulo de un píxel de ancho ES una línea,
     // y para un grafo de codos —que es como pinta n8n— no hace falta más.
-    let espina_x = tx + CAJA_NODO_ANCHO + 20;
-    let hijos_x = espina_x + 24;
+    let espina_x = tx + ancho_caja + CANAL / 2;
+    let hijos_x = tx + ancho_caja + CANAL;
     let caben = c.caben();
     let ultimo = (c.desde + caben).min(cuantos);
 
@@ -360,24 +459,30 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     let mut hy = primera_y;
     for i in c.desde..ultimo {
         let centro = hy + CAJA_NODO_ALTO / 2;
-        // La rama, de la espina a la caja.
-        p.rect(espina_x, centro, hijos_x - espina_x, 1, DATOS_BORDE);
+        // La rama, de la espina a la caja. **Dos píxeles de grueso**: a uno
+        // solo, una línea horizontal sobre un fondo oscuro casi no se ve, y
+        // entonces las cajas parecen sueltas en vez de colgadas de un padre.
+        p.rect(espina_x, centro, hijos_x - espina_x, 2, DATOS_ARISTA);
+        // El punto de enganche en la caja: cierra la arista en vez de dejarla
+        // chocando contra un borde. Es lo que hace que se lea como un grafo.
+        p.rect(hijos_x - 4, centro - 2, 5, 5, DATOS_ARISTA);
         let tipo = bmo::estratos::hijo_tipo(i as u64);
         let mut nombre = [0u8; 64];
         let n = bmo::estratos::hijo_nombre(i as u64, &mut nombre);
-        caja_nodo(p, hijos_x, hy, tipo, &nombre[..n], i == c.sel);
+        caja_nodo(p, hijos_x, hy, ancho_caja, tipo, &nombre[..n], i == c.sel);
         hy += CAJA_NODO_ALTO + CAJA_NODO_HUECO;
     }
     // La espina vertical, del centro de la primera rama al de la última.
     let arriba = primera_y + CAJA_NODO_ALTO / 2;
     let abajo = hy - CAJA_NODO_ALTO - CAJA_NODO_HUECO + CAJA_NODO_ALTO / 2;
-    p.rect(espina_x, arriba, 1, abajo.saturating_sub(arriba) + 1, DATOS_BORDE);
+    p.rect(espina_x, arriba, 2, abajo.saturating_sub(arriba) + 2, DATOS_ARISTA);
     // Y el tramo que sale del padre hasta la espina, a su altura.
     let salida_y = padre_y + CAJA_NODO_ALTO / 2;
-    p.rect(tx + CAJA_NODO_ANCHO, salida_y, espina_x - (tx + CAJA_NODO_ANCHO), 1, DATOS_BORDE);
+    p.rect(tx + ancho_caja, salida_y, espina_x - (tx + ancho_caja), 2, DATOS_ARISTA);
+    p.rect(tx + ancho_caja - 1, salida_y - 2, 5, 5, DATOS_ARISTA);
     if salida_y != arriba {
         let (a, b) = if salida_y < arriba { (salida_y, arriba) } else { (arriba, salida_y) };
-        p.rect(espina_x, a, 1, b - a + 1, DATOS_BORDE);
+        p.rect(espina_x, a, 2, b - a + 2, DATOS_ARISTA);
     }
 
     // Si la lista no cabe entera, decirlo con números y no con puntos
@@ -386,7 +491,7 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         let mut b = [0u8; 10];
         let y = c.y + c.alto - TITULO_ALTO - bmo::GLIFO_ALTO;
         let n = decimal(c.desde as u64 + 1, &mut b);
-        let x = p.texto_bytes(tx, y, &b[..n], TEXTO_TENUE);
+        let x = p.texto_bytes(hijos_x, y, &b[..n], TEXTO_TENUE);
         let x = p.texto(x, y, "-", TEXTO_TENUE);
         let n = decimal(ultimo as u64, &mut b);
         let x = p.texto_bytes(x, y, &b[..n], TEXTO_TENUE);
@@ -443,6 +548,17 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
         "TAB cambia  arrastra",
         TEXTO_TENUE,
     );
+
+    // ── El asa de ESTIRAR ──
+    //
+    // Tres rayitas en diagonal en la esquina de abajo a la derecha. Es la
+    // convención de todos los escritorios y no hace falta explicarla; lo que sí
+    // hace falta es que SE VEA, porque un agarre invisible no existe: nadie
+    // prueba a estirar una ventana que no parece estirable.
+    for k in 0..3u32 {
+        let d = 4 + k * 4;
+        p.rect(c.x + c.ancho - 4 - d, c.y + c.alto - 6, d, 2, DATOS_BORDE);
+    }
 
     if c.vista == Vista::Nodos {
         pintar_nodos(p, c);

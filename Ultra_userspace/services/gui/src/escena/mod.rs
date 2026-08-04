@@ -149,6 +149,25 @@ pub(crate) fn fondo_en(y: u32, alto: u32) -> u32 {
 
 /// Pinta el escritorio entero: degradado y barra.
 pub(crate) fn pintar_fondo(p: &bmo::Pantalla) {
+    // ★★ PRIMERO se limpia el lienzo ENTERO, y esto no es de más.
+    //
+    // El lienzo del doble búfer son ~8 MiB de `KIND_MEMORIA` **sin
+    // inicializar**: lo que no se pinte encima es basura de RAM, y el volcado
+    // la lleva a la pantalla tal cual. `limpiar` recorre `stride × alto`
+    // píxeles de forma LINEAL —el relleno de cada fila incluido—; un `rect` de
+    // ancho completo sólo cubre `0..ancho` y deja fuera lo que haya entre
+    // `ancho` y `stride`.
+    //
+    // Aquí vivía el fallo que salió en las fotos del 2026-08-04: se cambió el
+    // `p.limpiar(FONDO)` de siempre por las bandas del degradado, y con él se
+    // perdió la única garantía de que el lienzo estuviera entero escrito. El
+    // resultado eran bloques pálidos y barras verticales alrededor de las
+    // ventanas — memoria de otro, dibujada.
+    //
+    // La lección, que es la de siempre: **una optimización que sustituye a algo
+    // hereda sus responsabilidades**, no sólo su resultado visible.
+    p.limpiar(FONDO_ABAJO);
+
     // De ocho en ocho filas. A un píxel serían mil `rect` para una diferencia
     // que no se ve; a treinta y dos se notarían los escalones.
     let mut y = 0;
