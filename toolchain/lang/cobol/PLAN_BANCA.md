@@ -402,14 +402,23 @@ desbloquea por hora de trabajo.
       todo el rango. Dos que tienen que coincidir prueban más que una comparada
       contra una tabla escrita a mano.
 
-- [ ] **2.6b · `ON SIZE ERROR`** — M
-      Se separó de `ROUNDED` al hacerlo: son dos cosas distintas y la segunda
-      necesita **a dónde saltar** cuando el resultado no cabe en la PICTURE del
-      destino, o sea un cuerpo de sentencias y un `END-ADD`/`END-COMPUTE`.
-      Un desbordamiento silencioso en un importe es el fallo que no se puede
-      permitir, así que esto no se queda sin hacer — sólo se hace aparte.
-      Desbloquea además `ROUNDED MODE IS PROHIBITED`, que hoy se rechaza
-      diciendo justo esto.
+- [x] **2.6b · `ON SIZE ERROR`** — ✅ 2026-08-03
+      En las cinco aritméticas, con `NOT ON SIZE ERROR` y su `END-<verbo>`.
+      ★ **Cuando no cabe, el destino se queda COMO ESTABA.** Ésa es la parte que
+      importa y por eso la comprobación va antes del guardado: deja el saldo
+      anterior intacto para que el programa lo escriba en un informe de rechazos
+      y siga. Guardar el número recortado y avisar después sería avisar de un
+      descuadre ya hecho.
+      ★ **Dividir entre cero es un desborde, no un fallo del CPU.** Sin eso el
+      `idiv` levanta `#DE` y el proceso muere sin decir por qué — en un batch,
+      un registro malo se lleva el proceso entero.
+      ⚠ La cláusula tiene que **empezar en la línea del verbo**: si no, un
+      `ADD A TO B` a secas y uno que sigue abajo se leen igual, y adivinar
+      significaría tragarse las sentencias de después.
+      ⚠ Y salió una divergencia que queda FIJADA CON TEST: sin la cláusula, BMO
+      **no recorta** (guarda `1023` en un `PIC 9(3)`) porque un `DISPLAY` sigue
+      siendo un entero de 64 bits — la tarea `1.5`. El día que entre, ese test
+      falla, que es exactamente el aviso que hace falta.
 
 - [ ] **2.5 · `INITIALIZE`** — S ⛔ (0.5 para grupos)
       Sobre un dato suelto se puede hoy. `bmo_lower::memoria::rellenar` ya está.
@@ -624,7 +633,9 @@ HECHO   1.7 FILE STATUS ── 00, 10 y 35: los que se pueden dar de verdad
 
 HECHO   2.4 INSPECT · 2.3 STRING (falta UNSTRING)
 
-AHORA   2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
+HECHO   2.6b ON SIZE ERROR ── y dividir entre cero deja de matar el proceso
+
+AHORA   0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH · 2.8 COPY
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -642,9 +653,9 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
 ~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → ~~`0.7`~~ → ~~`1.7`~~ →
-~~`2.4`~~ → ~~`2.3`~~ (falta `UNSTRING`) → **`2.6b`** → `0.6` → `2.2` → `2.7` →
-`2.8` → `5.1` → `1.6` → `2.9` → `0.2` → **luego el kernel**: `3.1` → `3.3` →
-`3.2` → `3.4` → fase 4 …
+~~`2.4`~~ → ~~`2.3`~~ (falta `UNSTRING`) → ~~`2.6b`~~ → **`0.6`** → `2.2` →
+`2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `1.5` → `0.2` → **luego el kernel**:
+`3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
 
 ★ **`0.5` sube a lo siguiente** porque la decisión `1.0` ya está tomada y con
 ella deja de tener candados. Es el primer eslabón de *leer lo que ya existe*,
@@ -689,3 +700,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | ★ **0.7 TEXTO** — `PIC X(n)` con caracteres de verdad, sin límite de ancho; desbloquea FILE STATUS, STRING e INSPECT | `codegen.rs` (camino de dirección+largo) |
 | 2026-08-03 | **1.7 `FILE STATUS`** — `00`/`10`/`35`, los que la puerta permite distinguir, y sólo ésos | `codegen::emit_estado*` |
 | 2026-08-03 | **2.4 `INSPECT`** (`TALLYING`, `REPLACING ALL`/`LEADING`) y **2.3 `STRING`** | `bmo-lower::texto` + `codegen.rs` |
+| 2026-08-03 | **2.6b `ON SIZE ERROR`** — el destino no se toca cuando no cabe, y dividir entre cero deja de matar el proceso | `codegen::emit_guardar_con_desborde` |

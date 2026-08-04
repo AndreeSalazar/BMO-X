@@ -14,6 +14,40 @@ use crate::ast::{SyscallDef, Valor88};
 /// Ada pida sus modos del Annex F no tendrá que hablar de COBOL.
 pub type Redondeo = bmo_lower::redondeo::Modo;
 
+/// Las cláusulas que acompañan a una operación aritmética.
+///
+/// ★ Las dos son **de banca**, no de sintaxis:
+///
+/// - `ROUNDED` decide el último dígito, y eso es una decisión legal.
+/// - `ON SIZE ERROR` decide **qué pasa cuando el resultado no cabe**. Sin él,
+///   un importe que se sale de su PICTURE se guarda truncado por arriba y el
+///   programa sigue con un número que no es. Con él, el campo **no se toca** y
+///   el programa decide — que es lo que separa un batch que se para diciendo
+///   "este movimiento no cabe" de uno que cuadra mal y nadie sabe por qué.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Aritmetica {
+    pub redondeo: Redondeo,
+    /// `ON SIZE ERROR <stmts>`. `None` = no se declaró, y entonces el
+    /// desbordamiento se guarda truncado, que es lo que dice el estándar.
+    pub si_desborda: Option<Vec<CobolStatement>>,
+    /// `NOT ON SIZE ERROR <stmts>` — lo que se hace cuando SÍ cupo.
+    pub si_cabe: Option<Vec<CobolStatement>>,
+}
+
+impl Default for Aritmetica {
+    /// Sin cláusulas: **truncar y no mirar si cabe**, que es lo que dice el
+    /// estándar cuando no se escribe ninguna.
+    fn default() -> Self {
+        Aritmetica { redondeo: Redondeo::Truncar, si_desborda: None, si_cabe: None }
+    }
+}
+
+impl Aritmetica {
+    pub fn con(redondeo: Redondeo) -> Self {
+        Aritmetica { redondeo, ..Default::default() }
+    }
+}
+
 /// Que se imprime en un `DISPLAY`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayArg {
@@ -42,11 +76,11 @@ pub enum CobolStatement {
     // la OPERACIÓN: el mismo campo se redondea en una línea y se trunca en la
     // de abajo, y eso es deliberado — el interés se redondea y el desglose de
     // un asiento se trunca para que la suma cuadre con el total.
-    Add(String, String, Redondeo),
-    Subtract(String, String, Redondeo),
-    Multiply(String, String, Redondeo),
-    Divide(String, String, Redondeo),
-    Compute(String, String, Redondeo),
+    Add(String, String, Aritmetica),
+    Subtract(String, String, Aritmetica),
+    Multiply(String, String, Aritmetica),
+    Divide(String, String, Aritmetica),
+    Compute(String, String, Aritmetica),
     /// `IF <cond> ... [ELSE ...] END-IF`. Ver [`Condicion`] para cómo se
     /// combinan con `AND` y `OR`.
     If(Condicion, Vec<CobolStatement>, Vec<CobolStatement>),

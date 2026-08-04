@@ -995,6 +995,80 @@ impl Codegen {
         }
     }
 
+    // ── ON SIZE ERROR ───────────────────────────────────────────────────
+    //
+    // ## Qué significa "no cabe"
+    //
+    // Un `PIC S9(5)V99` declara SIETE dígitos, así que su mayor valor en
+    // centavos es `9 999 999`. Un resultado más grande **no entra**, y sin la
+    // cláusula COBOL lo guarda recortado por arriba: `100 000.00` en ese campo
+    // se convierte en `0.00` y el programa sigue tan tranquilo.
+    //
+    // ## Y por qué el campo NO SE TOCA
+    //
+    // Ésa es la parte que importa. El estándar dice que cuando hay desborde el
+    // destino **se queda como estaba**, y no es un tecnicismo: deja el saldo
+    // anterior intacto para que el programa pueda escribirlo en un informe de
+    // rechazos y seguir. Guardar el número recortado y avisar después sería
+    // avisar de un descuadre que ya se ha hecho.
+    //
+    // Por eso la comprobación va ANTES del `store_var`, y por eso la rama de
+    // error no pasa por él.
+
+    /// Emite el guardado del resultado que está en `rax`, con su guarda.
+    ///
+    /// Los saltos se dan hechos desde fuera cuando la operación necesita saltar
+    /// antes —una división por cero no llega ni a calcular— y por eso esto
+    /// recibe las etiquetas en vez de crearlas.
+    fn emit_guardar_con_desborde(
+        &mut self,
+        destino: &str,
+        arit: &crate::ast::Aritmetica,
+        etiquetas: Option<(u32, u32)>,
+    ) {
+        let Some((desborda, fin)) = etiquetas else {
+            self.store_var(destino);
+            return;
+        };
+        // ¿Cabe? El límite es 10^dígitos: por encima, el número necesita una
+        // posición más de las que la PICTURE declara.
+        let digitos = self.digitos_de(destino).0;
+        let limite = 10u64.checked_pow(digitos).unwrap_or(u64::MAX);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+        self.code.extend_from_slice(&[0x48, 0x85, 0xD2]); // test rdx, rdx
+        let no_negativo = self.fresh_label();
+        self.emit_jcc(0x89, no_negativo); // jns
+        self.code.extend_from_slice(&[0x48, 0xF7, 0xDA]); // neg rdx
+        self.bind_label(no_negativo);
+        self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, limite).unwrap(); });
+        x86::cmp_r64_r64(&mut self.code, x86::RDX, x86::RCX);
+        self.emit_jcc(0x83, desborda); // jae → no cabe
+
+        // Cabe: se guarda, y sólo entonces corre el `NOT ON SIZE ERROR`.
+        self.store_var(destino);
+        if let Some(cuerpo) = arit.si_cabe.clone() {
+            for s in &cuerpo {
+                self.emit_statement(s);
+            }
+        }
+        self.emit_jmp(fin);
+
+        // No cabe: el destino se queda COMO ESTABA.
+        self.bind_label(desborda);
+        if let Some(cuerpo) = arit.si_desborda.clone() {
+            for s in &cuerpo {
+                self.emit_statement(s);
+            }
+        }
+        self.bind_label(fin);
+    }
+
+    /// Las dos etiquetas del desborde, si la sentencia lleva la cláusula.
+    fn etiquetas_desborde(&mut self, arit: &crate::ast::Aritmetica) -> Option<(u32, u32)> {
+        arit.si_desborda.as_ref()?;
+        Some((self.fresh_label(), self.fresh_label()))
+    }
+
     /// Cuántos dígitos declara la PIC de un campo, y si lleva `S`.
     fn digitos_de(&self, nombre: &str) -> (u32, bool) {
         self.pic_fields
@@ -1886,7 +1960,9 @@ impl Codegen {
             // OPERANDO, y con los modos asimétricos **no dan lo mismo**: el
             // techo de `-9.995` es `-9.99`, pero si primero se redondea el
             // `9.995` a `10.00` y luego se resta, sale `-10.00`.
-            CobolStatement::Add(src, dst, redondeo) => {
+            CobolStatement::Add(src, dst, arit) => {
+                let etq = self.etiquetas_desborde(arit);
+                let arit = arit.clone();
                 let sc = self.var_scale(dst);
                 let calc = sc.max(self.escala_operando(src));
                 self.load_var(dst);
@@ -1895,13 +1971,15 @@ impl Codegen {
                 self.load_operand(src, calc);            // exacto: su escala o más
                 self.code.push(0x5A);                    // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
-                self.rescale_redondeado(calc, sc, *redondeo);
-                self.store_var(dst);
+                self.rescale_redondeado(calc, sc, arit.redondeo);
+                self.emit_guardar_con_desborde(dst, &arit, etq);
             }
             // SUBTRACT src FROM dst → dst = dst - src. Misma regla de escala
             // que el ADD: se calcula donde no se pierde nada y se redondea al
             // final.
-            CobolStatement::Subtract(src, dst, redondeo) => {
+            CobolStatement::Subtract(src, dst, arit) => {
+                let etq = self.etiquetas_desborde(arit);
+                let arit = arit.clone();
                 let sc = self.var_scale(dst);
                 let calc = sc.max(self.escala_operando(src));
                 self.load_var(dst);
@@ -1911,15 +1989,17 @@ impl Codegen {
                 self.code.push(0x5A);                             // pop rdx (dst)
                 self.code.extend_from_slice(&[0x48, 0x29, 0xC2]); // sub rdx, rax
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
-                self.rescale_redondeado(calc, sc, *redondeo);
-                self.store_var(dst);
+                self.rescale_redondeado(calc, sc, arit.redondeo);
+                self.emit_guardar_con_desborde(dst, &arit, etq);
             }
             // ★ El multiplicando se carga EN SU PROPIA ESCALA, no en la del
             // destino: así el producto no pierde ni un dígito antes de tiempo.
             // `3.003 × 3.33` con destino de dos decimales se calcula entero y
             // se redondea UNA vez; cargando el `3.003` en dos decimales primero
             // se estaría multiplicando por `3.00`.
-            CobolStatement::Multiply(src, dst, redondeo) => {
+            CobolStatement::Multiply(src, dst, arit) => {
+                let etq = self.etiquetas_desborde(arit);
+                let arit = arit.clone();
                 let so = self.escala_operando(src);
                 self.load_var(dst);                              // escala del destino
                 self.code.push(0x50);                            // push rax
@@ -1931,14 +2011,16 @@ impl Codegen {
                 if so > 0 {
                     let p = 10u64.pow(so);
                     self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
-                    bmo_lower::redondeo::dividir(&mut self.code, *redondeo);
+                    bmo_lower::redondeo::dividir(&mut self.code, arit.redondeo);
                 }
-                self.store_var(dst);
+                self.emit_guardar_con_desborde(dst, &arit, etq);
             }
             // El divisor tambien va en SU escala: el dividendo se preescala
             // por 10^so, no por 10^sc, y asi el cociente sale en la escala del
             // destino sea cual sea la del divisor.
-            CobolStatement::Divide(src, dst, redondeo) => {
+            CobolStatement::Divide(src, dst, arit) => {
+                let etq = self.etiquetas_desborde(arit);
+                let arit = arit.clone();
                 let so = self.escala_operando(src);
                 self.load_operand(src, so);                      // divisor, exacto
                 self.code.push(0x50);                            // push rax
@@ -1949,15 +2031,25 @@ impl Codegen {
                     self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]);    // imul rax, rcx
                 }
                 self.code.push(0x59);                            // pop rcx (divisor)
+                // ★ DIVIDIR ENTRE CERO ES UN DESBORDE, no un fallo del CPU. Sin
+                // esto, un `idiv` con rcx a cero levanta #DE y el proceso muere
+                // sin decir por que — y en un batch eso es peor que un numero
+                // malo: se lleva por delante el proceso entero por un registro.
+                if let Some((desborda, _)) = etq {
+                    self.code.extend_from_slice(&[0x48, 0x85, 0xC9]); // test rcx, rcx
+                    self.emit_jcc(0x84, desborda); // je -> a la rama de error
+                }
                 // Una division casi nunca es exacta, asi que este es el sitio
                 // donde ROUNDED cambia el numero mas a menudo: `100.00 / 3`.
-                bmo_lower::redondeo::dividir(&mut self.code, *redondeo);
-                self.store_var(dst);
+                bmo_lower::redondeo::dividir(&mut self.code, arit.redondeo);
+                self.emit_guardar_con_desborde(dst, &arit, etq);
             }
-            CobolStatement::Compute(dst, expr, redondeo) => {
+            CobolStatement::Compute(dst, expr, arit) => {
+                let etq = self.etiquetas_desborde(arit);
+                let arit = arit.clone();
                 let sc = self.var_scale(dst);
-                self.emit_compute(expr, sc, *redondeo);
-                self.store_var(dst);
+                self.emit_compute(expr, sc, arit.redondeo);
+                self.emit_guardar_con_desborde(dst, &arit, etq);
             }
             // IF/ELSE con bifurcación REAL. Las condiciones se conjugan con
             // AND: la primera que falle salta a ELSE sin evaluar el resto

@@ -791,8 +791,8 @@ impl Parser {
                 return Err(CobolError::new(line_no, "ADD requires `TO`"));
             };
             let val = Self::parse_operand(&rest[..to_pos]);
-            let (target, redondeo) = Self::partir_rounded(&rest[to_pos + 4..], line_no)?;
-            Ok(CobolStatement::Add(val, target, redondeo))
+            let (target, arit) = self.leer_aritmetica(&rest[to_pos + 4..], "ADD", line_no)?;
+            Ok(CobolStatement::Add(val, target, arit))
         } else if upper.starts_with("SUBTRACT ") {
             let rest = line[9..].trim();
             let up = rest.to_ascii_uppercase();
@@ -800,8 +800,8 @@ impl Parser {
                 return Err(CobolError::new(line_no, "SUBTRACT requires `FROM`"));
             };
             let val = Self::parse_operand(&rest[..from_pos]);
-            let (target, redondeo) = Self::partir_rounded(&rest[from_pos + 6..], line_no)?;
-            Ok(CobolStatement::Subtract(val, target, redondeo))
+            let (target, arit) = self.leer_aritmetica(&rest[from_pos + 6..], "SUBTRACT", line_no)?;
+            Ok(CobolStatement::Subtract(val, target, arit))
         } else if upper.starts_with("MULTIPLY ") {
             let rest = line[9..].trim();
             let up = rest.to_ascii_uppercase();
@@ -809,8 +809,8 @@ impl Parser {
                 return Err(CobolError::new(line_no, "MULTIPLY requires `BY`"));
             };
             let val = Self::parse_operand(&rest[..by_pos]);
-            let (target, redondeo) = Self::partir_rounded(&rest[by_pos + 4..], line_no)?;
-            Ok(CobolStatement::Multiply(val, target, redondeo))
+            let (target, arit) = self.leer_aritmetica(&rest[by_pos + 4..], "MULTIPLY", line_no)?;
+            Ok(CobolStatement::Multiply(val, target, arit))
         } else if upper.starts_with("DIVIDE ") {
             let rest = line[7..].trim();
             let up = rest.to_ascii_uppercase();
@@ -818,15 +818,20 @@ impl Parser {
                 return Err(CobolError::new(line_no, "DIVIDE requires `BY`"));
             };
             let val = Self::parse_operand(&rest[..by_pos]);
-            let (target, redondeo) = Self::partir_rounded(&rest[by_pos + 4..], line_no)?;
-            Ok(CobolStatement::Divide(val, target, redondeo))
+            let (target, arit) = self.leer_aritmetica(&rest[by_pos + 4..], "DIVIDE", line_no)?;
+            Ok(CobolStatement::Divide(val, target, arit))
         } else if upper.starts_with("COMPUTE ") {
             let rest = line[8..].trim();
             let eq_pos = rest.find('=').unwrap_or(0);
             if eq_pos == 0 { return Err(CobolError::new(line_no, "COMPUTE requires `=`")); }
-            let (target, redondeo) = Self::partir_rounded(&rest[..eq_pos], line_no)?;
-            let expr = rest[eq_pos + 1..].trim().to_string();
-            Ok(CobolStatement::Compute(target, expr, redondeo))
+            let (target, arit) = Self::partir_rounded(&rest[..eq_pos], line_no)?;
+            let (expr, arit) = {
+                let cola = rest[eq_pos + 1..].trim().to_string();
+                let (e, mut a2) = self.leer_aritmetica(&cola, "COMPUTE", line_no)?;
+                a2.redondeo = arit.redondeo;
+                (e, a2)
+            };
+            Ok(CobolStatement::Compute(target, expr, arit))
         } else if upper.starts_with("OPEN ") {
             let rest = line[5..].trim();
             let parts: Vec<&str> = rest.splitn(2, |c: char| c.is_whitespace()).collect();
@@ -1137,7 +1142,108 @@ impl Parser {
     /// Y `ROUNDED` a secas es `NEAREST-AWAY-FROM-ZERO` porque es lo que dice el
     /// estándar y lo que espera cualquiera que lo escriba sin pensar. El del
     /// banquero **hay que pedirlo**: cambia el resultado y no puede colarse.
-    fn partir_rounded(texto: &str, line_no: usize) -> Result<(String, Redondeo), CobolError> {
+    fn partir_rounded(
+        texto: &str,
+        line_no: usize,
+    ) -> Result<(String, crate::ast::Aritmetica), CobolError> {
+        let (t, redondeo) = Self::partir_modo(texto, line_no)?;
+        Ok((t, crate::ast::Aritmetica::con(redondeo)))
+    }
+
+    /// Igual, pero leyendo además las cláusulas `ON SIZE ERROR`.
+    ///
+    /// ```text
+    ///   ADD A TO B ON SIZE ERROR
+    ///       DISPLAY "no cabe"
+    ///   NOT ON SIZE ERROR
+    ///       ADD 1 TO CUANTOS
+    ///   END-ADD
+    /// ```
+    ///
+    /// ★ La cláusula tiene que **empezar en la línea del verbo**. Sin eso, un
+    /// `ADD A TO B` a secas y un `ADD A TO B` que sigue abajo se leen igual, y
+    /// habría que adivinar mirando adelante. Adivinar aquí significa tragarse
+    /// las sentencias de después como si fueran del `ADD`.
+    fn leer_aritmetica(
+        &mut self,
+        cola: &str,
+        verbo: &str,
+        line_no: usize,
+    ) -> Result<(String, crate::ast::Aritmetica), CobolError> {
+        let arriba = cola.to_ascii_uppercase();
+        let corte = Self::pos_palabra(&arriba, "ON")
+            .filter(|i| arriba[*i..].starts_with("ON SIZE ERROR"))
+            .or_else(|| {
+                Self::pos_palabra(&arriba, "NOT")
+                    .filter(|i| arriba[*i..].starts_with("NOT ON SIZE ERROR"))
+            });
+        let Some(i) = corte else {
+            return Self::partir_rounded(cola, line_no);
+        };
+
+        let (destino, mut arit) = Self::partir_rounded(&cola[..i], line_no)?;
+        let fin = format!("END-{verbo}");
+
+        // La primera rama empieza en esta misma línea, detrás de la cláusula.
+        let mut resto = cola[i..].trim().to_string();
+        let mut en_desborda = resto.to_ascii_uppercase().starts_with("ON SIZE ERROR");
+        resto = if en_desborda {
+            resto[13..].trim().to_string()
+        } else {
+            resto[17..].trim().to_string()
+        };
+
+        let mut desborda: Vec<CobolStatement> = Vec::new();
+        let mut cabe: Vec<CobolStatement> = Vec::new();
+        let mut pendiente = resto;
+
+        loop {
+            let linea = if !pendiente.is_empty() {
+                std::mem::take(&mut pendiente)
+            } else {
+                let Some((_, raw)) = self.current().cloned() else {
+                    return Err(CobolError::new(
+                        line_no,
+                        format!("{verbo} … ON SIZE ERROR sin {fin}"),
+                    ));
+                };
+                self.advance();
+                Self::strip_comment(&raw).trim().to_string()
+            };
+            if linea.is_empty() {
+                continue;
+            }
+            let limpio = linea.trim_end_matches('.').trim().to_string();
+            let arriba = limpio.to_ascii_uppercase();
+            if arriba == fin {
+                break;
+            }
+            if arriba.starts_with("NOT ON SIZE ERROR") {
+                en_desborda = false;
+                pendiente = limpio[17..].trim().to_string();
+                continue;
+            }
+            if arriba.starts_with("ON SIZE ERROR") {
+                en_desborda = true;
+                pendiente = limpio[13..].trim().to_string();
+                continue;
+            }
+            let stmt = self.parse_statement(&limpio, line_no)?;
+            if en_desborda {
+                desborda.push(stmt);
+            } else {
+                cabe.push(stmt);
+            }
+        }
+
+        arit.si_desborda = Some(desborda);
+        if !cabe.is_empty() {
+            arit.si_cabe = Some(cabe);
+        }
+        Ok((destino, arit))
+    }
+
+    fn partir_modo(texto: &str, line_no: usize) -> Result<(String, Redondeo), CobolError> {
         let t = texto.trim().trim_end_matches('.').trim();
         let arriba = t.to_ascii_uppercase();
         let Some(i) = Self::pos_palabra(&arriba, "ROUNDED") else {

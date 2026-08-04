@@ -6,7 +6,9 @@ pub mod statements;
 pub use data::{DataItem, Valor88};
 pub use error::CobolError;
 pub use program::SyscallDef;
-pub use statements::{CobolCondition, CobolStatement, Condicion, DisplayArg, Redondeo};
+pub use statements::{
+    Aritmetica, CobolCondition, CobolStatement, Condicion, DisplayArg, Redondeo,
+};
 
 use std::collections::HashMap;
 
