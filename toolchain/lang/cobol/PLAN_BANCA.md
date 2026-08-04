@@ -155,10 +155,21 @@ escondidas en la fase 3.
       ★ La prueba que no se puede fingir: un grupo con un `PIC 9(6)` movido a
       otro con dos `PIC 9(3)` da `123` y `456`. Campo a campo eso es imposible.
 
-- [ ] **0.6 · `GO TO` dentro de un párrafo** — S
-      Salió faltando al escribir el ejemplo del nivel 8: sin `GO TO`, el descarte
-      dentro de un rango `PERFORM … THRU` se escribe con un interruptor. Es
-      COBOL legítimo y su destino ya existe (las etiquetas de párrafo).
+- [x] **0.6 · `GO TO` dentro de un párrafo** — ✅ 2026-08-03
+      Salió faltando al escribir el ejemplo del nivel 8, y ese ejemplo ya lo usa:
+      el descarte dentro de un rango `PERFORM … THRU` pasa de un interruptor y
+      un `IF` a una línea.
+      ★ Se emite como un `jmp rel32` al MISMO símbolo al que `PERFORM` hace
+      `call`, y lo parchea la misma tabla — los dos son rel32 contra la
+      instrucción siguiente, así que el parcheador no distingue ni tiene por qué.
+      ★ Y lo que pasa después **sale gratis**: el párrafo al que se salta corre y
+      su epílogo pregunta si es ahí donde había que volver. Si el `GO TO` fue a
+      la salida del rango, vuelve; si no, sigue cayendo hasta encontrarla. Es lo
+      que dice el estándar y no hizo falta escribir nada para ello.
+      ⚠ Se rechaza desde el **cuerpo principal**: aquí un párrafo es una
+      subrutina a la que se entra por `call`, y saltar dentro sin haber entrado
+      por su `PERFORM` deja el `ret` del final sin dueño.
+      ⛔ `GO TO … DEPENDING ON` todavía no.
 
 - [x] **0.7 · Texto de verdad: `PIC X(n)` con contenido** — ✅ 2026-08-03
       ★ **Sin el límite de 8 caracteres que temía la revisión 2.** El texto no
@@ -635,7 +646,9 @@ HECHO   2.4 INSPECT · 2.3 STRING (falta UNSTRING)
 
 HECHO   2.6b ON SIZE ERROR ── y dividir entre cero deja de matar el proceso
 
-AHORA   0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH · 2.8 COPY
+HECHO   0.6 GO TO ── y el ejemplo del nivel 8 ya no necesita el interruptor
+
+AHORA   2.2 PERFORM VARYING · 2.7 SEARCH · 2.8 COPY · 2.9 intrinsecas
 
 LUEGO   0.7 TEXTO ──→ 1.7 FILE STATUS · 2.3 STRING · 2.4 INSPECT · 1.6 EBCDIC
         2.6b ON SIZE ERROR · 0.6 GO TO · 2.2 PERFORM VARYING · 2.7 SEARCH
@@ -653,7 +666,7 @@ APARTE  6.1 EL ENLAZADOR ──→ CALL, y de paso la libc y C++
 **Si hay que elegir UNA cosa por sesión**:
 ~~`0.1`~~ → ~~`0.3`~~ → ~~`0.4`~~ → ~~`2.1`~~ → ~~`2.6`~~ → ~~`1.0`~~ →
 ~~`0.5`~~ → ~~`1.3`~~ → ~~`1.2`~~ → ~~`1.1`~~ → ~~`0.7`~~ → ~~`1.7`~~ →
-~~`2.4`~~ → ~~`2.3`~~ (falta `UNSTRING`) → ~~`2.6b`~~ → **`0.6`** → `2.2` →
+~~`2.4`~~ → ~~`2.3`~~ (falta `UNSTRING`) → ~~`2.6b`~~ → ~~`0.6`~~ → **`2.2`** →
 `2.7` → `2.8` → `5.1` → `1.6` → `2.9` → `1.5` → `0.2` → **luego el kernel**:
 `3.1` → `3.3` → `3.2` → `3.4` → fase 4 …
 
@@ -701,3 +714,4 @@ auditoría que z/OS no da, y sin pagar licencia a nadie.
 | 2026-08-03 | **1.7 `FILE STATUS`** — `00`/`10`/`35`, los que la puerta permite distinguir, y sólo ésos | `codegen::emit_estado*` |
 | 2026-08-03 | **2.4 `INSPECT`** (`TALLYING`, `REPLACING ALL`/`LEADING`) y **2.3 `STRING`** | `bmo-lower::texto` + `codegen.rs` |
 | 2026-08-03 | **2.6b `ON SIZE ERROR`** — el destino no se toca cuando no cabe, y dividir entre cero deja de matar el proceso | `codegen::emit_guardar_con_desborde` |
+| 2026-08-03 | **0.6 `GO TO`** — el descarte dentro de un rango, con el mismo símbolo que usa `PERFORM` | `codegen.rs` · ejemplo `8-parrafos/` actualizado |

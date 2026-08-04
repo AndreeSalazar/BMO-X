@@ -843,6 +843,17 @@ impl Parser {
             self.parse_read(line, line_no)
         } else if upper.starts_with("WRITE ") {
             Ok(CobolStatement::Write(line[6..].trim().trim_end_matches('.').to_string()))
+        } else if upper.starts_with("GO TO ") || upper.starts_with("GOTO ") {
+            let corte = if upper.starts_with("GOTO ") { 5 } else { 6 };
+            let destino = line[corte..].trim().trim_end_matches('.').trim().to_ascii_uppercase();
+            if destino.is_empty() || destino.split_whitespace().count() != 1 {
+                return Err(CobolError::new(
+                    line_no,
+                    "GO TO necesita UN nombre de parrafo. `GO TO … DEPENDING ON` \
+                     todavia no se compila",
+                ));
+            }
+            Ok(CobolStatement::GoTo(destino))
         } else if upper.starts_with("INSPECT ") {
             Self::parse_inspect(line, line_no)
         } else if upper.starts_with("STRING ") {

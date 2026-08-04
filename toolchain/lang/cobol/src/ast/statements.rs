@@ -129,6 +129,18 @@ pub enum CobolStatement {
     /// Las fuentes son literales o campos, y se pegan **en orden** hasta llenar
     /// el destino.
     StringInto { fuentes: Vec<String>, destino: String },
+    /// `GO TO <párrafo>` — un salto, sin vuelta.
+    ///
+    /// Es la otra mitad de `PERFORM … THRU X-SALIR`: el descarte. Sin él, saltar
+    /// al párrafo de salida hay que escribirlo con un interruptor y un `IF`, que
+    /// dice lo mismo con tres líneas más y una variable que alguien tendrá que
+    /// entender dentro de diez años.
+    ///
+    /// ★ **No confundir con `PERFORM`**: `PERFORM X` ejecuta X y VUELVE;
+    /// `GO TO X` se va y no vuelve. Fingir uno con el otro es lo que hacía el
+    /// ejemplo del nivel 8 antes de que esto existiera, y estaba dicho ahí
+    /// mismo porque el trabajo de debajo se hacía igual.
+    GoTo(String),
     /// `EXIT` — no hace nada, y ese es su trabajo.
     ///
     /// Es el destino de un `PERFORM … THRU X-SALIR`: un párrafo vacío al que

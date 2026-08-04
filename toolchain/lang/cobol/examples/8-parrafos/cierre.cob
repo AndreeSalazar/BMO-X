@@ -41,6 +41,10 @@
       *       escalado de comisiones, y con IF anidados dice lo mismo pero no
       *       se lee.
       *
+      *   6c. GO TO, para el descarte. `PERFORM 4000-SALIR` lo ejecuta y
+      *       VUELVE; `GO TO 4000-SALIR` se va y no vuelve. Confundirlos hace
+      *       el trabajo de abajo igualmente.
+      *
       *   7. STOP RUN, que ahora TERMINA. Antes no emitia nada y colaba porque
       *      siempre era la ultima linea; con parrafos detras, no emitir nada
       *      significaba caerse dentro del primero y ejecutarlo otra vez.
@@ -65,8 +69,6 @@
        01 ABONOS    PIC 9(5)             VALUE ZERO.
        01 FIN       PIC 9                VALUE ZERO.
            88 SE-ACABO                   VALUE 1.
-       01 VALE      PIC 9                VALUE ZERO.
-           88 ES-BUENO                   VALUE 1.
        01 LINEA     PIC $$$,$$9.99.
        PROCEDURE DIVISION.
 
@@ -90,32 +92,35 @@
       *    ── El RANGO: un PERFORM entra por 4000-VALIDA y no vuelve hasta
       *    pasar por 4000-SALIR, recorriendo los tres parrafos seguidos.
       *
-      *    ★ El descarte se hace con un INTERRUPTOR y no con un GO TO. En el
-      *    COBOL de los sesenta esto seria `GO TO 4000-SALIR`; aqui no hay GO
-      *    TO todavia, y fingirlo con un PERFORM seria MENTIR: un PERFORM del
-      *    parrafo de salida lo ejecuta y VUELVE, o sea que el trabajo de
-      *    debajo se haria igual. Se escribe lo que de verdad pasa.
+      * ★ EL DESCARTE, CON GO TO. Un movimiento de cero no cuenta para nada, y
+      * saltar al parrafo de salida lo dice en una linea.
+      *
+      * OJO con la diferencia, que es LA trampa de los parrafos:
+      *
+      *     PERFORM 4000-SALIR   lo ejecuta y VUELVE  -> el trabajo de abajo
+      *                                                  se haria igual
+      *     GO TO 4000-SALIR     se va y NO vuelve    -> es lo que se quiere
+      *
+      * Este ejemplo lo escribia con un interruptor porque GO TO no existia, y
+      * lo decia aqui mismo en vez de fingirlo con un PERFORM.
        4000-VALIDA.
-           MOVE 0 TO VALE.
-           IF IMPORTE NOT = 0
-               MOVE 1 TO VALE
+           IF IMPORTE = 0
+               GO TO 4000-SALIR
            END-IF.
 
        4100-CUENTA.
-           IF ES-BUENO
-               ADD IMPORTE TO TOTAL
-               ADD 1 TO CUANTOS
-      *        ★ LA TABLA DE DECISION. `EVALUATE TRUE` con una condicion
-      *        entera por rama es como un banco escribe un escalado, y se lee
-      *        de arriba abajo: LA PRIMERA QUE ACIERTA GANA y las de abajo ni
-      *        se prueban. Escrito con IF anidados dice lo mismo y no se lee.
-               EVALUATE TRUE
-                   WHEN IMPORTE < 0
-                       ADD 1 TO ABONOS
-                   WHEN IMPORTE > 500.00
-                       ADD 1 TO GRANDES
-               END-EVALUATE
-           END-IF.
+           ADD IMPORTE TO TOTAL.
+           ADD 1 TO CUANTOS.
+      *    ★ LA TABLA DE DECISION. `EVALUATE TRUE` con una condicion entera por
+      *    rama es como un banco escribe un escalado, y se lee de arriba abajo:
+      *    LA PRIMERA QUE ACIERTA GANA y las de abajo ni se prueban. Escrito
+      *    con IF anidados dice lo mismo y no se lee.
+           EVALUATE TRUE
+               WHEN IMPORTE < 0
+                   ADD 1 TO ABONOS
+               WHEN IMPORTE > 500.00
+                   ADD 1 TO GRANDES
+           END-EVALUATE.
 
        4000-SALIR.
            EXIT.

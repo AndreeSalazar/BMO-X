@@ -141,6 +141,12 @@ struct Codegen {
     /// exactamente en los puntos donde el registro cruza, que es lo que dice
     /// COBOL: el área sólo vale entre un `READ` y el siguiente.
     areas: HashMap<String, i32>,
+    /// ¿Se está emitiendo DENTRO de un párrafo?
+    ///
+    /// Lo mira `GO TO`: aquí un párrafo es una subrutina a la que se entra por
+    /// `call`, así que saltar dentro de una desde el cuerpo principal dejaría el
+    /// `ret` del final sin dirección a la que volver.
+    en_parrafo: bool,
     /// Los párrafos por nombre → su número de orden (1..n). El **orden manda**:
     /// un `PERFORM A THRU B` ejecuta todo lo que hay entre los dos, así que
     /// comparar índices es lo que dice si el rango tiene sentido.
@@ -178,6 +184,7 @@ impl Codegen {
             label_offsets: HashMap::new(),
             jump_fixups: Vec::new(),
             perform_exit: None,
+            en_parrafo: false,
             disposicion: Default::default(),
             areas: HashMap::new(),
             parrafos: HashMap::new(),
@@ -780,6 +787,7 @@ impl Codegen {
     /// que hace el programa.
     fn emit_parrafos(&mut self, program: &CobolProgram) {
         let Some(salida) = self.perform_exit else { return };
+        self.en_parrafo = true;
         for (i, p) in program.parrafos.iter().enumerate() {
             let id = (i + 1) as u32;
             let off = self.code.len();
@@ -794,6 +802,7 @@ impl Codegen {
             self.code.push(0xC3); // ret
             self.bind_label(sigue);
         }
+        self.en_parrafo = false;
         // Detrás del último no hay párrafo al que caer. Llegar aquí querría
         // decir que la salida apuntaba a uno que ya pasó; el `ret` devuelve el
         // control a quien llamara, que es lo menos malo y no inventa un salto.
@@ -2261,6 +2270,48 @@ impl Codegen {
             // `EXIT` y `CONTINUE` no emiten nada, y eso es lo correcto: son el
             // hueco explícito. El destino de un `PERFORM … THRU X-SALIR` tiene
             // que existir como párrafo, no como instrucción.
+            // ★ `GO TO` — un salto a un párrafo, sin vuelta.
+            //
+            // Se emite como un `jmp rel32` al mismo símbolo al que `PERFORM`
+            // hace `call`, y se parchea con la misma tabla: los dos son rel32
+            // contra la instrucción siguiente, así que el parcheador no
+            // distingue — y no tiene por qué.
+            //
+            // Lo que pasa después es lo interesante y sale gratis: el párrafo al
+            // que se salta corre, y al llegar a su epílogo pregunta si es ahí
+            // donde había que volver. Si el `GO TO` fue a la salida de un
+            // `PERFORM … THRU`, vuelve. Si fue a otro sitio, sigue cayendo hasta
+            // encontrarla. Es exactamente lo que dice el estándar, y no hizo
+            // falta escribir nada para ello.
+            CobolStatement::GoTo(destino) => {
+                let destino = destino.clone();
+                if !self.en_parrafo {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!(
+                            "GO TO {destino} desde el cuerpo principal: aqui un parrafo es \
+                             una SUBRUTINA, y saltar dentro de una sin haber entrado por \
+                             su PERFORM deja el retorno sin dueno. Mete el salto en un \
+                             parrafo, o llama al de destino con PERFORM"
+                        ),
+                    ));
+                    return;
+                }
+                if !self.parrafos.contains_key(&destino.to_ascii_uppercase()) {
+                    self.errors.push(CobolError::new(
+                        0,
+                        format!("GO TO {destino}: no hay ningun parrafo con ese nombre"),
+                    ));
+                    return;
+                }
+                self.code.push(0xE9); // jmp rel32
+                self.call_relocs.push(CallReloc {
+                    offset: self.code.len(),
+                    target: Self::simbolo_parrafo(&destino),
+                });
+                self.code.extend_from_slice(&[0, 0, 0, 0]);
+            }
+
             CobolStatement::Exit => {}
 
             CobolStatement::PerformUntil(cond, body) => {
