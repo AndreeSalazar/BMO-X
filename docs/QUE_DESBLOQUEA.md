@@ -96,7 +96,12 @@ Asume los 6 pasos del frontend hechos (ver `toolchain/lang/cpp/BRECHA.md`).
 | Servidores, bases de datos serias | red + hilos | — |
 | **OpenTTD, ScummVM, DOSBox** | ~600k C++ — **unity build a 600k no es viable** | ★ **compilación separada** |
 
-## Nivel 3 — subsistemas enteros (años, y no por C++)
+## Nivel 3 — subsistemas enteros (y no por C++)
+
+> ⚠ Este apartado decía **"años"** a secas. Se corrigió el 2026-08-04: un
+> "años" sin desglosar no es una estimación, es una forma educada de no
+> pensar. El desglose real está en [LAS PIEZAS, CONTADAS](#-las-piezas-contadas)
+> — y de las tres filas de abajo, **dos estaban mal contadas**.
 
 | App | Por qué |
 |---|---|
@@ -155,3 +160,173 @@ La misma regla que el censo de C++: **un "no" con motivo escrito se puede
 discutir; uno sin motivo es un agujero.** Cuando una fila de "qué falta" se
 cumpla, la app cambia de nivel. Ese es el uso del documento: no es una lista de
 deseos, es un **mapa de dependencias**.
+
+---
+
+# ★★ LAS PIEZAS, CONTADAS
+
+> Añadido el **2026-08-04**, a petición del dueño y **con dos correcciones
+> suyas incorporadas**. La versión anterior de este documento despachaba la GPU
+> con *"años"* y el JIT con *"no encaja"*. Las dos eran pereza: un "años" sin
+> desglosar no es una estimación, es una forma educada de no pensar.
+>
+> Aquí cada hueco se parte en **piezas contables**. Una pieza es algo que se
+> puede empezar el lunes y terminar sabiendo si funciona.
+
+## Por qué contar piezas y no meses
+
+Un mes es una sensación; una pieza se termina o no se termina. Y contar obliga
+a lo que de verdad importa: **descubrir que dentro de un hueco enorme hay tres
+piezas fáciles y una imposible** — que es exactamente el caso de la GPU, y no
+se veía diciendo "años".
+
+La columna que decide el orden no es el número de piezas: es **cuántas de ellas
+ya están escritas**.
+
+---
+
+## 1 · EL ENLAZADOR — 5 piezas, y una ya está
+
+**Camino B** (funciones sintetizadas), el decidido en `forge/README.md`.
+
+| # | Pieza | Estado |
+|---|---|---|
+| 1 | Tabla de funciones sintetizables: nombre → bytes | el mecanismo **ya corre en metal** con `__bmo_syscall_stub` |
+| 2 | El codegen inyecta la función una vez y relocaliza las llamadas | — |
+| 3 | `malloc`/`free` de verdad sobre `KIND_MEMORIA` | ★ **escrita y probada**: `bmo-rt::heap::freelist`, 247 líneas |
+| 4 | `printf` mínimo (`%d %s %x %c`) | — |
+| 5 | Cadenas: `strlen` `strcpy` `memcpy` `memset` | — |
+
+★★ **Es el hueco más barato de todo el sistema y el que más desbloquea.** Con
+esto caen: `CALL` de COBOL, la libc entera, C++ con unidades separadas, y el
+Nivel 0 de este documento — DOOM, Lua y SQLite dejan de estar bloqueados por el
+lenguaje.
+
+---
+
+## 2 · LAS TRES OPS DE `KIND_ARCHIVO` — 3 piezas pequeñas
+
+Baratas desde que `3.0` (reemplazar en FAT32) está hecho.
+
+| # | Pieza | Nota |
+|---|---|---|
+| 1 | `ARCH_OP_POSICIONAR` | **exponer el `CURSOR` que ya existe** en `obj/archivo.rs` |
+| 2 | Modo I-O | el fichero entero ya vive en RAM: es el modo, no el modelo |
+| 3 | Modo EXTEND | `CURSOR = LARGO` al abrir |
+
+Detrás caen RRDS, ESDS y **KSDS** — o sea el índice, o sea la banca.
+
+---
+
+## 3 · ESTRATOS ESCRIBIR (`3.4`) — 5 piezas, y una ya está
+
+| # | Pieza | Estado |
+|---|---|---|
+| 1 | Reservar bloques libres | — |
+| 2 | Escribir un nodo nuevo (`encode` + `escribir_bloque`) | `escribir_bloque` ya existe |
+| 3 | **Escribir un flujo**: el árbol de datos, el inverso de `descender` | la pieza gorda |
+| 4 | Crear/actualizar el `:entradas` del padre | — |
+| 5 | Encadenar el estrato y sellar | ★ **`sellar()` ya commitea en el Ryzen** |
+
+---
+
+## 4 · HILOS — 4 piezas
+
+| # | Pieza |
+|---|---|
+| 1 | `TASK_OP_HILO_CREAR` en la superficie |
+| 2 | Pila por hilo |
+| 3 | Planificar: **el round-robin ya existe**, hay que dejarle meter hilos de un mismo proceso |
+| 4 | Esperar/unir (`join`) |
+
+**No lo pide la banca** — un batch es E/S secuencial. Lo piden Chrome y Steam.
+
+---
+
+## 5 · RED — 5 piezas, cuatro razonables y una enorme
+
+| # | Pieza | Tamaño |
+|---|---|---|
+| 1 | Cablear el e1000: anillos TX/RX sobre las 287 líneas de esqueleto | semanas |
+| 2 | **smoltcp**: ARP, IPv4, ICMP, UDP, TCP | crate `no_std` **ya hecha** — integrarla |
+| 3 | `KIND_SOCKET` y sus operaciones | días |
+| 4 | DNS | días |
+| 5 | **TLS** | ★ proyecto propio: criptografía, certificados, máquina de estados |
+
+Sin la 5 no hay nada conectado que sirva hoy. Con las cuatro primeras hay red
+de área local, que ya es mucho para un banco con terminales.
+
+---
+
+## 6 · GPU + VULKAN — 6 piezas, y **la corrección del dueño era justa**
+
+> *"No subestimes, no es años; no es meter Vulkan entero, es meter Vulkan 1.0
+> hasta 1.3 con proceso — por algo se llama estrategia."*
+
+Tiene razón y el "años" de este documento estaba mal escrito. Desglosado:
+
+| # | Pieza | Realidad |
+|---|---|---|
+| 1 | Enumerar PCIe y mapear los BARs | **días** — es leer una tabla |
+| 2 | ★ **Inicializar el GPU**: power, clocks, cargar el microcódigo | **AQUÍ ESTÁ EL MURO.** AMD lo documenta a medias y el firmware es un blob binario |
+| 3 | Anillos de comandos (GFX ring, DMA) | semanas, y está documentado |
+| 4 | Gestor de memoria de vídeo: VRAM, GTT, page tables de la GPU | ★ meses, y es un asignador de verdad |
+| 5 | Compilador de shaders: SPIR-V → ISA de RDNA | ★ **es otro compilador entero** |
+| 6 | La API Vulkan 1.0 encima: instance, device, queue, command buffer, pipeline, swapchain | meses, pero es fontanería sobre 1-5 |
+| + | 1.1 · 1.2 · 1.3 | **incrementos**, no reescrituras — y ahí la estrategia del dueño es la correcta |
+
+**La estimación honesta corregida**: no son "años de imposible". Son **seis
+piezas de las que dos son proyectos propios** (la 4 y la 5) y **una es un muro
+de documentación** (la 2). Las otras tres son trabajo normal.
+
+Y sigue sin servir a la banca. Pero ya no está mal contado.
+
+---
+
+## 7 · EL JIT SIN ROMPER LAS CAPABILITIES — 3 piezas
+
+> *"Podría crear un intermedio para que no choque con capabilities."*
+
+★★ **La idea del dueño es correcta y mejor que la objeción original de este
+documento.** Decir "W+X contradice el modelo" era mirar sólo el caso malo. Lo
+que hace falta no es W+X — es **W^X con transición explícita**, y eso no
+contradice las capabilities: **es exactamente cómo se expresan.**
+
+| # | Pieza |
+|---|---|
+| 1 | `KIND_CODIGO`: memoria que nace **escribible y NO ejecutable** |
+| 2 | `SELLAR`: la vuelve ejecutable **y revoca el derecho de escritura en el mismo acto** |
+| 3 | La garantía: un proceso **nunca** tiene los dos derechos sobre la misma página a la vez |
+
+Con eso un JIT funciona —escribe, sella, ejecuta, y para regenerar pide otra—
+y el sistema **nunca** ha entregado una página W+X. Es lo que hacen macOS
+(`MAP_JIT`) y OpenBSD (`W^X`), y encaja aquí mejor que en ellos porque aquí el
+derecho es un objeto y no un bit de una `mmap`.
+
+**No sirve a la banca ni desbloquea Chrome por sí solo.** Pero es una pieza de
+diseño que estaba mal descartada, y descartarla mal habría cerrado una puerta
+por un motivo falso.
+
+---
+
+## ★ EL ORDEN, por lo que cuesta terminarlo
+
+Ordenado por **piezas que faltan de verdad**, no por piezas totales:
+
+| Hueco | Piezas | Ya escritas | **Faltan** | ¿Sirve al banco? |
+|---|---|---|---|---|
+| **Las 3 ops de `KIND_ARCHIVO`** | 3 | 0 | **3 pequeñas** | ★★★ |
+| **El enlazador** | 5 | 1 | **4** | ★★★ |
+| **ESTRATOS escribir** | 5 | 1 | **4**, una gorda | ★★★ |
+| El JIT sin romper capabilities | 3 | 0 | 3 | ✗ |
+| Hilos | 4 | 1 | 3 | ✗ |
+| Red sin TLS | 4 | 1 | 3 | ◐ |
+| Red con TLS | 5 | 1 | 4, **una enorme** | ◐ |
+| GPU + Vulkan 1.0 | 6 | 0 | **6, dos son proyectos** | ✗ |
+
+**Las tres primeras filas son las mismas tres que pide la banca.** No hace
+falta elegir entre "madurar el sistema" y "llegar al banco": durante los tres
+primeros huecos **son el mismo trabajo**.
+
+A partir del cuarto se separan, y entonces sí hay que elegir — pero para
+entonces el sistema tendrá enlazador, libc e índice, que es otro sistema.
