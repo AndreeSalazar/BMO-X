@@ -104,7 +104,19 @@ fn dashboard_log_impl(msg: &str, color: Option<u32>) {
     // Ese segundo caso es el de todos los días desde que el escritorio es el
     // arranque: el panel del kernel no se pinta, así que sin esto el relato de
     // cómo arrancó la máquina no existía en ninguna parte.
-    crate::ring0::core::klog::guardar(msg);
+    //
+    // ★★ Y va con la HORA delante. `[  1234ms] usb: ...`
+    //
+    // El arranque no estaba cronometrado en ninguna parte: se sabía que tarda
+    // "unos diez segundos" y **no se sabía en qué**. Optimizar sin ese número
+    // es mover cosas a ver si suena distinto — y lo primero que hay que
+    // descartar es que esos segundos sean del firmware de la placa y no de
+    // BMO, en cuyo caso no hay nada que arreglar aquí.
+    //
+    // No cuesta un cronómetro nuevo: `timer::ticks()` ya corre y cada evento de
+    // la CABINA **ya guardaba su marca** — sólo que no se enseñaba. Con esto,
+    // una sola foto de F11 dice dónde se van los segundos, línea por línea.
+    crate::ring0::core::klog::guardar_con_hora(crate::ring0::plat::timer::ticks(), msg);
 
     if !crate::info::has_fb() { return; }
     let rows = log_rows();

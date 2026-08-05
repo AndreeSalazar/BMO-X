@@ -58,7 +58,67 @@ static mut TOTAL: u64 = 0;
 /// versión distinta de la que se ve es un log en el que no se puede confiar
 /// para comparar una foto con lo leído.
 pub fn guardar(msg: &str) {
+    escribir(msg.as_bytes());
+}
+
+/// Igual, pero con la HORA delante: `[  1234ms] usb: puerto listo`.
+///
+/// ★★ Existe porque el arranque de BMO-X **no estaba cronometrado en ninguna
+/// parte**. Se sabía que tarda "unos diez segundos" y no se sabía en qué, y
+/// optimizar sin ese número es mover cosas a ver si suena distinto. Lo primero
+/// que hay que poder descartar es que esos segundos sean del firmware de la
+/// placa —el POST de una A320M se come diez él solo— en cuyo caso aquí no hay
+/// nada que arreglar.
+///
+/// Con esto, **una sola foto de F11 dice dónde se van**, línea por línea, sin
+/// añadir un solo cronómetro: `timer::ticks()` ya corría.
+///
+/// El campo son seis cifras a la derecha —hasta 999999 ms, dieciséis minutos—
+/// y por delante para que las columnas cuadren y el ojo compare dos líneas sin
+/// leerlas. Un número alineado se resta de un vistazo.
+pub fn guardar_con_hora(ticks: u64, msg: &str) {
+    let mut linea = [0u8; ANCHO];
+    let mut n = 0usize;
+    linea[n] = b'[';
+    n += 1;
+
+    let ms = ticks;
+    let mut cifras = [0u8; 8];
+    let mut c = 0usize;
+    let mut v = ms;
+    // El cero necesita su cifra: un bucle que divide no la produce.
+    if v == 0 {
+        cifras[0] = b'0';
+        c = 1;
+    }
+    while v > 0 && c < cifras.len() {
+        cifras[c] = b'0' + (v % 10) as u8;
+        v /= 10;
+        c += 1;
+    }
+    // Relleno a seis para que las columnas cuadren, y si se pasa de seis se
+    // ensancha sola: cortar un número por la izquierda lo convierte en otro.
+    let ancho_num = if c < 6 { 6 } else { c };
+    for _ in c..ancho_num {
+        linea[n] = b' ';
+        n += 1;
+    }
+    for i in (0..c).rev() {
+        linea[n] = cifras[i];
+        n += 1;
+    }
+    for &b in b"ms] " {
+        linea[n] = b;
+        n += 1;
+    }
+    let cabe = ANCHO - n;
     let b = msg.as_bytes();
+    let k = b.len().min(cabe);
+    linea[n..n + k].copy_from_slice(&b[..k]);
+    escribir(&linea[..n + k]);
+}
+
+fn escribir(b: &[u8]) {
     let n = b.len().min(ANCHO);
     unsafe {
         let t = &mut *core::ptr::addr_of_mut!(TEXTO);
