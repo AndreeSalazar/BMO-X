@@ -626,6 +626,14 @@ Zen 5 to verify against. Other people already have them running.
 
 So the parts that let you port travel outward. The Base does not move.
 
+**Which means the single most useful thing anyone can do here is boot it on a
+machine that is not mine** — and a report that it *stopped*, with a photograph
+of where, is worth more than one that says it worked. There is [an issue
+template](.github/ISSUE_TEMPLATE/reporte-de-hardware.yml) for exactly that.
+
+What is frozen, what is open ground, and the one rule that gets a patch
+declined on principle: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
 ---
 
 ## License

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "📕 Read the three states first"
+    url: https://github.com/AndreeSalazar/BMO-X#read-this-first-the-three-states
+    about: "Every claim in this project is 🟢 runs on metal, 🟡 written but never executed, or ⚪ design only. Check which one you are looking at before reporting it as broken."
+  - name: "🚫 Things this project deliberately does not do"
+    url: https://github.com/AndreeSalazar/BMO-X#what-it-deliberately-does-not-do
+    about: "No network stack, no GPU acceleration, no full libc, no Wine, no mainframe migration path. These are decisions, not oversights."

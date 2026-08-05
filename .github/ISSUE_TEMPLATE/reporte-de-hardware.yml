@@ -1,0 +1,81 @@
+name: "🖥️ Hardware boot report"
+description: "You booted BMO-X on a machine that is not the author's Ryzen 5 5600X. This is the most valuable report this project can receive."
+title: "[HW] <CPU> — <booted / stopped at ...>"
+labels: ["hardware-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you — genuinely. BMO-X has been verified on exactly one CPU.
+        Every 🟢 in the README means *that one machine*.
+
+        **A failure report is more useful than a success report.** If it stopped,
+        that is a real finding, not a waste of anyone's time.
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: What happened
+      options:
+        - "Booted to the desktop"
+        - "Booted, but something is wrong once it is up"
+        - "Stopped or panicked during boot"
+        - "Firmware never handed over — no BMO-X output at all"
+    validations:
+      required: true
+
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+      description: "Exact model. Vendor and generation are what matter."
+      placeholder: "AMD Ryzen 9 7950X / Intel Core i7-12700K"
+    validations:
+      required: true
+
+  - type: input
+    id: board
+    attributes:
+      label: Motherboard and firmware version
+      placeholder: "ASUS ROG STRIX X670E-E, firmware 2.14"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_you_saw
+    attributes:
+      label: What you saw
+      description: |
+        If it stopped: the last line on screen, typed out or photographed.
+        If it booted: what worked and what did not — keyboard, mouse, disk, the languages.
+      placeholder: "Stops right after `AHCI: puerto 0`, nothing further. Photo attached."
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Photographs
+
+        Drag them into the box above. **Photographs of the screen, not screen
+        captures** — same standard the project holds itself to in
+        [docs/evidencia/](../../tree/main/docs/evidencia).
+
+  - type: textarea
+    id: hardware_extra
+    attributes:
+      label: "Other hardware (optional, but helps)"
+      description: "USB controller, keyboard and mouse models, the disk it was reading, how you wrote the USB stick."
+      placeholder: |
+        Keyboard: Logitech K120 (USB)
+        Mouse: Razer DeathAdder — 16-bit axes
+        Disk: Samsung 990 Pro NVMe + Kingston A400 SATA
+        USB written with: Rufus 4.5, GPT/UEFI
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: One check
+      options:
+        - label: "I actually ran this on physical hardware, not in a VM or emulator."
+          required: true
