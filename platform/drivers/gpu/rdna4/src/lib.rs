@@ -69,6 +69,19 @@
 //! que se puede leer. Ésa es la diferencia práctica, y es la que decidió una
 //! pelea perdida antes con una RTX 3060.
 //!
+//! ## ⚠ Y la OTRA meta, que no es esta — ver `PLAN_VULKAN.md`
+//!
+//! Todo lo de arriba es **acelerar el compositor con SDMA**: un motor, sin
+//! sombreadores, sin 3D. Es del tamaño del driver de AHCI y es alcanzable.
+//!
+//! **Correr juegos de Vulkan es otra meta y es un proyecto de años.** Vive en
+//! `PLAN_VULKAN.md`, en esta misma carpeta, con sus piezas contadas y con la
+//! ruta que casi nadie considera primero: **Vulkan por software**, que borra
+//! el muro del PSP y el compilador de ISA de golpe.
+//!
+//! Separarlas es el punto: confundir "acelerar el volcado" con "correr Doom
+//! Eternal" es la forma clasica de no terminar ninguna de las dos.
+//!
 //! ## Objetivo declarado
 //!
 //! **RX 9060 XT 16GB** (Navi 44 / GFX1200). Soporte en kernel desde 6.11 y
