@@ -501,8 +501,29 @@ fn poll_ascii_interno() -> Option<u8> {
             // "llamamos": acumulamos posición y botones para el diagnóstico y,
             // a futuro, el cursor del compositor.
             InputEventKind::MouseMove => unsafe {
-                MOUSE_X = MOUSE_X.saturating_add(ev.mouse_dx() as i32);
-                MOUSE_Y = MOUSE_Y.saturating_add(ev.mouse_dy() as i32);
+                // ★★ SE RECORTA EL ACUMULADOR, no sólo lo que se lee.
+                //
+                // Antes esto sumaba sin tope y el recorte estaba únicamente en
+                // `INPUT_OP_PUNTERO`, al contestar. O sea que empujar el ratón
+                // contra el borde de arriba dejaba el puntero pegado a `y = 0`
+                // —correcto en pantalla— mientras `MOUSE_Y` seguía bajando a
+                // −500, −2000, lo que hiciera falta. Y para volver al centro
+                // había que **deshacer primero todo ese exceso**: el ratón se
+                // movía y el puntero no, durante un rato largo.
+                //
+                // Eddi lo describió exacto: *"cuando voy arriba, el puntero se
+                // demora en ir al centro"*. Ese retraso es la deuda acumulada
+                // contra el borde, cobrándose.
+                //
+                // El recorte tiene que estar DONDE SE SUMA. Recortar al leer
+                // enseña bien el número y deja el estado mintiendo, que es la
+                // forma más cara de tener razón.
+                let (ancho, alto) = (
+                    crate::info::FB_WIDTH.max(1) as i32 - 1,
+                    crate::info::FB_HEIGHT.max(1) as i32 - 1,
+                );
+                MOUSE_X = MOUSE_X.saturating_add(ev.mouse_dx() as i32).clamp(0, ancho);
+                MOUSE_Y = MOUSE_Y.saturating_add(ev.mouse_dy() as i32).clamp(0, alto);
                 MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
                 if !FIRST_MOUSE {
                     FIRST_MOUSE = true;

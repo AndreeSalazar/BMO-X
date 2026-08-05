@@ -464,7 +464,22 @@ pub extern "C" fn _start() -> ! {
     // único que significa "terminó".
     struct Corrida {
         marca: usize,
-        visto: bool,
+        /// Cuántos fotogramas han pasado desde que se lanzó.
+        ///
+        /// ★★ Esto era una bandera `visto` que exigía **haber visto al hijo
+        /// vivo** antes de volcar, y ahí estaba el fallo que costó tres
+        /// sesiones: un programa que arranca y termina ENTRE DOS FOTOGRAMAS no
+        /// se le ve vivo nunca, así que no volcaba jamás.
+        ///
+        /// La evidencia lo dijo entera desde el disco: de todo lo que se corrió,
+        /// **el único que dejó su `.txt` fue `c/pregc.bex`** — el único
+        /// interactivo, el único que se pasa segundos esperando a que teclees.
+        /// Los diez de COBOL y `memc` duran milisegundos y no volcaron ni uno.
+        ///
+        /// Con un contador no hace falta ver nada: se espera un par de vueltas
+        /// —el margen que necesita el lanzamiento para registrarse— y a partir
+        /// de ahí, *no hay hijo* significa *terminó*.
+        esperas: u32,
         /// `datos/<programa>.txt`, ya montada al lanzar.
         destino: [u8; 32],
         destino_n: usize,
@@ -474,10 +489,13 @@ pub extern "C" fn _start() -> ! {
     loop {
         // ── ¿Terminó el programa que se lanzó? Entonces, a guardarlo ──
         if let Some(c) = corrida.as_mut() {
+            c.esperas = c.esperas.saturating_add(1);
             let vivo = salida_cap.as_ref().map(|cc| cc.hay_hijo()).unwrap_or(false);
-            if vivo {
-                c.visto = true;
-            } else if c.visto {
+            // Mientras haya hijo, no ha terminado. Y las dos primeras vueltas
+            // no cuentan: son el margen que necesita `ejecutar_en` para que el
+            // kernel registre al hijo en la tabla de la consola. Sin ese
+            // margen se volcaria un archivo vacio en el acto.
+            if !vivo && c.esperas > 2 {
                 // ★★ SE DRENA ANTES DE GUARDAR, y esto lo enseñó el disco.
                 //
                 // El primer `salida.txt` que llegó a Windows tenía las cuatro
@@ -1377,7 +1395,7 @@ pub extern "C" fn _start() -> ! {
                                         let destino_n = nombre_volcado(objetivo, &mut destino);
                                         corrida = Some(Corrida {
                                             marca: salida.marca().saturating_sub(1),
-                                            visto: false,
+                                            esperas: 0,
                                             destino,
                                             destino_n,
                                         });
