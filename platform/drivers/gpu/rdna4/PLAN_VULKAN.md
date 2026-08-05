@@ -182,3 +182,150 @@ de sucio ya recorta casi todo el volcado.
 BMO-X hace hoy. Ese número se mira antes de gastar un euro y se vuelve a mirar
 después para saber si sirvió. Es la regla 4 del plan original y aquí vale
 igual.
+
+---
+
+# ★★ POR QUÉ AMD NO TE LIMITA — y qué sí lo hace
+
+> Ampliación del 2026-08-04. El dueño lo señaló y tiene razón: *"AMD no
+> limita"*. Conviene escribir POR QUÉ, porque el motivo cambia el plan.
+
+## Lo que AMD publica, y no es poco
+
+| Qué | Dónde | Para qué existe |
+|---|---|---|
+| **El juego de instrucciones (ISA)** de cada arquitectura RDNA | PDF público de AMD | para que cualquiera escriba un compilador de sombreadores |
+| **Las cabeceras de registros** del chip | dentro del código de `amdgpu`, miles de ficheros | para programar el silicio |
+| **El firmware** (microcódigo) | `linux-firmware`, con licencia de **redistribución** | para que una distro pueda incluirlo |
+| **Un driver de kernel entero y abierto** | `amdgpu` | referencia funcionando |
+| **Un Vulkan entero y abierto** | Mesa **RADV** | referencia funcionando de la capa de arriba |
+
+## Por qué lo hacen — los motivos reales
+
+No es filantropía, y conviene entenderlo porque explica **qué seguirá abierto**:
+
+1. **Venden silicio, no drivers.** Nvidia monetiza CUDA y su pila cerrada; AMD
+   compite por precio y volumen. Un driver abierto no les quita ingresos.
+2. **Las consolas ya obligan a documentar.** PlayStation y Xbox llevan
+   arquitectura AMD, y esos fabricantes reciben documentación completa. Lo que
+   ya está escrito para un tercero cuesta poco publicar.
+3. **HPC y empresa exigen auditar.** Un laboratorio que compra mil tarjetas
+   quiere poder leer lo que corre en ellas. Ahí lo cerrado es una desventaja
+   comercial.
+4. **Valve y Steam Deck.** RADV mejoró enormemente porque Valve pagó ingenieros
+   para ello. AMD se benefició sin invertir.
+
+★ **Consecuencia práctica**: lo que está abierto lo está por motivos
+estructurales, no por una campaña que pueda revertirse el año que viene. **Es
+apostable.**
+
+## Y entonces, ¿qué limita de verdad?
+
+> **No es el permiso. Es el VOLUMEN.**
+
+`amdgpu` son cientos de miles de líneas. Las cabeceras de registros son miles
+de ficheros. RADV es otro proyecto grande. **Todo está ahí y nadie te lo
+impide** — pero leerlo y destilar lo que hace falta es el trabajo, y es un
+trabajo de **lectura**, no de ingeniería inversa.
+
+Ésa es una diferencia enorme respecto a Nvidia, donde el trabajo **sí** era
+ingeniería inversa a ciegas. Y es la razón, ya escrita en `lib.rs`, para elegir
+AMD — que sigue en pie y ahora con sus motivos.
+
+**La única parte que sigue siendo opaca** es la secuencia del **PSP** —el
+procesador que autentica el microcódigo—. No porque AMD la prohíba, sino porque
+está descrita en código y no en prosa. Se puede leer en `amdgpu`; lo que no hay
+es un documento que la explique.
+
+---
+
+# ★ QUÉ JUEGOS ABRE CADA NIVEL DE VULKAN
+
+⚠️ **Con una advertencia primero, que es la que de verdad manda**: un juego
+**no comprueba el número de versión**. Comprueba una **lista de extensiones y
+características**, y si le falta una se niega a arrancar. La versión es un
+resumen, no el contrato.
+
+Dicho eso, cada nivel corresponde grosso modo a una época:
+
+| Nivel | Año | Qué trajo | Qué época abre |
+|---|---|---|---|
+| **1.0** | 2016 | lo básico: pipelines, render passes, descriptor sets | los primeros títulos con Vulkan nativo — la generación de **DOOM 2016**, *The Talos Principle*, *Dota 2* |
+| **1.1** | 2018 | subgroups, memoria protegida, multiview | motores de 2018-2020 |
+| **1.2** | 2020 | ★ **timeline semaphores**, **descriptor indexing**, buffer device address | **aquí empieza lo moderno de verdad**, y es donde las capas de traducción actuales ponen su mínimo |
+| **1.3** | 2022 | ★ **dynamic rendering**, synchronization2 | motores actuales |
+
+★ **La conclusión útil**: un **1.0 honesto y completo** ya da juegos de verdad,
+de una generación entera. No es un ejercicio: es DOOM.
+
+Y **1.2 es el escalón que más abre**.
+
+---
+
+# ⚠️ DXVK — la trampa que hay que ver antes de contar con él
+
+**DXVK** traduce Direct3D 9/10/11 → Vulkan. Es la pieza que hace que Proton
+funcione, y la idea de usarlo para juegos antiguos es buena… hasta que se mira
+**qué** traduce.
+
+> **DXVK traduce la API DE GRÁFICOS. No traduce el sistema operativo.**
+
+Un juego de D3D9 es un `.exe` de Windows. Además de dibujar, ese ejecutable:
+
+- abre ficheros con `CreateFileW` de `kernel32.dll`
+- crea ventanas con `user32.dll`
+- lee el registro, saca sonido por `dsound`, lee el ratón por `dinput`
+- y arranca con el cargador de PE de Windows
+
+**DXVK no hace nada de eso.** DXVK **presupone que hay un Windows debajo** —
+real, o Wine.
+
+La cadena completa es:
+
+```
+juego .exe  →  Wine (TODO el sistema)  →  DXVK (sólo gráficos)  →  Vulkan
+                ↑
+                aquí están los 25 años y los millones de líneas
+```
+
+**DXVK sin Wine no arranca ni un juego.** Y Wine es exactamente la frontera que
+este proyecto decidió no cruzar — ver `docs/ENTRAR_EN_SU_ECOSISTEMA.md`.
+
+## ★ Y el camino que SÍ lleva a los juegos antiguos
+
+No es traducir Windows: es que **muchos clásicos tienen motor abierto y
+reescrito**, en C o C++ portable, y casi todos sobre **SDL**:
+
+| Motor abierto | Juego original |
+|---|---|
+| **GZDoom**, Chocolate Doom | Doom, Heretic, Hexen |
+| **ioquake3** | Quake III |
+| **OpenMW** | Morrowind |
+| **devilutionX** | Diablo |
+| **OpenRCT2** | RollerCoaster Tycoon 2 |
+| **ScummVM** | cientos de aventuras gráficas |
+| **DOSBox** | el catálogo entero de MS-DOS |
+
+Todos son **código fuente que se compila**, no binarios de Windows que
+traducir. Y todos hablan por SDL — la palanca nº 1 de
+`docs/QUE_DESBLOQUEA.md`, cuya capa de plataforma son **cuatro funciones** y de
+las que BMO ya tiene tres.
+
+> **Para juegos antiguos el camino no es DXVK: es SDL + motores abiertos.**
+> Y ése no necesita Vulkan, ni GPU, ni Wine — necesita el enlazador y la libc.
+
+## La comparación que ordena las cuatro ideas
+
+| Camino | Qué hace falta | Qué da |
+|---|---|---|
+| **SDL + motores abiertos** | enlazador, libc, SDL | ★ Doom, Quake, Morrowind, ScummVM, DOSBox — **sin GPU** |
+| **Vulkan por software** | + JIT, rasterizador, hilos | juegos con Vulkan nativo, lentos pero corriendo |
+| **Vulkan sobre RDNA4** | + el driver entero | los mismos, rápidos |
+| **DXVK** | + **Wine entero** | ✗ descartado: cuesta el proyecto |
+
+★★ **Y fíjate en la primera fila: la que más juegos da es la que menos cuesta,
+y no necesita nada de esta carpeta.**
+
+Eso no invalida el plan de Vulkan — **lo coloca**. Vulkan es para juegos que
+**sólo** existen en Vulkan. Para todo lo demás, el camino corto pasa por el
+enlazador, que es el mismo que pide el banco.
