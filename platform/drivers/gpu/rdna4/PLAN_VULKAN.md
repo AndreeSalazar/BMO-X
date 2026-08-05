@@ -329,3 +329,132 @@ y no necesita nada de esta carpeta.**
 Eso no invalida el plan de Vulkan — **lo coloca**. Vulkan es para juegos que
 **sólo** existen en Vulkan. Para todo lo demás, el camino corto pasa por el
 enlazador, que es el mismo que pide el banco.
+
+---
+
+# ★★ BSF — BMO Shader Format
+
+> Idea del dueño, 2026-08-04: *"el BSF es el encabezado para la GPU, sería como
+> tener dos encabezados: CPU y GPU"*.
+>
+> **La idea es buena y aquí queda escrita con su límite** — porque tiene una
+> mitad que vale mucho y otra que costaría el proyecto.
+
+## La simetría, que es correcta
+
+```
+  BEF   →  el sobre de lo que corre en la CPU
+  BSF   →  el sobre de lo que corre en la GPU
+```
+
+Dos formatos, dos procesadores, un mismo criterio: **BMO no ejecuta nada que no
+haya podido mirar antes**.
+
+## ⚠ La mitad que NO se hace: inventar un idioma
+
+El BEF existe por un motivo concreto: el kernel carga programas y **ningún
+formato existente encajaba con el modelo de capabilities**. Había una razón.
+
+**Con los sombreadores no la hay.** SPIR-V no presupone nada de un sistema
+operativo — es matemáticas y registros. Y sobre todo:
+
+> **Todo el mundo emite SPIR-V.** glslang, DXC, Naga, rust-gpu, los motores de
+> juego. Un BSF que fuera un lenguaje NUEVO no lo produciría nada en el mundo,
+> y habría que escribir el compilador desde cada lenguaje.
+
+Sería inventarse un idioma para no aprender uno que ya habla todo el mundo, que
+es libre, y que además está bien diseñado.
+
+## ★ La mitad que SÍ: **el sobre**
+
+Igual que el BEF **no reinventa las instrucciones de x86-64** —es un contenedor
+para ellas—, el BSF **no reinventa SPIR-V: lo envuelve**.
+
+### Qué guardaría, y por qué cada campo se gana su sitio
+
+| Campo | Para qué |
+|---|---|
+| Cuántos módulos, y de qué **etapa** (vértice, fragmento, cómputo) | saber qué hay **sin parsear SPIR-V entero** |
+| El **punto de entrada** de cada módulo | idem |
+| ★ **Qué características de Vulkan asume** | **rechazarlo ANTES de cargarlo.** Un juego que pide `descriptorIndexing` se entera aquí, no a mitad |
+| El **BLAKE3** de cada módulo | firma, el mismo criterio que el resto del sistema |
+| ★ **Código YA COMPILADO** para un objetivo + el SPIR-V de reserva | no recompilar en cada arranque |
+
+### La fila que más vale es la última
+
+Compilar SPIR-V a código máquina **al cargar** es lento. Es la razón de esos
+*"compilando sombreadores… 3 min"* de los juegos modernos.
+
+Un BSF que lleve **el resultado ya hecho y su firma** se lo ahorra. Y encaja
+con el ethos entero: **si está firmado y cuadra, no hay que rehacerlo.**
+
+## Dónde encaja — el hueco ya estaba
+
+En `SectionKind` hay **`Shaders = 0x0A`** y en `BefFlags` hay `HAS_SHADERS`,
+reservados desde hace tiempo. **El BSF es exactamente lo que va ahí dentro.**
+
+```
+un .bex
+ ├── Code        ← x86-64
+ ├── RoData
+ └── Shaders     ← UN BSF
+      ├── cabecera BSF
+      ├── modulo 0: vertice   · SPIR-V + BLAKE3
+      ├── modulo 1: fragmento · SPIR-V + BLAKE3
+      └── (opcional) lo mismo YA COMPILADO al objetivo
+```
+
+Y por la regla que ya está escrita —*una sección desconocida se salta*— el
+kernel **ni se entera de que existe**. Cero coste en Ring 0.
+
+---
+
+# ★ EL POTENCIAL, y la pregunta de las consolas
+
+El dueño lo preguntó y la respuesta tiene dos mitades muy distintas.
+
+## Lo que NO va a pasar
+
+**Ninguna consola va a adoptar BSF.** PlayStation, Xbox y Switch tienen sus
+propios formatos —PSSL, DXIL, NVN— y sus plataformas están cerradas por
+contrato, no por tecnología. No es una cuestión de calidad del formato.
+
+## ★★ Lo que SÍ, y es más interesante
+
+**Las consolas ya trabajan como el BSF propone.** Todas ellas:
+
+1. **Precompilan los sombreadores en el estudio**, no en casa del jugador
+2. Los **empaquetan firmados** con el juego
+3. Y **no compilan nada en tiempo de ejecución**
+
+¿Por qué pueden? Porque tienen **hardware fijo y conocido**. Un PC no sabe qué
+GPU habrá, así que envía SPIR-V y compila al arrancar — de ahí el tartamudeo.
+
+> ★ **Y BMO-X está en condiciones de consola, no de PC.**
+>
+> Una máquina, una GPU conocida, un sistema operativo. **El objetivo se sabe al
+> compilar.**
+
+O sea que el modelo de consola —precompilar, firmar, verificar, no recompilar
+jamás— **no es una aspiración para BMO-X: es su situación natural.** Y encaja
+con lo que el sistema ya hace con los programas: `run` comprueba el `:firma`
+antes de admitir un `.bex`.
+
+**El potencial del BSF no es que lo usen otros. Es que le da a BMO-X la
+disciplina de una consola en un sistema que además puede demostrarla.**
+
+---
+
+## Estado y disparador
+
+| | |
+|---|---|
+| ¿Se escribe ya? | **no.** No hay nada que lea sombreadores todavía |
+| ¿Cuándo? | con la ruta B1 (Vulkan por software), cuando exista un consumidor |
+| ¿Tamaño? | pequeño: una cabecera y una tabla. Como el BEF pero diminuto |
+| ¿Bloquea a algo? | no. Se apunta para que el día que toque no se rediseñe de cero |
+
+**La frase que lo resume**: *no inventes el idioma, inventa el sobre*. El
+idioma ya lo habla todo el mundo y es gratis; el sobre es donde caben las tres
+cosas que sólo BMO ofrece — **firma, requisitos declarados y precompilado
+verificable**.
