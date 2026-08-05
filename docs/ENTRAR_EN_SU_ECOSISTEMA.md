@@ -124,6 +124,35 @@ máquina virtual.
 
 ---
 
+## ⚠ Y NO, con Windows no es lo mismo — la asimetría que decide
+
+La intuición es razonable: *"si traduzco las llamadas de Linux, traduzco las de
+Windows igual"*. Pero los dos sistemas se parecen **por arriba** y no por
+abajo, y lo que hay que traducir está abajo.
+
+| | Linux | Windows |
+|---|---|---|
+| ¿Está documentada su capa de syscalls? | **sí** | **no**. La API nativa (`NtCreateFile`, `NtWriteFile`) nunca se documentó |
+| ¿Es estable? | ★ **para siempre.** Es la regla de Linus: *no se rompe el espacio de usuario*. El número 1 es `write` desde hace décadas | **no**. Los números cambian entre versiones, y a veces entre parches |
+| ¿Hay binarios estáticos? | sí, y son comunes | **casi nunca**. Un `.exe` siempre importa de `kernel32.dll` y compañía |
+
+Las tres filas apuntan al mismo sitio:
+
+> **Un ELF estático es autónomo: trae todo lo que necesita y sólo habla con el
+> kernel. Un `.exe` es un archivo lleno de agujeros que sólo se llenan si están
+> las DLL de Windows.**
+
+Devorar un PE te deja un programa que, en cuanto arranca, pide `kernel32.dll`.
+Y esa DLL no es una tabla de quince filas: es **la API de Windows**, y
+reimplementarla ES Wine — veinticinco años y millones de líneas, y por eso Wine
+trabaja ahí arriba y no en las syscalls.
+
+**Conclusión, sin adornos**: la estrategia de devorar vale para Linux y **no**
+para Windows. Las banderas `PROVENANCE_PE` pueden quedarse en el header —
+cuestan cero— pero como plan no lo son.
+
+---
+
 # ESTRATEGIA C — HABLAR SU FORMATO (que otros compilen PARA BMO)
 
 La contraria de las dos anteriores: en vez de leer sus binarios, hacer que sus
