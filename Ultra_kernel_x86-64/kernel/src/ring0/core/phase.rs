@@ -1347,16 +1347,28 @@ fn arrancar_escritorio() {
     let inf = lanzar::ruta(RUTA_COMPOSITOR);
     match inf.res {
         Ok(tid) => {
+            // ★ Arrancar y no decir su pid es un caso RARO, y por eso mismo
+            // valía la pena distinguirlo: `unwrap_or(0)` lo dejaba en 0, que es
+            // un pid con dueño. A partir de ahí, todo lo que se decida "para el
+            // escritorio" mirando `ESCRITORIO_PID` apunta a otro.
+            let pid = match inf.pid {
+                Some(p) => p,
+                None => {
+                    crate::ring0::cabina::warn(
+                        "gui", "el escritorio arranco y NO dijo su pid (queda 0)", tid as u64);
+                    0
+                }
+            };
             unsafe {
                 ESCRITORIO_TID = tid;
-                ESCRITORIO_PID = inf.pid.unwrap_or(0);
+                ESCRITORIO_PID = pid;
             }
             row("escritorio", |l| {
                 l.txt(RUTA_COMPOSITOR);
                 l.txt("   tid ");
                 l.dec(tid as u64);
                 l.txt("  pid ");
-                l.dec(inf.pid.unwrap_or(0) as u64);
+                l.dec(pid as u64);
             });
             crate::ring0::cabina::info("gui", "escritorio admitido desde disco", tid as u64);
         }

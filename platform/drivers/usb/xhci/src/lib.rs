@@ -787,8 +787,15 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
 
     let has_data = !buf.is_empty();
     let data_page = if has_data {
+        // Quedarse sin páginas DMA se trataba igual que "el aparato no mandó
+        // nada": devolver 0. Dos causas opuestas —una es memoria del sistema,
+        // la otra es el periférico— con la misma cara, y sin una línea. La de
+        // arriba (`no ep0 ring`) sí gritaba; ésta no. Ahora las dos.
         let dp = h.alloc_dma_pages(1).unwrap_or(0);
-        if dp == 0 { return 0; }
+        if dp == 0 {
+            h.log("[xhci] control_transfer: SIN PAGINAS DMA (no es el aparato, es la memoria)\n");
+            return 0;
+        }
         if !data_in {
             let dv = h.phys_to_virt(dp);
             for i in 0..buf.len() { dv.add(i).write_volatile(buf[i]); }

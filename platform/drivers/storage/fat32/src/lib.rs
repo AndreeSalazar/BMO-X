@@ -205,6 +205,18 @@ pub struct FatVolume {
     /// da un LBA FUERA del volumen. Es la diferencia entre "no cabe" y
     /// "escribir en la particion del vecino".
     max_cluster: u32,
+    /// ★ **Operaciones que fallaron y NO cambiaron el resultado.**
+    ///
+    /// Este driver tiene sitios donde un fallo del dispositivo no puede
+    /// convertirse en un `false` sin mentir al revés: rellenar de ceros la cola
+    /// de un cluster cuyos datos YA se escribieron bien, o soltar el resto de
+    /// una cadena de clusters. Ahí el fallo no cambia lo que se le contesta al
+    /// llamante — y antes de esto tampoco dejaba rastro en ningún sitio.
+    ///
+    /// Un disco que empieza a fallar lo hace primero en operaciones así. Si
+    /// esta cuenta no es cero, el volumen está peor de lo que dice cualquier
+    /// código de retorno. Se lee con [`FatVolume::fallos_mudos`].
+    fallos_mudos: u32,
     buf: [u8; 512],
     fat_cache: [u8; 512],
 }
@@ -271,7 +283,7 @@ pub fn mount(read: BlockReader, write: Option<BlockWriter>, part_lba: u64) -> Op
     if total <= data_start { return None; }
     let max_cluster = (total - data_start) / spc as u32 + 1;
     Some(FatVolume { read, write, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: spc,
-        num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, max_cluster, buf: [0; 512], fat_cache: [0; 512] })
+        num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512] })
 }
 
 fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf: &[u8; 512]) -> Option<FatVolume> {
@@ -291,10 +303,17 @@ fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf
     // exFAT lo dice en su propio BPB, sin tener que deducirlo.
     let max_cluster = epb.cluster_count + 1;
     Some(FatVolume { read, write, part_lba, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
-        num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, buf: [0; 512], fat_cache: [0; 512] })
+        num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512] })
 }
 
 impl FatVolume {
+    /// Fallos del dispositivo que no cambiaron ningún código de retorno.
+    ///
+    /// **Tiene que ser cero.** Si no lo es, el volumen ha fallado en sitios
+    /// donde nadie se entera por la vía normal, y eso precede a fallar donde sí
+    /// se nota. Ver el campo.
+    pub fn fallos_mudos(&self) -> u32 { self.fallos_mudos }
+
     /// Lee un sector del VOLUMEN a uno de los buffers internos.
     ///
     /// El puntero a funcion se copia ANTES de tomar el buffer: si no, seria un
@@ -592,7 +611,19 @@ impl FatVolume {
         let mut c = first;
         let mut guard = 0u32;
         while c >= 2 && c <= self.max_cluster {
-            let next = self.raw_fat_entry(c).unwrap_or(0);
+            // ★ `unwrap_or(0)` hacía que esta función hiciera LO CONTRARIO de
+            // lo que existe para hacer, y en silencio: si la FAT no se podía
+            // leer, `next` valía 0, la comprobación de abajo lo tomaba por fin
+            // de cadena y se salía dejando perdidos justo los clusters que
+            // venía a devolver. "No se pudo leer" y "aquí se acaba la cadena"
+            // no son lo mismo y ya no comparten valor.
+            let next = match self.raw_fat_entry(c) {
+                Some(n) => n,
+                None => {
+                    self.fallos_mudos = self.fallos_mudos.saturating_add(1);
+                    return;
+                }
+            };
             if !self.set_fat_entry(c, 0) { return; }
             if next < 2 || next >= 0x0FFF_FFF7 { return; }
             c = next;
@@ -1071,8 +1102,16 @@ impl FatVolume {
                 if !self.write_from(lba + s, &temp) { return false; }
             }
         }
+        // El relleno de la cola del cluster. Aquí un fallo NO puede devolver
+        // `false` —los datos del archivo ya están escritos y el llamante
+        // creería que no—, pero tampoco puede desaparecer: era un `let _ =`.
+        // Se cuenta, y `fallos_mudos` es lo que hay que mirar cuando el disco
+        // "va bien" y algo no cuadra.
         for s in write_n..spc {
-            unsafe { let _ = self.write_from(lba + s, &temp); }
+            let ok = unsafe { self.write_from(lba + s, &temp) };
+            if !ok {
+                self.fallos_mudos = self.fallos_mudos.saturating_add(1);
+            }
         }
 
         if !self.mark_cluster_eoc(cluster) { return false; }

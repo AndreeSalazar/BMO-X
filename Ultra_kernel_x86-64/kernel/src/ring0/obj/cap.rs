@@ -264,12 +264,25 @@ fn revoke_all_slots(pid: u32) {
 /// Seed the init process: one capability per BMO Channel estuary with
 /// full transport rights (READ | WRITE | WAIT).
 pub fn seed_init(pid: u32) {
+    // ★ El resultado de `grant` se tiraba. Si la tabla se llena a mitad, el
+    // primer proceso del sistema arranca con MENOS canales de los que cree
+    // tener, y lo descubre mucho después: un `INVOKE` sobre un handle que
+    // nunca existió, sin nada que lo relacione con este bucle. Una capability
+    // que no se concedió es una capability que no está, y eso se dice aquí.
+    let mut fallidas = 0u32;
     for index in 0..boot_context::MAX_CHANNEL_PAGES {
-        let _ = grant(
+        if grant(
             pid,
             KIND_CHANNEL,
             RIGHT_READ | RIGHT_WRITE | RIGHT_WAIT,
             index as u64,
-        );
+        )
+        .is_none()
+        {
+            fallidas += 1;
+        }
+    }
+    if fallidas != 0 {
+        crate::ring0::cabina::fault("cap", "canales que NO se concedieron a init", fallidas as u64);
     }
 }

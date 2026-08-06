@@ -557,11 +557,26 @@ impl IrModule {
     }
 
     /// Load all syscall definitions from the embedded registry.
-    pub fn load_embedded_syscalls(&mut self) {
+    ///
+    /// ★ Devuelve `Err` en vez de tragarse el fallo, y esto es una trampa que
+    /// todavía no había saltado: `add_string` devuelve `None` cuando la tabla
+    /// de cadenas se llena (256 entradas o 4 KiB), y el `unwrap_or(0)` que
+    /// había aquí registraba entonces el syscall **con el nombre de la cadena
+    /// 0** — o sea, con el nombre de otro. Un syscall mal nombrado en el IR no
+    /// falla al compilar: falla al mirar el binario y no entender qué llama.
+    ///
+    /// Hoy no lo llama nadie, y por eso mismo se arregla ahora: es gratis
+    /// cambiar la firma antes de que exista el primer llamante, y el `Result`
+    /// obliga al que llegue a decidir qué hacer en vez de heredar el silencio.
+    #[must_use = "si la tabla de cadenas se lleno, los syscalls quedan mal nombrados"]
+    pub fn load_embedded_syscalls(&mut self) -> Result<(), &'static str> {
         let defs = crate::bmo_abi::asm::defs::syscalls();
         for d in &defs {
-            let name_idx = self.add_string(&d.name).unwrap_or(0);
+            let name_idx = self
+                .add_string(&d.name)
+                .ok_or("la tabla de cadenas del IR se lleno cargando los syscalls")?;
             self.add_syscall(name_idx, d.nr, d.arg_count);
         }
+        Ok(())
     }
 }
