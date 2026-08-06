@@ -88,6 +88,7 @@ const TRB_LINK: u32 = 6;    const TRB_ENABLE: u32 = 9;
 const TRB_DISABLE: u32 = 10;
 const TRB_ADDRESS_DEV: u32 = 11; const TRB_CONFIGURE: u32 = 12;
 #[allow(dead_code)] const TRB_EVAL_CTX: u32 = 13;
+const TRB_RESET_EP: u32 = 14; const TRB_SET_TR_DEQ: u32 = 16;
 const TRB_TRANSFER: u32 = 32; const TRB_COMPLETION: u32 = 33;
 const TRB_PORT_STATUS: u32 = 34;
 
@@ -1071,6 +1072,165 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
             false
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  RESUCITAR UN ENDPOINT PARADO
+// ═══════════════════════════════════════════════════════════════════
+//
+// ★ EL AGUJERO QUE ESTO TAPA: el driver sabía VER que un endpoint estaba
+// Halted (`ep_state` lo documenta desde hace tiempo) y no tenía con qué
+// levantarlo. Los dos comandos que hacen falta —Reset Endpoint (14) y Set TR
+// Dequeue Pointer (16)— sencillamente no estaban escritos.
+//
+// El síntoma es el que contó el dueño: **el teclado deja de responder al
+// pulsar, sin que nadie lo desenchufe**. Un error de transacción del bus
+// —cable, ruido, un paquete que llega mal— deja el endpoint parado, y a partir
+// de ahí `rearmar()` encola y toca el timbre para nada: **el xHC ignora el
+// doorbell de un endpoint Halted**. Se veía idéntico a un aparato desconectado.
+//
+// La secuencia es de la spec (xHCI 4.6.8) y el ORDEN no es negociable:
+//
+//   1. Reset Endpoint      Halted → Stopped. Sin esto, lo demás no vale.
+//   2. Set TR Dequeue      decirle POR DÓNDE seguir. El endpoint parado dejó
+//                          el puntero a mitad del anillo; si no se recoloca,
+//                          al arrancar lee TRBs viejos con el ciclo cambiado.
+//   3. ← el llamante encola y toca el timbre (`rearmar`)
+//
+// El paso 2 es el que se olvida y el que hace que "el reset no sirviera de
+// nada": resetear sin recolocar deja el endpoint listo para leer basura.
+
+/// Los `cc` de un Transfer Event que dejan el endpoint **parado**, y por tanto
+/// exigen recuperarlo en vez de reintentar.
+///
+/// `3` Babble (el aparato mandó más de lo que cabía), `4` USB Transaction Error
+/// (el bus falló), `6` Stall (el aparato dijo que no). Cualquier otro `cc` malo
+/// es informativo: molesta, pero el endpoint sigue agendado.
+pub fn cc_halta_endpoint(cc: u8) -> bool { matches!(cc, 3 | 4 | 6) }
+
+static mut RECUPERACIONES: u32 = 0;
+static mut RECUPERACIONES_FALLIDAS: u32 = 0;
+
+/// `(endpoints resucitados, intentos que no salieron)`.
+///
+/// El segundo número es el que hay que mirar: si sube, el aparato no vuelve con
+/// un reset y el problema está más abajo (el puerto o el propio cable).
+pub fn recuperaciones() -> (u32, u32) {
+    unsafe { (RECUPERACIONES, RECUPERACIONES_FALLIDAS) }
+}
+
+/// Manda un comando y devuelve su `cc` — a diferencia de `send_cmd`, que
+/// convierte cualquier fallo en `None` y se lleva el número por delante. Aquí
+/// el número ES el diagnóstico: `19` (Context State Error) significa "el
+/// endpoint no estaba en el estado que este comando espera", que es distinto de
+/// "el controlador no contestó".
+unsafe fn cmd_cc(trb: Trb) -> Option<u32> {
+    let ctrl = CTRL.as_mut()?;
+    ctrl.cmd_ring.enqueue(&trb);
+    ring_doorbell(0, 0);
+    let ev = evt_poll_block(ctrl, Espera::Comando)?;
+    Some((ev.2 >> 24) & 0xFF)
+}
+
+/// Levanta un endpoint parado y lo deja listo para que el llamante encole.
+///
+/// Devuelve `true` si el endpoint quedó en condiciones de volver a bombear. **No
+/// encola ni toca el timbre**: eso es trabajo del dueño del endpoint, que es
+/// quien sabe qué buffer y qué largo le tocan.
+///
+/// ⚠️ Bloquea, porque espera la compleción de dos comandos. Es aceptable por lo
+/// mismo que la adopción en caliente: ocurre **sólo cuando algo ya ha fallado**,
+/// no en el camino normal. El día que haya un hilo de kernel para el bus, esto
+/// se muda ahí con lo demás.
+pub unsafe fn recuperar_endpoint(slot: u8, dci: u8) -> bool {
+    let h = hal();
+
+    // El estado lo dice el xHC, no nosotros. Si ya está Running no hay nada que
+    // resetear y hacerlo daría Context State Error: un `cc=19` en el log que
+    // parecería un fallo cuando en realidad no había avería.
+    let estado = ep_state(slot, dci);
+    if estado == 1 {
+        return true;
+    }
+    if estado == 0 || estado == 0xFF {
+        // Disabled: el endpoint no está configurado. Un reset no lo arregla —
+        // esto es re-enumerar, y no se decide aquí.
+        h.log_u64("[xhci] recuperar: endpoint sin configurar, dci=", dci as u64);
+        h.log("\n");
+        RECUPERACIONES_FALLIDAS = RECUPERACIONES_FALLIDAS.wrapping_add(1);
+        return false;
+    }
+
+    let campos = ((slot as u32) << 24) | ((dci as u32) << 16);
+
+    // ── 1. Reset Endpoint: Halted → Stopped ──────────────────────────
+    //
+    // El bit TSP (9) se deja a 0 a propósito: preservar el estado de
+    // transferencia es justo lo que NO se quiere aquí. Lo que había en vuelo
+    // cuando el endpoint se paró es exactamente lo que falló.
+    if estado == 2 {
+        match cmd_cc(Trb { dw0: 0, dw1: 0, dw2: 0, dw3: campos | (TRB_RESET_EP << 10) }) {
+            Some(CC_SUCCESS) => {}
+            Some(cc) => {
+                h.log_u64("[xhci] reset_ep cc=", cc as u64);
+                h.log("\n");
+                RECUPERACIONES_FALLIDAS = RECUPERACIONES_FALLIDAS.wrapping_add(1);
+                return false;
+            }
+            None => {
+                h.log("[xhci] reset_ep sin respuesta del controlador\n");
+                RECUPERACIONES_FALLIDAS = RECUPERACIONES_FALLIDAS.wrapping_add(1);
+                return false;
+            }
+        }
+    }
+
+    // ── 2. Set TR Dequeue Pointer: volver al principio del anillo ─────
+    //
+    // Se recoloca al TRB 0 con ciclo 1 y **la contabilidad nuestra se pone a
+    // juego** (`enqueue = 0`, `pcs = true`). Las dos mitades tienen que decir lo
+    // mismo: el xHC leerá donde le decimos, y nosotros escribiremos ahí con el
+    // ciclo que le hemos declarado. Descuadrarlas es congelar el endpoint de la
+    // forma más difícil de ver — el mismo fallo que el Toggle Cycle del Link.
+    let ring_phys = match ep_ring_mut(slot, dci) {
+        Some(r) => {
+            r.enqueue = 0;
+            r.pcs = true;
+            r.ring_phys
+        }
+        None => {
+            h.log("[xhci] recuperar: no hay anillo para ese endpoint\n");
+            RECUPERACIONES_FALLIDAS = RECUPERACIONES_FALLIDAS.wrapping_add(1);
+            return false;
+        }
+    };
+    let dq = (ring_phys & !0xFu64) | 1; // DCS = 1, a juego con pcs = true
+    let trb = Trb {
+        dw0: (dq & 0xFFFF_FFFF) as u32,
+        dw1: ((dq >> 32) & 0xFFFF_FFFF) as u32,
+        dw2: 0, // Stream ID 0: este endpoint no usa streams
+        dw3: campos | (TRB_SET_TR_DEQ << 10),
+    };
+    match cmd_cc(trb) {
+        Some(CC_SUCCESS) => {}
+        Some(cc) => {
+            h.log_u64("[xhci] set_tr_deq cc=", cc as u64);
+            h.log("\n");
+            RECUPERACIONES_FALLIDAS = RECUPERACIONES_FALLIDAS.wrapping_add(1);
+            return false;
+        }
+        None => {
+            h.log("[xhci] set_tr_deq sin respuesta del controlador\n");
+            RECUPERACIONES_FALLIDAS = RECUPERACIONES_FALLIDAS.wrapping_add(1);
+            return false;
+        }
+    }
+
+    RECUPERACIONES = RECUPERACIONES.wrapping_add(1);
+    h.log_u64("[xhci] endpoint RESUCITADO dci=", dci as u64);
+    h.log_u64(" slot=", slot as u64);
+    h.log("\n");
+    true
 }
 
 // ═══════════════════════════════════════════════════════════════════

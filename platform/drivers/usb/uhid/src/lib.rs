@@ -124,6 +124,17 @@ impl UsbHidHal {
     pub fn kbd_dci(&self) -> u8 { self.teclado.as_ref().map_or(0, |k| k.dci()) }
     pub fn mouse_dci(&self) -> u8 { self.raton.as_ref().map_or(0, |m| m.dci()) }
 
+    /// ¿Este `(slot, endpoint)` es de alguno de los dos aparatos?
+    ///
+    /// La misma pregunta que hace el reparto, pero sin pedir prestado el
+    /// `&mut`: hace falta antes de repartir, para decidir si toca resucitar el
+    /// endpoint. Un evento huérfano no se recupera — no se sabe de quién es el
+    /// anillo ni quién volvería a encolar.
+    pub fn es_de_alguien(&self, slot: u8, ep: u8) -> bool {
+        self.teclado.as_ref().is_some_and(|k| k.direccion().es_mio(slot, ep))
+            || self.raton.as_ref().is_some_and(|m| m.direccion().es_mio(slot, ep))
+    }
+
     /// Eventos que llegaron y no eran de nadie. Ver el campo.
     pub fn huerfanos(&self) -> u32 { self.huerfanos }
 
@@ -481,6 +492,21 @@ impl InputHal for UsbHidHal {
                 // entrada, que es recuperable; no la bomba, que no lo es.
                 let desde = n.min(buf.len());
                 let resto = &mut buf[desde..];
+
+                // ★ RESUCITAR ANTES DE ATENDER, y aquí y no dentro de cada
+                // aparato: `atender` termina rearmando, y rearmar un endpoint
+                // parado no hace nada —el xHC ignora el timbre de un endpoint
+                // Halted—. Ése es el aparato que "se desconecta" sin que nadie
+                // lo toque: sigue enumerado, sigue teniendo anillo, y no vuelve.
+                //
+                // Va en el reparto porque el reparto es el único sitio que ya
+                // sabe de quién es el evento. Metido en `teclado` y en `raton`
+                // serían dos copias de la misma decisión, que es exactamente
+                // como se coló el bug del Ctrl derecho.
+                if bmo_xhci::cc_halta_endpoint(cc) && self.es_de_alguien(slot, ep) {
+                    bmo_xhci::recuperar_endpoint(slot, ep);
+                }
+
                 if let Some(k) = self.teclado.as_mut().filter(|k| k.direccion().es_mio(slot, ep)) {
                     n += k.atender(cc, resto);
                 } else if let Some(m) =

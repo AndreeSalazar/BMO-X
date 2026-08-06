@@ -139,6 +139,13 @@ pub struct Teclado {
     bombeando: bool,
     /// Lo que el ENDPOINT dice que puede mandar de una vez.
     mps: u16,
+    /// Transferencias que volvieron con error.
+    ///
+    /// El ratón llevaba esta cuenta desde el principio y el teclado no: su rama
+    /// de error era un `if` sin `else`, así que **un teclado que fallaba lo
+    /// hacía en absoluto silencio**. Justo el aparato del que se dijo "se
+    /// desconecta sin sentido".
+    errores: u32,
 }
 
 impl Teclado {
@@ -150,6 +157,7 @@ impl Teclado {
             buf_virt,
             previo_mod: 0,
             previas: [0; 6],
+            errores: 0,
             bombeando: false,
             mps,
         }
@@ -169,6 +177,9 @@ impl Teclado {
     pub fn slot(&self) -> u8 { self.dir.slot }
     pub fn dci(&self) -> u8 { self.dir.dci }
     pub fn bombeando(&self) -> bool { self.bombeando }
+
+    /// Errores de transferencia vistos, igual que en el ratón.
+    pub fn errores(&self) -> u32 { self.errores }
 
     /// Encola la primera transferencia y toca el timbre. **Hasta que esto se
     /// llama, el teclado está enumerado pero mudo.**
@@ -205,6 +216,18 @@ impl Teclado {
             n = self.descifrar(&informe, salida);
             self.previo_mod = informe.modificadores;
             self.previas = informe.teclas;
+        } else {
+            // Un `cc` malo NO se descifra —el buffer trae lo que trajera— pero
+            // sí se dice. Antes esta rama no existía: el informe se tiraba, se
+            // rearmaba, y si el endpoint había quedado parado el teclado moría
+            // sin dejar una línea. Quien resucita el endpoint es el reparto
+            // (`Hid::poll`), que ya sabe de quién es el evento; aquí sólo se
+            // cuenta y se cuenta EN VOZ ALTA.
+            self.errores = self.errores.saturating_add(1);
+            let h = bmo_xhci::hal();
+            h.log_u64("[uhid] teclado: transferencia con error cc=", cc as u64);
+            h.log_u64("  (errores=", self.errores as u64);
+            h.log(")\n");
         }
 
         self.rearmar();
