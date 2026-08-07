@@ -65,7 +65,13 @@ int main() {
      * desde que el escritorio guarda ahí lo que sale de `Ejecutar`. */
     f = fopen("datos/salida.txt", "r");
     if (f == 0) {
-        printf("1. NO ABRE: no existe la ruta o no hay handles libres\n");
+        /* ⚠️ La causa casi siempre es la misma y conviene decirla, no dejar que
+         * el lector la adivine: `datos/salida.txt` NO lo crea correr un
+         * programa —cada uno vuelca en `datos/c<nombre>.txt`— sino el comando
+         * `guarda` del escritorio. Un mensaje que dice "no existe" y no dice
+         * como hacerlo existir manda a mirar la ruta, que estaba bien. */
+        printf("1. NO ABRE datos/salida.txt\n");
+        printf("   escribe 'guarda' en la caja y vuelve a correr esto\n");
         return 1;
     }
     printf("1. abre: si\n");
