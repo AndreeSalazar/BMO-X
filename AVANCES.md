@@ -10,10 +10,86 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ → BEF → BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-03**: **713 tests en verde y CERO rojos**, BMO-X ocupa ~5.4 MiB de 14.8 GiB, y
-> el objetivo declarado es **BANCA + Ada**. Lo que ese objetivo descarta (Wine,
-> Vulkan, libc completa, ventanas con superficies) vale tanto como lo que exige:
-> es lo que hace el proyecto **terminable**.
+> **Al 2026-08-06**: **784 tests en verde y CERO rojos** (57 suites; el conteo
+> excluye `bmo-kernel` y `bmo-rt`, que por diseño no compilan en el anfitrión).
+> BMO-X ocupa ~5.4 MiB de 14.8 GiB, y el objetivo declarado sigue siendo
+> **BANCA + Ada**.
+>
+> ⚠️ **Dos descartes de julio ya no describen el proyecto**: las **ventanas
+> están HECHAS** —marco único con minimizar/maximizar/cerrar, fichas en la barra
+> y el grafo de ESTRATOS navegable, verificado en el Ryzen el 06-08— y **Vulkan
+> está APARCADO con plan escrito** (`PLAN_VULKAN.md`), que no es lo mismo que
+> descartado. Siguen fuera Wine y la libc completa.
+
+## ★★★ 2026-08-06 — EL TECLADO QUE SE "DESCONECTABA", LAS AGUJAS, Y DOS ALMACENES DE PRUEBAS
+
+Sesión de endurecimiento, no de features. Cuatro commits y ninguno añade una
+capacidad nueva: los cuatro hacen que lo que ya existe **falle donde se vea**.
+
+### 1 · Resucitar un endpoint USB parado (`f30e40b0`)
+
+`bmo-xhci` sabía **ver** un endpoint Halted —`ep_state` lo documenta desde hace
+tiempo— y no tenía con qué levantarlo: **Reset Endpoint (14) y Set TR Dequeue
+(16) no estaban escritos**. Un error de transacción del bus dejaba el endpoint
+parado y a partir de ahí `rearmar()` encolaba y tocaba el timbre para nada,
+porque **el xHC ignora el doorbell de un endpoint Halted**. Desde la silla se
+veía idéntico a un teclado desenchufado — que es exactamente como lo contó el
+dueño.
+
+El paso que se olvida es el 2: resetear sin recolocar el puntero deja el
+endpoint listo para leer TRBs viejos con el ciclo cambiado. Y va en **un solo
+sitio**, el reparto de `uhid::Hid::poll`, porque es el único que ya sabe de quién
+es el evento.
+
+⚠️ De propina: el ratón contaba sus errores desde el primer día y **el teclado no
+tenía rama de error en absoluto**. El aparato del que se dijo "se desconecta sin
+sentido" era justo el único que no dejaba una línea al fallar.
+
+### 2 · Las AGUJAS: 57 sitios, 7 mentían (`1017285f`)
+
+Barrido de todo `let _ =`, `.ok()`, `unwrap_or(0)` y `unwrap_or(false)` en
+kernel, userspace y platform. **50 no eran deuda** (callar un parámetro, drenar
+un puerto, una función que ya grita por dentro). Los 7 restantes compartían un
+patrón que no revienta: **convertir un fallo en un valor con pinta de buen
+dato**.
+
+- **El cargador aplicaba relocaciones y tiraba el error.** Una relocación sin
+  aplicar deja la dirección sin corregir: decía "cargado" y el programa saltaba a
+  la basura. Un binario mal relocado no es un binario degradado, **es otro**.
+- **Y devolvía `Ok` con entrada en la dirección cero** si el BEF no traía
+  sección de código.
+- **`free_chain` de FAT32 hacía lo contrario de lo que existe para hacer**: si
+  la FAT no se podía leer, el 0 se tomaba por fin de cadena y se salía dejando
+  perdidos justo los clusters que venía a devolver.
+- Una escritura a disco en un `let _ =` → ahora `FatVolume::fallos_mudos()`,
+  **que tiene que ser cero**.
+- `seed_init` tiraba el resultado de `grant`: init podía arrancar con menos
+  canales de los que creía.
+- TLS: *"no uso TLS"* y *"no pude preparar TLS"* eran el mismo 0.
+- Sin páginas DMA en xHCI se contestaba igual que "el aparato no mandó nada".
+
+La regla queda escrita: **un fallo o se maneja o se GRITA con su número, nunca
+se descarta callando.**
+
+### 3 · Dos almacenes de pruebas, repartidos (`d0d201b5`, `47425909`)
+
+`cobol/src/lib.rs` medía 3687 líneas: **193 de compilador y 3494 de pruebas**.
+Era un almacén de tests con una API pegada arriba. Y `c/src/tests/mod.rs` tenía
+el trabajo a medias — nueve ficheros por tema al lado y **112 tests sueltos** en
+1784 líneas.
+
+Ahora **el fichero es la categoría** en los dos: `rounded::rounded_respeta_el_signo`
+dice qué se rompió antes de abrir nada, y `cargo test printf::` corre esa parte
+sola. 167 + 112 tests movidos **sin reescribir ninguno** — bloques enteros, con
+script, y la cuenta idéntica antes y después (217→217, 238→238).
+
+### 4 · Y una medición que estaba mal
+
+El mapa de monolitos anunciaba `try_parse_function` con 995 líneas. **Mide 138.**
+El medidor contaba llaves dentro de literales de texto. Con el contador
+arreglado, **el parser de C no es un monolito** (1754 líneas, 63 funciones, la
+mayor de 227) y **queda UN monolito real en todo el repo**: el `_start` del
+compositor, 1960 líneas en una función, en un fichero que tiene cuatro.
 
 ## ★★★ 2026-08-03 — COMP-3, y el plan largo de banca ESCRITO
 

@@ -605,6 +605,38 @@ comando corrió y la salida se perdió). Sin esa distinción, la teoría fácil 
 
 ---
 
+## Ep. 27 — El teclado que "se desconectaba solo" (arreglo escrito, sin foto todavía)
+**Síntoma**: contado de memoria por el dueño — *"mi teclado al presionar se puso
+como que se desconecta sin sentido"*. Deja de responder **sin que nadie lo
+toque**, y sigue enchufado.
+
+**Culpable**: un endpoint USB **Halted** y ninguna forma de levantarlo. Un error
+de transacción del bus —ruido, un paquete mal, un cable regular— para el
+endpoint; a partir de ahí `rearmar()` encola y toca el timbre para nada, porque
+**el xHC ignora el doorbell de un endpoint Halted**. El aparato sigue enumerado,
+sigue teniendo anillo, y no vuelve jamás.
+
+Lo que hacía el fallo invisible: el driver **sabía verlo** —`ep_state` documenta
+desde hace tiempo que 2=Halted significa muerto— y sólo lo miraba. Los dos
+comandos que resucitan un endpoint, **Reset Endpoint (14) y Set TR Dequeue
+(16), no estaban escritos**. Y el teclado, a diferencia del ratón, **no tenía
+rama de error**: `if cc == 1 || cc == 13 { … }` y a rearmar. El único aparato
+que fallaba en silencio absoluto era justo del que se sospechaba.
+
+**Moraleja**: *saber diagnosticar no es saber curar.* Un driver que sabe leer el
+estado de avería y no tiene el comando que lo deshace está a medio escribir, y
+la mitad que falta no se nota hasta que el hardware falla de verdad — que es el
+peor momento para descubrirla. El corolario práctico: **el paso que se olvida es
+el segundo.** Resetear sin recolocar el puntero de la cola deja el endpoint
+listo para leer TRBs viejos con el ciclo cambiado; el reset "no sirve de nada" y
+parece que el problema era otro.
+
+*Sin foto todavía*: hay que **provocar** el fallo para verlo. La señal buena es
+`[uhid] teclado: transferencia con error cc=` seguido de `[xhci] endpoint
+RESUCITADO`, y que el teclado siga escribiendo después.
+
+---
+
 ## Las leyes que dejó esta guerra
 
 1. **QEMU miente por omisión**: sin IRQs vivos, sin tiempos físicos, sin
@@ -662,6 +694,14 @@ comando corrió y la salida se perdió). Sin esa distinción, la teoría fácil 
    media instrucción; el límite existía en el kernel y en la documentación, y
    el programa nunca llegaba a verlo. Escribir el programa que ejerce el
    límite es parte de implementar el límite.
+15. **Saber diagnosticar no es saber curar** (Ep. 27). Un driver que sabe leer
+   el estado de avería y no tiene el comando que lo deshace está a medio
+   escribir. Versión general, la que salió del barrido de las 57 agujas: **un
+   fallo o se maneja o se GRITA con su número, nunca se descarta callando** — y
+   lo que hay que cazar no es el `panic`, es el fallo que se convierte en un
+   valor con pinta de buen dato: un `unwrap_or(0)` donde 0 es una dirección
+   física, un cluster libre, un pid con dueño o un índice de cadena. No
+   revientan: **mienten**, y el síntoma sale después y lejos.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*
