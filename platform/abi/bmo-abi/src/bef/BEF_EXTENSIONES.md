@@ -284,12 +284,60 @@ ficheros"*— deja que el kernel decida **antes de arrancarlo**.
 admisión, no un fallo descubierto a mitad de la ejecución. Encaja con
 capabilities mejor que con nada.
 
-### 4 · Dos banderas que prometen y no cumplen
+### 4 · ~~Dos banderas que prometen y no cumplen~~ → **CERRADO el 2026-08-06**
 
 `COMPRESSED` y `HOT_RELOADABLE` están declaradas y **no hay implementación
 detrás**. No son un fallo mientras nadie las ponga, pero una bandera que un
 productor podría escribir y ningún consumidor entiende es una trampa esperando.
 O se cablean, o se marcan como reservadas.
+
+**Se marcaron como reservadas**, y por el camino se destapó que el problema era
+mucho más grande que dos banderas.
+
+---
+
+## ★★ EL AGUJERO QUE ESTABA DEBAJO — auditado el 2026-08-06
+
+La pregunta *"¿quién lee esta bandera?"* se hizo para las doce, no para dos. El
+resultado, contado con `grep`:
+
+| Bandera | Consumidores reales |
+|---|---|
+| `EXECUTABLE` / `SHARED_LIBRARY` | 1 — el validador exige que haya una de las dos |
+| `HAS_MANIFEST` · `HAS_SHADERS` · `HAS_TLS` · `SIGNED` | **0** |
+| `COMPRESSED` · `HOT_RELOADABLE` · `PIE` · `USES_BAREX` | **0** |
+| `PROVENANCE_PE` · `PROVENANCE_ELF` | **0** |
+
+**De doce banderas, el validador miraba dos.** Un BEF podía declarar `SIGNED`
+sin traer firma, `HAS_MANIFEST` sin manifiesto y `HAS_TLS` sin TLS — y el
+validador contestaba **válido**.
+
+Eso no es una comprobación pendiente: **es un campo que miente por
+construcción**. Y duele más aquí que en cualquier otro sitio del proyecto,
+porque el header del BEF es *la parte congelada* — lo que `CONTRIBUTING.md`
+promete que no se mueve para que **una auditoría sirva para todos**. Un contrato
+inmutable cuyos campos nadie verifica es un contrato inmutable que miente.
+
+### Lo que se cableó: `validate_flag_coherence`
+
+1. **Bandera puesta sin su sección → ERROR.** El binario afirma algo falso sobre
+   sí mismo. Hoy nada en BMO puede producir eso, así que exigirlo no rompió ni
+   un binario (790 tests verdes antes y después).
+2. **Sección presente sin su bandera → AVISO.** Es el caso que sí existe: los
+   frontends escriben las secciones y no ponen las banderas. No es mentira, es
+   omisión — pero *la razón de ser de la bandera es que un consumidor decida sin
+   recorrer la tabla*, y quien se fíe de ella no mirará. **Sube a error el día
+   que los productores las pongan.**
+3. **`COMPRESSED` y `HOT_RELOADABLE` → ERROR si se ponen.** Ésta es la respuesta
+   a la pregunta de arriba: *reservadas*, hasta que exista la descompresión y la
+   recarga.
+4. **`PROVENANCE_*` → AVISO.** Las pone el cargador al **devorar**, y devorar no
+   existe todavía; el día que exista serán legítimas y nadie tendrá que volver
+   aquí.
+
+Seis pruebas nuevas fijan las cuatro reglas. La lección general es la misma que
+dejó el barrido de las agujas del mismo día: **un campo que nadie comprueba no
+es documentación optimista, es una mentira con fecha de caducidad.**
 
 ## El veredicto
 

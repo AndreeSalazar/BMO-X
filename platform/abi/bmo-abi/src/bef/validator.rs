@@ -187,8 +187,102 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
         validate_section_flags(entry, kind, i, &mut r);
     }
 
+    validate_flag_coherence(&header, &entries, &mut r);
+
     r.is_loaded = r.is_valid;
     r
+}
+
+/// **Que el header no pueda mentir sobre lo que trae dentro.**
+///
+/// ═══ El agujero que esto tapa ═══
+///
+/// El header declara DOCE banderas y hasta aquí el validador miraba **dos**:
+/// que hubiera `EXECUTABLE` o `SHARED_LIBRARY`, y que no hubiera bits
+/// desconocidos. Las otras diez no se comprobaban contra nada, así que un BEF
+/// podía decir `SIGNED` sin traer firma, `HAS_MANIFEST` sin manifiesto y
+/// `HAS_TLS` sin TLS — y el validador contestaba **válido**.
+///
+/// Eso no es una comprobación pendiente: es un campo que miente por
+/// construcción. Y duele más aquí que en ningún otro sitio, porque el header
+/// del BEF es **la parte congelada** — lo que `CONTRIBUTING.md` promete que no
+/// se mueve para que una auditoría sirva para todos. Un contrato inmutable cuyos
+/// campos nadie verifica es un contrato inmutable que miente.
+///
+/// ═══ Las tres reglas, y por qué cada una tiene la severidad que tiene ═══
+///
+/// 1. **Bandera puesta sin la sección que la respalda → ERROR.** El binario
+///    afirma algo falso sobre sí mismo. Hoy nada en BMO puede producir eso, así
+///    que exigirlo no rompe ningún binario existente.
+///
+/// 2. **Sección presente sin su bandera → AVISO.** Es el caso que sí existe hoy:
+///    los frontends escriben las secciones y no ponen las banderas. No es una
+///    mentira, es una omisión — pero *la razón de ser de la bandera es que un
+///    consumidor pueda decidir sin recorrer la tabla de secciones*, y un
+///    consumidor que se fíe de ella no mirará. Sube a error el día que los
+///    productores las pongan.
+///
+/// 3. **Banderas que prometen lo que el sistema no sabe hacer → ERROR.**
+///    `COMPRESSED` y `HOT_RELOADABLE` están declaradas desde hace mucho y **no
+///    hay una sola línea que las implemente**: cero consumidores en todo el
+///    repositorio. `BEF_EXTENSIONES.md` ya lo dijo — *"o se cablean, o se marcan
+///    como reservadas"*. Esto es marcarlas: quien las ponga se entera aquí y no
+///    en el sitio donde alguien esperaba una sección descomprimida.
+///
+/// `PROVENANCE_ELF`/`PROVENANCE_PE` van aparte: las pone **el cargador** al
+/// devorar, no el compilador, y devorar todavía no existe. Aviso y no error,
+/// porque el día que exista serán legítimas y nadie tendrá que volver aquí.
+fn validate_flag_coherence(
+    header: &BefHeader,
+    entries: &[SectionEntry],
+    r: &mut ValidationResult,
+) {
+    let flags = BefFlags::from_bits_truncate(header.flags);
+    let hay = |k: SectionKind| entries.iter().any(|e| e.kind == k as u8);
+
+    // (bandera, sección que la respalda, nombre para el mensaje)
+    let pares = [
+        (BefFlags::HAS_MANIFEST, SectionKind::Manifest, "manifest"),
+        (BefFlags::HAS_SHADERS, SectionKind::Shaders, "shaders"),
+        (BefFlags::HAS_TLS, SectionKind::Tls, "tls"),
+        (BefFlags::SIGNED, SectionKind::Signature, "signature"),
+    ];
+
+    for (flag, kind, nombre) in pares {
+        let dice = flags.contains(flag);
+        let trae = hay(kind);
+        if dice && !trae {
+            r.error(format!(
+                "el header dice {:?} y no hay seccion {}: el binario miente sobre si mismo",
+                flag, nombre
+            ));
+        } else if trae && !dice {
+            r.warn(format!(
+                "hay seccion {} y el header no lo anuncia ({:?} sin poner): \
+                 un consumidor que se fie de la bandera no la mirara",
+                nombre, flag
+            ));
+        }
+    }
+
+    if flags.contains(BefFlags::COMPRESSED) {
+        r.error(
+            "COMPRESSED esta puesta y NADIE la implementa (cero consumidores): \
+             la bandera esta reservada hasta que exista la descompresion",
+        );
+    }
+    if flags.contains(BefFlags::HOT_RELOADABLE) {
+        r.error(
+            "HOT_RELOADABLE esta puesta y NADIE la implementa (cero consumidores): \
+             la bandera esta reservada hasta que exista la recarga",
+        );
+    }
+    if flags.contains(BefFlags::PROVENANCE_ELF) || flags.contains(BefFlags::PROVENANCE_PE) {
+        r.warn(
+            "bandera de procedencia puesta: la pone el cargador al DEVORAR, \
+             y devorar todavia no existe",
+        );
+    }
 }
 
 fn validate_header(header: &BefHeader, bytes: &[u8], r: &mut ValidationResult) {
@@ -1055,5 +1149,96 @@ mod tests {
             "should warn about non-UTF-8 manifest: {:?}",
             r.issues
         );
+    }
+
+    // ═══════════ El header no puede mentir sobre lo que trae ═══════════
+    //
+    // Doce banderas y hasta ahora se comprobaban dos. Estas pruebas son las
+    // que fijan que las otras diez signifiquen algo.
+
+    /// Decir `SIGNED` sin traer firma es el binario mintiendo sobre sí mismo.
+    #[test]
+    fn una_bandera_sin_su_seccion_invalida_el_bef() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        b.header.flags |= BefFlags::SIGNED.bits();
+        let bytes = b.build().unwrap();
+        let r = validate(&bytes);
+        assert!(
+            !r.is_valid,
+            "un BEF que dice SIGNED y no trae firma NO puede ser valido: {:?}",
+            r.issues
+        );
+    }
+
+    /// Al revés es una omisión, no una mentira: avisa y deja pasar. Sube a
+    /// error el día que los productores pongan las banderas.
+    #[test]
+    fn una_seccion_sin_su_bandera_avisa_pero_no_invalida() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        b.add_section(BefSection::manifest_toml(b"nombre = \"x\"\n".to_vec()));
+        let bytes = b.build().unwrap();
+        let r = validate(&bytes);
+        assert!(r.is_valid, "no invalida: {:?}", r.issues);
+        assert!(
+            r.issues.iter().any(|i| i.message.contains("no lo anuncia")),
+            "tiene que avisar de que el header no anuncia el manifiesto: {:?}",
+            r.issues
+        );
+    }
+
+    /// `COMPRESSED` promete descompresión y no hay una sola línea que la haga.
+    #[test]
+    fn compressed_esta_reservada_hasta_que_alguien_la_implemente() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        b.header.flags |= BefFlags::COMPRESSED.bits();
+        let bytes = b.build().unwrap();
+        let r = validate(&bytes);
+        assert!(
+            !r.is_valid,
+            "una bandera que nadie implementa no puede aceptarse: {:?}",
+            r.issues
+        );
+    }
+
+    /// Lo mismo con la recarga en caliente.
+    #[test]
+    fn hot_reloadable_esta_reservada_hasta_que_alguien_la_implemente() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        b.header.flags |= BefFlags::HOT_RELOADABLE.bits();
+        let bytes = b.build().unwrap();
+        let r = validate(&bytes);
+        assert!(!r.is_valid, "idem HOT_RELOADABLE: {:?}", r.issues);
+    }
+
+    /// La procedencia la pone el CARGADOR al devorar, y devorar no existe: se
+    /// avisa, pero no se invalida — el día que exista serán legítimas.
+    #[test]
+    fn la_procedencia_avisa_porque_devorar_no_existe_todavia() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        b.header.flags |= BefFlags::PROVENANCE_ELF.bits();
+        let bytes = b.build().unwrap();
+        let r = validate(&bytes);
+        assert!(r.is_valid, "no invalida: {:?}", r.issues);
+        assert!(
+            r.issues.iter().any(|i| i.message.contains("DEVORAR")),
+            "tiene que avisar: {:?}",
+            r.issues
+        );
+    }
+
+    /// Y el caso sano: un BEF que no presume de nada sigue siendo válido.
+    #[test]
+    fn un_bef_que_no_presume_de_nada_sigue_valido() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        b.add_section(BefSection::rodata(b"hola\0".to_vec()));
+        let bytes = b.build().unwrap();
+        let r = validate(&bytes);
+        assert!(r.is_valid, "{:?}", r.issues);
     }
 }
