@@ -113,11 +113,80 @@ const SINTETIZABLES: &[(&str, Sintetizador)] = &[
     ("__bmo_syscall_stub", sintetiza_syscall_stub),
     // `memcpy(dst, src, n)` -> dst. Ver `sintetiza_memcpy`.
     ("memcpy", sintetiza_memcpy),
+    // ★ LAS CONVERSIONES DE `printf`. Éstas son las que de verdad se repiten:
+    // ningún ejemplo del repo llama a `memcpy` y **todos** llaman a `printf`.
+    //
+    // No reciben sus argumentos por la pila: el valor llega **en `rax`**, que
+    // es la convención que ya tenían cuando se emitían en línea (la pone
+    // `emit_cargar_de_pila` en el sitio de llamada). Por eso su cuerpo es el
+    // emisor y un `ret`, sin prólogo ni marco — y por eso no hay aquí ninguna
+    // traducción de ABI que poder equivocar.
+    ("__bmo_fmt_i64", sintetiza_fmt_i64),
+    ("__bmo_fmt_u64_dec", sintetiza_fmt_u64_dec),
+    ("__bmo_fmt_u64_hex", sintetiza_fmt_u64_hex),
+    ("__bmo_fmt_char", sintetiza_fmt_char),
+    ("__bmo_fmt_cstr", sintetiza_fmt_cstr),
 ];
 
 /// `syscall; ret` — el cuerpo que estaba cableado en `emit_program`.
 fn sintetiza_syscall_stub(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
+}
+
+/// Las cinco conversiones de `printf`, cada una **una sola vez**.
+///
+/// # Por qué basta el emisor y un `ret`
+///
+/// Los tres hechos que lo permiten, comprobados antes de envolverlos y no
+/// supuestos —si alguno dejara de ser cierto, esto se rompe en metal y no en
+/// compilación—:
+///
+/// 1. **El valor llega en `rax`.** Es lo que ya hacía el sitio de llamada con
+///    `emit_cargar_de_pila`; convertir a `call` no cambia de dónde sale.
+/// 2. **Están equilibrados en `rsp`.** `write_i64` hace `sub rsp,32` … `add
+///    rsp,32`, y su `lea r8,[rsp+32]` no sale de su propio marco. Por eso el
+///    `call` —que empuja ocho bytes de dirección de retorno— no descoloca los
+///    accesos relativos a `rsp` del `printf` que sigue: la carga del argumento
+///    ocurre ANTES del `call`, y el `ret` devuelve la pila.
+/// 3. **Sus saltos son relativos internos**, así que reubicar el bloque no lo
+///    rompe.
+///
+/// # Qué NO se comparte, y no es un descuido
+///
+/// Los trozos literales del formato siguen EN LÍNEA. `console::write_const`
+/// mete el texto **dentro de las instrucciones** como inmediatos —por eso no
+/// necesita `.rodata` ni fixup—, así que su cuerpo es distinto en cada llamada
+/// y no hay nada que compartir. Lo que se comparte son las conversiones, que
+/// es donde está el formateador.
+fn sintetiza_fmt_i64(code: &mut Vec<u8>) {
+    bmo_lower::fmt::write_i64(code);
+    code.push(0xC3); // ret
+}
+
+/// `%u` — decimal sin signo. Hermana de [`sintetiza_fmt_u64_hex`]: mismo
+/// emisor con otra base. Son dos funciones y no una con parámetro porque la
+/// tabla guarda `fn`, no cierres.
+fn sintetiza_fmt_u64_dec(code: &mut Vec<u8>) {
+    bmo_lower::fmt::write_u64_radix(code, 10);
+    code.push(0xC3);
+}
+
+/// `%x` — hexadecimal.
+fn sintetiza_fmt_u64_hex(code: &mut Vec<u8>) {
+    bmo_lower::fmt::write_u64_radix(code, 16);
+    code.push(0xC3);
+}
+
+/// `%c` — un carácter.
+fn sintetiza_fmt_char(code: &mut Vec<u8>) {
+    bmo_lower::fmt::write_char(code);
+    code.push(0xC3);
+}
+
+/// `%s` — una cadena terminada en cero, cuyo puntero llega en `rax`.
+fn sintetiza_fmt_cstr(code: &mut Vec<u8>) {
+    bmo_lower::fmt::write_cstr(code);
+    code.push(0xC3);
 }
 
 /// `memcpy(dst, src, n)` -> `dst`, UNA vez, llamada con `call`.
@@ -587,6 +656,22 @@ impl Codegen {
     /// entrada de la tabla puede ejercer, o sea una rama sin probar
     /// pretendiendo ser previsión. **Si algún día un emisor necesita llamar a
     /// otro, esto tiene que volverse un bucle, y este párrafo es el aviso.**
+    /// `call rel32` a una función de [`SINTETIZABLES`], con su reloc pendiente.
+    ///
+    /// El nombre no se comprueba contra la tabla aquí a propósito: si alguien
+    /// se equivoca escribiéndolo, `patch_call_relocs` falla diciendo *"no
+    /// existe la funcion 'X'"* con el nombre delante, que es un mejor error que
+    /// un `panic` en el compilador — y ese camino ya está probado
+    /// (`una_funcion_desconocida_sigue_fallando_con_su_nombre`).
+    fn emit_call_sintetizada(&mut self, nombre: &str) {
+        self.code.extend_from_slice(&[0xE8]);
+        self.call_relocs.push(CallReloc {
+            offset: self.code.len(),
+            target: nombre.to_string(),
+        });
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
+    }
+
     fn sintetizar_referidas(&mut self) {
         // ⚠️ ESTE GUARDIA VALE MÁS QUE UN COMENTARIO, y el motivo está escrito
         // en la cabecera de `patch_all_fixups`: la sección de código es
@@ -1706,12 +1791,18 @@ impl Codegen {
             self.emit_cargar_de_pila(n - 1 - next_arg);
             next_arg += 1;
 
+            // ★ Aquí estaba el formateador ENTERO, en línea, en cada `%`.
+            //
+            // Un `printf("%d %d %d")` se llevaba tres copias del mismo
+            // conversor de entero a decimal, y no había programa que no
+            // pagara eso: `printf` es la función que todos usan. Ahora es un
+            // `call` de cinco bytes al cuerpo que puso `SINTETIZABLES`.
             match conversion {
-                'd' | 'i' => bmo_lower::fmt::write_i64(&mut self.code),
-                'u' => bmo_lower::fmt::write_u64_radix(&mut self.code, 10),
-                'x' => bmo_lower::fmt::write_u64_radix(&mut self.code, 16),
-                'c' => bmo_lower::fmt::write_char(&mut self.code),
-                's' => bmo_lower::fmt::write_cstr(&mut self.code),
+                'd' | 'i' => self.emit_call_sintetizada("__bmo_fmt_i64"),
+                'u' => self.emit_call_sintetizada("__bmo_fmt_u64_dec"),
+                'x' => self.emit_call_sintetizada("__bmo_fmt_u64_hex"),
+                'c' => self.emit_call_sintetizada("__bmo_fmt_char"),
+                's' => self.emit_call_sintetizada("__bmo_fmt_cstr"),
                 other => {
                     self.errors.push(format!(
                         "printf: '%{other}' aun no se compila (se compilan \

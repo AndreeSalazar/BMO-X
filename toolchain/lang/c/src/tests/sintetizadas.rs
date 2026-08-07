@@ -125,6 +125,69 @@ fn un_programa_que_no_llama_al_stub_no_lo_lleva() {
     );
 }
 
+// ── `printf`: la conversión que de verdad se repite ───────────────────
+//
+// `memcpy` no lo llama ni un ejemplo del repo. `printf` lo llaman los seis, y
+// hasta ahora cada `%d` se llevaba el conversor de entero a decimal completo.
+
+/// El camino del signo de `bmo_lower::fmt::formatear_i64`: `mov r10d, 1` +
+/// `neg rax`. Nueve bytes que sólo puede haber puesto ese formateador.
+const SIGNO_I64: &[u8] = &[0x41, 0xBA, 0x01, 0x00, 0x00, 0x00, 0x48, 0xF7, 0xD8];
+
+/// ★ Cinco `%d` en una llamada, UN formateador.
+///
+/// En línea eran cinco copias. El número que este test fija no es "1 está
+/// bien": es que **no crece con las conversiones**.
+#[test]
+fn cinco_conversiones_emiten_un_solo_formateador() {
+    let fuente = "int main() { printf(\"%d %d %d %d %d\", 1, 2, 3, 4, 5); return 0; }";
+    let bef = compile_source_to_bef(fuente).expect("el programa debe compilar");
+    assert_eq!(
+        cuantas_veces(&bef, SIGNO_I64),
+        1,
+        "el conversor de entero tiene que estar UNA vez, no una por %d"
+    );
+}
+
+/// Y sigue imprimiendo. Las cinco conversiones de una pasada, porque el riesgo
+/// de convertirlas a `call` es idéntico en las cinco y probar sólo `%d` dejaría
+/// cuatro sin mirar.
+#[test]
+fn printf_sigue_imprimiendo_las_cinco_conversiones() {
+    let fuente = "int main() { printf(\"%d|%u|%x|%c|%s\", 0 - 5, 7, 255, 65, \"hi\"); return 0; }";
+    assert_eq!(run_c(fuente), "-5|7|ff|A|hi");
+}
+
+/// El orden importa y es lo que rompería un `call` mal colocado: el argumento
+/// se carga de la pila con un desplazamiento relativo a `rsp` ANTES del
+/// `call`, y el `ret` devuelve los ocho bytes de la dirección de retorno. Si
+/// eso no cuadrara, la segunda conversión leería el argumento de la primera.
+#[test]
+fn los_argumentos_no_se_desordenan_entre_conversiones() {
+    let fuente = "int main() { printf(\"%d,%d,%d\", 11, 22, 33); return 0; }";
+    assert_eq!(run_c(fuente), "11,22,33");
+}
+
+/// ★ EL LÍMITE DEL MECANISMO, escrito para que no se espere lo que no da.
+///
+/// Un `printf` de puro literal no comparte nada: `console::write_const` mete el
+/// texto **dentro de las instrucciones** como inmediatos, así que su cuerpo es
+/// distinto en cada llamada y no hay función que sintetizar.
+///
+/// Esto explica una medida que si no parece un fallo: `raycaster_C.c` tiene
+/// tres `printf` y su código **no se redujo ni un byte** al convertir las
+/// conversiones. Los tres son literales sin `%`.
+#[test]
+fn un_printf_de_solo_literal_no_llama_a_ningun_formateador() {
+    let fuente = "int main() { printf(\"hola que tal\\n\"); return 0; }";
+    let bef = compile_source_to_bef(fuente).expect("el programa debe compilar");
+    assert_eq!(
+        cuantas_veces(&bef, SIGNO_I64),
+        0,
+        "sin conversiones no hay formateador que emitir"
+    );
+}
+
 /// ★ Y la puerta que NO se abrió: la tabla no convierte este codegen en un
 /// enlazador. Un nombre que no está definido y no está en la tabla sigue
 /// fallando en COMPILACIÓN y diciendo cuál es.
