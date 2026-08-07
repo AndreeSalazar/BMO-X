@@ -82,6 +82,8 @@ pub const OP_ESTRATOS_SELLAR: u32 = 0x18;
 pub const OP_ES_NODO: u32 = 0x19;
 /// Ocho bytes del nombre del hijo `arg0`; `arg1` numera el trozo.
 pub const OP_ES_TEXTO: u32 = 0x1A;
+/// **Despierta los otros núcleos.** Ver [`crate::sys::smp_despertar`].
+pub const OP_SMP_DESPERTAR: u32 = 0x1B;
 
 /// Dónde empieza el bloque, y cuánto se ha entregado a este proceso.
 pub const MEM_OP_BASE: u32 = 0x01;

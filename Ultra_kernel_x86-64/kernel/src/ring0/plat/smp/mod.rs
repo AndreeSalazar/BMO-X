@@ -56,14 +56,14 @@ use mapa::*;
 /// Va como parámetro y no como una llamada a CABINA desde aquí por dos razones:
 /// once líneas seguidas inundarían un anillo de 48 eventos, y **`plat/` no tiene
 /// por qué saber pintar**. Quien llama decide cómo se enseña.
-pub fn despertar(rsdp: u64, aviso: impl Fn(u32)) -> (u32, u32) {
+pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
     // ── A quién llamar: lo dice el FIRMWARE, no una suposición ──────────
     //
     // La MADT es la lista de núcleos que declara la placa. Antes esto suponía
     // APIC IDs `0..hilos-1`, cierto en un Zen 3 de un CCD y falso en cuanto se
     // cambie de máquina — y fallando de la peor forma, porque un ID inventado y
     // un núcleo no llamado se ven **igual desde fuera**.
-    let censo = super::madt::enumerar(rsdp);
+    let censo = super::madt::censo();
 
     // Por el PERFIL, no por el nombre del fabricante. Ver `cpu_vendor/profile.rs`.
     let por_cpuid = (crate::ring0::cpu_vendor::profile::active().nucleos)().map(|n| n.hilos);

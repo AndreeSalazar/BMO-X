@@ -323,6 +323,23 @@ pub const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 pub const KLOG_DISPONIBLES: u64 = 0x00;
 pub const KLOG_TOTAL: u64 = 0x01;
 
+/// **Despertar los otros núcleos.** Devuelve `vivos<<32 | esperados`, ambos sin
+/// contar el BSP.
+///
+/// ★ Existe porque el comando `smp` vivía **sólo en el shell de Ring 0**, y ese
+/// shell deja de leer el teclado en cuanto el compositor reclama `KIND_INPUT`.
+/// O sea: había código que no se podía ejecutar desde donde el dueño estaba
+/// sentado. Un mando al que no se llega es un mando que no existe.
+///
+/// Y encaja sin tocar nada de lo congelado: la superficie sigue siendo tres
+/// syscalls, y esto es **una fila más** en la tabla de operaciones de la tarea
+/// — que es exactamente por donde la arquitectura dice que la API crece.
+///
+/// ⚠️ Bloquea mientras dura el bring-up (hasta ~10 ms por núcleo). Quien la
+/// llama debería avisar en pantalla ANTES, porque es la única operación del
+/// sistema que puede tardar un segundo entero.
+pub const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
+
 /// **SELLAR: cierra una transacción vacía en ESTRATOS.** Devuelve la generación
 /// nueva, o 0 si no se pudo.
 ///

@@ -1246,7 +1246,7 @@ fn shell_ktest() {
 /// ningún CPU todavía. Si está mal, lo que se cuelga es este comando y no la
 /// máquina al encenderla; la salida es un reinicio a botón. Ver
 /// `plat/smp.rs` y `docs/SMP_MAESTRO.md`.
-fn shell_smp(ctx: &BootContext) {
+fn shell_smp() {
     dashboard_log_color("== smp ==", SH_TITLE);
 
     // Por el PERFIL, no por el nombre del fabricante: ver `profile.rs`.
@@ -1267,7 +1267,7 @@ fn shell_smp(ctx: &BootContext) {
     // comando que puede colgarse, y así el cuelgue deja dicho en cuál fue.
     // El censo se pinta ANTES de llamar a nadie: si algo cuelga, ya se sabe a
     // quién se iba a llamar y con qué lista.
-    if let Some(c) = crate::ring0::plat::madt::enumerar(ctx.rsdp) {
+    if let Some(c) = crate::ring0::plat::madt::censo() {
         row("firmware", |l| {
             l.dec(c.ids().len() as u64);
             l.txt(" nucleos en la MADT");
@@ -1281,7 +1281,7 @@ fn shell_smp(ctx: &BootContext) {
         row("firmware", |l| l.txt("sin MADT: se supondran los APIC IDs"));
     }
 
-    let (vivos, esperados) = crate::ring0::plat::smp::despertar(ctx.rsdp, |id| {
+    let (vivos, esperados) = crate::ring0::plat::smp::despertar(|id| {
         row("  ->", |l| {
             l.txt("APIC ");
             l.dec(id as u64);
@@ -1578,7 +1578,7 @@ fn run_shell(ctx: &BootContext) -> ! {
         } else if cmd == b"info" {
             shell_info(ctx);
         } else if cmd == b"smp" {
-            shell_smp(ctx);
+            shell_smp();
         } else if cmd == b"tasks" {
             shell_tasks();
         } else if cmd == b"mem" {
@@ -1615,6 +1615,10 @@ pub fn main(ctx: &mut BootContext) {
 
     kbar!(90, 0xFF00_FF00u32); // green @90: past the magenta paint, before s_log
     s_log("[ring0] validating BootContext");
+    // Guardar el `rsdp` — sólo un número, no se lee ninguna tabla aquí. Lo
+    // necesita el censo de la MADT, que lo pide más tarde y desde sitios que no
+    // tienen el `BootContext` delante (el manejador de syscall, por ejemplo).
+    crate::ring0::plat::madt::recordar(ctx.rsdp);
     if !ctx.is_valid() {
         // Make an invalid BootContext VISIBLE (red @90) instead of a silent
         // halt — otherwise a magic mismatch looks identical to a hang.

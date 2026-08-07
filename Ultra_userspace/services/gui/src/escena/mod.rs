@@ -479,7 +479,7 @@ pub(crate) fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
     p.texto(
         c.x + 18,
         c.y + 36,
-        "ruta de un .bex y Enter.  info / cpu / mem / perf / ls / lee / guarda / reboot.",
+        "ruta de un .bex y Enter.  info / cpu / mem / perf / ls / lee / guarda / smp / reboot.",
         TEXTO_TENUE,
     );
     // ★ Las dos ventanas del sistema, DICHAS. Un atajo que no está escrito en

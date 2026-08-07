@@ -139,6 +139,22 @@ pub fn klog_total() -> u64 {
     invoke(CURRENT_TASK, OP_KLOG_INFO, 1, 0, 0).value
 }
 
+/// **Despierta los otros núcleos.** Devuelve `(vivos, esperados)`, sin contar
+/// el que ejecuta esto.
+///
+/// ★ Existe porque el comando `smp` vivía sólo en el shell de Ring 0, y ese
+/// shell **deja de leer el teclado** en cuanto el compositor reclama la
+/// entrada. O sea: había código que no se podía ejecutar desde donde se está
+/// sentado. Un mando al que no se llega es un mando que no existe.
+///
+/// ⚠️ **Bloquea**, y bastante: hasta ~10 ms por núcleo, más la espera final. Es
+/// la única llamada del userland que puede tardar un segundo entero, así que
+/// quien la use debería pintar el aviso **antes** y no después.
+pub fn smp_despertar() -> (u32, u32) {
+    let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 0, 0).value;
+    ((v >> 32) as u32, v as u32)
+}
+
 /// **Cierra una transacción vacía en ESTRATOS.** Devuelve la generación nueva,
 /// o **0** si no se pudo.
 ///

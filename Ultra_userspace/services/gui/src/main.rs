@@ -1267,6 +1267,35 @@ pub extern "C" fn _start() -> ! {
                                 pintar_estado(&p, &caja, "memoria", TEXTO_TENUE);
                                 n = 0;
                             }
+                            // ★ El aviso va ANTES y se VUELCA antes, porque la
+                            // llamada bloquea hasta un segundo entero mientras
+                            // el kernel manda INIT+SIPI a cada núcleo. Un
+                            // mensaje escrito después de volver no explica
+                            // nada: para entonces la espera ya pasó, y lo que
+                            // el dueño habría visto es un escritorio congelado
+                            // sin motivo.
+                            Orden::Smp => {
+                                salida.texto(b"  despertando nucleos (esto tarda)...\n");
+                                pintar_salida(&p, &caja, &salida);
+                                p.volcar();
+                                let (vivos, esperados) = bmo::smp_despertar();
+                                salida.con_tinta(if vivos == esperados {
+                                    TINTA_BIEN
+                                } else {
+                                    TINTA_MAL
+                                });
+                                salida.texto(b"  nucleos en pie: ");
+                                let mut b = [0u8; 10];
+                                let k = decimal((vivos + 1) as u64, &mut b);
+                                salida.texto(&b[..k]);
+                                salida.texto(b" de ");
+                                let k = decimal((esperados + 1) as u64, &mut b);
+                                salida.texto(&b[..k]);
+                                salida.texto(b"   (F11 lo cuenta entero)\n");
+                                salida.con_tinta(TINTA_NORMAL);
+                                pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
+                                n = 0;
+                            }
                             // Se pinta ANTES de pedirlo: la llamada no vuelve,
                             // asi que un mensaje despues no lo veria nadie. Y
                             // que quede escrito distingue "reinicio pedido" de

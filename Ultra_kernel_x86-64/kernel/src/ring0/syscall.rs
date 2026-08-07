@@ -135,6 +135,8 @@ const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// concede — aquí no hay una sola operación que escriba.
 const TASK_OP_ES_NODO: u64 = 0x19;
 const TASK_OP_ES_TEXTO: u64 = 0x1A;
+/// Despertar los otros núcleos. Espejo de `bmo_abi::…::TASK_OP_SMP_DESPERTAR`.
+const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
 /// Las preguntas del cursor. Espejo de `bmo_abi::…::ES_NODO_*`.
 const ES_NODO_RAIZ: u64 = 0x00;
 const ES_NODO_HIJOS: u64 = 0x01;
@@ -480,6 +482,19 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         }
         TASK_OP_KLOG_TEXTO => {
             BmoStatus::ok_value(crate::ring0::core::klog::texto(arg0, arg1))
+        }
+        // ★ Despertar núcleos DESDE Ring 3. Es la única operación de esta tabla
+        // que cambia el estado del hardware en vez de contestar una pregunta, y
+        // por eso conviene decir por qué se acepta: no concede nada al llamante
+        // —los APs quedan parados y sin tocar el kernel— y el resultado es un
+        // número. Ver `plat/smp` y `docs/SMP_MAESTRO.md`.
+        //
+        // El aviso por núcleo se traga aquí: cruzar el borde de Ring 3 once
+        // veces para pintar una línea costaría más que el propio bring-up. Lo
+        // que sí queda es CABINA, que ya recibe el relato entero desde dentro.
+        TASK_OP_SMP_DESPERTAR => {
+            let (vivos, esperados) = crate::ring0::plat::smp::despertar(|_| {});
+            BmoStatus::ok_value(((vivos as u64) << 32) | esperados as u64)
         }
         // ★ Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
         // que pase: la primera operacion que cambia el almacen no puede ser

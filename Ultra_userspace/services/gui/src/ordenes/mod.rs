@@ -75,6 +75,9 @@ pub(crate) enum Orden<'a> {
     Informe,
     Cpu,
     Memoria,
+    /// **Despertar los otros núcleos.** Es la única orden de esta caja que
+    /// puede tardar casi un segundo, y por eso el mensaje va ANTES de llamar.
+    Smp,
     /// `reboot` — reinicia la máquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aquí contestaba "no lo
@@ -194,6 +197,7 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         b"cpu" | b"procesador" => Orden::Cpu,
         b"mem" | b"ram" | b"memoria" => Orden::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Orden::Reiniciar,
+        b"smp" | b"nucleos" => Orden::Smp,
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
         _ if parece_programa(linea) => Orden::Lanzar(linea),
         // Parece un archivo pero no es un programa. Antes esto caia en

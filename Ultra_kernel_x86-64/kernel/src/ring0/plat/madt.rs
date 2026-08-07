@@ -38,7 +38,28 @@
 //! es correcto en x86 por casualidad y es UB en Rust — la clase de cosa que
 //! funciona hasta que el optimizador decide otra cosa.
 
+use core::sync::atomic::{AtomicU64, Ordering};
+
 use crate::ring0::mm::HIGH_MEM_BASE;
+
+/// El `rsdp` que trajo el `BootContext`, guardado una vez.
+///
+/// ★ Está aquí y no se pasa por parámetro porque el que acabó necesitándolo es
+/// **el manejador de syscall**, que no tiene el `BootContext` delante. La
+/// alternativa era arrastrar el contexto por media docena de firmas para
+/// entregar un número que no cambia nunca.
+static RSDP: AtomicU64 = AtomicU64::new(0);
+
+/// Lo llama `phase::main` una vez. Sólo guarda un número: no lee la tabla, no
+/// toca hardware, y por eso puede estar en el camino de arranque sin discusión.
+pub fn recordar(rsdp: u64) {
+    RSDP.store(rsdp, Ordering::SeqCst);
+}
+
+/// El censo, con el `rsdp` que se guardó al arrancar.
+pub fn censo() -> Option<Censo> {
+    enumerar(RSDP.load(Ordering::SeqCst))
+}
 
 /// Hasta cuántos núcleos se apuntan. El 5600X trae 12; 64 cubre cualquier cosa
 /// que quepa en la máscara de 32 bits de `smp` y bastante más.
