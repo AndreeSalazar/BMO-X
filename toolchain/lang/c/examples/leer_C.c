@@ -25,6 +25,21 @@
  * dos lecturas del mismo sitio den lo mismo es lo que distingue "leyó" de
  * "escribió algo en mi buffer".
  *
+ * ⚠️ SIN TILDES NI GUIONES LARGOS DENTRO DE LAS CADENAS, y no es estilo:
+ *
+ * Este programa pesaba **1.101.952 bytes** y no arrancaba —`MAX_BEX` es 1 MiB,
+ * asi que `run` contestaba "no esta" con el fichero delante—. La causa eran
+ * CUATRO caracteres no-ASCII dentro de literales: cada uno hace que BMO C emita
+ * ~500 KB de basura. Quitandolos, el mismo programa ocupa **20.608**.
+ *
+ * O sea que el `.bex` de 1 MB nunca fue un problema de relleno ni de
+ * alineacion: era codigo emitido de mas, y lo medido lo dijo entero — la
+ * seccion `code` salia con 696 KB y `rodata` con 397 KB para cien lineas de C.
+ *
+ * El bug del compilador esta ANOTADO Y SIN ARREGLAR. Mientras tanto, en los
+ * literales solo ASCII. En los comentarios da igual: el preprocesador los quita
+ * antes de que el lexer los vea.
+ *
  * ══ Por qué el destino sale de `malloc` y no de la pila ══
  *
  * Porque el kernel sólo acepta escribir dentro de un bloque QUE ÉL CONCEDIÓ, y
@@ -50,7 +65,7 @@ int main() {
      * desde que el escritorio guarda ahí lo que sale de `Ejecutar`. */
     f = fopen("datos/salida.txt", "r");
     if (f == 0) {
-        printf("1. NO ABRE — no existe la ruta o no hay handles libres\n");
+        printf("1. NO ABRE: no existe la ruta o no hay handles libres\n");
         return 1;
     }
     printf("1. abre: si\n");
@@ -115,7 +130,7 @@ int main() {
         }
     }
     if (iguales == 1) {
-        printf("6. LAS DOS LECTURAS COINCIDEN — fopen/fread/fseek funcionan\n");
+        printf("6. LAS DOS LECTURAS COINCIDEN: fopen/fread/fseek funcionan\n");
     } else {
         printf("6. NO coinciden: el cursor o la copia estan mal\n");
     }
