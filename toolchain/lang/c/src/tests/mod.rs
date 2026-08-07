@@ -55,6 +55,10 @@ mod puerta;
 mod punteros_funcion;
 mod semantic;
 mod silencios;
+/// Las funciones SINTETIZADAS: emitidas una vez, alcanzadas con `call`. Aquí
+/// se cuenta **cuántas veces sale el cuerpo**, que es lo que un test de
+/// comportamiento no puede ver.
+mod sintetizadas;
 mod syscalls;
 
 // ── Banco de pruebas: EJECUTAR el programa, no mirarlo ──────────────
