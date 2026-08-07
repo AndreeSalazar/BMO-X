@@ -731,8 +731,14 @@ pub mod cursor {
 
     /// **Lee el hijo `i` y compara su BLAKE3 con su `:firma`.**
     ///
-    /// `0` no lleva firma · `1` CUADRA · `2` NO CUADRA · `3` no se pudo leer
-    /// o no cabe en el buffer.
+    /// `0` no lleva firma · `1` CUADRA · `2` NO CUADRA · `3` no se pudo leer ·
+    /// `4` **no cabe** en el buffer de verificación.
+    ///
+    /// ★ El `4` no estaba y hacía falta: "no cabe" contestaba `3`, o sea **el
+    /// mismo código que un fallo de lectura**. El panel lo pintaba en rojo como
+    /// *"no se pudo leer"*, y en esa ventana el rojo significa "hay un problema
+    /// en el disco". Un archivo sano de 300 KiB acusaba al disco de una avería
+    /// que no existía. El tope es NUESTRO y ahora lo dice él.
     ///
     /// Se pide a mano y no se calcula al pintar: leer un archivo entero y
     /// hacerle un hash sesenta veces por segundo convertiría un panel en un
@@ -754,7 +760,7 @@ pub mod cursor {
             None => return 3,
         };
         if a.size as usize > VERIFICA_MAX {
-            return 3;
+            return 4; // no cabe — el límite es nuestro, no del disco
         }
         let buf = unsafe { &mut *core::ptr::addr_of_mut!(VERIFICA_BUF) };
         let leidos = match super::flujo(a, buf) {

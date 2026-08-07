@@ -523,6 +523,12 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
             Some(bmo::estratos::FIRMA_AUSENTE) => {
                 p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "sin firma", TEXTO_TENUE);
             }
+            Some(bmo::estratos::FIRMA_NO_CABE) => {
+                // TENUE y no rojo: el archivo está bien, lo que no cabe es
+                // nuestro buffer de comprobación. Pintarlo en rojo mandaba a
+                // buscar una corrupción que no existe.
+                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "no cabe (>256 KiB)", TEXTO_TENUE);
+            }
             _ => {
                 p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "no se pudo leer", TEXTO_MAL);
             }

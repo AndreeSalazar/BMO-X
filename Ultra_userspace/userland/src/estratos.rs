@@ -86,6 +86,14 @@ pub const FIRMA_AUSENTE: u64 = 0;
 pub const FIRMA_CUADRA: u64 = 1;
 pub const FIRMA_NO_CUADRA: u64 = 2;
 pub const FIRMA_ILEGIBLE: u64 = 3;
+/// ★ **El archivo no cabe en el buffer de verificación**, y eso es un límite
+/// NUESTRO, no una avería del disco.
+///
+/// Compartía número con `FIRMA_ILEGIBLE`, así que un archivo perfectamente sano
+/// de más de 256 KiB se pintaba **en rojo** como "no se pudo leer" — y en esta
+/// ventana el rojo significa *"hay un problema en el disco"*. El archivo se lee
+/// sin problema; lo que no cabe es la comprobación.
+pub const FIRMA_NO_CABE: u64 = 4;
 
 /// ★ Lee el hijo entero y compara su BLAKE3 con su `:firma`.
 ///
