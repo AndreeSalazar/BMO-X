@@ -84,6 +84,13 @@ pub const OP_ES_NODO: u32 = 0x19;
 pub const OP_ES_TEXTO: u32 = 0x1A;
 /// **Despierta los otros núcleos.** Ver [`crate::sys::smp_despertar`].
 pub const OP_SMP_DESPERTAR: u32 = 0x1B;
+/// **Toma lo que otro proceso me ofreció.** Ver [`crate::sys::tomar_prestado`].
+pub const OP_TOMAR: u32 = 0x1C;
+/// Operación sobre un bloque PROPIO: ofrecer un trozo a otra tarea.
+pub const MEM_OP_OFRECER: u32 = 0x03;
+/// Operaciones sobre un handle de memoria PRESTADA (`KIND_PRESTADO`).
+pub const PRESTADO_OP_BASE: u32 = 0x01;
+pub const PRESTADO_OP_BYTES: u32 = 0x02;
 
 /// Dónde empieza el bloque, y cuánto se ha entregado a este proceso.
 pub const MEM_OP_BASE: u32 = 0x01;

@@ -654,6 +654,20 @@ pub fn vive(tid: u32) -> bool {
     s.tasks.iter().any(|t| t.tid == tid && t.state != TaskState::Empty)
 }
 
+/// El `pid` de la tarea `tid`, si vive.
+///
+/// Existe porque Ring 3 sólo conoce **tids** —`ejecutar_en` devuelve uno— y los
+/// préstamos de memoria van a un `pid`. Traducirlo aquí evita que el userland
+/// tenga que aprender un concepto que no usa para nada más.
+pub fn pid_de(tid: u32) -> Option<u32> {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks
+        .iter()
+        .find(|t| t.tid == tid && t.state != TaskState::Empty)
+        .map(|t| t.pid)
+}
+
 pub fn counts() -> (usize, usize) {
     let _g = SCHED_LOCK.lock();
     let s = sched();

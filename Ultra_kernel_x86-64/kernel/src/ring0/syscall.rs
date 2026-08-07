@@ -871,6 +871,13 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             cap::KIND_MEMORIA if frame.rsi == MEM_OP_OFRECER => {
                 let pid = scheduler::current_pid();
                 let entregado = crate::ring0::obj::memoria::entregado_por(pid);
+                // ★ El destino llega como TID y no como pid: `ejecutar_en`
+                // devuelve un tid, que es lo único que Ring 3 conoce de un hijo.
+                // Traducirlo aquí evita que el userland aprenda un concepto que
+                // no usa para nada más.
+                let Some(destino) = scheduler::pid_de(frame.r8 as u32) else {
+                    return BmoStatus::ok_value(0);
+                };
                 let ok = crate::ring0::obj::prestamo::ofrecer(
                     pid,
                     crate::ring0::mm::vmm::read_cr3(),
@@ -878,7 +885,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     entregado,
                     frame.rdx,
                     frame.r10,
-                    frame.r8 as u32,
+                    destino,
                 );
                 BmoStatus::ok_value(ok as u64)
             }

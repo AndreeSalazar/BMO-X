@@ -162,6 +162,41 @@ pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
     ((v >> 32) as u32, v as u32)
 }
 
+/// **Ofrece un trozo de un bloque MÍO a otra tarea.** `true` si quedó apuntado.
+///
+/// `bloque` es el handle de la memoria propia; `desde`/`bytes`, el trozo; `tid`,
+/// a quién va — el que devuelve `ejecutar_en`.
+///
+/// ★ Esto es lo que hace posible el LIENZO sin que el kernel sepa qué es un
+/// lienzo. El compositor ofrece la parte de abajo de su lienzo, la app la toma,
+/// y pinta ahí directamente: **cero copias**. Y la misma operación sirve para
+/// audio, captura o cualquier bloque grande entre procesos.
+///
+/// Quien decide cuánto y a quién es **quien presta**, no el kernel. El kernel
+/// sólo comprueba que el bloque sea tuyo y que el trozo quepa dentro.
+pub fn ofrecer(bloque: u64, desde: u64, bytes: u64, tid: u32) -> bool {
+    invoke(bloque, MEM_OP_OFRECER, desde, bytes, tid as u64).value != 0
+}
+
+/// **Toma lo que otro me haya ofrecido.** Devuelve `(base, bytes)`, o `None`.
+///
+/// El mapeo ocurre dentro de esta llamada, en el espacio de direcciones de
+/// quien la hace. A partir de aquí se escribe con un `mov` normal: el kernel no
+/// vuelve a enterarse, que es el punto entero de prestar memoria.
+pub fn tomar_prestado() -> Option<(u64, u64)> {
+    let h = invoke(CURRENT_TASK, OP_TOMAR, 0, 0, 0).value;
+    if h == 0 {
+        return None;
+    }
+    let base = invoke(h, PRESTADO_OP_BASE, 0, 0, 0).value;
+    let bytes = invoke(h, PRESTADO_OP_BYTES, 0, 0, 0).value;
+    if base == 0 || bytes == 0 {
+        None
+    } else {
+        Some((base, bytes))
+    }
+}
+
 /// **Desactiva los obreros**: vuelven a `hlt` y ahí se quedan.
 ///
 /// La otra mitad del mando. Un obrero en espera **gira**, no duerme —sacarlo de

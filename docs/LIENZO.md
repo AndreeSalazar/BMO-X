@@ -1,5 +1,66 @@
 # LIENZO — cómo una app tiene su ventana sin robar la pantalla
 
+---
+
+# ✅ ESTADO AL 2026-08-07 — LÉASE ESTO PRIMERO
+
+El diseño de abajo se **construyó, y por el camino cambió dos veces por
+preguntas del dueño**. Las dos veces salió más pequeño. Lo que hay hoy en el
+código es esto:
+
+## Lo que está HECHO y compila
+
+**En el kernel** (`ring0/obj/prestamo.rs`), y **no sabe qué es un lienzo**:
+
+```
+MEM_OP_OFRECER (0x03 sobre KIND_MEMORIA)   presto un trozo de MI bloque a un tid
+TASK_OP_TOMAR  (0x1C)                      tomo lo que me ofrecieron
+KIND_PRESTADO  (0x51)                      lo prestado ≠ lo propio
+```
+
+**En userland** (`bmo::ofrecer` / `bmo::tomar_prestado`).
+
+## Los dos giros, y por qué importan más que el código
+
+**Giro 1 — *"¿por qué copiar? Que sea un reflejo."*** Copiar no era una
+ineficiencia heredada: **en un escritorio con ventanas que se solapan, la copia
+ES la composición** — decide quién tapa a quién e impide que una app pinte fuera
+de lo suyo. Pero para una ventana **de ancho completo** las filas sí son
+contiguas y el reflejo es exacto. De ahí los dos modos: *reflejo* (uno, a
+pantalla completa, cero copias) y *ventana* (varios, con copia).
+
+**Giro 2 — *"¿Ring 3 no puede administrar eso él?"*** La primera versión metía
+`KIND_LIENZO` y dos operaciones de escritorio **dentro del kernel**. Eso era
+enseñarle a Ring 0 un concepto que no es suyo. Ahora el kernel sólo presta
+memoria y **no sabe para qué**: quién, cuánto y cuándo lo decide el compositor.
+Es el patrón de **seL4**, y de regalo sirve para audio, captura de vídeo y
+bloques grandes entre procesos.
+
+> **El kernel salió más pequeño que antes de empezar: −309 líneas, +265.**
+
+## Lo que FALTA, y es todo de Ring 3
+
+1. El compositor **ofrece** la parte de abajo de su lienzo al tid que lanza.
+2. El compositor **no limpia** esa zona mientras esté prestada.
+3. El raycaster **toma** en vez de reclamar la pantalla (cuatro líneas).
+
+Ninguna de las tres toca memoria virtual. Es la parte tranquila.
+
+## Decisiones ya cerradas, para no volver a discutirlas
+
+- **El formato lo declara la app**, no lo fija el kernel — DOOM pinta en 8 bits
+  con paleta.
+- **Se ofrece y se toma**, no se empuja: mapear en el espacio de otro exigiría
+  el `CR3` de un proceso que no está corriendo, y esa infraestructura no existe.
+- **`vmm::unmap_page` devuelve el marco y NO lo libera.** Es lo que hace segura
+  la devolución: los marcos son del que prestó, y liberarlos entregaría su
+  memoria a un tercero.
+- **`KIND_PRESTADO` ≠ `KIND_MEMORIA`** aunque las dos sean memoria: al morir,
+  una se libera y la otra sólo se desmapea.
+
+---
+
+
 > Escrito el **2026-08-07**, antes de tocar una línea de código. Idea del dueño:
 > *"el `gui.bex` es el principal de escritorio, ahí se queda; otro que sea el
 > reflejo de las apps para que convivan en pantalla, como en Windows abro Dota 2
