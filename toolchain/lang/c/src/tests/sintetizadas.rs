@@ -207,3 +207,68 @@ fn una_funcion_desconocida_sigue_fallando_con_su_nombre() {
         "el error tiene que decir QUÉ falta, y dijo: {msg}"
     );
 }
+
+// ── La pieza 5: las cadenas ───────────────────────────────────────────
+//
+// Ningún ejemplo del repo llama a `strlen`, `strcpy`, `memset`, `strcmp`,
+// `strchr`, `strncmp` ni `memcmp` — cero usos en los seis `.c`. Así que la
+// conversión no movió ni un byte de lo que existe, y estos tests son la única
+// prueba de que hace lo que dice. En un programa que las usa cuarenta veces
+// cada una, el código pasa de 6268 a 4249 bytes (−32,2%).
+
+/// El bucle de `bmo_lower::memoria::largo`: `mov cl,[rdi+rax]` + `test cl,cl`.
+const BUCLE_LARGO: &[u8] = &[0x8A, 0x0C, 0x07, 0x84, 0xC9];
+
+/// ★ Veinte `strlen`, UN cuerpo.
+#[test]
+fn veinte_strlen_emiten_un_solo_cuerpo() {
+    let llamadas = "t = t + strlen(s); ".repeat(20);
+    let fuente = format!(
+        "int main() {{ char s[8]; int t; s[0]=104; s[1]=0; t=0; {llamadas} \
+         printf(\"%d\", t); return 0; }}"
+    );
+    let bef = compile_source_to_bef(&fuente).expect("el programa debe compilar");
+    assert_eq!(cuantas_veces(&bef, BUCLE_LARGO), 1, "veinte strlen, un cuerpo");
+    assert_eq!(run_c(&fuente), "20", "y sigue midiendo: 20 veces largo(\"h\") = 20");
+}
+
+/// ★ `strcpy` es el único que COMPONE dos emisores, y el orden no es libre:
+/// `largo` ensucia `cl`, así que la medida tiene que salir antes de cargar
+/// `rcx` con ella. Al revés, `rcx` llegaría machacado al bucle de copia.
+///
+/// Se usa una cadena de varios caracteres a propósito: con una de un solo byte
+/// un `rcx` equivocado podría acertar por casualidad.
+#[test]
+fn strcpy_sintetizado_copia_la_cadena_entera_y_la_cierra() {
+    let fuente = "int main() { char d[16]; char *s; \
+                  s = \"abcdef\"; \
+                  strcpy(d, s); \
+                  printf(\"%s|%d\", d, strlen(d)); return 0; }";
+    assert_eq!(run_c(fuente), "abcdef|6");
+}
+
+/// `memset` devuelve el destino, igual que `memcpy`, y por la misma vía: un
+/// `mov rax,[rbp+16]` en el epílogo.
+#[test]
+fn memset_sintetizado_devuelve_el_destino() {
+    let fuente = "int main() { char a[8]; char *p; \
+                  p = memset(a, 65, 3); \
+                  printf(\"%d%d%d\", p[0], p[1], p[2]); return 0; }";
+    assert_eq!(run_c(fuente), "656565");
+}
+
+/// `strncmp` y `memcmp` salen del MISMO emisor con un booleano distinto —si el
+/// terminador corta o no—, y son dos entradas separadas de la tabla. Este test
+/// existe porque una tabla con un solo nombre para las dos daría a `memcmp` la
+/// semántica de `strncmp` y compilaría igual de bien.
+#[test]
+fn strncmp_y_memcmp_no_se_confunden_al_sintetizarse() {
+    // Tras el terminador los bytes DIFIEREN. `strncmp` se para y dice "iguales";
+    // `memcmp` sigue y encuentra la diferencia.
+    let fuente = "int main() { char a[8]; char b[8]; \
+                  a[0]=104; a[1]=0; a[2]=1; \
+                  b[0]=104; b[1]=0; b[2]=9; \
+                  printf(\"%d,%d\", strncmp(a, b, 4) == 0, memcmp(a, b, 4) == 0); \
+                  return 0; }";
+    assert_eq!(run_c(fuente), "1,0");
+}

@@ -126,7 +126,62 @@ const SINTETIZABLES: &[(&str, Sintetizador)] = &[
     ("__bmo_fmt_u64_hex", sintetiza_fmt_u64_hex),
     ("__bmo_fmt_char", sintetiza_fmt_char),
     ("__bmo_fmt_cstr", sintetiza_fmt_cstr),
+    // ★ LAS CADENAS — la pieza 5, que cierra el enlazador.
+    //
+    // Se convirtieron ÉSTAS y no todas, y el criterio fue medido: enlazar
+    // cuesta ~10 bytes por llamada (empujar + `call` + devolver la pila) y en
+    // línea cuesta ~3 más el cuerpo. O sea que enlazar gana cuando el cuerpo
+    // pasa de unos 7 bytes. Los cuerpos, medidos:
+    //
+    //   comparar_n (strncmp/memcmp)  46      buscar   (strchr)  39
+    //   comparar   (strcmp)          25      largo    (strlen)  15
+    //   rellenar   (memset)          15      copiar   (memcpy)  20
+    //   absoluto   (abs)             13  <-- se queda EN LÍNEA
+    //
+    // `abs` no entra: trece bytes apenas pasan del coste de llamarlo, y con el
+    // prólogo el cambio saldría a perder en cualquier programa que no lo llame
+    // muchas veces. La regla que lo decide no es "todo a la tabla".
+    ("strlen", sintetiza_strlen),
+    ("strcpy", sintetiza_strcpy),
+    ("memset", sintetiza_memset),
+    ("strcmp", sintetiza_strcmp),
+    ("strchr", sintetiza_strchr),
+    ("strncmp", sintetiza_strncmp),
+    ("memcmp", sintetiza_memcmp),
 ];
+
+// ── Los ladrillos de un cuerpo sintetizado ────────────────────────────
+//
+// Existen para no escribir `[rbp+16]` a mano siete veces, que es exactamente
+// cómo se cuela un `[rbp+24]` donde iba `[rbp+16]`: el binario compila, el
+// emulador lo ejecuta, y la función lee el argumento de al lado.
+
+/// El ModRM de `mov <r64>, [rbp+disp8]` para los registros que usan los
+/// emisores de L1. El byte es `0b01_reg_101`: modo disp8, base `rbp`.
+const A_RAX: u8 = 0x45;
+const A_RCX: u8 = 0x4D;
+const A_RDX: u8 = 0x55;
+const A_RSI: u8 = 0x75;
+const A_RDI: u8 = 0x7D;
+
+/// `push rbp; mov rbp, rsp` — lo que hace que `[rbp+16]` sea el argumento 0.
+fn prologo(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]);
+}
+
+/// `pop rbp; ret`.
+fn epilogo(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x5D, 0xC3]);
+}
+
+/// `mov <reg>, [rbp + 16 + 8*n]` — el argumento n-ésimo a un registro.
+///
+/// El 16 es la dirección de retorno más el `rbp` empujado; el resto sale del
+/// orden de empuje del sitio de llamada, que es de DERECHA A IZQUIERDA (el
+/// `.rev()`), así que el argumento 0 es el que queda más cerca.
+fn carga_arg(code: &mut Vec<u8>, reg: u8, n: u8) {
+    code.extend_from_slice(&[0x48, 0x8B, reg, 16 + 8 * n]);
+}
 
 /// `syscall; ret` — el cuerpo que estaba cableado en `emit_program`.
 fn sintetiza_syscall_stub(code: &mut Vec<u8>) {
@@ -187,6 +242,100 @@ fn sintetiza_fmt_char(code: &mut Vec<u8>) {
 fn sintetiza_fmt_cstr(code: &mut Vec<u8>) {
     bmo_lower::fmt::write_cstr(code);
     code.push(0xC3);
+}
+
+// ── LA PIEZA 5: las cadenas ───────────────────────────────────────────
+//
+// Las convenciones de registro de cada emisor están LEÍDAS DE SU FUENTE
+// (`bmo_lower::memoria`), no copiadas del sitio de llamada que se sustituye:
+// si el sitio de llamada tuviera un error, copiarlo lo habría conservado.
+//
+//   largo      RDI=s                    -> RAX
+//   rellenar   RDI=dst RAX=val RCX=n
+//   comparar   RDI=a   RSI=b            -> RAX
+//   comparar_n RDI=a   RSI=b   RDX=n    -> RAX
+//   buscar     RDI=s   RSI=c (en SIL)   -> RAX
+
+/// `strlen(s)` -> largo.
+fn sintetiza_strlen(code: &mut Vec<u8>) {
+    prologo(code);
+    carga_arg(code, A_RDI, 0);
+    bmo_lower::memoria::largo(code);
+    epilogo(code);
+}
+
+/// `memset(dst, val, n)` -> dst.
+fn sintetiza_memset(code: &mut Vec<u8>) {
+    prologo(code);
+    carga_arg(code, A_RDI, 0);
+    carga_arg(code, A_RAX, 1);
+    carga_arg(code, A_RCX, 2);
+    bmo_lower::memoria::rellenar(code);
+    carga_arg(code, A_RAX, 0); // devuelve dst
+    epilogo(code);
+}
+
+/// `strcmp(a, b)` -> diferencia con signo.
+fn sintetiza_strcmp(code: &mut Vec<u8>) {
+    prologo(code);
+    carga_arg(code, A_RDI, 0);
+    carga_arg(code, A_RSI, 1);
+    bmo_lower::memoria::comparar(code);
+    epilogo(code);
+}
+
+/// `strchr(s, c)` -> puntero al byte, o cero.
+fn sintetiza_strchr(code: &mut Vec<u8>) {
+    prologo(code);
+    carga_arg(code, A_RDI, 0);
+    carga_arg(code, A_RSI, 1);
+    bmo_lower::memoria::buscar(code);
+    epilogo(code);
+}
+
+/// `strncmp(a, b, n)` — para en el terminador.
+fn sintetiza_strncmp(code: &mut Vec<u8>) {
+    sintetiza_comparar_n(code, true);
+}
+
+/// `memcmp(a, b, n)` — NO para en el terminador: compara los `n` bytes.
+///
+/// Es el mismo emisor que `strncmp` con un booleano distinto, y esa diferencia
+/// de un bit es toda la diferencia entre las dos funciones de C.
+fn sintetiza_memcmp(code: &mut Vec<u8>) {
+    sintetiza_comparar_n(code, false);
+}
+
+fn sintetiza_comparar_n(code: &mut Vec<u8>, parar_en_cero: bool) {
+    prologo(code);
+    carga_arg(code, A_RDI, 0);
+    carga_arg(code, A_RSI, 1);
+    carga_arg(code, A_RDX, 2);
+    bmo_lower::memoria::comparar_n(code, parar_en_cero);
+    epilogo(code);
+}
+
+/// `strcpy(dst, src)` -> dst.
+///
+/// El único que COMPONE dos emisores, y el orden no es libre: `largo` ensucia
+/// `cl`, así que la medida tiene que salir ANTES de cargar `rcx` con ella. Al
+/// revés, `rcx` llegaría machacado al bucle de copia y se copiarían los bytes
+/// que dijera la basura.
+///
+/// El `inc rax` es el terminador: `largo` no lo cuenta —que es lo que dice
+/// `strlen`— pero `strcpy` sí lo copia, y sin él la cadena destino se quedaría
+/// sin cerrar y el siguiente `strlen` leería memoria ajena.
+fn sintetiza_strcpy(code: &mut Vec<u8>) {
+    prologo(code);
+    carga_arg(code, A_RDI, 1); // src
+    bmo_lower::memoria::largo(code); // rax = largo(src)
+    code.extend_from_slice(&[0x48, 0xFF, 0xC0]); // inc rax  (el terminador)
+    code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+    carga_arg(code, A_RDI, 0); // dst
+    carga_arg(code, A_RSI, 1); // src
+    bmo_lower::memoria::copiar(code);
+    carga_arg(code, A_RAX, 0); // devuelve dst
+    epilogo(code);
 }
 
 /// `memcpy(dst, src, n)` -> `dst`, UNA vez, llamada con `call`.
@@ -1494,69 +1643,8 @@ impl Codegen {
                 self.soltar_tres();
                 Some(())
             }
-            ("memset", 3) => {
-                self.cargar_tres(args, x86::RDI, x86::RAX, x86::RCX);
-                memoria::rellenar(&mut self.code);
-                self.soltar_tres();
-                Some(())
-            }
-            ("strlen", 1) => {
-                self.emit_expr(&args[0]);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
-                memoria::largo(&mut self.code);
-                Some(())
-            }
             // `strncmp` y `memcmp` comparten emisión y se distinguen en UN bool:
             // si el terminador corta o no. Ver `memoria::comparar_n`.
-            ("strncmp", 3) | ("memcmp", 3) => {
-                let parar_en_cero = name == "strncmp";
-                self.emit_expr(&args[2]);
-                self.code.push(0x50); // push n
-                self.emit_expr(&args[1]);
-                self.code.push(0x50); // push b
-                self.emit_expr(&args[0]);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
-                self.code.push(0x5E); // pop rsi (b)
-                self.code.push(0x5A); // pop rdx (n)
-                memoria::comparar_n(&mut self.code, parar_en_cero);
-                Some(())
-            }
-            ("strchr", 2) => {
-                self.emit_expr(&args[1]);
-                self.code.push(0x50); // push c
-                self.emit_expr(&args[0]);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
-                self.code.push(0x5E); // pop rsi (c)
-                memoria::buscar(&mut self.code);
-                Some(())
-            }
-            ("strcmp", 2) => {
-                self.emit_expr(&args[1]);
-                self.code.push(0x50); // push
-                self.emit_expr(&args[0]);
-                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
-                self.code.extend_from_slice(&[0x5E]);             // pop rsi
-                memoria::comparar(&mut self.code);
-                Some(())
-            }
-            ("strcpy", 2) => {
-                // `strcpy` es `copiar` con la medida sacada del origen: se mide
-                // primero y se copia el terminador también (de ahí el +1).
-                self.emit_expr(&args[1]);
-                self.code.push(0x50);                             // push src
-                self.emit_expr(&args[0]);
-                self.code.push(0x50);                             // push dst
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x7C, 0x24, 0x08]); // mov rdi,[rsp+8]
-                memoria::largo(&mut self.code);                   // rax = largo(src)
-                self.code.extend_from_slice(&[0x48, 0xFF, 0xC0]); // inc rax (el cero)
-                self.code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
-                self.code.extend_from_slice(&[0x5F]);             // pop rdi (dst)
-                self.code.extend_from_slice(&[0x5E]);             // pop rsi (src)
-                self.code.push(0x57);                             // push rdi (para devolverlo)
-                memoria::copiar(&mut self.code);
-                self.code.extend_from_slice(&[0x58]);             // pop rax
-                Some(())
-            }
             ("abs", 1) => {
                 self.emit_expr(&args[0]);
                 memoria::absoluto(&mut self.code);
