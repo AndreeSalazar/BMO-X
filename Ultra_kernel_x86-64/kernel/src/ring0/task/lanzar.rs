@@ -216,6 +216,20 @@ fn con_buffer(path: &str) -> Informe {
         match crate::ring0::fsys::fs::load(path, buf) {
             Ok(v) => ("FAT32", v, None),
             Err(e) => {
+                // ★ EL MOTIVO, AL KLOG. `Fallo::NoSeEncuentra` ya lo lleva
+                // dentro, pero por la puerta sólo cabe un código y Ring 3 lo
+                // pinta todo como *"no esta: revisa la ruta"* — un mensaje que
+                // te manda a mirar la ruta cuando la ruta es perfecta.
+                //
+                // Pasó de verdad el 2026-08-07: `c/leer.bex` SALÍA EN `ls` y
+                // `run` decía que no estaba. El motivo real era otro —la imagen
+                // pesa 1,1 MB y `MAX_BEX` es 1 MiB, así que no cabía en el
+                // búfer— y no había forma de saberlo desde fuera.
+                //
+                // Arreglar el código de error es tocar el ABI; escribir el
+                // motivo donde ya se mira, no. F11 lo cuenta.
+                crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
+                crate::ring0::cabina::warn("lanzar", e.name(), 0);
                 return Informe {
                     origen: "FAT32",
                     bytes: 0,

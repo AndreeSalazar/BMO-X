@@ -1446,9 +1446,22 @@ pub extern "C" fn _start() -> ! {
                                         // programa, no para admirar el anterior.
                                         n = 0;
                                     }
-                                    Err(bmo::ERROR_NO_ESTA) => {
-                                        pintar_estado(&p, &caja, "no esta: revisa la ruta", TEXTO_MAL)
-                                    }
+                                    // ⚠️ Este código tapa DOS causas: que el
+                                    // archivo no esté, y que esté pero no se
+                                    // pueda cargar —por ejemplo si pasa de
+                                    // `MAX_BEX`, 1 MiB—. Le pasó al dueño con
+                                    // `c/leer.bex`, que SALÍA EN `ls` y aquí
+                                    // decía que no estaba.
+                                    //
+                                    // Separarlas de verdad es tocar el ABI. Lo
+                                    // que se hace ya es mandar a mirar donde el
+                                    // kernel SÍ cuenta el motivo entero.
+                                    Err(bmo::ERROR_NO_ESTA) => pintar_estado(
+                                        &p,
+                                        &caja,
+                                        "no se pudo cargar: F11 dice por que",
+                                        TEXTO_MAL,
+                                    ),
                                     Err(bmo::ERROR_GATE) => pintar_estado(
                                         &p,
                                         &caja,
