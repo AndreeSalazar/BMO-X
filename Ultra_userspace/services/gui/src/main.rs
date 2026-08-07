@@ -413,6 +413,10 @@ pub extern "C" fn _start() -> ! {
     // es lo que permite llegar al PRINCIPIO del arranque — donde están las
     // respuestas de por qué algo no arrancó.
     let mut klog_desplazamiento = 0u64;
+    // Qué familia de módulos deja pasar la ventana del kernel. `0` = todas.
+    // Vive aquí y no dentro de `klog.rs` por lo mismo que el desplazamiento:
+    // es estado de la SESIÓN, y el módulo que pinta no debe recordar nada.
+    let mut klog_filtro = 0u8;
 
     /// Qué tecla de la calculadora tiene el puntero encima, si alguna.
     ///
@@ -577,7 +581,7 @@ pub extern "C" fn _start() -> ! {
                 let mut pintar_una = |v: u8, repintar: &mut bool, sal: &mut escena::salida::Salida| {
                     match v {
                         V_KLOG if klog_abierta => {
-                            escena::klog::pintar(&p, &caja_klog, klog_desplazamiento)
+                            escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro)
                         }
                         V_DATOS if datos_abierta => escena::datos::pintar(&p, &caja_datos),
                         V_EJECUTAR => destapar(&p, &caja, visible, sal, repintar),
@@ -732,7 +736,7 @@ pub extern "C" fn _start() -> ! {
                         // RePág/AvPág.
                         klog_desplazamiento = 0;
                         foco.abrir(V_KLOG);
-                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
+                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
                         arriba_antes = if foco.es_para(V_KLOG) { V_KLOG } else { V_EJECUTAR };
                         if arriba_antes == V_EJECUTAR {
                             destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
@@ -758,6 +762,21 @@ pub extern "C" fn _start() -> ! {
                 // Va aquí y no en el editor de línea porque **es de esta
                 // ventana**: con el foco en el kernel, esas teclas no tienen
                 // nada que ver con el historial de salida de Ejecutar.
+                // ── F: cambiar el filtro de la ventana del kernel ──
+                //
+                // Sólo con el foco AQUÍ: con el foco en Ejecutar, una `f` es una
+                // letra que el dueño está escribiendo, y robársela para un atajo
+                // sería el peor intercambio posible.
+                //
+                // Se reinicia el desplazamiento al cambiar: lo que se estaba
+                // mirando en la lista vieja no señala nada en la nueva, y dejar
+                // el número puesto haría que la ventana pareciera vacía.
+                if klog_abierta && foco.es_para(V_KLOG) && (c == b'f' || c == b'F') {
+                    klog_filtro = (klog_filtro + 1) % escena::klog::FAMILIAS;
+                    klog_desplazamiento = 0;
+                    escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
+                    continue;
+                }
                 if klog_abierta && foco.es_para(V_KLOG) && (c == 0x87 || c == 0x88) {
                     let hay = bmo::klog_lineas();
                     if c == 0x87 {
@@ -766,7 +785,7 @@ pub extern "C" fn _start() -> ! {
                     } else {
                         klog_desplazamiento = klog_desplazamiento.saturating_sub(8);
                     }
-                    escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
+                    escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
                     continue;
                 }
 
@@ -1684,7 +1703,7 @@ pub extern "C" fn _start() -> ! {
                         let nuevo = klog_desplazamiento as i64 + paso;
                         klog_desplazamiento =
                             nuevo.clamp(0, hay.saturating_sub(1) as i64) as u64;
-                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento);
+                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
                     }
                     Some(V_EJECUTAR) => {
                         // Tres filas por muesca: una sola se queda corta y una
@@ -1922,7 +1941,7 @@ pub extern "C" fn _start() -> ! {
             };
             if arriba != arriba_antes {
                 match arriba {
-                    V_KLOG => escena::klog::pintar(&p, &caja_klog, klog_desplazamiento),
+                    V_KLOG => escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro),
                     V_DATOS => escena::datos::pintar(&p, &caja_datos),
                     // Sin guarda de `visible`: `destapar` ya no hace nada si
                     // la caja esta escondida, y una guarda repetida es una que

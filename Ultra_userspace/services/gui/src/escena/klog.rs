@@ -89,19 +89,66 @@ impl CajaKlog {
 /// vistazo sin tener que leer el texto. Lo que NO se hace es buscar palabras
 /// como "error" dentro de la línea — eso pinta de rojo un mensaje que dice
 /// "sin errores", que es la clase de ayuda que estorba.
-fn color_de(linea: &[u8]) -> u32 {
+// ═══════════════ EL FILTRO ═══════════════
+//
+// ★ Filtra por FAMILIA DE MÓDULO y no por severidad, y el motivo es que las
+// líneas **no llevan severidad**: el klog es la transcripción tal cual, texto
+// plano de 96 bytes (ver `ring0/core/klog.rs`). Quien lleva severidad es CABINA,
+// que es otra cosa y todavía no se asoma a Ring 3. Inventar aquí un "nivel"
+// adivinándolo por palabras sería un filtro que miente en cuanto alguien
+// escriba un mensaje que no encaje con la corazonada.
+//
+// Lo que sí existe y es fiable es la etiqueta con la que cada módulo empieza su
+// línea. Y hay un motivo más para usar ésa: **es la misma taxonomía que ya
+// pinta los colores**, así que la guía se explica sola — cada opción se pinta
+// del color de sus líneas y no hace falta memorizar nada.
+
+/// Cuántas familias hay, contando `TODO`.
+pub(crate) const FAMILIAS: u8 = 5;
+
+/// A qué familia pertenece una línea. `0` es "ninguna conocida".
+fn familia_de(linea: &[u8]) -> u8 {
     let empieza = |p: &[u8]| linea.len() >= p.len() && &linea[..p.len()] == p;
     if empieza(b"[uhid]") || empieza(b"[usb]") || empieza(b"[xhci]") {
-        0x0070_D8FF // azul: el bus
+        1 // el bus
     } else if empieza(b"[ahci]") || empieza(b"[fs]") || empieza(b"[estratos]") {
-        0x00C8_A0FF // violeta: el almacenamiento
+        2 // el almacenamiento
     } else if empieza(b"[s1_cpu]") || empieza(b"[s2_mem]") || empieza(b"[kernel]") {
-        0x00F6_C445 // ámbar: el arranque
+        3 // el arranque
     } else if empieza(b"gui") || empieza(b"[ring3]") {
-        TEXTO_BIEN // verde: lo que dice Ring 3
+        4 // lo que dice Ring 3
     } else {
-        TEXTO
+        0
     }
+}
+
+fn color_familia(f: u8) -> u32 {
+    match f {
+        1 => 0x0070_D8FF, // azul
+        2 => 0x00C8_A0FF, // violeta
+        3 => 0x00F6_C445, // ámbar
+        4 => TEXTO_BIEN,  // verde
+        _ => TEXTO,
+    }
+}
+
+fn nombre_familia(f: u8) -> &'static str {
+    match f {
+        1 => "bus",
+        2 => "disco",
+        3 => "arranque",
+        4 => "ring3",
+        _ => "TODO",
+    }
+}
+
+/// ¿Pasa esta línea el filtro? `0` = no filtrar.
+fn pasa(linea: &[u8], filtro: u8) -> bool {
+    filtro == 0 || familia_de(linea) == filtro
+}
+
+fn color_de(linea: &[u8]) -> u32 {
+    color_familia(familia_de(linea))
 }
 
 /// Pinta la consola del kernel entera.
@@ -113,7 +160,7 @@ fn color_de(linea: &[u8]) -> u32 {
 /// **`desplazamiento`** es cuántas líneas hacia atrás empieza la ventana. Con 0
 /// se ve lo último; subiéndolo se llega al principio del arranque, que es donde
 /// están las respuestas de por qué algo no arrancó.
-pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaKlog, desplazamiento: u64) {
+pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaKlog, desplazamiento: u64, filtro: u8) {
     sombra(p, c.x, c.y, c.ancho, c.alto);
     rect_redondeado(p, c.x, c.y, c.ancho, c.alto, KLOG_BORDE);
     rect_redondeado(p, c.x + 1, c.y + 1, c.ancho - 2, c.alto - 2, KLOG_FONDO);
@@ -169,27 +216,93 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaKlog, desplazamiento: u64) {
         poner(b")", &mut cab, &mut n);
     }
     p.texto_bytes(tx, ty, &cab[..n], TEXTO_TENUE);
+    ty += bmo::GLIFO_ALTO + 4;
+
+    // ── LA GUÍA DEL FILTRO ────────────────────────────────────────────
+    //
+    // Se pinta SIEMPRE, también con el filtro en TODO. Un atajo que sólo se
+    // anuncia cuando ya lo estás usando no se descubre nunca — y éste es el
+    // caso exacto que lo motivó: había un comando que el dueño no podía
+    // ejecutar porque no sabía que existía.
+    let mut gx = p.texto(tx, ty, "F filtra:", TEXTO_TENUE);
+    let mut f = 0u8;
+    while f < FAMILIAS {
+        gx += bmo::GLIFO_ANCHO;
+        // El activo va en su color y con corchetes; los demás, tenues. Cada
+        // opción se pinta del color de SUS líneas: la guía y el log se leen con
+        // el mismo código de color y no hay nada que memorizar.
+        if f == filtro {
+            gx = p.texto(gx, ty, "[", color_familia(f));
+            gx = p.texto(gx, ty, nombre_familia(f), color_familia(f));
+            gx = p.texto(gx, ty, "]", color_familia(f));
+        } else {
+            gx = p.texto(gx, ty, nombre_familia(f), TEXTO_TENUE);
+        }
+        f += 1;
+    }
     ty += bmo::GLIFO_ALTO + 6;
 
     // Cuántas caben, dejando el margen de abajo.
     let alto_util = c.alto.saturating_sub(ty - c.y + 14);
     let filas = (alto_util / (bmo::GLIFO_ALTO + 2)) as u64;
 
-    // ★ Se pintan de la MÁS VIEJA a la más nueva dentro de la ventana, para que
+    // ★ Con filtro, `desplazamiento` ya no puede indexar la pantalla: se
+    // RECOGEN las que pasan y luego se pintan. Saltarlas al vuelo dejaría
+    // huecos en blanco donde había líneas descartadas, que es la forma más
+    // rápida de que un filtro parezca un fallo de pintado.
+    const MAX_FILAS: usize = 64;
+    let tope = (filas as usize).min(MAX_FILAS);
+    let mut elegidas = [0u64; MAX_FILAS];
+    let mut cuantas = 0usize;
+    let mut linea = [0u8; MAX_COLS];
+    let mut i = desplazamiento.min(hay.saturating_sub(1));
+    while i < hay && cuantas < tope {
+        let n = bmo::klog_texto(i, &mut linea);
+        if n > 0 && pasa(&linea[..n], filtro) {
+            elegidas[cuantas] = i;
+            cuantas += 1;
+        }
+        i += 1;
+    }
+
+    // Y cuántas hay EN TOTAL con este filtro. El anillo son 64 líneas: contarlas
+    // enteras cuesta nada y evita la duda de "¿es que no hay más, o es que no
+    // caben?" — que es justo lo que un filtro provoca si sólo enseña una página.
+    if filtro != 0 {
+        let mut total_f = 0u64;
+        let mut k = 0u64;
+        while k < hay {
+            let n = bmo::klog_texto(k, &mut linea);
+            if n > 0 && pasa(&linea[..n], filtro) {
+                total_f += 1;
+            }
+            k += 1;
+        }
+        let mut m = [0u8; 32];
+        let mut mn = 0usize;
+        num(total_f, &mut m, &mut mn);
+        poner(b" de ", &mut m, &mut mn);
+        num(hay, &mut m, &mut mn);
+        p.texto_bytes(c.x + c.ancho - 16 - (mn as u32) * bmo::GLIFO_ANCHO,
+                      c.y + TITULO_ALTO + 8, &m[..mn], color_familia(filtro));
+    }
+
+    // Se pintan de la MÁS VIEJA a la más nueva dentro de la ventana, para que
     // se lea como se lee un log: hacia abajo en el tiempo. El anillo numera al
     // revés (0 = la más reciente), así que hay que darle la vuelta aquí — y
     // hacerlo al pintar y no al guardar es lo correcto: el orden de lectura es
     // una decisión de presentación, y ésas viven en Ring 3.
-    let primera = desplazamiento.min(hay.saturating_sub(1));
-    let ultima = (primera + filas).min(hay);
-    let mut i = ultima;
-    let mut linea = [0u8; MAX_COLS];
-    while i > primera {
-        i -= 1;
-        let n = bmo::klog_texto(i, &mut linea);
+    let mut j = cuantas;
+    while j > 0 {
+        j -= 1;
+        let n = bmo::klog_texto(elegidas[j], &mut linea);
         if n > 0 {
             p.texto_bytes(tx, ty, &linea[..n], color_de(&linea[..n]));
         }
         ty += bmo::GLIFO_ALTO + 2;
+    }
+
+    if cuantas == 0 {
+        p.texto(tx, ty, "el filtro no deja pasar ninguna linea.", TEXTO_TENUE);
     }
 }
