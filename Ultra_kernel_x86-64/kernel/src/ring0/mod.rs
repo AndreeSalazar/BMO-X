@@ -61,6 +61,10 @@ pub mod fsys {
 pub mod plat {
     pub mod faults;
     pub mod reinicio;
+    /// Despertar los otros núcleos. **No corre en el arranque**: lo pide la
+    /// orden `smp`. Ver la cabecera del módulo para saber por qué esto no podía
+    /// vivir en `s1_cpu`.
+    pub mod smp;
     pub mod spin;
     pub mod timer;
     pub mod trap;

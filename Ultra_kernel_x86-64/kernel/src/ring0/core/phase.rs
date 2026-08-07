@@ -1239,6 +1239,50 @@ fn shell_ktest() {
     }
 }
 
+/// **Despierta los otros núcleos y cuenta cuántos contestan.**
+///
+/// ⚠️ Es una orden a mano y no un paso del arranque **a propósito**. El
+/// trampolín corre en modo real, antes de que exista nada, y no lo ha ejecutado
+/// ningún CPU todavía. Si está mal, lo que se cuelga es este comando y no la
+/// máquina al encenderla; la salida es un reinicio a botón. Ver
+/// `plat/smp.rs` y `docs/SMP_MAESTRO.md`.
+fn shell_smp() {
+    dashboard_log_color("== smp ==", SH_TITLE);
+
+    let topo = crate::ring0::cpu_vendor::ryzen_5_5600x::bmo_cpu::topology();
+    if let Some(t) = topo {
+        row("silicio", |l| {
+            l.dec(t.total_cores as u64);
+            l.txt(" nucleos   ");
+            l.dec(t.total_threads as u64);
+            l.txt(" hilos   ");
+            l.dec(t.total_ccxs as u64);
+            l.txt(" CCX");
+        });
+    }
+
+    row("   ", |l| l.txt("despertando... (si se queda aqui, reinicia a boton)"));
+
+    let (vivos, esperados) = crate::ring0::plat::smp::despertar();
+    let (_, mascara) = crate::ring0::plat::smp::vivos();
+
+    // El BSP cuenta: es un núcleo que está corriendo esto mismo.
+    row("en pie", |l| {
+        l.dec(vivos as u64 + 1);
+        l.txt(" / ");
+        l.dec(esperados as u64 + 1);
+        l.txt(" hilos");
+    });
+    // ★ Cuáles, y no sólo cuántos: "faltan dos" no dice a cuál mirar.
+    row("mascara", |l| {
+        l.txt("APIC IDs que contestaron: ");
+        l.hex(mascara as u64, 8);
+    });
+    if vivos < esperados {
+        row("   ", |l| l.txt("los que faltan no arrancaron o el trampolin no llego"));
+    }
+}
+
 fn shell_mem() {
     let (total, free) = crate::ring0::mm::phys::stats();
     const PAGE: u64 = 4096;
@@ -1510,6 +1554,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             clear_screen();
         } else if cmd == b"info" {
             shell_info(ctx);
+        } else if cmd == b"smp" {
+            shell_smp();
         } else if cmd == b"tasks" {
             shell_tasks();
         } else if cmd == b"mem" {
