@@ -12,6 +12,48 @@ use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64};
 use alloc::vec;
 use alloc::vec::Vec;
 
+/// ★ A cuánto se alinea el OFFSET EN FICHERO de una sección. **Ocho bytes.**
+///
+/// # Por qué no es el `alignment` de la sección
+///
+/// Antes se usaba `section.alignment`, que vale **4096** en los tres frontends
+/// porque es lo que la sección necesita EN MEMORIA: el cargador coloca cada una
+/// en su propia página. Usar el mismo número para el fichero metía un agujero de
+/// hasta 4095 bytes antes de cada sección, y en `holac.bex` eso era
+///
+/// ```text
+/// 3 952 bytes de hueco antes de `code` + 2 642 antes de `rodata`
+///   = 6 594 de 8 432 bytes de fichero, o sea el 78% aire
+/// ```
+///
+/// **Son dos requisitos distintos que compartían un campo.** La alineación en
+/// memoria la sigue declarando `entry.alignment` y la sigue honrando el
+/// cargador; ésta sólo tiene que dejar los datos donde se puedan leer.
+///
+/// # Por qué ocho basta
+///
+/// El cargador **COPIA**: `ring0/task/proc.rs` hace un `copy_nonoverlapping`
+/// desde `file_offset`, al que le da igual dónde empiece. Y `bex::inspect` sólo
+/// exige que `alignment` sea potencia de dos y que `file_offset + file_size`
+/// quepa en el archivo — comprobado, no supuesto. Los ocho bytes son para que
+/// las secciones que se leen como structs (`Symbols`, `Relocations`, `Imports`,
+/// de 24 bytes cada entrada) queden alineadas a `u64`.
+///
+/// # ⚠️ Cuándo dejaría de bastar
+///
+/// Si algún día BMO quisiera **mapear el fichero directamente** a las páginas
+/// del proceso en vez de copiarlo —demand paging—, entonces `file_offset`
+/// tendría que ser **congruente** con la dirección virtual módulo el tamaño de
+/// página, que es la regla `p_offset ≡ p_vaddr (mod pagesize)` de ELF. No es
+/// "alineado a página": es congruente, y son cosas distintas. Mientras el
+/// cargador copie, esto no hace falta.
+const ALINEACION_EN_FICHERO: u64 = 8;
+
+/// Redondea `n` hacia arriba al múltiplo de `a`, que ha de ser potencia de dos.
+fn alinea(n: u64, a: u64) -> u64 {
+    (n + a - 1) & !(a - 1)
+}
+
 pub struct BefSection {
     pub kind: SectionKind,
     pub flags: SectionFlags,
@@ -146,8 +188,7 @@ impl BefBuilder {
 
             if section.kind != SectionKind::Bss && !section.data.is_empty() {
                 if sig_idx != Some(i) {
-                    let align = (section.alignment as u64).max(8);
-                    file_off = (file_off + align - 1) & !(align - 1);
+                    file_off = alinea(file_off, ALINEACION_EN_FICHERO);
                     entry.file_offset = file_off;
                     entry.file_size = section.data.len() as u64;
                     file_off += entry.file_size;
@@ -165,7 +206,16 @@ impl BefBuilder {
         let tbl = bytes_from_slice(&entries);
         buf[table_offset as usize..table_offset as usize + tbl.len()].copy_from_slice(tbl);
 
-        let mut write_off = header_size + table_size;
+        // ★ SE ESCRIBE DONDE LA TABLA DICE, y no se recalcula.
+        //
+        // Aquí había una segunda copia de la fórmula de alineación, idéntica a
+        // la de arriba. Dos cuentas separadas que TIENEN que dar lo mismo son un
+        // bug esperando a que alguien toque una sola: la tabla declararía un
+        // offset y los bytes estarían en otro, y el fallo aparecería al CARGAR
+        // —no al compilar—, con el kernel leyendo relleno como si fuera código.
+        //
+        // Ahora el destino sale de `entries[i].file_offset`, que es exactamente
+        // lo que el fichero declara. Imposible que divirjan.
         for (i, section) in self.sections.iter().enumerate() {
             if section.kind == SectionKind::Bss || section.data.is_empty() {
                 continue;
@@ -173,14 +223,12 @@ impl BefBuilder {
             if sig_idx == Some(i) {
                 continue;
             }
-            let align = (section.alignment as u64).max(8);
-            write_off = (write_off + align - 1) & !(align - 1);
+            let write_off = entries[i].file_offset;
             let end = write_off + section.data.len() as u64;
             if end as usize > buf.len() {
                 buf.resize(end as usize, 0);
             }
             buf[write_off as usize..end as usize].copy_from_slice(&section.data);
-            write_off = end;
         }
 
         let mut section_hashes = Vec::new();
@@ -210,11 +258,14 @@ impl BefBuilder {
         match sig_idx {
             Some(_) => {}
             None => {
-                let align = 8u64;
-                write_off = (write_off + align - 1) & !(align - 1);
-                let end = write_off + sig_data.len() as u64;
+                // La firma va al final, tras la última sección. Antes se
+                // apoyaba en el `write_off` que iba corriendo por el bucle de
+                // arriba; ahora que ese bucle escribe donde dice la tabla y no
+                // lleva cursor, el final de los datos es el tamaño del búfer.
+                let sig_off = alinea(buf.len() as u64, ALINEACION_EN_FICHERO);
+                let end = sig_off + sig_data.len() as u64;
                 buf.resize(end as usize, 0);
-                buf[write_off as usize..end as usize].copy_from_slice(&sig_data);
+                buf[sig_off as usize..end as usize].copy_from_slice(&sig_data);
             }
         }
 
