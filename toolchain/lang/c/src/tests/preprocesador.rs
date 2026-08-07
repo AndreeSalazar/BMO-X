@@ -141,3 +141,51 @@ fn una_macro_recursiva_no_cuelga() {
     );
     assert_eq!(out.trim(), "ok");
 }
+
+/// Matriz de conformidad de C: ejecuta TODO lo que el codegen dice
+/// soportar y compara la salida real.
+///
+/// Cuando se escribió por primera vez, 18 de 36 casos fallaban — entre
+/// ellos que NINGÚN bucle daba más de una vuelta y que `switch` siempre
+/// entraba por el primer caso. Todos compilaban y validaban.
+///
+/// Si añades una característica al codegen, añádele aquí su fila. Es la
+/// única forma de que "soportado" signifique algo.
+
+/// `#define` SUSTITUYE de verdad — no se traga la linea y sigue.
+///
+/// La pregunta no es si COMPILA (tragarse una linea tambien compila) sino
+/// si el valor LLEGA. Este test lo fija ejecutandolo: si algun dia el
+/// preprocesador deja de expandir, aqui sale `0` en vez de `5`.
+///
+/// Y de paso documenta una asimetria real: el preprocesador SOLO corre en
+/// `compile_with_preprocessor`, que es lo que usa la linea de ordenes. El
+/// camino de biblioteca (`compile_source_to_bef`) no lo llama.
+#[test]
+fn el_define_sustituye_de_verdad() {
+    let salida = run_c_con_pp("#define CINCO 5
+int main(void){ printf(\"%d\", CINCO); return 0; }");
+    assert_eq!(salida, "5", "el #define tiene que SUSTITUIR, no ignorarse");
+}
+
+/// ★ Y sin preprocesador, una directiva se RECHAZA en vez de ignorarse.
+///
+/// Esto es lo que estaba mal: el catch-all del lexer se tragaba el `#`, asi
+/// que un `#define` dentro de una funcion **compilaba y no hacia nada** —
+/// el programa corria con la constante sin sustituir y nadie decia una
+/// palabra. Al principio del fichero daba un "expected type, got
+/// Ident(define)", que manda a mirar donde no es.
+#[test]
+fn una_directiva_sin_preprocesador_se_rechaza() {
+    // Dentro de una funcion: era el caso silencioso.
+    let e = compile_source_to_bef("int main(void){
+#define X 5
+ return 0; }")
+        .unwrap_err();
+    assert!(format!("{e:?}").contains("no hay preprocesador"), "{e:?}");
+    // Y al principio del fichero, con el mismo mensaje.
+    let e = compile_source_to_bef("#define X 5
+int main(void){ return 0; }").unwrap_err();
+    assert!(format!("{e:?}").contains("no hay preprocesador"), "{e:?}");
+}
+

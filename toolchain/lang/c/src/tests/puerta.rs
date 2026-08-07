@@ -305,3 +305,17 @@ fn el_scroll_no_sigue_moviendose_solo_tras_soltar_la_rueda() {
 {out}"
     );
 }
+
+/// Volver de `main` debe terminar el proceso por la puerta. Si no, la
+/// ejecución sigue de largo hacia lo que haya después del código.
+#[test]
+fn returning_from_main_exits_through_the_door() {
+    let bef = compile_source_to_bef("int main() { return 0; }").unwrap();
+    let mut net = Vec::new();
+    bmo_lower::task::exit(&mut net);
+    assert!(
+        contains_bytes(&bef, &net),
+        "el epílogo de main debe ser INVOKE(EXIT) + red de pause/jmp"
+    );
+}
+
