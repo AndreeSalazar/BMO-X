@@ -385,9 +385,42 @@ impl Parser {
                                 ),
                             ));
                         }
-                        let typ = if is_union { TypeSpec::UnionRef(name) } else { TypeSpec::StructRef(name) };
-                        self.skip_semicolon();
-                        globals.push(GlobalDecl::Var(typ.clone(), vname.clone(), None));
+                        let mut typ = if is_union { TypeSpec::UnionRef(name) } else { TypeSpec::StructRef(name) };
+                        // ★ `struct P tabla[N]` — el declarador de array se
+                        // IGNORABA en esta rama, así que una tabla de N structs
+                        // se declaraba como UNO SOLO y el parser reventaba al
+                        // encontrarse el `[` suelto donde esperaba un tipo
+                        // ("expected type, got OpenBracket").
+                        //
+                        // `parse_type_and_name` sí lo hacía; esta rama es un
+                        // camino aparte para `struct`, y se quedó sin él.
+                        if *self.peek() == Token::OpenBracket {
+                            self.advance();
+                            let size_expr = self.parse_expr()?;
+                            self.expect(&Token::CloseBracket)?;
+                            let n = match size_expr {
+                                Expr::Int(k) if k > 0 => k as u32,
+                                _ => 1,
+                            };
+                            typ = TypeSpec::Array(Box::new(typ), n);
+                        }
+                        // Y su lista: `struct estado estados[2] = {{4,1},{8,0}}`,
+                        // que es LA forma de las tablas de DOOM.
+                        if *self.peek() == Token::Assign
+                            && self.tokens.get(self.pos + 1) == Some(&Token::OpenBrace)
+                        {
+                            self.advance(); // el `=`
+                            let escrituras = self.parse_inicializador(&typ)?;
+                            self.skip_semicolon();
+                            globals.push(GlobalDecl::VarLista(
+                                typ.clone(),
+                                vname.clone(),
+                                escrituras,
+                            ));
+                        } else {
+                            self.skip_semicolon();
+                            globals.push(GlobalDecl::Var(typ.clone(), vname.clone(), None));
+                        }
                         self.var_types.insert(vname, typ);
                     }
                 }
@@ -488,6 +521,31 @@ impl Parser {
             }
             {
                 let (typ, name) = self.parse_type_and_name()?;
+                // ★ `= { … }` A NIVEL GLOBAL.
+                //
+                // Antes esto reventaba con `unexpected token: OpenBrace`:
+                // `parse_assign` no empieza por `{`, y un global sólo admitía
+                // una expresión. Dentro de una función funcionaba desde
+                // siempre, así que **la diferencia era el ámbito, no el
+                // inicializador**.
+                //
+                // Importa porque es la forma de las TABLAS ESTÁTICAS, y un
+                // programa grande de C es en buena parte tablas: el `info.c`
+                // de DOOM son cuatro mil líneas de `{ … }` a nivel global.
+                //
+                // Se reusa `parse_inicializador`, el mismo aplanador que usan
+                // los locales, así que los designadores (`{[2].y = 8}`) y el
+                // relleno implícito valen aquí sin escribir nada nuevo.
+                if *self.peek() == Token::Assign
+                    && self.tokens.get(self.pos + 1) == Some(&Token::OpenBrace)
+                {
+                    self.advance(); // el `=`
+                    let escrituras = self.parse_inicializador(&typ)?;
+                    self.skip_semicolon();
+                    self.var_types.insert(name.clone(), typ.clone());
+                    globals.push(GlobalDecl::VarLista(typ, name, escrituras));
+                    continue;
+                }
                 let init = if *self.peek() == Token::Assign {
                     self.advance();
                     Some(self.parse_assign()?)

@@ -189,8 +189,77 @@ impl Codegen {
         }
         // allocate space for global variables
         for decl in &program.globals {
+            // ★ Un global con LISTA: `int t[4] = {1,2,3,4}`.
+            //
+            // Las escrituras llegan aplanadas del parser (offset absoluto,
+            // tipo del subobjeto, valor), asi que aqui solo hay que evaluar
+            // cada valor **en tiempo de compilacion** y ponerlo en su sitio.
+            // El objeto entero se reserva a cero primero, que es lo que dice C
+            // de lo que la lista no menciona — y por eso `{[2] = 30}` deja los
+            // huecos a cero sin que nadie los escriba.
+            if let GlobalDecl::VarLista(typ, name, escrituras) = decl {
+                // `self.type_stack_size` y NO `typ.stack_size()`: ver el motivo
+                // en el `Var` de abajo. El método del `TypeSpec` devuelve CERO
+                // para un `StructRef`, así que una tabla de structs habría
+                // reservado cero bytes.
+                let size = self.type_stack_size(typ) as usize;
+                let pad = (8 - self.global_data.len() % 8) % 8;
+                for _ in 0..pad { self.global_data.push(0); }
+                let off = self.global_data.len() as u32;
+                for _ in 0..size { self.global_data.push(0); }
+                for e in escrituras {
+                    let Some(valor) = Self::constante_de(&e.valor) else {
+                        // Lo que NO se puede poner aqui, y el motivo es el
+                        // mismo que con `char *p = "x"`: una direccion no se
+                        // conoce hasta cargar. Las tablas de punteros a cadena
+                        // y a funcion son justo esto, y son la mitad de las
+                        // tablas de DOOM.
+                        self.errors.push(format!(
+                            "en la tabla global '{name}', el valor del offset {} no es una \
+                             constante entera. Si es una cadena o la direccion de algo, hace \
+                             falta una relocation Abs64 en el BEF: por ahora, rellena esa \
+                             posicion dentro de una funcion",
+                            e.offset
+                        ));
+                        continue;
+                    };
+                    let ancho = e.tipo.stack_size() as usize;
+                    let destino = off as usize + e.offset as usize;
+                    let bytes = valor.to_le_bytes();
+                    // Se recorta al ancho del subobjeto: un `char` de la tabla
+                    // toma un byte, no ocho. Y se comprueba el limite en vez de
+                    // confiar: un offset fuera del objeto seria escribir sobre
+                    // el global de al lado.
+                    for i in 0..ancho.min(8) {
+                        if destino + i < self.global_data.len() {
+                            self.global_data[destino + i] = bytes[i];
+                        }
+                    }
+                }
+                self.global_offsets.insert(name.clone(), (off, typ.clone()));
+                continue;
+            }
             if let GlobalDecl::Var(typ, name, init) = decl {
-                let size = typ.stack_size() as u32;
+                // ★ `self.type_stack_size` y NO `typ.stack_size()`, y la
+                // diferencia era un bug: el método del `TypeSpec` no conoce los
+                // layouts de struct y devuelve **CERO** para un `StructRef`
+                // (`ast/types.rs`), mientras el del `Codegen` los consulta en
+                // `struct_sizes`.
+                //
+                // O sea que un `struct P g;` global reservaba **cero bytes**, y
+                // el global declarado justo después caía ENCIMA. La sonda:
+                //
+                //     struct P { int x; int y; };  struct P g;
+                //     int centinela = 12345;
+                //     g.x = 7;   ->  centinela pasaba a valer 7
+                //
+                // Compilaba, ejecutaba y daba un número plausible. Los tres
+                // tests que había en `globales.rs` no lo veían porque sólo
+                // comprobaban que el programa COMPILARA.
+                //
+                // Aquí se puede usar el del `Codegen` porque los layouts se
+                // calculan en el bucle de arriba, antes que este.
+                let size = self.type_stack_size(typ) as u32;
                 let pad = (8 - self.global_data.len() as u32 % 8) % 8;
                 for _ in 0..pad { self.global_data.push(0); }
                 let off = self.global_data.len() as u32;
@@ -213,15 +282,7 @@ impl Codegen {
                 // Ahora se dice. Un cero inventado es la peor respuesta a "no sé
                 // hacer esto": es un valor legítimo, así que el error viaja
                 // hasta donde ya no se puede rastrear.
-                let literal = match init {
-                    Some(Expr::Int(n)) => Some(*n),
-                    // Gratis y claramente correcto: `int x = -5;`. Antes daba 0.
-                    Some(Expr::Neg(interior)) => match interior.as_ref() {
-                        Expr::Int(n) => Some(-*n),
-                        _ => None,
-                    },
-                    _ => None,
-                };
+                let literal = init.as_ref().and_then(Self::constante_de);
                 match (init, literal) {
                     (_, Some(n)) => {
                         let bytes: Vec<u8> = match size {
@@ -484,6 +545,44 @@ impl Codegen {
     /// las secciones se concatenan tal cual. Es un fallo que solo aparece en
     /// metal — la razón por la que un banco de pruebas localiza bugs pero no
     /// sustituye a arrancar la máquina.
+    /// El valor de una expresión **en tiempo de compilación**, o `None`.
+    ///
+    /// Es lo único que puede ir dentro de un dato inicializado: el `.bex` se
+    /// escribe con los bytes ya puestos, así que aquí no hay dónde ejecutar
+    /// nada. Un `None` no es un cero — quien llama tiene que decirlo.
+    ///
+    /// # Qué entra, y por qué esto y no un evaluador entero
+    ///
+    /// Enteros, su negación, y las operaciones que aparecen de verdad en una
+    /// tabla escrita a mano: `{1, -2, 3*4, MAX-1}`. Las constantes de `enum`
+    /// **no** se resuelven aquí porque `enum_values` es estado del `Codegen` y
+    /// esto es una función asociada; es el siguiente paso obvio y está dicho
+    /// para que no parezca un olvido.
+    ///
+    /// No se plegaron divisiones por cero ni desbordamientos con `wrapping`:
+    /// una tabla con `1/0` dentro es un error del programa, y contestar algo
+    /// sería inventarlo. Con `checked_div` devolvemos `None` y el llamante
+    /// dice que ese valor no es constante — un mensaje impreciso, pero no una
+    /// mentira.
+    fn constante_de(e: &Expr) -> Option<i64> {
+        match e {
+            Expr::Int(n) => Some(*n),
+            // `int x = -5` es `Neg(Int(5))` en el AST, no `Int(-5)`.
+            Expr::Neg(interior) => Self::constante_de(interior).map(|v| -v),
+            Expr::Add(a, b) => {
+                Some(Self::constante_de(a)?.wrapping_add(Self::constante_de(b)?))
+            }
+            Expr::Sub(a, b) => {
+                Some(Self::constante_de(a)?.wrapping_sub(Self::constante_de(b)?))
+            }
+            Expr::Mul(a, b) => {
+                Some(Self::constante_de(a)?.wrapping_mul(Self::constante_de(b)?))
+            }
+            Expr::Div(a, b) => Self::constante_de(a)?.checked_div(Self::constante_de(b)?),
+            _ => None,
+        }
+    }
+
     /// Redondea hacia arriba al múltiplo de página. La cuenta del cargador.
     fn hasta_pagina(n: usize) -> usize {
         const PAGE: usize = 4096;

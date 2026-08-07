@@ -67,6 +67,30 @@ impl Emitter {
                     read_only: false,
                 });
             }
+            // ★ `int t[4] = {1,2,3,4}` NO SE PUEDE REPRESENTAR AQUÍ, y se dice.
+            //
+            // `IrGlobal::init` es **un** `Option<IrExpr>`, y una lista de
+            // inicialización son N escrituras con su offset. No es que falte
+            // escribir la conversión: es que el tipo no da para expresarla.
+            //
+            // Se registra el global —existe, tiene tipo y tamaño— **sin** su
+            // inicializador, y esto NO es un cero silencioso disfrazado: este
+            // módulo está fuera del camino de compilación. `compile_source_to_bef`
+            // va `parse` → `codegen` directo a bytes; el único llamante de
+            // `compile_to_ir` es su propia función pública en `lib.rs`, que nadie
+            // usa. Si algún día se cablea, **esto es lo primero que hay que
+            // arreglar**, y hace falta un `IrGlobal` con bytes iniciales en vez
+            // de una expresión.
+            GlobalDecl::VarLista(ts, name, _escrituras) => {
+                let name_idx = self.module.add_string(name).unwrap_or(0);
+                let ty_idx = self.ir_type(ts);
+                self.module.add_global(IrGlobal {
+                    name: name_idx,
+                    ty: ty_idx,
+                    init: None,
+                    read_only: false,
+                });
+            }
             GlobalDecl::Struct(_, _) | GlobalDecl::Union(_, _) => {
                 // Struct/union declarations are type metadata, not globals.
                 // They're consumed by the parser during codegen.
