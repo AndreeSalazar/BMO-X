@@ -129,11 +129,32 @@ fn maquina_de_bef_con(
     let entry = hdr.entry_offset as usize;
     let sec_off = hdr.section_table_offset as usize;
 
-    // La imagen se rearma en el MISMO orden en que el codegen la
-    // dispuso: código, luego rodata, luego data. El `lea rax,[rip+disp]`
-    // con el que se alcanzan las cadenas se calculó asumiendo que van
-    // pegadas detrás del código; cargar solo la sección CODE dejaba esos
-    // punteros apuntando al vacío y un `%s` imprimía cadena vacía.
+    // La imagen se rearma en el MISMO orden en que el codegen la dispuso:
+    // código, luego rodata, luego data. El `lea rax,[rip+disp]` con el que se
+    // alcanzan las cadenas se calculó contando desde el código; cargar sólo la
+    // sección CODE dejaba esos punteros apuntando al vacío y un `%s` imprimía
+    // cadena vacía.
+    //
+    // ★ Y CADA SECCIÓN EMPIEZA EN SU PROPIA PÁGINA, porque es lo que hace el
+    // cargador de verdad.
+    //
+    // Antes se pegaban una detrás de otra. Con el relleno a página que emite
+    // `pad_to_page` eso daba el mismo resultado —el código ya es múltiplo de
+    // 4096— así que el banco de pruebas pasaba igual. Pero era una coincidencia,
+    // no una equivalencia: `ring0/task/proc.rs` hace
+    //
+    //     va_cursor = va_start + pages * PAGE
+    //
+    // o sea que coloca cada sección en la página siguiente **sea cual sea** el
+    // tamaño de la anterior. Un compilador que dejara de rellenar habría
+    // seguido pasando aquí y habría fallado en el Ryzen, que es exactamente el
+    // punto ciego que denuncia la cabecera de `patch_all_fixups`: *"esto NO lo
+    // puede detectar el emulador de pruebas"*.
+    //
+    // Ahora sí lo puede. El hueco se rellena con `0xCC` y no con ceros por el
+    // mismo motivo que lo hace el compilador: si el flujo se sale del código,
+    // la máquina para en vez de seguir por basura interpretable.
+    const PAGINA: usize = 4096;
     let mut code = Vec::new();
     for kind in [SectionKind::Code, SectionKind::RoData, SectionKind::Data] {
         for i in 0..hdr.section_count as usize {
@@ -141,6 +162,9 @@ fn maquina_de_bef_con(
             if bef[e] == kind as u8 {
                 let off = u64::from_le_bytes(bef[e + 8..e + 16].try_into().unwrap()) as usize;
                 let size = u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize;
+                while !code.is_empty() && code.len() % PAGINA != 0 {
+                    code.push(0xCC);
+                }
                 code.extend_from_slice(&bef[off..off + size]);
             }
         }

@@ -194,17 +194,69 @@ impl Codegen {
                 let pad = (8 - self.global_data.len() as u32 % 8) % 8;
                 for _ in 0..pad { self.global_data.push(0); }
                 let off = self.global_data.len() as u32;
-                match init {
-                    Some(Expr::Int(n)) => {
+                // ★ `None` y `Some(otra_cosa)` NO son lo mismo, y hasta hoy se
+                // trataban igual: ceros.
+                //
+                // Un global sin inicializador vale cero, y eso es correcto en C.
+                // Pero un global CON inicializador que este codegen no sabe
+                // convertir tambien se rellenaba de ceros **sin decir nada**, y
+                // eso hacía que
+                //
+                //     char *texto = "eltexto";
+                //     printf("%s", texto);
+                //
+                // compilara e imprimiera los bytes de la seccion de codigo: el
+                // puntero valia 0, y el byte 0 de la imagen es el `push rbp` de
+                // la primera funcion. Se veia `UH\x89å…` y ningun test lo
+                // miraba, porque `globales.rs` sólo comprobaba que compilara.
+                //
+                // Ahora se dice. Un cero inventado es la peor respuesta a "no sé
+                // hacer esto": es un valor legítimo, así que el error viaja
+                // hasta donde ya no se puede rastrear.
+                let literal = match init {
+                    Some(Expr::Int(n)) => Some(*n),
+                    // Gratis y claramente correcto: `int x = -5;`. Antes daba 0.
+                    Some(Expr::Neg(interior)) => match interior.as_ref() {
+                        Expr::Int(n) => Some(-*n),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match (init, literal) {
+                    (_, Some(n)) => {
                         let bytes: Vec<u8> = match size {
-                            1 => vec![*n as u8],
-                            2 => (*n as u16).to_le_bytes().to_vec(),
-                            4 => (*n as u32).to_le_bytes().to_vec(),
-                            _ => (*n as u64).to_le_bytes().to_vec(),
+                            1 => vec![n as u8],
+                            2 => (n as u16).to_le_bytes().to_vec(),
+                            4 => (n as u32).to_le_bytes().to_vec(),
+                            _ => (n as u64).to_le_bytes().to_vec(),
                         };
                         self.global_data.extend_from_slice(&bytes);
                     }
-                    _ => {
+                    // Sin inicializador: cero, que es lo que dice C.
+                    (None, _) => {
+                        for _ in 0..size { self.global_data.push(0); }
+                    }
+                    // ★ CON inicializador que no sabemos poner: se DICE.
+                    (Some(otro), _) => {
+                        let que = match otro {
+                            Expr::StringLit(_) => {
+                                // El caso que destapó esto, y merece su propio
+                                // mensaje porque la salida es la que más
+                                // desconcierta: bytes de código.
+                                "una cadena literal, y eso necesita guardar la DIRECCION de la \
+                                 cadena, que sólo se conoce al cargar (hace falta una relocation \
+                                 Abs64 en el BEF). Asigna dentro de una funcion: \
+                                 `char *p; int main() { p = \"...\"; }`"
+                            }
+                            Expr::FloatLit(_) => "un literal de coma flotante, que aun no se convierte",
+                            _ => "una expresion que este compilador no evalua en tiempo de \
+                                  compilacion (aqui sólo caben constantes enteras)",
+                        };
+                        self.errors.push(format!(
+                            "el global '{name}' se inicializa con {que}. Antes esto se rellenaba \
+                             de CEROS en silencio y el programa arrancaba con un valor que nadie \
+                             escribio"
+                        ));
                         for _ in 0..size { self.global_data.push(0); }
                     }
                 }
@@ -404,16 +456,13 @@ impl Codegen {
         }
     }
 
-    /// Rellena hasta la siguiente frontera de página con `int3`.
-    ///
-    /// Si el CPU llegara aquí es que se salió del código: `int3` lo detiene
-    /// en seco en vez de deslizarse por ceros hasta cualquier parte.
-    fn pad_to_page(code: &mut Vec<u8>) {
-        const PAGE: usize = 4096;
-        while code.len() % PAGE != 0 {
-            code.push(0xCC);
-        }
-    }
+    // Aquí vivía `pad_to_page`, que rellenaba cada tramo con `int3` hasta la
+    // siguiente frontera de página. Se borra con el relleno: ya no hay a quién
+    // rellenar. La intención buena que tenía —que un CPU que se salga del
+    // código pare en seco en vez de deslizarse por ceros— no se pierde: el
+    // cargador pone a cero los marcos y el resto de la página tras el código no
+    // está mapeado como ejecutable por nadie. Y el arnés de pruebas rellena los
+    // huecos entre secciones con `0xCC` por esa misma razón.
 
     /// Coloca las cadenas y los globales, y parchea los `lea [rip+disp]`
     /// que los alcanzan.
@@ -435,39 +484,94 @@ impl Codegen {
     /// las secciones se concatenan tal cual. Es un fallo que solo aparece en
     /// metal — la razón por la que un banco de pruebas localiza bugs pero no
     /// sustituye a arrancar la máquina.
+    /// Redondea hacia arriba al múltiplo de página. La cuenta del cargador.
+    fn hasta_pagina(n: usize) -> usize {
+        const PAGE: usize = 4096;
+        (n + PAGE - 1) & !(PAGE - 1)
+    }
+
     fn patch_all_fixups(&mut self) {
-        Self::pad_to_page(&mut self.code);
-        let code_end = self.code.len();
-        self.instruction_end = code_end;
-        // Patch string fixups and append string data
-        let mut str_off = code_end;
+        // ★ EL BÚFER VA APRETADO Y LOS DESPLAZAMIENTOS SE CALCULAN CON LA REGLA
+        // DEL CARGADOR. Antes se rellenaba cada tramo hasta la página, y ese
+        // relleno viajaba DENTRO DEL FICHERO.
+        //
+        // El problema que resolvía era real: estos `lea [rip+disp]` se contaban
+        // asumiendo que los datos van PEGADOS detrás del código, y el cargador
+        // (`ring0/task/proc.rs`) hace `va_cursor = va_start + pages * PAGE`, o
+        // sea que pone cada sección en la página siguiente. Con el código a 500
+        // bytes, el compilador apuntaba al byte 500 y el cargador dejaba la
+        // cadena en el 4096: un `%s` leía basura EN HARDWARE.
+        //
+        // Rellenar hacía coincidir las dos cuentas. Pero **es la cuenta lo que
+        // había que arreglar, no el tamaño del fichero**: ahora el compilador
+        // modela la regla del cargador —tres sumas— y no necesita empujar 2 642
+        // bytes de `0xCC` por sección para que el mundo cuadre.
+        //
+        // Lo que esto quita, MEDIDO:
+        //
+        //   · los seis ejemplos, de 107 184 a 84 952 bytes (−20,7%), y todo
+        //     ahorro de código futuro deja de ser invisible bajo el relleno.
+        //     `holac.bex`: 12 376 -> 8 432
+        //   · el tercer `pad_to_page`, que rellenaba la sección `data` — la
+        //     última, sin nada detrás. Relleno por relleno.
+        //
+        // Lo que NO quita, y conviene tenerlo escrito con su número porque es
+        // el siguiente escalón: **el BEF sigue alineando los `file_offset` a
+        // 4096**. En `holac.bex` eso son 3 952 bytes de hueco antes del código
+        // y 2 642 antes de rodata — o sea que **6 594 de sus 8 432 bytes son
+        // agujeros**. El campo `alignment` de una sección se usa para las dos
+        // cosas a la vez, y sólo la dirección VIRTUAL lo necesita: el cargador
+        // copia desde `file_offset` con un `copy_nonoverlapping` al que le da
+        // igual dónde empiece.
+        //
+        // Lo que esto NO quita, y hay que decirlo: **el acoplamiento sigue
+        // ahí**. El compilador conoce la regla de colocación del cargador. La
+        // solución definitiva son relocations de verdad en el BEF, para que el
+        // cargador parchee y el compilador no tenga que adivinar dónde va a
+        // caer nada. Esto es la mitad del camino: quita el coste, deja la deuda
+        // — y ahora el emulador SÍ distingue las dos cuentas, así que la otra
+        // mitad se puede escribir con red.
+        let code_len = self.code.len();
+        self.instruction_end = code_len;
+
+        // Las direcciones virtuales de cada sección, con la cuenta del
+        // cargador: cada una arranca en la página siguiente a las que ocupa la
+        // anterior. Relativas al inicio del código, que es lo que necesita un
+        // `lea [rip+disp]`.
+        let rodata_len: usize = self.strings.iter().map(|s| s.len() + 1).sum();
+        let va_rodata = Self::hasta_pagina(code_len);
+        let va_data = va_rodata + Self::hasta_pagina(rodata_len);
+
+        // rodata: las cadenas. `off_en_seccion` es el offset DENTRO de rodata,
+        // no dentro del búfer — que es la distinción que este cambio introduce.
+        let mut off_en_seccion = 0usize;
         for (idx, s) in self.strings.iter().enumerate() {
             for f in &self.fixups {
                 if f.string_idx == idx {
                     let rip = f.lea_offset + 4;
-                    let disp = str_off as i64 - rip as i64;
-                    self.code[f.lea_offset..f.lea_offset + 4].copy_from_slice(&(disp as i32).to_le_bytes());
+                    let disp = (va_rodata + off_en_seccion) as i64 - rip as i64;
+                    self.code[f.lea_offset..f.lea_offset + 4]
+                        .copy_from_slice(&(disp as i32).to_le_bytes());
                 }
             }
             self.code.extend_from_slice(s.as_bytes());
             self.code.push(0);
-            str_off += s.len() + 1;
+            off_en_seccion += s.len() + 1;
         }
-        // Patch global fixups and append global data
-        Self::pad_to_page(&mut self.code);
         self.string_data_end = self.code.len();
-        let global_base = self.code.len();
+
+        // data: los globales.
         for &(lea_offset, ref name) in &self.global_fixups {
             if let Some(&(data_off, _)) = self.global_offsets.get(name) {
                 let rip = lea_offset + 4;
-                let disp = (global_base as i64 + data_off as i64) - rip as i64;
-                self.code[lea_offset..lea_offset + 4].copy_from_slice(&(disp as i32).to_le_bytes());
+                let disp = (va_data as i64 + data_off as i64) - rip as i64;
+                self.code[lea_offset..lea_offset + 4]
+                    .copy_from_slice(&(disp as i32).to_le_bytes());
             }
         }
         let globals = core::mem::take(&mut self.global_data);
         self.code.extend_from_slice(&globals);
         self.global_data = globals;
-        Self::pad_to_page(&mut self.code);
     }
 
     fn patch_goto_relocs(&mut self) {
@@ -898,7 +1002,20 @@ impl Codegen {
                 TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]),
                 TypeSpec::Short => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x00]),
                 TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0x00]),
-                TypeSpec::Int | TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x8B, 0x00]),
+                // ★ `int` con SIGNO se extiende con signo, y compartía arm con
+                // `unsigned int`.
+                //
+                // Era `mov eax,[rax]` para los dos, que rellena de CEROS los 32
+                // bits altos. `char` y `short` sí usaban `movsx` —así que la
+                // intención estaba clara y el `int` se quedó fuera—, y no se
+                // notaba porque **ningún global podía valer negativo**: el
+                // inicializador sólo entendía `Expr::Int` positivo y todo lo
+                // demás se rellenaba de ceros en silencio. Al arreglar aquello,
+                // `int frio = -40;` empezó a imprimir **4294967256**.
+                //
+                // `movsxd rax, dword [rax]` = `48 63 00`.
+                TypeSpec::Int => self.code.extend_from_slice(&[0x48, 0x63, 0x00]),
+                TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x8B, 0x00]),
                 _ => self.code.extend_from_slice(&[0x48, 0x8B, 0x00]),
             }
         } else {

@@ -56,24 +56,27 @@
 /* El mundo. Un solo literal, y por eso una sola entrada en la tabla de cadenas
  * del IR — que tiene 256 y conviene no gastarlas en decoración. */
 /* Puntero al literal y no `char mapa[]`: BMO C todavía no deduce el tamaño de
- * un array desde su inicializador, y aquí no hace falta — se indexa igual. */
-char *mapa =
-    "1111111111111111"
-    "1000000000000001"
-    "1011110000111101"
-    "1010000000000101"
-    "1010111011101101"
-    "1010001010001001"
-    "1011101010111011"
-    "1000101000100001"
-    "1110101110101111"
-    "1000100010100001"
-    "1011111010111101"
-    "1000001000100001"
-    "1111101111101111"
-    "1000001000000001"
-    "1000001000000001"
-    "1111111111111111";
+ * un array desde su inicializador, y aquí no hace falta — se indexa igual.
+ *
+ * ⚠️ Y SE ASIGNA EN `main`, NO AQUÍ. Esto era
+ *
+ *     char *mapa = "1111...";
+ *
+ * y **el mapa valía CERO**. Un global inicializado con una cadena tiene que
+ * guardar la DIRECCIÓN del literal, que no se conoce hasta cargar el programa;
+ * el codegen no sabía ponerla y rellenaba de ceros sin decir nada. Así que
+ * `pared()` leía `mapa[y*16+x]` desde la dirección 0 —el primer byte de la
+ * imagen, o sea el `push rbp` de la primera función— y **las paredes de este
+ * laberinto eran el código máquina del propio programa**.
+ *
+ * No se notó porque un raycaster que dibuja paredes desde bytes cualesquiera
+ * sigue dibujando paredes: salía un laberinto plausible que no era éste. Lo
+ * destapó el 2026-08-07 un test de globales, no una foto de la pantalla.
+ *
+ * Hasta que el BEF tenga relocations `Abs64` —que es lo que permitiría al
+ * cargador escribir esa dirección—, el sitio de un puntero a literal es dentro
+ * de una función. */
+char *mapa;
 
 int pared(int x, int y) {
     if (x < 0) return 1;
@@ -144,6 +147,28 @@ int main() {
      * cediera la pantalla a cualquiera que la pida sería un compositor que no
      * sirve. Lo que falta es que el escritorio sepa PRESTARLA y recuperarla, y
      * eso es trabajo suyo, no de un ejemplo. */
+    /* ⚠️ EL MAPA, LO PRIMERO DE TODO. Ver la nota de su declaración: aquí es
+     * donde tiene que estar mientras el BEF no tenga relocations, y va antes de
+     * cualquier otra cosa porque `pared()` lo lee y no hay nada que avise si
+     * llega tarde — valdría cero, que es la dirección del propio código. */
+    mapa =
+        "1111111111111111"
+        "1000000000000001"
+        "1011110000111101"
+        "1010000000000101"
+        "1010111011101101"
+        "1010001010001001"
+        "1011101010111011"
+        "1000101000100001"
+        "1110101110101111"
+        "1000100010100001"
+        "1011111010111101"
+        "1000001000100001"
+        "1111101111101111"
+        "1000001000000001"
+        "1000001000000001"
+        "1111111111111111";
+
     pant = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PANTALLA_RECLAMAR, 0, 0, 0);
     if (pant == 0) {
         printf("la pantalla ya tiene dueno: el escritorio la reclamo al arrancar\n");

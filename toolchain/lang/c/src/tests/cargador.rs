@@ -74,3 +74,140 @@ fn loaded_bef_has_global_data() {
     assert!(has_data, "global vars should create Data section");
 }
 
+
+// ── El relleno a página, FUERA ────────────────────────────────────────
+//
+// Hasta el 2026-08-07 el codegen rellenaba cada tramo hasta la página con
+// `0xCC` y ese relleno viajaba dentro del `.bex`. No era capricho: los
+// `lea [rip+disp]` se contaban asumiendo que los datos van pegados detrás del
+// código, y el cargador (`ring0/task/proc.rs`) pone cada sección en la página
+// siguiente. Rellenar hacía coincidir las dos cuentas.
+//
+// Ahora el compilador MODELA la regla del cargador en vez de forzarla, y el
+// arnés de pruebas coloca las secciones por página como el cargador real — sin
+// eso, estos tests no probarían nada.
+
+/// El tamaño declarado de la sección `kind`.
+fn tamano_seccion(bef: &[u8], kind: bmo_abi::bef::sections::SectionKind) -> Option<usize> {
+    use bmo_abi::bef::sections::SectionEntry;
+    let hdr = unsafe { &*(bef.as_ptr() as *const bmo_abi::bef::header::BefHeader) };
+    let sec_off = hdr.section_table_offset as usize;
+    for i in 0..hdr.section_count as usize {
+        let e = sec_off + i * SectionEntry::SIZE;
+        if bef[e] == kind as u8 {
+            return Some(u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize);
+        }
+    }
+    None
+}
+
+/// ★ Un programa pequeño ocupa lo que ocupa.
+///
+/// Antes la sección de código de CUALQUIER programa era múltiplo de 4096, así
+/// que un `hola` medía una página entera y no se podía distinguir de un
+/// programa cuarenta veces mayor. Ese redondeo es lo que hacía invisible
+/// cualquier ahorro de código por debajo de una página.
+#[test]
+fn la_seccion_de_codigo_ya_no_se_redondea_a_pagina() {
+    use bmo_abi::bef::sections::SectionKind;
+    let bef = compile_source_to_bef("int main() { printf(\"hola\"); return 0; }").unwrap();
+    let code = tamano_seccion(&bef, SectionKind::Code).expect("tiene que haber seccion code");
+    assert!(
+        code % 4096 != 0,
+        "un programa de este tamano no puede medir un multiplo exacto de pagina: {code}"
+    );
+    assert!(code < 4096, "y tiene que caber de sobra en una pagina: {code}");
+}
+
+/// ★ Y LA PRUEBA QUE IMPORTA: la cadena se sigue alcanzando.
+///
+/// Es el `%s` el que fallaría si la aritmética nueva estuviera mal. El código
+/// de este programa NO llena la página, así que rodata empieza en 4096 mientras
+/// el código acaba mucho antes: si el compilador contara "pegado detrás del
+/// código" —como hacía cuando rellenaba— el puntero caería en el hueco y se
+/// imprimiría basura o nada.
+///
+/// Este test no habría podido fallar antes del 2026-08-07: el arnés concatenaba
+/// las secciones, así que la cuenta equivocada también habría acertado.
+#[test]
+fn una_cadena_se_alcanza_aunque_el_codigo_no_llene_la_pagina() {
+    let fuente = "int main() { char *s; s = \"cadena en rodata\"; \
+                  printf(\"[%s]\", s); return 0; }";
+    assert_eq!(run_c(fuente), "[cadena en rodata]");
+}
+
+/// Lo mismo para los GLOBALES, que van en la tercera sección — o sea que su
+/// dirección depende de DOS redondeos, no de uno: la página tras el código y la
+/// página tras rodata. Un error en el segundo sumando sólo se ve aquí.
+///
+/// Las dos secciones se ejercitan en la misma línea: el `%d` lee el global (de
+/// `data`, tras dos fronteras) y el `%s` la cadena (de `rodata`, tras una).
+#[test]
+fn un_global_se_alcanza_tras_dos_fronteras_de_pagina() {
+    let fuente = "int contador = 41; \
+                  int main() { contador = contador + 1; \
+                  printf(\"%d %s\", contador, \"eltexto\"); return 0; }";
+    assert_eq!(run_c(fuente), "42 eltexto");
+}
+
+// ── El global que valía CERO en silencio ──────────────────────────────
+//
+// Estos tres nacieron de escribir el test de arriba con `char *texto =
+// "eltexto"` y ver salir `42 UH\x89åH\x8d\x05õ\x1f` — bytes de codigo maquina.
+// El global valía 0, y el byte 0 de la imagen es el `push rbp` de la primera
+// funcion.
+//
+// NO era una regresion: fallaba igual con el codegen anterior. Un
+// inicializador que este codegen no sabia convertir se rellenaba de ceros y no
+// se decia, y nada lo miraba porque `globales.rs` sólo comprobaba que el
+// programa COMPILARA.
+
+/// ★ Un global con un inicializador que no se sabe poner se RECHAZA, con el
+/// nombre de la variable y el motivo.
+///
+/// El caso de la cadena es el que más desconcierta —la salida son instrucciones
+/// legibles como texto— y es también el que señala el trabajo que falta: para
+/// guardar la dirección de la cadena hace falta una relocation `Abs64` en el
+/// BEF, porque esa dirección **no se conoce hasta cargar**. Es el primer
+/// cliente concreto de las relocations de verdad.
+#[test]
+fn un_global_inicializado_con_cadena_se_rechaza_diciendolo() {
+    let err = compile_source_to_bef("char *texto = \"eltexto\"; int main() { return 0; }")
+        .expect_err("un cero inventado es peor que un error");
+    let msg = format!("{err:?}");
+    assert!(msg.contains("texto"), "tiene que decir QUE global: {msg}");
+    assert!(
+        msg.contains("Abs64") || msg.contains("relocation"),
+        "y que hace falta para arreglarlo: {msg}"
+    );
+}
+
+/// Y de paso, lo que sí se puede poner y antes valía cero: un entero negativo.
+///
+/// `int x = -5;` es `Neg(Int(5))` en el AST, no `Int(-5)`, así que caía en el
+/// mismo agujero. Ahora se convierte, que es gratis y claramente correcto.
+#[test]
+fn un_global_negativo_ya_no_vale_cero() {
+    let fuente = "int frio = -40; int main() { printf(\"%d\", frio); return 0; }";
+    assert_eq!(run_c(fuente), "-40");
+}
+
+/// Y el viaje de ida y vuelta, que es lo que cubre la pareja completa: escribir
+/// un negativo en un global EN EJECUCIÓN y volver a leerlo. El `store` guarda 4
+/// bytes (correcto para con y sin signo); el que fallaba era el `load`.
+#[test]
+fn un_global_int_conserva_el_signo_al_releerlo() {
+    let fuente = "int v = 0; \
+                  int main() { v = 0 - 7; printf(\"%d,\", v); \
+                               v = v - 1; printf(\"%d\", v); return 0; }";
+    assert_eq!(run_c(fuente), "-7,-8");
+}
+
+/// El contraste que prueba que no se ha roto lo otro: `unsigned int` NO se
+/// extiende con signo, y ahí `mov eax,[rax]` es la instrucción correcta.
+#[test]
+fn un_global_unsigned_no_se_extiende_con_signo() {
+    let fuente = "unsigned int u = 0; \
+                  int main() { u = 0 - 1; printf(\"%u\", u); return 0; }";
+    assert_eq!(run_c(fuente), "4294967295");
+}
