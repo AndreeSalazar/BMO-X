@@ -152,6 +152,13 @@ pub static VIVOS: AtomicU32 = AtomicU32::new(0);
 ///
 /// El número solo no sirve: *"despertaron 4 de 5"* deja sin decir **cuál falta**,
 /// y cuál falta es justo el dato con el que se mira el siguiente.
+///
+/// ⚠️ Son 32 bits y el bit se elige con `id & 31`. En esta máquina los APIC IDs
+/// van de 0 a 11 y la máscara es exacta. **En un x2APIC con IDs grandes y
+/// dispersos, dos núcleos distintos pueden caer en el mismo bit** — la cuenta
+/// (`VIVOS`) seguiría siendo correcta, la máscara no. Se deja así a propósito
+/// mientras el censo quepa: ampliarla exige decidir qué hacer con IDs de 32 bits
+/// en un panel de una línea, y ese problema todavía no existe.
 pub static MASCARA: AtomicU32 = AtomicU32::new(0);
 
 /// El APIC ID **por CPUID**, no por LAPIC.

@@ -1246,7 +1246,7 @@ fn shell_ktest() {
 /// ningún CPU todavía. Si está mal, lo que se cuelga es este comando y no la
 /// máquina al encenderla; la salida es un reinicio a botón. Ver
 /// `plat/smp.rs` y `docs/SMP_MAESTRO.md`.
-fn shell_smp() {
+fn shell_smp(ctx: &BootContext) {
     dashboard_log_color("== smp ==", SH_TITLE);
 
     // Por el PERFIL, no por el nombre del fabricante: ver `profile.rs`.
@@ -1265,7 +1265,23 @@ fn shell_smp() {
 
     // ★ Una línea POR NÚCLEO y antes de mandarle nada. Es lo único de este
     // comando que puede colgarse, y así el cuelgue deja dicho en cuál fue.
-    let (vivos, esperados) = crate::ring0::plat::smp::despertar(|id| {
+    // El censo se pinta ANTES de llamar a nadie: si algo cuelga, ya se sabe a
+    // quién se iba a llamar y con qué lista.
+    if let Some(c) = crate::ring0::plat::madt::enumerar(ctx.rsdp) {
+        row("firmware", |l| {
+            l.dec(c.ids().len() as u64);
+            l.txt(" nucleos en la MADT");
+            if c.apagados() > 0 {
+                l.txt("   (+");
+                l.dec(c.apagados() as u64);
+                l.txt(" apagados)");
+            }
+        });
+    } else {
+        row("firmware", |l| l.txt("sin MADT: se supondran los APIC IDs"));
+    }
+
+    let (vivos, esperados) = crate::ring0::plat::smp::despertar(ctx.rsdp, |id| {
         row("  ->", |l| {
             l.txt("APIC ");
             l.dec(id as u64);
@@ -1562,7 +1578,7 @@ fn run_shell(ctx: &BootContext) -> ! {
         } else if cmd == b"info" {
             shell_info(ctx);
         } else if cmd == b"smp" {
-            shell_smp();
+            shell_smp(ctx);
         } else if cmd == b"tasks" {
             shell_tasks();
         } else if cmd == b"mem" {

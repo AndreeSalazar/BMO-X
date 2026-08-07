@@ -60,6 +60,9 @@ pub mod fsys {
 /// La plataforma que sostiene al kernel: fallos, trampas, reloj y cerrojos.
 pub mod plat {
     pub mod faults;
+    /// El censo de núcleos que da el firmware por ACPI. Es la fuente de los
+    /// APIC IDs, y sustituye a la suposición `0..hilos-1`.
+    pub mod madt;
     pub mod reinicio;
     /// Despertar los otros núcleos. **No corre en el arranque**: lo pide la
     /// orden `smp`. Ver la cabecera del módulo para saber por qué esto no podía

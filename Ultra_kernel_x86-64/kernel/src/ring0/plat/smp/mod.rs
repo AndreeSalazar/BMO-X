@@ -56,14 +56,55 @@ use mapa::*;
 /// Va como parámetro y no como una llamada a CABINA desde aquí por dos razones:
 /// once líneas seguidas inundarían un anillo de 48 eventos, y **`plat/` no tiene
 /// por qué saber pintar**. Quien llama decide cómo se enseña.
-pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
-    // Por el PERFIL, no por el nombre del fabricante. Ver `cpu_vendor/profile.rs`:
-    // la primera versión de esto llamaba a `ryzen_5_5600x::bmo_cpu::topology()`
-    // directamente, que es exactamente lo que ese contrato prohíbe.
-    let esperados = match (crate::ring0::cpu_vendor::profile::active().nucleos)() {
-        Some(n) if n.hilos > 1 => n.hilos - 1,
+pub fn despertar(rsdp: u64, aviso: impl Fn(u32)) -> (u32, u32) {
+    // ── A quién llamar: lo dice el FIRMWARE, no una suposición ──────────
+    //
+    // La MADT es la lista de núcleos que declara la placa. Antes esto suponía
+    // APIC IDs `0..hilos-1`, cierto en un Zen 3 de un CCD y falso en cuanto se
+    // cambie de máquina — y fallando de la peor forma, porque un ID inventado y
+    // un núcleo no llamado se ven **igual desde fuera**.
+    let censo = super::madt::enumerar(rsdp);
+
+    // Por el PERFIL, no por el nombre del fabricante. Ver `cpu_vendor/profile.rs`.
+    let por_cpuid = (crate::ring0::cpu_vendor::profile::active().nucleos)().map(|n| n.hilos);
+
+    // ★ Y se contrastan las dos fuentes. Dicen cosas distintas por naturaleza:
+    // CPUID dice lo que el silicio TIENE, la MADT lo que el firmware DECLARA. Si
+    // no coinciden, lo normal es que la placa haya apagado algo (SMT off en la
+    // BIOS) — y saberlo aquí evita buscar un fallo en el trampolín cuando lo que
+    // pasa es que faltan núcleos a propósito.
+    if let (Some(c), Some(hilos)) = (censo.as_ref(), por_cpuid) {
+        let declarados = c.ids().len() as u32;
+        if declarados != hilos {
+            crate::ring0::cabina::warn(
+                "smp",
+                "el firmware declara otros hilos que el silicio (BIOS?)",
+                declarados as u64,
+            );
+        }
+        if c.apagados() > 0 {
+            crate::ring0::cabina::warn(
+                "smp",
+                "nucleos LISTADOS y no habilitados: no se llaman",
+                c.apagados() as u64,
+            );
+        }
+    }
+
+    let esperados = match (censo.as_ref(), por_cpuid) {
+        // Manda la MADT: es la lista de a quién se puede llamar.
+        (Some(c), _) => (c.ids().len() as u32).saturating_sub(1),
+        // Sin MADT se sigue, pero **diciendo que se está suponiendo**.
+        (None, Some(hilos)) if hilos > 1 => {
+            crate::ring0::cabina::warn(
+                "smp",
+                "sin MADT: suponiendo APIC IDs 0..hilos-1",
+                hilos as u64,
+            );
+            hilos - 1
+        }
         _ => {
-            crate::ring0::cabina::warn("smp", "sin topologia: no se cuantos nucleos esperar", 0);
+            crate::ring0::cabina::warn("smp", "sin MADT ni topologia: no se a quien llamar", 0);
             return (0, 0);
         }
     };
@@ -115,27 +156,14 @@ pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
         //    así que hay que dejarla puesta antes de cada SIPI. De ahí que esto
         //    no sea un broadcast.
         //
-        // ⚠️ SE SUPONE QUE LOS APIC IDs SON `0..hilos-1`, y hay que decirlo.
-        //
-        // Es cierto en un Zen 3 de un solo CCD y **es una suposición** en
-        // cualquier otra cosa: nada en BMO enumera los APIC IDs de verdad.
-        // `Topology::cpus` **parece** ese censo y no lo es —se rellena con 64
-        // copias del BSP, ver su doc—, y la fuente buena son las entradas de
-        // tipo 0 de la **MADT**, que `s2_mem` localiza y no recorre.
-        //
-        // Consecuencias de que la suposición falle, para saber qué se está
-        // mirando si pasa: a un ID que no existe la IPI se va al vacío —el
-        // `Delivery Status` acaba por bajar y se sigue—, y un núcleo real con
-        // un ID fuera del rango no se llamaría nunca. Las dos cosas se ven
-        // igual desde fuera: **faltan núcleos**. Por eso se imprime la máscara.
-        for id in 0..esperados + 1 {
-            if id == yo {
-                continue;
-            }
-            core::ptr::write_volatile(
-                (DATOS + OFF_PILA) as *mut u64,
-                PILAS + (id as u64 + 1) * 0x1000,
-            );
+        // La pila de cada AP se indexa por el ORDEN de la llamada, no por su
+        // APIC ID: con la MADT esos IDs pueden ser cualquier cosa (en un x2APIC
+        // son números grandes y dispersos), y `PILAS + id * 0x1000` se saldría
+        // del primer MiB sin avisar. El orden siempre es 0, 1, 2…
+        let mut ranura = 0u64;
+        let llamar = |id: u32, ranura: &mut u64| {
+            *ranura += 1;
+            core::ptr::write_volatile((DATOS + OFF_PILA) as *mut u64, PILAS + *ranura * 0x1000);
             // Se dice ANTES de mandarlo, no después: si el que cuelga es éste,
             // el número ya está en pantalla.
             aviso(id);
@@ -145,6 +173,25 @@ pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
             lapic::esperar_us(200);
             lapic::ipi(id, lapic::SIPI);
             lapic::esperar_us(200);
+        };
+
+        match censo.as_ref() {
+            // ★ La lista del firmware, tal cual. Ni se inventa ni se ordena.
+            Some(c) => {
+                for &id in c.ids() {
+                    if id != yo {
+                        llamar(id, &mut ranura);
+                    }
+                }
+            }
+            // El camino de respaldo, ya avisado más arriba.
+            None => {
+                for id in 0..esperados + 1 {
+                    if id != yo {
+                        llamar(id, &mut ranura);
+                    }
+                }
+            }
         }
     }
 
