@@ -122,9 +122,70 @@ sin nada que los ordene**. Aparece el problema del *tearing* —el compositor
 leyendo un fotograma a medio pintar— y con él la necesidad de doble búfer y de
 sincronización entre procesos. Es más rápido y es **otro proyecto**.
 
-> **Decisión: camino A.** Y no por prudencia: porque el B no se puede evaluar
-> hasta que el A esté funcionando y se haya medido cuánto cuesta la copia. Ir al
-> B primero es optimizar un número que nadie ha visto.
+### Camino C — **REFLEJO**: la app pinta donde se va a ver
+
+Pregunta del dueño, y es la buena: *"¿por qué copiar? Que sea un reflejo. Copiar
+era el sistema de antes, no el de BMO-X"*.
+
+La idea: el bloque de la app **no es una copia de su ventana, ES su ventana** —
+un trozo del lienzo del compositor, mapeado en el espacio de la app. La app
+escribe ahí y ya está en la pantalla. Cero copias.
+
+★ **Y funciona. Para UN caso, y ese caso importa.**
+
+Hay un detalle de hardware que lo decide, y no se ve hasta que lo dibujas:
+
+```
+  una ventana es un RECTÁNGULO dentro de un búfer más ancho
+
+  fila n     [·······|=== ventana ===|·······]
+  fila n+1   [·······|=== ventana ===|·······]
+             └─ 7680 bytes de distancia entre una fila y la siguiente
+```
+
+Las filas de la ventana **no son contiguas en memoria**, y la unidad con la que
+el kernel puede repartir memoria es **la página de 4 KiB**. Un rectángulo de
+enmedio no está alineado a página: para dar acceso a la ventana habría que dar
+acceso a **bandas horizontales enteras** — o sea, a los píxeles de los vecinos.
+
+> **Una app podría pintar encima de la ventana de al lado. Y no por malicia: por
+> un índice mal calculado.**
+
+Salvo en un caso: **si la ventana ocupa el ancho completo**, las filas SÍ son
+contiguas, la región sí es un bloque de páginas, y el reflejo es exacto y
+seguro. Pantalla completa, o una banda de arriba abajo.
+
+★★ Y aquí está lo que la pregunta destapa, que es más importante que la
+respuesta:
+
+> **En un escritorio con ventanas que se solapan, LA COPIA ES LA COMPOSICIÓN.**
+> No es una ineficiencia heredada: es el mecanismo que decide **quién tapa a
+> quién** y el que impide que una app pinte fuera de lo suyo. Quitar la copia no
+> ahorra trabajo — **quita el aislamiento**.
+
+⚠️ Y el dato histórico va justo al revés de lo que parece: **el modelo sin copia
+es el ANTIGUO**. En X11 los clientes dibujaban directamente sobre la pantalla
+compartida, y Wayland se inventó para dejar de hacerlo — precisamente por el
+aislamiento y por el *tearing*. Lo que hoy sí es moderno y sí evita la copia son
+los **planos de superposición de la GPU**, que leen directamente del búfer del
+cliente… y eso es hardware, no arquitectura.
+
+## La decisión: los dos, y en este orden
+
+| | Cuándo | Copias |
+|---|---|---|
+| **Reflejo** | ventana a pantalla completa o de ancho completo | **cero** |
+| **Ventana** | cualquier rectángulo, solapado, con z-order | una por fotograma |
+
+**El reflejo se hace primero**, y no por ser el rápido: porque es **el más
+simple** —no hay recorte, no hay z-order, no hay nada que decidir— y porque es
+justo lo que necesita el primer inquilino de verdad. **DOOM va a pantalla
+completa.** El raycaster también.
+
+> **Decisión: reflejo primero, ventana después.** Y el camino B —bloque
+> compartido para un rectángulo cualquiera— se descarta con motivo: da acceso a
+> los píxeles del vecino y trae *tearing*, doble búfer y sincronización entre
+> procesos. No es más rápido: es otro proyecto con otros problemas.
 
 ---
 
