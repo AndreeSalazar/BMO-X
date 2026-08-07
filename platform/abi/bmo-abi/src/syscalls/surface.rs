@@ -455,6 +455,52 @@ pub const fn lienzo_fila_inicio(alto: u32, filas: u32, stride_px: u32) -> u32 {
     (inicio / g) * g
 }
 
+/// Filas del lienzo que **nunca** se prestan: la barra del escritorio y su
+/// caja de Ejecutar viven arriba.
+///
+/// Que sea un número y no "lo que el compositor diga" es a propósito: el kernel
+/// no puede preguntarle a un proceso de Ring 3 cuánto sitio necesita para
+/// decidir si le presta memoria a otro. Un mínimo fijo se audita de un vistazo.
+pub const LIENZO_FILAS_RESERVADAS_ARRIBA: u32 = 64;
+
+/// **Dónde cae la banda siguiente**, contando las que ya se prestaron.
+///
+/// Devuelve `(fila_inicio, filas)` alineadas, o `None` si no cabe.
+///
+/// ═══ Por qué se reparte DESDE ABAJO ═══
+///
+/// Las bandas se van apilando hacia arriba desde el borde inferior, y el borde
+/// de arriba se queda quieto. Así el sitio del compositor —la barra, la caja de
+/// Ejecutar— **no se mueve cuando alguien pide o suelta un lienzo**, que es lo
+/// que pasaría repartiendo desde arriba: una app que arranca le movería la barra
+/// al dueño.
+///
+/// ⚠️ Y la comprobación que importa: `reservadas` son las filas YA prestadas.
+/// Sin ese parámetro, dos apps recibirían la misma banda y **se pintarían
+/// encima la una a la otra** — que es exactamente el fallo que este contrato
+/// existe para impedir.
+pub const fn lienzo_asignar(
+    alto: u32,
+    reservadas: u32,
+    filas: u32,
+    stride_px: u32,
+) -> Option<(u32, u32)> {
+    let g = lienzo_grano_filas(stride_px);
+    if g == 0 || filas == 0 || alto == 0 {
+        return None;
+    }
+    let pedidas = lienzo_filas_redondeadas(filas, stride_px);
+    // Lo ya prestado también sube al grano: si no, la banda nueva empezaría a
+    // media página aunque su tamaño estuviera alineado.
+    let ya = lienzo_filas_redondeadas(reservadas, stride_px);
+    let techo = LIENZO_FILAS_RESERVADAS_ARRIBA;
+    // `ya + pedidas` no puede comerse ni el techo ni la pantalla.
+    if pedidas > alto || ya > alto || ya + pedidas + techo > alto {
+        return None;
+    }
+    Some((alto - ya - pedidas, pedidas))
+}
+
 /// **Despertar los otros núcleos.** Devuelve `vivos<<32 | esperados`, ambos sin
 /// contar el BSP.
 ///
@@ -727,9 +773,47 @@ mod tests {
         assert_eq!((inicio as u64 * 1920 * 4) % 4096, 0);
     }
 
+    /// Dos apps NO pueden recibir la misma banda. Es el fallo que este
+    /// contrato existe para impedir, así que se fija con un test.
+    #[test]
+    fn dos_bandas_seguidas_no_se_pisan() {
+        let (i1, f1) = lienzo_asignar(1080, 0, 200, 1920).unwrap();
+        let (i2, f2) = lienzo_asignar(1080, f1, 100, 1920).unwrap();
+        // La segunda va ENCIMA de la primera, y no comparten ni una fila.
+        assert_eq!(i1 + f1, 1080, "la primera pega con el borde de abajo");
+        assert_eq!(i2 + f2, i1, "la segunda acaba justo donde empieza la primera");
+        assert!(i2 < i1);
+    }
+
+    /// El techo del escritorio no se toca: la barra y la caja viven arriba.
+    #[test]
+    fn el_techo_del_escritorio_no_se_presta() {
+        // 1080 - 64 de techo = 1016 utiles. Pedir 1016 cabe justo...
+        assert!(lienzo_asignar(1080, 0, 1016, 1920).is_some());
+        // ...y una fila más ya no, aunque la pantalla tenga sitio físico.
+        assert!(lienzo_asignar(1080, 0, 1017, 1920).is_none());
+    }
+
+    /// Y el inicio sigue cayendo en el grano aunque haya bandas debajo.
+    #[test]
+    fn apilar_bandas_no_rompe_la_alineacion() {
+        let g = lienzo_grano_filas(1920);
+        let mut reservadas = 0u32;
+        for _ in 0..5 {
+            let (inicio, filas) = lienzo_asignar(1080, reservadas, 101, 1920).unwrap();
+            assert_eq!(inicio % g, 0, "inicio {inicio} no cae en el grano");
+            assert_eq!(filas % g, 0);
+            assert_eq!((inicio as u64 * 1920 * 4) % 4096, 0);
+            reservadas += filas;
+        }
+    }
+
     /// Pedir más de lo que hay no da una banda mala: no da banda.
     #[test]
     fn pedir_mas_de_lo_que_cabe_no_da_nada() {
+        assert!(lienzo_asignar(1080, 0, 5000, 1920).is_none());
+        assert!(lienzo_asignar(1080, 1000, 200, 1920).is_none());
+        assert!(lienzo_asignar(0, 0, 8, 1920).is_none());
         assert_eq!(lienzo_fila_inicio(1080, 2000, 1920), 1080);
         assert_eq!(lienzo_filas_redondeadas(0, 1920), 0);
         assert_eq!(lienzo_grano_filas(0), 0);
