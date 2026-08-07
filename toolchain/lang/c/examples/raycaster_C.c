@@ -136,9 +136,18 @@ int main() {
     int i;
     int vivo;
 
+    /* ★ LA PANTALLA TIENE UN SOLO DUEÑO, y eso no es una limitación de este
+     * programa: es el modelo. `gui.bex` la reclama al arrancar y no la suelta,
+     * así que mientras el escritorio viva, aquí se contesta que no.
+     *
+     * No es un fallo que haya que arreglar en este fichero — un compositor que
+     * cediera la pantalla a cualquiera que la pida sería un compositor que no
+     * sirve. Lo que falta es que el escritorio sepa PRESTARLA y recuperarla, y
+     * eso es trabajo suyo, no de un ejemplo. */
     pant = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PANTALLA_RECLAMAR, 0, 0, 0);
     if (pant == 0) {
-        printf("no me dieron la pantalla\n");
+        printf("la pantalla ya tiene dueno: el escritorio la reclamo al arrancar\n");
+        printf("esto corre desde el shell de Ring 0, donde no hay compositor\n");
         return 1;
     }
     base = bmo_valor(pant, FB_BASE, 0, 0, 0);

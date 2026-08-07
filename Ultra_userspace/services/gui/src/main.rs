@@ -1308,6 +1308,7 @@ pub extern "C" fn _start() -> ! {
                                     pintar_salida(&p, &caja, &salida);
                                     pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
                                     n = 0;
+                                    cur = 0;
                                     continue;
                                 }
                                 if arg == b"prueba" || arg == b"bench" {
@@ -1335,6 +1336,7 @@ pub extern "C" fn _start() -> ! {
                                     }
                                     pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
                                     n = 0;
+                                    cur = 0;
                                     continue;
                                 }
                                 let cuantos = if arg.is_empty() {
@@ -1389,6 +1391,7 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
                                 n = 0;
+                                cur = 0;
                             }
                             // Se pinta ANTES de pedirlo: la llamada no vuelve,
                             // asi que un mensaje despues no lo veria nadie. Y
