@@ -10,6 +10,11 @@ mod agregados;
 /// bytes; leer es ESPERAR, guardar lo que sobra y decidir que significa lo que
 /// alguien tecleo. Tres problemas que la salida no tiene.
 mod entrada;
+/// El CATÁLOGO de funciones sintetizadas: nombre → los bytes que lo
+/// implementan. Salió de aquí porque dentro no se sabe qué es una expresión de
+/// C — sólo hay nombres y código — y esa frontera se ve en que ese fichero no
+/// escribe `self` ni una vez. La PASADA sobre las relocs se queda en este.
+mod sintetizadas;
 
 type Result<T> = core::result::Result<T, CError>;
 
@@ -62,305 +67,6 @@ struct PendingReloc {
 struct CallReloc {
     offset: usize,
     target: String,
-}
-
-/// Quién emite el cuerpo de una función SINTETIZADA: apendiza x86-64 crudo,
-/// igual que los emisores de `bmo_lower`. Misma forma a propósito — así una
-/// entrada de la tabla puede ser un emisor de L1 sin envoltorio.
-type Sintetizador = fn(&mut Vec<u8>);
-
-/// ★ LA TABLA DE FUNCIONES SINTETIZABLES — nombre → quién emite sus bytes.
-///
-/// # Qué problema resuelve
-///
-/// Hasta ahora este codegen tenía DOS formas de dar una función y ninguna
-/// intermedia:
-///
-/// ```text
-///   EN LÍNEA      el bucle entero, otra vez, en CADA sitio de llamada
-///                 -> perfecto para las seis funciones de un programa pequeño
-///                 -> y cada llamada paga su copia
-///
-///   NADA          `patch_call_relocs` falla: "no existe la funcion 'X'"
-/// ```
-///
-/// Un programa que llama a `memcpy` doscientas veces —o sea DOOM, donde por
-/// ahí pasa el blit de cada fotograma— pagaba doscientas copias del mismo
-/// bucle. La regla que decide, y que ya estaba escrita en `bmo-rt/src/lib.rs`:
-///
-/// > **En línea lo que no tiene semántica de lenguaje y se usa poco. Enlazado
-/// > lo que tiene estado, tamaño, o se llama desde muchos sitios.**
-///
-/// # Cómo funciona
-///
-/// El mecanismo NO es nuevo, y eso es lo mejor que tiene: `__bmo_syscall_stub`
-/// llevaba semanas corriendo en el Ryzen exactamente así —un cuerpo emitido
-/// una vez, y `call rel32` parcheado por `patch_call_relocs`—, sólo que
-/// cableado a mano para un único nombre. Esto es esa misma vía convertida en
-/// tabla, y por eso el stub es su primera entrada: si la tabla no supiera
-/// reproducir el caso que ya funciona, no serviría.
-///
-/// # La ABI que un cuerpo de aquí tiene que respetar
-///
-/// La de BMO C, que **no es SysV**: los argumentos van por la PILA, empujados
-/// de derecha a izquierda (ver el `.rev()` del sitio de llamada), así que tras
-/// `push rbp; mov rbp, rsp` quedan en `[rbp+16]`, `[rbp+24]`, `[rbp+32]`…, y
-/// el retorno en `rax`. Confundir esto con SysV daría una función que compila
-/// y lee los argumentos de registros que nadie rellenó.
-const SINTETIZABLES: &[(&str, Sintetizador)] = &[
-    // La puerta de syscalls: `syscall; ret`. Tres bytes, y el caso que
-    // demuestra que la tabla subsume lo que ya corría cableado.
-    ("__bmo_syscall_stub", sintetiza_syscall_stub),
-    // `memcpy(dst, src, n)` -> dst. Ver `sintetiza_memcpy`.
-    ("memcpy", sintetiza_memcpy),
-    // ★ LAS CONVERSIONES DE `printf`. Éstas son las que de verdad se repiten:
-    // ningún ejemplo del repo llama a `memcpy` y **todos** llaman a `printf`.
-    //
-    // No reciben sus argumentos por la pila: el valor llega **en `rax`**, que
-    // es la convención que ya tenían cuando se emitían en línea (la pone
-    // `emit_cargar_de_pila` en el sitio de llamada). Por eso su cuerpo es el
-    // emisor y un `ret`, sin prólogo ni marco — y por eso no hay aquí ninguna
-    // traducción de ABI que poder equivocar.
-    ("__bmo_fmt_i64", sintetiza_fmt_i64),
-    ("__bmo_fmt_u64_dec", sintetiza_fmt_u64_dec),
-    ("__bmo_fmt_u64_hex", sintetiza_fmt_u64_hex),
-    ("__bmo_fmt_char", sintetiza_fmt_char),
-    ("__bmo_fmt_cstr", sintetiza_fmt_cstr),
-    // ★ LAS CADENAS — la pieza 5, que cierra el enlazador.
-    //
-    // Se convirtieron ÉSTAS y no todas, y el criterio fue medido: enlazar
-    // cuesta ~10 bytes por llamada (empujar + `call` + devolver la pila) y en
-    // línea cuesta ~3 más el cuerpo. O sea que enlazar gana cuando el cuerpo
-    // pasa de unos 7 bytes. Los cuerpos, medidos:
-    //
-    //   comparar_n (strncmp/memcmp)  46      buscar   (strchr)  39
-    //   comparar   (strcmp)          25      largo    (strlen)  15
-    //   rellenar   (memset)          15      copiar   (memcpy)  20
-    //   absoluto   (abs)             13  <-- se queda EN LÍNEA
-    //
-    // `abs` no entra: trece bytes apenas pasan del coste de llamarlo, y con el
-    // prólogo el cambio saldría a perder en cualquier programa que no lo llame
-    // muchas veces. La regla que lo decide no es "todo a la tabla".
-    ("strlen", sintetiza_strlen),
-    ("strcpy", sintetiza_strcpy),
-    ("memset", sintetiza_memset),
-    ("strcmp", sintetiza_strcmp),
-    ("strchr", sintetiza_strchr),
-    ("strncmp", sintetiza_strncmp),
-    ("memcmp", sintetiza_memcmp),
-];
-
-// ── Los ladrillos de un cuerpo sintetizado ────────────────────────────
-//
-// Existen para no escribir `[rbp+16]` a mano siete veces, que es exactamente
-// cómo se cuela un `[rbp+24]` donde iba `[rbp+16]`: el binario compila, el
-// emulador lo ejecuta, y la función lee el argumento de al lado.
-
-/// El ModRM de `mov <r64>, [rbp+disp8]` para los registros que usan los
-/// emisores de L1. El byte es `0b01_reg_101`: modo disp8, base `rbp`.
-const A_RAX: u8 = 0x45;
-const A_RCX: u8 = 0x4D;
-const A_RDX: u8 = 0x55;
-const A_RSI: u8 = 0x75;
-const A_RDI: u8 = 0x7D;
-
-/// `push rbp; mov rbp, rsp` — lo que hace que `[rbp+16]` sea el argumento 0.
-fn prologo(code: &mut Vec<u8>) {
-    code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]);
-}
-
-/// `pop rbp; ret`.
-fn epilogo(code: &mut Vec<u8>) {
-    code.extend_from_slice(&[0x5D, 0xC3]);
-}
-
-/// `mov <reg>, [rbp + 16 + 8*n]` — el argumento n-ésimo a un registro.
-///
-/// El 16 es la dirección de retorno más el `rbp` empujado; el resto sale del
-/// orden de empuje del sitio de llamada, que es de DERECHA A IZQUIERDA (el
-/// `.rev()`), así que el argumento 0 es el que queda más cerca.
-fn carga_arg(code: &mut Vec<u8>, reg: u8, n: u8) {
-    code.extend_from_slice(&[0x48, 0x8B, reg, 16 + 8 * n]);
-}
-
-/// `syscall; ret` — el cuerpo que estaba cableado en `emit_program`.
-fn sintetiza_syscall_stub(code: &mut Vec<u8>) {
-    code.extend_from_slice(&[0x0F, 0x05, 0xC3]);
-}
-
-/// Las cinco conversiones de `printf`, cada una **una sola vez**.
-///
-/// # Por qué basta el emisor y un `ret`
-///
-/// Los tres hechos que lo permiten, comprobados antes de envolverlos y no
-/// supuestos —si alguno dejara de ser cierto, esto se rompe en metal y no en
-/// compilación—:
-///
-/// 1. **El valor llega en `rax`.** Es lo que ya hacía el sitio de llamada con
-///    `emit_cargar_de_pila`; convertir a `call` no cambia de dónde sale.
-/// 2. **Están equilibrados en `rsp`.** `write_i64` hace `sub rsp,32` … `add
-///    rsp,32`, y su `lea r8,[rsp+32]` no sale de su propio marco. Por eso el
-///    `call` —que empuja ocho bytes de dirección de retorno— no descoloca los
-///    accesos relativos a `rsp` del `printf` que sigue: la carga del argumento
-///    ocurre ANTES del `call`, y el `ret` devuelve la pila.
-/// 3. **Sus saltos son relativos internos**, así que reubicar el bloque no lo
-///    rompe.
-///
-/// # Qué NO se comparte, y no es un descuido
-///
-/// Los trozos literales del formato siguen EN LÍNEA. `console::write_const`
-/// mete el texto **dentro de las instrucciones** como inmediatos —por eso no
-/// necesita `.rodata` ni fixup—, así que su cuerpo es distinto en cada llamada
-/// y no hay nada que compartir. Lo que se comparte son las conversiones, que
-/// es donde está el formateador.
-fn sintetiza_fmt_i64(code: &mut Vec<u8>) {
-    bmo_lower::fmt::write_i64(code);
-    code.push(0xC3); // ret
-}
-
-/// `%u` — decimal sin signo. Hermana de [`sintetiza_fmt_u64_hex`]: mismo
-/// emisor con otra base. Son dos funciones y no una con parámetro porque la
-/// tabla guarda `fn`, no cierres.
-fn sintetiza_fmt_u64_dec(code: &mut Vec<u8>) {
-    bmo_lower::fmt::write_u64_radix(code, 10);
-    code.push(0xC3);
-}
-
-/// `%x` — hexadecimal.
-fn sintetiza_fmt_u64_hex(code: &mut Vec<u8>) {
-    bmo_lower::fmt::write_u64_radix(code, 16);
-    code.push(0xC3);
-}
-
-/// `%c` — un carácter.
-fn sintetiza_fmt_char(code: &mut Vec<u8>) {
-    bmo_lower::fmt::write_char(code);
-    code.push(0xC3);
-}
-
-/// `%s` — una cadena terminada en cero, cuyo puntero llega en `rax`.
-fn sintetiza_fmt_cstr(code: &mut Vec<u8>) {
-    bmo_lower::fmt::write_cstr(code);
-    code.push(0xC3);
-}
-
-// ── LA PIEZA 5: las cadenas ───────────────────────────────────────────
-//
-// Las convenciones de registro de cada emisor están LEÍDAS DE SU FUENTE
-// (`bmo_lower::memoria`), no copiadas del sitio de llamada que se sustituye:
-// si el sitio de llamada tuviera un error, copiarlo lo habría conservado.
-//
-//   largo      RDI=s                    -> RAX
-//   rellenar   RDI=dst RAX=val RCX=n
-//   comparar   RDI=a   RSI=b            -> RAX
-//   comparar_n RDI=a   RSI=b   RDX=n    -> RAX
-//   buscar     RDI=s   RSI=c (en SIL)   -> RAX
-
-/// `strlen(s)` -> largo.
-fn sintetiza_strlen(code: &mut Vec<u8>) {
-    prologo(code);
-    carga_arg(code, A_RDI, 0);
-    bmo_lower::memoria::largo(code);
-    epilogo(code);
-}
-
-/// `memset(dst, val, n)` -> dst.
-fn sintetiza_memset(code: &mut Vec<u8>) {
-    prologo(code);
-    carga_arg(code, A_RDI, 0);
-    carga_arg(code, A_RAX, 1);
-    carga_arg(code, A_RCX, 2);
-    bmo_lower::memoria::rellenar(code);
-    carga_arg(code, A_RAX, 0); // devuelve dst
-    epilogo(code);
-}
-
-/// `strcmp(a, b)` -> diferencia con signo.
-fn sintetiza_strcmp(code: &mut Vec<u8>) {
-    prologo(code);
-    carga_arg(code, A_RDI, 0);
-    carga_arg(code, A_RSI, 1);
-    bmo_lower::memoria::comparar(code);
-    epilogo(code);
-}
-
-/// `strchr(s, c)` -> puntero al byte, o cero.
-fn sintetiza_strchr(code: &mut Vec<u8>) {
-    prologo(code);
-    carga_arg(code, A_RDI, 0);
-    carga_arg(code, A_RSI, 1);
-    bmo_lower::memoria::buscar(code);
-    epilogo(code);
-}
-
-/// `strncmp(a, b, n)` — para en el terminador.
-fn sintetiza_strncmp(code: &mut Vec<u8>) {
-    sintetiza_comparar_n(code, true);
-}
-
-/// `memcmp(a, b, n)` — NO para en el terminador: compara los `n` bytes.
-///
-/// Es el mismo emisor que `strncmp` con un booleano distinto, y esa diferencia
-/// de un bit es toda la diferencia entre las dos funciones de C.
-fn sintetiza_memcmp(code: &mut Vec<u8>) {
-    sintetiza_comparar_n(code, false);
-}
-
-fn sintetiza_comparar_n(code: &mut Vec<u8>, parar_en_cero: bool) {
-    prologo(code);
-    carga_arg(code, A_RDI, 0);
-    carga_arg(code, A_RSI, 1);
-    carga_arg(code, A_RDX, 2);
-    bmo_lower::memoria::comparar_n(code, parar_en_cero);
-    epilogo(code);
-}
-
-/// `strcpy(dst, src)` -> dst.
-///
-/// El único que COMPONE dos emisores, y el orden no es libre: `largo` ensucia
-/// `cl`, así que la medida tiene que salir ANTES de cargar `rcx` con ella. Al
-/// revés, `rcx` llegaría machacado al bucle de copia y se copiarían los bytes
-/// que dijera la basura.
-///
-/// El `inc rax` es el terminador: `largo` no lo cuenta —que es lo que dice
-/// `strlen`— pero `strcpy` sí lo copia, y sin él la cadena destino se quedaría
-/// sin cerrar y el siguiente `strlen` leería memoria ajena.
-fn sintetiza_strcpy(code: &mut Vec<u8>) {
-    prologo(code);
-    carga_arg(code, A_RDI, 1); // src
-    bmo_lower::memoria::largo(code); // rax = largo(src)
-    code.extend_from_slice(&[0x48, 0xFF, 0xC0]); // inc rax  (el terminador)
-    code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
-    carga_arg(code, A_RDI, 0); // dst
-    carga_arg(code, A_RSI, 1); // src
-    bmo_lower::memoria::copiar(code);
-    carga_arg(code, A_RAX, 0); // devuelve dst
-    epilogo(code);
-}
-
-/// `memcpy(dst, src, n)` -> `dst`, UNA vez, llamada con `call`.
-///
-/// El cuerpo es el mismo `bmo_lower::memoria::copiar` que se emitía en línea
-/// —no hay una segunda implementación de "mueve bytes", que sería la clase de
-/// duplicado que `bmo-lower` existe para evitar—: lo único que se añade es el
-/// prólogo que traduce la ABI de pila de BMO C a los registros que ese emisor
-/// espera (`rdi`=dst, `rsi`=src, `rcx`=n), y el `mov rax, [rbp+16]` del final,
-/// porque **`memcpy` devuelve el destino** y `copiar` se lleva `rdi` por
-/// delante al avanzar.
-///
-/// `copiar` es apto para esto y se comprobó antes de envolverlo: toca
-/// `rsi`/`rdi`/`rcx`/`al`, no toca `rbp`, no desequilibra la pila y sus saltos
-/// son relativos internos — o sea que reubicarlo no lo rompe.
-fn sintetiza_memcpy(code: &mut Vec<u8>) {
-    code.extend_from_slice(&[0x55]);                   // push rbp
-    code.extend_from_slice(&[0x48, 0x89, 0xE5]);       // mov rbp, rsp
-    code.extend_from_slice(&[0x48, 0x8B, 0x7D, 0x10]); // mov rdi, [rbp+16]  dst
-    code.extend_from_slice(&[0x48, 0x8B, 0x75, 0x18]); // mov rsi, [rbp+24]  src
-    code.extend_from_slice(&[0x48, 0x8B, 0x4D, 0x20]); // mov rcx, [rbp+32]  n
-    bmo_lower::memoria::copiar(code);
-    code.extend_from_slice(&[0x48, 0x8B, 0x45, 0x10]); // mov rax, [rbp+16]  -> dst
-    code.extend_from_slice(&[0x5D]);                   // pop rbp
-    code.extend_from_slice(&[0xC3]);                   // ret
 }
 
 struct Codegen {
@@ -773,6 +479,52 @@ impl Codegen {
         }
     }
 
+    /// `call rel32` a una función del catálogo de [`sintetizadas`], con su
+    /// reloc pendiente.
+    ///
+    /// El nombre no se comprueba contra el catálogo aquí a propósito: si
+    /// alguien se equivoca escribiéndolo, [`Self::patch_call_relocs`] falla
+    /// diciendo *"no existe la funcion 'X'"* con el nombre delante, que es un
+    /// mejor error que un `panic` del compilador — y ese camino ya está probado
+    /// (`una_funcion_desconocida_sigue_fallando_con_su_nombre`).
+    fn emit_call_sintetizada(&mut self, nombre: &str) {
+        self.code.extend_from_slice(&[0xE8]);
+        self.call_relocs.push(CallReloc {
+            offset: self.code.len(),
+            target: nombre.to_string(),
+        });
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
+    }
+
+    /// La PASADA sobre las relocs pendientes: pide a [`sintetizadas`] el cuerpo
+    /// de lo que alguien llama y no está definido, y registra su offset.
+    ///
+    /// El catálogo y los cuerpos NO están aquí, y el corte es deliberado: este
+    /// fichero sabe qué es una reloc y qué es el `Codegen`; aquél sabe qué
+    /// bytes implementan `strlen`. Añadir una función sintetizable no toca este
+    /// método.
+    ///
+    /// Va ANTES de [`Self::patch_call_relocs`] y no puede ir después: ése es
+    /// quien escribe los desplazamientos, y necesita el offset ya registrado.
+    fn sintetizar_referidas(&mut self) {
+        // ⚠️ ESTE GUARDIA VALE MÁS QUE UN COMENTARIO, y el motivo está escrito
+        // en la cabecera de `patch_all_fixups`: la sección de código es
+        // `all[..instruction_end]`, y **`rodata` es lo que viene detrás**. Si
+        // esta pasada se moviera después de `patch_all_fixups`, los cuerpos
+        // sintetizados caerían en `rodata`, que se mapea SIN permiso de
+        // ejecución — y el `.bex` saltaría EN METAL.
+        //
+        // El banco de pruebas NO puede cazarlo: el emulador reconcatena las
+        // secciones tal cual, así que ejecutaría el cuerpo igual y los 262
+        // tests seguirían verdes. O sea, exactamente la clase de fallo que sólo
+        // aparece con la máquina delante. Por eso se comprueba aquí.
+        debug_assert_eq!(
+            self.instruction_end, 0,
+            "sintetizar_referidas() tiene que ir ANTES de patch_all_fixups():              si no, el cuerpo sintetizado acaba en rodata y no se puede ejecutar"
+        );
+        sintetizadas::inyectar(&mut self.code, &self.call_relocs, &mut self.function_offsets);
+    }
+
     /// Escribe el destino de cada `call rel32`.
     ///
     /// ★ Una llamada sin destino es un ERROR, no un hueco.
@@ -786,85 +538,11 @@ impl Codegen {
     ///
     /// Aquí no hay enlazado que pueda rellenarlo más tarde: no existe tabla de
     /// importaciones en la salida de este codegen, así que todo lo que se llama
-    /// tiene que estar en esta misma unidad. La prueba de que era un descuido y
-    /// no una decisión está tres funciones más abajo: `patch_func_addr_fixups`
-    /// ya reportaba exactamente este caso para los punteros a función.
-    /// Inyecta el cuerpo de cada función de [`SINTETIZABLES`] a la que alguien
-    /// llama y que no está definida en esta unidad. **Una sola vez cada una**,
-    /// que es el punto entero: lo que antes se copiaba en cada sitio de
-    /// llamada ahora se emite aquí y se alcanza con `call rel32`.
-    ///
-    /// Va ANTES de [`Self::patch_call_relocs`] y no puede ir después: ése es
-    /// quien escribe los desplazamientos, y necesita el offset ya registrado.
-    ///
-    /// # Una pasada basta, y conviene decir por qué
-    ///
-    /// Una función sintetizada no puede llamar a otra: su emisor recibe sólo
-    /// `&mut Vec<u8>`, así que no tiene forma de empujar una `CallReloc`. Por
-    /// eso aquí no hay bucle hasta punto fijo — sería código que ninguna
-    /// entrada de la tabla puede ejercer, o sea una rama sin probar
-    /// pretendiendo ser previsión. **Si algún día un emisor necesita llamar a
-    /// otro, esto tiene que volverse un bucle, y este párrafo es el aviso.**
-    /// `call rel32` a una función de [`SINTETIZABLES`], con su reloc pendiente.
-    ///
-    /// El nombre no se comprueba contra la tabla aquí a propósito: si alguien
-    /// se equivoca escribiéndolo, `patch_call_relocs` falla diciendo *"no
-    /// existe la funcion 'X'"* con el nombre delante, que es un mejor error que
-    /// un `panic` en el compilador — y ese camino ya está probado
-    /// (`una_funcion_desconocida_sigue_fallando_con_su_nombre`).
-    fn emit_call_sintetizada(&mut self, nombre: &str) {
-        self.code.extend_from_slice(&[0xE8]);
-        self.call_relocs.push(CallReloc {
-            offset: self.code.len(),
-            target: nombre.to_string(),
-        });
-        self.code.extend_from_slice(&[0, 0, 0, 0]);
-    }
-
-    fn sintetizar_referidas(&mut self) {
-        // ⚠️ ESTE GUARDIA VALE MÁS QUE UN COMENTARIO, y el motivo está escrito
-        // en la cabecera de `patch_all_fixups`: la sección de código es
-        // `all[..instruction_end]`, y **`rodata` es lo que viene detrás**. Si
-        // esta función se moviera después de `patch_all_fixups`, los cuerpos
-        // sintetizados caerían en `rodata`, que se mapea sin permiso de
-        // ejecución — y el `.bex` saltaría EN METAL.
-        //
-        // El banco de pruebas NO puede cazarlo: el emulador reconcatena las
-        // secciones tal cual, así que ejecutaría el cuerpo igual y los 253
-        // tests seguirían verdes. O sea, exactamente la clase de fallo que
-        // sólo aparece con la máquina delante. Por eso se comprueba aquí, que
-        // es donde sí se ve.
-        debug_assert_eq!(
-            self.instruction_end, 0,
-            "sintetizar_referidas() tiene que ir ANTES de patch_all_fixups(): \
-             si no, el cuerpo sintetizado acaba en rodata y no se puede ejecutar"
-        );
-        let mut pendientes: Vec<&str> = Vec::new();
-        for reloc in &self.call_relocs {
-            if self.function_offsets.contains_key(&reloc.target) {
-                continue;
-            }
-            if pendientes.contains(&reloc.target.as_str()) {
-                continue;
-            }
-            if let Some(&(nombre, _)) =
-                SINTETIZABLES.iter().find(|(n, _)| *n == reloc.target.as_str())
-            {
-                pendientes.push(nombre);
-            }
-        }
-        for nombre in pendientes {
-            let emisor = SINTETIZABLES
-                .iter()
-                .find(|(n, _)| *n == nombre)
-                .map(|(_, e)| *e)
-                .expect("el nombre sale de la propia tabla");
-            let off = self.code.len();
-            emisor(&mut self.code);
-            self.function_offsets.insert(nombre.to_string(), off);
-        }
-    }
-
+    /// tiene que estar en esta misma unidad —o en el catálogo de
+    /// [`sintetizadas`], que es lo que la pasada de arriba acaba de inyectar—.
+    /// La prueba de que era un descuido y no una decisión está tres funciones
+    /// más abajo: `patch_func_addr_fixups` ya reportaba exactamente este caso
+    /// para los punteros a función.
     fn patch_call_relocs(&mut self) {
         let mut faltan: Vec<String> = Vec::new();
         for reloc in &self.call_relocs {
