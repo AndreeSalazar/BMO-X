@@ -66,7 +66,16 @@
 //! ═══════════════════════════════════════════════════════════════════════
 //!
 //! **Ningún frontend lo enlaza todavía.** Son 1.279 líneas y 6 tests que
-//! compilan y no los llama nadie — la misma categoría que las seis librerías
+//! **pasan desde el 2026-08-07 y no los llama nadie** — hasta ese día la frase
+//! aquí decía "que compilan", y era falsa: `cargo test -p bmo-rt` moría al
+//! enlazar por el `_start` de `crt0` (ver el `cfg` de abajo) y no ejecutaba ni
+//! un test. Se creyó durante días que el montón estaba probado. **Un test que
+//! no corre no es una prueba, y no dar salida es peor que fallar** — un fallo
+//! se ve; un `running 0 tests` que nadie mira, no.
+//!
+//! Con eso quitado: 6/6 en verde. El montón (`malloc`/`free`/`calloc`/`realloc`,
+//! incluido `test_many_small_allocs`) está **probado de verdad**, y eso es lo
+//! único que cambió de estado — la misma categoría que las seis librerías
 //! que se borraron el 2026-08-02, y se conserva por una razón concreta y no
 //! por cariño: es **el punto 12 de la hoja de ruta**, lo que DOOM necesita, y
 //! está escrito.
@@ -97,6 +106,18 @@ pub mod syscall;
 pub mod heap;
 pub mod string;
 pub mod fmt;
+
+/// ★ FUERA DE LOS TESTS, y no es un detalle de compilación.
+///
+/// `crt0` define `_start` y referencia `__bss_start`/`__bss_end`, que **sólo
+/// los da el script de enlazado de BMO**. En el host, el arnés de `cargo test`
+/// intenta enlazar un `.exe` normal, no los encuentra, y muere con `LNK2019`
+/// antes de ejecutar nada.
+///
+/// Por eso los 6 tests del montón **no habían corrido nunca**: no fallaban,
+/// que sería una señal — es que no llegaban a existir. `cargo test -p bmo-rt`
+/// no imprimía ni un `test result:`, y "escrita y probada" era una hipótesis.
+#[cfg(not(test))]
 pub mod crt0;
 
 mod init;

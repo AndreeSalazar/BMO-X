@@ -193,7 +193,7 @@ ya están escritas**.
 |---|---|---|
 | 1 | Tabla de funciones sintetizables: nombre → bytes | el mecanismo **ya corre en metal** con `__bmo_syscall_stub` |
 | 2 | El codegen inyecta la función una vez y relocaliza las llamadas | — |
-| 3 | `malloc`/`free` de verdad sobre `KIND_MEMORIA` | ★ **escrita y probada**: `bmo-rt::heap::freelist`, 247 líneas |
+| 3 | `malloc`/`free` de verdad sobre `KIND_MEMORIA` | ★ **escrita y probada**: `bmo-rt::heap::freelist`, 247 líneas — **"probada" es cierto desde el 2026-08-07 y no antes**: los 6 tests no enlazaban en el host por el `_start` de `crt0`, así que `cargo test -p bmo-rt` no ejecutaba ninguno. Ahora 6/6 |
 | 4 | `printf` mínimo (`%d %s %x %c`) | — |
 | 5 | Cadenas: `strlen` `strcpy` `memcpy` `memset` | — |
 
@@ -210,7 +210,7 @@ Baratas desde que `3.0` (reemplazar en FAT32) está hecho.
 
 | # | Pieza | Nota |
 |---|---|---|
-| 1 | `ARCH_OP_POSICIONAR` | **exponer el `CURSOR` que ya existe** en `obj/archivo.rs` |
+| 1 | ~~`ARCH_OP_POSICIONAR`~~ | ★ **HECHO** (`b791ce4b`, 2026-08-07) con otro nombre: `ARCH_OP_SALTAR` = `0x07`, más `ARCH_OP_LEER_EN` = `0x06` para leer un bloque de golpe. Lo despacha `obj/archivo.rs`, y `fseek`/`fread` de `bmo/archivo.h` lo llaman. **Esta fila siguió diciendo "pendiente" con el nombre viejo**, que es la forma más cara de equivocarse en un mapa de dependencias: hace parecer bloqueado lo que ya corre |
 | 2 | Modo I-O | el fichero entero ya vive en RAM: es el modo, no el modelo |
 | 3 | Modo EXTEND | `CURSOR = LARGO` al abrir |
 
